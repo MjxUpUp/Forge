@@ -52,7 +52,7 @@ async function main() {
   const { goos, goarch } = getPlatform();
   const ext = goos === "windows" ? "zip" : "tar.gz";
   const archiveName = `forge_${VERSION}_${goos}_${goarch}.${ext}`;
-  const url = `https://github.com/Harness/forge/releases/download/v${VERSION}/${archiveName}`;
+  const url = `https://github.com/MjxUpUp/forge/releases/download/v${VERSION}/${archiveName}`;
 
   const archivePath = path.join(binDir, archiveName);
   console.log(`Downloading forge v${VERSION} for ${goos}/${goarch}...`);
@@ -86,6 +86,6 @@ async function main() {
 
 main().catch((err) => {
   console.error("Installation failed:", err.message);
-  console.error("You can download forge manually from https://github.com/Harness/forge/releases");
+  console.error("You can download forge manually from https://github.com/MjxUpUp/forge/releases");
   process.exit(1);
 });

@@ -9,7 +9,7 @@ const binaryPath = path.join(__dirname, "bin", binaryName);
 
 if (!fs.existsSync(binaryPath)) {
   console.error(
-    "forge binary not found. Run `npm install` to download it, or install from https://github.com/Harness/forge/releases"
+    "forge binary not found. Run `npm install` to download it, or install from https://github.com/MjxUpUp/forge/releases"
   );
   process.exit(1);
 }

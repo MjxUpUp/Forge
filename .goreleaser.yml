@@ -70,10 +70,10 @@ release:
 homebrew_casks:
   - name: forge
     repository:
-      owner: Harness
+      owner: MjxUpUp
       name: homebrew-tap
     directory: Casks
-    homepage: "https://github.com/Harness/forge"
+    homepage: "https://github.com/MjxUpUp/forge"
     description: "AI development gate engine — structured quality gates for AI-generated code"
     binaries:
       - forge
@@ -81,7 +81,7 @@ homebrew_casks:
 nfpms:
   - id: packages
     package_name: forge
-    homepage: "https://github.com/Harness/forge"
+    homepage: "https://github.com/MjxUpUp/forge"
     description: "AI development gate engine"
     maintainer: "Forge Team"
     license: MIT
