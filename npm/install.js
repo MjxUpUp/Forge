@@ -57,7 +57,12 @@ async function main() {
 
   const { goos, goarch } = getPlatform();
   const archiveName = `forge_${VERSION}_${goos}_${goarch}.tar.gz`;
-  const url = `https://github.com/MjxUpUp/forge/releases/download/v${VERSION}/${archiveName}`;
+
+  // Support custom binary host for regions with poor GitHub connectivity.
+  // Usage: FORGE_BINARY_HOST=https://mirror.example.com npm install -g @agentfare/forge
+  const baseUrl = process.env.FORGE_BINARY_HOST
+    || "https://github.com/MjxUpUp/forge/releases/download";
+  const url = `${baseUrl}/v${VERSION}/${archiveName}`;
 
   const archivePath = path.join(binDir, archiveName);
   console.log(`Downloading forge v${VERSION} for ${goos}/${goarch}...`);
@@ -84,6 +89,10 @@ async function main() {
 
 main().catch((err) => {
   console.error("Installation failed:", err.message);
-  console.error("You can download forge manually from https://github.com/MjxUpUp/forge/releases");
+  console.error("");
+  console.error("If GitHub is unreachable, set a mirror:");
+  console.error("  FORGE_BINARY_HOST=https://your-mirror.com npm install -g @agentfare/forge");
+  console.error("");
+  console.error("Or download manually: https://github.com/MjxUpUp/forge/releases");
   process.exit(1);
 });
