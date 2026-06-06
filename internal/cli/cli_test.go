@@ -492,3 +492,31 @@ func TestInitIdempotent(t *testing.T) {
 		t.Fatalf("second init failed: %s", stdout)
 	}
 }
+
+// --------------- Test: First-run experience ---------------
+// A user who has never seen forge should understand what it does
+// and what to do next within the first 30 seconds.
+
+func TestFirstRunExperience(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Running forge with no arguments must provide actionable guidance
+	stdout, _, code := runForge(t, tmpDir)
+
+	// Must exit 0 (help output, not an error)
+	if code != 0 {
+		t.Fatalf("forge with no args returned exit %d, expected 0", code)
+	}
+	// Must state what the tool does
+	if !strings.Contains(stdout, "门禁") {
+		t.Fatal("first-run output missing tool purpose (门禁)")
+	}
+	// Must tell user what to do next
+	if !strings.Contains(stdout, "forge init") {
+		t.Fatal("first-run output missing 'forge init' quick start")
+	}
+	// Must link to documentation
+	if !strings.Contains(stdout, "github.com") {
+		t.Fatal("first-run output missing documentation link")
+	}
+}

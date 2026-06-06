@@ -35,6 +35,7 @@ type CheckParams struct {
 
 	// Script is the hook script name for custom_script checks.
 	Script string `yaml:"script,omitempty" json:"script,omitempty"`
+
 }
 
 // Context provides everything a rule evaluator needs.

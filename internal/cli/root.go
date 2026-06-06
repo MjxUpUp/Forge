@@ -12,10 +12,18 @@ import (
 
 var rootCmd = &cobra.Command{
 	Use:   "forge",
-	Short: "Pipeline Engine — AI 开发质量门禁管道",
-	Long: `forge 是开发阶段的质量门禁引擎。
-	通过 .forge/pipeline.yml 定义门禁管道（v2 格式），
-	配合 Claude Code Skill 驱动执行，hooks 硬拦截保障。`,
+	Short: "AI 开发质量门禁管道",
+	Long: `Forge — AI 开发质量门禁引擎
+
+在 AI 生成的代码进入仓库前，通过结构化门禁管道进行质量锻造。
+配合 Claude Code，从需求到发布全流程质量保障。
+
+快速开始:
+  forge init              在当前项目初始化管道
+  forge status            查看管道执行状态
+  forge gate <gate-id>    运行指定门禁
+
+文档: https://github.com/MjxUpUp/forge`,
 }
 
 // SetVersion sets version info injected via -ldflags at build time.

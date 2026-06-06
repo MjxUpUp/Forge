@@ -101,9 +101,13 @@ func runInit(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  .claude/settings.local.json      — Claude Code 集成\n")
 	fmt.Printf("  .claude/skills/forge-pipeline/    — 管道编排 Skill\n")
 	fmt.Println()
-	fmt.Println("Next: forge gate <gate-id>    — 运行单道门禁")
-	fmt.Println("      forge status            — 查看当前状态")
-	fmt.Println("      forge validate          — 验证管道定义")
+	fmt.Println()
+	fmt.Println("Next step: open Claude Code in this project and describe what you want to build.")
+	fmt.Println("Claude Code will read the Forge skill and drive the pipeline automatically.")
+	fmt.Println()
+	fmt.Println("Manual commands:")
+	fmt.Println("  forge status    — see all gate IDs and their status")
+	fmt.Println("  forge validate  — check pipeline.yml configuration")
 	return nil
 }
 

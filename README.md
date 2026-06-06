@@ -1,91 +1,82 @@
-# Forge Engine
+# Forge
 
-AI Coding Quality Gatekeeper 的开发门禁管道引擎。
+AI 写的代码，你放心直接提交吗？
 
-独立于 [HarnessCenter](..)（Skill 平台）的管道执行引擎，通过 `hc install` 消费 Skill 平台的能力。
+Forge 是一个开发质量门禁引擎。它在你用 AI 编写代码的过程中，自动插入结构化的质量检查——从需求定义到发布，确保每一步的产出物都经过验证。
 
-## 安装
+## 它解决什么问题
 
-```bash
-cd forge
-go build -o ~/.forge/bin/forge ./cmd/forge/
+用 AI 写代码很快，但质量不确定：
+- AI 生成的代码有没有测试？测试是不是真的在验证正确的行为？
+- 实现是否覆盖了 PRD 中的所有需求？
+- 有没有该做但没做的事（CHANGELOG、README 更新）？
+
+Forge 不替代你审查代码，而是在 AI 编码的**过程中**自动拦截质量问题。
+
+## 怎么工作
+
 ```
+你提需求 → Claude Code 执行 Forge 管道 → 每道门禁验证产出物 → 全部通过才能提交
+```
+
+1. `forge init` 在项目中初始化管道（根据项目规模自动选择门禁数量）
+2. Claude Code 读取生成的 Skill，按管道顺序执行每道门禁
+3. 每道门禁检查产出物（文件是否存在、内容是否包含关���词、JSON 字段值是否正确）
+4. 全部通过 → 代码可以提交；有门禁失败 → AI 自动修复后重新验证
 
 ## 快速开始
 
-```bash
-# 在任意项目中初始化管道
-forge init --mode medium
-
-# 查看管道状态
-forge status
-
-# 运行单道门禁
-forge gate gate-1-prd
-
-# 运行完整管道
-forge run
-```
-
-## 命令
-
-| 命令 | 功能 |
-|------|------|
-| `forge init` | 创建 `.forge/` 目录 + pipeline.yml + state.json + hooks |
-| `forge gate <id>` | 执行单道门禁（前置检查 → hook → checks → 状态写入） |
-| `forge run [--from <id>]` | 顺序执行全部启用门禁 |
-| `forge status [--json] [--system]` | 管道全景图 / 系统健康检查 |
-| `forge knowledge list/add/check` | 跨项目经验库管理 |
-
-## 门禁 (Gate)
-
-| Gate | 名称 | 说明 |
-|------|------|------|
-| gate-0-research | 立项调研 | 竞品分析、技术可行性（large 模式） |
-| gate-1-prd | 需求定义 | PRD + 验收条件 |
-| gate-2-design | 技术方案 | ADR + 接口定义（large 模式） |
-| gate-3-plan | 实现计划 | 任务拆解 + 依赖无环 |
-| gate-4-implement | 代码实现 | 编译 + 测试 + 断言弱化检查 |
-| gate-5-test | 测试验证 | 覆盖率 + E2E |
-| gate-6-acceptance | 项目验收 | PRD 覆盖 + 设计一致性 |
-| gate-7-archive | 经验归档 | 跨项目经验提取（large 模式） |
-| gate-8-release | 发布 | checklist + CHANGELOG + semver |
-
-## 规则求值引擎
-
-支持 8 种规则模式的自动求值：
-
-| 模式 | 示例 |
-|------|------|
-| 文件不含关键词 | `compile.log 无 ERROR` |
-| 文件包含关键词 | `prd.md 包含 Out of Scope` |
-| JSON 字段值 | `test-results.json.failed == 0` |
-| JSON 计数 | `competitors.json.count >= 3` |
-| 文件存在性 | `README.md 已更新` |
-| 前序 gate 通过 | `所有前序 status.json.passed == true` |
-| 定性检查 | `每个功能有验收条件` → 委派给 skill |
-
-## 与 HarnessCenter 的关系
-
-```
-HarnessCenter（Skill 平台）         Pipeline Engine（管道引擎）
-hc scan → 扫描 Skill 质量           forge init → 项目初始化
-hc publish → 发布 Skill             forge run → 运行管道
-hc install → 安装 Skill             forge gate → 运行单道门禁
-      ↑                                    ↑
-      └──── hc install 安装门禁 Skill ──────┘
-```
-
-Pipeline Engine 不做 Skill 审核，HarnessCenter 不做管道执行。通过 `hc install` 衔接。
-
-## 测试
+需要 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) 已安装。
 
 ```bash
-go test ./...
+# 安装
+npm install -g @agentfare/forge
+
+# 在项目目录初始化
+cd your-project
+forge init
+
+# 在 Claude Code 中告诉 AI 执行管道
+# Claude Code 会自动读取 Forge 生成的 Skill 并驱动管道
 ```
 
-## 技术栈
+## 命令参考
 
-- Go 1.24
-- Cobra (CLI)
-- yaml.v3 (配置解析)
+| 命令 | 说明 |
+|------|------|
+| `forge init [--mode small|medium|large]` | 初始化管道 |
+| `forge status [--json]` | 查看管道状态（列出所有 gate ID） |
+| `forge gate <gate-id>` | 验证指定门禁的产出物 |
+| `forge validate` | 检查 pipeline.yml 配置是否正确 |
+
+## 门禁管道
+
+`forge init` 根据项目规模自动选择门禁：
+
+| Gate ID | 名称 | small | medium | large |
+|---------|------|:-----:|:------:|:-----:|
+| gate-1-prd | 需求定义 | ✓ | ✓ | ✓ |
+| gate-3-plan | 实现计划 | ✓ | ✓ | ✓ |
+| gate-4-implement | 代码实现 | | ✓ | ✓ |
+| gate-5-test | 测试验证 | | ✓ | ✓ |
+| gate-6-acceptance | 项目验收 | | ✓ | ✓ |
+| gate-8-release | 发布 | | | ✓ |
+| gate-0-research | 立项调研 | | | ✓ |
+| gate-2-design | 技术方案 | | | ✓ |
+| gate-7-archive | 经验归档 | | | ✓ |
+
+`forge status` 会显示当前项目中所有启用的 gate ID。
+
+## 安装方式
+
+```bash
+# npm（推荐）
+npm install -g @agentfare/forge
+
+# 或从 GitHub Releases 下载二进制
+# https://github.com/MjxUpUp/forge/releases
+```
+
+## License
+
+MIT
