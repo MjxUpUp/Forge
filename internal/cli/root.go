@@ -14,8 +14,16 @@ var rootCmd = &cobra.Command{
 	Use:   "forge",
 	Short: "Pipeline Engine — AI 开发质量门禁管道",
 	Long: `forge 是开发阶段的质量门禁引擎。
-通过 .forge/pipeline.yml 定义门禁管道（v2 格式），
-配合 Claude Code Skill 驱动执行，hooks 硬拦截保障。`,
+	通过 .forge/pipeline.yml 定义门禁管道（v2 格式），
+	配合 Claude Code Skill 驱动执行，hooks 硬拦截保障。`,
+}
+
+// SetVersion sets version info injected via -ldflags at build time.
+func SetVersion(v, c, d string) {
+	rootCmd.Version = v
+	if v != "dev" {
+		rootCmd.Version = fmt.Sprintf("%s (commit: %s, built: %s)", v, c, d)
+	}
 }
 
 func Execute() {

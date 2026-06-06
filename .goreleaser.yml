@@ -1,0 +1,91 @@
+version: 2
+
+project_name: forge
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: forge
+    main: ./cmd/forge
+    binary: forge
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - id: default
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "arm64" }}aarch64
+      {{- else }}{{ .Arch }}{{ end }}
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+
+release:
+  draft: false
+  prerelease: auto
+  mode: replace
+
+homebrew_casks:
+  - name: forge
+    repository:
+      owner: Harness
+      name: homebrew-tap
+    directory: Casks
+    homepage: "https://github.com/Harness/forge"
+    description: "AI development gate engine — structured quality gates for AI-generated code"
+    binaries:
+      - forge
+
+nfpms:
+  - id: packages
+    package_name: forge
+    homepage: "https://github.com/Harness/forge"
+    description: "AI development gate engine"
+    maintainer: "Forge Team"
+    license: MIT
+    formats:
+      - deb
+      - rpm
+      - archlinux

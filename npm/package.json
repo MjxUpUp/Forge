@@ -1,0 +1,31 @@
+{
+  "name": "@anthropic-ai/forge",
+  "version": "0.0.0",
+  "description": "AI development gate engine — structured quality gates for AI-generated code",
+  "bin": {
+    "forge": "run.js"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "files": [
+    "install.js",
+    "run.js"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Harness/forge.git"
+  },
+  "keywords": [
+    "ai",
+    "gate",
+    "pipeline",
+    "quality",
+    "claude-code"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=16"
+  },
+  "optionalDependencies": {}
+}
