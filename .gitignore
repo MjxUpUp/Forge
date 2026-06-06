@@ -1,0 +1,19 @@
+# Binaries
+forge
+forge.exe
+bin/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+
+# Build
+dist/
+
+# Claude Code
+.claude/
+.openclaw/
