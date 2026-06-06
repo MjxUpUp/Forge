@@ -28,21 +28,27 @@ function getBinaryName() {
 }
 
 async function download(url, dest) {
-  const res = await new Promise((resolve, reject) => {
-    https
-      .get(url, { timeout: 30000 }, (res) => {
-        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          return download(res.headers.location, dest).then(resolve).catch(reject);
-        }
-        if (res.statusCode !== 200) {
-          return reject(new Error(`Download failed: HTTP ${res.statusCode}`));
-        }
-        resolve(res);
-      })
-      .on("error", reject);
-  });
+  let currentUrl = url;
+  while (true) {
+    const res = await new Promise((resolve, reject) => {
+      https
+        .get(currentUrl, { timeout: 30000 }, resolve)
+        .on("error", reject);
+    });
 
-  await pipeline(res, createWriteStream(dest));
+    if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+      res.destroy();
+      currentUrl = res.headers.location;
+      continue;
+    }
+    if (res.statusCode !== 200) {
+      res.destroy();
+      throw new Error(`Download failed: HTTP ${res.statusCode}`);
+    }
+
+    await pipeline(res, createWriteStream(dest));
+    return;
+  }
 }
 
 async function main() {
@@ -50,8 +56,7 @@ async function main() {
   fs.mkdirSync(binDir, { recursive: true });
 
   const { goos, goarch } = getPlatform();
-  const ext = goos === "windows" ? "zip" : "tar.gz";
-  const archiveName = `forge_${VERSION}_${goos}_${goarch}.${ext}`;
+  const archiveName = `forge_${VERSION}_${goos}_${goarch}.tar.gz`;
   const url = `https://github.com/MjxUpUp/forge/releases/download/v${VERSION}/${archiveName}`;
 
   const archivePath = path.join(binDir, archiveName);
@@ -60,16 +65,8 @@ async function main() {
   await download(url, archivePath);
   console.log(`Downloaded to ${archivePath}`);
 
-  // Extract
-  if (ext === "zip") {
-    if (process.platform === "win32") {
-      execSync(`powershell -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${binDir}' -Force"`, { stdio: "inherit" });
-    } else {
-      execSync(`unzip -o "${archivePath}" -d "${binDir}"`, { stdio: "inherit" });
-    }
-  } else {
-    execSync(`tar xzf "${archivePath}" -C "${binDir}"`, { stdio: "inherit" });
-  }
+  // Extract (tar.gz works on all platforms: Linux, macOS, Windows 10+)
+  execSync(`tar xzf "${archivePath}" -C "${binDir}"`, { stdio: "inherit" });
 
   // Make executable
   const binaryName = getBinaryName();
