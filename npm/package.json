@@ -1,6 +1,6 @@
 {
-  "name": "@anthropic-ai/forge",
-  "version": "0.0.0",
+  "name": "@agentfare/forge",
+  "version": "0.1.0",
   "description": "AI development gate engine — structured quality gates for AI-generated code",
   "bin": {
     "forge": "run.js"
@@ -14,7 +14,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/MjxUpUp/forge.git"
+    "url": "https://github.com/MjxUpUp/forge"
   },
   "keywords": [
     "ai",
@@ -27,5 +27,9 @@
   "engines": {
     "node": ">=16"
   },
-  "optionalDependencies": {}
+  "optionalDependencies": {},
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  }
 }
