@@ -2,20 +2,51 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
 
-// forgeExe is the path to the compiled forge binary.
-const forgeExe = "E:/Forge/forge.exe"
+var forgeExe string
+
+func TestMain(m *testing.M) {
+	exeName := "forge"
+	if runtime.GOOS == "windows" {
+		exeName = "forge.exe"
+	}
+	tmpDir, err := os.MkdirTemp("", "forge-test-*")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create temp dir: %v\n", err)
+		os.Exit(1)
+	}
+	forgeExe = filepath.Join(tmpDir, exeName)
+
+	cmd := exec.Command("go", "build", "-o", forgeExe, "../../cmd/forge")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to build forge binary: %v\n%s\n", err, output)
+		os.Exit(1)
+	}
+
+	code := m.Run()
+	os.RemoveAll(tmpDir)
+	os.Exit(code)
+}
+
+// buildForge returns the path to the pre-built forge binary.
+func buildForge(t *testing.T) string {
+	t.Helper()
+	return forgeExe
+}
 
 // runForge executes the forge CLI in the given working directory.
 func runForge(t *testing.T, dir string, args ...string) (stdout, stderr string, exitCode int) {
 	t.Helper()
-	cmd := exec.Command(forgeExe, args...)
+	exe := buildForge(t)
+	cmd := exec.Command(exe, args...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	output := string(out)
@@ -272,13 +303,6 @@ func TestHelperFunctions(t *testing.T) {
 	})
 
 	t.Run("findProjectRoot", func(t *testing.T) {
-		// findProjectRoot walks up from cwd looking for .forge/.
-		// We create an isolated temp dir tree and chdir into a subdirectory
-		// that is guaranteed not to have .forge/ in any ancestor.
-		//
-		// However, t.TempDir() may be nested under dirs that contain .forge/,
-		// so we test the "found" path instead: create .forge/ in a temp dir,
-		// chdir into a subdirectory, and verify findProjectRoot resolves upward.
 		tmpDir := t.TempDir()
 		projectDir := filepath.Join(tmpDir, "myproject")
 		subDir := filepath.Join(projectDir, "subdir")
@@ -301,8 +325,11 @@ func TestHelperFunctions(t *testing.T) {
 		if err != nil {
 			t.Fatalf("findProjectRoot failed: %v", err)
 		}
-		if root != projectDir {
-			t.Errorf("findProjectRoot returned %q, want %q", root, projectDir)
+		// Resolve symlinks for comparison (macOS /var → /private/var)
+		resolvedRoot, _ := filepath.EvalSymlinks(root)
+		resolvedWant, _ := filepath.EvalSymlinks(projectDir)
+		if resolvedRoot != resolvedWant {
+			t.Errorf("findProjectRoot returned %q (resolved: %q), want %q (resolved: %q)", root, resolvedRoot, projectDir, resolvedWant)
 		}
 	})
 
