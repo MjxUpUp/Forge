@@ -65,12 +65,9 @@ async function main() {
   await download(url, archivePath);
   console.log(`Downloaded to ${archivePath}`);
 
-  // Extract (tar.gz works on all platforms: Linux, macOS, Windows 10+)
-  // Normalize backslashes to forward slashes for tar compatibility on Windows
-  // --force-local prevents GNU tar from treating "X:/path" as a remote host
-  const normArchivePath = archivePath.replace(/\\/g, "/");
-  const normBinDir = binDir.replace(/\\/g, "/");
-  execSync(`tar xzf "${normArchivePath}" -C "${normBinDir}" --force-local`, { stdio: "inherit" });
+  // Extract using relative path (cwd=binDir) to avoid Windows tar
+  // interpreting "X:/path" as a remote host connection.
+  execSync(`tar xzf "${archiveName}"`, { cwd: binDir, stdio: "inherit" });
 
   // Make executable
   const binaryName = getBinaryName();
