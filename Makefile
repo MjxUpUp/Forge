@@ -1,7 +1,13 @@
 .PHONY: build test clean install
 
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+COMMIT  ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
+DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+
+LDFLAGS = -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)
+
 build:
-	go build -o bin/forge.exe ./cmd/forge/
+	go build -ldflags "$(LDFLAGS)" -o bin/forge.exe ./cmd/forge/
 
 test:
 	go test ./...

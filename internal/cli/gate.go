@@ -16,25 +16,51 @@ func init() {
 	gateCmd.Flags().Bool("force", false, "跳过前置条件检查")
 	gateCmd.Flags().Bool("retry", false, "重新执行上一次失败的 gate")
 	gateCmd.Flags().Bool("silent", false, "仅输出状态码（Hook 集成用）")
+	gateCmd.Flags().Bool("current", false, "运行当前活跃的门禁（从 state.json 读取）")
 }
 
 var gateCmd = &cobra.Command{
-	Use:   "gate <gate-id> [--force] [--retry] [--silent]",
+	Use:   "gate <gate-id> [--force] [--retry] [--silent] [--current]",
 	Short: "运行单道门禁（验证产出物 + 执行检查规则）",
 	Long: `forge gate 执行 pipeline.yml 中指定的一道门禁。
 
 不做 AI 调用——只执行 hooks、评估 checks、写 status.json、更新 state.json。
 AI 执行由 Claude Code Skill 通过 subagent 驱动。
 
---force  跳过前置条件检查（记录到 overrides）
---retry  重新执行上一次失败的 gate
---silent 静默模式（hook 集成用，只返回退出码）`,
-	Args: cobra.ExactArgs(1),
+--force   跳过前置条件检查（记录到 overrides）
+--retry   重新执行上一次失败的 gate
+--silent  静默模式（hook 集成用，只返回退出码）
+--current 运行 state.json 中 current_gate 指定的门禁（无活跃门禁时静默退出）`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: runGate,
 }
 
 func runGate(cmd *cobra.Command, args []string) error {
-	gateID := args[0]
+	currentFlag, _ := cmd.Flags().GetBool("current")
+
+	var gateID string
+	if currentFlag {
+		// Read current_gate from state.json
+		root, err := findProjectRoot()
+		if err != nil {
+			return err
+		}
+		state, err := pipeline.LoadState(root)
+		if err != nil {
+			return err
+		}
+		if state.CurrentGate == "" {
+			// No active gate — silent exit (for Stop hook compatibility)
+			return nil
+		}
+		gateID = state.CurrentGate
+	} else {
+		if len(args) == 0 {
+			return fmt.Errorf("requires a gate ID argument or --current flag")
+		}
+		gateID = args[0]
+	}
+
 	force, _ := cmd.Flags().GetBool("force")
 	retry, _ := cmd.Flags().GetBool("retry")
 	silent, _ := cmd.Flags().GetBool("silent")

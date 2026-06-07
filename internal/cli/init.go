@@ -9,13 +9,16 @@ import (
 
 	"github.com/Harness/forge/internal/hooks"
 	"github.com/Harness/forge/internal/pipeline"
+	"github.com/Harness/forge/internal/protocol"
 	"github.com/Harness/forge/internal/skillgen"
+	"github.com/Harness/forge/internal/snapshot"
 	"github.com/spf13/cobra"
 )
 
 func init() {
 	rootCmd.AddCommand(initCmd)
 	initCmd.Flags().String("mode", "", "管道模式: small, medium, large")
+	initCmd.Flags().Bool("fresh", false, "跳过项目快照推断，从第一个门禁开始")
 }
 
 var initCmd = &cobra.Command{
@@ -45,6 +48,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		forgeDir,
 		filepath.Join(forgeDir, "gates"),
 		filepath.Join(forgeDir, "hooks"),
+		filepath.Join(forgeDir, "tasks"),
 	}
 	for _, d := range dirs {
 		if err := os.MkdirAll(d, 0755); err != nil {
@@ -66,6 +70,38 @@ func runInit(cmd *cobra.Command, args []string) error {
 		Mode:            mode,
 		StartedAt:       time.Now(),
 	}
+
+	// Project snapshot inference: detect existing project state and
+	// auto-skip gates that appear to be already completed.
+	var inferredGates []snapshot.InferredGate
+	fresh, _ := cmd.Flags().GetBool("fresh")
+	if !fresh {
+		snap, err := snapshot.Take(dir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: project snapshot failed: %v\n", err)
+		} else if snap != nil {
+			// Load the pipeline we just wrote to get gate structure
+			if p, err := pipeline.Load(dir); err == nil {
+				inferredGates = snapshot.InferCompletedGates(snap, p)
+
+				// Record overrides for inferred gates
+				for _, ig := range inferredGates {
+					state.AddOverride(ig.GateID, "auto-detected: "+ig.Reason)
+				}
+
+				// Record snapshot data for transparency
+				inferredIDs := make([]string, len(inferredGates))
+				for i, ig := range inferredGates {
+					inferredIDs[i] = ig.GateID
+				}
+				state.Snapshot = &pipeline.SnapshotData{
+					TakenAt:       snap.TakenAt,
+					InferredGates: inferredIDs,
+				}
+			}
+		}
+	}
+
 	stateJSON, err := jsonMarshal(state)
 	if err != nil {
 		return err
@@ -85,11 +121,33 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	// Generate Claude Code Skill
+	var inferredIDs []string
+	for _, ig := range inferredGates {
+		inferredIDs = append(inferredIDs, ig.GateID)
+	}
 	p, err := pipeline.Load(dir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to load pipeline for skill generation: %v\n", err)
-	} else if err := skillgen.GenerateSkill(dir, p); err != nil {
+	} else if err := skillgen.GenerateSkill(dir, p, inferredIDs); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to generate skill: %v\n", err)
+	}
+
+	// Write quality protocol
+	proto := protocol.DefaultProtocol(mode)
+	if err := protocol.Save(dir, proto); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to write protocol.yml: %v\n", err)
+	}
+
+	// Generate quality skill
+	if p != nil {
+		if err := skillgen.GenerateQualitySkill(dir, proto, p); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to generate quality skill: %v\n", err)
+		}
+	}
+
+	// Generate .claude/CLAUDE.md with quality protocol reference
+	if err := skillgen.GenerateClaudeMD(dir); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to generate CLAUDE.md: %v\n", err)
 	}
 
 	fmt.Printf("Forge pipeline initialized (mode: %s)\n", mode)
@@ -97,9 +155,49 @@ func runInit(cmd *cobra.Command, args []string) error {
 	fmt.Println("Created:")
 	fmt.Printf("  .forge/pipeline.yml              — 管道定义 (v2)\n")
 	fmt.Printf("  .forge/state.json                — 管道状态机\n")
+	fmt.Printf("  .forge/protocol.yml              — 质量协议\n")
 	fmt.Printf("  .forge/hooks/                    — 门禁 Hook 脚本\n")
+	fmt.Printf("  .forge/tasks/                    — 任务状态目录\n")
 	fmt.Printf("  .claude/settings.local.json      — Claude Code 集成\n")
+	fmt.Printf("  .claude/CLAUDE.md                — 质量协议引用\n")
 	fmt.Printf("  .claude/skills/forge-pipeline/    — 管道编排 Skill\n")
+	fmt.Printf("  .claude/skills/forge-quality/     — 质量协议 Skill\n")
+
+	// Show snapshot inference results
+	if len(inferredGates) > 0 {
+		// Show detected signals
+		snap, _ := snapshot.Take(dir)
+		if snap != nil {
+			fmt.Println()
+			fmt.Println("Detected project signals:")
+			fmt.Println(snapshot.FormatSignals(&snap.Signals))
+		}
+
+		fmt.Println()
+		fmt.Println("Inferred completed gates:")
+		fmt.Println(snapshot.FormatInferred(inferredGates))
+
+		// Find starting gate
+		if p, err := pipeline.Load(dir); err == nil {
+			completed := state.CompletedGates()
+			// Also mark overridden gates as completed for the purpose of finding next gate
+			for _, ig := range inferredGates {
+				completed[ig.GateID] = true
+			}
+			nextGate := p.NextReadyGate(completed)
+			fmt.Println()
+			if nextGate != "" {
+				if gate, err := p.GetGate(nextGate); err == nil {
+					fmt.Printf("Pipeline starts from: %s (%s)\n", nextGate, gate.Name)
+				} else {
+					fmt.Printf("Pipeline starts from: %s\n", nextGate)
+				}
+			} else {
+				fmt.Println("All gates inferred as completed — pipeline is fully done.")
+			}
+		}
+	}
+
 	fmt.Println()
 	fmt.Println()
 	fmt.Println("Next step: open Claude Code in this project and describe what you want to build.")
@@ -108,6 +206,10 @@ func runInit(cmd *cobra.Command, args []string) error {
 	fmt.Println("Manual commands:")
 	fmt.Println("  forge status    — see all gate IDs and their status")
 	fmt.Println("  forge validate  — check pipeline.yml configuration")
+	fmt.Println()
+	if len(inferredGates) > 0 {
+		fmt.Println("Use --fresh to reinitialize without project detection.")
+	}
 	return nil
 }
 

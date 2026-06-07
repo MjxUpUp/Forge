@@ -49,7 +49,7 @@ func TestGenerateSkillCreatesFile(t *testing.T) {
 	dir := t.TempDir()
 	p := makeTestPipeline()
 
-	if err := GenerateSkill(dir, p); err != nil {
+	if err := GenerateSkill(dir, p, nil); err != nil {
 		t.Fatalf("GenerateSkill returned error: %v", err)
 	}
 
@@ -63,7 +63,7 @@ func TestGenerateSkillFrontMatter(t *testing.T) {
 	dir := t.TempDir()
 	p := makeTestPipeline()
 
-	if err := GenerateSkill(dir, p); err != nil {
+	if err := GenerateSkill(dir, p, nil); err != nil {
 		t.Fatalf("GenerateSkill returned error: %v", err)
 	}
 
@@ -92,7 +92,7 @@ func TestGenerateSkillContainsGatePrompts(t *testing.T) {
 	dir := t.TempDir()
 	p := makeTestPipeline()
 
-	if err := GenerateSkill(dir, p); err != nil {
+	if err := GenerateSkill(dir, p, nil); err != nil {
 		t.Fatalf("GenerateSkill returned error: %v", err)
 	}
 
@@ -113,7 +113,7 @@ func TestGenerateSkillContainsCheckRules(t *testing.T) {
 	dir := t.TempDir()
 	p := makeTestPipeline()
 
-	if err := GenerateSkill(dir, p); err != nil {
+	if err := GenerateSkill(dir, p, nil); err != nil {
 		t.Fatalf("GenerateSkill returned error: %v", err)
 	}
 
@@ -145,7 +145,7 @@ func TestGenerateSkillEmptyPipeline(t *testing.T) {
 	}
 
 	// Should not panic and should return nil error
-	if err := GenerateSkill(dir, p); err != nil {
+	if err := GenerateSkill(dir, p, nil); err != nil {
 		t.Fatalf("GenerateSkill with empty pipeline returned error: %v", err)
 	}
 

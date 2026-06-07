@@ -16,6 +16,20 @@ type State struct {
 	StartedAt       time.Time     `json:"started_at"`
 	History         []GateHistory `json:"history"`
 	Overrides       []Override    `json:"overrides"`
+
+	// Snapshot records the project state detected at init time.
+	// Used by forge init to auto-skip gates for existing projects.
+	Snapshot *SnapshotData `json:"snapshot,omitempty"`
+
+	// LastSyncVersion records which binary version last synced .forge/ files.
+	// When the running binary version differs, autoSync rewrites hooks/skill/settings.
+	LastSyncVersion string `json:"last_sync_version,omitempty"`
+}
+
+// SnapshotData records project signals and inferred gates at init time.
+type SnapshotData struct {
+	TakenAt       time.Time `json:"taken_at"`
+	InferredGates []string  `json:"inferred_gates,omitempty"`
 }
 
 // GateHistory records one gate execution attempt. History is append-only.

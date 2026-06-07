@@ -75,7 +75,7 @@ for f in "$KNOWLEDGE_DIR"/*.md; do
   patterns=$(sed -n 's/.*Patterns:\*\* //p' "$f" 2>/dev/null | tr ',' '\n' | sed 's/^ *//;s/ *$//')
   [ -z "$patterns" ] && continue
   while IFS= read -r pattern; do
-    [ -z "$pattern" ] && continue
+    [ -z "$pattern" ] || continue
     matches=$(grep -rn "$pattern" --include="*.go" --include="*.rs" --include="*.ts" --include="*.ets" . 2>/dev/null | grep -v node_modules | grep -v '.git/' | grep -v '.min.' | head -3)
     if [ -n "$matches" ]; then
       echo "$matches" >&2
@@ -86,5 +86,13 @@ done
 
 [ $VIOLATIONS -gt 0 ] && echo "$VIOLATIONS violation(s) found" >&2 && exit 1
 echo "[experience-check] All clear."
+exit 0
+`
+
+const TaskVerifyHook = `#!/bin/bash
+# task-verify.sh — runs task-level verification on session stop.
+# No-op if no task is active.
+set -eo pipefail
+forge task gate task-verify --silent 2>/dev/null || true
 exit 0
 `

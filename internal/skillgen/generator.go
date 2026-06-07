@@ -10,18 +10,20 @@ import (
 )
 
 // GenerateSkill creates the .claude/skills/forge-pipeline/SKILL.md orchestration skill.
-func GenerateSkill(projectDir string, p *pipeline.Pipeline) error {
+// inferredGateIDs lists gates that were auto-detected as completed at init time.
+// When empty, no artifact fallback section is added.
+func GenerateSkill(projectDir string, p *pipeline.Pipeline, inferredGateIDs []string) error {
 	skillDir := filepath.Join(projectDir, ".claude", "skills", "forge-pipeline")
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
 		return fmt.Errorf("failed to create skill dir: %w", err)
 	}
 
-	content := buildSkillContent(p)
+	content := buildSkillContent(p, inferredGateIDs)
 	path := filepath.Join(skillDir, "SKILL.md")
 	return os.WriteFile(path, []byte(content), 0644)
 }
 
-func buildSkillContent(p *pipeline.Pipeline) string {
+func buildSkillContent(p *pipeline.Pipeline, inferredGateIDs []string) string {
 	var sb strings.Builder
 
 	sb.WriteString("---\n")
@@ -90,6 +92,26 @@ func buildSkillContent(p *pipeline.Pipeline) string {
 	sb.WriteString("   d. 如果 `on_failure: abort`，最多重试一次后停止\n")
 	sb.WriteString("4. 如果验证通过，继续下一个 gate\n")
 	sb.WriteString("5. 所有 gate 通过后，运行 `forge status` 显示完成状态\n")
+
+	// Add artifact fallback section when gates were inferred at init time
+	if len(inferredGateIDs) > 0 {
+		sb.WriteString("\n## Artifact 回退策略\n\n")
+		sb.WriteString("以下门禁在项目初始化时被自动检测为已完成（无 gate 产出物）：\n\n")
+		for _, id := range inferredGateIDs {
+			sb.WriteString(fmt.Sprintf("- `%s`\n", id))
+		}
+		sb.WriteString("\n")
+		sb.WriteString("当执行某个 gate 的 prompt 时，如果引用了上述推断门禁的产出物（如 `{{.GateArtifacts \"gate-1-prd\" \"prd.md\"}}`），")
+		sb.WriteString("`.forge/gates/<id>/` 目录下不会有这些文件。此时应该：\n\n")
+		sb.WriteString("1. **不要尝试读取 `.forge/gates/<inferred-id>/` 下的文件** — 它们不存在\n")
+		sb.WriteString("2. **直接从项目中获取等价信息**：\n")
+		sb.WriteString("   - `prd.md` → 阅读项目的 README.md、现有代码结构和功能描述\n")
+		sb.WriteString("   - `acceptance-criteria.json` → 从现有代码和测试中推断验收条件\n")
+		sb.WriteString("   - `plan.md` / `tasks.json` → 从项目目录结构和 git log 推断已完成的任务\n")
+		sb.WriteString("   - `test-results.json` → 直接运行项目的测试获取结果\n")
+		sb.WriteString("   - `coverage.json` → 运行覆盖率工具获取\n")
+		sb.WriteString("3. **将推断内容作为上下文传给 subagent**，而不是期望从 gate 目录读取\n")
+	}
 
 	return sb.String()
 }

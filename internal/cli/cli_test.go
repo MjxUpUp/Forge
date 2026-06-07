@@ -110,8 +110,8 @@ func TestInitCreatesFiles(t *testing.T) {
 			shCount++
 		}
 	}
-	if shCount != 3 {
-		t.Fatalf("expected 3 .sh files in hooks/, got %d", shCount)
+	if shCount != 4 {
+		t.Fatalf("expected 4 .sh files in hooks/, got %d", shCount)
 	}
 
 	// .claude/settings.local.json exists
@@ -125,7 +125,31 @@ func TestInitCreatesFiles(t *testing.T) {
 	if _, err := os.Stat(skillFile); err != nil {
 		t.Fatalf(".claude/skills/forge-pipeline/SKILL.md not found: %v", err)
 	}
-}
+
+		// .forge/protocol.yml exists
+		protoFile := filepath.Join(tmpDir, ".forge", "protocol.yml")
+		if _, err := os.Stat(protoFile); err != nil {
+			t.Fatalf(".forge/protocol.yml not found: %v", err)
+		}
+
+		// .forge/tasks/ directory exists
+		tasksDir := filepath.Join(tmpDir, ".forge", "tasks")
+		if info, err := os.Stat(tasksDir); err != nil || !info.IsDir() {
+			t.Fatalf(".forge/tasks/ directory not found: %v", err)
+		}
+
+		// .claude/skills/forge-quality/SKILL.md exists
+		qualitySkillFile := filepath.Join(tmpDir, ".claude", "skills", "forge-quality", "SKILL.md")
+		if _, err := os.Stat(qualitySkillFile); err != nil {
+			t.Fatalf(".claude/skills/forge-quality/SKILL.md not found: %v", err)
+		}
+
+		// .claude/CLAUDE.md exists
+		claudeMDFile := filepath.Join(tmpDir, ".claude", "CLAUDE.md")
+		if _, err := os.Stat(claudeMDFile); err != nil {
+			t.Fatalf(".claude/CLAUDE.md not found: %v", err)
+		}
+	}
 
 // --------------- Test 2: TestInitSmallMode ---------------
 

@@ -44,7 +44,8 @@ func GenerateSettings(projectDir string) error {
 			"Stop": {
 				{
 					Hooks: []hookEntry{
-						{Type: "command", Command: "forge gate gate-4-implement --silent"},
+						{Type: "command", Command: "forge gate --current --silent"},
+						{Type: "command", Command: "forge task gate task-verify --silent"},
 					},
 				},
 			},
@@ -71,6 +72,7 @@ func WriteHookTemplates(forgeDir string) error {
 		"auto-compile.sh":     AutoCompileHook,
 		"assertion-check.sh":  AssertionCheckHook,
 		"experience-check.sh": ExperienceCheckHook,
+		"task-verify.sh":      TaskVerifyHook,
 	}
 
 	for name, content := range hooks {

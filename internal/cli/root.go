@@ -24,6 +24,21 @@ var rootCmd = &cobra.Command{
   forge gate <gate-id>    运行指定门禁
 
 文档: https://github.com/MjxUpUp/forge`,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// Skip auto-sync for init command (project doesn't exist yet)
+		if cmd.Name() == "init" {
+			return nil
+		}
+
+		// Skip if not in a forge project (e.g. forge --version outside a project)
+		dir, err := findProjectRoot()
+		if err != nil {
+			return nil
+		}
+
+		// Auto-sync .forge/ files to current binary version
+		return autoSync(dir, cmd.Root().Version)
+	},
 }
 
 // SetVersion sets version info injected via -ldflags at build time.
