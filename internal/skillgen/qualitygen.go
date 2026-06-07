@@ -108,6 +108,25 @@ func buildQualitySkillContent(proto *protocol.Protocol, p *pipeline.Pipeline) st
 	sb.WriteString("| 开发效率 | 5% | 完成耗时 |\n\n")
 	sb.WriteString("使用 `forge task score` 查看评分详情，`forge task score --history` 查看历史。\n\n")
 
+	// Experience review section
+	sb.WriteString("## 经验复盘（低分任务）\n\n")
+	sb.WriteString("当 `forge task complete` 输出包含 \"review required\" 或 \"review suggested\" 时：\n\n")
+	sb.WriteString("1. 运行 `forge experience list` 确认 pending review\n")
+	sb.WriteString("2. 对每个 mandatory review，执行根因分析：\n")
+	sb.WriteString("   - 读取任务评分明细：`forge task score --ref <ref> --json`\n")
+	sb.WriteString("   - 检查任务 git diff：`git diff main...HEAD`\n")
+	sb.WriteString("   - 定位每个低分维度的具体代码问题\n")
+	sb.WriteString("3. 为每个发现的模式生成 proposed rule：\n")
+	sb.WriteString("   - category: gotchas（常见陷阱）/ patterns（反模式）/ apis（API 误用）\n")
+	sb.WriteString("   - patterns 字段写正则，能被 experience-check.sh 扫描匹配\n")
+	sb.WriteString("   - severity 与问题严重程度匹配\n")
+	sb.WriteString("4. 将 proposed rules 写入 `.forge/experience/proposed/` 目录，JSON 格式：\n")
+	sb.WriteString("   - id: \"exp-<hex>\"\n")
+	sb.WriteString("   - source_review: \"<task-ref>\"\n")
+	sb.WriteString("   - category / title / description / patterns / severity\n")
+	sb.WriteString("   - status: \"proposed\"\n")
+	sb.WriteString("5. 通知用户审批：`forge experience list` + `forge experience accept <id>`\n\n")
+
 	// Project info
 	sb.WriteString("## 当前项目信息\n\n")
 	sb.WriteString(fmt.Sprintf("- **项目**: %s\n", p.Project))
