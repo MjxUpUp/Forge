@@ -97,8 +97,12 @@ exit 0
 
 const TaskVerifyHook = `#!/bin/bash
 # task-verify.sh — runs task-level verification on session stop.
-# No-op if no task is active.
+# Also hints about pending mandatory reviews.
 set -eo pipefail
 forge task gate task-verify --silent 2>/dev/null || true
+
+# Check for pending mandatory reviews
+forge experience list 2>/dev/null | grep -q "mandatory.*pending" && \
+  echo "⚠ Pending mandatory review detected. Run 'forge experience list' for details." >&2 || true
 exit 0
 `
