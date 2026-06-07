@@ -69,9 +69,14 @@ func replaceForgeSection(content, newSection string) string {
 	before := content[:startIdx]
 	after := content[endIdx+len(forgeSectionEnd):]
 
-	result := before + newSection
-	// Clean up trailing whitespace before appending after
-	after = strings.TrimPrefix(after, "\n")
+	// newSection ends with "\n" from forgeSectionEnd+"\n", trim it
+	// so we control the exact spacing between markers and after-content
+	section := strings.TrimRight(newSection, "\n")
+
+	result := before + section + "\n"
+
+	// Clean up leading whitespace from after-content
+	after = strings.TrimLeft(after, "\n")
 	if after != "" {
 		result += "\n" + after
 	}
