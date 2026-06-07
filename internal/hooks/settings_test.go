@@ -132,6 +132,18 @@ func TestWriteHookTemplatesContentMatches(t *testing.T) {
 	}
 }
 
+func TestTaskVerifyHookContainsMasterCheck(t *testing.T) {
+	if !containsString(TaskVerifyHook, "Code changes on") {
+		t.Error("TaskVerifyHook missing 'Code changes on' master branch detection")
+	}
+	if !containsString(TaskVerifyHook, "without active task") {
+		t.Error("TaskVerifyHook missing 'without active task' warning")
+	}
+	if !containsString(TaskVerifyHook, "forge task start") {
+		t.Error("TaskVerifyHook missing 'forge task start' hint in warning")
+	}
+}
+
 func containsString(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(substr) == 0 || stringContains(s, substr))
 }
