@@ -1,0 +1,198 @@
+version: "2.0"
+project: "Forge"
+mode: medium
+
+pipeline:
+  gates:
+    - id: gate-1-prd
+      name: "需求定义"
+      enabled: true
+      depends_on: []
+      prompt: |
+        根据以下需求编写 PRD 文档：
+        {{.UserInput}}
+
+        输出要求：
+        1. prd.md — 需求文档（含功能列表、验收条件、Out of Scope）
+        2. acceptance-criteria.json — 验收条件（JSON 数组）
+      artifacts:
+        inputs: [user_idea]
+        outputs:
+          - prd.md
+          - acceptance-criteria.json
+      checks:
+        - name: "明确不做什么"
+          type: file_contains
+          params:
+            file: prd.md
+            keyword: "Out of Scope"
+        - name: "验收条件存在"
+          type: file_exists
+          params:
+            file: acceptance-criteria.json
+      on_failure: abort
+      auto_publish_feishu: true
+
+    - id: gate-3-plan
+      name: "实现计划"
+      enabled: true
+      depends_on: [gate-1-prd]
+      prompt: |
+        根据以下 PRD 和验收条件，制定实现计划：
+        PRD: {{.GateArtifacts "gate-1-prd" "prd.md"}}
+        验收条件: {{.GateArtifacts "gate-1-prd" "acceptance-criteria.json"}}
+
+        输出要求：
+        1. plan.md — 实现计划（含任务拆解、依赖关系）
+        2. tasks.json — 任务列表（JSON 数组，每个任务含 id、title、acceptance_criteria）
+      artifacts:
+        inputs:
+          - gate:gate-1-prd/prd.md
+          - gate:gate-1-prd/acceptance-criteria.json
+        outputs:
+          - plan.md
+          - tasks.json
+      checks:
+        - name: "计划文件存在"
+          type: file_exists
+          params:
+            file: plan.md
+        - name: "任务列表存在"
+          type: file_exists
+          params:
+            file: tasks.json
+      on_failure: abort
+
+    - id: gate-4-implement
+      name: "代码实现"
+      enabled: true
+      depends_on: [gate-3-plan]
+      prompt: |
+        根据以下实现计划编写代码：
+        计划: {{.GateArtifacts "gate-3-plan" "plan.md"}}
+        任务: {{.GateArtifacts "gate-3-plan" "tasks.json"}}
+
+        要求：
+        - 每完成一个文件，确保编译通过
+        - 编写对应的单元测试
+        - 不允许跳过测试或弱化断言
+      hooks:
+        - auto-compile.sh
+        - assertion-check.sh
+        - experience-check.sh
+      artifacts:
+        inputs:
+          - gate:gate-3-plan/plan.md
+          - gate:gate-3-plan/tasks.json
+        outputs:
+          - compile.log
+          - test-results.json
+      checks:
+        - name: "编译通过"
+          type: file_not_contains
+          params:
+            file: compile.log
+            keyword: ERROR
+        - name: "单元测试通过"
+          type: json_equals
+          params:
+            file: test-results.json
+            field: failed
+            value: 0
+        - name: "无断言弱化"
+          type: custom_script
+          params:
+            script: assertion-check.sh
+        - name: "无已知经验违规"
+          type: knowledge_check
+      on_failure: abort
+
+    - id: gate-5-test
+      name: "测试验证"
+      enabled: true
+      depends_on: [gate-4-implement]
+      prompt: |
+        验证测试覆盖情况：
+        验收条件: {{.GateArtifacts "gate-1-prd" "acceptance-criteria.json"}}
+        测试结果: {{.GateArtifacts "gate-4-implement" "test-results.json"}}
+
+        输出要求：
+        1. test-plan.md — 测试计划
+        2. coverage.json — 覆盖率数据
+      artifacts:
+        inputs:
+          - gate:gate-1-prd/acceptance-criteria.json
+          - gate:gate-4-implement/test-results.json
+        outputs:
+          - test-plan.md
+          - coverage.json
+      checks:
+        - name: "测试计划存在"
+          type: file_exists
+          params:
+            file: test-plan.md
+        - name: "覆盖率数据存在"
+          type: file_exists
+          params:
+            file: coverage.json
+      on_failure: abort
+
+    - id: gate-6-acceptance
+      name: "项目验收"
+      enabled: true
+      depends_on: [gate-5-test]
+      prompt: |
+        进行项目验收，对比 PRD 和实际实现：
+        PRD: {{.GateArtifacts "gate-1-prd" "prd.md"}}
+        验收条件: {{.GateArtifacts "gate-1-prd" "acceptance-criteria.json"}}
+
+        输出要求：
+        1. report.md — 验收报告
+        2. gap-analysis.json — 缺口分析（JSON，含 covered 和 uncovered 列表）
+      artifacts:
+        inputs:
+          - gate:gate-1-prd/prd.md
+          - gate:gate-1-prd/acceptance-criteria.json
+          - gate:gate-5-test/coverage.json
+        outputs:
+          - report.md
+          - gap-analysis.json
+      checks:
+        - name: "PRD 功能全覆盖"
+          type: json_equals
+          params:
+            file: gap-analysis.json
+            field: uncovered_count
+            value: 0
+        - name: "README 更新"
+          type: file_exists
+          params:
+            file: README.md
+            in: project_root
+      on_failure: abort
+      requires_human_approval: true
+
+    - id: gate-8-release
+      name: "发布"
+      enabled: true
+      depends_on: [gate-6-acceptance]
+      prompt: |
+        准备发布。检查以下内容并生成发布清单：
+        验收报告: {{.GateArtifacts "gate-6-acceptance" "report.md"}}
+
+        输出要求：
+        1. checklist.md — 发布清单
+      artifacts:
+        inputs:
+          - gate:gate-6-acceptance/report.md
+        outputs:
+          - checklist.md
+      checks:
+        - name: "前序门禁通过"
+          type: all_gates_passed
+        - name: "CHANGELOG 更新"
+          type: file_exists
+          params:
+            file: CHANGELOG.md
+            in: project_root
+      on_failure: abort

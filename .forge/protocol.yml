@@ -1,0 +1,42 @@
+version: "1.0"
+standards:
+    - id: compile-gate
+      name: 代码编译
+      description: 每次代码修改后必须通过编译
+      enforce_hook: auto-compile.sh
+      severity: error
+      enabled: true
+    - id: no-assertion-weaken
+      name: 断言保护
+      description: 不允许移除或弱化测试断言
+      enforce_hook: assertion-check.sh
+      severity: error
+      enabled: true
+    - id: no-experience-violation
+      name: 经验合规
+      description: 代码不得包含已知反模式
+      enforce_hook: experience-check.sh
+      severity: error
+      enabled: true
+    - id: test-accompany
+      name: 测试伴随
+      description: 新代码应有对应测试
+      severity: warning
+      enabled: true
+session_rules:
+    - id: intent-first
+      trigger: always
+      instruction: 修改代码前，先说明意图和计划
+      mandatory: true
+    - id: commit-message
+      trigger: on_commit
+      instruction: commit 信息必须描述变更内容和原因
+      mandatory: true
+    - id: verify-before-done
+      trigger: always
+      instruction: 每次会话结束前，运行测试确认没有破坏已有功能
+      mandatory: true
+    - id: design-for-complex
+      trigger: on_edit
+      instruction: 改动超过 50 行时，先简要描述设计方案
+      mandatory: false
