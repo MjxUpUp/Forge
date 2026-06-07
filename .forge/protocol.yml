@@ -40,3 +40,17 @@ session_rules:
       trigger: on_edit
       instruction: 改动超过 50 行时，先简要描述设计方案
       mandatory: false
+scoring:
+    weights:
+        assertions: 0.15
+        code-quality: 0.2
+        efficiency: 0.05
+        process: 0.25
+        scope: 0.1
+        testing: 0.25
+    thresholds:
+        A: 90
+        B: 80
+        C: 70
+        D: 60
+        F: 0
