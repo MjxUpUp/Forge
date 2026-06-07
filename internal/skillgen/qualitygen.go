@@ -75,6 +75,17 @@ func buildQualitySkillContent(proto *protocol.Protocol, p *pipeline.Pipeline) st
 	}
 	sb.WriteString("\n")
 
+	// Mandatory task start rule
+	sb.WriteString("## ⚠ 强制规则：非平凡变更必须启动任务\n\n")
+	sb.WriteString("修改超过 10 行代码时，**必须**先确认有活跃任务：\n\n")
+	sb.WriteString("1. 运行 `forge task status` 检查当前是否有活跃任务\n")
+	sb.WriteString("2. 如果没有活跃任务（输出 \"No active task\"），**立即**运行：\n")
+	sb.WriteString("   - `forge task start --ref <描述性名称> --title <简要描述>`\n")
+	sb.WriteString("   - 例如：`forge task start --ref add-experience-extraction --title \"V5 经验自动提取\"`\n")
+	sb.WriteString("3. 然后再开始实现\n")
+	sb.WriteString("4. **此规则在所有分支上都适用**，包括 master/main\n\n")
+	sb.WriteString("例外：纯文档修改、单行 typo 修复、版本号 bump 不需要启动任务。\n\n")
+
 	// Task pipeline section
 	sb.WriteString("## 任务级管道\n\n")
 	sb.WriteString("当检测到任务上下文（非 main 分支或显式任务）时，执行以下轻量门禁：\n\n")
