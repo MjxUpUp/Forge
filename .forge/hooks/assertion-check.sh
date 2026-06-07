@@ -1,11 +1,17 @@
 #!/bin/bash
 # assertion-check.sh — blocks commits where test assertions were weakened.
+# Only scans source code files to avoid false positives from docs/configs.
 set -euo pipefail
 ROOT="${1:-.}"
 cd "$ROOT" 2>/dev/null || exit 0
 
 git rev-parse --git-dir 2>/dev/null || exit 0
-DIFF=$(git diff --cached 2>/dev/null || true)
+
+# Only check staged source code files
+CODE_FILES=$(git diff --cached --name-only 2>/dev/null | grep -E '\.(go|rs|ts|tsx|js|jsx|py|java|rb|zig|nim)$' || true)
+[ -z "$CODE_FILES" ] && exit 0
+
+DIFF=$(git diff --cached -- $CODE_FILES 2>/dev/null || true)
 [ -z "$DIFF" ] && exit 0
 
 VIOLATIONS=""
