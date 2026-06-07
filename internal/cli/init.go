@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Harness/forge/internal/agentbridge"
 	"github.com/Harness/forge/internal/hooks"
 	"github.com/Harness/forge/internal/pipeline"
 	"github.com/Harness/forge/internal/protocol"
@@ -19,6 +20,7 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 	initCmd.Flags().String("mode", "", "管道模式: small, medium, large")
 	initCmd.Flags().Bool("fresh", false, "跳过项目快照推断，从第一个门禁开始")
+	initCmd.Flags().String("agents", "auto", "AI 编码工具: auto（自动检测）, 或逗号分隔如 claude-code,cursor")
 }
 
 var initCmd = &cobra.Command{
@@ -148,6 +150,22 @@ func runInit(cmd *cobra.Command, args []string) error {
 	// Generate .claude/CLAUDE.md with quality protocol reference
 	if err := skillgen.GenerateClaudeMD(dir); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to generate CLAUDE.md: %v\n", err)
+	}
+
+	// Translate for other agents (Cursor, Copilot, Windsurf)
+	agentsFlag, _ := cmd.Flags().GetString("agents")
+	agents := agentbridge.ParseAgentFlag(dir, agentsFlag)
+	if len(agents) > 0 {
+		bridgeInput := &agentbridge.TranslationInput{
+			Protocol:  proto,
+			Pipeline:  p,
+			HookNames: hooks.HookNames(),
+		}
+		if errs := agentbridge.TranslateForAgents(dir, agents, bridgeInput); len(errs) > 0 {
+			for _, e := range errs {
+				fmt.Fprintf(os.Stderr, "Warning: agent translation failed: %v\n", e)
+			}
+		}
 	}
 
 	fmt.Printf("Forge pipeline initialized (mode: %s)\n", mode)

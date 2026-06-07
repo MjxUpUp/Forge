@@ -1,6 +1,10 @@
 package taskpipeline
 
-import "time"
+import (
+	"time"
+
+	"github.com/Harness/forge/internal/scoringtypes"
+)
 
 // TaskGate defines a lightweight task-level quality gate.
 type TaskGate struct {
@@ -18,9 +22,10 @@ type TaskState struct {
 	Source      string           `json:"source"` // "explicit", "branch"
 	Summary     string           `json:"summary"`
 	CurrentGate string           `json:"current_gate"`
-	History     []TaskGateResult `json:"history"`
-	StartedAt   time.Time        `json:"started_at"`
-	CompletedAt *time.Time       `json:"completed_at,omitempty"`
+	History     []TaskGateResult        `json:"history"`
+	StartedAt   time.Time               `json:"started_at"`
+	CompletedAt *time.Time              `json:"completed_at,omitempty"`
+	Score       *scoringtypes.ScoreResult `json:"score,omitempty"`
 }
 
 // TaskGateResult records the outcome of a single task gate.

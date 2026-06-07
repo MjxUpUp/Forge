@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Harness/forge/internal/agentbridge"
 	"github.com/Harness/forge/internal/pipeline"
 	"github.com/Harness/forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
@@ -15,6 +16,7 @@ func init() {
 	statusCmd.Flags().Bool("json", false, "JSON 格式输出")
 	statusCmd.Flags().Bool("system", false, "系统级健康检查")
 	statusCmd.Flags().Bool("tasks", false, "显示任务级管道状态")
+	statusCmd.Flags().Bool("agents", false, "显示检测到的 AI 编码工具")
 }
 
 var statusCmd = &cobra.Command{
@@ -27,6 +29,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	asJSON, _ := cmd.Flags().GetBool("json")
 	asSystem, _ := cmd.Flags().GetBool("system")
 	showTasks, _ := cmd.Flags().GetBool("tasks")
+	showAgents, _ := cmd.Flags().GetBool("agents")
 
 	if asSystem {
 		return runSystemStatus()
@@ -96,6 +99,20 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		fmt.Println("\nOverrides:")
 		for _, o := range state.Overrides {
 			fmt.Printf("  %s: %s\n", o.Gate, o.Reason)
+		}
+	}
+
+	// Show detected agents
+	if showAgents {
+		agents := agentbridge.DetectAgents(root)
+		fmt.Println()
+		fmt.Println("Detected Agents:")
+		if len(agents) == 0 {
+			fmt.Println("  (none)")
+		} else {
+			for _, a := range agents {
+				fmt.Printf("  %s\n", a)
+			}
 		}
 	}
 

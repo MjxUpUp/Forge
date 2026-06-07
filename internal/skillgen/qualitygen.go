@@ -91,8 +91,22 @@ func buildQualitySkillContent(proto *protocol.Protocol, p *pipeline.Pipeline) st
 	sb.WriteString("forge task start          — 开始任务（自动检测分支）\n")
 	sb.WriteString("forge task status         — 查看任务门禁状态\n")
 	sb.WriteString("forge task gate <id>      — 验证单道门禁\n")
-	sb.WriteString("forge task complete       — 标记任务完成\n")
+	sb.WriteString("forge task complete       — 标记任务完成（自动评分）\n")
+	sb.WriteString("forge task score          — 查看任务质量评分\n")
 	sb.WriteString("```\n\n")
+
+	// Scoring section
+	sb.WriteString("## 任务质量评分\n\n")
+	sb.WriteString("任务完成时自动评分（6 个维度，0-100 分，A-F 等级）：\n\n")
+	sb.WriteString("| 维度 | 权重 | 说明 |\n")
+	sb.WriteString("|------|------|------|\n")
+	sb.WriteString("| 流程合规 | 25% | 门禁通过率、重试次数 |\n")
+	sb.WriteString("| 测试充分性 | 25% | 测试文件变更比例 |\n")
+	sb.WriteString("| 代码质量 | 20% | 编译门禁结果 |\n")
+	sb.WriteString("| 断言保护 | 15% | 断言检查结果 |\n")
+	sb.WriteString("| 变更范围 | 10% | 变更行数（小变更得分高） |\n")
+	sb.WriteString("| 开发效率 | 5% | 完成耗时 |\n\n")
+	sb.WriteString("使用 `forge task score` 查看评分详情，`forge task score --history` 查看历史。\n\n")
 
 	// Project info
 	sb.WriteString("## 当前项目信息\n\n")

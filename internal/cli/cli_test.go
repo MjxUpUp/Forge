@@ -544,3 +544,159 @@ func TestFirstRunExperience(t *testing.T) {
 		t.Fatal("first-run output missing documentation link")
 	}
 }
+
+// --------------- Test: Init creates scoring config in protocol.yml ---------------
+
+func TestInitProtocolScoringConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	stdout, _, code := runForge(t, tmpDir, "init", "--mode", "medium")
+	if code != 0 {
+		t.Fatalf("forge init failed: %s", stdout)
+	}
+
+	protoData, err := os.ReadFile(filepath.Join(tmpDir, ".forge", "protocol.yml"))
+	if err != nil {
+		t.Fatalf("protocol.yml not found: %v", err)
+	}
+	protoStr := string(protoData)
+	if !strings.Contains(protoStr, "scoring:") {
+		t.Fatal("protocol.yml missing scoring config section")
+	}
+	if !strings.Contains(protoStr, "weights:") {
+		t.Fatal("protocol.yml missing weights in scoring config")
+	}
+}
+
+// --------------- Test: Task scoring workflow ---------------
+
+func TestTaskScoreWorkflow(t *testing.T) {
+	tmpDir := t.TempDir()
+	runGit(t, tmpDir, "init")
+	runGit(t, tmpDir, "config", "user.email", "test@test.com")
+	runGit(t, tmpDir, "config", "user.name", "Test")
+
+	stdout, _, code := runForge(t, tmpDir, "init", "--mode", "medium")
+	if code != 0 {
+		t.Fatalf("forge init failed: %s", stdout)
+	}
+
+	// Create and commit initial files
+	os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte("package main\nfunc main() {}\n"), 0644)
+	runGit(t, tmpDir, "add", ".")
+	runGit(t, tmpDir, "commit", "-m", "initial")
+
+	// Create a feature branch
+	runGit(t, tmpDir, "checkout", "-b", "feature/test-scoring")
+
+	// Start a task
+	stdout, _, code = runForge(t, tmpDir, "task", "start")
+	if code != 0 {
+		t.Fatalf("forge task start failed: %s", stdout)
+	}
+
+	// Pass all gates
+	gates := []string{"task-understand", "task-design", "task-implement", "task-verify", "task-complete"}
+	for _, g := range gates {
+		stdout, _, code = runForge(t, tmpDir, "task", "gate", g)
+		if code != 0 {
+			t.Fatalf("forge task gate %s failed: %s", g, stdout)
+		}
+	}
+
+	// Complete the task
+	stdout, _, code = runForge(t, tmpDir, "task", "complete")
+	if code != 0 {
+		t.Fatalf("forge task complete failed: %s", stdout)
+	}
+
+	// Score should be present
+	if !strings.Contains(stdout, "Score:") {
+		t.Fatalf("expected score in complete output, got: %s", stdout)
+	}
+
+	// Query score explicitly
+	stdout, _, code = runForge(t, tmpDir, "task", "score")
+	if code != 0 {
+		t.Fatalf("forge task score failed: %s", stdout)
+	}
+	if !strings.Contains(stdout, "Overall:") {
+		t.Fatalf("expected Overall in score output, got: %s", stdout)
+	}
+
+	// Score JSON output
+	stdout, _, code = runForge(t, tmpDir, "task", "score", "--json")
+	if code != 0 {
+		t.Fatalf("forge task score --json failed: %s", stdout)
+	}
+	var scoreResult map[string]interface{}
+	if err := json.Unmarshal([]byte(stdout), &scoreResult); err != nil {
+		t.Fatalf("score JSON parse error: %v, output: %s", err, stdout)
+	}
+	if _, ok := scoreResult["overall"]; !ok {
+		t.Fatal("score JSON missing 'overall' field")
+	}
+	if _, ok := scoreResult["grade"]; !ok {
+		t.Fatal("score JSON missing 'grade' field")
+	}
+	if _, ok := scoreResult["dimensions"]; !ok {
+		t.Fatal("score JSON missing 'dimensions' field")
+	}
+}
+
+// --------------- Test: Init with --agents flag ---------------
+
+func TestInitWithAgents(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	stdout, _, code := runForge(t, tmpDir, "init", "--mode", "medium", "--agents", "cursor,copilot")
+	if code != 0 {
+		t.Fatalf("forge init --agents cursor,copilot failed: %s", stdout)
+	}
+
+	// Verify .cursor/rules/forge-quality.mdc was created
+	cursorFile := filepath.Join(tmpDir, ".cursor", "rules", "forge-quality.mdc")
+	if data, err := os.ReadFile(cursorFile); err != nil {
+		t.Fatalf("cursor rules file not created: %v", err)
+	} else if !strings.Contains(string(data), "alwaysApply: true") {
+		t.Fatal("cursor rules file missing frontmatter")
+	}
+
+	// Verify .github/instructions/forge-quality.instructions.md was created
+	copilotFile := filepath.Join(tmpDir, ".github", "instructions", "forge-quality.instructions.md")
+	if data, err := os.ReadFile(copilotFile); err != nil {
+		t.Fatalf("copilot instructions file not created: %v", err)
+	} else if !strings.Contains(string(data), "applyTo:") {
+		t.Fatal("copilot instructions file missing frontmatter")
+	}
+}
+
+// --------------- Test: Status --agents ---------------
+
+func TestStatusAgents(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	stdout, _, code := runForge(t, tmpDir, "init", "--mode", "medium")
+	if code != 0 {
+		t.Fatalf("forge init failed: %s", stdout)
+	}
+
+	stdout, _, code = runForge(t, tmpDir, "status", "--agents")
+	if code != 0 {
+		t.Fatalf("forge status --agents failed: %s", stdout)
+	}
+	// After init with default auto mode, .claude/ exists → should detect claude-code
+	if !strings.Contains(stdout, "claude-code") {
+		t.Fatalf("expected claude-code in agents output, got: %s", stdout)
+	}
+}
+
+// runGit is a test helper to run git commands.
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %s: %v", args, string(out), err)
+	}
+}

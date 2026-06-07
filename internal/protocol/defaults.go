@@ -1,5 +1,7 @@
 package protocol
 
+import "github.com/Harness/forge/internal/scoringtypes"
+
 // DefaultProtocol returns a mode-appropriate quality protocol.
 // The core standards are the same across all modes; session rules may differ.
 func DefaultProtocol(mode string) *Protocol {
@@ -69,6 +71,12 @@ func DefaultProtocol(mode string) *Protocol {
 			Instruction: "改动超过 50 行时，先简要描述设计方案",
 			Mandatory:   false,
 		})
+	}
+
+	// Set default scoring config
+	p.Scoring = &scoringtypes.ScoringConfig{
+		Weights:    scoringtypes.DefaultWeights(),
+		Thresholds: scoringtypes.DefaultThresholds(),
 	}
 
 	if mode == "large" {

@@ -83,3 +83,13 @@ func WriteHookTemplates(forgeDir string) error {
 	}
 	return nil
 }
+
+// HookNames returns the list of hook script filenames managed by Forge.
+func HookNames() []string {
+	return []string{
+		"auto-compile.sh",
+		"assertion-check.sh",
+		"experience-check.sh",
+		"task-verify.sh",
+	}
+}

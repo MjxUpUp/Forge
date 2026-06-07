@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Harness/forge/internal/agentbridge"
 	"github.com/Harness/forge/internal/hooks"
 	"github.com/Harness/forge/internal/pipeline"
 	"github.com/Harness/forge/internal/protocol"
@@ -82,7 +83,22 @@ func autoSync(dir string, binaryVersion string) error {
 		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to update CLAUDE.md: %v\n", err)
 	}
 
-	// 8. Update last_sync_version
+	// 8. Sync agent bridge (translate for all detected agents)
+	agents := agentbridge.DetectAgents(dir)
+	if len(agents) > 0 {
+		bridgeInput := &agentbridge.TranslationInput{
+			Protocol:  proto,
+			Pipeline:  p,
+			HookNames: hooks.HookNames(),
+		}
+		if errs := agentbridge.TranslateForAgents(dir, agents, bridgeInput); len(errs) > 0 {
+			for _, e := range errs {
+				fmt.Fprintf(os.Stderr, "auto-sync warning: agent bridge: %v\n", e)
+			}
+		}
+	}
+
+	// 9. Update last_sync_version
 	state.LastSyncVersion = binaryVersion
 	if err := state.Save(dir); err != nil {
 		return fmt.Errorf("auto-sync: failed to update state: %w", err)

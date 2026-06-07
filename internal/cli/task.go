@@ -3,8 +3,13 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
+	"time"
 
+	"github.com/Harness/forge/internal/protocol"
+	"github.com/Harness/forge/internal/scoring"
+	"github.com/Harness/forge/internal/scoringtypes"
 	"github.com/Harness/forge/internal/taskcontext"
 	"github.com/Harness/forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
@@ -16,6 +21,7 @@ func init() {
 	taskCmd.AddCommand(taskStatusCmd)
 	taskCmd.AddCommand(taskGateCmd)
 	taskCmd.AddCommand(taskCompleteCmd)
+	taskCmd.AddCommand(taskScoreCmd)
 
 	taskStartCmd.Flags().String("title", "", "任务标题")
 	taskStartCmd.Flags().String("ref", "", "任务引用（如 PROJ-123），默认从分支名推断")
@@ -24,6 +30,9 @@ func init() {
 	taskGateCmd.Flags().Bool("silent", false, "静默模式（仅返回退出码）")
 	taskGateCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
 	taskCompleteCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
+	taskScoreCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
+	taskScoreCmd.Flags().Bool("json", false, "JSON 格式输出")
+	taskScoreCmd.Flags().Bool("history", false, "显示所有已完成任务的评分历史")
 }
 
 var taskCmd = &cobra.Command{
@@ -56,8 +65,14 @@ var taskGateCmd = &cobra.Command{
 
 var taskCompleteCmd = &cobra.Command{
 	Use:   "complete",
-	Short: "标记任务完成",
+	Short: "标记任务完成（自动评分）",
 	RunE:  runTaskComplete,
+}
+
+var taskScoreCmd = &cobra.Command{
+	Use:   "score [--json] [--history]",
+	Short: "查看任务质量评分",
+	RunE:  runTaskScore,
 }
 
 func runTaskStart(cmd *cobra.Command, args []string) error {
@@ -298,7 +313,16 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("task not complete. Missing gates: %s", missingGates(state))
 	}
 
-	fmt.Printf("Task %s completed!\n", state.TaskRef)
+	// Auto-score the task
+	if err := scoreTask(root, state); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: scoring failed: %v\n", err)
+	}
+
+	if state.Score != nil {
+		fmt.Printf("Task %s completed! Score: %.0f (%s)\n", state.TaskRef, state.Score.Overall, state.Score.Grade)
+	} else {
+		fmt.Printf("Task %s completed!\n", state.TaskRef)
+	}
 	return nil
 }
 
@@ -315,4 +339,168 @@ func missingGates(state *taskpipeline.TaskState) string {
 		}
 	}
 	return strings.Join(missing, ", ")
+}
+
+func runTaskScore(cmd *cobra.Command, args []string) error {
+	asJSON, _ := cmd.Flags().GetBool("json")
+	showHistory, _ := cmd.Flags().GetBool("history")
+	explicitRef, _ := cmd.Flags().GetString("ref")
+
+	root, err := findProjectRoot()
+	if err != nil {
+		return err
+	}
+
+	// Show history of all scored tasks
+	if showHistory {
+		states, err := taskpipeline.ListTaskStates(root)
+		if err != nil {
+			return err
+		}
+		var scored []*taskpipeline.TaskState
+		for _, s := range states {
+			if s.Score != nil {
+				scored = append(scored, s)
+			}
+		}
+		if len(scored) == 0 {
+			fmt.Println("No scored tasks yet.")
+			return nil
+		}
+		if asJSON {
+			output, _ := json.MarshalIndent(scored, "", "  ")
+			fmt.Println(string(output))
+			return nil
+		}
+		fmt.Println("Task Score History:")
+		fmt.Println(strings.Repeat("─", 60))
+		for _, s := range scored {
+			fmt.Printf("  %s — %.0f (%s) — %s\n",
+				s.TaskRef, s.Score.Overall, s.Score.Grade,
+				s.Score.ScoredAt.Format("2006-01-02 15:04"))
+		}
+		return nil
+	}
+
+	// Load single task
+	var state *taskpipeline.TaskState
+	if explicitRef != "" {
+		state, err = taskpipeline.LoadTaskState(root, explicitRef)
+		if err != nil {
+			return err
+		}
+	} else {
+		state, err = taskpipeline.ActiveTaskState(root)
+		if err != nil {
+			return fmt.Errorf("failed to load task state: %w", err)
+		}
+	}
+	if state == nil {
+		return fmt.Errorf("no active task")
+	}
+
+	// Score if not yet scored
+	if state.Score == nil {
+		if !state.IsComplete() {
+			return fmt.Errorf("task not complete. Complete it first with 'forge task complete'")
+		}
+		if err := scoreTask(root, state); err != nil {
+			return fmt.Errorf("scoring failed: %w", err)
+		}
+	}
+
+	if asJSON {
+		output, _ := json.MarshalIndent(state.Score, "", "  ")
+		fmt.Println(string(output))
+		return nil
+	}
+
+	fmt.Printf("Task: %s\n", state.TaskRef)
+	fmt.Println(strings.Repeat("─", 60))
+	for _, d := range state.Score.Dimensions {
+		fmt.Printf("  %-15s %3d  %s\n", d.Dimension, d.Score, d.Detail)
+	}
+	fmt.Println(strings.Repeat("─", 60))
+	fmt.Printf("  Overall: %.0f (%s)\n", state.Score.Overall, state.Score.Grade)
+
+	return nil
+}
+
+// scoreTask evaluates a completed task and saves the score.
+func scoreTask(root string, state *taskpipeline.TaskState) error {
+	if state.Score != nil {
+		return nil // already scored
+	}
+
+	// Collect git data (non-fatal on failure)
+	gitDiffTest, gitDiffStat, _ := scoring.CollectGitData(root, state.Branch)
+
+	// Determine hook results from gate history
+	compilePassed := false
+	compileChecked := false
+	assertionPassed := false
+	assertionChecked := false
+	for _, r := range state.History {
+		if r.Gate == "task-implement" {
+			compileChecked = true
+			compilePassed = r.Passed
+		}
+	}
+
+	// Count retries: gates that appear multiple times with mixed results
+	retries := 0
+	gateAttempts := make(map[string][]bool)
+	for _, r := range state.History {
+		gateAttempts[r.Gate] = append(gateAttempts[r.Gate], r.Passed)
+	}
+	for _, attempts := range gateAttempts {
+		hasFailure := false
+		for _, passed := range attempts {
+			if !passed {
+				hasFailure = true
+			}
+		}
+		if hasFailure && len(attempts) > 1 {
+			retries++
+		}
+	}
+
+	// Load scoring config from protocol
+	var config *scoringtypes.ScoringConfig
+	proto, err := protocol.Load(root)
+	if err != nil || proto == nil || proto.Scoring == nil {
+		config = &scoringtypes.ScoringConfig{
+			Weights:    scoringtypes.DefaultWeights(),
+			Thresholds: scoringtypes.DefaultThresholds(),
+		}
+	} else {
+		config = proto.Scoring
+	}
+
+	completedAt := time.Now()
+	if state.CompletedAt != nil {
+		completedAt = *state.CompletedAt
+	}
+
+	input := &scoring.EvaluateInput{
+		GateHistory: scoring.GateHistory{
+			TotalGates: len(taskpipeline.DefaultGates()),
+			Passed:     len(state.CompletedGates()),
+			Retries:    retries,
+		},
+		StartedAt:        state.StartedAt,
+		CompletedAt:      completedAt,
+		GitDiffTest:      gitDiffTest,
+		GitDiffStat:      gitDiffStat,
+		CompilePassed:    compilePassed,
+		CompileChecked:   compileChecked,
+		AssertionPassed:  assertionPassed,
+		AssertionChecked: assertionChecked,
+	}
+
+	result := scoring.Evaluate(input, config)
+	result.TaskRef = state.TaskRef
+
+	state.Score = result
+	return taskpipeline.SaveTaskState(root, state)
 }
