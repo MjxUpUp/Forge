@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Harness/forge/internal/experience"
 	"github.com/Harness/forge/internal/protocol"
 	"github.com/Harness/forge/internal/scoring"
 	"github.com/Harness/forge/internal/scoringtypes"
@@ -320,6 +321,32 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 
 	if state.Score != nil {
 		fmt.Printf("Task %s completed! Score: %.0f (%s)\n", state.TaskRef, state.Score.Overall, state.Score.Grade)
+
+		// Low-score review detection
+		if create, mandatory := experience.ShouldReview(state.Score.Overall); create {
+			if err := experience.CreateReview(root, state.TaskRef, state.Score); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: review creation failed: %v\n", err)
+			} else {
+				lowDims := experience.LowDimensions(state.Score)
+				var dimParts []string
+				for _, d := range lowDims {
+					dimParts = append(dimParts, fmt.Sprintf("%s (%d)", d.Dimension, d.Score))
+				}
+
+				if mandatory {
+					fmt.Printf("⚠ Task %s scored %s (%.0f) — mandatory review required.\n", state.TaskRef, state.Score.Grade, state.Score.Overall)
+					if len(dimParts) > 0 {
+						fmt.Printf("  Low dimensions: %s\n", strings.Join(dimParts, ", "))
+					}
+					fmt.Println("AI agent: analyze root causes and propose experience rules.")
+				} else {
+					fmt.Printf("💡 Task %s scored %s (%.0f) — review suggested (optional).\n", state.TaskRef, state.Score.Grade, state.Score.Overall)
+					if len(dimParts) > 0 {
+						fmt.Printf("  Low dimensions: %s\n", strings.Join(dimParts, ", "))
+					}
+				}
+			}
+		}
 	} else {
 		fmt.Printf("Task %s completed!\n", state.TaskRef)
 	}
