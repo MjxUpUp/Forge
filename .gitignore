@@ -22,3 +22,4 @@ dist/
 # Claude Code
 .claude/
 .openclaw/
+.npmrc
