@@ -46,6 +46,7 @@ func GenerateSettings(projectDir string) error {
 					Hooks: []hookEntry{
 						{Type: "command", Command: "forge gate --current --silent"},
 						{Type: "command", Command: "forge task gate task-verify --silent"},
+						{Type: "command", Command: "bash .forge/hooks/task-verify.sh"},
 					},
 				},
 			},

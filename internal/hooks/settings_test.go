@@ -92,7 +92,7 @@ func TestWriteHookTemplatesCreatesFiles(t *testing.T) {
 	}
 
 	hooksDir := filepath.Join(dir, "hooks")
-	expected := []string{"auto-compile.sh", "assertion-check.sh", "experience-check.sh"}
+	expected := []string{"auto-compile.sh", "assertion-check.sh", "experience-check.sh", "task-verify.sh"}
 	for _, name := range expected {
 		path := filepath.Join(hooksDir, name)
 		if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -129,6 +129,42 @@ func TestWriteHookTemplatesContentMatches(t *testing.T) {
 		if !containsString(content, tc.needle) {
 			t.Errorf("%s: expected to contain %q", tc.filename, tc.needle)
 		}
+	}
+}
+
+func TestStopHooksIncludeTaskVerifyScript(t *testing.T) {
+	dir := t.TempDir()
+	if err := GenerateSettings(dir); err != nil {
+		t.Fatalf("GenerateSettings returned error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, ".claude", "settings.local.json"))
+	if err != nil {
+		t.Fatalf("failed to read settings file: %v", err)
+	}
+
+	var parsed struct {
+		Hooks map[string][]struct {
+			Hooks []struct {
+				Command string `json:"command"`
+			} `json:"hooks"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	stopHooks := parsed.Hooks["Stop"]
+	found := false
+	for _, group := range stopHooks {
+		for _, h := range group.Hooks {
+			if h.Command == "bash .forge/hooks/task-verify.sh" {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Error("Stop hooks missing bash .forge/hooks/task-verify.sh")
 	}
 }
 
