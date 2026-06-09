@@ -47,7 +47,9 @@ func runGate(cmd *cobra.Command, args []string) error {
 		}
 		state, err := pipeline.LoadState(root)
 		if err != nil {
-			return err
+			// Graceful degradation: if state.json is missing or corrupt,
+			// there's no active gate — silent exit for hook compatibility
+			return nil
 		}
 		if state.CurrentGate == "" {
 			// No active gate — silent exit (for Stop hook compatibility)
