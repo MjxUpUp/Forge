@@ -25,13 +25,16 @@ func TestQualitySkillContainsTaskRule(t *testing.T) {
 
 	content := buildQualitySkillContent(proto, p)
 
-	if !strings.Contains(content, "非平凡变更必须启动任务") {
-		t.Error("quality SKILL.md missing mandatory task start section header")
+	if !strings.Contains(content, "Task Bridge Protocol") {
+		t.Error("quality SKILL.md missing Task Bridge Protocol section")
 	}
-	if !strings.Contains(content, "此规则在所有分支上都适用") {
-		t.Error("quality SKILL.md missing 'applies to all branches' statement")
+	if !strings.Contains(content, "master/main 分支上必须始终提供") {
+		t.Error("quality SKILL.md missing master branch rule")
 	}
 	if !strings.Contains(content, "forge task start") {
 		t.Error("quality SKILL.md missing 'forge task start' command reference")
+	}
+	if !strings.Contains(content, "forge task list") {
+		t.Error("quality SKILL.md missing 'forge task list' command reference")
 	}
 }

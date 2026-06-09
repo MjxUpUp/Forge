@@ -23,9 +23,11 @@ func init() {
 	taskCmd.AddCommand(taskGateCmd)
 	taskCmd.AddCommand(taskCompleteCmd)
 	taskCmd.AddCommand(taskScoreCmd)
+	taskCmd.AddCommand(taskListCmd)
 
 	taskStartCmd.Flags().String("title", "", "任务标题")
 	taskStartCmd.Flags().String("ref", "", "任务引用（如 PROJ-123），默认从分支名推断")
+	taskStartCmd.Flags().Bool("json", false, "JSON 格式输出")
 	taskStatusCmd.Flags().Bool("json", false, "JSON 格式输出")
 	taskStatusCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
 	taskGateCmd.Flags().Bool("silent", false, "静默模式（仅返回退出码）")
@@ -34,6 +36,7 @@ func init() {
 	taskScoreCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
 	taskScoreCmd.Flags().Bool("json", false, "JSON 格式输出")
 	taskScoreCmd.Flags().Bool("history", false, "显示所有已完成任务的评分历史")
+	taskListCmd.Flags().Bool("json", false, "JSON 格式输出")
 }
 
 var taskCmd = &cobra.Command{
@@ -76,6 +79,12 @@ var taskScoreCmd = &cobra.Command{
 	RunE:  runTaskScore,
 }
 
+var taskListCmd = &cobra.Command{
+	Use:   "list [--json]",
+	Short: "列出所有任务",
+	RunE:  runTaskList,
+}
+
 func runTaskStart(cmd *cobra.Command, args []string) error {
 	root, err := findProjectRoot()
 	if err != nil {
@@ -115,6 +124,13 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	state := taskpipeline.NewTaskState(ctx)
 	if err := taskpipeline.SaveTaskState(root, state); err != nil {
 		return fmt.Errorf("failed to create task: %w", err)
+	}
+
+	asJSON, _ := cmd.Flags().GetBool("json")
+	if asJSON {
+		output, _ := json.MarshalIndent(state, "", "  ")
+		fmt.Println(string(output))
+		return nil
 	}
 
 	fmt.Printf("Task started: %s\n", ctx.TaskRef)
@@ -530,4 +546,42 @@ func scoreTask(root string, state *taskpipeline.TaskState) error {
 
 	state.Score = result
 	return taskpipeline.SaveTaskState(root, state)
+}
+
+func runTaskList(cmd *cobra.Command, args []string) error {
+	root, err := findProjectRoot()
+	if err != nil {
+		return err
+	}
+
+	states, err := taskpipeline.ListTaskStates(root)
+	if err != nil {
+		return err
+	}
+	if len(states) == 0 {
+		fmt.Println("No tasks found.")
+		return nil
+	}
+
+	asJSON, _ := cmd.Flags().GetBool("json")
+	if asJSON {
+		output, _ := json.MarshalIndent(states, "", "  ")
+		fmt.Println(string(output))
+		return nil
+	}
+
+	fmt.Println("Tasks:")
+	fmt.Println(strings.Repeat("─", 60))
+	for _, s := range states {
+		status := "active"
+		if s.CompletedAt != nil {
+			status = "completed"
+		}
+		score := ""
+		if s.Score != nil {
+			score = fmt.Sprintf(" — %.0f (%s)", s.Score.Overall, s.Score.Grade)
+		}
+		fmt.Printf("  %-25s %s%s\n", s.TaskRef, status, score)
+	}
+	return nil
 }

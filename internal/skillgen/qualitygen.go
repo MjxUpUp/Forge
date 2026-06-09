@@ -75,16 +75,34 @@ func buildQualitySkillContent(proto *protocol.Protocol, p *pipeline.Pipeline) st
 	}
 	sb.WriteString("\n")
 
-	// Mandatory task start rule
-	sb.WriteString("## ⚠ 强制规则：非平凡变更必须启动任务\n\n")
-	sb.WriteString("修改超过 10 行代码时，**必须**先确认有活跃任务：\n\n")
-	sb.WriteString("1. 运行 `forge task status` 检查当前是否有活跃任务\n")
-	sb.WriteString("2. 如果没有活跃任务（输出 \"No active task\"），**立即**运行：\n")
-	sb.WriteString("   - `forge task start --ref <描述性名称> --title <简要描述>`\n")
-	sb.WriteString("   - 例如：`forge task start --ref add-experience-extraction --title \"V5 经验自动提取\"`\n")
-	sb.WriteString("3. 然后再开始实现\n")
-	sb.WriteString("4. **此规则在所有分支上都适用**，包括 master/main\n\n")
-	sb.WriteString("例外：纯文档修改、单行 typo 修复、版本号 bump 不需要启动任务。\n\n")
+	// Task Bridge Protocol
+	sb.WriteString("## Task Bridge Protocol\n\n")
+	sb.WriteString("Forge task 和 Claude Code task 必须保持同步。Forge 是 source of truth（门禁、评分、经验复盘）。\n\n")
+
+	sb.WriteString("### 非平凡变更（>10 行）前必须启动 Forge 任务\n\n")
+	sb.WriteString("1. 运行 `forge task status --json` 检查是否有活跃 Forge 任务\n")
+	sb.WriteString("2. 如果输出包含 `\"task_ref\"`，任务已存在 — 记录 ref，跳到步骤 4\n")
+	sb.WriteString("3. 如果无活跃任务（空输出或 `null`）：\n")
+	sb.WriteString("   a. 从任务主题推导 kebab-case ref（如 `add-task-bridge`）\n")
+	sb.WriteString("   b. 运行：`forge task start --ref <ref> --title \"<title>\" --json`\n")
+	sb.WriteString("   c. 如果报错 `\"already exists\"`，运行 `forge task status --ref <ref> --json` 获取已有任务\n")
+	sb.WriteString("4. 存储 `task_ref` — 后续所有 gate 命令都用到它\n")
+	sb.WriteString("5. 如果同时使用 TaskCreate，在 description 中写 `Forge ref: <ref>` 建立映射\n")
+	sb.WriteString("6. **master/main 分支上必须始终提供 `--ref`**（无法从分支名推断）\n\n")
+
+	sb.WriteString("### 门禁推进\n\n")
+	sb.WriteString("工作推进时，逐步验证对应的门禁：\n\n")
+	sb.WriteString("| 阶段 | 命令 | 何时运行 |\n")
+	sb.WriteString("|------|------|----------|\n")
+	sb.WriteString("| 理解任务 | `forge task gate task-understand` | 描述意图和范围后 |\n")
+	sb.WriteString("| 方案设计 | `forge task gate task-design` | 描述设计方案后 |\n")
+	sb.WriteString("| 代码实现 | `forge task gate task-implement` | 代码编译通过（自动检查） |\n")
+	sb.WriteString("| 测试验证 | `forge task gate task-verify` | 测试通过后 |\n")
+	sb.WriteString("| 完成确认 | `forge task complete` | E2E 验证通过后 |\n\n")
+	sb.WriteString("`forge task complete` 成功后，通过 TaskUpdate 标记对应的 Claude Code task 为 completed。\n\n")
+
+	sb.WriteString("### 例外\n\n")
+	sb.WriteString("纯文档修改、单行 typo 修复、版本号 bump 不需要启动 Forge 任务。\n\n")
 
 	// Task pipeline section
 	sb.WriteString("## 任务级管道\n\n")
@@ -104,6 +122,7 @@ func buildQualitySkillContent(proto *protocol.Protocol, p *pipeline.Pipeline) st
 	sb.WriteString("forge task gate <id>      — 验证单道门禁\n")
 	sb.WriteString("forge task complete       — 标记任务完成（自动评分）\n")
 	sb.WriteString("forge task score          — 查看任务质量评分\n")
+	sb.WriteString("forge task list           — 列出所有任务\n")
 	sb.WriteString("```\n\n")
 
 	// Scoring section
