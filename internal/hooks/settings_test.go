@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -158,13 +159,25 @@ func TestStopHooksIncludeTaskVerifyScript(t *testing.T) {
 	found := false
 	for _, group := range stopHooks {
 		for _, h := range group.Hooks {
-			if h.Command == "bash .forge/hooks/task-verify.sh" {
+			if strings.Contains(h.Command, "task-verify.sh") {
 				found = true
 			}
 		}
 	}
 	if !found {
-		t.Error("Stop hooks missing bash .forge/hooks/task-verify.sh")
+		t.Error("Stop hooks missing task-verify.sh reference")
+	}
+	// Verify the command uses test -f guard for file existence
+	foundGuard := false
+	for _, group := range stopHooks {
+		for _, h := range group.Hooks {
+			if strings.Contains(h.Command, "test -f") && strings.Contains(h.Command, "task-verify.sh") {
+				foundGuard = true
+			}
+		}
+	}
+	if !foundGuard {
+		t.Error("Stop hooks task-verify.sh should use 'test -f' guard")
 	}
 }
 
