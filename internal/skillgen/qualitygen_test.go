@@ -28,13 +28,16 @@ func TestQualitySkillContainsTaskRule(t *testing.T) {
 	if !strings.Contains(content, "Task Bridge Protocol") {
 		t.Error("quality SKILL.md missing Task Bridge Protocol section")
 	}
-	if !strings.Contains(content, "master/main 分支上必须始终提供") {
-		t.Error("quality SKILL.md missing master branch rule")
+	if !strings.Contains(content, "所有命令都必须带 `--ref`") {
+		t.Error("quality SKILL.md missing master branch --ref rule")
 	}
 	if !strings.Contains(content, "forge task start") {
 		t.Error("quality SKILL.md missing 'forge task start' command reference")
 	}
 	if !strings.Contains(content, "forge task list") {
 		t.Error("quality SKILL.md missing 'forge task list' command reference")
+	}
+	if !strings.Contains(content, "--ref <ref>") {
+		t.Error("quality SKILL.md missing --ref in gate commands")
 	}
 }
