@@ -236,7 +236,7 @@ if [ -f "go.mod" ] && head -1 go.mod | grep -q "github.com/Harness/forge" 2>/dev
     done
   fi
   if [ -n "$FORGE_BIN" ]; then
-    INSTALLED_HASH=$(go version -m "$FORGE_BIN" 2>/dev/null | grep vcs.revision | awk '{print $2}' | head -c 7 || echo "")
+    INSTALLED_HASH=$(go version -m "$FORGE_BIN" 2>/dev/null | grep vcs.revision | awk -F= '{print $2}' | head -c 7 || echo "")
     SOURCE_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "")
     if [ -n "$SOURCE_HASH" ] && [ -n "$INSTALLED_HASH" ] && [ "$INSTALLED_HASH" != "$SOURCE_HASH" ]; then
       MESSAGES="${MESSAGES}Forge binary is stale (installed: $INSTALLED_HASH, source: $SOURCE_HASH). Run: go install ./... then forge init. "
