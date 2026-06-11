@@ -54,8 +54,7 @@ fi
 
 const AssertionCheckHook = `#!/bin/bash
 # assertion-check.sh — PreToolUse hook for Write|Edit.
-# Reads file path and content from env vars (set by Go from Claude Code stdin).
-# Checks if test assertions are being weakened at write time.
+# Two modes: per-file (FORGE_FILE_PATH set) or batch (checks all git diffs).
 set -eo pipefail
 
 ROOT="${1:-.}"
@@ -63,14 +62,15 @@ cd "$ROOT" 2>/dev/null || exit 0
 
 FILE_PATH="${FORGE_FILE_PATH:-}"
 CONTENT="${FORGE_CONTENT:-}"
+VIOLATIONS=""
 
+# --- Per-file mode (hook-triggered by Claude Code) ---
+if [ -n "$FILE_PATH" ]; then
 # Only check source code files
 printf '%s' "$FILE_PATH" | grep -qE '\.(go|rs|ts|tsx|js|jsx|py|java|rb|zig|nim)$' || exit 0
 
 # Only check test files
 printf '%s' "$FILE_PATH" | grep -qE '(_test\.|_spec\.|\.test\.|\.spec\.|test/|tests/|__tests__/)' || exit 0
-
-VIOLATIONS=""
 
 # Go: t.Skip / t.Skipf added
 printf '%s' "$CONTENT" | grep -qE 't\.Skip(f)?\(' 2>/dev/null && \
@@ -90,16 +90,32 @@ printf '%s' "$CONTENT" | grep -qE '\bx(it|describe)\(' 2>/dev/null && \
 # Python: unittest.skip / pytest.mark.skip
 printf '%s' "$CONTENT" | grep -qE '@(unittest\.skip|pytest\.mark\.skip)' 2>/dev/null && \
   VIOLATIONS="${VIOLATIONS}[Python] skip decorator found. "
+fi
 
-# Backward compat: check staged git diff for assertion removal
+# --- Diff mode (batch gate check + per-file fallback) ---
 if git rev-parse --git-dir >/dev/null 2>&1; then
-  CODE_FILES=$(git diff --cached --name-only 2>/dev/null | grep -E '\.(go|rs|ts|tsx|js|jsx)$' || true)
+  check_diff() {
+    local diff="$1"
+    local label="$2"
+    [ -z "$diff" ] && return
+    printf '%s' "$diff" | grep -qE '^\-.*\bt\.Fatal(f)?\(' 2>/dev/null && \
+      VIOLATIONS="${VIOLATIONS}[Go] t.Fatal removed in ${label}. "
+    printf '%s' "$diff" | grep -qE '^\-.*\bassert(_eq|_ne)?!\(' 2>/dev/null && \
+      VIOLATIONS="${VIOLATIONS}[Rust] assert! removed in ${label}. "
+    printf '%s' "$diff" | grep -qE '^\+.*\bt\.Skip(f)?\(' 2>/dev/null && \
+      VIOLATIONS="${VIOLATIONS}[Go] t.Skip added in ${label}. "
+    printf '%s' "$diff" | grep -qE '^\+.*#\[ignore\]' 2>/dev/null && \
+      VIOLATIONS="${VIOLATIONS}[Rust] #[ignore] added in ${label}. "
+    printf '%s' "$diff" | grep -qE '^\+.*\b(test|it|describe)\.skip\(' 2>/dev/null && \
+      VIOLATIONS="${VIOLATIONS}[TS/JS] .skip() added in ${label}. "
+  }
+
+  CODE_FILES=$( (git diff --cached --name-only 2>/dev/null; git diff --name-only 2>/dev/null) | sort -u | grep -E '(_test\.|_spec\.|\.test\.|\.spec\.|test/|tests/)' | grep -E '\.(go|rs|ts|tsx|js|jsx)$' || true)
   if [ -n "$CODE_FILES" ]; then
-    DIFF=$(git diff --cached -- $CODE_FILES 2>/dev/null || true)
-    printf '%s' "$DIFF" | grep -qE '^\-.*\bt\.Fatal(f)?\(' 2>/dev/null && \
-      VIOLATIONS="${VIOLATIONS}[Go] t.Fatal removed in staged diff. "
-    printf '%s' "$DIFF" | grep -qE '^\-.*\bassert(_eq|_ne)?!\(' 2>/dev/null && \
-      VIOLATIONS="${VIOLATIONS}[Rust] assert! removed in staged diff. "
+    STAGED_DIFF=$(git diff --cached -- $CODE_FILES 2>/dev/null || true)
+    check_diff "$STAGED_DIFF" "staged diff"
+    UNSTAGED_DIFF=$(git diff -- $CODE_FILES 2>/dev/null || true)
+    check_diff "$UNSTAGED_DIFF" "unstaged diff"
   fi
 fi
 

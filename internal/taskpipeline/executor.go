@@ -2,6 +2,7 @@ package taskpipeline
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -101,28 +102,30 @@ func hasCodeChanges(root string, state *TaskState) bool {
 }
 
 // checkImplement runs compilation check via auto-compile.sh,
-// records the result to checklog, and verifies code changes exist.
+// assertion check via assertion-check.sh, records results to checklog,
+// and verifies code changes exist.
 func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
-	hookPath := filepath.Join(root, ".forge", "hooks", "auto-compile.sh")
-	cmd := exec.Command("bash", hookPath, root)
-	cmd.Dir = root
-	output, err := cmd.CombinedOutput()
-	passed := err == nil
-
-	// Record compilation result to checklog for scoring visibility.
 	taskRef := ""
 	if state != nil {
 		taskRef = state.TaskRef
 	}
+
+	// 1. Compilation check
+	hookPath := filepath.Join(root, ".forge", "hooks", "auto-compile.sh")
+	cmd := exec.Command("bash", hookPath, root)
+	cmd.Dir = root
+	output, err := cmd.CombinedOutput()
+	compilePassed := err == nil
+
 	checklog.Record(root, &checklog.Entry{
 		Check:   checklog.CheckAutoCompile,
-		Passed:  passed,
+		Passed:  compilePassed,
 		Checked: true,
 		TaskRef: taskRef,
 		Detail:  fmt.Sprintf("auto-compile.sh: %s", strings.TrimSpace(string(output))),
 	})
 
-	if !passed {
+	if !compilePassed {
 		return &ExecuteResult{
 			GateID:  "task-implement",
 			Passed:  false,
@@ -130,7 +133,33 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 		}, nil
 	}
 
-	// Verify actual code changes exist (not just a pre-compiled base).
+	// 2. Assertion weakening check (same script that Claude Code hook runs).
+	assertHookPath := filepath.Join(root, ".forge", "hooks", "assertion-check.sh")
+	if _, statErr := os.Stat(assertHookPath); statErr == nil {
+		assertCmd := exec.Command("bash", assertHookPath, root)
+		assertCmd.Dir = root
+		// No per-file env vars → script runs in batch mode (checks all git diffs).
+		assertOutput, assertErr := assertCmd.CombinedOutput()
+		assertPassed := assertErr == nil
+
+		checklog.Record(root, &checklog.Entry{
+			Check:   checklog.CheckAssertion,
+			Passed:  assertPassed,
+			Checked: true,
+			TaskRef: taskRef,
+			Detail:  fmt.Sprintf("assertion-check.sh: %s", strings.TrimSpace(string(assertOutput))),
+		})
+
+		if !assertPassed {
+			return &ExecuteResult{
+				GateID:  "task-implement",
+				Passed:  false,
+				Message: fmt.Sprintf("断言检查失败: %s", string(assertOutput)),
+			}, nil
+		}
+	}
+
+	// 3. Verify actual code changes exist (not just a pre-compiled base).
 	if !hasCodeChanges(root, state) {
 		return &ExecuteResult{
 			GateID:  "task-implement",
@@ -142,6 +171,6 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 	return &ExecuteResult{
 		GateID:  "task-implement",
 		Passed:  true,
-		Message: "编译通过",
+		Message: "编译通过，断言检查通过",
 	}, nil
 }
