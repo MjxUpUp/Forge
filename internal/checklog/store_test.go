@@ -3,6 +3,7 @@ package checklog
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -121,6 +122,43 @@ func TestClear(t *testing.T) {
 	// Clear on nonexistent file should not error
 	if err := Clear(dir); err != nil {
 		t.Fatalf("Clear on nonexistent: %v", err)
+	}
+}
+
+func TestArchive(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, ".forge"), 0755)
+
+	Record(dir, &Entry{Check: CheckAutoCompile, Passed: true, Detail: "ok"})
+
+	if err := Archive(dir); err != nil {
+		t.Fatalf("Archive: %v", err)
+	}
+
+	// Original file should be gone
+	if _, err := os.Stat(filepath.Join(dir, ".forge", "checklog.jsonl")); !os.IsNotExist(err) {
+		t.Fatal("checklog.jsonl should not exist after Archive")
+	}
+
+	// Timestamped archive should exist
+	entries, err := os.ReadDir(filepath.Join(dir, ".forge"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "checklog-") && strings.HasSuffix(e.Name(), ".jsonl") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("no timestamped archive found in .forge/")
+	}
+
+	// Archive on nonexistent should be idempotent
+	if err := Archive(dir); err != nil {
+		t.Fatalf("Archive on nonexistent: %v", err)
 	}
 }
 

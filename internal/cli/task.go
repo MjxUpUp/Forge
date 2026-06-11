@@ -124,6 +124,9 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 
 	state := taskpipeline.NewTaskState(ctx)
 
+	// Record current HEAD for duplicate detection.
+	state.HeadCommit = taskpipeline.GetHeadCommit(root)
+
 	// Clear check log for fresh task.
 	checklog.Clear(root)
 
@@ -343,8 +346,43 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 	if state.Score != nil {
 		fmt.Printf("Task %s completed! Score: %.0f (%s)\n", state.TaskRef, state.Score.Overall, state.Score.Grade)
 
+		// Duplicate HEAD detection: warn if another completed task shares the same commit.
+		if state.HeadCommit != "" {
+			allStates, listErr := taskpipeline.ListTaskStates(root)
+			if listErr == nil {
+				for _, s := range allStates {
+					if s.TaskRef != state.TaskRef && s.HeadCommit == state.HeadCommit && s.CompletedAt != nil {
+						fmt.Fprintf(os.Stderr,
+							"⚠ Warning: task %q shares HEAD (%s) with completed task %q — possible duplicate scoring.\n",
+							state.TaskRef, state.HeadCommit, s.TaskRef)
+					}
+				}
+			}
+		}
+
+		// Missing hooks check: warn if critical quality hooks never ran.
+		missingHooks := checkMissingHooks(root, state)
+		hasMissingHooks := len(missingHooks) > 0
+		if hasMissingHooks {
+			fmt.Fprintf(os.Stderr, "\n⚠ WARNING: Critical quality hooks were NOT executed during this task:\n")
+			for _, h := range missingHooks {
+				fmt.Fprintf(os.Stderr, "  - %s\n", h)
+			}
+			fmt.Fprintf(os.Stderr, "  The score (%s, %.0f) may not reflect actual code quality.\n",
+				state.Score.Grade, state.Score.Overall)
+			fmt.Fprintf(os.Stderr, "  Ensure the AI agent ran all required hooks during implementation.\n\n")
+		}
+
 		// Low-score review detection
-		if create, mandatory := experience.ShouldReview(state.Score.Overall); create {
+		create, mandatory := experience.ShouldReview(state.Score.Overall)
+
+		// Upgrade to mandatory review if critical hooks were missing and score is below B.
+		if hasMissingHooks && state.Score.Overall < 80 {
+			create = true
+			mandatory = true
+		}
+
+		if create {
 			if err := experience.CreateReview(root, state.TaskRef, state.Score); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: review creation failed: %v\n", err)
 			} else {
@@ -372,6 +410,48 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Task %s completed!\n", state.TaskRef)
 	}
 	return nil
+}
+
+// checkMissingHooks returns the names of critical quality hooks that never
+// executed during this task (based on checklog entries and gate history).
+func checkMissingHooks(root string, state *taskpipeline.TaskState) []string {
+	var missing []string
+
+	latestChecks, err := checklog.LatestByCheck(root)
+	if err != nil || latestChecks == nil {
+		// Can't read checklog — assume all hooks are missing unless gate history shows otherwise.
+		compileRan := false
+		for _, r := range state.History {
+			if r.Gate == "task-implement" && r.Passed {
+				compileRan = true
+				break
+			}
+		}
+		if !compileRan {
+			missing = append(missing, "auto-compile")
+		}
+		missing = append(missing, "assertion-check")
+		return missing
+	}
+
+	if _, ok := latestChecks[checklog.CheckAssertion]; !ok {
+		missing = append(missing, "assertion-check")
+	}
+	if _, ok := latestChecks[checklog.CheckAutoCompile]; !ok {
+		// Check if compilation was run via task-implement gate instead.
+		compileRan := false
+		for _, r := range state.History {
+			if r.Gate == "task-implement" && r.Passed {
+				compileRan = true
+				break
+			}
+		}
+		if !compileRan {
+			missing = append(missing, "auto-compile")
+		}
+	}
+
+	return missing
 }
 
 func missingGates(state *taskpipeline.TaskState) string {

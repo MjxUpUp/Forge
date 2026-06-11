@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+	"strings"
+
+	"github.com/Harness/forge/internal/checklog"
 )
 
 // ExecuteResult holds the outcome of a task gate execution.
@@ -36,7 +39,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 
 	// For auto-gates, run the actual checks
 	if gate.Auto {
-		result, err := runAutoChecks(root, gateID)
+		result, err := runAutoChecks(root, gateID, state)
 		if err != nil {
 			return nil, fmt.Errorf("auto-check failed: %w", err)
 		}
@@ -53,10 +56,10 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 }
 
 // runAutoChecks executes automated checks for task gates.
-func runAutoChecks(root string, gateID string) (*ExecuteResult, error) {
+func runAutoChecks(root string, gateID string, state *TaskState) (*ExecuteResult, error) {
 	switch gateID {
 	case "task-implement":
-		return checkImplement(root)
+		return checkImplement(root, state)
 	default:
 		return &ExecuteResult{
 			GateID:  gateID,
@@ -66,19 +69,71 @@ func runAutoChecks(root string, gateID string) (*ExecuteResult, error) {
 	}
 }
 
-// checkImplement runs compilation check via auto-compile.sh.
-func checkImplement(root string) (*ExecuteResult, error) {
+// hasCodeChanges checks whether there are actual code changes since the task started.
+// It checks working-tree changes and, on feature branches, new commits beyond the base branch.
+// Gracefully degrades in non-git repos (returns true to avoid false positives).
+func hasCodeChanges(root string, state *TaskState) bool {
+	// Check 1: working-tree changes (including staged but uncommitted)
+	cmd := exec.Command("git", "-C", root, "diff", "--stat", "HEAD")
+	out, err := cmd.Output()
+	if err != nil {
+		return true // non-git repo — allow pass
+	}
+	if len(strings.TrimSpace(string(out))) > 0 {
+		return true
+	}
+
+	// Check 2: new commits on feature branch beyond base
+	if state != nil && state.Branch != "" && state.Branch != "main" && state.Branch != "master" {
+		for _, base := range []string{"main", "origin/main", "master", "origin/master"} {
+			cmd = exec.Command("git", "-C", root, "rev-list", "--count", base+"..HEAD")
+			out, err = cmd.Output()
+			if err == nil {
+				return strings.TrimSpace(string(out)) != "0"
+			}
+		}
+		// Could not find any base branch — allow pass
+		return true
+	}
+
+	// On main/master with no uncommitted changes
+	return false
+}
+
+// checkImplement runs compilation check via auto-compile.sh,
+// records the result to checklog, and verifies code changes exist.
+func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 	hookPath := filepath.Join(root, ".forge", "hooks", "auto-compile.sh")
 	cmd := exec.Command("bash", hookPath, root)
 	cmd.Dir = root
 	output, err := cmd.CombinedOutput()
-	if err != nil {
+	passed := err == nil
+
+	// Record compilation result to checklog for scoring visibility.
+	checklog.Record(root, &checklog.Entry{
+		Check:   checklog.CheckAutoCompile,
+		Passed:  passed,
+		Checked: true,
+		Detail:  fmt.Sprintf("auto-compile.sh: %s", strings.TrimSpace(string(output))),
+	})
+
+	if !passed {
 		return &ExecuteResult{
 			GateID:  "task-implement",
 			Passed:  false,
 			Message: fmt.Sprintf("编译失败: %s", string(output)),
 		}, nil
 	}
+
+	// Verify actual code changes exist (not just a pre-compiled base).
+	if !hasCodeChanges(root, state) {
+		return &ExecuteResult{
+			GateID:  "task-implement",
+			Passed:  false,
+			Message: "未检测到代码变更 — 编译通过但未修改任何文件",
+		}, nil
+	}
+
 	return &ExecuteResult{
 		GateID:  "task-implement",
 		Passed:  true,

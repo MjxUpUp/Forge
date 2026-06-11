@@ -2,6 +2,7 @@ package taskpipeline
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -208,6 +209,81 @@ func TestMarkComplete(t *testing.T) {
 	}
 	if state.CurrentGate != "" {
 		t.Errorf("CurrentGate = %q, want empty after complete", state.CurrentGate)
+	}
+}
+
+// runGit is a test helper that runs a git command in dir.
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s failed: %v\n%s", args[0], err, string(out))
+	}
+}
+
+func TestHasCodeChanges_NonGitRepo(t *testing.T) {
+	dir := t.TempDir()
+	// Non-git repo should gracefully degrade
+	if !hasCodeChanges(dir, nil) {
+		t.Error("expected hasCodeChanges to return true in non-git directory")
+	}
+}
+
+func TestHasCodeChanges_NoChanges(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "initial")
+
+	state := &TaskState{Branch: "main"}
+	if hasCodeChanges(dir, state) {
+		t.Error("expected hasCodeChanges to return false with no changes")
+	}
+}
+
+func TestHasCodeChanges_WithUncommittedChanges(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "initial")
+
+	// Make uncommitted changes
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\nfunc main() {}\n"), 0644)
+
+	state := &TaskState{Branch: "main"}
+	if !hasCodeChanges(dir, state) {
+		t.Error("expected hasCodeChanges to return true with uncommitted changes")
+	}
+}
+
+func TestHasCodeChanges_FeatureBranchWithCommits(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "initial")
+
+	// Create a feature branch with a new commit
+	runGit(t, dir, "checkout", "-b", "feature/test")
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\nfunc main() { println(\"hi\") }\n"), 0644)
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "add feature")
+
+	state := &TaskState{Branch: "feature/test"}
+	if !hasCodeChanges(dir, state) {
+		t.Error("expected hasCodeChanges to return true on feature branch with new commits")
 	}
 }
 

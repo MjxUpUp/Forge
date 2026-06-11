@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/Harness/forge/internal/taskcontext"
 )
@@ -69,6 +71,17 @@ func NewTaskState(ctx *taskcontext.Context) *TaskState {
 		History:     nil,
 		StartedAt:   ctx.DetectedAt,
 	}
+}
+
+// GetHeadCommit returns the current short HEAD commit hash.
+// Returns empty string silently if not a git repo.
+func GetHeadCommit(root string) string {
+	cmd := exec.Command("git", "-C", root, "rev-parse", "--short", "HEAD")
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // DeleteTaskState removes a task state file.

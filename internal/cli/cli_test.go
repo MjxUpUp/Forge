@@ -589,6 +589,11 @@ func TestTaskScoreWorkflow(t *testing.T) {
 	// Create a feature branch
 	runGit(t, tmpDir, "checkout", "-b", "feature/test-scoring")
 
+	// Make a code change on the feature branch (required for task-implement gate)
+	os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte("package main\n\nimport \"fmt\"\n\nfunc main() { fmt.Println(\"hello\") }\n"), 0644)
+	runGit(t, tmpDir, "add", ".")
+	runGit(t, tmpDir, "commit", "-m", "implement feature")
+
 	// Start a task
 	stdout, _, code = runForge(t, tmpDir, "task", "start")
 	if code != 0 {
