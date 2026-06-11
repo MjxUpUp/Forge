@@ -26,7 +26,7 @@ var rootCmd = &cobra.Command{
 文档: https://github.com/MjxUpUp/forge`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		// Check for updates (24h cached, silent on failure)
-		checkForUpdateInBackground(cmd.Root().Version, cmd)
+		checkForUpdate(cmd.Root().Version, cmd)
 
 		// Skip auto-sync for init command (project doesn't exist yet)
 		if cmd.Name() == "init" {
