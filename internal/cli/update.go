@@ -65,8 +65,14 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	if latest == current {
 		fmt.Fprintf(os.Stderr, "已是最新版本\n")
-		// Update cache so background check doesn't re-query
 		_ = saveUpdateCache(latest)
+		return nil
+	}
+
+	// Reject downgrades — only update to newer versions
+	if compareVersions(latest, current) <= 0 {
+		fmt.Fprintf(os.Stderr, "当前 %s 已是最新或更新版本（远端: %s）\n", current, latest)
+		_ = saveUpdateCache(current)
 		return nil
 	}
 
@@ -84,7 +90,11 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	}
 	defer os.RemoveAll(tmpDir)
 
+	// #4: Validate asset name — reject path traversal and drive letters
 	archivePath := filepath.Join(tmpDir, asset.Name)
+	if !strings.HasPrefix(filepath.Clean(archivePath), filepath.Clean(tmpDir)+string(os.PathSeparator)) {
+		return fmt.Errorf("invalid asset name %q: path traversal detected", asset.Name)
+	}
 	if err := downloadFile(asset.BrowserDownloadURL, archivePath); err != nil {
 		return fmt.Errorf("下载失败: %w", err)
 	}
@@ -364,11 +374,18 @@ func extractBinary(archivePath, destDir string) (string, error) {
 			return "", fmt.Errorf("读取 tar 失败: %w", err)
 		}
 
+		// Reject symlinks and hard links (security: prevent path escape)
+		if hdr.Typeflag == tar.TypeSymlink || hdr.Typeflag == tar.TypeLink {
+			continue
+		}
+
 		// Look for the forge binary in the archive
 		base := filepath.Base(hdr.Name)
 		if base == binaryName && !hdr.FileInfo().IsDir() {
 			outPath := filepath.Join(destDir, "new-"+binaryName)
-			out, err := os.OpenFile(outPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, hdr.FileInfo().Mode())
+			// Strip setuid/setgid bits from mode
+			safeMode := hdr.FileInfo().Mode() &^ 0o6000
+			out, err := os.OpenFile(outPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, safeMode)
 			if err != nil {
 				return "", err
 			}
@@ -443,7 +460,7 @@ func replaceBinaryWindows(exePath string, newData []byte) error {
 	if err := os.WriteFile(exePath, newData, 0755); err != nil {
 		// Rollback: try to restore .old
 		if rerr := os.Rename(oldPath, exePath); rerr != nil {
-			return fmt.Errorf("写入新二进制失败且回滚也失败: %w (rollback: %v)", err, rerr)
+			return fmt.Errorf("写入新二进制失败且回滚也失败: %w (rollback: %v). 再次运行 forge 命令将从 .old 备份恢复", err, rerr)
 		}
 		return fmt.Errorf("写入新二进制失败（已回滚）: %w", err)
 	}
@@ -452,7 +469,7 @@ func replaceBinaryWindows(exePath string, newData []byte) error {
 	if err := selfTest(exePath); err != nil {
 		// Rollback: restore .old
 		if rerr := os.Rename(oldPath, exePath); rerr != nil {
-			return fmt.Errorf("新版本验证失败且回滚也失败: %w (rollback: %v)", err, rerr)
+			return fmt.Errorf("新版本验证失败且回滚也失败: %w (rollback: %v). 再次运行 forge 命令将从 .old 备份恢复", err, rerr)
 		}
 		return fmt.Errorf("新版本验证失败（已回滚）: %w", err)
 	}
@@ -507,4 +524,57 @@ func jsonUnmarshal(r io.Reader, v interface{}) error {
 		return err
 	}
 	return json.Unmarshal(data, v)
+}
+
+// compareVersions compares two semver-like version strings (e.g. "0.11.1" vs "0.12.0").
+// Returns: 1 if a > b, 0 if a == b, -1 if a < b.
+// Strips pre-release suffixes (-beta.1) and only compares numeric parts.
+func compareVersions(a, b string) int {
+	aCore := a
+	bCore := b
+	if idx := strings.IndexByte(a, '-'); idx > 0 {
+		aCore = a[:idx]
+	}
+	if idx := strings.IndexByte(b, '-'); idx > 0 {
+		bCore = b[:idx]
+	}
+
+	aParts := strings.Split(aCore, ".")
+	bParts := strings.Split(bCore, ".")
+
+	maxLen := len(aParts)
+	if len(bParts) > maxLen {
+		maxLen = len(bParts)
+	}
+
+	for i := 0; i < maxLen; i++ {
+		av := 0
+		bv := 0
+		if i < len(aParts) {
+			av = parseVersionPart(aParts[i])
+		}
+		if i < len(bParts) {
+			bv = parseVersionPart(bParts[i])
+		}
+		if av != bv {
+			if av > bv {
+				return 1
+			}
+			return -1
+		}
+	}
+	return 0
+}
+
+func parseVersionPart(s string) int {
+	// Strip non-numeric prefix/suffix (e.g. "rc1" → 1 is wrong, just return 0)
+	n := 0
+	for _, c := range s {
+		if c >= '0' && c <= '9' {
+			n = n*10 + int(c-'0')
+		} else {
+			break
+		}
+	}
+	return n
 }

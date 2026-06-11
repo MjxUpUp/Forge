@@ -15,11 +15,11 @@ const updateCacheDir = ".forge"
 const updateCacheFile = "update-cache.json"
 const updateCheckInterval = 24 * time.Hour
 
-// checkForUpdateInBackground checks if a newer version is available.
+// checkForUpdate checks if a newer version is available.
 // It uses a 24h cache to avoid hitting GitHub API on every command.
 // Results are printed to stderr as a notification.
 // Errors are silently ignored — this is a best-effort check.
-func checkForUpdateInBackground(fullVersion string, cmd *cobra.Command) {
+func checkForUpdate(fullVersion string, cmd *cobra.Command) {
 	if shouldSkipUpdateCheck(fullVersion, cmd) {
 		return
 	}

@@ -400,3 +400,29 @@ func setTestHome(t *testing.T, dir string) {
 		t.Cleanup(func() { os.Setenv("HOME", orig) })
 	}
 }
+
+func TestCompareVersions(t *testing.T) {
+	tests := []struct {
+		a, b string
+		want int
+	}{
+		{"0.11.0", "0.11.0", 0},
+		{"0.12.0", "0.11.0", 1},
+		{"0.11.0", "0.12.0", -1},
+		{"1.0.0", "0.99.99", 1},
+		{"0.11.1", "0.11.0", 1},
+		{"0.11.0", "0.11.1", -1},
+		{"2.0.0-beta.1", "1.99.0", 1},
+		{"0.11.0", "0.11.0-beta.1", 0},
+		{"10.0.0", "9.99.99", 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.a+"_vs_"+tt.b, func(t *testing.T) {
+			got := compareVersions(tt.a, tt.b)
+			if got != tt.want {
+				t.Errorf("compareVersions(%q, %q) = %d, want %d", tt.a, tt.b, got, tt.want)
+			}
+		})
+	}
+}

@@ -19,7 +19,7 @@ function recoverOldBinary() {
     // so we must restore the .exe name before testing.
     try {
       fs.renameSync(oldPath, binaryPath);
-      execSync(`"${binaryPath}" --version`, { timeout: 5000, stdio: "pipe" });
+      execSync(`"${binaryPath}" --version`, { timeout: 5000, stdio: "pipe", env: { ...process.env, FORGE_SKIP_UPDATE_CHECK: "1" } });
       console.error("[forge] Recovered binary from .old backup");
     } catch (e) {
       // Restored binary is broken — put it back as .old so we don't lose it
@@ -29,14 +29,14 @@ function recoverOldBinary() {
   } else {
     // Both exist — verify current binary works, then clean up .old
     try {
-      execSync(`"${binaryPath}" --version`, { timeout: 5000, stdio: "pipe" });
+      execSync(`"${binaryPath}" --version`, { timeout: 5000, stdio: "pipe", env: { ...process.env, FORGE_SKIP_UPDATE_CHECK: "1" } });
       fs.unlinkSync(oldPath);
     } catch (e) {
       // Current binary broken — replace with .old (rename first, then probe)
       try { fs.unlinkSync(binaryPath); } catch (_) {}
       try {
         fs.renameSync(oldPath, binaryPath);
-        execSync(`"${binaryPath}" --version`, { timeout: 5000, stdio: "pipe" });
+        execSync(`"${binaryPath}" --version`, { timeout: 5000, stdio: "pipe", env: { ...process.env, FORGE_SKIP_UPDATE_CHECK: "1" } });
         console.error("[forge] Recovered binary from .old backup");
       } catch (e2) {
         console.error("[forge] WARNING: both binary and .old are broken");
