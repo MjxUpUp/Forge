@@ -137,7 +137,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 	var output HookOutput
 	if passed {
 		detail := extractDetail(stdout, "PASS")
-		output = HookOutput{Decision: "allow"}
+		output = HookOutput{Decision: "approve"}
 		if detail != "" {
 			output.HookSpecificOutput = &HookSpecificOutput{
 				AdditionalContext: truncate(detail, maxAdditionalContextLen),
@@ -174,7 +174,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		// Should never happen — HookOutput contains only strings.
 		fmt.Fprintf(os.Stderr, "[forge] error: failed to marshal hook output: %v\n", err)
-		fmt.Println(`{"decision":"allow"}`)
+		fmt.Println(`{"decision":"approve"}`)
 	} else {
 		fmt.Println(string(outputJSON))
 	}
@@ -200,7 +200,7 @@ func extractDetail(stdout, prefix string) string {
 }
 
 func outputAllow(msg string) {
-	out := HookOutput{Decision: "allow"}
+	out := HookOutput{Decision: "approve"}
 	if msg != "" {
 		out.HookSpecificOutput = &HookSpecificOutput{AdditionalContext: msg}
 	}

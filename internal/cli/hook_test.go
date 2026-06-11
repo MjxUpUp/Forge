@@ -41,8 +41,8 @@ func TestHookOutput_AllowOnMissingProject(t *testing.T) {
 	if err := json.Unmarshal([]byte(output), &result); err != nil {
 		t.Fatalf("output is not valid JSON: %q, err: %v", output, err)
 	}
-	if result.Decision != "allow" {
-		t.Errorf("decision = %q, want %q", result.Decision, "allow")
+	if result.Decision != "approve" {
+		t.Errorf("decision = %q, want %q", result.Decision, "approve")
 	}
 }
 
@@ -108,7 +108,7 @@ func TestHookOutput_StructuredJSON(t *testing.T) {
 	}
 
 	// Decision must be "allow" or "block"
-	if result.Decision != "allow" && result.Decision != "block" {
+	if result.Decision != "approve" && result.Decision != "block" {
 		t.Errorf("decision = %q, want 'allow' or 'block'", result.Decision)
 	}
 }
