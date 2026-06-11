@@ -89,6 +89,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("创建临时目录失败: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
+	os.Chmod(tmpDir, 0700) // Restrict to owner only (prevent TOCTOU)
 
 	// #4: Validate asset name — reject path traversal and drive letters
 	archivePath := filepath.Join(tmpDir, asset.Name)
@@ -284,6 +285,10 @@ func verifyChecksum(assets []githubAsset, assetName, archivePath string) error {
 	for _, a := range assets {
 		if a.Name == "checksums.txt" {
 			checksumURL = a.BrowserDownloadURL
+				// Force checksums.txt from official GitHub when using mirror (#2, #3)
+				if os.Getenv("FORGE_BINARY_HOST") != "" {
+					checksumURL = "https://github.com/MjxUpUp/forge/releases/latest/download/checksums.txt"
+				}
 			break
 		}
 	}
