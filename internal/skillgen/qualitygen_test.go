@@ -28,6 +28,12 @@ func TestQualitySkillContainsTaskRule(t *testing.T) {
 	if !strings.Contains(content, "Task Bridge Protocol") {
 		t.Error("quality SKILL.md missing Task Bridge Protocol section")
 	}
+	if !strings.Contains(content, "编码前必做") {
+		t.Error("quality SKILL.md missing mandatory pre-coding task start instruction")
+	}
+	if !strings.Contains(content, "强制顺序") {
+		t.Error("quality SKILL.md missing forced gate sequence instruction")
+	}
 	if !strings.Contains(content, "--branch") {
 		t.Error("quality SKILL.md missing --branch flag reference")
 	}

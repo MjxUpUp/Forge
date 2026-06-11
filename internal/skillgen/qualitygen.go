@@ -78,6 +78,8 @@ func buildQualitySkillContent(proto *protocol.Protocol, p *pipeline.Pipeline) st
 	// Task Bridge Protocol
 	sb.WriteString("## Task Bridge Protocol\n\n")
 	sb.WriteString("Forge task 和 Claude Code task 必须保持同步。Forge 是 source of truth（门禁、评分、经验复盘）。\n\n")
+	sb.WriteString("> **⚠️ 编码前必做**：无论是从 plan mode 审批后进入编码，还是直接开始修改代码，第一步永远是 `forge task start`。不要在 master 上直接写代码。不要在写完代码后才补启任务。\n\n")
+	sb.WriteString("**强制顺序**：`forge task start` → gate task-understand → gate task-design → 写代码 → gate task-implement → gate task-verify → gate task-complete\n\n")
 
 	sb.WriteString("### 非平凡变更（>10 行）前必须启动 Forge 任务\n\n")
 	sb.WriteString("1. 运行 `forge task list --json` 检查已有任务\n")

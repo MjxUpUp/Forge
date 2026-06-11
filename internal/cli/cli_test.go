@@ -571,6 +571,11 @@ func TestInitProtocolScoringConfig(t *testing.T) {
 // --------------- Test: Task scoring workflow ---------------
 
 func TestTaskScoreWorkflow(t *testing.T) {
+	// Disable gate timing for test (gates are passed rapidly in sequence)
+	origInterval := os.Getenv("FORGE_GATE_MIN_INTERVAL")
+	os.Setenv("FORGE_GATE_MIN_INTERVAL", "0s")
+	defer os.Setenv("FORGE_GATE_MIN_INTERVAL", origInterval)
+
 	tmpDir := t.TempDir()
 	runGit(t, tmpDir, "init")
 	runGit(t, tmpDir, "config", "user.email", "test@test.com")

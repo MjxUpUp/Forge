@@ -72,7 +72,16 @@ func (s *TaskState) MarkComplete() {
 }
 
 // RecordGateResult adds a gate result and advances CurrentGate.
+// If the gate was already passed, this is a no-op (prevents duplicate history
+// entries from stop hook re-verification). A previously failed gate can be
+// retried and will add a new entry.
 func (s *TaskState) RecordGateResult(gateID string, passed bool) {
+	// Skip if this gate was already passed — prevents 25x duplicate entries
+	// from stop hook repeatedly verifying the same gate.
+	if passed && s.gatePassed(gateID) {
+		return
+	}
+
 	s.History = append(s.History, TaskGateResult{
 		Gate:        gateID,
 		Passed:      passed,
