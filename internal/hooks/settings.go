@@ -51,7 +51,7 @@ func GenerateSettings(projectDir string) error {
 			},
 			"PreToolUse": {
 				{
-					Matcher: "Bash(git commit*)",
+					Matcher: "Write|Edit",
 					Hooks: []hookEntry{
 						{Type: "command", Command: "forge hook assertion-check"},
 						{Type: "command", Command: "forge hook experience-check"},

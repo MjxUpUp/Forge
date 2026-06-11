@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Harness/forge/internal/checklog"
 	"github.com/Harness/forge/internal/experience"
 	"github.com/Harness/forge/internal/protocol"
 	"github.com/Harness/forge/internal/scoring"
@@ -122,6 +123,10 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	}
 
 	state := taskpipeline.NewTaskState(ctx)
+
+	// Clear check log for fresh task.
+	checklog.Clear(root)
+
 	if err := taskpipeline.SaveTaskState(root, state); err != nil {
 		return fmt.Errorf("failed to create task: %w", err)
 	}
@@ -478,7 +483,7 @@ func scoreTask(root string, state *taskpipeline.TaskState) error {
 	// Collect git data (non-fatal on failure)
 	gitDiffTest, gitDiffStat, _ := scoring.CollectGitData(root, state.Branch)
 
-	// Determine hook results from gate history
+	// Determine hook results from gate history and check log.
 	compilePassed := false
 	compileChecked := false
 	assertionPassed := false
@@ -487,6 +492,18 @@ func scoreTask(root string, state *taskpipeline.TaskState) error {
 		if r.Gate == "task-implement" {
 			compileChecked = true
 			compilePassed = r.Passed
+		}
+	}
+
+	// Read check log for actual hook results (more reliable than gate history).
+	if latestChecks, err := checklog.LatestByCheck(root); err == nil {
+		if entry, ok := latestChecks[checklog.CheckAssertion]; ok {
+			assertionChecked = entry.Checked
+			assertionPassed = entry.Passed
+		}
+		if entry, ok := latestChecks[checklog.CheckAutoCompile]; ok {
+			compileChecked = entry.Checked
+			compilePassed = entry.Passed
 		}
 	}
 
