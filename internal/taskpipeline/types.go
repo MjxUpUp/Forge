@@ -27,6 +27,7 @@ type TaskState struct {
 	CompletedAt *time.Time              `json:"completed_at,omitempty"`
 	Score       *scoringtypes.ScoreResult `json:"score,omitempty"`
 	HeadCommit  string                    `json:"head_commit,omitempty"` // for duplicate detection
+	SessionID   string                    `json:"session_id,omitempty"`  // agent session that created this task
 }
 
 // TaskGateResult records the outcome of a single task gate.

@@ -16,8 +16,9 @@ const (
 type Entry struct {
 	Check      CheckName `json:"check"`
 	Passed     bool      `json:"passed"`
-	Checked    bool      `json:"checked"`     // false if check was skipped
-	ToolName   string    `json:"tool_name"`   // from Claude Code stdin
-	Detail     string    `json:"detail"`      // human-readable summary
+	Checked    bool      `json:"checked"`           // false if check was skipped
+	ToolName   string    `json:"tool_name"`         // from Claude Code stdin
+	TaskRef    string    `json:"task_ref,omitempty"` // task this check belongs to
+	Detail     string    `json:"detail"`            // human-readable summary
 	RecordedAt time.Time `json:"recorded_at"`
 }

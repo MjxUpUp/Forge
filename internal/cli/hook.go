@@ -11,6 +11,7 @@ import (
 
 	"github.com/Harness/forge/internal/checklog"
 	"github.com/Harness/forge/internal/hooks"
+	"github.com/Harness/forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
 )
 
@@ -164,11 +165,19 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// 6. Record to check log.
 	checkName := checklog.CheckName(name)
 	logDetail := firstNonEmpty(stderr, stdout, "completed")
+
+	// Detect active task for audit traceability.
+	var taskRef string
+	if active, err := taskpipeline.ActiveTaskState(root); err == nil && active != nil {
+		taskRef = active.TaskRef
+	}
+
 	if err := checklog.Record(root, &checklog.Entry{
 		Check:    checkName,
 		Passed:   passed,
 		Checked:  true,
 		ToolName: hookInput.ToolName,
+		TaskRef:  taskRef,
 		Detail:   truncate(logDetail, maxChecklogDetail),
 	}); err != nil {
 		fmt.Fprintf(os.Stderr, "[forge] warning: checklog record failed: %v\n", err)

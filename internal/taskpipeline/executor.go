@@ -110,10 +110,15 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 	passed := err == nil
 
 	// Record compilation result to checklog for scoring visibility.
+	taskRef := ""
+	if state != nil {
+		taskRef = state.TaskRef
+	}
 	checklog.Record(root, &checklog.Entry{
 		Check:   checklog.CheckAutoCompile,
 		Passed:  passed,
 		Checked: true,
+		TaskRef: taskRef,
 		Detail:  fmt.Sprintf("auto-compile.sh: %s", strings.TrimSpace(string(output))),
 	})
 

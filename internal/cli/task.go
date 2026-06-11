@@ -38,6 +38,7 @@ func init() {
 	taskScoreCmd.Flags().Bool("json", false, "JSON 格式输出")
 	taskScoreCmd.Flags().Bool("history", false, "显示所有已完成任务的评分历史")
 	taskListCmd.Flags().Bool("json", false, "JSON 格式输出")
+	taskListCmd.Flags().Bool("timeline", false, "按会话时间线显示所有任务")
 }
 
 var taskCmd = &cobra.Command{
@@ -126,6 +127,12 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 
 	// Record current HEAD for duplicate detection.
 	state.HeadCommit = taskpipeline.GetHeadCommit(root)
+
+	// Ensure session exists and link task to it.
+	session, err := taskpipeline.EnsureSession(root)
+	if err == nil {
+		state.SessionID = session.SessionID
+	}
 
 	// Clear check log for fresh task.
 	checklog.Clear(root)
@@ -661,10 +668,16 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 	}
 
 	asJSON, _ := cmd.Flags().GetBool("json")
+	timeline, _ := cmd.Flags().GetBool("timeline")
+
 	if asJSON {
 		output, _ := json.MarshalIndent(states, "", "  ")
 		fmt.Println(string(output))
 		return nil
+	}
+
+	if timeline {
+		return runTaskTimeline(root, states)
 	}
 
 	fmt.Println("Tasks:")
@@ -681,4 +694,146 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  %-25s %s%s\n", s.TaskRef, status, score)
 	}
 	return nil
+}
+
+// runTaskTimeline groups tasks by session and displays an ASCII timeline.
+func runTaskTimeline(root string, states []*taskpipeline.TaskState) error {
+	sessions, err := taskpipeline.LoadSessions(root)
+	if err != nil {
+		// Fall back to simple flat list if sessions can't be loaded.
+		fmt.Println("Task Timeline (session data unavailable):")
+		fmt.Println(strings.Repeat("─", 60))
+		for _, s := range states {
+			printTaskLine(s)
+		}
+		return nil
+	}
+
+	// Build session -> tasks index
+	sessionTasks := make(map[string][]*taskpipeline.TaskState)
+	var orphanTasks []*taskpipeline.TaskState
+
+	for _, s := range states {
+		if s.SessionID == "" {
+			orphanTasks = append(orphanTasks, s)
+		} else {
+			sessionTasks[s.SessionID] = append(sessionTasks[s.SessionID], s)
+		}
+	}
+
+	fmt.Println("Task Timeline:")
+	fmt.Println(strings.Repeat("─", 70))
+
+	// Print sessions in chronological order
+	for _, sess := range sessions {
+		tasks, ok := sessionTasks[sess.SessionID]
+		if !ok || len(tasks) == 0 {
+			continue
+		}
+
+		// Session header
+		endTime := ""
+		latest := findLatestTaskTime(tasks)
+		if !latest.IsZero() {
+			endTime = fmt.Sprintf(" - %s", latest.Format("15:04"))
+		} else {
+			endTime = " - ..."
+		}
+		agentStr := ""
+		if sess.AgentType != "" {
+			agentStr = fmt.Sprintf(" [%s]", sess.AgentType)
+		}
+		fmt.Printf("\nSession %s%s\n", sess.SessionID, agentStr)
+		fmt.Printf("  %s%s\n", sess.StartedAt.Format("01-02 15:04"), endTime)
+
+		// Sort tasks by start time within session
+		sortTasksByTime(tasks)
+
+		for j, t := range tasks {
+			prefix := "  ├──"
+			if j == len(tasks)-1 {
+				prefix = "  └──"
+			}
+			printTaskTreeLine(prefix, t)
+		}
+	}
+
+	// Print orphan tasks (no session association)
+	if len(orphanTasks) > 0 {
+		fmt.Printf("\n(no session data)\n")
+		sortTasksByTime(orphanTasks)
+		for j, t := range orphanTasks {
+			prefix := "  ├──"
+			if j == len(orphanTasks)-1 {
+				prefix = "  └──"
+			}
+			printTaskTreeLine(prefix, t)
+		}
+	}
+
+	if len(sessionTasks) == 0 && len(orphanTasks) == 0 {
+		fmt.Println("No tasks to display.")
+	}
+	fmt.Println()
+	return nil
+}
+
+// printTaskLine prints a single task in flat format.
+func printTaskLine(s *taskpipeline.TaskState) {
+	status := "active"
+	if s.CompletedAt != nil {
+		status = "completed"
+	}
+	score := ""
+	if s.Score != nil {
+		score = fmt.Sprintf(" %.0f (%s)", s.Score.Overall, s.Score.Grade)
+	}
+	startTime := s.StartedAt.Format("01-02 15:04")
+	fmt.Printf("  %s  %-25s %s%s\n", startTime, s.TaskRef, status, score)
+}
+
+// printTaskTreeLine prints a single task in tree format.
+func printTaskTreeLine(prefix string, s *taskpipeline.TaskState) {
+	startTime := s.StartedAt.Format("15:04")
+	status := "✅"
+	if s.CompletedAt == nil {
+		status = "🔄"
+	}
+	score := ""
+	if s.Score != nil {
+		score = fmt.Sprintf(" %.0f(%s)", s.Score.Overall, s.Score.Grade)
+		if s.Score.Overall < 70 {
+			score += " ⚠"
+		}
+	}
+	summary := ""
+	if s.Summary != "" && s.Summary != s.TaskRef {
+		summary = fmt.Sprintf(" — %s", s.Summary)
+	}
+	fmt.Printf("%s %s %-25s %s%s%s\n", prefix, startTime, s.TaskRef, status, score, summary)
+}
+
+// findLatestTaskTime returns the most recent time from a set of tasks.
+func findLatestTaskTime(tasks []*taskpipeline.TaskState) time.Time {
+	var latest time.Time
+	for _, t := range tasks {
+		if t.CompletedAt != nil && t.CompletedAt.After(latest) {
+			latest = *t.CompletedAt
+		}
+		if t.StartedAt.After(latest) {
+			latest = t.StartedAt
+		}
+	}
+	return latest
+}
+
+// sortTasksByTime sorts tasks by start time (oldest first).
+func sortTasksByTime(tasks []*taskpipeline.TaskState) {
+	for i := 0; i < len(tasks); i++ {
+		for j := i + 1; j < len(tasks); j++ {
+			if tasks[i].StartedAt.After(tasks[j].StartedAt) {
+				tasks[i], tasks[j] = tasks[j], tasks[i]
+			}
+		}
+	}
 }
