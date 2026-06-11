@@ -71,7 +71,7 @@ func TestHookOutput_StructuredJSON(t *testing.T) {
 	// Provide stdin JSON (simulating Claude Code input)
 	oldStdin := os.Stdin
 	tmpStdin, _ := os.CreateTemp("", "hook-stdin-*.json")
-	tmpStdin.WriteString(`{"tool_name":"Write","tool_input":{"file_path":"src/main.go","content":"package main"}}`)
+	tmpStdin.WriteString(`{"hook_event_name":"PostToolUse","tool_name":"Write","tool_input":{"file_path":"src/main.go","content":"package main"}}`)
 	tmpStdin.Seek(0, 0)
 	os.Stdin = tmpStdin
 	defer func() {
@@ -107,9 +107,17 @@ func TestHookOutput_StructuredJSON(t *testing.T) {
 		t.Fatalf("output is not valid JSON: %q, err: %v", output, err)
 	}
 
-	// Decision must be "allow" or "block"
+	// Decision must be "approve" or "block"
 	if result.Decision != "approve" && result.Decision != "block" {
-		t.Errorf("decision = %q, want 'allow' or 'block'", result.Decision)
+		t.Errorf("decision = %q, want 'approve' or 'block'", result.Decision)
+	}
+
+	// If hookSpecificOutput is present, it must include hookEventName
+	if result.HookSpecificOutput != nil && result.HookSpecificOutput.HookEventName == "" {
+		t.Error("hookSpecificOutput has no hookEventName")
+	}
+	if result.HookSpecificOutput != nil && result.HookSpecificOutput.HookEventName != "PostToolUse" {
+		t.Errorf("hookEventName = %q, want %q", result.HookSpecificOutput.HookEventName, "PostToolUse")
 	}
 }
 
@@ -127,7 +135,7 @@ func TestHookOutput_CheckLogRecorded(t *testing.T) {
 	// Provide stdin JSON
 	oldStdin := os.Stdin
 	tmpStdin, _ := os.CreateTemp("", "hook-stdin-*.json")
-	tmpStdin.WriteString(`{"tool_name":"Write","tool_input":{"file_path":"README.md","content":"hello"}}`)
+	tmpStdin.WriteString(`{"hook_event_name":"PostToolUse","tool_name":"Write","tool_input":{"file_path":"README.md","content":"hello"}}`)
 	tmpStdin.Seek(0, 0)
 	os.Stdin = tmpStdin
 	defer func() {

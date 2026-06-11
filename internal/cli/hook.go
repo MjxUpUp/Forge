@@ -16,10 +16,11 @@ import (
 
 // HookInput represents the JSON Claude Code sends to hooks via stdin.
 type HookInput struct {
-	SessionID  string          `json:"session_id"`
-	ToolName   string          `json:"tool_name"`
-	ToolInput  json.RawMessage `json:"tool_input"`
-	ToolOutput json.RawMessage `json:"tool_output,omitempty"`
+	SessionID     string          `json:"session_id"`
+	HookEventName string          `json:"hook_event_name"`
+	ToolName      string          `json:"tool_name"`
+	ToolInput     json.RawMessage `json:"tool_input"`
+	ToolOutput    json.RawMessage `json:"tool_output,omitempty"`
 }
 
 // toolInputFields holds extracted fields from tool_input JSON.
@@ -37,6 +38,7 @@ type HookOutput struct {
 
 // HookSpecificOutput contains fields that control Claude Code behavior.
 type HookSpecificOutput struct {
+	HookEventName    string `json:"hookEventName"`
 	AdditionalContext string `json:"additionalContext,omitempty"`
 }
 
@@ -134,12 +136,14 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// 5. Parse script output into structured JSON for Claude Code.
 	// Scripts output plain text: "PASS [detail]" or "FAIL [reason]".
 	// We wrap this into the Claude Code hook protocol JSON format.
+	eventName := hookInput.HookEventName
 	var output HookOutput
 	if passed {
 		detail := extractDetail(stdout, "PASS")
 		output = HookOutput{Decision: "approve"}
 		if detail != "" {
 			output.HookSpecificOutput = &HookSpecificOutput{
+				HookEventName:    eventName,
 				AdditionalContext: truncate(detail, maxAdditionalContextLen),
 			}
 		}
@@ -151,6 +155,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 		output = HookOutput{
 			Decision: "block",
 			HookSpecificOutput: &HookSpecificOutput{
+				HookEventName:    eventName,
 				AdditionalContext: truncate(detail, maxAdditionalContextLen),
 			},
 		}
