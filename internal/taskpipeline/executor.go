@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Harness/forge/internal/checklog"
 )
@@ -49,6 +50,23 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 
 	// For non-auto gates, just mark as passed
 	// The AI agent is responsible for the actual work via SKILL.md instructions
+
+	// Timing check: non-auto gates must not be passed too quickly.
+	// Each gate represents a distinct work phase; rapid-fire passing means
+	// the gates are being gamed retroactively rather than used as intended.
+	if !gate.Auto && len(state.History) > 0 {
+		lastResult := state.History[len(state.History)-1]
+		minInterval := getGateMinInterval()
+		elapsed := time.Since(lastResult.CompletedAt)
+		if elapsed < minInterval {
+			return nil, fmt.Errorf(
+				"gate %q passed too quickly after %q (%.0fs elapsed, minimum %v). "+
+					"Each gate represents a distinct work phase — spend time on it before advancing",
+				gateID, lastResult.Gate, elapsed.Seconds(), minInterval,
+			)
+		}
+	}
+
 	return &ExecuteResult{
 		GateID:  gateID,
 		Passed:  true,
@@ -173,4 +191,16 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 		Passed:  true,
 		Message: "编译通过，断言检查通过",
 	}, nil
+}
+
+// getGateMinInterval returns the minimum time required between consecutive
+// non-auto gate passes. Configurable via FORGE_GATE_MIN_INTERVAL env var
+// (e.g. "30s", "2m"). Default: 60 seconds.
+func getGateMinInterval() time.Duration {
+	if env := os.Getenv("FORGE_GATE_MIN_INTERVAL"); env != "" {
+		if d, err := time.ParseDuration(env); err == nil {
+			return d
+		}
+	}
+	return 60 * time.Second
 }
