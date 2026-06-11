@@ -7,7 +7,24 @@ import (
 	"path/filepath"
 )
 
+// embeddedHooks maps script names (without .sh suffix) to their embedded content.
+var embeddedHooks = map[string]string{
+	"auto-compile":     AutoCompileHook,
+	"assertion-check":  AssertionCheckHook,
+	"experience-check": ExperienceCheckHook,
+	"task-verify":      TaskVerifyHook,
+}
+
+// EmbeddedContent returns the hook script content for the given name
+// (e.g. "auto-compile"). Returns the content and true if found.
+func EmbeddedContent(name string) (string, bool) {
+	content, ok := embeddedHooks[name]
+	return content, ok
+}
+
 // GenerateSettings creates .claude/settings.local.json with hook integration.
+// All hook commands route through "forge hook <name>" so they work
+// regardless of Claude Code's CWD and auto-sync on every invocation.
 func GenerateSettings(projectDir string) error {
 	claudeDir := filepath.Join(projectDir, ".claude")
 	os.MkdirAll(claudeDir, 0755)
@@ -18,8 +35,8 @@ func GenerateSettings(projectDir string) error {
 	}
 
 	type hookMatcher struct {
-		Matcher string       `json:"matcher,omitempty"`
-		Hooks   []hookEntry  `json:"hooks"`
+		Matcher string      `json:"matcher,omitempty"`
+		Hooks   []hookEntry `json:"hooks"`
 	}
 
 	settings := map[string]interface{}{
@@ -28,7 +45,7 @@ func GenerateSettings(projectDir string) error {
 				{
 					Matcher: "Write|Edit",
 					Hooks: []hookEntry{
-						{Type: "command", Command: "bash .forge/hooks/auto-compile.sh"},
+						{Type: "command", Command: "forge hook auto-compile"},
 					},
 				},
 			},
@@ -36,8 +53,8 @@ func GenerateSettings(projectDir string) error {
 				{
 					Matcher: "Bash(git commit*)",
 					Hooks: []hookEntry{
-						{Type: "command", Command: "bash .forge/hooks/assertion-check.sh"},
-						{Type: "command", Command: "bash .forge/hooks/experience-check.sh"},
+						{Type: "command", Command: "forge hook assertion-check"},
+						{Type: "command", Command: "forge hook experience-check"},
 					},
 				},
 			},
@@ -45,7 +62,7 @@ func GenerateSettings(projectDir string) error {
 				{
 					Hooks: []hookEntry{
 						{Type: "command", Command: "forge gate --current --silent"},
-						{Type: "command", Command: "test -f .forge/hooks/task-verify.sh && bash .forge/hooks/task-verify.sh || true"},
+						{Type: "command", Command: "forge hook task-verify"},
 					},
 				},
 			},
@@ -68,14 +85,14 @@ func WriteHookTemplates(forgeDir string) error {
 		return err
 	}
 
-	hooks := map[string]string{
-		"auto-compile.sh":     AutoCompileHook,
-		"assertion-check.sh":  AssertionCheckHook,
+	fileHooks := map[string]string{
+		"auto-compile.sh":    AutoCompileHook,
+		"assertion-check.sh": AssertionCheckHook,
 		"experience-check.sh": ExperienceCheckHook,
-		"task-verify.sh":      TaskVerifyHook,
+		"task-verify.sh":     TaskVerifyHook,
 	}
 
-	for name, content := range hooks {
+	for name, content := range fileHooks {
 		path := filepath.Join(hooksDir, name)
 		if err := os.WriteFile(path, []byte(content), 0755); err != nil {
 			return fmt.Errorf("failed to write hook %s: %w", name, err)

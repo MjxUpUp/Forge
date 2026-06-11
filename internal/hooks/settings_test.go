@@ -81,8 +81,52 @@ func TestGenerateSettingsHookEntries(t *testing.T) {
 				if entry.Command == "" {
 					t.Error("hook entry has empty command")
 				}
+				// Hook commands must NOT use bash with relative .forge/ paths.
+				if strings.Contains(entry.Command, "bash .forge/") {
+					t.Errorf("hook command uses relative path %q — must use 'forge hook <name>'", entry.Command)
+				}
 			}
 		}
+	}
+}
+
+func TestGenerateSettingsUsesForgeHook(t *testing.T) {
+	dir := t.TempDir()
+	if err := GenerateSettings(dir); err != nil {
+		t.Fatalf("GenerateSettings returned error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, ".claude", "settings.local.json"))
+	if err != nil {
+		t.Fatalf("failed to read settings file: %v", err)
+	}
+	content := string(data)
+
+	// All hook invocations should route through "forge hook <name>"
+	for _, name := range []string{"auto-compile", "assertion-check", "experience-check", "task-verify"} {
+		expected := "forge hook " + name
+		if !strings.Contains(content, expected) {
+			t.Errorf("settings missing %q command", expected)
+		}
+	}
+}
+
+func TestEmbeddedContent(t *testing.T) {
+	// Known hooks return content and true
+	for _, name := range []string{"auto-compile", "assertion-check", "experience-check", "task-verify"} {
+		content, ok := EmbeddedContent(name)
+		if !ok {
+			t.Errorf("EmbeddedContent(%q) returned false", name)
+		}
+		if len(content) == 0 {
+			t.Errorf("EmbeddedContent(%q) returned empty content", name)
+		}
+	}
+
+	// Unknown hook returns false
+	_, ok := EmbeddedContent("nonexistent")
+	if ok {
+		t.Error("EmbeddedContent should return false for unknown hook")
 	}
 }
 
@@ -133,7 +177,7 @@ func TestWriteHookTemplatesContentMatches(t *testing.T) {
 	}
 }
 
-func TestStopHooksIncludeTaskVerifyScript(t *testing.T) {
+func TestStopHooksIncludeTaskVerify(t *testing.T) {
 	dir := t.TempDir()
 	if err := GenerateSettings(dir); err != nil {
 		t.Fatalf("GenerateSettings returned error: %v", err)
@@ -159,25 +203,13 @@ func TestStopHooksIncludeTaskVerifyScript(t *testing.T) {
 	found := false
 	for _, group := range stopHooks {
 		for _, h := range group.Hooks {
-			if strings.Contains(h.Command, "task-verify.sh") {
+			if strings.Contains(h.Command, "forge hook task-verify") {
 				found = true
 			}
 		}
 	}
 	if !found {
-		t.Error("Stop hooks missing task-verify.sh reference")
-	}
-	// Verify the command uses test -f guard for file existence
-	foundGuard := false
-	for _, group := range stopHooks {
-		for _, h := range group.Hooks {
-			if strings.Contains(h.Command, "test -f") && strings.Contains(h.Command, "task-verify.sh") {
-				foundGuard = true
-			}
-		}
-	}
-	if !foundGuard {
-		t.Error("Stop hooks task-verify.sh should use 'test -f' guard")
+		t.Error("Stop hooks missing 'forge hook task-verify' command")
 	}
 }
 
