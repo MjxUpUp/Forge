@@ -28,27 +28,43 @@ function getBinaryName() {
 }
 
 async function download(url, dest) {
-  let currentUrl = url;
-  while (true) {
-    const res = await new Promise((resolve, reject) => {
-      https
-        .get(currentUrl, { timeout: 30000 }, resolve)
-        .on("error", reject);
-    });
-
-    if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-      res.destroy();
-      currentUrl = res.headers.location;
-      continue;
-    }
-    if (res.statusCode !== 200) {
-      res.destroy();
-      throw new Error(`Download failed: HTTP ${res.statusCode}`);
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) {
+      const delay = Math.min(1000 * Math.pow(2, attempt), 8000);
+      console.log(`Retrying (${attempt + 1}/3) after ${delay / 1000}s...`);
+      await new Promise((r) => setTimeout(r, delay));
     }
 
-    await pipeline(res, createWriteStream(dest));
-    return;
+    try {
+      let currentUrl = url;
+      while (true) {
+        const res = await new Promise((resolve, reject) => {
+          https
+            .get(currentUrl, { timeout: 30000 }, resolve)
+            .on("error", reject);
+        });
+
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          res.destroy();
+          currentUrl = res.headers.location;
+          continue;
+        }
+        if (res.statusCode !== 200) {
+          res.destroy();
+          throw new Error(`Download failed: HTTP ${res.statusCode}`);
+        }
+
+        await pipeline(res, createWriteStream(dest));
+        return;
+      }
+    } catch (err) {
+      lastError = err;
+      // Clean up partial download
+      try { fs.unlinkSync(dest); } catch (_) {}
+    }
   }
+  throw lastError || new Error("Download failed after 3 attempts");
 }
 
 async function main() {
