@@ -90,6 +90,68 @@ func TestTaskStateFailedGate(t *testing.T) {
 	}
 }
 
+func TestRecordGateResultDedup(t *testing.T) {
+	state := &TaskState{}
+
+	// Pass gate once
+	state.RecordGateResult("task-understand", true)
+	if len(state.History) != 1 {
+		t.Fatalf("History len after 1 pass = %d, want 1", len(state.History))
+	}
+
+	// Pass same gate again — should be deduplicated (no-op)
+	state.RecordGateResult("task-understand", true)
+	if len(state.History) != 1 {
+		t.Errorf("History len after duplicate pass = %d, want 1 (should dedup)", len(state.History))
+	}
+
+	// Fail a passed gate — should record (not dedup for failures)
+	state.RecordGateResult("task-understand", false)
+	if len(state.History) != 2 {
+		t.Errorf("History len after fail of passed gate = %d, want 2", len(state.History))
+	}
+
+	// Re-pass after failure — dedup still applies (gate was passed in entry 1)
+	state.RecordGateResult("task-understand", true)
+	if len(state.History) != 2 {
+		t.Errorf("History len after re-pass = %d, want 2 (dedup: gate was already passed)", len(state.History))
+	}
+}
+
+func TestRecordGateResultDedupPrevents25x(t *testing.T) {
+	// Simulate the exact DevWorkbench scenario: stop hook re-runs task-verify 25 times
+	state := &TaskState{}
+	state.RecordGateResult("task-understand", true)
+	state.RecordGateResult("task-design", true)
+
+	// Pass task-verify once (legitimate)
+	state.RecordGateResult("task-verify", true)
+	verifyCount := 0
+	for _, r := range state.History {
+		if r.Gate == "task-verify" && r.Passed {
+			verifyCount++
+		}
+	}
+	if verifyCount != 1 {
+		t.Fatalf("task-verify count after 1 pass = %d, want 1", verifyCount)
+	}
+
+	// Stop hook re-runs task-verify 24 more times — should all be no-ops
+	for i := 0; i < 24; i++ {
+		state.RecordGateResult("task-verify", true)
+	}
+
+	verifyCount = 0
+	for _, r := range state.History {
+		if r.Gate == "task-verify" && r.Passed {
+			verifyCount++
+		}
+	}
+	if verifyCount != 1 {
+		t.Errorf("task-verify count after 25 passes = %d, want 1 (dedup should prevent duplicates)", verifyCount)
+	}
+}
+
 func TestSaveAndLoadTaskState(t *testing.T) {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
