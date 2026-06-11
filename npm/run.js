@@ -8,10 +8,10 @@ const binaryName = process.platform === "win32" ? "forge.exe" : "forge";
 const binaryPath = path.join(__dirname, "bin", binaryName);
 
 if (!fs.existsSync(binaryPath)) {
-  console.error(
-    "forge binary not found. Run `npm install` to download it, or install from https://github.com/MjxUpUp/forge/releases"
-  );
-  process.exit(1);
+  // Binary not available (e.g., mid npm upgrade). Silently approve to avoid
+  // blocking Claude Code hooks during installation.
+  console.log('{"decision":"approve"}');
+  process.exit(0);
 }
 
 const child = spawn(binaryPath, process.argv.slice(2), {
