@@ -609,6 +609,11 @@ scoring:
 // passAllGates passes all 5 task gates for the given task ref.
 func passAllGates(t *testing.T, dir, ref string) {
 	t.Helper()
+
+	// Disable gate timing for E2E tests (gates pass in rapid sequence)
+	os.Setenv("FORGE_GATE_MIN_INTERVAL", "0s")
+	defer os.Unsetenv("FORGE_GATE_MIN_INTERVAL")
+
 	gates := []string{
 		"task-understand",
 		"task-design",
