@@ -54,7 +54,8 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 	// Timing check: non-auto gates must not be passed too quickly.
 	// Each gate represents a distinct work phase; rapid-fire passing means
 	// the gates are being gamed retroactively rather than used as intended.
-	if !gate.Auto && len(state.History) > 0 {
+	// Skip timing for completed tasks (re-verification should not be penalized).
+	if !gate.Auto && state.CompletedAt == nil && len(state.History) > 0 {
 		lastResult := state.History[len(state.History)-1]
 		minInterval := getGateMinInterval()
 		elapsed := time.Since(lastResult.CompletedAt)
