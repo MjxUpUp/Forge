@@ -12,6 +12,7 @@ import (
 	"github.com/Harness/forge/internal/checklog"
 	"github.com/Harness/forge/internal/hooks"
 	"github.com/Harness/forge/internal/taskpipeline"
+	"github.com/Harness/forge/internal/toolusage"
 	"github.com/spf13/cobra"
 )
 
@@ -181,6 +182,17 @@ func runHook(cmd *cobra.Command, args []string) error {
 		Detail:   truncate(logDetail, maxChecklogDetail),
 	}); err != nil {
 		fmt.Fprintf(os.Stderr, "[forge] warning: checklog record failed: %v\n", err)
+	}
+
+	// 6b. Record tool usage for scoring (auto-compile and tool-track hooks).
+	if name == "auto-compile" || name == "tool-track" {
+		if err := toolusage.Record(root, &toolusage.ToolCall{
+			ToolName:  hookInput.ToolName,
+			ToolInput: toolusage.TruncateInput(string(hookInput.ToolInput)),
+			TaskRef:   taskRef,
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "[forge] warning: toollog record failed: %v\n", err)
+		}
 	}
 
 	// 7. Output structured JSON to Claude Code.

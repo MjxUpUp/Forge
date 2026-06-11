@@ -14,6 +14,7 @@ import (
 	"github.com/Harness/forge/internal/scoringtypes"
 	"github.com/Harness/forge/internal/taskcontext"
 	"github.com/Harness/forge/internal/taskpipeline"
+	"github.com/Harness/forge/internal/toolusage"
 	"github.com/spf13/cobra"
 )
 
@@ -136,6 +137,7 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 
 	// Clear check log for fresh task.
 	checklog.Clear(root)
+	toolusage.Clear(root)
 
 	if err := taskpipeline.SaveTaskState(root, state); err != nil {
 		return fmt.Errorf("failed to create task: %w", err)
@@ -557,7 +559,7 @@ func runTaskScore(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println(strings.Repeat("─", 60))
 	fmt.Printf("  Overall: %.0f (%s)\n", state.Score.Overall, state.Score.Grade)
-
+	printToolUsageSummary(state)
 	return nil
 }
 
@@ -629,24 +631,66 @@ func scoreTask(root string, state *taskpipeline.TaskState) error {
 		completedAt = *state.CompletedAt
 	}
 
+	// Collect tool usage data for scoring.
+	var toolCalls []toolusage.ToolCall
+	if calls, err := toolusage.LoadForTask(root, state.TaskRef); err == nil {
+		toolCalls = calls
+	}
+	apViolations := toolusage.DetectAntiPatterns(toolCalls, toolusage.DefaultAntiPatterns)
+	skillHits := toolusage.DetectSkills(toolCalls)
+	toolCounts := toolusage.ToolCounts(toolCalls)
+	recommendedSkills := 2 // forge-quality + at least one task-related skill
+
+	// Convert to scoring types.
+	var scoringAPs []scoring.AntiPatternHit
+	for _, v := range apViolations {
+		scoringAPs = append(scoringAPs, scoring.AntiPatternHit{
+			RuleID:     v.RuleID,
+			ToolName:   v.ToolName,
+			PreferTool: v.PreferTool,
+			Severity:   v.Severity,
+			Detail:     v.Detail,
+		})
+	}
+	var scoringSHs []scoring.SkillHitData
+	for _, h := range skillHits {
+		scoringSHs = append(scoringSHs, scoring.SkillHitData{
+			SkillName: h.SkillName,
+			Source:    h.Source,
+		})
+	}
+
 	input := &scoring.EvaluateInput{
 		GateHistory: scoring.GateHistory{
 			TotalGates: len(taskpipeline.DefaultGates()),
 			Passed:     len(state.CompletedGates()),
 			Retries:    retries,
 		},
-		StartedAt:        state.StartedAt,
-		CompletedAt:      completedAt,
-		GitDiffTest:      gitDiffTest,
-		GitDiffStat:      gitDiffStat,
-		CompilePassed:    compilePassed,
-		CompileChecked:   compileChecked,
-		AssertionPassed:  assertionPassed,
-		AssertionChecked: assertionChecked,
+		StartedAt:         state.StartedAt,
+		CompletedAt:       completedAt,
+		GitDiffTest:       gitDiffTest,
+		GitDiffStat:       gitDiffStat,
+		CompilePassed:     compilePassed,
+		CompileChecked:    compileChecked,
+		AssertionPassed:   assertionPassed,
+		AssertionChecked:  assertionChecked,
+		ToolCalls:         len(toolCalls),
+		AntiPatterns:      scoringAPs,
+		SkillHits:         scoringSHs,
+		RecommendedSkills: recommendedSkills,
+		ToolCounts:        toolCounts,
 	}
 
 	result := scoring.Evaluate(input, config)
 	result.TaskRef = state.TaskRef
+
+	// Save tool usage summary in task state.
+	state.ToolUsage = &toolusage.ToolUsageSummary{
+		TotalCalls:   len(toolCalls),
+		ToolCounts:   toolCounts,
+		AntiPatterns: apViolations,
+		SkillHits:    skillHits,
+	}
 
 	state.Score = result
 	return taskpipeline.SaveTaskState(root, state)

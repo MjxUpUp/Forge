@@ -159,6 +159,10 @@ func TestEvaluate_Full(t *testing.T) {
 		CompileChecked:   true,
 		AssertionPassed:  true,
 		AssertionChecked: true,
+		ToolCalls:         10,
+		AntiPatterns:      nil,
+		SkillHits:         []SkillHitData{{SkillName: "forge-pipeline", Source: "skill-tool"}},
+		RecommendedSkills: 1,
 	}
 
 	result := Evaluate(input, defaultConfig())
@@ -166,8 +170,8 @@ func TestEvaluate_Full(t *testing.T) {
 	if result.Grade != "A" {
 		t.Fatalf("expected grade A, got %s (overall: %.1f)", result.Grade, result.Overall)
 	}
-	if len(result.Dimensions) != 6 {
-		t.Fatalf("expected 6 dimensions, got %d", len(result.Dimensions))
+	if len(result.Dimensions) != 8 {
+		t.Fatalf("expected 8 dimensions, got %d", len(result.Dimensions))
 	}
 	if result.Overall < 90 {
 		t.Fatalf("expected overall >= 90, got %.1f", result.Overall)

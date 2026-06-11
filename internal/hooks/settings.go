@@ -13,6 +13,7 @@ var embeddedHooks = map[string]string{
 	"assertion-check":  AssertionCheckHook,
 	"experience-check": ExperienceCheckHook,
 	"task-verify":      TaskVerifyHook,
+	"tool-track":       ToolTrackHook,
 }
 
 // EmbeddedContent returns the hook script content for the given name
@@ -46,6 +47,12 @@ func GenerateSettings(projectDir string) error {
 					Matcher: "Write|Edit",
 					Hooks: []hookEntry{
 						{Type: "command", Command: "forge hook auto-compile"},
+					},
+				},
+				{
+					Matcher: "Bash|Read|Grep|Glob|Skill|Agent",
+					Hooks: []hookEntry{
+						{Type: "command", Command: "forge hook tool-track"},
 					},
 				},
 			},
@@ -90,6 +97,7 @@ func WriteHookTemplates(forgeDir string) error {
 		"assertion-check.sh": AssertionCheckHook,
 		"experience-check.sh": ExperienceCheckHook,
 		"task-verify.sh":     TaskVerifyHook,
+		"tool-track.sh":      ToolTrackHook,
 	}
 
 	for name, content := range fileHooks {
@@ -108,5 +116,6 @@ func HookNames() []string {
 		"assertion-check.sh",
 		"experience-check.sh",
 		"task-verify.sh",
+		"tool-track.sh",
 	}
 }

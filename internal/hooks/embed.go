@@ -210,3 +210,10 @@ else
   echo "PASS"
 fi
 `
+
+const ToolTrackHook = `#!/bin/bash
+# tool-track.sh — PostToolUse hook for non-write tools.
+# Records tool usage for scoring. Always passes (non-blocking).
+set -eo pipefail
+echo "PASS"
+`

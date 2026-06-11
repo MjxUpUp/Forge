@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/Harness/forge/internal/scoringtypes"
+	"github.com/Harness/forge/internal/toolusage"
 )
 
 // TaskGate defines a lightweight task-level quality gate.
@@ -28,6 +29,7 @@ type TaskState struct {
 	Score       *scoringtypes.ScoreResult `json:"score,omitempty"`
 	HeadCommit  string                    `json:"head_commit,omitempty"` // for duplicate detection
 	SessionID   string                    `json:"session_id,omitempty"`  // agent session that created this task
+	ToolUsage   *toolusage.ToolUsageSummary `json:"tool_usage,omitempty"`  // tool usage stats for scoring
 }
 
 // TaskGateResult records the outcome of a single task gate.

@@ -3,12 +3,13 @@ package scoring
 import (
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/Harness/forge/internal/scoringtypes"
 )
 
-// Evaluate scores a completed task across 6 dimensions and returns a ScoreResult.
+// Evaluate scores a completed task across 8 dimensions and returns a ScoreResult.
 func Evaluate(input *EvaluateInput, config *scoringtypes.ScoringConfig) *scoringtypes.ScoreResult {
 	dimensions := []scoringtypes.DimensionScore{
 		scoreProcess(input.GateHistory),
@@ -17,6 +18,8 @@ func Evaluate(input *EvaluateInput, config *scoringtypes.ScoringConfig) *scoring
 		scoreAssertions(input.AssertionPassed, input.AssertionChecked),
 		scoreScope(input.GitDiffStat),
 		scoreEfficiency(input.StartedAt, input.CompletedAt),
+		scoreToolSelection(input.ToolCalls, input.AntiPatterns),
+		scoreSkillHit(input.SkillHits, input.RecommendedSkills),
 	}
 
 	overall := weightedOverall(dimensions, config.Weights)
@@ -209,6 +212,81 @@ func scoreEfficiency(startedAt, completedAt time.Time) scoringtypes.DimensionSco
 		Dimension: scoringtypes.DimensionEfficiency,
 		Score:     score,
 		Detail:    fmt.Sprintf("Completed in %.0f minutes", minutes),
+	}
+}
+
+func scoreToolSelection(totalCalls int, violations []AntiPatternHit) scoringtypes.DimensionScore {
+	if totalCalls == 0 {
+		return scoringtypes.DimensionScore{
+			Dimension: scoringtypes.DimensionToolSelection,
+			Score:     70,
+			Detail:    "No tool usage data available",
+		}
+	}
+
+	majorCount := 0
+	minorCount := 0
+	for _, v := range violations {
+		switch v.Severity {
+		case "major":
+			majorCount++
+		case "minor":
+			minorCount++
+		}
+	}
+
+	// Penalty: -15 per major violation, -5 per minor violation
+	score := 100 - (majorCount * 15) - (minorCount * 5)
+	if score < 0 {
+		score = 0
+	}
+
+	detail := fmt.Sprintf("%d tool calls, %d anti-patterns (%d major, %d minor)",
+		totalCalls, len(violations), majorCount, minorCount)
+	return scoringtypes.DimensionScore{
+		Dimension: scoringtypes.DimensionToolSelection,
+		Score:     score,
+		Detail:    detail,
+	}
+}
+
+func scoreSkillHit(hits []SkillHitData, recommendedCount int) scoringtypes.DimensionScore {
+	if recommendedCount == 0 {
+		return scoringtypes.DimensionScore{
+			Dimension: scoringtypes.DimensionSkillHit,
+			Score:     70,
+			Detail:    "No skill recommendations for this task",
+		}
+	}
+
+	// Deduplicate skill names
+	seen := make(map[string]bool)
+	uniqueHits := 0
+	var names []string
+	for _, h := range hits {
+		if !seen[h.SkillName] {
+			seen[h.SkillName] = true
+			uniqueHits++
+			names = append(names, h.SkillName)
+		}
+	}
+
+	ratio := float64(uniqueHits) / float64(recommendedCount)
+	if ratio > 1.0 {
+		ratio = 1.0
+	}
+	score := int(ratio * 100)
+
+	detail := fmt.Sprintf("Skill hit rate: %.0f%% (%d/%d): %s",
+		ratio*100, uniqueHits, recommendedCount, strings.Join(names, ", "))
+	if len(names) == 0 {
+		detail = fmt.Sprintf("Skill hit rate: 0%% (0/%d)", recommendedCount)
+	}
+
+	return scoringtypes.DimensionScore{
+		Dimension: scoringtypes.DimensionSkillHit,
+		Score:     score,
+		Detail:    detail,
 	}
 }
 

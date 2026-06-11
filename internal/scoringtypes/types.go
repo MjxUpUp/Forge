@@ -9,12 +9,14 @@ import "time"
 type Dimension string
 
 const (
-	DimensionProcess     Dimension = "process"     // Gate pass rate, retries
-	DimensionTesting     Dimension = "testing"     // Test file presence and ratio
-	DimensionCodeQuality Dimension = "code-quality" // Compile gate result
-	DimensionAssertions  Dimension = "assertions"  // Assertion hook result
-	DimensionScope       Dimension = "scope"       // Change size (lines)
-	DimensionEfficiency  Dimension = "efficiency"  // Time to complete
+	DimensionProcess       Dimension = "process"        // Gate pass rate, retries
+	DimensionTesting       Dimension = "testing"        // Test file presence and ratio
+	DimensionCodeQuality   Dimension = "code-quality"   // Compile gate result
+	DimensionAssertions    Dimension = "assertions"     // Assertion hook result
+	DimensionScope         Dimension = "scope"          // Change size (lines)
+	DimensionEfficiency    Dimension = "efficiency"     // Time to complete
+	DimensionToolSelection Dimension = "tool-selection" // Tool choice quality
+	DimensionSkillHit      Dimension = "skill-hit"      // Skill usage rate
 )
 
 // DimensionScore holds the score and explanation for one dimension.
@@ -42,12 +44,14 @@ type ScoringConfig struct {
 // DefaultWeights returns the standard dimension weights.
 func DefaultWeights() map[string]float64 {
 	return map[string]float64{
-		string(DimensionProcess):     0.25,
-		string(DimensionTesting):     0.25,
-		string(DimensionCodeQuality): 0.20,
-		string(DimensionAssertions):  0.15,
-		string(DimensionScope):       0.10,
-		string(DimensionEfficiency):  0.05,
+		string(DimensionProcess):       0.20,
+		string(DimensionTesting):       0.20,
+		string(DimensionCodeQuality):   0.15,
+		string(DimensionAssertions):    0.12,
+		string(DimensionScope):         0.08,
+		string(DimensionEfficiency):    0.05,
+		string(DimensionToolSelection): 0.12,
+		string(DimensionSkillHit):      0.08,
 	}
 }
 

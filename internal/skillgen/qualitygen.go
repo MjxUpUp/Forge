@@ -127,15 +127,17 @@ func buildQualitySkillContent(proto *protocol.Protocol, p *pipeline.Pipeline) st
 
 	// Scoring section
 	sb.WriteString("## 任务质量评分\n\n")
-	sb.WriteString("任务完成时自动评分（6 个维度，0-100 分，A-F 等级）：\n\n")
+	sb.WriteString("任务完成时自动评分（8 个维度，0-100 分，A-F 等级）：\n\n")
 	sb.WriteString("| 维度 | 权重 | 说明 |\n")
 	sb.WriteString("|------|------|------|\n")
-	sb.WriteString("| 流程合规 | 25% | 门禁通过率、重试次数 |\n")
-	sb.WriteString("| 测试充分性 | 25% | 测试文件变更比例 |\n")
-	sb.WriteString("| 代码质量 | 20% | 编译门禁结果 |\n")
-	sb.WriteString("| 断言保护 | 15% | 断言检查结果 |\n")
-	sb.WriteString("| 变更范围 | 10% | 变更行数（小变更得分高） |\n")
-	sb.WriteString("| 开发效率 | 5% | 完成耗时 |\n\n")
+	sb.WriteString("| 流程合规 | 20% | 门禁通过率、重试次数 |\n")
+	sb.WriteString("| 测试充分性 | 20% | 测试文件变更比例 |\n")
+	sb.WriteString("| 代码质量 | 15% | 编译门禁结果 |\n")
+	sb.WriteString("| 断言保护 | 12% | 断言检查结果 |\n")
+	sb.WriteString("| 变更范围 | 8% | 变更行数（小变更得分高） |\n")
+	sb.WriteString("| 开发效率 | 5% | 完成耗时 |\n")
+	sb.WriteString("| 工具选择 | 12% | 工具使用反模式（如用 Bash cat 而非 Read） |\n")
+	sb.WriteString("| Skill 命中 | 8% | Skill 和 Forge 协议的使用率 |\n\n")
 	sb.WriteString("使用 `forge task score` 查看评分详情，`forge task score --history` 查看历史。\n\n")
 
 	// Experience review section
