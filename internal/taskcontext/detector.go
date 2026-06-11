@@ -59,8 +59,12 @@ func Detect(projectRoot string) *Context {
 //   - PROJ-123-add-auth  → ref="PROJ-123", summary="add-auth"
 //   - my-feature         → ref="my-feature", summary="my-feature"
 func ParseBranchName(branch string) (ref, summary string) {
-	// Try prefix patterns: feature/*, fix/*, bugfix/*, hotfix/*
-	for _, prefix := range []string{"feature/", "fix/", "bugfix/", "hotfix/"} {
+	// Conventional branch prefixes (based on Conventional Commits types).
+	for _, prefix := range []string{
+		"feat/", "feature/", "fix/", "bugfix/", "hotfix/",
+		"refactor/", "test/", "chore/", "docs/", "ci/",
+		"perf/", "build/", "style/",
+	} {
 		if strings.HasPrefix(branch, prefix) {
 			rest := strings.TrimPrefix(branch, prefix)
 			// If rest contains a ticket ref, extract it

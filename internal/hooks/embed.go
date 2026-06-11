@@ -44,6 +44,27 @@ if [ -f "package.json" ] && [ -f "tsconfig.json" ]; then
 fi
 
 if $PASS; then
+  # Self-bootstrap: if this is the forge project itself, update the running binary
+  if [ -f "go.mod" ] && head -1 go.mod | grep -q "github.com/Harness/forge" 2>/dev/null; then
+    FORGE_CMD=$(command -v forge 2>/dev/null || true)
+    FORGE_BIN=""
+    if [ -n "$FORGE_CMD" ]; then
+      FORGE_DIR=$(dirname "$FORGE_CMD")
+      # npm wrapper: binary is at <dir>/node_modules/@agentfare/forge/bin/forge[.exe]
+      for candidate in "${FORGE_DIR}/node_modules/@agentfare/forge/bin/forge.exe" "${FORGE_DIR}/node_modules/@agentfare/forge/bin/forge"; do
+        if [ -f "$candidate" ]; then FORGE_BIN="$candidate"; break; fi
+      done
+    fi
+    # Fallback: GOPATH/bin
+    if [ -z "$FORGE_BIN" ]; then
+      GOBIN=$(go env GOPATH 2>/dev/null)/bin/forge
+      [ -f "$GOBIN.exe" ] && FORGE_BIN="$GOBIN.exe"
+      [ -f "$GOBIN" ] && FORGE_BIN="$GOBIN"
+    fi
+    if [ -n "$FORGE_BIN" ]; then
+      go build -o "$FORGE_BIN" ./cmd/forge 2>/dev/null || true
+    fi
+  fi
   echo "PASS [auto-compile] All builds passed."
 else
   echo "FAIL [auto-compile] Build failures detected:"
@@ -108,14 +129,15 @@ if git rev-parse --git-dir >/dev/null 2>&1; then
       VIOLATIONS="${VIOLATIONS}[Rust] #[ignore] added in ${label}. "
     printf '%s' "$diff" | grep -qE '^\+.*\b(test|it|describe)\.skip\(' 2>/dev/null && \
       VIOLATIONS="${VIOLATIONS}[TS/JS] .skip() added in ${label}. "
+    : # always return 0 — grep misses are not errors
   }
 
   CODE_FILES=$( (git diff --cached --name-only 2>/dev/null; git diff --name-only 2>/dev/null) | sort -u | grep -E '(_test\.|_spec\.|\.test\.|\.spec\.|test/|tests/)' | grep -E '\.(go|rs|ts|tsx|js|jsx)$' || true)
   if [ -n "$CODE_FILES" ]; then
     STAGED_DIFF=$(git diff --cached -- $CODE_FILES 2>/dev/null || true)
-    check_diff "$STAGED_DIFF" "staged diff"
+    check_diff "$STAGED_DIFF" "staged diff" || true
     UNSTAGED_DIFF=$(git diff -- $CODE_FILES 2>/dev/null || true)
-    check_diff "$UNSTAGED_DIFF" "unstaged diff"
+    check_diff "$UNSTAGED_DIFF" "unstaged diff" || true
   fi
 fi
 
@@ -198,7 +220,26 @@ if [ "$BRANCH" = "master" ] || [ "$BRANCH" = "main" ]; then
     CODE_CHANGES=$(git diff --name-only 2>/dev/null | grep -E '\.(go|rs|ts|tsx|js|jsx|py|java|rb)$' || true)
     STAGED_CHANGES=$(git diff --cached --name-only 2>/dev/null | grep -E '\.(go|rs|ts|tsx|js|jsx|py|java|rb)$' || true)
     if [ -n "$CODE_CHANGES" ] || [ -n "$STAGED_CHANGES" ]; then
-      MESSAGES="${MESSAGES}Code changes on ${BRANCH} without active task. Start one: forge task start --ref <name>. "
+      MESSAGES="${MESSAGES}Code changes on ${BRANCH} without active task. Start one: forge task start --ref <type>/<desc> --branch "
+    fi
+  fi
+fi
+
+# Self-bootstrap: warn if forge binary is stale (forging forge itself)
+if [ -f "go.mod" ] && head -1 go.mod | grep -q "github.com/Harness/forge" 2>/dev/null; then
+  FORGE_CMD=$(command -v forge 2>/dev/null || true)
+  FORGE_BIN=""
+  if [ -n "$FORGE_CMD" ]; then
+    FORGE_DIR=$(dirname "$FORGE_CMD")
+    for candidate in "${FORGE_DIR}/node_modules/@agentfare/forge/bin/forge.exe" "${FORGE_DIR}/node_modules/@agentfare/forge/bin/forge"; do
+      if [ -f "$candidate" ]; then FORGE_BIN="$candidate"; break; fi
+    done
+  fi
+  if [ -n "$FORGE_BIN" ]; then
+    INSTALLED_HASH=$(go version -m "$FORGE_BIN" 2>/dev/null | grep vcs.revision | awk '{print $2}' | head -c 7 || echo "")
+    SOURCE_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "")
+    if [ -n "$SOURCE_HASH" ] && [ -n "$INSTALLED_HASH" ] && [ "$INSTALLED_HASH" != "$SOURCE_HASH" ]; then
+      MESSAGES="${MESSAGES}Forge binary is stale (installed: $INSTALLED_HASH, source: $SOURCE_HASH). Run: go install ./... then forge init. "
     fi
   fi
 fi

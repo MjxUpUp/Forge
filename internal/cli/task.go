@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -28,7 +29,8 @@ func init() {
 	taskCmd.AddCommand(taskListCmd)
 
 	taskStartCmd.Flags().String("title", "", "任务标题")
-	taskStartCmd.Flags().String("ref", "", "任务引用（如 PROJ-123），默认从分支名推断")
+	taskStartCmd.Flags().String("ref", "", "任务引用（如 feat/add-auto-branch），默认从分支名推断")
+	taskStartCmd.Flags().Bool("branch", false, "从 main/master 创建新分支并切换（ref 作为分支名）")
 	taskStartCmd.Flags().Bool("json", false, "JSON 格式输出")
 	taskStatusCmd.Flags().Bool("json", false, "JSON 格式输出")
 	taskStatusCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
@@ -96,6 +98,24 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 
 	explicitRef, _ := cmd.Flags().GetString("ref")
 	title, _ := cmd.Flags().GetString("title")
+	createBranch, _ := cmd.Flags().GetBool("branch")
+
+	// --branch: create a new branch from main/master and switch to it.
+	if createBranch {
+		if explicitRef == "" {
+			return fmt.Errorf("--branch requires --ref (e.g., --ref feat/add-auto-branch)")
+		}
+		if err := validateBranchRef(explicitRef); err != nil {
+			return fmt.Errorf("invalid branch ref: %w", err)
+		}
+		detected := taskcontext.Detect(root)
+		if !isMainBranch(detected.Branch) {
+			return fmt.Errorf("--branch can only be used on main/master (current: %s)", detected.Branch)
+		}
+		if err := createAndSwitchBranch(root, explicitRef); err != nil {
+			return fmt.Errorf("failed to create branch: %w", err)
+		}
+	}
 
 	var ctx *taskcontext.Context
 	if explicitRef != "" {
@@ -880,4 +900,36 @@ func sortTasksByTime(tasks []*taskpipeline.TaskState) {
 			}
 		}
 	}
+}
+
+// validateBranchRef ensures the ref is a valid conventional branch name.
+func validateBranchRef(ref string) error {
+	validPrefixes := []string{
+		"feat/", "feature/", "fix/", "bugfix/", "hotfix/",
+		"refactor/", "test/", "chore/", "docs/", "ci/",
+		"perf/", "build/", "style/",
+	}
+	for _, p := range validPrefixes {
+		if strings.HasPrefix(ref, p) && len(ref) > len(p) {
+			return nil
+		}
+	}
+	return fmt.Errorf("must start with a conventional prefix (feat/, fix/, refactor/, test/, chore/, docs/, ci/, perf/, build/, style/)")
+}
+
+// isMainBranch checks if a branch name is a main/master branch.
+func isMainBranch(branch string) bool {
+	lower := strings.ToLower(branch)
+	return lower == "main" || lower == "master"
+}
+
+// createAndSwitchBranch creates a new git branch and switches to it.
+func createAndSwitchBranch(root, name string) error {
+	cmd := exec.Command("git", "checkout", "-b", name)
+	cmd.Dir = root
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%s: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
 }

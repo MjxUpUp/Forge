@@ -54,14 +54,15 @@ if git rev-parse --git-dir >/dev/null 2>&1; then
       VIOLATIONS="${VIOLATIONS}[Rust] #[ignore] added in ${label}. "
     printf '%s' "$diff" | grep -qE '^\+.*\b(test|it|describe)\.skip\(' 2>/dev/null && \
       VIOLATIONS="${VIOLATIONS}[TS/JS] .skip() added in ${label}. "
+    : # always return 0 — grep misses are not errors
   }
 
   CODE_FILES=$( (git diff --cached --name-only 2>/dev/null; git diff --name-only 2>/dev/null) | sort -u | grep -E '(_test\.|_spec\.|\.test\.|\.spec\.|test/|tests/)' | grep -E '\.(go|rs|ts|tsx|js|jsx)$' || true)
   if [ -n "$CODE_FILES" ]; then
     STAGED_DIFF=$(git diff --cached -- $CODE_FILES 2>/dev/null || true)
-    check_diff "$STAGED_DIFF" "staged diff"
+    check_diff "$STAGED_DIFF" "staged diff" || true
     UNSTAGED_DIFF=$(git diff -- $CODE_FILES 2>/dev/null || true)
-    check_diff "$UNSTAGED_DIFF" "unstaged diff"
+    check_diff "$UNSTAGED_DIFF" "unstaged diff" || true
   fi
 fi
 
