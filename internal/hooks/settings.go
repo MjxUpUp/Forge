@@ -15,6 +15,8 @@ var embeddedHooks = map[string]string{
 	"task-verify":      TaskVerifyHook,
 	"task-guard":       TaskGuardHook,
 	"tool-track":       ToolTrackHook,
+	"bash-guard":       BashGuardHook,
+	"file-sentinel":    FileSentinelHook,
 }
 
 // EmbeddedContent returns the hook script content for the given name
@@ -51,6 +53,12 @@ func GenerateSettings(projectDir string) error {
 					},
 				},
 				{
+					Matcher: "Bash",
+					Hooks: []hookEntry{
+						{Type: "command", Command: "forge hook file-sentinel"},
+					},
+				},
+				{
 					Matcher: "Bash|Read|Grep|Glob|Skill|Agent",
 					Hooks: []hookEntry{
 						{Type: "command", Command: "forge hook tool-track"},
@@ -64,6 +72,12 @@ func GenerateSettings(projectDir string) error {
 						{Type: "command", Command: "forge hook task-guard"},
 						{Type: "command", Command: "forge hook assertion-check"},
 						{Type: "command", Command: "forge hook experience-check"},
+					},
+				},
+				{
+					Matcher: "Bash",
+					Hooks: []hookEntry{
+						{Type: "command", Command: "forge hook bash-guard"},
 					},
 				},
 			},
@@ -95,12 +109,14 @@ func WriteHookTemplates(forgeDir string) error {
 	}
 
 	fileHooks := map[string]string{
-		"auto-compile.sh":    AutoCompileHook,
-		"assertion-check.sh": AssertionCheckHook,
+		"auto-compile.sh":     AutoCompileHook,
+		"assertion-check.sh":  AssertionCheckHook,
 		"experience-check.sh": ExperienceCheckHook,
-		"task-verify.sh":     TaskVerifyHook,
-		"task-guard.sh":     TaskGuardHook,
-		"tool-track.sh":      ToolTrackHook,
+		"task-verify.sh":      TaskVerifyHook,
+		"task-guard.sh":       TaskGuardHook,
+		"tool-track.sh":       ToolTrackHook,
+		"bash-guard.sh":       BashGuardHook,
+		"file-sentinel.sh":    FileSentinelHook,
 	}
 
 	for name, content := range fileHooks {
@@ -121,5 +137,7 @@ func HookNames() []string {
 		"task-verify.sh",
 		"task-guard.sh",
 		"tool-track.sh",
+		"bash-guard.sh",
+		"file-sentinel.sh",
 	}
 }
