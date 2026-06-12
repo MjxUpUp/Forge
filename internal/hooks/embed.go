@@ -371,6 +371,7 @@ const FileSentinelHook = `#!/bin/bash
 # file-sentinel.sh — PostToolUse hook for Bash.
 # Detects unauthorized file changes after Bash execution.
 # Compares against PreToolUse bash-guard snapshot and reverts violations.
+# Only checks source code files and Forge config — ignores all other changes.
 set -eo pipefail
 
 TASK_REF="${FORGE_TASK_REF:-}"
@@ -381,29 +382,53 @@ FORGE_CMD_FILE="${TMPDIR:-/tmp}/forge-cmd-${SESSION_ID}"
 # No snapshot from PreToolUse → nothing to compare
 [ ! -f "$SNAPSHOT_FILE" ] && { echo "PASS"; exit 0; }
 
-# Get current file state
-CURRENT=$( { git diff --name-only 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | sort -u )
+# Not a git repo → cannot diff, pass silently
+git rev-parse --git-dir >/dev/null 2>&1 || {
+  rm -f "$SNAPSHOT_FILE" "$FORGE_CMD_FILE" 2>/dev/null
+  echo "PASS"
+  exit 0
+}
 
-# Get pre-Bash snapshot
-BEFORE=$(sort -u < "$SNAPSHOT_FILE" 2>/dev/null || true)
+# Source code extension pattern
+SRC_EXT='\.(go|rs|ts|tsx|js|jsx|py|java|rb|zig|nim)$'
+# Forge config pattern
+CFG_EXT='(\.forge/(hooks|tasks|specs|reviews)/|\.claude/settings)'
 
-# Find new changes (files in current but not in before)
-NEW_CHANGES=$(comm -23 <(echo "$CURRENT") <(echo "$BEFORE") 2>/dev/null || true)
+# Get current changed source files only (not all files)
+CURRENT_ALL=$(
+  {
+    git diff --name-only 2>/dev/null || true
+    git ls-files --others --exclude-standard 2>/dev/null || true
+  } | grep -E "${SRC_EXT}|${CFG_EXT}" | sort -u || true
+)
+
+# Read pre-Bash snapshot
+BEFORE_ALL=$(cat "$SNAPSHOT_FILE" 2>/dev/null | grep -E "${SRC_EXT}|${CFG_EXT}" | sort -u || true)
 
 # Check if this was a forge command
 IS_FORGE_CMD=0
 [ -f "$FORGE_CMD_FILE" ] && IS_FORGE_CMD=1
 
 # Clean up
-rm -f "$SNAPSHOT_FILE" 2>/dev/null || true
-rm -f "$FORGE_CMD_FILE" 2>/dev/null || true
+rm -f "$SNAPSHOT_FILE" "$FORGE_CMD_FILE" 2>/dev/null || true
+
+# No current changes at all → pass
+[ -z "$CURRENT_ALL" ] && { echo "PASS"; exit 0; }
+
+# Find NEW changes: lines in CURRENT but not in BEFORE
+# Use grep -Fxv for reliable line-by-line exact match
+if [ -n "$BEFORE_ALL" ]; then
+  NEW_CHANGES=$(printf '%s\n' "$CURRENT_ALL" | grep -Fxvf <(printf '%s\n' "$BEFORE_ALL") 2>/dev/null || true)
+else
+  NEW_CHANGES="$CURRENT_ALL"
+fi
 
 # No new changes → pass
 [ -z "$NEW_CHANGES" ] && { echo "PASS"; exit 0; }
 
-# Categorize changes
-SOURCE_CHANGES=$(printf '%s' "$NEW_CHANGES" | grep -E '.(go|rs|ts|tsx|js|jsx|py|java|rb|zig|nim)$' || true)
-CONFIG_CHANGES=$(printf '%s' "$NEW_CHANGES" | grep -E '(.forge/(hooks|tasks|specs|reviews)/|.claude/settings)' || true)
+# Categorize new changes
+SOURCE_CHANGES=$(printf '%s' "$NEW_CHANGES" | grep -E "$SRC_EXT" || true)
+CONFIG_CHANGES=$(printf '%s' "$NEW_CHANGES" | grep -E "$CFG_EXT" || true)
 
 # No protected changes → pass
 [ -z "$SOURCE_CHANGES" ] && [ -z "$CONFIG_CHANGES" ] && { echo "PASS"; exit 0; }
