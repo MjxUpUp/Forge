@@ -87,6 +87,7 @@ func (s *TaskState) RecordGateResult(gateID string, passed bool, headCommit stri
 		Gate:        gateID,
 		Passed:      passed,
 		CompletedAt: time.Now(),
+		HeadCommit:  headCommit,
 	})
 	if passed {
 		s.CurrentGate = s.NextGate()
