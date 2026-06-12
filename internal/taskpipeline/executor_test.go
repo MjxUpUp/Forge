@@ -475,6 +475,51 @@ func TestGateTimingAllowsAfterInterval(t *testing.T) {
 	}
 }
 
+func TestLastGateSkipsTiming(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "initial")
+
+	// Set long interval — last gate should skip it entirely
+	os.Setenv("FORGE_GATE_MIN_INTERVAL", "10m")
+	defer os.Unsetenv("FORGE_GATE_MIN_INTERVAL")
+	os.Setenv("FORGE_WORK_ACTIVITY", "disable")
+	defer os.Unsetenv("FORGE_WORK_ACTIVITY")
+
+	state := &TaskState{
+		TaskRef: "test-last-gate",
+		Branch:  "feat/test",
+	}
+
+	// Pass all gates up to task-verify
+	state.RecordGateResult("task-understand", true, "")
+	state.RecordGateResult("task-design", true, "")
+	state.RecordGateResult("task-implement", true, "")
+	state.RecordGateResult("task-verify", true, "")
+
+	// task-complete (last gate) should pass immediately despite 10m interval
+	_, err := ExecuteTaskGate(dir, "task-complete", state)
+	if err != nil {
+		t.Fatalf("last gate should skip timing check: %v", err)
+	}
+}
+
+func TestIsLastGate(t *testing.T) {
+	if !isLastGate("task-complete") {
+		t.Error("task-complete should be the last gate")
+	}
+	if isLastGate("task-verify") {
+		t.Error("task-verify should NOT be the last gate")
+	}
+	if isLastGate("task-understand") {
+		t.Error("task-understand should NOT be the last gate")
+	}
+}
+
 func TestGateTimingExemptsAutoGates(t *testing.T) {
 	dir := t.TempDir()
 	runGit(t, dir, "init")

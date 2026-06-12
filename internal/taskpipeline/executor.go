@@ -54,8 +54,8 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 	// Timing + work activity check for non-auto gates.
 	// Gates must not be passed without real work happening between them.
 	// This prevents agents from using sleep to bypass timing requirements.
-	// Skip for completed tasks (re-verification should not be penalized).
-	if !gate.Auto && state.CompletedAt == nil && len(state.History) > 0 {
+	// Skip for: completed tasks (re-verification), final gate (no work phase after it).
+	if !gate.Auto && state.CompletedAt == nil && len(state.History) > 0 && !isLastGate(gateID) {
 		lastResult := state.History[len(state.History)-1]
 		minInterval := getGateMinInterval()
 		elapsed := time.Since(lastResult.CompletedAt)
@@ -244,4 +244,12 @@ func getGateMinInterval() time.Duration {
 // Set FORGE_WORK_ACTIVITY=disable to skip the check (for testing only).
 func getDisableWorkActivity() bool {
 	return os.Getenv("FORGE_WORK_ACTIVITY") == "disable"
+}
+
+// isLastGate returns true if the given gate ID is the final gate in the pipeline.
+// The final gate (task-complete) has no work phase after it, so timing and
+// work activity checks are skipped — there's nothing to "spend time on".
+func isLastGate(gateID string) bool {
+	gates := DefaultGates()
+	return len(gates) > 0 && gates[len(gates)-1].ID == gateID
 }
