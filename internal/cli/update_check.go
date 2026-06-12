@@ -33,7 +33,7 @@ func checkForUpdate(fullVersion string, cmd *cobra.Command) {
 	cache, err := loadUpdateCache()
 	if err == nil && !cache.isExpired() {
 		// Cache hit — just notify if newer version exists
-		if cache.LatestVersion != "" && cache.LatestVersion != current {
+		if cache.LatestVersion != "" && compareVersions(cache.LatestVersion, current) > 0 {
 			fmt.Fprintf(os.Stderr, "\n💡 Forge %s 可用（当前 %s）。运行 `forge update` 更新。\n\n", cache.LatestVersion, current)
 		}
 		return
@@ -52,7 +52,7 @@ func checkForUpdate(fullVersion string, cmd *cobra.Command) {
 	_ = saveUpdateCache(latest)
 
 	// Notify if newer
-	if latest != current {
+	if compareVersions(latest, current) > 0 {
 		fmt.Fprintf(os.Stderr, "\n💡 Forge %s 可用（当前 %s）。运行 `forge update` 更新。\n\n", latest, current)
 	}
 }
