@@ -108,7 +108,7 @@ func buildQualitySkillContent(proto *protocol.Protocol, p *pipeline.Pipeline) st
 	sb.WriteString("### 门禁要求\n\n")
 	sb.WriteString("每个门禁代表一个独立的工作阶段，不是形式主义检查：\n\n")
 	sb.WriteString("- **间隔 ≥ 1 分钟**：相邻门禁之间至少做 1 分钟真实工作（Read/Grep/Write 等工具调用），不要用 sleep 绕过\n")
-	sb.WriteString("- **活动 ≥ 2 次工具调用**：门禁之间至少使用 2 次工具做实质性探索或分析\n")
+	sb.WriteString("- **活动 ≥ 1 次工具调用**：门禁之间至少使用 1 次工具做实质性探索或分析\n")
 	sb.WriteString("- **task-implement 需 HEAD 移动**：代码必须已 `git commit`（未提交的变更也会被认可）\n")
 	sb.WriteString("- **task-complete 无间隔要求**：最后一道门禁跳过 timing/activity 检查\n\n")
 
@@ -125,7 +125,7 @@ func buildQualitySkillContent(proto *protocol.Protocol, p *pipeline.Pipeline) st
 	sb.WriteString("| Write/Edit denied by task-guard | 无活跃任务 | `forge task start --ref <type>/<name>` |\n")
 	sb.WriteString("| Bash denied by bash-guard | Bash 含写文件操作且无任务 | 先启动任务 |\n")
 	sb.WriteString("| gate passed too quickly | 门禁间隔 <1 分钟 | 做真实的探索/分析工作 |\n")
-	sb.WriteString("| insufficient work activity | 工具调用 <2 次 | 用 Read/Grep/Glob 探索代码 |\n")
+	sb.WriteString("| insufficient work activity | 工具调用 <1 次 | 用 Read/Grep/Glob 探索代码 |\n")
 	sb.WriteString("| HEAD not moved | task-implement 前没有新提交 | 先写代码并 `git commit` |\n")
 	sb.WriteString("| Reverted by file-sentinel | Bash 写了源码但无任务 | 先启动任务，或用 Write/Edit |\n")
 	sb.WriteString("| task not complete. Missing gates | 未通过所有门禁 | 先 `forge task gate task-complete --ref <ref>` |\n\n")
