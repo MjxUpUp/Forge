@@ -50,6 +50,18 @@ if $PASS; then
       go build -o "$FORGE_BIN" ./cmd/forge 2>/dev/null || true
     fi
   fi
+  # Task context warning: coding on master/main without an active task.
+  # Lightweight check (no forge invocation) — only warns, never blocks.
+  BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+  if [ "$BRANCH" = "master" ] || [ "$BRANCH" = "main" ]; then
+    TASK_COUNT=$(find .forge/tasks -name '*.json' 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$TASK_COUNT" = "0" ] 2>/dev/null; then
+      CHANGED=$(git diff --name-only HEAD 2>/dev/null | grep -cE '\.(go|rs|ts|tsx|js|jsx|py|java|rb)$' || echo "0")
+      if [ "$CHANGED" -gt 3 ]; then
+        echo "WARN [task-context] ${CHANGED} code files changed on ${BRANCH} without active task. Start one: forge task start --ref <type>/<desc> --branch" >&2
+      fi
+    fi
+  fi
   echo "PASS [auto-compile] All builds passed."
 else
   echo "FAIL [auto-compile] Build failures detected:"
