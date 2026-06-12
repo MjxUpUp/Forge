@@ -67,9 +67,39 @@ async function download(url, dest) {
   throw lastError || new Error("Download failed after 3 attempts");
 }
 
+/**
+ * Check if an existing binary matches the target version.
+ * Runs `forge --version` and parses the version string.
+ */
+function existingBinaryMatches(binaryPath) {
+  try {
+    const output = execSync(`"${binaryPath}" --version`, {
+      timeout: 5000,
+      stdio: "pipe",
+      env: { ...process.env, FORGE_SKIP_UPDATE_CHECK: "1" },
+    }).toString().trim();
+    // Output format: "forge version 0.14.4 (commit: ...)" or "forge version dev"
+    const match = output.match(/forge version (\S+)/);
+    return match && match[1] === VERSION;
+  } catch (_) {
+    return false;
+  }
+}
+
 async function main() {
   const binDir = path.join(__dirname, "bin");
   fs.mkdirSync(binDir, { recursive: true });
+
+  const binaryName = getBinaryName();
+  const binaryPath = path.join(binDir, binaryName);
+
+  // Skip download if existing binary already matches the target version.
+  // This avoids "file busy" errors on Windows when upgrading while
+  // forge hooks are actively running in another Claude Code session.
+  if (existingBinaryMatches(binaryPath)) {
+    console.log(`forge v${VERSION} already installed.`);
+    return;
+  }
 
   const { goos, goarch } = getPlatform();
   const archiveName = `forge_${VERSION}_${goos}_${goarch}.tar.gz`;
@@ -88,17 +118,55 @@ async function main() {
 
   // Extract using relative path (cwd=binDir) to avoid Windows tar
   // interpreting "X:/path" as a remote host connection.
-  execSync(`tar xzf "${archiveName}"`, { cwd: binDir, stdio: "inherit" });
+  //
+  // On Windows, if forge.exe is currently running (e.g. another Claude Code
+  // session has hooks active), tar cannot overwrite it. Handle this by:
+  // 1. Renaming the old binary to .old (preserves running process)
+  // 2. Extracting the new binary
+  // 3. Cleaning up archive
+  // The run.js wrapper will recover from .old on next launch if needed.
+  let renamedOld = false;
+  if (process.platform === "win32" && fs.existsSync(binaryPath)) {
+    const oldPath = binaryPath + ".old";
+    try { fs.unlinkSync(oldPath); } catch (_) {}
+    try {
+      fs.renameSync(binaryPath, oldPath);
+      renamedOld = true;
+    } catch (_) {
+      // Cannot rename either — will try extract anyway
+    }
+  }
 
-  // Make executable
-  const binaryName = getBinaryName();
-  const binaryPath = path.join(binDir, binaryName);
+  try {
+    execSync(`tar xzf "${archiveName}"`, { cwd: binDir, stdio: "pipe", timeout: 30000 });
+  } catch (err) {
+    // Extract failed — likely file busy on Windows
+    if (renamedOld) {
+      // Restore old binary so the package isn't left broken
+      const oldPath = binaryPath + ".old";
+      try {
+        if (!fs.existsSync(binaryPath)) {
+          fs.renameSync(oldPath, binaryPath);
+          console.error(`[forge] Extract failed, restored previous binary. Will upgrade on next launch.`);
+        }
+      } catch (_) {}
+    }
+    throw new Error(
+      `Failed to extract binary (file may be in use). ` +
+      `Close other Claude Code sessions and run: npm install -g @agentfare/forge`
+    );
+  }
+
+  // Make executable (Unix)
   if (process.platform !== "win32") {
     fs.chmodSync(binaryPath, 0o755);
   }
 
-  // Cleanup archive
+  // Cleanup archive and .old backup
   fs.unlinkSync(archivePath);
+  if (renamedOld) {
+    try { fs.unlinkSync(binaryPath + ".old"); } catch (_) {}
+  }
 
   console.log(`forge v${VERSION} installed successfully.`);
 }
