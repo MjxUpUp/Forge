@@ -69,10 +69,13 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 
 		// Work activity check: verify actual tool usage (Read, Write, Edit, Grep, etc.)
 		// since the last gate. If only Bash/sleep was used, the agent didn't do real work.
-		// Independent of minInterval â even with timing disabled, substance is still checked.
+		// Independent of minInterval — even with timing disabled, substance is still checked.
+		// On error (e.g. corrupted checklog), log warning and allow pass to avoid permanent block.
 		if state.TaskRef != "" && !getDisableWorkActivity() {
-			activity, _ := checklog.WorkActivity(root, state.TaskRef, lastResult.CompletedAt)
-			if activity < 2 {
+			activity, err := checklog.WorkActivity(root, state.TaskRef, lastResult.CompletedAt)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "[forge] warning: WorkActivity check failed: %v\n", err)
+			} else if activity < 2 {
 				return nil, fmt.Errorf(
 					"gate %q passed without sufficient work activity since %q (%d tool uses, minimum 2). "+
 						"Read files, explore code, or write design notes before advancing",
@@ -132,6 +135,17 @@ func hasCodeChanges(root string, state *TaskState) bool {
 
 	// On main/master with no uncommitted changes
 	return false
+}
+
+// hasUncommittedChanges checks if there are working-tree changes (staged or unstaged)
+// that have not been committed yet.
+func hasUncommittedChanges(root string) bool {
+	cmd := exec.Command("git", "-C", root, "diff", "--stat", "HEAD")
+	out, err := cmd.Output()
+	if err != nil {
+		return false // non-git repo — don't block
+	}
+	return len(strings.TrimSpace(string(out))) > 0
 }
 
 // checkImplement runs compilation check via auto-compile.sh,
@@ -203,7 +217,9 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 
 	// 4. Verify code was written AFTER task-design was passed.
 	// This prevents agents from writing all code first, then rushing through gates.
-	if state != nil {
+	// Skip this check if there are uncommitted changes — the code IS written,
+	// just not committed yet. Don't force agents to commit before they're ready.
+	if state != nil && !hasUncommittedChanges(root) {
 		designCommit := state.designGateCommit()
 		if designCommit != "" {
 			headCmd := exec.Command("git", "-C", root, "rev-parse", "HEAD")

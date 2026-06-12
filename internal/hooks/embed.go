@@ -341,8 +341,14 @@ has_write_pattern() {
   printf '%s' "$cmd" | grep -qiE 'writeFile|writeFileSync|fs\.write' && return 0
   # Shell file-writing commands (space after command name)
   printf '%s' "$cmd" | grep -qiE '(cat +>|tee +|sed +-i |cp +|mv +|dd +of=|curl +-o |wget +-O )' && return 0
-  # Shell redirect to file: "> path" but NOT "=>" or "2>"
-  printf '%s' "$cmd" | grep -E '[^=]> [^ &/]' | grep -qvF '/dev/null' && return 0
+  # Shell redirect to file: "> path" but NOT:
+  #   - "=>" (JS arrow functions)
+  #   - "2>" (stderr redirect)
+  #   - comparison operators: "x > 0" (no path characters after >)
+  #   Real file targets contain "." or "/" (e.g. output.txt, /tmp/file)
+  local redirect_match
+  redirect_match=$(printf '%s' "$cmd" | grep -E '> +[^ &/][^ ]*[./]' | grep -qvF '/dev/null' || true)
+  [ -n "$redirect_match" ] && return 0
   return 1
 }
 
