@@ -29,6 +29,7 @@ type HookInput struct {
 type toolInputFields struct {
 	FilePath string `json:"file_path"`
 	Content  string `json:"content"`
+	Command  string `json:"command"` // Bash tool_input.command
 }
 
 // HookOutput represents the structured JSON Claude Code expects on stdout.
@@ -130,9 +131,11 @@ func runHook(cmd *cobra.Command, args []string) error {
 	shCmd.Env = append(os.Environ(),
 		"FORGE_FILE_PATH="+fields.FilePath,
 		"FORGE_CONTENT="+fields.Content,
+		"FORGE_COMMAND="+fields.Command,
 		"FORGE_TOOL_NAME="+hookInput.ToolName,
-			"FORGE_TASK_REF="+activeTaskRef,
-			"FORGE_TASK_GATE="+activeTaskGate,
+		"FORGE_TASK_REF="+activeTaskRef,
+		"FORGE_TASK_GATE="+activeTaskGate,
+		"FORGE_SESSION_ID="+hookInput.SessionID,
 	)
 
 	var stdoutBuf, stderrBuf bytes.Buffer

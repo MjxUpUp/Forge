@@ -268,6 +268,7 @@ const TaskGuardHook = `#!/bin/bash
 # task-guard.sh — PreToolUse hook for Write|Edit.
 # Blocks code file writes when no active task exists.
 # Progressive enforcement: BLOCK (no task) -> WARN (pre-design) -> PASS (post-design).
+# Self-protection: also blocks direct writes to Forge-managed files.
 set -eo pipefail
 
 FILE_PATH="${FORGE_FILE_PATH:-}"
@@ -276,6 +277,15 @@ TASK_GATE="${FORGE_TASK_GATE:-}"
 
 # No file path (batch mode or non-file tool) — allow
 [ -z "$FILE_PATH" ] && exit 0
+
+# Self-protection: block direct writes to Forge-managed files.
+# These files are managed by forge commands, not by agent Write/Edit.
+case "$FILE_PATH" in
+  .forge/*|.claude/settings*)
+    echo "FAIL [task-guard] Direct modification of Forge-managed files is not allowed. Use forge commands."
+    exit 1
+    ;;
+esac
 
 # Not a source code file — allow
 printf '%s' "$FILE_PATH" | grep -qE '\.(go|rs|ts|tsx|js|jsx|py|java|rb|zig|nim)$' || exit 0
@@ -305,3 +315,135 @@ const ToolTrackHook = `#!/bin/bash
 set -eo pipefail
 echo "PASS"
 `
+
+const BashGuardHook = `#!/bin/bash
+# bash-guard.sh — PreToolUse hook for Bash.
+# Layer 1: Detect write patterns in Bash commands, block if no active task.
+# Layer 2: Snapshot file state for PostToolUse file-sentinel comparison.
+# Also protects Forge configuration files from modification.
+set -eo pipefail
+
+COMMAND="${FORGE_COMMAND:-}"
+TASK_REF="${FORGE_TASK_REF:-}"
+SESSION_ID="${FORGE_SESSION_ID:-default}"
+SNAPSHOT_FILE="${TMPDIR:-/tmp}/forge-snapshot-${SESSION_ID}"
+
+# --- Snapshot file state (always, for file-sentinel PostToolUse) ---
+{
+  git diff --name-only 2>/dev/null || true
+  git ls-files --others --exclude-standard 2>/dev/null || true
+} | sort -u > "$SNAPSHOT_FILE" 2>/dev/null || true
+
+# --- Detect write patterns in command ---
+has_write_pattern() {
+  local cmd="$1"
+  # JavaScript file writes
+  printf '%s' "$cmd" | grep -qiE 'writeFile|writeFileSync|fs.write' && return 0
+  # Shell file-writing commands
+  printf '%s' "$cmd" | grep -qiE '(cat[[:space:]]*>|tee[[:space:]]|sed[[:space:]]+-i|cp[[:space:]]|mv[[:space:]]|dd[[:space:]]+of=|curl[[:space:]]+-o|wget[[:space:]]+-O)' && return 0
+  # Python file writes
+  printf '%s' "$cmd" | grep -qiE "open[[:space:]]*(.+w" && return 0
+  # Shell redirect to file (exclude /dev/null, 2>)
+  printf '%s' "$cmd" | grep -oE '>[[:space:]]*[^ &|>][^ &|>]*' | grep -qvF '/dev/null' && return 0
+  return 1
+}
+
+# --- Self-protection: block writes to Forge config ---
+# Only triggers when command contains BOTH write patterns AND config paths.
+# This avoids false positives when command text mentions .forge/ without writing to it.
+IS_FORGE_CMD=0
+printf '%s' "$COMMAND" | grep -qE '(^|[[:space:]]|&&|[[:space:]]*[|])[[:space:]]*forge[[:space:]]' && IS_FORGE_CMD=1
+
+if [ $IS_FORGE_CMD -eq 0 ] && has_write_pattern "$COMMAND"; then
+  printf '%s' "$COMMAND" | grep -qiE '(.forge/(hooks|tasks|specs|reviews)/|.claude/settings)' && {
+    echo "FAIL [bash-guard] Modifying Forge configuration files is not allowed. Use forge commands (init, task, experience)."
+    exit 1
+  }
+fi
+
+# --- Check write patterns + task state ---
+if has_write_pattern "$COMMAND"; then
+  if [ -z "$TASK_REF" ]; then
+    echo "FAIL [bash-guard] Bash command contains file write operations but no active task. Run: forge task start --ref <type>/<desc> --branch"
+    exit 1
+  fi
+fi
+
+# Mark as forge command for file-sentinel
+if [ $IS_FORGE_CMD -eq 1 ]; then
+  touch "${TMPDIR:-/tmp}/forge-cmd-${SESSION_ID}" 2>/dev/null || true
+fi
+
+echo "PASS"`
+
+const FileSentinelHook = `#!/bin/bash
+# file-sentinel.sh — PostToolUse hook for Bash.
+# Detects unauthorized file changes after Bash execution.
+# Compares against PreToolUse bash-guard snapshot and reverts violations.
+set -eo pipefail
+
+TASK_REF="${FORGE_TASK_REF:-}"
+SESSION_ID="${FORGE_SESSION_ID:-default}"
+SNAPSHOT_FILE="${TMPDIR:-/tmp}/forge-snapshot-${SESSION_ID}"
+FORGE_CMD_FILE="${TMPDIR:-/tmp}/forge-cmd-${SESSION_ID}"
+
+# No snapshot from PreToolUse → nothing to compare
+[ ! -f "$SNAPSHOT_FILE" ] && { echo "PASS"; exit 0; }
+
+# Get current file state
+CURRENT=$( { git diff --name-only 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | sort -u )
+
+# Get pre-Bash snapshot
+BEFORE=$(sort -u < "$SNAPSHOT_FILE" 2>/dev/null || true)
+
+# Find new changes (files in current but not in before)
+NEW_CHANGES=$(comm -23 <(echo "$CURRENT") <(echo "$BEFORE") 2>/dev/null || true)
+
+# Check if this was a forge command
+IS_FORGE_CMD=0
+[ -f "$FORGE_CMD_FILE" ] && IS_FORGE_CMD=1
+
+# Clean up
+rm -f "$SNAPSHOT_FILE" 2>/dev/null || true
+rm -f "$FORGE_CMD_FILE" 2>/dev/null || true
+
+# No new changes → pass
+[ -z "$NEW_CHANGES" ] && { echo "PASS"; exit 0; }
+
+# Categorize changes
+SOURCE_CHANGES=$(printf '%s' "$NEW_CHANGES" | grep -E '.(go|rs|ts|tsx|js|jsx|py|java|rb|zig|nim)$' || true)
+CONFIG_CHANGES=$(printf '%s' "$NEW_CHANGES" | grep -E '(.forge/(hooks|tasks|specs|reviews)/|.claude/settings)' || true)
+
+# No protected changes → pass
+[ -z "$SOURCE_CHANGES" ] && [ -z "$CONFIG_CHANGES" ] && { echo "PASS"; exit 0; }
+
+# Helper: revert files
+revert_files() {
+  local files="$1"
+  local reverted=""
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    if git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
+      git checkout -- "$f" 2>/dev/null && reverted="${reverted} ${f}"
+    else
+      rm -f "$f" 2>/dev/null && reverted="${reverted} ${f}"
+    fi
+  done <<< "$files"
+  echo "$reverted"
+}
+
+# Self-protection: revert config changes (unless forge command was detected)
+if [ -n "$CONFIG_CHANGES" ] && [ $IS_FORGE_CMD -eq 0 ]; then
+  REVERTED=$(revert_files "$CONFIG_CHANGES")
+  echo "FAIL [file-sentinel] Reverted unauthorized changes to Forge config:${REVERTED}. Use forge commands instead."
+  exit 1
+fi
+
+# Source code changes without active task → revert
+if [ -z "$TASK_REF" ] && [ -n "$SOURCE_CHANGES" ]; then
+  REVERTED=$(revert_files "$SOURCE_CHANGES")
+  echo "FAIL [file-sentinel] Reverted unauthorized code changes (no active task):${REVERTED}. Run: forge task start --ref <type>/<desc> --branch"
+  exit 1
+fi
+
+echo "PASS"`

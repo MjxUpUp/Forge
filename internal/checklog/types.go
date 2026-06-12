@@ -10,7 +10,9 @@ const (
 	CheckAssertion   CheckName = "assertion-check"
 	CheckExperience  CheckName = "experience-check"
 	CheckTaskVerify  CheckName = "task-verify"
-	CheckTaskGuard   CheckName = "task-guard"
+	CheckTaskGuard    CheckName = "task-guard"
+	CheckBashGuard    CheckName = "bash-guard"
+	CheckFileSentinel CheckName = "file-sentinel"
 )
 
 // Entry records the outcome of a single hook execution.

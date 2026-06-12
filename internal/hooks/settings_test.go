@@ -103,7 +103,7 @@ func TestGenerateSettingsUsesForgeHook(t *testing.T) {
 	content := string(data)
 
 	// All hook invocations should route through "forge hook <name>"
-	for _, name := range []string{"auto-compile", "assertion-check", "experience-check", "task-verify", "task-guard"} {
+	for _, name := range []string{"auto-compile", "assertion-check", "experience-check", "task-verify", "task-guard", "bash-guard", "file-sentinel"} {
 		expected := "forge hook " + name
 		if !strings.Contains(content, expected) {
 			t.Errorf("settings missing %q command", expected)
@@ -113,7 +113,7 @@ func TestGenerateSettingsUsesForgeHook(t *testing.T) {
 
 func TestEmbeddedContent(t *testing.T) {
 	// Known hooks return content and true
-	for _, name := range []string{"auto-compile", "assertion-check", "experience-check", "task-verify"} {
+	for _, name := range []string{"auto-compile", "assertion-check", "experience-check", "task-verify", "bash-guard", "file-sentinel", "task-guard"} {
 		content, ok := EmbeddedContent(name)
 		if !ok {
 			t.Errorf("EmbeddedContent(%q) returned false", name)
@@ -137,7 +137,7 @@ func TestWriteHookTemplatesCreatesFiles(t *testing.T) {
 	}
 
 	hooksDir := filepath.Join(dir, "hooks")
-	expected := []string{"auto-compile.sh", "assertion-check.sh", "experience-check.sh", "task-verify.sh", "task-guard.sh"}
+	expected := []string{"auto-compile.sh", "assertion-check.sh", "experience-check.sh", "task-verify.sh", "task-guard.sh", "bash-guard.sh", "file-sentinel.sh"}
 	for _, name := range expected {
 		path := filepath.Join(hooksDir, name)
 		if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -247,6 +247,121 @@ func TestTaskGuardHookContainsKeyChecks(t *testing.T) {
 func TestTaskGuardHookPassesNonCodeFiles(t *testing.T) {
 	if !containsString(TaskGuardHook, ".(go|rs|ts|tsx|js|jsx|py|java|rb|zig|nim)") {
 		t.Error("TaskGuardHook missing code file extension filter")
+	}
+}
+
+func TestBashGuardHookContainsKeyChecks(t *testing.T) {
+	if !containsString(BashGuardHook, "FORGE_COMMAND") {
+		t.Error("BashGuardHook missing FORGE_COMMAND check")
+	}
+	if !containsString(BashGuardHook, "writeFile") {
+		t.Error("BashGuardHook missing writeFile pattern detection")
+	}
+	if !containsString(BashGuardHook, "forge task start") {
+		t.Error("BashGuardHook missing 'forge task start' guidance")
+	}
+	if !containsString(BashGuardHook, "bash-guard") {
+		t.Error("BashGuardHook missing [bash-guard] prefix")
+	}
+}
+
+func TestFileSentinelHookContainsKeyChecks(t *testing.T) {
+	if !containsString(FileSentinelHook, "SNAPSHOT_FILE") {
+		t.Error("FileSentinelHook missing SNAPSHOT_FILE reference")
+	}
+	if !containsString(FileSentinelHook, "file-sentinel") {
+		t.Error("FileSentinelHook missing [file-sentinel] prefix")
+	}
+	if !containsString(FileSentinelHook, "git checkout") {
+		t.Error("FileSentinelHook missing git checkout revert logic")
+	}
+}
+
+func TestTaskGuardHookSelfProtection(t *testing.T) {
+	if !containsString(TaskGuardHook, ".forge/*") {
+		t.Error("TaskGuardHook missing .forge/ self-protection")
+	}
+	if !containsString(TaskGuardHook, ".claude/settings") {
+		t.Error("TaskGuardHook missing .claude/settings self-protection")
+	}
+	if !containsString(TaskGuardHook, "Forge-managed") {
+		t.Error("TaskGuardHook missing self-protection error message")
+	}
+}
+
+func TestPreToolUseHasBashGuard(t *testing.T) {
+	dir := t.TempDir()
+	if err := GenerateSettings(dir); err != nil {
+		t.Fatalf("GenerateSettings returned error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, ".claude", "settings.local.json"))
+	if err != nil {
+		t.Fatalf("failed to read settings file: %v", err)
+	}
+
+	var parsed struct {
+		Hooks map[string][]struct {
+			Matcher string `json:"matcher,omitempty"`
+			Hooks   []struct {
+				Command string `json:"command"`
+			} `json:"hooks"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	found := false
+	for _, matcher := range parsed.Hooks["PreToolUse"] {
+		if matcher.Matcher == "Bash" {
+			for _, h := range matcher.Hooks {
+				if h.Command == "forge hook bash-guard" {
+					found = true
+				}
+			}
+		}
+	}
+	if !found {
+		t.Error("PreToolUse missing Bash matcher with 'forge hook bash-guard'")
+	}
+}
+
+func TestPostToolUseHasFileSentinel(t *testing.T) {
+	dir := t.TempDir()
+	if err := GenerateSettings(dir); err != nil {
+		t.Fatalf("GenerateSettings returned error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, ".claude", "settings.local.json"))
+	if err != nil {
+		t.Fatalf("failed to read settings file: %v", err)
+	}
+
+	var parsed struct {
+		Hooks map[string][]struct {
+			Matcher string `json:"matcher,omitempty"`
+			Hooks   []struct {
+				Command string `json:"command"`
+			} `json:"hooks"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	found := false
+	for _, matcher := range parsed.Hooks["PostToolUse"] {
+		if matcher.Matcher == "Bash" {
+			for _, h := range matcher.Hooks {
+				if h.Command == "forge hook file-sentinel" {
+					found = true
+				}
+			}
+		}
+	}
+	if !found {
+		t.Error("PostToolUse missing Bash matcher with 'forge hook file-sentinel'")
 	}
 }
 
