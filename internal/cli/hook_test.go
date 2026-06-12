@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -195,56 +194,48 @@ func TestToRelPath(t *testing.T) {
 		want    string
 	}{
 		{
-			name:    "absolute Windows path to .forge state file",
-			root:    `E:\DevWorkbench`,
-			absPath: `E:\DevWorkbench\.forge\tasks\feature-v1-layout-refactor.json`,
+			name:    "absolute path to .forge state file",
+			root:    filepath.FromSlash("E:/DevWorkbench"),
+			absPath: filepath.FromSlash("E:/DevWorkbench/.forge/tasks/feature-v1-layout-refactor.json"),
 			want:    ".forge/tasks/feature-v1-layout-refactor.json",
 		},
 		{
-			name:    "absolute Windows path to source file",
-			root:    `E:\DevWorkbench`,
-			absPath: `E:\DevWorkbench\src\components\chat\ChatView.tsx`,
+			name:    "absolute path to source file",
+			root:    filepath.FromSlash("E:/DevWorkbench"),
+			absPath: filepath.FromSlash("E:/DevWorkbench/src/components/chat/ChatView.tsx"),
 			want:    "src/components/chat/ChatView.tsx",
 		},
 		{
-			name:    "absolute Windows path to .claude/settings",
-			root:    `E:\DevWorkbench`,
-			absPath: `E:\DevWorkbench\.claude\settings.local.json`,
+			name:    "absolute path to .claude/settings",
+			root:    filepath.FromSlash("E:/DevWorkbench"),
+			absPath: filepath.FromSlash("E:/DevWorkbench/.claude/settings.local.json"),
 			want:    ".claude/settings.local.json",
 		},
 		{
 			name:    "empty root returns original",
 			root:    "",
-			absPath: `E:\DevWorkbench\.forge\tasks\x.json`,
-			want:    `E:\DevWorkbench\.forge\tasks\x.json`,
+			absPath: filepath.FromSlash("E:/DevWorkbench/.forge/tasks/x.json"),
+			want:    filepath.FromSlash("E:/DevWorkbench/.forge/tasks/x.json"),
 		},
 		{
 			name:    "empty path returns empty",
-			root:    `E:\DevWorkbench`,
+			root:    filepath.FromSlash("E:/DevWorkbench"),
 			absPath: "",
 			want:    "",
 		},
 		{
-			name:    "path outside root stays absolute",
-			root:    `E:\DevWorkbench`,
-			absPath: `E:\OtherProject\src\main.go`,
+			name:    "path outside root uses ..",
+			root:    filepath.FromSlash("E:/DevWorkbench"),
+			absPath: filepath.FromSlash("E:/OtherProject/src/main.go"),
 			want:    "../OtherProject/src/main.go",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// On non-Windows, adjust paths to use forward slashes
-			root := tt.root
-			absPath := tt.absPath
-			if runtime.GOOS != "windows" {
-				root = filepath.FromSlash(strings.ReplaceAll(root, `\`, "/"))
-				absPath = filepath.FromSlash(strings.ReplaceAll(tt.absPath, `\`, "/"))
-			}
-
-			got := toRelPath(root, absPath)
+			got := toRelPath(tt.root, tt.absPath)
 			if got != tt.want {
-				t.Errorf("toRelPath(%q, %q) = %q, want %q", root, absPath, got, tt.want)
+				t.Errorf("toRelPath(%q, %q) = %q, want %q", tt.root, tt.absPath, got, tt.want)
 			}
 		})
 	}
