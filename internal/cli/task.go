@@ -163,6 +163,11 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create task: %w", err)
 	}
 
+	// Mark as active task (makes hook detection unambiguous)
+	if err := taskpipeline.SetActiveTaskRef(root, ctx.TaskRef); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to set active task ref: %v\n", err)
+	}
+
 	asJSON, _ := cmd.Flags().GetBool("json")
 	if asJSON {
 		output, _ := json.MarshalIndent(state, "", "  ")
@@ -447,6 +452,12 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 	} else {
 		fmt.Printf("Task %s completed!\n", state.TaskRef)
 	}
+
+	// Clear active task ref — task is done
+	if err := taskpipeline.ClearActiveTaskRef(root); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to clear active task ref: %v\n", err)
+	}
+
 	return nil
 }
 

@@ -726,6 +726,88 @@ func TestActiveTaskState_NoTasks(t *testing.T) {
 	}
 }
 
+func TestActiveTaskState_ExplicitRefFilePriority(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
+
+	// Create multiple incomplete tasks (ambiguous for fallback)
+	task1 := &TaskState{TaskRef: "feat/first", Branch: "main", StartedAt: time.Now()}
+	task2 := &TaskState{TaskRef: "fix/second", Branch: "main", StartedAt: time.Now()}
+	SaveTaskState(dir, task1)
+	SaveTaskState(dir, task2)
+
+	// Without explicit ref — fallback returns nil (ambiguous)
+	active, _ := ActiveTaskState(dir)
+	if active != nil {
+		t.Fatal("expected nil with multiple incomplete tasks")
+	}
+
+	// Set explicit active ref — should find it despite ambiguity
+	SetActiveTaskRef(dir, "fix/second")
+	active, _ = ActiveTaskState(dir)
+	if active == nil {
+		t.Fatal("expected to find task via explicit ref file")
+	}
+	if active.TaskRef != "fix/second" {
+		t.Errorf("TaskRef = %q, want %q", active.TaskRef, "fix/second")
+	}
+
+	// Stale ref (completed task) — falls through to branch/fallback
+	ClearActiveTaskRef(dir)
+}
+
+func TestActiveTaskState_StaleRefFileFallsThrough(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
+
+	// Create a completed task
+	completed := &TaskState{TaskRef: "feat/done", Branch: "main", StartedAt: time.Now()}
+	now := time.Now()
+	completed.CompletedAt = &now
+	SaveTaskState(dir, completed)
+
+	// Point active-task-ref to the completed task
+	SetActiveTaskRef(dir, "feat/done")
+
+	// Should fall through (stale ref points to completed task)
+	active, _ := ActiveTaskState(dir)
+	if active != nil {
+		t.Fatal("expected nil when explicit ref points to completed task")
+	}
+}
+
+func TestSetActiveAndClearActiveTaskRef(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, ".forge"), 0755)
+
+	// Set
+	if err := SetActiveTaskRef(dir, "feat/test"); err != nil {
+		t.Fatalf("SetActiveTaskRef failed: %v", err)
+	}
+	if got := readActiveTaskRef(dir); got != "feat/test" {
+		t.Errorf("readActiveTaskRef = %q, want %q", got, "feat/test")
+	}
+
+	// Clear
+	if err := ClearActiveTaskRef(dir); err != nil {
+		t.Fatalf("ClearActiveTaskRef failed: %v", err)
+	}
+	if got := readActiveTaskRef(dir); got != "" {
+		t.Errorf("readActiveTaskRef after clear = %q, want empty", got)
+	}
+
+	// Clear non-existent — no error
+	if err := ClearActiveTaskRef(dir); err != nil {
+		t.Fatalf("ClearActiveTaskRef on missing file should not error: %v", err)
+	}
+}
+
 func TestGateTimingExemptsAutoGates(t *testing.T) {
 	dir := t.TempDir()
 	runGit(t, dir, "init")

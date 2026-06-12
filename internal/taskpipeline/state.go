@@ -49,10 +49,21 @@ func SaveTaskState(root string, state *TaskState) error {
 // Returns nil without error if no task context is detected.
 //
 // Detection priority:
-//  1. Branch-based: feature branch name maps to task ref
-//  2. Fallback: on main/master, scan .forge/tasks/ for a single incomplete task
+//  1. Explicit: .forge/active-task-ref file (written by `forge task start`)
+//  2. Branch-based: feature branch name maps to task ref
+//  3. Fallback: scan .forge/tasks/ for a single incomplete task
 //     (ambiguous when multiple tasks exist — returns nil to avoid false matches)
 func ActiveTaskState(root string) (*TaskState, error) {
+	// Priority 1: explicit active task ref file
+	if ref := readActiveTaskRef(root); ref != "" {
+		state, err := LoadTaskState(root, ref)
+		if err == nil && state != nil && state.CompletedAt == nil {
+			return state, nil
+		}
+		// Stale ref file — fall through
+	}
+
+	// Priority 2: branch-based detection
 	ctx := taskcontext.Detect(root)
 	if ctx.IsSet() {
 		state, err := LoadTaskState(root, ctx.TaskRef)
@@ -65,8 +76,7 @@ func ActiveTaskState(root string) (*TaskState, error) {
 		// Completed task on this branch — fall through to fallback
 	}
 
-	// Fallback: on main/master or when branch detection fails,
-	// look for exactly one incomplete task (unambiguous context).
+	// Priority 3: scan for exactly one incomplete task (unambiguous context)
 	all, err := ListTaskStates(root)
 	if err != nil {
 		return nil, nil
@@ -81,6 +91,38 @@ func ActiveTaskState(root string) (*TaskState, error) {
 		return incomplete[0], nil
 	}
 	return nil, nil
+}
+
+const activeTaskRefFile = "active-task-ref"
+
+// SetActiveTaskRef writes the task ref to .forge/active-task-ref.
+// Called by `forge task start` to make the active task unambiguous
+// regardless of how many incomplete tasks exist.
+func SetActiveTaskRef(root, taskRef string) error {
+	path := filepath.Join(root, ".forge", activeTaskRefFile)
+	return os.WriteFile(path, []byte(taskRef), 0644)
+}
+
+// ClearActiveTaskRef removes the .forge/active-task-ref file.
+// Called by `forge task complete` to clear the active task.
+func ClearActiveTaskRef(root string) error {
+	path := filepath.Join(root, ".forge", activeTaskRefFile)
+	err := os.Remove(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+// readActiveTaskRef reads the active task ref from .forge/active-task-ref.
+// Returns empty string if the file doesn't exist or is empty.
+func readActiveTaskRef(root string) string {
+	path := filepath.Join(root, ".forge", activeTaskRefFile)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
 }
 
 // NewTaskState creates a new task state from a detected context.
