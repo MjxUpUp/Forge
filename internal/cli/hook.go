@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/Harness/forge/internal/checklog"
@@ -129,7 +130,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 	shCmd := exec.Command(bash, tmpPath)
 	shCmd.Dir = root
 	shCmd.Env = append(os.Environ(),
-		"FORGE_FILE_PATH="+fields.FilePath,
+		"FORGE_FILE_PATH="+toRelPath(root, fields.FilePath),
 		"FORGE_CONTENT="+fields.Content,
 		"FORGE_COMMAND="+fields.Command,
 		"FORGE_TOOL_NAME="+hookInput.ToolName,
@@ -258,6 +259,21 @@ func firstNonEmpty(ss ...string) string {
 		}
 	}
 	return ""
+}
+
+// toRelPath converts an absolute file path to a project-root-relative path
+// with forward slashes. This ensures shell script patterns like ".forge/*"
+// work correctly regardless of OS path format.
+// Returns the original path unchanged if conversion fails.
+func toRelPath(root, absPath string) string {
+	if root == "" || absPath == "" {
+		return absPath
+	}
+	rel, err := filepath.Rel(root, absPath)
+	if err != nil {
+		return absPath
+	}
+	return filepath.ToSlash(rel)
 }
 
 func init() {
