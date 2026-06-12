@@ -176,7 +176,7 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 		return &ExecuteResult{
 			GateID:  "task-implement",
 			Passed:  false,
-			Message: fmt.Sprintf("编译失败: %s", string(output)),
+			Message: fmt.Sprintf("build failed: %s", string(output)),
 		}, nil
 	}
 
@@ -201,7 +201,7 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 			return &ExecuteResult{
 				GateID:  "task-implement",
 				Passed:  false,
-				Message: fmt.Sprintf("断言检查失败: %s", string(assertOutput)),
+				Message: fmt.Sprintf("assertion check failed: %s", string(assertOutput)),
 			}, nil
 		}
 	}
@@ -211,7 +211,7 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 		return &ExecuteResult{
 			GateID:  "task-implement",
 			Passed:  false,
-			Message: "未检测到代码变更 — 编译通过但未修改任何文件",
+			Message: "no code changes detected — build passed but no files modified",
 		}, nil
 	}
 
@@ -230,7 +230,7 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 					return &ExecuteResult{
 						GateID:  "task-implement",
 						Passed:  false,
-						Message: "HEAD 未移动：代码在 task-design 通过后没有新提交。先写代码再过 task-implement gate",
+						Message: "HEAD not moved: no new commits since task-design. Write code and commit before passing task-implement",
 					}, nil
 				}
 			}
@@ -240,7 +240,7 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 	return &ExecuteResult{
 		GateID:  "task-implement",
 		Passed:  true,
-		Message: "编译通过，断言检查通过",
+		Message: "build passed, assertion check passed",
 	}, nil
 }
 

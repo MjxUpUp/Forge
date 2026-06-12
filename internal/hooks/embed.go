@@ -205,10 +205,26 @@ fi
 const TaskVerifyHook = `#!/bin/bash
 # task-verify.sh — Stop hook with blocking behavior.
 # Prevents session end when quality issues are found.
+# Allows force-stop after 3 consecutive failures to avoid permanent session trap.
 set -eo pipefail
 
 ROOT="${1:-.}"
 cd "$ROOT" 2>/dev/null || exit 0
+
+# Allow force-stop: set FORGE_SKIP_VERIFY=1 to bypass all checks.
+# This is an escape hatch when the session is permanently trapped.
+if [ "${FORGE_SKIP_VERIFY}" = "1" ]; then
+  echo "PASS [task-verify] Skipped (FORGE_SKIP_VERIFY=1)"
+  exit 0
+fi
+
+# Consecutive failure tracking to prevent infinite stop-retry loops.
+# After 3 failures, warn but allow stop with a summary of issues.
+VERIFY_COUNTER="${TMPDIR:-/tmp}/forge-verify-fail-count"
+FAIL_COUNT=0
+if [ -f "$VERIFY_COUNTER" ]; then
+  FAIL_COUNT=$(cat "$VERIFY_COUNTER" 2>/dev/null || echo "0")
+fi
 
 MESSAGES=""
 
@@ -257,9 +273,17 @@ if [ -f "go.mod" ] && head -1 go.mod | grep -q "github.com/Harness/forge" 2>/dev
 fi
 
 if [ -n "$MESSAGES" ]; then
+  FAIL_COUNT=$((FAIL_COUNT + 1))
+  echo "$FAIL_COUNT" > "$VERIFY_COUNTER"
+  if [ "$FAIL_COUNT" -ge 3 ]; then
+    echo "WARN [task-verify] Allowing stop after $FAIL_COUNT failures. Issues: ${MESSAGES}"
+    rm -f "$VERIFY_COUNTER"
+    exit 0
+  fi
   echo "FAIL [task-verify] Issues found: ${MESSAGES}"
   exit 1
 else
+  rm -f "$VERIFY_COUNTER"
   echo "PASS"
 fi
 `
@@ -437,32 +461,46 @@ CONFIG_CHANGES=$(printf '%s' "$NEW_CHANGES" | grep -E "$CFG_EXT" || true)
 # No protected changes → pass
 [ -z "$SOURCE_CHANGES" ] && [ -z "$CONFIG_CHANGES" ] && { echo "PASS"; exit 0; }
 
-# Helper: revert files
+# Helper: revert files, reporting both successes and failures
 revert_files() {
   local files="$1"
   local reverted=""
+  local failed=""
   while IFS= read -r f; do
     [ -z "$f" ] && continue
     if git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
-      git checkout -- "$f" 2>/dev/null && reverted="${reverted} ${f}"
+      if git checkout -- "$f" 2>/dev/null; then
+        reverted="${reverted} ${f}"
+      else
+        failed="${failed} ${f}"
+      fi
     else
-      rm -f "$f" 2>/dev/null && reverted="${reverted} ${f}"
+      if rm -f "$f" 2>/dev/null; then
+        reverted="${reverted} ${f}"
+      else
+        failed="${failed} ${f}"
+      fi
     fi
   done <<< "$files"
-  echo "$reverted"
+  REVERT_SUCCESS="$reverted"
+  REVERT_FAILED="$failed"
 }
 
 # Self-protection: revert config changes (unless forge command was detected)
 if [ -n "$CONFIG_CHANGES" ] && [ $IS_FORGE_CMD -eq 0 ]; then
-  REVERTED=$(revert_files "$CONFIG_CHANGES")
-  echo "FAIL [file-sentinel] Reverted unauthorized changes to Forge config:${REVERTED}. Use forge commands instead."
+  revert_files "$CONFIG_CHANGES"
+  MSG="FAIL [file-sentinel] Reverted unauthorized changes to Forge config:${REVERT_SUCCESS}."
+  [ -n "$REVERT_FAILED" ] && MSG="${MSG} FAILED to revert:${REVERT_FAILED}."
+  echo "${MSG} Use forge commands instead."
   exit 1
 fi
 
 # Source code changes without active task → revert
 if [ -z "$TASK_REF" ] && [ -n "$SOURCE_CHANGES" ]; then
-  REVERTED=$(revert_files "$SOURCE_CHANGES")
-  echo "FAIL [file-sentinel] Reverted unauthorized code changes (no active task):${REVERTED}. Run: forge task start --ref <type>/<desc> --branch"
+  revert_files "$SOURCE_CHANGES"
+  MSG="FAIL [file-sentinel] Reverted unauthorized code changes (no active task):${REVERT_SUCCESS}."
+  [ -n "$REVERT_FAILED" ] && MSG="${MSG} FAILED to revert:${REVERT_FAILED}."
+  echo "${MSG} Run: forge task start --ref <type>/<desc> --branch"
   exit 1
 fi
 
