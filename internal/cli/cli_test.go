@@ -575,6 +575,9 @@ func TestTaskScoreWorkflow(t *testing.T) {
 	origInterval := os.Getenv("FORGE_GATE_MIN_INTERVAL")
 	os.Setenv("FORGE_GATE_MIN_INTERVAL", "0s")
 	defer os.Setenv("FORGE_GATE_MIN_INTERVAL", origInterval)
+	origWorkActivity := os.Getenv("FORGE_WORK_ACTIVITY")
+	os.Setenv("FORGE_WORK_ACTIVITY", "disable")
+	defer os.Setenv("FORGE_WORK_ACTIVITY", origWorkActivity)
 
 	tmpDir := t.TempDir()
 	runGit(t, tmpDir, "init")
@@ -594,10 +597,6 @@ func TestTaskScoreWorkflow(t *testing.T) {
 	// Create a feature branch
 	runGit(t, tmpDir, "checkout", "-b", "feature/test-scoring")
 
-	// Make a code change on the feature branch (required for task-implement gate)
-	os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte("package main\n\nimport \"fmt\"\n\nfunc main() { fmt.Println(\"hello\") }\n"), 0644)
-	runGit(t, tmpDir, "add", ".")
-	runGit(t, tmpDir, "commit", "-m", "implement feature")
 
 	// Start a task
 	stdout, _, code = runForge(t, tmpDir, "task", "start")
@@ -605,9 +604,21 @@ func TestTaskScoreWorkflow(t *testing.T) {
 		t.Fatalf("forge task start failed: %s", stdout)
 	}
 
-	// Pass all gates
-	gates := []string{"task-understand", "task-design", "task-implement", "task-verify", "task-complete"}
-	for _, g := range gates {
+	// Pass understand and design gates (before writing code)
+	for _, g := range []string{"task-understand", "task-design"} {
+		stdout, _, code = runForge(t, tmpDir, "task", "gate", g)
+		if code != 0 {
+			t.Fatalf("forge task gate %s failed: %s", g, stdout)
+		}
+	}
+
+	// Make a code change AFTER task-design (required for post-design commit check)
+	os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte("package main\n\nimport \"fmt\"\n\nfunc main() { fmt.Println(\"hello\") }\n"), 0644)
+	runGit(t, tmpDir, "add", ".")
+	runGit(t, tmpDir, "commit", "-m", "implement feature")
+
+	// Pass remaining gates
+	for _, g := range []string{"task-implement", "task-verify", "task-complete"} {
 		stdout, _, code = runForge(t, tmpDir, "task", "gate", g)
 		if code != 0 {
 			t.Fatalf("forge task gate %s failed: %s", g, stdout)

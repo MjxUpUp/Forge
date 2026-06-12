@@ -69,7 +69,8 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 
 		// Work activity check: verify actual tool usage (Read, Write, Edit, Grep, etc.)
 		// since the last gate. If only Bash/sleep was used, the agent didn't do real work.
-		if state.TaskRef != "" && minInterval > 0 {
+		// Independent of minInterval â even with timing disabled, substance is still checked.
+		if state.TaskRef != "" && !getDisableWorkActivity() {
 			activity, _ := checklog.WorkActivity(root, state.TaskRef, lastResult.CompletedAt)
 			if activity < 2 {
 				return nil, fmt.Errorf(
@@ -237,4 +238,10 @@ func getGateMinInterval() time.Duration {
 		}
 	}
 	return 60 * time.Second
+}
+
+// getDisableWorkActivity returns whether work activity checking is disabled.
+// Set FORGE_WORK_ACTIVITY=disable to skip the check (for testing only).
+func getDisableWorkActivity() bool {
+	return os.Getenv("FORGE_WORK_ACTIVITY") == "disable"
 }
