@@ -56,6 +56,10 @@ func ActiveTaskState(root string) (*TaskState, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Completed tasks are not active - agent must start a new task.
+	if state.CompletedAt != nil {
+		return nil, nil
+	}
 	return state, nil
 }
 
