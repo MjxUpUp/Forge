@@ -180,11 +180,18 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// Reuse task ref detected earlier for audit traceability.
 	taskRef := activeTaskRef
 
+	// When blocked (e.g. task-guard), clear tool_name to prevent ghost
+	// activity records. A blocked Write should not inflate WorkActivity counts.
+	recordedToolName := hookInput.ToolName
+	if !passed {
+		recordedToolName = ""
+	}
+
 	if err := checklog.Record(root, &checklog.Entry{
 		Check:    checkName,
 		Passed:   passed,
 		Checked:  true,
-		ToolName: hookInput.ToolName,
+		ToolName: recordedToolName,
 		TaskRef:  taskRef,
 		Detail:   truncate(logDetail, maxChecklogDetail),
 	}); err != nil {
