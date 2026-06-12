@@ -320,7 +320,7 @@ const BashGuardHook = `#!/bin/bash
 # bash-guard.sh — PreToolUse hook for Bash.
 # Layer 1: Detect write patterns in Bash commands, block if no active task.
 # Layer 2: Snapshot file state for PostToolUse file-sentinel comparison.
-# Also protects Forge configuration files from modification.
+# Forge command detection for file-sentinel exemption.
 set -eo pipefail
 
 COMMAND="${FORGE_COMMAND:-}"
@@ -338,19 +338,17 @@ SNAPSHOT_FILE="${TMPDIR:-/tmp}/forge-snapshot-${SESSION_ID}"
 has_write_pattern() {
   local cmd="$1"
   # JavaScript file writes
-  printf '%s' "$cmd" | grep -qiE 'writeFile|writeFileSync|fs.write' && return 0
-  # Shell file-writing commands
-  printf '%s' "$cmd" | grep -qiE '(cat[[:space:]]*>|tee[[:space:]]|sed[[:space:]]+-i|cp[[:space:]]|mv[[:space:]]|dd[[:space:]]+of=|curl[[:space:]]+-o|wget[[:space:]]+-O)' && return 0
-  # Python file writes
-  printf '%s' "$cmd" | grep -qiE "open[[:space:]]*(.+w" && return 0
-  # Shell redirect to file (exclude /dev/null, 2>)
-  printf '%s' "$cmd" | grep -oE '>[[:space:]]*[^ &|>][^ &|>]*' | grep -qvF '/dev/null' && return 0
+  printf '%s' "$cmd" | grep -qiE 'writeFile|writeFileSync|fs\.write' && return 0
+  # Shell file-writing commands (space after command name)
+  printf '%s' "$cmd" | grep -qiE '(cat +>|tee +|sed +-i |cp +|mv +|dd +of=|curl +-o |wget +-O )' && return 0
+  # Shell redirect to file: "> path" but NOT "=>" or "2>"
+  printf '%s' "$cmd" | grep -E '[^=]> [^ &/]' | grep -qvF '/dev/null' && return 0
   return 1
 }
 
 # --- Forge command detection (for file-sentinel exemption) ---
 IS_FORGE_CMD=0
-printf '%s' "$COMMAND" | grep -qE '(^|[[:space:]]|&&|[[:space:]]*[|])[[:space:]]*forge[[:space:]]' && IS_FORGE_CMD=1
+printf '%s' "$COMMAND" | grep -qE '(^| )forge ' && IS_FORGE_CMD=1
 
 # --- Check write patterns + task state ---
 if has_write_pattern "$COMMAND"; then
