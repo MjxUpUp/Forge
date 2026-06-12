@@ -47,16 +47,16 @@ func TestTaskStateNextGate(t *testing.T) {
 	}
 
 	// Pass first gate
-	state.RecordGateResult("task-understand", true)
+	state.RecordGateResult("task-understand", true, "")
 	if got := state.NextGate(); got != "task-design" {
 		t.Errorf("NextGate after understand = %q, want task-design", got)
 	}
 
 	// Pass all gates
-	state.RecordGateResult("task-design", true)
-	state.RecordGateResult("task-implement", true)
-	state.RecordGateResult("task-verify", true)
-	state.RecordGateResult("task-complete", true)
+	state.RecordGateResult("task-design", true, "")
+	state.RecordGateResult("task-implement", true, "")
+	state.RecordGateResult("task-verify", true, "")
+	state.RecordGateResult("task-complete", true, "")
 	if got := state.NextGate(); got != "" {
 		t.Errorf("NextGate after all passed = %q, want empty", got)
 	}
@@ -70,7 +70,7 @@ func TestTaskStateIsComplete(t *testing.T) {
 
 	// Pass all gates
 	for _, g := range DefaultGates() {
-		state.RecordGateResult(g.ID, true)
+		state.RecordGateResult(g.ID, true, "")
 	}
 	if !state.IsComplete() {
 		t.Error("all gates passed should be complete")
@@ -79,8 +79,8 @@ func TestTaskStateIsComplete(t *testing.T) {
 
 func TestTaskStateFailedGate(t *testing.T) {
 	state := &TaskState{}
-	state.RecordGateResult("task-understand", true)
-	state.RecordGateResult("task-design", false)
+	state.RecordGateResult("task-understand", true, "")
+	state.RecordGateResult("task-design", false, "")
 
 	if state.NextGate() != "task-design" {
 		t.Errorf("NextGate after fail = %q, want task-design", state.NextGate())
@@ -94,25 +94,25 @@ func TestRecordGateResultDedup(t *testing.T) {
 	state := &TaskState{}
 
 	// Pass gate once
-	state.RecordGateResult("task-understand", true)
+	state.RecordGateResult("task-understand", true, "")
 	if len(state.History) != 1 {
 		t.Fatalf("History len after 1 pass = %d, want 1", len(state.History))
 	}
 
 	// Pass same gate again — should be deduplicated (no-op)
-	state.RecordGateResult("task-understand", true)
+	state.RecordGateResult("task-understand", true, "")
 	if len(state.History) != 1 {
 		t.Errorf("History len after duplicate pass = %d, want 1 (should dedup)", len(state.History))
 	}
 
 	// Fail a passed gate — should record (not dedup for failures)
-	state.RecordGateResult("task-understand", false)
+	state.RecordGateResult("task-understand", false, "")
 	if len(state.History) != 2 {
 		t.Errorf("History len after fail of passed gate = %d, want 2", len(state.History))
 	}
 
 	// Re-pass after failure — dedup still applies (gate was passed in entry 1)
-	state.RecordGateResult("task-understand", true)
+	state.RecordGateResult("task-understand", true, "")
 	if len(state.History) != 2 {
 		t.Errorf("History len after re-pass = %d, want 2 (dedup: gate was already passed)", len(state.History))
 	}
@@ -121,11 +121,11 @@ func TestRecordGateResultDedup(t *testing.T) {
 func TestRecordGateResultDedupPrevents25x(t *testing.T) {
 	// Simulate the exact DevWorkbench scenario: stop hook re-runs task-verify 25 times
 	state := &TaskState{}
-	state.RecordGateResult("task-understand", true)
-	state.RecordGateResult("task-design", true)
+	state.RecordGateResult("task-understand", true, "")
+	state.RecordGateResult("task-design", true, "")
 
 	// Pass task-verify once (legitimate)
-	state.RecordGateResult("task-verify", true)
+	state.RecordGateResult("task-verify", true, "")
 	verifyCount := 0
 	for _, r := range state.History {
 		if r.Gate == "task-verify" && r.Passed {
@@ -138,7 +138,7 @@ func TestRecordGateResultDedupPrevents25x(t *testing.T) {
 
 	// Stop hook re-runs task-verify 24 more times — should all be no-ops
 	for i := 0; i < 24; i++ {
-		state.RecordGateResult("task-verify", true)
+		state.RecordGateResult("task-verify", true, "")
 	}
 
 	verifyCount = 0
@@ -164,7 +164,7 @@ func TestSaveAndLoadTaskState(t *testing.T) {
 		DetectedAt: time.Now(),
 	}
 	state := NewTaskState(ctx)
-	state.RecordGateResult("task-understand", true)
+	state.RecordGateResult("task-understand", true, "")
 
 	if err := SaveTaskState(dir, state); err != nil {
 		t.Fatalf("Save failed: %v", err)
@@ -222,8 +222,8 @@ func TestNewTaskState(t *testing.T) {
 
 func TestCompletedGates(t *testing.T) {
 	state := &TaskState{}
-	state.RecordGateResult("task-understand", true)
-	state.RecordGateResult("task-design", true)
+	state.RecordGateResult("task-understand", true, "")
+	state.RecordGateResult("task-design", true, "")
 
 	completed := state.CompletedGates()
 	if len(completed) != 2 {
@@ -256,11 +256,11 @@ func TestListTaskStates(t *testing.T) {
 
 func TestMarkComplete(t *testing.T) {
 	state := &TaskState{}
-	state.RecordGateResult("task-understand", true)
-	state.RecordGateResult("task-design", true)
-	state.RecordGateResult("task-implement", true)
-	state.RecordGateResult("task-verify", true)
-	state.RecordGateResult("task-complete", true)
+	state.RecordGateResult("task-understand", true, "")
+	state.RecordGateResult("task-design", true, "")
+	state.RecordGateResult("task-implement", true, "")
+	state.RecordGateResult("task-verify", true, "")
+	state.RecordGateResult("task-complete", true, "")
 
 	if !state.IsComplete() {
 		t.Error("should be complete")
@@ -426,7 +426,7 @@ func TestGateTimingRejectsRapidFire(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first gate should pass: %v", err)
 	}
-	state.RecordGateResult(result.GateID, result.Passed)
+	state.RecordGateResult(result.GateID, result.Passed, "")
 
 	// Try passing design immediately — should be rejected
 	_, err = ExecuteTaskGate(dir, "task-design", state)
@@ -448,7 +448,7 @@ func TestGateTimingAllowsAfterInterval(t *testing.T) {
 	runGit(t, dir, "commit", "-m", "initial")
 
 	// Set very short interval
-	os.Setenv("FORGE_GATE_MIN_INTERVAL", "1s")
+	os.Setenv("FORGE_GATE_MIN_INTERVAL", "0s")
 	defer os.Unsetenv("FORGE_GATE_MIN_INTERVAL")
 
 	state := &TaskState{
@@ -461,7 +461,7 @@ func TestGateTimingAllowsAfterInterval(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first gate should pass: %v", err)
 	}
-	state.RecordGateResult(result.GateID, result.Passed)
+	state.RecordGateResult(result.GateID, result.Passed, "")
 
 	// Wait for interval to pass
 	time.Sleep(1100 * time.Millisecond)
@@ -492,8 +492,8 @@ func TestGateTimingExemptsAutoGates(t *testing.T) {
 	}
 
 	// Pass first two gates (non-auto)
-	state.RecordGateResult("task-understand", true)
-	state.RecordGateResult("task-design", true)
+	state.RecordGateResult("task-understand", true, "")
+	state.RecordGateResult("task-design", true, "")
 
 	// Auto gate (task-implement) should pass immediately despite long interval
 	_, err := ExecuteTaskGate(dir, "task-implement", state)

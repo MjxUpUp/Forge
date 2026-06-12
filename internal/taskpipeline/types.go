@@ -37,6 +37,7 @@ type TaskGateResult struct {
 	Gate        string    `json:"gate"`
 	Passed      bool      `json:"passed"`
 	CompletedAt time.Time `json:"completed_at"`
+	HeadCommit  string    `json:"head_commit,omitempty"` // git HEAD at gate pass time
 }
 
 // IsComplete returns true if all task gates have passed.
@@ -75,7 +76,7 @@ func (s *TaskState) MarkComplete() {
 // If the gate was already passed, this is a no-op (prevents duplicate history
 // entries from stop hook re-verification). A previously failed gate can be
 // retried and will add a new entry.
-func (s *TaskState) RecordGateResult(gateID string, passed bool) {
+func (s *TaskState) RecordGateResult(gateID string, passed bool, headCommit string) {
 	// Skip if this gate was already passed — prevents 25x duplicate entries
 	// from stop hook repeatedly verifying the same gate.
 	if passed && s.gatePassed(gateID) {
@@ -102,6 +103,17 @@ func (s *TaskState) gatePassed(gateID string) bool {
 		}
 	}
 	return false
+}
+
+// designGateCommit returns the HEAD commit recorded when task-design was passed.
+// Returns empty string if task-design has not been passed or no commit was recorded.
+func (s *TaskState) designGateCommit() string {
+	for i := len(s.History) - 1; i >= 0; i-- {
+		if s.History[i].Gate == "task-design" && s.History[i].Passed {
+			return s.History[i].HeadCommit
+		}
+	}
+	return ""
 }
 
 // CompletedGates returns a list of passed gate IDs.
