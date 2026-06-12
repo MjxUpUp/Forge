@@ -203,6 +203,40 @@ func TestWorkActivityFiltersByTask(t *testing.T) {
 	}
 }
 
+func TestWorkActivityCountsLegacyEmptyTaskRef(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Now()
+
+	writeTestEntries(t, dir, []*Entry{
+		{
+			Check:      "tool-track",
+			Passed:     true,
+			Checked:    true,
+			ToolName:   "Read",
+			TaskRef:    "", // legacy entry without task_ref
+			RecordedAt: now,
+		},
+		{
+			Check:      "tool-track",
+			Passed:     true,
+			Checked:    true,
+			ToolName:   "Grep",
+			TaskRef:    "", // legacy entry without task_ref
+			RecordedAt: now.Add(100 * time.Millisecond),
+		},
+	})
+
+	since := now.Add(-1 * time.Second)
+	count, err := WorkActivity(dir, "some-task", since)
+	if err != nil {
+		t.Fatalf("WorkActivity failed: %v", err)
+	}
+
+	if count != 2 {
+		t.Errorf("WorkActivity count = %d, want 2 (legacy entries with empty task_ref should be counted)", count)
+	}
+}
+
 func TestWorkActivityZeroWhenNoActivity(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Now()

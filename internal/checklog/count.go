@@ -31,7 +31,14 @@ func WorkActivity(root string, taskRef string, since time.Time) (int, error) {
 	lastSeen := map[string]time.Time{}
 	count := 0
 	for _, e := range entries {
-		if !e.RecordedAt.After(since) || e.TaskRef != taskRef || !workTools[e.ToolName] {
+		if !e.RecordedAt.After(since) || !workTools[e.ToolName] {
+			continue
+		}
+		// Skip entries that belong to a different task.
+		// Entries without task_ref (legacy or hooks running outside task context)
+		// are counted — otherwise WorkActivity returns 0 for projects that
+		// haven't re-initialized forge since the task_ref field was added.
+		if e.TaskRef != taskRef && e.TaskRef != "" {
 			continue
 		}
 		if last, ok := lastSeen[e.ToolName]; ok && e.RecordedAt.Sub(last) < 500*time.Millisecond {
