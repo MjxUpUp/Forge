@@ -110,8 +110,8 @@ func TestInitCreatesFiles(t *testing.T) {
 			shCount++
 		}
 	}
-	if shCount != 5 {
-		t.Fatalf("expected 5 .sh files in hooks/, got %d", shCount)
+	if shCount != 6 {
+		t.Fatalf("expected 6 .sh files in hooks/, got %d", shCount)
 	}
 
 	// .claude/settings.local.json exists

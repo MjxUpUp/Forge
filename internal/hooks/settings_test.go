@@ -103,7 +103,7 @@ func TestGenerateSettingsUsesForgeHook(t *testing.T) {
 	content := string(data)
 
 	// All hook invocations should route through "forge hook <name>"
-	for _, name := range []string{"auto-compile", "assertion-check", "experience-check", "task-verify"} {
+	for _, name := range []string{"auto-compile", "assertion-check", "experience-check", "task-verify", "task-guard"} {
 		expected := "forge hook " + name
 		if !strings.Contains(content, expected) {
 			t.Errorf("settings missing %q command", expected)
@@ -137,7 +137,7 @@ func TestWriteHookTemplatesCreatesFiles(t *testing.T) {
 	}
 
 	hooksDir := filepath.Join(dir, "hooks")
-	expected := []string{"auto-compile.sh", "assertion-check.sh", "experience-check.sh", "task-verify.sh"}
+	expected := []string{"auto-compile.sh", "assertion-check.sh", "experience-check.sh", "task-verify.sh", "task-guard.sh"}
 	for _, name := range expected {
 		path := filepath.Join(hooksDir, name)
 		if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -222,6 +222,31 @@ func TestTaskVerifyHookContainsMasterCheck(t *testing.T) {
 	}
 	if !containsString(TaskVerifyHook, "forge task start") {
 		t.Error("TaskVerifyHook missing 'forge task start' hint in warning")
+	}
+}
+
+
+func TestTaskGuardHookContainsKeyChecks(t *testing.T) {
+	if !containsString(TaskGuardHook, "FORGE_TASK_REF") {
+		t.Error("TaskGuardHook missing FORGE_TASK_REF check")
+	}
+	if !containsString(TaskGuardHook, "FORGE_TASK_GATE") {
+		t.Error("TaskGuardHook missing FORGE_TASK_GATE check")
+	}
+	if !containsString(TaskGuardHook, "forge task start") {
+		t.Error("TaskGuardHook missing 'forge task start' guidance")
+	}
+	if !containsString(TaskGuardHook, "task-design") {
+		t.Error("TaskGuardHook missing task-design gate check")
+	}
+	if !containsString(TaskGuardHook, "WARN") {
+		t.Error("TaskGuardHook missing WARN for pre-design state")
+	}
+}
+
+func TestTaskGuardHookPassesNonCodeFiles(t *testing.T) {
+	if !containsString(TaskGuardHook, ".(go|rs|ts|tsx|js|jsx|py|java|rb|zig|nim)") {
+		t.Error("TaskGuardHook missing code file extension filter")
 	}
 }
 
