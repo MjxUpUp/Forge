@@ -47,20 +47,40 @@ func SaveTaskState(root string, state *TaskState) error {
 
 // ActiveTaskState detects the current task context and loads the matching state.
 // Returns nil without error if no task context is detected.
+//
+// Detection priority:
+//  1. Branch-based: feature branch name maps to task ref
+//  2. Fallback: on main/master, scan .forge/tasks/ for a single incomplete task
+//     (ambiguous when multiple tasks exist — returns nil to avoid false matches)
 func ActiveTaskState(root string) (*TaskState, error) {
 	ctx := taskcontext.Detect(root)
-	if !ctx.IsSet() {
-		return nil, nil
+	if ctx.IsSet() {
+		state, err := LoadTaskState(root, ctx.TaskRef)
+		if err != nil {
+			return nil, err
+		}
+		if state.CompletedAt == nil {
+			return state, nil
+		}
+		// Completed task on this branch — fall through to fallback
 	}
-	state, err := LoadTaskState(root, ctx.TaskRef)
+
+	// Fallback: on main/master or when branch detection fails,
+	// look for exactly one incomplete task (unambiguous context).
+	all, err := ListTaskStates(root)
 	if err != nil {
-		return nil, err
-	}
-	// Completed tasks are not active - agent must start a new task.
-	if state.CompletedAt != nil {
 		return nil, nil
 	}
-	return state, nil
+	var incomplete []*TaskState
+	for _, s := range all {
+		if s.CompletedAt == nil {
+			incomplete = append(incomplete, s)
+		}
+	}
+	if len(incomplete) == 1 {
+		return incomplete[0], nil
+	}
+	return nil, nil
 }
 
 // NewTaskState creates a new task state from a detected context.

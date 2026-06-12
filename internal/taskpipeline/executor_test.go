@@ -520,6 +520,212 @@ func TestIsLastGate(t *testing.T) {
 	}
 }
 
+func TestIsPreviousGateAuto(t *testing.T) {
+	state := &TaskState{}
+	state.RecordGateResult("task-understand", true, "")
+	if isPreviousGateAuto(state) {
+		t.Error("task-understand is not auto")
+	}
+
+	state.RecordGateResult("task-design", true, "")
+	if isPreviousGateAuto(state) {
+		t.Error("task-design is not auto")
+	}
+
+	state.RecordGateResult("task-implement", true, "")
+	if !isPreviousGateAuto(state) {
+		t.Error("task-implement IS auto — should return true")
+	}
+
+	state.RecordGateResult("task-verify", true, "")
+	if isPreviousGateAuto(state) {
+		t.Error("task-verify is not auto")
+	}
+}
+
+func TestAutoGateSkipsTimingForNextGate(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "initial")
+
+	// Set long interval — next gate after auto should skip it
+	os.Setenv("FORGE_GATE_MIN_INTERVAL", "10m")
+	defer os.Unsetenv("FORGE_GATE_MIN_INTERVAL")
+	os.Setenv("FORGE_WORK_ACTIVITY", "disable")
+	defer os.Unsetenv("FORGE_WORK_ACTIVITY")
+
+	state := &TaskState{
+		TaskRef: "test-auto-next",
+		Branch:  "feat/test",
+	}
+
+	// Pass all gates up to task-implement (auto)
+	state.RecordGateResult("task-understand", true, "")
+	state.RecordGateResult("task-design", true, "")
+	state.RecordGateResult("task-implement", true, "")
+
+	// task-verify should pass immediately despite 10m interval
+	// because previous gate (task-implement) is auto
+	_, err := ExecuteTaskGate(dir, "task-verify", state)
+	if err != nil {
+		t.Fatalf("task-verify after auto task-implement should skip timing: %v", err)
+	}
+}
+
+func TestActiveTaskState_BranchDetection(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
+
+	// Create task with branch ref matching the branch name
+	ctx := &taskcontext.Context{
+		Source:     "explicit",
+		TaskRef:    "feat/test-branch",
+		Branch:     "feat/test-branch",
+		Summary:    "test-branch",
+		DetectedAt: time.Now(),
+	}
+	state := NewTaskState(ctx)
+	SaveTaskState(dir, state)
+
+	// Checkout matching branch
+	runGit(t, dir, "checkout", "-b", "feat/test-branch")
+
+	active, err := ActiveTaskState(dir)
+	if err != nil {
+		t.Fatalf("ActiveTaskState failed: %v", err)
+	}
+	if active == nil {
+		t.Fatal("ActiveTaskState should detect task on matching feature branch")
+	}
+	if active.TaskRef != "feat/test-branch" {
+		t.Errorf("TaskRef = %q, want feat/test-branch", active.TaskRef)
+	}
+}
+
+func TestActiveTaskState_FallbackSingleIncompleteOnMaster(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
+
+	// Stay on master (default branch)
+	// Create a single incomplete task
+	ctx := &taskcontext.Context{
+		Source:     "explicit",
+		TaskRef:    "fix/skill-sync",
+		Branch:     "master",
+		Summary:    "sync skills",
+		DetectedAt: time.Now(),
+	}
+	state := NewTaskState(ctx)
+	SaveTaskState(dir, state)
+
+	// On master, branch detection returns empty — fallback should find the task
+	active, err := ActiveTaskState(dir)
+	if err != nil {
+		t.Fatalf("ActiveTaskState failed: %v", err)
+	}
+	if active == nil {
+		t.Fatal("ActiveTaskState fallback should find single incomplete task on master")
+	}
+	if active.TaskRef != "fix/skill-sync" {
+		t.Errorf("TaskRef = %q, want fix/skill-sync", active.TaskRef)
+	}
+}
+
+func TestActiveTaskState_FallbackAmbiguousMultipleIncomplete(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
+
+	// Create two incomplete tasks
+	ctx1 := &taskcontext.Context{
+		Source: "explicit", TaskRef: "fix/one",
+		Branch: "master", DetectedAt: time.Now(),
+	}
+	ctx2 := &taskcontext.Context{
+		Source: "explicit", TaskRef: "fix/two",
+		Branch: "master", DetectedAt: time.Now(),
+	}
+	SaveTaskState(dir, NewTaskState(ctx1))
+	SaveTaskState(dir, NewTaskState(ctx2))
+
+	// Ambiguous — should return nil
+	active, err := ActiveTaskState(dir)
+	if err != nil {
+		t.Fatalf("ActiveTaskState failed: %v", err)
+	}
+	if active != nil {
+		t.Error("ActiveTaskState should return nil with multiple incomplete tasks (ambiguous)")
+	}
+}
+
+func TestActiveTaskState_FallbackIgnoresCompleted(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
+
+	// Create one completed task
+	ctx1 := &taskcontext.Context{
+		Source: "explicit", TaskRef: "fix/done",
+		Branch: "master", DetectedAt: time.Now(),
+	}
+	completed := NewTaskState(ctx1)
+	for _, g := range DefaultGates() {
+		completed.RecordGateResult(g.ID, true, "")
+	}
+	completed.MarkComplete()
+	SaveTaskState(dir, completed)
+
+	// Create one incomplete task
+	ctx2 := &taskcontext.Context{
+		Source: "explicit", TaskRef: "fix/active",
+		Branch: "master", DetectedAt: time.Now(),
+	}
+	SaveTaskState(dir, NewTaskState(ctx2))
+
+	// Should find the single incomplete task (ignoring completed ones)
+	active, err := ActiveTaskState(dir)
+	if err != nil {
+		t.Fatalf("ActiveTaskState failed: %v", err)
+	}
+	if active == nil {
+		t.Fatal("ActiveTaskState should find the single incomplete task (ignoring completed)")
+	}
+	if active.TaskRef != "fix/active" {
+		t.Errorf("TaskRef = %q, want fix/active", active.TaskRef)
+	}
+}
+
+func TestActiveTaskState_NoTasks(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
+
+	// No tasks at all — should return nil
+	active, err := ActiveTaskState(dir)
+	if err != nil {
+		t.Fatalf("ActiveTaskState failed: %v", err)
+	}
+	if active != nil {
+		t.Error("ActiveTaskState should return nil with no tasks")
+	}
+}
+
 func TestGateTimingExemptsAutoGates(t *testing.T) {
 	dir := t.TempDir()
 	runGit(t, dir, "init")

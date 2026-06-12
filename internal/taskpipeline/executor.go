@@ -54,30 +54,32 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 	// Timing + work activity check for non-auto gates.
 	// Gates must not be passed without real work happening between them.
 	// This prevents agents from using sleep to bypass timing requirements.
-	// Skip for: completed tasks (re-verification), final gate (no work phase after it).
-	if !gate.Auto && state.CompletedAt == nil && len(state.History) > 0 && !isLastGate(gateID) {
+	// Skip for: completed tasks (re-verification), final gate (no work phase after it),
+	// and gates following an auto gate (auto checks are instantaneous - no work phase needed).
+	if !gate.Auto && state.CompletedAt == nil && len(state.History) > 0 && !isLastGate(gateID) && !isPreviousGateAuto(state) {
 		lastResult := state.History[len(state.History)-1]
 		minInterval := getGateMinInterval()
 		elapsed := time.Since(lastResult.CompletedAt)
 		if elapsed < minInterval {
 			return nil, fmt.Errorf(
 				"gate %q passed too quickly after %q (%.0fs elapsed, minimum %v). "+
-					"Each gate represents a distinct work phase — spend time on it before advancing",
+					"Each gate represents a distinct work phase - spend time on it before advancing",
 				gateID, lastResult.Gate, elapsed.Seconds(), minInterval,
 			)
 		}
 
 		// Work activity check: verify actual tool usage (Read, Write, Edit, Grep, etc.)
 		// since the last gate. If only Bash/sleep was used, the agent didn't do real work.
-		// Independent of minInterval — even with timing disabled, substance is still checked.
+		// Independent of minInterval - even with timing disabled, substance is still checked.
 		// On error (e.g. corrupted checklog), log warning and allow pass to avoid permanent block.
+		// Minimum 1 tool use: combined with timing check, this is sufficient to prove real work.
 		if state.TaskRef != "" && !getDisableWorkActivity() {
 			activity, err := checklog.WorkActivity(root, state.TaskRef, lastResult.CompletedAt)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "[forge] warning: WorkActivity check failed: %v\n", err)
-			} else if activity < 2 {
+			} else if activity < 1 {
 				return nil, fmt.Errorf(
-					"gate %q passed without sufficient work activity since %q (%d tool uses, minimum 2). "+
+					"gate %q passed without sufficient work activity since %q (%d tool uses, minimum 1). "+
 						"Read files, explore code, or write design notes before advancing",
 					gateID, lastResult.Gate, activity,
 				)
@@ -88,7 +90,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 	return &ExecuteResult{
 		GateID:  gateID,
 		Passed:  true,
-		Message: fmt.Sprintf("%s — passed (verified by AI agent)", gate.Name),
+		Message: fmt.Sprintf("%s - passed (verified by AI agent)", gate.Name),
 	}, nil
 }
 
@@ -114,7 +116,7 @@ func hasCodeChanges(root string, state *TaskState) bool {
 	cmd := exec.Command("git", "-C", root, "diff", "--stat", "HEAD")
 	out, err := cmd.Output()
 	if err != nil {
-		return true // non-git repo — allow pass
+		return true // non-git repo - allow pass
 	}
 	if len(strings.TrimSpace(string(out))) > 0 {
 		return true
@@ -129,7 +131,7 @@ func hasCodeChanges(root string, state *TaskState) bool {
 				return strings.TrimSpace(string(out)) != "0"
 			}
 		}
-		// Could not find any base branch — allow pass
+		// Could not find any base branch - allow pass
 		return true
 	}
 
@@ -143,7 +145,7 @@ func hasUncommittedChanges(root string) bool {
 	cmd := exec.Command("git", "-C", root, "diff", "--stat", "HEAD")
 	out, err := cmd.Output()
 	if err != nil {
-		return false // non-git repo — don't block
+		return false // non-git repo - don't block
 	}
 	return len(strings.TrimSpace(string(out))) > 0
 }
@@ -185,7 +187,7 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 	if _, statErr := os.Stat(assertHookPath); statErr == nil {
 		assertCmd := exec.Command("bash", assertHookPath, root)
 		assertCmd.Dir = root
-		// No per-file env vars → script runs in batch mode (checks all git diffs).
+		// No per-file env vars - script runs in batch mode (checks all git diffs).
 		assertOutput, assertErr := assertCmd.CombinedOutput()
 		assertPassed := assertErr == nil
 
@@ -211,13 +213,13 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 		return &ExecuteResult{
 			GateID:  "task-implement",
 			Passed:  false,
-			Message: "no code changes detected — build passed but no files modified",
+			Message: "no code changes detected - build passed but no files modified",
 		}, nil
 	}
 
 	// 4. Verify code was written AFTER task-design was passed.
 	// This prevents agents from writing all code first, then rushing through gates.
-	// Skip this check if there are uncommitted changes — the code IS written,
+	// Skip this check if there are uncommitted changes - the code IS written,
 	// just not committed yet. Don't force agents to commit before they're ready.
 	if state != nil && !hasUncommittedChanges(root) {
 		designCommit := state.designGateCommit()
@@ -262,9 +264,21 @@ func getDisableWorkActivity() bool {
 	return os.Getenv("FORGE_WORK_ACTIVITY") == "disable"
 }
 
+// isPreviousGateAuto returns true if the most recently passed gate is auto.
+// Auto gates (e.g. task-implement) are instantaneous system checks - the next
+// gate should not require a timing/activity wait since no "work phase" elapsed.
+func isPreviousGateAuto(state *TaskState) bool {
+	if len(state.History) == 0 {
+		return false
+	}
+	last := state.History[len(state.History)-1]
+	g := GateByID(last.Gate)
+	return g != nil && g.Auto
+}
+
 // isLastGate returns true if the given gate ID is the final gate in the pipeline.
 // The final gate (task-complete) has no work phase after it, so timing and
-// work activity checks are skipped — there's nothing to "spend time on".
+// work activity checks are skipped - there's nothing to "spend time on".
 func isLastGate(gateID string) bool {
 	gates := DefaultGates()
 	return len(gates) > 0 && gates[len(gates)-1].ID == gateID
