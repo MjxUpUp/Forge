@@ -13,6 +13,7 @@ var embeddedHooks = map[string]string{
 	"assertion-check":  AssertionCheckHook,
 	"experience-check": ExperienceCheckHook,
 	"task-verify":      TaskVerifyHook,
+	"task-guard":       TaskGuardHook,
 	"tool-track":       ToolTrackHook,
 }
 
@@ -60,6 +61,7 @@ func GenerateSettings(projectDir string) error {
 				{
 					Matcher: "Write|Edit",
 					Hooks: []hookEntry{
+						{Type: "command", Command: "forge hook task-guard"},
 						{Type: "command", Command: "forge hook assertion-check"},
 						{Type: "command", Command: "forge hook experience-check"},
 					},
@@ -97,6 +99,7 @@ func WriteHookTemplates(forgeDir string) error {
 		"assertion-check.sh": AssertionCheckHook,
 		"experience-check.sh": ExperienceCheckHook,
 		"task-verify.sh":     TaskVerifyHook,
+		"task-guard.sh":     TaskGuardHook,
 		"tool-track.sh":      ToolTrackHook,
 	}
 
@@ -116,6 +119,7 @@ func HookNames() []string {
 		"assertion-check.sh",
 		"experience-check.sh",
 		"task-verify.sh",
+		"task-guard.sh",
 		"tool-track.sh",
 	}
 }

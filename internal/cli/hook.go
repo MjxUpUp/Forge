@@ -96,6 +96,14 @@ func runHook(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// 2b. Detect active task for task-guard hook context.
+	var activeTaskRef string
+	var activeTaskGate string
+	if active, err := taskpipeline.ActiveTaskState(root); err == nil && active != nil {
+		activeTaskRef = active.TaskRef
+		activeTaskGate = active.CurrentGate
+	}
+
 	// 3. Write embedded script to temp file.
 	tmpFile, err := os.CreateTemp("", "forge-hook-*.sh")
 	if err != nil {
@@ -123,6 +131,8 @@ func runHook(cmd *cobra.Command, args []string) error {
 		"FORGE_FILE_PATH="+fields.FilePath,
 		"FORGE_CONTENT="+fields.Content,
 		"FORGE_TOOL_NAME="+hookInput.ToolName,
+			"FORGE_TASK_REF="+activeTaskRef,
+			"FORGE_TASK_GATE="+activeTaskGate,
 	)
 
 	var stdoutBuf, stderrBuf bytes.Buffer
@@ -167,11 +177,8 @@ func runHook(cmd *cobra.Command, args []string) error {
 	checkName := checklog.CheckName(name)
 	logDetail := firstNonEmpty(stderr, stdout, "completed")
 
-	// Detect active task for audit traceability.
-	var taskRef string
-	if active, err := taskpipeline.ActiveTaskState(root); err == nil && active != nil {
-		taskRef = active.TaskRef
-	}
+	// Reuse task ref detected earlier for audit traceability.
+	taskRef := activeTaskRef
 
 	if err := checklog.Record(root, &checklog.Entry{
 		Check:    checkName,

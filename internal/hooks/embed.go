@@ -264,6 +264,41 @@ else
 fi
 `
 
+const TaskGuardHook = `#!/bin/bash
+# task-guard.sh — PreToolUse hook for Write|Edit.
+# Blocks code file writes when no active task exists.
+# Progressive enforcement: BLOCK (no task) -> WARN (pre-design) -> PASS (post-design).
+set -eo pipefail
+
+FILE_PATH="${FORGE_FILE_PATH:-}"
+TASK_REF="${FORGE_TASK_REF:-}"
+TASK_GATE="${FORGE_TASK_GATE:-}"
+
+# No file path (batch mode or non-file tool) — allow
+[ -z "$FILE_PATH" ] && exit 0
+
+# Not a source code file — allow
+printf '%s' "$FILE_PATH" | grep -qE '\.(go|rs|ts|tsx|js|jsx|py|java|rb|zig|nim)$' || exit 0
+
+# Test files — always allow (TDD workflow)
+printf '%s' "$FILE_PATH" | grep -qE '(_test\.|_spec\.|\.test\.|\.spec\.|test/|tests/|__tests__/)' && exit 0
+
+# No active task — block
+if [ -z "$TASK_REF" ]; then
+  echo "FAIL [task-guard] No active task. Code changes require a task. Run: forge task start --ref <type>/<desc> --branch"
+  exit 1
+fi
+
+# Task in task-understand stage — allow with warning
+case "$TASK_GATE" in
+  task-understand)
+    echo "WARN [task-guard] Task ${TASK_REF} has not passed task-design gate yet. Consider: forge task gate task-understand --ref ${TASK_REF}" >&2
+    ;;
+esac
+
+echo "PASS"
+`
+
 const ToolTrackHook = `#!/bin/bash
 # tool-track.sh — PostToolUse hook for non-write tools.
 # Records tool usage for scoring. Always passes (non-blocking).
