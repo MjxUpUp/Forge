@@ -354,15 +354,23 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
-	} else {
-		state, err = taskpipeline.ActiveTaskState(root)
-		if err != nil {
-			return fmt.Errorf("failed to load task state: %w", err)
+		} else {
+			state, err = taskpipeline.ActiveTaskState(root)
+			if err != nil {
+				return fmt.Errorf("failed to load task state: %w", err)
+			}
+			// Fallback: task completed all gates but MarkComplete was called,
+			// so ActiveTaskState returns nil. Load via branch context.
+			if state == nil {
+				ctx := taskcontext.Detect(root)
+				if ctx.IsSet() {
+					state, _ = taskpipeline.LoadTaskState(root, ctx.TaskRef)
+				}
+			}
 		}
-	}
-	if state == nil {
-		return fmt.Errorf("no active task")
-	}
+		if state == nil {
+			return fmt.Errorf("no active task. Run forge task start first")
+		}
 
 	if !state.IsComplete() {
 		return fmt.Errorf("task not complete. Missing gates: %s", missingGates(state))
@@ -547,15 +555,22 @@ func runTaskScore(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
-	} else {
-		state, err = taskpipeline.ActiveTaskState(root)
-		if err != nil {
-			return fmt.Errorf("failed to load task state: %w", err)
+		} else {
+			state, err = taskpipeline.ActiveTaskState(root)
+			if err != nil {
+				return fmt.Errorf("failed to load task state: %w", err)
+			}
+			// Fallback: completed tasks are not active but can still be scored.
+			if state == nil {
+				ctx := taskcontext.Detect(root)
+				if ctx.IsSet() {
+					state, _ = taskpipeline.LoadTaskState(root, ctx.TaskRef)
+				}
+			}
 		}
-	}
-	if state == nil {
-		return fmt.Errorf("no active task")
-	}
+		if state == nil {
+			return fmt.Errorf("no active task")
+		}
 
 	// Score if not yet scored
 	if state.Score == nil {
