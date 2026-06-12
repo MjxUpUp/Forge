@@ -450,6 +450,8 @@ func TestGateTimingAllowsAfterInterval(t *testing.T) {
 	// Set very short interval
 	os.Setenv("FORGE_GATE_MIN_INTERVAL", "0s")
 	defer os.Unsetenv("FORGE_GATE_MIN_INTERVAL")
+	os.Setenv("FORGE_WORK_ACTIVITY", "disable")
+	defer os.Unsetenv("FORGE_WORK_ACTIVITY")
 
 	state := &TaskState{
 		TaskRef: "test-delayed",
@@ -485,6 +487,8 @@ func TestGateTimingExemptsAutoGates(t *testing.T) {
 	// Long interval — auto gate should be exempt
 	os.Setenv("FORGE_GATE_MIN_INTERVAL", "10m")
 	defer os.Unsetenv("FORGE_GATE_MIN_INTERVAL")
+	os.Setenv("FORGE_WORK_ACTIVITY", "disable")
+	defer os.Unsetenv("FORGE_WORK_ACTIVITY")
 
 	state := &TaskState{
 		TaskRef: "test-auto",

@@ -613,20 +613,24 @@ func passAllGates(t *testing.T, dir, ref string) {
 	// Disable gate timing for E2E tests (gates pass in rapid sequence)
 	os.Setenv("FORGE_GATE_MIN_INTERVAL", "0s")
 	defer os.Unsetenv("FORGE_GATE_MIN_INTERVAL")
+	os.Setenv("FORGE_WORK_ACTIVITY", "disable")
+	defer os.Unsetenv("FORGE_WORK_ACTIVITY")
 
-	gates := []string{
-		"task-understand",
-		"task-design",
-		"task-implement",
-		"task-verify",
-		"task-complete",
-	}
-	for _, g := range gates {
+	// Pass pre-design gates
+	for _, g := range []string{"task-understand", "task-design"} {
 		out, err := forgeErr(t, dir, "task", "gate", g, "--ref", ref)
 		if err != nil {
-			// task-implement auto-check runs auto-compile.sh which requires
-			// bash and a compilable project. For the E2E test, the minimal
-			// go project should compile fine.
+			t.Fatalf("forge task gate %s failed: %v\noutput: %s", g, err, out)
+		}
+	}
+
+	// Commit so HEAD moves past task-design (required by post-design commit check)
+	git(t, dir, "commit", "--allow-empty", "-m", "e2e: move HEAD for task-implement")
+
+	// Pass remaining gates
+	for _, g := range []string{"task-implement", "task-verify", "task-complete"} {
+		out, err := forgeErr(t, dir, "task", "gate", g, "--ref", ref)
+		if err != nil {
 			t.Fatalf("forge task gate %s failed: %v\noutput: %s", g, err, out)
 		}
 	}
