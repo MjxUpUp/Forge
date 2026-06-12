@@ -348,18 +348,9 @@ has_write_pattern() {
   return 1
 }
 
-# --- Self-protection: block writes to Forge config ---
-# Only triggers when command contains BOTH write patterns AND config paths.
-# This avoids false positives when command text mentions .forge/ without writing to it.
+# --- Forge command detection (for file-sentinel exemption) ---
 IS_FORGE_CMD=0
 printf '%s' "$COMMAND" | grep -qE '(^|[[:space:]]|&&|[[:space:]]*[|])[[:space:]]*forge[[:space:]]' && IS_FORGE_CMD=1
-
-if [ $IS_FORGE_CMD -eq 0 ] && has_write_pattern "$COMMAND"; then
-  printf '%s' "$COMMAND" | grep -qiE '(.forge/(hooks|tasks|specs|reviews)/|.claude/settings)' && {
-    echo "FAIL [bash-guard] Modifying Forge configuration files is not allowed. Use forge commands (init, task, experience)."
-    exit 1
-  }
-fi
 
 # --- Check write patterns + task state ---
 if has_write_pattern "$COMMAND"; then
