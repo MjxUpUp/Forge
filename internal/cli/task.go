@@ -314,7 +314,8 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	state.RecordGateResult(gateID, result.Passed)
+	headCommit, _ := exec.Command("git", "rev-parse", "HEAD").Output()
+	state.RecordGateResult(gateID, result.Passed, strings.TrimSpace(string(headCommit)))
 
 	if state.IsComplete() && result.Passed {
 		state.MarkComplete()

@@ -51,10 +51,10 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 	// For non-auto gates, just mark as passed
 	// The AI agent is responsible for the actual work via SKILL.md instructions
 
-	// Timing check: non-auto gates must not be passed too quickly.
-	// Each gate represents a distinct work phase; rapid-fire passing means
-	// the gates are being gamed retroactively rather than used as intended.
-	// Skip timing for completed tasks (re-verification should not be penalized).
+	// Timing + work activity check for non-auto gates.
+	// Gates must not be passed without real work happening between them.
+	// This prevents agents from using sleep to bypass timing requirements.
+	// Skip for completed tasks (re-verification should not be penalized).
 	if !gate.Auto && state.CompletedAt == nil && len(state.History) > 0 {
 		lastResult := state.History[len(state.History)-1]
 		minInterval := getGateMinInterval()
@@ -65,6 +65,19 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 					"Each gate represents a distinct work phase — spend time on it before advancing",
 				gateID, lastResult.Gate, elapsed.Seconds(), minInterval,
 			)
+		}
+
+		// Work activity check: verify actual tool usage (Read, Write, Edit, Grep, etc.)
+		// since the last gate. If only Bash/sleep was used, the agent didn't do real work.
+		if state.TaskRef != "" && minInterval > 0 {
+			activity, _ := checklog.WorkActivity(root, state.TaskRef, lastResult.CompletedAt)
+			if activity < 2 {
+				return nil, fmt.Errorf(
+					"gate %q passed without sufficient work activity since %q (%d tool uses, minimum 2). "+
+						"Read files, explore code, or write design notes before advancing",
+					gateID, lastResult.Gate, activity,
+				)
+			}
 		}
 	}
 
@@ -185,6 +198,26 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 			Passed:  false,
 			Message: "未检测到代码变更 — 编译通过但未修改任何文件",
 		}, nil
+	}
+
+	// 4. Verify code was written AFTER task-design was passed.
+	// This prevents agents from writing all code first, then rushing through gates.
+	if state != nil {
+		designCommit := state.designGateCommit()
+		if designCommit != "" {
+			headCmd := exec.Command("git", "-C", root, "rev-parse", "HEAD")
+			headOut, headErr := headCmd.Output()
+			if headErr == nil {
+				currentHead := strings.TrimSpace(string(headOut))
+				if currentHead == designCommit {
+					return &ExecuteResult{
+						GateID:  "task-implement",
+						Passed:  false,
+						Message: "HEAD 未移动：代码在 task-design 通过后没有新提交。先写代码再过 task-implement gate",
+					}, nil
+				}
+			}
+		}
 	}
 
 	return &ExecuteResult{
