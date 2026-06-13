@@ -99,9 +99,12 @@ func runHook(cmd *cobra.Command, args []string) error {
 	}
 
 	// 2b. Detect active task for task-guard hook context.
+	// Scope the lookup by the Claude Code session id from stdin so concurrent
+	// sessions each resolve their own active task (not whichever wrote the
+	// global file last).
 	var activeTaskRef string
 	var activeTaskGate string
-	if active, err := taskpipeline.ActiveTaskState(root); err == nil && active != nil {
+	if active, err := taskpipeline.ActiveTaskState(root, hookInput.SessionID); err == nil && active != nil {
 		activeTaskRef = active.TaskRef
 		activeTaskGate = active.CurrentGate
 	}
@@ -192,12 +195,13 @@ func runHook(cmd *cobra.Command, args []string) error {
 	}
 
 	if err := checklog.Record(root, &checklog.Entry{
-		Check:    checkName,
-		Passed:   passed,
-		Checked:  true,
-		ToolName: recordedToolName,
-		TaskRef:  taskRef,
-		Detail:   truncate(logDetail, maxChecklogDetail),
+		Check:     checkName,
+		Passed:    passed,
+		Checked:   true,
+		ToolName:  recordedToolName,
+		TaskRef:   taskRef,
+		SessionID: hookInput.SessionID,
+		Detail:    truncate(logDetail, maxChecklogDetail),
 	}); err != nil {
 		fmt.Fprintf(os.Stderr, "[forge] warning: checklog record failed: %v\n", err)
 	}
@@ -208,6 +212,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 			ToolName:  hookInput.ToolName,
 			ToolInput: toolusage.TruncateInput(string(hookInput.ToolInput)),
 			TaskRef:   taskRef,
+			SessionID: hookInput.SessionID,
 		}); err != nil {
 			fmt.Fprintf(os.Stderr, "[forge] warning: toollog record failed: %v\n", err)
 		}

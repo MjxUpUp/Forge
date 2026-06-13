@@ -149,8 +149,12 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	// Record current HEAD for duplicate detection.
 	state.HeadCommit = taskpipeline.GetHeadCommit(root)
 
+	// Resolve the Claude Code session id once — used to scope the active-task-ref
+	// and session records so concurrent sessions on a shared checkout stay isolated.
+	sid := taskpipeline.CurrentSessionID()
+
 	// Ensure session exists and link task to it.
-	session, err := taskpipeline.EnsureSession(root)
+	session, err := taskpipeline.EnsureSession(root, sid)
 	if err == nil {
 		state.SessionID = session.SessionID
 	}
@@ -163,8 +167,9 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create task: %w", err)
 	}
 
-	// Mark as active task (makes hook detection unambiguous)
-	if err := taskpipeline.SetActiveTaskRef(root, ctx.TaskRef); err != nil {
+	// Mark as active task (makes hook detection unambiguous).
+	// Session-scoped so concurrent sessions don't clobber each other.
+	if err := taskpipeline.SetActiveTaskRef(root, sid, ctx.TaskRef); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to set active task ref: %v\n", err)
 	}
 
@@ -212,7 +217,7 @@ func runTaskStatus(cmd *cobra.Command, args []string) error {
 			return err
 		}
 	} else {
-		state, err = taskpipeline.ActiveTaskState(root)
+		state, err = taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
 		if err != nil {
 			return fmt.Errorf("failed to load task state: %w", err)
 		}
@@ -293,7 +298,7 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 			return err
 		}
 	} else {
-		state, err = taskpipeline.ActiveTaskState(root)
+		state, err = taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
 		if err != nil {
 			if silent {
 				return nil
@@ -360,7 +365,7 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		} else {
-			state, err = taskpipeline.ActiveTaskState(root)
+			state, err = taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
 			if err != nil {
 				return fmt.Errorf("failed to load task state: %w", err)
 			}
@@ -453,8 +458,8 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Task %s completed!\n", state.TaskRef)
 	}
 
-	// Clear active task ref — task is done
-	if err := taskpipeline.ClearActiveTaskRef(root); err != nil {
+	// Clear active task ref — task is done (session-scoped)
+	if err := taskpipeline.ClearActiveTaskRef(root, taskpipeline.CurrentSessionID()); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to clear active task ref: %v\n", err)
 	}
 
@@ -466,7 +471,7 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 func checkMissingHooks(root string, state *taskpipeline.TaskState) []string {
 	var missing []string
 
-	latestChecks, err := checklog.LatestByCheck(root)
+	latestChecks, err := checklog.LatestByCheckForSession(root, state.SessionID)
 	if err != nil || latestChecks == nil {
 		// Can't read checklog — assume all hooks are missing unless gate history shows otherwise.
 		compileRan := false
@@ -567,7 +572,7 @@ func runTaskScore(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		} else {
-			state, err = taskpipeline.ActiveTaskState(root)
+			state, err = taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
 			if err != nil {
 				return fmt.Errorf("failed to load task state: %w", err)
 			}
@@ -632,7 +637,9 @@ func scoreTask(root string, state *taskpipeline.TaskState) error {
 	}
 
 	// Read check log for actual hook results (more reliable than gate history).
-	if latestChecks, err := checklog.LatestByCheck(root); err == nil {
+	// Scope by session so a concurrent session's check results don't contaminate
+	// this task's scoring.
+	if latestChecks, err := checklog.LatestByCheckForSession(root, state.SessionID); err == nil {
 		if entry, ok := latestChecks[checklog.CheckAssertion]; ok {
 			assertionChecked = entry.Checked
 			assertionPassed = entry.Passed

@@ -489,7 +489,7 @@ func TestActiveTaskState_BranchDetection(t *testing.T) {
 	// Checkout matching branch
 	runGit(t, dir, "checkout", "-b", "feat/test-branch")
 
-	active, err := ActiveTaskState(dir)
+	active, err := ActiveTaskState(dir, "")
 	if err != nil {
 		t.Fatalf("ActiveTaskState failed: %v", err)
 	}
@@ -521,7 +521,7 @@ func TestActiveTaskState_FallbackSingleIncompleteOnMaster(t *testing.T) {
 	SaveTaskState(dir, state)
 
 	// On master, branch detection returns empty — fallback should find the task
-	active, err := ActiveTaskState(dir)
+	active, err := ActiveTaskState(dir, "")
 	if err != nil {
 		t.Fatalf("ActiveTaskState failed: %v", err)
 	}
@@ -553,7 +553,7 @@ func TestActiveTaskState_FallbackAmbiguousMultipleIncomplete(t *testing.T) {
 	SaveTaskState(dir, NewTaskState(ctx2))
 
 	// Ambiguous — should return nil
-	active, err := ActiveTaskState(dir)
+	active, err := ActiveTaskState(dir, "")
 	if err != nil {
 		t.Fatalf("ActiveTaskState failed: %v", err)
 	}
@@ -589,7 +589,7 @@ func TestActiveTaskState_FallbackIgnoresCompleted(t *testing.T) {
 	SaveTaskState(dir, NewTaskState(ctx2))
 
 	// Should find the single incomplete task (ignoring completed ones)
-	active, err := ActiveTaskState(dir)
+	active, err := ActiveTaskState(dir, "")
 	if err != nil {
 		t.Fatalf("ActiveTaskState failed: %v", err)
 	}
@@ -609,7 +609,7 @@ func TestActiveTaskState_NoTasks(t *testing.T) {
 	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
 
 	// No tasks at all — should return nil
-	active, err := ActiveTaskState(dir)
+	active, err := ActiveTaskState(dir, "")
 	if err != nil {
 		t.Fatalf("ActiveTaskState failed: %v", err)
 	}
@@ -632,14 +632,14 @@ func TestActiveTaskState_ExplicitRefFilePriority(t *testing.T) {
 	SaveTaskState(dir, task2)
 
 	// Without explicit ref — fallback returns nil (ambiguous)
-	active, _ := ActiveTaskState(dir)
+	active, _ := ActiveTaskState(dir, "")
 	if active != nil {
 		t.Fatal("expected nil with multiple incomplete tasks")
 	}
 
 	// Set explicit active ref — should find it despite ambiguity
-	SetActiveTaskRef(dir, "fix/second")
-	active, _ = ActiveTaskState(dir)
+	SetActiveTaskRef(dir, "", "fix/second")
+	active, _ = ActiveTaskState(dir, "")
 	if active == nil {
 		t.Fatal("expected to find task via explicit ref file")
 	}
@@ -648,7 +648,7 @@ func TestActiveTaskState_ExplicitRefFilePriority(t *testing.T) {
 	}
 
 	// Stale ref (completed task) — falls through to branch/fallback
-	ClearActiveTaskRef(dir)
+	ClearActiveTaskRef(dir, "")
 }
 
 func TestActiveTaskState_StaleRefFileFallsThrough(t *testing.T) {
@@ -665,10 +665,10 @@ func TestActiveTaskState_StaleRefFileFallsThrough(t *testing.T) {
 	SaveTaskState(dir, completed)
 
 	// Point active-task-ref to the completed task
-	SetActiveTaskRef(dir, "feat/done")
+	SetActiveTaskRef(dir, "", "feat/done")
 
 	// Should fall through (stale ref points to completed task)
-	active, _ := ActiveTaskState(dir)
+	active, _ := ActiveTaskState(dir, "")
 	if active != nil {
 		t.Fatal("expected nil when explicit ref points to completed task")
 	}
@@ -679,23 +679,23 @@ func TestSetActiveAndClearActiveTaskRef(t *testing.T) {
 	os.MkdirAll(filepath.Join(dir, ".forge"), 0755)
 
 	// Set
-	if err := SetActiveTaskRef(dir, "feat/test"); err != nil {
+	if err := SetActiveTaskRef(dir, "", "feat/test"); err != nil {
 		t.Fatalf("SetActiveTaskRef failed: %v", err)
 	}
-	if got := readActiveTaskRef(dir); got != "feat/test" {
+	if got := readActiveTaskRef(dir, ""); got != "feat/test" {
 		t.Errorf("readActiveTaskRef = %q, want %q", got, "feat/test")
 	}
 
 	// Clear
-	if err := ClearActiveTaskRef(dir); err != nil {
+	if err := ClearActiveTaskRef(dir, ""); err != nil {
 		t.Fatalf("ClearActiveTaskRef failed: %v", err)
 	}
-	if got := readActiveTaskRef(dir); got != "" {
+	if got := readActiveTaskRef(dir, ""); got != "" {
 		t.Errorf("readActiveTaskRef after clear = %q, want empty", got)
 	}
 
 	// Clear non-existent — no error
-	if err := ClearActiveTaskRef(dir); err != nil {
+	if err := ClearActiveTaskRef(dir, ""); err != nil {
 		t.Fatalf("ClearActiveTaskRef on missing file should not error: %v", err)
 	}
 }

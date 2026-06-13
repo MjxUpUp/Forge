@@ -13,7 +13,7 @@ func TestEnsureSession_CreatesNewSession(t *testing.T) {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, ".claude"), 0755)
 
-	session, err := EnsureSession(dir)
+	session, err := EnsureSession(dir, "")
 	if err != nil {
 		t.Fatalf("EnsureSession: %v", err)
 	}
@@ -45,13 +45,13 @@ func TestEnsureSession_ReusesExistingWithinMaxIdle(t *testing.T) {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, ".claude"), 0755)
 
-	first, err := EnsureSession(dir)
+	first, err := EnsureSession(dir, "")
 	if err != nil {
 		t.Fatalf("first EnsureSession: %v", err)
 	}
 
 	// Second call within maxIdle should return the same session
-	second, err := EnsureSession(dir)
+	second, err := EnsureSession(dir, "")
 	if err != nil {
 		t.Fatalf("second EnsureSession: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestEnsureSession_RotatesAfterMaxIdle(t *testing.T) {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, ".claude"), 0755)
 
-	first, err := EnsureSession(dir)
+	first, err := EnsureSession(dir, "")
 	if err != nil {
 		t.Fatalf("first EnsureSession: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestEnsureSession_RotatesAfterMaxIdle(t *testing.T) {
 	}
 
 	// Next call should create a new session
-	second, err := EnsureSession(dir)
+	second, err := EnsureSession(dir, "")
 	if err != nil {
 		t.Fatalf("second EnsureSession: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestLoadSessions_IncludesCurrent(t *testing.T) {
 	os.MkdirAll(filepath.Join(dir, ".claude"), 0755)
 
 	// Create a session
-	session, err := EnsureSession(dir)
+	session, err := EnsureSession(dir, "")
 	if err != nil {
 		t.Fatalf("EnsureSession: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestNewTaskState_HasSessionID(t *testing.T) {
 	os.MkdirAll(filepath.Join(dir, ".claude"), 0755)
 	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
 
-	session, err := EnsureSession(dir)
+	session, err := EnsureSession(dir, "")
 	if err != nil {
 		t.Fatalf("EnsureSession: %v", err)
 	}
