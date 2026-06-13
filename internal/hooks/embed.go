@@ -274,9 +274,9 @@ fi
 
 const TaskGuardHook = `#!/bin/bash
 # task-guard.sh — PreToolUse hook for Write|Edit.
-# Blocks code file writes when no active task exists.
-# Progressive enforcement: BLOCK (no task) -> WARN (pre-design) -> PASS (post-design).
-# Self-protection: also blocks direct writes to Forge-managed files.
+# Self-protection: blocks direct writes to Forge-managed files.
+# Auto-creates tasks on feature branches when no active task exists.
+# v0.17: 3-gate pipeline (implement / verify / complete).
 set -eo pipefail
 
 FILE_PATH="${FORGE_FILE_PATH:-}"
@@ -285,7 +285,7 @@ TASK_GATE="${FORGE_TASK_GATE:-}"
 
 # No file path (batch mode or non-file tool) — allow
 [ -z "$FILE_PATH" ] && exit 0
-
+# These files are managed by forge commands, not by agent Write/Edit.
 # Self-protection: block direct writes to Forge-managed files.
 # These files are managed by forge commands, not by agent Write/Edit.
 case "$FILE_PATH" in
@@ -301,18 +301,20 @@ printf '%s' "$FILE_PATH" | grep -qE '\.(go|rs|ts|tsx|js|jsx|py|java|rb|zig|nim)$
 # Test files — always allow (TDD workflow)
 printf '%s' "$FILE_PATH" | grep -qE '(_test\.|_spec\.|\.test\.|\.spec\.|test/|tests/|__tests__/)' && exit 0
 
-# No active task — warn (allow simple tasks without full task workflow)
+# No active task — try auto-create on feature branch
 if [ -z "$TASK_REF" ]; then
+  BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+  if [ "$BRANCH" != "master" ] && [ "$BRANCH" != "main" ] && [ -n "$BRANCH" ]; then
+    # On feature branch: auto-create task from branch name
+    if forge task start --ref "$BRANCH" 2>/dev/null; then
+      echo "WARN [task-guard] Auto-created task '${BRANCH}' from branch. Source changes tracked."
+      exit 0
+    fi
+  fi
+  # On master/main or auto-creation failed: warn but allow
   echo "WARN [task-guard] No active task. Source changes are allowed but not tracked by a Forge task."
   exit 0
 fi
-
-# Task in task-understand stage — allow with warning
-case "$TASK_GATE" in
-  task-understand)
-    echo "WARN [task-guard] Task ${TASK_REF} has not passed task-design gate yet. Consider: forge task gate task-understand --ref ${TASK_REF}" >&2
-    ;;
-esac
 
 echo "PASS"
 `

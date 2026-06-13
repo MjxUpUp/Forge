@@ -605,7 +605,7 @@ func TestTaskScoreWorkflow(t *testing.T) {
 	}
 
 	// Pass understand and design gates (before writing code)
-	for _, g := range []string{"task-understand", "task-design"} {
+	for _, g := range []string{"task-implement"} {
 		stdout, _, code = runForge(t, tmpDir, "task", "gate", g)
 		if code != 0 {
 			t.Fatalf("forge task gate %s failed: %s", g, stdout)

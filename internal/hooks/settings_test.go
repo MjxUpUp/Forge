@@ -236,8 +236,8 @@ func TestTaskGuardHookContainsKeyChecks(t *testing.T) {
 	if !containsString(TaskGuardHook, "WARN [task-guard]") {
 		t.Error("TaskGuardHook missing WARN for no-task scenario")
 	}
-	if !containsString(TaskGuardHook, "task-design") {
-		t.Error("TaskGuardHook missing task-design gate check")
+	if !containsString(TaskGuardHook, "auto-create") {
+		t.Error("TaskGuardHook contains auto-create task path")
 	}
 	if !containsString(TaskGuardHook, "WARN") {
 		t.Error("TaskGuardHook missing WARN for pre-design state")
