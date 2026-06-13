@@ -235,7 +235,7 @@ GATE_OUTPUT=$(forge task gate task-verify --silent 2>&1) || {
 
 # Check for pending mandatory reviews
 if REVIEW_OUTPUT=$(forge experience list 2>/dev/null); then
-  printf '%s' "$REVIEW_OUTPUT" | grep -qF "mandatory" && printf '%s' "$REVIEW_OUTPUT" | grep -qF "pending" && {
+  printf '%s' "$REVIEW_OUTPUT" | grep -qE 'mandatory[[:space:]]+pending' && {
     MESSAGES="${MESSAGES}Pending mandatory review detected. Run 'forge experience list'. "
   }
 fi
@@ -317,10 +317,10 @@ printf '%s' "$FILE_PATH" | grep -qE '\.(go|rs|ts|tsx|js|jsx|py|java|rb|zig|nim)$
 # Test files — always allow (TDD workflow)
 printf '%s' "$FILE_PATH" | grep -qE '(_test\.|_spec\.|\.test\.|\.spec\.|test/|tests/|__tests__/)' && exit 0
 
-# No active task — block
+# No active task — warn (allow simple tasks without full task workflow)
 if [ -z "$TASK_REF" ]; then
-  echo "FAIL [task-guard] No active task. Code changes require a task. Run: forge task start --ref <type>/<desc> --branch"
-  exit 1
+  echo "WARN [task-guard] No active task. Source changes are allowed but not tracked by a Forge task."
+  exit 0
 fi
 
 # Task in task-understand stage — allow with warning
@@ -383,8 +383,8 @@ printf '%s' "$COMMAND" | grep -qE '(^| )forge ' && IS_FORGE_CMD=1
 # --- Check write patterns + task state ---
 if has_write_pattern "$COMMAND"; then
   if [ -z "$TASK_REF" ]; then
-    echo "FAIL [bash-guard] Bash command contains file write operations but no active task. Run: forge task start --ref <type>/<desc> --branch"
-    exit 1
+    echo "WARN [bash-guard] Bash write without active task. Changes are allowed but not tracked."
+    exit 0
   fi
 fi
 

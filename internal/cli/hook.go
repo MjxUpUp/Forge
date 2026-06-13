@@ -229,18 +229,20 @@ func runHook(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// extractDetail parses "PASS optional detail" or "FAIL optional detail" output.
-// Returns the detail portion after the PASS/FAIL keyword, or the full output
-// if it doesn't start with PASS/FAIL.
+// extractDetail parses "PASS optional detail", "WARN optional detail", or "FAIL optional detail" output.
+// Returns the detail portion after the keyword, or the full output
+// if it doesn't start with a known prefix.
 func extractDetail(stdout, prefix string) string {
 	if stdout == "" {
 		return ""
 	}
-	after, ok := strings.CutPrefix(stdout, prefix)
-	if !ok {
-		return stdout
+	for _, p := range []string{prefix, "WARN"} {
+		after, ok := strings.CutPrefix(stdout, p)
+		if ok {
+			return strings.TrimSpace(after)
+		}
 	}
-	return strings.TrimSpace(after)
+	return stdout
 }
 
 func outputAllow(msg string) {

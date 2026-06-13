@@ -233,8 +233,8 @@ func TestTaskGuardHookContainsKeyChecks(t *testing.T) {
 	if !containsString(TaskGuardHook, "FORGE_TASK_GATE") {
 		t.Error("TaskGuardHook missing FORGE_TASK_GATE check")
 	}
-	if !containsString(TaskGuardHook, "forge task start") {
-		t.Error("TaskGuardHook missing 'forge task start' guidance")
+	if !containsString(TaskGuardHook, "WARN [task-guard]") {
+		t.Error("TaskGuardHook missing WARN for no-task scenario")
 	}
 	if !containsString(TaskGuardHook, "task-design") {
 		t.Error("TaskGuardHook missing task-design gate check")
@@ -257,8 +257,8 @@ func TestBashGuardHookContainsKeyChecks(t *testing.T) {
 	if !containsString(BashGuardHook, "writeFile") {
 		t.Error("BashGuardHook missing writeFile pattern detection")
 	}
-	if !containsString(BashGuardHook, "forge task start") {
-		t.Error("BashGuardHook missing 'forge task start' guidance")
+	if !containsString(BashGuardHook, "WARN [bash-guard]") {
+		t.Error("BashGuardHook missing WARN for no-task scenario")
 	}
 	if !containsString(BashGuardHook, "bash-guard") {
 		t.Error("BashGuardHook missing [bash-guard] prefix")
