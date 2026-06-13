@@ -6,9 +6,7 @@ on:
       - "v*"
 
 permissions:
-  contents: write
-  id-token: write
-  packages: write
+  contents: write  # goreleaser 创建 Release 用；npm job 走 NODE_AUTH_TOKEN 连外部 registry，不经 GITHUB_TOKEN
 
 jobs:
   test:
