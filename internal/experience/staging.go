@@ -28,7 +28,8 @@ func GenerateID() string {
 // SaveProposal writes a proposal to .forge/experience/proposed/{id}.json.
 // Auto-generates ID and CreatedAt if empty.
 func SaveProposal(root string, p *ExperienceProposal) error {
-	if p.ID == "" {
+	autoID := p.ID == ""
+	if autoID {
 		p.ID = GenerateID()
 	}
 	if p.CreatedAt.IsZero() {
@@ -45,7 +46,22 @@ func SaveProposal(root string, p *ExperienceProposal) error {
 		return fmt.Errorf("marshal proposal: %w", err)
 	}
 
+	// GenerateID is time-based (UnixNano % 0xFFFFFF); rapid successive saves —
+	// e.g. one proposal per low dimension in a GenerateProposalsForReview loop —
+	// can land in the same 16ms bucket, collide on the same path, and silently
+	// overwrite an earlier proposal (losing it, which can re-deadlock a review).
+	// Retry with a fresh ID on collision, but only for auto-generated IDs:
+	// explicit IDs are the caller's responsibility and trusted as-is.
 	path := proposalPath(root, p.ID)
+	if autoID {
+		for attempts := 0; attempts < 8; attempts++ {
+			if _, statErr := os.Stat(path); os.IsNotExist(statErr) {
+				break
+			}
+			p.ID = GenerateID()
+			path = proposalPath(root, p.ID)
+		}
+	}
 	return os.WriteFile(path, data, 0o644)
 }
 

@@ -144,3 +144,117 @@ func TestGenerateForExistingReview_MissingReview(t *testing.T) {
 		t.Fatal("expected error for missing review, got nil")
 	}
 }
+
+// TestDimensionTemplatesCoverAllDimensions guards against the silent-deadlock
+// regression: if a new scoring dimension is added (to scoringtypes.DefaultWeights)
+// but no proposal template is added for it, a low score in that dimension would
+// get silently skipped and — if it's the only low dim — leave a mandatory review
+// with zero proposals to accept, re-deadlocking it.
+func TestDimensionTemplatesCoverAllDimensions(t *testing.T) {
+	for dim := range scoringtypes.DefaultWeights() {
+		if _, ok := dimensionTemplates[scoringtypes.Dimension(dim)]; !ok {
+			t.Errorf("dimension %q has a scoring weight but no proposal template — a low score here would silently get no proposal and could re-deadlock a mandatory review", dim)
+		}
+	}
+}
+
+// TestGenerateFallbackProposal_ResolvesBGradeDeadlock is the proof the B-grade
+// deadlock path is closed: a mandatory review with EMPTY LowDimensions (B-grade
+// task upgraded to mandatory due to missing hooks, every dim ≥70). With no low
+// dims, GenerateProposalsForReview returns 0; the fallback must create a
+// proposal that accept can resolve.
+func TestGenerateFallbackProposal_ResolvesBGradeDeadlock(t *testing.T) {
+	setHomeTemp(t)
+	tmpRoot := t.TempDir()
+	taskRef := "task-bgrade"
+
+	review := &ReviewRequest{
+		TaskRef:       taskRef,
+		Score:         75,
+		Grade:         "B",
+		Mandatory:     true,
+		Status:        ReviewPending,
+		LowDimensions: nil, // empty — the dangerous case
+		CreatedAt:     time.Now(),
+	}
+	if err := SaveReview(tmpRoot, review); err != nil {
+		t.Fatalf("SaveReview: %v", err)
+	}
+
+	// Empty lows must yield zero from the dimension-driven path (old deadlock).
+	n, err := GenerateProposalsForReview(tmpRoot, taskRef, nil)
+	if err != nil {
+		t.Fatalf("GenerateProposalsForReview: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("expected 0 from empty lows, got %d", n)
+	}
+
+	// Fallback must create exactly one resolvable proposal.
+	fn, err := GenerateFallbackProposal(tmpRoot, taskRef)
+	if err != nil {
+		t.Fatalf("GenerateFallbackProposal: %v", err)
+	}
+	if fn != 1 {
+		t.Fatalf("fallback created %d, want 1", fn)
+	}
+
+	props, _ := ListProposals(tmpRoot, PropProposed)
+	if len(props) != 1 {
+		t.Fatalf("expected 1 proposal, got %d", len(props))
+	}
+
+	// Accepting it must resolve the review — deadlock broken.
+	if err := AcceptProposal(tmpRoot, props[0].ID); err != nil {
+		t.Fatalf("AcceptProposal: %v", err)
+	}
+	loaded, err := LoadReview(tmpRoot, taskRef)
+	if err != nil {
+		t.Fatalf("LoadReview: %v", err)
+	}
+	if loaded.Status != ReviewResolved {
+		t.Errorf("review status = %q, want resolved (B-grade deadlock not broken)", loaded.Status)
+	}
+}
+
+func TestGenerateFallbackProposal_Idempotent(t *testing.T) {
+	tmpRoot := t.TempDir()
+	if n, err := GenerateFallbackProposal(tmpRoot, "task-fallback-idem"); err != nil || n != 1 {
+		t.Fatalf("first call: n=%d err=%v", n, err)
+	}
+	// Second call must be a no-op — the review already has a proposal.
+	if n, err := GenerateFallbackProposal(tmpRoot, "task-fallback-idem"); err != nil || n != 0 {
+		t.Errorf("second call: n=%d err=%v, want 0 (idempotent)", n, err)
+	}
+	props, _ := ListProposals(tmpRoot, "")
+	if len(props) != 1 {
+		t.Errorf("after two calls, %d proposals stored, want 1", len(props))
+	}
+}
+
+// TestGenerateForExistingReview_MandatoryEmptyLowsBackfills verifies the
+// `forge experience generate` repair path also backfills a fallback for an
+// existing mandatory review with empty LowDimensions (otherwise the documented
+// repair command would print "Generated 0" and leave the user blocked).
+func TestGenerateForExistingReview_MandatoryEmptyLowsBackfills(t *testing.T) {
+	setHomeTemp(t)
+	tmpRoot := t.TempDir()
+	review := &ReviewRequest{
+		TaskRef:   "task-bgrade-existing",
+		Score:     75,
+		Grade:     "B",
+		Mandatory: true,
+		Status:    ReviewPending,
+		CreatedAt: time.Now(),
+	}
+	if err := SaveReview(tmpRoot, review); err != nil {
+		t.Fatalf("SaveReview: %v", err)
+	}
+	n, err := GenerateForExistingReview(tmpRoot, "task-bgrade-existing")
+	if err != nil {
+		t.Fatalf("GenerateForExistingReview: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("expected 1 fallback proposal for empty-lows mandatory review, got %d", n)
+	}
+}

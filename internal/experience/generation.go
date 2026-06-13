@@ -83,7 +83,10 @@ var dimensionTemplates = map[scoringtypes.Dimension]proposalTemplate{
 // are skipped, so re-running (e.g. re-scoring a task) does not duplicate.
 // Returns the number of proposals created.
 func GenerateProposalsForReview(root, taskRef string, lows []LowDimension) (int, error) {
-	existing, _ := ListProposals(root, PropProposed)
+	existing, err := ListProposals(root, PropProposed)
+	if err != nil {
+		return 0, fmt.Errorf("list existing proposals for dedup: %w", err)
+	}
 	haveTitle := make(map[string]bool)
 	for _, p := range existing {
 		if p.SourceReview == taskRef {
@@ -126,5 +129,49 @@ func GenerateForExistingReview(root, taskRef string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	return GenerateProposalsForReview(root, taskRef, review.LowDimensions)
+	n, err := GenerateProposalsForReview(root, taskRef, review.LowDimensions)
+	if err != nil {
+		return n, err
+	}
+	// A persisted review may have empty LowDimensions (e.g. a B-grade task
+	// upgraded to mandatory due to missing hooks). `forge experience generate`
+	// must still leave it resolvable, so backfill a fallback if nothing was
+	// generated and the review is mandatory.
+	if n == 0 && review.Mandatory {
+		return GenerateFallbackProposal(root, taskRef)
+	}
+	return n, nil
+}
+
+// GenerateFallbackProposal creates a single generic proposal for a review that
+// has no low-scoring dimensions but still must be resolvable. This closes the
+// B-grade deadlock path: a task scored in [70,80) with every dimension ≥70 has
+// LowDimensions=[], yet it is upgraded to a MANDATORY review when critical
+// hooks didn't run. With zero low dims GenerateProposalsForReview returns 0 and
+// the mandatory review would deadlock — no proposal to accept. This backfills
+// one so `forge experience accept <id>` can resolve it.
+//
+// Idempotent: no-op (returns 0) if the review already has any proposed proposal.
+func GenerateFallbackProposal(root, taskRef string) (int, error) {
+	existing, err := ListProposals(root, PropProposed)
+	if err != nil {
+		return 0, fmt.Errorf("list existing proposals: %w", err)
+	}
+	for _, p := range existing {
+		if p.SourceReview == taskRef {
+			return 0, nil // already has a proposal — nothing to backfill
+		}
+	}
+	proposal := &ExperienceProposal{
+		SourceReview: taskRef,
+		Category:     "gotchas",
+		Title:        "质量复盘：关键 hook 未执行，补充测试与门禁验证",
+		Description:  "本任务因关键质量 hook 未执行被升级为 mandatory review，但没有低分维度。审阅变更确认编译/断言/测试均到位后 accept 解除 review；若已补执行可 reject。",
+		Severity:     "warning",
+		Status:       PropProposed,
+	}
+	if err := SaveProposal(root, proposal); err != nil {
+		return 0, fmt.Errorf("save fallback proposal: %w", err)
+	}
+	return 1, nil
 }
