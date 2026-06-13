@@ -84,7 +84,8 @@ func buildForgeSection() string {
 	sb.WriteString("| insufficient work activity | 门禁间工具调用 <1 次 | 用 Read/Grep/Glob 探索代码 |\n")
 	sb.WriteString("| --branch on non-main | `--branch` 只在 master/main 可用 | 已在 feature 分支时去掉 `--branch` |\n")
 	sb.WriteString("| task already exists | 任务已启动 | 用 `forge task status --ref <ref>` 查看 |\n")
-	sb.WriteString("| Quarantined by file-sentinel | Bash 写了源码但无任务 | 文件在 .forge/quarantine/，可恢复。先启动任务 |\n\n")
+	sb.WriteString("| Quarantined by file-sentinel | Bash 写了源码但无任务 | 文件在 .forge/quarantine/，可恢复。先启动任务 |\n")
+	sb.WriteString("| Pending mandatory review detected | 低分任务（<70）有未解除的 mandatory review | `forge experience list` → `forge experience accept <id>`（accept 后解除阻塞） |\n\n")
 
 	sb.WriteString("使用 `/forge-pipeline` 运行项目级管道。\n")
 	sb.WriteString("使用 `/forge-quality` 查看完整质量协议。\n\n")
