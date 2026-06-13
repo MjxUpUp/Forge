@@ -39,3 +39,24 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+
+  npm:
+    # Publish @agentfare/forge to npmjs.org. Runs AFTER goreleaser so the
+    # GitHub Release binaries already exist — the package's install.js
+    # (postinstall) downloads the platform binary from the release at
+    # install time, so binaries must be present before the package is usable.
+    needs: goreleaser
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          # setup-node writes a .npmrc authenticating via NODE_AUTH_TOKEN
+          # for this registry — the standard CI pattern, avoids project
+          # .npmrc conflicts.
+          registry-url: "https://registry.npmjs.org"
+      - run: npm publish
+        working-directory: npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
