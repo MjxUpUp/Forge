@@ -674,6 +674,9 @@ COMMAND="${FORGE_COMMAND:-}"
 TASK_REF="${FORGE_TASK_REF:-}"
 SESSION_ID="${FORGE_SESSION_ID:-default}"
 SNAPSHOT_FILE="${TMPDIR:-/tmp}/forge-snapshot-${SESSION_ID}"
+# Defensive: never let SNAPSHOT_FILE be empty — an empty value would make a
+# redirect write to a literal/misdirected filename.
+[ -z "${SNAPSHOT_FILE:-}" ] && SNAPSHOT_FILE="${TMPDIR:-/tmp}/forge-snapshot-unknown"
 
 # --- Snapshot file state (always, for file-sentinel PostToolUse) ---
 {
@@ -729,6 +732,9 @@ set -eo pipefail
 TASK_REF="${FORGE_TASK_REF:-}"
 SESSION_ID="${FORGE_SESSION_ID:-default}"
 SNAPSHOT_FILE="${TMPDIR:-/tmp}/forge-snapshot-${SESSION_ID}"
+# Defensive: never let SNAPSHOT_FILE be empty — an empty value would make a
+# redirect write to a literal/misdirected filename.
+[ -z "${SNAPSHOT_FILE:-}" ] && SNAPSHOT_FILE="${TMPDIR:-/tmp}/forge-snapshot-unknown"
 FORGE_CMD_FILE="${TMPDIR:-/tmp}/forge-cmd-${SESSION_ID}"
 
 # No snapshot from PreToolUse → nothing to compare

@@ -31,8 +31,12 @@ func autoSync(dir string, binaryVersion string) error {
 		return nil
 	}
 
-	// Already synced with this version
-	if state.LastSyncVersion == binaryVersion {
+	// Already synced with this version.
+	// Exception: dev builds re-sync every command. The embedded hook templates
+	// can change between dev builds, so version-equal would skip re-syncing and
+	// leave the on-disk hooks stale (observed: .forge/hooks/ stuck at 8 files
+	// while embed.go had 15).
+	if state.LastSyncVersion == binaryVersion && binaryVersion != "dev" {
 		return nil
 	}
 
