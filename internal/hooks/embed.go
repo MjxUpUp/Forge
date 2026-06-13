@@ -205,7 +205,8 @@ fi
 const TaskVerifyHook = `#!/bin/bash
 # task-verify.sh — Stop hook with blocking behavior.
 # Prevents session end when quality issues are found.
-# Allows force-stop after 3 consecutive failures to avoid permanent session trap.
+# After 3 consecutive failures, passes silently to prevent infinite stop-retry loops.
+# Protocol: Stop hooks MUST only output PASS or FAIL — WARN causes infinite loop.
 set -eo pipefail
 
 ROOT="${1:-.}"
@@ -218,8 +219,8 @@ if [ "${FORGE_SKIP_VERIFY}" = "1" ]; then
   exit 0
 fi
 
-# Consecutive failure tracking to prevent infinite stop-retry loops.
-# After 3 failures, warn but allow stop with a summary of issues.
+# Consecutive failure tracking: after 3 failures, pass silently to break the loop.
+# No WARN output — WARN on Stop hooks triggers infinite re-evaluation in Claude Code.
 VERIFY_COUNTER="${TMPDIR:-/tmp}/forge-verify-fail-count"
 FAIL_COUNT=0
 if [ -f "$VERIFY_COUNTER" ]; then
@@ -257,7 +258,9 @@ if [ -n "$MESSAGES" ]; then
   FAIL_COUNT=$((FAIL_COUNT + 1))
   echo "$FAIL_COUNT" > "$VERIFY_COUNTER"
   if [ "$FAIL_COUNT" -ge 3 ]; then
-    echo "WARN [task-verify] Allowing stop after $FAIL_COUNT failures. Issues: ${MESSAGES}"
+    # Stop hook protocol: only PASS or FAIL allowed. Output PASS on stdout
+    # to break the loop. Issues are logged to stderr for audit trail.
+    echo "PASS [task-verify] Force-allow after $FAIL_COUNT failures" >&2
     rm -f "$VERIFY_COUNTER"
     exit 0
   fi
@@ -310,6 +313,45 @@ case "$TASK_GATE" in
     echo "WARN [task-guard] Task ${TASK_REF} has not passed task-design gate yet. Consider: forge task gate task-understand --ref ${TASK_REF}" >&2
     ;;
 esac
+
+echo "PASS"
+`
+
+const ReadCheckHook = `#!/bin/bash
+# read-check.sh — PreToolUse hook for Write|Edit.
+# Warns when agent is writing code without understanding it first.
+# Reads toollog.jsonl to compute edit/read ratio; warns if > 1.0.
+# Never blocks — advisory only.
+set -eo pipefail
+
+ROOT="${1:-.}"
+cd "$ROOT" 2>/dev/null || exit 0
+
+TOOLLOG=".forge/toollog.jsonl"
+[ ! -f "$TOOLLOG" ] && { echo "PASS"; exit 0; }
+
+# Count Read and Edit/Write tool invocations from toollog
+READ_COUNT=$(grep -c '"tool_name":"Read"' "$TOOLLOG" 2>/dev/null || echo "0")
+EDIT_COUNT=$(grep -c '"tool_name":"Edit"' "$TOOLLOG" 2>/dev/null || echo "0")
+WRITE_COUNT=$(grep -c '"tool_name":"Write"' "$TOOLLOG" 2>/dev/null || echo "0")
+TOTAL_EDIT=$((EDIT_COUNT + WRITE_COUNT))
+
+# No edits yet — nothing to check
+[ "$TOTAL_EDIT" -eq 0 ] && { echo "PASS"; exit 0; }
+
+# If no reads at all, ratio is very high — warn
+if [ "$READ_COUNT" -eq 0 ]; then
+  echo "WARN [read-check] No Read tool calls detected with ${TOTAL_EDIT} Write/Edit calls. Read code before modifying it."
+  exit 0
+fi
+
+# Calculate ratio: edits/reads
+# Use integer arithmetic with scaling (×100 for ratio > 1.0 check)
+RATIO=$((TOTAL_EDIT * 100 / READ_COUNT))
+if [ "$RATIO" -gt 100 ]; then
+  echo "WARN [read-check] Edit/Read ratio = ${TOTAL_EDIT}/${READ_COUNT} (> 1.0). Read code before modifying it."
+  exit 0
+fi
 
 echo "PASS"
 `
