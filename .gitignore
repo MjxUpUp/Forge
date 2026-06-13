@@ -18,6 +18,10 @@ dist/
 .forge/state.json
 .forge/tasks/
 .forge/gates/
+# Hooks are regenerated from internal/hooks/embed.go by autoSync on every
+# command — tracking them only causes drift. pipeline.yml/protocol.yml stay
+# tracked (user-editable project config, autoSync never overwrites them).
+.forge/hooks/
 
 # Claude Code
 .claude/
