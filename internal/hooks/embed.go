@@ -253,27 +253,6 @@ if [ "$BRANCH" = "master" ] || [ "$BRANCH" = "main" ]; then
   fi
 fi
 
-# Self-bootstrap: warn if forge binary is stale (forging forge itself)
-# This is advisory only — does not block session end.
-WARN_MESSAGES=""
-if [ -f "go.mod" ] && head -1 go.mod | grep -q "github.com/Harness/forge" 2>/dev/null; then
-  FORGE_CMD=$(command -v forge 2>/dev/null || true)
-  FORGE_BIN=""
-  if [ -n "$FORGE_CMD" ]; then
-    FORGE_DIR=$(dirname "$FORGE_CMD")
-    for candidate in "${FORGE_DIR}/node_modules/@agentfare/forge/bin/forge.exe" "${FORGE_DIR}/node_modules/@agentfare/forge/bin/forge"; do
-      if [ -f "$candidate" ]; then FORGE_BIN="$candidate"; break; fi
-    done
-  fi
-  if [ -n "$FORGE_BIN" ]; then
-    INSTALLED_HASH=$(go version -m "$FORGE_BIN" 2>/dev/null | grep vcs.revision | awk -F= '{print $2}' | head -c 7 || echo "")
-    SOURCE_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "")
-    if [ -n "$SOURCE_HASH" ] && [ -n "$INSTALLED_HASH" ] && [ "$INSTALLED_HASH" != "$SOURCE_HASH" ]; then
-      WARN_MESSAGES="Forge binary is stale (installed: $INSTALLED_HASH, source: $SOURCE_HASH). Run: go install ./... then forge init."
-    fi
-  fi
-fi
-
 if [ -n "$MESSAGES" ]; then
   FAIL_COUNT=$((FAIL_COUNT + 1))
   echo "$FAIL_COUNT" > "$VERIFY_COUNTER"
@@ -286,11 +265,7 @@ if [ -n "$MESSAGES" ]; then
   exit 1
 else
   rm -f "$VERIFY_COUNTER"
-  if [ -n "$WARN_MESSAGES" ]; then
-    echo "WARN [task-verify] ${WARN_MESSAGES}"
-  else
-    echo "PASS"
-  fi
+  echo "PASS"
 fi
 `
 
