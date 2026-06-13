@@ -356,6 +356,219 @@ fi
 echo "PASS"
 `
 
+const SecurityCheckHook = `#!/bin/bash
+# security-check.sh — PreToolUse hook for Write|Edit.
+# Scans written content against OWASP Top 10 security patterns.
+# grep-level detection: XSS, SQL injection, hardcoded secrets, command injection.
+set -eo pipefail
+
+ROOT="${1:-.}"
+cd "$ROOT" 2>/dev/null || exit 0
+
+FILE_PATH="${FORGE_FILE_PATH:-}"
+CONTENT="${FORGE_CONTENT:-}"
+[ -z "$CONTENT" ] && { echo "PASS"; exit 0; }
+
+# Only check source code files
+printf '%s' "$FILE_PATH" | grep -qE '\.(go|rs|ts|tsx|js|jsx|py|java|rb|zig|nim|html|vue|svelte)$' || { echo "PASS"; exit 0; }
+
+VIOLATIONS=""
+
+# --- XSS patterns (JS/TS/HTML) ---
+# innerHTML assignment (direct XSS vector)
+printf '%s' "$CONTENT" | grep -qiE '\.innerHTML\s*=' 2>/dev/null && \
+  VIOLATIONS="${VIOLATIONS}[XSS] innerHTML assignment. Use textContent or safe DOM APIs. "
+
+# dangerouslySetInnerHTML (React XSS)
+printf '%s' "$CONTENT" | grep -qiE 'dangerouslySetInnerHTML' 2>/dev/null && \
+  VIOLATIONS="${VIOLATIONS}[XSS] dangerouslySetInnerHTML used. Sanitize content before use. "
+
+# document.write (XSS vector)
+printf '%s' "$CONTENT" | grep -qiE 'document\.write\(' 2>/dev/null && \
+  VIOLATIONS="${VIOLATIONS}[XSS] document.write() used. Use DOM APIs instead. "
+
+# --- SQL injection patterns ---
+# String concatenation in SQL queries (Go/JS/Python)
+printf '%s' "$CONTENT" | grep -qiE '("SELECT.*\+|"INSERT.*\+|fmt\.Sprintf.*SELECT|fmt\.Sprintf.*INSERT)' 2>/dev/null && \
+  VIOLATIONS="${VIOLATIONS}[SQLi] String concatenation in SQL query. Use parameterized queries. "
+
+# Python string formatting in SQL
+printf '%s' "$CONTENT" | grep -qiE '(f"SELECT|f"INSERT|\.format\(.*SELECT|\.format\(.*INSERT)' 2>/dev/null && \
+  VIOLATIONS="${VIOLATIONS}[SQLi] String formatting in SQL query. Use query parameters. "
+
+# --- Hardcoded secrets ---
+# API keys / tokens (long random-looking strings assigned directly)
+printf '%s' "$CONTENT" | grep -qiE '(api_key|apiKey|API_KEY)\s*[:=]\s*"[A-Za-z0-9_-]{20,}"' 2>/dev/null && \
+  VIOLATIONS="${VIOLATIONS}[secret] Hardcoded API key detected. Use environment variables or secret management. "
+
+# Passwords in source
+printf '%s' "$CONTENT" | grep -qiE '(password|passwd|secret)\s*[:=]\s*"[^"]{8,}"' 2>/dev/null && \
+  VIOLATIONS="${VIOLATIONS}[secret] Hardcoded password/secret detected. Use environment variables. "
+
+# AWS/cloud keys
+printf '%s' "$CONTENT" | grep -qiE '(AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9]{32,})' 2>/dev/null && \
+  VIOLATIONS="${VIOLATIONS}[secret] Cloud API key pattern detected. Never commit credentials. "
+
+# --- Command injection patterns ---
+printf '%s' "$CONTENT" | grep -qiE 'os\.system\(.*\+' 2>/dev/null && \
+  VIOLATIONS="${VIOLATIONS}[cmdi] String concatenation in os.system(). Use subprocess with args array. "
+printf '%s' "$CONTENT" | grep -qiE 'exec\(.*\+' 2>/dev/null && \
+  VIOLATIONS="${VIOLATIONS}[cmdi] String concatenation in exec(). Use array arguments. "
+printf '%s' "$CONTENT" | grep -qiE 'subprocess\.call\(.*shell\s*=\s*True' 2>/dev/null && \
+  VIOLATIONS="${VIOLATIONS}[cmdi] subprocess.call with shell=True. Use shell=False with args array. "
+
+# --- Path traversal ---
+printf '%s' "$CONTENT" | grep -qF '../' 2>/dev/null && \
+  VIOLATIONS="${VIOLATIONS}[path-traversal] Potential path traversal ('../'). Validate and sanitize file paths. "
+
+if [ -n "$VIOLATIONS" ]; then
+  echo "FAIL [security-check] Security issues detected: ${VIOLATIONS}"
+  exit 1
+else
+  echo "PASS"
+fi
+`
+
+const TestCoverageCheckHook = `#!/bin/bash
+# test-coverage-check.sh — PostToolUse hook for Write|Edit.
+# Checks that source file changes have corresponding test file changes.
+# Advisory only — warns but never blocks.
+set -eo pipefail
+
+ROOT="${1:-.}"
+cd "$ROOT" 2>/dev/null || exit 0
+
+FILE_PATH="${FORGE_FILE_PATH:-}"
+[ -z "$FILE_PATH" ] && { echo "PASS"; exit 0; }
+
+# Only check source code files (not test files themselves)
+printf '%s' "$FILE_PATH" | grep -qE '\.(go|rs|ts|tsx|js|jsx|py|java|rb|zig|nim)$' || { echo "PASS"; exit 0; }
+# Skip if this IS a test file
+printf '%s' "$FILE_PATH" | grep -qE '(_test\.|_spec\.|\.test\.|\.spec\.|test/|tests/|__tests__/)' && { echo "PASS"; exit 0; }
+
+# Infer expected test file paths for the changed source file
+BASE=$(printf '%s' "$FILE_PATH" | sed 's/\.[^.]*$//')
+EXT=$(printf '%s' "$FILE_PATH" | grep -oE '\.[^.]+$')
+
+# Check if any corresponding test file exists in the diff
+SOURCE_CHANGED=0
+TEST_CHANGED=0
+
+# All changed files in current working tree
+CHANGED_FILES=$( (git diff --cached --name-only 2>/dev/null; git diff --name-only 2>/dev/null) | sort -u || true)
+
+# Check if this source file has changed
+printf '%s' "$CHANGED_FILES" | grep -qF "$FILE_PATH" 2>/dev/null && SOURCE_CHANGED=1
+
+# Check for corresponding test files based on language convention
+case "$EXT" in
+  .go)
+    TEST_FILE="${BASE}_test.go"
+    printf '%s' "$CHANGED_FILES" | grep -qF "$TEST_FILE" 2>/dev/null && TEST_CHANGED=1
+    ;;
+  .rs)
+    # Rust: tests often in same file (mod tests) or separate _test files
+    TEST_FILE="${BASE}_test.rs"
+    printf '%s' "$CHANGED_FILES" | grep -qF "$TEST_FILE" 2>/dev/null && TEST_CHANGED=1
+    # Also check if the source file itself has test module changes
+    git diff -- "$FILE_PATH" 2>/dev/null | grep -q '#\[cfg(test)\]' 2>/dev/null && TEST_CHANGED=1
+    ;;
+  .ts|.tsx)
+    for pattern in "${BASE}.test.ts" "${BASE}.test.tsx" "${BASE}.spec.ts" "${BASE}.spec.tsx"; do
+      printf '%s' "$CHANGED_FILES" | grep -qF "$pattern" 2>/dev/null && TEST_CHANGED=1
+    done
+    ;;
+  .js|.jsx)
+    for pattern in "${BASE}.test.js" "${BASE}.test.jsx" "${BASE}.spec.js" "${BASE}.spec.jsx"; do
+      printf '%s' "$CHANGED_FILES" | grep -qF "$pattern" 2>/dev/null && TEST_CHANGED=1
+    done
+    ;;
+  .py)
+    DIR=$(dirname "$FILE_PATH")
+    FILENAME=$(basename "$FILE_PATH")
+    for pattern in "${DIR}/test_${FILENAME}" "${DIR}/${BASE}_test.py" "tests/test_${FILENAME}"; do
+      printf '%s' "$CHANGED_FILES" | grep -qF "$pattern" 2>/dev/null && TEST_CHANGED=1
+    done
+    ;;
+esac
+
+if [ "$SOURCE_CHANGED" -eq 1 ] && [ "$TEST_CHANGED" -eq 0 ]; then
+  echo "WARN [test-coverage] Source file ${FILE_PATH} changed but no corresponding test file change detected. Consider adding tests."
+else
+  echo "PASS"
+fi
+`
+
+const DependencyCheckHook = `#!/bin/bash
+# dependency-check.sh — PreToolUse hook for Write|Edit.
+# Verifies that new imports/packages exist in the project manifest.
+# Never blocks — dependency issues will be caught by compilation anyway.
+set -eo pipefail
+
+ROOT="${1:-.}"
+cd "$ROOT" 2>/dev/null || exit 0
+
+FILE_PATH="${FORGE_FILE_PATH:-}"
+CONTENT="${FORGE_CONTENT:-}"
+[ -z "$CONTENT" ] && { echo "PASS"; exit 0; }
+
+# Only check source code files
+printf '%s' "$FILE_PATH" | grep -qE '\.(go|rs|ts|tsx|js|jsx|py)$' || { echo "PASS"; exit 0; }
+
+WARNINGS=""
+
+# --- Go: check imports against go.mod ---
+if printf '%s' "$FILE_PATH" | grep -qE '\.go$' && [ -f "go.mod" ]; then
+  # Extract new imports (lines starting with tab + import path in quotes)
+  IMPORTS=$(printf '%s' "$CONTENT" | grep -oE '"github\.com/[^"]+"|"[^"]+\.com/[^"]+"' 2>/dev/null | tr -d '"' || true)
+  for pkg in $IMPORTS; do
+    # Skip standard library (no dot in first path segment)
+    FIRST_SEG=$(printf '%s' "$pkg" | cut -d/ -f1)
+    if ! printf '%s' "$FIRST_SEG" | grep -q '\.'; then
+      continue
+    fi
+    # Check if package appears in go.mod (require or indirect)
+    if ! grep -qF "$pkg" go.mod 2>/dev/null; then
+      WARNINGS="${WARNINGS}Go import '${pkg}' not found in go.mod. "
+    fi
+  done
+fi
+
+# --- Rust: check use statements against Cargo.toml ---
+if printf '%s' "$FILE_PATH" | grep -qE '\.rs$' && [ -f "Cargo.toml" ]; then
+  # Extract external crate usage
+  CRATES=$(printf '%s' "$CONTENT" | grep -oE 'use [a-z][a-z0-9_]*::' 2>/dev/null | sed 's/use //;s/::$//' || true)
+  for crate in $CRATES; do
+    # Skip std/core/alloc/crate/self/super
+    case "$crate" in std|core|alloc|crate|self|super) continue ;; esac
+    if ! grep -qF "\"$crate\"" Cargo.toml 2>/dev/null; then
+      WARNINGS="${WARNINGS}Rust crate '${crate}' not found in Cargo.toml dependencies. "
+    fi
+  done
+fi
+
+# --- JS/TS: check imports against package.json ---
+if printf '%s' "$FILE_PATH" | grep -qE '\.(ts|tsx|js|jsx)$' && [ -f "package.json" ]; then
+  # Extract package imports (not relative paths)
+  PKGS=$(printf '%s' "$CONTENT" | grep -oE "(from|require)\s*\(\s*'[^./][^']*'|from\s*\"[^./][^\"]*\"" 2>/dev/null | grep -oE "'[^']+'|\"[^\"]+\"" | tr -d "'\"" || true)
+  for pkg in $PKGS; do
+    # Check if package is in dependencies or devDependencies
+    if ! grep -qF "\"$pkg\"" package.json 2>/dev/null; then
+      # Only warn for clearly external packages (contain / or @)
+      if printf '%s' "$pkg" | grep -qE '^@|/'; then
+        WARNINGS="${WARNINGS}JS/TS import '${pkg}' not found in package.json. "
+      fi
+    fi
+  done
+fi
+
+if [ -n "$WARNINGS" ]; then
+  echo "WARN [dependency-check] ${WARNINGS}Run 'go mod tidy' / 'cargo update' / 'npm install' if needed."
+else
+  echo "PASS"
+fi
+`
+
 const ToolTrackHook = `#!/bin/bash
 # tool-track.sh — PostToolUse hook for non-write tools.
 # Records tool usage for scoring. Always passes (non-blocking).
