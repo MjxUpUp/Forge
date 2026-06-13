@@ -221,7 +221,15 @@ fi
 
 # Consecutive failure tracking: after 3 failures, pass silently to break the loop.
 # No WARN output — WARN on Stop hooks triggers infinite re-evaluation in Claude Code.
-VERIFY_COUNTER="${TMPDIR:-/tmp}/forge-verify-fail-count"
+#
+# Counter is PROJECT-SCOPED (tagged by cwd). A global counter leaked state across
+# concurrent forge projects and across parallel e2e tests sharing $TMPDIR: prior
+# verify-failing tests bumped it toward 3, then an unrelated project's first
+# failure hit the threshold and force-allowed, masking its real warning
+# (flaky TestMasterBranchReminder). Scoping by cwd isolates each project's
+# 3-strike retry window.
+PROJECT_TAG=$(printf '%s' "$PWD" | cksum | cut -d' ' -f1)
+VERIFY_COUNTER="${TMPDIR:-/tmp}/forge-verify-fail-count-${PROJECT_TAG}"
 FAIL_COUNT=0
 if [ -f "$VERIFY_COUNTER" ]; then
   FAIL_COUNT=$(cat "$VERIFY_COUNTER" 2>/dev/null || echo "0")

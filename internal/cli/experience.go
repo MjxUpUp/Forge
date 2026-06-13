@@ -16,6 +16,7 @@ func init() {
 	experienceCmd.AddCommand(experienceShowCmd)
 	experienceCmd.AddCommand(experienceAcceptCmd)
 	experienceCmd.AddCommand(experienceRejectCmd)
+	experienceCmd.AddCommand(experienceGenerateCmd)
 
 	experienceListCmd.Flags().Bool("json", false, "JSON 格式输出")
 }
@@ -55,6 +56,18 @@ var experienceRejectCmd = &cobra.Command{
 	RunE:  runExperienceReject,
 }
 
+var experienceGenerateCmd = &cobra.Command{
+	Use:   "generate <task-ref>",
+	Short: "为已有 review 回填经验规则提案",
+	Long: `为已存在的 review 生成经验规则提案（每个低分维度一条）。
+
+用于修复在自动生成机制上线之前创建的 review —— 这类 review 没有 proposal，
+无法通过 accept 清除，mandatory review 卡在 pending。运行本命令后即可用
+'forge experience accept <id>' 解除 pending。`,
+	Args: cobra.ExactArgs(1),
+	RunE: runExperienceGenerate,
+}
+
 func runExperienceList(cmd *cobra.Command, args []string) error {
 	asJSON, _ := cmd.Flags().GetBool("json")
 
@@ -75,7 +88,7 @@ func runExperienceList(cmd *cobra.Command, args []string) error {
 
 	if asJSON {
 		type listOutput struct {
-			Reviews   []*experience.ReviewRequest    `json:"reviews"`
+			Reviews   []*experience.ReviewRequest      `json:"reviews"`
 			Proposals []*experience.ExperienceProposal `json:"proposals"`
 		}
 		out := listOutput{
@@ -213,6 +226,23 @@ func runExperienceReject(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("❌ Rule %s rejected.\n", proposalID)
+	return nil
+}
+
+func runExperienceGenerate(cmd *cobra.Command, args []string) error {
+	taskRef := args[0]
+
+	root, err := findProjectRoot()
+	if err != nil {
+		return err
+	}
+
+	n, err := experience.GenerateForExistingReview(root, taskRef)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("✅ Generated %d proposal(s) for %s — run 'forge experience list' then 'forge experience accept <id>'.\n", n, taskRef)
 	return nil
 }
 

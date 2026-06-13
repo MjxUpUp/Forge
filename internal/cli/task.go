@@ -466,6 +466,31 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 				fmt.Fprintf(os.Stderr, "Warning: review creation failed: %v\n", err)
 			} else {
 				lowDims := experience.LowDimensions(state.Score)
+
+				// Generate seed experience proposals so the review is resolvable
+				// (accept → ReviewResolved). Without this, a mandatory review had no
+				// proposal and could never be cleared — deadlocking stop hooks on
+				// every low-scoring task.
+				n, gerr := experience.GenerateProposalsForReview(root, state.TaskRef, lowDims)
+				if gerr != nil {
+					fmt.Fprintf(os.Stderr, "Warning: experience proposal generation failed: %v\n", gerr)
+				}
+				// A mandatory review MUST have a proposal to accept, or it deadlocks
+				// (AcceptProposal is the only path to ReviewResolved). LowDimensions
+				// can be empty for a mandatory review upgraded due to missing hooks
+				// (B-grade, all dims ≥70) — backfill a generic proposal so the review
+				// is still resolvable instead of deadlocking.
+				if mandatory && n == 0 && gerr == nil {
+					if fn, ferr := experience.GenerateFallbackProposal(root, state.TaskRef); ferr != nil {
+						fmt.Fprintf(os.Stderr, "Warning: fallback proposal generation failed: %v\n", ferr)
+					} else {
+						n = fn
+					}
+				}
+				if n > 0 && mandatory {
+					fmt.Printf("  Generated %d experience proposal(s) — run 'forge experience list' then 'forge experience accept <id>'.\n", n)
+				}
+
 				var dimParts []string
 				for _, d := range lowDims {
 					dimParts = append(dimParts, fmt.Sprintf("%s (%d)", d.Dimension, d.Score))
