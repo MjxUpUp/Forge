@@ -11,8 +11,8 @@ func TestDefaultProtocolSmall(t *testing.T) {
 	if p.Version != "1.0" {
 		t.Errorf("Version = %q, want 1.0", p.Version)
 	}
-	if len(p.Standards) != 4 {
-		t.Errorf("Standards count = %d, want 4", len(p.Standards))
+	if len(p.Standards) != 6 {
+		t.Errorf("Standards count = %d, want 6", len(p.Standards))
 	}
 	if len(p.SessionRules) != 3 {
 		t.Errorf("SessionRules count = %d, want 3 for small mode", len(p.SessionRules))
@@ -50,8 +50,8 @@ func TestDefaultProtocolAllStandardsEnabled(t *testing.T) {
 func TestErrorSeverityStandards(t *testing.T) {
 	p := DefaultProtocol("small")
 	errs := p.ErrorSeverityStandards()
-	if len(errs) != 3 {
-		t.Errorf("Error severity standards = %d, want 3", len(errs))
+	if len(errs) != 4 {
+		t.Errorf("Error severity standards = %d, want 4", len(errs))
 	}
 	for _, s := range errs {
 		if s.Severity != "error" {

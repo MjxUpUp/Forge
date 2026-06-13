@@ -16,10 +16,26 @@ type SimilarityResult struct {
 	Similarity float64 `json:"similarity"` // 0.0 to 1.0
 }
 
+// normalizePath returns an absolute, forward-slash, cleaned path.
+// Ensures reliable cross-platform comparison: the CLI passes relative paths
+// while filepath.Walk yields absolute paths, and Windows uses backslashes.
+func normalizePath(p string) string {
+	if abs, err := filepath.Abs(p); err == nil {
+		p = abs
+	}
+	return filepath.ToSlash(filepath.Clean(p))
+}
+
 // DetectClones scans a directory for files too similar to the target file.
 // Returns matches above the threshold (0.0–1.0). Uses plain text tokenization
 // (whitespace split) for speed — full AST diff is a future enhancement.
 func DetectClones(dir, targetPath string, threshold float64) ([]SimilarityResult, error) {
+	// Normalize target to absolute, forward-slash form for reliable
+	// cross-platform self-comparison. The CLI passes a relative path while
+	// filepath.Walk yields absolute paths, so a raw equality check fails and
+	// the target matches itself at 100%.
+	normTarget := normalizePath(targetPath)
+
 	targetTokens, err := tokenizeFile(targetPath)
 	if err != nil || len(targetTokens) < 10 {
 		return nil, err
@@ -32,17 +48,19 @@ func DetectClones(dir, targetPath string, threshold float64) ([]SimilarityResult
 		if err != nil || info.IsDir() {
 			return nil
 		}
+		normPath := normalizePath(path)
 		// Only compare same-language files
 		if filepath.Ext(path) != ext {
 			return nil
 		}
 		// Don't compare with self
-		if path == targetPath {
+		if normPath == normTarget {
 			return nil
 		}
-		// Skip vendored and generated files
-		if strings.Contains(path, "vendor/") || strings.Contains(path, "node_modules/") ||
-			strings.Contains(path, ".git/") {
+		// Skip vendored and generated files (compare on forward-slash form
+		// so Windows backslash paths are matched correctly).
+		if strings.Contains(normPath, "/vendor/") || strings.Contains(normPath, "/node_modules/") ||
+			strings.Contains(normPath, "/.git/") {
 			return nil
 		}
 

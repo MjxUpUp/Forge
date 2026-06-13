@@ -375,6 +375,7 @@ CONTENT="${FORGE_CONTENT:-}"
 printf '%s' "$FILE_PATH" | grep -qE '\.(go|rs|ts|tsx|js|jsx|py|java|rb|zig|nim|html|vue|svelte)$' || { echo "PASS"; exit 0; }
 
 VIOLATIONS=""
+WARNINGS=""
 
 # --- XSS patterns (JS/TS/HTML) ---
 # innerHTML assignment (direct XSS vector)
@@ -419,13 +420,16 @@ printf '%s' "$CONTENT" | grep -qiE 'exec\(.*\+' 2>/dev/null && \
 printf '%s' "$CONTENT" | grep -qiE 'subprocess\.call\(.*shell\s*=\s*True' 2>/dev/null && \
   VIOLATIONS="${VIOLATIONS}[cmdi] subprocess.call with shell=True. Use shell=False with args array. "
 
-# --- Path traversal ---
+# --- Path traversal (advisory: '../' is common in legitimate relative paths) ---
 printf '%s' "$CONTENT" | grep -qF '../' 2>/dev/null && \
-  VIOLATIONS="${VIOLATIONS}[path-traversal] Potential path traversal ('../'). Validate and sanitize file paths. "
+  WARNINGS="${WARNINGS}[path-traversal] Potential path traversal ('../'). Validate and sanitize file paths. "
 
 if [ -n "$VIOLATIONS" ]; then
   echo "FAIL [security-check] Security issues detected: ${VIOLATIONS}"
   exit 1
+elif [ -n "$WARNINGS" ]; then
+  echo "WARN [security-check] ${WARNINGS}"
+  exit 0
 else
   echo "PASS"
 fi
@@ -521,8 +525,9 @@ WARNINGS=""
 
 # --- Go: check imports against go.mod ---
 if printf '%s' "$FILE_PATH" | grep -qE '\.go$' && [ -f "go.mod" ]; then
-  # Extract new imports (lines starting with tab + import path in quotes)
-  IMPORTS=$(printf '%s' "$CONTENT" | grep -oE '"github\.com/[^"]+"|"[^"]+\.com/[^"]+"' 2>/dev/null | tr -d '"' || true)
+  # Extract external imports (quoted paths whose first segment has a dot+TLD,
+  # i.e. not stdlib). Covers github.com, golang.org, k8s.io, gopkg.in, etc.
+  IMPORTS=$(printf '%s' "$CONTENT" | grep -oE '"[a-z0-9._-]+\.[a-z]{2,}(/[^"]*)?"' 2>/dev/null | tr -d '"' || true)
   for pkg in $IMPORTS; do
     # Skip standard library (no dot in first path segment)
     FIRST_SEG=$(printf '%s' "$pkg" | cut -d/ -f1)
@@ -543,7 +548,8 @@ if printf '%s' "$FILE_PATH" | grep -qE '\.rs$' && [ -f "Cargo.toml" ]; then
   for crate in $CRATES; do
     # Skip std/core/alloc/crate/self/super
     case "$crate" in std|core|alloc|crate|self|super) continue ;; esac
-    if ! grep -qF "\"$crate\"" Cargo.toml 2>/dev/null; then
+    # Cargo.toml deps are keys like: serde = "1.0" (no quotes around crate name).
+    if ! grep -qE "^[[:space:]]*${crate}[[:space:]]*=" Cargo.toml 2>/dev/null; then
       WARNINGS="${WARNINGS}Rust crate '${crate}' not found in Cargo.toml dependencies. "
     fi
   done
@@ -605,7 +611,7 @@ cd "$ROOT" 2>/dev/null || exit 0
 SESSION_FILE=".forge/session.json"
 [ ! -f "$SESSION_FILE" ] && { echo "PASS"; exit 0; }
 
-STARTED=$(grep -oE '"started_at"s*:s*"[^"]+"' "$SESSION_FILE" 2>/dev/null | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}' || true)
+STARTED=$(grep -oE '"started_at"[[:space:]]*:[[:space:]]*"[^"]+"' "$SESSION_FILE" 2>/dev/null | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}' || true)
 [ -z "$STARTED" ] && { echo "PASS"; exit 0; }
 
 NOW=$(date -u +%s)

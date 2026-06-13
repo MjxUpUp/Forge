@@ -1,6 +1,6 @@
 package taskpipeline
 
-// DefaultGates returns the 5 standard task-level quality gates.
+// DefaultGates returns the 3 standard task-level quality gates (v0.17: reduced from 5).
 // These are hardcoded — they apply universally to any task.
 // Order matters: gates are executed sequentially.
 func DefaultGates() []TaskGate {

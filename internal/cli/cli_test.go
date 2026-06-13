@@ -98,7 +98,7 @@ func TestInitCreatesFiles(t *testing.T) {
 		t.Fatalf("state.json not found: %v", err)
 	}
 
-	// .forge/hooks/ has 3 .sh files
+	// .forge/hooks/ has 15 .sh files (8 base + 7 v0.17 additions)
 	hooksDir := filepath.Join(tmpDir, ".forge", "hooks")
 	entries, err := os.ReadDir(hooksDir)
 	if err != nil {
