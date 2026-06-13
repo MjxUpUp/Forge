@@ -571,6 +571,85 @@ else
 fi
 `
 
+
+const ScopeGuardHook = `#!/bin/bash
+# scope-guard.sh — PreToolUse hook for Write|Edit.
+# Warns when cumulative task changes exceed reviewable thresholds.
+set -eo pipefail
+
+ROOT="${1:-.}"
+cd "$ROOT" 2>/dev/null || exit 0
+
+git rev-parse --git-dir >/dev/null 2>&1 || { echo "PASS"; exit 0; }
+
+CHANGED=$( (git diff --cached --stat 2>/dev/null; git diff --stat 2>/dev/null) | tail -1 | grep -oE '[0-9]+ insertion' | grep -oE '[0-9]+' || echo "0")
+[ -z "$CHANGED" ] && CHANGED="0"
+
+if [ "$CHANGED" -gt 2000 ]; then
+  echo "WARN [scope-guard] Very large change: ${CHANGED} lines. Consider splitting into smaller commits."
+elif [ "$CHANGED" -gt 400 ]; then
+  echo "WARN [scope-guard] Large change: ${CHANGED} lines (> 400). Ensure changes are focused."
+else
+  echo "PASS"
+fi
+`
+
+const SessionHealthHook = `#!/bin/bash
+# session-health.sh — PostToolUse hook.
+# Checks session duration and warns if running too long.
+set -eo pipefail
+
+ROOT="${1:-.}"
+cd "$ROOT" 2>/dev/null || exit 0
+
+SESSION_FILE=".forge/session.json"
+[ ! -f "$SESSION_FILE" ] && { echo "PASS"; exit 0; }
+
+STARTED=$(grep -oE '"started_at"s*:s*"[^"]+"' "$SESSION_FILE" 2>/dev/null | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}' || true)
+[ -z "$STARTED" ] && { echo "PASS"; exit 0; }
+
+NOW=$(date -u +%s)
+STARTED_SEC=$(date -d "$STARTED" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M" "$STARTED" +%s 2>/dev/null || echo "0")
+[ "$STARTED_SEC" = "0" ] && { echo "PASS"; exit 0; }
+
+ELAPSED=$(( (NOW - STARTED_SEC) / 60 ))
+
+if [ "$ELAPSED" -gt 120 ]; then
+  echo "WARN [session-health] Session running for ${ELAPSED} minutes (> 2 hours). Consider pausing."
+elif [ "$ELAPSED" -gt 60 ]; then
+  echo "WARN [session-health] Session running for ${ELAPSED} minutes (> 1 hour). Consider checkpointing."
+else
+  echo "PASS"
+fi
+`
+
+const CloneCheckHook = `#!/bin/bash
+# clone-check.sh — PostToolUse hook for Write|Edit.
+# Simple duplicate line ratio fallback (forge clone check preferred).
+set -eo pipefail
+
+ROOT="${1:-.}"
+cd "$ROOT" 2>/dev/null || exit 0
+
+FILE_PATH="${FORGE_FILE_PATH:-}"
+[ -z "$FILE_PATH" ] && { echo "PASS"; exit 0; }
+
+printf '%s' "$FILE_PATH" | grep -qE '.(go|rs|ts|tsx|js|jsx|py|java)$' || { echo "PASS"; exit 0; }
+
+if [ -f "$FILE_PATH" ]; then
+  TOTAL=$(wc -l < "$FILE_PATH" 2>/dev/null || echo "0")
+  UNIQUE=$(sort "$FILE_PATH" | uniq | wc -l 2>/dev/null || echo "0")
+  if [ "$TOTAL" -gt 20 ] && [ "$UNIQUE" -gt 0 ]; then
+    RATIO=$(( UNIQUE * 100 / TOTAL ))
+    if [ "$RATIO" -lt 30 ]; then
+      echo "WARN [clone-check] ${FILE_PATH}: only ${RATIO}% unique lines. Possible excessive duplication."
+      exit 0
+    fi
+  fi
+fi
+
+echo "PASS"
+`
 const ToolTrackHook = `#!/bin/bash
 # tool-track.sh — PostToolUse hook for non-write tools.
 # Records tool usage for scoring. Always passes (non-blocking).

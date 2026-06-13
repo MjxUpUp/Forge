@@ -9,18 +9,21 @@ import (
 
 // embeddedHooks maps script names (without .sh suffix) to their embedded content.
 var embeddedHooks = map[string]string{
-	"auto-compile":      AutoCompileHook,
-	"assertion-check":   AssertionCheckHook,
-	"experience-check":  ExperienceCheckHook,
-	"task-verify":       TaskVerifyHook,
-	"task-guard":        TaskGuardHook,
-	"read-check":        ReadCheckHook,
-	"security-check":    SecurityCheckHook,
+	"auto-compile":       AutoCompileHook,
+	"assertion-check":    AssertionCheckHook,
+	"experience-check":   ExperienceCheckHook,
+	"task-verify":        TaskVerifyHook,
+	"task-guard":         TaskGuardHook,
+	"read-check":         ReadCheckHook,
+	"security-check":     SecurityCheckHook,
 	"test-coverage-check": TestCoverageCheckHook,
-	"dependency-check":  DependencyCheckHook,
-	"tool-track":        ToolTrackHook,
-	"bash-guard":        BashGuardHook,
-	"file-sentinel":     FileSentinelHook,
+	"dependency-check":   DependencyCheckHook,
+	"scope-guard":        ScopeGuardHook,
+	"session-health":     SessionHealthHook,
+	"clone-check":        CloneCheckHook,
+	"tool-track":         ToolTrackHook,
+	"bash-guard":         BashGuardHook,
+	"file-sentinel":      FileSentinelHook,
 }
 
 // EmbeddedContent returns the hook script content for the given name
@@ -31,8 +34,6 @@ func EmbeddedContent(name string) (string, bool) {
 }
 
 // GenerateSettings creates .claude/settings.local.json with hook integration.
-// All hook commands route through "forge hook <name>" so they work
-// regardless of Claude Code's CWD and auto-sync on every invocation.
 func GenerateSettings(projectDir string) error {
 	claudeDir := filepath.Join(projectDir, ".claude")
 	os.MkdirAll(claudeDir, 0755)
@@ -55,6 +56,7 @@ func GenerateSettings(projectDir string) error {
 					Hooks: []hookEntry{
 						{Type: "command", Command: "forge hook auto-compile"},
 						{Type: "command", Command: "forge hook test-coverage-check"},
+						{Type: "command", Command: "forge hook clone-check"},
 					},
 				},
 				{
@@ -67,6 +69,7 @@ func GenerateSettings(projectDir string) error {
 					Matcher: "Bash|Read|Grep|Glob|Skill|Agent",
 					Hooks: []hookEntry{
 						{Type: "command", Command: "forge hook tool-track"},
+						{Type: "command", Command: "forge hook session-health"},
 					},
 				},
 			},
@@ -78,6 +81,7 @@ func GenerateSettings(projectDir string) error {
 						{Type: "command", Command: "forge hook read-check"},
 						{Type: "command", Command: "forge hook security-check"},
 						{Type: "command", Command: "forge hook dependency-check"},
+						{Type: "command", Command: "forge hook scope-guard"},
 						{Type: "command", Command: "forge hook assertion-check"},
 						{Type: "command", Command: "forge hook experience-check"},
 					},
@@ -117,18 +121,21 @@ func WriteHookTemplates(forgeDir string) error {
 	}
 
 	fileHooks := map[string]string{
-		"auto-compile.sh":       AutoCompileHook,
-		"assertion-check.sh":    AssertionCheckHook,
-		"experience-check.sh":   ExperienceCheckHook,
-		"task-verify.sh":        TaskVerifyHook,
-		"task-guard.sh":         TaskGuardHook,
-		"read-check.sh":         ReadCheckHook,
-		"security-check.sh":     SecurityCheckHook,
-		"test-coverage-check.sh": TestCoverageCheckHook,
-		"dependency-check.sh":   DependencyCheckHook,
-		"tool-track.sh":         ToolTrackHook,
-		"bash-guard.sh":         BashGuardHook,
-		"file-sentinel.sh":      FileSentinelHook,
+		"auto-compile.sh":        AutoCompileHook,
+		"assertion-check.sh":     AssertionCheckHook,
+		"experience-check.sh":    ExperienceCheckHook,
+		"task-verify.sh":         TaskVerifyHook,
+		"task-guard.sh":          TaskGuardHook,
+		"read-check.sh":          ReadCheckHook,
+		"security-check.sh":      SecurityCheckHook,
+		"test-coverage-check.sh":  TestCoverageCheckHook,
+		"dependency-check.sh":    DependencyCheckHook,
+		"scope-guard.sh":         ScopeGuardHook,
+		"session-health.sh":      SessionHealthHook,
+		"clone-check.sh":         CloneCheckHook,
+		"tool-track.sh":          ToolTrackHook,
+		"bash-guard.sh":          BashGuardHook,
+		"file-sentinel.sh":       FileSentinelHook,
 	}
 
 	for name, content := range fileHooks {
@@ -152,6 +159,9 @@ func HookNames() []string {
 		"security-check.sh",
 		"test-coverage-check.sh",
 		"dependency-check.sh",
+		"scope-guard.sh",
+		"session-health.sh",
+		"clone-check.sh",
 		"tool-track.sh",
 		"bash-guard.sh",
 		"file-sentinel.sh",
