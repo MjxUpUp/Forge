@@ -225,6 +225,23 @@ func TestTaskVerifyHookContainsMasterCheck(t *testing.T) {
 	}
 }
 
+// TestTaskVerifyHookCounterIsProjectScoped guards against the global-counter
+// regression: a bare /tmp/forge-verify-fail-count (no per-project tag) leaked
+// failure counts across concurrent projects and parallel e2e tests, making
+// TestMasterBranchReminder flaky (an unrelated project's first failure hit the
+// 3-strike threshold and force-allowed, masking its real warning).
+func TestTaskVerifyHookCounterIsProjectScoped(t *testing.T) {
+	if !containsString(TaskVerifyHook, "PROJECT_TAG") {
+		t.Error("TaskVerifyHook missing PROJECT_TAG scoping for the failure counter")
+	}
+	if !containsString(TaskVerifyHook, "forge-verify-fail-count-${PROJECT_TAG}") {
+		t.Error("TaskVerifyHook failure counter must be tagged by PROJECT_TAG, got bare global path")
+	}
+	if containsString(TaskVerifyHook, `forge-verify-fail-count"`) {
+		t.Error("TaskVerifyHook reverted to un-scoped global counter (leaks state across projects)")
+	}
+}
+
 
 func TestTaskGuardHookContainsKeyChecks(t *testing.T) {
 	if !containsString(TaskGuardHook, "FORGE_TASK_REF") {
