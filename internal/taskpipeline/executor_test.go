@@ -4,7 +4,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -382,99 +381,6 @@ func TestSanitizeRefInStatePath(t *testing.T) {
 	}
 }
 
-func TestGateMinInterval(t *testing.T) {
-	// Default should be 60s
-	os.Unsetenv("FORGE_GATE_MIN_INTERVAL")
-	if d := getGateMinInterval(); d != 60*time.Second {
-		t.Errorf("default interval = %v, want 60s", d)
-	}
-
-	// Custom via env
-	os.Setenv("FORGE_GATE_MIN_INTERVAL", "30s")
-	defer os.Unsetenv("FORGE_GATE_MIN_INTERVAL")
-	if d := getGateMinInterval(); d != 30*time.Second {
-		t.Errorf("custom interval = %v, want 30s", d)
-	}
-
-	// Invalid env falls back to default
-	os.Setenv("FORGE_GATE_MIN_INTERVAL", "not-a-duration")
-	if d := getGateMinInterval(); d != 60*time.Second {
-		t.Errorf("invalid env interval = %v, want 60s", d)
-	}
-}
-
-func TestGateTimingRejectsRapidFire(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "test@test.com")
-	runGit(t, dir, "config", "user.name", "Test")
-	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
-	runGit(t, dir, "add", ".")
-	runGit(t, dir, "commit", "-m", "initial")
-
-	// Set very short interval for testing
-	os.Setenv("FORGE_GATE_MIN_INTERVAL", "5s")
-	defer os.Unsetenv("FORGE_GATE_MIN_INTERVAL")
-
-	state := &TaskState{
-		TaskRef: "test-rapid",
-		Branch:  "feat/test",
-	}
-
-	// Pass first gate (understand) — no previous gate, so no timing check
-	result, err := ExecuteTaskGate(dir, "task-understand", state)
-	if err != nil {
-		t.Fatalf("first gate should pass: %v", err)
-	}
-	state.RecordGateResult(result.GateID, result.Passed, "")
-
-	// Try passing design immediately — should be rejected
-	_, err = ExecuteTaskGate(dir, "task-design", state)
-	if err == nil {
-		t.Fatal("rapid-fire gate should be rejected")
-	}
-	if !strings.Contains(err.Error(), "too quickly") {
-		t.Errorf("error message should mention timing: %v", err)
-	}
-}
-
-func TestGateTimingAllowsAfterInterval(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "test@test.com")
-	runGit(t, dir, "config", "user.name", "Test")
-	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
-	runGit(t, dir, "add", ".")
-	runGit(t, dir, "commit", "-m", "initial")
-
-	// Set very short interval
-	os.Setenv("FORGE_GATE_MIN_INTERVAL", "0s")
-	defer os.Unsetenv("FORGE_GATE_MIN_INTERVAL")
-	os.Setenv("FORGE_WORK_ACTIVITY", "disable")
-	defer os.Unsetenv("FORGE_WORK_ACTIVITY")
-
-	state := &TaskState{
-		TaskRef: "test-delayed",
-		Branch:  "feat/test",
-	}
-
-	// Pass first gate
-	result, err := ExecuteTaskGate(dir, "task-understand", state)
-	if err != nil {
-		t.Fatalf("first gate should pass: %v", err)
-	}
-	state.RecordGateResult(result.GateID, result.Passed, "")
-
-	// Wait for interval to pass
-	time.Sleep(1100 * time.Millisecond)
-
-	// Second gate should now be allowed
-	_, err = ExecuteTaskGate(dir, "task-design", state)
-	if err != nil {
-		t.Fatalf("gate after interval should pass: %v", err)
-	}
-}
-
 func TestLastGateSkipsTiming(t *testing.T) {
 	dir := t.TempDir()
 	runGit(t, dir, "init")
@@ -485,8 +391,6 @@ func TestLastGateSkipsTiming(t *testing.T) {
 	runGit(t, dir, "commit", "-m", "initial")
 
 	// Set long interval — last gate should skip it entirely
-	os.Setenv("FORGE_GATE_MIN_INTERVAL", "10m")
-	defer os.Unsetenv("FORGE_GATE_MIN_INTERVAL")
 	os.Setenv("FORGE_WORK_ACTIVITY", "disable")
 	defer os.Unsetenv("FORGE_WORK_ACTIVITY")
 
@@ -553,8 +457,6 @@ func TestAutoGateSkipsTimingForNextGate(t *testing.T) {
 	runGit(t, dir, "commit", "-m", "initial")
 
 	// Set long interval — next gate after auto should skip it
-	os.Setenv("FORGE_GATE_MIN_INTERVAL", "10m")
-	defer os.Unsetenv("FORGE_GATE_MIN_INTERVAL")
 	os.Setenv("FORGE_WORK_ACTIVITY", "disable")
 	defer os.Unsetenv("FORGE_WORK_ACTIVITY")
 
@@ -818,8 +720,6 @@ func TestGateTimingExemptsAutoGates(t *testing.T) {
 	runGit(t, dir, "commit", "-m", "initial")
 
 	// Long interval — auto gate should be exempt
-	os.Setenv("FORGE_GATE_MIN_INTERVAL", "10m")
-	defer os.Unsetenv("FORGE_GATE_MIN_INTERVAL")
 	os.Setenv("FORGE_WORK_ACTIVITY", "disable")
 	defer os.Unsetenv("FORGE_WORK_ACTIVITY")
 

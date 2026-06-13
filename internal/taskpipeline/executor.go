@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/Harness/forge/internal/checklog"
 )
@@ -51,28 +50,17 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 	// For non-auto gates, just mark as passed
 	// The AI agent is responsible for the actual work via SKILL.md instructions
 
-	// Timing + work activity check for non-auto gates.
+	// Work activity check for non-auto gates.
 	// Gates must not be passed without real work happening between them.
-	// This prevents agents from using sleep to bypass timing requirements.
 	// Skip for: completed tasks (re-verification), final gate (no work phase after it),
 	// and gates following an auto gate (auto checks are instantaneous - no work phase needed).
 	if !gate.Auto && state.CompletedAt == nil && len(state.History) > 0 && !isLastGate(gateID) && !isPreviousGateAuto(state) {
 		lastResult := state.History[len(state.History)-1]
-		minInterval := getGateMinInterval()
-		elapsed := time.Since(lastResult.CompletedAt)
-		if elapsed < minInterval {
-			return nil, fmt.Errorf(
-				"gate %q passed too quickly after %q (%.0fs elapsed, minimum %v). "+
-					"Each gate represents a distinct work phase - spend time on it before advancing",
-				gateID, lastResult.Gate, elapsed.Seconds(), minInterval,
-			)
-		}
 
 		// Work activity check: verify actual tool usage (Read, Write, Edit, Grep, etc.)
 		// since the last gate. If only Bash/sleep was used, the agent didn't do real work.
-		// Independent of minInterval - even with timing disabled, substance is still checked.
 		// On error (e.g. corrupted checklog), log warning and allow pass to avoid permanent block.
-		// Minimum 1 tool use: combined with timing check, this is sufficient to prove real work.
+		// Minimum 1 tool use is sufficient to prove real work was done.
 		if state.TaskRef != "" && !getDisableWorkActivity() {
 			activity, err := checklog.WorkActivity(root, state.TaskRef, lastResult.CompletedAt)
 			if err != nil {
@@ -246,18 +234,6 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 	}, nil
 }
 
-// getGateMinInterval returns the minimum time required between consecutive
-// non-auto gate passes. Configurable via FORGE_GATE_MIN_INTERVAL env var
-// (e.g. "30s", "2m"). Default: 60 seconds.
-func getGateMinInterval() time.Duration {
-	if env := os.Getenv("FORGE_GATE_MIN_INTERVAL"); env != "" {
-		if d, err := time.ParseDuration(env); err == nil {
-			return d
-		}
-	}
-	return 60 * time.Second
-}
-
 // getDisableWorkActivity returns whether work activity checking is disabled.
 // Set FORGE_WORK_ACTIVITY=disable to skip the check (for testing only).
 func getDisableWorkActivity() bool {
@@ -266,7 +242,7 @@ func getDisableWorkActivity() bool {
 
 // isPreviousGateAuto returns true if the most recently passed gate is auto.
 // Auto gates (e.g. task-implement) are instantaneous system checks - the next
-// gate should not require a timing/activity wait since no "work phase" elapsed.
+// gate should not require work activity checks since no "work phase" elapsed.
 func isPreviousGateAuto(state *TaskState) bool {
 	if len(state.History) == 0 {
 		return false
@@ -277,7 +253,7 @@ func isPreviousGateAuto(state *TaskState) bool {
 }
 
 // isLastGate returns true if the given gate ID is the final gate in the pipeline.
-// The final gate (task-complete) has no work phase after it, so timing and
+// The final gate (task-complete) has no work phase after it, so
 // work activity checks are skipped - there's nothing to "spend time on".
 func isLastGate(gateID string) bool {
 	gates := DefaultGates()

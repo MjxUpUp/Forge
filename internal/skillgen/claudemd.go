@@ -83,7 +83,6 @@ func buildForgeSection() string {
 	sb.WriteString("|----------|------|----------|\n")
 	sb.WriteString("| Write/Edit denied by task-guard | 无活跃任务 | 先 `forge task start --ref <type>/<name>` |\n")
 	sb.WriteString("| Bash denied by bash-guard | Bash 含写文件操作且无任务 | 先启动任务 |\n")
-	sb.WriteString("| gate passed too quickly | 相邻门禁间隔 <1 分钟 | 做真实的探索/分析工作，不要 sleep |\n")
 	sb.WriteString("| insufficient work activity | 门禁间工具调用 <1 次 | 用 Read/Grep/Glob 探索代码 |\n")
 	sb.WriteString("| HEAD not moved | task-implement 前没有新提交 | 先写代码并 `git commit` |\n")
 	sb.WriteString("| --branch on non-main | `--branch` 只在 master/main 可用 | 已在 feature 分支时去掉 `--branch` |\n")
