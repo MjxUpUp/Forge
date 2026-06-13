@@ -258,3 +258,57 @@ func TestGenerateForExistingReview_MandatoryEmptyLowsBackfills(t *testing.T) {
 		t.Fatalf("expected 1 fallback proposal for empty-lows mandatory review, got %d", n)
 	}
 }
+
+// TestResolveReview_ResolvesIndependently proves the decoupling: a review can be
+// resolved WITHOUT any proposal to accept. Before this, AcceptProposal was the
+// only path to ReviewResolved, so a review with zero proposals deadlocked.
+func TestResolveReview_ResolvesIndependently(t *testing.T) {
+	tmpRoot := t.TempDir()
+	taskRef := "task-resolve"
+	review := &ReviewRequest{
+		TaskRef:   taskRef,
+		Score:     60,
+		Grade:     "D",
+		Mandatory: true,
+		Status:    ReviewPending,
+		CreatedAt: time.Now(),
+	}
+	if err := SaveReview(tmpRoot, review); err != nil {
+		t.Fatalf("SaveReview: %v", err)
+	}
+	// No proposals exist for this review — resolve must still work.
+	if err := ResolveReview(tmpRoot, taskRef); err != nil {
+		t.Fatalf("ResolveReview: %v", err)
+	}
+	loaded, err := LoadReview(tmpRoot, taskRef)
+	if err != nil {
+		t.Fatalf("LoadReview: %v", err)
+	}
+	if loaded.Status != ReviewResolved {
+		t.Errorf("status = %q, want resolved (decoupling failed)", loaded.Status)
+	}
+}
+
+func TestProposalsForReview_FiltersByTaskRef(t *testing.T) {
+	tmpRoot := t.TempDir()
+	for _, ref := range []string{"task-a", "task-b"} {
+		if err := SaveProposal(tmpRoot, &ExperienceProposal{
+			SourceReview: ref,
+			Category:     "gotchas",
+			Title:        "title-" + ref,
+			Status:       PropProposed,
+		}); err != nil {
+			t.Fatalf("SaveProposal %s: %v", ref, err)
+		}
+	}
+	got, err := ProposalsForReview(tmpRoot, "task-a", PropProposed)
+	if err != nil {
+		t.Fatalf("ProposalsForReview: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 proposal for task-a, got %d", len(got))
+	}
+	if got[0].SourceReview != "task-a" {
+		t.Errorf("SourceReview = %q, want task-a", got[0].SourceReview)
+	}
+}

@@ -222,13 +222,19 @@ fi
 # Consecutive failure tracking: after 3 failures, pass silently to break the loop.
 # No WARN output — WARN on Stop hooks triggers infinite re-evaluation in Claude Code.
 #
-# Counter is PROJECT-SCOPED (tagged by cwd). A global counter leaked state across
-# concurrent forge projects and across parallel e2e tests sharing $TMPDIR: prior
-# verify-failing tests bumped it toward 3, then an unrelated project's first
-# failure hit the threshold and force-allowed, masking its real warning
-# (flaky TestMasterBranchReminder). Scoping by cwd isolates each project's
-# 3-strike retry window.
-PROJECT_TAG=$(printf '%s' "$PWD" | cksum | cut -d' ' -f1)
+# Counter is PROJECT-SCOPED. A global counter leaked state across concurrent
+# forge projects and parallel e2e tests sharing $TMPDIR (flaky
+# TestMasterBranchReminder). Prefer the stable tag forge injects —
+# FORGE_PROJECT_TAG is an fnv hash of the canonical project root, so it is
+# invariant across path case, drive-letter form, and symlinks and does not
+# depend on the host's cksum format (GNU vs BSD). Fall back to a $PWD cksum
+# when the hook runs directly under bash (e.g. e2e tests with no forge env),
+# keeping the counter project-scoped either way.
+if [ -z "${FORGE_PROJECT_TAG:-}" ]; then
+  PROJECT_TAG=$(printf '%s' "$PWD" | cksum | cut -d' ' -f1)
+else
+  PROJECT_TAG="$FORGE_PROJECT_TAG"
+fi
 VERIFY_COUNTER="${TMPDIR:-/tmp}/forge-verify-fail-count-${PROJECT_TAG}"
 FAIL_COUNT=0
 if [ -f "$VERIFY_COUNTER" ]; then

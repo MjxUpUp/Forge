@@ -83,15 +83,13 @@ var dimensionTemplates = map[scoringtypes.Dimension]proposalTemplate{
 // are skipped, so re-running (e.g. re-scoring a task) does not duplicate.
 // Returns the number of proposals created.
 func GenerateProposalsForReview(root, taskRef string, lows []LowDimension) (int, error) {
-	existing, err := ListProposals(root, PropProposed)
+	existing, err := ProposalsForReview(root, taskRef, PropProposed)
 	if err != nil {
 		return 0, fmt.Errorf("list existing proposals for dedup: %w", err)
 	}
 	haveTitle := make(map[string]bool)
 	for _, p := range existing {
-		if p.SourceReview == taskRef {
-			haveTitle[p.Title] = true
-		}
+		haveTitle[p.Title] = true
 	}
 
 	created := 0
@@ -153,14 +151,12 @@ func GenerateForExistingReview(root, taskRef string) (int, error) {
 //
 // Idempotent: no-op (returns 0) if the review already has any proposed proposal.
 func GenerateFallbackProposal(root, taskRef string) (int, error) {
-	existing, err := ListProposals(root, PropProposed)
+	existing, err := ProposalsForReview(root, taskRef, PropProposed)
 	if err != nil {
 		return 0, fmt.Errorf("list existing proposals: %w", err)
 	}
-	for _, p := range existing {
-		if p.SourceReview == taskRef {
-			return 0, nil // already has a proposal — nothing to backfill
-		}
+	if len(existing) > 0 {
+		return 0, nil // already has a proposal — nothing to backfill
 	}
 	proposal := &ExperienceProposal{
 		SourceReview: taskRef,

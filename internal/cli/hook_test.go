@@ -240,3 +240,37 @@ func TestToRelPath(t *testing.T) {
 		})
 	}
 }
+
+// TestProjectTagFor_StableAndCleanInvariant verifies the project tag is a stable
+// function of the canonical project root: the same directory expressed as
+// relative/absolute/redundant-path forms must yield one tag, and distinct
+// directories must yield distinct tags. This is what makes it a safe per-project
+// scoping key (unlike $PWD/cksum, which varies with path case/form and host
+// cksum format).
+func TestProjectTagFor_StableAndCleanInvariant(t *testing.T) {
+	dir := t.TempDir()
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatalf("Abs: %v", err)
+	}
+
+	tagDirect := projectTagFor(dir)
+	tagAbs := projectTagFor(abs)
+	tagRedundant := projectTagFor(filepath.Join(abs, "x", ".."))
+
+	if tagDirect != tagAbs {
+		t.Errorf("tag differs for temp dir vs absolute form: %q vs %q", tagDirect, tagAbs)
+	}
+	if tagDirect != tagRedundant {
+		t.Errorf("tag changed after redundant path components (Clean invariance): %q vs %q", tagDirect, tagRedundant)
+	}
+	if tagDirect == "" {
+		t.Error("project tag is empty")
+	}
+
+	// Distinct directories must not collide.
+	other := t.TempDir()
+	if projectTagFor(other) == tagDirect {
+		t.Errorf("two different temp dirs produced the same project tag %q", tagDirect)
+	}
+}

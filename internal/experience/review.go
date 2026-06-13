@@ -145,3 +145,16 @@ func UpdateReviewStatus(root, taskRef string, status ReviewStatus) error {
 	r.Status = status
 	return SaveReview(root, r)
 }
+
+// ResolveReview marks a review as resolved independently of any proposal.
+//
+// This is the escape hatch that decouples review resolution from AcceptProposal.
+// AcceptProposal (integration.go) is otherwise the ONLY path to ReviewResolved,
+// which meant any review with zero proposals to accept — a dimension-template
+// gap, a SaveProposal failure, or all proposals rejected — deadlocked the
+// task-verify Stop hook on a pending mandatory review. With a direct resolve,
+// a stuck review can always be cleared via `forge experience resolve <task-ref>`.
+// AcceptProposal still resolves as before when a proposal is accepted.
+func ResolveReview(root, taskRef string) error {
+	return UpdateReviewStatus(root, taskRef, ReviewResolved)
+}

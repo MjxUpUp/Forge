@@ -115,6 +115,25 @@ func ListProposals(root string, status PropStatus) ([]*ExperienceProposal, error
 	return proposals, nil
 }
 
+// ProposalsForReview lists proposals linked to a specific review
+// (SourceReview == taskRef), optionally filtered by status. It centralizes the
+// "list then filter by review" pattern that generation dedup and
+// `forge experience show` both need, so the review-association field is read in
+// one place (if SourceReview is ever renamed, only this helper changes).
+func ProposalsForReview(root, taskRef string, status PropStatus) ([]*ExperienceProposal, error) {
+	all, err := ListProposals(root, status)
+	if err != nil {
+		return nil, err
+	}
+	var out []*ExperienceProposal
+	for _, p := range all {
+		if p.SourceReview == taskRef {
+			out = append(out, p)
+		}
+	}
+	return out, nil
+}
+
 // UpdateProposalStatus loads a proposal, updates its status, and saves it.
 func UpdateProposalStatus(root, id string, status PropStatus) error {
 	p, err := LoadProposal(root, id)

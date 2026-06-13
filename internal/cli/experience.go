@@ -17,6 +17,7 @@ func init() {
 	experienceCmd.AddCommand(experienceAcceptCmd)
 	experienceCmd.AddCommand(experienceRejectCmd)
 	experienceCmd.AddCommand(experienceGenerateCmd)
+	experienceCmd.AddCommand(experienceResolveCmd)
 
 	experienceListCmd.Flags().Bool("json", false, "JSON 格式输出")
 }
@@ -66,6 +67,19 @@ var experienceGenerateCmd = &cobra.Command{
 'forge experience accept <id>' 解除 pending。`,
 	Args: cobra.ExactArgs(1),
 	RunE: runExperienceGenerate,
+}
+
+var experienceResolveCmd = &cobra.Command{
+	Use:   "resolve <task-ref>",
+	Short: "直接解除 review（不依赖 proposal accept）",
+	Long: `将 review 标记为 resolved，无需 accept 任何 proposal。
+
+兜底路径：当 mandatory review 没有 proposal 可 accept（维度模板缺失、生成
+失败、全部被 reject）时，task-verify 会因 pending mandatory review 阻塞会话。
+本命令直接解除，作为 AcceptProposal 之外的独立 resolve 通路，彻底避免死锁。
+正常情况下仍应优先用 'forge experience accept <id>' 把规则写入经验库。`,
+	Args: cobra.ExactArgs(1),
+	RunE: runExperienceResolve,
 }
 
 func runExperienceList(cmd *cobra.Command, args []string) error {
@@ -170,16 +184,9 @@ func runExperienceShow(cmd *cobra.Command, args []string) error {
 	fmt.Println(strings.Repeat("─", 40))
 
 	// Find proposals linked to this review
-	proposals, err := experience.ListProposals(root, "")
+	linked, err := experience.ProposalsForReview(root, taskRef, "")
 	if err != nil {
-		proposals = nil
-	}
-
-	var linked []*experience.ExperienceProposal
-	for _, p := range proposals {
-		if p.SourceReview == taskRef {
-			linked = append(linked, p)
-		}
+		linked = nil
 	}
 
 	fmt.Println("Proposed Rules:")
@@ -243,6 +250,22 @@ func runExperienceGenerate(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("✅ Generated %d proposal(s) for %s — run 'forge experience list' then 'forge experience accept <id>'.\n", n, taskRef)
+	return nil
+}
+
+func runExperienceResolve(cmd *cobra.Command, args []string) error {
+	taskRef := args[0]
+
+	root, err := findProjectRoot()
+	if err != nil {
+		return err
+	}
+
+	if err := experience.ResolveReview(root, taskRef); err != nil {
+		return err
+	}
+
+	fmt.Printf("✅ Review %s resolved.\n", taskRef)
 	return nil
 }
 

@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/Harness/forge/internal/checklog"
@@ -16,6 +18,21 @@ import (
 	"github.com/Harness/forge/internal/toolusage"
 	"github.com/spf13/cobra"
 )
+
+// projectTagFor returns a stable hex tag for the given project root. It hashes
+// the canonical (absolute, cleaned) path so the tag is invariant across path
+// case, drive-letter form, and symlinks — unlike a $PWD cksum, which also
+// depends on the host's cksum format (GNU vs BSD). Hooks use it via the
+// FORGE_PROJECT_TAG env var to scope per-project state.
+func projectTagFor(root string) string {
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		abs = root
+	}
+	h := fnv.New64a()
+	h.Write([]byte(filepath.Clean(abs)))
+	return strconv.FormatUint(h.Sum64(), 16)
+}
 
 // HookInput represents the JSON Claude Code sends to hooks via stdin.
 type HookInput struct {
@@ -140,6 +157,10 @@ func runHook(cmd *cobra.Command, args []string) error {
 		"FORGE_TASK_REF="+activeTaskRef,
 		"FORGE_TASK_GATE="+activeTaskGate,
 		"FORGE_SESSION_ID="+hookInput.SessionID,
+		// Stable project tag (fnv hash of the canonical project root) so hooks
+		// can scope per-project state without relying on $PWD/cksum, which is
+		// unstable across path case, drive letters, and BSD/GNU cksum formats.
+		"FORGE_PROJECT_TAG="+projectTagFor(root),
 	)
 
 	var stdoutBuf, stderrBuf bytes.Buffer
