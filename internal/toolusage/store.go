@@ -76,6 +76,34 @@ func ToolCounts(calls []ToolCall) map[string]int {
 	return counts
 }
 
+// ReadEditCounts returns the number of Read vs Edit/Write tool calls for a task
+// since the given time, sourced from toollog.jsonl. Unlike checklog.WorkActivity
+// (which collapses all tools into one scalar count), this separates reads from
+// edits so callers can enforce a read-before-edit ratio.
+//   - reads = "Read" calls
+//   - edits = "Edit" + "Write" calls
+//
+// Bash, Grep, Glob etc. are intentionally excluded — only read vs write matters
+// for the read-before-edit signal.
+func ReadEditCounts(root, taskRef string, since time.Time) (reads, edits int, err error) {
+	calls, err := LoadForTask(root, taskRef)
+	if err != nil {
+		return 0, 0, err
+	}
+	for _, c := range calls {
+		if !c.Timestamp.After(since) {
+			continue
+		}
+		switch c.ToolName {
+		case "Read":
+			reads++
+		case "Edit", "Write":
+			edits++
+		}
+	}
+	return reads, edits, nil
+}
+
 // SortedToolCounts returns tool counts sorted by count descending.
 func SortedToolCounts(calls []ToolCall) []string {
 	counts := ToolCounts(calls)

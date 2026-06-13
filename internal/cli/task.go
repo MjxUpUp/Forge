@@ -90,6 +90,30 @@ var taskListCmd = &cobra.Command{
 	RunE:  runTaskList,
 }
 
+// phaseExplosionWarning returns a non-empty warning when the given session already
+// holds too many incomplete tasks — the "phase explosion" smell where one plan is
+// split into N tasks each running the full gate flow. Advisory only (non-blocking).
+// Returns "" when no warning is warranted (fewer than 3, unknown session, or error).
+func phaseExplosionWarning(root, sessionID, currentRef string) string {
+	if sessionID == "" {
+		return ""
+	}
+	existing, err := taskpipeline.ListTaskStates(root)
+	if err != nil {
+		return ""
+	}
+	sameSessionActive := 0
+	for _, t := range existing {
+		if t.SessionID == sessionID && t.CompletedAt == nil && t.TaskRef != currentRef {
+			sameSessionActive++
+		}
+	}
+	if sameSessionActive >= 3 {
+		return fmt.Sprintf("[forge] WARN: Phase 爆炸风险 — session %s 已有 %d 个并行未完成 task，考虑合并为单任务", sessionID, sameSessionActive)
+	}
+	return ""
+}
+
 func runTaskStart(cmd *cobra.Command, args []string) error {
 	root, err := findProjectRoot()
 	if err != nil {
@@ -153,6 +177,13 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	session, err := taskpipeline.EnsureSession(root)
 	if err == nil {
 		state.SessionID = session.SessionID
+	}
+
+	// Phase 爆炸检测：同 session 下已有多个未完成 task 时提醒合并（advisory）。
+	if session != nil {
+		if w := phaseExplosionWarning(root, state.SessionID, ctx.TaskRef); w != "" {
+			fmt.Fprintln(os.Stderr, w)
+		}
 	}
 
 	// Clear check log for fresh task.

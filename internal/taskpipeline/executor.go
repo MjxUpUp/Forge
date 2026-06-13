@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Harness/forge/internal/checklog"
+	"github.com/Harness/forge/internal/toolusage"
 )
 
 // ExecuteResult holds the outcome of a task gate execution.
@@ -52,25 +53,47 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 
 	// Work activity check for non-auto gates.
 	// Gates must not be passed without real work happening between them.
-	// Skip for: completed tasks (re-verification), final gate (no work phase after it),
-	// and gates following an auto gate (auto checks are instantaneous - no work phase needed).
-	if !gate.Auto && state.CompletedAt == nil && len(state.History) > 0 && !isLastGate(gateID) && !isPreviousGateAuto(state) {
-		lastResult := state.History[len(state.History)-1]
+	// Skip for: completed tasks (re-verification) and the final gate (no work phase after it).
+	// Note: we intentionally do NOT skip after auto gates. In the 3-gate pipeline,
+	// task-verify follows the auto task-implement, and the implement→verify span is exactly
+	// where read-before-edit must be enforced. Skipping after auto gates was a 5-gate-era
+	// rule that left this check dead in the 3-gate flow (activity never ran).
+	if !gate.Auto && state.CompletedAt == nil && len(state.History) > 0 && !isLastGate(gateID) {
+		// Measure activity across the whole task span (since task start), not just
+		// since the last gate. In the 3-gate pipeline the prior gate (task-implement)
+		// is auto and instantaneous, so "since last gate" would see zero activity
+		// even when the agent did substantial work earlier in the task.
+		since := state.StartedAt
 
-		// Work activity check: verify actual tool usage (Read, Write, Edit, Grep, etc.)
-		// since the last gate. If only Bash/sleep was used, the agent didn't do real work.
-		// On error (e.g. corrupted checklog), log warning and allow pass to avoid permanent block.
-		// Minimum 1 tool use is sufficient to prove real work was done.
 		if state.TaskRef != "" && !getDisableWorkActivity() {
-			activity, err := checklog.WorkActivity(root, state.TaskRef, lastResult.CompletedAt)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "[forge] warning: WorkActivity check failed: %v\n", err)
-			} else if activity < 1 {
-				return nil, fmt.Errorf(
-					"gate %q passed without sufficient work activity since %q (%d tool uses, minimum 1). "+
-						"Read files, explore code, or write design notes before advancing",
-					gateID, lastResult.Gate, activity,
-				)
+			reads, edits, rerr := toolusage.ReadEditCounts(root, state.TaskRef, since)
+			if rerr != nil {
+				fmt.Fprintf(os.Stderr, "[forge] warning: activity check failed: %v\n", rerr)
+			} else if reads+edits > 0 {
+				// toollog has data — require at least one Read: the agent must have
+				// understood the code before modifying it. Pure edit-without-read is
+				// the failure mode. Edit-heavy work is allowed; the read/edit RATIO
+				// is surfaced as an advisory WARN by the read-check hook, not a gate
+				// (a strict ratio would block normal edit-heavy tasks).
+				if reads == 0 {
+					return nil, fmt.Errorf(
+						"gate %q passed without reading any code during this task (edits=%d). "+
+							"Read and understand the code before modifying it",
+						gateID, edits,
+					)
+				}
+			} else {
+				// toollog empty (older project without tool-track) — fall back to checklog.
+				activity, err := checklog.WorkActivity(root, state.TaskRef, since)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "[forge] warning: WorkActivity check failed: %v\n", err)
+				} else if activity < 1 {
+					return nil, fmt.Errorf(
+						"gate %q passed without sufficient work activity during this task (%d tool uses, minimum 1). "+
+							"Read files, explore code, or write design notes before advancing",
+						gateID, activity,
+					)
+				}
 			}
 		}
 	}
