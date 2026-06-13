@@ -68,8 +68,22 @@ func LoadAll(root string) ([]Entry, error) {
 	return entries, scanner.Err()
 }
 
-// LatestByCheck returns the most recent entry for each check name.
+// LatestByCheck returns the most recent entry for each check name (all sessions).
+// Equivalent to LatestByCheckForSession with an empty session id (no filtering).
 func LatestByCheck(root string) (map[CheckName]*Entry, error) {
+	return LatestByCheckForSession(root, "")
+}
+
+// LatestByCheckForSession returns the most recent entry per check name, scoped
+// to the given session.
+//
+// Filtering rules (prevents cross-session contamination of scoring when two
+// Claude Code sessions run concurrently on a shared checkout):
+//   - sessionID == "" (legacy / no session): no filtering — every entry counts.
+//   - sessionID != "": entries whose SessionID is non-empty AND differs from
+//     sessionID are excluded. Entries with empty SessionID (global/legacy) are
+//     always kept so globally-applicable checks still register.
+func LatestByCheckForSession(root, sessionID string) (map[CheckName]*Entry, error) {
 	entries, err := LoadAll(root)
 	if err != nil {
 		return nil, err
@@ -78,6 +92,9 @@ func LatestByCheck(root string) (map[CheckName]*Entry, error) {
 	result := make(map[CheckName]*Entry)
 	for i := range entries {
 		e := &entries[i]
+		if sessionID != "" && e.SessionID != "" && e.SessionID != sessionID {
+			continue
+		}
 		if existing, ok := result[e.Check]; !ok || e.RecordedAt.After(existing.RecordedAt) {
 			result[e.Check] = e
 		}

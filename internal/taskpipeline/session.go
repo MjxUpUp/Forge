@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -35,10 +36,22 @@ func sessionsLogPath(root string) string {
 }
 
 // EnsureSession returns the current active session, creating one if needed.
-// Sessions older than sessionMaxIdle are rotated — the old session is archived
-// to sessions.jsonl and a new one is created.
-func EnsureSession(root string) (*SessionRecord, error) {
-	// Try to load existing session
+//
+// When sessionID is non-empty (the Claude Code session id), the session is
+// stored session-scoped at .forge/sessions/<sessionID>.json and identified by
+// that id. This eliminates the last-writer-wins clobber on the global
+// session.json when two sessions run concurrently on a shared checkout. The
+// Claude Code session id is stable for the whole session lifetime, so no
+// idle-rotation is needed in this path.
+//
+// When sessionID is empty (manual terminal usage, no CLAUDE_CODE_SESSION_ID),
+// the legacy global session.json path is used with idle-based rotation.
+func EnsureSession(root, sessionID string) (*SessionRecord, error) {
+	if sessionID != "" {
+		return ensureScopedSession(root, sessionID)
+	}
+
+	// Legacy path: load/rotate the global session.json.
 	existing, err := loadSession(root)
 	if err != nil {
 		return nil, err
@@ -72,6 +85,57 @@ func EnsureSession(root string) (*SessionRecord, error) {
 	}
 
 	return session, nil
+}
+
+// ensureScopedSession loads or creates the session record for a specific
+// (Claude Code) session id, stored at .forge/sessions/<sessionID>.json.
+// Also appends to the historical sessions.jsonl so LoadSessions / session-health
+// can see it.
+func ensureScopedSession(root, sessionID string) (*SessionRecord, error) {
+	path := sessionScopedFilePath(root, sessionID)
+	if data, err := os.ReadFile(path); err == nil {
+		var s SessionRecord
+		if err := json.Unmarshal(data, &s); err == nil && s.SessionID == sessionID {
+			return &s, nil
+		}
+		// Corrupt/stale file — fall through and recreate.
+	}
+
+	session := &SessionRecord{
+		SessionID: sessionID,
+		StartedAt: time.Now(),
+		AgentType: detectAgentType(root),
+	}
+
+	if err := saveScopedSession(root, session); err != nil {
+		return nil, err
+	}
+
+	// Append to historical log (idempotent enough: a duplicate line in an
+	// append-only log is harmless and LoadSessions dedupes by SessionID).
+	if err := appendSessionLog(root, session); err != nil {
+		return nil, err
+	}
+
+	return session, nil
+}
+
+// sessionScopedFilePath returns the per-session record path.
+func sessionScopedFilePath(root, sessionID string) string {
+	return filepath.Join(root, ".forge", "sessions", sanitizeSessionID(sessionID)+".json")
+}
+
+// saveScopedSession writes the session record to its scoped path.
+func saveScopedSession(root string, s *SessionRecord) error {
+	path := sessionScopedFilePath(root, s.SessionID)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0644)
 }
 
 // loadSession reads the current session file. Returns nil if not found.
@@ -213,4 +277,32 @@ func newSessionID() string {
 	var buf [2]byte
 	rand.Read(buf[:])
 	return fmt.Sprintf("session-%s-%s", time.Now().Format("20060102150405"), hex.EncodeToString(buf[:]))
+}
+
+// CurrentSessionID returns the Claude Code session id from the environment.
+// Claude Code injects CLAUDE_CODE_SESSION_ID into every Bash command it runs,
+// and the same value is delivered to hooks via stdin (hookInput.SessionID /
+// FORGE_SESSION_ID). Using it as the per-session key lets concurrent sessions
+// on a shared checkout isolate their .forge/ state.
+//
+// This is the ONLY place the package reads the env var — call sites thread the
+// resolved id explicitly so package functions (and their tests) never depend on
+// ambient env state (which would make tests flaky when run under Claude Code).
+//
+// Returns "" when not running under Claude Code (manual terminal usage).
+func CurrentSessionID() string {
+	return os.Getenv("CLAUDE_CODE_SESSION_ID")
+}
+
+// sanitizeSessionID reduces a session id to filename-safe characters.
+// Claude Code session ids are UUIDs (hex + hyphens), already safe, but this
+// guards against any unexpected input being used in a .forge/ filename.
+func sanitizeSessionID(sid string) string {
+	var b strings.Builder
+	for _, r := range sid {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }

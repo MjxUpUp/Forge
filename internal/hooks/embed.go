@@ -602,31 +602,82 @@ fi
 
 const SessionHealthHook = `#!/bin/bash
 # session-health.sh — PostToolUse hook.
-# Checks session duration and warns if running too long.
+# 1. Duration check: warn if the current session has run too long.
+# 2. Concurrency check: warn if ≥2 distinct Claude Code sessions are active on
+#    this shared checkout within a 30-minute window (race risk on .forge/ state).
 set -eo pipefail
 
 ROOT="${1:-.}"
 cd "$ROOT" 2>/dev/null || exit 0
 
-SESSION_FILE=".forge/session.json"
-[ ! -f "$SESSION_FILE" ] && { echo "PASS"; exit 0; }
+SID="${FORGE_SESSION_ID:-}"
 
-STARTED=$(grep -oE '"started_at"[[:space:]]*:[[:space:]]*"[^"]+"' "$SESSION_FILE" 2>/dev/null | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}' || true)
-[ -z "$STARTED" ] && { echo "PASS"; exit 0; }
-
-NOW=$(date -u +%s)
-STARTED_SEC=$(date -d "$STARTED" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M" "$STARTED" +%s 2>/dev/null || echo "0")
-[ "$STARTED_SEC" = "0" ] && { echo "PASS"; exit 0; }
-
-ELAPSED=$(( (NOW - STARTED_SEC) / 60 ))
-
-if [ "$ELAPSED" -gt 120 ]; then
-  echo "WARN [session-health] Session running for ${ELAPSED} minutes (> 2 hours). Consider pausing."
-elif [ "$ELAPSED" -gt 60 ]; then
-  echo "WARN [session-health] Session running for ${ELAPSED} minutes (> 1 hour). Consider checkpointing."
-else
-  echo "PASS"
+# Resolve the current session's start-time file. Claude Code sessions are stored
+# session-scoped (.forge/sessions/<sid>.json); fall back to the legacy global
+# .forge/session.json for non-Claude (manual terminal) usage.
+SESSION_FILE=""
+if [ -n "$SID" ] && [ -f ".forge/sessions/${SID}.json" ]; then
+  SESSION_FILE=".forge/sessions/${SID}.json"
+elif [ -f ".forge/session.json" ]; then
+  SESSION_FILE=".forge/session.json"
 fi
+
+# --- Duration warning ---
+if [ -n "$SESSION_FILE" ]; then
+  STARTED=$(grep -oE '"started_at"[[:space:]]*:[[:space:]]*"[^"]+"' "$SESSION_FILE" 2>/dev/null | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}' || true)
+  if [ -n "$STARTED" ]; then
+    NOW=$(date -u +%s)
+    STARTED_SEC=$(date -d "$STARTED" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M" "$STARTED" +%s 2>/dev/null || echo "0")
+    if [ "$STARTED_SEC" != "0" ]; then
+      ELAPSED=$(( (NOW - STARTED_SEC) / 60 ))
+      if [ "$ELAPSED" -gt 120 ]; then
+        echo "WARN [session-health] Session running for ${ELAPSED} minutes (> 2 hours). Consider pausing."
+        exit 0
+      elif [ "$ELAPSED" -gt 60 ]; then
+        echo "WARN [session-health] Session running for ${ELAPSED} minutes (> 1 hour). Consider checkpointing."
+        exit 0
+      fi
+    fi
+  fi
+fi
+
+# --- Concurrent session warning ---
+# sessions.jsonl is an append-only log of every session (scoped and legacy).
+# Count distinct session_ids started within the last 30 minutes; ≥2 means two
+# Claude Code sessions are active on one checkout. .forge/ state is now
+# session-scoped (active-task-ref / session files / checklog reads), but
+# cross-session interference is still worth surfacing.
+SESSIONS_LOG=".forge/sessions.jsonl"
+if [ -f "$SESSIONS_LOG" ]; then
+  NOW=$(date -u +%s)
+  CUTOFF=$(( NOW - 1800 ))
+  DISTINCT=""
+  COUNT=0
+  # errexit is intentionally relaxed for the parse loop: missing fields, old
+  # date formats, and grep no-matches are all expected and non-fatal.
+  set +e
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    S=$(printf '%s' "$line" | grep -oE '"started_at"[[:space:]]*:[[:space:]]*"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}' | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}')
+    SSID=$(printf '%s' "$line" | sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+    [ -z "$S" ] && continue
+    [ -z "$SSID" ] && continue
+    SSEC=$(date -d "$S" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M" "$S" +%s 2>/dev/null || echo "0")
+    [ "$SSEC" = "0" ] && continue
+    [ "$SSEC" -lt "$CUTOFF" ] && continue
+    case "$DISTINCT" in
+      *"$SSID"*) ;;
+      *) DISTINCT="$DISTINCT $SSID"; COUNT=$((COUNT+1)) ;;
+    esac
+  done < "$SESSIONS_LOG"
+  set -e
+  if [ "$COUNT" -ge 2 ]; then
+    echo "WARN [session-health] ${COUNT} concurrent sessions active in the last 30 min on this checkout. Review for cross-session interference."
+    exit 0
+  fi
+fi
+
+echo "PASS"
 `
 
 const CloneCheckHook = `#!/bin/bash

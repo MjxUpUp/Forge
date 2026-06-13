@@ -48,14 +48,18 @@ func SaveTaskState(root string, state *TaskState) error {
 // ActiveTaskState detects the current task context and loads the matching state.
 // Returns nil without error if no task context is detected.
 //
+// sessionID scopes the active-task-ref lookup so concurrent sessions on a shared
+// checkout each resolve their own active task. Empty sessionID falls back to the
+// legacy global file.
+//
 // Detection priority:
 //  1. Explicit: .forge/active-task-ref file (written by `forge task start`)
 //  2. Branch-based: feature branch name maps to task ref
 //  3. Fallback: scan .forge/tasks/ for a single incomplete task
 //     (ambiguous when multiple tasks exist — returns nil to avoid false matches)
-func ActiveTaskState(root string) (*TaskState, error) {
+func ActiveTaskState(root, sessionID string) (*TaskState, error) {
 	// Priority 1: explicit active task ref file
-	if ref := readActiveTaskRef(root); ref != "" {
+	if ref := readActiveTaskRef(root, sessionID); ref != "" {
 		state, err := LoadTaskState(root, ref)
 		if err == nil && state != nil && state.CompletedAt == nil {
 			return state, nil
@@ -95,30 +99,44 @@ func ActiveTaskState(root string) (*TaskState, error) {
 
 const activeTaskRefFile = "active-task-ref"
 
-// SetActiveTaskRef writes the task ref to .forge/active-task-ref.
-// Called by `forge task start` to make the active task unambiguous
-// regardless of how many incomplete tasks exist.
-func SetActiveTaskRef(root, taskRef string) error {
-	path := filepath.Join(root, ".forge", activeTaskRefFile)
-	return os.WriteFile(path, []byte(taskRef), 0644)
+// activeTaskRefPath returns the active-task-ref file path.
+//
+// When sessionID is non-empty, the file is session-scoped
+// (.forge/active-task-ref-<sessionID>) so concurrent Claude Code sessions
+// working in a shared checkout each resolve their OWN active task — the
+// primary concurrency race (two sessions clobbering one global file, hooks
+// attributing work to the wrong task) is eliminated.
+//
+// Empty sessionID falls back to the legacy global file (.forge/active-task-ref)
+// for backward compatibility and non-Claude (manual terminal) usage.
+func activeTaskRefPath(root, sessionID string) string {
+	if sessionID != "" {
+		return filepath.Join(root, ".forge", "active-task-ref-"+sanitizeSessionID(sessionID))
+	}
+	return filepath.Join(root, ".forge", activeTaskRefFile)
 }
 
-// ClearActiveTaskRef removes the .forge/active-task-ref file.
+// SetActiveTaskRef writes the task ref to the (session-scoped) active-task-ref.
+// Called by `forge task start` to make the active task unambiguous
+// regardless of how many incomplete tasks exist.
+func SetActiveTaskRef(root, sessionID, taskRef string) error {
+	return os.WriteFile(activeTaskRefPath(root, sessionID), []byte(taskRef), 0644)
+}
+
+// ClearActiveTaskRef removes the (session-scoped) active-task-ref file.
 // Called by `forge task complete` to clear the active task.
-func ClearActiveTaskRef(root string) error {
-	path := filepath.Join(root, ".forge", activeTaskRefFile)
-	err := os.Remove(path)
+func ClearActiveTaskRef(root, sessionID string) error {
+	err := os.Remove(activeTaskRefPath(root, sessionID))
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	return nil
 }
 
-// readActiveTaskRef reads the active task ref from .forge/active-task-ref.
+// readActiveTaskRef reads the active task ref from the (session-scoped) file.
 // Returns empty string if the file doesn't exist or is empty.
-func readActiveTaskRef(root string) string {
-	path := filepath.Join(root, ".forge", activeTaskRefFile)
-	data, err := os.ReadFile(path)
+func readActiveTaskRef(root, sessionID string) string {
+	data, err := os.ReadFile(activeTaskRefPath(root, sessionID))
 	if err != nil {
 		return ""
 	}

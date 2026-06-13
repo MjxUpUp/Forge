@@ -7,8 +7,9 @@ import "time"
 // Stored in .forge/toollog.jsonl — one JSON object per line.
 type ToolCall struct {
 	ToolName  string    `json:"tool_name"`
-	ToolInput string    `json:"tool_input,omitempty"` // truncated to 500 chars
+	ToolInput string    `json:"tool_input,omitempty"`  // truncated to 500 chars
 	TaskRef   string    `json:"task_ref,omitempty"`
+	SessionID string    `json:"session_id,omitempty"`  // Claude Code session — isolates concurrent sessions
 	Timestamp time.Time `json:"timestamp"`
 }
 
