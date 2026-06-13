@@ -466,6 +466,17 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 				fmt.Fprintf(os.Stderr, "Warning: review creation failed: %v\n", err)
 			} else {
 				lowDims := experience.LowDimensions(state.Score)
+
+				// Generate seed experience proposals so the review is resolvable
+				// (accept → ReviewResolved). Without this, a mandatory review had no
+				// proposal and could never be cleared — deadlocking stop hooks on
+				// every low-scoring task.
+				if n, gerr := experience.GenerateProposalsForReview(root, state.TaskRef, lowDims); gerr != nil {
+					fmt.Fprintf(os.Stderr, "Warning: experience proposal generation failed: %v\n", gerr)
+				} else if n > 0 && mandatory {
+					fmt.Printf("  Generated %d experience proposal(s) — run 'forge experience list' then 'forge experience accept <id>'.\n", n)
+				}
+
 				var dimParts []string
 				for _, d := range lowDims {
 					dimParts = append(dimParts, fmt.Sprintf("%s (%d)", d.Dimension, d.Score))
