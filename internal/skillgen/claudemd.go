@@ -87,7 +87,7 @@ func buildForgeSection() string {
 	sb.WriteString("| HEAD not moved | task-implement 前没有新提交 | 先写代码并 `git commit` |\n")
 	sb.WriteString("| --branch on non-main | `--branch` 只在 master/main 可用 | 已在 feature 分支时去掉 `--branch` |\n")
 	sb.WriteString("| task already exists | 任务已启动 | 用 `forge task status --ref <ref>` 查看 |\n")
-	sb.WriteString("| Reverted by file-sentinel | Bash 写了源码但无任务 | 先启动任务，或用 Write/Edit 工具 |\n\n")
+	sb.WriteString("| Quarantined by file-sentinel | Bash 写了源码但无任务 | 文件在 .forge/quarantine/，可恢复。先启动任务 |\n\n")
 
 	sb.WriteString("使用 `/forge-pipeline` 运行项目级管道。\n")
 	sb.WriteString("使用 `/forge-quality` 查看完整质量协议。\n\n")

@@ -379,7 +379,8 @@ echo "PASS"`
 const FileSentinelHook = `#!/bin/bash
 # file-sentinel.sh — PostToolUse hook for Bash.
 # Detects unauthorized file changes after Bash execution.
-# Compares against PreToolUse bash-guard snapshot and reverts violations.
+# Compares against PreToolUse bash-guard snapshot and quarantines violations.
+# NEVER deletes user files — always moves to .forge/quarantine/ for recovery.
 # Only checks source code files and Forge config — ignores all other changes.
 set -eo pipefail
 
@@ -442,46 +443,64 @@ CONFIG_CHANGES=$(printf '%s' "$NEW_CHANGES" | grep -E "$CFG_EXT" || true)
 # No protected changes → pass
 [ -z "$SOURCE_CHANGES" ] && [ -z "$CONFIG_CHANGES" ] && { echo "PASS"; exit 0; }
 
-# Helper: revert files, reporting both successes and failures
-revert_files() {
+# Helper: quarantine files — NEVER delete, always preserve for recovery.
+# Tracked files: moved to quarantine, then HEAD restored from git.
+# Untracked files: moved to quarantine (not in git, so can't restore from HEAD).
+# All files are recoverable: cp -r .forge/quarantine/<session-id>/* .
+quarantine_files() {
   local files="$1"
-  local reverted=""
+  local quarantine_base="${FORGE_QUARANTINE_DIR:-.forge/quarantine}"
+  local qdir="${quarantine_base}/${SESSION_ID}"
+  mkdir -p "$qdir" 2>/dev/null || true
+
+  local quarantined=""
   local failed=""
   while IFS= read -r f; do
     [ -z "$f" ] && continue
-    if git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
-      if git checkout -- "$f" 2>/dev/null; then
-        reverted="${reverted} ${f}"
-      else
-        failed="${failed} ${f}"
-      fi
-    else
-      if rm -f "$f" 2>/dev/null; then
-        reverted="${reverted} ${f}"
-      else
-        failed="${failed} ${f}"
-      fi
+
+    # Preserve directory structure in quarantine
+    local rel_dir
+    rel_dir=$(dirname "$f")
+    if [ "$rel_dir" != "." ]; then
+      mkdir -p "${qdir}/${rel_dir}" 2>/dev/null || true
     fi
+
+    # Move to quarantine FIRST — always preserves content for recovery
+    if ! mv "$f" "${qdir}/${f}" 2>/dev/null; then
+      failed="${failed} ${f}"
+      continue
+    fi
+
+    # For tracked files, restore HEAD version from git
+    if git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
+      git checkout -- "$f" 2>/dev/null || true
+    fi
+
+    quarantined="${quarantined} ${f}"
   done <<< "$files"
-  REVERT_SUCCESS="$reverted"
-  REVERT_FAILED="$failed"
+
+  QUARANTINED="$quarantined"
+  QUARANTINE_FAILED="$failed"
+  QUARANTINE_DIR="$qdir"
 }
 
-# Self-protection: revert config changes (unless forge command was detected)
+# Self-protection: quarantine config changes (unless forge command was detected)
 if [ -n "$CONFIG_CHANGES" ] && [ $IS_FORGE_CMD -eq 0 ]; then
-  revert_files "$CONFIG_CHANGES"
-  MSG="FAIL [file-sentinel] Reverted unauthorized changes to Forge config:${REVERT_SUCCESS}."
-  [ -n "$REVERT_FAILED" ] && MSG="${MSG} FAILED to revert:${REVERT_FAILED}."
+  quarantine_files "$CONFIG_CHANGES"
+  MSG="FAIL [file-sentinel] Quarantined unauthorized changes to Forge config:${QUARANTINED}."
+  [ -n "$QUARANTINE_FAILED" ] && MSG="${MSG} FAILED to quarantine:${QUARANTINE_FAILED}."
+  MSG="${MSG} Files in ${QUARANTINE_DIR}/. Recover: cp -r ${QUARANTINE_DIR}/* ."
   echo "${MSG} Use forge commands instead."
   exit 1
 fi
 
-# Source code changes without active task → revert
+# Source code changes without active task → quarantine
 if [ -z "$TASK_REF" ] && [ -n "$SOURCE_CHANGES" ]; then
-  revert_files "$SOURCE_CHANGES"
-  MSG="FAIL [file-sentinel] Reverted unauthorized code changes (no active task):${REVERT_SUCCESS}."
-  [ -n "$REVERT_FAILED" ] && MSG="${MSG} FAILED to revert:${REVERT_FAILED}."
-  echo "${MSG} Run: forge task start --ref <type>/<desc> --branch"
+  quarantine_files "$SOURCE_CHANGES"
+  MSG="FAIL [file-sentinel] Quarantined unauthorized code changes (no active task):${QUARANTINED}."
+  [ -n "$QUARANTINE_FAILED" ] && MSG="${MSG} FAILED to quarantine:${QUARANTINE_FAILED}."
+  MSG="${MSG} Files in ${QUARANTINE_DIR}/. Recover: cp -r ${QUARANTINE_DIR}/* ."
+  echo "${MSG} Start a task: forge task start --ref <type>/<desc> --branch"
   exit 1
 fi
 

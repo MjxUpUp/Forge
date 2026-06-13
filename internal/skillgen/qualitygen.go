@@ -126,7 +126,7 @@ func buildQualitySkillContent(proto *protocol.Protocol, p *pipeline.Pipeline) st
 	sb.WriteString("| Bash denied by bash-guard | Bash 含写文件操作且无任务 | 先启动任务 |\n")
 	sb.WriteString("| insufficient work activity | 工具调用 <1 次 | 用 Read/Grep/Glob 探索代码 |\n")
 	sb.WriteString("| HEAD not moved | task-implement 前没有新提交 | 先写代码并 `git commit` |\n")
-	sb.WriteString("| Reverted by file-sentinel | Bash 写了源码但无任务 | 先启动任务，或用 Write/Edit |\n")
+	sb.WriteString("| Quarantined by file-sentinel | Bash 写了源码但无任务 | 文件在 .forge/quarantine/，可恢复。先启动任务 |\n")
 	sb.WriteString("| task not complete. Missing gates | 未通过所有门禁 | 先 `forge task gate task-complete --ref <ref>` |\n\n")
 
 	sb.WriteString("### 会话结束\n\n")

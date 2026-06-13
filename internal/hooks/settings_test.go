@@ -273,7 +273,19 @@ func TestFileSentinelHookContainsKeyChecks(t *testing.T) {
 		t.Error("FileSentinelHook missing [file-sentinel] prefix")
 	}
 	if !containsString(FileSentinelHook, "git checkout") {
-		t.Error("FileSentinelHook missing git checkout revert logic")
+		t.Error("FileSentinelHook missing git checkout restore logic")
+	}
+	if !containsString(FileSentinelHook, "quarantine_files") {
+		t.Error("FileSentinelHook missing quarantine_files function")
+	}
+	if !containsString(FileSentinelHook, ".forge/quarantine") {
+		t.Error("FileSentinelHook missing quarantine directory path")
+	}
+	if !containsString(FileSentinelHook, "Recover:") {
+		t.Error("FileSentinelHook missing recovery instructions")
+	}
+	if containsString(FileSentinelHook, `rm -f "$f"`) {
+		t.Error("FileSentinelHook should NOT use rm -f on user files — use quarantine instead")
 	}
 }
 
