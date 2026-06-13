@@ -530,16 +530,19 @@ func verifyFileExists(dir, name string) bool {
 	return err == nil
 }
 
-// passAllVerifyGates passes all 5 task gates for the given task ref.
+// passAllVerifyGates passes all 3 task gates (v0.17: reduced from 5) for the given task ref.
 func passAllVerifyGates(forgeBin, dir, ref string) error {
-	gates := []string{
-		"task-understand",
-		"task-design",
-		"task-implement",
-		"task-verify",
-		"task-complete",
-	}
-	for _, g := range gates {
+	// Disable gate timing for these regression scenarios (gates pass in rapid sequence).
+	os.Setenv("FORGE_GATE_MIN_INTERVAL", "0s")
+	defer os.Unsetenv("FORGE_GATE_MIN_INTERVAL")
+	os.Setenv("FORGE_WORK_ACTIVITY", "disable")
+	defer os.Unsetenv("FORGE_WORK_ACTIVITY")
+
+	// Commit so HEAD moves ahead of the base branch — task-implement's
+	// code-change check requires a new commit on the feature branch.
+	verifyRunGit(dir, "commit", "--allow-empty", "-m", "verify: move HEAD for task-implement")
+
+	for _, g := range []string{"task-implement", "task-verify", "task-complete"} {
 		out, err := verifyRunForge(forgeBin, dir, "task", "gate", g, "--ref", ref)
 		if err != nil {
 			return fmt.Errorf("gate %s failed: %v\n%s", g, err, out)

@@ -604,7 +604,7 @@ func TestTaskScoreWorkflow(t *testing.T) {
 		t.Fatalf("forge task start failed: %s", stdout)
 	}
 
-	// Pass understand and design gates (before writing code)
+	// Pass task-implement (before writing code)
 	for _, g := range []string{"task-implement"} {
 		stdout, _, code = runForge(t, tmpDir, "task", "gate", g)
 		if code != 0 {
@@ -612,7 +612,7 @@ func TestTaskScoreWorkflow(t *testing.T) {
 		}
 	}
 
-	// Make a code change AFTER task-design (required for post-design commit check)
+	// Make a code change (required for task-implement's code-change check)
 	os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte("package main\n\nimport \"fmt\"\n\nfunc main() { fmt.Println(\"hello\") }\n"), 0644)
 	runGit(t, tmpDir, "add", ".")
 	runGit(t, tmpDir, "commit", "-m", "implement feature")

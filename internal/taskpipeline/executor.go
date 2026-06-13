@@ -127,17 +127,6 @@ func hasCodeChanges(root string, state *TaskState) bool {
 	return false
 }
 
-// hasUncommittedChanges checks if there are working-tree changes (staged or unstaged)
-// that have not been committed yet.
-func hasUncommittedChanges(root string) bool {
-	cmd := exec.Command("git", "-C", root, "diff", "--stat", "HEAD")
-	out, err := cmd.Output()
-	if err != nil {
-		return false // non-git repo - don't block
-	}
-	return len(strings.TrimSpace(string(out))) > 0
-}
-
 // checkImplement runs compilation check via auto-compile.sh,
 // assertion check via assertion-check.sh, records results to checklog,
 // and verifies code changes exist.
@@ -203,28 +192,6 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 			Passed:  false,
 			Message: "no code changes detected - build passed but no files modified",
 		}, nil
-	}
-
-	// 4. Verify code was written AFTER task-design was passed.
-	// This prevents agents from writing all code first, then rushing through gates.
-	// Skip this check if there are uncommitted changes - the code IS written,
-	// just not committed yet. Don't force agents to commit before they're ready.
-	if state != nil && !hasUncommittedChanges(root) {
-		designCommit := state.designGateCommit()
-		if designCommit != "" {
-			headCmd := exec.Command("git", "-C", root, "rev-parse", "HEAD")
-			headOut, headErr := headCmd.Output()
-			if headErr == nil {
-				currentHead := strings.TrimSpace(string(headOut))
-				if currentHead == designCommit {
-					return &ExecuteResult{
-						GateID:  "task-implement",
-						Passed:  false,
-						Message: "HEAD not moved: no new commits since task-design. Write code and commit before passing task-implement",
-					}, nil
-				}
-			}
-		}
 	}
 
 	return &ExecuteResult{

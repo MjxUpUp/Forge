@@ -64,11 +64,9 @@ func buildForgeSection() string {
 	sb.WriteString("```\n\n")
 
 	sb.WriteString("### 门禁顺序（必须按序推进，所有命令带 `--ref <ref>`）\n\n")
-	sb.WriteString("1. `task-understand` — 描述意图和范围后运行\n")
-	sb.WriteString("2. `task-design` — 描述设计方案后运行（需 ≥1 分钟真实工作 + ≥1 次工具调用）\n")
-	sb.WriteString("3. `task-implement` — 代码写完、编译通过后运行（自动检查编译+断言+代码变更）\n")
-	sb.WriteString("4. `task-verify` — 测试通过后运行\n")
-	sb.WriteString("5. `task-complete` — E2E 验证通过后运行（`forge task gate task-complete --ref <ref>`）\n\n")
+	sb.WriteString("1. `task-implement` — 代码写完、编译通过后运行（自动检查编译+断言+代码变更）\n")
+	sb.WriteString("2. `task-verify` — 测试通过后运行\n")
+	sb.WriteString("3. `task-complete` — E2E 验证通过后运行（`forge task gate task-complete --ref <ref>`）\n\n")
 	sb.WriteString("每个门禁命令：`forge task gate <id> --ref <ref>`\n\n")
 	sb.WriteString("门禁全通过后运行 `forge task complete --ref <ref>` 触发评分。\n\n")
 
@@ -84,7 +82,6 @@ func buildForgeSection() string {
 	sb.WriteString("| Write/Edit denied by task-guard | 无活跃任务 | 先 `forge task start --ref <type>/<name>` |\n")
 	sb.WriteString("| Bash denied by bash-guard | Bash 含写文件操作且无任务 | 先启动任务 |\n")
 	sb.WriteString("| insufficient work activity | 门禁间工具调用 <1 次 | 用 Read/Grep/Glob 探索代码 |\n")
-	sb.WriteString("| HEAD not moved | task-implement 前没有新提交 | 先写代码并 `git commit` |\n")
 	sb.WriteString("| --branch on non-main | `--branch` 只在 master/main 可用 | 已在 feature 分支时去掉 `--branch` |\n")
 	sb.WriteString("| task already exists | 任务已启动 | 用 `forge task status --ref <ref>` 查看 |\n")
 	sb.WriteString("| Quarantined by file-sentinel | Bash 写了源码但无任务 | 文件在 .forge/quarantine/，可恢复。先启动任务 |\n\n")

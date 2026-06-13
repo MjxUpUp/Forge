@@ -219,7 +219,7 @@ func TestFreshInstall(t *testing.T) {
 func TestMasterBranchReminder(t *testing.T) {
 	dir := freshProjectOnBranch(t, "feature/EXP-1-test")
 
-	// Start task, pass all 5 gates, complete.
+	// Start task, pass all 3 gates, complete.
 	forge(t, dir, "task", "start", "--ref", "EXP-1", "--title", "test experience")
 	passAllGates(t, dir, "EXP-1")
 	forge(t, dir, "task", "complete", "--ref", "EXP-1")
@@ -261,7 +261,7 @@ func TestExperienceFlow(t *testing.T) {
 	// Start task.
 	forge(t, dir, "task", "start", "--ref", "EXP-1", "--title", "test experience")
 
-	// Pass all 5 gates.
+	// Pass all 3 gates.
 	passAllGates(t, dir, "EXP-1")
 
 	// Complete task — this auto-scores.
@@ -606,7 +606,7 @@ scoring:
 
 // ---------- Helpers ----------
 
-// passAllGates passes all 5 task gates for the given task ref.
+// passAllGates passes all 3 task gates (v0.17: reduced from 5) for the given task ref.
 func passAllGates(t *testing.T, dir, ref string) {
 	t.Helper()
 
@@ -616,18 +616,11 @@ func passAllGates(t *testing.T, dir, ref string) {
 	os.Setenv("FORGE_WORK_ACTIVITY", "disable")
 	defer os.Unsetenv("FORGE_WORK_ACTIVITY")
 
-	// Pass pre-design gates
-	for _, g := range []string{"task-understand", "task-design"} {
-		out, err := forgeErr(t, dir, "task", "gate", g, "--ref", ref)
-		if err != nil {
-			t.Fatalf("forge task gate %s failed: %v\noutput: %s", g, err, out)
-		}
-	}
-
-	// Commit so HEAD moves past task-design (required by post-design commit check)
+	// Commit so HEAD moves ahead of the base branch — task-implement's
+	// code-change check requires a new commit on the feature branch.
 	git(t, dir, "commit", "--allow-empty", "-m", "e2e: move HEAD for task-implement")
 
-	// Pass remaining gates
+	// Pass all gates in order: task-implement, task-verify, task-complete.
 	for _, g := range []string{"task-implement", "task-verify", "task-complete"} {
 		out, err := forgeErr(t, dir, "task", "gate", g, "--ref", ref)
 		if err != nil {

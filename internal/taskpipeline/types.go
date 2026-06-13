@@ -106,17 +106,6 @@ func (s *TaskState) gatePassed(gateID string) bool {
 	return false
 }
 
-// designGateCommit returns the HEAD commit recorded when task-design was passed.
-// Returns empty string if task-design has not been passed or no commit was recorded.
-func (s *TaskState) designGateCommit() string {
-	for i := len(s.History) - 1; i >= 0; i-- {
-		if s.History[i].Gate == "task-design" && s.History[i].Passed {
-			return s.History[i].HeadCommit
-		}
-	}
-	return ""
-}
-
 // CompletedGates returns a list of passed gate IDs.
 func (s *TaskState) CompletedGates() []string {
 	var result []string

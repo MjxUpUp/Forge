@@ -79,7 +79,7 @@ func buildQualitySkillContent(proto *protocol.Protocol, p *pipeline.Pipeline) st
 	sb.WriteString("## Task Bridge Protocol\n\n")
 	sb.WriteString("Forge task 和 Claude Code task 必须保持同步。Forge 是 source of truth（门禁、评分、经验复盘）。\n\n")
 	sb.WriteString("> **⚠️ 编码前必做**：无论是从 plan mode 审批后进入编码，还是直接开始修改代码，第一步永远是 `forge task start`。不要在 master 上直接写代码。不要在写完代码后才补启任务。\n\n")
-	sb.WriteString("**强制顺序**：`forge task start` → gate task-understand → gate task-design → 写代码 → gate task-implement → gate task-verify → gate task-complete\n\n")
+	sb.WriteString("**强制顺序**：`forge task start` → 写代码 → gate task-implement → gate task-verify → gate task-complete\n\n")
 
 	sb.WriteString("### 非平凡变更（>10 行）前必须启动 Forge 任务\n\n")
 	sb.WriteString("1. 运行 `forge task list --json` 检查已有任务\n")
@@ -98,8 +98,6 @@ func buildQualitySkillContent(proto *protocol.Protocol, p *pipeline.Pipeline) st
 	sb.WriteString("工作推进时，逐步验证对应的门禁（所有命令带 `--ref <ref>`）：\n\n")
 	sb.WriteString("| 阶段 | 命令 | 何时运行 |\n")
 	sb.WriteString("|------|------|----------|\n")
-	sb.WriteString("| 理解任务 | `forge task gate task-understand --ref <ref>` | 描述意图和范围后 |\n")
-	sb.WriteString("| 方案设计 | `forge task gate task-design --ref <ref>` | 描述设计方案后 |\n")
 	sb.WriteString("| 代码实现 | `forge task gate task-implement --ref <ref>` | 代码编译通过、已提交（自动检查） |\n")
 	sb.WriteString("| 测试验证 | `forge task gate task-verify --ref <ref>` | 测试通过后 |\n")
 	sb.WriteString("| 完成确认 | `forge task gate task-complete --ref <ref>` | E2E 验证通过后 |\n\n")
@@ -109,7 +107,7 @@ func buildQualitySkillContent(proto *protocol.Protocol, p *pipeline.Pipeline) st
 	sb.WriteString("每个门禁代表一个独立的工作阶段，不是形式主义检查：\n\n")
 	sb.WriteString("- **间隔 ≥ 1 分钟**：相邻门禁之间至少做 1 分钟真实工作（Read/Grep/Write 等工具调用），不要用 sleep 绕过\n")
 	sb.WriteString("- **活动 ≥ 1 次工具调用**：门禁之间至少使用 1 次工具做实质性探索或分析\n")
-	sb.WriteString("- **task-implement 需 HEAD 移动**：代码必须已 `git commit`（未提交的变更也会被认可）\n")
+	sb.WriteString("- **task-implement 需代码变更**：feature 分支上需有新提交，或工作区有未提交改动\n")
 	sb.WriteString("- **task-complete 无间隔要求**：最后一道门禁跳过 timing/activity 检查\n\n")
 
 	sb.WriteString("### 三层防御架构\n\n")
@@ -125,7 +123,6 @@ func buildQualitySkillContent(proto *protocol.Protocol, p *pipeline.Pipeline) st
 	sb.WriteString("| Write/Edit denied by task-guard | 无活跃任务 | `forge task start --ref <type>/<name>` |\n")
 	sb.WriteString("| Bash denied by bash-guard | Bash 含写文件操作且无任务 | 先启动任务 |\n")
 	sb.WriteString("| insufficient work activity | 工具调用 <1 次 | 用 Read/Grep/Glob 探索代码 |\n")
-	sb.WriteString("| HEAD not moved | task-implement 前没有新提交 | 先写代码并 `git commit` |\n")
 	sb.WriteString("| Quarantined by file-sentinel | Bash 写了源码但无任务 | 文件在 .forge/quarantine/，可恢复。先启动任务 |\n")
 	sb.WriteString("| task not complete. Missing gates | 未通过所有门禁 | 先 `forge task gate task-complete --ref <ref>` |\n\n")
 
