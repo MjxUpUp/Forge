@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/MjxUpUp/Forge/internal/act"
 	"github.com/MjxUpUp/Forge/internal/agentbridge"
+	"github.com/MjxUpUp/Forge/internal/health"
 	"github.com/MjxUpUp/Forge/internal/pipeline"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
@@ -51,12 +53,22 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		taskStates, _ = taskpipeline.ListTaskStates(root)
 	}
 
+	// 项目级质量信号（task→project 上卷）：把证据盲区率/复发低分维度亮在 status 主入口。
+	// 否则 deterministic 信号在 forge health 里算好了，但用户在 status（"项目在哪"主入口）
+	// 看不到——可见性缺口。conclusions 为空时省略（项目还没完成任务）。
+	var hs *health.Summary
+	if cs, err := act.LoadAll(root); err == nil && len(cs) > 0 {
+		s := health.Summarize(cs)
+		hs = &s
+	}
+
 	if asJSON {
 		output, _ := json.MarshalIndent(struct {
-			Pipeline    *pipeline.Pipeline       `json:"pipeline"`
-			State       *pipeline.State           `json:"state"`
-			Tasks       []*taskpipeline.TaskState `json:"tasks,omitempty"`
-		}{p, state, taskStates}, "", "  ")
+			Pipeline *pipeline.Pipeline        `json:"pipeline"`
+			State    *pipeline.State           `json:"state"`
+			Tasks    []*taskpipeline.TaskState `json:"tasks,omitempty"`
+			Health   *health.Summary           `json:"health,omitempty"`
+		}{p, state, taskStates, hs}, "", "  ")
 		fmt.Println(string(output))
 		return nil
 	}
@@ -129,6 +141,22 @@ func runStatus(cmd *cobra.Command, args []string) error {
 				total := len(taskpipeline.DefaultGates())
 				fmt.Printf("%d/%d gates passed\n", completed, total)
 			}
+		}
+	}
+
+	// 项目级质量信号（与 --json 的 Health 同源）。compact 一块，只在有完成任务时显示：
+	// 盲区率是头条（项目级 LLM-judge 盲区），复发低分维度次之。forge health 看完整趋势。
+	if hs != nil {
+		fmt.Println()
+		fmt.Println(strings.Repeat("─", 60))
+		fmt.Printf(`质量信号: %d 任务完成, 均分 %.0f, 证据盲区率 %.0f%%`+"\n",
+			hs.TotalTasks, hs.AvgScore, hs.BlindSpotRate*100)
+		if hs.BlindSpotRate >= 0.5 {
+			fmt.Println(`  ⚠ 系统性盲区：过半完成声明缺 deterministic 证据——project 级该查验证为何没真跑`)
+		}
+		if len(hs.LowDims) > 0 {
+			top := hs.LowDims[0]
+			fmt.Printf(`  复发低分维度: %s ×%d（forge health 看全部）`+"\n", top.Dimension, top.Count)
 		}
 	}
 

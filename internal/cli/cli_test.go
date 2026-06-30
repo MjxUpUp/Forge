@@ -267,6 +267,62 @@ func TestStatusJSON(t *testing.T) {
 	}
 }
 
+// --------------- Test: TestStatusShowsHealthSignal ---------------
+
+// TestStatusShowsHealthSignal 钉住 status 接入项目级质量信号：有完成任务结论时，status
+// 主入口必须亮出证据盲区率/复发低分维度——防 deterministic 信号在 forge health 算了但
+// status（"项目在哪"主入口）看不到的可见性缺口。
+func TestStatusShowsHealthSignal(t *testing.T) {
+	tmpDir := t.TempDir()
+	stdout, _, code := runForge(t, tmpDir, "init", "--mode", "medium")
+	if code != 0 {
+		t.Fatalf("forge init failed: %s", stdout)
+	}
+
+	// 种 2 个结论：1 Strong + 1 Unverified → 盲区率 50%（触发系统性告警）；都带 scope 低分。
+	seed := []act.Conclusion{
+		{TaskRef: `feat/a`, Grade: `A`, Strength: `Strong`, Score: 95, LowDimensions: []string{`scope`}, CompletedAt: time.Now()},
+		{TaskRef: `feat/b`, Grade: `D`, Strength: `Unverified`, Score: 60, LowDimensions: []string{`scope`}, RetrospectiveNudge: true, CompletedAt: time.Now()},
+	}
+	for i := range seed {
+		if err := act.Append(tmpDir, &seed[i]); err != nil {
+			t.Fatalf("seed conclusion: %v", err)
+		}
+	}
+
+	// pretty：质量信号块 + 系统性盲区告警 + scope 复发都必须出现。
+	stdout, _, code = runForge(t, tmpDir, "status")
+	if code != 0 {
+		t.Fatalf("forge status exit %d: %s", code, stdout)
+	}
+	for _, want := range []string{`质量信号`, `证据盲区率`, `系统性盲区`, `scope`} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("status 缺 %q（质量信号块未渲染）\noutput: %s", want, stdout)
+		}
+	}
+
+	// json：health 字段在，blind_spot_rate=0.5, total_tasks=2。
+	stdout, _, code = runForge(t, tmpDir, "status", "--json")
+	if code != 0 {
+		t.Fatalf("forge status --json exit %d: %s", code, stdout)
+	}
+	var result struct {
+		Health *struct {
+			BlindSpotRate float64 `json:"blind_spot_rate"`
+			TotalTasks    int     `json:"total_tasks"`
+		} `json:"health"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Fatalf("parse status JSON: %v\n%s", err, stdout)
+	}
+	if result.Health == nil {
+		t.Fatalf("status --json 缺 health 字段（有结论时应含）\n%s", stdout)
+	}
+	if result.Health.TotalTasks != 2 || result.Health.BlindSpotRate != 0.5 {
+		t.Errorf("health=%+v want TotalTasks=2 BlindSpotRate=0.5", result.Health)
+	}
+}
+
 // --------------- Test 7: TestGateFailsNoArtifacts ---------------
 
 func TestGateFailsNoArtifacts(t *testing.T) {
