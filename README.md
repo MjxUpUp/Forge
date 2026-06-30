@@ -177,6 +177,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 |------|------|
 | `forge act show [--ref <ref>]` | 查看最新（或指定）任务结论 |
 | `forge act list [--json]` | 列出所有任务结论 |
+| `forge act nudge` | 最新结论有回顾 nudge 时输出一行（否则静默）——供 task-verify 会话结束 hook 消费 |
 
 ### Skill 治理
 

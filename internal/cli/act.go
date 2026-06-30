@@ -13,6 +13,7 @@ func init() {
 	rootCmd.AddCommand(actCmd)
 	actCmd.AddCommand(actShowCmd)
 	actCmd.AddCommand(actListCmd)
+	actCmd.AddCommand(actNudgeCmd)
 	actShowCmd.Flags().String("ref", "", "指定任务引用（默认最新结论）")
 	actListCmd.Flags().Bool("json", false, "JSON 格式输出")
 }
@@ -37,6 +38,19 @@ var actListCmd = &cobra.Command{
 	Use:   "list [--json]",
 	Short: "列出所有任务结论",
 	RunE:  runActList,
+}
+
+var actNudgeCmd = &cobra.Command{
+	Use:   "nudge",
+	Short: "输出最新结论的回顾指令（有 nudge 才输出，否则静默）——供会话结束 hook 消费",
+	Long: `forge act nudge 供 task-verify（会话结束 hook）消费：读最新任务结论，若标
+RetrospectiveNudge（证据弱 Unverified/Weak 或低分 <70）则输出一行可执行回顾指令（Directive），
+否则完全静默。Strong 且>=70 的干净完成不发噪声——nudge 只在有盲区时出现。
+
+这是 Act 反馈臂的会话结束触发点：Directive 不只在 forge task complete 时打印一次（易被后续
+工作淹没），也在会话结束的质量信号面 surface，确保"高分但没真验证"的盲区到达回顾真正发生
+的检查点（task-verify 已收 task-gate/pending-review/main-branch 全部质量信号，唯独缺 Act 信号）。`,
+	RunE: runActNudge,
 }
 
 func runActShow(cmd *cobra.Command, args []string) error {
@@ -102,6 +116,27 @@ func runActList(cmd *cobra.Command, args []string) error {
 		}
 		fmt.Printf("  %-22s %3.0f %-8s evidence=%-10s ratio=%.2f%s\n",
 			c.TaskRef, c.Score, c.Grade, c.Strength, c.Ratio, nudge)
+	}
+	return nil
+}
+
+// runActNudge 读最新结论：有 RetrospectiveNudge 则输出 Directive（一行），否则静默。
+// 专为会话结束 hook（task-verify）设计——干净完成零输出，有盲区才发一行可执行指令。
+// 与 act show 区别：show 是人读全量（空时打印"尚无结论"），nudge 是机器消费（空时静默）。
+func runActNudge(cmd *cobra.Command, args []string) error {
+	root, err := findProjectRoot()
+	if err != nil {
+		return err
+	}
+	c, err := act.Latest(root)
+	if err != nil {
+		return err
+	}
+	if c == nil {
+		return nil // 尚无完成结论：静默（合法空状态，非错误）
+	}
+	if d := c.Directive(); d != "" {
+		fmt.Println(d)
 	}
 	return nil
 }

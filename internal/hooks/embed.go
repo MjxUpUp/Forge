@@ -244,6 +244,15 @@ if [ "$BRANCH" = "master" ] || [ "$BRANCH" = "main" ]; then
   fi
 fi
 
+# Act 反馈臂：最新任务结论若标 RetrospectiveNudge（证据弱 Unverified/Weak 或低分<70），
+# surface 到会话结束。与 task-gate/pending-review 同级——质量信号在会话结束集中呈现，
+# 确保“高分但没真验证”的盲区到达回顾检查点（Directive 在 task complete 打印一次易被
+# 后续工作淹没）。forge act nudge 干净完成时静默，只在有盲区时输出一行。
+NUDGE=$(forge act nudge 2>/dev/null) || true
+if [ -n "${NUDGE}" ]; then
+  MESSAGES="${MESSAGES}${NUDGE} "
+fi
+
 # Advisory: always PASS, never block. Surface issues to stderr (user-visible)
 # and checklog (trace-queryable). Detail is a fixed string — MESSAGES may carry
 # quotes/paths that would break the JSON line, so it goes to stderr only.
