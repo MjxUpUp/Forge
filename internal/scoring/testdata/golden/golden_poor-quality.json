@@ -12,13 +12,17 @@
     "GitDiffStat": "300\t300\tmain.go",
     "TestCoveragePassed": false,
     "TestCoverageChecked": true,
+    "TestCoverageCovered": 0,
+    "TestCoverageTotal": 1,
+    "TestAssertionCount": 0,
+    "TestFileCount": 1,
     "CompilePassed": false,
     "AssertionPassed": false,
     "CompileChecked": true,
     "AssertionChecked": true
   },
   "expected": {
-    "overall": 24.75,
+    "overall": 27.25,
     "grade": "F",
     "dimensions": {
       "assertions": 0,
@@ -26,7 +30,7 @@
       "efficiency": 40,
       "process": 55,
       "scope": 40,
-      "testing": 20
+      "testing": 30
     }
   }
 }

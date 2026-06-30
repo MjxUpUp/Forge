@@ -8,31 +8,31 @@ import (
 // CollectGitData gathers the git diff stat used by the scope dimension.
 // Returns (diffStat, error); non-fatal if git is unavailable.
 //
-// Only scope needs git now — the testing dimension reads the test-coverage
-// gate verdict from checklog (see scoreTesting), so test-file diff content is
-// no longer collected here.
+// Only scope needs git now — the testing dimension reads covered/total from a
+// live CheckTestCoverage call (see scoreTesting) and assertion density from
+// CollectAssertionDensity, so test-file diff content is not collected here.
 func CollectGitData(root, branch, baseCommit string) (string, error) {
-	// Base for diff comparison. Prefer the task's recorded HeadCommit (captured
-	// at task start) so each task's scope counts only its own changes — without
-	// this, multiple tasks on one feature branch accumulate prior tasks' commits
-	// into master..HEAD, inflating the scope dimension. Empty baseCommit falls
-	// back for old tasks started before HeadCommit was recorded.
-	base := baseCommit
-	if base == "" {
-		if branch != "" && branch != "main" && branch != "master" {
-			// On a feature branch — use resolved base for comparison.
-			base = resolveBase(root)
-		} else {
-			// Already on main/master — compare against HEAD~1.
-			base = "HEAD~1"
-		}
-	}
-
+	base := resolveDiffBase(root, branch, baseCommit)
 	diffStat, err := gitDiffStat(root, base)
 	if err != nil {
 		return "", nil
 	}
 	return diffStat, nil
+}
+
+// resolveDiffBase returns the diff base for scope/assertion collection.
+// Prefers the task's recorded HeadCommit (captured at task start) so each task's
+// scope counts only its own changes — without this, multiple tasks on one feature
+// branch accumulate prior tasks' commits into master..HEAD, inflating scope.
+// Empty baseCommit falls back to resolveBase (feature branch) or HEAD~1 (main).
+func resolveDiffBase(root, branch, baseCommit string) string {
+	if baseCommit != "" {
+		return baseCommit
+	}
+	if branch != "" && branch != "main" && branch != "master" {
+		return resolveBase(root)
+	}
+	return "HEAD~1"
 }
 
 // resolveBase tries common base branch names and returns the first that exists.
@@ -46,6 +46,35 @@ func resolveBase(root string) string {
 	return "HEAD~1"
 }
 
+// changedFiles returns repo-relative paths changed since base (committed changes
+// base..HEAD plus uncommitted working-tree changes vs HEAD). De-duplicated, order
+// preserved. Used by CollectAssertionDensity — it needs only paths, not line counts.
+func changedFiles(root, base string) []string {
+	var files []string
+	seen := make(map[string]bool)
+	add := func(out []byte) {
+		for _, line := range strings.Split(string(out), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || seen[line] {
+				continue
+			}
+			seen[line] = true
+			files = append(files, line)
+		}
+	}
+	// 1. Committed changes during the task: base..HEAD
+	branchCmd := exec.Command("git", "-C", root, "diff", "--name-only", base+"..HEAD")
+	if out, err := branchCmd.Output(); err == nil {
+		add(out)
+	}
+	// 2. Uncommitted working-tree changes relative to HEAD
+	workCmd := exec.Command("git", "-C", root, "diff", "--name-only", "HEAD")
+	if out, err := workCmd.Output(); err == nil {
+		add(out)
+	}
+	return files
+}
+
 // gitDiffStat returns the diff --numstat output for changes since base.
 // numstat gives true per-file added/deleted counts ("added\tdeleted\tpath"),
 // unlike --stat whose second column is the insertions+deletions total and whose
@@ -54,9 +83,7 @@ func resolveBase(root string) string {
 //
 // base is the task's HeadCommit (HEAD at task start). Two non-overlapping
 // slices: committed changes during the task (base..HEAD) and uncommitted
-// working-tree changes (HEAD). This replaces the prior `git diff base` +
-// `git diff base..HEAD` pair which double-counted — the single-arg form
-// already included the commits that the two-dot form re-added.
+// working-tree changes (HEAD).
 func gitDiffStat(root, base string) (string, error) {
 	var parts []string
 

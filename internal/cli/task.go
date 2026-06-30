@@ -862,21 +862,6 @@ func runTaskScore(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// testCoverageVerdict reads the test-coverage gate verdict the task-verify gate
-// recorded in checklog and maps it to the testing-dimension inputs. Returns
-// (false, false) when no verdict is recorded so scoreTask falls back to a live
-// CheckTestCoverage — keeping the score consistent with a gate that already
-// passed even when scoring runs in a different session than the gate.
-//
-// Extracted from scoreTask so the checklog→testing mapping is unit-testable
-// without constructing a full scoring environment.
-func testCoverageVerdict(latestChecks map[checklog.CheckName]*checklog.Entry) (passed, checked bool) {
-	if entry, ok := latestChecks[taskpipeline.CheckNameTestCoverage]; ok {
-		return entry.Passed, entry.Checked
-	}
-	return false, false
-}
-
 // scoreTask evaluates a completed task and saves the score.
 func scoreTask(root string, state *taskpipeline.TaskState) error {
 	if state.Score != nil {
@@ -901,7 +886,14 @@ func scoreTask(root string, state *taskpipeline.TaskState) error {
 	// Read check log for actual hook results (more reliable than gate history).
 	// Scope by session so a concurrent session's check results don't contaminate
 	// this task's scoring.
-	testCoveragePassed := false
+	// covered/total/passed 始终来自实时 CheckTestCoverage（客观，与门禁同输入同逻辑 → 必
+	// 一致）。旧路径只从 checklog 读二值 passed，无法支撑 testing 维度的连续打分；实时算
+	// 既准确又与门禁 verdict 一致（同 CheckTestCoverage 逻辑、同 task diff）。
+	tcOK, tcMissing, tcTotal := taskpipeline.CheckTestCoverage(root, state)
+	tcCovered := tcTotal - len(tcMissing)
+	testCoveragePassed := tcOK
+	// checked：门禁是否跑过（checklog 有 test-coverage-gate 条目）。无条目 → fallback 视为
+	// checked（实时已算 covered/total/passed，评分仍可信）。
 	testCoverageChecked := false
 	if latestChecks, err := checklog.LatestByCheckForSession(root, state.SessionID); err == nil {
 		if entry, ok := latestChecks[checklog.CheckAssertion]; ok {
@@ -912,16 +904,12 @@ func scoreTask(root string, state *taskpipeline.TaskState) error {
 			compileChecked = entry.Checked
 			compilePassed = entry.Passed
 		}
-		testCoveragePassed, testCoverageChecked = testCoverageVerdict(latestChecks)
+		if entry, ok := latestChecks[taskpipeline.CheckNameTestCoverage]; ok {
+			testCoverageChecked = entry.Checked
+		}
 	}
-	// Fallback when no recorded verdict exists (e.g. task-verify ran in a
-	// different session, so LatestByCheckForSession filtered it out, or scoring
-	// runs without the gate having logged). Evaluate live with the SAME logic
-	// the gate uses — the score can never disagree with a gate that passed.
 	if !testCoverageChecked {
-		ok, _ := taskpipeline.CheckTestCoverage(root, state)
 		testCoverageChecked = true
-		testCoveragePassed = ok
 	}
 
 	// Count retries: gates that appear multiple times with mixed results
@@ -959,6 +947,9 @@ func scoreTask(root string, state *taskpipeline.TaskState) error {
 		completedAt = *state.CompletedAt
 	}
 
+	// 断言密度（C）：统计本任务 changed 测试文件的断言数，供 testing 维度假测试检测。
+	testAssertionCount, testFileCount := scoring.CollectAssertionDensity(root, state.Branch, state.HeadCommit)
+
 	input := &scoring.EvaluateInput{
 		GateHistory: scoring.GateHistory{
 			TotalGates: len(taskpipeline.DefaultGates()),
@@ -970,6 +961,10 @@ func scoreTask(root string, state *taskpipeline.TaskState) error {
 		GitDiffStat:         gitDiffStat,
 		TestCoveragePassed:  testCoveragePassed,
 		TestCoverageChecked: testCoverageChecked,
+		TestCoverageCovered: tcCovered,
+		TestCoverageTotal:   tcTotal,
+		TestAssertionCount:  testAssertionCount,
+		TestFileCount:       testFileCount,
 		CompilePassed:       compilePassed,
 		CompileChecked:      compileChecked,
 		AssertionPassed:     assertionPassed,

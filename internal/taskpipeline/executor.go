@@ -171,7 +171,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 	// Passed=false），让 forge trace 保留信号，只是不再用它阻断会话。
 	// Only task-verify runs this — task-complete is the last gate (no work phase).
 	if gateID == "task-verify" && state.CompletedAt == nil {
-		ok, missing := CheckTestCoverage(root, state)
+		ok, missing, _ := CheckTestCoverage(root, state)
 		checklog.Record(root, &checklog.Entry{
 			Check:   CheckNameTestCoverage,
 			Passed:  ok,

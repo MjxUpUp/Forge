@@ -199,7 +199,7 @@ func TestTestCoverageWhitelistIsExact(t *testing.T) {
 	}, "add non-entry")
 
 	state := newVerifyState(t, dir, "non-entry")
-	ok, missing := CheckTestCoverage(dir, state)
+	ok, missing, _ := CheckTestCoverage(dir, state)
 	if ok {
 		t.Fatal("remain.go should be detected as missing a test (not whitelisted as main.go)")
 	}
@@ -230,7 +230,7 @@ func TestTestCoverageInfersByLanguage(t *testing.T) {
 		"src/a.ts": "export const a = 1\n",
 	}, "add ts only")
 	state2 := newVerifyState(t, dir2, "ts-without")
-	ok, _ := CheckTestCoverage(dir2, state2)
+	ok, _, _ := CheckTestCoverage(dir2, state2)
 	if ok {
 		t.Fatal("ts source without .test.ts should be detected as missing (advisory gate, but detection still runs)")
 	}
@@ -247,7 +247,7 @@ func TestTestCoverageGoPackageFallback(t *testing.T) {
 	writeCommitSource(t, dir, map[string]string{
 		// executor.go has NO executor_test.go change, but sibling
 		// testcoverage_test.go in the same package covers it.
-		"pkg/executor.go":         "package pkg\n\nfunc Exec() int { return 1 }\n",
+		"pkg/executor.go":          "package pkg\n\nfunc Exec() int { return 1 }\n",
 		"pkg/testcoverage_test.go": "package pkg\n\nimport \"testing\"\n\nfunc TestExec(t *testing.T) {}\n",
 	}, "add source + sibling test")
 
@@ -273,7 +273,7 @@ func TestTestCoverageGoPackageFallbackStillFailsWhenDirUntested(t *testing.T) {
 	}, "add source + unrelated test")
 
 	state := newVerifyState(t, dir, "pkg-untested")
-	ok, missing := CheckTestCoverage(dir, state)
+	ok, missing, _ := CheckTestCoverage(dir, state)
 	if ok {
 		t.Fatal("foo.go with no same-dir _test.go should be detected as missing (fallback is same-directory)")
 	}
@@ -294,7 +294,7 @@ func TestTestCoverageGoPackageFallbackRootLevel(t *testing.T) {
 	dir := t.TempDir()
 	initRepoWithMaster(t, dir)
 	writeCommitSource(t, dir, map[string]string{
-		"foo.go":      "package main\n\nfunc Foo() int { return 1 }\n",
+		"foo.go":         "package main\n\nfunc Foo() int { return 1 }\n",
 		"helper_test.go": "package main\n\nimport \"testing\"\n\nfunc TestHelper(t *testing.T) {}\n",
 	}, "add root source + root test")
 
@@ -321,7 +321,7 @@ func TestCheckTestCoverage_Direct(t *testing.T) {
 		}, "add foo + test")
 
 		state := &TaskState{TaskRef: "direct-pass", Branch: "feat/testcov"}
-		ok, missing := CheckTestCoverage(dir, state)
+		ok, missing, _ := CheckTestCoverage(dir, state)
 		if !ok {
 			t.Fatalf("committed foo.go + foo_test.go: want ok=true, got missing=%v", missing)
 		}
@@ -335,7 +335,7 @@ func TestCheckTestCoverage_Direct(t *testing.T) {
 		}, "add foo only")
 
 		state := &TaskState{TaskRef: "direct-fail", Branch: "feat/testcov"}
-		ok, missing := CheckTestCoverage(dir, state)
+		ok, missing, _ := CheckTestCoverage(dir, state)
 		if ok {
 			t.Fatalf("committed foo.go without test: want ok=false, got ok=true")
 		}
@@ -355,7 +355,7 @@ func TestTestCoverageGoPackageFallback_NestedDir(t *testing.T) {
 	dir := t.TempDir()
 	initRepoWithMaster(t, dir)
 	writeCommitSource(t, dir, map[string]string{
-		"internal/pkg/foo.go":            "package pkg\n\nfunc Foo() int { return 1 }\n",
+		"internal/pkg/foo.go":             "package pkg\n\nfunc Foo() int { return 1 }\n",
 		"internal/pkg/foo_helper_test.go": "package pkg\n\nimport \"testing\"\n\nfunc TestFooHelper(t *testing.T) {}\n",
 	}, "add nested source + sibling test")
 

@@ -80,8 +80,10 @@ const CheckNameTestCoverage checklog.CheckName = "test-coverage-gate"
 
 // CheckTestCoverage enforces CLAUDE.md rule 4 ("测试伴随变更"): every non-whitelisted
 // source file changed during the task must have a corresponding test file also
-// changed. Returns (ok, missing). ok=true when either no source was changed,
-// every changed source is whitelisted, or each has a matching test.
+// changed. Returns (ok, missing, total): ok=true when no source was changed,
+// every changed source is whitelisted, or each has a matching test; total is
+// the count of changed source files requiring a test (covered = total-len(missing)),
+// which the scoring dimension uses for continuous grading instead of binary ok.
 //
 // Exported so scoring (cli.scoreTask) can reuse the EXACT verdict the task-verify
 // gate computed, instead of re-deriving coverage from the git diff — which
@@ -89,7 +91,7 @@ const CheckNameTestCoverage checklog.CheckName = "test-coverage-gate"
 // (HeadCommit == HEAD → empty diff → testing dimension saw no tests).
 //
 // Gracefully degrades: non-git repo or empty diff → ok=true (no false positives).
-func CheckTestCoverage(root string, state *TaskState) (ok bool, missing []string) {
+func CheckTestCoverage(root string, state *TaskState) (ok bool, missing []string, total int) {
 	if os.Getenv(testCoverageDisableEnv) == "disable" {
 		// A4: audit the bypass. The hatch is legitimate (doc-only repos, generated
 		// code, whitelist-only tasks) but its use must leave a trail — otherwise an
@@ -105,12 +107,12 @@ func CheckTestCoverage(root string, state *TaskState) (ok bool, missing []string
 			TaskRef: taskRef,
 			Detail:  "escape-hatch: FORGE_TEST_COVERAGE=disable (test-coverage gate bypassed)",
 		})
-		return true, nil
+		return true, nil, 0
 	}
 
 	changed := taskChangedFiles(root, state)
 	if len(changed) == 0 {
-		return true, nil
+		return true, nil, 0
 	}
 
 	changedSet := make(map[string]bool, len(changed))
@@ -125,13 +127,14 @@ func CheckTestCoverage(root string, state *TaskState) (ok bool, missing []string
 		if isWhitelisted(f) {
 			continue
 		}
+		total++ // 应配对测试的源码文件数（评分按 covered/total 连续打分）
 		if hasMatchingTest(f, changedSet) {
 			continue
 		}
 		missing = append(missing, f)
 	}
 
-	return len(missing) == 0, missing
+	return len(missing) == 0, missing, total
 }
 
 // taskChangedFiles returns the set of files changed during the task.

@@ -23,6 +23,18 @@ type EvaluateInput struct {
 	TestCoveragePassed  bool
 	TestCoverageChecked bool
 
+	// TestCoverageCovered/Total 驱动 testing 维度的连续打分（ratio=covered/total）。
+	// 替代旧的二值全或 20 模型：5 个源码文件覆盖 4 个 → ~86 分而非塌缩到 20。
+	// 两者均来自实时 CheckTestCoverage（客观，与门禁同输入同逻辑）。
+	TestCoverageCovered int // 有配对测试的源码文件数
+	TestCoverageTotal   int // 应配对测试的源码文件数
+
+	// 断言密度信号，用于假测试检测（业界 STREW Assertion-McCabe ratio）。
+	// 只有 setup/log 无断言的测试文件不是真覆盖——testing 维度对 covered>0
+	// 但 AssertionCount==0 的情况降分。
+	TestAssertionCount int // changed 测试文件的断言标记总数
+	TestFileCount      int // changed 测试文件数
+
 	// Hook results.
 	CompilePassed   bool // auto-compile gate passed
 	AssertionPassed bool // assertion-check passed
