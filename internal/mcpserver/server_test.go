@@ -6,7 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/MjxUpUp/Forge/internal/act"
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/skillseval"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
@@ -49,7 +51,8 @@ func TestServer_ListToolsRegistersAll(t *testing.T) {
 	want := []string{
 		"forge_gate_run", "forge_task_status", "forge_task_gate",
 		"forge_experience_search", "forge_experience_propose",
-		"forge_trace_query", "forge_knowledge_lookup",
+		"forge_trace_query", "forge_act_query", "forge_health_query",
+		"forge_knowledge_lookup",
 		"forge_skill_eval_cases", "forge_skill_eval_submit", "forge_skill_eval_report",
 	}
 	for _, w := range want {
@@ -173,6 +176,105 @@ func TestTraceQuery_AggregatesEventsAndTokens(t *testing.T) {
 	}
 	if out.EstTokens != 42 {
 		t.Errorf("EstTokens=%d want 42", out.EstTokens)
+	}
+}
+
+// TestActQuery_LatestAndByRef：act_query 读最新结论 + 按 ref 定位 + Directive 带回。
+// 守护 Act 反馈臂的 MCP 读端——agent 据证据强度决定是否复核完成声明。
+func TestActQuery_LatestAndByRef(t *testing.T) {
+	root := t.TempDir()
+	// 两个结论：feat/a 早、feat/b 晚（Latest 应取 feat/b）。feat/b 标 Unverified→nudge→Directive 非空。
+	concs := []act.Conclusion{
+		{TaskRef: "feat/a", Grade: "A", Strength: "Strong", Score: 95, CompletedAt: time.Now().Add(-time.Hour)},
+		{TaskRef: "feat/b", Grade: "A", Strength: "Unverified", Score: 95, RetrospectiveNudge: true, CompletedAt: time.Now()},
+	}
+	for i := range concs {
+		if err := act.Append(root, &concs[i]); err != nil {
+			t.Fatalf("Append: %v", err)
+		}
+	}
+
+	// 默认（无 ref）= 最新 = feat/b
+	latest, err := actQueryCore(root, actQueryInput{})
+	if err != nil {
+		t.Fatalf("actQuery latest: %v", err)
+	}
+	if latest.TaskRef != "feat/b" {
+		t.Errorf("latest TaskRef=%q want feat/b", latest.TaskRef)
+	}
+	if latest.Strength != "Unverified" {
+		t.Errorf("Strength=%q want Unverified", latest.Strength)
+	}
+	if latest.Directive == "" {
+		t.Error("RetrospectiveNudge 时 Directive 应非空（喂 session-retrospective）")
+	}
+
+	// 按 ref 定位 feat/a
+	byRef, err := actQueryCore(root, actQueryInput{Ref: "feat/a"})
+	if err != nil {
+		t.Fatalf("actQuery by ref: %v", err)
+	}
+	if byRef.TaskRef != "feat/a" || byRef.Strength != "Strong" {
+		t.Errorf("byRef=%+v want feat/a Strong", byRef)
+	}
+	if byRef.Directive != "" {
+		t.Errorf("Strong+高分 Directive=%q want 空（静默）", byRef.Directive)
+	}
+
+	// 不存在的 ref 报错，不静默返回空
+	if _, err := actQueryCore(root, actQueryInput{Ref: "feat/none"}); err == nil {
+		t.Error("未知 ref 应报错")
+	}
+}
+
+// TestActQuery_NoConclusions：无结论时报错（提示 complete 产出），不返回零值误导。
+func TestActQuery_NoConclusions(t *testing.T) {
+	root := t.TempDir()
+	if _, err := actQueryCore(root, actQueryInput{}); err == nil {
+		t.Error("无结论应报错（agent 据此知尚无完成）")
+	}
+}
+
+// TestHealthQuery_Aggregates：health_query 把结论上卷成项目趋势（盲区率/复发低分维度）。
+// 守护 task→project 粒度联动的 MCP 读端。
+func TestHealthQuery_Aggregates(t *testing.T) {
+	root := t.TempDir()
+	concs := []act.Conclusion{
+		{TaskRef: "feat/a", Grade: "A", Strength: "Strong", Score: 95, LowDimensions: []string{"scope"}, CompletedAt: time.Now().Add(-time.Hour)},
+		{TaskRef: "feat/b", Grade: "D", Strength: "Unverified", Score: 60, LowDimensions: []string{"scope"}, RetrospectiveNudge: true, CompletedAt: time.Now()},
+	}
+	for i := range concs {
+		if err := act.Append(root, &concs[i]); err != nil {
+			t.Fatalf("Append: %v", err)
+		}
+	}
+
+	out, err := healthQueryCore(root, healthQueryInput{})
+	if err != nil {
+		t.Fatalf("healthQuery: %v", err)
+	}
+	if out.TotalTasks != 2 {
+		t.Errorf("TotalTasks=%d want 2", out.TotalTasks)
+	}
+	// 1/2 Unverified → 盲区率 0.5
+	if out.BlindSpotCount != 1 || out.BlindSpotRate != 0.5 {
+		t.Errorf("BlindSpot=%d/%v want 1/0.5", out.BlindSpotCount, out.BlindSpotRate)
+	}
+	// scope 跨 2 任务复发
+	if len(out.LowDims) != 1 || out.LowDims[0].Dimension != "scope" || out.LowDims[0].Count != 2 {
+		t.Errorf("LowDims=%+v want scope×2", out.LowDims)
+	}
+}
+
+// TestHealthQuery_NoConclusions：无结论时返回零值 Summary（total=0），不报错——
+// 与 act_query 区分：项目级"暂无数据"是合法状态。
+func TestHealthQuery_NoConclusions(t *testing.T) {
+	out, err := healthQueryCore(t.TempDir(), healthQueryInput{})
+	if err != nil {
+		t.Fatalf("无结论不应报错（合法空状态）: %v", err)
+	}
+	if out.TotalTasks != 0 {
+		t.Errorf("TotalTasks=%d want 0", out.TotalTasks)
 	}
 }
 

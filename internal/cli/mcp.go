@@ -21,14 +21,19 @@ func init() {
 		Short: "在 stdio 上运行 Forge MCP server",
 		Long: `forge mcp serve 在 stdin/stdout 上服务 MCP 协议（stdio transport）。
 
-工具（7 个）：
+工具（12 个）：
   forge_gate_run            运行项目级管道门禁（pipeline.yml）
   forge_task_status         查看任务状态（活跃 / 指定 ref）
   forge_task_gate           推进 task 门禁（implement/verify/complete）
+  forge_trace_query         查询任务质量事件时间线 + 估算 token
+  forge_act_query           查询任务结论（证据强度/score/验收/低分维度）+ 回顾指令
+  forge_health_query        项目级质量趋势上卷（盲区率/复发低分维度，task→project）
   forge_experience_search   搜索经验提案
   forge_experience_propose  提议新经验
-  forge_trace_query         查询任务质量事件时间线 + 估算 token
   forge_knowledge_lookup    查询跨项目知识库（~/.forge/knowledge/）
+  forge_skill_eval_cases    生成 skill eval case 集
+  forge_skill_eval_submit   回填一次 eval run
+  forge_skill_eval_report   eval 回归报告
 
 配置（Claude Code 项目级 .mcp.json 或用户级 ~/.claude.json）：
   {

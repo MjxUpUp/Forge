@@ -7,8 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/act"
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/experience"
+	"github.com/MjxUpUp/Forge/internal/health"
 	"github.com/MjxUpUp/Forge/internal/knowledge"
 	"github.com/MjxUpUp/Forge/internal/pipeline"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
@@ -454,4 +456,68 @@ func loadTaskState(root, ref string) (*taskpipeline.TaskState, error) {
 		return taskpipeline.LoadTaskState(root, ref)
 	}
 	return taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
+}
+
+// =====================================================================
+// forge_act_query —— 查询任务结论（证据强度/score/验收/低分维度）+ 回顾指令
+// =====================================================================
+
+type actQueryInput struct {
+	Ref string `json:"ref,omitempty" jsonschema:"任务 ref（省略=最新完成的结论）"`
+}
+
+// actQueryOutput 嵌入 act.Conclusion 并补 Directive（Conclusion 的方法，序列化要字段）。
+// 让 agent 在 loop 里读"这次完成声明有多少 deterministic 证据"——对冲 LLM-judge 看不出
+// agent 跳过前置就声明完成的盲区（这是 Act 反馈臂的 agent 可编程读端）。
+type actQueryOutput struct {
+	act.Conclusion
+	Directive string `json:"directive,omitempty"`
+}
+
+func actQueryCore(root string, in actQueryInput) (actQueryOutput, error) {
+	if in.Ref != "" {
+		cs, err := act.LoadAll(root)
+		if err != nil {
+			return actQueryOutput{}, fmt.Errorf("load conclusions: %w", err)
+		}
+		var found *act.Conclusion
+		for i := range cs {
+			if cs[i].TaskRef == in.Ref {
+				found = &cs[i] // 多次完成取最新（最后一个匹配）
+			}
+		}
+		if found == nil {
+			return actQueryOutput{}, fmt.Errorf("no act conclusion for task %q", in.Ref)
+		}
+		return actQueryOutput{Conclusion: *found, Directive: found.Directive()}, nil
+	}
+	c, err := act.Latest(root)
+	if err != nil {
+		return actQueryOutput{}, fmt.Errorf("load latest conclusion: %w", err)
+	}
+	if c == nil {
+		return actQueryOutput{}, fmt.Errorf("no act conclusions yet (forge task complete 产出)")
+	}
+	return actQueryOutput{Conclusion: *c, Directive: c.Directive()}, nil
+}
+
+// =====================================================================
+// forge_health_query —— 项目级质量趋势上卷（task→project 粒度）
+// =====================================================================
+
+type healthQueryInput struct {
+	// 无参数：项目级聚合，不依赖单个 ref。空 struct 让 go-sdk 推断"无需参数"。
+}
+
+// healthQueryOutput 直接是 health.Summary（已带 json tag）。盲区率 blind_spot_rate 是头条
+// 信号：完成声明主要靠 agent 自述（Unverified/Weak）的任务占比——项目级 LLM-judge 盲区率。
+type healthQueryOutput = health.Summary
+
+func healthQueryCore(root string, _ healthQueryInput) (healthQueryOutput, error) {
+	cs, err := act.LoadAll(root)
+	if err != nil {
+		return healthQueryOutput{}, fmt.Errorf("load conclusions: %w", err)
+	}
+	// 无结论时 Summarize 返回零值 Summary（total_tasks=0）——有效输出，非错误。
+	return health.Summarize(cs), nil
 }

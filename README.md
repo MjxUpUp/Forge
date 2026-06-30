@@ -198,16 +198,18 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 
 ### MCP 接口
 
-`forge mcp serve` 在 stdio 上运行 MCP server，让 coding agent（Claude Code / Codex / Copilot）以结构化工具调用 Forge，不必 parse CLI 文本。10 个工具覆盖门禁推进、经验闭环、知识查询、质量追踪与 skill eval 回归：
+`forge mcp serve` 在 stdio 上运行 MCP server，让 coding agent（Claude Code / Codex / Copilot）以结构化工具调用 Forge，不必 parse CLI 文本。12 个工具覆盖门禁推进、经验闭环、知识查询、质量追踪、PDCA Act/项目健康与 skill eval 回归：
 
 | 工具 | 说明 |
 |------|------|
 | `forge_gate_run` | 运行项目级门禁 |
 | `forge_task_status` | 查询任务状态 |
 | `forge_task_gate` | 推进任务门禁（implement/verify/complete） |
+| `forge_trace_query` | 查询任务质量事件时间线 |
+| `forge_act_query` | 查询任务结论（证据强度/score/验收/低分维度）+ 回顾指令（Act 反馈臂读端） |
+| `forge_health_query` | 项目级质量趋势上卷（盲区率/复发低分维度，task→project 粒度） |
 | `forge_experience_search` | 搜索经验提案 |
 | `forge_experience_propose` | 提议新经验 |
-| `forge_trace_query` | 查询任务质量事件时间线 |
 | `forge_knowledge_lookup` | 跨项目知识库查询 |
 | `forge_skill_eval_cases` | 生成 skill eval case 集 + dispatch 指令包（agent 据此跑回归） |
 | `forge_skill_eval_submit` | 整批回填 eval run（归一化 + 判定 + 算 health） |
