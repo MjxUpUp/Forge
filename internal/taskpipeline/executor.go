@@ -217,6 +217,32 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		}
 	}
 
+	// 证据链 agent-claim 数据源：agent 推进一个非自动 gate 即"声明"该阶段完成
+	//（task-verify=验证声明，task-complete=完成声明）。与 deterministic 的 hook/gate
+	// 实跑检查互补——EvidenceChain 据 Source 分桶，ratio=完成声明背后有多少
+	// deterministic 证据支撑，照出"agent 跳过前置就声明完成"的 LLM-judge 盲区。
+	// 仅在 gate 实际通过且任务未完成时记录（重检 completed 任务不重复声明）。
+	if !gate.Auto && state.CompletedAt == nil {
+		switch gateID {
+		case "task-verify":
+			checklog.Record(root, &checklog.Entry{
+				Check:   checklog.CheckTaskVerify,
+				Passed:  true,
+				Checked: true,
+				TaskRef: state.TaskRef,
+				Detail:  `agent-claim: 通过 task-verify gate（agent 自述验证完成）`,
+			})
+		case "task-complete":
+			checklog.Record(root, &checklog.Entry{
+				Check:   checklog.CheckTaskComplete,
+				Passed:  true,
+				Checked: true,
+				TaskRef: state.TaskRef,
+				Detail:  `agent-claim: 通过 task-complete gate（agent 自述任务完成）`,
+			})
+		}
+	}
+
 	return &ExecuteResult{
 		GateID:  gateID,
 		Passed:  true,

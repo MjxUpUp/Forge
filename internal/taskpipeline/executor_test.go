@@ -905,6 +905,75 @@ func TestTaskComplete_DocsConsistencyAdvisory(t *testing.T) {
 	}
 }
 
+// TestGateAdvancementRecordsAgentClaim 守卫证据链 agent-claim 数据源：agent 推进
+// task-verify / task-complete gate 时，ExecuteTaskGate 必须把该"声明"记进 checklog
+// （Source=agent-claim，由 Record 的 SourceForCheck 兜底写入）。没有这两个记录点，
+// EvidenceChain 的 agent-claim 桶恒为 0，"完成声明 vs deterministic 支撑"的对比失效——
+// 本测试把数据源接入钉成可回归验证。
+func TestGateAdvancementRecordsAgentClaim(t *testing.T) {
+	setup := func(branch, taskRef string) string {
+		dir := t.TempDir()
+		runGit(t, dir, "init")
+		runGit(t, dir, "config", "user.email", "t@t.com")
+		runGit(t, dir, "config", "user.name", "T")
+		runGit(t, dir, "commit", "--allow-empty", "-m", "master init")
+		runGit(t, dir, "checkout", "-b", branch)
+		return dir
+	}
+	findClaim := func(dir, taskRef string, want checklog.CheckName) *checklog.Entry {
+		entries, err := checklog.LoadForTask(dir, taskRef)
+		if err != nil {
+			t.Fatalf("LoadForTask: %v", err)
+		}
+		for i := range entries {
+			if entries[i].TaskRef == taskRef && entries[i].Check == want {
+				return &entries[i]
+			}
+		}
+		return nil
+	}
+
+	t.Run("task-verify records agent-claim", func(t *testing.T) {
+		dir := setup("feat/claim-v", "claim-v")
+		// 走真实 read-before-edit 路径（seed 一个 Read）而非 FORGE_WORK_ACTIVITY=disable
+		// 逃避——确保 claim 记录点在真实 gate 流程末端被覆盖，防 future early-return 漏检。
+		state := &TaskState{TaskRef: "claim-v", Branch: "feat/claim-v", StartedAt: time.Now()}
+		state.RecordGateResult("task-implement", true, "")
+		readTS := time.Now().Add(2 * time.Second)
+		if err := toolusage.Record(dir, &toolusage.ToolCall{ToolName: "Read", TaskRef: "claim-v", Timestamp: readTS}); err != nil {
+			t.Fatalf("seed Read: %v", err)
+		}
+		if _, err := ExecuteTaskGate(dir, "task-verify", state); err != nil {
+			t.Fatalf("task-verify should pass: %v", err)
+		}
+		entry := findClaim(dir, "claim-v", checklog.CheckTaskVerify)
+		if entry == nil {
+			t.Fatal(`task-verify 未记录 CheckTaskVerify 声明（agent-claim 数据源断裂）`)
+		}
+		if entry.Source != checklog.EvidenceAgentClaim {
+			t.Errorf(`CheckTaskVerify.Source = %s, want agent-claim`, entry.Source)
+		}
+	})
+
+	t.Run("task-complete records agent-claim", func(t *testing.T) {
+		dir := setup("feat/claim-c", "claim-c")
+		state := &TaskState{TaskRef: "claim-c", Branch: "feat/claim-c"}
+		state.RecordGateResult("task-implement", true, "")
+		state.RecordGateResult("task-verify", true, "")
+		state.MarkReviewPassed() // 满足 review 硬前置
+		if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
+			t.Fatalf("task-complete should pass: %v", err)
+		}
+		entry := findClaim(dir, "claim-c", checklog.CheckTaskComplete)
+		if entry == nil {
+			t.Fatal(`task-complete 未记录 CheckTaskComplete 声明（agent-claim 数据源断裂）`)
+		}
+		if entry.Source != checklog.EvidenceAgentClaim {
+			t.Errorf(`CheckTaskComplete.Source = %s, want agent-claim`, entry.Source)
+		}
+	})
+}
+
 // TestTaskComplete_DocsConsistencyNoDriftSilent guards the silent path: when README
 // has no forge-command drift, no docs-consistency advisory entry is recorded (no
 // noise). Advisory must fire ONLY on drift, not on every task-complete.

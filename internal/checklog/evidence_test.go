@@ -16,6 +16,7 @@ func TestSourceForCheck(t *testing.T) {
 		{CheckAssertion, EvidenceDeterministic},
 		{CheckFileSentinel, EvidenceDeterministic},
 		{CheckTaskVerify, EvidenceAgentClaim},
+		{CheckTaskComplete, EvidenceAgentClaim},
 		{CheckName("some-future-check"), EvidenceDeterministic},
 	}
 	for _, c := range cases {

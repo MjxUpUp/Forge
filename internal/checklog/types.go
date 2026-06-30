@@ -6,9 +6,10 @@ import "time"
 type CheckName string
 
 const (
-	CheckAutoCompile CheckName = "auto-compile"
-	CheckAssertion   CheckName = "assertion-check"
-	CheckTaskVerify  CheckName = "task-verify"
+	CheckAutoCompile  CheckName = "auto-compile"
+	CheckAssertion    CheckName = "assertion-check"
+	CheckTaskVerify   CheckName = "task-verify"
+	CheckTaskComplete CheckName = "task-complete"
 	CheckTaskGuard    CheckName = "task-guard"
 	CheckBashGuard    CheckName = "bash-guard"
 	CheckFileSentinel CheckName = "file-sentinel"
@@ -41,12 +42,13 @@ const (
 	EvidenceAgentClaim EvidenceSource = "agent-claim"
 )
 
-// SourceForCheck 返回一个 CheckName 的默认证据来源。当前 checklog 全部由
-// hook/gate 代码写入（agent 自述尚未接入证据链），故默认 deterministic；
-// task-verify gate 的记录语义上是 advisory（agent 自检），保留为 agent-claim
-// 以保守标注。调用方显式设置 Entry.Source 时优先于本默认值。
+// SourceForCheck 返回一个 CheckName 的默认证据来源。hook/gate 代码实跑的检查
+// （auto-compile、assertion-check、file-sentinel、test-coverage 等）默认 deterministic；
+// task-verify / task-complete gate 的"推进"记录是 agent 的声明（agent 自述验证/完成），
+// 归 agent-claim——对冲 LLM-judge 看不出"agent 跳过前置就声明完成"的盲区。
+// 调用方显式设置 Entry.Source 时优先于本默认值。
 func SourceForCheck(c CheckName) EvidenceSource {
-	if c == CheckTaskVerify {
+	if c == CheckTaskVerify || c == CheckTaskComplete {
 		return EvidenceAgentClaim
 	}
 	return EvidenceDeterministic
@@ -54,15 +56,15 @@ func SourceForCheck(c CheckName) EvidenceSource {
 
 // Entry records the outcome of a single hook execution.
 type Entry struct {
-	Check      CheckName `json:"check"`
-	Passed     bool      `json:"passed"`
-	Checked    bool      `json:"checked"`            // false if check was skipped
-	ToolName   string    `json:"tool_name"`          // from Claude Code stdin
-	TaskRef    string    `json:"task_ref,omitempty"` // task this check belongs to
-	SessionID  string    `json:"session_id,omitempty"` // Claude Code session — isolates concurrent sessions
-	Detail     string    `json:"detail"`             // human-readable summary
+	Check     CheckName `json:"check"`
+	Passed    bool      `json:"passed"`
+	Checked   bool      `json:"checked"`              // false if check was skipped
+	ToolName  string    `json:"tool_name"`            // from Claude Code stdin
+	TaskRef   string    `json:"task_ref,omitempty"`   // task this check belongs to
+	SessionID string    `json:"session_id,omitempty"` // Claude Code session — isolates concurrent sessions
+	Detail    string    `json:"detail"`               // human-readable summary
 	// Source 标注证据来源（deterministic vs agent-claim）。Record 时若留空，
 	// 按 SourceForCheck 兜底推断，故历史记录点无需逐个改造也能进证据链分桶。
 	Source     EvidenceSource `json:"source,omitempty"`
-	RecordedAt time.Time `json:"recorded_at"`
+	RecordedAt time.Time      `json:"recorded_at"`
 }
