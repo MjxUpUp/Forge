@@ -42,6 +42,12 @@ type EvaluateInput struct {
 	// Flags indicating whether hook data is available (vs not run).
 	CompileChecked   bool
 	AssertionChecked bool
+
+	// 证据链来源分布（来自 checklog EvidenceChain）：deterministic=hook/gate 实跑，
+	// agent-claim=agent 自述。可观测先行，不参与打分——Evaluate 据此构造
+	// ScoreResult.Evidence，供 review/评分消费者判断"完成声明可信度"。
+	EvidenceDeterministic int
+	EvidenceAgentClaim    int
 }
 
 // GateHistory abstracts the gate result data to avoid importing taskpipeline.

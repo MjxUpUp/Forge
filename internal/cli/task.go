@@ -950,25 +950,35 @@ func scoreTask(root string, state *taskpipeline.TaskState) error {
 	// 断言密度（C）：统计本任务 changed 测试文件的断言数，供 testing 维度假测试检测。
 	testAssertionCount, testFileCount := scoring.CollectAssertionDensity(root, state.Branch, state.HeadCommit)
 
+	// 证据链来源分布（路线 Step 2）：从 checklog 聚合 deterministic/agent-claim，
+	// 供 ScoreResult.Evidence 可观测（不参与打分）。ForTask 与 forge trace 同源。
+	evDeterministic, evAgentClaim := 0, 0
+	if ec, err := checklog.ForTask(root, state.TaskRef); err == nil {
+		evDeterministic = ec.Deterministic
+		evAgentClaim = ec.AgentClaim
+	}
+
 	input := &scoring.EvaluateInput{
 		GateHistory: scoring.GateHistory{
 			TotalGates: len(taskpipeline.DefaultGates()),
 			Passed:     len(state.CompletedGates()),
 			Retries:    retries,
 		},
-		StartedAt:           state.StartedAt,
-		CompletedAt:         completedAt,
-		GitDiffStat:         gitDiffStat,
-		TestCoveragePassed:  testCoveragePassed,
-		TestCoverageChecked: testCoverageChecked,
-		TestCoverageCovered: tcCovered,
-		TestCoverageTotal:   tcTotal,
-		TestAssertionCount:  testAssertionCount,
-		TestFileCount:       testFileCount,
-		CompilePassed:       compilePassed,
-		CompileChecked:      compileChecked,
-		AssertionPassed:     assertionPassed,
-		AssertionChecked:    assertionChecked,
+		StartedAt:             state.StartedAt,
+		CompletedAt:           completedAt,
+		GitDiffStat:           gitDiffStat,
+		TestCoveragePassed:    testCoveragePassed,
+		TestCoverageChecked:   testCoverageChecked,
+		TestCoverageCovered:   tcCovered,
+		TestCoverageTotal:     tcTotal,
+		TestAssertionCount:    testAssertionCount,
+		TestFileCount:         testFileCount,
+		CompilePassed:         compilePassed,
+		CompileChecked:        compileChecked,
+		AssertionPassed:       assertionPassed,
+		AssertionChecked:      assertionChecked,
+		EvidenceDeterministic: evDeterministic,
+		EvidenceAgentClaim:    evAgentClaim,
 	}
 
 	result := scoring.Evaluate(input, config)

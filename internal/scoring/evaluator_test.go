@@ -259,3 +259,67 @@ func TestGradeFromScore(t *testing.T) {
 		}
 	}
 }
+
+// TestBuildEvidenceSummary 锁定证据摘要纯函数：total=0 返回 nil（无证据数据，
+// 如旧任务 checklog 为空），避免零值噪声；有数据时按 deterministic/total 算 ratio。
+// ratio case 选 0/1/0.5（浮点精确，免容差比较）。
+func TestBuildEvidenceSummary(t *testing.T) {
+	cases := []struct {
+		name       string
+		det, claim int
+		wantNil    bool
+		wantRatio  float64
+	}{
+		{`empty returns nil`, 0, 0, true, 0},
+		{`all deterministic`, 5, 0, false, 1.0},
+		{`all agent-claim`, 0, 3, false, 0.0},
+		{`mixed half`, 1, 1, false, 0.5},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := buildEvidenceSummary(c.det, c.claim)
+			if c.wantNil {
+				if got != nil {
+					t.Fatalf(`buildEvidenceSummary(%d,%d) = %+v, want nil`, c.det, c.claim, got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatalf(`buildEvidenceSummary(%d,%d) = nil, want non-nil`, c.det, c.claim)
+			}
+			if got.Total != c.det+c.claim {
+				t.Fatalf(`total: got %d, want %d`, got.Total, c.det+c.claim)
+			}
+			if got.Ratio != c.wantRatio {
+				t.Fatalf(`ratio: got %v, want %v`, got.Ratio, c.wantRatio)
+			}
+		})
+	}
+}
+
+// TestEvaluate_EvidenceSummary 端到端：Evaluate 把 input 的证据计数注入
+// ScoreResult.Evidence。无证据输入 → nil（不输出零值）。
+func TestEvaluate_EvidenceSummary(t *testing.T) {
+	t.Run(`nil when no evidence input`, func(t *testing.T) {
+		input := &EvaluateInput{GateHistory: GateHistory{TotalGates: 3, Passed: 3}}
+		result := Evaluate(input, defaultConfig())
+		if result.Evidence != nil {
+			t.Fatalf(`expected nil Evidence when no evidence input, got %+v`, result.Evidence)
+		}
+	})
+	t.Run(`populated from input counts`, func(t *testing.T) {
+		input := &EvaluateInput{
+			GateHistory:           GateHistory{TotalGates: 3, Passed: 3},
+			EvidenceDeterministic: 4,
+			EvidenceAgentClaim:    1,
+		}
+		result := Evaluate(input, defaultConfig())
+		if result.Evidence == nil {
+			t.Fatal(`expected non-nil Evidence`)
+		}
+		if result.Evidence.Deterministic != 4 || result.Evidence.AgentClaim != 1 || result.Evidence.Total != 5 {
+			t.Fatalf(`evidence buckets: got det=%d claim=%d total=%d, want 4/1/5`,
+				result.Evidence.Deterministic, result.Evidence.AgentClaim, result.Evidence.Total)
+		}
+	})
+}

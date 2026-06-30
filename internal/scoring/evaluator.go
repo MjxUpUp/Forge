@@ -30,6 +30,23 @@ func Evaluate(input *EvaluateInput, config *scoringtypes.ScoringConfig) *scoring
 		Overall:    overall,
 		Grade:      grade,
 		ScoredAt:   time.Now(),
+		Evidence:   buildEvidenceSummary(input.EvidenceDeterministic, input.EvidenceAgentClaim),
+	}
+}
+
+// buildEvidenceSummary 把证据链来源计数摘要成 ScoreResult.Evidence。total=0 返回 nil
+// （无证据数据，如旧任务 checklog 为空），避免输出零值噪声。
+func buildEvidenceSummary(deterministic, agentClaim int) *scoringtypes.EvidenceSummary {
+	total := deterministic + agentClaim
+	if total == 0 {
+		return nil
+	}
+	ratio := float64(deterministic) / float64(total)
+	return &scoringtypes.EvidenceSummary{
+		Deterministic: deterministic,
+		AgentClaim:    agentClaim,
+		Total:         total,
+		Ratio:         ratio,
 	}
 }
 
