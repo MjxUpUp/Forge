@@ -1,0 +1,33 @@
+---
+description: 强制 Skill 路由——用户输入命中关键词时必须先读取对应 SKILL.md 再处理
+alwaysApply: true
+---
+
+# 强制 Skill 路由（Cursor 适配层）
+
+Cursor 没有 input 拦截 hook（不像 pi 的 extension / Claude 的 UserPromptSubmit），只能用 `alwaysApply` 规则做**软强制**。这是 Cursor 能做到的最强机制。
+
+## 路由规则（单一真相源：E:\Forge\skills\skill-routing\routes.json）
+
+收到用户消息时，先扫描意图是否命中下表关键词。**命中即用 Read 工具读取对应 SKILL.md 全文，然后严格按其流程处理**，不要自己瞎搞。未命中则正常响应。
+
+> 注意：下表由 `sync.py` 从 routes.json 自动生成。手动改路由请编辑 routes.json 后重新 sync，不要直接改本文件。
+
+<!-- AUTO-GENERATED ROUTES START -->
+<!-- 以下内容由 sync.py 从 routes.json 同步，手动修改会被覆盖 -->
+<!-- AUTO-GENERATED ROUTES END -->
+
+## 路径解析
+
+所有 skill 的 SKILL.md 真相源在 `E:\Forge\skills\<skill-name>\SKILL.md`（Cursor 通过 junction 在 `~/.cursor/skills/<skill-name>/SKILL.md` 也能读到，两个路径都可用）。无源仓库的机器回退到 `~/.forge/skills-cache/embedded`（forge 自带快照，随 release 更新）。
+
+## 行为约束
+
+1. **命中即读**：命中关键词后，第一步必须是 Read 对应 SKILL.md，不是直接回答
+2. **读完遵循**：读取后严格按 skill 流程执行，不要看了等于没看
+3. **多 skill 命中**：取第一条命中（routes.json 顺序即优先级）
+4. **用户显式指令优先**：用户明确说"不用 skill 直接答"时，尊重用户
+
+## 与 skill-usage.mdc 的关系
+
+本文件是**路由层**（关键词→skill 映射），原 `skill-usage.mdc` 是**通用引导层**（提醒有 skill 体系）。两者并存：本文件管确定性路由，原文件管模糊意图的 skill 发现。

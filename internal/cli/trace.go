@@ -1,0 +1,107 @@
+package cli
+
+import (
+	"fmt"
+	"sort"
+	"time"
+
+	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/toolusage"
+	"github.com/spf13/cobra"
+)
+
+func init() {
+	rootCmd.AddCommand(traceCmd)
+}
+
+// traceCmd implements `forge trace <task-ref>`: replays a task's full quality
+// event timeline (tool calls + check results), turning a single score back into
+// a traceable story. The observability consumption layer over checklog/toolusage.
+var traceCmd = &cobra.Command{
+	Use:   "trace <task-ref>",
+	Short: "查看任务的完整质量事件时间线",
+	Long: `forge trace 重放一个任务从开始到完成的所有质量事件：
+工具调用、检查结果、门禁推进。把"一个评分"还原成"一条可回溯的时间线"。
+
+数据源：.forge/checklog*.jsonl（检查事件，含已归档）+ .forge/toollog.jsonl（工具调用）。`,
+	Args: cobra.ExactArgs(1),
+	RunE: runTrace,
+}
+
+// traceEvent is a unified timeline event merged from the checklog and
+// toolusage sources, normalized to a single sortable time axis.
+type traceEvent struct {
+	ts      time.Time
+	source  string // "check" or "tool"
+	summary string
+	detail  string
+}
+
+func runTrace(cmd *cobra.Command, args []string) error {
+	ref := args[0]
+
+	root, err := findProjectRoot()
+	if err != nil {
+		return err
+	}
+
+	checks, err := checklog.LoadForTask(root, ref)
+	if err != nil {
+		return fmt.Errorf("failed to load checklog: %w", err)
+	}
+	calls, err := toolusage.LoadForTaskAll(root, ref)
+	if err != nil {
+		return fmt.Errorf("failed to load toollog: %w", err)
+	}
+
+	var events []traceEvent
+	for i := range checks {
+		c := checks[i]
+		mark := "✗"
+		if c.Passed {
+			mark = "✓"
+		}
+		events = append(events, traceEvent{
+			ts:      c.RecordedAt,
+			source:  "check",
+			summary: fmt.Sprintf("[%s] %s — %s", mark, c.Check, c.ToolName),
+			detail:  c.Detail,
+		})
+	}
+	for i := range calls {
+		c := calls[i]
+		events = append(events, traceEvent{
+			ts:      c.Timestamp,
+			source:  "tool",
+			summary: fmt.Sprintf("→ %s [#%s]", c.ToolName, c.ID),
+			detail:  truncateStr(c.ToolInput, 80),
+		})
+	}
+
+	if len(events) == 0 {
+		fmt.Printf("No events found for task %q (checklog/toollog 为空或无此 ref)。\n", ref)
+		return nil
+	}
+
+	sort.Slice(events, func(i, j int) bool {
+		return events[i].ts.Before(events[j].ts)
+	})
+
+	fmt.Printf("Trace for task %q — %d events (%d checks, %d tool calls)\n",
+		ref, len(events), len(checks), len(calls))
+	fmt.Println()
+	for _, e := range events {
+		fmt.Printf("  %s  %-6s  %s\n", e.ts.Format("15:04:05"), e.source, e.summary)
+		if e.detail != "" {
+			fmt.Printf("           %s\n", e.detail)
+		}
+	}
+
+	// Token 成本可见性：累计被记录工具调用的估算 token（loop 成本代理）。
+	// 仅含 hook 采样的 input（auto-compile/tool-track），非完整 LLM 账单——
+	// 量级信号足够判断"loop 是否在烧 token"，配合 gate breaker 共同防跑飞。
+	if total := toolusage.SumEstTokens(calls); total > 0 {
+		fmt.Printf("\n  ≈ %d 估算 token（loop 成本代理，基于被记录的工具调用 input；不含 LLM 输出/thinking）\n", total)
+	}
+	return nil
+}

@@ -1,0 +1,947 @@
+package taskpipeline
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/docsconsistency"
+	"github.com/MjxUpUp/Forge/internal/taskcontext"
+	"github.com/MjxUpUp/Forge/internal/toolusage"
+
+	"github.com/spf13/cobra"
+)
+
+func TestDefaultGates(t *testing.T) {
+	gates := DefaultGates()
+	if len(gates) != 3 {
+		t.Fatalf("DefaultGates count = %d, want 3", len(gates))
+	}
+
+	// v0.17: reduced from 5 to 3 gates
+	wantIDs := []string{"task-implement", "task-verify", "task-complete"}
+	for i, g := range gates {
+		if g.ID != wantIDs[i] {
+			t.Errorf("gates[%d].ID = %q, want %q", i, g.ID, wantIDs[i])
+		}
+	}
+}
+
+func TestGateByID(t *testing.T) {
+	g := GateByID("task-verify")
+	if g == nil {
+		t.Fatal("GateByID(task-verify) returned nil")
+	}
+	if g.Name != "测试验证" {
+		t.Errorf("Name = %q, want 测试验证", g.Name)
+	}
+
+	if GateByID("nonexistent") != nil {
+		t.Error("GateByID(nonexistent) should return nil")
+	}
+}
+
+func TestTaskStateNextGate(t *testing.T) {
+	state := &TaskState{History: nil}
+	if got := state.NextGate(); got != "task-implement" {
+		t.Errorf("NextGate() = %q, want task-implement", got)
+	}
+
+	// Pass first gate
+	state.RecordGateResult("task-implement", true, "")
+	if got := state.NextGate(); got != "task-verify" {
+		t.Errorf("NextGate after implement = %q, want task-verify", got)
+	}
+
+	// Pass all gates
+	state.RecordGateResult("task-verify", true, "")
+	state.RecordGateResult("task-complete", true, "")
+	if got := state.NextGate(); got != "" {
+		t.Errorf("NextGate after all passed = %q, want empty", got)
+	}
+}
+
+func TestTaskStateIsComplete(t *testing.T) {
+	state := &TaskState{History: nil}
+	if state.IsComplete() {
+		t.Error("empty state should not be complete")
+	}
+
+	// Pass all gates
+	for _, g := range DefaultGates() {
+		state.RecordGateResult(g.ID, true, "")
+	}
+	if !state.IsComplete() {
+		t.Error("all gates passed should be complete")
+	}
+}
+
+func TestTaskStateFailedGate(t *testing.T) {
+	state := &TaskState{}
+	state.RecordGateResult("task-implement", true, "")
+	state.RecordGateResult("task-verify", false, "")
+
+	if state.NextGate() != "task-verify" {
+		t.Errorf("NextGate after fail = %q, want task-verify", state.NextGate())
+	}
+	if state.CurrentGate != "task-verify" {
+		t.Errorf("CurrentGate = %q, want task-verify", state.CurrentGate)
+	}
+}
+
+func TestRecordGateResultDedup(t *testing.T) {
+	state := &TaskState{}
+
+	// Pass gate once
+	state.RecordGateResult("task-implement", true, "")
+	if len(state.History) != 1 {
+		t.Fatalf("History len after 1 pass = %d, want 1", len(state.History))
+	}
+
+	// Pass same gate again — should be deduplicated (no-op)
+	state.RecordGateResult("task-implement", true, "")
+	if len(state.History) != 1 {
+		t.Errorf("History len after duplicate pass = %d, want 1 (should dedup)", len(state.History))
+	}
+
+	// Fail a passed gate — should record (not dedup for failures)
+	state.RecordGateResult("task-implement", false, "")
+	if len(state.History) != 2 {
+		t.Errorf("History len after fail of passed gate = %d, want 2", len(state.History))
+	}
+
+	// Re-pass after failure — dedup still applies (gate was passed in entry 1)
+	state.RecordGateResult("task-implement", true, "")
+	if len(state.History) != 2 {
+		t.Errorf("History len after re-pass = %d, want 2 (dedup: gate was already passed)", len(state.History))
+	}
+}
+
+func TestRecordGateResultDedupPrevents25x(t *testing.T) {
+	state := &TaskState{}
+	state.RecordGateResult("task-implement", true, "")
+
+	// Pass task-verify once (legitimate)
+	state.RecordGateResult("task-verify", true, "")
+	verifyCount := 0
+	for _, r := range state.History {
+		if r.Gate == "task-verify" && r.Passed {
+			verifyCount++
+		}
+	}
+	if verifyCount != 1 {
+		t.Fatalf("task-verify count after 1 pass = %d, want 1", verifyCount)
+	}
+
+	// Stop hook re-runs task-verify 24 more times — should all be no-ops
+	for i := 0; i < 24; i++ {
+		state.RecordGateResult("task-verify", true, "")
+	}
+
+	verifyCount = 0
+	for _, r := range state.History {
+		if r.Gate == "task-verify" && r.Passed {
+			verifyCount++
+		}
+	}
+	if verifyCount != 1 {
+		t.Errorf("task-verify count after 25 passes = %d, want 1 (dedup should prevent duplicates)", verifyCount)
+	}
+}
+
+func TestSaveAndLoadTaskState(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
+
+	ctx := &taskcontext.Context{
+		Source:     "branch",
+		TaskRef:    "PROJ-123",
+		Branch:     "fix/PROJ-123-bug",
+		Summary:    "bug",
+		DetectedAt: time.Now(),
+	}
+	state := NewTaskState(ctx)
+	state.RecordGateResult("task-implement", true, "")
+
+	if err := SaveTaskState(dir, state); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	loaded, err := LoadTaskState(dir, "PROJ-123")
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	if loaded.TaskRef != "PROJ-123" {
+		t.Errorf("TaskRef = %q, want PROJ-123", loaded.TaskRef)
+	}
+	if loaded.Branch != "fix/PROJ-123-bug" {
+		t.Errorf("Branch = %q, want fix/PROJ-123-bug", loaded.Branch)
+	}
+	if len(loaded.History) != 1 {
+		t.Fatalf("History len = %d, want 1", len(loaded.History))
+	}
+	if loaded.History[0].Gate != "task-implement" {
+		t.Errorf("History[0].Gate = %q, want task-implement", loaded.History[0].Gate)
+	}
+}
+
+func TestLoadMissingTask(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
+
+	_, err := LoadTaskState(dir, "MISSING-999")
+	if err == nil {
+		t.Fatal("expected error for missing task")
+	}
+}
+
+func TestNewTaskState(t *testing.T) {
+	ctx := &taskcontext.Context{
+		Source:     "explicit",
+		TaskRef:    "my-task",
+		Branch:     "feature/my-task",
+		Summary:    "my-task",
+		DetectedAt: time.Now(),
+	}
+	state := NewTaskState(ctx)
+
+	if state.TaskRef != "my-task" {
+		t.Errorf("TaskRef = %q, want my-task", state.TaskRef)
+	}
+	if state.CurrentGate != "task-implement" {
+		t.Errorf("CurrentGate = %q, want task-implement", state.CurrentGate)
+	}
+	if state.Source != "explicit" {
+		t.Errorf("Source = %q, want explicit", state.Source)
+	}
+}
+
+func TestCompletedGates(t *testing.T) {
+	state := &TaskState{}
+	state.RecordGateResult("task-implement", true, "")
+	state.RecordGateResult("task-verify", true, "")
+
+	completed := state.CompletedGates()
+	if len(completed) != 2 {
+		t.Fatalf("CompletedGates count = %d, want 2", len(completed))
+	}
+	if completed[0] != "task-implement" || completed[1] != "task-verify" {
+		t.Errorf("CompletedGates = %v, want [task-implement, task-verify]", completed)
+	}
+}
+
+func TestListTaskStates(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
+
+	// Create two tasks
+	ctx1 := &taskcontext.Context{Source: "explicit", TaskRef: "TASK-1", DetectedAt: time.Now()}
+	ctx2 := &taskcontext.Context{Source: "branch", TaskRef: "TASK-2", Branch: "fix/TASK-2", DetectedAt: time.Now()}
+
+	SaveTaskState(dir, NewTaskState(ctx1))
+	SaveTaskState(dir, NewTaskState(ctx2))
+
+	states, err := ListTaskStates(dir)
+	if err != nil {
+		t.Fatalf("ListTaskStates failed: %v", err)
+	}
+	if len(states) != 2 {
+		t.Errorf("ListTaskStates count = %d, want 2", len(states))
+	}
+}
+
+func TestMarkComplete(t *testing.T) {
+	state := &TaskState{}
+	state.RecordGateResult("task-implement", true, "")
+	state.RecordGateResult("task-verify", true, "")
+	state.RecordGateResult("task-complete", true, "")
+
+	if !state.IsComplete() {
+		t.Error("should be complete")
+	}
+
+	state.MarkComplete()
+	if state.CompletedAt == nil {
+		t.Error("CompletedAt should be set")
+	}
+	if state.CurrentGate != "" {
+		t.Errorf("CurrentGate = %q, want empty after complete", state.CurrentGate)
+	}
+}
+
+// runGit is a test helper that runs a git command in dir.
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s failed: %v\n%s", args[0], err, string(out))
+	}
+}
+
+func TestHasCodeChanges_NonGitRepo(t *testing.T) {
+	dir := t.TempDir()
+	// Non-git repo should gracefully degrade
+	if !hasCodeChanges(dir, nil) {
+		t.Error("expected hasCodeChanges to return true in non-git directory")
+	}
+}
+
+func TestHasCodeChanges_NoChanges(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "initial")
+
+	state := &TaskState{Branch: "main"}
+	if hasCodeChanges(dir, state) {
+		t.Error("expected hasCodeChanges to return false with no changes")
+	}
+}
+
+func TestHasCodeChanges_WithUncommittedChanges(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "initial")
+
+	// Make uncommitted changes
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\nfunc main() {}\n"), 0644)
+
+	state := &TaskState{Branch: "main"}
+	if !hasCodeChanges(dir, state) {
+		t.Error("expected hasCodeChanges to return true with uncommitted changes")
+	}
+}
+
+func TestHasCodeChanges_FeatureBranchWithCommits(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "initial")
+
+	// Create a feature branch with a new commit
+	runGit(t, dir, "checkout", "-b", "feature/test")
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\nfunc main() { println(\"hi\") }\n"), 0644)
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "add feature")
+
+	state := &TaskState{Branch: "feature/test"}
+	if !hasCodeChanges(dir, state) {
+		t.Error("expected hasCodeChanges to return true on feature branch with new commits")
+	}
+}
+
+func TestSanitizeRefInStatePath(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
+
+	ctx := &taskcontext.Context{
+		Source:     "branch",
+		TaskRef:    "feature/login",
+		Branch:     "feature/login",
+		DetectedAt: time.Now(),
+	}
+	state := NewTaskState(ctx)
+
+	if err := SaveTaskState(dir, state); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	// File should be feature-login.json (slash replaced)
+	expectedPath := filepath.Join(dir, ".forge", "tasks", "feature-login.json")
+	if _, err := os.Stat(expectedPath); os.IsNotExist(err) {
+		t.Errorf("expected file %s not found", expectedPath)
+	}
+
+	// Load with original ref
+	loaded, err := LoadTaskState(dir, "feature/login")
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if loaded.TaskRef != "feature/login" {
+		t.Errorf("TaskRef = %q, want feature/login", loaded.TaskRef)
+	}
+}
+
+func TestLastGateSkipsTiming(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "initial")
+
+	// Set long interval — last gate should skip it entirely
+	os.Setenv("FORGE_WORK_ACTIVITY", "disable")
+	defer os.Unsetenv("FORGE_WORK_ACTIVITY")
+
+	state := &TaskState{
+		TaskRef: "test-last-gate",
+		Branch:  "feat/test",
+	}
+
+	// Pass all gates up to task-verify
+	state.RecordGateResult("task-implement", true, "")
+	state.RecordGateResult("task-verify", true, "")
+	state.MarkReviewPassed() // 满足 review 硬前置以隔离 timing 逻辑
+
+	// task-complete (last gate) should pass immediately despite 10m interval
+	_, err := ExecuteTaskGate(dir, "task-complete", state)
+	if err != nil {
+		t.Fatalf("last gate should skip timing check: %v", err)
+	}
+}
+
+// TestTaskCompleteRequiresReview 守卫 task-complete 的 review 硬前置——code-review-gate
+// 未通过（ReviewPassed=false）时 task-complete 必须被拒。这是"提交前必审"task 路径的
+// 强制点：防 agent 跳过子 agent 审查直接 complete。
+func TestTaskCompleteRequiresReview(t *testing.T) {
+	dir := t.TempDir()
+	state := &TaskState{TaskRef: "review-gate", Branch: "feat/r"}
+	state.RecordGateResult("task-implement", true, "")
+	state.RecordGateResult("task-verify", true, "")
+
+	// ReviewPassed 仍 false → task-complete 必须拒绝
+	if _, err := ExecuteTaskGate(dir, "task-complete", state); err == nil {
+		t.Fatal("task-complete 应因 ReviewPassed=false 被拒——硬前置失效（agent 可跳过审查直接 complete）")
+	}
+
+	// 标记通过后应放行
+	state.MarkReviewPassed()
+	if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
+		t.Fatalf("ReviewPassed=true 后 task-complete 应通过: %v", err)
+	}
+}
+
+func TestIsLastGate(t *testing.T) {
+	if !isLastGate("task-complete") {
+		t.Error("task-complete should be the last gate")
+	}
+	if isLastGate("task-verify") {
+		t.Error("task-verify should NOT be the last gate")
+	}
+	if isLastGate("task-implement") {
+		t.Error("task-implement should NOT be the last gate")
+	}
+}
+
+func TestIsPreviousGateAuto(t *testing.T) {
+	state := &TaskState{}
+	// task-implement is auto
+	if isPreviousGateAuto(state) {
+		t.Error("No gates passed — returns false (no previous gate to check)")
+	}
+
+	state.RecordGateResult("task-implement", true, "")
+	if !isPreviousGateAuto(state) {
+		t.Error("task-implement IS auto — should return true")
+	}
+
+	state.RecordGateResult("task-verify", true, "")
+	if isPreviousGateAuto(state) {
+		t.Error("task-verify is not auto")
+	}
+
+	state.RecordGateResult("task-complete", true, "")
+	if isPreviousGateAuto(state) {
+		t.Error("task-complete is not auto")
+	}
+}
+
+func TestAutoGateSkipsTimingForNextGate(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "initial")
+
+	// Set long interval — next gate after auto should skip it
+	os.Setenv("FORGE_WORK_ACTIVITY", "disable")
+	defer os.Unsetenv("FORGE_WORK_ACTIVITY")
+
+	state := &TaskState{
+		TaskRef: "test-auto-next",
+		Branch:  "feat/test",
+	}
+
+	// Pass task-implement (auto)
+	state.RecordGateResult("task-implement", true, "")
+
+	// task-verify should pass immediately despite long interval
+	// because previous gate (task-implement) is auto
+	_, err := ExecuteTaskGate(dir, "task-verify", state)
+	if err != nil {
+		t.Fatalf("task-verify after auto task-implement should skip timing: %v", err)
+	}
+}
+
+func TestActiveTaskState_BranchDetection(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
+
+	// Create task with branch ref matching the branch name
+	ctx := &taskcontext.Context{
+		Source:     "explicit",
+		TaskRef:    "feat/test-branch",
+		Branch:     "feat/test-branch",
+		Summary:    "test-branch",
+		DetectedAt: time.Now(),
+	}
+	state := NewTaskState(ctx)
+	SaveTaskState(dir, state)
+
+	// Checkout matching branch
+	runGit(t, dir, "checkout", "-b", "feat/test-branch")
+
+	active, err := ActiveTaskState(dir, "")
+	if err != nil {
+		t.Fatalf("ActiveTaskState failed: %v", err)
+	}
+	if active == nil {
+		t.Fatal("ActiveTaskState should detect task on matching feature branch")
+	}
+	if active.TaskRef != "feat/test-branch" {
+		t.Errorf("TaskRef = %q, want feat/test-branch", active.TaskRef)
+	}
+}
+
+func TestActiveTaskState_FallbackSingleIncompleteOnMaster(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
+
+	// Stay on master (default branch)
+	// Create a single incomplete task
+	ctx := &taskcontext.Context{
+		Source:     "explicit",
+		TaskRef:    "fix/skill-sync",
+		Branch:     "master",
+		Summary:    "sync skills",
+		DetectedAt: time.Now(),
+	}
+	state := NewTaskState(ctx)
+	SaveTaskState(dir, state)
+
+	// On master, branch detection returns empty — fallback should find the task
+	active, err := ActiveTaskState(dir, "")
+	if err != nil {
+		t.Fatalf("ActiveTaskState failed: %v", err)
+	}
+	if active == nil {
+		t.Fatal("ActiveTaskState fallback should find single incomplete task on master")
+	}
+	if active.TaskRef != "fix/skill-sync" {
+		t.Errorf("TaskRef = %q, want fix/skill-sync", active.TaskRef)
+	}
+}
+
+func TestActiveTaskState_FallbackAmbiguousMultipleIncomplete(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
+
+	// Create two incomplete tasks
+	ctx1 := &taskcontext.Context{
+		Source: "explicit", TaskRef: "fix/one",
+		Branch: "master", DetectedAt: time.Now(),
+	}
+	ctx2 := &taskcontext.Context{
+		Source: "explicit", TaskRef: "fix/two",
+		Branch: "master", DetectedAt: time.Now(),
+	}
+	SaveTaskState(dir, NewTaskState(ctx1))
+	SaveTaskState(dir, NewTaskState(ctx2))
+
+	// Ambiguous — should return nil
+	active, err := ActiveTaskState(dir, "")
+	if err != nil {
+		t.Fatalf("ActiveTaskState failed: %v", err)
+	}
+	if active != nil {
+		t.Error("ActiveTaskState should return nil with multiple incomplete tasks (ambiguous)")
+	}
+}
+
+func TestActiveTaskState_FallbackIgnoresCompleted(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
+
+	// Create one completed task
+	ctx1 := &taskcontext.Context{
+		Source: "explicit", TaskRef: "fix/done",
+		Branch: "master", DetectedAt: time.Now(),
+	}
+	completed := NewTaskState(ctx1)
+	for _, g := range DefaultGates() {
+		completed.RecordGateResult(g.ID, true, "")
+	}
+	completed.MarkComplete()
+	SaveTaskState(dir, completed)
+
+	// Create one incomplete task
+	ctx2 := &taskcontext.Context{
+		Source: "explicit", TaskRef: "fix/active",
+		Branch: "master", DetectedAt: time.Now(),
+	}
+	SaveTaskState(dir, NewTaskState(ctx2))
+
+	// Should find the single incomplete task (ignoring completed ones)
+	active, err := ActiveTaskState(dir, "")
+	if err != nil {
+		t.Fatalf("ActiveTaskState failed: %v", err)
+	}
+	if active == nil {
+		t.Fatal("ActiveTaskState should find the single incomplete task (ignoring completed)")
+	}
+	if active.TaskRef != "fix/active" {
+		t.Errorf("TaskRef = %q, want fix/active", active.TaskRef)
+	}
+}
+
+func TestActiveTaskState_NoTasks(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
+
+	// No tasks at all — should return nil
+	active, err := ActiveTaskState(dir, "")
+	if err != nil {
+		t.Fatalf("ActiveTaskState failed: %v", err)
+	}
+	if active != nil {
+		t.Error("ActiveTaskState should return nil with no tasks")
+	}
+}
+
+func TestActiveTaskState_ExplicitRefFilePriority(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
+
+	// Create multiple incomplete tasks (ambiguous for fallback)
+	task1 := &TaskState{TaskRef: "feat/first", Branch: "main", StartedAt: time.Now()}
+	task2 := &TaskState{TaskRef: "fix/second", Branch: "main", StartedAt: time.Now()}
+	SaveTaskState(dir, task1)
+	SaveTaskState(dir, task2)
+
+	// Without explicit ref — fallback returns nil (ambiguous)
+	active, _ := ActiveTaskState(dir, "")
+	if active != nil {
+		t.Fatal("expected nil with multiple incomplete tasks")
+	}
+
+	// Set explicit active ref — should find it despite ambiguity
+	SetActiveTaskRef(dir, "", "fix/second")
+	active, _ = ActiveTaskState(dir, "")
+	if active == nil {
+		t.Fatal("expected to find task via explicit ref file")
+	}
+	if active.TaskRef != "fix/second" {
+		t.Errorf("TaskRef = %q, want %q", active.TaskRef, "fix/second")
+	}
+
+	// Stale ref (completed task) — falls through to branch/fallback
+	ClearActiveTaskRef(dir, "")
+}
+
+func TestActiveTaskState_StaleRefFileFallsThrough(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
+
+	// Create a completed task
+	completed := &TaskState{TaskRef: "feat/done", Branch: "main", StartedAt: time.Now()}
+	now := time.Now()
+	completed.CompletedAt = &now
+	SaveTaskState(dir, completed)
+
+	// Point active-task-ref to the completed task
+	SetActiveTaskRef(dir, "", "feat/done")
+
+	// Should fall through (stale ref points to completed task)
+	active, _ := ActiveTaskState(dir, "")
+	if active != nil {
+		t.Fatal("expected nil when explicit ref points to completed task")
+	}
+}
+
+func TestSetActiveAndClearActiveTaskRef(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, ".forge"), 0755)
+
+	// Set
+	if err := SetActiveTaskRef(dir, "", "feat/test"); err != nil {
+		t.Fatalf("SetActiveTaskRef failed: %v", err)
+	}
+	if got := ReadActiveTaskRef(dir, ""); got != "feat/test" {
+		t.Errorf("ReadActiveTaskRef = %q, want %q", got, "feat/test")
+	}
+
+	// Clear
+	if err := ClearActiveTaskRef(dir, ""); err != nil {
+		t.Fatalf("ClearActiveTaskRef failed: %v", err)
+	}
+	if got := ReadActiveTaskRef(dir, ""); got != "" {
+		t.Errorf("ReadActiveTaskRef after clear = %q, want empty", got)
+	}
+
+	// Clear non-existent — no error
+	if err := ClearActiveTaskRef(dir, ""); err != nil {
+		t.Fatalf("ClearActiveTaskRef on missing file should not error: %v", err)
+	}
+}
+
+func TestGateTimingExemptsAutoGates(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "initial")
+
+	// Long interval — auto gate should be exempt
+	os.Setenv("FORGE_WORK_ACTIVITY", "disable")
+	defer os.Unsetenv("FORGE_WORK_ACTIVITY")
+
+	state := &TaskState{
+		TaskRef: "test-auto",
+		Branch:  "feat/test",
+	}
+
+	// Auto gate (task-implement) should pass immediately despite long interval
+	_, err := ExecuteTaskGate(dir, "task-implement", state)
+	if err != nil {
+		t.Fatalf("auto gate should be exempt from timing: %v", err)
+	}
+}
+
+// TestTestCoverageCheckScopedToVerifyGate guards the executor.go integration:
+// the test-coverage check runs ONLY at task-verify, never at task-complete (the
+// last gate). A task with an untested source change must still be able to reach
+// task-complete — coverage is enforced at verify, not re-litigated at complete.
+// This is the gateID=="task-verify" branch in ExecuteTaskGate.
+func TestTestCoverageCheckScopedToVerifyGate(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "t@t.com")
+	runGit(t, dir, "config", "user.name", "T")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "master init")
+	runGit(t, dir, "checkout", "-b", "feat/cov")
+	// Source change with NO test — would fail task-verify.
+	writeFile := func(name, body string) {
+		full := filepath.Join(dir, name)
+		os.MkdirAll(filepath.Dir(full), 0755)
+		os.WriteFile(full, []byte(body), 0644)
+	}
+	writeFile("bar.go", "package main\n\nfunc Bar() int { return 7 }\n")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "add bar")
+
+	// Seed a Read so the work-activity check does not pre-empt.
+	state := &TaskState{TaskRef: "cov-scope", Branch: "feat/cov"}
+	state.RecordGateResult("task-implement", true, "")
+	state.RecordGateResult("task-verify", true, "")
+	state.MarkReviewPassed() // 满足 review 硬前置以隔离 coverage 逻辑
+	base := time.Now().Add(2 * time.Second)
+	rr := toolusage.ToolCall{ToolName: "Read", TaskRef: "cov-scope", Timestamp: base}
+	if err := toolusage.Record(dir, &rr); err != nil {
+		t.Fatalf("seed Read: %v", err)
+	}
+
+	// task-complete is the LAST gate — coverage must NOT be re-checked here.
+	// If it were, this would fail (bar.go has no test), but it must pass.
+	if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
+		t.Fatalf("task-complete must NOT run test-coverage check (only task-verify does): %v", err)
+	}
+}
+
+// TestWorkActivityEscapeHatchAuditsToChecklog guards the A4 fix: the
+// FORGE_WORK_ACTIVITY=disable escape hatch bypasses the read-before-edit check,
+// but its use must be audited to checklog so `forge trace` can surface it. Here
+// no Read is seeded — the hatch is what lets the gate pass, and it must leave a
+// trail.
+func TestWorkActivityEscapeHatchAuditsToChecklog(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "t@t.com")
+	runGit(t, dir, "config", "user.name", "T")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "master init")
+	runGit(t, dir, "checkout", "-b", "feat/hatch")
+
+	t.Setenv("FORGE_WORK_ACTIVITY", "disable")
+
+	// No seeded Read — without the hatch, the read-before-edit check would
+	// refuse task-verify. With the hatch it passes AND records an audit entry.
+	state := &TaskState{TaskRef: "hatch-wa", Branch: "feat/hatch"}
+	state.RecordGateResult("task-implement", true, "")
+	state.RecordGateResult("task-verify", true, "")
+
+	if _, err := ExecuteTaskGate(dir, "task-verify", state); err != nil {
+		t.Fatalf("task-verify should PASS with FORGE_WORK_ACTIVITY=disable: %v", err)
+	}
+
+	entries, err := checklog.LoadForTask(dir, "hatch-wa")
+	if err != nil {
+		t.Fatalf("LoadForTask: %v", err)
+	}
+	var found *checklog.Entry
+	for i := range entries {
+		if entries[i].Check == checklog.CheckEscapeHatch {
+			found = &entries[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("escape-hatch checklog entry not recorded for FORGE_WORK_ACTIVITY=disable")
+	}
+	if !strings.Contains(found.Detail, "FORGE_WORK_ACTIVITY") {
+		t.Errorf("escape-hatch detail = %q, want it to mention FORGE_WORK_ACTIVITY", found.Detail)
+	}
+}
+
+// TestTaskComplete_DocsConsistencyAdvisory guards the task-complete docs-consistency
+// advisory: README drift (反引号引用不存在的 forge 命令) must be recorded to checklog
+// but must NOT block the gate (advisory, not blocking). This is the local-before-push
+// counterpart to the CI guard A — drift surfaced at `forge task complete` time, not
+// only after CI runs.
+func TestTaskComplete_DocsConsistencyAdvisory(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "t@t.com")
+	runGit(t, dir, "config", "user.name", "T")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "master init")
+	runGit(t, dir, "checkout", "-b", "feat/docs")
+
+	// README 引用了不存在的 forge 命令 → drift。
+	if err := os.WriteFile(filepath.Join(dir, "README.md"),
+		[]byte("# proj\n\n运行 `forge ghostpropose` 提案。\n"), 0644); err != nil {
+		t.Fatalf("write README: %v", err)
+	}
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "readme drift")
+
+	// taskpipeline 测试不能 import cli（循环），cli init 不跑、命令树回调未注册。
+	// 手动注册一个 mock 命令树（forge→init；ghostpropose 不存在 → drift），测试后还原 nil
+	// 避免污染同包其他测试。
+	docsconsistency.RegisterCommandTree(func() *cobra.Command {
+		root := &cobra.Command{Use: "forge"}
+		root.AddCommand(&cobra.Command{Use: "init"})
+		return root
+	})
+	defer docsconsistency.RegisterCommandTree(nil)
+
+	state := &TaskState{TaskRef: "docs-drift", Branch: "feat/docs"}
+	state.RecordGateResult("task-implement", true, "")
+	state.RecordGateResult("task-verify", true, "")
+	state.MarkReviewPassed() // 满足 review 硬前置
+
+	// docs drift 是 advisory——task-complete 必须仍 Passed（不阻塞）。
+	result, err := ExecuteTaskGate(dir, "task-complete", state)
+	if err != nil {
+		t.Fatalf("docs drift must not block task-complete (advisory only): %v", err)
+	}
+	if !result.Passed {
+		t.Error("task-complete should pass despite README drift (advisory, not blocking)")
+	}
+
+	// drift 信号必须记进 checklog（forge trace 可见），Passed=true 表 gate 仍通过。
+	entries, err := checklog.LoadForTask(dir, "docs-drift")
+	if err != nil {
+		t.Fatalf("LoadForTask: %v", err)
+	}
+	var found *checklog.Entry
+	for i := range entries {
+		if entries[i].Check == CheckNameDocsConsistency {
+			found = &entries[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("checklog 缺 docs-consistency advisory 条目（drift 信号未记录）")
+	}
+	if !found.Passed {
+		t.Error("docs-consistency advisory 条目应 Passed=true（gate 通过，advisory 仅记录信号）")
+	}
+	if !strings.Contains(found.Detail, "ghostpropose") {
+		t.Errorf("advisory detail 应含 drift 命令名，got %q", found.Detail)
+	}
+}
+
+// TestTaskComplete_DocsConsistencyNoDriftSilent guards the silent path: when README
+// has no forge-command drift, no docs-consistency advisory entry is recorded (no
+// noise). Advisory must fire ONLY on drift, not on every task-complete.
+func TestTaskComplete_DocsConsistencyNoDriftSilent(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "t@t.com")
+	runGit(t, dir, "config", "user.name", "T")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "master init")
+	runGit(t, dir, "checkout", "-b", "feat/clean")
+	// README 无 forge 命令引用 → 无 drift。
+	if err := os.WriteFile(filepath.Join(dir, "README.md"),
+		[]byte("# proj\n\nclean readme, no forge commands\n"), 0644); err != nil {
+		t.Fatalf("write README: %v", err)
+	}
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "clean readme")
+
+	docsconsistency.RegisterCommandTree(func() *cobra.Command {
+		root := &cobra.Command{Use: "forge"}
+		root.AddCommand(&cobra.Command{Use: "init"})
+		return root
+	})
+	defer docsconsistency.RegisterCommandTree(nil)
+
+	state := &TaskState{TaskRef: "docs-clean", Branch: "feat/clean"}
+	state.RecordGateResult("task-implement", true, "")
+	state.RecordGateResult("task-verify", true, "")
+	state.MarkReviewPassed()
+
+	if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
+		t.Fatalf("task-complete should pass: %v", err)
+	}
+	entries, _ := checklog.LoadForTask(dir, "docs-clean")
+	for _, e := range entries {
+		if e.Check == CheckNameDocsConsistency {
+			t.Errorf("无 drift 时不应记录 docs-consistency advisory，但找到：%+v", e)
+		}
+	}
+}

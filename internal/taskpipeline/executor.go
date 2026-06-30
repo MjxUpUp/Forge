@@ -1,0 +1,401 @@
+package taskpipeline
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+	"time"
+
+	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/docsconsistency"
+	"github.com/MjxUpUp/Forge/internal/hooks"
+	"github.com/MjxUpUp/Forge/internal/toolusage"
+)
+
+// CheckNameDocsConsistency is the checklog entry name for the task-complete
+// docs-consistency advisory, so trace surfaces the drift signal even though the
+// gate passes (advisory, never blocking).
+const CheckNameDocsConsistency checklog.CheckName = "docs-consistency-gate"
+
+// taskStartReadGraceWindow bounds how far before a task's StartedAt a Read still
+// counts toward read-before-edit when recovering the task-start/Read race (see
+// toolusage.ReadEditCountsGraceWindow). 60s covers the parallel-tool-call window
+// where a Read fired alongside `forge task start` lands under the previous task's
+// ref and/or just before StartedAt — excluding it from ReadEditCounts(taskRef).
+const taskStartReadGraceWindow = time.Minute
+
+// ExecuteResult holds the outcome of a task gate execution.
+type ExecuteResult struct {
+	GateID  string
+	Passed  bool
+	Message string
+}
+
+// ExecuteTaskGate runs a single task gate's checks.
+// For auto-gates (task-implement), it runs the relevant hook scripts.
+// For non-auto gates, it verifies the gate was previously marked passed
+// (the AI agent is responsible for doing the actual work).
+func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResult, error) {
+	gate := GateByID(gateID)
+	if gate == nil {
+		return nil, fmt.Errorf("unknown task gate: %s", gateID)
+	}
+
+	// Check prerequisites: all previous gates must have passed
+	gates := DefaultGates()
+	for _, g := range gates {
+		if g.ID == gateID {
+			break
+		}
+		if !state.gatePassed(g.ID) {
+			return nil, fmt.Errorf("prerequisite gate %q has not passed", g.ID)
+		}
+	}
+
+	// task-complete 硬前置：code-review-gate 必须已通过（ReviewPassed=true）。
+	// 防 agent 自称完成跳过子 agent 审查——这是"提交前必审"双路径里 task 路径的强制点
+	// （非 task 路径由 review-stop hook 拦）。agent 须派只读子 agent 审查后运行
+	// `forge review pass` 标记，才能过此门禁进而 task complete。
+	// 复检已完成任务（CompletedAt 已设）时跳过——历史任务不追溯。
+	if gateID == "task-complete" && !state.ReviewPassed && state.CompletedAt == nil {
+		return nil, fmt.Errorf("task-complete requires code-review-gate: 派只读子 agent 审查当前 diff 后运行 `forge review pass`")
+	}
+
+	// docs-consistency advisory (task-complete)：扫用户项目 README 的反引号 forge 命令引用，
+	// drift 时 stderr 提醒 + checklog 记录，不阻塞 gate。比 CI 守卫更早——本地 complete 时
+	// 就发现，不用等 push 后 CI 才报。检测逻辑在 internal/docsconsistency（cli init 注册
+	// 命令树回调打破循环）。Passed=true 表 gate 仍通过，trace 保留 drift 信号。
+	if gateID == "task-complete" && state.CompletedAt == nil {
+		if drifted := docsconsistency.DriftedInProject(root); len(drifted) > 0 {
+			checklog.Record(root, &checklog.Entry{
+				Check:   CheckNameDocsConsistency,
+				Passed:  true,
+				Checked: true,
+				TaskRef: state.TaskRef,
+				Detail:  "docs drift: " + strings.Join(drifted, ", "),
+			})
+			fmt.Fprintf(os.Stderr, "[task-complete] Advisory: 文档一致性 drift——README 反引号引用了不存在的 forge 命令：%s（提交前修复，详见 skills/docs-consistency-guard）\n", strings.Join(drifted, ", "))
+		}
+	}
+
+	// For auto-gates, run the actual checks
+	if gate.Auto {
+		result, err := runAutoChecks(root, gateID, state)
+		if err != nil {
+			return nil, fmt.Errorf("auto-check failed: %w", err)
+		}
+		return result, nil
+	}
+
+	// For non-auto gates, just mark as passed
+	// The AI agent is responsible for the actual work via SKILL.md instructions
+
+	// Work activity check for non-auto gates.
+	// Gates must not be passed without real work happening between them.
+	// Skip for: completed tasks (re-verification) and the final gate (no work phase after it).
+	// Note: we intentionally do NOT skip after auto gates. In the 3-gate pipeline,
+	// task-verify follows the auto task-implement, and the implement→verify span is exactly
+	// where read-before-edit must be enforced. Skipping after auto gates was a 5-gate-era
+	// rule that left this check dead in the 3-gate flow (activity never ran).
+	if !gate.Auto && state.CompletedAt == nil && len(state.History) > 0 && !isLastGate(gateID) {
+		// Measure activity across the whole task span (since task start), not just
+		// since the last gate. In the 3-gate pipeline the prior gate (task-implement)
+		// is auto and instantaneous, so "since last gate" would see zero activity
+		// even when the agent did substantial work earlier in the task.
+		since := state.StartedAt
+
+		if state.TaskRef != "" && !getDisableWorkActivity() {
+			reads, edits, rerr := toolusage.ReadEditCounts(root, state.TaskRef, since)
+			if rerr != nil {
+				fmt.Fprintf(os.Stderr, "[forge] warning: activity check failed: %v\n", rerr)
+			} else if reads+edits > 0 {
+				// toollog has data — require at least one Read: the agent must have
+				// understood the code before modifying it. Pure edit-without-read is
+				// the failure mode. Edit-heavy work is allowed; the read/edit RATIO
+				// is reflected in scoring (scope / activity), not a gate —
+				// a strict ratio would block normal edit-heavy tasks. The old
+				// read-check WARN was sunk to forge-quality Red Flags text per the
+				// layered noise treatment.
+				if reads == 0 {
+					// Race recovery: a Read fired concurrently with `forge task start`
+					// may be logged under the previous task's ref (active ref switches
+					// only after task start commits) and/or with a timestamp just before
+					// StartedAt — both exclude it from ReadEditCounts(taskRef, StartedAt).
+					// Re-count Reads across all tasks in a grace window; if any Read
+					// happened nearby the agent did read before editing, so treat as
+					// satisfied. Hard-fail only when the grace window is also empty
+					// (genuine edit-without-read). stderr note keeps the recovery visible.
+					if grace, gerr := toolusage.ReadEditCountsGraceWindow(root, since, taskStartReadGraceWindow); gerr != nil {
+						fmt.Fprintf(os.Stderr, "[forge] warning: grace read check failed: %v\n", gerr)
+					} else if grace > 0 {
+						fmt.Fprintf(os.Stderr, "[forge] note: read-before-edit satisfied via grace window (%d nearby Read(s) logged outside this task — task-start/Read race)\n", grace)
+					} else {
+						return nil, fmt.Errorf(
+							"gate %q passed without reading any code during this task (edits=%d). "+
+								"Read and understand the code before modifying it",
+							gateID, edits,
+						)
+					}
+				}
+			} else {
+				// toollog empty (older project without auto-compile logging) — fall back to checklog.
+				activity, err := checklog.WorkActivity(root, state.TaskRef, since)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "[forge] warning: WorkActivity check failed: %v\n", err)
+				} else if activity < 1 {
+					return nil, fmt.Errorf(
+						"gate %q passed without sufficient work activity during this task (%d tool uses, minimum 1). "+
+							"Read files, explore code, or write design notes before advancing",
+						gateID, activity,
+					)
+				}
+			}
+		} else if state.TaskRef != "" && getDisableWorkActivity() {
+			// A4: the work-activity gate was bypassed via FORGE_WORK_ACTIVITY=disable.
+			// Audit it — the hatch is for testing/escape, but its use must be visible.
+			checklog.Record(root, &checklog.Entry{
+				Check:   checklog.CheckEscapeHatch,
+				Passed:  true,
+				Checked: true,
+				TaskRef: state.TaskRef,
+				Detail:  "escape-hatch: FORGE_WORK_ACTIVITY=disable (work-activity gate bypassed)",
+			})
+		}
+	}
+
+	// test-coverage gate (v0.25 advisory): 检测"测试伴随变更"（CLAUDE.md rule 4），
+	// 缺测试时只 stderr 提醒 + checklog 记录，不再阻塞 gate——适配 loop engineering，
+	// 补单测由 agent 自检。CheckTestCoverage 仍调用：scoreTask 的 fallback 复用其判定，
+	// 且提醒内容来自 missing。checklog 的 Passed 字段如实反映检测结果（缺测试时
+	// Passed=false），让 forge trace 保留信号，只是不再用它阻断会话。
+	// Only task-verify runs this — task-complete is the last gate (no work phase).
+	if gateID == "task-verify" && state.CompletedAt == nil {
+		ok, missing := CheckTestCoverage(root, state)
+		checklog.Record(root, &checklog.Entry{
+			Check:   CheckNameTestCoverage,
+			Passed:  ok,
+			Checked: true,
+			TaskRef: state.TaskRef,
+			Detail:  testCoverageDetail(ok, missing),
+		})
+		if !ok {
+			fmt.Fprintf(os.Stderr, "[task-verify] Advisory: %s\n", formatMissing(missing))
+		}
+
+		// test-capability scan (advisory): 仓库存在可跑的测试时，建议 agent 过 verify
+		// 前实际执行。补 task-verify 的"测过没"维度——上面的 test-coverage 只查"测试
+		// 伴随变更"（写了测试≠跑过测试），本扫描查"仓库有没有可跑的测试"：有→给推荐
+		// 命令建议执行（纯 advisory 不阻塞）；无→静默。与 verify-before-stop.sh（Stop
+		// hook 实跑全量）互补：gate 在会话中段提醒，stop 兜底强跑。Passed 恒 true——
+		// "仓库有测试"本身不是判定，trace 只保留能力信号。
+		cap := CheckTestCapability(root)
+		checklog.Record(root, &checklog.Entry{
+			Check:   CheckNameTestCapability,
+			Passed:  true,
+			Checked: true,
+			TaskRef: state.TaskRef,
+			Detail:  cap.Detail(),
+		})
+		if cap.HasTests {
+			fmt.Fprintf(os.Stderr, "[task-verify] Advisory: %s\n", cap.Advisory())
+		}
+
+		// skill-eval advisory：变更涉及 skills/<name>/ 且该 skill 有 eval case 集 →
+		// 建议跑回归。改 description 会让旧 case 集的 DescHash 失配（submit 拒绝），
+		// 提醒先 eval-gen --save 重建基准。纯 advisory 不阻塞（Passed 恒 true——
+		// "有 case 集"本身非判定，trace 只留信号让 agent 自检）。
+		if affected := skillEvalAffected(root, state); len(affected) > 0 {
+			checklog.Record(root, &checklog.Entry{
+				Check:   CheckNameSkillEval,
+				Passed:  true,
+				Checked: true,
+				TaskRef: state.TaskRef,
+				Detail:  formatSkillEvalAdvisory(affected),
+			})
+			fmt.Fprintf(os.Stderr, "[task-verify] Advisory: %s\n", formatSkillEvalAdvisory(affected))
+		}
+	}
+
+	return &ExecuteResult{
+		GateID:  gateID,
+		Passed:  true,
+		Message: fmt.Sprintf("%s - passed (verified by AI agent)", gate.Name),
+	}, nil
+}
+
+// runAutoChecks executes automated checks for task gates.
+func runAutoChecks(root string, gateID string, state *TaskState) (*ExecuteResult, error) {
+	switch gateID {
+	case "task-implement":
+		return checkImplement(root, state)
+	default:
+		return &ExecuteResult{
+			GateID:  gateID,
+			Passed:  true,
+			Message: "no auto-checks defined",
+		}, nil
+	}
+}
+
+// hasCodeChanges checks whether there are actual code changes since the task started.
+// It checks working-tree changes and, on feature branches, new commits beyond the base branch.
+// Gracefully degrades in non-git repos (returns true to avoid false positives).
+func hasCodeChanges(root string, state *TaskState) bool {
+	// Check 1: working-tree changes (including staged but uncommitted)
+	cmd := exec.Command("git", "-C", root, "diff", "--stat", "HEAD")
+	out, err := cmd.Output()
+	if err != nil {
+		return true // non-git repo - allow pass
+	}
+	if len(strings.TrimSpace(string(out))) > 0 {
+		return true
+	}
+
+	// Check 2: new commits on feature branch beyond base
+	if state != nil && state.Branch != "" && state.Branch != "main" && state.Branch != "master" {
+		for _, base := range []string{"main", "origin/main", "master", "origin/master"} {
+			cmd = exec.Command("git", "-C", root, "rev-list", "--count", base+"..HEAD")
+			out, err = cmd.Output()
+			if err == nil {
+				return strings.TrimSpace(string(out)) != "0"
+			}
+		}
+		// Could not find any base branch - allow pass
+		return true
+	}
+
+	// On main/master with no uncommitted changes
+	return false
+}
+
+// checkImplement runs the (v0.25 advisory) auto-compile + assertion-check hooks,
+// records their results to checklog, and verifies code changes exist. The hooks
+// are now non-blocking — they emit advisory reminders, never FAIL — so the only
+// hard failure left here is "no code changes since task start" (a task semantic,
+// not a tech-stack check). The compilePassed/assertPassed branches below are
+// retained as defense-in-depth in case a future hook regression reintroduces FAIL.
+func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
+	taskRef := ""
+	if state != nil {
+		taskRef = state.TaskRef
+	}
+
+	// 1. Compilation check — via the EMBEDDED auto-compile script, the same source
+	// the write-time PostToolUse hook uses (cli.runHook). Reading
+	// .forge/hooks/auto-compile.sh from disk instead left the gate inspecting a
+	// tamperable copy while the write-time hook inspected the trusted embed, so
+	// the two could diverge (a doctored disk script could make the gate pass a
+	// broken build the write-time hook would still flag).
+	compilePassed, compileOutput := runEmbeddedHook(root, "auto-compile")
+
+	checklog.Record(root, &checklog.Entry{
+		Check:   checklog.CheckAutoCompile,
+		Passed:  compilePassed,
+		Checked: true,
+		TaskRef: taskRef,
+		Detail:  fmt.Sprintf("auto-compile.sh: %s", compileOutput),
+	})
+
+	if !compilePassed {
+		return &ExecuteResult{
+			GateID:  "task-implement",
+			Passed:  false,
+			Message: fmt.Sprintf("build failed: %s", compileOutput),
+		}, nil
+	}
+
+	// 2. Assertion weakening check — same embedded source as the write-time
+	// PreToolUse hook. No disk fallback: the embed is canonical, so a tampered
+	// .forge/hooks/assertion-check.sh cannot weaken what the gate enforces.
+	assertPassed, assertOutput := runEmbeddedHook(root, "assertion-check")
+
+	checklog.Record(root, &checklog.Entry{
+		Check:   checklog.CheckAssertion,
+		Passed:  assertPassed,
+		Checked: true,
+		TaskRef: taskRef,
+		Detail:  fmt.Sprintf("assertion-check.sh: %s", assertOutput),
+	})
+
+	if !assertPassed {
+		return &ExecuteResult{
+			GateID:  "task-implement",
+			Passed:  false,
+			Message: fmt.Sprintf("assertion check failed: %s", assertOutput),
+		}, nil
+	}
+
+	// 3. Verify actual code changes exist (not just a pre-compiled base).
+	if !hasCodeChanges(root, state) {
+		return &ExecuteResult{
+			GateID:  "task-implement",
+			Passed:  false,
+			Message: "no code changes detected - build passed but no files modified",
+		}, nil
+	}
+
+	return &ExecuteResult{
+		GateID:  "task-implement",
+		Passed:  true,
+		Message: "code changes present (compile/assertion advisory via hooks)",
+	}, nil
+}
+
+// runEmbeddedHook executes an embedded hook script (hooks.EmbeddedContent) by
+// writing it to a temp file and running bash on it — mirroring how the
+// write-time path (cli.runHook) runs hooks. The gate layer uses the SAME
+// embedded source the write-time checks use; reading .forge/hooks/*.sh from
+// disk instead left the gate inspecting a tamperable copy that could diverge
+// from the trusted embed. root is passed as $1 and the working directory,
+// matching the prior disk-hook invocation so scripts resolving the project via
+// $1 or $PWD behave identically.
+func runEmbeddedHook(root, name string) (passed bool, output string) {
+	content, ok := hooks.EmbeddedContent(name)
+	if !ok {
+		return false, fmt.Sprintf("embedded hook %q not found", name)
+	}
+	tmp, err := os.CreateTemp("", "forge-gate-*.sh")
+	if err != nil {
+		return false, fmt.Sprintf("create temp hook file: %v", err)
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if _, err := tmp.WriteString(content); err != nil {
+		tmp.Close()
+		return false, fmt.Sprintf("write temp hook file: %v", err)
+	}
+	tmp.Close()
+	// bash reads the file as an argument; no chmod needed (not exec'd directly).
+
+	cmd := exec.Command("bash", tmpPath, root)
+	cmd.Dir = root
+	out, err := cmd.CombinedOutput()
+	return err == nil, strings.TrimSpace(string(out))
+}
+
+// getDisableWorkActivity returns whether work activity checking is disabled.
+// Set FORGE_WORK_ACTIVITY=disable to skip the check (for testing only).
+func getDisableWorkActivity() bool {
+	return os.Getenv("FORGE_WORK_ACTIVITY") == "disable"
+}
+
+// isPreviousGateAuto returns true if the most recently passed gate is auto.
+// Auto gates (e.g. task-implement) are instantaneous system checks - the next
+// gate should not require work activity checks since no "work phase" elapsed.
+func isPreviousGateAuto(state *TaskState) bool {
+	if len(state.History) == 0 {
+		return false
+	}
+	last := state.History[len(state.History)-1]
+	g := GateByID(last.Gate)
+	return g != nil && g.Auto
+}
+
+// isLastGate returns true if the given gate ID is the final gate in the pipeline.
+// The final gate (task-complete) has no work phase after it, so
+// work activity checks are skipped - there's nothing to "spend time on".
+func isLastGate(gateID string) bool {
+	gates := DefaultGates()
+	return len(gates) > 0 && gates[len(gates)-1].ID == gateID
+}
