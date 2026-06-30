@@ -92,7 +92,7 @@ func TestHook_TaskGuard_BlocksForgeManagedFile(t *testing.T) {
 // closes that gap.
 func TestHook_HazardGuard_BlocksHazardousCommand(t *testing.T) {
 	dir := freshProject(t)
-	const hazardous = "rm -rf /tmp/forge-hazard-test"
+	const hazardous = "rm -rf ./important-data"
 
 	in := hookStdin(t, "sess-hazard-block", "PreToolUse", "Bash", map[string]any{
 		"command": hazardous,
@@ -202,5 +202,131 @@ func TestHook_HazardGuard_FingerprintReleases(t *testing.T) {
 	}
 	if !strings.Contains(stdout, `"decision":"approve"`) {
 		t.Errorf("expected decision=approve post-confirm, got:\n%s", stdout)
+	}
+}
+
+// TestHook_HazardGuard_RmFPathNotFlag regressions the 2026-06 .lark-report.xml false
+// positive: rm -f <path containing an 'r'> must NOT be misread as rm -rf. The old
+// is_hazardous used bare grep '-r'/'-f' substrings, so the -r inside ".lark-report"
+// was treated as rm's -r flag and, combined with -f, misclassified as rm -rf. rm -f
+// of a single file is not destructive anyway — it must pass.
+func TestHook_HazardGuard_RmFPathNotFlag(t *testing.T) {
+	dir := freshProject(t)
+	const safe = `rm -f .lark-report.xml`
+
+	in := hookStdin(t, "sess-hazard-rmf", "PreToolUse", "Bash", map[string]any{
+		"command": safe,
+	})
+
+	stdout, _, err := forgeHook(t, dir, "hazard-guard", in)
+	if err != nil {
+		t.Fatalf("hazard-guard must pass 'rm -f <path-with-r>' (not rm -rf), got block. stdout:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, `"decision":"approve"`) {
+		t.Errorf("expected decision=approve, got:\n%s", stdout)
+	}
+}
+
+// TestHook_HazardGuard_TmpDirWhitelisted covers the e2e/CI probe-cleanup pattern:
+// rm -rf /tmp/<probe> is a one-shot temp dir, 100% safe, whitelisted past HITL. The
+// 2026-06 logs showed rm -rf wg-probe / forge-mod-test / $USERPROFILE blocked
+// repeatedly during test setup. Path traversal (/tmp/../etc) must NOT be whitelisted.
+func TestHook_HazardGuard_TmpDirWhitelisted(t *testing.T) {
+	dir := freshProject(t)
+
+	cases := []string{
+		"rm -rf /tmp/forge-probe-dir",
+		"rm -fr /tmp/another-probe",
+		"rm -rf /var/folders/ab/xyz",
+	}
+	for _, cmd := range cases {
+		in := hookStdin(t, "sess-hazard-tmp", "PreToolUse", "Bash", map[string]any{
+			"command": cmd,
+		})
+		stdout, _, err := forgeHook(t, dir, "hazard-guard", in)
+		if err != nil {
+			t.Fatalf("hazard-guard should whitelist %q, got block. stdout:\n%s", cmd, stdout)
+		}
+		if !strings.Contains(stdout, `"decision":"approve"`) {
+			t.Errorf("expected decision=approve for %q, got:\n%s", cmd, stdout)
+		}
+	}
+
+	// Regression guard: /tmp/../etc traversal must NOT be whitelisted.
+	traverseIn := hookStdin(t, "sess-hazard-traverse", "PreToolUse", "Bash", map[string]any{
+		"command": "rm -rf /tmp/../etc",
+	})
+	stdout, _, err := forgeHook(t, dir, "hazard-guard", traverseIn)
+	if err == nil {
+		t.Fatalf("hazard-guard must block /tmp/../etc traversal, got exit 0. stdout:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, `"decision":"block"`) {
+		t.Errorf("expected decision=block for /tmp/../etc, got:\n%s", stdout)
+	}
+}
+
+// TestHook_HazardGuard_ForceWithLeaseAllowed: --force-with-lease is git's recommended
+// safe替代 for --force (refuses if remote advanced), so it must NOT be硬拦 the way bare
+// --force is. Bare --force still blocks (regression guard).
+func TestHook_HazardGuard_ForceWithLeaseAllowed(t *testing.T) {
+	dir := freshProject(t)
+
+	// lease 放行
+	inLease := hookStdin(t, "sess-hazard-lease", "PreToolUse", "Bash", map[string]any{
+		"command": "git push --force-with-lease origin main",
+	})
+	stdout, _, err := forgeHook(t, dir, "hazard-guard", inLease)
+	if err != nil {
+		t.Fatalf("hazard-guard should allow --force-with-lease, got block. stdout:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, `"decision":"approve"`) {
+		t.Errorf("expected decision=approve for --force-with-lease, got:\n%s", stdout)
+	}
+
+	// 带值变体 --force-with-lease=<ref>:<expect>（CI 最常用形态）同样放行
+	inLeaseVal := hookStdin(t, "sess-hazard-lease-val", "PreToolUse", "Bash", map[string]any{
+		"command": "git push --force-with-lease=main:abc123 origin main",
+	})
+	stdout, _, err = forgeHook(t, dir, "hazard-guard", inLeaseVal)
+	if err != nil {
+		t.Fatalf("hazard-guard should allow --force-with-lease=<ref>:<expect>, got block. stdout:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, `"decision":"approve"`) {
+		t.Errorf("expected decision=approve for lease=<ref>:<expect>, got:\n%s", stdout)
+	}
+
+	// 裸 --force 仍拦（回归保护：lease 放行不能导致裸 force 漏拦）
+	inForce := hookStdin(t, "sess-hazard-force", "PreToolUse", "Bash", map[string]any{
+		"command": "git push --force origin main",
+	})
+	stdout, _, err = forgeHook(t, dir, "hazard-guard", inForce)
+	if err == nil {
+		t.Fatalf("hazard-guard must still block bare --force, got exit 0. stdout:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, `"decision":"block"`) {
+		t.Errorf("expected decision=block for bare --force, got:\n%s", stdout)
+	}
+}
+
+// TestHook_HazardGuard_RmFlagWithOtherFlags regressions 审查 S1：rm 前置其他 flag
+// （-i / --one-file-system / -v）再接 -rf 必须仍被拦。这些是合法 rm 写法，"rm 紧跟单簇"
+// 锚定会漏检它们（真高危漏放）。
+func TestHook_HazardGuard_RmFlagWithOtherFlags(t *testing.T) {
+	dir := freshProject(t)
+	for _, cmd := range []string{
+		"rm -i -rf ./important-data",
+		"rm --one-file-system -rf ./important-data",
+		"rm -v -rf ./vault",
+	} {
+		in := hookStdin(t, "sess-hazard-flagorder", "PreToolUse", "Bash", map[string]any{
+			"command": cmd,
+		})
+		stdout, _, err := forgeHook(t, dir, "hazard-guard", in)
+		if err == nil {
+			t.Fatalf("hazard-guard must block %q (rm with extra flags + -rf), got exit 0. stdout:\n%s", cmd, stdout)
+		}
+		if !strings.Contains(stdout, `"decision":"block"`) {
+			t.Errorf("expected decision=block for %q, got:\n%s", cmd, stdout)
+		}
 	}
 }

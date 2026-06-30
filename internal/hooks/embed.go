@@ -498,25 +498,45 @@ esac
 is_hazardous() {
   local cmd="$1"
   local lower
-  lower=$(printf '%s' "$cmd" | tr '[:upper:]' '[:lower:]')
-  # 递归强删 / 不可逆文件破坏。
-  # rm 合并 flag（-rf/-fr）用 case；分离 flag（-r -f / -f -r，顺序无关）用两次独立 grep——
-  # case glob 拼接位置会漏 rm -r -f 分离形态。BSD 安全：单模式无 -E 交替。
+  # 大小写归一 + 压缩连续空白为单空格：让 rm 后多空格的 flag 也匹配，跨行复合命令的
+  # 检测也稳定（forge hazard fingerprint 另有更严归一化，此处仅为命中判定）。
+  lower=$(printf '%s' "$cmd" | tr '[:upper:]' '[:lower:]' | tr -s '[:space:]' ' ')
+  # shred / mkfs：不可逆破坏，整串子串匹配即可（这些 token 不会出现在普通路径里）。
   case "$lower" in
-    *"rm "*"-rf"*|*"rm "*"-fr"*) return 0 ;;
     *shred\ *|*mkfs\ *|*mkfs.*) return 0 ;;
   esac
-  if printf '%s' "$lower" | grep -qi 'rm '; then
-    if printf '%s' "$lower" | grep -qi -- '-r' && printf '%s' "$lower" | grep -qi -- '-f'; then
-      return 0
-    fi
-  fi
-  # git 危险推送 / 强制重置。push -f 用 " -f"（前空格，不要求后空格）——
-  # 防 git push -f（裸无 remote）和 git push origin main -f（flag 末尾）漏检。
+  # rm 临时目录白名单（优先于高危判定）：rm -rf 指向 /tmp、/var/folders(macOS mktemp)、
+  # /private/tmp(macOS) 等一次性临时区则放行——e2e/CI 用 rm -rf /tmp/probe 初始化探针，
+  # 100% 安全却被反复拦（2026-06 多次误伤）。含 .. 不白名单，防 /tmp/../etc 路径穿越；
+  # 仅 rm -rf 触发，rm -f 单文件不走此路。
   case "$lower" in
-    *"git push"*"--force"*|*"git push"*" -f"*) return 0 ;;
-    *"git push"*"--delete"*) return 0 ;;
-    *"git reset"*"--hard"*) return 0 ;;
+    *rm\ -rf\ */tmp/*|*rm\ -fr\ */tmp/*|\
+    *rm\ -rf\ */var/folders/*|*rm\ -fr\ */var/folders/*|\
+    *rm\ -rf\ */private/tmp/*|*rm\ -fr\ */private/tmp/*)
+      printf '%s' "$lower" | grep -q '/\.\./' || return 1
+      ;;
+  esac
+  # rm 递归强删：rm 命令的 flag 簇里同时出现 r 与 f 才算（递归 + 强制）。
+  # 不要求 rm 紧跟 flag——'rm -i -rf' / 'rm --one-file-system -rf' 也覆盖（2026-06 审查 S1：
+  # 紧跟单簇锚定会漏 rm -i -rf）。合并簇用 '-[a-z]*r[a-z]*f' 匹配单 - 开头短选项
+  # （-rf/-fr/-irf/-rfv），不匹配路径 .lark-report（其 -report 的 r 后无 f）；分离簇用
+  # ' -r' / ' -f' 前空格锚定，避免旧版裸 '-r' 误中路径 -report（2026-06 .lark-report 事故根因）。
+  # 仅 -r/-R 无 -f 不拦：rm 交互式确认仍生效，破坏力低于 rm -rf（设计决策，非漏检）。
+  # 长选项 --recursive + --force。BSD 安全：每条独立 grep -qi，无 -E 交替。
+  if printf '%s' "$lower" | grep -qi 'rm '; then
+    if printf '%s' "$lower" | grep -qi -- '-[a-z]*r[a-z]*f'; then return 0; fi
+    if printf '%s' "$lower" | grep -qi -- '-[a-z]*f[a-z]*r'; then return 0; fi
+    if printf '%s' "$lower" | grep -qi -- ' -r' && printf '%s' "$lower" | grep -qi -- ' -f'; then return 0; fi
+    if printf '%s' "$lower" | grep -qi -- '--recursive' && printf '%s' "$lower" | grep -qi -- '--force'; then return 0; fi
+  fi
+  # git 危险推送 / 强制重置。--force-with-lease 是安全版（remote 有新提交自动拒绝），git
+  # 官方推荐用以替代 --force——前置分支放行，不与裸 --force 同等硬拦（2026-06 误伤）。
+  # case 按序匹配：lease 命令命中首分支即跳出 case，不会落到 --force 分支。
+  case "$lower" in
+    *git\ push*--force-with-lease*) ;;
+    *git\ push*--force*|*git\ push*\ -f*) return 0 ;;
+    *git\ push*--delete*) return 0 ;;
+    *git\ reset*--hard*) return 0 ;;
   esac
   # SQL 破坏性 DDL / 权限滥用（大小写已归一为 lower）
   case "$lower" in
