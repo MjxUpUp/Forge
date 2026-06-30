@@ -126,6 +126,8 @@ Expected: PASS
 ```
 不允许写"编译通过""测试 OK"——必须具体命令 + 具体预期输出。
 
+**forge 项目把验收标准变成不可伪造的实跑证据**：`forge task start` 时用 `--accept "Run :: Expected"`（可重复）把每条验收标准持久化进任务，`forge task verify-acceptance` 实跑每条 Run、比对 Expected、回填结果并记 `checklog:acceptance`（deterministic——forge 自己跑看结果，不可伪造）。本格式直接对应 `--accept` 的 `Run :: Expected` 串：上方例子 → `--accept "cargo test --test integration :: PASS"`。把 plan 里的验收标准从"文本里飘着"变成"实跑留痕的 spec-as-gate"，对冲 agent 自述"满足验收"却没真跑的盲区。
+
 **⛔ No Placeholders 禁令表**：
 以下模式 **出现即不合格**，计划被打回重写：
 - "TBD" / "TODO" / "implement later" / "稍后补"

@@ -215,6 +215,15 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 			})
 			fmt.Fprintf(os.Stderr, "[task-verify] Advisory: %s\n", formatSkillEvalAdvisory(affected))
 		}
+
+		// acceptance advisory（spec-as-gate）：任务登记了验收标准（task start --accept）
+		// 但未全部通过 → 提醒先跑 'forge task verify-acceptance' 把 spec 变成实跑证据。
+		// 纯 advisory 不阻塞、不 return error。关键：这里**只读 state 上次结果提醒**，
+		// 绝不记 CheckNameAcceptance 条目——该条目专属于 verify-acceptance 的真实实跑
+		// （deterministic 不可伪造），gate 里不跑命令就不能伪称跑过。
+		if state.HasAcceptance() && !state.AllAcceptancePassed() {
+			fmt.Fprintf(os.Stderr, "[task-verify] Advisory: 任务登记了 %d 条验收标准但未全部通过——先跑 'forge task verify-acceptance' 实跑回扣（spec-as-gate）\n", len(state.Acceptance))
+		}
 	}
 
 	// 证据链 agent-claim 数据源：agent 推进一个非自动 gate 即"声明"该阶段完成

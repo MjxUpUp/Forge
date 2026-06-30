@@ -14,21 +14,33 @@ type TaskGate struct {
 	Auto        bool   `json:"auto"` // true = checked automatically by hooks
 }
 
+// AcceptanceCriterion 是一条可执行的验收标准（来自 dev-workflow Plan 的
+// "Run: <cmd>, Expected: <output>"）。持久化进 TaskState，使验收标准不随 plan 文本
+// 消失；verify-acceptance 实跑 Run、比对 Expected，记 deterministic 证据——把 spec
+// 变成不可伪造的验证，对冲 agent 自述"满足验收"的盲区。
+type AcceptanceCriterion struct {
+	Run      string `json:"run"`                // 实跑的命令（如 "go test ./..."）
+	Expected string `json:"expected,omitempty"` // 期望输出的子串；空=只看退出码 0
+	Passed   bool   `json:"passed,omitempty"`   // 上次 verify-acceptance 的结果
+	Output   string `json:"output,omitempty"`   // 上次实跑的输出（截断），供排查
+}
+
 // TaskState tracks the state of a single task's pipeline.
 // Stored in .forge/tasks/{sanitized-ref}.json.
 type TaskState struct {
-	TaskRef     string           `json:"task_ref"`
-	Branch      string           `json:"branch"`
-	Source      string           `json:"source"` // "explicit", "branch"
-	Summary     string           `json:"summary"`
-	CurrentGate string           `json:"current_gate"`
-	History     []TaskGateResult        `json:"history"`
-	StartedAt   time.Time               `json:"started_at"`
-	CompletedAt *time.Time              `json:"completed_at,omitempty"`
-	Score       *scoringtypes.ScoreResult `json:"score,omitempty"`
-	HeadCommit    string                    `json:"head_commit,omitempty"`    // for duplicate detection
-	SessionID     string                    `json:"session_id,omitempty"`     // agent session that created this task
-	ReviewPassed  bool                      `json:"review_passed,omitempty"`  // code-review-gate 通过标记；task-complete 门禁的硬前置
+	TaskRef      string                    `json:"task_ref"`
+	Branch       string                    `json:"branch"`
+	Source       string                    `json:"source"` // "explicit", "branch"
+	Summary      string                    `json:"summary"`
+	CurrentGate  string                    `json:"current_gate"`
+	History      []TaskGateResult          `json:"history"`
+	StartedAt    time.Time                 `json:"started_at"`
+	CompletedAt  *time.Time                `json:"completed_at,omitempty"`
+	Score        *scoringtypes.ScoreResult `json:"score,omitempty"`
+	HeadCommit   string                    `json:"head_commit,omitempty"`   // for duplicate detection
+	SessionID    string                    `json:"session_id,omitempty"`    // agent session that created this task
+	ReviewPassed bool                      `json:"review_passed,omitempty"` // code-review-gate 通过标记；task-complete 门禁的硬前置
+	Acceptance   []AcceptanceCriterion     `json:"acceptance,omitempty"`    // 验收标准（dev-workflow Plan 的 Run+Expected），verify-acceptance 实跑回扣
 }
 
 // TaskGateResult records the outcome of a single task gate.
@@ -121,4 +133,20 @@ func (s *TaskState) CompletedGates() []string {
 		}
 	}
 	return result
+}
+
+// HasAcceptance reports whether the task has any persisted acceptance criteria.
+func (s *TaskState) HasAcceptance() bool {
+	return len(s.Acceptance) > 0
+}
+
+// AllAcceptancePassed reports whether every acceptance criterion has Passed=true.
+// Empty acceptance returns true (nothing to reconcile). task-verify 据此决定是否提醒回扣。
+func (s *TaskState) AllAcceptancePassed() bool {
+	for i := range s.Acceptance {
+		if !s.Acceptance[i].Passed {
+			return false
+		}
+	}
+	return true
 }

@@ -24,12 +24,16 @@ func init() {
 	taskCmd.AddCommand(taskStartCmd)
 	taskCmd.AddCommand(taskStatusCmd)
 	taskCmd.AddCommand(taskGateCmd)
+	taskCmd.AddCommand(taskVerifyAcceptanceCmd)
 	taskCmd.AddCommand(taskCompleteCmd)
 	taskCmd.AddCommand(taskAbortCmd)
 	taskCmd.AddCommand(taskScoreCmd)
 	taskCmd.AddCommand(taskListCmd)
 
 	taskStartCmd.Flags().String("title", "", "任务标题")
+	// StringArray（非 StringSlice）：cobra/pflag 的 StringSlice 默认按逗号切分，会把
+	// 含逗号的命令拆坏；StringArray 每个 --accept 整条不切。验收标准是完整 "run :: expected" 串。
+	taskStartCmd.Flags().StringArray("accept", nil, `验收标准（可重复 --accept）：格式 "run :: expected"（expected=输出子串）或裸 "run"（只看退出码 0）。forge task verify-acceptance 实跑回扣`)
 	taskStartCmd.Flags().String("ref", "", "任务引用（如 feat/add-auto-branch），默认从分支名推断")
 	taskStartCmd.Flags().Bool("branch", false, "从 main/master 创建新分支并切换（ref 作为分支名）")
 	taskStartCmd.Flags().Bool("json", false, "JSON 格式输出")
@@ -73,6 +77,16 @@ var taskGateCmd = &cobra.Command{
 	Short: "验证单道任务门禁",
 	Args:  cobra.ExactArgs(1),
 	RunE:  runTaskGate,
+}
+
+var taskVerifyAcceptanceCmd = &cobra.Command{
+	Use:   "verify-acceptance",
+	Short: "实跑验收标准并记 deterministic 证据（spec-as-gate）",
+	Long: `forge task verify-acceptance 实跑 task start --accept 登记的每条验收标准（Run 命令），
+按"退出码 0 + Expected 子串"判定，回填 Passed/Output，并记 checklog:acceptance（deterministic）。
+把 dev-workflow Plan 的 "Run: <cmd>, Expected: <out>" 验收标准从 plan 文本变成不可伪造的实跑证据，
+对冲 agent 自述"满足验收"但没真跑的盲区。`,
+	RunE: runTaskVerifyAcceptance,
 }
 
 var taskCompleteCmd = &cobra.Command{
@@ -215,6 +229,12 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	// Record current HEAD for duplicate detection.
 	state.HeadCommit = taskpipeline.GetHeadCommit(root)
 
+	// 持久化验收标准（dev-workflow Plan 的 Run+Expected）：spec 不再随 plan 文本飘走，
+	// verify-acceptance 据此实跑回扣。空则无验收标准（不影响流程）。
+	if acceptRaw, _ := cmd.Flags().GetStringArray("accept"); len(acceptRaw) > 0 {
+		state.Acceptance = taskpipeline.ParseAcceptance(acceptRaw)
+	}
+
 	// Resolve the Claude Code session id once — used to scope the active-task-ref
 	// and session records so concurrent sessions on a shared checkout stay isolated.
 	sid := taskpipeline.CurrentSessionID()
@@ -279,6 +299,18 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println()
 	fmt.Println("Run 'forge task gate <id>' to validate each gate.")
+
+	if state.HasAcceptance() {
+		fmt.Println()
+		fmt.Printf("验收标准（%d 条，forge task verify-acceptance 实跑回扣）：\n", len(state.Acceptance))
+		for i, c := range state.Acceptance {
+			exp := c.Expected
+			if exp == "" {
+				exp = "(退出码 0)"
+			}
+			fmt.Printf("  %d. %s :: %s\n", i+1, c.Run, exp)
+		}
+	}
 
 	return nil
 }
@@ -436,6 +468,28 @@ func runTaskStatus(cmd *cobra.Command, args []string) error {
 
 	fmt.Println(strings.Repeat("─", 40))
 
+	if state.HasAcceptance() {
+		fmt.Println("验收标准:")
+		for i, c := range state.Acceptance {
+			mark := "⏳"
+			status := "未验证"
+			if c.Passed {
+				mark = "✅"
+				status = "通过"
+			} else if c.Output != "" {
+				// Output 仅在 verify-acceptance 实跑后回填——区分"没跑过"(⏳)与"跑过且失败"(❌)。
+				mark = "❌"
+				status = "失败"
+			}
+			exp := c.Expected
+			if exp == "" {
+				exp = "(退出码 0)"
+			}
+			fmt.Printf("  %s [%d] %s :: %s — %s\n", mark, i+1, c.Run, exp, status)
+		}
+		fmt.Println(strings.Repeat("─", 40))
+	}
+
 	if state.CompletedAt != nil {
 		fmt.Printf("Completed: %s\n", state.CompletedAt.Format("2006-01-02 15:04"))
 	} else if state.CurrentGate != "" {
@@ -527,6 +581,96 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// runTaskVerifyAcceptance 实跑任务登记的每条验收标准（task start --accept），按
+// "退出码 0 + Expected 子串" 判定，回填 Passed/Output 到 TaskState 并记一条
+// checklog:acceptance（deterministic——forge 自己跑命令看结果，不可伪造）。这是把
+// dev-workflow Plan 的 "Run: <cmd>, Expected: <out>" 变成不可伪造实跑证据的入口，
+// 对冲 agent 自述"满足验收"却没真跑的盲区（spec-as-gate）。失败不阻塞会话，仅返回 error
+// 让调用方/脚本感知退出码；Passed 字段如实落盘 + checklog，forge trace 可见。
+func runTaskVerifyAcceptance(cmd *cobra.Command, args []string) error {
+	root, err := findProjectRoot()
+	if err != nil {
+		return err
+	}
+	return runTaskVerifyAcceptanceAt(root)
+}
+
+// runTaskVerifyAcceptanceAt 是 runTaskVerifyAcceptance 的 root 注入核心，独立出来便于
+// 在临时项目上单测（不经 findProjectRoot / cobra）。实跑任务登记的每条验收标准
+// （task start --accept），按 "退出码 0 + Expected 子串" 判定，回填 Passed/Output 到
+// TaskState 并记一条 checklog:acceptance（deterministic——forge 自己跑命令看结果，不可伪造）。
+// 这是把 dev-workflow Plan 的 "Run: <cmd>, Expected: <out>" 变成不可伪造实跑证据的入口，
+// 对冲 agent 自述"满足验收"却没真跑的盲区（spec-as-gate）。
+func runTaskVerifyAcceptanceAt(root string) error {
+	state, err := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
+	if err != nil {
+		return fmt.Errorf("failed to load task state: %w", err)
+	}
+	if state == nil {
+		return fmt.Errorf("no active task. Run 'forge task start' first")
+	}
+	if !state.HasAcceptance() {
+		fmt.Println("本任务未登记验收标准（forge task start --accept \"run :: expected\"）。")
+		return nil
+	}
+
+	taskpipeline.VerifyAcceptance(root, state)
+	allPassed := state.AllAcceptancePassed()
+
+	checklog.Record(root, &checklog.Entry{
+		Check:   taskpipeline.CheckNameAcceptance,
+		Passed:  allPassed,
+		Checked: true,
+		TaskRef: state.TaskRef,
+		Detail:  formatAcceptanceDetail(state.Acceptance),
+	})
+
+	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+		return fmt.Errorf("failed to save task state: %w", err)
+	}
+
+	fmt.Println("验收标准实跑结果：")
+	for i, c := range state.Acceptance {
+		mark := "✅"
+		if !c.Passed {
+			mark = "❌"
+		}
+		exp := c.Expected
+		if exp == "" {
+			exp = "(退出码 0)"
+		}
+		fmt.Printf("  %s [%d] %s :: %s\n", mark, i+1, c.Run, exp)
+		if !c.Passed && c.Output != "" {
+			for _, line := range splitLines(c.Output) {
+				fmt.Printf("     %s\n", line)
+			}
+		}
+	}
+	fmt.Println(strings.Repeat("─", 40))
+	if allPassed {
+		fmt.Printf("✅ 全部通过 — 真实结果已记为 deterministic 证据（checklog: %s）\n", taskpipeline.CheckNameAcceptance)
+		return nil
+	}
+	fmt.Printf("❌ 存在未通过项 — 失败结果已记入 checklog（%s）\n", taskpipeline.CheckNameAcceptance)
+	return fmt.Errorf("acceptance verification failed")
+}
+
+// formatAcceptanceDetail 生成 checklog:acceptance 的 Detail 摘要——"PASS/FAIL — k/n 通过"，
+// 让 forge trace 不展开每条也能一眼看出验收整体结果。
+func formatAcceptanceDetail(cs []taskpipeline.AcceptanceCriterion) string {
+	passed := 0
+	for _, c := range cs {
+		if c.Passed {
+			passed++
+		}
+	}
+	word := `FAIL`
+	if passed == len(cs) {
+		word = `PASS`
+	}
+	return fmt.Sprintf("%s — %d/%d 验收标准通过", word, passed, len(cs))
 }
 
 func runTaskComplete(cmd *cobra.Command, args []string) error {
