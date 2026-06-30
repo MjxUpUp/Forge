@@ -35,6 +35,7 @@ metadata:
 - 看 **Strength / Ratio**：Unverified（零实跑）/Weak（声明主要靠 agent 自述）= 完成没真验证 → 这正是该优先回顾的盲区，分数看不出来
 - 看 **LowDimensions**：<70 的评分维度直接是回顾靶点
 - 结论带 RetrospectiveNudge 时已附一行 `→ session-retrospective:` 指令 → 按它回顾根因，再走下面载体决策树
+- **看项目级系统性模式**（跨任务，非个例）：跑 `forge health`——证据盲区率高（过半完成声明 Unverified/Weak）= agent 系统性"声明完成却没真验证"，该查验证流程为何没真跑；**复发低分维度**（×N）= 该方向有共性缺口，优先沉淀成守卫测试/CLAUDE.md 铁律（载体决策树第 1/2 档）而非只记单次个例
 
 这是 Act 反馈臂的入口：回顾从"agent 临结束想起什么"变成"读 forge 跑出来的结构化结论"。Strong 且 >=70 的干净完成不强制回顾证据（无盲区），但仍走下面 5 步看协作类教训。
 

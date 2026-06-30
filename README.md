@@ -217,6 +217,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 
 | 命令 | 说明 |
 |------|------|
+| `forge health [--json]` | 项目级质量趋势——聚合所有任务结论（分数走势/证据盲区率/复发低分维度，task→project 粒度联动） |
 | `forge trace <task-ref>` | 查看任务的完整质量事件时间线（checklog + toollog + token） |
 | `forge sync [--force]` | 同步 .forge/ 资产到当前二进制版本 |
 | `forge clone check` | 检测文件代码克隆 |
