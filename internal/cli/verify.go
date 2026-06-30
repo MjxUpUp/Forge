@@ -6,17 +6,21 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/pipeline"
 	"github.com/MjxUpUp/Forge/internal/protocol"
+	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
 )
 
 func init() {
 	rootCmd.AddCommand(verifyCmd)
 	verifyCmd.Flags().Bool("regression", false, "运行所有 E2E 回归场景")
+	verifyCmd.Flags().Bool("run-tests", false, "运行项目测试套件并把真实结果记为 deterministic 证据（checklog: test-run）")
 	verifyCmd.Flags().String("scenario", "", "运行指定场景 (fresh-install, master-reminder, experience-flow, upgrade-v040, upgrade-v030)")
 }
 
@@ -38,7 +42,11 @@ var verifyCmd = &cobra.Command{
 func runVerify(cmd *cobra.Command, args []string) error {
 	regression, _ := cmd.Flags().GetBool("regression")
 	scenario, _ := cmd.Flags().GetString("scenario")
+	runTests, _ := cmd.Flags().GetBool("run-tests")
 
+	if runTests {
+		return runProjectTestsMode()
+	}
 	if regression || scenario != "" {
 		return runRegressionMode(scenario)
 	}
@@ -104,6 +112,79 @@ func runDefaultChecks() error {
 		return nil
 	}
 	return fmt.Errorf("some checks failed")
+}
+
+// ---------- Run-tests mode ----------
+
+// runProjectTestsMode runs the project's detected test suite and records the
+// REAL pass/fail to checklog as deterministic evidence (CheckNameTestRun).
+// forge itself executes the command and observes the exit code, so the record
+// is unforgeable — countering the "agent claims tests pass without running
+// them" blind spot. Distinct from default integrity checks (file existence)
+// and regression mode (forge's own e2e): this runs THE PROJECT's tests.
+func runProjectTestsMode() error {
+	root, err := findProjectRoot()
+	if err != nil {
+		return err
+	}
+	return runProjectTestsModeAt(root)
+}
+
+// runProjectTestsModeAt is the root-injected core of runProjectTestsMode, kept
+// separate so it can be unit-tested on a temp project without findProjectRoot.
+func runProjectTestsModeAt(root string) error {
+	cmdStr := taskpipeline.DetectTestCommand(root)
+	if cmdStr == "" {
+		fmt.Println("未检测到项目测试命令（无 go.mod / Cargo.toml / package.json / pytest 配置）—— 无可运行的测试套件。")
+		return nil
+	}
+	// CurrentSessionID() — NOT "" — so the record is attributed to THIS
+	// session's active task via the session-scoped active-task-ref file. The
+	// empty-sessionID path reads the shared legacy .forge/active-task-ref,
+	// which can hold a stale ref from a prior session (e.g. leftover
+	// fix/concurrent-session-race) and would mis-attribute the evidence,
+	// hiding it from `forge trace <real-task>`. Matches review.go/task.go.
+	taskRef := taskpipeline.ReadActiveTaskRef(root, taskpipeline.CurrentSessionID())
+	fmt.Printf("运行测试套件: %s\n", cmdStr)
+	passed, output := taskpipeline.RunTestCommand(root, cmdStr)
+	checklog.Record(root, &checklog.Entry{
+		Check:   taskpipeline.CheckNameTestRun,
+		Passed:  passed,
+		Checked: true,
+		TaskRef: taskRef,
+		Detail:  fmt.Sprintf("%s — %s", cmdStr, passFailWord(passed)),
+	})
+	if passed {
+		fmt.Printf("✅ 测试通过 — 真实结果已记为 deterministic 证据（checklog: %s）\n", taskpipeline.CheckNameTestRun)
+		return nil
+	}
+	fmt.Printf("❌ 测试失败 — 失败结果已记入 checklog：\n%s\n", boundOutput(output))
+	return fmt.Errorf("test suite failed")
+}
+
+// passFailWord returns PASS/FAIL for a test-run result — used in the checklog
+// Detail so forge trace shows the suite outcome at a glance.
+func passFailWord(passed bool) string {
+	if passed {
+		return "PASS"
+	}
+	return "FAIL"
+}
+
+// boundOutput trims a command's output to its last ~40 lines so a failing test
+// suite doesn't flood the terminal while still showing the actionable tail
+// (failure messages live at the end of go/cargo/npm test output).
+func boundOutput(s string) string {
+	if s == "" {
+		return "(no output)"
+	}
+	lines := splitLines(s)
+	const capLines = 40
+	if len(lines) <= capLines {
+		return s
+	}
+	trimmed := strings.Join(lines[len(lines)-capLines:], "\n")
+	return fmt.Sprintf("...(省略前 %d 行)...\n%s", len(lines)-capLines, trimmed)
 }
 
 func checkPipeline(root string) checkResult {
@@ -193,11 +274,11 @@ func runRegressionMode(scenario string) error {
 
 	// Collect scenarios to run
 	scenarios := map[string]func(string) ScenarioResult{
-		"fresh-install":    runScenarioFreshInstall,
-		"master-reminder":  runScenarioMasterReminder,
-		"experience-flow":  runScenarioExperienceFlow,
-		"upgrade-v040":     runScenarioUpgradeV040,
-		"upgrade-v030":     runScenarioUpgradeV030,
+		"fresh-install":   runScenarioFreshInstall,
+		"master-reminder": runScenarioMasterReminder,
+		"experience-flow": runScenarioExperienceFlow,
+		"upgrade-v040":    runScenarioUpgradeV040,
+		"upgrade-v030":    runScenarioUpgradeV030,
 	}
 
 	if scenario != "" {
