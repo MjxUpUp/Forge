@@ -107,8 +107,11 @@ func runTrace(cmd *cobra.Command, args []string) error {
 	if len(checks) > 0 {
 		fmt.Printf("\n  证据链: %d 条 — deterministic=%d（hook/gate 实跑） agent-claim=%d（agent 自述）\n",
 			len(ec.Entries), ec.Deterministic, ec.AgentClaim)
-		if ec.Deterministic == 0 && ec.AgentClaim > 0 {
-			fmt.Println("  ⚠ 全部为 agent-claim：本任务「完成」声明无 deterministic 证据支撑（review 应重点核查）")
+		switch ec.Strength() {
+		case checklog.Unverified:
+			fmt.Println(`  ⚠ 全部为 agent-claim：本任务「完成」声明无 deterministic 证据支撑，review 必须核验声称的验证是否真发生过`)
+		case checklog.Weak:
+			fmt.Println(`  ⚠ deterministic 占比低：review 重点核验声称的验证是否真跑过，对冲 agent 跳过前置就声明完成的盲区`)
 		}
 	}
 

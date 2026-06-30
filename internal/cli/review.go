@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/review"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
@@ -147,7 +148,13 @@ func runReviewStatus(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	return renderReviewStatus(root)
+}
 
+// renderReviewStatus is the root-injected core of `forge review status`, kept
+// separate so the task-mode evidence-strength rendering is unit-testable on a
+// temp project without findProjectRoot / cwd dependence.
+func renderReviewStatus(root string) error {
 	state, _ := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
 	if state != nil {
 		fmt.Println("Mode:         task")
@@ -162,6 +169,19 @@ func runReviewStatus(cmd *cobra.Command, args []string) error {
 			fmt.Println("→ task-complete 门禁的 review 前置已满足")
 		} else {
 			fmt.Println("→ 未通过：task-complete 前会要求 code-review-gate；运行 `forge review pass` 标记")
+		}
+		// 证据强度（deterministic 占比）——把 ratio 从可观测升级为驱动 review 校准。
+		// Weak/Unverified 时给 reviewer 注入指令：核验声称的验证是否真跑过，对冲 agent
+		// 跳过前置就声明完成的盲区。Strong 时静默只报数字（避免噪声）。
+		if ec, err := checklog.ForTask(root, state.TaskRef); err == nil && ec.Total() > 0 {
+			fmt.Println(fmt.Sprintf(`证据强度:     ratio=%.2f %s（deterministic=%d agent-claim=%d）`,
+				ec.Ratio(), ec.Strength(), ec.Deterministic, ec.AgentClaim))
+			switch ec.Strength() {
+			case checklog.Unverified:
+				fmt.Println(`→ ⚠ 完成声明无 deterministic 证据：review 必须核验声称的验证是否真发生过（test-run / gate 实跑条目），不能只信 agent 自述`)
+			case checklog.Weak:
+				fmt.Println(`→ ⚠ deterministic 占比低：review 重点核验声称的验证是否真跑过，对冲 agent 跳过前置就声明完成的盲区`)
+			}
 		}
 		return nil
 	}

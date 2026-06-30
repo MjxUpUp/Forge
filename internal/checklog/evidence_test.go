@@ -87,3 +87,36 @@ func TestForTask_LoadsAndBuckets(t *testing.T) {
 		t.Fatalf(`ForTask buckets: deterministic=%d agent-claim=%d, want 2/1`, ec.Deterministic, ec.AgentClaim)
 	}
 }
+
+// TestStrengthClassification 锁定 Strength 档位与 Ratio/Total：完成声明的可信度按
+// deterministic 占比离散成 review 可行动的档位（NoData/Unverified/Weak/Strong），阈值 0.5。
+// 这是把"ratio 仅可观测"升级为"驱动 review 校准"的判定核心——档位决定是否给 reviewer
+// 注入"核验声称的验证是否真跑过"的指令。
+func TestStrengthClassification(t *testing.T) {
+	cases := []struct {
+		name       string
+		det, claim int
+		wantStr    EvidenceStrength
+		wantRatio  float64
+		wantTotal  int
+	}{
+		{`NoData: 零证据`, 0, 0, NoData, 0, 0},
+		{`Unverified: 零 deterministic 全 agent-claim`, 0, 2, Unverified, 0, 2},
+		{`Weak: agent-claim 占多数 (1/4=0.25)`, 1, 3, Weak, 0.25, 4},
+		{`Weak 边界: 1/3≈0.33 仍 <0.5`, 1, 2, Weak, 1.0 / 3.0, 3},
+		{`Strong 边界: 2/4=0.5 ≥0.5`, 2, 2, Strong, 0.5, 4},
+		{`Strong: deterministic 占多数 (4/5=0.8)`, 4, 1, Strong, 0.8, 5},
+	}
+	for _, c := range cases {
+		ec := EvidenceChain{Deterministic: c.det, AgentClaim: c.claim}
+		if got := ec.Strength(); got != c.wantStr {
+			t.Errorf(`%s: Strength=%s, want %s`, c.name, got, c.wantStr)
+		}
+		if got := ec.Total(); got != c.wantTotal {
+			t.Errorf(`%s: Total=%d, want %d`, c.name, got, c.wantTotal)
+		}
+		if got := ec.Ratio(); got != c.wantRatio {
+			t.Errorf(`%s: Ratio=%g, want %g`, c.name, got, c.wantRatio)
+		}
+	}
+}

@@ -15,6 +15,70 @@ type EvidenceChain struct {
 	AgentClaim    int // Source=agent-claim 的条目数
 }
 
+// Total returns the total number of evidence entries (deterministic + agent-claim).
+func (ec EvidenceChain) Total() int {
+	return ec.Deterministic + ec.AgentClaim
+}
+
+// Ratio returns the deterministic share of evidence: Deterministic/Total.
+// 1.0 = fully deterministic-backed; 0.0 = no deterministic evidence. Returns 0
+// when Total==0 — callers should check Strength()==NoData first to distinguish
+// "no evidence" from "all agent-claim".
+func (ec EvidenceChain) Ratio() float64 {
+	if ec.Total() == 0 {
+		return 0
+	}
+	return float64(ec.Deterministic) / float64(ec.Total())
+}
+
+// EvidenceStrength 把 Ratio 离散成 review 可据以行动的档位。重点不是数字本身，
+// 而是它该"驱动"什么：一个"完成"声明主要靠 agent 自述撑着（Weak/Unverified），
+// 正是 LLM-judge 盲区所在（agent 跳过真实验证就声明完成）——此时 reviewer 必须
+// 核查声称的验证是否真发生过，而不只读 diff。Strong=deterministic 占多数，声明可信。
+//
+// 档位（阈值 0.5 = "deterministic 占多数"）：
+//   - NoData:     无任何证据（total 0）——中性，无可校准。
+//   - Unverified: 有 agent-claim 但零 deterministic——声明全无实跑支撑，最高信号盲区。
+//   - Weak:       有 deterministic 但 agent-claim 占多数（ratio<0.5）。
+//   - Strong:     deterministic 占多数（ratio>=0.5）。
+type EvidenceStrength int
+
+const (
+	NoData EvidenceStrength = iota
+	Unverified
+	Weak
+	Strong
+)
+
+// String returns a human-readable band name for trace/review-status output.
+func (s EvidenceStrength) String() string {
+	switch s {
+	case NoData:
+		return "NoData"
+	case Unverified:
+		return "Unverified"
+	case Weak:
+		return "Weak"
+	case Strong:
+		return "Strong"
+	}
+	return "Unknown"
+}
+
+// Strength 把证据链分到 review 可行动的档位。语义与阈值见 EvidenceStrength 文档。
+func (ec EvidenceChain) Strength() EvidenceStrength {
+	if ec.Total() == 0 {
+		return NoData
+	}
+	if ec.Deterministic == 0 && ec.AgentClaim > 0 {
+		return Unverified
+	}
+	if ec.Ratio() < 0.5 {
+		return Weak
+	}
+	return Strong
+}
+
 // BuildEvidenceChain 是纯函数：对已属于某任务的 entries 按来源分桶。Source 为空
 // 的条目（旧数据，或未改造的记录点写入）按 SourceForCheck 兜底，保证旧 checklog
 // 也能正确分桶，底座上线无需回填历史。
