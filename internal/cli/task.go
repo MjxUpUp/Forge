@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/act"
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/experience"
 	"github.com/MjxUpUp/Forge/internal/protocol"
@@ -850,6 +851,14 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Task %s completed!\n", state.TaskRef)
 	}
 
+	// Act 反馈臂（PDCA Act）：构建证据驱动结论落盘，喂给 session-retrospective。必须在
+	// PendingMandatory 阻塞检查之后调用——否则被挂起强制评审阻塞时 operator 重跑 complete
+	// 会重复追加结论（每次重跑一行）。即使评分失败也建（证据强度不依赖分数）；Nudge 时打印
+	// 一行回顾指令（stderr，stdout --json 保持干净）。
+	if d := appendConclusion(root, state); d != "" {
+		fmt.Fprintln(os.Stderr, d)
+	}
+
 	// Clear active task ref — task is done (session-scoped)
 	if err := taskpipeline.ClearActiveTaskRef(root, taskpipeline.CurrentSessionID()); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to clear active task ref: %v\n", err)
@@ -1130,6 +1139,29 @@ func scoreTask(root string, state *taskpipeline.TaskState) error {
 
 	state.Score = result
 	return taskpipeline.SaveTaskState(root, state)
+}
+
+// appendConclusion 构建 + 落盘一个完成任务的 Act 结论（证据驱动），返回 Directive
+// （无 RetrospectiveNudge 时为空串，调用方据非空决定是否打印）。聚合 checklog.ForTask
+// 的证据链 + state.Acceptance 的通过率 + state.Score，调 act.BuildConclusion——解耦于
+// taskpipeline（act 包不依赖它，本处从 state 提取原始值传入）。
+func appendConclusion(root string, state *taskpipeline.TaskState) string {
+	ec, _ := checklog.ForTask(root, state.TaskRef)
+	pass, total := 0, len(state.Acceptance)
+	for _, c := range state.Acceptance {
+		if c.Passed {
+			pass++
+		}
+	}
+	completedAt := time.Now()
+	if state.CompletedAt != nil {
+		completedAt = *state.CompletedAt
+	}
+	conc := act.BuildConclusion(state.TaskRef, state.SessionID, state.Score, ec, pass, total, completedAt)
+	if err := act.Append(root, &conc); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: act conclusion append failed: %v\n", err)
+	}
+	return conc.Directive()
 }
 
 func runTaskList(cmd *cobra.Command, args []string) error {

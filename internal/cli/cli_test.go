@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/act"
 	"github.com/MjxUpUp/Forge/internal/experience"
 	"github.com/MjxUpUp/Forge/internal/hooks"
 )
@@ -768,6 +769,13 @@ func TestCompleteBlocksOnPendingMandatoryReview(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "forge experience resolve") {
 		t.Fatalf("complete failure output missing resolve hint: %s", stdout)
+	}
+
+	// 回归（Act 反馈臂）：被 mandatory review 阻塞的 complete 绝不能写结论——否则
+	// operator 重跑 complete 会重复追加结论。appendConclusion 必须在 PendingMandatory
+	// 阻塞检查之后调用。
+	if c, _ := act.Latest(tmpDir); c != nil {
+		t.Fatalf("阻塞的 complete 不该写结论，但 .forge/act/conclusions.jsonl 有记录: %+v", c)
 	}
 
 	// Resolve the review, then complete MUST succeed (active task ref survived

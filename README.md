@@ -169,6 +169,15 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge knowledge add` | 添加经验条目 |
 | `forge knowledge check` | 检查当前项目是否违反已知经验 |
 
+### Act 反馈臂（证据驱动结论）
+
+`forge task complete` 时把本任务的证据驱动结论（评分 + 证据强度 + 验收通过率 + 低分维度）落盘到 `.forge/act/conclusions.jsonl`，喂给 `session-retrospective`：会话结束回顾不再靠 agent 临结束回忆"这次验证过没"，而是读 deterministic 结论。证据弱（Unverified/Weak——完成声明主要靠 agent 自述）或低分（<70）的结论标 RetrospectiveNudge 并附一行回顾指令——对冲"高分但没真验证"的 LLM-judge 盲区（分数看不出 agent 是否真跑过验证）。
+
+| 命令 | 说明 |
+|------|------|
+| `forge act show [--ref <ref>]` | 查看最新（或指定）任务结论 |
+| `forge act list [--json]` | 列出所有任务结论 |
+
 ### Skill 治理
 
 分发内置 canonical skill 库到各 coding agent，并守护 skill 质量（规范 + 安全）。
