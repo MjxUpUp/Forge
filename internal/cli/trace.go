@@ -45,10 +45,14 @@ func runTrace(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	checks, err := checklog.LoadForTask(root, ref)
+	// ForTask 一次读盘 + 聚合证据链：trace 既要逐事件回放（用 Entries）又要
+	// 证据分桶汇总（用 Deterministic/AgentClaim），ForTask 是两者的共同入口，
+	// 避免分别调 LoadForTask + BuildEvidenceChain 重复读盘。
+	ec, err := checklog.ForTask(root, ref)
 	if err != nil {
 		return fmt.Errorf("failed to load checklog: %w", err)
 	}
+	checks := ec.Entries
 	calls, err := toolusage.LoadForTaskAll(root, ref)
 	if err != nil {
 		return fmt.Errorf("failed to load toollog: %w", err)
@@ -94,6 +98,17 @@ func runTrace(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  %s  %-6s  %s\n", e.ts.Format("15:04:05"), e.source, e.summary)
 		if e.detail != "" {
 			fmt.Printf("           %s\n", e.detail)
+		}
+	}
+
+	// 证据链分桶：把本任务检查按 deterministic（hook/gate 实跑，不可伪造）vs
+	// agent-claim（agent 自述）汇总。review/评分据此对冲 LLM-judge 看不出"agent
+	// 跳过前置就声明完成"的盲区——deterministic 占比是"完成声明可信度"的硬信号。
+	if len(checks) > 0 {
+		fmt.Printf("\n  证据链: %d 条 — deterministic=%d（hook/gate 实跑） agent-claim=%d（agent 自述）\n",
+			len(ec.Entries), ec.Deterministic, ec.AgentClaim)
+		if ec.Deterministic == 0 && ec.AgentClaim > 0 {
+			fmt.Println("  ⚠ 全部为 agent-claim：本任务「完成」声明无 deterministic 证据支撑（review 应重点核查）")
 		}
 	}
 

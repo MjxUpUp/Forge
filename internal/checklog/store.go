@@ -26,6 +26,11 @@ func Record(root string, entry *Entry) error {
 	defer mu.Unlock()
 
 	entry.RecordedAt = time.Now()
+	// 兜底推断证据来源：调用方未显式标注 Source 时，按 CheckName 给默认值。
+	// 让历史记录点（未改）也自动带上 Source，证据链分桶不留空白。
+	if entry.Source == "" {
+		entry.Source = SourceForCheck(entry.Check)
+	}
 
 	dir := filepath.Dir(filePath(root))
 	if err := os.MkdirAll(dir, 0755); err != nil {
