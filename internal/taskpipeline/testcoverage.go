@@ -138,9 +138,13 @@ func CheckTestCoverage(root string, state *TaskState) (ok bool, missing []string
 }
 
 // taskChangedFiles returns the set of files changed during the task.
-// On a feature branch: commits beyond the base branch (main/master) plus the
-// working tree. On main/master with uncommitted changes: the working-tree diff.
-// Empty on a clean tree with no task-specific commits.
+// Committed changes since the task's HeadCommit (captured at task start) plus
+// the working tree — so covered/total counts only this task's files, aligned
+// with scoring.resolveDiffBase. Without this, tasks sharing one feature branch
+// accumulate prior tasks' commits into main...HEAD (the feat/evidence-chain
+// regression: testing=20 on a fully-tested change). Falls back to main...HEAD
+// only when HeadCommit is absent (legacy states). Empty on a clean tree with
+// no task-specific commits.
 func taskChangedFiles(root string, state *TaskState) []string {
 	var files []string
 	seen := make(map[string]bool)
@@ -156,13 +160,27 @@ func taskChangedFiles(root string, state *TaskState) []string {
 		}
 	}
 
-	// Feature branch: commits beyond base.
-	if state != nil && state.Branch != "" && state.Branch != "main" && state.Branch != "master" {
-		for _, base := range []string{"main", "origin/main", "master", "origin/master"} {
-			out, err := exec.Command("git", "-C", root, "diff", "--name-only", base+"...HEAD").Output()
+	// 1. Committed changes during THIS task. Prefers the task's HeadCommit
+	// (captured at task start) so covered/total counts only this task's files —
+	// aligned with scoring.resolveDiffBase. Without this, tasks sharing one
+	// feature branch accumulate prior tasks' commits into main...HEAD, inflating
+	// the testing dimension and mis-flagging the current task's well-tested files
+	// as missing (the feat/evidence-chain regression: testing=20 on a fully-tested
+	// change). Falls back to main...HEAD only when no HeadCommit is recorded
+	// (legacy states / the pre-start shape the test suite models).
+	if state != nil {
+		if state.HeadCommit != "" {
+			out, err := exec.Command("git", "-C", root, "diff", "--name-only", state.HeadCommit+"..HEAD").Output()
 			if err == nil {
 				add(out)
-				break
+			}
+		} else if state.Branch != "" && state.Branch != "main" && state.Branch != "master" {
+			for _, base := range []string{"main", "origin/main", "master", "origin/master"} {
+				out, err := exec.Command("git", "-C", root, "diff", "--name-only", base+"...HEAD").Output()
+				if err == nil {
+					add(out)
+					break
+				}
 			}
 		}
 	}

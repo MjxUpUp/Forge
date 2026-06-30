@@ -437,3 +437,39 @@ func TestTestCoverageWhitelistsHookEmbedContainer(t *testing.T) {
 		}
 	}
 }
+
+// TestTaskChangedFiles_ScopedToHeadCommit 守卫任务范围 diff：两个任务在同一
+// feature 分支上各 commit，后一个任务的 CheckTestCoverage 只看自己的 commit
+// （HeadCommit..HEAD），不混入前一个任务的改动。
+//
+// 回归场景：feat/evidence-chain 叠在分支前序 commit 之上，旧 taskChangedFiles
+// 用 main...HEAD 累积了分支上全部未合并 commit（26 文件），把当前任务的 testing
+// 维度压到 20。HeadCommit 优先后，评分只看本任务范围。
+func TestTaskChangedFiles_ScopedToHeadCommit(t *testing.T) {
+	dir := t.TempDir()
+	initRepoWithMaster(t, dir)
+
+	// 任务1：commit foo.go（无 test）——前一个任务的改动，不该计入任务2。
+	writeCommitSource(t, dir, map[string]string{
+		"foo.go": "package main\n\nfunc Foo() int { return 1 }\n",
+	}, "task1: add foo")
+	headAfterTask1 := GetHeadCommit(dir)
+
+	// 任务2：commit bar.go + bar_test.go。
+	writeCommitSource(t, dir, map[string]string{
+		"bar.go":      "package main\n\nfunc Bar() int { return 2 }\n",
+		"bar_test.go": "package main\n\nimport \"testing\"\n\nfunc TestBar(t *testing.T) {}\n",
+	}, "task2: add bar")
+
+	// state2.HeadCommit = 任务2 启动时的 HEAD（= 任务1 结束后的 HEAD）。
+	state2 := &TaskState{TaskRef: "task2", Branch: "feat/testcov", HeadCommit: headAfterTask1}
+
+	ok, missing, total := CheckTestCoverage(dir, state2)
+	// 旧实现（main...HEAD）会 total=2 且 missing=[foo.go]：累积了任务1。
+	if total != 1 {
+		t.Fatalf(`task2 scope should contain only bar.go: want total=1, got total=%d missing=%v (HeadCommit..HEAD must not accumulate task1's foo.go)`, total, missing)
+	}
+	if !ok {
+		t.Fatalf(`bar.go has bar_test.go in task2 scope: want ok=true, got missing=%v`, missing)
+	}
+}
