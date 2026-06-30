@@ -27,6 +27,7 @@ func init() {
 	hazardCmd.AddCommand(hazardFingerprintCmd)
 	hazardCmd.AddCommand(hazardConfirmedCmd)
 	hazardCmd.AddCommand(hazardStatusCmd)
+	hazardCmd.AddCommand(hazardLogCmd)
 
 	// --fingerprint：hook 已用 forge hazard fingerprint 算好指纹，agent 直接回传 hex
 	// 登记确认。指纹是 sha256 hex（仅 [0-9a-f]），复制无引号/转义失真风险——而回传
@@ -99,6 +100,16 @@ var hazardStatusCmd = &cobra.Command{
 	RunE:  runHazardStatus,
 }
 
+// hazardLogCmd 由 hazard-guard hook 内部调用，追加事件到 events.jsonl 审计日志。
+// Hidden：非用户面向（hook 用），但保留可手动调用以便调试审计流。
+var hazardLogCmd = &cobra.Command{
+	Use:    "log <type> <命令>",
+	Short:  "追加一条 hazard 事件到审计日志（hook 内部用）",
+	Args:   cobra.MinimumNArgs(1),
+	Hidden: true,
+	RunE:   runHazardLog,
+}
+
 // runHazardConfirm 登记确认。MinimumNArgs(1) + Join：agent 可引号传整串，也可不引号
 // （多 arg 被空格 join 还原）——空白归一在 hazard.Fingerprint 内做，两种传法同指纹。
 func runHazardConfirm(cmd *cobra.Command, args []string) error {
@@ -154,20 +165,48 @@ func runHazardConfirmed(cmd *cobra.Command, args []string) error {
 	return nil // unreachable — 所有路径已 os.Exit
 }
 
+// runHazardLog 由 hazard-guard hook 调用，追加一条事件到 events.jsonl。hook 是 bash，
+// 直接写 jsonl 不安全（命令串引号/特殊字符破坏 JSON），故由 Go 端安全序列化。
+// args[0]=事件类型（block/release/data），args[1:]=命令串（join 还原，与 confirm 同款）。
+// 无项目根时静默跳过——审计不该污染非 forge 项目；失败由 hook 调用处 `|| true` 兜底，
+// 审计失败绝不影响 hook 主流程（block/放行决策）。
+func runHazardLog(cmd *cobra.Command, args []string) error {
+	root, err := findProjectRoot()
+	if err != nil {
+		return nil
+	}
+	eventType := args[0]
+	command := strings.Join(args[1:], " ")
+	return hazard.AppendEvent(root, hazard.Event{
+		Type:        eventType,
+		Fingerprint: hazard.Fingerprint(command),
+		Command:     command,
+	})
+}
+
 func runHazardStatus(cmd *cobra.Command, args []string) error {
 	root, err := findProjectRoot()
 	if err != nil {
 		return err
 	}
+	// 近 24h 事件统计（来自 events.jsonl 审计日志）：让用户看到 hazard-guard 的工作量
+	// 与潜在误伤规模，而非只有"当前有效确认"——补全 2026-06 误伤审计只能扒 checklog 的痛点。
+	since := time.Now().Add(-24 * time.Hour)
+	blocks, _ := hazard.CountSince(root, hazard.EventBlock, since)
+	releases, _ := hazard.CountSince(root, hazard.EventRelease, since)
+	data, _ := hazard.CountSince(root, hazard.EventData, since)
+	fmt.Printf("近 24h 事件：拦截 %d、确认放行 %d、数据上下文放行 %d\n", blocks, releases, data)
+	fmt.Println("  详见 .forge/hazards/events.jsonl")
+
 	active, err := hazard.ActiveConfirmations(root)
 	if err != nil {
 		return err
 	}
 	if len(active) == 0 {
-		fmt.Println("无有效确认。高危命令将被 hazard-guard 拦截，需确认后 forge hazard confirm 登记。")
+		fmt.Println("\n无有效确认。高危命令将被 hazard-guard 拦截，需确认后 forge hazard confirm 登记。")
 		return nil
 	}
-	fmt.Printf("当前有效确认（%d 条，按剩余时间升序）：\n", len(active))
+	fmt.Printf("\n当前有效确认（%d 条，按剩余时间升序）：\n", len(active))
 	now := time.Now()
 	for _, c := range active {
 		remaining := c.ExpiresAt.Sub(now).Round(time.Second)

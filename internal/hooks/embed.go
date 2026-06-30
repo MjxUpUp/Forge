@@ -562,19 +562,72 @@ is_hazardous() {
   return 1
 }
 
+# strip_quotes 剥离命令中引号内内容（含引号本身），用于 context classification：
+# 判断危险串是数据（引号内）还是执行。awk 状态机逐字符跟踪单/双引号开合，引号内字符
+# 丢弃。BSD/GNU awk 均支持；用 \x27 表示单引号（awk 体内避免直接写 '）。不完美但够用：
+# bash -c "rm" 内层引号也会被剥离，由下方 is_exec_wrapped 单独兜底。
+strip_quotes() {
+  printf '%s' "$1" | awk '
+    {
+      sq=0; dq=0; out=""
+      for(i=1;i<=length($0);i++){
+        c=substr($0,i,1)
+        if(c=="\x27"){sq=!sq; continue}
+        if(c=="\""){dq=!dq; continue}
+        if(!sq && !dq) out=out c
+      }
+      print out
+    }'
+}
+
+# is_exec_wrapped 判定命令是否把字符串当代码执行——这类即使危险串在引号内也是真高危，
+# context classification 不能放行。strip_quotes 会剥离引号内代码串，若不兜底会漏放：
+# bash -c "rm -rf" / mysql -e 'DROP TABLE' / python -c "os.remove()" 等。case-glob，BSD
+# 安全（无 grep -E 交替）。"| sh" 后用结束/空格锚定，不误伤 "| sha256sum"。
+# 注意：is_exec_wrapped 只在 is_hazardous(原命令) 命中后才调，故 -c/-e 的宽匹配只影响
+# "已含危险串"的命令，不会误拦正常 python script.py -v 等（那些 is_hazardous 不命中）。
+is_exec_wrapped() {
+  case "$1" in
+    # shell 把字符串当代码执行
+    *bash\ -c*|*sh\ -c*|*\ eval\ *|*"eval "*|*xargs\ sh*|*xargs\ bash*|*xargs\ -I*sh*|*xargs\ -I*bash*) return 0 ;;
+    # SQL 执行型：-e/-c flag 把后续字符串当 SQL 执行
+    *mysql\ *-e*|*mariadb\ *-e*|*psql\ *-c*|*psql\ *-e*) return 0 ;;
+    # 代码执行型：-c/-e/-r flag 把后续字符串当代码执行
+    *python*\ *-c*|*node\ *-e*|*ruby\ *-e*|*perl\ *-e*|*perl\ *-E*|*php\ *-r*|*lua\ *-e*) return 0 ;;
+    # sqlite3 后接引号包裹的 SQL（单/双引号）——直接执行 SQL 的常见形态
+    *sqlite3\ *\'*|*sqlite3\ *\"*) return 0 ;;
+    # pipe 到 shell 执行
+    *"| bash"|*"| bash "*|*"| sh"|*"| sh "*) return 0 ;;
+  esac
+  return 1
+}
+
 if ! is_hazardous "$COMMAND"; then
   echo "PASS"
+  exit 0
+fi
+
+# --- context classification：危险串是数据（引号内）还是执行 ---
+# is_hazardous 命中后，剥离引号再判一次：剥离后不再命中 → 危险串都在引号里（数据），
+# 且命令非执行包裹（bash -c/eval/pipe-shell）→ 放行。根治 grep "rm -rf" /
+# git commit -m "fix rm -rf bug" 类误判（2026-06 类别级；.lark-report 是其单点表现）。
+STRIPPED=$(strip_quotes "$COMMAND")
+if [ "$STRIPPED" != "$COMMAND" ] && ! is_hazardous "$STRIPPED" && ! is_exec_wrapped "$COMMAND"; then
+  forge hazard log data "$COMMAND" >/dev/null 2>&1 || true
+  echo "PASS [hazard-guard] 危险串仅在引号内（数据上下文），放行: $COMMAND"
   exit 0
 fi
 
 # --- 命中高危：查是否已 human-in-the-loop 确认（forge hazard confirm 登记） ---
 FP=$(forge hazard fingerprint "$COMMAND" 2>/dev/null)
 if [ -n "$FP" ] && forge hazard confirmed "$FP" >/dev/null 2>&1; then
+  forge hazard log release "$COMMAND" >/dev/null 2>&1 || true
   echo "PASS [hazard-guard] 已确认放行（5min 窗口内）: $COMMAND"
   exit 0
 fi
 
-# --- 未确认：block + HITL 指引 ---
+# --- 未确认：block + HITL 指引（落盘 block 事件供审计追溯） ---
+forge hazard log block "$COMMAND" >/dev/null 2>&1 || true
 echo "FAIL [hazard-guard] 高危操作已拦截（需 human-in-the-loop 确认）"
 echo "命令: $COMMAND"
 echo "指纹: ${FP:-<unknown>}"

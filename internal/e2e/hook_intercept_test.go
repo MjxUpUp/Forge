@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/hazard"
 )
 
 // forgeHook runs `forge hook <name>` as a subprocess, feeding the given stdin
@@ -328,5 +330,121 @@ func TestHook_HazardGuard_RmFlagWithOtherFlags(t *testing.T) {
 		if !strings.Contains(stdout, `"decision":"block"`) {
 			t.Errorf("expected decision=block for %q, got:\n%s", cmd, stdout)
 		}
+	}
+}
+
+// TestHook_HazardGuard_DataContextNotBlocked: 危险串仅在引号内（数据）不拦——context
+// classification。grep "rm -rf" / git commit -m "fix rm -rf bug" / echo "DROP TABLE" 都
+// 是把危险串当数据传递，不是执行。根治 2026-06 类别级误判（.lark-report 是单点表现）。
+// 第二条 git commit -m 正是会话最初 commit title 含 rm -f 被拦的真实案例。
+func TestHook_HazardGuard_DataContextNotBlocked(t *testing.T) {
+	dir := freshProject(t)
+	cases := []string{
+		`grep "rm -rf" file.go`,
+		`git commit -m "fix: handle rm -rf path bug"`,
+		`echo "DROP TABLE users"`,
+		`printf '%s' "git push --force"`,
+		`echo "rm -rf" | xargs cat`,
+	}
+	for _, cmd := range cases {
+		in := hookStdin(t, "sess-hazard-data", "PreToolUse", "Bash", map[string]any{
+			"command": cmd,
+		})
+		stdout, _, err := forgeHook(t, dir, "hazard-guard", in)
+		if err != nil {
+			t.Fatalf("hazard-guard must pass data-context %q (danger only in quotes), got block. stdout:\n%s", cmd, stdout)
+		}
+	}
+}
+
+// TestHook_HazardGuard_ExecWrappedStillBlocked: 引号内但被 bash -c / sh -c / eval 包裹的是
+// 真执行，context classification 不能放行——strip_quotes 会剥离引号内内容，若无此兜底会
+// 漏检真高危（bash -c "rm -rf" 是 agent 真删数据）。
+func TestHook_HazardGuard_ExecWrappedStillBlocked(t *testing.T) {
+	dir := freshProject(t)
+	cases := []string{
+		`bash -c "rm -rf ./vault"`,
+		`sh -c "rm -rf ./data"`,
+		`eval "git push --force"`,
+		`mysql -e 'DROP TABLE users'`,
+		`python3 -c "import os; os.system('rm -rf ./.git')"`,
+	}
+	for _, cmd := range cases {
+		in := hookStdin(t, "sess-hazard-exec", "PreToolUse", "Bash", map[string]any{
+			"command": cmd,
+		})
+		stdout, _, err := forgeHook(t, dir, "hazard-guard", in)
+		if err == nil {
+			t.Fatalf("hazard-guard must block exec-wrapped %q, got exit 0. stdout:\n%s", cmd, stdout)
+		}
+		if !strings.Contains(stdout, `"decision":"block"`) {
+			t.Errorf("expected decision=block for exec-wrapped %q, got:\n%s", cmd, stdout)
+		}
+	}
+}
+
+// TestHook_HazardGuard_LogsBlockEvent: block 事件落盘 events.jsonl，可结构化追溯——
+// 补全"被拦命令无独立记录"痛点（2026-06 hazards 审计 19 条 FAIL 只能扒 checklog）。
+func TestHook_HazardGuard_LogsBlockEvent(t *testing.T) {
+	dir := freshProject(t)
+	in := hookStdin(t, "sess-hazard-logblk", "PreToolUse", "Bash", map[string]any{
+		"command": "rm -rf ./important-data",
+	})
+	forgeHook(t, dir, "hazard-guard", in) // 触发 block → 落盘 block 事件
+
+	events, err := hazard.LoadEvents(dir)
+	if err != nil {
+		t.Fatalf("LoadEvents: %v", err)
+	}
+	var found bool
+	for _, e := range events {
+		if e.Type == hazard.EventBlock && strings.Contains(e.Command, "important-data") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("block event not logged in events.jsonl. got %d events: %+v", len(events), events)
+	}
+}
+
+// TestHook_HazardGuard_LogsReleaseEvent: 完整 HITL 事件流 block → confirm → release
+// 均落盘。confirm 登记（Confirmation）+ release 放行事件双记录，可追溯"被拦后是否被确认"。
+func TestHook_HazardGuard_LogsReleaseEvent(t *testing.T) {
+	dir := freshProject(t)
+	const cmd = "git push --force origin main"
+	in := hookStdin(t, "sess-hazard-logrel", "PreToolUse", "Bash", map[string]any{
+		"command": cmd,
+	})
+
+	forgeHook(t, dir, "hazard-guard", in) // block → 记 block 事件
+	confirm := exec.Command(forgeBin, "hazard", "confirm", cmd)
+	confirm.Dir = dir
+	if out, err := confirm.CombinedOutput(); err != nil {
+		t.Fatalf("forge hazard confirm: %v\n%s", err, out)
+	}
+	forgeHook(t, dir, "hazard-guard", in) // release → 记 release 事件
+
+	events, err := hazard.LoadEvents(dir)
+	if err != nil {
+		t.Fatalf("LoadEvents: %v", err)
+	}
+	var foundBlock, foundRelease bool
+	for _, e := range events {
+		if !strings.Contains(e.Command, "push --force") {
+			continue
+		}
+		if e.Type == hazard.EventBlock {
+			foundBlock = true
+		}
+		if e.Type == hazard.EventRelease {
+			foundRelease = true
+		}
+	}
+	if !foundBlock {
+		t.Error("block event missing from events.jsonl")
+	}
+	if !foundRelease {
+		t.Error("release event missing from events.jsonl")
 	}
 }

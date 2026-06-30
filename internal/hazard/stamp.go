@@ -155,8 +155,11 @@ func pathOf(root, fp string) string {
 }
 
 func truncate(s string, n int) string {
-	if len(s) <= n {
+	// 按 rune（字符）而非字节切片：中文命令每字 3 字节，字节切片会在字符中间切断产生
+	// 无效 UTF-8，json.Marshal 会替换为 U+FFFD 导致审计日志/Confirmation 乱码。
+	r := []rune(s)
+	if len(r) <= n {
 		return s
 	}
-	return s[:n] + "…"
+	return string(r[:n]) + "…"
 }
