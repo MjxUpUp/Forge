@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -323,5 +324,101 @@ func TestIsAddrInUse(t *testing.T) {
 	}
 	if isAddrInUse(errors.New("permission denied")) {
 		t.Error("非端口占用错误不应识别为占用")
+	}
+}
+
+// TestIsLocalhostHost 钉住 Host 校验：localhost/回环/IPv6/[::1]/空 放行，外域/局域网拒。
+// 这是 DNS rebinding 防线——去端口、去 IPv6 方括号后判等。
+func TestIsLocalhostHost(t *testing.T) {
+	cases := []struct {
+		host string
+		want bool
+	}{
+		{`localhost`, true},
+		{`localhost:8800`, true},
+		{`127.0.0.1`, true},
+		{`127.0.0.1:8800`, true},
+		{`[::1]:8800`, true},
+		{``, true}, // 空 Host 放行（避免误伤不发 Host 的客户端）
+		{`evil.com`, false},
+		{`evil.com:8800`, false},
+		{`192.168.1.1:8800`, false},
+	}
+	for _, c := range cases {
+		if got := isLocalhostHost(c.host); got != c.want {
+			t.Errorf(`isLocalhostHost(%q) = %v, want %v`, c.host, got, c.want)
+		}
+	}
+}
+
+// TestSecureHeaders 经完整 middleware 栈（Host 校验 + 安全头 + mux）请求 /，验证防御头就位。
+func TestSecureHeaders(t *testing.T) {
+	handler := localhostOnly(securityHeaders(newMux(Options{Root: t.TempDir()})))
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + `/`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	for _, c := range []struct{ k, v string }{
+		{`X-Frame-Options`, `DENY`},
+		{`X-Content-Type-Options`, `nosniff`},
+		{`Referrer-Policy`, `no-referrer`},
+	} {
+		if got := resp.Header.Get(c.k); got != c.v {
+			t.Errorf(`header %s = %q, want %q`, c.k, got, c.v)
+		}
+	}
+	// CSP 含 script-src 'none'（看板无 JS）。
+	csp := resp.Header.Get(`Content-Security-Policy`)
+	if !strings.Contains(csp, `script-src 'none'`) {
+		t.Errorf(`CSP 缺 script-src 'none': %q`, csp)
+	}
+}
+
+// TestServe_JSONNoSessionID /api/data.json 必须不含 SessionID——即便 Conclusion 里有，
+// toPublic 投影剥掉它。结论里塞个含 "session" 字样的 SessionID 值，验证 JSON 端点不泄露。
+func TestServe_JSONNoSessionID(t *testing.T) {
+	root := t.TempDir()
+	if err := act.Append(root, &act.Conclusion{
+		TaskRef:   `feat/a`,
+		SessionID: `secret-session-xyz`, // 值本身含 session 字样，泄露则测试红
+		Score:     90, Grade: `A`, Strength: `Strong`, CompletedAt: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	handler := localhostOnly(securityHeaders(newMux(Options{Root: root})))
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + `/api/data.json`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.ToLower(string(body)), `session`) {
+		t.Errorf(`JSON 端点泄露 session: %s`, body)
+	}
+}
+
+// TestServe_Favicon /favicon.ico 返回 204，消除浏览器自动请求的 console 404 噪声。
+func TestServe_Favicon(t *testing.T) {
+	handler := localhostOnly(securityHeaders(newMux(Options{Root: t.TempDir()})))
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + `/favicon.ico`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Errorf(`favicon status = %d, want 204`, resp.StatusCode)
 	}
 }

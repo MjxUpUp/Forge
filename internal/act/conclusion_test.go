@@ -227,6 +227,39 @@ func TestLoadAll_MalformedLineSkipped(t *testing.T) {
 	}
 }
 
+// TestLoadAll_LongLineSkipped 单行远超旧 Scanner 1MB 上限（2MB 垃圾）+ 一行正常：旧
+// bufio.Scanner 会 ErrTooLong 让整条聚合失败；改 bufio.Reader 后超大行被读入、Unmarshal
+// 失败跳过，正常行照常返回——dashboard/health 不再因单行异常变 500。
+func TestLoadAll_LongLineSkipped(t *testing.T) {
+	root := t.TempDir()
+	path := filePath(root)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	garbage := make([]byte, 2*1024*1024)
+	for i := range garbage {
+		garbage[i] = 'x'
+	}
+	garbage = append(garbage, '\n')
+	if err := os.WriteFile(path, garbage, 0644); err != nil {
+		t.Fatal(err)
+	}
+	// 用 Append 追加正常结论（避免手工拼 JSON 双引号），CompletedAt 零值由 Append 补 now。
+	if err := Append(root, &Conclusion{
+		TaskRef: `feat/ok`, Score: 80, Strength: `Strong`, Ratio: 0.75,
+		Deterministic: 3, AgentClaim: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := LoadAll(root)
+	if err != nil {
+		t.Fatalf(`LoadAll 应跳过超大行而非报错，got err: %v`, err)
+	}
+	if len(got) != 1 || got[0].TaskRef != `feat/ok` {
+		t.Errorf(`LoadAll=%+v want 仅 feat/ok（超大行跳过）`, got)
+	}
+}
+
 func TestLoadAll_AbsentFileReturnsNil(t *testing.T) {
 	got, err := LoadAll(t.TempDir())
 	if err != nil {

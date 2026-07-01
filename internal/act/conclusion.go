@@ -10,6 +10,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -112,6 +113,8 @@ func Append(root string, c *Conclusion) error {
 }
 
 // LoadAll reads all conclusions in chronological order. Returns nil if absent.
+// 用 bufio.Reader 逐行读（无 Scanner 的 1MB 单行上限）：单行损坏或异常超大只跳过该行，
+// 不让整条聚合失败——dashboard/status/health 都消费它，单行异常不应让全表变 500。
 func LoadAll(root string) ([]Conclusion, error) {
 	f, err := os.Open(filePath(root))
 	if err != nil {
@@ -123,20 +126,28 @@ func LoadAll(root string) ([]Conclusion, error) {
 	defer f.Close()
 
 	var cs []Conclusion
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	for scanner.Scan() {
-		var c Conclusion
-		if err := json.Unmarshal(scanner.Bytes(), &c); err != nil {
-			continue // skip malformed lines
+	reader := bufio.NewReader(f)
+	for {
+		line, readErr := reader.ReadString('\n')
+		if line != "" {
+			var c Conclusion
+			// json 容忍行尾换行（trailing whitespace），无需 trim；损坏/超大行 Unmarshal 失败则跳过。
+			if json.Unmarshal([]byte(line), &c) == nil {
+				cs = append(cs, c)
+			}
 		}
-		cs = append(cs, c)
+		if readErr != nil {
+			if readErr != io.EOF {
+				return nil, readErr
+			}
+			break
+		}
 	}
 	// 按完成时间稳定排序（append 顺序通常已时序，但显式排序防并发/手动编辑乱序）
 	sort.SliceStable(cs, func(i, j int) bool {
 		return cs[i].CompletedAt.Before(cs[j].CompletedAt)
 	})
-	return cs, scanner.Err()
+	return cs, nil
 }
 
 // Latest returns the most recent conclusion, or nil if none.

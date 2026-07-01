@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -223,6 +224,90 @@ func RenderPage(w io.Writer, d Data) error {
 	return pageTmpl.ExecuteTemplate(w, `page`, d)
 }
 
+// taskPublic 是结论的对外投影：剥掉 SessionID。HTML 看板用不到会话 ID，JSON 端点虽
+// 只绑 localhost，也不把它序列化出去——纵深防御（配合 Host 校验防 DNS rebinding 读取）。
+type taskPublic struct {
+	TaskRef            string
+	Score              float64
+	Grade              string
+	Strength           string
+	Deterministic      int
+	AgentClaim         int
+	CompletedAt        time.Time
+	RetrospectiveNudge bool
+}
+
+// publicData 是 /api/data.json 载荷：与 Data 同形但 Tasks 投影成 taskPublic（无 SessionID）。
+type publicData struct {
+	Summary    health.Summary
+	Tasks      []taskPublic
+	ActiveTask string
+	Now        time.Time
+}
+
+// toPublic 投影 Data → 不含 SessionID 的 JSON 载荷。
+func toPublic(d Data) publicData {
+	tasks := make([]taskPublic, len(d.Tasks))
+	for i, t := range d.Tasks {
+		tasks[i] = taskPublic{
+			TaskRef: t.TaskRef, Score: t.Score, Grade: t.Grade, Strength: t.Strength,
+			Deterministic: t.Deterministic, AgentClaim: t.AgentClaim,
+			CompletedAt: t.CompletedAt, RetrospectiveNudge: t.RetrospectiveNudge,
+		}
+	}
+	return publicData{Summary: d.Summary, Tasks: tasks, ActiveTask: d.ActiveTask, Now: d.Now}
+}
+
+// setSecureHeaders 加基础安全头。看板是 localhost 只读页，纵深防御：X-Frame-Options
+// 防点击劫持、nosniff 防 MIME 嗅探、CSP 限源（内联 style 是模板所需、无 JS 故
+// script-src none）、Referrer-Policy 不泄露本机路径到外链。
+func setSecureHeaders(w http.ResponseWriter) {
+	h := w.Header()
+	h.Set(`X-Frame-Options`, `DENY`)
+	h.Set(`X-Content-Type-Options`, `nosniff`)
+	h.Set(`Referrer-Policy`, `no-referrer`)
+	h.Set(`Content-Security-Policy`, `default-src 'self'; style-src 'unsafe-inline'; img-src 'self' data:; script-src 'none'`)
+}
+
+// securityHeaders 包成 middleware，统一覆盖所有路由（含 favicon）。
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		setSecureHeaders(w)
+		next.ServeHTTP(w, r)
+	})
+}
+
+// isLocalhostHost 判 Host 头是否本机（去端口、去 IPv6 方括号）。防 DNS rebinding：
+// 攻击者用 evil.com 解析到 127.0.0.1，浏览器带 Host: evil.com 读本地看板——非 localhost 拒。
+// 空 Host（少数客户端不发）放行，避免误伤合法请求。
+func isLocalhostHost(host string) bool {
+	h := host
+	if idx := strings.LastIndex(h, `:`); idx != -1 {
+		h = h[:idx]
+	}
+	h = strings.Trim(h, `[]`)
+	if len(h) == 0 {
+		return true
+	}
+	switch h {
+	case `localhost`, `127.0.0.1`, `::1`:
+		return true
+	}
+	return false
+}
+
+// localhostOnly 是 DNS rebinding 第二道防线（第一道是 net.Listen 只绑 localhost，但浏览器
+// 经 rebinding 仍可达）。非本机 Host 返回 403。
+func localhostOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !isLocalhostHost(r.Host) {
+			http.Error(w, `forbidden`, http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // newMux 构建看板路由。抽出便于 httptest 直接挂载（Serve 负责 listen+开浏览器）。
 func newMux(opts Options) *http.ServeMux {
 	mux := http.NewServeMux()
@@ -233,7 +318,9 @@ func newMux(opts Options) *http.ServeMux {
 		}
 		data, err := Aggregate(opts.Root, time.Now())
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			// 完整 err 记日志（本地 stderr，含路径便于排查），响应给中性文案——不向浏览器泄露 .forge 路径。
+			log.Printf(`dashboard aggregate %s: %v`, opts.Root, err)
+			http.Error(w, `聚合质量数据失败，请检查 .forge 数据完整性`, http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set(`Content-Type`, `text/html; charset=utf-8`)
@@ -242,11 +329,16 @@ func newMux(opts Options) *http.ServeMux {
 	mux.HandleFunc(`/api/data.json`, func(w http.ResponseWriter, r *http.Request) {
 		data, err := Aggregate(opts.Root, time.Now())
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			log.Printf(`dashboard aggregate %s: %v`, opts.Root, err)
+			http.Error(w, `聚合质量数据失败`, http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set(`Content-Type`, `application/json`)
-		_ = json.NewEncoder(w).Encode(data)
+		_ = json.NewEncoder(w).Encode(toPublic(data))
+	})
+	// favicon：浏览器自动请求，给 204 避免 console 404 噪声（看板无需图标资源）。
+	mux.HandleFunc(`/favicon.ico`, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
 	})
 	return mux
 }
@@ -275,7 +367,8 @@ func Serve(ctx context.Context, opts Options) error {
 	}
 	fmt.Fprintf(os.Stderr, "本地只读看板已启动，Ctrl+C 退出。\n")
 
-	srv := &http.Server{Handler: newMux(opts)}
+	// 安全头 + Host 校验包整条 mux：所有响应统一带防御头，非本机 Host 拒（防 DNS rebinding）。
+	srv := &http.Server{Handler: localhostOnly(securityHeaders(newMux(opts)))}
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.Serve(ln) }()
 
