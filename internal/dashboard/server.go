@@ -14,6 +14,7 @@ package dashboard
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -25,6 +26,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/act"
@@ -135,7 +137,15 @@ func scoreLine(cs []act.Conclusion, w, h, pad float64) []Point {
 		} else {
 			x = pad + float64(i)/float64(n-1)*innerW
 		}
-		y := pad + (1-c.Score/100)*innerH
+		// Score 约定 0-100，但 scoring 的 overall 不 clamp（维度加权和），且 jsonl 可能
+		// 手动编辑——防御性夹到 [0,100]，否则越界分数让折线点溢出 viewBox 被裁（不可见）。
+		s := c.Score
+		if s < 0 {
+			s = 0
+		} else if s > 100 {
+			s = 100
+		}
+		y := pad + (1-s/100)*innerH
 		pts = append(pts, Point{X: x, Y: y})
 	}
 	return pts
@@ -247,6 +257,10 @@ func Serve(ctx context.Context, opts Options) error {
 	addr := fmt.Sprintf(`localhost:%d`, opts.Port)
 	ln, err := net.Listen(`tcp`, addr)
 	if err != nil {
+		// 端口占用给可操作提示，而非裸 OS 文案——用户画像重视"什么都不懂的用户能用"。
+		if isAddrInUse(err) {
+			return fmt.Errorf(`端口 %d 已被占用——省略 --port 用系统临时端口，或 --port 指定一个空闲端口`, opts.Port)
+		}
 		return fmt.Errorf(`监听 %s 失败: %w`, addr, err)
 	}
 	url := `http://` + ln.Addr().String() + `/`
@@ -283,6 +297,17 @@ func Serve(ctx context.Context, opts Options) error {
 		}
 		return err
 	}
+}
+
+// isAddrInUse 跨平台判别端口占用。errors.Is(syscall.EADDRINUSE) 在 POSIX 上可靠，
+// 但 Windows 的 net.Listen 不返回该 errno（bind 失败消息为 "Only one usage of each
+// socket address..."），故辅以字符串兜底——该消息格式是 Go net 包的稳定契约。
+func isAddrInUse(err error) bool {
+	if errors.Is(err, syscall.EADDRINUSE) {
+		return true
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "address already in use") || strings.Contains(msg, "Only one usage of each socket address")
 }
 
 // openBrowser 跨平台打开默认浏览器。url 含 query 时 Windows 的 start 需要 title 占位

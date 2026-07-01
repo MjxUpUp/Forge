@@ -3,6 +3,7 @@ package dashboard
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -71,6 +72,20 @@ func TestLowDimBars(t *testing.T) {
 	}
 	if lowDimBars(nil) != nil {
 		t.Errorf("lowDimBars(nil) should return nil")
+	}
+}
+
+// TestScoreLine_Clamp 越界分数必须夹到 [0,100]，否则折线点溢出 viewBox 被裁。
+func TestScoreLine_Clamp(t *testing.T) {
+	pts := scoreLine([]act.Conclusion{
+		{Score: 150, CompletedAt: time.Unix(1000, 0)},
+		{Score: -20, CompletedAt: time.Unix(2000, 0)},
+	}, 600, 200, 20)
+	if pts[0].Y != 20 { // 150 clamp→100→顶
+		t.Errorf("score 150 clamp 后 Y = %v, want 20", pts[0].Y)
+	}
+	if pts[1].Y != 180 { // -20 clamp→0→底
+		t.Errorf("score -20 clamp 后 Y = %v, want 180", pts[1].Y)
 	}
 }
 
@@ -143,11 +158,41 @@ func TestAggregate_Empty(t *testing.T) {
 	}
 }
 
-// TestRenderPage 渲染输出含关键标记（标题、有数据时的折线、最近任务行）。
+// TestRenderPage 渲染输出含关键标记（标题、≥2 样本时的折线、最近任务行）。
+// 用 2 条结论让 ScoreLine 长度 ≥2，polyline 才会 emit——单点不画线（见 SingleSample）。
 func TestRenderPage(t *testing.T) {
 	root := t.TempDir()
+	base := time.Now()
+	for _, c := range []act.Conclusion{
+		{TaskRef: "feat/a", Score: 80, Grade: "B", Strength: "Strong", CompletedAt: base},
+		{TaskRef: "feat/b", Score: 70, Grade: "C", Strength: "Weak", CompletedAt: base.Add(time.Hour)},
+	} {
+		if err := act.Append(root, &c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	d, err := Aggregate(root, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf strings.Builder
+	if err := RenderPage(&buf, d); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	for _, want := range []string{"Forge 质量看板", "<polyline", "feat/a", "feat/b", "证据盲区率"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("render output missing %q", want)
+		}
+	}
+}
+
+// TestRenderPage_SingleSample 仅 1 个任务时不画 polyline（SVG 需 ≥2 点才可见），
+// 改为显示"仅 1 个样本"提示——防新用户看到孤立圆点以为渲染坏了。
+func TestRenderPage_SingleSample(t *testing.T) {
+	root := t.TempDir()
 	if err := act.Append(root, &act.Conclusion{
-		TaskRef: "feat/a", Score: 80, Grade: "B", Strength: "Strong", CompletedAt: time.Now(),
+		TaskRef: "feat/solo", Score: 80, Grade: "B", Strength: "Strong", CompletedAt: time.Now(),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -160,10 +205,11 @@ func TestRenderPage(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := buf.String()
-	for _, want := range []string{"Forge 质量看板", "<polyline", "feat/a", "证据盲区率"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("render output missing %q", want)
-		}
+	if strings.Contains(out, "<polyline") {
+		t.Errorf("单样本不应 emit polyline（不可见）")
+	}
+	if !strings.Contains(out, "仅 1 个样本") {
+		t.Errorf("单样本应显示提示文本")
 	}
 }
 
@@ -263,5 +309,19 @@ func TestServe_GracefulShutdown(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("Serve 在 ctx 取消后 3s 未返回——Shutdown→errCh 路径永久阻塞")
+	}
+}
+
+// TestIsAddrInUse 跨平台端口占用判别：POSIX 与 Windows 消息都识别，非占用错误不误判。
+// Windows 上 errors.Is(syscall.EADDRINUSE) 不成立（E2E 实测），靠字符串兜底。
+func TestIsAddrInUse(t *testing.T) {
+	if !isAddrInUse(errors.New("listen tcp 127.0.0.1:8799: bind: address already in use")) {
+		t.Error("POSIX address-already-in-use 未识别")
+	}
+	if !isAddrInUse(errors.New("listen tcp 127.0.0.1:8799: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted.")) {
+		t.Error("Windows 端口占用消息未识别")
+	}
+	if isAddrInUse(errors.New("permission denied")) {
+		t.Error("非端口占用错误不应识别为占用")
 	}
 }

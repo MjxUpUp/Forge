@@ -38,7 +38,9 @@ func runDashboard(cmd *cobra.Command, args []string) error {
 	port, _ := cmd.Flags().GetInt(`port`)
 	noOpen, _ := cmd.Flags().GetBool(`no-open`)
 
-	// 捕获 Ctrl+C / SIGTERM 优雅关闭服务（dashboard.Serve 阻塞直到 ctx 取消）。
+	// 捕获中断信号优雅关闭服务（dashboard.Serve 阻塞直到 ctx 取消）：
+	// os.Interrupt = Ctrl+C（全平台）；syscall.SIGTERM 仅 POSIX 平台生效，Windows 不传
+	// 递 SIGTERM（任务管理器结束走别的路径）——注册它对 Linux/mac 有用，Windows 无害。
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

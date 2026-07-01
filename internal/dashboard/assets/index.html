@@ -89,7 +89,7 @@
     <line class="axis" x1="20" y1="20" x2="20" y2="180"/>
     <line class="axis" x1="20" y1="180" x2="580" y2="180"/>
     {{if .Charts.ScoreLine}}
-    <polyline class="score-line" points="{{range .Charts.ScoreLine}}{{printf "%.1f,%.1f " .X .Y}}{{end}}"/>
+    {{if gt (len .Charts.ScoreLine) 1}}<polyline class="score-line" points="{{range .Charts.ScoreLine}}{{printf "%.1f,%.1f " .X .Y}}{{end}}"/>{{else}}<text x="300" y="100" text-anchor="middle" fill="#8a96a8">仅 1 个样本</text>{{end}}
     {{range .Charts.ScoreLine}}<circle cx="{{printf "%.1f" .X}}" cy="{{printf "%.1f" .Y}}" r="3"></circle>{{end}}
     {{else}}<text x="300" y="100" text-anchor="middle" fill="#8a96a8">样本不足</text>{{end}}
   </svg>
