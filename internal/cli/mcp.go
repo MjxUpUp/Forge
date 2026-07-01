@@ -9,13 +9,14 @@ import (
 
 // forge mcp —— MCP server，把 Forge 的质量治理能力暴露为 agent 可编程接口。
 // loop engineering 的「让 agent 结构化调用验证+状态+学习」层，替代 parse CLI 文本。
-func init() {
-	mcpCmd := &cobra.Command{
-		Use:   "mcp",
-		Short: "MCP server（agent 可编程接口）",
-		Long: `forge mcp 把 Forge 的质量治理能力暴露为 MCP 工具，供 Claude Code / Codex / Copilot
+var mcpCmd = &cobra.Command{
+	Use:   "mcp",
+	Short: "MCP server（agent 可编程接口）",
+	Long: `forge mcp 把 Forge 的质量治理能力暴露为 MCP 工具，供 Claude Code / Codex / Copilot
 等 agent 在 loop 里结构化调用——验证、状态、经验学习的 agent 可编程接口层。`,
-	}
+}
+
+func init() {
 	serveCmd := &cobra.Command{
 		Use:   "serve",
 		Short: "在 stdio 上运行 Forge MCP server",
