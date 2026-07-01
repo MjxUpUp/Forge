@@ -94,6 +94,24 @@ func TestBuildEvidenceChain_ScopeDriftExcluded(t *testing.T) {
 	}
 }
 
+// TestBuildEvidenceChain_CheatScanExcluded 钉住 CheckCheatScan 同样不计入证据强度：
+// 机械检测的疑似作弊模式是 advisory 观测，命中是负信号——当正向证据会虚高 Strength
+// 且错向。条目仍保留在 Entries 供 trace。
+func TestBuildEvidenceChain_CheatScanExcluded(t *testing.T) {
+	entries := []Entry{
+		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckCheatScan, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckCheatScan, Source: EvidenceDeterministic, TaskRef: "t"},
+	}
+	ec := BuildEvidenceChain(entries, "t")
+	if ec.Deterministic != 1 {
+		t.Fatalf(`CheckCheatScan 不应计入 deterministic: got %d, want 1`, ec.Deterministic)
+	}
+	if len(ec.Entries) != 3 {
+		t.Fatalf(`cheat-scan 条目仍应保留在 Entries 供 trace: got %d, want 3`, len(ec.Entries))
+	}
+}
+
 // TestForTask_LoadsAndBuckets 端到端：Record 写入 → ForTask 加载聚合。
 func TestForTask_LoadsAndBuckets(t *testing.T) {
 	dir := t.TempDir()

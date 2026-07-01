@@ -19,6 +19,13 @@ const (
 	// 但永远 Checked=true 且绝不阻断工具调用（advisory）。变更影响分析召回率仅 ~44%，
 	// scope 是 prediction 非 contract，偏差是常态信号；本记录供 review/看板度量，不作门禁。
 	CheckScopeDrift CheckName = "scope-drift"
+	// CheckCheatScan 记录 advisory AI 作弊模式扫描结果：task-verify 时机械检测 4 类
+	// （type-suppression/error-swallow/dead-branch/comment-only-fix）的新增行命中。
+	// deterministic（gate 实算 ScanCheatPatterns，agent 无法伪造）。Passed 语义：无命中
+	// =true，有命中=false——但永远 Checked=true 且绝不阻断（advisory；启发式有假阳性
+	// 可能，留痕供 review 核查）。本记录把"机械可检的作弊"从 LLM-review 每轮重采样
+	// 抽到一次性 deterministic 判决——对冲"每轮 review 冒新问题"的根因。
+	CheckCheatScan CheckName = "cheat-scan"
 	// CheckEscapeHatch records use of a gate-bypass escape hatch
 	// (FORGE_TEST_COVERAGE / FORGE_WORK_ACTIVITY / FORGE_SKIP_VERIFY). These
 	// hatches are legitimate tools, but their use must be AUDITED, not silent —

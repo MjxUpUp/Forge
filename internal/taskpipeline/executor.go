@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -204,6 +205,33 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 				for _, f := range drift {
 					fmt.Fprintf(os.Stderr, "  ⚠ %s\n", f)
 				}
+			}
+		}
+
+		// cheat-scan (advisory)：机械检测 4 类 AI 作弊模式（type-suppression /
+		// error-swallow / dead-branch / comment-only-fix）。这些模式此前全靠 LLM
+		// 子 agent 在 code-review 时判断——LLM 每轮对同一 diff 重新采样抓不同子集，
+		// 是"每轮 review 冒新问题"的体感来源。本扫描把它们抽到 deterministic：扫
+		// 任务新增行（+ 行），命中记 checklog:cheat-scan。纯 advisory（启发式有假阳性
+		// 可能——comment-only 尤甚）绝不阻塞，留痕供 review 核查。CheckCheatScan 在
+		// BuildEvidenceChain 中被排除——它是观测非"验证证据"，计入会虚高 Strength。
+		// LLM-reviewer 据此退到只做语义判断（设计/架构/mock 是否幻觉）。
+		cheats := ScanCheatPatterns(root, state)
+		checklog.Record(root, &checklog.Entry{
+			Check:   checklog.CheckCheatScan,
+			Passed:  len(cheats) == 0,
+			Checked: true,
+			TaskRef: state.TaskRef,
+			Detail:  cheatScanDetail(cheats),
+		})
+		if len(cheats) > 0 {
+			fmt.Fprintf(os.Stderr, "[task-verify] Advisory: cheat-scan 命中 %d 处疑似 AI 作弊模式（advisory 不阻塞；机械检测供 review 核查）\n", len(cheats))
+			for _, c := range cheats {
+				loc := c.File
+				if c.Line > 0 {
+					loc = c.File + ":" + strconv.Itoa(c.Line)
+				}
+				fmt.Fprintf(os.Stderr, "  ⚠ [%s|%s] %s — %s\n", c.Severity, c.Pattern, loc, c.Snippet)
 			}
 		}
 

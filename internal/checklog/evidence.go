@@ -92,7 +92,9 @@ func BuildEvidenceChain(entries []Entry, taskRef string) EvidenceChain {
 		// surface. The entry still lands in Entries (forge trace shows it); only the
 		// bucket counts skip it. Drift is also typically a NEGATIVE signal — treating
 		// it as positive evidence would be doubly wrong.
-		if e.Check == CheckScopeDrift {
+		// cheat-scan is the same kind of advisory observation (mechanically-suspected
+		// AI-cheat patterns) — a hit is a negative signal, not verification evidence.
+		if e.Check == CheckScopeDrift || e.Check == CheckCheatScan {
 			continue
 		}
 		src := e.Source
