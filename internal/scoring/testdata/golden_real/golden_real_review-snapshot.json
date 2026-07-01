@@ -1,0 +1,41 @@
+{
+  "name": "review-snapshot",
+  "rationale": "真实 dogfood 任务 feat/review-snapshot（commit 8e00456，Score 89B）的评分形状：3/3 门禁、2/3 源码覆盖+167 断言、166 行改动、61 分钟。钉真实组合不漂移——改 scoreScope/scoreTesting 等若让此真实任务评分漂移即 CI 挂。",
+  "input": {
+    "GateHistory": {
+      "TotalGates": 3,
+      "Passed": 3,
+      "Retries": 0
+    },
+    "StartedAt": "2026-07-01T19:41:41+08:00",
+    "CompletedAt": "2026-07-01T20:42:41+08:00",
+    "GitDiffStat": "100\t66\tinternal/review/stamp.go",
+    "TestCoveragePassed": true,
+    "TestCoverageChecked": true,
+    "TestCoverageCovered": 2,
+    "TestCoverageTotal": 3,
+    "TestAssertionCount": 167,
+    "TestFileCount": 2,
+    "CompilePassed": true,
+    "AssertionPassed": true,
+    "CompileChecked": true,
+    "AssertionChecked": true,
+    "EvidenceDeterministic": 78,
+    "EvidenceAgentClaim": 2
+  },
+  "expected": {
+    "overall": 89.25,
+    "grade": "B",
+    "dimensions": {
+      "assertions": 100,
+      "code-quality": 100,
+      "efficiency": 40,
+      "process": 100,
+      "scope": 80,
+      "testing": 77
+    }
+  },
+  "meta": {
+    "source": "hand-curated"
+  }
+}

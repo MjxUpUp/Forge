@@ -43,7 +43,11 @@ func runVerify(cmd *cobra.Command, args []string) error {
 	regression, _ := cmd.Flags().GetBool("regression")
 	scenario, _ := cmd.Flags().GetString("scenario")
 	runTests, _ := cmd.Flags().GetBool("run-tests")
+	collectGolden, _ := cmd.Flags().GetString(`collect-golden`)
 
+	if len(collectGolden) > 0 {
+		return runCollectGoldenMode(collectGolden)
+	}
 	if runTests {
 		return runProjectTestsMode()
 	}

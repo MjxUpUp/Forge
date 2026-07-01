@@ -22,9 +22,27 @@ type GoldenCase struct {
 	// Rationale documents why this case exists and which dimension/score
 	// path it pins, so a future maintainer changing scoring knows whether the
 	// expected value must move with the change.
-	Rationale string        `json:"rationale"`
-	Input    EvaluateInput  `json:"input"`
-	Expected ExpectedScore  `json:"expected"`
+	Rationale string       `json:"rationale"`
+	Input    EvaluateInput `json:"input"`
+	Expected ExpectedScore `json:"expected"`
+	// Meta 记录采集来源与已知漂移维度。omitempty → 老 canonical fixture 无 Meta，向后兼容。
+	Meta GoldenMeta `json:"meta,omitempty"`
+}
+
+// GoldenMeta 记录 fixture 的采集来源与已知漂移维度，供 golden test 区分对待。
+//
+// 业界弱先例：insta 的 .snap front-matter（source=断言位置）、EleutherAI 的
+// metadata.version（版本门控）。主流是"消除漂移源"（mock 时钟/normalizer/redaction），
+// 但我们的场景 git HEAD 天然漂移（任务完成后必然推进），用 drift_known 显式标注比靠
+// mock 消除更务实——采集的是已固化快照，漂移在采集那刻已发生，无法事后 mock 掉。
+type GoldenMeta struct {
+	// Source：hand-curated（人工反推精确基线，全维度可信）/ auto-collected
+	//（forge verify --collect-golden 从 TaskState 采集，可能含漂移）。
+	Source string `json:"source,omitempty"`
+	// DriftKnown 列出已知因采集时刻状态漂移而不可靠的维度名（当前仅 scope——GitDiffStat
+	// 含事后 HEAD 推进的改动）。golden test 对这些维度 advisory 不 fail：固化后稳定，但
+	// 数值不反映任务真实 diff。留作回归基线仍有价值——scope 之外的维度照常断言。
+	DriftKnown []string `json:"drift_known,omitempty"`
 }
 
 // ExpectedScore is the subset of ScoreResult that golden cases pin. We pin
