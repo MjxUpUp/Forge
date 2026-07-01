@@ -175,12 +175,30 @@ func recentRows(rows []TaskRow) []TaskRow {
 
 // projectName 取项目名（末两段 "父目录/末段"），用于全局视图的任务归属列。
 // 仅取末段会在同名项目（~/work/app 与 ~/personal/app）撞名无法区分；末两段消除绝大多数碰撞。
+// 盘根项目例外：E:\Forge 的父目录 E:\ 是盘根，filepath.Base(E:\) 返 "\"（非 ""/非 "."），
+// 旧判据漏判拼出 "\/Forge"；盘根无有意义的父段，回退只取末段 "Forge"。
 func projectName(root string) string {
-	parent := filepath.Base(filepath.Dir(root))
+	dir := filepath.Dir(root)
+	if isVolumeRoot(dir) {
+		return filepath.Base(root) // 盘根项目无父段，回退末段
+	}
+	parent := filepath.Base(dir)
 	if parent == `` || parent == `.` {
 		return filepath.Base(root) // 根/单层目录无父可拼，回退末段
 	}
 	return parent + `/` + filepath.Base(root)
+}
+
+// isVolumeRoot 判 dir 是否盘根（无有意义的父段，projectName 应回退末段）。
+// Windows 盘根形如 "E:\"（VolumeName + 分隔符），filepath.Base 对它返 "\"；POSIX 根 "/"。
+func isVolumeRoot(dir string) bool {
+	if vol := filepath.VolumeName(dir); vol != `` {
+		rest := strings.TrimPrefix(dir, vol)
+		rest = strings.TrimPrefix(rest, `\`)
+		rest = strings.TrimPrefix(rest, `/`)
+		return rest == ``
+	}
+	return dir == `/` || dir == `\`
 }
 
 // readActiveTask 读 .forge/active-task-ref，缺失/出错返回空串（非致命）。

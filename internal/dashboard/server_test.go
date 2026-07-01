@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +16,33 @@ import (
 	"github.com/MjxUpUp/Forge/internal/act"
 	"github.com/MjxUpUp/Forge/internal/health"
 )
+
+// TestProjectName_VolumeRoot 盘根项目（如 E:\Forge）的父目录是盘根 E:\，filepath.Base(E:\)
+// 在 Windows 返回单反斜杠（非空、非 .），旧 projectName 漏判会拼出 \/Forge。盘根本身无有意义的
+// 父段，应回退只取末段 Forge。卷名语义仅 Windows 有（VolumeName 在 POSIX 返空），非 Windows 跳过。
+func TestProjectName_VolumeRoot(t *testing.T) {
+	if runtime.GOOS != `windows` {
+		t.Skip(`盘根卷名语义仅 Windows 有`)
+	}
+	if got := projectName(`E:\Forge`); got != `Forge` {
+		t.Fatalf(`盘根项目 E:\Forge 应回退末段 Forge，got %q（旧逻辑拼 \/Forge）`, got)
+	}
+	// 盘内非盘根路径仍拼末两段——确认不是凡带盘符都回退的过宽修复。
+	if got := projectName(`D:\code\app`); got != `code/app` {
+		t.Fatalf(`D:\code\app 应拼末两段 code/app，got %q`, got)
+	}
+}
+
+// TestProjectName_NonVolumeRoot 非盘根路径仍拼末两段——防 isVolumeRoot 误判普通多级路径。
+func TestProjectName_NonVolumeRoot(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, `myapp`)
+	got := projectName(root)
+	want := filepath.Base(parent) + `/` + `myapp`
+	if got != want {
+		t.Fatalf(`非盘根 %q 应拼末两段 %q，got %q`, root, want, got)
+	}
+}
 
 // TestScoreLine 钉住折线几何：score 100→顶、0→底，双点均匀占满内宽。
 func TestScoreLine(t *testing.T) {
