@@ -85,6 +85,16 @@ func (ec EvidenceChain) Strength() EvidenceStrength {
 func BuildEvidenceChain(entries []Entry, taskRef string) EvidenceChain {
 	ec := EvidenceChain{TaskRef: taskRef, Entries: entries}
 	for _, e := range entries {
+		// Advisory/meta checks record OBSERVATIONS, not verification outcomes — they
+		// must NOT count toward evidence strength. scope-drift is an advisory signal
+		// (agent changed unplanned source); counting it as "deterministic verification"
+		// would inflate Strength and mask the very blind-spot EvidenceChain exists to
+		// surface. The entry still lands in Entries (forge trace shows it); only the
+		// bucket counts skip it. Drift is also typically a NEGATIVE signal — treating
+		// it as positive evidence would be doubly wrong.
+		if e.Check == CheckScopeDrift {
+			continue
+		}
 		src := e.Source
 		if src == "" {
 			src = SourceForCheck(e.Check)

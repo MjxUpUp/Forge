@@ -13,6 +13,12 @@ const (
 	CheckTaskGuard    CheckName = "task-guard"
 	CheckBashGuard    CheckName = "bash-guard"
 	CheckFileSentinel CheckName = "file-sentinel"
+	// CheckScopeDrift 记录 advisory scope 偏差：agent 改了未在 PlanScope 声明的源码文件。
+	// 对应 Terraform drift detection（声明态 vs 实际态的差集）。deterministic（hook 实算
+	// MatchesScope/ScopeDrift，agent 无法伪造）。Passed 语义：无偏差=true，有偏差=false——
+	// 但永远 Checked=true 且绝不阻断工具调用（advisory）。变更影响分析召回率仅 ~44%，
+	// scope 是 prediction 非 contract，偏差是常态信号；本记录供 review/看板度量，不作门禁。
+	CheckScopeDrift CheckName = "scope-drift"
 	// CheckEscapeHatch records use of a gate-bypass escape hatch
 	// (FORGE_TEST_COVERAGE / FORGE_WORK_ACTIVITY / FORGE_SKIP_VERIFY). These
 	// hatches are legitimate tools, but their use must be AUDITED, not silent —

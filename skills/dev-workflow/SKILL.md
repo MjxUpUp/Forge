@@ -128,6 +128,8 @@ Expected: PASS
 
 **forge 项目把验收标准变成不可伪造的实跑证据**：`forge task start` 时用 `--accept "Run :: Expected"`（可重复）把每条验收标准持久化进任务，`forge task verify-acceptance` 实跑每条 Run、比对 Expected、回填结果并记 `checklog:acceptance`（deterministic——forge 自己跑看结果，不可伪造）。本格式直接对应 `--accept` 的 `Run :: Expected` 串：上方例子 → `--accept "cargo test --test integration :: PASS"`。把 plan 里的验收标准从"文本里飘着"变成"实跑留痕的 spec-as-gate"，对冲 agent 自述"满足验收"却没真跑的盲区。
 
+**forge 项目把"规划前置"变成可度量契约**：`forge task start` 时用 `--scope <glob>`（可重复，或中途 `forge task scope add <glob>`）把 plan 里"要改哪些文件"持久化进任务的 PlanScope 白名单。`task-verify` 比对实改源码与声明的差集，偏离时记一条 `checklog:scope-drift`（deterministic）并提醒。**advisory 不阻塞**——变更影响分析召回率仅 ~44%，scope 是 prediction 非 contract，偏差是常态信号；它的价值是让"我打算改 A/B/C"从口号变成可回溯的契约，实改了 D/E 时留痕供 review（而非拦死）。Plan 里的文件清单直接对应 `--scope` 的 glob：上方"改 internal/auth/login.rs 和 session.rs" → `--scope "internal/auth/login.rs" --scope "internal/auth/session.rs"`（或目录前缀 `--scope "internal/auth/"`）。
+
 **⛔ No Placeholders 禁令表**：
 以下模式 **出现即不合格**，计划被打回重写：
 - "TBD" / "TODO" / "implement later" / "稍后补"

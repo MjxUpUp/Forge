@@ -72,6 +72,28 @@ func TestBuildEvidenceChain_BucketsAndLegacyFallback(t *testing.T) {
 	}
 }
 
+// TestBuildEvidenceChain_ScopeDriftExcluded 钉住 CheckScopeDrift 不计入证据强度：
+// 它是 advisory 观测（agent 改了计划外的源码），非"验证证据"。计入会虚高 Strength——
+// drift 还常是负信号，当正向证据更是错上加错。条目仍保留在 Entries 供 forge trace 展示，
+// 只是分桶计数跳过。无此守卫，scope-drift 上线后会让有 drift 的任务反而看起来证据更足。
+func TestBuildEvidenceChain_ScopeDriftExcluded(t *testing.T) {
+	entries := []Entry{
+		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckScopeDrift, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckScopeDrift, Source: EvidenceDeterministic, TaskRef: "t"}, // 多条 drift 也不计入
+	}
+	ec := BuildEvidenceChain(entries, "t")
+	if ec.Deterministic != 1 {
+		t.Fatalf(`CheckScopeDrift 不应计入 deterministic: got %d, want 1（仅 auto-compile）`, ec.Deterministic)
+	}
+	if ec.AgentClaim != 0 {
+		t.Fatalf(`agent-claim 应为 0, got %d`, ec.AgentClaim)
+	}
+	if len(ec.Entries) != 3 {
+		t.Fatalf(`drift 条目仍应保留在 Entries 供 trace: got %d, want 3`, len(ec.Entries))
+	}
+}
+
 // TestForTask_LoadsAndBuckets 端到端：Record 写入 → ForTask 加载聚合。
 func TestForTask_LoadsAndBuckets(t *testing.T) {
 	dir := t.TempDir()

@@ -183,6 +183,30 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 			fmt.Fprintf(os.Stderr, "[task-verify] Advisory: %s\n", formatMissing(missing))
 		}
 
+		// scope-drift advisory (PlanScope whitelist)：任务声明了计划改动白名单时，检测
+		// 实改源码是否超出声明。drift = taskChangedFiles(实改态) vs PlanScope(声明态) 的
+		// 差集——对应 Terraform drift detection（desired vs actual）。纯 advisory：变更影响
+		// 分析召回率仅 ~44%（PASTE 论文），scope 是 prediction 非 contract，drift 是常态信号；
+		// 这里只把它从隐性变可度量、可回顾（forge trace / task scope show），绝不阻塞。
+		// deterministic（gate 实算 ScopeDrift，agent 无法伪造）。CheckScopeDrift 在
+		// BuildEvidenceChain 中被排除——它是 advisory 观测非"验证证据"，计入会虚高 Strength。
+		if len(state.PlanScope) > 0 {
+			drift := ScopeDrift(taskChangedFiles(root, state), state.PlanScope)
+			checklog.Record(root, &checklog.Entry{
+				Check:   checklog.CheckScopeDrift,
+				Passed:  len(drift) == 0,
+				Checked: true,
+				TaskRef: state.TaskRef,
+				Detail:  scopeDriftDetail(drift),
+			})
+			if len(drift) > 0 {
+				fmt.Fprintf(os.Stderr, "[task-verify] Advisory: scope-drift——%d 个源码文件超出 PlanScope 声明（advisory 不阻塞；收编: forge task scope add <glob>）\n", len(drift))
+				for _, f := range drift {
+					fmt.Fprintf(os.Stderr, "  ⚠ %s\n", f)
+				}
+			}
+		}
+
 		// test-capability scan (advisory): 仓库存在可跑的测试时，建议 agent 过 verify
 		// 前实际执行。补 task-verify 的"测过没"维度——上面的 test-coverage 只查"测试
 		// 伴随变更"（写了测试≠跑过测试），本扫描查"仓库有没有可跑的测试"：有→给推荐

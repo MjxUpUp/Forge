@@ -30,11 +30,18 @@ func init() {
 	taskCmd.AddCommand(taskAbortCmd)
 	taskCmd.AddCommand(taskScoreCmd)
 	taskCmd.AddCommand(taskListCmd)
+	taskCmd.AddCommand(taskScopeCmd)
+	taskScopeCmd.AddCommand(taskScopeAddCmd)
+	taskScopeCmd.AddCommand(taskScopeShowCmd)
 
 	taskStartCmd.Flags().String("title", "", "任务标题")
 	// StringArray（非 StringSlice）：cobra/pflag 的 StringSlice 默认按逗号切分，会把
 	// 含逗号的命令拆坏；StringArray 每个 --accept 整条不切。验收标准是完整 "run :: expected" 串。
 	taskStartCmd.Flags().StringArray("accept", nil, `验收标准（可重复 --accept）：格式 "run :: expected"（expected=输出子串）或裸 "run"（只看退出码 0）。forge task verify-acceptance 实跑回扣`)
+	// PlanScope：开工前声明计划改动的文件白名单（规划前置 → 可度量契约，对应 Copilot Workspace
+	// plan / Terraform desired state）。支持精确路径/glob/目录前缀。advisory：实改超出声明记
+	// scope-drift（checklog），不阻塞（变更影响分析召回率仅 ~44%，scope 是 prediction 非 contract）。
+	taskStartCmd.Flags().StringArray("scope", nil, `计划改动文件白名单（可重复 --scope）：精确路径 internal/cli/task.go / glob internal/cli/*.go / 目录前缀 internal/cli。开工前声明，advisory 检测 scope-drift；中途可用 forge task scope add 追加`)
 	taskStartCmd.Flags().String("ref", "", "任务引用（如 feat/add-auto-branch），默认从分支名推断")
 	taskStartCmd.Flags().Bool("branch", false, "从 main/master 创建新分支并切换（ref 作为分支名）")
 	taskStartCmd.Flags().Bool("json", false, "JSON 格式输出")
@@ -112,6 +119,25 @@ var taskListCmd = &cobra.Command{
 	Use:   "list [--json]",
 	Short: "列出所有任务",
 	RunE:  runTaskList,
+}
+
+// taskScopeCmd 是 PlanScope 白名单的管理入口（规划前置 → 可度量契约）。
+// add：中途追加（对应 Agentless 分层、可修正的定位——规划不是一次锁死）。
+// show：查看声明 + 实时 scope-drift（实改态 vs 声明态差集，advisory）。
+var taskScopeCmd = &cobra.Command{
+	Use:   "scope",
+	Short: "管理计划改动白名单（PlanScope，advisory scope-drift）",
+}
+var taskScopeAddCmd = &cobra.Command{
+	Use:   "add <glob> [<glob>...]",
+	Short: "追加计划改动文件到白名单（支持中途迭代）",
+	Args:  cobra.MinimumNArgs(1),
+	RunE:  runTaskScopeAdd,
+}
+var taskScopeShowCmd = &cobra.Command{
+	Use:   "show",
+	Short: "查看声明的白名单 + 实时 scope-drift",
+	RunE:  runTaskScopeShow,
 }
 
 // phaseExplosionWarning returns a non-empty warning when the given session already
@@ -236,6 +262,12 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		state.Acceptance = taskpipeline.ParseAcceptance(acceptRaw)
 	}
 
+	// 持久化 PlanScope（开工前声明的计划改动白名单）：把规划前置变成可度量契约，
+	// file-sentinel/task-guard 据此 advisory 检测 scope-drift。空则不检测（无声明=无偏差）。
+	if scopeRaw, _ := cmd.Flags().GetStringArray("scope"); len(scopeRaw) > 0 {
+		state.PlanScope = scopeRaw
+	}
+
 	// Resolve the Claude Code session id once — used to scope the active-task-ref
 	// and session records so concurrent sessions on a shared checkout stay isolated.
 	sid := taskpipeline.CurrentSessionID()
@@ -310,6 +342,14 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 				exp = "(退出码 0)"
 			}
 			fmt.Printf("  %d. %s :: %s\n", i+1, c.Run, exp)
+		}
+	}
+
+	if len(state.PlanScope) > 0 {
+		fmt.Println()
+		fmt.Printf("计划改动白名单（%d 条，advisory 检测 scope-drift；中途可 forge task scope add 追加）：\n", len(state.PlanScope))
+		for _, s := range state.PlanScope {
+			fmt.Printf("  %s\n", s)
 		}
 	}
 
@@ -487,6 +527,14 @@ func runTaskStatus(cmd *cobra.Command, args []string) error {
 				exp = "(退出码 0)"
 			}
 			fmt.Printf("  %s [%d] %s :: %s — %s\n", mark, i+1, c.Run, exp, status)
+		}
+		fmt.Println(strings.Repeat("─", 40))
+	}
+
+	if len(state.PlanScope) > 0 {
+		fmt.Printf("计划改动白名单（%d 条）：\n", len(state.PlanScope))
+		for _, s := range state.PlanScope {
+			fmt.Printf("  %s\n", s)
 		}
 		fmt.Println(strings.Repeat("─", 40))
 	}
@@ -922,6 +970,87 @@ func missingGates(state *taskpipeline.TaskState) string {
 		}
 	}
 	return strings.Join(missing, ", ")
+}
+
+// runTaskScopeAdd 把 glob 追加到当前任务的 PlanScope（去重）。支持中途迭代——规划不是
+// task start 一次锁死：Agentless 的分层定位、Copilot Workspace 的"重新考虑改哪些文件"
+// 都印证 scope 是演进的。持久化后立即生效（后续 hook 据此 advisory 检测 drift）。
+func runTaskScopeAdd(cmd *cobra.Command, args []string) error {
+	root, err := findProjectRoot()
+	if err != nil {
+		return err
+	}
+	state, err := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
+	if err != nil {
+		return fmt.Errorf("failed to load task state: %w", err)
+	}
+	if state == nil {
+		return fmt.Errorf("no active task. Run 'forge task start' first")
+	}
+	existing := make(map[string]bool, len(state.PlanScope))
+	for _, s := range state.PlanScope {
+		existing[s] = true
+	}
+	added := 0
+	for _, a := range args {
+		a = strings.TrimSpace(a)
+		if a == "" || existing[a] {
+			continue
+		}
+		state.PlanScope = append(state.PlanScope, a)
+		existing[a] = true
+		added++
+	}
+	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+		return fmt.Errorf("failed to save task state: %w", err)
+	}
+	fmt.Printf("PlanScope 现共 %d 条（本次新增 %d）：\n", len(state.PlanScope), added)
+	for _, s := range state.PlanScope {
+		fmt.Printf("  %s\n", s)
+	}
+	return nil
+}
+
+// runTaskScopeShow 打印声明的 PlanScope + 实时 scope-drift（实改源码 vs 声明的差集）。
+// drift 全程 advisory：变更影响分析召回率仅 ~44%（PASTE），scope 是 prediction 非 contract，
+// 偏差是常态信号——这里只是把它从隐性变成可度量、可回顾，绝不阻塞。
+func runTaskScopeShow(cmd *cobra.Command, args []string) error {
+	root, err := findProjectRoot()
+	if err != nil {
+		return err
+	}
+	state, err := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
+	if err != nil {
+		return fmt.Errorf("failed to load task state: %w", err)
+	}
+	if state == nil {
+		return fmt.Errorf("no active task. Run 'forge task start' first")
+	}
+
+	fmt.Printf("Task: %s\n", state.TaskRef)
+	if len(state.PlanScope) == 0 {
+		fmt.Println("PlanScope: 空（未声明计划改动白名单——无声明则不检测 scope-drift）")
+		fmt.Println("声明: forge task start --scope <glob>  或中途追加: forge task scope add <glob>")
+		return nil
+	}
+	fmt.Printf("PlanScope（%d 条，声明态 / desired state）：\n", len(state.PlanScope))
+	for _, s := range state.PlanScope {
+		fmt.Printf("  %s\n", s)
+	}
+	fmt.Println(strings.Repeat("─", 40))
+
+	changed := taskpipeline.ChangedFiles(root, state)
+	drift := taskpipeline.ScopeDrift(changed, state.PlanScope)
+	if len(drift) == 0 {
+		fmt.Println("scope-drift: 无（实改源码均在声明内 ✅）")
+		return nil
+	}
+	fmt.Printf("scope-drift（advisory，%d 个源码文件超出声明——实改态 vs 声明态差集）：\n", len(drift))
+	for _, f := range drift {
+		fmt.Printf("  ⚠ %s\n", f)
+	}
+	fmt.Println("(advisory：不阻塞。偏差供 review 参考，用 forge task scope add <glob> 收编)")
+	return nil
 }
 
 func runTaskScore(cmd *cobra.Command, args []string) error {

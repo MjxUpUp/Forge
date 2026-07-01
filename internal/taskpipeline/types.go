@@ -41,6 +41,12 @@ type TaskState struct {
 	SessionID    string                    `json:"session_id,omitempty"`    // agent session that created this task
 	ReviewPassed bool                      `json:"review_passed,omitempty"` // code-review-gate 通过标记；task-complete 门禁的硬前置
 	Acceptance   []AcceptanceCriterion     `json:"acceptance,omitempty"`    // 验收标准（dev-workflow Plan 的 Run+Expected），verify-acceptance 实跑回扣
+	// PlanScope 是任务开工前声明的"计划改动文件"白名单（glob，repo-relative 正斜杠路径）。
+	// 对应 Terraform desired state / Copilot Workspace plan 的"打算改哪些文件"——把规划前置
+	// 变成可度量契约。advisory：实改文件（TaskChangedFiles）与之的差集记 scope-drift 供 review，
+	// 不阻塞。学术界变更影响分析召回率仅 ~44%（PASTE），故 scope 当 prediction 而非 contract，
+	// drift 是常态信号。task start --scope 声明，task scope add 中途迭代追加（Agentless 分层定位）。
+	PlanScope []string `json:"plan_scope,omitempty"`
 }
 
 // TaskGateResult records the outcome of a single task gate.
