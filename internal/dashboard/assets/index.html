@@ -1,0 +1,161 @@
+{{define "page"}}
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="refresh" content="30">
+<title>Forge 质量看板</title>
+<style>
+  :root {
+    --bg: #0f1419; --card: #1a2029; --border: #2a3340; --fg: #e1e7ef;
+    --muted: #8a96a8; --accent: #4a9eff; --good: #3fb950; --warn: #d29922; --bad: #f85149;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 -apple-system, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; }
+  header { padding: 18px 28px; border-bottom: 1px solid var(--border); display: flex; align-items: baseline; gap: 16px; }
+  header h1 { margin: 0; font-size: 18px; }
+  .muted { color: var(--muted); font-size: 12px; }
+  main { padding: 24px 28px; max-width: 1100px; margin: 0 auto; }
+  section { margin-bottom: 28px; }
+  h2 { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 0 0 12px; }
+  .active { background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--accent); padding: 10px 14px; border-radius: 6px; margin-bottom: 24px; }
+  .cards { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  .card .k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .card .v { font-size: 26px; font-weight: 700; margin-top: 6px; }
+  .card.blind { border-color: var(--warn); }
+  .card.blind .v { color: var(--warn); }
+  .chart { width: 100%; height: 200px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; }
+  .chart .axis { stroke: var(--border); stroke-width: 1; }
+  .chart .score-line { fill: none; stroke: var(--accent); stroke-width: 2; }
+  .chart circle { fill: var(--accent); }
+  .bars { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  .bar-row { display: grid; grid-template-columns: 90px 1fr 40px; align-items: center; gap: 12px; margin-bottom: 8px; }
+  .bar-row:last-child { margin-bottom: 0; }
+  .bar-label { font-size: 12px; color: var(--muted); }
+  .bar.track { height: 16px; background: rgba(255,255,255,.05); border-radius: 4px; overflow: hidden; }
+  .bar .fill { height: 100%; background: var(--accent); border-radius: 4px; transition: width .3s; }
+  .bar-count { font-size: 12px; text-align: right; color: var(--muted); }
+  .fill.grade-A, .grade.A { background: var(--good); color: var(--good); }
+  .fill.grade-B { background: #8bc34a; }
+  .fill.grade-C, .grade.C { background: var(--warn); }
+  .fill.grade-D { background: #e8773b; }
+  .fill.grade-F, .grade.F { background: var(--bad); }
+  .fill.strength-Strong { background: var(--good); }
+  .fill.strength-Weak { background: var(--warn); }
+  .fill.strength-Unverified, .fill.strength-NoData { background: var(--bad); }
+  table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
+  td { font-size: 13px; }
+  tr:last-child td { border-bottom: none; }
+  .grade { font-weight: 700; }
+  .grade.A { color: var(--good); } .grade.B { color: #8bc34a; } .grade.C { color: var(--warn); }
+  .grade.D { color: #e8773b; } .grade.F { color: var(--bad); }
+  .empty { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 40px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Forge 质量看板</h1>
+  <span class="muted">本地只读 · 每 30s 自动刷新 · 生成于 {{.Now.Format "2006-01-02 15:04:05"}}</span>
+</header>
+
+<main>
+{{if .ActiveTask}}<div class="active">当前活跃任务：<strong>{{.ActiveTask}}</strong></div>{{end}}
+
+{{if eq .Summary.TotalTasks 0}}
+<section class="empty">
+  尚无完成任务结论。<br>
+  完成若干任务（<code>forge task complete</code>）后，分数走势、证据盲区率、复发低分维度会在此呈现。
+</section>
+{{else}}
+
+<section>
+  <h2>概览</h2>
+  <div class="cards">
+    <div class="card"><div class="k">总任务</div><div class="v">{{.Summary.TotalTasks}}</div></div>
+    <div class="card"><div class="k">均分</div><div class="v">{{printf "%.0f" .Summary.AvgScore}}</div></div>
+    <div class="card"><div class="k">中位分</div><div class="v">{{printf "%.0f" .Summary.MedianScore}}</div></div>
+    <div class="card"><div class="k">趋势</div><div class="v">{{trendLabel .Summary.Trend}}</div></div>
+    <div class="card blind"><div class="k">证据盲区率</div><div class="v">{{printf "%.0f%%" (mul100 .Summary.BlindSpotRate)}}</div></div>
+    <div class="card"><div class="k">回顾触发</div><div class="v">{{.Summary.NudgeCount}}</div></div>
+  </div>
+</section>
+
+<section>
+  <h2>分数走势</h2>
+  <svg class="chart" viewBox="0 0 600 200" preserveAspectRatio="none">
+    <line class="axis" x1="20" y1="20" x2="20" y2="180"/>
+    <line class="axis" x1="20" y1="180" x2="580" y2="180"/>
+    {{if .Charts.ScoreLine}}
+    <polyline class="score-line" points="{{range .Charts.ScoreLine}}{{printf "%.1f,%.1f " .X .Y}}{{end}}"/>
+    {{range .Charts.ScoreLine}}<circle cx="{{printf "%.1f" .X}}" cy="{{printf "%.1f" .Y}}" r="3"></circle>{{end}}
+    {{else}}<text x="300" y="100" text-anchor="middle" fill="#8a96a8">样本不足</text>{{end}}
+  </svg>
+</section>
+
+<section>
+  <h2>等级分布</h2>
+  <div class="bars">
+    {{range .Charts.GradeBars}}
+    <div class="bar-row">
+      <span class="bar-label grade {{.Label}}">{{.Label}}</span>
+      <div class="bar track"><div class="fill grade-{{.Label}}" style="width:{{printf "%.0f" .WidthPct}}%"></div></div>
+      <span class="bar-count">{{.Count}}</span>
+    </div>
+    {{end}}
+  </div>
+</section>
+
+<section>
+  <h2>证据强度</h2>
+  <div class="bars">
+    {{range .Charts.StrengthBars}}
+    <div class="bar-row">
+      <span class="bar-label">{{.Label}}</span>
+      <div class="bar track"><div class="fill strength-{{.Label}}" style="width:{{printf "%.0f" .WidthPct}}%"></div></div>
+      <span class="bar-count">{{.Count}}</span>
+    </div>
+    {{end}}
+  </div>
+</section>
+
+{{if .Charts.LowDimBars}}
+<section>
+  <h2>复发低分维度（&lt;70，跨任务频次）</h2>
+  <div class="bars">
+    {{range .Charts.LowDimBars}}
+    <div class="bar-row">
+      <span class="bar-label">{{.Label}}</span>
+      <div class="bar track"><div class="fill" style="width:{{printf "%.0f" .WidthPct}}%"></div></div>
+      <span class="bar-count">{{.Count}}</span>
+    </div>
+    {{end}}
+  </div>
+</section>
+{{end}}
+
+<section>
+  <h2>最近任务</h2>
+  <table>
+    <tr><th>任务</th><th>分数</th><th>等级</th><th>证据强度</th><th>det / claim</th><th>完成时间</th><th>回顾</th></tr>
+    {{range .Tasks}}
+    <tr>
+      <td>{{.TaskRef}}</td>
+      <td>{{printf "%.0f" .Score}}</td>
+      <td><span class="grade {{.Grade}}">{{.Grade}}</span></td>
+      <td>{{.Strength}}</td>
+      <td class="muted">{{.Deterministic}} / {{.AgentClaim}}</td>
+      <td class="muted">{{.CompletedAt.Format "01-02 15:04"}}</td>
+      <td>{{if .RetrospectiveNudge}}⚠{{else}}—{{end}}</td>
+    </tr>
+    {{end}}
+  </table>
+</section>
+
+{{end}}
+</main>
+</body>
+</html>
+{{end}}

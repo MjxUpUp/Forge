@@ -41,6 +41,7 @@ func init() {
 	actCmd.GroupID = "quality"
 	reviewCmd.GroupID = "quality"
 	healthCmd.GroupID = "quality"
+	dashboardCmd.GroupID = "quality"
 
 	// 经验与治理：经验闭环 + skill 治理
 	experienceCmd.GroupID = "governance"
