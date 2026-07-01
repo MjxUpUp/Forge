@@ -29,6 +29,23 @@ func writeCommitSource(t *testing.T, dir string, files map[string]string, msg st
 	runGit(t, dir, "commit", "-m", msg)
 }
 
+// writeUntracked writes files into dir WITHOUT staging/committing — leaving
+// them untracked, the working-tree shape at task-verify time before `git add`.
+// Drives the untracked-files source added to taskChangedFiles: the agent's new
+// files exist on disk but not yet in the index.
+func writeUntracked(t *testing.T, dir string, files map[string]string) {
+	t.Helper()
+	for name, content := range files {
+		full := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(full), 0755); err != nil {
+			t.Fatalf("mkdir %s: %v", filepath.Dir(full), err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+}
+
 // initRepoWithMaster sets up a git repo with an initial commit on master, then
 // creates a feat/testcov branch — mirroring the real `forge task start --branch`
 // workflow (feature branches always descend from master). The task-coverage
@@ -472,4 +489,66 @@ func TestTaskChangedFiles_ScopedToHeadCommit(t *testing.T) {
 	if !ok {
 		t.Fatalf(`bar.go has bar_test.go in task2 scope: want ok=true, got missing=%v`, missing)
 	}
+}
+
+// TestTaskChangedFiles_IncludesUntracked 守卫未跟踪文件盲点修复。task-verify 时机
+// agent 的新文件通常还没 `git add`——旧 taskChangedFiles 只读 `git diff HEAD`
+// （已跟踪的暂存/未暂存）+ 已提交 diff，看不到 untracked，导致刚写的 foo_test.go
+// 无法满足刚改的 foo.go，test-coverage 误报"无对应测试"（feat/task-scope 实撞：
+// task.go 已改已跟踪 + task_scope_test.go 新建未跟踪 → 假 advisory）。
+// 加 `git ls-files --others --exclude-standard` 后，检测按 agent 真实留下的工作树跑。
+func TestTaskChangedFiles_IncludesUntracked(t *testing.T) {
+	t.Run("untracked_test_covers_untracked_source", func(t *testing.T) {
+		dir := t.TempDir()
+		initRepoWithMaster(t, dir)
+		// foo.go + foo_test.go 都不 git add——两个 untracked，镜像 verify 时的工作树。
+		writeUntracked(t, dir, map[string]string{
+			"foo.go":      "package main\n\nfunc Foo() int { return 1 }\n",
+			"foo_test.go": "package main\n\nimport \"testing\"\n\nfunc TestFoo(t *testing.T) {}\n",
+		})
+		state := newVerifyState(t, dir, "untracked-pair")
+		ok, missing, _ := CheckTestCoverage(dir, state)
+		if !ok {
+			t.Fatalf(`untracked foo.go + foo_test.go: want ok=true（untracked test 必须覆盖 untracked source）, got missing=%v`, missing)
+		}
+	})
+
+	t.Run("untracked_source_without_test_still_detected", func(t *testing.T) {
+		dir := t.TempDir()
+		initRepoWithMaster(t, dir)
+		writeUntracked(t, dir, map[string]string{
+			"foo.go": "package main\n\nfunc Foo() int { return 1 }\n",
+		})
+		state := newVerifyState(t, dir, "untracked-bare")
+		ok, missing, _ := CheckTestCoverage(dir, state)
+		// 检测必须对 untracked 源码也跑——否则"纳入 untracked"变成"放行 untracked"。
+		if ok {
+			t.Fatal(`untracked foo.go without test: want ok=false（检测必须覆盖 untracked 源码，不能因纳入而放行）`)
+		}
+		if len(missing) == 0 || missing[0] != "foo.go" {
+			t.Fatalf(`want missing=[foo.go], got %v`, missing)
+		}
+	})
+
+	t.Run("gitignored_untracked_excluded", func(t *testing.T) {
+		dir := t.TempDir()
+		initRepoWithMaster(t, dir)
+		// .gitignore 排除 ignored.go；foo.go 不忽略。两者都 untracked。
+		writeUntracked(t, dir, map[string]string{
+			".gitignore":  "ignored.go\n",
+			"ignored.go":  "package main\n\nfunc Ignored() int { return 1 }\n",
+			"foo.go":      "package main\n\nfunc Foo() int { return 1 }\n",
+			"foo_test.go": "package main\n\nimport \"testing\"\n\nfunc TestFoo(t *testing.T) {}\n",
+		})
+		changed := taskChangedFiles(dir, &TaskState{TaskRef: "gi", Branch: "feat/testcov"})
+		foundIgnored := false
+		for _, f := range changed {
+			if f == "ignored.go" {
+				foundIgnored = true
+			}
+		}
+		if foundIgnored {
+			t.Fatalf(`gitignored ignored.go must be excluded (--exclude-standard), got changed=%v`, changed)
+		}
+	})
 }

@@ -191,6 +191,22 @@ func taskChangedFiles(root string, state *TaskState) []string {
 		add(out)
 	}
 
+	// Untracked files — newly created, not yet `git add`ed. At task-verify time
+	// the agent's new files are typically still untracked, so without this source
+	// the gate is blind to them: a just-written foo_test.go can't satisfy its
+	// just-modified foo.go sibling, and test-coverage falsely reports "no matching
+	// test" for the exact files that DO have tests (the feat/task-scope hit:
+	// task.go modified-tracked + task_scope_test.go untracked → false advisory).
+	// --exclude-standard keeps .gitignored content out (node_modules, build
+	// output, the stray dashboard-render.png) so only genuine working-tree source
+	// is considered. Repo-wide to match the working-tree semantics above — only
+	// the committed HeadCommit..HEAD part is task-scoped. Also fixes scope-drift's
+	// symmetric blind spot (an untracked file outside PlanScope was invisible).
+	out, err = exec.Command("git", "-C", root, "ls-files", "--others", "--exclude-standard").Output()
+	if err == nil {
+		add(out)
+	}
+
 	return files
 }
 
