@@ -281,16 +281,21 @@ func securityHeaders(next http.Handler) http.Handler {
 // 攻击者用 evil.com 解析到 127.0.0.1，浏览器带 Host: evil.com 读本地看板——非 localhost 拒。
 // 空 Host（少数客户端不发）放行，避免误伤合法请求。
 func isLocalhostHost(host string) bool {
-	h := host
-	if idx := strings.LastIndex(h, `:`); idx != -1 {
-		h = h[:idx]
-	}
-	h = strings.Trim(h, `[]`)
-	if len(h) == 0 {
+	if len(host) == 0 {
 		return true
 	}
+	h := host
+	// net.SplitHostPort 正确剥 [::1]:8800 与 host:port 的端口；无端口形式（[::1]、::1、
+	// localhost）报错则保留原值，再用 Trim 兜底剥 IPv6 方括号。旧版用 LastIndex(":") 去端口
+	// 在 IPv6 上会切错（[::1] → "[::"），把合法回环误判为外域——code-review-gate 拦下的回归。
+	if parsed, _, err := net.SplitHostPort(host); err == nil {
+		h = parsed
+	}
+	h = strings.Trim(h, `[]`)
+	// 去尾点（localhost. FQDN）+ 小写：Host 头域名部分按 RFC 大小写不敏感。
+	h = strings.ToLower(strings.TrimSuffix(h, `.`))
 	switch h {
-	case `localhost`, `127.0.0.1`, `::1`:
+	case ``, `localhost`, `127.0.0.1`, `::1`:
 		return true
 	}
 	return false
