@@ -3,8 +3,9 @@
 //   - 非 task 流程：diff hash stamp 存 .forge/stamps/<branch>.stamp（本包管）
 //
 // 两者服务于同一目标——让 code-review-gate 从"靠人手动喊"变成"门禁/hook 自动挡"。
-// 本包只管非 task 模式的 stamp；task 模式的 ReviewPassed 读写留在 taskpipeline 包内
-// （避免 task-complete 门禁 import review → review import taskpipeline 的循环依赖）。
+// 本包管非 task 模式的 stamp，并导出 SourceChangesSince 供 taskpipeline 在 task 模式算
+// "审查后代码是否变更"的快照（task-complete 门禁据此强制复审）。循环依赖不存在：review 只
+// 依赖 taskcontext+util，不 import taskpipeline；taskpipeline 单向 import review。
 package review
 
 import (
@@ -15,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -159,39 +161,58 @@ func CurrentState(root string) (string, error) {
 //
 // 纯文档/配置/生成物变更 → changedSourceFiles 空 → ("", false, nil) → 无需审。
 // 非 git 仓库同样 → 无需审。
-func computeDiffHash(root string) (hash string, hasChanges bool, err error) {
-	tracked, untracked := changedSourceFiles(root)
-	if len(tracked) == 0 && len(untracked) == 0 {
+// SourceChangesSince 算"自 baseCommit 起到当前工作区"的【源码】变化指纹（sha256）。
+// baseCommit=="" → 退化成 HEAD（= 工作区相对 HEAD，非 task 模式 stamp 语义）。
+//
+// 误触发防护（沿用原 computeDiffHash，2026-06-27）：审查范围**只统计源码文件**——
+//   - 排除 .forge/（否则写 stamp 改 diff → hash 变 → 死循环）
+//   - 排除非源码扩展（.md/.txt/.yml/.json/.toml 等文档与配置）——改 README 不该被逼审代码
+//   - 排除生成物（路径含 .gen./_generated/.pb./vendor/ 等）——自动生成代码刷 hash 无意义
+//
+// 与旧 computeDiffHash 的关键差异：用【文件当前内容】做指纹而非 git diff 输出——保证 commit 前后
+// （untracked→tracked 切换）内容不变则指纹不变。review 时 untracked 文件若只记文件名，commit 后变 tracked
+// （diff 含完整内容），两者维度不同会假阳性；统一读工作区当前内容后殊途同归，commit 只改 git 状态不改内容 → 同一 hash。
+// tracked 变更用 `git diff --name-only <base>` 单树形式列文件（含 base..HEAD 已提交 + 工作区未提交），
+// 让 commit-then-review 流（review 时工作区干净）能正确比对。
+//
+// baseCommit 不可达（amend/rebase 改写历史致 git 对象消失）→ 返回 err，调用方 fail-open。
+// 纯文档/配置/生成物变更 → ("", false, nil) → 无需审。非 git 仓库 → 无需审。
+func SourceChangesSince(root, baseCommit string) (hash string, hasChanges bool, err error) {
+	if !isGitRepo(root) {
 		return "", false, nil
 	}
-	var parts []string
-	// tracked 源码变更内容（staged + unstaged）
-	if len(tracked) > 0 {
-		args := append([]string{"diff", "HEAD", "--"}, tracked...)
-		if out, e := gitOut(root, args...); e == nil {
-			if s := strings.TrimSpace(out); s != "" {
-				parts = append(parts, s)
-			}
-		}
+	base := baseCommit
+	if base == "" {
+		base = "HEAD"
 	}
-	// untracked 源码新文件（仅文件名；内容变化不纳入，但首次出现即触发审查）
-	if len(untracked) > 0 {
-		parts = append(parts, "---UNTRACKED---", strings.Join(untracked, "\n"))
+	// 基线可达性：amend/rebase 后旧 commit 可能不可达，git diff/show 会 fatal。提前 verify 返回 err，
+	// 让调用方 fail-open（而非把 git stderr 当"无变更"误判放行）。
+	if out, e := gitOut(root, "rev-parse", "--verify", base+"^{commit}"); e != nil || strings.TrimSpace(out) == "" {
+		return "", false, fmt.Errorf("base commit %q not reachable: %w", base, e)
 	}
-	if len(parts) == 0 {
+	tracked, untracked := changedSourceFilesSince(root, base)
+	files := append(tracked, untracked...)
+	if len(files) == 0 {
 		return "", false, nil
 	}
-	sum := sha256.Sum256([]byte(strings.Join(parts, "\n")))
+	sort.Strings(files)
+	var b strings.Builder
+	for _, f := range files {
+		fmt.Fprintf(&b, "%s\n%s\n", f, fileContentForHash(root, base, f))
+	}
+	sum := sha256.Sum256([]byte(b.String()))
 	return hex.EncodeToString(sum[:]), true, nil
 }
 
-// changedSourceFiles 返回当前相对 HEAD 变更的【源码】文件，分 tracked（修改/删除）和
-// untracked（新增）。已排除 .forge/、非源码扩展、生成物路径。
-func changedSourceFiles(root string) (tracked, untracked []string) {
-	if !isGitRepo(root) {
-		return nil, nil
+// changedSourceFilesSince 返回自 baseCommit 起变更的【源码】文件，分 tracked（修改/删除，含
+// base..HEAD 已提交 + 工作区未提交）和 untracked（新增）。base=="" → HEAD。已排除 .forge/、
+// 非源码扩展、生成物路径。
+func changedSourceFilesSince(root, baseCommit string) (tracked, untracked []string) {
+	base := baseCommit
+	if base == "" {
+		base = "HEAD"
 	}
-	if out, e := gitOut(root, "diff", "--name-only", "HEAD", "--", ".", ":(exclude).forge"); e == nil {
+	if out, e := gitOut(root, "diff", "--name-only", base, "--", ".", ":(exclude).forge"); e == nil {
 		for _, f := range nonEmptyLines(out) {
 			if isSourceCode(f) {
 				tracked = append(tracked, f)
@@ -206,6 +227,24 @@ func changedSourceFiles(root string) (tracked, untracked []string) {
 		}
 	}
 	return tracked, untracked
+}
+
+// fileContentForHash 取变更文件的指纹内容：优先工作区当前内容（修改/新增）；工作区无（删除/重命名源）
+// 用 base 版本内容作删除标记——删除也是变更，必须纳入指纹，否则删源码文件逃过复审。task/非 task 共用。
+func fileContentForHash(root, base, path string) string {
+	if data, err := os.ReadFile(filepath.Join(root, path)); err == nil {
+		return string(data)
+	}
+	if out, e := gitOut(root, "show", base+":"+path); e == nil {
+		return "[DELETED]\n" + out
+	}
+	return ""
+}
+
+// computeDiffHash 算当前工作区相对 HEAD 的源码变更指纹。退化为 SourceChangesSince(root, "")，
+// 单一真相源——非 task 模式 stamp 与 task 模式快照共用同一套文件过滤与哈希逻辑，避免漂移。
+func computeDiffHash(root string) (hash string, hasChanges bool, err error) {
+	return SourceChangesSince(root, "")
 }
 
 // srcExts 是受审查的源码扩展名白名单。文档(.md/.txt)/配置(.yml/.json/.toml/.ini)/

@@ -40,6 +40,13 @@ type TaskState struct {
 	HeadCommit   string                    `json:"head_commit,omitempty"`   // for duplicate detection
 	SessionID    string                    `json:"session_id,omitempty"`    // agent session that created this task
 	ReviewPassed bool                      `json:"review_passed,omitempty"` // code-review-gate 通过标记；task-complete 门禁的硬前置
+	// ReviewedHeadCommit/ReviewedChangeHash 绑定 review pass 时的代码快照——审查-修复-复审闭环的关键。
+	// review pass 时记 (HEAD, SourceChangesSince(HEAD))；task-complete 门禁重算 SourceChangesSince(ReviewedHeadCommit)
+	// 比对 ReviewedChangeHash，不一致说明审查后改了码，强制复审（不再靠 agent 自律重审）。详见 executor.go。
+	// commit-then-review 流（E2E 真实序列：先 commit 再 review，审查时工作区干净）→ ReviewedChangeHash 为空，
+	// 故"基线已设"判据用 ReviewedHeadCommit != ""，不能用 hash 空/非空。
+	ReviewedHeadCommit string `json:"reviewed_head_commit,omitempty"`
+	ReviewedChangeHash string `json:"reviewed_change_hash,omitempty"`
 	Acceptance   []AcceptanceCriterion     `json:"acceptance,omitempty"`    // 验收标准（dev-workflow Plan 的 Run+Expected），verify-acceptance 实跑回扣
 	// PlanScope 是任务开工前声明的"计划改动文件"白名单（glob，repo-relative 正斜杠路径）。
 	// 对应 Terraform desired state / Copilot Workspace plan 的"打算改哪些文件"——把规划前置
@@ -90,10 +97,13 @@ func (s *TaskState) MarkComplete() {
 }
 
 // MarkReviewPassed records that code-review-gate has been run and passed for this
-// task. It is the hard prerequisite the task-complete gate enforces (see
-// executor.go)——确保提交前子 agent 审查真的跑过，而非 agent 自称完成。
-func (s *TaskState) MarkReviewPassed() {
+// task, 并绑定审查时的代码快照 (headCommit, changeHash)。它是 task-complete 门禁的硬前置
+// (see executor.go)——确保提交前子 agent 审查真的跑过；快照让 task-complete 能强制"审查后改码必复审"。
+// headCommit 为空 → 跳过快照检查（老 state 兼容 / 测试用），仅保留 ReviewPassed 硬前置语义。
+func (s *TaskState) MarkReviewPassed(headCommit, changeHash string) {
 	s.ReviewPassed = true
+	s.ReviewedHeadCommit = headCommit
+	s.ReviewedChangeHash = changeHash
 }
 
 // RecordGateResult adds a gate result and advances CurrentGate.

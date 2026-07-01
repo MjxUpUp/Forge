@@ -82,11 +82,16 @@ func runReviewPass(cmd *cobra.Command, args []string) error {
 	// task 模式：写任务状态字段，由 task-complete 门禁消费
 	state, _ := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
 	if state != nil {
-		state.MarkReviewPassed()
+		// 绑定审查时的代码快照 (HEAD, 工作区相对 HEAD 的源码变化指纹)——task-complete 门禁据此
+		// 强制"审查后改码必复审"。head 取不到 → 传空跳过快照检查（仅留 ReviewPassed 硬前置），
+		// pass 是 agent 主导动作故 fail-open。hash 出错同样取空（不阻塞 pass）。
+		head := taskpipeline.GetHeadCommit(root)
+		hash, _, _ := review.SourceChangesSince(root, head)
+		state.MarkReviewPassed(head, hash)
 		if err := taskpipeline.SaveTaskState(root, state); err != nil {
 			return fmt.Errorf("failed to save task state: %w", err)
 		}
-		fmt.Printf("✅ task %s: code-review-gate 已通过（task-complete 门禁前置满足）\n", state.TaskRef)
+		fmt.Printf("✅ task %s: code-review-gate 已通过（task-complete 门禁前置满足，基线 HEAD=%s）\n", state.TaskRef, head)
 		return nil
 	}
 
@@ -164,9 +169,26 @@ func renderReviewStatus(root string) error {
 			passed = "true"
 		}
 		fmt.Printf("ReviewPassed: %s\n", passed)
+		if state.ReviewPassed && state.ReviewedHeadCommit != "" {
+			fmt.Printf("Reviewed at:  HEAD=%s\n", state.ReviewedHeadCommit)
+		}
 		fmt.Println()
 		if state.ReviewPassed {
-			fmt.Println("→ task-complete 门禁的 review 前置已满足")
+			// 快照一致性：重算 SourceChangesSince(ReviewedHeadCommit) 比对审查基线——
+			// 让"审查后改了码"在 status 就可见（不必等 task-complete 被拒才发现）。
+			if state.ReviewedHeadCommit != "" {
+				cur, _, err := review.SourceChangesSince(root, state.ReviewedHeadCommit)
+				switch {
+				case err != nil:
+					fmt.Printf("→ ⚠ 审查基线 HEAD=%s 不可达（%v）——历史可能被改写，建议重新 forge review pass\n", state.ReviewedHeadCommit, err)
+				case cur == state.ReviewedChangeHash:
+					fmt.Println("→ task-complete 门禁的 review 前置已满足，且审查后源码未变更（✅ 一致）")
+				default:
+					fmt.Println("→ ⚠ 审查通过后检测到源码变更：task-complete 会拒绝，请重新派只读子 agent 审查后 forge review pass 刷新基线")
+				}
+			} else {
+				fmt.Println("→ task-complete 门禁的 review 前置已满足（无审查基线，commit-then-review 流或老 state）")
+			}
 		} else {
 			fmt.Println("→ 未通过：task-complete 前会要求 code-review-gate；运行 `forge review pass` 标记")
 		}

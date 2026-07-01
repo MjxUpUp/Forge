@@ -85,7 +85,7 @@ func TestActivityCheckStillSkipsOnLastGate(t *testing.T) {
 	state := &TaskState{TaskRef: "last-gate", Branch: "feat/test"}
 	state.RecordGateResult("task-implement", true, "")
 	state.RecordGateResult("task-verify", true, "")
-	state.MarkReviewPassed() // 满足 review 硬前置以隔离 activity 逻辑
+	state.MarkReviewPassed("", "") // 满足 review 硬前置以隔离 activity 逻辑（空基线=跳过快照检查）
 	// No toollog activity at all — last gate must still pass.
 
 	_, err := ExecuteTaskGate(dir, "task-complete", state)

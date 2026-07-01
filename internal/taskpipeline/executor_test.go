@@ -10,6 +10,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/docsconsistency"
+	"github.com/MjxUpUp/Forge/internal/review"
 	"github.com/MjxUpUp/Forge/internal/taskcontext"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
 
@@ -402,7 +403,7 @@ func TestLastGateSkipsTiming(t *testing.T) {
 	// Pass all gates up to task-verify
 	state.RecordGateResult("task-implement", true, "")
 	state.RecordGateResult("task-verify", true, "")
-	state.MarkReviewPassed() // 满足 review 硬前置以隔离 timing 逻辑
+	state.MarkReviewPassed("", "") // 满足 review 硬前置以隔离 timing 逻辑
 
 	// task-complete (last gate) should pass immediately despite 10m interval
 	_, err := ExecuteTaskGate(dir, "task-complete", state)
@@ -426,7 +427,7 @@ func TestTaskCompleteRequiresReview(t *testing.T) {
 	}
 
 	// 标记通过后应放行
-	state.MarkReviewPassed()
+	state.MarkReviewPassed("", "")
 	if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
 		t.Fatalf("ReviewPassed=true 后 task-complete 应通过: %v", err)
 	}
@@ -779,7 +780,7 @@ func TestTestCoverageCheckScopedToVerifyGate(t *testing.T) {
 	state := &TaskState{TaskRef: "cov-scope", Branch: "feat/cov"}
 	state.RecordGateResult("task-implement", true, "")
 	state.RecordGateResult("task-verify", true, "")
-	state.MarkReviewPassed() // 满足 review 硬前置以隔离 coverage 逻辑
+	state.MarkReviewPassed("", "") // 满足 review 硬前置以隔离 coverage 逻辑
 	base := time.Now().Add(2 * time.Second)
 	rr := toolusage.ToolCall{ToolName: "Read", TaskRef: "cov-scope", Timestamp: base}
 	if err := toolusage.Record(dir, &rr); err != nil {
@@ -871,7 +872,7 @@ func TestTaskComplete_DocsConsistencyAdvisory(t *testing.T) {
 	state := &TaskState{TaskRef: "docs-drift", Branch: "feat/docs"}
 	state.RecordGateResult("task-implement", true, "")
 	state.RecordGateResult("task-verify", true, "")
-	state.MarkReviewPassed() // 满足 review 硬前置
+	state.MarkReviewPassed("", "") // 满足 review 硬前置
 
 	// docs drift 是 advisory——task-complete 必须仍 Passed（不阻塞）。
 	result, err := ExecuteTaskGate(dir, "task-complete", state)
@@ -960,7 +961,7 @@ func TestGateAdvancementRecordsAgentClaim(t *testing.T) {
 		state := &TaskState{TaskRef: "claim-c", Branch: "feat/claim-c"}
 		state.RecordGateResult("task-implement", true, "")
 		state.RecordGateResult("task-verify", true, "")
-		state.MarkReviewPassed() // 满足 review 硬前置
+		state.MarkReviewPassed("", "") // 满足 review 硬前置
 		if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
 			t.Fatalf("task-complete should pass: %v", err)
 		}
@@ -1002,7 +1003,7 @@ func TestTaskComplete_DocsConsistencyNoDriftSilent(t *testing.T) {
 	state := &TaskState{TaskRef: "docs-clean", Branch: "feat/clean"}
 	state.RecordGateResult("task-implement", true, "")
 	state.RecordGateResult("task-verify", true, "")
-	state.MarkReviewPassed()
+	state.MarkReviewPassed("", "")
 
 	if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
 		t.Fatalf("task-complete should pass: %v", err)
@@ -1012,5 +1013,159 @@ func TestTaskComplete_DocsConsistencyNoDriftSilent(t *testing.T) {
 		if e.Check == CheckNameDocsConsistency {
 			t.Errorf("无 drift 时不应记录 docs-consistency advisory，但找到：%+v", e)
 		}
+	}
+}
+
+// --- review-snapshot 门禁测试（审查-修复-复审自动化）---
+// review pass 绑定 (HEAD, SourceChangesSince(HEAD)) 快照；task-complete 重算比对，审查后改码 → 拒。
+
+// initTaskGitRepo 建临时 git 仓库并首次提交（.gitkeep），返回 dir（HEAD=C0）。快照测试需真实 git
+// 仓库——SourceChangesSince 走 git diff/show，mock 不了"commit 前后内容指纹一致"这类端到端断言。
+func initTaskGitRepo(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	if err := os.WriteFile(filepath.Join(dir, ".gitkeep"), []byte{}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "init")
+	return dir
+}
+
+// commitAll 提交工作区全部变更（add -A + commit）。
+func commitAll(t *testing.T, dir, msg string) {
+	t.Helper()
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", msg)
+}
+
+// headShort 返回 HEAD 短 hash（作 review 快照基线）。
+func headShort(t *testing.T, dir string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", dir, "rev-parse", "--short", "HEAD").Output()
+	if err != nil {
+		t.Fatalf(`git rev-parse HEAD: %v`, err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// writeSrc 写源码文件（含父目录创建）。
+func writeSrc(t *testing.T, dir, rel, content string) {
+	t.Helper()
+	p := filepath.Join(dir, rel)
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// fullyGatedState 构造已过 implement+verify 的 state（只剩 task-complete）。
+func fullyGatedState(ref string) *TaskState {
+	s := &TaskState{TaskRef: ref, Branch: "feat/" + ref}
+	s.RecordGateResult("task-implement", true, "")
+	s.RecordGateResult("task-verify", true, "")
+	return s
+}
+
+// TestTaskComplete_ReviewSnapshotRejectsPostReviewChange 审查快照闭环核心：review pass 绑定快照后，
+// 改源码（未 commit）→ task-complete 必须拒、强制复审。这是"审查-修复-复审自动化"的强制点——
+// 不再靠 agent 自律重审（feat/dashboard-global 事故：修完审查发现没复审就推进 complete，门禁没拦住）。
+func TestTaskComplete_ReviewSnapshotRejectsPostReviewChange(t *testing.T) {
+	dir := initTaskGitRepo(t)
+	head := headShort(t, dir) // C0
+	writeSrc(t, dir, `svc.go`, `package svc`)
+	hash, _, err := review.SourceChangesSince(dir, head)
+	if err != nil {
+		t.Fatalf(`SourceChangesSince: %v`, err)
+	}
+	state := fullyGatedState(`snap-reject`)
+	state.MarkReviewPassed(head, hash)
+
+	// 审查后改码（工作区未 commit）
+	writeSrc(t, dir, `svc.go`, "package svc\nfunc F() {}")
+
+	_, err = ExecuteTaskGate(dir, "task-complete", state)
+	if err == nil {
+		t.Fatal(`审查后改了源码，task-complete 应拒绝强制复审，实际放行——快照闭环失效`)
+	}
+	if !strings.Contains(err.Error(), `审查通过后检测到源码变更`) {
+		t.Fatalf(`拒绝原因应含"审查通过后检测到源码变更"，got: %v`, err)
+	}
+}
+
+// TestTaskComplete_ReviewSnapshotPassWhenUnchanged 审查后不改码 → task-complete 过（快照一致）。
+func TestTaskComplete_ReviewSnapshotPassWhenUnchanged(t *testing.T) {
+	dir := initTaskGitRepo(t)
+	head := headShort(t, dir)
+	writeSrc(t, dir, `svc.go`, `package svc`)
+	hash, _, _ := review.SourceChangesSince(dir, head)
+	state := fullyGatedState(`snap-pass`)
+	state.MarkReviewPassed(head, hash)
+
+	if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
+		t.Fatalf(`审查后未改码应过，got: %v`, err)
+	}
+}
+
+// TestTaskComplete_ReviewSnapshotEmptyBaselineSkips 空基线（MarkReviewPassed("","")）→ 跳过快照检查，
+// 仅留 ReviewPassed 硬前置语义（老 state 兼容 / commit-then-review 流审查时工作区干净 hash 空）。
+func TestTaskComplete_ReviewSnapshotEmptyBaselineSkips(t *testing.T) {
+	dir := initTaskGitRepo(t)
+	writeSrc(t, dir, `svc.go`, `package svc`)
+	state := fullyGatedState(`snap-empty`)
+	state.MarkReviewPassed("", "")
+
+	if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
+		t.Fatalf(`空基线应跳过快照检查（保 ReviewPassed 硬前置语义），got: %v`, err)
+	}
+}
+
+// TestTaskComplete_ReviewSnapshotUnreachableFailOpen 基线不可达（amend/rebase 改写历史致 git 对象消失）
+// → fail-open 放行。amend 是正常工作流，强复审会死循环；对齐 review/stamp.go 的 fail-open 哲学
+// （可达则严、不可达则松的非对称是设计本意）。且必须落 checklog 留痕——让 score/dashboard 照出
+// "靠 fail-open 而非真复审通过"，不能只 stderr 一闪而过（审查反馈的可观测性兜底）。
+func TestTaskComplete_ReviewSnapshotUnreachableFailOpen(t *testing.T) {
+	dir := initTaskGitRepo(t)
+	state := fullyGatedState(`snap-unreachable`)
+	state.MarkReviewPassed("deadbeefnotacommit", `anyc0ntent`)
+
+	if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
+		t.Fatalf(`基线不可达应 fail-open 放行（amend 正常流），got: %v`, err)
+	}
+	// fail-open 必须落盘——断言 checklog 有 CheckNameReviewSnapshot 条目（防回归成"只 stderr 无痕迹"）。
+	entries, _ := checklog.LoadForTask(dir, `snap-unreachable`)
+	var found bool
+	for _, e := range entries {
+		if e.Check == CheckNameReviewSnapshot {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf(`fail-open 应落 checklog:%s 留痕，实际无——score/dashboard 照不出"靠 fail-open 而非真复审通过"`, CheckNameReviewSnapshot)
+	}
+}
+
+// TestTaskComplete_ReviewSnapshotCommitReviewedContentPasses commit 审查的工作区内容后 → 过。
+// 镜像 commit-then-review E2E 真实流（cli_test.go）：review 时工作区有 svc.go（untracked），
+// agent commit 它（不改内容），SourceChangesSince(基线) 用【内容指纹】仍 == 记录 hash → 放行。
+// 用 git diff 输出做指纹会在 untracked→tracked 切换时假阳性（review 包单测已证），这里在门禁层再钉一次。
+func TestTaskComplete_ReviewSnapshotCommitReviewedContentPasses(t *testing.T) {
+	dir := initTaskGitRepo(t)
+	head := headShort(t, dir) // C0
+	writeSrc(t, dir, `svc.go`, `package svc`) // untracked
+	hash, _, _ := review.SourceChangesSince(dir, head)
+	state := fullyGatedState(`snap-commit`)
+	state.MarkReviewPassed(head, hash)
+
+	commitAll(t, dir, "reviewed") // C1：commit 审查内容，工作区干净
+
+	if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
+		t.Fatalf(`commit 审查的工作区内容后应过（内容指纹一致），got: %v`, err)
 	}
 }

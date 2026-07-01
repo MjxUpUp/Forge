@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -245,5 +246,133 @@ func TestCurrentState_Runs(t *testing.T) {
 	}
 	if out == "" {
 		t.Fatal("CurrentState 输出为空")
+	}
+}
+
+// gitCommit 在临时仓库提交全部变更（helper，复用 gitEnv；单测级，错误即 fatal）。
+func gitCommit(t *testing.T, dir, msg string) {
+	t.Helper()
+	run := func(args ...string) {
+		cmd := exec.Command("git", append([]string{"-C", dir, "-c", "commit.gpgsign=false"}, args...)...)
+		cmd.Env = gitEnv
+		if err := cmd.Run(); err != nil {
+			t.Fatalf(`git %v failed: %v`, args, err)
+		}
+	}
+	run("add", "-A")
+	run("commit", "-q", "-m", msg)
+}
+
+// gitHeadShort 返回 HEAD 短 hash，作 SourceChangesSince 的 baseCommit。
+func gitHeadShort(t *testing.T, dir string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", dir, "rev-parse", "--short", "HEAD").Output()
+	if err != nil {
+		t.Fatalf(`git rev-parse HEAD failed: %v`, err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// TestSourceChangesSince_EmptyBaseUntracked base="" 退化成 HEAD：untracked 源码 → hasChanges=true。
+func TestSourceChangesSince_EmptyBaseUntracked(t *testing.T) {
+	dir := initGitRepo(t)
+	write(t, dir, `a.go`, `package a`)
+	hash, has, err := SourceChangesSince(dir, "")
+	if err != nil {
+		t.Fatalf(`SourceChangesSince: %v`, err)
+	}
+	if !has || hash == "" {
+		t.Fatalf(`base="" 对 untracked 源码应 hasChanges=true 且 hash 非空，got has=%v hash=%q`, has, hash)
+	}
+}
+
+// TestSourceChangesSince_IncludesCommittedChanges 核心差异：base..HEAD 的【已提交】变更纳入指纹。
+// 旧 computeDiffHash 只看工作区相对 HEAD——干净工作区（已 commit）返空，假阴性。SourceChangesSince(base)
+// 用单树 git diff <base>，base..HEAD 已提交 + 工作区未提交一步算进——commit-then-review 流的判定基础。
+func TestSourceChangesSince_IncludesCommittedChanges(t *testing.T) {
+	dir := initGitRepo(t) // HEAD = C0
+	c0 := gitHeadShort(t, dir)
+	write(t, dir, `svc.go`, `package svc`)
+	gitCommit(t, dir, "add svc") // HEAD = C1，工作区干净
+
+	hash, has, err := SourceChangesSince(dir, c0)
+	if err != nil {
+		t.Fatalf(`SourceChangesSince: %v`, err)
+	}
+	if !has {
+		t.Fatalf(`C0..C1 含已提交 svc.go，应 hasChanges=true（hash=%q）——旧 computeDiffHash 在干净工作区会误返空`, hash)
+	}
+}
+
+// TestSourceChangesSince_BaseUnreachable base 不可达（amend/rebase 改写历史）→ 返 err 供 fail-open。
+func TestSourceChangesSince_BaseUnreachable(t *testing.T) {
+	dir := initGitRepo(t)
+	_, _, err := SourceChangesSince(dir, "deadbeefnotacommit")
+	if err == nil {
+		t.Fatal(`base 不可达应返回 err，got nil——调用方无法 fail-open`)
+	}
+}
+
+// TestSourceChangesSince_DocChangeExcluded 纯文档变更不纳入（isSourceCode 白名单）。
+func TestSourceChangesSince_DocChangeExcluded(t *testing.T) {
+	dir := initGitRepo(t)
+	write(t, dir, `README.md`, `# docs`)
+	hash, has, err := SourceChangesSince(dir, "")
+	if err != nil {
+		t.Fatalf(`SourceChangesSince: %v`, err)
+	}
+	if has || hash != "" {
+		t.Fatalf(`纯 README 变更应 hasChanges=false hash=""，got has=%v hash=%q`, has, hash)
+	}
+}
+
+// TestSourceChangesSince_StableAcrossForgeWrites 写 .forge/ 不改 hash（:(exclude).forge 生效）。
+func TestSourceChangesSince_StableAcrossForgeWrites(t *testing.T) {
+	dir := initGitRepo(t)
+	write(t, dir, `a.go`, `package a`)
+	h1, _, err := SourceChangesSince(dir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, dir, `.forge/stamps/x.stamp`, `{"x":1}`)
+	h2, _, err := SourceChangesSince(dir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h1 != h2 {
+		t.Fatalf(`写 .forge/ 后 hash 应不变（.forge 排除），h1=%q h2=%q`, h1, h2)
+	}
+}
+
+// TestSourceChangesSince_CommitWorkdirContentStaysEqual commit 审查的工作区内容后指纹不变——
+// 审查-修复-复审闭环核心。review pass 记 (base=C0, hash=工作区 diff)；agent commit 审查内容
+// （不改任何东西）后，SourceChangesSince(C0) 仍 == 记录 hash（commit 的正是审查的工作区 diff）→ 门禁放行；
+// commit 后再改【新】内容才 != → 触发复审。
+func TestSourceChangesSince_CommitWorkdirContentStaysEqual(t *testing.T) {
+	dir := initGitRepo(t) // HEAD = C0
+	write(t, dir, `a.go`, `package a`) // 工作区有 a.go（untracked）
+	hAtReview, _, err := SourceChangesSince(dir, "") // = 工作区相对 C0 的 diff
+	if err != nil {
+		t.Fatal(err)
+	}
+	c0 := gitHeadShort(t, dir) // 记基线 base=C0
+	gitCommit(t, dir, "reviewed") // HEAD = C1，工作区干净
+
+	hAfterCommit, _, err := SourceChangesSince(dir, c0) // C0..C1 含 a.go + 工作区空
+	if err != nil {
+		t.Fatalf(`SourceChangesSince after commit: %v`, err)
+	}
+	if hAfterCommit != hAtReview {
+		t.Fatalf(`commit 审查的工作区内容后指纹应不变（hAtReview=%q hAfterCommit=%q）——commit-then-review 流会假阳性`, hAtReview, hAfterCommit)
+	}
+
+	// 反例：commit 后再改新内容 → 指纹变 → 触发复审。
+	write(t, dir, `a.go`, "package a\nfunc F() {}")
+	hAfterNewChange, _, err := SourceChangesSince(dir, c0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hAfterNewChange == hAtReview {
+		t.Fatalf(`commit 后再改新内容指纹应变（触发复审），但 == 审查时 hash`)
 	}
 }

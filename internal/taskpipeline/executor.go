@@ -11,6 +11,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/docsconsistency"
 	"github.com/MjxUpUp/Forge/internal/hooks"
+	"github.com/MjxUpUp/Forge/internal/review"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
 )
 
@@ -18,6 +19,12 @@ import (
 // docs-consistency advisory, so trace surfaces the drift signal even though the
 // gate passes (advisory, never blocking).
 const CheckNameDocsConsistency checklog.CheckName = "docs-consistency-gate"
+
+// CheckNameReviewSnapshot is the checklog entry name for the review-snapshot
+// fail-open case (审查基线 commit 不可达，amend/rebase 改写历史）。fail-open 是设计本意
+// （amend 是正常工作流，强复审会死循环），但必须落盘留痕——让 score/dashboard 能反映
+// "该任务靠 fail-open 而非真复审通过"，事后可追溯，而非只 stderr 一闪而过。
+const CheckNameReviewSnapshot checklog.CheckName = "review-snapshot-failopen"
 
 // taskStartReadGraceWindow bounds how far before a task's StartedAt a Read still
 // counts toward read-before-edit when recovering the task-start/Read race (see
@@ -61,6 +68,32 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 	// 复检已完成任务（CompletedAt 已设）时跳过——历史任务不追溯。
 	if gateID == "task-complete" && !state.ReviewPassed && state.CompletedAt == nil {
 		return nil, fmt.Errorf("task-complete requires code-review-gate: 派只读子 agent 审查当前 diff 后运行 `forge review pass`")
+	}
+
+	// 审查快照一致性（task-complete 硬门禁）：review pass 时绑定 (ReviewedHeadCommit,
+	// ReviewedChangeHash)；此处重算 SourceChangesSince(ReviewedHeadCommit) 比对，不一致说明审查
+	// 通过后改了源码 → 拒绝、强制复审（审查-修复-复审闭环，不再靠 agent 自律重审）。与上面的
+	// ReviewPassed 硬前置正交——上面拒"没审过"，这里拒"审过但代码又变了"，两者叠加才构成完整闭环。
+	// ReviewedHeadCommit=="" → commit-then-review 流（审查时工作区干净，hash 空）或老 state 兼容，
+	// 跳过本检查（仅留 ReviewPassed 硬前置语义）。base 不可达（amend/rebase 改写历史致 git 对象消失）
+	// → fail-open 放行 + 警告：amend 是正常工作流，强复审会死循环；对齐 review/stamp.go 的 fail-open 哲学
+	// （可达则严、不可达则松的非对称是设计本意）。
+	if gateID == "task-complete" && state.ReviewPassed && state.CompletedAt == nil && state.ReviewedHeadCommit != "" {
+		cur, _, err := review.SourceChangesSince(root, state.ReviewedHeadCommit)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[task-complete] 警告：审查基线 commit %s 不可达（%v）——历史可能被改写（amend/rebase），advisory 放行；建议重新 forge review pass 刷新基线\n", state.ReviewedHeadCommit, err)
+			// fail-open 落盘留痕（非阻塞，Passed=true 表 gate 仍过）：amend 逃审是设计权衡，但
+			// score/dashboard 必须能照出"靠 fail-open 而非真复审通过"，事后可追溯，不能只 stderr。
+			checklog.Record(root, &checklog.Entry{
+				Check:   CheckNameReviewSnapshot,
+				Passed:  true,
+				Checked: true,
+				TaskRef: state.TaskRef,
+				Detail:  fmt.Sprintf("fail-open: 审查基线 %s 不可达（%v）——amend/rebase 致历史改写，放行未重审", state.ReviewedHeadCommit, err),
+			})
+		} else if cur != state.ReviewedChangeHash {
+			return nil, fmt.Errorf("task-complete 拒绝：审查通过后检测到源码变更（基线 HEAD=%s）。请重新派只读子 agent 审查当前代码后运行 `forge review pass` 刷新审查基线", state.ReviewedHeadCommit)
+		}
 	}
 
 	// docs-consistency advisory (task-complete)：扫用户项目 README 的反引号 forge 命令引用，
