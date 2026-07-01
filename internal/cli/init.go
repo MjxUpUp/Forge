@@ -11,6 +11,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/pipeline"
 	"github.com/MjxUpUp/Forge/internal/protocol"
+	"github.com/MjxUpUp/Forge/internal/registry"
 	"github.com/MjxUpUp/Forge/internal/skillgen"
 	"github.com/MjxUpUp/Forge/internal/snapshot"
 	"github.com/spf13/cobra"
@@ -227,6 +228,12 @@ func runInit(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	if len(inferredGates) > 0 {
 		fmt.Println("Use --fresh to reinitialize without project detection.")
+	}
+
+	// 登记到全局项目注册表（~/.forge/projects.json），供 forge dashboard --global 聚合。
+	// 失败仅警告——全局视图是增强，init 本身成功不依赖它。
+	if err := registry.Add(dir); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to register project globally: %v\n", err)
 	}
 	return nil
 }

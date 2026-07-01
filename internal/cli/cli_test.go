@@ -36,6 +36,10 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
+	// 把全局 registry 状态目录重定向到 tmpDir（FORGE_HOME），避免 init/dashboard 测试
+	// 污染真实 ~/.forge/projects.json。子进程（runForge 跑 forge 二进制）继承此 env。
+	os.Setenv("FORGE_HOME", tmpDir)
+
 	code := m.Run()
 	os.RemoveAll(tmpDir)
 	os.Exit(code)

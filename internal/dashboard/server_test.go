@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -282,10 +283,10 @@ func TestServe_HTTP(t *testing.T) {
 	}
 }
 
-func taskRefs(cs []act.Conclusion) []string {
-	out := make([]string, len(cs))
-	for i, c := range cs {
-		out[i] = c.TaskRef
+func taskRefs(rows []TaskRow) []string {
+	out := make([]string, len(rows))
+	for i, r := range rows {
+		out[i] = r.TaskRef
 	}
 	return out
 }
@@ -406,8 +407,11 @@ func TestServe_JSONNoSessionID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(strings.ToLower(string(body)), `session`) {
-		t.Errorf(`JSON 端点泄露 session: %s`, body)
+	// 检查测试植入的 SessionID 值是否泄露——JSON 不含它即证明 taskPublic 剥掉了 SessionID 字段。
+	// 不用朴素 "session"/"sessionid" 子串：Project 字段合理地可能含该子串（项目名/测试名，
+	// 如本测试的 t.TempDir() 目录名就含 "SessionID"），子串匹配会误报。
+	if strings.Contains(string(body), `secret-session-xyz`) {
+		t.Errorf(`JSON 端点泄露 SessionID 值: %s`, body)
 	}
 }
 
@@ -424,5 +428,165 @@ func TestServe_Favicon(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Errorf(`favicon status = %d, want 204`, resp.StatusCode)
+	}
+}
+
+// TestAggregateGlobal_MergesProjects 跨两项目聚合：结论合并、各带项目名、Summary 跨项目统计。
+func TestAggregateGlobal_MergesProjects(t *testing.T) {
+	rootA := t.TempDir()
+	rootB := t.TempDir()
+	base := time.Unix(1700000000, 0)
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(act.Append(rootA, &act.Conclusion{
+		TaskRef: "feat/a1", Score: 80, Grade: "B", Strength: "Strong", CompletedAt: base,
+	}))
+	must(act.Append(rootB, &act.Conclusion{
+		TaskRef: "feat/b1", Score: 60, Grade: "D", Strength: "Weak", CompletedAt: base.Add(time.Hour),
+	}))
+
+	d, err := AggregateGlobal([]string{rootA, rootB}, base.Add(2*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !d.IsGlobal || d.ProjectCount != 2 {
+		t.Fatalf("IsGlobal=%v ProjectCount=%d, want true/2", d.IsGlobal, d.ProjectCount)
+	}
+	if d.Summary.TotalTasks != 2 {
+		t.Fatalf("TotalTasks=%d, want 2（跨项目合并）", d.Summary.TotalTasks)
+	}
+	if d.Summary.AvgScore != 70 { // (80+60)/2
+		t.Errorf("AvgScore=%v, want 70", d.Summary.AvgScore)
+	}
+	// 每条带项目名（末两段 "父/末段"）。
+	wantProj := func(root string) string {
+		return filepath.Base(filepath.Dir(root)) + `/` + filepath.Base(root)
+	}
+	projOf := map[string]string{}
+	for _, r := range d.Tasks {
+		projOf[r.TaskRef] = r.Project
+	}
+	if projOf["feat/a1"] != wantProj(rootA) || projOf["feat/b1"] != wantProj(rootB) {
+		t.Errorf("项目归属错: got %v, want a=%q b=%q", projOf, wantProj(rootA), wantProj(rootB))
+	}
+}
+
+// TestAggregateGlobal_ScoreLineChronological 跨项目合并后折线必须按时间序，不能按 roots 顺序。
+// 回归：rootA 任务时间更晚但排在 roots 前面——不排序会让折线按 [A(晚), B(早)] 画，时间倒序，
+// 违背"全局质量随时间走势"的看板核心诉求。单项目测试因 LoadAll 本就 chronological 踩不到此 bug。
+func TestAggregateGlobal_ScoreLineChronological(t *testing.T) {
+	rootA := t.TempDir()
+	rootB := t.TempDir()
+	base := time.Unix(1700000000, 0)
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	// rootA：时间更晚（base+2h）、高分（90）；rootB：更早（base）、低分（30）。
+	// roots=[rootA, rootB]：append 顺序与时间顺序相反，专门撞未排序的 bug。
+	must(act.Append(rootA, &act.Conclusion{
+		TaskRef: "feat/a1", Score: 90, Grade: "A", Strength: "Strong", CompletedAt: base.Add(2 * time.Hour),
+	}))
+	must(act.Append(rootB, &act.Conclusion{
+		TaskRef: "feat/b1", Score: 30, Grade: "F", Strength: "Weak", CompletedAt: base,
+	}))
+	d, err := AggregateGlobal([]string{rootA, rootB}, base.Add(3*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pts := d.Charts.ScoreLine
+	if len(pts) != 2 {
+		t.Fatalf("ScoreLine len = %d, want 2", len(pts))
+	}
+	// 期望时间序：pts[0]=rootB（更早，30 分），pts[1]=rootA（更晚，90 分）。
+	// 若 bug 未修（按 roots 顺序不排序），pts[0]=rootA（90 分），此断言失败。
+	// Y = pad + (1-score/100)*innerH = 20 + (1-score/100)*160。30 分→132，90 分→36。
+	if pts[0].Y != 132 {
+		t.Errorf("pts[0].Y = %v, want 132（更早的 30 分任务应在首位）", pts[0].Y)
+	}
+	if pts[1].Y != 36 {
+		t.Errorf("pts[1].Y = %v, want 36（更晚的 90 分任务应在第二位）", pts[1].Y)
+	}
+}
+
+// TestAggregateGlobal_SkipsBadRoot 某项目无结论（无 .forge/act）不致命，其余照常聚合。
+func TestAggregateGlobal_SkipsBadRoot(t *testing.T) {
+	good := t.TempDir()
+	bad := t.TempDir() // 无 act 结论
+	if err := act.Append(good, &act.Conclusion{
+		TaskRef: "feat/x", Score: 90, Grade: "A", Strength: "Strong", CompletedAt: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	d, err := AggregateGlobal([]string{good, bad}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Summary.TotalTasks != 1 {
+		t.Errorf("TotalTasks=%d, want 1（bad 跳过）", d.Summary.TotalTasks)
+	}
+	if d.ProjectCount != 1 {
+		t.Errorf("ProjectCount=%d, want 1（bad 不计入有效项目数，避免头标与表格不符）", d.ProjectCount)
+	}
+}
+
+// TestRenderPage_Global 全局视图渲染含"全局"标题、项目计数、项目列表头。
+func TestRenderPage_Global(t *testing.T) {
+	rootA := t.TempDir()
+	rootB := t.TempDir()
+	if err := act.Append(rootA, &act.Conclusion{
+		TaskRef: "feat/a", Score: 80, Grade: "B", Strength: "Strong", CompletedAt: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := act.Append(rootB, &act.Conclusion{
+		TaskRef: "feat/b", Score: 70, Grade: "C", Strength: "Weak", CompletedAt: time.Now().Add(time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	d, err := AggregateGlobal([]string{rootA, rootB}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf strings.Builder
+	if err := RenderPage(&buf, d); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	for _, want := range []string{"全局质量看板", "2 个项目", "<th>项目</th>"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("全局渲染缺 %q", want)
+		}
+	}
+}
+
+// TestRenderPage_SingleProjectNoProjectColumn 单项目视图不应有项目列（避免冗余）。
+func TestRenderPage_SingleProjectNoProjectColumn(t *testing.T) {
+	root := t.TempDir()
+	if err := act.Append(root, &act.Conclusion{
+		TaskRef: "feat/a", Score: 80, Grade: "B", Strength: "Strong", CompletedAt: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	d, err := Aggregate(root, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf strings.Builder
+	if err := RenderPage(&buf, d); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if strings.Contains(out, "<th>项目</th>") {
+		t.Errorf("单项目视图不应有项目列")
+	}
+	if strings.Contains(out, "全局质量看板") {
+		t.Errorf("单项目视图不应显示全局标题")
 	}
 }

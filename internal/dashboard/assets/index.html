@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8">
 <meta http-equiv="refresh" content="30">
-<title>Forge 质量看板</title>
+<title>{{if .IsGlobal}}Forge 全局质量看板{{else}}Forge 质量看板{{end}}</title>
 <style>
   :root {
     --bg: #0f1419; --card: #1a2029; --border: #2a3340; --fg: #e1e7ef;
@@ -57,8 +57,8 @@
 </head>
 <body>
 <header>
-  <h1>Forge 质量看板</h1>
-  <span class="muted">本地只读 · 每 30s 自动刷新 · 生成于 {{.Now.Format "2006-01-02 15:04:05"}}</span>
+  <h1>{{if .IsGlobal}}Forge 全局质量看板{{else}}Forge 质量看板{{end}}</h1>
+  <span class="muted">{{if .IsGlobal}}{{.ProjectCount}} 个项目 · {{end}}本地只读 · 每 30s 自动刷新 · 生成于 {{.Now.Format "2006-01-02 15:04:05"}}</span>
 </header>
 
 <main>
@@ -139,9 +139,10 @@
 <section>
   <h2>最近任务</h2>
   <table>
-    <tr><th>任务</th><th>分数</th><th>等级</th><th>证据强度</th><th>det / claim</th><th>完成时间</th><th>回顾</th></tr>
+    <tr>{{if $.IsGlobal}}<th>项目</th>{{end}}<th>任务</th><th>分数</th><th>等级</th><th>证据强度</th><th>det / claim</th><th>完成时间</th><th>回顾</th></tr>
     {{range .Tasks}}
     <tr>
+      {{if $.IsGlobal}}<td class="muted">{{.Project}}</td>{{end}}
       <td>{{.TaskRef}}</td>
       <td>{{printf "%.0f" .Score}}</td>
       <td><span class="grade {{.Grade}}">{{.Grade}}</span></td>

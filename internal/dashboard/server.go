@@ -36,19 +36,37 @@ import (
 
 // Options 控制 dashboard 服务启动行为。
 type Options struct {
-	Root        string // 项目根（.forge 所在）
-	Port        int    // 监听端口；0 = 系统分配临时端口
-	OpenBrowser bool   // 是否自动打开浏览器
+	Root        string   // 单项目根（Roots 为空时用）
+	Roots       []string // 全局视图：多项目根（非空时优先于 Root）
+	Port        int      // 监听端口；0 = 系统分配临时端口
+	OpenBrowser bool     // 是否自动打开浏览器
+}
+
+// aggregate 按 Options 选择单项目或全局聚合：Roots 非空走全局（跨项目合并）。
+func (o Options) aggregate(now time.Time) (Data, error) {
+	if len(o.Roots) > 0 {
+		return AggregateGlobal(o.Roots, now)
+	}
+	return Aggregate(o.Root, now)
 }
 
 // Data 是看板渲染所需的全部聚合数据。复用 act/health 的纯函数产出，dashboard
 // 只负责组装成渲染友好的形状（含 SVG 几何预算——模板不做算术，只 emit 元素）。
 type Data struct {
-	Summary    health.Summary
-	Tasks      []act.Conclusion // 最近任务，最近在前，最多 20 条
-	ActiveTask string           // .forge/active-task-ref 内容（可能空）
-	Charts     Charts
-	Now        time.Time
+	Summary      health.Summary
+	Tasks        []TaskRow // 最近任务，最近在前，最多 20 条
+	ActiveTask   string    // 单项目：.forge/active-task-ref；全局：各项目 "项目:ref" 拼接
+	Charts       Charts
+	Now          time.Time
+	IsGlobal     bool // 全局视图（聚合多项目）——模板据此切标题/项目列
+	ProjectCount int  // 全局视图下的项目数（单项目 = 1）
+}
+
+// TaskRow 是一条带项目归属的任务结论。内嵌 act.Conclusion 让模板仍能直接访问
+// .TaskRef/.Score 等字段（Go 内嵌字段提升），全局视图额外暴露 .Project。
+type TaskRow struct {
+	act.Conclusion
+	Project string
 }
 
 // Charts 是模板直接消费的 SVG 几何（坐标/占比已算好）。
@@ -78,23 +96,60 @@ func Aggregate(root string, now time.Time) (Data, error) {
 	if err != nil {
 		return Data{}, err
 	}
-	summary := health.Summarize(cs)
-
-	// 最近任务倒序（最近在前），上限 20 条，避免长表拖慢渲染。
-	recent := make([]act.Conclusion, len(cs))
-	copy(recent, cs)
-	sort.SliceStable(recent, func(i, j int) bool {
-		return recent[i].CompletedAt.After(recent[j].CompletedAt)
-	})
-	if len(recent) > 20 {
-		recent = recent[:20]
+	pn := projectName(root)
+	rows := make([]TaskRow, len(cs))
+	for i, c := range cs {
+		rows[i] = TaskRow{Conclusion: c, Project: pn}
 	}
+	return buildData(rows, cs, readActiveTask(root), false, 1, now), nil
+}
 
+// AggregateGlobal 跨多个项目根聚合：合并所有结论（各带项目名），Summarize 整个合并切片。
+// health.Summarize 是吃任意 []Conclusion 的纯函数，跨项目零改动。单项目读失败跳过（不致命）；
+// 仅实际有结论的项目计入 ProjectCount（空项目不贡献图表，计入会让头标"N 个项目"与表格项目数不符）。
+// activeTask 拼成各项目 "项目:ref"。roots 为空返回空数据 Data（IsGlobal=true，ProjectCount=0，Summary 零值）。
+func AggregateGlobal(roots []string, now time.Time) (Data, error) {
+	var allRows []TaskRow
+	var allCs []act.Conclusion
+	var actives []string
+	valid := 0
+	for _, r := range roots {
+		cs, err := act.LoadAll(r)
+		if err != nil {
+			continue // 读失败（IO 级）不致命，跳过；注意文件不存在/行损坏 LoadAll 不报错，返空切片
+		}
+		pn := projectName(r)
+		for _, c := range cs {
+			allCs = append(allCs, c)
+			allRows = append(allRows, TaskRow{Conclusion: c, Project: pn})
+		}
+		if len(cs) > 0 {
+			valid++ // 仅实际有结论的项目计入头标项目数
+		}
+		if a := readActiveTask(r); a != "" {
+			actives = append(actives, pn+`: `+a)
+		}
+	}
+	return buildData(allRows, allCs, strings.Join(actives, `, `), true, valid, now), nil
+}
+
+// buildData 是 Aggregate/AggregateGlobal 的共享组装：结论切片喂 Summarize，rows 取最近 20 条，
+// charts 按时序用 cs（ScoreLine 需 chronological）。
+func buildData(rows []TaskRow, cs []act.Conclusion, activeTask string, isGlobal bool, projectCount int, now time.Time) Data {
+	// 折线按时间序：全局视图下 cs 是多项目合并（按 roots 顺序 append，非时间序），必须按
+	// CompletedAt 稳定排序后再喂 scoreLine（其 X 坐标按索引等分映射，索引即时间序）。
+	// 单项目 cs 本就 chronological，稳定排序不改变其顺序。Summarize/recentRows 顺序无关，不受影响。
+	sort.SliceStable(cs, func(i, j int) bool {
+		return cs[i].CompletedAt.Before(cs[j].CompletedAt)
+	})
+	summary := health.Summarize(cs)
 	return Data{
-		Summary:    summary,
-		Tasks:      recent,
-		ActiveTask: readActiveTask(root),
-		Now:        now,
+		Summary:      summary,
+		Tasks:        recentRows(rows),
+		ActiveTask:   activeTask,
+		IsGlobal:     isGlobal,
+		ProjectCount: projectCount,
+		Now:          now,
 		Charts: Charts{
 			// 折线按时序（cs 已 chronological），柱状按固定档位顺序保证可读。
 			ScoreLine:    scoreLine(cs, lineW, lineH, linePad),
@@ -102,7 +157,30 @@ func Aggregate(root string, now time.Time) (Data, error) {
 			StrengthBars: bars(summary.StrengthDist, []string{`Strong`, `Weak`, `Unverified`, `NoData`}),
 			LowDimBars:   lowDimBars(summary.LowDims),
 		},
-	}, nil
+	}
+}
+
+// recentRows 倒序（最近在前）取前 20 条，避免长表拖慢渲染。
+func recentRows(rows []TaskRow) []TaskRow {
+	recent := make([]TaskRow, len(rows))
+	copy(recent, rows)
+	sort.SliceStable(recent, func(i, j int) bool {
+		return recent[i].CompletedAt.After(recent[j].CompletedAt)
+	})
+	if len(recent) > 20 {
+		recent = recent[:20]
+	}
+	return recent
+}
+
+// projectName 取项目名（末两段 "父目录/末段"），用于全局视图的任务归属列。
+// 仅取末段会在同名项目（~/work/app 与 ~/personal/app）撞名无法区分；末两段消除绝大多数碰撞。
+func projectName(root string) string {
+	parent := filepath.Base(filepath.Dir(root))
+	if parent == `` || parent == `.` {
+		return filepath.Base(root) // 根/单层目录无父可拼，回退末段
+	}
+	return parent + `/` + filepath.Base(root)
 }
 
 // readActiveTask 读 .forge/active-task-ref，缺失/出错返回空串（非致命）。
@@ -235,14 +313,17 @@ type taskPublic struct {
 	AgentClaim         int
 	CompletedAt        time.Time
 	RetrospectiveNudge bool
+	Project            string
 }
 
 // publicData 是 /api/data.json 载荷：与 Data 同形但 Tasks 投影成 taskPublic（无 SessionID）。
 type publicData struct {
-	Summary    health.Summary
-	Tasks      []taskPublic
-	ActiveTask string
-	Now        time.Time
+	Summary      health.Summary
+	Tasks        []taskPublic
+	ActiveTask   string
+	Now          time.Time
+	IsGlobal     bool
+	ProjectCount int
 }
 
 // toPublic 投影 Data → 不含 SessionID 的 JSON 载荷。
@@ -253,9 +334,13 @@ func toPublic(d Data) publicData {
 			TaskRef: t.TaskRef, Score: t.Score, Grade: t.Grade, Strength: t.Strength,
 			Deterministic: t.Deterministic, AgentClaim: t.AgentClaim,
 			CompletedAt: t.CompletedAt, RetrospectiveNudge: t.RetrospectiveNudge,
+			Project: t.Project,
 		}
 	}
-	return publicData{Summary: d.Summary, Tasks: tasks, ActiveTask: d.ActiveTask, Now: d.Now}
+	return publicData{
+		Summary: d.Summary, Tasks: tasks, ActiveTask: d.ActiveTask, Now: d.Now,
+		IsGlobal: d.IsGlobal, ProjectCount: d.ProjectCount,
+	}
 }
 
 // setSecureHeaders 加基础安全头。看板是 localhost 只读页，纵深防御：X-Frame-Options
@@ -321,7 +406,7 @@ func newMux(opts Options) *http.ServeMux {
 			http.NotFound(w, r)
 			return
 		}
-		data, err := Aggregate(opts.Root, time.Now())
+		data, err := opts.aggregate(time.Now())
 		if err != nil {
 			// 完整 err 记日志（本地 stderr，含路径便于排查），响应给中性文案——不向浏览器泄露 .forge 路径。
 			log.Printf(`dashboard aggregate %s: %v`, opts.Root, err)
@@ -332,7 +417,7 @@ func newMux(opts Options) *http.ServeMux {
 		_ = RenderPage(w, data)
 	})
 	mux.HandleFunc(`/api/data.json`, func(w http.ResponseWriter, r *http.Request) {
-		data, err := Aggregate(opts.Root, time.Now())
+		data, err := opts.aggregate(time.Now())
 		if err != nil {
 			log.Printf(`dashboard aggregate %s: %v`, opts.Root, err)
 			http.Error(w, `聚合质量数据失败`, http.StatusInternalServerError)
