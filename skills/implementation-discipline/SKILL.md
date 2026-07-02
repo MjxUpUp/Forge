@@ -1,10 +1,10 @@
 ---
 name: implementation-discipline
-description: "代码实施任务的全程纪律编排（从动手到交付）。Use when: 接到编码任务准备动手时、写实现代码前、准备 git commit / push / 提 PR 前、声称\"完成了/搞定了/可以了/验证通过了\"前、用户问\"做完了吗/验证了吗/能提交吗/提交代码\"时、长任务中途怀疑自己走偏或凭记忆猜类型 API 时。本 skill 是全程编排器，各阶段指向专门 skill（审查用 code-review-gate、测试用 tdd-cycle、验证用 verification-driver）。SKIP: 纯调研出报告（research-workflow）、单一运行时 bug 根因（systematic-debugging）、纯编译错误修复（compile-fix-loop）、只改一行配置验证一下、纯架构决策记录（architecture-decision-record）、只需规划不需执行纪律（用 dev-workflow）。"
+description: "代码实施任务的全程纪律编排（从动手到交付）。Use when: 接到范式级重构/交互重设计任务时（先过 prototype-confirmation 原型门，由其自身 SKIP 判断是否真触——纯后端无视觉形态不触）、接到编码任务准备动手时、写实现代码前、准备 git commit / push / 提 PR 前、声称\"完成了/搞定了/可以了/验证通过了\"前、用户问\"做完了吗/验证了吗/能提交吗/提交代码\"时、长任务中途怀疑自己走偏或凭记忆猜类型 API 时。本 skill 是全程编排器，各阶段指向专门 skill（审查用 code-review-gate、测试用 tdd-cycle、验证用 verification-driver）。SKIP: 纯调研出报告（research-workflow）、单一运行时 bug 根因（systematic-debugging）、纯编译错误修复（compile-fix-loop）、只改一行配置验证一下、纯架构决策记录（architecture-decision-record）、只需规划不需执行纪律（用 dev-workflow）。"
 metadata:
   pattern: pipeline + gate
   domain: development-discipline
-  composes: evidence-based-proposal, tdd-cycle, test-discipline, verification-driver, code-review-gate, systematic-debugging, dev-lookup, release-readiness
+  composes: prototype-confirmation, evidence-based-proposal, tdd-cycle, test-discipline, verification-driver, code-review-gate, systematic-debugging, dev-lookup, release-readiness
 ---
 
 # 代码实施纪律链
@@ -20,6 +20,16 @@ metadata:
 **SKIP**：纯调研（research-workflow）、单 bug 根因（systematic-debugging）、纯编译错（compile-fix-loop）、纯架构决策（architecture-decision-record）、只改一行配置。
 
 ## 阶段门控链（每阶段过门才进下一个）
+
+### 前置门 — 范式确认（条件触发，最高频违反）
+
+**若是范式级改动**（起底重构 / 重新设计前端交互 / 多功能点交互方案），进阶段 0 之前先过原型确认门：把方案做成可逐功能点确认的 HTML 原型，让用户对每个功能点的形态拍板（认可/调整/推翻）后再动手。**自决范式、写完代码再让用户看 = 越权 + 返工。**
+
+→ 用 **prototype-confirmation**（含自带 HTML 模板，硬要求导出+持久化）。
+
+**红线**：范式级改动直接写代码不先出原型 / 心里"定好范式"就动手 / 把"best-judgment proceed"当默认。
+
+**不是范式级改动**（bug 修复、单功能点小改、纯后端逻辑）→ 跳过本门，直接进阶段 0。
 
 ### 阶段 0 — 计划：方案要有依据
 
@@ -113,6 +123,7 @@ metadata:
 
 | 借口 | 现实 |
 |---|---|
+| "范式我心里清楚了，直接写代码更快" | 范式级改动写完用户说"不是我要的"→ 整块返工。先出原型让用户逐项拍板（prototype-confirmation） |
 | "改几行不用先查类型/API" | 几行里的幻觉类型名/猜错的签名就是 bug 源头。grep + 查文档 10 秒，调试 1 小时 |
 | "先写代码再补测试也一样" | 不一样。没看过测试失败，你不知道它测对了东西。先写代码后补的测试常迁就实现 |
 | "单元测试过了应该没问题" | 单元测试只证模块内部逻辑。HTTP/IPC/DB/渲染必须端到端，mock 表演不算 |
@@ -131,6 +142,7 @@ metadata:
 
 ## Red Flags — STOP（看到这些想法，你在 rationalize）
 
+- "这个范式我定好了，直接写代码" → STOP，先出原型让用户逐项确认（prototype-confirmation）
 - "这个类型名我记得是…" → STOP，grep 确认
 - "这个 API 大概是这么调" → STOP，查文档/源码
 - "先写代码，测试回头补" → STOP，先写失败测试
@@ -165,6 +177,7 @@ metadata:
 
 | 阶段 | 本 skill 做什么 | 指向谁做细节 |
 |---|---|---|
+| 前置 范式确认 | 门控：范式级改动先出原型让用户逐项拍板 | prototype-confirmation |
 | 0 计划 | 门控：方案要有依据 | evidence-based-proposal |
 | 1 实施前 | **门控：先确认再写 + 选最省力实现路径（懒惰阶梯）**（本 skill 专管） | dev-lookup（查 API） |
 | 2 实施 | 门控：先失败测试 | tdd-cycle |
