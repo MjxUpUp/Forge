@@ -101,6 +101,8 @@ func mustCompile(in []Rule) []Rule {
 // auditorsForExt 按文件后缀返回适用规则（对齐 audit.py AUDITORS_BY_TYPE）：
 //   - .md/.markdown → injection + exfil + leak
 //   - 可执行脚本   → injection + exfil + dangerous_code
+//   - .html/.htm   → injection + exfil（HTML 是 prompt injection 载体：PI-4 专为隐藏
+//     指令注释设计；DC 不接——HTML 非直接可执行，eval/exec 关键词在说明文本易误报）
 func auditorsForExt(ext string) []Rule {
 	ext = strings.ToLower(ext)
 	var out []Rule
@@ -115,7 +117,7 @@ func auditorsForExt(ext string) []Rule {
 				out = append(out, r)
 			}
 		case r.Cat == "prompt_injection" || r.Cat == "data_exfiltration":
-			if markdownExt(ext) || ExecExts[ext] {
+			if markdownExt(ext) || ExecExts[ext] || HtmlExts[ext] {
 				out = append(out, r)
 			}
 		}
