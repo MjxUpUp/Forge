@@ -552,22 +552,34 @@ is_hazardous() {
         # rm -rf 无目标参数时 all_tmp 保持 1 放行——rm 自身 missing operand 报错不删，无危害。
         all_tmp=1
         past_dd=0
+        # bash 3.2（macOS CI，2007 年版）case parser 对分支 action 里的复杂命令有 bug：
+        # 嵌套 case 报 syntax error near ')' 字符、单行 [[ ]] && cmd ;; 报 syntax error near ';;'
+        # ——根因是 pattern 里的 glob '*' 与 action list 里的 glob（*..*）互相干扰，parser
+        # 状态错乱。Git Bash 5.x 容忍，本地测试不报，macOS CI 才炸（已踩两次：a6199a4/bab0f6e）。
+        # 全改 if [[ ]] + glob（bash 2.0+ 标准；glob 在 [[ ]] 内不进 case parser，绕开 bug）。
+        # 语义与原 case 等价：白名单前缀且无 .. → 保持；含 .. 或非白名单 → all_tmp=0。
+        # -- 终止符置 past_dd=1（其后 word 按字面目标查，不跳过 - 开头文件名）；rm/sudo/flag 跳过。
         for word in $seg; do
           if [[ $past_dd = 1 ]]; then
-            case $word in
-              /tmp/*|/var/folders/*|/private/tmp/*) [[ $word == *..* ]] && all_tmp=0 ;;
-              *) all_tmp=0 ;;
-            esac
+            if [[ $word == /tmp/* || $word == /var/folders/* || $word == /private/tmp/* ]]; then
+              [[ $word == *..* ]] && all_tmp=0
+            else
+              all_tmp=0
+            fi
             continue
           fi
-          case $word in
-            --) past_dd=1 ;;
-            rm|sudo|-*) continue ;;
-            /tmp/*|/var/folders/*|/private/tmp/*)
-              [[ $word == *..* ]] && all_tmp=0
-              ;;
-            *) all_tmp=0 ;;
-          esac
+          if [[ $word == -- ]]; then
+            past_dd=1
+            continue
+          fi
+          if [[ $word == rm || $word == sudo || $word == -* ]]; then
+            continue
+          fi
+          if [[ $word == /tmp/* || $word == /var/folders/* || $word == /private/tmp/* ]]; then
+            [[ $word == *..* ]] && all_tmp=0
+          else
+            all_tmp=0
+          fi
         done
         [[ $all_tmp = 1 ]] && continue
         echo H
