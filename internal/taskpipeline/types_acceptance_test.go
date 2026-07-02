@@ -1,0 +1,43 @@
+package taskpipeline
+
+import "testing"
+
+// TestHasAcceptance 钉住 TaskState.HasAcceptance：仅当 Acceptance 非空才 true。
+// task-verify advisory 和 verify-acceptance 命令都依赖它判断"有无验收标准"——
+// 误判空为有会误发 advisory，误判有为空会跳过实跑。
+func TestHasAcceptance(t *testing.T) {
+	if (&TaskState{}).HasAcceptance() {
+		t.Error(`空 Acceptance 应 HasAcceptance=false`)
+	}
+	state := &TaskState{Acceptance: ParseAcceptance([]string{`go version :: go version`})}
+	if !state.HasAcceptance() {
+		t.Error(`有验收标准时 HasAcceptance 应 true`)
+	}
+}
+
+// TestAllAcceptancePassed 钉住 AllAcceptancePassed：全 Passed=true 才 true，空也 true
+// （无可回扣项）。task-verify advisory 据 !AllAcceptancePassed() 决定是否提醒——
+// 此处隔离判定逻辑（不跑命令），executor 接线由 executor_acceptance_test 覆盖。
+func TestAllAcceptancePassed(t *testing.T) {
+	if !(&TaskState{}).AllAcceptancePassed() {
+		t.Error(`空 Acceptance 应 AllAcceptancePassed=true（无可回扣项）`)
+	}
+	allPass := &TaskState{Acceptance: []AcceptanceCriterion{
+		{Run: `a`, Passed: true},
+		{Run: `b`, Passed: true},
+	}}
+	if !allPass.AllAcceptancePassed() {
+		t.Error(`全 Passed=true 应 AllAcceptancePassed=true`)
+	}
+	oneFail := &TaskState{Acceptance: []AcceptanceCriterion{
+		{Run: `a`, Passed: true},
+		{Run: `b`, Passed: false},
+	}}
+	if oneFail.AllAcceptancePassed() {
+		t.Error(`存在 Passed=false 应 AllAcceptancePassed=false`)
+	}
+	noneRun := &TaskState{Acceptance: ParseAcceptance([]string{`go version :: go version`})} // 解析后 Passed 全 false
+	if noneRun.AllAcceptancePassed() {
+		t.Error(`未实跑（Passed 全 false）应 AllAcceptancePassed=false——advisory 应据此触发`)
+	}
+}

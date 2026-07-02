@@ -1,0 +1,44 @@
+{
+  "name": "chore-fix-ci-cmd-forge",
+  "rationale": "真实 dogfood 任务 chore-fix-ci-cmd-forge 的评分形状（采集自 TaskState+checklog+git）。钉真实组合不漂移——scoring 算法改动若让此任务评分漂移即 CI 挂。",
+  "input": {
+    "GateHistory": {
+      "TotalGates": 3,
+      "Passed": 3,
+      "Retries": 0
+    },
+    "StartedAt": "2026-06-27T19:42:52.7648551+08:00",
+    "CompletedAt": "2026-06-27T19:47:01.8634427+08:00",
+    "GitDiffStat": "5\t1\t.gitignore\n35\t5\tREADME.md\n54\t0\tRELEASE.md\n19\t0\tcmd/forge/main.go\n1\t1\tgo.mod\n184\t0\tinternal/act/conclusion.go\n278\t0\tinternal/act/conclusion_test.go\n2\t2\tinternal/agentbridge/claudecode.go\n1\t0\tinternal/agentbridge/codex.go\n1\t0\tinternal/agentbridge/cursor.go\n5\t3\tinternal/agentbridge/opencode.go\n4\t2\tinternal/agentbridge/pi.go\n3\t3\tinternal/agentbridge/translator_test.go\n2\t2\tinternal/agentbridge/types.go\n1\t0\tinternal/agentbridge/windsurf.go\n122\t0\tinternal/checklog/evidence.go\n162\t0\tinternal/checklog/evidence_test.go\n6\t1\tinternal/checklog/store.go\n59\t11\tinternal/checklog/types.go\n141\t0\tinternal/ci/release_workflow_test.go\n56\t0\tinternal/cli/aa_groups.go\n94\t0\tinternal/cli/aa_groups_test.go\n164\t0\tinternal/cli/act.go\n119\t0\tinternal/cli/act_test.go\n76\t8\tinternal/cli/cli_test.go\n1\t1\tinternal/cli/clone.go\n73\t0\tinternal/cli/dashboard.go\n25\t0\tinternal/cli/dashboard_test.go\n1\t1\tinternal/cli/docs_consistency_test.go\n1\t1\tinternal/cli/experience.go\n2\t2\tinternal/cli/experience_test.go\n7\t3\tinternal/cli/gate.go\n43\t0\tinternal/cli/gate_test.go\n42\t3\tinternal/cli/hazard.go\n110\t0\tinternal/cli/health.go\n51\t0\tinternal/cli/health_test.go\n5\t5\tinternal/cli/hook.go\n1\t1\tinternal/cli/hook_test.go\n13\t6\tinternal/cli/init.go\n1\t1\tinternal/cli/knowledge.go\n15\t9\tinternal/cli/mcp.go\n1\t1\tinternal/cli/phase_explosion_test.go\n47\t5\tinternal/cli/review.go\n96\t0\tinternal/cli/review_status_test.go\n3\t3\tinternal/cli/root.go\n1\t1\tinternal/cli/skills_adapters.go\n2\t2\tinternal/cli/skills_audit.go\n4\t47\tinternal/cli/skills_canonical.go\n13\t11\tinternal/cli/skills_canonical_test.go\n1\t1\tinternal/cli/skills_drift_check.go\n66\t0\tinternal/cli/skills_eval_baseline.go\n232\t0\tinternal/cli/skills_eval_loop_test.go\n95\t0\tinternal/cli/skills_eval_record.go\n140\t0\tinternal/cli/skills_eval_report.go\n60\t31\tinternal/cli/skills_evalgen.go\n1\t1\tinternal/cli/skills_install.go\n1\t1\tinternal/cli/skills_install_test.go\n1\t1\tinternal/cli/skills_list.go\n1\t1\tinternal/cli/skills_usage.go\n2\t2\tinternal/cli/skills_validate.go\n3\t3\tinternal/cli/snapshot.go\n35\t7\tinternal/cli/status.go\n5\t5\tinternal/cli/sync.go\n2\t2\tinternal/cli/sync_test.go\n350\t40\tinternal/cli/task.go\n1\t1\tinternal/cli/task_abort_test.go\n202\t0\tinternal/cli/task_acceptance_test.go\n1\t1\tinternal/cli/task_duplicate_test.go\n110\t0\tinternal/cli/task_scope_test.go\n47\t0\tinternal/cli/task_score_evidence_test.go\n0\t47\tinternal/cli/task_score_test.go\n21\t3\tinternal/cli/trace.go\n1\t1\tinternal/cli/validate.go\n89\t8\tinternal/cli/verify.go\n187\t0\tinternal/cli/verify_runtests_test.go\n162\t0\tinternal/dashboard/assets/index.html\n11\t0\tinternal/dashboard/embed.go\n532\t0\tinternal/dashboard/server.go\n620\t0\tinternal/dashboard/server_test.go\n253\t1\tinternal/e2e/hook_intercept_test.go\n151\t0\tinternal/e2e/hook_workflow_test_guard_test.go\n1\t1\tinternal/experience/generation.go\n1\t1\tinternal/experience/generation_test.go\n1\t1\tinternal/experience/integration.go\n2\t2\tinternal/experience/integration_test.go\n2\t2\tinternal/experience/review.go\n1\t1\tinternal/experience/review_test.go\n1\t1\tinternal/experience/types.go\n116\t0\tinternal/hazard/event.go\n184\t0\tinternal/hazard/event_test.go\n6\t3\tinternal/hazard/stamp.go\n148\t0\tinternal/health/summary.go\n138\t0\tinternal/health/summary_test.go\n154\t15\tinternal/hooks/embed.go\n24\t20\tinternal/hooks/settings.go\n70\t3\tinternal/hooks/settings_test.go\n30\t2\tinternal/mcpserver/server.go\n284\t5\tinternal/mcpserver/server_test.go\n72\t6\tinternal/mcpserver/tools.go\n207\t0\tinternal/mcpserver/tools_eval.go\n1\t1\tinternal/pipeline/executor.go\n1\t1\tinternal/pipeline/state.go\n1\t1\tinternal/pipeline/status.go\n1\t1\tinternal/pipeline/types.go\n16\t3\tinternal/projectroot/projectroot_test.go\n1\t1\tinternal/protocol/defaults.go\n1\t1\tinternal/protocol/types.go\n112\t0\tinternal/registry/registry.go\n111\t0\tinternal/registry/registry_test.go\n66\t27\tinternal/review/stamp.go\n129\t0\tinternal/review/stamp_test.go\n55\t0\tinternal/scoring/assertion.go\n120\t51\tinternal/scoring/evaluator.go\n118\t22\tinternal/scoring/evaluator_test.go\n49\t22\tinternal/scoring/git.go\n9\t1\tinternal/scoring/golden_test.go\n162\t0\tinternal/scoring/scope_test.go\n4\t0\tinternal/scoring/testdata/golden/golden_clean-baseline.json\n6\t2\tinternal/scoring/testdata/golden/golden_poor-quality.json\n18\t0\tinternal/scoring/types.go\n20\t6\tinternal/scoringtypes/types.go\n1\t1\tinternal/skillgen/generator.go\n2\t2\tinternal/skillgen/generator_test.go\n3\t3\tinternal/skillgen/qualitygen.go\n2\t2\tinternal/skillgen/qualitygen_test.go\n65\t0\tinternal/skillscanonical/resolve.go\n54\t0\tinternal/skillscanonical/resolve_test.go\n1\t1\tinternal/skillsdist/adapters.go\n2\t2\tinternal/skillsdist/install.go\n2\t2\tinternal/skillsdist/manifest.go\n179\t0\tinternal/skillseval/cases.go\n117\t0\tinternal/skillseval/cases_test.go\n21\t10\tinternal/skillseval/eval.go\n521\t0\tinternal/skillseval/runs.go\n308\t0\tinternal/skillseval/runs_test.go\n1\t1\tinternal/skillseval/usage.go\n1\t1\tinternal/skillsqa/registry.go\n1\t1\tinternal/snapshot/infer.go\n1\t1\tinternal/snapshot/snapshot_test.go\n77\t0\tinternal/taskpipeline/acceptance.go\n80\t0\tinternal/taskpipeline/acceptance_test.go\n48\t2\tinternal/taskpipeline/activity_ratio_test.go\n455\t0\tinternal/taskpipeline/cheatscan.go\n277\t0\tinternal/taskpipeline/cheatscan_test.go\n1\t1\tinternal/taskpipeline/concurrent_session_test.go\n167\t10\tinternal/taskpipeline/executor.go\n87\t0\tinternal/taskpipeline/executor_acceptance_test.go\n112\t0\tinternal/taskpipeline/executor_cheatscan_test.go\n157\t0\tinternal/taskpipeline/executor_scope_test.go\n87\t0\tinternal/taskpipeline/executor_skill_eval.go\n111\t0\tinternal/taskpipeline/executor_skill_eval_test.go\n233\t9\tinternal/taskpipeline/executor_test.go\n178\t0\tinternal/taskpipeline/scope.go\n100\t0\tinternal/taskpipeline/scope_test.go\n1\t1\tinternal/taskpipeline/session.go\n1\t1\tinternal/taskpipeline/session_test.go\n2\t2\tinternal/taskpipeline/state.go\n1\t1\tinternal/taskpipeline/testcapability.go\n59\t15\tinternal/taskpipeline/testcoverage.go\n154\t10\tinternal/taskpipeline/testcoverage_test.go\n45\t0\tinternal/taskpipeline/testrun.go\n52\t0\tinternal/taskpipeline/testrun_test.go\n60\t16\tinternal/taskpipeline/types.go\n43\t0\tinternal/taskpipeline/types_acceptance_test.go\n41\t0\tinternal/toolusage/read_edit_counts_test.go\n23\t1\tinternal/toolusage/store.go\n1\t1\tnpm/package.json\n21\t0\tskills/code-review-gate/SKILL.md\n4\t0\tskills/dev-workflow/SKILL.md\n1\t0\tskills/integration-test-architecture/SKILL.md\n13\t1\tskills/session-retrospective/SKILL.md\n3\t113\tinternal/cli/task.go\n4\t0\tinternal/cli/verify.go\n21\t3\tinternal/scoring/golden.go",
+    "TestCoveragePassed": false,
+    "TestCoverageChecked": true,
+    "TestCoverageCovered": 80,
+    "TestCoverageTotal": 88,
+    "TestAssertionCount": 1689,
+    "TestFileCount": 62,
+    "CompilePassed": true,
+    "AssertionPassed": false,
+    "CompileChecked": true,
+    "AssertionChecked": false,
+    "EvidenceDeterministic": 6,
+    "EvidenceAgentClaim": 0
+  },
+  "expected": {
+    "overall": 88,
+    "grade": "B",
+    "dimensions": {
+      "assertions": 70,
+      "code-quality": 100,
+      "efficiency": 100,
+      "process": 100,
+      "scope": 40,
+      "testing": 94
+    }
+  },
+  "meta": {
+    "source": "auto-collected",
+    "drift_known": [
+      "scope"
+    ]
+  }
+}

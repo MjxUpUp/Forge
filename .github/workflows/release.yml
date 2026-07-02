@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write  # goreleaser 创建 Release 用；npm job 走 NODE_AUTH_TOKEN 连外部 registry，不经 GITHUB_TOKEN
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+      - run: go test ./... -count=1 -race
+      - run: go vet ./...
+
+  goreleaser:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+
+  npm:
+    # Publish @agent_forge/forge to npmjs.org. Runs AFTER goreleaser so the
+    # GitHub Release binaries already exist — the package's install.js
+    # (postinstall) downloads the platform binary from the release at
+    # install time, so binaries must be present before the package is usable.
+    needs: goreleaser
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          # setup-node writes a .npmrc authenticating via NODE_AUTH_TOKEN
+          # for this registry — the standard CI pattern, avoids project
+          # .npmrc conflicts.
+          registry-url: "https://registry.npmjs.org"
+      - run: npm publish
+        working-directory: npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

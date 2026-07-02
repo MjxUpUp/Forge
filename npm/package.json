@@ -1,0 +1,35 @@
+{
+  "name": "@agent_forge/forge",
+  "version": "1.0.0",
+  "description": "AI 开发质量门禁引擎 — 结构化门禁管道，在 AI 生成的代码进入仓库前进行质量锻造",
+  "bin": {
+    "forge": "run.js"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "files": [
+    "install.js",
+    "run.js",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MjxUpUp/Forge"
+  },
+  "keywords": [
+    "ai",
+    "gate",
+    "pipeline",
+    "quality",
+    "claude-code"
+  ],
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=16"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  }
+}
