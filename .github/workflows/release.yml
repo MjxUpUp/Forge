@@ -54,7 +54,18 @@ jobs:
           # for this registry — the standard CI pattern, avoids project
           # .npmrc conflicts.
           registry-url: "https://registry.npmjs.org"
-      - run: npm publish
+      - name: Publish to npm (idempotent)
+        # 幂等：npm 不允许覆盖已发布版本（同版本重建场景，如 v1.0.0 GitHub Release 二进制
+        # 重建 - 二进制可重建，npm 包一旦发布不可撤回）。检测已发布则跳过；npm 包的 install.js
+        # 在 install 时按 tag 从 GitHub Release 下载二进制，故重建 Release 后旧 npm 包自动
+        # 指向新二进制，无需重发。
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if npm view "@agent_forge/forge@$PKG_VERSION" version >/dev/null 2>&1; then
+            echo "already published @agent_forge/forge@$PKG_VERSION, skipping (install.js downloads the rebuilt binary from the v$PKG_VERSION GitHub Release)"
+          else
+            npm publish
+          fi
         working-directory: npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
