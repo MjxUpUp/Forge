@@ -113,6 +113,14 @@ var hazardLogCmd = &cobra.Command{
 // runHazardConfirm 登记确认。MinimumNArgs(1) + Join：agent 可引号传整串，也可不引号
 // （多 arg 被空格 join 还原）——空白归一在 hazard.Fingerprint 内做，两种传法同指纹。
 func runHazardConfirm(cmd *cobra.Command, args []string) error {
+	// --fingerprint 格式校验前置（在 findProjectRoot 前）：格式校验是纯输入校验，不需要
+	// 项目上下文。CI 等无 .forge/ 环境下避免 not-in-a-forge-project 掩盖指纹校验失败——
+	// agent 抄错指纹应被明确拒绝。与 ConfirmByFingerprint 同源校验。
+	if hazardConfirmFingerprint != "" {
+		if err := hazard.ValidateFingerprint(hazardConfirmFingerprint); err != nil {
+			return err
+		}
+	}
 	root, err := findProjectRoot()
 	if err != nil {
 		return err

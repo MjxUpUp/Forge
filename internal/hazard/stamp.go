@@ -81,25 +81,29 @@ func isValidFingerprint(fp string) bool {
 	return err == nil
 }
 
-// ConfirmByFingerprint 直接按给定指纹登记确认，绕过 Fingerprint(cmd) 计算。
-// hazard-guard hook 已用 forge hazard fingerprint 算好指纹，agent 用
-// `forge hazard confirm --fingerprint <fp>` 回传。
-//
-// 回传指纹而非命令串的原因：命令串会被 agent shell 重新解析吃掉引号（如 SQL
-// mysql -e 'DROP TABLE t' 的单引号），与 hook 原始命令指纹不一致、确认后仍被拦。
-//
-// 但"指纹是 hex、复制无失真"只对真复制粘贴成立——转写型 agent 重生成长 hex 会漂移
-// （残缺/错字符/大写化）。入口先 strings.ToLower 归一化大小写（GPT 系偏好大写；落盘
-// 文件名必须小写才能被 hook 的小写查询命中——大小写敏感文件系统上大写落盘会失配，
-// 复现"报成功仍被拦"），再用 isValidFingerprint 校验长度与字符集：非法直接报错，避免
-// 写入错文件名却打印"✅ 已确认"的虚假成功（agent 以为登记好了，重试仍被拦，且
-// .forge/hazards/ 留垃圾文件）。cmd 仅用于审计展示，可为空。
-func ConfirmByFingerprint(root, fp, cmd string) error {
-	fp = strings.ToLower(fp)
-	if !isValidFingerprint(fp) {
-		return fmt.Errorf(`invalid fingerprint (got %d chars, want 64-char sha256 hex): re-copy the fingerprint verbatim from the hazard-guard block message, or run "forge hazard confirm <command>" without --fingerprint to let forge compute it`, len(fp))
+// ValidateFingerprint 接受大小写混合输入并校验长度/字符集，非法返回 invalid fingerprint
+// 错误。ToLower 仅用于内部校验通过，不返回归一化值——落盘侧（ConfirmByFingerprint）须
+// 自行 ToLower 小写。导出供 cli 层在 findProjectRoot 前做前置校验：格式校验是纯输入校验，
+// 不需要项目上下文，避免无 .forge/（如 CI fresh checkout）时 not-in-a-forge-project 掩盖
+// 指纹校验失败——agent 抄错指纹应被明确拒绝，不因无关的项目定位错误获得模糊反馈。错误
+// 信息与 ConfirmByFingerprint 同源，保证两条路径反馈一致。
+func ValidateFingerprint(fp string) error {
+	lower := strings.ToLower(fp)
+	if !isValidFingerprint(lower) {
+		return fmt.Errorf(`invalid fingerprint (got %d chars, want 64-char sha256 hex): re-copy the fingerprint verbatim from the hazard-guard block message, or run "forge hazard confirm <command>" without --fingerprint to let forge compute it`, len(lower))
 	}
-	return writeConfirmation(root, fp, cmd)
+	return nil
+}
+
+// ConfirmByFingerprint 按 hook 已算好的指纹登记确认，绕过 Fingerprint(cmd) 计算（避免
+// 命令串复制失真：agent shell 重新解析会吃掉引号）。先 ValidateFingerprint 拒非法格式，
+// 再 ToLower 小写落盘——hook 用小写查询，大小写敏感文件系统上大写落盘会失配。归一化与
+// agent 抄错指纹事故的完整背景见 isValidFingerprint / ValidateFingerprint 注释。
+func ConfirmByFingerprint(root, fp, cmd string) error {
+	if err := ValidateFingerprint(fp); err != nil {
+		return err
+	}
+	return writeConfirmation(root, strings.ToLower(fp), cmd)
 }
 
 // writeConfirmation 构造 Confirmation 落盘（AtomicWrite = temp+rename）。
