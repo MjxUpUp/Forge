@@ -61,6 +61,9 @@ rm -rf /important`,
 		`rm -rf -- -sensitive-file`,
 		// -- 后系统路径同样 block（past_dd 分支按目标查，/etc 非 /tmp 白名单）
 		`rm -rf -- /etc/passwd`,
+		// -- 后白名单前缀含 .. 路径穿越：past_dd=1 分支也须检测 .. 不放行
+		// （与 rm -rf /tmp/../etc 的 past_dd=0 分支对称，锁死两分支 .. 检测一致）
+		`rm -rf -- /tmp/../etc`,
 		// 长选项 flag + -- 终止符组合：--recursive/--force 走 flag 跳过不触发 past_dd，
 		// 真 -- 才触发，其后 -sensitive 按目标查 block（锁长选项与 past_dd 的交互路径）
 		`rm --recursive --force -- -sensitive`,

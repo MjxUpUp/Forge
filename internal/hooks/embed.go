@@ -555,7 +555,7 @@ is_hazardous() {
         for word in $seg; do
           if [[ $past_dd = 1 ]]; then
             case $word in
-              /tmp/*|/var/folders/*|/private/tmp/*) case $word in *..*) all_tmp=0 ;; esac ;;
+              /tmp/*|/var/folders/*|/private/tmp/*) [[ $word == *..* ]] && all_tmp=0 ;;
               *) all_tmp=0 ;;
             esac
             continue
@@ -564,7 +564,7 @@ is_hazardous() {
             --) past_dd=1 ;;
             rm|sudo|-*) continue ;;
             /tmp/*|/var/folders/*|/private/tmp/*)
-              case $word in *..*) all_tmp=0 ;; esac
+              [[ $word == *..* ]] && all_tmp=0
               ;;
             *) all_tmp=0 ;;
           esac
