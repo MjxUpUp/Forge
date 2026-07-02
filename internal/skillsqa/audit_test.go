@@ -123,6 +123,52 @@ func TestScan_HTML_HtmAndUpperCase(t *testing.T) {
 	}
 }
 
+func TestScan_HTML_DC1_Eval(t *testing.T) {
+	// .html 内嵌 eval() → DC-1 命中（HtmlAlso）。eval 在 HTML 无合法用途，
+	// <script>eval(payload) 是真实 XSS / 任意 JS 执行。守护 DC-1 的 HtmlAlso 不被误删。
+	sd := writeSkillFiles(t, "x", map[string]string{
+		"SKILL.md":             "---\nname: x\ndescription: d\n---\n\nclean\n",
+		"references/page.html": `<script>eval("steal")</script>`,
+	})
+	fs, _ := ScanSkill(sd)
+	if !hasRule(fs, "DC-1") {
+		t.Fatalf("DC-1 must fire on .html eval, got %v", ruleIDs(fs))
+	}
+}
+
+func TestScan_HTML_DC7_BrowserXSS(t *testing.T) {
+	// 正向：浏览器端代码执行向量 → DC-7 命中（new Function / document.write /
+	// setTimeout 字符串 / location.href=javascript:）。反向：合法 callback（arrow/变量）
+	// → 不命中——守护 Pattern 的 setTimeout 后引号边界，去掉引号约束会误报所有 setTimeout(fn,100)。
+	cases := map[string]struct {
+		body     string
+		wantFire bool
+	}{
+		"new Function":         {`<script>new Function("alert(1)")()</script>`, true},
+		"document.write":       {`<script>document.write("<img src=x>")</script>`, true},
+		"setTimeout string":    {`<script>setTimeout("doEvil()", 100)</script>`, true},
+		"location javascript":  {`<script>location.href = "javascript:alert(1)"</script>`, true},
+		"setTimeout arrow":     {`<script>setTimeout(() => doX(), 100)</script>`, false},
+		"setTimeout var":       {`<script>setTimeout(handler, 100)</script>`, false},
+		"setInterval callback": {`<script>setInterval(tick, 1000)</script>`, false},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			sd := writeSkillFiles(t, "x", map[string]string{
+				"SKILL.md":             "---\nname: x\ndescription: d\n---\n\nclean\n",
+				"references/page.html": c.body,
+			})
+			fs, _ := ScanSkill(sd)
+			if c.wantFire && !hasRule(fs, "DC-7") {
+				t.Fatalf("DC-7 must fire on .html %s, got %v", name, ruleIDs(fs))
+			}
+			if !c.wantFire && hasRule(fs, "DC-7") {
+				t.Fatalf("DC-7 must NOT fire on legitimate %s (false positive), got %v", name, ruleIDs(fs))
+			}
+		})
+	}
+}
+
 func TestScan_DangerousCode_ExecOnly(t *testing.T) {
 	// eval( 在 .py 命中 DC-1
 	sdPy := writeSkillFiles(t, "x", map[string]string{
@@ -242,4 +288,16 @@ func TestSeverityBand_Boundaries(t *testing.T) {
 			t.Errorf("SeverityBand(%d) = %s, want %s", score, got, want)
 		}
 	}
+}
+
+func TestMustCompile_HtmlAlsoRequiresExecOnly(t *testing.T) {
+	// HtmlAlso 是 ExecOnly 的修饰：ExecOnly=false 时规则走 auditorsForExt 的 switch default
+	// 沉默失效。mustCompile 编译期 fail-fast，配置错误立即 panic 而非沉默漏报——守护未来
+	// 误写 HtmlAlso:true, ExecOnly:false 致规则永远不 fire 的安全门失守。
+	defer func() {
+		if recover() == nil {
+			t.Fatal("mustCompile(HtmlAlso:true, ExecOnly:false) must panic, got nil")
+		}
+	}()
+	mustCompile([]Rule{{ID: "X-1", Pattern: "x", HtmlAlso: true, ExecOnly: false}})
 }
