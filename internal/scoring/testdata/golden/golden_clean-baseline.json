@@ -1,0 +1,36 @@
+{
+  "name": "clean-baseline",
+  "rationale": "All gates pass first try, tests present, small diff, no anti-patterns. Pins the A-grade ceiling; drift below A means something penalized a clean task.",
+  "input": {
+    "GateHistory": {
+      "TotalGates": 3,
+      "Passed": 3,
+      "Retries": 0
+    },
+    "StartedAt": "2026-06-15T10:00:00Z",
+    "CompletedAt": "2026-06-15T10:05:00Z",
+    "GitDiffStat": "3\t5\tmain.go",
+    "TestCoveragePassed": true,
+    "TestCoverageChecked": true,
+    "TestCoverageCovered": 1,
+    "TestCoverageTotal": 1,
+    "TestAssertionCount": 3,
+    "TestFileCount": 1,
+    "CompilePassed": true,
+    "AssertionPassed": true,
+    "CompileChecked": true,
+    "AssertionChecked": true
+  },
+  "expected": {
+    "overall": 100,
+    "grade": "A",
+    "dimensions": {
+      "assertions": 100,
+      "code-quality": 100,
+      "efficiency": 100,
+      "process": 100,
+      "scope": 100,
+      "testing": 100
+    }
+  }
+}
