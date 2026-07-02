@@ -38,12 +38,14 @@ var ExecExts = map[string]bool{
 	".mjs": true, ".cjs": true, ".bat": true, ".cmd": true,
 }
 
-// HtmlExts — HTML 后缀；prompt_injection / data_exfiltration 规则对这些也生效。
-// HTML 是 prompt injection 高危载体：PI-4 专为隐藏指令注释设计、PI-5 零宽字符、
-// DE 外发指令都能藏进 HTML 注释或内嵌文本。dangerous_code（ExecOnly）不接 HTML——
-// HTML 非直接可执行后缀，且 eval/exec 关键词在 HTML 说明文本里易误报；只接 PI/DE。
-// 2026-07：prototype-confirmation 引入首个 .html canonical 资产暴露此盲区（PI-4 此前
-// 从不扫真正的 .html——专为 HTML 注释设计的规则却不覆盖 HTML 文件本身）。
+// HtmlExts — HTML 后缀；prompt_injection / data_exfiltration 规则对这些生效，
+// dangerous_code 中 HtmlAlso=true 的（DC-1 eval / DC-7 浏览器执行向量）也生效。
+// HTML 是 injection/代码执行高危载体：PI-4 隐藏指令注释、PI-5 零宽字符、DE 外发指令、
+// HTML 内嵌 <script>eval(...)/new Function(...)/document.write(...) 都是真实攻击面。
+// 其余 DC（child_process/os.system 等后端 API）不接 HTML——HTML 非直接可执行后缀，
+// 后端 API 关键词在说明文本易误报。
+// 2026-07：prototype-confirmation 引入首个 .html canonical 资产暴露盲区——PI-4 此前
+// 从不扫真正的 .html；DC-1 eval 此前走 ExecOnly 也不扫 .html（HTML 内嵌 XSS 漏报）。
 var HtmlExts = map[string]bool{
 	".html": true, ".htm": true,
 }

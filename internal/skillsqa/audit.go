@@ -32,6 +32,7 @@ type Rule struct {
 	Fix      string
 	Cat      string
 	ExecOnly bool
+	HtmlAlso bool // dangerous_code 规则额外在 .html/.htm 生效（浏览器端 XSS 向量：DC-1 eval / DC-7 浏览器执行向量）；其余 DC 只接可执行脚本
 	re       *regexp.Regexp
 }
 
@@ -69,8 +70,8 @@ var auditRules = mustCompile([]Rule{
 		Pattern: `(?i)(?:repeat|reveal|output|show|print|leak)\s+(?:your\s+)?(?:system\s+prompt|initial\s+instructions?|hidden\s+instructions?|core\s+instructions?)`},
 	{ID: "SL-2", Cat: "system_prompt_leakage", Severity: "MEDIUM", Conf: 0.7, Msg: "探测系统提示", Fix: "删除",
 		Pattern: `(?i)(?:what\s+are\s+your|give\s+me\s+your)\s+(?:system\s+prompt|instructions?|rules?)`},
-	// DANGEROUS_CODE（6，仅可执行脚本）
-	{ID: "DC-1", Cat: "dangerous_code", Severity: "HIGH", Conf: 0.8, Msg: "eval() 任意代码执行", Fix: "避免 eval；用安全解析", ExecOnly: true,
+	// DANGEROUS_CODE（7；DC-1 eval / DC-7 浏览器执行向量经 HtmlAlso 也接 HTML，余仅可执行脚本）
+	{ID: "DC-1", Cat: "dangerous_code", Severity: "HIGH", Conf: 0.8, Msg: "eval() 任意代码执行", Fix: "避免 eval；用安全解析", ExecOnly: true, HtmlAlso: true,
 		Pattern: `(?i)\beval\s*\(`},
 	{ID: "DC-2", Cat: "dangerous_code", Severity: "HIGH", Conf: 0.7, Msg: "child_process.exec() 任意代码执行", Fix: "避免 child_process.exec；用安全解析", ExecOnly: true,
 		// 原 Pattern `\bexec\s*\(` 会误报 RegExp.exec()（正则匹配，完全无害）——
@@ -87,11 +88,30 @@ var auditRules = mustCompile([]Rule{
 		Pattern: `(?i)\b__import__\s*\(`},
 	{ID: "DC-6", Cat: "dangerous_code", Severity: "HIGH", Conf: 0.75, Msg: "脚本中 curl/wget POST 外发动态数据", Fix: "核实目标地址合法性；勿外发用户数据", ExecOnly: true,
 		Pattern: `(?i)\b(?:curl|wget)\b[^|&;]{0,120}?(?:-X\s*POST|--data|--data-raw|-d\s)['\"]?(?:\$\{|\$[A-Z_])`},
+	// DC-7 浏览器端动态代码执行向量——此前 skillsqa 对这些完全无规则覆盖：HTML 内嵌
+	// <script>new Function(...)/document.write(...)/setTimeout 字符串/location.href=javascript:
+	// 都是任意 JS 执行（XSS / 数据窃取）。DC-1~DC-6 走 ExecOnly 只接 .js/.ts，.html 内嵌漏报。
+	// HtmlAlso 让 DC-7 同时覆盖 .html 与可执行脚本。
+	// Pattern 刻意不含 innerHTML——静态扫描无法区分 innerHTML 数据源（硬编码字符串 vs
+	// 用户输入），全接信噪比极差，故不接；该 DOM XSS 向量依赖代码审查覆盖。已知漏报缺口：
+	// ① innerHTML/outerHTML 注入；② Function() 无 new（补会误报 function 声明）；
+	// ③ (0,eval) 间接 eval（evasion）；④ setTimeout/setInterval 模板字面量参数（引号字符类不含反引号）；
+	// ⑤ document.writeln、location.assign/replace 跳转（javascript: scheme）边缘 sink（披露不扩 Pattern，
+	// 避免过度复杂）。HTML fetch/XHR/sendBeacon 外发是另一独立缺口
+	// （DC-6 curl/wget 不接 HTML），留待 DC-8 follow-up。
+	{ID: "DC-7", Cat: "dangerous_code", Severity: "HIGH", Conf: 0.75, Msg: "浏览器端动态代码执行向量（Function 构造器/document.write/字符串定时器）", Fix: "避免动态代码执行；用静态 DOM（textContent）/事件绑定", ExecOnly: true, HtmlAlso: true,
+		Pattern: `(?i)(?:new\s+Function\s*\(|document\.write\s*\(|\b(?:setTimeout|setInterval)\s*\(\s*['"]|location\.href\s*=\s*['"]javascript:)`},
 })
 
 func mustCompile(in []Rule) []Rule {
 	out := make([]Rule, len(in))
 	for i, r := range in {
+		// HtmlAlso 是 ExecOnly 的修饰：ExecOnly=false 时规则走 auditorsForExt 的 switch
+		// default（dangerous_code 不匹配任何显式 case），沉默失效——安全门静默漏报。
+		// 编译期 fail-fast，防未来误写 HtmlAlso:true, ExecOnly:false。
+		if r.HtmlAlso && !r.ExecOnly {
+			panic("rule " + r.ID + ": HtmlAlso requires ExecOnly=true (otherwise rule never fires)")
+		}
 		r.re = regexp.MustCompile(r.Pattern)
 		out[i] = r
 	}
@@ -102,14 +122,18 @@ func mustCompile(in []Rule) []Rule {
 //   - .md/.markdown → injection + exfil + leak
 //   - 可执行脚本   → injection + exfil + dangerous_code
 //   - .html/.htm   → injection + exfil（HTML 是 prompt injection 载体：PI-4 专为隐藏
-//     指令注释设计；DC 不接——HTML 非直接可执行，eval/exec 关键词在说明文本易误报）
+//     指令注释设计）+ dangerous_code 中 HtmlAlso=true 的（DC-1 eval / DC-7 浏览器执行
+//     向量）；其余 DC（child_process/os.system/subprocess 等后端 API）不接——HTML 非直接
+//     可执行，后端 API 关键词在说明文本易误报。
 func auditorsForExt(ext string) []Rule {
 	ext = strings.ToLower(ext)
 	var out []Rule
 	for _, r := range auditRules {
 		switch {
 		case r.ExecOnly:
-			if ExecExts[ext] {
+			// dangerous_code 默认仅可执行脚本；HtmlAlso=true 的规则（DC-1 eval / DC-7
+			// 浏览器执行向量）额外在 .html/.htm 生效——HTML 内嵌 <script> 是真实执行载体。
+			if ExecExts[ext] || (r.HtmlAlso && HtmlExts[ext]) {
 				out = append(out, r)
 			}
 		case r.Cat == "system_prompt_leakage":
