@@ -132,6 +132,43 @@ func TestConfirmByFingerprint_RejectsInvalidFormat(t *testing.T) {
 	}
 }
 
+// TestValidateFingerprint 钉住导出的纯输入校验契约：cli 层在 findProjectRoot 前用它做
+// 前置校验（CI 无 .forge/ 时不让 not-in-a-forge-project 掩盖指纹校验失败）。它是从
+// ConfirmByFingerprint 抽出的纯函数——不需 root/落盘，故独立测试钉契约边界，避免未来
+// 重构 ConfirmByFingerprint 时其间接覆盖（TestConfirmByFingerprint_RejectsInvalidFormat）
+// 丢失而 ValidateFingerprint 本身回归无人察觉。错误信息必须含 invalid fingerprint，
+// cli 层 TestRunHazardConfirm_RejectsInvalidFingerprint 依赖该文本断言错误来源。
+func TestValidateFingerprint(t *testing.T) {
+	cases := []struct {
+		name    string
+		fp      string
+		wantErr bool
+	}{
+		{"valid lowercase 64 hex", strings.Repeat(`a`, 64), false},
+		{"valid uppercase normalized", strings.Repeat(`A`, 64), false},
+		{"empty", ``, true},
+		{"truncated 63 chars", strings.Repeat(`a`, 63), true},
+		{"too long 65 chars", strings.Repeat(`a`, 65), true},
+		{"64 chars but non-hex (g)", strings.Repeat(`a`, 63) + `g`, true},
+	}
+	for _, c := range cases {
+		err := ValidateFingerprint(c.fp)
+		if c.wantErr {
+			if err == nil {
+				t.Errorf("%s: ValidateFingerprint(%q) must error", c.name, c.fp)
+				continue
+			}
+			if !strings.Contains(err.Error(), `invalid fingerprint`) {
+				t.Errorf("%s: error must contain invalid fingerprint, got: %v", c.name, err)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("%s: ValidateFingerprint(%q) must pass, got: %v", c.name, c.fp, err)
+		}
+	}
+}
+
 // TestConfirmByFingerprint_NormalizesUppercase 验证大写/混合大小写 hex 被归一化为小写
 // 后落盘——转写型 agent（GPT 系）重生长 hex 偏好大写，若原样落盘会在大小写敏感文件系统
 // 上被 hook 的小写查询漏掉（复现"报成功仍被拦"）。归一化而非拒绝，既宽容输入又保证命中。
