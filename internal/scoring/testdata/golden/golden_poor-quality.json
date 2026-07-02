@@ -1,0 +1,36 @@
+{
+  "name": "poor-quality",
+  "rationale": "Gates failed with retries, no tests, very large diff, slow, compile failed. Pins the D/F floor so a genuinely bad task never grades as acceptable.",
+  "input": {
+    "GateHistory": {
+      "TotalGates": 3,
+      "Passed": 1,
+      "Retries": 3
+    },
+    "StartedAt": "2026-06-15T10:00:00Z",
+    "CompletedAt": "2026-06-15T12:00:00Z",
+    "GitDiffStat": "300\t300\tmain.go",
+    "TestCoveragePassed": false,
+    "TestCoverageChecked": true,
+    "TestCoverageCovered": 0,
+    "TestCoverageTotal": 1,
+    "TestAssertionCount": 0,
+    "TestFileCount": 1,
+    "CompilePassed": false,
+    "AssertionPassed": false,
+    "CompileChecked": true,
+    "AssertionChecked": true
+  },
+  "expected": {
+    "overall": 27.25,
+    "grade": "F",
+    "dimensions": {
+      "assertions": 0,
+      "code-quality": 0,
+      "efficiency": 40,
+      "process": 55,
+      "scope": 40,
+      "testing": 30
+    }
+  }
+}
