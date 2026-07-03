@@ -164,7 +164,9 @@ func archiveLocked(root string) error {
 
 // Clear archives the current toollog and removes the active file. Both steps
 // run under the mutex so no Record can append between the rename and the remove
-// (which would leak the appended entry into a fresh active file).
+// (which would leak the appended entry into a fresh active file). After
+// archiving+removing, it best-effort prunes archives older than the retention
+// window so toollog-*.jsonl doesn't grow unbounded across task starts.
 func Clear(root string) error {
 	mu.Lock()
 	defer mu.Unlock()
@@ -172,8 +174,24 @@ func Clear(root string) error {
 		return err
 	}
 	path := filepath.Join(root, ".forge", toollogFile)
-	os.Remove(path)
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	pruneArchives(filepath.Join(root, ".forge"))
 	return nil
+}
+
+// pruneArchives deletes toollog-*.jsonl archives older than the retention
+// window (FORGE_LOG_RETENTION_DAYS, default 30; ≤0 disables). Best-effort,
+// same rationale as checklog.Clear's pruneArchives — keeps toollog-*.jsonl
+// bounded across task starts without racing Record (which writes only the
+// active file).
+func pruneArchives(dir string) {
+	days := util.RetentionDays("FORGE_LOG_RETENTION_DAYS", 30)
+	if days <= 0 {
+		return
+	}
+	_, _ = util.PruneArchives(dir, "toollog", time.Now().AddDate(0, 0, -days))
 }
 
 // loadFromPath reads JSONL entries from a file.

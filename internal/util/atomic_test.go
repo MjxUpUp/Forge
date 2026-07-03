@@ -136,3 +136,81 @@ func TestArchivedName_NoCollisionSameInstant(t *testing.T) {
 		t.Fatalf("same-instant archives collided: both %s", first)
 	}
 }
+
+// TestPruneArchives_DeletesOnlyOld 验证：active 文件（无 "-"）和新归档保留，只有早于
+// cutoff 的归档被删；兼容纳秒精度与旧版秒精度两种文件名时间戳。
+func TestPruneArchives_DeletesOnlyOld(t *testing.T) {
+	dir := t.TempDir()
+	// active（无 "-")：绝不能删
+	os.WriteFile(filepath.Join(dir, "checklog.jsonl"), []byte("active"), 0644)
+	// 新归档（纳秒精度）：保留
+	os.WriteFile(filepath.Join(dir, "checklog-20260701120000.000000000.jsonl"), []byte("new"), 0644)
+	// 老归档（纳秒精度）：删
+	os.WriteFile(filepath.Join(dir, "checklog-20200101120000.000000000.jsonl"), []byte("old-ns"), 0644)
+	// 老归档（旧版秒精度）：删
+	os.WriteFile(filepath.Join(dir, "checklog-20200101000000.jsonl"), []byte("old-sec"), 0644)
+	// 老归档（纳秒精度 + 同纳秒冲突后缀 -1）：删——覆盖 archiveTimestamp 的 "-{i}" 剥离分支
+	os.WriteFile(filepath.Join(dir, "checklog-20200101120000.000000000-1.jsonl"), []byte("old-collide"), 0644)
+
+	cutoff := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	removed, err := PruneArchives(dir, "checklog", cutoff)
+	if err != nil {
+		t.Fatalf("PruneArchives: %v", err)
+	}
+	if removed != 3 {
+		t.Fatalf("removed = %d, want 3", removed)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "checklog.jsonl")); err != nil {
+		t.Errorf("active should be kept: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "checklog-20260701120000.000000000.jsonl")); err != nil {
+		t.Errorf("recent archive should be kept: %v", err)
+	}
+	for _, name := range []string{"checklog-20200101120000.000000000.jsonl", "checklog-20200101000000.jsonl", "checklog-20200101120000.000000000-1.jsonl"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+			t.Errorf("old archive %s should be pruned", name)
+		}
+	}
+}
+
+// TestPruneArchives_FallbackMtime：文件名时间戳不可解析时 fallback 到 mtime。
+func TestPruneArchives_FallbackMtime(t *testing.T) {
+	dir := t.TempDir()
+	// "garbage" 不是合法时间戳 → 触发 mtime fallback
+	path := filepath.Join(dir, "toollog-garbage.jsonl")
+	os.WriteFile(path, []byte("old"), 0644)
+	oldTime := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+	if err := os.Chtimes(path, oldTime, oldTime); err != nil {
+		t.Fatal(err)
+	}
+	removed, err := PruneArchives(dir, "toollog", time.Now())
+	if err != nil {
+		t.Fatalf("PruneArchives: %v", err)
+	}
+	if removed != 1 {
+		t.Fatalf("removed = %d, want 1 (mtime fallback)", removed)
+	}
+}
+
+func TestRetentionDays(t *testing.T) {
+	t.Setenv("FORGE_LOG_RETENTION_DAYS", "")
+	if d := RetentionDays("FORGE_LOG_RETENTION_DAYS", 30); d != 30 {
+		t.Errorf("missing env: got %d, want 30", d)
+	}
+	t.Setenv("FORGE_LOG_RETENTION_DAYS", "14")
+	if d := RetentionDays("FORGE_LOG_RETENTION_DAYS", 30); d != 14 {
+		t.Errorf("valid env: got %d, want 14", d)
+	}
+	t.Setenv("FORGE_LOG_RETENTION_DAYS", "notanumber")
+	if d := RetentionDays("FORGE_LOG_RETENTION_DAYS", 30); d != 30 {
+		t.Errorf("invalid env: got %d, want 30", d)
+	}
+	t.Setenv("FORGE_LOG_RETENTION_DAYS", "0")
+	if d := RetentionDays("FORGE_LOG_RETENTION_DAYS", 30); d != 0 {
+		t.Errorf("zero env: got %d, want 0", d)
+	}
+	t.Setenv("FORGE_LOG_RETENTION_DAYS", "-1")
+	if d := RetentionDays("FORGE_LOG_RETENTION_DAYS", 30); d != -1 {
+		t.Errorf("negative env: got %d, want -1", d)
+	}
+}

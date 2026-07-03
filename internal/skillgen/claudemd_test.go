@@ -36,6 +36,22 @@ func TestClaudeMDCommonErrorsIncludesTestCoverage(t *testing.T) {
 	}
 }
 
+// TestClaudeMDCommonErrorsIncludesRetention guards the common-errors table
+// documents log retention. task start auto-prunes over-age checklog/toollog
+// archives + completed task files per FORGE_LOG_RETENTION_DAYS; agents/users
+// seeing "trace/老任务历史消失" need the env knob surfaced so silent pruning
+// isn't opaque (and to flag the act rebuild interaction).
+func TestClaudeMDCommonErrorsIncludesRetention(t *testing.T) {
+	section := buildForgeSection()
+
+	if !strings.Contains(section, "trace/老任务历史消失") {
+		t.Error("CLAUDE.md common-errors table missing retention row")
+	}
+	if !strings.Contains(section, "FORGE_LOG_RETENTION_DAYS") {
+		t.Error("CLAUDE.md retention row must surface the FORGE_LOG_RETENTION_DAYS knob")
+	}
+}
+
 // TestClaudeMDDocumentsCommitTiming guards against the trap where agents commit
 // AFTER `forge task complete`: complete clears the active task ref, so a
 // post-complete source commit gets quarantined by file-sentinel. CLAUDE.md must
