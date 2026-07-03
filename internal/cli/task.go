@@ -41,6 +41,13 @@ func init() {
 	// plan / Terraform desired state）。支持精确路径/glob/目录前缀。advisory：实改超出声明记
 	// scope-drift（checklog），不阻塞（变更影响分析召回率仅 ~44%，scope 是 prediction 非 contract）。
 	taskStartCmd.Flags().StringArray("scope", nil, `计划改动文件白名单（可重复 --scope）：精确路径 internal/cli/task.go / glob internal/cli/*.go / 目录前缀 internal/cli。开工前声明，advisory 检测 scope-drift；中途可用 forge task scope add 追加`)
+	// 接续真相源 flags（continuity）：把 goal/plan/发起工具随 task start 持久化进 TaskState，
+	// 供 forge task resume 跨会话/跨工具拉回。复用 --scope/--accept 的"start 持久化"模式。
+	taskStartCmd.Flags().String("kind", "", "任务类型：code（默认，走 3 道门禁）| generic（不走门禁，调研/设计/纯接续任务，complete 不评分）")
+	taskStartCmd.Flags().String("goal", "", "目标叙述（为什么做，可多行；比 title 一行标题更丰富，持久化供 resume 拉回）")
+	taskStartCmd.Flags().String("plan-file", "", "计划正文 markdown 文件路径（读取存入 task.Plan，供 resume 拉回）")
+	taskStartCmd.Flags().String("origin-tool", "", "发起工具（pi/claude-code/opencode/codex/cursor），默认从环境探测")
+	taskStartCmd.Flags().String("parent", "", "父任务 ref（建立子任务→父任务关系，subtask 拆解）")
 	taskStartCmd.Flags().String("ref", "", "任务引用（如 feat/add-auto-branch），默认从分支名推断")
 	taskStartCmd.Flags().Bool("branch", false, "从 main/master 创建新分支并切换（ref 作为分支名）")
 	taskStartCmd.Flags().Bool("json", false, "JSON 格式输出")
@@ -175,6 +182,39 @@ func nonGitTaskWarning() string {
 		"如需完整质量保障，执行 `git init`（任务流程本身可继续）。任务无法推进或临时放弃时用 `forge task abort --ref <ref>` 清理。"
 }
 
+// detectOriginTool 返回任务的发起工具（声明式真相，区别于 SessionRecord.AgentType 的目录探测弱信号）。
+// explicit 非空则用之（--origin-tool）；否则从环境探测（CLAUDE_CODE_SESSION_ID → claude-code）。
+// 跨工具接续时让 task 记录"谁起的头"，pi/opencode 接续时用 forge task attach 追加自己的 session+工具。
+func detectOriginTool(explicit string) string {
+	if explicit != "" {
+		return explicit
+	}
+	if os.Getenv("CLAUDE_CODE_SESSION_ID") != "" {
+		return "claude-code"
+	}
+	return ""
+}
+
+// completeGenericTask 完成 generic kind 任务（调研/设计/纯接续）：自动标 3 道门禁 passed
+//（History 完整供 list/dashboard 显示，但不跑任何检查——ExecuteTaskGate 对 generic 秒过）+
+// MarkComplete + 清 active-task-ref。不评分、不创建 review——generic 任务的价值在持久化的
+// 接续字段，不在代码质量门禁。
+func completeGenericTask(root string, state *taskpipeline.TaskState) error {
+	head := taskpipeline.GetHeadCommit(root)
+	for _, g := range taskpipeline.DefaultGates() {
+		state.RecordGateResult(g.ID, true, head)
+	}
+	state.MarkComplete()
+	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+		return fmt.Errorf("failed to save task state: %w", err)
+	}
+	sid := taskpipeline.CurrentSessionID()
+	if err := taskpipeline.ClearActiveTaskRef(root, sid); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to clear active task ref: %v\n", err)
+	}
+	return nil
+}
+
 // duplicateScoreWarnings returns warning strings for completed tasks on the
 // same branch that share state's HeadCommit — a re-score over an identical
 // commit range. Cross-branch matches are excluded: independent feature branches
@@ -267,6 +307,27 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		state.PlanScope = scopeRaw
 	}
 
+	// 接续真相源字段（continuity）：goal/plan/origin-tool 随 task start 持久化，使新会话
+	// forge task resume 能秒级拉回完整上下文（不必 parse 靠纪律的 HANDOFF.md）。
+	if kind, _ := cmd.Flags().GetString("kind"); kind != "" {
+		state.Kind = kind
+	}
+	if goal, _ := cmd.Flags().GetString("goal"); goal != "" {
+		state.Goal = goal
+	}
+	if planFile, _ := cmd.Flags().GetString("plan-file"); planFile != "" {
+		planData, err := os.ReadFile(planFile)
+		if err != nil {
+			return fmt.Errorf("读取 --plan-file %q 失败: %w", planFile, err)
+		}
+		state.Plan = string(planData)
+	}
+	if parent, _ := cmd.Flags().GetString("parent"); parent != "" {
+		state.ParentTaskRef = parent
+	}
+	originTool, _ := cmd.Flags().GetString("origin-tool")
+	state.OriginTool = detectOriginTool(originTool)
+
 	// Resolve the Claude Code session id once — used to scope the active-task-ref
 	// and session records so concurrent sessions on a shared checkout stay isolated.
 	sid := taskpipeline.CurrentSessionID()
@@ -275,6 +336,12 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	session, err := taskpipeline.EnsureSession(root, sid)
 	if err == nil {
 		state.SessionID = session.SessionID
+	}
+	// 创建方 session 锚定（多向锚定起点；接手方 forge task attach 追加自己的）。必须在
+	// EnsureSession 给 state.SessionID 赋值之后——此前 SessionID 仍为空，AddSession 永不被调用，
+	// 创建方 session 漏锚定：多向锚定起点丢失，直到有人主动 resume/attach 才出现首条 SessionLink。
+	if state.SessionID != "" {
+		state.AddSession(state.SessionID, state.OriginTool)
 	}
 
 	// Phase 爆炸检测：同 session 下已有多个未完成 task 时提醒合并（advisory）。
@@ -759,6 +826,17 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 	}
 	if state == nil {
 		return fmt.Errorf("no active task. Run forge task start first")
+	}
+
+	// generic kind（调研/设计/纯接续任务）：跳过门禁 IsComplete 检查和评分。这类任务的价值在
+	// 持久化的 plan/决策/阻塞（接续真相源），不在代码质量门禁。自动把 3 道门禁标 passed（保持
+	// History 完整供 list/dashboard 显示）+ MarkComplete + 清 active-task-ref，不评分不创建 review。
+	if state.IsGeneric() {
+		if err := completeGenericTask(root, state); err != nil {
+			return err
+		}
+		fmt.Printf("Task %s completed (generic, 接续任务不评分)。\n", state.TaskRef)
+		return nil
 	}
 
 	if !state.IsComplete() {

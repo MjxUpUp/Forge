@@ -50,6 +50,7 @@ func TestServer_ListToolsRegistersAll(t *testing.T) {
 	}
 	want := []string{
 		"forge_gate_run", "forge_task_status", "forge_task_gate",
+		"forge_task_resume", "forge_task_decide", "forge_task_attach",
 		"forge_experience_search", "forge_experience_propose",
 		"forge_trace_query", "forge_act_query", "forge_health_query",
 		"forge_knowledge_lookup",

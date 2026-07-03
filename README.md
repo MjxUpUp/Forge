@@ -141,6 +141,13 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge task complete` | 标记任务完成（自动评分） |
 | `forge task abort [--ref <ref>]` | 中止并删除任务（清理 ghost/卡住任务，不评分） |
 | `forge task score` | 查看任务质量评分 |
+| `forge task resume [--ref <ref>]` | 拉回任务接续上下文（目标/计划/决策/阻塞/参与工具+门禁进度+git 已改），跨会话/跨工具秒级恢复 |
+| `forge task context [--ref <ref>]` | 只读查看接续上下文（resume 的不改 state 别名） |
+| `forge task decide --content` | 记录已确认决策（持久化进 task，跨会话/跨工具不再推翻） |
+| `forge task next <step>` | 追加下一步（可多条） |
+| `forge task block --content/--resolve <id>` | 登记阻塞或解决阻塞（open→resolved） |
+| `forge task finding --content/--resolve <id>` | 记录跨工具发现（带来源工具）或标 fixed |
+| `forge task attach --ref --tool` | 锚定 session+工具到 task（跨工具多向锚定：pi 起、claude-code 接） |
 
 ### 代码审查门禁（自动挡）
 
@@ -207,13 +214,16 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 
 ### MCP 接口
 
-`forge mcp serve` 在 stdio 上运行 MCP server，让 coding agent（Claude Code / Codex / Copilot）以结构化工具调用 Forge，不必 parse CLI 文本。12 个工具覆盖门禁推进、经验闭环、知识查询、质量追踪、PDCA Act/项目健康与 skill eval 回归：
+`forge mcp serve` 在 stdio 上运行 MCP server，让 coding agent（Claude Code / Codex / Copilot）以结构化工具调用 Forge，不必 parse CLI 文本。15 个工具覆盖门禁推进、任务接续、经验闭环、知识查询、质量追踪、PDCA Act/项目健康与 skill eval 回归：
 
 | 工具 | 说明 |
 |------|------|
 | `forge_gate_run` | 运行项目级门禁 |
 | `forge_task_status` | 查询任务状态 |
 | `forge_task_gate` | 推进任务门禁（implement/verify/complete） |
+| `forge_task_resume` | 拉回任务接续上下文（结构化：目标/计划/决策/阻塞/发现/参与工具/门禁进度/git 已改） |
+| `forge_task_decide` | 记录已确认决策到 task（跨会话/跨工具不再推翻） |
+| `forge_task_attach` | 锚定 session+工具到 task（跨工具多向锚定） |
 | `forge_trace_query` | 查询任务质量事件时间线 |
 | `forge_act_query` | 查询任务结论（证据强度/score/验收/低分维度）+ 回顾指令（Act 反馈臂读端） |
 | `forge_health_query` | 项目级质量趋势上卷（盲区率/复发低分维度，task→project 粒度） |

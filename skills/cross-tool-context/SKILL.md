@@ -21,6 +21,17 @@ metadata:
 
 **为什么是文件而不是服务**：文件系统是所有工具的共同底座（pi/claude/deveco/zcode 都能读写文件），零基础设施依赖。这正是 Skill 的设计哲学（见 skill-authoring-standard §1）。
 
+## Forge 任务接续（结构化真相源，优先于 AI_CONTEXT.md）
+
+若项目用 forge，**优先把跨工具信息写进 forge task**（持久化进 `.forge/tasks/<ref>.json`），而非只写 AI_CONTEXT.md：
+
+- **开工前**：`forge task resume` 拉回结构化上下文（替代读 AI_CONTEXT.md 的 Decisions/Findings/Changes）。
+- **做了决策**：`forge task decide --content "..." --by [pi]`（替代追加 `## Decisions`）。
+- **发现问题**：`forge task finding --content "..." --source [pi] --evidence file:line`（替代追加 `## Findings`，来源工具自动记录）。
+- **跨工具锚定**：`forge task attach --ref <ref> --tool pi` 把当前工具的 session 锚定到 task——任意工具 resume 即知"谁参与过、用什么工具"。
+
+AI_CONTEXT.md 降级为 forge task 的 markdown 导出视图（`forge task context` 输出），供无 forge 的工具/人类阅读。forge task 是结构化真相源（可查询、抗压缩丢失、跨工具双向锚定），AI_CONTEXT.md 是靠纪律维护的文本（易漂移、难查询）。两者信息结构同构（Decisions/Findings/Handoff），但 forge task 持久化进 task 而非靠 agent 自觉读写 md。
+
 ## AI_CONTEXT.md 标准结构
 
 ```markdown

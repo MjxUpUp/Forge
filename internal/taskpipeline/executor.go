@@ -50,6 +50,19 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		return nil, fmt.Errorf("unknown task gate: %s", gateID)
 	}
 
+	// generic kind（调研/设计/纯接续任务）不走门禁检查——这些任务没有代码变更可编译/测试/审查，
+	// 强制 3 道门禁会把"开个调研/接续任务"变成过门禁负担，与接续真相源低摩擦持久化的定位相悖。
+	// kind 默认空/"code" 仍走完整门禁（向后兼容：老 task 无 Kind 字段）。直接标通过，跳过前置
+	// gate / 审查快照 / 工作活动 / advisory 全部检查——generic task 的价值在持久化的 plan/决策，
+	// 不在门禁。complete 评分也据此分流（见 cli/runTaskComplete）。
+	if state.IsGeneric() {
+		return &ExecuteResult{
+			GateID:  gateID,
+			Passed:  true,
+			Message: fmt.Sprintf("%s - skipped (generic task: 走接续不走门禁)", gate.Name),
+		}, nil
+	}
+
 	// Check prerequisites: all previous gates must have passed
 	gates := DefaultGates()
 	for _, g := range gates {
