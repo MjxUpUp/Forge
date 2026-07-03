@@ -1,0 +1,97 @@
+{{define "continuity"}}
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="refresh" content="30">
+<title>Forge 任务接续看板</title>
+<style>
+  :root { --bg:#0f1419; --card:#1a2029; --border:#2a3340; --fg:#e1e7ef; --muted:#8a96a8; --accent:#4a9eff; --good:#3fb950; --warn:#d29922; --bad:#f85149; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.5 -apple-system,"Segoe UI","Microsoft YaHei",system-ui,sans-serif; }
+  header { padding:18px 28px; border-bottom:1px solid var(--border); display:flex; align-items:baseline; gap:16px; flex-wrap:wrap; }
+  header h1 { margin:0; font-size:18px; }
+  header a { color:var(--muted); font-size:12px; text-decoration:none; }
+  header a:hover { color:var(--accent); }
+  .muted { color:var(--muted); font-size:12px; }
+  main { padding:24px 28px; max-width:1100px; margin:0 auto; }
+  section { margin-bottom:28px; }
+  h2 { font-size:13px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin:0 0 12px; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:12px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:14px; }
+  .card.blocked { border-left:3px solid var(--bad); }
+  .card .ref { font-weight:700; font-size:14px; }
+  .card .meta { color:var(--muted); font-size:12px; margin:4px 0 8px; }
+  .card .goal { font-size:13px; margin-bottom:8px; color:var(--fg); white-space:pre-line; }
+  .badges { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+  .badge { font-size:11px; padding:2px 8px; border-radius:10px; background:rgba(255,255,255,.06); color:var(--muted); }
+  .badge.tool { background:rgba(74,158,255,.15); color:var(--accent); }
+  .badge.warn { background:rgba(248,81,73,.15); color:var(--bad); }
+  .badge.good { background:rgba(63,185,80,.15); color:var(--good); }
+  .badge.generic { background:rgba(210,153,34,.15); color:var(--warn); }
+  .gate { display:block; font-size:11px; color:var(--muted); margin-top:8px; }
+  .empty { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:40px; text-align:center; color:var(--muted); }
+  code { background:rgba(255,255,255,.06); padding:1px 5px; border-radius:3px; font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>任务接续看板</h1>
+  <a href="/">&larr; 质量看板</a>
+  <span class="muted">{{if .Project}}{{.Project}} · {{end}}{{len .Cards}} 个任务（{{.Incomplete}} 进行中 / {{.Complete}} 已完成）· 本地只读 · 每 30s 刷新 · 生成于 {{.Now.Format "2006-01-02 15:04:05"}}</span>
+</header>
+<main>
+{{if eq (len .Cards) 0}}
+<section class="empty">
+  尚无任务记录。<br>
+  <code>forge task start --ref feat/xxx --goal "目标"</code> 启动任务后，看板在此呈现目标/决策/阻塞/参与工具。
+</section>
+{{else}}
+
+{{if gt .Incomplete 0}}
+<section>
+  <h2>进行中（{{.Incomplete}}）</h2>
+  <div class="cards">
+  {{range .Cards}}{{if not .IsComplete}}
+    <div class="card{{if gt .OpenBlockers 0}} blocked{{end}}">
+      <div class="ref">{{.TaskRef}}{{if eq .Kind "generic"}} <span class="badge generic">generic</span>{{end}}</div>
+      <div class="meta">{{.Branch}}{{if .OriginTool}} · 发起 {{.OriginTool}}{{end}}</div>
+      {{if .Goal}}<div class="goal">{{.Goal}}</div>{{end}}
+      <div class="badges">
+        {{range .SessionTools}}<span class="badge tool">{{.}}</span>{{end}}
+        {{if gt .Decisions 0}}<span class="badge">{{.Decisions}} 决策</span>{{end}}
+        {{if gt .NextSteps 0}}<span class="badge">{{.NextSteps}} 下一步</span>{{end}}
+        {{if gt .OpenBlockers 0}}<span class="badge warn">{{.OpenBlockers}} 阻塞</span>{{end}}
+        {{if gt .Findings 0}}<span class="badge warn">{{.Findings}} 发现</span>{{end}}
+      </div>
+      {{if gt .GateTotal 0}}<span class="gate">门禁 {{.GatePassed}}/{{.GateTotal}}{{if .CurrentGate}} · 当前 {{.CurrentGate}}{{end}}</span>{{end}}
+    </div>
+  {{end}}{{end}}
+  </div>
+</section>
+{{end}}
+
+{{if gt .Complete 0}}
+<section>
+  <h2>已完成（{{.Complete}}）</h2>
+  <div class="cards">
+  {{range .Cards}}{{if .IsComplete}}
+    <div class="card">
+      <div class="ref">{{.TaskRef}}</div>
+      <div class="meta">{{.Branch}} · 启动 {{.StartedAt.Format "01-02 15:04"}}</div>
+      <div class="badges">
+        {{range .SessionTools}}<span class="badge tool">{{.}}</span>{{end}}
+        <span class="badge good">已完成</span>
+        {{if gt .Decisions 0}}<span class="badge">{{.Decisions}} 决策</span>{{end}}
+      </div>
+    </div>
+  {{end}}{{end}}
+  </div>
+</section>
+{{end}}
+
+{{end}}
+</main>
+</body>
+</html>
+{{end}}
