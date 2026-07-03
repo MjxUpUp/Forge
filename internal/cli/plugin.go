@@ -16,8 +16,8 @@ func init() {
 	f.String("repo-slug", "MjxUpUp/Forge", "github owner/repo（README 安装命令用）")
 	f.String("marketplace-name", "forge", "marketplace 标识")
 	f.String("plugin-name", "forge", "plugin 标识")
-	f.String("description", agentbridge.DefaultPluginPack("").Description, "plugin 描述")
-	f.String("owner-name", "", "owner 名（marketplace owner / plugin author）")
+	f.String("description", agentbridge.DefaultPluginDescription, "plugin 描述")
+	f.String("owner-name", "MjxUpUp", "owner 名（marketplace owner / plugin author，schema required）")
 	f.String("owner-email", "", "owner 邮箱")
 }
 
