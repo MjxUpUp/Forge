@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/MjxUpUp/Forge/internal/hooks"
 )
 
 // CodexTranslator generates .codex/hooks.json mirroring the Claude Code hook
@@ -24,8 +26,9 @@ import (
 type CodexTranslator struct{}
 
 func (t *CodexTranslator) Detect(projectDir string) bool {
-	return dirExists(filepath.Join(projectDir, ".codex")) ||
-		fileExists(filepath.Join(projectDir, "AGENTS.md"))
+	// .codex/ only — AGENTS.md is not a codex signal (forge generates AGENTS.md
+	// universally as cross-agent instructions; see DetectAgents note).
+	return dirExists(filepath.Join(projectDir, ".codex"))
 }
 
 func (t *CodexTranslator) Translate(projectDir string, input *TranslationInput) error {
@@ -52,56 +55,25 @@ func (t *CodexTranslator) AgentType() AgentType {
 	return AgentCodex
 }
 
-type codexHookEntry struct {
-	Type    string `json:"type"`
-	Command string `json:"command"`
-}
-
-type codexHookMatcher struct {
-	Matcher string           `json:"matcher,omitempty"`
-	Hooks   []codexHookEntry `json:"hooks"`
-}
-
-// buildCodexHooks mirrors hooks/settings.go GenerateSettings. Codex and Claude
-// Code share the same hook command surface (`forge hook <name>`); only the
-// config file location differs. Kept in sync manually with settings.go — if a
-// hook is added there, add it here too. (A future refactor could expose a
-// shared registration table so the two stay aligned by construction.)
+// buildCodexHooks derives codex's hooks.json from hooks.ForgeHookSpec — the
+// single source of truth shared with settings.local.json and the plugin pack.
+// Codex's hook schema is identical to Claude Code's nested
+// {matcher, hooks:[{type,command}]} shape (Codex compiles matcher as a regex
+// over tool_name; Forge emits only plain names and alternation, both valid
+// regex), so the spec marshals to a valid codex hooks.json unchanged. Codex
+// lacks a SessionStart lifecycle hook, so that event is filtered out (skill-scan
+// is Claude-Code-only). No hand-maintained copy → no drift.
+// TestCodexWiringMirrorsClaudeSettings guards command-set parity.
 func buildCodexHooks() map[string]any {
-	hook := func(cmd string) codexHookEntry {
-		return codexHookEntry{Type: "command", Command: cmd}
+	spec := hooks.ForgeHookSpec()
+	codex := make(map[string][]hooks.HookMatcher, len(spec))
+	for event, matchers := range spec {
+		if event == `SessionStart` {
+			continue
+		}
+		codex[event] = matchers
 	}
 	return map[string]any{
-		"hooks": map[string][]codexHookMatcher{
-			"PostToolUse": {
-				{Matcher: "Write|Edit", Hooks: []codexHookEntry{
-					hook("forge hook auto-compile"),
-					hook("forge hook workflow-test-guard"),
-				}},
-				{Matcher: "Bash", Hooks: []codexHookEntry{
-					hook("forge hook file-sentinel"),
-				}},
-				{Matcher: "Read", Hooks: []codexHookEntry{
-					hook("forge hook tool-track"),
-				}},
-			},
-			"PreToolUse": {
-				{Matcher: "Write|Edit", Hooks: []codexHookEntry{
-					hook("forge hook task-guard"),
-					hook("forge hook assertion-check"),
-				}},
-				{Matcher: "Bash", Hooks: []codexHookEntry{
-					hook("forge hook bash-guard"),
-					hook("forge hook hazard-guard"),
-				}},
-			},
-			"Stop": {
-				{Hooks: []codexHookEntry{
-					hook("forge gate --current --silent"),
-					hook("forge hook task-verify"),
-					hook("forge hook review-stop"),
-				}},
-			},
-		},
+		`hooks`: codex,
 	}
 }

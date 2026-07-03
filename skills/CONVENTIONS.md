@@ -1,6 +1,6 @@
 # Skills 仓库编写规范 (CONVENTIONS)
 
-本文件是本仓库所有 Skill 的**唯一编写规范**，整合自：Anthropic Agent Skills 官方标准、Google ADK 五种设计模式、skill-creator/skill-judge 元 skill 方法论、SkillForge 自进化范式，以及本机半年实践沉淀。`scripts/registry.py` 的质量校验以此为准。
+本文件是本仓库所有 Skill 的**唯一编写规范**，整合自：Anthropic Agent Skills 官方标准、Google ADK 五种设计模式、skill-creator/skill-judge 元 skill 方法论、SkillForge 自进化范式，以及本机半年实践沉淀。`forge skills validate` + `forge skills audit` 的质量校验以此为准。
 
 ---
 
@@ -46,7 +46,7 @@ metadata:
 - `Use when:` + 触发场景列表（用用户会说的话，不用技术术语）
 - `SKIP:` + 排除场景（提供 skill 间互斥，指向正确替代 skill）
 
-**硬性指标**（registry.py 校验）：
+**硬性指标**（`forge skills validate` 校验）：
 - 长度 ≥ 80 字符
 - 必须出现 `Use when`（大小写不敏感）
 - 必须出现 `SKIP`
@@ -91,7 +91,7 @@ metadata:
   - 测试用例：2-3 个真实用户会说的话，足够复杂以保证触发
   - description 优化：单独用 should-trigger / should-not-trigger 样本测召回精度
 
-## 10. 质量校验清单（registry.py 自动检查）
+## 10. 质量校验清单（`forge skills validate` + `forge skills audit` 自动检查）
 
 - [ ] name 与目录名一致且 kebab-case
 - [ ] description ≥ 80 字符且含 `Use when` + `SKIP`

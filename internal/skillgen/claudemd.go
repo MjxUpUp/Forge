@@ -23,7 +23,7 @@ func GenerateClaudeMD(projectDir string) error {
 
 	path := filepath.Join(claudeDir, "CLAUDE.md")
 
-	forgeSection := buildForgeSection()
+	forgeSection := buildForgeSection(true)
 
 	// Read existing file if present
 	existing, err := os.ReadFile(path)
@@ -37,7 +37,27 @@ func GenerateClaudeMD(projectDir string) error {
 	return os.WriteFile(path, []byte(forgeSection), 0644)
 }
 
-func buildForgeSection() string {
+// GenerateAgentsMD creates or updates the project-root AGENTS.md with the
+// Forge-managed quality protocol section. AGENTS.md is the cross-agent
+// instruction standard read by codex, cursor, copilot, windsurf, and cline
+// (detect.go keys codex off .codex/, not AGENTS.md — AGENTS.md is a universal
+// file forge generates on every init). Unlike CLAUDE.md
+// (claude-only, references Claude slash commands), AGENTS.md carries the
+// agent-agnostic protocol and points at the forge CLI/MCP surface. If the file
+// exists, only the marked Forge section is replaced; user content outside the
+// markers is preserved — same idempotent section-replace contract as CLAUDE.md.
+func GenerateAgentsMD(projectDir string) error {
+	path := filepath.Join(projectDir, "AGENTS.md")
+	forgeSection := buildForgeSection(false)
+	existing, err := os.ReadFile(path)
+	if err == nil && len(existing) > 0 {
+		updated := replaceForgeSection(string(existing), forgeSection)
+		return os.WriteFile(path, []byte(updated), 0644)
+	}
+	return os.WriteFile(path, []byte(forgeSection), 0644)
+}
+
+func buildForgeSection(forClaude bool) string {
 	var sb strings.Builder
 	sb.WriteString(forgeSectionStart + "\n\n")
 	sb.WriteString("# Forge 质量协议\n\n")
@@ -100,8 +120,15 @@ func buildForgeSection() string {
 	sb.WriteString("| Pending mandatory review detected | 低分任务（<70）有未解除的 mandatory review | `forge experience list` → `forge experience accept <id>`；无可 accept 的提案时用 `forge experience resolve <task-ref>` 兜底 |\n")
 	sb.WriteString("| trace/老任务历史消失 | retention（默认启用）自动清超期 checklog/toollog 归档 + 已完成任务文件 | 行为正常；`FORGE_LOG_RETENTION_DAYS` 控制保留天数（默认 30，≤0 禁用）；`forge act rebuild` 全量重建，被 retention 删的任务无法重建 |\n\n")
 
-	sb.WriteString("使用 `/forge-pipeline` 运行项目级管道。\n")
-	sb.WriteString("使用 `/forge-quality` 查看完整质量协议。\n\n")
+	if forClaude {
+		sb.WriteString("使用 `/forge-pipeline` 运行项目级管道。\n")
+		sb.WriteString("使用 `/forge-quality` 查看完整质量协议。\n\n")
+	} else {
+		// AGENTS.md is cross-agent (codex/cursor/copilot/windsurf/cline) — those
+		// agents have no Claude slash commands, so point at the forge CLI / MCP
+		// surface instead of the /forge-pipeline /forge-quality skills.
+		sb.WriteString("通过 forge CLI（forge task/gate/experience）或 forge MCP 工具执行上述质量流程。\n\n")
+	}
 	sb.WriteString(forgeSectionEnd + "\n")
 	return sb.String()
 }

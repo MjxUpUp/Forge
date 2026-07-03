@@ -153,6 +153,13 @@ func runInit(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "Warning: failed to generate CLAUDE.md: %v\n", err)
 	}
 
+	// Generate project-root AGENTS.md — the cross-agent instruction source
+	// (codex/cursor/copilot/windsurf/cline read AGENTS.md; CLAUDE.md is
+	// claude-only). Same Forge-managed section contract.
+	if err := skillgen.GenerateAgentsMD(dir); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to generate AGENTS.md: %v\n", err)
+	}
+
 	// Translate for other agents (Cursor, Copilot, Windsurf)
 	agentsFlag, _ := cmd.Flags().GetString("agents")
 	agents := agentbridge.ParseAgentFlag(dir, agentsFlag)
@@ -179,6 +186,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  .forge/tasks/                    — 任务状态目录\n")
 	fmt.Printf("  .claude/settings.local.json      — Claude Code 集成\n")
 	fmt.Printf("  .claude/CLAUDE.md                — 质量协议引用\n")
+	fmt.Printf("  AGENTS.md                        — 跨 agent 质量协议（codex/cursor/copilot/windsurf/cline）\n")
 	fmt.Printf("  .claude/skills/forge-pipeline/    — 管道编排 Skill\n")
 	fmt.Printf("  .claude/skills/forge-quality/     — 质量协议 Skill\n")
 
