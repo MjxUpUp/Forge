@@ -18,6 +18,7 @@ const (
 	AgentCodex      AgentType = "codex"
 	AgentOpencode   AgentType = "opencode"
 	AgentPi         AgentType = "pi"
+	AgentCline      AgentType = "cline"
 )
 
 // Translator converts Forge config to a specific agent's native format.

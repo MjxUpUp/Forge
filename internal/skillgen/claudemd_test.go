@@ -1,6 +1,8 @@
 package skillgen
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -10,7 +12,7 @@ import (
 // a pending mandatory review ("Pending mandatory review detected"); agents
 // relying on CLAUDE.md alone need the resolution path.
 func TestClaudeMDCommonErrorsIncludesReviewBlock(t *testing.T) {
-	section := buildForgeSection()
+	section := buildForgeSection(true)
 
 	if !strings.Contains(section, "Pending mandatory review detected") {
 		t.Error("CLAUDE.md common-errors table missing 'Pending mandatory review detected' row")
@@ -26,7 +28,7 @@ func TestClaudeMDCommonErrorsIncludesReviewBlock(t *testing.T) {
 // resolution path (add a test, or FORGE_TEST_COVERAGE=disable escape hatch)
 // surfaced in CLAUDE.md, otherwise the gate looks opaque.
 func TestClaudeMDCommonErrorsIncludesTestCoverage(t *testing.T) {
-	section := buildForgeSection()
+	section := buildForgeSection(true)
 
 	if !strings.Contains(section, "without a corresponding test") {
 		t.Error("CLAUDE.md common-errors table missing test-coverage gate row")
@@ -42,7 +44,7 @@ func TestClaudeMDCommonErrorsIncludesTestCoverage(t *testing.T) {
 // seeing "trace/老任务历史消失" need the env knob surfaced so silent pruning
 // isn't opaque (and to flag the act rebuild interaction).
 func TestClaudeMDCommonErrorsIncludesRetention(t *testing.T) {
-	section := buildForgeSection()
+	section := buildForgeSection(true)
 
 	if !strings.Contains(section, "trace/老任务历史消失") {
 		t.Error("CLAUDE.md common-errors table missing retention row")
@@ -58,7 +60,7 @@ func TestClaudeMDCommonErrorsIncludesRetention(t *testing.T) {
 // state the correct order (commit before complete) and the chore/*-commit
 // recovery path. This was a real trap hit in a DevWorkbench session.
 func TestClaudeMDDocumentsCommitTiming(t *testing.T) {
-	section := buildForgeSection()
+	section := buildForgeSection(true)
 
 	if !strings.Contains(section, "提交时机") {
 		t.Error("CLAUDE.md missing commit-timing section (commit must precede complete)")
@@ -74,7 +76,7 @@ func TestClaudeMDDocumentsCommitTiming(t *testing.T) {
 // Write/Edit (only .forge/* self-protection fails). And NO guard checks line
 // count, so a ">10 行" threshold is fabricated and misleads agents.
 func TestClaudeMDMatchesActualGuardBehavior(t *testing.T) {
-	section := buildForgeSection()
+	section := buildForgeSection(true)
 
 	if strings.Contains(section, "非平凡变更（>10 行）") {
 		t.Error("CLAUDE.md documents fabricated '>10 行' threshold — no guard checks line count")
@@ -96,7 +98,7 @@ func TestClaudeMDMatchesActualGuardBehavior(t *testing.T) {
 // runtime hooks anymore — they moved to forge-quality's Red Flags text per the
 // layered noise treatment.
 func TestClaudeMDDocumentsAuxHooks(t *testing.T) {
-	section := buildForgeSection()
+	section := buildForgeSection(true)
 
 	if !strings.Contains(section, "辅助检查") {
 		t.Error("CLAUDE.md security section missing auxiliary hooks summary")
@@ -113,7 +115,7 @@ func TestClaudeMDDocumentsAuxHooks(t *testing.T) {
 // know skill-scan exists — it scans ~/.claude/skills at session start, covering
 // skills that entered outside the install gate (manual clone/junction/git pull).
 func TestClaudeMDDocumentsSkillScan(t *testing.T) {
-	section := buildForgeSection()
+	section := buildForgeSection(true)
 	if !strings.Contains(section, "skill-scan") {
 		t.Error("CLAUDE.md security section missing skill-scan hook")
 	}
@@ -130,7 +132,7 @@ func TestClaudeMDDocumentsSkillScan(t *testing.T) {
 // 2026-06-16 code-knowledge-base session got stuck precisely because no abort
 // path was documented and `.forge/*` self-protection blocks manual cleanup.
 func TestClaudeMDDocumentsTaskAbort(t *testing.T) {
-	section := buildForgeSection()
+	section := buildForgeSection(true)
 
 	if !strings.Contains(section, "中止任务") {
 		t.Error("CLAUDE.md missing task-abort section")
@@ -144,7 +146,7 @@ func TestClaudeMDDocumentsTaskAbort(t *testing.T) {
 // section: it must not claim the Stop hook auto-passes after 3 failures (that
 // counter no longer exists — task-verify is advisory and never blocks).
 func TestClaudeMDTaskVerifyIsAdvisory(t *testing.T) {
-	section := buildForgeSection()
+	section := buildForgeSection(true)
 
 	if strings.Contains(section, "连续 3 次失败") {
 		t.Error("CLAUDE.md still references obsolete '连续 3 次失败' force-pass (task-verify is advisory)")
@@ -161,7 +163,7 @@ func TestClaudeMDTaskVerifyIsAdvisory(t *testing.T) {
 // embed.go advisory change, and carries the tech-stack-agnostic / loop-engineering
 // intent (forge reminds; the agent owns the actual compile/assertion verdict).
 func TestClaudeMDCompileAssertionRulesAdvisory(t *testing.T) {
-	section := buildForgeSection()
+	section := buildForgeSection(true)
 
 	// New advisory wording: hooks only remind, the agent self-checks.
 	if !strings.Contains(section, "auto-compile hook 仅 advisory 提醒") {
@@ -177,5 +179,89 @@ func TestClaudeMDCompileAssertionRulesAdvisory(t *testing.T) {
 	// Gate-order section: task-implement must not claim it "auto-checks compile+assertion".
 	if strings.Contains(section, "自动检查编译+断言") {
 		t.Error("CLAUDE.md task-implement row still claims '自动检查编译+断言' (advisory now)")
+	}
+}
+
+// TestGenerateAgentsMD guards the cross-agent AGENTS.md generator. AGENTS.md is
+// read by codex/cursor/copilot/windsurf/cline (detect.go treats it as a codex
+// signal), so it must carry the agent-agnostic forge CLI/MCP surface — NOT the
+// Claude-only slash commands — and preserve user content outside the FORGE
+// markers on re-run (same idempotent section-replace contract as CLAUDE.md).
+func TestGenerateAgentsMD(t *testing.T) {
+	dir := t.TempDir()
+
+	if err := GenerateAgentsMD(dir); err != nil {
+		t.Fatalf(`GenerateAgentsMD: %v`, err)
+	}
+	path := filepath.Join(dir, `AGENTS.md`)
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf(`AGENTS.md not written: %v`, err)
+	}
+	got := string(b)
+
+	if !strings.Contains(got, `Forge 质量协议`) {
+		t.Error(`AGENTS.md missing Forge protocol header`)
+	}
+	if !strings.Contains(got, forgeSectionStart) || !strings.Contains(got, forgeSectionEnd) {
+		t.Error(`AGENTS.md missing FORGE section markers`)
+	}
+	// Cross-agent surface, not Claude slash commands.
+	if !strings.Contains(got, `通过 forge CLI`) {
+		t.Error(`AGENTS.md missing agent-agnostic CLI/MCP surface line`)
+	}
+	for _, claudeOnly := range []string{`/forge-pipeline`, `/forge-quality`} {
+		if strings.Contains(got, claudeOnly) {
+			t.Errorf(`AGENTS.md must not carry Claude-only slash command (cross-agent file): %s`, claudeOnly)
+		}
+	}
+
+	// Idempotent: user content outside markers survives a re-run; the marked
+	// Forge section is replaced in place.
+	userContent := `# Project notes
+
+This is user-maintained content outside the Forge section.
+`
+	seed := userContent + forgeSectionStart + `
+## STALE
+` + forgeSectionEnd
+	if err := os.WriteFile(path, []byte(seed), 0644); err != nil {
+		t.Fatalf(`seed AGENTS.md: %v`, err)
+	}
+	if err := GenerateAgentsMD(dir); err != nil {
+		t.Fatalf(`GenerateAgentsMD re-run: %v`, err)
+	}
+	b2, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf(`re-read AGENTS.md: %v`, err)
+	}
+	got2 := string(b2)
+	if !strings.Contains(got2, `This is user-maintained content outside the Forge section.`) {
+		t.Error(`AGENTS.md re-run clobbered user content outside FORGE markers`)
+	}
+	if strings.Contains(got2, `## STALE`) {
+		t.Error(`AGENTS.md re-run left stale content inside the marked Forge section`)
+	}
+}
+
+// TestGenerateClaudeMDCarriesSlashCommands is the symmetric guard: CLAUDE.md is
+// Claude-only and must carry /forge-pipeline + /forge-quality, and must NOT
+// carry the AGENTS.md cross-agent surface line. Together with TestGenerateAgentsMD
+// this locks the forClaude branch of buildForgeSection.
+func TestGenerateClaudeMDCarriesSlashCommands(t *testing.T) {
+	dir := t.TempDir()
+	if err := GenerateClaudeMD(dir); err != nil {
+		t.Fatalf(`GenerateClaudeMD: %v`, err)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, `.claude`, `CLAUDE.md`))
+	if err != nil {
+		t.Fatalf(`CLAUDE.md not written: %v`, err)
+	}
+	got := string(b)
+	if !strings.Contains(got, `/forge-pipeline`) || !strings.Contains(got, `/forge-quality`) {
+		t.Error(`CLAUDE.md missing Claude slash commands (/forge-pipeline, /forge-quality)`)
+	}
+	if strings.Contains(got, `通过 forge CLI`) {
+		t.Error(`CLAUDE.md must not carry the AGENTS.md cross-agent surface line`)
 	}
 }

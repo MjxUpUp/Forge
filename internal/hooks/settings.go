@@ -35,73 +35,78 @@ func EmbeddedContent(name string) (string, bool) {
 // appears under the "hooks" key of .claude/settings.local.json. The plugin-pack
 // generator (internal/agentbridge/pluginpack.go) writes the SAME object as the
 // hooks field of plugins/forge/.claude-plugin/plugin.json, so `claude plugin install forge` produces
-// byte-identical hook wiring to `forge init` — mirroring the superpowers
-// pattern (one shared payload, per-host thin manifests pointing at it). Any
+// byte-identical hook wiring to `forge init` — one shared payload, per-host
+// thin manifests pointing at it. Any
 // wiring change here propagates to both paths; do not duplicate the
 // matcher→hook roster elsewhere. Drift is guarded by
 // TestPluginPack_HooksMirrorSettings (plugin pack) and TestOpencodePluginWiring
 // (opencode's TS roster mirrors this set).
-func ForgeHookSpec() map[string]interface{} {
-	type hookEntry struct {
-		Type    string `json:"type"`
-		Command string `json:"command"`
-	}
+// HookEntry is one hook command run under a matcher. Exported so other packages
+// (internal/agentbridge codex/cursor translators) can iterate the spec to derive
+// their native hook formats from ForgeHookSpec — the single source of truth —
+// instead of hand-maintaining parallel copies that drift.
+type HookEntry struct {
+	Type    string `json:"type"`
+	Command string `json:"command"`
+}
 
-	type hookMatcher struct {
-		Matcher string      `json:"matcher,omitempty"`
-		Hooks   []hookEntry `json:"hooks"`
-	}
+// HookMatcher groups hook commands sharing a tool-name matcher.
+type HookMatcher struct {
+	Matcher string      `json:"matcher,omitempty"`
+	Hooks   []HookEntry `json:"hooks"`
+}
 
-	return map[string]interface{}{
-		"PostToolUse": []hookMatcher{
+func ForgeHookSpec() map[string][]HookMatcher {
+	return map[string][]HookMatcher{
+		"PostToolUse": []HookMatcher{
 			{
 				Matcher: "Write|Edit",
-				Hooks: []hookEntry{
+				Hooks: []HookEntry{
 					{Type: "command", Command: "forge hook auto-compile"},
 					{Type: "command", Command: "forge hook workflow-test-guard"},
 				},
 			},
 			{
 				Matcher: "Bash",
-				Hooks: []hookEntry{
+				Hooks: []HookEntry{
 					{Type: "command", Command: "forge hook file-sentinel"},
 				},
 			},
 			{
 				Matcher: "Read",
-				Hooks: []hookEntry{
+				Hooks: []HookEntry{
 					{Type: "command", Command: "forge hook tool-track"},
 				},
 			},
 		},
-		"PreToolUse": []hookMatcher{
+		"PreToolUse": []HookMatcher{
 			{
 				Matcher: "Write|Edit",
-				Hooks: []hookEntry{
+				Hooks: []HookEntry{
 					{Type: "command", Command: "forge hook task-guard"},
 					{Type: "command", Command: "forge hook assertion-check"},
 				},
 			},
 			{
 				Matcher: "Bash",
-				Hooks: []hookEntry{
+				Hooks: []HookEntry{
 					{Type: "command", Command: "forge hook bash-guard"},
 					{Type: "command", Command: "forge hook hazard-guard"},
 				},
 			},
 		},
-		"Stop": []hookMatcher{
+		"Stop": []HookMatcher{
 			{
-				Hooks: []hookEntry{
+				Hooks: []HookEntry{
 					{Type: "command", Command: "forge gate --current --silent"},
 					{Type: "command", Command: "forge hook task-verify"},
 					{Type: "command", Command: "forge hook review-stop"},
 				},
 			},
 		},
-		"SessionStart": []hookMatcher{
+		"SessionStart": []HookMatcher{
 			{
-				Hooks: []hookEntry{
+				Hooks: []HookEntry{
 					{Type: "command", Command: "forge hook skill-scan"},
 				},
 			},

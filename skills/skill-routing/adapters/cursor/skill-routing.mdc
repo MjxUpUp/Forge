@@ -11,10 +11,10 @@ Cursor 没有 input 拦截 hook（不像 pi 的 extension / Claude 的 UserPromp
 
 收到用户消息时，先扫描意图是否命中下表关键词。**命中即用 Read 工具读取对应 SKILL.md 全文，然后严格按其流程处理**，不要自己瞎搞。未命中则正常响应。
 
-> 注意：下表由 `sync.py` 从 routes.json 自动生成。手动改路由请编辑 routes.json 后重新 sync，不要直接改本文件。
+> 注意：下表由 `forge skills adapters` 从 routes.json 自动生成。手动改路由请编辑 routes.json 后重新部署，不要直接改本文件。
 
 <!-- AUTO-GENERATED ROUTES START -->
-<!-- 以下内容由 sync.py 从 routes.json 同步，手动修改会被覆盖 -->
+<!-- 以下内容由 forge skills adapters 从 routes.json 同步，手动修改会被覆盖 -->
 <!-- AUTO-GENERATED ROUTES END -->
 
 ## 路径解析

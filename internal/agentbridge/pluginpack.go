@@ -1,7 +1,7 @@
 package agentbridge
 
-// Plugin pack 生成：让 forge 通过各 agent 的 plugin marketplace 一键分发，参考
-// obra/superpowers 的多 host 模式（薄 manifest + 共享内容，单仓即 marketplace）。
+// Plugin pack 生成：让 forge 通过各 agent 的 plugin marketplace 一键分发。采用多 host
+// 插件市场的通用模式：薄 manifest + 共享内容，单仓即 marketplace。
 //
 // 生成结构（写入 spec.RepoDir）：
 //
@@ -15,24 +15,22 @@ package agentbridge
 //	                                  让 `claude plugin install <name>` 直接获得与 forge init
 //	                                  字节相同的 gate 接线（单一真相源）
 //	  .mcp.json                       共享 MCP（claude/codex 自动发现 plugin 目录下）
-//	  README.md                       每 host 安装命令（仿 superpowers README 格式）
+//	  README.md                       每 host 一段安装命令
 //
-// 与 superpowers 的关键差异：source 用 ./plugins/<PluginName> 子目录而非 ./ —— forge 是
-// Go 工具仓（internal/cmd/...），须把插件配置隔离到子目录，避免整个源码树被当插件拉取
-// （superpowers 是纯 markdown skills 仓，整个仓库即插件，故用 ./）。
+// 关键设计：source 用 ./plugins/<PluginName> 子目录而非仓库根 —— forge 是 Go 工具仓
+// （internal/cmd/...），须把插件配置隔离到子目录，避免整个源码树被当插件拉取。
 //
 // 省略 version 字段：claude marketplace 用 git commit SHA 驱动每次 commit 自动更新
 // （claude plugin 文档确认省略 version → SHA），forge v1.0 迭代期合适，且简化 generator
-// （无 version 常量 drift）、golden test 更稳。superpowers 用显式 version 因有稳定 release。
+// （无 version 常量 drift）、golden test 更稳。
 //
 // owner 字段：claude marketplace schema 把 owner 标为 REQUIRED（marketplaces 文档
-// "Marketplace schema → Required fields"），superpowers 的 marketplace.json 也带
-// owner{name,email}。故 GeneratePluginPack 在 OwnerName 空时报错，DefaultPluginPack
-// 预填 forge 的 owner（MjxUpUp）。
+// "Marketplace schema → Required fields"）。故 GeneratePluginPack 在 OwnerName 空时
+// 报错，DefaultPluginPack 预填 forge 的 owner（MjxUpUp）。
 //
 // 覆盖范围：marketplace 模型的工具（claude/cursor；codex/copilot 复用 claude marketplace）。
 // opencode/pi 走各自项目级/包级生成器（opencode.go 的 forge.ts、pi 的 pi install），
-// 不在 marketplace 模型内——与 superpowers 一致（opencode 走 INSTALL.md，pi 走 pi install）。
+// 不在 marketplace 模型内。
 
 import (
 	"encoding/json"
@@ -115,7 +113,7 @@ func ownerMap(spec PluginPackSpec) map[string]string {
 }
 
 // writeMarketplace 写一份 marketplace.json（claude 与 cursor 各一份，格式相同，仅目录不同）。
-// 结构仿 superpowers：{name, description, owner, plugins:[{name, description, source, author}]}。
+// 结构遵循 claude marketplace schema：{name, description, owner, plugins:[{name, description, source, author}]}。
 // source 跟随 PluginName（非硬编码），省略 version（git SHA 驱动自动更新）。
 func writeMarketplace(spec PluginPackSpec, dir string) error {
 	owner := ownerMap(spec) // name 必有，email 可选——复用一次填 owner 与 author
