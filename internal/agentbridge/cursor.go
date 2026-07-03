@@ -50,7 +50,14 @@ func (t *CursorTranslator) Translate(projectDir string, input *TranslationInput)
 		return fmt.Errorf("cursor: failed to create rules dir: %w", err)
 	}
 	content := buildCursorMDC(input)
-	return os.WriteFile(filepath.Join(rulesDir, "forge-quality.mdc"), []byte(content), 0644)
+	if err := os.WriteFile(filepath.Join(rulesDir, "forge-quality.mdc"), []byte(content), 0644); err != nil {
+		return fmt.Errorf("cursor: write forge-quality.mdc: %w", err)
+	}
+	// Generate .cursor/mcp.json — idempotent merge (see mcpconfig.go).
+	if err := writeCursorMCP(projectDir); err != nil {
+		return fmt.Errorf("cursor: failed to generate .cursor/mcp.json: %w", err)
+	}
+	return nil
 }
 
 func (t *CursorTranslator) AgentType() AgentType {

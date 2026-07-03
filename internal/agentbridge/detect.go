@@ -44,7 +44,7 @@ func ParseAgentFlag(projectDir string, flag string) []AgentType {
 	var agents []AgentType
 	for _, name := range splitComma(flag) {
 		switch AgentType(name) {
-		case AgentClaudeCode, AgentCursor, AgentCopilot, AgentWindsurf, AgentCodex:
+		case AgentClaudeCode, AgentCursor, AgentCopilot, AgentWindsurf, AgentCodex, AgentOpencode, AgentPi:
 			agents = append(agents, AgentType(name))
 		}
 	}
