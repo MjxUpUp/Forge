@@ -1,0 +1,11 @@
+{
+  "description": "Forge plugin marketplace",
+  "name": "forge",
+  "plugins": [
+    {
+      "description": "Forge loop-engineering quality gates: task-tracked source changes, assertion guards, file-sentinel quarantine, and review-gated completion for AI coding agents.",
+      "name": "forge",
+      "source": "./plugins/forge"
+    }
+  ]
+}

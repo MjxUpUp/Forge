@@ -1,0 +1,95 @@
+{
+  "description": "Forge loop-engineering quality gates: task-tracked source changes, assertion guards, file-sentinel quarantine, and review-gated completion for AI coding agents.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "forge hook auto-compile"
+          },
+          {
+            "type": "command",
+            "command": "forge hook workflow-test-guard"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "forge hook file-sentinel"
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "forge hook tool-track"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "forge hook task-guard"
+          },
+          {
+            "type": "command",
+            "command": "forge hook assertion-check"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "forge hook bash-guard"
+          },
+          {
+            "type": "command",
+            "command": "forge hook hazard-guard"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "forge hook skill-scan"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "forge gate --current --silent"
+          },
+          {
+            "type": "command",
+            "command": "forge hook task-verify"
+          },
+          {
+            "type": "command",
+            "command": "forge hook review-stop"
+          }
+        ]
+      }
+    ]
+  },
+  "name": "forge"
+}

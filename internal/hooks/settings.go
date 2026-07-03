@@ -30,11 +30,18 @@ func EmbeddedContent(name string) (string, bool) {
 	return content, ok
 }
 
-// GenerateSettings creates .claude/settings.local.json with hook integration.
-func GenerateSettings(projectDir string) error {
-	claudeDir := filepath.Join(projectDir, ".claude")
-	os.MkdirAll(claudeDir, 0755)
-
+// ForgeHookSpec is the single source of truth for which forge hooks run at
+// which Claude Code tool event. It returns the hooks object exactly as it
+// appears under the "hooks" key of .claude/settings.local.json. The plugin-pack
+// generator (internal/agentbridge/pluginpack.go) writes the SAME object as
+// plugins/forge/hooks/hooks.json, so `claude plugin install forge` produces
+// byte-identical hook wiring to `forge init` — mirroring the superpowers
+// pattern (one shared payload, per-host thin manifests pointing at it). Any
+// wiring change here propagates to both paths; do not duplicate the
+// matcher→hook roster elsewhere. Drift is guarded by
+// TestPluginPack_HooksMirrorSettings (plugin pack) and TestOpencodePluginWiring
+// (opencode's TS roster mirrors this set).
+func ForgeHookSpec() map[string]interface{} {
 	type hookEntry struct {
 		Type    string `json:"type"`
 		Command string `json:"command"`
@@ -45,62 +52,70 @@ func GenerateSettings(projectDir string) error {
 		Hooks   []hookEntry `json:"hooks"`
 	}
 
-	settings := map[string]interface{}{
-		"hooks": map[string][]hookMatcher{
-			"PostToolUse": {
-				{
-					Matcher: "Write|Edit",
-					Hooks: []hookEntry{
-						{Type: "command", Command: "forge hook auto-compile"},
-						{Type: "command", Command: "forge hook workflow-test-guard"},
-					},
-				},
-				{
-					Matcher: "Bash",
-					Hooks: []hookEntry{
-						{Type: "command", Command: "forge hook file-sentinel"},
-					},
-				},
-				{
-					Matcher: "Read",
-					Hooks: []hookEntry{
-						{Type: "command", Command: "forge hook tool-track"},
-					},
+	return map[string]interface{}{
+		"PostToolUse": []hookMatcher{
+			{
+				Matcher: "Write|Edit",
+				Hooks: []hookEntry{
+					{Type: "command", Command: "forge hook auto-compile"},
+					{Type: "command", Command: "forge hook workflow-test-guard"},
 				},
 			},
-			"PreToolUse": {
-				{
-					Matcher: "Write|Edit",
-					Hooks: []hookEntry{
-						{Type: "command", Command: "forge hook task-guard"},
-						{Type: "command", Command: "forge hook assertion-check"},
-					},
-				},
-				{
-					Matcher: "Bash",
-					Hooks: []hookEntry{
-						{Type: "command", Command: "forge hook bash-guard"},
-						{Type: "command", Command: "forge hook hazard-guard"},
-					},
+			{
+				Matcher: "Bash",
+				Hooks: []hookEntry{
+					{Type: "command", Command: "forge hook file-sentinel"},
 				},
 			},
-			"Stop": {
-				{
-					Hooks: []hookEntry{
-						{Type: "command", Command: "forge gate --current --silent"},
-						{Type: "command", Command: "forge hook task-verify"},
-						{Type: "command", Command: "forge hook review-stop"},
-					},
-				},
-			},
-			"SessionStart": {
-				{
-					Hooks: []hookEntry{
-						{Type: "command", Command: "forge hook skill-scan"},
-					},
+			{
+				Matcher: "Read",
+				Hooks: []hookEntry{
+					{Type: "command", Command: "forge hook tool-track"},
 				},
 			},
 		},
+		"PreToolUse": []hookMatcher{
+			{
+				Matcher: "Write|Edit",
+				Hooks: []hookEntry{
+					{Type: "command", Command: "forge hook task-guard"},
+					{Type: "command", Command: "forge hook assertion-check"},
+				},
+			},
+			{
+				Matcher: "Bash",
+				Hooks: []hookEntry{
+					{Type: "command", Command: "forge hook bash-guard"},
+					{Type: "command", Command: "forge hook hazard-guard"},
+				},
+			},
+		},
+		"Stop": []hookMatcher{
+			{
+				Hooks: []hookEntry{
+					{Type: "command", Command: "forge gate --current --silent"},
+					{Type: "command", Command: "forge hook task-verify"},
+					{Type: "command", Command: "forge hook review-stop"},
+				},
+			},
+		},
+		"SessionStart": []hookMatcher{
+			{
+				Hooks: []hookEntry{
+					{Type: "command", Command: "forge hook skill-scan"},
+				},
+			},
+		},
+	}
+}
+
+// GenerateSettings creates .claude/settings.local.json with hook integration.
+func GenerateSettings(projectDir string) error {
+	claudeDir := filepath.Join(projectDir, ".claude")
+	os.MkdirAll(claudeDir, 0755)
+
+	settings := map[string]interface{}{
+		"hooks": ForgeHookSpec(),
 	}
 
 	data, err := json.MarshalIndent(settings, "", "  ")
