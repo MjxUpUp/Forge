@@ -22,7 +22,13 @@ dashboard / act list 对旧项目显示空——dashboard 只读 conclusions.jso
 rebuild 遍历所有有 Score+CompletedAt 的任务，从 TaskState + checklog 证据链重建结论
 （复用 task complete 时的 appendConclusion 逻辑，单一真相源）。
 
-现有 conclusions.jsonl 先备份到 .bak。rebuild 全量重建（幂等：多次跑结果一致，按完成时间排序）。`,
+现有 conclusions.jsonl 先备份到 .bak。rebuild 全量重建（幂等：多次跑结果一致，按完成时间排序）。
+
+注意 retention 交互：task start 会按 FORGE_LOG_RETENTION_DAYS（默认 30 天，≤0 禁用）删除
+超期的已完成任务文件（.forge/tasks/*.json）和超期的 checklog/toollog 归档。被 retention
+删除的任务无法被 rebuild 重建——若需保留长期历史用于 rebuild，调大该值或设为 0 禁用。
+（.bak 只备份 rebuild 前的 conclusions.jsonl 用于回滚上次 rebuild 输出，无法恢复被 retention
+删除的任务文件——后者无备份。）`,
 	RunE: runActRebuild,
 }
 

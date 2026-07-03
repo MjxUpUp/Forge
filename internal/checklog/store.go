@@ -169,16 +169,33 @@ func Archive(root string) error {
 
 // Clear removes the check log file after archiving. Called at task start. Both
 // the archive and the remove run under the mutex so no Record can append
-// between them.
+// between them. After archiving+removing the active file, it best-effort prunes
+// archives older than the retention window so checklog-*.jsonl doesn't grow
+// unbounded across task starts.
 func Clear(root string) error {
 	mu.Lock()
 	defer mu.Unlock()
 	if err := archiveLocked(root); err != nil {
 		return err
 	}
-	err := os.Remove(filePath(root))
-	if os.IsNotExist(err) {
-		return nil
+	if err := os.Remove(filePath(root)); err != nil && !os.IsNotExist(err) {
+		return err
 	}
-	return err
+	pruneArchives(filepath.Dir(filePath(root)))
+	return nil
+}
+
+// pruneArchives deletes checklog-*.jsonl archives older than the retention
+// window (FORGE_LOG_RETENTION_DAYS, default 30; ≤0 disables). Best-effort:
+// PruneArchives globs only checklog-*.jsonl (never the active file
+// checklog.jsonl, which lacks the dash the glob requires), so it can't race a
+// concurrent Record (which writes only the active file). Called under Clear's
+// mutex purely to keep the rotation+prune atomic in intent; failures here
+// don't affect Clear's main outcome.
+func pruneArchives(dir string) {
+	days := util.RetentionDays("FORGE_LOG_RETENTION_DAYS", 30)
+	if days <= 0 {
+		return
+	}
+	_, _ = util.PruneArchives(dir, "checklog", time.Now().AddDate(0, 0, -days))
 }
