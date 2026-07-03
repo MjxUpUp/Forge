@@ -15,6 +15,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskcontext"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
+	"github.com/MjxUpUp/Forge/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -283,9 +284,17 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Clear check log for fresh task.
+	// Clear check log for fresh task. (Clear also prunes over-age checklog/toollog
+	// archives per FORGE_LOG_RETENTION_DAYS — see store.go.)
 	checklog.Clear(root)
 	toolusage.Clear(root)
+
+	// Prune completed task state files older than the retention window, keeping
+	// .forge/tasks/ bounded. Same window as the log archives so a task's metadata
+	// and its logs age out together. Best-effort: error here is non-fatal.
+	if days := util.RetentionDays("FORGE_LOG_RETENTION_DAYS", 30); days > 0 {
+		taskpipeline.PruneOldTasks(root, time.Now().AddDate(0, 0, -days))
+	}
 
 	if err := taskpipeline.SaveTaskState(root, state); err != nil {
 		return fmt.Errorf("failed to create task: %w", err)

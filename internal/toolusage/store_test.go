@@ -276,6 +276,29 @@ func TestClear(t *testing.T) {
 	}
 }
 
+// TestClear_PrunesOldArchives：Clear 轮转后按 FORGE_LOG_RETENTION_DAYS 清超期 toollog 归档，
+// 保留近期归档。
+func TestClear_PrunesOldArchives(t *testing.T) {
+	t.Setenv("FORGE_LOG_RETENTION_DAYS", "30")
+	dir := t.TempDir()
+	forgeDir := filepath.Join(dir, ".forge")
+	os.MkdirAll(forgeDir, 0755)
+	os.WriteFile(filepath.Join(forgeDir, "toollog.jsonl"), []byte("{}\n"), 0644)
+	os.WriteFile(filepath.Join(forgeDir, "toollog-20000101000000.jsonl"), []byte("old"), 0644)
+	today := time.Now().Format("20060102150405.000000000")
+	os.WriteFile(filepath.Join(forgeDir, "toollog-"+today+".jsonl"), []byte("new"), 0644)
+
+	if err := Clear(dir); err != nil {
+		t.Fatalf("Clear: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(forgeDir, "toollog-20000101000000.jsonl")); !os.IsNotExist(err) {
+		t.Error("old toollog archive should be pruned after Clear")
+	}
+	if _, err := os.Stat(filepath.Join(forgeDir, "toollog-"+today+".jsonl")); err != nil {
+		t.Error("recent toollog archive should be kept")
+	}
+}
+
 func TestLoadNonexistent(t *testing.T) {
 	dir := t.TempDir()
 	calls, err := LoadAll(dir)

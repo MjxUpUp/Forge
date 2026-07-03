@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/MjxUpUp/Forge/internal/taskcontext"
 	"github.com/MjxUpUp/Forge/internal/util"
@@ -223,4 +224,42 @@ func ListTaskStates(root string) ([]*TaskState, error) {
 		states = append(states, &s)
 	}
 	return states, nil
+}
+
+// PruneOldTasks deletes task state files in .forge/tasks/ that are completed
+// (IsComplete) AND whose CompletedAt is before cutoff. In-progress tasks
+// (IsComplete==false) are always kept — they may still be active or resumable.
+// Aborted task files need no handling: `forge task abort` removes the file
+// directly, so none linger in an abort state.
+//
+// best-effort: a single file's parse/delete failure is skipped and accumulated
+// into err, never aborting the whole sweep. Returns the removal count + any
+// accumulated non-fatal error. Caller computes cutoff from the shared retention
+// window (FORGE_LOG_RETENTION_DAYS) so a task's metadata, checklog archives,
+// and toollog archives age out together.
+func PruneOldTasks(root string, cutoff time.Time) (removed int, err error) {
+	states, err := ListTaskStates(root)
+	if err != nil {
+		return 0, err
+	}
+	var errs []string
+	for _, s := range states {
+		if !s.IsComplete() || s.CompletedAt == nil {
+			continue
+		}
+		if !s.CompletedAt.Before(cutoff) {
+			continue
+		}
+		if delErr := DeleteTaskState(root, s.TaskRef); delErr != nil {
+			if !os.IsNotExist(delErr) {
+				errs = append(errs, delErr.Error())
+			}
+			continue
+		}
+		removed++
+	}
+	if len(errs) > 0 {
+		return removed, fmt.Errorf("prune old tasks: %s", strings.Join(errs, "; "))
+	}
+	return removed, nil
 }

@@ -287,3 +287,49 @@ func TestArchive_NanosecondNaming(t *testing.T) {
 	}
 	t.Fatal("no checklog-* archive produced by Archive")
 }
+
+// TestClear_PrunesOldArchives：Clear 在轮转后按 FORGE_LOG_RETENTION_DAYS 清超期归档，
+// 保留近期归档与 active 清空语义。
+func TestClear_PrunesOldArchives(t *testing.T) {
+	t.Setenv("FORGE_LOG_RETENTION_DAYS", "30")
+	dir := t.TempDir()
+	forgeDir := filepath.Join(dir, ".forge")
+	os.MkdirAll(forgeDir, 0755)
+	// 老归档（2000 年，必然超 30 天）→ 删
+	os.WriteFile(filepath.Join(forgeDir, "checklog-20000101000000.jsonl"), []byte("old"), 0644)
+	// 新归档（今天时间戳）→ 保留
+	today := time.Now().Format("20060102150405.000000000")
+	os.WriteFile(filepath.Join(forgeDir, "checklog-"+today+".jsonl"), []byte("new"), 0644)
+	// active
+	Record(dir, &Entry{Check: CheckAutoCompile, Passed: true})
+
+	if err := Clear(dir); err != nil {
+		t.Fatalf("Clear: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(forgeDir, "checklog-20000101000000.jsonl")); !os.IsNotExist(err) {
+		t.Error("old archive should be pruned after Clear")
+	}
+	if _, err := os.Stat(filepath.Join(forgeDir, "checklog-"+today+".jsonl")); err != nil {
+		t.Error("recent archive should be kept")
+	}
+	if _, err := os.Stat(filepath.Join(forgeDir, "checklog.jsonl")); !os.IsNotExist(err) {
+		t.Error("active should be removed after Clear")
+	}
+}
+
+// TestClear_DisabledRetention：FORGE_LOG_RETENTION_DAYS=0 禁用清理，老归档保留。
+func TestClear_DisabledRetention(t *testing.T) {
+	t.Setenv("FORGE_LOG_RETENTION_DAYS", "0")
+	dir := t.TempDir()
+	forgeDir := filepath.Join(dir, ".forge")
+	os.MkdirAll(forgeDir, 0755)
+	os.WriteFile(filepath.Join(forgeDir, "checklog-20000101000000.jsonl"), []byte("old"), 0644)
+	Record(dir, &Entry{Check: CheckAutoCompile, Passed: true})
+
+	if err := Clear(dir); err != nil {
+		t.Fatalf("Clear: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(forgeDir, "checklog-20000101000000.jsonl")); err != nil {
+		t.Error("with retention disabled, old archive should be kept")
+	}
+}

@@ -97,7 +97,8 @@ func buildForgeSection() string {
 	sb.WriteString("| task already exists | 任务已启动 | 用 `forge task status --ref <ref>` 查看 |\n")
 	sb.WriteString("| Quarantined by file-sentinel | Bash 写了源码但无任务 | 文件在 .forge/quarantine/，可恢复。先启动任务 |\n")
 	sb.WriteString("| complete 后提交被 file-sentinel 拦 | complete 已清 active task ref | 先 commit 再 complete；或开 `chore/*-commit` 任务放行 |\n")
-	sb.WriteString("| Pending mandatory review detected | 低分任务（<70）有未解除的 mandatory review | `forge experience list` → `forge experience accept <id>`；无可 accept 的提案时用 `forge experience resolve <task-ref>` 兜底 |\n\n")
+	sb.WriteString("| Pending mandatory review detected | 低分任务（<70）有未解除的 mandatory review | `forge experience list` → `forge experience accept <id>`；无可 accept 的提案时用 `forge experience resolve <task-ref>` 兜底 |\n")
+	sb.WriteString("| trace/老任务历史消失 | retention（默认启用）自动清超期 checklog/toollog 归档 + 已完成任务文件 | 行为正常；`FORGE_LOG_RETENTION_DAYS` 控制保留天数（默认 30，≤0 禁用）；`forge act rebuild` 全量重建，被 retention 删的任务无法重建 |\n\n")
 
 	sb.WriteString("使用 `/forge-pipeline` 运行项目级管道。\n")
 	sb.WriteString("使用 `/forge-quality` 查看完整质量协议。\n\n")
