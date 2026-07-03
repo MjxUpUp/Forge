@@ -32,6 +32,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/act"
 	"github.com/MjxUpUp/Forge/internal/health"
+	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
 // Options 控制 dashboard 服务启动行为。
@@ -320,6 +321,124 @@ func RenderPage(w io.Writer, d Data) error {
 	return pageTmpl.ExecuteTemplate(w, `page`, d)
 }
 
+// =====================================================================
+// 任务接续看板（continuity）：进行中任务的 plan/决策/阻塞/参与工具可视化。
+// 与质量看板（index.html，读已完成结论 act.LoadAll）互补——接续看板读 TaskState
+// （进行中 + 接续字段），让"哪些任务在跑、卡在哪、谁参与"一眼可见。
+// =====================================================================
+
+// continuityCard 是单个 task 的看板投影（HTML + JSON 共用，无 SessionID 等敏感字段）。
+type continuityCard struct {
+	TaskRef       string    `json:"task_ref"`
+	Branch        string    `json:"branch"`
+	Kind          string    `json:"kind"`
+	Summary       string    `json:"summary,omitempty"`
+	Goal          string    `json:"goal,omitempty"`
+	OriginTool    string    `json:"origin_tool,omitempty"`
+	SessionTools  []string  `json:"session_tools,omitempty"`
+	IsComplete    bool      `json:"is_complete"`
+	CurrentGate   string    `json:"current_gate,omitempty"`
+	GatePassed    int       `json:"gate_passed"`
+	GateTotal     int       `json:"gate_total"`
+	OpenBlockers  int       `json:"open_blockers"`
+	NextSteps     int       `json:"next_steps"`
+	Decisions     int       `json:"decisions"`
+	Findings      int       `json:"findings"`
+	ParentTaskRef string    `json:"parent_task_ref,omitempty"`
+	StartedAt     time.Time `json:"started_at"`
+}
+
+// ContinuityBoard 是接续看板载荷：项目内所有 task 的卡片 + 进行中/已完成计数。
+type ContinuityBoard struct {
+	Project    string         `json:"project,omitempty"`
+	Now        time.Time      `json:"now"`
+	Cards      []continuityCard `json:"cards"`
+	Incomplete int            `json:"incomplete"`
+	Complete   int            `json:"complete"`
+}
+
+// AggregateContinuity 从 .forge/tasks/ 读全部 TaskState 投影成看板卡片。进行中在前、
+// 同状态按启动时间倒序——最近且未完成的任务排在最上，符合"看板聚焦在跑的工作"。
+// root 为空（全局模式未聚焦单项目）返空 board，不报错——接续看板聚焦单项目进行中工作。
+func AggregateContinuity(root string, now time.Time) (ContinuityBoard, error) {
+	if root == "" {
+		return ContinuityBoard{Now: now, Cards: []continuityCard{}}, nil
+	}
+	states, err := taskpipeline.ListTaskStates(root)
+	if err != nil {
+		return ContinuityBoard{}, err
+	}
+	cards := make([]continuityCard, 0, len(states))
+	incomplete, complete := 0, 0
+	for _, s := range states {
+		c := toContinuityCard(s)
+		if c.IsComplete {
+			complete++
+		} else {
+			incomplete++
+		}
+		cards = append(cards, c)
+	}
+	sort.SliceStable(cards, func(i, j int) bool {
+		if cards[i].IsComplete != cards[j].IsComplete {
+			return !cards[i].IsComplete
+		}
+		return cards[i].StartedAt.After(cards[j].StartedAt)
+	})
+	return ContinuityBoard{
+		Project:    projectName(root),
+		Now:        now,
+		Cards:      cards,
+		Incomplete: incomplete,
+		Complete:   complete,
+	}, nil
+}
+
+func toContinuityCard(s *taskpipeline.TaskState) continuityCard {
+	kind := s.Kind
+	if kind == "" {
+		kind = "code"
+	}
+	cur := s.CurrentGate
+	if s.IsComplete() {
+		cur = ""
+	}
+	gateTotal := len(taskpipeline.DefaultGates())
+	if s.IsGeneric() {
+		gateTotal = 0 // generic 不走门禁，看板不显示门禁进度（模板 {{if gt .GateTotal 0}} 会跳过整行）
+	}
+	return continuityCard{
+		TaskRef:       s.TaskRef,
+		Branch:        s.Branch,
+		Kind:          kind,
+		Summary:       s.Summary,
+		Goal:          s.Goal,
+		OriginTool:    s.OriginTool,
+		SessionTools:  s.SessionTools(),
+		IsComplete:    s.IsComplete(),
+		CurrentGate:   cur,
+		GatePassed:    len(s.CompletedGates()),
+		GateTotal:     gateTotal,
+		OpenBlockers:  len(s.OpenBlockers()),
+		NextSteps:     len(s.NextSteps),
+		Decisions:     len(s.Decisions),
+		Findings:      len(s.Findings),
+		ParentTaskRef: s.ParentTaskRef,
+		StartedAt:     s.StartedAt,
+	}
+}
+
+// continuityAsset 是接续看板模板的嵌入路径（与 assetFile 同构）。
+const continuityAsset = `assets/continuity.html`
+
+// continuityTmpl 进程启动时解析一次。复用 funcMap。
+var continuityTmpl = template.Must(template.New(`continuity`).Funcs(funcMap).ParseFS(assetsFS, continuityAsset))
+
+// RenderContinuityBoard 把接续看板数据渲染成 HTML。导出便于测试。
+func RenderContinuityBoard(w io.Writer, b ContinuityBoard) error {
+	return continuityTmpl.ExecuteTemplate(w, `continuity`, b)
+}
+
 // taskPublic 是结论的对外投影：剥掉 SessionID。HTML 看板用不到会话 ID，JSON 端点虽
 // 只绑 localhost，也不把它序列化出去——纵深防御（配合 Host 校验防 DNS rebinding 读取）。
 type taskPublic struct {
@@ -447,6 +566,28 @@ func newMux(opts Options) *http.ServeMux {
 	// favicon：浏览器自动请求，给 204 避免 console 404 噪声（看板无需图标资源）。
 	mux.HandleFunc(`/favicon.ico`, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
+	})
+	// 任务接续看板：进行中任务的 plan/决策/阻塞/参与工具可视化。与质量看板互补——
+	// 质量看板看"已完成结论的质量"，接续看板看"在跑的任务接续到哪了"。
+	mux.HandleFunc(`/continuity`, func(w http.ResponseWriter, r *http.Request) {
+		board, err := AggregateContinuity(opts.Root, time.Now())
+		if err != nil {
+			log.Printf(`dashboard continuity %s: %v`, opts.Root, err)
+			http.Error(w, `聚合接续数据失败，请检查 .forge/tasks 完整性`, http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set(`Content-Type`, `text/html; charset=utf-8`)
+		_ = RenderContinuityBoard(w, board)
+	})
+	mux.HandleFunc(`/api/continuity.json`, func(w http.ResponseWriter, r *http.Request) {
+		board, err := AggregateContinuity(opts.Root, time.Now())
+		if err != nil {
+			log.Printf(`dashboard continuity %s: %v`, opts.Root, err)
+			http.Error(w, `聚合接续数据失败`, http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set(`Content-Type`, `application/json`)
+		_ = json.NewEncoder(w).Encode(board)
 	})
 	return mux
 }

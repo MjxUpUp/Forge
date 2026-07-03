@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"sort"
 	"strings"
@@ -178,6 +179,195 @@ func taskGateCore(root string, in taskGateInput) (taskGateOutput, error) {
 		Passed:     result.Passed,
 		Message:    msg,
 		IsComplete: state.IsComplete(),
+	}, nil
+}
+
+// =====================================================================
+// forge_task_resume —— 接续真相源入口：拉回任务完整接续上下文（结构化，供 agent parse）
+// =====================================================================
+
+type taskResumeInput struct {
+	Ref           string `json:"ref,omitempty" jsonschema:"任务 ref；空则取当前 session 活跃任务"`
+	NoAttach      bool   `json:"no_attach,omitempty" jsonschema:"仅读取不锚定当前 session；默认 false=接手即锚定，记录参与方"`
+	AttachSession string `json:"attach_session,omitempty" jsonschema:"显式指定要锚定的 session ID（默认取环境当前 session）"`
+}
+
+type gateProgressStep struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Status string `json:"status"` // passed | current | pending
+}
+
+// taskResumeOutput 是接手方冷启动拉回的结构化上下文。与 CLI 的 HANDOFF 文本渲染同源，
+// 但字段化以便 agent 直接 parse（goal/plan/decisions/next/blockers/findings/artifacts +
+// 参与工具 + 门禁进度 + git 已改未提交 + 是否本次新锚定）。
+type taskResumeOutput struct {
+	TaskRef       string                  `json:"task_ref"`
+	Branch        string                  `json:"branch"`
+	Kind          string                  `json:"kind"`
+	OriginTool    string                  `json:"origin_tool,omitempty"`
+	Summary       string                  `json:"summary,omitempty"`
+	Goal          string                  `json:"goal,omitempty"`
+	Plan          string                  `json:"plan,omitempty"`
+	Decisions     []taskpipeline.Decision `json:"decisions,omitempty"`
+	NextSteps     []string                `json:"next_steps,omitempty"`
+	Blockers      []taskpipeline.Blocker  `json:"blockers,omitempty"`
+	Findings      []taskpipeline.Finding  `json:"findings,omitempty"`
+	Artifacts     []taskpipeline.Artifact `json:"artifacts,omitempty"`
+	SessionTools  []string                `json:"session_tools,omitempty"`
+	GateProgress  []gateProgressStep      `json:"gate_progress"`
+	GitChanged    []string                `json:"git_changed,omitempty"`
+	ParentTaskRef string                  `json:"parent_task_ref,omitempty"`
+	DependsOn     []string                `json:"depends_on,omitempty"`
+	Anchored      bool                    `json:"anchored,omitempty"` // 本次 resume 是否新锚定了当前 session
+}
+
+func taskResumeCore(root string, in taskResumeInput) (taskResumeOutput, error) {
+	state, err := loadTaskState(root, in.Ref)
+	if err != nil {
+		return taskResumeOutput{}, err
+	}
+	if state == nil {
+		return taskResumeOutput{}, fmt.Errorf("no active task (run 'forge task start' first)")
+	}
+	anchored := false
+	if !in.NoAttach {
+		sid := in.AttachSession
+		if sid == "" {
+			sid = taskpipeline.CurrentSessionID()
+		}
+		// tool 探测失败时跳过锚定（不回退 OriginTool——会把接手方 session 错误归属到创建方
+		// 工具）。resume 永远返回上下文，锚定是附加动作；anchored=false 让 agent 知未锚定。
+		tool := detectTool("")
+		if sid != "" && tool != "" && !state.HasSession(sid) {
+			state.AddSession(sid, tool)
+			if err := taskpipeline.SaveTaskState(root, state); err != nil {
+				return taskResumeOutput{}, fmt.Errorf("锚定 session 失败: %w", err)
+			}
+			anchored = true
+		}
+	}
+	kind := state.Kind
+	if kind == "" {
+		kind = "code"
+	}
+	return taskResumeOutput{
+		TaskRef:       state.TaskRef,
+		Branch:        state.Branch,
+		Kind:          kind,
+		OriginTool:    state.OriginTool,
+		Summary:       state.Summary,
+		Goal:          state.Goal,
+		Plan:          state.Plan,
+		Decisions:     state.Decisions,
+		NextSteps:     state.NextSteps,
+		Blockers:      state.Blockers,
+		Findings:      state.Findings,
+		Artifacts:     state.Artifacts,
+		SessionTools:  state.SessionTools(),
+		GateProgress:  buildGateProgress(state),
+		GitChanged:    gitStatusPorcelain(root),
+		ParentTaskRef: state.ParentTaskRef,
+		DependsOn:     state.DependsOn,
+		Anchored:      anchored,
+	}, nil
+}
+
+// =====================================================================
+// forge_task_decide —— 记录已确认决策（持久化，跨会话/跨工具不再推翻）
+// =====================================================================
+
+type taskDecideInput struct {
+	Ref       string   `json:"ref,omitempty" jsonschema:"任务 ref；空则取当前 session 活跃任务"`
+	Content   string   `json:"content" jsonschema:"决策内容（必填）"`
+	By        string   `json:"by,omitempty" jsonschema:"确认方（工具/人，如 [pi]/[claude-code]）"`
+	Affects   []string `json:"affects,omitempty" jsonschema:"影响的文件/模块"`
+	Rationale string   `json:"rationale,omitempty" jsonschema:"为什么这么决定"`
+}
+
+type taskDecideOutput struct {
+	DecisionID     string `json:"decision_id"`
+	Content        string `json:"content"`
+	TotalDecisions int    `json:"total_decisions"`
+}
+
+func taskDecideCore(root string, in taskDecideInput) (taskDecideOutput, error) {
+	if in.Content == "" {
+		return taskDecideOutput{}, fmt.Errorf("content is required")
+	}
+	state, err := loadTaskState(root, in.Ref)
+	if err != nil {
+		return taskDecideOutput{}, err
+	}
+	if state == nil {
+		return taskDecideOutput{}, fmt.Errorf("no active task (run 'forge task start' first)")
+	}
+	state.AddDecision(taskpipeline.Decision{
+		Content:   in.Content,
+		By:        in.By,
+		Affects:   in.Affects,
+		Rationale: in.Rationale,
+	})
+	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+		return taskDecideOutput{}, err
+	}
+	d := state.Decisions[len(state.Decisions)-1]
+	return taskDecideOutput{
+		DecisionID:     d.ID,
+		Content:        d.Content,
+		TotalDecisions: len(state.Decisions),
+	}, nil
+}
+
+// =====================================================================
+// forge_task_attach —— 把 session+工具锚定到 task（跨工具接续的多向锚定）
+// =====================================================================
+
+type taskAttachInput struct {
+	Ref       string `json:"ref" jsonschema:"任务 ref（必填：要锚定到哪个任务）"`
+	Tool      string `json:"tool,omitempty" jsonschema:"该 session 所属工具（pi/claude-code/opencode…，默认探测当前）"`
+	SessionID string `json:"session_id,omitempty" jsonschema:"要锚定的 session ID（默认取环境当前 session）"`
+}
+
+type taskAttachOutput struct {
+	SessionID       string `json:"session_id"`
+	Tool            string `json:"tool"`
+	TotalSessions   int    `json:"total_sessions"`
+	AlreadyAnchored bool   `json:"already_anchored"`
+}
+
+func taskAttachCore(root string, in taskAttachInput) (taskAttachOutput, error) {
+	if in.Ref == "" {
+		return taskAttachOutput{}, fmt.Errorf("ref is required")
+	}
+	state, err := taskpipeline.LoadTaskState(root, in.Ref)
+	if err != nil {
+		return taskAttachOutput{}, err
+	}
+	if state == nil {
+		return taskAttachOutput{}, fmt.Errorf("task %q not found", in.Ref)
+	}
+	sid := in.SessionID
+	if sid == "" {
+		sid = taskpipeline.CurrentSessionID()
+	}
+	if sid == "" {
+		return taskAttachOutput{}, fmt.Errorf("cannot determine session id (set session_id or run under an agent session)")
+	}
+	tool := detectTool(in.Tool)
+	if tool == "" {
+		return taskAttachOutput{}, fmt.Errorf(`cannot determine tool: set tool or run under an agent env. Cross-tool attach requires an explicit tool to avoid misattribution`)
+	}
+	already := state.HasSession(sid)
+	state.AddSession(sid, tool)
+	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+		return taskAttachOutput{}, err
+	}
+	return taskAttachOutput{
+		SessionID:       sid,
+		Tool:            tool,
+		TotalSessions:   len(state.SessionLinks),
+		AlreadyAnchored: already,
 	}, nil
 }
 
@@ -456,6 +646,50 @@ func loadTaskState(root, ref string) (*taskpipeline.TaskState, error) {
 		return taskpipeline.LoadTaskState(root, ref)
 	}
 	return taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
+}
+
+// detectTool 探测当前 agent 工具（与 cli.detectOriginTool 同逻辑；MCP server 进程也继承
+// agent 注入的 CLAUDE_CODE_SESSION_ID）。explicit 非空则用之。
+func detectTool(explicit string) string {
+	if explicit != "" {
+		return explicit
+	}
+	if os.Getenv("CLAUDE_CODE_SESSION_ID") != "" {
+		return "claude-code"
+	}
+	return ""
+}
+
+// buildGateProgress 把 task History 投影成门禁进度（passed/current/pending）。
+func buildGateProgress(state *taskpipeline.TaskState) []gateProgressStep {
+	var steps []gateProgressStep
+	for _, g := range taskpipeline.DefaultGates() {
+		status := "pending"
+		for _, r := range state.History {
+			if r.Gate == g.ID && r.Passed {
+				status = "passed"
+				break
+			}
+		}
+		if status != "passed" && state.CurrentGate == g.ID {
+			status = "current"
+		}
+		steps = append(steps, gateProgressStep{ID: g.ID, Name: g.Name, Status: status})
+	}
+	return steps
+}
+
+// gitStatusPorcelain 返回 git status --porcelain 行（已改未提交）。失败返 nil——resume 不依赖 git。
+func gitStatusPorcelain(root string) []string {
+	out, err := exec.Command("git", "-C", root, "status", "--porcelain").Output()
+	if err != nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(string(out))
+	if trimmed == "" {
+		return nil
+	}
+	return strings.Split(trimmed, "\n")
 }
 
 // =====================================================================

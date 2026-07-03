@@ -130,3 +130,37 @@ func TestNonGitTaskWarning_ContainsKeyInfo(t *testing.T) {
 		}
 	}
 }
+
+// TestTaskStart_AnchorsCreatorSession：task start 必须把创建方 session 锚定进 SessionLinks
+// （多向锚定起点）。此前 AddSession 在 EnsureSession 给 SessionID 赋值之前调用，条件永远为
+// false，创建方 session 漏锚定——直到有人主动 resume/attach 才有首条 SessionLink。用 e2e
+// 真实 task start 验证修复（单元测试绕过了 runTaskStart 流程，掩盖了此 bug）。
+func TestTaskStart_AnchorsCreatorSession(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "creator-sess")
+	tmpDir := t.TempDir()
+	runGit(t, tmpDir, "init")
+	runGit(t, tmpDir, "config", "user.email", "t@t.com")
+	runGit(t, tmpDir, "config", "user.name", "T")
+	runGit(t, tmpDir, "commit", "--allow-empty", "-m", "init")
+	runGit(t, tmpDir, "checkout", "-b", "feat/anchor")
+
+	if stdout, _, code := runForge(t, tmpDir, "init", "--mode", "medium"); code != 0 {
+		t.Fatalf("forge init failed: %s", stdout)
+	}
+	if _, stderr, code := runForgeStreams(t, tmpDir, "task", "start", "--ref", "feat/anchor", "--origin-tool", "pi", "--title", "anchor test"); code != 0 {
+		t.Fatalf("task start failed: %s", stderr)
+	}
+	// context --json 拉回完整 state JSON；断言创建方 session + 工具已锚定进 session_links。
+	stdout, _, code := runForgeStreams(t, tmpDir, "task", "context", "--ref", "feat/anchor", "--json")
+	if code != 0 {
+		t.Fatalf("task context --json failed: %s", stdout)
+	}
+	if !strings.Contains(stdout, "creator-sess") {
+		t.Errorf("创建方 session creator-sess 应锚定进 SessionLinks（多向锚定起点），输出:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, `"pi"`) {
+		t.Errorf("创建方工具 pi 应在 session_links，输出:\n%s", stdout)
+	}
+
+	runForge(t, tmpDir, "task", "abort", "--ref", "feat/anchor")
+}
