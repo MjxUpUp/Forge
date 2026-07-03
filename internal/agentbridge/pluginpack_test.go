@@ -10,8 +10,9 @@ import (
 	"github.com/MjxUpUp/Forge/internal/hooks"
 )
 
-// expectedPluginFiles 是 GeneratePluginPack 应生成的相对路径集（相对 RepoDir）。加新输出
-// 文件忘加这里，TestPluginPack_WritesAllFiles 会漏检——故意列死，逼生成器与测试同步。
+// expectedPluginFiles 是 GeneratePluginPack(DefaultPluginPack) 应生成的相对路径集（相对
+// RepoDir）。加新输出文件忘加这里，TestPluginPack_WritesAllFiles 会漏检——故意列死，逼生成器
+// 与测试同步。路径含 "forge" 因 DefaultPluginPack.PluginName="forge"。
 var expectedPluginFiles = []string{
 	".claude-plugin/marketplace.json",
 	".cursor-plugin/marketplace.json",
@@ -20,7 +21,8 @@ var expectedPluginFiles = []string{
 	"plugins/forge/README.md",
 }
 
-// generatePack 生成一个默认 pack 到临时目录，返回该目录。
+// generatePack 生成一个默认 pack 到临时目录，返回该目录。DefaultPluginPack 预填 owner=MjxUpUp
+// 满足 schema required。
 func generatePack(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -41,11 +43,9 @@ func TestPluginPack_WritesAllFiles(t *testing.T) {
 }
 
 // TestPluginPack_HooksMirrorSettings：plugin.json 的 hooks 字段必须等于 GenerateSettings
-// 写到 settings.local.json 的 hooks 字段——单一真相源守卫。Generator 写的就是
-// hooks.ForgeHookSpec()，settings 也是；若有人改 ForgeHookSpec 但 pluginpack 改用硬编码
-// 副本，或反之，此测试抓住 drift。端到端比对（读两个真实文件，非函数返回值）。
+// 写到 settings.local.json 的 hooks 字段——单一真相源守卫。端到端比对（读两个真实文件，
+// 非函数返回值）。若有人改 ForgeHookSpec 但 pluginpack 改用硬编码副本，此测试抓住 drift。
 func TestPluginPack_HooksMirrorSettings(t *testing.T) {
-	// 写 settings.local.json（真实生成路径）
 	sdir := t.TempDir()
 	if err := hooks.GenerateSettings(sdir); err != nil {
 		t.Fatalf("GenerateSettings: %v", err)
@@ -53,12 +53,10 @@ func TestPluginPack_HooksMirrorSettings(t *testing.T) {
 	var settings map[string]any
 	loadJSON(t, filepath.Join(sdir, ".claude", "settings.local.json"), &settings)
 
-	// 生成 plugin pack，读 plugin.json
 	pdir := generatePack(t)
 	var manifest map[string]any
 	loadJSON(t, filepath.Join(pdir, "plugins", "forge", ".claude-plugin", "plugin.json"), &manifest)
 
-	// JSON 规范化比对（map 顺序无关）。
 	a, _ := json.Marshal(settings["hooks"])
 	b, _ := json.Marshal(manifest["hooks"])
 	if string(a) != string(b) {
@@ -66,8 +64,7 @@ func TestPluginPack_HooksMirrorSettings(t *testing.T) {
 	}
 }
 
-// TestPluginPack_MCP：共享 .mcp.json 含 forge server（command=forge, args=[mcp,serve]），
-// 与 writeClaudeMCP 同形——plugin 安装后 claude/codex 自动发现。
+// TestPluginPack_MCP：共享 .mcp.json 含 forge server（command=forge, args=[mcp,serve]）。
 func TestPluginPack_MCP(t *testing.T) {
 	dir := generatePack(t)
 	var cfg map[string]any
@@ -79,9 +76,8 @@ func TestPluginPack_MCP(t *testing.T) {
 	assertStringArgs(t, srv["args"], "mcp", "serve")
 }
 
-// TestPluginPack_Marketplace：两份 marketplace.json 结构正确——name=forge、唯一 plugin、
-// source=./plugins/forge、省略 version（git SHA 驱动自动更新）。claude 与 cursor 两份格式
-// 相同（仅目录不同），表驱动各测。
+// TestPluginPack_Marketplace：两份 marketplace.json 结构正确——name=forge、owner 必有（schema
+// required）、唯一 plugin、source=./plugins/forge（跟随 PluginName）、author 字段、省略 version。
 func TestPluginPack_Marketplace(t *testing.T) {
 	dir := generatePack(t)
 	for _, mp := range []string{".claude-plugin", ".cursor-plugin"} {
@@ -89,6 +85,14 @@ func TestPluginPack_Marketplace(t *testing.T) {
 		loadJSON(t, filepath.Join(dir, mp, "marketplace.json"), &cfg)
 		if cfg["name"] != "forge" {
 			t.Errorf("%s marketplace name = %v, want forge", mp, cfg["name"])
+		}
+		// owner 是 claude marketplace schema 的 required 字段。
+		owner, ok := cfg["owner"].(map[string]any)
+		if !ok {
+			t.Fatalf("%s marketplace missing required owner field (schema violation)", mp)
+		}
+		if owner["name"] != "MjxUpUp" {
+			t.Errorf("%s owner.name = %v, want MjxUpUp", mp, owner["name"])
 		}
 		plugins, ok := cfg["plugins"].([]any)
 		if !ok || len(plugins) != 1 {
@@ -101,8 +105,11 @@ func TestPluginPack_Marketplace(t *testing.T) {
 		if entry["source"] != "./plugins/forge" {
 			t.Errorf("%s source = %v, want ./plugins/forge", mp, entry["source"])
 		}
-		// 省略 version：claude marketplace 用 commit SHA 驱动每次 commit 自动更新。
-		// 出现 version 字段说明策略回退（forge v1.0 迭代期应用 SHA 自动更新，非显式 release）。
+		// author 与 owner 同源（name 必有）。
+		if _, has := entry["author"]; !has {
+			t.Errorf("%s entry missing author field", mp)
+		}
+		// 省略 version：git SHA 驱动自动更新。
 		if _, has := entry["version"]; has {
 			t.Errorf("%s entry has version field (should omit for SHA-driven auto-update)", mp)
 		}
@@ -112,28 +119,48 @@ func TestPluginPack_Marketplace(t *testing.T) {
 	}
 }
 
-// TestPluginPack_OmitsOwnerWhenEmpty：DefaultPluginPack 的 OwnerName/Email 空，marketplace
-// 与 plugin entry 应整体省略 owner/author 字段（而非写空对象）。
-func TestPluginPack_OmitsOwnerWhenEmpty(t *testing.T) {
-	dir := generatePack(t)
-	var cfg map[string]any
-	loadJSON(t, filepath.Join(dir, ".claude-plugin", "marketplace.json"), &cfg)
-	if _, has := cfg["owner"]; has {
-		t.Error("marketplace has owner field when OwnerName/Email empty (should omit)")
-	}
-	plugins, _ := cfg["plugins"].([]any)
-	entry, _ := plugins[0].(map[string]any)
-	if _, has := entry["author"]; has {
-		t.Error("plugin entry has author field when OwnerName/Email empty (should omit)")
+// TestPluginPack_OwnerIsRequired：OwnerName 空时 GeneratePluginPack 必须报错（claude marketplace
+// schema 把 owner 标为 required，省略会让 `claude plugin validate` 拒载）。
+func TestPluginPack_OwnerIsRequired(t *testing.T) {
+	dir := t.TempDir()
+	spec := DefaultPluginPack(dir)
+	spec.OwnerName = ""
+	err := GeneratePluginPack(spec)
+	if err == nil {
+		t.Fatal("GeneratePluginPack should error when OwnerName empty (claude marketplace schema required)")
 	}
 }
 
-// TestPluginPack_IncludesOwnerWhenSet：OwnerName/Email 非空时，marketplace owner 与
-// plugin author 都带上（品牌化分发）。
-func TestPluginPack_IncludesOwnerWhenSet(t *testing.T) {
+// TestPluginPack_CustomPluginName：非默认 PluginName 时，source 必须跟随（./plugins/<name>），
+// plugin 树写到 plugins/<name>/。回归守卫 B1：pluginSource 曾硬编码 "./plugins/forge"，导致
+// --plugin-name myforge 时 source 指向不存在的 ./plugins/forge，install 失败。
+func TestPluginPack_CustomPluginName(t *testing.T) {
 	dir := t.TempDir()
 	spec := DefaultPluginPack(dir)
-	spec.OwnerName = "Alice"
+	spec.PluginName = "myforge"
+	if err := GeneratePluginPack(spec); err != nil {
+		t.Fatalf("GeneratePluginPack: %v", err)
+	}
+	var cfg map[string]any
+	loadJSON(t, filepath.Join(dir, ".claude-plugin", "marketplace.json"), &cfg)
+	plugins, _ := cfg["plugins"].([]any)
+	entry, _ := plugins[0].(map[string]any)
+	if entry["source"] != "./plugins/myforge" {
+		t.Errorf("source = %v, want ./plugins/myforge (B1: source must follow PluginName, was hardcoded)", entry["source"])
+	}
+	if _, err := os.Stat(filepath.Join(dir, "plugins", "myforge", ".claude-plugin", "plugin.json")); err != nil {
+		t.Errorf("plugin tree not written to plugins/myforge/: %v", err)
+	}
+	// plugins/forge/ 不应被创建（旧硬编码路径）
+	if _, err := os.Stat(filepath.Join(dir, "plugins", "forge")); err == nil {
+		t.Error("plugins/forge/ created despite PluginName=myforge (stale hardcoded path)")
+	}
+}
+
+// TestPluginPack_OwnerWithEmail：OwnerEmail 非空时，owner/author 都带 email 字段（name 总在）。
+func TestPluginPack_OwnerWithEmail(t *testing.T) {
+	dir := t.TempDir()
+	spec := DefaultPluginPack(dir) // OwnerName=MjxUpUp
 	spec.OwnerEmail = "alice@example.com"
 	if err := GeneratePluginPack(spec); err != nil {
 		t.Fatal(err)
@@ -141,8 +168,8 @@ func TestPluginPack_IncludesOwnerWhenSet(t *testing.T) {
 	var cfg map[string]any
 	loadJSON(t, filepath.Join(dir, ".claude-plugin", "marketplace.json"), &cfg)
 	owner, _ := cfg["owner"].(map[string]any)
-	if owner["name"] != "Alice" {
-		t.Errorf("owner name = %v, want Alice", owner["name"])
+	if owner["email"] != "alice@example.com" {
+		t.Errorf("owner email = %v, want alice@example.com", owner["email"])
 	}
 	plugins, _ := cfg["plugins"].([]any)
 	entry, _ := plugins[0].(map[string]any)
@@ -153,7 +180,6 @@ func TestPluginPack_IncludesOwnerWhenSet(t *testing.T) {
 }
 
 // TestPluginPack_Idempotent：反复生成不重复添加（plugin entry 不变成 2 个、文件仍合法）。
-// forge plugin pack 反复跑（如 CI 每次 commit）必须安全。
 func TestPluginPack_Idempotent(t *testing.T) {
 	dir := t.TempDir()
 	spec := DefaultPluginPack(dir)
@@ -171,11 +197,10 @@ func TestPluginPack_Idempotent(t *testing.T) {
 }
 
 // TestPluginPack_NoCurlyQuotes：回归守卫 [[windows-input-quote-corruption]]——生成的所有文件
-// 绝不能含弯引号 U+201C/U+201D。用 \u 转义构造目标串（绕过测试源码双引号是否被腐蚀，与
-// mcpconfig_test 的 rune 构造同理）。
+// 绝不能含弯引号 U+201C/U+201D。用 rune 构造目标串（绕过测试源码字面量是否被腐蚀）。
 func TestPluginPack_NoCurlyQuotes(t *testing.T) {
 	dir := generatePack(t)
-	curly := "“”"
+	curly := string([]rune{0x201c, 0x201d})
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return err
@@ -194,8 +219,7 @@ func TestPluginPack_NoCurlyQuotes(t *testing.T) {
 	}
 }
 
-// TestPluginPack_Readme：README 含每 host 的安装命令片段——仿 superpowers README 的"每 host
-// 安装命令"表，是"什么都不懂的用户"照着装的关键。少了任一片段说明 README 漏了某个 host。
+// TestPluginPack_Readme：README 含每 host 的安装命令片段 + Codex 路径未确认的诚实表述。
 func TestPluginPack_Readme(t *testing.T) {
 	dir := generatePack(t)
 	content := readOrFail(t, filepath.Join(dir, "plugins", "forge", "README.md"))
@@ -206,6 +230,7 @@ func TestPluginPack_Readme(t *testing.T) {
 		"forge init --agents cursor",
 		"forge init --agents copilot",
 		"Claude Code",
+		"not officially confirmed", // D3: Codex 路径诚实表述（OpenAI 未明确）
 	} {
 		if !strings.Contains(content, want) {
 			t.Errorf("README missing %q", want)

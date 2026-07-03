@@ -48,9 +48,10 @@ func init() {
 	knowledgeCmd.GroupID = "governance"
 	skillsCmd.GroupID = "governance"
 
-	// 集成与安全：agent 接口 + 拦截 + 内部 hook 分发
+	// 集成与安全：agent 接口 + 拦截 + 内部 hook 分发 + 多 host plugin marketplace
 	mcpCmd.GroupID = "integrate"
 	hazardCmd.GroupID = "integrate"
 	hookCmd.GroupID = "integrate"
 	cloneCmd.GroupID = "integrate"
+	pluginCmd.GroupID = "integrate"
 }

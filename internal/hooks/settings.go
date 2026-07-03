@@ -33,8 +33,8 @@ func EmbeddedContent(name string) (string, bool) {
 // ForgeHookSpec is the single source of truth for which forge hooks run at
 // which Claude Code tool event. It returns the hooks object exactly as it
 // appears under the "hooks" key of .claude/settings.local.json. The plugin-pack
-// generator (internal/agentbridge/pluginpack.go) writes the SAME object as
-// plugins/forge/hooks/hooks.json, so `claude plugin install forge` produces
+// generator (internal/agentbridge/pluginpack.go) writes the SAME object as the
+// hooks field of plugins/forge/.claude-plugin/plugin.json, so `claude plugin install forge` produces
 // byte-identical hook wiring to `forge init` — mirroring the superpowers
 // pattern (one shared payload, per-host thin manifests pointing at it). Any
 // wiring change here propagates to both paths; do not duplicate the
