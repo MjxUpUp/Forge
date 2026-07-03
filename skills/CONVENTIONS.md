@@ -32,7 +32,7 @@ skill-name/                # 目录名 = skill id = frontmatter.name
 name: kebab-case-name          # [必填] 必须与目录名一致，正则 ^[a-z][a-z0-9-]*$
 description: "≥80 字符的触发器" # [必填] 见 §5
 metadata:
-  pattern: <pattern-name>      # [必填] 见 §6，五选一或组合
+  pattern: <pattern-name>      # [必填] 见 §6，六选一或组合
   domain: <domain-name>        # [可选] 领域标签
   steps: <number>              # [可选] pipeline 步骤数
   composes: [skill-list]       # [可选] 组合的其他 skill
@@ -55,7 +55,7 @@ metadata:
 **差**：`帮助管理 Rust trait`
 **好**：`Rust trait 适配器模式。Use when: 为已有类型实现外部 trait 时、创建 newtype wrapper 时、遇到孤儿规则冲突时。SKIP: 定义新 trait（直接定义即可）、纯数据结构设计。`
 
-## 6. 设计模式（metadata.pattern，Google ADK 五模式）
+## 6. 设计模式（metadata.pattern，Google ADK 五模式 + Forge gate 扩展）
 
 | pattern | 用途 | 特征 | 何时用 |
 |---------|------|------|--------|
@@ -64,8 +64,9 @@ metadata:
 | `reviewer` | 质量审查 | 检查清单独立维护，按严重性分组 | 代码审查、规范检查 |
 | `inversion` | 先问后做 | "DO NOT start until..." 硬 gate，串行提问 | 需求不明确、复杂方案设计 |
 | `pipeline` | 带检查点的多步工作流 | 严格顺序，每步有 diamond gate | 多阶段内容生产、迁移 |
+| `gate` | 硬门控拦截（Forge 扩展） | mandatory 项不过即阻断，每项配可执行命令 + 量化通过标准 | 提交前审查、发布 readiness、按需安全护栏 |
 
-模式可组合：`inversion + pipeline`、`generator + reviewer`。组合时主模式写在前。
+前五种源自 Google ADK；`gate` 是 Forge 扩展（门控拦截，区别于 reviewer 的"审查清单"——gate 强制阻断、reviewer 仅发现）。模式可组合：`inversion + pipeline`、`generator + reviewer`、`reviewer + gate`。组合时主模式写在前。
 
 ## 7. 内容设计四件套（高信号实践）
 
@@ -94,7 +95,7 @@ metadata:
 
 - [ ] name 与目录名一致且 kebab-case
 - [ ] description ≥ 80 字符且含 `Use when` + `SKIP`
-- [ ] metadata.pattern 存在且为五种之一（或组合）
+- [ ] metadata.pattern 存在且为六种之一（或组合）
 - [ ] SKILL.md ≤ 500 行（超限拆 references）
 - [ ] 有决策树/自查/Gotchas 之一（高信号内容）
 
