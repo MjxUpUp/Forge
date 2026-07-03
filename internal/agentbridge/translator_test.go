@@ -488,17 +488,63 @@ func TestBridge_TranslateForAgents_Empty(t *testing.T) {
 
 func TestAllTranslators(t *testing.T) {
 	translators := AllTranslators()
-	if len(translators) != 7 {
-		t.Fatalf("expected 7 translators, got %d", len(translators))
+	if len(translators) != 8 {
+		t.Fatalf("expected 8 translators, got %d", len(translators))
 	}
 	types := make(map[AgentType]bool)
 	for _, tr := range translators {
 		types[tr.AgentType()] = true
 	}
-	for _, expected := range []AgentType{AgentClaudeCode, AgentCursor, AgentCopilot, AgentWindsurf, AgentCodex, AgentOpencode, AgentPi} {
+	for _, expected := range []AgentType{AgentClaudeCode, AgentCursor, AgentCopilot, AgentWindsurf, AgentCodex, AgentOpencode, AgentPi, AgentCline} {
 		if !types[expected] {
 			t.Errorf("missing translator for %s", expected)
 		}
+	}
+}
+
+func TestClineTranslator_Translate(t *testing.T) {
+	dir := t.TempDir()
+	if err := (&ClineTranslator{}).Translate(dir, testInput()); err != nil {
+		t.Fatal(err)
+	}
+	// .clinerules/forge-quality.md — guidance rules (Cline has no hooks)
+	rules := readOrFail(t, filepath.Join(dir, ".clinerules", "forge-quality.md"))
+	for _, want := range []string{
+		"# Forge 质量协议",
+		"质量标准",
+		"会话行为规则",
+		"接入 forge MCP",          // manual MCP wiring section (Cline has no project-level MCP)
+		"cline_mcp_settings.json", // points at the global file Cline actually reads
+		"Configure MCP Servers",   // Cline panel step
+		"AGENTS.md",               // points at cross-agent protocol
+	} {
+		if !strings.Contains(rules, want) {
+			t.Errorf("cline rules missing %q", want)
+		}
+	}
+
+	// Cline must NOT auto-load project-level MCP: .cline/mcp.json is an invented
+	// convention Cline ignores (global only, per docs.cline.bot + feature request
+	// cline/cline#2418). Guard that Translate does not write a misleading file
+	// that implies forge MCP is wired when Cline will not load it.
+	if _, err := os.Stat(filepath.Join(dir, ".cline", "mcp.json")); !os.IsNotExist(err) {
+		t.Errorf("Cline must not write .cline/mcp.json (Cline ignores project-level MCP; would mislead users) — err=%v", err)
+	}
+}
+
+func TestClineTranslator_Detect(t *testing.T) {
+	dir := t.TempDir()
+	if (&ClineTranslator{}).Detect(dir) {
+		t.Error("should not detect without .cline/ or .clinerules/")
+	}
+	os.MkdirAll(filepath.Join(dir, ".cline"), 0755)
+	if !(&ClineTranslator{}).Detect(dir) {
+		t.Error("should detect with .cline/")
+	}
+	dir2 := t.TempDir()
+	os.MkdirAll(filepath.Join(dir2, ".clinerules"), 0755)
+	if !(&ClineTranslator{}).Detect(dir2) {
+		t.Error("should detect with .clinerules/")
 	}
 }
 
@@ -544,16 +590,20 @@ func TestCodexTranslator_Translate(t *testing.T) {
 func TestCodexTranslator_Detect(t *testing.T) {
 	dir := t.TempDir()
 	if (&CodexTranslator{}).Detect(dir) {
-		t.Error("should not detect without .codex/ or AGENTS.md")
+		t.Error("should not detect without .codex/")
 	}
 	os.MkdirAll(filepath.Join(dir, ".codex"), 0755)
 	if !(&CodexTranslator{}).Detect(dir) {
 		t.Error("should detect with .codex/")
 	}
+	// AGENTS.md must NOT trigger codex detection: forge generates AGENTS.md as a
+	// universal cross-agent instruction source, so treating it as a codex signal
+	// makes every `forge init` self-trigger codex wiring (.codex/ cascade). Codex
+	// detection is .codex/ only; pure codex-CLI users pass --agents codex.
 	dir2 := t.TempDir()
 	os.WriteFile(filepath.Join(dir2, "AGENTS.md"), []byte("# project"), 0644)
-	if !(&CodexTranslator{}).Detect(dir2) {
-		t.Error("should detect with AGENTS.md")
+	if (&CodexTranslator{}).Detect(dir2) {
+		t.Error("should NOT detect with only AGENTS.md (forge generates it universally; codex needs .codex/)")
 	}
 }
 

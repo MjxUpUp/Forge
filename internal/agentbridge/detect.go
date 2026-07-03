@@ -21,7 +21,11 @@ func DetectAgents(projectDir string) []AgentType {
 	if fileExists(filepath.Join(projectDir, ".windsurfrules")) {
 		agents = append(agents, AgentWindsurf)
 	}
-	if dirExists(filepath.Join(projectDir, ".codex")) || fileExists(filepath.Join(projectDir, "AGENTS.md")) {
+	// codex 靠 .codex/ 目录检测。AGENTS.md 不作为 codex 信号——forge init 会主动生成
+	// AGENTS.md 作为跨 agent 通用指令源（codex/cursor/copilot/windsurf/cline 都读），若把它
+	// 当 codex 信号，forge 自己写的 AGENTS.md 会触发自身给 codex 接线（.codex/ 级联误判）。
+	// 纯 codex CLI 用户（仅 AGENTS.md 无 .codex/）用 --agents codex 显式声明。
+	if dirExists(filepath.Join(projectDir, ".codex")) {
 		agents = append(agents, AgentCodex)
 	}
 	if dirExists(filepath.Join(projectDir, ".opencode")) {
@@ -29,6 +33,9 @@ func DetectAgents(projectDir string) []AgentType {
 	}
 	if dirExists(filepath.Join(projectDir, ".pi")) {
 		agents = append(agents, AgentPi)
+	}
+	if dirExists(filepath.Join(projectDir, ".cline")) || dirExists(filepath.Join(projectDir, ".clinerules")) {
+		agents = append(agents, AgentCline)
 	}
 
 	return agents
@@ -44,7 +51,7 @@ func ParseAgentFlag(projectDir string, flag string) []AgentType {
 	var agents []AgentType
 	for _, name := range splitComma(flag) {
 		switch AgentType(name) {
-		case AgentClaudeCode, AgentCursor, AgentCopilot, AgentWindsurf, AgentCodex, AgentOpencode, AgentPi:
+		case AgentClaudeCode, AgentCursor, AgentCopilot, AgentWindsurf, AgentCodex, AgentOpencode, AgentPi, AgentCline:
 			agents = append(agents, AgentType(name))
 		}
 	}

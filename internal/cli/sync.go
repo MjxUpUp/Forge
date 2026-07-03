@@ -102,6 +102,11 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to update CLAUDE.md: %v\n", err)
 	}
 
+	// 7b. Update project-root AGENTS.md (cross-agent instruction source)
+	if err := skillgen.GenerateAgentsMD(dir); err != nil {
+		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to update AGENTS.md: %v\n", err)
+	}
+
 	// 8. Sync agent bridge (translate for all detected agents)
 	agents := agentbridge.DetectAgents(dir)
 	if len(agents) > 0 {

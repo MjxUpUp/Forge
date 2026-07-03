@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/MjxUpUp/Forge/internal/hooks"
 )
 
 // CursorTranslator generates .cursor/hooks.json (real, block-capable lifecycle
@@ -126,38 +128,51 @@ type cursorHookEntry struct {
 	Timeout int    `json:"timeout,omitempty"`
 }
 
-// buildCursorHooks mirrors hooks/settings.go GenerateSettings for Cursor's
-// native hook format. Cursor's hooks.json is FLAT — hooks.<event>[] each
-// carrying its own {command,matcher} — with camelCase event names
-// (preToolUse/postToolUse/stop) versus Claude Code's PascalCase nested
-// {matcher,hooks:[{type,command}]} shape. The hook COMMAND surface is
-// identical (`forge hook <name>` / `forge gate`), so gates enforce the same
-// way. Kept in sync manually with settings.go — TestCursorWiringMirrorsClaudeSettings
-// guards against drift.
+// buildCursorHooks derives Cursor's flat hooks.json from hooks.ForgeHookSpec —
+// the single source of truth. Cursor's hooks.json is FLAT: hooks.<event>[]
+// where each entry carries its own {command,matcher,timeout}, with camelCase
+// event names (preToolUse/postToolUse/stop) versus Claude Code's PascalCase
+// nested {matcher,hooks:[{type,command}]} shape. The conversion flattens each
+// matcher's hook list into one entry per hook (carrying the matcher + a 60s
+// timeout). SessionStart is filtered — Cursor's native hooks.json historically
+// wires only pre/post/stop. No hand-maintained copy → no drift.
+// TestCursorWiringMirrorsClaudeSettings guards command-set parity.
 func buildCursorHooks() map[string]any {
-	hook := func(cmd, matcher string) cursorHookEntry {
-		return cursorHookEntry{Command: cmd, Matcher: matcher, Timeout: 60}
+	spec := hooks.ForgeHookSpec()
+	hooksMap := map[string][]cursorHookEntry{}
+	for event, matchers := range spec {
+		ce, ok := cursorEventName(event)
+		if !ok {
+			continue
+		}
+		for _, m := range matchers {
+			for _, h := range m.Hooks {
+				hooksMap[ce] = append(hooksMap[ce], cursorHookEntry{
+					Command: h.Command,
+					Matcher: m.Matcher,
+					Timeout: 60,
+				})
+			}
+		}
 	}
 	return map[string]any{
-		"version": 1,
-		"hooks": map[string][]cursorHookEntry{
-			"preToolUse": {
-				hook("forge hook task-guard", "Write|Edit"),
-				hook("forge hook assertion-check", "Write|Edit"),
-				hook("forge hook bash-guard", "Bash"),
-				hook("forge hook hazard-guard", "Bash"),
-			},
-			"postToolUse": {
-				hook("forge hook auto-compile", "Write|Edit"),
-				hook("forge hook workflow-test-guard", "Write|Edit"),
-				hook("forge hook file-sentinel", "Bash"),
-				hook("forge hook tool-track", "Read"),
-			},
-			"stop": {
-				hook("forge gate --current --silent", ""),
-				hook("forge hook task-verify", ""),
-				hook("forge hook review-stop", ""),
-			},
-		},
+		`version`: 1,
+		`hooks`:   hooksMap,
+	}
+}
+
+// cursorEventName maps Claude Code's PascalCase event names to Cursor's
+// camelCase hooks.json event names. Returns ok=false for events Cursor does
+// not wire (SessionStart), so buildCursorHooks can skip them.
+func cursorEventName(event string) (string, bool) {
+	switch event {
+	case `PreToolUse`:
+		return `preToolUse`, true
+	case `PostToolUse`:
+		return `postToolUse`, true
+	case `Stop`:
+		return `stop`, true
+	default:
+		return ``, false
 	}
 }

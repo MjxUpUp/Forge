@@ -39,8 +39,8 @@ var pluginPackCmd = &cobra.Command{
     .mcp.json                       共享 MCP（claude/codex 自动发现）
     README.md                       每 host 安装命令
 
-参考 obra/superpowers 的多 host 模式：薄 manifest + 共享内容，单仓即 marketplace。
-与 superpowers 的差异：source 用 plugins/<name> 子目录（forge 是 Go 工具仓，须隔离源码树）。
+采用多 host 插件市场的通用模式：薄 manifest + 共享内容，单仓即 marketplace。
+source 用 plugins/<name> 子目录（forge 是 Go 工具仓，须隔离源码树）。
 
 示例：
   forge plugin pack                 在当前仓库根生成 forge 自身的 marketplace

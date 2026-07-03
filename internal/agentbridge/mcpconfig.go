@@ -23,6 +23,10 @@ package agentbridge
 //   - windsurf  Cascade 用全局 ~/.codeium/windsurf/mcp_config.json（超出 agentbridge 写
 //               项目目录的约定）；Devin Local（next-gen，.devin/config.json）schema 与
 //               Claude Code 兼容但仍在过渡期——等迁移稳定再接。
+//   - cline     Cline 仅读全局 ~/.cline/data/settings/cline_mcp_settings.json（Cline 面板
+//               配置）；项目级 MCP 是未实现的 feature request（cline/cline#2418，2026-07 核实）。
+//               ClineTranslator 改为 guidance-only——不写 .cline/mcp.json（Cline 不认，会
+//               误导用户），改为在 .clinerules/ 指引用户手动接 MCP server。
 //   - pi        MCP 支持未核实。
 
 import (
