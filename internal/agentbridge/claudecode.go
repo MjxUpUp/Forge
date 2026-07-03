@@ -42,6 +42,13 @@ func (t *ClaudeCodeTranslator) Translate(projectDir string, input *TranslationIn
 		return fmt.Errorf("claude-code: failed to generate CLAUDE.md: %w", err)
 	}
 
+	// Generate .mcp.json — expose forge's 15 MCP tools (task resume/decide/attach,
+	// gates, dashboard, experience) to the agent so it calls forge structurally
+	// instead of the user typing CLI. Idempotent merge (see mcpconfig.go).
+	if err := writeClaudeMCP(projectDir); err != nil {
+		return fmt.Errorf("claude-code: failed to generate .mcp.json: %w", err)
+	}
+
 	return nil
 }
 
