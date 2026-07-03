@@ -4,7 +4,7 @@ description: "代码实施任务的全程纪律编排（从动手到交付）。
 metadata:
   pattern: pipeline + gate
   domain: development-discipline
-  composes: evidence-based-proposal, tdd-cycle, test-discipline, verification-driver, code-review-gate, systematic-debugging, dev-lookup
+  composes: evidence-based-proposal, tdd-cycle, test-discipline, verification-driver, code-review-gate, systematic-debugging, dev-lookup, release-readiness
 ---
 
 # 代码实施纪律链
@@ -97,6 +97,18 @@ metadata:
 
 **红线**：`git add .` / `git add -A` 一把梭 / 提交了 docs 或 .claude / 门控跳步或颠倒。
 
+### 阶段 6 — 发布（条件触发：本次任务含发布/上线动作）
+
+**门控**：编码到 commit（阶段 0-5）≠ 能安全上线。发布是不可逆动作（tag 推、镜像发、迁移跑），按下按钮前必须过发布 readiness 清单。
+
+→ 发布门禁用 **release-readiness**（M1-M7 mandatory + R1-R5 recommended）。
+
+**触发条件**：任务范围含打 tag / 发版 / 上线 / 灰度 / 生产迁移 / 镜像 push。纯功能开发不触发本阶段，止于阶段 5 commit。
+
+**边界**：本 skill 管编码到 commit 的纪律，release-readiness 管 commit 后到上线的发布风险，两者衔接不重叠（release-readiness 的 SKIP 也把编码交付纪律指回本 skill）。
+
+**红线**：跳过 release-readiness 直接发版 / "代码测过了就能上线"（发布风险单测管不到）/ tag 推错想 force push 修。
+
 ## Common Rationalizations（纪律型核心——堵借口的最高信号）
 
 | 借口 | 现实 |
@@ -159,5 +171,6 @@ metadata:
 | 3 验证 | 门控：最高级别测试 + 不弱化断言 | verification-driver + test-discipline |
 | 4 审查 | 门控：diff 自检断言变化 | code-review-gate + test-discipline |
 | 5 交付 | **门控：提交卫生 + 门控顺序**（本 skill 专管） | — |
+| 6 发布 | 门控：发布前 readiness（条件触发：任务含发布动作） | release-readiness |
 
 **与 dev-workflow 的区别**：dev-workflow 管"做什么/谁来做"（创意提炼、技术栈检测、路由委托），在计划明确后退场；本 skill 管"怎么做才不踩纪律坑"（执行期门控），在动手后接管。
