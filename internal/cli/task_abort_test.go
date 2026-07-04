@@ -6,13 +6,15 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/taskcontext"
 )
 
-// taskStatePath returns the .forge/tasks/<sanitized-ref>.json path inside dir,
-// mirroring how SaveTaskState names state files.
+// taskStatePath returns the DataDir/tasks/<sanitized-ref>.json path for dir,
+// mirroring how SaveTaskState names state files after the refactor-data-home
+// migration (task state lives in the user-level DataDir, NOT <dir>/.forge/).
 func taskStatePath(dir, taskRef string) string {
-	return filepath.Join(dir, ".forge", "tasks", taskcontext.SanitizeRef(taskRef)+".json")
+	return filepath.Join(forgedata.DataDirFor(dir), "tasks", taskcontext.SanitizeRef(taskRef)+".json")
 }
 
 // TestTaskAbort_ExplicitRef deletes the task state file and clears the
@@ -24,6 +26,7 @@ func TestTaskAbort_ExplicitRef(t *testing.T) {
 	// active-task-ref file rather than a CLAUDE_CODE_SESSION_ID-scoped one
 	// (which the ambient Claude Code env would otherwise inject).
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
+	t.Setenv("FORGE_DATA_HOME", t.TempDir()) // isolate DataDir from real ~/.forge (refactor-data-home)
 	tmpDir := t.TempDir()
 	runGit(t, tmpDir, "init")
 	runGit(t, tmpDir, "config", "user.email", "test@test.com")
@@ -46,7 +49,7 @@ func TestTaskAbort_ExplicitRef(t *testing.T) {
 	if _, err := os.Stat(statePath); err != nil {
 		t.Fatalf("task state file not created at %s: %v", statePath, err)
 	}
-	activeRefPath := filepath.Join(tmpDir, ".forge", "active-task-ref")
+	activeRefPath := filepath.Join(forgedata.DataDirFor(tmpDir), "active-task-ref")
 	if _, err := os.Stat(activeRefPath); err != nil {
 		t.Fatalf("active-task-ref not created: %v", err)
 	}
@@ -81,6 +84,7 @@ func TestTaskAbort_ExplicitRef(t *testing.T) {
 // the session's active task — the common case for cleaning up a half-started task.
 func TestTaskAbort_NoRefResolvesActiveTask(t *testing.T) {
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
+	t.Setenv("FORGE_DATA_HOME", t.TempDir()) // isolate DataDir from real ~/.forge (refactor-data-home)
 	tmpDir := t.TempDir()
 	runGit(t, tmpDir, "init")
 	runGit(t, tmpDir, "config", "user.email", "test@test.com")

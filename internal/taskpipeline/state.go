@@ -9,14 +9,22 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/taskcontext"
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-// LoadTaskState reads a task state file from .forge/tasks/.
+// dataHome returns the runtime-state DataDir for root: user-level
+// ~/.forge/projects/<key>/ for git projects (task state + active-task-ref
+// migrated here from project-level <root>/.forge/), falling back to
+// <root>/.forge/ for non-git so task state still records. Git-only Key —
+// stable across MkdirAll (see forgedata.DataDirFor).
+func dataHome(root string) string { return forgedata.DataDirFor(root) }
+
+// LoadTaskState reads a task state file from DataDir/tasks/.
 func LoadTaskState(root, taskRef string) (*TaskState, error) {
 	filename := taskcontext.SanitizeRef(taskRef) + ".json"
-	path := filepath.Join(root, ".forge", "tasks", filename)
+	path := filepath.Join(dataHome(root), "tasks", filename)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -31,9 +39,9 @@ func LoadTaskState(root, taskRef string) (*TaskState, error) {
 	return &s, nil
 }
 
-// SaveTaskState writes a task state file to .forge/tasks/.
+// SaveTaskState writes a task state file to DataDir/tasks/.
 func SaveTaskState(root string, state *TaskState) error {
-	tasksDir := filepath.Join(root, ".forge", "tasks")
+	tasksDir := filepath.Join(dataHome(root), "tasks")
 	if err := os.MkdirAll(tasksDir, 0755); err != nil {
 		return fmt.Errorf("failed to create tasks directory: %w", err)
 	}
@@ -55,9 +63,9 @@ func SaveTaskState(root string, state *TaskState) error {
 // legacy global file.
 //
 // Detection priority:
-//  1. Explicit: .forge/active-task-ref file (written by `forge task start`)
+//  1. Explicit: DataDir/active-task-ref file (written by `forge task start`)
 //  2. Branch-based: feature branch name maps to task ref
-//  3. Fallback: scan .forge/tasks/ for a single incomplete task
+//  3. Fallback: scan DataDir/tasks/ for a single incomplete task
 //     (ambiguous when multiple tasks exist — returns nil to avoid false matches)
 func ActiveTaskState(root, sessionID string) (*TaskState, error) {
 	// Priority 1: explicit active task ref file
@@ -104,20 +112,20 @@ const activeTaskRefFile = "active-task-ref"
 // activeTaskRefPath returns the active-task-ref file path.
 //
 // When sessionID is non-empty, the file is session-scoped
-// (.forge/active-task-ref-<sessionID>) so concurrent Claude Code sessions
+// (DataDir/active-task-ref-<sessionID>) so concurrent Claude Code sessions
 // working in a shared checkout each resolve their OWN active task — the
 // primary concurrency race (two sessions clobbering one global file, hooks
 // attributing work to the wrong task) is eliminated.
 //
-// Empty sessionID falls back to the legacy global file (.forge/active-task-ref)
+// Empty sessionID falls back to the legacy global file (DataDir/active-task-ref)
 // for backward compatibility and non-Claude (manual terminal) usage.
 func activeTaskRefPath(root, sessionID string) string {
 	if sessionID != "" {
 		// Sanitize session ID for filesystem safety before using in filename
 		safeID := util.SanitizeSessionID(sessionID)
-		return filepath.Join(root, ".forge", "active-task-ref-"+safeID)
+		return filepath.Join(dataHome(root), "active-task-ref-"+safeID)
 	}
-	return filepath.Join(root, ".forge", activeTaskRefFile)
+	return filepath.Join(dataHome(root), activeTaskRefFile)
 }
 
 // SetActiveTaskRef writes the task ref to the (session-scoped) active-task-ref.
@@ -193,13 +201,13 @@ func IsGitRepo(root string) bool {
 // DeleteTaskState removes a task state file.
 func DeleteTaskState(root, taskRef string) error {
 	filename := taskcontext.SanitizeRef(taskRef) + ".json"
-	path := filepath.Join(root, ".forge", "tasks", filename)
+	path := filepath.Join(dataHome(root), "tasks", filename)
 	return os.Remove(path)
 }
 
-// ListTaskStates returns all task state files in .forge/tasks/.
+// ListTaskStates returns all task state files in DataDir/tasks/.
 func ListTaskStates(root string) ([]*TaskState, error) {
-	tasksDir := filepath.Join(root, ".forge", "tasks")
+	tasksDir := filepath.Join(dataHome(root), "tasks")
 	entries, err := os.ReadDir(tasksDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -226,7 +234,7 @@ func ListTaskStates(root string) ([]*TaskState, error) {
 	return states, nil
 }
 
-// PruneOldTasks deletes task state files in .forge/tasks/ that are completed
+// PruneOldTasks deletes task state files in DataDir/tasks/ that are completed
 // (IsComplete) AND whose CompletedAt is before cutoff. In-progress tasks
 // (IsComplete==false) are always kept — they may still be active or resumable.
 // Aborted task files need no handling: `forge task abort` removes the file

@@ -23,25 +23,11 @@ func filePath(root string) string {
 	return filepath.Join(dataDir(root), "checklog.jsonl")
 }
 
-// dataDir resolves the runtime-state directory for checklog: the user-level
-// DataDir (~/.forge/projects/<key>/) when root is inside a git repo, else the
-// legacy project-level <root>/.forge/ so checklog recording still works when
-// hooks fire in a non-git project.
-//
-// Uses forgedata.Key (git-only: needs .git, NOT .forge/) rather than ProjectFor
-// (which also requires .forge/). The distinction is load-bearing: Record does
-// MkdirAll on the resolved dir, and on the fallback path that creates
-// <root>/.forge/. If resolution re-checked .forge/ (as ProjectFor does), the
-// second filePath(root) call inside Record would see the just-created .forge/,
-// flip to DataDir, and the open would target an uncreated DataDir — Record
-// would silently fail (its error is ignored by callers). Key-only resolution is
-// stable across that MkdirAll, so the write and the open agree.
-func dataDir(root string) string {
-	if key, err := forgedata.Key(root); err == nil {
-		return forgedata.RootDir(key)
-	}
-	return filepath.Join(root, ".forge")
-}
+// dataDir resolves the runtime-state directory for checklog via the shared
+// forgedata.DataDirFor (git-only Key → ~/.forge/projects/<key>/, fallback
+// <root>/.forge/). See forgedata.DataDirFor for the load-bearing git-only-Key
+// rationale (MkdirAll-stable resolution — Record must not flip paths mid-write).
+func dataDir(root string) string { return forgedata.DataDirFor(root) }
 
 // Record appends a check log entry to the DataDir checklog.jsonl (falls back to
 // <root>/.forge/ for non-git projects — see dataDir). Sets RecordedAt to now.

@@ -81,7 +81,7 @@ type SessionLink struct {
 }
 
 // TaskState tracks the state of a single task's pipeline.
-// Stored in .forge/tasks/{sanitized-ref}.json.
+// Stored in DataDir/tasks/{sanitized-ref}.json.
 type TaskState struct {
 	TaskRef      string                    `json:"task_ref"`
 	Branch       string                    `json:"branch"`
@@ -114,7 +114,7 @@ type TaskState struct {
 	// （agent 上下文，压缩即丢）和靠纪律的 markdown（HANDOFF.md/AI_CONTEXT.md）升格为 task 的
 	// 结构化一等公民字段。任何新会话冷启动 forge task resume 即拉回，跨工具/跨人基于同一份
 	// 记录接续。对应 session-continuity HANDOFF + cross-tool-context AI_CONTEXT 的信息结构，
-	// 但持久化进 .forge/tasks/<ref>.json 而非靠 agent 自觉读写 md。
+	// 但持久化进 DataDir/tasks/<ref>.json 而非靠 agent 自觉读写 md。
 	Kind          string     `json:"kind,omitempty"`            // "" | "code" = 走 3 道门禁（默认，向后兼容）；"generic" = 不走门禁，承载调研/设计/纯接续任务
 	OriginTool    string     `json:"origin_tool,omitempty"`     // 声明式发起工具（pi/claude-code/opencode/codex/cursor…）；区别于 SessionRecord.AgentType 的目录探测弱信号
 	Goal          string     `json:"goal,omitempty"`            // 目标叙述（可多行；比 Summary 一行标题更丰富，是"为什么做"）

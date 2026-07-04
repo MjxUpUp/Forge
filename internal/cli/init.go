@@ -45,13 +45,13 @@ func runInit(cmd *cobra.Command, args []string) error {
 		mode = detectMode(dir)
 	}
 
-	// Create .forge/ directory structure
+	// Create .forge/ directory structure (project-level config only).
+	// Runtime state (tasks/gates/checklog/...) lives in the user-level DataDir
+	// (~/.forge/projects/<key>/) — not created here; stores MkdirAll on demand.
 	forgeDir := filepath.Join(dir, ".forge")
 	dirs := []string{
 		forgeDir,
-		filepath.Join(forgeDir, "gates"),
 		filepath.Join(forgeDir, "hooks"),
-		filepath.Join(forgeDir, "tasks"),
 	}
 	for _, d := range dirs {
 		if err := os.MkdirAll(d, 0755); err != nil {
@@ -183,7 +183,6 @@ func runInit(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  .forge/state.json                — 管道状态机\n")
 	fmt.Printf("  .forge/protocol.yml              — 质量协议\n")
 	fmt.Printf("  .forge/hooks/                    — 门禁 Hook 脚本\n")
-	fmt.Printf("  .forge/tasks/                    — 任务状态目录\n")
 	fmt.Printf("  .claude/settings.local.json      — Claude Code 集成\n")
 	fmt.Printf("  .claude/CLAUDE.md                — 质量协议引用\n")
 	fmt.Printf("  AGENTS.md                        — 跨 agent 质量协议（codex/cursor/copilot/windsurf/cline）\n")
