@@ -6,15 +6,15 @@ import (
 	"testing"
 )
 
-// useTempHome 把 userHome 重定向到临时目录，测试间隔离（不污染真实 ~/.forge）。
-// 返回 home 下的 .forge 路径，便于构造/断言。t.Cleanup 还原全局 userHome。
+// useTempHome 把全局 home（FORGE_DATA_HOME）重定向到临时目录，测试间隔离（不污染真实
+// ~/.forge/projects.json）。返回 home 根，projects.json=home/projects.json。
+// refactor-data-home commit E：registry 改用 forgedata.GlobalHome()（FORGE_DATA_HOME），
+// 废弃旧的 HomeDir 变量注入。
 func useTempHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
-	prev := HomeDir
-	HomeDir = func() (string, error) { return home, nil }
-	t.Cleanup(func() { HomeDir = prev })
-	return filepath.Join(home, `.forge`)
+	t.Setenv("FORGE_DATA_HOME", home)
+	return home
 }
 
 // mkForgeProject 在临时目录建一个含 .forge/ 的项目根，返回其路径。
@@ -107,5 +107,28 @@ func TestList_ProjectRemoved(t *testing.T) {
 	}
 	if got := List(); len(got) != 0 {
 		t.Errorf(`项目 .forge 删除后 List 应空, got %v`, got)
+	}
+}
+
+// TestRegistry_UsesForgeDataHome 钉死 refactor-data-home commit E：registry 必须走
+// forgedata.GlobalHome()（FORGE_DATA_HOME），不再用废弃的 FORGE_HOME env。projects.json
+// 落 FORGE_DATA_HOME 根（home/projects.json，不是 home/.forge/projects.json），且设
+// FORGE_HOME 不应影响 List（旧 env 已废弃）。
+func TestRegistry_UsesForgeDataHome(t *testing.T) {
+	home := useTempHome(t)
+	a := mkForgeProject(t)
+	if err := Add(a); err != nil {
+		t.Fatal(err)
+	}
+	// projects.json 必须在 FORGE_DATA_HOME 根（home/projects.json），不在 home/.forge/。
+	pj := filepath.Join(home, `projects.json`)
+	if _, err := os.Stat(pj); err != nil {
+		t.Fatalf("projects.json must land at FORGE_DATA_HOME/projects.json (%s), got: %v", pj, err)
+	}
+	// 设 FORGE_HOME 不应影响（废弃 env）——registry 必须仍读 FORGE_DATA_HOME。
+	t.Setenv(`FORGE_HOME`, t.TempDir())
+	got := List()
+	if len(got) != 1 || got[0] != filepath.Clean(a) {
+		t.Errorf("FORGE_HOME must be ignored (deprecated commit E): List=%v, want [%s]", got, filepath.Clean(a))
 	}
 }

@@ -128,7 +128,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge snapshot` | 检测项目开发阶段 |
 | `forge update [--plugin]` | 自更新到最新版本；加 `--plugin` 在 binary 更新后打印 plugin marketplace 重装指引（marketplace 镜像同步 hook 时建议重装） |
 | `forge suggest decline/status/reset` | 管理 init-suggest hook 的项目 init 提示状态（decline 永久静默当前项目 / status 查看 / reset 清除重新提示） |
-| `forge uninstall` | 一键反装：清 npm global `@agent_forge/forge` + 删 `~/.forge/.init-suggested/` 标记；plugin 卸载须在 agent CLI 内交互运行（不可脚本化） |
+| `forge uninstall` | 一键反装：清 npm global `@agent_forge/forge` + 删 init-suggest 标记（默认 `~/.forge/.init-suggested/`，设 `FORGE_DATA_HOME` 时落该根下）；plugin 卸载须在 agent CLI 内交互运行（不可脚本化） |
 
 ### 任务管理
 

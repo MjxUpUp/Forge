@@ -92,3 +92,18 @@ func TestBaseName_DriveRootSafe(t *testing.T) {
 		t.Errorf(`baseName(a/b/c)=%q，期望 c`, got)
 	}
 }
+
+// TestSuggestStateDir_ForgeDataHome 钉死 refactor-data-home commit E：suggestStateDir
+// 必须走 forgedata.GlobalHome()（FORGE_DATA_HOME），与 init-suggest hook 的
+// ${FORGE_DATA_HOME:-$HOME/.forge}/.init-suggested 同路径。FORGE_DATA_HOME 覆盖时 marker
+// 目录必须在覆盖根下（不是 ~/.forge）——确保 'forge suggest decline/status/reset' 命令
+// 与 init-suggest hook 读写同一 marker，无论 FORGE_DATA_HOME 指向哪。
+func TestSuggestStateDir_ForgeDataHome(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv(`FORGE_DATA_HOME`, tmp)
+	got := suggestStateDir()
+	want := filepath.Join(tmp, `.init-suggested`)
+	if got != want {
+		t.Fatalf(`suggestStateDir must follow FORGE_DATA_HOME: got %s, want %s`, got, want)
+	}
+}

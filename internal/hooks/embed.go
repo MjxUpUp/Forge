@@ -971,7 +971,7 @@ const InitSuggestHook = `#!/bin/bash
 # 写文件（除 FORGE_AUTO_INIT），exit 0 不阻塞会话。
 #
 # 全局 hook：在非 forge 项目正是要发现它们（isGlobalHook）。不依赖 forge project root。
-# 一次标记（~/.forge/.init-suggested/<tag>）避免重复提示：suggested=提示过不重复，
+# 一次标记（${FORGE_DATA_HOME:-$HOME/.forge}/.init-suggested/<tag>）避免重复提示：suggested=提示过不重复，
 # declined=用户拒绝永久静默。tag=FORGE_CWD_TAG（cli/hook.go 算 suggestTagFor(cwd)，按 git root 键控而非 cwd——同项目任意子目录同 tag，decline 契约成立）。
 #
 # BSD-safe：全程 POSIX test ([ ])与参数扩展，不用 case-action 复杂命令（避 bash 3.2
@@ -1022,7 +1022,7 @@ fi
 
 # 提示模式：检查一次标记（declined/suggested 都静默）。
 TAG="${FORGE_CWD_TAG:-}"
-SUGGEST_DIR="$HOME/.forge/.init-suggested"
+SUGGEST_DIR="${FORGE_DATA_HOME:-$HOME/.forge}/.init-suggested"
 MARKER="$SUGGEST_DIR/$TAG"
 if [ -n "$TAG" ] && [ -f "$MARKER" ]; then
   exit 0

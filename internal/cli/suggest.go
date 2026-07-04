@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/spf13/cobra"
 )
 
@@ -25,11 +26,16 @@ import (
 // 中文字符串用 raw string（反引号）包裹，规避 Windows 输入引号腐蚀（ASCII " 外侧
 // 界定符被转中文弯引号会让 Go 编译失败，见 memory windows-input-quote-corruption）。
 
-// suggestStateDir 是 init-suggest hook 的 per-project 提示标记目录，与 hook 脚本
-// 的 $HOME/.forge/.init-suggested 同路径。
+// suggestStateDir 是 init-suggest hook 的 per-project 提示标记目录，与 hook 脚本的
+// ${FORGE_DATA_HOME:-$HOME/.forge}/.init-suggested 同路径。refactor-data-home commit E：
+// 统一走 forgedata.GlobalHome()（FORGE_DATA_HOME 优先），与 hook bash 一致。
 func suggestStateDir() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".forge", ".init-suggested")
+	home, err := forgedata.GlobalHome()
+	if err != nil {
+		home, _ = os.UserHomeDir()
+		home = filepath.Join(home, ".forge")
+	}
+	return filepath.Join(home, ".init-suggested")
 }
 
 // projectSuggestTag 返回当前项目的提示标记 tag——与 init-suggest hook 的

@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/spf13/cobra"
 )
 
@@ -20,20 +21,17 @@ import (
 //
 // 中文字符串 raw string（反引号）规避 Windows 输入引号腐蚀。
 
-// uninstallHomeDir 返回 HOME env（如有）或 os.UserHomeDir()。测试可注入 HOMEdir。
-// Windows os.UserHomeDir 读 USERPROFILE 不读 HOME，故显式优先 HOME 注入。
-func uninstallHomeDir() string {
-	if h := os.Getenv(`HOME`); h != `` {
-		return h
-	}
-	home, _ := os.UserHomeDir()
-	return home
-}
-
-// uninstallClearMarkers 删 ~/.forge/.init-suggested/。返 (dir, removed bool)。
-// exported for testability — RunE 调用此，不直接走 os.UserHomeDir。
+// uninstallClearMarkers 删 init-suggest marker 目录（<GlobalHome>/.init-suggested/）。
+// 走 forgedata.GlobalHome()（FORGE_DATA_HOME 优先，否则 ~/.forge）——refactor-data-home
+// commit E 统一真相源，与 suggest 命令 + init-suggest hook 读写同一 marker store（uninstall
+// 是该 store 的清理路径，必须同根，否则 FORGE_DATA_HOME 用户清错地方留残留 marker）。
+// exported for testability — RunE 调用此。返 (dir, removed bool)；GlobalHome 失败返 ("", false)。
 func uninstallClearMarkers() (string, bool) {
-	dir := filepath.Join(uninstallHomeDir(), `.forge`, `.init-suggested`)
+	home, err := forgedata.GlobalHome()
+	if err != nil {
+		return ``, false
+	}
+	dir := filepath.Join(home, `.init-suggested`)
 	if err := os.RemoveAll(dir); err != nil {
 		return dir, false
 	}

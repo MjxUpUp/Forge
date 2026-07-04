@@ -38,9 +38,10 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	// 把全局 registry 状态目录重定向到 tmpDir（FORGE_HOME），避免 init/dashboard 测试
-	// 污染真实 ~/.forge/projects.json。子进程（runForge 跑 forge 二进制）继承此 env。
-	os.Setenv("FORGE_HOME", tmpDir)
+	// 把全局状态根重定向到 tmpDir（FORGE_DATA_HOME），避免 init/dashboard 测试污染真实
+	// ~/.forge（registry projects.json + DataDir projects/<key>/）。子进程（runForge 跑
+	// forge 二进制）继承此 env。refactor-data-home commit E：registry 统一 FORGE_DATA_HOME。
+	os.Setenv("FORGE_DATA_HOME", tmpDir)
 
 	code := m.Run()
 	os.RemoveAll(tmpDir)
