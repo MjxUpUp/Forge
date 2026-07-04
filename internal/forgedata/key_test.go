@@ -301,7 +301,7 @@ func TestProjectFor(t *testing.T) {
 		t.Fatalf(`mkdir sub: %v`, err)
 	}
 
-	t.Setenv(`FORGE_DATA_HOME`, t.TempDir()) // 隔离 globalHome
+	t.Setenv(`FORGE_DATA_HOME`, t.TempDir()) // 隔离 GlobalHome
 	p, err := ProjectFor(sub)
 	if err != nil {
 		t.Fatalf(`ProjectFor: %v`, err)
@@ -336,6 +336,33 @@ func TestProjectFor_NoForgeConfig(t *testing.T) {
 	}
 	if !errorIs(err, ErrNoForgeConfig) {
 		t.Errorf(`期望 ErrNoForgeConfig，实得 %v`, err)
+	}
+}
+
+// TestGlobalHome_ForgeDataHome 钉死 GlobalHome 走 FORGE_DATA_HOME（refactor-data-home
+// commit E 导出，registry/suggest/uninstall 复用同一真相源）。
+func TestGlobalHome_ForgeDataHome(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv(`FORGE_DATA_HOME`, tmp)
+	got, err := GlobalHome()
+	if err != nil {
+		t.Fatalf(`GlobalHome: %v`, err)
+	}
+	if got != tmp {
+		t.Fatalf(`GlobalHome 应走 FORGE_DATA_HOME：got=%s want=%s`, got, tmp)
+	}
+}
+
+// TestGlobalHome_FallsBackToUserHomeDir：无 FORGE_DATA_HOME 时回落 ~/.forge。
+func TestGlobalHome_FallsBackToUserHomeDir(t *testing.T) {
+	t.Setenv(`FORGE_DATA_HOME`, ``)
+	home, _ := os.UserHomeDir()
+	got, err := GlobalHome()
+	if err != nil {
+		t.Fatalf(`GlobalHome: %v`, err)
+	}
+	if want := filepath.Join(home, `.forge`); got != want {
+		t.Fatalf(`无 FORGE_DATA_HOME 应回落 ~/.forge：got=%s want=%s`, got, want)
 	}
 }
 

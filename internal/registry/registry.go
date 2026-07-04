@@ -12,29 +12,24 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-)
 
-// HomeDir 定位全局 home 目录。导出变量便于跨包测试注入临时 home——cli 的 init 测试
-// 跑 runInit 会触发 registry.Add，不注入会污染真实 ~/.forge/projects.json。
-var HomeDir = os.UserHomeDir
+	"github.com/MjxUpUp/Forge/internal/forgedata"
+)
 
 // File 是 ~/.forge/projects.json 的磁盘结构：去重的项目绝对路径列表。
 type File struct {
 	Projects []string `json:"projects"`
 }
 
-// globalPath 返回注册表路径。FORGE_HOME env 可覆盖全局状态目录（CI/便携部署/测试隔离），
-// 否则回落 HomeDir()（~/.forge）。env 优先让子进程（forge 二进制经 exec 跑）也能被测试隔离——
-// 仅靠进程内变量注入，子进程不继承。
+// globalPath 返回注册表路径。全局 home 走 forgedata.GlobalHome()（FORGE_DATA_HOME 优先，
+// 否则 ~/.forge）——refactor-data-home commit E 统一真相源，废弃旧的 FORGE_HOME env。
+// env 优先让子进程（forge 二进制经 exec 跑）也能被测试隔离——仅靠进程内变量注入，子进程不继承。
 func globalPath() (string, error) {
-	if h := os.Getenv(`FORGE_HOME`); h != `` {
-		return filepath.Join(h, `.forge`, `projects.json`), nil
-	}
-	home, err := HomeDir()
+	home, err := forgedata.GlobalHome()
 	if err != nil {
 		return ``, err
 	}
-	return filepath.Join(home, `.forge`, `projects.json`), nil
+	return filepath.Join(home, `projects.json`), nil
 }
 
 // List 读取已登记的项目路径，去重 + 仅保留仍含 .forge/ 的（项目被删/移动后自动淡出，

@@ -57,7 +57,7 @@ forge task score                  # 质量评分
 ```bash
 npm uninstall -g @agent_forge/forge   # 卸 binary
 # 在 Claude Code 里 /plugin uninstall forge@forge   # 卸 plugin
-# 用户级 ~/.forge/.init-suggested/ 标记文件由 `forge suggest reset` 或 rm -rf 清理
+# 用户级 init-suggested 标记（默认 ~/.forge/.init-suggested/，设 FORGE_DATA_HOME 时落该根下）由 `forge suggest reset` 或 rm -rf 清理
 ```
 
 （更彻底的 `forge uninstall` 子命令计划中，见 Forge 路线图。）
