@@ -23,7 +23,8 @@ var traceCmd = &cobra.Command{
 	Long: `forge trace 重放一个任务从开始到完成的所有质量事件：
 工具调用、检查结果、门禁推进。把"一个评分"还原成"一条可回溯的时间线"。
 
-数据源：.forge/checklog*.jsonl（检查事件，含已归档）+ .forge/toollog.jsonl（工具调用）。`,
+数据源：DataDir/checklog*.jsonl（检查事件，含已归档）+ DataDir/toollog.jsonl（工具调用）。
+	DataDir：git 项目 ~/.forge/projects/<key>/，非 git 项目 <root>/.forge/。`,
 	Args: cobra.ExactArgs(1),
 	RunE: runTrace,
 }

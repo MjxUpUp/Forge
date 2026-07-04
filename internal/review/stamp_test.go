@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
 // git 集成测试用真实临时仓库（t.TempDir + git init）。review 包的核心是 diff/stamp
@@ -20,6 +22,7 @@ var gitEnv = append(os.Environ(),
 
 func initGitRepo(t *testing.T) string {
 	t.Helper()
+	t.Setenv("FORGE_DATA_HOME", t.TempDir()) // isolate DataDir from real ~/.forge (refactor-data-home)
 	dir := t.TempDir()
 	git := func(args ...string) {
 		cmd := exec.Command("git", append([]string{"-C", dir, "-c", "commit.gpgsign=false"}, args...)...)
@@ -225,8 +228,8 @@ func TestEvaluate_StampExcludesForge(t *testing.T) {
 	if err := MarkPassed(dir); err != nil {
 		t.Fatal(err)
 	}
-	// stamp 文件确实落盘在 .forge/stamps/
-	if _, err := os.Stat(filepath.Join(dir, ".forge", "stamps")); err != nil {
+	// stamp 落盘在 DataDir/stamps/（refactor-data-home：git 项目用户级）
+	if _, err := os.Stat(filepath.Join(forgedata.DataDirFor(dir), "stamps")); err != nil {
 		t.Fatalf("stamp 目录未创建: %v", err)
 	}
 	// 再 Evaluate：若 stamp 计入 diff 则 hash 变 → NeedReview（错误）
