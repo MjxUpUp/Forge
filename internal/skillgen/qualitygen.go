@@ -120,7 +120,7 @@ func buildQualitySkillContent(proto *protocol.Protocol, p *pipeline.Pipeline) st
 	sb.WriteString("Forge 通过三层防御确保代码变更都在任务流程内：\n\n")
 	sb.WriteString("1. **task-guard**（PreToolUse Write|Edit）：无活跃任务时 Write/Edit 源码只 WARN（`.forge/*` 自保护文件才 FAIL）；feature 分支无任务时自动建任务\n")
 	sb.WriteString("2. **bash-guard**（PreToolUse Bash）：无任务时 Bash 写文件模式（writeFile、cat >、sed -i 等）只 WARN\n")
-	sb.WriteString("3. **file-sentinel**（PostToolUse Bash）：对比 Bash 执行前后的文件状态，未授权源码变更 quarantine 到 `.forge/quarantine/`\n\n")
+	sb.WriteString("3. **file-sentinel**（PostToolUse Bash）：对比 Bash 执行前后的文件状态，未授权源码变更 quarantine 到用户级 DataDir/quarantine/（`forge data-dir` 查看路径）\n\n")
 	sb.WriteString("此外，**自保护机制**阻止直接修改 `.forge/*` 和 `.claude/settings*`——这些文件只能通过 `forge` 命令操作。\n\n")
 	sb.WriteString("### 辅助质量检查（仅 WARN 不阻塞）\n\n")
 	sb.WriteString("- **assertion-check/auto-compile**：检测断言弱化、提醒编译自检（advisory，仅记录不阻塞，由 agent 自律）\n\n")
@@ -132,7 +132,7 @@ func buildQualitySkillContent(proto *protocol.Protocol, p *pipeline.Pipeline) st
 	sb.WriteString("| WARN [bash-guard] ... Bash write without active task | 无任务时 Bash 写文件（仅警告，源码会被 file-sentinel quarantine） | 先启动任务 |\n")
 	sb.WriteString("| passed without reading any code | task 期间 Read 次数为 0 | 改代码前先 Read 相关文件理解上下文 |\n")
 	sb.WriteString("| insufficient work activity | 工具调用 <1 次 | 用 Read/Grep/Glob 探索代码 |\n")
-	sb.WriteString("| Quarantined by file-sentinel | Bash 写了源码但无任务 | 文件在 .forge/quarantine/，可恢复。先启动任务 |\n")
+	sb.WriteString("| Quarantined by file-sentinel | Bash 写了源码但无任务 | 文件在用户级 DataDir/quarantine/（`forge data-dir` 查看路径），可恢复。先启动任务 |\n")
 	sb.WriteString("| complete 后提交被 file-sentinel 拦 | complete 已清 active task ref | 先 commit 再 complete；或开 `chore/*-commit` 任务放行 |\n")
 	sb.WriteString("| task not complete. Missing gates | 未通过所有门禁 | 先 `forge task gate task-complete --ref <ref>` |\n\n")
 
