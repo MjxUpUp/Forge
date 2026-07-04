@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 	"github.com/MjxUpUp/Forge/internal/knowledge"
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 )
@@ -28,7 +29,7 @@ func setHomeTemp(t *testing.T) string {
 
 func TestAcceptProposal_CreatesKnowledgeEntry(t *testing.T) {
 	homeDir := setHomeTemp(t)
-	tmpRoot := t.TempDir()
+	tmpRoot := forgedatatest.ForDataDir(t.TempDir())
 
 	taskRef := "task-001"
 	prop := &ExperienceProposal{
@@ -80,7 +81,7 @@ func TestAcceptProposal_CreatesKnowledgeEntry(t *testing.T) {
 
 func TestAcceptProposal_UpdatesProposalStatus(t *testing.T) {
 	setHomeTemp(t)
-	tmpRoot := t.TempDir()
+	tmpRoot := forgedatatest.ForDataDir(t.TempDir())
 
 	prop := &ExperienceProposal{
 		SourceReview: "task-002",
@@ -111,7 +112,7 @@ func TestAcceptProposal_UpdatesProposalStatus(t *testing.T) {
 
 func TestAcceptProposal_UpdatesReviewStatus(t *testing.T) {
 	setHomeTemp(t)
-	tmpRoot := t.TempDir()
+	tmpRoot := forgedatatest.ForDataDir(t.TempDir())
 
 	taskRef := "task-review-test"
 	// Create a review for the task.
@@ -156,7 +157,7 @@ func TestAcceptProposal_UpdatesReviewStatus(t *testing.T) {
 
 func TestAcceptProposal_OnNonProposedReturnsError(t *testing.T) {
 	setHomeTemp(t)
-	tmpRoot := t.TempDir()
+	tmpRoot := forgedatatest.ForDataDir(t.TempDir())
 
 	prop := &ExperienceProposal{
 		SourceReview: "task-003",
@@ -184,7 +185,7 @@ func TestAcceptProposal_OnNonProposedReturnsError(t *testing.T) {
 
 func TestAcceptProposal_NonexistentReturnsError(t *testing.T) {
 	setHomeTemp(t)
-	tmpRoot := t.TempDir()
+	tmpRoot := forgedatatest.ForDataDir(t.TempDir())
 
 	err := AcceptProposal(tmpRoot, "exp-nonexistent")
 	if err == nil {
@@ -193,7 +194,7 @@ func TestAcceptProposal_NonexistentReturnsError(t *testing.T) {
 }
 
 func TestRejectProposal_ChangesStatus(t *testing.T) {
-	tmpRoot := t.TempDir()
+	tmpRoot := forgedatatest.ForDataDir(t.TempDir())
 
 	prop := &ExperienceProposal{
 		SourceReview: "task-004",
@@ -224,7 +225,7 @@ func TestRejectProposal_ChangesStatus(t *testing.T) {
 
 func TestRejectProposal_DoesNotModifyKnowledgeStore(t *testing.T) {
 	homeDir := setHomeTemp(t)
-	tmpRoot := t.TempDir()
+	tmpRoot := forgedatatest.ForDataDir(t.TempDir())
 
 	prop := &ExperienceProposal{
 		SourceReview: "task-005",
@@ -273,7 +274,7 @@ func TestRejectProposal_DoesNotModifyKnowledgeStore(t *testing.T) {
 // observed in real heavy-use projects.
 func TestAutoAcceptHighConfidence_AcceptsSevereBelowThreshold(t *testing.T) {
 	homeDir := setHomeTemp(t)
-	tmpRoot := t.TempDir()
+	tmpRoot := forgedatatest.ForDataDir(t.TempDir())
 
 	taskRef := "task-auto-1"
 	// Create a mandatory review so auto-accept can resolve it.
@@ -345,7 +346,7 @@ func TestAutoAcceptHighConfidence_AcceptsSevereBelowThreshold(t *testing.T) {
 // stays in control and the review is not auto-resolved.
 func TestAutoAcceptHighConfidence_NoOpWhenAllBorderline(t *testing.T) {
 	setHomeTemp(t)
-	tmpRoot := t.TempDir()
+	tmpRoot := forgedatatest.ForDataDir(t.TempDir())
 
 	taskRef := "task-auto-2"
 	review := &ReviewRequest{

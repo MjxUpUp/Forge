@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 	"github.com/MjxUpUp/Forge/internal/taskcontext"
 )
@@ -37,24 +38,20 @@ func LowDimensions(result *scoringtypes.ScoreResult) []LowDimension {
 	return lows
 }
 
-// reviewDir returns the directory for review files under the given root.
-func reviewDir(root string) string {
-	return filepath.Join(root, ".forge", "reviews")
-}
-
-// reviewPath returns the file path for a specific task's review.
-func reviewPath(root, taskRef string) string {
-	return filepath.Join(reviewDir(root), taskcontext.SanitizeRef(taskRef)+".json")
+// reviewPath returns the file path for a specific task's review under the
+// project's user-level DataDir (proj.ReviewsDir() = ~/.forge/projects/<key>/reviews/).
+func reviewPath(proj *forgedata.Project, taskRef string) string {
+	return filepath.Join(proj.ReviewsDir(), taskcontext.SanitizeRef(taskRef)+".json")
 }
 
 // CreateReview creates a review request if one does not already exist (idempotent).
-func CreateReview(root string, taskRef string, result *scoringtypes.ScoreResult) error {
-	dir := reviewDir(root)
+func CreateReview(proj *forgedata.Project, taskRef string, result *scoringtypes.ScoreResult) error {
+	dir := proj.ReviewsDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("create reviews dir: %w", err)
 	}
 
-	path := reviewPath(root, taskRef)
+	path := reviewPath(proj, taskRef)
 	// Idempotent: skip if already exists.
 	if _, err := os.Stat(path); err == nil {
 		return nil
@@ -71,12 +68,12 @@ func CreateReview(root string, taskRef string, result *scoringtypes.ScoreResult)
 		CreatedAt:     result.ScoredAt,
 	}
 
-	return SaveReview(root, review)
+	return SaveReview(proj, review)
 }
 
 // LoadReview reads a review request from disk.
-func LoadReview(root, taskRef string) (*ReviewRequest, error) {
-	path := reviewPath(root, taskRef)
+func LoadReview(proj *forgedata.Project, taskRef string) (*ReviewRequest, error) {
+	path := reviewPath(proj, taskRef)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -92,8 +89,8 @@ func LoadReview(root, taskRef string) (*ReviewRequest, error) {
 }
 
 // SaveReview writes a review request to disk.
-func SaveReview(root string, r *ReviewRequest) error {
-	dir := reviewDir(root)
+func SaveReview(proj *forgedata.Project, r *ReviewRequest) error {
+	dir := proj.ReviewsDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("create reviews dir: %w", err)
 	}
@@ -103,13 +100,13 @@ func SaveReview(root string, r *ReviewRequest) error {
 		return fmt.Errorf("marshal review: %w", err)
 	}
 
-	path := reviewPath(root, r.TaskRef)
+	path := reviewPath(proj, r.TaskRef)
 	return os.WriteFile(path, data, 0o644)
 }
 
-// ListReviews returns all review requests in the .forge/reviews directory.
-func ListReviews(root string) ([]*ReviewRequest, error) {
-	dir := reviewDir(root)
+// ListReviews returns all review requests in the project's user-level reviews dir.
+func ListReviews(proj *forgedata.Project) ([]*ReviewRequest, error) {
+	dir := proj.ReviewsDir()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -137,13 +134,13 @@ func ListReviews(root string) ([]*ReviewRequest, error) {
 }
 
 // UpdateReviewStatus changes the status of an existing review and persists it.
-func UpdateReviewStatus(root, taskRef string, status ReviewStatus) error {
-	r, err := LoadReview(root, taskRef)
+func UpdateReviewStatus(proj *forgedata.Project, taskRef string, status ReviewStatus) error {
+	r, err := LoadReview(proj, taskRef)
 	if err != nil {
 		return err
 	}
 	r.Status = status
-	return SaveReview(root, r)
+	return SaveReview(proj, r)
 }
 
 // ResolveReview marks a review as resolved independently of any proposal.
@@ -155,8 +152,8 @@ func UpdateReviewStatus(root, taskRef string, status ReviewStatus) error {
 // task-verify Stop hook on a pending mandatory review. With a direct resolve,
 // a stuck review can always be cleared via `forge experience resolve <task-ref>`.
 // AcceptProposal still resolves as before when a proposal is accepted.
-func ResolveReview(root, taskRef string) error {
-	return UpdateReviewStatus(root, taskRef, ReviewResolved)
+func ResolveReview(proj *forgedata.Project, taskRef string) error {
+	return UpdateReviewStatus(proj, taskRef, ReviewResolved)
 }
 
 // PendingMandatory returns the task's review when it is a MANDATORY review still
@@ -169,8 +166,16 @@ func ResolveReview(root, taskRef string) error {
 // task-verify now advisory, `forge task complete` calls this to block task
 // completion instead. Failing at complete is a task-level block (the active
 // task ref survives), so the session is not trapped in a stop-retry loop.
-func PendingMandatory(root, taskRef string) (*ReviewRequest, bool) {
-	r, err := LoadReview(root, taskRef)
+func PendingMandatory(proj *forgedata.Project, taskRef string) (*ReviewRequest, bool) {
+	// Tolerates a nil proj (non-git project / ProjectFor failure): with no DataDir
+	// there is nowhere to read reviews from, so there can be no pending mandatory
+	// review. This lets task runTaskComplete call PendingMandatory(proj)
+	// unconditionally without a nil-guard wrapper; write-path callers (CreateReview
+	// et al.) still must skip on nil since they dereference proj.
+	if proj == nil {
+		return nil, false
+	}
+	r, err := LoadReview(proj, taskRef)
 	if err != nil || r == nil {
 		return nil, false
 	}

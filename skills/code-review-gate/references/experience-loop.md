@@ -8,7 +8,7 @@
 低分 task (score < 70)
     │  forge task complete 自动触发（评分时建 review + 生成 proposal）
     ▼
-经验提案  .forge/experience/proposed/{id}.json   [status: proposed]
+经验提案  ~/.forge/projects/<key>/experience/proposed/{id}.json   [status: proposed]
     │  forge experience accept <id>
     ▼
 跨项目知识库  ~/.forge/knowledge/index.json + gotchas/{id}.md   [Entry]
@@ -25,7 +25,7 @@ forge knowledge list     人审语义核对     →  补充检查表
 
 | 环节 | 命令 | 存储 |
 |---|---|---|
-| 提案（低分自动生成） | `forge task complete` 评分<70 自动生成 / `forge experience generate <task-ref>` 回填历史 review | `.forge/experience/proposed/` |
+| 提案（低分自动生成） | `forge task complete` 评分<70 自动生成 / `forge experience generate <task-ref>` 回填历史 review | `~/.forge/projects/<key>/experience/proposed/` |
 | 审阅提案 | `forge experience list` / `forge experience show <id>` | — |
 | 接纳（→ knowledge） | `forge experience accept <id>` | 写入 `~/.forge/knowledge/` |
 | 消费（审查时） | `forge knowledge check` + `forge knowledge list --category gotchas` | 读 `~/.forge/knowledge/` |

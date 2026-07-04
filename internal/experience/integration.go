@@ -3,21 +3,22 @@ package experience
 import (
 	"fmt"
 
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/knowledge"
 )
 
 // AcceptProposal accepts a proposed experience entry, writing it into the
 // global knowledge store. It also updates the proposal and source review status.
-func AcceptProposal(root string, proposalID string) error {
-	return acceptProposal(root, proposalID, "auto-extracted:")
+func AcceptProposal(proj *forgedata.Project, proposalID string) error {
+	return acceptProposal(proj, proposalID, "auto-extracted:")
 }
 
 // acceptProposal is the shared accept path. sourcePrefix is prepended to the
 // source review ref so the knowledge entry records how it entered the store:
 // "auto-extracted:" for manual `forge experience accept`,
 // "auto-accepted:high-confidence:" for severe low-score auto-acceptance.
-func acceptProposal(root, proposalID, sourcePrefix string) error {
-	p, err := LoadProposal(root, proposalID)
+func acceptProposal(proj *forgedata.Project, proposalID, sourcePrefix string) error {
+	p, err := LoadProposal(proj, proposalID)
 	if err != nil {
 		return err
 	}
@@ -45,12 +46,12 @@ func acceptProposal(root, proposalID, sourcePrefix string) error {
 		return fmt.Errorf("add knowledge entry: %w", err)
 	}
 
-	if err := UpdateProposalStatus(root, proposalID, PropAccepted); err != nil {
+	if err := UpdateProposalStatus(proj, proposalID, PropAccepted); err != nil {
 		return fmt.Errorf("update proposal status: %w", err)
 	}
 
 	if p.SourceReview != "" {
-		_ = UpdateReviewStatus(root, p.SourceReview, ReviewResolved)
+		_ = UpdateReviewStatus(proj, p.SourceReview, ReviewResolved)
 	}
 
 	return nil
@@ -58,8 +59,8 @@ func acceptProposal(root, proposalID, sourcePrefix string) error {
 
 // RejectProposal rejects a proposed experience entry, changing its status
 // to rejected. No knowledge store modifications are made.
-func RejectProposal(root string, proposalID string) error {
-	p, err := LoadProposal(root, proposalID)
+func RejectProposal(proj *forgedata.Project, proposalID string) error {
+	p, err := LoadProposal(proj, proposalID)
 	if err != nil {
 		return err
 	}
@@ -67,5 +68,5 @@ func RejectProposal(root string, proposalID string) error {
 		return fmt.Errorf("proposal %s is %s, not proposed", proposalID, p.Status)
 	}
 
-	return UpdateProposalStatus(root, proposalID, PropRejected)
+	return UpdateProposalStatus(proj, proposalID, PropRejected)
 }

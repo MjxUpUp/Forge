@@ -85,17 +85,17 @@ var experienceResolveCmd = &cobra.Command{
 func runExperienceList(cmd *cobra.Command, args []string) error {
 	asJSON, _ := cmd.Flags().GetBool("json")
 
-	root, err := findProjectRoot()
+	proj, err := findProject()
 	if err != nil {
 		return err
 	}
 
-	reviews, err := experience.ListReviews(root)
+	reviews, err := experience.ListReviews(proj)
 	if err != nil {
 		return fmt.Errorf("failed to list reviews: %w", err)
 	}
 
-	proposals, err := experience.ListProposals(root, "")
+	proposals, err := experience.ListProposals(proj, "")
 	if err != nil {
 		return fmt.Errorf("failed to list proposals: %w", err)
 	}
@@ -153,12 +153,12 @@ func runExperienceList(cmd *cobra.Command, args []string) error {
 func runExperienceShow(cmd *cobra.Command, args []string) error {
 	taskRef := args[0]
 
-	root, err := findProjectRoot()
+	proj, err := findProject()
 	if err != nil {
 		return err
 	}
 
-	review, err := experience.LoadReview(root, taskRef)
+	review, err := experience.LoadReview(proj, taskRef)
 	if err != nil {
 		return err
 	}
@@ -184,7 +184,7 @@ func runExperienceShow(cmd *cobra.Command, args []string) error {
 	fmt.Println(strings.Repeat("─", 40))
 
 	// Find proposals linked to this review
-	linked, err := experience.ProposalsForReview(root, taskRef, "")
+	linked, err := experience.ProposalsForReview(proj, taskRef, "")
 	if err != nil {
 		linked = nil
 	}
@@ -207,12 +207,12 @@ func runExperienceShow(cmd *cobra.Command, args []string) error {
 func runExperienceAccept(cmd *cobra.Command, args []string) error {
 	proposalID := args[0]
 
-	root, err := findProjectRoot()
+	proj, err := findProject()
 	if err != nil {
 		return err
 	}
 
-	if err := experience.AcceptProposal(root, proposalID); err != nil {
+	if err := experience.AcceptProposal(proj, proposalID); err != nil {
 		return err
 	}
 
@@ -223,12 +223,12 @@ func runExperienceAccept(cmd *cobra.Command, args []string) error {
 func runExperienceReject(cmd *cobra.Command, args []string) error {
 	proposalID := args[0]
 
-	root, err := findProjectRoot()
+	proj, err := findProject()
 	if err != nil {
 		return err
 	}
 
-	if err := experience.RejectProposal(root, proposalID); err != nil {
+	if err := experience.RejectProposal(proj, proposalID); err != nil {
 		return err
 	}
 
@@ -239,12 +239,12 @@ func runExperienceReject(cmd *cobra.Command, args []string) error {
 func runExperienceGenerate(cmd *cobra.Command, args []string) error {
 	taskRef := args[0]
 
-	root, err := findProjectRoot()
+	proj, err := findProject()
 	if err != nil {
 		return err
 	}
 
-	n, err := experience.GenerateForExistingReview(root, taskRef)
+	n, err := experience.GenerateForExistingReview(proj, taskRef)
 	if err != nil {
 		return err
 	}
@@ -256,12 +256,12 @@ func runExperienceGenerate(cmd *cobra.Command, args []string) error {
 func runExperienceResolve(cmd *cobra.Command, args []string) error {
 	taskRef := args[0]
 
-	root, err := findProjectRoot()
+	proj, err := findProject()
 	if err != nil {
 		return err
 	}
 
-	if err := experience.ResolveReview(root, taskRef); err != nil {
+	if err := experience.ResolveReview(proj, taskRef); err != nil {
 		return err
 	}
 

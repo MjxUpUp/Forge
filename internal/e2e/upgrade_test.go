@@ -13,6 +13,10 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/MjxUpUp/Forge/internal/experience"
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
 var forgeBin string
@@ -296,31 +300,37 @@ func TestExperienceFlow(t *testing.T) {
 	var tsFull taskStateFull
 	readJSON(t, dir, ".forge/tasks/EXP-1.json", &tsFull)
 
+	// experience store moved to the user-level DataDir: seed/verify must go through
+	// *Project so they land in the same DataDir the forge subprocess resolves
+	// (freshProject already set FORGE_DATA_HOME + ran git init / forge init).
+	proj, perr := forgedata.ProjectFor(dir)
+	if perr != nil {
+		t.Fatalf("project not resolved: %v", perr)
+	}
+
 	if tsFull.Score != nil && tsFull.Score.Overall < 80 {
-		// Review should have been created.
-		if !fileExists(t, dir, ".forge/reviews/EXP-1.json") {
+		// Review should have been created (in the user-level DataDir).
+		if _, err := experience.LoadReview(proj, "EXP-1"); err != nil {
 			t.Error("expected review file for low-scoring task")
 		}
 	}
 
-	// Create a mock proposed rule in .forge/experience/proposed/.
-	proposalDir := filepath.Join(dir, ".forge", "experience", "proposed")
-	if err := os.MkdirAll(proposalDir, 0755); err != nil {
-		t.Fatal(err)
+	// Create a mock proposed rule via the store so it lands in the same
+	// user-level DataDir the forge subprocess resolves.
+	proposal := &experience.ExperienceProposal{
+		ID:           "exp-test001",
+		SourceReview: "EXP-1",
+		Category:     "gotchas",
+		Title:        "Test gotcha rule",
+		Description:  "A test experience rule for E2E verification",
+		Patterns:     []string{"test\\.Fatal\\("},
+		Severity:     "error",
+		Status:       experience.PropProposed,
+		CreatedAt:    time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
 	}
-	proposal := map[string]interface{}{
-		"id":            "exp-test001",
-		"source_review": "EXP-1",
-		"category":      "gotchas",
-		"title":         "Test gotcha rule",
-		"description":   "A test experience rule for E2E verification",
-		"patterns":      []string{"test\\.Fatal\\("},
-		"severity":      "error",
-		"status":        "proposed",
-		"created_at":    "2025-01-01T00:00:00Z",
+	if err := experience.SaveProposal(proj, proposal); err != nil {
+		t.Fatalf("seed proposal: %v", err)
 	}
-	proposalJSON, _ := json.MarshalIndent(proposal, "", "  ")
-	writeFile(t, dir, ".forge/experience/proposed/exp-test001.json", string(proposalJSON))
 
 	// Set HOME to temp dir so knowledge store writes there instead of real HOME.
 	tmpHome := t.TempDir()
@@ -333,23 +343,17 @@ func TestExperienceFlow(t *testing.T) {
 	}
 
 	// Verify: proposal status = accepted.
-	type proposalFile struct {
-		Status string `json:"status"`
+	accepted, err := experience.LoadProposal(proj, "exp-test001")
+	if err != nil {
+		t.Fatalf("load proposal after accept: %v", err)
 	}
-	var accepted proposalFile
-	readJSON(t, dir, ".forge/experience/proposed/exp-test001.json", &accepted)
-	if accepted.Status != "accepted" {
+	if accepted.Status != experience.PropAccepted {
 		t.Errorf("expected proposal status 'accepted', got %q", accepted.Status)
 	}
 
 	// Verify: review status = resolved (if review was created).
-	if fileExists(t, dir, ".forge/reviews/EXP-1.json") {
-		type reviewFile struct {
-			Status string `json:"status"`
-		}
-		var review reviewFile
-		readJSON(t, dir, ".forge/reviews/EXP-1.json", &review)
-		if review.Status != "resolved" {
+	if review, err := experience.LoadReview(proj, "EXP-1"); err == nil {
+		if review.Status != experience.ReviewResolved {
 			t.Errorf("expected review status 'resolved', got %q", review.Status)
 		}
 	}
