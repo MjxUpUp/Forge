@@ -7,6 +7,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 )
 
 func TestRecordAndLoadAll(t *testing.T) {
@@ -331,5 +333,37 @@ func TestClear_DisabledRetention(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(forgeDir, "checklog-20000101000000.jsonl")); err != nil {
 		t.Error("with retention disabled, old archive should be kept")
+	}
+}
+
+// TestRecord_WritesToDataDir_GitProject guards the refactor-data-home migration:
+// for a real git project, checklog must land in the user-level DataDir
+// (~/.forge/projects/<key>/), NOT the legacy project-level <root>/.forge/.
+// Non-git tmp-dir tests above exercise the fallback path; this one exercises
+// the DataDir path through a real ProjectFor so the migration is actually
+// covered (the fallback tests would pass even if DataDir resolution were dead).
+func TestRecord_WritesToDataDir_GitProject(t *testing.T) {
+	root, p := forgedatatest.RealProject(t)
+	if err := Record(root, &Entry{Check: CheckAutoCompile, Passed: true, TaskRef: "t-data"}); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	// checklog must NOT be in the legacy ConfigDir.
+	if _, err := os.Stat(filepath.Join(root, ".forge", "checklog.jsonl")); err == nil {
+		t.Fatal("checklog should NOT be in legacy ConfigDir <root>/.forge/ for a git project")
+	}
+	// checklog must be in the DataDir.
+	if _, err := os.Stat(p.ChecklogPath()); err != nil {
+		t.Errorf("checklog should be in DataDir %s: %v", p.ChecklogPath(), err)
+	}
+	// LoadAll reads back from the DataDir.
+	entries, err := LoadAll(root)
+	if err != nil {
+		t.Fatalf("LoadAll: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry from DataDir, got %d", len(entries))
+	}
+	if entries[0].TaskRef != "t-data" {
+		t.Errorf("TaskRef = %q, want t-data", entries[0].TaskRef)
 	}
 }

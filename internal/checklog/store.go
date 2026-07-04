@@ -9,18 +9,43 @@ import (
 	"sync"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 var mu sync.Mutex
 
-// filePath returns the checklog path relative to project root.
+// filePath returns the active checklog path under the resolved runtime-state
+// directory: the user-level DataDir (~/.forge/projects/<key>/) for git
+// projects, falling back to the legacy project-level <root>/.forge/ for non-git
+// forge projects so hooks can still record checks. See dataDir.
 func filePath(root string) string {
-	return filepath.Join(root, ".forge", "checklog.jsonl")
+	return filepath.Join(dataDir(root), "checklog.jsonl")
 }
 
-// Record appends a check log entry to .forge/checklog.jsonl.
-// Sets RecordedAt to now. Thread-safe.
+// dataDir resolves the runtime-state directory for checklog: the user-level
+// DataDir (~/.forge/projects/<key>/) when root is inside a git repo, else the
+// legacy project-level <root>/.forge/ so checklog recording still works when
+// hooks fire in a non-git project.
+//
+// Uses forgedata.Key (git-only: needs .git, NOT .forge/) rather than ProjectFor
+// (which also requires .forge/). The distinction is load-bearing: Record does
+// MkdirAll on the resolved dir, and on the fallback path that creates
+// <root>/.forge/. If resolution re-checked .forge/ (as ProjectFor does), the
+// second filePath(root) call inside Record would see the just-created .forge/,
+// flip to DataDir, and the open would target an uncreated DataDir — Record
+// would silently fail (its error is ignored by callers). Key-only resolution is
+// stable across that MkdirAll, so the write and the open agree.
+func dataDir(root string) string {
+	if key, err := forgedata.Key(root); err == nil {
+		return forgedata.RootDir(key)
+	}
+	return filepath.Join(root, ".forge")
+}
+
+// Record appends a check log entry to the DataDir checklog.jsonl (falls back to
+// <root>/.forge/ for non-git projects — see dataDir). Sets RecordedAt to now.
+// Thread-safe.
 func Record(root string, entry *Entry) error {
 	mu.Lock()
 	defer mu.Unlock()
@@ -32,12 +57,12 @@ func Record(root string, entry *Entry) error {
 		entry.Source = SourceForCheck(entry.Check)
 	}
 
-	dir := filepath.Dir(filePath(root))
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	path := filePath(root)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
 	}
 
-	f, err := os.OpenFile(filePath(root), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
@@ -51,8 +76,9 @@ func Record(root string, entry *Entry) error {
 	return err
 }
 
-// LoadAll reads all check log entries from .forge/checklog.jsonl.
-// Returns entries in chronological order. Returns nil if file does not exist.
+// LoadAll reads all check log entries from the DataDir checklog.jsonl (falls
+// back to <root>/.forge/ for non-git projects). Returns entries in chronological
+// order. Returns nil if file does not exist.
 func LoadAll(root string) ([]Entry, error) {
 	f, err := os.Open(filePath(root))
 	if err != nil {
@@ -82,7 +108,7 @@ func LoadAll(root string) ([]Entry, error) {
 // this globs all checklog*.jsonl so trace covers tasks whose log was archived
 // at the next task start. Entries whose TaskRef differs are excluded.
 func LoadForTask(root, taskRef string) ([]Entry, error) {
-	matches, err := filepath.Glob(filepath.Join(root, ".forge", "checklog*.jsonl"))
+	matches, err := filepath.Glob(filepath.Join(dataDir(root), "checklog*.jsonl"))
 	if err != nil {
 		return nil, err
 	}
