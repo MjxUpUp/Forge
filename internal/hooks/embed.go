@@ -943,6 +943,85 @@ else
 fi
 `
 
+const InitSuggestHook = `#!/bin/bash
+# init-suggest.sh — SessionStart hook (advisory, non-blocking, global).
+# 用户级"项目自动 init"检测：装了 forge（plugin/npm）后，用户在任意 git 项目开
+# Claude Code，若无 .forge/ → 首次输出提示给 agent，引导询问用户是否启用 forge。
+# 拒绝则永久静默（forge suggest decline 写 declined 标记）。FORGE_AUTO_INIT=1 时
+# 直接 forge init（处处无感模式，代价是污染每个 git 项目）。补"每项目手动 init"
+# 缺口——plugin install 接用户级 hooks+MCP，但项目级 .forge/CLAUDE.md/skills 仍需
+# forge init，本 hook 让这步从"用户记得敲"变"agent 主动询问"。advisory：默认不自动
+# 写文件（除 FORGE_AUTO_INIT），exit 0 不阻塞会话。
+#
+# 全局 hook：在非 forge 项目正是要发现它们（isGlobalHook）。不依赖 forge project root。
+# 一次标记（~/.forge/.init-suggested/<tag>）避免重复提示：suggested=提示过不重复，
+# declined=用户拒绝永久静默。tag=FORGE_CWD_TAG（cli/hook.go 算 suggestTagFor(cwd)，按 git root 键控而非 cwd——同项目任意子目录同 tag，decline 契约成立）。
+#
+# BSD-safe：全程 POSIX test ([ ])与参数扩展，不用 case-action 复杂命令（避 bash 3.2
+# parse error，见 memory hazard-bash32-case-parser），不用 grep -E 交替。
+#
+# Protocol: stdout = PASS detail → additionalContext；exit 0 = 放行（advisory 不阻塞）。
+
+# 起点：FORGE_CWD（cli/hook.go 传 cwd）或回退 $PWD。
+START="${FORGE_CWD:-$PWD}"
+# Windows 反斜杠 → 正斜杠（Git Bash 兼容 os.Getwd 的 E:\ 形式）。
+START="${START//\\//}"
+
+# 找 git root（向上找 .git；worktree/submodule 的 .git 可能是文件，用 -e）。
+# 防死循环：盘符根（E:/Forge → E:）%/* 返回原值时 break。
+ROOT=""
+D="$START"
+while [ -n "$D" ] && [ "$D" != "/" ]; do
+  if [ -e "$D/.git" ]; then ROOT="$D"; break; fi
+  NEW="${D%/*}"
+  if [ "$NEW" = "$D" ]; then break; fi
+  D="$NEW"
+done
+# 无 git root → 不是项目，静默（非 git 目录不提示 init）。
+[ -z "$ROOT" ] && exit 0
+
+# 已有 .forge/ → 已启用 forge，静默。
+[ -d "$ROOT/.forge" ] && exit 0
+
+# 自动模式：FORGE_AUTO_INIT=1 → 直接 forge init（污染换无感，用户显式 opt-in）。
+# 捕获输出（不 >/dev/null 2>&1 全吞）：init 部分成功（.forge/ 建了但 state.json 写失败）
+# 时下次 [ -d .forge ] 静默，用户会以为 init 完成实际拿到破损状态——回显 stderr 尾部
+# 让 partial-state 可见。tail -c / tr 跨 BSD/GNU；用 POSIX [ ] 不用 case-action。
+if [ "${FORGE_AUTO_INIT}" = "1" ]; then
+  # 分组 { } 2>&1：cd 失败（权限/竞态删除/盘符形式）的 stderr 也进 INIT_OUT，
+  # 不漏到 hook 外部致 TAIL 空白误导（R1：原只重定向 forge init，cd 失败时
+  # INIT_OUT 空，用户看到"错误尾部:"空白却不知真错误）。
+  INIT_OUT=$( { cd "$ROOT" && forge init; } 2>&1 )
+  RC="$?"
+  if [ "$RC" = "0" ]; then
+    echo "PASS [init-suggest] FORGE_AUTO_INIT=1: 已在 $ROOT 自动初始化 forge。"
+  else
+    TAIL=$(printf '%s' "$INIT_OUT" | tail -c 400 | tr '\n' ' ')
+    [ -z "$TAIL" ] && TAIL="(无 stderr 输出)"
+    echo "PASS [init-suggest] Advisory: FORGE_AUTO_INIT=1 但 forge init 失败（exit $RC），请手动 'forge init'。错误尾部: $TAIL"
+  fi
+  exit 0
+fi
+
+# 提示模式：检查一次标记（declined/suggested 都静默）。
+TAG="${FORGE_CWD_TAG:-}"
+SUGGEST_DIR="$HOME/.forge/.init-suggested"
+MARKER="$SUGGEST_DIR/$TAG"
+if [ -n "$TAG" ] && [ -f "$MARKER" ]; then
+  exit 0
+fi
+
+# 首次：写 suggested 标记（mkdir/echo 失败降级=可能重复提示，可接受；不 set -e）。
+mkdir -p "$SUGGEST_DIR" 2>/dev/null
+if [ -n "$TAG" ]; then
+  echo "suggested" > "$MARKER" 2>/dev/null
+fi
+
+PROJ=$(basename "$ROOT")
+echo "PASS [init-suggest] Advisory: 检测到 git 项目 '$PROJ' 未启用 forge。询问用户是否启用 forge 质量门禁（task-gated 源码变更 + 断言守卫 + 评分 + 经验闭环）。用户同意 → 运行 'forge init'；拒绝 → 运行 'forge suggest decline' 永久不再提示该项目。forge 默认不自动写文件（设 FORGE_AUTO_INIT=1 可处处自动 init）。"
+exit 0
+`
+
 const WorkflowTestGuardHook = `#!/bin/bash
 # workflow-test-guard.sh — PostToolUse hook for Write|Edit.
 # 改 .github/workflows/*.yml 后自动跑 internal/ci 守护测试——把"沙盒异常"在修改

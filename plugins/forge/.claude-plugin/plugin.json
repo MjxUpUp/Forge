@@ -68,6 +68,10 @@
           {
             "type": "command",
             "command": "forge hook skill-scan"
+          },
+          {
+            "type": "command",
+            "command": "forge hook init-suggest"
           }
         ]
       }
