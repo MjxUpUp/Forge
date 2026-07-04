@@ -197,3 +197,28 @@ func TestInitSuggestHook_WritesSuggestedMarker(t *testing.T) {
 		t.Errorf(`第二次应静默（标记已写），实得 %q`, out2)
 	}
 }
+
+// TestInitSuggestHook_ForgeDataHomeOverride 钉死 refactor-data-home commit E：hook
+// SUGGEST_DIR 走 ${FORGE_DATA_HOME:-$HOME/.forge}/.init-suggested——设 FORGE_DATA_HOME 时
+// marker 必须落覆盖根（<dd>/.init-suggested/<tag>），不落 HOME/.forge（防 hook 误改回
+// $HOME/.forge 硬编码或参数扩展顺序错，默认路径测试抓不到此类回归）。
+func TestInitSuggestHook_ForgeDataHomeOverride(t *testing.T) {
+	proj := mkGitProj(t, false)
+	tag := `tag_dd`
+	home := t.TempDir()
+	dd := t.TempDir() // FORGE_DATA_HOME 覆盖根
+	initFlag := filepath.Join(home, `init-flag`)
+
+	out := runInitSuggestHook(t, proj, tag, home, initFlag, `FORGE_DATA_HOME=`+dd)
+	if !strings.Contains(out, `未启用 forge`) {
+		t.Fatalf(`首次应提示，实得 %q`, out)
+	}
+	markerInDD := filepath.Join(dd, `.init-suggested`, tag)
+	if _, err := os.Stat(markerInDD); err != nil {
+		t.Errorf(`marker 应落 FORGE_DATA_HOME/.init-suggested/%s，实得 stat err=%v`, tag, err)
+	}
+	markerInHome := filepath.Join(home, `.forge`, `.init-suggested`, tag)
+	if _, err := os.Stat(markerInHome); err == nil {
+		t.Errorf(`marker 不应落 HOME/.forge/.init-suggested/%s（应走 FORGE_DATA_HOME），但文件存在`, tag)
+	}
+}

@@ -148,18 +148,20 @@ func RootDir(key string) string {
 	if key == "" {
 		return ""
 	}
-	home, err := globalHome()
+	home, err := GlobalHome()
 	if err != nil {
 		return ""
 	}
 	return filepath.Join(home, "projects", key)
 }
 
-// globalHome 返全局 home。FORGE_DATA_HOME 优先（覆盖 home root），否则回落 UserHomeDir。
+// GlobalHome 返全局 home。FORGE_DATA_HOME 优先（覆盖 home root），否则回落 UserHomeDir。
 //
 // 设计：FORGE_DATA_HOME 既管控全局 home（如 ~/.forge），所有 sub-store
-// （registry/projects.json、knowledge、projects/<key>/）都用它。
-func globalHome() (string, error) {
+// （registry/projects.json、init-suggest marker、knowledge、projects/<key>/）都用它。
+// 导出供 registry/suggest 等全局 store 复用同一真相源（refactor-data-home commit E：
+// 统一 FORGE_DATA_HOME，废弃 registry 旧的 FORGE_HOME env）。
+func GlobalHome() (string, error) {
 	if h := os.Getenv("FORGE_DATA_HOME"); h != "" {
 		return h, nil
 	}
