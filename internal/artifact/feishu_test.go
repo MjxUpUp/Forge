@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 )
 
 func TestDefaultFeishuConfigDisabled(t *testing.T) {
@@ -57,7 +59,7 @@ func TestPublishMarkdownNoSpaceID(t *testing.T) {
 }
 
 func TestPublishAllOutputsSkipsNonMD(t *testing.T) {
-	tmpDir := t.TempDir()
+	p := forgedatatest.ForDataDir(t.TempDir())
 	cfg := FeishuConfig{Enabled: true, SpaceID: "space-123"}
 
 	// Create a .txt file — it should be skipped entirely (no error).
@@ -65,7 +67,7 @@ func TestPublishAllOutputsSkipsNonMD(t *testing.T) {
 
 	// We only create the .txt and .json files; .md doesn't exist so it gets
 	// skipped too. The important thing is non-.md entries never reach PublishMarkdown.
-	gateDir := filepath.Join(tmpDir, ".forge", "gates", "gate-0")
+	gateDir := p.GateDir("gate-0")
 	if err := os.MkdirAll(gateDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -74,14 +76,14 @@ func TestPublishAllOutputsSkipsNonMD(t *testing.T) {
 	}
 
 	// This should not panic or error — non-.md files are skipped.
-	PublishAllOutputs(cfg, "gate-0", outputs, tmpDir)
+	PublishAllOutputs(cfg, "gate-0", outputs, p)
 }
 
 func TestPublishAllOutputsSkipsMissingFile(t *testing.T) {
-	tmpDir := t.TempDir()
+	p := forgedatatest.ForDataDir(t.TempDir())
 	cfg := FeishuConfig{Enabled: true, SpaceID: "space-123"}
 
 	// "missing.md" does not exist on disk — should be skipped without error.
 	outputs := []string{"missing.md"}
-	PublishAllOutputs(cfg, "gate-0", outputs, tmpDir)
+	PublishAllOutputs(cfg, "gate-0", outputs, p)
 }

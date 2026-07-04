@@ -133,7 +133,10 @@ func runGate(cmd *cobra.Command, args []string) error {
 	if gate.AutoPublishFeishu && result.Status.Passed {
 		cfg := artifact.DefaultFeishuConfig()
 		if cfg.Enabled {
-			artifact.PublishAllOutputs(cfg, gate.ID, gate.Artifacts.Outputs, root)
+			// feishu 发布是 best-effort：项目解析失败则静默跳过（不阻塞 gate 主流程）
+			if proj, err := findProject(); err == nil {
+				artifact.PublishAllOutputs(cfg, gate.ID, gate.Artifacts.Outputs, proj)
+			}
 		}
 	}
 
