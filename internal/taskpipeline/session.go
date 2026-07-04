@@ -34,18 +34,18 @@ type SessionRecord struct {
 
 // sessionFilePath returns the path to the current session tracker.
 func sessionFilePath(root string) string {
-	return filepath.Join(root, ".forge", "session.json")
+	return filepath.Join(dataHome(root), "session.json")
 }
 
 // sessionsLogPath returns the path to the historical sessions log.
 func sessionsLogPath(root string) string {
-	return filepath.Join(root, ".forge", "sessions.jsonl")
+	return filepath.Join(dataHome(root), "sessions.jsonl")
 }
 
 // EnsureSession returns the current active session, creating one if needed.
 //
 // When sessionID is non-empty (the Claude Code session id), the session is
-// stored session-scoped at .forge/sessions/<sessionID>.json and identified by
+// stored session-scoped at DataDir/sessions/<sessionID>.json and identified by
 // that id. This eliminates the last-writer-wins clobber on the global
 // session.json when two sessions run concurrently on a shared checkout. The
 // Claude Code session id is stable for the whole session lifetime, so no
@@ -97,7 +97,7 @@ func EnsureSession(root, sessionID string) (*SessionRecord, error) {
 }
 
 // ensureScopedSession loads or creates the session record for a specific
-// (Claude Code) session id, stored at .forge/sessions/<sessionID>.json.
+// (Claude Code) session id, stored at DataDir/sessions/<sessionID>.json.
 // Also appends to the historical sessions.jsonl so LoadSessions / session-health
 // can see it.
 func ensureScopedSession(root, sessionID string) (*SessionRecord, error) {
@@ -133,7 +133,7 @@ func ensureScopedSession(root, sessionID string) (*SessionRecord, error) {
 
 // sessionScopedFilePath returns the per-session record path.
 func sessionScopedFilePath(root, sessionID string) string {
-	return filepath.Join(root, ".forge", "sessions", util.SanitizeSessionID(sessionID)+".json")
+	return filepath.Join(dataHome(root), "sessions", util.SanitizeSessionID(sessionID)+".json")
 }
 
 // saveScopedSession writes the session record to its scoped path.
@@ -184,7 +184,7 @@ func archiveSession(root string, s *SessionRecord) error {
 	return appendSessionLog(root, s)
 }
 
-// appendSessionLog appends a session record to .forge/sessions.jsonl.
+// appendSessionLog appends a session record to DataDir/sessions.jsonl.
 func appendSessionLog(root string, s *SessionRecord) error {
 	dir := filepath.Dir(sessionsLogPath(root))
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -205,7 +205,7 @@ func appendSessionLog(root string, s *SessionRecord) error {
 	return err
 }
 
-// LoadSessions reads all historical session records from .forge/sessions.jsonl.
+// LoadSessions reads all historical session records from DataDir/sessions.jsonl.
 // Also includes the current active session if one exists.
 func LoadSessions(root string) ([]SessionRecord, error) {
 	var sessions []SessionRecord

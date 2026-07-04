@@ -11,14 +11,20 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 const toollogFile = "toollog.jsonl"
 
+// dataDir returns the runtime-state DataDir for root (refactor-data-home):
+// user-level ~/.forge/projects/<key>/ for git projects, <root>/.forge/ fallback
+// for non-git so toollog still records. See forgedata.DataDirFor.
+func dataDir(root string) string { return forgedata.DataDirFor(root) }
+
 var mu sync.Mutex
 
-// Record appends a ToolCall entry to .forge/toollog.jsonl.
+// Record appends a ToolCall entry to DataDir/toollog.jsonl.
 func Record(root string, call *ToolCall) error {
 	mu.Lock()
 	defer mu.Unlock()
@@ -30,9 +36,9 @@ func Record(root string, call *ToolCall) error {
 		call.ID = computeID(*call)
 	}
 
-	forgeDir := filepath.Join(root, ".forge")
+	forgeDir := dataDir(root)
 	if err := os.MkdirAll(forgeDir, 0755); err != nil {
-		return fmt.Errorf("failed to create .forge dir: %w", err)
+		return fmt.Errorf("failed to create forge data dir: %w", err)
 	}
 
 	path := filepath.Join(forgeDir, toollogFile)
@@ -51,9 +57,9 @@ func Record(root string, call *ToolCall) error {
 	return err
 }
 
-// LoadAll reads all ToolCall entries from .forge/toollog.jsonl.
+// LoadAll reads all ToolCall entries from DataDir/toollog.jsonl.
 func LoadAll(root string) ([]ToolCall, error) {
-	path := filepath.Join(root, ".forge", toollogFile)
+	path := filepath.Join(dataDir(root), toollogFile)
 	return loadFromPath(path)
 }
 
@@ -78,7 +84,7 @@ func LoadForTask(root string, taskRef string) ([]ToolCall, error) {
 // survives the Archive-on-task-start that clears the active toollog. Without
 // this, trace shows 0 tool calls for any completed task.
 func LoadForTaskAll(root, taskRef string) ([]ToolCall, error) {
-	matches, err := filepath.Glob(filepath.Join(root, ".forge", "toollog*.jsonl"))
+	matches, err := filepath.Glob(filepath.Join(dataDir(root), "toollog*.jsonl"))
 	if err != nil {
 		return nil, err
 	}
@@ -154,11 +160,11 @@ func ReadEditCountsGraceWindow(root string, since time.Time, window time.Duratio
 // sync.Mutex is non-reentrant. Uses nanosecond-precision naming
 // (util.ArchivedName) so two rotations in the same second don't clobber.
 func archiveLocked(root string) error {
-	path := filepath.Join(root, ".forge", toollogFile)
+	path := filepath.Join(dataDir(root), toollogFile)
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return nil
 	}
-	archived := util.ArchivedName(filepath.Join(root, ".forge"), "toollog", time.Now())
+	archived := util.ArchivedName(dataDir(root), "toollog", time.Now())
 	return os.Rename(path, archived)
 }
 
@@ -173,11 +179,11 @@ func Clear(root string) error {
 	if err := archiveLocked(root); err != nil {
 		return err
 	}
-	path := filepath.Join(root, ".forge", toollogFile)
+	path := filepath.Join(dataDir(root), toollogFile)
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	pruneArchives(filepath.Join(root, ".forge"))
+	pruneArchives(dataDir(root))
 	return nil
 }
 

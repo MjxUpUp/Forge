@@ -1,6 +1,6 @@
 // Package review 实现"代码审查通过"的持久化标记与门禁决策，支撑两条触发路径：
-//   - task 流程内：ReviewPassed 字段存 .forge/tasks/<ref>.json（taskpipeline 管）
-//   - 非 task 流程：diff hash stamp 存 .forge/stamps/<branch>.stamp（本包管）
+//   - task 流程内：ReviewPassed 字段存 DataDir/tasks/<ref>.json（taskpipeline 管）
+//   - 非 task 流程：diff hash stamp 存 DataDir/stamps/<branch>.stamp（本包管）
 //
 // 两者服务于同一目标——让 code-review-gate 从"靠人手动喊"变成"门禁/hook 自动挡"。
 // 本包管非 task 模式的 stamp，并导出 SourceChangesSince 供 taskpipeline 在 task 模式算
@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/taskcontext"
 	"github.com/MjxUpUp/Forge/internal/util"
 )
@@ -38,7 +39,7 @@ const (
 	DecisionPassAdvisory                 // 兜底放行：撞 MaxReviewRounds，advisory 提醒
 )
 
-// Stamp 记录某分支当前 diff 的审查状态，存 .forge/stamps/<branch>.stamp。
+// Stamp 记录某分支当前 diff 的审查状态，存 DataDir/stamps/<branch>.stamp。
 type Stamp struct {
 	DiffHash   string    `json:"diff_hash"`             // 审查范围（git diff）的 sha256；空=无变更
 	Reviewed   bool      `json:"reviewed"`              // 该 diff_hash 是否已通过 code-review-gate
@@ -308,7 +309,7 @@ func stampPath(root string) string {
 	if branch == "" || branch == "HEAD" {
 		branch = "default"
 	}
-	return filepath.Join(root, ".forge", "stamps", taskcontext.SanitizeRef(branch)+".stamp")
+	return filepath.Join(forgedata.DataDirFor(root), "stamps", taskcontext.SanitizeRef(branch)+".stamp")
 }
 
 func saveStamp(root string, s *Stamp) error {

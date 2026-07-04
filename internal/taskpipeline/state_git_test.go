@@ -76,3 +76,55 @@ func TestSaveTaskState_DataDirGitProject(t *testing.T) {
 		t.Errorf("loaded TaskRef = %q, want feature/x", loaded.TaskRef)
 	}
 }
+
+// TestEnsureSession_DataDirGitProject pins the data-home migration for sessions
+// in a REAL git project: EnsureSession must write DataDir/sessions/<id>.json,
+// NOT .forge/sessions/. Other session tests use bare t.TempDir() (non-git),
+// where DataDirFor falls back to <dir>/.forge — masking divergence.
+func TestEnsureSession_DataDirGitProject(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+
+	if _, err := EnsureSession(dir, "sess1"); err != nil {
+		t.Fatalf("EnsureSession: %v", err)
+	}
+	dataDir := forgedata.DataDirFor(dir)
+	if dataDir == filepath.Join(dir, ".forge") {
+		t.Fatalf("DataDir fell back to <dir>/.forge; git init did not make it diverge — test is moot")
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "sessions", "sess1.json")); err != nil {
+		t.Errorf("scoped session not written to DataDir/sessions/sess1.json: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".forge", "sessions", "sess1.json")); err == nil {
+		t.Error("session must NOT be written to legacy .forge/sessions/ — EnsureSession must use DataDir")
+	}
+}
+
+// TestEnsureSession_EmptyID_DataDirGitProject pins the data-home migration for
+// the legacy GLOBAL session path (sessionID==""). EnsureSession must write
+// DataDir/session.json + DataDir/sessions.jsonl, NOT .forge/. The scoped test
+// above covers sessionID!=""; this covers the empty-id branch (sessionFilePath /
+// sessionsLogPath) so a revert of either's dataHome() call is caught too.
+func TestEnsureSession_EmptyID_DataDirGitProject(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+
+	if _, err := EnsureSession(dir, ""); err != nil {
+		t.Fatalf("EnsureSession: %v", err)
+	}
+	dataDir := forgedata.DataDirFor(dir)
+	if dataDir == filepath.Join(dir, ".forge") {
+		t.Fatalf("DataDir fell back to <dir>/.forge; git init did not make it diverge — test is moot")
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "session.json")); err != nil {
+		t.Errorf("global session not written to DataDir/session.json: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "sessions.jsonl")); err != nil {
+		t.Errorf("sessions log not written to DataDir/sessions.jsonl: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".forge", "session.json")); err == nil {
+		t.Error("session must NOT be written to legacy .forge/session.json — EnsureSession must use DataDir")
+	}
+}
