@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
 // TestHook_FileSentinel_QuarantinesBashWrittenSource guards the PostToolUse
@@ -14,7 +16,7 @@ import (
 // active task — the pattern left by an agent writing files via Bash (bypassing
 // the Write/Edit tools and their task-guard / assertion-check gates) —
 // file-sentinel must detect it against the PreToolUse bash-guard snapshot and
-// move it to .forge/quarantine/<session>/, never deleting it.
+// move it to DataDir/quarantine/<session>/, never deleting it.
 //
 // The recovery ring under test: bash-guard (PreToolUse) only WARNs on the write
 // but always records the snapshot; file-sentinel (PostToolUse) is what actually
@@ -83,8 +85,8 @@ func TestHook_FileSentinel_QuarantinesBashWrittenSource(t *testing.T) {
 		t.Errorf("file-sentinel stdout missing guard identifier:\n%s", stdout)
 	}
 
-	// The written source must have been MOVED into .forge/quarantine/<sid>/.
-	quarantined := filepath.Join(dir, ".forge", "quarantine", sid, "src.go")
+	// The written source must have been MOVED into DataDir/quarantine/<sid>/.
+	quarantined := filepath.Join(forgedata.DataDirFor(dir), "quarantine", sid, "src.go")
 	if _, qerr := os.Stat(quarantined); qerr != nil {
 		t.Fatalf("expected quarantined file at %s, got %v\nstdout:\n%s", quarantined, qerr, stdout)
 	}
@@ -146,31 +148,27 @@ func TestHook_FileSentinel_PassesWithActiveTask(t *testing.T) {
 	if !fileExists(t, dir, "src.go") {
 		t.Errorf("src.go must remain in the working tree under an active task\nstdout:\n%s", stdout)
 	}
-	qdir := filepath.Join(dir, ".forge", "quarantine", sid)
+	qdir := filepath.Join(forgedata.DataDirFor(dir), "quarantine", sid)
 	if _, qerr := os.Stat(qdir); qerr == nil {
 		t.Errorf("no quarantine dir should be created under an active task, found %s", qdir)
 	}
 }
 
-// TestHook_FileSentinel_QuarantinesTamperedGateStatus guards the A6 fix:
-// .forge/gates/<id>/status.json holds the gate's truth (all_gates_passed, per-
-// gate pass/fail). CFG_EXT previously listed only hooks|tasks|specs|reviews, so
-// a Bash-written gates/status.json flipping all_gates_passed:false→true sailed
-// past file-sentinel — letting an agent unblock a failed gate by editing its own
-// verdict file. With gates/ added to CFG_EXT, the config-quarantine branch must
-// move it to .forge/quarantine/<sid>/ (no forge command → not exempt).
+// TestHook_FileSentinel_GateStatusBeyondGitDiff 钉死 refactor-data-home commit D
+// 的已知防护缺口：gate verdict（all_gates_passed）迁到用户级 DataDir/gates/<id>/
+// status.json 后，file-sentinel 基于 git diff 检测——DataDir 在 ~/.forge 不在 git
+// 仓库，git diff 永远不返 DataDir 路径，file-sentinel 管不到。
 //
-// This is config self-protection, so it must fire EVEN WITH an active task —
-// unlike source changes, config changes are quarantined regardless of task state
-// (embed.go ~line 1018: the only exemption is a detected forge command).
-func TestHook_FileSentinel_QuarantinesTamperedGateStatus(t *testing.T) {
+// 迁移前 A6（守 .forge/gates/status.json 不被 Bash 篡改 flip verdict）随 gates 进
+// DataDir 失效——这是 git-diff 维度拦截器对 git 仓库外路径的固有限制。本负向测试
+// 固化该契约：构造 DataDir/gates/status.json 篡改，断言 file-sentinel 不 quarantine
+// （PASS，文件原位），防止未来误以为守住了。缺口由 forge 自身完整性校验补（commit E
+// 或后续），不靠 file-sentinel。
+func TestHook_FileSentinel_GateStatusBeyondGitDiff(t *testing.T) {
 	dir := freshProject(t)
-	const sid = "sess-filesentinel-gates"
+	const sid = "sess-gates-datadir"
 	tmp := t.TempDir()
 	binDir := filepath.Dir(forgeBin)
-
-	// An active task must NOT exempt config tampering (config is quarantined
-	// regardless of task state). Starting one proves the exemption logic.
 	forge(t, dir, "task", "start", "--ref", "feat/gate-guard", "--title", "gate guard")
 
 	runHook := func(hookName, stdinJSON string) (string, string, error) {
@@ -188,8 +186,7 @@ func TestHook_FileSentinel_QuarantinesTamperedGateStatus(t *testing.T) {
 		return out.String(), errBuf.String(), err
 	}
 
-	// PreToolUse bash-guard: snapshot the pre-tamper state. Command is NOT a forge
-	// command, so IS_FORGE_CMD stays 0 for the later file-sentinel run.
+	// PreToolUse bash-guard: 建 snapshot（git diff 基线）。
 	bashIn := hookStdin(t, sid, "PreToolUse", "Bash", map[string]any{
 		"command": "echo flipping gate verdict externally",
 	})
@@ -197,42 +194,33 @@ func TestHook_FileSentinel_QuarantinesTamperedGateStatus(t *testing.T) {
 		t.Fatalf("bash-guard snapshot step failed unexpectedly: %v", err)
 	}
 
-	// Simulate an agent (or external process) rewriting the gate's verdict via
-	// Bash: flip all_gates_passed from false to true. The file is new + untracked.
-	gateDir := filepath.Join(dir, ".forge", "gates", "task-verify")
+	// 篡改 gate verdict 的实际位置：DataDir/gates/<id>/status.json（git 不可见）。
+	dataDir := forgedata.DataDirFor(dir)
+	gateDir := filepath.Join(dataDir, "gates", "task-verify")
 	if err := os.MkdirAll(gateDir, 0755); err != nil {
 		t.Fatal(err)
 	}
 	tampered := `{"gate":"task-verify","all_gates_passed":true,"forged":true}` + "\n"
-	if err := os.WriteFile(filepath.Join(gateDir, "status.json"), []byte(tampered), 0644); err != nil {
+	tamperedPath := filepath.Join(gateDir, "status.json")
+	if err := os.WriteFile(tamperedPath, []byte(tampered), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	// PostToolUse file-sentinel: gates/ now matches CFG_EXT → CONFIG_CHANGES →
-	// quarantined (no forge command detected). Must block (non-zero exit).
+	// PostToolUse file-sentinel: git diff 不含 DataDir 路径 → NEW_CHANGES 空 → PASS。
+	// 缺口：file-sentinel 无法检测 DataDir/gates 篡改（git-diff 维度的固有限制）。
 	sentIn := hookStdin(t, sid, "PostToolUse", "Bash", map[string]any{
 		"command": "echo flipping gate verdict externally",
 	})
 	stdout, _, err := runHook("file-sentinel", sentIn)
-	if err == nil {
-		t.Fatal("file-sentinel must block a tampered gates/status.json even under an active task, got PASS")
+	if err != nil {
+		t.Fatalf("file-sentinel must PASS (DataDir/gates beyond git-diff reach — known gap), got block:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, `"decision":"block"`) {
-		t.Errorf("file-sentinel stdout missing decision=block:\n%s", stdout)
+	if !strings.Contains(stdout, `"decision":"approve"`) {
+		t.Errorf("file-sentinel stdout missing decision=approve:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, "Forge config") {
-		t.Errorf("file-sentinel stdout missing config-quarantine message:\n%s", stdout)
-	}
-
-	// The forged verdict must be moved into .forge/quarantine/<sid>/ and removed
-	// from the working tree — the gate's real truth is NOT what an external writer
-	// just planted.
-	quarantined := filepath.Join(dir, ".forge", "quarantine", sid, ".forge", "gates", "task-verify", "status.json")
-	if _, qerr := os.Stat(quarantined); qerr != nil {
-		t.Fatalf("expected quarantined gate status at %s, got %v\nstdout:\n%s", quarantined, qerr, stdout)
-	}
-	if fileExists(t, dir, filepath.Join(".forge", "gates", "task-verify", "status.json")) {
-		t.Errorf("tampered gate status must be moved out of the working tree, still present\nstdout:\n%s", stdout)
+	// 篡改文件仍在原位（file-sentinel 管不到 DataDir）。
+	if _, qerr := os.Stat(tamperedPath); qerr != nil {
+		t.Errorf("DataDir/gates/status.json should remain untouched (file-sentinel cannot reach DataDir — known gap), got: %v\nstdout:\n%s", qerr, stdout)
 	}
 }
 
@@ -296,7 +284,7 @@ func TestHook_FileSentinel_FailOpenOnEmptySnapshot(t *testing.T) {
 	if !fileExists(t, dir, "existing.go") {
 		t.Errorf("existing.go must remain in working tree (fail-open), was quarantined\nstdout:\n%s", stdout)
 	}
-	qdir := filepath.Join(dir, ".forge", "quarantine", sid)
+	qdir := filepath.Join(forgedata.DataDirFor(dir), "quarantine", sid)
 	if _, qerr := os.Stat(qdir); qerr == nil {
 		t.Errorf("no quarantine dir should be created on fail-open, found %s", qdir)
 	}
@@ -361,7 +349,7 @@ func TestHook_FileSentinel_FailOpenOnReadOnlyCommand(t *testing.T) {
 	if !fileExists(t, dir, "external.go") {
 		t.Errorf("external.go must remain in working tree (read-only fail-open), was quarantined\nstdout:\n%s", stdout)
 	}
-	qdir := filepath.Join(dir, ".forge", "quarantine", sid)
+	qdir := filepath.Join(forgedata.DataDirFor(dir), "quarantine", sid)
 	if _, qerr := os.Stat(qdir); qerr == nil {
 		t.Errorf("no quarantine dir should be created on read-only fail-open, found %s", qdir)
 	}

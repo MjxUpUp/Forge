@@ -295,17 +295,23 @@ func TestFileSentinelHookContainsKeyChecks(t *testing.T) {
 	if !containsString(FileSentinelHook, "quarantine_files") {
 		t.Error("FileSentinelHook missing quarantine_files function")
 	}
-	if !containsString(FileSentinelHook, ".forge/quarantine") {
-		t.Error("FileSentinelHook missing quarantine directory path")
+	if !containsString(FileSentinelHook, "forge data-dir") {
+		t.Error("FileSentinelHook must resolve DataDir via 'forge data-dir' (refactor-data-home commit D)")
+	}
+	if !containsString(FileSentinelHook, "quarantine_base") {
+		t.Error("FileSentinelHook missing quarantine_base path logic (refactor-data-home: DataDir/quarantine)")
 	}
 	if !containsString(FileSentinelHook, "Recover:") {
 		t.Error("FileSentinelHook missing recovery instructions")
 	}
-	// A6: CFG_EXT must cover .forge/gates/ so a Bash-written
-	// gates/<id>/status.json (the gate's truth — all_gates_passed) is quarantined
-	// as config, not silently flipped to unblock a failed gate.
-	if !containsString(FileSentinelHook, "gates") {
-		t.Error("FileSentinelHook CFG_EXT must include gates/ (A6: protect gate verdict files)")
+	// refactor-data-home commit D: gates/tasks/specs/reviews 迁用户级 DataDir（git 不跟踪），
+	// file-sentinel 基于 git diff 检测不到 DataDir 路径——A6（守 .forge/gates/status.json 不被
+	// Bash 篡改）机制失效，缺口由 TestHook_FileSentinel_GateStatusBeyondGitDiff 钉死（负向）。
+	// CFG_EXT 现只守项目级 .forge/hooks/（ConfigDir 配置层，git 可见）。gate verdict 防护
+	// 暂缺——commit E 或后续补 forge 自身完整性校验（DataDir 不在 git，git diff 维度的
+	// file-sentinel 管不到，不能用空话假装改由 forge 校验）。
+	if !containsString(FileSentinelHook, ".forge/hooks/") {
+		t.Error("FileSentinelHook CFG_EXT must include .forge/hooks/ (config-layer protection after DataDir migration)")
 	}
 	// P0 fix: file-sentinel must FAIL-OPEN when the PreToolUse snapshot is
 	// empty/unreliable (BEFORE_ALL empty while working tree has changes) — it
@@ -349,8 +355,11 @@ func TestTaskVerifyHookIsAdvisory(t *testing.T) {
 	if !containsString(TaskVerifyHook, `"check":"task-verify"`) {
 		t.Error("TaskVerifyHook must record an advisory checklog entry for detected issues")
 	}
-	if !containsString(TaskVerifyHook, ".forge/checklog.jsonl") {
-		t.Error("TaskVerifyHook advisory must append to .forge/checklog.jsonl")
+	if !containsString(TaskVerifyHook, "$_DATA_DIR/checklog.jsonl") {
+		t.Error("TaskVerifyHook advisory must append to $_DATA_DIR/checklog.jsonl (refactor-data-home: DataDir)")
+	}
+	if !containsString(TaskVerifyHook, "forge data-dir") {
+		t.Error("TaskVerifyHook must resolve DataDir via 'forge data-dir' (refactor-data-home commit D)")
 	}
 }
 

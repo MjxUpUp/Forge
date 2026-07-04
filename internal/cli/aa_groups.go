@@ -56,4 +56,5 @@ func init() {
 	hookCmd.GroupID = "integrate"
 	cloneCmd.GroupID = "integrate"
 	pluginCmd.GroupID = "integrate"
+	dataDirCmd.GroupID = "integrate" // hook bash 算 DataDir 用（Hidden，不进 help 列表）
 }
