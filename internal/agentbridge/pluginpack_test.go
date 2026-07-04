@@ -219,11 +219,18 @@ func TestPluginPack_NoCurlyQuotes(t *testing.T) {
 	}
 }
 
-// TestPluginPack_Readme：README 含每 host 的安装命令片段 + Codex 路径未确认的诚实表述。
+// TestPluginPack_Readme：README 含三步首体验结构 + 每 host 安装命令 + Codex 路径未确认的诚实表述
+// + npm 包名正确（@agent_forge/forge，与 npm/package.json 一致）+ 能力边界（每项目仍需 init）。
+// 负向断言 @mjxupup/forge 抓历史回退：早期 pluginReadme 写过错用 GitHub owner slug 的包名。
 func TestPluginPack_Readme(t *testing.T) {
 	dir := generatePack(t)
 	content := readOrFail(t, filepath.Join(dir, "plugins", "forge", "README.md"))
 	for _, want := range []string{
+		"Three-step setup",           // 三步首体验结构
+		"@agent_forge/forge",         // npm 包名（与 npm/package.json 一致）
+		"once per machine",           // step 1：二进制是机器级硬前置
+		"once per agent",             // step 2：plugin 是 agent 级
+		"once per project",           // step 3：项目级资产每项目一次（能力边界）
 		"/plugin install forge@forge",
 		"MjxUpUp/Forge",
 		"forge init --agents codex",
@@ -235,5 +242,9 @@ func TestPluginPack_Readme(t *testing.T) {
 		if !strings.Contains(content, want) {
 			t.Errorf("README missing %q", want)
 		}
+	}
+	// 负向：旧错误包名不得重现（@mjxupup/forge 指向不存在的包）。
+	if strings.Contains(content, "@mjxupup/forge") {
+		t.Errorf("README references @mjxupup/forge (stale wrong package name; want @agent_forge/forge)")
 	}
 }

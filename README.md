@@ -257,6 +257,17 @@ npm install -g @agent_forge/forge
 # 支持平台：macOS (x86_64/ARM64)、Linux (x86_64/ARM64)、Windows (x86_64)
 ```
 
+### 通过 Claude Code plugin marketplace（用户级，一次性接线）
+
+若主要用 Claude Code，可走 plugin marketplace 一次性接线用户级 hooks + MCP（机器上所有项目共享，无需逐项目配 `.claude/settings.local.json`）：
+
+```
+/plugin marketplace add MjxUpUp/Forge
+/plugin install forge@forge
+```
+
+仍需 `npm install -g @agent_forge/forge` 装二进制（hooks/MCP 都 spawn forge），并在每个项目 `forge init` 生成项目级资产（`.forge/`、`CLAUDE.md`/`AGENTS.md`、skills）。完整三步与各 host 差异见 `plugins/forge/README.md`。
+
 ## 项目门禁管道
 
 | Gate ID | 名称 | small | medium | large |
