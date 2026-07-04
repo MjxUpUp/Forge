@@ -312,6 +312,9 @@ func TestProjectFor(t *testing.T) {
 	if p.DataDir == `` {
 		t.Fatal(`DataDir 空`)
 	}
+	if p.GitRoot != repo {
+		t.Errorf(`GitRoot 应=%s，实得 %s`, repo, p.GitRoot)
+	}
 	if !strings.HasSuffix(p.ConfigDir, `.forge`) {
 		t.Errorf(`ConfigDir 应以 .forge 结尾，实得 %s`, p.ConfigDir)
 	}

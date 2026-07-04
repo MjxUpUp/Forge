@@ -2,16 +2,17 @@ package hazard
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 	"unicode/utf8"
+
+	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 )
 
 func TestAppendEvent_LoadRoundTrip(t *testing.T) {
-	root := t.TempDir()
+	root := forgedatatest.ForDataDir(t.TempDir())
 	e := Event{
 		Type:        EventBlock,
 		Fingerprint: Fingerprint("rm -rf ./vault"),
@@ -48,7 +49,7 @@ func TestAppendEvent_LoadRoundTrip(t *testing.T) {
 }
 
 func TestAppendEvent_TruncatesLongCommand(t *testing.T) {
-	root := t.TempDir()
+	root := forgedatatest.ForDataDir(t.TempDir())
 	long := strings.Repeat("a", maxCommandStore*3) // 远超截断阈值
 	if err := AppendEvent(root, Event{Type: EventBlock, Command: long}); err != nil {
 		t.Fatalf("AppendEvent: %v", err)
@@ -70,7 +71,7 @@ func TestAppendEvent_TruncatesLongCommand(t *testing.T) {
 // （每字 3 字节）截断后必须仍是有效 UTF-8，不能在字符中间切断（字节切片会产生无效
 // UTF-8，json.Marshal 替换为 U+FFFD，审计日志乱码）。
 func TestAppendEvent_TruncatesMultiByte(t *testing.T) {
-	root := t.TempDir()
+	root := forgedatatest.ForDataDir(t.TempDir())
 	long := strings.Repeat("删", maxCommandStore*2) // 远超 maxCommandStore 字符
 	if err := AppendEvent(root, Event{Type: EventBlock, Command: long}); err != nil {
 		t.Fatalf("AppendEvent: %v", err)
@@ -89,7 +90,7 @@ func TestAppendEvent_TruncatesMultiByte(t *testing.T) {
 }
 
 func TestAppendEvent_AppendsInOrder(t *testing.T) {
-	root := t.TempDir()
+	root := forgedatatest.ForDataDir(t.TempDir())
 	for _, typ := range []string{EventBlock, EventRelease, EventData} {
 		if err := AppendEvent(root, Event{Type: typ, Command: "cmd-" + typ}); err != nil {
 			t.Fatalf("AppendEvent %s: %v", typ, err)
@@ -106,7 +107,7 @@ func TestAppendEvent_AppendsInOrder(t *testing.T) {
 }
 
 func TestCountSince(t *testing.T) {
-	root := t.TempDir()
+	root := forgedatatest.ForDataDir(t.TempDir())
 	AppendEvent(root, Event{Type: EventBlock, Command: "a"})
 	AppendEvent(root, Event{Type: EventBlock, Command: "b"})
 	AppendEvent(root, Event{Type: EventRelease, Command: "c"})
@@ -127,7 +128,7 @@ func TestCountSince(t *testing.T) {
 }
 
 func TestLoadEvents_MissingFile(t *testing.T) {
-	root := t.TempDir()
+	root := forgedatatest.ForDataDir(t.TempDir())
 	events, err := LoadEvents(root)
 	if err != nil {
 		t.Fatalf("missing events file should not error: %v", err)
@@ -138,8 +139,8 @@ func TestLoadEvents_MissingFile(t *testing.T) {
 }
 
 func TestLoadEvents_SkipsCorruptLine(t *testing.T) {
-	root := t.TempDir()
-	dir := filepath.Join(root, ".forge", "hazards")
+	root := forgedatatest.ForDataDir(t.TempDir())
+	dir := root.HazardsDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +149,7 @@ func TestLoadEvents_SkipsCorruptLine(t *testing.T) {
 {not json}
 {"type":"release","command":"ok2"}
 `
-	if err := os.WriteFile(eventsPath(root), []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(root.HazardsEventsPath(), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	events, err := LoadEvents(root)
@@ -163,7 +164,7 @@ func TestLoadEvents_SkipsCorruptLine(t *testing.T) {
 // TestAppendEvent_ConcurrentSafe 并发追加不应交错/丢失（eventMu + O_APPEND）。
 // 这是 hook 在多 session 并发时的正确性保障。
 func TestAppendEvent_ConcurrentSafe(t *testing.T) {
-	root := t.TempDir()
+	root := forgedatatest.ForDataDir(t.TempDir())
 	const N = 50
 	var wg sync.WaitGroup
 	for i := 0; i < N; i++ {
