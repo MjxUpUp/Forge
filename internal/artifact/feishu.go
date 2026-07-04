@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
 // FeishuConfig holds feishu publishing configuration.
@@ -62,7 +64,7 @@ func PublishMarkdown(cfg FeishuConfig, gateID, filePath, dir string) error {
 
 // PublishAllOutputs publishes all .md output artifacts for a gate.
 // gateID is the gate identifier (e.g., "gate-0-research"), NOT the display name.
-func PublishAllOutputs(cfg FeishuConfig, gateID string, outputs []string, dir string) {
+func PublishAllOutputs(cfg FeishuConfig, gateID string, outputs []string, p *forgedata.Project) {
 	if !cfg.Enabled {
 		return
 	}
@@ -71,11 +73,12 @@ func PublishAllOutputs(cfg FeishuConfig, gateID string, outputs []string, dir st
 		if !strings.HasSuffix(out, ".md") {
 			continue
 		}
-		path := filepath.Join(dir, ".forge", "gates", gateID, out)
+		path := p.GateArtifactPath(gateID, out)
 		if _, err := os.Stat(path); os.IsNotExist(err) {
 			continue
 		}
-		if err := PublishMarkdown(cfg, gateID, path, dir); err != nil {
+		// lark-cli 工作目录用 GitRoot（项目根），与历史行为一致（原 dir 即项目根）
+		if err := PublishMarkdown(cfg, gateID, path, p.GitRoot); err != nil {
 			fmt.Fprintf(os.Stderr, "  Feishu publish failed for %s: %v\n", out, err)
 		}
 	}
