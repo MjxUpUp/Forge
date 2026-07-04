@@ -544,7 +544,7 @@ func TestAggregateGlobal_ScoreLineChronological(t *testing.T) {
 	}
 }
 
-// TestAggregateGlobal_SkipsBadRoot 某项目无结论（无 .forge/act）不致命，其余照常聚合。
+// TestAggregateGlobal_SkipsBadRoot 某项目无结论（无 DataDir/act）不致命，其余照常聚合。
 func TestAggregateGlobal_SkipsBadRoot(t *testing.T) {
 	good, pGood := forgedatatest.RealProject(t)
 	bad := t.TempDir() // 无 act 结论

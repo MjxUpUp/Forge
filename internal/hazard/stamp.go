@@ -32,10 +32,10 @@ import (
 const ConfirmTTL = 5 * time.Minute
 
 // maxCommandStore 是登记时存储的命令字符串截断长度——仅用于审计/展示，过长会撑大
-// .forge/hazards/<fp>.json，且命令全文可由指纹反查日志。
+// DataDir/hazards/<fp>.json，且命令全文可由指纹反查日志。
 const maxCommandStore = 200
 
-// Confirmation 记录某条命令的一次人工确认，存 .forge/hazards/<fingerprint>.json。
+// Confirmation 记录某条命令的一次人工确认，存 DataDir/hazards/<fingerprint>.json。
 type Confirmation struct {
 	Fingerprint string    `json:"fingerprint"`       // Fingerprint(命令) 的 sha256 hex
 	Command     string    `json:"command,omitempty"` // 登记的命令（截断，审计用）

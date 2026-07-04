@@ -66,7 +66,7 @@ func TestEnsureSession_WritesStartedEpoch(t *testing.T) {
 		t.Error("legacy StartedEpoch is zero — hook would fall back to the fragile date parse")
 	}
 
-	// Scoped path (non-empty sessionID → per-id file under .forge/sessions/).
+	// Scoped path (non-empty sessionID → per-id file under DataDir/sessions/).
 	const scopedID = "scoped-abc-123"
 	scoped, err := EnsureSession(dir, scopedID)
 	if err != nil {
