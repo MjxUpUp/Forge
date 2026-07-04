@@ -4,11 +4,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 )
 
 func TestGenerateProposalsForReview_CreatesOnePerDimension(t *testing.T) {
-	tmpRoot := t.TempDir()
+	tmpRoot := forgedatatest.ForDataDir(t.TempDir())
 	lows := []LowDimension{
 		{Dimension: scoringtypes.DimensionScope, Score: 35, Detail: "7 anti-patterns"},
 		{Dimension: scoringtypes.DimensionTesting, Score: 20, Detail: "no test changes"},
@@ -42,7 +43,7 @@ func TestGenerateProposalsForReview_CreatesOnePerDimension(t *testing.T) {
 }
 
 func TestGenerateProposalsForReview_Idempotent(t *testing.T) {
-	tmpRoot := t.TempDir()
+	tmpRoot := forgedatatest.ForDataDir(t.TempDir())
 	lows := []LowDimension{
 		{Dimension: scoringtypes.DimensionScope, Score: 35, Detail: ""},
 	}
@@ -71,7 +72,7 @@ func TestGenerateProposalsForReview_Idempotent(t *testing.T) {
 }
 
 func TestGenerateProposalsForReview_SkipsUnknownDimension(t *testing.T) {
-	tmpRoot := t.TempDir()
+	tmpRoot := forgedatatest.ForDataDir(t.TempDir())
 	// A dimension value with no template entry.
 	lows := []LowDimension{
 		{Dimension: scoringtypes.Dimension("nonexistent-dim"), Score: 10, Detail: ""},
@@ -91,7 +92,7 @@ func TestGenerateProposalsForReview_SkipsUnknownDimension(t *testing.T) {
 // proposal to accept, so the review could never leave pending.
 func TestGenerateProposalsForReview_ResolvesReviewViaAccept(t *testing.T) {
 	setHomeTemp(t) // isolate global knowledge store
-	tmpRoot := t.TempDir()
+	tmpRoot := forgedatatest.ForDataDir(t.TempDir())
 
 	taskRef := "task-deadlock"
 	review := &ReviewRequest{
@@ -138,7 +139,7 @@ func TestGenerateProposalsForReview_ResolvesReviewViaAccept(t *testing.T) {
 }
 
 func TestGenerateForExistingReview_MissingReview(t *testing.T) {
-	tmpRoot := t.TempDir()
+	tmpRoot := forgedatatest.ForDataDir(t.TempDir())
 	_, err := GenerateForExistingReview(tmpRoot, "no-such-task")
 	if err == nil {
 		t.Fatal("expected error for missing review, got nil")
@@ -165,7 +166,7 @@ func TestDimensionTemplatesCoverAllDimensions(t *testing.T) {
 // proposal that accept can resolve.
 func TestGenerateFallbackProposal_ResolvesBGradeDeadlock(t *testing.T) {
 	setHomeTemp(t)
-	tmpRoot := t.TempDir()
+	tmpRoot := forgedatatest.ForDataDir(t.TempDir())
 	taskRef := "task-bgrade"
 
 	review := &ReviewRequest{
@@ -218,7 +219,7 @@ func TestGenerateFallbackProposal_ResolvesBGradeDeadlock(t *testing.T) {
 }
 
 func TestGenerateFallbackProposal_Idempotent(t *testing.T) {
-	tmpRoot := t.TempDir()
+	tmpRoot := forgedatatest.ForDataDir(t.TempDir())
 	if n, err := GenerateFallbackProposal(tmpRoot, "task-fallback-idem"); err != nil || n != 1 {
 		t.Fatalf("first call: n=%d err=%v", n, err)
 	}
@@ -238,7 +239,7 @@ func TestGenerateFallbackProposal_Idempotent(t *testing.T) {
 // repair command would print "Generated 0" and leave the user blocked).
 func TestGenerateForExistingReview_MandatoryEmptyLowsBackfills(t *testing.T) {
 	setHomeTemp(t)
-	tmpRoot := t.TempDir()
+	tmpRoot := forgedatatest.ForDataDir(t.TempDir())
 	review := &ReviewRequest{
 		TaskRef:   "task-bgrade-existing",
 		Score:     75,
@@ -263,7 +264,7 @@ func TestGenerateForExistingReview_MandatoryEmptyLowsBackfills(t *testing.T) {
 // resolved WITHOUT any proposal to accept. Before this, AcceptProposal was the
 // only path to ReviewResolved, so a review with zero proposals deadlocked.
 func TestResolveReview_ResolvesIndependently(t *testing.T) {
-	tmpRoot := t.TempDir()
+	tmpRoot := forgedatatest.ForDataDir(t.TempDir())
 	taskRef := "task-resolve"
 	review := &ReviewRequest{
 		TaskRef:   taskRef,
@@ -290,7 +291,7 @@ func TestResolveReview_ResolvesIndependently(t *testing.T) {
 }
 
 func TestProposalsForReview_FiltersByTaskRef(t *testing.T) {
-	tmpRoot := t.TempDir()
+	tmpRoot := forgedatatest.ForDataDir(t.TempDir())
 	for _, ref := range []string{"task-a", "task-b"} {
 		if err := SaveProposal(tmpRoot, &ExperienceProposal{
 			SourceReview: ref,

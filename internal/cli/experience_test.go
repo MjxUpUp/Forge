@@ -2,25 +2,20 @@ package cli
 
 import (
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/experience"
+	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 )
 
 // --------------- Test: Experience list empty ---------------
 
 func TestExperienceList_Empty(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create minimal .forge dir so findProjectRoot works
-	if err := os.MkdirAll(filepath.Join(tmpDir, ".forge"), 0755); err != nil {
-		t.Fatal(err)
-	}
+	tmpDir, _ := forgedatatest.RealProject(t)
 
 	stdout, _, code := runForge(t, tmpDir, "experience", "list")
 	if code != 0 {
@@ -34,11 +29,7 @@ func TestExperienceList_Empty(t *testing.T) {
 // --------------- Test: Experience list --json ---------------
 
 func TestExperienceList_JSON(t *testing.T) {
-	tmpDir := t.TempDir()
-	forgeDir := filepath.Join(tmpDir, ".forge")
-	if err := os.MkdirAll(forgeDir, 0755); err != nil {
-		t.Fatal(err)
-	}
+	tmpDir, proj := forgedatatest.RealProject(t)
 
 	// Create a review file
 	review := &experience.ReviewRequest{
@@ -53,7 +44,7 @@ func TestExperienceList_JSON(t *testing.T) {
 		Status:    experience.ReviewPending,
 		CreatedAt: time.Date(2026, 6, 7, 10, 30, 0, 0, time.UTC),
 	}
-	if err := experience.SaveReview(tmpDir, review); err != nil {
+	if err := experience.SaveReview(proj, review); err != nil {
 		t.Fatalf("failed to save review: %v", err)
 	}
 
@@ -69,7 +60,7 @@ func TestExperienceList_JSON(t *testing.T) {
 		Status:       experience.PropProposed,
 		CreatedAt:    time.Date(2026, 6, 7, 10, 31, 0, 0, time.UTC),
 	}
-	if err := experience.SaveProposal(tmpDir, proposal); err != nil {
+	if err := experience.SaveProposal(proj, proposal); err != nil {
 		t.Fatalf("failed to save proposal: %v", err)
 	}
 
@@ -97,11 +88,7 @@ func TestExperienceList_JSON(t *testing.T) {
 // --------------- Test: Experience show ---------------
 
 func TestExperienceShow(t *testing.T) {
-	tmpDir := t.TempDir()
-	forgeDir := filepath.Join(tmpDir, ".forge")
-	if err := os.MkdirAll(forgeDir, 0755); err != nil {
-		t.Fatal(err)
-	}
+	tmpDir, proj := forgedatatest.RealProject(t)
 
 	review := &experience.ReviewRequest{
 		TaskRef: "PROJ-456",
@@ -115,7 +102,7 @@ func TestExperienceShow(t *testing.T) {
 		Status:    experience.ReviewPending,
 		CreatedAt: time.Date(2026, 6, 7, 14, 0, 0, 0, time.UTC),
 	}
-	if err := experience.SaveReview(tmpDir, review); err != nil {
+	if err := experience.SaveReview(proj, review); err != nil {
 		t.Fatalf("failed to save review: %v", err)
 	}
 
@@ -145,10 +132,7 @@ func TestExperienceShow(t *testing.T) {
 // --------------- Test: Experience show nonexistent ---------------
 
 func TestExperienceShow_Nonexistent(t *testing.T) {
-	tmpDir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(tmpDir, ".forge"), 0755); err != nil {
-		t.Fatal(err)
-	}
+	tmpDir, _ := forgedatatest.RealProject(t)
 
 	_, _, code := runForge(t, tmpDir, "experience", "show", "NONEXIST-999")
 	if code == 0 {
@@ -159,11 +143,7 @@ func TestExperienceShow_Nonexistent(t *testing.T) {
 // --------------- Test: Experience accept ---------------
 
 func TestExperienceAccept(t *testing.T) {
-	tmpDir := t.TempDir()
-	forgeDir := filepath.Join(tmpDir, ".forge")
-	if err := os.MkdirAll(forgeDir, 0755); err != nil {
-		t.Fatal(err)
-	}
+	tmpDir, proj := forgedatatest.RealProject(t)
 
 	// Create review and proposal
 	review := &experience.ReviewRequest{
@@ -174,7 +154,7 @@ func TestExperienceAccept(t *testing.T) {
 		Status:    experience.ReviewPending,
 		CreatedAt: time.Date(2026, 6, 7, 12, 0, 0, 0, time.UTC),
 	}
-	if err := experience.SaveReview(tmpDir, review); err != nil {
+	if err := experience.SaveReview(proj, review); err != nil {
 		t.Fatalf("failed to save review: %v", err)
 	}
 
@@ -189,7 +169,7 @@ func TestExperienceAccept(t *testing.T) {
 		Status:       experience.PropProposed,
 		CreatedAt:    time.Date(2026, 6, 7, 12, 1, 0, 0, time.UTC),
 	}
-	if err := experience.SaveProposal(tmpDir, proposal); err != nil {
+	if err := experience.SaveProposal(proj, proposal); err != nil {
 		t.Fatalf("failed to save proposal: %v", err)
 	}
 
@@ -214,7 +194,7 @@ func TestExperienceAccept(t *testing.T) {
 	}
 
 	// Verify proposal status changed to accepted
-	loaded, err := experience.LoadProposal(tmpDir, "exp-accept1")
+	loaded, err := experience.LoadProposal(proj, "exp-accept1")
 	if err != nil {
 		t.Fatalf("failed to load proposal after accept: %v", err)
 	}
@@ -226,11 +206,7 @@ func TestExperienceAccept(t *testing.T) {
 // --------------- Test: Experience reject ---------------
 
 func TestExperienceReject(t *testing.T) {
-	tmpDir := t.TempDir()
-	forgeDir := filepath.Join(tmpDir, ".forge")
-	if err := os.MkdirAll(forgeDir, 0755); err != nil {
-		t.Fatal(err)
-	}
+	tmpDir, proj := forgedatatest.RealProject(t)
 
 	proposal := &experience.ExperienceProposal{
 		ID:           "exp-reject1",
@@ -243,7 +219,7 @@ func TestExperienceReject(t *testing.T) {
 		Status:       experience.PropProposed,
 		CreatedAt:    time.Date(2026, 6, 7, 13, 0, 0, 0, time.UTC),
 	}
-	if err := experience.SaveProposal(tmpDir, proposal); err != nil {
+	if err := experience.SaveProposal(proj, proposal); err != nil {
 		t.Fatalf("failed to save proposal: %v", err)
 	}
 
@@ -253,7 +229,7 @@ func TestExperienceReject(t *testing.T) {
 	}
 
 	// Verify proposal status changed to rejected
-	loaded, err := experience.LoadProposal(tmpDir, "exp-reject1")
+	loaded, err := experience.LoadProposal(proj, "exp-reject1")
 	if err != nil {
 		t.Fatalf("failed to load proposal after reject: %v", err)
 	}

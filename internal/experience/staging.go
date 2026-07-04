@@ -6,16 +6,14 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
-// proposalDir returns the directory for experience proposals under the given root.
-func proposalDir(root string) string {
-	return filepath.Join(root, ".forge", "experience", "proposed")
-}
-
-// proposalPath returns the file path for a specific proposal.
-func proposalPath(root, id string) string {
-	return filepath.Join(proposalDir(root), id+".json")
+// proposalPath returns the file path for a specific proposal under the project's
+// user-level DataDir (proj.ExperienceProposedDir() = ~/.forge/projects/<key>/experience/proposed/).
+func proposalPath(proj *forgedata.Project, id string) string {
+	return filepath.Join(proj.ExperienceProposedDir(), id+".json")
 }
 
 // GenerateID creates a proposal ID in the format "exp-{hex}" using the current
@@ -25,9 +23,9 @@ func GenerateID() string {
 	return fmt.Sprintf("exp-%x", hex)
 }
 
-// SaveProposal writes a proposal to .forge/experience/proposed/{id}.json.
+// SaveProposal writes a proposal to proj.ExperienceProposedDir()/{id}.json.
 // Auto-generates ID and CreatedAt if empty.
-func SaveProposal(root string, p *ExperienceProposal) error {
+func SaveProposal(proj *forgedata.Project, p *ExperienceProposal) error {
 	autoID := p.ID == ""
 	if autoID {
 		p.ID = GenerateID()
@@ -36,7 +34,7 @@ func SaveProposal(root string, p *ExperienceProposal) error {
 		p.CreatedAt = time.Now()
 	}
 
-	dir := proposalDir(root)
+	dir := proj.ExperienceProposedDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("create proposals dir: %w", err)
 	}
@@ -52,22 +50,22 @@ func SaveProposal(root string, p *ExperienceProposal) error {
 	// overwrite an earlier proposal (losing it, which can re-deadlock a review).
 	// Retry with a fresh ID on collision, but only for auto-generated IDs:
 	// explicit IDs are the caller's responsibility and trusted as-is.
-	path := proposalPath(root, p.ID)
+	path := proposalPath(proj, p.ID)
 	if autoID {
 		for attempts := 0; attempts < 8; attempts++ {
 			if _, statErr := os.Stat(path); os.IsNotExist(statErr) {
 				break
 			}
 			p.ID = GenerateID()
-			path = proposalPath(root, p.ID)
+			path = proposalPath(proj, p.ID)
 		}
 	}
 	return os.WriteFile(path, data, 0o644)
 }
 
 // LoadProposal reads a single proposal by ID.
-func LoadProposal(root, id string) (*ExperienceProposal, error) {
-	path := proposalPath(root, id)
+func LoadProposal(proj *forgedata.Project, id string) (*ExperienceProposal, error) {
+	path := proposalPath(proj, id)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -84,8 +82,8 @@ func LoadProposal(root, id string) (*ExperienceProposal, error) {
 
 // ListProposals lists proposals, optionally filtered by status.
 // Pass an empty string to return all proposals.
-func ListProposals(root string, status PropStatus) ([]*ExperienceProposal, error) {
-	dir := proposalDir(root)
+func ListProposals(proj *forgedata.Project, status PropStatus) ([]*ExperienceProposal, error) {
+	dir := proj.ExperienceProposedDir()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -120,8 +118,8 @@ func ListProposals(root string, status PropStatus) ([]*ExperienceProposal, error
 // "list then filter by review" pattern that generation dedup and
 // `forge experience show` both need, so the review-association field is read in
 // one place (if SourceReview is ever renamed, only this helper changes).
-func ProposalsForReview(root, taskRef string, status PropStatus) ([]*ExperienceProposal, error) {
-	all, err := ListProposals(root, status)
+func ProposalsForReview(proj *forgedata.Project, taskRef string, status PropStatus) ([]*ExperienceProposal, error) {
+	all, err := ListProposals(proj, status)
 	if err != nil {
 		return nil, err
 	}
@@ -135,11 +133,11 @@ func ProposalsForReview(root, taskRef string, status PropStatus) ([]*ExperienceP
 }
 
 // UpdateProposalStatus loads a proposal, updates its status, and saves it.
-func UpdateProposalStatus(root, id string, status PropStatus) error {
-	p, err := LoadProposal(root, id)
+func UpdateProposalStatus(proj *forgedata.Project, id string, status PropStatus) error {
+	p, err := LoadProposal(proj, id)
 	if err != nil {
 		return err
 	}
 	p.Status = status
-	return SaveProposal(root, p)
+	return SaveProposal(proj, p)
 }

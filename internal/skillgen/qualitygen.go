@@ -207,7 +207,7 @@ func buildQualitySkillContent(proto *protocol.Protocol, p *pipeline.Pipeline) st
 	sb.WriteString("   - mandatory review 必须 accept 才能解除，否则 `forge task complete` 会失败\n")
 	sb.WriteString("   - 不认可的规则用 `forge experience reject <id>`\n")
 	sb.WriteString("4. 根因参考：`forge task score --ref <ref> --json` + `git diff main...HEAD`\n\n")
-	sb.WriteString("> 不要手动向 `.forge/experience/proposed/` 写 JSON——ID 由系统生成（exp-<hex>），手写格式不符会导致 accept 失败。\n\n")
+	sb.WriteString("> 不要手动向 `~/.forge/projects/<key>/experience/proposed/` 写 JSON——ID 由系统生成（exp-<hex>），手写格式不符会导致 accept 失败。\n\n")
 
 	// Project info
 	sb.WriteString("## 当前项目信息\n\n")

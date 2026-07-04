@@ -27,7 +27,7 @@ const (
 )
 
 // ReviewRequest is created when a task scores below threshold.
-// Stored at .forge/reviews/{sanitized-ref}.json.
+// Stored at ~/.forge/projects/<key>/reviews/{sanitized-ref}.json.
 type ReviewRequest struct {
 	TaskRef       string         `json:"task_ref"`
 	Score         float64        `json:"score"`
@@ -46,7 +46,7 @@ type LowDimension struct {
 }
 
 // ExperienceProposal is an AI-generated rule proposal.
-// Stored at .forge/experience/proposed/{id}.json.
+// Stored at ~/.forge/projects/<key>/experience/proposed/{id}.json.
 type ExperienceProposal struct {
 	ID           string     `json:"id"`
 	SourceReview string     `json:"source_review"`
