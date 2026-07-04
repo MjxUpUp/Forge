@@ -61,4 +61,43 @@ Other hosts: the plugin is the distribution entry point (MCP + marketplace listi
 
 ## Caveat: projects you do not want forge in
 
-User-level hooks fire in every Claude Code project. In projects without `.forge/`, task-guard emits a WARN (`allowed but not tracked`) on each source edit — noisy but non-blocking. To silence, either `forge init` the project or uninstall the plugin.
+User-level hooks fire in every Claude Code project. In git projects without `.forge/`, the **init-suggest** SessionStart hook detects this and prompts the agent to ask the user whether to run `forge init` (one-shot `suggested` marker so it asks only once). To permanently silence the prompt for a specific project, run `forge suggest decline` there; to silence everywhere without using forge in that project, also accept the next project by closing the suggestion. To remove forge entirely from a project, `forge init --reset` (clean) or uninstall the plugin. (Legacy `task-guard WARN on each source edit` behaviour is covered by the same `forge init` / `forge suggest decline` paths.)
+
+## Supported hosts (out of the box)
+
+| Host | Plugin install | Per-project gate wiring | Notes |
+|------|----------------|------------------------|-------|
+| **Claude Code** | `plugin.json` marketplace | automatic (user-level) | full hooks + MCP; auto-init via `init-suggest` SessionStart hook |
+| **Codex (CLI / App)** | marketplace (path not officially confirmed) | `forge init --agents codex` | if marketplace path fails, fall back to manual |
+| **Cursor** | marketplace | `forge init --agents cursor` | Cursor plugin model carries skills/MCP, not Claude-shape hooks |
+| **GitHub Copilot (CLI / VS Code)** | marketplace + `.copilot-plugin/` | `forge init --agents copilot` (CLI) | VS Code auto-discovers `.copilot-plugin/plugin.json` if you open this repo |
+| **Windsurf** | (mirrored `buildWindsurfHooks` in code) | (Cascade hooks) | mirrors Claude SessionStart + write hooks via `internal/agentbridge/windsurf.go` |
+| **OpenCode / Pi / Kiro / Cline / Gemini CLI / Mistral Vibe / Trae / Nanobot / Hermes / Antigravity / OpenClaw** | (manual, see `install.sh`) | `forge init --agents <host>` if supported | install.sh script provides one-step symlink-style per-skill/folder install for 14 hosts inspired by [Understand-Anything](https://github.com/Egonex-AI/Understand-Anything) |
+
+For experimental / bleeding-edge hosts, run `./plugins/forge/install.sh --help` for the full supported platform list.
+
+## Distribution model
+
+Forge ships as an npm binary (`@agent_forge/forge`) plus a marketplace plugin (this directory). All supported agent hosts use the same single marketplace install command — there is no per-skill vs folder symlink split because plugin marketplaces already give a unified delivery surface. This contrasts with single-skill tools (e.g. [Understand-Anything](https://github.com/Egonex-AI/Understand-Anything) 14-host `install.sh` with per-skill/folder symlinks) where the symlink style is the actual installation primitive.
+
+When this model stops being sufficient (e.g. agents whose marketplace can't resolve `hooks/MCP`), `forge plugin pack --agent <host>` lets us generate host-specific packs; until then, one marketplace path serves all five supported agents.
+
+## Developing locally (cache copy, not symlinks)
+
+Claude Code's plugin cache (`~/.claude/plugins/cache/forge/forge/<version>/`) does **not** follow symlinks — `Search`/`Glob` tools in the agent skip symlinked dirs. To test local plugin changes:
+
+1. Rebuild after changes: `go build ./...`
+2. Find current version: `cat plugins/forge/.claude-plugin/plugin.json | jq -r .version`
+3. Copy the freshly-built assets into the cache, replacing `<VERSION>`:
+
+```bash
+VERSION=$(jq -r .version plugins/forge/.claude-plugin/plugin.json)
+rm -rf "$HOME/.claude/plugins/cache/forge/forge/$VERSION"
+mkdir -p "$HOME/.claude/plugins/cache/forge/forge/$VERSION"
+cp -R plugins/forge/* "$HOME/.claude/plugins/cache/forge/forge/$VERSION/"
+```
+
+4. Start a fresh Claude Code session (existing sessions keep old prompts in context).
+5. Verify by opening any git project — the `init-suggest` SessionStart hook should fire.
+
+This pattern was inspired by Understand-Anything's CLAUDE.md (lines 67-99, 2026-07-04): "Symlinks don't work because Claude's Search/Glob tools can't follow them."
