@@ -28,6 +28,7 @@ func init() {
 	syncCmd.GroupID = "lifecycle"
 	updateCmd.GroupID = "lifecycle"
 	snapshotCmd.GroupID = "lifecycle"
+	suggestCmd.GroupID = "lifecycle" // init-suggest hook 的提示状态管理（init 的语义延伸）
 
 	// 项目管道：项目级门禁与状态（status 是主入口）
 	statusCmd.GroupID = "pipeline"
