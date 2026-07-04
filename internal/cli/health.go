@@ -18,7 +18,7 @@ func init() {
 var healthCmd = &cobra.Command{
 	Use:   "health",
 	Short: "项目级质量趋势——聚合所有任务结论（task→project 粒度联动）",
-	Long: `forge health 把 .forge/act/conclusions.jsonl 里所有任务结论上卷成项目级质量趋势：
+	Long: `forge health 把 ~/.forge/projects/<项目key>/act/conclusions.jsonl 里所有任务结论上卷成项目级质量趋势：
 分数走势、证据盲区率、复发低分维度。单个任务的盲区/低分是个例，跨任务聚合才暴露系统性
 问题——某维度反复低分说明该方向有共性缺口，完成声明盲区率高说明 agent 系统性"声明完成
 却没真验证"。这是 PDCA 在 project 粒度的 Act，喂给 session-retrospective 在项目层面决策
@@ -27,11 +27,11 @@ var healthCmd = &cobra.Command{
 }
 
 func runHealth(cmd *cobra.Command, args []string) error {
-	root, err := findProjectRoot()
+	proj, err := findProject()
 	if err != nil {
 		return err
 	}
-	cs, err := act.LoadAll(root)
+	cs, err := act.LoadAll(proj)
 	if err != nil {
 		return err
 	}
