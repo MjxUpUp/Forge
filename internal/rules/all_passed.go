@@ -11,7 +11,15 @@ import (
 type AllGatesPassedEvaluator struct{}
 
 func (e *AllGatesPassedEvaluator) Evaluate(ctx Context, params CheckParams) Result {
-	gatesDir := filepath.Join(ctx.ProjectRoot, ".forge", "gates")
+	gatesDir := ctx.GatesDir
+	if gatesDir == "" {
+		// Defensive: callers should fill GatesDir (DataDir/gates). Empty means
+		// a caller hasn't migrated — fall back so we don't silently pass, but
+		// emit an observable stderr warning so the missing field isn't hidden
+		// (a silent fallback here masked the status.go path divergence in C1).
+		fmt.Fprintf(os.Stderr, "[rules/all_gates_passed] warning: Context.GatesDir empty (caller forgot to set it); falling back to %s. Gate status may be read from the wrong location after the data-home migration.\n", filepath.Join(ctx.ProjectRoot, ".forge", "gates"))
+		gatesDir = filepath.Join(ctx.ProjectRoot, ".forge", "gates")
+	}
 
 	entries, err := os.ReadDir(gatesDir)
 	if err != nil {

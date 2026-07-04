@@ -67,6 +67,22 @@ func ProjectFor(cwd string) (*Project, error) {
 	}, nil
 }
 
+// DataDirFor returns the runtime-state DataDir for root without requiring a
+// full Project (no .forge/ needed): the user-level ~/.forge/projects/<key>/
+// for git projects, falling back to <root>/.forge/ for non-git projects so
+// runtime-state recording still works when hooks fire outside a forge project.
+//
+// Git-only Key (needs .git, NOT .forge/) — resolution is stable across MkdirAll
+// side effects: a store's MkdirAll creating <root>/.forge/ on the fallback path
+// must NOT flip a re-resolve to DataDir (the stateful bug that silently dropped
+// checklog Records). Stores (checklog / task state) prefer this over re-deriving.
+func DataDirFor(root string) string {
+	if key, err := Key(root); err == nil {
+		return RootDir(key)
+	}
+	return filepath.Join(root, configDirName)
+}
+
 // findForgeConfigDir walk-up 找含 `.forge/` 的祖先，但不超过 stopAt 边界。
 // 找不到返 ErrNoForgeConfig（项目未 init）。
 //
@@ -133,7 +149,9 @@ func (p *Project) HookScriptPath(name string) string { return filepath.Join(p.Da
 func (p *Project) TasksDir() string { return filepath.Join(p.DataDir, "tasks") }
 
 // TaskStatePath returns DataDir/tasks/<ref>.json
-func (p *Project) TaskStatePath(ref string) string { return filepath.Join(p.DataDir, "tasks", ref+".json") }
+func (p *Project) TaskStatePath(ref string) string {
+	return filepath.Join(p.DataDir, "tasks", ref+".json")
+}
 
 // GatesDir
 func (p *Project) GatesDir() string { return filepath.Join(p.DataDir, "gates") }

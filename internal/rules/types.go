@@ -44,14 +44,18 @@ type CheckParams struct {
 	// Set true ONLY when the rule's intent is "this artifact should not exist"
 	// (e.g. a debug.log the build must not produce) — there, missing = desired.
 	PassOnMissing bool `yaml:"pass_on_missing,omitempty" json:"pass_on_missing,omitempty"`
-
 }
 
 // Context provides everything a rule evaluator needs.
 // No imports from pipeline package — rules never depend on pipeline.
 type Context struct {
-	// GateDir is the directory for the current gate's artifacts: .forge/gates/<gate-id>/
+	// GateDir is the directory for the current gate's artifacts: DataDir/gates/<gate-id>/
 	GateDir string
+
+	// GatesDir is the directory holding all gate subdirs (DataDir/gates/).
+	// Used by all_gates_passed to scan sibling gate statuses. Decoupled from
+	// ProjectRoot so rules need not depend on forgedata (caller fills it).
+	GatesDir string
 
 	// ProjectRoot is the root directory of the project.
 	ProjectRoot string

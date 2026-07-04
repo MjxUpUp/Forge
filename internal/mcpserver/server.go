@@ -25,7 +25,7 @@ var ToolDescriptions = map[string]string{
 	"forge_task_status":        "查看任务状态：当前 session 活跃任务或指定 ref。返回门禁进度（completed/next/current）、是否完成。",
 	"forge_task_gate":          "推进 task 级门禁（task-implement / task-verify / task-complete）。执行检查、记录结果、持久化 state。注意：不触发评分（评分用 forge task complete）。",
 	"forge_task_resume":        "接续真相源入口：拉回任务完整接续上下文（goal/plan/decisions/next_steps/blockers/findings/artifacts + 参与工具 + 门禁进度 + git 已改未提交）。新会话冷启动调用即秒级恢复，抗压缩丢失。默认把当前 session 锚定到 task（多向锚定记录参与方），no_attach=true 仅读取。",
-	"forge_task_decide":        "记录一条已确认决策到 task（持久化进 .forge/tasks/<ref>.json，跨会话/跨工具不再推翻）。接手方 resume 即知已决定什么。",
+	"forge_task_decide":        "记录一条已确认决策到 task（持久化进 ~/.forge/projects/<key>/tasks/<ref>.json（DataDir），跨会话/跨工具不再推翻）。接手方 resume 即知已决定什么。",
 	"forge_task_attach":        "把一个 session+工具锚定到 task（跨工具接续的多向锚定：pi 起、claude-code 接等）。任意接手方 resume 即知谁参与过、用什么工具。",
 	"forge_experience_search":  "搜索 task 派生的经验提案（~/.forge/projects/<key>/experience/proposed/）。按关键词/状态过滤。经验闭环的读端。",
 	"forge_experience_propose": "提议一条新经验（写入 proposed/，status=proposed 待审）。经验闭环的写端——把 loop 中发现的坑沉淀成可复用知识。",

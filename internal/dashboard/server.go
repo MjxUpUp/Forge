@@ -57,7 +57,7 @@ func (o Options) aggregate(now time.Time) (Data, error) {
 type Data struct {
 	Summary      health.Summary
 	Tasks        []TaskRow // 最近任务，最近在前，最多 20 条
-	ActiveTask   string    // 单项目：.forge/active-task-ref；全局：各项目 "项目:ref" 拼接
+	ActiveTask   string    // 单项目：DataDir/active-task-ref；全局：各项目 "项目:ref" 拼接
 	Charts       Charts
 	Now          time.Time
 	IsGlobal     bool // 全局视图（聚合多项目）——模板据此切标题/项目列
@@ -215,13 +215,10 @@ func isVolumeRoot(dir string) bool {
 	return dir == `/` || dir == `\`
 }
 
-// readActiveTask 读 .forge/active-task-ref，缺失/出错返回空串（非致命）。
+// readActiveTask 读 DataDir/active-task-ref（经 taskpipeline.ReadActiveTaskRef，
+// 已随 refactor-data-home 迁到用户级 DataDir），缺失/出错返回空串（非致命）。
 func readActiveTask(root string) string {
-	b, err := os.ReadFile(filepath.Join(root, `.forge`, `active-task-ref`))
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(b))
+	return taskpipeline.ReadActiveTaskRef(root, "")
 }
 
 // 折线 viewBox 常量（与 index.html 的 <svg viewBox> 对齐）。
@@ -370,7 +367,7 @@ type ContinuityBoard struct {
 	Complete   int            `json:"complete"`
 }
 
-// AggregateContinuity 从 .forge/tasks/ 读全部 TaskState 投影成看板卡片。进行中在前、
+// AggregateContinuity 从 DataDir/tasks/ 读全部 TaskState 投影成看板卡片。进行中在前、
 // 同状态按启动时间倒序——最近且未完成的任务排在最上，符合"看板聚焦在跑的工作"。
 // root 为空（全局模式未聚焦单项目）返空 board，不报错——接续看板聚焦单项目进行中工作。
 func AggregateContinuity(root string, now time.Time) (ContinuityBoard, error) {
@@ -586,7 +583,7 @@ func newMux(opts Options) *http.ServeMux {
 		board, err := AggregateContinuity(opts.Root, time.Now())
 		if err != nil {
 			log.Printf(`dashboard continuity %s: %v`, opts.Root, err)
-			http.Error(w, `聚合接续数据失败，请检查 .forge/tasks 完整性`, http.StatusInternalServerError)
+			http.Error(w, `聚合接续数据失败，请检查任务接续数据完整性`, http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set(`Content-Type`, `text/html; charset=utf-8`)

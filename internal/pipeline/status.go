@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
@@ -40,9 +41,11 @@ type CheckError struct {
 	Message string `json:"message"`
 }
 
-// SaveStatus writes status.json to the gate's output directory.
+// SaveStatus writes status.json to the gate's output directory under the
+// user-level DataDir (DataDir/gates/<gateID>/). Gates migrated from
+// project-level .forge/gates/ — see forgedata.DataDirFor (refactor-data-home).
 func SaveStatus(dir, gateID string, s *GateStatus) error {
-	gateDir := filepath.Join(dir, ".forge", "gates", gateID)
+	gateDir := filepath.Join(forgedata.DataDirFor(dir), "gates", gateID)
 	if err := os.MkdirAll(gateDir, 0755); err != nil {
 		return fmt.Errorf("failed to create gate dir: %w", err)
 	}
@@ -57,9 +60,9 @@ func SaveStatus(dir, gateID string, s *GateStatus) error {
 	return nil
 }
 
-// LoadStatus reads status.json from a gate directory.
+// LoadStatus reads status.json from a gate directory under the DataDir.
 func LoadStatus(dir, gateID string) (*GateStatus, error) {
-	path := filepath.Join(dir, ".forge", "gates", gateID, "status.json")
+	path := filepath.Join(forgedata.DataDirFor(dir), "gates", gateID, "status.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("status.json not found for gate %s: %w", gateID, err)

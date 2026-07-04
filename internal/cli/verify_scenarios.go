@@ -182,7 +182,9 @@ func runScenarioExperienceFlow(forgeBin string) ScenarioResult {
 	}
 
 	// Check task score exists
-	taskData, err := os.ReadFile(filepath.Join(dir, ".forge", "tasks", "EXP-1.json"))
+	// task state migrated to user-level DataDir (refactor-data-home);
+	// the forge subprocess writes tasks/EXP-1.json there for git projects.
+	taskData, err := os.ReadFile(filepath.Join(forgedata.DataDirFor(dir), "tasks", "EXP-1.json"))
 	if err != nil {
 		return failResult("experience-flow", fmt.Sprintf("task file missing: %v", err), start)
 	}

@@ -67,10 +67,7 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 		return nil
 	}
 
-	// 3. Ensure tasks directory exists
-	os.MkdirAll(filepath.Join(forgeDir, "tasks"), 0755)
-
-	// 4. Ensure protocol.yml exists (create from defaults if missing)
+	// 3. Ensure protocol.yml exists (create from defaults if missing)
 	proto, err := protocol.Load(dir)
 	if err != nil {
 		// protocol.yml missing — create from defaults using pipeline mode

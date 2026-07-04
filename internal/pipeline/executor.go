@@ -8,8 +8,13 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/rules"
 )
+
+// dataHome returns the runtime-state DataDir for root (gate dirs migrated here
+// from project-level <root>/.forge/gates/). See forgedata.DataDirFor.
+func dataHome(root string) string { return forgedata.DataDirFor(root) }
 
 // GateExecResult is the outcome of executing a single gate.
 type GateExecResult struct {
@@ -20,7 +25,7 @@ type GateExecResult struct {
 // ExecuteGate runs hooks + rule evaluation for a single gate.
 // This is the ONLY place gate execution happens — no duplication.
 func ExecuteGate(root string, gate *Gate, state *State, pipeline *Pipeline, force bool) (*GateExecResult, error) {
-	gateDir := filepath.Join(root, ".forge", "gates", gate.ID)
+	gateDir := filepath.Join(dataHome(root), "gates", gate.ID)
 	if err := os.MkdirAll(gateDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create gate dir: %w", err)
 	}
@@ -50,6 +55,7 @@ func ExecuteGate(root string, gate *Gate, state *State, pipeline *Pipeline, forc
 	}
 	ctx := rules.Context{
 		GateDir:        gateDir,
+		GatesDir:       filepath.Dir(gateDir),
 		ProjectRoot:    root,
 		GateID:         gate.ID,
 		EnabledGateIDs: enabledIDs,

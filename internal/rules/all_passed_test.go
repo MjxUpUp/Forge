@@ -22,6 +22,7 @@ func TestAllGatesPassed(t *testing.T) {
 	eval := &AllGatesPassedEvaluator{}
 	result := eval.Evaluate(Context{
 		GateDir:        gateDir,
+		GatesDir:       gatesDir,
 		ProjectRoot:    dir,
 		GateID:         "gate-8-release",
 		EnabledGateIDs: []string{"gate-1-prd", "gate-2-design", "gate-4-implement", "gate-8-release"},
@@ -48,6 +49,7 @@ func TestAllGatesPassedOneFailed(t *testing.T) {
 	eval := &AllGatesPassedEvaluator{}
 	result := eval.Evaluate(Context{
 		GateDir:        gateDir,
+		GatesDir:       gatesDir,
 		ProjectRoot:    dir,
 		GateID:         "gate-8-release",
 		EnabledGateIDs: []string{"gate-1-prd", "gate-4-implement", "gate-8-release"},
@@ -69,6 +71,7 @@ func TestAllGatesPassedNeverRun(t *testing.T) {
 	eval := &AllGatesPassedEvaluator{}
 	result := eval.Evaluate(Context{
 		GateDir:        gateDir,
+		GatesDir:       gatesDir,
 		ProjectRoot:    dir,
 		GateID:         "gate-8-release",
 		EnabledGateIDs: []string{"gate-1-prd", "gate-8-release"},
@@ -93,6 +96,7 @@ func TestAllGatesPassedCorruptedJSON(t *testing.T) {
 	eval := &AllGatesPassedEvaluator{}
 	result := eval.Evaluate(Context{
 		GateDir:        gateDir,
+		GatesDir:       gatesDir,
 		ProjectRoot:    dir,
 		GateID:         "gate-8-release",
 		EnabledGateIDs: []string{"gate-1-prd", "gate-8-release"},

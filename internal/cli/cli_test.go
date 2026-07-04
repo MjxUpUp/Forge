@@ -146,11 +146,9 @@ func TestInitCreatesFiles(t *testing.T) {
 		t.Fatalf(".forge/protocol.yml not found: %v", err)
 	}
 
-	// .forge/tasks/ directory exists
-	tasksDir := filepath.Join(tmpDir, ".forge", "tasks")
-	if info, err := os.Stat(tasksDir); err != nil || !info.IsDir() {
-		t.Fatalf(".forge/tasks/ directory not found: %v", err)
-	}
+	// NOTE: .forge/tasks/ is no longer created by init — task state migrated
+	// to the user-level DataDir (refactor-data-home), created on demand by
+	// SaveTaskState. Asserting it here would lock the old (wrong) semantics.
 
 	// .claude/skills/forge-quality/SKILL.md exists
 	qualitySkillFile := filepath.Join(tmpDir, ".claude", "skills", "forge-quality", "SKILL.md")
