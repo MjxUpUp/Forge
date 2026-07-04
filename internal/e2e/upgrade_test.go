@@ -157,6 +157,10 @@ func readJSON(t *testing.T, dir, name string, target interface{}) {
 func freshProject(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
+	// 把用户级 data home 重定向到 per-test temp dir：forge 子进程（init/hazard/hooks）
+	// 与本测试进程的 store 读取都按 FORGE_DATA_HOME 解析 DataDir，二者一致且不污染真实 ~/.forge。
+	// 未迁移的 store（state/checklog/...）仍写项目级 .forge/，不受影响。
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	git(t, dir, "init")
 	git(t, dir, "config", "user.email", "test@example.com")
 	git(t, dir, "config", "user.name", "Test")

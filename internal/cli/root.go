@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/MjxUpUp/Forge/internal/docsconsistency"
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/pipeline"
 	"github.com/MjxUpUp/Forge/internal/projectroot"
 	"github.com/spf13/cobra"
@@ -69,6 +70,13 @@ func Execute() {
 
 func findProjectRoot() (string, error) {
 	return projectroot.Find()
+}
+
+// findProject 解析 cwd → *forgedata.Project（三根：GitRoot/DataDir/ConfigDir）。
+// runtime-state store（checklog/hazard/experience/act/...）的 caller 用它取 *Project，
+// 走 DataDir；config reader（pipeline/protocol/hooks）续用 findProjectRoot() 走 ConfigDir。
+func findProject() (*forgedata.Project, error) {
+	return projectroot.FindProject()
 }
 
 func loadPipeline() (*pipeline.Pipeline, string, error) {

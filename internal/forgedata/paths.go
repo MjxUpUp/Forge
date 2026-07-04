@@ -6,9 +6,14 @@ import (
 	"path/filepath"
 )
 
-// Project 描述一个 forge 项目的"双根"身份：
-//   - DataDir  用户级数据 home = ~/.forge/projects/<key>/ （runtime state）
+// Project 描述一个 forge 项目的"三根"身份：
+//   - GitRoot   git working tree 根 = `git -C` 操作基准（GetHeadCommit/IsGitRepo/taskcontext.Detect 用）
+//   - DataDir   用户级数据 home = ~/.forge/projects/<key>/ （runtime state）
 //   - ConfigDir 项目级配置 = <cwd>/.forge/                （pipeline/protocol/CLAUDE.md/hooks）
+//
+// 三根必要性：DataDir 是 hash 派生的用户级路径，与 git working tree 物理位置无关；
+// git 操作（rev-parse/diff）必须用 GitRoot；ConfigDir 是 walk-up 找到的 .forge 父目录，
+// 通常等于 GitRoot 但不保证（.forge 可能在子目录）。三者独立携带，caller 按用途取。
 //
 // 双根决策（docs/plans/refactor-data-home.md §1.1）：runtime state 进用户级（state.json/tasks/
 // gates/checklog/toollog/act/sessions/quarantine/stamps/hazards/reviews/experience/
@@ -16,6 +21,7 @@ import (
 // CLAUDE.md/hooks/—— git tracked + user-editable + task-guard 豁免）。
 type Project struct {
 	Key       string // hash12 of .git common dir
+	GitRoot   string // git working tree root（git -C 操作基准）
 	DataDir   string // ~/.forge/projects/<key>/  (or FORGE_DATA_HOME override)
 	ConfigDir string // <cwd>/.forge/             (project-level config)
 }
@@ -55,6 +61,7 @@ func ProjectFor(cwd string) (*Project, error) {
 
 	return &Project{
 		Key:       key,
+		GitRoot:   gitRoot,
 		DataDir:   RootDir(key),
 		ConfigDir: configDir,
 	}, nil
@@ -137,6 +144,11 @@ func (p *Project) GateDir(gateID string) string { return filepath.Join(p.DataDir
 // GateStatusPath returns DataDir/gates/<id>/status.json
 func (p *Project) GateStatusPath(gateID string) string {
 	return filepath.Join(p.DataDir, "gates", gateID, "status.json")
+}
+
+// GateArtifactPath returns DataDir/gates/<id>/<out>（gate 运行产物，如 feishu 报告附件）
+func (p *Project) GateArtifactPath(gateID, out string) string {
+	return filepath.Join(p.DataDir, "gates", gateID, out)
 }
 
 // ExperienceDir
