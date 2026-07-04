@@ -33,7 +33,7 @@ const (
 
 var eventMu sync.Mutex
 
-// Event 记录一次 hazard-guard 事件，追加写 .forge/hazards/events.jsonl。
+// Event 记录一次 hazard-guard 事件，追加写 DataDir/hazards/events.jsonl。
 type Event struct {
 	Ts          time.Time `json:"ts"`
 	Type        string    `json:"type"`        // EventBlock/EventRelease/EventData

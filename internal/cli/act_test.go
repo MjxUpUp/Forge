@@ -11,7 +11,7 @@ import (
 )
 
 // TestAppendConclusion_WritesAndDirectives 钉住 task.go 的接线边界：appendConclusion
-// 必须把结论落盘到 .forge/act/conclusions.jsonl，且 Directive 反映证据强度。这是 act 包
+// 必须把结论落盘到 DataDir/act/conclusions.jsonl，且 Directive 反映证据强度。这是 act 包
 // 单测（BuildConclusion/Append 已全测）之外、TaskState→落盘 的胶水层覆盖。
 func TestAppendConclusion_WritesAndDirectives(t *testing.T) {
 	root, p := forgedatatest.RealProject(t)
@@ -27,7 +27,7 @@ func TestAppendConclusion_WritesAndDirectives(t *testing.T) {
 		t.Fatalf(`Latest: %v`, err)
 	}
 	if c == nil {
-		t.Fatal(`结论未落盘（appendConclusion 没写 .forge/act/conclusions.jsonl）`)
+		t.Fatal(`结论未落盘（appendConclusion 没写 DataDir/act/conclusions.jsonl）`)
 	}
 	if c.TaskRef != `feat/wire` {
 		t.Errorf(`TaskRef=%q want feat/wire`, c.TaskRef)

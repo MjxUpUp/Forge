@@ -846,7 +846,7 @@ func TestCompleteBlocksOnPendingMandatoryReview(t *testing.T) {
 	// 阻塞检查之后调用。
 	if proj, err := forgedata.ProjectFor(tmpDir); err == nil {
 		if c, _ := act.Latest(proj); c != nil {
-			t.Fatalf("阻塞的 complete 不该写结论，但 .forge/act/conclusions.jsonl 有记录: %+v", c)
+			t.Fatalf("阻塞的 complete 不该写结论，但 DataDir/act/conclusions.jsonl 有记录: %+v", c)
 		}
 	}
 

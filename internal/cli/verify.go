@@ -144,7 +144,7 @@ func runProjectTestsModeAt(root string) error {
 	}
 	// CurrentSessionID() — NOT "" — so the record is attributed to THIS
 	// session's active task via the session-scoped active-task-ref file. The
-	// empty-sessionID path reads the shared legacy .forge/active-task-ref,
+	// empty-sessionID path reads the shared legacy DataDir/active-task-ref,
 	// which can hold a stale ref from a prior session (e.g. leftover
 	// fix/concurrent-session-race) and would mis-attribute the evidence,
 	// hiding it from `forge trace <real-task>`. Matches review.go/task.go.

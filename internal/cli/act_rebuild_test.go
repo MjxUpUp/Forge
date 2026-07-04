@@ -12,7 +12,7 @@ import (
 )
 
 // TestActRebuild_RebuildsFromTasks 是 DevWorkbench 空 dashboard 数据 bug 的回归守卫：
-// 旧项目（act 上线前完成所有任务）没有 .forge/act/conclusions.jsonl——dashboard 只读
+// 旧项目（act 上线前完成所有任务）没有 DataDir/act/conclusions.jsonl——dashboard 只读
 // conclusions.jsonl 不读 tasks/*.json，故显示空。rebuild 必须从 tasks 重建结论。
 func TestActRebuild_RebuildsFromTasks(t *testing.T) {
 	tmpDir, p := forgedatatest.RealProject(t)

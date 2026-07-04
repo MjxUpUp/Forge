@@ -23,7 +23,7 @@ metadata:
 
 ## Forge 任务接续（结构化真相源，优先于 AI_CONTEXT.md）
 
-若项目用 forge，**优先把跨工具信息写进 forge task**（持久化进 `.forge/tasks/<ref>.json`），而非只写 AI_CONTEXT.md：
+若项目用 forge，**优先把跨工具信息写进 forge task**（持久化进 forge task；refactor-data-home 后 task 状态落用户级 DataDir `~/.forge/projects/<key>/`，不再在项目 `.forge/`），而非只写 AI_CONTEXT.md：
 
 - **开工前**：`forge task resume` 拉回结构化上下文（替代读 AI_CONTEXT.md 的 Decisions/Findings/Changes）。
 - **做了决策**：`forge task decide --content "..." --by [pi]`（替代追加 `## Decisions`）。

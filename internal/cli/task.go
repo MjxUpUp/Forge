@@ -358,7 +358,7 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	toolusage.Clear(root)
 
 	// Prune completed task state files older than the retention window, keeping
-	// .forge/tasks/ bounded. Same window as the log archives so a task's metadata
+	// DataDir/tasks/ bounded. Same window as the log archives so a task's metadata
 	// and its logs age out together. Best-effort: error here is non-fatal.
 	if days := util.RetentionDays("FORGE_LOG_RETENTION_DAYS", 30); days > 0 {
 		taskpipeline.PruneOldTasks(root, time.Now().AddDate(0, 0, -days))
@@ -432,7 +432,7 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 }
 
 // runTaskAbort removes a task without scoring it. It deletes the task state file
-// (.forge/tasks/<ref>.json) and clears the session-scoped active-task-ref when it
+// (DataDir/tasks/<ref>.json) and clears the session-scoped active-task-ref when it
 // points at the aborted task. This is the escape hatch for stuck or "ghost"
 // tasks that can never progress through the gates — e.g. a task started in a
 // non-git project, or one abandoned mid-flight. Unlike `task complete`, abort

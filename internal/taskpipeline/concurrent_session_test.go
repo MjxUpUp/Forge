@@ -9,7 +9,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-// saveIncompleteStateFor writes an incomplete TaskState to .forge/tasks/.
+// saveIncompleteStateFor writes an incomplete TaskState to DataDir/tasks/.
 func saveIncompleteStateFor(t *testing.T, dir, ref string) {
 	t.Helper()
 	s := &TaskState{TaskRef: ref, Branch: "feat/x", StartedAt: time.Now()}
