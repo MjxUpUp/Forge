@@ -2,8 +2,11 @@ package pipeline
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
 // fullYAML is a complete v2 pipeline with all fields populated.
@@ -87,6 +90,62 @@ func TestExecuteGatePass(t *testing.T) {
 	}
 	if result.Status.Gate != "gate-1-prd" {
 		t.Errorf("gate = %s, want gate-1-prd", result.Status.Gate)
+	}
+}
+
+// TestExecuteGate_DataDirGitProject verifies the data-home migration in a REAL
+// git project: ExecuteGate must write status.json and read artifacts from the
+// user-level DataDir (DataDir/gates/<id>/), NOT project-level .forge/gates/.
+//
+// Regression for C1: status.go SaveStatus once kept writing .forge/gates/ after
+// executor moved gateDir to DataDir/gates/, so all_gates_passed (reading
+// ctx.GatesDir = DataDir/gates) could not find status.json and FAILED in real
+// git projects. Every other TestExecuteGate* uses a bare t.TempDir() (non-git),
+// where DataDirFor falls back to <dir>/.forge — coinciding with the legacy path
+// and masking the divergence. This test forces the divergence by git-init'ing +
+// isolating FORGE_DATA_HOME.
+func TestExecuteGate_DataDirGitProject(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	dir := t.TempDir()
+	if err := exec.Command("git", "-C", dir, "init").Run(); err != nil {
+		t.Skipf("git unavailable: %v", err)
+	}
+	os.MkdirAll(filepath.Join(dir, ".forge"), 0755)
+	os.WriteFile(filepath.Join(dir, ".forge", "pipeline.yml"), []byte(fullYAML), 0644)
+
+	p, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	state := &State{PipelineVersion: "2.0", Mode: "medium"}
+	gate, _ := p.GetGate("gate-1-prd")
+
+	dataDir := forgedata.DataDirFor(dir)
+	// Mux: if DataDir did not diverge from <dir>/.forge the test cannot catch
+	// the C1 class of bug — fail loudly instead of silently passing.
+	if dataDir == filepath.Join(dir, ".forge") {
+		t.Fatalf("DataDir fell back to <dir>/.forge; git init did not make it diverge — test is moot")
+	}
+
+	// Seed the artifact where ExecuteGate now reads it (DataDir/gates/<id>/).
+	artifactDir := filepath.Join(dataDir, "gates", "gate-1-prd")
+	os.MkdirAll(artifactDir, 0755)
+	os.WriteFile(filepath.Join(artifactDir, "prd.md"), []byte("# PRD\n\n## Out of Scope\n- Nothing"), 0644)
+
+	result, err := ExecuteGate(dir, gate, state, p, false)
+	if err != nil {
+		t.Fatalf("ExecuteGate error: %v", err)
+	}
+	if !result.Status.Passed {
+		t.Fatalf("gate should pass (artifact in DataDir): %+v", result.Status.Errors)
+	}
+
+	// C1 regression asserts: status.json in DataDir, NOT in legacy .forge/gates/.
+	if _, err := os.Stat(filepath.Join(dataDir, "gates", "gate-1-prd", "status.json")); err != nil {
+		t.Errorf("status.json not written to DataDir/gates/<id>/: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".forge", "gates", "gate-1-prd", "status.json")); err == nil {
+		t.Error("status.json must NOT be written to legacy .forge/gates/ — SaveStatus must use DataDir")
 	}
 }
 

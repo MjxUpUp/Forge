@@ -284,7 +284,9 @@ func TestExperienceFlow(t *testing.T) {
 		CompletedAt interface{} `json:"completed_at"`
 	}
 	var ts taskState
-	readJSON(t, dir, ".forge/tasks/EXP-1.json", &ts)
+	// task state migrated to the user-level DataDir (refactor-data-home);
+	// read through DataDirFor so it matches what the forge subprocess wrote.
+	readJSON(t, forgedata.DataDirFor(dir), "tasks/EXP-1.json", &ts)
 	if ts.Score == nil {
 		t.Fatal("expected task to have a score after complete")
 	}
@@ -298,7 +300,7 @@ func TestExperienceFlow(t *testing.T) {
 		Score *scoreResult `json:"score"`
 	}
 	var tsFull taskStateFull
-	readJSON(t, dir, ".forge/tasks/EXP-1.json", &tsFull)
+	readJSON(t, forgedata.DataDirFor(dir), "tasks/EXP-1.json", &tsFull)
 
 	// experience store moved to the user-level DataDir: seed/verify must go through
 	// *Project so they land in the same DataDir the forge subprocess resolves
