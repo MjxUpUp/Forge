@@ -13,6 +13,8 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/act"
 	"github.com/MjxUpUp/Forge/internal/experience"
+	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 	"github.com/MjxUpUp/Forge/internal/hooks"
 )
 
@@ -277,7 +279,7 @@ func TestStatusJSON(t *testing.T) {
 // 主入口必须亮出证据盲区率/复发低分维度——防 deterministic 信号在 forge health 算了但
 // status（"项目在哪"主入口）看不到的可见性缺口。
 func TestStatusShowsHealthSignal(t *testing.T) {
-	tmpDir := t.TempDir()
+	tmpDir, p := forgedatatest.RealProject(t)
 	stdout, _, code := runForge(t, tmpDir, "init", "--mode", "medium")
 	if code != 0 {
 		t.Fatalf("forge init failed: %s", stdout)
@@ -289,7 +291,7 @@ func TestStatusShowsHealthSignal(t *testing.T) {
 		{TaskRef: `feat/b`, Grade: `D`, Strength: `Unverified`, Score: 60, LowDimensions: []string{`scope`}, RetrospectiveNudge: true, CompletedAt: time.Now()},
 	}
 	for i := range seed {
-		if err := act.Append(tmpDir, &seed[i]); err != nil {
+		if err := act.Append(p, &seed[i]); err != nil {
 			t.Fatalf("seed conclusion: %v", err)
 		}
 	}
@@ -648,6 +650,7 @@ func TestTaskScoreWorkflow(t *testing.T) {
 	defer os.Setenv("FORGE_WORK_ACTIVITY", origWorkActivity)
 
 	tmpDir := t.TempDir()
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	runGit(t, tmpDir, "init")
 	runGit(t, tmpDir, "config", "user.email", "test@test.com")
 	runGit(t, tmpDir, "config", "user.name", "Test")
@@ -755,6 +758,7 @@ func TestCompleteBlocksOnPendingMandatoryReview(t *testing.T) {
 	defer os.Setenv("FORGE_WORK_ACTIVITY", origWorkActivity)
 
 	tmpDir := t.TempDir()
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	runGit(t, tmpDir, "init")
 	runGit(t, tmpDir, "config", "user.email", "test@test.com")
 	runGit(t, tmpDir, "config", "user.name", "Test")
@@ -834,8 +838,10 @@ func TestCompleteBlocksOnPendingMandatoryReview(t *testing.T) {
 	// 回归（Act 反馈臂）：被 mandatory review 阻塞的 complete 绝不能写结论——否则
 	// operator 重跑 complete 会重复追加结论。appendConclusion 必须在 PendingMandatory
 	// 阻塞检查之后调用。
-	if c, _ := act.Latest(tmpDir); c != nil {
-		t.Fatalf("阻塞的 complete 不该写结论，但 .forge/act/conclusions.jsonl 有记录: %+v", c)
+	if proj, err := forgedata.ProjectFor(tmpDir); err == nil {
+		if c, _ := act.Latest(proj); c != nil {
+			t.Fatalf("阻塞的 complete 不该写结论，但 .forge/act/conclusions.jsonl 有记录: %+v", c)
+		}
 	}
 
 	// Resolve the review, then complete MUST succeed (active task ref survived

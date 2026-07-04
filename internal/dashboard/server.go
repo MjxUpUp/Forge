@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/act"
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/health"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
@@ -92,10 +93,18 @@ type Bar struct {
 }
 
 // Aggregate 从项目根读取并聚合看板数据。纯读，复用 act/health。now 用于渲染时间戳。
+//
+// root 经 forgedata.ProjectFor 解析到用户级 DataDir 后再读 act 结论。ProjectFor 失败
+// （非 git / 未 init）时 cs 保持 nil——空数据可正常渲染（TestAggregate_Empty 路径），
+// 不让看板在非 forge 目录上报错。
 func Aggregate(root string, now time.Time) (Data, error) {
-	cs, err := act.LoadAll(root)
-	if err != nil {
-		return Data{}, err
+	var cs []act.Conclusion
+	if proj, err := forgedata.ProjectFor(root); err == nil {
+		loaded, err := act.LoadAll(proj)
+		if err != nil {
+			return Data{}, err
+		}
+		cs = loaded
 	}
 	pn := projectName(root)
 	rows := make([]TaskRow, len(cs))
@@ -115,7 +124,11 @@ func AggregateGlobal(roots []string, now time.Time) (Data, error) {
 	var actives []string
 	valid := 0
 	for _, r := range roots {
-		cs, err := act.LoadAll(r)
+		proj, err := forgedata.ProjectFor(r)
+		if err != nil {
+			continue // 非 forge 项目（无 git/.forge）跳过——不致命
+		}
+		cs, err := act.LoadAll(proj)
 		if err != nil {
 			continue // 读失败（IO 级）不致命，跳过；注意文件不存在/行损坏 LoadAll 不报错，返空切片
 		}

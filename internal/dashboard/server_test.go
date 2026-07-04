@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/act"
+	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 	"github.com/MjxUpUp/Forge/internal/health"
 )
 
@@ -121,7 +122,7 @@ func TestScoreLine_Clamp(t *testing.T) {
 
 // TestAggregate_Populated 用真实 act.Append 写盘，再聚合——验证整条 LoadAll→Summarize→Charts 链路。
 func TestAggregate_Populated(t *testing.T) {
-	root := t.TempDir()
+	root, p := forgedatatest.RealProject(t)
 	base := time.Unix(1700000000, 0)
 	must := func(err error) {
 		t.Helper()
@@ -129,11 +130,11 @@ func TestAggregate_Populated(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	must(act.Append(root, &act.Conclusion{
+	must(act.Append(p, &act.Conclusion{
 		TaskRef: "feat/a", Score: 92, Grade: "A", Strength: "Strong",
 		Deterministic: 5, AgentClaim: 1, CompletedAt: base,
 	}))
-	must(act.Append(root, &act.Conclusion{
+	must(act.Append(p, &act.Conclusion{
 		TaskRef: "feat/b", Score: 55, Grade: "F", Strength: "Weak",
 		Deterministic: 0, AgentClaim: 3, RetrospectiveNudge: true,
 		CompletedAt: base.Add(time.Hour),
@@ -191,13 +192,13 @@ func TestAggregate_Empty(t *testing.T) {
 // TestRenderPage 渲染输出含关键标记（标题、≥2 样本时的折线、最近任务行）。
 // 用 2 条结论让 ScoreLine 长度 ≥2，polyline 才会 emit——单点不画线（见 SingleSample）。
 func TestRenderPage(t *testing.T) {
-	root := t.TempDir()
+	root, p := forgedatatest.RealProject(t)
 	base := time.Now()
 	for _, c := range []act.Conclusion{
 		{TaskRef: "feat/a", Score: 80, Grade: "B", Strength: "Strong", CompletedAt: base},
 		{TaskRef: "feat/b", Score: 70, Grade: "C", Strength: "Weak", CompletedAt: base.Add(time.Hour)},
 	} {
-		if err := act.Append(root, &c); err != nil {
+		if err := act.Append(p, &c); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -220,8 +221,8 @@ func TestRenderPage(t *testing.T) {
 // TestRenderPage_SingleSample 仅 1 个任务时不画 polyline（SVG 需 ≥2 点才可见），
 // 改为显示"仅 1 个样本"提示——防新用户看到孤立圆点以为渲染坏了。
 func TestRenderPage_SingleSample(t *testing.T) {
-	root := t.TempDir()
-	if err := act.Append(root, &act.Conclusion{
+	root, p := forgedatatest.RealProject(t)
+	if err := act.Append(p, &act.Conclusion{
 		TaskRef: "feat/solo", Score: 80, Grade: "B", Strength: "Strong", CompletedAt: time.Now(),
 	}); err != nil {
 		t.Fatal(err)
@@ -414,8 +415,8 @@ func TestSecureHeaders(t *testing.T) {
 // TestServe_JSONNoSessionID /api/data.json 必须不含 SessionID——即便 Conclusion 里有，
 // toPublic 投影剥掉它。结论里塞个含 "session" 字样的 SessionID 值，验证 JSON 端点不泄露。
 func TestServe_JSONNoSessionID(t *testing.T) {
-	root := t.TempDir()
-	if err := act.Append(root, &act.Conclusion{
+	root, p := forgedatatest.RealProject(t)
+	if err := act.Append(p, &act.Conclusion{
 		TaskRef:   `feat/a`,
 		SessionID: `secret-session-xyz`, // 值本身含 session 字样，泄露则测试红
 		Score:     90, Grade: `A`, Strength: `Strong`, CompletedAt: time.Now(),
@@ -461,8 +462,8 @@ func TestServe_Favicon(t *testing.T) {
 
 // TestAggregateGlobal_MergesProjects 跨两项目聚合：结论合并、各带项目名、Summary 跨项目统计。
 func TestAggregateGlobal_MergesProjects(t *testing.T) {
-	rootA := t.TempDir()
-	rootB := t.TempDir()
+	rootA, pA := forgedatatest.RealProject(t)
+	rootB, pB := forgedatatest.RealProject(t)
 	base := time.Unix(1700000000, 0)
 	must := func(err error) {
 		t.Helper()
@@ -470,10 +471,10 @@ func TestAggregateGlobal_MergesProjects(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	must(act.Append(rootA, &act.Conclusion{
+	must(act.Append(pA, &act.Conclusion{
 		TaskRef: "feat/a1", Score: 80, Grade: "B", Strength: "Strong", CompletedAt: base,
 	}))
-	must(act.Append(rootB, &act.Conclusion{
+	must(act.Append(pB, &act.Conclusion{
 		TaskRef: "feat/b1", Score: 60, Grade: "D", Strength: "Weak", CompletedAt: base.Add(time.Hour),
 	}))
 
@@ -507,8 +508,8 @@ func TestAggregateGlobal_MergesProjects(t *testing.T) {
 // 回归：rootA 任务时间更晚但排在 roots 前面——不排序会让折线按 [A(晚), B(早)] 画，时间倒序，
 // 违背"全局质量随时间走势"的看板核心诉求。单项目测试因 LoadAll 本就 chronological 踩不到此 bug。
 func TestAggregateGlobal_ScoreLineChronological(t *testing.T) {
-	rootA := t.TempDir()
-	rootB := t.TempDir()
+	rootA, pA := forgedatatest.RealProject(t)
+	rootB, pB := forgedatatest.RealProject(t)
 	base := time.Unix(1700000000, 0)
 	must := func(err error) {
 		t.Helper()
@@ -518,10 +519,10 @@ func TestAggregateGlobal_ScoreLineChronological(t *testing.T) {
 	}
 	// rootA：时间更晚（base+2h）、高分（90）；rootB：更早（base）、低分（30）。
 	// roots=[rootA, rootB]：append 顺序与时间顺序相反，专门撞未排序的 bug。
-	must(act.Append(rootA, &act.Conclusion{
+	must(act.Append(pA, &act.Conclusion{
 		TaskRef: "feat/a1", Score: 90, Grade: "A", Strength: "Strong", CompletedAt: base.Add(2 * time.Hour),
 	}))
-	must(act.Append(rootB, &act.Conclusion{
+	must(act.Append(pB, &act.Conclusion{
 		TaskRef: "feat/b1", Score: 30, Grade: "F", Strength: "Weak", CompletedAt: base,
 	}))
 	d, err := AggregateGlobal([]string{rootA, rootB}, base.Add(3*time.Hour))
@@ -545,9 +546,9 @@ func TestAggregateGlobal_ScoreLineChronological(t *testing.T) {
 
 // TestAggregateGlobal_SkipsBadRoot 某项目无结论（无 .forge/act）不致命，其余照常聚合。
 func TestAggregateGlobal_SkipsBadRoot(t *testing.T) {
-	good := t.TempDir()
+	good, pGood := forgedatatest.RealProject(t)
 	bad := t.TempDir() // 无 act 结论
-	if err := act.Append(good, &act.Conclusion{
+	if err := act.Append(pGood, &act.Conclusion{
 		TaskRef: "feat/x", Score: 90, Grade: "A", Strength: "Strong", CompletedAt: time.Now(),
 	}); err != nil {
 		t.Fatal(err)
@@ -566,14 +567,14 @@ func TestAggregateGlobal_SkipsBadRoot(t *testing.T) {
 
 // TestRenderPage_Global 全局视图渲染含"全局"标题、项目计数、项目列表头。
 func TestRenderPage_Global(t *testing.T) {
-	rootA := t.TempDir()
-	rootB := t.TempDir()
-	if err := act.Append(rootA, &act.Conclusion{
+	rootA, pA := forgedatatest.RealProject(t)
+	rootB, pB := forgedatatest.RealProject(t)
+	if err := act.Append(pA, &act.Conclusion{
 		TaskRef: "feat/a", Score: 80, Grade: "B", Strength: "Strong", CompletedAt: time.Now(),
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := act.Append(rootB, &act.Conclusion{
+	if err := act.Append(pB, &act.Conclusion{
 		TaskRef: "feat/b", Score: 70, Grade: "C", Strength: "Weak", CompletedAt: time.Now().Add(time.Hour),
 	}); err != nil {
 		t.Fatal(err)
@@ -596,8 +597,8 @@ func TestRenderPage_Global(t *testing.T) {
 
 // TestRenderPage_SingleProjectNoProjectColumn 单项目视图不应有项目列（避免冗余）。
 func TestRenderPage_SingleProjectNoProjectColumn(t *testing.T) {
-	root := t.TempDir()
-	if err := act.Append(root, &act.Conclusion{
+	root, p := forgedatatest.RealProject(t)
+	if err := act.Append(p, &act.Conclusion{
 		TaskRef: "feat/a", Score: 80, Grade: "B", Strength: "Strong", CompletedAt: time.Now(),
 	}); err != nil {
 		t.Fatal(err)

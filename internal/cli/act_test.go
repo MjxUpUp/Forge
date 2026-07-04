@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/act"
+	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
@@ -13,7 +14,7 @@ import (
 // 必须把结论落盘到 .forge/act/conclusions.jsonl，且 Directive 反映证据强度。这是 act 包
 // 单测（BuildConclusion/Append 已全测）之外、TaskState→落盘 的胶水层覆盖。
 func TestAppendConclusion_WritesAndDirectives(t *testing.T) {
-	root := t.TempDir()
+	root, p := forgedatatest.RealProject(t)
 
 	// 裸 state：无验收、无评分、无证据 → NoData 强度 → 不 nudge → Directive 空。结论仍应落盘。
 	state := &taskpipeline.TaskState{TaskRef: `feat/wire`, SessionID: `sess-wire`}
@@ -21,7 +22,7 @@ func TestAppendConclusion_WritesAndDirectives(t *testing.T) {
 	if d != `` {
 		t.Errorf(`bare state Directive=%q want 空（NoData 不 nudge）`, d)
 	}
-	c, err := act.Latest(root)
+	c, err := act.Latest(p)
 	if err != nil {
 		t.Fatalf(`Latest: %v`, err)
 	}
@@ -37,7 +38,7 @@ func TestAppendConclusion_WritesAndDirectives(t *testing.T) {
 }
 
 func TestAppendConclusion_AcceptanceCounted(t *testing.T) {
-	root := t.TempDir()
+	root, p := forgedatatest.RealProject(t)
 	// 验收 1/2 通过：接线应把 pass/total 准确传给结论（防漏传字段静默归零）。
 	state := &taskpipeline.TaskState{
 		TaskRef: `feat/acc`,
@@ -47,7 +48,7 @@ func TestAppendConclusion_AcceptanceCounted(t *testing.T) {
 		},
 	}
 	appendConclusion(root, state)
-	c, err := act.Latest(root)
+	c, err := act.Latest(p)
 	if err != nil || c == nil {
 		t.Fatalf(`Latest: %v / nil`, err)
 	}
@@ -62,7 +63,7 @@ func TestAppendConclusion_AcceptanceCounted(t *testing.T) {
 // 打印一次（易被后续工作淹没）。
 func TestActNudge(t *testing.T) {
 	t.Run(`nudge_present_prints_directive`, func(t *testing.T) {
-		tmpDir := t.TempDir()
+		tmpDir, p := forgedatatest.RealProject(t)
 		if out, _, code := runForge(t, tmpDir, `init`, `--mode`, `medium`); code != 0 {
 			t.Fatalf(`init: %s`, out)
 		}
@@ -71,7 +72,7 @@ func TestActNudge(t *testing.T) {
 			TaskRef: `feat/blind`, Grade: `A`, Strength: `Unverified`, Score: 95,
 			RetrospectiveNudge: true, CompletedAt: time.Now(),
 		}
-		if err := act.Append(tmpDir, &c); err != nil {
+		if err := act.Append(p, &c); err != nil {
 			t.Fatalf(`seed conclusion: %v`, err)
 		}
 		out, _, code := runForge(t, tmpDir, `act`, `nudge`)
@@ -85,14 +86,14 @@ func TestActNudge(t *testing.T) {
 	})
 
 	t.Run(`clean_strong_silent`, func(t *testing.T) {
-		tmpDir := t.TempDir()
+		tmpDir, p := forgedatatest.RealProject(t)
 		runForge(t, tmpDir, `init`, `--mode`, `medium`)
 		// Strong + 高分 + 无低分维度 = 干净完成 → Directive 空 → 静默（不发噪声）。
 		c := act.Conclusion{
 			TaskRef: `feat/clean`, Grade: `A`, Strength: `Strong`, Score: 95,
 			RetrospectiveNudge: false, CompletedAt: time.Now(),
 		}
-		if err := act.Append(tmpDir, &c); err != nil {
+		if err := act.Append(p, &c); err != nil {
 			t.Fatalf(`seed: %v`, err)
 		}
 		out, _, code := runForge(t, tmpDir, `act`, `nudge`)
@@ -105,7 +106,7 @@ func TestActNudge(t *testing.T) {
 	})
 
 	t.Run(`no_conclusions_silent`, func(t *testing.T) {
-		tmpDir := t.TempDir()
+		tmpDir, _ := forgedatatest.RealProject(t)
 		runForge(t, tmpDir, `init`, `--mode`, `medium`)
 		// 尚无完成结论：合法空状态，静默（非错误）——与 act show 的"尚无结论"提示区分。
 		out, _, code := runForge(t, tmpDir, `act`, `nudge`)

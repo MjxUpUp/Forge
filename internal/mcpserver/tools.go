@@ -11,6 +11,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/act"
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/experience"
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/health"
 	"github.com/MjxUpUp/Forge/internal/knowledge"
 	"github.com/MjxUpUp/Forge/internal/pipeline"
@@ -709,8 +710,12 @@ type actQueryOutput struct {
 }
 
 func actQueryCore(root string, in actQueryInput) (actQueryOutput, error) {
+	proj, err := forgedata.ProjectFor(root)
+	if err != nil {
+		return actQueryOutput{}, fmt.Errorf("resolve project: %w", err)
+	}
 	if in.Ref != "" {
-		cs, err := act.LoadAll(root)
+		cs, err := act.LoadAll(proj)
 		if err != nil {
 			return actQueryOutput{}, fmt.Errorf("load conclusions: %w", err)
 		}
@@ -725,7 +730,7 @@ func actQueryCore(root string, in actQueryInput) (actQueryOutput, error) {
 		}
 		return actQueryOutput{Conclusion: *found, Directive: found.Directive()}, nil
 	}
-	c, err := act.Latest(root)
+	c, err := act.Latest(proj)
 	if err != nil {
 		return actQueryOutput{}, fmt.Errorf("load latest conclusion: %w", err)
 	}
@@ -748,7 +753,11 @@ type healthQueryInput struct {
 type healthQueryOutput = health.Summary
 
 func healthQueryCore(root string, _ healthQueryInput) (healthQueryOutput, error) {
-	cs, err := act.LoadAll(root)
+	proj, err := forgedata.ProjectFor(root)
+	if err != nil {
+		return healthQueryOutput{}, nil // 非 forge 项目：合法空状态，返零值 Summary（total=0）
+	}
+	cs, err := act.LoadAll(proj)
 	if err != nil {
 		return healthQueryOutput{}, fmt.Errorf("load conclusions: %w", err)
 	}

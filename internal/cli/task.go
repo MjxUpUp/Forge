@@ -11,6 +11,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/act"
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/experience"
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/scoring"
 	"github.com/MjxUpUp/Forge/internal/taskcontext"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
@@ -1264,7 +1265,12 @@ func appendConclusion(root string, state *taskpipeline.TaskState) string {
 		completedAt = *state.CompletedAt
 	}
 	conc := act.BuildConclusion(state.TaskRef, state.SessionID, state.Score, ec, pass, total, completedAt)
-	if err := act.Append(root, &conc); err != nil {
+	proj, perr := forgedata.ProjectFor(root)
+	if perr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: act conclusion append skipped (project not resolved): %v\n", perr)
+		return conc.Directive()
+	}
+	if err := act.Append(proj, &conc); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: act conclusion append failed: %v\n", err)
 	}
 	return conc.Directive()
