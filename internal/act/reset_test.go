@@ -2,15 +2,16 @@ package act
 
 import (
 	"os"
-	"path/filepath"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 )
 
 // TestResetForRebuild_NoFile 验证旧项目本就没有 conclusions.jsonl 的合法情形：
 // 不报错、返空备份路径（rebuild 命令据此决定是否打印"已备份"）。
 func TestResetForRebuild_NoFile(t *testing.T) {
-	dir := t.TempDir()
-	backup, err := ResetForRebuild(dir)
+	p := forgedatatest.ForDataDir(t.TempDir())
+	backup, err := ResetForRebuild(p)
 	if err != nil {
 		t.Fatalf("ResetForRebuild no-file: %v", err)
 	}
@@ -22,16 +23,16 @@ func TestResetForRebuild_NoFile(t *testing.T) {
 // TestResetForRebuild_BackupClear 验证核心契约：有现有文件时备份到 .bak 且原位清空
 // （os.Rename 既备份又腾位，Append 随后在原位重建）。备份内容须等于原内容。
 func TestResetForRebuild_BackupClear(t *testing.T) {
-	dir := t.TempDir()
-	orig := filePath(dir)
-	if err := os.MkdirAll(filepath.Dir(orig), 0755); err != nil {
+	p := forgedatatest.ForDataDir(t.TempDir())
+	orig := p.ActConclusionsPath()
+	if err := os.MkdirAll(p.ActDir(), 0755); err != nil {
 		t.Fatal(err)
 	}
 	old := []byte("{\"task\":\"x\"}\n")
 	if err := os.WriteFile(orig, old, 0644); err != nil {
 		t.Fatal(err)
 	}
-	backup, err := ResetForRebuild(dir)
+	backup, err := ResetForRebuild(p)
 	if err != nil {
 		t.Fatalf("ResetForRebuild: %v", err)
 	}
@@ -54,21 +55,21 @@ func TestResetForRebuild_BackupClear(t *testing.T) {
 // TestResetForRebuild_IdempotentOverwrites 验证幂等安全：再次 reset 时 .bak 被最新内容覆盖
 // （rebuild 可重复跑，不会因残留 .bak 报错或留住过时备份）。
 func TestResetForRebuild_IdempotentOverwrites(t *testing.T) {
-	dir := t.TempDir()
-	orig := filePath(dir)
-	if err := os.MkdirAll(filepath.Dir(orig), 0755); err != nil {
+	p := forgedatatest.ForDataDir(t.TempDir())
+	orig := p.ActConclusionsPath()
+	if err := os.MkdirAll(p.ActDir(), 0755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(orig, []byte("v1\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ResetForRebuild(dir); err != nil {
+	if _, err := ResetForRebuild(p); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(orig, []byte("v2\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	backup, err := ResetForRebuild(dir)
+	backup, err := ResetForRebuild(p)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,6 +10,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/act"
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 	"github.com/MjxUpUp/Forge/internal/skillseval"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
@@ -183,14 +184,14 @@ func TestTraceQuery_AggregatesEventsAndTokens(t *testing.T) {
 // TestActQuery_LatestAndByRef：act_query 读最新结论 + 按 ref 定位 + Directive 带回。
 // 守护 Act 反馈臂的 MCP 读端——agent 据证据强度决定是否复核完成声明。
 func TestActQuery_LatestAndByRef(t *testing.T) {
-	root := t.TempDir()
+	root, p := forgedatatest.RealProject(t)
 	// 两个结论：feat/a 早、feat/b 晚（Latest 应取 feat/b）。feat/b 标 Unverified→nudge→Directive 非空。
 	concs := []act.Conclusion{
 		{TaskRef: "feat/a", Grade: "A", Strength: "Strong", Score: 95, CompletedAt: time.Now().Add(-time.Hour)},
 		{TaskRef: "feat/b", Grade: "A", Strength: "Unverified", Score: 95, RetrospectiveNudge: true, CompletedAt: time.Now()},
 	}
 	for i := range concs {
-		if err := act.Append(root, &concs[i]); err != nil {
+		if err := act.Append(p, &concs[i]); err != nil {
 			t.Fatalf("Append: %v", err)
 		}
 	}
@@ -230,7 +231,9 @@ func TestActQuery_LatestAndByRef(t *testing.T) {
 
 // TestActQuery_NoConclusions：无结论时报错（提示 complete 产出），不返回零值误导。
 func TestActQuery_NoConclusions(t *testing.T) {
-	root := t.TempDir()
+	// RealProject（git + .forge）但不写 conclusions：覆盖"forge 项目 + 无结论"真路径
+	// （ProjectFor 成功 → Latest 返 nil → 报错）。裸 t.TempDir() 只命中 ProjectFor 失败分支。
+	root, _ := forgedatatest.RealProject(t)
 	if _, err := actQueryCore(root, actQueryInput{}); err == nil {
 		t.Error("无结论应报错（agent 据此知尚无完成）")
 	}
@@ -239,13 +242,13 @@ func TestActQuery_NoConclusions(t *testing.T) {
 // TestHealthQuery_Aggregates：health_query 把结论上卷成项目趋势（盲区率/复发低分维度）。
 // 守护 task→project 粒度联动的 MCP 读端。
 func TestHealthQuery_Aggregates(t *testing.T) {
-	root := t.TempDir()
+	root, p := forgedatatest.RealProject(t)
 	concs := []act.Conclusion{
 		{TaskRef: "feat/a", Grade: "A", Strength: "Strong", Score: 95, LowDimensions: []string{"scope"}, CompletedAt: time.Now().Add(-time.Hour)},
 		{TaskRef: "feat/b", Grade: "D", Strength: "Unverified", Score: 60, LowDimensions: []string{"scope"}, RetrospectiveNudge: true, CompletedAt: time.Now()},
 	}
 	for i := range concs {
-		if err := act.Append(root, &concs[i]); err != nil {
+		if err := act.Append(p, &concs[i]); err != nil {
 			t.Fatalf("Append: %v", err)
 		}
 	}
@@ -270,7 +273,10 @@ func TestHealthQuery_Aggregates(t *testing.T) {
 // TestHealthQuery_NoConclusions：无结论时返回零值 Summary（total=0），不报错——
 // 与 act_query 区分：项目级"暂无数据"是合法状态。
 func TestHealthQuery_NoConclusions(t *testing.T) {
-	out, err := healthQueryCore(t.TempDir(), healthQueryInput{})
+	// RealProject（git + .forge）但不写 conclusions：覆盖"forge 项目 + 无结论"真路径
+	// （ProjectFor 成功 → LoadAll 返空 → Summarize(空)→零值）。裸 t.TempDir() 只命中 ProjectFor 失败分支。
+	root, _ := forgedatatest.RealProject(t)
+	out, err := healthQueryCore(root, healthQueryInput{})
 	if err != nil {
 		t.Fatalf("无结论不应报错（合法空状态）: %v", err)
 	}

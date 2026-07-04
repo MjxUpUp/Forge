@@ -7,6 +7,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/act"
 	"github.com/MjxUpUp/Forge/internal/agentbridge"
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/health"
 	"github.com/MjxUpUp/Forge/internal/pipeline"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
@@ -57,9 +58,13 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	// 否则 deterministic 信号在 forge health 里算好了，但用户在 status（"项目在哪"主入口）
 	// 看不到——可见性缺口。conclusions 为空时省略（项目还没完成任务）。
 	var hs *health.Summary
-	if cs, err := act.LoadAll(root); err == nil && len(cs) > 0 {
-		s := health.Summarize(cs)
-		hs = &s
+	// root 已由 loadPipeline() 解析（含 .forge 的目录）；直接 ProjectFor(root) 算 key+DataDir，
+	// 不再 findProject()（会重新 walk-up cwd，与 loadPipeline 重复一次）。
+	if proj, err := forgedata.ProjectFor(root); err == nil {
+		if cs, err := act.LoadAll(proj); err == nil && len(cs) > 0 {
+			s := health.Summarize(cs)
+			hs = &s
+		}
 	}
 
 	if asJSON {

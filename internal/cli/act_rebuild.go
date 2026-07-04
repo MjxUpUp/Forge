@@ -15,7 +15,8 @@ func init() {
 var actRebuildCmd = &cobra.Command{
 	Use:   "rebuild",
 	Short: "从 tasks/*.json 重建 conclusions.jsonl（迁移 act 上线前的旧任务）",
-	Long: `forge act rebuild 从已完成任务的 TaskState（.forge/tasks/*.json）重建 .forge/act/conclusions.jsonl。
+	Long: `forge act rebuild 从已完成任务的 TaskState（.forge/tasks/*.json，项目级）重建
+conclusions.jsonl（写入用户级 ~/.forge/projects/<项目key>/act/）。
 
 背景：act 结论落盘是后加功能，act 上线前完成的任务没有 conclusions.jsonl，导致 forge
 dashboard / act list 对旧项目显示空——dashboard 只读 conclusions.jsonl，不读 tasks/*.json。
@@ -37,11 +38,15 @@ func runActRebuild(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	proj, err := findProject()
+	if err != nil {
+		return err
+	}
 	states, err := taskpipeline.ListTaskStates(root)
 	if err != nil {
 		return err
 	}
-	backup, err := act.ResetForRebuild(root)
+	backup, err := act.ResetForRebuild(proj)
 	if err != nil {
 		return err
 	}
@@ -56,7 +61,7 @@ func runActRebuild(cmd *cobra.Command, args []string) error {
 	if backup != "" {
 		fmt.Printf("已备份原 conclusions.jsonl → %s\n", backup)
 	}
-	fmt.Printf("重建 %d 条结论 → .forge/act/conclusions.jsonl（已完成任务 %d 个，跳过 %d 个未评分）\n",
+	fmt.Printf("重建 %d 条结论 → ~/.forge/projects/<项目key>/act/conclusions.jsonl（已完成任务 %d 个，跳过 %d 个未评分）\n",
 		n, len(states), len(states)-n)
 	fmt.Println("运行 forge dashboard 或 forge act list 查看数据。")
 	return nil

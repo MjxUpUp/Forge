@@ -2,12 +2,12 @@ package act
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 )
 
@@ -173,7 +173,7 @@ func TestDirective(t *testing.T) {
 }
 
 func TestAppendLoadAll_RoundTrip(t *testing.T) {
-	root := t.TempDir()
+	root := forgedatatest.ForDataDir(t.TempDir())
 
 	c1 := BuildConclusion(`feat/a`, `s1`, score(95, `A`), ec(3, 1), 2, 2, fixedTime)
 	c2 := BuildConclusion(`feat/b`, `s2`, score(60, `D`), ec(0, 2), 0, 3, fixedTime.Add(time.Hour))
@@ -207,10 +207,10 @@ func TestAppendLoadAll_RoundTrip(t *testing.T) {
 }
 
 func TestLoadAll_MalformedLineSkipped(t *testing.T) {
-	root := t.TempDir()
+	root := forgedatatest.ForDataDir(t.TempDir())
 	// 手工写一行坏 JSON + 一行好的，验证坏行被跳过而非整体失败。
-	path := filePath(root)
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+	path := root.ActConclusionsPath()
+	if err := os.MkdirAll(root.ActDir(), 0755); err != nil {
 		t.Fatal(err)
 	}
 	content := []byte("{not json}\n" +
@@ -231,9 +231,9 @@ func TestLoadAll_MalformedLineSkipped(t *testing.T) {
 // bufio.Scanner 会 ErrTooLong 让整条聚合失败；改 bufio.Reader 后超大行被读入、Unmarshal
 // 失败跳过，正常行照常返回——dashboard/health 不再因单行异常变 500。
 func TestLoadAll_LongLineSkipped(t *testing.T) {
-	root := t.TempDir()
-	path := filePath(root)
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+	root := forgedatatest.ForDataDir(t.TempDir())
+	path := root.ActConclusionsPath()
+	if err := os.MkdirAll(root.ActDir(), 0755); err != nil {
 		t.Fatal(err)
 	}
 	garbage := make([]byte, 2*1024*1024)
@@ -261,14 +261,14 @@ func TestLoadAll_LongLineSkipped(t *testing.T) {
 }
 
 func TestLoadAll_AbsentFileReturnsNil(t *testing.T) {
-	got, err := LoadAll(t.TempDir())
+	got, err := LoadAll(forgedatatest.ForDataDir(t.TempDir()))
 	if err != nil {
 		t.Fatalf(`缺失文件应 nil,nil，got err %v`, err)
 	}
 	if got != nil {
 		t.Errorf(`缺失文件应 nil，got %+v`, got)
 	}
-	latest, err := Latest(t.TempDir())
+	latest, err := Latest(forgedatatest.ForDataDir(t.TempDir()))
 	if err != nil {
 		t.Fatalf(`Latest 缺失文件应 nil,nil，got err %v`, err)
 	}

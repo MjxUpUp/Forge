@@ -12,22 +12,17 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 )
 
 var mu sync.Mutex
-
-// filePath returns the act log path relative to project root.
-func filePath(root string) string {
-	return filepath.Join(root, ".forge", "act", "conclusions.jsonl")
-}
 
 // Conclusion 是一个完成任务的可追溯结论——score + 证据强度 + 验收通过率 + 低分维度。
 // 全字段从 deterministic 来源聚合（评分/checklog/TaskState），供 session-retrospective
@@ -86,20 +81,19 @@ func BuildConclusion(
 	return c
 }
 
-// Append 把一条结论追加到 .forge/act/conclusions.jsonl（append-only，线程安全）。
+// Append 把一条结论追加到 p.ActConclusionsPath()（append-only，线程安全）。
 // 与 checklog 同构：JSONL，每行一条，跨任务累积（不在 task start 清空——结论是历史沉淀）。
-func Append(root string, c *Conclusion) error {
+func Append(p *forgedata.Project, c *Conclusion) error {
 	mu.Lock()
 	defer mu.Unlock()
 
 	if c.CompletedAt.IsZero() {
 		c.CompletedAt = time.Now()
 	}
-	dir := filepath.Dir(filePath(root))
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(p.ActDir(), 0755); err != nil {
 		return err
 	}
-	f, err := os.OpenFile(filePath(root), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(p.ActConclusionsPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
@@ -115,8 +109,8 @@ func Append(root string, c *Conclusion) error {
 // LoadAll reads all conclusions in chronological order. Returns nil if absent.
 // 用 bufio.Reader 逐行读（无 Scanner 的 1MB 单行上限）：单行损坏或异常超大只跳过该行，
 // 不让整条聚合失败——dashboard/status/health 都消费它，单行异常不应让全表变 500。
-func LoadAll(root string) ([]Conclusion, error) {
-	f, err := os.Open(filePath(root))
+func LoadAll(p *forgedata.Project) ([]Conclusion, error) {
+	f, err := os.Open(p.ActConclusionsPath())
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -151,8 +145,8 @@ func LoadAll(root string) ([]Conclusion, error) {
 }
 
 // Latest returns the most recent conclusion, or nil if none.
-func Latest(root string) (*Conclusion, error) {
-	cs, err := LoadAll(root)
+func Latest(p *forgedata.Project) (*Conclusion, error) {
+	cs, err := LoadAll(p)
 	if err != nil {
 		return nil, err
 	}
