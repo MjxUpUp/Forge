@@ -2,6 +2,7 @@ package cli
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
@@ -611,5 +612,26 @@ func createTestArchive(t *testing.T, archivePath string, binaryContent []byte) {
 	}
 	if _, err := tw.Write(binaryContent); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestPrintPluginReinstallGuidance：--plugin flag 触发的 plugin 重装指引输出
+// 应含全部四个 agent 平台命令，让用户可一键复制。钉死未来误删。
+func TestPrintPluginReinstallGuidance(t *testing.T) {
+	buf := &bytes.Buffer{}
+	printPluginReinstallGuidance(buf)
+	out := buf.String()
+	wantSubstr := []string{
+		`Claude Code`,
+		`Cursor`,
+		`Codex`,
+		`Copilot CLI`,
+		`plugin uninstall`,
+		`plugin install`,
+	}
+	for _, w := range wantSubstr {
+		if !strings.Contains(out, w) {
+			t.Errorf(`指引输出缺 %q：\n%s`, w, out)
+		}
 	}
 }

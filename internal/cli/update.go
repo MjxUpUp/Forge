@@ -21,7 +21,23 @@ import (
 )
 
 func init() {
+	updateCmd.Flags().BoolVar(&updatePluginFlag, "plugin", false, "更新 binary 后打印 plugin marketplace 重装指引（不脚本化，agent CLI 内交互运行）")
 	rootCmd.AddCommand(updateCmd)
+}
+
+// updatePluginFlag --plugin flag：因 plugin marketplace 重装需在 agent CLI 内交互
+// 跑（不可脚本化），更新 binary 后打印一键卸载/重装命令。
+var updatePluginFlag bool
+
+// printPluginReinstallGuidance 输出 plugin marketplace 重装指引到 w。
+// 在 agent CLI 内手工跑（Claude Code/Codex/Cursor/Copilot CLI 各有不同命令，
+// 故不在 update 自动执行）。来源：plugman README 三步 + 借鉴 UA 不脚本化生成器。
+func printPluginReinstallGuidance(w io.Writer) {
+	fmt.Fprintln(w, ``)
+	fmt.Fprintln(w, `提示：plugin marketplace 中 plugin.json 镜像 Forge Go 变更，建议重新安装以同步：`)
+	fmt.Fprintln(w, `  Claude Code / Cursor:  /plugin uninstall forge@forge && /plugin install forge@forge`)
+	fmt.Fprintln(w, `  Codex:                 codex plugin uninstall forge@forge && codex plugin install forge@forge`)
+	fmt.Fprintln(w, `  GitHub Copilot CLI:    copilot plugin uninstall forge@forge && copilot plugin install forge@forge`)
 }
 
 var updateCmd = &cobra.Command{
@@ -29,7 +45,10 @@ var updateCmd = &cobra.Command{
 	Short: "自更新 Forge 到最新版本",
 	Long: `从 GitHub Releases 下载最新版本的 Forge 二进制文件并原地替换。
 
-支持 SHA-256 校验和验证、Windows 崩溃恢复（.old 安全模式）。`,
+支持 SHA-256 校验和验证、Windows 崩溃恢复（.old 安全模式）。
+
+可加 --plugin 触发后打印 plugin marketplace 重装指引（marketplace 含的 plugin.json
+镜像 Go 变更时建议重装以同步）。`,
 	RunE: runUpdate,
 }
 
@@ -136,6 +155,11 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	// Update cache
 	_ = saveUpdateCache(latest)
+
+	// --plugin flag: 提示 plugin 重新安装（marketplace 镜像）
+	if updatePluginFlag {
+		printPluginReinstallGuidance(os.Stderr)
+	}
 
 	return nil
 }
