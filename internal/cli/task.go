@@ -880,6 +880,17 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 			fmt.Fprintf(os.Stderr, "  Ensure the AI agent ran all required hooks during implementation.\n\n")
 		}
 
+		// experience store lives in the user-level DataDir (~/.forge/projects/<key>/).
+		// When there is no DataDir (non-git or ProjectFor failure) proj==nil: the
+		// review WRITE block below is skipped (guarded by `if create && proj != nil`),
+		// and the PendingMandatory READ tolerates nil (returns no pending review).
+		// Net effect degrades like act/health — never blocks complete on a project
+		// with no DataDir. Non-git projects have no review mechanism anyway.
+		proj, perr := forgedata.ProjectFor(root)
+		if perr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: experience review skipped (project not resolved): %v\n", perr)
+		}
+
 		// Low-score review detection
 		create, mandatory := experience.ShouldReview(state.Score.Overall)
 
@@ -889,8 +900,8 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 			mandatory = true
 		}
 
-		if create {
-			if err := experience.CreateReview(root, state.TaskRef, state.Score); err != nil {
+		if create && proj != nil {
+			if err := experience.CreateReview(proj, state.TaskRef, state.Score); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: review creation failed: %v\n", err)
 			} else {
 				lowDims := experience.LowDimensions(state.Score)
@@ -902,7 +913,7 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 				var n int
 				var gerr error
 				if len(lowDims) > 0 {
-					n, gerr = experience.GenerateProposalsForReview(root, state.TaskRef, lowDims)
+					n, gerr = experience.GenerateProposalsForReview(proj, state.TaskRef, lowDims)
 					if gerr != nil {
 						fmt.Fprintf(os.Stderr, "Warning: experience proposal generation failed: %v\n", gerr)
 					}
@@ -915,7 +926,7 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 				// the only resolve path: `forge experience resolve <task-ref>` is the
 				// final escape hatch.
 				if mandatory && n == 0 && gerr == nil {
-					if fn, ferr := experience.GenerateFallbackProposal(root, state.TaskRef); ferr != nil {
+					if fn, ferr := experience.GenerateFallbackProposal(proj, state.TaskRef); ferr != nil {
 						fmt.Fprintf(os.Stderr, "Warning: fallback proposal generation failed: %v\n", ferr)
 					} else {
 						n = fn
@@ -930,7 +941,7 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 				// borderline (60-69) proposals still wait for a human.
 				var autoN int
 				if n > 0 {
-					if an, aerr := experience.AutoAcceptHighConfidence(root, state.TaskRef, lowDims); aerr != nil {
+					if an, aerr := experience.AutoAcceptHighConfidence(proj, state.TaskRef, lowDims); aerr != nil {
 						fmt.Fprintf(os.Stderr, "Warning: high-confidence auto-accept failed: %v\n", aerr)
 					} else {
 						autoN = an
@@ -972,7 +983,7 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 		// here is a task-level block: we return BEFORE ClearActiveTaskRef, so
 		// the active task ref survives and the session is NOT trapped in a
 		// stop-retry loop — resolve the review, then re-run complete.
-		if review, ok := experience.PendingMandatory(root, state.TaskRef); ok {
+		if review, ok := experience.PendingMandatory(proj, state.TaskRef); ok {
 			fmt.Fprintf(os.Stderr, "\n❌ Task %s cannot complete: mandatory review (score %.0f/%s) is still pending.\n",
 				state.TaskRef, review.Score, review.Grade)
 			fmt.Fprintf(os.Stderr, "   Resolve it first:\n")

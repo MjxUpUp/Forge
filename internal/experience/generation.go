@@ -3,6 +3,7 @@ package experience
 import (
 	"fmt"
 
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 )
 
@@ -69,8 +70,8 @@ var dimensionTemplates = map[scoringtypes.Dimension]proposalTemplate{
 // Idempotent: dimensions already holding a proposed proposal for this review
 // are skipped, so re-running (e.g. re-scoring a task) does not duplicate.
 // Returns the number of proposals created.
-func GenerateProposalsForReview(root, taskRef string, lows []LowDimension) (int, error) {
-	existing, err := ProposalsForReview(root, taskRef, PropProposed)
+func GenerateProposalsForReview(proj *forgedata.Project, taskRef string, lows []LowDimension) (int, error) {
+	existing, err := ProposalsForReview(proj, taskRef, PropProposed)
 	if err != nil {
 		return 0, fmt.Errorf("list existing proposals for dedup: %w", err)
 	}
@@ -97,7 +98,7 @@ func GenerateProposalsForReview(root, taskRef string, lows []LowDimension) (int,
 			Severity:     tmpl.Severity,
 			Status:       PropProposed,
 		}
-		if err := SaveProposal(root, proposal); err != nil {
+		if err := SaveProposal(proj, proposal); err != nil {
 			return created, fmt.Errorf("save proposal for %s: %w", d.Dimension, err)
 		}
 		haveTitle[tmpl.Title] = true
@@ -109,12 +110,12 @@ func GenerateProposalsForReview(root, taskRef string, lows []LowDimension) (int,
 // GenerateForExistingReview loads an existing review and backfills proposals
 // for it. Used by `forge experience generate <task-ref>` to repair reviews
 // created before the auto-generation fix landed.
-func GenerateForExistingReview(root, taskRef string) (int, error) {
-	review, err := LoadReview(root, taskRef)
+func GenerateForExistingReview(proj *forgedata.Project, taskRef string) (int, error) {
+	review, err := LoadReview(proj, taskRef)
 	if err != nil {
 		return 0, err
 	}
-	n, err := GenerateProposalsForReview(root, taskRef, review.LowDimensions)
+	n, err := GenerateProposalsForReview(proj, taskRef, review.LowDimensions)
 	if err != nil {
 		return n, err
 	}
@@ -123,7 +124,7 @@ func GenerateForExistingReview(root, taskRef string) (int, error) {
 	// must still leave it resolvable, so backfill a fallback if nothing was
 	// generated and the review is mandatory.
 	if n == 0 && review.Mandatory {
-		return GenerateFallbackProposal(root, taskRef)
+		return GenerateFallbackProposal(proj, taskRef)
 	}
 	return n, nil
 }
@@ -137,8 +138,8 @@ func GenerateForExistingReview(root, taskRef string) (int, error) {
 // one so `forge experience accept <id>` can resolve it.
 //
 // Idempotent: no-op (returns 0) if the review already has any proposed proposal.
-func GenerateFallbackProposal(root, taskRef string) (int, error) {
-	existing, err := ProposalsForReview(root, taskRef, PropProposed)
+func GenerateFallbackProposal(proj *forgedata.Project, taskRef string) (int, error) {
+	existing, err := ProposalsForReview(proj, taskRef, PropProposed)
 	if err != nil {
 		return 0, fmt.Errorf("list existing proposals: %w", err)
 	}
@@ -153,7 +154,7 @@ func GenerateFallbackProposal(root, taskRef string) (int, error) {
 		Severity:     "warning",
 		Status:       PropProposed,
 	}
-	if err := SaveProposal(root, proposal); err != nil {
+	if err := SaveProposal(proj, proposal); err != nil {
 		return 0, fmt.Errorf("save fallback proposal: %w", err)
 	}
 	return 1, nil
@@ -180,7 +181,7 @@ const highConfidenceThreshold = 60
 //
 // Idempotent: proposals already accepted/rejected are skipped (only PropProposed
 // are eligible). Returns the number auto-accepted.
-func AutoAcceptHighConfidence(root, taskRef string, lows []LowDimension) (int, error) {
+func AutoAcceptHighConfidence(proj *forgedata.Project, taskRef string, lows []LowDimension) (int, error) {
 	// Collect the titles of severely low-scoring dimensions that have a template.
 	want := make(map[string]bool)
 	for _, d := range lows {
@@ -195,7 +196,7 @@ func AutoAcceptHighConfidence(root, taskRef string, lows []LowDimension) (int, e
 		return 0, nil
 	}
 
-	proposals, err := ProposalsForReview(root, taskRef, PropProposed)
+	proposals, err := ProposalsForReview(proj, taskRef, PropProposed)
 	if err != nil {
 		return 0, fmt.Errorf("list proposals for auto-accept: %w", err)
 	}
@@ -205,7 +206,7 @@ func AutoAcceptHighConfidence(root, taskRef string, lows []LowDimension) (int, e
 		if !want[p.Title] {
 			continue
 		}
-		if err := acceptProposal(root, p.ID, "auto-accepted:high-confidence:"); err != nil {
+		if err := acceptProposal(proj, p.ID, "auto-accepted:high-confidence:"); err != nil {
 			return accepted, fmt.Errorf("auto-accept %s: %w", p.ID, err)
 		}
 		accepted++

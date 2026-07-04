@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 )
 
@@ -87,7 +88,7 @@ func TestLowDimensions_None(t *testing.T) {
 }
 
 func TestCreateReview_Idempotent(t *testing.T) {
-	root := t.TempDir()
+	root := forgedatatest.ForDataDir(t.TempDir())
 	result := makeScoreResult("feature/branch-1", 65, []scoringtypes.DimensionScore{
 		{Dimension: scoringtypes.DimensionProcess, Score: 50, Detail: "low"},
 	})
@@ -100,7 +101,7 @@ func TestCreateReview_Idempotent(t *testing.T) {
 	}
 
 	// Verify exactly 1 file exists in reviews dir.
-	entries, err := filepath.Glob(filepath.Join(root, ".forge", "reviews", "*.json"))
+	entries, err := filepath.Glob(filepath.Join(root.ReviewsDir(), "*.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +111,7 @@ func TestCreateReview_Idempotent(t *testing.T) {
 }
 
 func TestLoadSave_RoundTrip(t *testing.T) {
-	root := t.TempDir()
+	root := forgedatatest.ForDataDir(t.TempDir())
 	ts := time.Date(2026, 6, 7, 12, 0, 0, 0, time.UTC)
 
 	review := &ReviewRequest{
@@ -167,7 +168,7 @@ func TestLoadSave_RoundTrip(t *testing.T) {
 }
 
 func TestListReviews(t *testing.T) {
-	root := t.TempDir()
+	root := forgedatatest.ForDataDir(t.TempDir())
 
 	result1 := makeScoreResult("task-a", 65, []scoringtypes.DimensionScore{
 		{Dimension: scoringtypes.DimensionProcess, Score: 50, Detail: "low"},
@@ -204,7 +205,7 @@ func TestListReviews(t *testing.T) {
 }
 
 func TestListReviews_EmptyDir(t *testing.T) {
-	root := t.TempDir()
+	root := forgedatatest.ForDataDir(t.TempDir())
 	reviews, err := ListReviews(root)
 	if err != nil {
 		t.Fatalf("ListReviews on empty dir: %v", err)
@@ -215,7 +216,7 @@ func TestListReviews_EmptyDir(t *testing.T) {
 }
 
 func TestUpdateReviewStatus(t *testing.T) {
-	root := t.TempDir()
+	root := forgedatatest.ForDataDir(t.TempDir())
 	result := makeScoreResult("feature/x", 65, []scoringtypes.DimensionScore{
 		{Dimension: scoringtypes.DimensionProcess, Score: 50, Detail: "low"},
 	})
@@ -248,7 +249,7 @@ func TestUpdateReviewStatus(t *testing.T) {
 }
 
 func TestLoadReview_Nonexistent(t *testing.T) {
-	root := t.TempDir()
+	root := forgedatatest.ForDataDir(t.TempDir())
 	_, err := LoadReview(root, "does-not-exist")
 	if err == nil {
 		t.Fatal("expected error for nonexistent review, got nil")
@@ -265,7 +266,7 @@ func TestLoadReview_Nonexistent(t *testing.T) {
 // PendingMandatory is the new gate. It must fire ONLY for a mandatory review
 // still in the pending state — resolved or optional reviews never block.
 func TestPendingMandatory(t *testing.T) {
-	root := t.TempDir()
+	root := forgedatatest.ForDataDir(t.TempDir())
 	ts := time.Date(2026, 6, 7, 12, 0, 0, 0, time.UTC)
 
 	// No review at all → not blocked.

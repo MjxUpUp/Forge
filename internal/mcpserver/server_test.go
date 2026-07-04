@@ -109,7 +109,7 @@ func TestServer_CallKnowledgeLookup_EmptyHome(t *testing.T) {
 // TestExperiencePropose_ThenSearch：经验闭环——propose 写入后 search 能命中。
 // loop engineering 经验沉淀的核心往返；守护 propose 的 ID 生成 + search 的关键词匹配。
 func TestExperiencePropose_ThenSearch(t *testing.T) {
-	root := t.TempDir()
+	root, _ := forgedatatest.RealProject(t)
 	out, err := experienceProposeCore(root, experienceProposeInput{
 		Title:       "测试经验标题",
 		Description: "这是一个测试描述",
@@ -141,7 +141,7 @@ func TestExperiencePropose_ThenSearch(t *testing.T) {
 // TestExperiencePropose_InvalidCategory：非法 category 报错——防 agent 把垃圾知识
 // 写进知识库（category 是知识分类的骨架，必须守 gotchas/patterns/apis）。
 func TestExperiencePropose_InvalidCategory(t *testing.T) {
-	root := t.TempDir()
+	root, _ := forgedatatest.RealProject(t)
 	_, err := experienceProposeCore(root, experienceProposeInput{
 		Title: "x", Description: "y", Category: "bogus",
 	})

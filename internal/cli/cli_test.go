@@ -819,7 +819,14 @@ func TestCompleteBlocksOnPendingMandatoryReview(t *testing.T) {
 		Status:    experience.ReviewPending,
 		CreatedAt: time.Now(),
 	}
-	if err := experience.SaveReview(tmpDir, seed); err != nil {
+	// experience store moved to the user-level DataDir: seed must write through *Project
+	// so it lands in the same DataDir the forge subprocess resolves (git-root-derived key
+	// + FORGE_DATA_HOME, both set up just above).
+	proj, perr := forgedata.ProjectFor(tmpDir)
+	if perr != nil {
+		t.Fatalf("project not resolved: %v", perr)
+	}
+	if err := experience.SaveReview(proj, seed); err != nil {
 		t.Fatalf("seed review: %v", err)
 	}
 

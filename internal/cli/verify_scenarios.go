@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/MjxUpUp/Forge/internal/experience"
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
 // ScenarioResult holds the outcome of a single E2E scenario run.
@@ -191,24 +194,27 @@ func runScenarioExperienceFlow(forgeBin string) ScenarioResult {
 		return failResult("experience-flow", "task should have a score after complete", start)
 	}
 
-	// Create a mock proposed rule
-	proposalDir := filepath.Join(dir, ".forge", "experience", "proposed")
-	if err := os.MkdirAll(proposalDir, 0755); err != nil {
-		return failResult("experience-flow", fmt.Sprintf("mkdir proposal: %v", err), start)
+	// Create a mock proposed rule via the store so it lands in the same
+	// user-level DataDir the forge subprocess resolves (ProjectFor(dir) derives
+	// the same key + DataDir the accept subprocess will read from).
+	proj, perr := forgedata.ProjectFor(dir)
+	if perr != nil {
+		return failResult("experience-flow", fmt.Sprintf("project not resolved: %v", perr), start)
 	}
-	proposal := map[string]interface{}{
-		"id":            "exp-test001",
-		"source_review": "EXP-1",
-		"category":      "gotchas",
-		"title":         "Test gotcha rule",
-		"description":   "A test experience rule for E2E verification",
-		"patterns":      []string{"test\\.Fatal\\("},
-		"severity":      "error",
-		"status":        "proposed",
-		"created_at":    "2025-01-01T00:00:00Z",
+	proposal := &experience.ExperienceProposal{
+		ID:           "exp-test001",
+		SourceReview: "EXP-1",
+		Category:     "gotchas",
+		Title:        "Test gotcha rule",
+		Description:  "A test experience rule for E2E verification",
+		Patterns:     []string{"test\\.Fatal\\("},
+		Severity:     "error",
+		Status:       experience.PropProposed,
+		CreatedAt:    time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
 	}
-	proposalJSON, _ := json.MarshalIndent(proposal, "", "  ")
-	writeVerifyFile(dir, ".forge/experience/proposed/exp-test001.json", string(proposalJSON))
+	if err := experience.SaveProposal(proj, proposal); err != nil {
+		return failResult("experience-flow", fmt.Sprintf("seed proposal: %v", err), start)
+	}
 
 	// Accept the proposal with isolated HOME
 	tmpHome, _ := os.MkdirTemp("", "forge-verify-home-*")
@@ -222,12 +228,12 @@ func runScenarioExperienceFlow(forgeBin string) ScenarioResult {
 	}
 
 	// Verify proposal status = accepted
-	acceptedData, err := os.ReadFile(filepath.Join(dir, ".forge", "experience", "proposed", "exp-test001.json"))
+	accepted, err := experience.LoadProposal(proj, "exp-test001")
 	if err != nil {
-		return failResult("experience-flow", fmt.Sprintf("read proposal: %v", err), start)
+		return failResult("experience-flow", fmt.Sprintf("load proposal: %v", err), start)
 	}
-	if !strings.Contains(string(acceptedData), `"accepted"`) {
-		return failResult("experience-flow", "proposal status should be 'accepted'", start)
+	if accepted.Status != experience.PropAccepted {
+		return failResult("experience-flow", fmt.Sprintf("proposal status should be 'accepted', got %q", accepted.Status), start)
 	}
 
 	// Verify knowledge store has entry

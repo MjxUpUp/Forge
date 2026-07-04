@@ -373,7 +373,7 @@ func taskAttachCore(root string, in taskAttachInput) (taskAttachOutput, error) {
 }
 
 // =====================================================================
-// forge_experience_search —— 搜索 task 派生的经验提案（.forge/experience/）
+// forge_experience_search —— 搜索 task 派生的经验提案（~/.forge/projects/<key>/experience/）
 // =====================================================================
 
 type experienceSearchInput struct {
@@ -398,7 +398,11 @@ type experienceSearchOutput struct {
 }
 
 func experienceSearchCore(root string, in experienceSearchInput) (experienceSearchOutput, error) {
-	props, err := experience.ListProposals(root, experience.PropStatus(in.Status))
+	proj, err := forgedata.ProjectFor(root)
+	if err != nil {
+		return experienceSearchOutput{}, fmt.Errorf("resolve project: %w", err)
+	}
+	props, err := experience.ListProposals(proj, experience.PropStatus(in.Status))
 	if err != nil {
 		return experienceSearchOutput{}, fmt.Errorf("list proposals: %w", err)
 	}
@@ -451,7 +455,7 @@ func proposalMatches(p *experience.ExperienceProposal, q string) bool {
 }
 
 // =====================================================================
-// forge_experience_propose —— 提议新经验（写入 .forge/experience/proposed/）
+// forge_experience_propose —— 提议新经验（写入 ~/.forge/projects/<key>/experience/proposed/）
 // =====================================================================
 
 type experienceProposeInput struct {
@@ -468,6 +472,10 @@ type experienceProposeOutput struct {
 }
 
 func experienceProposeCore(root string, in experienceProposeInput) (experienceProposeOutput, error) {
+	proj, err := forgedata.ProjectFor(root)
+	if err != nil {
+		return experienceProposeOutput{}, fmt.Errorf("resolve project: %w", err)
+	}
 	cat := in.Category
 	if cat == "" {
 		cat = "gotchas"
@@ -490,7 +498,7 @@ func experienceProposeCore(root string, in experienceProposeInput) (experiencePr
 		Severity:    sev,
 		Status:      experience.PropProposed,
 	}
-	if err := experience.SaveProposal(root, p); err != nil {
+	if err := experience.SaveProposal(proj, p); err != nil {
 		return experienceProposeOutput{}, fmt.Errorf("save proposal: %w", err)
 	}
 	return experienceProposeOutput{ID: p.ID, Status: string(p.Status)}, nil
