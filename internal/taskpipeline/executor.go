@@ -254,14 +254,16 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 			}
 		}
 
-		// cheat-scan (advisory)：机械检测 4 类 AI 作弊模式（type-suppression /
-		// error-swallow / dead-branch / comment-only-fix）。这些模式此前全靠 LLM
-		// 子 agent 在 code-review 时判断——LLM 每轮对同一 diff 重新采样抓不同子集，
-		// 是"每轮 review 冒新问题"的体感来源。本扫描把它们抽到 deterministic：扫
-		// 任务新增行（+ 行），命中记 checklog:cheat-scan。纯 advisory（启发式有假阳性
-		// 可能——comment-only 尤甚）绝不阻塞，留痕供 review 核查。CheckCheatScan 在
-		// BuildEvidenceChain 中被排除——它是观测非"验证证据"，计入会虚高 Strength。
-		// LLM-reviewer 据此退到只做语义判断（设计/架构/mock 是否幻觉）。
+		// cheat-scan (advisory)：机械检测 5 类 AI 作弊模式（type-suppression /
+		// error-swallow / dead-branch / comment-only-fix / comment-as-debt）。前 4 类
+		// 此前全靠 LLM 子 agent 在 code-review 时判断——LLM 每轮对同一 diff 重新采样
+		// 抓不同子集，是"每轮 review 冒新问题"的体感来源；本扫描把它们抽到
+		// deterministic。第 5 类 comment-as-debt 抓"注释标识问题但不解决"（懒惰阶梯
+		// 反第 0 级，屎山根源）——下方 nudge 把处置路径（转 forge task 或当场修）明确
+		// 告诉 agent。扫任务新增行（+ 行），命中记 checklog:cheat-scan。纯 advisory
+		// （启发式有假阳性可能——comment-only 尤甚）绝不阻塞，留痕供 review 核查。
+		// CheckCheatScan 在 BuildEvidenceChain 中被排除——它是观测非"验证证据"，计入
+		// 会虚高 Strength。LLM-reviewer 据此退到只做语义判断（设计/架构/mock 是否幻觉）。
 		cheats := ScanCheatPatterns(root, state)
 		checklog.Record(root, &checklog.Entry{
 			Check:   checklog.CheckCheatScan,
@@ -278,6 +280,19 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 					loc = c.File + ":" + strconv.Itoa(c.Line)
 				}
 				fmt.Fprintf(os.Stderr, "  ⚠ [%s|%s] %s — %s\n", c.Severity, c.Pattern, loc, c.Snippet)
+			}
+			// comment-as-debt 专属 nudge（B 方案）：注释标识问题 ≠ 解决（懒惰阶梯反第 0
+			// 级）。把处置路径明确告诉 agent——转 forge task 跟踪（保留意图、被门禁
+			// 追踪）或当场修。不加则 agent 易把低 severity 的 comment-as-debt 当噪音
+			// 忽略，"标注了就当做了"。raw string 规避 Windows 输入双引号腐蚀。
+			debtCount := 0
+			for _, c := range cheats {
+				if c.Pattern == CheatCommentDebt {
+					debtCount++
+				}
+			}
+			if debtCount > 0 {
+				fmt.Fprintf(os.Stderr, `[task-verify] Advisory: %d 处 comment-as-debt——注释标识问题 ≠ 解决（懒惰阶梯反第 0 级）。处置：当场修掉；或转 forge task start --ref <ref> --title <描述> 跟踪（本任务完结后开）。advisory 不阻塞。`+"\n", debtCount)
 			}
 		}
 

@@ -133,6 +133,70 @@ func TestDetectCommentOnly(t *testing.T) {
 	}
 }
 
+// TestDetectCommentDebt 新增注释行里的债务标记命中；代码行里的标记词/普通注释不误报。
+// 钉 comment-as-debt（懒惰阶梯反第 0 级：注释标识问题但不解决）。
+func TestDetectCommentDebt(t *testing.T) {
+	cases := []struct {
+		name  string
+		lines []addedLine
+		want  int
+	}{
+		{`英文 TODO 注释`, []addedLine{al("a.go", 1, "// TODO 后续重构这里")}, 1},
+		{`FIXME 块注释`, []addedLine{al("b.go", 2, "/* FIXME race condition */")}, 1},
+		{`XXX`, []addedLine{al("c.go", 3, "// XXX 这里有坑")}, 1},
+		{`HACK`, []addedLine{al("d.go", 4, "// HACK 临时绕过")}, 1},
+		{`中文待补`, []addedLine{al("e.go", 5, "// 待补：错误处理")}, 1},
+		{`中文稍后`, []addedLine{al("f.go", 6, "// 稍后处理")}, 1},
+		{`implement later`, []addedLine{al("g.go", 7, "// implement later when API ready")}, 1},
+		{`代码行里的标记词不命中（非注释行）`, []addedLine{al("h.go", 8, "todoList := []string{}")}, 0},
+		{`普通注释无债务标记`, []addedLine{al("i.go", 9, "// 这是个正常注释")}, 0},
+		{`多行债务各记一次`, []addedLine{al("j.go", 10, "// TODO one"), al("j.go", 11, "// TODO two")}, 2},
+		{`稍后通知用户不命中（collocation 降噪 M1）`, []addedLine{al("k.go", 12, "// 稍后通知用户")}, 0},
+		{`Implement later 句首大写也命中（?i）`, []addedLine{al("l.go", 13, "// Implement later")}, 1},
+		{`regex 定义行不命中（代码行，自扫描防护）`, []addedLine{al("m.go", 14, `var re = regexp.MustCompile("TO"+"DO")`)}, 0},
+	}
+	for _, c := range cases {
+		got := detectCommentDebt(c.lines)
+		if len(got) != c.want {
+			t.Errorf(`%s: got %d findings, want %d (%+v)`, c.name, len(got), c.want, got)
+		}
+		for _, f := range got {
+			if f.Severity != "low" {
+				t.Errorf(`%s: severity=%s, want low`, c.name, f.Severity)
+			}
+			if f.File == "" || f.Pattern != CheatCommentDebt {
+				t.Errorf(`%s: bad finding %+v`, c.name, f)
+			}
+		}
+	}
+}
+
+// TestScanCheatPatterns_SelfScanNoCommentDebt 钉死自匹配防护 invariant：扫描器自身
+// 源码（debtMarkerWords 拼接 + commentDebtRe 定义）被扫时，comment-as-debt 命中必须
+// 为 0——代码行（const/var 赋值）被 isCommentOrBlank 跳过，注释行不连写标记词。这条
+// 防护脆弱（有人改成连写就破），e2e 防回归。
+func TestScanCheatPatterns_SelfScanNoCommentDebt(t *testing.T) {
+	dir := t.TempDir()
+	initRepoWithMaster(t, dir)
+	// 迷你扫描器源：regex 定义用字符串拼接（代码行），注释不连写任何标记词。
+	writeCommitSource(t, dir, map[string]string{
+		"scan.go": "package main\n" +
+			"import \"regexp\"\n" +
+			"// detectCommentDebt 注释描述策略但不连写标记词\n" +
+			"const words = \"TO\" + \"DO\" + \"|FIX\" + \"ME\"\n" +
+			"var re = regexp.MustCompile(`\\b(` + words + `)\\b`)\n" +
+			"var re2 = regexp.MustCompile(`稍后(处理|实现)`)\n" +
+			"func F() { _ = re; _ = re2 }\n",
+	}, "add scanner self")
+	state := newVerifyState(t, dir, "self-scan")
+	findings := ScanCheatPatterns(dir, state)
+	for _, f := range findings {
+		if f.Pattern == CheatCommentDebt {
+			t.Errorf(`扫描器自身源码不应命中 comment-as-debt（自匹配防护破了吗？）: %+v`, f)
+		}
+	}
+}
+
 // TestScanCheatPatterns_RealGitDiff 端到端：committed 源码含 4 类作弊 → 全检出。
 // 用真实 git diff 路径（collectAddedLines 走 git diff -U0）。
 func TestScanCheatPatterns_RealGitDiff(t *testing.T) {

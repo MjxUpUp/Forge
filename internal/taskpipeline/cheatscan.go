@@ -40,6 +40,12 @@ const (
 	// CheatCommentOnly：某源码文件的新增行全是注释/空行、零逻辑变更——疑似"声称修复但只加了注释"。
 	// 启发式（severity=low）：纯文档任务可能误报，advisory 提示核查而非定罪。
 	CheatCommentOnly CheatPattern = "comment-only-fix"
+	// CheatCommentDebt：新增注释行里的"债务标记"——AI 偷懒用注释标识"这里有问题/待办"
+	// 但本变更不解决。是懒惰阶梯反第 0 级（注释替代行动 → 屎山根源）：看起来负责任（标注了），
+	// 实际零行动，后续无人跟进。severity=low：合理的后续跟踪标记也会命中，advisory 提示核查
+	// （转 forge task 跟踪 或 当场修）而非定罪。detectCommentDebt 只扫注释行；标记词用
+	// debtMarkerWords 拼接，避免扫描器扫自身源码时把模式定义/注释里的词误判为债务。
+	CheatCommentDebt CheatPattern = "comment-as-debt"
 )
 
 // CheatFinding 是一次机械检测到的疑似作弊。advisory——检测有假阳性可能，留痕供
@@ -102,6 +108,7 @@ func ScanCheatPatterns(root string, state *TaskState) []CheatFinding {
 	findings = append(findings, detectErrorSwallow(code)...)
 	findings = append(findings, detectDeadBranch(code)...)
 	findings = append(findings, detectCommentOnly(prod)...)
+	findings = append(findings, detectCommentDebt(prod)...)
 	return findings
 }
 
@@ -273,6 +280,51 @@ func detectCommentOnly(added []addedLine) []CheatFinding {
 	}
 	return out
 }
+
+// detectCommentDebt 检测新增注释行里的"债务标记"——标识问题但不在本变更解决，是懒惰
+// 懒惰阶梯反第 0 级（注释替代行动 → 屎山根源）。severity=low：合理的后续跟踪标记也会命中，
+// advisory 提示核查（转 forge task 跟踪 或 当场修）而非定罪。
+//
+// 只扫注释行（isCommentOrBlank）：代码行里的标记词可能是变量/字符串名，不算注释债务。
+// 标记词用 debtMarkerWords 拼接 + 本注释不连写具体标记词，避免扫描器扫自身源码时把
+// 模式定义/注释里的词误判为债务（同 typeSuppressionRe 的 sigil 处理）。
+func detectCommentDebt(added []addedLine) []CheatFinding {
+	var out []CheatFinding
+	for _, a := range added {
+		if !isCommentOrBlank(a.text) {
+			continue
+		}
+		if !commentDebtRe.MatchString(a.text) {
+			continue
+		}
+		out = append(out, CheatFinding{
+			Pattern:  CheatCommentDebt,
+			File:     a.file,
+			Line:     a.lineNo,
+			Snippet:  clip(a.text),
+			Severity: "low",
+		})
+	}
+	return out
+}
+
+// debtMarkerWords 是注释债务标记的 regex 片段（英文惯例的 4 类债务词）。字符串拼接
+// 避免在源码里连写完整词——本扫描器会扫自身源码，连写的标记词会被当成真债务误报。
+const debtMarkerWords = "TO" + "DO" + "|FIX" + "ME" + "|XXX|HACK"
+
+// commentDebtRe 匹配注释债务标记。英文 4 词用 \b 词边界（区分大小写——避免小写变量
+// 名误报）；中文无词边界，孤立高频词须靠 collocation 降噪——前一分支要求紧跟动作词，
+// 后一分支限两个尾字——避免正常语境误报稀释信号。召回权衡：collocation 会漏报少量
+// 带间隔动词的真债务（动作词被隔字打断时不命中），换取不误报高频正常词——advisory
+// 优先防信号稀释，漏报静默、无误指控代价。最后分支是英文短语、大小写不敏感，覆盖
+// 句首大写形态。本注释刻意不连写任何匹配示例（中文或英文），避免扫描器扫自身源码
+// 时把示例当成真债务误报（同 debtMarkerWords 拼接的处理）。
+var commentDebtRe = regexp.MustCompile(
+	`\b(?:` + debtMarkerWords + `)\b` +
+		`|稍后(再|处理|补|改|做|写|修|回|看|说|实现|完成|解决|重构|优化)` +
+		`|待补(充|完)?` +
+		`|(?i)implement\s+later`,
+)
 
 // --- 新增行收集器 ---
 
@@ -446,7 +498,7 @@ func cheatScanDetail(findings []CheatFinding) string {
 		byPat[f.Pattern]++
 	}
 	var parts []string
-	for _, p := range []CheatPattern{CheatTypeSuppression, CheatErrorSwallow, CheatDeadBranch, CheatCommentOnly} {
+	for _, p := range []CheatPattern{CheatTypeSuppression, CheatErrorSwallow, CheatDeadBranch, CheatCommentOnly, CheatCommentDebt} {
 		if n := byPat[p]; n > 0 {
 			parts = append(parts, string(p)+"="+strconv.Itoa(n))
 		}
