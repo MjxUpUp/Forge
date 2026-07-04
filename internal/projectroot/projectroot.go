@@ -11,11 +11,38 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
+
+// FindProject 解析 cwd → *forgedata.Project（三根：GitRoot / DataDir / ConfigDir）。
+//
+// 这是双根架构（docs/plans/refactor-data-home.md）的主入口：
+//   - GitRoot   = git working tree 根（git -C 操作基准）
+//   - DataDir   = ~/.forge/projects/<hash12>/ （runtime state：state.json/tasks/gates/...）
+//   - ConfigDir = <gitroot>/.forge/ （项目配置：pipeline.yml/protocol.yml/CLAUDE.md/hooks/）
+//
+// 与旧 Find 的区别：Find 只返回"含 .forge 的目录"单根；FindProject 返回三根，
+// caller 按用途取（runtime state 用 DataDir，config 用 ConfigDir，git 操作用 GitRoot）。
+//
+// ~/.forge 全局 home 天然被排除：forgedata.ProjectFor 要求 cwd 在 git repo 内，
+// 且 findForgeConfigDir walk-up 不超过 gitRoot 边界——~/.forge 不在任何项目 git repo
+// 的 gitRoot 子树内（除非用户把 home 本身设成 git repo，属极边界异常）。
+func FindProject() (*forgedata.Project, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+	return forgedata.ProjectFor(cwd)
+}
 
 // Find walks up from the current working directory to the nearest directory
 // containing a project .forge/ subdirectory. Returns the project root, or an
 // error if cwd is not inside a forge project.
+//
+// 保留旧 walk-up 实现（不委托 FindProject）：FindProject 要求 cwd 在 git repo 内
+// （forgedata.Key 失败即报错），但 Find 历史上支持非 git 项目（只要有 .forge/，
+// 如 task-nongit 场景）。两者语义不同，共存到全部 caller 迁移完毕。
 //
 // The user home directory's ~/.forge/ is the GLOBAL state store (knowledge,
 // hooks, skills — see knowledge/store.go which hardcodes ~/.forge/knowledge),

@@ -121,7 +121,7 @@ func runHazardConfirm(cmd *cobra.Command, args []string) error {
 			return err
 		}
 	}
-	root, err := findProjectRoot()
+	p, err := findProject()
 	if err != nil {
 		return err
 	}
@@ -129,7 +129,7 @@ func runHazardConfirm(cmd *cobra.Command, args []string) error {
 	// --fingerprint 路径：hook 已算好指纹，agent 回传 hex（复制无失真）。命令串仅审计用。
 	if hazardConfirmFingerprint != "" {
 		command := strings.Join(args, " ") // 可空（--fingerprint 时不强制）
-		if err := hazard.ConfirmByFingerprint(root, hazardConfirmFingerprint, command); err != nil {
+		if err := hazard.ConfirmByFingerprint(p, hazardConfirmFingerprint, command); err != nil {
 			return fmt.Errorf("failed to confirm hazard: %w", err)
 		}
 		fmt.Printf("✅ 已确认高危命令（指纹 %s，%d 分钟内同命令重试放行）。重试原命令即可。\n",
@@ -137,7 +137,7 @@ func runHazardConfirm(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	command := strings.Join(args, " ")
-	fp, err := hazard.Confirm(root, command)
+	fp, err := hazard.Confirm(p, command)
 	if err != nil {
 		return fmt.Errorf("failed to confirm hazard: %w", err)
 	}
@@ -157,11 +157,11 @@ func runHazardFingerprint(cmd *cobra.Command, args []string) error {
 // runHazardConfirmed 用 exit code 传达结果（hook 脚本只读退出码）。os.Exit 绕过 cobra
 // 的 "Error:" stderr 噪声。
 func runHazardConfirmed(cmd *cobra.Command, args []string) error {
-	root, err := findProjectRoot()
+	p, err := findProject()
 	if err != nil {
 		os.Exit(1) // 无项目根 → 视为未确认（fail-safe：拦了重新确认）
 	}
-	ok, err := hazard.IsConfirmed(root, args[0])
+	ok, err := hazard.IsConfirmed(p, args[0])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[hazard] %v\n", err)
 		os.Exit(1)
@@ -179,13 +179,13 @@ func runHazardConfirmed(cmd *cobra.Command, args []string) error {
 // 无项目根时静默跳过——审计不该污染非 forge 项目；失败由 hook 调用处 `|| true` 兜底，
 // 审计失败绝不影响 hook 主流程（block/放行决策）。
 func runHazardLog(cmd *cobra.Command, args []string) error {
-	root, err := findProjectRoot()
+	p, err := findProject()
 	if err != nil {
 		return nil
 	}
 	eventType := args[0]
 	command := strings.Join(args[1:], " ")
-	return hazard.AppendEvent(root, hazard.Event{
+	return hazard.AppendEvent(p, hazard.Event{
 		Type:        eventType,
 		Fingerprint: hazard.Fingerprint(command),
 		Command:     command,
@@ -193,20 +193,20 @@ func runHazardLog(cmd *cobra.Command, args []string) error {
 }
 
 func runHazardStatus(cmd *cobra.Command, args []string) error {
-	root, err := findProjectRoot()
+	p, err := findProject()
 	if err != nil {
 		return err
 	}
 	// 近 24h 事件统计（来自 events.jsonl 审计日志）：让用户看到 hazard-guard 的工作量
 	// 与潜在误伤规模，而非只有"当前有效确认"——补全 2026-06 误伤审计只能扒 checklog 的痛点。
 	since := time.Now().Add(-24 * time.Hour)
-	blocks, _ := hazard.CountSince(root, hazard.EventBlock, since)
-	releases, _ := hazard.CountSince(root, hazard.EventRelease, since)
-	data, _ := hazard.CountSince(root, hazard.EventData, since)
+	blocks, _ := hazard.CountSince(p, hazard.EventBlock, since)
+	releases, _ := hazard.CountSince(p, hazard.EventRelease, since)
+	data, _ := hazard.CountSince(p, hazard.EventData, since)
 	fmt.Printf("近 24h 事件：拦截 %d、确认放行 %d、数据上下文放行 %d\n", blocks, releases, data)
-	fmt.Println("  详见 .forge/hazards/events.jsonl")
+	fmt.Println(`  详见 hazards 事件日志：` + p.HazardsEventsPath())
 
-	active, err := hazard.ActiveConfirmations(root)
+	active, err := hazard.ActiveConfirmations(p)
 	if err != nil {
 		return err
 	}

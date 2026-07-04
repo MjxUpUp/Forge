@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
@@ -56,9 +57,9 @@ func Fingerprint(cmd string) string {
 //
 // 并发：AtomicWrite 是 temp+rename，多进程同指纹 confirm 是 last-writer-wins——
 // ExpiresAt 都 ≈ now+5min，窗口最多抖动几秒，HITL 低频人工触发可忽略；需严格串行化加 flock。
-func Confirm(root, cmd string) (string, error) {
+func Confirm(p *forgedata.Project, cmd string) (string, error) {
 	fp := Fingerprint(cmd)
-	if err := writeConfirmation(root, fp, cmd); err != nil {
+	if err := writeConfirmation(p, fp, cmd); err != nil {
 		return "", err
 	}
 	return fp, nil
@@ -99,15 +100,15 @@ func ValidateFingerprint(fp string) error {
 // 命令串复制失真：agent shell 重新解析会吃掉引号）。先 ValidateFingerprint 拒非法格式，
 // 再 ToLower 小写落盘——hook 用小写查询，大小写敏感文件系统上大写落盘会失配。归一化与
 // agent 抄错指纹事故的完整背景见 isValidFingerprint / ValidateFingerprint 注释。
-func ConfirmByFingerprint(root, fp, cmd string) error {
+func ConfirmByFingerprint(p *forgedata.Project, fp, cmd string) error {
 	if err := ValidateFingerprint(fp); err != nil {
 		return err
 	}
-	return writeConfirmation(root, strings.ToLower(fp), cmd)
+	return writeConfirmation(p, strings.ToLower(fp), cmd)
 }
 
 // writeConfirmation 构造 Confirmation 落盘（AtomicWrite = temp+rename）。
-func writeConfirmation(root, fp, cmd string) error {
+func writeConfirmation(p *forgedata.Project, fp, cmd string) error {
 	now := time.Now()
 	c := Confirmation{
 		Fingerprint: fp,
@@ -119,7 +120,7 @@ func writeConfirmation(root, fp, cmd string) error {
 	if err != nil {
 		return fmt.Errorf("marshal confirmation: %w", err)
 	}
-	if err := util.AtomicWrite(pathOf(root, fp), data, 0o644); err != nil {
+	if err := util.AtomicWrite(p.HazardsConfirmPath(fp), data, 0o644); err != nil {
 		return fmt.Errorf("write confirmation: %w", err)
 	}
 	return nil
@@ -127,8 +128,8 @@ func writeConfirmation(root, fp, cmd string) error {
 
 // IsConfirmed 查指纹是否有未过期确认。不存在/损坏视为未确认（下次拦了重新确认）。
 // hook 脚本调 `forge hazard confirmed <fp>` 用 exit code 传达结果。
-func IsConfirmed(root, fp string) (bool, error) {
-	data, err := os.ReadFile(pathOf(root, fp))
+func IsConfirmed(p *forgedata.Project, fp string) (bool, error) {
+	data, err := os.ReadFile(p.HazardsConfirmPath(fp))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return false, nil
@@ -144,8 +145,8 @@ func IsConfirmed(root, fp string) (bool, error) {
 
 // ActiveConfirmations 列出当前未过期的确认（forge hazard status 用）。按 ExpiresAt
 // 升序（最快过期的在前）。顺便清理已过期文件。
-func ActiveConfirmations(root string) ([]Confirmation, error) {
-	dir := filepath.Join(root, ".forge", "hazards")
+func ActiveConfirmations(p *forgedata.Project) ([]Confirmation, error) {
+	dir := p.HazardsDir()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -179,11 +180,6 @@ func ActiveConfirmations(root string) ([]Confirmation, error) {
 		return out[i].ExpiresAt.Before(out[j].ExpiresAt)
 	})
 	return out, nil
-}
-
-// pathOf 返回确认标记文件路径。指纹是 sha256 hex（仅 [0-9a-f]），文件名安全。
-func pathOf(root, fp string) string {
-	return filepath.Join(root, ".forge", "hazards", fp+".json")
 }
 
 func truncate(s string, n int) string {

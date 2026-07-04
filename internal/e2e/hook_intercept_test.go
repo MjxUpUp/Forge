@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/hazard"
 )
 
@@ -392,7 +393,11 @@ func TestHook_HazardGuard_LogsBlockEvent(t *testing.T) {
 	})
 	forgeHook(t, dir, "hazard-guard", in) // 触发 block → 落盘 block 事件
 
-	events, err := hazard.LoadEvents(dir)
+	p, err := forgedata.ProjectFor(dir)
+	if err != nil {
+		t.Fatalf("ProjectFor: %v", err)
+	}
+	events, err := hazard.LoadEvents(p)
 	if err != nil {
 		t.Fatalf("LoadEvents: %v", err)
 	}
@@ -425,7 +430,11 @@ func TestHook_HazardGuard_LogsReleaseEvent(t *testing.T) {
 	}
 	forgeHook(t, dir, "hazard-guard", in) // release → 记 release 事件
 
-	events, err := hazard.LoadEvents(dir)
+	p, err := forgedata.ProjectFor(dir)
+	if err != nil {
+		t.Fatalf("ProjectFor: %v", err)
+	}
+	events, err := hazard.LoadEvents(p)
 	if err != nil {
 		t.Fatalf("LoadEvents: %v", err)
 	}
