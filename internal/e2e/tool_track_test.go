@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
 // TestToolTrackRecordsReadForGate verifies the tool-track hook restores Read
@@ -63,7 +65,9 @@ func TestToolTrackRecordsReadForGate(t *testing.T) {
 
 	// Sanity: toollog actually holds a Read entry for this task (the data the
 	// gate read). Confirms tool-track restored the capability 644b142 removed.
-	toollog, err := os.ReadFile(filepath.Join(dir, ".forge", "toollog.jsonl"))
+	// toollog migrated to user-level DataDir (refactor-data-home); the forge
+	// subprocess (toolusage.Record) writes there for git projects.
+	toollog, err := os.ReadFile(filepath.Join(forgedata.DataDirFor(dir), "toollog.jsonl"))
 	if err != nil {
 		t.Fatalf("read toollog: %v", err)
 	}

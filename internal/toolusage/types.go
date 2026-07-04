@@ -4,7 +4,7 @@ package toolusage
 import "time"
 
 // ToolCall records a single tool invocation by the AI agent.
-// Stored in .forge/toollog.jsonl — one JSON object per line. The activity-ratio
+// Stored in DataDir/toollog.jsonl — one JSON object per line. The activity-ratio
 // gate (task-verify) and `forge trace` consume this; it no longer feeds scoring.
 type ToolCall struct {
 	ID        string    `json:"id,omitempty"` // stable sha1 of identity fields; shown by `forge trace` as [#id]
