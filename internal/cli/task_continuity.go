@@ -14,7 +14,7 @@ import (
 // task_continuity.go：task 升格为「接续真相源」的命令层。把会话内临时状态（agent 上下文，
 // 压缩即丢）和靠纪律的 markdown（HANDOFF.md/AI_CONTEXT.md）替换为 task 的结构化一等公民字段 +
 // forge task resume 秒级拉回。对应 session-continuity HANDOFF + cross-tool-context AI_CONTEXT 的
-// 信息结构，但持久化进 .forge/tasks/<ref>.json，跨工具/跨人基于同一份记录接续。
+// 信息结构，但持久化进 DataDir/tasks/<ref>.json（refactor-data-home：runtime state 迁用户级），跨工具/跨人基于同一份记录接续。
 
 var taskResumeCmd = &cobra.Command{
 	Use:   "resume [--ref <ref>] [--json] [--no-attach]",

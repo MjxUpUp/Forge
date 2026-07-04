@@ -23,7 +23,7 @@ func goldenRealDir(t *testing.T) string {
 }
 
 // realCases 是从真实 dogfood 任务反推的 EvaluateInput，验证「真实协作记录→golden→CI
-// 比对」链路。数据来自 .forge/tasks/feat-review-snapshot.json 的 Score.Dimensions：
+// 比对」链路。数据来自 DataDir/tasks/feat-review-snapshot.json 的 Score.Dimensions：
 // process 100 (3/3, 0 retries) / testing 77 (2/3 covered, 167 assertions) /
 // scope 80 (166 行 Medium) / efficiency 40 (61 min) / code-quality+assertions 100。
 //
