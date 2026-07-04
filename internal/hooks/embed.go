@@ -177,13 +177,18 @@ set -eo pipefail
 ROOT="${1:-.}"
 cd "$ROOT" 2>/dev/null || exit 0
 
+# runtime state 在用户级 DataDir（refactor-data-home commit D：git 项目
+# ~/.forge/projects/<key>/）。hook 无法复现 Key 算法（FNV-64a），调 forge data-dir
+# 拿路径；失败回退 .forge（非 git 语义）。hook 已多次 fork forge，多一次无感。
+_DATA_DIR="$(forge data-dir 2>/dev/null || echo ".forge")"
+
 # Throttle: collapse PostToolUse trigger storms. Stop fires once per session
 # (intervals >> 60s), so a 60s window only suppresses repeated PostToolUse
 # invocations — e.g. legacy settings that mis-bind this hook to a wide
 # Bash|Read|Glob matcher. Advisory skip is safe: the signal resurfaces on the
 # next non-throttled run. Without this, a stale binding + 4 subshells/call can
 # fire 100+ times per session (observed in real heavy-use projects).
-_STAMP=".forge/.task-verify-throttle.last"
+_STAMP="$_DATA_DIR/.task-verify-throttle.last"
 _NOW=$(date +%s 2>/dev/null || echo 0)
 if [ "$_NOW" != "0" ] && [ -f "$_STAMP" ]; then
   _LAST=$(cat "$_STAMP" 2>/dev/null || echo 0)
@@ -202,7 +207,7 @@ if [ "${FORGE_SKIP_VERIFY}" = "1" ]; then
   _SKIP_NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)
   if [ -n "$_SKIP_NOW" ]; then
     printf '{"check":"escape-hatch","passed":true,"checked":true,"detail":"escape-hatch: FORGE_SKIP_VERIFY=1 (task-verify gate bypassed)","recorded_at":"%s"}\n' \
-      "$_SKIP_NOW" >> .forge/checklog.jsonl 2>/dev/null || true
+      "$_SKIP_NOW" >> "$_DATA_DIR/checklog.jsonl" 2>/dev/null || true
   fi
   exit 0
 fi
@@ -261,7 +266,7 @@ if [ -n "$MESSAGES" ]; then
   _NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)
   if [ -n "$_NOW" ]; then
     printf '{"check":"task-verify","passed":true,"checked":false,"detail":"advisory: non-blocking issues surfaced to stderr","recorded_at":"%s"}\n' \
-      "$_NOW" >> .forge/checklog.jsonl 2>/dev/null || true
+      "$_NOW" >> "$_DATA_DIR/checklog.jsonl" 2>/dev/null || true
   fi
 fi
 
@@ -428,13 +433,18 @@ esac
 
 # --- Snapshot file state (always — file-sentinel is defense-in-depth) ---
 # Snapshot EVERY Bash command, not just detected writes. file-sentinel's
-# unauthorized-config-tamper detection (an external process rewriting
-# .forge/gates/status.json during an otherwise read-only ls/cat) needs a
-# pre-command baseline for every command; gating the snapshot on
-# write-detection blinds it (regression caught by
-# TestHook_FileSentinel_QuarantinesTamperedGateStatus). The 2 git calls per
-# command are the cost of that defense — accepted over the false economy of
-# skipping them.
+# unauthorized-change detection (an external process rewriting project-level
+# ConfigDir config like .forge/hooks/*.sh or .claude/settings*.json, or planting
+# untracked source, during an otherwise read-only ls/cat) needs a pre-command
+# baseline for every command; gating the snapshot on write-detection blinds it
+# (regression caught by TestHook_FileSentinel_QuarantinesBashWrittenSource). The
+# 2 git calls per command are the cost of that defense — accepted over the false
+# economy of skipping them.
+#
+# refactor-data-home commit D: gates/tasks/specs/reviews 迁用户级 DataDir
+# （~/.forge 不在 git），file-sentinel 基于 git diff 管不到 DataDir 路径——A6
+# （守 gates/status.json 不被 Bash 篡改）随之失效，见
+# TestHook_FileSentinel_GateStatusBeyondGitDiff（负向，钉死该缺口）。
 {
   git diff --name-only 2>/dev/null || true
   git ls-files --others --exclude-standard 2>/dev/null || true
@@ -706,7 +716,7 @@ const FileSentinelHook = `#!/bin/bash
 # file-sentinel.sh — PostToolUse hook for Bash.
 # Detects unauthorized file changes after Bash execution.
 # Compares against PreToolUse bash-guard snapshot and quarantines violations.
-# NEVER deletes user files — always moves to .forge/quarantine/ for recovery.
+# NEVER deletes user files — always moves to <DataDir>/quarantine/ for recovery.
 # Only checks source code files and Forge config — ignores all other changes.
 set -eo pipefail
 
@@ -738,8 +748,10 @@ git rev-parse --git-dir >/dev/null 2>&1 || {
 
 # Source code extension pattern
 SRC_EXT='\.(go|rs|ts|tsx|js|jsx|py|java|rb|zig|nim)$'
-# Forge config pattern
-CFG_EXT='(\.forge/(hooks|tasks|specs|reviews|gates)/|\.claude/settings)'
+# Forge config pattern. refactor-data-home commit D: tasks/specs/reviews/gates 迁
+# 用户级 DataDir（~/.forge/projects/<key>/，git 不跟踪），git diff 永远不返这些路径，
+# 模式留之无用且误导。只守项目级 .forge/hooks/（ConfigDir/hooks 配置层，仍项目级）。
+CFG_EXT='(\.forge/hooks/|\.claude/settings)'
 
 # Get current changed source files only (not all files)
 CURRENT_ALL=$(
@@ -803,10 +815,15 @@ CONFIG_CHANGES=$(printf '%s' "$NEW_CHANGES" | grep -E "$CFG_EXT" || true)
 # Helper: quarantine files — NEVER delete, always preserve for recovery.
 # Tracked files: moved to quarantine, then HEAD restored from git.
 # Untracked files: moved to quarantine (not in git, so can't restore from HEAD).
-# All files are recoverable: cp -r .forge/quarantine/<session-id>/* .
+# All files are recoverable: cp -r <DataDir>/quarantine/<session-id>/* .
 quarantine_files() {
   local files="$1"
-  local quarantine_base="${FORGE_QUARANTINE_DIR:-.forge/quarantine}"
+  # refactor-data-home commit D: quarantine 进用户级 DataDir（forge data-dir 拿路径）；
+  # FORGE_QUARANTINE_DIR 仍可显式覆盖（测试 / 自定义）。仅违规时调用，非每次 Bash fork。
+  local quarantine_base="${FORGE_QUARANTINE_DIR:-}"
+  if [ -z "$quarantine_base" ]; then
+    quarantine_base="$(forge data-dir 2>/dev/null || echo ".forge")/quarantine"
+  fi
   local qdir="${quarantine_base}/${SESSION_ID}"
   mkdir -p "$qdir" 2>/dev/null || true
 
