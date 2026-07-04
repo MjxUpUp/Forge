@@ -36,6 +36,47 @@ func projectTagFor(root string) string {
 	return strconv.FormatUint(h.Sum64(), 16)
 }
 
+// findGitRoot walks up from dir to the nearest ancestor containing a .git
+// entry (a dir for normal repos, a file for worktrees/submodules). Returns ""
+// if none. Mirrors the init-suggest hook's bash root-finding so the tag the
+// Go side computes matches the ROOT the script acts on: same .git predicate,
+// same stop-at-root behavior. Cross-platform safe: filepath.Dir of a Windows
+// drive root (E:\) returns itself, which is the natural break condition, so
+// the loop cannot spin on drive roots.
+//
+// Known cost: on UNC/SMB network shares each os.Stat may block ~1s (network
+// probe timeout), adding ~1-3s to SessionStart for users whose cwd is on a
+// network mount. Rare in practice — accepted rather than adding a stat
+// timeout (which would complicate the POSIX-correct walk for a rare case).
+func findGitRoot(dir string) string {
+	d := filepath.Clean(dir)
+	for {
+		if _, err := os.Stat(filepath.Join(d, ".git")); err == nil {
+			return d
+		}
+		parent := filepath.Dir(d)
+		if parent == d {
+			return "" // reached filesystem root (Unix "/" or Windows drive root)
+		}
+		d = parent
+	}
+}
+
+// suggestTagFor returns the init-suggest marker tag for a directory, keyed by
+// its git root so a project is tagged once regardless of which subdir the
+// agent runs 'forge suggest decline' from. This guards the decline contract:
+// previously keyed by cwd, declining from a subdir wrote a different tag than
+// the hook read at the project root, so decline silently no-op'd. Falls back
+// to projectTagFor(dir) for non-git dirs (still a stable per-dir tag). Shared
+// by the init-suggest hook (FORGE_CWD_TAG) and 'forge suggest' — both must
+// produce the same tag for the same project.
+func suggestTagFor(dir string) string {
+	if root := findGitRoot(dir); root != "" {
+		return projectTagFor(root)
+	}
+	return projectTagFor(dir)
+}
+
 // HookInput represents the JSON Claude Code sends to hooks via stdin.
 type HookInput struct {
 	SessionID     string          `json:"session_id"`
@@ -111,12 +152,15 @@ func resolveHookAgent(flagVal, envVal string) string {
 }
 
 // isGlobalHook reports whether a hook runs independent of a forge project.
-// Global hooks scan $HOME-level state (skill-scan → ~/.claude/skills), which is
+// Global hooks scan $HOME-level state (skill-scan → ~/.claude/skills) or cwd-level
+// state (init-suggest → detects whether cwd is a forge candidate), both of which are
 // relevant in any project — so runHook must not silently skip them when
-// findProjectRoot fails (non-forge project). Project-scoped hooks (task-guard,
-// file-sentinel, etc.) keep the original allow-and-exit behavior.
+// findProjectRoot fails (non-forge project). init-suggest in particular MUST run in
+// non-forge projects: that's where it discovers forge-candidate projects to suggest
+// init for. Project-scoped hooks (task-guard, file-sentinel, etc.) keep the original
+// allow-and-exit behavior.
 func isGlobalHook(name string) bool {
-	return name == "skill-scan"
+	return name == "skill-scan" || name == "init-suggest"
 }
 
 func runHook(cmd *cobra.Command, args []string) error {
@@ -206,6 +250,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 
 	shCmd := exec.Command(bash, tmpPath)
 	shCmd.Dir = root
+	cwd, _ := os.Getwd() // real cwd, for init-suggest global hook (FORGE_CWD / FORGE_CWD_TAG)
 	shCmd.Env = append(os.Environ(),
 		"FORGE_FILE_PATH="+sanitizeForShell(toRelPath(root, fields.FilePath)),
 		"FORGE_CONTENT="+sanitizeForShell(fields.Content),
@@ -217,7 +262,17 @@ func runHook(cmd *cobra.Command, args []string) error {
 		// Stable project tag (fnv hash of the canonical project root) so hooks
 		// can scope per-project state without relying on $PWD/cksum, which is
 		// unstable across path case, drive letters, and BSD/GNU cksum formats.
+		// For global hooks (init-suggest/skill-scan) root="" so this hashes the
+		// real cwd — init-suggest must NOT rely on it (non-forge projects have
+		// no forge root); it uses FORGE_CWD_TAG below instead.
 		"FORGE_PROJECT_TAG="+projectTagFor(root),
+		// cwd + its git-root-keyed tag for init-suggest (global hook): the hook
+		// finds the git root from FORGE_CWD and writes per-project markers keyed
+		// by FORGE_CWD_TAG. Keyed by git root (via suggestTagFor), NOT cwd, so
+		// 'forge suggest decline' from any subdir writes the same tag the hook
+		// reads at the project root — guards the decline contract.
+		"FORGE_CWD="+cwd,
+		"FORGE_CWD_TAG="+suggestTagFor(cwd),
 	)
 
 	var stdoutBuf, stderrBuf bytes.Buffer

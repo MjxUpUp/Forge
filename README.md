@@ -94,6 +94,7 @@ Forge 通过 Claude Code 的 Hook 机制实现实时质量检查：
 | **tool-track** | Read 后 | 静默记录 Read 调用到 toollog，供 task-verify 的 read-before-edit 门禁判断（agent 是否先读代码再改） |
 | **task-verify** | 会话结束 | advisory：任务门禁/主分支保护/mandatory review 提醒到 stderr+checklog（不阻塞会话结束） |
 | **skill-scan** | 会话开始 | advisory：扫描 ~/.claude/skills 安全性（forge audit 19 规则），补 install 门控缺口（手动 clone/junction/git pull 进入的 skill），全局 hook 不依赖 forge project |
+| **init-suggest** | 会话开始 | advisory：检测 git 项目无 `.forge/` 时，首次提示 agent 询问是否启用 forge（用户拒绝→`forge suggest decline` 永久静默；设 `FORGE_AUTO_INIT=1` 处处自动 init，注意 `forge init` 会写入 `.forge/`、`CLAUDE.md`/`AGENTS.md`、`.claude/settings.local.json`、skills——会对所在项目产生文件变更），全局 hook，补"每项目手动 init"缺口，实现一次安装后项目级资产自动就位 |
 
 ### 安全架构
 
@@ -126,6 +127,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge verify` | 项目完整性检查 + 回归测试 |
 | `forge snapshot` | 检测项目开发阶段 |
 | `forge update` | 自更新到最新版本 |
+| `forge suggest decline/status/reset` | 管理 init-suggest hook 的项目 init 提示状态（decline 永久静默当前项目 / status 查看 / reset 清除重新提示） |
 
 ### 任务管理
 
