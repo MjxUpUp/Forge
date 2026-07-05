@@ -17,7 +17,7 @@ var (
 var skillsUsageCmd = &cobra.Command{
 	Use:   "usage",
 	Short: "使用度量分析（热门 skill + 从未触发的 undertrigger 候选）",
-	Long:  `forge skills usage — 读 ~/.pi/research/skill-usage.jsonl，与 canonical skill 集交叉，输出热门排名与从未触发列表。`,
+	Long:  `forge skills usage — 读 ~/.forge/research/skill-usage.jsonl，与 canonical skill 集交叉，输出热门排名与从未触发列表。`,
 	RunE:  runSkillsUsage,
 }
 

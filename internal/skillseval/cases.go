@@ -4,7 +4,7 @@ package skillseval
 //
 // eval-gen 原本只产出 markdown 清单（EvalSkill，人工跑、不落盘）。闭环需要
 // 可机读、可比对的 case 集作为回归基准：EvalCases 从 SKILL.md description
-// 派生 []EvalCase，落盘到 ~/.pi/research/skill-eval/cases/<skill>.json（原子写）。
+// 派生 []EvalCase，落盘到 ~/.forge/research/skill-eval/cases/<skill>.json（原子写）。
 //
 // case ID 锚定在「未替换的原始 trigger/skip 片段」上，而非渲染后的 prompt——
 // 这样 GenerateEvalPrompts 的渲染规则演进（用户说→空 等替换）不会让 case ID
@@ -47,8 +47,8 @@ type CaseSet struct {
 	Cases    []EvalCase `json:"cases"`
 }
 
-// EvalDir 返回 eval 闭环数据根目录 ~/.pi/research/skill-eval（对齐 eval-*.md、
-// skill-usage.jsonl 的 ~/.pi/research/ 既有约定）。CLI/MCP 默认用它。
+// EvalDir 返回 eval 闭环数据根目录 ~/.forge/research/skill-eval（对齐 eval-*.md、
+// skill-usage.jsonl 的 ~/.forge/research/ 既有约定）。CLI/MCP 默认用它。
 func EvalDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {

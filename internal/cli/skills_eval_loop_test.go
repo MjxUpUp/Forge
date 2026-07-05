@@ -1,7 +1,7 @@
 package cli
 
 // skills_eval_loop_test.go — eval-gen(--cases-only) / eval-record / eval-baseline /
-// eval-report 四命令的端到端串测。隔离 home（避免污染真实 ~/.pi/research）+ 隔离
+// eval-report 四命令的端到端串测。隔离 home（避免污染真实 ~/.forge/research）+ 隔离
 // canonical，照 skills_audit_test.go 的 runXxx(nil,nil) + 捕获 stdout 模式。
 
 import (
@@ -14,7 +14,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/skillseval"
 )
 
-// evalLoopIsolateHome 把 home 隔离到临时目录，防测试落到真实 ~/.pi/research。
+// evalLoopIsolateHome 把 home 隔离到临时目录，防测试落到真实 ~/.forge/research。
 // os.UserHomeDir 在 Windows 认 USERPROFILE、unix 认 HOME，两个都设。
 func evalLoopIsolateHome(t *testing.T) {
 	t.Helper()
