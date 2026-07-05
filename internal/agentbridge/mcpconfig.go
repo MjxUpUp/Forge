@@ -11,23 +11,26 @@ package agentbridge
 // 幂等：所有 write* 函数检查 forge server 是否已存在，已存在则跳过（保留用户其他 server），
 // 所以 forge init/sync 反复调用安全、不破坏用户手写配置。
 //
-// 已接入（格式经官方文档核实 2026-07）：
+// 专精 5 家 MCP 接入（refactor-data-home 锁定 2026-07 名单）：4 家 native MCP 接入 + 1 家
+// (pi) hook stdin code-based。
 //   - claude-code  .mcp.json          {"mcpServers":{"forge":{command,args}}}
 //   - cursor       .cursor/mcp.json   {"mcpServers":{"forge":{type:"stdio",command,args}}}
 //   - opencode     opencode.json      {"mcp":{"forge":{type:"local",command:[...],enabled}}}
 //   - codex        .codex/config.toml [mcp_servers.forge] command/args (TOML)
+//   - pi           hook stdin code-based（TS extension 构建 Claude-shape stdin，
+//                  hook_normalize.go 无需 hook 命令带 --agent pi 即可解析）；
+//                  forge MCP 接入待官方 schema 稳定后再补。
 //
-// TODO（格式待核实/路径待定，本轮未接）：
-//   - copilot   VS Code .vscode/mcp.json 的 servers vs mcpServers 在演进；cloud agent 走
-//               repo Settings JSON（autonomous，无审批）——两套，需分别核实后再接。
-//   - windsurf  Cascade 用全局 ~/.codeium/windsurf/mcp_config.json（超出 agentbridge 写
-//               项目目录的约定）；Devin Local（next-gen，.devin/config.json）schema 与
-//               Claude Code 兼容但仍在过渡期——等迁移稳定再接。
-//   - cline     Cline 仅读全局 ~/.cline/data/settings/cline_mcp_settings.json（Cline 面板
-//               配置）；项目级 MCP 是未实现的 feature request（cline/cline#2418，2026-07 核实）。
-//               ClineTranslator 改为 guidance-only——不写 .cline/mcp.json（Cline 不认，会
-//               误导用户），改为在 .clinerules/ 指引用户手动接 MCP server。
-//   - pi        MCP 支持未核实。
+// 拒绝扩展 MCP 接入（5 家专精外的 agent，translator 保留以兼容已用用户，但不再新增 MCP
+// 实现；具体见各 xxx.go 顶部注释）：
+//   - copilot   VS Code .vscode/mcp.json `servers` vs `mcpServers` schema 演进中；cloud
+//               agent 走 repo Settings JSON（autonomous，无审批）——两套分开核实成本高。
+//   - windsurf  Cascade 用全局 ~/.codeium/windsurf/mcp_config.json，与本包"写项目目录"
+//               约定冲突；Devin Local（next-gen）schema 与 Claude 兼容但仍过渡期。
+//   - cline     仅读全局 ~/.cline/data/settings/cline_mcp_settings.json；项目级 MCP 是
+//               未实现的 feature request（cline/cline#2418, 2026-07 核实），ClineTranslator
+//               改为 guidance-only——不写 .cline/mcp.json，改为在 .clinerules/ 指引
+//               用户手动接 MCP server。
 
 import (
 	"encoding/json"
