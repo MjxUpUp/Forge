@@ -15,10 +15,11 @@ import (
 // git 操作（rev-parse/diff）必须用 GitRoot；ConfigDir 是 walk-up 找到的 .forge 父目录，
 // 通常等于 GitRoot 但不保证（.forge 可能在子目录）。三者独立携带，caller 按用途取。
 //
-// 双根决策（docs/plans/refactor-data-home.md §1.1）：runtime state 进用户级（state.json/tasks/
+// 双根决策（docs/plans/refactor-data-home.md §1.1）：runtime state 进用户级（tasks/
 // gates/checklog/toollog/act/sessions/quarantine/stamps/hazards/reviews/experience/
 // active-task-ref/.task-verify-throttle.last），项目配置留项目级（pipeline.yml/protocol.yml/
-// CLAUDE.md/hooks/—— git tracked + user-editable + task-guard 豁免）。
+// state.json/CLAUDE.md/hooks/—— git tracked + user-editable + task-guard 豁免；state.json
+// 是 pipeline 状态机，由 pipeline/state.go 读 ConfigDir/state.json 而非 DataDir）。
 type Project struct {
 	Key       string // hash12 of .git common dir
 	GitRoot   string // git working tree root（git -C 操作基准）
@@ -136,15 +137,6 @@ func (p *Project) ensureMeta() error {
 // MetaPath 返回 DataDir/.migration-meta.json
 func (p *Project) MetaPath() string { return filepath.Join(p.DataDir, ".migration-meta.json") }
 
-// StatePath returns DataDir/state.json
-func (p *Project) StatePath() string { return filepath.Join(p.DataDir, "state.json") }
-
-// HooksDir returns DataDir/hooks/ (项目级 ConfigHooksDir 不同——见下)
-func (p *Project) HooksDir() string { return filepath.Join(p.DataDir, "hooks") }
-
-// HookScriptPath returns DataDir/hooks/<name>
-func (p *Project) HookScriptPath(name string) string { return filepath.Join(p.DataDir, "hooks", name) }
-
 // TasksDir
 func (p *Project) TasksDir() string { return filepath.Join(p.DataDir, "tasks") }
 
@@ -248,14 +240,6 @@ func (p *Project) ActiveTaskRefSessionPath(sid string) string {
 // ActiveTaskRefGlob returns DataDir/active-task-ref* (covers legacy + session-scoped)
 func (p *Project) ActiveTaskRefGlob() string { return filepath.Join(p.DataDir, "active-task-ref*") }
 
-// QuarantineDir
-func (p *Project) QuarantineDir() string { return filepath.Join(p.DataDir, "quarantine") }
-
-// TaskVerifyThrottleStamp
-func (p *Project) TaskVerifyThrottleStamp() string {
-	return filepath.Join(p.DataDir, ".task-verify-throttle.last")
-}
-
 // ---- Project-config accessor（p.ConfigDir 下，仍项目级 .forge/）----
 
 // PipelineYAMLPath returns ConfigDir/pipeline.yml
@@ -266,11 +250,3 @@ func (p *Project) ProtocolYAMLPath() string { return filepath.Join(p.ConfigDir, 
 
 // CLAUDEMDPath returns ConfigDir/CLAUDE.md
 func (p *Project) CLAUDEMDPath() string { return filepath.Join(p.ConfigDir, "CLAUDE.md") }
-
-// ConfigHooksDir returns ConfigDir/hooks/
-func (p *Project) ConfigHooksDir() string { return filepath.Join(p.ConfigDir, "hooks") }
-
-// ConfigHookScriptPath returns ConfigDir/hooks/<name>
-func (p *Project) ConfigHookScriptPath(name string) string {
-	return filepath.Join(p.ConfigDir, "hooks", name)
-}
