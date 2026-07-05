@@ -102,3 +102,40 @@ metadata:
 ## 11. 自进化（SkillForge 范式，目标态）
 
 失败 case 是改进燃料。理想闭环：执行→四维度失败分析（Knowledge/Tool/Clarification/Style）→聚类→ReAct 诊断（映射失败到 skill 缺陷位置）→ Minimal Modification 修复。改一处解决一类，防止"改了 A 坏了 B"。
+
+## 12. Skills Loop 闭环（实测机制，与 §11 目标态对照）
+
+32 个 canonical skill + 6 个 Go 包族（`skillscanonical` / `skillgen` / `skillsdist` / `skillsqa` / `skillsfm`(frontmatter YAML 解析，**不是**用度聚合) / `skillseval`）构成 8 阶段 loop：[1] Authoring → [2] Canonical Resolve → [3] Project Generate → [4] Distribute → [5] Usage in Loop → [6] Audit + Track → [7] Eval → [8] Feedback → 回 [1]。Forge 自身定位（README:17-25）= 给 coding agent loop 补验证/状态/学习三层，**不替代循环**。
+
+### 强制路由（skill-routing 实测强度）
+
+| Agent | 机制 | 强度 | 备注 |
+|---|---|---|---|
+| **pi** | extension `input` transform → `/skill:name <原文>` | **硬强制** | 唯一能改写用户输入强制展开 skill |
+| **Claude Code** | UserPromptSubmit hook `additionalContext` | 中 | 不能改写输入，只能注入/阻断 |
+| **Cursor** | `rules/*.mdc` alwaysApply | 软 | 纯 prompt |
+| **Codex** | AGENTS.md 文字注入 | 软（最弱） | Codex 不读 SKILL.md，只能文字 |
+
+**改路由 = 改 `skills/skill-routing/routes.json` 一个文件** + `forge skills adapters --apply` 重分；详见 `skill-routing/SKILL.md` §路由表源解析。
+
+### 工具（已实现，非新写）
+
+`forge skills {list,install,audit,validate,usage,adapters,eval}` 命令族已完整。**`forge skills usage [--top N] [--json] [--undertrigger]` 是 skill 用度 dashboard 的现成形态**——读 `~/.pi/research/skill-usage.jsonl` 出 hot + undertrigger 候选。**不是新写，是文档化普及**。
+
+### 实测验证（2026-07-05，本机）
+
+| 项目 | ConfigDir | DataDir（`~/.forge/projects/<hash>/`） | 活循环 |
+|---|---|---|---|
+| E:\Forge | ✅ | ✅ 含 act/checklog/experience/reviews | ✅ |
+| E:\AgentWorld | ✅ | ⚠️ 空（init 后未跑 task） | ❌ |
+| E:\DevWorkbench | ✅ | ⚠️ 空（init 后未跑 task） | ❌ |
+
+`s/skill-usage.jsonl` 实测：185 条 / 39 unique / top 5 = research-workflow(48) / web-search-bridge(35) / fact-research(8) / evidence-based-proposal(8) / agent-delegation(8)。**研究类 skill 占比 ~45%** 反映"写代码前先调研"的项目画像。
+
+### 已知 gap（诚实记录，未来触发再评估）
+
+- **G1** `[8] Feedback → [1] Authoring` 自动反哺弱：现靠 spec author review 改 SKILL.md → forge release 推到用户；无自动化 hook
+- **G2** 2/3 项目 init 但 DataDir 空：产品 adoption 问题，不是 loop 工程缺陷
+- **G3** skill-routing 强 vs 软差异 = 各 agent 机制上限（不可绕过）；新 agent 出现时再评估
+- **G4** 长期 undertrigger skill 用 `forge skills usage --undertrigger` 半年级 review
+- **G5** 本仓库 `~/.gitignore_global` 防 `docs/`/`设计文档/` 误提交——本节是该架构 truth 的单点归档（无需单立 docs/）
