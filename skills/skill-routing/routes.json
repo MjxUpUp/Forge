@@ -306,5 +306,74 @@
     ],
     "skill": "database-design",
     "reason": "数据库设计规范（schema/迁移/索引/ORM）"
+  },
+  {
+    "match": [
+      "架构",
+      "系统架构",
+      "system architecture",
+      "画架构图",
+      "服务拆分",
+      "bounded context",
+      "C4 model",
+      "12-factor",
+      "微服务拆分",
+      "ADR"
+    ],
+    "skill": "system-architecture",
+    "reason": "系统架构（服务拆分/C4/DDD strategic/12-factor/ADR）"
+  },
+  {
+    "match": [
+      "SLO",
+      "Error Budget",
+      "可观测性",
+      "observability",
+      "熔断",
+      "circuit breaker",
+      "限流",
+      "rate limit",
+      "retry",
+      "4 golden signals",
+      "Trace"
+    ],
+    "skill": "resilience-and-observability",
+    "reason": "韧性与可观测性（SLO/4 golden signals/Circuit Breaker/Retry/Bulkhead/Backpressure）"
+  },
+  {
+    "match": [
+      "OWASP",
+      "SQL 注入",
+      "XSS",
+      "CSRF",
+      "安全漏洞",
+      "secret 管理",
+      "Threat Modeling",
+      "STRIDE",
+      "依赖漏洞",
+      "安全审计",
+      "MFA",
+      "AuthN",
+      "AuthZ"
+    ],
+    "skill": "secure-coding",
+    "reason": "安全编码（OWASP Top 10/STRIDE/secret mgmt/输入验证/依赖审计/SBOM）"
+  },
+  {
+    "match": [
+      "代码复杂度",
+      "cyclomatic",
+      "cognitive complexity",
+      "SOLID",
+      "Clean Code",
+      "重构",
+      "函数行数",
+      "命名",
+      "naming",
+      "可维护性",
+      "可读性"
+    ],
+    "skill": "maintainability-and-readability",
+    "reason": "可维护性+可读性（cyclomatic/cognitive/SOLID/Clean Code/工具链）"
   }
 ]
