@@ -72,7 +72,7 @@ User-level hooks fire in every Claude Code project. In git projects without `.fo
 | **Cursor** | marketplace | `forge init --agents cursor` | Cursor plugin model carries skills/MCP, not Claude-shape hooks |
 | **GitHub Copilot (CLI / VS Code)** | marketplace + `.copilot-plugin/` | `forge init --agents copilot` (CLI) | VS Code auto-discovers `.copilot-plugin/plugin.json` if you open this repo |
 | **Windsurf** | (mirrored `buildWindsurfHooks` in code) | (Cascade hooks) | mirrors Claude SessionStart + write hooks via `internal/agentbridge/windsurf.go` |
-| **OpenCode / Pi / Kiro / Cline / Gemini CLI / Mistral Vibe / Trae / Nanobot / Hermes / Antigravity / OpenClaw** | (manual, see `install.sh`) | `forge init --agents <host>` if supported | install.sh script provides one-step symlink-style per-skill/folder install for 14 hosts inspired by [Understand-Anything](https://github.com/Egonex-AI/Understand-Anything) |
+| **OpenCode / Kiro / Cline / Gemini CLI / Mistral Vibe / Trae / Nanobot / Hermes / Antigravity / OpenClaw** | (manual, see `install.sh`) | `forge init --agents <host>` if supported | install.sh script provides one-step symlink-style per-skill/folder install for 14 hosts inspired by [Understand-Anything](https://github.com/Egonex-AI/Understand-Anything) |
 
 For experimental / bleeding-edge hosts, run `./plugins/forge/install.sh --help` for the full supported platform list.
 

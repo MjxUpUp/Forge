@@ -100,7 +100,7 @@ metadata:
 
 **门控 A — 提交卫生**：
 - `git add` 只加与当前任务直接相关的**源代码**文件。
-- **禁止混入**：`docs/` `doc/` `research/` `notes/` 等文档目录、设计文档/调研报告、`.idea/` `.vscode/` 编辑器配置、`.claude/` `.pi/` `.openclaw/` 等工具工作目录、生成产物（`dist/` `target/` `build/`）。
+- **禁止混入**：`docs/` `doc/` `research/` `notes/` 等文档目录、设计文档/调研报告、`.idea/` `.vscode/` 编辑器配置、`.claude/` `.openclaw/` `.forge/` 等工具工作目录、生成产物（`dist/` `target/` `build/`）。
 - 提交前必跑 `git diff --cached --name-only`，逐个确认无无关文件。
 
 **门控 B — 门控顺序**：

@@ -211,7 +211,6 @@ dev-lookup（技术单点，定向源）
 
 - **dev-lookup / fact-research**：本 skill 是它们的降级链末位，定向源查不到时才调用
 - **research-workflow**：它的 worker 可在工序 3 调用本 skill 作为采集工具之一
-- **session-search**：搜本地历史（免费），本 skill 搜实时网络（付费）
 
 ## 配置检查（开工前一次性确认）
 

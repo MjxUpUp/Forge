@@ -16,7 +16,7 @@
 set -uo pipefail
 
 CANONICAL="${SKILLS_CANONICAL:-$HOME/.forge/skills-cache/embedded}"
-[ -d "$CANONICAL" ] || CANONICAL="$HOME/.pi/agent/skills"
+[ -d "$CANONICAL" ] || CANONICAL="$HOME/.claude/skills"
 
 if [ $# -ge 1 ]; then
   case "$1" in
