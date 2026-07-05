@@ -14,8 +14,6 @@ func normalizeAgentStdin(agent string, stdinData []byte, hookInput *HookInput) {
 	switch agent {
 	case "windsurf":
 		windsurfNormalize(stdinData, hookInput)
-	case "copilot":
-		copilotNormalize(stdinData, hookInput)
 	}
 }
 
@@ -104,13 +102,5 @@ func windsurfHookEvent(action string) string {
 	return ""
 }
 
-// copilotNormalize maps GitHub Copilot's hook stdin onto HookInput.
-//
-// TODO(task#3): fill from docs.github.com/en/copilot/reference/hooks-reference
-// once the payload schema is confirmed (event name, session id, and tool input
-// field shapes differ from Claude Code). Returns unchanged for now so Copilot
-// wiring degrades to allow-and-record rather than crashing.
-func copilotNormalize(stdinData []byte, hookInput *HookInput) {
-	_ = stdinData
-	_ = hookInput
-}
+// (copilotNormalize 删除：refactor-data-home 锁定 5 家专精，copilot 不再适配。
+//  若未来需恢复，按 docs.github.com/en/copilot/reference/hooks-reference 实现。)
