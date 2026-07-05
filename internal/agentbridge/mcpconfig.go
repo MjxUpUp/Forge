@@ -11,18 +11,14 @@ package agentbridge
 // 幂等：所有 write* 函数检查 forge server 是否已存在，已存在则跳过（保留用户其他 server），
 // 所以 forge init/sync 反复调用安全、不破坏用户手写配置。
 //
-// 专精 5 家 MCP 接入（refactor-data-home 锁定 2026-07 名单）：4 家 native MCP 接入 + 1 家
-// (pi) hook stdin code-based。
+// 专精 4 家 native MCP 接入（refactor-data-home 2026-07 名单；pi 已退出，见 commit 34c68b8）：
 //   - claude-code  .mcp.json          {"mcpServers":{"forge":{command,args}}}
 //   - cursor       .cursor/mcp.json   {"mcpServers":{"forge":{type:"stdio",command,args}}}
 //   - opencode     opencode.json      {"mcp":{"forge":{type:"local",command:[...],enabled}}}
 //   - codex        .codex/config.toml [mcp_servers.forge] command/args (TOML)
-//   - pi           hook stdin code-based（TS extension 构建 Claude-shape stdin，
-//                  hook_normalize.go 无需 hook 命令带 --agent pi 即可解析）；
-//                  forge MCP 接入待官方 schema 稳定后再补。
 //
-// 拒绝扩展 MCP 接入（5 家专精外的 agent，translator 保留以兼容已用用户，但不再新增 MCP
-// 实现；具体见各 xxx.go 顶部注释）：
+// 拒绝扩展 MCP 接入（4 家专精外的 agent——copilot/windsurf/cline 等，translator 保留以
+// 兼容已用用户，但不再新增 MCP 实现；具体见各 xxx.go 顶部注释）：
 //   - copilot   VS Code .vscode/mcp.json `servers` vs `mcpServers` schema 演进中；cloud
 //               agent 走 repo Settings JSON（autonomous，无审批）——两套分开核实成本高。
 //   - windsurf  Cascade 用全局 ~/.codeium/windsurf/mcp_config.json，与本包"写项目目录"

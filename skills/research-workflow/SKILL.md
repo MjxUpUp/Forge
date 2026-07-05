@@ -78,7 +78,7 @@ metadata:
 **判定后立即建 run 隔离目录**：
 
 ```bash
-mkdir -p ~/.pi/research/{topic}-$(date '+%Y%m%d-%H%M')
+mkdir -p ~/.forge/research/{topic}-$(date '+%Y%m%d-%H%M')
 ```
 
 `topic` 短、英文小写 + 连字符（`lobehub`、`smic-fa`）。这个完整路径记作 `{run_dir}`，

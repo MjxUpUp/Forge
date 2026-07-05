@@ -31,7 +31,7 @@
 **每次 session 独立目录**——主 agent 选定 topic 后（工序 0 末），立即 bash 建本次 run 的隔离目录：
 
 ```bash
-mkdir -p ~/.pi/research/{topic}-$(date '+%Y%m%d-%H%M')
+mkdir -p ~/.forge/research/{topic}-$(date '+%Y%m%d-%H%M')
 ```
 
 完整路径记作 `{run_dir}`。`topic` 短、英文小写 + 连字符。`-p` 让 mkdir 幂等，同分钟重跑不挂。
