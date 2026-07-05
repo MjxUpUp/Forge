@@ -36,7 +36,6 @@ type Target string
 
 const (
 	TargetClaude  Target = "claude"
-	TargetPi      Target = "pi"
 	TargetCursor  Target = "cursor"
 	TargetCodex   Target = "codex"   // OpenAI Codex CLI（~/.codex/skills，2025-12 起 SKILL.md 原生支持）
 	TargetCopilot Target = "copilot" // GitHub Copilot（~/.copilot/skills，跨项目个人 skill）
@@ -460,7 +459,7 @@ func TargetDirs(targets []Target, global bool, projectSkillsDir string) (map[str
 	seen := map[string]bool{}
 	expand := func(t Target) {
 		if t == TargetAll {
-			for _, sub := range []Target{TargetClaude, TargetCursor, TargetPi, TargetCodex, TargetCopilot} {
+			for _, sub := range []Target{TargetClaude, TargetCursor, TargetCodex, TargetCopilot} {
 				if !seen[string(sub)] {
 					seen[string(sub)] = true
 					out[string(sub)] = targetDir(string(sub), global, home, projectSkillsDir)
@@ -486,8 +485,6 @@ func targetDir(name string, global bool, home, projectSkillsDir string) string {
 	switch name {
 	case "claude":
 		return filepath.Join(home, ".claude", "skills")
-	case "pi":
-		return filepath.Join(home, ".pi", "agent", "skills")
 	case "cursor":
 		return filepath.Join(home, ".cursor", "skills")
 	case "codex":
