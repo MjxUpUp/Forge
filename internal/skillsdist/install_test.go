@@ -508,13 +508,13 @@ func TestInstall_DriftOverwrite_Backups(t *testing.T) {
 func TestTargetDirs_AllExpandsCodexCopilot(t *testing.T) {
 	dirs, err := TargetDirs([]Target{TargetAll}, true, "")
 	mustMk(t, err)
-	for _, want := range []string{"claude", "cursor", "pi", "codex", "copilot"} {
+	for _, want := range []string{"claude", "cursor", "codex", "copilot"} {
 		if _, ok := dirs[want]; !ok {
 			t.Errorf("target=all 应展开含 %q，实际 keys=%v（codex/copilot 漏装会让多 agent 分发静默失效）", want, dirs)
 		}
 	}
-	if len(dirs) != 5 {
-		t.Fatalf("target=all 应展开 5 个目标，got %d: %v", len(dirs), dirs)
+	if len(dirs) != 4 {
+		t.Fatalf("target=all 应展开 4 个目标，got %d: %v", len(dirs), dirs)
 	}
 }
 
@@ -528,7 +528,6 @@ func TestTargetDir_CodexCopilotPath(t *testing.T) {
 		"copilot": filepath.Join(home, ".copilot", "skills"),
 		"claude":  filepath.Join(home, ".claude", "skills"),
 		"cursor":  filepath.Join(home, ".cursor", "skills"),
-		"pi":      filepath.Join(home, ".pi", "agent", "skills"),
 	}
 	for name, want := range cases {
 		if got := targetDir(name, true, home, ""); got != want {

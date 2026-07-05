@@ -28,11 +28,10 @@ var skillsInstallCmd = &cobra.Command{
 	Long: `forge skills install — 把 canonical skill 库分发到 AI 工具目标目录。
 
 目标：
-  --global            (默认) 分发到 ~/.claude/skills（--target pi → ~/.pi/agent/skills 等）
+  --global            (默认) 分发到 ~/.claude/skills 等
   --project           分发到当前 forge 项目 .claude/skills（覆盖 --global）
-  --target claude|pi|cursor|codex|copilot|all  选择工具（默认 claude）
+  --target claude|cursor|codex|copilot|all  选择工具（默认 claude）
     claude   → ~/.claude/skills
-    pi       → ~/.pi/agent/skills
     cursor   → ~/.cursor/skills
     codex    → ~/.codex/skills     (OpenAI Codex CLI，2025-12 起 SKILL.md 原生支持)
     copilot  → ~/.copilot/skills   (GitHub Copilot 个人 skill，跨项目)
@@ -185,10 +184,10 @@ func parseSkillTargets(raw []string) ([]skillsdist.Target, error) {
 	var out []skillsdist.Target
 	for _, t := range raw {
 		switch t {
-		case "claude", "pi", "cursor", "codex", "copilot", "all":
+		case "claude", "cursor", "codex", "copilot", "all":
 			out = append(out, skillsdist.Target(t))
 		default:
-			return nil, fmt.Errorf("--target 须为 claude|pi|cursor|codex|copilot|all，got %q", t)
+			return nil, fmt.Errorf("--target 须为 claude|cursor|codex|copilot|all，got %q", t)
 		}
 	}
 	return out, nil
@@ -197,7 +196,7 @@ func parseSkillTargets(raw []string) ([]skillsdist.Target, error) {
 func init() {
 	skillsInstallCmd.Flags().BoolVar(&skInstGlobal, "global", true, "分发到全局目录（~/.claude/skills 等）")
 	skillsInstallCmd.Flags().BoolVar(&skInstProject, "project", false, "分发到当前 forge 项目 .claude/skills（覆盖 --global）")
-	skillsInstallCmd.Flags().StringSliceVar(&skInstTarget, "target", []string{"claude"}, "目标工具 claude|pi|cursor|codex|copilot|all")
+	skillsInstallCmd.Flags().StringSliceVar(&skInstTarget, "target", []string{"claude"}, "目标工具 claude|cursor|codex|copilot|all")
 	skillsInstallCmd.Flags().StringSliceVar(&skInstSkill, "skill", nil, "只装指定 skill（可重复）")
 	skillsInstallCmd.Flags().StringVar(&skInstMode, "mode", "link", "分发模式 link|copy")
 	skillsInstallCmd.Flags().StringVar(&skInstDriftPolicy, "drift-policy", "abort", "drift 处理 abort|skip|overwrite")

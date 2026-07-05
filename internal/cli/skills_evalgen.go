@@ -68,7 +68,7 @@ func runSkillsEvalGen(cmd *cobra.Command, args []string) error {
 			if err := skillseval.SaveCases(dir, name, cases); err != nil {
 				return err
 			}
-			fmt.Printf("✅ eval-%s.md + %d cases → ~/.pi/research/\n", name, len(cases))
+			fmt.Printf("✅ eval-%s.md + %d cases → ~/.forge/research/\n", name, len(cases))
 			return nil
 		}
 		fmt.Print(md)
@@ -109,7 +109,7 @@ func saveEval(name, md string) error {
 func init() {
 	skillsEvalGenCmd.Flags().StringVar(&skEvalSkill, "skill", "", "为指定 skill 生成 eval 清单")
 	skillsEvalGenCmd.Flags().BoolVar(&skEvalAll, "all", false, "为所有 skill 生成（批量）")
-	skillsEvalGenCmd.Flags().BoolVar(&skEvalSave, "save", false, "保存清单到 ~/.pi/research/eval-<name>.md 并落结构化 case 集")
+	skillsEvalGenCmd.Flags().BoolVar(&skEvalSave, "save", false, "保存清单到 ~/.forge/research/eval-<name>.md 并落结构化 case 集")
 	skillsEvalGenCmd.Flags().BoolVar(&skEvalCasesOnly, "cases-only", false, "只生成并落结构化 case 集（eval-record 闭环用），不输出 markdown")
 	skillsCmd.AddCommand(skillsEvalGenCmd)
 }

@@ -33,16 +33,12 @@ func TestGeneratedTSCompiles(t *testing.T) {
 		ts   string
 	}{
 		{"opencode", buildOpencodePlugin()},
-		{"pi", buildPiExtension()},
 	}
 
 	// Ambient stubs so tsc resolves the agent-SDK type imports without the real
 	// packages installed. node:child_process resolves via @types/node when
 	// present; when absent tsc still parses (skipLibCheck + permissive flags).
-	stub := `declare module "@earendil-works/pi-coding-agent" {
-  export interface ExtensionAPI { on(event: string, handler: (...args: any[]) => any): void; }
-}
-declare module "@opencode-ai/plugin" {}
+	stub := `declare module "@opencode-ai/plugin" {}
 declare module "node:child_process" {
   export function spawn(cmd: string, args: string[], opts?: any): any;
 }
@@ -102,7 +98,6 @@ interface Buffer {
 func TestSharedSpawnSnippetEmbedded(t *testing.T) {
 	for _, c := range []struct{ name, ts string }{
 		{"opencode", buildOpencodePlugin()},
-		{"pi", buildPiExtension()},
 	} {
 		// runForge's signature line is the unique anchor that the snippet is present.
 		anchor := `function runForge(cmd: string, payload: object)`

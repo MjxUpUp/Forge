@@ -488,14 +488,14 @@ func TestBridge_TranslateForAgents_Empty(t *testing.T) {
 
 func TestAllTranslators(t *testing.T) {
 	translators := AllTranslators()
-	if len(translators) != 8 {
-		t.Fatalf("expected 8 translators, got %d", len(translators))
+	if len(translators) != 7 {
+		t.Fatalf("expected 7 translators, got %d", len(translators))
 	}
 	types := make(map[AgentType]bool)
 	for _, tr := range translators {
 		types[tr.AgentType()] = true
 	}
-	for _, expected := range []AgentType{AgentClaudeCode, AgentCursor, AgentCopilot, AgentWindsurf, AgentCodex, AgentOpencode, AgentPi, AgentCline} {
+	for _, expected := range []AgentType{AgentClaudeCode, AgentCursor, AgentCopilot, AgentWindsurf, AgentCodex, AgentOpencode, AgentCline} {
 		if !types[expected] {
 			t.Errorf("missing translator for %s", expected)
 		}
@@ -663,59 +663,9 @@ func TestOpencodeTranslator_Detect(t *testing.T) {
 	}
 }
 
-// TestPiExtensionWiring verifies the generated .pi/extensions/forge.ts is a REAL,
-// block-capable extension: (1) subscribes to pi's only pre-tool event
-// ("tool_call"), (2) blocks via { block: true, reason } (pi's documented
-// ToolCallEventResult — verified in pi source), (3) wires the same `forge hook
-// <name>` set Claude Code uses, (4) maps pi's `path` field to Claude's
-// file_path. Drift silently disables a gate on pi.
-func TestPiExtensionWiring(t *testing.T) {
-	dir := t.TempDir()
-	if err := (&PiTranslator{}).Translate(dir, testInput()); err != nil {
-		t.Fatalf("pi Translate: %v", err)
-	}
-	ts := readOrFail(t, filepath.Join(dir, ".pi", "extensions", "forge.ts"))
-
-	for _, want := range []string{
-		`pi.on("tool_call"`,            // pi's only pre-tool entry point
-		`return { block: true, reason`, // pi's block API (not throw)
-		`"forge hook task-guard"`,
-		`"forge hook assertion-check"`,
-		`"forge hook bash-guard"`,
-		`"forge hook hazard-guard"`,
-		`"forge hook auto-compile"`,
-		`"forge hook file-sentinel"`,
-		`"forge hook tool-track"`,
-		// Block read from forge's JSON decision, not exit code (see opencode test).
-		`j?.decision === "block"`,
-	} {
-		if !strings.Contains(ts, want) {
-			t.Errorf("pi extension missing %q", want)
-		}
-	}
-	if !strings.Contains(ts, "FAIL OPEN") {
-		t.Error("pi extension must document fail-open behavior")
-	}
-	// Field mapping: pi uses `path` (not Claude's file_path).
-	if !strings.Contains(ts, "input.path ?? input.file_path") {
-		t.Error("pi extension must map input.path → file_path (pi's path field, not Claude's file_path)")
-	}
-	// Must use node:child_process (not pi.exec/Bun.spawn) for Node+Bun portability.
-	if !strings.Contains(ts, `from "node:child_process"`) {
-		t.Error("pi extension must use node:child_process for runtime portability")
-	}
-}
-
-func TestPiTranslator_Detect(t *testing.T) {
-	dir := t.TempDir()
-	if (&PiTranslator{}).Detect(dir) {
-		t.Error("should not detect without .pi/")
-	}
-	os.MkdirAll(filepath.Join(dir, ".pi"), 0755)
-	if !(&PiTranslator{}).Detect(dir) {
-		t.Error("should detect with .pi/")
-	}
-}
+// (pi tests removed: refactor-data-home 锁定 5 专精再缩到 4，pi 已退出
+// 5-专精名单 —— 见 forge-refactor-data-home-progress memory / BREAKING change
+// commit break-pi-exit-forge-mgr。)
 
 func readOrFail(t *testing.T, path string) string {
 	t.Helper()

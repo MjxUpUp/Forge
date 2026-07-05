@@ -41,7 +41,7 @@ metadata:
 
 读完全部现有 props/state/effect，再动。改前/后运行：
 ```bash
-forge qualitycheck --scope=<file>
+forge review pass
 ```
 **禁止**：悄悄改 props 形状、改组件副作用、改对外 className。
 
@@ -118,7 +118,7 @@ forge qualitycheck --scope=<file>
 - [ ] 无未用 import + 无未用 state
 - [ ] a11y 自动化测试通过（axe-core 0 violations）
 - [ ] unit/component test 覆盖率对该组件 ≥ 80%
-- [ ] 运行 `forge qualitycheck --scope=<file>` 通过
+- [ ] 运行 `forge review pass` 通过
 
 ## 5. Gotchas（实操易错点）
 
@@ -135,8 +135,8 @@ forge qualitycheck --scope=<file>
 ## 6. 提交前必跑
 
 ```bash
-# 1. 静态分析
-forge auto-build                      # auto-compile advice（TS/Vue/Svelte）
+# 1. 静态分析（类型检查；auto-compile hook 会自动 advisory）
+pnpm typecheck                        # tsc --noEmit（TS/Vue/Svelte）
 
 # 2. 测试 + 覆盖率
 pnpm test --coverage --coverageThreshold=80

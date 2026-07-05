@@ -12,7 +12,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/skillsdist"
 )
 
-// DefaultUsageLog 返回 ~/.pi/research/skill-usage.jsonl（对齐 analyze-usage.py USAGE_LOG）。
+// DefaultUsageLog 返回 ~/.forge/research/skill-usage.jsonl（对齐 analyze-usage.py USAGE_LOG）。
 func DefaultUsageLog() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {

@@ -17,7 +17,6 @@ const (
 	AgentWindsurf   AgentType = "windsurf"
 	AgentCodex      AgentType = "codex"
 	AgentOpencode   AgentType = "opencode"
-	AgentPi         AgentType = "pi"
 	AgentCline      AgentType = "cline"
 )
 

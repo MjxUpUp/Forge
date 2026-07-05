@@ -9,7 +9,6 @@ func AllTranslators() []Translator {
 		&WindsurfTranslator{},
 		&CodexTranslator{},
 		&OpencodeTranslator{},
-		&PiTranslator{},
 		&ClineTranslator{},
 	}
 }

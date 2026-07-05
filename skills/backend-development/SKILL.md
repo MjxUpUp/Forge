@@ -140,7 +140,6 @@ domain/       → 实体 + 业务规则（纯函数优先，不依赖框架）
 - [ ] 无未处理的 error（`if err != nil` 路径有处理）
 - [ ] API 契约文档同步（OpenAPI/JSON Schema）
 - [ ] unit + integration 测试覆盖率 ≥ 80%
-- [ ] `forge qualitycheck --scope=<file>` 通过
 - [ ] `forge review pass` 通过
 
 ## 5. Gotchas（实操易错点）
@@ -149,7 +148,7 @@ domain/       → 实体 + 业务规则（纯函数优先，不依赖框架）
 
 **G2**: 时区错位 → 时间错乱。预防：DB 全 UTC + 应用层时区转换 + 测试覆盖 DST 边界。
 
-**G3**: secret 进 git → 撤销轮换代价。预防：.env.example + `git-secrets` pre-commit hook + `forge audit` 扫历史。
+**G3**: secret 进 git → 撤销轮换代价。预防：.env.example + `git-secrets` pre-commit hook（扫历史用 `trufflehog` / `gitleaks`）。
 
 **G4**: race condition → 偶发线上 bug 难复现。预防：所有 mutable shared state 过 transaction / lock，并发测试（t.Parallel + race detector）。
 
@@ -160,8 +159,9 @@ domain/       → 实体 + 业务规则（纯函数优先，不依赖框架）
 ## 6. 提交前必跑
 
 ```bash
-# 1. 静态
-forge auto-build
+# 1. 静态（编译 + vet）
+go build ./... && go vet ./...
+# 或 cargo build / tsc --noEmit / ruff check
 
 # 2. 测试（含 race + 覆盖率）
 go test -race -cover ./...

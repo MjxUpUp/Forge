@@ -95,7 +95,6 @@ func TestParseSkillTargets_CodexCopilot(t *testing.T) {
 		{"all", []string{"all"}, 1, false},
 		{"claude", []string{"claude"}, 1, false},
 		{"cursor", []string{"cursor"}, 1, false},
-		{"pi", []string{"pi"}, 1, false},
 		{"unknown", []string{"unknown-tool"}, 0, true},
 		{"mixed valid+unknown rejects all", []string{"claude", "bogus"}, 0, true},
 	}
