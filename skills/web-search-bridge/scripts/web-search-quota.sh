@@ -19,7 +19,7 @@
 set -euo pipefail
 
 # 本地调用统计文件（累计记录，避免重复调用消耗额度）
-STATS_DIR="${WEB_SEARCH_STATS_DIR:-$HOME/.pi/web-search-stats}"
+STATS_DIR="${WEB_SEARCH_STATS_DIR:-$HOME/.forge/web-search-stats}"
 mkdir -p "$STATS_DIR"
 STATS_FILE="$STATS_DIR/usage.json"
 [ -f "$STATS_FILE" ] || echo '{"tavily":0,"serper":0,"exa":0}' > "$STATS_FILE"

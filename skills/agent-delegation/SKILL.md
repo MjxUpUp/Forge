@@ -183,7 +183,7 @@ Task 1: Hook 安装脚本
 [dispatch implementer，带任务全文+上下文]
 
 Implementer: "开工前——hook 装在 user 级还是 system 级？"
-你: "User 级（~/.pi/agent/extensions/）"
+你: "User 级（~/.claude/ 下，对应 agent 的 user 级目录）"
 Implementer: "明白。实现中..." → 实现+测试+自审+提交，报 DONE
 
 [dispatch spec reviewer]

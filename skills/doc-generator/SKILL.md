@@ -73,7 +73,7 @@ Generator + Inversion 组合：**先采访缺失变量，再按模板填空**。
 
 **生成的文档记录到历史，下次生成同类文档时读历史避免重复 + 识别增量。**
 
-存储位置：`~/.pi/research/doc-gen-history.jsonl`（稳定目录，不随 skill 升级丢失）
+存储位置：`~/.forge/research/doc-gen-history.jsonl`（稳定目录，不随 skill 升级丢失）
 
 每条记录：
 ```json

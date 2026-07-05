@@ -1,6 +1,6 @@
 [
   {
-    "_comment": "skill-router 共享路由表。命中的用户输入会被路由到对应 skill。match 数组任一关键词命中（子串匹配，不区分大小写）即触发。单一真相源：pi/claude/cursor/codex 共用本文件。修改后 pi /reload，claude/cursor 重启会话生效。"
+    "_comment": "skill-router 共享路由表。命中的用户输入会被路由到对应 skill。match 数组任一关键词命中（子串匹配，不区分大小写）即触发。单一真相源：claude/cursor/codex 共用本文件。修改后 claude/cursor 重启会话生效（codex 走 AGENTS.md 文字，重新部署即更新）。"
   },
   {
     "_comment": "lark-calendar 收紧：去掉裸'日程'（过宽，'项目日程''开发日程''排日程'误触发），保留会议室/忙闲/预约会议等明确动作，补飞书日历专属表达",
@@ -195,18 +195,6 @@
     ],
     "skill": "lark-slides",
     "reason": "幻灯片"
-  },
-  {
-    "_comment": "通用研发纪律路由（强制走 skill，不靠模型自觉）",
-    "match": [
-      "为什么会话变笨",
-      "会话越来越",
-      "分析下这个会话",
-      "会话为什么失败",
-      "Claude 变蠢"
-    ],
-    "skill": "claude-session-diagnostics",
-    "reason": "会话劣化诊断"
   },
   {
     "match": [

@@ -1,17 +1,17 @@
 # Codex 适配层
 
 Codex 的机制限制（实测确认）：
-- **不消费 SKILL.md**（不读 `~/.codex/skills/`，与 pi/claude/cursor 不同）
-- **无 input/hook 拦截机制**（不能像 pi extension 那样 transform 输入）
-- **唯一指令入口是 AGENTS.md**（`~/.codex/AGENTS.md`，与 pi/家目录硬链接统一）
+- **不消费 SKILL.md**（不读 `~/.codex/skills/`，与 claude/cursor 不同）
+- **无 input/hook 拦截机制**（无运行时 transform，只能靠文字纪律）
+- **唯一指令入口是 AGENTS.md**（`~/.codex/AGENTS.md` 或项目根 `AGENTS.md`，跨 agent 通用指令源）
 
-因此 Codex 的 skill 路由**只能靠 AGENTS.md 文字**——这是所有 agent 里最弱的强制（纯 prompt 纪律，无运行时拦截）。
+因此 Codex 的 skill 路由**只能靠 AGENTS.md 文字**——这是所有支持 agent 里最弱的强制（纯 prompt 纪律，无运行时拦截）。
 
 ## 部署方式
 
-把下面"AGENTS.md 注入片段"的内容追加到 `~/.codex/AGENTS.md`（实际是硬链接的 canonical `~/.agents/AGENTS.md`）。
+把下面"AGENTS.md 注入片段"的内容追加到 `~/.codex/AGENTS.md`（或项目根 `AGENTS.md`，两者 Codex 都读）。
 
-> ⚠️ 由于 AGENTS.md 是 4 处硬链接统一的（pi/codex/家目录/`.agents`），追加这段会让 pi 和家目录的 AGENTS.md 也获得该路由表。这对 pi 无害（pi 有更强的 extension 路由，AGENTS.md 是文字层），对 Codex 是唯一生效路径。
+> ℹ️ AGENTS.md 是跨 agent 通用指令源——所有读 AGENTS.md 的 agent（codex/cursor/copilot/windsurf/cline）都会获得该路由表。对 Codex 是唯一生效路径（Codex 不读 SKILL.md），对其他 agent 是软提示补充。
 
 ## AGENTS.md 注入片段
 
@@ -41,7 +41,6 @@ Codex 的机制限制（实测确认）：
 | 飞书任务/待办 | lark-task | <skills-root>/lark-task/SKILL.md |
 | 画板/白板 | lark-whiteboard | <skills-root>/lark-whiteboard/SKILL.md |
 | 幻灯片/PPT | lark-slides | <skills-root>/lark-slides/SKILL.md |
-| 会话变笨/分析会话 | claude-session-diagnostics | <skills-root>/claude-session-diagnostics/SKILL.md |
 | 提交代码/code review | implementation-discipline | <skills-root>/implementation-discipline/SKILL.md |
 
 命中路由表 > skill description 语义匹配。先查此表，未命中再按通用方式响应。
@@ -51,7 +50,6 @@ Codex 的机制限制（实测确认）：
 
 | Agent | 强制机制 | 强度 |
 |---|---|---|
-| pi | extension input transform（改写输入） | 硬强制 |
 | Claude | UserPromptSubmit additionalContext 注入 | 中（针对性命中注入） |
 | Cursor | alwaysApply mdc 规则 | 软（纯 prompt） |
 | **Codex** | **AGENTS.md 文字** | **软（纯 prompt，无命中针对性）** |

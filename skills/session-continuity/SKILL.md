@@ -118,7 +118,7 @@ git diff --stat
 
 ### 结构化记忆（Memory 模式）
 
-同时追加一条机器可读记录到 `~/.pi/research/session-history.jsonl`（稳定目录，不随项目丢失）：
+同时追加一条机器可读记录到 `~/.forge/research/session-history.jsonl`（稳定目录，不随项目丢失）：
 
 ```json
 {"project":"项目名","date":"YYYY-MM-DD","completed":["完成项"],"blocked":["阻塞项"],"next":["下一步"],"commit":"最新 commit SHA"}

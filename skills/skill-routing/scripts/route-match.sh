@@ -5,10 +5,9 @@
 # 输出（stdout）：命中 → "SKILL_NAME|reason"；未命中 → 空 + exit 1
 #
 # 路由表（单一真相源，优先级）：
-#   $ROUTES_FILE → $FORGE_SKILLS_CANONICAL/skill-routing/routes.json → ~/.forge/skills-cache/embedded/skill-routing/routes.json → ~/.pi/agent/skill-routes.json
+#   $ROUTES_FILE → $FORGE_SKILLS_CANONICAL/skill-routing/routes.json → ~/.forge/skills-cache/embedded/skill-routing/routes.json → ~/.forge/skill-routes.json
 #
 # 各 agent 适配层调用本脚本做匹配：
-#   - pi skill-router extension（TS 也有内置实现，本脚本作 fallback/调试）
 #   - Claude Code UserPromptSubmit hook
 #   - Cursor / Codex（通过命令调用）
 #
@@ -24,7 +23,7 @@ resolve_routes_file() {
   for cand in \
     "${FORGE_SKILLS_CANONICAL:-}/skill-routing/routes.json" \
     "$home/.forge/skills-cache/embedded/skill-routing/routes.json" \
-    "$home/.pi/agent/skill-routes.json"; do
+    "$home/.forge/skill-routes.json"; do
     [ -f "$cand" ] && { echo "$cand"; return 0; }
   done
   return 1

@@ -23,7 +23,7 @@ ROUTES_FILE=""
 for cand in \
   "${FORGE_SKILLS_CANONICAL:-}/skill-routing/routes.json" \
   "${USERPROFILE:-$HOME}/.forge/skills-cache/embedded/skill-routing/routes.json" \
-  "${USERPROFILE:-$HOME}/.pi/agent/skill-routes.json"; do
+  "${USERPROFILE:-$HOME}/.forge/skill-routes.json"; do
   if [ -f "$cand" ]; then ROUTES_FILE="$cand"; break; fi
 done
 # 匹配引擎同优先级链

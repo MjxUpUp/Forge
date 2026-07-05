@@ -36,7 +36,7 @@ command -v python3 >/dev/null && echo "✅ python3" || echo "❌ python3(未装)
 # === web-search-bridge 额度预检（批量调研前必跑，避免跑到一半额度耗尽）===
 # 定向源不够时会用 web-search-bridge（付费搜索 API），批量调用前预检额度
 # Tavily 能预检月度额度（优先看）；Serper 只能看速率窗口；Exa 无法预检
-QUOTA_SCRIPT="$HOME/.pi/agent/skills/web-search-bridge/scripts/web-search-quota.sh"
+QUOTA_SCRIPT="$HOME/.claude/skills/web-search-bridge/scripts/web-search-quota.sh"
 if [ -f "$QUOTA_SCRIPT" ]; then
   echo "--- web-search-bridge 额度 ---"
   bash "$QUOTA_SCRIPT" check all 2>&1 | grep -E 'TAVILY|SERPER|EXA'
