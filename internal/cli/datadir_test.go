@@ -39,7 +39,16 @@ func TestDataDirCmd_NonGitFallback(t *testing.T) {
 		t.Fatalf("RunE: %v", err)
 	}
 	got := strings.TrimSpace(buf.String())
-	want := filepath.Join(dir, ".forge")
+	// forge data-dir 内部用 os.Getwd() 解析 cwd。Windows 上 Getwd 可能返回 8.3 短名
+	// (ADMINI~1)、macOS 上返回穿过 symlink 的物理路径 (/private/var)，与 t.TempDir()
+	// 给的逻辑/长名路径不一致——字符串直比必不等（不是产品 bug，是测试断言的表示敏感）。
+	// chdirAndRestore 已把 cwd 切到 dir，故用与产品同源的 os.Getwd() 构造 want，
+	// 两侧取自同一 Getwd 调用，消除路径表示差异。
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	want := filepath.Join(cwd, ".forge")
 	if got != want {
 		t.Errorf("data-dir non-git = %q, want %q", got, want)
 	}
