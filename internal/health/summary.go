@@ -43,6 +43,11 @@ type Summary struct {
 	EarlierAvg     float64        `json:"earlier_avg"` // 前半段均分
 	RecentAvg      float64        `json:"recent_avg"`  // 后半段均分
 	Trend          string         `json:"trend"`       // improving/regressing/stable/insufficient
+
+	// PhasePassRate 是 phase-aware 质量报告（Phase 2 回路接入）。
+	// key=设计阶段（requirement/api/backend...），value=该阶段任务通过率（0-1）。
+	// 用于 R3 advisory 闭环：review 子 agent 调 health_query 读高频问题注入 prompt。
+	PhasePassRate map[string]float64 `json:"phase_pass_rate,omitempty"`
 }
 
 // Summarize 是纯函数：从结论切片聚合出 project Summary。不碰磁盘，便于单测。LoadAll
@@ -57,10 +62,19 @@ func Summarize(cs []act.Conclusion) Summary {
 	s.StrengthDist = map[string]int{}
 	lowCounts := map[string]int{}
 	sum := 0.0
+	// Phase 追踪：每个 (phase, grade) 计数，用于计算 phase_pass_rate
+	phaseGrades := map[string]map[string]int{}
 	for _, c := range cs {
 		sum += c.Score
 		if c.Grade != "" {
 			s.GradeDist[c.Grade]++
+			// 按 phase 分组统计
+			for _, phase := range c.DesignPhases {
+				if phaseGrades[phase] == nil {
+					phaseGrades[phase] = map[string]int{}
+				}
+				phaseGrades[phase][c.Grade]++
+			}
 		}
 		s.StrengthDist[c.Strength]++
 		if c.Strength == checklog.Unverified.String() || c.Strength == checklog.Weak.String() {
@@ -94,6 +108,24 @@ func Summarize(cs []act.Conclusion) Summary {
 	})
 	s.Span = Span{Earliest: byTime[0].CompletedAt, Latest: byTime[len(byTime)-1].CompletedAt}
 	s.EarlierAvg, s.RecentAvg, s.Trend = trend(byTime)
+
+	// 计算 phase_pass_rate：通过率 = A 级占比（≥90 分视为通过）
+	if len(phaseGrades) > 0 {
+		s.PhasePassRate = map[string]float64{}
+		for phase, grades := range phaseGrades {
+			total := 0
+			passed := 0
+			for g, n := range grades {
+				total += n
+				if g == "A" || g == "B" {
+					passed += n
+				}
+			}
+			if total > 0 {
+				s.PhasePassRate[phase] = float64(passed) / float64(total)
+			}
+		}
+	}
 	return s
 }
 
