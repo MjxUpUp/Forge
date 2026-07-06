@@ -27,6 +27,7 @@ func runInitSuggestHook(t *testing.T, cwd, tag, home, initFlag string, extraEnv 
 	t.Helper()
 	stub := `#!/bin/bash
 forge() {
+  if [ "$1" = "plugin" ]; then return 0; fi
   if [ -n "$FORGE_FORGE_FAIL" ]; then return 1; fi
   touch "$FORGE_INIT_FLAG" 2>/dev/null
   return 0
@@ -95,7 +96,7 @@ func TestInitSuggestHook_Branches(t *testing.T) {
 		cwdFn     func(t *testing.T) string
 		marker    string // "", "suggested", "declined"
 		autoInit  bool
-		failForge bool // stub forge 返回 1（模拟 init 失败，验 partial-state 回显）
+		failForge bool   // stub forge 返回 1（模拟 init 失败，验 partial-state 回显）
 		wantSub   string // 期望输出子串；空=期望静默（无"未启用 forge"）
 		wantInit  bool   // 期望 forge init 被调（flag 文件存在）
 	}{
@@ -221,4 +222,92 @@ func TestInitSuggestHook_ForgeDataHomeOverride(t *testing.T) {
 	if _, err := os.Stat(markerInHome); err == nil {
 		t.Errorf(`marker 不应落 HOME/.forge/.init-suggested/%s（应走 FORGE_DATA_HOME），但文件存在`, tag)
 	}
+}
+
+// runInitSuggestHookStub 跑真实 InitSuggestHook 脚本，用传入的 forge() stub 覆盖 forge
+// 命令。dedupe 分支测试用——需要 stub 区分 forge plugin status / forge plugin dedupe
+// 子命令（runInitSuggestHook 的 stub 只模拟 forge init，无法覆盖 dedupe 路径）。
+func runInitSuggestHookStub(t *testing.T, forgeStub, cwd, tag, home string, extraEnv ...string) string {
+	t.Helper()
+	script := forgeStub + "\n" + InitSuggestHook
+	tmp, err := os.CreateTemp("", "init-suggest-*.sh")
+	if err != nil {
+		t.Fatalf("createtemp: %v", err)
+	}
+	if _, err := tmp.WriteString(script); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+	tmp.Close()
+	defer os.Remove(tmp.Name())
+	env := []string{
+		`HOME=` + home,
+		`PATH=` + os.Getenv(`PATH`),
+		`FORGE_CWD=` + cwd,
+		`FORGE_CWD_TAG=` + tag,
+	}
+	env = append(env, extraEnv...)
+	cmd := exec.Command("bash", tmp.Name())
+	cmd.Env = env
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("InitSuggestHook exited non-zero (script bug): err=%v, out=%s", err, out)
+	}
+	return string(out)
+}
+
+// dedupeForgeStub 区分 forge 子命令的 stub：
+//   - forge plugin status：FORGE_PLUGIN_MISSING 非空时 return 1（模拟未装），否则 return 0
+//   - forge plugin dedupe <root>：FORGE_DEDUPE_OUT 非空时 echo 该串（模拟清理有输出）
+//   - 其他 forge 调用：回退 init 行为
+//
+// 纯 if（无 case-action），避 bash 3.2 case parser 坑（参 hazard-bash32-case-parser）。
+const dedupeForgeStub = `#!/bin/bash
+forge() {
+  if [ "$1" = "plugin" ] && [ "$2" = "status" ]; then
+    if [ -n "$FORGE_PLUGIN_MISSING" ]; then return 1; fi
+    return 0
+  fi
+  if [ "$1" = "plugin" ] && [ "$2" = "dedupe" ]; then
+    if [ -n "$FORGE_DEDUPE_OUT" ]; then echo "$FORGE_DEDUPE_OUT"; fi
+    return 0
+  fi
+  if [ -n "$FORGE_FORGE_FAIL" ]; then return 1; fi
+  if [ -n "$FORGE_INIT_FLAG" ]; then touch "$FORGE_INIT_FLAG" 2>/dev/null; fi
+  return 0
+}
+`
+
+// TestInitSuggestHook_DedupeBranch 守护 init-suggest.sh 的存量迁移分支（plugin install
+// 后，已 init 的项目残留 project-level hooks/MCP 重复，SessionStart 自动 dedupe）。
+// 三路径：plugin 已装+dedupe 有输出→提示；plugin 未装→不进分支静默；已装+无重复→静默。
+func TestInitSuggestHook_DedupeBranch(t *testing.T) {
+	proj := mkGitProj(t, true) // 有 .forge → 进 dedupe 分支
+	tag := `tag_dedupe`
+	home := t.TempDir()
+
+	t.Run(`plugin已装+dedupe有输出`, func(t *testing.T) {
+		out := runInitSuggestHookStub(t, dedupeForgeStub, proj, tag, home,
+			`FORGE_DEDUPE_OUT=移除项目级重复 hooks+MCP`)
+		if !strings.Contains(out, `PASS [init-suggest]`) {
+			t.Errorf(`应 echo PASS [init-suggest] 提示，实得 %q`, out)
+		}
+		if !strings.Contains(out, `移除项目级重复`) {
+			t.Errorf(`应含 dedupe 输出，实得 %q`, out)
+		}
+	})
+
+	t.Run(`plugin未装不进dedupe`, func(t *testing.T) {
+		out := runInitSuggestHookStub(t, dedupeForgeStub, proj, tag, home,
+			`FORGE_PLUGIN_MISSING=1`)
+		if strings.Contains(out, `PASS [init-suggest]`) {
+			t.Errorf(`plugin 未装不应进 dedupe 分支提示，实得 %q`, out)
+		}
+	})
+
+	t.Run(`plugin已装+dedupe无输出静默`, func(t *testing.T) {
+		out := runInitSuggestHookStub(t, dedupeForgeStub, proj, tag, home)
+		if strings.Contains(out, `PASS [init-suggest]`) {
+			t.Errorf(`dedupe 无输出应静默（无重复），实得 %q`, out)
+		}
+	})
 }

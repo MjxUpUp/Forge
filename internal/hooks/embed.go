@@ -997,8 +997,18 @@ done
 # 无 git root → 不是项目，静默（非 git 目录不提示 init）。
 [ -z "$ROOT" ] && exit 0
 
-# 已有 .forge/ → 已启用 forge，静默。
-[ -d "$ROOT/.forge" ] && exit 0
+# 已有 .forge/ → 已启用 forge。但若 plugin 也 user-level 接管了 hooks+MCP，清理
+# project-level 重复（plugin install 后存量项目残留的 settings.local.json hooks 与
+# .mcp.json forge server，Claude Code 会双重加载）。幂等：dedupe 无重复时 no-op 无输出。
+if [ -d "$ROOT/.forge" ]; then
+  if forge plugin status >/dev/null 2>&1; then
+    DEDUPE=$(forge plugin dedupe "$ROOT" 2>/dev/null)
+    if [ -n "$DEDUPE" ]; then
+      echo "PASS [init-suggest] $DEDUPE"
+    fi
+  fi
+  exit 0
+fi
 
 # 自动模式：FORGE_AUTO_INIT=1 → 直接 forge init（污染换无感，用户显式 opt-in）。
 # 捕获输出（不 >/dev/null 2>&1 全吞）：init 部分成功（.forge/ 建了但 state.json 写失败）

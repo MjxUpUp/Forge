@@ -28,6 +28,11 @@ import (
 //   - .forge/pipeline.yml → never touched (user may have customized)
 //   - .forge/state.json → only update last_sync_version
 func autoSync(dir string, binaryVersion string, force bool) error {
+	// plugin 已 user-level 装时,本函数写入的 project-level hooks（GenerateSettings）+
+	// MCP（Translate writeClaudeMCP）是冗余的,defer 在所有 return 路径末尾统一清理。
+	// 幂等:无重复时 no-op,version-equal 跳过路径也会触发（正好覆盖"plugin 在上次 sync
+	// 后才装"的迁移场景）。
+	defer dedupeProjectLevelIfPlugin(dir)
 	state, stateErr := pipeline.LoadState(dir)
 
 	// Decide whether this is a no-op. Version-equal + non-dev + clean → skip.

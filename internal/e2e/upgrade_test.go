@@ -44,6 +44,13 @@ func TestMain(m *testing.M) {
 	}
 
 	forgeBin = binPath
+
+	// 隔离 Claude plugin 检测：强制 IsClaudePluginInstalled()=false（空 CLAUDE_CONFIG_DIR 下
+	// 无 plugins/installed_plugins.json）。e2e 跑 forge binary 子进程（init/sync 含
+	// dedupeProjectLevelIfPlugin），不隔离会让本机装了 forge plugin 时 dedupe 删掉
+	// settings.local.json,断言"settings 存在"的测试本地失败、CI（未装）通过的飘忽。
+	os.Setenv("CLAUDE_CONFIG_DIR", tmpDir)
+
 	os.Exit(m.Run())
 }
 
