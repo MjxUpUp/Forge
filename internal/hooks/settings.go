@@ -116,21 +116,37 @@ func ForgeHookSpec() map[string][]HookMatcher {
 	}
 }
 
-// GenerateSettings creates .claude/settings.local.json with hook integration.
+// GenerateSettings creates/updates .claude/settings.local.json with hook integration.
+// 合并式:读现有文件,保留用户自定义顶层字段(env/model/enabledPlugins 等),
+// 只把 hooks 段更新为 ForgeHookSpec。覆盖整个文件会丢失用户配置——plugin-dedupe
+// 场景下尤其致命:init 写 hooks → dedupe 删 forge hooks → 若非 hooks 字段没保留,
+// 文件被删、用户 env/model 丢失(1.2.0 回归,1.2.1 修)。
 func GenerateSettings(projectDir string) error {
 	claudeDir := filepath.Join(projectDir, ".claude")
 	os.MkdirAll(claudeDir, 0755)
-
-	settings := map[string]interface{}{
-		"hooks": ForgeHookSpec(),
-	}
-
-	data, err := json.MarshalIndent(settings, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal settings: %w", err)
-	}
-
 	path := filepath.Join(claudeDir, "settings.local.json")
+
+	// 读现有 settings.local.json,保留所有顶层字段(用户 env/model 等)。用
+	// json.RawMessage 避免往返序列化改动用户字段格式。
+	cfg := map[string]json.RawMessage{}
+	if existing, err := os.ReadFile(path); err == nil {
+		if err := json.Unmarshal(existing, &cfg); err != nil {
+			return fmt.Errorf("parse existing settings.local.json: %w", err)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("read settings.local.json: %w", err)
+	}
+
+	hooksJSON, err := json.Marshal(ForgeHookSpec())
+	if err != nil {
+		return fmt.Errorf("marshal hooks: %w", err)
+	}
+	cfg["hooks"] = hooksJSON
+
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal settings: %w", err)
+	}
 	return os.WriteFile(path, data, 0644)
 }
 
