@@ -248,6 +248,8 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge sync [--force]` | 同步 .forge/ 资产到当前二进制版本 |
 | `forge clone check` | 检测文件代码克隆 |
 | `forge plugin pack [--out <dir>] [--owner-name <n>]` | 生成多 host plugin pack（.claude-plugin/.cursor-plugin marketplace + plugins/\<name\>/ 树：claude manifest 含 hooks + 共享 .mcp.json + 每 host 安装 README），让各 agent 一键 `plugin install forge` 跨工具接线（薄 manifest + 共享内容，单仓即 marketplace） |
+| `forge plugin status` | 报告 forge plugin 是否在 user-level 已装（exit 0=已装，非零=未装；供 init-suggest hook / 脚本检测） |
+| `forge plugin dedupe [dir]` | plugin 已装时一次性清理 project-level 重复 hooks（settings.local.json）+ MCP（.mcp.json）；幂等，无重复时 no-op；init-suggest SessionStart hook 自动调用迁移存量项目 |
 
 ## 安装
 
@@ -270,7 +272,7 @@ npm install -g @agent_forge/forge
 /plugin install forge@forge
 ```
 
-仍需 `npm install -g @agent_forge/forge` 装二进制（hooks/MCP 都 spawn forge），并在每个项目 `forge init` 生成项目级资产（`.forge/`、`CLAUDE.md`/`AGENTS.md`、skills）。完整三步与各 host 差异见 `plugins/forge/README.md`。
+仍需 `npm install -g @agent_forge/forge` 装二进制（hooks/MCP 都 spawn forge），并在每个项目 `forge init` 生成项目级资产（`.forge/`、`CLAUDE.md`/`AGENTS.md`、skills）。plugin 已装时 `forge init` 会自动去重 project-level 的 hooks + MCP（避免与 user-level plugin 双重注册），存量项目由 init-suggest SessionStart hook 自动迁移。完整三步与各 host 差异见 `plugins/forge/README.md`。
 
 ## 项目门禁管道
 
