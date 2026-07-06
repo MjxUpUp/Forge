@@ -31,7 +31,7 @@ var ToolDescriptions = map[string]string{
 	"forge_experience_propose": "提议一条新经验（写入 proposed/，status=proposed 待审）。经验闭环的写端——把 loop 中发现的坑沉淀成可复用知识。",
 	"forge_trace_query":        "查询任务的完整质量事件时间线（checklog 检查 + toolusage 工具调用，按时间排序）+ 估算 token（loop 成本代理）。",
 	"forge_act_query":          "查询任务结论（最新或指定 ref）：score/grade/证据强度（Strength: Strong/Weak/Unverified/NoData）/ratio/deterministic vs agent-claim 计数/验收通过率/低分维度/RetrospectiveNudge + Directive。Act 反馈臂的 agent 读端——读'这次完成声明有多少 deterministic 证据'，对冲 LLM-judge 看不出 agent 跳过前置就声明完成的盲区。",
-	"forge_health_query":       "项目级质量趋势上卷（task→project 粒度）：任务数/均分/中位/grade 分布/证据强度分布/blind_spot_rate（完成声明主要靠 agent 自述的任务占比=项目级 LLM-judge 盲区率）/复发低分维度频次/趋势。跨任务聚合暴露系统性问题（某维度反复低分、声明完成却没真验证）。无参数。",
+	"forge_health_query":       "项目级质量趋势上卷（task→project 粒度）：任务数/均分/中位/grade 分布/证据强度分布/blind_spot_rate（完成声明主要靠 agent 自述的任务占比=项目级 LLM-judge 盲区率）/复发低分维度频次/趋势/phase_pass_rate（各环节设计产物审查通过率）。跨任务聚合暴露系统性问题（某维度反复低分、声明完成却没真验证）。无参数。",
 	"forge_knowledge_lookup":   "查询跨项目知识库（~/.forge/knowledge/，全局共享）。按关键词/类别（gotchas/patterns/apis）过滤。",
 	"forge_skill_eval_cases":   "生成 skill 的 eval case 集 + dispatch 指令包（agent 据此 dispatch fresh subagent 跑回归）。skill eval 闭环的读端。",
 	"forge_skill_eval_submit":  "整批回填一次 eval run（agent dispatch 跑完每个 prompt 后提交实际触发结果）。归一化 + 判定 + 算 health + append。skill eval 闭环的写端。",

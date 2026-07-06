@@ -43,6 +43,9 @@ type Conclusion struct {
 	// RetrospectiveNudge：证据弱（Unverified/Weak）或低分（<70）→ true。驱动 session-retrospective
 	// 在会话结束回顾这次的完成声明——尤其"高分但证据弱"的盲区（分数看不出 agent 是否真验证过）。
 	RetrospectiveNudge bool `json:"retrospective_nudge"`
+	// DesignPhases 是 inferDesignPhases 推断出的设计阶段（如 requirement/api/backend）。
+	// 用于 phase-aware 健康报告（phase_pass_rate）和回路接入。
+	DesignPhases []string `json:"design_phases,omitempty"`
 }
 
 // BuildConclusion 是纯函数：从评分 + 证据链 + 验收结果聚合出 Conclusion。不碰磁盘，
@@ -53,6 +56,7 @@ func BuildConclusion(
 	ec checklog.EvidenceChain,
 	acceptancePass, acceptanceTotal int,
 	completedAt time.Time,
+	designPhases []string,
 ) Conclusion {
 	c := Conclusion{
 		TaskRef:         taskRef,
@@ -64,6 +68,7 @@ func BuildConclusion(
 		Ratio:           ec.Ratio(),
 		Deterministic:   ec.Deterministic,
 		AgentClaim:      ec.AgentClaim,
+		DesignPhases:    designPhases,
 	}
 	if score != nil {
 		c.Score = score.Overall

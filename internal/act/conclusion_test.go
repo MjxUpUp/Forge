@@ -75,7 +75,7 @@ func TestBuildConclusion_NudgeByEvidenceStrength(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := BuildConclusion(`feat/x`, `sess-1`, tt.score, tt.ec, 0, 0, fixedTime)
+			c := BuildConclusion(`feat/x`, `sess-1`, tt.score, tt.ec, 0, 0, fixedTime, nil)
 			if c.Strength != tt.strength {
 				t.Errorf(`Strength=%q want %q（分档回归？检查 Strength 计算）`, c.Strength, tt.strength)
 			}
@@ -98,7 +98,7 @@ func TestBuildConclusion_LowDimensionsCaptured(t *testing.T) {
 		dim(`completeness`, 60),
 		dim(`tests`, 95),
 		dim(`design`, 69),
-	), ec(0, 0), 0, 0, fixedTime)
+	), ec(0, 0), 0, 0, fixedTime, nil)
 	want := []string{`completeness`, `design`}
 	if len(c.LowDimensions) != len(want) {
 		t.Fatalf(`LowDimensions=%v want %v`, c.LowDimensions, want)
@@ -112,7 +112,7 @@ func TestBuildConclusion_LowDimensionsCaptured(t *testing.T) {
 
 func TestBuildConclusion_NilScore(t *testing.T) {
 	// 未评分（score=nil）：Score=0、Grade 空、LowDimensions 空；nudge 仅由强度决定。
-	c := BuildConclusion(`feat/x`, ``, nil, ec(0, 2), 1, 3, fixedTime)
+	c := BuildConclusion(`feat/x`, ``, nil, ec(0, 2), 1, 3, fixedTime, nil)
 	if c.Score != 0 {
 		t.Errorf(`Score=%v want 0（nil score 应得 0）`, c.Score)
 	}
@@ -175,8 +175,8 @@ func TestDirective(t *testing.T) {
 func TestAppendLoadAll_RoundTrip(t *testing.T) {
 	root := forgedatatest.ForDataDir(t.TempDir())
 
-	c1 := BuildConclusion(`feat/a`, `s1`, score(95, `A`), ec(3, 1), 2, 2, fixedTime)
-	c2 := BuildConclusion(`feat/b`, `s2`, score(60, `D`), ec(0, 2), 0, 3, fixedTime.Add(time.Hour))
+	c1 := BuildConclusion(`feat/a`, `s1`, score(95, `A`), ec(3, 1), 2, 2, fixedTime, nil)
+	c2 := BuildConclusion(`feat/b`, `s2`, score(60, `D`), ec(0, 2), 0, 3, fixedTime.Add(time.Hour), nil)
 
 	if err := Append(root, &c1); err != nil {
 		t.Fatalf(`Append c1: %v`, err)
