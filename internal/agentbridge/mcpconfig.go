@@ -56,6 +56,66 @@ func writeClaudeMCP(projectDir string) error {
 	)
 }
 
+// StripForgeMCPServer 移除项目根 .mcp.json 的 forge server 条目。当 forge plugin 在
+// user-level 已装，plugin 的 .mcp.json 已注册同名 forge MCP server（全机器所有项目），
+// project-level 保留会让 Claude Code 双重加载同名 forge server。
+//
+// 仅删 forge 条目，保留用户其他 MCP server。移除后：
+//   - mcpServers 空 + 无其他顶层字段 → 删整个 .mcp.json
+//   - mcpServers 空 + 有其他顶层字段 → 写回（无 mcpServers）
+//   - 仍有其他 server → 写回（无 forge）
+//
+// 幂等：无 .mcp.json / 无 mcpServers / 无 forge 条目时 no-op（changed=false）。
+// writeClaudeMCP 保持纯函数（永远 merge 写 forge）。plugin 已装时,project-level 重复由
+// 命令层（init/sync 的 dedupeProjectLevelIfPlugin,所有写入后统一调用）清理——避免单元测试
+// 依赖全局 IsClaudePluginInstalled 状态。
+func StripForgeMCPServer(projectDir string) (changed bool, err error) {
+	path := filepath.Join(projectDir, ".mcp.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("read .mcp.json: %w", err)
+	}
+	var cfg map[string]json.RawMessage
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return false, fmt.Errorf("parse .mcp.json: %w", err)
+	}
+	serversRaw, hasServers := cfg["mcpServers"]
+	if !hasServers {
+		return false, nil
+	}
+	var servers map[string]json.RawMessage
+	if err := json.Unmarshal(serversRaw, &servers); err != nil {
+		return false, fmt.Errorf("parse mcpServers: %w", err)
+	}
+	if _, exists := servers["forge"]; !exists {
+		return false, nil
+	}
+	delete(servers, "forge")
+	if len(servers) > 0 {
+		serversJSON, mErr := json.Marshal(servers)
+		if mErr != nil {
+			return false, fmt.Errorf("marshal mcpServers: %w", mErr)
+		}
+		cfg["mcpServers"] = serversJSON
+	} else {
+		delete(cfg, "mcpServers")
+	}
+	if len(cfg) == 0 {
+		if err := os.Remove(path); err != nil {
+			return false, fmt.Errorf("remove empty .mcp.json: %w", err)
+		}
+		return true, nil
+	}
+	out, mErr := json.MarshalIndent(cfg, "", "  ")
+	if mErr != nil {
+		return false, fmt.Errorf("marshal .mcp.json: %w", mErr)
+	}
+	return true, os.WriteFile(path, out, 0644)
+}
+
 // writeCursorMCP 生成/合并 .cursor/mcp.json（Cursor 项目级 MCP，type=stdio）：
 //
 //	{"mcpServers":{"forge":{"type":"stdio","command":"forge","args":["mcp","serve"]}}}

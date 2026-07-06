@@ -118,7 +118,9 @@ func runInit(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "Warning: failed to copy hooks: %v\n", err)
 	}
 
-	// Generate .claude/settings.local.json
+	// Generate .claude/settings.local.json (Claude Code project-level hooks).
+	// plugin 已 user-level 装时,末尾 dedupeProjectLevelIfPlugin 清理此重复（Translate 的
+	// writeClaudeMCP 同理）——GenerateSettings 保持纯,dedup 在命令层统一做。
 	if err := hooks.GenerateSettings(dir); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to generate .claude/settings.local.json: %v\n", err)
 	}
@@ -183,7 +185,11 @@ func runInit(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  .forge/state.json                — 管道状态机\n")
 	fmt.Printf("  .forge/protocol.yml              — 质量协议\n")
 	fmt.Printf("  .forge/hooks/                    — 门禁 Hook 脚本\n")
-	fmt.Printf("  .claude/settings.local.json      — Claude Code 集成\n")
+	if hooks.IsClaudePluginInstalled() {
+		fmt.Println(`  .claude/settings.local.json      — forge plugin 已 user-level 接管,project-level hooks 写入后自动清理`)
+	} else {
+		fmt.Printf("  .claude/settings.local.json      — Claude Code 集成\n")
+	}
 	fmt.Printf("  .claude/CLAUDE.md                — 质量协议引用\n")
 	fmt.Printf("  AGENTS.md                        — 跨 agent 质量协议（codex/cursor/copilot/windsurf/cline）\n")
 	fmt.Printf("  .claude/skills/forge-pipeline/    — 管道编排 Skill\n")
@@ -236,6 +242,10 @@ func runInit(cmd *cobra.Command, args []string) error {
 	if len(inferredGates) > 0 {
 		fmt.Println("Use --fresh to reinitialize without project detection.")
 	}
+
+	// plugin 已 user-level 装时,清理 project-level 重复 hooks（GenerateSettings 写）+
+	// MCP（TranslateForAgents 的 writeClaudeMCP 写）。在所有写入之后统一去重。
+	dedupeProjectLevelIfPlugin(dir)
 
 	// 登记到全局项目注册表（~/.forge/projects.json），供 forge dashboard --global 聚合。
 	// 失败仅警告——全局视图是增强，init 本身成功不依赖它。

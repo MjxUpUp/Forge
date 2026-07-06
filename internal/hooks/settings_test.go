@@ -715,3 +715,246 @@ func TestPostToolUseHasWorkflowTestGuard(t *testing.T) {
 		t.Error("PostToolUse Write|Edit missing 'forge hook workflow-test-guard'")
 	}
 }
+
+// writeSettingsLocal 写 dir/.claude/settings.local.json（原样内容，供 StripForgeHooks 测试）。
+// content 是 JSON 文本——用反引号 raw 传入，保留 ASCII 双引号不被 Windows 输入腐蚀。
+func writeSettingsLocal(t *testing.T, dir, content string) {
+	t.Helper()
+	p := filepath.Join(dir, ".claude", "settings.local.json")
+	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+		t.Fatalf("mkdir .claude: %v", err)
+	}
+	if err := os.WriteFile(p, []byte(content), 0644); err != nil {
+		t.Fatalf("write settings: %v", err)
+	}
+}
+
+func settingsLocalExists(t *testing.T, dir string) bool {
+	t.Helper()
+	_, err := os.Stat(filepath.Join(dir, ".claude", "settings.local.json"))
+	if err == nil {
+		return true
+	}
+	if os.IsNotExist(err) {
+		return false
+	}
+	t.Fatalf("stat settings: %v", err)
+	return false
+}
+
+func settingsPath(dir string) string {
+	return filepath.Join(dir, ".claude", "settings.local.json")
+}
+
+// TestStripForgeHooks_NoFile：无 settings.local.json 时 no-op（changed=false，不报错）。
+func TestStripForgeHooks_NoFile(t *testing.T) {
+	dir := t.TempDir()
+	changed, err := StripForgeHooks(dir)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if changed {
+		t.Error(`无 settings.local.json 应 changed=false`)
+	}
+}
+
+// TestStripForgeHooks_ForgeOnly_DeletesFile：GenerateSettings 写纯 forge hooks，
+// strip 后 settings 仅剩空 hooks → 删除整个文件（不残留空对象）。
+func TestStripForgeHooks_ForgeOnly_DeletesFile(t *testing.T) {
+	dir := t.TempDir()
+	if err := GenerateSettings(dir); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := StripForgeHooks(dir)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if !changed {
+		t.Error(`纯 forge hooks 应 changed=true`)
+	}
+	if settingsLocalExists(t, dir) {
+		t.Error(`纯 forge hooks 移除后文件应删除（无残留空 hooks 对象）`)
+	}
+}
+
+// TestStripForgeHooks_PreservesUserHooks：同 matcher 内 forge hook + 用户 hook，
+// 删 forge 保留用户 hook（文件保留）。
+func TestStripForgeHooks_PreservesUserHooks(t *testing.T) {
+	dir := t.TempDir()
+	content := `{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {"type": "command", "command": "forge hook bash-guard"},
+          {"type": "command", "command": "npx prettier"}
+        ]
+      }
+    ]
+  }
+}`
+	writeSettingsLocal(t, dir, content)
+	changed, err := StripForgeHooks(dir)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if !changed {
+		t.Error(`有 forge hook 应 changed=true`)
+	}
+	data, err := os.ReadFile(settingsPath(dir))
+	if err != nil {
+		t.Fatalf(`read: %v`, err)
+	}
+	body := string(data)
+	if containsString(body, "forge hook") {
+		t.Error(`forge hook 未被移除`)
+	}
+	if !containsString(body, "npx prettier") {
+		t.Error(`用户自定义 hook 被误删`)
+	}
+}
+
+// TestStripForgeHooks_NoForgeHooks_NoOp：纯用户 hooks（无 forge 来源）时 no-op。
+func TestStripForgeHooks_NoForgeHooks_NoOp(t *testing.T) {
+	dir := t.TempDir()
+	content := `{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"npx prettier"}]}]}}`
+	writeSettingsLocal(t, dir, content)
+	changed, err := StripForgeHooks(dir)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if changed {
+		t.Error(`无 forge hook 应 changed=false（no-op）`)
+	}
+	data, _ := os.ReadFile(settingsPath(dir))
+	if !containsString(string(data), "npx prettier") {
+		t.Error(`无 forge hook 时文件不应被改动`)
+	}
+}
+
+// TestStripForgeHooks_PreservesTopLevelFields：forge hooks + 其他顶层字段（permissions）
+// —— 删 forge hooks 后保留 permissions，空 hooks 键被删除。
+func TestStripForgeHooks_PreservesTopLevelFields(t *testing.T) {
+	dir := t.TempDir()
+	content := `{
+  "permissions": {"allow": ["Bash(go test:*)"]},
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Bash", "hooks": [{"type": "command", "command": "forge hook bash-guard"}]}
+    ]
+  }
+}`
+	writeSettingsLocal(t, dir, content)
+	changed, err := StripForgeHooks(dir)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if !changed {
+		t.Error(`应 changed=true`)
+	}
+	var cfg map[string]json.RawMessage
+	data, err := os.ReadFile(settingsPath(dir))
+	if err != nil {
+		t.Fatalf(`read: %v`, err)
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf(`parse: %v`, err)
+	}
+	if _, ok := cfg["permissions"]; !ok {
+		t.Error(`顶层 permissions 字段被误删`)
+	}
+	if _, ok := cfg["hooks"]; ok {
+		t.Error(`hooks（纯 forge 移除后空）应被删除`)
+	}
+}
+
+// TestStripForgeHooks_PreservesUserHooksAndTopLevel：forge hook + 用户 hook（不同事件）
+// + permissions —— 删 forge，保留用户 hook + permissions + 文件本身。
+func TestStripForgeHooks_PreservesUserHooksAndTopLevel(t *testing.T) {
+	dir := t.TempDir()
+	content := `{
+  "permissions": {"allow": ["Bash(go test:*)"]},
+  "hooks": {
+    "PostToolUse": [
+      {"matcher": "Bash", "hooks": [{"type": "command", "command": "forge hook file-sentinel"}]}
+    ],
+    "Stop": [
+      {"hooks": [{"type": "command", "command": "make lint"}]}
+    ]
+  }
+}`
+	writeSettingsLocal(t, dir, content)
+	changed, err := StripForgeHooks(dir)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if !changed {
+		t.Error(`应 changed=true`)
+	}
+	data, _ := os.ReadFile(settingsPath(dir))
+	body := string(data)
+	if containsString(body, "forge hook") {
+		t.Error(`forge hook 未移除`)
+	}
+	if !containsString(body, "make lint") {
+		t.Error(`Stop 事件用户 hook 被误删`)
+	}
+	if !containsString(body, "permissions") {
+		t.Error(`permissions 顶层字段丢失`)
+	}
+}
+
+// TestStripForgeHooks_RemovesGateCommand：N4 守卫——ForgeHookSpec 含 forge gate 命令
+// （非仅 forge hook），StripForgeHooks 必须同样移除 gate。此前断言只查 "forge hook" 子串，
+// 若 StripForgeHooks 只删 hook 漏删 gate，现有测试抓不到（gate 命令残留 → plugin 已装时
+// project-level gate 仍双跑）。
+func TestStripForgeHooks_RemovesGateCommand(t *testing.T) {
+	dir := t.TempDir()
+	content := `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"forge gate --current --silent"},{"type":"command","command":"make lint"}]}]}}`
+	writeSettingsLocal(t, dir, content)
+	changed, err := StripForgeHooks(dir)
+	if err != nil {
+		t.Fatalf(`err: %v`, err)
+	}
+	if !changed {
+		t.Error(`应 changed=true（有 forge gate）`)
+	}
+	data, _ := os.ReadFile(settingsPath(dir))
+	body := string(data)
+	if containsString(body, "forge gate") {
+		t.Error(`forge gate 未被移除（断言不能只查 forge hook 子串,N4）`)
+	}
+	if containsString(body, "forge hook") {
+		t.Error(`forge hook 残留`)
+	}
+	if !containsString(body, "make lint") {
+		t.Error(`用户 hook（make lint）被误删`)
+	}
+}
+
+// TestIsForgeHookCommand：钉死 forge 来源命令的识别（forge hook X / forge gate X /
+// 裸 forge hook / forge gate）。非 forge 命令（含 forge plugin status 等其他子命令）
+// 不被误判——避免 StripForgeHooks 误删用户的非 hook forge 调用。
+func TestIsForgeHookCommand(t *testing.T) {
+	cases := []struct {
+		cmd  string
+		want bool
+	}{
+		{"forge hook bash-guard", true},
+		{"forge hook", true},
+		{"forge gate task-verify", true},
+		{"forge gate", true},
+		{"forge hooks", false}, // forge hooks（复数）非 hook 命令
+		{"forge plugin status", false},
+		{"forge plugin dedupe", false},
+		{"npx prettier", false},
+		{"./scripts/lint.sh", false},
+		{"", false},
+	}
+	for _, c := range cases {
+		if got := isForgeHookCommand(c.cmd); got != c.want {
+			t.Errorf(`isForgeHookCommand(%q) = %v, want %v`, c.cmd, got, c.want)
+		}
+	}
+}
