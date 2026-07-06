@@ -276,3 +276,38 @@ func TestLoadAll_AbsentFileReturnsNil(t *testing.T) {
 		t.Errorf(`Latest 缺失文件应 nil，got %+v`, latest)
 	}
 }
+
+func TestBuildConclusion_DesignPhases(t *testing.T) {
+	// 非空 phases → 原样写入 Conclusion.DesignPhases（此前 5 处调用全传 nil，未覆盖）。
+	phases := []string{`api`, `backend`}
+	c := BuildConclusion(`feat/x`, `s1`, score(90, `A`), ec(3, 1), 0, 0, fixedTime, phases)
+	if len(c.DesignPhases) != 2 || c.DesignPhases[0] != `api` || c.DesignPhases[1] != `backend` {
+		t.Errorf(`DesignPhases=%v want [api backend]`, c.DesignPhases)
+	}
+	// nil phases → 空（零值）。
+	c2 := BuildConclusion(`feat/y`, `s2`, score(90, `A`), ec(3, 1), 0, 0, fixedTime, nil)
+	if len(c2.DesignPhases) != 0 {
+		t.Errorf(`nil phases → DesignPhases=%v want 空`, c2.DesignPhases)
+	}
+}
+
+func TestAppendLoadAll_DesignPhasesRoundTrip(t *testing.T) {
+	// JSON 序列化往返：design_phases,omitempty 在非空时必须正确写读，不丢。
+	root := forgedatatest.ForDataDir(t.TempDir())
+	c := BuildConclusion(`feat/p`, `s1`, score(85, `B`), ec(3, 1), 1, 1, fixedTime,
+		[]string{`requirement`, `api`})
+	if err := Append(root, &c); err != nil {
+		t.Fatalf(`Append: %v`, err)
+	}
+	got, err := LoadAll(root)
+	if err != nil {
+		t.Fatalf(`LoadAll: %v`, err)
+	}
+	if len(got) != 1 {
+		t.Fatalf(`LoadAll len=%d want 1`, len(got))
+	}
+	if len(got[0].DesignPhases) != 2 ||
+		got[0].DesignPhases[0] != `requirement` || got[0].DesignPhases[1] != `api` {
+		t.Errorf(`DesignPhases round-trip 丢失：got=%v want [requirement api]`, got[0].DesignPhases)
+	}
+}
