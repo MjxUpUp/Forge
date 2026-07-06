@@ -49,6 +49,27 @@ git diff --cached                  # 看已暂存的变更
 
 **重要：审查要同时看 `+` 行和 `-` 行。** AI 作弊常在删除行里（删断言、降级匹配器、删测试块）。
 
+### 步骤 1.5：环节感知加载（phase-aware，如有设计产物）
+
+如果任务是**设计阶段产物审查**（非纯代码实现），`task-verify` gate 的 `inferDesignPhases` 已根据文件路径推断设计阶段并落盘 `state.DesignPhases`。据此加载对应 checklist，而非只加载通用 `review-checklist.md`：
+
+```bash
+# 检查任务是否有 DesignPhases（需有 active task）
+forge task status --json 2>&1 | grep -i "design_phase\|DesignPhases"
+```
+
+有 `DesignPhases` 时，加载对应环节 checklist 作为补充检查项：
+
+| DesignPhase | 加载 checklist | 说明 |
+|---|---|---|
+| `requirement` | [references/phase-requirement.md](references/phase-requirement.md) | 需求设计产物（PRD/需求文档）审查 |
+| `api` | [references/phase-api.md](references/phase-api.md) | API 设计产物（OpenAPI/proto/接口定义）审查 |
+| 其他/无 | 通用 `review-checklist.md` | 代码级审查（默认） |
+
+**加载方式**：把对应 checklist 作为附加检查项，与轨道 A+B 一起执行。不替换而是补充——设计产物审查与代码实现审查关注点不同。
+
+> 无 `DesignPhases` 时（普通代码任务）跳过此步，直接进入步骤 2。
+
 ### 步骤 2 前置：加载动态经验库（项目积累，必做）
 
 轨道 A 的 11 类指纹是**静态通用**的。本项目/技术栈还会积累**具体的 gotchas**（存在 `~/.forge/knowledge/gotchas/`）——从过往低分 task、踩坑复盘提炼，比通用规则更贴合实际。先加载它们，作为下面双轨审查的补充检查表：
