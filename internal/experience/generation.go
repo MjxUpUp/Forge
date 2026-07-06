@@ -130,7 +130,8 @@ func GenerateProposalsForReviewWithPhase(proj *forgedata.Project, taskRef string
 		if !ok {
 			continue
 		}
-		// Dedup by title+phase combo
+		// Dedup by title（同 review 下同 title 不重复创建；phase 是标记不参与 dedup——
+		// 一个 review 的 lows 同属一个 task，phase 取 phases[0] 相同，title 已足够区分）
 		key := tmpl.Title
 		if haveTitle[key] {
 			continue

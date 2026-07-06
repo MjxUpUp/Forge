@@ -136,3 +136,40 @@ func TestSummarize_SpanFromEarliestToLatest(t *testing.T) {
 			s.Span.Earliest, s.Span.Latest, at(1), at(9))
 	}
 }
+
+func TestSummarize_PhasePassRate(t *testing.T) {
+	// t1: api+backend grade A（都通过）；t2: api grade C（不过）；t3: backend grade B（通过）；
+	// t4: grade="" 不进 phaseGrades（无 grade 守门）。
+	cs := []act.Conclusion{
+		{TaskRef: `t1`, Grade: `A`, Strength: `Strong`, Score: 95, DesignPhases: []string{`api`, `backend`}, CompletedAt: at(1)},
+		{TaskRef: `t2`, Grade: `C`, Strength: `Strong`, Score: 75, DesignPhases: []string{`api`}, CompletedAt: at(2)},
+		{TaskRef: `t3`, Grade: `B`, Strength: `Strong`, Score: 85, DesignPhases: []string{`backend`}, CompletedAt: at(3)},
+		{TaskRef: `t4`, Grade: ``, Strength: `Strong`, Score: 0, DesignPhases: []string{`api`}, CompletedAt: at(4)},
+	}
+	s := Summarize(cs)
+	if s.PhasePassRate == nil {
+		t.Fatal(`PhasePassRate=nil want 非空（有 phase+grade 数据）`)
+	}
+	// api: t1(A,通过) + t2(C,不过) + t4(无grade,不进) → 1 通过 / 2 总数 = 0.5
+	if got := s.PhasePassRate[`api`]; got != 0.5 {
+		t.Errorf(`api pass_rate=%v want 0.5（A通过/C不过/无grade不进 → 1/2）`, got)
+	}
+	// backend: t1(A) + t3(B) → 2/2 = 1.0（A+B 都通过）
+	if got := s.PhasePassRate[`backend`]; got != 1.0 {
+		t.Errorf(`backend pass_rate=%v want 1.0（A+B 都通过）`, got)
+	}
+}
+
+func TestSummarize_PhasePassRate_EmptyIsNil(t *testing.T) {
+	// 空切片 → PhasePassRate nil（JSON omitempty 生效，不出空 map）。
+	if s := Summarize(nil); s.PhasePassRate != nil {
+		t.Errorf(`空切片 PhasePassRate=%v want nil`, s.PhasePassRate)
+	}
+	// 全无 grade → phaseGrades 永不填充 → PhasePassRate nil。
+	s2 := Summarize([]act.Conclusion{
+		{TaskRef: `x`, Grade: ``, Strength: `Strong`, Score: 0, DesignPhases: []string{`api`}, CompletedAt: at(1)},
+	})
+	if s2.PhasePassRate != nil {
+		t.Errorf(`全无 grade PhasePassRate=%v want nil（无 grade 守门）`, s2.PhasePassRate)
+	}
+}
