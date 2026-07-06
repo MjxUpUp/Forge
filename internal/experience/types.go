@@ -57,4 +57,7 @@ type ExperienceProposal struct {
 	Severity     string     `json:"severity"`
 	Status       PropStatus `json:"status"`
 	CreatedAt    time.Time  `json:"created_at"`
+	// Phase 标识该提案关联的设计阶段（如 requirement/api/backend 等）。
+	// 由 task-verify gate 的 inferDesignPhases 传入，用于 R1 复发检测按 phase 匹配。
+	Phase string `json:"phase,omitempty"`
 }

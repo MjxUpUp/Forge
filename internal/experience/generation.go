@@ -107,6 +107,54 @@ func GenerateProposalsForReview(proj *forgedata.Project, taskRef string, lows []
 	return created, nil
 }
 
+// GenerateProposalsForReviewWithPhase works like GenerateProposalsForReview but
+// also tags each proposal with a design phase (e.g. "requirement", "api").
+// Used by task-complete gate to create phase-aware proposals when
+// inferDesignPhases detected design artifacts.
+func GenerateProposalsForReviewWithPhase(proj *forgedata.Project, taskRef string, lows []LowDimension, phases []string) (int, error) {
+	if len(phases) == 0 {
+		return GenerateProposalsForReview(proj, taskRef, lows)
+	}
+	existing, err := ProposalsForReview(proj, taskRef, PropProposed)
+	if err != nil {
+		return 0, fmt.Errorf("list existing proposals for dedup: %w", err)
+	}
+	haveTitle := make(map[string]bool)
+	for _, p := range existing {
+		haveTitle[p.Title] = true
+	}
+
+	created := 0
+	for _, d := range lows {
+		tmpl, ok := dimensionTemplates[d.Dimension]
+		if !ok {
+			continue
+		}
+		// Dedup by title+phase combo
+		key := tmpl.Title
+		if haveTitle[key] {
+			continue
+		}
+
+		proposal := &ExperienceProposal{
+			SourceReview: taskRef,
+			Category:     tmpl.Category,
+			Title:        tmpl.Title,
+			Description:  tmpl.Description,
+			Patterns:     tmpl.Patterns,
+			Severity:     tmpl.Severity,
+			Status:       PropProposed,
+			Phase:        phases[0], // tag with first detected phase
+		}
+		if err := SaveProposal(proj, proposal); err != nil {
+			return created, fmt.Errorf("save proposal for %s: %w", d.Dimension, err)
+		}
+		haveTitle[key] = true
+		created++
+	}
+	return created, nil
+}
+
 // GenerateForExistingReview loads an existing review and backfills proposals
 // for it. Used by `forge experience generate <task-ref>` to repair reviews
 // created before the auto-generation fix landed.

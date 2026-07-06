@@ -15,12 +15,18 @@ func TestShouldReview(t *testing.T) {
 		wantCreate    bool
 		wantMandatory bool
 	}{
-		{69, true, true},
+		// F 级（<60）：强制 mandatory review + auto-accept 进 knowledge
+		{50, true, true},
+		{59, true, true},
+		// 60-79 可选 review（human 确认 borderline）
+		{60, true, false},
+		{69, true, false},
 		{70, true, false},
 		{75, true, false},
+		{79, true, false},
+		// >=80 无需 review
 		{80, false, false},
 		{95, false, false},
-		{50, true, true},
 	}
 	for _, tt := range tests {
 		create, mandatory := ShouldReview(tt.score)

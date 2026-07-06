@@ -1275,7 +1275,7 @@ func appendConclusion(root string, state *taskpipeline.TaskState) string {
 	if state.CompletedAt != nil {
 		completedAt = *state.CompletedAt
 	}
-	conc := act.BuildConclusion(state.TaskRef, state.SessionID, state.Score, ec, pass, total, completedAt)
+	conc := act.BuildConclusion(state.TaskRef, state.SessionID, state.Score, ec, pass, total, completedAt, phaseKeys(state.DesignPhases))
 	proj, perr := forgedata.ProjectFor(root)
 	if perr != nil {
 		fmt.Fprintf(os.Stderr, "Warning: act conclusion append skipped (project not resolved): %v\n", perr)
@@ -1503,4 +1503,16 @@ func createAndSwitchBranch(root, name string) error {
 		return fmt.Errorf("%s: %s", err, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+// phaseKeys converts taskpipeline.DesignPhase slice to string slice for act.Conclusion.
+func phaseKeys(phases []taskpipeline.DesignPhase) []string {
+	if len(phases) == 0 {
+		return nil
+	}
+	out := make([]string, len(phases))
+	for i, p := range phases {
+		out[i] = string(p)
+	}
+	return out
 }
