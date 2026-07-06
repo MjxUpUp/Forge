@@ -134,6 +134,100 @@ func GenerateSettings(projectDir string) error {
 	return os.WriteFile(path, data, 0644)
 }
 
+// StripForgeHooks 移除 .claude/settings.local.json 中 ForgeHookSpec 来源的 hooks
+// （command 以 "forge hook " 或 "forge gate " 开头的条目）。当 forge plugin 在
+// user-level 已装，plugin 的 plugin.json 已注册同样的 ForgeHookSpec（全机器所有项目），
+// project-level 保留它们只会让 Claude Code 双重执行同一 hook。
+//
+// 仅删 forge 来源的 hook 条目，保留用户自定义 hooks（command 不以 forge hook/forge gate
+// 开头）。移除所有 forge hooks 后：
+//   - 若 hooks 字段空且无其他顶层字段 → 删除整个 settings.local.json
+//   - 若 hooks 字段空但有用户自定义顶层字段 → 写回（无 hooks）
+//   - 若仍有用户自定义 hooks → 写回（仅用户 hooks）
+//
+// 幂等：无 settings.local.json / 无 hooks 字段 / 无 forge hooks 时均 no-op（changed=false）。
+// 返回 changed 表示是否实际改动了文件（供 forge plugin dedupe 决定是否输出提示）。
+// GenerateSettings 保持纯函数（永远写 hooks）。plugin 已装时,project-level 重复由命令层
+// （init/sync 的 dedupeProjectLevelIfPlugin,所有写入后统一调用）清理——避免单元测试依赖
+// 全局 IsClaudePluginInstalled 状态。
+func StripForgeHooks(projectDir string) (changed bool, err error) {
+	path := filepath.Join(projectDir, ".claude", "settings.local.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("read settings.local.json: %w", err)
+	}
+	// 用 json.RawMessage 保留未知顶层字段，只重写 hooks。
+	var settings map[string]json.RawMessage
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return false, fmt.Errorf("parse settings.local.json: %w", err)
+	}
+	hooksRaw, hasHooks := settings["hooks"]
+	if !hasHooks {
+		return false, nil
+	}
+	var hookSpec map[string][]HookMatcher
+	if err := json.Unmarshal(hooksRaw, &hookSpec); err != nil {
+		return false, fmt.Errorf("parse hooks: %w", err)
+	}
+	cleaned := make(map[string][]HookMatcher)
+	removedAny := false
+	for event, matchers := range hookSpec {
+		var keptMatchers []HookMatcher
+		for _, m := range matchers {
+			var keptHooks []HookEntry
+			for _, h := range m.Hooks {
+				if isForgeHookCommand(h.Command) {
+					removedAny = true
+					continue
+				}
+				keptHooks = append(keptHooks, h)
+			}
+			if len(keptHooks) > 0 {
+				m.Hooks = keptHooks
+				keptMatchers = append(keptMatchers, m)
+			}
+		}
+		if len(keptMatchers) > 0 {
+			cleaned[event] = keptMatchers
+		}
+	}
+	if !removedAny {
+		return false, nil
+	}
+	if len(cleaned) > 0 {
+		hooksJSON, mErr := json.Marshal(cleaned)
+		if mErr != nil {
+			return false, fmt.Errorf("marshal cleaned hooks: %w", mErr)
+		}
+		settings["hooks"] = hooksJSON
+	} else {
+		delete(settings, "hooks")
+	}
+	if len(settings) == 0 {
+		if err := os.Remove(path); err != nil {
+			return false, fmt.Errorf("remove empty settings.local.json: %w", err)
+		}
+		return true, nil
+	}
+	out, mErr := json.MarshalIndent(settings, "", "  ")
+	if mErr != nil {
+		return false, fmt.Errorf("marshal settings: %w", mErr)
+	}
+	return true, os.WriteFile(path, out, 0644)
+}
+
+// isForgeHookCommand 报告 hook command 是否来自 forge（ForgeHookSpec 写入的命令）。
+// ForgeHookSpec 的命令都是 "forge hook <name>" 或 "forge gate ..."。用户自定义 hook
+// （如 "npx prettier" / "./scripts/lint.sh"）不被识别为 forge 来源，StripForgeHooks 保留。
+func isForgeHookCommand(cmd string) bool {
+	return strings.HasPrefix(cmd, "forge hook ") ||
+		strings.HasPrefix(cmd, "forge gate ") ||
+		cmd == "forge hook" || cmd == "forge gate"
+}
+
 // WriteHookTemplates writes embedded hook scripts to .forge/hooks/.
 func WriteHookTemplates(forgeDir string) error {
 	hooksDir := filepath.Join(forgeDir, "hooks")
