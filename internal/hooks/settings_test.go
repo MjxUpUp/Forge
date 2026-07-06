@@ -933,6 +933,70 @@ func TestStripForgeHooks_RemovesGateCommand(t *testing.T) {
 	}
 }
 
+// TestGenerateSettings_PreservesUserTopLevelFields:钉死 GenerateSettings 合并式——
+// 用户现有非 hooks 顶层字段(env/model/enabledPlugins)必须保留,只 hooks 段更新为
+// ForgeHookSpec。1.2.0 回归:覆盖式写丢用户配置,plugin-dedupe 删 hooks 后文件被删、
+// env/model 丢失(真实事故:Agentworld 项目 forge init 后 ollama/Qwen 配置全丢)。
+// 注:hooks 段由 forge 管理(GenerateSettings 覆盖为 ForgeHookSpec),用户自定义 hook
+// 放 hooks 段会被覆盖——当前 hotfix 聚焦非 hooks 顶层字段保留,hooks 段合并是后续优化。
+func TestGenerateSettings_PreservesUserTopLevelFields(t *testing.T) {
+	dir := t.TempDir()
+	existing := `{"env":{"API_KEY":"secret"},"model":"my-model","hooks":{"Stop":[{"hooks":[{"type":"command","command":"make lint"}]}]}}`
+	writeSettingsLocal(t, dir, existing)
+
+	if err := GenerateSettings(dir); err != nil {
+		t.Fatalf("GenerateSettings: %v", err)
+	}
+
+	data, err := os.ReadFile(settingsPath(dir))
+	if err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	body := string(data)
+
+	if !containsString(body, "secret") {
+		t.Error(`用户 env.API_KEY=secret 被 GenerateSettings 删除(1.2.0 回归)`)
+	}
+	if !containsString(body, "my-model") {
+		t.Error(`用户 model=my-model 被删除`)
+	}
+	if !containsString(body, "forge hook") {
+		t.Error(`hooks 段未更新为 ForgeHookSpec`)
+	}
+}
+
+// TestInitFlow_PluginInstalled_PreservesUserConfig:端到端钉死 1.2.0 事故场景——
+// plugin 已装时 init 流程(GenerateSettings 写 hooks → StripForgeHooks 删 forge hooks)
+// 必须保留用户 env/model,文件不删。1.2.0 GenerateSettings 覆盖式 → 用户配置丢 + 文件删
+// (Agentworld 项目 forge init 后 ollama/Qwen 配置全丢)。1.2.1 修。
+func TestInitFlow_PluginInstalled_PreservesUserConfig(t *testing.T) {
+	dir := t.TempDir()
+	writeSettingsLocal(t, dir, `{"env":{"API_KEY":"secret"},"model":"my-model"}`)
+
+	// init 流程:GenerateSettings(合并写 hooks)→ StripForgeHooks(dedupe 删 forge hooks)。
+	if err := GenerateSettings(dir); err != nil {
+		t.Fatalf("GenerateSettings: %v", err)
+	}
+	if _, err := StripForgeHooks(dir); err != nil {
+		t.Fatalf("StripForgeHooks: %v", err)
+	}
+
+	data, err := os.ReadFile(settingsPath(dir))
+	if err != nil {
+		t.Fatalf(`settings.local.json 被删(1.2.0 回归): %v`, err)
+	}
+	body := string(data)
+	if !containsString(body, "secret") {
+		t.Error(`用户 env.API_KEY 丢失`)
+	}
+	if !containsString(body, "my-model") {
+		t.Error(`用户 model 丢失`)
+	}
+	if containsString(body, "forge hook") {
+		t.Error(`dedupe 后应无 forge hooks`)
+	}
+}
+
 // TestIsForgeHookCommand：钉死 forge 来源命令的识别（forge hook X / forge gate X /
 // 裸 forge hook / forge gate）。非 forge 命令（含 forge plugin status 等其他子命令）
 // 不被误判——避免 StripForgeHooks 误删用户的非 hook forge 调用。
