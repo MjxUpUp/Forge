@@ -18,6 +18,7 @@ var (
 	skInstMode         string
 	skInstDriftPolicy  string
 	skInstSkipQuality  bool
+	skInstSkipRequire  bool
 	skInstWithAdapters bool
 	skInstJSON         bool
 )
@@ -49,6 +50,7 @@ drift 处理（目标与 canonical 内容分叉时）：
 其他：
   --skill NAME       只装指定 skill（可重复）
   --skip-quality     跳过 install 前 registry+audit 双门控
+  --skip-require-check  跳过 frontmatter.requires 依赖同装检查
   --with-adapters    同时部署 4 个 skill-routing adapter 单文件`,
 	RunE: runSkillsInstall,
 }
@@ -91,6 +93,7 @@ func runSkillsInstall(cmd *cobra.Command, args []string) error {
 		Targets:          targets,
 		SkillFilter:      skInstSkill,
 		SkipQuality:      skInstSkipQuality,
+		SkipRequireCheck: skInstSkipRequire,
 		Global:           global,
 		ProjectSkillsDir: projectDir,
 	}
@@ -175,6 +178,14 @@ func printInstallReport(r *skillsdist.InstallReport) {
 		fmt.Printf("  → 以上 %d 个 skill 保留了你的本地改动。如需同步 canonical 最新版（会先备份再覆盖）：\n", driftSkipCount)
 		fmt.Printf("    forge skills install --drift-policy overwrite\n")
 	}
+
+	// requires 依赖警告：声明了依赖但未同装或无效，非阻断（stderr 区分正常输出与告警）。
+	if len(r.Warnings) > 0 {
+		fmt.Fprintln(os.Stderr, `  ⚠ requires 依赖警告（不阻断安装）：`)
+		for _, w := range r.Warnings {
+			fmt.Fprintln(os.Stderr, `    - `+w)
+		}
+	}
 }
 
 func parseSkillTargets(raw []string) ([]skillsdist.Target, error) {
@@ -201,6 +212,7 @@ func init() {
 	skillsInstallCmd.Flags().StringVar(&skInstMode, "mode", "link", "分发模式 link|copy")
 	skillsInstallCmd.Flags().StringVar(&skInstDriftPolicy, "drift-policy", "abort", "drift 处理 abort|skip|overwrite")
 	skillsInstallCmd.Flags().BoolVar(&skInstSkipQuality, "skip-quality", false, "跳过 install 前质量门控")
+	skillsInstallCmd.Flags().BoolVar(&skInstSkipRequire, `skip-require-check`, false, `跳过 frontmatter.requires 依赖同装检查`)
 	skillsInstallCmd.Flags().BoolVar(&skInstWithAdapters, "with-adapters", false, "同时部署 skill-routing adapter 单文件")
 	skillsInstallCmd.Flags().BoolVar(&skInstJSON, "json", false, "JSON 输出")
 	skillsCmd.AddCommand(skillsInstallCmd)
