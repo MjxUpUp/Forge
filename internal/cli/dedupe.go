@@ -31,11 +31,15 @@ import (
 // dedupeProjectLevelIfPlugin 在 forge plugin 已 user-level 安装时,清理 project-level
 // 重复的 hooks（settings.local.json）与 forge MCP server（.mcp.json）。未装时 no-op。
 // init/sync 末尾（或 defer）调。
+//
+// 自动路径（SessionStart / autoSync / init·sync）,故 settings.local.json 用 keepEmpty=true
+// 保留文件壳（只清 forge hooks,写 {}）——用户常主动放置/编辑这个文件,绝不在自动清理时静默删。
+// .mcp.json 由 StripForgeMCPServer 处理,删空逻辑不变（用户未提保留诉求）。
 func dedupeProjectLevelIfPlugin(dir string) {
 	if !hooks.IsClaudePluginInstalled() {
 		return
 	}
-	if _, err := hooks.StripForgeHooks(dir); err != nil {
+	if _, err := hooks.StripForgeHooks(dir, true); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to strip duplicate project hooks: %v\n", err)
 	}
 	if _, err := agentbridge.StripForgeMCPServer(dir); err != nil {

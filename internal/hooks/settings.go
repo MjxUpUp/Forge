@@ -156,17 +156,19 @@ func GenerateSettings(projectDir string) error {
 // project-level 保留它们只会让 Claude Code 双重执行同一 hook。
 //
 // 仅删 forge 来源的 hook 条目，保留用户自定义 hooks（command 不以 forge hook/forge gate
-// 开头）。移除所有 forge hooks 后：
-//   - 若 hooks 字段空且无其他顶层字段 → 删除整个 settings.local.json
-//   - 若 hooks 字段空但有用户自定义顶层字段 → 写回（无 hooks）
-//   - 若仍有用户自定义 hooks → 写回（仅用户 hooks）
+// 开头）。移除所有 forge hooks 后（hooks 字段空且无其他顶层字段，即整文件只剩 forge 来源）：
+//   - keepEmpty=true（自动路径：init-suggest SessionStart / autoSync / init·sync）→ 写空对象
+//     {} 保留文件壳,绝不删——settings.local.json 是 gitignored 个人配置,用户常主动放置/
+//     正在编辑,forge 在自动 dedupe 时静默删整个文件是用户痛点。空 {} 对 Claude Code 无害。
+//   - keepEmpty=false（手动 forge plugin dedupe,显式清理）→ 删除整个文件,恢复无 project 配置。
+// hooks 字段空但有用户自定义顶层字段 → 写回（无 hooks）。仍有用户自定义 hooks → 写回（仅用户 hooks）。
 //
 // 幂等：无 settings.local.json / 无 hooks 字段 / 无 forge hooks 时均 no-op（changed=false）。
 // 返回 changed 表示是否实际改动了文件（供 forge plugin dedupe 决定是否输出提示）。
 // GenerateSettings 保持纯函数（永远写 hooks）。plugin 已装时,project-level 重复由命令层
 // （init/sync 的 dedupeProjectLevelIfPlugin,所有写入后统一调用）清理——避免单元测试依赖
 // 全局 IsClaudePluginInstalled 状态。
-func StripForgeHooks(projectDir string) (changed bool, err error) {
+func StripForgeHooks(projectDir string, keepEmpty bool) (changed bool, err error) {
 	path := filepath.Join(projectDir, ".claude", "settings.local.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -223,6 +225,11 @@ func StripForgeHooks(projectDir string) (changed bool, err error) {
 		delete(settings, "hooks")
 	}
 	if len(settings) == 0 {
+		// keepEmpty=true: 自动路径（init-suggest / autoSync / init·sync）——保留文件壳,写 {}。
+		// keepEmpty=false: 手动 forge plugin dedupe（显式清理）——删空文件。
+		if keepEmpty {
+			return true, os.WriteFile(path, []byte("{}\n"), 0644)
+		}
 		if err := os.Remove(path); err != nil {
 			return false, fmt.Errorf("remove empty settings.local.json: %w", err)
 		}

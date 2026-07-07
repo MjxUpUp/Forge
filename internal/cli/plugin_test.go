@@ -3,9 +3,11 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/MjxUpUp/Forge/internal/hooks"
+	"github.com/spf13/cobra"
 )
 
 // plugin_test.go — forge plugin status/dedupe 命令 + dedupeProjectLevelIfPlugin 的直接测试。
@@ -42,8 +44,9 @@ func writeProjectLevelForgeDupes(t *testing.T, dir string) {
 	}
 }
 
-// TestDedupeProjectLevelIfPlugin_PluginInstalled：plugin 已装时,dedupe 删 project-level
-// 重复 hooks + MCP（N3：该分支此前因 TestMain 钉死未装从未被测）。
+// TestDedupeProjectLevelIfPlugin_PluginInstalled：plugin 已装时,自动 dedupe 清 project-level
+// 重复——settings.local.json 保留文件壳写 {}（dedupeProjectLevelIfPlugin 内 keepEmpty=true,
+// 用户痛点:forge 不静默删个人配置文件）,.mcp.json 删空。N3：该分支此前因 TestMain 钉死未装从未被测。
 func TestDedupeProjectLevelIfPlugin_PluginInstalled(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("CLAUDE_CONFIG_DIR", home)
@@ -54,8 +57,11 @@ func TestDedupeProjectLevelIfPlugin_PluginInstalled(t *testing.T) {
 
 	dedupeProjectLevelIfPlugin(dir)
 
-	if _, err := os.Stat(filepath.Join(dir, ".claude", "settings.local.json")); !os.IsNotExist(err) {
-		t.Errorf(`plugin 已装时 settings.local.json 应被 dedupe 删除,stat err=%v`, err)
+	data, err := os.ReadFile(filepath.Join(dir, ".claude", "settings.local.json"))
+	if err != nil {
+		t.Errorf(`自动 dedupe 应保留 settings.local.json 写 {},不删: %v`, err)
+	} else if got := strings.TrimSpace(string(data)); got != "{}" {
+		t.Errorf(`自动 dedupe 应写 {}, got %q`, got)
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".mcp.json")); !os.IsNotExist(err) {
 		t.Errorf(`plugin 已装时 .mcp.json 应被 dedupe 删除,stat err=%v`, err)
@@ -78,5 +84,58 @@ func TestDedupeProjectLevelIfPlugin_PluginNotInstalled_NoOp(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".mcp.json")); err != nil {
 		t.Errorf(`plugin 未装时不应删 .mcp.json,stat err=%v`, err)
+	}
+}
+
+// TestRunPluginDedupe_KeepEmptyFlag：钉死 forge plugin dedupe 的 --keep-empty flag 传递——
+// 带 flag（init-suggest SessionStart 自动调用）保留 settings.local.json 写 {};不带（手动清理）
+// 删空文件。两种情况 .mcp.json 都删空（keepEmpty 只影响 settings）。防 flag 注册/读取回归。
+func TestRunPluginDedupe_KeepEmptyFlag(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	writeForgePluginFixture(t, home)
+
+	cases := []struct {
+		name      string
+		keepEmpty bool
+	}{
+		{"manual_no_flag_deletes", false},
+		{"auto_keep_empty_preserves", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeProjectLevelForgeDupes(t, dir)
+
+			cmd := &cobra.Command{RunE: runPluginDedupe}
+			cmd.Flags().Bool("keep-empty", false, "")
+			if tc.keepEmpty {
+				if err := cmd.Flags().Set("keep-empty", "true"); err != nil {
+					t.Fatalf("set keep-empty: %v", err)
+				}
+			}
+			if err := runPluginDedupe(cmd, []string{dir}); err != nil {
+				t.Fatalf("runPluginDedupe: %v", err)
+			}
+
+			settingsPath := filepath.Join(dir, ".claude", "settings.local.json")
+			data, statErr := os.ReadFile(settingsPath)
+			if tc.keepEmpty {
+				if statErr != nil {
+					t.Fatalf(`--keep-empty 应保留 settings.local.json 写 {},不删: %v`, statErr)
+				}
+				if got := strings.TrimSpace(string(data)); got != "{}" {
+					t.Errorf(`--keep-empty 应写 {}, got %q`, got)
+				}
+			} else {
+				if !os.IsNotExist(statErr) {
+					t.Errorf(`无 --keep-empty 应删 settings.local.json, stat err=%v`, statErr)
+				}
+			}
+			// .mcp.json 两种情况都删空（keepEmpty 不影响 MCP）。
+			if _, err := os.Stat(filepath.Join(dir, ".mcp.json")); !os.IsNotExist(err) {
+				t.Errorf(`.mcp.json 应删空（keepEmpty 不影响 MCP）, stat err=%v`, err)
+			}
+		})
 	}
 }

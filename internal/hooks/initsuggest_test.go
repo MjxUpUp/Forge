@@ -311,3 +311,14 @@ func TestInitSuggestHook_DedupeBranch(t *testing.T) {
 		}
 	})
 }
+
+// TestInitSuggestHook_DedupePassesKeepEmpty：钉死 init-suggest 脚本的 dedupe 调用传
+// --keep-empty——自动路径保留 settings.local.json 文件壳（用户痛点:不静默删个人配置文件）。
+// 防回归:有人误改回 `forge plugin dedupe "$ROOT"`（无 flag）会重新引入 SessionStart 删文件 bug。
+// TestInitSuggestHook_DedupeBranch 的 stub forge() 只匹配 $1/$2,不校验 --keep-empty 字符串,
+// 故需独立字符串守卫（脚本源是嵌入字符串,build 不校验 bash 内容）。
+func TestInitSuggestHook_DedupePassesKeepEmpty(t *testing.T) {
+	if !strings.Contains(InitSuggestHook, `forge plugin dedupe "$ROOT" --keep-empty`) {
+		t.Error(`init-suggest 脚本应为 dedupe 传 --keep-empty（保留 settings.local.json 文件壳）,防回归删文件 bug`)
+	}
+}
