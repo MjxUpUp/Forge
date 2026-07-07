@@ -17,9 +17,13 @@ func (t *ClaudeCodeTranslator) Detect(projectDir string) bool {
 }
 
 func (t *ClaudeCodeTranslator) Translate(projectDir string, input *TranslationInput) error {
-	// Generate settings.local.json
-	if err := hooks.GenerateSettings(projectDir); err != nil {
-		return fmt.Errorf("claude-code: failed to generate settings: %w", err)
+	// Generate settings.local.json — only when plugin is NOT user-level installed.
+	// When plugin IS installed, user-level plugin.json already registers
+	// ForgeHookSpec machine-wide; writing project-level hooks is redundant.
+	if !hooks.IsClaudePluginInstalled() {
+		if err := hooks.GenerateSettings(projectDir); err != nil {
+			return fmt.Errorf("claude-code: failed to generate settings: %w", err)
+		}
 	}
 
 	// Generate pipeline SKILL.md
@@ -45,9 +49,10 @@ func (t *ClaudeCodeTranslator) Translate(projectDir string, input *TranslationIn
 	// Generate .mcp.json — expose forge's 15 MCP tools (task resume/decide/attach,
 	// gates, dashboard, experience) to the agent so it calls forge structurally
 	// instead of the user typing CLI. Idempotent merge (see mcpconfig.go).
-	// 纯函数：永远 merge 写 forge server。plugin 已 user-level 装时 project-level 的重复
-	// 清理由命令层（init/sync 的 dedupeProjectLevelIfPlugin）在所有写入后统一做——Translate
-	// 不耦合 plugin 检测，避免单元测试依赖全局状态。
+	// 纯函数：永远 merge 写 forge server；project-level 重复清理由命令层
+	// dedupeProjectLevelIfPlugin 统一做。注：GenerateSettings 加了 plugin guard
+	// （因其 "写 hooks 然后立即 strip" 模式在进程中断时可能损坏 settings.local.json），
+	// 但 writeClaudeMCP 不需要——.mcp.json 是纯 forge 管理文件，无用户数据，中断无危害。
 	if err := writeClaudeMCP(projectDir); err != nil {
 		return fmt.Errorf("claude-code: failed to generate .mcp.json: %w", err)
 	}

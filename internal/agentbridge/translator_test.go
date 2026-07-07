@@ -663,6 +663,58 @@ func TestOpencodeTranslator_Detect(t *testing.T) {
 	}
 }
 
+// TestClaudeCodeTranslatorSkipsGenerateSettingsWhenPluginInstalled: when forge
+// plugin is installed at user level, ClaudeCodeTranslator.Translate must NOT
+// call GenerateSettings — user-level plugin.json already registers ForgeHookSpec
+// machine-wide. Writing project-level hooks is redundant and creates a fragile
+// "write then immediately strip" pattern.
+func TestClaudeCodeTranslatorSkipsGenerateSettingsWhenPluginInstalled(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	// Write plugin fixture: forge@mp, scope=user.
+	regDir := filepath.Join(home, "plugins")
+	if err := os.MkdirAll(regDir, 0755); err != nil {
+		t.Fatalf("mkdir plugins: %v", err)
+	}
+	reg := `{"version":2,"plugins":{"forge@mp":[{"scope":"user"}]}}`
+	if err := os.WriteFile(filepath.Join(regDir, "installed_plugins.json"), []byte(reg), 0644); err != nil {
+		t.Fatalf("write plugin fixture: %v", err)
+	}
+
+	// Pre-populate settings.local.json with user fields only (no hooks).
+	dir := t.TempDir()
+	claudeDir := filepath.Join(dir, ".claude")
+	if err := os.MkdirAll(claudeDir, 0755); err != nil {
+		t.Fatalf("mkdir .claude: %v", err)
+	}
+	userSettings := `{"env":{"KEY":"val"},"model":"gpt-4"}`
+	settingsPath := filepath.Join(claudeDir, "settings.local.json")
+	if err := os.WriteFile(settingsPath, []byte(userSettings), 0644); err != nil {
+		t.Fatalf("write settings: %v", err)
+	}
+
+	// Run Translate — should skip GenerateSettings because plugin IS installed.
+	if err := (&ClaudeCodeTranslator{}).Translate(dir, testInput()); err != nil {
+		t.Fatalf("Translate: %v", err)
+	}
+
+	// Verify: settings.local.json must be untouched (no hooks field added).
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatalf("read settings after Translate: %v", err)
+	}
+	var parsed map[string]json.RawMessage
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("parse settings: %v", err)
+	}
+	if _, hasHooks := parsed["hooks"]; hasHooks {
+		t.Error("plugin installed: Translate must not call GenerateSettings — hooks found in settings.local.json")
+	}
+	if string(parsed["env"]) != `{"KEY":"val"}` {
+		t.Errorf("user env field was modified: got %s", string(parsed["env"]))
+	}
+}
+
 // (pi tests removed: refactor-data-home 锁定 5 专精再缩到 4，pi 已退出
 // 5-专精名单 —— 见 forge-refactor-data-home-progress memory / BREAKING change
 // commit break-pi-exit-forge-mgr。)
