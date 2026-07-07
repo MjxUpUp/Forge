@@ -9,7 +9,6 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/agentbridge"
 	"github.com/MjxUpUp/Forge/internal/hooks"
-	"github.com/MjxUpUp/Forge/internal/pipeline"
 	"github.com/MjxUpUp/Forge/internal/protocol"
 	"github.com/MjxUpUp/Forge/internal/skillgen"
 	"github.com/spf13/cobra"
@@ -21,34 +20,28 @@ import (
 // Sync rules:
 //   - .forge/hooks/*.sh  → always overwrite with embedded templates
 //   - .claude/settings.local.json → always regenerate
-//   - .claude/skills/forge-pipeline/SKILL.md → always regenerate from pipeline.yml
 //   - .claude/skills/forge-quality/SKILL.md → always regenerate from protocol.yml
 //   - .claude/CLAUDE.md → update Forge-managed section
 //   - .forge/protocol.yml → create from defaults if missing, never overwrite
-//   - .forge/pipeline.yml → never touched (user may have customized)
-//   - .forge/state.json → only update last_sync_version
+//   - .forge/.sync-version → stamp current binary version (no-op detection)
 func autoSync(dir string, binaryVersion string, force bool) error {
 	// plugin 已 user-level 装时,本函数写入的 project-level hooks（GenerateSettings）+
 	// MCP（Translate writeClaudeMCP）是冗余的,defer 在所有 return 路径末尾统一清理。
 	// 幂等:无重复时 no-op,version-equal 跳过路径也会触发（正好覆盖"plugin 在上次 sync
 	// 后才装"的迁移场景）。
 	defer dedupeProjectLevelIfPlugin(dir)
-	state, stateErr := pipeline.LoadState(dir)
 
-	// Decide whether this is a no-op. Version-equal + non-dev + clean → skip.
-	// Three conditions force a sync even when versions match:
-	//  1. force flag (explicit `forge sync --force`)
-	//  2. state.json missing/corrupt — old code returned nil here, which left
-	//     stale settings.local.json (e.g. legacy PostToolUse matchers) unhealed
-	//     forever. Fall through to regenerate the state-independent artifacts.
-	//  3. settings.local.json carries a stale hook binding from an older Forge
-	//     version (task-verify mis-bound to PostToolUse with a wide matcher,
-	//     firing on nearly every tool call and producing runaway invocations
-	//     in real heavy-use projects).
-	if !force && stateErr == nil && state != nil &&
-		state.LastSyncVersion == binaryVersion && binaryVersion != "dev" &&
-		!settingsHasStaleBinding(dir) {
-		return nil
+	// .sync-version stamp 判 no-op（取代已删除的 state.LastSyncVersion——项目级管道
+	// 删除后 state.json 不再生成）。Three conditions force a sync even when versions
+	// match: force flag / stamp missing-or-mismatch / stale hook binding in
+	// settings.local.json (legacy task-verify mis-bound to PostToolUse).
+	stampPath := filepath.Join(dir, ".forge", ".sync-version")
+	if !force && binaryVersion != "dev" {
+		if stamp, err := os.ReadFile(stampPath); err == nil &&
+			strings.TrimSpace(string(stamp)) == binaryVersion &&
+			!settingsHasStaleBinding(dir) {
+			return nil
+		}
 	}
 
 	forgeDir := filepath.Join(dir, ".forge")
@@ -63,57 +56,37 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 	//    ForgeHookSpec machine-wide; writing project-level hooks is redundant and
 	//    creates a fragile "write then immediately strip" pattern where any
 	//    interruption between GenerateSettings and the deferred
-	//    dedupeProjectLevelIfPlugin leaves the file corrupted (either hooks-only
-	//    or emptied to {}).  dedupeProjectLevelIfPlugin still runs via defer to
-	//    clean up legacy hooks from older forge versions.
+	//    dedupeProjectLevelIfPlugin leaves the file corrupted. dedupeProjectLevelIfPlugin
+	//    still runs via defer to clean up legacy hooks from older forge versions.
 	if !hooks.IsClaudePluginInstalled() {
 		if err := hooks.GenerateSettings(dir); err != nil {
 			return fmt.Errorf("auto-sync: failed to update settings: %w", err)
 		}
 	}
 
-	// Without a usable state (missing/corrupt state.json) we can't safely run
-	// the state-dependent steps below (mode-based protocol defaults,
-	// snapshot-inferred gates, last_sync_version write). Heal the
-	// state-independent artifacts — hooks + settings, the ones that carry stale
-	// hook bindings — and stop here rather than guessing mode.
-	if state == nil {
-		return nil
-	}
-
 	// 3. Ensure protocol.yml exists (create from defaults if missing)
 	proto, err := protocol.Load(dir)
 	if err != nil {
-		// protocol.yml missing — create from defaults using pipeline mode
-		proto = protocol.DefaultProtocol(state.Mode)
+		proto = protocol.DefaultProtocol()
 		if err := protocol.Save(dir, proto); err != nil {
 			fmt.Fprintf(os.Stderr, "auto-sync warning: failed to create protocol.yml: %v\n", err)
 		}
 	}
 
-	// 5. Sync pipeline SKILL.md
-	p, err := pipeline.Load(dir)
-	if err == nil {
-		var inferredIDs []string
-		if state.Snapshot != nil {
-			inferredIDs = state.Snapshot.InferredGates
-		}
-		if err := skillgen.GenerateSkill(dir, p, inferredIDs); err != nil {
-			fmt.Fprintf(os.Stderr, "auto-sync warning: failed to regenerate skill: %v\n", err)
-		}
-
-		// 6. Sync quality SKILL.md
-		if err := skillgen.GenerateQualitySkill(dir, proto, p); err != nil {
-			fmt.Fprintf(os.Stderr, "auto-sync warning: failed to regenerate quality skill: %v\n", err)
-		}
+	// 4. Sync quality SKILL.md
+	if err := skillgen.GenerateQualitySkill(dir, proto); err != nil {
+		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to regenerate quality skill: %v\n", err)
 	}
 
-	// 7. Update CLAUDE.md
+	// 5. Clean up 废弃 forge-pipeline skill（项目级管道删除后老版本残留）
+	cleanupDeprecatedPipelineSkill(dir)
+
+	// 6. Update CLAUDE.md
 	if err := skillgen.GenerateClaudeMD(dir); err != nil {
 		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to update CLAUDE.md: %v\n", err)
 	}
 
-	// 7b. Update project-root AGENTS.md (cross-agent instruction source)
+	// 7. Update project-root AGENTS.md (cross-agent instruction source)
 	if err := skillgen.GenerateAgentsMD(dir); err != nil {
 		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to update AGENTS.md: %v\n", err)
 	}
@@ -123,7 +96,6 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 	if len(agents) > 0 {
 		bridgeInput := &agentbridge.TranslationInput{
 			Protocol:  proto,
-			Pipeline:  p,
 			HookNames: hooks.HookNames(),
 		}
 		if errs := agentbridge.TranslateForAgents(dir, agents, bridgeInput); len(errs) > 0 {
@@ -133,13 +105,27 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 		}
 	}
 
-	// 9. Update last_sync_version
-	state.LastSyncVersion = binaryVersion
-	if err := state.Save(dir); err != nil {
-		return fmt.Errorf("auto-sync: failed to update state: %w", err)
+	// 9. Update .sync-version stamp
+	if err := os.WriteFile(stampPath, []byte(binaryVersion), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to write sync stamp: %v\n", err)
 	}
 
 	return nil
+}
+
+// cleanupDeprecatedPipelineSkill 删除已废弃的 forge-pipeline skill 目录。项目级管道
+// 删除后，老版本 forge 生成的 .claude/skills/forge-pipeline/ 与 .agents/skills/forge-pipeline/
+// 残留会让 agent 读到过时内容（描述已删除的 forge gate/pipeline 命令）。autoSync 每次
+// 调用清理，幂等。生成器 generator.go 已删，不会再生成。
+func cleanupDeprecatedPipelineSkill(dir string) {
+	for _, p := range []string{
+		filepath.Join(dir, ".claude", "skills", "forge-pipeline"),
+		filepath.Join(dir, ".agents", "skills", "forge-pipeline"),
+	} {
+		if _, err := os.Stat(p); err == nil {
+			os.RemoveAll(p)
+		}
+	}
 }
 
 // settingsHasStaleBinding reports whether .claude/settings.local.json binds a

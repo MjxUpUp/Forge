@@ -7,40 +7,27 @@ import (
 	"testing"
 )
 
-func TestDefaultProtocolSmall(t *testing.T) {
-	p := DefaultProtocol("small")
+func TestDefaultProtocol(t *testing.T) {
+	p := DefaultProtocol()
 	if p.Version != "1.0" {
 		t.Errorf("Version = %q, want 1.0", p.Version)
 	}
 	if len(p.Standards) != 3 {
 		t.Errorf("Standards count = %d, want 3", len(p.Standards))
 	}
-	if len(p.SessionRules) != 3 {
-		t.Errorf("SessionRules count = %d, want 3 for small mode", len(p.SessionRules))
-	}
-}
-
-func TestDefaultProtocolMedium(t *testing.T) {
-	p := DefaultProtocol("medium")
 	if len(p.SessionRules) != 4 {
-		t.Errorf("SessionRules count = %d, want 4 for medium mode", len(p.SessionRules))
+		t.Errorf("SessionRules count = %d, want 4", len(p.SessionRules))
 	}
-	// Last rule should be the design-for-complex rule
+	// Last rule should be the design-for-complex rule (moved into the base set
+	// unconditionally after the project-pipeline mode parameter was removed).
 	last := p.SessionRules[len(p.SessionRules)-1]
 	if last.ID != "design-for-complex" {
 		t.Errorf("Last rule ID = %q, want design-for-complex", last.ID)
 	}
 }
 
-func TestDefaultProtocolLarge(t *testing.T) {
-	p := DefaultProtocol("large")
-	if len(p.SessionRules) != 5 {
-		t.Errorf("SessionRules count = %d, want 5 for large mode", len(p.SessionRules))
-	}
-}
-
 func TestDefaultProtocolAllStandardsEnabled(t *testing.T) {
-	p := DefaultProtocol("medium")
+	p := DefaultProtocol()
 	for _, s := range p.Standards {
 		if !s.Enabled {
 			t.Errorf("Standard %q should be enabled by default", s.ID)
@@ -55,7 +42,7 @@ func TestErrorSeverityStandards(t *testing.T) {
 	// error severity, so ErrorSeverityStandards returns nothing. This guards
 	// against severity drifting back to "error" while the Description says
 	// "advisory" — the half-fix that left Severity untouched last time.
-	p := DefaultProtocol("small")
+	p := DefaultProtocol()
 	errs := p.ErrorSeverityStandards()
 	for _, s := range errs {
 		t.Errorf("standard %q still at severity %q — advisory standards must be warning/info, not error (v0.25 advisory rewrite)", s.ID, s.Severity)
@@ -63,7 +50,7 @@ func TestErrorSeverityStandards(t *testing.T) {
 }
 
 func TestMandatoryRules(t *testing.T) {
-	p := DefaultProtocol("small")
+	p := DefaultProtocol()
 	mandatory := p.MandatoryRules()
 	if len(mandatory) != 3 {
 		t.Errorf("Mandatory rules = %d, want 3", len(mandatory))
@@ -77,7 +64,7 @@ func TestMandatoryRules(t *testing.T) {
 
 func TestSaveAndLoad(t *testing.T) {
 	dir := t.TempDir()
-	original := DefaultProtocol("medium")
+	original := DefaultProtocol()
 
 	if err := Save(dir, original); err != nil {
 		t.Fatalf("Save failed: %v", err)
@@ -142,7 +129,7 @@ func TestSaveCreatesForgeDir(t *testing.T) {
 		t.Fatal(".forge/ should not exist yet")
 	}
 
-	p := DefaultProtocol("small")
+	p := DefaultProtocol()
 	if err := Save(dir, p); err != nil {
 		t.Fatalf("Save failed: %v", err)
 	}
@@ -159,7 +146,7 @@ func TestSaveCreatesForgeDir(t *testing.T) {
 // display string, but the Description semantics shifted to advisory so the
 // protocol.yml a project ships matches the non-blocking hook behavior.
 func TestDefaultProtocolStandardsAreAdvisory(t *testing.T) {
-	p := DefaultProtocol("medium")
+	p := DefaultProtocol()
 	for _, s := range p.Standards {
 		switch s.ID {
 		case "compile-gate", "no-assertion-weaken":

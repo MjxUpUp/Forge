@@ -53,14 +53,11 @@ func runScenarioFreshInstall(forgeBin string) ScenarioResult {
 	// Verify core files exist
 	expectedFiles := []string{
 		".forge",
-		".forge/pipeline.yml",
-		".forge/state.json",
 		".forge/protocol.yml",
 		".forge/hooks/auto-compile.sh",
 		".forge/hooks/assertion-check.sh",
 		".forge/hooks/task-verify.sh",
 		".claude/settings.local.json",
-		".claude/skills/forge-pipeline/SKILL.md",
 		".claude/skills/forge-quality/SKILL.md",
 	}
 	for _, f := range expectedFiles {
@@ -355,21 +352,15 @@ scoring:
 		failures = append(failures, "auto-compile.sh should have been overwritten")
 	}
 
-	// Verify SKILL.md regenerated
-	if !verifyFileExists(dir, ".claude/skills/forge-pipeline/SKILL.md") {
-		failures = append(failures, "SKILL.md should be regenerated")
+	// Verify quality SKILL.md regenerated
+	if !verifyFileExists(dir, ".claude/skills/forge-quality/SKILL.md") {
+		failures = append(failures, "forge-quality SKILL.md should be regenerated")
 	}
 
 	// Verify protocol.yml NOT overwritten
 	protoContent, _ := os.ReadFile(filepath.Join(dir, ".forge", "protocol.yml"))
 	if !strings.Contains(string(protoContent), "my-custom-standard") {
 		failures = append(failures, "protocol.yml should still contain user's custom standard")
-	}
-
-	// Verify state.json version updated
-	stateData, _ := os.ReadFile(filepath.Join(dir, ".forge", "state.json"))
-	if strings.Contains(string(stateData), "v0.4.0") {
-		failures = append(failures, "state.json last_sync_version should have been updated")
 	}
 
 	if len(failures) > 0 {
@@ -490,9 +481,9 @@ scoring:
 		failures = append(failures, "settings.local.json should exist after auto-sync")
 	}
 
-	// Verify SKILL.md exists
-	if !verifyFileExists(dir, ".claude/skills/forge-pipeline/SKILL.md") {
-		failures = append(failures, "SKILL.md should exist after auto-sync")
+	// Verify quality SKILL.md exists
+	if !verifyFileExists(dir, ".claude/skills/forge-quality/SKILL.md") {
+		failures = append(failures, "forge-quality SKILL.md should exist after auto-sync")
 	}
 
 	if len(failures) > 0 {

@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/MjxUpUp/Forge/internal/pipeline"
 	"github.com/MjxUpUp/Forge/internal/protocol"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
@@ -14,18 +13,18 @@ import (
 // GenerateQualitySkill creates .claude/skills/forge-quality/SKILL.md — the
 // quality protocol skill that is loaded at session start via CLAUDE.md reference.
 // It contains quality standards, session rules, and task pipeline instructions.
-func GenerateQualitySkill(projectDir string, proto *protocol.Protocol, p *pipeline.Pipeline) error {
+func GenerateQualitySkill(projectDir string, proto *protocol.Protocol) error {
 	skillDir := filepath.Join(projectDir, ".claude", "skills", "forge-quality")
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
 		return fmt.Errorf("failed to create quality skill dir: %w", err)
 	}
 
-	content := buildQualitySkillContent(proto, p)
+	content := buildQualitySkillContent(projectDir, proto)
 	path := filepath.Join(skillDir, "SKILL.md")
 	return os.WriteFile(path, []byte(content), 0644)
 }
 
-func buildQualitySkillContent(proto *protocol.Protocol, p *pipeline.Pipeline) string {
+func buildQualitySkillContent(projectDir string, proto *protocol.Protocol) string {
 	var sb strings.Builder
 
 	sb.WriteString("---\n")
@@ -211,9 +210,7 @@ func buildQualitySkillContent(proto *protocol.Protocol, p *pipeline.Pipeline) st
 
 	// Project info
 	sb.WriteString("## 当前项目信息\n\n")
-	sb.WriteString(fmt.Sprintf("- **项目**: %s\n", p.Project))
-	sb.WriteString(fmt.Sprintf("- **模式**: %s\n", p.Mode))
-	sb.WriteString(fmt.Sprintf("- **项目门禁数**: %d\n", len(p.EnabledGates())))
+	sb.WriteString(fmt.Sprintf("- **项目**: %s\n", filepath.Base(projectDir)))
 
 	return sb.String()
 }

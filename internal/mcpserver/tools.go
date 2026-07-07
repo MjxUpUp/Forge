@@ -14,7 +14,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/health"
 	"github.com/MjxUpUp/Forge/internal/knowledge"
-	"github.com/MjxUpUp/Forge/internal/pipeline"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
 )
@@ -26,56 +25,6 @@ import (
 //
 // 工具直接复用 internal 包的公开函数，不 shell-out forge CLI——MCP 层是
 // agent 可编程接口，应是最薄封装，避免文本解析的脆弱性。
-
-// =====================================================================
-// forge_gate_run —— 运行项目级管道门禁（pipeline.yml 定义）
-// =====================================================================
-
-type gateRunInput struct {
-	GateID string `json:"gate_id" jsonschema:"门禁 id（pipeline.yml 定义，如 gate-1-prd）"`
-	Force  bool   `json:"force,omitempty" jsonschema:"跳过前置条件检查"`
-}
-
-type gateRunOutput struct {
-	Gate            string   `json:"gate"`
-	Passed          bool     `json:"passed"`
-	DurationSeconds float64  `json:"duration_seconds"`
-	Errors          []string `json:"errors,omitempty"`
-}
-
-func gateRunCore(root string, in gateRunInput) (gateRunOutput, error) {
-	p, err := pipeline.Load(root)
-	if err != nil {
-		return gateRunOutput{}, fmt.Errorf("load pipeline: %w", err)
-	}
-	gate, err := p.GetGate(in.GateID)
-	if err != nil {
-		return gateRunOutput{}, err
-	}
-	if !gate.Enabled {
-		return gateRunOutput{}, fmt.Errorf("gate %q is disabled", in.GateID)
-	}
-	state, err := pipeline.LoadState(root)
-	if err != nil {
-		return gateRunOutput{}, fmt.Errorf("load state: %w", err)
-	}
-	res, err := pipeline.ExecuteGate(root, gate, state, p, in.Force)
-	if err != nil {
-		return gateRunOutput{}, err
-	}
-	if res.Status == nil {
-		return gateRunOutput{}, fmt.Errorf("gate %q returned no status", in.GateID)
-	}
-	out := gateRunOutput{
-		Gate:            in.GateID,
-		Passed:          res.Status.Passed,
-		DurationSeconds: res.Duration.Seconds(),
-	}
-	for _, e := range res.Status.Errors {
-		out.Errors = append(out.Errors, e.Check+": "+e.Message)
-	}
-	return out, nil
-}
 
 // =====================================================================
 // forge_task_status —— 查看任务状态（当前 session 活跃任务 或 指定 ref）

@@ -79,19 +79,6 @@ func runForge(t *testing.T, dir string, args ...string) (stdout, stderr string, 
 	return output, "", 0
 }
 
-// countGatesInYAML counts gate entries in a pipeline.yml by counting "- id:" lines.
-func countGatesInYAML(t *testing.T, content string) int {
-	t.Helper()
-	count := 0
-	for _, line := range strings.Split(content, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "- id:") {
-			count++
-		}
-	}
-	return count
-}
-
 // --------------- Test 1: TestInitCreatesFiles ---------------
 
 func TestInitCreatesFiles(t *testing.T) {
@@ -100,22 +87,6 @@ func TestInitCreatesFiles(t *testing.T) {
 	stdout, _, code := runForge(t, tmpDir, "init", "--mode", "medium")
 	if code != 0 {
 		t.Fatalf("forge init exit code %d, output: %s", code, stdout)
-	}
-
-	// .forge/pipeline.yml exists and contains version: "2.0"
-	pipelineYML := filepath.Join(tmpDir, ".forge", "pipeline.yml")
-	data, err := os.ReadFile(pipelineYML)
-	if err != nil {
-		t.Fatalf("pipeline.yml not found: %v", err)
-	}
-	if !strings.Contains(string(data), `version: "2.0"`) {
-		t.Fatalf("pipeline.yml does not contain version: \"2.0\"\ngot:\n%s", string(data))
-	}
-
-	// .forge/state.json exists
-	stateJSON := filepath.Join(tmpDir, ".forge", "state.json")
-	if _, err := os.Stat(stateJSON); err != nil {
-		t.Fatalf("state.json not found: %v", err)
 	}
 
 	// .forge/hooks/ 下的 .sh 数必须等于 hooks.HookNames()（单一真相源）。加/删 hook 只改
@@ -143,12 +114,6 @@ func TestInitCreatesFiles(t *testing.T) {
 		t.Fatalf(".claude/settings.local.json not found: %v", err)
 	}
 
-	// .claude/skills/forge-pipeline/SKILL.md exists
-	skillFile := filepath.Join(tmpDir, ".claude", "skills", "forge-pipeline", "SKILL.md")
-	if _, err := os.Stat(skillFile); err != nil {
-		t.Fatalf(".claude/skills/forge-pipeline/SKILL.md not found: %v", err)
-	}
-
 	// .forge/protocol.yml exists
 	protoFile := filepath.Join(tmpDir, ".forge", "protocol.yml")
 	if _, err := os.Stat(protoFile); err != nil {
@@ -172,67 +137,6 @@ func TestInitCreatesFiles(t *testing.T) {
 	}
 }
 
-// --------------- Test 2: TestInitSmallMode ---------------
-
-func TestInitSmallMode(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	stdout, _, code := runForge(t, tmpDir, "init", "--mode", "small")
-	if code != 0 {
-		t.Fatalf("forge init --mode small exit code %d, output: %s", code, stdout)
-	}
-
-	data, err := os.ReadFile(filepath.Join(tmpDir, ".forge", "pipeline.yml"))
-	if err != nil {
-		t.Fatalf("pipeline.yml not found: %v", err)
-	}
-
-	gateCount := countGatesInYAML(t, string(data))
-	if gateCount != 2 {
-		t.Fatalf("expected 2 gates in small mode, got %d", gateCount)
-	}
-}
-
-// --------------- Test 3: TestInitLargeMode ---------------
-
-func TestInitLargeMode(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	stdout, _, code := runForge(t, tmpDir, "init", "--mode", "large")
-	if code != 0 {
-		t.Fatalf("forge init --mode large exit code %d, output: %s", code, stdout)
-	}
-
-	data, err := os.ReadFile(filepath.Join(tmpDir, ".forge", "pipeline.yml"))
-	if err != nil {
-		t.Fatalf("pipeline.yml not found: %v", err)
-	}
-
-	gateCount := countGatesInYAML(t, string(data))
-	if gateCount != 9 {
-		t.Fatalf("expected 9 gates in large mode, got %d", gateCount)
-	}
-}
-
-// --------------- Test 4: TestValidateValid ---------------
-
-func TestValidateValid(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	stdout, _, code := runForge(t, tmpDir, "init", "--mode", "medium")
-	if code != 0 {
-		t.Fatalf("forge init failed: %s", stdout)
-	}
-
-	stdout, _, code = runForge(t, tmpDir, "validate")
-	if code != 0 {
-		t.Fatalf("forge validate exit code %d, output: %s", code, stdout)
-	}
-	if !strings.Contains(strings.ToLower(stdout), "valid") {
-		t.Fatalf("expected validate output to contain 'valid', got: %s", stdout)
-	}
-}
-
 // --------------- Test 5: TestStatusAfterInit ---------------
 
 func TestStatusAfterInit(t *testing.T) {
@@ -243,12 +147,11 @@ func TestStatusAfterInit(t *testing.T) {
 		t.Fatalf("forge init failed: %s", stdout)
 	}
 
+	// 项目级管道删除后 status 不再渲染 "pending"（pipeline 状态）；无任务时输出为空属正常。
+	// 本测试降为 smoke：init 后 status 必须成功运行（exit 0）。
 	stdout, _, code = runForge(t, tmpDir, "status")
 	if code != 0 {
 		t.Fatalf("forge status exit code %d, output: %s", code, stdout)
-	}
-	if !strings.Contains(stdout, "pending") {
-		t.Fatalf("expected status output to contain 'pending', got: %s", stdout)
 	}
 }
 
@@ -267,16 +170,13 @@ func TestStatusJSON(t *testing.T) {
 		t.Fatalf("forge status --json exit code %d, output: %s", code, stdout)
 	}
 
-	// Parse JSON and check for "pipeline" and "state" keys
+	// Parse JSON — project pipeline removed; status JSON now exposes {tasks, health}.
 	var result map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
 		t.Fatalf("failed to parse status JSON: %v\noutput: %s", err, stdout)
 	}
-	if _, ok := result["pipeline"]; !ok {
-		t.Fatal("JSON output missing 'pipeline' field")
-	}
-	if _, ok := result["state"]; !ok {
-		t.Fatal("JSON output missing 'state' field")
+	if _, ok := result["tasks"]; !ok {
+		t.Fatal("JSON output missing 'tasks' field")
 	}
 }
 
@@ -333,22 +233,6 @@ func TestStatusShowsHealthSignal(t *testing.T) {
 	}
 	if result.Health.TotalTasks != 2 || result.Health.BlindSpotRate != 0.5 {
 		t.Errorf("health=%+v want TotalTasks=2 BlindSpotRate=0.5", result.Health)
-	}
-}
-
-// --------------- Test 7: TestGateFailsNoArtifacts ---------------
-
-func TestGateFailsNoArtifacts(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	stdout, _, code := runForge(t, tmpDir, "init", "--mode", "medium")
-	if code != 0 {
-		t.Fatalf("forge init failed: %s", stdout)
-	}
-
-	_, _, code = runForge(t, tmpDir, "gate", "gate-1-prd")
-	if code == 0 {
-		t.Fatal("expected forge gate gate-1-prd to fail (non-zero exit) when no artifacts exist, got exit 0")
 	}
 }
 
@@ -434,51 +318,6 @@ func TestHelperFunctions(t *testing.T) {
 		}
 	})
 
-	t.Run("detectMode", func(t *testing.T) {
-		tmpDir := t.TempDir()
-
-		// No indicator files → "small"
-		if mode := detectMode(tmpDir); mode != "small" {
-			t.Errorf("detectMode with no files = %q, want small", mode)
-		}
-
-		// go.mod present → "medium"
-		if err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte("module test\n"), 0644); err != nil {
-			t.Fatal(err)
-		}
-		if mode := detectMode(tmpDir); mode != "medium" {
-			t.Errorf("detectMode with go.mod = %q, want medium", mode)
-		}
-	})
-
-	t.Run("getPipelineTemplate", func(t *testing.T) {
-		// small template should have 2 gates
-		small := getPipelineTemplate("small", "testproject")
-		if !strings.Contains(small, `version: "2.0"`) {
-			t.Error("small template missing version: \"2.0\"")
-		}
-		if countGatesInYAML(t, small) != 2 {
-			t.Errorf("small template gate count != 2")
-		}
-
-		// medium template should have 6 gates
-		medium := getPipelineTemplate("medium", "testproject")
-		if countGatesInYAML(t, medium) != 6 {
-			t.Errorf("medium template gate count != 6")
-		}
-
-		// large template should have 9 gates
-		large := getPipelineTemplate("large", "testproject")
-		if countGatesInYAML(t, large) != 9 {
-			t.Errorf("large template gate count != 9")
-		}
-
-		// unknown mode defaults to medium template
-		unknown := getPipelineTemplate("unknown", "testproject")
-		if countGatesInYAML(t, unknown) != 6 {
-			t.Errorf("unknown mode should default to medium (6 gates)")
-		}
-	})
 }
 
 // --------------- Test: System status health check ---------------
@@ -504,44 +343,6 @@ func TestKnowledgeListEmpty(t *testing.T) {
 	_ = code
 }
 
-// --------------- Test: Gate with non-existent ID ---------------
-
-func TestGateNonExistentID(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	stdout, _, code := runForge(t, tmpDir, "init", "--mode", "medium")
-	if code != 0 {
-		t.Fatalf("forge init failed: %s", stdout)
-	}
-
-	_, _, code = runForge(t, tmpDir, "gate", "non-existent-gate")
-	if code == 0 {
-		t.Fatal("expected non-zero exit for non-existent gate ID")
-	}
-}
-
-// --------------- Test: Gate with no args ---------------
-
-func TestGateNoArgs(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	_, _, code := runForge(t, tmpDir, "gate")
-	if code == 0 {
-		t.Fatal("expected non-zero exit when gate called without gate-id arg")
-	}
-}
-
-// --------------- Test: Validate without init ---------------
-
-func TestValidateWithoutInit(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	_, _, code := runForge(t, tmpDir, "validate")
-	if code == 0 {
-		t.Fatal("expected non-zero exit when validate called without init")
-	}
-}
-
 // --------------- Test: Status without init ---------------
 
 func TestStatusWithoutInit(t *testing.T) {
@@ -550,31 +351,6 @@ func TestStatusWithoutInit(t *testing.T) {
 	_, _, code := runForge(t, tmpDir, "status")
 	if code == 0 {
 		t.Fatal("expected non-zero exit when status called without init")
-	}
-}
-
-// --------------- Test: Init detects mode from existing files ---------------
-
-func TestInitDetectsMode(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create a go.mod to trigger medium detection
-	if err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte("module test\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	stdout, _, code := runForge(t, tmpDir, "init")
-	if code != 0 {
-		t.Fatalf("forge init failed: %s", stdout)
-	}
-
-	// Should have detected medium mode
-	stateData, err := os.ReadFile(filepath.Join(tmpDir, ".forge", "state.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(stateData), `"medium"`) {
-		t.Fatalf("expected auto-detected mode 'medium', got: %s", string(stateData))
 	}
 }
 
@@ -734,20 +510,18 @@ func TestTaskScoreWorkflow(t *testing.T) {
 		t.Fatalf("forge task start failed: %s", stdout)
 	}
 
-	// Pass task-implement (before writing code)
-	for _, g := range []string{"task-implement"} {
-		stdout, _, code = runForge(t, tmpDir, "task", "gate", g)
-		if code != 0 {
-			t.Fatalf("forge task gate %s failed: %s", g, stdout)
-		}
-	}
-
-	// Make a code change (required for task-implement's code-change check)
+	// task-implement's hasCodeChanges check requires real code changes since task
+	// start (working-tree diff or feature-branch commits beyond base). This test
+	// repo has no .gitignore, so the OLD autoSync's mutation of a tracked
+	// .forge/state.json once supplied a spurious working-tree change that let a
+	// pre-code task-implement pass; that signal is gone (state.json removed,
+	// .sync-version is untracked). task-implement is now exercised only after the
+	// real code change below — matching its actual contract.
 	os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte("package main\n\nimport \"fmt\"\n\nfunc main() { fmt.Println(\"hello\") }\n"), 0644)
 	runGit(t, tmpDir, "add", ".")
 	runGit(t, tmpDir, "commit", "-m", "implement feature")
 
-	// Pass remaining gates
+	// Pass gates (task-implement now has real code changes; task-verify follows)
 	for _, g := range []string{"task-implement", "task-verify"} {
 		stdout, _, code = runForge(t, tmpDir, "task", "gate", g)
 		if code != 0 {
@@ -843,11 +617,10 @@ func TestCompleteBlocksOnPendingMandatoryReview(t *testing.T) {
 		t.Fatalf("forge task start failed: %s", stdout)
 	}
 
-	// task-implement's code-change check needs a change since task start.
-	stdout, _, code = runForge(t, tmpDir, "task", "gate", "task-implement")
-	if code != 0 {
-		t.Fatalf("gate task-implement (pre-change) failed: %s", stdout)
-	}
+	// task-implement requires real code changes since task start (see
+	// TestTaskScoreWorkflow for the state.json→.sync-version rationale). Make the
+	// change before the first task-implement rather than relying on a spurious
+	// autoSync working-tree diff.
 	os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte("package main\nimport \"fmt\"\nfunc main() { fmt.Println(\"hello\") }\n"), 0644)
 	runGit(t, tmpDir, "add", ".")
 	runGit(t, tmpDir, "commit", "-m", "implement")

@@ -46,7 +46,7 @@ For .github/instructions + MCP, run `forge init --agents copilot`.
 
 ### 3. Initialize each project (once per project)
 
-The plugin wires user-level hooks + MCP. It does NOT create the project-level assets forge needs to run: the `.forge/` pipeline/task state, the `CLAUDE.md`/`AGENTS.md` protocol, and the canonical skills (`/forge-pipeline`, `/forge-quality`, ...). Generate them per project:
+The plugin wires user-level hooks + MCP. It does NOT create the project-level assets forge needs to run: the `.forge/` task state + hooks, the `CLAUDE.md`/`AGENTS.md` protocol, and the canonical skills (`/forge-quality`, ...). Generate them per project:
 
     cd your-project
     forge init
@@ -55,7 +55,7 @@ Complete setup: binary (machine) -> plugin (agent) -> init (project).
 
 ## What the plugin provides
 
-Claude Code (full): hooks (`.claude-plugin/plugin.json`) = PreToolUse/PostToolUse/Stop/SessionStart gates, identical to forge init's `.claude/settings.local.json` but user-level (all projects); MCP (`.mcp.json`) = 15 forge tools (resume/decide/attach + task/board/experience).
+Claude Code (full): hooks (`.claude-plugin/plugin.json`) = PreToolUse/PostToolUse/Stop/SessionStart gates, identical to forge init's `.claude/settings.local.json` but user-level (all projects); MCP (`.mcp.json`) = 14 forge tools (resume/decide/attach + task/gate/experience).
 
 Because the plugin already wires user-level hooks + MCP, `forge init` auto-dedupes the project-level duplicates (`.claude/settings.local.json` hooks + `.mcp.json` forge server) when the plugin is installed — Claude Code would otherwise double-load the same forge server / double-run hooks. Existing projects are migrated automatically by the init-suggest SessionStart hook via `forge plugin dedupe --keep-empty`. `settings.local.json` is preserved as an empty `{}` shell (it's user-placed gitignored config — never silently deleted); `.mcp.json` is removed when it only held the forge server.
 

@@ -21,7 +21,6 @@ import (
 // ToolDescriptions 集中维护工具描述（server.go 注册 + cli/mcp.go 帮助文档共用）。
 // 改描述只改一处，避免注册和文档漂移。
 var ToolDescriptions = map[string]string{
-	"forge_gate_run":           "运行项目级管道的一道门禁（pipeline.yml 定义）。执行 hooks + 评估 checks + 写 status.json。返回 passed/errors/duration。",
 	"forge_task_status":        "查看任务状态：当前 session 活跃任务或指定 ref。返回门禁进度（completed/next/current）、是否完成。",
 	"forge_task_gate":          "推进 task 级门禁（task-implement / task-verify / task-complete）。执行检查、记录结果、持久化 state。注意：不触发评分（评分用 forge task complete）。",
 	"forge_task_resume":        "接续真相源入口：拉回任务完整接续上下文（goal/plan/decisions/next_steps/blockers/findings/artifacts + 参与工具 + 门禁进度 + git 已改未提交）。新会话冷启动调用即秒级恢复，抗压缩丢失。默认把当前 session 锚定到 task（多向锚定记录参与方），no_attach=true 仅读取。",
@@ -38,7 +37,7 @@ var ToolDescriptions = map[string]string{
 	"forge_skill_eval_report":  "比对 latest run vs baseline，输出回归报告（regression 三态 + pass-rate delta + 可比性）。skill eval 闭环的回归读端。",
 }
 
-// New 构建 Forge MCP server 并注册全部 10 个工具。
+// New 构建 Forge MCP server 并注册全部 MCP 工具。
 // version 注入到 MCP server handshake（forge 二进制版本）。
 func New(ver string) *mcp.Server {
 	if ver == "" {
@@ -50,10 +49,6 @@ func New(ver string) *mcp.Server {
 	}, nil)
 
 	// 项目级工具（需解析 .forge/ 项目根）
-	mcp.AddTool(s, &mcp.Tool{
-		Name:        "forge_gate_run",
-		Description: ToolDescriptions["forge_gate_run"],
-	}, withRoot(gateRunCore))
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "forge_task_status",
 		Description: ToolDescriptions["forge_task_status"],

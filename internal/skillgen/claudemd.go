@@ -121,12 +121,11 @@ func buildForgeSection(forClaude bool) string {
 	sb.WriteString("| trace/老任务历史消失 | retention（默认启用）自动清超期 checklog/toollog 归档 + 已完成任务文件 | 行为正常；`FORGE_LOG_RETENTION_DAYS` 控制保留天数（默认 30，≤0 禁用）；`forge act rebuild` 全量重建，被 retention 删的任务无法重建 |\n\n")
 
 	if forClaude {
-		sb.WriteString("使用 `/forge-pipeline` 运行项目级管道。\n")
 		sb.WriteString("使用 `/forge-quality` 查看完整质量协议。\n\n")
 	} else {
 		// AGENTS.md is cross-agent (codex/cursor/copilot/windsurf/cline) — those
 		// agents have no Claude slash commands, so point at the forge CLI / MCP
-		// surface instead of the /forge-pipeline /forge-quality skills.
+		// surface instead of the /forge-quality skill.
 		sb.WriteString("通过 forge CLI（forge task/gate/experience）或 forge MCP 工具执行上述质量流程。\n\n")
 	}
 	sb.WriteString(forgeSectionEnd + "\n")
