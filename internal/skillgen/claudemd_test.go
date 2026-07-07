@@ -210,7 +210,7 @@ func TestGenerateAgentsMD(t *testing.T) {
 	if !strings.Contains(got, `通过 forge CLI`) {
 		t.Error(`AGENTS.md missing agent-agnostic CLI/MCP surface line`)
 	}
-	for _, claudeOnly := range []string{`/forge-pipeline`, `/forge-quality`} {
+	for _, claudeOnly := range []string{`/forge-quality`} {
 		if strings.Contains(got, claudeOnly) {
 			t.Errorf(`AGENTS.md must not carry Claude-only slash command (cross-agent file): %s`, claudeOnly)
 		}
@@ -245,9 +245,10 @@ This is user-maintained content outside the Forge section.
 }
 
 // TestGenerateClaudeMDCarriesSlashCommands is the symmetric guard: CLAUDE.md is
-// Claude-only and must carry /forge-pipeline + /forge-quality, and must NOT
-// carry the AGENTS.md cross-agent surface line. Together with TestGenerateAgentsMD
-// this locks the forClaude branch of buildForgeSection.
+// Claude-only and must carry /forge-quality, and must NOT carry the AGENTS.md
+// cross-agent surface line. Together with TestGenerateAgentsMD this locks the
+// forClaude branch of buildForgeSection. (/forge-pipeline was removed with the
+// project pipeline.)
 func TestGenerateClaudeMDCarriesSlashCommands(t *testing.T) {
 	dir := t.TempDir()
 	if err := GenerateClaudeMD(dir); err != nil {
@@ -258,8 +259,8 @@ func TestGenerateClaudeMDCarriesSlashCommands(t *testing.T) {
 		t.Fatalf(`CLAUDE.md not written: %v`, err)
 	}
 	got := string(b)
-	if !strings.Contains(got, `/forge-pipeline`) || !strings.Contains(got, `/forge-quality`) {
-		t.Error(`CLAUDE.md missing Claude slash commands (/forge-pipeline, /forge-quality)`)
+	if !strings.Contains(got, `/forge-quality`) {
+		t.Error(`CLAUDE.md missing Claude slash command /forge-quality`)
 	}
 	if strings.Contains(got, `通过 forge CLI`) {
 		t.Error(`CLAUDE.md must not carry the AGENTS.md cross-agent surface line`)

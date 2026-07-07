@@ -99,7 +99,6 @@ func ForgeHookSpec() map[string][]HookMatcher {
 		"Stop": []HookMatcher{
 			{
 				Hooks: []HookEntry{
-					{Type: "command", Command: "forge gate --current --silent"},
 					{Type: "command", Command: "forge hook task-verify"},
 					{Type: "command", Command: "forge hook review-stop"},
 				},

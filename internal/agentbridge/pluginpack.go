@@ -234,9 +234,9 @@ func pluginReadme(repoSlug string) string {
 	// 没有这一步，plugin install 单独不构成完整体验——这是"一次安装处处完美"的真实缺口。
 	sb.WriteString("### 3. Initialize each project (once per project)\n\n")
 	sb.WriteString("The plugin wires user-level hooks + MCP. It does NOT create the " +
-		"project-level assets forge needs to run: the \x60.forge/\x60 pipeline/task state, " +
+		"project-level assets forge needs to run: the \x60.forge/\x60 task state, " +
 		"the \x60CLAUDE.md\x60/\x60AGENTS.md\x60 protocol, and the canonical skills " +
-		"(\x60/forge-pipeline\x60, \x60/forge-quality\x60, ...). Generate them per project:\n\n")
+		"(\x60/forge-quality\x60, ...). Generate them per project:\n\n")
 	sb.WriteString("    cd your-project\n")
 	sb.WriteString("    forge init\n\n")
 	sb.WriteString("Complete setup: binary (machine) -> plugin (agent) -> init (project).\n\n")
@@ -246,7 +246,7 @@ func pluginReadme(repoSlug string) string {
 	sb.WriteString("Claude Code (full): hooks (\x60.claude-plugin/plugin.json\x60) = " +
 		"PreToolUse/PostToolUse/Stop/SessionStart gates, identical to forge init's " +
 		"\x60.claude/settings.local.json\x60 but user-level (all projects); MCP " +
-		"(\x60.mcp.json\x60) = 15 forge tools (resume/decide/attach + task/board/experience).\n\n")
+		"(\x60.mcp.json\x60) = 14 forge tools (resume/decide/attach + task/gate/experience).\n\n")
 	sb.WriteString("Other hosts: the plugin is the distribution entry point (MCP + " +
 		"marketplace listing); per-project gate wiring (hooks, .forge/, protocol) comes " +
 		"from \x60forge init --agents <host>\x60.\n\n")

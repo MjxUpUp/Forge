@@ -8,36 +8,41 @@ import (
 )
 
 // TestE2E_InitGeneratesStructure verifies forge init scaffolds the expected
-// project layout and that status/validate operate on it. This is the
-// project-level pipeline entry point (0→1) — regression protection for the
-// core init contract documented in README.
+// project layout (task-pipeline era: no project-level pipeline.yml/state.json)
+// and that status operates on it. This is the init entry point (0→1) —
+// regression protection for the core init contract documented in README.
 func TestE2E_InitGeneratesStructure(t *testing.T) {
 	dir := freshProject(t) // git init + go project + forge init
 
+	// 项目级管道已删除：init 不再生成 pipeline.yml / state.json / forge-pipeline skill。
+	// 新契约：hooks + Claude 集成 + 质量协议 skill + CLAUDE.md + sync stamp。
 	for _, p := range []string{
-		".forge/pipeline.yml",
-		".forge/state.json",
 		".forge/hooks",
+		".forge/.sync-version",
 		".claude/settings.local.json",
-		".claude/skills/forge-pipeline",
+		".claude/CLAUDE.md",
+		".claude/skills/forge-quality/SKILL.md",
 	} {
 		if !fileExists(t, dir, p) {
 			t.Errorf("forge init did not generate %s", p)
 		}
 	}
+	// 反向断言：废弃产物不再生成（防回归——曾有 pipeline.yml/state.json/forge-pipeline）。
+	for _, p := range []string{
+		".forge/pipeline.yml",
+		".forge/state.json",
+		".claude/skills/forge-pipeline",
+	} {
+		if fileExists(t, dir, p) {
+			t.Errorf("forge init must not generate removed artifact %s", p)
+		}
+	}
 
-	// status must enumerate the project's gates in pending state. Output uses
-	// localized gate names, so assert on the mode line + pending status count.
+	// status 始终打印项目头（即使无任务），让用户确认 forge 已就位。
 	out := forge(t, dir, "status")
-	if !strings.Contains(out, "mode:") {
-		t.Errorf("forge status missing mode line:\n%s", out)
+	if !strings.Contains(out, "Project:") {
+		t.Errorf("forge status missing 'Project:' header:\n%s", out)
 	}
-	if n := strings.Count(out, "pending"); n < 3 {
-		t.Errorf("forge status reported only %d pending gates, want >=3:\n%s", n, out)
-	}
-
-	// validate must succeed on the generated pipeline.yml (would fatal on error).
-	forge(t, dir, "validate")
 }
 
 // TestE2E_TaskStartCreatesState verifies the task-level pipeline entry point

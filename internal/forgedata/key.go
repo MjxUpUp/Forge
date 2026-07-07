@@ -1,8 +1,8 @@
 // Package forgedata 提供 forge 项目数据的统一路径 / key 推导。
 //
 // 设计目标：把当前散落的 `filepath.Join(dir, ".forge", ...)` 集中到一个真相源，
-// 让项目数据 home（state.json / tasks / gates / ...）从项目级 `.forge/` 平滑迁移
-// 到用户级 `~/.forge/projects/<hash12>/`。ConfigDir（pipeline/protocol/CLAUDE.md
+// 让项目数据 home（tasks / gates / ...）从项目级 `.forge/` 平滑迁移
+// 到用户级 `~/.forge/projects/<hash12>/`。ConfigDir（protocol/CLAUDE.md
 // /hooks）仍留项目级（git tracked，user-editable）。
 //
 // 详见 docs/plans/refactor-data-home.md。

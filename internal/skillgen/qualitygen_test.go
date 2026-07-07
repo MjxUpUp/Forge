@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MjxUpUp/Forge/internal/pipeline"
 	"github.com/MjxUpUp/Forge/internal/protocol"
 )
 
@@ -18,12 +17,8 @@ func TestQualitySkillContainsTaskRule(t *testing.T) {
 			{Instruction: "修改前先说意图", Mandatory: true, Trigger: "on_edit"},
 		},
 	}
-	p := &pipeline.Pipeline{
-		Project: "test-project",
-		Mode:    "small",
-	}
 
-	content := buildQualitySkillContent(proto, p)
+	content := buildQualitySkillContent(t.TempDir(), proto)
 
 	if !strings.Contains(content, "Task Bridge Protocol") {
 		t.Error("quality SKILL.md missing Task Bridge Protocol section")
@@ -59,9 +54,8 @@ func TestQualitySkillExperienceWorkflow(t *testing.T) {
 			{ID: "compile", Name: "编译必须通过", Description: "", Severity: "error", Enabled: true},
 		},
 	}
-	p := &pipeline.Pipeline{Project: "test-project", Mode: "small"}
 
-	content := buildQualitySkillContent(proto, p)
+	content := buildQualitySkillContent(t.TempDir(), proto)
 
 	// New auto-generation reality must be documented.
 	if !strings.Contains(content, "forge experience generate") {
@@ -92,9 +86,8 @@ func TestQualitySkillDocumentsCommitTiming(t *testing.T) {
 			{ID: "compile", Name: "编译必须通过", Description: "", Severity: "error", Enabled: true},
 		},
 	}
-	p := &pipeline.Pipeline{Project: "test-project", Mode: "small"}
 
-	content := buildQualitySkillContent(proto, p)
+	content := buildQualitySkillContent(t.TempDir(), proto)
 
 	if !strings.Contains(content, "提交时机") {
 		t.Error("quality SKILL.md missing commit-timing guidance (commit must precede complete)")
@@ -115,9 +108,8 @@ func TestQualitySkillDocumentsAuxChecks(t *testing.T) {
 			{ID: "compile", Name: "编译必须通过", Description: "", Severity: "error", Enabled: true},
 		},
 	}
-	p := &pipeline.Pipeline{Project: "test-project", Mode: "small"}
 
-	content := buildQualitySkillContent(proto, p)
+	content := buildQualitySkillContent(t.TempDir(), proto)
 
 	if !strings.Contains(content, "辅助质量检查") {
 		t.Error("quality SKILL.md missing auxiliary-checks section")
@@ -155,9 +147,8 @@ func TestQualitySkillDescriptionIsTriggerOriented(t *testing.T) {
 			{ID: "compile", Name: "编译必须通过", Description: "", Severity: "error", Enabled: true},
 		},
 	}
-	p := &pipeline.Pipeline{Project: "test-project", Mode: "small"}
 
-	content := buildQualitySkillContent(proto, p)
+	content := buildQualitySkillContent(t.TempDir(), proto)
 
 	// The vague non-trigger phrase must be gone.
 	if strings.Contains(content, "每次开发会话自动执行的质量标准") {
@@ -183,9 +174,8 @@ func TestQualitySkillDocumentsAbort(t *testing.T) {
 			{ID: "compile", Name: "编译必须通过", Description: "", Severity: "error", Enabled: true},
 		},
 	}
-	p := &pipeline.Pipeline{Project: "test-project", Mode: "small"}
 
-	content := buildQualitySkillContent(proto, p)
+	content := buildQualitySkillContent(t.TempDir(), proto)
 
 	if !strings.Contains(content, "forge task abort") {
 		t.Error("quality SKILL.md task command list missing 'forge task abort'")
@@ -204,9 +194,8 @@ func TestQualitySkillTaskVerifyIsAdvisory(t *testing.T) {
 			{ID: "compile", Name: "编译必须通过", Description: "", Severity: "error", Enabled: true},
 		},
 	}
-	p := &pipeline.Pipeline{Project: "test-project", Mode: "small"}
 
-	content := buildQualitySkillContent(proto, p)
+	content := buildQualitySkillContent(t.TempDir(), proto)
 
 	// Obsolete blocking / 3-fail phrasing must be gone.
 	for _, gone := range []string{"连续 3 次失败", "阻塞会话结束", "task-verify 阻塞"} {

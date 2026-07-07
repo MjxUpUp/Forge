@@ -11,7 +11,6 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/hooks"
-	"github.com/MjxUpUp/Forge/internal/pipeline"
 	"github.com/MjxUpUp/Forge/internal/protocol"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
@@ -28,7 +27,6 @@ var verifyCmd = &cobra.Command{
 	Use:   "verify [--regression] [--scenario <name>]",
 	Short: "验证项目完整性和运行回归测试",
 	Long: `forge verify 检查当前项目的 Forge 配置完整性：
-  - pipeline.yml 结构验证
   - hook 脚本存在性
   - protocol.yml 可解析且含评分配置
   - Claude Code skills 存在
@@ -76,11 +74,9 @@ func runDefaultChecks() error {
 		name string
 		fn   func(string) checkResult
 	}{
-		{"Pipeline 验证", checkPipeline},
 		{"Hook 脚本", checkHooks},
 		{"Protocol 配置", checkProtocol},
 		{"Quality Skill", checkQualitySkill},
-		{"Pipeline Skill", checkPipelineSkill},
 		{"Settings 配置", checkSettings},
 	}
 
@@ -191,18 +187,6 @@ func boundOutput(s string) string {
 	return fmt.Sprintf("...(省略前 %d 行)...\n%s", len(lines)-capLines, trimmed)
 }
 
-func checkPipeline(root string) checkResult {
-	errs := pipeline.ValidateOnly(root)
-	if len(errs) == 0 {
-		return checkResult{name: "Pipeline 验证", ok: true, msg: "结构正确"}
-	}
-	msg := fmt.Sprintf("%d 个错误", len(errs))
-	if len(errs) == 1 {
-		msg = errs[0].Error()
-	}
-	return checkResult{name: "Pipeline 验证", ok: false, msg: msg}
-}
-
 func checkHooks(root string) checkResult {
 	hooksDir := filepath.Join(root, ".forge", "hooks")
 	missing := []string{}
@@ -235,14 +219,6 @@ func checkQualitySkill(root string) checkResult {
 		return checkResult{name: "Quality Skill", ok: false, msg: ".claude/skills/forge-quality/SKILL.md 不存在"}
 	}
 	return checkResult{name: "Quality Skill", ok: true}
-}
-
-func checkPipelineSkill(root string) checkResult {
-	p := filepath.Join(root, ".claude", "skills", "forge-pipeline", "SKILL.md")
-	if _, err := os.Stat(p); err != nil {
-		return checkResult{name: "Pipeline Skill", ok: false, msg: ".claude/skills/forge-pipeline/SKILL.md 不存在"}
-	}
-	return checkResult{name: "Pipeline Skill", ok: true}
 }
 
 func checkSettings(root string) checkResult {

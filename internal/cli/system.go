@@ -62,7 +62,7 @@ func checkLarkCLI(errors, warnings *int) {
 
 func checkForgeInPath(errors, warnings *int) {
 	if _, err := exec.LookPath("forge"); err != nil {
-		fmt.Println("  forge not in PATH — hooks that call 'forge gate' won't work")
+		fmt.Println("  forge not in PATH — hooks that call 'forge hook' won't work")
 		fmt.Println("     Fix: add ~/.forge/bin/ to PATH")
 		*warnings++
 	} else {

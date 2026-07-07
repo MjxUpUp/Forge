@@ -22,8 +22,7 @@ func init() {
 		Short: "在 stdio 上运行 Forge MCP server",
 		Long: `forge mcp serve 在 stdin/stdout 上服务 MCP 协议（stdio transport）。
 
-工具（15 个）：
-  forge_gate_run            运行项目级管道门禁（pipeline.yml）
+工具（14 个）：
   forge_task_status         查看任务状态（活跃 / 指定 ref）
   forge_task_gate           推进 task 门禁（implement/verify/complete）
   forge_task_resume         拉回任务接续上下文（目标/计划/决策/阻塞/参与工具+git 已改）

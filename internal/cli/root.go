@@ -7,7 +7,6 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/docsconsistency"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
-	"github.com/MjxUpUp/Forge/internal/pipeline"
 	"github.com/MjxUpUp/Forge/internal/projectroot"
 	"github.com/spf13/cobra"
 )
@@ -23,7 +22,6 @@ var rootCmd = &cobra.Command{
 快速开始:
   forge init              在当前项目初始化管道
   forge status            查看管道执行状态
-  forge gate <gate-id>    运行指定门禁
 
 文档: https://github.com/MjxUpUp/Forge`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -74,33 +72,9 @@ func findProjectRoot() (string, error) {
 
 // findProject 解析 cwd → *forgedata.Project（三根：GitRoot/DataDir/ConfigDir）。
 // runtime-state store（checklog/hazard/experience/act/...）的 caller 用它取 *Project，
-// 走 DataDir；config reader（pipeline/protocol/hooks）续用 findProjectRoot() 走 ConfigDir。
+// 走 DataDir；config reader（protocol/hooks）续用 findProjectRoot() 走 ConfigDir。
 func findProject() (*forgedata.Project, error) {
 	return projectroot.FindProject()
-}
-
-func loadPipeline() (*pipeline.Pipeline, string, error) {
-	root, err := findProjectRoot()
-	if err != nil {
-		return nil, "", err
-	}
-	p, err := pipeline.Load(root)
-	if err != nil {
-		return nil, root, err
-	}
-	return p, root, nil
-}
-
-func loadState() (*pipeline.State, string, error) {
-	root, err := findProjectRoot()
-	if err != nil {
-		return nil, "", err
-	}
-	s, err := pipeline.LoadState(root)
-	if err != nil {
-		return nil, root, err
-	}
-	return s, root, nil
 }
 
 func jsonMarshal(v interface{}) ([]byte, error) {

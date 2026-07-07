@@ -14,9 +14,10 @@ import (
 )
 
 // TestMigrateProject_MovesRuntimeState_KeepsConfig：.forge/ 含 runtime（tasks/
-// checklog/active-task-ref/throttle + 归档/session 变体）+ config（state.json/
-// hooks/pipeline.yml），migrate 后 runtime 在 DataDir、config 留 .forge/。
-// 钉死白名单边界——既不漏迁 runtime，也不误迁配置。
+// checklog/active-task-ref/throttle + 归档/session 变体）+ config（hooks/等），
+// migrate 后 runtime 在 DataDir、config 留 .forge/。钉死白名单边界——既不漏迁
+// runtime，也不误迁配置。注：state.json/pipeline.yml 是已删项目级管道的死文件，
+// 此处仅作"非 runtime 的应留文件"代表例钉白名单边界（不在 runtime 白名单→留 .forge/）。
 func TestMigrateProject_MovesRuntimeState_KeepsConfig(t *testing.T) {
 	root, p := forgedatatest.RealProject(t)
 	// runtime state（应迁）

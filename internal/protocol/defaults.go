@@ -2,9 +2,12 @@ package protocol
 
 import "github.com/MjxUpUp/Forge/internal/scoringtypes"
 
-// DefaultProtocol returns a mode-appropriate quality protocol.
-// The core standards are the same across all modes; session rules may differ.
-func DefaultProtocol(mode string) *Protocol {
+// DefaultProtocol returns the default quality protocol: core standards + base
+// session rules + design-for-complex (universally useful). The former mode
+// parameter (small/medium/large) only toggled 1-2 optional rules tied to the
+// now-deleted project pipeline (review-checklist referenced gate-6); with the
+// project pipeline gone, mode is meaningless and removed.
+func DefaultProtocol() *Protocol {
 	p := &Protocol{
 		Version: "1.0",
 		Standards: []Standard{
@@ -52,33 +55,19 @@ func DefaultProtocol(mode string) *Protocol {
 				Instruction: "每次会话结束前，运行测试确认没有破坏已有功能",
 				Mandatory:   true,
 			},
+			{
+				ID:          "design-for-complex",
+				Trigger:     "on_edit",
+				Instruction: "改动超过 50 行时，先简要描述设计方案",
+				Mandatory:   false,
+			},
 		},
-	}
-
-	// Add mode-specific rules
-	switch mode {
-	case "medium", "large":
-		p.SessionRules = append(p.SessionRules, SessionRule{
-			ID:          "design-for-complex",
-			Trigger:     "on_edit",
-			Instruction: "改动超过 50 行时，先简要描述设计方案",
-			Mandatory:   false,
-		})
 	}
 
 	// Set default scoring config
 	p.Scoring = &scoringtypes.ScoringConfig{
 		Weights:    scoringtypes.DefaultWeights(),
 		Thresholds: scoringtypes.DefaultThresholds(),
-	}
-
-	if mode == "large" {
-		p.SessionRules = append(p.SessionRules, SessionRule{
-			ID:          "review-checklist",
-			Trigger:     "on_commit",
-			Instruction: "提交前对照检查清单逐项确认（见 gate-6-acceptance 配置）",
-			Mandatory:   false,
-		})
 	}
 
 	return p

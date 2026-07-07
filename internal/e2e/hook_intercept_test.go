@@ -59,12 +59,14 @@ func hookStdin(t *testing.T, sessionID, eventName, toolName string, toolInput ma
 
 // TestHook_TaskGuard_BlocksForgeManagedFile verifies the self-protection
 // contract: task-guard must BLOCK any direct write to Forge-managed files
-// (.forge/* except protocol/pipeline.yml, and .claude/settings*). This is the
+// (.forge/* except protocol.yml, and .claude/settings*). This is the
 // innermost safety ring — without it, an agent could disable its own oversight
-// by editing state.json. No prior test exercised this via the real subprocess
+// by editing Forge internals. No prior test exercised this via the real subprocess
 // path (internal/cli/hook_test.go covers the JSON protocol in-process only).
+// 注：state.json 随项目级管道删除已不再生成，此处仅作 .forge/* 受管路径的代表例——
+// task-guard 按路径模式拦截，不依赖该文件是否存在。
 func TestHook_TaskGuard_BlocksForgeManagedFile(t *testing.T) {
-	dir := freshProject(t) // .forge/state.json exists after init
+	dir := freshProject(t)
 
 	in := hookStdin(t, "sess-selfprotect", "PreToolUse", "Write", map[string]any{
 		"file_path": filepath.Join(dir, ".forge", "state.json"),

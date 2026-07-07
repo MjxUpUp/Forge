@@ -21,8 +21,9 @@ var (
 // migrateCmd 把项目级 .forge/ 下的 runtime state（tasks/gates/checklog/toollog/act/
 // sessions/quarantine/active-task-ref/.task-verify-throttle.last 等）迁到用户级
 // DataDir（~/.forge/projects/<key>/）。refactor-data-home 后老版本积累的 runtime state
-// 仍在 .forge/，升级后用本命令一次性搬到 DataDir。项目配置（state.json/hooks/
-// pipeline.yml/protocol.yml/CLAUDE.md/AGENTS.md）不迁，仍留 .forge/。
+// 仍在 .forge/，升级后用本命令一次性搬到 DataDir。项目配置（hooks/protocol.yml/
+// CLAUDE.md/AGENTS.md/.sync-version）不迁，仍留 .forge/；老版本残留的 pipeline.yml/
+// state.json（项目级管道已删除）若存在也留原地不动。
 //
 // 幂等：重复跑无害（已迁的不再动）。
 var migrateCmd = &cobra.Command{
@@ -36,8 +37,9 @@ runtime state（tasks/gates/checklog/toollog/act/sessions/quarantine/
 active-task-ref/.task-verify-throttle.last 等）不会自动迁移——本命令一次性
 搬到 DataDir，让历史 task/gate/checklog 数据在新版本继续可见。
 
-项目配置不迁，仍留 .forge/：state.json（管道状态机）/hooks/（项目配置 hook）
-/pipeline.yml/protocol.yml/CLAUDE.md/AGENTS.md。
+项目配置不迁，仍留 .forge/：hooks/（项目配置 hook）/protocol.yml/CLAUDE.md/
+AGENTS.md/.sync-version（同步戳）。老版本残留的 pipeline.yml/state.json（项目级
+管道已删除）若存在也留原地不动——死文件无害，本命令只搬 runtime state。
 
 安全：白名单迁移（不盲目搬整个 .forge/），幂等（重复跑无害）。
 --dry-run 预览，--force 覆盖 DataDir 已有同名（默认跳过）。`,

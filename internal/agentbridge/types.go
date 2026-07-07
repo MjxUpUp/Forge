@@ -3,7 +3,6 @@
 package agentbridge
 
 import (
-	"github.com/MjxUpUp/Forge/internal/pipeline"
 	"github.com/MjxUpUp/Forge/internal/protocol"
 )
 
@@ -33,6 +32,5 @@ type Translator interface {
 // TranslationInput holds the Forge configuration to translate.
 type TranslationInput struct {
 	Protocol  *protocol.Protocol
-	Pipeline  *pipeline.Pipeline
 	HookNames []string
 }

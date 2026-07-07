@@ -69,7 +69,7 @@ func TestValidateForgePath(t *testing.T) {
 		{"两层命令", "experience accept", ""},
 		{"三层命令", "task gate", ""},
 		{"flag 后即停", "init --mode small", ""},
-		{"占位符后即停", "gate <gate-id>", ""},
+		{"占位符后即停", "task gate <gate-id>", ""},
 		{"方括号后即停", "sync [--force]", ""},
 		{"分隔符后即停", "init small|medium", ""},
 		{"裸 forge", "", ""},

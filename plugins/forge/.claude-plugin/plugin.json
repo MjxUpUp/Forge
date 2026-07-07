@@ -81,10 +81,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "forge gate --current --silent"
-          },
-          {
-            "type": "command",
             "command": "forge hook task-verify"
           },
           {
