@@ -617,6 +617,47 @@ func TestSessionStartHasSkillScan(t *testing.T) {
 	}
 }
 
+// TestSessionStartHasTaskResume guards that the project-scoped task-resume hook
+// is registered on SessionStart. It auto-injects the active task's continuity
+// context (forge task resume --hook) at session start, so a fresh session lands
+// on an in-progress task already knowing its goal/plan/decisions/blockers and
+// is attached to it. Without SessionStart registration the hook never fires.
+func TestSessionStartHasTaskResume(t *testing.T) {
+	dir := t.TempDir()
+	if err := GenerateSettings(dir); err != nil {
+		t.Fatalf("GenerateSettings: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, ".claude", "settings.local.json"))
+	if err != nil {
+		t.Fatalf("read settings: %v", err)
+	}
+	var parsed struct {
+		Hooks map[string][]struct {
+			Hooks []struct {
+				Command string `json:"command"`
+			} `json:"hooks"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	groups, ok := parsed.Hooks["SessionStart"]
+	if !ok {
+		t.Fatal("SessionStart event not registered in settings")
+	}
+	found := false
+	for _, g := range groups {
+		for _, h := range g.Hooks {
+			if h.Command == "forge hook task-resume" {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Error("SessionStart missing 'forge hook task-resume' command")
+	}
+}
+
 // TestSkillScanHookContainsKeyChecks guards the SessionStart advisory skill
 // scanner content: it must scan the global skill dir via 'forge skills audit
 // scan', be advisory (PASS, never exit 1 / block), and surface ✗ risk skills.

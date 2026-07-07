@@ -21,6 +21,7 @@ var embeddedHooks = map[string]string{
 	"tool-track":          ToolTrackHook,
 	"skill-scan":          SkillScanHook,
 	"init-suggest":        InitSuggestHook,
+	"task-resume":         TaskResumeHook,
 	"workflow-test-guard": WorkflowTestGuardHook,
 }
 
@@ -109,6 +110,7 @@ func ForgeHookSpec() map[string][]HookMatcher {
 				Hooks: []HookEntry{
 					{Type: "command", Command: "forge hook skill-scan"},
 					{Type: "command", Command: "forge hook init-suggest"},
+					{Type: "command", Command: "forge hook task-resume"},
 				},
 			},
 		},
@@ -269,6 +271,7 @@ func WriteHookTemplates(forgeDir string) error {
 		"tool-track.sh":          ToolTrackHook,
 		"skill-scan.sh":          SkillScanHook,
 		"init-suggest.sh":        InitSuggestHook,
+		"task-resume.sh":         TaskResumeHook,
 		"workflow-test-guard.sh": WorkflowTestGuardHook,
 	}
 
@@ -315,6 +318,7 @@ func HookNames() []string {
 		"tool-track.sh",
 		"skill-scan.sh",
 		"init-suggest.sh",
+		"task-resume.sh",
 		"workflow-test-guard.sh",
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
@@ -92,5 +93,74 @@ func TestRenderResume_StripsANSI(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("正常内容 %q 应保留: %q", want, out)
 		}
+	}
+}
+
+// TestRenderHookResume_NoActiveTask：SessionStart hook 模式无活跃任务 → 返空串（静默，不注入、
+// 不报错）。fresh 项目（init 后未 task start）开新会话不应注入任何接续上下文。
+func TestRenderHookResume_NoActiveTask(t *testing.T) {
+	root, _ := forgedatatest.RealProject(t)
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "sid-none")
+	out, err := renderHookResume(root)
+	if err != nil {
+		t.Fatalf("无活跃任务应静默不报错: %v", err)
+	}
+	if out != "" {
+		t.Errorf("无活跃任务应返空串静默，实得 %q", out)
+	}
+}
+
+// TestRenderHookResume_WithActiveTask：有活跃任务 → 返 "PASS\n"+HANDOFF 视图（含 task ref/
+// goal/门禁进度），且自动 attach 当前 session（silent，tool=claude-code）。
+func TestRenderHookResume_WithActiveTask(t *testing.T) {
+	root, _ := forgedatatest.RealProject(t)
+	state := &taskpipeline.TaskState{
+		TaskRef: "feat/hook-demo", Branch: "feat/hook-demo",
+		Kind: "code", Goal: "会话启动自动恢复",
+	}
+	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+		t.Fatalf("SaveTaskState: %v", err)
+	}
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "sid-hook-1")
+
+	out, err := renderHookResume(root)
+	if err != nil {
+		t.Fatalf("renderHookResume: %v", err)
+	}
+	if !strings.HasPrefix(out, "PASS\n") {
+		t.Fatalf("hook 输出须以 PASS 前缀开头（runHook extractDetail 据此取 detail），实得 %q", out)
+	}
+	for _, want := range []string{"feat/hook-demo", "会话启动自动恢复", "门禁进度"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("hook 输出应含 %q\n---OUT---\n%s", want, out)
+		}
+	}
+	// attach 副作用：silent 模式静默把当前 session 锚到任务
+	reloaded, _ := taskpipeline.LoadTaskState(root, "feat/hook-demo")
+	if reloaded == nil || !reloaded.HasSession("sid-hook-1") {
+		t.Errorf("hook 模式应自动 attach 当前 session sid-hook-1，state=%v", reloaded)
+	}
+}
+
+// TestRenderHookResume_IdempotentAttach：同 session 重复跑（多次 SessionStart）attach 幂等——
+// 已锚定 session 不重复添加、不报错（attachCurrentSession 的 HasSession 分支保证）。
+func TestRenderHookResume_IdempotentAttach(t *testing.T) {
+	root, _ := forgedatatest.RealProject(t)
+	state := &taskpipeline.TaskState{TaskRef: "feat/idem", Branch: "feat/idem", Goal: "幂等"}
+	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+		t.Fatalf("SaveTaskState: %v", err)
+	}
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "sid-idem")
+	if _, err := renderHookResume(root); err != nil {
+		t.Fatalf("first renderHookResume: %v", err)
+	}
+	first, _ := taskpipeline.LoadTaskState(root, "feat/idem")
+	firstLen := len(first.SessionLinks)
+	if _, err := renderHookResume(root); err != nil {
+		t.Fatalf("second renderHookResume (idempotent): %v", err)
+	}
+	second, _ := taskpipeline.LoadTaskState(root, "feat/idem")
+	if len(second.SessionLinks) != firstLen {
+		t.Errorf("幂等 attach：重复跑不应增 SessionLinks（%d → %d）", firstLen, len(second.SessionLinks))
 	}
 }
