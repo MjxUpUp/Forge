@@ -119,10 +119,17 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	// Generate .claude/settings.local.json (Claude Code project-level hooks).
-	// plugin 已 user-level 装时,末尾 dedupeProjectLevelIfPlugin 清理此重复（Translate 的
-	// writeClaudeMCP 同理）——GenerateSettings 保持纯,dedup 在命令层统一做。
-	if err := hooks.GenerateSettings(dir); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to generate .claude/settings.local.json: %v\n", err)
+	// Only when plugin is NOT user-level installed — when plugin IS installed,
+	// user-level plugin.json already registers ForgeHookSpec machine-wide.
+	// Writing project-level hooks is redundant and creates a fragile
+	// "write then immediately strip" pattern that can corrupt the file.
+	// dedupeProjectLevelIfPlugin still runs at the end to clean up legacy hooks.
+	if !hooks.IsClaudePluginInstalled() {
+		if err := hooks.GenerateSettings(dir); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to generate .claude/settings.local.json: %v\n", err)
+		}
+	} else {
+		fmt.Fprintf(os.Stderr, "forge plugin 已 user-level 接管 hooks,跳过 project-level settings.local.json 生成\n")
 	}
 
 	// Generate Claude Code Skill
@@ -186,7 +193,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  .forge/protocol.yml              — 质量协议\n")
 	fmt.Printf("  .forge/hooks/                    — 门禁 Hook 脚本\n")
 	if hooks.IsClaudePluginInstalled() {
-		fmt.Println(`  .claude/settings.local.json      — forge plugin 已 user-level 接管,project-level hooks 写入后自动清理`)
+		fmt.Println(`  .claude/settings.local.json      — forge plugin 已 user-level 接管 hooks,跳过 project-level 生成`)
 	} else {
 		fmt.Printf("  .claude/settings.local.json      — Claude Code 集成\n")
 	}
