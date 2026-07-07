@@ -64,7 +64,13 @@ forge task status --json 2>&1 | grep -i "design_phase\|DesignPhases"
 |---|---|---|
 | `requirement` | [references/phase-requirement.md](references/phase-requirement.md) | 需求设计产物（PRD/需求文档）审查 |
 | `api` | [references/phase-api.md](references/phase-api.md) | API 设计产物（OpenAPI/proto/接口定义）审查 |
+| `database` | [references/phase-database.md](references/phase-database.md) | 数据库设计产物（migration/schema/索引）审查 |
+| `frontend` | [references/phase-frontend.md](references/phase-frontend.md) | 前端设计产物（组件/页面/路由/状态）审查 |
+| `backend` | [references/phase-backend.md](references/phase-backend.md) | 后端设计产物（service/domain/业务逻辑）审查 |
+| `test-design` | [references/phase-test-design.md](references/phase-test-design.md) | 测试设计产物（测试用例/计划/矩阵）审查 |
 | 其他/无 | 通用 `review-checklist.md` | 代码级审查（默认） |
+
+> 6 个环节与 `design-artifact-standards` skill 的编写期路由表对称——同一批 phase-*.md，编写期当骨架（design-artifact-standards）、审查期当 checklist（本步骤），一份标准两阶段共用。
 
 **加载方式**：把对应 checklist 作为附加检查项，与轨道 A+B 一起执行。不替换而是补充——设计产物审查与代码实现审查关注点不同。
 
