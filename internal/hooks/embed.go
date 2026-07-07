@@ -1002,7 +1002,7 @@ done
 # .mcp.json forge server，Claude Code 会双重加载）。幂等：dedupe 无重复时 no-op 无输出。
 if [ -d "$ROOT/.forge" ]; then
   if forge plugin status >/dev/null 2>&1; then
-    DEDUPE=$(forge plugin dedupe "$ROOT" 2>/dev/null)
+    DEDUPE=$(forge plugin dedupe "$ROOT" --keep-empty 2>/dev/null)
     if [ -n "$DEDUPE" ]; then
       echo "PASS [init-suggest] $DEDUPE"
     fi
