@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -516,7 +517,11 @@ func runEmbeddedHook(root, name string) (passed bool, output string) {
 	tmp.Close()
 	// bash reads the file as an argument; no chmod needed (not exec'd directly).
 
-	cmd := exec.Command("bash", tmpPath, root)
+	// Windows: os.CreateTemp 返回反斜杠路径（C:\Users\...\forge-gate-*.sh），bash 把反斜杠当
+	// 转义吃掉 → "No such file or directory"，task-implement 的 build 检查因此误判失败。
+	// filepath.ToSlash 转正斜杠（Git Bash 可解析）。cmd.Dir 仍用原生 root——Go exec 在
+	// Windows 启动 bash 子进程要原生路径做 cwd，bash 自身能处理 Windows cwd。
+	cmd := exec.Command("bash", filepath.ToSlash(tmpPath), filepath.ToSlash(root))
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
 	return err == nil, strings.TrimSpace(string(out))
