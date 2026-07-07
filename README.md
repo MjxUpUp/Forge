@@ -249,7 +249,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge clone check` | 检测文件代码克隆 |
 | `forge plugin pack [--out <dir>] [--owner-name <n>]` | 生成多 host plugin pack（.claude-plugin/.cursor-plugin marketplace + plugins/\<name\>/ 树：claude manifest 含 hooks + 共享 .mcp.json + 每 host 安装 README），让各 agent 一键 `plugin install forge` 跨工具接线（薄 manifest + 共享内容，单仓即 marketplace） |
 | `forge plugin status` | 报告 forge plugin 是否在 user-level 已装（exit 0=已装，非零=未装；供 init-suggest hook / 脚本检测） |
-| `forge plugin dedupe [dir]` | plugin 已装时一次性清理 project-level 重复 hooks（settings.local.json）+ MCP（.mcp.json）；幂等，无重复时 no-op；init-suggest SessionStart hook 自动调用迁移存量项目 |
+| `forge plugin dedupe [dir] [--keep-empty]` | plugin 已装时清理 project-level 重复 hooks + MCP；幂等 no-op；init-suggest SessionStart 自动调用（传 `--keep-empty` 保留 `settings.local.json` 为 `{}`，不删用户个人配置文件）；手动不传则清完删空文件 |
 
 ## 安装
 
