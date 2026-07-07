@@ -37,8 +37,9 @@ func startTestServer(t *testing.T) *mcp.ClientSession {
 	return cs
 }
 
-// TestServer_ListToolsRegistersAll：10 个工具必须都注册到 MCP server。
+// TestServer_ListToolsRegistersAll：14 个工具必须都注册到 MCP server。
 // 协议层契约——漏注册一个，agent 就调不到对应能力；多注册说明有 stray。
+// （forge_gate_run 随项目级管道删除。）
 func TestServer_ListToolsRegistersAll(t *testing.T) {
 	cs := startTestServer(t)
 	res, err := cs.ListTools(context.Background(), nil)
@@ -50,7 +51,7 @@ func TestServer_ListToolsRegistersAll(t *testing.T) {
 		got[tool.Name] = true
 	}
 	want := []string{
-		"forge_gate_run", "forge_task_status", "forge_task_gate",
+		"forge_task_status", "forge_task_gate",
 		"forge_task_resume", "forge_task_decide", "forge_task_attach",
 		"forge_experience_search", "forge_experience_propose",
 		"forge_trace_query", "forge_act_query", "forge_health_query",

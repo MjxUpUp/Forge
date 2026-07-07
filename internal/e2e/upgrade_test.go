@@ -199,17 +199,17 @@ func freshProjectOnBranch(t *testing.T, branch string) string {
 func TestFreshInstall(t *testing.T) {
 	dir := freshProject(t)
 
-	// Verify core files exist.
+	// Verify core files exist. 项目级管道已删除：无 pipeline.yml/state.json/
+	// forge-pipeline skill；新增 .sync-version stamp + CLAUDE.md。
 	for _, path := range []string{
 		".forge",
-		".forge/pipeline.yml",
-		".forge/state.json",
+		".forge/.sync-version",
 		".forge/protocol.yml",
 		".forge/hooks/auto-compile.sh",
 		".forge/hooks/assertion-check.sh",
 		".forge/hooks/task-verify.sh",
 		".claude/settings.local.json",
-		".claude/skills/forge-pipeline/SKILL.md",
+		".claude/CLAUDE.md",
 		".claude/skills/forge-quality/SKILL.md",
 	} {
 		if !fileExists(t, dir, path) {
@@ -479,10 +479,10 @@ scoring:
 		t.Error("auto-compile.sh should have been overwritten, still has old content")
 	}
 
-	// Verify: SKILL.md regenerated with experience section.
-	skillContent := readFile(t, dir, ".claude/skills/forge-pipeline/SKILL.md")
+	// Verify: quality SKILL.md regenerated (forge-pipeline skill 已随项目级管道删除).
+	skillContent := readFile(t, dir, ".claude/skills/forge-quality/SKILL.md")
 	if skillContent == "" {
-		t.Error("expected SKILL.md to be regenerated")
+		t.Error("expected forge-quality SKILL.md to be regenerated")
 	}
 
 	// Verify: protocol.yml NOT overwritten — still has user's custom standard.
@@ -494,14 +494,14 @@ scoring:
 		t.Error("protocol.yml should still contain user's custom session rule after upgrade")
 	}
 
-	// Verify: state.json updated with new sync version.
-	type stateFile struct {
-		LastSyncVersion string `json:"last_sync_version"`
+	// Verify: .sync-version stamp written with current binary version. autoSync 现在用
+	// stamp 文件判 no-op（取代已删的 state.json.last_sync_version），不再读写 state.json。
+	stamp := readFile(t, dir, ".forge/.sync-version")
+	if strings.TrimSpace(stamp) == "" {
+		t.Fatal(".sync-version stamp should be written after upgrade sync")
 	}
-	var state stateFile
-	readJSON(t, dir, ".forge/state.json", &state)
-	if state.LastSyncVersion == "v0.4.0" {
-		t.Error("state.json last_sync_version should have been updated from v0.4.0")
+	if strings.TrimSpace(stamp) == "v0.4.0" {
+		t.Error(".sync-version stamp should reflect current binary version, not stale v0.4.0")
 	}
 }
 
@@ -614,9 +614,9 @@ scoring:
 		t.Error("settings.local.json should exist after auto-sync")
 	}
 
-	// Verify: SKILL.md updated.
-	if !fileExists(t, dir, ".claude/skills/forge-pipeline/SKILL.md") {
-		t.Error("SKILL.md should exist after auto-sync")
+	// Verify: quality SKILL.md updated (forge-pipeline skill 已随项目级管道删除).
+	if !fileExists(t, dir, ".claude/skills/forge-quality/SKILL.md") {
+		t.Error("forge-quality SKILL.md should exist after auto-sync")
 	}
 }
 

@@ -103,7 +103,6 @@ func buildWindsurfHooks() map[string]any {
 				{Command: "forge hook init-suggest", ShowOutput: false},
 			},
 			"session_end": {
-				{Command: "forge gate --current --silent", ShowOutput: false},
 				{Command: "forge hook task-verify", ShowOutput: false},
 				{Command: "forge hook review-stop", ShowOutput: false},
 			},

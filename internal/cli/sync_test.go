@@ -7,28 +7,20 @@ import (
 	"testing"
 
 	"github.com/MjxUpUp/Forge/internal/hooks"
-	"github.com/MjxUpUp/Forge/internal/pipeline"
 )
 
-// writeSyncState writes a minimal .forge/state.json with the given
-// last_sync_version, so autoSync can load it past its first early-return guard.
-func writeSyncState(t *testing.T, dir, lastSyncVersion string) {
+// writeSyncStamp writes .forge/.sync-version with the given binary version, so
+// autoSync can read it past its first early-return guard. Replaces the old
+// state.json LastSyncVersion mechanism: the project pipeline (and its
+// state.json) was deleted, so autoSync now no-ops via a .sync-version stamp.
+func writeSyncStamp(t *testing.T, dir, version string) {
 	t.Helper()
 	forgeDir := filepath.Join(dir, ".forge")
 	if err := os.MkdirAll(forgeDir, 0755); err != nil {
 		t.Fatalf("mkdir .forge: %v", err)
 	}
-	state := &pipeline.State{
-		PipelineVersion: "2.0",
-		Mode:            "medium",
-		LastSyncVersion: lastSyncVersion,
-	}
-	data, err := json.MarshalIndent(state, "", "  ")
-	if err != nil {
-		t.Fatalf("marshal state: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(forgeDir, "state.json"), data, 0644); err != nil {
-		t.Fatalf("write state.json: %v", err)
+	if err := os.WriteFile(filepath.Join(forgeDir, ".sync-version"), []byte(version), 0644); err != nil {
+		t.Fatalf("write .sync-version: %v", err)
 	}
 }
 
@@ -42,39 +34,39 @@ func hookWritten(t *testing.T, dir string) bool {
 	return err == nil
 }
 
-// Dev builds must re-sync on every command even when last_sync_version already
-// equals "dev", because embedded templates change between dev builds.
+// Dev builds must re-sync on every command even when the .sync-version stamp
+// already equals "dev", because embedded templates change between dev builds.
 // Regression: .forge/hooks/ was observed stuck at 8 files while embed.go had 15.
 func TestAutoSyncDevVersionResyncsWhenEqual(t *testing.T) {
 	dir := t.TempDir()
-	writeSyncState(t, dir, "dev")
+	writeSyncStamp(t, dir, "dev")
 
 	// Ignore error: later sync steps (skill/settings gen) may fail in a bare
 	// temp dir, but we only care whether the early-return was taken.
 	_ = autoSync(dir, "dev", false)
 
 	if !hookWritten(t, dir) {
-		t.Fatal("dev version with last_sync_version=\"dev\" must still resync (early-return should be skipped), but hook was not written")
+		t.Fatal("dev version with stamp=\"dev\" must still resync (early-return should be skipped), but hook was not written")
 	}
 }
 
-// Non-dev builds must skip resync when last_sync_version already matches —
+// Non-dev builds must skip resync when the .sync-version stamp already matches —
 // this is the normal idempotent behavior for released versions.
 func TestAutoSyncReleasedVersionSkipsWhenEqual(t *testing.T) {
 	dir := t.TempDir()
-	writeSyncState(t, dir, "v0.17.0")
+	writeSyncStamp(t, dir, "v0.17.0")
 
 	_ = autoSync(dir, "v0.17.0", false)
 
 	if hookWritten(t, dir) {
-		t.Fatal("released version with matching last_sync_version should skip resync (early-return), but hook was written")
+		t.Fatal("released version with matching stamp should skip resync (early-return), but hook was written")
 	}
 }
 
 // Non-dev builds must resync when the version differs (upgrade path).
 func TestAutoSyncResyncsWhenVersionDiffers(t *testing.T) {
 	dir := t.TempDir()
-	writeSyncState(t, dir, "v0.16.0")
+	writeSyncStamp(t, dir, "v0.16.0")
 
 	_ = autoSync(dir, "v0.17.0", false)
 
@@ -109,12 +101,12 @@ func writeSettingsWithStaleBinding(t *testing.T, dir string) {
 }
 
 // A settings file carrying a legacy task-verify PostToolUse binding must force a
-// resync even when last_sync_version matches the binary — the stale binding has
-// to be regenerated away regardless of version. Regression for the DevWorkbench
-// case where a stale settings file persisted across upgrades.
+// resync even when the .sync-version stamp matches the binary — the stale
+// binding has to be regenerated away regardless of version. Regression for the
+// DevWorkbench case where a stale settings file persisted across upgrades.
 func TestAutoSyncHealsStaleBindingEvenWhenVersionMatches(t *testing.T) {
 	dir := t.TempDir()
-	writeSyncState(t, dir, "v0.17.0")
+	writeSyncStamp(t, dir, "v0.17.0")
 	writeSettingsWithStaleBinding(t, dir)
 
 	if !settingsHasStaleBinding(dir) {
@@ -132,7 +124,7 @@ func TestAutoSyncHealsStaleBindingEvenWhenVersionMatches(t *testing.T) {
 // under Stop) — otherwise every command would pointlessly resync.
 func TestSettingsHasStaleBindingFalseForCleanSettings(t *testing.T) {
 	dir := t.TempDir()
-	writeSyncState(t, dir, "v0.17.0")
+	writeSyncStamp(t, dir, "v0.17.0")
 	// Generate the canonical clean settings via the generator itself.
 	if err := hooks.GenerateSettings(dir); err != nil {
 		t.Fatalf("GenerateSettings: %v", err)
@@ -152,7 +144,7 @@ func TestAutoSyncSkipsGenerateSettingsWhenPluginInstalled(t *testing.T) {
 	writeForgePluginFixture(t, home)
 
 	dir := t.TempDir()
-	writeSyncState(t, dir, "v0.16.0") // version mismatch → would trigger full sync
+	writeSyncStamp(t, dir, "v0.16.0") // version mismatch → would trigger full sync
 
 	// Pre-populate settings.local.json with user fields only (no hooks).
 	userSettings := `{"env":{"KEY":"val"},"model":"gpt-4"}`
@@ -187,21 +179,21 @@ func TestAutoSyncSkipsGenerateSettingsWhenPluginInstalled(t *testing.T) {
 	}
 }
 
-// A missing state.json must not silently skip sync — old code returned nil
-// here, leaving stale settings unhealed. With the heal-on-bad-state fix, the
-// state-independent artifacts (hooks + settings) still regenerate so a stale
-// binding gets repaired even when state.json is gone.
-func TestAutoSyncHealsArtifactsWhenStateMissing(t *testing.T) {
+// A missing .sync-version stamp must not silently skip sync — old code returned
+// nil here, leaving stale settings unhealed. With the heal-on-bad-state fix, the
+// stamp-independent artifacts (hooks + settings) still regenerate so a stale
+// binding gets repaired even when no stamp exists.
+func TestAutoSyncHealsArtifactsWhenStampMissing(t *testing.T) {
 	dir := t.TempDir()
 	forgeDir := filepath.Join(dir, ".forge")
 	if err := os.MkdirAll(forgeDir, 0755); err != nil {
 		t.Fatalf("mkdir .forge: %v", err)
 	}
-	// Intentionally NO state.json — simulates a half-initialized or corrupted project.
+	// Intentionally NO .sync-version — simulates a half-initialized or corrupted project.
 
 	_ = autoSync(dir, "v0.17.0", false)
 
 	if !hookWritten(t, dir) {
-		t.Fatal("missing state.json must still heal hooks+settings, but hook was not written")
+		t.Fatal("missing .sync-version must still heal hooks+settings, but hook was not written")
 	}
 }

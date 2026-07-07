@@ -8,9 +8,9 @@ package forgedata
 // forge 版本积累过 runtime state 的项目，升级到新版本后用 `forge migrate` 把遗留
 // .forge/ runtime state 搬到 DataDir；新写的 runtime state 已直接落 DataDir。
 //
-// 项目配置（ConfigDir）不迁：state.json（管道状态机，pipeline/state.go 读）/hooks/
-// （项目配置 hook 脚本，区别于 runtime 副本 DataDir/hooks——僵尸 accessor 不涉迁移）
-// /pipeline.yml/protocol.yml/CLAUDE.md/AGENTS.md 仍留 <root>/.forge/。
+// 项目配置（ConfigDir）不迁：hooks/（项目配置 hook 脚本，区别于 runtime 副本
+// DataDir/hooks——僵尸 accessor 不涉迁移）/protocol.yml/CLAUDE.md/AGENTS.md 仍留
+// <root>/.forge/。
 //
 // 安全设计：
 //   - 白名单（明确列出 runtime state 名），不盲目迁整个 .forge/——防误迁配置

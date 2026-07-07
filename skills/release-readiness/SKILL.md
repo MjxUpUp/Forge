@@ -1,6 +1,6 @@
 ---
 name: release-readiness
-description: "发布/上线前的 readiness 门禁清单（能安全上线吗）。Use when: 准备发布/上线/打 tag/发版/灰度时、用户问'能上线了吗'/'可以发布了吗'/'发布前检查'/'上线前 check 一遍'时、gate-8 发布门禁产出 checklist.md 时、版本号已 bump 准备 tag 时、Release 截止前的 go/no-go 评审时。SKIP: 项目功能验收/PRD 对比/完整度审查（用 project-acceptance）、文档 vs 代码一致性专项（用 docs-consistency-guard）、单次 diff 代码审查（用 code-review-gate）、编码任务交付纪律（用 implementation-discipline）、运行时 bug 排查（用 systematic-debugging）。"
+description: "发布/上线前的 readiness 门禁清单（能安全上线吗）。Use when: 准备发布/上线/打 tag/发版/灰度时、用户问'能上线了吗'/'可以发布了吗'/'发布前检查'/'上线前 check 一遍'时、版本号已 bump 准备 tag 时、Release 截止前的 go/no-go 评审时。SKIP: 项目功能验收/PRD 对比/完整度审查（用 project-acceptance）、文档 vs 代码一致性专项（用 docs-consistency-guard）、单次 diff 代码审查（用 code-review-gate）、编码任务交付纪律（用 implementation-discipline）、运行时 bug 排查（用 systematic-debugging）。"
 metadata:
   pattern: gate
   domain: release-engineering
@@ -23,7 +23,6 @@ metadata:
 
 **Use when:**
 - 用户说"准备发布" / "上线" / "打 tag" / "发版" / "灰度" / "能上线了吗" / "发布前 check 一遍" / "go/no-go"
-- forge-pipeline 走到 gate-8-release，需要产出 `checklist.md`
 - 版本号已 bump，准备推 tag 或发 Release
 - 即将执行不可逆动作（生产迁移、镜像 push、DNS 切换）
 
@@ -379,5 +378,4 @@ Start
 - **code-review-gate**：单次 diff 代码质量审查（AI 作弊 / SOLID / 安全）。前者管代码层质量，本 skill 管发布层风险（版本/迁移/回滚/观测），不重审代码。
 - **implementation-discipline**：编码任务的交付纪律（先读再改/测试伴随/聚焦变更）。前者管开发期，本 skill 管发布期。
 - **systematic-debugging**：smoke check 失败或灰度报错时，用它排查根因，不要在发布窗口边猜边改。
-- **forge-pipeline gate-8-release**：本 skill 是 gate-8 的内容载体——gate-8 的 subagent 加载本 skill 跑清单、产出 `checklist.md` 作为 gate 产出物。
 - **session-retrospective**：发布事故复盘后，决定经验进什么载体（守卫测试 / RUNBOOK / 本 skill 的 Gotchas）。当它判定"进发布清单"时，转交本 skill 加具体项。

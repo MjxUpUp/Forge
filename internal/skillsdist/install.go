@@ -55,8 +55,7 @@ const (
 // reservedNames 是 forge 自身 skillgen 管理的 skill 名，install 必须跳过——
 // 否则 autoSync 每次会用自生成版覆盖用户装的，造成分发抖动。
 var reservedNames = map[string]bool{
-	"forge-pipeline": true,
-	"forge-quality":  true,
+	"forge-quality": true,
 }
 
 // InstallOpts 是 Install 的输入。
@@ -268,7 +267,7 @@ func parseRequires(s string) []string {
 // okActions (3) TestCheckRequires 加用例守护，避免静默扩展破坏 checkRequires 语义。
 //
 // 非成功 action：blocked（质量门控未过）/ aborted（drift-policy=abort 触发）/ reserved
-// （forge-pipeline/forge-quality 保留名）——不在 okActions，checkRequires 自然跳过。
+// （forge-quality 保留名）——不在 okActions，checkRequires 自然跳过。
 const (
 	actLinked   = `linked`
 	actCopied   = `copied`

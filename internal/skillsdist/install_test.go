@@ -147,14 +147,14 @@ func TestInstall_DriftSkip(t *testing.T) {
 
 func TestInstall_ReservedName(t *testing.T) {
 	canonical := t.TempDir()
-	writeCanonicalSkill(t, canonical, "forge-pipeline")
+	writeCanonicalSkill(t, canonical, "forge-quality")
 	projectDir := t.TempDir()
 	rep, err := Install(canonical, copyOpts(projectDir))
 	mustMk(t, err)
 	if rep.Stats.Installed != 0 {
 		t.Fatalf("reserved name 不应安装，installed=%d", rep.Stats.Installed)
 	}
-	if _, err := os.Stat(filepath.Join(projectDir, "forge-pipeline")); err == nil {
+	if _, err := os.Stat(filepath.Join(projectDir, "forge-quality")); err == nil {
 		t.Fatal("reserved name 被错误写入目标")
 	}
 }

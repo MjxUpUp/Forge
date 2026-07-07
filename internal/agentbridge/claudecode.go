@@ -26,17 +26,9 @@ func (t *ClaudeCodeTranslator) Translate(projectDir string, input *TranslationIn
 		}
 	}
 
-	// Generate pipeline SKILL.md
-	var inferredIDs []string
-	if input.Pipeline != nil {
-		if err := skillgen.GenerateSkill(projectDir, input.Pipeline, inferredIDs); err != nil {
-			return fmt.Errorf("claude-code: failed to generate pipeline skill: %w", err)
-		}
-	}
-
 	// Generate quality SKILL.md
-	if input.Protocol != nil && input.Pipeline != nil {
-		if err := skillgen.GenerateQualitySkill(projectDir, input.Protocol, input.Pipeline); err != nil {
+	if input.Protocol != nil {
+		if err := skillgen.GenerateQualitySkill(projectDir, input.Protocol); err != nil {
 			return fmt.Errorf("claude-code: failed to generate quality skill: %w", err)
 		}
 	}
@@ -46,8 +38,8 @@ func (t *ClaudeCodeTranslator) Translate(projectDir string, input *TranslationIn
 		return fmt.Errorf("claude-code: failed to generate CLAUDE.md: %w", err)
 	}
 
-	// Generate .mcp.json — expose forge's 15 MCP tools (task resume/decide/attach,
-	// gates, dashboard, experience) to the agent so it calls forge structurally
+	// Generate .mcp.json — expose forge's 14 MCP tools (task resume/decide/attach,
+	// gates, experience) to the agent so it calls forge structurally
 	// instead of the user typing CLI. Idempotent merge (see mcpconfig.go).
 	// 纯函数：永远 merge 写 forge server；project-level 重复清理由命令层
 	// dedupeProjectLevelIfPlugin 统一做。注：GenerateSettings 加了 plugin guard

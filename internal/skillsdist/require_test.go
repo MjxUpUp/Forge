@@ -155,12 +155,12 @@ func TestCheckRequires(t *testing.T) {
 			wantCount: 0,
 		},
 		{
-			name: `reserved 的 skill 跳过（forge-pipeline/quality 等保留名）`,
+			name: `reserved 的 skill 跳过（forge-quality 等保留名）`,
 			setup: func(t *testing.T, dir string) {
-				mkSkillMD(t, dir, `forge-pipeline`, `beta`)
+				mkSkillMD(t, dir, `forge-quality`, `beta`)
 			},
 			results: []SkillInstallResult{
-				{Name: `forge-pipeline`, Targets: []TargetResult{{Action: actReserved}}},
+				{Name: `forge-quality`, Targets: []TargetResult{{Action: actReserved}}},
 			},
 			wantCount: 0,
 		},

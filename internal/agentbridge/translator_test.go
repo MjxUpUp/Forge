@@ -9,21 +9,19 @@ import (
 	"testing"
 
 	"github.com/MjxUpUp/Forge/internal/hooks"
-	"github.com/MjxUpUp/Forge/internal/pipeline"
 	"github.com/MjxUpUp/Forge/internal/protocol"
 )
 
 func testInput() *TranslationInput {
 	return &TranslationInput{
-		Protocol:  protocol.DefaultProtocol("medium"),
-		Pipeline:  &pipeline.Pipeline{Project: "test", Mode: "medium"},
+		Protocol:  protocol.DefaultProtocol(),
 		HookNames: hooks.HookNames(),
 	}
 }
 
 // TestCodexWiringMirrorsClaudeSettings guards the hand-maintained sync between
 // codex.go (buildCodexHooks) and hooks/settings.go (GenerateSettings). Both
-// tables wire the same `forge hook <name>` / `forge gate` commands so Forge
+// tables wire the same `forge hook <name>` commands so Forge
 // gates enforce identically on Claude Code and Codex — the only two agents
 // whose hooks actually block. codex.go's buildCodexHooks comment warns this
 // sync is manual; without a guard, adding a hook to one side and forgetting the
@@ -374,7 +372,7 @@ func TestWindsurfWiringMirrorsClaudeSettings(t *testing.T) {
 			got = map[string]bool{}
 		}
 		// Strip the `--agent windsurf` suffix so the command surfaces match
-		// Claude Code's (`forge hook <name>` / `forge gate`).
+		// Claude Code's (`forge hook <name>`).
 		stripped := map[string]bool{}
 		for cmd := range got {
 			stripped[strings.TrimSuffix(cmd, " --agent windsurf")] = true
@@ -573,7 +571,8 @@ func TestCodexTranslator_Translate(t *testing.T) {
 		`forge hook file-sentinel`,
 		`forge hook bash-guard`,
 		`forge hook hazard-guard`,
-		`forge gate --current --silent`,
+		`forge hook review-stop`,
+		`forge hook task-verify`,
 	} {
 		if !strings.Contains(content, want) {
 			t.Errorf("codex hooks.json missing %q", want)
