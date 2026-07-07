@@ -14,6 +14,8 @@ code-review-gate 的双轨审查由**独立只读子 agent** 执行，而非主 
 
 独立子 agent **看不到主 agent 的实现理由**，只看到 diff——它只问"这行代码本身是否构成作弊/缺陷"。这是规模无关的底线：**哪怕改一行也派 1 个独立子 agent**。
 
+> ⚠️ **"独立上下文"不是"只读 diff 行"**。独立指不继承主 agent 的实现理由/对话历史（防确认偏误），**不是**把审查局限在 diff 的 +/- 行。改名 / 删除 / 改签名的符号，子 agent 必须用 `Grep`/`Glob` 主动查全仓调用方（**含 gitignored 文件**）+ 数据流下游——调用方常在 diff 之外（其他文件、生成的代码、配置、docs 示例）。只看 diff 行 = 把审查降级成"这行字符对不对"，丢掉"改动是否真的有效、波及面是否都更新了"。
+
 ## 规模 → 1 还是 2
 
 规模只决定并行数，不决定是否派子 agent：
@@ -32,8 +34,8 @@ code-review-gate 的双轨审查由**独立只读子 agent** 执行，而非主 
 - **职责**：只扫 11 类 AI 作弊指纹（详见 [ai-cheat-patterns.md](ai-cheat-patterns.md)）。命中任一即必须解决，这是最高信号。
 - **工具**：`Read` / `Grep` / `Glob`（只读，**禁止 Edit/Write/Bash 写操作**）
 - **不看**：设计模式、可读性、命名、性能——这些归 `eng-reviewer`，本契约聚焦作弊
-- **重点扫**：diff 的删除行（`-` 侧）、新增的 ignore/disable、改名的符号是否更新了所有调用点、断言数量净变化、空 catch
-- **输入**：主 agent 注入 diff 范围（`git diff` 输出或文件路径）
+- **重点扫**：diff 的删除行（`-` 侧）、新增的 ignore/disable、改名的符号是否更新了所有调用点（**必须 `Grep` 全仓 `oldName` 含 gitignored 文件**——调用方常在 diff 之外，diff 里没改 ≠ 没漏改）、断言数量净变化、空 catch
+- **输入**：主 agent 注入 ① diff 范围（`git diff` 输出或文件路径）+ ② **改动符号清单**（被改名/删除/改签名的 export·函数·类型·常量 old→new）。子 agent 据 ② 主动 `Grep` 全仓调用点（含 gitignored），不只扫 diff 行。
 - **输出**：见下方 schema，`category` 取 11 类之一
 
 ## 契约 2：`eng-reviewer`（轨道 B — 传统工程规范）
@@ -42,7 +44,7 @@ code-review-gate 的双轨审查由**独立只读子 agent** 执行，而非主 
 - **工具**：`Read` / `Grep` / `Glob`（只读）
 - **不看**：AI 作弊指纹（那是 `cheat-detector` 的职责，避免重复）
 - **重点**：跨层数据类型一致性、错误路径（非快乐路径）、依赖真实性、安全反模式（硬编码密钥/SQL 拼接/缺输入验证/缺限流）、破坏性 SQL（DROP/TRUNCATE/无 WHERE DELETE/GRANT ALL/生产直连/不可逆迁移，见 [sql-safety-checklist.md](sql-safety-checklist.md)）、过度工程（重造轮子/单实现抽象/引依赖做几行事/投机灵活性/死代码）——用 delete-list 格式给可删清单 + 替代方案，结束给 `net: -N lines possible`，见 [over-engineering-checklist.md](over-engineering-checklist.md)
-- **输入**：主 agent 注入 diff 范围
+- **输入**：主 agent 注入 diff 范围 + 改动符号清单（同 cheat-detector）。eng-reviewer 额外 `Grep` 数据流下游（DB → struct → API → JWT claims 跨层类型一致性，见 [review-checklist.md](review-checklist.md)）。
 - **输出**：见下方 schema，`category` 取 8 维度之一
 
 ---
@@ -78,9 +80,9 @@ code-review-gate 的双轨审查由**独立只读子 agent** 执行，而非主 
 
 **Claude Code**（Task tool）：
 ```
-Task(subagent_type="general-purpose", prompt="<契约职责> + <schema> + <diff 范围>")
+Task(subagent_type="general-purpose", prompt="<契约职责> + <schema> + <diff 范围> + <改动符号清单>")
 ```
-prompt 里注入：本契约的「职责/工具/不看/重点」+ 输出 schema + 当前 diff。不预设 `.claude/agents/*.md`（那是 Claude Code 私有，Forge 不污染）。
+prompt 里注入：本契约的「职责/工具/不看/重点」+ 输出 schema + 当前 diff + **改动符号清单**（改名/删除/改签名的符号 old→new，子 agent 据此 Grep 全仓调用点含 gitignored）。不预设 `.claude/agents/*.md`（那是 Claude Code 私有，Forge 不污染）。
 
 **codex / cursor / windsurf**：用各自子任务/子 agent 机制，prompt 注入相同契约。Forge 的多 agent hook 配置已就绪（见 agentbridge），审查触发点（Stop hook / task-complete 门禁）跨 agent 一致。
 
@@ -91,7 +93,7 @@ prompt 里注入：本契约的「职责/工具/不看/重点」+ 输出 schema 
 ## 约束（硬性）
 
 1. **只读**：子 agent 禁止修改代码。审查与修复分离——主 agent 拿到 findings 后自己改，避免子 agent "边审边改"妥协。
-2. **独立上下文**：子 agent 不继承主 agent 的实现理由/对话历史，只看 diff + 契约。这是本机制存在的全部价值。
+2. **独立上下文**：子 agent 不继承主 agent 的实现理由/对话历史（防确认偏误——这是本机制存在的全部价值），但**必须主动用 `Grep`/`Glob` 查波及面**：拿到改动符号清单后 grep 全仓调用方/下游。"独立"≠"只读 diff 行"——只读 diff 行会把改名漏改调用方的致命 bug 当成"diff 里看着对"放行。
 3. **结构化输出**：必须返回 schema JSON，不返回散文。主 agent 靠 JSON 合并去重、生成发现清单。
 4. **不越界**：`cheat-detector` 不评设计、`eng-reviewer` 不扫作弊指纹——各司其职，主 agent 合并时交叉去重。
 

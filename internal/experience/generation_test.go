@@ -313,3 +313,47 @@ func TestProposalsForReview_FiltersByTaskRef(t *testing.T) {
 		t.Errorf("SourceReview = %q, want task-a", got[0].SourceReview)
 	}
 }
+
+func TestGenerateProposalsForReviewWithPhase_TagsFirstPhase(t *testing.T) {
+	tmpRoot := forgedatatest.ForDataDir(t.TempDir())
+	lows := []LowDimension{
+		{Dimension: scoringtypes.DimensionScope, Score: 35, Detail: ""},
+	}
+	// 多 phase：proposal.Phase 取 phases[0]（已知限制，测试固化）。
+	n, err := GenerateProposalsForReviewWithPhase(tmpRoot, "task-phase", lows, []string{`api`, `backend`})
+	if err != nil {
+		t.Fatalf("GenerateProposalsForReviewWithPhase: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("created %d, want 1", n)
+	}
+	props, _ := ListProposals(tmpRoot, PropProposed)
+	if len(props) != 1 {
+		t.Fatalf("expected 1 proposal, got %d", len(props))
+	}
+	if props[0].Phase != `api` {
+		t.Errorf("Phase=%q want api（取 phases[0]）", props[0].Phase)
+	}
+}
+
+func TestGenerateProposalsForReviewWithPhase_EmptyPhasesDegrades(t *testing.T) {
+	tmpRoot := forgedatatest.ForDataDir(t.TempDir())
+	lows := []LowDimension{
+		{Dimension: scoringtypes.DimensionScope, Score: 35, Detail: ""},
+	}
+	// 空 phases → 退化为 GenerateProposalsForReview，proposal.Phase 为空（不标记）。
+	n, err := GenerateProposalsForReviewWithPhase(tmpRoot, "task-nophase", lows, nil)
+	if err != nil {
+		t.Fatalf("GenerateProposalsForReviewWithPhase: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("created %d, want 1（空 phases 退化）", n)
+	}
+	props, _ := ListProposals(tmpRoot, PropProposed)
+	if len(props) != 1 {
+		t.Fatalf("expected 1 proposal, got %d", len(props))
+	}
+	if props[0].Phase != "" {
+		t.Errorf("Phase=%q want 空（空 phases 不标记）", props[0].Phase)
+	}
+}

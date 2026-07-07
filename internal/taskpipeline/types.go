@@ -104,9 +104,9 @@ type TaskState struct {
 	ReviewedChangeHash string                `json:"reviewed_change_hash,omitempty"`
 
 	// DesignPhases 是 inferDesignPhases 在 task-verify gate 推断出的设计阶段。
-	// 由 task-verify gate 的 phaseCheatscan 调用 inferDesignPhases(taskChangedFiles) 填充，
-	// 零摩擦：不要求用户声明。review 子 agent 据此加载对应 references/phase-X.md checklist。
-	// 空 = 无匹配设计产物，回落到通用 review-checklist.md。
+	// 由 task-verify gate（executor.go ExecuteTaskGate）调 inferDesignPhases(taskChangedFiles)
+	// 填充并 SaveTaskState 持久化，零摩擦：不要求用户声明。review 子 agent 据此加载对应
+	// references/phase-X.md checklist。空 = 无匹配设计产物，回落到通用 review-checklist.md。
 	DesignPhases []DesignPhase `json:"design_phases,omitempty"`
 	Acceptance         []AcceptanceCriterion `json:"acceptance,omitempty"` // 验收标准（dev-workflow Plan 的 Run+Expected），verify-acceptance 实跑回扣
 	// PlanScope 是任务开工前声明的"计划改动文件"白名单（glob，repo-relative 正斜杠路径）。
