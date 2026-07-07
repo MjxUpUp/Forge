@@ -142,6 +142,51 @@ func TestSettingsHasStaleBindingFalseForCleanSettings(t *testing.T) {
 	}
 }
 
+// When plugin is installed at user level, autoSync must NOT write project-level
+// hooks via GenerateSettings — the "write then immediately strip" pattern corrupts
+// settings.local.json if the process is interrupted between the two steps.
+// dedupeProjectLevelIfPlugin (deferred) still cleans up legacy hooks.
+func TestAutoSyncSkipsGenerateSettingsWhenPluginInstalled(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	writeForgePluginFixture(t, home)
+
+	dir := t.TempDir()
+	writeSyncState(t, dir, "v0.16.0") // version mismatch → would trigger full sync
+
+	// Pre-populate settings.local.json with user fields only (no hooks).
+	userSettings := `{"env":{"KEY":"val"},"model":"gpt-4"}`
+	claudeDir := filepath.Join(dir, ".claude")
+	if err := os.MkdirAll(claudeDir, 0755); err != nil {
+		t.Fatalf("mkdir .claude: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(claudeDir, "settings.local.json"), []byte(userSettings), 0644); err != nil {
+		t.Fatalf("write settings: %v", err)
+	}
+
+	// autoSync with version mismatch — would normally call GenerateSettings.
+	_ = autoSync(dir, "v0.17.0", false)
+
+	// Verify: settings.local.json must be untouched (no hooks written).
+	data, err := os.ReadFile(filepath.Join(claudeDir, "settings.local.json"))
+	if err != nil {
+		t.Fatalf("read settings after autoSync: %v", err)
+	}
+	var parsed map[string]json.RawMessage
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("parse settings: %v", err)
+	}
+	if _, hasHooks := parsed["hooks"]; hasHooks {
+		t.Error("plugin installed: GenerateSettings must not write hooks to settings.local.json")
+	}
+	if string(parsed["env"]) != `{"KEY":"val"}` {
+		t.Errorf("user env field was modified: got %s", string(parsed["env"]))
+	}
+	if string(parsed["model"]) != `"gpt-4"` {
+		t.Errorf("user model field was modified: got %s", string(parsed["model"]))
+	}
+}
+
 // A missing state.json must not silently skip sync — old code returned nil
 // here, leaving stale settings unhealed. With the heal-on-bad-state fix, the
 // state-independent artifacts (hooks + settings) still regenerate so a stale

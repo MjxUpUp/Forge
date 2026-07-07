@@ -58,9 +58,18 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 		return fmt.Errorf("auto-sync: failed to update hooks: %w", err)
 	}
 
-	// 2. Sync settings.local.json
-	if err := hooks.GenerateSettings(dir); err != nil {
-		return fmt.Errorf("auto-sync: failed to update settings: %w", err)
+	// 2. Sync settings.local.json — only when plugin is NOT user-level installed.
+	//    When plugin IS installed, user-level plugin.json already registers
+	//    ForgeHookSpec machine-wide; writing project-level hooks is redundant and
+	//    creates a fragile "write then immediately strip" pattern where any
+	//    interruption between GenerateSettings and the deferred
+	//    dedupeProjectLevelIfPlugin leaves the file corrupted (either hooks-only
+	//    or emptied to {}).  dedupeProjectLevelIfPlugin still runs via defer to
+	//    clean up legacy hooks from older forge versions.
+	if !hooks.IsClaudePluginInstalled() {
+		if err := hooks.GenerateSettings(dir); err != nil {
+			return fmt.Errorf("auto-sync: failed to update settings: %w", err)
+		}
 	}
 
 	// Without a usable state (missing/corrupt state.json) we can't safely run
