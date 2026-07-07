@@ -1,6 +1,6 @@
 {
   "name": "@agent_forge/forge",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "AI 开发质量门禁引擎 — 结构化门禁管道，在 AI 生成的代码进入仓库前进行质量锻造",
   "bin": {
     "forge": "run.js"
