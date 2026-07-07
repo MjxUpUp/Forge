@@ -11,7 +11,7 @@ requires: code-review-gate
 
 phase-*.md 是「好设计产物该有什么」的标准清单（IEEE 830 / Google API Design Guide / DDD / WCAG / ISTQB 等提炼）。**编写期当骨架和自查清单，审查期 `code-review-gate` 步骤 1.5 引用同一份**——一份标准两处用。单一真相源在 `code-review-gate/references/phase-*.md`，本 skill 只做编写期路由，不复制内容。
 
-> **安装依赖（声明性，需手动满足）**：本 skill 跨 skill 引用 `code-review-gate/references/phase-*.md`，依赖 code-review-gate 同 host 安装。frontmatter `requires: code-review-gate` 是声明性字段——当前 `forge skills install` **不强制**同装（requires 字段无 enforce，是 forge 既有现状），单装本 skill（`forge skills install --skill design-artifact-standards`）不会自动拉 code-review-gate，下表链接会全部断链。务必同时装 code-review-gate，或直接读开发态 `skills/code-review-gate/references/`。
+> **安装依赖（enforce 提示，需手动满足）**：本 skill 跨 skill 引用 `code-review-gate/references/phase-*.md`，依赖 code-review-gate 同 host 安装。frontmatter `requires: code-review-gate` 现已被 `forge skills install` enforce：单装本 skill（`forge skills install --skill design-artifact-standards`）会打印 `requires code-review-gate 但本次未同装` 警告（**不阻断**，仅提示；需手动加 `--skill code-review-gate` 或省略 `--skill` 全装），否则下表链接断链。开发态可直接读 `skills/code-review-gate/references/`。
 
 ## 核心原则
 

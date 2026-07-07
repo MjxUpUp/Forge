@@ -8,8 +8,10 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/skillsfm"
 	"github.com/MjxUpUp/Forge/internal/skillsqa"
 	"github.com/MjxUpUp/Forge/internal/util"
 )
@@ -64,6 +66,7 @@ type InstallOpts struct {
 	Targets          []Target
 	SkillFilter      []string // 只装指定 skill（空=全部）
 	SkipQuality      bool     // 跳过 install 前的 registry+audit 双门控
+	SkipRequireCheck bool     // 跳过 frontmatter.requires 依赖同装检查（逃生舱）
 	Global           bool     // true→~/.claude/skills 等；false→ProjectSkillsDir
 	ProjectSkillsDir string   // Global=false 时用（项目 .claude/skills）
 	BackupBase       string   // overwrite 备份根目录（测试注入；生产留空→自动 ~/.forge/skills-backup/<ts>）
@@ -76,6 +79,7 @@ type InstallReport struct {
 	Skills    []SkillInstallResult `json:"skills"`
 	Stats     InstallStats         `json:"stats"`
 	Aborted   string               `json:"aborted,omitempty"`
+	Warnings  []string             `json:"warnings,omitempty"` // requires 依赖未满足等非阻断警告
 }
 
 // SkillInstallResult 是单个 skill 在所有目标的安装结果。
@@ -148,7 +152,7 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 			report.Skills = append(report.Skills, SkillInstallResult{
 				Name: name,
 				Targets: []TargetResult{{
-					Action: "reserved", Detail: "保留名（forge 自身管理），跳过",
+					Action: actReserved, Detail: "保留名（forge 自身管理），跳过",
 				}},
 			})
 			report.Stats.Skipped++
@@ -163,7 +167,7 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 			rep, qerr := skillsqa.AuditSkill(skillDir)
 			if qerr != nil {
 				res.Issues = []string{"审查失败: " + qerr.Error()}
-				res.Targets = []TargetResult{{Action: "blocked", Detail: "SKILL.md 不可读或无 frontmatter"}}
+				res.Targets = []TargetResult{{Action: actBlocked, Detail: "SKILL.md 不可读或无 frontmatter"}}
 				report.Stats.Failed++
 				report.Skills = append(report.Skills, res)
 				continue
@@ -171,7 +175,7 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 			res.Pass = rep.Pass
 			res.Issues = rep.Issues
 			if !rep.Pass {
-				res.Targets = []TargetResult{{Action: "blocked", Detail: "registry 规范门控未通过（R1-R9）"}}
+				res.Targets = []TargetResult{{Action: actBlocked, Detail: "registry 规范门控未通过（R1-R9）"}}
 				report.Stats.Failed++
 				report.Skills = append(report.Skills, res)
 				continue
@@ -180,7 +184,7 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 			_, _, rec := skillsqa.ScoreFindings(findings)
 			if rec == "DO_NOT_INSTALL" {
 				res.Issues = append(res.Issues, "安全门控: DO_NOT_INSTALL（score≥50，CRITICAL）")
-				res.Targets = []TargetResult{{Action: "blocked", Detail: "audit 安全门控 DO_NOT_INSTALL"}}
+				res.Targets = []TargetResult{{Action: actBlocked, Detail: "audit 安全门控 DO_NOT_INSTALL"}}
 				report.Stats.Failed++
 				report.Skills = append(report.Skills, res)
 				continue
@@ -211,15 +215,15 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 			tr.Detail = detail
 			if abortErr != nil {
 				report.Aborted = fmt.Sprintf("skill %q target %q: %v", name, tname, abortErr)
-				tr.Action = "aborted"
+				tr.Action = actAborted
 				res.Targets = append(res.Targets, tr)
 				report.Stats.Drifted++
 				break
 			}
 			switch action {
-			case "linked", "copied":
+			case actLinked, actCopied:
 				report.Stats.Installed++
-			case "skipped":
+			case actSkipped:
 				report.Stats.Skipped++
 			}
 			res.Targets = append(res.Targets, tr)
@@ -230,7 +234,106 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 			return report, fmt.Errorf("%s", report.Aborted)
 		}
 	}
+
+	// requires 依赖检查：对本次成功装的 skill 读 frontmatter.requires，检查声明的依赖
+	// 是否在 canonical 全集（声明有效）且本次同装。不满足记入 Warnings（仅提示，不阻断）。
+	// 解除 requires 字段无消费方的既有缺陷——单装依赖 skill 会断链，此处显式提示。
+	if !opts.SkipRequireCheck {
+		report.Warnings = checkRequires(canonical, report.Skills)
+	}
 	return report, nil
+}
+
+// parseRequires 拆解 frontmatter.requires 字段。requires 是单 string，约定逗号分隔多个依赖
+// （如 code-review-gate, doc-generator）。空白自动 trim，空段过滤。
+//
+// ⚠ 逗号分隔脆弱：skill 名禁用逗号（否则与分隔符歧义）。中长期可让 skillsfm.Parse 同时
+// 识别 YAML 列表形式 requires: [a, b]，parseRequires 内部统一展开。
+func parseRequires(s string) []string {
+	parts := strings.Split(s, string(','))
+	var out []string
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// install action 常量（与 handleTarget 及 Install 主循环返回/设置的 action 字面量一致；
+// 反引号 raw string 规避 Windows 输入引号腐蚀）。
+//
+// 闭合的成功 action 集（"算装到目标"）= {linked, copied, skipped}——checkRequires 的
+// okActions 白名单。**任何新增成功 action 必须同步**：(1) 加 actXxx 常量 (2) 加进
+// okActions (3) TestCheckRequires 加用例守护，避免静默扩展破坏 checkRequires 语义。
+//
+// 非成功 action：blocked（质量门控未过）/ aborted（drift-policy=abort 触发）/ reserved
+// （forge-pipeline/forge-quality 保留名）——不在 okActions，checkRequires 自然跳过。
+const (
+	actLinked   = `linked`
+	actCopied   = `copied`
+	actSkipped  = `skipped`
+	actBlocked  = `blocked`
+	actAborted  = `aborted`
+	actDrifted  = `drifted`
+	actReserved = `reserved`
+)
+
+// checkRequires 检查本次安装集里每个成功装的 skill 的 frontmatter.requires 依赖是否满足。
+// 依赖满足 = (1) 在 canonical 全集（声明有效，非笔误）且 (2) 本次同装。
+// 两类不满足分别告警：
+//   - 依赖不在 canonical → requires 声明无效（笔误或目标 skill 已移除）
+//   - 依赖在 canonical 但本次未同装 → 单装断链风险（--skill 过滤掉依赖），建议同装
+//
+// installedSet 基于"成功落到目标"的 action（linked/copied/skipped）而非
+// SkillInstallResult.Pass——后者在 --skip-quality 路径下不设 true，用 Pass 会漏掉
+// 跳过质量门控的成功安装。blocked/aborted/reserved 的 action 不在白名单，自然排除。
+//
+// 错误处理：canonical 不可读（ListSkills 错）→ 返回系统级警告而非静默丢；单个 SKILL.md
+// 不可读 → 该 skill 跳过但加 per-skill 警告（避免静默损坏排查困难）。
+//
+// 仅返回警告，不阻断 install（requires 是声明性字段，缺失依赖不应违背用户显式单装的意图）。
+func checkRequires(canonical string, results []SkillInstallResult) []string {
+	var warns []string
+	allNames, err := ListSkills(canonical)
+	if err != nil {
+		warns = append(warns, fmt.Sprintf(`%s: requires 检查跳过（canonical 不可读: %v）`, canonical, err))
+		return warns
+	}
+	allSet := make(map[string]bool, len(allNames))
+	for _, n := range allNames {
+		allSet[n] = true
+	}
+	// okActions 白名单 = 成功 action 闭合集（见常量块注释）；新增 action 必须同步扩展。
+	okActions := map[string]bool{actLinked: true, actCopied: true, actSkipped: true}
+	installedSet := make(map[string]bool, len(results))
+	for _, r := range results {
+		for _, t := range r.Targets {
+			if okActions[t.Action] {
+				installedSet[r.Name] = true
+				break
+			}
+		}
+	}
+	for _, r := range results {
+		if !installedSet[r.Name] {
+			continue
+		}
+		data, rerr := os.ReadFile(filepath.Join(canonical, r.Name, "SKILL.md"))
+		if rerr != nil {
+			warns = append(warns, fmt.Sprintf(`%s: requires 检查跳过（SKILL.md 不可读: %v）`, r.Name, rerr))
+			continue
+		}
+		fm := skillsfm.Parse(data)
+		for _, dep := range parseRequires(fm.Requires) {
+			if !allSet[dep] {
+				warns = append(warns, fmt.Sprintf(`%s: requires %s 不在 canonical（requires 声明无效，可能笔误或目标 skill 已移除）`, r.Name, dep))
+			} else if !installedSet[dep] {
+				warns = append(warns, fmt.Sprintf(`%s: requires %s 但本次未同装（跨 skill 引用可能断链；用 --skill 含两者或省略 --skill 全装）`, r.Name, dep))
+			}
+		}
+	}
+	return warns
 }
 
 // handleTarget 按当前 state + mode + policy 决定对单个目标的动作。
@@ -238,7 +341,7 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 func handleTarget(src, dst, state string, mode Mode, policy DriftPolicy) (string, string, error) {
 	switch state {
 	case StateLinked:
-		return "skipped", "已是 link（内容同步）", nil
+		return actSkipped, "已是 link（内容同步）", nil
 	case StateCopyInSync:
 		if mode == ModeLink {
 			// copy-in-sync → 安全替换为 link（删副本建 link）
@@ -248,9 +351,9 @@ func handleTarget(src, dst, state string, mode Mode, policy DriftPolicy) (string
 			if err := makeDirLink(dst, src); err != nil {
 				return "", "", fmt.Errorf("link %s: %w", dst, err)
 			}
-			return "linked", "copy 安全替换为 link", nil
+			return actLinked, "copy 安全替换为 link", nil
 		}
-		return "skipped", "已是 copy（内容同步）", nil
+		return actSkipped, "已是 copy（内容同步）", nil
 	case StateMissing:
 		if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
 			return "", "", err
@@ -259,30 +362,30 @@ func handleTarget(src, dst, state string, mode Mode, policy DriftPolicy) (string
 			if err := makeDirLink(dst, src); err != nil {
 				return "", "", fmt.Errorf("link %s: %w", dst, err)
 			}
-			return "linked", "新建 link", nil
+			return actLinked, "新建 link", nil
 		}
 		if err := copyTree(src, dst); err != nil {
 			return "", "", fmt.Errorf("copy %s: %w", dst, err)
 		}
-		return "copied", "新建 copy", nil
+		return actCopied, "新建 copy", nil
 	case StateDrift:
 		switch policy {
 		case DriftSkip:
-			return "skipped", "drift（策略 skip，保留现状）", nil
+			return actSkipped, "drift（策略 skip，保留现状）", nil
 		case DriftOverwrite:
 			removeTargetTree(dst)
 			if mode == ModeLink {
 				if err := makeDirLink(dst, src); err != nil {
 					return "", "", fmt.Errorf("link %s: %w", dst, err)
 				}
-				return "linked", "drift 强制以 canonical 建 link", nil
+				return actLinked, "drift 强制以 canonical 建 link", nil
 			}
 			if err := copyTree(src, dst); err != nil {
 				return "", "", fmt.Errorf("copy %s: %w", dst, err)
 			}
-			return "copied", "drift 强制以 canonical 覆盖 copy", nil
+			return actCopied, "drift 强制以 canonical 覆盖 copy", nil
 		default: // abort
-			return "drifted", "drift（策略 abort）", fmt.Errorf("drift detected at %s，用 --drift-policy skip|overwrite 处理", dst)
+			return actDrifted, "drift（策略 abort）", fmt.Errorf("drift detected at %s，用 --drift-policy skip|overwrite 处理", dst)
 		}
 	}
 	return "", "", fmt.Errorf("未知 state: %s", state)

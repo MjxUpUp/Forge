@@ -24,6 +24,30 @@ func captureStdout(t *testing.T, fn func()) string {
 	return buf.String()
 }
 
+// captureStderr 临时重定向 os.Stderr 捕获 Warnings 等告警输出（告警走 stderr，与正常输出分离）。
+// defer 在赋值后立即注册：fn panic 时也保证 Stderr 恢复 + pipe 关闭（防污染后续测试 + pipe 半挂）。
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	old := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+	defer func() {
+		os.Stderr = old
+		w.Close()
+		r.Close()
+	}()
+	var buf bytes.Buffer
+	done := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(&buf, r)
+		close(done)
+	}()
+	fn()
+	w.Close() // 触发 goroutine EOF
+	<-done    // 等待读取完成
+	return buf.String()
+}
+
 // TestPrintInstallReport_DriftSkipDetail：drift+skip 必须列明细 + 给出同步提醒。
 func TestPrintInstallReport_DriftSkipDetail(t *testing.T) {
 	r := &skillsdist.InstallReport{
@@ -126,5 +150,36 @@ func TestParseSkillTargets_EmptyDefaultsClaude(t *testing.T) {
 	}
 	if len(got) != 1 || string(got[0]) != "claude" {
 		t.Fatalf("空入参应默认 [claude]，got %v", got)
+	}
+}
+
+// TestPrintInstallReport_Warnings：requires 依赖警告必须走 stderr 且逐条列出。
+// 守护 enforce 提示可见性——单装断链场景用户须看到"未同装"警告，否则跨 skill 引用静默断链。
+func TestPrintInstallReport_Warnings(t *testing.T) {
+	r := &skillsdist.InstallReport{
+		Mode: skillsdist.ModeLink,
+		Warnings: []string{
+			`design-artifact-standards: requires code-review-gate 但本次未同装（跨 skill 引用可能断链）`,
+			`foo: requires ghost 不在 canonical（requires 声明无效，可能笔误或目标 skill 已移除）`,
+		},
+	}
+	out := captureStderr(t, func() { printInstallReport(r) })
+	if !strings.Contains(out, `requires 依赖警告`) {
+		t.Fatalf(`警告标题缺失: %s`, out)
+	}
+	if !strings.Contains(out, `design-artifact-standards: requires code-review-gate`) {
+		t.Fatalf(`第一条警告缺失: %s`, out)
+	}
+	if !strings.Contains(out, `foo: requires ghost`) {
+		t.Fatalf(`第二条警告缺失: %s`, out)
+	}
+}
+
+// TestPrintInstallReport_NoWarnings：无 Warnings 时 stderr 不打印警告标题（避免误报）。
+func TestPrintInstallReport_NoWarnings(t *testing.T) {
+	r := &skillsdist.InstallReport{Mode: skillsdist.ModeLink}
+	out := captureStderr(t, func() { printInstallReport(r) })
+	if strings.Contains(out, `requires 依赖警告`) {
+		t.Fatalf(`空 Warnings 不应打印警告标题: %s`, out)
 	}
 }
