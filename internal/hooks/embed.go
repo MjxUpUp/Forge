@@ -1049,6 +1049,23 @@ echo "PASS [init-suggest] Advisory: 检测到 git 项目 '$PROJ' 未启用 forge
 exit 0
 `
 
+const TaskResumeHook = `#!/bin/bash
+# task-resume.sh — SessionStart hook (advisory, non-blocking, project-scoped).
+# 会话启动自动注入活跃任务的接续上下文 + 把当前 session 锚定到任务。接手方冷启动即知有
+# 活跃任务、在哪一步、已确认哪些决策、有哪些阻塞，无需手动 forge task resume。
+#
+# Thin wrapper：实际逻辑在 forge task resume --hook（Go）。bash 仅 exec 转发——找任务
+# （3 级 fallback：active-task-ref、分支、单一未完成任务）、attach session、renderResume、
+# 无任务静默、PASS 前缀都在 Go 里，避开 bash 重写逻辑与 Windows 引号腐蚀（memory: quote）。
+#
+# 项目级 hook：runHook（cli/hook.go）已用 findProjectRoot 找到 root 并设为 cwd；非 forge
+# 项目 runHook 对非全局 hook 直接 outputAllow exit，根本不跑本脚本。故脚本内不再判 .forge。
+#
+# resume --hook 永远 exit 0（不阻塞 SessionStart）：无活跃任务静默，有则输出 PASS+接续视图。
+# Protocol: stdout = PASS detail → runHook 包成 additionalContext 注入会话；exit 0 = 放行。
+exec forge task resume --hook
+`
+
 const WorkflowTestGuardHook = `#!/bin/bash
 # workflow-test-guard.sh — PostToolUse hook for Write|Edit.
 # 改 .github/workflows/*.yml 后自动跑 internal/ci 守护测试——把"沙盒异常"在修改
