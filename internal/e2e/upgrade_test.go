@@ -47,8 +47,10 @@ func TestMain(m *testing.M) {
 
 	// 隔离 Claude plugin 检测：强制 IsClaudePluginInstalled()=false（空 CLAUDE_CONFIG_DIR 下
 	// 无 plugins/installed_plugins.json）。e2e 跑 forge binary 子进程（init/sync 含
-	// dedupeProjectLevelIfPlugin），不隔离会让本机装了 forge plugin 时 dedupe 删掉
-	// settings.local.json,断言"settings 存在"的测试本地失败、CI（未装）通过的飘忽。
+	// dedupeProjectLevelIfPlugin），不隔离会让本机装了 forge plugin 时 dedupe 改写/删
+	// project-level 文件（settings.local.json / .mcp.json）,干扰 e2e 子进程行为一致性。
+	// 当前断言只查 settings.local.json 存在（fileExists）,但保留隔离为未来加内容断言留
+	// 确定性,避免本地（装 plugin）与 CI（未装）飘忽。
 	os.Setenv("CLAUDE_CONFIG_DIR", tmpDir)
 
 	os.Exit(m.Run())

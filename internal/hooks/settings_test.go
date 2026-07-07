@@ -749,7 +749,7 @@ func settingsPath(dir string) string {
 // TestStripForgeHooks_NoFile：无 settings.local.json 时 no-op（changed=false，不报错）。
 func TestStripForgeHooks_NoFile(t *testing.T) {
 	dir := t.TempDir()
-	changed, err := StripForgeHooks(dir)
+	changed, err := StripForgeHooks(dir, false)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -758,14 +758,15 @@ func TestStripForgeHooks_NoFile(t *testing.T) {
 	}
 }
 
-// TestStripForgeHooks_ForgeOnly_DeletesFile：GenerateSettings 写纯 forge hooks，
-// strip 后 settings 仅剩空 hooks → 删除整个文件（不残留空对象）。
+// TestStripForgeHooks_ForgeOnly_DeletesFile：GenerateSettings 写纯 forge hooks,
+// strip 后 settings 仅剩空 hooks → 手动语义（keepEmpty=false）删除整个文件。
+// 自动路径（keepEmpty=true）见 TestStripForgeHooks_ForgeOnly_KeepsEmpty。
 func TestStripForgeHooks_ForgeOnly_DeletesFile(t *testing.T) {
 	dir := t.TempDir()
 	if err := GenerateSettings(dir); err != nil {
 		t.Fatal(err)
 	}
-	changed, err := StripForgeHooks(dir)
+	changed, err := StripForgeHooks(dir, false)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -774,6 +775,82 @@ func TestStripForgeHooks_ForgeOnly_DeletesFile(t *testing.T) {
 	}
 	if settingsLocalExists(t, dir) {
 		t.Error(`纯 forge hooks 移除后文件应删除（无残留空 hooks 对象）`)
+	}
+}
+
+// TestStripForgeHooks_ForgeOnly_KeepsEmpty：钉死自动路径行为——GenerateSettings 写
+// 纯 forge hooks,keepEmpty=true（init-suggest SessionStart / autoSync / init·sync 自动 dedupe）
+// strip 后写空对象 {} 保留文件壳,绝不删。用户痛点:settings.local.json 是 gitignored 个人配置,
+// 用户主动放置/正要编辑,forge 自动 dedupe 静默删整个文件 → 用户配置丢失。空 {} 对 Claude Code
+// 无害（无 hooks/permissions）。手动 forge plugin dedupe 不传 --keep-empty,走 DeletesFile 删空。
+func TestStripForgeHooks_ForgeOnly_KeepsEmpty(t *testing.T) {
+	dir := t.TempDir()
+	if err := GenerateSettings(dir); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := StripForgeHooks(dir, true)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if !changed {
+		t.Error(`纯 forge hooks 应 changed=true`)
+	}
+	data, err := os.ReadFile(settingsPath(dir))
+	if err != nil {
+		t.Fatalf(`keepEmpty=true 应保留文件壳写 {},不删: %v`, err)
+	}
+	if got := string(data); got != "{}\n" {
+		t.Errorf(`keepEmpty=true 应写 {} 后跟换行, got %q`, got)
+	}
+}
+
+// TestStripForgeHooks_KeepEmpty_NoEffect_WithUserFields：钉死 keepEmpty 仅在纯 forge 文件
+// （len(settings)==0,整文件只剩 forge 来源）时生效——有用户字段（用户 hooks 或顶层 permissions）
+// 时落 MarshalIndent 分支保留用户内容,keepEmpty 不影响（绝不写 {}）。防未来重构误扩散 keepEmpty
+// 语义到混合场景（用户配置被空对象覆盖）。
+func TestStripForgeHooks_KeepEmpty_NoEffect_WithUserFields(t *testing.T) {
+	cases := []struct {
+		name     string
+		content  string
+		wantKeep string
+	}{
+		{
+			name:     "mixed_user_and_forge_hooks",
+			content:  `{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"forge hook bash-guard"},{"type":"command","command":"npx prettier"}]}]}}`,
+			wantKeep: "npx prettier",
+		},
+		{
+			name:     "forge_hooks_plus_permissions",
+			content:  `{"permissions":{"allow":["Bash(go test:*)"]},"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"forge hook bash-guard"}]}]}}`,
+			wantKeep: "permissions",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeSettingsLocal(t, dir, tc.content)
+			changed, err := StripForgeHooks(dir, true)
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+			if !changed {
+				t.Error(`有 forge hook 应 changed=true`)
+			}
+			data, err := os.ReadFile(settingsPath(dir))
+			if err != nil {
+				t.Fatalf(`read: %v`, err)
+			}
+			if string(data) == "{}\n" {
+				t.Error(`有用户字段时不应写纯 {}（keepEmpty 仅纯 forge 文件生效）`)
+			}
+			body := string(data)
+			if !containsString(body, tc.wantKeep) {
+				t.Errorf(`用户字段 %q 被误删`, tc.wantKeep)
+			}
+			if containsString(body, "forge hook") {
+				t.Error(`forge hook 未移除`)
+			}
+		})
 	}
 }
 
@@ -795,7 +872,7 @@ func TestStripForgeHooks_PreservesUserHooks(t *testing.T) {
   }
 }`
 	writeSettingsLocal(t, dir, content)
-	changed, err := StripForgeHooks(dir)
+	changed, err := StripForgeHooks(dir, false)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -820,7 +897,7 @@ func TestStripForgeHooks_NoForgeHooks_NoOp(t *testing.T) {
 	dir := t.TempDir()
 	content := `{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"npx prettier"}]}]}}`
 	writeSettingsLocal(t, dir, content)
-	changed, err := StripForgeHooks(dir)
+	changed, err := StripForgeHooks(dir, false)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -846,7 +923,7 @@ func TestStripForgeHooks_PreservesTopLevelFields(t *testing.T) {
   }
 }`
 	writeSettingsLocal(t, dir, content)
-	changed, err := StripForgeHooks(dir)
+	changed, err := StripForgeHooks(dir, false)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -885,7 +962,7 @@ func TestStripForgeHooks_PreservesUserHooksAndTopLevel(t *testing.T) {
   }
 }`
 	writeSettingsLocal(t, dir, content)
-	changed, err := StripForgeHooks(dir)
+	changed, err := StripForgeHooks(dir, false)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -913,7 +990,7 @@ func TestStripForgeHooks_RemovesGateCommand(t *testing.T) {
 	dir := t.TempDir()
 	content := `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"forge gate --current --silent"},{"type":"command","command":"make lint"}]}]}}`
 	writeSettingsLocal(t, dir, content)
-	changed, err := StripForgeHooks(dir)
+	changed, err := StripForgeHooks(dir, false)
 	if err != nil {
 		t.Fatalf(`err: %v`, err)
 	}
@@ -977,7 +1054,7 @@ func TestInitFlow_PluginInstalled_PreservesUserConfig(t *testing.T) {
 	if err := GenerateSettings(dir); err != nil {
 		t.Fatalf("GenerateSettings: %v", err)
 	}
-	if _, err := StripForgeHooks(dir); err != nil {
+	if _, err := StripForgeHooks(dir, true); err != nil {
 		t.Fatalf("StripForgeHooks: %v", err)
 	}
 
