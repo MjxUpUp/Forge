@@ -794,6 +794,69 @@ func TestTestCoverageCheckScopedToVerifyGate(t *testing.T) {
 	}
 }
 
+// TestExecuteTaskGate_TaskVerify_PersistsDesignPhases 钉死 BUG-1 接通点：task-verify
+// gate 必须按改动文件推断 DesignPhases 并 SaveTaskState 持久化，下游
+// （Conclusion/health/review 子 agent）才读得到。若有人删了接通块，下游行为测试只
+// 隐式暴露、定位困难——这里直接断言"盘上 state.DesignPhases == [requirement, api]"。
+func TestExecuteTaskGate_TaskVerify_PersistsDesignPhases(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "t@t.com")
+	runGit(t, dir, "config", "user.name", "T")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "master init")
+	runGit(t, dir, "checkout", "-b", "feat/phase")
+
+	writeFile := func(name, body string) {
+		full := filepath.Join(dir, name)
+		os.MkdirAll(filepath.Dir(full), 0755)
+		os.WriteFile(full, []byte(body), 0644)
+	}
+	// 触发 requirement + api 两个设计阶段。
+	writeFile("docs/prd/feature.md", "# PRD\n## 验收\n- foo\n")
+	writeFile("api/openapi/spec.yaml", "openapi: 3.0\n")
+	// 测试自带本地 .gitignore（docs/）钉死盲区前提——不依赖开发机 ~/.gitignore_global
+	// （CI/他人机器可能没配 docs/，那时 git 会正常跟踪 docs/prd，测的成 happy path
+	// 而非兜底）。写本地 .gitignore 后 git add -A 跳过 docs/prd/feature.md，
+	// taskChangedFiles(git diff) 漏掉它，scanDesignArtifacts 直接读文件系统兜底让
+	// PhaseRequirement 仍能推出——验证 gitignore 盲区修复（不是绕过）。
+	os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("docs/\n"), 0644)
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "add prd + openapi")
+	// 前提断言：docs/prd/feature.md 确实被忽略——否则下面 DesignPhases==[requirement,api]
+	// 测的是 git 看到了它（happy path）而非 scan 兜底。check-ignore -q 被忽略返 0。
+	if err := exec.Command("git", "-C", dir, "check-ignore", "-q", "docs/prd/feature.md").Run(); err != nil {
+		t.Fatalf("前提不成立:docs/prd/feature.md 未被忽略(%v)——.gitignore 没生效?将测 happy path", err)
+	}
+
+	state := &TaskState{TaskRef: "phase-persist", Branch: "feat/phase"}
+	state.RecordGateResult("task-implement", true, "")
+	state.RecordGateResult("task-verify", true, "")
+	state.MarkReviewPassed("", "")
+	base := time.Now().Add(2 * time.Second)
+	if err := toolusage.Record(dir, &toolusage.ToolCall{ToolName: "Read", TaskRef: "phase-persist", Timestamp: base}); err != nil {
+		t.Fatalf("seed Read: %v", err)
+	}
+
+	if _, err := ExecuteTaskGate(dir, "task-verify", state); err != nil {
+		t.Fatalf("ExecuteTaskGate task-verify: %v", err)
+	}
+
+	// 从盘读回——验证接通块真的持久化了，不是只改内存 state。
+	loaded, err := LoadTaskState(dir, "phase-persist")
+	if err != nil {
+		t.Fatalf("LoadTaskState: %v", err)
+	}
+	want := []DesignPhase{PhaseRequirement, PhaseAPI}
+	if len(loaded.DesignPhases) != len(want) {
+		t.Fatalf("DesignPhases=%v want %v（接通块未写盘？）", loaded.DesignPhases, want)
+	}
+	for i, p := range want {
+		if loaded.DesignPhases[i] != p {
+			t.Errorf("DesignPhases[%d]=%s want %s", i, loaded.DesignPhases[i], p)
+		}
+	}
+}
+
 // TestWorkActivityEscapeHatchAuditsToChecklog guards the A4 fix: the
 // FORGE_WORK_ACTIVITY=disable escape hatch bypasses the read-before-edit check,
 // but its use must be audited to checklog so `forge trace` can surface it. Here
@@ -1157,7 +1220,7 @@ func TestTaskComplete_ReviewSnapshotUnreachableFailOpen(t *testing.T) {
 // 用 git diff 输出做指纹会在 untracked→tracked 切换时假阳性（review 包单测已证），这里在门禁层再钉一次。
 func TestTaskComplete_ReviewSnapshotCommitReviewedContentPasses(t *testing.T) {
 	dir := initTaskGitRepo(t)
-	head := headShort(t, dir) // C0
+	head := headShort(t, dir)                 // C0
 	writeSrc(t, dir, `svc.go`, `package svc`) // untracked
 	hash, _, _ := review.SourceChangesSince(dir, head)
 	state := fullyGatedState(`snap-commit`)

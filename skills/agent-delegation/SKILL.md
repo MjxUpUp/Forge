@@ -86,6 +86,7 @@ dispatch 一个 code quality reviewer 子代理，拿 git SHA 检查：
 - 命名、错误处理、架构合理性
 - 是否违反项目约定（与现有代码风格一致）
 - 安全/性能问题
+- **改动符号的调用方是否全更新**：implementer 改名/删除/改签名的 export·函数·类型，reviewer 用 `grep -rn oldName .`（含 gitignored）确认全仓调用点已同步——不要用 `git grep`（漏 gitignored 调用方），不要只看 SHA 内 diff（调用方常在改动文件之外）
 
 按严重性分级：Critical（阻塞）/ Important（修完再走）/ Minor（记下回头改）。
 

@@ -90,7 +90,7 @@ metadata:
 - 断言是否被降级（t.Fatal→t.Log、`toBe(x)`→`toBeTruthy()`、删 expect）
 - 测试是否被跳过（t.Skip / #[ignore] / it.skip）
 - 新增 `@ts-ignore` / `eslint-disable` / `#[allow(...)]` 藏警告
-- 改名的符号是否更新了所有调用点
+- 改名的符号是否更新了所有调用点（`grep -rn oldName .` 含 gitignored——不要用 `git grep`，会漏 docs/生成代码/.env 里的调用方）
 
 → 完整审查用 **code-review-gate**；diff 断言检查用 **test-discipline** 铁律 3。
 

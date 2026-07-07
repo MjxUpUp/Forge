@@ -109,7 +109,7 @@ func Summarize(cs []act.Conclusion) Summary {
 	s.Span = Span{Earliest: byTime[0].CompletedAt, Latest: byTime[len(byTime)-1].CompletedAt}
 	s.EarlierAvg, s.RecentAvg, s.Trend = trend(byTime)
 
-	// 计算 phase_pass_rate：通过率 = A 级占比（≥90 分视为通过）
+	// 计算 phase_pass_rate：通过率 = (A+B) 占比（≥80 视为通过，与 grade 分级一致）
 	if len(phaseGrades) > 0 {
 		s.PhasePassRate = map[string]float64{}
 		for phase, grades := range phaseGrades {

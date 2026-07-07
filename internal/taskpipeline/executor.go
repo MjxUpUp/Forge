@@ -219,6 +219,29 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 	// Passed=false），让 forge trace 保留信号，只是不再用它阻断会话。
 	// Only task-verify runs this — task-complete is the last gate (no work phase).
 	if gateID == "task-verify" && state.CompletedAt == nil {
+		// phase-aware（设计 3.2/3.6）：按改动文件推断设计阶段，写回 state.DesignPhases 并持久化。
+		// 回路接通点——下游 phaseKeys→Conclusion.DesignPhases→health.PhasePassRate 据此填充；
+		// review 子 agent 读 state.DesignPhases 加载对应 references/phase-X.md checklist。零摩擦
+		// （路径推断，不要求声明）。仅 phases 变化时写盘，避免每次 verify 无谓 IO。inferDesignPhases
+		// 此前零生产调用致整条回路死代码（review BUG-1），此处接通让它名副其实。
+		// taskChangedFiles 跑多个 git 子进程（testcoverage.go），在此块算一次。
+		// gitignore 盲区：git 三源都 --exclude-standard，docs/ 等被忽略的设计产物
+		// 看不到→PhaseRequirement 推不出（回路断第一环）。scanDesignArtifacts 直接读
+		// 文件系统补上，但只喂 phase 推断——ScopeDrift 仍用纯 git 视角，避免历史设计
+		// 文件被误算进"本次实改"触发 drift 误报。
+		gitChanged := taskChangedFiles(root, state)
+		scanned := scanDesignArtifacts(root)
+		combined := make([]string, 0, len(gitChanged)+len(scanned))
+		combined = append(combined, gitChanged...)
+		combined = append(combined, scanned...)
+		inferred := inferDesignPhases(combined)
+		if !designPhasesEqual(state.DesignPhases, inferred) {
+			state.DesignPhases = inferred
+			if err := SaveTaskState(root, state); err != nil {
+				fmt.Fprintln(os.Stderr, "[task-verify] DesignPhases persist failed:", err)
+			}
+		}
+
 		ok, missing, _ := CheckTestCoverage(root, state)
 		checklog.Record(root, &checklog.Entry{
 			Check:   CheckNameTestCoverage,
@@ -239,7 +262,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		// deterministic（gate 实算 ScopeDrift，agent 无法伪造）。CheckScopeDrift 在
 		// BuildEvidenceChain 中被排除——它是 advisory 观测非"验证证据"，计入会虚高 Strength。
 		if len(state.PlanScope) > 0 {
-			drift := ScopeDrift(taskChangedFiles(root, state), state.PlanScope)
+			drift := ScopeDrift(gitChanged, state.PlanScope)
 			checklog.Record(root, &checklog.Entry{
 				Check:   checklog.CheckScopeDrift,
 				Passed:  len(drift) == 0,

@@ -15,12 +15,12 @@ func TestShouldReview(t *testing.T) {
 		wantCreate    bool
 		wantMandatory bool
 	}{
-		// F 级（<60）：强制 mandatory review + auto-accept 进 knowledge
+		// F 级（<60）+ D 级（60-69）：mandatory review，阻塞 task-complete 直到 resolved
 		{50, true, true},
 		{59, true, true},
-		// 60-79 可选 review（human 确认 borderline）
-		{60, true, false},
-		{69, true, false},
+		{60, true, true},
+		{69, true, true},
+		// 70-79（C 级）可选 review（human 确认 borderline）
 		{70, true, false},
 		{75, true, false},
 		{79, true, false},

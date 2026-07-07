@@ -12,17 +12,15 @@ import (
 )
 
 // ShouldReview determines whether a task score warrants a review.
-// Thresholds: <60 auto-accepted, 60-69 optional (human-confirm), 70-79 optional,
-// >=80 none.
-// R2 根因修复：D 级（<70）或 F 级（<60）任务必须走 mandatory review，
-// 不再允许"门禁通过但 D 级完成"——强制经验闭环介入。
-// 60-69 可选 review（human 确认 borderline），<60 自动 accept 进 knowledge。
+// R2 根因修复：D 级（60-69）和 F 级（<60）任务必须走 mandatory review——不再允许
+// "门禁通过但 D 级完成"。PendingMandatory 据此阻塞 task-complete，强制经验闭环介入。
+// 70-79（C 级）可选 review（human 确认 borderline）；>=80（A/B 级）不创建。
 func ShouldReview(overall float64) (create bool, mandatory bool) {
-	if overall < 60 {
-		return true, true // F 级：强制 review（<60 自动 accept 进 knowledge）
+	if overall < 70 {
+		return true, true // D/F 级：mandatory review，阻塞 task-complete 直到 resolved
 	}
 	if overall < 80 {
-		return true, false // 60-79：可选 review（human 确认 borderline）
+		return true, false // C 级（70-79）：可选 review（human 确认 borderline）
 	}
 	return false, false
 }
