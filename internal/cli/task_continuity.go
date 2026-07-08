@@ -75,6 +75,7 @@ func init() {
 	taskResumeCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
 	taskResumeCmd.Flags().Bool("json", false, "JSON 格式输出完整 task state")
 	taskResumeCmd.Flags().Bool("no-attach", false, "仅查看，不把当前 session 锚定到 task")
+	taskResumeCmd.Flags().Bool("hook", false, "SessionStart hook 模式：无活跃任务静默退出；有活跃任务 attach 当前 session 并输出 PASS+接续视图（供 forge hook task-resume 调用）")
 
 	taskContextCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
 	taskContextCmd.Flags().Bool("json", false, "JSON 格式输出完整 task state")
@@ -131,6 +132,30 @@ func loadTaskOrActive(cmd *cobra.Command) (*taskpipeline.TaskState, string, erro
 func runTaskResume(cmd *cobra.Command, args []string) error {
 	asJSON, _ := cmd.Flags().GetBool("json")
 	noAttach, _ := cmd.Flags().GetBool("no-attach")
+	hookMode, _ := cmd.Flags().GetBool("hook")
+
+	// hook 模式（SessionStart 自动注入；bash thin wrapper `exec forge task resume --hook`）：
+	// 无活跃任务静默 exit 0（不注入、不报错）；有活跃任务则 attach 当前 session + 输出
+	// "PASS\n<handoff>"。runHook 的 extractDetail 去掉 PASS 前缀取 detail，detail 经通用
+	// truncate 兜底注入 additionalContext。任何分支都 exit 0——SessionStart 绝不因 resume 阻塞。
+	if hookMode {
+		root, err := findProjectRoot()
+		if err != nil {
+			return nil // 非 forge 项目（runHook 对非全局 hook 已 outputAllow exit，双保险）
+		}
+		out, err := renderHookResume(root)
+		if err != nil {
+			// advisory hook：任何失败都降级到 stderr 提示 + exit 0，绝不阻塞 SessionStart。
+			// err 来自 attachCurrentSession 的 SaveTaskState 失败（极端边界如磁盘故障）；若
+			// return err，cobra exit 1，bash wrapper 也 exit 1，runHook 走 Decision:block 分支，
+			// 违反上方承诺的任何分支都 exit 0。降级而非阻塞是 advisory hook 的正确语义。
+			fmt.Fprintf(os.Stderr, "[forge] task-resume advisory hook failed: %v\n", err)
+			return nil
+		}
+		fmt.Print(out) // 无活跃任务 out="" 静默；有则 "PASS\n<handoff>"
+		return nil
+	}
+
 	state, root, err := loadTaskOrActive(cmd)
 	if err != nil {
 		return err
@@ -140,24 +165,9 @@ func runTaskResume(cmd *cobra.Command, args []string) error {
 	// session 共同推进一个 task 的关系被持久化，任意接手方 resume 即知谁参与过、用什么工具。
 	// 探测失败（纯 shell 跑、无 agent env）时不锚定、仅 stderr 提示——resume 永远成功拉回
 	// 上下文，锚定是附加动作：探测失败不能破坏 resume，也不能错误回退 OriginTool 归属。
-	sid := taskpipeline.CurrentSessionID()
 	if !noAttach {
-		switch {
-		case sid == "":
-			fmt.Fprintln(os.Stderr, "[forge] 未探测到当前 session ID，已跳过锚定（接手方在 agent 内 resume 才自动锚定；或 forge task attach --session <sid> --tool <tool> 显式锚定）")
-		case state.HasSession(sid):
-			// 已锚定，无操作
-		default:
-			tool := detectOriginTool("")
-			if tool == "" {
-				fmt.Fprintf(os.Stderr, "[forge] 探测当前工具失败（无 agent env），已跳过锚定 session %s；跨工具接续请 forge task attach --ref %s --tool <tool>\n", sid, state.TaskRef)
-			} else {
-				state.AddSession(sid, tool)
-				if err := taskpipeline.SaveTaskState(root, state); err != nil {
-					return fmt.Errorf("锚定 session 失败: %w", err)
-				}
-				fmt.Fprintf(os.Stderr, "[forge] 已锚定当前 session %s（%s）到任务 %s\n", sid, tool, state.TaskRef)
-			}
+		if _, err := attachCurrentSession(state, root, false); err != nil {
+			return err
 		}
 	}
 
@@ -168,6 +178,53 @@ func runTaskResume(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Print(renderResume(state, gitPorcelain(root)))
 	return nil
+}
+
+// attachCurrentSession 把当前 session 锚定到 task（多向锚定的接手方动作）。返回 (attached, error)：
+// attached=true 表示实际新增了 session 链接（首次锚定）；已锚定或探测失败返 false 不报错。
+// silent=true（hook 模式）不输出 stderr 提示——hook 的 stderr 用户不可见，attach 是静默副作用。
+// 探测失败（无 session ID / 无 agent env）静默跳过：attach 是附加动作，不能破坏 resume。
+func attachCurrentSession(state *taskpipeline.TaskState, root string, silent bool) (bool, error) {
+	sid := taskpipeline.CurrentSessionID()
+	if sid == "" {
+		if !silent {
+			fmt.Fprintln(os.Stderr, "[forge] 未探测到当前 session ID，已跳过锚定（接手方在 agent 内 resume 才自动锚定；或 forge task attach --session <sid> --tool <tool> 显式锚定）")
+		}
+		return false, nil
+	}
+	if state.HasSession(sid) {
+		return false, nil // 已锚定，无操作
+	}
+	tool := detectOriginTool("")
+	if tool == "" {
+		if !silent {
+			fmt.Fprintf(os.Stderr, "[forge] 探测当前工具失败（无 agent env），已跳过锚定 session %s；跨工具接续请 forge task attach --ref %s --tool <tool>\n", sid, state.TaskRef)
+		}
+		return false, nil
+	}
+	state.AddSession(sid, tool)
+	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+		return false, fmt.Errorf("锚定 session 失败: %w", err)
+	}
+	if !silent {
+		fmt.Fprintf(os.Stderr, "[forge] 已锚定当前 session %s（%s）到任务 %s\n", sid, tool, state.TaskRef)
+	}
+	return true, nil
+}
+
+// renderHookResume 产出 SessionStart hook 模式输出。无活跃任务返 ""（静默，不注入）；
+// 有活跃任务则 attach 当前 session（silent）+ 返 "PASS\n<handoff>"。把 findProjectRoot 之外
+// 的纯逻辑提出，供 runTaskResume 的 hook 分支与单元测试共用（测试直接传 root，不依赖 cwd）。
+// 截断交给 runHook 通用路径（hook.go truncate(detail, maxAdditionalContextLen)）。
+func renderHookResume(root string) (string, error) {
+	state, _ := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
+	if state == nil {
+		return "", nil
+	}
+	if _, err := attachCurrentSession(state, root, true); err != nil {
+		return "", err
+	}
+	return "PASS\n" + renderResume(state, gitPorcelain(root)), nil
 }
 
 func runTaskContext(cmd *cobra.Command, args []string) error {

@@ -248,3 +248,26 @@ func TestPluginPack_Readme(t *testing.T) {
 		t.Errorf("README references @mjxupup/forge (stale wrong package name; want @agent_forge/forge)")
 	}
 }
+
+// TestPluginPack_CommittedManifestMatchesGenerator：committed 的 plugins/forge/.claude-plugin/
+// plugin.json 的 hooks 字段必须等于 GeneratePluginPack 当前输出（ForgeHookSpec 派生）。
+// TestPluginPack_HooksMirrorSettings 只守卫生成器内部一致（临时目录里 settings.local.json vs
+// plugin.json，两者都从同一 ForgeHookSpec 派生），抓不住"改了 ForgeHookSpec 但忘记跑
+// `forge plugin pack` 重新提交 plugin.json"的 drift——本测试直接读仓库里 committed 的
+// plugin.json 对比生成器输出，确保提交的派生资产与代码同步。回归源：SessionStart 加了
+// task-resume 到 ForgeHookSpec，但 committed plugin.json 漏重新生成（code-review P0-1）。
+func TestPluginPack_CommittedManifestMatchesGenerator(t *testing.T) {
+	committed := filepath.Join("..", "..", "plugins", "forge", ".claude-plugin", "plugin.json")
+	if _, err := os.Stat(committed); err != nil {
+		t.Skipf("committed plugin manifest not found at %s (non-forge repo layout): %v", committed, err)
+	}
+	generated := generatePack(t)
+	var genManifest, committedManifest map[string]any
+	loadJSON(t, filepath.Join(generated, "plugins", "forge", ".claude-plugin", "plugin.json"), &genManifest)
+	loadJSON(t, committed, &committedManifest)
+	a, _ := json.Marshal(genManifest["hooks"])
+	b, _ := json.Marshal(committedManifest["hooks"])
+	if string(a) != string(b) {
+		t.Errorf("committed plugin.json hooks drifted from generator output (run `forge plugin pack` and commit the result):\n generated: %s\n committed: %s", a, b)
+	}
+}
