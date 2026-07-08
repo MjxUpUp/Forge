@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/agentbridge"
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/protocol"
 	"github.com/MjxUpUp/Forge/internal/skillgen"
@@ -78,8 +79,10 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to regenerate quality skill: %v\n", err)
 	}
 
-	// 5. Clean up 废弃 forge-pipeline skill（项目级管道删除后老版本残留）
+	// 5. Clean up refactor 残留:废弃 skill + runtime state 迁 DataDir + 死文件
 	cleanupDeprecatedPipelineSkill(dir)
+	migrateRuntimeResidue(dir)
+	cleanupLegacyDeadFiles(dir)
 
 	// 6. Update CLAUDE.md
 	if err := skillgen.GenerateClaudeMD(dir); err != nil {
@@ -126,6 +129,55 @@ func cleanupDeprecatedPipelineSkill(dir string) {
 			os.RemoveAll(p)
 		}
 	}
+}
+
+// migrateRuntimeResidue 把 .forge/ 下老版本积累的 runtime state 残留迁到 DataDir。
+// refactor-data-home 把 runtime state 从项目级 .forge/ 迁到用户级 DataDir，但老版本
+// 已积累的残留（checklog 归档/tasks/gates/sessions/experience 等）不会自动搬——升级后
+// .forge/ 里仍堆着几百个 runtime 文件。autoSync 每次版本变化时跑一次（.sync-version
+// 相等时整体 no-op），幂等（已迁的不再动），让 .forge/ 瘦身为纯配置目录。
+//
+// 复用 forgedata.MigrateProject 的白名单（runtimeDirs/runtimeFiles/runtimeGlobs），
+// 默认语义：DataDir 已有同名的 skip 保留 src（不覆盖、不丢数据）；DataDir 没有的整树
+// 搬过去（.forge/ 那份消失但 DataDir 已有副本，等同迁移）。不引入 RemoveSrcOnConflict
+// ——防止 skip 路径下 quarantine 老隔离数据（file-sentinel 隔离的用户代码副本）被覆盖式删除丢失。
+// 构造 Project 失败（非 git 项目/.forge 缺失）静默返回，autoSync 不阻塞。
+func migrateRuntimeResidue(dir string) {
+	p, err := forgedata.ProjectFor(dir)
+	if err != nil {
+		return
+	}
+	if _, err := forgedata.MigrateProject(p, forgedata.MigrateOptions{}); err != nil {
+		fmt.Fprintf(os.Stderr, "auto-sync warning: migrate runtime residue: %v\n", err)
+	}
+}
+
+// cleanupLegacyDeadFiles 删除功能删除后残留在 .forge/ 的死文件：
+//   - pipeline.yml/state.json：项目级管道（forge gate/pipeline）已删（refactor/
+//     remove-project-pipeline），老版本 init 生成的配置 + 状态文件，forge 不再读写。
+//   - session-health-*.last：session-health hook 已作为噪声移除（v0.22 后），其节流
+//     stamp 残留（session-scoped <sid> 变体），无人读写。
+//
+// autoSync 检测到则删，幂等。沿用 cleanupDeprecatedPipelineSkill 的模式（Stat/Glob
+// 命中则 RemoveAll）。
+func cleanupLegacyDeadFiles(dir string) {
+	forge := filepath.Join(dir, ".forge")
+	for _, name := range []string{`pipeline.yml`, `state.json`} {
+		if p := filepath.Join(forge, name); fileExists(p) {
+			os.RemoveAll(p)
+		}
+	}
+	matches, _ := filepath.Glob(filepath.Join(forge, "session-health-*.last"))
+	for _, p := range matches {
+		os.RemoveAll(p)
+	}
+}
+
+// fileExists reports whether a path exists (Stat no error). Tiny helper to keep
+// the cleanup loops readable without repeating os.Stat + nil-check boilerplate.
+func fileExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
 }
 
 // settingsHasStaleBinding reports whether .claude/settings.local.json binds a

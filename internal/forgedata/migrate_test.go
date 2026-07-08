@@ -16,8 +16,10 @@ import (
 // TestMigrateProject_MovesRuntimeState_KeepsConfig：.forge/ 含 runtime（tasks/
 // checklog/active-task-ref/throttle + 归档/session 变体）+ config（hooks/等），
 // migrate 后 runtime 在 DataDir、config 留 .forge/。钉死白名单边界——既不漏迁
-// runtime，也不误迁配置。注：state.json/pipeline.yml 是已删项目级管道的死文件，
-// 此处仅作"非 runtime 的应留文件"代表例钉白名单边界（不在 runtime 白名单→留 .forge/）。
+// runtime，也不误迁非 runtime 条目。注：state.json/pipeline.yml 是已删项目级管道的
+// 死文件（migrate 不在白名单故留 .forge/，但 autoSync 升级时 cleanupLegacyDeadFiles
+// 会删）；hooks 是活 config（migrate/autoSync 都留）。本测试钉 migrate 边界：非 runtime
+// 条目（死文件 + 活 config）migrate 都留 .forge/。
 func TestMigrateProject_MovesRuntimeState_KeepsConfig(t *testing.T) {
 	root, p := forgedatatest.RealProject(t)
 	// runtime state（应迁）
@@ -68,9 +70,9 @@ func TestMigrateProject_MovesRuntimeState_KeepsConfig(t *testing.T) {
 	if len(res.Moved) == 0 {
 		t.Errorf(`期望 Moved 非空，实得 %+v`, res)
 	}
-	// Left 应含配置（state.json/hooks/pipeline.yml），不含 runtime
+	// Left 应含非 runtime 条目（state.json/pipeline.yml 死文件 + hooks 活 config），不含 runtime
 	if !contains(res.Left, `state.json`) {
-		t.Errorf(`Left 应含 state.json（配置保留），Left=%v`, res.Left)
+		t.Errorf(`Left 应含 state.json（死文件，migrate 不动），Left=%v`, res.Left)
 	}
 	if contains(res.Left, `checklog.jsonl`) {
 		t.Errorf(`Left 不应含 checklog.jsonl（已迁），Left=%v`, res.Left)
