@@ -156,7 +156,7 @@ function main() {
 
   console.log('');
   console.log('done. review the commit/tag, then push to trigger release:');
-  console.log('  git push origin master');
+  console.log('  git push origin main');
   console.log(`  git push origin v${next}`);
 }
 
