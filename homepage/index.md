@@ -22,7 +22,7 @@ npm install -g @agent_forge/forge
 ## 核心能力
 
 - **任务级门禁** — 每个开发任务走 3 道门禁（实现 → 验证 → 完成），防跳过
-- **8 个实时 Hook** — Write/Edit/Bash/SessionStart 拦截代码质量、命令安全性、文件未授权变更
+- **多个实时 Hook** — Write/Edit/Bash/SessionStart 拦截代码质量、命令安全性、文件未授权变更
 - **跨项目经验库** — 把低分任务的踩坑经验沉淀到规则，新项目自动提示
 - **cheat-scan 机械检测** — AI 作弊模式（断言弱化、吞错、死分支）一次判准
 - **质量评分** — 每个任务完成自动量化 score，沉淀项目级质量基线
