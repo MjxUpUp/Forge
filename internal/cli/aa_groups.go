@@ -30,6 +30,7 @@ func init() {
 	suggestCmd.GroupID = "lifecycle" // init-suggest hook 的提示状态管理（init 的语义延伸）
 	uninstallCmd.GroupID = "lifecycle" // 一键反装（npm binary + init-suggest markers）
 	migrateCmd.GroupID = "lifecycle"   // 旧 .forge runtime state → DataDir 迁移（升级路径）
+	registryCmd.GroupID = `lifecycle` // 全局项目注册表清理（init 自登记的对应清理入口；反引号防 Windows 引号腐蚀）
 
 	// 项目管道：项目级状态（status 是主入口）
 	statusCmd.GroupID = "pipeline"
