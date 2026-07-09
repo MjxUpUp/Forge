@@ -277,3 +277,81 @@ func TestAddEntry_DedupByID(t *testing.T) {
 		t.Errorf("Title=%q want T-updated-again（应保留最新替换）", idx.Entries[0].Title)
 	}
 }
+
+// TestAddEntry_DedupByTitleAndCategory 钉死 dogfood 1.3：同 (Category, Title) 不同 ID 必须
+// 合并而非 append。AutoAcceptHighConfidence 对每低分 task 生成新 proposal（ID=exp-{hex} 不同），
+// accept 进 store 旧逻辑仅按 ID dedup 无效 → dimensionTemplates 6 个固定 title 跨 task 无限累积
+// （dogfood 实测 147 条/3 唯一）。合并：union Patterns/Source、最早 CreatedAt、保留首条 ID。
+func TestAddEntry_DedupByTitleAndCategory(t *testing.T) {
+	setHomeTemp(t)
+	idx := &Index{Version: "2.0"}
+
+	base := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	// 三次 accept 同 title+category，不同 ID（模拟跨 task 的 proposal，ID 各异）
+	adds := []Entry{
+		{ID: "exp-aaa", Category: "patterns", Title: "新代码配测试", Description: "D1", Patterns: []string{`p1`}, Source: "auto:t1", CreatedAt: base},
+		{ID: "exp-bbb", Category: "patterns", Title: "新代码配测试", Description: "D1", Patterns: []string{`p2`}, Source: "auto:t2", CreatedAt: base.Add(time.Hour)},
+		{ID: "exp-ccc", Category: "patterns", Title: "新代码配测试", Description: "D1", Patterns: []string{`p1`, `p3`}, Source: "auto:t3", CreatedAt: base.Add(2 * time.Hour)},
+	}
+	for _, e := range adds {
+		if err := idx.AddEntry(e); err != nil {
+			t.Fatalf("AddEntry(%s): %v", e.ID, err)
+		}
+	}
+
+	if len(idx.Entries) != 1 {
+		t.Fatalf("len(Entries)=%d want 1（同 title+category 必须合并，非 append 3 份）", len(idx.Entries))
+	}
+	got := idx.Entries[0]
+	if got.ID != "exp-aaa" {
+		t.Errorf("ID=%q want exp-aaa（保留首条 ID 作稳定锚点）", got.ID)
+	}
+	// Patterns union 去重：p1,p2,p3（p1 重复只一份）
+	wantPats := map[string]bool{`p1`: true, `p2`: true, `p3`: true}
+	if len(got.Patterns) != 3 {
+		t.Errorf("Patterns=%v want 3 个去重 union", got.Patterns)
+	}
+	for _, p := range got.Patterns {
+		if !wantPats[p] {
+			t.Errorf("unexpected pattern %q", p)
+		}
+	}
+	// Source 记录所有来源（union 去重）
+	for _, s := range []string{"auto:t1", "auto:t2", "auto:t3"} {
+		if !strings.Contains(got.Source, s) {
+			t.Errorf("Source=%q 缺少 %q（应 union 所有来源）", got.Source, s)
+		}
+	}
+	// CreatedAt 取最早
+	if !got.CreatedAt.Equal(base) {
+		t.Errorf("CreatedAt=%v want 最早 %v", got.CreatedAt, base)
+	}
+}
+
+// TestAddEntry_DedupeCleansHistory 钉死历史脏数据清理：index 已含同 title+category 多条
+// 重复（dogfood 147 条现状），下次 AddEntry 触发 dedupeByTitle 收敛为 1 条。这是修复落
+// 地后无需单独 migrate 命令、靠运行时自然清理的关键。
+func TestAddEntry_DedupeCleansHistory(t *testing.T) {
+	setHomeTemp(t)
+	idx := &Index{Version: "2.0", Entries: []Entry{
+		{ID: "old1", Category: "gotchas", Title: "T", Description: "D"},
+		{ID: "old2", Category: "gotchas", Title: "T", Description: "D"},
+		{ID: "old3", Category: "gotchas", Title: "T", Description: "D"},
+		{ID: "other", Category: "gotchas", Title: "Other", Description: "D"},
+	}}
+	if err := idx.AddEntry(Entry{ID: "new", Category: "gotchas", Title: "T", Description: "D"}); err != nil {
+		t.Fatal(err)
+	}
+	tCount := 0
+	for _, e := range idx.Entries {
+		if e.Title == "T" {
+			tCount++
+		}
+	}
+	if tCount != 1 {
+		t.Errorf("title T 条数=%d want 1（历史重复应被清理收敛）", tCount)
+	}
+	if len(idx.Entries) != 2 {
+		t.Errorf("总条数=%d want 2（T×1 + Other×1）", len(idx.Entries))
+	}
+}

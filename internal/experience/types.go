@@ -36,6 +36,10 @@ type ReviewRequest struct {
 	Mandatory     bool           `json:"mandatory"`
 	Status        ReviewStatus   `json:"status"`
 	CreatedAt     time.Time      `json:"created_at"`
+	// ResolutionNote 记录 resolve 时的理由（forge experience resolve --reason）。
+	// mandatory review（<70 分任务）resolve 必须填——dogfood 实测 resolve(237) 远多于
+	// accept(142)，resolve 成零成本绕过经验闭环的常规动作；加摩擦 + 审计，防 review 空转。
+	ResolutionNote string `json:"resolution_note,omitempty"`
 }
 
 // LowDimension captures a single low-scoring dimension.

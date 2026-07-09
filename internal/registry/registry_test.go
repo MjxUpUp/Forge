@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -130,5 +131,54 @@ func TestRegistry_UsesForgeDataHome(t *testing.T) {
 	got := List()
 	if len(got) != 1 || got[0] != filepath.Clean(a) {
 		t.Errorf("FORGE_HOME must be ignored (deprecated commit E): List=%v, want [%s]", got, filepath.Clean(a))
+	}
+}
+
+// TestList_PrunesDeadAndWritesBack 钉死 dogfood 1.4：List 检测到死路径/重复条目时惰性写回
+// 精简版——清理 e2e subprocess 注册的 Temp 垃圾 + 已淡出项目，让 projects.json 收敛
+// （dogfood 实测 1819 条/1814 垃圾）。写仅在检测到失效时发生；下次 List 读到已精简的。
+func TestList_PrunesDeadAndWritesBack(t *testing.T) {
+	home := useTempHome(t)
+	a := mkForgeProject(t)
+	fake := t.TempDir() // 无 .forge，登记后即死路径
+
+	if err := Add(a); err != nil {
+		t.Fatal(err)
+	}
+	if err := Add(fake); err != nil {
+		t.Fatal(err)
+	}
+	// 手动注入重复条目（模拟历史脏数据 / 并发写残留）
+	pj := filepath.Join(home, `projects.json`)
+	data, err := os.ReadFile(pj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f File
+	if err := json.Unmarshal(data, &f); err != nil {
+		t.Fatal(err)
+	}
+	f.Projects = append(f.Projects, f.Projects[0]) // 复制 a 造成重复
+	pruned, _ := json.MarshalIndent(f, ``, `  `)
+	if err := os.WriteFile(pj, append(pruned, '\n'), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// List 应过滤死路径(fake) + 重复，且写回精简版
+	got := List()
+	if len(got) != 1 || got[0] != filepath.Clean(a) {
+		t.Fatalf("List=%v want [%s]（死路径+重复过滤后）", got, filepath.Clean(a))
+	}
+	// 写回后磁盘 JSON 应只剩 a（死路径 + 重复被精简）
+	data2, err := os.ReadFile(pj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f2 File
+	if err := json.Unmarshal(data2, &f2); err != nil {
+		t.Fatal(err)
+	}
+	if len(f2.Projects) != 1 || filepath.Clean(f2.Projects[0]) != filepath.Clean(a) {
+		t.Errorf("写回后 projects.json=%v want [%s]（死路径+重复应被精简）", f2.Projects, filepath.Clean(a))
 	}
 }

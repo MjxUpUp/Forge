@@ -19,6 +19,7 @@ func init() {
 	experienceCmd.AddCommand(experienceGenerateCmd)
 	experienceCmd.AddCommand(experienceResolveCmd)
 
+	experienceResolveCmd.Flags().StringP("reason", "r", "", "resolve 理由（mandatory review 必填，记录到审计）")
 	experienceListCmd.Flags().Bool("json", false, "JSON 格式输出")
 }
 
@@ -77,7 +78,8 @@ var experienceResolveCmd = &cobra.Command{
 兜底路径：当 mandatory review 没有 proposal 可 accept（维度模板缺失、生成
 失败、全部被 reject）时，task-verify 会因 pending mandatory review 阻塞会话。
 本命令直接解除，作为 AcceptProposal 之外的独立 resolve 通路，彻底避免死锁。
-正常情况下仍应优先用 'forge experience accept <id>' 把规则写入经验库。`,
+正常情况下仍应优先用 'forge experience accept <id>' 把规则写入经验库。
+mandatory review（<70 分任务）resolve 必须带 --reason，防止零成本绕过经验闭环。`,
 	Args: cobra.ExactArgs(1),
 	RunE: runExperienceResolve,
 }
@@ -261,7 +263,8 @@ func runExperienceResolve(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if err := experience.ResolveReview(proj, taskRef); err != nil {
+	reason, _ := cmd.Flags().GetString("reason")
+	if err := experience.ResolveReview(proj, taskRef, reason); err != nil {
 		return err
 	}
 

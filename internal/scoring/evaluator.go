@@ -215,18 +215,21 @@ func scoreEfficiency(startedAt, completedAt time.Time) scoringtypes.DimensionSco
 	duration := completedAt.Sub(startedAt)
 	minutes := duration.Minutes()
 
+	// 阈值重校准（dogfood 实测旧阈值脱离实际：≤5min=100/≤60=60/>60=40 把 80% 真实 AI 任务
+	// 压在 40-60，维度无区分度）。真实 forge 任务中位 ~30-90min，新阈值让常见区间有梯度：
+	// ≤15=100（快速）/≤30=90（敏捷）/≤60=75（正常）/≤120=55（偏慢）/>120=35（拖沓）。
 	var score int
 	switch {
-	case minutes <= 5:
-		score = 100
 	case minutes <= 15:
-		score = 90
+		score = 100
 	case minutes <= 30:
-		score = 80
+		score = 90
 	case minutes <= 60:
-		score = 60
+		score = 75
+	case minutes <= 120:
+		score = 55
 	default:
-		score = 40
+		score = 35
 	}
 
 	return scoringtypes.DimensionScore{

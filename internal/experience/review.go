@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
@@ -147,15 +148,22 @@ func UpdateReviewStatus(proj *forgedata.Project, taskRef string, status ReviewSt
 
 // ResolveReview marks a review as resolved independently of any proposal.
 //
-// This is the escape hatch that decouples review resolution from AcceptProposal.
-// AcceptProposal (integration.go) is otherwise the ONLY path to ReviewResolved,
-// which meant any review with zero proposals to accept — a dimension-template
-// gap, a SaveProposal failure, or all proposals rejected — deadlocked the
-// task-verify Stop hook on a pending mandatory review. With a direct resolve,
-// a stuck review can always be cleared via `forge experience resolve <task-ref>`.
-// AcceptProposal still resolves as before when a proposal is accepted.
-func ResolveReview(proj *forgedata.Project, taskRef string) error {
-	return UpdateReviewStatus(proj, taskRef, ReviewResolved)
+// 兜底通路：AcceptProposal 之外的独立 resolve，彻底避免 mandatory review 死锁
+// （review 零 proposal 可 accept 时）。但 dogfood 实测 resolve（237 次）远多于
+// accept（142 次）——resolve 成零成本绕过经验闭环的常规动作，review 空转、知识库
+// 不增长。加摩擦：mandatory review（<70 分任务）resolve 必须填 reason，写入
+// ResolutionNote 留审计；非 mandatory 可空。AcceptProposal 仍照常 resolve。
+func ResolveReview(proj *forgedata.Project, taskRef, reason string) error {
+	r, err := LoadReview(proj, taskRef)
+	if err != nil {
+		return err
+	}
+	if r.Mandatory && strings.TrimSpace(reason) == "" {
+		return fmt.Errorf(`mandatory review 必须 --reason 才能 resolve（防零成本绕过经验闭环）；或先 'forge experience accept <id>' 接纳提案`)
+	}
+	r.ResolutionNote = strings.TrimSpace(reason)
+	r.Status = ReviewResolved
+	return SaveReview(proj, r)
 }
 
 // PendingMandatory returns the task's review when it is a MANDATORY review still
