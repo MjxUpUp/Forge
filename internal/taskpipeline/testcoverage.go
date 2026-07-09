@@ -365,15 +365,20 @@ func testCoverageDetail(ok bool, missing []string) string {
 }
 
 // formatMissing produces the human-readable gate failure message.
+// dogfood 4.2/2.1：原 advisory 末尾教 escape（"To bypass: FORGE_TEST_COVERAGE=disable"），
+// 实测让 agent 把 disable 写进 task plan 当固定流程（DevWorkbench 330 次）。改为注入
+// test-discipline skill 指引（复刻 code-review-gate 的 hook 强制驱动路径）——escape 降级为
+// 末尾审计脚注，不再当头条教学。
 func formatMissing(missing []string) string {
+	primary := "Add tests for changed source (CLAUDE.md rule 4: 测试伴随变更). " +
+		"→ 加载 test-discipline skill（/test-discipline 或 skills/test-discipline/SKILL.md）：" +
+		"测试质量守卫，区分单元测试与端到端、防断言弱化与假测试。" +
+		"入口(main.go/cmd)/生成物(.gen./_generated/.pb.)/纯类型文件(types/dto/models)白名单免测。"
+	footnote := " 确不可测时设 FORGE_TEST_COVERAGE=disable（落 checklog 审计，可 forge trace 追溯）。"
 	if len(missing) > 5 {
-		return fmt.Sprintf("%d source files changed without a corresponding test: %s ... (and %d more). "+
-			"Add tests for changed source (CLAUDE.md rule 4: 测试伴随变更). "+
-			"To bypass for this task: FORGE_TEST_COVERAGE=disable",
-			len(missing), strings.Join(missing[:5], ", "), len(missing)-5)
+		return fmt.Sprintf("%d source files changed without a corresponding test: %s ... (and %d more). %s%s",
+			len(missing), strings.Join(missing[:5], ", "), len(missing)-5, primary, footnote)
 	}
-	return fmt.Sprintf("source files changed without a corresponding test: %s. "+
-		"Add tests for changed source (CLAUDE.md rule 4: 测试伴随变更). "+
-		"To bypass for this task: FORGE_TEST_COVERAGE=disable",
-		strings.Join(missing, ", "))
+	return fmt.Sprintf("source files changed without a corresponding test: %s. %s%s",
+		strings.Join(missing, ", "), primary, footnote)
 }

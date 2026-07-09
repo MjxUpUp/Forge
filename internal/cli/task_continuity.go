@@ -525,6 +525,7 @@ func renderResume(state *taskpipeline.TaskState, gitChanged []string) string {
 	} else {
 		w("git 已改未提交: 无（工作区干净）")
 	}
+	w("→ 接续纪律用 session-continuity skill（/session-continuity）：HANDOFF 标准格式与跨会话恢复。")
 	w(strings.Repeat("═", 60))
 	return stripUnsafeControl(b.String())
 }
