@@ -182,3 +182,63 @@ func TestList_PrunesDeadAndWritesBack(t *testing.T) {
 		t.Errorf("写回后 projects.json=%v want [%s]（死路径+重复应被精简）", f2.Projects, filepath.Clean(a))
 	}
 }
+
+// TestPrune 显式精简返回 (pruned, remain) 计数 + 写回死路径/重复。dogfood registry 治本入口。
+func TestPrune(t *testing.T) {
+	home := useTempHome(t)
+	a := mkForgeProject(t)
+	fake := t.TempDir() // 无 .forge，死路径
+
+	if err := Add(a); err != nil {
+		t.Fatal(err)
+	}
+	if err := Add(fake); err != nil {
+		t.Fatal(err)
+	}
+	// 注入重复条目（a 再追加一次到 JSON）
+	pj := filepath.Join(home, `projects.json`)
+	data, err := os.ReadFile(pj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f File
+	if err := json.Unmarshal(data, &f); err != nil {
+		t.Fatal(err)
+	}
+	f.Projects = append(f.Projects, f.Projects[0]) // 重复 a
+	prunedJSON, _ := json.MarshalIndent(f, ``, `  `)
+	if err := os.WriteFile(pj, append(prunedJSON, '\n'), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// before=3 (a + fake + 重复a), 精简后 remain=1 (只 a 活跃), pruned=2
+	gotPruned, gotRemain, err := Prune()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotPruned != 2 || gotRemain != 1 {
+		t.Fatalf(`Prune=(%d,%d), want (2,1)（死路径 fake + 重复 a 被精简）`, gotPruned, gotRemain)
+	}
+}
+
+// TestPrune_NoRegistry 无注册表文件返回 (0,0,nil)，不报错（与 List 一致：空非错误）。
+func TestPrune_NoRegistry(t *testing.T) {
+	useTempHome(t)
+	pruned, remain, err := Prune()
+	if err != nil || pruned != 0 || remain != 0 {
+		t.Errorf(`无注册表 Prune=(%d,%d,%v), want (0,0,nil)`, pruned, remain, err)
+	}
+}
+
+// TestPrune_AlreadyClean 注册表已精简时 pruned=0（幂等，重复 Prune 不改）。
+func TestPrune_AlreadyClean(t *testing.T) {
+	useTempHome(t)
+	a := mkForgeProject(t)
+	if err := Add(a); err != nil {
+		t.Fatal(err)
+	}
+	pruned, remain, err := Prune()
+	if err != nil || pruned != 0 || remain != 1 {
+		t.Errorf(`已精简 Prune=(%d,%d,%v), want (0,1,nil)`, pruned, remain, err)
+	}
+}
