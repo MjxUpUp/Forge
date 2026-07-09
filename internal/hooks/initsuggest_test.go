@@ -32,6 +32,13 @@ forge() {
   touch "$FORGE_INIT_FLAG" 2>/dev/null
   return 0
 }
+git() {
+  if [ "$1" = "init" ]; then
+    mkdir -p .git 2>/dev/null
+    return 0
+  fi
+  command git "$@"
+}
 `
 	script := stub + InitSuggestHook
 	tmp, err := os.CreateTemp("", "init-suggest-*.sh")
@@ -88,7 +95,7 @@ func writeSuggestMarker(t *testing.T, home, tag, value string) {
 	}
 }
 
-// TestInitSuggestHook_Branches 跑真实脚本过 6 个分支，断言输出 + AUTO_INIT side effect。
+// TestInitSuggestHook_Branches 跑真实脚本过 11 个分支，断言输出 + AUTO_INIT side effect。
 // 若未来编辑破坏 git-root 查找 / 标记静默 / AUTO_INIT 分支，这些 case 失败。
 func TestInitSuggestHook_Branches(t *testing.T) {
 	cases := []struct {
@@ -101,9 +108,35 @@ func TestInitSuggestHook_Branches(t *testing.T) {
 		wantInit  bool   // 期望 forge init 被调（flag 文件存在）
 	}{
 		{
-			name:    `无 git 目录静默`,
+			name:    `无 git 目录提示 git init`,
 			cwdFn:   func(t *testing.T) string { return t.TempDir() },
+			wantSub: `不是 Git 仓库`,
+		},
+		{
+			name:    `无 git 已 suggested 静默`,
+			cwdFn:   func(t *testing.T) string { return t.TempDir() },
+			marker:  `suggested`,
 			wantSub: ``,
+		},
+		{
+			name:    `无 git declined 永久静默`,
+			cwdFn:   func(t *testing.T) string { return t.TempDir() },
+			marker:  `declined`,
+			wantSub: ``,
+		},
+		{
+			name:     `无 git AUTO_INIT 调 git init + forge init`,
+			cwdFn:    func(t *testing.T) string { return t.TempDir() },
+			autoInit: true,
+			wantInit: true,
+		},
+		{
+			name:      `无 git AUTO_INIT 失败回显`,
+			cwdFn:     func(t *testing.T) string { return t.TempDir() },
+			autoInit:  true,
+			failForge: true,
+			wantSub:   `失败`,
+			wantInit:  false,
 		},
 		{
 			name:    `有 git 有 forge 静默`,
