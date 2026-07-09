@@ -206,8 +206,9 @@ func dedupeByTitle(entries []Entry, category, title string, keep int) []Entry {
 
 // coalesce 内存自愈：按 (Category, Title) 合并所有重复（F4）。dogfood 147 条脏数据若只靠下次
 // AddEntry 同 title 触发清理，长尾 title（不再被 accept）永远停留脏状态。LoadIndex 调用让任何
-// 读（list/search/match）立即看到收敛结果（147→3）。磁盘 index.json + 孤立 .md 的落盘清理留待
-// 下次 AddEntry（合并分支写保留 ID 的 .md，不再产生新孤立；index.json 随 Save 落盘）。
+// 读（list/search/match）立即看到收敛结果（147→3）。纯内存不写盘——磁盘 index.json 的收敛靠
+// 下次 AddEntry 同 title 时 Save 落盘；磁盘存量孤立 .md 不自动清理（F2 仅阻止产生新孤立，存量
+// 残留对用户不可见：list 读 coalesce 后视图，故无需补 os.Remove 清理逻辑）。
 func (idx *Index) coalesce() {
 	if len(idx.Entries) <= 1 {
 		return
