@@ -169,6 +169,33 @@ func TestScoreEfficiency_Slow(t *testing.T) {
 	}
 }
 
+// TestScoreEfficiency_Buckets 钉死 F3：阈值重校准后 5 档全覆盖 + 边界 pinned（dogfood 1.5 核心）。
+// 用固定时间（非 time.Now）避免 <=120 边界因两次 Now 调用的纳秒差 flaky。
+func TestScoreEfficiency_Buckets(t *testing.T) {
+	cases := []struct {
+		name string
+		mins int
+		want int
+	}{
+		{`<=15 fast`, 15, 100},
+		{`<=30 agile`, 30, 90},
+		{`<=60 normal`, 60, 75},
+		{`<=120 slow`, 120, 55},
+		{`>120 default`, 150, 35},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			start := time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC)
+			end := start.Add(time.Duration(c.mins) * time.Minute)
+			result := scoreEfficiency(start, end)
+			if result.Score != c.want {
+				t.Fatalf("%s (%dmin): got %d, want %d: %s", c.name, c.mins, result.Score, c.want, result.Detail)
+			}
+		})
+	}
+}
+
 func TestEvaluate_Full(t *testing.T) {
 	input := &EvaluateInput{
 		GateHistory: GateHistory{
