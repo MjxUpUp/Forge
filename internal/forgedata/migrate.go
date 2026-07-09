@@ -28,7 +28,7 @@ import (
 // 基于 commit B/D/E 实际迁移的 store。ConfigDir 配置目录（hooks/）不在此列——
 // hooks/ 是项目配置 hook 脚本（ConfigHooksDir），不是 runtime。
 var runtimeDirs = []string{
-	"tasks", "gates", "experience", "reviews", "hazards",
+	"tasks", "gates", "hazards",
 	"act", "stamps", "sessions", "quarantine",
 }
 

@@ -246,7 +246,7 @@ func pluginReadme(repoSlug string) string {
 	sb.WriteString("Claude Code (full): hooks (\x60.claude-plugin/plugin.json\x60) = " +
 		"PreToolUse/PostToolUse/Stop/SessionStart gates, identical to forge init's " +
 		"\x60.claude/settings.local.json\x60 but user-level (all projects); MCP " +
-		"(\x60.mcp.json\x60) = 14 forge tools (resume/decide/attach + task/gate/experience).\n\n")
+		"(\x60.mcp.json\x60) = 11 forge tools (resume/decide/attach + task/gate).\n\n")
 	sb.WriteString("Other hosts: the plugin is the distribution entry point (MCP + " +
 		"marketplace listing); per-project gate wiring (hooks, .forge/, protocol) comes " +
 		"from \x60forge init --agents <host>\x60.\n\n")

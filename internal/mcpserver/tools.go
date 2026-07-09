@@ -10,10 +10,8 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/act"
 	"github.com/MjxUpUp/Forge/internal/checklog"
-	"github.com/MjxUpUp/Forge/internal/experience"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/health"
-	"github.com/MjxUpUp/Forge/internal/knowledge"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
 )
@@ -322,138 +320,6 @@ func taskAttachCore(root string, in taskAttachInput) (taskAttachOutput, error) {
 }
 
 // =====================================================================
-// forge_experience_search —— 搜索 task 派生的经验提案（~/.forge/projects/<key>/experience/）
-// =====================================================================
-
-type experienceSearchInput struct {
-	Query  string `json:"query,omitempty" jsonschema:"关键词（匹配 title/description/patterns，空则全列）"`
-	Status string `json:"status,omitempty" jsonschema:"状态过滤：proposed / accepted / rejected，空则全部"`
-	Limit  int    `json:"limit,omitempty" jsonschema:"最多返回数（默认 20）"`
-}
-
-type experienceItem struct {
-	ID          string   `json:"id"`
-	Title       string   `json:"title"`
-	Category    string   `json:"category"`
-	Severity    string   `json:"severity"`
-	Status      string   `json:"status"`
-	Description string   `json:"description"`
-	Patterns    []string `json:"patterns,omitempty"`
-}
-
-type experienceSearchOutput struct {
-	Results []experienceItem `json:"results"`
-	Count   int              `json:"count"`
-}
-
-func experienceSearchCore(root string, in experienceSearchInput) (experienceSearchOutput, error) {
-	proj, err := forgedata.ProjectFor(root)
-	if err != nil {
-		return experienceSearchOutput{}, fmt.Errorf("resolve project: %w", err)
-	}
-	props, err := experience.ListProposals(proj, experience.PropStatus(in.Status))
-	if err != nil {
-		return experienceSearchOutput{}, fmt.Errorf("list proposals: %w", err)
-	}
-	limit := in.Limit
-	if limit <= 0 {
-		limit = 20
-	}
-	q := strings.ToLower(in.Query)
-	out := experienceSearchOutput{}
-	for _, p := range props {
-		if q != "" && !proposalMatches(p, q) {
-			continue
-		}
-		out.Results = append(out.Results, experienceItem{
-			ID:          p.ID,
-			Title:       p.Title,
-			Category:    p.Category,
-			Severity:    p.Severity,
-			Status:      string(p.Status),
-			Description: p.Description,
-			Patterns:    p.Patterns,
-		})
-		if len(out.Results) >= limit {
-			break
-		}
-	}
-	out.Count = len(out.Results)
-	return out, nil
-}
-
-// matchesText 是 proposalMatches / entryMatches 的共用子串匹配——两者字段相同
-// （Title/Description/Patterns），只是承载结构不同，抽出来去重。
-func matchesText(title, desc string, patterns []string, q string) bool {
-	if strings.Contains(strings.ToLower(title), q) {
-		return true
-	}
-	if strings.Contains(strings.ToLower(desc), q) {
-		return true
-	}
-	for _, pat := range patterns {
-		if strings.Contains(strings.ToLower(pat), q) {
-			return true
-		}
-	}
-	return false
-}
-
-func proposalMatches(p *experience.ExperienceProposal, q string) bool {
-	return matchesText(p.Title, p.Description, p.Patterns, q)
-}
-
-// =====================================================================
-// forge_experience_propose —— 提议新经验（写入 ~/.forge/projects/<key>/experience/proposed/）
-// =====================================================================
-
-type experienceProposeInput struct {
-	Title       string   `json:"title" jsonschema:"经验标题"`
-	Description string   `json:"description" jsonschema:"经验描述（踩了什么坑 / 什么模式 / 什么 API 用法）"`
-	Category    string   `json:"category,omitempty" jsonschema:"类别：gotchas / patterns / apis（默认 gotchas）"`
-	Severity    string   `json:"severity,omitempty" jsonschema:"error / warning / info（默认 warning）"`
-	Patterns    []string `json:"patterns,omitempty" jsonschema:"正则模式（供 violation 扫描用）"`
-}
-
-type experienceProposeOutput struct {
-	ID     string `json:"id"`
-	Status string `json:"status"`
-}
-
-func experienceProposeCore(root string, in experienceProposeInput) (experienceProposeOutput, error) {
-	proj, err := forgedata.ProjectFor(root)
-	if err != nil {
-		return experienceProposeOutput{}, fmt.Errorf("resolve project: %w", err)
-	}
-	cat := in.Category
-	if cat == "" {
-		cat = "gotchas"
-	}
-	if !knowledge.ValidCategories[cat] {
-		return experienceProposeOutput{}, fmt.Errorf("invalid category %q (valid: gotchas, patterns, apis)", cat)
-	}
-	sev := in.Severity
-	if sev == "" {
-		sev = "warning"
-	}
-	if in.Title == "" || in.Description == "" {
-		return experienceProposeOutput{}, fmt.Errorf("title and description are required")
-	}
-	p := &experience.ExperienceProposal{
-		Category:    cat,
-		Title:       in.Title,
-		Description: in.Description,
-		Patterns:    in.Patterns,
-		Severity:    sev,
-		Status:      experience.PropProposed,
-	}
-	if err := experience.SaveProposal(proj, p); err != nil {
-		return experienceProposeOutput{}, fmt.Errorf("save proposal: %w", err)
-	}
-	return experienceProposeOutput{ID: p.ID, Status: string(p.Status)}, nil
-}
-
-// =====================================================================
 // forge_trace_query —— 查询任务的完整质量事件时间线（checklog + toolusage）
 // =====================================================================
 
@@ -529,68 +395,6 @@ func truncateDetail(s string) string {
 		return s
 	}
 	return string([]rune(s)[:max]) + "…"
-}
-
-// =====================================================================
-// forge_knowledge_lookup —— 跨项目知识库查询（~/.forge/knowledge/，全局）
-// =====================================================================
-
-type knowledgeLookupInput struct {
-	Query    string `json:"query" jsonschema:"关键词（匹配 title/description/patterns）"`
-	Category string `json:"category,omitempty" jsonschema:"gotchas / patterns / apis，空则全部"`
-	Limit    int    `json:"limit,omitempty" jsonschema:"最多返回数（默认 20）"`
-}
-
-type knowledgeItem struct {
-	ID          string   `json:"id"`
-	Title       string   `json:"title"`
-	Category    string   `json:"category"`
-	Severity    string   `json:"severity"`
-	Description string   `json:"description"`
-	Patterns    []string `json:"patterns,omitempty"`
-}
-
-type knowledgeLookupOutput struct {
-	Results []knowledgeItem `json:"results"`
-	Count   int             `json:"count"`
-}
-
-// knowledgeLookupCore 不接收 root——知识库是全局的（~/.forge/knowledge/），
-// 跨项目共享，与项目位置无关。这是它和其余 6 个项目级工具的关键区别。
-func knowledgeLookupCore(in knowledgeLookupInput) (knowledgeLookupOutput, error) {
-	idx, err := knowledge.LoadIndex()
-	if err != nil {
-		return knowledgeLookupOutput{}, fmt.Errorf("load knowledge index: %w", err)
-	}
-	entries := idx.ListEntries(in.Category)
-	limit := in.Limit
-	if limit <= 0 {
-		limit = 20
-	}
-	q := strings.ToLower(in.Query)
-	out := knowledgeLookupOutput{}
-	for _, e := range entries {
-		if q != "" && !entryMatches(e, q) {
-			continue
-		}
-		out.Results = append(out.Results, knowledgeItem{
-			ID:          e.ID,
-			Title:       e.Title,
-			Category:    e.Category,
-			Severity:    e.Severity,
-			Description: e.Description,
-			Patterns:    e.Patterns,
-		})
-		if len(out.Results) >= limit {
-			break
-		}
-	}
-	out.Count = len(out.Results)
-	return out, nil
-}
-
-func entryMatches(e knowledge.Entry, q string) bool {
-	return matchesText(e.Title, e.Description, e.Patterns, q)
 }
 
 // =====================================================================

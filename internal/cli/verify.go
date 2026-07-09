@@ -20,7 +20,7 @@ func init() {
 	rootCmd.AddCommand(verifyCmd)
 	verifyCmd.Flags().Bool("regression", false, "运行所有 E2E 回归场景")
 	verifyCmd.Flags().Bool("run-tests", false, "运行项目测试套件并把真实结果记为 deterministic 证据（checklog: test-run）")
-	verifyCmd.Flags().String("scenario", "", "运行指定场景 (fresh-install, master-reminder, experience-flow, upgrade-v040, upgrade-v030)")
+	verifyCmd.Flags().String("scenario", "", "运行指定场景 (fresh-install, master-reminder, upgrade-v040, upgrade-v030)")
 }
 
 var verifyCmd = &cobra.Command{
@@ -256,7 +256,6 @@ func runRegressionMode(scenario string) error {
 	scenarios := map[string]func(string) ScenarioResult{
 		"fresh-install":   runScenarioFreshInstall,
 		"master-reminder": runScenarioMasterReminder,
-		"experience-flow": runScenarioExperienceFlow,
 		"upgrade-v040":    runScenarioUpgradeV040,
 		"upgrade-v030":    runScenarioUpgradeV030,
 	}
@@ -264,7 +263,7 @@ func runRegressionMode(scenario string) error {
 	if scenario != "" {
 		fn, ok := scenarios[scenario]
 		if !ok {
-			return fmt.Errorf("unknown scenario: %s\navailable: fresh-install, master-reminder, experience-flow, upgrade-v040, upgrade-v030", scenario)
+			return fmt.Errorf("unknown scenario: %s\navailable: fresh-install, master-reminder, upgrade-v040, upgrade-v030", scenario)
 		}
 		fmt.Printf("Running scenario: %s\n\n", scenario)
 		result := fn(binPath)
@@ -281,7 +280,7 @@ func runRegressionMode(scenario string) error {
 
 	results := make([]ScenarioResult, 0, len(scenarios))
 	// Deterministic order
-	order := []string{"fresh-install", "master-reminder", "experience-flow", "upgrade-v040", "upgrade-v030"}
+	order := []string{"fresh-install", "master-reminder", "upgrade-v040", "upgrade-v030"}
 	for _, name := range order {
 		fn := scenarios[name]
 		fmt.Printf("  Running %-25s ", name+"...")

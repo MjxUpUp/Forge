@@ -105,7 +105,7 @@ metadata:
 
 ## 12. Skills Loop 闭环（实测机制，与 §11 目标态对照）
 
-37 个 canonical skill + 6 个 Go 包族（`skillscanonical` / `skillgen` / `skillsdist` / `skillsqa` / `skillsfm`(frontmatter YAML 解析，**不是**用度聚合) / `skillseval`）构成 8 阶段 loop：[1] Authoring → [2] Canonical Resolve → [3] Project Generate → [4] Distribute → [5] Usage in Loop → [6] Audit + Track → [7] Eval → [8] Feedback → 回 [1]。Forge 自身定位（README:17-25）= 给 coding agent loop 补验证/状态/学习三层，**不替代循环**。
+37 个 canonical skill + 6 个 Go 包族（`skillscanonical` / `skillgen` / `skillsdist` / `skillsqa` / `skillsfm`(frontmatter YAML 解析，**不是**用度聚合) / `skillseval`）构成 8 阶段 loop：[1] Authoring → [2] Canonical Resolve → [3] Project Generate → [4] Distribute → [5] Usage in Loop → [6] Audit + Track → [7] Eval → [8] Feedback → 回 [1]。Forge 自身定位（README:17-25）= 给 coding agent loop 补验证/状态两层，**不替代循环**。
 
 ### 强制路由（skill-routing 实测强度）
 

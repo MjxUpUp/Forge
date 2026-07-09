@@ -79,7 +79,7 @@ func runTrace(cmd *cobra.Command, args []string) error {
 			ts:      c.Timestamp,
 			source:  "tool",
 			summary: fmt.Sprintf("→ %s [#%s]", c.ToolName, c.ID),
-			detail:  truncateStr(c.ToolInput, 80),
+			detail:  truncate(c.ToolInput, 80),
 		})
 	}
 
@@ -123,4 +123,17 @@ func runTrace(cmd *cobra.Command, args []string) error {
 		fmt.Printf("\n  ≈ %d 估算 token（loop 成本代理，基于被记录的工具调用 input；不含 LLM 输出/thinking）\n", total)
 	}
 	return nil
+}
+
+// truncate 截断 s 到 max 长度（rune 安全），超长加 "..."。原 knowledge.go 定义，
+// experience/knowledge 经验闭环移除后迁此（trace.go 是唯一残留调用方）。
+func truncate(s string, max int) string {
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	if max <= 3 {
+		return string(runes[:max])
+	}
+	return string(runes[:max-3]) + "..."
 }

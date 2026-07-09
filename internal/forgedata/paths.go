@@ -160,17 +160,6 @@ func (p *Project) GateArtifactPath(gateID, out string) string {
 	return filepath.Join(p.DataDir, "gates", gateID, out)
 }
 
-// ExperienceDir
-func (p *Project) ExperienceDir() string { return filepath.Join(p.DataDir, "experience") }
-
-// ExperienceProposedDir
-func (p *Project) ExperienceProposedDir() string {
-	return filepath.Join(p.DataDir, "experience", "proposed")
-}
-
-// ReviewsDir
-func (p *Project) ReviewsDir() string { return filepath.Join(p.DataDir, "reviews") }
-
 // HazardsDir
 func (p *Project) HazardsDir() string { return filepath.Join(p.DataDir, "hazards") }
 

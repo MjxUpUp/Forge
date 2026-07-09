@@ -1,16 +1,12 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/MjxUpUp/Forge/internal/experience"
-	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
 // ScenarioResult holds the outcome of a single E2E scenario run.
@@ -138,114 +134,6 @@ func runScenarioMasterReminder(forgeBin string) ScenarioResult {
 	}
 
 	return ScenarioResult{Name: "master-reminder", Passed: true, Duration: time.Since(start)}
-}
-
-// runScenarioExperienceFlow verifies the full experience lifecycle.
-func runScenarioExperienceFlow(forgeBin string) ScenarioResult {
-	start := time.Now()
-
-	dir, err := os.MkdirTemp("", "forge-verify-exp-*")
-	if err != nil {
-		return failResult("experience-flow", err.Error(), start)
-	}
-	defer os.RemoveAll(dir)
-
-	// Setup
-	verifyRunGit(dir, "init")
-	verifyRunGit(dir, "config", "user.email", "test@example.com")
-	verifyRunGit(dir, "config", "user.name", "Test")
-	writeVerifyFile(dir, "go.mod", "module example.com/test\n\ngo 1.24\n")
-	writeVerifyFile(dir, "main.go", "package main\n\nfunc main() {}\n")
-	if _, err := verifyRunForge(forgeBin, dir, "init"); err != nil {
-		return failResult("experience-flow", fmt.Sprintf("forge init failed: %v", err), start)
-	}
-	verifyRunGit(dir, "add", ".")
-	verifyRunGit(dir, "commit", "-m", "initial")
-	verifyRunGit(dir, "checkout", "-b", "feature/EXP-1-test")
-
-	// Start task
-	if _, err := verifyRunForge(forgeBin, dir, "task", "start", "--ref", "EXP-1", "--title", "test experience"); err != nil {
-		return failResult("experience-flow", fmt.Sprintf("task start failed: %v", err), start)
-	}
-
-	// Pass all gates
-	if err := passAllVerifyGates(forgeBin, dir, "EXP-1"); err != nil {
-		return failResult("experience-flow", fmt.Sprintf("pass gates failed: %v", err), start)
-	}
-
-	// Complete task
-	if output, err := verifyRunForge(forgeBin, dir, "task", "complete", "--ref", "EXP-1"); err != nil {
-		return failResult("experience-flow", fmt.Sprintf("task complete failed: %v\n%s", err, output), start)
-	}
-
-	// Check task score exists
-	// task state migrated to user-level DataDir (refactor-data-home);
-	// the forge subprocess writes tasks/EXP-1.json there for git projects.
-	taskData, err := os.ReadFile(filepath.Join(forgedata.DataDirFor(dir), "tasks", "EXP-1.json"))
-	if err != nil {
-		return failResult("experience-flow", fmt.Sprintf("task file missing: %v", err), start)
-	}
-	var taskMap map[string]interface{}
-	if err := json.Unmarshal(taskData, &taskMap); err != nil {
-		return failResult("experience-flow", fmt.Sprintf("task file parse error: %v", err), start)
-	}
-	if taskMap["score"] == nil {
-		return failResult("experience-flow", "task should have a score after complete", start)
-	}
-
-	// Create a mock proposed rule via the store so it lands in the same
-	// user-level DataDir the forge subprocess resolves (ProjectFor(dir) derives
-	// the same key + DataDir the accept subprocess will read from).
-	proj, perr := forgedata.ProjectFor(dir)
-	if perr != nil {
-		return failResult("experience-flow", fmt.Sprintf("project not resolved: %v", perr), start)
-	}
-	proposal := &experience.ExperienceProposal{
-		ID:           "exp-test001",
-		SourceReview: "EXP-1",
-		Category:     "gotchas",
-		Title:        "Test gotcha rule",
-		Description:  "A test experience rule for E2E verification",
-		Patterns:     []string{"test\\.Fatal\\("},
-		Severity:     "error",
-		Status:       experience.PropProposed,
-		CreatedAt:    time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
-	}
-	if err := experience.SaveProposal(proj, proposal); err != nil {
-		return failResult("experience-flow", fmt.Sprintf("seed proposal: %v", err), start)
-	}
-
-	// Accept the proposal with isolated HOME
-	tmpHome, _ := os.MkdirTemp("", "forge-verify-home-*")
-	defer os.RemoveAll(tmpHome)
-
-	cmd := exec.Command(forgeBin, "experience", "accept", "exp-test001")
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "HOME="+tmpHome, "USERPROFILE="+tmpHome)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return failResult("experience-flow", fmt.Sprintf("experience accept failed: %v\n%s", err, output), start)
-	}
-
-	// Verify proposal status = accepted
-	accepted, err := experience.LoadProposal(proj, "exp-test001")
-	if err != nil {
-		return failResult("experience-flow", fmt.Sprintf("load proposal: %v", err), start)
-	}
-	if accepted.Status != experience.PropAccepted {
-		return failResult("experience-flow", fmt.Sprintf("proposal status should be 'accepted', got %q", accepted.Status), start)
-	}
-
-	// Verify knowledge store has entry
-	knowledgeIdx := filepath.Join(tmpHome, ".forge", "knowledge", "index.json")
-	kData, err := os.ReadFile(knowledgeIdx)
-	if err != nil {
-		return failResult("experience-flow", fmt.Sprintf("knowledge index missing at %s: %v", knowledgeIdx, err), start)
-	}
-	if !strings.Contains(string(kData), "exp-test001") {
-		return failResult("experience-flow", fmt.Sprintf("knowledge index should contain exp-test001, got: %s", string(kData)), start)
-	}
-
-	return ScenarioResult{Name: "experience-flow", Passed: true, Duration: time.Since(start)}
 }
 
 // runScenarioUpgradeV040 verifies upgrading from a v0.4.0-like state.

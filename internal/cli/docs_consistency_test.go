@@ -66,15 +66,13 @@ func TestValidateForgePath(t *testing.T) {
 		want string // 空 = 路径完整；非空 = 首个断链的子命令
 	}{
 		{"单层命令", "init", ""},
-		{"两层命令", "experience accept", ""},
+		{"两层命令", "mcp serve", ""},
 		{"三层命令", "task gate", ""},
 		{"flag 后即停", "init --mode small", ""},
 		{"占位符后即停", "task gate <gate-id>", ""},
 		{"方括号后即停", "sync [--force]", ""},
 		{"分隔符后即停", "init small|medium", ""},
 		{"裸 forge", "", ""},
-		{"父命令存在子命令不存在-2026-06-27 真实 drift", "experience propose", "propose"},
-		{"父命令存在子命令不存在-2", "experience review", "review"},
 		{"错挂父级", "skills complete", "complete"},
 		{"顶层就不存在", "nonexistent", "nonexistent"},
 	}

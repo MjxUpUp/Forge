@@ -55,7 +55,7 @@ Complete setup: binary (machine) -> plugin (agent) -> init (project).
 
 ## What the plugin provides
 
-Claude Code (full): hooks (`.claude-plugin/plugin.json`) = PreToolUse/PostToolUse/Stop/SessionStart gates, identical to forge init's `.claude/settings.local.json` but user-level (all projects); MCP (`.mcp.json`) = 14 forge tools (resume/decide/attach + task/gate/experience).
+Claude Code (full): hooks (`.claude-plugin/plugin.json`) = PreToolUse/PostToolUse/Stop/SessionStart gates, identical to forge init's `.claude/settings.local.json` but user-level (all projects); MCP (`.mcp.json`) = 11 forge tools (resume/decide/attach + task/gate).
 
 Because the plugin already wires user-level hooks + MCP, `forge init` auto-dedupes the project-level duplicates (`.claude/settings.local.json` hooks + `.mcp.json` forge server) when the plugin is installed — Claude Code would otherwise double-load the same forge server / double-run hooks. Existing projects are migrated automatically by the init-suggest SessionStart hook via `forge plugin dedupe --keep-empty`. `settings.local.json` is preserved as an empty `{}` shell (it's user-placed gitignored config — never silently deleted); `.mcp.json` is removed when it only held the forge server.
 
