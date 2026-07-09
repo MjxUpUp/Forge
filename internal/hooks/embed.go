@@ -994,8 +994,37 @@ while [ -n "$D" ] && [ "$D" != "/" ]; do
   if [ "$NEW" = "$D" ]; then break; fi
   D="$NEW"
 done
-# 无 git root → 不是项目，静默（非 git 目录不提示 init）。
-[ -z "$ROOT" ] && exit 0
+# 无 git root → 不是 git 仓库，但仍提示 agent 建议用户先 git init 再 forge init。
+# tag 用目录路径（suggestTagFor 对非 git 回退到 projectTagFor(dir)），标记机制
+# 与 git 项目一致：suggested=提示过不重复，declined=用户拒绝永久静默。
+if [ -z "$ROOT" ]; then
+  TAG="${FORGE_CWD_TAG:-}"
+  SUGGEST_DIR="${FORGE_DATA_HOME:-$HOME/.forge}/.init-suggested"
+  MARKER="$SUGGEST_DIR/$TAG"
+  if [ -n "$TAG" ] && [ -f "$MARKER" ]; then
+    exit 0
+  fi
+  # 自动模式：FORGE_AUTO_INIT=1 → git init + forge init（与 git 项目一致的无感体验）。
+  if [ "${FORGE_AUTO_INIT}" = "1" ]; then
+    INIT_OUT=$( { cd "$START" && git init && forge init; } 2>&1 )
+    RC="$?"
+    if [ "$RC" = "0" ]; then
+      echo "PASS [init-suggest] FORGE_AUTO_INIT=1: 已在 $START 自动 git init + forge init。"
+    else
+      TAIL=$(printf '%s' "$INIT_OUT" | tail -c 400 | tr '\n' ' ')
+      [ -z "$TAIL" ] && TAIL="(无 stderr 输出)"
+      echo "PASS [init-suggest] Advisory: FORGE_AUTO_INIT=1 但 git init + forge init 失败（exit $RC），请手动 'git init && forge init'。错误尾部: $TAIL"
+    fi
+    exit 0
+  fi
+  mkdir -p "$SUGGEST_DIR" 2>/dev/null
+  if [ -n "$TAG" ]; then
+    echo "suggested" > "$MARKER" 2>/dev/null
+  fi
+  DIR_NAME=$(basename "$START")
+  echo "PASS [init-suggest] Advisory: 当前目录 '${DIR_NAME}' 不是 Git 仓库。建议先运行 'git init' 初始化版本控制，再运行 'forge init' 启用质量门禁（task-gated 源码变更 + 断言守卫 + 评分 + 经验闭环）。如不需要，运行 'forge suggest decline' 永久不再提示。"
+  exit 0
+fi
 
 # 已有 .forge/ → 已启用 forge。但若 plugin 也 user-level 接管了 hooks+MCP，清理
 # project-level 重复（plugin install 后存量项目残留的 settings.local.json hooks 与
