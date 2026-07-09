@@ -44,9 +44,7 @@ func init() {
 	healthCmd.GroupID = "quality"
 	dashboardCmd.GroupID = "quality"
 
-	// 经验与治理：经验闭环 + skill 治理
-	experienceCmd.GroupID = "governance"
-	knowledgeCmd.GroupID = "governance"
+	// skill 治理（experience/knowledge 经验闭环已移除）
 	skillsCmd.GroupID = "governance"
 
 	// 集成与安全：agent 接口 + 拦截 + 内部 hook 分发 + 多 host plugin marketplace

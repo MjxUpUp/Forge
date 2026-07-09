@@ -7,21 +7,6 @@ import (
 	"testing"
 )
 
-// TestClaudeMDCommonErrorsIncludesReviewBlock guards the common-errors table
-// against losing the mandatory-review guidance. `forge task complete` blocks on
-// a pending mandatory review ("Pending mandatory review detected"); agents
-// relying on CLAUDE.md alone need the resolution path.
-func TestClaudeMDCommonErrorsIncludesReviewBlock(t *testing.T) {
-	section := buildForgeSection(true)
-
-	if !strings.Contains(section, "Pending mandatory review detected") {
-		t.Error("CLAUDE.md common-errors table missing 'Pending mandatory review detected' row")
-	}
-	if !strings.Contains(section, "forge experience accept") {
-		t.Error("CLAUDE.md review error row must reference 'forge experience accept'")
-	}
-}
-
 // TestClaudeMDCommonErrorsIncludesTestCoverage guards the common-errors table
 // documents the task-verify test-coverage gate. Since v0.22 the verify gate
 // enforces CLAUDE.md rule 4 ("测试伴随变更") — agents hitting it need the
@@ -86,9 +71,6 @@ func TestClaudeMDMatchesActualGuardBehavior(t *testing.T) {
 	}
 	if strings.Contains(section, "denied by bash-guard") {
 		t.Error("CLAUDE.md says 'denied by bash-guard' — bash-guard only WARNs (never denies)")
-	}
-	if !strings.Contains(section, "experience resolve") {
-		t.Error("CLAUDE.md mandatory-review row missing 'forge experience resolve' fallback")
 	}
 }
 

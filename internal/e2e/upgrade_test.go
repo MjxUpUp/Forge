@@ -1,6 +1,6 @@
 // Package e2e contains multi-perspective end-to-end tests for Forge.
 // These tests verify different user scenarios: fresh install, version upgrades,
-// master branch warnings, and experience flow — all via subprocess invocations
+// master branch warnings — all via subprocess invocations
 // of the compiled forge binary.
 package e2e
 
@@ -13,10 +13,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/MjxUpUp/Forge/internal/experience"
-	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
 var forgeBin string
@@ -223,11 +220,6 @@ func TestFreshInstall(t *testing.T) {
 		t.Errorf("forge status output should contain 'Project:', got: %s", out)
 	}
 
-	// forge experience list should show "(none)" for both sections.
-	out = forge(t, dir, "experience", "list")
-	if !strings.Contains(out, "(none)") {
-		t.Errorf("forge experience list should show '(none)' for fresh project, got: %s", out)
-	}
 }
 
 // TestMasterBranchReminder verifies the task-verify hook warns about
@@ -266,117 +258,6 @@ func TestMasterBranchReminder(t *testing.T) {
 	// the hook should warn about code changes without an active task.
 	if !strings.Contains(outStr, "without active task") {
 		t.Errorf("task-verify hook should warn 'without active task' on master with code changes, got: %q", outStr)
-	}
-}
-
-// TestExperienceFlow verifies the full experience lifecycle:
-// start task -> pass gates -> complete (score) -> review -> propose -> accept.
-func TestExperienceFlow(t *testing.T) {
-	dir := freshProjectOnBranch(t, "feature/EXP-1-test")
-
-	// Start task.
-	forge(t, dir, "task", "start", "--ref", "EXP-1", "--title", "test experience")
-
-	// Pass all 3 gates.
-	passAllGates(t, dir, "EXP-1")
-
-	// Complete task — this auto-scores.
-	out, err := forgeErr(t, dir, "task", "complete", "--ref", "EXP-1")
-	if err != nil {
-		t.Fatalf("forge task complete failed: %v\noutput: %s", err, out)
-	}
-
-	// Load task state to check score.
-	type taskState struct {
-		TaskRef     string      `json:"task_ref"`
-		Score       interface{} `json:"score"`
-		CompletedAt interface{} `json:"completed_at"`
-	}
-	var ts taskState
-	// task state migrated to the user-level DataDir (refactor-data-home);
-	// read through DataDirFor so it matches what the forge subprocess wrote.
-	readJSON(t, forgedata.DataDirFor(dir), "tasks/EXP-1.json", &ts)
-	if ts.Score == nil {
-		t.Fatal("expected task to have a score after complete")
-	}
-
-	// Check if review was created (depends on score < 80).
-	type scoreResult struct {
-		Overall float64 `json:"overall"`
-		Grade   string  `json:"grade"`
-	}
-	type taskStateFull struct {
-		Score *scoreResult `json:"score"`
-	}
-	var tsFull taskStateFull
-	readJSON(t, forgedata.DataDirFor(dir), "tasks/EXP-1.json", &tsFull)
-
-	// experience store moved to the user-level DataDir: seed/verify must go through
-	// *Project so they land in the same DataDir the forge subprocess resolves
-	// (freshProject already set FORGE_DATA_HOME + ran git init / forge init).
-	proj, perr := forgedata.ProjectFor(dir)
-	if perr != nil {
-		t.Fatalf("project not resolved: %v", perr)
-	}
-
-	if tsFull.Score != nil && tsFull.Score.Overall < 80 {
-		// Review should have been created (in the user-level DataDir).
-		if _, err := experience.LoadReview(proj, "EXP-1"); err != nil {
-			t.Error("expected review file for low-scoring task")
-		}
-	}
-
-	// Create a mock proposed rule via the store so it lands in the same
-	// user-level DataDir the forge subprocess resolves.
-	proposal := &experience.ExperienceProposal{
-		ID:           "exp-test001",
-		SourceReview: "EXP-1",
-		Category:     "gotchas",
-		Title:        "Test gotcha rule",
-		Description:  "A test experience rule for E2E verification",
-		Patterns:     []string{"test\\.Fatal\\("},
-		Severity:     "error",
-		Status:       experience.PropProposed,
-		CreatedAt:    time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
-	}
-	if err := experience.SaveProposal(proj, proposal); err != nil {
-		t.Fatalf("seed proposal: %v", err)
-	}
-
-	// Set HOME to temp dir so knowledge store writes there instead of real HOME.
-	tmpHome := t.TempDir()
-	cmd := exec.Command(forgeBin, "experience", "accept", "exp-test001")
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "HOME="+tmpHome, "USERPROFILE="+tmpHome)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("forge experience accept failed: %v\noutput: %s", err, output)
-	}
-
-	// Verify: proposal status = accepted.
-	accepted, err := experience.LoadProposal(proj, "exp-test001")
-	if err != nil {
-		t.Fatalf("load proposal after accept: %v", err)
-	}
-	if accepted.Status != experience.PropAccepted {
-		t.Errorf("expected proposal status 'accepted', got %q", accepted.Status)
-	}
-
-	// Verify: review status = resolved (if review was created).
-	if review, err := experience.LoadReview(proj, "EXP-1"); err == nil {
-		if review.Status != experience.ReviewResolved {
-			t.Errorf("expected review status 'resolved', got %q", review.Status)
-		}
-	}
-
-	// Verify: knowledge store has entry.
-	knowledgeIdx := filepath.Join(tmpHome, ".forge", "knowledge", "index.json")
-	data, err := os.ReadFile(knowledgeIdx)
-	if err != nil {
-		t.Fatalf("knowledge index not found at %s: %v", knowledgeIdx, err)
-	}
-	if !strings.Contains(string(data), "exp-test001") {
-		t.Errorf("knowledge index should contain accepted rule, got: %s", string(data))
 	}
 }
 

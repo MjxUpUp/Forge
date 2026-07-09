@@ -90,7 +90,7 @@ func buildForgeSection(forClaude bool) string {
 	sb.WriteString("每个门禁命令：`forge task gate <id> --ref <ref>`\n\n")
 	sb.WriteString("门禁全通过后运行 `forge task complete --ref <ref>` 触发评分。\n\n")
 	sb.WriteString("### 中止任务（清理 ghost/卡住任务）\n\n")
-	sb.WriteString("任务无法推进（如在非 git 项目半启动、门禁死循环、或临时放弃）时，用 `forge task abort --ref <ref>` 删除任务状态文件并清空 active task ref，**不评分、不创建 review**。代码改动保留不动。task-verify 现为 advisory（仅记录问题不阻塞会话）；但 ghost 任务仍会污染 `task list`，需手动 abort 清理。\n\n")
+	sb.WriteString("任务无法推进（如在非 git 项目半启动、门禁死循环、或临时放弃）时，用 `forge task abort --ref <ref>` 删除任务状态文件并清空 active task ref，**不评分**。代码改动保留不动。task-verify 现为 advisory（仅记录问题不阻塞会话）；但 ghost 任务仍会污染 `task list`，需手动 abort 清理。\n\n")
 
 	// Commit timing — without this agents naturally commit AFTER complete,
 	// which clears the active task ref and gets the commit quarantined by
@@ -118,7 +118,6 @@ func buildForgeSection(forClaude bool) string {
 	sb.WriteString("| task already exists | 任务已启动 | 用 `forge task status --ref <ref>` 查看 |\n")
 	sb.WriteString("| Quarantined by file-sentinel | Bash 写了源码但无任务 | 文件在用户级 DataDir/quarantine/（`forge data-dir` 查看路径），可恢复。先启动任务 |\n")
 	sb.WriteString("| complete 后提交被 file-sentinel 拦 | complete 已清 active task ref | 先 commit 再 complete；或开 `chore/*-commit` 任务放行 |\n")
-	sb.WriteString("| Pending mandatory review detected | 低分任务（<70）有未解除的 mandatory review | `forge experience list` → `forge experience accept <id>`；无可 accept 的提案时用 `forge experience resolve <task-ref>` 兜底 |\n")
 	sb.WriteString("| trace/老任务历史消失 | retention（默认启用）自动清超期 checklog/toollog 归档 + 已完成任务文件 | 行为正常；`FORGE_LOG_RETENTION_DAYS` 控制保留天数（默认 30，≤0 禁用）；`forge act rebuild` 全量重建，被 retention 删的任务无法重建 |\n\n")
 
 	if forClaude {
@@ -127,7 +126,7 @@ func buildForgeSection(forClaude bool) string {
 		// AGENTS.md is cross-agent (codex/cursor/copilot/windsurf/cline) — those
 		// agents have no Claude slash commands, so point at the forge CLI / MCP
 		// surface instead of the /forge-quality skill.
-		sb.WriteString("通过 forge CLI（forge task/gate/experience）或 forge MCP 工具执行上述质量流程。\n\n")
+		sb.WriteString("通过 forge CLI（forge task/gate）或 forge MCP 工具执行上述质量流程。\n\n")
 	}
 	sb.WriteString(forgeSectionEnd + "\n")
 	return sb.String()

@@ -19,7 +19,7 @@ func init() {
 // ~/.forge/projects/<key>/，非 git 回退 <cwd>/.forge/。
 //
 // Hidden：内部命令，hook 用，不进用户 help 顶层列表。hook 已多次 fork forge
-// （TaskVerifyHook 调 task gate / experience list / task status / act nudge），
+// （TaskVerifyHook 调 task gate / task status / act nudge），
 // 多一次 data-dir 无感。
 var dataDirCmd = &cobra.Command{
 	Use:    "data-dir",

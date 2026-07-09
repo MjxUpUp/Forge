@@ -248,13 +248,6 @@ if [ -n "$ADV" ]; then
   MESSAGES="${MESSAGES}${ADV} "
 fi
 
-# Pending mandatory reviews
-if REVIEW_OUTPUT=$(forge experience list 2>/dev/null); then
-  printf '%s' "$REVIEW_OUTPUT" | grep -qE 'mandatory[[:space:]]+pending' && {
-    MESSAGES="${MESSAGES}Pending mandatory review detected. Run 'forge experience list'. "
-  }
-fi
-
 # Code changes on main/master without active task
 BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
 if [ "$BRANCH" = "master" ] || [ "$BRANCH" = "main" ]; then
@@ -1112,7 +1105,7 @@ if [ -z "$ROOT" ]; then
     echo "suggested" > "$MARKER" 2>/dev/null
   fi
   DIR_NAME=$(basename "$START")
-  echo "PASS [init-suggest] Advisory: 当前目录 '${DIR_NAME}' 不是 Git 仓库。建议先运行 'git init' 初始化版本控制，再运行 'forge init' 启用质量门禁（task-gated 源码变更 + 断言守卫 + 评分 + 经验闭环）。如不需要，运行 'forge suggest decline' 永久不再提示。"
+  echo "PASS [init-suggest] Advisory: 当前目录 '${DIR_NAME}' 不是 Git 仓库。建议先运行 'git init' 初始化版本控制，再运行 'forge init' 启用质量门禁（task-gated 源码变更 + 断言守卫 + 评分）。如不需要，运行 'forge suggest decline' 永久不再提示。"
   exit 0
 fi
 
@@ -1164,7 +1157,7 @@ if [ -n "$TAG" ]; then
 fi
 
 PROJ=$(basename "$ROOT")
-echo "PASS [init-suggest] Advisory: 检测到 git 项目 '$PROJ' 未启用 forge。询问用户是否启用 forge 质量门禁（task-gated 源码变更 + 断言守卫 + 评分 + 经验闭环）。用户同意 → 运行 'forge init'；拒绝 → 运行 'forge suggest decline' 永久不再提示该项目。forge 默认不自动写文件（设 FORGE_AUTO_INIT=1 可处处自动 init）。"
+echo "PASS [init-suggest] Advisory: 检测到 git 项目 '$PROJ' 未启用 forge。询问用户是否启用 forge 质量门禁（task-gated 源码变更 + 断言守卫 + 评分）。用户同意 → 运行 'forge init'；拒绝 → 运行 'forge suggest decline' 永久不再提示该项目。forge 默认不自动写文件（设 FORGE_AUTO_INIT=1 可处处自动 init）。"
 exit 0
 `
 
