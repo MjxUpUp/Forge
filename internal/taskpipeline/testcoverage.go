@@ -72,6 +72,22 @@ var testCoverageWhitelist = []whitelistEntry{
 	// exemption, the file-level hasMatchingTest check (looks for embed_test.go in
 	// the same package) falsely flags it as "changed source without a test".
 	{baseExact: "embed.go"},
+	// Rust entry points — parity with `main.go` for Go crates. baseExact matches
+	// the basename, so `src/main.rs` and `src-tauri/src/main.rs` both qualify.
+	// Rust convention: binaries declare `src/main.rs`, libraries `src/lib.rs`
+	// (or `src-tauri/src/lib.rs` for the Tauri side). Integration tests live
+	// under `tests/` rather than as parallel `_test.rs` siblings, and the
+	// harness tests the binary via `cargo run`/`cargo test` — file-level
+	// hasMatchingTest falsely flags these entry crates. dogfood 2.1②.
+	{baseExact: "main.rs"},
+	{baseExact: "lib.rs"},
+	// Tauri command-glue directory — `src-tauri/src/` holds `#[tauri::command]`
+	// handlers and tokio::spawn IPC bridge code. The Tauri runtime exercises
+	// these end-to-end via `cargo tauri dev/build`, not via unit tests in the
+	// same file; the conventional `__tests__` placement doesn't apply. The
+	// trailing slash makes the match directory-scoped — a mixed Rust+TS
+	// project root `src/` is unaffected. dogfood 2.1②.
+	{substr: "src-tauri/"},
 }
 
 // CheckNameTestCoverage is the checklog entry name for the gate test-coverage
