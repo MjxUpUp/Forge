@@ -34,6 +34,8 @@ is_source() {
 }
 
 FILE_PATH="${FORGE_FILE_PATH:-}"
+SESSION_ID="${FORGE_SESSION_ID:-default}"
+: "${TMPDIR:=/tmp}"
 
 # 是否触及源码：PostToolUse 模式看 FORGE_FILE_PATH；gate 模式（无 FILE_PATH）
 # 看 git 工作区有无源码变更。两者都不依赖具体构建系统——技术栈无关。
@@ -52,10 +54,20 @@ fi
 # v0.25 advisory：提醒放 stdout PASS detail——forge hook 把 stdout 作为
 # AdditionalContext 显示给 agent；stderr 不透传（只进 checklog），agent 看不到。
 # 故提醒必须在 stdout。stdout 永远 PASS（不阻塞），编译自检委托给 agent。
-if [ "$TOUCHED_SOURCE" = "1" ]; then
-  echo "PASS [auto-compile] Advisory: 已修改源码——请用你技术栈的编译命令确认编译通过（go build ./... / cargo check / mvn -o compile / tsc --noEmit 等）。forge 不再强制编译，适配 loop engineering，由 agent 自检。"
+#
+# dogfood 5.1：会话级 source-touched marker。本会话从未 Edit/Write 源码（AgentFare
+# 调研/审查场景，task-guard 不会进 'no task' 分支因此不会设置 marker），抑制 advisory
+# 输出——研究场景"自己用编译命令自检"完全无关，PASS detail 只占 AdditionalContext 字符
+# 配额。一旦 task-guard 看到源 Edit/Write 即设 marker，本会话后续 advisory 正常输出。
+_TOUCHED="${TMPDIR}/forge-source-touched-${SESSION_ID}"
+if [ ! -f "$_TOUCHED" ]; then
+  echo "PASS [auto-compile] research-mode session, advisory suppressed (set by Edit|Write of source)"
 else
-  echo "PASS [auto-compile] no source touched (compile self-check delegated to agent)"
+  if [ "$TOUCHED_SOURCE" = "1" ]; then
+    echo "PASS [auto-compile] Advisory: 已修改源码——请用你技术栈的编译命令确认编译通过（go build ./... / cargo check / mvn -o compile / tsc --noEmit 等）。forge 不再强制编译，适配 loop engineering，由 agent 自检。"
+  else
+    echo "PASS [auto-compile] no source touched (compile self-check delegated to agent)"
+  fi
 fi
 `
 
@@ -353,6 +365,17 @@ printf '%s' "$FILE_PATH" | grep -qE '\.(go|rs|ts|tsx|js|jsx|py|java|rb|zig|nim)$
 # Test files — always allow (TDD workflow)
 printf '%s' "$FILE_PATH" | grep -qE '(_test\.|_spec\.|\.test\.|\.spec\.|test/|tests/|__tests__/)' && exit 0
 
+# dogfood 5.1：session-level source-touched marker. Setting it here (when task-guard
+# has confirmed FILE_PATH is source code) means auto-compile + bash-guard can
+# distinguish research-only sessions (AgentFare pattern: no source touches ⇒
+# silent) from dev sessions (marker set ⇒ normal advisory). Per-session, keyed
+# by FORGE_SESSION_ID. The marker is set BEFORE the no-task decisions below so
+# downstream hooks in the same invocation also see it as set.
+: "${TMPDIR:=/tmp}"
+_SESSION_ID="${FORGE_SESSION_ID:-default}"
+_TOUCHED_MARKER="${TMPDIR}/forge-source-touched-${_SESSION_ID}"
+touch "$_TOUCHED_MARKER" 2>/dev/null || true
+
 # No active task — try auto-create on feature branch
 if [ -z "$TASK_REF" ]; then
   BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
@@ -481,7 +504,16 @@ fi
 # --- WARN on write without active task (allowed, just not tracked) ---
 # dogfood 3.1：每写命令注入 WARN 刷屏。会话级标记文件，每会话首条提示，之后静默。
 # 只读命令（ls/cat/grep/git status）IS_WRITE_CMD=0 不进此分支，本就静默。
+#
+# dogfood 5.1：source-touched session-level marker. 本会话从未 Edit|Write 源码
+# （task-guard 不会进 no-task 分支因此不会设置 marker），此 Bash 写入发生在
+# 纯调研/审查场景，直接静默——避免 AgentFare 模式每会话首条 WARN 噪音。
+# 一旦看到 task-guard 设的 marker，下面的 NOWARN_FILE 抑制 + 首条 WARN 流程恢复。
+_TOUCHED_MARKER="${TMPDIR:-/tmp}/forge-source-touched-${SESSION_ID}"
 if [ $IS_WRITE_CMD -eq 1 ] && [ -z "$TASK_REF" ]; then
+  if [ ! -f "$_TOUCHED_MARKER" ]; then
+    exit 0
+  fi
   NOWARN_FILE="${TMPDIR:-/tmp}/forge-bashguard-nowarn-${SESSION_ID}"
   if [ ! -f "$NOWARN_FILE" ]; then
     touch "$NOWARN_FILE" 2>/dev/null || true
