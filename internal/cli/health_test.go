@@ -8,6 +8,7 @@ import (
 )
 
 // captureStdout 复用 skills_install_test.go 的定义（同包）。
+// runForgeStreams 复用 task_nongit_test.go 的定义（同包）。
 
 func TestPrintHealth_Empty(t *testing.T) {
 	out := captureStdout(t, func() { printHealth(health.Summary{}) })
@@ -47,5 +48,27 @@ func TestPrintHealth_NoBlindSpotSilent(t *testing.T) {
 	out := captureStdout(t, func() { printHealth(s) })
 	if strings.Contains(out, "系统性盲区") {
 		t.Errorf("盲区率 0 不该告警，got: %s", out)
+	}
+}
+
+// TestHealth_NonGitFriendlyMessage 钉死 dogfood 5.2：非 git 目录跑 forge health 不再裸报
+// "forgedata: cwd is not in a git repository"（AwesomeMutiAgent 1 session 放弃），改友好提示
+// 指引 git init/forge init。退出码 0（用户错误而非程序错误）。
+func TestHealth_NonGitFriendlyMessage(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
+	tmpDir := t.TempDir()
+	// 无 git、无 .forge —— AwesomeMutiAgent 场景
+	stdout, _, code := runForgeStreams(t, tmpDir, "health")
+	if code != 0 {
+		t.Fatalf("forge health 非 git 目录应 exit 0（友好提示，非程序错误），got %d", code)
+	}
+	for _, want := range []string{"需在 git 项目内运行", "不是 git 仓库", "git init"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("非 git health stdout 缺 %q\nstdout: %s", want, stdout)
+		}
+	}
+	// 不应裸露底层错误
+	if strings.Contains(stdout, "forgedata: cwd is not in a git repository") {
+		t.Errorf("不应裸报底层 error，got: %s", stdout)
 	}
 }
