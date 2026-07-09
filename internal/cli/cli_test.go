@@ -12,8 +12,6 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/act"
-	"github.com/MjxUpUp/Forge/internal/experience"
-	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/spf13/cobra"
@@ -239,7 +237,7 @@ func TestStatusShowsHealthSignal(t *testing.T) {
 // --------------- Test 8: TestHelperFunctions ---------------
 
 func TestHelperFunctions(t *testing.T) {
-	t.Run("truncateStr", func(t *testing.T) {
+	t.Run("truncate", func(t *testing.T) {
 		tests := []struct {
 			input string
 			max   int
@@ -253,9 +251,9 @@ func TestHelperFunctions(t *testing.T) {
 			{"中文测试内容", 4, "中..."},
 		}
 		for _, tc := range tests {
-			got := truncateStr(tc.input, tc.max)
+			got := truncate(tc.input, tc.max)
 			if got != tc.want {
-				t.Errorf("truncateStr(%q, %d) = %q, want %q", tc.input, tc.max, got, tc.want)
+				t.Errorf("truncate(%q, %d) = %q, want %q", tc.input, tc.max, got, tc.want)
 			}
 		}
 	})
@@ -329,18 +327,6 @@ func TestSystemStatusRequiresForge(t *testing.T) {
 	// It checks ~/.forge/ existence, not the project dir,
 	// so just verify it runs without crashing.
 	_, _, _ = runForge(t, tmpDir, "status", "--system")
-}
-
-// --------------- Test: Knowledge commands (smoke test) ---------------
-
-func TestKnowledgeListEmpty(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	stdout, _, code := runForge(t, tmpDir, "knowledge", "list")
-	// Knowledge list may succeed with 0 entries or fail if kb not initialized.
-	// Either way it should not crash with a panic.
-	_ = stdout
-	_ = code
 }
 
 // --------------- Test: Status without init ---------------
@@ -577,128 +563,6 @@ func TestTaskScoreWorkflow(t *testing.T) {
 	}
 }
 
-// TestCompleteBlocksOnPendingMandatoryReview guards the enforcement transfer:
-// the force that used to live in the task-verify Stop hook (blocking session
-// end on a pending mandatory review) moved to `forge task complete` once that
-// hook became advisory. A task with a pending mandatory review MUST fail to
-// complete, preserve its active task ref (so the session isn't trapped), and
-// succeed once the review is resolved.
-func TestCompleteBlocksOnPendingMandatoryReview(t *testing.T) {
-	origInterval := os.Getenv("FORGE_GATE_MIN_INTERVAL")
-	os.Setenv("FORGE_GATE_MIN_INTERVAL", "0s")
-	defer os.Setenv("FORGE_GATE_MIN_INTERVAL", origInterval)
-	origWorkActivity := os.Getenv("FORGE_WORK_ACTIVITY")
-	os.Setenv("FORGE_WORK_ACTIVITY", "disable")
-	defer os.Setenv("FORGE_WORK_ACTIVITY", origWorkActivity)
-
-	tmpDir := t.TempDir()
-	t.Setenv("FORGE_DATA_HOME", t.TempDir())
-	runGit(t, tmpDir, "init")
-	runGit(t, tmpDir, "config", "user.email", "test@test.com")
-	runGit(t, tmpDir, "config", "user.name", "Test")
-
-	stdout, _, code := runForge(t, tmpDir, "init", "--mode", "medium")
-	if code != 0 {
-		t.Fatalf("forge init failed: %s", stdout)
-	}
-
-	os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte("package main\nfunc main() {}\n"), 0644)
-	runGit(t, tmpDir, "add", ".")
-	runGit(t, tmpDir, "commit", "-m", "initial")
-
-	runGit(t, tmpDir, "checkout", "-b", "feature/test-mandatory")
-
-	// No --ref: task start derives the ref from the branch name
-	// (feature/test-mandatory), matching how complete (also no --ref) resolves
-	// the task via branch detection — so the seeded review lands on the same ref.
-	const ref = "feature/test-mandatory"
-	stdout, _, code = runForge(t, tmpDir, "task", "start")
-	if code != 0 {
-		t.Fatalf("forge task start failed: %s", stdout)
-	}
-
-	// task-implement requires real code changes since task start (see
-	// TestTaskScoreWorkflow for the state.json→.sync-version rationale). Make the
-	// change before the first task-implement rather than relying on a spurious
-	// autoSync working-tree diff.
-	os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte("package main\nimport \"fmt\"\nfunc main() { fmt.Println(\"hello\") }\n"), 0644)
-	runGit(t, tmpDir, "add", ".")
-	runGit(t, tmpDir, "commit", "-m", "implement")
-
-	for _, g := range []string{"task-implement", "task-verify"} {
-		stdout, _, code = runForge(t, tmpDir, "task", "gate", g)
-		if code != 0 {
-			t.Fatalf("forge task gate %s failed: %s", g, stdout)
-		}
-	}
-	// task-complete 的 ReviewPassed 硬前置：先 review pass 满足之（隔离本测试关注的
-	// mandatory review block 逻辑）。
-	if stdout, _, code = runForge(t, tmpDir, "review", "pass"); code != 0 {
-		t.Fatalf("forge review pass failed: %s", stdout)
-	}
-	stdout, _, code = runForge(t, tmpDir, "task", "gate", "task-complete")
-	if code != 0 {
-		t.Fatalf("forge task gate task-complete failed: %s", stdout)
-	}
-
-	// Seed a pending mandatory review as if the task had scored <70. complete's
-	// CreateReview is idempotent, so this seeded review is the one the block
-	// check sees regardless of what scoreTask computes.
-	seed := &experience.ReviewRequest{
-		TaskRef:   ref,
-		Score:     60,
-		Grade:     "D",
-		Mandatory: true,
-		Status:    experience.ReviewPending,
-		CreatedAt: time.Now(),
-	}
-	// experience store moved to the user-level DataDir: seed must write through *Project
-	// so it lands in the same DataDir the forge subprocess resolves (git-root-derived key
-	// + FORGE_DATA_HOME, both set up just above).
-	proj, perr := forgedata.ProjectFor(tmpDir)
-	if perr != nil {
-		t.Fatalf("project not resolved: %v", perr)
-	}
-	if err := experience.SaveReview(proj, seed); err != nil {
-		t.Fatalf("seed review: %v", err)
-	}
-
-	// complete MUST fail on the pending mandatory review.
-	stdout, _, code = runForge(t, tmpDir, "task", "complete")
-	if code == 0 {
-		t.Fatalf("expected complete to FAIL on pending mandatory review, got success: %s", stdout)
-	}
-	if !strings.Contains(stdout, "mandatory review") {
-		t.Fatalf("complete failure output missing 'mandatory review': %s", stdout)
-	}
-	if !strings.Contains(stdout, "forge experience resolve") {
-		t.Fatalf("complete failure output missing resolve hint: %s", stdout)
-	}
-
-	// 回归（Act 反馈臂）：被 mandatory review 阻塞的 complete 绝不能写结论——否则
-	// operator 重跑 complete 会重复追加结论。appendConclusion 必须在 PendingMandatory
-	// 阻塞检查之后调用。
-	if proj, err := forgedata.ProjectFor(tmpDir); err == nil {
-		if c, _ := act.Latest(proj); c != nil {
-			t.Fatalf("阻塞的 complete 不该写结论，但 DataDir/act/conclusions.jsonl 有记录: %+v", c)
-		}
-	}
-
-	// Resolve the review, then complete MUST succeed (active task ref survived
-	// the failed complete, so the task is still completable).
-	// resolve mandatory review 需 --reason（dogfood 2.2：防零成本绕过经验闭环）。
-	stdout, _, code = runForge(t, tmpDir, "experience", "resolve", ref, "--reason", "测试解除阻塞：已人工审阅无新规则可沉淀")
-	if code != 0 {
-		t.Fatalf("forge experience resolve failed: %s", stdout)
-	}
-	stdout, _, code = runForge(t, tmpDir, "task", "complete")
-	if code != 0 {
-		t.Fatalf("complete after resolve should succeed: %s", stdout)
-	}
-	if !strings.Contains(stdout, "Score:") {
-		t.Fatalf("expected score in complete output after resolve: %s", stdout)
-	}
-}
 
 // --------------- Test: Init with --agents flag ---------------
 

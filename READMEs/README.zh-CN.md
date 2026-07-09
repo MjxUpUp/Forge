@@ -74,4 +74,4 @@ Forge 已为 Claude Code / Codex / Cursor / Copilot / Windsurf 落地分发（`.
 
 ## 与英文版的差异
 
-英文根 README 涵盖：分层定位（Loop Engineering 验证 / 状态 / 学习层）、任务级门禁（实现 → 验证 → 完成）、`verify-acceptance` 验收标准、`--scope` 规划前置白名单、score 评分等。本中文精简版只覆盖国内用户最关心的安装 + 日常 + 多宿主，请参考英文原文获取完整功能索引。
+英文根 README 涵盖：分层定位（Loop Engineering 验证 / 状态）、任务级门禁（实现 → 验证 → 完成）、`verify-acceptance` 验收标准、`--scope` 规划前置白名单、score 评分等。本中文精简版只覆盖国内用户最关心的安装 + 日常 + 多宿主，请参考英文原文获取完整功能索引。

@@ -10,7 +10,6 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/act"
 	"github.com/MjxUpUp/Forge/internal/checklog"
-	"github.com/MjxUpUp/Forge/internal/experience"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/scoring"
 	"github.com/MjxUpUp/Forge/internal/taskcontext"
@@ -880,126 +879,13 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 			fmt.Fprintf(os.Stderr, "  Ensure the AI agent ran all required hooks during implementation.\n\n")
 		}
 
-		// experience store lives in the user-level DataDir (~/.forge/projects/<key>/).
-		// When there is no DataDir (non-git or ProjectFor failure) proj==nil: the
-		// review WRITE block below is skipped (guarded by `if create && proj != nil`),
-		// and the PendingMandatory READ tolerates nil (returns no pending review).
-		// Net effect degrades like act/health — never blocks complete on a project
-		// with no DataDir. Non-git projects have no review mechanism anyway.
-		proj, perr := forgedata.ProjectFor(root)
-		if perr != nil {
-			fmt.Fprintf(os.Stderr, "Warning: experience review skipped (project not resolved): %v\n", perr)
-		}
-
-		// Low-score review detection
-		create, mandatory := experience.ShouldReview(state.Score.Overall)
-
-		// Upgrade to mandatory review if critical hooks were missing and score is below B.
-		if hasMissingHooks && state.Score.Overall < 80 {
-			create = true
-			mandatory = true
-		}
-
-		if create && proj != nil {
-			if err := experience.CreateReview(proj, state.TaskRef, state.Score); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: review creation failed: %v\n", err)
-			} else {
-				lowDims := experience.LowDimensions(state.Score)
-
-				// Generate one seed proposal per low-scoring dimension so the review
-				// is resolvable via `forge experience accept`. Skip the ListProposals
-				// dedup scan when there are no low dims (a mandatory review upgraded
-				// due to missing hooks may have none) — the fallback below covers it.
-				var n int
-				var gerr error
-				if len(lowDims) > 0 {
-					n, gerr = experience.GenerateProposalsForReview(proj, state.TaskRef, lowDims)
-					if gerr != nil {
-						fmt.Fprintf(os.Stderr, "Warning: experience proposal generation failed: %v\n", gerr)
-					}
-				}
-				// A mandatory review MUST be resolvable (forge task complete blocks
-				// on a pending mandatory review — see the PendingMandatory check
-				// below). If no proposal was generated — empty low dims, or a future
-				// dimension without a template — backfill a generic one so `forge
-				// experience accept` always has a target. AcceptProposal is no longer
-				// the only resolve path: `forge experience resolve <task-ref>` is the
-				// final escape hatch.
-				if mandatory && n == 0 && gerr == nil {
-					if fn, ferr := experience.GenerateFallbackProposal(proj, state.TaskRef); ferr != nil {
-						fmt.Fprintf(os.Stderr, "Warning: fallback proposal generation failed: %v\n", ferr)
-					} else {
-						n = fn
-					}
-				}
-				// Auto-accept high-confidence proposals (severe low scores <60) into
-				// the global knowledge store. Without this the experience loop was
-				// empty in real heavy-use projects: knowledge only grew via manual
-				// `forge experience accept`, which no one ran, so ~/.forge/knowledge/
-				// never accumulated. Resolving the review here also unblocks the
-				// mandatory-review gate below when the low score is unambiguous;
-				// borderline (60-69) proposals still wait for a human.
-				var autoN int
-				if n > 0 {
-					if an, aerr := experience.AutoAcceptHighConfidence(proj, state.TaskRef, lowDims); aerr != nil {
-						fmt.Fprintf(os.Stderr, "Warning: high-confidence auto-accept failed: %v\n", aerr)
-					} else {
-						autoN = an
-					}
-				}
-				if n > 0 && mandatory {
-					pending := n - autoN
-					if autoN > 0 {
-						fmt.Printf("  %d high-confidence proposal(s) auto-accepted into knowledge (score<60).\n", autoN)
-					}
-					if pending > 0 {
-						fmt.Printf("  %d borderline proposal(s) pending — run 'forge experience list' then 'forge experience accept <id>'.\n", pending)
-					}
-				}
-
-				var dimParts []string
-				for _, d := range lowDims {
-					dimParts = append(dimParts, fmt.Sprintf("%s (%d)", d.Dimension, d.Score))
-				}
-
-				if mandatory {
-					fmt.Printf("⚠ Task %s scored %s (%.0f) — mandatory review required.\n", state.TaskRef, state.Score.Grade, state.Score.Overall)
-					if len(dimParts) > 0 {
-						fmt.Printf("  Low dimensions: %s\n", strings.Join(dimParts, ", "))
-					}
-					fmt.Println("AI agent: analyze root causes and propose experience rules.")
-				} else {
-					fmt.Printf("💡 Task %s scored %s (%.0f) — review suggested (optional).\n", state.TaskRef, state.Score.Grade, state.Score.Overall)
-					if len(dimParts) > 0 {
-						fmt.Printf("  Low dimensions: %s\n", strings.Join(dimParts, ", "))
-					}
-				}
-			}
-		}
-
-		// Enforce mandatory review resolution. Previously the task-verify Stop
-		// hook blocked session end on a pending mandatory review; that hook is
-		// now advisory, so the force moved HERE — to task completion. Failing
-		// here is a task-level block: we return BEFORE ClearActiveTaskRef, so
-		// the active task ref survives and the session is NOT trapped in a
-		// stop-retry loop — resolve the review, then re-run complete.
-		if review, ok := experience.PendingMandatory(proj, state.TaskRef); ok {
-			fmt.Fprintf(os.Stderr, "\n❌ Task %s cannot complete: mandatory review (score %.0f/%s) is still pending.\n",
-				state.TaskRef, review.Score, review.Grade)
-			fmt.Fprintf(os.Stderr, "   Resolve it first:\n")
-			fmt.Fprintf(os.Stderr, "     forge experience list\n")
-			fmt.Fprintf(os.Stderr, "     forge experience accept <id>   # or: forge experience resolve %s\n", state.TaskRef)
-			fmt.Fprintf(os.Stderr, "   Then re-run: forge task complete --ref %s\n", state.TaskRef)
-			return fmt.Errorf("task %s blocked by pending mandatory review (resolve it to complete)", state.TaskRef)
-		}
 	} else {
 		fmt.Printf("Task %s completed!\n", state.TaskRef)
 	}
 
-	// Act 反馈臂（PDCA Act）：构建证据驱动结论落盘，喂给 session-retrospective。必须在
-	// PendingMandatory 阻塞检查之后调用——否则被挂起强制评审阻塞时 operator 重跑 complete
-	// 会重复追加结论（每次重跑一行）。即使评分失败也建（证据强度不依赖分数）；Nudge 时打印
-	// 一行回顾指令（stderr，stdout --json 保持干净）。
+	// Act 反馈臂（PDCA Act）：构建证据驱动结论落盘，喂给 session-retrospective。
+	// 即使评分失败也建（证据强度不依赖分数）；Nudge 时打印一行回顾指令（stderr，
+	// stdout --json 保持干净）。
 	if d := appendConclusion(root, state); d != "" {
 		fmt.Fprintln(os.Stderr, d)
 	}

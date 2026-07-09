@@ -100,7 +100,7 @@ func buildClineRules(input *TranslationInput) string {
 	// Cline-specific integration
 	sb.WriteString("## Forge 集成（Cline 专属）\n\n")
 	sb.WriteString("Cline 不支持 lifecycle hooks，因此 forge 门禁（task-guard/file-sentinel 等）无法自动拦截工具调用。替代方案：\n")
-	sb.WriteString("- 通过 forge MCP 工具（task resume/decide/attach + gate/complete + experience）结构化驱动质量流程，而非靠人工记忆\n")
+	sb.WriteString("- 通过 forge MCP 工具（task resume/decide/attach + gate/complete）结构化驱动质量流程，而非靠人工记忆\n")
 	sb.WriteString("- 阅读项目根 AGENTS.md 获取完整质量协议（task 工作流、门禁顺序、安全机制、常见错误）\n")
 	sb.WriteString("- 源码变更前启动 forge 任务；测试伴随变更；提交前过门禁（task-implement → task-verify → task-complete）\n")
 	sb.WriteString("- 不弱化断言（t.Fatal/assert!）；编译必须通过\n\n")
@@ -111,7 +111,7 @@ func buildClineRules(input *TranslationInput) string {
 	// memory windows-input-quote-corruption — same reason codexMCPServerTOML uses
 	// rune(34)).
 	sb.WriteString("## 接入 forge MCP（手动，一次性）\n\n")
-	sb.WriteString("Cline 不自动加载项目级 MCP（仅读全局 ~/.cline/data/settings/cline_mcp_settings.json）。为获得 forge 的 15 个结构化工具（task resume/decide/attach + gate/complete + experience），在 Cline 面板手动添加 forge server：\n")
+	sb.WriteString("Cline 不自动加载项目级 MCP（仅读全局 ~/.cline/data/settings/cline_mcp_settings.json）。为获得 forge 的 11 个结构化工具（task resume/decide/attach + gate/complete），在 Cline 面板手动添加 forge server：\n")
 	sb.WriteString("1. Cline 面板 → MCP Servers 图标 → Configure → Configure MCP Servers\n")
 	sb.WriteString("2. 在打开的 cline_mcp_settings.json 的 mcpServers 下加入：\n")
 	sb.WriteString(`   "forge": { "command": "forge", "args": ["mcp", "serve"], "disabled": false, "autoApprove": [] }

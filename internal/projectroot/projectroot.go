@@ -44,8 +44,8 @@ func FindProject() (*forgedata.Project, error) {
 // （forgedata.Key 失败即报错），但 Find 历史上支持非 git 项目（只要有 .forge/，
 // 如 task-nongit 场景）。两者语义不同，共存到全部 caller 迁移完毕。
 //
-// The user home directory's ~/.forge/ is the GLOBAL state store (knowledge,
-// hooks, skills — see knowledge/store.go which hardcodes ~/.forge/knowledge),
+// The user home directory's ~/.forge/ is the GLOBAL state store (hooks,
+// skills, per-project runtime state under projects/<key>/),
 // NOT a project root. It is excluded so running forge from a non-project
 // directory under home (e.g. ~/Downloads) reports "not in a forge project"
 // instead of mistaking home for the project root. A real project's .forge/

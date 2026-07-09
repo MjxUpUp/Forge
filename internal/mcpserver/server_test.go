@@ -37,7 +37,7 @@ func startTestServer(t *testing.T) *mcp.ClientSession {
 	return cs
 }
 
-// TestServer_ListToolsRegistersAll：14 个工具必须都注册到 MCP server。
+// TestServer_ListToolsRegistersAll：11 个工具必须都注册到 MCP server。
 // 协议层契约——漏注册一个，agent 就调不到对应能力；多注册说明有 stray。
 // （forge_gate_run 随项目级管道删除。）
 func TestServer_ListToolsRegistersAll(t *testing.T) {
@@ -53,9 +53,7 @@ func TestServer_ListToolsRegistersAll(t *testing.T) {
 	want := []string{
 		"forge_task_status", "forge_task_gate",
 		"forge_task_resume", "forge_task_decide", "forge_task_attach",
-		"forge_experience_search", "forge_experience_propose",
 		"forge_trace_query", "forge_act_query", "forge_health_query",
-		"forge_knowledge_lookup",
 		"forge_skill_eval_cases", "forge_skill_eval_submit", "forge_skill_eval_report",
 	}
 	for _, w := range want {
@@ -68,88 +66,9 @@ func TestServer_ListToolsRegistersAll(t *testing.T) {
 	}
 }
 
-// TestServer_CallKnowledgeLookup_EmptyHome：端到端 CallTool——knowledge_lookup
-// 在空知识库（隔离 home）下返回 count=0，证明 handler→core→MCP JSON 序列化链路通。
-// 选 knowledge_lookup 做端到端是因为它不依赖项目根（cwd 无关），可隔离 home 干净测。
-func TestServer_CallKnowledgeLookup_EmptyHome(t *testing.T) {
-	// 隔离 home：Linux 的 os.UserHomeDir 读 HOME、Windows 读 USERPROFILE，双设才跨平台干净。
-	homeDir := t.TempDir()
-	t.Setenv("HOME", homeDir)
-	t.Setenv("USERPROFILE", homeDir)
-	cs := startTestServer(t)
-	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
-		Name:      "forge_knowledge_lookup",
-		Arguments: map[string]any{"query": "anything"},
-	})
-	if err != nil {
-		t.Fatalf("CallTool: %v", err)
-	}
-	if res.IsError {
-		t.Fatalf("knowledge_lookup IsError=true（空库应返回 count:0）: %+v", res.Content)
-	}
-	if len(res.Content) == 0 {
-		t.Fatal("无 content 返回")
-	}
-	tc, ok := res.Content[0].(*mcp.TextContent)
-	if !ok {
-		t.Fatalf("content[0] 不是 TextContent: %T", res.Content[0])
-	}
-	var out knowledgeLookupOutput
-	if err := json.Unmarshal([]byte(tc.Text), &out); err != nil {
-		t.Fatalf("反序列化失败 err=%v（text=%q）", err, tc.Text)
-	}
-	if out.Count != 0 {
-		t.Errorf("Count=%d want 0（隔离 home 的空知识库）", out.Count)
-	}
-}
-
 // =====================================================================
 // core 单元测试（temp root 注入，覆盖逻辑正确性 + 错误路径）
 // =====================================================================
-
-// TestExperiencePropose_ThenSearch：经验闭环——propose 写入后 search 能命中。
-// loop engineering 经验沉淀的核心往返；守护 propose 的 ID 生成 + search 的关键词匹配。
-func TestExperiencePropose_ThenSearch(t *testing.T) {
-	root, _ := forgedatatest.RealProject(t)
-	out, err := experienceProposeCore(root, experienceProposeInput{
-		Title:       "测试经验标题",
-		Description: "这是一个测试描述",
-		Category:    "gotchas",
-		Severity:    "warning",
-	})
-	if err != nil {
-		t.Fatalf("propose: %v", err)
-	}
-	if out.ID == "" {
-		t.Fatal("propose 未生成 ID")
-	}
-	if out.Status != "proposed" {
-		t.Errorf("Status=%q want proposed", out.Status)
-	}
-
-	res, err := experienceSearchCore(root, experienceSearchInput{Query: "测试"})
-	if err != nil {
-		t.Fatalf("search: %v", err)
-	}
-	if res.Count != 1 {
-		t.Fatalf("Count=%d want 1（proposed 应被 search 命中）: %+v", res.Count, res.Results)
-	}
-	if res.Results[0].ID != out.ID {
-		t.Errorf("命中 ID=%q want %q", res.Results[0].ID, out.ID)
-	}
-}
-
-// TestExperiencePropose_InvalidCategory：非法 category 报错——防 agent 把垃圾知识
-// 写进知识库（category 是知识分类的骨架，必须守 gotchas/patterns/apis）。
-func TestExperiencePropose_InvalidCategory(t *testing.T) {
-	root, _ := forgedatatest.RealProject(t)
-	_, err := experienceProposeCore(root, experienceProposeInput{
-		Title: "x", Description: "y", Category: "bogus",
-	})
-	if err == nil {
-		t.Fatal("非法 category 应报错")
-	}
-}
 
 // TestTraceQuery_AggregatesEventsAndTokens：注入 1 条 checklog + 1 条 toollog，
 // trace 应聚合为 2 个 event + 累计 est_tokens。联合 token 计量（#3）与 trace 的契约。
