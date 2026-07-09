@@ -53,7 +53,7 @@ fi
 # AdditionalContext 显示给 agent；stderr 不透传（只进 checklog），agent 看不到。
 # 故提醒必须在 stdout。stdout 永远 PASS（不阻塞），编译自检委托给 agent。
 if [ "$TOUCHED_SOURCE" = "1" ]; then
-  echo "PASS [auto-compile] Advisory: 已修改源码——请用你技术栈的编译命令确认编译通过（go build ./... / cargo check / mvn -o compile / tsc --noEmit 等）。forge 不再强制编译，适配 loop engineering，由 agent 自检。"
+  echo "PASS [auto-compile] Advisory: 已修改源码——请用你技术栈的编译命令确认编译通过（go build ./... / cargo check / mvn -o compile / tsc --noEmit 等）。编译报错时加载 compile-fix-loop skill（/compile-fix-loop）：编译错误修复闭环方法论，按语言分类定位根因。forge 不再强制编译，适配 loop engineering，由 agent 自检。"
 else
   echo "PASS [auto-compile] no source touched (compile self-check delegated to agent)"
 fi
