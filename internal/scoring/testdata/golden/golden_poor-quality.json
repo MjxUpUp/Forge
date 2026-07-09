@@ -22,12 +22,12 @@
     "AssertionChecked": true
   },
   "expected": {
-    "overall": 27.25,
+    "overall": 28,
     "grade": "F",
     "dimensions": {
       "assertions": 0,
       "code-quality": 0,
-      "efficiency": 40,
+      "efficiency": 55,
       "process": 55,
       "scope": 40,
       "testing": 30

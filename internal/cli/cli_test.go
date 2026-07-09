@@ -686,7 +686,8 @@ func TestCompleteBlocksOnPendingMandatoryReview(t *testing.T) {
 
 	// Resolve the review, then complete MUST succeed (active task ref survived
 	// the failed complete, so the task is still completable).
-	stdout, _, code = runForge(t, tmpDir, "experience", "resolve", ref)
+	// resolve mandatory review 需 --reason（dogfood 2.2：防零成本绕过经验闭环）。
+	stdout, _, code = runForge(t, tmpDir, "experience", "resolve", ref, "--reason", "测试解除阻塞：已人工审阅无新规则可沉淀")
 	if code != 0 {
 		t.Fatalf("forge experience resolve failed: %s", stdout)
 	}

@@ -25,7 +25,7 @@ func goldenRealDir(t *testing.T) string {
 // realCases 是从真实 dogfood 任务反推的 EvaluateInput，验证「真实协作记录→golden→CI
 // 比对」链路。数据来自 DataDir/tasks/feat-review-snapshot.json 的 Score.Dimensions：
 // process 100 (3/3, 0 retries) / testing 77 (2/3 covered, 167 assertions) /
-// scope 80 (166 行 Medium) / efficiency 40 (61 min) / code-quality+assertions 100。
+// scope 80 (166 行 Medium) / efficiency 55 (61 min) / code-quality+assertions 100。
 //
 // GitDiffStat 用「100\t66\tstamp.go」模拟 166 行（真实 numstat 未在 TaskState 快照，
 // 用同 totalLines 的等价输入）——spike 验证机制；生产采集器应在 task score 完成那刻

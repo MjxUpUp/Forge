@@ -278,7 +278,7 @@ func TestResolveReview_ResolvesIndependently(t *testing.T) {
 		t.Fatalf("SaveReview: %v", err)
 	}
 	// No proposals exist for this review — resolve must still work.
-	if err := ResolveReview(tmpRoot, taskRef); err != nil {
+	if err := ResolveReview(tmpRoot, taskRef, "测试用：无 proposal 兜底解除"); err != nil {
 		t.Fatalf("ResolveReview: %v", err)
 	}
 	loaded, err := LoadReview(tmpRoot, taskRef)
