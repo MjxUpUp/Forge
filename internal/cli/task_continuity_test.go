@@ -37,6 +37,7 @@ func TestRenderResumeSections(t *testing.T) {
 		"参与工具", "claude-code", "pi",
 		"门禁进度",
 		"M internal/db/pool.go",
+		"session-continuity",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("resume 输出应含 %q\n---OUTPUT---\n%s", want, out)
