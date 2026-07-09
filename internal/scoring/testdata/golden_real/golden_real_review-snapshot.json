@@ -24,12 +24,12 @@
     "EvidenceAgentClaim": 2
   },
   "expected": {
-    "overall": 89.25,
-    "grade": "B",
+    "overall": 90,
+    "grade": "A",
     "dimensions": {
       "assertions": 100,
       "code-quality": 100,
-      "efficiency": 40,
+      "efficiency": 55,
       "process": 100,
       "scope": 80,
       "testing": 77

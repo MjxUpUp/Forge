@@ -164,8 +164,8 @@ func TestScoreEfficiency_Slow(t *testing.T) {
 	start := time.Now().Add(-90 * time.Minute)
 	end := time.Now()
 	result := scoreEfficiency(start, end)
-	if result.Score != 40 {
-		t.Fatalf("expected 40 (slow), got %d: %s", result.Score, result.Detail)
+	if result.Score != 55 {
+		t.Fatalf("expected 55 (slow, 90min ≤120 bucket), got %d: %s", result.Score, result.Detail)
 	}
 }
 

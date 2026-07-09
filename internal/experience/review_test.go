@@ -297,7 +297,7 @@ func TestPendingMandatory(t *testing.T) {
 	}
 
 	// Once resolved → no longer blocked (the complete-unblocking path).
-	if err := ResolveReview(root, "low/score"); err != nil {
+	if err := ResolveReview(root, "low/score", "已成约人工确认，无新规则可沉淀"); err != nil {
 		t.Fatalf("ResolveReview: %v", err)
 	}
 	if _, ok := PendingMandatory(root, "low/score"); ok {
