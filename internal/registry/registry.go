@@ -122,3 +122,29 @@ func Add(absPath string) error {
 	f.Projects = append(f.Projects, ap)
 	return writeFile(p, f.Projects)
 }
+
+// Prune 显式精简全局注册表：移除 .forge/ 不存在的死路径 + JSON 内重复条目，原子写回。
+// 返回 (pruned, remain)：pruned=本次移除条数（死路径+重复），remain=保留的活跃项目数。
+//
+// 与 List() 的惰性精简同逻辑，但显式触发并返回计数——List 只在 forge dashboard --global
+// 读时精简（且该命令启 web server 阻塞），普通用户无从主动清理。Prune 给 forge registry
+// prune 提供不启动 web 的清理入口（dogfood registry 历史残留清理的治本缺口）。
+//
+// 无注册表文件或 JSON 损坏时返回 (0,0,nil)——与 List 一致（空=无项目，非错误）。
+func Prune() (pruned, remain int, err error) {
+	p, err := globalPath()
+	if err != nil {
+		return 0, 0, err
+	}
+	data, rerr := os.ReadFile(p)
+	if rerr != nil {
+		return 0, 0, nil // 无注册表文件
+	}
+	var f File
+	if json.Unmarshal(data, &f) != nil {
+		return 0, 0, nil // 损坏 JSON：与 List 一致不致命（List 也返回 nil）
+	}
+	before := len(f.Projects)
+	remain = len(List()) // List 精简写回（去死路径+去重+排序+原子 rename）
+	return before - remain, remain, nil
+}
