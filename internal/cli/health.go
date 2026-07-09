@@ -2,10 +2,12 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/act"
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/health"
 	"github.com/spf13/cobra"
 )
@@ -29,6 +31,13 @@ var healthCmd = &cobra.Command{
 func runHealth(cmd *cobra.Command, args []string) error {
 	proj, err := findProject()
 	if err != nil {
+		// dogfood 5.2：未 init / 非 git 目录裸报 "forgedata: cwd is not in a git repository"
+		// 让用户困惑（AwesomeMutiAgent 1 session 放弃）。友好提示而非裸 error。
+		if errors.Is(err, forgedata.ErrNotInGitRepo) {
+			fmt.Println("forge health 需在 git 项目内运行（聚合 ~/.forge/projects/<key>/ 的任务结论）。")
+			fmt.Println("当前目录不是 git 仓库。先 'git init' 再 'forge init' 启用，或切换到 git 项目目录。")
+			return nil
+		}
 		return err
 	}
 	cs, err := act.LoadAll(proj)

@@ -306,6 +306,13 @@ if [ "$CODE" -eq 0 ]; then
   exit 0
 fi
 
+# dogfood 1.1 fail-open 诊断：gate 异常（exit≠0 且空 stdout，非正常 NeedReview 的
+# exit=1 带指引）时补可读理由，避免 block Stop 但 additionalContext 为空让 agent
+# 不知为何被拦。CODE=1 正常路径 OUTPUT 非空，不触发兜底。
+if [ -z "$OUTPUT" ]; then
+  OUTPUT="forge review gate 异常（exit $CODE 无输出）——运行 'forge review status' 诊断。"
+fi
+
 # FAIL：block Stop。stdout（gate 已打印审查指引）成为 AdditionalContext，
 # 指引 agent 加载 code-review-gate、派只读子 agent 审查、forge review pass。
 echo "$OUTPUT"
@@ -356,8 +363,14 @@ if [ -z "$TASK_REF" ]; then
       exit 0
     fi
   fi
-  # On master/main or auto-creation failed: warn but allow
-  echo "WARN [task-guard] No active task. Source changes are allowed but not tracked by a Forge task."
+  # On master/main or auto-creation failed: warn but allow.
+  # dogfood 3.1：每源文件 Edit 注入 WARN 刷屏（AgentWorld 139 次）。会话级标记文件，
+  # 每会话首条 WARN 提示改动不被任务追踪，之后静默。标记键控 FORGE_SESSION_ID 隔离并发会话。
+  NOWARN_FILE="${TMPDIR:-/tmp}/forge-taskguard-nowarn-${FORGE_SESSION_ID:-default}"
+  if [ ! -f "$NOWARN_FILE" ]; then
+    touch "$NOWARN_FILE" 2>/dev/null || true
+    echo "WARN [task-guard] No active task. Source changes are allowed but not tracked by a Forge task.（本会话仅提示一次）"
+  fi
   exit 0
 fi
 
@@ -466,8 +479,14 @@ else
 fi
 
 # --- WARN on write without active task (allowed, just not tracked) ---
+# dogfood 3.1：每写命令注入 WARN 刷屏。会话级标记文件，每会话首条提示，之后静默。
+# 只读命令（ls/cat/grep/git status）IS_WRITE_CMD=0 不进此分支，本就静默。
 if [ $IS_WRITE_CMD -eq 1 ] && [ -z "$TASK_REF" ]; then
-  echo "WARN [bash-guard] Bash write without active task. Changes are allowed but not tracked."
+  NOWARN_FILE="${TMPDIR:-/tmp}/forge-bashguard-nowarn-${SESSION_ID}"
+  if [ ! -f "$NOWARN_FILE" ]; then
+    touch "$NOWARN_FILE" 2>/dev/null || true
+    echo "WARN [bash-guard] Bash write without active task. Changes are allowed but not tracked.（本会话仅提示一次）"
+  fi
   exit 0
 fi
 
@@ -609,7 +628,11 @@ is_hazardous() {
   # SQL 破坏性 DDL / 权限滥用（大小写已归一为 lower）
   case "$lower" in
     *"drop database"*|*"drop table"*|*"drop schema"*) return 0 ;;
-    *"truncate"*) return 0 ;;
+    # dogfood 3.2：裸 "truncate" 子串误伤路径片段（cd truncate-dir / --no-truncate flag）。
+    # 收窄到 SQL DDL 语境。MySQL/PG 的 TABLE 关键字可选（TRUNCATE users ≡ TRUNCATE TABLE
+    # users，都破坏性清表），故第三分支匹配 "truncate " + 标识符首字符 [a-zA-Z_]（表名起首）；
+    # 不匹配 coreutils truncate（-s/--size，- 非 alpha/_）与连字符路径片段（truncate-dir 无空格）。
+    *"truncate table"*|*"truncate database"*|*"truncate "[a-zA-Z_]*) return 0 ;;
     *"grant all"*) return 0 ;;
     *"grant"*" to public"*) return 0 ;;
   esac
@@ -637,12 +660,17 @@ is_hazardous() {
 strip_quotes() {
   printf '%s' "$1" | awk '
     {
-      sq=0; dq=0; out=""
+      sq=0; dq=0; out=""; prev=""
       for(i=1;i<=length($0);i++){
         c=substr($0,i,1)
-        if(c=="\x27"){sq=!sq; continue}
-        if(c=="\""){dq=!dq; continue}
+        if(c=="\x27"){sq=!sq; prev=c; continue}
+        if(c=="\""){dq=!dq; prev=c; continue}
+        # dogfood 3.2：# 注释行（非引号内、词边界处）剥到行尾。electron-builder "# Clean up"
+        # 含危险串的注释被当执行误拦。prev 判定词边界（空格/行首/tab/;/|/&/( ）——# 紧跟
+        # 非空白（如 foo#bar）是字面 #，非注释，不剥（其后的危险串仍被 is_hazardous 命中）。
+        if(!sq && !dq && c=="#" && (prev==" "||prev==""||prev=="\t"||prev==";"||prev=="|"||prev=="&"||prev=="(")) break
         if(!sq && !dq) out=out c
+        prev=c
       }
       print out
     }'
@@ -675,14 +703,14 @@ if ! is_hazardous "$COMMAND"; then
   exit 0
 fi
 
-# --- context classification：危险串是数据（引号内）还是执行 ---
-# is_hazardous 命中后，剥离引号再判一次：剥离后不再命中 → 危险串都在引号里（数据），
-# 且命令非执行包裹（bash -c/eval/pipe-shell）→ 放行。根治 grep "rm -rf" /
-# git commit -m "fix rm -rf bug" 类误判（2026-06 类别级；.lark-report 是其单点表现）。
+# --- context classification：危险串是数据（引号内 / 注释行）还是执行 ---
+# is_hazardous 命中后，剥离引号与注释再判一次：剥离后不再命中 → 危险串都在引号里或注释里
+# （数据上下文），且命令非执行包裹（bash -c/eval/pipe-shell）→ 放行。根治 grep "rm -rf" /
+# git commit -m "fix rm -rf bug" / make build 注释含 rm -rf 类误判。
 STRIPPED=$(strip_quotes "$COMMAND")
 if [ "$STRIPPED" != "$COMMAND" ] && ! is_hazardous "$STRIPPED" && ! is_exec_wrapped "$COMMAND"; then
   forge hazard log data "$COMMAND" >/dev/null 2>&1 || true
-  echo "PASS [hazard-guard] 危险串仅在引号内（数据上下文），放行: $COMMAND"
+  echo "PASS [hazard-guard] 危险串仅在引号内或注释行（数据上下文），放行: $COMMAND"
   exit 0
 fi
 

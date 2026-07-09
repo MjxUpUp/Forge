@@ -501,3 +501,68 @@ func TestHook_HazardGuard_RmSubstringInWordNotHazardous(t *testing.T) {
 		}
 	}
 }
+
+// TestHook_HazardGuard_CommentNotBlocked 钉死 dogfood 3.2a：危险串在 # 注释行（非引号内、
+// 词边界处）是数据不执行，应放行。electron-builder "# Clean up" 含 rm 的注释被当执行误拦
+// （AgentWorld 误报之一）。strip_quotes 增加 # 注释剥离：make build # rm -rf build/ 中
+// rm -rf 在注释里 → 剥离后 is_hazardous 不命中 → 数据上下文放行。
+// 回归保护：注释后真执行的危险串（如 # note ; rm -rf x 的分号续接）本测试不覆盖，留给
+// code-review-gate——hook 只对纯注释行（# 到行尾无分号续接）放行。
+func TestHook_HazardGuard_CommentNotBlocked(t *testing.T) {
+	dir := freshProject(t)
+	cases := []string{
+		`make build # rm -rf build/ then rebuild`,
+		`npm run dev # todo: drop table users after migrate`,
+		`./deploy.sh # git push --force if rollback needed`,
+	}
+	for _, cmd := range cases {
+		in := hookStdin(t, "sess-hazard-comment", "PreToolUse", "Bash", map[string]any{
+			"command": cmd,
+		})
+		stdout, _, err := forgeHook(t, dir, "hazard-guard", in)
+		if err != nil {
+			t.Fatalf("hazard-guard must pass %q (danger only in # comment), got block. stdout:\n%s", cmd, stdout)
+		}
+	}
+}
+
+// TestHook_HazardGuard_TruncatePathNotBlocked 钉死 dogfood 3.2b：裸 "truncate" 子串匹配
+// 误伤路径片段（cd truncate-output/ / --no-truncate flag）。收窄到 SQL DDL 语境后这些
+// 必须放行，且真 TRUNCATE TABLE 仍必须 block（收窄不能放过真 DDL）。
+func TestHook_HazardGuard_TruncatePathNotBlocked(t *testing.T) {
+	dir := freshProject(t)
+	// 路径/flag 片段含 truncate 子串——非 SQL DDL，放行
+	pass := []string{
+		`cd truncate-output/`,
+		`pytest --no-truncate`,
+		`cat ./logs/truncate-event.log`,
+	}
+	for _, cmd := range pass {
+		in := hookStdin(t, "sess-hazard-truncpath", "PreToolUse", "Bash", map[string]any{
+			"command": cmd,
+		})
+		stdout, _, err := forgeHook(t, dir, "hazard-guard", in)
+		if err != nil {
+			t.Fatalf("hazard-guard must pass %q (truncate is a path/flag fragment, not SQL DDL), got block. stdout:\n%s", cmd, stdout)
+		}
+	}
+	// 回归：真 SQL TRUNCATE TABLE 仍必须 block——收窄不能放过破坏性 DDL
+	// 含裸 TRUNCATE（MySQL/PG 的 TABLE 关键字可选，TRUNCATE users ≡ TRUNCATE TABLE users）。
+	block := []string{
+		`mysql -e 'TRUNCATE TABLE users'`,
+		`psql -c 'truncate table audit_log'`,
+		`mysql -e 'TRUNCATE users'`,
+	}
+	for _, cmd := range block {
+		in := hookStdin(t, "sess-hazard-truncsql", "PreToolUse", "Bash", map[string]any{
+			"command": cmd,
+		})
+		stdout, _, err := forgeHook(t, dir, "hazard-guard", in)
+		if err == nil {
+			t.Fatalf("hazard-guard must still block %q (real TRUNCATE TABLE DDL), got exit 0. stdout:\n%s", cmd, stdout)
+		}
+		if !strings.Contains(stdout, `"decision":"block"`) {
+			t.Errorf("expected decision=block for %q, got:\n%s", cmd, stdout)
+		}
+	}
+}
