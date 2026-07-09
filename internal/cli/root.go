@@ -60,6 +60,17 @@ func SetVersion(v, c, d string) {
 }
 
 func Execute() {
+	// graceful degradation (resilience §2.6 模式7 fail-open)：panic 时输出诊断到 stderr +
+	// exit 2，保证 forge CLI 永不裸奔。dogfood 1.1：forge CLI panic 后偶发空 stdout 致
+	// 解析端 EOF（DevWorkbench 159 次）。panic recovery 是 forge 侧收口——agent 看到
+	// exit 2 + stderr 诊断而非静默崩溃。stdout 不输出（避免污染各命令输出语义）；hook
+	// 命令的 stdout JSON 兜底由 runHook 负责（hook.go 永远输出合法 JSON）。
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "forge: internal panic: %v\n", r)
+			os.Exit(2)
+		}
+	}()
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
