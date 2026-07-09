@@ -902,7 +902,30 @@ fi
 # appear under one, the snapshot diff is unreliable (partial snapshot, external
 # editor, or another process), not a Bash-written violation. Fail-open to avoid
 # destroying existing uncommitted work on an unprovable violation.
+#
+# dogfood 2.3 grace carve-out: forge task complete clears the active-task
+# ref so the immediate 'git commit' (a source write) would otherwise hit the
+# quarantine branch below. Within the post-complete grace window (5min default,
+# written by runTaskComplete via taskpipeline.MarkCompleteGrace) we tolerate
+# the write with WARN — bounded by the in-file epoch stamp, naturally expired.
+# Existing fallback prompts the agent to start a new task on the NEXT source
+# write outside the window.
 if [ -z "$TASK_REF" ] && [ -n "$SOURCE_CHANGES" ]; then
+  if [ $IS_FORGE_CMD -eq 0 ] && [ -n "$SESSION_ID" ] && [ "$SESSION_ID" != "default" ]; then
+    _GRACE_BASE="$(forge data-dir 2>/dev/null || true)"
+    if [ -n "$_GRACE_BASE" ]; then
+      _GRACE_FILE="${_GRACE_BASE}/.task-complete-grace-${SESSION_ID}"
+      if [ -f "$_GRACE_FILE" ]; then
+        _MTIME=$(tr -d '[:space:]' < "$_GRACE_FILE" 2>/dev/null)
+        _NOW=$(date +%s)
+        if [ -n "$_MTIME" ] && [ "$_MTIME" -gt 0 ] 2>/dev/null && [ $((_NOW - _MTIME)) -lt 300 ]; then
+          echo "WARN [file-sentinel] Source write within post-complete grace window (300s): ${SOURCE_CHANGES}. Run 'forge task start' before the next source write to restore strict checks."
+          echo "PASS"
+          exit 0
+        fi
+      fi
+    fi
+  fi
   if [ $IS_WRITE_CMD -eq 0 ]; then
     echo "WARN [file-sentinel] Source changes present but the Bash command was read-only — diff unreliable (partial snapshot / external interference), skipping quarantine to protect existing work:${SOURCE_CHANGES}"
     echo "PASS"

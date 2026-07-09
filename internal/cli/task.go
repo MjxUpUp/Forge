@@ -1008,6 +1008,16 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 	if err := taskpipeline.ClearActiveTaskRef(root, taskpipeline.CurrentSessionID()); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to clear active task ref: %v\n", err)
 	}
+	// dogfood 2.3: post-complete grace sentinel so file-sentinel doesn't quarantine
+	// the natural follow-up git commit as "no active task + source write". The
+	// previous sequence forced agents to open a chore/*-commit task purely to
+	// dance around this trap (DevWorkbench: 3 such tasks, ~600 calls). The grace
+	// window is bounded (5min default, see completeGraceWindow); outside it the
+	// existing quarantine policy resumes — a "complete" session that keeps writing
+	// source for 30+ minutes is no longer complete and should start a new task.
+	if err := taskpipeline.MarkCompleteGrace(root, taskpipeline.CurrentSessionID()); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to mark complete grace: %v\n", err)
+	}
 
 	return nil
 }

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -143,6 +144,45 @@ func ClearActiveTaskRef(root, sessionID string) error {
 		return err
 	}
 	return nil
+}
+
+// completeGraceFile is the sentinel name (prefixed) written by MarkCompleteGrace
+// inside DataDir. Per-session; expired by timestamp check, never explicitly
+// deleted — stale stamps are harmless because file-sentinel compares the
+// in-file epoch against NOW. dogfood 2.3.
+const completeGraceFile = ".task-complete-grace"
+
+// completeGraceWindow bounds how long after `forge task complete` file-sentinel
+// tolerates the natural follow-up `git commit` instead of quarantining it as
+// "no active task + source write". 5min covers the realistic sequence (commit
+// + maybe push). Longer windows invite abuse: a "complete" session that keeps
+// writing source for 30+ minutes is no longer "complete" — start a new task.
+const completeGraceWindow = 5 * time.Minute
+
+// CompleteGracePath returns the per-session sentinel file path under DataDir.
+// Exported so file-sentinel (in embed.go) can mirror the path and read the
+// in-file timestamp without depending on mtime stat (which differs between
+// GNU and BSD `stat`).
+func CompleteGracePath(root, sessionID string) string {
+	if sessionID != "" {
+		safeID := util.SanitizeSessionID(sessionID)
+		return filepath.Join(dataHome(root), completeGraceFile+"-"+safeID)
+	}
+	return filepath.Join(dataHome(root), completeGraceFile)
+}
+
+// MarkCompleteGrace records the current epoch timestamp at CompleteGracePath.
+// Called by `forge task complete` immediately after ClearActiveTaskRef. The
+// file's content is the epoch-seconds integer (newline-terminated) so
+// file-sentinel can compare NOW - stamp < completeGraceWindow without stat.
+// Returns nil silently when sessionID is empty (no session context → no grace;
+// bounded write only happens in this rare case so we don't fail loudly).
+func MarkCompleteGrace(root, sessionID string) error {
+	if sessionID == "" {
+		return nil
+	}
+	stamp := strconv.FormatInt(time.Now().Unix(), 10) + "\n"
+	return util.AtomicWrite(CompleteGracePath(root, sessionID), []byte(stamp), 0644)
 }
 
 // ReadActiveTaskRef reads the active task ref from the (session-scoped) file.
