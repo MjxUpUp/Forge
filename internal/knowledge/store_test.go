@@ -2,6 +2,7 @@ package knowledge
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -353,5 +354,98 @@ func TestAddEntry_DedupeCleansHistory(t *testing.T) {
 	}
 	if len(idx.Entries) != 2 {
 		t.Errorf("总条数=%d want 2（T×1 + Other×1）", len(idx.Entries))
+	}
+}
+
+// TestAddEntry_DedupeFoldsHistoryData 钉死 F1：dedupeByTitle 收敛历史同 key 重复时，必须把
+// 每个被删项的 Patterns/Source/CreatedAt 折叠进保留项，不能直接删除丢弃数据。dogfood 147 条
+// 现状下各重复 patterns 相同（无影响），但这是通用路径——用户手工加同 title 不同 patterns 的
+// 条目会被静默丢真实数据。审查探针证实现实现只合并首条 + incoming，删其余不合并。
+func TestAddEntry_DedupeFoldsHistoryData(t *testing.T) {
+	setHomeTemp(t)
+	base := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	idx := &Index{Version: "2.0", Entries: []Entry{
+		{ID: "h1", Category: "gotchas", Title: "T", Description: "D", Patterns: []string{`only-in-h1`}, Source: "src:h1", CreatedAt: base.Add(2 * time.Hour)},
+		{ID: "h2", Category: "gotchas", Title: "T", Description: "D", Patterns: []string{`only-in-h2`}, Source: "src:h2", CreatedAt: base.Add(3 * time.Hour)},
+		{ID: "h3", Category: "gotchas", Title: "T", Description: "D", Patterns: []string{`only-in-h3`}, Source: "src:h3", CreatedAt: base.Add(4 * time.Hour)},
+	}}
+	incoming := Entry{ID: "new", Category: "gotchas", Title: "T", Description: "D", Patterns: []string{`pnew`}, Source: "src:new", CreatedAt: base}
+	if err := idx.AddEntry(incoming); err != nil {
+		t.Fatal(err)
+	}
+	if len(idx.Entries) != 1 {
+		t.Fatalf("len=%d want 1（4 同 title 应收敛为 1）", len(idx.Entries))
+	}
+	got := idx.Entries[0]
+	wantPats := map[string]bool{`only-in-h1`: true, `only-in-h2`: true, `only-in-h3`: true, `pnew`: true}
+	if len(got.Patterns) != 4 {
+		t.Errorf("Patterns=%v want 4（h1/h2/h3/new 各 1，全 union 不丢历史数据）", got.Patterns)
+	}
+	for _, p := range got.Patterns {
+		if !wantPats[p] {
+			t.Errorf("unexpected pattern %q（历史重复的 pattern 必须折叠进保留项）", p)
+		}
+	}
+	for _, s := range []string{"src:h1", "src:h2", "src:h3", "src:new"} {
+		if !strings.Contains(got.Source, s) {
+			t.Errorf("Source=%q 缺 %q（历史重复的 source 必须折叠进保留项，不能随删除丢弃）", got.Source, s)
+		}
+	}
+	// CreatedAt 取最早（incoming base 早于 h1/h2/h3）
+	if !got.CreatedAt.Equal(base) {
+		t.Errorf("CreatedAt=%v want 最早 %v（应折叠进所有条目的最早时间）", got.CreatedAt, base)
+	}
+}
+
+// TestAddEntry_MergeNoOrphanMD 钉死 F2：合并分支不能泄漏孤立 incoming .md。同 title 多次
+// accept（不同 ID），磁盘 patterns/ 下只应有最终保留 ID（首条）的 1 个 .md，非每个 incoming.ID
+// 各留一个。审查探针证实旧实现每个 accept 都写 incoming.ID.md，合并后 index 指向 base.ID，
+// incoming.ID.md 永不被引用 → dogfood 6 模板 ×24 accept 残留 ~144 孤立 .md。
+func TestAddEntry_MergeNoOrphanMD(t *testing.T) {
+	home := setHomeTemp(t)
+	idx := &Index{Version: "2.0"}
+	for i, id := range []string{"exp-aaa", "exp-bbb", "exp-ccc"} {
+		if err := idx.AddEntry(Entry{
+			ID:          id,
+			Category:    "patterns",
+			Title:       "新代码配测试",
+			Description: "D",
+			Patterns:    []string{fmt.Sprintf("p%d", i)},
+			Source:      fmt.Sprintf("auto:t%d", i),
+			CreatedAt:   time.Date(2026, 7, 1, i, 0, 0, 0, time.UTC),
+		}); err != nil {
+			t.Fatalf("AddEntry(%s): %v", id, err)
+		}
+	}
+	if len(idx.Entries) != 1 {
+		t.Fatalf("len=%d want 1（同 title+category 合并）", len(idx.Entries))
+	}
+	keepID := idx.Entries[0].ID
+	catDir := filepath.Join(home, ".forge", "knowledge", "patterns")
+	entries, err := os.ReadDir(catDir)
+	if err != nil {
+		t.Fatalf("ReadDir(%s): %v", catDir, err)
+	}
+	var mdFiles []string
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".md") {
+			mdFiles = append(mdFiles, e.Name())
+		}
+	}
+	if len(mdFiles) != 1 {
+		t.Fatalf("patterns/ 下 .md=%v want 1 个（只 %s.md，无孤立 incoming .md）", mdFiles, keepID)
+	}
+	if mdFiles[0] != keepID+".md" {
+		t.Errorf("md 文件名=%q want %s.md（应是最终保留 ID，非 incoming ID）", mdFiles[0], keepID)
+	}
+	// 保留项 .md 内容应是合并后的（含所有 accept 的 pattern），非首条孤立内容
+	data, err := os.ReadFile(filepath.Join(catDir, mdFiles[0]))
+	if err != nil {
+		t.Fatalf("read md: %v", err)
+	}
+	for _, p := range []string{"p0", "p1", "p2"} {
+		if !strings.Contains(string(data), p) {
+			t.Errorf("保留 .md 缺 pattern %q（应是合并后内容，含所有 accept 的 pattern）", p)
+		}
 	}
 }
