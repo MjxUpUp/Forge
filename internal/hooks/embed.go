@@ -224,10 +224,17 @@ is_code_file() {
 
 MESSAGES=""
 
-# Task gate check
-forge task gate task-verify --silent >/dev/null 2>&1 || {
+# Task gate check — capture gate output so executor stderr advisories
+# (test-coverage / scope-drift) reach MESSAGES instead of being discarded.
+# dogfood 4.2 + 2.1: test-coverage advisory carries test-discipline guidance
+# and must surface here for parity with the act-nudge channel below.
+GATE_OUT=$(forge task gate task-verify --silent 2>&1) || {
   MESSAGES="${MESSAGES}[task-gate] Task verify gate not yet passed. "
 }
+ADV=$(printf '%s' "$GATE_OUT" | grep -F '[task-verify] Advisory' || true)
+if [ -n "$ADV" ]; then
+  MESSAGES="${MESSAGES}${ADV} "
+fi
 
 # Pending mandatory reviews
 if REVIEW_OUTPUT=$(forge experience list 2>/dev/null); then
