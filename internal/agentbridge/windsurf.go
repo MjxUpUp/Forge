@@ -100,6 +100,7 @@ func buildWindsurfHooks() map[string]any {
 			},
 			"session_start": {
 				{Command: "forge hook skill-scan", ShowOutput: false},
+				{Command: "forge hook mcp-scan", ShowOutput: false},
 				{Command: "forge hook init-suggest", ShowOutput: false},
 				{Command: "forge hook task-resume", ShowOutput: false},
 			},

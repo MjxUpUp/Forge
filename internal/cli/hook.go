@@ -153,14 +153,15 @@ func resolveHookAgent(flagVal, envVal string) string {
 
 // isGlobalHook reports whether a hook runs independent of a forge project.
 // Global hooks scan $HOME-level state (skill-scan → ~/.claude/skills) or cwd-level
-// state (init-suggest → detects whether cwd is a forge candidate), both of which are
-// relevant in any project — so runHook must not silently skip them when
-// findProjectRoot fails (non-forge project). init-suggest in particular MUST run in
-// non-forge projects: that's where it discovers forge-candidate projects to suggest
-// init for. Project-scoped hooks (task-guard, file-sentinel, etc.) keep the original
-// allow-and-exit behavior.
+// state (init-suggest → detects whether cwd is a forge candidate; mcp-scan → scans
+// the project-level .mcp.json), all of which are relevant in any project — so runHook
+// must not silently skip them when findProjectRoot fails (non-forge project).
+// init-suggest and mcp-scan in particular MUST run in non-forge projects: that's where
+// init-suggest discovers forge-candidate projects, and mcp-scan catches malicious
+// .mcp.json in projects the user clones (which may never run forge init). Project-scoped
+// hooks (task-guard, file-sentinel, etc.) keep the original allow-and-exit behavior.
 func isGlobalHook(name string) bool {
-	return name == "skill-scan" || name == "init-suggest"
+	return name == "skill-scan" || name == "init-suggest" || name == "mcp-scan"
 }
 
 func runHook(cmd *cobra.Command, args []string) error {
