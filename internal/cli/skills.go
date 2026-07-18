@@ -17,7 +17,7 @@ var skillsCmd = &cobra.Command{
 
 子命令：
   list          列出 canonical 库中的 skill
-  validate      R1-R9 规范校验（exit code 编码结果）
+  validate      R1-R11 规范校验（exit code 编码结果）
   audit         19 条安全规则审查
   install       分发到全局/项目目标（link/copy）
   drift-check   检测分发分叉（dry-run）

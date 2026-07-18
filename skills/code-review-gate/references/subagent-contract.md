@@ -1,5 +1,15 @@
 # 子 agent 预设契约
 
+## 目录
+
+- [为什么必须独立上下文](#为什么必须独立上下文)
+- [规模 → 1 还是 2](#规模-1-还是-2)
+- [契约 1：`cheat-detector`（轨道 A — AI 作弊指纹）](#契约-1cheat-detector轨道-a-ai-作弊指纹)
+- [契约 2：`eng-reviewer`（轨道 B — 传统工程规范）](#契约-2eng-reviewer轨道-b-传统工程规范)
+- [输出 schema（两个契约共用）](#输出-schema两个契约共用)
+- [派发方式](#派发方式)
+- [约束（硬性）](#约束硬性)
+
 code-review-gate 的双轨审查由**独立只读子 agent** 执行，而非主 agent 自审。本文件定义两个预设契约（`cheat-detector` / `eng-reviewer`）+ 共用输出 schema + 派发方式。
 
 定位：子 agent 预设是 **skill 内部契约**，不是 Forge 分发层——不写进各 agent 的私有 agent 目录（如 `.claude/agents/`），而由主 agent 读本文件后用所在 agent 的子任务机制注入。这样保持 Forge 的多 agent 中立（Claude Code / codex / cursor / windsurf 各自派生，契约相同）。
