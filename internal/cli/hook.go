@@ -102,7 +102,7 @@ type HookOutput struct {
 
 // HookSpecificOutput contains fields that control Claude Code behavior.
 type HookSpecificOutput struct {
-	HookEventName    string `json:"hookEventName"`
+	HookEventName     string `json:"hookEventName"`
 	AdditionalContext string `json:"additionalContext,omitempty"`
 }
 
@@ -296,7 +296,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 		output = HookOutput{Decision: "approve"}
 		if detail != "" {
 			output.HookSpecificOutput = &HookSpecificOutput{
-				HookEventName:    eventName,
+				HookEventName:     eventName,
 				AdditionalContext: truncate(detail, maxAdditionalContextLen),
 			}
 		}
@@ -308,7 +308,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 		output = HookOutput{
 			Decision: "block",
 			HookSpecificOutput: &HookSpecificOutput{
-				HookEventName:    eventName,
+				HookEventName:     eventName,
 				AdditionalContext: truncate(detail, maxAdditionalContextLen),
 			},
 		}

@@ -4,9 +4,9 @@ import "testing"
 
 func TestParseBranchName(t *testing.T) {
 	tests := []struct {
-		branch       string
-		wantRef      string
-		wantSummary  string
+		branch      string
+		wantRef     string
+		wantSummary string
 	}{
 		{"feature/login-flow", "feature/login-flow", "login-flow"},
 		{"fix/PROJ-123-crash", "PROJ-123", "crash"},

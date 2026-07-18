@@ -11,8 +11,8 @@ import (
 
 // SimilarityResult reports the similarity between two files.
 type SimilarityResult struct {
-	FileA     string  `json:"file_a"`
-	FileB     string  `json:"file_b"`
+	FileA      string  `json:"file_a"`
+	FileB      string  `json:"file_b"`
 	Similarity float64 `json:"similarity"` // 0.0 to 1.0
 }
 
@@ -72,8 +72,8 @@ func DetectClones(dir, targetPath string, threshold float64) ([]SimilarityResult
 		sim := jaccardSimilarity(targetTokens, tokens)
 		if sim >= threshold {
 			results = append(results, SimilarityResult{
-				FileA:     targetPath,
-				FileB:     path,
+				FileA:      targetPath,
+				FileB:      path,
 				Similarity: sim,
 			})
 		}

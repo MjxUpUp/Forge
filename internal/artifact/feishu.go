@@ -12,17 +12,17 @@ import (
 
 // FeishuConfig holds feishu publishing configuration.
 type FeishuConfig struct {
-	SpaceID        string
+	SpaceID         string
 	ParentNodeToken string
-	Enabled        bool
+	Enabled         bool
 }
 
 // DefaultFeishuConfig returns config from environment variables.
 func DefaultFeishuConfig() FeishuConfig {
 	return FeishuConfig{
-		SpaceID:        os.Getenv("FORGE_FEISHU_SPACE_ID"),
+		SpaceID:         os.Getenv("FORGE_FEISHU_SPACE_ID"),
 		ParentNodeToken: os.Getenv("FORGE_FEISHU_WIKI_NODE"),
-		Enabled:        os.Getenv("FORGE_FEISHU_AUTO_PUBLISH") != "false",
+		Enabled:         os.Getenv("FORGE_FEISHU_AUTO_PUBLISH") != "false",
 	}
 }
 
