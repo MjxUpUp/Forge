@@ -101,6 +101,9 @@ func TestClaudeMDDocumentsSkillScan(t *testing.T) {
 	if !strings.Contains(section, "skill-scan") {
 		t.Error("CLAUDE.md security section missing skill-scan hook")
 	}
+	if !strings.Contains(section, "mcp-scan") {
+		t.Error("CLAUDE.md security section missing mcp-scan hook (project-level .mcp.json scan)")
+	}
 	if !strings.Contains(section, "SessionStart") {
 		t.Error("CLAUDE.md must document skill-scan as a SessionStart hook")
 	}

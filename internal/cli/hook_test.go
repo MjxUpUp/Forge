@@ -441,6 +441,7 @@ func TestIsGlobalHook(t *testing.T) {
 	}{
 		{"skill-scan", true},
 		{"init-suggest", true},
+		{"mcp-scan", true},
 		{"auto-compile", false},
 		{"task-guard", false},
 		{"file-sentinel", false},

@@ -1043,6 +1043,111 @@ else
 fi
 `
 
+const McpScanHook = `#!/bin/bash
+# mcp-scan.sh — SessionStart hook (advisory, non-blocking, global).
+# 会话开始扫描项目级 .mcp.json 的 server 配置安全性。补 skill-scan 盲区:
+# skill-scan 只扫 ~/.claude/skills,但项目级 .mcp.json 在 SessionStart 被各 host
+# 自动加载——攻击者可通过 PR/git 植入恶意 server,用户 clone 项目即自动连接,
+# 是真实攻击面(2025 多起 MCP 供应链事件)。项目级聚焦:用户级 ~/.claude.json 等
+# 是用户自装 server,风险自担,不在范围(全局扫用户级跨 host 路径不一且误报多)。
+#
+# 诚实边界(必读,不声称超出能力):.mcp.json 只含 server 连接配置(command/args/
+# env/url),不含 tool descriptions。真正的 Tool Poisoning(恶意 tool description
+# 注入 agent 上下文)live 在 server 运行时返回的 tool descriptions,config-layer
+# 扫不到。本 hook 只审 config 层可检攻击面:管道执行(curl 管道到 sh)/任意包执行
+# (npx/uvx 远程包)/内联代码(解释器 -c/-e)/非 https URL/env 明文凭证。runtime
+# tool description 注入无 config 信号,只能在使用点察觉,不在本 hook 能力内。
+#
+# advisory:stdout PASS detail 列风险不阻塞(advisory 方向)。全局 hook:不依赖
+# forge project(非 forge 项目的 .mcp.json 正是要发现的)。
+# Protocol: stdout = PASS detail → additionalContext;exit 0 = 放行。
+
+# 起点:FORGE_CWD(cli/hook.go 传 cwd)或回退 $PWD;Windows 反斜杠归一为正斜杠。
+START="${FORGE_CWD:-$PWD}"
+START="${START//\\//}"
+
+# 找 git root(向上找 .git,与 init-suggest 同款;盘符根 %/* 返回原值时 break 防死循环)。
+ROOT=""
+D="$START"
+while [ -n "$D" ] && [ "$D" != "/" ]; do
+  if [ -e "$D/.git" ]; then ROOT="$D"; break; fi
+  NEW="${D%/*}"
+  if [ "$NEW" = "$D" ]; then break; fi
+  D="$NEW"
+done
+
+# 无 git root → 非项目仓库,无项目级 .mcp.json 可审,静默。
+if [ -z "$ROOT" ]; then
+  echo "PASS [mcp-scan] no git project (no project-level .mcp.json to scan, advisory)"
+  exit 0
+fi
+
+MCP_FILE="$ROOT/.mcp.json"
+if [ ! -f "$MCP_FILE" ]; then
+  echo "PASS [mcp-scan] no .mcp.json (advisory)"
+  exit 0
+fi
+
+# 读取失败/空 → 无法判定,静默放行(不撒谎报"全部安全")。
+CONTENT=$(cat "$MCP_FILE" 2>/dev/null)
+if [ -z "$CONTENT" ]; then
+  echo "PASS [mcp-scan] .mcp.json unreadable or empty (advisory)"
+  exit 0
+fi
+
+# --- config-layer 风险检测 ---
+# 全部 case-glob + grep -Fi/grep -qi(BSD 安全:不用 grep -E 交替,参 bash-guard/skill-scan,
+# BSD/macOS grep 在 ERE 交替 abort "Unmatched (")。advisory 方向,宁误报勿漏。
+# 大小写归一便于 URL/command/字段名匹配;[|] 字符类匹配字面管道符(pattern 间 | 才是 alternation)。
+LOWER=$(printf '%s' "$CONTENT" | tr '[:upper:]' '[:lower:]')
+RISKS=""
+
+# 1. 管道执行:curl/wget 管道到 shell —— 远程下载即执行,经典植入形态。
+# \| 转义为字面管道符(参 hazard-guard *git\ push* 的反斜杠转义);不能用 [|],
+# bash case pattern parser 把 | 当 alternation separator,字符类内的 | 也被吞。
+case "$LOWER" in
+  *curl*\|*sh*|*wget*\|*sh*|*curl*\|*bash*|*wget*\|*bash*) RISKS="${RISKS}[pipe-exec] curl/wget 管道到 shell(远程下载即执行)。 ";;
+esac
+
+# 2. 任意包执行:npx/uvx/dlx/bunx 拉远程包执行——供应链/typosquat 风险(包名可仿冒)。
+# 裸 token 不锚空格:JSON 里 command 值是 "npx",npx 后紧跟引号非空格,空格锚定会漏。
+case "$LOWER" in
+  *npx*|*uvx*|*dlx*|*bunx*) RISKS="${RISKS}[pkg-exec] npx/uvx/dlx/bunx 任意远程包(供应链/typosquat)。 ";;
+esac
+
+# 3. 内联代码:解释器 -c/-e 把字符串当代码执行(独立 grep -qi BRE,无 ERE 交替)。
+INLINE=0
+if printf '%s' "$CONTENT" | grep -qi 'python.*-c' || \
+   printf '%s' "$CONTENT" | grep -qi 'node.*-e' || \
+   printf '%s' "$CONTENT" | grep -qi 'ruby.*-e' || \
+   printf '%s' "$CONTENT" | grep -qi 'perl.*-e'; then
+  INLINE=1
+fi
+if [ "$INLINE" = "1" ]; then
+  RISKS="${RISKS}[inline-code] 解释器 -c/-e 内联代码执行。 "
+fi
+
+# 4. 非 https URL:http:// 明文(中间人可篡改 server 响应)。
+if printf '%s' "$CONTENT" | grep -qi 'http://'; then
+  RISKS="${RISKS}[insecure-url] http:// 明文 URL(应为 https)。 "
+fi
+
+# 5. env 明文凭证:JSON key 形如 "token" / "secret" 等。grep -Fi 固定串,大小写不敏感,
+#    多 -e 模式 OR;双引号用 printf 八进制 \042 运行时构造,避开源码 ASCII 双引号
+#    被编辑器腐蚀成弯引号(memory: windows-input-quote-corruption)。
+DQ=$(printf '\042')
+if printf '%s' "$CONTENT" | grep -Fiq -e "${DQ}token${DQ}" -e "${DQ}secret${DQ}" -e "${DQ}api_key${DQ}" -e "${DQ}apikey${DQ}" -e "${DQ}password${DQ}" -e "${DQ}passwd${DQ}" -e "${DQ}credential${DQ}" -e "${DQ}access_key${DQ}"; then
+  RISKS="${RISKS}[env-secret] JSON 含明文凭证字段名(token/secret/key/password,全文 grep -Fi 匹配 server 名/args 也命中,advisory 宁误报)。 "
+fi
+
+if [ -n "$RISKS" ]; then
+  RISKS_SUMMARY=$(printf '%s' "$RISKS" | cut -c1-600)
+  echo "PASS [mcp-scan] Advisory: 项目级 .mcp.json 发现风险信号——${RISKS_SUMMARY}请核查 server 来源是否可信(forge 不阻塞,agent/用户自检)。注:本扫描只审 config 层,runtime tool description 注入(Tool Poisoning)不在能力内。"
+else
+  echo "PASS [mcp-scan] 项目级 .mcp.json 无 config 层风险信号 (advisory; runtime tool description 注入不在扫描范围)"
+fi
+`
+
 const InitSuggestHook = `#!/bin/bash
 # init-suggest.sh — SessionStart hook (advisory, non-blocking, global).
 # 用户级"项目自动 init"检测：装了 forge（plugin/npm）后，用户在任意 git 项目开
