@@ -124,7 +124,7 @@ func containsNewline(s string) bool {
 
 func TestParse_StripsBOM(t *testing.T) {
 	// UTF-8 BOM（\xEF\xBB\xBF）前缀让 ^--- 永不匹配，整个 frontmatter 会被当正文丢失。
-	// Python yaml.safe_load 自动 strip BOM；手写解析必须自己做。守护 R1-R9 不被 BOM 击穿。
+	// Python yaml.safe_load 自动 strip BOM；手写解析必须自己做。守护 R1-R11 不被 BOM 击穿。
 	src := "\xEF\xBB\xBF---\nname: bom\ndescription: d Use when: a. SKIP: b.\n---\nbody\n"
 	fm := Parse([]byte(src))
 	if fm.Name != "bom" {

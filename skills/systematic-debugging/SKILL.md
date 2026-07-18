@@ -1,8 +1,6 @@
 ---
 name: systematic-debugging
-description: >
-  系统化调试方法论。Use when: 遇到任何 bug/测试失败/意外行为/性能问题/构建失败时、准备提修复方案前、已经试过多次修复仍失败时、用户说"卡住了""为什么还不行"时。
-  修复编译错误用 compile-fix-loop，运行时 bug/逻辑错误/诡异行为用本 skill。SKIP: 纯编译错误（用 compile-fix-loop）、纯测试质量守卫（用 test-discipline）、提技术方案（用 evidence-based-proposal）。
+description: "系统化调试方法论。Use when: 遇到任何 bug/测试失败/意外行为/性能问题/构建失败时、准备提修复方案前、已经试过多次修复仍失败时、用户说\"卡住了\"\"为什么还不行\"时、区分运行时 bug（本 skill）与编译错误（compile-fix-loop）时。SKIP: 纯编译错误（用 compile-fix-loop）、纯测试质量守卫（用 test-discipline）、提技术方案（用 evidence-based-proposal）。"
 metadata:
   pattern: pipeline + gate
   domain: debugging

@@ -1,5 +1,22 @@
 # Deep Research Engine — 调研内核规范
 
+## 目录
+
+- [工序 0 — 模式判定（详版）](#工序-0-模式判定详版)
+- [文件命名与通信约定](#文件命名与通信约定)
+- [工序 F — 文件 Intake & 深析（仅文件 only / 文件增强模式）](#工序-f-文件-intake-深析仅文件-only-文件增强模式)
+- [工序 1 — 起步勘察（按模式分走法）](#工序-1-起步勘察按模式分走法)
+- [工序 2 — 课题切分](#工序-2-课题切分)
+- [工序 3 — 并行深挖](#工序-3-并行深挖)
+- [工序 4 — 互证分级](#工序-4-互证分级)
+- [工序 5 — 定点消解（条件触发）](#工序-5-定点消解条件触发)
+- [工序 6 — 跨维洞察](#工序-6-跨维洞察)
+- [Core Principles（适用全工序）](#core-principles适用全工序)
+- [撒网产出契约（工序 1 撒网 worker 写入 `{run_dir}/scan_NN.md` 的格式）](#撒网产出契约工序-1-撒网-worker-写入-run_dirscan_nnmd-的格式)
+- [Facet: <facet 名>](#facet-facet-名)
+- [深挖产出契约（工序 3 worker 写入 `{run_dir}/dive_NN.md` 的格式）](#深挖产出契约工序-3-worker-写入-run_dirdive_nnmd-的格式)
+- [Dimension <NN>: <维度名>](#dimension-nn-维度名)
+
 本文件是 `research-workflow` Phase 1 的完整执行规范。主文件 SKILL.md 给主控要点，
 执行 worker spawn / 路由判定 / 信度分级 / 矛盾消解 / 产出契约时**必须读本文件**。
 
