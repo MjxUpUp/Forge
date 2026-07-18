@@ -25,7 +25,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"sort"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -153,8 +153,8 @@ func buildData(rows []TaskRow, cs []act.Conclusion, activeTask string, isGlobal 
 	// 折线按时间序：全局视图下 cs 是多项目合并（按 roots 顺序 append，非时间序），必须按
 	// CompletedAt 稳定排序后再喂 scoreLine（其 X 坐标按索引等分映射，索引即时间序）。
 	// 单项目 cs 本就 chronological，稳定排序不改变其顺序。Summarize/recentRows 顺序无关，不受影响。
-	sort.SliceStable(cs, func(i, j int) bool {
-		return cs[i].CompletedAt.Before(cs[j].CompletedAt)
+	slices.SortStableFunc(cs, func(a, b act.Conclusion) int {
+		return a.CompletedAt.Compare(b.CompletedAt)
 	})
 	summary := health.Summarize(cs)
 	return Data{
@@ -178,8 +178,8 @@ func buildData(rows []TaskRow, cs []act.Conclusion, activeTask string, isGlobal 
 func recentRows(rows []TaskRow) []TaskRow {
 	recent := make([]TaskRow, len(rows))
 	copy(recent, rows)
-	sort.SliceStable(recent, func(i, j int) bool {
-		return recent[i].CompletedAt.After(recent[j].CompletedAt)
+	slices.SortStableFunc(recent, func(a, b TaskRow) int {
+		return b.CompletedAt.Compare(a.CompletedAt)
 	})
 	if len(recent) > 20 {
 		recent = recent[:20]
@@ -389,11 +389,14 @@ func AggregateContinuity(root string, now time.Time) (ContinuityBoard, error) {
 		}
 		cards = append(cards, c)
 	}
-	sort.SliceStable(cards, func(i, j int) bool {
-		if cards[i].IsComplete != cards[j].IsComplete {
-			return !cards[i].IsComplete
+	slices.SortStableFunc(cards, func(a, b continuityCard) int {
+		if a.IsComplete != b.IsComplete {
+			if !a.IsComplete {
+				return -1
+			}
+			return 1
 		}
-		return cards[i].StartedAt.After(cards[j].StartedAt)
+		return b.StartedAt.Compare(a.StartedAt)
 	})
 	return ContinuityBoard{
 		Project:    projectName(root),

@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -94,7 +94,7 @@ func TestSkillNamesFromChanged_MultipleSkillsSorted(t *testing.T) {
 	}
 	got := skillNamesFromChanged(changed, casesDir)
 	want := []string{"alpha", "zeta"}
-	if !sort.StringsAreSorted(got) || !reflect.DeepEqual(got, want) {
+	if !slices.IsSorted(got) || !reflect.DeepEqual(got, want) {
 		t.Fatalf("got=%v want sorted %v", got, want)
 	}
 }

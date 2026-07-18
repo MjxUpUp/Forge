@@ -5,9 +5,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -533,7 +534,7 @@ func ListSkills(canonical string) ([]string, error) {
 			names = append(names, name)
 		}
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 	return names, nil
 }
 
@@ -607,10 +608,5 @@ func targetDir(name string, global bool, home, projectSkillsDir string) string {
 
 // orderedTargetNames 返回固定排序的目标名（字母序 claude<codex<copilot<cursor<pi），输出稳定。
 func orderedTargetNames(m map[string]string) []string {
-	names := make([]string, 0, len(m))
-	for k := range m {
-		names = append(names, k)
-	}
-	sort.Strings(names)
-	return names
+	return slices.Sorted(maps.Keys(m))
 }

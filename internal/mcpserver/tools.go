@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -382,7 +382,7 @@ func traceQueryCore(root string, in traceQueryInput) (traceQueryOutput, error) {
 			Summary: fmt.Sprintf("→ %s", c.ToolName),
 		}})
 	}
-	sort.Slice(evs, func(i, j int) bool { return evs[i].t.Before(evs[j].t) })
+	slices.SortFunc(evs, func(a, b rawEv) int { return a.t.Compare(b.t) })
 	for _, e := range evs {
 		out.Events = append(out.Events, e.ev)
 	}

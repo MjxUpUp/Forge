@@ -5,7 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
@@ -91,7 +91,7 @@ func CheckTestCapability(root string) TestCapability {
 			cap.Samples = append(cap.Samples, norm)
 		}
 	}
-	sort.Strings(cap.Samples)
+	slices.Sort(cap.Samples)
 
 	cap.Stack, cap.Recommend = detectStackAndCmd(root)
 	return cap

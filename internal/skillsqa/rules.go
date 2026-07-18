@@ -4,8 +4,9 @@
 package skillsqa
 
 import (
+	"maps"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -60,12 +61,7 @@ var kebabRe = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
 // allowedFmSorted 返回排序后的允许字段列表（R3 issue 文案用，对齐 Python sorted(ALLOWED_FM)）。
 func allowedFmSorted() []string {
-	out := make([]string, 0, len(AllowedFm))
-	for k := range AllowedFm {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
+	return slices.Sorted(maps.Keys(AllowedFm))
 }
 
 // markdownExt 判断是否 markdown 后缀（audit.py AUDITORS_BY_TYPE 的 .md/.markdown）。

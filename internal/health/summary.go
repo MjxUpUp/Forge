@@ -8,7 +8,8 @@
 package health
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/act"
@@ -94,17 +95,17 @@ func Summarize(cs []act.Conclusion) Summary {
 		s.LowDims = append(s.LowDims, DimFreq{Dimension: d, Count: n})
 	}
 	// 频次降序；同频次按维度名稳定排序（可复现输出，便于断言）。
-	sort.Slice(s.LowDims, func(i, j int) bool {
-		if s.LowDims[i].Count != s.LowDims[j].Count {
-			return s.LowDims[i].Count > s.LowDims[j].Count
+	slices.SortFunc(s.LowDims, func(a, b DimFreq) int {
+		if a.Count != b.Count {
+			return cmp.Compare(b.Count, a.Count)
 		}
-		return s.LowDims[i].Dimension < s.LowDims[j].Dimension
+		return cmp.Compare(a.Dimension, b.Dimension)
 	})
 
 	byTime := make([]act.Conclusion, len(cs))
 	copy(byTime, cs)
-	sort.SliceStable(byTime, func(i, j int) bool {
-		return byTime[i].CompletedAt.Before(byTime[j].CompletedAt)
+	slices.SortStableFunc(byTime, func(a, b act.Conclusion) int {
+		return a.CompletedAt.Compare(b.CompletedAt)
 	})
 	s.Span = Span{Earliest: byTime[0].CompletedAt, Latest: byTime[len(byTime)-1].CompletedAt}
 	s.EarlierAvg, s.RecentAvg, s.Trend = trend(byTime)
@@ -143,7 +144,7 @@ func median(xs []float64) float64 {
 	}
 	s := make([]float64, len(xs))
 	copy(s, xs)
-	sort.Float64s(s)
+	slices.Sort(s)
 	n := len(s)
 	if n%2 == 1 {
 		return s[n/2]

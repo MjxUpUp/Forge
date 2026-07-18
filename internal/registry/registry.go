@@ -11,7 +11,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
@@ -69,7 +69,7 @@ func List() []string {
 		seen[ap] = true
 		out = append(out, ap)
 	}
-	sort.Strings(out) // 稳定顺序，看板渲染可复现
+	slices.Sort(out) // 稳定顺序，看板渲染可复现
 	if pruned {
 		_ = writeFile(p, out) // 惰性精简，写失败不影响读
 	}

@@ -3,10 +3,11 @@
 package skillseval
 
 import (
+	"cmp"
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/skillsdist"
@@ -85,7 +86,7 @@ func AnalyzeUsage(canonical, logPath string) (*UsageReport, error) {
 			never = append(never, n)
 		}
 	}
-	sort.Strings(never)
+	slices.Sort(never)
 
 	// canonical 集：HotSkills/UsedSkills 只计 canonical 中存在的 skill，过滤日志里的
 	// "幽灵技能"（canonical 已删但日志残留）——与 NeverTriggered（仅 canonical）对称，
@@ -103,11 +104,11 @@ func AnalyzeUsage(canonical, logPath string) (*UsageReport, error) {
 		hot = append(hot, SkillCount{Name: name, Count: cnt})
 		used++
 	}
-	sort.Slice(hot, func(i, j int) bool {
-		if hot[i].Count != hot[j].Count {
-			return hot[i].Count > hot[j].Count
+	slices.SortFunc(hot, func(a, b SkillCount) int {
+		if a.Count != b.Count {
+			return cmp.Compare(b.Count, a.Count)
 		}
-		return hot[i].Name < hot[j].Name
+		return cmp.Compare(a.Name, b.Name)
 	})
 	if len(hot) > 10 {
 		hot = hot[:10]

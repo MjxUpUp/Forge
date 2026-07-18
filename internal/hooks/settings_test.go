@@ -31,12 +31,12 @@ func TestGenerateSettingsJSONStructure(t *testing.T) {
 		t.Fatalf("failed to read settings file: %v", err)
 	}
 
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("failed to parse JSON: %v", err)
 	}
 
-	hooks, ok := parsed["hooks"].(map[string]interface{})
+	hooks, ok := parsed["hooks"].(map[string]any)
 	if !ok {
 		t.Fatal("missing top-level 'hooks' key or wrong type")
 	}
@@ -171,7 +171,7 @@ func TestWriteHookTemplatesContentMatches(t *testing.T) {
 			t.Fatalf("failed to read %s: %v", tc.filename, err)
 		}
 		content := string(data)
-		if !containsString(content, tc.needle) {
+		if !strings.Contains(content, tc.needle) {
 			t.Errorf("%s: expected to contain %q", tc.filename, tc.needle)
 		}
 	}
@@ -214,19 +214,19 @@ func TestStopHooksIncludeTaskVerify(t *testing.T) {
 }
 
 func TestTaskVerifyHookContainsMasterCheck(t *testing.T) {
-	if !containsString(TaskVerifyHook, "Code changes on") {
+	if !strings.Contains(TaskVerifyHook, "Code changes on") {
 		t.Error("TaskVerifyHook missing 'Code changes on' master branch detection")
 	}
-	if !containsString(TaskVerifyHook, "without active task") {
+	if !strings.Contains(TaskVerifyHook, "without active task") {
 		t.Error("TaskVerifyHook missing 'without active task' warning")
 	}
-	if !containsString(TaskVerifyHook, "forge task start") {
+	if !strings.Contains(TaskVerifyHook, "forge task start") {
 		t.Error("TaskVerifyHook missing 'forge task start' hint in warning")
 	}
 	// BSD-safe: the master-check source-extension filter must use is_code_file
 	// case-glob, NOT grep -E '\.(go|rs|...)$' — BSD/macOS aborts on ERE
 	// alternation with "Unmatched ( or \(", silently disabling the check.
-	if !containsString(TaskVerifyHook, "is_code_file") {
+	if !strings.Contains(TaskVerifyHook, "is_code_file") {
 		t.Error("TaskVerifyHook master-check must use is_code_file (BSD-safe case-glob), not grep -E alternation")
 	}
 }
@@ -237,71 +237,71 @@ func TestTaskVerifyHookContainsMasterCheck(t *testing.T) {
 // TestMasterBranchReminder flaky (an unrelated project's first failure hit the
 // 3-strike threshold and force-allowed, masking its real warning).
 func TestTaskGuardHookContainsKeyChecks(t *testing.T) {
-	if !containsString(TaskGuardHook, "FORGE_TASK_REF") {
+	if !strings.Contains(TaskGuardHook, "FORGE_TASK_REF") {
 		t.Error("TaskGuardHook missing FORGE_TASK_REF check")
 	}
-	if !containsString(TaskGuardHook, "FORGE_TASK_GATE") {
+	if !strings.Contains(TaskGuardHook, "FORGE_TASK_GATE") {
 		t.Error("TaskGuardHook missing FORGE_TASK_GATE check")
 	}
-	if !containsString(TaskGuardHook, "WARN [task-guard]") {
+	if !strings.Contains(TaskGuardHook, "WARN [task-guard]") {
 		t.Error("TaskGuardHook missing WARN for no-task scenario")
 	}
-	if !containsString(TaskGuardHook, "auto-create") {
+	if !strings.Contains(TaskGuardHook, "auto-create") {
 		t.Error("TaskGuardHook contains auto-create task path")
 	}
-	if !containsString(TaskGuardHook, "WARN") {
+	if !strings.Contains(TaskGuardHook, "WARN") {
 		t.Error("TaskGuardHook missing WARN for pre-design state")
 	}
 }
 
 func TestTaskGuardHookPassesNonCodeFiles(t *testing.T) {
-	if !containsString(TaskGuardHook, ".(go|rs|ts|tsx|js|jsx|py|java|rb|zig|nim)") {
+	if !strings.Contains(TaskGuardHook, ".(go|rs|ts|tsx|js|jsx|py|java|rb|zig|nim)") {
 		t.Error("TaskGuardHook missing code file extension filter")
 	}
 }
 
 func TestBashGuardHookContainsKeyChecks(t *testing.T) {
-	if !containsString(BashGuardHook, "FORGE_COMMAND") {
+	if !strings.Contains(BashGuardHook, "FORGE_COMMAND") {
 		t.Error("BashGuardHook missing FORGE_COMMAND check")
 	}
-	if !containsString(BashGuardHook, "writeFile") {
+	if !strings.Contains(BashGuardHook, "writeFile") {
 		t.Error("BashGuardHook missing writeFile pattern detection")
 	}
-	if !containsString(BashGuardHook, "WARN [bash-guard]") {
+	if !strings.Contains(BashGuardHook, "WARN [bash-guard]") {
 		t.Error("BashGuardHook missing WARN for no-task scenario")
 	}
-	if !containsString(BashGuardHook, "bash-guard") {
+	if !strings.Contains(BashGuardHook, "bash-guard") {
 		t.Error("BashGuardHook missing [bash-guard] prefix")
 	}
 	// P0 fix: bash-guard must record whether THIS command is a write command
 	// (forge-write-<session> flag file) so file-sentinel's secondary gate can
 	// distinguish read-only commands (ls/cat/git diff) from write commands and
 	// never quarantine under a read-only command.
-	if !containsString(BashGuardHook, "forge-write") {
+	if !strings.Contains(BashGuardHook, "forge-write") {
 		t.Error("BashGuardHook missing write-flag file (forge-write-<session>) for file-sentinel secondary gate")
 	}
 }
 
 func TestFileSentinelHookContainsKeyChecks(t *testing.T) {
-	if !containsString(FileSentinelHook, "SNAPSHOT_FILE") {
+	if !strings.Contains(FileSentinelHook, "SNAPSHOT_FILE") {
 		t.Error("FileSentinelHook missing SNAPSHOT_FILE reference")
 	}
-	if !containsString(FileSentinelHook, "file-sentinel") {
+	if !strings.Contains(FileSentinelHook, "file-sentinel") {
 		t.Error("FileSentinelHook missing [file-sentinel] prefix")
 	}
-	if !containsString(FileSentinelHook, "git checkout") {
+	if !strings.Contains(FileSentinelHook, "git checkout") {
 		t.Error("FileSentinelHook missing git checkout restore logic")
 	}
-	if !containsString(FileSentinelHook, "quarantine_files") {
+	if !strings.Contains(FileSentinelHook, "quarantine_files") {
 		t.Error("FileSentinelHook missing quarantine_files function")
 	}
-	if !containsString(FileSentinelHook, "forge data-dir") {
+	if !strings.Contains(FileSentinelHook, "forge data-dir") {
 		t.Error("FileSentinelHook must resolve DataDir via 'forge data-dir' (refactor-data-home commit D)")
 	}
-	if !containsString(FileSentinelHook, "quarantine_base") {
+	if !strings.Contains(FileSentinelHook, "quarantine_base") {
 		t.Error("FileSentinelHook missing quarantine_base path logic (refactor-data-home: DataDir/quarantine)")
 	}
-	if !containsString(FileSentinelHook, "Recover:") {
+	if !strings.Contains(FileSentinelHook, "Recover:") {
 		t.Error("FileSentinelHook missing recovery instructions")
 	}
 	// refactor-data-home commit D: gates/tasks/specs/reviews 迁用户级 DataDir（git 不跟踪），
@@ -310,7 +310,7 @@ func TestFileSentinelHookContainsKeyChecks(t *testing.T) {
 	// CFG_EXT 现只守项目级 .forge/hooks/（ConfigDir 配置层，git 可见）。gate verdict 防护
 	// 暂缺——commit E 或后续补 forge 自身完整性校验（DataDir 不在 git，git diff 维度的
 	// file-sentinel 管不到，不能用空话假装改由 forge 校验）。
-	if !containsString(FileSentinelHook, ".forge/hooks/") {
+	if !strings.Contains(FileSentinelHook, ".forge/hooks/") {
 		t.Error("FileSentinelHook CFG_EXT must include .forge/hooks/ (config-layer protection after DataDir migration)")
 	}
 	// P0 fix: file-sentinel must FAIL-OPEN when the PreToolUse snapshot is
@@ -318,13 +318,13 @@ func TestFileSentinelHookContainsKeyChecks(t *testing.T) {
 	// must never treat the whole working tree as new violations and quarantine
 	// + git-checkout away the user's existing uncommitted source. And a
 	// read-only Bash command must never trigger quarantine (secondary gate).
-	if !containsString(FileSentinelHook, "IS_WRITE_CMD") {
+	if !strings.Contains(FileSentinelHook, "IS_WRITE_CMD") {
 		t.Error("FileSentinelHook missing IS_WRITE_CMD secondary gate (read-only command must not quarantine)")
 	}
-	if !containsString(FileSentinelHook, "WRITE_FLAG_FILE") {
+	if !strings.Contains(FileSentinelHook, "WRITE_FLAG_FILE") {
 		t.Error("FileSentinelHook missing WRITE_FLAG_FILE read of bash-guard's write flag")
 	}
-	if containsString(FileSentinelHook, `rm -f "$f"`) {
+	if strings.Contains(FileSentinelHook, `rm -f "$f"`) {
 		t.Error("FileSentinelHook should NOT use rm -f on user files — use quarantine instead")
 	}
 }
@@ -334,7 +334,7 @@ func TestFileSentinelHookContainsKeyChecks(t *testing.T) {
 // mutate files without a shell redirect.
 func TestBashGuardHookWritePatterns(t *testing.T) {
 	for _, pat := range []string{"perl", "git apply", "patch", "printf"} {
-		if !containsString(BashGuardHook, pat) {
+		if !strings.Contains(BashGuardHook, pat) {
 			t.Errorf("BashGuardHook has_write_pattern missing write pattern %q (E3)", pat)
 		}
 	}
@@ -346,19 +346,19 @@ func TestBashGuardHookWritePatterns(t *testing.T) {
 // the E4 spirit — bypass/issues queryable — via the advisory checklog entry
 // instead of the removed force-pass-after-3-failures counter.
 func TestTaskVerifyHookIsAdvisory(t *testing.T) {
-	if containsString(TaskVerifyHook, "exit 1") {
+	if strings.Contains(TaskVerifyHook, "exit 1") {
 		t.Error("TaskVerifyHook must not block (advisory) — found 'exit 1'")
 	}
-	if containsString(TaskVerifyHook, "VERIFY_COUNTER") {
+	if strings.Contains(TaskVerifyHook, "VERIFY_COUNTER") {
 		t.Error("TaskVerifyHook must not carry a failure counter (advisory, never blocks)")
 	}
-	if !containsString(TaskVerifyHook, `"check":"task-verify"`) {
+	if !strings.Contains(TaskVerifyHook, `"check":"task-verify"`) {
 		t.Error("TaskVerifyHook must record an advisory checklog entry for detected issues")
 	}
-	if !containsString(TaskVerifyHook, "$_DATA_DIR/checklog.jsonl") {
+	if !strings.Contains(TaskVerifyHook, "$_DATA_DIR/checklog.jsonl") {
 		t.Error("TaskVerifyHook advisory must append to $_DATA_DIR/checklog.jsonl (refactor-data-home: DataDir)")
 	}
-	if !containsString(TaskVerifyHook, "forge data-dir") {
+	if !strings.Contains(TaskVerifyHook, "forge data-dir") {
 		t.Error("TaskVerifyHook must resolve DataDir via 'forge data-dir' (refactor-data-home commit D)")
 	}
 }
@@ -393,29 +393,29 @@ func TestReviewStopHookPassIsSilent(t *testing.T) {
 // audited to checklog — otherwise a stop-retry loop silently bypasses the gate
 // forever with no trace.
 func TestTaskVerifyHookSkipVerifyAudited(t *testing.T) {
-	if !containsString(TaskVerifyHook, "FORGE_SKIP_VERIFY") {
+	if !strings.Contains(TaskVerifyHook, "FORGE_SKIP_VERIFY") {
 		t.Error("TaskVerifyHook missing FORGE_SKIP_VERIFY escape hatch")
 	}
 	// The audit must write an escape-hatch checklog entry, not just echo PASS.
-	if !containsString(TaskVerifyHook, `"check":"escape-hatch"`) {
+	if !strings.Contains(TaskVerifyHook, `"check":"escape-hatch"`) {
 		t.Error("TaskVerifyHook must record an escape-hatch checklog entry when FORGE_SKIP_VERIFY=1 (A4)")
 	}
-	if !containsString(TaskVerifyHook, "FORGE_SKIP_VERIFY=1") {
+	if !strings.Contains(TaskVerifyHook, "FORGE_SKIP_VERIFY=1") {
 		t.Error("TaskVerifyHook escape-hatch detail must name FORGE_SKIP_VERIFY=1 (A4)")
 	}
 }
 
 func TestTaskGuardHookSelfProtection(t *testing.T) {
-	if !containsString(TaskGuardHook, ".forge/*") {
+	if !strings.Contains(TaskGuardHook, ".forge/*") {
 		t.Error("TaskGuardHook missing .forge/ self-protection")
 	}
-	if !containsString(TaskGuardHook, ".claude/settings") {
+	if !strings.Contains(TaskGuardHook, ".claude/settings") {
 		t.Error("TaskGuardHook missing .claude/settings self-protection")
 	}
-	if !containsString(TaskGuardHook, "protocol.yml") {
+	if !strings.Contains(TaskGuardHook, "protocol.yml") {
 		t.Error("TaskGuardHook should whitelist protocol.yml/pipeline.yml as user-editable config")
 	}
-	if !containsString(TaskGuardHook, "Forge-managed") {
+	if !strings.Contains(TaskGuardHook, "Forge-managed") {
 		t.Error("TaskGuardHook missing self-protection error message")
 	}
 }
@@ -563,18 +563,6 @@ func TestWriteHookTemplatesRemovesStaleHooks(t *testing.T) {
 	}
 }
 
-func containsString(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 || stringContains(s, substr))
-}
-
-func stringContains(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
 
 // TestSessionStartHasSkillScan guards that the global skill-scan hook is
 // registered on the SessionStart event. It scans ~/.claude/skills for risks at
@@ -746,30 +734,30 @@ func TestUserPromptSubmitHasResumeReinject(t *testing.T) {
 // scanner content: it must scan the global skill dir via 'forge skills audit
 // scan', be advisory (PASS, never exit 1 / block), and surface ✗ risk skills.
 func TestSkillScanHookContainsKeyChecks(t *testing.T) {
-	if !containsString(SkillScanHook, "forge skills audit scan") {
+	if !strings.Contains(SkillScanHook, "forge skills audit scan") {
 		t.Error("SkillScanHook must invoke 'forge skills audit scan'")
 	}
-	if !containsString(SkillScanHook, "$HOME/.claude/skills") {
+	if !strings.Contains(SkillScanHook, "$HOME/.claude/skills") {
 		t.Error("SkillScanHook must scan $HOME/.claude/skills (the global skill dir)")
 	}
-	if containsString(SkillScanHook, "exit 1") {
+	if strings.Contains(SkillScanHook, "exit 1") {
 		t.Error("SkillScanHook must be advisory (no 'exit 1' block)")
 	}
-	if !containsString(SkillScanHook, "PASS") {
+	if !strings.Contains(SkillScanHook, "PASS") {
 		t.Error("SkillScanHook must PASS (advisory, non-blocking)")
 	}
-	if !containsString(SkillScanHook, "advisory") {
+	if !strings.Contains(SkillScanHook, "advisory") {
 		t.Error("SkillScanHook must document its advisory nature")
 	}
 	// 诚实信号（fix 审查报告 fix#1）：用 --gate exit code 区分 scan 成功(0/4)/崩溃，
 	// scan 失败时报"未完成"而非假 "all SAFE"。
-	if !containsString(SkillScanHook, "--gate") {
+	if !strings.Contains(SkillScanHook, "--gate") {
 		t.Error("SkillScanHook must use --gate (exit code encodes scan outcome)")
 	}
-	if !containsString(SkillScanHook, "CODE=$?") {
+	if !strings.Contains(SkillScanHook, "CODE=$?") {
 		t.Error("SkillScanHook must capture audit scan exit code to distinguish success vs crash")
 	}
-	if !containsString(SkillScanHook, "扫描未完成") {
+	if !strings.Contains(SkillScanHook, "扫描未完成") {
 		t.Error("SkillScanHook must report 'scan incomplete' on failure (honest signal, not fake 'all SAFE')")
 	}
 }
@@ -779,27 +767,27 @@ func TestSkillScanHookContainsKeyChecks(t *testing.T) {
 // 到真实修改"，advisory 会被 agent 忽略，只有 block 才闭合"沙盒检测→异常反馈"的环。
 func TestWorkflowTestGuardHookContainsKeyChecks(t *testing.T) {
 	// 必须用 FORGE_FILE_PATH 判断改的文件（PostToolUse Write|Edit 的 tool_input）
-	if !containsString(WorkflowTestGuardHook, "FORGE_FILE_PATH") {
+	if !strings.Contains(WorkflowTestGuardHook, "FORGE_FILE_PATH") {
 		t.Error("WorkflowTestGuardHook missing FORGE_FILE_PATH check")
 	}
 	// 必须跑 internal/ci 守护测试（整个 hook 的核心动作）
-	if !containsString(WorkflowTestGuardHook, "go test ./internal/ci/") {
+	if !strings.Contains(WorkflowTestGuardHook, "go test ./internal/ci/") {
 		t.Error("WorkflowTestGuardHook must run 'go test ./internal/ci/' (the guard tests)")
 	}
 	// 必须有 [workflow-test-guard] 前缀
-	if !containsString(WorkflowTestGuardHook, "[workflow-test-guard]") {
+	if !strings.Contains(WorkflowTestGuardHook, "[workflow-test-guard]") {
 		t.Error("WorkflowTestGuardHook missing [workflow-test-guard] prefix")
 	}
 	// 必须 BSD-safe case-glob 判断 .github/workflows/*.yml（不用 grep -E 交替，参其他 hook）
-	if !containsString(WorkflowTestGuardHook, ".github/workflows/*.yml") {
+	if !strings.Contains(WorkflowTestGuardHook, ".github/workflows/*.yml") {
 		t.Error("WorkflowTestGuardHook must case-glob .github/workflows/*.yml (BSD-safe, no grep -E)")
 	}
 	// 必须 exit 1 block on FAIL——这是"保证反馈"的关键，advisory 会被忽略
-	if !containsString(WorkflowTestGuardHook, "exit 1") {
+	if !strings.Contains(WorkflowTestGuardHook, "exit 1") {
 		t.Error("WorkflowTestGuardHook must exit 1 (block) on test failure — advisory won't guarantee feedback")
 	}
 	// 必须 fail-open：internal/ci 不存在时静默 PASS（老项目/未启用 CI 配置守护）
-	if !containsString(WorkflowTestGuardHook, "internal/ci") {
+	if !strings.Contains(WorkflowTestGuardHook, "internal/ci") {
 		t.Error("WorkflowTestGuardHook must fail-open (PASS) when internal/ci absent")
 	}
 }
@@ -969,10 +957,10 @@ func TestStripForgeHooks_KeepEmpty_NoEffect_WithUserFields(t *testing.T) {
 				t.Error(`有用户字段时不应写纯 {}（keepEmpty 仅纯 forge 文件生效）`)
 			}
 			body := string(data)
-			if !containsString(body, tc.wantKeep) {
+			if !strings.Contains(body, tc.wantKeep) {
 				t.Errorf(`用户字段 %q 被误删`, tc.wantKeep)
 			}
-			if containsString(body, "forge hook") {
+			if strings.Contains(body, "forge hook") {
 				t.Error(`forge hook 未移除`)
 			}
 		})
@@ -1009,10 +997,10 @@ func TestStripForgeHooks_PreservesUserHooks(t *testing.T) {
 		t.Fatalf(`read: %v`, err)
 	}
 	body := string(data)
-	if containsString(body, "forge hook") {
+	if strings.Contains(body, "forge hook") {
 		t.Error(`forge hook 未被移除`)
 	}
-	if !containsString(body, "npx prettier") {
+	if !strings.Contains(body, "npx prettier") {
 		t.Error(`用户自定义 hook 被误删`)
 	}
 }
@@ -1030,7 +1018,7 @@ func TestStripForgeHooks_NoForgeHooks_NoOp(t *testing.T) {
 		t.Error(`无 forge hook 应 changed=false（no-op）`)
 	}
 	data, _ := os.ReadFile(settingsPath(dir))
-	if !containsString(string(data), "npx prettier") {
+	if !strings.Contains(string(data), "npx prettier") {
 		t.Error(`无 forge hook 时文件不应被改动`)
 	}
 }
@@ -1096,13 +1084,13 @@ func TestStripForgeHooks_PreservesUserHooksAndTopLevel(t *testing.T) {
 	}
 	data, _ := os.ReadFile(settingsPath(dir))
 	body := string(data)
-	if containsString(body, "forge hook") {
+	if strings.Contains(body, "forge hook") {
 		t.Error(`forge hook 未移除`)
 	}
-	if !containsString(body, "make lint") {
+	if !strings.Contains(body, "make lint") {
 		t.Error(`Stop 事件用户 hook 被误删`)
 	}
-	if !containsString(body, "permissions") {
+	if !strings.Contains(body, "permissions") {
 		t.Error(`permissions 顶层字段丢失`)
 	}
 }
@@ -1124,13 +1112,13 @@ func TestStripForgeHooks_RemovesGateCommand(t *testing.T) {
 	}
 	data, _ := os.ReadFile(settingsPath(dir))
 	body := string(data)
-	if containsString(body, "forge gate") {
+	if strings.Contains(body, "forge gate") {
 		t.Error(`forge gate 未被移除（断言不能只查 forge hook 子串,N4）`)
 	}
-	if containsString(body, "forge hook") {
+	if strings.Contains(body, "forge hook") {
 		t.Error(`forge hook 残留`)
 	}
-	if !containsString(body, "make lint") {
+	if !strings.Contains(body, "make lint") {
 		t.Error(`用户 hook（make lint）被误删`)
 	}
 }
@@ -1156,13 +1144,13 @@ func TestGenerateSettings_PreservesUserTopLevelFields(t *testing.T) {
 	}
 	body := string(data)
 
-	if !containsString(body, "secret") {
+	if !strings.Contains(body, "secret") {
 		t.Error(`用户 env.API_KEY=secret 被 GenerateSettings 删除(1.2.0 回归)`)
 	}
-	if !containsString(body, "my-model") {
+	if !strings.Contains(body, "my-model") {
 		t.Error(`用户 model=my-model 被删除`)
 	}
-	if !containsString(body, "forge hook") {
+	if !strings.Contains(body, "forge hook") {
 		t.Error(`hooks 段未更新为 ForgeHookSpec`)
 	}
 }
@@ -1188,13 +1176,13 @@ func TestInitFlow_PluginInstalled_PreservesUserConfig(t *testing.T) {
 		t.Fatalf(`settings.local.json 被删(1.2.0 回归): %v`, err)
 	}
 	body := string(data)
-	if !containsString(body, "secret") {
+	if !strings.Contains(body, "secret") {
 		t.Error(`用户 env.API_KEY 丢失`)
 	}
-	if !containsString(body, "my-model") {
+	if !strings.Contains(body, "my-model") {
 		t.Error(`用户 model 丢失`)
 	}
-	if containsString(body, "forge hook") {
+	if strings.Contains(body, "forge hook") {
 		t.Error(`dedupe 后应无 forge hooks`)
 	}
 }

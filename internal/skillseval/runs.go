@@ -12,6 +12,7 @@ package skillseval
 
 import (
 	"bufio"
+	"cmp"
 	"crypto/rand"
 	"crypto/sha1"
 	"encoding/hex"
@@ -20,7 +21,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -106,7 +107,7 @@ func caseSetHash(results []CaseResult) string {
 	for _, r := range results {
 		ids = append(ids, r.CaseID)
 	}
-	sort.Strings(ids)
+	slices.Sort(ids)
 	h := sha1.Sum([]byte(strings.Join(ids, ",")))
 	return hex.EncodeToString(h[:])[:12]
 }
@@ -297,7 +298,7 @@ func CompareRuns(latest, baseline *EvalRun) *RegressionReport {
 }
 
 func sortResults(rs []CaseResult) {
-	sort.Slice(rs, func(i, j int) bool { return rs[i].CaseID < rs[j].CaseID })
+	slices.SortFunc(rs, func(a, b CaseResult) int { return cmp.Compare(a.CaseID, b.CaseID) })
 }
 
 // countRegressions 返回 latest vs baseline 的 matched 集退化数（三态里的 regressions
