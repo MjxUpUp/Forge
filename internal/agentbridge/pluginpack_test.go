@@ -226,11 +226,11 @@ func TestPluginPack_Readme(t *testing.T) {
 	dir := generatePack(t)
 	content := readOrFail(t, filepath.Join(dir, "plugins", "forge", "README.md"))
 	for _, want := range []string{
-		"Three-step setup",           // 三步首体验结构
-		"@agent_forge/forge",         // npm 包名（与 npm/package.json 一致）
-		"once per machine",           // step 1：二进制是机器级硬前置
-		"once per agent",             // step 2：plugin 是 agent 级
-		"once per project",           // step 3：项目级资产每项目一次（能力边界）
+		"Three-step setup",   // 三步首体验结构
+		"@agent_forge/forge", // npm 包名（与 npm/package.json 一致）
+		"once per machine",   // step 1：二进制是机器级硬前置
+		"once per agent",     // step 2：plugin 是 agent 级
+		"once per project",   // step 3：项目级资产每项目一次（能力边界）
 		"/plugin install forge@forge",
 		"MjxUpUp/Forge",
 		"forge init --agents codex",

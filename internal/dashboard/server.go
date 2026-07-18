@@ -360,11 +360,11 @@ type continuityCard struct {
 
 // ContinuityBoard 是接续看板载荷：项目内所有 task 的卡片 + 进行中/已完成计数。
 type ContinuityBoard struct {
-	Project    string         `json:"project,omitempty"`
-	Now        time.Time      `json:"now"`
+	Project    string           `json:"project,omitempty"`
+	Now        time.Time        `json:"now"`
 	Cards      []continuityCard `json:"cards"`
-	Incomplete int            `json:"incomplete"`
-	Complete   int            `json:"complete"`
+	Incomplete int              `json:"incomplete"`
+	Complete   int              `json:"complete"`
 }
 
 // AggregateContinuity 从 DataDir/tasks/ 读全部 TaskState 投影成看板卡片。进行中在前、

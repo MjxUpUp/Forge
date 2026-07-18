@@ -563,7 +563,6 @@ func TestTaskScoreWorkflow(t *testing.T) {
 	}
 }
 
-
 // --------------- Test: Init with --agents flag ---------------
 
 func TestInitWithAgents(t *testing.T) {

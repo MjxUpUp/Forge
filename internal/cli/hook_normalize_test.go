@@ -116,9 +116,9 @@ func TestNormalizeUnknownAgentNoOp(t *testing.T) {
 // fallback would silently disable agent normalization.
 func TestResolveHookAgent(t *testing.T) {
 	cases := []struct {
-		name           string
+		name            string
 		flagVal, envVal string
-		want           string
+		want            string
 	}{
 		{"flag wins", "windsurf", "copilot", "windsurf"},
 		{"env fallback when flag empty", "", "copilot", "copilot"},

@@ -95,21 +95,21 @@ type TaskState struct {
 	HeadCommit   string                    `json:"head_commit,omitempty"`   // for duplicate detection
 	SessionID    string                    `json:"session_id,omitempty"`    // agent session that created this task
 	ReviewPassed bool                      `json:"review_passed,omitempty"` // code-review-gate 通过标记；task-complete 门禁的硬前置
-	ResumeStale  bool                      `json:"resume_stale,omitempty"` // gap#2 claude-code 根治层：PostCompact hook 设 true → 下个 UserPromptSubmit reinject 注入完整 handoff 后清零。codex/cursor/opencode 无 compaction lifecycle，ForgeHookSpec 过滤不装此链。task-scoped 非 session-scoped：两 session 共享同一 task 时，B 的 prompt 可能在 A 压缩后先消费并清掉标志（最坏漏注一次，handoff 内容相同故无数据损坏，可接受边界）。
+	ResumeStale  bool                      `json:"resume_stale,omitempty"`  // gap#2 claude-code 根治层：PostCompact hook 设 true → 下个 UserPromptSubmit reinject 注入完整 handoff 后清零。codex/cursor/opencode 无 compaction lifecycle，ForgeHookSpec 过滤不装此链。task-scoped 非 session-scoped：两 session 共享同一 task 时，B 的 prompt 可能在 A 压缩后先消费并清掉标志（最坏漏注一次，handoff 内容相同故无数据损坏，可接受边界）。
 	// ReviewedHeadCommit/ReviewedChangeHash 绑定 review pass 时的代码快照——审查-修复-复审闭环的关键。
 	// review pass 时记 (HEAD, SourceChangesSince(HEAD))；task-complete 门禁重算 SourceChangesSince(ReviewedHeadCommit)
 	// 比对 ReviewedChangeHash，不一致说明审查后改了码，强制复审（不再靠 agent 自律重审）。详见 executor.go。
 	// commit-then-review 流（E2E 真实序列：先 commit 再 review，审查时工作区干净）→ ReviewedChangeHash 为空，
 	// 故"基线已设"判据用 ReviewedHeadCommit != ""，不能用 hash 空/非空。
-	ReviewedHeadCommit string                `json:"reviewed_head_commit,omitempty"`
-	ReviewedChangeHash string                `json:"reviewed_change_hash,omitempty"`
+	ReviewedHeadCommit string `json:"reviewed_head_commit,omitempty"`
+	ReviewedChangeHash string `json:"reviewed_change_hash,omitempty"`
 
 	// DesignPhases 是 inferDesignPhases 在 task-verify gate 推断出的设计阶段。
 	// 由 task-verify gate（executor.go ExecuteTaskGate）调 inferDesignPhases(taskChangedFiles)
 	// 填充并 SaveTaskState 持久化，零摩擦：不要求用户声明。review 子 agent 据此加载对应
 	// references/phase-X.md checklist。空 = 无匹配设计产物，回落到通用 review-checklist.md。
-	DesignPhases []DesignPhase `json:"design_phases,omitempty"`
-	Acceptance         []AcceptanceCriterion `json:"acceptance,omitempty"` // 验收标准（dev-workflow Plan 的 Run+Expected），verify-acceptance 实跑回扣
+	DesignPhases []DesignPhase         `json:"design_phases,omitempty"`
+	Acceptance   []AcceptanceCriterion `json:"acceptance,omitempty"` // 验收标准（dev-workflow Plan 的 Run+Expected），verify-acceptance 实跑回扣
 	// PlanScope 是任务开工前声明的"计划改动文件"白名单（glob，repo-relative 正斜杠路径）。
 	// 对应 Terraform desired state / Copilot Workspace plan 的"打算改哪些文件"——把规划前置
 	// 变成可度量契约。advisory：实改文件（TaskChangedFiles）与之的差集记 scope-drift 供 review，
@@ -122,18 +122,18 @@ type TaskState struct {
 	// 结构化一等公民字段。任何新会话冷启动 forge task resume 即拉回，跨工具/跨人基于同一份
 	// 记录接续。对应 session-continuity HANDOFF + cross-tool-context AI_CONTEXT 的信息结构，
 	// 但持久化进 DataDir/tasks/<ref>.json 而非靠 agent 自觉读写 md。
-	Kind          string     `json:"kind,omitempty"`            // "" | "code" = 走 3 道门禁（默认，向后兼容）；"generic" = 不走门禁，承载调研/设计/纯接续任务
-	OriginTool    string     `json:"origin_tool,omitempty"`     // 声明式发起工具（pi/claude-code/opencode/codex/cursor…）；区别于 SessionRecord.AgentType 的目录探测弱信号
-	Goal          string     `json:"goal,omitempty"`            // 目标叙述（可多行；比 Summary 一行标题更丰富，是"为什么做"）
-	Plan          string     `json:"plan,omitempty"`            // 计划正文（markdown；--plan file 读入或直接传文本）
-	SessionLinks  []SessionLink `json:"session_links,omitempty"` // 参与本 task 的全部 session 锚定（含创建方），多向锚定——支持 pi 起、claude-code 接的跨工具/跨会话接续
-	Decisions     []Decision `json:"decisions,omitempty"`       // 已确认决策（AI_CONTEXT.md 的 Decisions 节升格）
-	NextSteps     []string   `json:"next_steps,omitempty"`      // 下一步（HANDOFF 的"下一步"升格）
-	Blockers      []Blocker  `json:"blockers,omitempty"`        // 阻塞项（HANDOFF 的"已知问题/阻塞"升格）
-	Findings      []Finding  `json:"findings,omitempty"`        // 跨工具发现的问题（AI_CONTEXT.md 的 Findings 节升格，带来源工具）
-	Artifacts     []Artifact `json:"artifacts,omitempty"`       // 相关产物（文件/命令输出/url，关联但不门禁）
-	ParentTaskRef string     `json:"parent_task_ref,omitempty"` // 子任务指向父 task ref（subtask 拆解）
-	DependsOn     []string   `json:"depends_on,omitempty"`      // 依赖的前序 task ref（任务间依赖）
+	Kind          string        `json:"kind,omitempty"`            // "" | "code" = 走 3 道门禁（默认，向后兼容）；"generic" = 不走门禁，承载调研/设计/纯接续任务
+	OriginTool    string        `json:"origin_tool,omitempty"`     // 声明式发起工具（pi/claude-code/opencode/codex/cursor…）；区别于 SessionRecord.AgentType 的目录探测弱信号
+	Goal          string        `json:"goal,omitempty"`            // 目标叙述（可多行；比 Summary 一行标题更丰富，是"为什么做"）
+	Plan          string        `json:"plan,omitempty"`            // 计划正文（markdown；--plan file 读入或直接传文本）
+	SessionLinks  []SessionLink `json:"session_links,omitempty"`   // 参与本 task 的全部 session 锚定（含创建方），多向锚定——支持 pi 起、claude-code 接的跨工具/跨会话接续
+	Decisions     []Decision    `json:"decisions,omitempty"`       // 已确认决策（AI_CONTEXT.md 的 Decisions 节升格）
+	NextSteps     []string      `json:"next_steps,omitempty"`      // 下一步（HANDOFF 的"下一步"升格）
+	Blockers      []Blocker     `json:"blockers,omitempty"`        // 阻塞项（HANDOFF 的"已知问题/阻塞"升格）
+	Findings      []Finding     `json:"findings,omitempty"`        // 跨工具发现的问题（AI_CONTEXT.md 的 Findings 节升格，带来源工具）
+	Artifacts     []Artifact    `json:"artifacts,omitempty"`       // 相关产物（文件/命令输出/url，关联但不门禁）
+	ParentTaskRef string        `json:"parent_task_ref,omitempty"` // 子任务指向父 task ref（subtask 拆解）
+	DependsOn     []string      `json:"depends_on,omitempty"`      // 依赖的前序 task ref（任务间依赖）
 }
 
 // TaskGateResult records the outcome of a single task gate.
