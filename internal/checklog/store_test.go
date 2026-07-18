@@ -17,16 +17,16 @@ func TestRecordAndLoadAll(t *testing.T) {
 	os.MkdirAll(forgeDir, 0755)
 
 	entry1 := &Entry{
-		Check:  CheckAutoCompile,
-		Passed: true,
+		Check:   CheckAutoCompile,
+		Passed:  true,
 		Checked: true,
-		Detail: "All builds passed",
+		Detail:  "All builds passed",
 	}
 	entry2 := &Entry{
-		Check:  CheckAssertion,
-		Passed: false,
+		Check:   CheckAssertion,
+		Passed:  false,
 		Checked: true,
-		Detail: "t.Fatal removed",
+		Detail:  "t.Fatal removed",
 	}
 
 	if err := Record(dir, entry1); err != nil {

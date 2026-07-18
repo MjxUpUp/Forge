@@ -18,7 +18,7 @@ func TestEstimateTokens(t *testing.T) {
 		{"", 0},
 		{"abcd", 2},     // 4/3+1
 		{"abcdefgh", 3}, // 8/3+1
-		{"你好世界", 2},  // 4 runes /3+1
+		{"你好世界", 2},     // 4 runes /3+1
 	}
 	for _, c := range cases {
 		if got := EstimateTokens(c.in); got != c.want {

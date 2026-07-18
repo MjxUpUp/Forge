@@ -9,10 +9,10 @@ import (
 
 // Context represents detected task context from the development environment.
 type Context struct {
-	Source    string    `json:"source"`     // "explicit", "branch", "unknown"
-	TaskRef   string    `json:"task_ref"`   // e.g., "PROJ-123", "feature/login", ""
-	Branch    string    `json:"branch"`     // current git branch
-	Summary   string    `json:"summary"`    // human-readable task description
+	Source     string    `json:"source"`   // "explicit", "branch", "unknown"
+	TaskRef    string    `json:"task_ref"` // e.g., "PROJ-123", "feature/login", ""
+	Branch     string    `json:"branch"`   // current git branch
+	Summary    string    `json:"summary"`  // human-readable task description
 	DetectedAt time.Time `json:"detected_at"`
 }
 

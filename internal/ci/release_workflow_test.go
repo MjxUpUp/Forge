@@ -100,7 +100,7 @@ func TestReleaseWorkflow_NeedsChain(t *testing.T) {
 		t.Fatal("release.yml 缺 goreleaser job（发二进制）")
 	}
 	if got := needsList(goreleaser.Needs); len(got) != 1 || got[0] != "test" {
-		t.Fatalf("goreleaser 必须 needs: [test]（test 失败则不发二进制），got %v——" +
+		t.Fatalf("goreleaser 必须 needs: [test]（test 失败则不发二进制），got %v——"+
 			"删掉此 needs 会让 test 失败仍发版，破坏 CI 防绕过链", got)
 	}
 

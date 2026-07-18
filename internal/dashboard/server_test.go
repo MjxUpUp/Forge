@@ -369,11 +369,11 @@ func TestIsLocalhostHost(t *testing.T) {
 		{`127.0.0.1`, true},
 		{`127.0.0.1:8800`, true},
 		{`[::1]:8800`, true},
-		{`[::1]`, true}, // IPv6 回环无端口（旧 LastIndex 误拒，BLOCK-1 回归）
-		{`::1`, true}, // 裸 IPv6 回环
+		{`[::1]`, true},      // IPv6 回环无端口（旧 LastIndex 误拒，BLOCK-1 回归）
+		{`::1`, true},        // 裸 IPv6 回环
 		{`localhost.`, true}, // 尾点 FQDN（搜索域补点）
-		{`LOCALHOST`, true}, // Host 头大小写不敏感
-		{``, true}, // 空 Host 放行（避免误伤不发 Host 的客户端）
+		{`LOCALHOST`, true},  // Host 头大小写不敏感
+		{``, true},           // 空 Host 放行（避免误伤不发 Host 的客户端）
 		{`evil.com`, false},
 		{`evil.com:8800`, false},
 		{`192.168.1.1:8800`, false},

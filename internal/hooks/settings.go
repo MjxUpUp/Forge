@@ -185,6 +185,7 @@ func GenerateSettings(projectDir string) error {
 //     {} 保留文件壳,绝不删——settings.local.json 是 gitignored 个人配置,用户常主动放置/
 //     正在编辑,forge 在自动 dedupe 时静默删整个文件是用户痛点。空 {} 对 Claude Code 无害。
 //   - keepEmpty=false（手动 forge plugin dedupe,显式清理）→ 删除整个文件,恢复无 project 配置。
+//
 // hooks 字段空但有用户自定义顶层字段 → 写回（无 hooks）。仍有用户自定义 hooks → 写回（仅用户 hooks）。
 //
 // 幂等：无 settings.local.json / 无 hooks 字段 / 无 forge hooks 时均 no-op（changed=false）。

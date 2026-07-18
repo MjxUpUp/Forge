@@ -62,9 +62,9 @@ func TestDetectErrorSwallow(t *testing.T) {
 	}
 	miss := []string{
 		`catch (e) { handleError(e); }`, // 有 body
-		`catch (e) {`,                    // 多行 catch 的起始行（body 在后续行）
-		`except Exception as e:`,         // 无同行 pass
-		`func() error { return nil }`,    // 普通返回
+		`catch (e) {`,                   // 多行 catch 的起始行（body 在后续行）
+		`except Exception as e:`,        // 无同行 pass
+		`func() error { return nil }`,   // 普通返回
 	}
 	for _, src := range miss {
 		if got := detectErrorSwallow([]addedLine{al("x.ts", 1, src)}); len(got) != 0 {
@@ -276,11 +276,11 @@ func TestScanCheatPatterns_NoSource(t *testing.T) {
 // TestParseNewStart 钉 hunk 头新文件起始行号解析。
 func TestParseNewStart(t *testing.T) {
 	cases := map[string]int{
-		`@@ -10,3 +12,5 @@`:     12,
-		`@@ -1,2 +1,8 @@ func`:   1,
-		`@@ -0,0 +1,N @@`:       1,
-		`garbage`:               0,
-		`@@ -10 +12 @@`:         12,
+		`@@ -10,3 +12,5 @@`:    12,
+		`@@ -1,2 +1,8 @@ func`: 1,
+		`@@ -0,0 +1,N @@`:      1,
+		`garbage`:              0,
+		`@@ -10 +12 @@`:        12,
 	}
 	for hunk, want := range cases {
 		if got := parseNewStart(hunk); got != want {
