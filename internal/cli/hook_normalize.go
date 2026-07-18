@@ -37,7 +37,7 @@ func windsurfNormalize(stdinData []byte, hookInput *HookInput) {
 	var w struct {
 		AgentActionName string `json:"agent_action_name"`
 		TrajectoryID    string `json:"trajectory_id"`
-		ToolInfo struct {
+		ToolInfo        struct {
 			FilePath string `json:"file_path"`
 			Command  string `json:"command"`
 			Edits    []struct {

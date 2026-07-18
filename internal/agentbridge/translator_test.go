@@ -535,7 +535,7 @@ func TestClineTranslator_Translate(t *testing.T) {
 		"# Forge 质量协议",
 		"质量标准",
 		"会话行为规则",
-		"接入 forge MCP",          // manual MCP wiring section (Cline has no project-level MCP)
+		"接入 forge MCP",            // manual MCP wiring section (Cline has no project-level MCP)
 		"cline_mcp_settings.json", // points at the global file Cline actually reads
 		"Configure MCP Servers",   // Cline panel step
 		"AGENTS.md",               // points at cross-agent protocol
