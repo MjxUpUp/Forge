@@ -165,3 +165,109 @@ func TestRenderHookResume_IdempotentAttach(t *testing.T) {
 		t.Errorf("幂等 attach：重复跑不应增 SessionLinks（%d → %d）", firstLen, len(second.SessionLinks))
 	}
 }
+
+// TestRenderResumeTldr：有接续字段时 renderResume 输出靠前含 tl;dr 块（目标首行/现在做/open 阻塞）。
+// tl;dr 紧凑靠前是为压缩后存活——缓解 context rot（gap#2 跨 host 缓解层）。已解决阻塞不进摘要。
+func TestRenderResumeTldr(t *testing.T) {
+	state := &taskpipeline.TaskState{
+		TaskRef: "feat/tldr", Branch: "feat/tldr",
+		Goal: "落地 tl;dr tier",
+	}
+	state.AddNext("写测试")
+	state.AddBlocker(taskpipeline.Blocker{Content: "超时"})
+	state.AddBlocker(taskpipeline.Blocker{Content: "已解决"})
+	state.Blockers[1].Status = "resolved"
+
+	out := renderResume(state, nil)
+	for _, want := range []string{"tl;dr", "落地 tl;dr tier", "写测试", "超时"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("tl;dr 应含 %q\n---OUT---\n%s", want, out)
+		}
+	}
+	// tl;dr 应在详细【目标】段之前（靠前利于压缩后存活）
+	tldrIdx := strings.Index(out, "tl;dr")
+	detailIdx := strings.Index(out, "【目标】")
+	if tldrIdx < 0 || detailIdx < 0 || tldrIdx > detailIdx {
+		t.Errorf("tl;dr 应在【目标】详细段之前（tldr=%d, 目标=%d）", tldrIdx, detailIdx)
+	}
+}
+
+// TestRenderResumeTldr_NoContinuity：无接续字段（HasContinuity=false）时不渲染 tl;dr——
+// 空 tl;dr 无价值，与"尚无结构化接续字段"提示并存会冗余。
+func TestRenderResumeTldr_NoContinuity(t *testing.T) {
+	state := &taskpipeline.TaskState{TaskRef: "feat/none", Branch: "feat/none"}
+	out := renderResume(state, nil)
+	if strings.Contains(out, "tl;dr") {
+		t.Errorf("无接续字段不应渲染 tl;dr，输出:\n%s", out)
+	}
+}
+
+// TestRenderHookCompactFlag：PostCompact hook（gap#2 设标志半边）设活跃任务 ResumeStale=true
+// 并持久化。无活跃任务静默不报错；已 ResumeStale 幂等不重复写。
+func TestRenderHookCompactFlag(t *testing.T) {
+	root, _ := forgedatatest.RealProject(t)
+	// 无活跃任务 → 静默不报错
+	if err := renderHookCompactFlag(root); err != nil {
+		t.Fatalf("无活跃任务应静默不报错: %v", err)
+	}
+	state := &taskpipeline.TaskState{TaskRef: "feat/compact", Branch: "feat/compact", Goal: "压缩恢复"}
+	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+		t.Fatalf("SaveTaskState: %v", err)
+	}
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "sid-compact")
+	if err := renderHookCompactFlag(root); err != nil {
+		t.Fatalf("renderHookCompactFlag: %v", err)
+	}
+	reloaded, _ := taskpipeline.LoadTaskState(root, "feat/compact")
+	if reloaded == nil || !reloaded.ResumeStale {
+		t.Errorf("PostCompact hook 应设 ResumeStale=true，state=%v", reloaded)
+	}
+	// 幂等：已 ResumeStale 再调不报错
+	if err := renderHookCompactFlag(root); err != nil {
+		t.Fatalf("幂等 renderHookCompactFlag: %v", err)
+	}
+}
+
+// TestRenderHookReinject：UserPromptSubmit hook（gap#2 重注入半边）仅在 ResumeStale=true 时
+// 重注入完整 handoff 并清标志；ResumeStale=false 静默返空。保证只重注入一次。
+func TestRenderHookReinject(t *testing.T) {
+	root, _ := forgedatatest.RealProject(t)
+	state := &taskpipeline.TaskState{TaskRef: "feat/reinject", Branch: "feat/reinject", Goal: "压缩后恢复"}
+	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+		t.Fatalf("SaveTaskState: %v", err)
+	}
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "sid-reinject")
+
+	// ResumeStale=false → 静默返空
+	out, err := renderHookReinject(root)
+	if err != nil {
+		t.Fatalf("renderHookReinject (stale=false): %v", err)
+	}
+	if out != "" {
+		t.Errorf("ResumeStale=false 应静默返空，实得 %q", out)
+	}
+
+	// compact-flag 设 ResumeStale → reinject 重注入完整 handoff
+	if err := renderHookCompactFlag(root); err != nil {
+		t.Fatalf("renderHookCompactFlag: %v", err)
+	}
+	out, err = renderHookReinject(root)
+	if err != nil {
+		t.Fatalf("renderHookReinject (stale=true): %v", err)
+	}
+	if !strings.HasPrefix(out, "PASS\n") {
+		t.Errorf("ResumeStale=true 应返 PASS+handoff，实得 %q", out)
+	}
+	if !strings.Contains(out, "feat/reinject") || !strings.Contains(out, "压缩后恢复") {
+		t.Errorf("reinject 应含 task ref/goal，实得 %q", out)
+	}
+	// reinject 后清 ResumeStale=false（下次静默，只重注入一次）
+	reloaded, _ := taskpipeline.LoadTaskState(root, "feat/reinject")
+	if reloaded == nil || reloaded.ResumeStale {
+		t.Errorf("reinject 后应清 ResumeStale=false，state=%v", reloaded)
+	}
+	out2, _ := renderHookReinject(root)
+	if out2 != "" {
+		t.Errorf("清标志后应静默返空，实得 %q", out2)
+	}
+}

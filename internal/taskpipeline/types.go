@@ -95,6 +95,7 @@ type TaskState struct {
 	HeadCommit   string                    `json:"head_commit,omitempty"`   // for duplicate detection
 	SessionID    string                    `json:"session_id,omitempty"`    // agent session that created this task
 	ReviewPassed bool                      `json:"review_passed,omitempty"` // code-review-gate 通过标记；task-complete 门禁的硬前置
+	ResumeStale  bool                      `json:"resume_stale,omitempty"` // gap#2 claude-code 根治层：PostCompact hook 设 true → 下个 UserPromptSubmit reinject 注入完整 handoff 后清零。codex/cursor/opencode 无 compaction lifecycle，ForgeHookSpec 过滤不装此链。task-scoped 非 session-scoped：两 session 共享同一 task 时，B 的 prompt 可能在 A 压缩后先消费并清掉标志（最坏漏注一次，handoff 内容相同故无数据损坏，可接受边界）。
 	// ReviewedHeadCommit/ReviewedChangeHash 绑定 review pass 时的代码快照——审查-修复-复审闭环的关键。
 	// review pass 时记 (HEAD, SourceChangesSince(HEAD))；task-complete 门禁重算 SourceChangesSince(ReviewedHeadCommit)
 	// 比对 ReviewedChangeHash，不一致说明审查后改了码，强制复审（不再靠 agent 自律重审）。详见 executor.go。
