@@ -127,7 +127,7 @@ metadata:
 
 | 项目 | ConfigDir | DataDir（`~/.forge/projects/<hash>/`） | 活循环 |
 |---|---|---|---|
-| E:\Forge | ✅ | ✅ 含 act/checklog/experience/reviews | ✅ |
+| E:\Forge | ✅ | ✅ 含 act/checklog/tasks | ✅ |
 | E:\AgentWorld | ✅ | ⚠️ 空（init 后未跑 task） | ❌ |
 | E:\DevWorkbench | ✅ | ⚠️ 空（init 后未跑 task） | ❌ |
 
