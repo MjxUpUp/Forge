@@ -1,5 +1,14 @@
 # Sourcing Toolkit — pi 环境采集工具路由
 
+## 目录
+
+- [pi 本机基线（实测，非推测）](#pi-本机基线实测非推测)
+- [采集前先自检（bash，幂等）](#采集前先自检bash幂等)
+- [按内容类型选采集方式（pi 路由表）](#按内容类型选采集方式pi-路由表)
+- [降级链（pi 版，不同于 agent-search 的四层）](#降级链pi-版不同于-agent-search-的四层)
+- [域名可达性表（实测维护）](#域名可达性表实测维护)
+- [给 worker 的采集纪律](#给-worker-的采集纪律)
+
 本文件是 `research-workflow` Phase 1 worker 采集原始素材时的工具路由参考。
 方法论借鉴 agent-search（路由 + 降级 + 自检），但**全部基于 pi 本机实测可用性**重写——
 pi 没有 web_fetch/web_search/browser 等内置工具，联网只能靠 bash curl。

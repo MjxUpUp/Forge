@@ -4,7 +4,6 @@ description: "前端开发强制规范：UI 组件 / 状态 / Design Token / a11
 metadata:
   pattern: tool-wrapper
   domain: frontend
-  steps: 5
   composes: [code-review-gate, test-discipline, tdd-cycle, integration-test-architecture, on-demand-guards]
 ---
 

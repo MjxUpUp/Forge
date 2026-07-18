@@ -242,7 +242,7 @@ skill-name/
 - [ ] 有易错点（Gotchas）部分
 - [ ] 纪律型 skill 有 Red Flags + Rationalization 表
 - [ ] 超长详细内容拆到了 references/
-- [ ] 跑过 `forge skills validate` + `forge skills audit` 校验（R1-R9 规范 + 19 条安全规则，forge 自带，无需外部脚本）
+- [ ] 跑过 `forge skills validate` + `forge skills audit` 校验（R1-R11 规范 + 19 条安全规则，forge 自带，无需外部脚本）
 - [ ] **TDD：跑过基线测试**（无 skill 时子代理怎么失败），针对失败写的 skill
 - [ ] **防注水：跑过 `skill-anti-degradation-check.sh`**（扫描弱措辞/弱门控/无命令 checklist）
 

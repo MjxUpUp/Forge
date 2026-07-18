@@ -1,4 +1,4 @@
-// Package skillsqa 实现 SkillsHub 的质量校验：规范契约（registry.py 的 R1-R9）
+// Package skillsqa 实现 SkillsHub 的质量校验：规范契约（registry.py 的 R1-R11）
 // 与安全审查（audit.py 的 19 条规则 + 加权评分）。1:1 对齐 Python 语义，确保与
 // registry.py --json / audit.py 的判定逐条一致（黄金对比基准）。
 package skillsqa
@@ -24,6 +24,15 @@ var HighSignalKW = []string{
 	"decision tree", "决策树", "post-generation", "自查", "review",
 	"gotcha", "易错", "checklist", "检查清单", "when.*try.*because",
 	"red flag", "rationaliz", "红旗", "借口",
+}
+
+// CSOWorkflowMarkers — description 不应含的工作流总结词（CSO 规则：description 只说
+// what + when，不总结 body 工作流，否则模型照 description 行动而跳过 SKILL.md body）。
+// 启发式高置信中文词组，命中走 advisory（防回归，不阻断 Pass）。
+// 三方背书：Anthropic best-practices（description 不复述 workflow）+ Steve Kinney AP-1
+// + Lost in the Middle（arXiv:2307.03172，模型偏重开头描述而漏 body）。
+var CSOWorkflowMarkers = []string{
+	"完整工作流", "完整流程", "全流程", "完整协议", "完整编排", "全链路", "全工序",
 }
 
 // AllowedFm — frontmatter 顶层字段白名单（registry.py ALLOWED_FM，R3 防字段 typo）。

@@ -174,7 +174,7 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 			res.Pass = rep.Pass
 			res.Issues = rep.Issues
 			if !rep.Pass {
-				res.Targets = []TargetResult{{Action: actBlocked, Detail: "registry 规范门控未通过（R1-R9）"}}
+				res.Targets = []TargetResult{{Action: actBlocked, Detail: "registry 规范门控未通过（R1-R11）"}}
 				report.Stats.Failed++
 				report.Skills = append(report.Skills, res)
 				continue

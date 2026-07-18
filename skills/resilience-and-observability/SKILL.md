@@ -4,7 +4,6 @@ description: "韧性与可观测性强制规范：SLO/Error Budget (Google SRE) 
 metadata:
   pattern: tool-wrapper
   domain: resilience
-  steps: 5
   composes: [systematic-debugging, backend-development, integration-test-architecture, code-review-gate, verification-driver]
 ---
 

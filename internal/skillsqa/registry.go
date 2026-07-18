@@ -31,10 +31,11 @@ type SkillReport struct {
 	Description string   `json:"description"`
 	Quality     Quality  `json:"quality"`
 	Issues      []string `json:"issues"`
+	Advisories  []string `json:"advisories,omitempty"`
 	Pass        bool     `json:"pass"`
 }
 
-// AuditSkill 对单个 skill 目录跑 R1-R9 规范校验。1:1 对齐 registry.py audit_skill。
+// AuditSkill 对单个 skill 目录跑 R1-R11 规范校验。1:1 对齐 registry.py audit_skill。
 func AuditSkill(skillDir string) (*SkillReport, error) {
 	skillPath := filepath.Join(skillDir, "SKILL.md")
 	data, err := os.ReadFile(skillPath)
@@ -59,6 +60,7 @@ func AuditSkill(skillDir string) (*SkillReport, error) {
 	bodyLow := strings.ToLower(fm.Body)
 
 	var issues []string
+	var advisories []string
 
 	// R1 name kebab-case
 	if !kebabRe.MatchString(name) {
@@ -82,7 +84,13 @@ func AuditSkill(skillDir string) (*SkillReport, error) {
 	// R4 description 长度（Python len() 是字符数 → Go 用 RuneCount 对齐，否则中文 3 字节/字符致 R4 失准）
 	descLen := utf8.RuneCountInString(desc)
 	if descLen < 80 {
-		issues = append(issues, fmt.Sprintf("description 过短(%d字符 <80)", descLen))
+		issues = append(issues, fmt.Sprintf(`description 过短(%d字符 <80)`, descLen))
+	}
+	// R4 上限：Anthropic skill 规范 description ≤1024 字符（硬 issue）；>500 偏长（advisory）
+	if descLen > 1024 {
+		issues = append(issues, fmt.Sprintf(`description 过长(%d字符 >1024，超 Anthropic skill 规范上限)`, descLen))
+	} else if descLen > 500 {
+		advisories = append(advisories, fmt.Sprintf(`description 偏长(%d字符 >500，建议精简到 what+when，不总结工作流)`, descLen))
 	}
 	// R5 Use when
 	hasUseWhen := strings.Contains(descLow, "use when")
@@ -128,8 +136,17 @@ func AuditSkill(skillDir string) (*SkillReport, error) {
 		}
 	}
 	if !hasSignal {
-		issues = append(issues, "缺高信号内容(决策树/自查/Gotchas)")
+		issues = append(issues, `缺高信号内容(决策树/自查/Gotchas)`)
 	}
+	// R10 CSO：description 不应总结 body 工作流（advisory，防回归）
+	for _, marker := range CSOWorkflowMarkers {
+		if strings.Contains(desc, marker) {
+			advisories = append(advisories, fmt.Sprintf(`description 含工作流总结词(%s)；CSO 规则：description 只说 what+when，不总结工作流（否则模型照 description 跳过 body）`, marker))
+			break
+		}
+	}
+	// R11 references 结构：≤1 level（无子目录，硬）+ >100 行 ref 需 ToC（advisory）
+	checkReferences(skillDir, &issues, &advisories)
 
 	return &SkillReport{
 		Name:        name,
@@ -145,7 +162,47 @@ func AuditSkill(skillDir string) (*SkillReport, error) {
 			Over500Lines:  over,
 			HasHighSignal: hasSignal,
 		},
-		Issues: issues,
-		Pass:   len(issues) == 0,
+		Issues:     issues,
+		Advisories: advisories,
+		Pass:       len(issues) == 0,
 	}, nil
+}
+
+// checkReferences 校验 references/ 目录结构（R11）：
+//   - ≤1 level：references/ 下直接放文件，不应有子目录（硬 issue）
+//   - >100 行的 markdown reference 需 ToC 助导航（advisory；认 ## 目录 / ## Contents / ## Table of Contents）
+//
+// 无 references 目录时跳过（合法）；目录存在但不可读（权限等）报 advisory。
+// TODO: 作用域仅 references/——templates/scripts/adapters 等同级子目录暂不覆盖
+//（Anthropic 规范文字只点名 references/，等规范明确后再扩）。
+func checkReferences(skillDir string, issues, advisories *[]string) {
+	refsDir := filepath.Join(skillDir, "references")
+	entries, err := os.ReadDir(refsDir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			*advisories = append(*advisories, fmt.Sprintf(`references 目录不可读: %v`, err))
+		}
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			*issues = append(*issues, fmt.Sprintf(`references/%s/ 是子目录，规范要求平铺（references ≤1 level，文件直接放 references/ 下）`, e.Name()))
+			continue
+		}
+		if !markdownExt(filepath.Ext(e.Name())) {
+			continue
+		}
+		data, rerr := os.ReadFile(filepath.Join(refsDir, e.Name()))
+		if rerr != nil {
+			continue
+		}
+		content := string(data)
+		lines := strings.Count(content, "\n") + 1
+		hasToC := strings.Contains(content, "## 目录") ||
+			strings.Contains(content, "## Contents") ||
+			strings.Contains(content, "## Table of Contents")
+		if lines > 100 && !hasToC {
+			*advisories = append(*advisories, fmt.Sprintf(`references/%s 过长(%d行 >100) 缺 ## 目录 ToC（>100 行 reference 建议 ToC 助导航）`, e.Name(), lines))
+		}
+	}
 }
