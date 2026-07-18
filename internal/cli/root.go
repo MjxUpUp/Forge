@@ -88,6 +88,6 @@ func findProject() (*forgedata.Project, error) {
 	return projectroot.FindProject()
 }
 
-func jsonMarshal(v interface{}) ([]byte, error) {
+func jsonMarshal(v any) ([]byte, error) {
 	return json.MarshalIndent(v, "", "  ")
 }
