@@ -151,7 +151,7 @@ func readFile(t *testing.T, dir, name string) string {
 }
 
 // readJSON reads a JSON file inside dir into target.
-func readJSON(t *testing.T, dir, name string, target interface{}) {
+func readJSON(t *testing.T, dir, name string, target any) {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(dir, name))
 	if err != nil {

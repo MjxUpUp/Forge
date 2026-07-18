@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -75,7 +75,7 @@ func AuditSkill(skillDir string) (*SkillReport, error) {
 			unexpected = append(unexpected, k)
 		}
 	}
-	sort.Strings(unexpected)
+	slices.Sort(unexpected)
 	if len(unexpected) > 0 {
 		issues = append(issues, fmt.Sprintf("frontmatter 未知字段: %v（允许: %v）", unexpected, allowedFmSorted()))
 	}

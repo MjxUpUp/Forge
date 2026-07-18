@@ -16,7 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -196,7 +196,7 @@ func SourceChangesSince(root, baseCommit string) (hash string, hasChanges bool, 
 	if len(files) == 0 {
 		return "", false, nil
 	}
-	sort.Strings(files)
+	slices.Sort(files)
 	var b strings.Builder
 	for _, f := range files {
 		fmt.Fprintf(&b, "%s\n%s\n", f, fileContentForHash(root, base, f))

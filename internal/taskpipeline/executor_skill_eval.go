@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
@@ -70,7 +70,7 @@ func skillNamesFromChanged(changed []string, casesDir string) []string {
 	for n := range seen {
 		out = append(out, n)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 
