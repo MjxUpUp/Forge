@@ -11,7 +11,7 @@ import (
 )
 
 // mkLiveForgeDir 建一个含 .forge/ 的临时目录——registry 仅登记含 .forge 的为活跃项目
-//（List/Prune 过滤 .forge/ 不存在的死路径）。cli 包内 helper，与 registry 包的
+// （List/Prune 过滤 .forge/ 不存在的死路径）。cli 包内 helper，与 registry 包的
 // mkForgeProject 同义（跨包不能共享）。
 func mkLiveForgeDir(t *testing.T) string {
 	t.Helper()

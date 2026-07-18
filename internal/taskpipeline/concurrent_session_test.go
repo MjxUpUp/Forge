@@ -166,11 +166,11 @@ func TestEnsureSession_Scoped_DistinctSessionsIsolated(t *testing.T) {
 // the session id somehow contained path/path-separator characters.
 func TestSanitizeSessionID_StripsUnsafeChars(t *testing.T) {
 	cases := map[string]string{
-		"uuid-aaa":              "uuid-aaa",
-		"a/b\\c..d":             "a_b_c_d",
-		"  spaces  ":            "spaces",
-		"":                      "",
-		"46bde758-0ee1-4bc9-b":  "46bde758-0ee1-4bc9-b",
+		"uuid-aaa":             "uuid-aaa",
+		"a/b\\c..d":            "a_b_c_d",
+		"  spaces  ":           "spaces",
+		"":                     "",
+		"46bde758-0ee1-4bc9-b": "46bde758-0ee1-4bc9-b",
 	}
 	for in, want := range cases {
 		if got := util.SanitizeSessionID(in); got != want {
@@ -178,4 +178,3 @@ func TestSanitizeSessionID_StripsUnsafeChars(t *testing.T) {
 		}
 	}
 }
-

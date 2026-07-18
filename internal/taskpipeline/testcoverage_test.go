@@ -462,14 +462,14 @@ func TestTestCoverageWhitelistsHookEmbedContainer(t *testing.T) {
 // 不存在的单测。baseExact 仅匹配最终路径分量，substr 带尾斜杠保证目录范围。
 func TestTestCoverageWhitelistsRustAndTauriEntryPoints(t *testing.T) {
 	for _, p := range []string{
-		"src/main.rs",                   // Rust binary crate 入口
-		"src/lib.rs",                    // Rust lib crate 入口
-		"src-tauri/src/main.rs",         // Tauri Rust 二进制入口
-		"src-tauri/src/lib.rs",          // Tauri Rust lib
-		"src-tauri/src/commands.rs",     // #[tauri::command] 处理器
-		"src-tauri/src/ipc.rs",          // tokio::spawn IPC 桥接
-		"src-tauri/src/state.rs",        // Tauri 状态管理
-		"src-tauri/src/cli.rs",          // src-tauri/ 子串命中，所有目录下文件均豁免
+		"src/main.rs",               // Rust binary crate 入口
+		"src/lib.rs",                // Rust lib crate 入口
+		"src-tauri/src/main.rs",     // Tauri Rust 二进制入口
+		"src-tauri/src/lib.rs",      // Tauri Rust lib
+		"src-tauri/src/commands.rs", // #[tauri::command] 处理器
+		"src-tauri/src/ipc.rs",      // tokio::spawn IPC 桥接
+		"src-tauri/src/state.rs",    // Tauri 状态管理
+		"src-tauri/src/cli.rs",      // src-tauri/ 子串命中，所有目录下文件均豁免
 	} {
 		if !isWhitelisted(p) {
 			t.Errorf("isWhitelisted(%q) = false; Rust entry / Tauri command glue must be exempt", p)
@@ -477,9 +477,9 @@ func TestTestCoverageWhitelistsRustAndTauriEntryPoints(t *testing.T) {
 	}
 	// 负向：不在 entry-point (main.rs/lib.rs) 也不在 src-tauri/ 目录下的源仍需测试。
 	for _, p := range []string{
-		"src/widget/click.rs",        // 普通 Rust 源码（非 main/lib）
-		"src-tauri.rs",               // 根目录文件，非 src-tauri/ 目录下
-		"src-tauri-helper/state.rs",  // 邻近目录名 src-tauri-helper/，不被 src-tauri/ 命中
+		"src/widget/click.rs",       // 普通 Rust 源码（非 main/lib）
+		"src-tauri.rs",              // 根目录文件，非 src-tauri/ 目录下
+		"src-tauri-helper/state.rs", // 邻近目录名 src-tauri-helper/，不被 src-tauri/ 命中
 	} {
 		if isWhitelisted(p) {
 			t.Errorf("isWhitelisted(%q) = true; 非入口/非 Tauri 目录源码不应被免测", p)

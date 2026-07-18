@@ -124,7 +124,7 @@ func ScanCheatPatterns(root string, state *TaskState) []CheatFinding {
 // 连写）——本扫描器会扫自己的源码，注释里的完整指令文本会被当成真抑制误报。描述性写法
 // （指令名不带 sigil/前缀）不触发正则，故安全。
 var typeSuppressionRe = []*regexp.Regexp{
-	regexp.MustCompile(`@ts-nocheck`),       // TS 整文件抑制
+	regexp.MustCompile(`@ts-nocheck`),        // TS 整文件抑制
 	regexp.MustCompile(`@ts-ignore`),         // TS 单行抑制
 	regexp.MustCompile(`@ts-expect-error`),   // TS 期望错误（仍是抑制）
 	regexp.MustCompile(`eslint-disable`),     // eslint 行/块禁用

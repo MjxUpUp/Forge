@@ -22,9 +22,9 @@ type GoldenCase struct {
 	// Rationale documents why this case exists and which dimension/score
 	// path it pins, so a future maintainer changing scoring knows whether the
 	// expected value must move with the change.
-	Rationale string       `json:"rationale"`
-	Input    EvaluateInput `json:"input"`
-	Expected ExpectedScore `json:"expected"`
+	Rationale string        `json:"rationale"`
+	Input     EvaluateInput `json:"input"`
+	Expected  ExpectedScore `json:"expected"`
 	// Meta 记录采集来源与已知漂移维度。omitempty → 老 canonical fixture 无 Meta，向后兼容。
 	Meta GoldenMeta `json:"meta,omitempty"`
 }

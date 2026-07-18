@@ -309,10 +309,10 @@ func verifyChecksum(assets []githubAsset, assetName, archivePath string) error {
 	for _, a := range assets {
 		if a.Name == "checksums.txt" {
 			checksumURL = a.BrowserDownloadURL
-				// Force checksums.txt from official GitHub when using mirror (#2, #3)
-				if os.Getenv("FORGE_BINARY_HOST") != "" {
-					checksumURL = "https://github.com/MjxUpUp/Forge/releases/latest/download/checksums.txt"
-				}
+			// Force checksums.txt from official GitHub when using mirror (#2, #3)
+			if os.Getenv("FORGE_BINARY_HOST") != "" {
+				checksumURL = "https://github.com/MjxUpUp/Forge/releases/latest/download/checksums.txt"
+			}
 			break
 		}
 	}

@@ -6,9 +6,9 @@ import "github.com/MjxUpUp/Forge/internal/scoringtypes"
 // Stored as .forge/protocol.yml — defines quality standards and session behavior
 // that apply to every Claude Code session, regardless of pipeline state.
 type Protocol struct {
-	Version      string                   `yaml:"version"      json:"version"`
-	Standards    []Standard               `yaml:"standards"    json:"standards"`
-	SessionRules []SessionRule            `yaml:"session_rules" json:"session_rules"`
+	Version      string                      `yaml:"version"      json:"version"`
+	Standards    []Standard                  `yaml:"standards"    json:"standards"`
+	SessionRules []SessionRule               `yaml:"session_rules" json:"session_rules"`
 	Scoring      *scoringtypes.ScoringConfig `yaml:"scoring,omitempty" json:"scoring,omitempty"`
 }
 
@@ -25,7 +25,7 @@ type Standard struct {
 // SessionRule is a behavioral rule for the AI agent during every session.
 type SessionRule struct {
 	ID          string `yaml:"id"          json:"id"`
-	Trigger     string `yaml:"trigger"     json:"trigger"`     // always, on_edit, on_commit
+	Trigger     string `yaml:"trigger"     json:"trigger"` // always, on_edit, on_commit
 	Instruction string `yaml:"instruction" json:"instruction"`
 	Mandatory   bool   `yaml:"mandatory"   json:"mandatory"`
 }

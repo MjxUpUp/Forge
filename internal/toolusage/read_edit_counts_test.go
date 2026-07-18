@@ -39,7 +39,7 @@ func TestReadEditCounts(t *testing.T) {
 	}
 
 	// since=-6s captures only Edit(-5s) and Write(-3s): 0 reads, 2 edits.
-	reads, edits, _ = ReadEditCounts(dir, taskRef, now.Add(-6 * time.Second))
+	reads, edits, _ = ReadEditCounts(dir, taskRef, now.Add(-6*time.Second))
 	if reads != 0 || edits != 2 {
 		t.Fatalf("got reads=%d edits=%d, want 0/2 (since filter)", reads, edits)
 	}
