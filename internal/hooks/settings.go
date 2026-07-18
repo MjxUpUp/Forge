@@ -20,6 +20,7 @@ var embeddedHooks = map[string]string{
 	"file-sentinel":       FileSentinelHook,
 	"tool-track":          ToolTrackHook,
 	"skill-scan":          SkillScanHook,
+	"mcp-scan":            McpScanHook,
 	"init-suggest":        InitSuggestHook,
 	"task-resume":         TaskResumeHook,
 	"workflow-test-guard": WorkflowTestGuardHook,
@@ -109,6 +110,7 @@ func ForgeHookSpec() map[string][]HookMatcher {
 			{
 				Hooks: []HookEntry{
 					{Type: "command", Command: "forge hook skill-scan"},
+					{Type: "command", Command: "forge hook mcp-scan"},
 					{Type: "command", Command: "forge hook init-suggest"},
 					{Type: "command", Command: "forge hook task-resume"},
 				},
@@ -270,6 +272,7 @@ func WriteHookTemplates(forgeDir string) error {
 		"file-sentinel.sh":       FileSentinelHook,
 		"tool-track.sh":          ToolTrackHook,
 		"skill-scan.sh":          SkillScanHook,
+		"mcp-scan.sh":            McpScanHook,
 		"init-suggest.sh":        InitSuggestHook,
 		"task-resume.sh":         TaskResumeHook,
 		"workflow-test-guard.sh": WorkflowTestGuardHook,
@@ -317,6 +320,7 @@ func HookNames() []string {
 		"file-sentinel.sh",
 		"tool-track.sh",
 		"skill-scan.sh",
+		"mcp-scan.sh",
 		"init-suggest.sh",
 		"task-resume.sh",
 		"workflow-test-guard.sh",
