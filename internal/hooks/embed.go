@@ -1178,6 +1178,34 @@ const TaskResumeHook = `#!/bin/bash
 exec forge task resume --hook
 `
 
+const CompactResumeHook = `#!/bin/bash
+# compact-resume.sh — PostCompact hook (advisory, claude-code only, gap#2 根治层·设标志半边)。
+# 压缩完成时把活跃任务的 ResumeStale 置 true（标记"刚压缩过"），等下个 UserPromptSubmit 的
+# resume-reinject 检测到即重注入完整 handoff。PostCompact 本身不能注入 additionalContext
+# （Claude Code 文档：PostCompact 不在注入点列表，只能 follow-up），故此 hook 只设标志不输出。
+#
+# Thin wrapper：实际逻辑在 forge task resume --compact-flag（Go）。bash 仅 exec 转发——找任务、
+# 设标志、幂等、静默都在 Go，避开 bash 重写逻辑与 Windows 引号腐蚀（memory: quote）。
+#
+# 项目级 hook：runHook（cli/hook.go）已用 findProjectRoot 设 cwd；非 forge 项目 runHook 对
+# 非全局 hook outputAllow exit，根本不跑本脚本。
+exec forge task resume --compact-flag
+`
+
+const ResumeReinjectHook = `#!/bin/bash
+# resume-reinject.sh — UserPromptSubmit hook (advisory, claude-code only, gap#2 根治层·重注入半边)。
+# 若活跃任务 ResumeStale=true（刚压缩过）→ 输出 PASS+完整接续视图并清标志；否则静默。
+# UserPromptSubmit 的 stdout 进 context（Claude Code 文档：在 additionalContext 注入点列表），
+# runHook 包成 additionalContext 注入，协议同 SessionStart task-resume。
+#
+# 与 SessionStart task-resume 分工：task-resume 只在会话启动注入一次，会话中途压缩不补；
+# resume-reinject 补这个缺口——压缩后第一个 user prompt 自动恢复完整接续上下文，不靠 agent
+# 主动 forge task resume。tl;dr tier 是跨 host 缓解层，本 hook 是 claude-code 根治层。
+#
+# Thin wrapper：逻辑在 forge task resume --reinject（Go）。bash 仅 exec 转发。
+exec forge task resume --reinject
+`
+
 const WorkflowTestGuardHook = `#!/bin/bash
 # workflow-test-guard.sh — PostToolUse hook for Write|Edit.
 # 改 .github/workflows/*.yml 后自动跑 internal/ci 守护测试——把"沙盒异常"在修改

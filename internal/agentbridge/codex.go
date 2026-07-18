@@ -68,7 +68,10 @@ func buildCodexHooks() map[string]any {
 	spec := hooks.ForgeHookSpec()
 	codex := make(map[string][]hooks.HookMatcher, len(spec))
 	for event, matchers := range spec {
-		if event == `SessionStart` {
+		// 白名单：codex 只支持 PreToolUse/PostToolUse/Stop（无 SessionStart/PostCompact/
+		// UserPromptSubmit 等会话/压缩/prompt lifecycle）。其余 claude-code 特有 event——含
+		// gap#2 的 PostCompact/UserPromptSubmit 重注入链——自动跳过。
+		if event != "PreToolUse" && event != "PostToolUse" && event != "Stop" {
 			continue
 		}
 		codex[event] = matchers

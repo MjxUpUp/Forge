@@ -113,7 +113,7 @@ func TestGenerateSettingsUsesForgeHook(t *testing.T) {
 
 func TestEmbeddedContent(t *testing.T) {
 	// Known hooks return content and true
-	for _, name := range []string{"auto-compile", "assertion-check", "task-verify", "bash-guard", "file-sentinel", "task-guard", "skill-scan", "workflow-test-guard"} {
+	for _, name := range []string{"auto-compile", "assertion-check", "task-verify", "bash-guard", "file-sentinel", "task-guard", "skill-scan", "task-resume", "compact-resume", "resume-reinject", "workflow-test-guard"} {
 		content, ok := EmbeddedContent(name)
 		if !ok {
 			t.Errorf("EmbeddedContent(%q) returned false", name)
@@ -655,6 +655,90 @@ func TestSessionStartHasTaskResume(t *testing.T) {
 	}
 	if !found {
 		t.Error("SessionStart missing 'forge hook task-resume' command")
+	}
+}
+
+// TestPostCompactHasCompactResume guards that the claude-code-only PostCompact
+// lifecycle hook is registered for compact-resume. gap#2 root-cause layer:
+// PostCompact sets ResumeStale=true so the next UserPromptSubmit (resume-reinject)
+// re-injects the full handoff after mid-session compaction. Without PostCompact
+// registration the flag is never set and re-injection never fires — gap#2
+// silently no-ops while every other test stays green.
+func TestPostCompactHasCompactResume(t *testing.T) {
+	dir := t.TempDir()
+	if err := GenerateSettings(dir); err != nil {
+		t.Fatalf("GenerateSettings: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, ".claude", "settings.local.json"))
+	if err != nil {
+		t.Fatalf("read settings: %v", err)
+	}
+	var parsed struct {
+		Hooks map[string][]struct {
+			Hooks []struct {
+				Command string `json:"command"`
+			} `json:"hooks"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	groups, ok := parsed.Hooks[`PostCompact`]
+	if !ok {
+		t.Fatal(`PostCompact event not registered in settings`)
+	}
+	found := false
+	for _, g := range groups {
+		for _, h := range g.Hooks {
+			if h.Command == `forge hook compact-resume` {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Error(`PostCompact missing 'forge hook compact-resume' command`)
+	}
+}
+
+// TestUserPromptSubmitHasResumeReinject guards that the claude-code-only
+// UserPromptSubmit lifecycle hook is registered for resume-reinject. Companion
+// to PostCompact: UserPromptSubmit checks ResumeStale and, if set, re-injects
+// the full handoff then clears the flag (one-shot). Without UserPromptSubmit
+// registration the PostCompact-set flag is never consumed — compaction leaves
+// ResumeStale=true forever but nothing re-injects, same silent no-op.
+func TestUserPromptSubmitHasResumeReinject(t *testing.T) {
+	dir := t.TempDir()
+	if err := GenerateSettings(dir); err != nil {
+		t.Fatalf("GenerateSettings: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, ".claude", "settings.local.json"))
+	if err != nil {
+		t.Fatalf("read settings: %v", err)
+	}
+	var parsed struct {
+		Hooks map[string][]struct {
+			Hooks []struct {
+				Command string `json:"command"`
+			} `json:"hooks"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	groups, ok := parsed.Hooks[`UserPromptSubmit`]
+	if !ok {
+		t.Fatal(`UserPromptSubmit event not registered in settings`)
+	}
+	found := false
+	for _, g := range groups {
+		for _, h := range g.Hooks {
+			if h.Command == `forge hook resume-reinject` {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Error(`UserPromptSubmit missing 'forge hook resume-reinject' command`)
 	}
 }
 
