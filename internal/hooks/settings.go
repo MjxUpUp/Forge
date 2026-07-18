@@ -23,6 +23,8 @@ var embeddedHooks = map[string]string{
 	"mcp-scan":            McpScanHook,
 	"init-suggest":        InitSuggestHook,
 	"task-resume":         TaskResumeHook,
+	"compact-resume":      CompactResumeHook,
+	"resume-reinject":     ResumeReinjectHook,
 	"workflow-test-guard": WorkflowTestGuardHook,
 }
 
@@ -113,6 +115,25 @@ func ForgeHookSpec() map[string][]HookMatcher {
 					{Type: "command", Command: "forge hook mcp-scan"},
 					{Type: "command", Command: "forge hook init-suggest"},
 					{Type: "command", Command: "forge hook task-resume"},
+				},
+			},
+		},
+		// PostCompact + UserPromptSubmit 构成 gap#2 的 claude-code 根治层（压缩后自动重注入
+		// 完整接续上下文，不靠 agent 主动 forge task resume）。两 event 都是 Claude Code 特有
+		// lifecycle：codex/cursor 在 buildCodexHooks/buildCursorHooks 过滤，opencode 的 TS plugin
+		// 不读 ForgeHookSpec（只 wire tool.execute.before 等价），故此链只对 claude-code 生效——
+		// 接受的边界（其余 host 靠 SessionStart 的 tl;dr tier 缓解）。
+		"PostCompact": []HookMatcher{
+			{
+				Hooks: []HookEntry{
+					{Type: "command", Command: "forge hook compact-resume"},
+				},
+			},
+		},
+		"UserPromptSubmit": []HookMatcher{
+			{
+				Hooks: []HookEntry{
+					{Type: "command", Command: "forge hook resume-reinject"},
 				},
 			},
 		},
@@ -275,6 +296,8 @@ func WriteHookTemplates(forgeDir string) error {
 		"mcp-scan.sh":            McpScanHook,
 		"init-suggest.sh":        InitSuggestHook,
 		"task-resume.sh":         TaskResumeHook,
+		"compact-resume.sh":      CompactResumeHook,
+		"resume-reinject.sh":     ResumeReinjectHook,
 		"workflow-test-guard.sh": WorkflowTestGuardHook,
 	}
 
@@ -323,6 +346,8 @@ func HookNames() []string {
 		"mcp-scan.sh",
 		"init-suggest.sh",
 		"task-resume.sh",
+		"compact-resume.sh",
+		"resume-reinject.sh",
 		"workflow-test-guard.sh",
 	}
 }

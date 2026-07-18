@@ -76,6 +76,8 @@ func init() {
 	taskResumeCmd.Flags().Bool("json", false, "JSON 格式输出完整 task state")
 	taskResumeCmd.Flags().Bool("no-attach", false, "仅查看，不把当前 session 锚定到 task")
 	taskResumeCmd.Flags().Bool("hook", false, "SessionStart hook 模式：无活跃任务静默退出；有活跃任务 attach 当前 session 并输出 PASS+接续视图（供 forge hook task-resume 调用）")
+	taskResumeCmd.Flags().Bool("compact-flag", false, "PostCompact hook 模式：压缩完成时设 ResumeStale=true（claude-code 根治层·设标志半边，gap#2；供 forge hook compact-resume 调用）")
+	taskResumeCmd.Flags().Bool("reinject", false, "UserPromptSubmit hook 模式：若 ResumeStale（刚压缩）则重注入完整 handoff 并清标志（claude-code 根治层·重注入半边，gap#2；供 forge hook resume-reinject 调用）")
 
 	taskContextCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
 	taskContextCmd.Flags().Bool("json", false, "JSON 格式输出完整 task state")
@@ -133,6 +135,42 @@ func runTaskResume(cmd *cobra.Command, args []string) error {
 	asJSON, _ := cmd.Flags().GetBool("json")
 	noAttach, _ := cmd.Flags().GetBool("no-attach")
 	hookMode, _ := cmd.Flags().GetBool("hook")
+	compactFlag, _ := cmd.Flags().GetBool("compact-flag")
+	reinject, _ := cmd.Flags().GetBool("reinject")
+
+	if compactFlag {
+		// PostCompact hook（claude-code 根治层·设标志半边，gap#2）：压缩完成 → 设
+		// ResumeStale=true，下个 UserPromptSubmit 的 --reinject 检测到即重注入完整 handoff。
+		// 静默 exit 0（无 stdout）：PostCompact 不能注入 additionalContext（Claude Code 文档
+		// 明确不在注入点列表，只能 block 或 follow-up），故此 hook 只做 follow-up 设标志。
+		// 无活跃任务或已设标志 → 幂等不操作。任何失败降级 stderr + exit 0（advisory 不阻塞）。
+		root, err := findProjectRoot()
+		if err != nil {
+			return nil
+		}
+		if err := renderHookCompactFlag(root); err != nil {
+			fmt.Fprintf(os.Stderr, "[forge] compact-resume advisory hook failed: %v\n", err)
+		}
+		return nil
+	}
+
+	if reinject {
+		// UserPromptSubmit hook（claude-code 根治层·重注入半边，gap#2）：若 ResumeStale
+		// （刚压缩过）→ 重注入完整 handoff + 清标志；否则静默。UserPromptSubmit 的 stdout
+		// 进 context（Claude Code 文档：UserPromptSubmit 在 additionalContext 注入点列表），
+		// runHook 包成 additionalContext 注入，故 PASS+handoff 协议同 SessionStart task-resume。
+		root, err := findProjectRoot()
+		if err != nil {
+			return nil
+		}
+		out, err := renderHookReinject(root)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[forge] resume-reinject advisory hook failed: %v\n", err)
+			return nil
+		}
+		fmt.Print(out) // 无活跃/未压缩 out="" 静默；有则 "PASS\n<handoff>"
+		return nil
+	}
 
 	// hook 模式（SessionStart 自动注入；bash thin wrapper `exec forge task resume --hook`）：
 	// 无活跃任务静默 exit 0（不注入、不报错）；有活跃任务则 attach 当前 session + 输出
@@ -222,6 +260,35 @@ func renderHookResume(root string) (string, error) {
 		return "", nil
 	}
 	if _, err := attachCurrentSession(state, root, true); err != nil {
+		return "", err
+	}
+	return "PASS\n" + renderResume(state, gitPorcelain(root)), nil
+}
+
+// renderHookCompactFlag 产出 PostCompact hook 的副作用：把活跃任务的 ResumeStale 置 true
+// （持久化）。无活跃任务或已置位 → 幂等不操作不报错。这是 claude-code 根治层（gap#2）的
+// "设标志"半边——PostCompact 不能注入 context，只标记"刚压缩过"，等下个 UserPromptSubmit
+// 的 renderHookReinject 重注入。把 findProjectRoot 之外的纯逻辑提出，供单测直接传 root。
+func renderHookCompactFlag(root string) error {
+	state, _ := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
+	if state == nil || state.ResumeStale {
+		return nil
+	}
+	state.ResumeStale = true
+	return taskpipeline.SaveTaskState(root, state)
+}
+
+// renderHookReinject 产出 UserPromptSubmit hook 模式输出：若活跃任务 ResumeStale=true（刚压缩
+// 过）→ 返 "PASS\n<handoff>" 并清零 ResumeStale（持久化）；否则返 ""（静默，不注入）。这是
+// claude-code 根治层（gap#2）的"重注入"半边——压缩后第一个 user prompt 自动恢复完整接续
+// 上下文，不靠 agent 主动 forge task resume。clear 标志保证只重注入一次（下个 prompt 静默）。
+func renderHookReinject(root string) (string, error) {
+	state, _ := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
+	if state == nil || !state.ResumeStale {
+		return "", nil
+	}
+	state.ResumeStale = false
+	if err := taskpipeline.SaveTaskState(root, state); err != nil {
 		return "", err
 	}
 	return "PASS\n" + renderResume(state, gitPorcelain(root)), nil
@@ -440,6 +507,9 @@ func renderResume(state *taskpipeline.TaskState, gitChanged []string) string {
 	if len(state.DependsOn) > 0 {
 		w("依赖: " + strings.Join(state.DependsOn, ", "))
 	}
+	if state.HasContinuity() {
+		w(renderTldr(state))
+	}
 	w(strings.Repeat("─", 60))
 
 	hasContent := state.HasContinuity()
@@ -528,6 +598,52 @@ func renderResume(state *taskpipeline.TaskState, gitChanged []string) string {
 	w("→ 接续纪律用 session-continuity skill（/session-continuity）：HANDOFF 标准格式与跨会话恢复。")
 	w(strings.Repeat("═", 60))
 	return stripUnsafeControl(b.String())
+}
+
+// renderTldr 产出精炼 tl;dr 块（目标首行 / 现在做 / open 阻塞），插在 renderResume 输出
+// 靠前位置。设计目的：Claude Code/各 host 自动压缩（summarize）倾向保留开头 + 结构化短文本，
+// 完整 HANDOFF 视图易被压掉，tl;dr 紧凑靠前 → 更可能在压缩后的 summary 中存活，缓解长任务
+// context rot 致接续漂移。这是 gap#2 的跨 host 缓解层（SessionStart 注入，全 host 等价物支持）；
+// Claude Code 特有的 PostCompact 重注入链是另一层（见 compact-resume hook）。
+func renderTldr(state *taskpipeline.TaskState) string {
+	goal := strings.Split(state.Goal, "\n")[0]
+	if r := []rune(goal); len(r) > 100 {
+		goal = string(r[:100]) + "…"
+	}
+	if goal == "" {
+		goal = "(未设 goal)"
+	}
+	nowDoing := "(无)"
+	if len(state.NextSteps) > 0 {
+		nowDoing = state.NextSteps[0]
+	} else if state.CurrentGate != "" {
+		for _, g := range taskpipeline.DefaultGates() {
+			if g.ID == state.CurrentGate {
+				nowDoing = "推进 " + g.Name
+				break
+			}
+		}
+	}
+	var open []string
+	for _, bl := range state.Blockers {
+		if bl.Status != "resolved" && bl.Status != "wontfix" {
+			open = append(open, bl.Content)
+			if len(open) >= 2 {
+				break
+			}
+		}
+	}
+	blockerStr := "无"
+	if len(open) > 0 {
+		blockerStr = strings.Join(open, "; ")
+	}
+	var b strings.Builder
+	w := func(s string) { b.WriteString(s + "\n") }
+	w("【tl;dr · 压缩后保留此段关键】")
+	w("  目标: " + goal)
+	w("  现在做: " + nowDoing)
+	w("  阻塞: " + blockerStr)
+	return strings.TrimRight(stripUnsafeControl(b.String()), "\n")
 }
 
 // renderGateProgress 渲染门禁进度（如 ✅实现 ✅验证 ⏳完成）。cli 包无法访问 taskpipeline

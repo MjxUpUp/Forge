@@ -77,6 +77,30 @@ func TestCodexWiringMirrorsClaudeSettings(t *testing.T) {
 	}
 }
 
+// TestCodexHooksExcludeSessionLifecycle 守卫 gap#2 的跨 host 边界：claude-code 特有的
+// SessionStart/PostCompact/UserPromptSubmit lifecycle（含 task-resume 注入 + compact-resume/
+// resume-reinject 重注入链）必须被 codex 白名单排除——codex 无 compaction/prompt lifecycle，
+// 装上不支持的 event 会静默失效。TestCodexWiringMirrorsClaudeSettings 只查"codex 声明的 event
+// 命令集一致"（单子集断言），不查"codex 不该声明某 event"：若误把 PostCompact 加回 codex 白
+// 名单且命令集恰好一致，那条测试仍过。本测试补正向+反向断言，把白名单钉死。
+func TestCodexHooksExcludeSessionLifecycle(t *testing.T) {
+	raw := buildCodexHooks()
+	hooksMap, ok := raw[`hooks`].(map[string][]hooks.HookMatcher)
+	if !ok {
+		t.Fatalf(`codex wiring shape unexpected: %T`, raw[`hooks`])
+	}
+	for _, banned := range []string{`SessionStart`, `PostCompact`, `UserPromptSubmit`} {
+		if _, present := hooksMap[banned]; present {
+			t.Errorf(`codex must not wire %s (claude-code-only lifecycle, no codex analogue)`, banned)
+		}
+	}
+	for _, required := range []string{`PreToolUse`, `PostToolUse`, `Stop`} {
+		if _, present := hooksMap[required]; !present {
+			t.Errorf(`codex must wire %s (block-enforcing gate): missing`, required)
+		}
+	}
+}
+
 // TestCursorWiringMirrorsClaudeSettings guards the sync between cursor.go
 // (buildCursorHooks) and hooks/settings.go (GenerateSettings). Cursor's
 // hooks.json is flat with camelCase event names (preToolUse/postToolUse/stop),
