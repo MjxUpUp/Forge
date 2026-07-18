@@ -1,0 +1,16 @@
+# 行尾规范化规则
+#
+# 仓库 index 本就是 LF（git 存储文本 blob 的规范），本规则让【工作区】也保持 LF，
+# 覆盖 Windows core.autocrlf=true 把工作区转成 CRLF 的默认行为。
+#
+# 背景：autocrlf 导致工作区 232 个 .go 为 CRLF 而 index 为 LF，引发 gofmt -l 对
+# 全文件误报（整文件 diff 噪音）、IDE/跨平台贡献者行尾混乱。固化 eol=lf 后，
+# 新 checkout 的工作区统一 LF，gofmt -l 只报真实格式问题。
+
+# 默认：所有文本文件工作区用 LF。text=auto 让 git 自动识别二进制（含 NUL 字节）不转换。
+* text=auto eol=lf
+
+# Windows 专用脚本保留 CRLF：PowerShell/cmd 的传统行尾，避免某些边缘工具/编辑器问题。
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
