@@ -63,19 +63,19 @@ func TestIsSourceCode(t *testing.T) {
 		{"lib.py", true},
 		{"cmd/run.rs", true},
 		{"scripts/build.sh", true},
-		{"README.md", false},   // 文档不审
+		{"README.md", false}, // 文档不审
 		{"docs/guide.md", false},
 		{".forge/pipeline.yml", false}, // .forge 自身（yml 也非源码）
-		{"config.json", false},  // 配置不审
+		{"config.json", false},         // 配置不审
 		{"Cargo.toml", false},
-		{"foo.gen.go", false},   // 生成物：扩展是 go 但路径含 .gen.
+		{"foo.gen.go", false},            // 生成物：扩展是 go 但路径含 .gen.
 		{"bar_generated_test.go", false}, // 生成物：_generated
-		{"baz.pb.go", false},    // protobuf 生成
+		{"baz.pb.go", false},             // protobuf 生成
 		{"vendor/lib.go", false},
 		{"node_modules/x.js", false},
 		{"image.png", false},
 		{"style.css", false},
-		{"Makefile", false},     // 无扩展名不在白名单
+		{"Makefile", false}, // 无扩展名不在白名单
 	}
 	for _, tc := range cases {
 		if got := isSourceCode(tc.path); got != tc.want {
@@ -352,13 +352,13 @@ func TestSourceChangesSince_StableAcrossForgeWrites(t *testing.T) {
 // （不改任何东西）后，SourceChangesSince(C0) 仍 == 记录 hash（commit 的正是审查的工作区 diff）→ 门禁放行；
 // commit 后再改【新】内容才 != → 触发复审。
 func TestSourceChangesSince_CommitWorkdirContentStaysEqual(t *testing.T) {
-	dir := initGitRepo(t) // HEAD = C0
-	write(t, dir, `a.go`, `package a`) // 工作区有 a.go（untracked）
+	dir := initGitRepo(t)                            // HEAD = C0
+	write(t, dir, `a.go`, `package a`)               // 工作区有 a.go（untracked）
 	hAtReview, _, err := SourceChangesSince(dir, "") // = 工作区相对 C0 的 diff
 	if err != nil {
 		t.Fatal(err)
 	}
-	c0 := gitHeadShort(t, dir) // 记基线 base=C0
+	c0 := gitHeadShort(t, dir)    // 记基线 base=C0
 	gitCommit(t, dir, "reviewed") // HEAD = C1，工作区干净
 
 	hAfterCommit, _, err := SourceChangesSince(dir, c0) // C0..C1 含 a.go + 工作区空

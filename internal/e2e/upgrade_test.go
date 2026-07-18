@@ -13,7 +13,6 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-
 )
 
 var forgeBin string

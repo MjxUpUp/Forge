@@ -1,5 +1,5 @@
 // Package skillsdist 实现 skill 库的分发：把 canonical 源同步到各工具目标目录
-//（pi/claude/cursor 的全局位置或项目 .claude/skills），支持 link 与 copy 两种模式，
+// （pi/claude/cursor 的全局位置或项目 .claude/skills），支持 link 与 copy 两种模式，
 // 检测分发分叉（drift），部署 skill-routing adapter 单文件，维护 manifest 状态。
 // 1:1 对齐 SkillsHub admin/scripts/sync.py 的语义。
 package skillsdist

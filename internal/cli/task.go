@@ -196,7 +196,7 @@ func detectOriginTool(explicit string) string {
 }
 
 // completeGenericTask 完成 generic kind 任务（调研/设计/纯接续）：自动标 3 道门禁 passed
-//（History 完整供 list/dashboard 显示，但不跑任何检查——ExecuteTaskGate 对 generic 秒过）+
+// （History 完整供 list/dashboard 显示，但不跑任何检查——ExecuteTaskGate 对 generic 秒过）+
 // MarkComplete + 清 active-task-ref。不评分、不创建 review——generic 任务的价值在持久化的
 // 接续字段，不在代码质量门禁。
 func completeGenericTask(root string, state *taskpipeline.TaskState) error {
