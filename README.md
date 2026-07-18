@@ -81,6 +81,7 @@ Forge 通过 Claude Code 的 Hook 机制实现实时质量检查：
 | **tool-track** | Read 后 | 静默记录 Read 调用到 toollog，供 task-verify 的 read-before-edit 门禁判断（agent 是否先读代码再改） |
 | **task-verify** | 会话结束 | advisory：任务门禁/主分支保护到 stderr+checklog（不阻塞会话结束） |
 | **skill-scan** | 会话开始 | advisory：扫描 ~/.claude/skills 安全性（forge audit 19 规则），补 install 门控缺口（手动 clone/junction/git pull 进入的 skill），全局 hook 不依赖 forge project |
+| **mcp-scan** | 会话开始 | advisory：扫描项目级 `.mcp.json` 的 server 配置（管道执行/任意包执行 npx·uvx·dlx·bunx/内联代码/非 https URL/env 明文凭证），补 skill-scan 盲区（攻击者可经 PR 植入恶意 server，clone 即自动连接）；只审 config 层，runtime tool description 注入（Tool Poisoning）不在能力内，全局 hook |
 | **init-suggest** | 会话开始 | advisory：检测 git 项目无 `.forge/` 时，首次提示 agent 询问是否启用 forge（用户拒绝→`forge suggest decline` 永久静默；设 `FORGE_AUTO_INIT=1` 处处自动 init，注意 `forge init` 会写入 `.forge/`、`CLAUDE.md`/`AGENTS.md`、`.claude/settings.local.json`、skills——会对所在项目产生文件变更），全局 hook，补"每项目手动 init"缺口，实现一次安装后项目级资产自动就位 |
 | **task-resume** | 会话开始 | advisory：自动注入活跃任务的接续上下文（目标/计划/决策/阻塞/门禁进度/git 已改未提交）+ 锚定当前 session——接手方冷启动即知任务在哪一步，无需手动 forge task resume；无活跃任务静默；项目级 hook |
 
