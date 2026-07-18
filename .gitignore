@@ -36,6 +36,7 @@ AGENTS.md
 
 # Tool working dirs (not forge source)
 .playwright-mcp/
+.ccg/
 
 # Local exploration artifacts (not forge source)
 dify-forge-*.yml
