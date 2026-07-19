@@ -152,3 +152,139 @@ func TestAuditSkill_DescLenIsRuneCount(t *testing.T) {
 		t.Fatalf("desc_len = %d, expected rune count (~30-50), byte count would be ~100+", r.Quality.DescLen)
 	}
 }
+
+// expectAdvisory 检查 Advisories（非 Issues，不影响 Pass）含子串。
+func expectAdvisory(t *testing.T, r *SkillReport, wantSubstr string) {
+	t.Helper()
+	for _, a := range r.Advisories {
+		if strings.Contains(a, wantSubstr) {
+			return
+		}
+	}
+	t.Fatalf("expected advisory containing %q, got: %v", wantSubstr, r.Advisories)
+}
+
+// R4 上限：description >1024 rune 触发硬 issue（Anthropic skill 规范上限）。
+func TestAuditSkill_R4_DescTooLong(t *testing.T) {
+	desc := strings.Repeat("测试描述内容段", 150) + " Use when: x SKIP: y" // 7*150=1050 >1024
+	sd := writeSkill(t, t.TempDir(), "my-skill", makeSkill("my-skill", desc, "pipeline", signalBody()))
+	r, _ := AuditSkill(sd)
+	expectIssue(t, r, "description 过长")
+	if r.Pass {
+		t.Fatalf(">1024 should fail Pass")
+	}
+}
+
+// R4 偏长：description >500 且 ≤1024 走 advisory，不影响 Pass。
+func TestAuditSkill_R4_DescLongAdvisory(t *testing.T) {
+	desc := strings.Repeat("测试描述内容段", 80) + " Use when: x SKIP: y" // 7*80=560 >500 <1024
+	sd := writeSkill(t, t.TempDir(), "my-skill", makeSkill("my-skill", desc, "pipeline", signalBody()))
+	r, _ := AuditSkill(sd)
+	if !r.Pass {
+		t.Fatalf("偏长是 advisory 不应失败, issues: %v", r.Issues)
+	}
+	expectAdvisory(t, r, "偏长")
+}
+
+// R10 CSO：description 含工作流总结词走 advisory，不阻断 Pass。
+func TestAuditSkill_R10_CSO(t *testing.T) {
+	desc := "这是一个完整工作流的描述。" + strings.Repeat("填充内容", 12) + " Use when: x SKIP: y"
+	sd := writeSkill(t, t.TempDir(), "my-skill", makeSkill("my-skill", desc, "pipeline", signalBody()))
+	r, _ := AuditSkill(sd)
+	if !r.Pass {
+		t.Fatalf("CSO 是 advisory 不应失败, issues: %v", r.Issues)
+	}
+	expectAdvisory(t, r, "工作流总结词")
+}
+
+// R11 references 嵌套子目录：references/ 下不应有子目录（≤1 level），硬 issue。
+func TestAuditSkill_R11_NestedRefs(t *testing.T) {
+	dir := t.TempDir()
+	sd := writeSkill(t, dir, "my-skill", makeSkill("my-skill", longDesc(), "pipeline", signalBody()))
+	must(t, os.MkdirAll(filepath.Join(sd, "references", "subdir"), 0755))
+	r, _ := AuditSkill(sd)
+	expectIssue(t, r, "子目录")
+	if r.Pass {
+		t.Fatalf("嵌套子目录应失败")
+	}
+}
+
+// R11 references >100 行无 ToC：advisory，不阻断 Pass。
+func TestAuditSkill_R11_RefNoToC(t *testing.T) {
+	dir := t.TempDir()
+	sd := writeSkill(t, dir, "my-skill", makeSkill("my-skill", longDesc(), "pipeline", signalBody()))
+	must(t, os.MkdirAll(filepath.Join(sd, "references"), 0755))
+	longRef := strings.Repeat("参考内容行\n", 110) // 110 行，无 ## 目录
+	must(t, os.WriteFile(filepath.Join(sd, "references", "long-ref.md"), []byte(longRef), 0644))
+	r, _ := AuditSkill(sd)
+	if !r.Pass {
+		t.Fatalf("缺 ToC 是 advisory 不应失败, issues: %v", r.Issues)
+	}
+	expectAdvisory(t, r, "缺 ## 目录")
+}
+
+// R11 references >100 行有 ToC：不应触发 ToC advisory。
+func TestAuditSkill_R11_RefWithToC(t *testing.T) {
+	dir := t.TempDir()
+	sd := writeSkill(t, dir, "my-skill", makeSkill("my-skill", longDesc(), "pipeline", signalBody()))
+	must(t, os.MkdirAll(filepath.Join(sd, "references"), 0755))
+	ref := "# 标题\n\n## 目录\n\n- [x](#x)\n\n" + strings.Repeat("参考内容行\n", 110)
+	must(t, os.WriteFile(filepath.Join(sd, "references", "ref.md"), []byte(ref), 0644))
+	r, _ := AuditSkill(sd)
+	for _, a := range r.Advisories {
+		if strings.Contains(a, "缺 ## 目录") {
+			t.Fatalf("有 ToC 不应触发 advisory, got: %v", r.Advisories)
+		}
+	}
+}
+
+// 无 references 目录：合法，不报（防 false positive）。
+func TestAuditSkill_R11_NoRefsDir(t *testing.T) {
+	sd := writeSkill(t, t.TempDir(), "my-skill", makeSkill("my-skill", longDesc(), "pipeline", signalBody()))
+	r, _ := AuditSkill(sd)
+	for _, a := range r.Advisories {
+		if strings.Contains(a, "references/") {
+			t.Fatalf("无 references 目录不应触发 advisory, got: %v", r.Advisories)
+		}
+	}
+	if !r.Pass {
+		t.Fatalf("valid skill should pass, issues: %v", r.Issues)
+	}
+}
+
+// R4 边界：钉死 > 的严格性（=500/=1024 不触发，>500/>1024 触发），防误改成 >=。
+func TestAuditSkill_R4_Boundaries(t *testing.T) {
+	cases := []struct {
+		runes         int
+		wantIssue     bool // description 过长
+		wantAdvisory  bool // description 偏长
+	}{
+		{500, false, false},  // =500：不触发（>500 才 advisory）
+		{501, false, true},   // >500 advisory
+		{1024, false, true},  // =1024：仍走 advisory（>500 且 ≤1024 的 else-if 分支）
+		{1025, true, false},  // >1024 硬 issue（else-if 不再 advisory）
+	}
+	for _, c := range cases {
+		desc := strings.Repeat("测", c.runes) // 精确控制 rune 数（不含 Use when/SKIP，R5/R6 另报但不干扰 R4 断言）
+		sd := writeSkill(t, t.TempDir(), "my-skill", makeSkill("my-skill", desc, "pipeline", signalBody()))
+		r, _ := AuditSkill(sd)
+		hasIssue := false
+		for _, iss := range r.Issues {
+			if strings.Contains(iss, "description 过长") {
+				hasIssue = true
+			}
+		}
+		hasAdv := false
+		for _, a := range r.Advisories {
+			if strings.Contains(a, "偏长") {
+				hasAdv = true
+			}
+		}
+		if hasIssue != c.wantIssue {
+			t.Errorf("runes=%d: 过长 issue=%v want=%v (issues: %v)", c.runes, hasIssue, c.wantIssue, r.Issues)
+		}
+		if hasAdv != c.wantAdvisory {
+			t.Errorf("runes=%d: 偏长 advisory=%v want=%v (advisories: %v)", c.runes, hasAdv, c.wantAdvisory, r.Advisories)
+		}
+	}
+}

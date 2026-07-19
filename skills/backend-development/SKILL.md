@@ -4,7 +4,6 @@ description: "后端开发强制规范：API 设计 / service 层 / 鉴权 / 数
 metadata:
   pattern: tool-wrapper
   domain: backend
-  steps: 6
   composes: [code-review-gate, test-discipline, tdd-cycle, integration-test-architecture, verification-driver]
 ---
 

@@ -1,5 +1,20 @@
 # 过度工程审查清单（delete-list）
 
+## 目录
+
+- [核心产出格式：delete-list](#核心产出格式delete-list)
+- [根因诊断：懒惰阶梯（7 rung）](#根因诊断懒惰阶梯7-rung)
+- [1. 重造标准库轮子（stdlib）](#1-重造标准库轮子stdlib)
+- [2. 引依赖做几行事（native）](#2-引依赖做几行事native)
+- [3. 单实现抽象层（yagni）](#3-单实现抽象层yagni)
+- [4. 投机灵活性（yagni）](#4-投机灵活性yagni)
+- [5. 死代码与未用分支（delete）](#5-死代码与未用分支delete)
+- [6. 可压缩的手写循环（shrink）](#6-可压缩的手写循环shrink)
+- [7. bug 修症状不修根因（shrink）](#7-bug-修症状不修根因shrink)
+- [与 ai-cheat-patterns / review-checklist 的分工（不要重复查）](#与-ai-cheat-patterns-review-checklist-的分工不要重复查)
+- [边界：什么不是过度工程（不要 flag）](#边界什么不是过度工程不要-flag)
+- [检测要点速查](#检测要点速查)
+
 AI 生成代码时高频出现的**过度工程**——重造标准库轮子、为单一实现造抽象层、引新依赖做几行事、投机灵活性、死代码。与 [review-checklist.md](review-checklist.md) 第 3 维度的 YAGNI/DRY 散点 + 第 4 维度的滥用检测是**升级关系**——这里把"是不是过度工程"从散点 checkbox 升级为可执行的 **delete-list**：每条发现给"删什么 + 替代什么"，目标是让 diff 变短。AI 高频过度构建（ponytail 实测单任务可达 94% 冗余代码）。
 
 **铁律：发现过度工程 → 必须解决（删代码/内联/换标准库，降低维护负担）——所有过度工程发现一视同仁，不分级。**

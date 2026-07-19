@@ -1,8 +1,6 @@
 ---
 name: agent-delegation
-description: >
-  子代理委派与编排完整协议。Use when: 用 subagent 工具分派任务时、写子代理 prompt 时、验证子代理返回时、并行 dispatch 多个独立任务时、需要两阶段审查（spec合规+代码质量）时。
-  自包含完整编排流程。SKIP: 纯对话不涉及代码时、改几行代码不值得委托开销时（自己做）、需要先理解代码才能决定怎么改时（自己先探索）。
+description: "子代理委派与编排协议。Use when: 用 subagent 工具分派任务时、写子代理 prompt 时、验证子代理返回时、并行 dispatch 多个独立任务时。SKIP: 纯对话不涉及代码时、改几行代码不值得委托开销时（自己做）、需要先理解代码才能决定怎么改时（自己先探索）。"
 metadata:
   pattern: pipeline + reviewer
   domain: agent-orchestration

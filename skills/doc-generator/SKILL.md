@@ -89,16 +89,16 @@ Generator + Inversion 组合：**先采访缺失变量，再按模板填空**。
 
 ## 模板库
 
-模板存 `references/templates/`，按文档类型组织。每个模板含：
+模板存 `references/`（平铺，`template-` 前缀区分模板与其他参考文件）。每个模板含：
 - 章节结构（固定骨架）
 - 变量列表（必填/选填 + 说明）
 - 风格示例（一段范文定调）
 
 当前模板（持续补充）：
-- `references/templates/prd.md` — PRD/需求文档
-- `references/templates/weekly-report.md` — 周报
-- `references/templates/acceptance-report.md` — 验收报告
-- `references/templates/meeting-notes.md` — 会议纪要
+- `references/template-prd.md` — PRD/需求文档
+- `references/template-weekly-report.md` — 周报
+- `references/template-acceptance-report.md` — 验收报告
+- `references/template-meeting-notes.md` — 会议纪要
 
 **模板从哪来**：每次用户提供了好的文档范例，提炼成模板存库（知识积累）。没有的模板先用 Inversion 现场和用户定结构。
 

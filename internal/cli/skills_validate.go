@@ -19,7 +19,7 @@ var (
 // exit code 契约：0=全部通过，2=存在规范失败。
 var skillsValidateCmd = &cobra.Command{
 	Use:   "validate",
-	Short: "R1-R9 规范校验（exit code: 0=通过 2=规范失败）",
+	Short: "R1-R11 规范校验（exit code: 0=通过 2=规范失败）",
 	RunE:  runSkillsValidate,
 }
 
@@ -37,9 +37,10 @@ func runSkillsValidate(cmd *cobra.Command, args []string) error {
 	}
 
 	type res struct {
-		Name   string   `json:"name"`
-		Pass   bool     `json:"pass"`
-		Issues []string `json:"issues,omitempty"`
+		Name       string   `json:"name"`
+		Pass       bool     `json:"pass"`
+		Issues     []string `json:"issues,omitempty"`
+		Advisories []string `json:"advisories,omitempty"`
 	}
 	results := make([]res, 0, len(names))
 	failCount := 0
@@ -50,7 +51,7 @@ func runSkillsValidate(cmd *cobra.Command, args []string) error {
 			failCount++
 			continue
 		}
-		results = append(results, res{Name: n, Pass: rep.Pass, Issues: rep.Issues})
+		results = append(results, res{Name: n, Pass: rep.Pass, Issues: rep.Issues, Advisories: rep.Advisories})
 		if !rep.Pass {
 			failCount++
 		}
@@ -75,6 +76,9 @@ func runSkillsValidate(cmd *cobra.Command, args []string) error {
 			fmt.Printf("  %s %s\n", mark, r.Name)
 			for _, iss := range r.Issues {
 				fmt.Printf("      - %s\n", iss)
+			}
+			for _, a := range r.Advisories {
+				fmt.Printf("      · %s [建议]\n", a)
 			}
 		}
 		fmt.Printf("通过 %d / 失败 %d\n", len(names)-failCount, failCount)

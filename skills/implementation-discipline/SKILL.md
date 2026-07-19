@@ -1,6 +1,6 @@
 ---
 name: implementation-discipline
-description: "代码实施任务的全程纪律编排（从动手到交付）。Use when: 接到范式级重构/交互重设计任务时（先过 prototype-confirmation 原型门，由其自身 SKIP 判断是否真触——纯后端无视觉形态不触）、接到编码任务准备动手时、写实现代码前、准备 git commit / push / 提 PR 前、声称\"完成了/搞定了/可以了/验证通过了\"前、用户问\"做完了吗/验证了吗/能提交吗/提交代码\"时、长任务中途怀疑自己走偏或凭记忆猜类型 API 时。本 skill 是全程编排器，各阶段指向专门 skill（审查用 code-review-gate、测试用 tdd-cycle、验证用 verification-driver）。SKIP: 纯调研出报告（research-workflow）、单一运行时 bug 根因（systematic-debugging）、纯编译错误修复（compile-fix-loop）、只改一行配置验证一下、纯架构决策记录（architecture-decision-record）、只需规划不需执行纪律（用 dev-workflow）。"
+description: "代码实施任务的全程纪律编排。Use when: 接到编码任务准备动手时、写实现代码前、准备 git commit / push / 提 PR 前、声称\"完成了/搞定了/可以了/验证通过了\"前、用户问\"做完了吗/验证了吗/能提交吗/提交代码\"时、长任务中途怀疑走偏或凭记忆猜类型 API 时、接到范式级重构或交互重设计任务时。SKIP: 纯调研出报告（research-workflow）、单一运行时 bug 根因（systematic-debugging）、纯编译错误修复（compile-fix-loop）、纯架构决策记录（architecture-decision-record）、只需规划不需执行纪律（dev-workflow）、只改一行配置验证一下。"
 metadata:
   pattern: pipeline + gate
   domain: development-discipline
