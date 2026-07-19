@@ -4,7 +4,6 @@ description: "可维护性与可读性强制规范：cyclomatic/cognitive 复杂
 metadata:
   pattern: tool-wrapper
   domain: maintainability
-  steps: 4
   composes: [code-review-gate, implementation-discipline, systematic-debugging, backend-development, frontend-development]
 ---
 

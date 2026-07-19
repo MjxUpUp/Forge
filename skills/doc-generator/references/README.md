@@ -1,15 +1,15 @@
 # Doc Generator 模板库
 
-本目录存放各文档类型的模板。每个模板三段：变量列表（必填/选填）、章节结构（固定骨架）、风格示例（定调）。
+本目录（`references/`，平铺一层）存放各文档类型的模板，文件名以 `template-` 前缀。每个模板三段：变量列表（必填/选填）、章节结构（固定骨架）、风格示例（定调）。
 
 ## 当前模板
 
 | 文件 | 文档类型 | 状态 |
 |---|---|---|
-| `prd.md` | PRD/需求文档 | ✅ |
-| `weekly-report.md` | 周报 | ✅ |
-| `acceptance-report.md` | 验收报告 | ⏳ 待补（可参考 project-acceptance skill 的 5 维度） |
-| `meeting-notes.md` | 会议纪要 | ⏳ 待补（可参考 lark-workflow-meeting-summary） |
+| `template-prd.md` | PRD/需求文档 | ✅ |
+| `template-weekly-report.md` | 周报 | ✅ |
+| `template-acceptance-report.md` | 验收报告 | ⏳ 待补（可参考 project-acceptance skill 的 5 维度） |
+| `template-meeting-notes.md` | 会议纪要 | ⏳ 待补（可参考 lark-workflow-meeting-summary） |
 
 ## 模板补充规则
 

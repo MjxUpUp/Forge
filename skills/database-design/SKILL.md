@@ -4,7 +4,6 @@ description: "数据库 schema / migration / 索引 / 查询优化 / ORM 选型�
 metadata:
   pattern: tool-wrapper
   domain: database
-  steps: 6
   composes: [integration-test-architecture, verification-driver, backend-development, code-review-gate]
 ---
 
