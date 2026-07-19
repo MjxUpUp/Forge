@@ -563,7 +563,6 @@ func TestWriteHookTemplatesRemovesStaleHooks(t *testing.T) {
 	}
 }
 
-
 // TestSessionStartHasSkillScan guards that the global skill-scan hook is
 // registered on the SessionStart event. It scans ~/.claude/skills for risks at
 // session start (advisory), covering skills that entered outside the install

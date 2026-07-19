@@ -120,4 +120,3 @@ func TestDetectClonesSkipsVendor(t *testing.T) {
 		}
 	}
 }
-

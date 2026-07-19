@@ -255,14 +255,14 @@ func TestAuditSkill_R11_NoRefsDir(t *testing.T) {
 // R4 边界：钉死 > 的严格性（=500/=1024 不触发，>500/>1024 触发），防误改成 >=。
 func TestAuditSkill_R4_Boundaries(t *testing.T) {
 	cases := []struct {
-		runes         int
-		wantIssue     bool // description 过长
-		wantAdvisory  bool // description 偏长
+		runes        int
+		wantIssue    bool // description 过长
+		wantAdvisory bool // description 偏长
 	}{
-		{500, false, false},  // =500：不触发（>500 才 advisory）
-		{501, false, true},   // >500 advisory
-		{1024, false, true},  // =1024：仍走 advisory（>500 且 ≤1024 的 else-if 分支）
-		{1025, true, false},  // >1024 硬 issue（else-if 不再 advisory）
+		{500, false, false}, // =500：不触发（>500 才 advisory）
+		{501, false, true},  // >500 advisory
+		{1024, false, true}, // =1024：仍走 advisory（>500 且 ≤1024 的 else-if 分支）
+		{1025, true, false}, // >1024 硬 issue（else-if 不再 advisory）
 	}
 	for _, c := range cases {
 		desc := strings.Repeat("测", c.runes) // 精确控制 rune 数（不含 Use when/SKIP，R5/R6 另报但不干扰 R4 断言）
