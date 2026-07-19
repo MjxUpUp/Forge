@@ -174,7 +174,7 @@ func AuditSkill(skillDir string) (*SkillReport, error) {
 //
 // 无 references 目录时跳过（合法）；目录存在但不可读（权限等）报 advisory。
 // TODO: 作用域仅 references/——templates/scripts/adapters 等同级子目录暂不覆盖
-//（Anthropic 规范文字只点名 references/，等规范明确后再扩）。
+// （Anthropic 规范文字只点名 references/，等规范明确后再扩）。
 func checkReferences(skillDir string, issues, advisories *[]string) {
 	refsDir := filepath.Join(skillDir, "references")
 	entries, err := os.ReadDir(refsDir)
