@@ -4,7 +4,6 @@ description: "安全编码强制规范：OWASP Top 10 (2021) + Threat Modeling (
 metadata:
   pattern: tool-wrapper
   domain: security
-  steps: 5
   composes: [code-review-gate, on-demand-guards, verification-driver, backend-development, resilience-and-observability]
 ---
 

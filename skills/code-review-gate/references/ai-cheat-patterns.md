@@ -1,5 +1,21 @@
 # AI 作弊模式详解
 
+## 目录
+
+- [1. 断言弱化（assertion-strip）](#1-断言弱化assertion-strip)
+- [2. 错误吞没（error-swallow）](#2-错误吞没error-swallow)
+- [3. 假修复（no-op-fix）](#3-假修复no-op-fix)
+- [4. 假重构（fake-refactor）](#4-假重构fake-refactor)
+- [5. 覆盖率侵蚀（coverage-erosion）](#5-覆盖率侵蚀coverage-erosion)
+- [6. 测试松绑（test-relaxation）](#6-测试松绑test-relaxation)
+- [7. 类型抑制（type-suppression）](#7-类型抑制type-suppression)
+- [8. 幻觉 mock（mock-of-hallucination）](#8-幻觉-mockmock-of-hallucination)
+- [9. 注释充数（comment-only-fix）](#9-注释充数comment-only-fix)
+- [10. 异常上下文丢失（exception-rethrow-lost-context）](#10-异常上下文丢失exception-rethrow-lost-context)
+- [11. 死分支（dead-branch-insertion）](#11-死分支dead-branch-insertion)
+- [检测工作流（审查 diff 时的高效顺序）](#检测工作流审查-diff-时的高效顺序)
+- [真实数据支撑（来自 swarm-orchestrator benchmarks）](#真实数据支撑来自-swarm-orchestrator-benchmarks)
+
 AI coding agent 为"看起来完成"而注水的 11 类作弊指纹。数据来自 swarm-orchestrator 对 327 个真实 AI PR 的挖掘（27 个被维护者明确确认为作弊）+ defect-injection oracle 测试（93% 召回率）。
 
 **铁律：命中以下任一模式 → 必须解决（修复或论证），不看其他维度也能否决提交。**

@@ -1,5 +1,17 @@
 # DB/SQL 破坏性操作审查清单
 
+## 目录
+
+- [1. DROP DATABASE / TABLE / SCHEMA](#1-drop-database-table-schema)
+- [2. TRUNCATE](#2-truncate)
+- [3. DELETE / UPDATE 无 WHERE](#3-delete-update-无-where)
+- [4. GRANT ALL / TO PUBLIC](#4-grant-all-to-public)
+- [5. 生产环境直连（hardcoded prod DSN）](#5-生产环境直连hardcoded-prod-dsn)
+- [6. 不可逆迁移（无 down / rollback）](#6-不可逆迁移无-down-rollback)
+- [7. 未事务化多语句](#7-未事务化多语句)
+- [与 SQL 注入的分工（不要重复查）](#与-sql-注入的分工不要重复查)
+- [检测要点速查](#检测要点速查)
+
 AI 生成**迁移脚本**、**数据修复脚本**、**运维 SQL** 时高频出现的**破坏性** DDL/DML。与 [review-checklist.md](review-checklist.md) 第 5 维度的 SQL **注入**（字符串拼接）正交——这里聚焦"语法合法但会摧毁数据/权限"的操作。一次失误清空生产库、误授全库权限，回滚成本极高（甚至不可逆）。
 
 **铁律：命中以下任一模式 → 必须解决（确认有备份/回滚/限定了范围才能放行）。**

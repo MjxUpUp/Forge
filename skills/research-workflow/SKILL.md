@@ -1,10 +1,6 @@
 ---
 name: research-workflow
-description: >
-  调研全流程工作流（从搜索到飞书发布的一条链路）。
-  Use when: 用户说"调研XXX/研究下XXX方向/深度调研/补充调研/调研并发布"；需要输出结构化调研报告时；
-  给定文件要求"只看文件/基于这些调研"时；要把调研结果发到飞书时。
-  SKIP: 纯技术方案设计（用 evidence-based-proposal）、单次信息查询（直接搜索）、纯对话不产出文档时。
+description: "深度调研与结构化报告发布。Use when: 用户说\"调研XXX/研究下XXX方向/深度调研/补充调研/调研并发布\"、需要输出结构化调研报告、给定文件要求\"只看文件/基于这些调研\"、要把调研结果发到飞书时。SKIP: 纯技术方案设计（用 evidence-based-proposal）、单次信息查询（直接搜索）、纯对话不产出文档时。"
 metadata:
   pattern: pipeline + gate
   domain: research

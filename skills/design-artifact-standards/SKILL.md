@@ -1,6 +1,6 @@
 ---
 name: design-artifact-standards
-description: "设计产物编写期的质量标准入口，按产物类型路由到对应环节清单（phase-*.md）。Use when: 写设计产物——PRD/需求文档/user story（requirement）｜API 契约/OpenAPI/proto/接口定义（api）｜建表/migration/schema（database）｜页面/组件/路由设计（frontend）｜service/domain/业务逻辑设计（backend）｜测试方案/用例/计划（test-design）——按对应清单搭骨架并自查。SKIP: 代码实现怎么写（backend-development/database-design/frontend-development/system-architecture 管 HOW，本 skill 管产物该有什么）、代码或产物审查（code-review-gate）、查事实（fact-research）、需求未清要先澄清（requirement-clarification）。与 doc-generator 是 producer-chain：doc-generator 按模板填结构骨架，本 skill 按标准自查达标度（非互斥，先填后查）。"
+description: "设计产物编写期的质量标准入口，按产物类型路由到对应环节清单（phase-*.md）。Use when: 写设计产物——PRD/需求文档/user story（requirement）｜API 契约/OpenAPI/proto/接口定义（api）｜建表/migration/schema（database）｜页面/组件/路由设计（frontend）｜service/domain/业务逻辑设计（backend）｜测试方案/用例/计划（test-design）——按对应清单搭骨架并自查。SKIP: 代码实现怎么写（backend-development/database-design/frontend-development/system-architecture 管 HOW，本 skill 管产物该有什么）、代码或产物审查（code-review-gate）、查事实（fact-research）、需求未清要先澄清（requirement-clarification）。"
 metadata:
   pattern: routing
   domain: design
