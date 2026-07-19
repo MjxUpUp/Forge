@@ -548,7 +548,7 @@ func TestTaskScoreWorkflow(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("forge task score --json failed: %s", stdout)
 	}
-	var scoreResult map[string]interface{}
+	var scoreResult map[string]any
 	if err := json.Unmarshal([]byte(stdout), &scoreResult); err != nil {
 		t.Fatalf("score JSON parse error: %v, output: %s", err, stdout)
 	}

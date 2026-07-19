@@ -3,6 +3,7 @@ package clone
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -114,17 +115,9 @@ func TestDetectClonesSkipsVendor(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, r := range results {
-		if contains(r.FileB, "vendor/") {
+		if strings.Contains(r.FileB, "vendor/") {
 			t.Error("vendor files should be skipped")
 		}
 	}
 }
 
-func contains(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}

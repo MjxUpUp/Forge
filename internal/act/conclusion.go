@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -143,8 +143,8 @@ func LoadAll(p *forgedata.Project) ([]Conclusion, error) {
 		}
 	}
 	// 按完成时间稳定排序（append 顺序通常已时序，但显式排序防并发/手动编辑乱序）
-	sort.SliceStable(cs, func(i, j int) bool {
-		return cs[i].CompletedAt.Before(cs[j].CompletedAt)
+	slices.SortStableFunc(cs, func(a, b Conclusion) int {
+		return a.CompletedAt.Compare(b.CompletedAt)
 	})
 	return cs, nil
 }
