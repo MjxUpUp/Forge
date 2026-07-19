@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"sync"
 	"time"
 
@@ -116,8 +116,8 @@ func LoadForTask(root, taskRef string) ([]Entry, error) {
 		}
 		f.Close()
 	}
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].RecordedAt.Before(entries[j].RecordedAt)
+	slices.SortFunc(entries, func(a, b Entry) int {
+		return a.RecordedAt.Compare(b.RecordedAt)
 	})
 	return entries, nil
 }

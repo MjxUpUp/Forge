@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 
@@ -239,7 +239,7 @@ func sortedSet(s map[string]bool) string {
 	for k := range s {
 		out = append(out, k)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return "[" + strings.Join(out, ", ") + "]"
 }
 

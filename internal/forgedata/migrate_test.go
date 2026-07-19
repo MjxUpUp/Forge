@@ -7,6 +7,7 @@ package forgedata_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
@@ -71,10 +72,10 @@ func TestMigrateProject_MovesRuntimeState_KeepsConfig(t *testing.T) {
 		t.Errorf(`期望 Moved 非空，实得 %+v`, res)
 	}
 	// Left 应含非 runtime 条目（state.json/pipeline.yml 死文件 + hooks 活 config），不含 runtime
-	if !contains(res.Left, `state.json`) {
+	if !slices.Contains(res.Left, `state.json`) {
 		t.Errorf(`Left 应含 state.json（死文件，migrate 不动），Left=%v`, res.Left)
 	}
-	if contains(res.Left, `checklog.jsonl`) {
+	if slices.Contains(res.Left, `checklog.jsonl`) {
 		t.Errorf(`Left 不应含 checklog.jsonl（已迁），Left=%v`, res.Left)
 	}
 }
@@ -103,7 +104,7 @@ func TestMigrateProject_DryRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf(`MigrateProject dry-run: %v`, err)
 	}
-	if !contains(res.Moved, `checklog.jsonl`) {
+	if !slices.Contains(res.Moved, `checklog.jsonl`) {
 		t.Errorf(`dry-run 应报告 checklog.jsonl 将迁移，Moved=%v`, res.Moved)
 	}
 	// 源仍在（未执行）
@@ -125,7 +126,7 @@ func TestMigrateProject_SkipExisting(t *testing.T) {
 	if err != nil {
 		t.Fatalf(`MigrateProject: %v`, err)
 	}
-	if !contains(res.Skipped, `checklog.jsonl`) {
+	if !slices.Contains(res.Skipped, `checklog.jsonl`) {
 		t.Errorf(`期望 checklog.jsonl 被 skip，Skipped=%v`, res.Skipped)
 	}
 	assertExists(t, filepath.Join(root, `.forge`, `checklog.jsonl`), `源应保留`)
@@ -179,7 +180,7 @@ func TestMigrateProject_DryRunForceKeepsDst(t *testing.T) {
 	if err != nil {
 		t.Fatalf(`MigrateProject dry-run+force: %v`, err)
 	}
-	if !contains(res.Moved, `checklog.jsonl`) {
+	if !slices.Contains(res.Moved, `checklog.jsonl`) {
 		t.Errorf(`dry-run+force 应报告 checklog.jsonl 将覆盖，Moved=%v`, res.Moved)
 	}
 	// dst 仍存在且内容不变（dry-run 不删 dst）
@@ -231,13 +232,4 @@ func readStr(t *testing.T, path string) string {
 		t.Fatalf(`read %s: %v`, path, err)
 	}
 	return string(b)
-}
-
-func contains(slice []string, s string) bool {
-	for _, x := range slice {
-		if x == s {
-			return true
-		}
-	}
-	return false
 }
