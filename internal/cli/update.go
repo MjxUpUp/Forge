@@ -547,7 +547,7 @@ func getCurrentVersion(fullVersion string) string {
 	return fullVersion
 }
 
-func jsonUnmarshal(r io.Reader, v interface{}) error {
+func jsonUnmarshal(r io.Reader, v any) error {
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return err

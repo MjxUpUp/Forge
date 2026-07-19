@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -176,8 +176,8 @@ func ActiveConfirmations(p *forgedata.Project) ([]Confirmation, error) {
 		}
 	}
 	// 按 ExpiresAt 升序（最快过期在前），与注释承诺一致，status 输出可预测。
-	sort.Slice(out, func(i, j int) bool {
-		return out[i].ExpiresAt.Before(out[j].ExpiresAt)
+	slices.SortFunc(out, func(a, b Confirmation) int {
+		return a.ExpiresAt.Compare(b.ExpiresAt)
 	})
 	return out, nil
 }

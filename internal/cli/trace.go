@@ -2,7 +2,7 @@ package cli
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
@@ -88,8 +88,8 @@ func runTrace(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	sort.Slice(events, func(i, j int) bool {
-		return events[i].ts.Before(events[j].ts)
+	slices.SortFunc(events, func(a, b traceEvent) int {
+		return a.ts.Compare(b.ts)
 	})
 
 	fmt.Printf("Trace for task %q — %d events (%d checks, %d tool calls)\n",
