@@ -93,6 +93,18 @@ func runReviewPass(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("failed to save task state: %w", err)
 		}
 		fmt.Printf("✅ task %s: code-review-gate 已通过（task-complete 门禁前置满足，基线 HEAD=%s）\n", state.TaskRef, head)
+		// 方案3（blind_spot 触发 · review.go critic 角色）：审查通过是决定性动作。此刻校准证据
+		// 强度——若"完成"声明主要靠 agent 自述（Weak/Unverified），发 ADVISORY 提醒本次 review
+		// 是盖在盲区证据上的戳。review status 只在被主动查看时显示，agent 可能跳过它直接 pass，
+		// 故在 stamp 这一刻再触发：reviewer 须已做 critic 级核验（核声称的验证真跑过），而非只读
+		// diff。exit 0（pass 仍成功，逃生合法）；ADVISORY 前缀让 rubber-stamp 可见。方案5 联动：
+		// 用了逃生舱的任务 Strength 被 cap 到 Weak，此处自动触发 critic ADVISORY——逃生有代价的
+		// 另一面。详见 code-review-gate 步骤 2 前置。
+		if ec, err := checklog.ForTask(root, state.TaskRef); err == nil {
+			if adv := renderReviewPassBlindSpot(ec); adv != "" {
+				fmt.Println(adv)
+			}
+		}
 		return nil
 	}
 
@@ -102,6 +114,35 @@ func runReviewPass(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println("✅ 当前 diff: code-review-gate 已通过")
 	return nil
+}
+
+// renderReviewPassBlindSpot 产出 `forge review pass` task 模式下、证据弱时的 ADVISORY
+// （方案3 blind_spot 触发）。Strong/NoData 返空串（证据可信/无证据可校准 → 不噪声）；
+// Weak/Unverified 返 ADVISORY: 前缀行，提醒本次 review stamp 盖在盲区证据上——reviewer 须已
+// critic 级核验（核声称的验证真跑过），而非只读 diff。纯函数便于单测（不依赖 findProjectRoot/
+// cwd）；runReviewPass 调它，非空则打印。方案5 联动：UsedEscapeHatch 把 Strong cap 到 Weak，
+// 故用逃生舱过的任务此处自动触发——逃生不再免费。
+func renderReviewPassBlindSpot(ec checklog.EvidenceChain) string {
+	if ec.Total() == 0 {
+		return ""
+	}
+	switch ec.Strength() {
+	case checklog.Unverified:
+		return taskpipeline.GateAdvisory("[review] 审查通过，但本任务零 deterministic 验证证据（agent-claim=%d）——rubber-stamp 高风险。reviewer 须已按 code-review-gate 步骤2前置「必核」做 critic 级核验（逐条确认声称的 test-run/gate 实跑过），否则撤回 pass 补审", ec.AgentClaim)
+	case checklog.Weak:
+		if ec.UsedEscapeHatch && ec.Ratio() >= 0.5 {
+			// 方案5 联动：Strength 被 escape-hatch 从 Strong cap 到 Weak——ratio 实际不低
+			//（>=0.5），此时"占比低"是假声明（ratio 明明过半）。仅此真 cap 子情形用逃生措辞，
+			// 点出真正原因：「完成」靠跳过 gate 撑住，必须 critic 级核验。exit 0（逃生合法）。
+			return taskpipeline.GateAdvisory("[review] 审查通过，但本任务用了逃生舱（ratio=%.2f agent-claim=%d 本不弱，「完成」靠跳过 gate 撑住）——reviewer 须已「加核」声称的验证真跑过；建议升级跨模型 critic", ec.Ratio(), ec.AgentClaim)
+		}
+		// ratio<0.5（无论是否叠加逃生舱）——"占比低"为真声明，不构成假claim。叠加逃生舱时
+		// UsedEscapeHatch 已在 checklog 落盘（CheckEscapeHatch 条目）+ review status 可见，此处
+		// 不重复以免噪声；pass 刻 ratio 低是完成可信度的主信号。
+		return taskpipeline.GateAdvisory("[review] 审查通过，但 deterministic 占比低（ratio=%.2f agent-claim=%d）——reviewer 须已「加核」声称的验证真跑过；证据弱时建议升级跨模型 critic", ec.Ratio(), ec.AgentClaim)
+	default:
+		return ""
+	}
 }
 
 func runReviewGate(cmd *cobra.Command, args []string) error {

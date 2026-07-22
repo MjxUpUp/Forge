@@ -112,6 +112,45 @@ func TestBuildEvidenceChain_CheatScanExcluded(t *testing.T) {
 	}
 }
 
+// TestBuildEvidenceChain_EscapeHatchExcludedAndFlags 钉住方案5：CheckEscapeHatch 不计入
+// deterministic 桶——逃生是"跳过了某 gate"的观察，非"做了验证"；SourceForCheck 默认把它
+// 归 deterministic，计入会虚高 Strength 且方向反了（本该降信心的信号反而抬高它）。改设
+// UsedEscapeHatch 标志供 Strength cap。条目仍留 Entries 供 trace。
+func TestBuildEvidenceChain_EscapeHatchExcludedAndFlags(t *testing.T) {
+	entries := []Entry{
+		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckAssertion, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckEscapeHatch, Source: EvidenceDeterministic, TaskRef: "t"},
+	}
+	ec := BuildEvidenceChain(entries, "t")
+	if ec.Deterministic != 2 {
+		t.Fatalf(`CheckEscapeHatch 不应计入 deterministic: got %d, want 2（auto-compile+assertion）`, ec.Deterministic)
+	}
+	if !ec.UsedEscapeHatch {
+		t.Fatal(`UsedEscapeHatch = false, want true（有 escape-hatch 条目应置标志供 Strength cap）`)
+	}
+	if len(ec.Entries) != 3 {
+		t.Fatalf(`escape-hatch 条目仍应保留在 Entries 供 trace: got %d, want 3`, len(ec.Entries))
+	}
+}
+
+// TestStrength_EscapeHatchCapsToWeak 钉住方案5：用了逃生舱的任务，即便 deterministic 占
+// 多数（本该 Strong），Strength 也 cap 到 Weak——让逃生有代价，对冲"硬门禁 + 全局逃生 =
+// 假硬门禁"反噬。Turn-3 撤回"Unverified 升格硬前置"正是怕逃生反噬；这里用降档而非阻断，
+// 既保逃生合法又让它不再免费。
+func TestStrength_EscapeHatchCapsToWeak(t *testing.T) {
+	// 4 deterministic + 1 agent-claim = ratio 0.8 → 本该 Strong，但用了逃生 → cap Weak
+	ec := EvidenceChain{Deterministic: 4, AgentClaim: 1, UsedEscapeHatch: true}
+	if got := ec.Strength(); got != Weak {
+		t.Fatalf(`escape used + ratio 0.8: Strength=%s, want Weak (capped)`, got)
+	}
+	// 同样数据无逃生 → Strong（守卫：cap 只在逃生时触发，不误伤正常任务）
+	ecNoEsc := EvidenceChain{Deterministic: 4, AgentClaim: 1}
+	if got := ecNoEsc.Strength(); got != Strong {
+		t.Fatalf(`no escape + ratio 0.8: Strength=%s, want Strong`, got)
+	}
+}
+
 // TestForTask_LoadsAndBuckets 端到端：Record 写入 → ForTask 加载聚合。
 func TestForTask_LoadsAndBuckets(t *testing.T) {
 	dir := t.TempDir()

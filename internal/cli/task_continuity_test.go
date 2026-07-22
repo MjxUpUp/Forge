@@ -271,3 +271,47 @@ func TestRenderHookReinject(t *testing.T) {
 		t.Errorf("清标志后应静默返空，实得 %q", out2)
 	}
 }
+
+// TestRenderHookReinject_SparseContinuityNudge（方案4·中途 checkpoint 主动驱动）：压缩后重注入
+// 时，若任务未落盘任何中途线程（决策/下一步），handoff 末尾追加强提示推 agent 显式落盘——
+// 压缩丢的正是这段工作记忆，下次压缩否则从零重建。已有 NextSteps 时不追加（线程已在盘上，
+// 复原即可）。Goal 不算（task start 已落盘，非压缩丢失项）。两个 root 隔离正负用例
+//（不同 git-root → 不同 project key → 不同 task dir，ActiveTaskState 各自只扫到自己那一个）。
+func TestRenderHookReinject_SparseContinuityNudge(t *testing.T) {
+	// 稀疏线程（有 Goal 无 decide/next）→ 追加强提示
+	rootA, _ := forgedatatest.RealProject(t)
+	state := &taskpipeline.TaskState{TaskRef: "feat/sparse", Branch: "feat/sparse", Goal: "实现 X"}
+	if err := taskpipeline.SaveTaskState(rootA, state); err != nil {
+		t.Fatalf("SaveTaskState: %v", err)
+	}
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "sid-sparse")
+	if err := renderHookCompactFlag(rootA); err != nil {
+		t.Fatalf("renderHookCompactFlag: %v", err)
+	}
+	out, err := renderHookReinject(rootA)
+	if err != nil {
+		t.Fatalf("renderHookReinject: %v", err)
+	}
+	if !strings.Contains(out, "刚发生") || !strings.Contains(out, "forge task decide") {
+		t.Errorf("稀疏线程应追加压缩落盘强提示，输出:\n%s", out)
+	}
+
+	// 已落盘下一步（线程在盘上）→ 不追加
+	rootB, _ := forgedatatest.RealProject(t)
+	state2 := &taskpipeline.TaskState{TaskRef: "feat/rich", Branch: "feat/rich", Goal: "实现 Y"}
+	state2.AddNext("写测试")
+	if err := taskpipeline.SaveTaskState(rootB, state2); err != nil {
+		t.Fatalf("SaveTaskState state2: %v", err)
+	}
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "sid-rich")
+	if err := renderHookCompactFlag(rootB); err != nil {
+		t.Fatalf("renderHookCompactFlag state2: %v", err)
+	}
+	out2, err := renderHookReinject(rootB)
+	if err != nil {
+		t.Fatalf("renderHookReinject state2: %v", err)
+	}
+	if strings.Contains(out2, "刚发生") {
+		t.Errorf("已有 NextSteps 不应追加压缩落盘提示，输出:\n%s", out2)
+	}
+}

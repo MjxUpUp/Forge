@@ -83,6 +83,7 @@ func buildWindsurfHooks() map[string]any {
 			"pre_write_code": {
 				{Command: "forge hook task-guard --agent windsurf", ShowOutput: false},
 				{Command: "forge hook assertion-check --agent windsurf", ShowOutput: false},
+				{Command: "forge hook read-before-edit --agent windsurf", ShowOutput: false},
 			},
 			"pre_run_command": {
 				{Command: "forge hook bash-guard --agent windsurf", ShowOutput: false},
