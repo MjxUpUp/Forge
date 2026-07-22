@@ -584,3 +584,44 @@ func TestTaskChangedFiles_IncludesUntracked(t *testing.T) {
 		}
 	})
 }
+
+// TestTestCoveragePerTaskOverride（F9 / 方案5 防泄漏路径）：state.Overrides.TestCoverage="disable"
+// 不靠 FORGE_TEST_COVERAGE env 也能逃生——这是 per-task override 的核心价值（一个任务逃生不污染
+// 同 shell 的其他任务）。对照 TestTestCoverageEscapeHatch（env 路径），此测试钉住 per-task 路径
+// 独立可用。验证两层：(1) CheckTestCoverage 返 ok=true；(2) 记 CheckEscapeHatch 条目（逃生有代价
+// 的审计 trail，Strength 据此 cap Weak）。env 显式清空，证明 override 路径独立于 env。
+func TestTestCoveragePerTaskOverride(t *testing.T) {
+	t.Setenv("FORGE_TEST_COVERAGE", "") // 确保不是 env 在起作用——走 per-task override 路径
+	dir := t.TempDir()
+	initRepoWithMaster(t, dir)
+	writeCommitSource(t, dir, map[string]string{
+		"foo.go": "package main\n\nfunc Foo() int { return 1 }\n",
+	}, "add foo")
+
+	state := &TaskState{TaskRef: "per-task-cov", Branch: "feat/testcov"}
+	state.Overrides.TestCoverage = "disable"
+
+	// 层1：per-task override 让门禁逃生（env 未设，独立路径）。
+	ok, missing, _ := CheckTestCoverage(dir, state)
+	if !ok {
+		t.Fatalf("per-task override (no env): want ok=true, got missing=%v", missing)
+	}
+	// 层2：逃生有代价——记 CheckEscapeHatch 审计 trail（UsedEscapeHatch → Strength cap Weak）。
+	entries, err := checklog.LoadForTask(dir, "per-task-cov")
+	if err != nil {
+		t.Fatalf("LoadForTask: %v", err)
+	}
+	var found *checklog.Entry
+	for i := range entries {
+		if entries[i].Check == checklog.CheckEscapeHatch {
+			found = &entries[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("per-task override must record CheckEscapeHatch (escape has a cost); got none")
+	}
+	if !found.Passed {
+		t.Errorf("escape-hatch entry Passed=false, want true (hatch succeeded)")
+	}
+}

@@ -71,7 +71,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 			break
 		}
 		if !state.gatePassed(g.ID) {
-			return nil, fmt.Errorf("prerequisite gate %q has not passed", g.ID)
+			return nil, GateBlocked("prerequisite gate %q has not passed — complete earlier gates first (HARD stop, not a reminder)", g.ID)
 		}
 	}
 
@@ -81,7 +81,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 	// `forge review pass` 标记，才能过此门禁进而 task complete。
 	// 复检已完成任务（CompletedAt 已设）时跳过——历史任务不追溯。
 	if gateID == "task-complete" && !state.ReviewPassed && state.CompletedAt == nil {
-		return nil, fmt.Errorf("task-complete requires code-review-gate: 派只读子 agent 审查当前 diff 后运行 `forge review pass`")
+		return nil, GateBlocked("task-complete requires code-review-gate: 派只读子 agent 审查当前 diff 后运行 `forge review pass`（HARD stop，非提醒）")
 	}
 
 	// 审查快照一致性（task-complete 硬门禁）：review pass 时绑定 (ReviewedHeadCommit,
@@ -106,7 +106,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 				Detail:  fmt.Sprintf("fail-open: 审查基线 %s 不可达（%v）——amend/rebase 致历史改写，放行未重审", state.ReviewedHeadCommit, err),
 			})
 		} else if cur != state.ReviewedChangeHash {
-			return nil, fmt.Errorf("task-complete 拒绝：审查通过后检测到源码变更（基线 HEAD=%s）。请重新派只读子 agent 审查当前代码后运行 `forge review pass` 刷新审查基线", state.ReviewedHeadCommit)
+			return nil, GateBlocked("task-complete 拒绝：审查通过后检测到源码变更（基线 HEAD=%s）。HARD stop——请重新派只读子 agent 审查当前代码后运行 `forge review pass` 刷新审查基线", state.ReviewedHeadCommit)
 		}
 	}
 
@@ -123,7 +123,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 				TaskRef: state.TaskRef,
 				Detail:  "docs drift: " + strings.Join(drifted, ", "),
 			})
-			fmt.Fprintf(os.Stderr, "[task-complete] Advisory: 文档一致性 drift——README 反引号引用了不存在的 forge 命令：%s（提交前修复，详见 skills/docs-consistency-guard）\n", strings.Join(drifted, ", "))
+			fmt.Fprintf(os.Stderr, "%s文档一致性 drift——README 反引号引用了不存在的 forge 命令：%s（提交前修复，详见 skills/docs-consistency-guard）\n", GateAdvisory("[task-complete] "), strings.Join(drifted, ", "))
 		}
 	}
 
@@ -153,7 +153,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		// even when the agent did substantial work earlier in the task.
 		since := state.StartedAt
 
-		if state.TaskRef != "" && !getDisableWorkActivity() {
+		if state.TaskRef != "" && !getDisableWorkActivity(state) {
 			reads, edits, rerr := toolusage.ReadEditCounts(root, state.TaskRef, since)
 			if rerr != nil {
 				fmt.Fprintf(os.Stderr, "[forge] warning: activity check failed: %v\n", rerr)
@@ -179,10 +179,10 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 					} else if grace > 0 {
 						fmt.Fprintf(os.Stderr, "[forge] note: read-before-edit satisfied via grace window (%d nearby Read(s) logged outside this task — task-start/Read race)\n", grace)
 					} else {
-						return nil, fmt.Errorf(
-							"gate %q passed without reading any code during this task (edits=%d). "+
-								"Read and understand the code before modifying it",
-							gateID, edits,
+						return nil, GateBlocked(
+							"gate %q cannot pass without reading any code during this task (edits=%d). "+
+								"HARD stop, not a reminder — Read the file(s) you edit, then re-run `forge task gate %s`",
+							gateID, edits, gateID,
 						)
 					}
 				}
@@ -192,14 +192,14 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "[forge] warning: WorkActivity check failed: %v\n", err)
 				} else if activity < 1 {
-					return nil, fmt.Errorf(
-						"gate %q passed without sufficient work activity during this task (%d tool uses, minimum 1). "+
-							"Read files, explore code, or write design notes before advancing",
+					return nil, GateBlocked(
+						"gate %q cannot pass without sufficient work activity during this task (%d tool uses, minimum 1). "+
+							"HARD stop, not a reminder — Read files, explore code, or write design notes before advancing",
 						gateID, activity,
 					)
 				}
 			}
-		} else if state.TaskRef != "" && getDisableWorkActivity() {
+		} else if state.TaskRef != "" && getDisableWorkActivity(state) {
 			// A4: the work-activity gate was bypassed via FORGE_WORK_ACTIVITY=disable.
 			// Audit it — the hatch is for testing/escape, but its use must be visible.
 			checklog.Record(root, &checklog.Entry{
@@ -207,7 +207,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 				Passed:  true,
 				Checked: true,
 				TaskRef: state.TaskRef,
-				Detail:  "escape-hatch: FORGE_WORK_ACTIVITY=disable (work-activity gate bypassed)",
+				Detail:  "escape-hatch: work-activity gate bypassed (per-task override or FORGE_WORK_ACTIVITY=disable)",
 			})
 		}
 	}
@@ -251,7 +251,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 			Detail:  testCoverageDetail(ok, missing),
 		})
 		if !ok {
-			fmt.Fprintf(os.Stderr, "[task-verify] Advisory: %s\n", formatMissing(missing))
+			fmt.Fprintf(os.Stderr, "%s%s\n", GateAdvisory("[task-verify] "), formatMissing(missing))
 		}
 
 		// scope-drift advisory (PlanScope whitelist)：任务声明了计划改动白名单时，检测
@@ -271,7 +271,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 				Detail:  scopeDriftDetail(drift),
 			})
 			if len(drift) > 0 {
-				fmt.Fprintf(os.Stderr, "[task-verify] Advisory: scope-drift——%d 个源码文件超出 PlanScope 声明（advisory 不阻塞；收编: forge task scope add <glob>）\n", len(drift))
+				fmt.Fprintf(os.Stderr, "%sscope-drift——%d 个源码文件超出 PlanScope 声明（advisory 不阻塞；收编: forge task scope add <glob>）\n", GateAdvisory("[task-verify] "), len(drift))
 				for _, f := range drift {
 					fmt.Fprintf(os.Stderr, "  ⚠ %s\n", f)
 				}
@@ -297,7 +297,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 			Detail:  cheatScanDetail(cheats),
 		})
 		if len(cheats) > 0 {
-			fmt.Fprintf(os.Stderr, "[task-verify] Advisory: cheat-scan 命中 %d 处疑似 AI 作弊模式（advisory 不阻塞；机械检测供 review 核查）\n", len(cheats))
+			fmt.Fprintf(os.Stderr, "%scheat-scan 命中 %d 处疑似 AI 作弊模式（advisory 不阻塞；机械检测供 review 核查）\n", GateAdvisory("[task-verify] "), len(cheats))
 			for _, c := range cheats {
 				loc := c.File
 				if c.Line > 0 {
@@ -316,7 +316,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 				}
 			}
 			if debtCount > 0 {
-				fmt.Fprintf(os.Stderr, `[task-verify] Advisory: %d 处 comment-as-debt——注释标识问题 ≠ 解决（懒惰阶梯反第 0 级）。处置：当场修掉；或转 forge task start --ref <ref> --title <描述> 跟踪（本任务完结后开）。advisory 不阻塞。`+"\n", debtCount)
+				fmt.Fprintf(os.Stderr, "%s"+`%d 处 comment-as-debt——注释标识问题 ≠ 解决（懒惰阶梯反第 0 级）。处置：当场修掉；或转 forge task start --ref <ref> --title <描述> 跟踪（本任务完结后开）。advisory 不阻塞。`+"\n", GateAdvisory("[task-verify] "), debtCount)
 			}
 		}
 
@@ -326,16 +326,22 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		// 命令建议执行（纯 advisory 不阻塞）；无→静默。与 verify-before-stop.sh（Stop
 		// hook 实跑全量）互补：gate 在会话中段提醒，stop 兜底强跑。Passed 恒 true——
 		// "仓库有测试"本身不是判定，trace 只保留能力信号。
-		cap := CheckTestCapability(root)
-		checklog.Record(root, &checklog.Entry{
-			Check:   CheckNameTestCapability,
-			Passed:  true,
-			Checked: true,
-			TaskRef: state.TaskRef,
-			Detail:  cap.Detail(),
-		})
-		if cap.HasTests {
-			fmt.Fprintf(os.Stderr, "[task-verify] Advisory: %s\n", cap.Advisory())
+		// 方案5 一致性：test-coverage 逃生舱（per-task override 或 env）须同时跳过
+		// capability 扫描——否则 --test-coverage disable 的用户仍收"仓库有测试，建议跑"
+		// nag，与"我不做测试纪律"信号矛盾。CheckEscapeHatch 已由上方 CheckTestCoverage
+		// 记录，此处仅跳过扫描+advisory，不重复记 escape-hatch 条目。
+		if !EscapeDisabled(state, escapeTestCoverage, testCoverageDisableEnv) {
+			cap := CheckTestCapability(root)
+			checklog.Record(root, &checklog.Entry{
+				Check:   CheckNameTestCapability,
+				Passed:  true,
+				Checked: true,
+				TaskRef: state.TaskRef,
+				Detail:  cap.Detail(),
+			})
+			if cap.HasTests {
+				fmt.Fprintf(os.Stderr, "%s%s\n", GateAdvisory("[task-verify] "), cap.Advisory())
+			}
 		}
 
 		// skill-eval advisory：变更涉及 skills/<name>/ 且该 skill 有 eval case 集 →
@@ -350,7 +356,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 				TaskRef: state.TaskRef,
 				Detail:  formatSkillEvalAdvisory(affected),
 			})
-			fmt.Fprintf(os.Stderr, "[task-verify] Advisory: %s\n", formatSkillEvalAdvisory(affected))
+			fmt.Fprintf(os.Stderr, "%s%s\n", GateAdvisory("[task-verify] "), formatSkillEvalAdvisory(affected))
 		}
 
 		// acceptance advisory（spec-as-gate）：任务登记了验收标准（task start --accept）
@@ -359,7 +365,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		// 绝不记 CheckNameAcceptance 条目——该条目专属于 verify-acceptance 的真实实跑
 		// （deterministic 不可伪造），gate 里不跑命令就不能伪称跑过。
 		if state.HasAcceptance() && !state.AllAcceptancePassed() {
-			fmt.Fprintf(os.Stderr, "[task-verify] Advisory: 任务登记了 %d 条验收标准但未全部通过——先跑 'forge task verify-acceptance' 实跑回扣（spec-as-gate）\n", len(state.Acceptance))
+			fmt.Fprintf(os.Stderr, "%s任务登记了 %d 条验收标准但未全部通过——先跑 'forge task verify-acceptance' 实跑回扣（spec-as-gate）\n", GateAdvisory("[task-verify] "), len(state.Acceptance))
 		}
 	}
 
@@ -550,10 +556,12 @@ func runEmbeddedHook(root, name string) (passed bool, output string) {
 	return err == nil, strings.TrimSpace(string(out))
 }
 
-// getDisableWorkActivity returns whether work activity checking is disabled.
-// Set FORGE_WORK_ACTIVITY=disable to skip the check (for testing only).
-func getDisableWorkActivity() bool {
-	return os.Getenv("FORGE_WORK_ACTIVITY") == "disable"
+// getDisableWorkActivity returns whether work-activity / read-before-edit checking
+// is disabled for this task. 方案5: per-task Overrides (forge task override) take
+// precedence over the process-global FORGE_WORK_ACTIVITY env — a task that escapes
+// doesn't leak to other tasks in the same shell. Env stays a fallback for CI/tests.
+func getDisableWorkActivity(state *TaskState) bool {
+	return EscapeDisabled(state, escapeWorkActivity, envWorkActivity)
 }
 
 // isPreviousGateAuto returns true if the most recently passed gate is auto.

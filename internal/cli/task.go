@@ -30,6 +30,7 @@ func init() {
 	taskCmd.AddCommand(taskScoreCmd)
 	taskCmd.AddCommand(taskListCmd)
 	taskCmd.AddCommand(taskScopeCmd)
+	taskCmd.AddCommand(taskOverrideCmd)
 	taskScopeCmd.AddCommand(taskScopeAddCmd)
 	taskScopeCmd.AddCommand(taskScopeShowCmd)
 
@@ -63,6 +64,9 @@ func init() {
 	taskScoreCmd.Flags().Bool("history", false, "显示所有已完成任务的评分历史")
 	taskListCmd.Flags().Bool("json", false, "JSON 格式输出")
 	taskListCmd.Flags().Bool("timeline", false, "按会话时间线显示所有任务")
+	taskOverrideCmd.Flags().String("ref", "", "任务 ref（默认当前活跃任务）")
+	taskOverrideCmd.Flags().String("work-activity", "", "设为 disable 跳过 read-before-edit/work-activity 门禁")
+	taskOverrideCmd.Flags().String("test-coverage", "", "设为 disable 跳过 test-coverage 门禁")
 }
 
 var taskCmd = &cobra.Command{
@@ -144,6 +148,11 @@ var taskScopeShowCmd = &cobra.Command{
 	Use:   "show",
 	Short: "查看声明的白名单 + 实时 scope-drift",
 	RunE:  runTaskScopeShow,
+}
+var taskOverrideCmd = &cobra.Command{
+	Use:   "override [--work-activity disable] [--test-coverage disable]",
+	Short: "设置 per-task 逃生舱（优先全局 env，不污染他任务；用了降强度到 Weak）",
+	RunE:  runTaskOverride,
 }
 
 // phaseExplosionWarning returns a non-empty warning when the given session already
@@ -695,7 +704,7 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 		if result.Passed {
 			fmt.Printf("  ✅ %s — passed\n", gate.Name)
 		} else {
-			fmt.Printf("  ❌ %s — failed: %s\n", gate.Name, result.Message)
+			fmt.Printf("  ❌ %s — BLOCKED: %s\n", gate.Name, result.Message)
 		}
 	}
 
@@ -1002,6 +1011,77 @@ func runTaskScopeAdd(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  %s\n", s)
 	}
 	return nil
+}
+
+// runTaskOverride 设置 per-task 逃生舱（方案5 防泄漏）。优先于全局 env——一个任务逃生
+// 不污染同 shell 的其他任务。用了任一逃生舱会记 CheckEscapeHatch 并把 evidence Strength
+// cap 到 Weak（让逃生有代价，对冲"硬门禁 + 全局逃生 = 假硬门禁"反噬）。legitimate 用途：
+// doc-only 仓库、生成代码、CI；勿用于逃避 read-before-edit/test-coverage。
+func runTaskOverride(cmd *cobra.Command, args []string) error {
+	root, err := findProjectRoot()
+	if err != nil {
+		return err
+	}
+	explicitRef, _ := cmd.Flags().GetString("ref")
+	wa, _ := cmd.Flags().GetString("work-activity")
+	tc, _ := cmd.Flags().GetString("test-coverage")
+
+	var state *taskpipeline.TaskState
+	if explicitRef != "" {
+		state, err = taskpipeline.LoadTaskState(root, explicitRef)
+		if err != nil {
+			return err
+		}
+	} else {
+		state, err = taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
+		if err != nil {
+			return fmt.Errorf("failed to load task state: %w", err)
+		}
+	}
+	if state == nil {
+		return fmt.Errorf("no active task. Run 'forge task start' first")
+	}
+
+	changed := false
+	if wa != "" {
+		if wa != "disable" {
+			return fmt.Errorf("--work-activity 只接受 disable，got %q", wa)
+		}
+		state.Overrides.WorkActivity = "disable"
+		changed = true
+	}
+	if tc != "" {
+		if tc != "disable" {
+			return fmt.Errorf("--test-coverage 只接受 disable，got %q", tc)
+		}
+		state.Overrides.TestCoverage = "disable"
+		changed = true
+	}
+	if !changed {
+		fmt.Printf("当前 per-task 逃生舱：%s\n", describeOverrides(state.Overrides))
+		fmt.Println("设置：--work-activity disable / --test-coverage disable（用了降评分强度到 Weak）")
+		return nil
+	}
+	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+		return fmt.Errorf("failed to save task state: %w", err)
+	}
+	fmt.Printf("已设置 per-task 逃生舱：%s\n", describeOverrides(state.Overrides))
+	fmt.Println("注意：用了逃生舱会记 checklog 并把任务 evidence 强度 cap 到 Weak（让逃生有代价）。")
+	return nil
+}
+
+func describeOverrides(o taskpipeline.TaskOverrides) string {
+	var parts []string
+	if o.WorkActivity == "disable" {
+		parts = append(parts, "work-activity=disable")
+	}
+	if o.TestCoverage == "disable" {
+		parts = append(parts, "test-coverage=disable")
+	}
+	if len(parts) == 0 {
+		return "（无）"
+	}
+	return strings.Join(parts, ", ")
 }
 
 // runTaskScopeShow 打印声明的 PlanScope + 实时 scope-drift（实改源码 vs 声明的差集）。

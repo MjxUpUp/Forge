@@ -13,6 +13,11 @@ type EvidenceChain struct {
 	Entries       []Entry
 	Deterministic int // Source=deterministic（含空 Source 兜底）的条目数
 	AgentClaim    int // Source=agent-claim 的条目数
+	// UsedEscapeHatch 报告本任务是否用过逃生舱（FORGE_WORK_ACTIVITY/
+	// FORGE_TEST_COVERAGE 等 gate-bypass）。逃生是合法工具，但"完成"声明若靠
+	// 跳过 gate 撑住，可信度必须打折——Strength 据此 cap 到 Weak（方案5：让逃生
+	// 有代价，对冲"硬门禁 + 全局逃生舱 = 假硬门禁"的反噬；Toloka 共识"让逃生有代价"）。
+	UsedEscapeHatch bool
 }
 
 // Total returns the total number of evidence entries (deterministic + agent-claim).
@@ -73,10 +78,18 @@ func (ec EvidenceChain) Strength() EvidenceStrength {
 	if ec.Deterministic == 0 && ec.AgentClaim > 0 {
 		return Unverified
 	}
-	if ec.Ratio() < 0.5 {
-		return Weak
+	s := Weak
+	if ec.Ratio() >= 0.5 {
+		s = Strong
 	}
-	return Strong
+	// 方案5：用了逃生舱 = "完成"声明靠跳过 gate 撑住，不可评 Strong。cap 到 Weak。
+	// 让逃生有代价而非仅记 log——对冲"硬门禁 + 全局逃生舱 = 假硬门禁"的反噬
+	// （Turn-3 撤回"Unverified 升格硬前置"正是怕逃生舱反噬；这里用降档而非阻断，
+	// 既保逃生合法又让它不再免费）。
+	if ec.UsedEscapeHatch && s == Strong {
+		s = Weak
+	}
+	return s
 }
 
 // BuildEvidenceChain 是纯函数：对已属于某任务的 entries 按来源分桶。Source 为空
@@ -94,7 +107,14 @@ func BuildEvidenceChain(entries []Entry, taskRef string) EvidenceChain {
 		// it as positive evidence would be doubly wrong.
 		// cheat-scan is the same kind of advisory observation (mechanically-suspected
 		// AI-cheat patterns) — a hit is a negative signal, not verification evidence.
-		if e.Check == CheckScopeDrift || e.Check == CheckCheatScan {
+		// CheckEscapeHatch is the same kind: "used a gate-bypass" is an observation of
+		// skipping, NOT of verifying — counting it as deterministic would inflate
+		// Strength and hide exactly the signal it should surface (a task that "passed"
+		// by dodging a gate). It sets UsedEscapeHatch so Strength can cap to Weak.
+		if e.Check == CheckScopeDrift || e.Check == CheckCheatScan || e.Check == CheckEscapeHatch {
+			if e.Check == CheckEscapeHatch {
+				ec.UsedEscapeHatch = true
+			}
 			continue
 		}
 		src := e.Source

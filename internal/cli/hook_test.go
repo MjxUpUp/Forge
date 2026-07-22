@@ -576,3 +576,65 @@ func TestHookOutput_ProjectScopedHookStillSkipsOutsideProject(t *testing.T) {
 		t.Errorf("project-scoped hook outside forge project must allow silently (no AdditionalContext), got: %+v", result.HookSpecificOutput)
 	}
 }
+
+// TestReadsFilePath_DeterministicAndFilenameSafe 钉住方案2 的 reads-log 路径契约：
+// 同一 session id 两次解析必须产出同一路径（tool-track append 与 read-before-edit
+// grep 在不同子进程里各自调用 readsFilePath，不一致会让 hook 永远 miss），且路径
+// 只含文件名安全字符（[A-Za-z0-9._-]）——session id 可能含路径分隔符/空格，必须被
+// 折叠以免逃逸 $TMPDIR 或创建意外目录。
+func TestReadsFilePath_DeterministicAndFilenameSafe(t *testing.T) {
+	a := readsFilePath("/repo/alpha", "sess-abc-123")
+	b := readsFilePath("/repo/alpha", "sess-abc-123")
+	if a != b {
+		t.Fatalf("readsFilePath not deterministic: %q vs %q", a, b)
+	}
+	// Hostile / unusual session ids must collapse to filename-safe tokens.
+	for _, sid := range []string{"../etc/passwd", "a b/c", "with space", ""} {
+		p := readsFilePath("/repo/alpha", sid)
+		base := filepath.Base(p)
+		for _, r := range base {
+			if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') ||
+				r == '.' || r == '_' || r == '-') {
+				t.Errorf("readsFilePath(%q) produced non-safe basename %q (rune %q)", sid, base, r)
+			}
+		}
+	}
+	// F7 project scoping: same session id under two different roots must resolve to
+	// different reads logs — $TMPDIR is shared, so without the project tag a reused/
+	// short session id (e.g. test "sid-*") would let project B read project A's reads
+	// log and the read-before-edit hook would false-pass an Edit-without-Read.
+	alpha := readsFilePath("/repo/alpha", "sid-x")
+	beta := readsFilePath("/repo/beta", "sid-x")
+	if alpha == beta {
+		t.Errorf("readsFilePath must scope per-project: alpha==beta for same sid under different roots (%q)", alpha)
+	}
+	// Empty session id falls back to a stable default, not an empty token.
+	if got := readsFileKey(""); got != "default" {
+		t.Errorf("readsFileKey(\"\") = %q, want \"default\"", got)
+	}
+}
+
+// TestAppendSessionRead_RecordsAndMatches 钉住方案2 的 side-channel 写/读：append
+// 一个 repo-relative 路径后，文件按行含该路径；read-before-edit 的 grep -qxF 语义
+// 即"整行精确匹配"——所以追加内容必须是单行无额外空白。
+func TestAppendSessionRead_RecordsAndMatches(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "reads.log")
+	appendSessionRead(logPath, "internal/cli/hook.go")
+	appendSessionRead(logPath, "internal/hooks/embed.go")
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("reads log not created: %v", err)
+	}
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	want := map[string]bool{"internal/cli/hook.go": true, "internal/hooks/embed.go": true}
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 lines, got %d: %q", len(lines), string(data))
+	}
+	for _, ln := range lines {
+		if !want[ln] {
+			t.Errorf("unexpected line %q (want exact path, no whitespace)", ln)
+		}
+	}
+}
