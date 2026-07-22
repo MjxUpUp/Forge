@@ -55,6 +55,10 @@
           {
             "type": "command",
             "command": "forge hook assertion-check"
+          },
+          {
+            "type": "command",
+            "command": "forge hook read-before-edit"
           }
         ]
       },

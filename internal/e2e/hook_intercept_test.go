@@ -566,3 +566,166 @@ func TestHook_HazardGuard_TruncatePathNotBlocked(t *testing.T) {
 		}
 	}
 }
+
+// forgeHookShared runs `forge hook <name>` like forgeHook, but pins a SHARED
+// temp dir across calls — read-before-edit (方案2) records Reads to a per-session
+// disk log (tool-track append) and greps it at Edit time, so the Read and Edit
+// invocations must resolve the same reads-file path. TMP/TEMP (Windows
+// os.TempDir) and TMPDIR (bash) are all pinned so the Go dispatcher's
+// readsFilePath() agrees across the two subprocesses on every platform.
+func forgeHookShared(t *testing.T, dir, tmp, hookName, stdinJSON string) (string, string, error) {
+	t.Helper()
+	cmd := exec.Command(forgeBin, "hook", hookName)
+	cmd.Dir = dir
+	cmd.Stdin = strings.NewReader(stdinJSON)
+	binDir := filepath.Dir(forgeBin)
+	cmd.Env = append(os.Environ(),
+		"TMPDIR="+tmp,
+		"TMP="+tmp,
+		"TEMP="+tmp,
+		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+	)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	return stdout.String(), stderr.String(), err
+}
+
+// TestHook_ReadBeforeEdit_BlocksUnreadSource 钉住方案2 的核心契约：活跃任务内，
+// 编辑一个本会话从未 Read 过的现存源文件 → PreToolUse 硬阻断（decision=block）。
+// 这是 M2 事故根因（凭记忆盲改，old_string 撞中）的下沉拦截——在 Edit 当下拦住，
+// 不拖到 task-verify。无 tool-track Read 记录 → reads-log 无该路径 → grep -qxF 失败 → FAIL。
+func TestHook_ReadBeforeEdit_BlocksUnreadSource(t *testing.T) {
+	dir := freshProject(t)
+	const sid = "sess-rbe-unread"
+	tmp := t.TempDir()
+	forge(t, dir, "task", "start", "--ref", "feat/rbe-unread", "--title", "unread edit")
+
+	// 现存源文件（[ -f ] 为真，非新建豁免）。
+	writeFile(t, dir, "target.go", "package main\n\nfunc old() {}\n")
+
+	editIn := hookStdin(t, sid, "PreToolUse", "Edit", map[string]any{
+		"file_path":  filepath.Join(dir, "target.go"),
+		"old_string": "func old() {}",
+		"new_string": "func new() {}",
+	})
+
+	stdout, _, err := forgeHookShared(t, dir, tmp, "read-before-edit", editIn)
+	if err == nil {
+		t.Fatalf("read-before-edit must BLOCK an edit to a source file never Read this session, got exit 0. stdout:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, `"decision":"block"`) {
+		t.Errorf("expected decision=block for unread source edit, got:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "read-before-edit") {
+		t.Errorf("block reason must identify the guard:\n%s", stdout)
+	}
+}
+
+// TestHook_ReadBeforeEdit_AllowsAfterRead 钉住方案2 的正向路径：先经 tool-track
+// （PostToolUse Read）把该路径记进 per-session reads-log，再 Edit 同一文件 → 放行。
+// 证明 reads-log side-channel 端到端打通（dispatcher append ↔ hook grep）。
+func TestHook_ReadBeforeEdit_AllowsAfterRead(t *testing.T) {
+	dir := freshProject(t)
+	const sid = "sess-rbe-read"
+	tmp := t.TempDir()
+	forge(t, dir, "task", "start", "--ref", "feat/rbe-read", "--title", "read then edit")
+
+	writeFile(t, dir, "target.go", "package main\n\nfunc old() {}\n")
+
+	// 先 Read（PostToolUse tool-track 记录路径）。
+	readIn := hookStdin(t, sid, "PostToolUse", "Read", map[string]any{
+		"file_path": filepath.Join(dir, "target.go"),
+	})
+	if _, _, err := forgeHookShared(t, dir, tmp, "tool-track", readIn); err != nil {
+		t.Fatalf("tool-track Read record step failed: %v", err)
+	}
+
+	// 再 Edit 同一文件 → 应放行（reads-log 命中）。
+	editIn := hookStdin(t, sid, "PreToolUse", "Edit", map[string]any{
+		"file_path":  filepath.Join(dir, "target.go"),
+		"old_string": "func old() {}",
+		"new_string": "func new() {}",
+	})
+	stdout, _, err := forgeHookShared(t, dir, tmp, "read-before-edit", editIn)
+	if err != nil {
+		t.Fatalf("read-before-edit must ALLOW an edit to a file Read this session, got block. stdout:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, `"decision":"approve"`) {
+		t.Errorf("expected decision=approve after Read, got:\n%s", stdout)
+	}
+}
+
+// TestHook_ReadBeforeEdit_SkipsWithoutTask 钉住作用域：无活跃任务时 hook 静默放行
+// （不追踪、不阻断）——非任务的快速编辑不在 Forge 质量域内，避免误伤。
+func TestHook_ReadBeforeEdit_SkipsWithoutTask(t *testing.T) {
+	dir := freshProject(t)
+	const sid = "sess-rbe-notask"
+	tmp := t.TempDir()
+	// 故意不启动任务。
+	writeFile(t, dir, "target.go", "package main\n")
+
+	editIn := hookStdin(t, sid, "PreToolUse", "Edit", map[string]any{
+		"file_path":  filepath.Join(dir, "target.go"),
+		"old_string": "x",
+		"new_string": "y",
+	})
+	stdout, _, err := forgeHookShared(t, dir, tmp, "read-before-edit", editIn)
+	if err != nil {
+		t.Fatalf("read-before-edit must skip (approve) when no active task, got block. stdout:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, `"decision":"approve"`) {
+		t.Errorf("expected decision=approve without active task, got:\n%s", stdout)
+	}
+}
+
+// TestHook_ReadBeforeEdit_AllowsNewFile 钉住新建豁免：Write 一个不在盘上的新源文件
+// → 放行（[ -f ] 为假 → 新建分支）。新建无法被 Read 过，且是创作非盲改。
+func TestHook_ReadBeforeEdit_AllowsNewFile(t *testing.T) {
+	dir := freshProject(t)
+	const sid = "sess-rbe-newfile"
+	tmp := t.TempDir()
+	forge(t, dir, "task", "start", "--ref", "feat/rbe-new", "--title", "new file")
+
+	writeIn := hookStdin(t, sid, "PreToolUse", "Write", map[string]any{
+		"file_path": filepath.Join(dir, "brand_new.go"),
+		"content":   "package main\n",
+	})
+	stdout, _, err := forgeHookShared(t, dir, tmp, "read-before-edit", writeIn)
+	if err != nil {
+		t.Fatalf("read-before-edit must ALLOW Write of a new file (not on disk), got block. stdout:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, `"decision":"approve"`) {
+		t.Errorf("expected decision=approve for new file, got:\n%s", stdout)
+	}
+}
+
+// TestHook_ReadBeforeEdit_PerTaskOverrideEscape（F2 / 方案5 防泄漏路径·e2e）：
+// `forge task override --work-activity disable` 写入活跃任务的 Overrides → Go dispatcher
+// （hook.go）注入 FORGE_WORK_ACTIVITY=disable → read-before-edit hook 放行未 Read 的现存源编辑。
+// 这条 per-task 路径独立于全局 env（同 shell 其他任务不受影响），是"逃生必须端到端生效否则是
+// 假硬门禁"的契约——对照 TestHook_ReadBeforeEdit_BlocksUnreadSource（同场景无 override 必 block）。
+func TestHook_ReadBeforeEdit_PerTaskOverrideEscape(t *testing.T) {
+	dir := freshProject(t)
+	const sid = "sess-rbe-override"
+	tmp := t.TempDir()
+	forge(t, dir, "task", "start", "--ref", "feat/rbe-override", "--title", "override escape")
+	forge(t, dir, "task", "override", "--work-activity", "disable")
+
+	// 现存源文件（非新建豁免），本会话从未 Read——无 override 时必 block（见 BlocksUnreadSource）。
+	writeFile(t, dir, "target.go", "package main\n\nfunc old() {}\n")
+
+	editIn := hookStdin(t, sid, "PreToolUse", "Edit", map[string]any{
+		"file_path":  filepath.Join(dir, "target.go"),
+		"old_string": "func old() {}",
+		"new_string": "func new() {}",
+	})
+	stdout, _, err := forgeHookShared(t, dir, tmp, "read-before-edit", editIn)
+	if err != nil {
+		t.Fatalf("read-before-edit must APPROVE an unread source edit under per-task work-activity override, got block. stdout:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, `"decision":"approve"`) {
+		t.Errorf("expected decision=approve under work-activity override, got:\n%s", stdout)
+	}
+}

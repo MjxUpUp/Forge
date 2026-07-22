@@ -223,9 +223,18 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// global file last).
 	var activeTaskRef string
 	var activeTaskGate string
+	// 方案5: a per-task work-activity override lives in state.json, which bash
+	// PreToolUse hooks can't read. Surface it here so read-before-edit (方案2
+	// shift-left) honors a per-task disable the same way the work-activity gate
+	// does — escape must work end-to-end or it isn't an escape (the "fake hard
+	// gate" backfire: gate passes but PreToolUse still refuses the edit).
+	var workActivityOverride string
 	if active, err := taskpipeline.ActiveTaskState(root, util.SanitizeSessionID(hookInput.SessionID)); err == nil && active != nil {
 		activeTaskRef = active.TaskRef
 		activeTaskGate = active.CurrentGate
+		if active.Overrides.WorkActivity == "disable" {
+			workActivityOverride = "disable"
+		}
 	}
 
 	// 3. Write embedded script to temp file.
@@ -260,6 +269,14 @@ func runHook(cmd *cobra.Command, args []string) error {
 		"FORGE_TASK_REF="+sanitizeForShell(activeTaskRef),
 		"FORGE_TASK_GATE="+sanitizeForShell(activeTaskGate),
 		"FORGE_SESSION_ID="+sanitizeForShell(hookInput.SessionID),
+		// 方案2 shift-left: absolute path to this session's reads log. The Go
+		// dispatcher appends each Read's repo-relative path here (tool-track);
+		// the PreToolUse read-before-edit hook greps it to block Edit-without-
+		// Read. Passed as an absolute path (not reconstructed in bash) so the
+		// temp dir resolves identically on Windows (os.TempDir = Windows AppData
+		// temp) and Unix — avoids a $TMPDIR-vs-/tmp mismatch that would silently
+		// make the hook always miss.
+		"FORGE_READS_FILE="+readsFilePath(root, hookInput.SessionID),
 		// Stable project tag (fnv hash of the canonical project root) so hooks
 		// can scope per-project state without relying on $PWD/cksum, which is
 		// unstable across path case, drive letters, and BSD/GNU cksum formats.
@@ -275,6 +292,14 @@ func runHook(cmd *cobra.Command, args []string) error {
 		"FORGE_CWD="+cwd,
 		"FORGE_CWD_TAG="+suggestTagFor(cwd),
 	)
+	// 方案5: surface the active task's per-task work-activity override as the
+	// FORGE_WORK_ACTIVITY env the hooks already check. Only force "disable" —
+	// when the override is empty we leave os.Environ()'s value untouched, so a
+	// user's global FORGE_WORK_ACTIVITY is preserved and a non-escaping task
+	// isn't falsely told the hatch is open.
+	if workActivityOverride == "disable" {
+		shCmd.Env = append(shCmd.Env, "FORGE_WORK_ACTIVITY=disable")
+	}
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 	shCmd.Stdout = &stdoutBuf
@@ -371,6 +396,19 @@ func runHook(cmd *cobra.Command, args []string) error {
 		if err := toolusage.Record(root, call); err != nil {
 			fmt.Fprintf(os.Stderr, "[forge] warning: toollog record failed: %v\n", err)
 		}
+		// 方案2 shift-left: append this Read's file_path to the per-session
+		// reads log so the PreToolUse read-before-edit hook can block
+		// Edit-without-Read at Edit time. toollog omits Read file_path (kept
+		// lean); this is a purpose-built side-channel. PostToolUse fires AFTER
+		// Read completes, so a Read in this turn is recorded before the Edit
+		// that follows — the Edit's PreToolUse hook then sees the path. Only
+		// tool-track (Read) records a path; auto-compile (Edit/Write) does not.
+		if name == "tool-track" && hookInput.ToolName == "Read" && fields.FilePath != "" {
+			rel := toRelPath(root, fields.FilePath)
+			if rel != "" && rel != "." {
+				appendSessionRead(readsFilePath(root, hookInput.SessionID), rel)
+			}
+		}
 	}
 
 	// 7. Output structured JSON to Claude Code.
@@ -387,6 +425,57 @@ func runHook(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("hook %s failed", name)
 	}
 	return nil
+}
+
+// readsFilePath returns the absolute path to this session's reads log — the
+// disk side-channel the PreToolUse read-before-edit hook (方案2 shift-left)
+// greps to block Edit-without-Read. Per-session (keyed by sanitized session id),
+// ephemeral ($TMPDIR). On disk rather than in context so it SURVIVES compaction
+// within a session: a Read before a compact still counts toward the next Edit,
+// removing the biggest false positive of a context-based check.
+func readsFilePath(root, sessionID string) string {
+	// projectTagFor(root) 把 reads log 按 project 分桶：$TMPDIR 跨项目共享，仅按 session id
+	// 命名会在短/复用 session id（如测试 sid-*）下让 A 项目的 reads log 被 B 项目读到——
+	// read-before-edit hook 会误判 Edit 已 Read 过（假阳性放行）。project tag 是 fnv hex
+	// （文件名安全），与 FORGE_PROJECT_TAG 同源。
+	return filepath.Join(os.TempDir(), "forge-session-reads-"+projectTagFor(root)+"-"+readsFileKey(sessionID)+".log")
+}
+
+// readsFileKey reduces a session id to a filename-safe token. SanitizeSessionID
+// keeps the id readable but may retain characters a filesystem treats specially
+// on some platforms; collapse anything outside [A-Za-z0-9._-] to '_' so the temp
+// filename is always safe without leaking the raw id into $TMPDIR.
+func readsFileKey(sessionID string) string {
+	s := util.SanitizeSessionID(sessionID)
+	if s == "" {
+		return "default"
+	}
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
+			r == '.', r == '_', r == '-':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('_')
+		}
+	}
+	if b.Len() == 0 {
+		return "default"
+	}
+	return b.String()
+}
+
+// appendSessionRead appends a repo-relative Read path to the per-session reads
+// log. Best-effort (advisory side-channel): a write failure only means the
+// read-before-edit hook can't see this Read — it must never fail the tool call.
+func appendSessionRead(path, relPath string) {
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	_, _ = f.WriteString(relPath + "\n")
 }
 
 // sanitizeForShell sanitizes a string for safe use in a shell environment variable.

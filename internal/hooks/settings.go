@@ -15,6 +15,7 @@ var embeddedHooks = map[string]string{
 	"task-verify":         TaskVerifyHook,
 	"review-stop":         ReviewStopHook,
 	"task-guard":          TaskGuardHook,
+	"read-before-edit":    ReadBeforeEditHook,
 	"bash-guard":          BashGuardHook,
 	"hazard-guard":        HazardGuardHook,
 	"file-sentinel":       FileSentinelHook,
@@ -90,6 +91,7 @@ func ForgeHookSpec() map[string][]HookMatcher {
 				Hooks: []HookEntry{
 					{Type: "command", Command: "forge hook task-guard"},
 					{Type: "command", Command: "forge hook assertion-check"},
+					{Type: "command", Command: "forge hook read-before-edit"},
 				},
 			},
 			{
@@ -289,6 +291,7 @@ func WriteHookTemplates(forgeDir string) error {
 		"task-verify.sh":         TaskVerifyHook,
 		"review-stop.sh":         ReviewStopHook,
 		"task-guard.sh":          TaskGuardHook,
+		"read-before-edit.sh":    ReadBeforeEditHook,
 		"bash-guard.sh":          BashGuardHook,
 		"hazard-guard.sh":        HazardGuardHook,
 		"file-sentinel.sh":       FileSentinelHook,
@@ -339,6 +342,7 @@ func HookNames() []string {
 		"task-verify.sh",
 		"review-stop.sh",
 		"task-guard.sh",
+		"read-before-edit.sh",
 		"bash-guard.sh",
 		"hazard-guard.sh",
 		"file-sentinel.sh",

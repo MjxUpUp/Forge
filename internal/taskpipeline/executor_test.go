@@ -901,6 +901,40 @@ func TestWorkActivityEscapeHatchAuditsToChecklog(t *testing.T) {
 	}
 }
 
+// TestReadBeforeEditFailureIsBlocked guards 方案1's exit-code contract: editing
+// without reading must hard-fail task-verify with the BLOCKED: prefix, not soft
+// advisory prose. M2 misread "Read and understand the code" as advice and skipped
+// it — the BLOCKED marker is what makes the hard stop unambiguous. Asserts both
+// IsGateBlocked and the recognizable reason phrase.
+func TestReadBeforeEditFailureIsBlocked(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "t@t.com")
+	runGit(t, dir, "config", "user.name", "T")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "master init")
+	runGit(t, dir, "checkout", "-b", "feat/rbe-block")
+
+	state := &TaskState{TaskRef: "rbe-block", Branch: "feat/rbe-block", StartedAt: time.Now()}
+	state.RecordGateResult("task-implement", true, "")
+
+	// Seed an Edit but NO Read — reads==0, edits>0 → read-before-edit hard fail.
+	editTS := time.Now().Add(2 * time.Second)
+	if err := toolusage.Record(dir, &toolusage.ToolCall{ToolName: "Edit", TaskRef: "rbe-block", Timestamp: editTS}); err != nil {
+		t.Fatalf("seed Edit: %v", err)
+	}
+
+	_, err := ExecuteTaskGate(dir, "task-verify", state)
+	if err == nil {
+		t.Fatal("task-verify unexpectedly passed (want BLOCKED hard failure for edit-without-read)")
+	}
+	if !IsGateBlocked(err) {
+		t.Errorf("read-before-edit failure = %q, want BLOCKED contract prefix", err.Error())
+	}
+	if !strings.Contains(err.Error(), "without reading any code") {
+		t.Errorf("read-before-edit failure = %q, want the recognizable reason phrase", err.Error())
+	}
+}
+
 // TestTaskComplete_DocsConsistencyAdvisory guards the task-complete docs-consistency
 // advisory: README drift (反引号引用不存在的 forge 命令) must be recorded to checklog
 // but must NOT block the gate (advisory, not blocking). This is the local-before-push

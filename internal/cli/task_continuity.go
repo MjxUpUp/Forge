@@ -291,7 +291,22 @@ func renderHookReinject(root string) (string, error) {
 	if err := taskpipeline.SaveTaskState(root, state); err != nil {
 		return "", err
 	}
-	return "PASS\n" + renderResume(state, gitPorcelain(root)), nil
+	handoff := renderResume(state, gitPorcelain(root))
+	// 方案4（中途 checkpoint 显式落盘·主动驱动）：压缩刚发生时，若任务未落盘任何"中途线程"
+	// （决策/下一步），handoff 只能复原 task start 时设的 goal/plan——而压缩丢的正是这期间的
+	// 工作记忆。此时追加强提示把 agent 推向 forge task decide/next 显式落盘，使下次压缩的
+	// handoff 不再从零重建。这是 checkpoint 驱动唯一的高信号时机：普通 turn resume-reinject
+	// 静默（ResumeStale=false），零噪声；只在压缩发生的那一个 prompt 触发。Goal/Plan 不计入
+	// （task start 已落盘，非压缩丢失项），只看 Decisions/NextSteps 这两个中途线程字段。
+	if len(state.Decisions) == 0 && len(state.NextSteps) == 0 {
+		handoff += `
+⚠ 刚发生 context 压缩，但本任务尚未落盘任何中途决策/下一步——压缩丢的正是这段工作记忆，下次压缩仍会从零重建。现在立即显式落盘：
+  forge task decide --content "<已确认的关键决策>"   # 不再推翻的决定
+  forge task next "<当前在做>" "<接着做>"             # 下一步
+  forge task block --content "<卡住的事>"             # 若有阻塞
+`
+	}
+	return "PASS\n" + handoff, nil
 }
 
 func runTaskContext(cmd *cobra.Command, args []string) error {

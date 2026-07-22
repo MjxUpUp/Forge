@@ -103,7 +103,7 @@ func TestGenerateSettingsUsesForgeHook(t *testing.T) {
 	content := string(data)
 
 	// All hook invocations should route through "forge hook <name>"
-	for _, name := range []string{"auto-compile", "assertion-check", "task-verify", "task-guard", "bash-guard", "file-sentinel", "skill-scan", "workflow-test-guard"} {
+	for _, name := range []string{"auto-compile", "assertion-check", "task-verify", "task-guard", "read-before-edit", "bash-guard", "file-sentinel", "skill-scan", "workflow-test-guard"} {
 		expected := "forge hook " + name
 		if !strings.Contains(content, expected) {
 			t.Errorf("settings missing %q command", expected)
@@ -113,7 +113,7 @@ func TestGenerateSettingsUsesForgeHook(t *testing.T) {
 
 func TestEmbeddedContent(t *testing.T) {
 	// Known hooks return content and true
-	for _, name := range []string{"auto-compile", "assertion-check", "task-verify", "bash-guard", "file-sentinel", "task-guard", "skill-scan", "task-resume", "compact-resume", "resume-reinject", "workflow-test-guard"} {
+	for _, name := range []string{"auto-compile", "assertion-check", "task-verify", "bash-guard", "file-sentinel", "task-guard", "read-before-edit", "skill-scan", "task-resume", "compact-resume", "resume-reinject", "workflow-test-guard"} {
 		content, ok := EmbeddedContent(name)
 		if !ok {
 			t.Errorf("EmbeddedContent(%q) returned false", name)
@@ -137,7 +137,7 @@ func TestWriteHookTemplatesCreatesFiles(t *testing.T) {
 	}
 
 	hooksDir := filepath.Join(dir, "hooks")
-	expected := []string{"auto-compile.sh", "assertion-check.sh", "task-verify.sh", "task-guard.sh", "bash-guard.sh", "file-sentinel.sh", "skill-scan.sh", "workflow-test-guard.sh"}
+	expected := []string{"auto-compile.sh", "assertion-check.sh", "task-verify.sh", "task-guard.sh", "read-before-edit.sh", "bash-guard.sh", "file-sentinel.sh", "skill-scan.sh", "workflow-test-guard.sh"}
 	for _, name := range expected {
 		path := filepath.Join(hooksDir, name)
 		if _, err := os.Stat(path); os.IsNotExist(err) {

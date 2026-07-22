@@ -243,7 +243,12 @@ MESSAGES=""
 GATE_OUT=$(forge task gate task-verify --silent 2>&1) || {
   MESSAGES="${MESSAGES}[task-gate] Task verify gate not yet passed. "
 }
-ADV=$(printf '%s' "$GATE_OUT" | grep -F '[task-verify] Advisory' || true)
+# 方案1 契约：gate 的 advisory stderr 现统一带 "ADVISORY: " 前缀（GateAdvisory）。
+# 旧 grep '[task-verify] Advisory' 在 test-coverage 迁移到 ADVISORY: 前缀后失配，吞了
+# test-discipline advisory（TestTaskVerifyHook_SurfacesTestDisciplineAdvisory 回归）。
+# 改匹配契约前缀——GATE_OUT 已 scoped 到 task-verify gate，所有 ADVISORY: 行均本 gate 的
+# advisory（test-coverage / scope-drift / cheat-scan / test-capability / skill-eval / acceptance）。
+ADV=$(printf '%s' "$GATE_OUT" | grep -F 'ADVISORY:' || true)
 if [ -n "$ADV" ]; then
   MESSAGES="${MESSAGES}${ADV} "
 fi
@@ -274,7 +279,7 @@ fi
 # and checklog (trace-queryable). Detail is a fixed string — MESSAGES may carry
 # quotes/paths that would break the JSON line, so it goes to stderr only.
 if [ -n "$MESSAGES" ]; then
-  echo "[task-verify] Advisory (non-blocking): ${MESSAGES}" >&2
+  echo "[task-verify] ${MESSAGES}" >&2
   _NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)
   if [ -n "$_NOW" ]; then
     printf '{"check":"task-verify","passed":true,"checked":false,"detail":"advisory: non-blocking issues surfaced to stderr","recorded_at":"%s"}\n' \
@@ -398,6 +403,71 @@ if [ -z "$TASK_REF" ]; then
 fi
 
 echo "PASS"
+`
+
+const ReadBeforeEditHook = `#!/bin/bash
+# read-before-edit.sh — PreToolUse hook for Write|Edit (方案2 shift-left).
+# Blocks editing a source file NOT Read this session — immediate feedback at
+# Edit time, not deferred to the task-verify work-activity gate. Catches the
+# edit-without-read anti-pattern (M2 lazy-fix root cause: agent edited from
+# memory; the Edit's old_string matched by luck; a wrong fix shipped).
+#
+# Why this differs from the deleted read-check.sh: that hook was advisory +
+# used a GLOBAL edit/read ratio (>1.0) — high false-positive (read 2 files,
+# tweak 5 = ratio 2.5 but fine), so it was noise and got sunk to skill text
+# (which then never fired — dogfood: advisory-only doesn't drive behavior).
+# THIS hook is per-file precise (was THIS exact file Read), HARD with
+# exemptions, and honors the escape hatch. The disk reads-log side-channel
+# also survives compaction within a session (reads before a compact still
+# count), removing the biggest false positive of a context-based check.
+#
+# Exemptions mirror task-guard: non-source, test files, new files (Write
+# creating). Escape: FORGE_WORK_ACTIVITY=disable (the dispatcher surfaces a
+# per-task override as this env) — downscored to Strength Weak at the gate.
+# Only enforces inside an active task: quick non-task edits aren't tracked.
+set -eo pipefail
+
+FILE_PATH="${FORGE_FILE_PATH:-}"
+TASK_REF="${FORGE_TASK_REF:-}"
+READS_FILE="${FORGE_READS_FILE:-}"
+
+# Only enforce inside an active task (mirrors task-guard scoping; quick
+# non-task edits aren't Forge-tracked and the reads log may be sparse).
+[ -z "$TASK_REF" ] && exit 0
+# Non-file tool — allow.
+[ -z "$FILE_PATH" ] && exit 0
+
+# Escape hatch: work-activity disabled (per-task override OR global env). The
+# dispatcher surfaces a per-task override as FORGE_WORK_ACTIVITY so this single
+# check honors both. Escape is downscored (UsedEscapeHatch → Strength Weak at
+# the work-activity gate) so it isn't free.
+[ "$FORGE_WORK_ACTIVITY" = "disable" ] && exit 0
+
+# Not source code — allow (mirrors task-guard source extension set).
+printf '%s' "$FILE_PATH" | grep -qE '\.(go|rs|ts|tsx|js|jsx|py|java|rb|zig|nim)$' || exit 0
+# Test files — always allow (TDD workflow).
+printf '%s' "$FILE_PATH" | grep -qE '(_test\.|_spec\.|\.test\.|\.spec\.|test/|tests/|__tests__/)' && exit 0
+
+# New file (not yet on disk) — allow: Write creating a file can't have been
+# Read, and the agent authors fresh content rather than editing blind.
+[ -f "$FILE_PATH" ] || exit 0
+
+# No reads log recorded this session → any Edit of an existing source file is
+# editing blind → block (this IS the signal we want, not a false positive).
+if [ -z "$READS_FILE" ] || [ ! -f "$READS_FILE" ]; then
+  echo "FAIL [read-before-edit] $FILE_PATH 未在本会话 Read 过——Edit 需精确匹配旧文本，未读即凭记忆盲改（M2 事故根因）。先 Read 该文件再 Edit。批量/重构逃生：forge task override --work-activity disable（降 evidence 强度到 Weak）。"
+  exit 1
+fi
+
+# Exact-line match against the per-session reads log. FORGE_FILE_PATH is the
+# repo-relative path the dispatcher normalized (same form appended on Read).
+if grep -qxF "$FILE_PATH" "$READS_FILE"; then
+  echo "PASS"
+  exit 0
+fi
+
+echo "FAIL [read-before-edit] $FILE_PATH 未在本会话 Read 过——Edit 需精确匹配旧文本，未读即凭记忆盲改（M2 事故根因）。先 Read 该文件再 Edit。批量/重构逃生：forge task override --work-activity disable（降 evidence 强度到 Weak）。"
+exit 1
 `
 
 const BashGuardHook = `#!/bin/bash

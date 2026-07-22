@@ -117,6 +117,11 @@ type TaskState struct {
 	// drift 是常态信号。task start --scope 声明，task scope add 中途迭代追加（Agentless 分层定位）。
 	PlanScope []string `json:"plan_scope,omitempty"`
 
+	// Overrides 承载 per-task 逃生舱设置（方案5 防泄漏）：优先于全局 env
+	// FORGE_WORK_ACTIVITY/FORGE_TEST_COVERAGE。一个任务逃生不污染同 shell 的其他任务。
+	// 用了任一逃生舱 → CheckEscapeHatch → Strength cap Weak。由 `forge task override` 设置。
+	Overrides TaskOverrides `json:"overrides,omitempty"`
+
 	// 接续真相源（continuity）：把 plan/决策/下一步/阻塞/跨工具发现/产物从会话内临时状态
 	// （agent 上下文，压缩即丢）和靠纪律的 markdown（HANDOFF.md/AI_CONTEXT.md）升格为 task 的
 	// 结构化一等公民字段。任何新会话冷启动 forge task resume 即拉回，跨工具/跨人基于同一份

@@ -2,7 +2,6 @@ package taskpipeline
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -108,10 +107,11 @@ const CheckNameTestCoverage checklog.CheckName = "test-coverage-gate"
 //
 // Gracefully degrades: non-git repo or empty diff → ok=true (no false positives).
 func CheckTestCoverage(root string, state *TaskState) (ok bool, missing []string, total int) {
-	if os.Getenv(testCoverageDisableEnv) == "disable" {
-		// A4: audit the bypass. The hatch is legitimate (doc-only repos, generated
-		// code, whitelist-only tasks) but its use must leave a trail — otherwise an
-		// agent can silently dodge the test-coverage gate by exporting the env.
+	if EscapeDisabled(state, escapeTestCoverage, testCoverageDisableEnv) {
+		// A4 + 方案5: audit the bypass (per-task override OR global env). The hatch is
+		// legitimate (doc-only repos, generated code, whitelist-only tasks) but its use
+		// must leave a trail — otherwise an agent can silently dodge the test-coverage
+		// gate. UsedEscapeHatch → Strength cap Weak makes the escape costly, not free.
 		taskRef := ""
 		if state != nil {
 			taskRef = state.TaskRef
@@ -121,7 +121,7 @@ func CheckTestCoverage(root string, state *TaskState) (ok bool, missing []string
 			Passed:  true,
 			Checked: true,
 			TaskRef: taskRef,
-			Detail:  "escape-hatch: FORGE_TEST_COVERAGE=disable (test-coverage gate bypassed)",
+			Detail:  "escape-hatch: test-coverage gate bypassed (per-task override or FORGE_TEST_COVERAGE=disable)",
 		})
 		return true, nil, 0
 	}
