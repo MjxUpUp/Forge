@@ -35,7 +35,7 @@
         ]
       },
       {
-        "matcher": "Read",
+        "matcher": "Read|Skill|Agent",
         "hooks": [
           {
             "type": "command",

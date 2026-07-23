@@ -79,7 +79,14 @@ func ForgeHookSpec() map[string][]HookMatcher {
 				},
 			},
 			{
-				Matcher: "Read",
+				// 方案 C：matcher 从 Read 扩为 Read|Skill|Agent，让 toollog 审计也能记录
+				// agent 加载了哪个 skill、派了哪类子 agent（dispatch 在 hook.go:6b 填 tool_input）。
+				// 调研根因：DevWorkbench toollog 里 Skill 全是业务 skill，质量 skill（test-discipline/
+				// tdd-cycle/implementation-discipline）0 触发——纯靠 agent 自觉必漏。记录 Skill/Agent
+				// 让"质量 skill 是否被驱动"可追溯（与方案 A 的 blocking 驱动互补：A 强制触发，C 留痕审计）。
+				// tool-track.sh 永远 PASS（非 scoring check），不阻塞；readsFilePath 副通道严格限定
+				// Read，Skill/Agent 不污染 read-before-edit 日志。
+				Matcher: "Read|Skill|Agent",
 				Hooks: []HookEntry{
 					{Type: "command", Command: "forge hook tool-track"},
 				},
