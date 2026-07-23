@@ -858,6 +858,79 @@ func settingsPath(dir string) string {
 	return filepath.Join(dir, ".claude", "settings.local.json")
 }
 
+// TestStripForgeHooksUserLevel：钉死 user-level 去重——StripForgeHooksUserLevel 定位
+// ClaudeHome()/settings.local.json（CLAUDE_CONFIG_DIR 优先,fallback ~/.claude），移除 forge
+// hooks。plugin.json 已在 user-level 注册全部 ForgeHookSpec → 此处 forge hook 必重复。
+// 始终 keepEmpty=true：整文件只剩 forge 来源时写 {} 保留壳，绝不删用户全局配置。
+func TestStripForgeHooksUserLevel(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+
+	// 纯 forge hooks → strip 后写 {} 保留壳（不删）。
+	p := filepath.Join(home, "settings.local.json")
+	forgeOnly := `{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"forge hook bash-guard"}]}]}}`
+	if err := os.WriteFile(p, []byte(forgeOnly), 0644); err != nil {
+		t.Fatalf("write user-level settings: %v", err)
+	}
+	changed, err := StripForgeHooksUserLevel()
+	if err != nil {
+		t.Fatalf("StripForgeHooksUserLevel: %v", err)
+	}
+	if !changed {
+		t.Error(`有 forge hook 应 changed=true`)
+	}
+	data, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatalf(`应保留文件壳写 {},不删: %v`, err)
+	}
+	if got := strings.TrimSpace(string(data)); got != "{}" {
+		t.Errorf(`应写 {} 保留壳, got %q`, got)
+	}
+}
+
+// TestStripForgeHooksUserLevel_PreservesUserHooks：user-level 有 forge + 用户 hook 时，
+// 删 forge 保留用户 hook + 文件（绝不写 {} 覆盖用户全局配置）。
+func TestStripForgeHooksUserLevel_PreservesUserHooks(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	p := filepath.Join(home, "settings.local.json")
+	mixed := `{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"forge hook bash-guard"},{"type":"command","command":"npx prettier"}]}]}}`
+	if err := os.WriteFile(p, []byte(mixed), 0644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	changed, err := StripForgeHooksUserLevel()
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if !changed {
+		t.Error(`有 forge hook 应 changed=true`)
+	}
+	data, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatalf(`read: %v`, err)
+	}
+	body := string(data)
+	if !strings.Contains(body, "npx prettier") {
+		t.Error(`用户 hook 应保留`)
+	}
+	if strings.Contains(body, "forge hook") {
+		t.Error(`forge hook 应移除`)
+	}
+}
+
+// TestStripForgeHooksUserLevel_NoFile：无 user-level settings.local.json 时 no-op。
+func TestStripForgeHooksUserLevel_NoFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	changed, err := StripForgeHooksUserLevel()
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if changed {
+		t.Error(`无文件应 changed=false`)
+	}
+}
+
 // TestStripForgeHooks_NoFile：无 settings.local.json 时 no-op（changed=false，不报错）。
 func TestStripForgeHooks_NoFile(t *testing.T) {
 	dir := t.TempDir()
