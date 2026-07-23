@@ -224,7 +224,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge clone check` | 检测文件代码克隆 |
 | `forge plugin pack [--out <dir>] [--owner-name <n>]` | 生成多 host plugin pack（.claude-plugin/.cursor-plugin marketplace + plugins/\<name\>/ 树：claude manifest 含 hooks + 共享 .mcp.json + 每 host 安装 README），让各 agent 一键 `plugin install forge` 跨工具接线（薄 manifest + 共享内容，单仓即 marketplace） |
 | `forge plugin status` | 报告 forge plugin 是否在 user-level 已装（exit 0=已装，非零=未装；供 init-suggest hook / 脚本检测） |
-| `forge plugin dedupe [dir] [--keep-empty]` | plugin 已装时清理 project-level 重复 hooks + MCP；幂等 no-op；init-suggest SessionStart 自动调用（传 `--keep-empty` 保留 `settings.local.json` 为 `{}`，不删用户个人配置文件）；手动不传则清完删空文件 |
+| `forge plugin dedupe [dir] [--keep-empty]` | plugin 已装时清理 project-level 重复 hooks + MCP，并清理 user-level（`~/.claude` 或 `$CLAUDE_CONFIG_DIR`）`settings.local.json` 的重复 forge hooks（plugin.json 已在 user-level 注册全部 hooks）；幂等 no-op；init-suggest SessionStart 自动调用（传 `--keep-empty` 保留项目 `settings.local.json` 为 `{}`，不删用户个人配置文件）；user-level 始终保留文件壳（绝不删用户全局配置）；手动不传则项目级清完删空文件。注：forge 项目内 autoSync 每命令末尾 defer 已静默 dedupe，本命令在非 forge 项目（如 `cd ~ && forge plugin dedupe`）手动跑才作清理主力并给出可读输出 |
 
 ## 安装
 
@@ -247,7 +247,7 @@ npm install -g @agent_forge/forge
 /plugin install forge@forge
 ```
 
-仍需 `npm install -g @agent_forge/forge` 装二进制（hooks/MCP 都 spawn forge），并在每个项目 `forge init` 生成项目级资产（`.forge/`、`CLAUDE.md`/`AGENTS.md`、skills）。plugin 已装时 `forge init` 会自动去重 project-level 的 hooks + MCP（避免与 user-level plugin 双重注册），存量项目由 init-suggest SessionStart hook 自动迁移。完整三步与各 host 差异见 `plugins/forge/README.md`。
+仍需 `npm install -g @agent_forge/forge` 装二进制（hooks/MCP 都 spawn forge），并在每个项目 `forge init` 生成项目级资产（`.forge/`、`CLAUDE.md`/`AGENTS.md`、skills）。plugin 已装时 `forge init` 会自动去重 project-level 的 hooks + MCP，并清理 user-level `settings.local.json` 的重复 forge hooks（避免与 user-level plugin 双重注册——历史 global `forge init` 写 home / 旧全局安装残留的重复），存量项目由 init-suggest SessionStart hook 自动迁移。完整三步与各 host 差异见 `plugins/forge/README.md`。
 
 ## License
 

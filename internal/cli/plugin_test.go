@@ -139,3 +139,119 @@ func TestRunPluginDedupe_KeepEmptyFlag(t *testing.T) {
 		})
 	}
 }
+
+// TestDedupeProjectLevelIfPlugin_AlsoStripsUserLevel：钉死 init/sync 这条 auto 路径
+// （dedupeProjectLevelIfPlugin）在 plugin 已装时同时清 project-level + user-level 重复——
+// home 下 settings.local.json 的 forge hook 与 plugin manifest 重复（历史 global init 残留）。
+func TestDedupeProjectLevelIfPlugin_AlsoStripsUserLevel(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	writeForgePluginFixture(t, home)
+
+	dir := t.TempDir()
+	writeProjectLevelForgeDupes(t, dir)
+	// user-level 重复：home 下 settings.local.json 放 forge hook（历史 global init 残留）。
+	userLevel := `{"hooks":{"Stop":[{"matcher":"","hooks":[{"type":"command","command":"forge hook task-verify"}]}]}}`
+	if err := os.WriteFile(filepath.Join(home, "settings.local.json"), []byte(userLevel), 0644); err != nil {
+		t.Fatalf("write user-level: %v", err)
+	}
+
+	dedupeProjectLevelIfPlugin(dir)
+
+	// project-level 清理（settings.local.json 写 {},.mcp.json 删）。
+	projData, err := os.ReadFile(filepath.Join(dir, ".claude", "settings.local.json"))
+	if err != nil {
+		t.Errorf(`project settings.local.json 应保留写 {},不删: %v`, err)
+	} else if got := strings.TrimSpace(string(projData)); got != "{}" {
+		t.Errorf(`project settings 应写 {}, got %q`, got)
+	}
+	// user-level 清理（写 {} 保留壳,绝不删用户全局配置）。
+	userData, err := os.ReadFile(filepath.Join(home, "settings.local.json"))
+	if err != nil {
+		t.Fatalf(`user-level settings.local.json 应保留写 {},不删: %v`, err)
+	}
+	if got := strings.TrimSpace(string(userData)); got != "{}" {
+		t.Errorf(`user-level settings 应写 {}, got %q`, got)
+	}
+}
+
+// TestRunPluginDedupe_AlsoStripsUserLevel：钉死 runPluginDedupe（forge plugin dedupe 的 RunE）
+// 在 plugin 已装时清 user-level 重复 + 输出独立提示 user-level。
+//
+// 路径澄清（review M1）：本测试直接调 runPluginDedupe，不经 root PersistentPreRunE——这对应
+// 用户在【非 forge 项目】（如 home）手动跑 `forge plugin dedupe` 的场景：findProjectRoot 失败
+// （root.go:37）→ autoSync 不跑（sync.go 的 defer dedupeProjectLevelIfPlugin 不注册）→
+// runPluginDedupe 是唯一清理者,strip + 输出 user-level。这是清 user 级全局重复最常见的入口
+// （cd ~ && forge plugin dedupe）,runPluginDedupe 的 user 级分支在此现场是 live 路径,非死代码。
+//
+// 在【forge 项目】内（含 init-suggest SessionStart 的 dedupe 分支——$ROOT 有 .forge,embed.go:1290）
+// 跑本命令时,autoSync 的 defer 先静默清完 user 级（dedupeProjectLevelIfPlugin）,runPluginDedupe
+// 再跑成 no-op 无输出——该路径由 TestDedupeProjectLevelIfPlugin_AlsoStripsUserLevel 覆盖
+// （直接调 autoSync defer 调用的同一函数）。两条测试互补,合覆盖 forge + 非 forge 两种调用现场。
+//
+// 即便 --keep-empty 未传（手动语义 project-level 删空）,user-level 仍固定保留壳（绝不删用户全局配置）。
+func TestRunPluginDedupe_AlsoStripsUserLevel(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	writeForgePluginFixture(t, home)
+	// 只放 user-level 重复（project-level 干净）,隔离验证 user-level 分支 + 输出。
+	userLevel := `{"hooks":{"Stop":[{"matcher":"","hooks":[{"type":"command","command":"forge hook task-verify"}]}]}}`
+	if err := os.WriteFile(filepath.Join(home, "settings.local.json"), []byte(userLevel), 0644); err != nil {
+		t.Fatalf("write user-level: %v", err)
+	}
+
+	var out strings.Builder
+	cmd := &cobra.Command{RunE: runPluginDedupe}
+	cmd.SetOut(&out)
+	cmd.Flags().Bool("keep-empty", false, "")
+	dir := t.TempDir() // project-level 无重复,隔离 user-level
+	if err := runPluginDedupe(cmd, []string{dir}); err != nil {
+		t.Fatalf("runPluginDedupe: %v", err)
+	}
+
+	// user-level 清理:写 {} 保留壳（不删）,即便 --keep-empty 未传（user-level 固定保留壳）。
+	userData, err := os.ReadFile(filepath.Join(home, "settings.local.json"))
+	if err != nil {
+		t.Fatalf(`user-level 应保留写 {},不删: %v`, err)
+	}
+	if got := strings.TrimSpace(string(userData)); got != "{}" {
+		t.Errorf(`user-level 应写 {}, got %q`, got)
+	}
+	if !strings.Contains(out.String(), "user-level") {
+		t.Errorf(`应输出 user-level 提示, got %q`, out.String())
+	}
+}
+
+// TestRunPluginDedupe_ProjectAndUserBothDirty：钉死 runPluginDedupe 的独立输出分支——
+// project-level（hooks+MCP）与 user-level 同时脏时,两段输出都打印（非 else-if 互斥）。
+// 防回归：未来若误改成 `else if userChanged` 会吞掉 project 段（或反之）,单测照过而行为错。
+// 路径同 TestRunPluginDedupe_AlsoStripsUserLevel：直接调 RunE = 非 forge 项目手动跑现场。
+func TestRunPluginDedupe_ProjectAndUserBothDirty(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	writeForgePluginFixture(t, home)
+	// user-level 重复（home 下 settings.local.json）。
+	userLevel := `{"hooks":{"Stop":[{"matcher":"","hooks":[{"type":"command","command":"forge hook task-verify"}]}]}}`
+	if err := os.WriteFile(filepath.Join(home, "settings.local.json"), []byte(userLevel), 0644); err != nil {
+		t.Fatalf("write user-level: %v", err)
+	}
+	// project-level 重复（hooks + MCP）。
+	dir := t.TempDir()
+	writeProjectLevelForgeDupes(t, dir)
+
+	var out strings.Builder
+	cmd := &cobra.Command{RunE: runPluginDedupe}
+	cmd.SetOut(&out)
+	cmd.Flags().Bool("keep-empty", false, "") // 默认不保留壳:project 级纯 forge 文件会被删（file 态由 KeepEmptyFlag 测试覆盖,本测试只钉输出组合）
+	if err := runPluginDedupe(cmd, []string{dir}); err != nil {
+		t.Fatalf("runPluginDedupe: %v", err)
+	}
+
+	got := out.String()
+	if !strings.Contains(got, "项目级重复") {
+		t.Errorf(`应输出 project-level 段, got %q`, got)
+	}
+	if !strings.Contains(got, "user-level") {
+		t.Errorf(`应输出 user-level 段, got %q`, got)
+	}
+}

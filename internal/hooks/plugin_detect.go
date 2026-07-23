@@ -81,3 +81,32 @@ func IsClaudePluginInstalledAt(claudeHome string) bool {
 func IsClaudePluginInstalled() bool {
 	return IsClaudePluginInstalledAt(ClaudeHome())
 }
+
+// StripForgeHooksUserLevel 移除 user-level settings.local.json（ClaudeHome()/settings.local.json）
+// 中的 forge hooks。plugin.json 已在 user-level 注册全部 ForgeHookSpec → 此处的 forge hook
+// 必然重复（Claude Code 双跑同 hook,幂等不出错但冗余 + advisory 噪音 ×2）。来源:历史 global
+// forge init 写 home / 旧 npm 全局安装残留 / 用户手动放过——plugin install 后这些与 plugin
+// manifest 重复。
+//
+// 始终 keepEmpty=true（不接受参数）:user-level settings.local.json 是用户个人全局配置,绝不
+// 删整个文件,只清 forge hooks 保留 {} 壳（与 project-level 手动 dedupe 可删文件不同——project
+// 文件是项目局部可重建,user 文件是全局个人不可重建）。ClaudeHome()=空（CLAUDE_CONFIG_DIR 未设
+// 且 os.UserHomeDir 失败,极罕见；调用方 dedupeProjectLevelIfPlugin/runPluginDedupe 的更外层
+// IsClaudePluginInstalled guard 已先 fail-skip,本 guard 是 belt-and-suspenders）时 no-op。
+// 供 dedupeProjectLevelIfPlugin（init/sync）与 runPluginDedupe（plugin dedupe / init-suggest
+// SessionStart 自动调用）在 plugin 已装时统一清理。
+//
+// 并发/TOCTOU（review S1,已知权衡非本次修）：本函数经 autoSync 的 defer 在每条非 init forge
+// 命令末尾触达 user 级文件,而该文件被所有 forge 项目共享。StripForgeHooksAt 是 read-modify-write
+// （os.WriteFile 非原子,无 temp+rename）——两个 forge 进程（如终端 A forge status + 终端 B hook
+// 回调）或进程与用户编辑器同时改写时,后写者基于旧 buffer 覆盖先写者,可能丢用户中间的编辑。
+// project 级同性质但爆炸半径限单项目；user 级是全局共享,风险更高。幂等性把实际写盘限制在
+// "仍有 forge hook 待清"的那一次（清完后续 read-only no-op）,把窗口压到单次清理。彻底收敛留待
+// 后续：写时改 os.WriteFile(tmp)+os.Rename(tmp,path)（同目录 rename 原子,Windows 同卷成立）。
+func StripForgeHooksUserLevel() (changed bool, err error) {
+	home := ClaudeHome()
+	if home == "" {
+		return false, nil
+	}
+	return StripForgeHooksAt(filepath.Join(home, "settings.local.json"), true)
+}
