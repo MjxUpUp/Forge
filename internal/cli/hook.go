@@ -376,18 +376,20 @@ func runHook(cmd *cobra.Command, args []string) error {
 	}
 
 	// 6b. Record tool usage for activity-ratio detection. auto-compile records
-	// Write/Edit; tool-track records Read so the read-before-edit gate
-	// (task-verify) has Read data — without it the gate was always-failing on
-	// any task with edits (644b142 removed the original Read recorder). tool-track
-	// omits tool_input: Read is frequent and the gate needs only tool_name +
-	// timestamp, so skipping the file_path keeps the toollog lean.
+	// Write/Edit; tool-track records Read|Skill|Agent (matcher in ForgeHookSpec) so
+	// the read-before-edit gate (task-verify) has Read data — without it the gate was
+	// always-failing on any task with edits (644b142 removed the original Read recorder).
+	// tool_input 填充：auto-compile（Edit/Write）记 file_path/content；tool-track 的 Skill/Agent
+	// 记 skill 名/subagent_type（方案 C：让 toollog 审计能看到 agent 加载了哪个质量 skill、派了
+	// 哪类子 agent——advisory 语境下质量 skill 0 触发的根因可追溯）。Read 仍省略 tool_input
+	// （频繁，gate 只需 tool_name+timestamp，保持 toollog lean）。
 	if name == "auto-compile" || name == "tool-track" {
 		call := &toolusage.ToolCall{
 			ToolName:  hookInput.ToolName,
 			TaskRef:   taskRef,
 			SessionID: util.SanitizeSessionID(hookInput.SessionID),
 		}
-		if name == "auto-compile" {
+		if name == "auto-compile" || (name == "tool-track" && (hookInput.ToolName == "Skill" || hookInput.ToolName == "Agent")) {
 			raw := string(hookInput.ToolInput)
 			call.ToolInput = toolusage.TruncateInput(raw)
 			call.InputLen = len(raw)

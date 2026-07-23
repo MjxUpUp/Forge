@@ -638,3 +638,98 @@ func TestAppendSessionRead_RecordsAndMatches(t *testing.T) {
 		}
 	}
 }
+
+// TestHookToolTrackRecordsSkillInput 钉死方案 C：tool-track hook（matcher Read|Skill|Agent）
+// 对 Skill 调用记录 tool_input（skill 名），让 toollog 审计能看到 agent 加载了哪个质量技能。
+// Read 仍省略 tool_input（频繁，gate 只需 tool_name+timestamp）；Skill/Agent 填 tool_input
+// 让"质量 skill 是否被驱动"可追溯（advisory 语境下质量 skill 0 触发的根因可追溯）。
+func TestHookToolTrackRecordsSkillInput(t *testing.T) {
+	tmpDir := t.TempDir()
+	os.MkdirAll(filepath.Join(tmpDir, ".forge", "hooks"), 0755)
+	os.WriteFile(filepath.Join(tmpDir, ".forge", "state.json"), []byte(`{"pipeline_version":"2.0","mode":"small"}`), 0644)
+
+	originalWd, _ := os.Getwd()
+	os.Chdir(tmpDir)
+	defer os.Chdir(originalWd)
+
+	oldStdin := os.Stdin
+	tmpStdin, _ := os.CreateTemp("", "hook-stdin-*.json")
+	tmpStdin.WriteString(`{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"name":"test-discipline"}}`)
+	tmpStdin.Seek(0, 0)
+	os.Stdin = tmpStdin
+	defer func() {
+		os.Stdin = oldStdin
+		tmpStdin.Close()
+		os.Remove(tmpStdin.Name())
+	}()
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	runHook(nil, []string{"tool-track"})
+
+	w.Close()
+	os.Stdout = oldStdout
+	r.Read(make([]byte, 8192))
+
+	// toollog 写到 <root>/.forge/toollog.jsonl（非 git fallback，同 checklog 路径惯例）。
+	toollogPath := filepath.Join(tmpDir, ".forge", "toollog.jsonl")
+	data, err := os.ReadFile(toollogPath)
+	if err != nil {
+		t.Fatalf("toollog.jsonl 未生成（Skill 调用未被 tool-track 记录——matcher 或 dispatch 缺失）: %v", err)
+	}
+	body := string(data)
+	if !strings.Contains(body, `"tool_name":"Skill"`) {
+		t.Errorf("toollog 应含 tool_name=Skill 条目, got: %s", body)
+	}
+	if !strings.Contains(body, "test-discipline") {
+		t.Errorf("toollog 应含 skill 名 test-discipline（方案 C：Skill tool_input 须记录）, got: %s", body)
+	}
+}
+
+// TestHookToolTrackReadOmitsToolInput 对照：Read 仍省略 tool_input（保持 toollog lean，
+// gate 只需 tool_name+timestamp）。方案 C 只对 Skill/Agent 填 tool_input，Read 不变。
+func TestHookToolTrackReadOmitsToolInput(t *testing.T) {
+	tmpDir := t.TempDir()
+	os.MkdirAll(filepath.Join(tmpDir, ".forge", "hooks"), 0755)
+	os.WriteFile(filepath.Join(tmpDir, ".forge", "state.json"), []byte(`{"pipeline_version":"2.0","mode":"small"}`), 0644)
+
+	originalWd, _ := os.Getwd()
+	os.Chdir(tmpDir)
+	defer os.Chdir(originalWd)
+
+	oldStdin := os.Stdin
+	tmpStdin, _ := os.CreateTemp("", "hook-stdin-*.json")
+	tmpStdin.WriteString(`{"hook_event_name":"PostToolUse","tool_name":"Read","tool_input":{"file_path":"src/main.go"}}`)
+	tmpStdin.Seek(0, 0)
+	os.Stdin = tmpStdin
+	defer func() {
+		os.Stdin = oldStdin
+		tmpStdin.Close()
+		os.Remove(tmpStdin.Name())
+	}()
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	runHook(nil, []string{"tool-track"})
+
+	w.Close()
+	os.Stdout = oldStdout
+	r.Read(make([]byte, 8192))
+
+	toollogPath := filepath.Join(tmpDir, ".forge", "toollog.jsonl")
+	data, err := os.ReadFile(toollogPath)
+	if err != nil {
+		t.Fatalf("toollog.jsonl 未生成: %v", err)
+	}
+	body := string(data)
+	if !strings.Contains(body, `"tool_name":"Read"`) {
+		t.Errorf("toollog 应含 tool_name=Read 条目, got: %s", body)
+	}
+	if strings.Contains(body, "src/main.go") {
+		t.Errorf("Read 的 tool_input 不应被记录（保持 lean）, got: %s", body)
+	}
+}
