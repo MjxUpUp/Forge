@@ -625,3 +625,32 @@ func TestTestCoveragePerTaskOverride(t *testing.T) {
 		t.Errorf("escape-hatch entry Passed=false, want true (hatch succeeded)")
 	}
 }
+
+// TestTestCoverageShouldBlock 钉死 task-complete 兜底硬阻断的分级判定：大改（≥3 源文件
+// 无配对测试）且零断言 → 阻断（corrupt success）；小改（≤2，fudge factor）或有断言
+// （测试在别处/重构场景）→ 放行。eval 证据：feat/eval-core 0/19、feat/m2 0/25 应阻断；
+// fix/m2-review-fixes 0/2 应放行（小改）。
+func TestTestCoverageShouldBlock(t *testing.T) {
+	cases := []struct {
+		name    string
+		total   int
+		assertN int
+		want    bool
+	}{
+		{"no source changed", 0, 0, false},
+		{"small change fudge factor (2 files, 0 assertion)", 2, 0, false},
+		{"threshold boundary exactly 2 → pass", 2, 0, false},
+		{"threshold boundary exactly 3 zero assertion → BLOCK", 3, 0, true},
+		{"big change zero assertion (3 files) → BLOCK", 3, 0, true},
+		{"eval-core scale (19 files) → BLOCK", 19, 0, true},
+		{"big change but has assertions (refactor) → pass", 3, 5, false},
+		{"big change one assertion → pass (有验证痕迹)", 5, 1, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := testCoverageShouldBlock(c.total, c.assertN); got != c.want {
+				t.Errorf("testCoverageShouldBlock(total=%d, assertN=%d) = %v, want %v", c.total, c.assertN, got, c.want)
+			}
+		})
+	}
+}

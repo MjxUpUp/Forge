@@ -1284,3 +1284,42 @@ func TestIsForgeHookCommand(t *testing.T) {
 		}
 	}
 }
+
+// TestPostToolUseToolTrackMatchesReadSkillAgent 钉死方案 C：tool-track hook 的 PostToolUse
+// matcher 必须覆盖 Read|Skill|Agent，让 toollog 审计记录 agent 加载的质量技能与派生的子 agent
+// 类型（advisory 语境下质量 skill 0 触发的根因可追溯）。仅 Read matcher 会让 Skill/Agent 调用
+// 不被记录——质量 skill 是否被驱动无从审计。
+func TestPostToolUseToolTrackMatchesReadSkillAgent(t *testing.T) {
+	dir := t.TempDir()
+	if err := GenerateSettings(dir); err != nil {
+		t.Fatalf("GenerateSettings: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, ".claude", "settings.local.json"))
+	if err != nil {
+		t.Fatalf("read settings: %v", err)
+	}
+	var parsed struct {
+		Hooks map[string][]struct {
+			Matcher string `json:"matcher,omitempty"`
+			Hooks   []struct {
+				Command string `json:"command"`
+			} `json:"hooks"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	found := false
+	for _, matcher := range parsed.Hooks["PostToolUse"] {
+		if matcher.Matcher == "Read|Skill|Agent" {
+			for _, h := range matcher.Hooks {
+				if h.Command == "forge hook tool-track" {
+					found = true
+				}
+			}
+		}
+	}
+	if !found {
+		t.Error("PostToolUse 缺 Read|Skill|Agent matcher 的 forge hook tool-track（方案 C：Skill/Agent 调用不被审计）")
+	}
+}

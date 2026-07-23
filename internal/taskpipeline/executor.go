@@ -13,6 +13,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/docsconsistency"
 	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/review"
+	"github.com/MjxUpUp/Forge/internal/scoring"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
 )
 
@@ -107,6 +108,36 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 			})
 		} else if cur != state.ReviewedChangeHash {
 			return nil, GateBlocked("task-complete 拒绝：审查通过后检测到源码变更（基线 HEAD=%s）。HARD stop——请重新派只读子 agent 审查当前代码后运行 `forge review pass` 刷新审查基线", state.ReviewedHeadCommit)
+		}
+	}
+
+	// test-coverage 兜底硬前置（task-complete）：补 task-verify advisory 的缺口——advisory
+	// 语境下 agent 自述即过（eval 证据：0/19、0/25 覆盖照过 complete，0 次加载 test-discipline）。
+	// 此处对"大改零断言"硬阻断：改了 ≥3 个源文件既无配对测试也无任何断言 = corrupt success
+	// 铁证（大改无任何验证痕迹）。小改（≤2 文件，fudge factor，对齐业界 Sonar <20 行豁免精神）
+	// 或"有断言但 0 配对覆盖"（测试在别处/重构场景）仍 advisory 放行——避免误伤。
+	// escape（per-task override / FORGE_TEST_COVERAGE）由 CheckTestCoverage 内部返回 ok=true
+	// 处理，此处天然放行（降 evidence Weak 留痕）。
+	// 方案 B：BLOCKED 消息复用 formatMissing 的 skill 路由——advisory 语境失效（0 触发），
+	// blocking 语境下 agent 必须处理才能过（skill 驱动靠 advisory→blocking 转变，非新机制）。
+	// 断言信号复用 scoring.CollectAssertionDensity（已注入 EvaluateInput；taskpipeline→scoring
+	// 单向无循环依赖）。checklog 记最终态——覆盖 task-verify 的记录（agent 可能在两 gate 间补了
+	// 测试，Latest 应反映 task-complete 时覆盖状态供 score/trace）。
+	if gateID == "task-complete" && state.CompletedAt == nil {
+		ok, missing, total := CheckTestCoverage(root, state)
+		checklog.Record(root, &checklog.Entry{
+			Check:   CheckNameTestCoverage,
+			Passed:  ok,
+			Checked: true,
+			TaskRef: state.TaskRef,
+			Detail:  testCoverageDetail(ok, missing),
+		})
+		if !ok && total > 0 {
+			assertN, _ := scoring.CollectAssertionDensity(root, state.Branch, state.HeadCommit)
+			if testCoverageShouldBlock(total, assertN) {
+				return nil, GateBlocked("task-complete 拒绝（HARD stop）：改了 %d 个源文件却无配对测试且零断言（assertN=0）——corrupt success 风险（大改无任何验证痕迹）。%s", total, formatMissing(missing))
+			}
+			fmt.Fprintf(os.Stderr, "%s%s\n", GateAdvisory("[task-complete] "), formatMissing(missing))
 		}
 	}
 
@@ -316,7 +347,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 				}
 			}
 			if debtCount > 0 {
-				fmt.Fprintf(os.Stderr, "%s"+`%d 处 comment-as-debt——注释标识问题 ≠ 解决（懒惰阶梯反第 0 级）。处置：当场修掉；或转 forge task start --ref <ref> --title <描述> 跟踪（本任务完结后开）。advisory 不阻塞。`+"\n", GateAdvisory("[task-verify] "), debtCount)
+				fmt.Fprintf(os.Stderr, "%s"+`%d 处 comment-as-debt——注释标识问题 ≠ 解决（懒惰阶梯反第 0 级）。处置：当场修掉；或转 forge task start --ref <ref> --title <描述> 跟踪（本任务完结后开）。加载 implementation-discipline skill（/implementation-discipline）按懒惰阶梯归位。advisory 不阻塞。`+"\n", GateAdvisory("[task-verify] "), debtCount)
 			}
 		}
 

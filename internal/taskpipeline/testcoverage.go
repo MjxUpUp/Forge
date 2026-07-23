@@ -153,6 +153,22 @@ func CheckTestCoverage(root string, state *TaskState) (ok bool, missing []string
 	return len(missing) == 0, missing, total
 }
 
+// testCoverageHardGateThreshold 是 task-complete 兜底硬阻断的最小"无配对测试的源文件数"。
+// ≥此阈值且零断言才阻断——小改（<3 文件）fudge factor 豁免（对齐业界 Sonar <20 行豁免精神，
+// 但用文件数代理行数以避免 git diff 行数计算 + 循环依赖）。eval 证据：feat/eval-core 0/19、
+// feat/m2 0/25 是典型 corrupt success（大改零覆盖）；fix/m2-review-fixes 0/2 是 13 行小修，
+// fudge factor 豁免合理。
+const testCoverageHardGateThreshold = 3
+
+// testCoverageShouldBlock 决定 task-complete 兜底是否对缺测试硬阻断。大改（≥阈值源文件
+// 无配对测试）且零断言 → 阻断（corrupt success：改了源码既无配对测试也无任何断言）。
+// 小改（<阈值，fudge factor）或"有断言但 0 配对覆盖"（测试在别处/重构场景）→ advisory 放行。
+// 断言信号复用 scoring.CollectAssertionDensity（13 个跨语言 marker），避免只看"测试是否存在"
+// 的同义反复陷阱（AI 测试固化 bug）。
+func testCoverageShouldBlock(total, assertN int) bool {
+	return total >= testCoverageHardGateThreshold && assertN == 0
+}
+
 // taskChangedFiles returns the set of files changed during the task.
 // Committed changes since the task's HeadCommit (captured at task start) plus
 // the working tree — so covered/total counts only this task's files, aligned

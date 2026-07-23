@@ -757,8 +757,10 @@ func TestGateTimingExemptsAutoGates(t *testing.T) {
 // TestTestCoverageCheckScopedToVerifyGate guards the executor.go integration:
 // the test-coverage check runs ONLY at task-verify, never at task-complete (the
 // last gate). A task with an untested source change must still be able to reach
-// task-complete — coverage is enforced at verify, not re-litigated at complete.
-// This is the gateID=="task-verify" branch in ExecuteTaskGate.
+// TestTestCoverageCheckScopedToVerifyGate 钉死方案 A 兜底的 fudge factor 边界：task-complete
+// 现在也跑 test-coverage 兜底（补 advisory 缺口），但单文件小改（total=1<3）即使零断言也
+// advisory 放行——corrupt success 兜底只拦"大改（≥3）零断言"。bar.go 单文件无测试无断言
+// → fudge factor 放行，task-complete 仍 PASS。
 func TestTestCoverageCheckScopedToVerifyGate(t *testing.T) {
 	dir := t.TempDir()
 	runGit(t, dir, "init")
@@ -787,10 +789,99 @@ func TestTestCoverageCheckScopedToVerifyGate(t *testing.T) {
 		t.Fatalf("seed Read: %v", err)
 	}
 
-	// task-complete is the LAST gate — coverage must NOT be re-checked here.
-	// If it were, this would fail (bar.go has no test), but it must pass.
+	// task-complete 兜底对单文件小改放行（fudge factor，total=1<3 不阻断）。
+	// 大改零断言的阻断见 TestTaskCompleteTestCoverageHardGate_BlockedOnBigChangeNoAssertion。
 	if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
-		t.Fatalf("task-complete must NOT run test-coverage check (only task-verify does): %v", err)
+		t.Fatalf("task-complete 对单文件小改应 advisory 放行（fudge factor），got: %v", err)
+	}
+}
+
+// TestTaskCompleteTestCoverageHardGate_BlockedOnBigChangeNoAssertion 钉死方案 A 核心：
+// task-complete 兜底对"大改零断言"硬阻断——改了 ≥3 个源文件既无配对测试也无任何断言
+// = corrupt success 铁证（eval 证据：feat/eval-core 0/19、feat/m2 0/25 照过 complete 的漏洞）。
+func TestTaskCompleteTestCoverageHardGate_BlockedOnBigChangeNoAssertion(t *testing.T) {
+	dir := t.TempDir()
+	initRepoWithMaster(t, dir)
+	writeCommitSource(t, dir, map[string]string{
+		"a.go": "package main\n\nfunc A() int { return 1 }\n",
+		"b.go": "package main\n\nfunc B() int { return 2 }\n",
+		"c.go": "package main\n\nfunc C() int { return 3 }\n",
+	}, "add 3 sources no test")
+
+	state := newVerifyState(t, dir, "bigchange-noassert")
+	state.RecordGateResult("task-verify", true, "")
+	state.MarkReviewPassed("", "") // 满足 review 硬前置以隔离 coverage 逻辑
+
+	_, err := ExecuteTaskGate(dir, "task-complete", state)
+	if err == nil {
+		t.Fatal("task-complete 应因大改零断言被 BLOCKED——corrupt success 兜底失效（agent 可改 3+ 源文件不写测试不写断言照过 complete）")
+	}
+	if !IsGateBlocked(err) {
+		t.Fatalf("应是 GateBlocked（HARD stop），got: %v", err)
+	}
+}
+
+// TestTaskCompleteTestCoverageHardGate_SmallChangeAdvisoryPass 小改（≤2 文件）即使零断言
+// 也 advisory 放行——fudge factor，对齐业界 Sonar <20 行豁免精神（用文件数代理行数）。
+func TestTaskCompleteTestCoverageHardGate_SmallChangeAdvisoryPass(t *testing.T) {
+	dir := t.TempDir()
+	initRepoWithMaster(t, dir)
+	writeCommitSource(t, dir, map[string]string{
+		"a.go": "package main\n\nfunc A() int { return 1 }\n",
+		"b.go": "package main\n\nfunc B() int { return 2 }\n",
+	}, "add 2 sources no test")
+
+	state := newVerifyState(t, dir, "smallchange-noassert")
+	state.RecordGateResult("task-verify", true, "")
+	state.MarkReviewPassed("", "")
+
+	if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
+		t.Fatalf("小改（2 文件）应 advisory 放行（fudge factor）, got: %v", err)
+	}
+}
+
+// TestTaskCompleteTestCoverageHardGate_BigChangeWithAssertionsPass 大改（≥3）但有断言
+// （测试在别处/重构场景）→ advisory 放行。断言信号复用 CollectAssertionDensity：一个被改动的
+// 测试文件含断言即视为有验证痕迹，不硬拦。源文件分散在不同包（pkg1-3），断言测试在 pkg4——
+// 避免同包 _test.go 包级 fallback 误让 missing 为空、ok=true（跳过 !ok 分支，
+// 永不进入 testCoverageShouldBlock 判定——测试虽 PASS 但没走到 assertN 路径）。
+func TestTaskCompleteTestCoverageHardGate_BigChangeWithAssertionsPass(t *testing.T) {
+	dir := t.TempDir()
+	initRepoWithMaster(t, dir)
+	writeCommitSource(t, dir, map[string]string{
+		"pkg1/a.go":      "package pkg1\n\nfunc A() int { return 1 }\n",
+		"pkg2/b.go":      "package pkg2\n\nfunc B() int { return 2 }\n",
+		"pkg3/c.go":      "package pkg3\n\nfunc C() int { return 3 }\n",
+		"pkg4/x_test.go": "package pkg4\n\nimport \"testing\"\n\nfunc TestX(t *testing.T) { t.Fatal(\"x\") }\n",
+	}, "add 3 sources in diff pkgs + assertion test elsewhere")
+
+	state := newVerifyState(t, dir, "bigchange-withassert")
+	state.RecordGateResult("task-verify", true, "")
+	state.MarkReviewPassed("", "")
+
+	if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
+		t.Fatalf("大改有断言（测试在别处/重构）应 advisory 放行, got: %v", err)
+	}
+}
+
+// TestTaskCompleteTestCoverageHardGate_EscapePasses escape 逃生舱 → task-complete 放行
+// （CheckTestCoverage 内部返回 ok=true）。逃生降 evidence Weak 留痕，不阻断。
+func TestTaskCompleteTestCoverageHardGate_EscapePasses(t *testing.T) {
+	dir := t.TempDir()
+	initRepoWithMaster(t, dir)
+	writeCommitSource(t, dir, map[string]string{
+		"a.go": "package main\n\nfunc A() int { return 1 }\n",
+		"b.go": "package main\n\nfunc B() int { return 2 }\n",
+		"c.go": "package main\n\nfunc C() int { return 3 }\n",
+	}, "add 3 sources no test")
+
+	state := newVerifyState(t, dir, "bigchange-escape")
+	state.RecordGateResult("task-verify", true, "")
+	state.MarkReviewPassed("", "")
+	t.Setenv("FORGE_TEST_COVERAGE", "disable")
+
+	if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
+		t.Fatalf("escape（FORGE_TEST_COVERAGE=disable）应放行, got: %v", err)
 	}
 }
 
