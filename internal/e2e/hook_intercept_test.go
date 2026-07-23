@@ -594,7 +594,7 @@ func forgeHookShared(t *testing.T, dir, tmp, hookName, stdinJSON string) (string
 
 // TestHook_ReadBeforeEdit_BlocksUnreadSource 钉住方案2 的核心契约：活跃任务内，
 // 编辑一个本会话从未 Read 过的现存源文件 → PreToolUse 硬阻断（decision=block）。
-// 这是 M2 事故根因（凭记忆盲改，old_string 撞中）的下沉拦截——在 Edit 当下拦住，
+// 这是"凭记忆盲改、old_string 撞中"的下沉拦截——在 Edit 当下拦住，
 // 不拖到 task-verify。无 tool-track Read 记录 → reads-log 无该路径 → grep -qxF 失败 → FAIL。
 func TestHook_ReadBeforeEdit_BlocksUnreadSource(t *testing.T) {
 	dir := freshProject(t)
@@ -701,7 +701,7 @@ func TestHook_ReadBeforeEdit_AllowsNewFile(t *testing.T) {
 	}
 }
 
-// TestHook_ReadBeforeEdit_PerTaskOverrideEscape（F2 / 方案5 防泄漏路径·e2e）：
+// TestHook_ReadBeforeEdit_PerTaskOverrideEscape（方案5 防泄漏路径·e2e）：
 // `forge task override --work-activity disable` 写入活跃任务的 Overrides → Go dispatcher
 // （hook.go）注入 FORGE_WORK_ACTIVITY=disable → read-before-edit hook 放行未 Read 的现存源编辑。
 // 这条 per-task 路径独立于全局 env（同 shell 其他任务不受影响），是"逃生必须端到端生效否则是

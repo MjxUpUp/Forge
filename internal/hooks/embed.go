@@ -409,13 +409,13 @@ const ReadBeforeEditHook = `#!/bin/bash
 # read-before-edit.sh — PreToolUse hook for Write|Edit (方案2 shift-left).
 # Blocks editing a source file NOT Read this session — immediate feedback at
 # Edit time, not deferred to the task-verify work-activity gate. Catches the
-# edit-without-read anti-pattern (M2 lazy-fix root cause: agent edited from
+# edit-without-read anti-pattern (lazy-fix root cause: agent edited from
 # memory; the Edit's old_string matched by luck; a wrong fix shipped).
 #
-# Why this differs from the deleted read-check.sh: that hook was advisory +
+# Why this differs from the former advisory read-check hook: that hook was advisory +
 # used a GLOBAL edit/read ratio (>1.0) — high false-positive (read 2 files,
 # tweak 5 = ratio 2.5 but fine), so it was noise and got sunk to skill text
-# (which then never fired — dogfood: advisory-only doesn't drive behavior).
+# (which then never fired — advisory-only checks don't drive behavior in practice).
 # THIS hook is per-file precise (was THIS exact file Read), HARD with
 # exemptions, and honors the escape hatch. The disk reads-log side-channel
 # also survives compaction within a session (reads before a compact still
@@ -455,7 +455,7 @@ printf '%s' "$FILE_PATH" | grep -qE '(_test\.|_spec\.|\.test\.|\.spec\.|test/|te
 # No reads log recorded this session → any Edit of an existing source file is
 # editing blind → block (this IS the signal we want, not a false positive).
 if [ -z "$READS_FILE" ] || [ ! -f "$READS_FILE" ]; then
-  echo "FAIL [read-before-edit] $FILE_PATH 未在本会话 Read 过——Edit 需精确匹配旧文本，未读即凭记忆盲改（M2 事故根因）。先 Read 该文件再 Edit。批量/重构逃生：forge task override --work-activity disable（降 evidence 强度到 Weak）。"
+  echo "FAIL [read-before-edit] $FILE_PATH 未在本会话 Read 过——Edit 需精确匹配旧文本，未读即凭记忆盲改——Edit 的 old_string 撞中即错改入库。先 Read 该文件再 Edit。批量/重构逃生：forge task override --work-activity disable（降 evidence 强度到 Weak）。"
   exit 1
 fi
 
@@ -466,7 +466,7 @@ if grep -qxF "$FILE_PATH" "$READS_FILE"; then
   exit 0
 fi
 
-echo "FAIL [read-before-edit] $FILE_PATH 未在本会话 Read 过——Edit 需精确匹配旧文本，未读即凭记忆盲改（M2 事故根因）。先 Read 该文件再 Edit。批量/重构逃生：forge task override --work-activity disable（降 evidence 强度到 Weak）。"
+echo "FAIL [read-before-edit] $FILE_PATH 未在本会话 Read 过——Edit 需精确匹配旧文本，未读即凭记忆盲改——Edit 的 old_string 撞中即错改入库。先 Read 该文件再 Edit。批量/重构逃生：forge task override --work-activity disable（降 evidence 强度到 Weak）。"
 exit 1
 `
 

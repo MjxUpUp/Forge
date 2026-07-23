@@ -14,7 +14,7 @@ import (
 //
 // A passed gate prints "✅ <gate> — passed" and needs no prefix.
 //
-// This exists because of the M2 failure mode: a hard read-before-edit error
+// This exists because of a real failure mode: a hard read-before-edit error
 // ("Read and understand the code before modifying it") was read as soft advice
 // and the agent proceeded anyway — the non-zero exit was ignored because the
 // wording read like a reminder. The BLOCKED: prefix + explicit "HARD stop, not

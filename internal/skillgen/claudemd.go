@@ -88,7 +88,7 @@ func buildForgeSection(forClaude bool) string {
 	sb.WriteString("2. `task-verify` — 测试伴随变更（advisory 提醒，由 agent 自检）\n")
 	sb.WriteString("3. `task-complete` — E2E 验证通过后运行（`forge task gate task-complete --ref <ref>`）\n\n")
 	sb.WriteString("每个门禁命令：`forge task gate <id> --ref <ref>`\n\n")
-	sb.WriteString("**门禁退出码契约**：`forge task gate` 非 0 退出 = 硬阻断（输出 `BLOCKED:` 前缀），必须修复后重跑，不是提醒；零退出但见 `ADVISORY:` 前缀 = 软信号（gate 仍过，已记 checklog，应修但不阻断）。按退出码行动，不要靠解析文案判断——M2 事故正是把硬阻断散文误读成提醒而跳过。\n\n")
+	sb.WriteString("**门禁退出码契约**：`forge task gate` 非 0 退出 = 硬阻断（输出 `BLOCKED:` 前缀），必须修复后重跑，不是提醒；零退出但见 `ADVISORY:` 前缀 = 软信号（gate 仍过，已记 checklog，应修但不阻断）。按退出码行动，不要靠解析文案判断（硬阻断散文易被误读成提醒而跳过）。\n\n")
 	sb.WriteString("门禁全通过后运行 `forge task complete --ref <ref>` 触发评分。\n\n")
 	sb.WriteString("### 中止任务（清理 ghost/卡住任务）\n\n")
 	sb.WriteString("任务无法推进（如在非 git 项目半启动、门禁死循环、或临时放弃）时，用 `forge task abort --ref <ref>` 删除任务状态文件并清空 active task ref，**不评分**。代码改动保留不动。task-verify 现为 advisory（仅记录问题不阻塞会话）；但 ghost 任务仍会污染 `task list`，需手动 abort 清理。\n\n")
@@ -101,7 +101,7 @@ func buildForgeSection(forClaude bool) string {
 
 	sb.WriteString("### 安全机制\n\n")
 	sb.WriteString("- **task-guard**（PreToolUse Write|Edit）：无任务时 Write/Edit 源码只 WARN 不拦截（`.forge/*` 自保护文件才 FAIL）；feature 分支无任务时自动建任务\n")
-	sb.WriteString("- **read-before-edit**（PreToolUse Write|Edit，活跃任务内）：编辑本会话未 Read 过的现存源文件 → 硬阻断（`BLOCKED`）。Edit 需精确匹配旧文本，未读即凭记忆盲改（M2 事故根因）。先 Read 再 Edit。豁免：新建文件/测试文件/非源码；批量重构逃生 `forge task override --work-activity disable`（降 evidence 强度到 Weak）。reads-log 落盘随会话存活，压缩后仍累计\n")
+	sb.WriteString("- **read-before-edit**（PreToolUse Write|Edit，活跃任务内）：编辑本会话未 Read 过的现存源文件 → 硬阻断（`BLOCKED`）。Edit 需精确匹配旧文本，未读即凭记忆盲改——old_string 撞中即错改入库。先 Read 再 Edit。豁免：新建文件/测试文件/非源码；批量重构逃生 `forge task override --work-activity disable`（降 evidence 强度到 Weak）。reads-log 落盘随会话存活，压缩后仍累计\n")
 	sb.WriteString("- **bash-guard**（PreToolUse Bash）：无任务时 Bash 写文件只 WARN（源码随后可能被 file-sentinel quarantine）\n")
 	sb.WriteString("- **file-sentinel**（PostToolUse Bash）：对比 Bash 前后文件状态，未授权源码变更 quarantine 到用户级 DataDir/quarantine/（`forge data-dir` 查看路径）\n")
 	sb.WriteString("- **自保护**：`.forge/*` 和 `.claude/settings*` 不能被直接修改，只能通过 `forge` 命令操作\n")

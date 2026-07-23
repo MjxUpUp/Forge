@@ -42,7 +42,7 @@ func TestRenderReviewPassBlindSpot(t *testing.T) {
 		t.Errorf("UsedEscapeHatch 致 Strong→Weak 应触发逃生舱 ADVISORY（非占比低），得 %q", adv)
 	}
 
-	// 复审回归（防假声明）：ratio 本就低（0.25）且用了逃生舱 → Weak。此时"本不弱"是假声明
+	// 防假声明回归：ratio 本就低（0.25）且用了逃生舱 → Weak。此时"本不弱"是假声明
 	//（0.25 确实低），必须回落"占比低"措辞——不能因 UsedEscapeHatch=true 就一刀切报逃生舱。
 	// 失败场景：1 det + 3 agent-claim + escape，ratio=0.25；旧实现会输出"ratio=0.25 本不弱"误导。
 	adv = renderReviewPassBlindSpot(checklog.EvidenceChain{Deterministic: 1, AgentClaim: 3, UsedEscapeHatch: true})

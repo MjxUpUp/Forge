@@ -117,7 +117,7 @@ func buildQualitySkillContent(projectDir string, proto *protocol.Protocol) strin
 
 	sb.WriteString("### 门禁退出码契约（BLOCKED vs ADVISORY）\n\n")
 	sb.WriteString("门禁结果用显式前缀标记，**退出码——不是文案——才是契约**。按退出码行动，不要靠解析散文判断状态：\n\n")
-	sb.WriteString("- **`BLOCKED:`**（非零退出）= 硬阻断，gate **未通过**。看到 `BLOCKED:` = 必须修复后重跑 `forge task gate`，不是\"继续观察\"。M2 事故正是把硬错误散文（\"Read and understand the code\"）误读成提醒而跳过——此前缀专治此误读\n")
+	sb.WriteString("- **`BLOCKED:`**（非零退出）= 硬阻断，gate **未通过**。看到 `BLOCKED:` = 必须修复后重跑 `forge task gate`，不是\"继续观察\"（硬错误散文易被误读成提醒而跳过——此前缀专治此误读，按退出码而非措辞行动）\n")
 	sb.WriteString("- **`ADVISORY:`**（零退出）= 软信号，gate 仍通过，已记 checklog。\"应修但不阻断\"——可继续推进，但会降低评分\n")
 	sb.WriteString("- **`✅ passed`** = 通过\n\n")
 
@@ -127,7 +127,7 @@ func buildQualitySkillContent(projectDir string, proto *protocol.Protocol) strin
 	sb.WriteString("2. **bash-guard**（PreToolUse Bash）：无任务时 Bash 写文件模式（writeFile、cat >、sed -i 等）只 WARN\n")
 	sb.WriteString("3. **file-sentinel**（PostToolUse Bash）：对比 Bash 执行前后的文件状态，未授权源码变更 quarantine 到用户级 DataDir/quarantine/（`forge data-dir` 查看路径）\n\n")
 	sb.WriteString("此外，**自保护机制**阻止直接修改 `.forge/*` 和 `.claude/settings*`——这些文件只能通过 `forge` 命令操作。\n\n")
-	sb.WriteString("**read-before-edit**（PreToolUse Write|Edit，活跃任务内）是 read-before-modify 的 shift-left 硬门禁：编辑本会话未 Read 过的现存源文件 → `BLOCKED`。Edit 需精确匹配旧文本，未读即凭记忆盲改（M2 事故根因：old_string 撞中、错改入库）。豁免新建文件/测试文件/非源码；批量重构逃生 `forge task override --work-activity disable`（降 evidence 强度到 Weak）。reads-log 落盘随会话存活，压缩后仍累计——压缩前 Read 过的文件仍算数。\n\n")
+	sb.WriteString("**read-before-edit**（PreToolUse Write|Edit，活跃任务内）是 read-before-modify 的 shift-left 硬门禁：编辑本会话未 Read 过的现存源文件 → `BLOCKED`。Edit 需精确匹配旧文本，未读即凭记忆盲改——old_string 易撞中错位、错改入库。豁免新建文件/测试文件/非源码；批量重构逃生 `forge task override --work-activity disable`（降 evidence 强度到 Weak）。reads-log 落盘随会话存活，压缩后仍累计——压缩前 Read 过的文件仍算数。\n\n")
 	sb.WriteString("### 辅助质量检查（仅 WARN 不阻塞）\n\n")
 	sb.WriteString("- **assertion-check/auto-compile**：检测断言弱化、提醒编译自检（advisory，仅记录不阻塞，由 agent 自律）\n\n")
 
@@ -158,7 +158,7 @@ func buildQualitySkillContent(projectDir string, proto *protocol.Protocol) strin
 	// per-tool-call WARN noise those hooks generated.
 	sb.WriteString("## Red Flags（判断性质量信号，自律遵守）\n\n")
 	sb.WriteString("以下规则原为 runtime hook，现已下沉为声明式文本——agent 可读可循，去判断性噪音。违反不阻塞，但会降低任务评分。\n\n")
-	sb.WriteString("- **先读再改**：修改代码前先 Read 理解上下文。read-before-edit hook 已在活跃任务内硬阻断编辑未 Read 过的现存源文件（见上）；此条覆盖 hook 之外的场景（非任务编辑、跨会话接手）——凭记忆/Grep 片段就改既有代码是 M2 类事故的温床。\n")
+	sb.WriteString("- **先读再改**：修改代码前先 Read 理解上下文。read-before-edit hook 已在活跃任务内硬阻断编辑未 Read 过的现存源文件（见上）；此条覆盖 hook 之外的场景（非任务编辑、跨会话接手）——凭记忆/Grep 片段就改既有代码是错改入库的温床。\n")
 	sb.WriteString("- **聚焦变更**：单次任务累计变更 >400 行需自检是否聚焦；>2000 行考虑拆分提交以便 review。\n")
 	sb.WriteString("- **避免重复**：文件重复行占比高（unique 行 <30%）时主动去重；精确检测用 `forge clone check`。\n\n")
 
