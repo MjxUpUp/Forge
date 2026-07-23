@@ -599,7 +599,7 @@ func TestReadsFilePath_DeterministicAndFilenameSafe(t *testing.T) {
 			}
 		}
 	}
-	// F7 project scoping: same session id under two different roots must resolve to
+	// Project scoping: same session id under two different roots must resolve to
 	// different reads logs — $TMPDIR is shared, so without the project tag a reused/
 	// short session id (e.g. test "sid-*") would let project B read project A's reads
 	// log and the read-before-edit hook would false-pass an Edit-without-Read.

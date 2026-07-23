@@ -8,7 +8,7 @@ import "os"
 // override 是推荐路径。值 "disable" = 禁用对应门禁。
 //
 // 用了任一逃生舱 → checklog CheckEscapeHatch → evidence Strength cap Weak（让逃生
-// 有代价，对冲"硬门禁 + 全局逃生舱 = 假硬门禁"反噬；Toloka 共识"让逃生有代价"）。
+// 有代价，对冲"硬门禁 + 全局逃生舱 = 假硬门禁"反噬）。
 type TaskOverrides struct {
 	WorkActivity string `json:"work_activity,omitempty"` // "disable" 跳过 read-before-edit / work-activity 门禁
 	TestCoverage string `json:"test_coverage,omitempty"` // "disable" 跳过 test-coverage 门禁

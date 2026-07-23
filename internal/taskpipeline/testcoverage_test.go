@@ -585,7 +585,7 @@ func TestTaskChangedFiles_IncludesUntracked(t *testing.T) {
 	})
 }
 
-// TestTestCoveragePerTaskOverride（F9 / 方案5 防泄漏路径）：state.Overrides.TestCoverage="disable"
+// TestTestCoveragePerTaskOverride（方案5 防泄漏路径）：state.Overrides.TestCoverage="disable"
 // 不靠 FORGE_TEST_COVERAGE env 也能逃生——这是 per-task override 的核心价值（一个任务逃生不污染
 // 同 shell 的其他任务）。对照 TestTestCoverageEscapeHatch（env 路径），此测试钉住 per-task 路径
 // 独立可用。验证两层：(1) CheckTestCoverage 返 ok=true；(2) 记 CheckEscapeHatch 条目（逃生有代价

@@ -16,7 +16,7 @@ type EvidenceChain struct {
 	// UsedEscapeHatch 报告本任务是否用过逃生舱（FORGE_WORK_ACTIVITY/
 	// FORGE_TEST_COVERAGE 等 gate-bypass）。逃生是合法工具，但"完成"声明若靠
 	// 跳过 gate 撑住，可信度必须打折——Strength 据此 cap 到 Weak（方案5：让逃生
-	// 有代价，对冲"硬门禁 + 全局逃生舱 = 假硬门禁"的反噬；Toloka 共识"让逃生有代价"）。
+	// 有代价，对冲"硬门禁 + 全局逃生舱 = 假硬门禁"的反噬）。
 	UsedEscapeHatch bool
 }
 
@@ -82,10 +82,9 @@ func (ec EvidenceChain) Strength() EvidenceStrength {
 	if ec.Ratio() >= 0.5 {
 		s = Strong
 	}
-	// 方案5：用了逃生舱 = "完成"声明靠跳过 gate 撑住，不可评 Strong。cap 到 Weak。
-	// 让逃生有代价而非仅记 log——对冲"硬门禁 + 全局逃生舱 = 假硬门禁"的反噬
-	// （Turn-3 撤回"Unverified 升格硬前置"正是怕逃生舱反噬；这里用降档而非阻断，
-	// 既保逃生合法又让它不再免费）。
+	// 方案5：用了逃生舱 = "完成"声明靠跳过 gate 撑住，不可评 Strong。cap 到 Weak——
+	// 让逃生有代价而非仅记 log，对冲"硬门禁 + 全局逃生舱 = 假硬门禁"的反噬。用降档
+	// 而非阻断：既保逃生合法（doc-only/生成码等正当场景），又让它不再免费。
 	if ec.UsedEscapeHatch && s == Strong {
 		s = Weak
 	}
