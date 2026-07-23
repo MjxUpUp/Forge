@@ -903,8 +903,7 @@ func TestWorkActivityEscapeHatchAuditsToChecklog(t *testing.T) {
 
 // TestReadBeforeEditFailureIsBlocked guards 方案1's exit-code contract: editing
 // without reading must hard-fail task-verify with the BLOCKED: prefix, not soft
-// advisory prose. M2 misread "Read and understand the code" as advice and skipped
-// it — the BLOCKED marker is what makes the hard stop unambiguous. Asserts both
+// advisory prose — the BLOCKED marker makes the hard stop unambiguous. Asserts both
 // IsGateBlocked and the recognizable reason phrase.
 func TestReadBeforeEditFailureIsBlocked(t *testing.T) {
 	dir := t.TempDir()

@@ -136,8 +136,7 @@ func TestBuildEvidenceChain_EscapeHatchExcludedAndFlags(t *testing.T) {
 
 // TestStrength_EscapeHatchCapsToWeak 钉住方案5：用了逃生舱的任务，即便 deterministic 占
 // 多数（本该 Strong），Strength 也 cap 到 Weak——让逃生有代价，对冲"硬门禁 + 全局逃生 =
-// 假硬门禁"反噬。Turn-3 撤回"Unverified 升格硬前置"正是怕逃生反噬；这里用降档而非阻断，
-// 既保逃生合法又让它不再免费。
+// 假硬门禁"反噬。用降档而非阻断，既保逃生合法又让它不再免费。
 func TestStrength_EscapeHatchCapsToWeak(t *testing.T) {
 	// 4 deterministic + 1 agent-claim = ratio 0.8 → 本该 Strong，但用了逃生 → cap Weak
 	ec := EvidenceChain{Deterministic: 4, AgentClaim: 1, UsedEscapeHatch: true}

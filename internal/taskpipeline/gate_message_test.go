@@ -8,7 +8,7 @@ import (
 )
 
 // TestGateBlockedPrefix: hard gate failures carry the BLOCKED: contract prefix
-// so an agent cannot misread imperative-stop prose as soft advice (the M2 mode).
+// so an agent cannot misread imperative-stop prose as soft advice.
 func TestGateBlockedPrefix(t *testing.T) {
 	err := GateBlocked("gate %q cannot pass (edits=%d)", "task-verify", 3)
 	if err == nil {
