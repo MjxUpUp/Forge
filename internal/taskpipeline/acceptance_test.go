@@ -78,3 +78,91 @@ func TestTruncateAcceptanceOutput_ShortUnchanged(t *testing.T) {
 		t.Errorf(`短输出应原样返回, got %q`, got)
 	}
 }
+
+// TestParseAcceptanceFromPlan 锁定从 Plan markdown 提取验收标准：行扫描 Run:/Expected:
+// 配对，合并成 `run :: expected` 喂 parseOneAcceptance 复用 :: 边界处理。覆盖集中块/Task
+// 内联多块/无块/裸 Run/孤立 Expected/连续 Run——任一断裂则 --plan-file 自动提取失效，
+// acceptance 维度继续空转（dogfood 实证：本项目 28 条任务结论 acceptance 全 0/0）。
+func TestParseAcceptanceFromPlan(t *testing.T) {
+	cases := []struct {
+		name string
+		plan string
+		want []AcceptanceCriterion
+	}{
+		{
+			name: `集中验收块`,
+			plan: "## 验收标准\nRun: cargo test --test integration\nExpected: PASS\n",
+			want: []AcceptanceCriterion{{Run: `cargo test --test integration`, Expected: `PASS`}},
+		},
+		{
+			name: `Task 内联多块（全文扫描）`,
+			plan: "Task 1:\nRun: go build ./...\nExpected: \nTask 2:\nRun: go vet ./...\nExpected: no issues\n",
+			want: []AcceptanceCriterion{
+				{Run: `go build ./...`, Expected: ``},
+				{Run: `go vet ./...`, Expected: `no issues`},
+			},
+		},
+		{
+			name: `无验收块返空`,
+			plan: "## 计划\n只讲做什么，没有 Run/Expected 行\n",
+			want: nil,
+		},
+		{
+			name: `裸 Run 无 Expected（只看退出码 0）`,
+			plan: "Run: gofmt -l .\n",
+			want: []AcceptanceCriterion{{Run: `gofmt -l .`, Expected: ``}},
+		},
+		{
+			name: `孤立 Expected 前无 Run 丢弃`,
+			plan: "Expected: 孤儿\nRun: go test ./...\nExpected: ok\n",
+			want: []AcceptanceCriterion{{Run: `go test ./...`, Expected: `ok`}},
+		},
+		{
+			name: `连续两 Run 中间无 Expected（前者裸落盘）`,
+			plan: "Run: cmd-a\nRun: cmd-b\nExpected: out-b\n",
+			want: []AcceptanceCriterion{
+				{Run: `cmd-a`, Expected: ``},
+				{Run: `cmd-b`, Expected: `out-b`},
+			},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := ParseAcceptanceFromPlan(c.plan)
+			if len(got) != len(c.want) {
+				t.Fatalf(`提取条数 %d, want %d (got=%v)`, len(got), len(c.want), got)
+			}
+			for i := range got {
+				if got[i].Run != c.want[i].Run || got[i].Expected != c.want[i].Expected {
+					t.Errorf(`[%d] = {Run:%q Expected:%q}, want {%q %q}`,
+						i, got[i].Run, got[i].Expected, c.want[i].Run, c.want[i].Expected)
+				}
+			}
+		})
+	}
+}
+
+// TestMergeAcceptance 锁定显式 --accept 优先、plan 提取按 Run 去重补充。
+// 共存时显式条目表达覆盖/微调应胜出，plan 只补未冲突的 Run。
+func TestMergeAcceptance(t *testing.T) {
+	base := []AcceptanceCriterion{{Run: `a`, Expected: `1`}, {Run: `b`, Expected: `2`}}
+	addition := []AcceptanceCriterion{
+		{Run: `b`, Expected: `override`}, // Run 冲突 → 丢弃（base 优先）
+		{Run: `c`, Expected: `3`},        // 新 Run → 补充
+	}
+	got := MergeAcceptance(base, addition)
+	want := []AcceptanceCriterion{
+		{Run: `a`, Expected: `1`},
+		{Run: `b`, Expected: `2`}, // 保留 base，未被 override 覆盖
+		{Run: `c`, Expected: `3`},
+	}
+	if len(got) != len(want) {
+		t.Fatalf(`merge 条数 %d, want %d (got=%v)`, len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i].Run != want[i].Run || got[i].Expected != want[i].Expected {
+			t.Errorf(`[%d] = {Run:%q Expected:%q}, want {%q %q}`,
+				i, got[i].Run, got[i].Expected, want[i].Run, want[i].Expected)
+		}
+	}
+}
