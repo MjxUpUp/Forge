@@ -276,7 +276,7 @@ func TestRenderHookReinject(t *testing.T) {
 // 时，若任务未落盘任何中途线程（决策/下一步），handoff 末尾追加强提示推 agent 显式落盘——
 // 压缩丢的正是这段工作记忆，下次压缩否则从零重建。已有 NextSteps 时不追加（线程已在盘上，
 // 复原即可）。Goal 不算（task start 已落盘，非压缩丢失项）。两个 root 隔离正负用例
-//（不同 git-root → 不同 project key → 不同 task dir，ActiveTaskState 各自只扫到自己那一个）。
+// （不同 git-root → 不同 project key → 不同 task dir，ActiveTaskState 各自只扫到自己那一个）。
 func TestRenderHookReinject_SparseContinuityNudge(t *testing.T) {
 	// 稀疏线程（有 Goal 无 decide/next）→ 追加强提示
 	rootA, _ := forgedatatest.RealProject(t)
