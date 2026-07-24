@@ -11,10 +11,10 @@ import (
 // 子进程端到端落盘——forge task start --from-issue 子进程写 ExternalOrigin，forge task verify-acceptance
 // 子进程写实跑快照 AcceptedHeadCommit，e2e 进程 LoadTaskState 读回断言。
 //
-// proof 的 done/drift 逻辑（v2 快路径 + review drift）在 mcpserver/tools_proof_git_test.go 单测覆盖
-// （需真 git + SourceChangesSince + 直接调 taskProofCore）；complete/评分在 mcpserver/tools_complete_test.go
-// + taskpipeline/scoring 单测覆盖。本文件聚焦"新字段跨子进程持久化"这一 e2e 独有价值——证明 spawn 式
-// 编排器经 forge CLI 起的 task，ExternalOrigin/验收快照真落盘可读回。
+// proof 的 done/drift 逻辑（v2 快路径信任 AcceptedHeadCommit + review drift）下沉在 taskpipeline
+// 单测覆盖（JudgeAcceptance/ScoreTask/AppendConclusion）；本文件聚焦"新字段跨子进程持久化"这一 e2e
+// 独有价值——证明经 forge CLI 起的 task，ExternalOrigin/验收快照真落盘可读回。（MCP 层已全拆，
+// CLI 子进程持久化是 proof 闭环的现有载体。）
 
 // TestE2E_FromIssue_PersistsExternalOrigin：forge task start --from-issue <linear url> → ExternalOrigin
 // 解析并落盘。spawn 式编排器从外部 issue 起 task，ExternalOrigin 是衔接锚（解耦 mount 式 agent 自起 task

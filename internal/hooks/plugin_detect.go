@@ -10,16 +10,16 @@ import (
 // plugin_detect.go — 检测 forge 是否作为 Claude Code user-level plugin 已装。
 //
 // 背景：plugin（user-level，~/.claude/plugins/cache/forge/forge/<sha>/）的
-// .claude-plugin/plugin.json 注册了 ForgeHookSpec（13 hooks），.mcp.json 注册了
-// forge MCP server。这与 forge init 写的 project-level 资产完全重复：
-//   - .claude/settings.local.json 的 hooks（GenerateSettings 写）
-//   - 项目根 .mcp.json 的 forge server（agentbridge.writeClaudeMCP 写）
-// Claude Code 合并两份注册 → 同一 hook/MCP 跑两遍（性能 ×2 + advisory 噪音 ×2，
+// .claude-plugin/plugin.json 注册了 ForgeHookSpec（hooks）。这与 forge init 写的
+// project-level settings.local.json 的 hooks（GenerateSettings 写）完全重复——
+// Claude Code 合并两份注册 → 同一 hook 跑两遍（性能 ×2 + advisory 噪音 ×2，
 // 幂等所以不出错，但冗余）。
 //
-// 解法：GenerateSettings / writeClaudeMCP 保持纯函数（永远写），plugin 检测只在命令层
+// 解法：GenerateSettings 保持纯函数（永远写），plugin 检测只在命令层
 // （init.go / sync.go 的 dedupeProjectLevelIfPlugin）——所有写入完成后统一调
-// StripForgeHooks / StripForgeMCPServer 清理 project-level 重复，让 plugin user-level 接管。
+// StripForgeHooks 清理 project-level 重复 hooks，让 plugin user-level 接管。
+// StripForgeMCPServer 另清历史 init/sync 写过 forge MCP server 的旧项目 .mcp.json 残留
+// （MCP 层已全拆，plugin 不再带 .mcp.json，仅清旧残留）。
 // 检测不放 Translate / GenerateSettings 内，避免单元测试依赖全局 IsClaudePluginInstalled 状态。
 
 // ClaudeHome 返回 Claude Code 配置 home 目录。优先 CLAUDE_CONFIG_DIR env（Claude Code

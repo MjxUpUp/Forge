@@ -53,10 +53,6 @@ func (t *OpencodeTranslator) Translate(projectDir string, input *TranslationInpu
 	if err := os.MkdirAll(readmeDir, 0755); err == nil {
 		_ = os.WriteFile(filepath.Join(readmeDir, "forge.README.md"), []byte(buildOpencodeReadme()), 0644)
 	}
-	// Generate opencode.json mcp entry — idempotent merge (see mcpconfig.go).
-	if err := writeOpencodeMCP(projectDir); err != nil {
-		return fmt.Errorf("opencode: failed to generate opencode.json mcp: %w", err)
-	}
 	return nil
 }
 

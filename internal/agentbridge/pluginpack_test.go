@@ -17,7 +17,6 @@ var expectedPluginFiles = []string{
 	".claude-plugin/marketplace.json",
 	".cursor-plugin/marketplace.json",
 	"plugins/forge/.claude-plugin/plugin.json",
-	"plugins/forge/.mcp.json",
 	"plugins/forge/README.md",
 }
 
@@ -62,18 +61,6 @@ func TestPluginPack_HooksMirrorSettings(t *testing.T) {
 	if string(a) != string(b) {
 		t.Errorf("plugin.json hooks != settings.local.json hooks (single-source-of-truth drift):\n settings: %s\n plugin:   %s", a, b)
 	}
-}
-
-// TestPluginPack_MCP：共享 .mcp.json 含 forge server（command=forge, args=[mcp,serve]）。
-func TestPluginPack_MCP(t *testing.T) {
-	dir := generatePack(t)
-	var cfg map[string]any
-	loadJSON(t, filepath.Join(dir, "plugins", "forge", ".mcp.json"), &cfg)
-	srv := forgeServerAt(t, cfg, "mcpServers", "forge")
-	if srv["command"] != "forge" {
-		t.Errorf("mcp command = %v, want forge", srv["command"])
-	}
-	assertStringArgs(t, srv["args"], "mcp", "serve")
 }
 
 // TestPluginPack_Marketplace：两份 marketplace.json 结构正确——name=forge、owner 必有（schema

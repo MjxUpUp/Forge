@@ -44,10 +44,6 @@ func (t *CodexTranslator) Translate(projectDir string, input *TranslationInput) 
 	if err := os.WriteFile(path, append(data, '\n'), 0644); err != nil {
 		return fmt.Errorf("codex: failed to write hooks.json: %w", err)
 	}
-	// Append forge MCP server to .codex/config.toml — idempotent (see mcpconfig.go).
-	if err := writeCodexMCP(projectDir); err != nil {
-		return fmt.Errorf("codex: failed to generate config.toml mcp_servers: %w", err)
-	}
 	return nil
 }
 

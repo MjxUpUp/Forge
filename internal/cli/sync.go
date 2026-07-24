@@ -26,10 +26,10 @@ import (
 //   - .forge/protocol.yml → create from defaults if missing, never overwrite
 //   - .forge/.sync-version → stamp current binary version (no-op detection)
 func autoSync(dir string, binaryVersion string, force bool) error {
-	// plugin 已 user-level 装时,本函数写入的 project-level hooks（GenerateSettings）+
-	// MCP（Translate writeClaudeMCP）是冗余的,defer 在所有 return 路径末尾统一清理。
-	// 幂等:无重复时 no-op,version-equal 跳过路径也会触发（正好覆盖"plugin 在上次 sync
-	// 后才装"的迁移场景）。
+	// plugin 已 user-level 装时,本函数写入的 project-level hooks（GenerateSettings）是冗余的
+	// （+ 旧项目 .mcp.json 的 forge server 残留,StripForgeMCPServer 清历史 init/sync 旧项目）,
+	// defer 在所有 return 路径末尾统一清理。幂等:无重复时 no-op,version-equal 跳过路径也会
+	// 触发（正好覆盖"plugin 在上次 sync 后才装"的迁移场景）。
 	defer dedupeProjectLevelIfPlugin(dir)
 
 	// .sync-version stamp 判 no-op（取代已删除的 state.LastSyncVersion——项目级管道

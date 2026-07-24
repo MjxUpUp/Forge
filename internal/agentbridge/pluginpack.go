@@ -14,7 +14,6 @@ package agentbridge
 //	  .claude-plugin/plugin.json      claude plugin manifest：hooks 字段 = ForgeHookSpec，
 //	                                  让 `claude plugin install <name>` 直接获得与 forge init
 //	                                  字节相同的 gate 接线（单一真相源）
-//	  .mcp.json                       共享 MCP（claude/codex 自动发现 plugin 目录下）
 //	  README.md                       每 host 一段安装命令
 //
 // 关键设计：source 用 ./plugins/<PluginName> 子目录而非仓库根 —— forge 是 Go 工具仓
@@ -95,9 +94,6 @@ func GeneratePluginPack(spec PluginPackSpec) error {
 	if err := writeClaudePluginManifest(spec, pluginDir); err != nil {
 		return err
 	}
-	if err := writePluginMCP(pluginDir); err != nil {
-		return err
-	}
 	if err := writePluginReadme(spec, pluginDir); err != nil {
 		return err
 	}
@@ -146,21 +142,6 @@ func writeClaudePluginManifest(spec PluginPackSpec, pluginDir string) error {
 	return writeJSONIndent(filepath.Join(pluginDir, ".claude-plugin", "plugin.json"), manifest)
 }
 
-// writePluginMCP 写 plugins/<name>/.mcp.json。Claude Code 与 Codex 自动发现已装 plugin
-// 目录下的 .mcp.json，暴露 forge MCP server（15 工具：resume/decide/attach + task/board/
-// experience）。server 定义与 writeClaudeMCP 一致（同 forge command/args）。
-func writePluginMCP(pluginDir string) error {
-	mcp := map[string]any{
-		"mcpServers": map[string]any{
-			"forge": map[string]any{
-				"command": forgeMCPCommand,
-				"args":    forgeMCPArgs,
-			},
-		},
-	}
-	return writeJSONIndent(filepath.Join(pluginDir, ".mcp.json"), mcp)
-}
-
 func writePluginReadme(spec PluginPackSpec, pluginDir string) error {
 	slug := spec.RepoSlug
 	if slug == "" {
@@ -173,7 +154,7 @@ func writePluginReadme(spec PluginPackSpec, pluginDir string) error {
 // 用 strings.Builder 而非长 + 链（内容已扩到三步 + caveat，拼接链易错）。
 //
 // 能力边界必须诚实（用户要求"forge 分发纯净闭环可用"，且不能虚假宣传"一次安装处处完美"）：
-// plugin 只接用户级 hooks+MCP，不含项目级 .forge/CLAUDE.md/AGENTS.md/skills——后者每项目
+// plugin 只接用户级 hooks，不含项目级 .forge/CLAUDE.md/AGENTS.md/skills——后者每项目
 // 仍需 forge init。故 README 分三步明示，并单列 caveat（用户级 hooks 在非 forge 项目会 WARN）。
 //
 // 代码块用 4-space 缩进（markdown 标准代码块，不依赖 ``` fence）；行内命令用 \x60 转义反引号
@@ -192,20 +173,20 @@ func pluginReadme(repoSlug string) string {
 
 	// 三步首体验。
 	sb.WriteString("## Three-step setup\n\n")
-	sb.WriteString("Forge has two parts: a Go binary (the engine that hooks and MCP " +
+	sb.WriteString("Forge has two parts: a Go binary (the engine that hooks " +
 		"spawn) and this plugin (the wiring that tells your agent where to call it). " +
 		"Install the binary first, then the plugin, then init each project.\n\n")
 
-	// Step 1 — 二进制是硬前置：hooks 和 MCP 都 spawn forge，没二进制 plugin 装了也跑不动。
+	// Step 1 — 二进制是硬前置：hooks 都 spawn forge，没二进制 plugin 装了也跑不动。
 	sb.WriteString("### 1. Install the forge binary (required, once per machine)\n\n")
-	sb.WriteString("Hooks and the MCP server spawn \x60forge ...\x60, so the binary must " +
-		"be on PATH before the plugin can do anything.\n\n")
+	sb.WriteString("Hooks spawn \x60forge ...\x60, so the binary must be on PATH before " +
+		"the plugin can do anything.\n\n")
 	sb.WriteString("    npm install -g @agent_forge/forge\n\n")
 
-	// Step 2 — plugin（每 agent 一次）。用户级：hooks+MCP 对所有项目生效。
+	// Step 2 — plugin（每 agent 一次）。用户级：hooks 对所有项目生效。
 	sb.WriteString("### 2. Install the plugin (once per agent)\n\n")
 	sb.WriteString("Register the marketplace, then install. This wires the gate set " +
-		"(hooks + MCP) at the user level — every project on this machine gets the " +
+		"(hooks) at the user level — every project on this machine gets the " +
 		"plugin wiring, with no per-project plugin install. Project assets (.forge/, " +
 		"protocol, skills) still need forge init (see step 3).\n\n")
 	sb.WriteString("#### Claude Code\n\n")
@@ -221,19 +202,19 @@ func pluginReadme(repoSlug string) string {
 	sb.WriteString("#### Cursor\n\n")
 	sb.WriteString("    /plugin marketplace add " + repoSlug + "\n")
 	sb.WriteString("    /plugin install forge@forge\n\n")
-	sb.WriteString("Cursor's plugin model carries skills/MCP, not Claude-shape hooks. Run " +
-		"\x60forge init --agents cursor\x60 in your project for .cursor MCP wiring.\n\n")
+	sb.WriteString("Cursor's plugin model carries skills, not Claude-shape hooks. Run " +
+		"\x60forge init --agents cursor\x60 in your project for .cursor gate wiring.\n\n")
 	sb.WriteString("#### GitHub Copilot CLI\n\n")
 	sb.WriteString("Copilot officially scans .claude-plugin/marketplace.json:\n\n")
 	sb.WriteString("    copilot plugin marketplace add " + repoSlug + "\n")
 	sb.WriteString("    copilot plugin install forge@forge\n\n")
-	sb.WriteString("For .github/instructions + MCP, run \x60forge init --agents copilot\x60.\n\n")
+	sb.WriteString("For .github/instructions gate wiring, run \x60forge init --agents copilot\x60.\n\n")
 
-	// Step 3 — 项目 init（每项目一次）。诚实能力边界：plugin 是用户级 hooks+MCP，
+	// Step 3 — 项目 init（每项目一次）。诚实能力边界：plugin 是用户级 hooks，
 	// 项目级资产（.forge/CLAUDE.md/AGENTS.md/skills）不在 plugin 内，必须每项目生成。
 	// 没有这一步，plugin install 单独不构成完整体验——这是"一次安装处处完美"的真实缺口。
 	sb.WriteString("### 3. Initialize each project (once per project)\n\n")
-	sb.WriteString("The plugin wires user-level hooks + MCP. It does NOT create the " +
+	sb.WriteString("The plugin wires user-level hooks. It does NOT create the " +
 		"project-level assets forge needs to run: the \x60.forge/\x60 task state, " +
 		"the \x60CLAUDE.md\x60/\x60AGENTS.md\x60 protocol, and the canonical skills " +
 		"(\x60/forge-quality\x60, ...). Generate them per project:\n\n")
@@ -245,20 +226,70 @@ func pluginReadme(repoSlug string) string {
 	sb.WriteString("## What the plugin provides\n\n")
 	sb.WriteString("Claude Code (full): hooks (\x60.claude-plugin/plugin.json\x60) = " +
 		"PreToolUse/PostToolUse/Stop/SessionStart gates, identical to forge init's " +
-		"\x60.claude/settings.local.json\x60 but user-level (all projects); MCP " +
-		"(\x60.mcp.json\x60) = 11 forge tools (resume/decide/attach + task/gate).\n\n")
-	sb.WriteString("Other hosts: the plugin is the distribution entry point (MCP + " +
-		"marketplace listing); per-project gate wiring (hooks, .forge/, protocol) comes " +
+		"\x60.claude/settings.local.json\x60 but user-level (all projects).\n\n")
+	// 回流 4fad92e 手维护的 dedupe 行为说明（清 MCP 字样后保留：dedupe 是 plugin install 后
+	// 的真实行为——init-suggest 自动调 forge plugin dedupe,settings 保留 {} 壳不删用户配置）。
+	sb.WriteString("Because the plugin already wires user-level hooks, \x60forge init\x60 " +
+		"auto-dedupes the duplicates when the plugin is installed — Claude Code would " +
+		"otherwise double-run hooks. This covers both the project-level " +
+		"(\x60.claude/settings.local.json\x60 hooks) and the user-level " +
+		"(\x60~/.claude\x60/\x60$CLAUDE_CONFIG_DIR\x60 \x60settings.local.json\x60 forge " +
+		"hooks, left over from a historical global \x60forge init\x60 in the home dir or " +
+		"an old global install). Existing projects are migrated automatically by the " +
+		"init-suggest SessionStart hook via \x60forge plugin dedupe --keep-empty\x60 " +
+		"(which also cleans the user-level file). \x60settings.local.json\x60 (both " +
+		"levels) is preserved as an empty \x60{}\x60 shell — it is user-placed gitignored " +
+		"config, never silently deleted (the user-level file is always preserved " +
+		"regardless of \x60--keep-empty\x60, since it is the user's global config).\n\n")
+	sb.WriteString("Other hosts: the plugin is the distribution entry point " +
+		"(marketplace listing); per-project gate wiring (hooks, .forge/, protocol) comes " +
 		"from \x60forge init --agents <host>\x60.\n\n")
 
 	// Caveat — 用户级 hooks 在每个 Claude Code 项目触发，包括用户不想用 forge 的项目。
 	// 无 .forge/ 时 task-guard 每次源码编辑 WARN。这是"install once, everywhere"的真实代价，
 	// 必须前置说明——否则用户会在无关项目被噪声困扰。
+	// 回流 4fad92e 手维护的 init-suggest Caveat 详情（非 MCP：plugin 用户级 hooks 在无 .forge/
+	// 项目的处理路径——init-suggest 检测 + suggest decline/reset 静默）。
 	sb.WriteString("## Caveat: projects you do not want forge in\n\n")
-	sb.WriteString("User-level hooks fire in every Claude Code project. In projects " +
-		"without \x60.forge/\x60, task-guard emits a WARN (\x60allowed but not tracked\x60) " +
-		"on each source edit — noisy but non-blocking. To silence, either \x60forge init\x60 " +
-		"the project or uninstall the plugin.\n")
+	sb.WriteString("User-level hooks fire in every Claude Code project. In git projects " +
+		"without \x60.forge/\x60, the **init-suggest** SessionStart hook detects this and " +
+		"prompts the agent to ask the user whether to run \x60forge init\x60 (one-shot " +
+		"\x60suggested\x60 marker so it asks only once). To permanently silence the prompt " +
+		"for a specific project, run \x60forge suggest decline\x60 there. To remove forge " +
+		"entirely from a project, \x60forge init --reset\x60 (clean) or uninstall the plugin.\n\n")
+
+	// 回流 4fad92e 手维护的 Supported hosts 表（清 MCP：full hooks + MCP → full hooks）。
+	sb.WriteString("## Supported hosts (out of the box)\n\n")
+	sb.WriteString("| Host | Plugin install | Per-project gate wiring | Notes |\n")
+	sb.WriteString("|------|----------------|------------------------|-------|\n")
+	sb.WriteString("| **Claude Code** | \x60plugin.json\x60 marketplace | automatic (user-level) | full hooks; auto-init via \x60init-suggest\x60 SessionStart hook |\n")
+	sb.WriteString("| **Codex (CLI / App)** | marketplace (path not officially confirmed) | \x60forge init --agents codex\x60 | if marketplace path fails, fall back to manual |\n")
+	sb.WriteString("| **Cursor** | marketplace | \x60forge init --agents cursor\x60 | Cursor plugin model carries skills, not Claude-shape hooks |\n")
+	sb.WriteString("| **GitHub Copilot (CLI / VS Code)** | marketplace + \x60.copilot-plugin/\x60 | \x60forge init --agents copilot\x60 (CLI) | VS Code auto-discovers \x60.copilot-plugin/plugin.json\x60 if you open this repo |\n")
+	sb.WriteString("| **Windsurf** | (mirrored \x60buildWindsurfHooks\x60 in code) | (Cascade hooks) | mirrors Claude SessionStart + write hooks via \x60internal/agentbridge/windsurf.go\x60 |\n")
+	sb.WriteString("| **OpenCode / Kiro / Cline / Gemini CLI / Mistral Vibe / Trae / Nanobot / Hermes / Antigravity / OpenClaw** | (manual, see \x60install.sh\x60) | \x60forge init --agents <host>\x60 if supported | install.sh script provides one-step symlink-style per-skill/folder install for 14 hosts inspired by [Understand-Anything](https://github.com/Egonex-AI/Understand-Anything) |\n\n")
+	sb.WriteString("For experimental / bleeding-edge hosts, run \x60./plugins/forge/install.sh --help\x60 for the full supported platform list.\n\n")
+
+	// 回流 4fad92e 手维护的 Distribution model（清 hooks/MCP → hooks）。
+	sb.WriteString("## Distribution model\n\n")
+	sb.WriteString("Forge ships as an npm binary (\x60@agent_forge/forge\x60) plus a marketplace plugin (this directory). All supported agent hosts use the same single marketplace install command — there is no per-skill vs folder symlink split because plugin marketplaces already give a unified delivery surface. This contrasts with single-skill tools (e.g. [Understand-Anything](https://github.com/Egonex-AI/Understand-Anything) 14-host \x60install.sh\x60 with per-skill/folder symlinks) where the symlink style is the actual installation primitive.\n\n")
+	sb.WriteString("When this model stops being sufficient (e.g. agents whose marketplace can not resolve \x60hooks\x60), \x60forge plugin pack --agent <host>\x60 lets us generate host-specific packs; until then, one marketplace path serves all supported agents.\n\n")
+
+	// 回流 4fad92e 手维护的本地调试指引（非 MCP：Claude plugin cache 不跟 symlink 的 workaround）。
+	sb.WriteString("## Developing locally (cache copy, not symlinks)\n\n")
+	sb.WriteString("Claude Code plugin cache (\x60~/.claude/plugins/cache/forge/forge/<version>/\x60) does **not** follow symlinks — \x60Search\x60/\x60Glob\x60 tools in the agent skip symlinked dirs. To test local plugin changes:\n\n")
+	sb.WriteString("1. Rebuild after changes: \x60go build ./...\x60\n")
+	sb.WriteString("2. Find current version: \x60cat plugins/forge/.claude-plugin/plugin.json | jq -r .version\x60\n")
+	sb.WriteString("3. Copy the freshly-built assets into the cache, replacing \x60<VERSION>\x60:\n\n")
+	sb.WriteString("```bash\n")
+	sb.WriteString("VERSION=$(jq -r .version plugins/forge/.claude-plugin/plugin.json)\n")
+	sb.WriteString("rm -rf \"$HOME/.claude/plugins/cache/forge/forge/$VERSION\"\n")
+	sb.WriteString("mkdir -p \"$HOME/.claude/plugins/cache/forge/forge/$VERSION\"\n")
+	sb.WriteString("cp -R plugins/forge/* \"$HOME/.claude/plugins/cache/forge/forge/$VERSION/\"\n")
+	sb.WriteString("```\n\n")
+	sb.WriteString("4. Start a fresh Claude Code session (existing sessions keep old prompts in context).\n")
+	sb.WriteString("5. Verify by opening any git project — the \x60init-suggest\x60 SessionStart hook should fire.\n\n")
+	sb.WriteString("This pattern was inspired by Understand-Anything CLAUDE.md (2026-07-04): symlinks do not work because Claude Search/Glob tools can not follow them.\n")
 	return sb.String()
 }
 

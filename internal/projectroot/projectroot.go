@@ -1,10 +1,9 @@
 // Package projectroot resolves the forge project root (the directory containing
 // a .forge/ subdirectory) from the current working directory.
 //
-// Shared by cli and mcpserver so the "walk up from cwd to find .forge/" logic
-// lives in one place — previously duplicated in cli/root.go and
-// mcpserver/server.go, which risked diverging (a bug fixed on one side would
-// silently miss the other).
+// Centralizes the "walk up from cwd to find .forge/" logic in one place rather
+// than duplicating it across packages (originally extracted from cli/root.go
+// and the now-removed mcpserver/server.go; mcpserver was removed 2026-07-24).
 package projectroot
 
 import (
