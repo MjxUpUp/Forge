@@ -121,6 +121,30 @@ func MergeAcceptance(base, addition []AcceptanceCriterion) []AcceptanceCriterion
 	return base
 }
 
+// JudgeAcceptance 是 acceptance 三态判定的单一真相源：RunTestCommand 的 passed(exit 0)
+// 与 Expected 子串比对。两条路径共用——VerifyAcceptance(verify-acceptance 实跑回填 state)
+// 与 forge_task_proof 的 v1 重跑兜底(只读判不回写)同调，防语义漂移（历史 bug：proof v1 曾只
+// 判退出码漏 Expected 子串 → 命令退出 0 但输出不含 Expected 时假绿 acceptance，击穿 proof 主张）。
+//
+// 三态：passed=false → false；Expected 非空 → Contains(output, Expected)；否则 → true。
+func JudgeAcceptance(passed bool, output, expected string) bool {
+	switch {
+	case !passed:
+		return false
+	case expected != "":
+		return strings.Contains(output, expected)
+	default:
+		return true // 退出码 0 且无期望子串
+	}
+}
+
+// TruncateAcceptanceOutput 导出截断 helper，供 forge_task_proof 的 v1 重跑输出复用同一截断
+// 逻辑（失败信息在尾部 + 截点退到 rune 边界 + 防 MCP payload 撑爆）。私有 truncateAcceptanceOutput
+// 仍是内部实现，本导出是其稳定门面。
+func TruncateAcceptanceOutput(s string) string {
+	return truncateAcceptanceOutput(s)
+}
+
 // VerifyAcceptance 实跑 state 里每条验收标准的 Run 命令，比对 Expected 子串，回填
 // Passed/Output。复用 RunTestCommand（与 forge verify --run-tests 同一执行路径）。
 // Expected 非空→Passed = 输出含该子串；Expected 空→Passed = 退出码 0。
@@ -129,15 +153,11 @@ func VerifyAcceptance(root string, state *TaskState) {
 	for i := range state.Acceptance {
 		c := &state.Acceptance[i]
 		passed, output := RunTestCommand(root, c.Run)
-		switch {
-		case !passed:
-			c.Passed = false
-		case c.Expected != "":
-			c.Passed = strings.Contains(output, c.Expected)
-		default:
-			c.Passed = true // 退出码 0 且无期望子串
-		}
+		c.Passed = JudgeAcceptance(passed, output, c.Expected)
 		c.Output = truncateAcceptanceOutput(output)
+		// 记实跑时的 HEAD 快照：forge_task_proof 据此判定 Passed 是否 fresh（== 当前 HEAD）。
+		// 老无快照（空）→ proof v1 重跑兜底；有快照但 != HEAD → acceptance 基于旧代码，须重跑。
+		c.AcceptedHeadCommit = GetHeadCommit(root)
 	}
 }
 

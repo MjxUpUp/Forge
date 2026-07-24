@@ -27,6 +27,20 @@ type AcceptanceCriterion struct {
 	Expected string `json:"expected,omitempty"` // 期望输出的子串；空=只看退出码 0
 	Passed   bool   `json:"passed,omitempty"`   // 上次 verify-acceptance 的结果
 	Output   string `json:"output,omitempty"`   // 上次实跑的输出（截断），供排查
+	// AcceptedHeadCommit 是 VerifyAcceptance 实跑该条时的 HEAD 快照（state.go GetHeadCommit）。
+	// forge_task_proof 比对 == 当前 HEAD 判定 Passed 是否 fresh——避免 agent 读基于旧代码的过时
+	// Passed 声明 done。空 = 未跑过 verify（老 state 兼容），proof 走 v1 重跑兜底。
+	AcceptedHeadCommit string `json:"accepted_head_commit,omitempty"`
+}
+
+// ExternalOrigin 是 task 的外部工作来源（issue tracker issue）。forge_task_start --from_issue
+// 解析 URL 填充，把 task 的 origin 从 branch 扩展到外部 issue——两层解耦的关键：spawn 式编排器
+// （Symphony 类）拉起 agent run 时，task 天然关联到外部 issue，不靠 branch 推断。
+type ExternalOrigin struct {
+	Tracker    string `json:"tracker,omitempty"`    // linear | github | ""（URL 解析推断）
+	IssueID    string `json:"issue_id,omitempty"`   // tracker 内部稳定 ID（若可解析）
+	Identifier string `json:"identifier,omitempty"` // 人类可读 key（ABC-123 / org/repo#123）
+	URL        string `json:"url,omitempty"`
 }
 
 // Decision 是一条已确认的技术/产品决策（对应 cross-tool-context AI_CONTEXT.md 的
@@ -83,19 +97,20 @@ type SessionLink struct {
 // TaskState tracks the state of a single task's pipeline.
 // Stored in DataDir/tasks/{sanitized-ref}.json.
 type TaskState struct {
-	TaskRef      string                    `json:"task_ref"`
-	Branch       string                    `json:"branch"`
-	Source       string                    `json:"source"` // "explicit", "branch"
-	Summary      string                    `json:"summary"`
-	CurrentGate  string                    `json:"current_gate"`
-	History      []TaskGateResult          `json:"history"`
-	StartedAt    time.Time                 `json:"started_at"`
-	CompletedAt  *time.Time                `json:"completed_at,omitempty"`
-	Score        *scoringtypes.ScoreResult `json:"score,omitempty"`
-	HeadCommit   string                    `json:"head_commit,omitempty"`   // for duplicate detection
-	SessionID    string                    `json:"session_id,omitempty"`    // agent session that created this task
-	ReviewPassed bool                      `json:"review_passed,omitempty"` // code-review-gate 通过标记；task-complete 门禁的硬前置
-	ResumeStale  bool                      `json:"resume_stale,omitempty"`  // gap#2 claude-code 根治层：PostCompact hook 设 true → 下个 UserPromptSubmit reinject 注入完整 handoff 后清零。codex/cursor/opencode 无 compaction lifecycle，ForgeHookSpec 过滤不装此链。task-scoped 非 session-scoped：两 session 共享同一 task 时，B 的 prompt 可能在 A 压缩后先消费并清掉标志（最坏漏注一次，handoff 内容相同故无数据损坏，可接受边界）。
+	TaskRef        string                    `json:"task_ref"`
+	Branch         string                    `json:"branch"`
+	Source         string                    `json:"source"` // "explicit", "branch"
+	Summary        string                    `json:"summary"`
+	CurrentGate    string                    `json:"current_gate"`
+	History        []TaskGateResult          `json:"history"`
+	StartedAt      time.Time                 `json:"started_at"`
+	CompletedAt    *time.Time                `json:"completed_at,omitempty"`
+	Score          *scoringtypes.ScoreResult `json:"score,omitempty"`
+	HeadCommit     string                    `json:"head_commit,omitempty"`     // for duplicate detection
+	SessionID      string                    `json:"session_id,omitempty"`      // agent session that created this task
+	ExternalOrigin ExternalOrigin            `json:"external_origin,omitempty"` // 外部 issue 来源（--from_issue 解析）；空=本地 branch 推断 origin
+	ReviewPassed   bool                      `json:"review_passed,omitempty"`   // code-review-gate 通过标记；task-complete 门禁的硬前置
+	ResumeStale    bool                      `json:"resume_stale,omitempty"`    // gap#2 claude-code 根治层：PostCompact hook 设 true → 下个 UserPromptSubmit reinject 注入完整 handoff 后清零。codex/cursor/opencode 无 compaction lifecycle，ForgeHookSpec 过滤不装此链。task-scoped 非 session-scoped：两 session 共享同一 task 时，B 的 prompt 可能在 A 压缩后先消费并清掉标志（最坏漏注一次，handoff 内容相同故无数据损坏，可接受边界）。
 	// ReviewedHeadCommit/ReviewedChangeHash 绑定 review pass 时的代码快照——审查-修复-复审闭环的关键。
 	// review pass 时记 (HEAD, SourceChangesSince(HEAD))；task-complete 门禁重算 SourceChangesSince(ReviewedHeadCommit)
 	// 比对 ReviewedChangeHash，不一致说明审查后改了码，强制复审（不再靠 agent 自律重审）。详见 executor.go。

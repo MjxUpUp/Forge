@@ -21,6 +21,9 @@ import (
 // ToolDescriptions 集中维护工具描述（server.go 注册 + cli/mcp.go 帮助文档共用）。
 // 改描述只改一处，避免注册和文档漂移。
 var ToolDescriptions = map[string]string{
+	"forge_task_start":        "启动 Forge 任务：把分支/工作上下文登记为 tracked task（创建 TaskState，记 HEAD、验收标准、plan scope、外部 issue origin）。proof-of-work 闭环入口——agent 开始源码变更前调用，后续 task gate/proof/complete 都按此 task ref 追踪。from_issue URL（linear/github）解析为 ExternalOrigin 锚定外部 issue，衔接 spawn 式编排器。",
+	"forge_task_proof":        "proof-of-work 断言（task-complete pre-flight dry-run，read-only 不评分不清 task）：done = IsComplete AND review 未漂移 AND acceptance 全过。agent 在 forge_task_complete 前调一次预判会不会被 BLOCKED——把'声明 done'从 agent 自述变成 deterministic 断言。acceptance 双轨：AcceptedHeadCommit==HEAD 信任快照（v2 快路径），否则只读重跑（v1 兜底）。",
+	"forge_task_complete":     "任务完成终点（评分 + Act 结论落盘 + 清 active task ref + post-complete grace）。proof-of-work 闭环收口——三门禁全过（IsComplete）才允许 complete，否则 BLOCKED（带 missingGates）。强制 ref（不可逆收口，防误清非预期 active task）。评分走 ScoreTask（与 CLI 共用真相源），Act 走 AppendConclusion，generic kind 跳过门禁与评分。complete 后紧随的 git commit 由 grace 放行，不被 file-sentinel quarantine。",
 	"forge_task_status":       "查看任务状态：当前 session 活跃任务或指定 ref。返回门禁进度（completed/next/current）、是否完成。",
 	"forge_task_gate":         "推进 task 级门禁（task-implement / task-verify / task-complete）。执行检查、记录结果、持久化 state。注意：不触发评分（评分用 forge task complete）。",
 	"forge_task_resume":       "接续真相源入口：拉回任务完整接续上下文（goal/plan/decisions/next_steps/blockers/findings/artifacts + 参与工具 + 门禁进度 + git 已改未提交）。新会话冷启动调用即秒级恢复，抗压缩丢失。默认把当前 session 锚定到 task（多向锚定记录参与方），no_attach=true 仅读取。",
@@ -47,6 +50,10 @@ func New(ver string) *mcp.Server {
 
 	// 项目级工具（需解析 .forge/ 项目根）
 	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forge_task_start",
+		Description: ToolDescriptions["forge_task_start"],
+	}, withRoot(taskStartCore))
+	mcp.AddTool(s, &mcp.Tool{
 		Name:        "forge_task_status",
 		Description: ToolDescriptions["forge_task_status"],
 	}, withRoot(taskStatusCore))
@@ -54,6 +61,14 @@ func New(ver string) *mcp.Server {
 		Name:        "forge_task_gate",
 		Description: ToolDescriptions["forge_task_gate"],
 	}, withRoot(taskGateCore))
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forge_task_proof",
+		Description: ToolDescriptions["forge_task_proof"],
+	}, withRoot(taskProofCore))
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "forge_task_complete",
+		Description: ToolDescriptions["forge_task_complete"],
+	}, withRoot(taskCompleteCore))
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "forge_task_resume",
 		Description: ToolDescriptions["forge_task_resume"],

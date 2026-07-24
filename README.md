@@ -125,6 +125,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge uninstall` | 一键反装：清 npm global `@agent_forge/forge` + 删 init-suggest 标记（默认 `~/.forge/.init-suggested/`，设 `FORGE_DATA_HOME` 时落该根下）；plugin 卸载须在 agent CLI 内交互运行（不可脚本化） |
 | `forge migrate [--dry-run] [--force]` | 把旧 `.forge/` runtime state（tasks/gates/checklog/toollog/act/sessions/quarantine/active-task-ref 等）迁到用户级 DataDir（`~/.forge/projects/<key>/`）——升级到 runtime state 外迁版本后的迁移路径；项目配置（hooks/protocol.yml 等）不迁仍留 `.forge/`；幂等，`--dry-run` 预览，`--force` 覆盖 DataDir 已有同名 |
 | `forge registry prune` | 精简全局注册表 `~/.forge/projects.json`——移除 `.forge/` 不存在的死路径与重复条目（项目移走/删除/测试残留），原子写回。registry.List 读时惰性精简但只在 `forge dashboard --global` 触发（启 web 阻塞），本命令给不启 web 的主动清理入口 |
+| `forge workflow scaffold [--out PATH]` | 生成 WORKFLOW.md scaffold——proof-of-work 闭环在 per-issue workspace 的驱动流程接口，供 spawn 式编排器（Symphony 类）读取自动驱动每个外部 issue（forge_task_start --from_issue → 三门禁 → forge review pass → forge_task_proof → forge_task_complete）。省略 --out 走 stdout |
 
 ### 任务管理
 
