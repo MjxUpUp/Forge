@@ -43,7 +43,7 @@ func GenerateClaudeMD(projectDir string) error {
 // (detect.go keys codex off .codex/, not AGENTS.md — AGENTS.md is a universal
 // file forge generates on every init). Unlike CLAUDE.md
 // (claude-only, references Claude slash commands), AGENTS.md carries the
-// agent-agnostic protocol and points at the forge CLI/MCP surface. If the file
+// agent-agnostic protocol and points at the forge CLI surface. If the file
 // exists, only the marked Forge section is replaced; user content outside the
 // markers is preserved — same idempotent section-replace contract as CLAUDE.md.
 func GenerateAgentsMD(projectDir string) error {
@@ -127,9 +127,9 @@ func buildForgeSection(forClaude bool) string {
 		sb.WriteString("使用 `/forge-quality` 查看完整质量协议。\n\n")
 	} else {
 		// AGENTS.md is cross-agent (codex/cursor/copilot/windsurf/cline) — those
-		// agents have no Claude slash commands, so point at the forge CLI / MCP
-		// surface instead of the /forge-quality skill.
-		sb.WriteString("通过 forge CLI（forge task/gate）或 forge MCP 工具执行上述质量流程。\n\n")
+		// agents have no Claude slash commands, so point at the forge CLI surface
+		// instead of the /forge-quality skill.
+		sb.WriteString("通过 forge CLI（forge task/gate）执行上述质量流程。\n\n")
 	}
 	sb.WriteString(forgeSectionEnd + "\n")
 	return sb.String()

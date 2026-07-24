@@ -7,7 +7,7 @@
 //     IO round-trips) that don't exercise hash derivation.
 //   - RealProject: heavyweight — git init + .forge placeholder + FORGE_DATA_HOME
 //     isolation + real ProjectFor. For integration tests (cli subprocesses /
-//     dashboard HTTP / mcpserver IPC) where the code path itself calls
+//     dashboard HTTP) where the code path itself calls
 //     ProjectFor; the test process and the forge subprocess must resolve to the
 //     same DataDir, which only happens through a real ProjectFor.
 //

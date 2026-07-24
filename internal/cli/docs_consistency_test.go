@@ -13,11 +13,10 @@ import (
 // 文档一致性守卫——dogfood docs-consistency-guard skill。
 //
 // 背景：2026-06-27 发现 skills/code-review-gate/references/experience-loop.md
-// 引用了不存在的 `forge experience propose` / `forge experience review`（CLI 真相
-// 只有 list/show/accept/reject/generate/resolve；propose 是 MCP 工具非 CLI 命令），
-// README.md 也落后（缺 forge mcp serve / skills 命令族）。这类 drift 靠发布前
-// 人肉查挡不住——docs-consistency-guard 的结论：用守卫测试（每次 CI 跑）而非
-// 命令/hook/skill（命令靠人记得跑 = 同一个坑；hook 无合适触发点；skill 靠 agent 遵循会漏）。
+// 引用了不存在的 forge 命令（子命令级断链）。README.md 也落后（缺 skills 命令族）。
+// 这类 drift 靠发布前人肉查挡不住——docs-consistency-guard 的结论：用守卫测试
+// （每次 CI 跑）而非命令/hook/skill（命令靠人记得跑 = 同一个坑；hook 无合适触发点；
+// skill 靠 agent 遵循会漏）。
 //
 // 真相源：rootCmd 的 cobra 命令树（程序可提取，见 internal/cli/*.go 的
 // rootCmd.AddCommand / xxxCmd.AddCommand）。衍生文档：根 README + npm/README
@@ -66,7 +65,6 @@ func TestValidateForgePath(t *testing.T) {
 		want string // 空 = 路径完整；非空 = 首个断链的子命令
 	}{
 		{"单层命令", "init", ""},
-		{"两层命令", "mcp serve", ""},
 		{"三层命令", "task gate", ""},
 		{"flag 后即停", "init --mode small", ""},
 		{"占位符后即停", "task gate <gate-id>", ""},

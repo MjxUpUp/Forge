@@ -1,5 +1,5 @@
 // Package skillscanonical 解析 forge 的 skill 规范库目录（canonical）——从 cli 下沉，
-// 让 cli 与 mcpserver 共用同一份解析，避免两份复制漂移。
+// 供内部包共用同一份解析，避免复制漂移。
 //
 // 优先级：$FORGE_SKILLS_CANONICAL > 内置 embed 库（解压到持久缓存）。
 // （--canonical flag 是 CLI 层概念，留在 cli 包，flag 命中时短路本包。）

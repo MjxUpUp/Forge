@@ -536,22 +536,19 @@ func TestClineTranslator_Translate(t *testing.T) {
 		"# Forge 质量协议",
 		"质量标准",
 		"会话行为规则",
-		"接入 forge MCP",            // manual MCP wiring section (Cline has no project-level MCP)
-		"cline_mcp_settings.json", // points at the global file Cline actually reads
-		"Configure MCP Servers",   // Cline panel step
-		"AGENTS.md",               // points at cross-agent protocol
+		"forge CLI", // Cline 无 hooks，通过 forge CLI 驱动质量流程（非 MCP，MCP 层已拆）
+		"AGENTS.md", // points at cross-agent protocol
 	} {
 		if !strings.Contains(rules, want) {
 			t.Errorf("cline rules missing %q", want)
 		}
 	}
 
-	// Cline must NOT auto-load project-level MCP: .cline/mcp.json is an invented
-	// convention Cline ignores (global only, per docs.cline.bot + feature request
-	// cline/cline#2418). Guard that Translate does not write a misleading file
-	// that implies forge MCP is wired when Cline will not load it.
+	// 防回归守卫:Cline 不写 .cline/mcp.json（Cline 不自动加载项目级 MCP,仅全局;
+	// 且 MCP 层已于 2026-07-24 全拆,forge 不再生成任何 forge MCP server）。有人若加回
+	// 项目级 MCP 写入,此断言抓住。
 	if _, err := os.Stat(filepath.Join(dir, ".cline", "mcp.json")); !os.IsNotExist(err) {
-		t.Errorf("Cline must not write .cline/mcp.json (Cline ignores project-level MCP; would mislead users) — err=%v", err)
+		t.Errorf("Cline must not write .cline/mcp.json — err=%v", err)
 	}
 }
 
