@@ -324,12 +324,24 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	if goal, _ := cmd.Flags().GetString("goal"); goal != "" {
 		state.Goal = goal
 	}
+	// planAcceptanceAdded：--plan-file 提取后实际新增入库的条数（净增，扣除与显式 --accept
+	// 去重的部分），仅供下方成功输出标注来源。用 merge 后的 len 差值而非提取前的 len(extracted)——
+	// 后者在 --accept 共存时会数进去被去重丢弃的条目，误导用户以为它们进了 state。
+	planAcceptanceAdded := 0
 	if planFile, _ := cmd.Flags().GetString("plan-file"); planFile != "" {
 		planData, err := os.ReadFile(planFile)
 		if err != nil {
 			return fmt.Errorf("读取 --plan-file %q 失败: %w", planFile, err)
 		}
 		state.Plan = string(planData)
+		// 从 Plan markdown 自动提取验收标准（Run:/Expected: 块），消除把 plan 的 Run/Expected
+		// 手抄到 --accept 的断口（dogfood：靠自觉手抄必漏；没抄时 acceptance advisory 零信号）。
+		// 显式 --accept 优先，plan 提取按 Run 去重补充（MergeAcceptance）。
+		if extracted := taskpipeline.ParseAcceptanceFromPlan(state.Plan); len(extracted) > 0 {
+			baseBefore := len(state.Acceptance)
+			state.Acceptance = taskpipeline.MergeAcceptance(state.Acceptance, extracted)
+			planAcceptanceAdded = len(state.Acceptance) - baseBefore
+		}
 	}
 	if parent, _ := cmd.Flags().GetString("parent"); parent != "" {
 		state.ParentTaskRef = parent
@@ -418,7 +430,11 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 
 	if state.HasAcceptance() {
 		fmt.Println()
-		fmt.Printf("验收标准（%d 条，forge task verify-acceptance 实跑回扣）：\n", len(state.Acceptance))
+		src := ""
+		if planAcceptanceAdded > 0 {
+			src = fmt.Sprintf(`，其中 %d 条从 --plan-file 自动提取`, planAcceptanceAdded)
+		}
+		fmt.Printf("验收标准（%d 条%s，forge task verify-acceptance 实跑回扣）：\n", len(state.Acceptance), src)
 		for i, c := range state.Acceptance {
 			exp := c.Expected
 			if exp == "" {

@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -198,5 +200,77 @@ func TestTaskAcceptance_E2E_FlagToStatusToVerify(t *testing.T) {
 	}
 	if !strings.Contains(statusOut2, `通过`) {
 		t.Errorf(`verify 后 status 应显示"通过": %s`, statusOut2)
+	}
+}
+
+// TestTaskStart_PlanFileExtractsAcceptance 端到端钉住 --plan-file 自动提取：写含 Run:/Expected:
+// 块的 plan.md，task start --plan-file 后 state.Acceptance 应含提取条目（无需手抄 --accept）。
+// 同时验证显式 --accept 与 plan 共存时 --accept 优先、按 Run 去重。这是消除 acceptance 维度
+// 空转（手动复制断口）的闭环守卫——提取/merge/可见性任一断裂即被抓。
+func TestTaskStart_PlanFileExtractsAcceptance(t *testing.T) {
+	t.Setenv(`CLAUDE_CODE_SESSION_ID`, `planfile-accept`)
+	dir := t.TempDir()
+	if stdout, _, code := runForge(t, dir, `init`, `--mode`, `medium`); code != 0 {
+		t.Fatalf(`forge init failed: %s`, stdout)
+	}
+
+	// plan.md：两条 Run/Expected 块
+	planPath := filepath.Join(dir, `plan.md`)
+	planBody := "Run: go version\nExpected: go version go\nRun: echo hi\nExpected: hi\n"
+	if err := os.WriteFile(planPath, []byte(planBody), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. 纯 --plan-file：acceptance 应含 2 条提取条目 + 可见性提示
+	startOut, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/plan-only`,
+		`--plan-file`, planPath)
+	if code != 0 {
+		t.Fatalf(`task start --plan-file failed: %s`, startOut)
+	}
+	// 净增计数（Minor 修复）：纯 plan-file 无去重，2 条提取全入库，提示应为"其中 2 条"。
+	// 若误用提取前的 len(extracted) 计数碰巧也对，但此处锁定净增语义供下方共存路径对照。
+	if !strings.Contains(startOut, `其中 2 条从 --plan-file 自动提取`) {
+		t.Errorf(`纯 plan-file 应提示"其中 2 条从 --plan-file 自动提取"（净增=2）, got: %s`, startOut)
+	}
+	st, err := taskpipeline.LoadTaskState(dir, `feat/plan-only`)
+	if err != nil {
+		t.Fatalf(`LoadTaskState: %v`, err)
+	}
+	if len(st.Acceptance) != 2 {
+		t.Fatalf(`纯 plan-file 应提取 2 条, got %d (%v)`, len(st.Acceptance), st.Acceptance)
+	}
+	if st.Acceptance[0].Run != `go version` || st.Acceptance[0].Expected != `go version go` {
+		t.Errorf(`[0] = %+v, want {go version, go version go}`, st.Acceptance[0])
+	}
+	if st.Acceptance[1].Run != `echo hi` || st.Acceptance[1].Expected != `hi` {
+		t.Errorf(`[1] = %+v, want {echo hi, hi}`, st.Acceptance[1])
+	}
+
+	// 2. --accept 与 --plan-file 共存：显式 --accept 优先，同 Run 去重
+	startOut2, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/plan-and-accept`,
+		`--accept`, `go version :: OVERRIDE`,
+		`--plan-file`, planPath)
+	if code != 0 {
+		t.Fatalf(`task start --accept+--plan-file failed: %s`, startOut2)
+	}
+	st2, err := taskpipeline.LoadTaskState(dir, `feat/plan-and-accept`)
+	if err != nil {
+		t.Fatalf(`LoadTaskState: %v`, err)
+	}
+	runs := map[string]string{}
+	for _, c := range st2.Acceptance {
+		runs[c.Run] = c.Expected
+	}
+	// 显式 --accept 的 go version 保留 OVERRIDE；plan 的 echo hi 补充；plan 的 go version 被去重
+	if runs[`go version`] != `OVERRIDE` {
+		t.Errorf(`显式 --accept 的 go version 应保留 OVERRIDE, got %q`, runs[`go version`])
+	}
+	if runs[`echo hi`] != `hi` {
+		t.Errorf(`plan 的 echo hi 应补充, got %q`, runs[`echo hi`])
+	}
+	// 净增计数（Minor 修复）：--accept 的 go version 占位，plan 的 go version 被去重丢弃，
+	// 只有 echo hi 净增 1 条。提示应是"其中 1 条"——若误用提取前 len(extracted)=2 会显示 2（误导）。
+	if !strings.Contains(startOut2, `其中 1 条从 --plan-file 自动提取`) {
+		t.Errorf(`共存路径净增应为 1 条（echo hi），提示"其中 1 条", got: %s`, startOut2)
 	}
 }
