@@ -22,9 +22,12 @@ func init() {
 		Short: "在 stdio 上运行 Forge MCP server",
 		Long: `forge mcp serve 在 stdin/stdout 上服务 MCP 协议（stdio transport）。
 
-工具（11 个）：
+工具（14 个）：
+  forge_task_start          启动任务（登记 TaskState + HEAD + 验收 + 外部 issue origin）
   forge_task_status         查看任务状态（活跃 / 指定 ref）
   forge_task_gate           推进 task 门禁（implement/verify/complete）
+  forge_task_proof          proof-of-work 断言（complete 前 dry-run：done=IsComplete+无review漂移+验收过）
+  forge_task_complete       任务完成终点（评分+Act结论落盘+清active；强制ref，IsComplete才放行否则BLOCKED）
   forge_task_resume         拉回任务接续上下文（目标/计划/决策/阻塞/参与工具+git 已改）
   forge_task_decide         记录已确认决策（持久化，跨会话/跨工具不再推翻）
   forge_task_attach         锚定 session+工具到 task（跨工具多向锚定）

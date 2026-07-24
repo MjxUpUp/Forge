@@ -8,10 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MjxUpUp/Forge/internal/act"
 	"github.com/MjxUpUp/Forge/internal/checklog"
-	"github.com/MjxUpUp/Forge/internal/forgedata"
-	"github.com/MjxUpUp/Forge/internal/scoring"
 	"github.com/MjxUpUp/Forge/internal/taskcontext"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
@@ -50,6 +47,7 @@ func init() {
 	taskStartCmd.Flags().String("origin-tool", "", "发起工具（pi/claude-code/opencode/codex/cursor），默认从环境探测")
 	taskStartCmd.Flags().String("parent", "", "父任务 ref（建立子任务→父任务关系，subtask 拆解）")
 	taskStartCmd.Flags().String("ref", "", "任务引用（如 feat/add-auto-branch），默认从分支名推断")
+	taskStartCmd.Flags().String("from-issue", "", "外部 issue URL（linear/github），解析为 task.ExternalOrigin 锚定外部 issue（衔接 spawn 式编排器）")
 	taskStartCmd.Flags().Bool("branch", false, "从 main/master 创建新分支并切换（ref 作为分支名）")
 	taskStartCmd.Flags().Bool("json", false, "JSON 格式输出")
 	taskStatusCmd.Flags().Bool("json", false, "JSON 格式输出")
@@ -348,6 +346,12 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	}
 	originTool, _ := cmd.Flags().GetString("origin-tool")
 	state.OriginTool = detectOriginTool(originTool)
+
+	// 外部 issue origin：把 task 的来源从 branch 扩展到外部 issue（linear/github），
+	// 衔接 spawn 式编排器（Symphony 类）——编排器拉起 run 时 task 天然关联 issue，不靠 branch 推断。
+	if fromIssue, _ := cmd.Flags().GetString("from-issue"); fromIssue != "" {
+		state.ExternalOrigin = taskpipeline.ParseExternalOriginURL(fromIssue)
+	}
 
 	// Resolve the Claude Code session id once — used to scope the active-task-ref
 	// and session records so concurrent sessions on a shared checkout stay isolated.
@@ -1234,49 +1238,21 @@ func runTaskScore(cmd *cobra.Command, args []string) error {
 }
 
 // scoreTask evaluates a completed task and saves the score.
+// scoreTask thin-wrapper：评分下沉到 taskpipeline.ScoreTask（单一真相源）。cli runTaskComplete
+// /runTaskScore 与测试透明复用——MCP forge_task_complete 走同一 taskpipeline.ScoreTask。
 func scoreTask(root string, state *taskpipeline.TaskState) error {
-	if state.Score != nil {
-		return nil // already scored
-	}
-
-	input, config, err := buildEvaluateInput(root, state)
-	if err != nil {
-		return fmt.Errorf(`build evaluate input: %w`, err)
-	}
-
-	result := scoring.Evaluate(input, config)
-	result.TaskRef = state.TaskRef
-
-	state.Score = result
-	return taskpipeline.SaveTaskState(root, state)
+	return taskpipeline.ScoreTask(root, state)
 }
 
-// appendConclusion 构建 + 落盘一个完成任务的 Act 结论（证据驱动），返回 Directive
-// （无 RetrospectiveNudge 时为空串，调用方据非空决定是否打印）。聚合 checklog.ForTask
-// 的证据链 + state.Acceptance 的通过率 + state.Score，调 act.BuildConclusion——解耦于
-// taskpipeline（act 包不依赖它，本处从 state 提取原始值传入）。
+// appendConclusion thin-wrapper：Act 结论构建+落盘下沉到 taskpipeline.AppendConclusion
+// （单一真相源）。cli 与 MCP forge_task_complete 共用同一 Act 反馈臂。stderr 警告由本 wrapper
+// 保留（CLI 交互语义），taskpipeline 层只返结构化结果。
 func appendConclusion(root string, state *taskpipeline.TaskState) string {
-	ec, _ := checklog.ForTask(root, state.TaskRef)
-	pass, total := 0, len(state.Acceptance)
-	for _, c := range state.Acceptance {
-		if c.Passed {
-			pass++
-		}
+	_, directive, err := taskpipeline.AppendConclusion(root, state)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, `Warning:`, err)
 	}
-	completedAt := time.Now()
-	if state.CompletedAt != nil {
-		completedAt = *state.CompletedAt
-	}
-	conc := act.BuildConclusion(state.TaskRef, state.SessionID, state.Score, ec, pass, total, completedAt, phaseKeys(state.DesignPhases))
-	proj, perr := forgedata.ProjectFor(root)
-	if perr != nil {
-		fmt.Fprintf(os.Stderr, "Warning: act conclusion append skipped (project not resolved): %v\n", perr)
-		return conc.Directive()
-	}
-	if err := act.Append(proj, &conc); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: act conclusion append failed: %v\n", err)
-	}
-	return conc.Directive()
+	return directive
 }
 
 func runTaskList(cmd *cobra.Command, args []string) error {
@@ -1498,13 +1474,5 @@ func createAndSwitchBranch(root, name string) error {
 }
 
 // phaseKeys converts taskpipeline.DesignPhase slice to string slice for act.Conclusion.
-func phaseKeys(phases []taskpipeline.DesignPhase) []string {
-	if len(phases) == 0 {
-		return nil
-	}
-	out := make([]string, len(phases))
-	for i, p := range phases {
-		out[i] = string(p)
-	}
-	return out
-}
+// phaseKeys 下沉到 taskpipeline.PhaseKeys（cli appendConclusion 改走 taskpipeline.AppendConclusion，
+// 不再直接调本处辅助）。
