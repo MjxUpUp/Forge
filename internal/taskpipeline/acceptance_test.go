@@ -1,6 +1,7 @@
 package taskpipeline
 
 import (
+	"os/exec"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -164,5 +165,40 @@ func TestMergeAcceptance(t *testing.T) {
 			t.Errorf(`[%d] = {Run:%q Expected:%q}, want {%q %q}`,
 				i, got[i].Run, got[i].Expected, want[i].Run, want[i].Expected)
 		}
+	}
+}
+
+// TestVerifyAcceptance_RecordsAcceptedHeadCommit 钉住 AcceptedHeadCommit 回填语义：proof v2
+// 快路径（AcceptedHeadCommit == 当前 HEAD 判 Passed fresh）依赖 VerifyAcceptance 实跑时记此
+// 快照。git 仓库下须 == git rev-parse --short HEAD。
+func TestVerifyAcceptance_RecordsAcceptedHeadCommit(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "initial")
+
+	want, err := exec.Command("git", "-C", dir, "rev-parse", "--short", "HEAD").Output()
+	if err != nil {
+		t.Fatalf("rev-parse HEAD: %v", err)
+	}
+	wantShort := strings.TrimSpace(string(want))
+
+	state := &TaskState{Acceptance: ParseAcceptance([]string{`go version :: go version`})}
+	VerifyAcceptance(dir, state)
+
+	if got := state.Acceptance[0].AcceptedHeadCommit; got != wantShort {
+		t.Errorf("AcceptedHeadCommit = %q, want %q (HEAD short)", got, wantShort)
+	}
+}
+
+// TestVerifyAcceptance_AcceptedHeadCommit_NonGitEmpty 钉住非 git 目录的退化：GetHeadCommit
+// 失败返 ""（不 panic），proof v1 重跑兜底靠此空值判定走重跑。t.TempDir() 非 git 仓库。
+func TestVerifyAcceptance_AcceptedHeadCommit_NonGitEmpty(t *testing.T) {
+	dir := t.TempDir()
+	state := &TaskState{Acceptance: ParseAcceptance([]string{`go version :: go version`})}
+	VerifyAcceptance(dir, state)
+	if got := state.Acceptance[0].AcceptedHeadCommit; got != "" {
+		t.Errorf("非 git 目录 AcceptedHeadCommit 应为空（GetHeadCommit 失败返），got %q", got)
 	}
 }
