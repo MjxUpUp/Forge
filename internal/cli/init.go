@@ -126,7 +126,8 @@ func runInit(cmd *cobra.Command, args []string) error {
 	fmt.Println("  forge status      — 查看项目状态")
 
 	// plugin 已 user-level 装时,清理 project-level 重复 hooks（GenerateSettings 写）+
-	// MCP（TranslateForAgents 的 writeClaudeMCP 写）。在所有写入之后统一去重。
+	// 旧项目 .mcp.json 的 forge server 残留（StripForgeMCPServer,清历史 init/sync 写过
+	// 的旧项目）。在所有写入之后统一去重。
 	dedupeProjectLevelIfPlugin(dir)
 
 	// 登记到全局项目注册表（~/.forge/projects.json），供 forge dashboard --global 聚合。

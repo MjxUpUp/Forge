@@ -31,7 +31,6 @@ func init() {
 	uninstallCmd.GroupID = "lifecycle" // 一键反装（npm binary + init-suggest markers）
 	migrateCmd.GroupID = "lifecycle"   // 旧 .forge runtime state → DataDir 迁移（升级路径）
 	registryCmd.GroupID = `lifecycle`  // 全局项目注册表清理（init 自登记的对应清理入口；反引号防 Windows 引号腐蚀）
-	workflowCmd.GroupID = "lifecycle"  // WORKFLOW.md scaffold（spawn 式编排器接口，资产生成语义同 init/sync）
 
 	// 项目管道：项目级状态（status 是主入口）
 	statusCmd.GroupID = "pipeline"
@@ -49,7 +48,6 @@ func init() {
 	skillsCmd.GroupID = "governance"
 
 	// 集成与安全：agent 接口 + 拦截 + 内部 hook 分发 + 多 host plugin marketplace
-	mcpCmd.GroupID = "integrate"
 	hazardCmd.GroupID = "integrate"
 	hookCmd.GroupID = "integrate"
 	cloneCmd.GroupID = "integrate"

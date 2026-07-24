@@ -111,7 +111,7 @@ func TestDetectAgents_Codex(t *testing.T) {
 // TestParseAgentFlag_CoversAllTranslators 守卫 ParseAgentFlag 的 switch 漏 agent。
 // E2E 抓到的真实 Bug：switch 只列了 5 个 agent（claude/cursor/copilot/windsurf/codex），
 // 漏 opencode/pi，导致 `forge init --agents opencode` 被静默丢弃——opencode.json 不生成，
-// 用户拿不到 forge MCP 工具。单元测试（TestTranslatorsEmitMCP 单独调 Translate）绕过了
+// 用户拿不到 forge CLI 质量流程集成。单元测试（单独调 Translate，不经 flag 解析）绕过了
 // flag 解析，掩盖了此 Bug。本测试从 AllTranslators()（单一真相源）派生全集，确保任何
 // 新增 translator 的 AgentType 都自动被 ParseAgentFlag 认识——加 agent 忘加 case 的 drift
 // 不再可能。

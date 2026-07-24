@@ -6,12 +6,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// TestCommandGroups 钉住 aa_groups.go 的温和分组契约。
-//
-// 根因回归：mcpCmd 曾经是「包级 nil var + init 内赋值」，而 aa_groups.go 的 init
-// 因文件名 aa_ 最先执行——解引用尚未赋值的 mcpCmd 触发 nil panic，整个 forge 二进制
-// init 崩溃（连 forge --help 都跑不到）。修复是让 mcpCmd 成为包级 var 字面量，
-// 与其余 19 个命令一致，在所有 init 之前初始化完成。
+// TestCommandGroups 钉住 aa_groups.go 的温和分组契约：每个被 aa_groups 引用的命令变量
+// 必须是包级 var 字面量（非 init 内赋值），否则 aa_groups.init 因文件名 aa_ 最先执行时
+// 解引用 nil var 触发 panic，整个 forge 二进制 init 崩溃（连 forge --help 都跑不到）。
 //
 // 本测试二进制启动时 aa_groups.init 同样会跑：若有人把任一 xxxCmd 改回 init 内赋值，
 // 测试二进制 init 直接 panic 崩溃（比断言更强的保护）。下面的显式断言让契约可读：
@@ -37,14 +34,12 @@ func TestCommandGroups(t *testing.T) {
 	}
 
 	// 每组抽查一个命令：变量非 nil + GroupID 正确 + 命令路径不变（温和分组的承诺）。
-	// mcpCmd 是曾经的 panic 源，必须钉。
 	cases := []struct {
 		name     string
 		cmd      *cobra.Command
 		group    string
 		wantPath string
 	}{
-		{"mcp", mcpCmd, "integrate", "forge mcp"},
 		{"init", initCmd, "lifecycle", "forge init"},
 		{"status", statusCmd, "pipeline", "forge status"},
 		{"task", taskCmd, "quality", "forge task"},
