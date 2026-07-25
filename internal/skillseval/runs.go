@@ -37,9 +37,9 @@ type CaseResult struct {
 	CaseID          string `json:"case_id"`
 	Kind            string `json:"kind"`
 	Prompt          string `json:"prompt"`
-	Expected        string `json:"expected"`                  // trigger/not-trigger/behavior
-	ActualTriggered string `json:"actual_triggered"`         // 归一化后的实际触发 skill 名（""=没触发）
-	ActualOutput    string `json:"actual_output,omitempty"`  // behavior 类：agent 回填的实际输出（含 oracle 判定所需原文，eval-cases/report 对外脱敏）
+	Expected        string `json:"expected"`                // trigger/not-trigger/behavior
+	ActualTriggered string `json:"actual_triggered"`        // 归一化后的实际触发 skill 名（""=没触发）
+	ActualOutput    string `json:"actual_output,omitempty"` // behavior 类：agent 回填的实际输出（含 oracle 判定所需原文，eval-cases/report 对外脱敏）
 	Pass            bool   `json:"pass"`
 	Note            string `json:"note,omitempty"` // agent 标注的异常/理由
 }
