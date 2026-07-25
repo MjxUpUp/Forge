@@ -1,16 +1,30 @@
 package taskpipeline
 
-// executor_skill_decisions.go — task-verify 的 skill-decisions advisory：变更涉及
-// skills/<name>/ 的实质内容（SKILL.md/scripts/references 等非 decisions.md 自身）时，
-// 提醒用 'forge skills decide' 记录一条决策（诊断/修订/证据/结果四元组）。
+// executor_skill_decisions.go — task-verify 的 skill-decisions 检查：分 advisory 与
+// guardrail 两档（B 组件：advisory 升 guardrail）。
 //
-// 纯 advisory（Passed 恒 true，不阻塞 gate，不 return error）——记录是 agent 自律，
-// gate 只提醒"该记了"。persistent decision history：skill 优化的 why 留痕，让下一轮
-// agent 理解「为什么这么改」，避免重复探索已失败方向。与 [[forge-experience-knowledge-demolished]]
-// 边界一致：审计/可复现，非泛化学习。
+// guardrail（阻断）：改 skills/<name>/SKILL.md（行为契约）= 行为变更，此 task 必须在
+// decisions.md 新增一条决策（forge skills decide），否则 task-verify BLOCKED。SKILL.md
+// 是 skill 的行为定义（Use when/SKIP/流程），改它就是改行为——必须留 why 痕迹让下一轮
+// agent 理解，避免重复探索已失败方向（dogfood 铁律：纯自觉必漏，advisory 0 触发，必须
+// blocking 才生效）。
+//
+// advisory（保持，不阻断）：改 skills/<name>/ 下辅助资源（scripts/references/cases，非
+// SKILL.md 非 decisions.md）= 资源更新，仍只提醒记决策——辅助资源改动的影响面小于行为契约，
+// trivial 改动（typo/格式）集中在辅助资源，保持 advisory 不误伤。
+//
+// 判定锚点（确定信号，非语义猜测）：decisions.md 在 task base..HEAD 间是否新增 `## [d-`
+// 条目。base = state.HeadCommit（task start HEAD），复用 taskChangedFiles 的 base 语义。
+// 当前读工作区文件（含未提交的 decisions.md——agent 记决策后未必立即 commit），base 版本
+// 用 git show <base>:path。fail-open：base 空 / base commit 不可达（amend/rebase）→ 不阻断
+// （对齐 review snapshot 哲学：可达则严、不可达则松，强复审会死循环）。
+//
+// 边界：审计/可复现，非泛化学习（[[forge-experience-knowledge-demolished]]）。
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -18,36 +32,16 @@ import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
 )
 
-// CheckNameSkillDecisions 是 task-verify skill-decisions advisory 的 checklog 名。
-// trace 留"本次改了 skill、提醒记决策"的信号，gate 仍过（advisory，从不阻塞）。
+// CheckNameSkillDecisions 是 task-verify skill-decisions 检查的 checklog 名。
+// 记 skill-decisions 各态 trace：advisory 路径（辅助资源改动）+ guardrail 通过（已记决策
+// Passed=true）/ BLOCKED（未记 Passed=false）/ fail-open（base 不可达跳过校验）；escape-hatch
+// 降级另落 CheckEscapeHatch（Weak ceiling 代价）。
 const CheckNameSkillDecisions checklog.CheckName = "skill-decisions-advisory"
 
-// skillDecisionsAffected 返回本次任务变更涉及「实质 skill 内容」的 skill 名。
-//
-// 实质内容 = skills/<name>/ 下任意文件变更（含 SKILL.md/scripts/references/cases/）。
-// decisions.md 自身的变更不算——写决策正是「记录」动作本身，不需要再提醒「该记了」，
-// 否则 decide 命令写完 decisions.md 立刻又触发自己的 advisory，循环噪声。
-//
-// changed 由调用方算好传入（复用 executor.go 的 gitChanged，避免重复 git 子进程）。
-//
-// 与 skillEvalAffected 区别：后者只在 skill 有 eval case 集（cases/<name>.json）时触发；
-// decisions 提醒对所有 skill 实质变更触发——决策历史从 skill 第一轮优化就该建立，
-// 不依赖是否先生成 eval 基准。
-func skillDecisionsAffected(changed []string) []string {
-	if len(changed) == 0 {
-		return nil
-	}
-	return skillDecisionsNamesFromChanged(changed)
-}
-
-// skillDecisionsNamesFromChanged 从变更文件列表提取「实质内容被改」的 skill 名（纯函数）。
-// 精确匹配 "skills/" 前缀（同 skillNamesFromChanged 的坑：避免误命中 internal/cli/skills_*.go）。
-//
-// 与 skillNamesFromChanged 的一处有意差异：rest 无斜杠时（裸 skills/foo 目录路径，
-// 非 skills/foo/ 下文件）这里跳过——目录本身不是文件变更，decisions 只关心实质内容
-// 文件被改；eval 辅助把裸目录名也计入（更宽松）。真实 diff 极少出现裸目录路径，
-// 差异不显现，但语义上 decisions 更严。
-func skillDecisionsNamesFromChanged(changed []string) []string {
+// skillDecisionsBlockingAffected 返回改了 SKILL.md（行为变更 → guardrail）的 skill 名。
+// 只匹配 skills/<name>/SKILL.md（精确文件名 SKILL.md）——SKILL.md 是行为契约，改它触发
+// guardrail。其他文件（scripts/references/cases/decisions.md）不进 blocking。
+func skillDecisionsBlockingAffected(changed []string) []string {
 	seen := make(map[string]bool)
 	for _, f := range changed {
 		f = filepath.ToSlash(f)
@@ -57,14 +51,13 @@ func skillDecisionsNamesFromChanged(changed []string) []string {
 		rest := strings.TrimPrefix(f, "skills/")
 		i := strings.IndexByte(rest, '/')
 		if i < 0 {
-			continue // skills/ 根文件（如 CONVENTIONS.md），非 skill 目录，跳过
+			continue
 		}
 		name := rest[:i]
 		if name == "" || seen[name] {
 			continue
 		}
-		// decisions.md 自身变更不算"该记决策"触发（见函数注释）。
-		if filepath.Base(f) == "decisions.md" {
+		if rest[i+1:] != "SKILL.md" {
 			continue
 		}
 		seen[name] = true
@@ -77,7 +70,103 @@ func skillDecisionsNamesFromChanged(changed []string) []string {
 	return out
 }
 
-// formatSkillDecisionsAdvisory 生成人类可读提醒（照 formatSkillEvalAdvisory 风格）。
+// skillDecisionsAdvisoryAffected 返回改了辅助资源（scripts/references/cases，非 SKILL.md
+// 非 decisions.md）但**未改 SKILL.md**的 skill 名——这些只 advisory 提醒，不阻断。
+// 已在 blocking 集（改了 SKILL.md）的 skill 不重复进 advisory（它的 guardrail 已覆盖）。
+func skillDecisionsAdvisoryAffected(changed []string) []string {
+	blocking := skillDecisionsBlockingAffected(changed)
+	bset := make(map[string]bool, len(blocking))
+	for _, b := range blocking {
+		bset[b] = true
+	}
+	seen := make(map[string]bool)
+	for _, f := range changed {
+		f = filepath.ToSlash(f)
+		if !strings.HasPrefix(f, "skills/") {
+			continue
+		}
+		rest := strings.TrimPrefix(f, "skills/")
+		i := strings.IndexByte(rest, '/')
+		if i < 0 {
+			continue
+		}
+		name := rest[:i]
+		if name == "" || seen[name] {
+			continue
+		}
+		if bset[name] {
+			continue
+		}
+		// 只排除 decisions.md（记录载体，非改动信号）。canonical SKILL.md（skills/<name>/SKILL.md）
+		// 的 skill 已被 bset 覆盖（在 blocking 集，上面 continue 了），到不了这里；子目录 SKILL.md
+		// （skills/<name>/archive/SKILL.md 等非 canonical）不应排除——走 advisory 避免零信号溜过。
+		base := filepath.Base(f)
+		if base == "decisions.md" {
+			continue
+		}
+		seen[name] = true
+	}
+	out := make([]string, 0, len(seen))
+	for n := range seen {
+		out = append(out, n)
+	}
+	slices.Sort(out)
+	return out
+}
+
+// skillDecisionsRecorded 判定给定 skill 在 task base..HEAD 间是否新增 decisions.md 条目。
+// base = state.HeadCommit（task start HEAD）。新增 = 当前 `## [d-` 计数 > base 时计数。
+//
+// 当前读工作区文件（含未提交的 decisions.md——agent 记决策后未必立即 commit，读 git HEAD
+// 会漏判）；base 版本用 git show（历史 commit，base 时文件不存在返空 = 0 条目）。
+//
+// failopen=true 时调用方不应阻断（base 空 / base commit 不可达 amend/rebase——对齐 review
+// snapshot「可达则严、不可达则松」）。failopen=false 时 recorded 真值有效。
+func skillDecisionsRecorded(root, base, skill string) (recorded, failopen bool) {
+	if base == "" {
+		return false, true
+	}
+	// base commit 可达性（amend/rebase 改写历史致对象消失）。
+	if err := exec.Command("git", "-C", root, "cat-file", "-e", base+"^{commit}").Run(); err != nil {
+		return false, true
+	}
+	cur := countDecisionEntries(currentDecisionsContent(root, skill))
+	old := countDecisionEntries(gitShowPath(root, base, "skills/"+skill+"/decisions.md"))
+	return cur > old, false
+}
+
+// countDecisionEntries 数 content 里 `## [d-` 决策条目标记数（skillsdecisions.AppendDecision
+// 渲染 `## [d-<id>] <outcome>` section）。纯字符串计数，不依赖 LoadDecisions 的解析——
+// 判定只需「条目数是否增加」，不需要结构化字段。
+func countDecisionEntries(content string) int {
+	if content == "" {
+		return 0
+	}
+	return strings.Count(content, "## [d-")
+}
+
+// currentDecisionsContent 读工作区 skills/<skill>/decisions.md 当前内容（不存在返空）。
+// 读文件而非 git HEAD——agent 记决策后可能未立即 commit，读 git HEAD 会漏掉未提交条目
+// 误判「未记」。
+func currentDecisionsContent(root, skill string) string {
+	data, err := os.ReadFile(filepath.Join(root, "skills", skill, "decisions.md"))
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+// gitShowPath 读 base 版本的 path 内容（git show <base>:<path>）。base 时 path 不存在
+// 返空（=0 条目）。用于比对 base 时的 decisions.md 条目数。
+func gitShowPath(root, base, path string) string {
+	out, err := exec.Command("git", "-C", root, "show", base+":"+path).Output()
+	if err != nil {
+		return ""
+	}
+	return string(out)
+}
+
+// formatSkillDecisionsAdvisory 生成 advisory 提醒（辅助资源改动，不阻断）。
 // 用单引号包裹命令名，避免 Windows Edit 双引号腐蚀坑（见 windows-input-quote-corruption）。
 func formatSkillDecisionsAdvisory(skills []string) string {
 	cmds := make([]string, len(skills))
@@ -85,7 +174,7 @@ func formatSkillDecisionsAdvisory(skills []string) string {
 		cmds[i] = "decide --skill " + s
 	}
 	return fmt.Sprintf(
-		"变更涉及 skill %s 的实质内容——若为非平凡优化（改了行为/检查项/流程），"+
+		"变更涉及 skill %s 的辅助资源（scripts/references/cases）——若为非平凡优化，"+
 			"用 'forge skills %s' 记录决策（诊断/修订/证据/结果四元组，让下一轮 agent "+
 			"理解 why）。trivial 改动（typo/格式）可忽略",
 		strings.Join(skills, ", "), strings.Join(cmds, "; forge skills "))
