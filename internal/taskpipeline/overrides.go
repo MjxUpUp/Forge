@@ -10,8 +10,9 @@ import "os"
 // 用了任一逃生舱 → checklog CheckEscapeHatch → evidence Strength cap Weak（让逃生
 // 有代价，对冲"硬门禁 + 全局逃生舱 = 假硬门禁"反噬）。
 type TaskOverrides struct {
-	WorkActivity string `json:"work_activity,omitempty"` // "disable" 跳过 read-before-edit / work-activity 门禁
-	TestCoverage string `json:"test_coverage,omitempty"` // "disable" 跳过 test-coverage 门禁
+	WorkActivity   string `json:"work_activity,omitempty"`   // "disable" 跳过 read-before-edit / work-activity 门禁
+	TestCoverage   string `json:"test_coverage,omitempty"`   // "disable" 跳过 test-coverage 门禁
+	AcceptanceGate string `json:"acceptance_gate,omitempty"` // "disable" 跳过 task-complete acceptance pre-flight 门禁
 }
 
 // EscapeDisabled 报告 which（"work-activity"/"test-coverage"）逃生舱对本任务是否生效。
@@ -28,15 +29,20 @@ func EscapeDisabled(state *TaskState, which, envVar string) bool {
 			if state.Overrides.TestCoverage == "disable" {
 				return true
 			}
+		case "acceptance-gate":
+			if state.Overrides.AcceptanceGate == "disable" {
+				return true
+			}
 		}
 	}
 	return os.Getenv(envVar) == "disable"
 }
 
 const (
-	// escapeWorkActivity / escapeTestCoverage: EscapeDisabled 的 which 键。
-	escapeWorkActivity = "work-activity"
-	escapeTestCoverage = "test-coverage"
+	// escapeWorkActivity / escapeTestCoverage / escapeAcceptanceGate: EscapeDisabled 的 which 键。
+	escapeWorkActivity   = "work-activity"
+	escapeTestCoverage   = "test-coverage"
+	escapeAcceptanceGate = "acceptance-gate"
 	// envWorkActivity: work-activity 逃生舱对应的全局 env（executor getDisableWorkActivity）。
 	envWorkActivity = "FORGE_WORK_ACTIVITY"
 )
