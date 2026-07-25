@@ -39,6 +39,49 @@ func TestClaudeMDCommonErrorsIncludesRetention(t *testing.T) {
 	}
 }
 
+// TestClaudeMDCommonErrorsIncludesSkillDecisions guards the common-errors table
+// documents the task-verify skill-decisions guardrail (B 组件). 改 SKILL.md 未记
+// 决策 → BLOCKED——agents 遇到需在 CLAUDE.md 看到 forge skills decide 记决策路径 +
+// --skill-decisions disable 逃生舱（否则 BLOCKED 不透明）。对齐 test-coverage 守卫模式。
+func TestClaudeMDCommonErrorsIncludesSkillDecisions(t *testing.T) {
+	section := buildForgeSection(true)
+
+	if !strings.Contains(section, "SKILL.md 未记决策") {
+		t.Error("CLAUDE.md common-errors table missing skill-decisions guardrail row")
+	}
+	if !strings.Contains(section, "forge skills decide") {
+		t.Error("CLAUDE.md skill-decisions row must surface the decide resolution path")
+	}
+	if !strings.Contains(section, "FORGE_SKILL_DECISIONS=disable") {
+		t.Error("CLAUDE.md skill-decisions row must surface the escape hatch")
+	}
+	if !strings.Contains(section, "task-verify 拒绝（HARD stop）") {
+		t.Error("CLAUDE.md skill-decisions row must document HARD stop (not advisory)")
+	}
+}
+
+// TestClaudeMDCommonErrorsIncludesAcceptancePreflight guards the common-errors
+// table documents the task-complete acceptance pre-flight (A 组件). task 声明
+// acceptance 时 complete 校验 AcceptedHeadCommit==HEAD + Passed → BLOCKED——agents
+// 遇到需在 CLAUDE.md 看到 verify-acceptance 回扣路径 + --acceptance-gate disable
+// 逃生舱。对齐 test-coverage 守卫模式。
+func TestClaudeMDCommonErrorsIncludesAcceptancePreflight(t *testing.T) {
+	section := buildForgeSection(true)
+
+	if !strings.Contains(section, "验收 #N 未实跑") {
+		t.Error("CLAUDE.md common-errors table missing acceptance pre-flight row")
+	}
+	if !strings.Contains(section, "forge task verify-acceptance") {
+		t.Error("CLAUDE.md acceptance row must surface the verify-acceptance resolution path")
+	}
+	if !strings.Contains(section, "FORGE_ACCEPTANCE_GATE=disable") {
+		t.Error("CLAUDE.md acceptance row must surface the escape hatch")
+	}
+	if !strings.Contains(section, "task-complete 拒绝") {
+		t.Error("CLAUDE.md acceptance row must document blocking (not advisory)")
+	}
+}
+
 // TestClaudeMDDocumentsCommitTiming guards against the trap where agents commit
 // AFTER `forge task complete`: complete clears the active task ref, so a
 // post-complete source commit gets quarantined by file-sentinel. CLAUDE.md must
@@ -129,7 +172,10 @@ func TestClaudeMDDocumentsTaskAbort(t *testing.T) {
 
 // TestClaudeMDTaskVerifyIsAdvisory guards the advisory rewrite in the abort
 // section: it must not claim the Stop hook auto-passes after 3 failures (that
-// counter no longer exists — task-verify is advisory and never blocks).
+// counter no longer exists). task-verify is mixed-mode: advisory (test-coverage/
+// compile/assertion — what this test locks) + HARD stop (skill-decisions/work-
+// activity — locked by TestClaudeMDCommonErrorsIncludesSkillDecisions). The name
+// IsAdvisory refers to the aspect it locks, not "purely advisory".
 func TestClaudeMDTaskVerifyIsAdvisory(t *testing.T) {
 	section := buildForgeSection(true)
 
