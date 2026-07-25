@@ -202,3 +202,106 @@ func TestVerifyAcceptance_AcceptedHeadCommit_NonGitEmpty(t *testing.T) {
 		t.Errorf("非 git 目录 AcceptedHeadCommit 应为空（GetHeadCommit 失败返），got %q", got)
 	}
 }
+
+// TestParseAcceptanceFromPlan_FencedCodeBlock 钉住 fenced 围栏识别：```/~~~ 代码示例块内的
+// Run:/Expected: 不提取——plan 贴的 shell 片段恰好含 "Run:" 开头行会被误提取成验收标准。
+// isFenceMarker 对反引号(96)/波浪号走同一判定分支；这里用 ~~~ 围栏测（plan 用反引号 raw
+// string 跨行写真实换行，规避双引号腐蚀坑 + 避开 raw string 反引号终止冲突）。
+func TestParseAcceptanceFromPlan_FencedCodeBlock(t *testing.T) {
+	plan := `## 验收
+~~~bash
+Run: echo 代码示例伪验收
+Expected: 不该被提取
+~~~
+Run: go test ./...
+Expected: ok
+`
+	got := ParseAcceptanceFromPlan(plan)
+	want := []AcceptanceCriterion{{Run: `go test ./...`, Expected: `ok`}}
+	if len(got) != len(want) {
+		t.Fatalf(`围栏内 Run:/Expected: 应跳过；提取条数 %d want 1 (got=%v)`, len(got), got)
+	}
+	if got[0].Run != want[0].Run || got[0].Expected != want[0].Expected {
+		t.Errorf(`got {Run:%q Expected:%q}, want {%q %q}`, got[0].Run, got[0].Expected, want[0].Run, want[0].Expected)
+	}
+}
+
+// TestCheckAcceptanceFresh 锁定 task-complete acceptance pre-flight 的 deterministic 判定——
+// 给 AcceptedHeadCommit 补消费方（MCP 拆除后该字段在 VerifyAcceptance 写入但无生产消费方，
+// 成孤儿字段）。本测试钉住「声称验收过」必须有可验证 consumer：未实跑/快照过期/未通过 → BLOCKED。
+// 对应 Emergence World affordance gate + Proof of Work。
+func TestCheckAcceptanceFresh(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "t@t.com")
+	runGit(t, dir, "config", "user.name", "T")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "c1")
+	head := headShort(t, dir)
+
+	cases := []struct {
+		name       string
+		acc        []AcceptanceCriterion
+		override   string
+		wantOK     bool
+		wantReason string // 仅 wantOK=false 时检查 reasons 含此子串
+	}{
+		{name: `无 acceptance 放行`, acc: nil, wantOK: true},
+		{name: `未实跑（AcceptedHeadCommit 空）BLOCKED`,
+			acc:    []AcceptanceCriterion{{Run: `go version`, AcceptedHeadCommit: ``}},
+			wantOK: false, wantReason: `未实跑`},
+		{name: `快照过期（AcceptedHeadCommit ≠ HEAD）BLOCKED`,
+			acc:    []AcceptanceCriterion{{Run: `go version`, AcceptedHeadCommit: `deadbeef`, Passed: true}},
+			wantOK: false, wantReason: `基于旧代码`},
+		{name: `未通过（Passed=false）BLOCKED`,
+			acc:    []AcceptanceCriterion{{Run: `go version`, AcceptedHeadCommit: head, Passed: false}},
+			wantOK: false, wantReason: `未通过`},
+		{name: `全 fresh 放行（AcceptedHeadCommit==HEAD 且 Passed）`,
+			acc:    []AcceptanceCriterion{{Run: `go version`, AcceptedHeadCommit: head, Passed: true}},
+			wantOK: true},
+		{name: `escape override 放行（per-task）`,
+			acc:      []AcceptanceCriterion{{Run: `go version`, AcceptedHeadCommit: ``}},
+			override: `disable`, wantOK: true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			state := &TaskState{TaskRef: `feat/x`, Acceptance: c.acc}
+			if c.override != "" {
+				state.Overrides.AcceptanceGate = c.override
+			}
+			ok, reasons := CheckAcceptanceFresh(dir, state)
+			if ok != c.wantOK {
+				t.Fatalf(`ok=%v want %v, reasons=%v`, ok, c.wantOK, reasons)
+			}
+			if c.wantOK {
+				if len(reasons) != 0 {
+					t.Errorf(`放行时 reasons 应空，got %v`, reasons)
+				}
+				return
+			}
+			found := false
+			for _, r := range reasons {
+				if strings.Contains(r, c.wantReason) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf(`reasons %v 应含 %q`, reasons, c.wantReason)
+			}
+		})
+	}
+}
+
+// TestCheckAcceptanceFresh_NonGitShortCircuit 钉住非 git 目录的文档契约：GetHeadCommit 返空时
+// fresh 检查短路放行。非 git 下 verify-acceptance 写 AcceptedHeadCommit=""（Passed 可能 true），
+// 无短路则 case 1「未实跑」误命中致永远 BLOCKED——非 git 项目（Forge 显式支持）跑验收反而过不了 complete。
+func TestCheckAcceptanceFresh_NonGitShortCircuit(t *testing.T) {
+	dir := t.TempDir() // 非 git 仓库
+	state := &TaskState{TaskRef: `feat/nogit`, Acceptance: []AcceptanceCriterion{
+		{Run: `go version`, AcceptedHeadCommit: ``, Passed: true}, // 非 git verify 回填空 + Passed
+	}}
+	ok, reasons := CheckAcceptanceFresh(dir, state)
+	if !ok {
+		t.Fatalf(`非 git 目录应短路放行（head 空），got reasons=%v`, reasons)
+	}
+}
