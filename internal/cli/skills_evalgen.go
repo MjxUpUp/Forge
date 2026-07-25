@@ -46,6 +46,19 @@ func runSkillsEvalGen(cmd *cobra.Command, args []string) error {
 				return err
 			}
 			cases = c
+			// merge behavior probes（<name>/probes.yaml，可选）。behavior case 独立于
+			// description 派生，与 trigger/not-trigger 同集落盘，SubmitRun 按 Kind 分支判定。
+			// LoadProbes 失败时 stderr 警告（见下方 perr 分支）——无 probes.yaml 的 skill
+			// 正常只有路由 case，len(probes)==0 时静默。
+			if probes, perr := skillseval.LoadProbes(canonical, name); perr == nil {
+				if len(probes) > 0 {
+					cases = append(cases, probes...)
+				}
+			} else {
+				// 坏 probes.yaml（YAML 语法/类型错）静默跳过会让 agent 以为 probe 生效——
+				// stderr 警告让 behavior case 缺失可见（与下方 --all 循环的 per-skill 错误处理一致）。
+				fmt.Fprintf(os.Stderr, "⚠️ %s: probes.yaml 解析失败，已跳过 behavior probe: %v\n", name, perr)
+			}
 		}
 		if skEvalCasesOnly {
 			if err := skillseval.SaveCases(dir, name, cases); err != nil {

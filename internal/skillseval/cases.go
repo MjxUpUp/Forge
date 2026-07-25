@@ -22,21 +22,25 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-// case 的两类语义。
+// case 的三类语义。
 const (
 	KindTrigger    = "trigger"     // 该 prompt 应触发本 skill
 	KindNotTrigger = "not-trigger" // 该 prompt 不应触发本 skill（误触发检测）
+	KindBehavior   = "behavior"    // behavior probe：给定 input，skill 输出应满足 oracle（见 probes.go）
 )
 
 // EvalCase 是单个 eval 测试用例。
 type EvalCase struct {
-	ID             string    `json:"id"`               // sha1(skill+":"+rawFragment)[:12]，锚定原始片段
-	Skill          string    `json:"skill"`            // 本 skill 名
-	Kind           string    `json:"kind"`             // trigger | not-trigger
-	Prompt         string    `json:"prompt"`           // 渲染后的测试 prompt
-	SourceFragment string    `json:"source_fragment"`  // 生成此 case 的原始 trigger/skip 片段
-	Target         string    `json:"target,omitempty"` // trigger 类 = Skill；not-trigger 类 = ""（MVP）
-	DescHash       string    `json:"desc_hash"`        // 生成时 description 的 sha1[:12]
+	ID             string    `json:"id"`                        // sha1(skill+":"+rawFragment)[:12]，锚定原始片段
+	Skill          string    `json:"skill"`                     // 本 skill 名
+	Kind           string    `json:"kind"`                      // trigger | not-trigger | behavior
+	Prompt         string    `json:"prompt"`                    // 渲染后的测试 prompt（behavior 类 = ProbeInput）
+	SourceFragment string    `json:"source_fragment,omitempty"` // 生成此 case 的原始 trigger/skip 片段
+	Target         string    `json:"target,omitempty"`          // trigger 类 = Skill；not-trigger 类 = ""（MVP）
+	DescHash       string    `json:"desc_hash,omitempty"`       // 生成时 description 的 sha1[:12]（behavior 类留空，独立维护）
+	ProbeInput     string    `json:"probe_input,omitempty"`     // behavior 类：跑给 skill 的输入 prompt
+	Oracle         string    `json:"oracle,omitempty"`          // behavior 类：判定标准 contains:/regex:/exact:（脱敏，不吐给跑 probe 的 agent）
+	ProbeRationale string    `json:"probe_rationale,omitempty"` // behavior 类：为什么这个 oracle（可显，不含答案原文）
 	CreatedAt      time.Time `json:"created_at"`
 }
 
@@ -127,16 +131,17 @@ func EvalCases(canonical, name string) ([]EvalCase, error) {
 
 // SaveCases 原子写 case 集到 dir/cases/<skill>.json。空集视为无操作（不写空文件）。
 //
-// 不变量：所有 case 必须同 DescHash（由 EvalCases 保证——一次派生用同一 description
-// 的指纹）。CaseSet.DescHash 取 cases[0].DescHash，故混入异指纹 case 会让 submit 校验
-// 基于错误指纹。调用方不应手工拼接不同来源的 case。
+// 不变量：trigger/not-trigger case 同 DescHash（由 EvalCases 保证——一次派生用同一
+// description 的指纹）；behavior case DescHash 留空（独立于 description 维护，见
+// probes.go）。CaseSet.DescHash 取首个非空（firstDescHash）——纯 behavior 集返回 ""，
+// SubmitRun 据此跳过 DescHash 校验。调用方不应手工拼接异指纹的 trigger/not-trigger case。
 func SaveCases(dir, skill string, cases []EvalCase) error {
 	if len(cases) == 0 {
 		return nil
 	}
 	set := CaseSet{
 		Skill:    skill,
-		DescHash: cases[0].DescHash,
+		DescHash: firstDescHash(cases),
 		Cases:    cases,
 	}
 	data, err := json.MarshalIndent(set, "", "  ")
@@ -144,6 +149,17 @@ func SaveCases(dir, skill string, cases []EvalCase) error {
 		return err
 	}
 	return util.AtomicWrite(casesFile(dir, skill), data, 0644)
+}
+
+// firstDescHash 返回首个非空 DescHash（跳过 behavior case，其 DescHash 留空）。
+// 全空（纯 behavior 集）返回 ""，SubmitRun 据此跳过 DescHash 一致性校验。
+func firstDescHash(cases []EvalCase) string {
+	for _, c := range cases {
+		if c.DescHash != "" {
+			return c.DescHash
+		}
+	}
+	return ""
 }
 
 // LoadCases 读 case 集。文件不存在返回 nil,nil（skill 未生成过 case）。

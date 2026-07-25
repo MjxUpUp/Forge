@@ -379,7 +379,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		// 建议跑回归。改 description 会让旧 case 集的 DescHash 失配（submit 拒绝），
 		// 提醒先 eval-gen --save 重建基准。纯 advisory 不阻塞（Passed 恒 true——
 		// "有 case 集"本身非判定，trace 只留信号让 agent 自检）。
-		if affected := skillEvalAffected(root, state); len(affected) > 0 {
+		if affected := skillEvalAffected(gitChanged); len(affected) > 0 {
 			checklog.Record(root, &checklog.Entry{
 				Check:   CheckNameSkillEval,
 				Passed:  true,
@@ -388,6 +388,21 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 				Detail:  formatSkillEvalAdvisory(affected),
 			})
 			fmt.Fprintf(os.Stderr, "%s%s\n", GateAdvisory("[task-verify] "), formatSkillEvalAdvisory(affected))
+		}
+
+		// skill-decisions advisory：变更涉及 skills/<name>/ 实质内容（非 decisions.md
+		// 自身）→ 提醒 'forge skills decide' 记录四元组决策，让下一轮 agent 理解 why，
+		// 避免重复探索已失败方向。纯 advisory 不阻塞（Passed 恒 true——"改了 skill"本身
+		// 非判定，trace 只留信号让 agent 自检）。
+		if affected := skillDecisionsAffected(gitChanged); len(affected) > 0 {
+			checklog.Record(root, &checklog.Entry{
+				Check:   CheckNameSkillDecisions,
+				Passed:  true,
+				Checked: true,
+				TaskRef: state.TaskRef,
+				Detail:  formatSkillDecisionsAdvisory(affected),
+			})
+			fmt.Fprintf(os.Stderr, "%s%s\n", GateAdvisory("[task-verify] "), formatSkillDecisionsAdvisory(affected))
 		}
 
 		// acceptance advisory（spec-as-gate）：任务登记了验收标准（task start --accept）

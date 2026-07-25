@@ -22,7 +22,13 @@ skill-name/                # 目录名 = skill id = frontmatter.name
     └── ...
 # 可选
 ├── scripts/               # 确定性操作的执行脚本（能脚本化就不靠模型推理）
-└── assets/                # 模板文件、示例产物
+├── assets/                # 模板文件、示例产物
+├── decisions.md           # 持久决策历史：
+                          # 记 (诊断, 修订, 脱敏证据, 结果) 四元组，append-only；`forge skills decide` 追加。
+                          # 让下一轮 agent 理解 why，避免重复探索已失败方向。审计/可复现，非泛化学习。
+└── probes.yaml            # behavior probe 集：记 (input, oracle, rationale)，
+                           # 测 skill 行为质量（给定 input，skill 输出应满足 oracle）。eval-gen --save 自动并入 case 集。
+                           # C 组件权限分离：oracle 只供 forge 内部判定，eval-cases 命令对外脱敏（跑 probe 的 agent 不看 oracle）。
 ```
 
 ## 4. Frontmatter 规范（机器校验项）

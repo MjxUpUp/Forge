@@ -59,6 +59,12 @@ func runSkillsEvalReport(cmd *cobra.Command, args []string) error {
 	rep := skillseval.CompareRuns(latest, baseline)
 
 	if skRepJSON {
+		// 契约（C 组件权限分离的 orchestrator 边界）：--json 的 RegressionReport 含
+		// CaseResult.ActualOutput——passing behavior case 的 ActualOutput 按定义含 oracle
+		// 子串（contains:X 通过即含 X）。orchestrator（写 probes.yaml + 跑 forge）可见，
+		// 但勿把此 JSON 传给 dispatch 的 fresh subagent——会泄露 oracle 破坏脱敏。
+		// fresh subagent 只用 eval-cases（Oracle redact）。默认（非 JSON）报告安全：
+		// regressions 的 ActualOutput 是 failing case（oracle 子串不在输出里）。
 		out, err := json.MarshalIndent(rep, "", "  ")
 		if err != nil {
 			return err
@@ -84,12 +90,19 @@ func printEvalReport(rep *skillseval.RegressionReport, latest, baseline *skillse
 	}
 	fmt.Printf("trigger pass-rate:    %s\n", formatRateDelta(rep.TriggerPassRateBaseline, rep.TriggerPassRateLatest, rep.HasBaseline))
 	fmt.Printf("not-trigger pass-rate:%s\n", formatRateDelta(rep.NotTriggerPassRateBaseline, rep.NotTriggerPassRateLatest, rep.HasBaseline))
+	if hasBehaviorCase(latest) {
+		fmt.Printf("behavior pass-rate:   %s\n", formatRateDelta(rep.BehaviorPassRateBaseline, rep.BehaviorPassRateLatest, rep.HasBaseline))
+	}
 
 	if rep.HasBaseline {
 		fmt.Printf("net regressions: %d（regressions=%d, improvements=%d）\n",
 			rep.NetRegressions, len(rep.Regressions), len(rep.Improvements))
 		for _, r := range rep.Regressions {
-			fmt.Printf("  🔴 回归 %s  actual=%q\n", r.CaseID, r.ActualTriggered)
+			if r.Kind == skillseval.KindBehavior {
+				fmt.Printf("  🔴 回归 %s  output=%.60q\n", r.CaseID, r.ActualOutput)
+			} else {
+				fmt.Printf("  🔴 回归 %s  actual=%q\n", r.CaseID, r.ActualTriggered)
+			}
 		}
 		if verbose {
 			for _, r := range rep.Improvements {
@@ -115,6 +128,20 @@ func printEvalReport(rep *skillseval.RegressionReport, latest, baseline *skillse
 		}
 		fmt.Printf("绝对通过：%d/%d\n", pass, len(latest.Results))
 	}
+}
+
+// hasBehaviorCase 判断 run 是否含 behavior probe。决定 report 是否显 behavior pass-rate——
+// skill 无 probe 时 BehaviorPassRateLatest=0，显出来像「0% 通过」误导，故只在有 probe 时显。
+func hasBehaviorCase(run *skillseval.EvalRun) bool {
+	if run == nil {
+		return false
+	}
+	for _, r := range run.Results {
+		if r.Kind == skillseval.KindBehavior {
+			return true
+		}
+	}
+	return false
 }
 
 // formatRateDelta 把 baseline/latest pass-rate 格式化成可读 delta。无 baseline 时只打 latest。

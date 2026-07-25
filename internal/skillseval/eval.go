@@ -121,7 +121,7 @@ func EvalSkill(canonical, name string) (string, error) {
 
 	var b strings.Builder
 	b.WriteString("# Skill Eval: " + name + "\n\n")
-	b.WriteString("> 借鉴 Thariq skill-creator + SkillForge Analyzer 的外部 eval 方法论\n")
+	b.WriteString("> 外部 eval 方法论\n")
 	b.WriteString("> 用 subagent 半自动跑（pi 无 claude -p 自动模式）\n\n")
 	b.WriteString("## Description（被测对象）\n```\n" + descDisplay + "\n```\n\n")
 
