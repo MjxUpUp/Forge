@@ -20,13 +20,14 @@ import (
 // though the gate passes (advisory, never blocking).
 const CheckNameSkillEval checklog.CheckName = "skill-eval-gate"
 
-// skillEvalAffected 返回本次任务变更涉及、且已生成 eval case 集的 skill 名。
+// skillEvalAffected 返回变更涉及、且已生成 eval case 集的 skill 名。
+// changed 由调用方算好传入（executor.go 的 gitChanged，复用一次 git 子进程结果）——
+// 避免每个 advisory helper 各跑一次 taskChangedFiles（Windows 上 git 子进程有延迟）。
 // 无变更、无 EvalDir、或受影响 skill 都没 case 集时返回 nil（无基准可跑回归→不提醒）。
 //
 // EvalDir 失败（os.UserHomeDir 出错，极罕见）时静默返回 nil——advisory 不该因目录
 // 问题阻塞 gate，与下方 case 集缺失的静默处理一致。
-func skillEvalAffected(root string, state *TaskState) []string {
-	changed := taskChangedFiles(root, state)
+func skillEvalAffected(changed []string) []string {
 	if len(changed) == 0 {
 		return nil
 	}

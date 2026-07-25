@@ -31,7 +31,8 @@ var updatePluginFlag bool
 
 // printPluginReinstallGuidance 输出 plugin marketplace 重装指引到 w。
 // 在 agent CLI 内手工跑（Claude Code/Codex/Cursor/Copilot CLI 各有不同命令，
-// 故不在 update 自动执行）。来源：plugman README 三步 + 借鉴 UA 不脚本化生成器。
+// 故不在 update 自动执行）。三步式（卸载→重装）指引，不脚本化生成器（marketplace
+// 重装须在 agent CLI 内交互跑）。
 func printPluginReinstallGuidance(w io.Writer) {
 	fmt.Fprintln(w, ``)
 	fmt.Fprintln(w, `提示：plugin marketplace 中 plugin.json 镜像 Forge Go 变更，建议重新安装以同步：`)
