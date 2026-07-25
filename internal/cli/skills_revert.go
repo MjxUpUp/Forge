@@ -41,13 +41,13 @@ scoped vs whole-candidate：只 revert 指定 commit（那次优化），不动�
 冲突：git revert 可能因后续 commit 改了同区域而冲突，git 会退出非 0。手动解决后
 'git revert --continue'，不要重跑本命令（会重复 revert）。
 
-建议：revert 后追加一条 reject 决策记录「为什么 revert」，让下一轮 agent 知道这次
-优化被否决（forge skills decide --outcome reject）。`,
+成功 revert 后自动追加一条 reject 决策到 decisions.md（spec-as-executable，取代手动
+forge skills decide）——下轮 agent 知悉此优化被否决，避免重复探索已失败方向。`,
 	RunE: runSkillsRevert,
 }
 
 func runSkillsRevert(cmd *cobra.Command, args []string) error {
-	canonical, _, err := resolveCanonical()
+	canonical, isExternal, err := resolveCanonical()
 	if err != nil {
 		return err
 	}
@@ -77,41 +77,85 @@ func runSkillsRevert(cmd *cobra.Command, args []string) error {
 
 	target := findDecisionByID(withCommit, skRevDecision)
 	if target == nil {
-		return fmt.Errorf("决策 %q 不在带 commit 列表中（用 'revert --skill %s' 查看可用决策）", skRevDecision, skRevSkill)
+		return fmt.Errorf(`决策 %q 不在带 commit 列表中（用 'revert --skill %s' 查看可用决策）`, skRevDecision, skRevSkill)
+	}
+
+	// git-dir 推导（dry-run 前置，dry-run 也显 repo）。
+	// external 源（--canonical / FORGE_SKILLS_CANONICAL）：canonical 在 git repo，toplevel 即 repo 根。
+	// embed 缓存（~/.forge/skills-cache/embedded）：用户级只读快照，不在 git repo——scoped revert
+	// 对缓存无意义（revert 改不动编译进二进制的源）。embedded skill 的优化/revert 须在 forge 源码
+	// repo（skills/ 源目录）操作，用 --canonical 指向源 repo。给可行动错误而非通用 not-a-git-repository。
+	var gitDir string
+	if isExternal {
+		out, err := exec.Command(`git`, `-C`, canonical, `rev-parse`, `--show-toplevel`).Output()
+		if err != nil {
+			return fmt.Errorf(`canonical %q 不在 git repo 内——scoped revert 需决策 CommitHash 所在仓库: %w`, canonical, err)
+		}
+		gitDir = strings.TrimSpace(string(out))
+		if gitDir == "" {
+			return fmt.Errorf(`git rev-parse 返回空 root（canonical %q）`, canonical)
+		}
+	} else {
+		return fmt.Errorf(`canonical 是 embed 缓存（%s），不在 git repo——embedded skill 的 scoped revert 须在 forge 源码 repo 操作：在原命令上加 --canonical <forge-repo>/skills（指向 forge 源码 skills/ 目录，决策 CommitHash 所在仓库），其他参数不变`, canonical)
 	}
 
 	if skRevDryRun {
-		fmt.Printf("[dry-run] git revert %s  ←  决策 %s [%s]\n    %s\n", target.CommitHash, target.ID, target.Outcome, truncRunesCLI(target.Diagnosis, 60))
+		fmt.Printf(`[dry-run] (repo %s) git revert %s  ←  决策 %s [%s]
+    %s
+`, gitDir, target.CommitHash, target.ID, target.Outcome, truncRunesCLI(target.Diagnosis, 60))
 		return nil
 	}
 
-	gitArgs := []string{"revert"}
+	gitArgs := []string{`revert`}
 	if !skRevEdit {
-		gitArgs = append(gitArgs, "--no-edit")
+		gitArgs = append(gitArgs, `--no-edit`)
 	}
 	gitArgs = append(gitArgs, target.CommitHash)
-	// git root 从 canonical 推导。canonical 必须在 git repo 内（scoped revert 按决策的
-	// CommitHash 撤销 commit，无 repo 无意义）。设 c.Dir 确保 git revert 在正确 repo 跑，
-	// 不依赖 forge 调用时的 CWD。rev-parse 失败（canonical 不在 repo）直接报错——不用
-	// canonical 作 c.Dir fallback，否则 git 会向上找祖先里别的 .git 错配到无关 repo，
-	// 静默 revert 比 not-a-git-repository 报错更糟。
-	out, err := exec.Command("git", "-C", canonical, "rev-parse", "--show-toplevel").Output()
-	if err != nil {
-		return fmt.Errorf("canonical %q 不在 git repo 内——scoped revert 需决策 CommitHash 所在仓库: %w", canonical, err)
-	}
-	gitDir := strings.TrimSpace(string(out))
-	if gitDir == "" {
-		return fmt.Errorf("git rev-parse 返回空 root（canonical %q）", canonical)
-	}
-	c := exec.Command("git", gitArgs...)
+	c := exec.Command(`git`, gitArgs...)
 	c.Dir = gitDir
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
 	if err := c.Run(); err != nil {
-		return fmt.Errorf("git revert %s 失败（可能冲突——手动解决后 'git revert --continue'，勿重跑本命令）: %w", target.CommitHash, err)
+		return fmt.Errorf(`git revert %s 失败（可能冲突——手动解决后 'git revert --continue'，勿重跑本命令）: %w`, target.CommitHash, err)
 	}
-	fmt.Printf("\n✅ scoped revert %s（决策 %s）\n", target.CommitHash, target.ID)
-	fmt.Printf("   建议追加 reject 决策：forge skills decide --skill %s --outcome reject --diagnosis <为何 revert> --revision <原 commit> --evidence <revert 后 probe/回归> --commit <revert 的 commit>\n", skRevSkill)
+
+	// auto AppendDecision(outcome=reject)：成功 revert 后自动留痕（spec-as-executable，取代靠
+	// agent 自觉的 advisory print——dogfood 铁律：纯靠自觉必漏）。下轮 agent 看 decisions.md 即知
+	// 此优化被否决，避免重复探索已失败方向。revert commit hash（revert 后 HEAD）作 CommitHash 锚点。
+	// rev-parse 失败（极少，如 git config 突坏）不致命——CommitHash 留空（下轮 decisionsWithCommit
+	// 过滤掉此 reject，无法再 scoped revert 它，但 revert 本身已成功），stderr 提示不静默吞。
+	revertCommit, revErr := exec.Command(`git`, `-C`, gitDir, `rev-parse`, `HEAD`).Output()
+	if revErr != nil {
+		fmt.Fprintf(os.Stderr, `⚠️ git rev-parse HEAD 失败，auto reject 决策 CommitHash 留空（不影响 revert 本身）: %v
+`, revErr)
+	}
+	revertCommitHash := strings.TrimSpace(string(revertCommit))
+	dec := skillsdecisions.SkillDecision{
+		ID:         skillsdecisions.NewDecisionID(),
+		Skill:      skRevSkill,
+		Outcome:    skillsdecisions.OutcomeReject,
+		Diagnosis:  fmt.Sprintf(`scoped revert 撤销决策 %s（commit %s）的优化：%s`, target.ID, target.CommitHash, target.Diagnosis),
+		Revision:   fmt.Sprintf(`git revert %s`, target.CommitHash),
+		Evidence:   fmt.Sprintf(`scoped revert 自动留痕（reject）；revert commit %s。请重跑 eval-report 确认回归消除`, revertCommitHash),
+		CommitHash: revertCommitHash,
+		Rationale:  `失败优化的 scoped revert，自动 reject 留痕供下轮 agent 知悉被否决方向（spec-as-executable，非自述）`,
+	}
+	// revert 成功总结先打（revert 本身已落地，独立于留痕结果）。留痕失败不掩盖 revert 成功，
+	// 也不让 revert 的 ✅ 混淆「留痕失败」——两信号分离，用户/agent 据各自信号判断。
+	fmt.Printf(`
+✅ scoped revert %s（决策 %s，revert commit %s）
+`, target.CommitHash, target.ID, revertCommitHash)
+	if err := skillsdecisions.AppendDecision(canonical, skRevSkill, dec); err != nil {
+		fmt.Fprintf(os.Stderr, `⚠️ 自动留痕失败（revert 已成功，手动补：forge skills decide --skill %s --outcome reject）: %v
+`, skRevSkill, err)
+		// stdout 补 ⚠️ 行：留痕是 best-effort（不掩盖 revert 成功的 exit 0），但 stdout-only 视角
+		// （task gate / CI 只读 stdout）须能察觉留痕失败，否则下轮 agent 漏看 reject 决策重复探索已否决方向。
+		fmt.Printf(`   ⚠️ 留痕失败，见 stderr（revert 本身已成功）
+`)
+		return nil
+	}
+	fmt.Printf(`   ✅ 自动追加 reject 决策（%s）
+`, dec.ID)
 	return nil
 }
 
