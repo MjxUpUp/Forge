@@ -7,6 +7,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/skillseval"
 	"github.com/spf13/cobra"
@@ -128,6 +129,23 @@ func printEvalReport(rep *skillseval.RegressionReport, latest, baseline *skillse
 		}
 		fmt.Printf("绝对通过：%d/%d\n", pass, len(latest.Results))
 	}
+
+	// 机器判据（JudgeSkillAccept）：deterministic accept/reject + reasons。skill-evolution
+	// SKILL 据此行决策（非自述，取代 agent 自报 accept）。永远显示（信号优先，非 verbose 也显）。
+	fmt.Println(formatJudgeVerdict(rep))
+}
+
+// formatJudgeVerdict 把 JudgeSkillAccept 的判据格式化成单行人类可读串。抽出便于单测 +
+// 让 printEvalReport 只管打印。skill-evolution SKILL 读「机器判据：accept/reject」行决策。
+func formatJudgeVerdict(rep *skillseval.RegressionReport) string {
+	accept, reasons := skillseval.JudgeSkillAccept(rep)
+	if accept {
+		if len(reasons) == 0 {
+			return `机器判据：accept（无退化信号）`
+		}
+		return fmt.Sprintf(`机器判据：accept（advisory：%s）`, strings.Join(reasons, `; `))
+	}
+	return fmt.Sprintf(`机器判据：reject（%s）`, strings.Join(reasons, `; `))
 }
 
 // hasBehaviorCase 判断 run 是否含 behavior probe。决定 report 是否显 behavior pass-rate——
