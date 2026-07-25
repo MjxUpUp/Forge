@@ -66,6 +66,7 @@ func init() {
 	taskOverrideCmd.Flags().String("work-activity", "", "设为 disable 跳过 read-before-edit/work-activity 门禁")
 	taskOverrideCmd.Flags().String("test-coverage", "", "设为 disable 跳过 test-coverage 门禁")
 	taskOverrideCmd.Flags().String("acceptance-gate", "", `设为 disable 跳过 task-complete 的 acceptance pre-flight 门禁`)
+	taskOverrideCmd.Flags().String("skill-decisions", "", `设为 disable 跳过 skill-decisions guardrail（改 SKILL.md 必须记决策）`)
 }
 
 var taskCmd = &cobra.Command{
@@ -149,7 +150,7 @@ var taskScopeShowCmd = &cobra.Command{
 	RunE:  runTaskScopeShow,
 }
 var taskOverrideCmd = &cobra.Command{
-	Use:   `override [--work-activity disable] [--test-coverage disable] [--acceptance-gate disable]`,
+	Use:   `override [--work-activity disable] [--test-coverage disable] [--acceptance-gate disable] [--skill-decisions disable]`,
 	Short: "设置 per-task 逃生舱（优先全局 env，不污染他任务；用了降强度到 Weak）",
 	RunE:  runTaskOverride,
 }
@@ -1056,6 +1057,7 @@ func runTaskOverride(cmd *cobra.Command, args []string) error {
 	wa, _ := cmd.Flags().GetString("work-activity")
 	tc, _ := cmd.Flags().GetString("test-coverage")
 	ag, _ := cmd.Flags().GetString(`acceptance-gate`)
+	sd, _ := cmd.Flags().GetString("skill-decisions")
 
 	var state *taskpipeline.TaskState
 	if explicitRef != "" {
@@ -1095,9 +1097,16 @@ func runTaskOverride(cmd *cobra.Command, args []string) error {
 		state.Overrides.AcceptanceGate = `disable`
 		changed = true
 	}
+	if sd != "" {
+		if sd != "disable" {
+			return fmt.Errorf(`--skill-decisions 只接受 disable，got %q`, sd)
+		}
+		state.Overrides.SkillDecisions = "disable"
+		changed = true
+	}
 	if !changed {
 		fmt.Printf("当前 per-task 逃生舱：%s\n", describeOverrides(state.Overrides))
-		fmt.Println(`设置：--work-activity disable / --test-coverage disable / --acceptance-gate disable（用了降评分强度到 Weak）`)
+		fmt.Println(`设置：--work-activity disable / --test-coverage disable / --acceptance-gate disable / --skill-decisions disable（用了降评分强度到 Weak）`)
 		return nil
 	}
 	if err := taskpipeline.SaveTaskState(root, state); err != nil {
@@ -1118,6 +1127,9 @@ func describeOverrides(o taskpipeline.TaskOverrides) string {
 	}
 	if o.AcceptanceGate == `disable` {
 		parts = append(parts, `acceptance-gate=disable`)
+	}
+	if o.SkillDecisions == "disable" {
+		parts = append(parts, "skill-decisions=disable")
 	}
 	if len(parts) == 0 {
 		return "（无）"
