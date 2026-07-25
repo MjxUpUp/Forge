@@ -390,19 +390,96 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 			fmt.Fprintf(os.Stderr, "%s%s\n", GateAdvisory("[task-verify] "), formatSkillEvalAdvisory(affected))
 		}
 
-		// skill-decisions advisory：变更涉及 skills/<name>/ 实质内容（非 decisions.md
-		// 自身）→ 提醒 'forge skills decide' 记录四元组决策，让下一轮 agent 理解 why，
-		// 避免重复探索已失败方向。纯 advisory 不阻塞（Passed 恒 true——"改了 skill"本身
-		// 非判定，trace 只留信号让 agent 自检）。
-		if affected := skillDecisionsAffected(gitChanged); len(affected) > 0 {
+		// skill-decisions 双档（B 组件：advisory 升 guardrail）：
+		//  - guardrail（阻断）：改 SKILL.md（行为契约）的 skill 必须在本 task 新增 decisions.md
+		//    条目，否则 BLOCKED。SKILL.md 是行为定义（Use when/SKIP/流程），改它必留 why（dogfood
+		//    铁律：advisory 0 触发，必须 blocking）。
+		//  - advisory（不阻断）：改辅助资源（scripts/references/cases）只提醒——trivial 改动
+		//    集中在辅助资源，保持 advisory 不误伤。
+		// 判定锚点：decisions.md base..HEAD 新增 `## [d-` 条目（确定信号，非语义猜测）。base=
+		// state.HeadCommit。escape（per-task override / FORGE_SKILL_DECISIONS）→ guardrail 降
+		// advisory + CheckEscapeHatch（Weak ceiling）。fail-open：base 空/不可达不阻断。
+		if blocking := skillDecisionsBlockingAffected(gitChanged); len(blocking) > 0 {
+			if EscapeDisabled(state, escapeSkillDecisions, envSkillDecisions) {
+				checklog.Record(root, &checklog.Entry{
+					Check:   checklog.CheckEscapeHatch,
+					Passed:  true,
+					Checked: true,
+					TaskRef: state.TaskRef,
+					Detail:  `escape-hatch: skill-decisions guardrail bypassed (per-task override or FORGE_SKILL_DECISIONS=disable): ` + strings.Join(blocking, ", "),
+				})
+				// escape 文案专用：blocking 集是改了 SKILL.md（行为契约）的 skill，非辅助资源——
+				// 不能复用 formatSkillDecisionsAdvisory（那是辅助资源/trivial 场景文案，语义错位）。
+				fmt.Fprintf(os.Stderr, "%s%s\n", GateAdvisory("[task-verify] "), fmt.Sprintf(`skill %s 的 SKILL.md 改动已用 --skill-decisions disable 逃生舱绕过 guardrail——evidence 强度降级到 Weak。仍建议跑 'forge skills decide --skill <name> --outcome <accept|reject> --diagnosis <为何改> --revision <改了啥> --evidence <依据>' 记决策，避免下一轮 agent 重复探索已失败方向`, strings.Join(blocking, ", ")))
+			} else {
+				// 分三类：recorded（真验证记了决策）/ unrecorded（未记→BLOCKED）/ failopen（base 不可达
+				// 跳过校验）。通过路径 checklog Detail 只宣称 recorded 的，fail-open 单独标注——避免
+				// "拼整个 blocking 列表宣称已记决策"误导 audit（结构化日志准确性：fail-open 是 base
+				// 不可达时 taskChangedFiles 的源2/3 仍捕获 SKILL.md 改动，blocking 非空但 recorded
+				// 未真验证，audit 须能区分"真记"vs"fail-open 溜过"）。
+				var recorded, unrecorded, failopenSkills []string
+				for _, sk := range blocking {
+					rec, fo := skillDecisionsRecorded(root, state.HeadCommit, sk)
+					if fo {
+						failopenSkills = append(failopenSkills, sk)
+						continue
+					}
+					if rec {
+						recorded = append(recorded, sk)
+					} else {
+						unrecorded = append(unrecorded, sk)
+					}
+				}
+				if len(unrecorded) > 0 {
+					// BLOCKED 必落盘——让 score/dashboard/audit 照出"skill-decisions 阻断过"
+					//（对齐 test-coverage BLOCKED 前先记 checklog）。运行时有 stderr，但落盘证据
+					// 不可缺，否则"task 为何多次卡在 verify"无信号。
+					blockedDetail := fmt.Sprintf(`guardrail BLOCKED：改了 %s 的 SKILL.md（行为变更）但本 task 未在 decisions.md 新增决策`, strings.Join(unrecorded, ", "))
+					if len(failopenSkills) > 0 {
+						// 混合场景（部分未记 + 部分 base 不可达）：BLOCKED detail 补 fail-open skill，
+						// 让 audit 一次看全（不必等修了 unrecorded 重跑才在通过路径见 fail-open）。
+						blockedDetail += `；` + strings.Join(failopenSkills, ", ") + ` fail-open 跳过校验（base 不可达）`
+					}
+					checklog.Record(root, &checklog.Entry{
+						Check:   CheckNameSkillDecisions,
+						Passed:  false,
+						Checked: true,
+						TaskRef: state.TaskRef,
+						Detail:  blockedDetail,
+					})
+					return nil, GateBlocked(`task-verify 拒绝（HARD stop）：改了 skill %s 的 SKILL.md（行为变更）但本任务未在 decisions.md 新增决策——跑 'forge skills decide --skill <name> --outcome <accept|reject> --diagnosis <为何改> --revision <改了啥> --evidence <依据>' 记录四元组（让下一轮 agent 理解 why）；trivial 改动用 'forge task override --skill-decisions disable' 逃生舱（降 evidence 到 Weak）`, strings.Join(unrecorded, ", "))
+				}
+				// 通过路径：Detail 诚实区分 recorded（真记）vs failopen（base 不可达未验证）。
+				detail := `skill-decisions guardrail 满足`
+				if len(recorded) > 0 {
+					detail += `：` + strings.Join(recorded, ", ") + ` 已在本 task 记决策`
+				}
+				if len(failopenSkills) > 0 {
+					if len(recorded) > 0 {
+						detail += `；`
+					} else {
+						detail += `：`
+					}
+					detail += strings.Join(failopenSkills, ", ") + ` fail-open 跳过校验（base 不可达，未真验证 recorded）`
+				}
+				checklog.Record(root, &checklog.Entry{
+					Check:   CheckNameSkillDecisions,
+					Passed:  true,
+					Checked: true,
+					TaskRef: state.TaskRef,
+					Detail:  detail,
+				})
+			}
+		}
+		if advisorySkills := skillDecisionsAdvisoryAffected(gitChanged); len(advisorySkills) > 0 {
 			checklog.Record(root, &checklog.Entry{
 				Check:   CheckNameSkillDecisions,
 				Passed:  true,
 				Checked: true,
 				TaskRef: state.TaskRef,
-				Detail:  formatSkillDecisionsAdvisory(affected),
+				Detail:  formatSkillDecisionsAdvisory(advisorySkills),
 			})
-			fmt.Fprintf(os.Stderr, "%s%s\n", GateAdvisory("[task-verify] "), formatSkillDecisionsAdvisory(affected))
+			fmt.Fprintf(os.Stderr, "%s%s\n", GateAdvisory("[task-verify] "), formatSkillDecisionsAdvisory(advisorySkills))
 		}
 
 		// acceptance advisory（spec-as-gate）：任务登记了验收标准（task start --accept）
