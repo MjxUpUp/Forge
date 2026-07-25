@@ -513,6 +513,9 @@ func renderResume(state *taskpipeline.TaskState, gitChanged []string) string {
 	w(fmt.Sprintf("分支: %s   类型: %s   发起: %s", state.Branch, kind, orDash(state.OriginTool)))
 	w(fmt.Sprintf("参与工具: %s", toolStr))
 	w(fmt.Sprintf("门禁进度: %s", renderGateProgress(state)))
+	if state.ExternalOrigin.URL != "" {
+		w(fmt.Sprintf(`外部来源: %s %s %s`, orDash(state.ExternalOrigin.Tracker), orDash(state.ExternalOrigin.Identifier), state.ExternalOrigin.URL))
+	}
 	if state.Summary != "" {
 		w("标题: " + state.Summary)
 	}

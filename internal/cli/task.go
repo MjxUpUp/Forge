@@ -65,6 +65,7 @@ func init() {
 	taskOverrideCmd.Flags().String("ref", "", "任务 ref（默认当前活跃任务）")
 	taskOverrideCmd.Flags().String("work-activity", "", "设为 disable 跳过 read-before-edit/work-activity 门禁")
 	taskOverrideCmd.Flags().String("test-coverage", "", "设为 disable 跳过 test-coverage 门禁")
+	taskOverrideCmd.Flags().String("acceptance-gate", "", `设为 disable 跳过 task-complete 的 acceptance pre-flight 门禁`)
 }
 
 var taskCmd = &cobra.Command{
@@ -148,7 +149,7 @@ var taskScopeShowCmd = &cobra.Command{
 	RunE:  runTaskScopeShow,
 }
 var taskOverrideCmd = &cobra.Command{
-	Use:   "override [--work-activity disable] [--test-coverage disable]",
+	Use:   `override [--work-activity disable] [--test-coverage disable] [--acceptance-gate disable]`,
 	Short: "设置 per-task 逃生舱（优先全局 env，不污染他任务；用了降强度到 Weak）",
 	RunE:  runTaskOverride,
 }
@@ -872,6 +873,15 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("task not complete. Missing gates: %s", missingGates(state))
 	}
 
+	// acceptance pre-flight（proof-of-work consumer）：task 声明了验收标准时，complete 前
+	// deterministic 校验每条都 fresh（AcceptedHeadCommit==HEAD）且 Passed。给 AcceptedHeadCommit
+	// 补消费方——MCP 拆除后该字段只写不读成孤儿，本检查把它从声明层变 affordance gate。
+	// 对应 Emergence World Proof of Work：声称「验收过」必须有可验证 consumer。
+	if ok, reasons := taskpipeline.CheckAcceptanceFresh(root, state); !ok {
+		return fmt.Errorf(`acceptance pre-flight 未通过（验收未实跑/快照过期/未通过）: %s；逃生（落 checklog 审计，降 evidence 强度到 Weak）: forge task override --acceptance-gate disable 或 FORGE_ACCEPTANCE_GATE=disable`,
+			strings.Join(reasons, `; `))
+	}
+
 	// Auto-score the task
 	if err := scoreTask(root, state); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: scoring failed: %v\n", err)
@@ -1045,6 +1055,7 @@ func runTaskOverride(cmd *cobra.Command, args []string) error {
 	explicitRef, _ := cmd.Flags().GetString("ref")
 	wa, _ := cmd.Flags().GetString("work-activity")
 	tc, _ := cmd.Flags().GetString("test-coverage")
+	ag, _ := cmd.Flags().GetString(`acceptance-gate`)
 
 	var state *taskpipeline.TaskState
 	if explicitRef != "" {
@@ -1077,9 +1088,16 @@ func runTaskOverride(cmd *cobra.Command, args []string) error {
 		state.Overrides.TestCoverage = "disable"
 		changed = true
 	}
+	if ag != "" {
+		if ag != `disable` {
+			return fmt.Errorf(`--acceptance-gate 只接受 disable，got %q`, ag)
+		}
+		state.Overrides.AcceptanceGate = `disable`
+		changed = true
+	}
 	if !changed {
 		fmt.Printf("当前 per-task 逃生舱：%s\n", describeOverrides(state.Overrides))
-		fmt.Println("设置：--work-activity disable / --test-coverage disable（用了降评分强度到 Weak）")
+		fmt.Println(`设置：--work-activity disable / --test-coverage disable / --acceptance-gate disable（用了降评分强度到 Weak）`)
 		return nil
 	}
 	if err := taskpipeline.SaveTaskState(root, state); err != nil {
@@ -1097,6 +1115,9 @@ func describeOverrides(o taskpipeline.TaskOverrides) string {
 	}
 	if o.TestCoverage == "disable" {
 		parts = append(parts, "test-coverage=disable")
+	}
+	if o.AcceptanceGate == `disable` {
+		parts = append(parts, `acceptance-gate=disable`)
 	}
 	if len(parts) == 0 {
 		return "（无）"

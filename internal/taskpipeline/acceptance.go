@@ -2,6 +2,7 @@ package taskpipeline
 
 import (
 	"bufio"
+	"fmt"
 	"strings"
 	"unicode/utf8"
 
@@ -57,9 +58,9 @@ func ParseAcceptance(raw []string) []AcceptanceCriterion {
 // 扫描一律捕获。边界：裸 `Run:`（无后续 Expected:）→ expected 空（只看退出码 0）；`Expected:`
 // 前无 `Run:` → 孤立丢弃；前缀大小写敏感（Run:/Expected:）。配套：cli.task start 读取
 // --plan-file 后调本函数，与显式 --accept 经 MergeAcceptance 去重。
-// 局限：不区分 fenced 代码围栏（```）——若 plan 在代码示例里有 Run:/Expected: 开头的
-// 行会被误提取。dev-workflow 已强约束 Run:/Expected: 为验收唯一格式，冲突概率低；plan
-// 应避免在代码示例中用该前缀开头的行。
+// fenced 围栏识别：```/~~~ 之间的行视为代码示例（如 plan 贴的 shell 片段），其中的
+// Run:/Expected: 不提取——原版无此识别会误提取代码示例里 Run: 开头的行。下方 for 循环
+// 用 inFence 状态跳过围栏内容（isFenceMarker 判定围栏边界）。
 func ParseAcceptanceFromPlan(plan string) []AcceptanceCriterion {
 	var out []AcceptanceCriterion
 	var pendingRun string // 上一个 Run: 命令，尚未被 Expected: 配对；""=无待配对
@@ -69,8 +70,18 @@ func ParseAcceptanceFromPlan(plan string) []AcceptanceCriterion {
 	// 后续 Run/Expected 块全丢，用户看到「0 条提取」实为「中途截断」）+ 循环后查 Err。
 	// plan 的 Run 行不可能接近 1MB，Err 实际不触发；防御性返回已扫描部分而非吞错。
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	inFence := false // fenced code 围栏内（```/~~~ 之间）→ 跳过 Run:/Expected: 代码示例
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
+		// fenced 围栏（```/~~~）切换 inFence：围栏内的 Run:/Expected: 是代码示例（如 plan
+		// 贴的 shell 片段恰好含 Run: 开头行），不是验收标准，跳过。
+		if isFenceMarker(line) {
+			inFence = !inFence
+			continue
+		}
+		if inFence {
+			continue
+		}
 		switch {
 		case strings.HasPrefix(line, `Run:`):
 			// 上一个 Run 仍未配对 → 先落盘（裸 Run = 空期望，只看退出码 0）
@@ -175,4 +186,72 @@ func truncateAcceptanceOutput(s string) string {
 		start++ // 跳过续字节（10xxxxxx），退到下一个 rune 起始字节
 	}
 	return `...(省略前部)...` + s[start:]
+}
+
+// isFenceMarker 判定一行是否 markdown fenced code 围栏边界（行首 >=3 个反引号或波浪号，
+// 后可跟语言标注如 bash）。ParseAcceptanceFromPlan 据此跳过代码示例块内的 Run:/Expected:
+// 误提取。反引号用字节码 96 比较，规避源码里写裸反引号串在 Windows Edit 的引号腐蚀坑。
+func isFenceMarker(line string) bool {
+	if len(line) < 3 {
+		return false
+	}
+	first := line[0]
+	if first != 96 && first != '~' { // 96 = '`'（反引号）；'~' 波浪号
+		return false
+	}
+	return line[1] == first && line[2] == first
+}
+
+// acceptanceGateDisableEnv lets a task opt out of the acceptance pre-flight at
+// task-complete（symmetric to FORGE_TEST_COVERAGE）. 合法场景：验收标准不可机器执行、或
+// 纯人工验收。CLI 在 BLOCKED 文案里明示此逃生舱（不静默绕过）；逃生 → checklog
+// CheckEscapeHatch → evidence Strength cap Weak（有代价）。
+const acceptanceGateDisableEnv = "FORGE_ACCEPTANCE_GATE"
+
+// CheckAcceptanceFresh 是 task-complete 的 acceptance pre-flight——给 AcceptedHeadCommit 补
+// deterministic consumer（MCP 拆除后该字段在 VerifyAcceptance 写入但无消费方，成孤儿）。
+// task 声明了 acceptance 时，每条必须同时满足：
+//   - AcceptedHeadCommit 非空（跑过 forge task verify-acceptance，有实跑快照）
+//   - AcceptedHeadCommit == 当前 HEAD（验收基于当前代码；验收后改码则快照过期，须重跑）
+//   - Passed == true（验收实跑通过）
+//
+// 任一不满足 → ok=false + reasons（给 BLOCKED 文案）。无 acceptance → 放行。非 git 目录：
+// GetHeadCommit 返 ""，fresh 检查短路放行（与 VerifyAcceptance 的 NonGit 退化一致）。
+// escape（per-task override / FORGE_ACCEPTANCE_GATE=disable）落 checklog 审计后放行。
+//
+// 设计对应 Emergence World affordance gate + Proof of Work：声称「验收过」须有 deterministic
+// consumer 校验，否则就是孤儿字段的 sounds-like-verification（proof v2 快路径消费者随 MCP 拆除）。
+func CheckAcceptanceFresh(root string, state *TaskState) (ok bool, reasons []string) {
+	if len(state.Acceptance) == 0 {
+		return true, nil
+	}
+	if EscapeDisabled(state, escapeAcceptanceGate, acceptanceGateDisableEnv) {
+		checklog.Record(root, &checklog.Entry{
+			Check:   checklog.CheckEscapeHatch,
+			Passed:  true,
+			Checked: true,
+			TaskRef: state.TaskRef,
+			Detail:  `escape-hatch: acceptance gate bypassed (per-task override or FORGE_ACCEPTANCE_GATE=disable)`,
+		})
+		return true, nil
+	}
+	head := GetHeadCommit(root)
+	// 非 git 目录短路放行：GetHeadCommit 返 "" 时 AcceptedHeadCommit 永远空（VerifyAcceptance
+	// 非 git 退化也写空），下方 case 1「未实跑」会误命中致永远 BLOCKED。与文档契约（NonGit 短路）
+	// 和 VerifyAcceptance 退化一致。Forge 显式支持非 git（IsGitRepo "degrades gracefully without git"）。
+	if head == "" {
+		return true, nil
+	}
+	for i := range state.Acceptance {
+		c := &state.Acceptance[i]
+		switch {
+		case c.AcceptedHeadCommit == "":
+			reasons = append(reasons, fmt.Sprintf(`验收 #%d（%s）未实跑（AcceptedHeadCommit 空）——先 forge task verify-acceptance`, i+1, c.Run))
+		case head != "" && c.AcceptedHeadCommit != head:
+			reasons = append(reasons, fmt.Sprintf(`验收 #%d（%s）基于旧代码（快照 %s ≠ HEAD %s）——验收后改了码，重跑 forge task verify-acceptance`, i+1, c.Run, c.AcceptedHeadCommit, head))
+		case !c.Passed:
+			reasons = append(reasons, fmt.Sprintf(`验收 #%d（%s）未通过——修码使验收通过或调整验收标准`, i+1, c.Run))
+		}
+	}
+	return len(reasons) == 0, reasons
 }

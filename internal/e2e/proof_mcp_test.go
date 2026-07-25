@@ -69,3 +69,78 @@ func TestE2E_VerifyAcceptance_RecordsAcceptedHeadCommit(t *testing.T) {
 		t.Error("verify-acceptance 实跑后应记 AcceptedHeadCommit（v2 快路径快照源，防验收后改码假绿）")
 	}
 }
+
+// TestE2E_TaskComplete_BlockedWhenAcceptanceNotRun 钉住 acceptance pre-flight 真接到 task-complete：
+// task 声明了验收标准但没跑 forge task verify-acceptance（AcceptedHeadCommit 空）时，forge task complete
+// 必须 BLOCKED——这是给 AcceptedHeadCommit 补的消费方（MCP 拆除后该字段只写不读成孤儿）。对应
+// Emergence World Proof of Work：声称「验收过」须有 deterministic consumer，否则 complete 击穿。
+// 第二段验证逃生舱 FORGE_ACCEPTANCE_GATE=disable 接线（落 checklog 审计后放行，对冲"硬门禁 +
+// 全局逃生 = 假硬门禁"——逃生有 checklog 代价 + evidence cap Weak）。
+// 成功路径（verify-acceptance 回填后 complete 放行）见 TestE2E_TaskComplete_PassAfterVerifyAcceptance。
+func TestE2E_TaskComplete_BlockedWhenAcceptanceNotRun(t *testing.T) {
+	dir := freshProject(t)
+	git(t, dir, "add", ".")
+	git(t, dir, "commit", "-m", "initial")
+
+	forge(t, dir, "task", "start", "--ref", "feat/pow-block", "--title", "pow block",
+		"--accept", "go version :: go version", "--branch")
+	passAllGates(t, dir, "feat/pow-block") // 过 task-implement/task-verify/review-pass/task-complete gate
+
+	// forge task complete 应被 acceptance pre-flight BLOCKED（验收未实跑，AcceptedHeadCommit 空）
+	out, err := forgeErr(t, dir, "task", "complete", "--ref", "feat/pow-block")
+	if err == nil {
+		t.Fatalf(`forge task complete 应被 acceptance pre-flight 拦截（验收未实跑），却成功。output: %s`, out)
+	}
+	if !strings.Contains(out, "acceptance pre-flight") {
+		t.Errorf(`BLOCKED 输出应含 "acceptance pre-flight" 提示，got:\n%s`, out)
+	}
+
+	// 逃生舱（env）：FORGE_ACCEPTANCE_GATE=disable 落 checklog 审计后放行——证明逃生舱接线。
+	t.Setenv("FORGE_ACCEPTANCE_GATE", "disable") // t.Setenv 自动还原，优于 os.Setenv+defer
+	out, err = forgeErr(t, dir, "task", "complete", "--ref", "feat/pow-block")
+	if err != nil {
+		t.Fatalf(`escape 后 forge task complete 应放行，got err: %v output: %s`, err, out)
+	}
+}
+
+// TestE2E_TaskComplete_PassAfterVerifyAcceptance 钉住 happy path：声明验收 → 过门禁 → verify-acceptance
+// 实跑回填 AcceptedHeadCommit==HEAD + Passed → forge task complete 放行。proof-of-work 闭环核心主张
+// （spec-as-gate：验收标准真跑通过才能 complete），与 BlockedWhenAcceptanceNotRun 对照。
+//
+// 关键时序：verify-acceptance 必须在 task-complete gate **之前**。task-complete gate 通过会调
+// state.MarkComplete()（task.go:717）设 CompletedAt，之后 ActiveTaskState 把 CompletedAt!=nil 的 task
+// 当 stale ref fall through（state.go:75），verify-acceptance 找不到 active task。所以本测试手动过
+// implement/verify/review gate（不含 task-complete gate），verify-acceptance，再 task-complete gate + complete。
+// passAllGates 含 task-complete gate 会早 MarkComplete，不适用此场景。
+func TestE2E_TaskComplete_PassAfterVerifyAcceptance(t *testing.T) {
+	dir := freshProject(t)
+	git(t, dir, "add", ".")
+	git(t, dir, "commit", "-m", "initial")
+	forge(t, dir, "task", "start", "--ref", "feat/pow-ok", "--title", "pow ok",
+		"--accept", "go version :: go version", "--branch")
+
+	// 过 implement/verify gate + review pass（不含 task-complete gate——它 MarkComplete 后 verify 找不到 active task）。
+	t.Setenv("FORGE_GATE_MIN_INTERVAL", "0s")
+	t.Setenv("FORGE_WORK_ACTIVITY", "disable")
+	git(t, dir, "commit", "--allow-empty", "-m", "e2e: move HEAD for task-implement")
+	for _, g := range []string{"task-implement", "task-verify"} {
+		if out, err := forgeErr(t, dir, "task", "gate", g, "--ref", "feat/pow-ok"); err != nil {
+			t.Fatalf("forge task gate %s: %v\n%s", g, err, out)
+		}
+	}
+	if out, err := forgeErr(t, dir, "review", "pass"); err != nil {
+		t.Fatalf("forge review pass: %v\n%s", err, out)
+	}
+
+	// verify-acceptance 在 task-complete gate 前（task 还 active）：回填 AcceptedHeadCommit==HEAD + Passed。
+	forge(t, dir, "task", "verify-acceptance")
+
+	// task-complete gate → MarkComplete；complete → acceptance pre-flight fresh（AcceptedHeadCommit==HEAD）放行。
+	if out, err := forgeErr(t, dir, "task", "gate", "task-complete", "--ref", "feat/pow-ok"); err != nil {
+		t.Fatalf("forge task gate task-complete: %v\n%s", err, out)
+	}
+	out, err := forgeErr(t, dir, "task", "complete", "--ref", "feat/pow-ok")
+	if err != nil {
+		t.Fatalf(`verify-acceptance 后 forge task complete 应放行（acceptance fresh），got err: %v output: %s`, err, out)
+	}
+}

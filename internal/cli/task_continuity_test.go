@@ -45,6 +45,27 @@ func TestRenderResumeSections(t *testing.T) {
 	}
 }
 
+// TestRenderResume_ExternalOrigin 钉住 proof-of-work 闭环的 origin 可见性：task 带外部 issue
+// 来源（--from_issue）时，resume 视图显示 tracker/identifier/URL，接手方一眼知 task 锚在哪个 issue。
+func TestRenderResume_ExternalOrigin(t *testing.T) {
+	state := &taskpipeline.TaskState{
+		TaskRef: "feat/fix",
+		Branch:  "feat/fix",
+		Summary: "修 bug",
+		ExternalOrigin: taskpipeline.ExternalOrigin{
+			Tracker:    "linear",
+			Identifier: "ABC-123",
+			URL:        "https://linear.app/forge/issue/ABC-123",
+		},
+	}
+	out := renderResume(state, nil)
+	for _, want := range []string{`外部来源`, `linear`, `ABC-123`, `https://linear.app/forge/issue/ABC-123`} {
+		if !strings.Contains(out, want) {
+			t.Errorf(`resume 输出应含 %q\n---OUTPUT---\n%s`, want, out)
+		}
+	}
+}
+
 // TestRenderResumeEmpty 空接续内容时给最小状态卡（不报错、提示如何补充）——resume 永远成功。
 func TestRenderResumeEmpty(t *testing.T) {
 	state := &taskpipeline.TaskState{TaskRef: "feat/empty", Branch: "feat/empty"}
