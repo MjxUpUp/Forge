@@ -32,22 +32,22 @@ func TestJudgeResult(t *testing.T) {
 	skill := "my-skill"
 	trigCase := EvalCase{Skill: skill, Kind: KindTrigger}
 	notCase := EvalCase{Skill: skill, Kind: KindNotTrigger}
-	if !judgeResult(trigCase, skill) {
+	if !judgeResult(trigCase, skill, "") {
 		t.Error("trigger actual==skill should pass")
 	}
-	if judgeResult(trigCase, "other") {
+	if judgeResult(trigCase, "other", "") {
 		t.Error("trigger actual!=skill should fail")
 	}
-	if judgeResult(trigCase, "") {
+	if judgeResult(trigCase, "", "") {
 		t.Error("trigger actual empty should fail")
 	}
-	if !judgeResult(notCase, "other") {
+	if !judgeResult(notCase, "other", "") {
 		t.Error("not-trigger actual=other should pass")
 	}
-	if !judgeResult(notCase, "") {
+	if !judgeResult(notCase, "", "") {
 		t.Error("not-trigger actual empty should pass")
 	}
-	if judgeResult(notCase, skill) {
+	if judgeResult(notCase, skill, "") {
 		t.Error("not-trigger actual==skill should fail")
 	}
 }
@@ -289,6 +289,44 @@ func TestSubmitRun_AllUnknownCaseIDsRejected(t *testing.T) {
 		[]SubmitResult{{CaseID: "totally-bogus-id", ActualTriggered: "my-skill"}})
 	if err == nil {
 		t.Fatal("全未知 case_id 应报错，不静默落空 run")
+	}
+}
+
+// TestSubmitRun_PureBehavior_SkipsDescHashCheck：纯 behavior case 集（DescHash 全空，
+// 不锚 description）即使 description 改了（DescHash 失配）也该通过——behavior case
+// 独立于 description 维护（设计契约，见 SubmitRun line 352 的 set.DescHash!="" 守卫）。
+// 同时验证 behavior 判定走 ActualOutput + Oracle（actual_triggered 忽略）。
+func TestSubmitRun_PureBehavior_SkipsDescHashCheck(t *testing.T) {
+	canonical := t.TempDir()
+	dir := t.TempDir()
+	// SKILL.md 存在即可（currentDescHash 要能读）；description 内容随后会改。
+	writeSkill(t, canonical, "b-skill", "Use when: x SKIP: y")
+	// 纯 behavior case 集（DescHash 全空，firstDescHash 返回 ""）。
+	behavCases := []EvalCase{
+		{ID: "p1", Skill: "b-skill", Kind: KindBehavior, Prompt: "in1", ProbeInput: "in1", Oracle: "contains:ok"},
+		{ID: "p2", Skill: "b-skill", Kind: KindBehavior, Prompt: "in2", ProbeInput: "in2", Oracle: "contains:done"},
+	}
+	mustWrite(t, SaveCases(dir, "b-skill", behavCases))
+
+	// 改 description（DescHash 变）——纯 behavior 集应不受影响（跳过一致性校验）。
+	writeSkill(t, canonical, "b-skill", "Use when: z SKIP: w")
+
+	run, err := SubmitRun(dir, canonical, "b-skill", "m", "v1",
+		[]SubmitResult{
+			{CaseID: "p1", ActualOutput: "output ok here"},
+			{CaseID: "p2", ActualOutput: "all done now"},
+		})
+	if err != nil {
+		t.Fatalf("纯 behavior 集应跳过 DescHash 校验: %v", err)
+	}
+	pass := 0
+	for _, r := range run.Results {
+		if r.Pass {
+			pass++
+		}
+	}
+	if pass != 2 {
+		t.Fatalf("behavior pass=%d want 2（两条 output 都满足 oracle）", pass)
 	}
 }
 

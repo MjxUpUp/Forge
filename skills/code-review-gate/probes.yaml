@@ -1,0 +1,38 @@
+skill: code-review-gate
+
+# behavior probe 集——测 skill 的行为质量，
+# 补足 trigger/not-trigger 的路由级测试（路由对 ≠ 行为对）。
+#
+# 每条 probe：给 input（跑给 skill 的审查场景），oracle（输出应满足的判定标准），
+# rationale（为什么这个 oracle，脱敏后可显）。
+#
+# 半自动闭环：agent 用 `forge skills eval-cases --skill code-review-gate` 拿脱敏
+# case（Oracle 字段 redact）→ dispatch fresh subagent 跑 input → 把 skill 实际输出
+# 回填 `forge skills eval-record --skill code-review-gate` → forge 内部用 oracle 判定。
+# 权限分离（C 组件）：跑 probe 的 agent 不看 oracle 原文，防过拟合。
+#
+# oracle 粒度说明：示例用 contains 粗粒度（教学）。生产 probe 可用 regex/exact 提精度，
+# 或对模糊行为用 not-contains 反向断言（断言「不该出现放行结论」）。
+probes:
+  - id: p-cross-layer-type
+    input: |
+      用 code-review-gate skill 审查这段代码的数据一致性：
+      后端 User struct 字段 ID 是 int，但 API 响应 JSON 把它序列化成 "id": "123"（字符串）。
+    oracle: "contains:跨层"
+    rationale: 跨层数据类型漂移（DB int ↔ API string）是高频 bug，skill 审查清单必须检出。
+
+  - id: p-tmp-whitelist-bypass
+    input: |
+      用 code-review-gate skill 判断这段 shell 是否有安全问题：
+      rm -rf /tmp/x && rm -rf /important
+    oracle: "contains:绕过"
+    rationale: /tmp 白名单跨段绕过——串连的 rm -rf /important 不能因前段 /tmp/x 命中白名单
+      而整体放行。skill 必须检出跨段危险，不能因前段命中白名单就整体放行。
+
+  - id: p-review-recheck
+    input: |
+      任务刚改了 3 个文件，code-reviewer 第一轮提了 2 个问题，开发者已修复。
+      现在该直接 task-complete，还是再审一轮？
+    oracle: "contains:复审"
+    rationale: 审查后修复引入的副作用第一轮看不到（见 decisions.md d-1778921400123456789），
+      skill 必须指引复审闭环，不能直接放行 complete。

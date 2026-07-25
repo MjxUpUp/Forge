@@ -37,8 +37,9 @@ type CaseResult struct {
 	CaseID          string `json:"case_id"`
 	Kind            string `json:"kind"`
 	Prompt          string `json:"prompt"`
-	Expected        string `json:"expected"`         // trigger/not-trigger
-	ActualTriggered string `json:"actual_triggered"` // 归一化后的实际触发 skill 名（""=没触发）
+	Expected        string `json:"expected"`                  // trigger/not-trigger/behavior
+	ActualTriggered string `json:"actual_triggered"`         // 归一化后的实际触发 skill 名（""=没触发）
+	ActualOutput    string `json:"actual_output,omitempty"`  // behavior 类：agent 回填的实际输出（含 oracle 判定所需原文，eval-cases/report 对外脱敏）
 	Pass            bool   `json:"pass"`
 	Note            string `json:"note,omitempty"` // agent 标注的异常/理由
 }
@@ -61,6 +62,7 @@ type EvalRun struct {
 type SubmitResult struct {
 	CaseID          string `json:"case_id"`
 	ActualTriggered string `json:"actual_triggered"`
+	ActualOutput    string `json:"actual_output,omitempty"` // behavior 类：dispatch subagent 跑 ProbeInput 的输出
 	Note            string `json:"note,omitempty"`
 }
 
@@ -92,6 +94,8 @@ type RegressionReport struct {
 	TriggerPassRateLatest      float64      `json:"trigger_pass_rate_latest"`
 	NotTriggerPassRateBaseline float64      `json:"not_trigger_pass_rate_baseline,omitempty"`
 	NotTriggerPassRateLatest   float64      `json:"not_trigger_pass_rate_latest"`
+	BehaviorPassRateBaseline   float64      `json:"behavior_pass_rate_baseline,omitempty"`
+	BehaviorPassRateLatest     float64      `json:"behavior_pass_rate_latest"`
 }
 
 // newRunID 生成 "run-<unix>-<randhex>"。
@@ -145,8 +149,12 @@ func NormalizeTriggered(actual string, canonicalSkills []string) string {
 //
 //	trigger 类：actual == skill（自指）
 //	not-trigger 类：actual != skill（含空、含任何其他 skill）——不耦合「该路由到哪个 skill」
-func judgeResult(c EvalCase, actual string) bool {
-	act := strings.ToLower(strings.TrimSpace(actual))
+//	behavior 类：judgeBehavior(actualOutput, oracle)——输出满足 oracle 才 pass（见 probes.go）
+func judgeResult(c EvalCase, actualTriggered, actualOutput string) bool {
+	if c.Kind == KindBehavior {
+		return judgeBehavior(actualOutput, c.Oracle)
+	}
+	act := strings.ToLower(strings.TrimSpace(actualTriggered))
 	skill := strings.ToLower(c.Skill)
 	if c.Kind == KindTrigger {
 		return act == skill
@@ -197,9 +205,11 @@ func HealthScore(results []CaseResult, regressions int) float64 {
 	return math.Round(score*100) / 100
 }
 
-// passRates 返回 (triggerPassRate, notTriggerPassRate)。
-func passRates(results []CaseResult) (trigRate, notRate float64) {
-	var tp, tt, np, nt int
+// passRates 返回 (triggerPassRate, notTriggerPassRate, behaviorPassRate)。
+// behavior 类独立计——它测行为质量（输出满足 oracle），与路由健康度（trigger/not-trigger）
+// 是两个维度，故 HealthScore（路由健康度）不计 behavior，这里单独返回供 report 展示。
+func passRates(results []CaseResult) (trigRate, notRate, behaviorRate float64) {
+	var tp, tt, np, nt, bp, bt int
 	for _, r := range results {
 		switch r.Kind {
 		case KindTrigger:
@@ -212,6 +222,11 @@ func passRates(results []CaseResult) (trigRate, notRate float64) {
 			if r.Pass {
 				np++
 			}
+		case KindBehavior:
+			bt++
+			if r.Pass {
+				bp++
+			}
 		}
 	}
 	if tt > 0 {
@@ -219,6 +234,9 @@ func passRates(results []CaseResult) (trigRate, notRate float64) {
 	}
 	if nt > 0 {
 		notRate = float64(np) / float64(nt)
+	}
+	if bt > 0 {
+		behaviorRate = float64(bp) / float64(bt)
 	}
 	return
 }
@@ -233,12 +251,12 @@ func CompareRuns(latest, baseline *EvalRun) *RegressionReport {
 		LatestRun:   latest.RunID,
 		HasBaseline: baseline != nil,
 	}
-	rep.TriggerPassRateLatest, rep.NotTriggerPassRateLatest = passRates(latest.Results)
+	rep.TriggerPassRateLatest, rep.NotTriggerPassRateLatest, rep.BehaviorPassRateLatest = passRates(latest.Results)
 	if baseline == nil {
 		return rep
 	}
 	rep.BaselineRun = baseline.RunID
-	rep.TriggerPassRateBaseline, rep.NotTriggerPassRateBaseline = passRates(baseline.Results)
+	rep.TriggerPassRateBaseline, rep.NotTriggerPassRateBaseline, rep.BehaviorPassRateBaseline = passRates(baseline.Results)
 
 	// 可比性校验。
 	rep.Comparable = true
@@ -325,11 +343,13 @@ func SubmitRun(dir, canonical, skill, agentModel, forgeVersion string, raw []Sub
 	}
 
 	// DescHash 校验：case 集的指纹必须等于当前 SKILL.md 的指纹，否则 case 集已过期。
+	// 纯 behavior 集（DescHash 空，不锚 description）跳过此校验——behavior case
+	// 独立于 description 维护，改 description 不应让 behavior run 失败。
 	curDH, err := currentDescHash(canonical, skill)
 	if err != nil {
 		return nil, fmt.Errorf("read current SKILL.md: %w", err)
 	}
-	if curDH != set.DescHash {
+	if set.DescHash != "" && curDH != set.DescHash {
 		return nil, fmt.Errorf("eval cases stale: case desc_hash %s != current %s — description changed, re-run 'forge skills eval-gen --skill %s --save'", set.DescHash, curDH, skill)
 	}
 
@@ -353,7 +373,8 @@ func SubmitRun(dir, canonical, skill, agentModel, forgeVersion string, raw []Sub
 			Prompt:          c.Prompt,
 			Expected:        c.Kind,
 			ActualTriggered: actual,
-			Pass:            judgeResult(c, actual),
+			ActualOutput:    r.ActualOutput,
+			Pass:            judgeResult(c, actual, r.ActualOutput),
 			Note:            r.Note,
 		})
 	}
