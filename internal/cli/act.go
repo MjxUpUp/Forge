@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/act"
+	"github.com/MjxUpUp/Forge/internal/skillseval"
+	"github.com/MjxUpUp/Forge/internal/toolusage"
 	"github.com/spf13/cobra"
 )
 
@@ -74,6 +76,7 @@ func runActShow(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("no act conclusion for task %q", explicitRef)
 		}
 		printConclusion(found)
+		printSkillReach(proj.GitRoot, explicitRef)
 		return nil
 	}
 	c, err := act.Latest(proj)
@@ -85,6 +88,7 @@ func runActShow(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	printConclusion(c)
+	printSkillReach(proj.GitRoot, c.TaskRef)
 	return nil
 }
 
@@ -160,5 +164,37 @@ func printConclusion(c *act.Conclusion) {
 	fmt.Printf("Completed:   %s\n", c.CompletedAt.Format("2006-01-02 15:04"))
 	if d := c.Directive(); d != "" {
 		fmt.Println(d)
+	}
+}
+
+// printSkillReach 打印该 task 期间触发的 skill（来自 toollog 的 Skill 工具调用）。
+//
+// 步骤 3：把 skill 触达画像注入 forge act show——零新命令，用户看 act show 多一行 Skills。
+// agent-neutral：toollog 是跨 host 采集层（任何装了 forge hook 的 host 都记 Skill 调用），
+// 无 Skill 调用记录时静默（不打印空行），缺数据不打扰。
+//
+// 用 LoadForTaskAll（跨归档）而非 LoadForTask（仅 active）：forge task start 会归档上一任务
+// 的 toollog 到 toollog-<ts>.jsonl，查历史任务的 skill 触达必须跨归档读，否则完成任务后
+// 再 forge act show 永远看不到该 task 的 Skills（被归档走了）。
+func printSkillReach(root, taskRef string) {
+	calls, err := toolusage.LoadForTaskAll(root, taskRef)
+	if err != nil || len(calls) == 0 {
+		return
+	}
+	seen := map[string]bool{}
+	var skills []string
+	for _, c := range calls {
+		if c.ToolName != `Skill` {
+			continue
+		}
+		name := skillseval.ExtractSkillName(c.ToolInput)
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		skills = append(skills, name)
+	}
+	if len(skills) > 0 {
+		fmt.Printf("Skills:      %s\n", strings.Join(skills, ", "))
 	}
 }

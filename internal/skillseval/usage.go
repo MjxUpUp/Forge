@@ -1,55 +1,65 @@
-// Package skillseval 提供 skill 使用度量分析（analyze-usage）与 eval 清单生成（skill-eval）。
-// 弱依赖、独立：usage 读 skill-usage.jsonl 做 undertrigger 分析；eval 从 description 生成测试 prompt。
+// Package skillseval 提供 skill 使用度量分析（usage）与 eval 清单生成（skill-eval）。
+//
+// 使用度量基于 toollog（agent-neutral 采集层）：tool-track hook 跨 host 接入，Skill 工具
+// 事件触发时记录（当前仅 Claude Code 有 Skill 工具事件；cursor/codex 等 skill 经 mdc/AGENTS.md
+// 注入、无工具调用事件，自然不产生记录——解析点扩展见 ExtractSkillName）。替代断链的 pi 旧源
+// （~/.pi/research/skill-usage.jsonl，pi 退出专精后无人写）。数据层 agent-neutral，符合项目
+// 「外层框架不得依赖某个 agent」的原则。跨任务读取走 LoadAllAll（含归档 toollog-*.jsonl）。
 package skillseval
 
 import (
 	"cmp"
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/skillsdist"
+	"github.com/MjxUpUp/Forge/internal/toolusage"
 )
 
-// DefaultUsageLog 返回 ~/.forge/research/skill-usage.jsonl（对齐 analyze-usage.py USAGE_LOG）。
-func DefaultUsageLog() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
+// ExtractSkillName 从 Skill 工具调用的 tool_input 提取 skill 名。
+//
+// Claude Code Skill 工具输入是 JSON {"skill":"<name>","args":"..."}。tool-track 记录时
+// tool_input 截断到 500 字符，skill 名在 JSON 前部一般完好。非 JSON / 无 skill 字段 /
+// 截断损坏 → 返回空（调用方跳过）。
+//
+// agent-neutral 解析点：不同 host 的 Skill 工具输入格式若不同，扩展此函数而非改数据源。
+// 缺少 Skill 工具概念的 host（cursor/codex 等 skill 经 mdc/AGENTS.md 注入，无工具调用事件）
+// 自然不产生记录——skillseval 在数据缺失时仍给出诚实的 undertrigger 结论（全 canonical 未触发）。
+func ExtractSkillName(toolInput string) string {
+	if toolInput == "" {
+		return ""
 	}
-	return filepath.Join(home, ".pi", "research", "skill-usage.jsonl"), nil
+	var v struct {
+		Skill string `json:"skill"`
+	}
+	if json.Unmarshal([]byte(toolInput), &v) != nil {
+		return ""
+	}
+	return strings.TrimSpace(v.Skill)
 }
 
-// LoadUsage 读 skill-usage.jsonl，返回 skill→加载次数 与总事件数（对齐 analyze-usage.py load_usage）。
-// 仅计 type=="skill-load" 且 skill 非空的行；坏 JSON 行跳过；日志不存在视为空。
-func LoadUsage(logPath string) (map[string]int, int, error) {
-	data, err := os.ReadFile(logPath)
+// SkillCountsFromToollog 从 toollog 统计 Skill 工具调用次数（agent-neutral 数据源）。
+// 走 LoadAllAll 跨归档读（active + toollog-*.jsonl），否则 forge task start 归档后跨任务
+// 聚合只剩当前任务。返回 skill→count 与总 Skill 调用事件数。坏行/非 Skill 调用/提取不到
+// skill 名的均跳过。
+func SkillCountsFromToollog(root string) (map[string]int, int, error) {
+	calls, err := toolusage.LoadAllAll(root)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return map[string]int{}, 0, nil
-		}
 		return nil, 0, err
 	}
 	counts := map[string]int{}
 	total := 0
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
+	for _, c := range calls {
+		if c.ToolName != "Skill" {
 			continue
 		}
-		var e struct {
-			Type  string `json:"type"`
-			Skill string `json:"skill"`
-		}
-		if json.Unmarshal([]byte(line), &e) != nil {
+		name := ExtractSkillName(c.ToolInput)
+		if name == "" {
 			continue
 		}
-		if e.Type == "skill-load" && e.Skill != "" {
-			counts[e.Skill]++
-			total++
-		}
+		counts[name]++
+		total++
 	}
 	return counts, total, nil
 }
@@ -60,7 +70,7 @@ type SkillCount struct {
 	Count int    `json:"count"`
 }
 
-// UsageReport 是使用度量分析结果（对齐 analyze-usage.py JSON 输出）。
+// UsageReport 是使用度量分析结果。
 type UsageReport struct {
 	TotalEvents    int          `json:"total_events"`
 	TotalSkills    int          `json:"total_skills"`
@@ -69,9 +79,13 @@ type UsageReport struct {
 	HotSkills      []SkillCount `json:"hot_skills"`
 }
 
-// AnalyzeUsage 交叉 usage 日志与 canonical skill 集，产出 undertrigger 分析（对齐 analyze-usage.py main）。
-func AnalyzeUsage(canonical, logPath string) (*UsageReport, error) {
-	counts, total, err := LoadUsage(logPath)
+// AnalyzeUsage 交叉 toollog 的 Skill 调用与 canonical skill 集，产出 undertrigger 分析。
+//
+// 数据源是 toollog（agent-neutral）——与旧 pi 源（agent-coupled，pi 退出专精后断链）的根本
+// 区别。canonical 集过滤"幽灵技能"（toollog 残留但 canonical 已删），与 NeverTriggered（仅
+// canonical）对称。
+func AnalyzeUsage(root, canonical string) (*UsageReport, error) {
+	counts, total, err := SkillCountsFromToollog(root)
 	if err != nil {
 		return nil, err
 	}
@@ -89,8 +103,7 @@ func AnalyzeUsage(canonical, logPath string) (*UsageReport, error) {
 	slices.Sort(never)
 
 	// canonical 集：HotSkills/UsedSkills 只计 canonical 中存在的 skill，过滤日志里的
-	// "幽灵技能"（canonical 已删但日志残留）——与 NeverTriggered（仅 canonical）对称，
-	// 否则 used_skills 可能 > total_skills，hot_skills 里混入已不存在的名字。
+	// "幽灵技能"（canonical 已删但日志残留）——与 NeverTriggered（仅 canonical）对称。
 	canonicalSet := make(map[string]bool, len(all))
 	for _, n := range all {
 		canonicalSet[n] = true

@@ -51,8 +51,12 @@ type CaseSet struct {
 	Cases    []EvalCase `json:"cases"`
 }
 
-// EvalDir 返回 eval 闭环数据根目录 ~/.forge/research/skill-eval（对齐 eval-*.md、
-// skill-usage.jsonl 的 ~/.forge/research/ 既有约定）。CLI/MCP 默认用它。
+// EvalDir 返回 eval-cases 闭环数据根目录 ~/.pi/research/skill-eval。
+//
+// 这是 eval-cases 体系（probes/oracle/judge，skillhone 用）的独立存储路径，沿用历史目录
+// 约定。与本 PR 的 usage 数据源（pi skill-usage.jsonl → toollog，agent-neutral）是不同
+// 数据线：usage 已切断 pi 源切 toollog，eval-cases 路径未迁移（涉及存量 cases 数据迁移，
+// 另开 task，不在本 scope）。原注释写 ~/.forge/research 与代码实际返回 ~/.pi 矛盾，已订正。
 func EvalDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
