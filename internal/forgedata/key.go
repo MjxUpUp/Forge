@@ -20,7 +20,7 @@ import (
 	"strings"
 )
 
-// Predefined errors
+// 预定义错误
 var (
 	// ErrNotInGitRepo: cwd 不在任何 git repo 内
 	ErrNotInGitRepo = errors.New(`forgedata: cwd is not in a git repository`)

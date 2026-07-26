@@ -25,21 +25,21 @@ var rootCmd = &cobra.Command{
 
 文档: https://github.com/MjxUpUp/Forge`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		// Check for updates (24h cached, silent on failure)
+		// 检查更新（24h 缓存，失败静默）
 		checkForUpdate(cmd.Root().Version, cmd)
 
-		// Skip auto-sync for init command (project doesn't exist yet)
+		// init 命令跳过 auto-sync（项目尚不存在）
 		if cmd.Name() == "init" {
 			return nil
 		}
 
-		// Skip if not in a forge project (e.g. forge --version outside a project)
+		// 非 forge 项目跳过（如 forge --version 在项目外执行）
 		dir, err := findProjectRoot()
 		if err != nil {
 			return nil
 		}
 
-		// Auto-sync .forge/ files to current binary version
+		// 把 .forge/ 文件 auto-sync 到当前 binary version
 		return autoSync(dir, cmd.Root().Version, false)
 	},
 }
@@ -51,7 +51,7 @@ func init() {
 	docsconsistency.RegisterCommandTree(func() *cobra.Command { return rootCmd })
 }
 
-// SetVersion sets version info injected via -ldflags at build time.
+// SetVersion 设置构建期经 -ldflags 注入的 version 信息。
 func SetVersion(v, c, d string) {
 	rootCmd.Version = v
 	if v != "dev" {

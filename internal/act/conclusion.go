@@ -111,7 +111,7 @@ func Append(p *forgedata.Project, c *Conclusion) error {
 	return err
 }
 
-// LoadAll reads all conclusions in chronological order. Returns nil if absent.
+// LoadAll 按时序读所有 conclusion。文件不存在返回 nil。
 // 用 bufio.Reader 逐行读（无 Scanner 的 1MB 单行上限）：单行损坏或异常超大只跳过该行，
 // 不让整条聚合失败——dashboard/status/health 都消费它，单行异常不应让全表变 500。
 func LoadAll(p *forgedata.Project) ([]Conclusion, error) {
@@ -149,7 +149,7 @@ func LoadAll(p *forgedata.Project) ([]Conclusion, error) {
 	return cs, nil
 }
 
-// Latest returns the most recent conclusion, or nil if none.
+// Latest 返回最近一条 conclusion，无则 nil。
 func Latest(p *forgedata.Project) (*Conclusion, error) {
 	cs, err := LoadAll(p)
 	if err != nil {

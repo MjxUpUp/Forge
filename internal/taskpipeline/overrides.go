@@ -19,7 +19,7 @@ type TaskOverrides struct {
 // EscapeDisabled 报告 which（"work-activity"/"test-coverage"/"skill-decisions"）逃生舱
 // 对本任务是否生效。per-task Overrides 优先于 process-global env（防泄漏路径）；env 留作
 // CI/测试 fallback。调用方：work-activity 门禁（executor）、test-coverage 门禁（testcoverage）、
-// skill-decisions guardrail（executor）。
+// 以及 skill-decisions guardrail（executor）。
 func EscapeDisabled(state *TaskState, which, envVar string) bool {
 	if state != nil {
 		switch which {

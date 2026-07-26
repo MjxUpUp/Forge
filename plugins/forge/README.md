@@ -74,13 +74,13 @@ User-level hooks fire in every Claude Code project. In git projects without `.fo
 | **Cursor** | marketplace | `forge init --agents cursor` | Cursor plugin model carries skills, not Claude-shape hooks |
 | **GitHub Copilot (CLI / VS Code)** | marketplace + `.copilot-plugin/` | `forge init --agents copilot` (CLI) | VS Code auto-discovers `.copilot-plugin/plugin.json` if you open this repo |
 | **Windsurf** | (mirrored `buildWindsurfHooks` in code) | (Cascade hooks) | mirrors Claude SessionStart + write hooks via `internal/agentbridge/windsurf.go` |
-| **OpenCode / Kiro / Cline / Gemini CLI / Mistral Vibe / Trae / Nanobot / Hermes / Antigravity / OpenClaw** | (manual, see `install.sh`) | `forge init --agents <host>` if supported | install.sh script provides one-step symlink-style per-skill/folder install for 14 hosts inspired by [Understand-Anything](https://github.com/Egonex-AI/Understand-Anything) |
+| **OpenCode / Kiro / Cline / Gemini CLI / Mistral Vibe / Trae / Nanobot / Hermes / Antigravity / OpenClaw** | (manual, see `install.sh`) | `forge init --agents <host>` if supported | install.sh script provides one-step symlink-style per-skill/folder install for 14 hosts |
 
 For experimental / bleeding-edge hosts, run `./plugins/forge/install.sh --help` for the full supported platform list.
 
 ## Distribution model
 
-Forge ships as an npm binary (`@agent_forge/forge`) plus a marketplace plugin (this directory). All supported agent hosts use the same single marketplace install command — there is no per-skill vs folder symlink split because plugin marketplaces already give a unified delivery surface. This contrasts with single-skill tools (e.g. [Understand-Anything](https://github.com/Egonex-AI/Understand-Anything) 14-host `install.sh` with per-skill/folder symlinks) where the symlink style is the actual installation primitive.
+Forge ships as an npm binary (`@agent_forge/forge`) plus a marketplace plugin (this directory). All supported agent hosts use the same single marketplace install command — there is no per-skill vs folder symlink split because plugin marketplaces already give a unified delivery surface. This contrasts with single-skill tools (whose 14-host `install.sh` uses per-skill/folder symlinks as the actual installation primitive).
 
 When this model stops being sufficient (e.g. agents whose marketplace can not resolve `hooks`), `forge plugin pack --agent <host>` lets us generate host-specific packs; until then, one marketplace path serves all supported agents.
 
@@ -102,4 +102,4 @@ cp -R plugins/forge/* "$HOME/.claude/plugins/cache/forge/forge/$VERSION/"
 4. Start a fresh Claude Code session (existing sessions keep old prompts in context).
 5. Verify by opening any git project — the `init-suggest` SessionStart hook should fire.
 
-This pattern was inspired by Understand-Anything CLAUDE.md (2026-07-04): symlinks do not work because Claude Search/Glob tools can not follow them.
+Rationale: Claude Search/Glob tools can not follow symlinks, so the cache copy above replaces rather than links.

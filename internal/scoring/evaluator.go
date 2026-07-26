@@ -11,7 +11,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 )
 
-// Evaluate scores a completed task across 6 dimensions and returns a ScoreResult.
+// Evaluate 对一个完成任务跨 6 个维度打分，返回 ScoreResult。
 func Evaluate(input *EvaluateInput, config *scoringtypes.ScoringConfig) *scoringtypes.ScoreResult {
 	dimensions := []scoringtypes.DimensionScore{
 		scoreProcess(input.GateHistory),
@@ -50,7 +50,7 @@ func buildEvidenceSummary(deterministic, agentClaim int) *scoringtypes.EvidenceS
 	}
 }
 
-// --- Dimension scorers ---
+// --- 维度打分函数 ---
 
 func scoreProcess(h GateHistory) scoringtypes.DimensionScore {
 	if h.TotalGates == 0 {
@@ -239,7 +239,7 @@ func scoreEfficiency(startedAt, completedAt time.Time) scoringtypes.DimensionSco
 	}
 }
 
-// --- Helpers ---
+// --- 辅助函数 ---
 
 func weightedOverall(dimensions []scoringtypes.DimensionScore, weights map[string]float64) float64 {
 	total := 0.0
@@ -260,15 +260,15 @@ func weightedOverall(dimensions []scoringtypes.DimensionScore, weights map[strin
 	return math.Round(total/weightSum*100) / 100
 }
 
-// parseDiffStatLines sums total changed lines from `git diff --numstat` output,
-// EXCLUDING test files and non-source files.
+// parseDiffStatLines 从 `git diff --numstat` 输出求和总变更行数，
+// 排除测试文件和非源码文件。
 //
 // 旧实现对所有 numstat 行求和——测试文件、文档、配置的行都算进 scope，导致"写测试"被
 // 反向惩罚（一次 hazard 任务 523 行约一半是测试 → scope=40，把 A 级工作压到 C）。业界
 // 共识（SLOCcount 默认排除生成代码、SLOC 排除注释空行）：规模度量应只数"人写的产品源码"。
 // 故测试文件和非源码后缀不计入 scope——写测试从反向激励变为中性。
 //
-// numstat format: "<added>\t<deleted>\t<path>" (binary files show "-\t-\t<path>").
+// numstat 格式：「<added>\t<deleted>\t<path>」（binary 文件显示「-\t-\t<path>」）。
 func parseDiffStatLines(stat string) int {
 	total := 0
 	for _, line := range splitLines(stat) {
@@ -292,9 +292,8 @@ var scopeSourceExts = map[string]bool{
 	`.rb`: true, `.zig`: true, `.nim`: true,
 }
 
-// countsAsScope reports whether path counts toward the scope dimension: it must
-// be a source file AND not a test file. Test files are excluded so writing tests
-// is never penalized as "large scope".
+// countsAsScope 报告 path 是否计入 scope 维度：必须是源码文件且非测试文件。
+// 测试文件被排除，写测试不会被反向惩罚为「large scope」。
 func countsAsScope(path string) bool {
 	if isTestPath(path) {
 		return false
@@ -302,8 +301,8 @@ func countsAsScope(path string) bool {
 	return scopeSourceExts[filepath.Ext(path)]
 }
 
-// isTestPath reports whether path looks like a test file (same heuristic as
-// taskpipeline.isTestFile). Used to exclude tests from the scope dimension.
+// isTestPath 报告 path 是否疑似测试文件（与 taskpipeline.isTestFile 同启发式）。
+// 用于在 scope 维度排除测试文件。
 func isTestPath(path string) bool {
 	for _, pat := range []string{`_test.`, `_spec.`, `.test.`, `.spec.`, `test/`, `tests/`, `__tests__/`} {
 		if strings.Contains(path, pat) {
@@ -313,9 +312,9 @@ func isTestPath(path string) bool {
 	return false
 }
 
-// parseNumstatLine parses one "added\tdeleted\tpath" line and also returns the
-// path so callers can filter (e.g. exclude test files from scope). Binary entries
-// ("-\t-\t...") return ok=false. Blank or malformed lines return ok=false.
+// parseNumstatLine 解析单行「added\tdeleted\tpath」并同时返回 path 以便调用方
+// 过滤（如把测试文件排除出 scope）。binary 条目（「-\t-\t...」）返 ok=false。
+// 空行或格式错误返 ok=false。
 func parseNumstatLine(line string) (added, deleted int, path string, ok bool) {
 	tab1 := strings.IndexByte(line, '\t')
 	if tab1 < 0 {
@@ -330,7 +329,7 @@ func parseNumstatLine(line string) (added, deleted int, path string, ok bool) {
 	deletedField := rest[:tab2]
 	path = rest[tab2+1:]
 	if addedField == "-" || deletedField == "-" {
-		return 0, 0, path, false // binary file — no line counts
+		return 0, 0, path, false // binary 文件——无行数统计
 	}
 	a, errA := strconv.Atoi(addedField)
 	d, errD := strconv.Atoi(deletedField)

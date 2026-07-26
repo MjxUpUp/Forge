@@ -202,7 +202,7 @@ func isFenceMarker(line string) bool {
 	return line[1] == first && line[2] == first
 }
 
-// acceptanceGateDisableEnv lets a task opt out of the acceptance pre-flight at
+// acceptanceGateDisableEnv 让 task 可在 task-complete 处退出 acceptance pre-flight
 // task-complete（symmetric to FORGE_TEST_COVERAGE）. 合法场景：验收标准不可机器执行、或
 // 纯人工验收。CLI 在 BLOCKED 文案里明示此逃生舱（不静默绕过）；逃生 → checklog
 // CheckEscapeHatch → evidence Strength cap Weak（有代价）。

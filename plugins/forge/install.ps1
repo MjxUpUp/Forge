@@ -7,7 +7,7 @@
 #   $env:FORGE_VERSION = "v0.30.0"   # pin version
 #   $env:FORGE_PKG = "@agent_forge/forge"   # override package
 #
-# Modeled after install.sh — this is a FALLBACK. Recommended path is
+# PowerShell counterpart of install.sh — this is a FALLBACK. Recommended path is
 # `npm install -g @agent_forge/forge`. The plugin install commands differ per
 # agent and must be run interactively in the agent CLI (cannot be scripted).
 

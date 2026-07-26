@@ -73,7 +73,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	current := getCurrentVersion(cmd.Root().Version)
 	fmt.Fprintf(os.Stderr, "当前版本: %s\n", current)
 
-	// 1. Get latest release
+	// 1. 取 latest release
 	fmt.Fprintf(os.Stderr, "正在检查更新...\n")
 	release, err := getLatestRelease()
 	if err != nil {
@@ -89,29 +89,29 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Reject downgrades — only update to newer versions
+	// 拒绝降级——只更新到更新版本
 	if compareVersions(latest, current) <= 0 {
 		fmt.Fprintf(os.Stderr, "当前 %s 已是最新或更新版本（远端: %s）\n", current, latest)
 		_ = saveUpdateCache(current)
 		return nil
 	}
 
-	// 2. Find platform asset
+	// 2. 找 platform asset
 	asset := findPlatformAsset(release.Assets)
 	if asset == nil {
 		return fmt.Errorf("找不到 %s/%s 的发行包", runtime.GOOS, runtime.GOARCH)
 	}
 	fmt.Fprintf(os.Stderr, "下载: %s (%.1f MB)\n", asset.Name, float64(asset.Size)/1024/1024)
 
-	// 3. Download to temp dir
+	// 3. 下载到 temp dir
 	tmpDir, err := os.MkdirTemp("", "forge-update-*")
 	if err != nil {
 		return fmt.Errorf("创建临时目录失败: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
-	os.Chmod(tmpDir, 0700) // Restrict to owner only (prevent TOCTOU)
+	os.Chmod(tmpDir, 0700) // 仅 owner 可访问（防 TOCTOU）
 
-	// #4: Validate asset name — reject path traversal and drive letters
+	// #4：校验 asset name——拒绝路径穿越与盘符
 	archivePath := filepath.Join(tmpDir, asset.Name)
 	if !strings.HasPrefix(filepath.Clean(archivePath), filepath.Clean(tmpDir)+string(os.PathSeparator)) {
 		return fmt.Errorf("invalid asset name %q: path traversal detected", asset.Name)
@@ -121,27 +121,27 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Fprintf(os.Stderr, "下载完成\n")
 
-	// 4. Verify checksum
+	// 4. 校验 checksum
 	fmt.Fprintf(os.Stderr, "校验 SHA-256...\n")
 	if err := verifyChecksum(release.Assets, asset.Name, archivePath); err != nil {
 		return fmt.Errorf("校验失败: %w", err)
 	}
 	fmt.Fprintf(os.Stderr, "校验通过\n")
 
-	// 5. Extract binary
+	// 5. 解压 binary
 	fmt.Fprintf(os.Stderr, "解压...\n")
 	extractedPath, err := extractBinary(archivePath, tmpDir)
 	if err != nil {
 		return fmt.Errorf("解压失败: %w", err)
 	}
 
-	// 6. Self-test
+	// 6. 自检（self-test）
 	fmt.Fprintf(os.Stderr, "验证新版本...\n")
 	if err := selfTest(extractedPath); err != nil {
 		return fmt.Errorf("新版本验证失败: %w", err)
 	}
 
-	// 7. Replace binary
+	// 7. 替换 binary
 	exePath, err := getExecutablePath()
 	if err != nil {
 		return fmt.Errorf("获取当前路径失败: %w", err)
@@ -154,7 +154,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	fmt.Fprintf(os.Stderr, "✓ 已更新到 %s\n", latest)
 
-	// Update cache
+	// 更新缓存
 	_ = saveUpdateCache(latest)
 
 	// --plugin flag: 提示 plugin 重新安装（marketplace 镜像）
@@ -225,7 +225,7 @@ func findPlatformAsset(assets []githubAsset) *githubAsset {
 		return nil
 	}
 
-	// goreleaser archive name: forge_{version}_{os}_{arch}.tar.gz
+	// goreleaser archive 名：forge_{version}_{os}_{arch}.tar.gz
 	for i := range assets {
 		name := assets[i].Name
 		if strings.Contains(name, "_"+osName+"_") &&
@@ -280,7 +280,7 @@ func tryDownload(url, dest string) error {
 	}
 	defer f.Close()
 
-	// Progress: write to stderr every 1MB
+	// 进度：每 1MB 写 stderr
 	progress := &progressWriter{w: f, total: resp.ContentLength, lastReport: 0}
 	_, err = io.Copy(progress, resp.Body)
 	return err
@@ -305,12 +305,12 @@ func (pw *progressWriter) Write(p []byte) (int, error) {
 }
 
 func verifyChecksum(assets []githubAsset, assetName, archivePath string) error {
-	// Find checksums.txt
+	// 找 checksums.txt
 	var checksumURL string
 	for _, a := range assets {
 		if a.Name == "checksums.txt" {
 			checksumURL = a.BrowserDownloadURL
-			// Force checksums.txt from official GitHub when using mirror (#2, #3)
+			// 使用 mirror 时强制从官方 GitHub 取 checksums.txt（#2、#3）
 			if os.Getenv("FORGE_BINARY_HOST") != "" {
 				checksumURL = "https://github.com/MjxUpUp/Forge/releases/latest/download/checksums.txt"
 			}
@@ -321,7 +321,7 @@ func verifyChecksum(assets []githubAsset, assetName, archivePath string) error {
 		return fmt.Errorf("release 中没有 checksums.txt")
 	}
 
-	// Download checksums.txt
+	// 下载 checksums.txt
 	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Get(checksumURL)
 	if err != nil {
@@ -338,7 +338,7 @@ func verifyChecksum(assets []githubAsset, assetName, archivePath string) error {
 		return fmt.Errorf("读取 checksums.txt 失败: %w", err)
 	}
 
-	// Parse checksums.txt — format: "hash  filename"
+	// 解析 checksums.txt——格式为 hash 后接两个空格再接 filename
 	expectedHash := ""
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
@@ -355,7 +355,7 @@ func verifyChecksum(assets []githubAsset, assetName, archivePath string) error {
 		return fmt.Errorf("checksums.txt 中没有 %s 的条目", assetName)
 	}
 
-	// Compute actual hash
+	// 算实际 hash
 	f, err := os.Open(archivePath)
 	if err != nil {
 		return err
@@ -404,16 +404,16 @@ func extractBinary(archivePath, destDir string) (string, error) {
 			return "", fmt.Errorf("读取 tar 失败: %w", err)
 		}
 
-		// Reject symlinks and hard links (security: prevent path escape)
+		// 拒绝 symlink 与 hard link（安全：防路径逃逸）
 		if hdr.Typeflag == tar.TypeSymlink || hdr.Typeflag == tar.TypeLink {
 			continue
 		}
 
-		// Look for the forge binary in the archive
+		// 在 archive 中找 forge binary
 		base := filepath.Base(hdr.Name)
 		if base == binaryName && !hdr.FileInfo().IsDir() {
 			outPath := filepath.Join(destDir, "new-"+binaryName)
-			// Strip setuid/setgid bits from mode
+			// 从 mode 中剥离 setuid/setgid 位
 			safeMode := hdr.FileInfo().Mode() &^ 0o6000
 			out, err := os.OpenFile(outPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, safeMode)
 			if err != nil {
@@ -454,7 +454,7 @@ func getExecutablePath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// Resolve symlinks (npm wrapper on Unix may use symlinks)
+	// 解析 symlink（Unix 上 npm wrapper 可能用 symlink）
 	exe, err = filepath.EvalSymlinks(exe)
 	if err != nil {
 		return "", err
@@ -463,7 +463,7 @@ func getExecutablePath() (string, error) {
 }
 
 func replaceBinary(exePath, newBinaryPath string) error {
-	// Read new binary data
+	// 读新 binary 数据
 	newData, err := os.ReadFile(newBinaryPath)
 	if err != nil {
 		return fmt.Errorf("读取新二进制失败: %w", err)
@@ -478,40 +478,40 @@ func replaceBinary(exePath, newBinaryPath string) error {
 func replaceBinaryWindows(exePath string, newData []byte) error {
 	oldPath := exePath + ".old"
 
-	// Remove stale .old if present
+	// 移除残留的 .old
 	os.Remove(oldPath)
 
-	// Step 1: rename current exe to .old
+	// 步骤 1：把当前 exe 重命名为 .old
 	if err := os.Rename(exePath, oldPath); err != nil {
 		return fmt.Errorf("重命名当前二进制失败: %w", err)
 	}
 
-	// Step 2: write new binary
+	// 步骤 2：写新 binary
 	if err := os.WriteFile(exePath, newData, 0755); err != nil {
-		// Rollback: try to restore .old
+		// 回滚：尝试还原 .old
 		if rerr := os.Rename(oldPath, exePath); rerr != nil {
 			return fmt.Errorf("写入新二进制失败且回滚也失败: %w (rollback: %v). 再次运行 forge 命令将从 .old 备份恢复", err, rerr)
 		}
 		return fmt.Errorf("写入新二进制失败（已回滚）: %w", err)
 	}
 
-	// Step 3: self-test the new binary
+	// 步骤 3：对新 binary 跑 self-test
 	if err := selfTest(exePath); err != nil {
-		// Rollback: restore .old
+		// 回滚：还原 .old
 		if rerr := os.Rename(oldPath, exePath); rerr != nil {
 			return fmt.Errorf("新版本验证失败且回滚也失败: %w (rollback: %v). 再次运行 forge 命令将从 .old 备份恢复", err, rerr)
 		}
 		return fmt.Errorf("新版本验证失败（已回滚）: %w", err)
 	}
 
-	// Step 4: remove .old (success)
+	// 步骤 4：删除 .old（成功）
 	os.Remove(oldPath)
 
 	return nil
 }
 
 func replaceBinaryUnix(exePath string, newData []byte) error {
-	// Write to temp file in same directory, then atomic rename
+	// 写到同目录的 temp file，再 atomic rename
 	dir := filepath.Dir(exePath)
 	tmpPath := filepath.Join(dir, ".forge-update-tmp")
 
@@ -519,13 +519,13 @@ func replaceBinaryUnix(exePath string, newData []byte) error {
 		return fmt.Errorf("写入临时文件失败: %w", err)
 	}
 
-	// Self-test before replacing
+	// 替换前先 self-test
 	if err := selfTest(tmpPath); err != nil {
 		os.Remove(tmpPath)
 		return fmt.Errorf("新版本验证失败: %w", err)
 	}
 
-	// Atomic replace
+	// 原子替换
 	if err := os.Rename(tmpPath, exePath); err != nil {
 		os.Remove(tmpPath)
 		return fmt.Errorf("替换二进制失败: %w", err)
@@ -534,13 +534,13 @@ func replaceBinaryUnix(exePath string, newData []byte) error {
 	return nil
 }
 
-// getCurrentVersion extracts the bare version number (e.g. "0.11.1") from
-// the full version string set by SetVersion: "X.Y.Z (commit: ..., built: ...)"
+// getCurrentVersion 从 SetVersion 设置的完整 version 串（如 X.Y.Z (commit: ..., built: ...)）
+// 中提取裸版本号（如 0.11.1）。
 func getCurrentVersion(fullVersion string) string {
 	if fullVersion == "dev" {
 		return "dev"
 	}
-	// Extract version before the first space/paren
+	// 在第一个空格/括号前提取 version
 	idx := strings.IndexByte(fullVersion, ' ')
 	if idx > 0 {
 		return fullVersion[:idx]
@@ -556,9 +556,9 @@ func jsonUnmarshal(r io.Reader, v any) error {
 	return json.Unmarshal(data, v)
 }
 
-// compareVersions compares two semver-like version strings (e.g. "0.11.1" vs "0.12.0").
-// Returns: 1 if a > b, 0 if a == b, -1 if a < b.
-// Strips pre-release suffixes (-beta.1) and only compares numeric parts.
+// compareVersions 比较两个 semver 风格的 version 串（如 0.11.1 对 0.12.0）。
+// 返回：a > b 返 1，a == b 返 0，a < b 返 -1。
+// 剥离 pre-release suffix（-beta.1），只比较数字部分。
 func compareVersions(a, b string) int {
 	aCore := a
 	bCore := b
@@ -597,7 +597,7 @@ func compareVersions(a, b string) int {
 }
 
 func parseVersionPart(s string) int {
-	// Strip non-numeric prefix/suffix (e.g. "rc1" → 1 is wrong, just return 0)
+	// 剥离非数字前缀/后缀（如 rc1 错误地算成 1，直接返 0）
 	n := 0
 	for _, c := range s {
 		if c >= '0' && c <= '9' {

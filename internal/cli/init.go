@@ -38,25 +38,24 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
 
-	// Create .forge/ directory (project-level hooks only). Runtime state
-	// (tasks/gates/checklog/...) lives in the user-level DataDir
-	// (~/.forge/projects/<key>/) — created on demand by stores' MkdirAll.
+	// 创建 .forge/ 目录（仅项目级 hook）。运行时状态
+	// （tasks/gates/checklog/...）位于用户级 DataDir
+	// （~/.forge/projects/<key>/），由各 store 的 MkdirAll 按需创建。
 	forgeDir := filepath.Join(dir, ".forge")
 	if err := os.MkdirAll(filepath.Join(forgeDir, "hooks"), 0755); err != nil {
 		return fmt.Errorf("failed to create %s: %w", forgeDir, err)
 	}
 
-	// Copy hook templates
+	// 复制 hook 模板
 	if err := hooks.WriteHookTemplates(forgeDir); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to copy hooks: %v\n", err)
 	}
 
-	// Generate .claude/settings.local.json (Claude Code project-level hooks).
-	// Only when plugin is NOT user-level installed — when plugin IS installed,
-	// user-level plugin.json already registers ForgeHookSpec machine-wide.
-	// Writing project-level hooks is redundant and creates a fragile
-	// "write then immediately strip" pattern that can corrupt the file.
-	// dedupeProjectLevelIfPlugin still runs at the end to clean up legacy hooks.
+	// 生成 .claude/settings.local.json（Claude Code 项目级 hook）。仅当 plugin
+	// 未做 user-level 安装时执行——plugin 已安装时，user-level plugin.json 已经
+	// machine-wide 注册了 ForgeHookSpec。再写项目级 hook 是冗余，并制造脆弱的
+	// 写入又立刻剥除模式，可能损坏文件。dedupeProjectLevelIfPlugin 仍会在末尾
+	// 运行以清理 legacy hook。
 	if !hooks.IsClaudePluginInstalled() {
 		if err := hooks.GenerateSettings(dir); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to generate .claude/settings.local.json: %v\n", err)
@@ -65,30 +64,30 @@ func runInit(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "forge plugin 已 user-level 接管 hooks,跳过 project-level settings.local.json 生成\n")
 	}
 
-	// Write quality protocol
+	// 写 quality protocol
 	proto := protocol.DefaultProtocol()
 	if err := protocol.Save(dir, proto); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to write protocol.yml: %v\n", err)
 	}
 
-	// Generate quality skill
+	// 生成 quality skill
 	if err := skillgen.GenerateQualitySkill(dir, proto); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to generate quality skill: %v\n", err)
 	}
 
-	// Generate .claude/CLAUDE.md with quality protocol reference
+	// 生成 .claude/CLAUDE.md，引用 quality protocol
 	if err := skillgen.GenerateClaudeMD(dir); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to generate CLAUDE.md: %v\n", err)
 	}
 
-	// Generate project-root AGENTS.md — the cross-agent instruction source
-	// (codex/cursor/copilot/windsurf/cline read AGENTS.md; CLAUDE.md is
-	// claude-only). Same Forge-managed section contract.
+	// 生成 project-root AGENTS.md——跨 agent 指令源（codex/cursor/copilot/
+	// windsurf/cline 读 AGENTS.md；CLAUDE.md 仅 claude 使用）。同样是
+	// Forge-managed section 契约。
 	if err := skillgen.GenerateAgentsMD(dir); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to generate AGENTS.md: %v\n", err)
 	}
 
-	// Translate for other agents (Cursor, Copilot, Windsurf)
+	// 为其他 agent 做翻译（Cursor、Copilot、Windsurf）
 	agentsFlag, _ := cmd.Flags().GetString("agents")
 	agents := agentbridge.ParseAgentFlag(dir, agentsFlag)
 	if len(agents) > 0 {

@@ -35,8 +35,8 @@ func init() {
 	// StringArray（非 StringSlice）：cobra/pflag 的 StringSlice 默认按逗号切分，会把
 	// 含逗号的命令拆坏；StringArray 每个 --accept 整条不切。验收标准是完整 "run :: expected" 串。
 	taskStartCmd.Flags().StringArray("accept", nil, `验收标准（可重复 --accept）：格式 "run :: expected"（expected=输出子串）或裸 "run"（只看退出码 0）。forge task verify-acceptance 实跑回扣`)
-	// PlanScope：开工前声明计划改动的文件白名单（规划前置 → 可度量契约，对应 Copilot Workspace
-	// plan / Terraform desired state）。支持精确路径/glob/目录前缀。advisory：实改超出声明记
+	// PlanScope：开工前声明计划改动的文件白名单（规划前置 → 可度量契约）。
+	// 支持精确路径/glob/目录前缀。advisory：实改超出声明记
 	// scope-drift（checklog），不阻塞（变更影响分析召回率仅 ~44%，scope 是 prediction 非 contract）。
 	taskStartCmd.Flags().StringArray("scope", nil, `计划改动文件白名单（可重复 --scope）：精确路径 internal/cli/task.go / glob internal/cli/*.go / 目录前缀 internal/cli。开工前声明，advisory 检测 scope-drift；中途可用 forge task scope add 追加`)
 	// 接续真相源 flags（continuity）：把 goal/plan/发起工具随 task start 持久化进 TaskState，
@@ -132,7 +132,7 @@ var taskListCmd = &cobra.Command{
 }
 
 // taskScopeCmd 是 PlanScope 白名单的管理入口（规划前置 → 可度量契约）。
-// add：中途追加（对应 Agentless 分层、可修正的定位——规划不是一次锁死）。
+// add：中途追加（分层、可修正的定位——规划不是一次锁死）。
 // show：查看声明 + 实时 scope-drift（实改态 vs 声明态差集，advisory）。
 var taskScopeCmd = &cobra.Command{
 	Use:   "scope",
@@ -155,10 +155,9 @@ var taskOverrideCmd = &cobra.Command{
 	RunE:  runTaskOverride,
 }
 
-// phaseExplosionWarning returns a non-empty warning when the given session already
-// holds too many incomplete tasks — the "phase explosion" smell where one plan is
-// split into N tasks each running the full gate flow. Advisory only (non-blocking).
-// Returns "" when no warning is warranted (fewer than 3, unknown session, or error).
+// phaseExplosionWarning 在指定 session 已有过多未完成 task 时返回非空告警——
+// 即「phase 爆炸」反模式（一个 plan 拆成 N 个 task 各跑全套门禁）。仅 advisory
+// （不阻塞）。无需告警时返 ""（少于 3、未知 session 或出错）。
 func phaseExplosionWarning(root, sessionID, currentRef string) string {
 	if sessionID == "" {
 		return ""
@@ -179,12 +178,10 @@ func phaseExplosionWarning(root, sessionID, currentRef string) string {
 	return ""
 }
 
-// nonGitTaskWarning is the degraded-mode notice printed at `task start` when the
-// project is not a git repo. Forge is git-optional by design — gates still pass
-// and `complete` still scores — but the agent needs to know which scoring
-// dimensions lose fidelity so it doesn't read neutral scores as a broken
-// pipeline. Mentions `abort` because a degraded task a user doesn't want to
-// pursue is exactly the case abort exists for.
+// nonGitTaskWarning 是项目非 git 仓库时 `task start` 打印的降级模式提示。
+// forge 设计上 git-optional——门禁照常过、`complete` 照常评分——但 agent 须
+// 知道哪些评分维度失真，免得把中性分读成管道坏了。提到 `abort`：用户不想继续
+// 的降级任务正是 abort 存在的场景。
 func nonGitTaskWarning() string {
 	return "⚠️ 当前项目不是 git 仓库。forge 以降级模式运行：门禁照常通过、任务可完成评分，但以下评分维度将不可用或偏低：\n" +
 		"  - 变更范围 (scope)：无 git diff，固定中性分\n" +
@@ -224,12 +221,10 @@ func completeGenericTask(root string, state *taskpipeline.TaskState) error {
 	return nil
 }
 
-// duplicateScoreWarnings returns warning strings for completed tasks on the
-// same branch that share state's HeadCommit — a re-score over an identical
-// commit range. Cross-branch matches are excluded: independent feature branches
-// forked from one master HEAD all record that same HeadCommit at task start,
-// but their diffs live on independent branches and don't overlap, so they are
-// not duplicates.
+// duplicateScoreWarnings 返同分支已完成 task 中与 state 共享 HeadCommit 的告警串——
+// 即在相同 commit 范围上的重新评分。跨分支匹配不计：从同一 master HEAD 拉出的
+// 独立 feature 分支都在 task start 时记录同样的 HeadCommit，但它们的 diff 在独立分支
+// 上不重叠，不算重复。
 func duplicateScoreWarnings(state *taskpipeline.TaskState, allStates []*taskpipeline.TaskState) []string {
 	if state.HeadCommit == "" {
 		return nil
@@ -255,7 +250,7 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	title, _ := cmd.Flags().GetString("title")
 	createBranch, _ := cmd.Flags().GetBool("branch")
 
-	// --branch: create a new branch from main/master and switch to it.
+	// --branch：从 main/master 创建新分支并切过去。
 	if createBranch {
 		if explicitRef == "" {
 			return fmt.Errorf("--branch requires --ref (e.g., --ref feat/add-auto-branch)")
@@ -292,7 +287,7 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Check if task already exists
+	// 检查 task 是否已存在
 	existing, err := taskpipeline.LoadTaskState(root, ctx.TaskRef)
 	if err == nil && existing != nil {
 		return fmt.Errorf("task %q already exists (started at %s). Use 'forge task status' to check progress",
@@ -301,7 +296,7 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 
 	state := taskpipeline.NewTaskState(ctx)
 
-	// Record current HEAD for duplicate detection.
+	// 记录当前 HEAD 用于重复检测。
 	state.HeadCommit = taskpipeline.GetHeadCommit(root)
 
 	// 持久化验收标准（dev-workflow Plan 的 Run+Expected）：spec 不再随 plan 文本飘走，
@@ -355,11 +350,11 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		state.ExternalOrigin = taskpipeline.ParseExternalOriginURL(fromIssue)
 	}
 
-	// Resolve the Claude Code session id once — used to scope the active-task-ref
-	// and session records so concurrent sessions on a shared checkout stay isolated.
+	// 取一次 Claude Code session id——用于 scope active-task-ref 与 session record，
+	// 让共享 checkout 上的并发 session 保持隔离。
 	sid := taskpipeline.CurrentSessionID()
 
-	// Ensure session exists and link task to it.
+	// 确保 session 存在并把 task 链上去。
 	session, err := taskpipeline.EnsureSession(root, sid)
 	if err == nil {
 		state.SessionID = session.SessionID
@@ -378,14 +373,13 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Clear check log for fresh task. (Clear also prunes over-age checklog/toollog
-	// archives per FORGE_LOG_RETENTION_DAYS — see store.go.)
+	// 为新 task 清 checklog。（Clear 也会按 FORGE_LOG_RETENTION_DAYS 清理超期 checklog/toollog
+	// 归档——见 store.go。）
 	checklog.Clear(root)
 	toolusage.Clear(root)
 
-	// Prune completed task state files older than the retention window, keeping
-	// DataDir/tasks/ bounded. Same window as the log archives so a task's metadata
-	// and its logs age out together. Best-effort: error here is non-fatal.
+	// 清理超过 retention 窗口的已完成 task state 文件，保持 DataDir/tasks/ 有界。
+	// 与 log 归档同窗口，让 task 元数据与其 log 同步淘汰。best-effort：此处错误不致命。
 	if days := util.RetentionDays("FORGE_LOG_RETENTION_DAYS", 30); days > 0 {
 		taskpipeline.PruneOldTasks(root, time.Now().AddDate(0, 0, -days))
 	}
@@ -394,17 +388,15 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create task: %w", err)
 	}
 
-	// Mark as active task (makes hook detection unambiguous).
-	// Session-scoped so concurrent sessions don't clobber each other.
+	// 标记为 active task（让 hook 检测无歧义）。
+	// session-scoped，并发 session 不会互相覆盖。
 	if err := taskpipeline.SetActiveTaskRef(root, sid, ctx.TaskRef); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to set active task ref: %v\n", err)
 	}
 
-	// Non-git projects degrade gracefully — gates still pass and `complete`
-	// still scores — but git-backed dimensions go neutral and there is no commit
-	// for the task to anchor on. This is the signal the code-knowledge-base
-	// session lacked: without it, an agent that starts a task in a bare directory
-	// has no idea it's in degraded mode and flounders. Stderr so --json stays clean.
+	// 非 git 项目优雅降级——门禁照常过、`complete` 照常评分——但依赖 git 的维度归中性，
+	// 且 task 无 commit 可锚。这是 code-knowledge-base session 缺失的信号：没有它，
+	// agent 在裸目录里启动 task 时不知自己在降级模式而盲目挣扎。stderr 输出保持 --json 干净。
 	if !taskpipeline.IsGitRepo(root) {
 		fmt.Fprintln(os.Stderr, nonGitTaskWarning())
 	}
@@ -461,16 +453,13 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// runTaskAbort removes a task without scoring it. It deletes the task state file
-// (DataDir/tasks/<ref>.json) and clears the session-scoped active-task-ref when it
-// points at the aborted task. This is the escape hatch for stuck or "ghost"
-// tasks that can never progress through the gates — e.g. a task started in a
-// non-git project, or one abandoned mid-flight. Unlike `task complete`, abort
-// never scores and never creates a review, so the project's quality record is
-// not polluted by an abandoned attempt.
+// runTaskAbort 移除任务但不评分。删除 task state 文件（DataDir/tasks/<ref>.json），
+// 当 session-scoped active-task-ref 指向被 abort 的 task 时也清掉。这是给卡死或
+// 永远过不了门禁的 ghost task 的逃生舱——如在非 git 项目启动的 task，或半途放弃的
+// task。与 `task complete` 不同，abort 绝不评分、绝不创建 review，项目质量记录不被
+// 放弃的尝试污染。
 //
-// The actual code/commit changes the task made are left untouched — abort only
-// reclaims the forge state. The task can be re-started later with the same ref.
+// task 实际做的 code/commit 改动不动——abort 只回收 forge state。后续可用同 ref 重新 start。
 func runTaskAbort(cmd *cobra.Command, args []string) error {
 	explicitRef, _ := cmd.Flags().GetString("ref")
 	asJSON, _ := cmd.Flags().GetBool("json")
@@ -480,8 +469,8 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Resolve which task to abort: explicit --ref wins, else the session's
-	// active task. Without either there is nothing to identify.
+	// 解析要 abort 的 task：显式 --ref 优先，否则取 session 的 active task。
+	// 两者皆无则无可识别。
 	taskRef := explicitRef
 	if taskRef == "" {
 		state, err := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
@@ -496,22 +485,20 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no task to abort. Specify --ref <task-ref> or run on a branch with an active task")
 	}
 
-	// Load before deleting so the report can say whether it was complete and
-	// carry the branch for the user's mental model. A missing file is not fatal:
-	// a stale active-task-ref may point at an already-gone task, and we still
-	// want to clear that dangling pointer.
+	// 删除前 load，让报告能说明 task 是否完成、并保留 branch 给用户心智模型。
+	// 文件缺失不致命：stale active-task-ref 可能指向已不存在的 task，仍需清掉悬空指针。
 	var state *taskpipeline.TaskState
 	if loaded, err := taskpipeline.LoadTaskState(root, taskRef); err == nil {
 		state = loaded
 	}
 
-	// Delete the task state file. ENOENT is acceptable (already gone / stale ref).
+	// 删除 task state 文件。ENOENT 可接受（已删除 / stale ref）。
 	if err := taskpipeline.DeleteTaskState(root, taskRef); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to delete task state: %w", err)
 	}
 
-	// Clear the active-task-ref if it still points at the aborted task.
-	// Session-scoped so concurrent sessions are not disturbed.
+	// 若 active-task-ref 仍指向被 abort 的 task 则清掉。
+	// session-scoped，并发 session 不受干扰。
 	sid := taskpipeline.CurrentSessionID()
 	if ref := taskpipeline.ReadActiveTaskRef(root, sid); ref == taskRef {
 		if err := taskpipeline.ClearActiveTaskRef(root, sid); err != nil {
@@ -688,7 +675,7 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no active task. Run 'forge task start' first")
 	}
 
-	// Validate gate exists
+	// 校验 gate 存在
 	gate := taskpipeline.GateByID(gateID)
 	if gate == nil {
 		return fmt.Errorf("unknown task gate: %s (valid: %s)", gateID, strings.Join(taskpipeline.GateIDs(), ", "))
@@ -699,10 +686,9 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Resolve HEAD from the project root (not the cwd forge was invoked from) so
-	// the recorded gate commit matches the repo the task tracks. Other git calls
-	// in this path use `git -C root`; this one previously omitted the dir, which
-	// silently recorded the wrong commit when forge ran from a subdirectory.
+	// 从项目根（不是 forge 调用时的 cwd）解析 HEAD，让记录的 gate commit 与 task 跟踪的
+	// repo 一致。本路径其他 git 调用都用 `git -C root`；此前这一处漏了目录参数，forge
+	// 从子目录跑时会静默记错 commit。
 	headCmd := exec.Command("git", "rev-parse", "HEAD")
 	headCmd.Dir = root
 	headCommit, _ := headCmd.Output()
@@ -846,8 +832,8 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to load task state: %w", err)
 		}
-		// Fallback: task completed all gates but MarkComplete was called,
-		// so ActiveTaskState returns nil. Load via branch context.
+		// 兜底：task 完成全部 gate 但已调 MarkComplete，
+		// 故 ActiveTaskState 返 nil。经 branch context load。
 		if state == nil {
 			ctx := taskcontext.Detect(root)
 			if ctx.IsSet() {
@@ -883,7 +869,7 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 			strings.Join(reasons, `; `))
 	}
 
-	// Auto-score the task
+	// 自动评分 task
 	if err := scoreTask(root, state); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: scoring failed: %v\n", err)
 	}
@@ -891,12 +877,10 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 	if state.Score != nil {
 		fmt.Printf("Task %s completed! Score: %.0f (%s)\n", state.TaskRef, state.Score.Overall, state.Score.Grade)
 
-		// Duplicate HEAD detection: warn if another completed task on the SAME
-		// branch shares the same HeadCommit (a re-score over an identical commit
-		// range). Scoped to the same branch to avoid false positives — every
-		// feature branch forked from one master HEAD records that same HeadCommit
-		// at task start, but their diffs live on independent branches and don't
-		// overlap, so cross-branch matches are not duplicates.
+		// 重复 HEAD 检测：同一分支上另一个已完成 task 与之共享 HeadCommit（在相同 commit
+		// 范围上重评分）时告警。仅限同分支避免假阳性——每个从同一 master HEAD 拉出的
+		// feature 分支都在 task start 时记同样的 HeadCommit，但它们的 diff 在独立分支上不重叠，
+		// 故跨分支匹配不算重复。
 		if state.HeadCommit != "" {
 			allStates, listErr := taskpipeline.ListTaskStates(root)
 			if listErr == nil {
@@ -906,7 +890,7 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		// Missing hooks check: warn if critical quality hooks never ran.
+		// 缺失 hook 检查：关键质量 hook 从未跑过时告警。
 		missingHooks := checkMissingHooks(root, state)
 		hasMissingHooks := len(missingHooks) > 0
 		if hasMissingHooks {
@@ -930,17 +914,15 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 		fmt.Fprintln(os.Stderr, d)
 	}
 
-	// Clear active task ref — task is done (session-scoped)
+	// 清 active task ref——task 完成（session-scoped）
 	if err := taskpipeline.ClearActiveTaskRef(root, taskpipeline.CurrentSessionID()); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to clear active task ref: %v\n", err)
 	}
-	// dogfood 2.3: post-complete grace sentinel so file-sentinel doesn't quarantine
-	// the natural follow-up git commit as "no active task + source write". The
-	// previous sequence forced agents to open a chore/*-commit task purely to
-	// dance around this trap (DevWorkbench: 3 such tasks, ~600 calls). The grace
-	// window is bounded (5min default, see completeGraceWindow); outside it the
-	// existing quarantine policy resumes — a "complete" session that keeps writing
-	// source for 30+ minutes is no longer complete and should start a new task.
+	// dogfood 2.3：post-complete grace sentinel，让 file-sentinel 不把自然的后续
+	// git commit 误判为「无 active task + 源码写入」而 quarantine。此前流程迫使 agent
+	// 开个 chore/*-commit task 纯粹为绕这个坑（DevWorkbench：3 个这种 task，~600 次调用）。
+	// grace 窗口有界（默认 5min，见 completeGraceWindow）；窗口外恢复 quarantine 策略——
+	// 一个「complete」的 session 持续写源码 30+ 分钟已不再 complete，应开新 task。
 	if err := taskpipeline.MarkCompleteGrace(root, taskpipeline.CurrentSessionID()); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to mark complete grace: %v\n", err)
 	}
@@ -948,14 +930,13 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// checkMissingHooks returns the names of critical quality hooks that never
-// executed during this task (based on checklog entries and gate history).
+// checkMissingHooks 返本任务期间从未跑过的关键质量 hook 名（基于 checklog 条目与 gate 历史）。
 func checkMissingHooks(root string, state *taskpipeline.TaskState) []string {
 	var missing []string
 
 	latestChecks, err := checklog.LatestByCheckForSession(root, state.SessionID)
 	if err != nil || latestChecks == nil {
-		// Can't read checklog — assume all hooks are missing unless gate history shows otherwise.
+		// 读不到 checklog——除非 gate 历史显示跑过，否则假设所有 hook 都缺失。
 		compileRan := false
 		for _, r := range state.History {
 			if r.Gate == "task-implement" && r.Passed {
@@ -974,7 +955,7 @@ func checkMissingHooks(root string, state *taskpipeline.TaskState) []string {
 		missing = append(missing, "assertion-check")
 	}
 	if _, ok := latestChecks[checklog.CheckAutoCompile]; !ok {
-		// Check if compilation was run via task-implement gate instead.
+		// 检查编译是否经 task-implement gate 跑过。
 		compileRan := false
 		for _, r := range state.History {
 			if r.Gate == "task-implement" && r.Passed {
@@ -1006,7 +987,7 @@ func missingGates(state *taskpipeline.TaskState) string {
 }
 
 // runTaskScopeAdd 把 glob 追加到当前任务的 PlanScope（去重）。支持中途迭代——规划不是
-// task start 一次锁死：Agentless 的分层定位、Copilot Workspace 的"重新考虑改哪些文件"
+// task start 一次锁死：分层定位、"重新考虑改哪些文件"
 // 都印证 scope 是演进的。持久化后立即生效（后续 hook 据此 advisory 检测 drift）。
 func runTaskScopeAdd(cmd *cobra.Command, args []string) error {
 	root, err := findProjectRoot()
@@ -1138,7 +1119,7 @@ func describeOverrides(o taskpipeline.TaskOverrides) string {
 }
 
 // runTaskScopeShow 打印声明的 PlanScope + 实时 scope-drift（实改源码 vs 声明的差集）。
-// drift 全程 advisory：变更影响分析召回率仅 ~44%（PASTE），scope 是 prediction 非 contract，
+// drift 全程 advisory：变更影响分析召回率仅 ~44%，scope 是 prediction 非 contract，
 // 偏差是常态信号——这里只是把它从隐性变成可度量、可回顾，绝不阻塞。
 func runTaskScopeShow(cmd *cobra.Command, args []string) error {
 	root, err := findProjectRoot()
@@ -1189,7 +1170,7 @@ func runTaskScore(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Show history of all scored tasks
+	// 显示所有已评分 task 的历史
 	if showHistory {
 		states, err := taskpipeline.ListTaskStates(root)
 		if err != nil {
@@ -1220,7 +1201,7 @@ func runTaskScore(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Load single task
+	// 加载单个 task
 	var state *taskpipeline.TaskState
 	if explicitRef != "" {
 		state, err = taskpipeline.LoadTaskState(root, explicitRef)
@@ -1232,7 +1213,7 @@ func runTaskScore(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to load task state: %w", err)
 		}
-		// Fallback: completed tasks are not active but can still be scored.
+		// 兜底：完成的 task 不再 active 但仍可评分。
 		if state == nil {
 			ctx := taskcontext.Detect(root)
 			if ctx.IsSet() {
@@ -1244,7 +1225,7 @@ func runTaskScore(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no active task")
 	}
 
-	// Score if not yet scored
+	// 未评分则评分
 	if state.Score == nil {
 		if !state.IsComplete() {
 			return fmt.Errorf("task not complete. Complete it first with 'forge task complete'")
@@ -1270,7 +1251,7 @@ func runTaskScore(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// scoreTask evaluates a completed task and saves the score.
+// scoreTask 评估已完成的 task 并保存评分。
 // scoreTask thin-wrapper：评分下沉到 taskpipeline.ScoreTask（单一真相源）。cli runTaskComplete
 // /runTaskScore 与测试透明复用——MCP forge_task_complete 走同一 taskpipeline.ScoreTask。
 func scoreTask(root string, state *taskpipeline.TaskState) error {
@@ -1332,11 +1313,11 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// runTaskTimeline groups tasks by session and displays an ASCII timeline.
+// runTaskTimeline 按 session 分组 task 并展示 ASCII timeline。
 func runTaskTimeline(root string, states []*taskpipeline.TaskState) error {
 	sessions, err := taskpipeline.LoadSessions(root)
 	if err != nil {
-		// Fall back to simple flat list if sessions can't be loaded.
+		// 加载不出 session 时回退到简单 flat list。
 		fmt.Println("Task Timeline (session data unavailable):")
 		fmt.Println(strings.Repeat("─", 60))
 		for _, s := range states {
@@ -1345,7 +1326,7 @@ func runTaskTimeline(root string, states []*taskpipeline.TaskState) error {
 		return nil
 	}
 
-	// Build session -> tasks index
+	// 建 session → tasks 索引
 	sessionTasks := make(map[string][]*taskpipeline.TaskState)
 	var orphanTasks []*taskpipeline.TaskState
 
@@ -1360,14 +1341,14 @@ func runTaskTimeline(root string, states []*taskpipeline.TaskState) error {
 	fmt.Println("Task Timeline:")
 	fmt.Println(strings.Repeat("─", 70))
 
-	// Print sessions in chronological order
+	// 按时间顺序打印 session
 	for _, sess := range sessions {
 		tasks, ok := sessionTasks[sess.SessionID]
 		if !ok || len(tasks) == 0 {
 			continue
 		}
 
-		// Session header
+		// session 头部
 		endTime := ""
 		latest := findLatestTaskTime(tasks)
 		if !latest.IsZero() {
@@ -1382,7 +1363,7 @@ func runTaskTimeline(root string, states []*taskpipeline.TaskState) error {
 		fmt.Printf("\nSession %s%s\n", sess.SessionID, agentStr)
 		fmt.Printf("  %s%s\n", sess.StartedAt.Format("01-02 15:04"), endTime)
 
-		// Sort tasks by start time within session
+		// session 内按开始时间排序 task
 		sortTasksByTime(tasks)
 
 		for j, t := range tasks {
@@ -1394,7 +1375,7 @@ func runTaskTimeline(root string, states []*taskpipeline.TaskState) error {
 		}
 	}
 
-	// Print orphan tasks (no session association)
+	// 打印 orphan task（无 session 关联）
 	if len(orphanTasks) > 0 {
 		fmt.Printf("\n(no session data)\n")
 		sortTasksByTime(orphanTasks)
@@ -1414,7 +1395,7 @@ func runTaskTimeline(root string, states []*taskpipeline.TaskState) error {
 	return nil
 }
 
-// printTaskLine prints a single task in flat format.
+// printTaskLine 以 flat 格式打印单个 task。
 func printTaskLine(s *taskpipeline.TaskState) {
 	status := "active"
 	if s.CompletedAt != nil {
@@ -1428,7 +1409,7 @@ func printTaskLine(s *taskpipeline.TaskState) {
 	fmt.Printf("  %s  %-25s %s%s\n", startTime, s.TaskRef, status, score)
 }
 
-// printTaskTreeLine prints a single task in tree format.
+// printTaskTreeLine 以 tree 格式打印单个 task。
 func printTaskTreeLine(prefix string, s *taskpipeline.TaskState) {
 	startTime := s.StartedAt.Format("15:04")
 	status := "✅"
@@ -1449,7 +1430,7 @@ func printTaskTreeLine(prefix string, s *taskpipeline.TaskState) {
 	fmt.Printf("%s %s %-25s %s%s%s\n", prefix, startTime, s.TaskRef, status, score, summary)
 }
 
-// findLatestTaskTime returns the most recent time from a set of tasks.
+// findLatestTaskTime 返回一组 task 中最近的时间。
 func findLatestTaskTime(tasks []*taskpipeline.TaskState) time.Time {
 	var latest time.Time
 	for _, t := range tasks {
@@ -1463,7 +1444,7 @@ func findLatestTaskTime(tasks []*taskpipeline.TaskState) time.Time {
 	return latest
 }
 
-// sortTasksByTime sorts tasks by start time (oldest first).
+// sortTasksByTime 按开始时间排序 task（最旧在前）。
 func sortTasksByTime(tasks []*taskpipeline.TaskState) {
 	for i := 0; i < len(tasks); i++ {
 		for j := i + 1; j < len(tasks); j++ {
@@ -1474,7 +1455,7 @@ func sortTasksByTime(tasks []*taskpipeline.TaskState) {
 	}
 }
 
-// validateBranchRef ensures the ref is a valid conventional branch name.
+// validateBranchRef 确保 ref 是合法 conventional 分支名。
 func validateBranchRef(ref string) error {
 	validPrefixes := []string{
 		"feat/", "feature/", "fix/", "bugfix/", "hotfix/",
@@ -1489,13 +1470,13 @@ func validateBranchRef(ref string) error {
 	return fmt.Errorf("must start with a conventional prefix (feat/, fix/, refactor/, test/, chore/, docs/, ci/, perf/, build/, style/)")
 }
 
-// isMainBranch checks if a branch name is a main/master branch.
+// isMainBranch 检查分支名是否为 main/master。
 func isMainBranch(branch string) bool {
 	lower := strings.ToLower(branch)
 	return lower == "main" || lower == "master"
 }
 
-// createAndSwitchBranch creates a new git branch and switches to it.
+// createAndSwitchBranch 创建新 git 分支并切过去。
 func createAndSwitchBranch(root, name string) error {
 	cmd := exec.Command("git", "checkout", "-b", name)
 	cmd.Dir = root
@@ -1506,6 +1487,6 @@ func createAndSwitchBranch(root, name string) error {
 	return nil
 }
 
-// phaseKeys converts taskpipeline.DesignPhase slice to string slice for act.Conclusion.
+// phaseKeys 把 taskpipeline.DesignPhase 切片转 string 切片给 act.Conclusion。
 // phaseKeys 下沉到 taskpipeline.PhaseKeys（cli appendConclusion 改走 taskpipeline.AppendConclusion，
 // 不再直接调本处辅助）。

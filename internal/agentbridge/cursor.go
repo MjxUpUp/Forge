@@ -10,11 +10,10 @@ import (
 	"github.com/MjxUpUp/Forge/internal/hooks"
 )
 
-// CursorTranslator generates .cursor/hooks.json (real, block-capable lifecycle
-// hooks) plus .cursor/rules/forge-quality.mdc (guidance fallback). Cursor ships
-// Claude Code-compatible lifecycle hooks (exit 2 = deny), so alongside
-// claude-code/codex it is an agent where Forge gates actually enforce rather
-// than merely suggest.
+// CursorTranslator 生成 .cursor/hooks.json（真实、可 block 的 lifecycle hooks）与
+// .cursor/rules/forge-quality.mdc（guidance 兜底）。Cursor 内置与 Claude Code 兼容的
+// lifecycle hooks（exit 2 = deny），故与 claude-code/codex 并列，是 Forge gate 真正
+// enforce 而非仅 suggest 的 agent。
 type CursorTranslator struct{}
 
 func (t *CursorTranslator) Detect(projectDir string) bool {
@@ -31,11 +30,10 @@ func (t *CursorTranslator) Translate(projectDir string, input *TranslationInput)
 		return fmt.Errorf("cursor: failed to create .cursor dir: %w", err)
 	}
 
-	// Real lifecycle hooks — the actual enforcement surface. Cursor's native
-	// hooks.json is flat (hooks.<event>[].{command,matcher}) with camelCase
-	// event names and a Claude Code-compatible stdin/exit-code protocol, so
-	// the identical `forge hook <name>` commands run unchanged and exit 2
-	// blocks the tool call (deny).
+	// 真实 lifecycle hooks——实际 enforcement 接口。Cursor 原生 hooks.json 是扁平结构
+	// （hooks.<event>[].{command,matcher}），event 名为 camelCase，stdin/exit-code 协议
+	// 与 Claude Code 兼容，故同一批 `forge hook <name>` 命令原样跑，exit 2 即 block
+	// 该工具调用（deny）。
 	hooksData, err := json.MarshalIndent(buildCursorHooks(), "", "  ")
 	if err != nil {
 		return fmt.Errorf("cursor: marshal hooks.json: %w", err)
@@ -44,9 +42,8 @@ func (t *CursorTranslator) Translate(projectDir string, input *TranslationInput)
 		return fmt.Errorf("cursor: write hooks.json: %w", err)
 	}
 
-	// Guidance rules as fallback: for Cursor versions without hook support,
-	// or when a tool-name matcher doesn't fire (Cursor's tool names may
-	// differ from Claude Code's). The .mdc still tells the agent the rules.
+	// Guidance 规则作为兜底：用于不支持 hook 的 Cursor 版本，或 tool-name matcher
+	// 未命中时（Cursor 的 tool 名可能与 Claude Code 不同）。.mdc 仍把规则告知 agent。
 	rulesDir := filepath.Join(cursorDir, "rules")
 	if err := os.MkdirAll(rulesDir, 0755); err != nil {
 		return fmt.Errorf("cursor: failed to create rules dir: %w", err)
@@ -65,7 +62,7 @@ func (t *CursorTranslator) AgentType() AgentType {
 func buildCursorMDC(input *TranslationInput) string {
 	var sb strings.Builder
 
-	// MDC frontmatter
+	// MDC 的 frontmatter
 	sb.WriteString("---\n")
 	sb.WriteString("description: \"Forge quality protocol\"\n")
 	sb.WriteString("alwaysApply: true\n")
@@ -73,7 +70,7 @@ func buildCursorMDC(input *TranslationInput) string {
 
 	sb.WriteString("# Forge 质量标准\n\n")
 
-	// Quality standards
+	// 质量标准段
 	sb.WriteString("## 质量标准\n\n")
 	for _, s := range input.Protocol.Standards {
 		if !s.Enabled {
@@ -94,7 +91,7 @@ func buildCursorMDC(input *TranslationInput) string {
 	}
 	sb.WriteString("\n")
 
-	// Session rules
+	// 会话规则段
 	sb.WriteString("## 会话行为规则\n\n")
 	for _, r := range input.Protocol.SessionRules {
 		prefix := "[MUST]"
@@ -105,7 +102,7 @@ func buildCursorMDC(input *TranslationInput) string {
 	}
 	sb.WriteString("\n")
 
-	// Hook info
+	// Hook 信息段
 	if len(input.HookNames) > 0 {
 		sb.WriteString("## 自动检查\n\n")
 		sb.WriteString("以下检查通过 git hooks 自动执行：\n\n")
@@ -124,15 +121,13 @@ type cursorHookEntry struct {
 	Timeout int    `json:"timeout,omitempty"`
 }
 
-// buildCursorHooks derives Cursor's flat hooks.json from hooks.ForgeHookSpec —
-// the single source of truth. Cursor's hooks.json is FLAT: hooks.<event>[]
-// where each entry carries its own {command,matcher,timeout}, with camelCase
-// event names (preToolUse/postToolUse/stop) versus Claude Code's PascalCase
-// nested {matcher,hooks:[{type,command}]} shape. The conversion flattens each
-// matcher's hook list into one entry per hook (carrying the matcher + a 60s
-// timeout). SessionStart is filtered — Cursor's native hooks.json historically
-// wires only pre/post/stop. No hand-maintained copy → no drift.
-// TestCursorWiringMirrorsClaudeSettings guards command-set parity.
+// buildCursorHooks 从 hooks.ForgeHookSpec（单一真相源）派生 Cursor 的扁平 hooks.json。
+// Cursor 的 hooks.json 是扁平结构：hooks.<event>[]，每个 entry 自带
+// {command,matcher,timeout}，event 名为 camelCase（preToolUse/postToolUse/stop），
+// 与 Claude Code 的 PascalCase 嵌套 {matcher,hooks:[{type,command}]} 结构相对。转换时
+// 把每个 matcher 的 hook 列表扁平化为每 hook 一个 entry（携带 matcher + 60s timeout）。
+// SessionStart 被过滤——Cursor 原生 hooks.json 历史上只接 pre/post/stop。无手工副本 → 无 drift。
+// TestCursorWiringMirrorsClaudeSettings 守卫命令集对等。
 func buildCursorHooks() map[string]any {
 	spec := hooks.ForgeHookSpec()
 	hooksMap := map[string][]cursorHookEntry{}
@@ -157,9 +152,9 @@ func buildCursorHooks() map[string]any {
 	}
 }
 
-// cursorEventName maps Claude Code's PascalCase event names to Cursor's
-// camelCase hooks.json event names. Returns ok=false for events Cursor does
-// not wire (SessionStart), so buildCursorHooks can skip them.
+// cursorEventName 把 Claude Code 的 PascalCase event 名映射到 Cursor 的 camelCase
+// hooks.json event 名。Cursor 不接的 event（SessionStart）返回 ok=false，供
+// buildCursorHooks 跳过。
 func cursorEventName(event string) (string, bool) {
 	switch event {
 	case `PreToolUse`:

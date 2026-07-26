@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// Context represents detected task context from the development environment.
+// Context 表示从开发环境检测到的 task 上下文。
 type Context struct {
 	Source     string    `json:"source"`   // "explicit", "branch", "unknown"
 	TaskRef    string    `json:"task_ref"` // e.g., "PROJ-123", "feature/login", ""
@@ -16,13 +16,13 @@ type Context struct {
 	DetectedAt time.Time `json:"detected_at"`
 }
 
-// IsSet returns true if a task context was detected.
+// IsSet 在检测到 task 上下文时返回 true。
 func (c *Context) IsSet() bool {
 	return c.Source != "unknown" && c.TaskRef != ""
 }
 
-// Detect attempts to infer task context from the environment.
-// Currently uses git branch name detection.
+// Detect 尝试从环境推断 task 上下文。
+// 当前通过 git 分支名检测。
 func Detect(projectRoot string) *Context {
 	now := time.Now()
 	branch := currentBranch(projectRoot)
@@ -49,17 +49,17 @@ func Detect(projectRoot string) *Context {
 	}
 }
 
-// ParseBranchName extracts task references and summaries from branch names.
+// ParseBranchName 从分支名中提取 task reference 与 summary。
 //
-// Recognized patterns:
-//   - feature/login-flow → ref="feature/login-flow", summary="login-flow"
-//   - fix/PROJ-123-crash → ref="PROJ-123", summary="crash"
-//   - bugfix/TASK-456    → ref="TASK-456", summary=""
-//   - TASK-789           → ref="TASK-789", summary=""
-//   - PROJ-123-add-auth  → ref="PROJ-123", summary="add-auth"
-//   - my-feature         → ref="my-feature", summary="my-feature"
+// 识别的模式：
+//   - feature/login-flow → ref=feature/login-flow, summary=login-flow
+//   - fix/PROJ-123-crash → ref=PROJ-123, summary=crash
+//   - bugfix/TASK-456    → ref=TASK-456, summary=空
+//   - TASK-789           → ref=TASK-789, summary=空
+//   - PROJ-123-add-auth  → ref=PROJ-123, summary=add-auth
+//   - my-feature         → ref=my-feature, summary=my-feature
 func ParseBranchName(branch string) (ref, summary string) {
-	// Conventional branch prefixes (based on Conventional Commits types).
+	// 约定式分支前缀（基于 Conventional Commits 类型）。
 	for _, prefix := range []string{
 		"feat/", "feature/", "fix/", "bugfix/", "hotfix/",
 		"refactor/", "test/", "chore/", "docs/", "ci/",
@@ -67,32 +67,32 @@ func ParseBranchName(branch string) (ref, summary string) {
 	} {
 		if strings.HasPrefix(branch, prefix) {
 			rest := strings.TrimPrefix(branch, prefix)
-			// If rest contains a ticket ref, extract it
+			// 若 rest 含 ticket ref，则提取出来
 			if ticketRef, ticketSummary := extractTicketRef(rest); ticketSummary != rest {
 				return ticketRef, ticketSummary
 			}
-			// Otherwise, use prefix+rest as ref, rest as summary
+			// 否则以 prefix+rest 作 ref、rest 作 summary
 			return branch, rest
 		}
 	}
 
-	// Try bare ticket patterns: TASK-123, PROJ-456
+	// 尝试裸 ticket 模式：TASK-123、PROJ-456
 	if ticketRef, ticketSummary := extractTicketRef(branch); ticketSummary != branch {
 		return ticketRef, ticketSummary
 	}
 
-	// Fallback: use the whole branch name as ref
+	// 兜底：整个分支名作 ref
 	return branch, branch
 }
 
-// extractTicketRef tries to find a ticket reference (e.g., PROJ-123) at the start
-// of the string, returning the ref and the remaining description.
+// extractTicketRef 尝试在字符串起首找 ticket reference（如 PROJ-123），
+// 返回该 ref 与剩余描述。
 func extractTicketRef(s string) (ref, summary string) {
-	// Pattern: PROJ-123-description or PROJ-123
-	// Only match if the prefix is ALREADY all-uppercase (not forced).
+	// 模式：PROJ-123-description 或 PROJ-123
+	// 仅当前缀本身已全大写时才匹配（不强制定大写）。
 	parts := strings.SplitN(s, "-", 3)
 	if len(parts) >= 2 {
-		// Check if the prefix is already uppercase (real project key)
+		// 检查前缀是否已是大写（真实 project key）
 		if isProjectKey(parts[0]) {
 			ref = parts[0] + "-" + parts[1]
 			if len(parts) >= 3 {
@@ -102,11 +102,11 @@ func extractTicketRef(s string) (ref, summary string) {
 		}
 	}
 
-	// No ticket ref found — use full string as ref
+	// 未找到 ticket ref——整串作 ref
 	return s, s
 }
 
-// isProjectKey checks if a string looks like a project key (2-6 uppercase letters).
+// isProjectKey 判断字符串是否像一个 project key（2-6 个大写字母）。
 func isProjectKey(s string) bool {
 	if len(s) < 2 || len(s) > 6 {
 		return false
@@ -119,13 +119,13 @@ func isProjectKey(s string) bool {
 	return true
 }
 
-// isMainBranch returns true for branches that represent project-level work.
+// isMainBranch 在分支代表项目级工作（非个人 task 分支）时返回 true。
 func isMainBranch(branch string) bool {
 	lower := strings.ToLower(branch)
 	return lower == "main" || lower == "master" || lower == "develop" || lower == "trunk"
 }
 
-// currentBranch returns the current git branch name.
+// currentBranch 返回当前 git 分支名。
 func currentBranch(projectRoot string) string {
 	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
 	cmd.Dir = projectRoot
@@ -136,9 +136,9 @@ func currentBranch(projectRoot string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// SanitizeRef converts a branch name to a safe filename for task state storage.
+// SanitizeRef 把分支名转换成安全文件名，用于 task state 存储。
 func SanitizeRef(ref string) string {
-	// Replace chars that are problematic in filenames
+	// 替换文件名中易出问题的字符
 	r := strings.NewReplacer(
 		"/", "-",
 		"\\", "-",
@@ -148,7 +148,7 @@ func SanitizeRef(ref string) string {
 	return r.Replace(ref)
 }
 
-// FormatContext returns a human-readable summary of the task context.
+// FormatContext 返回 task 上下文的人类可读 summary。
 func FormatContext(ctx *Context) string {
 	if !ctx.IsSet() {
 		if ctx.Branch != "" {

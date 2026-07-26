@@ -1,12 +1,12 @@
-// Package agentbridge translates Forge quality configuration into native
-// formats for multiple AI coding agents (Claude Code, Cursor, Copilot, Windsurf).
+// Package agentbridge 把 Forge 质量配置翻译成多种 AI coding agent（Claude Code、
+// Cursor、Copilot、Windsurf）的原生格式。
 package agentbridge
 
 import (
 	"github.com/MjxUpUp/Forge/internal/protocol"
 )
 
-// AgentType identifies a supported AI coding agent.
+// AgentType 标识一个受支持的 AI coding agent。
 type AgentType string
 
 const (
@@ -19,17 +19,17 @@ const (
 	AgentCline      AgentType = "cline"
 )
 
-// Translator converts Forge config to a specific agent's native format.
+// Translator 把 Forge config 转成特定 agent 的原生格式。
 type Translator interface {
-	// Detect returns true if this agent's config directory/file exists.
+	// Detect 在该 agent 的 config 目录/文件存在时返回 true。
 	Detect(projectDir string) bool
-	// Translate generates or updates the agent's config files.
+	// Translate 生成或更新该 agent 的 config 文件。
 	Translate(projectDir string, input *TranslationInput) error
-	// AgentType returns the agent identifier.
+	// AgentType 返回 agent 标识符。
 	AgentType() AgentType
 }
 
-// TranslationInput holds the Forge configuration to translate.
+// TranslationInput 持有待翻译的 Forge 配置。
 type TranslationInput struct {
 	Protocol  *protocol.Protocol
 	HookNames []string

@@ -2,11 +2,10 @@ package protocol
 
 import "github.com/MjxUpUp/Forge/internal/scoringtypes"
 
-// DefaultProtocol returns the default quality protocol: core standards + base
-// session rules + design-for-complex (universally useful). The former mode
-// parameter (small/medium/large) only toggled 1-2 optional rules tied to the
-// now-deleted project pipeline (review-checklist referenced gate-6); with the
-// project pipeline gone, mode is meaningless and removed.
+// DefaultProtocol 返回默认质量协议：core standards + 基础 session 规则 +
+// design-for-complex（通用有用）。旧 mode 参数（small/medium/large）只切换 1-2 条绑到
+// 已删 project pipeline 的可选规则（review-checklist 引用 gate-6）；project pipeline
+// 已删，mode 无意义故移除。
 func DefaultProtocol() *Protocol {
 	p := &Protocol{
 		Version: "1.0",
@@ -64,7 +63,7 @@ func DefaultProtocol() *Protocol {
 		},
 	}
 
-	// Set default scoring config
+	// 设置默认评分配置
 	p.Scoring = &scoringtypes.ScoringConfig{
 		Weights:    scoringtypes.DefaultWeights(),
 		Thresholds: scoringtypes.DefaultThresholds(),

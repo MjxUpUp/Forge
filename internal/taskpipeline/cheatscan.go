@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// cheatscan.go — deterministic AI-cheat pattern scanner.
+// cheatscan.go — deterministic AI-cheat 模式扫描器。
 //
 // 动机（根因见 forge-review-deterministic-shift memory）：code-review-gate 的
 // 11 类 AI 作弊模式里，机械可检的那几类（type-suppression / error-swallow /

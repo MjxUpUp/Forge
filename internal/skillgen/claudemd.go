@@ -12,9 +12,9 @@ const (
 	forgeSectionEnd   = "<!-- FORGE:END -->"
 )
 
-// GenerateClaudeMD creates or updates .claude/CLAUDE.md with a Forge-managed
-// quality protocol section. If the file already exists, only the marked section
-// is replaced — user content is preserved.
+// GenerateClaudeMD 创建或更新 .claude/CLAUDE.md，写入 Forge 接管的
+// 质量协议 section。文件已存在时只替换标记包裹的 section——
+// 用户内容保留。
 func GenerateClaudeMD(projectDir string) error {
 	claudeDir := filepath.Join(projectDir, ".claude")
 	if err := os.MkdirAll(claudeDir, 0755); err != nil {
@@ -25,27 +25,26 @@ func GenerateClaudeMD(projectDir string) error {
 
 	forgeSection := buildForgeSection(true)
 
-	// Read existing file if present
+	// 若已存在则读现有文件
 	existing, err := os.ReadFile(path)
 	if err == nil && len(existing) > 0 {
-		// Update only the Forge section
+		// 仅更新 Forge section
 		updated := replaceForgeSection(string(existing), forgeSection)
 		return os.WriteFile(path, []byte(updated), 0644)
 	}
 
-	// Create new file with just the Forge section
+	// 新建文件，仅写入 Forge section
 	return os.WriteFile(path, []byte(forgeSection), 0644)
 }
 
-// GenerateAgentsMD creates or updates the project-root AGENTS.md with the
-// Forge-managed quality protocol section. AGENTS.md is the cross-agent
-// instruction standard read by codex, cursor, copilot, windsurf, and cline
-// (detect.go keys codex off .codex/, not AGENTS.md — AGENTS.md is a universal
-// file forge generates on every init). Unlike CLAUDE.md
-// (claude-only, references Claude slash commands), AGENTS.md carries the
-// agent-agnostic protocol and points at the forge CLI surface. If the file
-// exists, only the marked Forge section is replaced; user content outside the
-// markers is preserved — same idempotent section-replace contract as CLAUDE.md.
+// GenerateAgentsMD 创建或更新项目根 AGENTS.md，写入 Forge 接管的
+// 质量协议 section。AGENTS.md 是 codex/cursor/copilot/windsurf/cline 等
+// 通用 agent 读取的跨 agent 指令规范（detect.go 用 .codex/ 识别 codex，
+// 不依赖 AGENTS.md——AGENTS.md 是 forge 每次 init 都会生成的通用文件）。
+// 与 CLAUDE.md（claude 专属、引用 Claude slash command）不同，
+// AGENTS.md 承载 agent-agnostic 协议并指向 forge CLI surface。文件已存在时，
+// 仅替换标记包裹的 Forge section，标记外的用户内容保留——
+// 与 CLAUDE.md 同样的幂等 section-replace 契约。
 func GenerateAgentsMD(projectDir string) error {
 	path := filepath.Join(projectDir, "AGENTS.md")
 	forgeSection := buildForgeSection(false)
@@ -70,8 +69,8 @@ func buildForgeSection(forClaude bool) string {
 	sb.WriteString("5. **提交前确认** — commit 信息描述变更内容和原因\n")
 	sb.WriteString("6. **结束前验证** — 会话结束前运行测试确认无破坏\n\n")
 
-	// Task workflow — the most critical operational guidance to prevent agents
-	// from hitting task-guard/bash-guard blocks without knowing what to do.
+	// task workflow——最关键的操作指引，防止 agent 不知所措地撞上
+	// task-guard/bash-guard 拦截。
 	sb.WriteString("## Task 工作流（必读）\n\n")
 	sb.WriteString("**源码变更前必须启动 Forge 任务**——无任务时 Write/Edit 源码只触发 task-guard 警告（WARN，不拦截），但 Bash 写源码（sed/cat > 等）会被 file-sentinel quarantine。更关键：脱离任务的变更不被门禁追踪和质量评分。纯文档、单行 typo 修复、版本号 bump 除外。\n\n")
 	sb.WriteString("### 启动任务\n\n")
@@ -93,9 +92,9 @@ func buildForgeSection(forClaude bool) string {
 	sb.WriteString("### 中止任务（清理 ghost/卡住任务）\n\n")
 	sb.WriteString("任务无法推进（如在非 git 项目半启动、门禁死循环、或临时放弃）时，用 `forge task abort --ref <ref>` 删除任务状态文件并清空 active task ref，**不评分**。代码改动保留不动。task-verify 的 test-coverage/编译/断言为 advisory（仅记录不阻塞），但 skill-decisions guardrail（改 SKILL.md 未记决策）与 work-activity 仍 HARD stop；ghost 任务无论是否阻塞都污染 `task list`，需手动 abort 清理。\n\n")
 
-	// Commit timing — without this agents naturally commit AFTER complete,
-	// which clears the active task ref and gets the commit quarantined by
-	// file-sentinel (trap documented from a real DevWorkbench session).
+	// 提交时机——若无此说明 agent 自然会在 complete 之后才 commit，
+	// 而 complete 会清空 active task ref，导致 commit 被 file-sentinel
+	// quarantine（此 trap 来自一次真实 DevWorkbench 会话）。
 	sb.WriteString("### 提交时机（重要，避免被 file-sentinel 拦）\n\n")
 	sb.WriteString("`git commit` 必须在 `forge task complete` **之前**：`complete` 会清空 active task ref，之后提交源码会被 file-sentinel quarantine。正确顺序：三门禁通过 → `git commit` → `forge task complete`。若已 complete 才发现要提交，开一个 `chore/*-commit` 任务放行。\n\n")
 
@@ -128,37 +127,37 @@ func buildForgeSection(forClaude bool) string {
 	if forClaude {
 		sb.WriteString("使用 `/forge-quality` 查看完整质量协议。\n\n")
 	} else {
-		// AGENTS.md is cross-agent (codex/cursor/copilot/windsurf/cline) — those
-		// agents have no Claude slash commands, so point at the forge CLI surface
-		// instead of the /forge-quality skill.
+		// AGENTS.md 是跨 agent 的（codex/cursor/copilot/windsurf/cline）——这些
+		// agent 没有 Claude slash command，故指向 forge CLI surface，
+		// 而非 /forge-quality skill。
 		sb.WriteString("通过 forge CLI（forge task/gate）执行上述质量流程。\n\n")
 	}
 	sb.WriteString(forgeSectionEnd + "\n")
 	return sb.String()
 }
 
-// replaceForgeSection replaces the content between FORGE:START and FORGE:END
-// markers, preserving everything outside the markers.
+// replaceForgeSection 替换 FORGE:START 与 FORGE:END 标记之间的内容，
+// 标记外的所有内容原样保留。
 func replaceForgeSection(content, newSection string) string {
 	startIdx := strings.Index(content, forgeSectionStart)
 	endIdx := strings.Index(content, forgeSectionEnd)
 
 	if startIdx == -1 || endIdx == -1 || endIdx <= startIdx {
-		// No markers found — append the section
+		// 未找到标记——追加该 section
 		return content + "\n" + newSection
 	}
 
-	// Replace between markers
+	// 替换标记之间的内容
 	before := content[:startIdx]
 	after := content[endIdx+len(forgeSectionEnd):]
 
-	// newSection ends with "\n" from forgeSectionEnd+"\n", trim it
-	// so we control the exact spacing between markers and after-content
+	// newSection 末尾的换行来自 forgeSectionEnd+换行，先 TrimRight 掉它，
+	// 以精确控制标记之间以及与后续内容之间的间距
 	section := strings.TrimRight(newSection, "\n")
 
 	result := before + section + "\n"
 
-	// Clean up leading whitespace from after-content
+	// 清除 after-content 的前导空白
 	after = strings.TrimLeft(after, "\n")
 	if after != "" {
 		result += "\n" + after

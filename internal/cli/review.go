@@ -207,9 +207,8 @@ func runReviewStatus(cmd *cobra.Command, args []string) error {
 	return renderReviewStatus(root)
 }
 
-// renderReviewStatus is the root-injected core of `forge review status`, kept
-// separate so the task-mode evidence-strength rendering is unit-testable on a
-// temp project without findProjectRoot / cwd dependence.
+// renderReviewStatus 是 `forge review status` 的 root 注入核心，独立出来
+// 让 task 模式的证据强度渲染可在临时项目上单测，不依赖 findProjectRoot / cwd。
 func renderReviewStatus(root string) error {
 	state, _ := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
 	if state != nil {

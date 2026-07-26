@@ -20,10 +20,10 @@ import (
 // active-task-ref/.task-verify-throttle.last），项目配置留项目级（protocol.yml/
 // CLAUDE.md/hooks—— git tracked + user-editable + task-guard 豁免）。
 type Project struct {
-	Key       string // hash12 of .git common dir
+	Key       string // .git common dir 的 hash12
 	GitRoot   string // git working tree root（git -C 操作基准）
-	DataDir   string // ~/.forge/projects/<key>/  (or FORGE_DATA_HOME override)
-	ConfigDir string // <cwd>/.forge/             (project-level config)
+	DataDir   string // ~/.forge/projects/<key>/（或 FORGE_DATA_HOME 覆盖）
+	ConfigDir string // <cwd>/.forge/（项目级 config）
 }
 
 // 配置目录的目录名常量
@@ -67,15 +67,14 @@ func ProjectFor(cwd string) (*Project, error) {
 	}, nil
 }
 
-// DataDirFor returns the runtime-state DataDir for root without requiring a
-// full Project (no .forge/ needed): the user-level ~/.forge/projects/<key>/
-// for git projects, falling back to <root>/.forge/ for non-git projects so
-// runtime-state recording still works when hooks fire outside a forge project.
+// DataDirFor 返回 root 的 runtime-state DataDir，无需完整 Project（不要 .forge/）：
+// git 项目返用户级 ~/.forge/projects/<key>/，非 git 项目回落 <root>/.forge/，
+// 让 hook 在 forge 项目之外触发时仍能记录 runtime state。
 //
-// Git-only Key (needs .git, NOT .forge/) — resolution is stable across MkdirAll
-// side effects: a store's MkdirAll creating <root>/.forge/ on the fallback path
-// must NOT flip a re-resolve to DataDir (the stateful bug that silently dropped
-// checklog Records). Stores (checklog / task state) prefer this over re-deriving.
+// 仅依赖 git 的 Key（需 .git，不需要 .forge/）——解析在 MkdirAll 副作用下保持稳定：
+// 某 store 的 MkdirAll 在 fallback 路径上创建 <root>/.forge/ 时，不得让重新解析翻到
+// DataDir（那个静默丢弃 checklog Records 的 stateful bug）。store（checklog / task state）
+// 优先用此函数而非自己重新推导。
 func DataDirFor(root string) string {
 	if key, err := Key(root); err == nil {
 		return RootDir(key)
@@ -136,21 +135,21 @@ func (p *Project) ensureMeta() error {
 // MetaPath 返回 DataDir/.migration-meta.json
 func (p *Project) MetaPath() string { return filepath.Join(p.DataDir, ".migration-meta.json") }
 
-// TasksDir
+// TasksDir 返回 DataDir/tasks
 func (p *Project) TasksDir() string { return filepath.Join(p.DataDir, "tasks") }
 
-// TaskStatePath returns DataDir/tasks/<ref>.json
+// TaskStatePath 返回 DataDir/tasks/<ref>.json
 func (p *Project) TaskStatePath(ref string) string {
 	return filepath.Join(p.DataDir, "tasks", ref+".json")
 }
 
-// GatesDir
+// GatesDir 返回 DataDir/gates
 func (p *Project) GatesDir() string { return filepath.Join(p.DataDir, "gates") }
 
-// GateDir returns DataDir/gates/<id>/
+// GateDir 返回 DataDir/gates/<id>/
 func (p *Project) GateDir(gateID string) string { return filepath.Join(p.DataDir, "gates", gateID) }
 
-// GateStatusPath returns DataDir/gates/<id>/status.json
+// GateStatusPath 返回 DataDir/gates/<id>/status.json
 func (p *Project) GateStatusPath(gateID string) string {
 	return filepath.Join(p.DataDir, "gates", gateID, "status.json")
 }
@@ -160,15 +159,15 @@ func (p *Project) GateArtifactPath(gateID, out string) string {
 	return filepath.Join(p.DataDir, "gates", gateID, out)
 }
 
-// HazardsDir
+// HazardsDir 返回 DataDir/hazards
 func (p *Project) HazardsDir() string { return filepath.Join(p.DataDir, "hazards") }
 
-// HazardsEventsPath returns DataDir/hazards/events.jsonl
+// HazardsEventsPath 返回 DataDir/hazards/events.jsonl
 func (p *Project) HazardsEventsPath() string {
 	return filepath.Join(p.DataDir, "hazards", "events.jsonl")
 }
 
-// HazardsConfirmPath returns DataDir/hazards/<fp>.json
+// HazardsConfirmPath 返回 DataDir/hazards/<fp>.json
 func (p *Project) HazardsConfirmPath(fp string) string {
 	return filepath.Join(p.DataDir, "hazards", fp+".json")
 }
@@ -185,53 +184,53 @@ func (p *Project) ToollogPath() string { return filepath.Join(p.DataDir, "toollo
 // ToollogGlob returns DataDir/toollog*.jsonl（含归档）
 func (p *Project) ToollogGlob() string { return filepath.Join(p.DataDir, "toollog*.jsonl") }
 
-// ActDir
+// ActDir 返回 DataDir/act
 func (p *Project) ActDir() string { return filepath.Join(p.DataDir, "act") }
 
-// ActConclusionsPath
+// ActConclusionsPath 返回 DataDir/act/conclusions.jsonl
 func (p *Project) ActConclusionsPath() string {
 	return filepath.Join(p.DataDir, "act", "conclusions.jsonl")
 }
 
-// StampsDir
+// StampsDir 返回 DataDir/stamps
 func (p *Project) StampsDir() string { return filepath.Join(p.DataDir, "stamps") }
 
-// StampPath returns DataDir/stamps/<branch>.stamp
+// StampPath 返回 DataDir/stamps/<branch>.stamp
 func (p *Project) StampPath(branch string) string {
 	return filepath.Join(p.DataDir, "stamps", branch+".stamp")
 }
 
-// SessionsDir
+// SessionsDir 返回 DataDir/sessions
 func (p *Project) SessionsDir() string { return filepath.Join(p.DataDir, "sessions") }
 
-// SessionPath returns DataDir/sessions/<sid>.json
+// SessionPath 返回 DataDir/sessions/<sid>.json
 func (p *Project) SessionPath(sid string) string {
 	return filepath.Join(p.DataDir, "sessions", sid+".json")
 }
 
-// SessionsLogPath returns DataDir/sessions.jsonl
+// SessionsLogPath 返回 DataDir/sessions.jsonl
 func (p *Project) SessionsLogPath() string { return filepath.Join(p.DataDir, "sessions.jsonl") }
 
-// SessionFilePath returns DataDir/session.json (legacy single-session)
+// SessionFilePath 返回 DataDir/session.json（legacy single-session）
 func (p *Project) SessionFilePath() string { return filepath.Join(p.DataDir, "session.json") }
 
-// ActiveTaskRefPath (legacy single-file)
+// ActiveTaskRefPath 返回 DataDir/active-task-ref（legacy single-file）
 func (p *Project) ActiveTaskRefPath() string {
 	return filepath.Join(p.DataDir, "active-task-ref")
 }
 
-// ActiveTaskRefSessionPath returns DataDir/active-task-ref-<sid> (session-scoped)
+// ActiveTaskRefSessionPath 返回 DataDir/active-task-ref-<sid>（session-scoped）
 func (p *Project) ActiveTaskRefSessionPath(sid string) string {
 	return filepath.Join(p.DataDir, "active-task-ref-"+sid)
 }
 
-// ActiveTaskRefGlob returns DataDir/active-task-ref* (covers legacy + session-scoped)
+// ActiveTaskRefGlob 返回 DataDir/active-task-ref*（覆盖 legacy 与 session-scoped）
 func (p *Project) ActiveTaskRefGlob() string { return filepath.Join(p.DataDir, "active-task-ref*") }
 
 // ---- Project-config accessor（p.ConfigDir 下，仍项目级 .forge/）----
 
-// ProtocolYAMLPath returns ConfigDir/protocol.yml
+// ProtocolYAMLPath 返回 ConfigDir/protocol.yml
 func (p *Project) ProtocolYAMLPath() string { return filepath.Join(p.ConfigDir, "protocol.yml") }
 
-// CLAUDEMDPath returns ConfigDir/CLAUDE.md
+// CLAUDEMDPath 返回 ConfigDir/CLAUDE.md
 func (p *Project) CLAUDEMDPath() string { return filepath.Join(p.ConfigDir, "CLAUDE.md") }

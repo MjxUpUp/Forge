@@ -1,5 +1,5 @@
-// Package util holds cross-cutting filesystem helpers shared by the .forge/
-// persistence layers (task state, pipeline state, gate status, tool/check logs).
+// Package util 提供 .forge/ 持久化层（task 状态、pipeline 状态、gate 状态、tool/check 日志）
+// 共享的横切文件系统辅助函数。
 package util
 
 import (
@@ -13,23 +13,19 @@ import (
 	"time"
 )
 
-// AtomicWrite writes data to path atomically: a temp file in the SAME directory
-// is fully written and fsynced, then renamed over the target.
+// AtomicWrite 原子地把 data 写入 path：先在所在目录写一个临时文件并 fsync，
+// 再 rename 覆盖目标文件。
 //
-// Plain os.WriteFile truncates the target first and writes into place, so a
-// crash, power loss, or concurrent write mid-flight leaves a partial file. Every
-// .forge/ state loader (task state, pipeline state, gate status,
-// active-task-ref) JSON-parses the result and treats a parse error as corrupt —
-// a partial write therefore turns a transient crash into a permanently
-// unreadable task. AtomicWrite closes that window: readers observe either the
-// complete previous version or the complete new version, never a half-written
-// mix.
+// 普通 os.WriteFile 会先 truncate 目标再原地写入，因此崩溃、掉电或半途的并发写
+// 都会留下半个文件。每个 .forge/ 状态加载器（task 状态、pipeline 状态、gate 状态、
+// active-task-ref）都对结果做 JSON 解析，并把解析错误视为损坏——因此一次不完整写入
+// 会把短暂的崩溃放大为永久不可读的 task。AtomicWrite 关掉这个时间窗：读者要么看到
+// 完整的旧版本，要么看到完整的新版本，绝不会读到写一半的混合体。
 //
-// os.Rename is atomic on POSIX (rename(2)). On Windows Go 1.5+ uses MoveFileEx
-// with MOVEFILE_REPLACE_EXISTING, so it atomically replaces an existing target
-// without a delete-then-rename race window. The temp file is created next to the
-// target so the rename never crosses a filesystem boundary (which would degrade
-// to copy+delete and lose atomicity).
+// os.Rename 在 POSIX 上是原子的（rename(2)）。Windows 上 Go 1.5+ 用 MoveFileEx
+// 配 MOVEFILE_REPLACE_EXISTING，因此原子替换既有目标，不会出现 delete-then-rename 的
+// 竞态窗口。临时文件就建在目标文件旁边，rename 永不跨文件系统边界（跨边界会退化成
+// copy+delete 并丢失原子性）。
 func AtomicWrite(path string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -69,13 +65,11 @@ func AtomicWrite(path string, data []byte, perm os.FileMode) error {
 	return nil
 }
 
-// renameWithRetry renames old→new, retrying briefly when Windows refuses to
-// replace a target a concurrent reader still holds open. MoveFileEx with
-// MOVEFILE_REPLACE_EXISTING (Go's os.Rename on Windows) returns
-// ERROR_ACCESS_DENIED / ERROR_SHARING_VIOLATION in that case, unlike POSIX
-// rename(2) which replaces unconditionally. Each attempt stays atomic; only the
-// timing stretches to cover a reader's short open window (e.g. a LoadTaskState
-// finishing its ReadFile). Non-retryable errors fail fast on the first attempt.
+// renameWithRetry 把 old 重命名为 new，并在 Windows 因并发读者仍持有目标文件而拒绝
+// 替换时短暂重试。此时 MoveFileEx 配 MOVEFILE_REPLACE_EXISTING（即 Go 在 Windows 上的
+// os.Rename）返回 ERROR_ACCESS_DENIED / ERROR_SHARING_VIOLATION，与 POSIX rename(2)
+// 无条件替换不同。每次重试仍是原子的；只是把时间窗拉长，覆盖读者的短暂 open 窗口
+// （如 LoadTaskState 跑完它的 ReadFile）。不可重试的错误在首次尝试即 fail fast。
 func renameWithRetry(old, new string) error {
 	const (
 		attempts   = 6
@@ -94,10 +88,10 @@ func renameWithRetry(old, new string) error {
 	return err
 }
 
-// isRetryableRenameErr reports whether a rename error is the transient Windows
-// "target held open by a concurrent reader" condition worth retrying. The
-// Windows errno values never appear from POSIX rename, so this always returns
-// false there — POSIX renames either succeed or fail non-transiently.
+// isRetryableRenameErr 判断一个 rename 错误是否是值得重试的瞬态 Windows
+// target held open by a concurrent reader 条件。这些 Windows errno 不会出现在
+// POSIX rename 里，所以在 POSIX 上恒返回 false——POSIX rename 要么成功要么以
+// 非瞬态方式失败。
 func isRetryableRenameErr(err error) bool {
 	var errno syscall.Errno
 	if !errors.As(err, &errno) {
@@ -110,16 +104,13 @@ func isRetryableRenameErr(err error) bool {
 	return errno == errorAccessDenied || errno == errorSharingViolation
 }
 
-// ArchivedName returns a non-colliding archive path for a rotated log file
-// (.forge/<filePrefix>-<stamp>.jsonl).
+// ArchivedName 为轮转的日志文件返回一个不冲突的归档路径
+// （.forge/<filePrefix>-<stamp>.jsonl）。
 //
-// The stamp carries nanosecond precision so two archives created in the same
-// second — concurrent task starts, or a fast Archive-then-Clear cycle — no
-// longer clobber each other. The previous second-precision stamp collided
-// silently on POSIX (os.Rename overwrote the prior archive) and errored on
-// Windows (Rename refuses an existing target), losing one of the two rotated
-// logs. On the astronomically rare same-nanosecond tie, a numeric suffix is
-// appended via a stat check.
+// stamp 带纳秒精度，因此同一秒创建的两个归档——并发 task start，或一次快速的
+// Archive-then-Clear 循环——不会再互相覆盖。原先秒精度 stamp 在 POSIX 上静默冲突
+// （os.Rename 覆盖了前一个归档），在 Windows 上报错（Rename 拒绝既有目标），
+// 损失两条轮转日志之一。在极罕见的同纳秒撞车情况下，通过 stat 检查追加数字后缀。
 func ArchivedName(dir, filePrefix string, now time.Time) string {
 	stamp := now.Format("20060102150405.000000000")
 	dst := filepath.Join(dir, fmt.Sprintf("%s-%s.jsonl", filePrefix, stamp))
@@ -127,7 +118,7 @@ func ArchivedName(dir, filePrefix string, now time.Time) string {
 		if _, err := os.Stat(dst); os.IsNotExist(err) {
 			return dst
 		} else if err != nil {
-			return dst // stat error: best-effort, let the caller's Rename surface it
+			return dst // stat 错误：best-effort，交由调用方的 Rename 上报
 		}
 		dst = filepath.Join(dir, fmt.Sprintf("%s-%s-%d.jsonl", filePrefix, stamp, i))
 	}

@@ -2,14 +2,14 @@ package cli
 
 import "encoding/json"
 
-// normalizeAgentStdin translates non-Claude-Code agent hook stdin into the
-// HookInput shape forge extracts from. FORGE_HOOK_AGENT — set by each agent's
-// hook command (e.g. `FORGE_HOOK_AGENT=windsurf forge hook task-guard`) —
-// selects the dialect. Without this, agent stdin parses to empty
-// file_path/command and intercept hooks (task-guard, bash-guard) fail open.
+// normalizeAgentStdin 把非 Claude Code agent 的 hook stdin 翻译成 forge 抽取
+// 所用的 HookInput 形状。FORGE_HOOK_AGENT 由各 agent 的 hook 命令设置（例如
+// `FORGE_HOOK_AGENT=windsurf forge hook task-guard`），用以选择方言。不做这步，
+// agent stdin 会解析出空的 file_path/command，拦截类 hook（task-guard、
+// bash-guard）会 fail open。
 //
-// opencode and pi are code-based: their TS extensions build Claude-shape stdin
-// directly before spawning forge, so they need no normalizer here.
+// opencode 和 pi 是 code-based：它们的 TS 扩展在 spawn forge 前就直接构造
+// Claude-shape stdin，故此处无需 normalizer。
 func normalizeAgentStdin(agent string, stdinData []byte, hookInput *HookInput) {
 	switch agent {
 	case "windsurf":
@@ -17,9 +17,9 @@ func normalizeAgentStdin(agent string, stdinData []byte, hookInput *HookInput) {
 	}
 }
 
-// windsurfNormalize maps Windsurf Cascade's hook stdin onto HookInput.
+// windsurfNormalize 把 Windsurf Cascade 的 hook stdin 映射到 HookInput。
 //
-// Windsurf schema (per docs.windsurf.com/windsurf/cascade/hooks):
+// Windsurf schema（见 docs.windsurf.com/windsurf/cascade/hooks）：
 //
 //	{
 //	  "agent_action_name": "pre_write_code",
@@ -31,8 +31,8 @@ func normalizeAgentStdin(agent string, stdinData []byte, hookInput *HookInput) {
 //	  }
 //	}
 //
-// We rebuild tool_input as Claude's {file_path, content, command} so the
-// existing toolInputFields extraction picks it up unchanged.
+// 这里把 tool_input 重建成 Claude 的 {file_path, content, command}，让既有
+// toolInputFields 抽取逻辑无需改动即可拿到。
 func windsurfNormalize(stdinData []byte, hookInput *HookInput) {
 	var w struct {
 		AgentActionName string `json:"agent_action_name"`
@@ -76,10 +76,10 @@ func windsurfNormalize(stdinData []byte, hookInput *HookInput) {
 	}
 }
 
-// windsurfToolName maps a Windsurf event to the Claude Code tool name forge
-// keys on. Windsurf doesn't split Write vs Edit at the event level (both are
-// *_write_code), so both map to Write — file_path extraction is what matters
-// for enforcement, not the Write/Edit distinction.
+// windsurfToolName 把 Windsurf 事件映射到 forge 据以分发的 Claude Code 工具
+// 名。Windsurf 在事件层并不区分 Write 和 Edit（二者都是 *_write_code），故都
+// 映射到 Write——对 enforcement 而言关键是 file_path 抽取，而非 Write/Edit 的
+// 区分。
 func windsurfToolName(action string) string {
 	switch action {
 	case "pre_write_code", "post_write_code":

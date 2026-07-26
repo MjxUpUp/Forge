@@ -10,9 +10,9 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
-// GenerateQualitySkill creates .claude/skills/forge-quality/SKILL.md — the
-// quality protocol skill that is loaded at session start via CLAUDE.md reference.
-// It contains quality standards, session rules, and task pipeline instructions.
+// GenerateQualitySkill 创建 .claude/skills/forge-quality/SKILL.md——
+// 在 session 启动时经 CLAUDE.md reference 加载的质量协议 skill。
+// 内含质量标准、session 规则与 task pipeline 说明。
 func GenerateQualitySkill(projectDir string, proto *protocol.Protocol) error {
 	skillDir := filepath.Join(projectDir, ".claude", "skills", "forge-quality")
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
@@ -29,18 +29,17 @@ func buildQualitySkillContent(projectDir string, proto *protocol.Protocol) strin
 
 	sb.WriteString("---\n")
 	sb.WriteString("name: forge-quality\n")
-	// Trigger-oriented description (Anthropic skill standard): describe WHEN to
-	// invoke, not what the skill "is". A vague "auto-executed standards" phrasing
-	// gives the model no signal to load this on demand. The scenarios below are
-	// the real entry points — pre-coding task start, advancing gates, recovering
-	// from a guard WARN.
+	// 触发导向 description（Anthropic skill 规范）：描述何时调用，
+	// 而非 skill 是什么。模糊的自动执行标准式措辞
+	// 不给模型任何按需加载信号。下方场景才是真实入口——编码前 task start、
+	// 推进门禁、从 guard WARN 恢复。
 	sb.WriteString("description: \"在 Forge 项目中开始或推进编码任务时调用——启动 forge task、推进 task-implement/verify/complete 门禁、commit 与 complete 的时机、以及 task-guard/bash-guard/file-sentinel 警告的恢复。也覆盖评分阈值与证据链反馈。遇到 forge 门禁推进、guard 警告、或任务卡住需要 abort 时使用。\"\n")
 	sb.WriteString("---\n\n")
 
 	sb.WriteString("# Forge 质量协议\n\n")
 	sb.WriteString("你是本项目的质量守护者。以下标准在任何开发会话中都有效。\n\n")
 
-	// Quality standards
+	// 质量标准
 	sb.WriteString("## 质量标准\n\n")
 	for _, s := range proto.Standards {
 		if !s.Enabled {
@@ -61,7 +60,7 @@ func buildQualitySkillContent(projectDir string, proto *protocol.Protocol) strin
 	}
 	sb.WriteString("\n")
 
-	// Session rules
+	// session 规则
 	sb.WriteString("## 会话行为规则\n\n")
 	for _, r := range proto.SessionRules {
 		prefix := "必须"
@@ -79,7 +78,7 @@ func buildQualitySkillContent(projectDir string, proto *protocol.Protocol) strin
 	}
 	sb.WriteString("\n")
 
-	// Task Bridge Protocol
+	// Task Bridge Protocol 章节（task 与 session 同步）
 	sb.WriteString("## Task Bridge Protocol\n\n")
 	sb.WriteString("Forge task 和 Claude Code task 必须保持同步。Forge 是 source of truth（门禁、评分）。\n\n")
 	sb.WriteString("> **⚠️ 编码前必做**：无论是从 plan mode 审批后进入编码，还是直接开始修改代码，第一步永远是 `forge task start`。不要在 master 上直接写代码。不要在写完代码后才补启任务。\n\n")
@@ -150,19 +149,19 @@ func buildQualitySkillContent(projectDir string, proto *protocol.Protocol) strin
 	sb.WriteString("### 例外\n\n")
 	sb.WriteString("纯文档修改、单行 typo 修复、版本号 bump 不需要启动 Forge 任务。\n\n")
 
-	// Red Flags — judgmental quality rules sunk from runtime hooks (read-check,
-	// scope-guard, clone-check) to declarative skill text, per the layered noise
-	// treatment: hard constraints (assertion/auto-compile/task-guard/file-sentinel)
-	// stay as runtime hooks because skill text cannot deterministically block;
-	// judgmental rules become text the agent reads and follows, removing the
-	// per-tool-call WARN noise those hooks generated.
+	// Red Flags——判断性质量规则从 runtime hook（read-check、
+	// scope-guard、clone-check）下沉为声明式 skill 文本，按分层噪音治理：
+	// 硬约束（assertion/auto-compile/task-guard/file-sentinel）仍作 runtime hook，
+	// 因 skill 文本无法 deterministic block；
+	// 判断性规则变成 agent 可读可循的文本，消除这些 hook 此前每次工具调用产生的
+	// WARN 噪音。
 	sb.WriteString("## Red Flags（判断性质量信号，自律遵守）\n\n")
 	sb.WriteString("以下规则原为 runtime hook，现已下沉为声明式文本——agent 可读可循，去判断性噪音。违反不阻塞，但会降低任务评分。\n\n")
 	sb.WriteString("- **先读再改**：修改代码前先 Read 理解上下文。read-before-edit hook 已在活跃任务内硬阻断编辑未 Read 过的现存源文件（见上）；此条覆盖 hook 之外的场景（非任务编辑、跨会话接手）——凭记忆/Grep 片段就改既有代码是错改入库的温床。\n")
 	sb.WriteString("- **聚焦变更**：单次任务累计变更 >400 行需自检是否聚焦；>2000 行考虑拆分提交以便 review。\n")
 	sb.WriteString("- **避免重复**：文件重复行占比高（unique 行 <30%）时主动去重；精确检测用 `forge clone check`。\n\n")
 
-	// Task pipeline section
+	// task pipeline 章节
 	sb.WriteString("## 任务级管道\n\n")
 	sb.WriteString("当检测到任务上下文（非 main 分支或显式任务）时，执行以下轻量门禁：\n\n")
 	gates := taskpipeline.DefaultGates()
@@ -184,7 +183,7 @@ func buildQualitySkillContent(projectDir string, proto *protocol.Protocol) strin
 	sb.WriteString("forge task list           — 列出所有任务\n")
 	sb.WriteString("```\n\n")
 
-	// Scoring section
+	// 评分章节
 	sb.WriteString("## 任务质量评分\n\n")
 	sb.WriteString("任务完成时自动评分（6 个维度，0-100 分，A-F 等级）：\n\n")
 	sb.WriteString("| 维度 | 权重 | 说明 |\n")
@@ -198,7 +197,7 @@ func buildQualitySkillContent(projectDir string, proto *protocol.Protocol) strin
 	sb.WriteString("**阈值**：A ≥ 90 / B ≥ 80 / C ≥ 70 / D ≥ 60 / F < 60。低分仅记录评分与证据链结论不再阻塞 complete。\n\n")
 	sb.WriteString("使用 `forge task score` 查看评分详情，`forge task score --history` 查看历史。\n\n")
 
-	// Project info
+	// 项目信息
 	sb.WriteString("## 当前项目信息\n\n")
 	sb.WriteString(fmt.Sprintf("- **项目**: %s\n", filepath.Base(projectDir)))
 

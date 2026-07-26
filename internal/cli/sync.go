@@ -15,16 +15,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// autoSync ensures .forge/ files (hooks, settings, SKILL.md) match the current
-// binary version. It runs before every command except init.
+// autoSync 确保 .forge/ 文件（hooks/settings/SKILL.md）与当前 binary version 一致。
+// 除 init 外每条命令前都跑。
 //
-// Sync rules:
-//   - .forge/hooks/*.sh  → always overwrite with embedded templates
-//   - .claude/settings.local.json → always regenerate
-//   - .claude/skills/forge-quality/SKILL.md → always regenerate from protocol.yml
-//   - .claude/CLAUDE.md → update Forge-managed section
-//   - .forge/protocol.yml → create from defaults if missing, never overwrite
-//   - .forge/.sync-version → stamp current binary version (no-op detection)
+// sync 规则：
+//   - .forge/hooks/*.sh  → 始终用 embed 模板覆盖
+//   - .claude/settings.local.json → 始终重生
+//   - .claude/skills/forge-quality/SKILL.md → 始终从 protocol.yml 重生
+//   - .claude/CLAUDE.md → 更新 Forge 管理的 section
+//   - .forge/protocol.yml → 缺失则从默认值创建，绝不覆盖
+//   - .forge/.sync-version → 盖当前 binary version 戳（no-op 检测）
 func autoSync(dir string, binaryVersion string, force bool) error {
 	// plugin 已 user-level 装时,本函数写入的 project-level hooks（GenerateSettings）是冗余的
 	// （+ 旧项目 .mcp.json 的 forge server 残留,StripForgeMCPServer 清历史 init/sync 旧项目）,
@@ -34,8 +34,8 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 
 	// .sync-version stamp 判 no-op（取代已删除的 state.LastSyncVersion——项目级管道
 	// 删除后 state.json 不再生成）。Three conditions force a sync even when versions
-	// match: force flag / stamp missing-or-mismatch / stale hook binding in
-	// settings.local.json (legacy task-verify mis-bound to PostToolUse).
+	// match：force flag / stamp 缺失或不匹配 / settings.local.json 内 stale hook binding
+	// （旧版 task-verify 误绑 PostToolUse）。
 	stampPath := filepath.Join(dir, ".forge", ".sync-version")
 	if !force && binaryVersion != "dev" {
 		if stamp, err := os.ReadFile(stampPath); err == nil &&
@@ -47,25 +47,23 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 
 	forgeDir := filepath.Join(dir, ".forge")
 
-	// 1. Sync hook scripts
+	// 1. sync hook 脚本
 	if err := hooks.WriteHookTemplates(forgeDir); err != nil {
 		return fmt.Errorf("auto-sync: failed to update hooks: %w", err)
 	}
 
-	// 2. Sync settings.local.json — only when plugin is NOT user-level installed.
-	//    When plugin IS installed, user-level plugin.json already registers
-	//    ForgeHookSpec machine-wide; writing project-level hooks is redundant and
-	//    creates a fragile "write then immediately strip" pattern where any
-	//    interruption between GenerateSettings and the deferred
-	//    dedupeProjectLevelIfPlugin leaves the file corrupted. dedupeProjectLevelIfPlugin
-	//    still runs via defer to clean up legacy hooks from older forge versions.
+	// 2. sync settings.local.json——仅在 plugin 未 user-level 安装时。
+	//    plugin 已装时，user-level plugin.json 已全机注册 ForgeHookSpec；写 project-level
+	//    hooks 冗余且制造脆弱的「先写后立即 strip」模式——GenerateSettings 与 defer
+	//    dedupeProjectLevelIfPlugin 之间任何中断都会留下损坏文件。dedupeProjectLevelIfPlugin
+	//    仍经 defer 跑以清旧版 forge 的 legacy hooks。
 	if !hooks.IsClaudePluginInstalled() {
 		if err := hooks.GenerateSettings(dir); err != nil {
 			return fmt.Errorf("auto-sync: failed to update settings: %w", err)
 		}
 	}
 
-	// 3. Ensure protocol.yml exists (create from defaults if missing)
+	// 3. 确保 protocol.yml 存在（缺失则从默认值创建）
 	proto, err := protocol.Load(dir)
 	if err != nil {
 		proto = protocol.DefaultProtocol()
@@ -74,7 +72,7 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 		}
 	}
 
-	// 4. Sync quality SKILL.md
+	// 4. 同步 quality SKILL.md
 	if err := skillgen.GenerateQualitySkill(dir, proto); err != nil {
 		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to regenerate quality skill: %v\n", err)
 	}
@@ -84,17 +82,17 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 	migrateRuntimeResidue(dir)
 	cleanupLegacyDeadFiles(dir)
 
-	// 6. Update CLAUDE.md
+	// 6. 更新 CLAUDE.md
 	if err := skillgen.GenerateClaudeMD(dir); err != nil {
 		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to update CLAUDE.md: %v\n", err)
 	}
 
-	// 7. Update project-root AGENTS.md (cross-agent instruction source)
+	// 7. 更新 project-root AGENTS.md（跨 agent 指令源）
 	if err := skillgen.GenerateAgentsMD(dir); err != nil {
 		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to update AGENTS.md: %v\n", err)
 	}
 
-	// 8. Sync agent bridge (translate for all detected agents)
+	// 8. sync agent bridge（为所有检测到的 agent 翻译）
 	agents := agentbridge.DetectAgents(dir)
 	if len(agents) > 0 {
 		bridgeInput := &agentbridge.TranslationInput{
@@ -108,7 +106,7 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 		}
 	}
 
-	// 9. Update .sync-version stamp
+	// 9. 更新 .sync-version 戳
 	if err := os.WriteFile(stampPath, []byte(binaryVersion), 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to write sync stamp: %v\n", err)
 	}
@@ -173,21 +171,19 @@ func cleanupLegacyDeadFiles(dir string) {
 	}
 }
 
-// fileExists reports whether a path exists (Stat no error). Tiny helper to keep
-// the cleanup loops readable without repeating os.Stat + nil-check boilerplate.
+// fileExists 报告路径是否存在（Stat 无错）。小 helper 让 cleanup 循环可读，
+// 无需重复 os.Stat + nil-check 样板。
 func fileExists(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil
 }
 
-// settingsHasStaleBinding reports whether .claude/settings.local.json binds a
-// Forge hook to an event the current generator no longer emits — the signature
-// of a settings file left over from an older Forge version. The concrete case:
-// task-verify was once bound under PostToolUse with a wide matcher
-// (Bash|Read|Glob|Skill|Agent), firing on nearly every tool call and — without
-// the hook's own throttle — producing runaway invocations (100+/session) in
-// real heavy-use projects. The current generator binds task-verify only under
-// Stop, so any binding for it elsewhere is stale and must be regenerated away.
+// settingsHasStaleBinding 报告 .claude/settings.local.json 是否把某个 Forge hook
+// 绑到了当前 generator 不再 emit 的事件——这是旧版 Forge settings 文件的指纹。具体案例：
+// task-verify 曾绑在 PostToolUse 下用宽 matcher（Bash|Read|Glob|Skill|Agent），
+// 几乎每次工具调用都触发——在 hook 自身 throttle 缺失下，重度使用项目里产生失控调用
+// （100+/session）。当前 generator 只把 task-verify 绑到 Stop，因此别处的任何绑定都是
+// stale，必须重生清除。
 func settingsHasStaleBinding(dir string) bool {
 	data, err := os.ReadFile(filepath.Join(dir, ".claude", "settings.local.json"))
 	if err != nil {
@@ -203,9 +199,8 @@ func settingsHasStaleBinding(dir string) bool {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return false
 	}
-	// task-verify must live only under Stop. A binding under any other event
-	// (PostToolUse/PreToolUse) is a legacy leftover that re-triggers it per
-	// tool call.
+	// task-verify 只能在 Stop 下。其他事件（PostToolUse/PreToolUse）下的绑定是 legacy
+	// 残留，每次 tool call 都会重复触发。
 	for event, matchers := range cfg.Hooks {
 		if event == "Stop" {
 			continue

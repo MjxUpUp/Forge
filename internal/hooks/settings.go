@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// embeddedHooks maps script names (without .sh suffix) to their embedded content.
+// embeddedHooks 把脚本名（不带 .sh 后缀）映射到其嵌入内容。
 var embeddedHooks = map[string]string{
 	"auto-compile":        AutoCompileHook,
 	"assertion-check":     AssertionCheckHook,
@@ -29,34 +29,34 @@ var embeddedHooks = map[string]string{
 	"workflow-test-guard": WorkflowTestGuardHook,
 }
 
-// EmbeddedContent returns the hook script content for the given name
-// (e.g. "auto-compile"). Returns the content and true if found.
+// EmbeddedContent 返回指定名字（如 auto-compile）对应的 hook 脚本内容。
+// 命中时返回内容和 true。
 func EmbeddedContent(name string) (string, bool) {
 	content, ok := embeddedHooks[name]
 	return content, ok
 }
 
-// ForgeHookSpec is the single source of truth for which forge hooks run at
-// which Claude Code tool event. It returns the hooks object exactly as it
-// appears under the "hooks" key of .claude/settings.local.json. The plugin-pack
-// generator (internal/agentbridge/pluginpack.go) writes the SAME object as the
-// hooks field of plugins/forge/.claude-plugin/plugin.json, so `claude plugin install forge` produces
-// byte-identical hook wiring to `forge init` — one shared payload, per-host
-// thin manifests pointing at it. Any
-// wiring change here propagates to both paths; do not duplicate the
-// matcher→hook roster elsewhere. Drift is guarded by
-// TestPluginPack_HooksMirrorSettings (plugin pack) and TestOpencodePluginWiring
-// (opencode's TS roster mirrors this set).
-// HookEntry is one hook command run under a matcher. Exported so other packages
-// (internal/agentbridge codex/cursor translators) can iterate the spec to derive
-// their native hook formats from ForgeHookSpec — the single source of truth —
-// instead of hand-maintaining parallel copies that drift.
+// ForgeHookSpec 是哪些 forge hook 跑在哪个 Claude Code tool event 上的
+// single source of truth。返回的 hooks 对象与 .claude/settings.local.json
+// 中 hooks key 下的内容完全一致。plugin-pack 生成器
+// （internal/agentbridge/pluginpack.go）把同一对象写入
+// plugins/forge/.claude-plugin/plugin.json 的 hooks 字段，故
+// `claude plugin install forge` 与 `forge init` 产生 byte-identical 的 hook
+// 接线——一份共享 payload，各 host 仅用薄 manifest 指向它。任何接线
+// 变更都同时传播到两条路径；不要在别处重复维护 matcher→hook 名册。
+// drift 由 TestPluginPack_HooksMirrorSettings（plugin pack）与
+// TestOpencodePluginWiring（opencode 的 TS 名册镜像此集合）守卫。
+//
+// HookEntry 是跑在一个 matcher 下的一条 hook command。导出以便其他包
+// （internal/agentbridge codex/cursor translator）能遍历该 spec、
+// 从 ForgeHookSpec 这一 single source of truth 派生各自的 native hook
+// 格式，而非手维护易漂移的并行副本。
 type HookEntry struct {
 	Type    string `json:"type"`
 	Command string `json:"command"`
 }
 
-// HookMatcher groups hook commands sharing a tool-name matcher.
+// HookMatcher 把共享同一 tool-name matcher 的 hook command 聚合在一起。
 type HookMatcher struct {
 	Matcher string      `json:"matcher,omitempty"`
 	Hooks   []HookEntry `json:"hooks"`
@@ -149,7 +149,7 @@ func ForgeHookSpec() map[string][]HookMatcher {
 	}
 }
 
-// GenerateSettings creates/updates .claude/settings.local.json with hook integration.
+// GenerateSettings 创建/更新 .claude/settings.local.json，写入 hook 集成。
 // 合并式:读现有文件,保留用户自定义顶层字段(env/model/enabledPlugins 等),
 // 只把 hooks 段更新为 ForgeHookSpec。覆盖整个文件会丢失用户配置——plugin-dedupe
 // 场景下尤其致命:init 写 hooks → dedupe 删 forge hooks → 若非 hooks 字段没保留,
@@ -295,7 +295,7 @@ func isForgeHookCommand(cmd string) bool {
 		cmd == "forge hook" || cmd == "forge gate"
 }
 
-// WriteHookTemplates writes embedded hook scripts to .forge/hooks/.
+// WriteHookTemplates 把嵌入的 hook 脚本写入 .forge/hooks/。
 func WriteHookTemplates(forgeDir string) error {
 	hooksDir := filepath.Join(forgeDir, "hooks")
 	if err := os.MkdirAll(hooksDir, 0755); err != nil {
@@ -322,12 +322,12 @@ func WriteHookTemplates(forgeDir string) error {
 		"workflow-test-guard.sh": WorkflowTestGuardHook,
 	}
 
-	// Remove stale hook scripts no longer in the embedded set. This directory is
-	// Forge-managed (populated only by WriteHookTemplates), so any .sh not in the
-	// current set is leftover from a prior version — e.g. read-check.sh /
-	// scope-guard.sh / clone-check.sh after they were sunk to skill text, or
-	// experience-check.sh after deletion. Without this, removed hooks linger on
-	// disk forever (WriteHookTemplates otherwise only writes the current set).
+	// 清理已不在嵌入集合内的 stale hook 脚本。此目录由 Forge 接管
+	// （仅由 WriteHookTemplates 写入），故任何不在当前集合的 .sh 都是
+	// 旧版本残留——例如下沉到 skill 文本后的 read-check.sh /
+	// scope-guard.sh / clone-check.sh，或删除后的 experience-check.sh。
+	// 不清理则被移除的 hook 永远留在磁盘上
+	// （WriteHookTemplates 否则只写当前集合，不动旧文件）。
 	keep := make(map[string]bool, len(fileHooks))
 	for name := range fileHooks {
 		keep[name] = true
@@ -351,7 +351,7 @@ func WriteHookTemplates(forgeDir string) error {
 	return nil
 }
 
-// HookNames returns the list of hook script filenames managed by Forge.
+// HookNames 返回 Forge 接管的 hook 脚本文件名列表。
 func HookNames() []string {
 	return []string{
 		"auto-compile.sh",

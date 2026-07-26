@@ -1,26 +1,33 @@
-# Forge — AI 开发质量门禁引擎
+<div align="center">
+
+# Forge
+
+**AI 开发质量门禁引擎**
+
+Stop trusting AI-generated code. Start gating it.
+
+[![CI](https://github.com/MjxUpUp/Forge/actions/workflows/ci.yml/badge.svg)](https://github.com/MjxUpUp/Forge/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@agent_forge/forge?label=npm)](https://www.npmjs.com/package/@agent_forge/forge)
+[![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)](https://go.dev)
+[![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)](#-安装)
+[![license](https://img.shields.io/badge/license-MIT-blue)](#license)
+
+</div>
+
+---
 
 AI 写的代码，你放心直接提交吗？
 
 Forge 在 AI 编码过程中自动插入结构化质量门禁——从任务创建到代码提交，确保每一步产出物都经过验证。配合 Claude Code 的 Hook 系统实现实时拦截，不需要你手动检查。
 
-## 核心功能
+## ✨ 核心功能
 
-- **任务级门禁** — 每个开发任务走 3 道门禁：实现 → 验证 → 完成
-- **实时 Hook 拦截** — 多个内置 Hook，在 AI 写代码的同时自动检查质量、防止绕过
-- **安全纵深防御** — 三层防御架构：工具拦截 → 文件监控 → 自身保护
-- **质量评分** — 每个任务完成后自动评分，量化 AI 编码质量
+- **🚦 任务级门禁** — 每个开发任务走 3 道门禁：实现 → 验证 → 完成
+- **🪝 实时 Hook 拦截** — 多个内置 Hook，在 AI 写代码的同时自动检查质量、防止绕过
+- **🛡️ 安全纵深防御** — 三层防御架构：工具拦截 → 文件监控 → 自身保护
+- **📊 质量评分** — 每个任务完成后自动评分，量化 AI 编码质量
 
-## 定位：Loop Engineering 的验证 / 状态层
-
-AI 编码是一个循环：写代码 → 运行 → 读反馈 → 修正 → 再写。这个循环由 coding agent（Claude Code、Codex）驱动，**Forge 不替代循环本身**——它补上循环最容易缺的两层：
-
-- **验证层** — 每一轮产出物经门禁检验：编译通过、断言没被弱化、改代码前确实读过代码、文件未被绕道篡改。循环跑得越快，越需要自动化验证兜底，而不是靠人盯着。
-- **状态层** — 跨循环的任务状态：3 道门禁（实现 → 验证 → 完成）、活跃任务追踪、门禁历史。"做到哪了 / 是否达标"有持久化、可审计的记录，而不是只活在 agent 的上下文里（上下文一压缩就丢）。
-
-换言之，coding agent 负责**跑循环**，Forge 负责**让每一轮循环产出可信、状态可追**。Forge 不 discovery、不规划需求——那些是循环前端的事；Forge 守的是循环的执行质量。
-
-## 快速开始
+## 🚀 快速开始
 
 需要 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) 已安装。
 
@@ -37,12 +44,26 @@ forge init
 ```
 
 初始化后 Forge 会创建：
-- `.forge/` — Hook 脚本、任务状态、协议配置
-- `.claude/settings.local.json` — Hook 集成配置
-- `.claude/CLAUDE.md` — 质量协议引用
-- `.claude/skills/` — 质量协议 Skill
 
-## 工作流程
+| 路径 | 说明 |
+|------|------|
+| `.forge/` | Hook 脚本、任务状态、协议配置 |
+| `.claude/settings.local.json` | Hook 集成配置 |
+| `.claude/CLAUDE.md` | 质量协议引用 |
+| `.claude/skills/` | 质量协议 Skill |
+
+> **主要用 Claude Code？** 走 [plugin marketplace](plugins/forge/README.md) 一次性接线用户级 hooks（机器上所有项目共享，无需逐项目配 `.claude/settings.local.json`）。
+
+## 🎯 定位：Loop Engineering 的验证 / 状态层
+
+AI 编码是一个循环：写代码 → 运行 → 读反馈 → 修正 → 再写。这个循环由 coding agent（Claude Code、Codex）驱动，**Forge 不替代循环本身**——它补上循环最容易缺的两层：
+
+- **验证层** — 每一轮产出物经门禁检验：编译通过、断言没被弱化、改代码前确实读过代码、文件未被绕道篡改。循环跑得越快，越需要自动化验证兜底，而不是靠人盯着。
+- **状态层** — 跨循环的任务状态：3 道门禁（实现 → 验证 → 完成）、活跃任务追踪、门禁历史。"做到哪了 / 是否达标"有持久化、可审计的记录，而不是只活在 agent 的上下文里（上下文一压缩就丢）。
+
+换言之，coding agent 负责**跑循环**，Forge 负责**让每一轮循环产出可信、状态可追**。Forge 不 discovery、不规划需求——那些是循环前端的事；Forge 守的是循环的执行质量。
+
+## 🔧 工作流程
 
 ### 任务级门禁
 
@@ -64,11 +85,11 @@ forge task score                  # 查看质量评分
 
 **门禁退出码契约**：`forge task gate` 非 0 退出（输出 `BLOCKED:` 前缀）= 硬阻断，必须修复后重跑；零退出但见 `ADVISORY:` 前缀 = 软信号（gate 仍过、已记 checklog，应修不阻断）。按退出码而非文案行动——硬错误的散文易被误读成提醒而跳过。
 
-**PlanScope 白名单（规划前置）**：`task start --scope <glob>`（可重复，或中途 `forge task scope add <glob>` 追加）声明"打算改哪些文件"，对应 Copilot Workspace plan / Terraform desired state。`task-verify` 比对实改源码与声明的差集，记一条 `scope-drift` 证据（deterministic，`forge trace` 可见）并 stderr 提醒。全程 **advisory 不阻塞**——变更影响分析召回率仅 ~44%（PASTE），scope 是 prediction 非 contract，偏差是常态信号而非异常；它把"规划前置"变成可度量、可回顾的契约，正堵在 review 反复出问题的根因上。
+**PlanScope 白名单（规划前置）**：`task start --scope <glob>`（可重复，或中途 `forge task scope add <glob>` 追加）声明"打算改哪些文件"。`task-verify` 比对实改源码与声明的差集，记一条 `scope-drift` 证据（deterministic，`forge trace` 可见）并 stderr 提醒。全程 **advisory 不阻塞**——变更影响分析召回率仅 ~44%，scope 是 prediction 非 contract，偏差是常态信号而非异常；它把"规划前置"变成可度量、可回顾的契约，正堵在 review 反复出问题的根因上。
 
 **Cheat-scan（机械作弊模式扫描）**：`task-verify` 扫任务新增行（`+` 行），机械检测 4 类 AI 作弊模式——`type-suppression`（`@ts-ignore`/`eslint-disable`/`#[allow]`/`type: ignore`）、`error-swallow`（空 `catch{}`/`except:pass`）、`dead-branch`（`if(false)`/`if(1===2)`）、`comment-only-fix`（某文件新增行全注释零逻辑）——记一条 `cheat-scan` 证据（deterministic，`forge trace` 可见）并 stderr 列出命中。全程 **advisory 不阻塞**：这些模式此前全靠 code-review-gate 的 LLM 子 agent 判断，LLM 每轮对同一 diff 重新采样抓不同子集，是"每轮 review 冒新问题"的体感来源；抽到 deterministic 后，机械模式一次判准，LLM-reviewer 退到只做语义判断（设计/架构/mock 是否幻觉）。`comment-only-fix` 是启发式（severity=low，纯文档任务可能误报）。
 
-## Hook 系统
+## 🪝 Hook 系统
 
 Forge 通过 Claude Code 的 Hook 机制实现实时质量检查：
 
@@ -110,7 +131,7 @@ Layer 3: 会话结束验证
 
 Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 task JSON 等方式绕过——bash-guard 拦截工具层，file-sentinel 监控文件层，task-guard 保护配置层。
 
-## 命令参考
+## 📋 命令参考
 
 ### 项目管理
 
@@ -208,7 +229,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge plugin status` | 报告 forge plugin 是否在 user-level 已装（exit 0=已装，非零=未装；供 init-suggest hook / 脚本检测） |
 | `forge plugin dedupe [dir] [--keep-empty]` | plugin 已装时清理 project-level 重复 hooks + 旧项目 .mcp.json forge server 残留，并清理 user-level（`~/.claude` 或 `$CLAUDE_CONFIG_DIR`）`settings.local.json` 的重复 forge hooks（plugin.json 已在 user-level 注册全部 hooks）；幂等 no-op；init-suggest SessionStart 自动调用（传 `--keep-empty` 保留项目 `settings.local.json` 为 `{}`，不删用户个人配置文件）；user-level 始终保留文件壳（绝不删用户全局配置）；手动不传则项目级清完删空文件。注：forge 项目内 autoSync 每命令末尾 defer 已静默 dedupe，本命令在非 forge 项目（如 `cd ~ && forge plugin dedupe`）手动跑才作清理主力并给出可读输出 |
 
-## 安装
+## 📦 安装
 
 ```bash
 # npm（推荐）
@@ -230,6 +251,15 @@ npm install -g @agent_forge/forge
 ```
 
 仍需 `npm install -g @agent_forge/forge` 装二进制（hooks 都 spawn forge），并在每个项目 `forge init` 生成项目级资产（`.forge/`、`CLAUDE.md`/`AGENTS.md`、skills）。plugin 已装时 `forge init` 会自动去重 project-level 的 hooks，并清理 user-level `settings.local.json` 的重复 forge hooks（避免与 user-level plugin 双重注册——历史 global `forge init` 写 home / 旧全局安装残留的重复），存量项目由 init-suggest SessionStart hook 自动迁移。完整三步与各 host 差异见 `plugins/forge/README.md`。
+
+## 📚 更多文档
+
+| 文档 | 说明 |
+|------|------|
+| [中文使用指南](READMEs/README.zh-CN.md) | 面向国内用户的安装 / 日常 / 多宿主精简指南 |
+| [Plugin 安装详解](plugins/forge/README.md) | 多 host plugin marketplace 三步接线与各 host 差异 |
+| [项目主页](homepage/index.md) | 一分钟简介 + 核心能力速览 |
+| [质量协议](.claude/CLAUDE.md) | Forge 质量协议全文（任务工作流 / 门禁 / 安全机制） |
 
 ## License
 

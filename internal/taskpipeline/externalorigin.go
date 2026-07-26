@@ -32,7 +32,7 @@ func ParseExternalOriginURL(rawURL string) ExternalOrigin {
 			o.IssueID = o.Identifier
 		}
 	case host == "github.com":
-		// github.com/<org>/<repo>/issues/<num>
+		// github.com/<org>/<repo>/issues/<num>（数字 issue id）
 		o.Tracker = "github"
 		if i := indexOfSeg(segs, "issues"); i >= 0 && i+1 < len(segs) {
 			o.IssueID = segs[i+1]

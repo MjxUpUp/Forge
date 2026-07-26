@@ -21,10 +21,10 @@ import (
 // 任务刚完成时（HEAD≈HeadCommit）精确；事后 HEAD 推进会让 git diff 含后续改动而漂移
 // （scope 维度受影响最大）。故 golden 采集应在任务完成那刻或紧随其后。
 func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, *scoringtypes.ScoringConfig, error) {
-	// Collect git data (non-fatal on failure)
+	// 采集 git 数据（失败不致命）
 	gitDiffStat, _ := scoring.CollectGitData(root, state.Branch, state.HeadCommit)
 
-	// Determine hook results from gate history and check log.
+	// 从 gate history 与 check log 推断 hook 结果。
 	compilePassed := false
 	compileChecked := false
 	assertionPassed := false
@@ -62,7 +62,7 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 		testCoverageChecked = true
 	}
 
-	// Count retries: gates that appear multiple times with mixed results
+	// 统计 retry：多次出现且结果混合的 gate
 	retries := 0
 	gateAttempts := make(map[string][]bool)
 	for _, r := range state.History {
@@ -80,7 +80,7 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 		}
 	}
 
-	// Load scoring config from protocol
+	// 从 protocol 加载 scoring 配置
 	var config *scoringtypes.ScoringConfig
 	proto, err := protocol.Load(root)
 	if err != nil || proto == nil || proto.Scoring == nil {
@@ -137,7 +137,7 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 // 喂给 act/health/dashboard。从 cli/task.go 下沉，MCP complete 与 CLI 共用同一评分路径。
 func ScoreTask(root string, state *TaskState) error {
 	if state.Score != nil {
-		return nil // already scored
+		return nil // 已评分
 	}
 
 	input, config, err := BuildEvaluateInput(root, state)
