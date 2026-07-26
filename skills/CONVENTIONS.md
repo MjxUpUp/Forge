@@ -127,7 +127,7 @@ metadata:
 
 ### 工具（已实现，非新写）
 
-`forge skills {list,install,audit,validate,usage,adapters,eval}` 命令族已完整。**`forge skills usage [--top N] [--json] [--undertrigger]` 是 skill 用度 dashboard 的现成形态**——读 `~/.forge/research/skill-usage.jsonl` 出 hot + undertrigger 候选。**不是新写，是文档化普及**。
+`forge skills {list,install,audit,validate,usage,adapters,eval,effectiveness}` 命令族已完整。**`forge skills usage [--top N] [--json] [--undertrigger]` 是 skill 用度 dashboard 的现成形态**——读 `toollog.jsonl`（tool-track hook 跨 host 采集，agent-neutral，含跨归档 LoadAllAll）出 hot + undertrigger 候选。`forge skills effectiveness [--json]` 关联 Skill 调用与 act 结论产出命中×成效画像（avg 分/ratio/弱占比）。数据源已于 2026-07 从 pi 旧源（`~/.pi/research/skill-usage.jsonl`）迁移到 toollog。
 
 ### 实测验证（2026-07-05，本机）
 
@@ -137,7 +137,7 @@ metadata:
 | E:\AgentWorld | ✅ | ⚠️ 空（init 后未跑 task） | ❌ |
 | E:\DevWorkbench | ✅ | ⚠️ 空（init 后未跑 task） | ❌ |
 
-`s/skill-usage.jsonl` 实测：185 条 / 39 unique / top 5 = research-workflow(48) / web-search-bridge(35) / fact-research(8) / evidence-based-proposal(8) / agent-delegation(8)。**研究类 skill 占比 ~45%** 反映"写代码前先调研"的项目画像。
+`s/skill-usage.jsonl`（pi 旧源，已废弃）迁移前实测：185 条 / 39 unique / top 5 = research-workflow(48) / web-search-bridge(35) / fact-research(8) / evidence-based-proposal(8) / agent-delegation(8)。**研究类 skill 占比 ~45%** 反映"写代码前先调研"的项目画像。当前数据源为 toollog.jsonl（agent-neutral），用 `forge skills usage` / `forge skills effectiveness` 查看。
 
 ### 已知 gap（诚实记录，未来触发再评估）
 
