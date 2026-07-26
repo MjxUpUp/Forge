@@ -162,6 +162,110 @@ func TestEnsureSession_Scoped_DistinctSessionsIsolated(t *testing.T) {
 	}
 }
 
+// TestHasActiveTaskFromOtherSession verifies the concurrent-session detection
+// used by the review-stop hook: when another session has an active task, the
+// global git diff belongs to that session — the current session should not block.
+//
+// IMPORTANT: each test case uses FORGE_DATA_HOME=t.TempDir() to isolate from the
+// real user's forge DataDir (~/.forge/projects/<key>/). Without this, DataDirFor
+// resolves to the real DataDir because t.TempDir() is a subdirectory of the git
+// repo, and the test reads real session data (false positives).
+func TestHasActiveTaskFromOtherSession(t *testing.T) {
+	isolatedRoot := func(t *testing.T) string {
+		t.Helper()
+		dir := t.TempDir()
+		t.Setenv("FORGE_DATA_HOME", dir)
+		return dir
+	}
+
+	t.Run("other session active", func(t *testing.T) {
+		dir := isolatedRoot(t)
+		if err := SetActiveTaskRef(dir, "sess-A", "feat/x"); err != nil {
+			t.Fatal(err)
+		}
+		if !HasActiveTaskFromOtherSession(dir, "sess-B") {
+			t.Error("sess-B should detect sess-A's active task")
+		}
+	})
+
+	t.Run("only own session", func(t *testing.T) {
+		dir := isolatedRoot(t)
+		if err := SetActiveTaskRef(dir, "sess-C", "feat/y"); err != nil {
+			t.Fatal(err)
+		}
+		if HasActiveTaskFromOtherSession(dir, "sess-C") {
+			t.Error("should not detect own session's file as other")
+		}
+	})
+
+	t.Run("no sessions", func(t *testing.T) {
+		dir := isolatedRoot(t)
+		if HasActiveTaskFromOtherSession(dir, "sess-Z") {
+			t.Error("should be false when no active-task-ref files exist")
+		}
+	})
+
+	t.Run("empty sessionID", func(t *testing.T) {
+		dir := isolatedRoot(t)
+		if err := SetActiveTaskRef(dir, "sess-D", "feat/z"); err != nil {
+			t.Fatal(err)
+		}
+		if HasActiveTaskFromOtherSession(dir, "") {
+			t.Error("empty sessionID should return false (legacy mode)")
+		}
+	})
+
+	t.Run("stale empty file not counted", func(t *testing.T) {
+		dir := isolatedRoot(t)
+		if err := SetActiveTaskRef(dir, "sess-E", "feat/e"); err != nil {
+			t.Fatal(err)
+		}
+		// Overwrite with zero bytes via the correct DataDir path (FORGE_DATA_HOME/<key>/)
+		refPath := activeTaskRefPath(dir, "sess-E")
+		if err := os.WriteFile(refPath, []byte{}, 0644); err != nil {
+			t.Fatal(err)
+		}
+		if HasActiveTaskFromOtherSession(dir, "sess-F") {
+			t.Error("zero-size file should not be counted as active")
+		}
+	})
+
+	t.Run("legacy file excluded", func(t *testing.T) {
+		dir := isolatedRoot(t)
+		// Write via activeTaskRefPath("") for the correct legacy path
+		legacyPath := activeTaskRefPath(dir, "")
+		os.MkdirAll(filepath.Dir(legacyPath), 0755)
+		if err := os.WriteFile(legacyPath, []byte("feat/legacy"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if HasActiveTaskFromOtherSession(dir, "sess-G") {
+			t.Error("legacy global file should not be counted")
+		}
+	})
+
+	t.Run("mixed sessions integrated", func(t *testing.T) {
+		dir := isolatedRoot(t)
+		if err := SetActiveTaskRef(dir, "sess-H", "feat/h"); err != nil {
+			t.Fatal(err)
+		}
+		// sess-I has no task — should detect sess-H
+		if !HasActiveTaskFromOtherSession(dir, "sess-I") {
+			t.Error("sess-I (research, no task) should detect sess-H's active task")
+		}
+		// sess-H's own view
+		if HasActiveTaskFromOtherSession(dir, "sess-H") {
+			t.Error("sess-H should not see other session")
+		}
+		// After clearing sess-H, no other sessions remain
+		if err := ClearActiveTaskRef(dir, "sess-H"); err != nil {
+			t.Fatal(err)
+		}
+		if HasActiveTaskFromOtherSession(dir, "sess-I") {
+			t.Error("after clearing, no active sessions remain")
+		}
+	})
+}
+
 // TestSanitizeSessionID_StripsUnsafeChars verifies the filename is safe even if
 // the session id somehow contained path/path-separator characters.
 func TestSanitizeSessionID_StripsUnsafeChars(t *testing.T) {

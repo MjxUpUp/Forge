@@ -165,6 +165,15 @@ func runReviewGate(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	// 并发会话检测：当前 session 无活跃任务，但存在其他 session 的活跃任务时，
+	// 全局 diff 可能来自那个 session 的变更——审查由该任务的 task-complete 门禁
+	// 强制，此处不应重复 block。否则调研 session 被要求 review 其他 session 的
+	// 代码变更才能结束会话（用户报告的并发问题）。
+	if taskpipeline.HasActiveTaskFromOtherSession(root, taskpipeline.CurrentSessionID()) {
+		fmt.Println("PASS 检测到其他会话的活跃任务——审查由该任务的 task-complete 门禁强制，此处放行")
+		return nil
+	}
+
 	// 非 task 模式：diff stamp 决策
 	dec, reason, err := review.Evaluate(root)
 	if err != nil {
