@@ -8,6 +8,14 @@ import (
 	"testing"
 )
 
+// TestRunSkillsAudit_JSONReportsFindings: a skill with PI-1 injection → audit --json output contains a HIGH finding.
+// Covers the main assembly path of runSkillsAudit: ListSkills→ScanSkill→ScoreFindings→result.
+//
+// Note: when ScanSkill returns err it converts to a CRITICAL finding + hasBlock block path; its precondition
+// (ScanSkill returns err rather than nil,nil for bad roots) is locked by
+// skillsqa.TestScan_NonexistentRoot_Propagates; the err→finding conversion inside runSkillsAudit is direct
+// defensive logic whose reachability depends on that contract.
+//
 // TestRunSkillsAudit_JSONReportsFindings：含 PI-1 注入的 skill → audit --json 输出含 HIGH finding。
 // 覆盖 runSkillsAudit 的 ListSkills→ScanSkill→ScoreFindings→result 主装配路径。
 //

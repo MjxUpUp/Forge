@@ -1,9 +1,25 @@
-// Package hazard 实现"高危命令 human-in-the-loop 确认"的标记持久化，支撑
+// Package hazard implements the persistent marker for high-risk-command human-in-the-loop
+// confirmation, backing the on-demand-guards automatic gate (hazard-guard hook + forge hazard confirm).
+//
+// Mechanism: the PreToolUse Bash hook hazard-guard detects a high-risk command -> blocks (exit 1)
+// with additionalContext instructing the agent to obtain explicit user confirmation via the
+// questioning/confirmation tool of whichever AI tool hosts it, then runs
+// forge hazard confirm <command> to register a time-limited (5min) confirmation marker; the agent
+// retries the original command; the hook sees the marker (same fingerprint + unexpired) and passes.
+// Under the Forge hook model (only approve/block), this is the only viable form of human-in-the-loop:
+// Forge cannot invoke each tool's private confirmation popup, so it relies on block + instruction +
+// time-limited marker to close the loop.
+//
+// This package only handles computing/writing/querying the marker; the pattern matching for
+// high-risk commands lives in the HazardGuardHook script in hooks/embed.go (BSD-safe case-glob,
+// same style as bash-guard).
+//
+// Package hazard 实现「高危命令 human-in-the-loop 确认」的标记持久化，支撑
 // on-demand-guards 自动挡（hazard-guard hook + forge hazard confirm）。
 //
 // 机制：PreToolUse Bash hook hazard-guard 检测到高危命令 → block（exit 1）+
 // additionalContext 指引 agent 用所在 AI 工具的提问确认工具获得用户明确确认后，
-// 运行 `forge hazard confirm "<命令>"` 登记一个限时（5min）确认标记 → agent 重试
+// 运行 `forge hazard confirm 「<命令>」` 登记一个限时（5min）确认标记 → agent 重试
 // 原命令 → hook 见标记（同指纹 + 未过期）放行。这是 Forge hook 模型（只有 approve/block）
 // 下 human-in-the-loop 的唯一落地形态——Forge 调不起各工具私有的确认弹窗，靠 block +
 // 指引 + 限时标记闭环。
@@ -27,14 +43,26 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
+// ConfirmTTL is the validity window of a confirmation marker. Within the window, same-fingerprint
+// retries are not re-blocked; outside the window, re-confirmation is required. This avoids a
+// single confirmation permanently allowing a high-risk command (confirmation should be per-action,
+// not carte blanche).
+//
 // ConfirmTTL 是一次确认标记的有效期。窗口内同指纹重试不重复 block；窗口外需重新
 // 确认——避免一次确认永久放行某高危命令（确认应针对当次操作，不是 carte blanche）。
 const ConfirmTTL = 5 * time.Minute
 
+// maxCommandStore is the truncation length for the command string stored at registration: it is
+// only for audit/display; an overly long command would bloat DataDir/hazards/<fp>.json, and the
+// full command text can be reverse-looked-up from logs via the fingerprint.
+//
 // maxCommandStore 是登记时存储的命令字符串截断长度——仅用于审计/展示，过长会撑大
 // DataDir/hazards/<fp>.json，且命令全文可由指纹反查日志。
 const maxCommandStore = 200
 
+// Confirmation records a single human confirmation of a command, stored at
+// DataDir/hazards/<fingerprint>.json.
+//
 // Confirmation 记录某条命令的一次人工确认，存 DataDir/hazards/<fingerprint>.json。
 type Confirmation struct {
 	Fingerprint string    `json:"fingerprint"`       // Fingerprint(命令) 的 sha256 hex
@@ -43,6 +71,12 @@ type Confirmation struct {
 	ExpiresAt   time.Time `json:"expires_at"` // ConfirmedAt + ConfirmTTL
 }
 
+// Fingerprint returns a stable fingerprint (sha256 hex) of the command. Whitespace is normalized
+// (consecutive whitespace collapsed to a single space, leading/trailing trimmed), so
+// `rm  -rf /x` and `rm -rf /x` share a fingerprint. Whitespace jitter across agent retries should
+// not require re-confirmation. Case is preserved (command case is significant). Same input always
+// yields same output (consistent across hook/CLI calls).
+//
 // Fingerprint 返回命令的稳定指纹（sha256 hex）。空白归一化（连续空白折叠为单空格、
 // 去首尾），故 `rm  -rf /x` 与 `rm -rf /x` 同指纹——agent 重试时空白抖动不该要求重新
 // 确认。大小写保留（命令大小写有意义）。同输入必同输出（跨 hook/CLI 调用一致）。
@@ -52,6 +86,15 @@ func Fingerprint(cmd string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// Confirm registers one confirmation: compute the fingerprint, write the time-limited marker,
+// return the fingerprint. Called by forge hazard confirm (without --fingerprint). Re-confirming
+// the same command renews it (overwrite write, ExpiresAt refreshed).
+//
+// Concurrency: AtomicWrite is temp+rename, so multi-process same-fingerprint confirm is
+// last-writer-wins; ExpiresAt values are all approximately now+5min and the window jitters by at
+// most a few seconds, negligible for low-frequency human-triggered HITL; add flock if strict
+// serialization is needed.
+//
 // Confirm 登记一次确认：算指纹 → 写限时标记 → 返回指纹。forge hazard confirm（无
 // --fingerprint）调用。同一命令重复 confirm 续期（覆盖写，ExpiresAt 刷新）。
 //
@@ -65,14 +108,27 @@ func Confirm(p *forgedata.Project, cmd string) (string, error) {
 	return fp, nil
 }
 
+// isValidFingerprint decides whether a fingerprint is a legal sha256 hex: exactly 64 characters,
+// all hex digits ([0-9a-fA-F]; hex.DecodeString accepts both cases). Fingerprint() produces
+// lowercase 64-hex, and the hook output matches. Case semantics are not this function's concern:
+// the caller ConfirmByFingerprint first ToLowers to normalize, this function only checks whether
+// it is a 64-character legal hex.
+//
+// Use: validation when confirm --fingerprint passes a value back. Agents (especially non-Claude
+// transcribing models) regenerate 64-char hex token by token and frequently drop/mistype
+// characters (2026-07 AgentWorld incident: three confirms produced e1/91(incomplete)/941 three
+// endings; the first two wrote wrong filenames yet reported success, and the hook kept blocking
+// because the real fingerprint was missing). Validation blocks this kind of distortion before
+// registration rather than granting false success.
+//
 // isValidFingerprint 判定指纹是否为合法 sha256 hex：恰好 64 字符、全部是 hex 数字
 // （[0-9a-fA-F]，hex.DecodeString 接受大小写）。Fingerprint() 产出小写 64 hex，hook
 // 输出同款。大小写语义不归本函数管——调用方 ConfirmByFingerprint 先 ToLower 归一化，
-// 本函数只判"是否 64 字符合法 hex"。
+// 本函数只判「是否 64 字符合法 hex」。
 //
 // 用途：confirm --fingerprint 回传时校验。agent（尤非 Claude 的转写型模型）回传 64 字符
 // hex 时会逐 token 重新生成，常漏字符/错字符（2026-07 AgentWorld 事故：三次 confirm
-// 抄出 e1/91(残缺)/941 三种结尾，前两次写入错文件名却报"✅ 已确认"，hook 用真指纹查
+// 抄出 e1/91(残缺)/941 三种结尾，前两次写入错文件名却报「✅ 已确认」，hook 用真指纹查
 // 不到继续拦）。校验把这类失真挡在登记前，而非给虚假成功。
 func isValidFingerprint(fp string) bool {
 	if len(fp) != sha256.Size*2 { // sha256.Size=32 字节 → 64 hex 字符
@@ -82,6 +138,16 @@ func isValidFingerprint(fp string) bool {
 	return err == nil
 }
 
+// ValidateFingerprint accepts mixed-case input and validates length/charset; on illegal input it
+// returns an invalid fingerprint error. ToLower is only used for internal validation to pass; the
+// normalized value is NOT returned. The write side (ConfirmByFingerprint) must ToLower to lowercase
+// itself. Exported so the cli layer can validate up front before findProjectRoot: format validation
+// is pure input validation and does not need project context, avoiding the case where a missing
+// .forge/ (e.g. CI fresh checkout) makes not-in-a-forge-project mask a fingerprint validation
+// failure. An agent that mis-copies a fingerprint should be explicitly rejected, not given vague
+// feedback due to unrelated project-location errors. The error message shares a source with
+// ConfirmByFingerprint, ensuring consistent feedback across the two paths.
+//
 // ValidateFingerprint 接受大小写混合输入并校验长度/字符集，非法返回 invalid fingerprint
 // 错误。ToLower 仅用于内部校验通过，不返回归一化值——落盘侧（ConfirmByFingerprint）须
 // 自行 ToLower 小写。导出供 cli 层在 findProjectRoot 前做前置校验：格式校验是纯输入校验，
@@ -96,6 +162,13 @@ func ValidateFingerprint(fp string) error {
 	return nil
 }
 
+// ConfirmByFingerprint registers confirmation by the fingerprint the hook already computed,
+// bypassing the Fingerprint(cmd) computation (avoids command-string copy distortion: agent-shell
+// re-parsing would eat quotes). It first runs ValidateFingerprint to reject illegal formats, then
+// ToLowers to lowercase before writing to disk. The hook queries with lowercase; on case-sensitive
+// filesystems, an uppercase write would mismatch. Full background on normalization and the
+// agent-miscopies-fingerprint incident is in the isValidFingerprint / ValidateFingerprint comments.
+//
 // ConfirmByFingerprint 按 hook 已算好的指纹登记确认，绕过 Fingerprint(cmd) 计算（避免
 // 命令串复制失真：agent shell 重新解析会吃掉引号）。先 ValidateFingerprint 拒非法格式，
 // 再 ToLower 小写落盘——hook 用小写查询，大小写敏感文件系统上大写落盘会失配。归一化与
@@ -107,6 +180,8 @@ func ConfirmByFingerprint(p *forgedata.Project, fp, cmd string) error {
 	return writeConfirmation(p, strings.ToLower(fp), cmd)
 }
 
+// writeConfirmation constructs a Confirmation and persists it (AtomicWrite = temp+rename).
+//
 // writeConfirmation 构造 Confirmation 落盘（AtomicWrite = temp+rename）。
 func writeConfirmation(p *forgedata.Project, fp, cmd string) error {
 	now := time.Now()
@@ -126,6 +201,10 @@ func writeConfirmation(p *forgedata.Project, fp, cmd string) error {
 	return nil
 }
 
+// IsConfirmed queries whether a fingerprint has an unexpired confirmation. Missing/corrupt is
+// treated as unconfirmed (next block triggers re-confirmation). The hook script invokes
+// `forge hazard confirmed <fp>` and conveys the result via exit code.
+//
 // IsConfirmed 查指纹是否有未过期确认。不存在/损坏视为未确认（下次拦了重新确认）。
 // hook 脚本调 `forge hazard confirmed <fp>` 用 exit code 传达结果。
 func IsConfirmed(p *forgedata.Project, fp string) (bool, error) {
@@ -143,6 +222,9 @@ func IsConfirmed(p *forgedata.Project, fp string) (bool, error) {
 	return time.Now().Before(c.ExpiresAt), nil
 }
 
+// ActiveConfirmations lists currently unexpired confirmations (for forge hazard status). Sorted
+// ascending by ExpiresAt (earliest-expiring first). Also opportunistically cleans up expired files.
+//
 // ActiveConfirmations 列出当前未过期的确认（forge hazard status 用）。按 ExpiresAt
 // 升序（最快过期的在前）。顺便清理已过期文件。
 func ActiveConfirmations(p *forgedata.Project) ([]Confirmation, error) {
@@ -171,10 +253,15 @@ func ActiveConfirmations(p *forgedata.Project) ([]Confirmation, error) {
 		if now.Before(c.ExpiresAt) {
 			out = append(out, c)
 		} else {
+			// Opportunistically clean up expired markers, preventing unbounded directory growth
+			//
 			// 顺带清理过期标记，避免目录无限增长
 			os.Remove(filepath.Join(dir, e.Name()))
 		}
 	}
+	// Sort by ExpiresAt ascending (earliest-expiring first), consistent with the comment promise,
+	// for predictable status output.
+	//
 	// 按 ExpiresAt 升序（最快过期在前），与注释承诺一致，status 输出可预测。
 	slices.SortFunc(out, func(a, b Confirmation) int {
 		return a.ExpiresAt.Compare(b.ExpiresAt)
@@ -183,6 +270,10 @@ func ActiveConfirmations(p *forgedata.Project) ([]Confirmation, error) {
 }
 
 func truncate(s string, n int) string {
+	// Slice by rune (character), not by byte: a Chinese command char is 3 bytes each, and byte
+	// slicing would cut in the middle of a character, producing invalid UTF-8; json.Marshal would
+	// replace it with U+FFFD and corrupt audit logs / Confirmation records.
+	//
 	// 按 rune（字符）而非字节切片：中文命令每字 3 字节，字节切片会在字符中间切断产生
 	// 无效 UTF-8，json.Marshal 会替换为 U+FFFD 导致审计日志/Confirmation 乱码。
 	r := []rune(s)

@@ -10,6 +10,8 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
+// FeishuConfig holds the feishu publishing configuration.
+//
 // FeishuConfig 持有 feishu 发布配置。
 type FeishuConfig struct {
 	SpaceID         string
@@ -17,6 +19,8 @@ type FeishuConfig struct {
 	Enabled         bool
 }
 
+// DefaultFeishuConfig reads the config from environment variables.
+//
 // DefaultFeishuConfig 从环境变量读 config。
 func DefaultFeishuConfig() FeishuConfig {
 	return FeishuConfig{
@@ -26,6 +30,8 @@ func DefaultFeishuConfig() FeishuConfig {
 	}
 }
 
+// PublishMarkdown publishes a .md file to the feishu wiki.
+//
 // PublishMarkdown 把 .md 文件发布到 feishu wiki。
 func PublishMarkdown(cfg FeishuConfig, gateID, filePath, dir string) error {
 	if !cfg.Enabled {
@@ -62,6 +68,9 @@ func PublishMarkdown(cfg FeishuConfig, gateID, filePath, dir string) error {
 	return nil
 }
 
+// PublishAllOutputs publishes all .md artifacts of a given gate.
+// gateID is the gate identifier (e.g. gate-0-research), not the display name.
+//
 // PublishAllOutputs 发布某 gate 的全部 .md 产物。
 // gateID 是 gate 标识（如 gate-0-research），不是 display name。
 func PublishAllOutputs(cfg FeishuConfig, gateID string, outputs []string, p *forgedata.Project) {
@@ -77,6 +86,8 @@ func PublishAllOutputs(cfg FeishuConfig, gateID string, outputs []string, p *for
 		if _, err := os.Stat(path); os.IsNotExist(err) {
 			continue
 		}
+		// lark-cli uses GitRoot (project root) as its working directory, matching historical behavior (the original dir was the project root).
+		//
 		// lark-cli 工作目录用 GitRoot（项目根），与历史行为一致（原 dir 即项目根）
 		if err := PublishMarkdown(cfg, gateID, path, p.GitRoot); err != nil {
 			fmt.Fprintf(os.Stderr, "  Feishu publish failed for %s: %v\n", out, err)

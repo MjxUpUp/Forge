@@ -1,8 +1,14 @@
+// Package toolusage records AI agent tool calls, used for quality scoring.
+//
 // Package toolusage 记录 AI agent 的 tool 调用，用于质量评分。
 package toolusage
 
 import "time"
 
+// ToolCall records a single AI agent tool call.
+// Stored in DataDir/toollog.jsonl — one JSON object per line. The activity-ratio gate (task-verify)
+// and forge trace consume this data; it no longer participates in scoring.
+//
 // ToolCall 记录 AI agent 的一次 tool 调用。
 // 存于 DataDir/toollog.jsonl——每行一个 JSON 对象。activity-ratio gate（task-verify）
 // 与 forge trace 消费本数据；它不再参与评分。
@@ -17,5 +23,7 @@ type ToolCall struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
+// maxToolInputLen is the truncation cap for stored tool_input.
+//
 // maxToolInputLen 是 tool_input 存储的截断上限。
 const maxToolInputLen = 500

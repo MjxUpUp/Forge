@@ -1,6 +1,7 @@
+<a id="top"></a>
 <div align="center">
 
-# Forge
+# 🔥 Forge
 
 **AI 开发质量门禁引擎**
 
@@ -8,24 +9,55 @@ Stop trusting AI-generated code. Start gating it.
 
 [![CI](https://github.com/MjxUpUp/Forge/actions/workflows/ci.yml/badge.svg)](https://github.com/MjxUpUp/Forge/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@agent_forge/forge?label=npm)](https://www.npmjs.com/package/@agent_forge/forge)
+[![downloads](https://img.shields.io/npm/dt/@agent_forge/forge?label=downloads)](https://www.npmjs.com/package/@agent_forge/forge)
 [![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)](#-安装)
 [![license](https://img.shields.io/badge/license-MIT-blue)](#license)
 
 </div>
 
+<div align="center">
+  <img src="dashboard-render.png" alt="Forge Dashboard 质量看板" width="860"/>
+  <p><sub>Forge Dashboard —— 项目级质量趋势可视化（分数走势 / 证据盲区率 / 复发低分维度）</sub></p>
+</div>
+
 ---
 
-AI 写的代码，你放心直接提交吗？
+<details>
+<summary><b>📖 目录</b></summary>
+
+- [核心功能](#-核心功能)
+- [快速开始](#-快速开始)
+- [它如何工作](#-它如何工作)
+- [定位：Loop Engineering 的验证 / 状态层](#-定位loop-engineering-的验证--状态层)
+- [工作流程](#-工作流程)
+- [Hook 系统](#-hook-系统)
+- [命令参考](#-命令参考)
+- [安装](#-安装)
+- [贡献](#-贡献)
+- [更多文档](#-更多文档)
+- [License](#license)
+
+</details>
+
+---
+
+> **AI 写的代码，你放心直接提交吗？**
 
 Forge 在 AI 编码过程中自动插入结构化质量门禁——从任务创建到代码提交，确保每一步产出物都经过验证。配合 Claude Code 的 Hook 系统实现实时拦截，不需要你手动检查。
 
 ## ✨ 核心功能
 
-- **🚦 任务级门禁** — 每个开发任务走 3 道门禁：实现 → 验证 → 完成
-- **🪝 实时 Hook 拦截** — 多个内置 Hook，在 AI 写代码的同时自动检查质量、防止绕过
-- **🛡️ 安全纵深防御** — 三层防御架构：工具拦截 → 文件监控 → 自身保护
-- **📊 质量评分** — 每个任务完成后自动评分，量化 AI 编码质量
+<table>
+  <tr>
+    <td width="50%" valign="top"><strong>🚦 任务级门禁</strong><br/>每个开发任务走 3 道门禁：实现 → 验证 → 完成，门禁之间有活动检查防止跳阶段。</td>
+    <td width="50%" valign="top"><strong>🪝 实时 Hook 拦截</strong><br/>多个内置 Hook，在 AI 写代码的同时自动检查质量、防止绕过（读改前置 / 文件监控 / 高危拦截）。</td>
+  </tr>
+  <tr>
+    <td valign="top"><strong>🛡️ 安全纵深防御</strong><br/>三层防御架构：工具拦截 → 文件监控 → 自身保护。Agent 无法经 bash 绕道篡改。</td>
+    <td valign="top"><strong>📊 质量评分</strong><br/>每个任务完成后自动评分，量化 AI 编码质量；deterministic 证据链可审计。</td>
+  </tr>
+</table>
 
 ## 🚀 快速开始
 
@@ -54,6 +86,33 @@ forge init
 
 > **主要用 Claude Code？** 走 [plugin marketplace](plugins/forge/README.md) 一次性接线用户级 hooks（机器上所有项目共享，无需逐项目配 `.claude/settings.local.json`）。
 
+## 🔧 它如何工作
+
+```
+        ┌──────────────────────────────────────────────────┐
+        │                coding agent                       │
+        │        (Claude Code / Codex / Cursor ...)         │
+        └────────────────────┬─────────────────────────────┘
+                             │ 每次 Write / Edit / Bash
+                             ▼
+        ┌──────────────────────────────────────────────────┐
+        │            Forge Hooks · 实时拦截                 │
+        │   task-guard · read-before-edit · bash-guard      │
+        │   hazard-guard · file-sentinel · cheat-scan       │
+        └────────────────────┬─────────────────────────────┘
+                             │
+                             ▼
+        ┌──────────────────────────────────────────────────┐
+        │           任务门禁 · 持久化状态                    │
+        │    task-implement → task-verify → task-complete   │
+        └────────────────────┬─────────────────────────────┘
+                             │
+                             ▼
+                📊 质量评分 + deterministic 证据链
+```
+
+每轮 AI 编码循环都被门禁兜底：编译是否通过、断言有没有被弱化、改代码前是否真读过、文件有没有被绕道篡改——循环跑得越快，越需要自动化验证，而不是靠人盯着。
+
 ## 🎯 定位：Loop Engineering 的验证 / 状态层
 
 AI 编码是一个循环：写代码 → 运行 → 读反馈 → 修正 → 再写。这个循环由 coding agent（Claude Code、Codex）驱动，**Forge 不替代循环本身**——它补上循环最容易缺的两层：
@@ -64,8 +123,6 @@ AI 编码是一个循环：写代码 → 运行 → 读反馈 → 修正 → 再
 换言之，coding agent 负责**跑循环**，Forge 负责**让每一轮循环产出可信、状态可追**。Forge 不 discovery、不规划需求——那些是循环前端的事；Forge 守的是循环的执行质量。
 
 ## 🔧 工作流程
-
-### 任务级门禁
 
 每个开发任务自动走 3 道门禁：
 
@@ -81,6 +138,9 @@ forge task gate task-complete     # ✅ 完成确认
 forge task score                  # 查看质量评分
 ```
 
+<details>
+<summary><b>📖 门禁细节：退出码契约 / PlanScope / Cheat-scan</b></summary>
+
 门禁之间有时间和活动检查，防止 AI 跳过阶段直接提交。`task-implement` 的编译/断言检查为 advisory 提醒（由 agent 自检，不阻塞）——forge 技术栈无关，适配 loop engineering。`forge task verify-acceptance` 实跑 `task start --accept` 登记的验收标准（`Run :: Expected`），把 dev-workflow Plan 的验收条件从 plan 文本变成不可伪造的 deterministic 证据——对冲 agent 自述"满足验收"却没真跑的盲区。
 
 **门禁退出码契约**：`forge task gate` 非 0 退出（输出 `BLOCKED:` 前缀）= 硬阻断，必须修复后重跑；零退出但见 `ADVISORY:` 前缀 = 软信号（gate 仍过、已记 checklog，应修不阻断）。按退出码而非文案行动——硬错误的散文易被误读成提醒而跳过。
@@ -89,9 +149,28 @@ forge task score                  # 查看质量评分
 
 **Cheat-scan（机械作弊模式扫描）**：`task-verify` 扫任务新增行（`+` 行），机械检测 4 类 AI 作弊模式——`type-suppression`（`@ts-ignore`/`eslint-disable`/`#[allow]`/`type: ignore`）、`error-swallow`（空 `catch{}`/`except:pass`）、`dead-branch`（`if(false)`/`if(1===2)`）、`comment-only-fix`（某文件新增行全注释零逻辑）——记一条 `cheat-scan` 证据（deterministic，`forge trace` 可见）并 stderr 列出命中。全程 **advisory 不阻塞**：这些模式此前全靠 code-review-gate 的 LLM 子 agent 判断，LLM 每轮对同一 diff 重新采样抓不同子集，是"每轮 review 冒新问题"的体感来源；抽到 deterministic 后，机械模式一次判准，LLM-reviewer 退到只做语义判断（设计/架构/mock 是否幻觉）。`comment-only-fix` 是启发式（severity=low，纯文档任务可能误报）。
 
+</details>
+
 ## 🪝 Hook 系统
 
-Forge 通过 Claude Code 的 Hook 机制实现实时质量检查：
+Forge 通过 Claude Code 的 Hook 机制实现实时质量检查。三层纵深防御，监控的是文件而非工具：
+
+```
+Layer 1: PreToolUse 快速拦截
+  ├─ task-guard: Write/Edit → 检查任务状态 + 保护 .forge/*
+  └─ bash-guard: Bash → 检测写文件模式
+
+Layer 2: PostToolUse 文件监控
+  └─ file-sentinel: Bash → 对比执行前后 git 状态，未授权变更自动 revert
+
+Layer 3: 会话结束验证
+  └─ task-verify: 检查任务完成度 + 主分支保护 + 自身版本
+```
+
+Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 task JSON 等方式绕过——bash-guard 拦截工具层，file-sentinel 监控文件层，task-guard 保护配置层。
+
+<details>
+<summary><b>📖 内置 Hook 完整清单（17 个）</b></summary>
 
 | Hook | 触发时机 | 功能 |
 |------|----------|------|
@@ -113,27 +192,12 @@ Forge 通过 Claude Code 的 Hook 机制实现实时质量检查：
 | **compact-resume** | 压缩后（claude-code only） | PostCompact 时设 `ResumeStale=true` 标志（PostCompact 不在 additionalContext 注入点，只设标志等下个 prompt 重注入），context-rot 抗机制根治层·设标志半边 |
 | **resume-reinject** | 用户提交时（claude-code only） | 检测 `ResumeStale=true`（刚压缩过）→ 输出完整接续上下文并清标志。补 task-resume 缺口（SessionStart 只注入一次，会话中途压缩不补），context-rot 抗机制根治层·重注入半边 |
 
-### 安全架构
-
-三层纵深防御，监控的是文件而非工具：
-
-```
-Layer 1: PreToolUse 快速拦截
-  ├─ task-guard: Write/Edit → 检查任务状态 + 保护 .forge/*
-  └─ bash-guard: Bash → 检测写文件模式
-
-Layer 2: PostToolUse 文件监控
-  └─ file-sentinel: Bash → 对比执行前后 git 状态，未授权变更自动 revert
-
-Layer 3: 会话结束验证
-  └─ task-verify: 检查任务完成度 + 主分支保护 + 自身版本
-```
-
-Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 task JSON 等方式绕过——bash-guard 拦截工具层，file-sentinel 监控文件层，task-guard 保护配置层。
+</details>
 
 ## 📋 命令参考
 
-### 项目管理
+<details>
+<summary><b>🔧 项目管理</b></summary>
 
 | 命令 | 说明 |
 |------|------|
@@ -146,7 +210,10 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge migrate [--dry-run] [--force]` | 把旧 `.forge/` runtime state（tasks/gates/checklog/toollog/act/sessions/quarantine/active-task-ref 等）迁到用户级 DataDir（`~/.forge/projects/<key>/`）——升级到 runtime state 外迁版本后的迁移路径；项目配置（hooks/protocol.yml 等）不迁仍留 `.forge/`；幂等，`--dry-run` 预览，`--force` 覆盖 DataDir 已有同名 |
 | `forge registry prune` | 精简全局注册表 `~/.forge/projects.json`——移除 `.forge/` 不存在的死路径与重复条目（项目移走/删除/测试残留），原子写回。registry.List 读时惰性精简但只在 `forge dashboard --global` 触发（启 web 阻塞），本命令给不启 web 的主动清理入口 |
 
-### 任务管理
+</details>
+
+<details>
+<summary><b>🚦 任务管理</b></summary>
 
 | 命令 | 说明 |
 |------|------|
@@ -168,9 +235,12 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge task finding --content/--resolve <id>` | 记录跨工具发现（带来源工具）或标 fixed |
 | `forge task attach --ref --tool` | 锚定 session+工具到 task（跨工具多向锚定：pi 起、claude-code 接） |
 
-### 代码审查门禁（自动挡）
+</details>
 
-`forge review` 让 code-review-gate 从"靠手动唤起"变成自动挡——task 流程下 task-complete 门禁强制 ReviewPassed 前置（提交前必审）；非 task 流程下 Stop hook 自动拦截未审的源码变更。误触发已防护：纯文档/配置/生成物变更、无变更、commit 后干净工作区不触发；同一 diff 反复未审最多 block 3 次后 advisory 放行（防 Stop 死循环）。审查由独立只读子 agent 执行（防自审盲区），见 `code-review-gate` skill。
+<details>
+<summary><b>🔍 代码审查 / 高危命令 / Act 反馈（自动挡）</b></summary>
+
+**代码审查门禁**：`forge review` 让 code-review-gate 从"靠手动唤起"变成自动挡——task 流程下 task-complete 门禁强制 ReviewPassed 前置（提交前必审）；非 task 流程下 Stop hook 自动拦截未审的源码变更。误触发已防护：纯文档/配置/生成物变更、无变更、commit 后干净工作区不触发；同一 diff 反复未审最多 block 3 次后 advisory 放行（防 Stop 死循环）。审查由独立只读子 agent 执行（防自审盲区），见 `code-review-gate` skill。
 
 | 命令 | 说明 |
 |------|------|
@@ -178,18 +248,14 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge review gate` | 判定当前是否需要审查（Stop hook 调用；exit 0=放行，1=需审 block） |
 | `forge review status` | 显示当前审查状态 |
 
-### 高危命令 human-in-the-loop（自动挡）
-
-`forge hazard` 让 on-demand-guards 的"高危命令拦截"从 session 级 skill 变成 always-on 自动挡——hazard-guard hook（PreToolUse Bash）检测 `rm -rf` / `git push --force` / `git reset --hard` / `DROP DATABASE|TABLE|SCHEMA` / `TRUNCATE` / `GRANT ALL` / `kubectl delete` / `docker system prune` / `shred` / 无 WHERE 的 `DELETE|UPDATE` 等 → block 并指引 agent 用所在 AI 工具的提问确认工具获用户明确确认 → `forge hazard confirm` 登记 5min 限时标记 → 重试放行。bash-guard 只盯"写文件模式"，对这些破坏性命令无感，hazard-guard 补这个缺口。HITL 而非硬 block：合法高危操作（删 build 产物）确认后能继续；测试/CI 可设 `FORGE_ALLOW_HAZARD=1` 跳过。
+**高危命令 human-in-the-loop**：`forge hazard` 让高危命令拦截从 session 级 skill 变成 always-on 自动挡——hazard-guard hook（PreToolUse Bash）检测 `rm -rf` / `git push --force` / `git reset --hard` / `DROP DATABASE|TABLE|SCHEMA` / `TRUNCATE` / `GRANT ALL` / `kubectl delete` / `docker system prune` / `shred` / 无 WHERE 的 `DELETE|UPDATE` 等 → block 并指引 agent 获用户明确确认 → `forge hazard confirm` 登记 5min 限时标记 → 重试放行。HITL 而非硬 block：合法高危操作（删 build 产物）确认后能继续；测试/CI 可设 `FORGE_ALLOW_HAZARD=1` 跳过。
 
 | 命令 | 说明 |
 |------|------|
 | `forge hazard confirm <命令>` | 登记一次高危命令确认（5min 内同命令重试放行） |
 | `forge hazard status` | 列出当前有效确认及剩余时间 |
 
-### Act 反馈臂（证据驱动结论）
-
-`forge task complete` 时把本任务的证据驱动结论（评分 + 证据强度 + 验收通过率 + 低分维度）落盘到 `~/.forge/projects/<项目key>/act/conclusions.jsonl`（用户级数据目录），喂给 `session-retrospective`：会话结束回顾不再靠 agent 临结束回忆"这次验证过没"，而是读 deterministic 结论。证据弱（Unverified/Weak——完成声明主要靠 agent 自述）或低分（<70）的结论标 RetrospectiveNudge 并附一行回顾指令——对冲"高分但没真验证"的 LLM-judge 盲区（分数看不出 agent 是否真跑过验证）。
+**Act 反馈臂（证据驱动结论）**：`forge task complete` 时把本任务的证据驱动结论（评分 + 证据强度 + 验收通过率 + 低分维度）落盘到 `~/.forge/projects/<项目key>/act/conclusions.jsonl`，喂给 `session-retrospective`。证据弱（Unverified/Weak）或低分（<70）的结论标 RetrospectiveNudge——对冲"高分但没真验证"的 LLM-judge 盲区。
 
 | 命令 | 说明 |
 |------|------|
@@ -197,7 +263,10 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge act list [--json]` | 列出所有任务结论 |
 | `forge act nudge` | 最新结论有回顾 nudge 时输出一行（否则静默）——供 task-verify 会话结束 hook 消费 |
 
-### Skill 治理
+</details>
+
+<details>
+<summary><b>🧠 Skill 治理</b></summary>
 
 分发内置 canonical skill 库到各 coding agent，并守护 skill 质量（规范 + 安全）。
 
@@ -216,7 +285,10 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge skills eval-report --skill X` | latest run vs baseline 回归报告（regression 三态 + pass-rate delta + 可比性） |
 | `forge skills eval-baseline --skill X` | 标记 baseline run（回归基准，显式人工决策） |
 
-### 可观测与维护
+</details>
+
+<details>
+<summary><b>📊 可观测与维护</b></summary>
 
 | 命令 | 说明 |
 |------|------|
@@ -227,7 +299,9 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge clone check` | 检测文件代码克隆 |
 | `forge plugin pack [--out <dir>] [--owner-name <n>]` | 生成多 host plugin pack（.claude-plugin/.cursor-plugin marketplace + plugins/\<name\>/ 树：claude manifest 含 hooks + 每 host 安装 README），让各 agent 一键 `plugin install forge` 跨工具接线（薄 manifest + 共享内容，单仓即 marketplace） |
 | `forge plugin status` | 报告 forge plugin 是否在 user-level 已装（exit 0=已装，非零=未装；供 init-suggest hook / 脚本检测） |
-| `forge plugin dedupe [dir] [--keep-empty]` | plugin 已装时清理 project-level 重复 hooks + 旧项目 .mcp.json forge server 残留，并清理 user-level（`~/.claude` 或 `$CLAUDE_CONFIG_DIR`）`settings.local.json` 的重复 forge hooks（plugin.json 已在 user-level 注册全部 hooks）；幂等 no-op；init-suggest SessionStart 自动调用（传 `--keep-empty` 保留项目 `settings.local.json` 为 `{}`，不删用户个人配置文件）；user-level 始终保留文件壳（绝不删用户全局配置）；手动不传则项目级清完删空文件。注：forge 项目内 autoSync 每命令末尾 defer 已静默 dedupe，本命令在非 forge 项目（如 `cd ~ && forge plugin dedupe`）手动跑才作清理主力并给出可读输出 |
+| `forge plugin dedupe [dir] [--keep-empty]` | plugin 已装时清理 project-level 重复 hooks + 旧项目 .mcp.json forge server 残留，并清理 user-level `settings.local.json` 的重复 forge hooks；幂等 no-op；init-suggest SessionStart 自动调用（传 `--keep-empty` 保留项目 `settings.local.json` 为 `{}`）；user-level 始终保留文件壳（绝不删用户全局配置）；手动不传则项目级清完删空文件 |
+
+</details>
 
 ## 📦 安装
 
@@ -241,7 +315,8 @@ npm install -g @agent_forge/forge
 # 支持平台：macOS (x86_64/ARM64)、Linux (x86_64/ARM64)、Windows (x86_64)
 ```
 
-### 通过 Claude Code plugin marketplace（用户级，一次性接线）
+<details>
+<summary><b>📖 通过 Claude Code plugin marketplace（用户级，一次性接线）</b></summary>
 
 若主要用 Claude Code，可走 plugin marketplace 一次性接线用户级 hooks（机器上所有项目共享，无需逐项目配 `.claude/settings.local.json`）：
 
@@ -251,6 +326,19 @@ npm install -g @agent_forge/forge
 ```
 
 仍需 `npm install -g @agent_forge/forge` 装二进制（hooks 都 spawn forge），并在每个项目 `forge init` 生成项目级资产（`.forge/`、`CLAUDE.md`/`AGENTS.md`、skills）。plugin 已装时 `forge init` 会自动去重 project-level 的 hooks，并清理 user-level `settings.local.json` 的重复 forge hooks（避免与 user-level plugin 双重注册——历史 global `forge init` 写 home / 旧全局安装残留的重复），存量项目由 init-suggest SessionStart hook 自动迁移。完整三步与各 host 差异见 `plugins/forge/README.md`。
+
+</details>
+
+## 🤝 贡献
+
+欢迎提 Issue 和 PR。开发时注意：
+
+1. **门禁先行** —— 任何源码变更走 `forge task` 三门禁（implement → verify → complete），不经任务的改动不被质量评分追踪。
+2. **注释双语** —— Go godoc 采用形式 A（英文段 → 空 `//` → 中文段），中文不删、不单语；行内注释与字符串字面量不动。
+3. **审查闭环** —— 提交前派独立只读子 agent 跑 code-review-gate 双轨（AI 作弊 + 工程规范），`forge review pass` 标记后才能过 task-complete 门禁。
+4. **提交纪律** —— 只提交源码变更；排除 `docs/`、设计文档、`.claude/`、`.forge/` 工作目录。
+
+详见 [质量协议](.claude/CLAUDE.md)。
 
 ## 📚 更多文档
 
@@ -264,3 +352,11 @@ npm install -g @agent_forge/forge
 ## License
 
 MIT
+
+---
+
+<div align="center">
+
+<sub>⬆ <a href="#top">回到顶部</a></sub>
+
+</div>

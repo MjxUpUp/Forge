@@ -203,7 +203,9 @@ func TestClaudeMDCompileAssertionRulesAdvisory(t *testing.T) {
 	if !strings.Contains(section, "assertion-check hook 检测到弱化仅 advisory 提醒") {
 		t.Error("CLAUDE.md assertion rule must document assertion-check as advisory (v0.25)")
 	}
-	// The old "hook 自动检查" wording implied blocking enforcement — must be gone.
+	// The obsolete wording that referenced hook auto-checks implied blocking enforcement — must be gone.
+	//
+	// The old 「hook 自动检查」 wording implied blocking enforcement — must be gone.
 	if strings.Contains(section, "hook 自动检查") {
 		t.Error("CLAUDE.md still uses obsolete 'hook 自动检查' (hooks are advisory now, not blocking)")
 	}

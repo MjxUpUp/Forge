@@ -46,6 +46,8 @@ func TestScoreTesting_AllCovered(t *testing.T) {
 }
 
 func TestScoreTesting_PartialCoverage(t *testing.T) {
+	// 4/5 source files have paired tests → ratio 0.8 → 30+70*0.8 = 86 (continuous scoring, not binary collapse to 20)
+	//
 	// 4/5 源码文件有配对测试 → ratio 0.8 → 30+70*0.8 = 86（连续打分，非二值塌缩到 20）
 	result := scoreTesting(4, 5, 5, true)
 	if result.Score != 86 {
@@ -54,6 +56,8 @@ func TestScoreTesting_PartialCoverage(t *testing.T) {
 }
 
 func TestScoreTesting_NoneCovered(t *testing.T) {
+	// 0/1 → ratio 0 → 30 (low score but not extreme collapse; covered=0 does not trigger fake-test penalty)
+	//
 	// 0/1 → ratio 0 → 30（低分但不极端塌缩；covered=0 不触发假测试惩罚）
 	result := scoreTesting(0, 1, 0, true)
 	if result.Score != 30 {
@@ -69,6 +73,8 @@ func TestScoreTesting_NotChecked(t *testing.T) {
 }
 
 func TestScoreTesting_NoSourceNeedsTest(t *testing.T) {
+	// No testable source (empty diff / all whitelisted) → 100 (no target should not be penalized)
+	//
 	// 无可测源码（空 diff / 全白名单）→ 100（无对象不该被惩罚）
 	result := scoreTesting(0, 0, 5, true)
 	if result.Score != 100 {
@@ -77,6 +83,8 @@ func TestScoreTesting_NoSourceNeedsTest(t *testing.T) {
 }
 
 func TestScoreTesting_FakeTestPenalty(t *testing.T) {
+	// All paired but 0 assertions = fake test (only setup/log no assertions) → 100 * 0.6 = 60
+	//
 	// 全配对但 0 断言 = 假测试（只有 setup/log 无断言）→ 100 * 0.6 = 60
 	result := scoreTesting(1, 1, 0, true)
 	if result.Score != 60 {
@@ -169,6 +177,9 @@ func TestScoreEfficiency_Slow(t *testing.T) {
 	}
 }
 
+// TestScoreEfficiency_Buckets pins F3: after threshold recalibration 5 tiers full coverage + boundary pinned (dogfood 1.5 core).
+// Uses fixed time (not time.Now) to avoid flaky <=120 boundary due to nanosecond gap between two Now calls.
+//
 // TestScoreEfficiency_Buckets 钉死 F3：阈值重校准后 5 档全覆盖 + 边界 pinned（dogfood 1.5 核心）。
 // 用固定时间（非 time.Now）避免 <=120 边界因两次 Now 调用的纳秒差 flaky。
 func TestScoreEfficiency_Buckets(t *testing.T) {
@@ -287,6 +298,10 @@ func TestGradeFromScore(t *testing.T) {
 	}
 }
 
+// TestBuildEvidenceSummary locks the evidence summary pure function: total=0 returns nil (no evidence data,
+// e.g. old task empty checklog), avoiding zero-value noise; with data computes ratio by deterministic/total.
+// ratio case picks 0/1/0.5 (exact float, no tolerance comparison).
+//
 // TestBuildEvidenceSummary 锁定证据摘要纯函数：total=0 返回 nil（无证据数据，
 // 如旧任务 checklog 为空），避免零值噪声；有数据时按 deterministic/total 算 ratio。
 // ratio case 选 0/1/0.5（浮点精确，免容差比较）。
@@ -324,6 +339,9 @@ func TestBuildEvidenceSummary(t *testing.T) {
 	}
 }
 
+// TestEvaluate_EvidenceSummary end-to-end: Evaluate injects input's evidence counts into
+// ScoreResult.Evidence. No evidence input → nil (no zero-value output).
+//
 // TestEvaluate_EvidenceSummary 端到端：Evaluate 把 input 的证据计数注入
 // ScoreResult.Evidence。无证据输入 → nil（不输出零值）。
 func TestEvaluate_EvidenceSummary(t *testing.T) {

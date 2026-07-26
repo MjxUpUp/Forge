@@ -615,6 +615,9 @@ func createTestArchive(t *testing.T, archivePath string, binaryContent []byte) {
 	}
 }
 
+// TestPrintPluginReinstallGuidance: the plugin reinstall guidance output triggered by the --plugin flag
+// should contain all four agent-platform commands so users can copy them in one go. Pins down future accidental deletion.
+//
 // TestPrintPluginReinstallGuidance：--plugin flag 触发的 plugin 重装指引输出
 // 应含全部四个 agent 平台命令，让用户可一键复制。钉死未来误删。
 func TestPrintPluginReinstallGuidance(t *testing.T) {

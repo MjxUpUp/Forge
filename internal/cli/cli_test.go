@@ -37,11 +37,24 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
+	// Redirect global state root to tmpDir (FORGE_DATA_HOME) to keep init/dashboard
+	// tests from polluting the real ~/.forge (registry projects.json + DataDir
+	// projects/<key>/). Subprocesses (runForge invoking the forge binary) inherit
+	// this env. refactor-data-home commit E: registry unified under FORGE_DATA_HOME.
+	//
 	// 把全局状态根重定向到 tmpDir（FORGE_DATA_HOME），避免 init/dashboard 测试污染真实
 	// ~/.forge（registry projects.json + DataDir projects/<key>/）。子进程（runForge 跑
 	// forge 二进制）继承此 env。refactor-data-home commit E：registry 统一 FORGE_DATA_HOME。
 	os.Setenv("FORGE_DATA_HOME", tmpDir)
 
+	// Isolate Claude plugin detection: force IsClaudePluginInstalled()=false (an empty
+	// CLAUDE_CONFIG_DIR has no plugins/installed_plugins.json). cli tests run init/sync
+	// (including dedupeProjectLevelIfPlugin) without depending on whether the forge
+	// plugin is installed locally — otherwise a locally installed plugin would let init's
+	// dedupe delete settings.local.json, and tests asserting "settings exist" fail
+	// locally but pass in CI (not installed), producing flaky behavior.
+	// Subprocesses (runForge invoking the forge binary) inherit this env.
+	//
 	// 隔离 Claude plugin 检测：强制 IsClaudePluginInstalled()=false（空 CLAUDE_CONFIG_DIR 下
 	// 无 plugins/installed_plugins.json）。cli 测试跑 init/sync（含 dedupeProjectLevelIfPlugin）
 	// 时不依赖本机是否装了 forge plugin——否则本地装了 plugin 会让 init 的 dedupe 删掉
@@ -87,6 +100,13 @@ func TestInitCreatesFiles(t *testing.T) {
 		t.Fatalf("forge init exit code %d, output: %s", code, stdout)
 	}
 
+	// The number of .sh files under .forge/hooks/ must equal hooks.HookNames() (single
+	// source of truth). Adding/removing a hook only changes HookNames() in settings.go,
+	// and this test follows automatically — to avoid the sync gap of "added a hook but
+	// forgot to update a hardcoded expected count" (we once hand-edited 10 to 11).
+	// History: session-health/test-coverage-check were removed (noise); tool-track was
+	// deleted in 644b142 and restored (task-verify gate depends on its Read records).
+	//
 	// .forge/hooks/ 下的 .sh 数必须等于 hooks.HookNames()（单一真相源）。加/删 hook 只改
 	// settings.go 的 HookNames()，本测试自动跟随——避免"加 hook 后忘改硬编码期望数"的同步漏
 	// （曾因此把 10 手改成 11）。历史：session-health/test-coverage-check 已移除（噪声），
@@ -145,6 +165,10 @@ func TestStatusAfterInit(t *testing.T) {
 		t.Fatalf("forge init failed: %s", stdout)
 	}
 
+	// With project-level pipeline removed, status no longer renders "pending"
+	// (pipeline state); empty output is normal when there are no tasks.
+	// This test is downgraded to smoke: status must run successfully (exit 0) after init.
+	//
 	// 项目级管道删除后 status 不再渲染 "pending"（pipeline 状态）；无任务时输出为空属正常。
 	// 本测试降为 smoke：init 后 status 必须成功运行（exit 0）。
 	stdout, _, code = runForge(t, tmpDir, "status")
@@ -180,6 +204,12 @@ func TestStatusJSON(t *testing.T) {
 
 // --------------- Test: TestStatusShowsHealthSignal ---------------
 
+// TestStatusShowsHealthSignal pins status integration with project-level quality
+// signals: when completed-task conclusions exist, the status entry point must surface
+// the evidence blind-spot rate and recurring low-score dimensions — to prevent a
+// visibility gap where deterministic signals are computed in forge health but invisible
+// to status (the "where is the project" entry point).
+//
 // TestStatusShowsHealthSignal 钉住 status 接入项目级质量信号：有完成任务结论时，status
 // 主入口必须亮出证据盲区率/复发低分维度——防 deterministic 信号在 forge health 算了但
 // status（"项目在哪"主入口）看不到的可见性缺口。
@@ -190,6 +220,9 @@ func TestStatusShowsHealthSignal(t *testing.T) {
 		t.Fatalf("forge init failed: %s", stdout)
 	}
 
+	// Seed 2 conclusions: 1 Strong + 1 Unverified -> 50% blind-spot rate (triggers the
+	// systemic warning); both carry scope as a low-score dimension.
+	//
 	// 种 2 个结论：1 Strong + 1 Unverified → 盲区率 50%（触发系统性告警）；都带 scope 低分。
 	seed := []act.Conclusion{
 		{TaskRef: `feat/a`, Grade: `A`, Strength: `Strong`, Score: 95, LowDimensions: []string{`scope`}, CompletedAt: time.Now()},
@@ -201,6 +234,9 @@ func TestStatusShowsHealthSignal(t *testing.T) {
 		}
 	}
 
+	// pretty: the quality-signal block, the systemic blind-spot warning, and the scope
+	// recurrence must all appear.
+	//
 	// pretty：质量信号块 + 系统性盲区告警 + scope 复发都必须出现。
 	stdout, _, code = runForge(t, tmpDir, "status")
 	if code != 0 {
@@ -212,6 +248,8 @@ func TestStatusShowsHealthSignal(t *testing.T) {
 		}
 	}
 
+	// json: the health field is present, with blind_spot_rate=0.5 and total_tasks=2.
+	//
 	// json：health 字段在，blind_spot_rate=0.5, total_tasks=2。
 	stdout, _, code = runForge(t, tmpDir, "status", "--json")
 	if code != 0 {
@@ -514,6 +552,8 @@ func TestTaskScoreWorkflow(t *testing.T) {
 			t.Fatalf("forge task gate %s failed: %s", g, stdout)
 		}
 	}
+	// task-complete has a hard ReviewPassed precondition: run review pass first to satisfy it.
+	//
 	// task-complete 的 ReviewPassed 硬前置：先 review pass 满足之。
 	if stdout, _, code = runForge(t, tmpDir, "review", "pass"); code != 0 {
 		t.Fatalf("forge review pass failed: %s", stdout)

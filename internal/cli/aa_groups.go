@@ -1,5 +1,18 @@
 package cli
 
+// Gentle grouping of the command family: command paths are entirely unchanged; only `forge --help` is grouped by function.
+//
+// Why GroupID instead of path consolidation: the paths of the 20 top-level commands are already written into README, CLAUDE.md,
+// session-retrospective skill, MCP docs, and user scripts — changing paths would require syncing 5+ places and break backward compatibility.
+// cobra's Command.Group only changes help display, at zero migration cost.
+//
+// Order-sensitive: cobra validates "GroupID is registered" at AddCommand time (command.go:1208); unregistered → panic.
+// Each command runs rootCmd.AddCommand in its own file's init() (executed in filename-alphabetical order); this file aa_groups.go
+// sorts before all command files, so this init runs first — AddGroup must precede any AddCommand. Package-level vars (each xxxCmd)
+// are initialized before any init (Go spec), so when GroupID is set here the command variables are already constructed.
+//
+// help/completion are cobra-auto-generated auxiliary commands, left as default (no group, shown at the end).
+//
 // 命令族温和分组：命令路径全不变，仅让 `forge --help` 按职能分组展示。
 //
 // 为什么用 GroupID 而非归并路径：20 个顶层命令的路径已写进 README、CLAUDE.md、
@@ -23,19 +36,33 @@ func init() {
 		&cobra.Group{ID: "integrate", Title: "集成与安全"},
 	)
 
+	// Project lifecycle: project-level, low-frequency management.
+	//
 	// 项目生命周期：项目级低频管理
 	initCmd.GroupID = "lifecycle"
 	syncCmd.GroupID = "lifecycle"
 	updateCmd.GroupID = "lifecycle"
+	// init-suggest hook prompt-state management (semantic extension of init).
+	//
 	suggestCmd.GroupID = "lifecycle"   // init-suggest hook 的提示状态管理（init 的语义延伸）
+	// One-click uninstall (npm binary + init-suggest markers).
+	//
 	uninstallCmd.GroupID = "lifecycle" // 一键反装（npm binary + init-suggest markers）
+	// Legacy .forge runtime state → DataDir migration (upgrade path).
+	//
 	migrateCmd.GroupID = "lifecycle"   // 旧 .forge runtime state → DataDir 迁移（升级路径）
+	// Global project registry cleanup (cleanup counterpart to init's self-registration; backticks guard against Windows quote corruption).
+	//
 	registryCmd.GroupID = `lifecycle`  // 全局项目注册表清理（init 自登记的对应清理入口；反引号防 Windows 引号腐蚀）
 
+	// Project pipeline: project-level state (status is the main entry).
+	//
 	// 项目管道：项目级状态（status 是主入口）
 	statusCmd.GroupID = "pipeline"
 	verifyCmd.GroupID = "pipeline"
 
+	// Task quality: task pipeline + quality observation (trace/act/review/health read data; the dashboard aggregates further).
+	//
 	// 任务质量：任务管道 + 质量观测（trace/act/review/health 是看数据，看板会进一步聚合）
 	taskCmd.GroupID = "quality"
 	traceCmd.GroupID = "quality"
@@ -44,13 +71,19 @@ func init() {
 	healthCmd.GroupID = "quality"
 	dashboardCmd.GroupID = "quality"
 
+	// Skill governance (the experience/knowledge loop has been removed).
+	//
 	// skill 治理（experience/knowledge 经验闭环已移除）
 	skillsCmd.GroupID = "governance"
 
+	// Integration & security: agent interface + interception + internal hook dispatch + multi-host plugin marketplace.
+	//
 	// 集成与安全：agent 接口 + 拦截 + 内部 hook 分发 + 多 host plugin marketplace
 	hazardCmd.GroupID = "integrate"
 	hookCmd.GroupID = "integrate"
 	cloneCmd.GroupID = "integrate"
 	pluginCmd.GroupID = "integrate"
+	// hook bash computes the DataDir (Hidden, not in the help list).
+	//
 	dataDirCmd.GroupID = "integrate" // hook bash 算 DataDir 用（Hidden，不进 help 列表）
 }

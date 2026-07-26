@@ -96,6 +96,8 @@ func checkOrphanHooks(home string, errors, warnings *int) {
 	}
 }
 
+// checkSkillsManifest checks ~/.forge/skills-manifest.json (snapshot from the last forge skills install).
+//
 // checkSkillsManifest 检查 ~/.forge/skills-manifest.json（上次 forge skills install 的快照）。
 func checkSkillsManifest(home string, errors, warnings *int) {
 	mfPath := filepath.Join(home, ".forge", "skills-manifest.json")

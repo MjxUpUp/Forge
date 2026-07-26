@@ -1,5 +1,11 @@
 package taskpipeline
 
+// executor_skill_eval.go — task-verify's skill-eval advisory: when a change
+// touches skills/<name>/ and that skill already has an eval case set, remind
+// to run regression. Purely advisory (Passed always true, does not block the
+// gate, does not return error) — having a case set is not itself a verdict;
+// the trace only keeps the signal so the agent can self-check.
+//
 // executor_skill_eval.go — task-verify 的 skill-eval advisory：变更涉及 skills/<name>/
 // 且该 skill 已有 eval case 集时，提醒跑回归。纯 advisory（Passed 恒 true，不阻塞 gate，
 // 不 return error）——"有 case 集"本身非判定，trace 只保留信号让 agent 自检。
@@ -15,10 +21,26 @@ import (
 	"github.com/MjxUpUp/Forge/internal/skillseval"
 )
 
+// CheckNameSkillEval is the checklog name of the task-verify skill-eval
+// advisory, so the trace surfaces the changed-skill-has-eval-baseline signal
+// even when the gate passes (advisory, never blocks).
+//
 // CheckNameSkillEval 是 task-verify skill-eval advisory 的 checklog 名，让 trace
 // 即使 gate 通过（advisory，永不阻塞）也能照出「变更的 skill 有 eval 基准」信号。
 const CheckNameSkillEval checklog.CheckName = "skill-eval-gate"
 
+// skillEvalAffected returns the names of changed skills that already have a
+// generated eval case set. changed is computed by the caller and passed in
+// (executor.go gitChanged, reusing one git subprocess result) — so each
+// advisory helper does not have to run taskChangedFiles separately (git
+// subprocesses have latency on Windows). Returns nil when there are no
+// changes, no EvalDir, or no affected skill has a case set (no baseline to
+// regress against → no reminder).
+//
+// EvalDir failure (os.UserHomeDir error, very rare) silently returns nil — an
+// advisory should not block the gate over a directory issue, consistent with
+// the silent handling of a missing case set below.
+//
 // skillEvalAffected 返回变更涉及、且已生成 eval case 集的 skill 名。
 // changed 由调用方算好传入（executor.go 的 gitChanged，复用一次 git 子进程结果）——
 // 避免每个 advisory helper 各跑一次 taskChangedFiles（Windows 上 git 子进程有延迟）。
@@ -37,6 +59,21 @@ func skillEvalAffected(changed []string) []string {
 	return skillNamesFromChanged(changed, dir)
 }
 
+// skillNamesFromChanged extracts skill names that have a case set from the
+// changed-file list (pure function, easy to test).
+//
+// Matches the exact prefix `skills/` rather than substring — avoids false
+// hits on same-named source files like internal/cli/skills_*.go,
+// internal/skillseval/*.go (the same trap as testcoverage.go:67: substring
+// `skills/` would let internal/cli/skills_install.go through, but here it is
+// the reverse — what we want is the real skill directory, and HasPrefix
+// `skills/` exactly excludes everything under internal/).
+//
+// Only includes skills where cases/<name>.json exists — a skill that has
+// never generated a case set has no regression baseline, and the reminder
+// could not run anyway, so stay silent (the reminder is only for skills with
+// an actual baseline to compare against).
+//
 // skillNamesFromChanged 从变更文件列表提取「有 case 集」的 skill 名（纯函数，便于测试）。
 //
 // 精确匹配 "skills/" 前缀而非 substring——避免误命中 internal/cli/skills_*.go、
@@ -54,6 +91,8 @@ func skillNamesFromChanged(changed []string, casesDir string) []string {
 			continue
 		}
 		rest := strings.TrimPrefix(f, "skills/")
+		// skill name is the first segment after `skills/`: skills/<name>/SKILL.md or skills/<name>.
+		//
 		// skill 名是 skills/ 后的第一段：skills/<name>/SKILL.md 或 skills/<name>。
 		name := rest
 		if i := strings.IndexByte(rest, '/'); i >= 0 {
@@ -74,6 +113,9 @@ func skillNamesFromChanged(changed []string, casesDir string) []string {
 	return out
 }
 
+// formatSkillEvalAdvisory generates a human-readable reminder (mirroring the
+// formatMissing style).
+//
 // formatSkillEvalAdvisory 生成人类可读提醒（照 formatMissing 风格）。
 func formatSkillEvalAdvisory(skills []string) string {
 	cmds := make([]string, len(skills))

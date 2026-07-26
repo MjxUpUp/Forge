@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+// DesignPhase identifies a design phase involved in a task.
+//
 // DesignPhase 标识任务涉及的设计阶段。
 type DesignPhase string
 
@@ -18,6 +20,8 @@ const (
 	PhaseTest        DesignPhase = "test-design" // 测试用例设计（test 文件）
 )
 
+// AllDesignPhases returns all design phases.
+//
 // AllDesignPhases 返回全部设计阶段。
 func AllDesignPhases() []DesignPhase {
 	return []DesignPhase{
@@ -26,6 +30,10 @@ func AllDesignPhases() []DesignPhase {
 	}
 }
 
+// inferDesignPhases infers the design phases a task touches from file paths.
+// Zero friction: no user declaration required; judged automatically from changed file paths.
+// Returns an empty list when nothing matches (non-blocking).
+//
 // inferDesignPhases 按文件路径推断任务涉及的设计阶段。
 // 零摩擦：不要求用户声明，自动根据改动文件路径判断。
 // 无匹配时返回空列表（不阻塞）。
@@ -40,10 +48,14 @@ func inferDesignPhases(changedFiles []string) []DesignPhase {
 		dirBase := filepath.Base(dir)
 
 		switch {
+		// Requirement design: docs/prd/*.md containing "acceptance/Out of Scope".
+		//
 		// 需求设计：docs/prd/*.md 含"验收/Out of Scope"
 		case strings.Contains(slash, "docs/prd/") && ext == ".md":
 			phases[PhaseRequirement] = true
 
+		// API design: *.{yaml,yml} matching openapi/asyncapi/proto / *.{proto,grpc}.
+		//
 		// API 设计：*.{yaml,yml} 匹配 openapi/asyncapi/proto / *.{proto,grpc}
 		case ext == ".yaml" || ext == ".yml":
 			if strings.Contains(slash, "openapi") ||
@@ -60,19 +72,30 @@ func inferDesignPhases(changedFiles []string) []DesignPhase {
 		case ext == ".proto" || ext == ".grpc":
 			phases[PhaseAPI] = true
 
+		// Database design: migrations/*.sql / schema.*.
+		//
 		// 数据库设计：migrations/*.sql / schema.*
 		case ext == ".sql" && (strings.Contains(slash, "migrations/") ||
 			strings.Contains(base, "schema") ||
 			strings.Contains(slash, "migration")):
 			phases[PhaseDatabase] = true
 
+		// Frontend design: *.{tsx,jsx,vue} / components/*.
+		//
 		// 前端设计：*.{tsx,jsx,vue} / components/*
 		case ext == ".tsx" || ext == ".jsx" || ext == ".vue":
 			phases[PhaseFrontend] = true
+		// .ts/.js only: .tsx/.jsx are already captured by the previous case (*.{tsx,jsx,vue}),
+		// so writing it there is unreachable.
+		//
 		// 仅 .ts/.js：.tsx/.jsx 已被上一条 case（*.{tsx,jsx,vue}）接走，写这里永不可达。
 		case strings.Contains(slash, "components/") && (ext == ".ts" || ext == ".js"):
 			phases[PhaseFrontend] = true
 
+		// Test design: *_test.* / *.test.* (suffix/infix, Contains is safe); the test_*.py prefix
+		// (Python) uses HasPrefix—the old Contains would mis-match latest_feature.go
+		// ("la**test_**...").
+		//
 		// 测试设计：*_test.* / *.test.*（后缀中缀，Contains 安全）；test_*.py 前缀
 		// （Python）用 HasPrefix——旧 Contains 会误匹配 latest_feature.go（"la**test_**..."）。
 		case strings.Contains(base, "_test.") ||
@@ -81,6 +104,8 @@ func inferDesignPhases(changedFiles []string) []DesignPhase {
 			dirBase == "test" || dirBase == "tests" || dirBase == "__tests__":
 			phases[PhaseTest] = true
 
+		// Backend design: services/*/ / domain/ / *.{go,rs,java}.
+		//
 		// 后端设计：services/*/ / domain/ / *.{go,rs,java}
 		case strings.Contains(slash, "services/") ||
 			strings.Contains(slash, "domain/") ||
@@ -96,6 +121,8 @@ func inferDesignPhases(changedFiles []string) []DesignPhase {
 		}
 	}
 
+	// Convert to an ordered slice (preserve determinism).
+	//
 	// 转为有序切片（保持确定性）
 	var result []DesignPhase
 	for _, p := range AllDesignPhases() {
@@ -106,6 +133,11 @@ func inferDesignPhases(changedFiles []string) []DesignPhase {
 	return result
 }
 
+// designPhasesEqual compares two DesignPhase slices for equality (order-sensitive—
+// inferDesignPhases outputs in the fixed AllDesignPhases order, so same input implies same order).
+// Used by the task-verify gate to tell whether the inferred result changed, avoiding pointless
+// disk writes on every verify.
+//
 // designPhasesEqual 比较两个 DesignPhase 切片是否相等（顺序敏感——inferDesignPhases
 // 按 AllDesignPhases 固定顺序输出，故同输入必同顺序）。用于 task-verify gate 判断
 // 推断结果是否变化，避免每次 verify 无谓写盘。
@@ -121,6 +153,16 @@ func designPhasesEqual(a, b []DesignPhase) bool {
 	return true
 }
 
+// scanDesignArtifacts scans known design-artifact directories in the working tree and returns the
+// design file paths that exist (relative to root, slash-normalized). Fills the gitignore blind
+// spot of taskChangedFiles: docs/ etc. are often under global or project gitignore, invisible to
+// all three git diff sources (--exclude-standard), so PhaseRequirement and similar design phases
+// can't be inferred (the loop breaks at the first hop). Here we read the filesystem directly,
+// bypassing git—the purpose of phase inference is "load the matching checklist for review", so any
+// design artifact present in the project should be covered (even if untouched this run; cross-
+// referencing PRD/API design during code review is reasonable). Top-level only, no deep recurse,
+// to avoid migrations histories of hundreds of files slowing task-verify.
+//
 // scanDesignArtifacts 扫描 working tree 的已知设计产物目录，返回存在的设计文件
 // 路径（相对 root，正斜杠规范化）。补 taskChangedFiles 的 gitignore 盲区：docs/ 等
 // 常被全局或项目 gitignore，git diff 三源都 --exclude-standard 看不到，致

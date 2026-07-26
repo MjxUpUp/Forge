@@ -10,10 +10,16 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
+// Git integration tests use real temporary repos (t.TempDir + git init). The review package is a diff/stamp
+// state machine; mocks cannot verify assertions like 'git diff really excludes .forge' or 'pure docs really do
+// not trigger' — git must run end-to-end. Requires git available (CI and local).
+//
 // git 集成测试用真实临时仓库（t.TempDir + git init）。review 包的核心是 diff/stamp
-// 状态机，单靠 mock 验证不了"git diff 真的排除了 .forge""纯文档真不触发"这些断言——
+// 状态机，单靠 mock 验证不了「git diff 真的排除了 .forge」「纯文档真不触发」这些断言——
 // 必须端到端跑 git。环境要求 git 可用（CI 与本地均有）。
 
+// gitEnv provides a GPG-free, fixed-identity git environment to avoid commit failures in a brand-new repo.
+//
 // gitEnv 提供无 GPG、固定身份的 git 环境，避免 commit 在全新仓库失败。
 var gitEnv = append(os.Environ(),
 	"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@example.com",
@@ -32,6 +38,8 @@ func initGitRepo(t *testing.T) string {
 		}
 	}
 	git("init", "-q")
+	// Windows defaults to master; no need to force-rename the branch
+	//
 	// Windows 默认 master，无需强改分支名
 	if err := os.WriteFile(filepath.Join(dir, ".gitkeep"), []byte(""), 0o644); err != nil {
 		t.Fatal(err)
@@ -52,6 +60,8 @@ func write(t *testing.T, dir, rel, content string) {
 	}
 }
 
+// TestIsSourceCode uses table-driven proof for the extension whitelist + generated-file exclusion — the basis for false-trigger protection.
+//
 // TestIsSourceCode 表驱动证明扩展名白名单 + 生成物排除——误触发防护的判定基础。
 func TestIsSourceCode(t *testing.T) {
 	cases := []struct {
@@ -84,6 +94,9 @@ func TestIsSourceCode(t *testing.T) {
 	}
 }
 
+// TestEvaluate_NoSourceChanges_PureDocs false-trigger protection #2: pure-doc changes do not trigger review.
+// Sessions that edit README or write memory should not be forced into code review.
+//
 // TestEvaluate_NoSourceChanges_PureDocs 误触发防护 #2：纯文档变更不触发审查。
 // 改 README/写 memory 这种会话不该被逼去审代码。
 func TestEvaluate_NoSourceChanges_PureDocs(t *testing.T) {
@@ -100,6 +113,11 @@ func TestEvaluate_NoSourceChanges_PureDocs(t *testing.T) {
 	}
 }
 
+// TestEvaluate_NoSourceChanges_Generated false-trigger protection #3: generated-file changes do not trigger review.
+// Naming convention note: the generated-file blacklist is .gen./_generated/.pb. (standard markers).
+// A bare _gen (e.g. model_gen.go) does not count as generated and is reviewed as source — this is intended (prevents fuzzy names from escaping review),
+// so this test only uses the standard marker .pb.go to verify exclusion works.
+//
 // TestEvaluate_NoSourceChanges_Generated 误触发防护 #3：生成物变更不触发审查。
 // 命名约定说明：生成物黑名单是 .gen./_generated/.pb.（标准标记）。
 // 单个 _gen（如 model_gen.go）不算生成物会被当源码审——这是预期（防用模糊命名逃审），
@@ -117,6 +135,8 @@ func TestEvaluate_NoSourceChanges_Generated(t *testing.T) {
 	}
 }
 
+// TestEvaluate_SourceChangeTriggersReview source changes (untracked new files) trigger review.
+//
 // TestEvaluate_SourceChangeTriggersReview 源码变更（untracked 新文件）触发审查。
 func TestEvaluate_SourceChangeTriggersReview(t *testing.T) {
 	dir := initGitRepo(t)
@@ -131,9 +151,13 @@ func TestEvaluate_SourceChangeTriggersReview(t *testing.T) {
 	}
 }
 
+// TestEvaluate_TrackedSourceChange modifying a committed source file (tracked diff) also triggers.
+//
 // TestEvaluate_TrackedSourceChange 修改已提交的源码文件（tracked diff）也触发。
 func TestEvaluate_TrackedSourceChange(t *testing.T) {
 	dir := initGitRepo(t)
+	// First commit a source file
+	//
 	// 先提交一个源码文件
 	write(t, dir, "svc.go", "package svc\n")
 	must := func(args ...string) {
@@ -146,6 +170,8 @@ func TestEvaluate_TrackedSourceChange(t *testing.T) {
 	must("add", "-A")
 	must("commit", "-q", "-m", "add svc")
 
+	// Modify it → tracked diff
+	//
 	// 修改它 → tracked diff
 	write(t, dir, "svc.go", "package svc\n\nfunc New() {}\n")
 	dec, _, err := Evaluate(dir)
@@ -157,6 +183,8 @@ func TestEvaluate_TrackedSourceChange(t *testing.T) {
 	}
 }
 
+// TestEvaluate_PassThenSameDiffPasses review loop: after MarkPassed the same diff → Pass.
+//
 // TestEvaluate_PassThenSameDiffPasses 审查闭环：MarkPassed 后同一 diff → Pass。
 func TestEvaluate_PassThenSameDiffPasses(t *testing.T) {
 	dir := initGitRepo(t)
@@ -177,13 +205,17 @@ func TestEvaluate_PassThenSameDiffPasses(t *testing.T) {
 	}
 }
 
-// TestEvaluate_NewDiffReTriggers 新的源码 diff（hash 变）重新触发审查——防"审完继续改不重审"。
+// TestEvaluate_NewDiffReTriggers a new source diff (hash changed) re-triggers review — prevents 'review once then keep changing without re-review'.
+//
+// TestEvaluate_NewDiffReTriggers 新的源码 diff（hash 变）重新触发审查——防「审完继续改不重审」。
 func TestEvaluate_NewDiffReTriggers(t *testing.T) {
 	dir := initGitRepo(t)
 	write(t, dir, "a.go", "package a\n")
 	if err := MarkPassed(dir); err != nil {
 		t.Fatal(err)
 	}
+	// Write new content → new hash
+	//
 	// 改出新内容 → 新 hash
 	write(t, dir, "a.go", "package a\n\nfunc F() {}\n")
 	write(t, dir, "b.go", "package a\n")
@@ -196,6 +228,9 @@ func TestEvaluate_NewDiffReTriggers(t *testing.T) {
 	}
 }
 
+// TestEvaluate_MaxRoundsAdvisory fallback: when the agent never calls forge review pass,
+// the Stop hook repeatedly blocking the same diff will advisory-pass after MaxReviewRounds (prevents dead loop).
+//
 // TestEvaluate_MaxRoundsAdvisory 兜底：agent 不调 forge review pass 时，
 // Stop hook 反复 block 同 diff 会在 MaxReviewRounds 后 advisory 放行（防死循环）。
 func TestEvaluate_MaxRoundsAdvisory(t *testing.T) {
@@ -219,6 +254,10 @@ func TestEvaluate_MaxRoundsAdvisory(t *testing.T) {
 	}
 }
 
+// TestEvaluate_StampExcludesForge writing the stamp does not pollute the diff hash — the core anti-dead-loop assertion.
+// If the stamp counted toward the diff, writing it would change the hash → forever NeedReview. This proves that
+// re-Evaluating right after pass (with the stamp already written) still returns Pass, confirming the .forge exclusion works.
+//
 // TestEvaluate_StampExcludesForge 写 stamp 不污染 diff hash——防死循环核心断言。
 // 如果 stamp 计入 diff，写 stamp 会改 hash → 永远 NeedReview。这里证明 pass 后
 // 立即再 Evaluate（此时 stamp 已写）仍 Pass，说明 .forge 排除生效。
@@ -228,10 +267,14 @@ func TestEvaluate_StampExcludesForge(t *testing.T) {
 	if err := MarkPassed(dir); err != nil {
 		t.Fatal(err)
 	}
+	// The stamp lands in DataDir/stamps/ (refactor-data-home: user-level for git projects)
+	//
 	// stamp 落盘在 DataDir/stamps/（refactor-data-home：git 项目用户级）
 	if _, err := os.Stat(filepath.Join(forgedata.DataDirFor(dir), "stamps")); err != nil {
 		t.Fatalf("stamp 目录未创建: %v", err)
 	}
+	// Re-Evaluate: if the stamp counted toward the diff, the hash would change → NeedReview (wrong)
+	//
 	// 再 Evaluate：若 stamp 计入 diff 则 hash 变 → NeedReview（错误）
 	dec, _, _ := Evaluate(dir)
 	if dec != DecisionPass {
@@ -239,6 +282,8 @@ func TestEvaluate_StampExcludesForge(t *testing.T) {
 	}
 }
 
+// TestCurrentState_Runs smoke test: status output does not crash and contains key fields.
+//
 // TestCurrentState_Runs smoke test：status 输出不崩、含关键字段。
 func TestCurrentState_Runs(t *testing.T) {
 	dir := initGitRepo(t)
@@ -252,6 +297,8 @@ func TestCurrentState_Runs(t *testing.T) {
 	}
 }
 
+// gitCommit commits all changes in the temp repo (helper, reuses gitEnv; test-level, errors are fatal).
+//
 // gitCommit 在临时仓库提交全部变更（helper，复用 gitEnv；单测级，错误即 fatal）。
 func gitCommit(t *testing.T, dir, msg string) {
 	t.Helper()
@@ -266,6 +313,8 @@ func gitCommit(t *testing.T, dir, msg string) {
 	run("commit", "-q", "-m", msg)
 }
 
+// gitHeadShort returns the HEAD short hash, used as baseCommit for SourceChangesSince.
+//
 // gitHeadShort 返回 HEAD 短 hash，作 SourceChangesSince 的 baseCommit。
 func gitHeadShort(t *testing.T, dir string) string {
 	t.Helper()
@@ -276,6 +325,8 @@ func gitHeadShort(t *testing.T, dir string) string {
 	return strings.TrimSpace(string(out))
 }
 
+// TestSourceChangesSince_EmptyBaseUntracked base=empty degrades to HEAD: untracked source → hasChanges=true.
+//
 // TestSourceChangesSince_EmptyBaseUntracked base="" 退化成 HEAD：untracked 源码 → hasChanges=true。
 func TestSourceChangesSince_EmptyBaseUntracked(t *testing.T) {
 	dir := initGitRepo(t)
@@ -289,6 +340,10 @@ func TestSourceChangesSince_EmptyBaseUntracked(t *testing.T) {
 	}
 }
 
+// TestSourceChangesSince_IncludesCommittedChanges core difference: base..HEAD committed changes are included in the fingerprint.
+// The old computeDiffHash only looked at the worktree relative to HEAD — a clean worktree (after commit) returned empty, a false negative. SourceChangesSince(base)
+// uses a single-tree git diff <base>; base..HEAD committed + uncommitted worktree changes are captured in one step — the basis for commit-then-review flow decisions.
+//
 // TestSourceChangesSince_IncludesCommittedChanges 核心差异：base..HEAD 的【已提交】变更纳入指纹。
 // 旧 computeDiffHash 只看工作区相对 HEAD——干净工作区（已 commit）返空，假阴性。SourceChangesSince(base)
 // 用单树 git diff <base>，base..HEAD 已提交 + 工作区未提交一步算进——commit-then-review 流的判定基础。
@@ -307,6 +362,8 @@ func TestSourceChangesSince_IncludesCommittedChanges(t *testing.T) {
 	}
 }
 
+// TestSourceChangesSince_BaseUnreachable base unreachable (amend/rebase rewrote history) → returns err for fail-open.
+//
 // TestSourceChangesSince_BaseUnreachable base 不可达（amend/rebase 改写历史）→ 返 err 供 fail-open。
 func TestSourceChangesSince_BaseUnreachable(t *testing.T) {
 	dir := initGitRepo(t)
@@ -316,6 +373,8 @@ func TestSourceChangesSince_BaseUnreachable(t *testing.T) {
 	}
 }
 
+// TestSourceChangesSince_DocChangeExcluded pure-doc changes are excluded (isSourceCode whitelist).
+//
 // TestSourceChangesSince_DocChangeExcluded 纯文档变更不纳入（isSourceCode 白名单）。
 func TestSourceChangesSince_DocChangeExcluded(t *testing.T) {
 	dir := initGitRepo(t)
@@ -329,6 +388,8 @@ func TestSourceChangesSince_DocChangeExcluded(t *testing.T) {
 	}
 }
 
+// TestSourceChangesSince_StableAcrossForgeWrites writing under .forge/ does not change the hash (the :(exclude).forge rule is in effect).
+//
 // TestSourceChangesSince_StableAcrossForgeWrites 写 .forge/ 不改 hash（:(exclude).forge 生效）。
 func TestSourceChangesSince_StableAcrossForgeWrites(t *testing.T) {
 	dir := initGitRepo(t)
@@ -347,6 +408,11 @@ func TestSourceChangesSince_StableAcrossForgeWrites(t *testing.T) {
 	}
 }
 
+// TestSourceChangesSince_CommitWorkdirContentStaysEqual after committing the worktree content under review, the fingerprint stays unchanged —
+// the core of the review-fix-re-review loop. review pass records (base=C0, hash=worktree diff); after the agent commits the reviewed content
+// (without changing anything), SourceChangesSince(C0) still equals the recorded hash (the commit is exactly the reviewed worktree diff) → the gate passes;
+// only when new content is added after the commit does it != → re-review triggers.
+//
 // TestSourceChangesSince_CommitWorkdirContentStaysEqual commit 审查的工作区内容后指纹不变——
 // 审查-修复-复审闭环核心。review pass 记 (base=C0, hash=工作区 diff)；agent commit 审查内容
 // （不改任何东西）后，SourceChangesSince(C0) 仍 == 记录 hash（commit 的正是审查的工作区 diff）→ 门禁放行；
@@ -369,6 +435,8 @@ func TestSourceChangesSince_CommitWorkdirContentStaysEqual(t *testing.T) {
 		t.Fatalf(`commit 审查的工作区内容后指纹应不变（hAtReview=%q hAfterCommit=%q）——commit-then-review 流会假阳性`, hAtReview, hAfterCommit)
 	}
 
+	// Counter-example: changing new content after commit → fingerprint changes → re-review triggers.
+	//
 	// 反例：commit 后再改新内容 → 指纹变 → 触发复审。
 	write(t, dir, `a.go`, "package a\nfunc F() {}")
 	hAfterNewChange, _, err := SourceChangesSince(dir, c0)

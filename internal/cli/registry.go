@@ -7,6 +7,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// forge registry manages the global project registry ~/.forge/projects.json—records
+// which projects the user has run forge in (forge init self-registers), consumed by
+// forge dashboard --global to aggregate the global dashboard.
+//
+// The registry accumulates dead paths: test-history residue plus entries that never
+// faded after projects were moved or deleted. registry.List() prunes lazily on read,
+// but only when triggered by forge dashboard --global (that command starts a web
+// server and blocks, unsuitable for pure cleanup). This command group gives users
+// an active cleanup entry that does not start a web server (the root-cause gap for
+// dogfood registry historical-residue cleanup).
+//
+// All strings here use backtick raw strings: under Windows, Edit/Write on Go source
+// occasionally has ASCII double quotes silently rewritten to Chinese curly quotes,
+// breaking compilation (see memory windows-input-quote-corruption); raw strings dodge it.
+//
 // forge registry 管理全局项目注册表 ~/.forge/projects.json——记录用户在哪些项目跑过 forge
 //（forge init 自登记），供 forge dashboard --global 聚合全局看板。
 //

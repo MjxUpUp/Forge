@@ -1,5 +1,10 @@
 package cli
 
+// skills_decide.go — decide subcommand: appends a decision to a skill's decisions.md.
+// Persistent decision history: quadruple (diagnosis, revision, evidence, outcome) + rationale + linked
+// commit/probe-run. Lets the next-round agent understand why the skill was changed this way, avoiding re-exploring failed
+// directions. Audit/reproducible, not generalized learning.
+//
 // skills_decide.go — decide 子命令：把一条决策追加到 skill 的 decisions.md。
 // persistent decision history：四元组 (诊断,修订,证据,结果) + rationale + 关联
 // commit/probe-run。让下一轮 agent 理解 skill「为什么这么改」，避免重复探索已失败

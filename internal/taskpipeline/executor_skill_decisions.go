@@ -1,5 +1,36 @@
 package taskpipeline
 
+// executor_skill_decisions.go — the skill-decisions check for task-verify: split
+// into advisory and guardrail tiers (component B: advisory promoted to guardrail).
+//
+// guardrail (blocking): editing skills/<name>/SKILL.md (the behavior contract) is
+// a behavior change — this task must add a decision entry to decisions.md (via
+// forge skills decide), otherwise task-verify BLOCKs. SKILL.md is the skill's
+// behavior definition (Use when / SKIP / workflow); editing it changes the
+// behavior, so a why-trace must be left for the next-round agent to understand,
+// avoiding re-exploring failed directions (dogfood rule: pure self-awareness
+// always leaks, advisory has zero triggers, only blocking works).
+//
+// advisory (kept, non-blocking): editing auxiliary resources under skills/<name>/
+// (scripts/references/cases, neither SKILL.md nor decisions.md) is a resource
+// update — still just a reminder to record a decision; the blast radius of
+// auxiliary-resource edits is smaller than the behavior contract, and trivial
+// edits (typos/formatting) cluster in auxiliary resources, so keeping advisory
+// avoids false positives.
+//
+// Decision anchor (deterministic signal, not semantic guessing): whether
+// decisions.md gained a `## [d-` entry between task base..HEAD. base =
+// state.HeadCommit (task start HEAD), reusing the base semantics of
+// taskChangedFiles. The current content is read from the working tree (including
+// uncommitted decisions.md — agents may not commit immediately after recording);
+// the base version comes from git show <base>:path. fail-open: empty base / base
+// commit unreachable (amend/rebase) → do not block (aligned with the review
+// snapshot philosophy: strict when reachable, lenient when not; forced re-review
+// would loop forever).
+//
+// Boundary: audit/reproducible, not generalized learning
+// ([[forge-experience-knowledge-demolished]]).
+//
 // executor_skill_decisions.go — task-verify 的 skill-decisions 检查：分 advisory 与
 // guardrail 两档（B 组件：advisory 升 guardrail）。
 //
@@ -32,12 +63,24 @@ import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
 )
 
+// CheckNameSkillDecisions is the checklog name for the task-verify skill-decisions
+// check. It records the skill-decisions state trace: advisory path (auxiliary
+// resource edits) + guardrail pass (decision recorded, Passed=true) / BLOCKED
+// (not recorded, Passed=false) / fail-open (base unreachable, check skipped);
+// escape-hatch downgrade lands separately on CheckEscapeHatch (Weak ceiling cost).
+//
 // CheckNameSkillDecisions 是 task-verify skill-decisions 检查的 checklog 名。
 // 记 skill-decisions 各态 trace：advisory 路径（辅助资源改动）+ guardrail 通过（已记决策
 // Passed=true）/ BLOCKED（未记 Passed=false）/ fail-open（base 不可达跳过校验）；escape-hatch
 // 降级另落 CheckEscapeHatch（Weak ceiling 代价）。
 const CheckNameSkillDecisions checklog.CheckName = "skill-decisions-advisory"
 
+// skillDecisionsBlockingAffected returns the names of skills whose SKILL.md was
+// edited (behavior change → guardrail). It only matches skills/<name>/SKILL.md
+// (exact filename SKILL.md) — SKILL.md is the behavior contract, and editing it
+// triggers the guardrail. Other files (scripts/references/cases/decisions.md) do
+// not enter blocking.
+//
 // skillDecisionsBlockingAffected 返回改了 SKILL.md（行为变更 → guardrail）的 skill 名。
 // 只匹配 skills/<name>/SKILL.md（精确文件名 SKILL.md）——SKILL.md 是行为契约，改它触发
 // guardrail。其他文件（scripts/references/cases/decisions.md）不进 blocking。
@@ -70,6 +113,12 @@ func skillDecisionsBlockingAffected(changed []string) []string {
 	return out
 }
 
+// skillDecisionsAdvisoryAffected returns the names of skills whose auxiliary
+// resources (scripts/references/cases, neither SKILL.md nor decisions.md) were
+// edited but whose SKILL.md was **not edited** — these only get an advisory
+// reminder, not a block. Skills already in the blocking set (SKILL.md edited) do
+// not re-enter advisory (their guardrail already covers them).
+//
 // skillDecisionsAdvisoryAffected 返回改了辅助资源（scripts/references/cases，非 SKILL.md
 // 非 decisions.md）但**未改 SKILL.md**的 skill 名——这些只 advisory 提醒，不阻断。
 // 已在 blocking 集（改了 SKILL.md）的 skill 不重复进 advisory（它的 guardrail 已覆盖）。
@@ -97,6 +146,13 @@ func skillDecisionsAdvisoryAffected(changed []string) []string {
 		if bset[name] {
 			continue
 		}
+		// Only decisions.md is excluded (the recording carrier, not a change signal).
+		// Skills with canonical SKILL.md (skills/<name>/SKILL.md) are already covered
+		// by bset (in the blocking set, continued above) and cannot reach here;
+		// subdirectory SKILL.md (skills/<name>/archive/SKILL.md and other non-canonical
+		// paths) should not be excluded — going through advisory avoids zero-signal
+		// slip-through.
+		//
 		// 只排除 decisions.md（记录载体，非改动信号）。canonical SKILL.md（skills/<name>/SKILL.md）
 		// 的 skill 已被 bset 覆盖（在 blocking 集，上面 continue 了），到不了这里；子目录 SKILL.md
 		// （skills/<name>/archive/SKILL.md 等非 canonical）不应排除——走 advisory 避免零信号溜过。
@@ -114,6 +170,20 @@ func skillDecisionsAdvisoryAffected(changed []string) []string {
 	return out
 }
 
+// skillDecisionsRecorded decides whether a given skill gained a decisions.md
+// entry between task base..HEAD. base = state.HeadCommit (task start HEAD). New =
+// current `## [d-` count > count at base.
+//
+// The current content is read from the working tree (including uncommitted
+// decisions.md — agents may not commit immediately after recording, so reading
+// git HEAD would miss it); the base version comes from git show (historical
+// commit; file absent at base returns empty = 0 entries).
+//
+// When failopen=true the caller must not block (empty base / base commit
+// unreachable due to amend/rebase — aligned with the review snapshot philosophy
+// of strict-when-reachable, lenient-when-not). When failopen=false the recorded
+// value is authoritative.
+//
 // skillDecisionsRecorded 判定给定 skill 在 task base..HEAD 间是否新增 decisions.md 条目。
 // base = state.HeadCommit（task start HEAD）。新增 = 当前 `## [d-` 计数 > base 时计数。
 //
@@ -126,6 +196,8 @@ func skillDecisionsRecorded(root, base, skill string) (recorded, failopen bool) 
 	if base == "" {
 		return false, true
 	}
+	// base commit reachability (amend/rebase rewrites history and the object disappears).
+	//
 	// base commit 可达性（amend/rebase 改写历史致对象消失）。
 	if err := exec.Command("git", "-C", root, "cat-file", "-e", base+"^{commit}").Run(); err != nil {
 		return false, true
@@ -135,6 +207,11 @@ func skillDecisionsRecorded(root, base, skill string) (recorded, failopen bool) 
 	return cur > old, false
 }
 
+// countDecisionEntries counts the `## [d-` decision-entry markers in content
+// (skillsdecisions.AppendDecision renders a `## [d-<id>] <outcome>` section). Pure
+// string count, does not depend on LoadDecisions parsing — the judgment only
+// needs whether the entry count increased, not structured fields.
+//
 // countDecisionEntries 数 content 里 `## [d-` 决策条目标记数（skillsdecisions.AppendDecision
 // 渲染 `## [d-<id>] <outcome>` section）。纯字符串计数，不依赖 LoadDecisions 的解析——
 // 判定只需「条目数是否增加」，不需要结构化字段。
@@ -145,6 +222,11 @@ func countDecisionEntries(content string) int {
 	return strings.Count(content, "## [d-")
 }
 
+// currentDecisionsContent reads the current content of skills/<skill>/decisions.md
+// from the working tree (returns empty if absent). Reads the file rather than git
+// HEAD — agents may not commit immediately after recording, so reading git HEAD
+// would miss uncommitted entries and falsely conclude not-recorded.
+//
 // currentDecisionsContent 读工作区 skills/<skill>/decisions.md 当前内容（不存在返空）。
 // 读文件而非 git HEAD——agent 记决策后可能未立即 commit，读 git HEAD 会漏掉未提交条目
 // 误判「未记」。
@@ -156,6 +238,10 @@ func currentDecisionsContent(root, skill string) string {
 	return string(data)
 }
 
+// gitShowPath reads the content of path at the base version (git show <base>:<path>).
+// Returns empty if path is absent at base (= 0 entries). Used to compare the
+// decisions.md entry count at base.
+//
 // gitShowPath 读 base 版本的 path 内容（git show <base>:<path>）。base 时 path 不存在
 // 返空（=0 条目）。用于比对 base 时的 decisions.md 条目数。
 func gitShowPath(root, base, path string) string {
@@ -166,6 +252,10 @@ func gitShowPath(root, base, path string) string {
 	return string(out)
 }
 
+// formatSkillDecisionsAdvisory generates the advisory reminder (auxiliary-resource
+// edits, non-blocking). Wraps command names in single quotes to avoid the Windows
+// Edit double-quote corruption pitfall (see windows-input-quote-corruption).
+//
 // formatSkillDecisionsAdvisory 生成 advisory 提醒（辅助资源改动，不阻断）。
 // 用单引号包裹命令名，避免 Windows Edit 双引号腐蚀坑（见 windows-input-quote-corruption）。
 func formatSkillDecisionsAdvisory(skills []string) string {

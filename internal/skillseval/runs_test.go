@@ -70,10 +70,14 @@ func TestHealthScore(t *testing.T) {
 	if h := HealthScore(mixed, 0); h != 30 {
 		t.Fatalf("mixed health=%v want 30", h)
 	}
+	// All pass but 1 regression → 100-8=92
+	//
 	// 全 pass 但 1 regression → 100-8=92
 	if h := HealthScore(allPass, 1); h != 92 {
 		t.Fatalf("1 regression health=%v want 92", h)
 	}
+	// Only trigger kind → base=triggerAcc*100
+	//
 	// 只 trigger 类 → base=triggerAcc*100
 	onlyTrig := []CaseResult{
 		{Kind: KindTrigger, Pass: true},
@@ -143,6 +147,8 @@ func TestCompareRuns_NotComparableOnModelChange(t *testing.T) {
 	if rep.IncomparableReason == "" {
 		t.Fatal("want incomparable reason")
 	}
+	// Numbers are still computed, but the report is marked incomparable (consumers degrade to advisory based on this)
+	//
 	// 数字仍计算，但 report 标不可比（消费方据此降级为 advisory）
 	if len(rep.Regressions) != 1 {
 		t.Fatalf("regressions still computed=%v want [a]", rep.Regressions)
@@ -167,6 +173,8 @@ func TestSubmitRun_DescHashStalenessRejected(t *testing.T) {
 	cases, _ := EvalCases(canonical, "my-skill")
 	mustWrite(t, SaveCases(dir, "my-skill", cases))
 
+	// Change description (DescHash changes) — the case set goes stale.
+	//
 	// 改 description（DescHash 变），case 集过期。
 	writeSkill(t, canonical, "my-skill", "Use when: 别的场景 or 另一个场景 SKIP: 其他")
 	_, err := SubmitRun(dir, canonical, "my-skill", "m", "v1",
@@ -231,6 +239,8 @@ func TestSubmitRun_RegressionVsBaseline(t *testing.T) {
 		return raw
 	}
 
+	// run1 all correct → set as baseline.
+	//
 	// run1 全对 → 设为 baseline。
 	r1, err := SubmitRun(dir, canonical, "my-skill", "sonnet", "v1", allRight())
 	if err != nil {
@@ -238,6 +248,8 @@ func TestSubmitRun_RegressionVsBaseline(t *testing.T) {
 	}
 	mustWrite(t, SetBaseline(dir, "my-skill", r1.RunID, "test"))
 
+	// run2: the first trigger case intentionally fails (regression).
+	//
 	// run2：第一个 trigger case 故意 fail（regression）。
 	raw2 := allRight()
 	raw2[0].ActualTriggered = "wrong-skill"
@@ -275,6 +287,10 @@ func TestBaselinePersistence(t *testing.T) {
 	}
 }
 
+// TestSubmitRun_AllUnknownCaseIDsRejected: all case_id values are absent from the case set (the set was just rebuilt,
+// the agent holds stale ids) → results empty → fail explicitly; do not silently persist an empty health=0 run that would lead the agent
+// to misread it as 'run succeeded, just all-failed'.
+//
 // TestSubmitRun_AllUnknownCaseIDsRejected：所有 case_id 都不在 case 集（集刚重建，
 // agent 拿旧 id）→ results 空 → 明确报错，不静默落一条 health=0 的空 run 让 agent
 // 误判「跑成功只是全挂」。
@@ -292,15 +308,24 @@ func TestSubmitRun_AllUnknownCaseIDsRejected(t *testing.T) {
 	}
 }
 
+// TestSubmitRun_PureBehavior_SkipsDescHashCheck: a pure-behavior case set (all DescHash empty,
+// not anchored to description) should still pass when description changes (DescHash mismatch) — behavior cases
+// are maintained independently of description (design contract, see the set.DescHash non-empty guard at SubmitRun line 352).
+// Also verifies behavior judging goes through ActualOutput + Oracle (actual_triggered ignored).
+//
 // TestSubmitRun_PureBehavior_SkipsDescHashCheck：纯 behavior case 集（DescHash 全空，
 // 不锚 description）即使 description 改了（DescHash 失配）也该通过——behavior case
-// 独立于 description 维护（设计契约，见 SubmitRun line 352 的 set.DescHash!="" 守卫）。
+// 独立于 description 维护（设计契约，见 SubmitRun line 352 的 set.DescHash!=""守卫）。
 // 同时验证 behavior 判定走 ActualOutput + Oracle（actual_triggered 忽略）。
 func TestSubmitRun_PureBehavior_SkipsDescHashCheck(t *testing.T) {
 	canonical := t.TempDir()
 	dir := t.TempDir()
+	// SKILL.md just needs to exist (currentDescHash must be readable); the description content will be changed shortly.
+	//
 	// SKILL.md 存在即可（currentDescHash 要能读）；description 内容随后会改。
 	writeSkill(t, canonical, "b-skill", "Use when: x SKIP: y")
+	// A pure-behavior case set (all DescHash empty, firstDescHash returns empty).
+	//
 	// 纯 behavior case 集（DescHash 全空，firstDescHash 返回 ""）。
 	behavCases := []EvalCase{
 		{ID: "p1", Skill: "b-skill", Kind: KindBehavior, Prompt: "in1", ProbeInput: "in1", Oracle: "contains:ok"},
@@ -308,6 +333,8 @@ func TestSubmitRun_PureBehavior_SkipsDescHashCheck(t *testing.T) {
 	}
 	mustWrite(t, SaveCases(dir, "b-skill", behavCases))
 
+	// Change description (DescHash changes) — the pure-behavior set should be unaffected (skips consistency check).
+	//
 	// 改 description（DescHash 变）——纯 behavior 集应不受影响（跳过一致性校验）。
 	writeSkill(t, canonical, "b-skill", "Use when: z SKIP: w")
 
@@ -330,6 +357,8 @@ func TestSubmitRun_PureBehavior_SkipsDescHashCheck(t *testing.T) {
 	}
 }
 
+// TestCountRegressions: nil baseline → 0; baseline pass → latest fail → 1.
+//
 // TestCountRegressions：nil baseline → 0；baseline pass→latest fail → 1。
 func TestCountRegressions(t *testing.T) {
 	if got := countRegressions(&EvalRun{}, nil); got != 0 {

@@ -17,6 +17,8 @@ var (
 	skAudGate  bool
 )
 
+// exit code contract (with --gate): 0=no HIGH/CRITICAL, 4=HIGH/CRITICAL present.
+//
 // exit code 契约（--gate 时）：0=无 HIGH/CRITICAL，4=存在 HIGH/CRITICAL。
 var skillsAuditCmd = &cobra.Command{
 	Use:   "audit",
@@ -49,6 +51,11 @@ func runSkillsAudit(cmd *cobra.Command, args []string) error {
 	for _, n := range names {
 		fs, serr := skillsqa.ScanSkill(filepath.Join(canonical, n))
 		if serr != nil {
+			// A ScanSkill failure (skill missing/no permission/read error) must be turned into a CRITICAL finding.
+			// Otherwise ScoreFindings(nil)=0/INFO/SAFE would report a broken skill as clean — the --gate
+			// HIGH/CRITICAL detection would then fail (cannot verify = security risk). Symmetric with Install AuditSkill
+			// error handling: an audit failure is itself a block.
+			//
 			// ScanSkill 失败（skill 不存在/无权限/读取错误）必须转成 CRITICAL finding。
 			// 否则 ScoreFindings(nil)=0/INFO/SAFE 会把坏掉的 skill 报为"干净"——--gate 的
 			// HIGH/CRITICAL 检测就此失守（无法验证 = 安全风险）。与 Install 的 AuditSkill

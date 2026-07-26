@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 )
 
+// DetectAgents scans the project directory for known agent config indicators.
+//
 // DetectAgents 扫描项目目录，检测已知 agent 的 config indicator。
 func DetectAgents(projectDir string) []AgentType {
 	var agents []AgentType
@@ -21,6 +23,12 @@ func DetectAgents(projectDir string) []AgentType {
 	if fileExists(filepath.Join(projectDir, ".windsurfrules")) {
 		agents = append(agents, AgentWindsurf)
 	}
+	// codex is detected via the .codex/ directory. AGENTS.md is NOT a codex signal — forge
+	// init proactively generates AGENTS.md as a universal cross-agent instruction source
+	// (codex/cursor/copilot/windsurf/cline all read it); treating it as a codex signal
+	// would make forge's own AGENTS.md trigger codex wiring (.codex/ cascade false positive).
+	// Pure codex-CLI users (only AGENTS.md, no .codex/) use --agents codex explicitly.
+	//
 	// codex 靠 .codex/ 目录检测。AGENTS.md 不作为 codex 信号——forge init 会主动生成
 	// AGENTS.md 作为跨 agent 通用指令源（codex/cursor/copilot/windsurf/cline 都读），若把它
 	// 当 codex 信号，forge 自己写的 AGENTS.md 会触发自身给 codex 接线（.codex/ 级联误判）。
@@ -38,6 +46,9 @@ func DetectAgents(projectDir string) []AgentType {
 	return agents
 }
 
+// ParseAgentFlag parses a comma-separated agent flag value.
+// auto triggers auto-detection; explicit names (e.g. claude-code,cursor) are used directly.
+//
 // ParseAgentFlag 解析逗号分隔的 agent flag 值。
 // auto 触发自动检测；显式名（如 claude-code,cursor）直接使用。
 func ParseAgentFlag(projectDir string, flag string) []AgentType {

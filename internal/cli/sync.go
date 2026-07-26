@@ -15,6 +15,17 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// autoSync keeps .forge/ files (hooks/settings/SKILL.md) in sync with the
+// current binary version. Runs before every command except init.
+//
+// sync rules:
+//   - .forge/hooks/*.sh  → always overwritten from embed templates
+//   - .claude/settings.local.json → always regenerated
+//   - .claude/skills/forge-quality/SKILL.md → always regenerated from protocol.yml
+//   - .claude/CLAUDE.md → update Forge-managed sections
+//   - .forge/protocol.yml → created from defaults if missing, never overwritten
+//   - .forge/.sync-version → stamped with the current binary version (no-op detection)
+//
 // autoSync 确保 .forge/ 文件（hooks/settings/SKILL.md）与当前 binary version 一致。
 // 除 init 外每条命令前都跑。
 //
@@ -26,12 +37,27 @@ import (
 //   - .forge/protocol.yml → 缺失则从默认值创建，绝不覆盖
 //   - .forge/.sync-version → 盖当前 binary version 戳（no-op 检测）
 func autoSync(dir string, binaryVersion string, force bool) error {
+	// When the plugin is installed at user level, the project-level hooks
+	// (GenerateSettings) written by this function are redundant (plus the
+	// forge-server residue in legacy .mcp.json of old projects, cleaned by
+	// StripForgeMCPServer for historical init/sync of old projects). defer
+	// consolidates cleanup at the end of every return path. Idempotent: no-op
+	// when nothing duplicates, and the version-equal skip path also triggers it
+	// (covers the migration case where the plugin was installed after the last
+	// sync).
+	//
 	// plugin 已 user-level 装时,本函数写入的 project-level hooks（GenerateSettings）是冗余的
 	// （+ 旧项目 .mcp.json 的 forge server 残留,StripForgeMCPServer 清历史 init/sync 旧项目）,
 	// defer 在所有 return 路径末尾统一清理。幂等:无重复时 no-op,version-equal 跳过路径也会
 	// 触发（正好覆盖"plugin 在上次 sync 后才装"的迁移场景）。
 	defer dedupeProjectLevelIfPlugin(dir)
 
+	// The .sync-version stamp drives no-op detection (replacing the deleted
+	// state.LastSyncVersion—state.json is no longer generated after project-level
+	// pipeline removal). Three conditions force a sync even when versions match:
+	// the force flag / stamp missing or mismatched / stale hook binding inside
+	// settings.local.json (legacy task-verify wrongly bound to PostToolUse).
+	//
 	// .sync-version stamp 判 no-op（取代已删除的 state.LastSyncVersion——项目级管道
 	// 删除后 state.json 不再生成）。Three conditions force a sync even when versions
 	// match：force flag / stamp 缺失或不匹配 / settings.local.json 内 stale hook binding
@@ -47,11 +73,22 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 
 	forgeDir := filepath.Join(dir, ".forge")
 
+	// 1. sync hook scripts
+	//
 	// 1. sync hook 脚本
 	if err := hooks.WriteHookTemplates(forgeDir); err != nil {
 		return fmt.Errorf("auto-sync: failed to update hooks: %w", err)
 	}
 
+	// 2. Sync settings.local.json—only when the plugin is not user-level
+	//    installed. When the plugin is installed, user-level plugin.json
+	//    already registers ForgeHookSpec machine-wide; writing project-level
+	//    hooks is redundant and creates a fragile write-then-immediately-strip
+	//    pattern—any interruption between GenerateSettings and the deferred
+	//    dedupeProjectLevelIfPlugin leaves a corrupted file.
+	//    dedupeProjectLevelIfPlugin still runs via defer to clean legacy hooks
+	//    from older forge versions.
+	//
 	// 2. sync settings.local.json——仅在 plugin 未 user-level 安装时。
 	//    plugin 已装时，user-level plugin.json 已全机注册 ForgeHookSpec；写 project-level
 	//    hooks 冗余且制造脆弱的「先写后立即 strip」模式——GenerateSettings 与 defer
@@ -63,6 +100,8 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 		}
 	}
 
+	// 3. Ensure protocol.yml exists (create from defaults if missing)
+	//
 	// 3. 确保 protocol.yml 存在（缺失则从默认值创建）
 	proto, err := protocol.Load(dir)
 	if err != nil {
@@ -72,26 +111,36 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 		}
 	}
 
+	// 4. Sync the quality SKILL.md
+	//
 	// 4. 同步 quality SKILL.md
 	if err := skillgen.GenerateQualitySkill(dir, proto); err != nil {
 		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to regenerate quality skill: %v\n", err)
 	}
 
+	// 5. Clean up refactor residue: deprecated skills + runtime-state migration to DataDir + dead files
+	//
 	// 5. Clean up refactor 残留:废弃 skill + runtime state 迁 DataDir + 死文件
 	cleanupDeprecatedPipelineSkill(dir)
 	migrateRuntimeResidue(dir)
 	cleanupLegacyDeadFiles(dir)
 
+	// 6. Update CLAUDE.md
+	//
 	// 6. 更新 CLAUDE.md
 	if err := skillgen.GenerateClaudeMD(dir); err != nil {
 		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to update CLAUDE.md: %v\n", err)
 	}
 
+	// 7. Update the project-root AGENTS.md (cross-agent instruction source)
+	//
 	// 7. 更新 project-root AGENTS.md（跨 agent 指令源）
 	if err := skillgen.GenerateAgentsMD(dir); err != nil {
 		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to update AGENTS.md: %v\n", err)
 	}
 
+	// 8. Sync the agent bridge (translate for every detected agent)
+	//
 	// 8. sync agent bridge（为所有检测到的 agent 翻译）
 	agents := agentbridge.DetectAgents(dir)
 	if len(agents) > 0 {
@@ -106,6 +155,8 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 		}
 	}
 
+	// 9. Update the .sync-version stamp
+	//
 	// 9. 更新 .sync-version 戳
 	if err := os.WriteFile(stampPath, []byte(binaryVersion), 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to write sync stamp: %v\n", err)
@@ -114,6 +165,13 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 	return nil
 }
 
+// cleanupDeprecatedPipelineSkill removes the deprecated forge-pipeline skill
+// directory. After the project-level pipeline was removed, the
+// .claude/skills/forge-pipeline/ and .agents/skills/forge-pipeline/ left by
+// older forge versions still let agents read stale content (describing the
+// deleted forge gate/pipeline commands). autoSync cleans them on every call,
+// idempotent. The generator generator.go is deleted, so it never regenerates.
+//
 // cleanupDeprecatedPipelineSkill 删除已废弃的 forge-pipeline skill 目录。项目级管道
 // 删除后，老版本 forge 生成的 .claude/skills/forge-pipeline/ 与 .agents/skills/forge-pipeline/
 // 残留会让 agent 读到过时内容（描述已删除的 forge gate/pipeline 命令）。autoSync 每次
@@ -129,6 +187,25 @@ func cleanupDeprecatedPipelineSkill(dir string) {
 	}
 }
 
+// migrateRuntimeResidue moves runtime-state residue left under .forge/ by
+// older versions into DataDir. refactor-data-home relocated runtime state
+// from project-level .forge/ to user-level DataDir, but residue accumulated
+// by older versions (checklog archives / tasks / gates / sessions / experience
+// etc.) is not moved automatically—after upgrade, hundreds of runtime files
+// still pile up under .forge/. autoSync runs this once per version change
+// (overall no-op when .sync-version is equal), idempotent (already-migrated
+// entries are left alone), slimming .forge/ back to a pure config directory.
+//
+// It reuses the forgedata.MigrateProject whitelist (runtimeDirs / runtimeFiles
+// / runtimeGlobs). Default semantics: when DataDir already has the same name,
+// skip and keep src (no overwrite, no data loss); when DataDir does not, move
+// the whole tree there (the .forge/ copy disappears but DataDir has the copy,
+// equivalent to migration). RemoveSrcOnConflict is deliberately not
+// introduced—to prevent old quarantine data on the skip path (user-code copies
+// isolated by file-sentinel) from being overwritten and lost. Project
+// construction failure (non-git project / missing .forge) returns silently,
+// so autoSync is not blocked.
+//
 // migrateRuntimeResidue 把 .forge/ 下老版本积累的 runtime state 残留迁到 DataDir。
 // refactor-data-home 把 runtime state 从项目级 .forge/ 迁到用户级 DataDir，但老版本
 // 已积累的残留（checklog 归档/tasks/gates/sessions/experience 等）不会自动搬——升级后
@@ -150,6 +227,18 @@ func migrateRuntimeResidue(dir string) {
 	}
 }
 
+// cleanupLegacyDeadFiles removes dead files left under .forge/ after feature
+// removal:
+//   - pipeline.yml / state.json: project-level pipeline (forge gate/pipeline)
+//     was removed (refactor/remove-project-pipeline); the config + state files
+//     generated by older init are no longer read or written by forge.
+//   - session-health-*.last: the session-health hook was removed as noise
+//     (post v0.22); its throttle stamps (session-scoped <sid> variants) are
+//     orphaned, nothing reads or writes them.
+//
+// autoSync removes them when detected, idempotent. It follows the
+// cleanupDeprecatedPipelineSkill pattern (Stat/Glob hit → RemoveAll).
+//
 // cleanupLegacyDeadFiles 删除功能删除后残留在 .forge/ 的死文件：
 //   - pipeline.yml/state.json：项目级管道（forge gate/pipeline）已删（refactor/
 //     remove-project-pipeline），老版本 init 生成的配置 + 状态文件，forge 不再读写。
@@ -171,6 +260,10 @@ func cleanupLegacyDeadFiles(dir string) {
 	}
 }
 
+// fileExists reports whether the path exists (Stat returns no error). A small
+// helper that keeps cleanup loops readable, without repeating the
+// os.Stat + nil-check boilerplate.
+//
 // fileExists 报告路径是否存在（Stat 无错）。小 helper 让 cleanup 循环可读，
 // 无需重复 os.Stat + nil-check 样板。
 func fileExists(p string) bool {
@@ -178,6 +271,15 @@ func fileExists(p string) bool {
 	return err == nil
 }
 
+// settingsHasStaleBinding reports whether .claude/settings.local.json binds
+// any Forge hook to an event the current generator no longer emits—this is
+// the fingerprint of older Forge settings files. Concrete case: task-verify
+// was bound under PostToolUse with a wide matcher (Bash|Read|Glob|Skill|Agent),
+// firing on almost every tool call—with no throttling on the hook itself,
+// heavy use produced runaway invocations (100+/session). The current
+// generator only binds task-verify to Stop, so any binding elsewhere is stale
+// and must be cleared by regeneration.
+//
 // settingsHasStaleBinding 报告 .claude/settings.local.json 是否把某个 Forge hook
 // 绑到了当前 generator 不再 emit 的事件——这是旧版 Forge settings 文件的指纹。具体案例：
 // task-verify 曾绑在 PostToolUse 下用宽 matcher（Bash|Read|Glob|Skill|Agent），
@@ -199,6 +301,10 @@ func settingsHasStaleBinding(dir string) bool {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return false
 	}
+	// task-verify may only live under Stop. Bindings under other events
+	// (PostToolUse / PreToolUse) are legacy residue that re-fires on every
+	// tool call.
+	//
 	// task-verify 只能在 Stop 下。其他事件（PostToolUse/PreToolUse）下的绑定是 legacy
 	// 残留，每次 tool call 都会重复触发。
 	for event, matchers := range cfg.Hooks {

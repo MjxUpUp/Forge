@@ -2,13 +2,21 @@ package taskpipeline
 
 import "os"
 
-// TaskOverrides 承载 per-task 逃生舱设置。优先于全局 env，是方案5 的"防泄漏"机制：
+// TaskOverrides holds the per-task escape-hatch settings. It takes precedence over the global env and is the
+// anti-leak mechanism of plan 5: one task escaping (via `forge task override`) does not pollute other tasks in the
+// same shell — the global env FORGE_WORK_ACTIVITY / FORGE_TEST_COVERAGE / FORGE_SKILL_DECISIONS still serves as a
+// CI/test fallback, but per-task override is the recommended path. The value disable = disable the corresponding gate.
+//
+// Using any escape hatch → checklog CheckEscapeHatch → evidence Strength capped at Weak (giving escape a cost, to
+// counter the hard-gate-plus-global-escape-hatch-equals-fake-hard-gate backlash).
+//
+// TaskOverrides 承载 per-task 逃生舱设置。优先于全局 env，是方案5 的「防泄漏」机制：
 // 一个任务逃生（经 `forge task override`）不污染同 shell 的其他任务——全局 env
 // FORGE_WORK_ACTIVITY / FORGE_TEST_COVERAGE / FORGE_SKILL_DECISIONS 仍作 CI/测试
-// fallback，但 per-task override 是推荐路径。值 "disable" = 禁用对应门禁。
+// fallback，但 per-task override 是推荐路径。值"disable"= 禁用对应门禁。
 //
 // 用了任一逃生舱 → checklog CheckEscapeHatch → evidence Strength cap Weak（让逃生
-// 有代价，对冲"硬门禁 + 全局逃生舱 = 假硬门禁"反噬）。
+// 有代价，对冲「硬门禁 + 全局逃生舱 = 假硬门禁」反噬）。
 type TaskOverrides struct {
 	WorkActivity   string `json:"work_activity,omitempty"`   // "disable" 跳过 read-before-edit / work-activity 门禁
 	TestCoverage   string `json:"test_coverage,omitempty"`   // "disable" 跳过 test-coverage 门禁
@@ -16,6 +24,11 @@ type TaskOverrides struct {
 	SkillDecisions string `json:"skill_decisions,omitempty"` // "disable" 跳过 skill-decisions guardrail（改 SKILL.md 必须记决策）
 }
 
+// EscapeDisabled reports whether the escape hatch named by which (work-activity / test-coverage / skill-decisions) is
+// in effect for this task. per-task Overrides take precedence over the process-global env (the anti-leak path); the env
+// remains a CI/test fallback. Callers: the work-activity gate (executor), the test-coverage gate (testcoverage), and the
+// skill-decisions guardrail (executor).
+//
 // EscapeDisabled 报告 which（"work-activity"/"test-coverage"/"skill-decisions"）逃生舱
 // 对本任务是否生效。per-task Overrides 优先于 process-global env（防泄漏路径）；env 留作
 // CI/测试 fallback。调用方：work-activity 门禁（executor）、test-coverage 门禁（testcoverage）、
@@ -45,13 +58,16 @@ func EscapeDisabled(state *TaskState, which, envVar string) bool {
 }
 
 const (
+	// escapeWorkActivity / escapeTestCoverage / escapeAcceptanceGate / escapeSkillDecisions: the which keys of EscapeDisabled.
 	// escapeWorkActivity / escapeTestCoverage / escapeAcceptanceGate / escapeSkillDecisions: EscapeDisabled 的 which 键。
 	escapeWorkActivity   = "work-activity"
 	escapeTestCoverage   = "test-coverage"
 	escapeAcceptanceGate = "acceptance-gate"
 	escapeSkillDecisions = "skill-decisions"
+	// envWorkActivity: the global env for the work-activity escape hatch (executor getDisableWorkActivity).
 	// envWorkActivity: work-activity 逃生舱对应的全局 env（executor getDisableWorkActivity）。
 	envWorkActivity = "FORGE_WORK_ACTIVITY"
+	// envSkillDecisions: the global env for the skill-decisions escape hatch (CI/test fallback).
 	// envSkillDecisions: skill-decisions 逃生舱对应的全局 env（CI/测试 fallback）。
 	envSkillDecisions = "FORGE_SKILL_DECISIONS"
 )

@@ -39,6 +39,9 @@ func runSkillsEffectiveness(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	if skEffJSON {
+		// effs is a plain struct (string/float64/int fields); MarshalIndent cannot fail — same
+		// pattern as 20+ CLI commands in the project (skills_usage/audit/install etc.).
+		//
 		// effs 是纯 struct（string/float64/int 字段），MarshalIndent 不会失败——与项目内
 		// 20+ CLI 命令的同款 pattern 一致（skills_usage/audit/install 等）。
 		b, _ := json.MarshalIndent(effs, "", "  ")

@@ -20,6 +20,9 @@ func init() {
 	dashboardCmd.Flags().Bool(`global`, false, `全局视图：聚合 ~/.forge/projects.json 登记的所有项目`)
 }
 
+// forge dashboard — local quality board. Starts an HTTP service that visualizes
+// the quality data under .forge/.
+//
 // forge dashboard —— 本地质量看板。起 HTTP 服务把 .forge/ 质量数据可视化。
 var dashboardCmd = &cobra.Command{
 	Use:   "dashboard",
@@ -39,6 +42,12 @@ func runDashboard(cmd *cobra.Command, args []string) error {
 	noOpen, _ := cmd.Flags().GetBool(`no-open`)
 	global, _ := cmd.Flags().GetBool(`global`)
 
+	// Capture interrupt signals for graceful shutdown (dashboard.Serve blocks until
+	// ctx is cancelled):
+	// os.Interrupt = Ctrl+C (cross-platform); syscall.SIGTERM only takes effect on
+	// POSIX platforms — Windows does not deliver SIGTERM (Task Manager end goes
+	// through a different path) — registering it helps Linux/mac and is harmless on Windows.
+	//
 	// 捕获中断信号优雅关闭服务（dashboard.Serve 阻塞直到 ctx 取消）：
 	// os.Interrupt = Ctrl+C（全平台）；syscall.SIGTERM 仅 POSIX 平台生效，Windows 不传
 	// 递 SIGTERM（任务管理器结束走别的路径）——注册它对 Linux/mac 有用，Windows 无害。
@@ -47,9 +56,16 @@ func runDashboard(cmd *cobra.Command, args []string) error {
 
 	opts := dashboard.Options{Port: port, OpenBrowser: !noOpen}
 	if global {
+		// Global view: aggregate all registered projects. Self-register the current
+		// project (compatibility for old projects that ran init but were never registered).
+		//
 		// 全局视图：聚合所有已登记项目。自登记当前项目（兼容已 init 但未登记的老项目）。
 		if cwd, err := os.Getwd(); err == nil {
 			if _, statErr := os.Stat(filepath.Join(cwd, `.forge`)); statErr == nil {
+				// Self-registration failure only warns — consistent with forge init; the
+				// global view is an enhancement and does not block (already-registered
+				// projects are still aggregated).
+				//
 				// 自登记失败仅警告——与 forge init 一致，全局视图是增强不阻塞（已登记项目仍聚合）。
 				if err := registry.Add(cwd); err != nil {
 					fmt.Fprintf(os.Stderr, "Warning: failed to register project globally: %v\n", err)

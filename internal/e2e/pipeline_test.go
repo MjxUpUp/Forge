@@ -14,6 +14,10 @@ import (
 func TestE2E_InitGeneratesStructure(t *testing.T) {
 	dir := freshProject(t) // git init + go project + forge init
 
+	// Project-level pipeline has been removed: init no longer generates
+	// pipeline.yml / state.json / forge-pipeline skill. New contract: hooks +
+	// Claude integration + quality-protocol skill + CLAUDE.md + sync stamp.
+	//
 	// 项目级管道已删除：init 不再生成 pipeline.yml / state.json / forge-pipeline skill。
 	// 新契约：hooks + Claude 集成 + 质量协议 skill + CLAUDE.md + sync stamp。
 	for _, p := range []string{
@@ -27,6 +31,9 @@ func TestE2E_InitGeneratesStructure(t *testing.T) {
 			t.Errorf("forge init did not generate %s", p)
 		}
 	}
+	// Reverse assertion: removed artifacts no longer generated (regression
+	// guard — previously pipeline.yml/state.json/forge-pipeline existed).
+	//
 	// 反向断言：废弃产物不再生成（防回归——曾有 pipeline.yml/state.json/forge-pipeline）。
 	for _, p := range []string{
 		".forge/pipeline.yml",
@@ -38,6 +45,9 @@ func TestE2E_InitGeneratesStructure(t *testing.T) {
 		}
 	}
 
+	// status always prints the project header (even with no active task) so
+	// the user can confirm forge is in place.
+	//
 	// status 始终打印项目头（即使无任务），让用户确认 forge 已就位。
 	out := forge(t, dir, "status")
 	if !strings.Contains(out, "Project:") {

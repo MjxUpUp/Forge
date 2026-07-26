@@ -1,8 +1,28 @@
 package skillseval
 
+// judge_accept.go — machine acceptance criteria of the skill evolution loop (deterministic, not LLM-as-judge).
+//
+// The skill-evolution loop used to close out by asking the agent to self-report accept/reject — this is
+// a gap (dogfood rule: pure self-discipline always misses; accept is a people-pleasing default). JudgeSkillAccept
+// normalizes the deterministic signals of RegressionReport (matched-set regression) into accept/reject + reasons,
+// for eval-report output and skill-evolution SKILL consumption — spec-as-executable: machine criteria replace self-report.
+//
+// Boundary: deterministic. It only reads Regressions already computed by CompareRuns (matched-set baseline pass →
+// latest fail); it does not call LLM, does not guess semantics, does not compare behavior pass-rate. When not
+// comparable (across versions/models/desc), it degrades to accept+advisory — where machine criteria are unreliable
+// it does not force reject (which would falsely kill normal changes from forge upgrades/model swaps); it honestly
+// escalates to human review. This mirrors the Emergence World proof-of-work principle: accept must be backed by
+// a deterministic signal.
+//
+// Why not also judge behavior pass-rate drops separately: CompareRuns's Regressions are based on CaseResult.Pass,
+// and behavior case pass→fail (judged by judgeBehavior) also enters Regressions. So any matched-set regression
+// (trigger/not-trigger/behavior) is already captured by len(Regressions)>0, and a behavior pass-rate drop always
+// comes with Regressions≥1; a separate criterion is redundant and would falsely reject during case-set turnover —
+// remove it; a single regression signal is more honest.
+//
 // judge_accept.go — skill 进化闭环的机器验收判据（deterministic，非 LLM-as-judge）。
 //
-// skill-evolution 闭环曾靠 agent 自述「accept/reject」收尾——这是断口（dogfood 铁律：
+// skill-evolution 闭环曾靠 agent 自述"accept/reject"收尾——这是断口（dogfood 铁律：
 // 纯靠自觉必漏，accept 是讨好型默认）。JudgeSkillAccept 把 RegressionReport 的确定信号
 // （matched 集退化）归一成 accept/reject + reasons，供 eval-report 输出 + skill-evolution
 // SKILL 消费——spec-as-executable：机器判据取代自述。
@@ -22,6 +42,25 @@ import (
 	"strings"
 )
 
+// JudgeSkillAccept is the machine acceptance criterion for skill evolution: it judges accept/reject from RegressionReport.
+//
+// Criteria (short-circuit in order, first match decides the outcome):
+//  1. nil → accept (reasons nil)
+//  2. No baseline (HasBaseline=false) → accept + advisory reason (first run, baseline not yet anchored, machine
+//     criteria unavailable — must first eval-baseline to establish a baseline before subsequent optimizations can be
+//     judged for regression; this state must not be read as no regression)
+//  3. Not comparable (Comparable=false) → accept + advisory reason (delta across versions/models/desc is a false
+//     regression, machine criteria are unreliable, escalate to human review — not forcing reject avoids falsely
+//     killing normal upgrades)
+//  4. Matched-set has regression (len(Regressions)>0) → reject (clear regression of baseline pass → latest fail,
+//     covering trigger/not-trigger/behavior cases)
+//  5. Otherwise → accept (no regression signal, reasons nil)
+//
+// reasons: non-empty on reject (specific case ids, as reject evidence); on accept+advisory contains degradation
+// notes (first run no baseline / not comparable); nil on pure accept (nil input or no regression). Consumers
+// (eval-report / skill-evolution SKILL) decide based on accept, but must read reasons to distinguish truly-no-regression
+// from machine-criteria-unavailable; reasons land in decisions.md.
+//
 // JudgeSkillAccept 是 skill 进化的机器验收判据：据 RegressionReport 判 accept/reject。
 //
 // 判据（按序短路，首个命中决定结果）：

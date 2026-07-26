@@ -6,6 +6,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// withTree registers a temporary command tree to run fn, and restores afterwards (avoids sharing global cmdTreeFn across tests).
+//
 // withTree 注册一个临时命令树运行 fn，测试后还原（避免测试间共享全局 cmdTreeFn）。
 func withTree(t *testing.T, root *cobra.Command, fn func()) {
 	t.Helper()
@@ -21,6 +23,9 @@ func withTree(t *testing.T, root *cobra.Command, fn func()) {
 	fn()
 }
 
+// TestValidateForgePath_Mechanism proves the detection mechanism actually catches drift — rather than a stub that always returns "".
+// Covers parent-exists-child-not (experience propose: experience exists, propose does not) and top-level-not-exists.
+//
 // TestValidateForgePath_Mechanism 证明检测机制真能抓 drift——而非恒返回 "" 的空壳。
 // 含父命令存在子命令不存在（experience propose：experience 有，propose 无）和顶层不存在。
 func TestValidateForgePath_Mechanism(t *testing.T) {
@@ -57,6 +62,9 @@ func TestValidateForgePath_Mechanism(t *testing.T) {
 	})
 }
 
+// TestValidateForgePath_UnregisteredTree must pass through (return "") when the command tree is unregistered, not report false drift.
+// Ensures callers using this package without a registered callback do not get false positives — advisory stays silent rather than noisy.
+//
 // TestValidateForgePath_UnregisteredTree 命令树未注册时必须放行（返回 ""），不报假 drift。
 // 这保证本包被未注册回调的调用方使用时不误报——advisory 宁静默不噪声。
 func TestValidateForgePath_UnregisteredTree(t *testing.T) {
@@ -67,6 +75,9 @@ func TestValidateForgePath_UnregisteredTree(t *testing.T) {
 	})
 }
 
+// TestDriftedCommands end-to-end proof that the pipeline of regex-extracting backtick forge references → ValidateForgePath
+// can catch every ghost from document text: real commands pass, multiple ghosts all caught (order preserved).
+//
 // TestDriftedCommands 端到端证明 regex 抽取反引号 forge 引用 → ValidateForgePath 校验
 // 的管道能从文档文本中抓出所有 ghost：真命令放行，多个 ghost 全抓（顺序保留）。
 func TestDriftedCommands(t *testing.T) {
@@ -90,6 +101,9 @@ func TestDriftedCommands(t *testing.T) {
 	})
 }
 
+// TestDriftedCommands_Dedup reports a drift command only once even if it appears N times in the doc —
+// prevents advisory stderr from repeating the same command ("experience propose, experience propose").
+//
 // TestDriftedCommands_Dedup 同一 drift 命令在文档出现 N 次只报一次——
 // 避免 advisory stderr 重复刷同一命令（"experience propose, experience propose"）。
 func TestDriftedCommands_Dedup(t *testing.T) {

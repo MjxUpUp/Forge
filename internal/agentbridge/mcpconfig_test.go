@@ -20,6 +20,8 @@ func loadJSON(t *testing.T, path string, v any) {
 	}
 }
 
+// TestStripForgeMCPServer_NoFile: no-op when .mcp.json is absent.
+//
 // TestStripForgeMCPServer_NoFile：无 .mcp.json 时 no-op。
 func TestStripForgeMCPServer_NoFile(t *testing.T) {
 	dir := t.TempDir()
@@ -32,6 +34,9 @@ func TestStripForgeMCPServer_NoFile(t *testing.T) {
 	}
 }
 
+// TestStripForgeMCPServer_ForgeOnly_DeletesFile: .mcp.json contains only forge server;
+// after strip the empty mcpServers → delete the entire file.
+//
 // TestStripForgeMCPServer_ForgeOnly_DeletesFile：.mcp.json 仅含 forge server，
 // strip 后空 mcpServers → 删除整个文件。
 func TestStripForgeMCPServer_ForgeOnly_DeletesFile(t *testing.T) {
@@ -52,6 +57,9 @@ func TestStripForgeMCPServer_ForgeOnly_DeletesFile(t *testing.T) {
 	}
 }
 
+// TestStripForgeMCPServer_PreservesOtherServers: forge + another server (github);
+// delete forge, keep github.
+//
 // TestStripForgeMCPServer_PreservesOtherServers：forge + 其他 server（github），
 // 删 forge 保留 github。
 func TestStripForgeMCPServer_PreservesOtherServers(t *testing.T) {
@@ -76,6 +84,8 @@ func TestStripForgeMCPServer_PreservesOtherServers(t *testing.T) {
 	}
 }
 
+// TestStripForgeMCPServer_NoForge_NoOp: no forge server (github only) → no-op.
+//
 // TestStripForgeMCPServer_NoForge_NoOp：无 forge server（纯 github）时 no-op。
 func TestStripForgeMCPServer_NoForge_NoOp(t *testing.T) {
 	dir := t.TempDir()
@@ -90,6 +100,9 @@ func TestStripForgeMCPServer_NoForge_NoOp(t *testing.T) {
 	}
 }
 
+// TestStripForgeMCPServer_PreservesTopLevelFields: forge server + other top-level fields
+// (version) — delete forge, keep version, drop the empty mcpServers key (no empty object left).
+//
 // TestStripForgeMCPServer_PreservesTopLevelFields：forge server + 其他顶层字段（version）
 // —— 删 forge 后保留 version，空 mcpServers 键被删除（不残留空对象）。
 func TestStripForgeMCPServer_PreservesTopLevelFields(t *testing.T) {

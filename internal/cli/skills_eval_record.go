@@ -1,5 +1,11 @@
 package cli
 
+// skills_eval_record.go — eval-record subcommand: writes the agent-batched CaseResult
+// fill as a single EvalRun. After an agent dispatches a fresh subagent via MCP to run
+// each prompt, it feeds the batch of `which skill was actually triggered` to eval-record
+// (--from file.json or stdin), and forge handles normalization + DescHash check +
+// judgment + health scoring + append.
+//
 // skills_eval_record.go — eval-record 子命令：把 agent 整批回填的 CaseResult 写成
 // 一条 EvalRun。agent 通过 MCP dispatch fresh subagent 跑完每个 prompt 后，把
 // 「实际触发了哪个 skill」整批喂给 eval-record（--from file.json 或 stdin），forge
@@ -70,6 +76,11 @@ func runSkillsEvalRecord(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// A pure-behavior run always has HealthScore 0 (HealthScore only counts the routing
+	// dimensions trigger/not-trigger; behavior is not counted) — printing health=0.00 would
+	// mislead (✅ paired with 0.00 looks like a total failure). For all-behavior runs we
+	// print the behavior pass-rate instead.
+	//
 	// 纯 behavior run 的 HealthScore 恒 0（HealthScore 只计路由维度 trigger/not-trigger，
 	// behavior 不计入）——打 health=0.00 会误导（✅ 配 0.00 像全挂）。全 behavior 时
 	// 改打 behavior pass-rate。
@@ -83,12 +94,16 @@ func runSkillsEvalRecord(cmd *cobra.Command, args []string) error {
 		fmt.Printf("✅ run %s recorded: health=%.2f, %d results\n", run.RunID, run.HealthScore, len(run.Results))
 	}
 	if run.BaselineRunID != "" {
+		// The run pinned a baseline at record time; prompt for the report to view regression.
+		//
 		// run 时刻锁定了 baseline，提示拿 report 看回归。
 		fmt.Printf("   baseline=%s（变更已记录，跑 eval-report 看回归）\n", run.BaselineRunID)
 	}
 	return nil
 }
 
+// readFromArg reads all bytes from a file path, or from stdin when given `-` or empty.
+//
 // readFromArg 从 "-" 或空（stdin）或文件路径读全部字节。
 func readFromArg(from string) ([]byte, error) {
 	if from == "" || from == "-" {
@@ -97,6 +112,11 @@ func readFromArg(from string) ([]byte, error) {
 	return os.ReadFile(from)
 }
 
+// behaviorOnlyStats reports whether results are all behavior cases and counts the
+// behavior passes. When all are behavior, HealthScore is always 0 (only the routing
+// dimensions trigger/not-trigger count); callers use this to print the behavior pass-rate
+// instead, avoiding the misleading ✅ paired with health=0.00 output.
+//
 // behaviorOnlyStats 判断 results 是否全为 behavior case，并统计 behavior 通过数。
 // 全 behavior 时 HealthScore 恒 0（只计路由维度 trigger/not-trigger），调用方据此
 // 改打 behavior pass-rate，避免 ✅ 配 health=0.00 的误导输出。

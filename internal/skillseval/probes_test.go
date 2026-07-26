@@ -1,5 +1,8 @@
 package skillseval
 
+// probes_test.go — behavior probe evaluation + loading tests. Covers judgeBehavior four prefixes,
+// LoadProbes round-trip, judgeResult behavior branches.
+//
 // probes_test.go — behavior probe 判定 + 加载测试。覆盖 judgeBehavior 四前缀、
 // LoadProbes round-trip、judgeResult behavior 分支。
 
@@ -65,6 +68,9 @@ func TestJudgeBehavior_NoPrefix_DefaultsContains(t *testing.T) {
 }
 
 func TestJudgeBehavior_UnknownPrefix_Fails(t *testing.T) {
+	// Unknown prefix (misspelled contain:) is treated as config error → return false to fail the probe loudly,
+	// not fallback to contains silent judging (rest=keyword would falsely pass on fallback, masking config error).
+	//
 	// 未知前缀（拼错的 contain:）视为配置错误 → return false 让 probe 失败暴露，
 	// 非 fallback contains 静默判定（rest=keyword 若 fallback 会假 pass，掩盖配置错误）。
 	if judgeBehavior("含 keyword 的输出", "contain:keyword") {
@@ -80,6 +86,8 @@ func TestJudgeResult_BehaviorBranch(t *testing.T) {
 	if judgeResult(c, "", "no match") {
 		t.Error("behavior should fail when output misses oracle")
 	}
+	// behavior does not look at actualTriggered (passing skill name also does not affect judgment)
+	//
 	// behavior 不看 actualTriggered（传 skill 名也不影响判定）
 	if judgeResult(c, "s", "no match") {
 		t.Error("behavior must ignore actualTriggered")
@@ -149,6 +157,8 @@ func TestLoadProbes_RoundTrip(t *testing.T) {
 }
 
 func TestLoadProbes_AutoID(t *testing.T) {
+	// probe without explicit id → computes stable id from input+oracle.
+	//
 	// probe 不声明 id → 按 input+oracle 算稳定 id。
 	canonical := t.TempDir()
 	skillDir := filepath.Join(canonical, "s")
@@ -166,6 +176,8 @@ func TestLoadProbes_AutoID(t *testing.T) {
 	if len(cases) != 1 || cases[0].ID == "" {
 		t.Fatalf("auto ID not filled: %+v", cases)
 	}
+	// Load again, id should be stable (same input+oracle).
+	//
 	// 再加载一次，id 应稳定（同 input+oracle）。
 	cases2, _ := LoadProbes(canonical, "s")
 	if cases2[0].ID != cases[0].ID {
