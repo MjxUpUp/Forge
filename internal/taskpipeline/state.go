@@ -129,6 +129,20 @@ func activeTaskRefPath(root, sessionID string) string {
 	return filepath.Join(dataHome(root), activeTaskRefFile)
 }
 
+// otherSessionActiveTTL bounds how old an active-task-ref-<sid> file may be
+// before HasActiveTaskFromOtherSession stops treating it as a live session.
+// The file is written once at `forge task start` and never updated during the
+// task, so mtime ≈ task start. ClearActiveTaskRef only runs on task
+// complete/abort — a session that crashes or is killed mid-task leaves an
+// orphan that, without this bound, accumulates and makes this guard auto-PASS
+// every future non-task session forever (silently disabling the
+// concurrent-session check). Bias is toward NOT counting old files: a false
+// negative (guard doesn't auto-PASS) just makes a research session run
+// `forge review pass` manually — safe; a false positive (counting a dead
+// orphan) lets uncommitted changes escape review — unsafe. The task itself is
+// not deleted, only its liveness discounted for this convenience guard.
+const otherSessionActiveTTL = 7 * 24 * time.Hour
+
 // HasActiveTaskFromOtherSession returns true if at least one other Claude Code
 // session has an active task (via active-task-ref-<sid> file). Used by
 // review-stop hook (non-task mode) to detect concurrent sessions: if another
@@ -138,7 +152,9 @@ func activeTaskRefPath(root, sessionID string) string {
 //
 // Returns false when currentSessionID is empty (legacy mode, can't distinguish
 // sessions). Only considers session-scoped files (active-task-ref-* prefix);
-// the legacy global active-task-ref file is excluded.
+// the legacy global active-task-ref file is excluded. Files older than
+// otherSessionActiveTTL are treated as dead-session orphans (crash/abandon)
+// and skipped — see the const doc for the rationale.
 func HasActiveTaskFromOtherSession(root, currentSessionID string) bool {
 	if currentSessionID == "" {
 		return false
@@ -149,6 +165,7 @@ func HasActiveTaskFromOtherSession(root, currentSessionID string) bool {
 		return false
 	}
 	currentFile := activeTaskRefFile + "-" + util.SanitizeSessionID(currentSessionID)
+	cutoff := time.Now().Add(-otherSessionActiveTTL)
 	for _, e := range entries {
 		name := e.Name()
 		if !strings.HasPrefix(name, activeTaskRefFile+"-") {
@@ -157,9 +174,17 @@ func HasActiveTaskFromOtherSession(root, currentSessionID string) bool {
 		if name == currentFile {
 			continue // our own
 		}
-		if info, err := e.Info(); err == nil && info.Size() > 0 {
-			return true
+		info, err := e.Info()
+		if err != nil || info.Size() == 0 {
+			continue
 		}
+		// Crash-orphan guard: skip files older than the TTL — a session that
+		// never ran complete/abort left this behind. Without this, orphans
+		// accumulate and disable the guard (see otherSessionActiveTTL doc).
+		if info.ModTime().Before(cutoff) {
+			continue
+		}
+		return true
 	}
 	return false
 }

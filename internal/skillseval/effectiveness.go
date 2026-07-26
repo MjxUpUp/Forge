@@ -53,8 +53,11 @@ type effectivenessAggregator struct {
 // 按 TaskRef 连接两个 per-project 数据源（同 DataDir）：toollog 记 Skill 调用 + TaskRef，
 // act conclusion 记 task 的评分 + 证据强度。产出每个 skill 在其涉及 task 上的平均成效。
 //
-// agent-neutral：toollog + conclusion 都是 Forge 自己的 deterministic 数据，与具体 agent
-// 无关——任何 agent 跑的 task 都有 act 结论，任何装了 forge hook 的 host 都记 toollog。
+// agent-neutral（核心信号）：act conclusion 是任何 agent 跑的 task 都有的 deterministic
+// 评分 + 证据链，与具体 agent 无关。Skill 命中数据来自 toollog 的 Skill 工具调用——当前
+// 仅 Claude Code 产生（cursor/codex 等 skill 经 mdc/AGENTS.md 注入、无工具调用事件），
+// 其他 host 装了 hook 也不会出现 Skill 计数（graceful degradation，非全面 agent-neutral）。
+// 与 usage.go 包注释的同类 caveat 一致。
 //
 // 跨任务读取走 LoadAllAll（active + 归档 toollog-*.jsonl）：forge task start 会归档上一
 // 任务的 toollog，跨任务成效关联必须跨归档读，否则只能看到当前任务。

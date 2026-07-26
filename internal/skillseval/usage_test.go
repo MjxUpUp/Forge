@@ -149,7 +149,7 @@ func TestAnalyzeUsage_FiltersGhostSkills(t *testing.T) {
 
 // TestSkillCountsFromToollog_ArchiveSurvives：forge task start 调 toolusage.Clear 归档
 // active toollog 到 toollog-<ts>.jsonl。SkillCountsFromToollog 必须跨归档读（LoadAllAll），
-// 否则归档后历史任务的 Skill 调用全丢——reviewer P1 CONFIRMED 归档盲区，跨任务分析前提。
+// 否则归档后历史任务的 Skill 调用全丢——归档盲区是跨任务分析前提。
 func TestSkillCountsFromToollog_ArchiveSurvives(t *testing.T) {
 	root := t.TempDir()
 	recordSkillCall(t, root, "old-skill", "t1")

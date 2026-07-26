@@ -117,6 +117,9 @@ func LoadAllAll(root string) ([]ToolCall, error) {
 	for _, path := range matches {
 		calls, err := loadFromPath(path)
 		if err != nil {
+			// per-file 失败（IO/权限/文件锁占用）静默跳过：跨归档全量聚合中单个坏文件
+			// 不应让整表失败——与 LoadForTaskAll 同策略。loadFromPath 内部已对单行 JSON
+			// 损坏做 per-line 容错（json.Unmarshal 失败即 continue），这里只兜底整文件不可读。
 			continue
 		}
 		all = append(all, calls...)
