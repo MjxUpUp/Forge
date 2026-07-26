@@ -11,6 +11,10 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
+// TestActRebuild_RebuildsFromTasks is the regression guard for the DevWorkbench empty-dashboard bug:
+// old projects (all tasks completed before act shipped) have no DataDir/act/conclusions.jsonl — the dashboard only reads
+// conclusions.jsonl and never tasks/*.json, so it shows empty. rebuild must reconstruct conclusions from tasks.
+//
 // TestActRebuild_RebuildsFromTasks 是 DevWorkbench 空 dashboard 数据 bug 的回归守卫：
 // 旧项目（act 上线前完成所有任务）没有 DataDir/act/conclusions.jsonl——dashboard 只读
 // conclusions.jsonl 不读 tasks/*.json，故显示空。rebuild 必须从 tasks 重建结论。
@@ -19,6 +23,8 @@ func TestActRebuild_RebuildsFromTasks(t *testing.T) {
 	if out, _, code := runForge(t, tmpDir, `init`, `--mode`, `medium`); code != 0 {
 		t.Fatalf(`init: %s`, out)
 	}
+	// Old-project precondition: init must not create the act directory (conclusions are only persisted at task-complete time).
+	//
 	// 旧项目前置：init 不应创建 act 目录（结论是 task complete 时才落的）
 	if cs, _ := act.LoadAll(p); len(cs) != 0 {
 		t.Fatalf(`init 不应产生 conclusions，got %d`, len(cs))
@@ -52,6 +58,8 @@ func TestActRebuild_RebuildsFromTasks(t *testing.T) {
 	}
 }
 
+// TestActRebuild_SkipsUnscored verifies filtering: unscored/incomplete tasks are skipped (not counted in the rebuild).
+//
 // TestActRebuild_SkipsUnscored 验证过滤：未评分/未完成的任务跳过（不计入重建）。
 func TestActRebuild_SkipsUnscored(t *testing.T) {
 	tmpDir, p := forgedatatest.RealProject(t)
@@ -82,6 +90,8 @@ func TestActRebuild_SkipsUnscored(t *testing.T) {
 	}
 }
 
+// TestActRebuild_BacksUpExisting verifies that existing conclusions are backed up rather than discarded when present: rebuild is a full reconstruction, old data is moved to .bak.
+//
 // TestActRebuild_BacksUpExisting 验证有旧结论时备份不丢弃：rebuild 是全量重建，旧数据移到 .bak。
 func TestActRebuild_BacksUpExisting(t *testing.T) {
 	tmpDir, p := forgedatatest.RealProject(t)
@@ -105,6 +115,8 @@ func TestActRebuild_BacksUpExisting(t *testing.T) {
 	if !strings.Contains(out, `已备份原 conclusions.jsonl`) {
 		t.Errorf(`有旧结论应备份，got: %s`, out)
 	}
+	// After rebuild, conclusions.jsonl contains only entries reconstructed from tasks (the old file has been renamed to .bak).
+	//
 	// rebuild 后 conclusions.jsonl 只含从 task 重建的（旧的已 Rename 移到 .bak）
 	cs, _ := act.LoadAll(p)
 	if len(cs) != 1 || cs[0].TaskRef != `feat/rebuilt` {
@@ -112,6 +124,10 @@ func TestActRebuild_BacksUpExisting(t *testing.T) {
 	}
 }
 
+// TestActRebuild_HalfCompleteSkipped covers the real-world shape of "scored but complete failed midway":
+// Score != nil but CompletedAt == nil — such a task never truly finished, its conclusion is meaningless, and it must be skipped.
+// Complementary to SkipsUnscored (no fields at all), pinning down that both branches of the filter use AND.
+//
 // TestActRebuild_HalfCompleteSkipped 覆盖"评分了但 complete 中途失败"的真实形态：
 // Score != nil 但 CompletedAt == nil —— 这种任务没真正完成，结论无意义，必须跳过。
 // 与 SkipsUnscored（完全无字段）互补，钉死过滤逻辑的两个分支都用 AND。
@@ -119,6 +135,8 @@ func TestActRebuild_HalfCompleteSkipped(t *testing.T) {
 	tmpDir, p := forgedatatest.RealProject(t)
 	runForge(t, tmpDir, `init`, `--mode`, `medium`)
 	completed := time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC)
+	// Truly completed task (should be rebuilt).
+	//
 	// 真正完成的任务（应重建）
 	if err := taskpipeline.SaveTaskState(tmpDir, &taskpipeline.TaskState{
 		TaskRef:     `feat/done`,
@@ -127,10 +145,14 @@ func TestActRebuild_HalfCompleteSkipped(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	// Scored but not completed (should be skipped — scoring ran but the task-complete gate never passed).
+	//
 	// 评分了但未 complete（应跳过——评分流程跑完但 task-complete 门禁没过）
 	if err := taskpipeline.SaveTaskState(tmpDir, &taskpipeline.TaskState{
 		TaskRef: `feat/scored-not-completed`,
 		Score:   &scoringtypes.ScoreResult{Overall: 70, Grade: `C`},
+		// No CompletedAt.
+		//
 		// 无 CompletedAt
 	}); err != nil {
 		t.Fatal(err)

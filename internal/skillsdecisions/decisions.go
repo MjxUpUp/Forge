@@ -1,5 +1,18 @@
 package skillsdecisions
 
+// skillsdecisions — persistent per-skill decision history: the decision archive of each
+// skill across multiple tasks/rounds of optimization, independent of per-task TaskState
+// (cleared by PruneOldTasks on task end, and would pollute the resume view).
+//
+// A decision is recorded as a 4-tuple (diagnosis, revision, evidence, outcome) plus
+// rationale and an associated commit/probe-run. Stored in the skill directory's
+// decisions.md (markdown single source of truth: human+machine readable, git-diff
+// friendly, shared with the skill) — decision history is part of the skill repo (whole-skill).
+//
+// Boundary: audit/reproducibility (let the next round agent understand the why), not
+// generalized learning — does not violate Forge's decision to tear down the
+// experience/knowledge loop (2026-07-09, 8cedc80).
+//
 // skillsdecisions — skill 级持久决策历史：每个 skill 历经多任务/多轮优化的决策档案，
 // 独立于 per-task TaskState（task 结束会被 PruneOldTasks 清，且会污染 resume 视图）。
 //
@@ -22,6 +35,8 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
+// Four outcome states of a decision (o_t in {accept, revise, reject, defer}).
+//
 // 决策结果四态（o_t ∈ {accept, revise, reject, defer}）。
 const (
 	OutcomeAccept = "accept" // 修订接受，落地保留
@@ -30,6 +45,8 @@ const (
 	OutcomeDefer  = "defer"  // 诊断悬置，暂不决策
 )
 
+// ValidOutcome reports whether s is a valid outcome.
+//
 // ValidOutcome 判断是否合法 outcome。
 func ValidOutcome(s string) bool {
 	switch s {
@@ -39,6 +56,18 @@ func ValidOutcome(s string) bool {
 	return false
 }
 
+// SkillDecision is a single skill decision record (4-tuple plus metadata).
+//
+// Fields map onto the decision record h_t = (q_t, r_t, e_t, o_t):
+//   - Diagnosis  = q_t (diagnosis: what failure mode / problem)
+//   - Revision   = r_t (candidate revision: what changed)
+//   - Evidence   = e_t (redacted evaluation evidence: probe pass rate / regression
+//     comparison / diagnostic clues)
+//   - Outcome    = o_t (accept/reject/revise/defer)
+//
+// CommitHash / ProbeRunID anchor the decision to a specific git commit and eval/probe
+// run, supporting scoped revert (component D) and evidence traceback.
+//
 // SkillDecision 是单条 skill 决策记录（四元组 + 元数据）。
 //
 // 字段对应 decision record h_t = (q_t, r_t, e_t, o_t)：
@@ -63,7 +92,11 @@ type SkillDecision struct {
 	DecidedAt  time.Time `json:"decided_at"`
 }
 
-// NewDecisionID 生成 "d-<unixnano-hex>-<randhex>"。跨进程去碰撞：nano 时间 + crypto/rand。
+// NewDecisionID generates a d-<unixnano-hex>-<randhex> identifier. Cross-process collision
+// resistance comes from nanosecond time plus crypto/rand.
+// The d prefix aligns with the taskpipeline continuity ID convention (d = decision).
+//
+// NewDecisionID 生成"d-<unixnano-hex>-<randhex>"。跨进程去碰撞：nano 时间 + crypto/rand。
 // 前缀 d 对齐 taskpipeline continuity ID 约定（d=decision）。
 func NewDecisionID() string {
 	var b [4]byte
@@ -71,11 +104,16 @@ func NewDecisionID() string {
 	return fmt.Sprintf("d-%x-%s", time.Now().UnixNano(), hex.EncodeToString(b[:]))
 }
 
+// DecisionsFile returns the path canonical/<skill>/decisions.md.
+//
 // DecisionsFile 返回 canonical/<skill>/decisions.md 路径。
 func DecisionsFile(canonical, skill string) string {
 	return filepath.Join(canonical, skill, "decisions.md")
 }
 
+// LoadDecisions reads decisions.md and parses it into a decision list in write order.
+// A missing file returns nil, nil.
+//
 // LoadDecisions 读 decisions.md 解析为按写入序的决策列表。文件不存在返回 nil,nil。
 func LoadDecisions(canonical, skill string) ([]SkillDecision, error) {
 	data, err := os.ReadFile(DecisionsFile(canonical, skill))
@@ -88,6 +126,13 @@ func LoadDecisions(canonical, skill string) ([]SkillDecision, error) {
 	return parseDecisions(string(data)), nil
 }
 
+// AppendDecision appends one decision to the end of decisions.md. It fills in
+// ID/Skill/DecidedAt if empty and writes atomically.
+// If the file does not exist it is created (with a header). Read-modify-write:
+// decisions.md is a low-frequency development-time file, edited serially by convention
+// (same convention as skillseval SetBaseline); add a file lock if high-frequency
+// concurrency ever arises.
+//
 // AppendDecision 追加一条决策到 decisions.md 末尾。填 ID/Skill/DecidedAt（若空），原子写。
 // 文件不存在则创建（带 header）。读-改-写：decisions.md 是开发期低频文件，约定串行
 // 编辑（同 skillseval SetBaseline 的约定）；高频并发场景再加文件锁。
@@ -119,6 +164,9 @@ func AppendDecision(canonical, skill string, d SkillDecision) error {
 	return util.AtomicWrite(path, []byte(sb.String()), 0644)
 }
 
+// header is the opening explanation for a freshly created decisions.md (not a decision
+// section; parseDecisions skips it).
+//
 // header 是新建 decisions.md 的开头说明（非决策 section，parseDecisions 跳过）。
 func header(skill string) string {
 	return fmt.Sprintf("# %s — 持久决策历史\n\n"+
@@ -127,6 +175,11 @@ func header(skill string) string {
 		"append-only：新决策追加到末尾。\n", skill)
 }
 
+// formatDecision renders a single decision as a markdown section (the write unit of
+// decisions.md).
+// Fixed fields use list items (- **Field**: value); multi-line content uses ### sub-sections
+// — parseDecisions parses them symmetrically.
+//
 // formatDecision 把单条决策渲染成 markdown section（decisions.md 的写入单元）。
 // 固定字段用列表项（- **Field**: value），多行内容用 ### 子节——parseDecisions 对称解析。
 func formatDecision(d SkillDecision) string {
@@ -154,8 +207,14 @@ func formatDecision(d SkillDecision) string {
 	return b.String()
 }
 
+// parseDecisions parses the full decisions.md text into []SkillDecision.
+// Sections are split at ^## [d-...]; within a section, - **Field**: value extracts fields
+// and ### Subsection extracts multi-line content. Sections that fail to parse are skipped
+// (fault-tolerant, no panic) — decisions.md is primarily for humans/agents to read; parsing
+// only supports scoped revert / list display, so losing one entry is not fatal.
+//
 // parseDecisions 解析 decisions.md 全文为 []SkillDecision。
-// 按 "^## [d-...]" 切 section；section 内 "- **Field**: value" 取字段，"### Subsection"
+// 按"^## [d-...]"切 section；section 内"- **Field**: value"取字段，"### Subsection"
 // 取多行内容。无法解析的 section 跳过（容错，不 panic）——decisions.md 主要给人/agent
 // 读，解析只为 scoped revert / 列表展示，丢一条不致命。
 func parseDecisions(md string) []SkillDecision {
@@ -196,15 +255,26 @@ func parseDecisions(md string) []SkillDecision {
 	}
 
 	for _, line := range lines {
+		// Any level-2 heading (## ) ends the current decision — prevents the lines that
+		// follow a non-decision stray ## heading (e.g. a typoed ## [BAD-SECTION or a
+		// future level-2 subsection) from being absorbed into the current decision's body
+		// (subsection content), which would silently pollute the previous decision's
+		// Evidence/Rationale.
+		//
 		// 任意 2 级标题（## ）都结束当前决策——避免非决策的 stray ## 标题（如手误的
 		// ## [BAD-SECTION 或未来扩展的 2 级小节）的后续行被吸进当前决策的 body（子节
 		// 内容），导致前一条决策的 Evidence/Rationale 静默污染。
 		if strings.HasPrefix(line, "## ") {
 			if !strings.HasPrefix(line, "## [d-") {
+				// Non-decision level-2 heading: flush the current decision and drop this line
+				// (open no new decision, write nothing to the body).
+				//
 				// 非决策头的 2 级标题：flush 当前决策，丢弃这行（不开新决策、不进 body）。
 				flushDecision()
 				continue
 			}
+			// Decision header: ## [d-xxx] outcome
+			//
 			// 决策头：## [d-xxx] outcome
 			flushDecision()
 			rest := strings.TrimPrefix(line, "## [")
@@ -221,6 +291,8 @@ func parseDecisions(md string) []SkillDecision {
 		if cur == nil {
 			continue // header / 段落说明，跳过
 		}
+		// Subsection switch.
+		//
 		// 子节切换
 		if strings.HasPrefix(line, "### ") {
 			flushBody()
@@ -228,11 +300,16 @@ func parseDecisions(md string) []SkillDecision {
 			body.Reset()
 			continue
 		}
+		// Field list item (only recognized outside subsections, to avoid treating list items
+		// inside subsection prose as fields).
+		//
 		// 字段列表项（只在非子节段识别，避免把子节正文里的列表项误当字段）
 		if section == "" && strings.HasPrefix(line, "- **") {
 			parseField(cur, line)
 			continue
 		}
+		// Multi-line subsection content.
+		//
 		// 多行子节内容
 		if section != "" {
 			body.WriteString(line)
@@ -243,6 +320,13 @@ func parseDecisions(md string) []SkillDecision {
 	return out
 }
 
+// normalizeOutcome parses the outcome token from a decision header, tolerating trailing
+// annotations typed by mistake — e.g. a parenthetical caveat after the outcome, or a
+// trailing note, both resolve to the bare outcome token.
+//
+// When no valid outcome can be extracted, the original value is preserved (no data loss;
+// the consumer decides).
+//
 // normalizeOutcome 解析决策头的 outcome token，容错手误的尾注：
 //
 //	## [d-x] accept (with caveat) → accept
@@ -254,6 +338,9 @@ func normalizeOutcome(raw string) string {
 	if ValidOutcome(outcome) {
 		return outcome
 	}
+	// Strip the trailing annotation after the first whitespace or open-paren and check
+	// whether the leading token is a valid outcome.
+	//
 	// 剥离首个空白或左括号后的尾注，看首 token 是否合法 outcome。
 	if i := strings.IndexAny(outcome, " \t("); i > 0 {
 		cand := strings.TrimSpace(outcome[:i])
@@ -264,7 +351,9 @@ func normalizeOutcome(raw string) string {
 	return outcome
 }
 
-// parseField 解析 "- **Field**: value" 列表项到决策。
+// parseField parses a - **Field**: value list item into the decision.
+//
+// parseField 解析"- **Field**: value"列表项到决策。
 func parseField(d *SkillDecision, line string) {
 	rest := strings.TrimPrefix(line, "- **")
 	idx := strings.Index(rest, "**:")

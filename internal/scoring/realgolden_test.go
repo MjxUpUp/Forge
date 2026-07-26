@@ -10,6 +10,10 @@ import (
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 )
 
+// goldenRealDir is the golden fixture directory collected from real dogfood tasks, orthogonal to canonical
+// testdata/golden: canonical pins algorithm boundaries (manual clean/poor), golden_real pins
+// real-task scoring shape to prevent drift. LoadGoldenCases is reused, only the dir differs.
+//
 // goldenRealDir 是真实 dogfood 任务采集的 golden fixture 目录，与 canonical
 // testdata/golden 正交：canonical 钉算法边界（人工 clean/poor），golden_real 钉
 // 真实任务评分形状不漂移。LoadGoldenCases 复用，只是 dir 不同。
@@ -22,12 +26,21 @@ func goldenRealDir(t *testing.T) string {
 	return dir
 }
 
+// realCases is the EvaluateInput reverse-engineered from real dogfood tasks, verifying the real-collab-record→golden→CI
+// comparison link. Data from DataDir/tasks/feat-review-snapshot.json's Score.Dimensions:
+// process 100 (3/3 gates, 0 retries) / testing 77 (2/3 src covered, 167 assertions) /
+// scope 80 (166 lines Medium) / efficiency 55 (61 min) / code-quality+assertions 100.
+//
+// GitDiffStat uses 100\t66\tstamp.go to simulate 166 lines (real numstat not in TaskState snapshot,
+// uses equivalent input with same totalLines) — spike validation mechanism; production collector should snapshot real git state at task score completion time
+// (later HeadCommit advances will let diff drift).
+//
 // realCases 是从真实 dogfood 任务反推的 EvaluateInput，验证「真实协作记录→golden→CI
 // 比对」链路。数据来自 DataDir/tasks/feat-review-snapshot.json 的 Score.Dimensions：
 // process 100 (3/3, 0 retries) / testing 77 (2/3 covered, 167 assertions) /
 // scope 80 (166 行 Medium) / efficiency 55 (61 min) / code-quality+assertions 100。
 //
-// GitDiffStat 用「100\t66\tstamp.go」模拟 166 行（真实 numstat 未在 TaskState 快照，
+// GitDiffStat 用"100\t66\tstamp.go"模拟 166 行（真实 numstat 未在 TaskState 快照，
 // 用同 totalLines 的等价输入）——spike 验证机制；生产采集器应在 task score 完成那刻
 // 快照真实 git 状态（事后 HeadCommit 推进会让 diff 漂移）。
 func realCases() []GoldenCase {
@@ -60,12 +73,19 @@ func realCases() []GoldenCase {
 		&reviewSnapshot,
 		cfg,
 	)
+	// review-snapshot is a precise baseline reverse-engineered by hand from real Score.Dimensions (GitDiffStat uses equivalent
+	// totalLines simulation, not post-hoc collection), all dimensions trustworthy — mark hand-curated, no drift_known.
+	//
 	// review-snapshot 是人工从真实 Score.Dimensions 反推的精确基线（GitDiffStat 用等价
 	// totalLines 模拟，非事后采集），全维度可信——标 hand-curated，无 drift_known。
 	gc.Meta = GoldenMeta{Source: `hand-curated`}
 	return []GoldenCase{*gc}
 }
 
+// writeRealFixtures regenerates testdata/golden_real/ from realCases(). Only called when fixture is missing
+// (bootstrap); CI does not silently overwrite existing fixtures. Process to accept intentional scoring change:
+// delete testdata/golden_real/*.json → re-run test to rebuild → review new Expected.
+//
 // writeRealFixtures 从 realCases() 重新生成 testdata/golden_real/。仅在 fixture 缺失时
 // 调用（bootstrap），CI 不静默覆盖已有 fixture。接受 intentional scoring change 的流程：
 // 删 testdata/golden_real/*.json → 重跑测试让它重建 → review 新 Expected。
@@ -87,6 +107,9 @@ func writeRealFixtures(t *testing.T) {
 	}
 }
 
+// TestGoldenReal_FixturesPresent ensures real golden fixtures are on disk. If missing, rebuild and fail,
+// forcing the author to review new Expected (replicates canonical's FixturesPresent semantics).
+//
 // TestGoldenReal_FixturesPresent 确保真实 golden fixture 在盘。缺失则重建并 fail，
 // 强制作者 review 新 Expected（复刻 canonical 的 FixturesPresent 语义）。
 func TestGoldenReal_FixturesPresent(t *testing.T) {
@@ -97,6 +120,10 @@ func TestGoldenReal_FixturesPresent(t *testing.T) {
 	}
 }
 
+// TestGoldenReal_Regression is the real golden regression guard: load each fixture, re-run Evaluate,
+// assert exact match with recorded Expected (deterministic function, no tolerance). On drift reports which dimension/grade
+// drifted and by how much, and tells how to accept intentional change (delete fixture and re-run).
+//
 // TestGoldenReal_Regression 是真实 golden 的回归守卫：load 每个 fixture，重跑 Evaluate，
 // 断言与记录的 Expected 精确一致（deterministic 函数，无容差）。drift 时报哪个维度/grade
 // 漂移、幅度多少，并告知如何接受 intentional change（删 fixture 重跑）。

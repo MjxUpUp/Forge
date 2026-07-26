@@ -1,5 +1,16 @@
 package skillseval
 
+// probes.go — behavior-probe data layer: <skill>/probes.yaml loading + oracle judgment.
+//
+// A behavior probe tests whether skill behavior is correct (given an input, does the output satisfy the oracle),
+// complementing the existing trigger/not-trigger routing-level tests — a correct route does not mean correct behavior
+// (after a skill is correctly triggered, the output may still miss or misjudge).
+//
+// Component C (privilege separation + redaction): the oracle is the judgment standard, and the agent running the probe
+// should not see the oracle text (to prevent overfitting the oracle rather than genuinely improving the skill). forge uses the
+// oracle internally for judgment; externally (the eval-cases command) it only emits ProbeInput + id + rationale, with the Oracle field redacted.
+// Physically the oracle and the case share a file, but the access layer redacts — the half of half-automatic is shored up by discipline + skill-evolution skill guidance.
+//
 // probes.go — behavior probe 数据层：<skill>/probes.yaml 加载 + oracle 判定。
 //
 // behavior probe 测「skill 行为对不对」（给定输入，输出是否满足 oracle），补足现有
@@ -22,12 +33,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// The on-disk format of <skill>/probes.yaml (human-readable + git-diff friendly).
+//
 // <skill>/probes.yaml 的磁盘格式（人可读 + git-diff 友好）。
 type probeFile struct {
 	Skill  string      `yaml:"skill"`
 	Probes []probeSpec `yaml:"probes"`
 }
 
+// probeSpec is the declaration of a single behavior probe. Hand-written by the skill author, it describes that
+// given an input, the skill output should satisfy the oracle.
+//
 // probeSpec 是单条 behavior probe 声明。skill 作者手写，描述「给定 input，skill 输出
 // 应满足 oracle」。
 type probeSpec struct {
@@ -37,11 +53,17 @@ type probeSpec struct {
 	Rationale string `yaml:"rationale"` // 为什么这个 oracle（脱敏后可显，不含答案原文）
 }
 
+// ProbesFile returns the canonical/<skill>/probes.yaml path.
+//
 // ProbesFile 返回 canonical/<skill>/probes.yaml 路径。
 func ProbesFile(canonical, skill string) string {
 	return filepath.Join(canonical, skill, "probes.yaml")
 }
 
+// LoadProbes reads <skill>/probes.yaml into []EvalCase (Kind=behavior). A missing file returns nil,nil.
+// The behavior case's DescHash is left empty — it is maintained independently of description (changing description does not affect a probe),
+// so it does not participate in the DescHash consistency check of SubmitRun (see SubmitRun: behavior cases skip that check).
+//
 // LoadProbes 读 <skill>/probes.yaml → []EvalCase（Kind=behavior）。文件不存在返回 nil,nil。
 // behavior case 的 DescHash 留空——它独立于 description 维护（description 改不影响 probe），
 // 故不参与 SubmitRun 的 DescHash 一致性校验（见 SubmitRun：behavior case 跳过该校验）。
@@ -78,6 +100,18 @@ func LoadProbes(canonical, skill string) ([]EvalCase, error) {
 	return out, nil
 }
 
+// judgeBehavior judges whether actualOutput passes based on the oracle prefix.
+//
+// Oracle format (prefix is case-insensitive):
+//
+//	contains:substring      → actualOutput contains the substring
+//	not-contains:substring  → actualOutput does not contain the substring
+//	regex:pattern           → actualOutput matches the regex (a bad regex → false, letting the probe fail and surface the problem)
+//	exact:string            → equal after trimming
+//	no prefix               → defaults to contains
+//
+// Empty output → false (treated as not-run/no-output, not judged pass).
+//
 // judgeBehavior 按 oracle 前缀判定 actualOutput 是否 pass。
 //
 // oracle 格式（前缀大小写不敏感）：
@@ -119,6 +153,10 @@ func judgeBehavior(actualOutput, oracle string) bool {
 		}
 		return re.MatchString(act)
 	default:
+		// An unknown prefix (e.g. a misspelled contain: instead of contains:) is treated as a configuration error: return false
+		// to let the probe fail and surface the problem, rather than silently falling back to contains (a false pass/fail is equally misleading).
+		// The no-prefix-defaults-to-contains case is handled by the !found branch above; reaching here means a prefix is present.
+		//
 		// 未知前缀（如拼错的 contain: 而非 contains:）视为配置错误：return false
 		// 让 probe 失败暴露问题，而非 fallback contains 静默判定（假 pass/fail 都误导）。
 		// 「无前缀默认 contains」由上方 !found 分支处理，到这里必带前缀。

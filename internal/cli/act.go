@@ -124,6 +124,10 @@ func runActList(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// runActNudge reads the latest conclusion: if RetrospectiveNudge is set, output a one-line Directive; otherwise stay silent.
+// Designed for the session-end hook (task-verify) — clean completions produce zero output; only blind spots produce one actionable line.
+// Difference from `act show`: show is for humans reading the full record (prints "no conclusions yet" when empty); nudge is for machine consumption (silent when empty).
+//
 // runActNudge 读最新结论：有 RetrospectiveNudge 则输出 Directive（一行），否则静默。
 // 专为会话结束 hook（task-verify）设计——干净完成零输出，有盲区才发一行可执行指令。
 // 与 act show 区别：show 是人读全量（空时打印"尚无结论"），nudge 是机器消费（空时静默）。
@@ -137,6 +141,8 @@ func runActNudge(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if c == nil {
+		// No completed conclusion yet: silent (legitimate empty state, not an error).
+		//
 		return nil // 尚无完成结论：静默（合法空状态，非错误）
 	}
 	if d := c.Directive(); d != "" {
@@ -145,6 +151,9 @@ func runActNudge(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// printConclusion renders a single conclusion. When Directive is non-empty it appends the action directive — `forge act show` is the
+// entry point of session-retrospective, so we surface the actionable directive directly.
+//
 // printConclusion 渲染单条结论。Directive 非空时附行动指令——forge act show 是
 // session-retrospective 的入口，直接给可执行指令。
 func printConclusion(c *act.Conclusion) {
@@ -167,6 +176,15 @@ func printConclusion(c *act.Conclusion) {
 	}
 }
 
+// printSkillReach prints the skills triggered during this task (from Skill tool invocations recorded in toollog).
+//
+// Step 3: inject the skill-reach profile into `forge act show` — no new command; users see one extra Skills line in `act show`.
+// agent-neutral: toollog is a cross-host collection layer (any host with the forge hook installed records Skill invocations),
+// silent when there are no Skill invocations (no empty line printed), unobtrusive when data is missing.
+//
+// Uses LoadForTaskAll (across archives) rather than LoadForTask (active only): `forge task start` archives the previous task's
+// toollog to toollog-<ts>.jsonl, so querying the skill reach of historical tasks must read across archives — otherwise completed tasks would never show their Skills in `forge act show` (archived away).
+//
 // printSkillReach 打印该 task 期间触发的 skill（来自 toollog 的 Skill 工具调用）。
 //
 // 步骤 3：把 skill 触达画像注入 forge act show——零新命令，用户看 act show 多一行 Skills。

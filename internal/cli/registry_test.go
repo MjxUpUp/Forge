@@ -10,6 +10,11 @@ import (
 	"github.com/MjxUpUp/Forge/internal/registry"
 )
 
+// mkLiveForgeDir creates a temp directory containing .forge/ — the registry only records
+// paths with .forge/ as active projects (List/Prune filters out dead paths lacking .forge/).
+// It is a cli-package helper, synonymous with the registry package mkForgeProject (not
+// shareable across packages).
+//
 // mkLiveForgeDir 建一个含 .forge/ 的临时目录——registry 仅登记含 .forge 的为活跃项目
 // （List/Prune 过滤 .forge/ 不存在的死路径）。cli 包内 helper，与 registry 包的
 // mkForgeProject 同义（跨包不能共享）。
@@ -22,6 +27,10 @@ func mkLiveForgeDir(t *testing.T) string {
 	return d
 }
 
+// TestRegistryPruneCmd_PrunesDead: runRegistryPrune runs a real prune, and the output
+// reports the removed count + remaining count. FORGE_DATA_HOME is isolated to a temp dir;
+// registering 1 live + 1 dead path, the command should remove 1 and keep 1.
+//
 // TestRegistryPruneCmd_PrunesDead runRegistryPrune 跑真实精简，输出报告移除条数 + 保留数。
 // 隔离 FORGE_DATA_HOME 到 temp，注册 1 活跃 + 1 死路径，命令应移除 1 保留 1。
 func TestRegistryPruneCmd_PrunesDead(t *testing.T) {
@@ -49,7 +58,9 @@ func TestRegistryPruneCmd_PrunesDead(t *testing.T) {
 	}
 }
 
-// TestRegistryPruneCmd_AlreadyClean 无死路径时输出"已是最精简"，pruned=0。
+// TestRegistryPruneCmd_AlreadyClean: with no dead paths, the output reports `already minimal`, pruned=0.
+//
+// TestRegistryPruneCmd_AlreadyClean 无死路径时输出「已是最精简」，pruned=0。
 func TestRegistryPruneCmd_AlreadyClean(t *testing.T) {
 	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
 	live := mkLiveForgeDir(t)

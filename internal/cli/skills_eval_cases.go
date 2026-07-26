@@ -1,5 +1,19 @@
 package cli
 
+// skills_eval_cases.go — eval-cases subcommand: emits the redacted case set.
+//
+// When an agent dispatches a fresh subagent to run a prompt, this command is used to
+// obtain case_id + prompt (instead of cat-ing cases/<skill>.json directly). Component C
+// permission separation: the Oracle field of behavior cases is redacted — the agent that
+// runs the probe only gets ProbeInput and must not see the oracle text (to prevent
+// overfitting the oracle rather than genuinely improving the skill). forge reads back the
+// Oracle from the persisted case set during internal judgment, and redacts it for external
+// output (this command).
+//
+// The `half` of half-automatic: physically the oracle lives in the same file as the case,
+// and access-layer redaction relies on this command plus agent discipline (not reading
+// cases/<skill>.json directly). The skill-evolution skill guidance reinforces this rule.
+//
 // skills_eval_cases.go — eval-cases 子命令：输出脱敏 case 集。
 //
 // agent dispatch fresh subagent 跑 prompt 时，用本命令拿 case_id + prompt（而非直接
@@ -36,6 +50,8 @@ behavior case：agent 跑 ProbeInput，把 skill 实际输出回填 actual_outpu
 	RunE: runSkillsEvalCases,
 }
 
+// redactedCase is the redacted view emitted by eval-cases (Oracle intentionally omitted).
+//
 // redactedCase 是 eval-cases 对外输出的脱敏视图（Oracle 故意不带）。
 type redactedCase struct {
 	ID             string `json:"id"`
@@ -46,6 +62,12 @@ type redactedCase struct {
 	ProbeRationale string `json:"probe_rationale,omitempty"` // behavior 类：oracle 的 why（可显，不含答案）
 }
 
+// redactCases converts the EvalCase set into the redacted view (Oracle field omitted).
+// This is the core of component C permission separation: the agent running the probe
+// obtains this view via eval-cases and cannot see the oracle text (to prevent overfitting
+// the oracle rather than genuinely improving the skill). Extracted as an independent
+// function so regression tests can guard this safety property.
+//
 // redactCases 把 EvalCase 集转成脱敏视图（Oracle 字段不带）。C 组件权限分离的核心：
 // 跑 probe 的 agent 经 eval-cases 拿这个视图，看不到 oracle 原文（防过拟合 oracle 而非
 // 真正改进 skill）。抽成独立函数便于回归测试守护此安全属性。
@@ -59,6 +81,8 @@ func redactCases(cases []skillseval.EvalCase) []redactedCase {
 			Target:         c.Target,
 			ProbeInput:     c.ProbeInput,
 			ProbeRationale: c.ProbeRationale,
+			// Oracle intentionally omitted — redaction (component C).
+			//
 			// Oracle 故意不输出——脱敏（C 组件）
 		}
 	}

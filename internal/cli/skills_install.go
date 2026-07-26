@@ -76,6 +76,7 @@ func runSkillsInstall(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// --project explicitly overrides --global (global by default); when both are set, project wins
 	// --project 显式覆盖 --global（默认全局）；两者互斥时 project 优先
 	global := skInstGlobal && !skInstProject
 	projectDir := ""
@@ -107,6 +108,11 @@ func runSkillsInstall(cmd *cobra.Command, args []string) error {
 		printInstallReport(report)
 	}
 
+	// Best-effort manifest write (a full canonical snapshot, for system health checks and queries).
+	// Failure does not block install (the manifest is an auxiliary cache), but must leave a trace — the original implementation
+	// swallowed errors twice (BuildManifest's merr went into the if condition, SaveManifest's err went into _); a silently stale
+	// manifest would let the system health check read stale data with no hint.
+	//
 	// best-effort 写 manifest（canonical 全量快照，供 system 健康检查与查询）。
 	// 失败不阻断 install（manifest 是辅助缓存），但必须留痕——原实现双重吞错
 	//（BuildManifest 的 merr 进 if 条件、SaveManifest 的 err 进 _），manifest 静默不更新
@@ -136,6 +142,8 @@ func runSkillsInstall(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// printInstallReport renders the install result (stats + blocked/drift-skip/backup details).
+//
 // printInstallReport 渲染 install 结果（统计 + blocked/drift-skip/backup 明细）。
 func printInstallReport(r *skillsdist.InstallReport) {
 	if r == nil {
@@ -160,11 +168,15 @@ func printInstallReport(r *skillsdist.InstallReport) {
 			case "reserved":
 				fmt.Printf("  ⊘ %s: %s\n", s.Name, t.Detail)
 			}
-			// drift skip 明细：用户本地改动被保留（区别于"已同步"的 skip——后者不打印）。
+			// drift-skip detail: the user's local changes are preserved (distinct from an in-sync skip — the latter is not printed).
+			// drift skip 明细：用户本地改动被保留（区别于「已同步」的 skip——后者不打印）。
 			if t.State == skillsdist.StateDrift && t.Action == "skipped" {
 				fmt.Printf("  ⊘ %s [%s]: 检测到本地改动，已保留未覆盖\n", s.Name, t.Target)
 				driftSkipCount++
 			}
+			// overwrite backup detail: where the old version was backed up, for easy rollback.
+			// Backup is filled only on the overwrite path (Action=linked/copied); scoping on Action prevents future other paths from accidentally filling it and double-printing.
+			//
 			// overwrite 备份明细：旧版本留底位置，便于回滚。
 			// Backup 仅 overwrite 路径填充（Action=linked/copied），限定 Action 防止未来其他路径误填导致重复打印。
 			if t.Backup != "" && (t.Action == "linked" || t.Action == "copied") {
@@ -173,12 +185,14 @@ func printInstallReport(r *skillsdist.InstallReport) {
 		}
 	}
 
+	// drift-skip reminder: tells the user how to sync (if they want to drop local customization).
 	// drift skip 提醒：告诉用户如何同步（若想放弃本地定制）。
 	if driftSkipCount > 0 {
 		fmt.Printf("  → 以上 %d 个 skill 保留了你的本地改动。如需同步 canonical 最新版（会先备份再覆盖）：\n", driftSkipCount)
 		fmt.Printf("    forge skills install --drift-policy overwrite\n")
 	}
 
+	// requires-dependency warning: a dependency was declared but not co-installed or is invalid; non-blocking (stderr separates normal output from warnings).
 	// requires 依赖警告：声明了依赖但未同装或无效，非阻断（stderr 区分正常输出与告警）。
 	if len(r.Warnings) > 0 {
 		fmt.Fprintln(os.Stderr, `  ⚠ requires 依赖警告（不阻断安装）：`)

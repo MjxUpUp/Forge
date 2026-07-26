@@ -157,6 +157,9 @@ func TestWriteHookTemplatesContentMatches(t *testing.T) {
 		filename string
 		needle   string
 	}{
+		// v0.25 advisory: auto-compile no longer runs the compiler, only reminds the agent to self-check;
+		// assertion-check only reminds (does not block) when weakening is detected.
+		//
 		// v0.25 advisory: auto-compile 不再跑编译器，只提醒 agent 自检；
 		// assertion-check 检测到弱化只提醒不阻塞。
 		{"auto-compile.sh", "advisory"},
@@ -304,6 +307,13 @@ func TestFileSentinelHookContainsKeyChecks(t *testing.T) {
 	if !strings.Contains(FileSentinelHook, "Recover:") {
 		t.Error("FileSentinelHook missing recovery instructions")
 	}
+	// refactor-data-home commit D: gates/tasks/specs/reviews migrated to user-level DataDir (git untracked),
+	// file-sentinel relies on git diff and cannot detect DataDir paths — A6 (guarding .forge/gates/status.json from
+	// Bash tampering) mechanism is void, the gap is pinned by TestHook_FileSentinel_GateStatusBeyondGitDiff (negative).
+	// CFG_EXT now only guards project-level .forge/hooks/ (ConfigDir config layer, git-visible). gate verdict protection
+	// is currently missing — commit E or follow-up adds forge self-integrity check (DataDir is outside git, git diff based
+	// file-sentinel cannot reach it, do not pretend with empty words that forge now validates it).
+	//
 	// refactor-data-home commit D: gates/tasks/specs/reviews 迁用户级 DataDir（git 不跟踪），
 	// file-sentinel 基于 git diff 检测不到 DataDir 路径——A6（守 .forge/gates/status.json 不被
 	// Bash 篡改）机制失效，缺口由 TestHook_FileSentinel_GateStatusBeyondGitDiff 钉死（负向）。
@@ -363,11 +373,18 @@ func TestTaskVerifyHookIsAdvisory(t *testing.T) {
 	}
 }
 
+// TestReviewStopHookPassIsSilent guards the Stop infinite-loop fix (2026-06-27): review-stop
+// must silently exit 0 when gate exits 0 (PASS/ADVISORY), and the branch body must contain no echo.
+// hook.go runHook treats the script stdout (extractDetail strips the `PASS ` prefix) as AdditionalContext
+// and injects it into Claude Code — on PASS, echoing `PASS 无未提交变更...` makes the harness treat it as feedback,
+// reactivating the agent for another round, forming a Stop→feedback→response→Stop loop (the symptom of
+// `无未提交变更，无需审查` repeatedly flooding the screen). Only the FAIL branch (exit 2) may echo guidance.
+//
 // TestReviewStopHookPassIsSilent 守护 Stop 死循环修复（2026-06-27）：review-stop
 // 在 gate exit 0（PASS/ADVISORY）时必须静默 exit 0，分支体内不得有任何 echo。
-// hook.go runHook 把脚本 stdout（extractDetail 去 "PASS " 前缀）当 AdditionalContext
-// 注入 Claude Code——PASS 时若 echo "PASS 无未提交变更..."，harness 就把它当 feedback
-// 激活 agent 再响应一轮，造成 Stop→feedback→响应→Stop 死循环（"无未提交变更，无需审查"
+// hook.go runHook 把脚本 stdout（extractDetail 去"PASS "前缀）当 AdditionalContext
+// 注入 Claude Code——PASS 时若 echo「PASS 无未提交变更...」，harness 就把它当 feedback
+// 激活 agent 再响应一轮，造成 Stop→feedback→响应→Stop 死循环（「无未提交变更，无需审查」
 // 反复刷屏即此症）。FAIL 分支（exit 2）才允许 echo 指引。
 func TestReviewStopHookPassIsSilent(t *testing.T) {
 	idx := strings.Index(ReviewStopHook, "[ \"$CODE\" -eq 0 ]; then")
@@ -748,8 +765,11 @@ func TestSkillScanHookContainsKeyChecks(t *testing.T) {
 	if !strings.Contains(SkillScanHook, "advisory") {
 		t.Error("SkillScanHook must document its advisory nature")
 	}
+	// Honest signal (fix review report fix#1): use --gate exit code to distinguish scan success (0/4) vs crash,
+	// and on scan failure report `未完成` instead of a fake `all SAFE`.
+	//
 	// 诚实信号（fix 审查报告 fix#1）：用 --gate exit code 区分 scan 成功(0/4)/崩溃，
-	// scan 失败时报"未完成"而非假 "all SAFE"。
+	// scan 失败时报「未完成」而非假"all SAFE"。
 	if !strings.Contains(SkillScanHook, "--gate") {
 		t.Error("SkillScanHook must use --gate (exit code encodes scan outcome)")
 	}
@@ -761,38 +781,57 @@ func TestSkillScanHookContainsKeyChecks(t *testing.T) {
 	}
 }
 
+// TestWorkflowTestGuardHookContainsKeyChecks guards the real-time feedback hook content that prevents CI bypass.
+// Key difference: this hook must exit 1 block (not advisory) — the user explicitly wants to `guarantee capture and feedback
+// to real edits`, advisory will be ignored by the agent, only block closes the `sandbox detection → anomaly feedback` loop.
+//
 // TestWorkflowTestGuardHookContainsKeyChecks 守护 CI 防绕过的实时反馈 hook 内容。
-// 关键差异：这个 hook 必须 exit 1 block（非 advisory）——用户明确要"保证捕获并反馈
-// 到真实修改"，advisory 会被 agent 忽略，只有 block 才闭合"沙盒检测→异常反馈"的环。
+// 关键差异：这个 hook 必须 exit 1 block（非 advisory）——用户明确要「保证捕获并反馈
+// 到真实修改」，advisory 会被 agent 忽略，只有 block 才闭合「沙盒检测→异常反馈」的环。
 func TestWorkflowTestGuardHookContainsKeyChecks(t *testing.T) {
+	// Must use FORGE_FILE_PATH to determine the changed file (PostToolUse Write|Edit tool_input)
+	//
 	// 必须用 FORGE_FILE_PATH 判断改的文件（PostToolUse Write|Edit 的 tool_input）
 	if !strings.Contains(WorkflowTestGuardHook, "FORGE_FILE_PATH") {
 		t.Error("WorkflowTestGuardHook missing FORGE_FILE_PATH check")
 	}
+	// Must run the internal/ci guard tests (the core action of the entire hook)
+	//
 	// 必须跑 internal/ci 守护测试（整个 hook 的核心动作）
 	if !strings.Contains(WorkflowTestGuardHook, "go test ./internal/ci/") {
 		t.Error("WorkflowTestGuardHook must run 'go test ./internal/ci/' (the guard tests)")
 	}
+	// Must carry the [workflow-test-guard] prefix
+	//
 	// 必须有 [workflow-test-guard] 前缀
 	if !strings.Contains(WorkflowTestGuardHook, "[workflow-test-guard]") {
 		t.Error("WorkflowTestGuardHook missing [workflow-test-guard] prefix")
 	}
+	// Must use BSD-safe case-glob for .github/workflows/*.yml (no grep -E alternation, see other hooks)
+	//
 	// 必须 BSD-safe case-glob 判断 .github/workflows/*.yml（不用 grep -E 交替，参其他 hook）
 	if !strings.Contains(WorkflowTestGuardHook, ".github/workflows/*.yml") {
 		t.Error("WorkflowTestGuardHook must case-glob .github/workflows/*.yml (BSD-safe, no grep -E)")
 	}
-	// 必须 exit 1 block on FAIL——这是"保证反馈"的关键，advisory 会被忽略
+	// Must exit 1 (block) on FAIL — this is the key to `guaranteeing feedback`, advisory will be ignored
+	//
+	// 必须 exit 1 block on FAIL——这是「保证反馈」的关键，advisory 会被忽略
 	if !strings.Contains(WorkflowTestGuardHook, "exit 1") {
 		t.Error("WorkflowTestGuardHook must exit 1 (block) on test failure — advisory won't guarantee feedback")
 	}
+	// Must fail-open: silently PASS when internal/ci is absent (legacy projects / CI config guard not enabled)
+	//
 	// 必须 fail-open：internal/ci 不存在时静默 PASS（老项目/未启用 CI 配置守护）
 	if !strings.Contains(WorkflowTestGuardHook, "internal/ci") {
 		t.Error("WorkflowTestGuardHook must fail-open (PASS) when internal/ci absent")
 	}
 }
 
+// TestPostToolUseHasWorkflowTestGuard guards that the hook is registered to PostToolUse Write|Edit —
+// without registration Claude Code will never trigger it on workflow yaml edits, and `real-time feedback` falls through.
+//
 // TestPostToolUseHasWorkflowTestGuard 守护 hook 注册到 PostToolUse Write|Edit——
-// 未注册则 Claude Code 永远不会在改 workflow yaml 时触发它，"实时反馈"落空。
+// 未注册则 Claude Code 永远不会在改 workflow yaml 时触发它，「实时反馈」落空。
 func TestPostToolUseHasWorkflowTestGuard(t *testing.T) {
 	dir := t.TempDir()
 	if err := GenerateSettings(dir); err != nil {
@@ -828,6 +867,9 @@ func TestPostToolUseHasWorkflowTestGuard(t *testing.T) {
 	}
 }
 
+// writeSettingsLocal writes dir/.claude/settings.local.json (content as-is, for StripForgeHooks testing).
+// content is JSON text — passed via backtick raw string to preserve ASCII double-quotes from Windows input corruption.
+//
 // writeSettingsLocal 写 dir/.claude/settings.local.json（原样内容，供 StripForgeHooks 测试）。
 // content 是 JSON 文本——用反引号 raw 传入，保留 ASCII 双引号不被 Windows 输入腐蚀。
 func writeSettingsLocal(t *testing.T, dir, content string) {
@@ -858,6 +900,11 @@ func settingsPath(dir string) string {
 	return filepath.Join(dir, ".claude", "settings.local.json")
 }
 
+// TestStripForgeHooksUserLevel: pins user-level dedupe — StripForgeHooksUserLevel locates
+// ClaudeHome()/settings.local.json (CLAUDE_CONFIG_DIR first, fallback ~/.claude), removing forge
+// hooks. plugin.json already registers all ForgeHookSpec at user-level → forge hooks here must be duplicates.
+// Always keepEmpty=true: when the entire file is forge-sourced write {} to keep the shell, never delete user global config.
+//
 // TestStripForgeHooksUserLevel：钉死 user-level 去重——StripForgeHooksUserLevel 定位
 // ClaudeHome()/settings.local.json（CLAUDE_CONFIG_DIR 优先,fallback ~/.claude），移除 forge
 // hooks。plugin.json 已在 user-level 注册全部 ForgeHookSpec → 此处 forge hook 必重复。
@@ -866,6 +913,8 @@ func TestStripForgeHooksUserLevel(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("CLAUDE_CONFIG_DIR", home)
 
+	// Pure forge hooks → after strip writes {} to keep the shell (no delete).
+	//
 	// 纯 forge hooks → strip 后写 {} 保留壳（不删）。
 	p := filepath.Join(home, "settings.local.json")
 	forgeOnly := `{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"forge hook bash-guard"}]}]}}`
@@ -888,6 +937,9 @@ func TestStripForgeHooksUserLevel(t *testing.T) {
 	}
 }
 
+// TestStripForgeHooksUserLevel_PreservesUserHooks: when user-level has forge + user hooks,
+// delete forge and keep user hooks + file (never write {} to overwrite user global config).
+//
 // TestStripForgeHooksUserLevel_PreservesUserHooks：user-level 有 forge + 用户 hook 时，
 // 删 forge 保留用户 hook + 文件（绝不写 {} 覆盖用户全局配置）。
 func TestStripForgeHooksUserLevel_PreservesUserHooks(t *testing.T) {
@@ -918,6 +970,8 @@ func TestStripForgeHooksUserLevel_PreservesUserHooks(t *testing.T) {
 	}
 }
 
+// TestStripForgeHooksUserLevel_NoFile: no-op when user-level settings.local.json is absent.
+//
 // TestStripForgeHooksUserLevel_NoFile：无 user-level settings.local.json 时 no-op。
 func TestStripForgeHooksUserLevel_NoFile(t *testing.T) {
 	home := t.TempDir()
@@ -931,6 +985,8 @@ func TestStripForgeHooksUserLevel_NoFile(t *testing.T) {
 	}
 }
 
+// TestStripForgeHooks_NoFile: no-op when settings.local.json is absent (changed=false, no error).
+//
 // TestStripForgeHooks_NoFile：无 settings.local.json 时 no-op（changed=false，不报错）。
 func TestStripForgeHooks_NoFile(t *testing.T) {
 	dir := t.TempDir()
@@ -943,6 +999,10 @@ func TestStripForgeHooks_NoFile(t *testing.T) {
 	}
 }
 
+// TestStripForgeHooks_ForgeOnly_DeletesFile: GenerateSettings writes pure forge hooks,
+// after strip the settings has only an empty hooks → manual semantics (keepEmpty=false) deletes the whole file.
+// The automatic path (keepEmpty=true) is in TestStripForgeHooks_ForgeOnly_KeepsEmpty.
+//
 // TestStripForgeHooks_ForgeOnly_DeletesFile：GenerateSettings 写纯 forge hooks,
 // strip 后 settings 仅剩空 hooks → 手动语义（keepEmpty=false）删除整个文件。
 // 自动路径（keepEmpty=true）见 TestStripForgeHooks_ForgeOnly_KeepsEmpty。
@@ -963,6 +1023,12 @@ func TestStripForgeHooks_ForgeOnly_DeletesFile(t *testing.T) {
 	}
 }
 
+// TestStripForgeHooks_ForgeOnly_KeepsEmpty: pins the automatic path behavior — GenerateSettings writes
+// pure forge hooks, keepEmpty=true (init-suggest SessionStart / autoSync / init·sync automatic dedupe)
+// after strip writes empty object {} to keep the file shell, never delete. User pain point: settings.local.json is gitignored personal config,
+// user actively placed / about to edit, forge automatic dedupe silently deletes the whole file → user config lost. Empty {} is harmless to Claude Code
+// (no hooks/permissions). Manual forge plugin dedupe without --keep-empty goes through DeletesFile to delete empty.
+//
 // TestStripForgeHooks_ForgeOnly_KeepsEmpty：钉死自动路径行为——GenerateSettings 写
 // 纯 forge hooks,keepEmpty=true（init-suggest SessionStart / autoSync / init·sync 自动 dedupe）
 // strip 后写空对象 {} 保留文件壳,绝不删。用户痛点:settings.local.json 是 gitignored 个人配置,
@@ -989,6 +1055,11 @@ func TestStripForgeHooks_ForgeOnly_KeepsEmpty(t *testing.T) {
 	}
 }
 
+// TestStripForgeHooks_KeepEmpty_NoEffect_WithUserFields: pins that keepEmpty only takes effect on pure forge files
+// (len(settings)==0, the whole file is forge-sourced) — when there are user fields (user hooks or top-level permissions)
+// it falls into the MarshalIndent branch preserving user content, keepEmpty has no effect (never writes {}). Prevents future refactors from mistakenly spreading keepEmpty
+// semantics to mixed scenarios (user config overwritten by empty object).
+//
 // TestStripForgeHooks_KeepEmpty_NoEffect_WithUserFields：钉死 keepEmpty 仅在纯 forge 文件
 // （len(settings)==0,整文件只剩 forge 来源）时生效——有用户字段（用户 hooks 或顶层 permissions）
 // 时落 MarshalIndent 分支保留用户内容,keepEmpty 不影响（绝不写 {}）。防未来重构误扩散 keepEmpty
@@ -1039,6 +1110,9 @@ func TestStripForgeHooks_KeepEmpty_NoEffect_WithUserFields(t *testing.T) {
 	}
 }
 
+// TestStripForgeHooks_PreservesUserHooks: with forge hook + user hook in the same matcher,
+// delete forge and keep user hook (file retained).
+//
 // TestStripForgeHooks_PreservesUserHooks：同 matcher 内 forge hook + 用户 hook，
 // 删 forge 保留用户 hook（文件保留）。
 func TestStripForgeHooks_PreservesUserHooks(t *testing.T) {
@@ -1077,6 +1151,8 @@ func TestStripForgeHooks_PreservesUserHooks(t *testing.T) {
 	}
 }
 
+// TestStripForgeHooks_NoForgeHooks_NoOp: no-op for pure user hooks (no forge source).
+//
 // TestStripForgeHooks_NoForgeHooks_NoOp：纯用户 hooks（无 forge 来源）时 no-op。
 func TestStripForgeHooks_NoForgeHooks_NoOp(t *testing.T) {
 	dir := t.TempDir()
@@ -1095,6 +1171,9 @@ func TestStripForgeHooks_NoForgeHooks_NoOp(t *testing.T) {
 	}
 }
 
+// TestStripForgeHooks_PreservesTopLevelFields: forge hooks + other top-level fields (permissions)
+// — after deleting forge hooks, permissions is retained, and the empty hooks key is removed.
+//
 // TestStripForgeHooks_PreservesTopLevelFields：forge hooks + 其他顶层字段（permissions）
 // —— 删 forge hooks 后保留 permissions，空 hooks 键被删除。
 func TestStripForgeHooks_PreservesTopLevelFields(t *testing.T) {
@@ -1131,6 +1210,9 @@ func TestStripForgeHooks_PreservesTopLevelFields(t *testing.T) {
 	}
 }
 
+// TestStripForgeHooks_PreservesUserHooksAndTopLevel: forge hook + user hook (different events)
+// + permissions — delete forge, keep user hook + permissions + the file itself.
+//
 // TestStripForgeHooks_PreservesUserHooksAndTopLevel：forge hook + 用户 hook（不同事件）
 // + permissions —— 删 forge，保留用户 hook + permissions + 文件本身。
 func TestStripForgeHooks_PreservesUserHooksAndTopLevel(t *testing.T) {
@@ -1167,8 +1249,13 @@ func TestStripForgeHooks_PreservesUserHooksAndTopLevel(t *testing.T) {
 	}
 }
 
+// TestStripForgeHooks_RemovesGateCommand: N4 guard — ForgeHookSpec contains forge gate commands
+// (not only forge hook), StripForgeHooks must also remove gate. The previous assertion only checked the `forge hook` substring,
+// if StripForgeHooks only deletes hook and misses gate, existing tests cannot catch it (gate command residue → when plugin is installed
+// project-level gate still double-runs).
+//
 // TestStripForgeHooks_RemovesGateCommand：N4 守卫——ForgeHookSpec 含 forge gate 命令
-// （非仅 forge hook），StripForgeHooks 必须同样移除 gate。此前断言只查 "forge hook" 子串，
+// （非仅 forge hook），StripForgeHooks 必须同样移除 gate。此前断言只查"forge hook"子串，
 // 若 StripForgeHooks 只删 hook 漏删 gate，现有测试抓不到（gate 命令残留 → plugin 已装时
 // project-level gate 仍双跑）。
 func TestStripForgeHooks_RemovesGateCommand(t *testing.T) {
@@ -1195,6 +1282,13 @@ func TestStripForgeHooks_RemovesGateCommand(t *testing.T) {
 	}
 }
 
+// TestGenerateSettings_PreservesUserTopLevelFields: pins that GenerateSettings is merge-style —
+// user's existing non-hooks top-level fields (env/model/enabledPlugins) must be retained, only the hooks section is updated to
+// ForgeHookSpec. 1.2.0 regression: overwrite-style writes lost user config, plugin-dedupe deleted hooks then file got deleted,
+// env/model lost (real incident: Agentworld project lost all ollama/Qwen config after forge init).
+// Note: hooks section is forge-managed (GenerateSettings overwrites as ForgeHookSpec), user-defined hooks
+// placed in hooks section will be overwritten — the current hotfix focuses on non-hooks top-level field retention, hooks section merging is a follow-up optimization.
+//
 // TestGenerateSettings_PreservesUserTopLevelFields:钉死 GenerateSettings 合并式——
 // 用户现有非 hooks 顶层字段(env/model/enabledPlugins)必须保留,只 hooks 段更新为
 // ForgeHookSpec。1.2.0 回归:覆盖式写丢用户配置,plugin-dedupe 删 hooks 后文件被删、
@@ -1227,6 +1321,11 @@ func TestGenerateSettings_PreservesUserTopLevelFields(t *testing.T) {
 	}
 }
 
+// TestInitFlow_PluginInstalled_PreservesUserConfig: end-to-end pin of the 1.2.0 incident —
+// when plugin is installed, the init flow (GenerateSettings writes hooks → StripForgeHooks deletes forge hooks)
+// must preserve user env/model, and the file must not be deleted. 1.2.0 GenerateSettings overwrite-style → user config lost + file deleted
+// (Agentworld project lost all ollama/Qwen config after forge init). Fixed in 1.2.1.
+//
 // TestInitFlow_PluginInstalled_PreservesUserConfig:端到端钉死 1.2.0 事故场景——
 // plugin 已装时 init 流程(GenerateSettings 写 hooks → StripForgeHooks 删 forge hooks)
 // 必须保留用户 env/model,文件不删。1.2.0 GenerateSettings 覆盖式 → 用户配置丢 + 文件删
@@ -1235,6 +1334,8 @@ func TestInitFlow_PluginInstalled_PreservesUserConfig(t *testing.T) {
 	dir := t.TempDir()
 	writeSettingsLocal(t, dir, `{"env":{"API_KEY":"secret"},"model":"my-model"}`)
 
+	// init flow: GenerateSettings (merge-write hooks) → StripForgeHooks (dedupe deletes forge hooks).
+	//
 	// init 流程:GenerateSettings(合并写 hooks)→ StripForgeHooks(dedupe 删 forge hooks)。
 	if err := GenerateSettings(dir); err != nil {
 		t.Fatalf("GenerateSettings: %v", err)
@@ -1259,6 +1360,10 @@ func TestInitFlow_PluginInstalled_PreservesUserConfig(t *testing.T) {
 	}
 }
 
+// TestIsForgeHookCommand: pins identification of forge-sourced commands (forge hook X / forge gate X /
+// bare forge hook / forge gate). Non-forge commands (including other subcommands like forge plugin status)
+// are not misidentified — prevents StripForgeHooks from mistakenly deleting user's non-hook forge invocations.
+//
 // TestIsForgeHookCommand：钉死 forge 来源命令的识别（forge hook X / forge gate X /
 // 裸 forge hook / forge gate）。非 forge 命令（含 forge plugin status 等其他子命令）
 // 不被误判——避免 StripForgeHooks 误删用户的非 hook forge 调用。
@@ -1285,6 +1390,11 @@ func TestIsForgeHookCommand(t *testing.T) {
 	}
 }
 
+// TestPostToolUseToolTrackMatchesReadSkillAgent pins solution C: the tool-track hook's PostToolUse
+// matcher must cover Read|Skill|Agent, so the toollog audit records the quality skills loaded by the agent and the spawned sub-agent
+// types (the root cause of quality skill 0-triggering under advisory context is traceable). A Read-only matcher would leave Skill/Agent calls
+// unrecorded — whether quality skills are driven cannot be audited.
+//
 // TestPostToolUseToolTrackMatchesReadSkillAgent 钉死方案 C：tool-track hook 的 PostToolUse
 // matcher 必须覆盖 Read|Skill|Agent，让 toollog 审计记录 agent 加载的质量技能与派生的子 agent
 // 类型（advisory 语境下质量 skill 0 触发的根因可追溯）。仅 Read matcher 会让 Skill/Agent 调用

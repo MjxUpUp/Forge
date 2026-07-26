@@ -5,6 +5,11 @@ import (
 	"testing"
 )
 
+// TestJudgeSkillAccept locks the machine acceptance criteria for skill evolution — deterministic accept/reject, replacing
+// agent self-report. Covers five states: nil/no baseline/incomparable degraded/regressions reject/no-regression accept.
+// Any breakage breaks the skill-evolution loop's accept criteria (false reject kills normal optimization, false admit
+// regression into baseline).
+//
 // TestJudgeSkillAccept 锁定 skill 进化的机器验收判据——deterministic accept/reject，取代
 // agent 自述。覆盖五态：nil/无 baseline/不可比降级/regressions reject/无退化 accept。
 // 任一断裂则 skill-evolution 闭环的 accept 判据失准（误 reject 杀正常优化，误 accept 放
@@ -82,6 +87,10 @@ func TestJudgeSkillAccept(t *testing.T) {
 	}
 }
 
+// TestJudgeSkillAccept_BehaviorRegressionViaRegressions pins the design where behavior regression is captured by Regressions:
+// behavior case pass→fail (judgeBehavior verdict) enters the matched set Regressions and triggers reject.
+// This validates the rationale for not judging behavior pass-rate separately — a single regression signal (Regressions) covers all three case kinds.
+//
 // TestJudgeSkillAccept_BehaviorRegressionViaRegressions 钉住「behavior 退化由 Regressions 捕获」
 // 的设计：behavior case 的 pass→fail（judgeBehavior 判定）进 matched 集 Regressions，触发 reject。
 // 这验证不单独判 behavior pass-rate 的合理性——单一退化信号（Regressions）已覆盖三类 case。
@@ -114,6 +123,18 @@ func TestJudgeSkillAccept_BehaviorRegressionViaRegressions(t *testing.T) {
 	}
 }
 
+// TestJudgeSkillAccept_MatchedTurnoverNoRegression pins that full matched-set turnover does not falsely reject.
+//
+// The real turnover path is only the behavior set: case id in probes.yaml can change (manually edited id / input+oracle recomputed),
+// and behavior set DescHash is empty, skipping SubmitRun's DescHash check (runs.go:347-354) — so latest
+// and baseline case ids can be entirely different (matched=0) while Comparable stays true (both DescHash empty and equal).
+// trigger/not-trigger sets are different: caseID=sha1(skill:fragment) is a deterministic function (cases.go), DescHash identical
+// ⟹ same description ⟹ same fragments ⟹ same case id, no turnover — so this test uses KindBehavior to construct the real path.
+//
+// In this state (comparable + matched=0), latest all-fail also does not enter Regressions — Regressions only looks at matched set
+// baseline pass→latest fail, turnover has no matched. JudgeSkillAccept must accept (reasons nil), and must not
+// falsely detect regression from latest absolute pass rate 0. This is the honest tradeoff of only looking at Regressions (not latest absolute pass rate).
+//
 // TestJudgeSkillAccept_MatchedTurnoverNoRegression 钉住「matched 集全换血不误 reject」。
 //
 // 真实换血路径只有 behavior 集：probes.yaml 的 case id 可变（手改 id / input+oracle 重算），

@@ -77,6 +77,16 @@ func TestCodexWiringMirrorsClaudeSettings(t *testing.T) {
 	}
 }
 
+// TestCodexHooksExcludeSessionLifecycle guards the gap#2 cross-host boundary: the
+// claude-code-specific SessionStart/PostCompact/UserPromptSubmit lifecycle (including
+// task-resume injection + compact-resume/resume-reinject reinjection chain) must be
+// excluded from the codex whitelist — codex has no compaction/prompt lifecycle; wiring
+// an unsupported event fails silently. TestCodexWiringMirrorsClaudeSettings only checks
+// "the command set codex declares is consistent" (subset assertion), not 「codex must
+// not declare some event」: if PostCompact were wrongly added back to the codex whitelist
+// and the command set happened to match, that test would still pass. This test adds
+// forward + reverse assertions to pin the whitelist down.
+//
 // TestCodexHooksExcludeSessionLifecycle 守卫 gap#2 的跨 host 边界：claude-code 特有的
 // SessionStart/PostCompact/UserPromptSubmit lifecycle（含 task-resume 注入 + compact-resume/
 // resume-reinject 重注入链）必须被 codex 白名单排除——codex 无 compaction/prompt lifecycle，
@@ -544,6 +554,10 @@ func TestClineTranslator_Translate(t *testing.T) {
 		}
 	}
 
+	// Regression guard: Cline does not write .cline/mcp.json (Cline does not auto-load project-level MCP, global only;
+	// and the MCP layer was fully torn out on 2026-07-24, forge no longer generates any forge MCP server). If someone adds back
+	// project-level MCP writes, this assertion catches it.
+	//
 	// 防回归守卫:Cline 不写 .cline/mcp.json（Cline 不自动加载项目级 MCP,仅全局;
 	// 且 MCP 层已于 2026-07-24 全拆,forge 不再生成任何 forge MCP server）。有人若加回
 	// 项目级 MCP 写入,此断言抓住。
@@ -736,6 +750,10 @@ func TestClaudeCodeTranslatorSkipsGenerateSettingsWhenPluginInstalled(t *testing
 	}
 }
 
+// (pi tests removed: refactor-data-home locked 5 specializations then narrowed to 4, pi has exited
+// the 5-specialization list — see forge-refactor-data-home-progress memory / BREAKING change
+// commit break-pi-exit-forge-mgr.)
+//
 // (pi tests removed: refactor-data-home 锁定 5 专精再缩到 4，pi 已退出
 // 5-专精名单 —— 见 forge-refactor-data-home-progress memory / BREAKING change
 // commit break-pi-exit-forge-mgr。)

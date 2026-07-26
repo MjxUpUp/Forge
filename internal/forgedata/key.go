@@ -1,3 +1,14 @@
+// Package forgedata provides unified path / key derivation for forge project data.
+//
+// Design goal: centralize the scattered filepath.Join calls into a single source of truth,
+// so that project data home (tasks / gates / ...) migrates smoothly from project-level `.forge/`
+// to user-level `~/.forge/projects/<hash12>/`. ConfigDir (protocol/CLAUDE.md
+// /hooks) stays at project level (git tracked, user-editable).
+//
+// See docs/plans/refactor-data-home.md for details.
+//
+// Chinese strings use raw strings (backticks) to avoid Windows input quote corruption.
+//
 // Package forgedata 提供 forge 项目数据的统一路径 / key 推导。
 //
 // 设计目标：把当前散落的 `filepath.Join(dir, ".forge", ...)` 集中到一个真相源，
@@ -20,15 +31,27 @@ import (
 	"strings"
 )
 
+// Predefined errors
+//
 // 预定义错误
 var (
+	// ErrNotInGitRepo: cwd is not inside any git repository
+	//
 	// ErrNotInGitRepo: cwd 不在任何 git repo 内
 	ErrNotInGitRepo = errors.New(`forgedata: cwd is not in a git repository`)
 
+	// ErrInvalidGitFile: `.git` file corrupted (empty / missing 'gitdir:' / NUL / looped / beyond fs root)
+	//
 	// ErrInvalidGitFile: `.git` file 损坏（empty / missing 'gitdir:' / NUL / looped / beyond fs root）
 	ErrInvalidGitFile = errors.New(`forgedata: invalid .git file (worktree/submodule)`)
 )
 
+// FindGitRoot walks up from dir to the nearest ancestor containing `.git` (dir or file). Returns empty string if not found.
+// Does not depend on forge project existence — just git repo detection.
+//
+// Same semantics as findGitRoot in cli/hook.go:51; not reused because forgedata is an infrastructure package,
+// not wanting a reverse dependency on cli. When Stage 1 lands, refactor the cli one to call this forge data one.
+//
 // FindGitRoot walks up from dir 到最近的含 `.git`（dir 或 file）祖先。找不到返 ""。
 // 不依赖 forge 项目存在——只是 git repo 探测。
 //
@@ -49,6 +72,18 @@ func FindGitRoot(dir string) string {
 	}
 }
 
+// Key derives hash12: the first 12 hex chars of FNV-64a of the `.git` common dir of the git repo containing cwd.
+// Multiple worktrees of the same repo (agent / detached / submodule) share the same key.
+//
+// Algorithm:
+//  1. findGitRoot(cwd) — failure → ErrNotInGitRepo
+//  2. .git is a dir (main worktree) → use directly
+//     .git is a file (worktree/submodule) → read gitdir: line → walk parent chain to find .git ancestor
+//  3. EvalSymlinks post-normalization (symlinked repo gets same key)
+//  4. fnv-64a(... )[:12]
+//
+// ErrInvalidGitFile is returned when the .git file is corrupted (empty / missing 'gitdir:' / contains NUL / looped / beyond fs root).
+//
 // Key 推导 hash12：cwd 所在 git repo 的 `.git` common dir 的 FNV-64a hex 前 12 字符。
 // 同仓库多 worktree（agent / detached / submodule）共享同一 key。
 //
@@ -74,9 +109,13 @@ func Key(cwd string) (string, error) {
 
 	var resolvedGitDir string
 	if info.IsDir() {
+		// Main worktree — .git itself is already stable
+		//
 		// 主 worktree —— .git 自身已稳定
 		resolvedGitDir = absGit
 	} else {
+		// .git is a file (worktree / submodule)
+		//
 		// .git 是 file（worktree / submodule）
 		resolvedGitDir, err = resolveGitFile(absGit, gitRoot)
 		if err != nil {
@@ -84,6 +123,8 @@ func Key(cwd string) (string, error) {
 		}
 	}
 
+	// EvalSymlinks normalizes to physical path — symlinked repo gets same key (avoids multiple keys for same inode)
+	//
 	// EvalSymlinks 归物理路径—— symlinked repo 同 key（避免同 inode 多 key）
 	if eval, err := filepath.EvalSymlinks(resolvedGitDir); err == nil {
 		resolvedGitDir = eval
@@ -94,6 +135,9 @@ func Key(cwd string) (string, error) {
 	return strconv.FormatUint(h.Sum64(), 16)[:12], nil
 }
 
+// resolveGitFile parses the gitdir: line of a worktree/submodule `.git` file, walking the parent chain to find the `.git` ancestor.
+// Fault tolerance: empty / missing prefix / NUL / loop / beyond fs root all return ErrInvalidGitFile.
+//
 // resolveGitFile 解析 worktree/submodule `.git` file 的 gitdir: 行，沿 parent 链找 `.git` 祖先。
 // 容错：empty / 缺 prefix / NUL / 循环 / fs 根外 全部返 ErrInvalidGitFile。
 func resolveGitFile(absGitFile, gitRoot string) (string, error) {
@@ -104,6 +148,8 @@ func resolveGitFile(absGitFile, gitRoot string) (string, error) {
 	if len(strings.TrimSpace(string(data))) == 0 {
 		return "", fmt.Errorf(`%w: empty .git file`, ErrInvalidGitFile)
 	}
+	// First line: gitdir: /path/... or gitdir: ../relative
+	//
 	// 第一行 "gitdir: /path/..." 或 "gitdir: ../relative"
 	line := strings.TrimSpace(strings.SplitN(string(data), "\n", 2)[0])
 	if !strings.HasPrefix(line, "gitdir: ") {
@@ -122,10 +168,14 @@ func resolveGitFile(absGitFile, gitRoot string) (string, error) {
 	}
 	target = filepath.Clean(target)
 
+	// Walk parent chain to find the ancestor named `.git`
+	//
 	// 沿 parent 链找含名 `.git` 的祖先
 	const safetyMax = 64
 	candidate := target
 	for safety := safetyMax; filepath.Base(candidate) != ".git"; safety-- {
+		// Termination condition: candidate has degenerated to empty/dot/root
+		//
 		// 终止条件：候选已退化到空/点/根
 		if candidate == `` || candidate == "." || candidate == string(filepath.Separator) || safety <= 0 {
 			return "", fmt.Errorf(`%w: gitdir did not resolve to a .git ancestor: %s`, ErrInvalidGitFile, target)
@@ -139,6 +189,12 @@ func resolveGitFile(absGitFile, gitRoot string) (string, error) {
 	return filepath.Clean(candidate), nil
 }
 
+// RootDir returns the path to `~/.forge/projects/<key>/`.
+//
+// The FORGE_DATA_HOME env overrides the global home (for test isolation + power-user overrides).
+//
+// Empty key returns empty string (caller decides fallback, no forced default).
+//
 // RootDir 返回 `~/.forge/projects/<key>/` 路径。
 //
 // `FORGE_DATA_HOME` env 覆盖全局 home（test 隔离 + 高级用户覆盖）。
@@ -155,6 +211,13 @@ func RootDir(key string) string {
 	return filepath.Join(home, "projects", key)
 }
 
+// GlobalHome returns the global home. FORGE_DATA_HOME takes priority (overrides home root), otherwise falls back to UserHomeDir.
+//
+// Design: FORGE_DATA_HOME controls the global home (e.g. ~/.forge); all sub-stores
+// (registry/projects.json, init-suggest marker, knowledge, projects/<key>/) use it.
+// Exported so registry/suggest and other global stores reuse the same source of truth (refactor-data-home commit E:
+// unified FORGE_DATA_HOME, deprecated the old registry FORGE_HOME env).
+//
 // GlobalHome 返全局 home。FORGE_DATA_HOME 优先（覆盖 home root），否则回落 UserHomeDir。
 //
 // 设计：FORGE_DATA_HOME 既管控全局 home（如 ~/.forge），所有 sub-store

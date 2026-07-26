@@ -7,6 +7,10 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 )
 
+// TestResetForRebuild_NoFile verifies the legitimate case of an old project that has
+// no conclusions.jsonl: no error, returns an empty backup path (the rebuild command
+// uses this to decide whether to print "backed up").
+//
 // TestResetForRebuild_NoFile 验证旧项目本就没有 conclusions.jsonl 的合法情形：
 // 不报错、返空备份路径（rebuild 命令据此决定是否打印"已备份"）。
 func TestResetForRebuild_NoFile(t *testing.T) {
@@ -20,6 +24,10 @@ func TestResetForRebuild_NoFile(t *testing.T) {
 	}
 }
 
+// TestResetForRebuild_BackupClear verifies the core contract: with an existing file,
+// it backs up to .bak and clears the original in place (os.Rename both backs up and
+// frees the slot; Append rebuilds at the same path). Backup content must equal original.
+//
 // TestResetForRebuild_BackupClear 验证核心契约：有现有文件时备份到 .bak 且原位清空
 // （os.Rename 既备份又腾位，Append 随后在原位重建）。备份内容须等于原内容。
 func TestResetForRebuild_BackupClear(t *testing.T) {
@@ -52,6 +60,10 @@ func TestResetForRebuild_BackupClear(t *testing.T) {
 	}
 }
 
+// TestResetForRebuild_IdempotentOverwrites verifies idempotent safety: on a second reset
+// the .bak is overwritten with the latest content (rebuild can be re-run, no error from
+// stale .bak and no out-of-date backup kept around).
+//
 // TestResetForRebuild_IdempotentOverwrites 验证幂等安全：再次 reset 时 .bak 被最新内容覆盖
 // （rebuild 可重复跑，不会因残留 .bak 报错或留住过时备份）。
 func TestResetForRebuild_IdempotentOverwrites(t *testing.T) {

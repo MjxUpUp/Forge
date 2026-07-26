@@ -9,6 +9,8 @@ import (
 	"strings"
 )
 
+// Finding is a security audit finding (aligned with audit.py Finding dataclass).
+//
 // Finding 是安全审查发现（对齐 audit.py Finding dataclass）。
 type Finding struct {
 	RuleID      string  `json:"rule_id"`
@@ -22,6 +24,8 @@ type Finding struct {
 	Remediation string  `json:"remediation"`
 }
 
+// Rule is a declarative security rule (aligned with audit.py rule tuples). ExecOnly=true only takes effect for executable scripts.
+//
 // Rule 是声明式安全规则（对齐 audit.py 规则元组）。ExecOnly=true 仅对可执行脚本生效。
 type Rule struct {
 	ID       string
@@ -32,19 +36,29 @@ type Rule struct {
 	Fix      string
 	Cat      string
 	ExecOnly bool
+	// The dangerous_code rule additionally applies to .html/.htm (browser-side XSS vectors: DC-1 eval / DC-7 browser execution vectors); other DC rules only apply to executable scripts.
+	//
 	HtmlAlso bool // dangerous_code 规则额外在 .html/.htm 生效（浏览器端 XSS 向量：DC-1 eval / DC-7 浏览器执行向量）；其余 DC 只接可执行脚本
 	re       *regexp.Regexp
 }
 
+// skipDirs — directory segments skipped during scanning (aligned with audit.py node_modules/.git/__pycache__/.venv).
+//
 // skipDirs — 扫描时跳过的目录段（对齐 audit.py 的 node_modules/.git/__pycache__/.venv）。
 var skipDirs = map[string]bool{
 	"node_modules": true, ".git": true, "__pycache__": true, ".venv": true,
 }
 
+// auditRules is the set of 19 rules. Regexes have been converted from Python syntax to Go RE2:
+//   - PI-5 zero-width characters → \x{200b} (Go does not support \u)
+//   - Each rule has a (?i) prefix to align with Python re.IGNORECASE
+//
 // auditRules 是 19 条规则。正则已从 Python 语法转为 Go RE2：
 //   - PI-5 零宽字符 → \x{200b}（Go 不支持 \u）
 //   - 每条加 (?i) 前缀对齐 Python re.IGNORECASE
 var auditRules = mustCompile([]Rule{
+	// PROMPT_INJECTION (5)
+	//
 	// PROMPT_INJECTION（5）
 	{ID: "PI-1", Cat: "prompt_injection", Severity: "HIGH", Conf: 0.9, Msg: "指令覆盖：要求忽略先前指令", Fix: "删除该指令；skill 不应改写 agent 基础对齐",
 		Pattern: `(?i)ignore\s+(?:all\s+)?previous\s+instructions?`},
@@ -56,6 +70,8 @@ var auditRules = mustCompile([]Rule{
 		Pattern: `(?i)<!--[^>]{0,200}?(?:ignore|system\s+prompt|exfiltrat|send\s+to\s+http)[^>]{0,200}?-->`},
 	{ID: "PI-5", Cat: "prompt_injection", Severity: "MEDIUM", Conf: 0.6, Msg: "零宽字符可能藏指令", Fix: "检查并清除不可见字符",
 		Pattern: `(?i)[\x{200b}\x{200c}\x{200d}\x{2060}\x{feff}]{3,}`},
+	// DATA_EXFIL (4)
+	//
 	// DATA_EXFIL（4）
 	{ID: "DE-1", Cat: "data_exfiltration", Severity: "CRITICAL", Conf: 0.9, Msg: "指示把对话上下文外发", Fix: "删除外发指令；如需遥测须显式告知用户并取得同意",
 		Pattern: `(?i)(?:send|transmit|upload|post|forward)\s+(?:the\s+)?(?:conversation|context|chat\s+history|session)\s+to\s+(?:https?://|an?\s+external)`},
@@ -65,15 +81,25 @@ var auditRules = mustCompile([]Rule{
 		Pattern: `(?i)(?:include|append|attach)\s+(?:the\s+)?(?:api\s+key|secret|token|\.env|password|credentials?)\b`},
 	{ID: "DE-4", Cat: "data_exfiltration", Severity: "HIGH", Conf: 0.85, Msg: "出现 exfiltrate 字样", Fix: "核实意图，正常 skill 不应出现该词",
 		Pattern: `(?i)exfiltrat\w*`},
+	// SYSTEM_PROMPT_LEAKAGE (2)
+	//
 	// SYSTEM_PROMPT_LEAKAGE（2）
 	{ID: "SL-1", Cat: "system_prompt_leakage", Severity: "HIGH", Conf: 0.85, Msg: "要求泄漏系统提示", Fix: "删除",
 		Pattern: `(?i)(?:repeat|reveal|output|show|print|leak)\s+(?:your\s+)?(?:system\s+prompt|initial\s+instructions?|hidden\s+instructions?|core\s+instructions?)`},
 	{ID: "SL-2", Cat: "system_prompt_leakage", Severity: "MEDIUM", Conf: 0.7, Msg: "探测系统提示", Fix: "删除",
 		Pattern: `(?i)(?:what\s+are\s+your|give\s+me\s+your)\s+(?:system\s+prompt|instructions?|rules?)`},
+	// DANGEROUS_CODE (7; DC-1 eval / DC-7 browser execution vectors also cover HTML via HtmlAlso, the rest only cover executable scripts)
+	//
 	// DANGEROUS_CODE（7；DC-1 eval / DC-7 浏览器执行向量经 HtmlAlso 也接 HTML，余仅可执行脚本）
 	{ID: "DC-1", Cat: "dangerous_code", Severity: "HIGH", Conf: 0.8, Msg: "eval() 任意代码执行", Fix: "避免 eval；用安全解析", ExecOnly: true, HtmlAlso: true,
 		Pattern: `(?i)\beval\s*\(`},
 	{ID: "DC-2", Cat: "dangerous_code", Severity: "HIGH", Conf: 0.7, Msg: "child_process.exec() 任意代码执行", Fix: "避免 child_process.exec；用安全解析", ExecOnly: true,
+		// The original Pattern `\bexec\s*\(` would false-positive on RegExp.exec() (regex matching, completely harmless) —
+		// arkts-runtime-fix jscrash-parse was therefore misjudged as CRITICAL and install was wrongly blocked.
+		// Tightened to child_process.exec/execSync (Node command execution). The original Python audit.py
+		// also uses `\bexec\s*\(` and has the same false positive — this fix is more accurate than upstream (security-gate accuracy >
+		// line-by-line parity with the erroneous original). Misses require/destructured forms (rare, low-risk).
+		//
 		// 原 Pattern `\bexec\s*\(` 会误报 RegExp.exec()（正则匹配，完全无害）——
 		// arkts-runtime-fix 的 jscrash-parse 因此被误判 CRITICAL、install 被误拦。
 		// 收紧到 child_process.exec/execSync（Node 命令执行）。Python audit.py 原版
@@ -88,6 +114,18 @@ var auditRules = mustCompile([]Rule{
 		Pattern: `(?i)\b__import__\s*\(`},
 	{ID: "DC-6", Cat: "dangerous_code", Severity: "HIGH", Conf: 0.75, Msg: "脚本中 curl/wget POST 外发动态数据", Fix: "核实目标地址合法性；勿外发用户数据", ExecOnly: true,
 		Pattern: `(?i)\b(?:curl|wget)\b[^|&;]{0,120}?(?:-X\s*POST|--data|--data-raw|-d\s)['\"]?(?:\$\{|\$[A-Z_])`},
+	// DC-7 browser-side dynamic code execution vector — previously skillsqa had no rule coverage for these at all: HTML inline
+	// <script>new Function(...)/document.write(...)/setTimeout string/location.href=javascript:
+	// are all arbitrary JS execution (XSS / data exfiltration). DC-1~DC-6 go through ExecOnly and only cover .js/.ts; inline .html was under-reported.
+	// HtmlAlso lets DC-7 cover both .html and executable scripts.
+	// Pattern deliberately omits innerHTML — static scanning cannot distinguish the innerHTML data source (hardcoded string vs
+	// user input); covering all yields a terrible signal-to-noise ratio, so it is not covered; that DOM XSS vector relies on code review. Known under-reporting gaps:
+	// ① innerHTML/outerHTML injection; ② Function() without new (adding it would false-positive on function declarations);
+	// ③ (0,eval) indirect eval (evasion); ④ setTimeout/setInterval template-literal arguments (quote character class excludes backticks);
+	// ⑤ document.writeln, location.assign/replace navigation (javascript: scheme) edge sinks (disclosed but not expanding Pattern,
+	// to avoid over-complexity). HTML fetch/XHR/sendBeacon exfiltration is another independent gap
+	// (DC-6 curl/wget does not cover HTML), deferred to a DC-8 follow-up.
+	//
 	// DC-7 浏览器端动态代码执行向量——此前 skillsqa 对这些完全无规则覆盖：HTML 内嵌
 	// <script>new Function(...)/document.write(...)/setTimeout 字符串/location.href=javascript:
 	// 都是任意 JS 执行（XSS / 数据窃取）。DC-1~DC-6 走 ExecOnly 只接 .js/.ts，.html 内嵌漏报。
@@ -106,6 +144,10 @@ var auditRules = mustCompile([]Rule{
 func mustCompile(in []Rule) []Rule {
 	out := make([]Rule, len(in))
 	for i, r := range in {
+		// HtmlAlso is a modifier of ExecOnly: when ExecOnly=false the rule falls into the auditorsForExt switch
+		// default (dangerous_code matches no explicit case), silently failing — a silent false-negative in the security gate.
+		// Compile-time fail-fast prevents future mistakes of HtmlAlso:true, ExecOnly:false.
+		//
 		// HtmlAlso 是 ExecOnly 的修饰：ExecOnly=false 时规则走 auditorsForExt 的 switch
 		// default（dangerous_code 不匹配任何显式 case），沉默失效——安全门静默漏报。
 		// 编译期 fail-fast，防未来误写 HtmlAlso:true, ExecOnly:false。
@@ -118,6 +160,14 @@ func mustCompile(in []Rule) []Rule {
 	return out
 }
 
+// auditorsForExt returns the applicable rules by file extension (aligned with audit.py AUDITORS_BY_TYPE):
+//   - .md/.markdown → injection + exfil + leak
+//   - executable scripts → injection + exfil + dangerous_code
+//   - .html/.htm → injection + exfil (HTML is a prompt injection carrier: PI-4 is designed for hidden
+//     instruction comments) + dangerous_code rules with HtmlAlso=true (DC-1 eval / DC-7 browser execution
+//     vectors); other DC rules (child_process/os.system/subprocess and other backend APIs) are not covered — HTML is not directly
+//     executable, and backend API keywords are prone to false positives in descriptive text.
+//
 // auditorsForExt 按文件后缀返回适用规则（对齐 audit.py AUDITORS_BY_TYPE）：
 //   - .md/.markdown → injection + exfil + leak
 //   - 可执行脚本   → injection + exfil + dangerous_code
@@ -131,6 +181,9 @@ func auditorsForExt(ext string) []Rule {
 	for _, r := range auditRules {
 		switch {
 		case r.ExecOnly:
+			// dangerous_code by default only applies to executable scripts; rules with HtmlAlso=true (DC-1 eval / DC-7
+			// browser execution vectors) additionally apply to .html/.htm — inline <script> in HTML is a real execution carrier.
+			//
 			// dangerous_code 默认仅可执行脚本；HtmlAlso=true 的规则（DC-1 eval / DC-7
 			// 浏览器执行向量）额外在 .html/.htm 生效——HTML 内嵌 <script> 是真实执行载体。
 			if ExecExts[ext] || (r.HtmlAlso && HtmlExts[ext]) {
@@ -149,17 +202,25 @@ func auditorsForExt(ext string) []Rule {
 	return out
 }
 
+// ScanSkill runs all applicable auditors on a skill directory and returns deduplicated findings (aligned with audit.py scan_skill).
+//
 // ScanSkill 对 skill 目录跑全部适用审查器，返回去重后的 findings（对齐 audit.py scan_skill）。
 func ScanSkill(skillDir string) ([]Finding, error) {
 	var raw []Finding
 	walkErr := filepath.WalkDir(skillDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
+			// Root directory (d==nil) inaccessible → propagate, so callers can distinguish `skill does not exist` from `empty skill`.
+			// Symmetric with AuditSkill SKILL.md read error propagation: otherwise downstream (skills_audit) swallows err
+			// and ScanSkill(nil,nil) would report a non-existent/permission-denied skill as `clean`, defeating the security gate.
+			//
 			// 根目录（d==nil）不可访问 → 传播，让调用方区分"skill 不存在"与"空 skill"。
 			// 与 AuditSkill 的 SKILL.md 读取错误传播对称：否则下游（skills_audit）吞 err
 			// 后 ScanSkill(nil,nil) 会让不存在/无权限的 skill 被报告为"干净"，安全门失守。
 			if d == nil {
 				return err
 			}
+			// best-effort for child entries, aligned with Python try/except
+			//
 			return nil // 子项 best-effort，对齐 Python try/except
 		}
 		if d.IsDir() {
@@ -202,6 +263,8 @@ func ScanSkill(skillDir string) ([]Finding, error) {
 	if walkErr != nil {
 		return nil, walkErr
 	}
+	// Deduplicate by: (rule_id, file, line)
+	//
 	// 去重：(rule_id, file, line)
 	seen := map[string]bool{}
 	uniq := make([]Finding, 0, len(raw))
@@ -216,17 +279,23 @@ func ScanSkill(skillDir string) ([]Finding, error) {
 	return uniq, nil
 }
 
+// ScoreFindings computes a weighted score → (0-100, severity band, recommendation). Aligned with audit.py score_findings.
+//
 // ScoreFindings 加权评分 → (0-100, severity band, recommendation)。对齐 audit.py score_findings。
 func ScoreFindings(findings []Finding) (score int, severity string, recommendation string) {
 	raw := 0.0
 	for _, f := range findings {
 		raw += float64(SeverityWeight[f.Severity]) * f.Confidence
 	}
+	// Python int(raw) truncates positive numbers toward zero; min(100, …) aligns with audit.py
+	//
 	// Python int(raw) 对正数向零截断；min(100, …) 对齐 audit.py
 	score = min(100, int(raw))
 	return score, SeverityBand(score), Recommendation(score)
 }
 
+// SeverityBand maps a 0-100 score to a severity (aligned with audit.py sev).
+//
 // SeverityBand 把 0-100 分映射到严重度（对齐 audit.py sev）。
 func SeverityBand(score int) string {
 	switch {
@@ -243,6 +312,8 @@ func SeverityBand(score int) string {
 	}
 }
 
+// Recommendation maps a score to an install recommendation (aligned with audit.py recommend).
+//
 // Recommendation 把分数映射到安装建议（对齐 audit.py recommend）。
 func Recommendation(score int) string {
 	switch {

@@ -15,6 +15,10 @@ import (
 
 var mu sync.Mutex
 
+// filePath returns the active checklog path under the resolved runtime-state directory: git projects use
+// the user-level DataDir (~/.forge/projects/<key>/); non-git forge projects fall back to the legacy
+// project-level <root>/.forge/ so hooks can still record checks. See dataDir.
+//
 // filePath 返回解析后的 runtime-state 目录下的 active checklog 路径：git 项目用
 // 用户级 DataDir（~/.forge/projects/<key>/），非 git 的 forge 项目回退到 legacy 的
 // 项目级 <root>/.forge/，让 hook 仍能记录 check。见 dataDir。
@@ -22,12 +26,20 @@ func filePath(root string) string {
 	return filepath.Join(dataDir(root), "checklog.jsonl")
 }
 
+// dataDir resolves the runtime-state directory for checklog via the shared forgedata.DataDirFor
+// (only git projects use Key → ~/.forge/projects/<key>/, falling back to <root>/.forge/).
+// The load-bearing rationale for `git-only uses Key` is in forgedata.DataDirFor (a MkdirAll-stable
+// resolution — Record must not switch paths mid-write).
+//
 // dataDir 通过共享的 forgedata.DataDirFor 解析 checklog 的 runtime-state 目录
 // （仅 git 项目用 Key → ~/.forge/projects/<key>/，回退 <root>/.forge/）。
 // load-bearing 的「仅 git 用 Key」依据见 forgedata.DataDirFor（MkdirAll-stable 的
 // 解析——Record 不得在写入中途切换路径）。
 func dataDir(root string) string { return forgedata.DataDirFor(root) }
 
+// Record appends a check log entry to DataDir's checklog.jsonl (non-git projects fall back to
+// <root>/.forge/, see dataDir). It sets RecordedAt to the current time. Thread-safe.
+//
 // Record 向 DataDir 的 checklog.jsonl 追加一条 check log entry（非 git 项目回退到
 // <root>/.forge/，见 dataDir）。把 RecordedAt 设为当前时间。线程安全。
 func Record(root string, entry *Entry) error {
@@ -35,6 +47,9 @@ func Record(root string, entry *Entry) error {
 	defer mu.Unlock()
 
 	entry.RecordedAt = time.Now()
+	// Fallback inference for evidence source: when the caller does not explicitly set Source, assign a default by CheckName.
+	// This lets legacy recording points (unchanged) also carry Source automatically, leaving no gaps in evidence-chain bucketing.
+	//
 	// 兜底推断证据来源：调用方未显式标注 Source 时，按 CheckName 给默认值。
 	// 让历史记录点（未改）也自动带上 Source，证据链分桶不留空白。
 	if entry.Source == "" {
@@ -60,6 +75,9 @@ func Record(root string, entry *Entry) error {
 	return err
 }
 
+// LoadAll reads all check log entries from DataDir's checklog.jsonl (non-git projects fall back to
+// <root>/.forge/). Returns entries in chronological order. Returns nil if the file does not exist.
+//
 // LoadAll 从 DataDir 的 checklog.jsonl 读取全部 check log entry（非 git 项目回退到
 // <root>/.forge/）。按时间顺序返回。文件不存在时返回 nil。
 func LoadAll(root string) ([]Entry, error) {
@@ -77,6 +95,7 @@ func LoadAll(root string) ([]Entry, error) {
 	for scanner.Scan() {
 		var e Entry
 		if err := json.Unmarshal(scanner.Bytes(), &e); err != nil {
+			// Skip malformed lines.
 			continue // 跳过格式错误的行
 		}
 		entries = append(entries, e)
@@ -84,6 +103,11 @@ func LoadAll(root string) ([]Entry, error) {
 	return entries, scanner.Err()
 }
 
+// LoadForTask filters by task ref and reads check entries from the active checklog and all archived checklog-*.jsonl,
+// returning them in chronological order. Used by `forge trace <ref>` to reconstruct a task's full event timeline.
+// LoadAll only reads the active checklog.jsonl and misses archived history; this function globs all checklog*.jsonl,
+// letting trace cover tasks whose logs were archived at the next task start. Entries with mismatched TaskRef are excluded.
+//
 // LoadForTask 按 task ref 过滤，从 active checklog 与所有归档 checklog-*.jsonl 中
 // 读取 check entry，按时间序返回。供 forge trace <ref> 重建 task 完整事件时间线。
 // LoadAll 只读 active checklog.jsonl、错过归档历史；本函数 glob 全部 checklog*.jsonl，
@@ -103,6 +127,7 @@ func LoadForTask(root, taskRef string) ([]Entry, error) {
 		for scanner.Scan() {
 			var e Entry
 			if err := json.Unmarshal(scanner.Bytes(), &e); err != nil {
+				// Skip malformed lines.
 				continue // 跳过格式错误的行
 			}
 			if e.TaskRef == taskRef {
@@ -117,12 +142,22 @@ func LoadForTask(root, taskRef string) ([]Entry, error) {
 	return entries, nil
 }
 
+// LatestByCheck returns the latest entry per check name (across all sessions). Equivalent to
+// LatestByCheckForSession with an empty session id (no filtering).
+//
 // LatestByCheck 返回每个 check name 的最新条目（所有 session）。等价于
 // LatestByCheckForSession 传空 session id（不过滤）。
 func LatestByCheck(root string) (map[CheckName]*Entry, error) {
 	return LatestByCheckForSession(root, "")
 }
 
+// LatestByCheckForSession returns the latest entry per check name, scoped to the given session.
+//
+// Filtering rules (preventing scoring pollution when two Claude Code sessions run concurrently on a shared checkout):
+//   - sessionID empty (legacy / no session): no filtering — every entry counts.
+//   - sessionID non-empty: entries with non-empty SessionID that differs from sessionID are excluded.
+//     Entries with empty SessionID (global/legacy) are always retained so globally-applicable checks can still register.
+//
 // LatestByCheckForSession 返回限定在给定 session 内、每个 check name 的最新条目。
 //
 // 过滤规则（防止两个 Claude Code session 在共享 checkout 上并发时评分被对端污染）：
@@ -148,6 +183,9 @@ func LatestByCheckForSession(root, sessionID string) (map[CheckName]*Entry, erro
 	return result, nil
 }
 
+// archiveLocked renames the existing checklog to a timestamped backup but does **not** acquire the lock; the caller must hold mu.
+// See Archive for the deadlock rationale. Uses nanosecond-precision naming (util.ArchivedName) so multiple rotations within the same second do not collide.
+//
 // archiveLocked 把现存 checklog 重命名为带时间戳的备份，但**不**加锁；调用方必须持有 mu。
 // 死锁原因见 Archive。用纳秒精度命名（util.ArchivedName），同一秒内的多次轮转不会撞名。
 func archiveLocked(root string) error {
@@ -159,6 +197,10 @@ func archiveLocked(root string) error {
 	return os.Rename(src, dst)
 }
 
+// Archive renames the existing checklog to a timestamped backup file, preserving an audit trail across task starts.
+// It holds the same mutex as Record so concurrent entry appends and rotations do not interleave. Returns nil when
+// the checklog does not exist (idempotent).
+//
 // Archive 把现存 checklog 重命名为带时间戳的备份文件，跨 task 启动保留审计轨迹。
 // 持有与 Record 同一把 mutex，使并发的 entry 追加与轮转不会交错。checklog 不存在时
 // 返回 nil（幂等）。
@@ -168,6 +210,10 @@ func Archive(root string) error {
 	return archiveLocked(root)
 }
 
+// Clear deletes the check log file after archiving. Called at task start. Both archiving and deletion run inside the mutex
+// so no Record append can happen between them. After archiving and deleting the active file, it makes a best-effort
+// cleanup of archives beyond the retention window to prevent checklog-*.jsonl from growing unbounded across task starts.
+//
 // Clear 在归档后删除 check log 文件。在 task 启动时调用。归档与删除都在 mutex 内
 // 执行，使两者之间不会有 Record 追加。归档+删除 active 文件后，尽力清理超出 retention
 // 窗口的归档，避免 checklog-*.jsonl 跨 task 启动无限增长。
@@ -184,6 +230,12 @@ func Clear(root string) error {
 	return nil
 }
 
+// pruneArchives deletes checklog-*.jsonl archives beyond the retention window
+// (FORGE_LOG_RETENTION_DAYS, default 30; <=0 disables). Best-effort: PruneArchives only globs
+// checklog-*.jsonl (never touching the active file checklog.jsonl — it lacks the dash the glob requires),
+// so it cannot race with concurrent Record (which only writes the active file). Calling it within Clear's mutex is purely
+// to make rotation+cleanup atomic in intent; failures here do not affect the primary outcome of Clear.
+//
 // pruneArchives 删除超过 retention 窗口的 checklog-*.jsonl 归档
 // （FORGE_LOG_RETENTION_DAYS，默认 30；≤0 禁用）。尽力而为：PruneArchives 只 glob
 // checklog-*.jsonl（绝不碰 active 文件 checklog.jsonl——它没有 glob 要求的那个 dash），

@@ -1,3 +1,10 @@
+// Package projectroot resolves the forge project root from the current working
+// directory (the directory containing the .forge/ subdirectory).
+//
+// Centralizes the "walk up from cwd to find .forge/" logic in one place to
+// avoid cross-package duplication (originally extracted from cli/root.go and
+// the now-removed mcpserver/server.go; mcpserver removed on 2026-07-24).
+//
 // Package projectroot 从当前工作目录解析 forge project root
 // （即包含 .forge/ 子目录的目录）。
 //
@@ -14,6 +21,26 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
+// FindProject resolves cwd → *forgedata.Project (three roots: GitRoot / DataDir
+// / ConfigDir).
+//
+// This is the main entry of the dual-root architecture
+// (docs/plans/refactor-data-home.md):
+//   - GitRoot   = git working-tree root (the basis for git -C operations)
+//   - DataDir   = ~/.forge/projects/<hash12>/ (runtime state: state.json/tasks/
+//                 gates/...)
+//   - ConfigDir = <gitroot>/.forge/ (project config: pipeline.yml/protocol.yml/
+//                 CLAUDE.md/hooks/)
+//
+// Difference from the old Find: Find returns only the single root 「directory
+// containing .forge」; FindProject returns three roots, and the caller picks by
+// purpose (runtime state → DataDir, config → ConfigDir, git ops → GitRoot).
+//
+// The global home ~/.forge is naturally excluded: forgedata.ProjectFor requires
+// cwd to be inside a git repo, and findForgeConfigDir's walk-up stops at the
+// gitRoot boundary—~/.forge is not within any project git repo's gitRoot
+// subtree (unless the user makes home itself a git repo, an extreme edge case).
+//
 // FindProject 解析 cwd → *forgedata.Project（三根：GitRoot / DataDir / ConfigDir）。
 //
 // 这是双根架构（docs/plans/refactor-data-home.md）的主入口：
@@ -35,6 +62,23 @@ func FindProject() (*forgedata.Project, error) {
 	return forgedata.ProjectFor(cwd)
 }
 
+// Find walks up from the current working directory to find the nearest
+// directory containing a project .forge/ subdirectory. Returns the project
+// root; returns an error when cwd is not inside a forge project.
+//
+// Keeps the legacy walk-up implementation (does not delegate to FindProject):
+// FindProject requires cwd to be inside a git repo (forgedata.Key failure is
+// an error), but Find historically supports non-git projects (anything with
+// .forge/, e.g. the task-nongit case). The two differ semantically and
+// coexist until all callers migrate.
+//
+// ~/.forge/ under the user home is a GLOBAL state store (hooks, skills,
+// per-project runtime state under projects/<key>/), not a project root.
+// Excluding it makes running forge from a non-project directory under home
+// (e.g. ~/Downloads) report "not in a forge project" rather than mistaking
+// home for the project root. A real project's .forge/ is always closer to cwd
+// than home, so this exclusion never shadows a legitimate project.
+//
 // Find 从当前工作目录向上查找最近的、含项目 .forge/ 子目录的目录。
 // 返回 project root；cwd 不在 forge project 内时返回 error。
 //
@@ -65,6 +109,12 @@ func Find() (string, error) {
 	}
 }
 
+// isProjectRoot reports whether dir holds a project .forge/ directory: dir
+// must contain .forge/ and must not be the user home (~/.forge/ under home is
+// a global state store, indistinguishable from a project-level .forge/ by name
+// or content—both carry checklog.jsonl/toollog.jsonl; location is the only
+// clean discriminator).
+//
 // isProjectRoot 报告 dir 是否持有一个项目 .forge/ 目录：dir 必须含 .forge/
 // 且不得是用户 home（home 下的 ~/.forge/ 是 global state store，从名字或
 // 内容上都与项目级 .forge/ 无法区分——两者都带 checklog.jsonl/toollog.jsonl；
@@ -79,6 +129,12 @@ func isProjectRoot(dir, homeDir string) bool {
 	return true
 }
 
+// samePath reports whether a and b point to the same filesystem path. Uses
+// os.SameFile (device+inode), staying robust across case-insensitivity,
+// symlinks, and separator/style differences (Git Bash form /c/Users vs Windows
+// form C:\Users). Falls back to cleaned lexical compare when either path
+// cannot be stat-ed.
+//
 // samePath 报告 a 与 b 是否指向同一文件系统路径。用 os.SameFile
 // （device+inode），可跨大小写不敏感、symlink、分隔符/风格差异
 // （Git Bash 形如 /c/Users 对 Windows 形如 C:\Users）保持稳健。

@@ -2,22 +2,31 @@ package taskpipeline
 
 import "testing"
 
+// TestEscapeDisabled_Precedence pins plan 5: per-task Overrides takes precedence, global env serves as
+// fallback — preventing one task's escape from leaking to other tasks in the same shell (root cause of the fake-hard-gate backfire).
+//
 // TestEscapeDisabled_Precedence 钉住方案5：per-task Overrides 优先判定，全局 env 作
-// fallback——防一个任务逃生泄漏到同 shell 的其他任务（"假硬门禁"反噬的根因）。
+// fallback——防一个任务逃生泄漏到同 shell 的其他任务（「假硬门禁」反噬的根因）。
 func TestEscapeDisabled_Precedence(t *testing.T) {
 	t.Setenv("FORGE_WORK_ACTIVITY", "disable")
 	t.Setenv("FORGE_TEST_COVERAGE", "disable")
 
+	// No override → env applies (fallback).
+	//
 	// 无 override → env 生效（fallback）。
 	if !EscapeDisabled(&TaskState{}, escapeWorkActivity, envWorkActivity) {
 		t.Error("env set, no override: want disabled=true (env fallback)")
 	}
-	// override 显式空（""）不取消 env——override 仅在值 "disable" 时生效，env 仍是 fallback。
+	// An explicit empty override ("") does not cancel env — override only fires when value is"disable", env remains fallback.
+	//
+	// override 显式空（""）不取消 env——override 仅在值"disable"时生效，env 仍是 fallback。
 	if !EscapeDisabled(&TaskState{Overrides: TaskOverrides{WorkActivity: ""}}, escapeWorkActivity, envWorkActivity) {
 		t.Error("env set + empty override: env fallback should still fire")
 	}
 }
 
+// TestEscapeDisabled_NoEnvNoOverride: neither override nor env → not disabled.
+//
 // TestEscapeDisabled_NoEnvNoOverride：既无 override 也无 env → 不禁用。
 func TestEscapeDisabled_NoEnvNoOverride(t *testing.T) {
 	t.Setenv("FORGE_WORK_ACTIVITY", "")
@@ -31,6 +40,8 @@ func TestEscapeDisabled_NoEnvNoOverride(t *testing.T) {
 	}
 }
 
+// TestEscapeDisabled_OverrideOnly: override=disable fires while env unset — per-task path works independently.
+//
 // TestEscapeDisabled_OverrideOnly：override=disable 生效而 env 未设——per-task 路径独立可用。
 func TestEscapeDisabled_OverrideOnly(t *testing.T) {
 	t.Setenv("FORGE_WORK_ACTIVITY", "")
@@ -40,6 +51,8 @@ func TestEscapeDisabled_OverrideOnly(t *testing.T) {
 	}
 }
 
+// TestEscapeDisabled_NilState: nil state does not panic, falls back to env.
+//
 // TestEscapeDisabled_NilState：nil state 不 panic，回落 env 判定。
 func TestEscapeDisabled_NilState(t *testing.T) {
 	t.Setenv("FORGE_TEST_COVERAGE", "disable")

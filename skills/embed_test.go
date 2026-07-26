@@ -7,6 +7,9 @@ import (
 	"testing"
 )
 
+// TestExtractTo verifies the embedded skill library extracts fully to a real directory: CONVENTIONS.md + at least one skill's SKILL.md.
+// This is the core of the embed fallback (when --canonical is absent), the only distribution path when link mode is unavailable.
+//
 // TestExtractTo 验证内置 skill 库能完整解压到真实目录：CONVENTIONS.md + 至少一个 skill 的 SKILL.md。
 // 这是 embed fallback（无 --canonical 时）的核心，link 模式不可用时的唯一分发路径。
 func TestExtractTo(t *testing.T) {
@@ -36,6 +39,10 @@ func TestExtractTo(t *testing.T) {
 	}
 }
 
+// TestExtractTo_NoGoFiles guards: embed_test.go (no //go:embed directive) gets embedded by `*`,
+// but it is an in-package test artifact and must never enter the distribution cache — otherwise link/copy would carry it into the user target directory.
+// ExtractTo must explicitly skip .go files.
+//
 // TestExtractTo_NoGoFiles 守护：embed_test.go（无 //go:embed 指令）会被 `*` 嵌入，
 // 但它是包内测试产物，绝不能进入分发缓存——否则 link/copy 会把它带进用户目标目录。
 // ExtractTo 必须显式跳过 .go。

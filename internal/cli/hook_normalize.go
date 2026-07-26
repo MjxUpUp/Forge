@@ -2,11 +2,19 @@ package cli
 
 import "encoding/json"
 
+// normalizeAgentStdin translates the hook stdin of non-Claude-Code agents into the HookInput shape that forge extracts.
+// FORGE_HOOK_AGENT is set by each agent's hook command (e.g. `FORGE_HOOK_AGENT=windsurf forge hook task-guard`) to select the dialect.
+// Without this step, agent stdin would parse to empty file_path/command, and blocking hooks (task-guard,
+// bash-guard) would fail open.
+//
 // normalizeAgentStdin 把非 Claude Code agent 的 hook stdin 翻译成 forge 抽取
 // 所用的 HookInput 形状。FORGE_HOOK_AGENT 由各 agent 的 hook 命令设置（例如
 // `FORGE_HOOK_AGENT=windsurf forge hook task-guard`），用以选择方言。不做这步，
 // agent stdin 会解析出空的 file_path/command，拦截类 hook（task-guard、
 // bash-guard）会 fail open。
+//
+// opencode and pi are code-based: their TS extensions directly construct Claude-shape stdin before spawning forge,
+// so no normalizer is needed here.
 //
 // opencode 和 pi 是 code-based：它们的 TS 扩展在 spawn forge 前就直接构造
 // Claude-shape stdin，故此处无需 normalizer。
@@ -17,7 +25,11 @@ func normalizeAgentStdin(agent string, stdinData []byte, hookInput *HookInput) {
 	}
 }
 
+// windsurfNormalize maps the Windsurf Cascade hook stdin to HookInput.
+//
 // windsurfNormalize 把 Windsurf Cascade 的 hook stdin 映射到 HookInput。
+//
+// Windsurf schema (see docs.windsurf.com/windsurf/cascade/hooks):
 //
 // Windsurf schema（见 docs.windsurf.com/windsurf/cascade/hooks）：
 //
@@ -76,6 +88,10 @@ func windsurfNormalize(stdinData []byte, hookInput *HookInput) {
 	}
 }
 
+// windsurfToolName maps Windsurf events to the Claude Code tool name that forge uses for dispatch.
+// Windsurf does not distinguish Write from Edit at the event level (both are *_write_code), so both map to Write —
+// for enforcement the key is file_path extraction, not the Write/Edit distinction.
+//
 // windsurfToolName 把 Windsurf 事件映射到 forge 据以分发的 Claude Code 工具
 // 名。Windsurf 在事件层并不区分 Write 和 Edit（二者都是 *_write_code），故都
 // 映射到 Write——对 enforcement 而言关键是 file_path 抽取，而非 Write/Edit 的
@@ -102,5 +118,8 @@ func windsurfHookEvent(action string) string {
 	return ""
 }
 
+// (copilotNormalize removed: refactor-data-home locked in five specialized agents, copilot is no longer adapted.
+//  If you need to restore it in the future, implement per docs.github.com/en/copilot/reference/hooks-reference.)
+//
 // (copilotNormalize 删除：refactor-data-home 锁定 5 家专精，copilot 不再适配。
 //  若未来需恢复，按 docs.github.com/en/copilot/reference/hooks-reference 实现。)

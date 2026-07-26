@@ -23,6 +23,8 @@ func TestFingerprint_Stable(t *testing.T) {
 }
 
 func TestFingerprint_WhitespaceNormalized(t *testing.T) {
+	// Whitespace jitter (common on agent retries) should not require re-confirmation.
+	//
 	// 空白抖动（agent 重试时常发生）不该要求重新确认
 	a := Fingerprint("rm  -rf   /tmp/x")
 	b := Fingerprint("rm -rf /tmp/x")
@@ -30,6 +32,8 @@ func TestFingerprint_WhitespaceNormalized(t *testing.T) {
 		t.Fatalf("whitespace variance must normalize to same fingerprint:\n  %q -> %s\n  %q -> %s",
 			"rm  -rf   /tmp/x", a, "rm -rf /tmp/x", b)
 	}
+	// Leading/trailing whitespace is also normalized.
+	//
 	// 首尾空白也归一
 	if Fingerprint("  rm -rf /tmp/x  ") != b {
 		t.Fatal("leading/trailing whitespace must normalize")
@@ -70,10 +74,15 @@ func TestConfirm_AndIsConfirmed(t *testing.T) {
 	}
 }
 
+// TestConfirmByFingerprint verifies the --fingerprint path: register directly with a given fingerprint, not relying on computing the fingerprint from the command.
+// This is the recommended HITL-loop path—the hook emits a hex fingerprint, the agent passes it back, bypassing command-string copy distortion.
+//
 // TestConfirmByFingerprint 验证 --fingerprint 路径：按给定指纹直接登记，不依赖命令算指纹。
 // 这是 HITL 闭环推荐路径——hook 输出 hex 指纹，agent 回传，绕过命令串复制失真。
 func TestConfirmByFingerprint(t *testing.T) {
 	root := forgedatatest.ForDataDir(t.TempDir())
+	// Fake fingerprint (not Fingerprint(any cmd)), proving registration does not go through Fingerprint(cmd).
+	//
 	// 假指纹（非 Fingerprint(any cmd)），证明登记不经 Fingerprint(cmd)。
 	fp := "abc123def4567890abc123def4567890abc123def4567890abc123def4567890"
 	cmd := "mysql -e 'DROP TABLE t'" // 含单引号——命令串路径易失真的典型
@@ -91,15 +100,21 @@ func TestConfirmByFingerprint(t *testing.T) {
 	if !ok {
 		t.Fatal("after ConfirmByFingerprint, IsConfirmed(fp) must be true")
 	}
+	// The fingerprint computed via the command-string path differs from the passed-in fake fingerprint—proving the two paths are independent.
+	//
 	// 命令串路径算出的指纹与传入假指纹不同——证明两条路径独立。
 	if Fingerprint(cmd) == fp {
 		t.Fatal("fixture: fp must differ from Fingerprint(cmd) to prove independence")
 	}
 }
 
+// TestConfirmByFingerprint_RejectsInvalidFormat verifies the format validation of the --fingerprint path:
+// truncated/over-long/non-hex fingerprints must error, not write to a wrong filename and report false success (2026-07 AgentWorld incident:
+// agent ran confirm three times with miscopied fingerprints, each printing 「✅ 已确认」, but the hook could not find them with the real fingerprint and kept blocking).
+//
 // TestConfirmByFingerprint_RejectsInvalidFormat 验证 --fingerprint 路径的格式校验：
 // 残缺/超长/非 hex 的指纹必须报错，而非写入错文件名报虚假成功（2026-07 AgentWorld 事故：
-// agent 三次 confirm 抄错指纹都打印"✅ 已确认"，hook 用真指纹查不到继续拦）。
+// agent 三次 confirm 抄错指纹都打印「✅ 已确认」，hook 用真指纹查不到继续拦）。
 func TestConfirmByFingerprint_RejectsInvalidFormat(t *testing.T) {
 	root := forgedatatest.ForDataDir(t.TempDir())
 	cmd := "rm -rf x"
@@ -115,7 +130,9 @@ func TestConfirmByFingerprint_RejectsInvalidFormat(t *testing.T) {
 			t.Errorf("%s: ConfirmByFingerprint should reject invalid fingerprint %q", c.name, c.fp)
 			continue
 		}
-		// 非法指纹被拒不应落盘——否则 DataDir/hazards/ 留垃圾文件
+		// A rejected invalid fingerprint must not be persisted—otherwise DataDir/hazards/ is left with junk files.
+	//
+	// 非法指纹被拒不应落盘——否则 DataDir/hazards/ 留垃圾文件
 		if c.fp != "" {
 			if _, err := os.Stat(root.HazardsConfirmPath(c.fp)); err == nil {
 				t.Errorf("%s: rejected fingerprint must not be written to disk", c.name)
@@ -123,6 +140,8 @@ func TestConfirmByFingerprint_RejectsInvalidFormat(t *testing.T) {
 		}
 	}
 
+	// A valid 64-char hex passes and is written to the corresponding file.
+	//
 	// 合法 64 hex 通过，且写入对应文件
 	valid := strings.Repeat("a", 64)
 	if err := ConfirmByFingerprint(root, valid, cmd); err != nil {
@@ -133,6 +152,13 @@ func TestConfirmByFingerprint_RejectsInvalidFormat(t *testing.T) {
 	}
 }
 
+// TestValidateFingerprint pins the exported pure-input validation contract: the cli layer uses it before findProjectRoot as
+// a pre-check (so that when CI has no .forge/, not-in-a-forge-project does not mask fingerprint-validation failure). It is a
+// pure function extracted from ConfirmByFingerprint—it needs no root/persistence, so an independent test pins the contract boundary, preventing future
+// refactors of ConfirmByFingerprint from losing its indirect coverage (TestConfirmByFingerprint_RejectsInvalidFormat)
+// without anyone noticing a regression in ValidateFingerprint itself. The error message must contain invalid fingerprint;
+// the cli-layer TestRunHazardConfirm_RejectsInvalidFingerprint relies on that text to assert the error source.
+//
 // TestValidateFingerprint 钉住导出的纯输入校验契约：cli 层在 findProjectRoot 前用它做
 // 前置校验（CI 无 .forge/ 时不让 not-in-a-forge-project 掩盖指纹校验失败）。它是从
 // ConfirmByFingerprint 抽出的纯函数——不需 root/落盘，故独立测试钉契约边界，避免未来
@@ -170,9 +196,13 @@ func TestValidateFingerprint(t *testing.T) {
 	}
 }
 
+// TestConfirmByFingerprint_NormalizesUppercase verifies that upper/mixed-case hex is normalized to lowercase
+// before being persisted—transcription-style agents (GPT family) prefer uppercase when regenerating long hexes; if persisted as-is, on case-sensitive filesystems
+// the hook's lowercase lookup would miss them (reproducing "reporting success yet still blocked"). Normalize rather than reject: tolerant of input while guaranteeing a hit.
+//
 // TestConfirmByFingerprint_NormalizesUppercase 验证大写/混合大小写 hex 被归一化为小写
 // 后落盘——转写型 agent（GPT 系）重生长 hex 偏好大写，若原样落盘会在大小写敏感文件系统
-// 上被 hook 的小写查询漏掉（复现"报成功仍被拦"）。归一化而非拒绝，既宽容输入又保证命中。
+// 上被 hook 的小写查询漏掉（复现「报成功仍被拦」）。归一化而非拒绝，既宽容输入又保证命中。
 func TestConfirmByFingerprint_NormalizesUppercase(t *testing.T) {
 	root := forgedatatest.ForDataDir(t.TempDir())
 	cmd := "rm -rf x"
@@ -182,6 +212,10 @@ func TestConfirmByFingerprint_NormalizesUppercase(t *testing.T) {
 	if err := ConfirmByFingerprint(root, upper, cmd); err != nil {
 		t.Fatalf("uppercase hex should be normalized and accepted: %v", err)
 	}
+	// After normalization what is persisted is the lowercase filename—so the hook's Fingerprint() lowercase lookup can hit. Use ReadDir
+	// to see the actual filename rather than os.Stat(upper): Windows NTFS is case-insensitive, so Stat on an uppercase path would match the
+	// lowercase file and could not distinguish them (the test must run on Windows/Linux/macOS alike).
+	//
 	// 归一化后落盘的是小写文件名——hook 用 Fingerprint() 的小写查询才能命中。用 ReadDir
 	// 看实际文件名而非 os.Stat(upper)：Windows NTFS 大小写不敏感，Stat 大写路径会匹配到
 	// 小写文件、无法区分（测试必须在 Windows/Linux/macOS 都能跑）。
@@ -220,6 +254,8 @@ func TestIsConfirmed_Expired(t *testing.T) {
 	cmd := "git push --force"
 	fp := Fingerprint(cmd)
 
+	// Hand-write an expired stamp (simulating outside the 5min window).
+	//
 	// 手工写过期标记（模拟 5min 窗口外）
 	c := Confirmation{
 		Fingerprint: fp,
@@ -250,6 +286,8 @@ func TestIsConfirmed_CorruptFile(t *testing.T) {
 	if err := os.WriteFile(root.HazardsConfirmPath(fp), []byte("{not json"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// A corrupt file counts as not confirmed (rather than erroring)—next time it is blocked, re-confirm.
+	//
 	// 损坏视为未确认（而非报错）——下次拦了重新确认
 	ok, err := IsConfirmed(root, fp)
 	if err != nil {
@@ -265,6 +303,8 @@ func TestConfirm_RenewsWindow(t *testing.T) {
 	cmd := "kubectl delete ns prod"
 	fp := Fingerprint(cmd)
 
+	// First write a stamp that is about to expire.
+	//
 	// 先写一个即将过期的标记
 	c := Confirmation{
 		Fingerprint: fp, ConfirmedAt: time.Now().Add(-4 * time.Minute),
@@ -274,6 +314,8 @@ func TestConfirm_RenewsWindow(t *testing.T) {
 	os.MkdirAll(root.HazardsDir(), 0755)
 	os.WriteFile(root.HazardsConfirmPath(fp), data, 0o644)
 
+	// Confirm renews the window.
+	//
 	// Confirm 续期
 	if _, err := Confirm(root, cmd); err != nil {
 		t.Fatal(err)
@@ -286,6 +328,8 @@ func TestConfirm_RenewsWindow(t *testing.T) {
 
 func TestActiveConfirmations_ListsAndPrunes(t *testing.T) {
 	root := forgedatatest.ForDataDir(t.TempDir())
+	// Register two active ones + hand-write one expired.
+	//
 	// 登记两个活跃 + 手工写一个过期
 	Confirm(root, "rm -rf /tmp/a")
 	Confirm(root, "git push --force")
@@ -303,6 +347,8 @@ func TestActiveConfirmations_ListsAndPrunes(t *testing.T) {
 	if len(active) != 2 {
 		t.Fatalf("expected 2 active confirmations, got %d", len(active))
 	}
+	// Expired files should be pruned.
+	//
 	// 过期文件应被清理
 	if _, err := os.Stat(root.HazardsConfirmPath(Fingerprint("x"))); !os.IsNotExist(err) {
 		t.Fatal("ActiveConfirmations must prune expired confirmation files")

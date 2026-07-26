@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 )
 
+// makeDirLink creates a directory symbolic link via symlink on Unix.
+//
 // makeDirLink 在 Unix 用 symlink 创建目录符号链接。
 func makeDirLink(target, source string) error {
 	src, err := filepath.Abs(source)
@@ -27,6 +29,8 @@ func makeDirLink(target, source string) error {
 	return nil
 }
 
+// isJunctionOrLink reports whether the path is a symlink.
+//
 // isJunctionOrLink 检测路径是否为 symlink。
 func isJunctionOrLink(path string) bool {
 	if _, err := os.Readlink(path); err == nil {

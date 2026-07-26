@@ -79,12 +79,19 @@ func runPluginPack(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// flagString returns the string flag value (errors ignored — cobra guarantees registration).
+// plugin.go local helper.
+//
 // flagString 取 string flag 值（错误忽略——cobra 保证已注册）。plugin.go 局部 helper。
 func flagString(cmd *cobra.Command, name string) string {
 	v, _ := cmd.Flags().GetString(name)
 	return v
 }
 
+// pluginStatusCmd reports whether the forge plugin is installed at user level. Used by
+// scripts/hooks (the dedupe branch of init-suggest) for detection: exit 0 = installed
+// (plugin has taken over hooks+MCP at user level), non-zero = not installed.
+//
 // pluginStatusCmd 报告 forge plugin 是否在 user-level 已装。供脚本/hook（init-suggest
 // 的 dedupe 分支）检测：exit 0 = 已装（plugin 已 user-level 接管 hooks+MCP），非零 = 未装。
 var pluginStatusCmd = &cobra.Command{
@@ -111,6 +118,12 @@ RunE 仍 return error，cli.Execute root.go:66 会向 stderr 再打一行——�
 	},
 }
 
+// pluginDedupeCmd one-shot cleans project-level duplicate hooks (settings.local.json) and the
+// forge MCP server (.mcp.json) when the plugin is already installed. The init-suggest SessionStart
+// hook calls it automatically (with --keep-empty for in-place migration that keeps the file shell);
+// it can also be run manually (default deletes empty files). Idempotent: no-op when nothing is
+// duplicate (no output; the hook uses this to avoid prompt noise).
+//
 // pluginDedupeCmd 在 plugin 已装时一次性清理 project-level 重复的 hooks（settings.local.json）
 // 与 forge MCP server（.mcp.json）。init-suggest SessionStart hook 自动调用（传 --keep-empty,
 // 存量迁移且保留文件壳）,也可手动跑（默认删空文件）。幂等：无重复时 no-op（无输出，hook 据此不产生提示噪音）。
@@ -157,6 +170,10 @@ func runPluginDedupe(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("resolve dir: %w", err)
 	}
+	// --keep-empty: automatic invocation (init-suggest SessionStart) passes true — keep the
+	// settings.local.json file shell (users often place/edit it actively, never silently delete);
+	// manual dedupe defaults to false, deleting empty files (explicit cleanup semantics).
+	//
 	// --keep-empty: 自动调用（init-suggest SessionStart）传 true——保留 settings.local.json
 	// 文件壳（用户常主动放置/编辑,绝不静默删）;手动 dedupe 默认 false,删空文件（显式清理语义）。
 	keepEmpty, _ := cmd.Flags().GetBool("keep-empty")
@@ -168,6 +185,17 @@ func runPluginDedupe(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("strip mcp: %w", err)
 	}
+	// user-level: plugin.json registers all ForgeHookSpec at user level → forge hooks in
+	// ~/.claude/settings.local.json are guaranteed duplicates (legacy global forge init writing
+	// home / stale global install residue). Claude Code runs them twice. keepEmpty is fixed to
+	// true (inside StripForgeHooksUserLevel) — user global config is never deleted, only forge
+	// hooks are cleared keeping the shell, independent of the project-level keepEmpty flag.
+	//
+	// return err (consistent with the two project-level sites, unlike dedupeProjectLevelIfPlugin's
+	// warn): this command is run explicitly by the user for cleanup, so failures should propagate
+	// rather than be swallowed; the autoSync defer path does the opposite, degrading to warn so it
+	// does not block the main command.
+	//
 	// user-level: plugin.json 在 user-level 注册全部 ForgeHookSpec → ~/.claude/settings.local.json
 	// 的 forge hook 必重复（历史 global forge init 写 home / 旧全局安装残留）。Claude Code 双跑。
 	// keepEmpty 固定 true（StripForgeHooksUserLevel 内部）——用户全局配置绝不删,只清 forge hooks
@@ -180,6 +208,8 @@ func runPluginDedupe(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("strip user-level hooks: %w", err)
 	}
 	if !hooksChanged && !mcpChanged && !userChanged {
+		// No duplicates → no-op, no output (init-suggest hook uses empty output to avoid prompt noise).
+		//
 		// 无重复 → no-op，不输出（init-suggest hook 据空输出不产生提示噪音）。
 		return nil
 	}
@@ -194,6 +224,9 @@ func runPluginDedupe(cmd *cobra.Command, args []string) error {
 		fmt.Fprintln(out, `plugin 已 user-level 接管，移除项目级重复 `+strings.Join(parts, "+")+`（`+abs+`）`)
 	}
 	if userChanged {
+		// user-level gets its own line: different location (global ~/.claude rather than the project
+		// directory), a separate line lets the user know the global config was cleaned.
+		//
 		// user-level 单独提示:位置不同（全局 ~/.claude 而非项目目录）,独立一行让用户知晓全局配置被清。
 		fmt.Fprintln(out, `plugin 已 user-level 接管，移除 user-level 重复 hooks（`+hooks.ClaudeHome()+`）`)
 	}

@@ -5,6 +5,9 @@ import (
 	"testing"
 )
 
+// TestMatchesScope pins coverage semantics: empty scope covers all; exact/prefix-recursive/glob
+// three match kinds; test files exempt along with declared source.
+//
 // TestMatchesScope 钉住覆盖语义：空 scope 全覆盖；精确/前缀递归/glob 三种命中；测试随源码免查。
 func TestMatchesScope(t *testing.T) {
 	cases := []struct {
@@ -20,16 +23,22 @@ func TestMatchesScope(t *testing.T) {
 		{`目录前缀递归（尾斜杠）`, `internal/cli/task.go`, []string{`internal/cli/`}, true},
 		{`前缀不误匹配同名片段`, `internal/cli2/x.go`, []string{`internal/cli`}, false},
 		{`glob 直接子文件`, `internal/cli/task.go`, []string{`internal/cli/*.go`}, true},
+		// path.Match * does not cross /: internal/cli/*.go should not match multi-level subdir files.
+		//
 		// path.Match 的 * 不跨 /：internal/cli/*.go 不该匹配多层级子目录文件。
 		{`glob 不跨层级`, `internal/cli/sub/x.go`, []string{`internal/cli/*.go`}, false},
 		{`通配根级 ext`, `task.go`, []string{`*.go`}, true},
 		{`通配根级不跨层级`, `cli/task.go`, []string{`*.go`}, false},
 		{`多 entry 任一命中`, `internal/cli/task.go`, []string{`internal/act/*`, `internal/cli/*`}, true},
+		// Test files exempt along with declared source (a.go declared → a_test.go covered).
+		//
 		// 测试文件随声明源码免查（a.go 声明 → a_test.go 覆盖）。
 		{`Go 测试随源码覆盖`, `internal/cli/task_test.go`, []string{`internal/cli/task.go`}, true},
 		{`TS 测试随源码覆盖`, `src/app.test.ts`, []string{`src/app.ts`}, true},
 		{`Python 测试随源码覆盖`, `test_app.py`, []string{`app.py`}, true},
 		{`测试文件源码不在 scope`, `internal/cli/hook_test.go`, []string{`internal/cli/task.go`}, false},
+		// Generated/type whitelist always covered (reused from testcoverage single source of truth).
+		//
 		// 生成/类型白名单恒覆盖（testcoverage 单一真相源复用）。
 		{`生成文件恒覆盖`, `api/client.gen.go`, []string{`internal/cli/*`}, true},
 		{`main.go 恒覆盖`, `main.go`, []string{`internal/cli/*`}, true},
@@ -43,6 +52,9 @@ func TestMatchesScope(t *testing.T) {
 	}
 }
 
+// TestScopeDrift pins drift computation: only source files counted; non-source ignored;
+// test files covered by declared source do not count as drift.
+//
 // TestScopeDrift 钉住 drift 计算：仅源码计数；非源码忽略；测试文件被声明的源码覆盖不计数。
 func TestScopeDrift(t *testing.T) {
 	scope := []string{`internal/cli/task.go`, `internal/cli/scope.go`}
@@ -62,6 +74,9 @@ func TestScopeDrift(t *testing.T) {
 	}
 }
 
+// TestScopeDrift_EmptyScopeNil: empty scope always returns nil—no declaration means no drift
+// (advisory precondition).
+//
 // TestScopeDrift_EmptyScopeNil 空 scope 永远返回 nil——无声明即无 drift（advisory 前提）。
 func TestScopeDrift_EmptyScopeNil(t *testing.T) {
 	if got := ScopeDrift([]string{`a.go`, `b.go`}, nil); got != nil {
@@ -69,6 +84,8 @@ func TestScopeDrift_EmptyScopeNil(t *testing.T) {
 	}
 }
 
+// TestScopeDrift_PreservesOrder multiple drift files preserve input order (for stable display/diffing).
+//
 // TestScopeDrift_PreservesOrder 多个 drift 文件保持输入顺序（便于稳定展示/比对）。
 func TestScopeDrift_PreservesOrder(t *testing.T) {
 	changed := []string{`a/x.go`, `b/y.go`, `c/z.go`}
@@ -79,6 +96,8 @@ func TestScopeDrift_PreservesOrder(t *testing.T) {
 	}
 }
 
+// TestSourcePathsForTest pins the test→source reverse-mapping convention (Go/TS/JS/Python).
+//
 // TestSourcePathsForTest 钉住测试→源码反推约定（Go/TS/JS/Python）。
 func TestSourcePathsForTest(t *testing.T) {
 	cases := []struct {

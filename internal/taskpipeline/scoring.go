@@ -12,6 +12,17 @@ import (
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 )
 
+// BuildEvaluateInput builds the scoring input from TaskState + checklog + git. ScoreTask (score
+// persistence) and CLI CollectGoldenFromTask (collecting real golden fixtures) share this
+// function—single source of truth, avoiding drift between two assembly logics. Sunk from
+// cli/task_golden.go into taskpipeline so that MCP (forge_task_complete) and CLI share the same
+// scoring path—the complete endpoint of the proof-of-work loop is programmable for agents.
+//
+// Known limitation: GitDiffStat/TestAssertionCount/TestCoverage depend on the git state of
+// state.HeadCommit. Accurate right when the task completes (HEAD≈HeadCommit); a later HEAD advance
+// lets subsequent changes leak into git diff and drift (scope dimension is most affected). Hence
+// golden collection should happen at—or right after—task completion.
+//
 // BuildEvaluateInput 从 TaskState + checklog + git 构造评分输入。ScoreTask（评分落盘）与
 // CLI CollectGoldenFromTask（采集真实 golden fixture）共用此函数——单一真相源，避免两份
 // 组装逻辑漂移。从 cli/task_golden.go 下沉到 taskpipeline，让 MCP（forge_task_complete）与
@@ -21,9 +32,13 @@ import (
 // 任务刚完成时（HEAD≈HeadCommit）精确；事后 HEAD 推进会让 git diff 含后续改动而漂移
 // （scope 维度受影响最大）。故 golden 采集应在任务完成那刻或紧随其后。
 func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, *scoringtypes.ScoringConfig, error) {
+	// Collect git data (failure is non-fatal).
+	//
 	// 采集 git 数据（失败不致命）
 	gitDiffStat, _ := scoring.CollectGitData(root, state.Branch, state.HeadCommit)
 
+	// Infer hook results from gate history and check log.
+	//
 	// 从 gate history 与 check log 推断 hook 结果。
 	compilePassed := false
 	compileChecked := false
@@ -36,12 +51,20 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 		}
 	}
 
+	// covered/total/passed always come from a live CheckTestCoverage (objective; same input and
+	// logic as the gate → must agree). The old path only read a binary passed from checklog, which
+	// cannot support continuous scoring for the testing dimension; computing live is both accurate
+	// and consistent with the gate verdict (same CheckTestCoverage logic, same task diff).
+	//
 	// covered/total/passed 始终来自实时 CheckTestCoverage（客观，与门禁同输入同逻辑 → 必
 	// 一致）。旧路径只从 checklog 读二值 passed，无法支撑 testing 维度的连续打分；实时算
 	// 既准确又与门禁 verdict 一致（同 CheckTestCoverage 逻辑、同 task diff）。
 	tcOK, tcMissing, tcTotal := CheckTestCoverage(root, state)
 	tcCovered := tcTotal - len(tcMissing)
 	testCoveragePassed := tcOK
+	// checked: whether the gate has run (checklog has a test-coverage-gate entry). No entry →
+	// fallback to checked (covered/total/passed are computed live, scoring remains trustworthy).
+	//
 	// checked：门禁是否跑过（checklog 有 test-coverage-gate 条目）。无条目 → fallback 视为
 	// checked（实时已算 covered/total/passed，评分仍可信）。
 	testCoverageChecked := false
@@ -62,6 +85,8 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 		testCoverageChecked = true
 	}
 
+	// Count retries: gates that appear multiple times with mixed outcomes.
+	//
 	// 统计 retry：多次出现且结果混合的 gate
 	retries := 0
 	gateAttempts := make(map[string][]bool)
@@ -80,6 +105,8 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 		}
 	}
 
+	// Load scoring config from protocol.
+	//
 	// 从 protocol 加载 scoring 配置
 	var config *scoringtypes.ScoringConfig
 	proto, err := protocol.Load(root)
@@ -97,9 +124,16 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 		completedAt = *state.CompletedAt
 	}
 
+	// Assertion density (C): count assertions in this task's changed test files, feeding fake-test
+	// detection for the testing dimension.
+	//
 	// 断言密度（C）：统计本任务 changed 测试文件的断言数，供 testing 维度假测试检测。
 	testAssertionCount, testFileCount := scoring.CollectAssertionDensity(root, state.Branch, state.HeadCommit)
 
+	// Evidence-chain source breakdown: aggregate deterministic/agent-claim from checklog for
+	// ScoreResult.Evidence observability (not part of scoring). ForTask shares the source with
+	// forge trace.
+	//
 	// 证据链来源分布：从 checklog 聚合 deterministic/agent-claim，供 ScoreResult.Evidence
 	// 可观测（不参与打分）。ForTask 与 forge trace 同源。
 	evDeterministic, evAgentClaim := 0, 0
@@ -133,6 +167,10 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 	return input, config, nil
 }
 
+// ScoreTask scores and persists. No-op if already scored. Proof-of-work loop: the complete
+// endpoint produces the Score that feeds act/health/dashboard. Sunk from cli/task.go; MCP
+// complete and CLI share the same scoring path.
+//
 // ScoreTask 评分并落盘。已评分则 no-op。proof-of-work 闭环：complete 的终点产出 Score，
 // 喂给 act/health/dashboard。从 cli/task.go 下沉，MCP complete 与 CLI 共用同一评分路径。
 func ScoreTask(root string, state *TaskState) error {
@@ -152,6 +190,13 @@ func ScoreTask(root string, state *TaskState) error {
 	return SaveTaskState(root, state)
 }
 
+// AppendConclusion builds + persists an Act conclusion for a completed task (evidence-driven),
+// returning (conclusion, directive, err): empty directive = no RetrospectiveNudge; non-nil err =
+// project resolution or act append failure (caller decides stderr/ignore—CLI warns, MCP stuffs
+// into Message). Aggregates the checklog.ForTask evidence chain + state.Acceptance pass rate +
+// state.Score, then calls act.BuildConclusion. Sunk from cli/task.go so MCP complete and CLI
+// share the Act feedback arm.
+//
 // AppendConclusion 构建 + 落盘一个完成任务的 Act 结论（证据驱动），返回 (conclusion, directive, err)：
 // directive 空=无 RetrospectiveNudge；err 非 nil=project 解析或 act append 失败（调用方决定
 // stderr/忽略——CLI 打 warning，MCP 塞进 Message）。聚合 checklog.ForTask 证据链 +
@@ -181,6 +226,9 @@ func AppendConclusion(root string, state *TaskState) (act.Conclusion, string, er
 	return conc, directive, nil
 }
 
+// PhaseKeys converts a DesignPhase slice to a string slice (input for act.BuildConclusion). Sunk
+// from cli/task.go.
+//
 // PhaseKeys 把 DesignPhase slice 转 string slice（act.BuildConclusion 入参）。从 cli/task.go 下沉。
 func PhaseKeys(phases []DesignPhase) []string {
 	if len(phases) == 0 {

@@ -6,6 +6,9 @@ import (
 	"strings"
 )
 
+// Route is one entry of skill-routing/routes.json (aligned with the sync.py routes.json schema).
+// Match semantics: a substring hit on any keyword in the Match array (case-insensitive) triggers this skill.
+//
 // Route 是 skill-routing/routes.json 的一条路由（对齐 sync.py routes.json schema）。
 // 匹配语义：Match 数组任一关键词子串命中（大小写不敏感）即触发该 skill。
 type Route struct {
@@ -14,6 +17,8 @@ type Route struct {
 	Reason string   `json:"reason"`
 }
 
+// LoadRoutes loads the routing table from routes.json, skipping comment entries without a skill field (_comment).
+//
 // LoadRoutes 从 routes.json 加载路由表，跳过无 skill 字段的注释项（_comment）。
 func LoadRoutes(path string) ([]Route, error) {
 	data, err := os.ReadFile(path)
@@ -34,6 +39,9 @@ func LoadRoutes(path string) ([]Route, error) {
 	return out, nil
 }
 
+// MatchRoute returns the first skill hit by the input (substring match on any Match keyword, case-insensitive).
+// Returns an empty string if nothing matches. Aligned with sync.py route-matching semantics.
+//
 // MatchRoute 返回输入命中的第一个 skill（Match 任一关键词子串命中，大小写不敏感）。
 // 无命中返回空串。对齐 sync.py 路由匹配语义。
 func MatchRoute(routes []Route, input string) string {

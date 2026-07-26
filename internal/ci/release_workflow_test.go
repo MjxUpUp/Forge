@@ -1,5 +1,14 @@
 package ci
 
+// This package guards the structural integrity of forge's own release pipeline (.github/workflows/release.yml).
+// It is the "CI anti-bypass" sandbox-verification layer: parse release.yml to assert the needs hard-dependency chain and trigger conditions,
+// without triggering a real release — if someone removes `needs: test` or changes trigger conditions, this test goes red immediately.
+//
+// Historical lesson (2026-06, v0.27.0/v0.27.1): the needs chain in release.yml was correct,
+// but the release was entirely bypassed by manual gh release + npm publish (skipping the workflow). This test guards the
+// needs chain from being broken; bypassing the workflow manually is constrained by the release discipline in RELEASE.md at the repo root
+// (that layer cannot be sandbox-verified — manual behavior is outside CI).
+//
 // 本包守护 forge 自身发布链路（.github/workflows/release.yml）的结构不变质。
 // 这是"CI 防绕过"的沙盒验证层：解析 release.yml 断言 needs 强依赖链和触发条件，
 // 不触发真实 release——未来有人误删 needs: test / 改触发条件，本测试立刻红。
@@ -18,8 +27,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// releaseJob keeps only the fields needed to guard the needs chain.
+//
 // releaseJob 只取守护 needs 链所需字段。
 type releaseJob struct {
+	// needs can be a scalar (needs: test) or a sequence (needs: [a, b]); received as-is via yaml.Node,
+	// then normalized by needsList. Both forms are valid GitHub Actions syntax.
+	//
 	// needs 可能是标量（needs: test）或序列（needs: [a, b]），用 yaml.Node 原样接收，
 	// 再由 needsList 归一化。GitHub Actions 两种写法都合法。
 	Needs yaml.Node `yaml:"needs"`
@@ -28,6 +42,10 @@ type releaseJob struct {
 	} `yaml:"steps"`
 }
 
+// releaseWorkflow parses only jobs — under yaml.v3 (YAML 1.1 bool semantics) the top-level on: field
+// is resolved as bool(true), so structurally parsing on would fail. Ignoring the on key does not affect jobs
+// parsing (jobs is a plain string key); trigger-condition assertions go through raw text instead (see TestReleaseWorkflow_TagTriggered).
+//
 // releaseWorkflow 只解析 jobs——顶层 on: 字段在 yaml.v3（YAML 1.1 bool 语义）下
 // 会被 resolve 成 bool(true)，结构化解析 on 会失败。on key 被忽略不影响 jobs
 // 解析（jobs 是普通字符串 key）；触发条件断言改走原始文本（见 TestReleaseWorkflow_TagTriggered）。
@@ -35,6 +53,11 @@ type releaseWorkflow struct {
 	Jobs map[string]releaseJob `yaml:"jobs"`
 }
 
+// needsList normalizes the needs yaml.Node into a list of strings.
+//   - ScalarNode (needs: test) → ["test"]
+//   - SequenceNode (needs: [a, b]) → ["a", "b"]
+//   - No needs (test job) → nil
+//
 // needsList 把 needs yaml.Node 归一化为字符串列表。
 //   - ScalarNode（needs: test）→ ["test"]
 //   - SequenceNode（needs: [a, b]）→ ["a", "b"]
@@ -56,6 +79,8 @@ func needsList(n yaml.Node) []string {
 
 func readReleaseYAML(t *testing.T) []byte {
 	t.Helper()
+	// go test runs with cwd = internal/ci/, and release.yml is at the repo root .github/workflows/.
+	//
 	// go test 运行时 cwd = internal/ci/，release.yml 在仓库根 .github/workflows/。
 	path := filepath.Join("..", "..", ".github", "workflows", "release.yml")
 	data, err := os.ReadFile(path)
@@ -74,6 +99,11 @@ func loadReleaseWorkflow(t *testing.T) *releaseWorkflow {
 	return &wf
 }
 
+// TestReleaseWorkflow_TagTriggered: releases may only be triggered by pushing a tag.
+// Prevents someone from switching to branch-push triggers, which would release on every main push — that would bypass the "release only on explicit tag"
+// discipline and run the needs chain on every push.
+// The on field is asserted via raw text (see releaseWorkflow comment; the yaml.v3 on→bool pitfall).
+//
 // TestReleaseWorkflow_TagTriggered：发版只能由打 tag 触发。
 // 防止有人改成 push 分支触发，导致每次 main 推送都发版——那会绕过"显式打 tag 才发版"
 // 的纪律，且让 needs 链在每次推送时都跑一遍。
@@ -89,6 +119,10 @@ func TestReleaseWorkflow_TagTriggered(t *testing.T) {
 	}
 }
 
+// TestReleaseWorkflow_NeedsChain: guard the test→goreleaser→npm hard-dependency chain.
+// This is the core of the "CI anti-bypass" mechanism — as long as releases go through release.yml, a failing test means goreleaser/npm do not run,
+// so no bad packages are published. Sandbox verification: this test parses the yaml to assert needs, without triggering a real release.
+//
 // TestReleaseWorkflow_NeedsChain：守护 test→goreleaser→npm 强依赖链。
 // 这是"CI 防绕过"机制核心——只要发版走 release.yml，test 失败则 goreleaser/npm 都不跑，
 // 不会发出坏包。沙盒验证：本测试解析 yaml 断言 needs，无需触发真实 release。
@@ -113,6 +147,10 @@ func TestReleaseWorkflow_NeedsChain(t *testing.T) {
 	}
 }
 
+// TestReleaseWorkflow_TestJobIsGateSource: the test job is the source of the needs chain —
+// if it degrades (drops go test, drops -race), the whole anti-bypass chain becomes nominal (goreleaser needs an empty test).
+// So the test job must run go test with -race (matching ci.yml).
+//
 // TestReleaseWorkflow_TestJobIsGateSource：test job 是 needs 链的源头——
 // 它若退化（去掉 go test、去掉 -race），整条防绕过链就名存实亡（goreleaser needs 一个空 test）。
 // 故 test job 必须跑 go test 且带 -race（与 ci.yml 一致）。

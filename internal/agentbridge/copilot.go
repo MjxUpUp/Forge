@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+// CopilotTranslator generates .github/instructions/forge-quality.instructions.md.
+//
 // CopilotTranslator 生成 .github/instructions/forge-quality.instructions.md。
 type CopilotTranslator struct{}
 
@@ -36,6 +38,8 @@ func (t *CopilotTranslator) AgentType() AgentType {
 func buildCopilotInstructions(input *TranslationInput) string {
 	var sb strings.Builder
 
+	// Copilot instructions frontmatter.
+	//
 	// Copilot instructions 的 frontmatter
 	sb.WriteString("---\n")
 	sb.WriteString("applyTo: \"**/*.go,**/*.rs,**/*.ts,**/*.tsx,**/*.js,**/*.jsx,**/*.py,**/*.java,**/*.rb,**/*.zig,**/*.nim\"\n")
@@ -43,6 +47,8 @@ func buildCopilotInstructions(input *TranslationInput) string {
 
 	sb.WriteString("# Forge Quality Protocol\n\n")
 
+	// Quality standards.
+	//
 	// 质量标准
 	sb.WriteString("## Quality Standards\n\n")
 	for _, s := range input.Protocol.Standards {
@@ -64,6 +70,8 @@ func buildCopilotInstructions(input *TranslationInput) string {
 	}
 	sb.WriteString("\n")
 
+	// Session rules as behavioral directives.
+	//
 	// 会话规则作为行为指令
 	sb.WriteString("## Behavioral Rules\n\n")
 	for _, r := range input.Protocol.SessionRules {

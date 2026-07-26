@@ -7,17 +7,30 @@ import (
 	"testing"
 )
 
+// plugin_detect_test.go — behavior guard for IsClaudePluginInstalledAt.
+//
+// The fixture is based on the real installed_plugins.json schema verified on
+// an actual machine (see path below). The top level is a plugins map whose
+// key is <name>@<mp> and whose value is an array; each element carries a scope
+// field. The real file also contains superpowers@... with scope=project and a
+// projectPath, which corroborates the "scope=user only" rule (project-scope
+// is not a machine-wide takeover).
+//
 // plugin_detect_test.go — IsClaudePluginInstalledAt 的真行为守卫。
 //
 // fixture 基于真机核实的 installed_plugins.json schema（C:\Users\Administrator\.claude\
 // plugins\installed_plugins.json）：
 //
-//	{"version":2,"plugins":{"<name>@<marketplace>":[{"scope":"user"|"project",...}]}}
+//	{"version":2,"plugins":{"<name>@<marketplace":[{"scope":"user"|"project",...}]}}
 //
 // 非 guessing——真机文件确认顶层 plugins map + key 是 <name>@<mp> + value 是数组 +
 // 每个元素 scope 字段。真机还含 superpowers@... scope=project 带 projectPath,正好
-// 印证"只认 scope=user"（project-scope 非全机器接管）。
+// 印证「只认 scope=user」（project-scope 非全机器接管）。
 
+// writeInstalledPlugins writes <claudeHome>/plugins/installed_plugins.json.
+// plugins looks like {"forge@mp":[{"scope":"user"}]}. With multiple install
+// entries the array holds multiple elements.
+//
 // writeInstalledPlugins 写 <claudeHome>/plugins/installed_plugins.json。plugins 形如
 // {"forge@mp":[{"scope":"user"}]}。多个 install 元素时数组多项。
 func writeInstalledPlugins(t *testing.T, claudeHome string, plugins map[string][]map[string]string) {
@@ -74,6 +87,9 @@ func TestIsClaudePluginInstalledAt_UserScope(t *testing.T) {
 
 func TestIsClaudePluginInstalledAt_ProjectScopeOnly(t *testing.T) {
 	home := t.TempDir()
+	// Real shape of superpowers@: scope=project + projectPath. Not a user-level
+	// machine-wide takeover.
+	//
 	// 真机 superpowers@ 的形状：scope=project + projectPath。非 user-level 全机器接管。
 	writeInstalledPlugins(t, home, map[string][]map[string]string{
 		"forge@mp": {{"scope": "project", "projectPath": "/some/path"}},
@@ -95,6 +111,9 @@ func TestIsClaudePluginInstalledAt_NonForgePlugin(t *testing.T) {
 
 func TestIsClaudePluginInstalledAt_MixedScopes(t *testing.T) {
 	home := t.TempDir()
+	// Same plugin with multiple installs: one project + one user — any user
+	// scope counts as installed.
+	//
 	// 同一 plugin 多 install：一个 project 一个 user —— 任一 user 即视为已装。
 	writeInstalledPlugins(t, home, map[string][]map[string]string{
 		"forge@mp": {
@@ -109,6 +128,9 @@ func TestIsClaudePluginInstalledAt_MixedScopes(t *testing.T) {
 
 func TestIsClaudePluginInstalledAt_ForgePrefixNotSubstring(t *testing.T) {
 	home := t.TempDir()
+	// "notforge@mp" contains the forge substring but is not a forge@ prefix —
+	// HasPrefix guards against substring false positives.
+	//
 	// "notforge@mp" 含 forge 子串但非 forge@ 前缀——HasPrefix 防 substring 误判。
 	writeInstalledPlugins(t, home, map[string][]map[string]string{
 		"notforge@mp": {{"scope": "user"}},
@@ -138,6 +160,9 @@ func TestClaudeHome_Fallback(t *testing.T) {
 }
 
 func TestIsClaudePluginInstalled_Wrapper(t *testing.T) {
+	// Inject CLAUDE_CONFIG_DIR = temp home; the wrapper should delegate to
+	// IsClaudePluginInstalledAt(home).
+	//
 	// 注入 CLAUDE_CONFIG_DIR = temp home，wrapper 应走 IsClaudePluginInstalledAt(home)。
 	home := t.TempDir()
 	t.Setenv("CLAUDE_CONFIG_DIR", home)

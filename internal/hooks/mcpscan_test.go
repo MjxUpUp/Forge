@@ -8,8 +8,16 @@ import (
 	"testing"
 )
 
+// runMcpScanHook runs the real McpScanHook script; FORGE_CWD points at a temp
+// "project" directory (with or without .mcp.json). A .git is created so the
+// script's project-root detection hits. mcp-scan is a pure bash config-layer
+// scan with no forge invocation, so no forge stub is needed (contrast the
+// function-stub pattern in skillscan_test). mcp-scan advisory always exits 0;
+// a non-zero exit means the script itself crashed (syntax error), which is a
+// test failure rather than a scenario under test.
+//
 // runMcpScanHook 执行真实 McpScanHook 脚本,FORGE_CWD 指向一个含(或不含)
-// .mcp.json 的临时"项目"目录(建 .git 让脚本的项目根探测命中)。mcp-scan 是纯
+// .mcp.json 的临时「项目」目录(建 .git 让脚本的项目根探测命中)。mcp-scan 是纯
 // bash config-layer 扫描,不调 forge,故无需 forge stub(对照 skillscan_test 的
 // function-stub 模式)。mcp-scan advisory 永远 exit 0;非零退出 = 脚本自身崩
 // (syntax error),是测试失败而非被测场景。
@@ -37,6 +45,9 @@ func runMcpScanHook(t *testing.T, repoDir string) string {
 	return string(out)
 }
 
+// TestMcpScanHook_NoMcpJson: project-root detection hits (.git present) but
+// there is no .mcp.json → outputs "no .mcp.json".
+//
 // TestMcpScanHook_NoMcpJson:项目根探测命中(.git 存在)但无 .mcp.json → "no .mcp.json"。
 func TestMcpScanHook_NoMcpJson(t *testing.T) {
 	repo := t.TempDir()
@@ -49,6 +60,10 @@ func TestMcpScanHook_NoMcpJson(t *testing.T) {
 	}
 }
 
+// TestMcpScanHook_NoGitProject: with no .git, the script cannot find a git
+// root walking upward → outputs "no git project" (user-level config is out
+// of scope, silently allowed).
+//
 // TestMcpScanHook_NoGitProject:无 .git → 脚本向上找不到 git root → "no git project"
 // (用户级配置不在范围,静默放行)。
 func TestMcpScanHook_NoGitProject(t *testing.T) {
@@ -59,6 +74,14 @@ func TestMcpScanHook_NoGitProject(t *testing.T) {
 	}
 }
 
+// TestMcpScanHook_RiskSignals covers five categories of config-layer risk;
+// each category is a distinct .mcp.json asserting the corresponding risk tag
+// appears in stdout. This is a behavior-layer guard beyond the reach of
+// settings_test's containsString checks: it proves the script *actually* hits
+// each detection branch on real JSON input (JSON quotes hugging tokens, BRE
+// .* spanning across quotes, [|] literal pipe, and \042 constructing a quote
+// to match a credential field).
+//
 // TestMcpScanHook_RiskSignals 覆盖五类 config-layer 风险,每类一个 .mcp.json,
 // 断言对应风险标签出现在 stdout。这是 settings_test 的 containsString 守卫够不到的
 // 行为层:证明脚本对真实 JSON 输入*实际*命中各检测分支(含 JSON 引号紧贴 token、
@@ -112,8 +135,13 @@ func TestMcpScanHook_RiskSignals(t *testing.T) {
 	}
 }
 
+// TestMcpScanHook_Clean guards against false positives: a legitimate
+// .mcp.json (forge's own server, no outbound calls / no credentials / no
+// arbitrary package exec) should trigger no risk tag, asserting 「无 config
+// 层风险信号」.
+//
 // TestMcpScanHook_Clean 守卫误报:合法 .mcp.json(forge 自身 server,无外发/无凭证/
-// 无任意包执行)不应触发任何风险标签,断言 "无 config 层风险信号"。
+// 无任意包执行)不应触发任何风险标签,断言「无 config 层风险信号」。
 func TestMcpScanHook_Clean(t *testing.T) {
 	repo := t.TempDir()
 	if err := os.Mkdir(filepath.Join(repo, ".git"), 0755); err != nil {

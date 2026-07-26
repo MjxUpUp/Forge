@@ -11,6 +11,8 @@ import (
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 )
 
+// fixedTime gives the test a stable completion moment (not time.Now, avoiding timing-assertion drift).
+//
 // fixedTime 给测试一个稳定的完成时刻（不用 time.Now，避免时序断言飘）。
 var fixedTime = time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC)
 
@@ -27,6 +29,10 @@ func dim(name scoringtypes.Dimension, sc int) scoringtypes.DimensionScore {
 }
 
 func TestBuildConclusion_NudgeByEvidenceStrength(t *testing.T) {
+	// Core contract: RetrospectiveNudge fires by evidence strength (not score alone). Each
+	// case asserts with tier-specific keywords so tier-regression is not masked (a phrase
+	// leaking from one tier into another surfaces immediately).
+	//
 	// 核心契约：RetrospectiveNudge 按证据强度（非仅分数）触发。每个 case 用该档专属
 	// 关键词断言，防分档回归被掩盖（一档断言短语漏进另一档时立即暴露）。
 	tests := []struct {
@@ -44,6 +50,8 @@ func TestBuildConclusion_NudgeByEvidenceStrength(t *testing.T) {
 			strength:  `NoData`,
 		},
 		{
+			// ★ Blind-spot key: high score but zero deterministic evidence—agent self-reports done without actually running verification
+			//
 			// ★ 盲区命门：高分但零 deterministic 证据——agent 自述完成、没真跑验证
 			name:      `Unverified+高分→nudge（高分但零实跑证据，对冲LLM-judge盲区）`,
 			ec:        ec(0, 2),
@@ -93,6 +101,8 @@ func TestBuildConclusion_NudgeByEvidenceStrength(t *testing.T) {
 }
 
 func TestBuildConclusion_LowDimensionsCaptured(t *testing.T) {
+	// Only dimensions below 70 enter LowDimensions; those >=70 do not.
+	//
 	// 只有 <70 的维度进 LowDimensions；>=70 的不进。
 	c := BuildConclusion(`feat/x`, ``, score(70, `C`,
 		dim(`completeness`, 60),
@@ -111,6 +121,8 @@ func TestBuildConclusion_LowDimensionsCaptured(t *testing.T) {
 }
 
 func TestBuildConclusion_NilScore(t *testing.T) {
+	// Unscored (score=nil): Score=0, Grade empty, LowDimensions empty; nudge depends on strength alone.
+	//
 	// 未评分（score=nil）：Score=0、Grade 空、LowDimensions 空；nudge 仅由强度决定。
 	c := BuildConclusion(`feat/x`, ``, nil, ec(0, 2), 1, 3, fixedTime, nil)
 	if c.Score != 0 {
@@ -131,6 +143,8 @@ func TestBuildConclusion_NilScore(t *testing.T) {
 }
 
 func TestDirective(t *testing.T) {
+	// Strong+>=70→empty (silent, no noise); others→contain session-retrospective anchor.
+	//
 	// Strong+>=70→空（静默，无噪声）；其余→含 session-retrospective 锚点。
 	cases := []struct {
 		name    string
@@ -192,6 +206,8 @@ func TestAppendLoadAll_RoundTrip(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf(`LoadAll len=%d want 2`, len(got))
 	}
+	// Chronology: fixedTime < fixedTime+1h
+	//
 	// 时序：fixedTime < fixedTime+1h
 	if got[0].TaskRef != `feat/a` || got[1].TaskRef != `feat/b` {
 		t.Errorf(`时序错乱：got[%q,%q] want [feat/a,feat/b]`, got[0].TaskRef, got[1].TaskRef)
@@ -208,6 +224,8 @@ func TestAppendLoadAll_RoundTrip(t *testing.T) {
 
 func TestLoadAll_MalformedLineSkipped(t *testing.T) {
 	root := forgedatatest.ForDataDir(t.TempDir())
+	// Hand-write one malformed JSON line + one good line, verifying the bad line is skipped rather than failing the whole load.
+	//
 	// 手工写一行坏 JSON + 一行好的，验证坏行被跳过而非整体失败。
 	path := root.ActConclusionsPath()
 	if err := os.MkdirAll(root.ActDir(), 0755); err != nil {
@@ -227,6 +245,11 @@ func TestLoadAll_MalformedLineSkipped(t *testing.T) {
 	}
 }
 
+// TestLoadAll_LongLineSkipped: a line far exceeding the old Scanner 1MB cap (2MB junk) + one normal line.
+// The old bufio.Scanner would ErrTooLong and fail the entire aggregation; after switching to
+// bufio.Reader, oversized lines are read but their Unmarshal fails and is skipped, normal lines
+// still return—dashboard/health no longer 500s on a single anomalous line.
+//
 // TestLoadAll_LongLineSkipped 单行远超旧 Scanner 1MB 上限（2MB 垃圾）+ 一行正常：旧
 // bufio.Scanner 会 ErrTooLong 让整条聚合失败；改 bufio.Reader 后超大行被读入、Unmarshal
 // 失败跳过，正常行照常返回——dashboard/health 不再因单行异常变 500。
@@ -244,6 +267,8 @@ func TestLoadAll_LongLineSkipped(t *testing.T) {
 	if err := os.WriteFile(path, garbage, 0644); err != nil {
 		t.Fatal(err)
 	}
+	// Use Append to add a normal conclusion (avoiding hand-rolled JSON quotes); Append fills the zero-value CompletedAt with now.
+	//
 	// 用 Append 追加正常结论（避免手工拼 JSON 双引号），CompletedAt 零值由 Append 补 now。
 	if err := Append(root, &Conclusion{
 		TaskRef: `feat/ok`, Score: 80, Strength: `Strong`, Ratio: 0.75,
@@ -278,12 +303,16 @@ func TestLoadAll_AbsentFileReturnsNil(t *testing.T) {
 }
 
 func TestBuildConclusion_DesignPhases(t *testing.T) {
+	// Non-empty phases → written as-is into Conclusion.DesignPhases (previously all 5 call sites passed nil; uncovered).
+	//
 	// 非空 phases → 原样写入 Conclusion.DesignPhases（此前 5 处调用全传 nil，未覆盖）。
 	phases := []string{`api`, `backend`}
 	c := BuildConclusion(`feat/x`, `s1`, score(90, `A`), ec(3, 1), 0, 0, fixedTime, phases)
 	if len(c.DesignPhases) != 2 || c.DesignPhases[0] != `api` || c.DesignPhases[1] != `backend` {
 		t.Errorf(`DesignPhases=%v want [api backend]`, c.DesignPhases)
 	}
+	// nil phases → empty (zero value).
+	//
 	// nil phases → 空（零值）。
 	c2 := BuildConclusion(`feat/y`, `s2`, score(90, `A`), ec(3, 1), 0, 0, fixedTime, nil)
 	if len(c2.DesignPhases) != 0 {
@@ -292,6 +321,8 @@ func TestBuildConclusion_DesignPhases(t *testing.T) {
 }
 
 func TestAppendLoadAll_DesignPhasesRoundTrip(t *testing.T) {
+	// JSON round-trip: design_phases,omitempty must read/write correctly when non-empty, never lost.
+	//
 	// JSON 序列化往返：design_phases,omitempty 在非空时必须正确写读，不丢。
 	root := forgedatatest.ForDataDir(t.TempDir())
 	c := BuildConclusion(`feat/p`, `s1`, score(85, `B`), ec(3, 1), 1, 1, fixedTime,

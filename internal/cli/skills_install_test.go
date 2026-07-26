@@ -10,6 +10,9 @@ import (
 	"github.com/MjxUpUp/Forge/internal/skillsdist"
 )
 
+// captureStdout temporarily redirects os.Stdout to capture the output of printInstallReport
+// (output-layer unit test).
+//
 // captureStdout 临时重定向 os.Stdout 捕获 printInstallReport 的输出（输出层单测）。
 func captureStdout(t *testing.T, fn func()) string {
 	t.Helper()
@@ -24,6 +27,11 @@ func captureStdout(t *testing.T, fn func()) string {
 	return buf.String()
 }
 
+// captureStderr temporarily redirects os.Stderr to capture warning output such as Warnings
+// (warnings go to stderr, separated from normal output). defer is registered right after the
+// assignment: even if fn panics, Stderr is restored and the pipe is closed (preventing
+// pollution of later tests and a half-open pipe).
+//
 // captureStderr 临时重定向 os.Stderr 捕获 Warnings 等告警输出（告警走 stderr，与正常输出分离）。
 // defer 在赋值后立即注册：fn panic 时也保证 Stderr 恢复 + pipe 关闭（防污染后续测试 + pipe 半挂）。
 func captureStderr(t *testing.T, fn func()) string {
@@ -48,6 +56,8 @@ func captureStderr(t *testing.T, fn func()) string {
 	return buf.String()
 }
 
+// TestPrintInstallReport_DriftSkipDetail: drift+skip must list details + give a sync reminder.
+//
 // TestPrintInstallReport_DriftSkipDetail：drift+skip 必须列明细 + 给出同步提醒。
 func TestPrintInstallReport_DriftSkipDetail(t *testing.T) {
 	r := &skillsdist.InstallReport{
@@ -68,6 +78,8 @@ func TestPrintInstallReport_DriftSkipDetail(t *testing.T) {
 	}
 }
 
+// TestPrintInstallReport_BackupDetail: overwrite backup must print the backup path.
+//
 // TestPrintInstallReport_BackupDetail：overwrite 备份必须打印留底路径。
 func TestPrintInstallReport_BackupDetail(t *testing.T) {
 	r := &skillsdist.InstallReport{
@@ -85,6 +97,9 @@ func TestPrintInstallReport_BackupDetail(t *testing.T) {
 	}
 }
 
+// TestPrintInstallReport_NoDetailForSyncedSkip: a synced-state skip (StateLinked) must not
+// print drift details, to avoid noise.
+//
 // TestPrintInstallReport_NoDetailForSyncedSkip：同步态 skip（StateLinked）不该打印 drift 明细，避免打扰。
 func TestPrintInstallReport_NoDetailForSyncedSkip(t *testing.T) {
 	r := &skillsdist.InstallReport{
@@ -102,6 +117,12 @@ func TestPrintInstallReport_NoDetailForSyncedSkip(t *testing.T) {
 	}
 }
 
+// TestParseSkillTargets_CodexCopilot: parseSkillTargets must accept codex/copilot/all and
+// reject unknown values. Guards the --target codex|copilot dispatch capability — a missing
+// case would make a user's --target codex error out directly, and the codex/copilot detection
+// in skills drift-check (which reuses this function) would also fail. Loop-engineering
+// multi-agent dispatch (Codex CLI + GitHub Copilot) relies on this parsing.
+//
 // TestParseSkillTargets_CodexCopilot：parseSkillTargets 必须接受 codex/copilot/all 并拒绝未知值。
 // 守护 --target codex|copilot 分发能力——case 漏写会让用户 --target codex 直接报错，
 // 且 skills drift-check（复用本函数）的 codex/copilot 检测一并失效。
@@ -142,6 +163,9 @@ func TestParseSkillTargets_CodexCopilot(t *testing.T) {
 	}
 }
 
+// TestParseSkillTargets_EmptyDefaultsClaude: empty input defaults to claude (the contract
+// for the CLI --target default value).
+//
 // TestParseSkillTargets_EmptyDefaultsClaude：空入参默认 claude（CLI --target 默认值的契约）。
 func TestParseSkillTargets_EmptyDefaultsClaude(t *testing.T) {
 	got, err := parseSkillTargets(nil)
@@ -153,8 +177,13 @@ func TestParseSkillTargets_EmptyDefaultsClaude(t *testing.T) {
 	}
 }
 
+// TestPrintInstallReport_Warnings: requires dependency warnings must go to stderr and be
+// listed one by one. Guards enforce-hint visibility — in a single-install broken-link
+// scenario the user must see the not-installed-together warning, otherwise cross-skill
+// references break silently.
+//
 // TestPrintInstallReport_Warnings：requires 依赖警告必须走 stderr 且逐条列出。
-// 守护 enforce 提示可见性——单装断链场景用户须看到"未同装"警告，否则跨 skill 引用静默断链。
+// 守护 enforce 提示可见性——单装断链场景用户须看到「未同装」警告，否则跨 skill 引用静默断链。
 func TestPrintInstallReport_Warnings(t *testing.T) {
 	r := &skillsdist.InstallReport{
 		Mode: skillsdist.ModeLink,
@@ -175,6 +204,9 @@ func TestPrintInstallReport_Warnings(t *testing.T) {
 	}
 }
 
+// TestPrintInstallReport_NoWarnings: with no Warnings, stderr must not print the warning
+// title (avoid false positives).
+//
 // TestPrintInstallReport_NoWarnings：无 Warnings 时 stderr 不打印警告标题（避免误报）。
 func TestPrintInstallReport_NoWarnings(t *testing.T) {
 	r := &skillsdist.InstallReport{Mode: skillsdist.ModeLink}

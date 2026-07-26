@@ -71,6 +71,8 @@ func TestAppendLoadDecision_RoundTrip(t *testing.T) {
 	if !got.DecidedAt.Equal(ts) {
 		t.Errorf("DecidedAt = %v, want %v", got.DecidedAt, ts)
 	}
+	// Compare fields one by one (DecidedAt already checked via Equal; remaining are string equality).
+	//
 	// 字段逐一比对（DecidedAt 用 Equal 已查；其余字符串相等）
 	if got.Skill != in.Skill || got.Diagnosis != in.Diagnosis || got.Revision != in.Revision ||
 		got.Evidence != in.Evidence || got.Outcome != in.Outcome || got.Rationale != in.Rationale ||
@@ -122,6 +124,8 @@ func TestAppendDecision_Multiple_AppendOnly(t *testing.T) {
 			t.Errorf("By = %q, want codex", d.By)
 		}
 	}
+	// File starts with header (not ## [d-).
+	//
 	// 文件以 header 开头（不是 ## [d-）
 	data, _ := os.ReadFile(DecisionsFile(canonical, "skill-x"))
 	if !strings.HasPrefix(string(data), "# skill-x") {
@@ -141,6 +145,10 @@ func TestLoadDecisions_NoFile(t *testing.T) {
 }
 
 func TestParseDecisions_TolerantMalformed(t *testing.T) {
+	// Mix in a malformed level-2 heading (## [BAD-SECTION...) plus normal decisions. The bad heading and
+	// its following lines must not pollute the previous decision body (Evidence etc.), nor be collected
+	// into a fake decision.
+	//
 	// 混入坏 2 级标题（## [BAD-SECTION...）+ 正常决策。坏标题及其后续行不该污染
 	// 前一条决策的 body（Evidence 等），也不该被收成一条假决策。
 	md := `# skill — 持久决策历史
@@ -182,6 +190,8 @@ r2
 e2
 `
 	got := parseDecisions(md)
+	// BAD-SECTION is not a decision header (not ## [d-); its whole section should be dropped, leaving only good1/good2.
+	//
 	// BAD-SECTION 非决策头（非 ## [d-），其整段应被丢弃，只留 good1/good2。
 	if len(got) != 2 {
 		t.Fatalf("got %d decisions, want 2（BAD-SECTION 不该成决策）: %+v", len(got), got)
@@ -198,6 +208,8 @@ e2
 	if good1 == nil {
 		t.Fatal("good1 未解析出")
 	}
+	// body must stay clean — the garbage line after BAD-SECTION must not be sucked into good1.Evidence.
+	//
 	// body 必须干净——BAD-SECTION 后的 garbage line 不该吸进 good1.Evidence。
 	if good1.Diagnosis != "good diag" || good1.Revision != "good rev" || good1.Evidence != "good evi" {
 		t.Errorf("good1 body 被污染：Diagnosis=%q Revision=%q Evidence=%q", good1.Diagnosis, good1.Revision, good1.Evidence)
@@ -231,6 +243,8 @@ func TestNormalizeOutcome(t *testing.T) {
 
 func TestAppendDecision_FillsDefaults(t *testing.T) {
 	canonical := t.TempDir()
+	// Fill only business fields; leave ID/Skill/DecidedAt empty — AppendDecision should populate them.
+	//
 	// 只填业务字段，ID/Skill/DecidedAt 留空，AppendDecision 应补全
 	d := SkillDecision{
 		Diagnosis: "diag",
@@ -267,10 +281,15 @@ func TestDecisionsFile_Path(t *testing.T) {
 
 func TestHeader_Output(t *testing.T) {
 	got := header("my-skill")
+	// Title line interpolates the skill name.
+	//
 	// 标题行插值 skill 名
 	if !strings.HasPrefix(got, "# my-skill — 持久决策历史") {
 		t.Fatalf("header title mismatch: %q", got)
 	}
+	// Descriptive tags + four-tuple explanation must be kept — aligns with skills/code-review-gate/decisions.md sample
+	// (guards against generator/sample drift; this tag was once mistakenly deleted during third-party attribution cleanup, causing inconsistency).
+	//
 	// 描述性标签 + 四元组说明须保留——与 skills/code-review-gate/decisions.md 范例对齐
 	//（防 generator 与 sample 漂移；曾因清理第三方归因时连此标签误删致两者不一致）。
 	for _, want := range []string{"persistent decision history：", "每条决策记", "append-only", "审计/可复现"} {
@@ -278,6 +297,8 @@ func TestHeader_Output(t *testing.T) {
 			t.Errorf("header missing %q: %s", want, got)
 		}
 	}
+	// Third-party project attribution should have been removed from the generator (header is the opening explanation of a new decisions.md, does not carry project names).
+	//
 	// 第三方项目归因应已从生成器清除（header 是新 decisions.md 的开头说明，不带项目名）。
 	for _, banned := range []string{"SkillHone", "arXiv", "借鉴"} {
 		if strings.Contains(got, banned) {

@@ -33,11 +33,18 @@ func runSkillsEvalGen(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// genOne handles generation and persistence for a single skill:
+	//   --cases-only → persist only the structured case set (for eval-record/closed loop)
+	//   --save       → persist the markdown checklist + additionally persist structured case set
+	//   default (neither set) → print the markdown checklist to stdout
+	//
 	// genOne 统一处理单个 skill 的生成与落盘：
 	//   --cases-only → 只落结构化 case 集（eval-record/闭环用）
 	//   --save       → 落 markdown 清单 + 额外落结构化 case 集
 	//   默认（都无）→ 输出 markdown 清单到 stdout
 	genOne := func(name string) error {
+		// Both --cases-only and --save need the structured case set; generate it once.
+		//
 		// --cases-only 或 --save 都需要结构化 case 集，统一生成一次。
 		var cases []skillseval.EvalCase
 		if skEvalCasesOnly || skEvalSave {
@@ -46,6 +53,12 @@ func runSkillsEvalGen(cmd *cobra.Command, args []string) error {
 				return err
 			}
 			cases = c
+			// Merge behavior probes (<name>/probes.yaml, optional). behavior cases are derived
+			// independently of the description, persisted in the same set as trigger/not-trigger,
+			// and SubmitRun branches judgment by Kind. When LoadProbes fails, a stderr warning
+			// is emitted (see the perr branch below) — a skill without probes.yaml normally
+			// has only routing cases, and stays silent when len(probes)==0.
+			//
 			// merge behavior probes（<name>/probes.yaml，可选）。behavior case 独立于
 			// description 派生，与 trigger/not-trigger 同集落盘，SubmitRun 按 Kind 分支判定。
 			// LoadProbes 失败时 stderr 警告（见下方 perr 分支）——无 probes.yaml 的 skill
@@ -55,6 +68,10 @@ func runSkillsEvalGen(cmd *cobra.Command, args []string) error {
 					cases = append(cases, probes...)
 				}
 			} else {
+				// Silently skipping a bad probes.yaml (YAML syntax/type error) would let the
+				// agent think the probe is in effect — a stderr warning makes the missing behavior
+				// cases visible (consistent with the per-skill error handling in the --all loop below).
+				//
 				// 坏 probes.yaml（YAML 语法/类型错）静默跳过会让 agent 以为 probe 生效——
 				// stderr 警告让 behavior case 缺失可见（与下方 --all 循环的 per-skill 错误处理一致）。
 				fmt.Fprintf(os.Stderr, "⚠️ %s: probes.yaml 解析失败，已跳过 behavior probe: %v\n", name, perr)
@@ -75,9 +92,14 @@ func runSkillsEvalGen(cmd *cobra.Command, args []string) error {
 			if err := saveEval(name, md); err != nil {
 				return err
 			}
+			// Additionally persist the structured case set (for the eval-record regression
+			// loop). SaveCases is a no-op on an empty set. A failure must return an error —
+			// otherwise the agent sees `✅ cases` but nothing was actually persisted, and a
+			// later eval-record reports `no eval cases`, diverging from the --cases-only path.
+			//
 			// 额外落结构化 case 集（eval-record 回归闭环用）。SaveCases 对空集 no-op。
-			// 失败要 return error——否则 agent 收到「✅ cases」但实际没落盘，后续
-			// eval-record 报「no eval cases」，与 --cases-only 路径行为不一致。
+			// 失败要 return error——否则 agent 收到"✅ cases"但实际没落盘，后续
+			// eval-record 报"no eval cases"，与 --cases-only 路径行为不一致。
 			if err := skillseval.SaveCases(dir, name, cases); err != nil {
 				return err
 			}

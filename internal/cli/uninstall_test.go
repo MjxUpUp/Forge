@@ -6,6 +6,12 @@ import (
 	"testing"
 )
 
+// uninstall_test.go — core side-effect guard for `forge uninstall`.
+// Tests uninstallClearMarkers directly (does not call rootCmd.Execute, to avoid global pollution).
+// refactor-data-home commit E: the marker store goes through forgedata.GlobalHome() (FORGE_DATA_HOME);
+// tests isolate via FORGE_DATA_HOME (no longer via HOME — GlobalHome reads os.UserHomeDir, not the HOME env).
+// All Chinese strings use raw strings to avoid Windows input-quote corruption.
+//
 // uninstall_test.go — `forge uninstall` 的核心 side effect 守卫。
 // 测 uninstallClearMarkers（不调 rootCmd.Execute 避全局污染）。
 // refactor-data-home commit E：marker store 走 forgedata.GlobalHome()（FORGE_DATA_HOME），
@@ -36,6 +42,8 @@ func TestUninstall_ClearsSuggestMarkers(t *testing.T) {
 }
 
 func TestUninstall_IdempotentWhenNoMarkers(t *testing.T) {
+	// When <GlobalHome>/.init-suggested/ does not exist, RemoveAll still returns nil — should return ok=true.
+	//
 	// <GlobalHome>/.init-suggested/ 不存在时 RemoveAll 也返 nil — 应返 ok=true。
 	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
 	_, ok := uninstallClearMarkers()
@@ -44,6 +52,11 @@ func TestUninstall_IdempotentWhenNoMarkers(t *testing.T) {
 	}
 }
 
+// TestUninstall_ClearsMarkers_ForgeDataHomeOverride pins commit E: uninstall must clear
+// markers under the FORGE_DATA_HOME override root (not ~/.forge) — it shares the same store
+// as the suggest command and the init-suggest hook. Prevents uninstall from secretly falling
+// back to a hardcoded ~/.forge and clearing the wrong place for FORGE_DATA_HOME users.
+//
 // TestUninstall_ClearsMarkers_ForgeDataHomeOverride 钉死 commit E：uninstall 必须清
 // FORGE_DATA_HOME 覆盖根下的 marker（不是 ~/.forge）——与 suggest 命令 + init-suggest
 // hook 读写同一 store。防 uninstall 偷偷回硬编码 ~/.forge 致 FORGE_DATA_HOME 用户清错地方。

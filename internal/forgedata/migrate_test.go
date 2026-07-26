@@ -1,5 +1,9 @@
 package forgedata_test
 
+// migrate_test.go — MigrateProject behavior guards. Chinese strings use raw string literals to avoid Windows quote corruption.
+// Uses forgedatatest.RealProject to obtain a real *Project (git + .forge + FORGE_DATA_HOME isolation),
+// because MigrateProject calls p.Ensure() + depends on ConfigDir/DataDir dual roots being real and writable.
+//
 // migrate_test.go —— MigrateProject 行为守卫。中文字符串 raw string 规避 Windows 引号腐蚀。
 // 用 forgedatatest.RealProject 拿真实 *Project（git + .forge + FORGE_DATA_HOME 隔离），
 // 因 MigrateProject 调 p.Ensure() + 依赖 ConfigDir/DataDir 双根真实可写。
@@ -14,6 +18,14 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 )
 
+// TestMigrateProject_MovesRuntimeState_KeepsConfig: .forge/ contains runtime (tasks/
+// checklog/active-task-ref/throttle + archive/session variants) + config (hooks/ etc.),
+// after migrate runtime lands in DataDir while config stays under .forge/. Pins the whitelist boundary — neither missing
+// runtime nor wrongly migrating non-runtime entries. Note: state.json/pipeline.yml are dead files of the removed project-level pipeline
+// (not in the migrate whitelist so left under .forge/, but autoSync cleanupLegacyDeadFiles deletes them on upgrade
+// ); hooks are live config (migrate/autoSync both keep them). This test pins the migrate boundary: non-runtime
+// entries (dead files + live config) all stay under .forge/ after migrate.
+//
 // TestMigrateProject_MovesRuntimeState_KeepsConfig：.forge/ 含 runtime（tasks/
 // checklog/active-task-ref/throttle + 归档/session 变体）+ config（hooks/等），
 // migrate 后 runtime 在 DataDir、config 留 .forge/。钉死白名单边界——既不漏迁
@@ -23,6 +35,8 @@ import (
 // 条目（死文件 + 活 config）migrate 都留 .forge/。
 func TestMigrateProject_MovesRuntimeState_KeepsConfig(t *testing.T) {
 	root, p := forgedatatest.RealProject(t)
+	// runtime state (should migrate).
+	//
 	// runtime state（应迁）
 	mkDir(t, filepath.Join(root, `.forge`, `tasks`))
 	mkFile(t, filepath.Join(root, `.forge`, `tasks`, `feat.json`), `task`)
@@ -32,6 +46,8 @@ func TestMigrateProject_MovesRuntimeState_KeepsConfig(t *testing.T) {
 	mkFile(t, filepath.Join(root, `.forge`, `active-task-ref`), `feat/legacy`)
 	mkFile(t, filepath.Join(root, `.forge`, `active-task-ref-sid123`), `feat/session`)
 	mkFile(t, filepath.Join(root, `.forge`, `.task-verify-throttle.last`), `ts`)
+	// config (should stay).
+	//
 	// config（应留）
 	mkFile(t, filepath.Join(root, `.forge`, `state.json`), `state`)
 	mkDir(t, filepath.Join(root, `.forge`, `hooks`))
@@ -42,6 +58,8 @@ func TestMigrateProject_MovesRuntimeState_KeepsConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf(`MigrateProject: %v`, err)
 	}
+	// runtime migrated to DataDir.
+	//
 	// runtime 迁到 DataDir
 	for _, rel := range []string{
 		filepath.Join(`tasks`, `feat.json`),
@@ -51,6 +69,8 @@ func TestMigrateProject_MovesRuntimeState_KeepsConfig(t *testing.T) {
 	} {
 		assertExists(t, filepath.Join(p.DataDir, rel), `DataDir/`+rel)
 	}
+	// runtime disappears from .forge/.
+	//
 	// runtime 从 .forge/ 消失
 	for _, rel := range []string{
 		filepath.Join(`.forge`, `tasks`),
@@ -60,6 +80,8 @@ func TestMigrateProject_MovesRuntimeState_KeepsConfig(t *testing.T) {
 	} {
 		assertNotExists(t, filepath.Join(root, rel), root+`/`+rel)
 	}
+	// config stays under .forge/.
+	//
 	// config 留 .forge/
 	for _, rel := range []string{
 		filepath.Join(`.forge`, `state.json`),
@@ -71,6 +93,8 @@ func TestMigrateProject_MovesRuntimeState_KeepsConfig(t *testing.T) {
 	if len(res.Moved) == 0 {
 		t.Errorf(`期望 Moved 非空，实得 %+v`, res)
 	}
+	// Left should contain non-runtime entries (state.json/pipeline.yml dead files + hooks live config), not runtime entries.
+	//
 	// Left 应含非 runtime 条目（state.json/pipeline.yml 死文件 + hooks 活 config），不含 runtime
 	if !slices.Contains(res.Left, `state.json`) {
 		t.Errorf(`Left 应含 state.json（死文件，migrate 不动），Left=%v`, res.Left)
@@ -80,6 +104,8 @@ func TestMigrateProject_MovesRuntimeState_KeepsConfig(t *testing.T) {
 	}
 }
 
+// TestMigrateProject_Idempotent: run twice, second time Moved is empty (runtime already in DataDir).
+//
 // TestMigrateProject_Idempotent：跑两次，第二次 Moved 空（runtime 已在 DataDir）。
 func TestMigrateProject_Idempotent(t *testing.T) {
 	root, p := forgedatatest.RealProject(t)
@@ -96,6 +122,8 @@ func TestMigrateProject_Idempotent(t *testing.T) {
 	}
 }
 
+// TestMigrateProject_DryRun: --dry-run reports planned migration but does not actually move (source stays in .forge/, DataDir has nothing).
+//
 // TestMigrateProject_DryRun：--dry-run 报告将迁移但不实际移动（源仍在 .forge/，DataDir 无）。
 func TestMigrateProject_DryRun(t *testing.T) {
 	root, p := forgedatatest.RealProject(t)
@@ -107,16 +135,24 @@ func TestMigrateProject_DryRun(t *testing.T) {
 	if !slices.Contains(res.Moved, `checklog.jsonl`) {
 		t.Errorf(`dry-run 应报告 checklog.jsonl 将迁移，Moved=%v`, res.Moved)
 	}
+	// source still present (not executed).
+	//
 	// 源仍在（未执行）
 	assertExists(t, filepath.Join(root, `.forge`, `checklog.jsonl`), `源文件`)
+	// DataDir has nothing.
+	//
 	// DataDir 没有
 	assertNotExists(t, filepath.Join(p.DataDir, `checklog.jsonl`), `DataDir 目标`)
+	// DryRun does not populate Left (residual is meaningless).
+	//
 	// DryRun 不填 Left（剩余无意义）
 	if len(res.Left) != 0 {
 		t.Errorf(`DryRun Left 应空，实得 %v`, res.Left)
 	}
 }
 
+// TestMigrateProject_SkipExisting: dst already exists + non-force → skip, source kept and dst not overwritten.
+//
 // TestMigrateProject_SkipExisting：dst 已有 + 非 force → skip，源保留 dst 不覆盖。
 func TestMigrateProject_SkipExisting(t *testing.T) {
 	root, p := forgedatatest.RealProject(t)
@@ -136,6 +172,8 @@ func TestMigrateProject_SkipExisting(t *testing.T) {
 	}
 }
 
+// TestMigrateProject_ForceOverwrite: dst already exists + force → overwrite with source, source migrated away.
+//
 // TestMigrateProject_ForceOverwrite：dst 已有 + force → 覆盖为源，源迁走。
 func TestMigrateProject_ForceOverwrite(t *testing.T) {
 	root, p := forgedatatest.RealProject(t)
@@ -151,6 +189,9 @@ func TestMigrateProject_ForceOverwrite(t *testing.T) {
 	assertNotExists(t, filepath.Join(root, `.forge`, `checklog.jsonl`), `源应迁走`)
 }
 
+// TestMigrateProject_DirTreeCopied: tasks/ contains nested subdirectories, after migrate DataDir/tasks is
+// fully copied (validates copyTree recursion + Rename whole tree). Windows cross-drive falls back to copyTree.
+//
 // TestMigrateProject_DirTreeCopied：tasks/ 含嵌套子目录，migrate 后 DataDir/tasks
 // 完整复制（验 copyTree 递归 + Rename 整树）。Windows 跨盘时走 copyTree fallback。
 func TestMigrateProject_DirTreeCopied(t *testing.T) {
@@ -169,6 +210,10 @@ func TestMigrateProject_DirTreeCopied(t *testing.T) {
 	}
 }
 
+// TestMigrateProject_DryRunForceKeepsDst: M1 regression guard — dry-run+force+dst exists,
+// reports "will overwrite" but does not actually delete dst (dry-run no-touch contract). Prevents migrateOne from putting the DryRun check
+// after RemoveAll(dst), causing dry-run+force to wrongly delete existing DataDir data.
+//
 // TestMigrateProject_DryRunForceKeepsDst：M1 回归守卫——dry-run+force+dst 已存在时，
 // 报告"将覆盖"但不实际删 dst（dry-run 不动文件契约）。防 migrateOne 把 DryRun 判断
 // 放到 RemoveAll(dst) 之后，致 dry-run+force 误删 DataDir 已有数据。
@@ -183,11 +228,15 @@ func TestMigrateProject_DryRunForceKeepsDst(t *testing.T) {
 	if !slices.Contains(res.Moved, `checklog.jsonl`) {
 		t.Errorf(`dry-run+force 应报告 checklog.jsonl 将覆盖，Moved=%v`, res.Moved)
 	}
+	// dst still exists with unchanged content (dry-run does not delete dst).
+	//
 	// dst 仍存在且内容不变（dry-run 不删 dst）
 	got := readStr(t, filepath.Join(p.DataDir, `checklog.jsonl`))
 	if got != `dst` {
 		t.Errorf(`dry-run 不应动 dst，期望 "dst"，实得 %q`, got)
 	}
+	// src still exists (dry-run does not touch src).
+	//
 	// src 仍存在（dry-run 不动 src）
 	assertExists(t, filepath.Join(root, `.forge`, `checklog.jsonl`), `源文件`)
 }

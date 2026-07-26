@@ -11,6 +11,10 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
+// setupAcceptanceTask creates a session-scoped active task with the given acceptance criteria, returning (dir, taskRef).
+// Reuses the pattern from #2 review_status_test: SetActiveTaskRef + SaveTaskState, so runTaskVerifyAcceptanceAt
+// can find the task via ActiveTaskState(sessionID) (rather than a stale shared file).
+//
 // setupAcceptanceTask 建一个 session-scoped 活动任务并写入给定验收标准，返回 (dir, taskRef)。
 // 复用 #2 review_status_test 的范式：SetActiveTaskRef + SaveTaskState，让 runTaskVerifyAcceptanceAt
 // 经 ActiveTaskState(sessionID) 能找到任务（而非陈旧共享文件）。
@@ -36,6 +40,8 @@ func setupAcceptanceTask(t *testing.T, acceptRaw []string) (string, string) {
 	return dir, taskRef
 }
 
+// findAcceptanceEntry finds the CheckNameAcceptance entry in checklog (pointer for convenient field access).
+//
 // findAcceptanceEntry 在 checklog 里找 CheckNameAcceptance 条目（指针，便于读字段）。
 func findAcceptanceEntry(t *testing.T, dir string) *checklog.Entry {
 	t.Helper()
@@ -51,6 +57,12 @@ func findAcceptanceEntry(t *testing.T, dir string) *checklog.Entry {
 	return nil
 }
 
+// TestRunTaskVerifyAcceptanceAt_RecordsDeterministic is the core guard for #3: after green acceptance criteria are actually run,
+// checklog must record a CheckNameAcceptance entry with Passed=true, Source=deterministic (forge runs the
+// command itself to see the result, unforgeable), and TaskState.Acceptance[].Passed is backfilled to true. This is the wire point turning
+// dev-workflow Plan Run+Expected from plan text into unforgeable evidence — VerifyAcceptance / recording wiring /
+// Source bucketing, any break is caught.
+//
 // TestRunTaskVerifyAcceptanceAt_RecordsDeterministic 是 #3 的核心守卫：绿验收标准实跑后，
 // checklog 必须记 CheckNameAcceptance 条目、Passed=true、Source=deterministic（forge 自己跑
 // 命令看结果，不可伪造），且 TaskState.Acceptance[].Passed 回填为 true。这是把 dev-workflow
@@ -65,6 +77,8 @@ func TestRunTaskVerifyAcceptanceAt_RecordsDeterministic(t *testing.T) {
 		t.Fatalf(`green acceptance should not error: %v`, runErr)
 	}
 
+	// TaskState backfill: Passed=true.
+	//
 	// TaskState 回填：Passed=true
 	loaded, err := taskpipeline.LoadTaskState(dir, taskRef)
 	if err != nil {
@@ -74,6 +88,8 @@ func TestRunTaskVerifyAcceptanceAt_RecordsDeterministic(t *testing.T) {
 		t.Errorf(`criterion Passed 未回填为 true（实跑结果未落盘）`)
 	}
 
+	// checklog: CheckNameAcceptance / Passed=true / deterministic.
+	//
 	// checklog：CheckNameAcceptance / Passed=true / deterministic
 	rec := findAcceptanceEntry(t, dir)
 	if rec == nil {
@@ -90,6 +106,11 @@ func TestRunTaskVerifyAcceptanceAt_RecordsDeterministic(t *testing.T) {
 	}
 }
 
+// TestRunTaskVerifyAcceptanceAt_RecordsFailure pins down the RED path: failed acceptance criteria also record
+// a CheckNameAcceptance entry (Passed=false, Checked=true, deterministic), return a non-nil error, and the failed
+// criterion backfills Output for debugging. Without this test, if someone later moves checklog.Record into the `if allPassed`
+// branch, failure evidence would be silently dropped while green-only tests still pass — exactly the agent-self-claim-satisfies-acceptance blind spot that #3 plugs.
+//
 // TestRunTaskVerifyAcceptanceAt_RecordsFailure 钉住 RED 路径：失败的验收标准也照常记一条
 // CheckNameAcceptance（Passed=false、Checked=true、deterministic）、返回非 nil error，且失败
 // criterion 回填 Output 供排查。没有本测试，未来若有人把 checklog.Record 挪进 `if allPassed`
@@ -129,9 +150,13 @@ func TestRunTaskVerifyAcceptanceAt_RecordsFailure(t *testing.T) {
 	}
 }
 
+// TestRunTaskVerifyAcceptanceAt_NoAcceptanceSilent verifies that tasks without registered acceptance criteria exit silently,
+// write no checklog (no noise entries), and return no error.
+//
 // TestRunTaskVerifyAcceptanceAt_NoAcceptanceSilent 验证未登记验收标准的任务静默退出、
 // 不写 checklog（不留噪声条目），且不报错。
 func TestRunTaskVerifyAcceptanceAt_NoAcceptanceSilent(t *testing.T) {
+	// No acceptance criteria.
 	dir, _ := setupAcceptanceTask(t, nil) // 无验收标准
 
 	var runErr error
@@ -148,6 +173,11 @@ func TestRunTaskVerifyAcceptanceAt_NoAcceptanceSilent(t *testing.T) {
 	}
 }
 
+// TestTaskAcceptance_E2E_FlagToStatusToVerify end-to-end pins the user path: task start --accept (multiple entries,
+// verifying StringArray is not comma-split) → task status shows ⏳ unverified → task verify-acceptance actually runs
+// all green, records deterministic evidence. Covers the full chain of cobra flag binding + status rendering + actual-run recording.
+// Uses the real `go` subcommand (not echo — Windows has no echo.exe, strings.Fields+exec path would fail).
+//
 // TestTaskAcceptance_E2E_FlagToStatusToVerify 端到端钉住用户路径：task start --accept（多条，
 // 验证 StringArray 不被逗号切分）→ task status 展示 ⏳ 未验证 → task verify-acceptance 实跑
 // 全绿、记 deterministic 证据。覆盖 cobra flag 绑定 + 状态渲染 + 实跑记录的完整链路。
@@ -159,6 +189,9 @@ func TestTaskAcceptance_E2E_FlagToStatusToVerify(t *testing.T) {
 		t.Fatalf(`forge init failed: %s`, stdout)
 	}
 
+	// Two --accept entries (StringArray: whole entry not split, spaces/:: not broken apart). The second `go version ::` is
+	// a trailing bare :: (no expected), also verifies ParseAcceptance trailing-:: compatibility.
+	//
 	// 两条 --accept（StringArray：整条不切，含空格/:: 不被拆）。第二条 `go version ::` 是
 	// 尾部裸 ::（无 expected），顺带验证 ParseAcceptance 的尾部 :: 兼容。
 	startOut, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/spec-e2e`,
@@ -171,6 +204,8 @@ func TestTaskAcceptance_E2E_FlagToStatusToVerify(t *testing.T) {
 		t.Errorf(`task start 输出缺验收标准块: %s`, startOut)
 	}
 
+	// status: acceptance criteria listed as ⏳ unverified (before actual run).
+	//
 	// status：验收标准列为 ⏳ 未验证（实跑前）
 	statusOut, _, code := runForge(t, dir, `task`, `status`)
 	if code != 0 {
@@ -182,6 +217,8 @@ func TestTaskAcceptance_E2E_FlagToStatusToVerify(t *testing.T) {
 		}
 	}
 
+	// verify-acceptance: actual run all green, exit 0, records deterministic.
+	//
 	// verify-acceptance：实跑全绿、exit 0、记 deterministic
 	verifyOut, _, code := runForge(t, dir, `task`, `verify-acceptance`)
 	if code != 0 {
@@ -193,6 +230,8 @@ func TestTaskAcceptance_E2E_FlagToStatusToVerify(t *testing.T) {
 		}
 	}
 
+	// After verify, status should show ✅ pass (no longer ⏳).
+	//
 	// verify 后 status 应显示 ✅ 通过（不再 ⏳）
 	statusOut2, _, _ := runForge(t, dir, `task`, `status`)
 	if strings.Contains(statusOut2, `未验证`) {
@@ -203,6 +242,11 @@ func TestTaskAcceptance_E2E_FlagToStatusToVerify(t *testing.T) {
 	}
 }
 
+// TestTaskStart_PlanFileExtractsAcceptance end-to-end pins --plan-file auto-extraction: write a plan.md with Run:/Expected:
+// blocks, after task start --plan-file the state.Acceptance should contain extracted entries (no need to manually copy --accept).
+// Also verifies that when explicit --accept and plan coexist, --accept wins and dedup by Run. This is the closed-loop guard
+// eliminating acceptance-dimension idle-spin (manual copy break) — extraction/merge/visibility, any break is caught.
+//
 // TestTaskStart_PlanFileExtractsAcceptance 端到端钉住 --plan-file 自动提取：写含 Run:/Expected:
 // 块的 plan.md，task start --plan-file 后 state.Acceptance 应含提取条目（无需手抄 --accept）。
 // 同时验证显式 --accept 与 plan 共存时 --accept 优先、按 Run 去重。这是消除 acceptance 维度
@@ -214,6 +258,8 @@ func TestTaskStart_PlanFileExtractsAcceptance(t *testing.T) {
 		t.Fatalf(`forge init failed: %s`, stdout)
 	}
 
+	// plan.md: two Run/Expected blocks.
+	//
 	// plan.md：两条 Run/Expected 块
 	planPath := filepath.Join(dir, `plan.md`)
 	planBody := "Run: go version\nExpected: go version go\nRun: echo hi\nExpected: hi\n"
@@ -221,13 +267,18 @@ func TestTaskStart_PlanFileExtractsAcceptance(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// 1. Pure --plan-file: acceptance should contain 2 extracted entries + visibility hint.
+	//
 	// 1. 纯 --plan-file：acceptance 应含 2 条提取条目 + 可见性提示
 	startOut, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/plan-only`,
 		`--plan-file`, planPath)
 	if code != 0 {
 		t.Fatalf(`task start --plan-file failed: %s`, startOut)
 	}
-	// 净增计数（Minor 修复）：纯 plan-file 无去重，2 条提取全入库，提示应为"其中 2 条"。
+	// Net-add count (Minor fix): pure plan-file has no dedup, all 2 extracted entries land; the hint reports 2 entries auto-extracted.
+	// If one misuses pre-extraction len(extracted) the count also happens to match, but this locks the net-add semantics for the coexist path below.
+	//
+	// 净增计数（Minor 修复）：纯 plan-file 无去重，2 条提取全入库，提示应为「其中 2 条」。
 	// 若误用提取前的 len(extracted) 计数碰巧也对，但此处锁定净增语义供下方共存路径对照。
 	if !strings.Contains(startOut, `其中 2 条从 --plan-file 自动提取`) {
 		t.Errorf(`纯 plan-file 应提示"其中 2 条从 --plan-file 自动提取"（净增=2）, got: %s`, startOut)
@@ -246,6 +297,8 @@ func TestTaskStart_PlanFileExtractsAcceptance(t *testing.T) {
 		t.Errorf(`[1] = %+v, want {echo hi, hi}`, st.Acceptance[1])
 	}
 
+	// 2. --accept and --plan-file coexist: explicit --accept wins, dedup by Run.
+	//
 	// 2. --accept 与 --plan-file 共存：显式 --accept 优先，同 Run 去重
 	startOut2, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/plan-and-accept`,
 		`--accept`, `go version :: OVERRIDE`,
@@ -261,6 +314,8 @@ func TestTaskStart_PlanFileExtractsAcceptance(t *testing.T) {
 	for _, c := range st2.Acceptance {
 		runs[c.Run] = c.Expected
 	}
+	// Explicit --accept go version keeps OVERRIDE; plan echo hi supplements; plan go version is deduped away.
+	//
 	// 显式 --accept 的 go version 保留 OVERRIDE；plan 的 echo hi 补充；plan 的 go version 被去重
 	if runs[`go version`] != `OVERRIDE` {
 		t.Errorf(`显式 --accept 的 go version 应保留 OVERRIDE, got %q`, runs[`go version`])
@@ -268,6 +323,9 @@ func TestTaskStart_PlanFileExtractsAcceptance(t *testing.T) {
 	if runs[`echo hi`] != `hi` {
 		t.Errorf(`plan 的 echo hi 应补充, got %q`, runs[`echo hi`])
 	}
+	// Net-add count (Minor fix): --accept go version takes the slot, plan go version is deduped and dropped,
+	// only echo hi nets +1. The hint should say `其中 1 条` — if one misuses pre-extraction len(extracted)=2 it would show 2 (misleading).
+	//
 	// 净增计数（Minor 修复）：--accept 的 go version 占位，plan 的 go version 被去重丢弃，
 	// 只有 echo hi 净增 1 条。提示应是"其中 1 条"——若误用提取前 len(extracted)=2 会显示 2（误导）。
 	if !strings.Contains(startOut2, `其中 1 条从 --plan-file 自动提取`) {

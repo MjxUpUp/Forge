@@ -18,6 +18,18 @@ var (
 	migrateForce  bool
 )
 
+// migrateCmd moves runtime state under project-level .forge/ (tasks/gates/checklog/
+// toollog/act/sessions/quarantine/active-task-ref/.task-verify-throttle.last, etc.)
+// to the user-level DataDir (~/.forge/projects/<key>/). After refactor-data-home,
+// runtime state accumulated by older versions still sits in .forge/; this command
+// moves it to DataDir in one pass after upgrade. Project config (hooks/protocol.yml/
+// CLAUDE.md/AGENTS.md/.sync-version) is not migrated and stays in .forge/; legacy
+// pipeline.yml/state.json residue (project-level pipeline was deleted) is also left
+// untouched——autoSync cleans them up automatically on upgrade
+// (see sync.cleanupLegacyDeadFiles), so dead files need no manual handling.
+//
+// Idempotent: repeat runs are harmless (already-migrated items are not touched).
+//
 // migrateCmd 把项目级 .forge/ 下的 runtime state（tasks/gates/checklog/toollog/act/
 // sessions/quarantine/active-task-ref/.task-verify-throttle.last 等）迁到用户级
 // DataDir（~/.forge/projects/<key>/）。refactor-data-home 后老版本积累的 runtime state

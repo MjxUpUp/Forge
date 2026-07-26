@@ -63,6 +63,10 @@ func hookStdin(t *testing.T, sessionID, eventName, toolName string, toolInput ma
 // innermost safety ring — without it, an agent could disable its own oversight
 // by editing Forge internals. No prior test exercised this via the real subprocess
 // path (internal/cli/hook_test.go covers the JSON protocol in-process only).
+// Note: state.json is no longer generated after the project-level pipeline was removed;
+// this serves only as a representative example of a .forge/* managed path —
+// task-guard blocks by path pattern, independent of whether this file exists.
+//
 // 注：state.json 随项目级管道删除已不再生成，此处仅作 .forge/* 受管路径的代表例——
 // task-guard 按路径模式拦截，不依赖该文件是否存在。
 func TestHook_TaskGuard_BlocksForgeManagedFile(t *testing.T) {
@@ -271,11 +275,16 @@ func TestHook_HazardGuard_TmpDirWhitelisted(t *testing.T) {
 }
 
 // TestHook_HazardGuard_ForceWithLeaseAllowed: --force-with-lease is git's recommended
-// safe替代 for --force (refuses if remote advanced), so it must NOT be硬拦 the way bare
+// safe alternative for --force (refuses if remote advanced), so it must NOT be hard-blocked the way bare
 // --force is. Bare --force still blocks (regression guard).
+//
+// TestHook_HazardGuard_ForceWithLeaseAllowed：--force-with-lease 是 git 推荐的 --force 的安全
+// 替代（远端前进时拒绝），所以不应像裸 --force 那样被硬拦。裸 --force 仍拦（回归保护）。
 func TestHook_HazardGuard_ForceWithLeaseAllowed(t *testing.T) {
 	dir := freshProject(t)
 
+	// lease variant approved.
+	//
 	// lease 放行
 	inLease := hookStdin(t, "sess-hazard-lease", "PreToolUse", "Bash", map[string]any{
 		"command": "git push --force-with-lease origin main",
@@ -288,6 +297,8 @@ func TestHook_HazardGuard_ForceWithLeaseAllowed(t *testing.T) {
 		t.Errorf("expected decision=approve for --force-with-lease, got:\n%s", stdout)
 	}
 
+	// Valued variant --force-with-lease=<ref>:<expect> (most common CI form) is also approved.
+	//
 	// 带值变体 --force-with-lease=<ref>:<expect>（CI 最常用形态）同样放行
 	inLeaseVal := hookStdin(t, "sess-hazard-lease-val", "PreToolUse", "Bash", map[string]any{
 		"command": "git push --force-with-lease=main:abc123 origin main",
@@ -300,6 +311,8 @@ func TestHook_HazardGuard_ForceWithLeaseAllowed(t *testing.T) {
 		t.Errorf("expected decision=approve for lease=<ref>:<expect>, got:\n%s", stdout)
 	}
 
+	// Bare --force still blocks (regression guard: the lease allowance must not let bare force slip through).
+	//
 	// 裸 --force 仍拦（回归保护：lease 放行不能导致裸 force 漏拦）
 	inForce := hookStdin(t, "sess-hazard-force", "PreToolUse", "Bash", map[string]any{
 		"command": "git push --force origin main",
@@ -313,8 +326,12 @@ func TestHook_HazardGuard_ForceWithLeaseAllowed(t *testing.T) {
 	}
 }
 
+// TestHook_HazardGuard_RmFlagWithOtherFlags regressions review S1: rm preceded by other flags
+// (-i / --one-file-system / -v) then followed by -rf must still be blocked. These are legal rm
+// forms; an 'rm immediately followed by single cluster' anchor would miss them (true hazard leak).
+//
 // TestHook_HazardGuard_RmFlagWithOtherFlags regressions 审查 S1：rm 前置其他 flag
-// （-i / --one-file-system / -v）再接 -rf 必须仍被拦。这些是合法 rm 写法，"rm 紧跟单簇"
+// （-i / --one-file-system / -v）再接 -rf 必须仍被拦。这些是合法 rm 写法，「rm 紧跟单簇」
 // 锚定会漏检它们（真高危漏放）。
 func TestHook_HazardGuard_RmFlagWithOtherFlags(t *testing.T) {
 	dir := freshProject(t)
@@ -336,8 +353,14 @@ func TestHook_HazardGuard_RmFlagWithOtherFlags(t *testing.T) {
 	}
 }
 
+// TestHook_HazardGuard_DataContextNotBlocked: a hazard string only inside quotes (data) is not
+// blocked — context classification. grep 'rm -rf' / git commit -m 'fix rm -rf bug' / echo 'DROP TABLE'
+// all pass the danger string as data, not execution. Root fix for the 2026-06 category-level
+// misjudgement (.lark-report was a single-point symptom). The second case, git commit -m, is the
+// real incident from the start of the session where a commit title containing rm -f was blocked.
+//
 // TestHook_HazardGuard_DataContextNotBlocked: 危险串仅在引号内（数据）不拦——context
-// classification。grep "rm -rf" / git commit -m "fix rm -rf bug" / echo "DROP TABLE" 都
+// classification。grep"rm -rf"/ git commit -m"fix rm -rf bug"/ echo"DROP TABLE"都
 // 是把危险串当数据传递，不是执行。根治 2026-06 类别级误判（.lark-report 是单点表现）。
 // 第二条 git commit -m 正是会话最初 commit title 含 rm -f 被拦的真实案例。
 func TestHook_HazardGuard_DataContextNotBlocked(t *testing.T) {
@@ -360,9 +383,14 @@ func TestHook_HazardGuard_DataContextNotBlocked(t *testing.T) {
 	}
 }
 
+// TestHook_HazardGuard_ExecWrappedStillBlocked: wrapped in quotes but enclosed by bash -c /
+// sh -c / eval is real execution; context classification must not pass it — strip_quotes peels
+// the quoted content, and without this fallback real hazards leak (bash -c with rm -rf is the
+// agent truly deleting data).
+//
 // TestHook_HazardGuard_ExecWrappedStillBlocked: 引号内但被 bash -c / sh -c / eval 包裹的是
 // 真执行，context classification 不能放行——strip_quotes 会剥离引号内内容，若无此兜底会
-// 漏检真高危（bash -c "rm -rf" 是 agent 真删数据）。
+// 漏检真高危（bash -c"rm -rf"是 agent 真删数据）。
 func TestHook_HazardGuard_ExecWrappedStillBlocked(t *testing.T) {
 	dir := freshProject(t)
 	cases := []string{
@@ -386,8 +414,12 @@ func TestHook_HazardGuard_ExecWrappedStillBlocked(t *testing.T) {
 	}
 }
 
+// TestHook_HazardGuard_LogsBlockEvent: block events are persisted to events.jsonl for structured
+// traceability — fills the gap of 'blocked commands having no standalone record' (the 2026-06
+// hazards audit of 19 FAILs could only dig through checklog).
+//
 // TestHook_HazardGuard_LogsBlockEvent: block 事件落盘 events.jsonl，可结构化追溯——
-// 补全"被拦命令无独立记录"痛点（2026-06 hazards 审计 19 条 FAIL 只能扒 checklog）。
+// 补全「被拦命令无独立记录」痛点（2026-06 hazards 审计 19 条 FAIL 只能扒 checklog）。
 func TestHook_HazardGuard_LogsBlockEvent(t *testing.T) {
 	dir := freshProject(t)
 	in := hookStdin(t, "sess-hazard-logblk", "PreToolUse", "Bash", map[string]any{
@@ -415,8 +447,12 @@ func TestHook_HazardGuard_LogsBlockEvent(t *testing.T) {
 	}
 }
 
+// TestHook_HazardGuard_LogsReleaseEvent: the full HITL event flow block → confirm → release is
+// persisted. confirm registration (Confirmation) + release approval events are both recorded, so
+// 'whether a blocked command was later confirmed' is traceable.
+//
 // TestHook_HazardGuard_LogsReleaseEvent: 完整 HITL 事件流 block → confirm → release
-// 均落盘。confirm 登记（Confirmation）+ release 放行事件双记录，可追溯"被拦后是否被确认"。
+// 均落盘。confirm 登记（Confirmation）+ release 放行事件双记录，可追溯「被拦后是否被确认」。
 func TestHook_HazardGuard_LogsReleaseEvent(t *testing.T) {
 	dir := freshProject(t)
 	const cmd = "git push --force origin main"
@@ -460,6 +496,14 @@ func TestHook_HazardGuard_LogsReleaseEvent(t *testing.T) {
 	}
 }
 
+// TestHook_HazardGuard_RmSubstringInWordNotHazardous regressions the 2026-07 false positive: a
+// bare 'rm ' substring match hits rm inside words like confirm/perform/transform (confirm = confi+rm),
+// combined with the --fingerprint flag detection of -f...r, misclassifying 'go run . hazard confirm
+// --fingerprint' as rm -rf — calls not starting with 'forge hazard' (go run / cd && forge hazard)
+// miss the exemption and reach is_hazardous, getting repeatedly blocked. Fix: rm detection requires
+// rm to be an independent token (preceded by line start or a non-lowercase letter). These commands
+// must pass, and real rm -rf must still block (tightening word boundaries must not release true hazards).
+//
 // TestHook_HazardGuard_RmSubstringInWordNotHazardous regressions 2026-07 误伤：裸
 // 'rm ' 子串匹配会误中 confirm/perform/transform 等词内的 rm（confirm = confi+rm），
 // 叠加 --fingerprint 含 -f...r 的 flag 检测，把 'go run . hazard confirm --fingerprint'
@@ -468,6 +512,9 @@ func TestHook_HazardGuard_LogsReleaseEvent(t *testing.T) {
 // 这些命令必须放行，且真 rm -rf 仍必须 block（词边界收紧不能放过真高危）。
 func TestHook_HazardGuard_RmSubstringInWordNotHazardous(t *testing.T) {
 	dir := freshProject(t)
+	// None starts with 'forge hazard' (no exemption hit), contains rm substring (inside confirm)
+	// + -f...r flag (--fingerprint) — pre-fix this was misjudged as rm -rf, post-fix it must pass.
+	//
 	// 都不以 'forge hazard' 开头（不命中豁免），含 rm 子串（confirm 内）+ -f...r flag
 	// （--fingerprint）——修复前误判 rm -rf，修复后必须放行。
 	pass := []string{
@@ -485,6 +532,10 @@ func TestHook_HazardGuard_RmSubstringInWordNotHazardous(t *testing.T) {
 		}
 	}
 
+	// Regression: real rm -rf (rm is an independent token) must still block — tightening word
+	// boundaries must not release true hazards. Covers both word-boundary branches: rm at line
+	// start (^rm ) and rm preceded by space ([^a-z]rm , e.g. sudo rm -rf).
+	//
 	// 回归：真 rm -rf（rm 是独立 token）仍必须 block——词边界收紧不能放过真高危。
 	// 覆盖词边界两分支：行首 rm（^rm ）与 rm 前空格（[^a-z]rm ，如 sudo rm -rf）。
 	block := []string{
@@ -502,8 +553,17 @@ func TestHook_HazardGuard_RmSubstringInWordNotHazardous(t *testing.T) {
 	}
 }
 
+// TestHook_HazardGuard_CommentNotBlocked pins dogfood 3.2a: a hazard string on a # comment line
+// (not in quotes, at word boundaries) is data not execution, and must pass. The electron-builder
+// '# Clean up' comment containing rm was miscaught as execution (one of the AgentWorld false
+// positives). strip_quotes adds # comment stripping: in 'make build # rm -rf build/' the rm -rf is
+// inside the comment → after stripping is_hazardous does not match → data-context pass.
+// Regression guard: dangerous strings executed after a comment (e.g. '# note ; rm -rf x' with a
+// semicolon continuation) are NOT covered here — left to code-review-gate; the hook only passes
+// pure comment lines (# to end of line with no semicolon continuation).
+//
 // TestHook_HazardGuard_CommentNotBlocked 钉死 dogfood 3.2a：危险串在 # 注释行（非引号内、
-// 词边界处）是数据不执行，应放行。electron-builder "# Clean up" 含 rm 的注释被当执行误拦
+// 词边界处）是数据不执行，应放行。electron-builder"# Clean up"含 rm 的注释被当执行误拦
 // （AgentWorld 误报之一）。strip_quotes 增加 # 注释剥离：make build # rm -rf build/ 中
 // rm -rf 在注释里 → 剥离后 is_hazardous 不命中 → 数据上下文放行。
 // 回归保护：注释后真执行的危险串（如 # note ; rm -rf x 的分号续接）本测试不覆盖，留给
@@ -526,11 +586,18 @@ func TestHook_HazardGuard_CommentNotBlocked(t *testing.T) {
 	}
 }
 
-// TestHook_HazardGuard_TruncatePathNotBlocked 钉死 dogfood 3.2b：裸 "truncate" 子串匹配
+// TestHook_HazardGuard_TruncatePathNotBlocked pins dogfood 3.2b: a bare 'truncate' substring
+// match false-fires on path fragments (cd truncate-output/ / --no-truncate flag). After narrowing
+// to a SQL DDL context these must pass, and real TRUNCATE TABLE must still block (narrowing must
+// not release true DDL).
+//
+// TestHook_HazardGuard_TruncatePathNotBlocked 钉死 dogfood 3.2b：裸"truncate"子串匹配
 // 误伤路径片段（cd truncate-output/ / --no-truncate flag）。收窄到 SQL DDL 语境后这些
 // 必须放行，且真 TRUNCATE TABLE 仍必须 block（收窄不能放过真 DDL）。
 func TestHook_HazardGuard_TruncatePathNotBlocked(t *testing.T) {
 	dir := freshProject(t)
+	// Path/flag fragments containing a truncate substring — not SQL DDL, approved.
+	//
 	// 路径/flag 片段含 truncate 子串——非 SQL DDL，放行
 	pass := []string{
 		`cd truncate-output/`,
@@ -546,6 +613,9 @@ func TestHook_HazardGuard_TruncatePathNotBlocked(t *testing.T) {
 			t.Fatalf("hazard-guard must pass %q (truncate is a path/flag fragment, not SQL DDL), got block. stdout:\n%s", cmd, stdout)
 		}
 	}
+	// Regression: real SQL TRUNCATE TABLE must still block — narrowing must not release destructive DDL,
+	// including bare TRUNCATE (MySQL/PG's TABLE keyword is optional, TRUNCATE users ≡ TRUNCATE TABLE users).
+	//
 	// 回归：真 SQL TRUNCATE TABLE 仍必须 block——收窄不能放过破坏性 DDL
 	// 含裸 TRUNCATE（MySQL/PG 的 TABLE 关键字可选，TRUNCATE users ≡ TRUNCATE TABLE users）。
 	block := []string{
@@ -592,9 +662,15 @@ func forgeHookShared(t *testing.T, dir, tmp, hookName, stdinJSON string) (string
 	return stdout.String(), stderr.String(), err
 }
 
+// TestHook_ReadBeforeEdit_BlocksUnreadSource pins the core contract of plan 2: within an active
+// task, editing an existing source file never Read this session → PreToolUse hard block
+// (decision=block). This is the downstream catch for 'blind edit from memory, old_string hits' —
+// caught at Edit time, not deferred to task-verify. No tool-track Read record → no such path in
+// reads-log → grep -qxF fails → FAIL.
+//
 // TestHook_ReadBeforeEdit_BlocksUnreadSource 钉住方案2 的核心契约：活跃任务内，
 // 编辑一个本会话从未 Read 过的现存源文件 → PreToolUse 硬阻断（decision=block）。
-// 这是"凭记忆盲改、old_string 撞中"的下沉拦截——在 Edit 当下拦住，
+// 这是「凭记忆盲改、old_string 撞中」的下沉拦截——在 Edit 当下拦住，
 // 不拖到 task-verify。无 tool-track Read 记录 → reads-log 无该路径 → grep -qxF 失败 → FAIL。
 func TestHook_ReadBeforeEdit_BlocksUnreadSource(t *testing.T) {
 	dir := freshProject(t)
@@ -602,6 +678,8 @@ func TestHook_ReadBeforeEdit_BlocksUnreadSource(t *testing.T) {
 	tmp := t.TempDir()
 	forge(t, dir, "task", "start", "--ref", "feat/rbe-unread", "--title", "unread edit")
 
+	// Existing source file ([ -f ] is true, not the new-file exemption).
+	//
 	// 现存源文件（[ -f ] 为真，非新建豁免）。
 	writeFile(t, dir, "target.go", "package main\n\nfunc old() {}\n")
 
@@ -623,6 +701,10 @@ func TestHook_ReadBeforeEdit_BlocksUnreadSource(t *testing.T) {
 	}
 }
 
+// TestHook_ReadBeforeEdit_AllowsAfterRead pins the positive path of plan 2: first record the path
+// into the per-session reads-log via tool-track (PostToolUse Read), then Edit the same file → pass.
+// Proves the reads-log side-channel works end-to-end (dispatcher append ↔ hook grep).
+//
 // TestHook_ReadBeforeEdit_AllowsAfterRead 钉住方案2 的正向路径：先经 tool-track
 // （PostToolUse Read）把该路径记进 per-session reads-log，再 Edit 同一文件 → 放行。
 // 证明 reads-log side-channel 端到端打通（dispatcher append ↔ hook grep）。
@@ -634,6 +716,8 @@ func TestHook_ReadBeforeEdit_AllowsAfterRead(t *testing.T) {
 
 	writeFile(t, dir, "target.go", "package main\n\nfunc old() {}\n")
 
+	// Read first (PostToolUse tool-track records the path).
+	//
 	// 先 Read（PostToolUse tool-track 记录路径）。
 	readIn := hookStdin(t, sid, "PostToolUse", "Read", map[string]any{
 		"file_path": filepath.Join(dir, "target.go"),
@@ -642,6 +726,8 @@ func TestHook_ReadBeforeEdit_AllowsAfterRead(t *testing.T) {
 		t.Fatalf("tool-track Read record step failed: %v", err)
 	}
 
+	// Then Edit the same file → should pass (reads-log hit).
+	//
 	// 再 Edit 同一文件 → 应放行（reads-log 命中）。
 	editIn := hookStdin(t, sid, "PreToolUse", "Edit", map[string]any{
 		"file_path":  filepath.Join(dir, "target.go"),
@@ -657,12 +743,18 @@ func TestHook_ReadBeforeEdit_AllowsAfterRead(t *testing.T) {
 	}
 }
 
+// TestHook_ReadBeforeEdit_SkipsWithoutTask pins the scope: with no active task the hook silently
+// passes (no tracking, no blocking) — quick non-task edits are outside Forge's quality domain,
+// avoiding false fires.
+//
 // TestHook_ReadBeforeEdit_SkipsWithoutTask 钉住作用域：无活跃任务时 hook 静默放行
 // （不追踪、不阻断）——非任务的快速编辑不在 Forge 质量域内，避免误伤。
 func TestHook_ReadBeforeEdit_SkipsWithoutTask(t *testing.T) {
 	dir := freshProject(t)
 	const sid = "sess-rbe-notask"
 	tmp := t.TempDir()
+	// Deliberately do not start a task.
+	//
 	// 故意不启动任务。
 	writeFile(t, dir, "target.go", "package main\n")
 
@@ -680,6 +772,10 @@ func TestHook_ReadBeforeEdit_SkipsWithoutTask(t *testing.T) {
 	}
 }
 
+// TestHook_ReadBeforeEdit_AllowsNewFile pins the new-file exemption: Writing a new source file not
+// on disk → pass ([ -f ] is false → new-file branch). A new file cannot have been Read, and this is
+// creation not blind edit.
+//
 // TestHook_ReadBeforeEdit_AllowsNewFile 钉住新建豁免：Write 一个不在盘上的新源文件
 // → 放行（[ -f ] 为假 → 新建分支）。新建无法被 Read 过，且是创作非盲改。
 func TestHook_ReadBeforeEdit_AllowsNewFile(t *testing.T) {
@@ -701,11 +797,19 @@ func TestHook_ReadBeforeEdit_AllowsNewFile(t *testing.T) {
 	}
 }
 
+// TestHook_ReadBeforeEdit_PerTaskOverrideEscape (plan 5 leak-prevention path, e2e):
+// 'forge task override --work-activity disable' writes into the active task's Overrides → the Go
+// dispatcher (hook.go) injects FORGE_WORK_ACTIVITY=disable → the read-before-edit hook passes edits
+// to existing source files never Read. This per-task path is independent of global env (other tasks
+// in the same shell are unaffected); it is the contract that 'the escape hatch must work end-to-end
+// or it is a fake hard gate' — contrast TestHook_ReadBeforeEdit_BlocksUnreadSource (same scenario
+// without override must block).
+//
 // TestHook_ReadBeforeEdit_PerTaskOverrideEscape（方案5 防泄漏路径·e2e）：
 // `forge task override --work-activity disable` 写入活跃任务的 Overrides → Go dispatcher
 // （hook.go）注入 FORGE_WORK_ACTIVITY=disable → read-before-edit hook 放行未 Read 的现存源编辑。
-// 这条 per-task 路径独立于全局 env（同 shell 其他任务不受影响），是"逃生必须端到端生效否则是
-// 假硬门禁"的契约——对照 TestHook_ReadBeforeEdit_BlocksUnreadSource（同场景无 override 必 block）。
+// 这条 per-task 路径独立于全局 env（同 shell 其他任务不受影响），是「逃生必须端到端生效否则是
+// 假硬门禁」的契约——对照 TestHook_ReadBeforeEdit_BlocksUnreadSource（同场景无 override 必 block）。
 func TestHook_ReadBeforeEdit_PerTaskOverrideEscape(t *testing.T) {
 	dir := freshProject(t)
 	const sid = "sess-rbe-override"
@@ -713,6 +817,9 @@ func TestHook_ReadBeforeEdit_PerTaskOverrideEscape(t *testing.T) {
 	forge(t, dir, "task", "start", "--ref", "feat/rbe-override", "--title", "override escape")
 	forge(t, dir, "task", "override", "--work-activity", "disable")
 
+	// Existing source file (not the new-file exemption), never Read this session — without override
+	// it must block (see BlocksUnreadSource).
+	//
 	// 现存源文件（非新建豁免），本会话从未 Read——无 override 时必 block（见 BlocksUnreadSource）。
 	writeFile(t, dir, "target.go", "package main\n\nfunc old() {}\n")
 

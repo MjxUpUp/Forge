@@ -1,3 +1,8 @@
+// Package skillsqa implements SkillsHub quality validation: spec contracts
+// (registry.py R1-R11) and security audit (audit.py 19 rules + weighted scoring).
+// 1:1 alignment with Python semantics ensures per-rule judgments match registry.py
+// --json / audit.py (golden comparison baseline).
+//
 // Package skillsqa 实现 SkillsHub 的质量校验：规范契约（registry.py 的 R1-R11）
 // 与安全审查（audit.py 的 19 条规则 + 加权评分）。1:1 对齐 Python 语义，确保与
 // registry.py --json / audit.py 的判定逐条一致（黄金对比基准）。
@@ -10,6 +15,10 @@ import (
 	"strings"
 )
 
+// ValidPatterns — legal atomic values for metadata.pattern (registry.py VALID_PATTERNS).
+// Combinations are supported (e.g. `pipeline + gate`): after split('+'), each segment
+// must be in this set.
+//
 // ValidPatterns — metadata.pattern 合法原子值（registry.py VALID_PATTERNS）。
 // 支持组合（如 "pipeline + gate"）：split('+') 后每段都必须在此集合。
 var ValidPatterns = map[string]bool{
@@ -18,6 +27,12 @@ var ValidPatterns = map[string]bool{
 	"routing": true, "fallback": true,
 }
 
+// HighSignalKW — any one present in body is treated as high-signal content
+// (registry.py HIGH_SIGNAL_KW).
+// Note: Python uses `kw in body_low` substring match, so `when.*try.*because` is a
+// literal string (rarely matched); Go keeps strings.Contains for consistency and does
+// not convert it to a regex.
+//
 // HighSignalKW — body 含任一视为有高信号内容（registry.py HIGH_SIGNAL_KW）。
 // 注意：Python 用 `kw in body_low` 子串匹配，故 "when.*try.*because" 是字面串
 // （几乎不命中），Go 保持 strings.Contains 一致，不改成正则。
@@ -27,6 +42,14 @@ var HighSignalKW = []string{
 	"red flag", "rationaliz", "红旗", "借口",
 }
 
+// CSOWorkflowMarkers — workflow summary words that description should not contain
+// (CSO rule: description only states what + when, never summarizes body workflow,
+// otherwise the model acts on description and skips the SKILL.md body).
+// Heuristic high-confidence Chinese phrases; a hit goes advisory (regression guard,
+// does not block Pass).
+// Additionally: the model weights head/tail heavily and the middle (body) is easily
+// overlooked; stuffing workflow into description further drowns out the body.
+//
 // CSOWorkflowMarkers — description 不应含的工作流总结词（CSO 规则：description 只说
 // what + when，不总结 body 工作流，否则模型照 description 行动而跳过 SKILL.md body）。
 // 启发式高置信中文词组，命中走 advisory（防回归，不阻断 Pass）。
@@ -35,18 +58,38 @@ var CSOWorkflowMarkers = []string{
 	"完整工作流", "完整流程", "全流程", "完整协议", "完整编排", "全链路", "全工序",
 }
 
+// AllowedFm — top-level frontmatter field whitelist (registry.py ALLOWED_FM,
+// R3 prevents field typos).
+//
 // AllowedFm — frontmatter 顶层字段白名单（registry.py ALLOWED_FM，R3 防字段 typo）。
 var AllowedFm = map[string]bool{
 	"name": true, "description": true, "license": true, "allowed-tools": true,
 	"metadata": true, "compatibility": true, "version": true, "requires": true,
 }
 
+// ExecExts — executable script suffixes (audit.py EXEC_EXTS); the dangerous_code
+// rule only applies to these.
+//
 // ExecExts — 可执行脚本后缀（audit.py EXEC_EXTS）；dangerous_code 规则仅对这些生效。
 var ExecExts = map[string]bool{
 	".py": true, ".sh": true, ".ps1": true, ".js": true, ".ts": true,
 	".mjs": true, ".cjs": true, ".bat": true, ".cmd": true,
 }
 
+// HtmlExts — HTML suffixes; prompt_injection / data_exfiltration rules apply to
+// these, and dangerous_code entries with HtmlAlso=true (DC-1 eval / DC-7 browser
+// execution vectors) also apply.
+// HTML is a high-risk carrier for injection/code execution: PI-4 hidden directive
+// comments, PI-5 zero-width characters, DE exfiltration directives, and inline
+// <script>eval(...)/new Function(...)/document.write(...) in HTML are all real
+// attack surfaces.
+// Other DCs (child_process/os.system and similar backend APIs) do not cover HTML —
+// HTML is not a directly executable suffix, and backend API keywords in descriptive
+// text are prone to false positives.
+// 2026-07: prototype-confirmation introduced the first .html canonical asset, exposing
+// a blind spot — PI-4 previously never scanned real .html; DC-1 eval previously used
+// ExecOnly and also did not scan .html (HTML inline XSS was under-reported).
+//
 // HtmlExts — HTML 后缀；prompt_injection / data_exfiltration 规则对这些生效，
 // dangerous_code 中 HtmlAlso=true 的（DC-1 eval / DC-7 浏览器执行向量）也生效。
 // HTML 是 injection/代码执行高危载体：PI-4 隐藏指令注释、PI-5 零宽字符、DE 外发指令、
@@ -59,19 +102,32 @@ var HtmlExts = map[string]bool{
 	".html": true, ".htm": true,
 }
 
+// SeverityWeight — risk-scoring weights (audit.py SEVERITY_WEIGHT).
+//
 // SeverityWeight — 风险评分加权（audit.py SEVERITY_WEIGHT）。
 var SeverityWeight = map[string]int{
 	"INFO": 0, "LOW": 3, "MEDIUM": 8, "HIGH": 15, "CRITICAL": 25,
 }
 
+// kebabRe — R1 name legal format (registry.py r'[a-z][a-z0-9-]*' fullmatch).
+//
 // kebabRe — R1 name 合法格式（registry.py r'[a-z][a-z0-9-]*' fullmatch）。
 var kebabRe = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
+// allowedFmSorted returns the sorted allowed-field list (used in R3 issue text;
+// aligns with Python sorted(ALLOWED_FM)).
+//
 // allowedFmSorted 返回排序后的允许字段列表（R3 issue 文案用，对齐 Python sorted(ALLOWED_FM)）。
 func allowedFmSorted() []string {
 	return slices.Sorted(maps.Keys(AllowedFm))
 }
 
+// markdownExt reports whether the suffix is markdown (audit.py AUDITORS_BY_TYPE
+// .md/.markdown).
+// strings.ToLower performs full Unicode case folding — the old hand-written
+// ASCII-only lower() would miss non-ASCII uppercase letters; routing through the
+// standard library keeps this judgment consistent with the descLow/bodyLow handling.
+//
 // markdownExt 判断是否 markdown 后缀（audit.py AUDITORS_BY_TYPE 的 .md/.markdown）。
 // 用 strings.ToLower 做完整 Unicode 大小写折叠——旧的手写 ASCII-only lower() 会漏掉
 // 非 ASCII 大写字母，统一走标准库与 descLow/bodyLow 的判定口径一致。

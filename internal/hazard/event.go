@@ -11,7 +11,15 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
+// Event log: records the hazard-guard block/release event stream, completing the "escape code (fingerprint) audit trail".
+//
 // 事件日志：记录 hazard-guard 的拦截/放行事件流，补全"逃生码（指纹）审计记录"。
+//
+// Background: Confirmation (<fp>.json) only records the final state of confirm registrations (valid within the 5min window);
+// block and release events used to flow only into hook stdout/checklog with no structured persistence — when running
+// false-positive audits one could only dig through checklog (the pain point of the 2026-06 hazards audit of 19 FAILs: blocked-but-not-confirm commands had no independent record). events.jsonl persists the full event stream so we can trace 「when something was blocked,
+// what it was, whether it was released by confirm, whether it was judged as data-context release」. Design mirrors checklog/store.go
+// (mutex + O_APPEND append + scanner read).
 //
 // 背景：Confirmation（<fp>.json）只记 confirm 登记的最终态（5min 窗口内有效）；
 // block 拦截和 release 放行事件原本只进 hook stdout/checklog，无结构化落盘——做
@@ -20,12 +28,21 @@ import (
 // 什么、是否被 confirm 放行、是否被判为数据上下文放行"。设计参照 checklog/store.go
 // （mutex + O_APPEND 追加 + scanner 读）。
 
+// Event types.
+//
 // 事件类型。
 const (
+	// EventBlock: hazard-guard blocks a high-risk command (unconfirmed, awaiting HITL).
+	//
 	// EventBlock：hazard-guard 拦截高危命令（未确认，等待 HITL）。
 	EventBlock = "block"
+	// EventRelease: released because forge hazard confirm registered it (within the 5min window).
+	//
 	// EventRelease：因 forge hazard confirm 登记（5min 窗口内）而放行。
 	EventRelease = "release"
+	// EventData: context classification judged the dangerous string is only inside quotes (data, not execution) and released it,
+	// e.g. grep `rm -rf` / git commit -m `fix rm -rf bug`.
+	//
 	// EventData：context classification 判定危险串仅在引号内（数据，非执行）而放行，
 	// 如 grep "rm -rf" / git commit -m "fix rm -rf bug"。
 	EventData = "data"
@@ -33,6 +50,8 @@ const (
 
 var eventMu sync.Mutex
 
+// Event records a single hazard-guard event, appended to DataDir/hazards/events.jsonl.
+//
 // Event 记录一次 hazard-guard 事件，追加写 DataDir/hazards/events.jsonl。
 type Event struct {
 	Ts          time.Time `json:"ts"`
@@ -41,11 +60,19 @@ type Event struct {
 	Command     string    `json:"command"`     // 截断的命令串（审计用，maxCommandStore）
 }
 
+// AppendEvent appends an event to <DataDir>/hazards/events.jsonl. Ts is stamped by this function,
+// Command is truncated to maxCommandStore (consistent with Confirmation) to avoid oversized commands bloating the log.
+// Thread-safe: eventMu serializes within the process. Hooks invoke the `forge hazard log` subprocess across multiple processes,
+// relying on O_APPEND — POSIX guarantees atomic single-line Write; Windows has no PIPE_BUF guarantee, but hook triggers are low-frequency,
+// so interleaving risk is acceptable (audit logs tolerate occasional bad lines; LoadEvents skips corrupted lines).
+//
 // AppendEvent 追加一条事件到 <DataDir>/hazards/events.jsonl。Ts 由本函数盖时间戳，
 // Command 截断到 maxCommandStore（与 Confirmation 一致），避免超长命令撑大日志。
 // 线程安全：进程内 eventMu 串行化。hook 是多进程调用 `forge hazard log` 子命令，跨进程
 // 靠 O_APPEND——POSIX 下单行 Write 原子；Windows 无 PIPE_BUF 保证，但 hook 触发低频、
 // 交错风险可接受（审计日志容忍偶发坏行，LoadEvents 跳过损坏行）。
+//
+// Failure should not affect the hook main flow — callers (hook scripts) tolerate it with `|| true`; audit failure does not block.
 //
 // 失败不应影响 hook 主流程——调用方（hook 脚本）用 `|| true` 容错，审计失败不 block。
 func AppendEvent(p *forgedata.Project, e Event) error {
@@ -73,6 +100,9 @@ func AppendEvent(p *forgedata.Project, e Event) error {
 	return err
 }
 
+// LoadEvents reads all events (in-file time order). Returns the parsed partial result when the file does not exist or has corrupted lines.
+// Corrupted lines are skipped (no error) — audit logs tolerate occasional line corruption and don't discard the whole file for one bad line.
+//
 // LoadEvents 读取全部事件（文件内时间序）。文件不存在或损坏行返回已解析的部分。
 // 损坏行跳过（不报错）——审计日志容忍个别行损坏，不因一行坏数据丢弃全量。
 func LoadEvents(p *forgedata.Project) ([]Event, error) {
@@ -90,6 +120,7 @@ func LoadEvents(p *forgedata.Project) ([]Event, error) {
 	for scanner.Scan() {
 		var e Event
 		if err := json.Unmarshal(scanner.Bytes(), &e); err != nil {
+			// skip corrupted line
 			continue // 跳过损坏行
 		}
 		events = append(events, e)
@@ -97,6 +128,9 @@ func LoadEvents(p *forgedata.Project) ([]Event, error) {
 	return events, scanner.Err()
 }
 
+// CountSince counts events of a given type after `since`. Provides `forge hazard status` with 「past 24h
+// block/release counts」 so users can see at a glance the workload and false-positive scale of hazard-guard.
+//
 // CountSince 统计 since 之后某类型事件数。给 `forge hazard status` 展示"近 24h
 // 拦截/放行次数"，让用户一眼看到 hazard-guard 的工作量与误伤规模。
 func CountSince(p *forgedata.Project, eventType string, since time.Time) (int, error) {

@@ -6,6 +6,11 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
+// ResetForRebuild backs up the existing conclusions.jsonl to .bak (if present) and
+// clears it in place for act rebuild to fully reconstruct. Returns an empty backup
+// path when no file exists (legitimate — old projects simply do not have one). os.Rename
+// both backs up and clears in place (delete-then-create); Append rebuilds at the same path.
+//
 // ResetForRebuild 备份现有 conclusions.jsonl 到 .bak（如有）并清空原位，供 act rebuild
 // 全量重建。无现有文件返空备份路径（合法状态——旧项目本就没有，不报错）。os.Rename 既
 // 备份又清空原位（删旧建新），Append 随后会在原位重建文件。

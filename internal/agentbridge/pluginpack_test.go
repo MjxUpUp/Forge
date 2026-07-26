@@ -10,6 +10,10 @@ import (
 	"github.com/MjxUpUp/Forge/internal/hooks"
 )
 
+// expectedPluginFiles is the set of relative paths that GeneratePluginPack(DefaultPluginPack) should generate (relative to
+// RepoDir). Forgetting to list a new output file here would let TestPluginPack_WritesAllFiles miss it — intentionally hardcoded to force the generator
+// and tests to stay in sync. Paths contain `forge` because DefaultPluginPack.PluginName=`forge`.
+//
 // expectedPluginFiles 是 GeneratePluginPack(DefaultPluginPack) 应生成的相对路径集（相对
 // RepoDir）。加新输出文件忘加这里，TestPluginPack_WritesAllFiles 会漏检——故意列死，逼生成器
 // 与测试同步。路径含 "forge" 因 DefaultPluginPack.PluginName="forge"。
@@ -20,6 +24,9 @@ var expectedPluginFiles = []string{
 	"plugins/forge/README.md",
 }
 
+// generatePack generates a default pack into a temp directory and returns it. DefaultPluginPack prefills owner=MjxUpUp
+// to satisfy the schema required fields.
+//
 // generatePack 生成一个默认 pack 到临时目录，返回该目录。DefaultPluginPack 预填 owner=MjxUpUp
 // 满足 schema required。
 func generatePack(t *testing.T) string {
@@ -31,6 +38,8 @@ func generatePack(t *testing.T) string {
 	return dir
 }
 
+// TestPluginPack_WritesAllFiles: all expected files are generated.
+//
 // TestPluginPack_WritesAllFiles：所有预期文件都生成。
 func TestPluginPack_WritesAllFiles(t *testing.T) {
 	dir := generatePack(t)
@@ -41,6 +50,10 @@ func TestPluginPack_WritesAllFiles(t *testing.T) {
 	}
 }
 
+// TestPluginPack_HooksMirrorSettings: the hooks field of plugin.json must equal the hooks field that GenerateSettings
+// writes to settings.local.json — a single-source-of-truth guard. End-to-end comparison (reading two real files,
+// not function return values). If someone changes ForgeHookSpec but pluginpack switches to a hardcoded copy, this test catches the drift.
+//
 // TestPluginPack_HooksMirrorSettings：plugin.json 的 hooks 字段必须等于 GenerateSettings
 // 写到 settings.local.json 的 hooks 字段——单一真相源守卫。端到端比对（读两个真实文件，
 // 非函数返回值）。若有人改 ForgeHookSpec 但 pluginpack 改用硬编码副本，此测试抓住 drift。
@@ -63,6 +76,9 @@ func TestPluginPack_HooksMirrorSettings(t *testing.T) {
 	}
 }
 
+// TestPluginPack_Marketplace: both marketplace.json files have correct structure — name=forge, owner present (schema
+// required), a single plugin, source=./plugins/forge (follows PluginName), author field, and version omitted.
+//
 // TestPluginPack_Marketplace：两份 marketplace.json 结构正确——name=forge、owner 必有（schema
 // required）、唯一 plugin、source=./plugins/forge（跟随 PluginName）、author 字段、省略 version。
 func TestPluginPack_Marketplace(t *testing.T) {
@@ -73,6 +89,8 @@ func TestPluginPack_Marketplace(t *testing.T) {
 		if cfg["name"] != "forge" {
 			t.Errorf("%s marketplace name = %v, want forge", mp, cfg["name"])
 		}
+		// owner is a required field of the claude marketplace schema.
+		//
 		// owner 是 claude marketplace schema 的 required 字段。
 		owner, ok := cfg["owner"].(map[string]any)
 		if !ok {
@@ -92,10 +110,14 @@ func TestPluginPack_Marketplace(t *testing.T) {
 		if entry["source"] != "./plugins/forge" {
 			t.Errorf("%s source = %v, want ./plugins/forge", mp, entry["source"])
 		}
+		// author shares the same source as owner (name is always present).
+		//
 		// author 与 owner 同源（name 必有）。
 		if _, has := entry["author"]; !has {
 			t.Errorf("%s entry missing author field", mp)
 		}
+		// version omitted: git SHA drives automatic updates.
+		//
 		// 省略 version：git SHA 驱动自动更新。
 		if _, has := entry["version"]; has {
 			t.Errorf("%s entry has version field (should omit for SHA-driven auto-update)", mp)
@@ -106,6 +128,9 @@ func TestPluginPack_Marketplace(t *testing.T) {
 	}
 }
 
+// TestPluginPack_OwnerIsRequired: GeneratePluginPack must error when OwnerName is empty (the claude marketplace
+// schema marks owner as required; omitting it would make `claude plugin validate` reject loading).
+//
 // TestPluginPack_OwnerIsRequired：OwnerName 空时 GeneratePluginPack 必须报错（claude marketplace
 // schema 把 owner 标为 required，省略会让 `claude plugin validate` 拒载）。
 func TestPluginPack_OwnerIsRequired(t *testing.T) {
@@ -118,6 +143,10 @@ func TestPluginPack_OwnerIsRequired(t *testing.T) {
 	}
 }
 
+// TestPluginPack_CustomPluginName: with a non-default PluginName, source must follow (./plugins/<name>),
+// and the plugin tree is written to plugins/<name>/. Regression guard B1: pluginSource was once hardcoded to `./plugins/forge`, causing
+// source to point at the nonexistent ./plugins/forge when --plugin-name myforge, failing install.
+//
 // TestPluginPack_CustomPluginName：非默认 PluginName 时，source 必须跟随（./plugins/<name>），
 // plugin 树写到 plugins/<name>/。回归守卫 B1：pluginSource 曾硬编码 "./plugins/forge"，导致
 // --plugin-name myforge 时 source 指向不存在的 ./plugins/forge，install 失败。
@@ -138,12 +167,16 @@ func TestPluginPack_CustomPluginName(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "plugins", "myforge", ".claude-plugin", "plugin.json")); err != nil {
 		t.Errorf("plugin tree not written to plugins/myforge/: %v", err)
 	}
+	// plugins/forge/ should not be created (stale hardcoded path).
+	//
 	// plugins/forge/ 不应被创建（旧硬编码路径）
 	if _, err := os.Stat(filepath.Join(dir, "plugins", "forge")); err == nil {
 		t.Error("plugins/forge/ created despite PluginName=myforge (stale hardcoded path)")
 	}
 }
 
+// TestPluginPack_OwnerWithEmail: when OwnerEmail is non-empty, both owner and author carry an email field (name is always present).
+//
 // TestPluginPack_OwnerWithEmail：OwnerEmail 非空时，owner/author 都带 email 字段（name 总在）。
 func TestPluginPack_OwnerWithEmail(t *testing.T) {
 	dir := t.TempDir()
@@ -166,6 +199,8 @@ func TestPluginPack_OwnerWithEmail(t *testing.T) {
 	}
 }
 
+// TestPluginPack_Idempotent: repeated generation does not duplicate entries (plugin entry stays at 1, files remain valid).
+//
 // TestPluginPack_Idempotent：反复生成不重复添加（plugin entry 不变成 2 个、文件仍合法）。
 func TestPluginPack_Idempotent(t *testing.T) {
 	dir := t.TempDir()
@@ -183,6 +218,9 @@ func TestPluginPack_Idempotent(t *testing.T) {
 	}
 }
 
+// TestPluginPack_NoCurlyQuotes: regression guard for [[windows-input-quote-corruption]] — all generated files
+// must never contain curly quotes U+201C/U+201D. Target strings are built from runes (bypassing whether the test source literal is corrupted).
+//
 // TestPluginPack_NoCurlyQuotes：回归守卫 [[windows-input-quote-corruption]]——生成的所有文件
 // 绝不能含弯引号 U+201C/U+201D。用 rune 构造目标串（绕过测试源码字面量是否被腐蚀）。
 func TestPluginPack_NoCurlyQuotes(t *testing.T) {
@@ -206,6 +244,10 @@ func TestPluginPack_NoCurlyQuotes(t *testing.T) {
 	}
 }
 
+// TestPluginPack_Readme: README contains the three-step first-experience structure + per-host install commands + honest statement about unconfirmed Codex paths
+// + correct npm package name (@agent_forge/forge, matching npm/package.json) + capability boundary (init still required per project).
+// Negative assertion on @mjxupup/forge catches historical regression: early pluginReadme wrote the wrong package name using the GitHub owner slug.
+//
 // TestPluginPack_Readme：README 含三步首体验结构 + 每 host 安装命令 + Codex 路径未确认的诚实表述
 // + npm 包名正确（@agent_forge/forge，与 npm/package.json 一致）+ 能力边界（每项目仍需 init）。
 // 负向断言 @mjxupup/forge 抓历史回退：早期 pluginReadme 写过错用 GitHub owner slug 的包名。
@@ -230,12 +272,22 @@ func TestPluginPack_Readme(t *testing.T) {
 			t.Errorf("README missing %q", want)
 		}
 	}
+	// Negative: the old wrong package name must not reappear (@mjxupup/forge points to a nonexistent package).
+	//
 	// 负向：旧错误包名不得重现（@mjxupup/forge 指向不存在的包）。
 	if strings.Contains(content, "@mjxupup/forge") {
 		t.Errorf("README references @mjxupup/forge (stale wrong package name; want @agent_forge/forge)")
 	}
 }
 
+// TestPluginPack_CommittedManifestMatchesGenerator: the hooks field of the committed plugins/forge/.claude-plugin/
+// plugin.json must equal the current output of GeneratePluginPack (derived from ForgeHookSpec).
+// TestPluginPack_HooksMirrorSettings only guards internal generator consistency (settings.local.json vs
+// plugin.json in the temp dir, both derived from the same ForgeHookSpec); it cannot catch the drift of changing ForgeHookSpec but forgetting to run
+// `forge plugin pack` to re-commit plugin.json — this test directly reads the repo's committed
+// plugin.json and compares it against generator output, ensuring committed derived assets stay in sync with code. Regression source: SessionStart added
+// task-resume to ForgeHookSpec, but the committed plugin.json was not regenerated (code-review P0-1).
+//
 // TestPluginPack_CommittedManifestMatchesGenerator：committed 的 plugins/forge/.claude-plugin/
 // plugin.json 的 hooks 字段必须等于 GeneratePluginPack 当前输出（ForgeHookSpec 派生）。
 // TestPluginPack_HooksMirrorSettings 只守卫生成器内部一致（临时目录里 settings.local.json vs

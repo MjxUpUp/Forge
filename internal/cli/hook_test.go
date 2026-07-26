@@ -577,6 +577,12 @@ func TestHookOutput_ProjectScopedHookStillSkipsOutsideProject(t *testing.T) {
 	}
 }
 
+// TestReadsFilePath_DeterministicAndFilenameSafe pins the reads-log path contract of scheme 2:
+// resolving the same session id twice must yield the same path (tool-track append and read-before-edit
+// grep each call readsFilePath in different subprocesses; divergence would make the hook miss forever), and the path
+// must contain only filename-safe characters ([A-Za-z0-9._-]) — session ids may contain path separators/spaces and must be
+// collapsed to prevent escaping $TMPDIR or creating unexpected directories.
+//
 // TestReadsFilePath_DeterministicAndFilenameSafe 钉住方案2 的 reads-log 路径契约：
 // 同一 session id 两次解析必须产出同一路径（tool-track append 与 read-before-edit
 // grep 在不同子进程里各自调用 readsFilePath，不一致会让 hook 永远 miss），且路径
@@ -614,6 +620,10 @@ func TestReadsFilePath_DeterministicAndFilenameSafe(t *testing.T) {
 	}
 }
 
+// TestAppendSessionRead_RecordsAndMatches pins the side-channel write/read of scheme 2: after appending
+// a repo-relative path, the file contains that path on its own line; the read-before-edit grep -qxF semantics
+// is line-exact match — so the appended content must be a single line with no extra whitespace.
+//
 // TestAppendSessionRead_RecordsAndMatches 钉住方案2 的 side-channel 写/读：append
 // 一个 repo-relative 路径后，文件按行含该路径；read-before-edit 的 grep -qxF 语义
 // 即"整行精确匹配"——所以追加内容必须是单行无额外空白。
@@ -639,6 +649,11 @@ func TestAppendSessionRead_RecordsAndMatches(t *testing.T) {
 	}
 }
 
+// TestHookToolTrackRecordsSkillInput pins scheme C: the tool-track hook (matcher Read|Skill|Agent)
+// records tool_input (skill name) for Skill calls, so toollog audits can see which quality skill the agent loaded.
+// Read still omits tool_input (frequent; gate only needs tool_name+timestamp); Skill/Agent fill tool_input
+// so whether quality skills were driven becomes traceable (root cause of zero quality-skill fires in advisory context is traceable).
+//
 // TestHookToolTrackRecordsSkillInput 钉死方案 C：tool-track hook（matcher Read|Skill|Agent）
 // 对 Skill 调用记录 tool_input（skill 名），让 toollog 审计能看到 agent 加载了哪个质量技能。
 // Read 仍省略 tool_input（频繁，gate 只需 tool_name+timestamp）；Skill/Agent 填 tool_input
@@ -673,6 +688,8 @@ func TestHookToolTrackRecordsSkillInput(t *testing.T) {
 	os.Stdout = oldStdout
 	r.Read(make([]byte, 8192))
 
+	// toollog is written to <root>/.forge/toollog.jsonl (non-git fallback, same path convention as checklog).
+	//
 	// toollog 写到 <root>/.forge/toollog.jsonl（非 git fallback，同 checklog 路径惯例）。
 	toollogPath := filepath.Join(tmpDir, ".forge", "toollog.jsonl")
 	data, err := os.ReadFile(toollogPath)
@@ -688,6 +705,9 @@ func TestHookToolTrackRecordsSkillInput(t *testing.T) {
 	}
 }
 
+// TestHookToolTrackReadOmitsToolInput contrast: Read still omits tool_input (keep toollog lean,
+// gate only needs tool_name+timestamp). Scheme C only fills tool_input for Skill/Agent; Read is unchanged.
+//
 // TestHookToolTrackReadOmitsToolInput 对照：Read 仍省略 tool_input（保持 toollog lean，
 // gate 只需 tool_name+timestamp）。方案 C 只对 Skill/Agent 填 tool_input，Read 不变。
 func TestHookToolTrackReadOmitsToolInput(t *testing.T) {

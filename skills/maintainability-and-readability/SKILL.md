@@ -151,6 +151,22 @@ fail_build_if:
 
 **铁律**：触到 bug 时立即修 + 顺手重构（"boy scout rule"——离开时比来时干净）。但**不**做无 bug 触发的纯重构（=过度工程）。
 
+### 2.7 注释规范（双语并存 + why-not-what）
+
+**双语并存**：项目注释中英双语并存——英文段在上、单独空注释行 `//`、中文段在下，两语同义。任一变动须同步另一（只改一语 = 过期注释 = 误导后续读者）。
+
+- **形式**：英文 doc 段（godoc summary 取英文首行，国际友好）→ 空注释行 `//` → 中文段（逐字保留，母语理解）
+- **同步铁律**：改注释时中英一起改；新增注释即写双语，不留待补
+- **范围**：独立行 `//` 注释（doc 注释 + 块内说明 + 测试注释）；行尾内联注释（`code // 中文`）语法不允许加段，不强求双语
+- **why not what**（与 §3 一致）：注释解释设计决策/为什么，不重复代码已表达的 what——大段 what 注释是噪声，双语也救不回
+
+示例（Go doc 注释，英文段 + 空注释行 + 中文段）：
+
+	// dataDir returns the runtime-state DataDir for root (refactor-data-home).
+	//
+	// dataDir 返回 root 的 runtime-state DataDir（refactor-data-home）。
+	func dataDir(root string) string
+
 ## 3. 负向约束 + 替代方案
 
 | 不要做 ❌ | 应该做 ✅ |

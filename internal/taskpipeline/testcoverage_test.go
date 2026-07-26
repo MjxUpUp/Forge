@@ -455,6 +455,15 @@ func TestTestCoverageWhitelistsHookEmbedContainer(t *testing.T) {
 	}
 }
 
+// TestTestCoverageWhitelistsRustAndTauriEntryPoints dogfood 2.1②: the
+// test-coverage gate was over-eager on Tauri command glue and Rust entry points.
+// Under `src-tauri/`, `#[tauri::command]` and tokio::spawn are exercised
+// end-to-end by the Tauri runtime; `main.rs`/`lib.rs` are Rust crate entry
+// points whose integration tests live in `tests/`, not as same-package
+// `_test.rs`. Exempting these avoids forcing non-existent unit tests. baseExact
+// matches only the final path component; the substr carries a trailing slash to
+// bound the directory.
+//
 // TestTestCoverageWhitelistsRustAndTauriEntryPoints dogfood 2.1②：测试覆盖门规
 // 对 Tauri 命令胶水与 Rust 入口点过度敏感。`src-tauri/` 下 `#[tauri::command]`
 // 与 tokio::spawn 由 Tauri 运行时跑端到端；`main.rs`/`lib.rs` 是 Rust crate
@@ -475,6 +484,9 @@ func TestTestCoverageWhitelistsRustAndTauriEntryPoints(t *testing.T) {
 			t.Errorf("isWhitelisted(%q) = false; Rust entry / Tauri command glue must be exempt", p)
 		}
 	}
+	// Negative case: sources neither at entry points (main.rs/lib.rs) nor under
+	// src-tauri/ still require tests.
+	//
 	// 负向：不在 entry-point (main.rs/lib.rs) 也不在 src-tauri/ 目录下的源仍需测试。
 	for _, p := range []string{
 		"src/widget/click.rs",       // 普通 Rust 源码（非 main/lib）
@@ -487,6 +499,16 @@ func TestTestCoverageWhitelistsRustAndTauriEntryPoints(t *testing.T) {
 	}
 }
 
+// TestTaskChangedFiles_ScopedToHeadCommit guards the task-scoped diff: two tasks
+// on the same feature branch each commit their own work, and the later task's
+// CheckTestCoverage sees only its own commits (HeadCommit..HEAD) without leaking
+// the prior task's changes.
+//
+// Regression scenario: feat/evidence-chain stacked atop earlier branch commits;
+// the old taskChangedFiles used main...HEAD and accumulated every unmerged commit
+// on the branch (26 files), pressing the current task's testing dimension to 20.
+// After prioritizing HeadCommit, scoring sees only the current task's scope.
+//
 // TestTaskChangedFiles_ScopedToHeadCommit 守卫任务范围 diff：两个任务在同一
 // feature 分支上各 commit，后一个任务的 CheckTestCoverage 只看自己的 commit
 // （HeadCommit..HEAD），不混入前一个任务的改动。
@@ -498,22 +520,32 @@ func TestTaskChangedFiles_ScopedToHeadCommit(t *testing.T) {
 	dir := t.TempDir()
 	initRepoWithMaster(t, dir)
 
+	// Task 1: commit foo.go (no test) — the prior task's change, must not be
+	// attributed to task 2.
+	//
 	// 任务1：commit foo.go（无 test）——前一个任务的改动，不该计入任务2。
 	writeCommitSource(t, dir, map[string]string{
 		"foo.go": "package main\n\nfunc Foo() int { return 1 }\n",
 	}, "task1: add foo")
 	headAfterTask1 := GetHeadCommit(dir)
 
+	// Task 2: commit bar.go + bar_test.go.
+	//
 	// 任务2：commit bar.go + bar_test.go。
 	writeCommitSource(t, dir, map[string]string{
 		"bar.go":      "package main\n\nfunc Bar() int { return 2 }\n",
 		"bar_test.go": "package main\n\nimport \"testing\"\n\nfunc TestBar(t *testing.T) {}\n",
 	}, "task2: add bar")
 
+	// state2.HeadCommit = HEAD at task 2 start (= HEAD after task 1 finished).
+	//
 	// state2.HeadCommit = 任务2 启动时的 HEAD（= 任务1 结束后的 HEAD）。
 	state2 := &TaskState{TaskRef: "task2", Branch: "feat/testcov", HeadCommit: headAfterTask1}
 
 	ok, missing, total := CheckTestCoverage(dir, state2)
+	// Old impl (main...HEAD) would yield total=2 with missing=[foo.go]:
+	// it accumulated task 1.
+	//
 	// 旧实现（main...HEAD）会 total=2 且 missing=[foo.go]：累积了任务1。
 	if total != 1 {
 		t.Fatalf(`task2 scope should contain only bar.go: want total=1, got total=%d missing=%v (HeadCommit..HEAD must not accumulate task1's foo.go)`, total, missing)
@@ -523,16 +555,29 @@ func TestTaskChangedFiles_ScopedToHeadCommit(t *testing.T) {
 	}
 }
 
+// TestTaskChangedFiles_IncludesUntracked guards the untracked-files blind-spot
+// fix. At task-verify time the agent's new files are typically not yet
+// `git add`-ed — the old taskChangedFiles read only `git diff HEAD` (tracked
+// staged/unstaged) plus committed diffs, missing untracked files, so a freshly
+// written foo_test.go could not satisfy a freshly changed foo.go and
+// test-coverage false-reported no matching test (feat/task-scope hit this for
+// real: task.go changed+tracked + task_scope_test.go new+untracked → false
+// advisory). Adding `git ls-files --others --exclude-standard` makes detection
+// run against the working tree the agent actually leaves behind.
+//
 // TestTaskChangedFiles_IncludesUntracked 守卫未跟踪文件盲点修复。task-verify 时机
 // agent 的新文件通常还没 `git add`——旧 taskChangedFiles 只读 `git diff HEAD`
 // （已跟踪的暂存/未暂存）+ 已提交 diff，看不到 untracked，导致刚写的 foo_test.go
-// 无法满足刚改的 foo.go，test-coverage 误报"无对应测试"（feat/task-scope 实撞：
+// 无法满足刚改的 foo.go，test-coverage 误报「无对应测试」（feat/task-scope 实撞：
 // task.go 已改已跟踪 + task_scope_test.go 新建未跟踪 → 假 advisory）。
 // 加 `git ls-files --others --exclude-standard` 后，检测按 agent 真实留下的工作树跑。
 func TestTaskChangedFiles_IncludesUntracked(t *testing.T) {
 	t.Run("untracked_test_covers_untracked_source", func(t *testing.T) {
 		dir := t.TempDir()
 		initRepoWithMaster(t, dir)
+		// foo.go + foo_test.go are both left un-git-add-ed — two untracked
+		// files, mirroring the working tree at verify time.
+		//
 		// foo.go + foo_test.go 都不 git add——两个 untracked，镜像 verify 时的工作树。
 		writeUntracked(t, dir, map[string]string{
 			"foo.go":      "package main\n\nfunc Foo() int { return 1 }\n",
@@ -553,7 +598,10 @@ func TestTaskChangedFiles_IncludesUntracked(t *testing.T) {
 		})
 		state := newVerifyState(t, dir, "untracked-bare")
 		ok, missing, _ := CheckTestCoverage(dir, state)
-		// 检测必须对 untracked 源码也跑——否则"纳入 untracked"变成"放行 untracked"。
+		// Detection must also run on untracked sources — otherwise admitting
+		// untracked files becomes a free pass for untracked files.
+		//
+		// 检测必须对 untracked 源码也跑——否则「纳入 untracked」变成「放行 untracked」。
 		if ok {
 			t.Fatal(`untracked foo.go without test: want ok=false（检测必须覆盖 untracked 源码，不能因纳入而放行）`)
 		}
@@ -565,6 +613,9 @@ func TestTaskChangedFiles_IncludesUntracked(t *testing.T) {
 	t.Run("gitignored_untracked_excluded", func(t *testing.T) {
 		dir := t.TempDir()
 		initRepoWithMaster(t, dir)
+		// .gitignore excludes ignored.go; foo.go is not ignored. Both are
+		// untracked.
+		//
 		// .gitignore 排除 ignored.go；foo.go 不忽略。两者都 untracked。
 		writeUntracked(t, dir, map[string]string{
 			".gitignore":  "ignored.go\n",
@@ -585,6 +636,16 @@ func TestTaskChangedFiles_IncludesUntracked(t *testing.T) {
 	})
 }
 
+// TestTestCoveragePerTaskOverride (plan 5 leak-prevention path):
+// state.Overrides.TestCoverage=disable escapes without relying on the
+// FORGE_TEST_COVERAGE env — this is the core value of a per-task override (one
+// task escaping must not pollute other tasks in the same shell). Compared with
+// TestTestCoverageEscapeHatch (the env path), this test pins the per-task path
+// as independently usable. Two layers are verified: (1) CheckTestCoverage
+// returns ok=true; (2) a CheckEscapeHatch entry is recorded (escape has a
+// priced audit trail; Strength is capped at Weak accordingly). The env is
+// explicitly cleared, proving the override path is independent of env.
+//
 // TestTestCoveragePerTaskOverride（方案5 防泄漏路径）：state.Overrides.TestCoverage="disable"
 // 不靠 FORGE_TEST_COVERAGE env 也能逃生——这是 per-task override 的核心价值（一个任务逃生不污染
 // 同 shell 的其他任务）。对照 TestTestCoverageEscapeHatch（env 路径），此测试钉住 per-task 路径
@@ -601,11 +662,16 @@ func TestTestCoveragePerTaskOverride(t *testing.T) {
 	state := &TaskState{TaskRef: "per-task-cov", Branch: "feat/testcov"}
 	state.Overrides.TestCoverage = "disable"
 
+	// Layer 1: per-task override escapes the gate (env unset, independent path).
+	//
 	// 层1：per-task override 让门禁逃生（env 未设，独立路径）。
 	ok, missing, _ := CheckTestCoverage(dir, state)
 	if !ok {
 		t.Fatalf("per-task override (no env): want ok=true, got missing=%v", missing)
 	}
+	// Layer 2: escape has a price — record CheckEscapeHatch audit trail
+	// (UsedEscapeHatch → Strength capped at Weak).
+	//
 	// 层2：逃生有代价——记 CheckEscapeHatch 审计 trail（UsedEscapeHatch → Strength cap Weak）。
 	entries, err := checklog.LoadForTask(dir, "per-task-cov")
 	if err != nil {
@@ -626,6 +692,13 @@ func TestTestCoveragePerTaskOverride(t *testing.T) {
 	}
 }
 
+// TestTestCoverageShouldBlock pins the tiered decision of the task-complete
+// hard-block backstop: large change (≥3 source files without paired tests) plus
+// zero assertions → block (corrupt success); small change (≤2, fudge factor) or
+// with assertions (tests live elsewhere / refactor scenario) → pass. Eval
+// evidence: feat/eval-core 0/19 and feat/m2 0/25 should block; fix/m2-review-fixes
+// 0/2 should pass (small change).
+//
 // TestTestCoverageShouldBlock 钉死 task-complete 兜底硬阻断的分级判定：大改（≥3 源文件
 // 无配对测试）且零断言 → 阻断（corrupt success）；小改（≤2，fudge factor）或有断言
 // （测试在别处/重构场景）→ 放行。eval 证据：feat/eval-core 0/19、feat/m2 0/25 应阻断；

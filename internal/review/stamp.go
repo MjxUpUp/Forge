@@ -1,10 +1,21 @@
-// Package review 实现"代码审查通过"的持久化标记与门禁决策，支撑两条触发路径：
+// Package review implements the persistent marker and gate decision for code-review-passed,
+// supporting two trigger paths:
+//   - within task flow: ReviewPassed field stored in DataDir/tasks/<ref>.json (managed by taskpipeline)
+//   - non-task flow: diff hash stamp stored in DataDir/stamps/<branch>.stamp (managed by this package)
+//
+// Both serve the same goal: turning code-review-gate from manual human shouts into automatic
+// gate/hook enforcement. This package manages the non-task stamp and exports SourceChangesSince
+// for taskpipeline to compute the post-review code-change snapshot in task mode (task-complete gate
+// enforces re-review based on it). No circular dependency: review only depends on taskcontext+util,
+// never imports taskpipeline; taskpipeline one-way imports review.
+//
+// Package review 实现「代码审查通过」的持久化标记与门禁决策，支撑两条触发路径：
 //   - task 流程内：ReviewPassed 字段存 DataDir/tasks/<ref>.json（taskpipeline 管）
 //   - 非 task 流程：diff hash stamp 存 DataDir/stamps/<branch>.stamp（本包管）
 //
-// 两者服务于同一目标——让 code-review-gate 从"靠人手动喊"变成"门禁/hook 自动挡"。
+// 两者服务于同一目标——让 code-review-gate 从「靠人手动喊」变成「门禁/hook 自动挡」。
 // 本包管非 task 模式的 stamp，并导出 SourceChangesSince 供 taskpipeline 在 task 模式算
-// "审查后代码是否变更"的快照（task-complete 门禁据此强制复审）。循环依赖不存在：review 只
+// 「审查后代码是否变更」的快照（task-complete 门禁据此强制复审）。循环依赖不存在：review 只
 // 依赖 taskcontext+util，不 import taskpipeline；taskpipeline 单向 import review。
 package review
 
@@ -25,11 +36,18 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
+// MaxReviewRounds is the fallback cap for the Stop hook repeatedly blocking the same diff.
+// Beyond this, it advisory-passes to prevent a Stop infinite loop caused by agents never calling
+// forge review pass (task-verify historical lesson: Stop blocks trigger retry-loop; see
+// TaskVerifyHook comments in hooks/embed.go).
+//
 // MaxReviewRounds 是 Stop hook 反复 block 同一 diff 的兜底上限。超过后 advisory
 // 放行——防 agent 不调 forge review pass 导致的 Stop 死循环（task-verify 历史教训：
 // Stop block 会触发 retry-loop，见 hooks/embed.go TaskVerifyHook 注释）。
 const MaxReviewRounds = 3
 
+// Decision is the review decision produced by Evaluate for the non-task current diff.
+//
 // Decision 是 Evaluate 对非 task 模式当前 diff 的审查决策。
 type Decision int
 
@@ -39,6 +57,9 @@ const (
 	DecisionPassAdvisory                 // 兜底放行：撞 MaxReviewRounds，advisory 提醒
 )
 
+// Stamp records the review state of the current diff for a branch, stored at
+// DataDir/stamps/<branch>.stamp.
+//
 // Stamp 记录某分支当前 diff 的审查状态，存 DataDir/stamps/<branch>.stamp。
 type Stamp struct {
 	DiffHash   string    `json:"diff_hash"`             // 审查范围（git diff）的 sha256；空=无变更
@@ -48,6 +69,11 @@ type Stamp struct {
 	Branch     string    `json:"branch,omitempty"`
 }
 
+// Evaluate is the atomic decision entry for the Stop hook (non-task mode): compute the current
+// diff hash, compare against the stamp, decide pass/need-review/fallback, and on need-review
+// increment block_count and persist it.
+// Returns (decision, human-readable reason).
+//
 // Evaluate 是 Stop hook（非 task 模式）的原子决策入口：算当前 diff hash →
 // 对比 stamp → 决定放行/需审/兜底，并在需审时累加 block_count 持久化。
 // 返回 (决策, 人读原因)。
@@ -62,17 +88,23 @@ func Evaluate(root string) (Decision, string, error) {
 
 	stamp, _ := LoadStamp(root)
 
+	// Same diff already reviewed -> pass
+	//
 	// 同一 diff 已审过 → 放行
 	if stamp.DiffHash == hash && stamp.Reviewed {
 		return DecisionPass, "当前 diff 已通过 code-review-gate", nil
 	}
 
+	// Hit max rounds fallback pass (prevents Stop infinite loop)
+	//
 	// 撞 max rounds 兜底放行（防 Stop 死循环）
 	if stamp.DiffHash == hash && stamp.BlockCount >= MaxReviewRounds {
 		return DecisionPassAdvisory,
 			fmt.Sprintf("已达 max review rounds (%d)，advisory 放行——请人工确认未审变更", MaxReviewRounds), nil
 	}
 
+	// Need review: increment block_count and persist (new diff resets counter to 1)
+	//
 	// 需审：累加 block_count 并持久化（新 diff 重置计数从 1 起）
 	next := *stamp
 	if stamp.DiffHash != hash {
@@ -87,6 +119,9 @@ func Evaluate(root string) (Decision, string, error) {
 		fmt.Sprintf("检测到未审查的代码变更（block %d/%d）", next.BlockCount, MaxReviewRounds), nil
 }
 
+// MarkPassed marks the current diff as having passed review (called by forge review pass).
+// Computes the current hash, writes a reviewed stamp, resets block_count.
+//
 // MarkPassed 标记当前 diff 已通过审查（forge review pass 调用）。
 // 算当前 hash 写 reviewed stamp，重置 block_count。
 func MarkPassed(root string) error {
@@ -104,6 +139,9 @@ func MarkPassed(root string) error {
 	return saveStamp(root, stamp)
 }
 
+// LoadStamp reads the review stamp of the current branch; missing/corrupt returns an empty
+// Stamp (not an error).
+//
 // LoadStamp 读取当前分支的审查 stamp；不存在/损坏返回空 Stamp（非 error）。
 func LoadStamp(root string) (*Stamp, error) {
 	data, err := os.ReadFile(stampPath(root))
@@ -117,6 +155,8 @@ func LoadStamp(root string) (*Stamp, error) {
 	return &s, nil
 }
 
+// CurrentState returns a human-readable view of the current review state (for forge review status).
+//
 // CurrentState 返回人读的当前审查状态（forge review status 用）。
 func CurrentState(root string) (string, error) {
 	hash, hasChanges, err := computeDiffHash(root)
@@ -152,9 +192,45 @@ func CurrentState(root string) (string, error) {
 	return b.String(), nil
 }
 
+// --- internal implementation ---
+//
 // --- 内部实现 ---
 
-// computeDiffHash 算当前工作区相对 HEAD 的【源码】变更指纹（sha256），用于判断"这版代码审过没"。
+// computeDiffHash/SourceChangesSince compute the source-code change fingerprint (sha256) for review.
+//
+// computeDiffHash computes the [source-code] change fingerprint (sha256) of the current worktree
+// relative to HEAD, used to decide whether this version of code has been reviewed.
+// False-trigger protection (2026-06-27): the review scope counts ONLY source files:
+//   - excludes .forge/ (otherwise writing the stamp changes the diff -> hash changes -> infinite loop)
+//   - excludes non-source extensions (.md/.txt/.yml/.json/.toml etc., docs and configs); editing a
+//     README should not force a code review
+//   - excludes generated artifacts (paths containing .gen./_generated/.pb./vendor/ etc.); auto-
+//     generated code refreshing the hash is meaningless
+//
+// Pure doc/config/generated changes -> changedSourceFiles empty -> ("", false, nil) -> no review needed.
+// Non-git repos likewise -> no review needed.
+//
+// SourceChangesSince computes the [source-code] change fingerprint (sha256) from baseCommit to the
+// current worktree. baseCommit=="" degrades to HEAD (i.e. worktree-relative-to-HEAD, the non-task
+// stamp semantics).
+//
+// False-trigger protection (inherited from computeDiffHash, 2026-06-27): the same source-only
+// scope rule applies here (excludes .forge/, non-source extensions, and generated paths, as above).
+//
+// Key difference from the old computeDiffHash: the fingerprint uses [current file contents] rather
+// than git diff output, so unchanged content means unchanged fingerprint across the untracked-to-
+// tracked transition around a commit. If untracked files were recorded by name only at review time,
+// they would become tracked after commit (diff contains full content) and the two dimensions would
+// differ, producing false positives; reading current worktree contents unifies both paths, so
+// commit only changes git state, not content -> same hash. Tracked changes use
+// git diff --name-only <base> single-tree form (including base..HEAD committed + worktree
+// uncommitted), so commit-then-review flows (clean worktree at review time) can compare correctly.
+//
+// baseCommit unreachable (amend/rebase rewrote history and the git object vanished) -> returns err,
+// caller fail-opens. Pure doc/config/generated changes -> ("", false, nil) -> no review needed.
+// Non-git repos -> no review needed.
+//
+// computeDiffHash 算当前工作区相对 HEAD 的【源码】变更指纹（sha256），用于判断「这版代码审过没」。
 // 误触发防护（2026-06-27）：审查范围**只统计源码文件**——
 //   - 排除 .forge/（否则写 stamp 改 diff → hash 变 → 死循环）
 //   - 排除非源码扩展（.md/.txt/.yml/.json/.toml 等文档与配置）——改 README 不该被逼审代码
@@ -162,7 +238,7 @@ func CurrentState(root string) (string, error) {
 //
 // 纯文档/配置/生成物变更 → changedSourceFiles 空 → ("", false, nil) → 无需审。
 // 非 git 仓库同样 → 无需审。
-// SourceChangesSince 算"自 baseCommit 起到当前工作区"的【源码】变化指纹（sha256）。
+// SourceChangesSince 算「自 baseCommit 起到当前工作区」的【源码】变化指纹（sha256）。
 // baseCommit=="" → 退化成 HEAD（= 工作区相对 HEAD，非 task 模式 stamp 语义）。
 //
 // 误触发防护（沿用原 computeDiffHash，2026-06-27）：审查范围**只统计源码文件**——
@@ -186,8 +262,12 @@ func SourceChangesSince(root, baseCommit string) (hash string, hasChanges bool, 
 	if base == "" {
 		base = "HEAD"
 	}
+	// Base reachability: after amend/rebase, old commits may be unreachable and git diff/show
+	// would fatal. Verify up front and return err so the caller fail-opens (instead of treating
+	// git stderr as no-changes and wrongly passing).
+	//
 	// 基线可达性：amend/rebase 后旧 commit 可能不可达，git diff/show 会 fatal。提前 verify 返回 err，
-	// 让调用方 fail-open（而非把 git stderr 当"无变更"误判放行）。
+	// 让调用方 fail-open（而非把 git stderr 当「无变更」误判放行）。
 	if out, e := gitOut(root, "rev-parse", "--verify", base+"^{commit}"); e != nil || strings.TrimSpace(out) == "" {
 		return "", false, fmt.Errorf("base commit %q not reachable: %w", base, e)
 	}
@@ -205,6 +285,10 @@ func SourceChangesSince(root, baseCommit string) (hash string, hasChanges bool, 
 	return hex.EncodeToString(sum[:]), true, nil
 }
 
+// changedSourceFilesSince returns the [source-code] files changed since baseCommit, split into
+// tracked (modified/deleted, including base..HEAD committed + worktree uncommitted) and untracked
+// (newly added). base=="" -> HEAD. Excludes .forge/, non-source extensions, and generated paths.
+//
 // changedSourceFilesSince 返回自 baseCommit 起变更的【源码】文件，分 tracked（修改/删除，含
 // base..HEAD 已提交 + 工作区未提交）和 untracked（新增）。base=="" → HEAD。已排除 .forge/、
 // 非源码扩展、生成物路径。
@@ -230,6 +314,11 @@ func changedSourceFilesSince(root, baseCommit string) (tracked, untracked []stri
 	return tracked, untracked
 }
 
+// fileContentForHash returns the fingerprint content of a changed file: prefers current worktree
+// contents (modified/added); if absent in worktree (deleted/renamed source), uses the base version
+// as a deletion marker. Deletion is also a change and must be included in the fingerprint,
+// otherwise deleting a source file would escape re-review. Shared by task and non-task paths.
+//
 // fileContentForHash 取变更文件的指纹内容：优先工作区当前内容（修改/新增）；工作区无（删除/重命名源）
 // 用 base 版本内容作删除标记——删除也是变更，必须纳入指纹，否则删源码文件逃过复审。task/非 task 共用。
 func fileContentForHash(root, base, path string) string {
@@ -242,12 +331,20 @@ func fileContentForHash(root, base, path string) string {
 	return ""
 }
 
+// computeDiffHash computes the source-code change fingerprint of the worktree relative to HEAD.
+// Degrades to SourceChangesSince(root, ""), the single source of truth: non-task stamps and
+// task-mode snapshots share the same file filtering and hashing logic, avoiding drift.
+//
 // computeDiffHash 算当前工作区相对 HEAD 的源码变更指纹。退化为 SourceChangesSince(root, "")，
 // 单一真相源——非 task 模式 stamp 与 task 模式快照共用同一套文件过滤与哈希逻辑，避免漂移。
 func computeDiffHash(root string) (hash string, hasChanges bool, err error) {
 	return SourceChangesSince(root, "")
 }
 
+// srcExts is the allowlist of source-code extensions under review. Docs (.md/.txt), configs
+// (.yml/.json/.toml/.ini), data (.csv/.log), static assets (.png/.css) etc. are excluded:
+// these changes do not trigger code review (false-trigger protection).
+//
 // srcExts 是受审查的源码扩展名白名单。文档(.md/.txt)/配置(.yml/.json/.toml/.ini)/
 // 数据(.csv/.log)/静态资源(.png/.css)等不在内——这些变更不触发代码审查（误触发防护）。
 var srcExts = map[string]bool{
@@ -260,6 +357,9 @@ var srcExts = map[string]bool{
 	".hs": true, ".ml": true, ".fs": true, ".nim": true, ".zig": true, ".v": true,
 }
 
+// genMarks identifies generated/third-party path fragments: even if the extension is a source
+// extension, these are excluded (auto-generated code refreshing the hash is meaningless).
+//
 // genMarks 标识生成物/三方目录路径片段——即使扩展名是源码也排除（自动生成刷 hash 无意义）。
 var genMarks = []string{".gen.", "_generated", ".pb.", "vendor/", "node_modules/", "third_party/"}
 

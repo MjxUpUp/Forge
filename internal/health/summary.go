@@ -1,7 +1,15 @@
+// Package health rolls up task-level conclusions (act.Conclusion) into project-level quality trends — PDCA at
+// project granularity Act. Single-task blind spots/low scores are isolated cases; cross-task aggregation exposes systemic issues: a dimension repeatedly scoring
+// low indicates a shared gap in that direction, a high blind-spot rate in completion claims shows the agent systematically "claims done without real verification".
+// Fed to session-retrospective to decide at the project level "what to sediment into CLAUDE.md rules / guard tests".
+//
 // Package health 把 task 级结论（act.Conclusion）上卷成 project 级质量趋势——PDCA 在
 // project 粒度的 Act。单个任务的盲区/低分是个例，跨任务聚合才暴露系统性问题：某维度反复
 // 低分说明该方向有共性缺口，完成声明盲区率高说明 agent 系统性"声明完成却没真验证"。
 // 喂给 session-retrospective 在项目层面决策"该把什么沉淀成 CLAUDE.md 铁律 / 守卫测试"。
+//
+// All fields are aggregated from act.Conclusion (the conclusion itself derives from checklog evidence + scoring, deterministic),
+// not agent narration — consistent with the evidence chain's unforgeability principle.
 //
 // 全字段从 act.Conclusion 聚合（结论本身源自 checklog 证据 + 评分，deterministic），
 // 非 agent 叙述——与 evidence chain 的不可伪造原则一致。
@@ -16,18 +24,25 @@ import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
 )
 
+// DimFreq is a low-score dimension (<70) and its cross-task occurrence count.
+//
 // DimFreq 是一个低分维度（<70）及其跨任务出现次数。
 type DimFreq struct {
 	Dimension string `json:"dimension"`
 	Count     int    `json:"count"`
 }
 
+// Span is the conclusion time range (earliest ~ latest completion time).
+//
 // Span 是结论时间范围（最早 ~ 最晚完成时刻）。
 type Span struct {
 	Earliest time.Time `json:"earliest"`
 	Latest   time.Time `json:"latest"`
 }
 
+// Summary is the project-level quality rollup. BlindSpotRate is the headline signal: the proportion of tasks
+// whose completion claims rely on agent self-report (Unverified/Weak) — the project-level LLM-judge blind-spot rate; high = systemic verification gap.
+//
 // Summary 是 project 级质量上卷。BlindSpotRate 是头条信号：完成声明主要靠 agent 自述
 // （Unverified/Weak）的任务占比——项目级 LLM-judge 盲区率，高 = 系统性验证缺口。
 type Summary struct {
@@ -45,12 +60,19 @@ type Summary struct {
 	RecentAvg      float64        `json:"recent_avg"`  // 后半段均分
 	Trend          string         `json:"trend"`       // improving/regressing/stable/insufficient
 
+	// PhasePassRate is the phase-aware quality report (Phase 2 loop integrated).
+	// key = design phase (requirement/api/backend...), value = task pass rate for that phase (0-1).
+	// Used by the R3 advisory loop: review sub-agent calls health_query to read high-frequency issues and inject them into the prompt.
+	//
 	// PhasePassRate 是 phase-aware 质量报告（Phase 2 回路接入）。
 	// key=设计阶段（requirement/api/backend...），value=该阶段任务通过率（0-1）。
 	// 用于 R3 advisory 闭环：review 子 agent 调 health_query 读高频问题注入 prompt。
 	PhasePassRate map[string]float64 `json:"phase_pass_rate,omitempty"`
 }
 
+// Summarize is a pure function: aggregates the conclusion slice into a project Summary. Does not touch disk, easy to unit test. LoadAll
+// is already sorted by time, but a copy is re-sorted here to defend against callers passing unsorted slices. Empty slice → zero value (TotalTasks=0).
+//
 // Summarize 是纯函数：从结论切片聚合出 project Summary。不碰磁盘，便于单测。LoadAll
 // 已按时间排序，但此处对副本再排一次防外部调用方传入乱序切片。空切片 → 零值（TotalTasks=0）。
 func Summarize(cs []act.Conclusion) Summary {
@@ -63,12 +85,16 @@ func Summarize(cs []act.Conclusion) Summary {
 	s.StrengthDist = map[string]int{}
 	lowCounts := map[string]int{}
 	sum := 0.0
+	// Phase tracking: count per (phase, grade), used to compute phase_pass_rate
+	//
 	// Phase 追踪：每个 (phase, grade) 计数，用于计算 phase_pass_rate
 	phaseGrades := map[string]map[string]int{}
 	for _, c := range cs {
 		sum += c.Score
 		if c.Grade != "" {
 			s.GradeDist[c.Grade]++
+			// Group by phase for statistics
+			//
 			// 按 phase 分组统计
 			for _, phase := range c.DesignPhases {
 				if phaseGrades[phase] == nil {
@@ -94,6 +120,8 @@ func Summarize(cs []act.Conclusion) Summary {
 	for d, n := range lowCounts {
 		s.LowDims = append(s.LowDims, DimFreq{Dimension: d, Count: n})
 	}
+	// Sort by frequency descending; ties by dimension name (stable, reproducible output for assertions).
+	//
 	// 频次降序；同频次按维度名稳定排序（可复现输出，便于断言）。
 	slices.SortFunc(s.LowDims, func(a, b DimFreq) int {
 		if a.Count != b.Count {
@@ -110,6 +138,8 @@ func Summarize(cs []act.Conclusion) Summary {
 	s.Span = Span{Earliest: byTime[0].CompletedAt, Latest: byTime[len(byTime)-1].CompletedAt}
 	s.EarlierAvg, s.RecentAvg, s.Trend = trend(byTime)
 
+	// Compute phase_pass_rate: pass rate = (A+B) share (>=80 treated as pass, consistent with grade thresholds)
+	//
 	// 计算 phase_pass_rate：通过率 = (A+B) 占比（≥80 视为通过，与 grade 分级一致）
 	if len(phaseGrades) > 0 {
 		s.PhasePassRate = map[string]float64{}
@@ -152,6 +182,9 @@ func median(xs []float64) float64 {
 	return (s[n/2-1] + s[n/2]) / 2
 }
 
+// trend splits the slice by completion time in half to compare earlier/later averages. <4 samples marked insufficient (no statistical significance). Threshold of 3 points:
+// difference <3 is treated as stable to avoid noise misdetecting trends.
+//
 // trend 按完成时间对半切比前/后半段均分。<4 样本标 insufficient（无统计意义）。阈值 3 分：
 // 差<3 视为 stable，避免噪声误判趋势。
 func trend(byTime []act.Conclusion) (earlier, recent float64, label string) {

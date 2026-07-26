@@ -5,9 +5,17 @@ import (
 	"testing"
 )
 
+// TestAutoCompile_SilentInResearchMode dogfood 5.1: when the session never
+// Edit|Write'd source code (AgentFare research/review mode), the auto-compile
+// hook should emit "PASS research-mode session, advisory suppressed" —
+// the advisory occupies AdditionalContext character budget yet adds no value
+// in a pure-research scenario. The Forge hook wrapper stuffs bash stdout into
+// the {"decision":"approve",...,"additionalContext":"..."} JSON; the
+// assertion checks additionalContext.
+//
 // TestAutoCompile_SilentInResearchMode dogfood 5.1：auto-compile hook 在会话
-// 从未 Edit|Write 源码时（AgentFare 调研/审查模式）应输出"PASS research-mode
-// session, advisory suppressed"——占 AdditionalContext 字符配额且对纯研究场景无
+// 从未 Edit|Write 源码时（AgentFare 调研/审查模式）应输出「PASS research-mode
+// session, advisory suppressed」——占 AdditionalContext 字符配额且对纯研究场景无
 // 助益。Forge hook wrapper 把 bash stdout 塞进 {"decision":"approve",...,
 // "additionalContext":"..."} JSON；断言看 additionalContext。
 func TestAutoCompile_SilentInResearchMode(t *testing.T) {
@@ -36,9 +44,13 @@ func TestAutoCompile_SilentInResearchMode(t *testing.T) {
 	}
 }
 
+// TestBashGuard_SilentOnWriteInResearchMode dogfood 5.1 bash-guard branch:
+// no active task + write cmd + NO source touched in this session → decision
+// is approve and additionalContext does not carry the "no active task" WARN.
+//
 // TestBashGuard_SilentOnWriteInResearchMode dogfood 5.1 bash-guard branch：
 // no active task + write cmd + NO source touched in this session → 决策 approve
-// 且 additionalContext 不带 "no active task" WARN。
+// 且 additionalContext 不带"no active task" WARN。
 func TestBashGuard_SilentOnWriteInResearchMode(t *testing.T) {
 	dir := freshProject(t)
 	const sid = "sess-research-bg"

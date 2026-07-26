@@ -10,6 +10,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// uninstall.go — `forge uninstall` one-shot reversal: npm global package + init-suggest markers.
+//
+// Design: clears `npm uninstall -g @agent_forge/forge` (binary) + `~/.forge/.init-suggested/`
+// (per-project init prompt markers). Plugin uninstall must run interactively inside the agent
+// CLI (`/plugin uninstall forge@forge` etc. are not scriptable) — print guidance instead.
+// Project-level `.forge/` is left untouched (user decides whether to keep; to clear, run
+// `forge init --reset` or manually `rm -rf .forge/` first).
+//
+// Test hook: FORGE_UNINSTALL_SKIP_NPM=1 skips the npm call (for tests or when npm is unavailable).
+//
+// Chinese strings use raw strings (backticks) to dodge Windows input quote corruption.
+//
 // uninstall.go — `forge uninstall` 一键反装：npm 全局包 + init-suggest markers。
 //
 // 设计：清 `npm uninstall -g @agent_forge/forge`（binary）+ `~/.forge/.init-suggested/`
@@ -21,6 +33,14 @@ import (
 //
 // 中文字符串 raw string（反引号）规避 Windows 输入引号腐蚀。
 
+// uninstallClearMarkers removes the init-suggest marker directory (<GlobalHome>/.init-suggested/).
+// It uses forgedata.GlobalHome() (FORGE_DATA_HOME first, otherwise ~/.forge) — refactor-data-home
+// commit E is the single source of truth, sharing the same marker store as the suggest command +
+// init-suggest hook (uninstall is the cleanup path of that store; it must use the same root,
+// otherwise FORGE_DATA_HOME users clear the wrong place and leave stale markers behind).
+// exported for testability — RunE calls this. Returns (dir, removed bool); on GlobalHome failure
+// it returns an empty dir and false.
+//
 // uninstallClearMarkers 删 init-suggest marker 目录（<GlobalHome>/.init-suggested/）。
 // 走 forgedata.GlobalHome()（FORGE_DATA_HOME 优先，否则 ~/.forge）——refactor-data-home
 // commit E 统一真相源，与 suggest 命令 + init-suggest hook 读写同一 marker store（uninstall
@@ -42,6 +62,8 @@ var uninstallCmd = &cobra.Command{
 	Use:   `uninstall`,
 	Short: `卸载 forge 二进制 + init-suggest 标记（plugin 卸载需在 agent CLI 内进行）`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// 1. npm uninstall -g @agent_forge/forge (skip via SKIP_NPM in test/offline scenarios)
+		//
 		// 1. npm uninstall -g @agent_forge/forge（测试 / 离线场景可 SKIP_NPM 跳过）
 		if os.Getenv(`FORGE_UNINSTALL_SKIP_NPM`) != `1` {
 			if _, err := exec.LookPath(`npm`); err == nil {
@@ -56,6 +78,8 @@ var uninstallCmd = &cobra.Command{
 			}
 		}
 
+		// 2. remove init-suggest markers
+		//
 		// 2. 删除 init-suggest markers
 		dir, ok := uninstallClearMarkers()
 		if !ok {
@@ -64,6 +88,8 @@ var uninstallCmd = &cobra.Command{
 			fmt.Printf(`已清除 init-suggest 标记：%s`+"\n", dir)
 		}
 
+		// 3. plugin uninstall guidance (interactive inside agent CLI, not scriptable)
+		//
 		// 3. plugin 卸载指引（agent CLI 内交互，不可脚本化）
 		fmt.Println(`plugin 卸载须在 agent CLI 内交互运行：`)
 		fmt.Println(`  Claude Code / Cursor:  /plugin uninstall forge@forge`)

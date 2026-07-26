@@ -1,5 +1,14 @@
 package scoring
 
+// Golden master collection layer: freezes a real task EvaluateInput into a golden regression fixture.
+//
+// Orthogonal to canonical golden (testdata/golden/, hand-written clean/poor cases pinning algorithm boundaries):
+// golden_real pins the real scoring shape of actual dogfood tasks — guarding against regressions like I tweaked scoreScope and
+// dropped every real B-grade task to C, which hand-written fixtures cannot catch and only surface on real combinations.
+//
+// Collection primitive GoldenCaseFromInput: takes an EvaluateInput, runs Evaluate, and wraps (input, expected)
+// into a GoldenCase. Persistence/loading reuses the GoldenCase JSON format + LoadGoldenCases (only the dir differs).
+//
 // Golden master 采集层：把真实任务的 EvaluateInput 固化成 golden 回归 fixture。
 //
 // 与 canonical golden（testdata/golden/，人工 clean/poor 钉算法边界）正交：
@@ -11,6 +20,11 @@ package scoring
 
 import "github.com/MjxUpUp/Forge/internal/scoringtypes"
 
+// GoldenCaseFromInput builds a GoldenCase with Expected filled in from an EvaluateInput.
+// Collector primitive: a real task scoring input -> golden regression fixture. Expected is computed by the current Evaluate,
+// so collection and regression testing must use the same ScoringConfig (DefaultWeights), otherwise config
+// drift would be misreported as an algorithm regression. Production collection should further pin the config fingerprint (to be added when the collect command lands).
+//
 // GoldenCaseFromInput 从 EvaluateInput 构造一个填好 Expected 的 GoldenCase。
 // 采集器原语：真实任务的评分输入 → golden 回归 fixture。Expected 由当前 Evaluate
 // 算出，故采集与回归测试**必须用同一 ScoringConfig**（DefaultWeights），否则 config

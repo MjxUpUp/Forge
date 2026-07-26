@@ -41,6 +41,17 @@ func TestMain(m *testing.M) {
 
 	forgeBin = binPath
 
+	// Isolate Claude plugin detection: force IsClaudePluginInstalled()=false
+	// (empty CLAUDE_CONFIG_DIR has no plugins/installed_plugins.json). The e2e
+	// runs the forge binary as a subprocess (init/sync include
+	// dedupeProjectLevelIfPlugin); without isolation, when the local machine
+	// has the forge plugin installed, dedupe would rewrite/delete
+	// project-level files (settings.local.json / .mcp.json), perturbing the
+	// behavioral consistency of e2e subprocesses. Current assertions only
+	// check settings.local.json existence (fileExists), but the isolation is
+	// kept to provide determinism for future content assertions and avoid
+	// drift between local (plugin installed) and CI (not installed).
+	//
 	// 隔离 Claude plugin 检测：强制 IsClaudePluginInstalled()=false（空 CLAUDE_CONFIG_DIR 下
 	// 无 plugins/installed_plugins.json）。e2e 跑 forge binary 子进程（init/sync 含
 	// dedupeProjectLevelIfPlugin），不隔离会让本机装了 forge plugin 时 dedupe 改写/删
@@ -166,6 +177,12 @@ func readJSON(t *testing.T, dir, name string, target any) {
 func freshProject(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
+	// Redirect the user-level data home to a per-test temp dir: forge
+	// subprocesses (init/hazard/hooks) and this test process's store reads
+	// both resolve DataDir via FORGE_DATA_HOME, so they agree and do not
+	// pollute the real ~/.forge. Un-migrated stores (state/checklog/...) still
+	// write to project-level .forge/ and are unaffected.
+	//
 	// 把用户级 data home 重定向到 per-test temp dir：forge 子进程（init/hazard/hooks）
 	// 与本测试进程的 store 读取都按 FORGE_DATA_HOME 解析 DataDir，二者一致且不污染真实 ~/.forge。
 	// 未迁移的 store（state/checklog/...）仍写项目级 .forge/，不受影响。
@@ -195,6 +212,10 @@ func freshProjectOnBranch(t *testing.T, branch string) string {
 func TestFreshInstall(t *testing.T) {
 	dir := freshProject(t)
 
+	// Verify core files exist. Project-level pipeline has been removed: no
+	// pipeline.yml/state.json/forge-pipeline skill; new .sync-version stamp +
+	// CLAUDE.md.
+	//
 	// Verify core files exist. 项目级管道已删除：无 pipeline.yml/state.json/
 	// forge-pipeline skill；新增 .sync-version stamp + CLAUDE.md。
 	for _, path := range []string{
@@ -359,6 +380,9 @@ scoring:
 		t.Error("auto-compile.sh should have been overwritten, still has old content")
 	}
 
+	// Verify: quality SKILL.md regenerated (the forge-pipeline skill was
+	// removed alongside the project-level pipeline).
+	//
 	// Verify: quality SKILL.md regenerated (forge-pipeline skill 已随项目级管道删除).
 	skillContent := readFile(t, dir, ".claude/skills/forge-quality/SKILL.md")
 	if skillContent == "" {
@@ -374,6 +398,11 @@ scoring:
 		t.Error("protocol.yml should still contain user's custom session rule after upgrade")
 	}
 
+	// Verify: .sync-version stamp written with current binary version.
+	// autoSync now uses the stamp file for the no-op check (replacing the
+	// deleted state.json.last_sync_version); it no longer reads or writes
+	// state.json.
+	//
 	// Verify: .sync-version stamp written with current binary version. autoSync 现在用
 	// stamp 文件判 no-op（取代已删的 state.json.last_sync_version），不再读写 state.json。
 	stamp := readFile(t, dir, ".forge/.sync-version")
@@ -494,6 +523,9 @@ scoring:
 		t.Error("settings.local.json should exist after auto-sync")
 	}
 
+	// Verify: quality SKILL.md updated (the forge-pipeline skill was
+	// retired together with the project-level pipeline).
+	//
 	// Verify: quality SKILL.md updated (forge-pipeline skill 已随项目级管道删除).
 	if !fileExists(t, dir, ".claude/skills/forge-quality/SKILL.md") {
 		t.Error("forge-quality SKILL.md should exist after auto-sync")
@@ -516,6 +548,11 @@ func passAllGates(t *testing.T, dir, ref string) {
 	// code-change check requires a new commit on the feature branch.
 	git(t, dir, "commit", "--allow-empty", "-m", "e2e: move HEAD for task-implement")
 
+	// Pass gates sequentially: task-implement, task-verify, then
+	// task-complete. task-complete has a ReviewPassed hard prerequisite —
+	// first call `forge review pass` to set it (task mode writes
+	// TaskState.ReviewPassed), otherwise task-complete is blocked.
+	//
 	// Pass gates in order: task-implement, task-verify, then task-complete.
 	// task-complete 有 ReviewPassed 硬前置——先 forge review pass 标记（task 模式
 	// 写 TaskState.ReviewPassed），否则 task-complete 被拦。

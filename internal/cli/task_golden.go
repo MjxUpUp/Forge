@@ -16,6 +16,10 @@ func init() {
 	verifyCmd.Flags().String(`collect-golden`, ``, `从已完成任务采集真实 golden case 到 testdata/golden_real/（开发工具：固化真实评分形状进 CI 回归）`)
 }
 
+// buildEvaluateInput thin-wrapper: scoring input assembly is pushed down to taskpipeline.BuildEvaluateInput
+// (single source of truth). CollectGoldenFromTask reuses it transparently — cli and MCP forge_task_complete share the same
+// assembly logic, no longer two drifting copies. See taskpipeline.BuildEvaluateInput for notes/limitations.
+//
 // buildEvaluateInput thin-wrapper：评分输入组装下沉到 taskpipeline.BuildEvaluateInput
 // （单一真相源）。CollectGoldenFromTask 透明复用——cli 与 MCP forge_task_complete 共用同一
 // 组装逻辑，不再两份漂移。注释/限制见 taskpipeline.BuildEvaluateInput。
@@ -23,6 +27,11 @@ func buildEvaluateInput(root string, state *taskpipeline.TaskState) (*scoring.Ev
 	return taskpipeline.BuildEvaluateInput(root, state)
 }
 
+// CollectGoldenFromTask derives a golden case (a real scoring shape) from a completed task TaskState,
+// for forge verify --collect-golden to land into testdata/golden_real/ as a CI regression.
+// It reuses buildEvaluateInput (same input and logic as scoring) → GoldenCaseFromInput computes Expected.
+// The task must already be scored (state.Score != nil). See taskpipeline.BuildEvaluateInput for git-drift limitations.
+//
 // CollectGoldenFromTask 从已完成任务的 TaskState 派生一个 golden case（真实评分形状），
 // 供 forge verify --collect-golden 沉淀到 testdata/golden_real/ 做 CI 回归。
 // 复用 buildEvaluateInput（与评分同输入同逻辑）→ GoldenCaseFromInput 算 Expected。
@@ -42,6 +51,10 @@ func CollectGoldenFromTask(root, taskRef string) (*scoring.GoldenCase, error) {
 	name := goldenCaseName(taskRef)
 	rationale := fmt.Sprintf(`真实 dogfood 任务 %s 的评分形状（采集自 TaskState+checklog+git）。钉真实组合不漂移——scoring 算法改动若让此任务评分漂移即 CI 挂。`, taskRef)
 	gc := scoring.GoldenCaseFromInput(name, rationale, input, config)
+	// Meta: auto-collected source + git-drift detection. If HEAD has advanced after task completion → GitDiffStat includes post-hoc
+	// changes → the scope dimension is based on the drift diff (stable once pinned but not truthful). When detected, mark drift_known;
+	// CI does not fail on scope advisory, while other dimensions assert as usual.
+	//
 	// Meta：自动采集来源 + git 漂移检测。任务完成后 HEAD 若已推进 → GitDiffStat 含事后
 	// 改动 → scope 维度基于漂移 diff（固化后稳定但不真实）。检测到即标 drift_known，
 	// CI 对 scope advisory 不 fail，其余维度照常断言。
@@ -52,11 +65,16 @@ func CollectGoldenFromTask(root, taskRef string) (*scoring.GoldenCase, error) {
 	return gc, nil
 }
 
+// goldenCaseName converts a taskRef (e.g. feat/review-snapshot) into a fixture name segment (feat-review-snapshot).
+//
 // goldenCaseName 把 taskRef（如 feat/review-snapshot）转为 fixture 名片段（feat-review-snapshot）。
 func goldenCaseName(taskRef string) string {
 	return strings.ReplaceAll(taskRef, "/", "-")
 }
 
+// runCollectGoldenMode is the entry point for forge verify --collect-golden <task-ref>.
+// It writes to the scoring testdata of the forge repo (developer-tool semantics: collecting into the CI golden set).
+//
 // runCollectGoldenMode 是 forge verify --collect-golden <task-ref> 的入口。
 // 写到 forge 仓库的 scoring testdata（开发者工具语义：采集进 CI golden 集）。
 func runCollectGoldenMode(taskRef string) error {

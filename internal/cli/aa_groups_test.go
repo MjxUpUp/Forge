@@ -6,6 +6,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// TestCommandGroups pins the gentle-grouping contract of aa_groups.go: every command variable referenced by aa_groups
+// must be a package-level var literal (not assigned inside init), otherwise aa_groups.init — which runs first because the filename aa_ sorts earliest —
+// would dereference a nil var and panic, crashing the entire forge binary init (forge --help wouldn't even run).
+//
+// When this test binary starts up, aa_groups.init also runs: if someone reverts any xxxCmd to init-time assignment,
+// the test binary's init panics outright (stronger than an assertion). The explicit assertions below make the contract readable:
+// every command variable referenced by aa_groups must be non-nil, have GroupID set, and have an unchanged CommandPath.
+//
 // TestCommandGroups 钉住 aa_groups.go 的温和分组契约：每个被 aa_groups 引用的命令变量
 // 必须是包级 var 字面量（非 init 内赋值），否则 aa_groups.init 因文件名 aa_ 最先执行时
 // 解引用 nil var 触发 panic，整个 forge 二进制 init 崩溃（连 forge --help 都跑不到）。
@@ -14,6 +22,8 @@ import (
 // 测试二进制 init 直接 panic 崩溃（比断言更强的保护）。下面的显式断言让契约可读：
 // 每个被 aa_groups 引用的命令变量必须非 nil、GroupID 已设、CommandPath 不变。
 func TestCommandGroups(t *testing.T) {
+	// All 5 function groups are registered with correct titles.
+	//
 	// 5 个职能组全部注册，标题正确。
 	wantGroups := []string{"项目生命周期", "项目管道", "任务质量", "经验与治理", "集成与安全"}
 	gotGroups := make([]string, 0, len(wantGroups))
@@ -33,6 +43,8 @@ func TestCommandGroups(t *testing.T) {
 		}
 	}
 
+	// Spot-check one command per group: variable non-nil + correct GroupID + unchanged command path (the promise of gentle grouping).
+	//
 	// 每组抽查一个命令：变量非 nil + GroupID 正确 + 命令路径不变（温和分组的承诺）。
 	cases := []struct {
 		name     string
@@ -59,11 +71,16 @@ func TestCommandGroups(t *testing.T) {
 	}
 }
 
+// TestCommandGroups_AllTopLevelGrouped — apart from cobra-auto-generated completion/help,
+// every top-level command belongs to some function group — preventing a newly added command from missing GroupID (which would float at the end of help).
+//
 // TestCommandGroups_AllTopLevelGrouped 除 cobra 自动生成的 completion/help 外，
 // 所有顶层命令都归入某个职能组——防止新增命令漏设 GroupID（会显示在 help 末尾游离）。
 func TestCommandGroups_AllTopLevelGrouped(t *testing.T) {
 	for _, c := range rootCmd.Commands() {
 		name := c.Name()
+		// completion/help are cobra-auto-generated auxiliary commands, deliberately left ungrouped.
+		//
 		// completion/help 是 cobra 自动生成的辅助命令，刻意留默认不分组。
 		if name == "completion" || name == "help" {
 			if c.GroupID != "" {
@@ -74,6 +91,8 @@ func TestCommandGroups_AllTopLevelGrouped(t *testing.T) {
 		if c.GroupID == "" {
 			t.Errorf("顶层命令 %s 未归组（GroupID 空），会在 forge --help 游离显示", name)
 		}
+		// GroupID must be one of the registered groups.
+		//
 		// GroupID 必须是已注册的组。
 		valid := false
 		for _, g := range rootCmd.Groups() {

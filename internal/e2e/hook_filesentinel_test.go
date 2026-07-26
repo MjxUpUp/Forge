@@ -154,10 +154,21 @@ func TestHook_FileSentinel_PassesWithActiveTask(t *testing.T) {
 	}
 }
 
+// TestHook_FileSentinel_GateStatusBeyondGitDiff pins the known protection gap from refactor-data-home commit D:
+// after the gate verdict (all_gates_passed) moved to user-level DataDir/gates/<id>/
+// status.json, file-sentinel detects via git diff — DataDir lives in ~/.forge, not in the git
+// repo, so git diff never returns DataDir paths and file-sentinel cannot reach them.
+//
 // TestHook_FileSentinel_GateStatusBeyondGitDiff 钉死 refactor-data-home commit D
 // 的已知防护缺口：gate verdict（all_gates_passed）迁到用户级 DataDir/gates/<id>/
 // status.json 后，file-sentinel 基于 git diff 检测——DataDir 在 ~/.forge 不在 git
 // 仓库，git diff 永远不返 DataDir 路径，file-sentinel 管不到。
+//
+// Before the migration A6 (guarding .forge/gates/status.json from Bash tampering to flip verdict) moved with gates into
+// DataDir and stopped working — this is an inherent limitation of git-dim interceptors for paths outside the git repo. This negative test
+// freezes that contract: it constructs a DataDir/gates/status.json tampering and asserts file-sentinel does not quarantine
+// (PASS, file in place), preventing future belief that it is guarded. The gap is filled by forge's own integrity check (commit E
+// or later), not by file-sentinel.
 //
 // 迁移前 A6（守 .forge/gates/status.json 不被 Bash 篡改 flip verdict）随 gates 进
 // DataDir 失效——这是 git-diff 维度拦截器对 git 仓库外路径的固有限制。本负向测试
@@ -186,6 +197,8 @@ func TestHook_FileSentinel_GateStatusBeyondGitDiff(t *testing.T) {
 		return out.String(), errBuf.String(), err
 	}
 
+	// PreToolUse bash-guard: build snapshot (git diff baseline).
+	//
 	// PreToolUse bash-guard: 建 snapshot（git diff 基线）。
 	bashIn := hookStdin(t, sid, "PreToolUse", "Bash", map[string]any{
 		"command": "echo flipping gate verdict externally",
@@ -194,6 +207,8 @@ func TestHook_FileSentinel_GateStatusBeyondGitDiff(t *testing.T) {
 		t.Fatalf("bash-guard snapshot step failed unexpectedly: %v", err)
 	}
 
+	// The actual location of gate-verdict tampering: DataDir/gates/<id>/status.json (invisible to git).
+	//
 	// 篡改 gate verdict 的实际位置：DataDir/gates/<id>/status.json（git 不可见）。
 	dataDir := forgedata.DataDirFor(dir)
 	gateDir := filepath.Join(dataDir, "gates", "task-verify")
@@ -206,6 +221,9 @@ func TestHook_FileSentinel_GateStatusBeyondGitDiff(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// PostToolUse file-sentinel: git diff does not include DataDir paths → NEW_CHANGES empty → PASS.
+	// Gap: file-sentinel cannot detect DataDir/gates tampering (inherent limitation of the git-diff dimension).
+	//
 	// PostToolUse file-sentinel: git diff 不含 DataDir 路径 → NEW_CHANGES 空 → PASS。
 	// 缺口：file-sentinel 无法检测 DataDir/gates 篡改（git-diff 维度的固有限制）。
 	sentIn := hookStdin(t, sid, "PostToolUse", "Bash", map[string]any{
@@ -218,6 +236,8 @@ func TestHook_FileSentinel_GateStatusBeyondGitDiff(t *testing.T) {
 	if !strings.Contains(stdout, `"decision":"approve"`) {
 		t.Errorf("file-sentinel stdout missing decision=approve:\n%s", stdout)
 	}
+	// Tampered file remains in place (file-sentinel cannot reach DataDir).
+	//
 	// 篡改文件仍在原位（file-sentinel 管不到 DataDir）。
 	if _, qerr := os.Stat(tamperedPath); qerr != nil {
 		t.Errorf("DataDir/gates/status.json should remain untouched (file-sentinel cannot reach DataDir — known gap), got: %v\nstdout:\n%s", qerr, stdout)

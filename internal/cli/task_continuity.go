@@ -11,6 +11,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// task_continuity.go: the command layer where task becomes the "single source of
+// continuity". It replaces in-session ephemeral state (agent context, lost on
+// compaction) and discipline-driven markdown (HANDOFF.md/AI_CONTEXT.md) with structured
+// first-class fields on task + a sub-second forge task resume. It mirrors the
+// information shape of session-continuity HANDOFF + cross-tool-context AI_CONTEXT, but
+// persists into DataDir/tasks/<ref>.json (refactor-data-home: runtime state migrated to
+// the user level), so cross-tool/cross-person handoff works off a single record.
+//
 // task_continuity.go：task 升格为「接续真相源」的命令层。把会话内临时状态（agent 上下文，
 // 压缩即丢）和靠纪律的 markdown（HANDOFF.md/AI_CONTEXT.md）替换为 task 的结构化一等公民字段 +
 // forge task resume 秒级拉回。对应 session-continuity HANDOFF + cross-tool-context AI_CONTEXT 的
@@ -106,6 +114,9 @@ func init() {
 	taskAttachCmd.Flags().String("session", "", "要锚定的 session ID（默认当前 session）")
 }
 
+// loadTaskOrActive loads the task specified by --ref or the current active task, and
+// returns (state, root). Returns an error when there is no task.
+//
 // loadTaskOrActive 加载 --ref 指定或当前 active task，返回 (state, root)。无任务时返错误。
 func loadTaskOrActive(cmd *cobra.Command) (*taskpipeline.TaskState, string, error) {
 	explicitRef, _ := cmd.Flags().GetString("ref")
@@ -139,6 +150,14 @@ func runTaskResume(cmd *cobra.Command, args []string) error {
 	reinject, _ := cmd.Flags().GetBool("reinject")
 
 	if compactFlag {
+		// PostCompact hook (claude-code root-cause layer · set-flag half, gap#2): on
+		// compaction completion, set ResumeStale=true; the next UserPromptSubmit --reinject
+		// detects it and re-injects the full handoff. Silent exit 0 (no stdout): PostCompact
+		// cannot inject additionalContext (Claude Code docs explicitly list it as a non-
+		// injection point — it can only block or follow up), so this hook only does the
+		// follow-up flag set. No active task or flag already set → idempotent no-op. Any
+		// failure degrades to stderr + exit 0 (advisory, does not block).
+		//
 		// PostCompact hook（claude-code 根治层·设标志半边，gap#2）：压缩完成 → 设
 		// ResumeStale=true，下个 UserPromptSubmit 的 --reinject 检测到即重注入完整 handoff。
 		// 静默 exit 0（无 stdout）：PostCompact 不能注入 additionalContext（Claude Code 文档
@@ -155,6 +174,13 @@ func runTaskResume(cmd *cobra.Command, args []string) error {
 	}
 
 	if reinject {
+		// UserPromptSubmit hook (claude-code root-cause layer · re-inject half, gap#2): if
+		// ResumeStale (just compacted) → re-inject the full handoff + clear the flag;
+		// otherwise silent. UserPromptSubmit stdout enters context (Claude Code docs:
+		// UserPromptSubmit is on the additionalContext injection-point list); runHook
+		// wraps it as additionalContext, so the PASS+handoff protocol matches the
+		// SessionStart task-resume one.
+		//
 		// UserPromptSubmit hook（claude-code 根治层·重注入半边，gap#2）：若 ResumeStale
 		// （刚压缩过）→ 重注入完整 handoff + 清标志；否则静默。UserPromptSubmit 的 stdout
 		// 进 context（Claude Code 文档：UserPromptSubmit 在 additionalContext 注入点列表），
@@ -172,6 +198,12 @@ func runTaskResume(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	// hook mode (SessionStart auto-injection; bash thin wrapper `exec forge task resume --hook`):
+	// no active task → silent exit 0 (no injection, no error); with an active task, attach
+	// the current session + emit "PASS\n<handoff>". runHook's extractDetail strips the PASS
+	// prefix to get detail, and detail is injected into additionalContext via the generic
+	// truncate fallback. Every branch exits 0 — SessionStart never blocks because of resume.
+	//
 	// hook 模式（SessionStart 自动注入；bash thin wrapper `exec forge task resume --hook`）：
 	// 无活跃任务静默 exit 0（不注入、不报错）；有活跃任务则 attach 当前 session + 输出
 	// "PASS\n<handoff>"。runHook 的 extractDetail 去掉 PASS 前缀取 detail，detail 经通用
@@ -183,6 +215,13 @@ func runTaskResume(cmd *cobra.Command, args []string) error {
 		}
 		out, err := renderHookResume(root)
 		if err != nil {
+			// advisory hook: any failure degrades to a stderr notice + exit 0, never
+			// blocking SessionStart. err comes from attachCurrentSession's SaveTaskState
+			// failure (extreme edge cases like disk failure); if we returned err, cobra
+			// would exit 1, the bash wrapper would also exit 1, and runHook would take the
+			// Decision:block branch — violating the "every branch exits 0" promise above.
+			// Degrading instead of blocking is the correct semantics for an advisory hook.
+			//
 			// advisory hook：任何失败都降级到 stderr 提示 + exit 0，绝不阻塞 SessionStart。
 			// err 来自 attachCurrentSession 的 SaveTaskState 失败（极端边界如磁盘故障）；若
 			// return err，cobra exit 1，bash wrapper 也 exit 1，runHook 走 Decision:block 分支，
@@ -199,6 +238,14 @@ func runTaskResume(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Handoff semantics: resume by default anchors the current session to the task (the
+	// "takeover" action of multi-way anchoring). This persists the relationship of N
+	// sessions collaborating on one task — any handoff-party resume knows who participated
+	// and with which tool. On detection failure (pure shell, no agent env), do not anchor
+	// and only print a stderr notice — resume always succeeds in pulling back context;
+	// anchoring is a side action: a detection failure must not break resume or wrongly
+	// attribute OriginTool ownership.
+	//
 	// 接手语义：resume 默认把当前 session 锚定到 task（多向锚定的接手方动作）。这样 N 个
 	// session 共同推进一个 task 的关系被持久化，任意接手方 resume 即知谁参与过、用什么工具。
 	// 探测失败（纯 shell 跑、无 agent env）时不锚定、仅 stderr 提示——resume 永远成功拉回
@@ -218,6 +265,14 @@ func runTaskResume(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// attachCurrentSession anchors the current session to the task (the "takeover" action of
+// multi-way anchoring). Returns (attached, error): attached=true means a session link was
+// actually added (first-time anchor); already-anchored or detection failure returns false
+// without erroring. silent=true (hook mode) suppresses the stderr notice — hook stderr is
+// invisible to the user, and attach is a silent side effect. Detection failure (no
+// session ID / no agent env) is silently skipped: attach is an additional action and must
+// not break resume.
+//
 // attachCurrentSession 把当前 session 锚定到 task（多向锚定的接手方动作）。返回 (attached, error)：
 // attached=true 表示实际新增了 session 链接（首次锚定）；已锚定或探测失败返 false 不报错。
 // silent=true（hook 模式）不输出 stderr 提示——hook 的 stderr 用户不可见，attach 是静默副作用。
@@ -250,6 +305,13 @@ func attachCurrentSession(state *taskpipeline.TaskState, root string, silent boo
 	return true, nil
 }
 
+// renderHookResume produces the SessionStart hook-mode output. No active task returns ""
+// (silent, no injection); with an active task it attaches the current session (silent) +
+// returns "PASS\n<handoff>". The pure logic other than findProjectRoot is factored out so
+// runTaskResume's hook branch and unit tests can share it (tests pass root directly,
+// independent of cwd). Truncation is delegated to the runHook generic path
+// (hook.go truncate(detail, maxAdditionalContextLen)).
+//
 // renderHookResume 产出 SessionStart hook 模式输出。无活跃任务返 ""（静默，不注入）；
 // 有活跃任务则 attach 当前 session（silent）+ 返 "PASS\n<handoff>"。把 findProjectRoot 之外
 // 的纯逻辑提出，供 runTaskResume 的 hook 分支与单元测试共用（测试直接传 root，不依赖 cwd）。
@@ -265,9 +327,16 @@ func renderHookResume(root string) (string, error) {
 	return "PASS\n" + renderResume(state, gitPorcelain(root)), nil
 }
 
+// renderHookCompactFlag produces the PostCompact hook side effect: sets the active
+// task's ResumeStale to true (persisted). No active task or already set → idempotent
+// no-op, no error. This is the "set-flag" half of the claude-code root-cause layer
+// (gap#2) — PostCompact cannot inject context, so it only marks "just compacted" and
+// waits for the next UserPromptSubmit's renderHookReinject to re-inject. The pure logic
+// other than findProjectRoot is factored out so unit tests can pass root directly.
+//
 // renderHookCompactFlag 产出 PostCompact hook 的副作用：把活跃任务的 ResumeStale 置 true
 // （持久化）。无活跃任务或已置位 → 幂等不操作不报错。这是 claude-code 根治层（gap#2）的
-// "设标志"半边——PostCompact 不能注入 context，只标记"刚压缩过"，等下个 UserPromptSubmit
+// 「设标志」半边——PostCompact 不能注入 context，只标记「刚压缩过」，等下个 UserPromptSubmit
 // 的 renderHookReinject 重注入。把 findProjectRoot 之外的纯逻辑提出，供单测直接传 root。
 func renderHookCompactFlag(root string) error {
 	state, _ := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
@@ -278,9 +347,17 @@ func renderHookCompactFlag(root string) error {
 	return taskpipeline.SaveTaskState(root, state)
 }
 
+// renderHookReinject produces the UserPromptSubmit hook-mode output: if the active task
+// has ResumeStale=true (just compacted) → return "PASS\n<handoff>" and clear ResumeStale
+// (persisted); otherwise return "" (silent, no injection). This is the "re-inject" half
+// of the claude-code root-cause layer (gap#2) — the first user prompt after a compaction
+// auto-restores the full continuity context, without relying on the agent to call
+// `forge task resume` proactively. The clear flag guarantees only one re-injection (the
+// next prompt is silent).
+//
 // renderHookReinject 产出 UserPromptSubmit hook 模式输出：若活跃任务 ResumeStale=true（刚压缩
 // 过）→ 返 "PASS\n<handoff>" 并清零 ResumeStale（持久化）；否则返 ""（静默，不注入）。这是
-// claude-code 根治层（gap#2）的"重注入"半边——压缩后第一个 user prompt 自动恢复完整接续
+// claude-code 根治层（gap#2）的「重注入」半边——压缩后第一个 user prompt 自动恢复完整接续
 // 上下文，不靠 agent 主动 forge task resume。clear 标志保证只重注入一次（下个 prompt 静默）。
 func renderHookReinject(root string) (string, error) {
 	state, _ := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
@@ -292,7 +369,19 @@ func renderHookReinject(root string) (string, error) {
 		return "", err
 	}
 	handoff := renderResume(state, gitPorcelain(root))
-	// 方案4（中途 checkpoint 显式落盘·主动驱动）：压缩刚发生时，若任务未落盘任何"中途线程"
+	// Plan 4 (mid-way checkpoint explicit persist · active driving): right after a
+	// compaction, if the task has not persisted any "mid-way thread" (decision/next
+	// step), the handoff can only restore the goal/plan set at task start — and that
+	// mid-way working memory is exactly what compaction loses. So we append a strong
+	// nudge pushing the agent toward forge task decide/next to persist explicitly, so
+	// the next compaction's handoff no longer rebuilds from zero. This is the only
+	// high-signal moment in checkpoint-driven mode: a normal turn's resume-reinject is
+	// silent (ResumeStale=false), zero noise; only the one prompt where compaction
+	// happened triggers it. Goal/Plan do not count (already persisted at task start,
+	// not a compaction-loss item) — only Decisions/NextSteps, the two mid-way thread
+	// fields.
+	//
+	// 方案4（中途 checkpoint 显式落盘·主动驱动）：压缩刚发生时，若任务未落盘任何「中途线程」
 	// （决策/下一步），handoff 只能复原 task start 时设的 goal/plan——而压缩丢的正是这期间的
 	// 工作记忆。此时追加强提示把 agent 推向 forge task decide/next 显式落盘，使下次压缩的
 	// handoff 不再从零重建。这是 checkpoint 驱动唯一的高信号时机：普通 turn resume-reinject
@@ -310,6 +399,9 @@ func renderHookReinject(root string) (string, error) {
 }
 
 func runTaskContext(cmd *cobra.Command, args []string) error {
+	// context = read-only alias of resume: pulls back the view but does not anchor a
+	// session and does not change state.
+	//
 	// context = resume 的只读别名：拉回视图但不锚定 session、不改 state。
 	asJSON, _ := cmd.Flags().GetBool("json")
 	state, root, err := loadTaskOrActive(cmd)
@@ -478,8 +570,12 @@ func runTaskAttach(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// gitPorcelain returns the lines of git status --porcelain (changed-but-uncommitted
+// files). Returns nil for non-git repos or on failure — resume does not depend on git;
+// this is purely a "let the handoff party see the worktree state at a glance" extra.
+//
 // gitPorcelain 返回 git status --porcelain 的行（已改未提交文件）。非 git 仓库或失败返 nil——
-// resume 不依赖 git，仅作"接手方一眼看到工作区状态"的辅助。
+// resume 不依赖 git，仅作「接手方一眼看到工作区状态」的辅助。
 func gitPorcelain(root string) []string {
 	out, err := exec.Command("git", "-C", root, "status", "--porcelain").Output()
 	if err != nil {
@@ -492,6 +588,11 @@ func gitPorcelain(root string) []string {
 	return strings.Split(trimmed, "\n")
 }
 
+// renderResume renders the task's continuity fields into a HANDOFF-style view.
+// gitChanged is passed in by the caller (decoupling git so this function can be pure-unit
+// tested). When the continuity content is empty, it emits a minimal status card without
+// erroring — resume always succeeds, only the amount of content varies.
+//
 // renderResume 把 task 接续字段渲染成 HANDOFF 风格视图。gitChanged 由 caller 传入（解耦 git，
 // 使本函数可纯单测）。空接续内容时给最小状态卡，不报错——resume 永远成功，只是内容多寡。
 func renderResume(state *taskpipeline.TaskState, gitChanged []string) string {
@@ -618,6 +719,16 @@ func renderResume(state *taskpipeline.TaskState, gitChanged []string) string {
 	return stripUnsafeControl(b.String())
 }
 
+// renderTldr produces a condensed tl;dr block (goal first line / doing now / open
+// blockers) inserted near the top of renderResume's output. Design intent: Claude Code /
+// each host's auto-compaction (summarize) tends to keep the beginning + structured short
+// text, while the full HANDOFF view is easily compressed away. A compact tl;dr near the
+// top is more likely to survive in the post-compaction summary, mitigating the context
+// rot that drifts handoff continuity in long tasks. This is the cross-host mitigation
+// layer for gap#2 (SessionStart injection, supported by equivalent mechanisms on all
+// hosts); the Claude Code-specific PostCompact re-inject chain is a separate layer (see
+// the compact-resume hook).
+//
 // renderTldr 产出精炼 tl;dr 块（目标首行 / 现在做 / open 阻塞），插在 renderResume 输出
 // 靠前位置。设计目的：Claude Code/各 host 自动压缩（summarize）倾向保留开头 + 结构化短文本，
 // 完整 HANDOFF 视图易被压掉，tl;dr 紧凑靠前 → 更可能在压缩后的 summary 中存活，缓解长任务
@@ -664,6 +775,10 @@ func renderTldr(state *taskpipeline.TaskState) string {
 	return strings.TrimRight(stripUnsafeControl(b.String()), "\n")
 }
 
+// renderGateProgress renders gate progress (e.g. ✅implement ✅verify ⏳complete). The
+// cli package cannot access taskpipeline's private gatePassed, so it judges from History
+// itself — same semantics as taskpipeline.gatePassed.
+//
 // renderGateProgress 渲染门禁进度（如 ✅实现 ✅验证 ⏳完成）。cli 包无法访问 taskpipeline
 // 的私有 gatePassed，故用 History 自行判定——与 taskpipeline.gatePassed 同义。
 func renderGateProgress(state *taskpipeline.TaskState) string {
@@ -702,6 +817,14 @@ func indentBlock(s string) string {
 	return strings.Join(lines, "\n")
 }
 
+// stripUnsafeControl strips ANSI escape sequences and other C0 control characters
+// (keeping \n \t \r), preventing malicious ANSI in external markdown read by --plan-file
+// (clear-screen ESC[2J, color-change ESC[31m, etc.) from being interpreted by the
+// terminal. The HTML side already escapes via html/template; the CLI side adds this
+// symmetric layer. After ESC is stripped, the ANSI sequence's leftover [31m-class text
+// is no longer interpreted by the terminal — the goal is achieved (the residual text is
+// harmless). DEL (0x7f) and other C0 control characters are also dropped.
+//
 // stripUnsafeControl 剥离 ANSI 转义序列和其他 C0 控制字符（保留 \n \t \r），防止 --plan-file
 // 读入的外部 markdown 含恶意 ANSI（清屏 ESC[2J / 改色 ESC[31m 等）被终端解释执行。
 // HTML 端 html/template 已自动转义，CLI 端对称补这层。剥离 ESC 后 ANSI 序列余下 [31m 类

@@ -16,6 +16,8 @@ func mustWrite(t *testing.T, err error) {
 	}
 }
 
+// makeCanonicalSkill creates a skill in the canonical directory (directory name = frontmatter name).
+//
 // makeCanonicalSkill 在 canonical 目录造一个 skill（目录名 = frontmatter name）。
 func makeCanonicalSkill(t *testing.T, canonical, name string) {
 	t.Helper()
@@ -25,6 +27,10 @@ func makeCanonicalSkill(t *testing.T, canonical, name string) {
 		[]byte(fmt.Sprintf("---\nname: %s\ndescription: d\n---\n\nbody\n", name)), 0644))
 }
 
+// recordSkillCall writes a Skill tool call to toollog.jsonl via toolusage.Record.
+// Goes through the real collection layer (DataDirFor(root)/toollog.jsonl) for closed-loop verification of
+// SkillCountsFromToollog's read path and new data source.
+//
 // recordSkillCall 经 toolusage.Record 写一条 Skill 工具调用到 toollog.jsonl。
 // 走真实采集层（DataDirFor(root)/toollog.jsonl），闭环验证 SkillCountsFromToollog
 // 读取的路径与新数据源。
@@ -119,7 +125,11 @@ func TestAnalyzeUsage(t *testing.T) {
 	}
 }
 
-// TestAnalyzeUsage_FiltersGhostSkills：toollog 残留 canonical 已删的"幽灵技能"，
+// TestAnalyzeUsage_FiltersGhostSkills: toollog retains ghost skills already removed from canonical,
+// HotSkills/UsedSkills must filter them — symmetric with NeverTriggered (canonical only).
+// Verifies ghost filtering logic still holds after data source switched to toollog.
+//
+// TestAnalyzeUsage_FiltersGhostSkills：toollog 残留 canonical 已删的「幽灵技能」，
 // HotSkills/UsedSkills 必须过滤——与 NeverTriggered（仅 canonical）对称。
 // 验证数据源切到 toollog 后幽灵过滤逻辑仍成立。
 func TestAnalyzeUsage_FiltersGhostSkills(t *testing.T) {
@@ -147,6 +157,10 @@ func TestAnalyzeUsage_FiltersGhostSkills(t *testing.T) {
 	}
 }
 
+// TestSkillCountsFromToollog_ArchiveSurvives: forge task start calls toolusage.Clear to archive
+// active toollog to toollog-<ts>.jsonl. SkillCountsFromToollog must read across archives (LoadAllAll),
+// otherwise historical task Skill calls are lost after archiving — archive blind spot is a prerequisite for cross-task analysis.
+//
 // TestSkillCountsFromToollog_ArchiveSurvives：forge task start 调 toolusage.Clear 归档
 // active toollog 到 toollog-<ts>.jsonl。SkillCountsFromToollog 必须跨归档读（LoadAllAll），
 // 否则归档后历史任务的 Skill 调用全丢——归档盲区是跨任务分析前提。
@@ -154,10 +168,14 @@ func TestSkillCountsFromToollog_ArchiveSurvives(t *testing.T) {
 	root := t.TempDir()
 	recordSkillCall(t, root, "old-skill", "t1")
 	recordSkillCall(t, root, "old-skill", "t1")
+	// Simulate forge task start archiving: Clear archives active toollog then empties it
+	//
 	// 模拟 forge task start 归档：Clear 把 active toollog 归档后清空
 	if err := toolusage.Clear(root); err != nil {
 		t.Fatal(err)
 	}
+	// New task active toollog
+	//
 	// 新任务 active toollog
 	recordSkillCall(t, root, "new-skill", "t2")
 
