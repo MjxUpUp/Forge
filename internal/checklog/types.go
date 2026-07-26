@@ -2,7 +2,7 @@ package checklog
 
 import "time"
 
-// CheckName identifies a specific hook check.
+// CheckName 标识一次具体的 hook 检查。
 type CheckName string
 
 const (
@@ -27,13 +27,11 @@ const (
 	// 可能，留痕供 review 核查）。本记录把"机械可检的作弊"从 LLM-review 每轮重采样
 	// 抽到一次性 deterministic 判决——对冲"每轮 review 冒新问题"的根因。
 	CheckCheatScan CheckName = "cheat-scan"
-	// CheckEscapeHatch records use of a gate-bypass escape hatch
-	// (FORGE_TEST_COVERAGE / FORGE_WORK_ACTIVITY / FORGE_SKIP_VERIFY). These
-	// hatches are legitimate tools, but their use must be AUDITED, not silent —
-	// an agent dodging the test-coverage gate by exporting FORGE_TEST_COVERAGE=
-	// disable should leave a visible trail. A4: recorded so `forge trace` and
-	// scoring can surface hatch usage. Passed=true (the bypass took effect),
-	// Checked=true, Detail names the hatch.
+	// CheckEscapeHatch 记录 gate-bypass 逃生舱的使用（FORGE_TEST_COVERAGE /
+	// FORGE_WORK_ACTIVITY / FORGE_SKIP_VERIFY）。这些逃生舱是合法工具，但其使用必须
+	// 留痕可审计、不能静默——agent 通过 export FORGE_TEST_COVERAGE=disable 绕过
+	// test-coverage gate 时，应留下可见轨迹。A4：记录以便 forge trace 与评分能展示
+	// 逃生舱使用。Passed=true（bypass 已生效）、Checked=true、Detail 标注逃生舱名。
 	CheckEscapeHatch CheckName = "escape-hatch"
 )
 
@@ -68,15 +66,15 @@ func SourceForCheck(c CheckName) EvidenceSource {
 	return EvidenceDeterministic
 }
 
-// Entry records the outcome of a single hook execution.
+// Entry 记录一次 hook 执行的结果。
 type Entry struct {
 	Check     CheckName `json:"check"`
 	Passed    bool      `json:"passed"`
-	Checked   bool      `json:"checked"`              // false if check was skipped
-	ToolName  string    `json:"tool_name"`            // from Claude Code stdin
-	TaskRef   string    `json:"task_ref,omitempty"`   // task this check belongs to
-	SessionID string    `json:"session_id,omitempty"` // Claude Code session — isolates concurrent sessions
-	Detail    string    `json:"detail"`               // human-readable summary
+	Checked   bool      `json:"checked"`              // check 被跳过时为 false
+	ToolName  string    `json:"tool_name"`            // 来自 Claude Code stdin
+	TaskRef   string    `json:"task_ref,omitempty"`   // 该 check 所属的 task
+	SessionID string    `json:"session_id,omitempty"` // Claude Code session——隔离并发 session
+	Detail    string    `json:"detail"`               // 人类可读的摘要
 	// Source 标注证据来源（deterministic vs agent-claim）。Record 时若留空，
 	// 按 SourceForCheck 兜底推断，故历史记录点无需逐个改造也能进证据链分桶。
 	Source     EvidenceSource `json:"source,omitempty"`

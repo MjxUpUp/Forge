@@ -1,17 +1,17 @@
 package hooks
 
-// Embedded hook scripts for forge init.
-// These are written to .forge/hooks/ during project initialization.
+// forge init 嵌入的 hook 脚本。
+// 在项目初始化时写入 .forge/hooks/。
 //
-// Protocol: bash scripts output plain text to stdout.
-// - Line starting with "PASS" = check passed, rest of line is optional detail.
-// - Line starting with "FAIL" = check failed, rest of line is the reason.
-// - If multiple lines, the LAST PASS/FAIL line determines the result.
-// - Any output to stderr is captured for debugging.
-// Go wraps the result into structured JSON for Claude Code.
+// 协议：bash 脚本向 stdout 输出纯文本。
+// - 以 PASS 起首的行 = 检查通过，行其余部分为可选 detail。
+// - 以 FAIL 起首的行 = 检查失败，行其余部分为原因。
+// - 多行时以最后一条 PASS/FAIL 行决定结果。
+// - 任何到 stderr 的输出都会被捕获用于调试。
+// Go 侧把结果包装成结构化 JSON 给 Claude Code。
 //
-// Go extracts tool_input fields into env vars (FORGE_FILE_PATH, FORGE_CONTENT,
-// FORGE_TOOL_NAME) so bash scripts don't need to parse JSON.
+// Go 侧把 tool_input 字段提取到 env var（FORGE_FILE_PATH、FORGE_CONTENT、
+// FORGE_TOOL_NAME），bash 脚本无需自己解析 JSON。
 
 const AutoCompileHook = `#!/bin/bash
 # auto-compile.sh — PostToolUse hook for Write|Edit (advisory, non-blocking).

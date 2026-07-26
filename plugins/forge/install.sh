@@ -13,9 +13,8 @@
 # plugin-install next-steps (which differ per agent and need to be run inside
 # the agent CLI itself, not scripted).
 #
-# Modeled after https://github.com/Egonex-AI/Understand-Anything/blob/main/install.sh
-# (one-step symlink-style installer) but Forge ships a real npm binary + per-agent
-# plugin marketplace, so there's less to script and more to document.
+# One-step fallback installer. Forge ships a real npm binary + per-agent plugin
+# marketplace, so there's less to script and more to document.
 
 set -euo pipefail
 

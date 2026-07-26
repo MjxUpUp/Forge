@@ -1,11 +1,10 @@
-// Package scoringtypes defines shared types for task quality scoring.
-// Zero dependencies — used by both scoring and taskpipeline packages
-// to avoid circular imports.
+// Package scoringtypes 定义 task 质量评分的共享类型。
+// 零依赖——scoring 与 taskpipeline 两个包共用，避免循环 import。
 package scoringtypes
 
 import "time"
 
-// Dimension identifies a scoring axis.
+// Dimension 标识一个评分维度。
 type Dimension string
 
 const (
@@ -17,14 +16,14 @@ const (
 	DimensionEfficiency  Dimension = "efficiency"   // Time to complete
 )
 
-// DimensionScore holds the score and explanation for one dimension.
+// DimensionScore 存单个维度的分数与说明。
 type DimensionScore struct {
 	Dimension Dimension `json:"dimension"`
 	Score     int       `json:"score"`  // 0-100
 	Detail    string    `json:"detail"` // One-sentence justification
 }
 
-// ScoreResult is the output of a task quality evaluation.
+// ScoreResult 是 task 质量评估的输出。
 type ScoreResult struct {
 	TaskRef    string           `json:"task_ref"`
 	Dimensions []DimensionScore `json:"dimensions"`
@@ -47,13 +46,13 @@ type EvidenceSummary struct {
 	Ratio         float64 `json:"ratio"` // 0-1；total=0 时为 0
 }
 
-// ScoringConfig controls dimension weights and grade thresholds.
+// ScoringConfig 控制维度权重与 grade 阈值。
 type ScoringConfig struct {
 	Weights    map[string]float64 `yaml:"weights"    json:"weights"`    // dimension id -> weight (must sum to 1.0)
 	Thresholds map[string]float64 `yaml:"thresholds" json:"thresholds"` // grade -> minimum score
 }
 
-// DefaultWeights returns the standard dimension weights.
+// DefaultWeights 返回标准维度权重。
 func DefaultWeights() map[string]float64 {
 	return map[string]float64{
 		string(DimensionProcess):     0.25,
@@ -65,7 +64,7 @@ func DefaultWeights() map[string]float64 {
 	}
 }
 
-// DefaultThresholds returns the standard grade thresholds.
+// DefaultThresholds 返回标准 grade 阈值。
 func DefaultThresholds() map[string]float64 {
 	return map[string]float64{
 		"A": 90,
@@ -76,7 +75,7 @@ func DefaultThresholds() map[string]float64 {
 	}
 }
 
-// GradeFromScore maps a numeric score to a letter grade.
+// GradeFromScore 把数值分数映射到字母 grade。
 func GradeFromScore(score float64, thresholds map[string]float64) string {
 	for _, grade := range []string{"A", "B", "C", "D", "F"} {
 		if score >= thresholds[grade] {

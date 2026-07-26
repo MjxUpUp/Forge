@@ -1,6 +1,6 @@
 package agentbridge
 
-// AllTranslators returns all available translators in a deterministic order.
+// AllTranslators 以 deterministic 顺序返回所有可用 translator。
 func AllTranslators() []Translator {
 	return []Translator{
 		&ClaudeCodeTranslator{},
@@ -13,8 +13,7 @@ func AllTranslators() []Translator {
 	}
 }
 
-// TranslateForAgents translates Forge config for the specified agents.
-// If agents is empty, it does nothing.
+// TranslateForAgents 把 Forge 配置翻译给指定 agents。agents 为空时 no-op。
 func TranslateForAgents(projectDir string, agents []AgentType, input *TranslationInput) []error {
 	if len(agents) == 0 {
 		return nil
@@ -36,7 +35,7 @@ func TranslateForAgents(projectDir string, agents []AgentType, input *Translatio
 	return errs
 }
 
-// translatorMap creates a lookup map from agent type to translator.
+// translatorMap 构建 agent type 到 translator 的查找表。
 func translatorMap(translators []Translator) map[AgentType]Translator {
 	m := make(map[AgentType]Translator, len(translators))
 	for _, t := range translators {

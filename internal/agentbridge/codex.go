@@ -9,25 +9,22 @@ import (
 	"github.com/MjxUpUp/Forge/internal/hooks"
 )
 
-// CodexTranslator generates .codex/hooks.json mirroring the Claude Code hook
-// wiring. Codex's lifecycle hooks (PreToolUse/PostToolUse/Stop) are
-// schema-compatible with Claude Code's — same matcher/hooks/type/command shape
-// and same stdin/stdout JSON protocol — so the identical `forge hook <name>`
-// commands run unchanged. Alongside claude-code and cursor, codex is one of
-// the agents whose hooks actually enforce the Forge gates; copilot/windsurf
-// still emit guidance text only. See CursorTranslator for cursor's flat-schema
-// variant of the same hook command surface.
+// CodexTranslator 生成 .codex/hooks.json，镜像 Claude Code 的 hook 接线。Codex 的
+// lifecycle hooks（PreToolUse/PostToolUse/Stop）与 Claude Code 的 schema 兼容——
+// matcher/hooks/type/command 结构相同，stdin/stdout JSON 协议也相同——故同一批
+// `forge hook <name>` 命令原样跑。与 claude-code、cursor 并列，codex 是 hook 真正
+// enforce Forge gate 的 agent 之一；copilot/windsurf 仍只发 guidance 文本。
+// cursor 的扁平 schema 变体见 CursorTranslator。
 //
-// Matcher note: Codex compiles matcher as a regex over tool_name, whereas
-// Claude Code treats it as a tool-name match. Plain names ("Bash") and
-// alternation ("Write|Edit") are valid regex and match identically in both,
-// so the Claude wiring transfers directly. Forge never emits the glob-style
-// `Bash(...)` form, which would be an invalid Codex matcher.
+// Matcher 注意：Codex 把 matcher 编译为针对 tool_name 的 regex，而 Claude Code 把它
+// 当 tool-name 匹配。纯名（Bash）与 alternation（Write|Edit）都是合法 regex，在两者
+// 中匹配结果一致，故 Claude 接线可直接迁移。Forge 从不发 glob 风格的 `Bash(...)` 形式——
+// 它在 Codex 里不是合法 matcher。
 type CodexTranslator struct{}
 
 func (t *CodexTranslator) Detect(projectDir string) bool {
-	// .codex/ only — AGENTS.md is not a codex signal (forge generates AGENTS.md
-	// universally as cross-agent instructions; see DetectAgents note).
+	// 仅 .codex/——AGENTS.md 不是 codex 信号（forge 把 AGENTS.md 通用生成为跨 agent
+	// 指令；见 DetectAgents 注释）。
 	return dirExists(filepath.Join(projectDir, ".codex"))
 }
 
@@ -51,15 +48,13 @@ func (t *CodexTranslator) AgentType() AgentType {
 	return AgentCodex
 }
 
-// buildCodexHooks derives codex's hooks.json from hooks.ForgeHookSpec — the
-// single source of truth shared with settings.local.json and the plugin pack.
-// Codex's hook schema is identical to Claude Code's nested
-// {matcher, hooks:[{type,command}]} shape (Codex compiles matcher as a regex
-// over tool_name; Forge emits only plain names and alternation, both valid
-// regex), so the spec marshals to a valid codex hooks.json unchanged. Codex
-// lacks a SessionStart lifecycle hook, so that event is filtered out (skill-scan
-// is Claude-Code-only). No hand-maintained copy → no drift.
-// TestCodexWiringMirrorsClaudeSettings guards command-set parity.
+// buildCodexHooks 从 hooks.ForgeHookSpec 派生 codex 的 hooks.json——该 spec 是与
+// settings.local.json、plugin pack 共享的单一真相源。Codex 的 hook schema 与 Claude Code
+// 的嵌套 {matcher, hooks:[{type,command}]} 结构相同（Codex 把 matcher 编译为针对
+// tool_name 的 regex；Forge 只发纯名与 alternation，均合法 regex），故 spec 可原样
+// marshal 为合法 codex hooks.json。Codex 无 SessionStart lifecycle hook，故该 event
+// 被过滤（skill-scan 是 Claude-Code 专属）。无手工副本 → 无 drift。
+// TestCodexWiringMirrorsClaudeSettings 守卫命令集对等。
 func buildCodexHooks() map[string]any {
 	spec := hooks.ForgeHookSpec()
 	codex := make(map[string][]hooks.HookMatcher, len(spec))

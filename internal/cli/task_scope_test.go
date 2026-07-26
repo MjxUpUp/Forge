@@ -42,7 +42,7 @@ func TestTaskScope_E2E_FlagToStatusToAddToShow(t *testing.T) {
 		t.Errorf(`status 缺 PlanScope 块: %s`, statusOut)
 	}
 
-	// scope add：中途追加一条（验证 Agentless 分层定位——规划可迭代），去重一条已存在的。
+	// scope add：中途追加一条（验证分层定位——规划可迭代），去重一条已存在的。
 	addOut, _, code := runForge(t, dir, `task`, `scope`, `add`, `internal/cli/hook.go`, `internal/cli/task.go`)
 	if code != 0 {
 		t.Fatalf(`task scope add failed: %s`, addOut)

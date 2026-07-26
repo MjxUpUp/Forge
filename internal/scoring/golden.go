@@ -6,22 +6,17 @@ import (
 	"path/filepath"
 )
 
-// GoldenCase is a single regression fixture for the scoring evaluator: a
-// representative EvaluateInput paired with the score the evaluator produced
-// when the fixture was recorded. The golden test re-runs Evaluate and asserts
-// the result matches — so any unintended drift in the scoring functions shows
-// up as a test failure rather than a silent quality change.
+// GoldenCase 是 scoring evaluator 的单个回归 fixture：一个有代表性的 EvaluateInput
+// 配上 fixture 记录时 evaluator 产出的分数。golden test 重跑 Evaluate 并断言结果
+// 匹配——故任何打分函数的非预期漂移都体现为测试失败而非静默质量变化。
 //
-// Unlike evaluator_test.go (which constructs minimal inputs to probe one
-// scoreXxx function's boundaries), golden cases carry realistic, full EvaluateInput
-// shapes — the anti-pattern/tool-call/diff combinations that actually occur in
-// real tasks. This is the layer that catches "I tweaked scoreScope and
-// accidentally dropped every B-grade task to a C."
+// 区别于 evaluator_test.go（构造最小输入探单个 scoreXxx 函数边界），golden case 承载
+// 真实任务中出现的 realistic、完整 EvaluateInput 形状——anti-pattern/tool-call/diff 的
+// 实际组合。这一层抓的是「我调了 scoreScope 不小心把所有 B 级任务降到 C」这类回归。
 type GoldenCase struct {
 	Name string `json:"name"`
-	// Rationale documents why this case exists and which dimension/score
-	// path it pins, so a future maintainer changing scoring knows whether the
-	// expected value must move with the change.
+	// Rationale 记录本 case 为何存在、钉住哪个 dimension/score 路径，让未来维护者
+	// 改打分逻辑时知道期望值是否要随变更移动。
 	Rationale string        `json:"rationale"`
 	Input     EvaluateInput `json:"input"`
 	Expected  ExpectedScore `json:"expected"`
@@ -45,18 +40,16 @@ type GoldenMeta struct {
 	DriftKnown []string `json:"drift_known,omitempty"`
 }
 
-// ExpectedScore is the subset of ScoreResult that golden cases pin. We pin
-// per-dimension scores (not just overall) because a weighted-average can mask
-// a regression in one dimension behind compensating movement in another.
+// ExpectedScore 是 golden case 钉住的 ScoreResult 子集。我们按维度钉分数（非仅
+// overall），因为加权平均会用一个维度的补偿性变化掩盖另一个维度的回归。
 type ExpectedScore struct {
 	Overall    float64        `json:"overall"`
 	Grade      string         `json:"grade"`
 	Dimensions map[string]int `json:"dimensions"` // dimension name -> score
 }
 
-// LoadGoldenCases reads every *.json fixture under testdata/golden. Returning
-// a slice (not a map) preserves deterministic test ordering by filename via
-// filepath.Glob's sort.
+// LoadGoldenCases 读取 testdata/golden 下每个 *.json fixture。返回 slice（非 map）
+// 通过 filepath.Glob 的排序保持 deterministic 测试顺序。
 func LoadGoldenCases(dir string) ([]GoldenCase, error) {
 	matches, err := filepath.Glob(filepath.Join(dir, "golden_*.json"))
 	if err != nil {

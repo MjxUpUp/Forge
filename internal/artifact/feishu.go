@@ -10,14 +10,14 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
-// FeishuConfig holds feishu publishing configuration.
+// FeishuConfig 持有 feishu 发布配置。
 type FeishuConfig struct {
 	SpaceID         string
 	ParentNodeToken string
 	Enabled         bool
 }
 
-// DefaultFeishuConfig returns config from environment variables.
+// DefaultFeishuConfig 从环境变量读 config。
 func DefaultFeishuConfig() FeishuConfig {
 	return FeishuConfig{
 		SpaceID:         os.Getenv("FORGE_FEISHU_SPACE_ID"),
@@ -26,7 +26,7 @@ func DefaultFeishuConfig() FeishuConfig {
 	}
 }
 
-// PublishMarkdown publishes a .md file to feishu wiki.
+// PublishMarkdown 把 .md 文件发布到 feishu wiki。
 func PublishMarkdown(cfg FeishuConfig, gateID, filePath, dir string) error {
 	if !cfg.Enabled {
 		return nil
@@ -62,8 +62,8 @@ func PublishMarkdown(cfg FeishuConfig, gateID, filePath, dir string) error {
 	return nil
 }
 
-// PublishAllOutputs publishes all .md output artifacts for a gate.
-// gateID is the gate identifier (e.g., "gate-0-research"), NOT the display name.
+// PublishAllOutputs 发布某 gate 的全部 .md 产物。
+// gateID 是 gate 标识（如 gate-0-research），不是 display name。
 func PublishAllOutputs(cfg FeishuConfig, gateID string, outputs []string, p *forgedata.Project) {
 	if !cfg.Enabled {
 		return

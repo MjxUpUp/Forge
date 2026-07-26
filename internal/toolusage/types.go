@@ -1,15 +1,15 @@
-// Package toolusage records AI agent tool invocations for quality scoring.
+// Package toolusage 记录 AI agent 的 tool 调用，用于质量评分。
 package toolusage
 
 import "time"
 
-// ToolCall records a single tool invocation by the AI agent.
-// Stored in DataDir/toollog.jsonl — one JSON object per line. The activity-ratio
-// gate (task-verify) and `forge trace` consume this; it no longer feeds scoring.
+// ToolCall 记录 AI agent 的一次 tool 调用。
+// 存于 DataDir/toollog.jsonl——每行一个 JSON 对象。activity-ratio gate（task-verify）
+// 与 forge trace 消费本数据；它不再参与评分。
 type ToolCall struct {
-	ID        string    `json:"id,omitempty"` // stable sha1 of identity fields; shown by `forge trace` as [#id]
+	ID        string    `json:"id,omitempty"` // 身份字段的稳定 sha1；forge trace 显示为 [#id]
 	ToolName  string    `json:"tool_name"`
-	ToolInput string    `json:"tool_input,omitempty"` // truncated to 500 chars
+	ToolInput string    `json:"tool_input,omitempty"` // 截断到 500 字符
 	InputLen  int       `json:"input_len,omitempty"`  // 原始 tool_input 字节数（截断前），token 估算依据
 	EstTokens int       `json:"est_tokens,omitempty"` // 估算 token（≈rune/3），loop 成本代理——非精确账单
 	TaskRef   string    `json:"task_ref,omitempty"`
@@ -17,5 +17,5 @@ type ToolCall struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
-// maxToolInputLen is the truncation limit for tool_input storage.
+// maxToolInputLen 是 tool_input 存储的截断上限。
 const maxToolInputLen = 500

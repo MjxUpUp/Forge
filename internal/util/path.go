@@ -5,18 +5,18 @@ import (
 	"strings"
 )
 
-// SanitizeSessionID reduces a session id to filename- and shell-safe characters.
-// It is the single source of truth used by cli (hook env vars), taskpipeline
-// (session state filenames), and util callers — do not reimplement locally.
+// SanitizeSessionID 把 session id 收敛到文件名与 shell 安全的字符集。
+// 它是 cli（hook env vars）、taskpipeline（session 状态文件名）以及其他 util 调用方
+// 共同使用的单一真相源——本地勿重复实现。
 //
-// Strategy (allowlist + normalization):
-//   - Keep only [a-zA-Z0-9_-]; replace every other rune with '_'. An allowlist
-//     is stricter than a denylist — it also neutralizes shell metacharacters
-//     (; & $ `) and path-traversal dots that a filesystem-only denylist leaves.
-//   - Collapse runs of separators (_--, __) into a single '_'.
-//   - Trim leading/trailing separators and dashes.
-//   - Truncate to 64 chars (filesystem portability).
-//   - Fall back to "session" if nothing remains.
+// 策略（allowlist + normalization）：
+//   - 只保留 [a-zA-Z0-9_-]；其余 rune 一律替换为 '_'。allowlist 比 denylist 更严——
+//     它同时中和 shell 元字符（; & $ `）以及仅基于文件系统的 denylist 会漏掉的
+//     path-traversal 点号。
+//   - 把连续的分隔符（_--、__）压缩成单个 '_'。
+//   - 修剪首尾的分隔符与短横。
+//   - 截断到 64 字符（文件系统可移植性）。
+//   - 若结果为空则回退到 session。
 func SanitizeSessionID(id string) string {
 	if id == "" {
 		return ""
@@ -33,18 +33,18 @@ func SanitizeSessionID(id string) string {
 	}
 	safe := b.String()
 
-	// Collapse runs of underscores/dashes into a single underscore.
+	// 把连续的下划线/短横压缩成单个下划线。
 	safe = regexp.MustCompile(`[_-]{2,}`).ReplaceAllString(safe, "_")
 
-	// Trim leading/trailing separators and dashes.
+	// 修剪首尾的分隔符与短横。
 	safe = strings.Trim(safe, "_-")
 
-	// Truncate to 64 characters for filesystem portability.
+	// 截断到 64 字符，保证文件系统可移植性。
 	if len(safe) > 64 {
 		safe = safe[:64]
 	}
 
-	// Fallback for empty result (e.g., input was all unsafe chars).
+	// 结果为空的兜底（如输入全是不安全字符）。
 	if safe == "" {
 		return "session"
 	}

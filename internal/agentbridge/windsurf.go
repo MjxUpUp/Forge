@@ -8,12 +8,11 @@ import (
 	"strings"
 )
 
-// WindsurfTranslator generates .windsurf/hooks.json (real, block-capable Cascade
-// hooks) plus updates .windsurfrules (guidance fallback). Cascade ships
-// lifecycle hooks with exit-code-2 deny, so alongside claude-code/codex/cursor
-// it is an agent where Forge gates actually enforce. Its stdin schema differs
-// from Claude Code, so hook commands carry `--agent windsurf` and forge
-// normalizes (see internal/cli/hook_normalize.go).
+// WindsurfTranslator 生成 .windsurf/hooks.json（真实、可 block 的 Cascade hooks）
+// 并更新 .windsurfrules（guidance 兜底）。Cascade 内置 lifecycle hooks，exit-code-2 即 deny，
+// 故与 claude-code/codex/cursor 并列为 Forge gate 真正能 enforce 的 agent。其 stdin
+// schema 与 Claude Code 不同，故 hook 命令带 `--agent windsurf`，由 forge 归一化
+// （见 internal/cli/hook_normalize.go）。
 type WindsurfTranslator struct{}
 
 func (t *WindsurfTranslator) Detect(projectDir string) bool {
@@ -25,11 +24,10 @@ func (t *WindsurfTranslator) Translate(projectDir string, input *TranslationInpu
 		return fmt.Errorf("windsurf: protocol is required")
 	}
 
-	// Real Cascade lifecycle hooks — the enforcement surface. Windsurf's
-	// .windsurf/hooks.json is flat: hooks.<event>[].{command,show_output} with
-	// snake_case event names and a stdin schema (tool_info/agent_action_name)
-	// distinct from Claude Code, so commands carry `--agent windsurf` and forge
-	// normalizes (internal/cli/hook_normalize.go). Pre-event exit 2 = deny.
+	// 真实的 Cascade lifecycle hooks——enforcement 接口。Windsurf 的 .windsurf/hooks.json
+	// 是扁平结构：hooks.<event>[].{command,show_output}，event 名为 snake_case，stdin
+	// schema（tool_info/agent_action_name）与 Claude Code 不同，故命令带 `--agent windsurf`，
+	// 由 forge 归一化（internal/cli/hook_normalize.go）。pre-event exit 2 = deny。
 	hooksDir := filepath.Join(projectDir, ".windsurf")
 	if err := os.MkdirAll(hooksDir, 0755); err != nil {
 		return fmt.Errorf("windsurf: create .windsurf dir: %w", err)
@@ -42,7 +40,7 @@ func (t *WindsurfTranslator) Translate(projectDir string, input *TranslationInpu
 		return fmt.Errorf("windsurf: write hooks.json: %w", err)
 	}
 
-	// Guidance rules as fallback for Windsurf versions without hook support.
+	// Guidance 规则，作为不支持 hook 的 Windsurf 版本的兜底。
 	content := buildWindsurfSection(input)
 	path := filepath.Join(projectDir, ".windsurfrules")
 
@@ -52,7 +50,7 @@ func (t *WindsurfTranslator) Translate(projectDir string, input *TranslationInpu
 		return os.WriteFile(path, []byte(updated), 0644)
 	}
 
-	// Create new file
+	// 创建新文件
 	return os.WriteFile(path, []byte(content), 0644)
 }
 
@@ -65,19 +63,18 @@ type windsurfHookEntry struct {
 	ShowOutput bool   `json:"show_output"`
 }
 
-// buildWindsurfHooks mirrors hooks/settings.go GenerateSettings for Windsurf's
-// native Cascade hook format. Windsurf's hooks.json is flat —
-// hooks.<event>[].{command,show_output} — with snake_case event names
-// (pre_write_code/post_write_code/pre_run_command/post_run_command/
-// post_read_code/session_start/session_end) versus Claude Code's PascalCase.
-// Same-event multi-hook (task-guard + assertion-check on pre_write_code) runs
-// both sequentially; pre-event exit 2 = deny. Kept in sync manually with
-// settings.go — TestWindsurfWiringMirrorsClaudeSettings guards drift.
+// buildWindsurfHooks 对应 hooks/settings.go 的 GenerateSettings，针对 Windsurf 原生
+// Cascade hook 格式生成。Windsurf 的 hooks.json 是扁平结构——
+// hooks.<event>[].{command,show_output}——event 名为 snake_case
+// （pre_write_code/post_write_code/pre_run_command/post_run_command/
+// post_read_code/session_start/session_end），与 Claude Code 的 PascalCase 相对。
+// 同 event 多 hook（pre_write_code 上的 task-guard + assertion-check）按顺序执行；
+// pre-event exit 2 = deny。与 settings.go 手动保持同步——TestWindsurfWiringMirrorsClaudeSettings
+// 守卫 drift。
 func buildWindsurfHooks() map[string]any {
-	// task-guard and assertion-check both gate writes; Windsurf runs all
-	// same-event entries in order, so a single pre_write_code list with both is
-	// correct (Windsurf uses command-not-event matching, unlike Claude Code's
-	// per-event separate matchers).
+	// task-guard 与 assertion-check 都 gate 写操作；Windsurf 按顺序跑同 event 的所有
+	// 条目，故单个 pre_write_code 列表里放两者是正确的（Windsurf 用 command 而非 event
+	// 匹配，与 Claude Code 的 per-event 独立 matcher 不同）。
 	return map[string]any{
 		"hooks": map[string][]windsurfHookEntry{
 			"pre_write_code": {
@@ -124,7 +121,7 @@ func buildWindsurfSection(input *TranslationInput) string {
 	sb.WriteString(forgeRulesStart + "\n\n")
 	sb.WriteString("# Forge Quality Standards\n\n")
 
-	// Quality standards
+	// 质量标准
 	for _, s := range input.Protocol.Standards {
 		if !s.Enabled {
 			continue
@@ -144,7 +141,7 @@ func buildWindsurfSection(input *TranslationInput) string {
 	}
 	sb.WriteString("\n")
 
-	// Session rules
+	// 会话规则
 	for _, r := range input.Protocol.SessionRules {
 		prefix := "ALWAYS"
 		if !r.Mandatory {
@@ -158,14 +155,14 @@ func buildWindsurfSection(input *TranslationInput) string {
 	return sb.String()
 }
 
-// replaceForgeRules replaces content between FORGE:START and FORGE:END markers,
-// preserving everything outside. Same pattern as skillgen/claudemd.go.
+// replaceForgeRules 替换 FORGE:START 与 FORGE:END 标记之间的内容，标记外的内容原样保留。
+// 与 skillgen/claudemd.go 同一模式。
 func replaceForgeRules(content, newSection string) string {
 	startIdx := strings.Index(content, forgeRulesStart)
 	endIdx := strings.Index(content, forgeRulesEnd)
 
 	if startIdx == -1 || endIdx == -1 || endIdx <= startIdx {
-		// No markers — append
+		// 无标记——追加
 		return content + "\n" + newSection
 	}
 

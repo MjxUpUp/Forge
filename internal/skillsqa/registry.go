@@ -62,7 +62,7 @@ func AuditSkill(skillDir string) (*SkillReport, error) {
 	var issues []string
 	var advisories []string
 
-	// R1 name kebab-case
+	// R1 name 须 kebab-case
 	if !kebabRe.MatchString(name) {
 		issues = append(issues, "name 不符合 kebab-case")
 	}
@@ -92,12 +92,12 @@ func AuditSkill(skillDir string) (*SkillReport, error) {
 	} else if descLen > 500 {
 		advisories = append(advisories, fmt.Sprintf(`description 偏长(%d字符 >500，建议精简到 what+when，不总结工作流)`, descLen))
 	}
-	// R5 Use when
+	// R5 须含 Use when
 	hasUseWhen := strings.Contains(descLow, "use when")
 	if !hasUseWhen {
 		issues = append(issues, "description 缺 Use when")
 	}
-	// R6 SKIP
+	// R6 须含 SKIP
 	hasSkip := strings.Contains(descLow, "skip")
 	if !hasSkip {
 		issues = append(issues, "description 缺 SKIP")

@@ -10,12 +10,12 @@ import (
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 )
 
-// TaskGate defines a lightweight task-level quality gate.
+// TaskGate 定义轻量 task 级 quality gate。
 type TaskGate struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
-	Auto        bool   `json:"auto"` // true = checked automatically by hooks
+	Auto        bool   `json:"auto"` // true = 由 hook 自动检查
 }
 
 // AcceptanceCriterion 是一条可执行的验收标准（来自 dev-workflow Plan 的
@@ -94,20 +94,20 @@ type SessionLink struct {
 	JoinedAt  time.Time `json:"joined_at"`
 }
 
-// TaskState tracks the state of a single task's pipeline.
-// Stored in DataDir/tasks/{sanitized-ref}.json.
+// TaskState 追踪单个 task pipeline 的状态。
+// 存于 DataDir/tasks/{sanitized-ref}.json。
 type TaskState struct {
 	TaskRef        string                    `json:"task_ref"`
 	Branch         string                    `json:"branch"`
-	Source         string                    `json:"source"` // "explicit", "branch"
+	Source         string                    `json:"source"` // explicit | branch
 	Summary        string                    `json:"summary"`
 	CurrentGate    string                    `json:"current_gate"`
 	History        []TaskGateResult          `json:"history"`
 	StartedAt      time.Time                 `json:"started_at"`
 	CompletedAt    *time.Time                `json:"completed_at,omitempty"`
 	Score          *scoringtypes.ScoreResult `json:"score,omitempty"`
-	HeadCommit     string                    `json:"head_commit,omitempty"`     // for duplicate detection
-	SessionID      string                    `json:"session_id,omitempty"`      // agent session that created this task
+	HeadCommit     string                    `json:"head_commit,omitempty"`     // 用于 duplicate detection
+	SessionID      string                    `json:"session_id,omitempty"`      // 创建本 task 的 agent session
 	ExternalOrigin ExternalOrigin            `json:"external_origin,omitempty"` // 外部 issue 来源（--from_issue 解析）；空=本地 branch 推断 origin
 	ReviewPassed   bool                      `json:"review_passed,omitempty"`   // code-review-gate 通过标记；task-complete 门禁的硬前置
 	ResumeStale    bool                      `json:"resume_stale,omitempty"`    // gap#2 claude-code 根治层：PostCompact hook 设 true → 下个 UserPromptSubmit reinject 注入完整 handoff 后清零。codex/cursor/opencode 无 compaction lifecycle，ForgeHookSpec 过滤不装此链。task-scoped 非 session-scoped：两 session 共享同一 task 时，B 的 prompt 可能在 A 压缩后先消费并清掉标志（最坏漏注一次，handoff 内容相同故无数据损坏，可接受边界）。
@@ -126,10 +126,9 @@ type TaskState struct {
 	DesignPhases []DesignPhase         `json:"design_phases,omitempty"`
 	Acceptance   []AcceptanceCriterion `json:"acceptance,omitempty"` // 验收标准（dev-workflow Plan 的 Run+Expected），verify-acceptance 实跑回扣
 	// PlanScope 是任务开工前声明的"计划改动文件"白名单（glob，repo-relative 正斜杠路径）。
-	// 对应 Terraform desired state / Copilot Workspace plan 的"打算改哪些文件"——把规划前置
-	// 变成可度量契约。advisory：实改文件（TaskChangedFiles）与之的差集记 scope-drift 供 review，
-	// 不阻塞。学术界变更影响分析召回率仅 ~44%（PASTE），故 scope 当 prediction 而非 contract，
-	// drift 是常态信号。task start --scope 声明，task scope add 中途迭代追加（Agentless 分层定位）。
+	// 对应"打算改哪些文件"的规划前置——把它变成可度量契约。advisory：实改文件（TaskChangedFiles）
+	// 与之的差集记 scope-drift 供 review，不阻塞。变更影响分析召回率仅 ~44%，故 scope 当 prediction
+	// 而非 contract，drift 是常态信号。task start --scope 声明，task scope add 中途迭代追加（分层定位）。
 	PlanScope []string `json:"plan_scope,omitempty"`
 
 	// Overrides 承载 per-task 逃生舱设置（方案5 防泄漏）：优先于全局 env
@@ -156,15 +155,15 @@ type TaskState struct {
 	DependsOn     []string      `json:"depends_on,omitempty"`      // 依赖的前序 task ref（任务间依赖）
 }
 
-// TaskGateResult records the outcome of a single task gate.
+// TaskGateResult 记录单道 task gate 的结果。
 type TaskGateResult struct {
 	Gate        string    `json:"gate"`
 	Passed      bool      `json:"passed"`
 	CompletedAt time.Time `json:"completed_at"`
-	HeadCommit  string    `json:"head_commit,omitempty"` // git HEAD at gate pass time
+	HeadCommit  string    `json:"head_commit,omitempty"` // gate 通过时的 git HEAD
 }
 
-// IsComplete returns true if all task gates have passed.
+// IsComplete 在所有 task gate 通过时返回 true。
 func (s *TaskState) IsComplete() bool {
 	if len(s.History) == 0 {
 		return false
@@ -178,7 +177,7 @@ func (s *TaskState) IsComplete() bool {
 	return true
 }
 
-// NextGate returns the next incomplete gate in sequence, or "" if all done.
+// NextGate 返回序列中下一道未完成 gate，全部完成返回空串。
 func (s *TaskState) NextGate() string {
 	gates := DefaultGates()
 	for _, g := range gates {
@@ -189,14 +188,14 @@ func (s *TaskState) NextGate() string {
 	return ""
 }
 
-// MarkComplete records task completion time.
+// MarkComplete 记录 task 完成时间。
 func (s *TaskState) MarkComplete() {
 	now := time.Now()
 	s.CompletedAt = &now
 	s.CurrentGate = ""
 }
 
-// MarkReviewPassed records that code-review-gate has been run and passed for this
+// MarkReviewPassed 记录本 task 已跑过 code-review-gate 且通过，
 // task, 并绑定审查时的代码快照 (headCommit, changeHash)。它是 task-complete 门禁的硬前置
 // (see executor.go)——确保提交前子 agent 审查真的跑过；快照让 task-complete 能强制"审查后改码必复审"。
 // headCommit 为空 → 跳过快照检查（老 state 兼容 / 测试用），仅保留 ReviewPassed 硬前置语义。
@@ -206,13 +205,12 @@ func (s *TaskState) MarkReviewPassed(headCommit, changeHash string) {
 	s.ReviewedChangeHash = changeHash
 }
 
-// RecordGateResult adds a gate result and advances CurrentGate.
-// If the gate was already passed, this is a no-op (prevents duplicate history
-// entries from stop hook re-verification). A previously failed gate can be
-// retried and will add a new entry.
+// RecordGateResult 添加 gate 结果并推进 CurrentGate。
+// 若该 gate 已通过则为 no-op（防止 stop hook 重复 verify 产生重复 history 条目）。
+// 先前失败的 gate 可重试，会新增一条 entry。
 func (s *TaskState) RecordGateResult(gateID string, passed bool, headCommit string) {
-	// Skip if this gate was already passed — prevents 25x duplicate entries
-	// from stop hook repeatedly verifying the same gate.
+	// 本 gate 已通过则跳过——防止 stop hook 反复 verify 同一 gate 产生 25 倍重复
+	// 条目。
 	if passed && s.gatePassed(gateID) {
 		return
 	}
@@ -230,7 +228,7 @@ func (s *TaskState) RecordGateResult(gateID string, passed bool, headCommit stri
 	}
 }
 
-// gatePassed checks if a specific gate has passed.
+// gatePassed 检查指定 gate 是否通过。
 func (s *TaskState) gatePassed(gateID string) bool {
 	for _, r := range s.History {
 		if r.Gate == gateID && r.Passed {
@@ -240,7 +238,7 @@ func (s *TaskState) gatePassed(gateID string) bool {
 	return false
 }
 
-// CompletedGates returns a list of passed gate IDs.
+// CompletedGates 返回已通过 gate ID 列表。
 func (s *TaskState) CompletedGates() []string {
 	var result []string
 	for _, g := range DefaultGates() {
@@ -251,12 +249,12 @@ func (s *TaskState) CompletedGates() []string {
 	return result
 }
 
-// HasAcceptance reports whether the task has any persisted acceptance criteria.
+// HasAcceptance 报告 task 是否有任何持久化验收标准。
 func (s *TaskState) HasAcceptance() bool {
 	return len(s.Acceptance) > 0
 }
 
-// AllAcceptancePassed reports whether every acceptance criterion has Passed=true.
+// AllAcceptancePassed 报告是否所有 acceptance criterion 都 Passed=true。
 // Empty acceptance returns true (nothing to reconcile). task-verify 据此决定是否提醒回扣。
 func (s *TaskState) AllAcceptancePassed() bool {
 	for i := range s.Acceptance {

@@ -1,9 +1,9 @@
-// Package projectroot resolves the forge project root (the directory containing
-// a .forge/ subdirectory) from the current working directory.
+// Package projectroot 从当前工作目录解析 forge project root
+// （即包含 .forge/ 子目录的目录）。
 //
-// Centralizes the "walk up from cwd to find .forge/" logic in one place rather
-// than duplicating it across packages (originally extracted from cli/root.go
-// and the now-removed mcpserver/server.go; mcpserver was removed 2026-07-24).
+// 把"从 cwd 向上 walk up 找 .forge/"的逻辑集中在一处，
+// 避免跨包重复（最初从 cli/root.go 以及现已移除的 mcpserver/server.go
+// 中抽取；mcpserver 于 2026-07-24 移除）。
 package projectroot
 
 import (
@@ -35,21 +35,18 @@ func FindProject() (*forgedata.Project, error) {
 	return forgedata.ProjectFor(cwd)
 }
 
-// Find walks up from the current working directory to the nearest directory
-// containing a project .forge/ subdirectory. Returns the project root, or an
-// error if cwd is not inside a forge project.
+// Find 从当前工作目录向上查找最近的、含项目 .forge/ 子目录的目录。
+// 返回 project root；cwd 不在 forge project 内时返回 error。
 //
 // 保留旧 walk-up 实现（不委托 FindProject）：FindProject 要求 cwd 在 git repo 内
 // （forgedata.Key 失败即报错），但 Find 历史上支持非 git 项目（只要有 .forge/，
 // 如 task-nongit 场景）。两者语义不同，共存到全部 caller 迁移完毕。
 //
-// The user home directory's ~/.forge/ is the GLOBAL state store (hooks,
-// skills, per-project runtime state under projects/<key>/),
-// NOT a project root. It is excluded so running forge from a non-project
-// directory under home (e.g. ~/Downloads) reports "not in a forge project"
-// instead of mistaking home for the project root. A real project's .forge/
-// always sits closer to cwd than home does, so this exclusion never hides a
-// legitimate project.
+// 用户 home 目录下的 ~/.forge/ 是 GLOBAL state store（hooks、skills、
+// projects/<key>/ 下的 per-project runtime state），而非 project root。
+// 把它排除，使在 home 下非项目目录（如 ~/Downloads）运行 forge 时
+// 报 not in a forge project，而不是把 home 误作 project root。
+// 真实项目的 .forge/ 总是比 home 离 cwd 更近，故此排除不会遮蔽合法项目。
 func Find() (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {
@@ -68,10 +65,10 @@ func Find() (string, error) {
 	}
 }
 
-// isProjectRoot reports whether dir holds a project .forge/ directory: dir must
-// contain .forge/ and must NOT be the user home (whose ~/.forge/ is the global
-// state store, indistinguishable from a project by name or contents — both
-// carry checklog.jsonl/toollog.jsonl; position is the only clean discriminator).
+// isProjectRoot 报告 dir 是否持有一个项目 .forge/ 目录：dir 必须含 .forge/
+// 且不得是用户 home（home 下的 ~/.forge/ 是 global state store，从名字或
+// 内容上都与项目级 .forge/ 无法区分——两者都带 checklog.jsonl/toollog.jsonl；
+// 位置是唯一干净的判别依据）。
 func isProjectRoot(dir, homeDir string) bool {
 	if info, err := os.Stat(filepath.Join(dir, ".forge")); err != nil || !info.IsDir() {
 		return false
@@ -82,10 +79,10 @@ func isProjectRoot(dir, homeDir string) bool {
 	return true
 }
 
-// samePath reports whether a and b refer to the same filesystem path. Uses
-// os.SameFile (device+inode) so it is robust across case-insensitivity, symlinks,
-// and separator/style differences (Git Bash "/c/Users" vs Windows "C:\Users").
-// Falls back to a cleaned lexical compare if either path cannot be stat'd.
+// samePath 报告 a 与 b 是否指向同一文件系统路径。用 os.SameFile
+// （device+inode），可跨大小写不敏感、symlink、分隔符/风格差异
+// （Git Bash 形如 /c/Users 对 Windows 形如 C:\Users）保持稳健。
+// 任一路径无法 stat 时回退到 cleaned lexical compare。
 func samePath(a, b string) bool {
 	ia, ea := os.Stat(a)
 	ib, eb := os.Stat(b)

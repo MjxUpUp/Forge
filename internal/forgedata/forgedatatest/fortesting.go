@@ -1,20 +1,16 @@
-// Package forgedatatest provides helpers for constructing forgedata.Project
-// values in tests.
+// Package forgedatatest 提供 tests 中构造 forgedata.Project 的辅助函数。
 //
-// Two helpers cover two test tiers:
-//   - ForDataDir: lightweight — points DataDir/GitRoot at dir directly, no git,
-//     no ProjectFor. For store unit tests (act/checklog/hazard Append/Load pure
-//     IO round-trips) that don't exercise hash derivation.
-//   - RealProject: heavyweight — git init + .forge placeholder + FORGE_DATA_HOME
-//     isolation + real ProjectFor. For integration tests (cli subprocesses /
-//     dashboard HTTP) where the code path itself calls
-//     ProjectFor; the test process and the forge subprocess must resolve to the
-//     same DataDir, which only happens through a real ProjectFor.
+// 两个 helper 覆盖两层测试：
+//   - ForDataDir：lightweight——直接把 DataDir/GitRoot 指向 dir，无 git、无 ProjectFor。
+//     适合 store 单测（act/checklog/hazard 的 Append/Load 纯 IO round-trip），不触发 hash 推导。
+//   - RealProject：heavyweight——git init + .forge placeholder + FORGE_DATA_HOME 隔离
+//     + 真实 ProjectFor。适合集成测试（cli subprocess / dashboard HTTP），被测代码路径自身
+//     会调用 ProjectFor；测试进程与 forge 子进程必须解析到同一 DataDir，这只有真实
+//     ProjectFor 能保证。
 //
-// Import only from _test.go files. Production code must resolve a Project via
-// forgedata.ProjectFor (which requires a real .git common dir to derive the
-// key); store unit tests usually don't need that and instead point DataDir at a
-// temp dir via ForDataDir.
+// 仅从 _test.go 文件 import。生产代码必须通过 forgedata.ProjectFor 解析 Project
+// （其需真实 .git common dir 推导 key）；store 单测通常不需要，改用 ForDataDir 把
+// DataDir 指向 temp dir。
 package forgedatatest
 
 import (
@@ -26,12 +22,10 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
-// ForDataDir builds a Project whose DataDir and GitRoot both point at dir, with
-// a stable fake key and ConfigDir = dir/.forge. Runtime-state stores only ever
-// touch DataDir, so tests pass t.TempDir() as dir and read/write the produced
-// paths directly. GitRoot mirrors DataDir so any git-rooted accessor stays
-// inside the temp tree; ConfigDir follows the <cwd>/.forge convention but is
-// not exercised by runtime-state stores.
+// ForDataDir 构造一个 DataDir 与 GitRoot 都指向 dir 的 Project，带稳定 fake key，
+// ConfigDir = dir/.forge。Runtime-state store 只会触碰 DataDir，故测试把 t.TempDir()
+// 作为 dir 传入，直接读写产出的路径。GitRoot 镜像 DataDir，让任何 git-rooted accessor
+// 留在 temp tree 内；ConfigDir 沿用 <cwd>/.forge 约定，但 runtime-state store 不会触它。
 func ForDataDir(dir string) *forgedata.Project {
 	return &forgedata.Project{
 		Key:       "test",
@@ -41,44 +35,37 @@ func ForDataDir(dir string) *forgedata.Project {
 	}
 }
 
-// RealProject builds a real, resolvable *Project: git init + .forge placeholder
-// + FORGE_DATA_HOME isolation + ProjectFor. Returns (root, p):
-//   - root is passed to runForge subprocesses or to functions still taking a
-//     root string (e.g. appendConclusion);
-//   - p is passed to stores that have migrated to the *Project signature
-//     (e.g. act.Append(p, ...)).
+// RealProject 构造一个真实可解析的 *Project：git init + .forge placeholder
+// + FORGE_DATA_HOME 隔离 + ProjectFor。返回 (root, p)：
+//   - root 传给 runForge 子进程或仍取 root string 的函数（如 appendConclusion）；
+//   - p 传给已迁移到 *Project 签名的 store（如 act.Append(p, ...)）。
 //
-// When the code path under test calls forgedata.ProjectFor itself (dashboard.
-// Aggregate internals, forge subprocesses), RealProject is mandatory: on a
-// gitless t.TempDir() ProjectFor fails and writes/reads land in different
-// DataDirs, so the test never sees the data. Pure store round-trips (no
-// ProjectFor in the path) keep using ForDataDir.
+// 当被测代码路径自身调用 forgedata.ProjectFor（dashboard.Aggregate 内部、forge 子进程）
+// 时，RealProject 是必需的：在无 git 的 t.TempDir() 上 ProjectFor 失败，写/读落到不同
+// DataDir，测试永远看不到数据。纯 store round-trip（路径中无 ProjectFor）继续用
+// ForDataDir。
 //
-// FORGE_DATA_HOME is set per-test (t.Setenv) so DataDir lands in an isolated
-// temp dir, never the real ~/.forge; subprocesses inherit it via os.Environ,
-// keeping write/read aligned across process boundaries.
+// FORGE_DATA_HOME 按 test 设置（t.Setenv），让 DataDir 落在隔离 temp dir，绝非真实
+// ~/.forge；子进程通过 os.Environ 继承，跨进程边界保持写/读对齐。
 func RealProject(t *testing.T) (root string, p *forgedata.Project) {
 	t.Helper()
 	root = t.TempDir()
-	// git init so ProjectFor's Key() can hash the .git common dir.
-	// -C is a global git flag (must precede the subcommand); "git init -C <dir>"
-	// is rejected by git init with exit 129 (usage error).
+	// git init 让 ProjectFor 的 Key() 能 hash .git common dir。
+	// -C 是 git global flag（必须前置于 subcommand）；「git init -C <dir>」会被
+	// git init 拒绝，exit 129（usage error）。
 	if err := exec.Command("git", "-C", root, "init").Run(); err != nil {
 		t.Fatalf("git init %s: %v", root, err)
 	}
-	// .forge placeholder so findForgeConfigDir's walk-up hits it (ProjectFor
-	// requires the project to be init'd). runForge init fills it in afterwards;
-	// an empty dir does not conflict.
+	// .forge placeholder 让 findForgeConfigDir 的 walk-up 命中（ProjectFor 要求项目已 init）。
+	// runForge init 之后会填充它；空目录不冲突。
 	if err := os.MkdirAll(filepath.Join(root, ".forge"), 0o755); err != nil {
 		t.Fatalf("mkdir .forge: %v", err)
 	}
-	// FORGE_DATA_HOME isolation: set once per test (idempotent). Multiple
-	// RealProject calls in the same test (e.g. AggregateGlobal with rootA +
-	// rootB) MUST share one DATA_HOME — otherwise the second call overwrites
-	// the first and ProjectFor(rootA) inside AggregateGlobal resolves to a
-	// different DataDir than where act.Append(pA) wrote, so rootA's data
-	// vanishes. Different projects stay isolated by their git-root-derived key
-	// (<DATA_HOME>/projects/<key>/), not by separate DATA_HOMEs.
+	// FORGE_DATA_HOME 隔离：每个 test 设置一次（幂等）。同一 test 中多次 RealProject 调用
+	// （如 AggregateGlobal 用 rootA + rootB）必须共享一个 DATA_HOME——否则第二次覆盖第一次，
+	// AggregateGlobal 内部的 ProjectFor(rootA) 解析到与 act.Append(pA) 写入位置不同的
+	// DataDir，rootA 的数据消失。不同项目的隔离靠 git-root-derived key
+	// （<DATA_HOME>/projects/<key>/），不靠分离的 DATA_HOME。
 	if os.Getenv("FORGE_DATA_HOME") == "" {
 		t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	}

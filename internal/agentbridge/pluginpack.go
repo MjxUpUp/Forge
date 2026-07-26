@@ -267,12 +267,12 @@ func pluginReadme(repoSlug string) string {
 	sb.WriteString("| **Cursor** | marketplace | \x60forge init --agents cursor\x60 | Cursor plugin model carries skills, not Claude-shape hooks |\n")
 	sb.WriteString("| **GitHub Copilot (CLI / VS Code)** | marketplace + \x60.copilot-plugin/\x60 | \x60forge init --agents copilot\x60 (CLI) | VS Code auto-discovers \x60.copilot-plugin/plugin.json\x60 if you open this repo |\n")
 	sb.WriteString("| **Windsurf** | (mirrored \x60buildWindsurfHooks\x60 in code) | (Cascade hooks) | mirrors Claude SessionStart + write hooks via \x60internal/agentbridge/windsurf.go\x60 |\n")
-	sb.WriteString("| **OpenCode / Kiro / Cline / Gemini CLI / Mistral Vibe / Trae / Nanobot / Hermes / Antigravity / OpenClaw** | (manual, see \x60install.sh\x60) | \x60forge init --agents <host>\x60 if supported | install.sh script provides one-step symlink-style per-skill/folder install for 14 hosts inspired by [Understand-Anything](https://github.com/Egonex-AI/Understand-Anything) |\n\n")
+	sb.WriteString("| **OpenCode / Kiro / Cline / Gemini CLI / Mistral Vibe / Trae / Nanobot / Hermes / Antigravity / OpenClaw** | (manual, see \x60install.sh\x60) | \x60forge init --agents <host>\x60 if supported | install.sh script provides one-step symlink-style per-skill/folder install for 14 hosts |\n\n")
 	sb.WriteString("For experimental / bleeding-edge hosts, run \x60./plugins/forge/install.sh --help\x60 for the full supported platform list.\n\n")
 
 	// 回流 4fad92e 手维护的 Distribution model（清 hooks/MCP → hooks）。
 	sb.WriteString("## Distribution model\n\n")
-	sb.WriteString("Forge ships as an npm binary (\x60@agent_forge/forge\x60) plus a marketplace plugin (this directory). All supported agent hosts use the same single marketplace install command — there is no per-skill vs folder symlink split because plugin marketplaces already give a unified delivery surface. This contrasts with single-skill tools (e.g. [Understand-Anything](https://github.com/Egonex-AI/Understand-Anything) 14-host \x60install.sh\x60 with per-skill/folder symlinks) where the symlink style is the actual installation primitive.\n\n")
+	sb.WriteString("Forge ships as an npm binary (\x60@agent_forge/forge\x60) plus a marketplace plugin (this directory). All supported agent hosts use the same single marketplace install command — there is no per-skill vs folder symlink split because plugin marketplaces already give a unified delivery surface. This contrasts with single-skill tools (whose 14-host \x60install.sh\x60 uses per-skill/folder symlinks as the actual installation primitive).\n\n")
 	sb.WriteString("When this model stops being sufficient (e.g. agents whose marketplace can not resolve \x60hooks\x60), \x60forge plugin pack --agent <host>\x60 lets us generate host-specific packs; until then, one marketplace path serves all supported agents.\n\n")
 
 	// 回流 4fad92e 手维护的本地调试指引（非 MCP：Claude plugin cache 不跟 symlink 的 workaround）。
@@ -289,7 +289,7 @@ func pluginReadme(repoSlug string) string {
 	sb.WriteString("```\n\n")
 	sb.WriteString("4. Start a fresh Claude Code session (existing sessions keep old prompts in context).\n")
 	sb.WriteString("5. Verify by opening any git project — the \x60init-suggest\x60 SessionStart hook should fire.\n\n")
-	sb.WriteString("This pattern was inspired by Understand-Anything CLAUDE.md (2026-07-04): symlinks do not work because Claude Search/Glob tools can not follow them.\n")
+	sb.WriteString("Rationale: Claude Search/Glob tools can not follow symlinks, so the cache copy above replaces rather than links.\n")
 	return sb.String()
 }
 

@@ -27,7 +27,7 @@ const (
 //
 // 全字段 deterministic：命中数来自 toollog（tool-track 采集），成效来自评分 + 证据链
 // （act 结论），无 agent 主观判断——绕开 Agent-as-a-Judge 的 meta-evaluation 红线。
-// 这是 MUSE/Voyager 式"复用率 + 成功率"信号在 Forge 的 agent-neutral 实现。
+// 这是"复用率 + 成功率"信号在 Forge 的 agent-neutral 实现。
 type SkillEffectiveness struct {
 	Skill     string  `json:"skill"`
 	HitCount  int     `json:"hit_count"`  // 总命中次数（同一 task 多次调用累加）

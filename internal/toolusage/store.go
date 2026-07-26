@@ -17,14 +17,14 @@ import (
 
 const toollogFile = "toollog.jsonl"
 
-// dataDir returns the runtime-state DataDir for root (refactor-data-home):
-// user-level ~/.forge/projects/<key>/ for git projects, <root>/.forge/ fallback
-// for non-git so toollog still records. See forgedata.DataDirFor.
+// dataDir 返回 root 的 runtime-state DataDir（refactor-data-home）：git 项目用
+// 用户级 ~/.forge/projects/<key>/，非 git 回退到 <root>/.forge/，让 toollog 仍能记录。
+// 见 forgedata.DataDirFor。
 func dataDir(root string) string { return forgedata.DataDirFor(root) }
 
 var mu sync.Mutex
 
-// Record appends a ToolCall entry to DataDir/toollog.jsonl.
+// Record 向 DataDir/toollog.jsonl 追加一条 ToolCall entry。
 func Record(root string, call *ToolCall) error {
 	mu.Lock()
 	defer mu.Unlock()
@@ -57,13 +57,13 @@ func Record(root string, call *ToolCall) error {
 	return err
 }
 
-// LoadAll reads all ToolCall entries from DataDir/toollog.jsonl.
+// LoadAll 从 DataDir/toollog.jsonl 读取全部 ToolCall entry。
 func LoadAll(root string) ([]ToolCall, error) {
 	path := filepath.Join(dataDir(root), toollogFile)
 	return loadFromPath(path)
 }
 
-// LoadForTask reads ToolCall entries filtered by task reference.
+// LoadForTask 按 task ref 过滤读取 ToolCall entry。
 func LoadForTask(root string, taskRef string) ([]ToolCall, error) {
 	all, err := LoadAll(root)
 	if err != nil {
@@ -78,11 +78,10 @@ func LoadForTask(root string, taskRef string) ([]ToolCall, error) {
 	return filtered, nil
 }
 
-// LoadForTaskAll reads ToolCall entries filtered by task reference from the
-// active toollog AND all archived toollog-*.jsonl files. Symmetric to
-// checklog.LoadForTask — used by `forge trace` so a task's full tool history
-// survives the Archive-on-task-start that clears the active toollog. Without
-// this, trace shows 0 tool calls for any completed task.
+// LoadForTaskAll 按 task ref 过滤，从 active toollog 与所有归档 toollog-*.jsonl 中
+// 读取 ToolCall entry。与 checklog.LoadForTask 对称——供 forge trace 用，使 task 完整
+// tool 历史能熬过 task 启动时清空 active toollog 的 Archive。无此函数，trace 对任何
+// 已完成 task 都显示 0 次 tool 调用。
 func LoadForTaskAll(root, taskRef string) ([]ToolCall, error) {
 	matches, err := filepath.Glob(filepath.Join(dataDir(root), "toollog*.jsonl"))
 	if err != nil {
@@ -103,11 +102,11 @@ func LoadForTaskAll(root, taskRef string) ([]ToolCall, error) {
 	return filtered, nil
 }
 
-// LoadAllAll reads all ToolCall entries from the active toollog AND all archived
-// toollog-*.jsonl files. Symmetric to LoadForTaskAll / checklog.LoadAllAll — used
-// by skill usage & effectiveness analysis so cross-task aggregates (热门排名、
-// hit×成效关联、undertrigger 候选) survive the Archive-on-task-start that clears
-// the active toollog. Without this, skills usage/effectiveness 只反映当前任务。
+// LoadAllAll 从 active toollog 与所有归档的 toollog-*.jsonl 读取全部 ToolCall 条目，
+// 与 LoadForTaskAll / checklog.LoadAllAll 对称——供 skill usage 与 effectiveness
+// 分析使用，使跨任务聚合（热门排名、hit×成效关联、undertrigger 候选）能扛过
+// task start 时的 Archive（它会清空 active toollog）。没有它，skills
+// usage/effectiveness 只反映当前任务。
 func LoadAllAll(root string) ([]ToolCall, error) {
 	matches, err := filepath.Glob(filepath.Join(dataDir(root), `toollog*.jsonl`))
 	if err != nil {
@@ -127,15 +126,13 @@ func LoadAllAll(root string) ([]ToolCall, error) {
 	return all, nil
 }
 
-// ReadEditCounts returns the number of Read vs Edit/Write tool calls for a task
-// since the given time, sourced from toollog.jsonl. Unlike checklog.WorkActivity
-// (which collapses all tools into one scalar count), this separates reads from
-// edits so callers can enforce a read-before-edit ratio.
-//   - reads = "Read" calls
-//   - edits = "Edit" + "Write" calls
+// ReadEditCounts 自给定时间起、按 task 从 toollog.jsonl 返回 Read 与 Edit/Write 的
+// tool 调用数。与 checklog.WorkActivity（把所有 tool 折叠成一个标量计数）不同，本函数
+// 把 read 与 edit 分开，让调用方能强制 read-before-edit ratio。
+//   - reads = Read 调用数
+//   - edits = Edit + Write 调用数
 //
-// Bash, Grep, Glob etc. are intentionally excluded — only read vs write matters
-// for the read-before-edit signal.
+// Bash、Grep、Glob 等故意不计入——read-before-edit 信号只关心 read vs write。
 func ReadEditCounts(root, taskRef string, since time.Time) (reads, edits int, err error) {
 	calls, err := LoadForTask(root, taskRef)
 	if err != nil {
@@ -155,14 +152,12 @@ func ReadEditCounts(root, taskRef string, since time.Time) (reads, edits int, er
 	return reads, edits, nil
 }
 
-// ReadEditCountsGraceWindow counts Read calls whose timestamp falls within
-// [since-window, ∞), regardless of TaskRef. It recovers the task-start/Read
-// race: when an agent fires Read concurrently with `forge task start`, the Read
-// is logged under the PREVIOUS task's ref (active ref hasn't switched yet) and
-// its timestamp may land just before StartedAt. Both exclude it from the
-// per-task ReadEditCounts(taskRef, StartedAt), falsely tripping the
-// read-before-edit gate. The grace window re-counts nearby Reads across all
-// tasks; the executor uses it as a second opinion before hard-failing.
+// ReadEditCountsGraceWindow 统计 timestamp 落在 [since-window, ∞) 内的 Read 调用数，
+// 不论 TaskRef。它修复 task-start/Read 竞态：当 agent 与 forge task start 并发触发 Read
+// 时，该 Read 会记到**上一个** task 的 ref（active ref 还没切），且其 timestamp 可能
+// 略早于 StartedAt。两者都让它进不了按 task 的 ReadEditCounts(taskRef, StartedAt)，
+// 误触 read-before-edit gate。grace window 跨所有 task 重计附近的 Read；executor 在
+// 硬失败前把它当作第二意见。
 func ReadEditCountsGraceWindow(root string, since time.Time, window time.Duration) (reads int, err error) {
 	all, err := LoadAll(root)
 	if err != nil {
@@ -177,12 +172,10 @@ func ReadEditCountsGraceWindow(root string, since time.Time, window time.Duratio
 	return reads, nil
 }
 
-// archiveLocked renames the current toollog to a timestamped backup WITHOUT
-// taking the mutex; the caller must hold mu. Split from Archive so Clear can
-// archive-then-remove under a single lock acquisition — calling the public
-// Archive (which locks) from Clear (also locked) would deadlock, since
-// sync.Mutex is non-reentrant. Uses nanosecond-precision naming
-// (util.ArchivedName) so two rotations in the same second don't clobber.
+// archiveLocked 把当前 toollog 重命名为带时间戳的备份，但**不**加锁；调用方必须持有 mu。
+// 从 Archive 拆出，让 Clear 能在单次加锁内 archive-then-remove——从 Clear（已加锁）调
+// 公共 Archive（也要加锁）会死锁，因为 sync.Mutex 不可重入。用纳秒精度命名
+// （util.ArchivedName），同一秒内两次轮转不会互相覆盖。
 func archiveLocked(root string) error {
 	path := filepath.Join(dataDir(root), toollogFile)
 	if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -192,11 +185,9 @@ func archiveLocked(root string) error {
 	return os.Rename(path, archived)
 }
 
-// Clear archives the current toollog and removes the active file. Both steps
-// run under the mutex so no Record can append between the rename and the remove
-// (which would leak the appended entry into a fresh active file). After
-// archiving+removing, it best-effort prunes archives older than the retention
-// window so toollog-*.jsonl doesn't grow unbounded across task starts.
+// Clear 归档当前 toollog 并删除 active 文件。两步都在 mutex 内执行，使重命名与删除之间
+// 不会有 Record 追加（否则追加的 entry 会泄漏到新的 active 文件）。归档+删除后，尽力
+// 清理超出 retention 窗口的归档，避免 toollog-*.jsonl 跨 task 启动无限增长。
 func Clear(root string) error {
 	mu.Lock()
 	defer mu.Unlock()
@@ -211,11 +202,10 @@ func Clear(root string) error {
 	return nil
 }
 
-// pruneArchives deletes toollog-*.jsonl archives older than the retention
-// window (FORGE_LOG_RETENTION_DAYS, default 30; ≤0 disables). Best-effort,
-// same rationale as checklog.Clear's pruneArchives — keeps toollog-*.jsonl
-// bounded across task starts without racing Record (which writes only the
-// active file).
+// pruneArchives 删除超过 retention 窗口的 toollog-*.jsonl 归档
+// （FORGE_LOG_RETENTION_DAYS，默认 30；≤0 禁用）。尽力而为，理由同 checklog.Clear 的
+// pruneArchives——让 toollog-*.jsonl 跨 task 启动保持有界，且不与 Record（只写 active
+// 文件）竞态。
 func pruneArchives(dir string) {
 	days := util.RetentionDays("FORGE_LOG_RETENTION_DAYS", 30)
 	if days <= 0 {
@@ -224,7 +214,7 @@ func pruneArchives(dir string) {
 	_, _ = util.PruneArchives(dir, "toollog", time.Now().AddDate(0, 0, -days))
 }
 
-// loadFromPath reads JSONL entries from a file.
+// loadFromPath 从一个文件读取 JSONL entry。
 func loadFromPath(path string) ([]ToolCall, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -237,7 +227,7 @@ func loadFromPath(path string) ([]ToolCall, error) {
 
 	var calls []ToolCall
 	scanner := bufio.NewScanner(f)
-	// Allow longer lines for large tool inputs.
+	// 允许更长的行，以容纳大型 tool 输入。
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -246,15 +236,15 @@ func loadFromPath(path string) ([]ToolCall, error) {
 		}
 		var call ToolCall
 		if err := json.Unmarshal([]byte(line), &call); err != nil {
-			continue // skip malformed lines
+			continue // 跳过格式错误的行
 		}
-		call.ID = ensureID(call) // backfill ID for legacy entries written without one
+		call.ID = ensureID(call) // 为没带 ID 写入的 legacy 条目回填 ID
 		calls = append(calls, call)
 	}
 	return calls, scanner.Err()
 }
 
-// TruncateInput truncates a string to maxToolInputLen characters (rune-safe).
+// TruncateInput 把字符串截断到 maxToolInputLen 个字符（rune-safe）。
 func TruncateInput(s string) string {
 	runes := []rune(s)
 	if len(runes) <= maxToolInputLen {
