@@ -4,6 +4,10 @@ import (
 	"testing"
 )
 
+// TestSourceForCheck pins down default source inference: checks emitted by hook/gate code are deterministic,
+// task-verify gate is semantically advisory (agent self-check) and thus agent-claim, and unknown checks default
+// to deterministic (so future hook record points are not misclassified as agent self-report).
+//
 // TestSourceForCheck 锁定默认来源推断：hook/gate 代码产生的检查归 deterministic，
 // task-verify gate 语义上是 advisory（agent 自检）归 agent-claim，未知检查默认
 // deterministic（未来新增的 hook 记录点不致被误判为 agent 自述）。
@@ -26,6 +30,9 @@ func TestSourceForCheck(t *testing.T) {
 	}
 }
 
+// TestRecordSetsSourceDefault verifies Record's fallback: when the caller does not explicitly set Source,
+// it is inferred from CheckName and written to disk. This is the key reason legacy record points can join the evidence chain without per-point migration.
+//
 // TestRecordSetsSourceDefault 验证 Record 的兜底：调用方未显式标 Source 时，
 // 按 CheckName 推断写入磁盘。这是历史记录点无需逐个改造即可进证据链的关键。
 func TestRecordSetsSourceDefault(t *testing.T) {
@@ -50,6 +57,9 @@ func TestRecordSetsSourceDefault(t *testing.T) {
 	}
 }
 
+// TestBuildEvidenceChain_BucketsAndLegacyFallback verifies bucketing + legacy fallback:
+// entries with explicit Source are bucketed by the label; old entries with empty Source are bucketed after fallback via SourceForCheck.
+//
 // TestBuildEvidenceChain_BucketsAndLegacyFallback 验证分桶 + 旧数据兜底：
 // 显式标 Source 的条目按标注分桶，空 Source 的旧条目按 SourceForCheck 兜底后分桶。
 func TestBuildEvidenceChain_BucketsAndLegacyFallback(t *testing.T) {
@@ -57,7 +67,11 @@ func TestBuildEvidenceChain_BucketsAndLegacyFallback(t *testing.T) {
 		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
 		{Check: CheckAssertion, Source: EvidenceDeterministic, TaskRef: "t"},
 		{Check: CheckTaskVerify, Source: EvidenceAgentClaim, TaskRef: "t"},
+		// Legacy data without Source, falls back to deterministic.
+		//
 		{Check: CheckFileSentinel, Source: "", TaskRef: "t"}, // 旧数据无 Source，兜底为 deterministic
+		// Legacy data, falls back to deterministic.
+		//
 		{Check: CheckTaskGuard, Source: "", TaskRef: "t"},    // 旧数据，兜底为 deterministic
 	}
 	ec := BuildEvidenceChain(entries, "t")
@@ -72,6 +86,11 @@ func TestBuildEvidenceChain_BucketsAndLegacyFallback(t *testing.T) {
 	}
 }
 
+// TestBuildEvidenceChain_ScopeDriftExcluded pins that CheckScopeDrift is excluded from evidence strength:
+// it is an advisory observation (agent modified source outside the plan), not "verification evidence". Counting it would inflate Strength —
+// drift is also usually a negative signal, so counting it as positive evidence is doubly wrong. Entries are still kept in Entries for forge trace display;
+// only the bucketing count skips them. Without this guard, after scope-drift ships, tasks with drift would look better-evidenced.
+//
 // TestBuildEvidenceChain_ScopeDriftExcluded 钉住 CheckScopeDrift 不计入证据强度：
 // 它是 advisory 观测（agent 改了计划外的源码），非"验证证据"。计入会虚高 Strength——
 // drift 还常是负信号，当正向证据更是错上加错。条目仍保留在 Entries 供 forge trace 展示，
@@ -80,6 +99,8 @@ func TestBuildEvidenceChain_ScopeDriftExcluded(t *testing.T) {
 	entries := []Entry{
 		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
 		{Check: CheckScopeDrift, Source: EvidenceDeterministic, TaskRef: "t"},
+		// Multiple drift entries are also excluded.
+		//
 		{Check: CheckScopeDrift, Source: EvidenceDeterministic, TaskRef: "t"}, // 多条 drift 也不计入
 	}
 	ec := BuildEvidenceChain(entries, "t")
@@ -94,6 +115,10 @@ func TestBuildEvidenceChain_ScopeDriftExcluded(t *testing.T) {
 	}
 }
 
+// TestBuildEvidenceChain_CheatScanExcluded pins that CheckCheatScan is likewise excluded from evidence strength:
+// mechanically detected suspected-cheat patterns are advisory observations, and hits are negative signals — treating them as positive evidence would inflate Strength
+// in the wrong direction. Entries are still kept in Entries for trace.
+//
 // TestBuildEvidenceChain_CheatScanExcluded 钉住 CheckCheatScan 同样不计入证据强度：
 // 机械检测的疑似作弊模式是 advisory 观测，命中是负信号——当正向证据会虚高 Strength
 // 且错向。条目仍保留在 Entries 供 trace。
@@ -112,6 +137,11 @@ func TestBuildEvidenceChain_CheatScanExcluded(t *testing.T) {
 	}
 }
 
+// TestBuildEvidenceChain_EscapeHatchExcludedAndFlags pins plan 5: CheckEscapeHatch is excluded from the
+// deterministic bucket — escape is an observation of "skipped some gate", not "performed verification"; SourceForCheck defaults it to
+// deterministic, so counting it would inflate Strength in the wrong direction (a signal meant to lower confidence would raise it instead). Set the
+// UsedEscapeHatch flag for Strength to cap. Entries are still kept in Entries for trace.
+//
 // TestBuildEvidenceChain_EscapeHatchExcludedAndFlags 钉住方案5：CheckEscapeHatch 不计入
 // deterministic 桶——逃生是"跳过了某 gate"的观察，非"做了验证"；SourceForCheck 默认把它
 // 归 deterministic，计入会虚高 Strength 且方向反了（本该降信心的信号反而抬高它）。改设
@@ -134,15 +164,23 @@ func TestBuildEvidenceChain_EscapeHatchExcludedAndFlags(t *testing.T) {
 	}
 }
 
+// TestStrength_EscapeHatchCapsToWeak pins plan 5: tasks that used an escape hatch have Strength capped at Weak even when deterministic is the
+// majority (which would normally be Strong) — giving escape a cost, countering the "hard gate + global escape =
+// fake hard gate" backlash. Downgrade rather than block, keeping escape legitimate while no longer free.
+//
 // TestStrength_EscapeHatchCapsToWeak 钉住方案5：用了逃生舱的任务，即便 deterministic 占
 // 多数（本该 Strong），Strength 也 cap 到 Weak——让逃生有代价，对冲"硬门禁 + 全局逃生 =
 // 假硬门禁"反噬。用降档而非阻断，既保逃生合法又让它不再免费。
 func TestStrength_EscapeHatchCapsToWeak(t *testing.T) {
+	// 4 deterministic + 1 agent-claim = ratio 0.8 → would normally be Strong, but escape used → capped to Weak.
+	//
 	// 4 deterministic + 1 agent-claim = ratio 0.8 → 本该 Strong，但用了逃生 → cap Weak
 	ec := EvidenceChain{Deterministic: 4, AgentClaim: 1, UsedEscapeHatch: true}
 	if got := ec.Strength(); got != Weak {
 		t.Fatalf(`escape used + ratio 0.8: Strength=%s, want Weak (capped)`, got)
 	}
+	// Same data without escape → Strong (guard: cap only triggers on escape, does not affect normal tasks).
+	//
 	// 同样数据无逃生 → Strong（守卫：cap 只在逃生时触发，不误伤正常任务）
 	ecNoEsc := EvidenceChain{Deterministic: 4, AgentClaim: 1}
 	if got := ecNoEsc.Strength(); got != Strong {
@@ -150,6 +188,8 @@ func TestStrength_EscapeHatchCapsToWeak(t *testing.T) {
 	}
 }
 
+// TestForTask_LoadsAndBuckets is end-to-end: Record writes → ForTask loads and aggregates.
+//
 // TestForTask_LoadsAndBuckets 端到端：Record 写入 → ForTask 加载聚合。
 func TestForTask_LoadsAndBuckets(t *testing.T) {
 	dir := t.TempDir()
@@ -166,6 +206,11 @@ func TestForTask_LoadsAndBuckets(t *testing.T) {
 	}
 }
 
+// TestStrengthClassification locks Strength tiers to Ratio/Total: the credibility of the done claim is discretized
+// by deterministic proportion into review-actionable tiers (NoData/Unverified/Weak/Strong), threshold 0.5.
+// This is the core judgment that upgrades "ratio is only observable" to "drives review calibration" — the tier determines whether to inject
+// "verify whether the claimed verification actually ran" instructions into the reviewer.
+//
 // TestStrengthClassification 锁定 Strength 档位与 Ratio/Total：完成声明的可信度按
 // deterministic 占比离散成 review 可行动的档位（NoData/Unverified/Weak/Strong），阈值 0.5。
 // 这是把"ratio 仅可观测"升级为"驱动 review 校准"的判定核心——档位决定是否给 reviewer

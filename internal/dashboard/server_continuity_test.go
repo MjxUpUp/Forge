@@ -12,6 +12,9 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
+// TestAggregateContinuity_Empty: empty root (global mode not focused) and
+// empty .forge both do not crash and return an empty board.
+//
 // TestAggregateContinuity_Empty 空 root（全局模式未聚焦）和空 .forge 都不崩，返空 board。
 func TestAggregateContinuity_Empty(t *testing.T) {
 	b, err := AggregateContinuity("", time.Now())
@@ -26,9 +29,14 @@ func TestAggregateContinuity_Empty(t *testing.T) {
 	}
 }
 
+// TestAggregateContinuity_CardsSorting verifies continuity-field projection
+// + in-progress first + within the same status sorted by start time descending.
+//
 // TestAggregateContinuity_CardsSorting 验证接续字段投影 + 进行中在前 + 同状态按启动时间倒序。
 func TestAggregateContinuity_CardsSorting(t *testing.T) {
 	root := t.TempDir()
+	// Completed task (started earlier).
+	//
 	// 已完成 task（较早启动）
 	done := &taskpipeline.TaskState{
 		TaskRef: "feat/done", Branch: "feat/done",
@@ -41,6 +49,8 @@ func TestAggregateContinuity_CardsSorting(t *testing.T) {
 	if err := taskpipeline.SaveTaskState(root, done); err != nil {
 		t.Fatal(err)
 	}
+	// In-progress task (started later, with blocker/goal/decision/session).
+	//
 	// 进行中 task（较晚启动，带 blocker/goal/decision/session）
 	active := &taskpipeline.TaskState{
 		TaskRef: "feat/active", Branch: "feat/active", Goal: "做 X",
@@ -63,6 +73,8 @@ func TestAggregateContinuity_CardsSorting(t *testing.T) {
 	if b.Incomplete != 1 || b.Complete != 1 {
 		t.Errorf("计数 Incomplete=%d Complete=%d，期望 1/1", b.Incomplete, b.Complete)
 	}
+	// In-progress must precede completed (the board focuses on running work).
+	//
 	// 进行中必须排在已完成之前（看板聚焦在跑的工作）
 	if b.Cards[0].TaskRef != "feat/active" {
 		t.Errorf("首卡片应为进行中的 feat/active，实际 %s", b.Cards[0].TaskRef)
@@ -82,6 +94,9 @@ func TestAggregateContinuity_CardsSorting(t *testing.T) {
 	}
 }
 
+// TestServe_ContinuityJSON: /api/continuity.json returns 200 + valid JSON
+// containing the task.
+//
 // TestServe_ContinuityJSON /api/continuity.json 返回 200 + 合法 JSON 含 task。
 func TestServe_ContinuityJSON(t *testing.T) {
 	root := t.TempDir()
@@ -112,6 +127,9 @@ func TestServe_ContinuityJSON(t *testing.T) {
 	}
 }
 
+// TestServe_ContinuityHTML: /continuity returns 200 + HTML containing the
+// task ref plus the board title.
+//
 // TestServe_ContinuityHTML /continuity 返回 200 + HTML 含 task ref + 看板标题。
 func TestServe_ContinuityHTML(t *testing.T) {
 	root := t.TempDir()
@@ -142,8 +160,12 @@ func TestServe_ContinuityHTML(t *testing.T) {
 	}
 }
 
+// TestAggregateContinuity_GenericHidesGates: generic tasks skip gates, so the
+// board card GateTotal=0 (template {{if gt .GateTotal 0}} skips the gate row),
+// avoiding the misleading "gates 0/3 stuck on first" display.
+//
 // TestAggregateContinuity_GenericHidesGates：generic 任务不走门禁，看板卡片 GateTotal=0
-// （模板 {{if gt .GateTotal 0}} 跳过门禁行），避免误导性的"门禁 0/3 卡在第一道"显示。
+// （模板 {{if gt .GateTotal 0}} 跳过门禁行），避免误导性的「门禁 0/3 卡在第一道」显示。
 func TestAggregateContinuity_GenericHidesGates(t *testing.T) {
 	root := t.TempDir()
 	g := &taskpipeline.TaskState{

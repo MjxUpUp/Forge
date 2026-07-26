@@ -13,6 +13,8 @@ func mustMk(t *testing.T, err error) {
 	}
 }
 
+// writeCanonicalSkill creates name/SKILL.md under canonical (with a short desc that fails quality, paired with SkipQuality).
+//
 // writeCanonicalSkill 在 canonical 下建 name/SKILL.md（不合格的简短 desc，配 SkipQuality 用）。
 func writeCanonicalSkill(t *testing.T, canonical, name string) string {
 	t.Helper()
@@ -45,6 +47,8 @@ func TestDetectState_MissingCopyInSyncDrift(t *testing.T) {
 		t.Fatalf("missing: got %s", got)
 	}
 
+	// copy-in-sync: copied SKILL.md content matches
+	//
 	// copy-in-sync：拷贝 SKILL.md 内容一致
 	mustMk(t, os.MkdirAll(dst, 0755))
 	data, _ := os.ReadFile(canonSkillMD)
@@ -53,6 +57,8 @@ func TestDetectState_MissingCopyInSyncDrift(t *testing.T) {
 		t.Fatalf("copy-in-sync: got %s", got)
 	}
 
+	// drift: modify target SKILL.md
+	//
 	// drift：改目标 SKILL.md
 	mustMk(t, os.WriteFile(filepath.Join(dst, "SKILL.md"), []byte("---\nname: my-skill\ndescription: drifted\n---\n\nother\n"), 0644))
 	if got := detectState(skillDir, dst); got != StateDrift {
@@ -60,6 +66,9 @@ func TestDetectState_MissingCopyInSyncDrift(t *testing.T) {
 	}
 }
 
+// TestDetectState_Linked: link is the core capability for forge cross-drive single source, must work.
+// Windows mklink /J needs no admin; Linux symlink is user-creatable. Both CI ends should pass.
+//
 // TestDetectState_Linked：link 是 forge 跨盘单源的核心能力，必须可用。
 // Windows mklink /J 无需管理员；Linux symlink 普通用户可建。两端 CI 都该通过。
 func TestDetectState_Linked(t *testing.T) {
@@ -171,6 +180,8 @@ func TestInstall_QualityBlock(t *testing.T) {
 	}
 }
 
+// TestInstall_LinkMode_NewLink: link mode actually creates junction/symlink and is detected as linked.
+//
 // TestInstall_LinkMode_NewLink：link 模式实际创建 junction/symlink 并被识别为 linked。
 func TestInstall_LinkMode_NewLink(t *testing.T) {
 	canonical := t.TempDir()
@@ -245,6 +256,9 @@ func TestDriftCheck_TargetOnly(t *testing.T) {
 	}
 }
 
+// TestHandleTarget_CopyInSync_ToLink: copy-in-sync + ModeLink → safe replacement with link.
+// Guards the upgrade path when user switches from copy to link single source (delete copy, create link, action=linked).
+//
 // TestHandleTarget_CopyInSync_ToLink：copy-in-sync + ModeLink → 安全替换为 link。
 // 守护用户从 copy 切到 link 单源时的升级路径（删副本建 link，action="linked"）。
 func TestHandleTarget_CopyInSync_ToLink(t *testing.T) {
@@ -270,6 +284,9 @@ func TestHandleTarget_CopyInSync_ToLink(t *testing.T) {
 	}
 }
 
+// TestHandleTarget_Drift_Overwrite_Link: drift + DriftOverwrite + ModeLink → force-create link from canonical.
+// Guards that under drift with overwrite policy, link mode rebuilds link (not copy).
+//
 // TestHandleTarget_Drift_Overwrite_Link：drift + DriftOverwrite + ModeLink → 强制以 canonical 建 link。
 // 守护 drift 时 overwrite 策略下 link 模式重建 link（而非 copy）。
 func TestHandleTarget_Drift_Overwrite_Link(t *testing.T) {
@@ -291,6 +308,9 @@ func TestHandleTarget_Drift_Overwrite_Link(t *testing.T) {
 	}
 }
 
+// TestRemoveTargetTree_PreservesCanonicalSource: removing target in linked state must never delete the canonical source.
+// Go 1.24 RemoveAll is safe for junctions (only deletes reparse point), but this is a data safety red line that must be locked by a test.
+//
 // TestRemoveTargetTree_PreservesCanonicalSource：linked 态下删目标绝不能删到 canonical 源。
 // Go 1.24 的 RemoveAll 对 junction 安全（只删 reparse point），但这是数据安全红线，必须有测试锁定。
 func TestRemoveTargetTree_PreservesCanonicalSource(t *testing.T) {
@@ -311,6 +331,9 @@ func TestRemoveTargetTree_PreservesCanonicalSource(t *testing.T) {
 	}
 }
 
+// TestCopyTree_SkipsVCSAndDeps: copyTree must skip .git/node_modules etc. (distSkipDirs),
+// otherwise VCS metadata / huge dependency trees get copied into target, polluting distribution.
+//
 // TestCopyTree_SkipsVCSAndDeps：copyTree 必须跳过 .git/node_modules 等（distSkipDirs），
 // 否则把 VCS 元数据/依赖巨树复制进目标污染分发。
 func TestCopyTree_SkipsVCSAndDeps(t *testing.T) {
@@ -391,6 +414,8 @@ func TestListSkills_BrokenSymlink(t *testing.T) {
 	}
 }
 
+// TestBackupTarget_RealDir: drift real-dir copy must be backed up before overwrite, content preserved as rollback fallback.
+//
 // TestBackupTarget_RealDir：drift 的真目录副本被 overwrite 前必须备份，内容留底（后悔药）。
 func TestBackupTarget_RealDir(t *testing.T) {
 	dst := filepath.Join(t.TempDir(), "claude", "my-skill")
@@ -406,6 +431,8 @@ func TestBackupTarget_RealDir(t *testing.T) {
 	if rerr != nil || string(data) != "user custom" {
 		t.Fatalf("备份内容应与原副本一致: %v %q", rerr, string(data))
 	}
+	// Independent copy assertion (Suggest#5): after backup, modifying original dst should not change backup content (proves it is a copy not a link, truly preserved).
+	//
 	// 独立副本断言（Suggest#5）：备份后再改原 dst，备份内容不应跟随变化（证明是 copy 非 link，真正留底）。
 	mustMk(t, os.WriteFile(filepath.Join(dst, "SKILL.md"), []byte("changed after backup"), 0644))
 	after, _ := os.ReadFile(filepath.Join(got, "SKILL.md"))
@@ -414,6 +441,9 @@ func TestBackupTarget_RealDir(t *testing.T) {
 	}
 }
 
+// TestBackupTarget_PureSnapshot: backup dir has leftover from last time → must clear first to ensure pure snapshot (Fix#1).
+// Otherwise when reusing the same dir, files that existed last time but deleted this time will linger, polluting rollback result.
+//
 // TestBackupTarget_PureSnapshot：备份目录已有上次残留 → 必须先清空，保证纯净快照（Fix#1）。
 // 否则同目录复用时上次有、这次删的文件会残留，污染回滚结果。
 func TestBackupTarget_PureSnapshot(t *testing.T) {
@@ -433,6 +463,8 @@ func TestBackupTarget_PureSnapshot(t *testing.T) {
 	}
 }
 
+// TestBackupTarget_RejectsUnsafeName: skill names containing .. or path separators should be rejected (path injection defense, Suggest#4).
+//
 // TestBackupTarget_RejectsUnsafeName：含 .. 或路径分隔符的 skill 名应拒绝（路径注入防御，Suggest#4）。
 func TestBackupTarget_RejectsUnsafeName(t *testing.T) {
 	dst := filepath.Join(t.TempDir(), "claude", "my-skill")
@@ -446,6 +478,8 @@ func TestBackupTarget_RejectsUnsafeName(t *testing.T) {
 	}
 }
 
+// TestBackupTarget_SkipsLink: junction/symlink has no independent user content, not backed up.
+//
 // TestBackupTarget_SkipsLink：junction/symlink 无独立用户内容，不备份。
 func TestBackupTarget_SkipsLink(t *testing.T) {
 	real := t.TempDir()
@@ -459,6 +493,8 @@ func TestBackupTarget_SkipsLink(t *testing.T) {
 	}
 }
 
+// TestBackupTarget_SkipsMissing: non-existent/broken link has no content, not backed up (cursor SkillsHub broken link scenario).
+//
 // TestBackupTarget_SkipsMissing：不存在/断链无内容，不备份（cursor SkillsHub 断链场景）。
 func TestBackupTarget_SkipsMissing(t *testing.T) {
 	got, err := backupTarget(filepath.Join(t.TempDir(), "nope"), t.TempDir(), "claude", "my-skill")
@@ -468,6 +504,8 @@ func TestBackupTarget_SkipsMissing(t *testing.T) {
 	}
 }
 
+// TestInstall_DriftOverwrite_Backups: overwriting real-dir drift copy → tr.Backup records path, user content preserved.
+//
 // TestInstall_DriftOverwrite_Backups：overwrite 真目录 drift 副本 → tr.Backup 记录路径，用户内容留底。
 func TestInstall_DriftOverwrite_Backups(t *testing.T) {
 	canonical := t.TempDir()
@@ -479,6 +517,7 @@ func TestInstall_DriftOverwrite_Backups(t *testing.T) {
 
 	opts := copyOpts(projectDir)
 	opts.DriftPolicy = DriftOverwrite
+	// Injected to avoid polluting home directory
 	opts.BackupBase = t.TempDir() // 注入避免污染家目录
 	rep, err := Install(canonical, opts)
 	mustMk(t, err)
@@ -502,6 +541,10 @@ func TestInstall_DriftOverwrite_Backups(t *testing.T) {
 	}
 }
 
+// TestTargetDirs_AllExpandsCodexCopilot: TargetAll must expand to include codex and copilot.
+// Guards that target=all does not miss the newly added codex/copilot targets — otherwise user --target all distribution silently drops these two tools,
+// skills only install to claude/cursor/pi, loop engineering multi-agent distribution breaks.
+//
 // TestTargetDirs_AllExpandsCodexCopilot：TargetAll 必须展开含 codex 和 copilot。
 // 守护 target=all 不会漏掉新加的 codex/copilot 目标——否则用户 --target all 分发会静默漏掉这两个工具，
 // skills 只装到 claude/cursor/pi，loop engineering 多 agent 分发失效。
@@ -518,6 +561,10 @@ func TestTargetDirs_AllExpandsCodexCopilot(t *testing.T) {
 	}
 }
 
+// TestTargetDir_CodexCopilotPath: codex/copilot global directory paths are correct.
+// Codex CLI reads ~/.codex/skills (official since 2025-12), Copilot personal skill reads ~/.copilot/skills (GitHub Docs).
+// Wrong paths would cause distribution to wrong locations, tools cannot detect skills.
+//
 // TestTargetDir_CodexCopilotPath：codex/copilot 全局目录路径正确。
 // Codex CLI 读 ~/.codex/skills（2025-12 起官方），Copilot 个人 skill 读 ~/.copilot/skills（GitHub Docs）。
 // 路径写错会导致分发到错误位置，工具识别不到 skill。
@@ -534,6 +581,8 @@ func TestTargetDir_CodexCopilotPath(t *testing.T) {
 			t.Errorf("targetDir(%q)=%q want %q", name, got, want)
 		}
 	}
+	// Unknown target returns empty string (no panic, no accidental write to default location)
+	//
 	// 未知 target 返回空串（不 panic、不误写到默认位置）
 	if got := targetDir("unknown-tool", true, home, ""); got != "" {
 		t.Errorf("未知 target 应返回空串，got %q", got)

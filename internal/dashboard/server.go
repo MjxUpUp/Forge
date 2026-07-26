@@ -1,6 +1,22 @@
+// Package dashboard renders Forge quality governance data (act conclusions / health
+// project trends) into a local read-only web dashboard. A single command `forge dashboard`
+// starts a local HTTP server and auto-opens the browser, turning project quality status
+// from CLI text into a glanceable graphic — score trends, evidence blind-spot rate,
+// recurring low-score dimensions.
+//
+// Design principles: read-only, local-only, stdlib-only.
+//   - Reuse the pure-function aggregation from act.LoadAll + health.Summarize; never re-parse jsonl.
+//   - Bind to localhost; never expose externally.
+//   - Zero third-party dependencies (net/http + embed + html/template + hand-drawn SVG);
+//     single binary, no extra weight.
+//
+// The dashboard is the visual home of the forge status / health / trace / act read-only
+// observation commands: each aggregates .forge/ into text, and dashboard renders the same
+// aggregation into graphics — single source of truth.
+//
 // Package dashboard 把 Forge 的质量治理数据（act 结论 / health 项目趋势）渲染成
 // 本地只读 web 看板。一条命令 `forge dashboard` 起本地 HTTP 服务 + 自动开浏览器，
-// 让"项目质量现状"从 CLI 文本变成一眼可读的图形——分数走势、证据盲区率、复发低分维度。
+// 让「项目质量现状」从 CLI 文本变成一眼可读的图形——分数走势、证据盲区率、复发低分维度。
 //
 // 设计原则：纯只读、纯本地、纯 stdlib。
 //   - 复用 act.LoadAll + health.Summarize 的纯函数聚合，不重新解析 jsonl；
@@ -36,6 +52,8 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
+// Options controls dashboard service startup behavior.
+//
 // Options 控制 dashboard 服务启动行为。
 type Options struct {
 	Root        string   // 单项目根（Roots 为空时用）
@@ -44,6 +62,9 @@ type Options struct {
 	OpenBrowser bool     // 是否自动打开浏览器
 }
 
+// aggregate picks single-project or global aggregation per Options:
+// when Roots is non-empty, go global (cross-project merge).
+//
 // aggregate 按 Options 选择单项目或全局聚合：Roots 非空走全局（跨项目合并）。
 func (o Options) aggregate(now time.Time) (Data, error) {
 	if len(o.Roots) > 0 {
@@ -52,6 +73,10 @@ func (o Options) aggregate(now time.Time) (Data, error) {
 	return Aggregate(o.Root, now)
 }
 
+// Data holds all aggregated data needed to render the dashboard. It reuses pure-function
+// output from act/health; dashboard only reshapes it into a render-friendly form
+// (including pre-computed SVG geometry — templates emit elements, never do arithmetic).
+//
 // Data 是看板渲染所需的全部聚合数据。复用 act/health 的纯函数产出，dashboard
 // 只负责组装成渲染友好的形状（含 SVG 几何预算——模板不做算术，只 emit 元素）。
 type Data struct {
@@ -64,6 +89,10 @@ type Data struct {
 	ProjectCount int  // 全局视图下的项目数（单项目 = 1）
 }
 
+// TaskRow is a single task conclusion with its project attribution. It embeds
+// act.Conclusion so templates can still reach .TaskRef/.Score via Go field promotion;
+// the global view additionally exposes .Project.
+//
 // TaskRow 是一条带项目归属的任务结论。内嵌 act.Conclusion 让模板仍能直接访问
 // .TaskRef/.Score 等字段（Go 内嵌字段提升），全局视图额外暴露 .Project。
 type TaskRow struct {
@@ -71,6 +100,9 @@ type TaskRow struct {
 	Project string
 }
 
+// Charts is the SVG geometry the template consumes directly
+// (coordinates and ratios already pre-computed).
+//
 // Charts 是模板直接消费的 SVG 几何（坐标/占比已算好）。
 type Charts struct {
 	ScoreLine    []Point // 分数走势折线点（viewBox 坐标）
@@ -79,12 +111,17 @@ type Charts struct {
 	LowDimBars   []Bar
 }
 
+// Point is a single point in the SVG coordinate system (viewBox units).
+//
 // Point 是 SVG 坐标系下的一个点（viewBox 单位）。
 type Point struct {
 	X float64
 	Y float64
 }
 
+// Bar is one row of a bar chart: label, count, and width percentage (0-100)
+// normalized against the maximum value.
+//
 // Bar 是一行柱状：标签、计数、按最大值归一化的宽度百分比（0-100）。
 type Bar struct {
 	Label    string
@@ -92,6 +129,14 @@ type Bar struct {
 	WidthPct float64
 }
 
+// Aggregate reads and aggregates dashboard data from a project root. Pure read; reuses
+// act/health. now is used for render timestamps.
+//
+// root is resolved to the user-level DataDir via forgedata.ProjectFor before reading act
+// conclusions. When ProjectFor fails (non-git / not init), cs stays nil — empty data still
+// renders fine (the TestAggregate_Empty path), so the dashboard never errors out in a
+// non-forge directory.
+//
 // Aggregate 从项目根读取并聚合看板数据。纯读，复用 act/health。now 用于渲染时间戳。
 //
 // root 经 forgedata.ProjectFor 解析到用户级 DataDir 后再读 act 结论。ProjectFor 失败
@@ -114,10 +159,19 @@ func Aggregate(root string, now time.Time) (Data, error) {
 	return buildData(rows, cs, readActiveTask(root), false, 1, now), nil
 }
 
+// AggregateGlobal aggregates across multiple project roots: it merges all conclusions
+// (each carrying its project name) and runs Summarize over the whole merged slice.
+// health.Summarize is a pure function over any []Conclusion, so cross-project needs no change.
+// A single project failing to read is skipped (non-fatal); only projects with actual
+// conclusions count toward ProjectCount (empty projects contribute no charts, and counting
+// them would make the headline 'N projects' disagree with the table count).
+// activeTask is composed as 'project: ref' for each project. Empty roots returns an empty
+// Data (IsGlobal=true, ProjectCount=0, zero-value Summary).
+//
 // AggregateGlobal 跨多个项目根聚合：合并所有结论（各带项目名），Summarize 整个合并切片。
 // health.Summarize 是吃任意 []Conclusion 的纯函数，跨项目零改动。单项目读失败跳过（不致命）；
-// 仅实际有结论的项目计入 ProjectCount（空项目不贡献图表，计入会让头标"N 个项目"与表格项目数不符）。
-// activeTask 拼成各项目 "项目:ref"。roots 为空返回空数据 Data（IsGlobal=true，ProjectCount=0，Summary 零值）。
+// 仅实际有结论的项目计入 ProjectCount（空项目不贡献图表，计入会让头标「N 个项目」与表格项目数不符）。
+// activeTask 拼成各项目「项目: ref」。roots 为空返回空数据 Data（IsGlobal=true，ProjectCount=0，Summary 零值）。
 func AggregateGlobal(roots []string, now time.Time) (Data, error) {
 	var allRows []TaskRow
 	var allCs []act.Conclusion
@@ -147,9 +201,19 @@ func AggregateGlobal(roots []string, now time.Time) (Data, error) {
 	return buildData(allRows, allCs, strings.Join(actives, `, `), true, valid, now), nil
 }
 
+// buildData is the shared assembly for Aggregate/AggregateGlobal: the conclusion slice
+// feeds Summarize, rows takes the most recent 20, and charts use cs in time order
+// (ScoreLine requires chronological input).
+//
 // buildData 是 Aggregate/AggregateGlobal 的共享组装：结论切片喂 Summarize，rows 取最近 20 条，
 // charts 按时序用 cs（ScoreLine 需 chronological）。
 func buildData(rows []TaskRow, cs []act.Conclusion, activeTask string, isGlobal bool, projectCount int, now time.Time) Data {
+	// Sort the line by time: under the global view cs is a multi-project merge (appended in
+	// roots order, not time order), so it must be stably sorted by CompletedAt before feeding
+	// scoreLine (its X coordinates map index to evenly-spaced positions, i.e. index = time order).
+	// For a single project cs is already chronological and stable sort does not change its order.
+	// Summarize/recentRows are order-independent and unaffected.
+	//
 	// 折线按时间序：全局视图下 cs 是多项目合并（按 roots 顺序 append，非时间序），必须按
 	// CompletedAt 稳定排序后再喂 scoreLine（其 X 坐标按索引等分映射，索引即时间序）。
 	// 单项目 cs 本就 chronological，稳定排序不改变其顺序。Summarize/recentRows 顺序无关，不受影响。
@@ -165,6 +229,9 @@ func buildData(rows []TaskRow, cs []act.Conclusion, activeTask string, isGlobal 
 		ProjectCount: projectCount,
 		Now:          now,
 		Charts: Charts{
+			// Line chart follows time order (cs is now chronological); bars use fixed
+			// bucket order for readability.
+			//
 			// 折线按时序（cs 已 chronological），柱状按固定档位顺序保证可读。
 			ScoreLine:    scoreLine(cs, lineW, lineH, linePad),
 			GradeBars:    bars(summary.GradeDist, []string{`A`, `B`, `C`, `D`, `F`}),
@@ -174,6 +241,9 @@ func buildData(rows []TaskRow, cs []act.Conclusion, activeTask string, isGlobal 
 	}
 }
 
+// recentRows returns the top 20 in reverse order (most recent first),
+// so a long list does not slow rendering down.
+//
 // recentRows 倒序（最近在前）取前 20 条，避免长表拖慢渲染。
 func recentRows(rows []TaskRow) []TaskRow {
 	recent := make([]TaskRow, len(rows))
@@ -187,10 +257,17 @@ func recentRows(rows []TaskRow) []TaskRow {
 	return recent
 }
 
-// projectName 取项目名（末两段 "父目录/末段"），用于全局视图的任务归属列。
+// projectName returns the project name (the last two segments, parent/leaf) used for the
+// task-attribution column in the global view. Taking only the leaf would collide for same-
+// named projects (~/work/app vs ~/personal/app); the last two segments eliminate most collisions.
+// Volume-root projects are an exception: for E:\Forge the parent directory E:\ is a volume root
+// and filepath.Base(E:\) returns \ (not empty, not .), which the old logic mis-joined into
+// \/Forge; a volume root has no meaningful parent segment, so we fall back to the leaf Forge.
+//
+// projectName 取项目名（末两段「父目录/末段」），用于全局视图的任务归属列。
 // 仅取末段会在同名项目（~/work/app 与 ~/personal/app）撞名无法区分；末两段消除绝大多数碰撞。
-// 盘根项目例外：E:\Forge 的父目录 E:\ 是盘根，filepath.Base(E:\) 返 "\"（非 ""/非 "."），
-// 旧判据漏判拼出 "\/Forge"；盘根无有意义的父段，回退只取末段 "Forge"。
+// 盘根项目例外：E:\Forge 的父目录 E:\ 是盘根，filepath.Base(E:\) 返"\"（非""/非"."），
+// 旧判据漏判拼出"\/Forge"；盘根无有意义的父段，回退只取末段"Forge"。
 func projectName(root string) string {
 	dir := filepath.Dir(root)
 	if isVolumeRoot(dir) {
@@ -203,8 +280,12 @@ func projectName(root string) string {
 	return parent + `/` + filepath.Base(root)
 }
 
+// isVolumeRoot reports whether dir is a volume root (no meaningful parent segment, so
+// projectName should fall back to the leaf). A Windows volume root looks like E:\
+// (VolumeName + separator) and filepath.Base returns \ for it; the POSIX root is /.
+//
 // isVolumeRoot 判 dir 是否盘根（无有意义的父段，projectName 应回退末段）。
-// Windows 盘根形如 "E:\"（VolumeName + 分隔符），filepath.Base 对它返 "\"；POSIX 根 "/"。
+// Windows 盘根形如"E:\"（VolumeName + 分隔符），filepath.Base 对它返"\"；POSIX 根"/"。
 func isVolumeRoot(dir string) bool {
 	if vol := filepath.VolumeName(dir); vol != `` {
 		rest := strings.TrimPrefix(dir, vol)
@@ -215,12 +296,18 @@ func isVolumeRoot(dir string) bool {
 	return dir == `/` || dir == `\`
 }
 
+// readActiveTask reads DataDir/active-task-ref (via taskpipeline.ReadActiveTaskRef,
+// relocated to the user-level DataDir by refactor-data-home). Missing or erroring returns
+// an empty string (non-fatal).
+//
 // readActiveTask 读 DataDir/active-task-ref（经 taskpipeline.ReadActiveTaskRef，
 // 已随 refactor-data-home 迁到用户级 DataDir），缺失/出错返回空串（非致命）。
 func readActiveTask(root string) string {
 	return taskpipeline.ReadActiveTaskRef(root, "")
 }
 
+// Line-chart viewBox constants (kept in sync with the <svg viewBox> in index.html).
+//
 // 折线 viewBox 常量（与 index.html 的 <svg viewBox> 对齐）。
 const (
 	lineW   = 600.0
@@ -228,6 +315,10 @@ const (
 	linePad = 20.0
 )
 
+// scoreLine maps conclusions' (time order, score) to viewBox coordinate line points.
+// Pure function. Score 100 -> top (pad), 0 -> bottom (h-pad); a single point is centered.
+// An empty slice returns nil.
+//
 // scoreLine 把结论的（时间序, 分数）映射到 viewBox 坐标的折线点。纯函数。
 // score 100→顶(pad)，0→底(h-pad)；单点居中。空切片返回 nil。
 func scoreLine(cs []act.Conclusion, w, h, pad float64) []Point {
@@ -245,6 +336,11 @@ func scoreLine(cs []act.Conclusion, w, h, pad float64) []Point {
 		} else {
 			x = pad + float64(i)/float64(n-1)*innerW
 		}
+		// Score is contractually 0-100, but scoring's overall is not clamped (it is a
+		// weighted sum of dimensions), and jsonl may have been hand-edited — clamp
+		// defensively to [0,100], otherwise an out-of-range score makes the line point
+		// overflow the viewBox and get clipped (invisible).
+		//
 		// Score 约定 0-100，但 scoring 的 overall 不 clamp（维度加权和），且 jsonl 可能
 		// 手动编辑——防御性夹到 [0,100]，否则越界分数让折线点溢出 viewBox 被裁（不可见）。
 		s := c.Score
@@ -259,6 +355,10 @@ func scoreLine(cs []act.Conclusion, w, h, pad float64) []Point {
 	return pts
 }
 
+// bars renders map[label]count as bars in the given order, with widths normalized by the
+// maximum count (0-100). Fixed order keeps grade/strength buckets readable instead of
+// iterating the map in random order.
+//
 // bars 把 map[label]count 按给定顺序渲染成柱，宽度按最大计数归一化（0-100）。
 // 固定顺序保证等级/强度档位始终可读，而非按 map 随机迭代。
 func bars(dist map[string]int, order []string) []Bar {
@@ -280,6 +380,9 @@ func bars(dist map[string]int, order []string) []Bar {
 	return out
 }
 
+// lowDimBars turns recurring low-score dimensions (already frequency-sorted descending
+// by health) into bars, with widths normalized by the highest frequency.
+//
 // lowDimBars 把复发低分维度（health 已按频次降序）转成柱，宽度按最高频归一化。
 func lowDimBars(dims []health.DimFreq) []Bar {
 	if len(dims) == 0 {
@@ -297,10 +400,17 @@ func lowDimBars(dims []health.DimFreq) []Bar {
 	return out
 }
 
+// funcMap provides the small arithmetic / formatting helpers the template needs
+// (Go templates cannot do floating-point multiplication natively).
+//
 // funcMap 提供模板所需的小算术/格式化（Go template 原生不能做浮点乘法）。
 var funcMap = template.FuncMap{
-	// mul100：0-1 比率 → 百分数数值（与模板里的 "%%" 配合）。
+	// mul100: 0-1 ratio -> percentage value (paired with %% in the template).
+	//
+	// mul100：0-1 比率 → 百分数数值（与模板里的"%%"配合）。
 	"mul100": func(v float64) float64 { return v * 100 },
+	// trendLabel: health.Trend enum -> Chinese arrow.
+	//
 	// trendLabel：health.Trend 枚举 → 中文箭头。
 	"trendLabel": func(t string) string {
 		switch t {
@@ -316,27 +426,50 @@ var funcMap = template.FuncMap{
 	},
 }
 
+// assetFile is the embedded asset file path (ParseFS pattern). html/template's ParseFS
+// registers files without {{define}} as templates named by their path, and the path prefix
+// can drift across environments — so index.html explicitly uses {{define "page"}} to expose
+// a stable name, and RenderPage locates it via page to avoid 'incomplete or undefined'
+// template errors.
+//
 // assetFile 是嵌入资产文件路径（ParseFS 模式）。html/template 的 ParseFS 把无
 // {{define}} 的文件注册成以路径为名的模板，路径前缀在不同环境下可能漂移，故
-// index.html 内显式 {{define "page"}} 暴露稳定名，RenderPage 按 "page" 定位，
-// 避免 "incomplete or undefined" 模板错误。
+// index.html 内显式 {{define "page"}} 暴露稳定名，RenderPage 按"page"定位，
+// 避免"incomplete or undefined"模板错误。
 const assetFile = `assets/index.html`
 
+// pageTmpl parses the embedded template once at process start. ParseFS failure means an
+// asset is missing — a compile-time embed configuration error — so we panic directly via
+// Must (mirroring skills/embed).
+//
 // pageTmpl 在进程启动时解析内嵌模板一次。ParseFS 失败 = 资产缺失，属于编译期
 // embed 配置错误，用 Must 直接 panic（与 skills/embed 同构）。
 var pageTmpl = template.Must(template.New(`dashboard`).Funcs(funcMap).ParseFS(assetsFS, assetFile))
 
+// RenderPage renders aggregated data as HTML to w. Exported so the cli layer can dry-run / test it.
+//
 // RenderPage 把聚合数据渲染成 HTML 写入 w。导出便于 cli 层做 dry-run / 测试。
 func RenderPage(w io.Writer, d Data) error {
 	return pageTmpl.ExecuteTemplate(w, `page`, d)
 }
 
-// =====================================================================
+// ============== continuity dashboard section ==============
+// Task continuity dashboard: visualizes plan / decisions / blockers / participating tools
+// for in-flight tasks. Complements the quality dashboard (index.html, reading finished
+// conclusions via act.LoadAll) — the continuity dashboard reads TaskState (in-flight plus
+// continuity fields) so you can see at a glance which tasks are running, where they are
+// stuck, and who is participating.
+// ============== end of continuity section ==============
+//
+// ============== 任务接续看板段 ==============
 // 任务接续看板（continuity）：进行中任务的 plan/决策/阻塞/参与工具可视化。
 // 与质量看板（index.html，读已完成结论 act.LoadAll）互补——接续看板读 TaskState
-// （进行中 + 接续字段），让"哪些任务在跑、卡在哪、谁参与"一眼可见。
-// =====================================================================
+// （进行中 + 接续字段），让「哪些任务在跑、卡在哪、谁参与」一眼可见。
+// ============== 任务接续看板段 结束 ==============
 
+// continuityCard is the dashboard projection of a single task (shared by HTML and JSON;
+// carries no sensitive fields like SessionID).
+//
 // continuityCard 是单个 task 的看板投影（HTML + JSON 共用，无 SessionID 等敏感字段）。
 type continuityCard struct {
 	TaskRef       string    `json:"task_ref"`
@@ -358,6 +491,9 @@ type continuityCard struct {
 	StartedAt     time.Time `json:"started_at"`
 }
 
+// ContinuityBoard is the continuity-dashboard payload: cards for every task in the project
+// plus in-progress / completed counts.
+//
 // ContinuityBoard 是接续看板载荷：项目内所有 task 的卡片 + 进行中/已完成计数。
 type ContinuityBoard struct {
 	Project    string           `json:"project,omitempty"`
@@ -367,8 +503,14 @@ type ContinuityBoard struct {
 	Complete   int              `json:"complete"`
 }
 
+// AggregateContinuity reads all TaskStates from DataDir/tasks/ and projects them into
+// dashboard cards. In-progress first; within the same state, sorted by start time descending
+// — the most recent unfinished task lands on top, matching 'dashboard focuses on running work'.
+// Empty root (global mode, no single project in focus) returns an empty board without error —
+// the continuity dashboard focuses on a single project's in-flight work.
+//
 // AggregateContinuity 从 DataDir/tasks/ 读全部 TaskState 投影成看板卡片。进行中在前、
-// 同状态按启动时间倒序——最近且未完成的任务排在最上，符合"看板聚焦在跑的工作"。
+// 同状态按启动时间倒序——最近且未完成的任务排在最上，符合「看板聚焦在跑的工作」。
 // root 为空（全局模式未聚焦单项目）返空 board，不报错——接续看板聚焦单项目进行中工作。
 func AggregateContinuity(root string, now time.Time) (ContinuityBoard, error) {
 	if root == "" {
@@ -441,17 +583,28 @@ func toContinuityCard(s *taskpipeline.TaskState) continuityCard {
 	}
 }
 
+// continuityAsset is the embedded path of the continuity-dashboard template (same shape as assetFile).
+//
 // continuityAsset 是接续看板模板的嵌入路径（与 assetFile 同构）。
 const continuityAsset = `assets/continuity.html`
 
+// continuityTmpl is parsed once at process start. Reuses funcMap.
+//
 // continuityTmpl 进程启动时解析一次。复用 funcMap。
 var continuityTmpl = template.Must(template.New(`continuity`).Funcs(funcMap).ParseFS(assetsFS, continuityAsset))
 
+// RenderContinuityBoard renders the continuity-dashboard data as HTML. Exported for testing.
+//
 // RenderContinuityBoard 把接续看板数据渲染成 HTML。导出便于测试。
 func RenderContinuityBoard(w io.Writer, b ContinuityBoard) error {
 	return continuityTmpl.ExecuteTemplate(w, `continuity`, b)
 }
 
+// taskPublic is the external projection of a conclusion: SessionID is stripped. The HTML
+// dashboard has no use for the session ID, and even though the JSON endpoint is bound to
+// localhost only, we still do not serialize it — defense in depth (paired with the Host
+// check to prevent DNS-rebinding reads).
+//
 // taskPublic 是结论的对外投影：剥掉 SessionID。HTML 看板用不到会话 ID，JSON 端点虽
 // 只绑 localhost，也不把它序列化出去——纵深防御（配合 Host 校验防 DNS rebinding 读取）。
 type taskPublic struct {
@@ -466,6 +619,9 @@ type taskPublic struct {
 	Project            string
 }
 
+// publicData is the /api/data.json payload: same shape as Data but Tasks is projected to
+// taskPublic (no SessionID).
+//
 // publicData 是 /api/data.json 载荷：与 Data 同形但 Tasks 投影成 taskPublic（无 SessionID）。
 type publicData struct {
 	Summary      health.Summary
@@ -476,6 +632,8 @@ type publicData struct {
 	ProjectCount int
 }
 
+// toPublic projects Data into a JSON payload that does not carry SessionID.
+//
 // toPublic 投影 Data → 不含 SessionID 的 JSON 载荷。
 func toPublic(d Data) publicData {
 	tasks := make([]taskPublic, len(d.Tasks))
@@ -493,6 +651,12 @@ func toPublic(d Data) publicData {
 	}
 }
 
+// setSecureHeaders sets basic security headers. The dashboard is a localhost read-only
+// page; this is defense in depth: X-Frame-Options prevents click-jacking, nosniff prevents
+// MIME sniffing, CSP restricts origins (inline styles are required by the template and there
+// is no JS, hence script-src 'none'), and Referrer-Policy keeps local paths from leaking to
+// outbound links.
+//
 // setSecureHeaders 加基础安全头。看板是 localhost 只读页，纵深防御：X-Frame-Options
 // 防点击劫持、nosniff 防 MIME 嗅探、CSP 限源（内联 style 是模板所需、无 JS 故
 // script-src none）、Referrer-Policy 不泄露本机路径到外链。
@@ -504,6 +668,8 @@ func setSecureHeaders(w http.ResponseWriter) {
 	h.Set(`Content-Security-Policy`, `default-src 'self'; style-src 'unsafe-inline'; img-src 'self' data:; script-src 'none'`)
 }
 
+// securityHeaders wraps the headers into middleware to uniformly cover every route (incl. favicon).
+//
 // securityHeaders 包成 middleware，统一覆盖所有路由（含 favicon）。
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -512,6 +678,12 @@ func securityHeaders(next http.Handler) http.Handler {
 	})
 }
 
+// isLocalhostHost reports whether the Host header points at the local machine (port and
+// IPv6 brackets stripped). Defends against DNS rebinding: an attacker resolves evil.com to
+// 127.0.0.1 and the browser sends Host: evil.com to read the local dashboard — reject
+// anything that is not localhost. An empty Host (some clients omit it) is allowed, to avoid
+// breaking legitimate requests.
+//
 // isLocalhostHost 判 Host 头是否本机（去端口、去 IPv6 方括号）。防 DNS rebinding：
 // 攻击者用 evil.com 解析到 127.0.0.1，浏览器带 Host: evil.com 读本地看板——非 localhost 拒。
 // 空 Host（少数客户端不发）放行，避免误伤合法请求。
@@ -520,13 +692,22 @@ func isLocalhostHost(host string) bool {
 		return true
 	}
 	h := host
+	// net.SplitHostPort correctly strips the port from [::1]:8800 and host:port; for forms
+	// without a port ([::1], ::1, localhost) it errors and we keep the original value, then
+	// fall back to Trim to strip IPv6 brackets. The old version used LastIndex(':') to strip
+	// the port and mis-cut on IPv6 ([::1] -> [::), mistaking a legal loopback for an external
+	// domain — a regression caught by code-review-gate.
+	//
 	// net.SplitHostPort 正确剥 [::1]:8800 与 host:port 的端口；无端口形式（[::1]、::1、
-	// localhost）报错则保留原值，再用 Trim 兜底剥 IPv6 方括号。旧版用 LastIndex(":") 去端口
-	// 在 IPv6 上会切错（[::1] → "[::"），把合法回环误判为外域——code-review-gate 拦下的回归。
+	// localhost）报错则保留原值，再用 Trim 兜底剥 IPv6 方括号。旧版用 LastIndex（":"）去端口
+	// 在 IPv6 上会切错（[::1] →"[::"），把合法回环误判为外域——code-review-gate 拦下的回归。
 	if parsed, _, err := net.SplitHostPort(host); err == nil {
 		h = parsed
 	}
 	h = strings.Trim(h, `[]`)
+	// Strip trailing dot (localhost. FQDN) and lowercase: per RFC the domain part of the
+	// Host header is case-insensitive.
+	//
 	// 去尾点（localhost. FQDN）+ 小写：Host 头域名部分按 RFC 大小写不敏感。
 	h = strings.ToLower(strings.TrimSuffix(h, `.`))
 	switch h {
@@ -536,6 +717,10 @@ func isLocalhostHost(host string) bool {
 	return false
 }
 
+// localhostOnly is the second line of defense against DNS rebinding (the first is net.Listen
+// binding only to localhost, but the browser can still reach it via rebinding). A non-local
+// Host returns 403.
+//
 // localhostOnly 是 DNS rebinding 第二道防线（第一道是 net.Listen 只绑 localhost，但浏览器
 // 经 rebinding 仍可达）。非本机 Host 返回 403。
 func localhostOnly(next http.Handler) http.Handler {
@@ -548,6 +733,9 @@ func localhostOnly(next http.Handler) http.Handler {
 	})
 }
 
+// newMux builds the dashboard routes. Extracted so httptest can mount it directly
+// (Serve handles listen + browser launch).
+//
 // newMux 构建看板路由。抽出便于 httptest 直接挂载（Serve 负责 listen+开浏览器）。
 func newMux(opts Options) *http.ServeMux {
 	mux := http.NewServeMux()
@@ -558,6 +746,9 @@ func newMux(opts Options) *http.ServeMux {
 		}
 		data, err := opts.aggregate(time.Now())
 		if err != nil {
+			// Log the full err (local stderr, with the path for triage) but respond with a
+			// neutral message — do not leak the .forge path to the browser.
+			//
 			// 完整 err 记日志（本地 stderr，含路径便于排查），响应给中性文案——不向浏览器泄露 .forge 路径。
 			log.Printf(`dashboard aggregate %s: %v`, opts.Root, err)
 			http.Error(w, `聚合质量数据失败，请检查 .forge 数据完整性`, http.StatusInternalServerError)
@@ -576,12 +767,20 @@ func newMux(opts Options) *http.ServeMux {
 		w.Header().Set(`Content-Type`, `application/json`)
 		_ = json.NewEncoder(w).Encode(toPublic(data))
 	})
+	// favicon: browsers request it automatically; return 204 to avoid console 404 noise
+	// (the dashboard ships no icon asset).
+	//
 	// favicon：浏览器自动请求，给 204 避免 console 404 噪声（看板无需图标资源）。
 	mux.HandleFunc(`/favicon.ico`, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})
+	// Task continuity dashboard: visualizes plan / decisions / blockers / participating
+	// tools for in-flight tasks. Complements the quality dashboard — the quality dashboard
+	// shows the quality of finished conclusions, the continuity dashboard shows how far the
+	// running task has progressed.
+	//
 	// 任务接续看板：进行中任务的 plan/决策/阻塞/参与工具可视化。与质量看板互补——
-	// 质量看板看"已完成结论的质量"，接续看板看"在跑的任务接续到哪了"。
+	// 质量看板看「已完成结论的质量」，接续看板看「在跑的任务接续到哪了」。
 	mux.HandleFunc(`/continuity`, func(w http.ResponseWriter, r *http.Request) {
 		board, err := AggregateContinuity(opts.Root, time.Now())
 		if err != nil {
@@ -605,13 +804,20 @@ func newMux(opts Options) *http.ServeMux {
 	return mux
 }
 
+// Serve starts the local HTTP dashboard server and blocks until ctx is canceled (Ctrl+C).
+// It binds to localhost; when the port is 0 the system picks a free port. If opening the
+// browser fails, it just prints the URL and does not stop the service.
+//
 // Serve 启动本地 HTTP 看板服务，阻塞直至 ctx 取消（Ctrl+C）。绑定 localhost，
 // 端口 0 时由系统分配临时端口。开浏览器失败仅打印 URL，不中断服务。
 func Serve(ctx context.Context, opts Options) error {
 	addr := fmt.Sprintf(`localhost:%d`, opts.Port)
 	ln, err := net.Listen(`tcp`, addr)
 	if err != nil {
-		// 端口占用给可操作提示，而非裸 OS 文案——用户画像重视"什么都不懂的用户能用"。
+		// On port-in-use, give an actionable hint rather than a raw OS message — the user
+		// persona cares about whether 'someone who knows nothing can still use it'.
+		//
+		// 端口占用给可操作提示，而非裸 OS 文案——用户画像重视「什么都不懂的用户能用」。
 		if isAddrInUse(err) {
 			return fmt.Errorf(`端口 %d 已被占用——省略 --port 用系统临时端口，或 --port 指定一个空闲端口`, opts.Port)
 		}
@@ -621,6 +827,8 @@ func Serve(ctx context.Context, opts Options) error {
 
 	if opts.OpenBrowser {
 		if oerr := openBrowser(url); oerr != nil {
+			// Non-fatal: print the URL so the user can open it manually.
+			//
 			// 非致命：打印 URL 让用户手动开。
 			fmt.Fprintf(os.Stderr, "自动打开浏览器失败（%v），请手动访问：%s\n", oerr, url)
 		}
@@ -629,6 +837,9 @@ func Serve(ctx context.Context, opts Options) error {
 	}
 	fmt.Fprintf(os.Stderr, "本地只读看板已启动，Ctrl+C 退出。\n")
 
+	// Wrap the entire mux with security headers + Host validation: every response carries
+	// the defensive headers, and non-local Hosts are rejected (DNS-rebinding defense).
+	//
 	// 安全头 + Host 校验包整条 mux：所有响应统一带防御头，非本机 Host 拒（防 DNS rebinding）。
 	srv := &http.Server{Handler: localhostOnly(securityHeaders(newMux(opts)))}
 	errCh := make(chan error, 1)
@@ -636,6 +847,11 @@ func Serve(ctx context.Context, opts Options) error {
 
 	select {
 	case <-ctx.Done():
+		// Once Shutdown closes the listener, Serve must return ErrServerClosed; 3s is the upper
+		// bound for active connections to wind down. The inner select is a timeout fallback so
+		// that in extreme cases where Serve does not return in time, Serve() does not block
+		// forever (forcing a second Ctrl+C).
+		//
 		// Shutdown 关 listener 后 Serve 必返回 ErrServerClosed；3s 是等活跃连接收尾的上限。
 		// 内层 select 兜底超时，防极端情况下 Serve 未及时返回导致 Serve() 永久阻塞（需二次 Ctrl+C）。
 		shutCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -654,9 +870,14 @@ func Serve(ctx context.Context, opts Options) error {
 	}
 }
 
+// isAddrInUse cross-platform detects port-in-use. errors.Is(syscall.EADDRINUSE) is reliable
+// on POSIX, but Windows net.Listen does not return that errno (its bind-failure message is
+// 'Only one usage of each socket address...'), so we add a string fallback — that message
+// format is a stable contract of the Go net package.
+//
 // isAddrInUse 跨平台判别端口占用。errors.Is(syscall.EADDRINUSE) 在 POSIX 上可靠，
-// 但 Windows 的 net.Listen 不返回该 errno（bind 失败消息为 "Only one usage of each
-// socket address..."），故辅以字符串兜底——该消息格式是 Go net 包的稳定契约。
+// 但 Windows 的 net.Listen 不返回该 errno（bind 失败消息为「Only one usage of each
+// socket address...」），故辅以字符串兜底——该消息格式是 Go net 包的稳定契约。
 func isAddrInUse(err error) bool {
 	if errors.Is(err, syscall.EADDRINUSE) {
 		return true
@@ -665,6 +886,13 @@ func isAddrInUse(err error) bool {
 	return strings.Contains(msg, "address already in use") || strings.Contains(msg, "Only one usage of each socket address")
 }
 
+// openBrowser opens the default browser across platforms. When url carries a query, the
+// Windows start command needs a title placeholder (an empty title, preventing & in the url
+// from being treated by cmd as a command separator). After Start, Wait runs asynchronously
+// to reclaim the child process handle — start / open / xdg-open are thin wrappers that
+// usually fork the browser process and exit immediately, and skipping Wait would leak the
+// os.Process.
+//
 // openBrowser 跨平台打开默认浏览器。url 含 query 时 Windows 的 start 需要 title 占位
 // （空标题，防 url 含 & 被 cmd 当命令分隔符）。Start 后异步 Wait 回收子进程句柄——
 // start/open/xdg-open 多为派生浏览器进程后即退出的薄包装，不 Wait 会泄漏 os.Process。

@@ -1,3 +1,10 @@
+// Package skillsdist implements distribution of the skill library: syncing the
+// canonical source to each tool's target directory (pi/claude/cursor global
+// locations or project .claude/skills), supporting both link and copy modes,
+// detecting distribution drift, deploying the skill-routing adapter as a single
+// file, and maintaining manifest state. Semantics align 1:1 with
+// SkillsHub admin/scripts/sync.py.
+//
 // Package skillsdist 实现 skill 库的分发：把 canonical 源同步到各工具目标目录
 // （pi/claude/cursor 的全局位置或项目 .claude/skills），支持 link 与 copy 两种模式，
 // 检测分发分叉（drift），部署 skill-routing adapter 单文件，维护 manifest 状态。
@@ -14,6 +21,8 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
+// Manifest is the distribution-state inventory (aligns with the registry.py manifest schema).
+//
 // Manifest 是分发状态清单（对齐 registry.py manifest schema）。
 // 落点改为 ~/.forge/skills-manifest.json（统一 forge 全局根，不放 ~/.agents/）。
 type Manifest struct {
@@ -27,6 +36,8 @@ type Manifest struct {
 	Skills          []ManifestSkill     `json:"skills"`
 }
 
+// ManifestStats is the statistical summary of the manifest.
+//
 // ManifestStats 是 manifest 的统计摘要。
 type ManifestStats struct {
 	Total  int `json:"total"`
@@ -34,12 +45,16 @@ type ManifestStats struct {
 	Issues int `json:"issues"`
 }
 
+// ManifestSkill is the per-skill entry in the manifest: skillsqa report plus distribution target state.
+//
 // ManifestSkill 是 manifest 里每个 skill 的条目：skillsqa 报告 + 分发目标状态。
 type ManifestSkill struct {
 	skillsqa.SkillReport
 	Targets map[string]string `json:"targets"`
 }
 
+// ManifestPath returns ~/.forge/skills-manifest.json.
+//
 // ManifestPath 返回 ~/.forge/skills-manifest.json。
 func ManifestPath() (string, error) {
 	home, err := os.UserHomeDir()
@@ -49,6 +64,8 @@ func ManifestPath() (string, error) {
 	return filepath.Join(home, ".forge", "skills-manifest.json"), nil
 }
 
+// SaveManifest writes the manifest to ~/.forge/skills-manifest.json.
+//
 // SaveManifest 把 manifest 写到 ~/.forge/skills-manifest.json。
 func SaveManifest(m *Manifest) error {
 	path, err := ManifestPath()
@@ -65,6 +82,8 @@ func SaveManifest(m *Manifest) error {
 	return util.AtomicWrite(path, data, 0644)
 }
 
+// LoadManifest reads from ~/.forge/skills-manifest.json.
+//
 // LoadManifest 从 ~/.forge/skills-manifest.json 读取。
 func LoadManifest() (*Manifest, error) {
 	path, err := ManifestPath()
@@ -82,6 +101,12 @@ func LoadManifest() (*Manifest, error) {
 	return &m, nil
 }
 
+// BuildManifest scans all canonical skills and assembles the distribution-state
+// inventory (registry report plus per-target state). Called after a successful
+// install and SaveManifest, kept as the last-install snapshot for system health
+// checks and queries. Audits independently of install quality gates: the
+// manifest reflects the full canonical set, not the install subset.
+//
 // BuildManifest 扫描 canonical 全量 skill，组装分发状态清单（registry 报告 + 各目标态）。
 // install 成功后调用并 SaveManifest，留作"上次安装快照"供 system 健康检查与查询。
 // 与 install 的质量门控独立重新 audit：manifest 反映 canonical 全量，而非本次 install 子集。
@@ -111,6 +136,8 @@ func BuildManifest(canonical string, opts InstallOpts) (*Manifest, error) {
 				passCount++
 			}
 		} else {
+			// SKILL.md unreadable: record the name only, do not block manifest generation.
+			//
 			// SKILL.md 不可读：仅记名，不阻塞 manifest 生成
 			ms.Name = name
 		}

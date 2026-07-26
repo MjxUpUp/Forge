@@ -1,3 +1,6 @@
+// Package util provides cross-cutting filesystem helpers shared by the .forge/ persistence layer
+// (task state, pipeline state, gate state, tool/check logs).
+//
 // Package util 提供 .forge/ 持久化层（task 状态、pipeline 状态、gate 状态、tool/check 日志）
 // 共享的横切文件系统辅助函数。
 package util
@@ -13,6 +16,19 @@ import (
 	"time"
 )
 
+// AtomicWrite atomically writes data to path: it first writes a temp file in the same directory, fsyncs it,
+// then renames it over the target file.
+//
+// A plain os.WriteFile truncates the target before writing in place, so a crash, power loss, or a concurrent
+// write mid-flight leaves a half file. Every .forge/ state loader (task state, pipeline state, gate state,
+// active-task-ref) JSON-parses the result and treats a parse error as corruption — so one incomplete write
+// amplifies a transient crash into a permanently unreadable task. AtomicWrite closes this time window: a reader
+// sees either the complete old version or the complete new version, never a half-written mix.
+//
+// os.Rename is atomic on POSIX (rename(2)). On Windows, Go 1.5+ uses MoveFileEx with MOVEFILE_REPLACE_EXISTING,
+// so it atomically replaces an existing target, with no delete-then-rename race window. The temp file is created
+// next to the target, so rename never crosses a filesystem boundary (crossing would degrade to copy+delete and lose atomicity).
+//
 // AtomicWrite 原子地把 data 写入 path：先在所在目录写一个临时文件并 fsync，
 // 再 rename 覆盖目标文件。
 //
@@ -65,6 +81,12 @@ func AtomicWrite(path string, data []byte, perm os.FileMode) error {
 	return nil
 }
 
+// renameWithRetry renames old to new, briefly retrying when Windows refuses the replacement because a concurrent
+// reader still holds the target file open. In that case MoveFileEx with MOVEFILE_REPLACE_EXISTING (i.e. Go's os.Rename
+// on Windows) returns ERROR_ACCESS_DENIED / ERROR_SHARING_VIOLATION, unlike POSIX rename(2) which replaces unconditionally.
+// Each retry is still atomic; it only widens the time window to cover the reader's brief open span
+// (e.g. LoadTaskState finishing its ReadFile). Non-retryable errors fail fast on the first attempt.
+//
 // renameWithRetry 把 old 重命名为 new，并在 Windows 因并发读者仍持有目标文件而拒绝
 // 替换时短暂重试。此时 MoveFileEx 配 MOVEFILE_REPLACE_EXISTING（即 Go 在 Windows 上的
 // os.Rename）返回 ERROR_ACCESS_DENIED / ERROR_SHARING_VIOLATION，与 POSIX rename(2)
@@ -88,6 +110,10 @@ func renameWithRetry(old, new string) error {
 	return err
 }
 
+// isRetryableRenameErr reports whether a rename error is the transient Windows condition of the target being held
+// open by a concurrent reader, which is worth retrying. These Windows errno values never occur in a POSIX rename,
+// so on POSIX it always returns false — POSIX rename either succeeds or fails in a non-transient way.
+//
 // isRetryableRenameErr 判断一个 rename 错误是否是值得重试的瞬态 Windows
 // target held open by a concurrent reader 条件。这些 Windows errno 不会出现在
 // POSIX rename 里，所以在 POSIX 上恒返回 false——POSIX rename 要么成功要么以
@@ -104,6 +130,14 @@ func isRetryableRenameErr(err error) bool {
 	return errno == errorAccessDenied || errno == errorSharingViolation
 }
 
+// ArchivedName returns a non-conflicting archive path for a rotated log file
+// (.forge/<filePrefix>-<stamp>.jsonl).
+//
+// The stamp has nanosecond precision, so two archives created in the same second — concurrent task start, or a quick
+// Archive-then-Clear cycle — no longer overwrite each other. The previous second-precision stamp silently collided on
+// POSIX (os.Rename overwrote the earlier archive) and errored on Windows (Rename refuses an existing target),
+// losing one of the two rotated logs. In the exceedingly rare same-nanosecond collision, a numeric suffix is appended after a stat check.
+//
 // ArchivedName 为轮转的日志文件返回一个不冲突的归档路径
 // （.forge/<filePrefix>-<stamp>.jsonl）。
 //
@@ -124,14 +158,20 @@ func ArchivedName(dir, filePrefix string, now time.Time) string {
 	}
 }
 
+// archiveTimestamp parses the timestamp in an archive file name. ArchivedName produces {prefix}-{stamp}.jsonl;
+// the stamp is currently nanosecond-precision 20060102150405.000000000, earlier versions were second-precision 20060102150405,
+// and a same-nanosecond collision appends a -{i} suffix. This function tolerates all three naming forms; on parse failure it returns zero+false
+// (the caller falls back to mtime). The prefix contains no glob metacharacters, so TrimPrefix is safe.
+//
 // archiveTimestamp 解析归档文件名中的时间戳。ArchivedName 产生 {prefix}-{stamp}.jsonl，
-// stamp 当前为纳秒精度 "20060102150405.000000000"，早期版本为秒精度 "20060102150405"，
-// 同纳秒冲突时追加 "-{i}" 后缀。本函数兼容三种命名，解析失败返回 zero+false（调用方
+// stamp 当前为纳秒精度"20060102150405.000000000"，早期版本为秒精度"20060102150405"，
+// 同纳秒冲突时追加"-{i}"后缀。本函数兼容三种命名，解析失败返回 zero+false（调用方
 // fallback mtime）。prefix 不含 glob 元字符，TrimPrefix 安全。
 func archiveTimestamp(name, prefix string) (time.Time, bool) {
 	rest := strings.TrimPrefix(name, prefix+"-")
 	rest = strings.TrimSuffix(rest, ".jsonl")
-	// 去掉同纳秒冲突后缀 "-{i}"：stamp 本身是纯数字+点，不含 '-'，故首个 '-' 之前即 stamp。
+	// Drop the same-nanosecond collision suffix -{i}: the stamp itself is digits+dot with no '-', so everything before the first '-' is the stamp.
+	// 去掉同纳秒冲突后缀"-{i}"：stamp 本身是纯数字+点，不含 '-'，故首个 '-' 之前即 stamp。
 	if idx := strings.Index(rest, "-"); idx >= 0 {
 		rest = rest[:idx]
 	}
@@ -143,8 +183,17 @@ func archiveTimestamp(name, prefix string) (time.Time, bool) {
 	return time.Time{}, false
 }
 
+// PruneArchives deletes files under dir matching {prefix}-*.jsonl whose archive time is before cutoff.
+// It never touches the active file {prefix}.jsonl — it has no '-', so the glob {prefix}-* does not match.
+//
+// Archive age is preferentially taken from the file-name timestamp (the rotation moment ArchivedName wrote, semantically most accurate);
+// on parse failure it falls back to mtime: os.Rename preserves the source file mtime, so for normal archives the two agree, and the fallback
+// only tolerates scenarios where mtime was changed externally. Best-effort: a stat/parse/remove failure on a single file is skipped and accumulated
+// into err, without aborting the overall cleanup — cleanup is a side effect of Clear and should not fail task start over one bad file.
+// Returns the removed count plus any accumulated non-fatal errors.
+//
 // PruneArchives 删除 dir 下 {prefix}-*.jsonl 归档中归档时刻早于 cutoff 的文件。
-// 不碰 active 文件 {prefix}.jsonl——它无 "-"，glob "{prefix}-*" 不匹配。
+// 不碰 active 文件 {prefix}.jsonl——它无"-"，glob"{prefix}-*"不匹配。
 //
 // 归档龄优先按文件名时间戳（ArchivedName 写入的轮转时刻，语义最准）；解析失败
 // fallback mtime：os.Rename 保留源文件 mtime，故对正常归档两者一致，fallback 只为
@@ -183,6 +232,10 @@ func PruneArchives(dir, prefix string, cutoff time.Time) (removed int, err error
 	return removed, nil
 }
 
+// RetentionDays reads envName and parses it as a retention day count; missing or invalid returns defaultDays.
+// ≤0 means retention is disabled (the caller skips cleanup accordingly). The env overrides the default for on-demand tuning:
+// set it to a smaller value (e.g. 14) and run task start once to reclaim archives older than that many days; set it to 0 to turn off auto-cleanup entirely.
+//
 // RetentionDays 读 envName 解析为 retention 天数；缺失或非法返回 defaultDays。
 // ≤0 表示禁用 retention（调用方据此跳过清理）。env 覆盖默认值用于按需调整：设为较小值
 // （如 14）后跑一次 task start 即回收对应天数前的归档；设为 0 则完全关闭自动清理。

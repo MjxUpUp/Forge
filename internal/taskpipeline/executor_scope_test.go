@@ -7,6 +7,8 @@ import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
 )
 
+// findScopeDriftEntry finds the CheckScopeDrift entry in checklog (pointer, convenient for reading fields).
+//
 // findScopeDriftEntry 在 checklog 里找 CheckScopeDrift 条目（指针，便于读字段）。
 func findScopeDriftEntry(t *testing.T, dir string) *checklog.Entry {
 	t.Helper()
@@ -22,6 +24,10 @@ func findScopeDriftEntry(t *testing.T, dir string) *checklog.Entry {
 	return nil
 }
 
+// TestExecuteTaskGate_ScopeDrift_RecordsAdvisory pins the core contract: task declared PlanScope,
+// actually modified source outside declaration → task-verify records one CheckScopeDrift (Passed=false, deterministic),
+// and gate still PASSes (advisory non-blocking — change-impact recall only ~44%, scope is a prediction).
+//
 // TestExecuteTaskGate_ScopeDrift_RecordsAdvisory 钉住核心契约：任务声明了 PlanScope，
 // 实改了声明外的源码 → task-verify 记一条 CheckScopeDrift（Passed=false、deterministic），
 // 且 gate 照常 PASS（advisory 不阻塞——变更影响分析召回率仅 ~44%，scope 是 prediction）。
@@ -68,6 +74,9 @@ func Foo() int { return 1 }
 	}
 }
 
+// TestExecuteTaskGate_ScopeDrift_PassesWhenInScope: all actually-modified files within declaration (test co-covered with source)
+// → CheckScopeDrift Passed=true. foo_test.go auto-covered with foo.go declaration (no false drift).
+//
 // TestExecuteTaskGate_ScopeDrift_PassesWhenInScope 实改文件全在声明内（含测试随源码覆盖）
 // → CheckScopeDrift Passed=true。foo_test.go 随 foo.go 声明自动覆盖（不误报 drift）。
 func TestExecuteTaskGate_ScopeDrift_PassesWhenInScope(t *testing.T) {
@@ -101,6 +110,9 @@ func TestFoo(t *testing.T) {}
 	}
 }
 
+// TestExecuteTaskGate_ScopeDrift_SkippedWhenNoScope: no PlanScope declared → no CheckScopeDrift recorded
+// (no declaration means no drift detectable, avoiding noise). This is the advisory prerequisite: scope is an opt-in contract.
+//
 // TestExecuteTaskGate_ScopeDrift_SkippedWhenNoScope 未声明 PlanScope → 不记 CheckScopeDrift
 // （无声明即无 drift 可检测，避免噪声）。这是 advisory 的前提：scope 是 opt-in 契约。
 func TestExecuteTaskGate_ScopeDrift_SkippedWhenNoScope(t *testing.T) {
@@ -114,6 +126,8 @@ func Foo() int { return 1 }
 	}, `add foo`)
 
 	state := newVerifyState(t, dir, `no-scope-task`)
+	// PlanScope left empty
+	//
 	// PlanScope 留空
 
 	if _, err := ExecuteTaskGate(dir, `task-verify`, state); err != nil {
@@ -124,6 +138,9 @@ func Foo() int { return 1 }
 	}
 }
 
+// TestExecuteTaskGate_ScopeDrift_NonSourceIgnored: modified non-source file outside declaration (README.md)
+// → does not count as drift (drift only applies to source; modifying README is exploration, not a scope breach).
+//
 // TestExecuteTaskGate_ScopeDrift_NonSourceIgnored 改了声明外的非源码文件（README.md）
 // → 不算 drift（drift 只对源码；改 README 是探索，非 scope 违约）。
 func TestExecuteTaskGate_ScopeDrift_NonSourceIgnored(t *testing.T) {

@@ -9,6 +9,8 @@ import (
 
 func at(hour int) time.Time { return time.Date(2026, 7, 1, hour, 0, 0, 0, time.UTC) }
 
+// conc is shorthand for building a test conclusion: ref/score/grade/strength/low-score dimensions/completion time.
+//
 // conc 是构造测试结论的简写：ref/score/grade/strength/低分维度/完成时刻。
 func conc(ref, grade, strength string, score float64, lowDims []string, t time.Time) act.Conclusion {
 	return act.Conclusion{
@@ -35,6 +37,8 @@ func TestSummarize_Empty(t *testing.T) {
 }
 
 func TestSummarize_BlindSpotRateAndDists(t *testing.T) {
+	// 4 tasks: 2 Strong, 1 Unverified, 1 Weak → blind-spot rate 50% (2/4).
+	//
 	// 4 个任务：2 Strong、1 Unverified、1 Weak → 盲区率 50%（2/4）。
 	cs := []act.Conclusion{
 		conc(`a`, `A`, `Strong`, 95, nil, at(1)),
@@ -46,10 +50,14 @@ func TestSummarize_BlindSpotRateAndDists(t *testing.T) {
 	if s.TotalTasks != 4 {
 		t.Fatalf(`TotalTasks=%d want 4`, s.TotalTasks)
 	}
+	// Average score (95+90+92+60)/4 = 84.25
+	//
 	// 均分 (95+90+92+60)/4 = 84.25
 	if s.AvgScore != 84.25 {
 		t.Errorf(`AvgScore=%v want 84.25`, s.AvgScore)
 	}
+	// Median (90+92)/2 = 91
+	//
 	// 中位 (90+92)/2 = 91
 	if s.MedianScore != 91 {
 		t.Errorf(`MedianScore=%v want 91`, s.MedianScore)
@@ -66,6 +74,8 @@ func TestSummarize_BlindSpotRateAndDists(t *testing.T) {
 }
 
 func TestSummarize_LowDimsRanked(t *testing.T) {
+	// tests appears 3 times (b, c, e), scope 2 times, docs 1 time → descending order tests/scope/docs.
+	//
 	// tests 出现 3 次（b、c、e），scope 2 次，docs 1 次 → 降序 tests/scope/docs。
 	cs := []act.Conclusion{
 		conc(`a`, `A`, `Strong`, 95, []string{`tests`}, at(1)),
@@ -138,8 +148,11 @@ func TestSummarize_SpanFromEarliestToLatest(t *testing.T) {
 }
 
 func TestSummarize_PhasePassRate(t *testing.T) {
+	// t1: api+backend grade A (both pass); t2: api grade C (fail); t3: backend grade B (pass);
+	// t4: empty grade does not enter phaseGrades (no grade gatekeeping).
+	//
 	// t1: api+backend grade A（都通过）；t2: api grade C（不过）；t3: backend grade B（通过）；
-	// t4: grade="" 不进 phaseGrades（无 grade 守门）。
+	// t4: grade=""不进 phaseGrades（无 grade 守门）。
 	cs := []act.Conclusion{
 		{TaskRef: `t1`, Grade: `A`, Strength: `Strong`, Score: 95, DesignPhases: []string{`api`, `backend`}, CompletedAt: at(1)},
 		{TaskRef: `t2`, Grade: `C`, Strength: `Strong`, Score: 75, DesignPhases: []string{`api`}, CompletedAt: at(2)},
@@ -150,10 +163,14 @@ func TestSummarize_PhasePassRate(t *testing.T) {
 	if s.PhasePassRate == nil {
 		t.Fatal(`PhasePassRate=nil want 非空（有 phase+grade 数据）`)
 	}
+	// api: t1(A,pass) + t2(C,fail) + t4(no grade,excluded) → 1 pass / 2 total = 0.5
+	//
 	// api: t1(A,通过) + t2(C,不过) + t4(无grade,不进) → 1 通过 / 2 总数 = 0.5
 	if got := s.PhasePassRate[`api`]; got != 0.5 {
 		t.Errorf(`api pass_rate=%v want 0.5（A通过/C不过/无grade不进 → 1/2）`, got)
 	}
+	// backend: t1(A) + t3(B) → 2/2 = 1.0 (both A+B pass)
+	//
 	// backend: t1(A) + t3(B) → 2/2 = 1.0（A+B 都通过）
 	if got := s.PhasePassRate[`backend`]; got != 1.0 {
 		t.Errorf(`backend pass_rate=%v want 1.0（A+B 都通过）`, got)
@@ -161,10 +178,14 @@ func TestSummarize_PhasePassRate(t *testing.T) {
 }
 
 func TestSummarize_PhasePassRate_EmptyIsNil(t *testing.T) {
+	// Empty slice → PhasePassRate nil (JSON omitempty takes effect, no empty map emitted).
+	//
 	// 空切片 → PhasePassRate nil（JSON omitempty 生效，不出空 map）。
 	if s := Summarize(nil); s.PhasePassRate != nil {
 		t.Errorf(`空切片 PhasePassRate=%v want nil`, s.PhasePassRate)
 	}
+	// No grade at all → phaseGrades never populated → PhasePassRate nil.
+	//
 	// 全无 grade → phaseGrades 永不填充 → PhasePassRate nil。
 	s2 := Summarize([]act.Conclusion{
 		{TaskRef: `x`, Grade: ``, Strength: `Strong`, Score: 0, DesignPhases: []string{`api`}, CompletedAt: at(1)},

@@ -8,6 +8,9 @@ import (
 	"time"
 )
 
+// TestEstimateTokens: rune/3 heuristic for token estimation (loop cost proxy).
+// Core contract: empty=0, rune/3+1 monotonic, CJK and English both counted by rune (a single CJK char counts as 1 rune).
+//
 // TestEstimateTokens：token 估算的 rune/3 启发式（loop 成本代理）。
 // 核心契约：空=0、rune/3+1 单调、中英文统一按 rune 计数（中文 1 字也算 1 rune）。
 func TestEstimateTokens(t *testing.T) {
@@ -27,6 +30,8 @@ func TestEstimateTokens(t *testing.T) {
 	}
 }
 
+// TestSumEstTokens: cumulative token aggregation (used by trace to show loop cost). EstTokens=0 does not affect the sum.
+//
 // TestSumEstTokens：累计 token 聚合（trace 显示 loop 成本用）。EstTokens=0 不影响累计。
 func TestSumEstTokens(t *testing.T) {
 	calls := []ToolCall{
@@ -39,6 +44,10 @@ func TestSumEstTokens(t *testing.T) {
 	}
 }
 
+// TestRecord_PersistsTokenFields: InputLen/EstTokens must persist with ToolCall to the toollog
+// and be readable back via LoadAll — the contract of the full token-metering chain (hook fills → JSON → trace reads).
+// Guards JSON tag correctness (a session_id→task_id mis-edit incident once occurred; token fields share the same risk tier as session_id).
+//
 // TestRecord_PersistsTokenFields：InputLen/EstTokens 必须随 ToolCall 持久化到 toollog
 // 并能 LoadAll 读回——token 计量全链路（hook 填充 → JSON → trace 读取）的契约。
 // 守护 JSON tag 正确（曾发生 session_id→task_id 误改事故，token 字段与 session_id 同级风险）。
@@ -60,6 +69,8 @@ func TestRecord_PersistsTokenFields(t *testing.T) {
 	if loaded[0].InputLen != 14 || loaded[0].EstTokens != 5 {
 		t.Fatalf("token 字段未持久化: InputLen=%d EstTokens=%d（JSON tag/序列化断裂）", loaded[0].InputLen, loaded[0].EstTokens)
 	}
+	// session_id tag regression guard: token-field changes must not touch the session-isolation field (concurrency-safety red line).
+	//
 	// session_id tag 回归保护：token 字段改动不应碰会话隔离字段（并发安全红线）。
 	call2 := &ToolCall{ToolName: "Read", SessionID: "sess-abc"}
 	if err := Record(dir, call2); err != nil {
@@ -100,6 +111,9 @@ func TestRecordAndLoad(t *testing.T) {
 	}
 }
 
+// TestTokenBreakerWarning: pure judgement function — above threshold returns a warning, below returns empty.
+// Does not depend on files, so threshold boundaries can be covered directly (avoids manufacturing >500k-token test data).
+//
 // TestTokenBreakerWarning：纯判断函数——超阈值返回警示，未超返回空。
 // 不依赖文件，可直接覆盖阈值边界（避免造超 50 万 token 的测试数据）。
 func TestTokenBreakerWarning(t *testing.T) {
@@ -114,10 +128,15 @@ func TestTokenBreakerWarning(t *testing.T) {
 	}
 }
 
+// TestTaskTokenBreaker: file-load + aggregation wiring — write an above-threshold call → warning non-empty + total correct;
+// below threshold → empty. Guards that token metering is actually wired into cost breaking (prevents regression to 「只观测不 gating」).
+//
 // TestTaskTokenBreaker：文件加载 + 聚合接入——写超阈值的 call → warning 非空 + total 正确；
-// 未超 → 空。守护 token 计量真正接入成本熔断（防回归到"只观测不 gating"）。
+// 未超 → 空。守护 token 计量真正接入成本熔断（防回归到「只观测不 gating」）。
 func TestTaskTokenBreaker(t *testing.T) {
 	dir := t.TempDir()
+	// One ToolCall with a huge EstTokens; cumulative total crosses the threshold.
+	//
 	// 一条超大 EstTokens 的 call，累计超阈值。
 	if err := Record(dir, &ToolCall{ToolName: "Read", TaskRef: "feat/big", EstTokens: taskTokenWarnThreshold + 100}); err != nil {
 		t.Fatal(err)
@@ -130,6 +149,8 @@ func TestTaskTokenBreaker(t *testing.T) {
 		t.Errorf("total=%d want %d", total, taskTokenWarnThreshold+100)
 	}
 
+	// Below-threshold task → no warning.
+	//
 	// 未超阈值的 task → 无警示。
 	if err := Record(dir, &ToolCall{ToolName: "Edit", TaskRef: "feat/small", EstTokens: 100}); err != nil {
 		t.Fatal(err)
@@ -276,6 +297,9 @@ func TestClear(t *testing.T) {
 	}
 }
 
+// TestClear_PrunesOldArchives: after Clear rotates, prune over-age toollog archives per FORGE_LOG_RETENTION_DAYS,
+// keeping recent archives.
+//
 // TestClear_PrunesOldArchives：Clear 轮转后按 FORGE_LOG_RETENTION_DAYS 清超期 toollog 归档，
 // 保留近期归档。
 func TestClear_PrunesOldArchives(t *testing.T) {

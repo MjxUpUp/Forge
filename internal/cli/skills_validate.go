@@ -16,6 +16,8 @@ var (
 	skValJSON  bool
 )
 
+// exit code contract: 0=all pass, 2=spec failure present.
+//
 // exit code 契约：0=全部通过，2=存在规范失败。
 var skillsValidateCmd = &cobra.Command{
 	Use:   "validate",
@@ -90,6 +92,8 @@ func runSkillsValidate(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// filterSkillNames filters skill names by whitelist (CLI layer, preserves order).
+//
 // filterSkillNames 按白名单过滤 skill 名（CLI 层，保持 order）。
 func filterSkillNames(all, want []string) []string {
 	set := map[string]bool{}

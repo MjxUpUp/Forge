@@ -8,6 +8,9 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
+// TestRenderResumeSections verifies that the resume view renders all continuity fields — so the handoff party sees at a glance
+// goal/plan/decisions/next-step/blockers/findings/artifacts + git changed-but-uncommitted. This is the core deliverable of the continuity source of truth.
+//
 // TestRenderResumeSections 验证 resume 视图把各接续字段都渲染出来——接手方一眼即见
 // 目标/计划/决策/下一步/阻塞/发现/产物 + git 已改未提交。这是接续真相源的核心交付。
 func TestRenderResumeSections(t *testing.T) {
@@ -45,6 +48,9 @@ func TestRenderResumeSections(t *testing.T) {
 	}
 }
 
+// TestRenderResume_ExternalOrigin pins the origin visibility of the proof-of-work loop: when the task carries an external issue
+// source (--from_issue), the resume view shows tracker/identifier/URL, so the handoff party sees at a glance which issue the task is anchored to.
+//
 // TestRenderResume_ExternalOrigin 钉住 proof-of-work 闭环的 origin 可见性：task 带外部 issue
 // 来源（--from_issue）时，resume 视图显示 tracker/identifier/URL，接手方一眼知 task 锚在哪个 issue。
 func TestRenderResume_ExternalOrigin(t *testing.T) {
@@ -66,6 +72,8 @@ func TestRenderResume_ExternalOrigin(t *testing.T) {
 	}
 }
 
+// TestRenderResumeEmpty gives a minimal status card when continuity content is empty (no error, hints how to supplement) — resume always succeeds.
+//
 // TestRenderResumeEmpty 空接续内容时给最小状态卡（不报错、提示如何补充）——resume 永远成功。
 func TestRenderResumeEmpty(t *testing.T) {
 	state := &taskpipeline.TaskState{TaskRef: "feat/empty", Branch: "feat/empty"}
@@ -81,6 +89,8 @@ func TestRenderResumeEmpty(t *testing.T) {
 	}
 }
 
+// TestRenderResumeBlockerStatus verifies that the status markers (open/resolved/fixed) of blockers/findings render correctly.
+//
 // TestRenderResumeBlockerStatus 验证阻塞/发现的状态标记（open/resolved/fixed）渲染正确。
 func TestRenderResumeBlockerStatus(t *testing.T) {
 	state := &taskpipeline.TaskState{TaskRef: "feat/st", Branch: "feat/st"}
@@ -99,6 +109,9 @@ func TestRenderResumeBlockerStatus(t *testing.T) {
 	}
 }
 
+// TestRenderResume_StripsANSI: the resume output strips ANSI escape sequences (external markdown read via --plan-file
+// may contain malicious ANSI clear-screen/recolor sequences), keeping normal content. Symmetric to the HTML side html/template escaping.
+//
 // TestRenderResume_StripsANSI：resume 输出剥离 ANSI 转义序列（--plan-file 读入的外部 markdown
 // 可能含恶意 ANSI 清屏/改色序列），保留正常内容。对称 HTML 端 html/template 转义。
 func TestRenderResume_StripsANSI(t *testing.T) {
@@ -118,6 +131,9 @@ func TestRenderResume_StripsANSI(t *testing.T) {
 	}
 }
 
+// TestRenderHookResume_NoActiveTask: SessionStart hook mode with no active task -> returns empty string (silent, no injection,
+// no error). A fresh project (init but never task start) opening a new session should not inject any continuity context.
+//
 // TestRenderHookResume_NoActiveTask：SessionStart hook 模式无活跃任务 → 返空串（静默，不注入、
 // 不报错）。fresh 项目（init 后未 task start）开新会话不应注入任何接续上下文。
 func TestRenderHookResume_NoActiveTask(t *testing.T) {
@@ -132,6 +148,9 @@ func TestRenderHookResume_NoActiveTask(t *testing.T) {
 	}
 }
 
+// TestRenderHookResume_WithActiveTask: with an active task -> returns `PASS\n` + HANDOFF view (including task ref/
+// goal/gate progress), and auto-attaches the current session (silent, tool=claude-code).
+//
 // TestRenderHookResume_WithActiveTask：有活跃任务 → 返 "PASS\n"+HANDOFF 视图（含 task ref/
 // goal/门禁进度），且自动 attach 当前 session（silent，tool=claude-code）。
 func TestRenderHookResume_WithActiveTask(t *testing.T) {
@@ -157,6 +176,8 @@ func TestRenderHookResume_WithActiveTask(t *testing.T) {
 			t.Errorf("hook 输出应含 %q\n---OUT---\n%s", want, out)
 		}
 	}
+	// attach side effect: silent mode silently anchors the current session to the task.
+	//
 	// attach 副作用：silent 模式静默把当前 session 锚到任务
 	reloaded, _ := taskpipeline.LoadTaskState(root, "feat/hook-demo")
 	if reloaded == nil || !reloaded.HasSession("sid-hook-1") {
@@ -164,6 +185,9 @@ func TestRenderHookResume_WithActiveTask(t *testing.T) {
 	}
 }
 
+// TestRenderHookResume_IdempotentAttach: the same session running repeatedly (multiple SessionStart) attaches idempotently —
+// an already-anchored session is not added again, no error (guaranteed by the HasSession branch of attachCurrentSession).
+//
 // TestRenderHookResume_IdempotentAttach：同 session 重复跑（多次 SessionStart）attach 幂等——
 // 已锚定 session 不重复添加、不报错（attachCurrentSession 的 HasSession 分支保证）。
 func TestRenderHookResume_IdempotentAttach(t *testing.T) {
@@ -187,6 +211,9 @@ func TestRenderHookResume_IdempotentAttach(t *testing.T) {
 	}
 }
 
+// TestRenderResumeTldr: when there are continuity fields, renderResume output near the top contains a tl;dr block (goal first line / doing now / open blockers).
+// tl;dr is compact and near the top to survive compression — mitigating context rot (gap#2 cross-host mitigation layer). Resolved blockers do not enter the summary.
+//
 // TestRenderResumeTldr：有接续字段时 renderResume 输出靠前含 tl;dr 块（目标首行/现在做/open 阻塞）。
 // tl;dr 紧凑靠前是为压缩后存活——缓解 context rot（gap#2 跨 host 缓解层）。已解决阻塞不进摘要。
 func TestRenderResumeTldr(t *testing.T) {
@@ -205,6 +232,8 @@ func TestRenderResumeTldr(t *testing.T) {
 			t.Errorf("tl;dr 应含 %q\n---OUT---\n%s", want, out)
 		}
 	}
+	// tl;dr should come before the detailed Goal section (near the top helps it survive compression).
+	//
 	// tl;dr 应在详细【目标】段之前（靠前利于压缩后存活）
 	tldrIdx := strings.Index(out, "tl;dr")
 	detailIdx := strings.Index(out, "【目标】")
@@ -213,6 +242,9 @@ func TestRenderResumeTldr(t *testing.T) {
 	}
 }
 
+// TestRenderResumeTldr_NoContinuity: when there are no continuity fields (HasContinuity=false), tl;dr is not rendered —
+// an empty tl;dr has no value and would be redundant alongside the `no structured continuity fields yet` hint.
+//
 // TestRenderResumeTldr_NoContinuity：无接续字段（HasContinuity=false）时不渲染 tl;dr——
 // 空 tl;dr 无价值，与"尚无结构化接续字段"提示并存会冗余。
 func TestRenderResumeTldr_NoContinuity(t *testing.T) {
@@ -223,10 +255,15 @@ func TestRenderResumeTldr_NoContinuity(t *testing.T) {
 	}
 }
 
+// TestRenderHookCompactFlag: PostCompact hook (gap#2 set-flag half) sets the active task ResumeStale=true
+// and persists it. No active task -> silent, no error; already ResumeStale -> idempotent, no duplicate write.
+//
 // TestRenderHookCompactFlag：PostCompact hook（gap#2 设标志半边）设活跃任务 ResumeStale=true
 // 并持久化。无活跃任务静默不报错；已 ResumeStale 幂等不重复写。
 func TestRenderHookCompactFlag(t *testing.T) {
 	root, _ := forgedatatest.RealProject(t)
+	// No active task → silent, no error.
+	//
 	// 无活跃任务 → 静默不报错
 	if err := renderHookCompactFlag(root); err != nil {
 		t.Fatalf("无活跃任务应静默不报错: %v", err)
@@ -243,12 +280,17 @@ func TestRenderHookCompactFlag(t *testing.T) {
 	if reloaded == nil || !reloaded.ResumeStale {
 		t.Errorf("PostCompact hook 应设 ResumeStale=true，state=%v", reloaded)
 	}
+	// Idempotent: already ResumeStale, calling again does not error.
+	//
 	// 幂等：已 ResumeStale 再调不报错
 	if err := renderHookCompactFlag(root); err != nil {
 		t.Fatalf("幂等 renderHookCompactFlag: %v", err)
 	}
 }
 
+// TestRenderHookReinject: UserPromptSubmit hook (gap#2 re-inject half) only re-injects the full handoff when ResumeStale=true
+// and clears the flag; ResumeStale=false -> silent empty return. Guarantees re-injection happens only once.
+//
 // TestRenderHookReinject：UserPromptSubmit hook（gap#2 重注入半边）仅在 ResumeStale=true 时
 // 重注入完整 handoff 并清标志；ResumeStale=false 静默返空。保证只重注入一次。
 func TestRenderHookReinject(t *testing.T) {
@@ -259,6 +301,8 @@ func TestRenderHookReinject(t *testing.T) {
 	}
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "sid-reinject")
 
+	// ResumeStale=false → silent empty return.
+	//
 	// ResumeStale=false → 静默返空
 	out, err := renderHookReinject(root)
 	if err != nil {
@@ -268,6 +312,8 @@ func TestRenderHookReinject(t *testing.T) {
 		t.Errorf("ResumeStale=false 应静默返空，实得 %q", out)
 	}
 
+	// compact-flag sets ResumeStale → reinject re-injects the full handoff.
+	//
 	// compact-flag 设 ResumeStale → reinject 重注入完整 handoff
 	if err := renderHookCompactFlag(root); err != nil {
 		t.Fatalf("renderHookCompactFlag: %v", err)
@@ -282,6 +328,8 @@ func TestRenderHookReinject(t *testing.T) {
 	if !strings.Contains(out, "feat/reinject") || !strings.Contains(out, "压缩后恢复") {
 		t.Errorf("reinject 应含 task ref/goal，实得 %q", out)
 	}
+	// After reinject, clears ResumeStale=false (silent next time, re-inject only once).
+	//
 	// reinject 后清 ResumeStale=false（下次静默，只重注入一次）
 	reloaded, _ := taskpipeline.LoadTaskState(root, "feat/reinject")
 	if reloaded == nil || reloaded.ResumeStale {
@@ -293,12 +341,20 @@ func TestRenderHookReinject(t *testing.T) {
 	}
 }
 
+// TestRenderHookReinject_SparseContinuityNudge (plan 4 mid-way checkpoint active driving): after compression, during re-injection,
+// if the task has not persisted any mid-way thread (decisions/next-step), a strong hint is appended to the end of the handoff to push the agent to persist explicitly —
+// what compression loses is exactly this working memory, otherwise the next compression rebuilds from scratch. When NextSteps already exist, nothing is appended (the thread is already on disk,
+// restoring is enough). Goal does not count (task start already persisted, not a compression loss item). Two roots isolate the positive and negative cases
+// (different git-root -> different project key -> different task dir, ActiveTaskState each only scans its own one).
+//
 // TestRenderHookReinject_SparseContinuityNudge（方案4·中途 checkpoint 主动驱动）：压缩后重注入
 // 时，若任务未落盘任何中途线程（决策/下一步），handoff 末尾追加强提示推 agent 显式落盘——
 // 压缩丢的正是这段工作记忆，下次压缩否则从零重建。已有 NextSteps 时不追加（线程已在盘上，
 // 复原即可）。Goal 不算（task start 已落盘，非压缩丢失项）。两个 root 隔离正负用例
 // （不同 git-root → 不同 project key → 不同 task dir，ActiveTaskState 各自只扫到自己那一个）。
 func TestRenderHookReinject_SparseContinuityNudge(t *testing.T) {
+	// Sparse thread (has Goal, no decide/next) -> append strong hint
+	//
 	// 稀疏线程（有 Goal 无 decide/next）→ 追加强提示
 	rootA, _ := forgedatatest.RealProject(t)
 	state := &taskpipeline.TaskState{TaskRef: "feat/sparse", Branch: "feat/sparse", Goal: "实现 X"}
@@ -317,6 +373,8 @@ func TestRenderHookReinject_SparseContinuityNudge(t *testing.T) {
 		t.Errorf("稀疏线程应追加压缩落盘强提示，输出:\n%s", out)
 	}
 
+	// Already persisted next-step (thread on disk) -> do not append
+	//
 	// 已落盘下一步（线程在盘上）→ 不追加
 	rootB, _ := forgedatatest.RealProject(t)
 	state2 := &taskpipeline.TaskState{TaskRef: "feat/rich", Branch: "feat/rich", Goal: "实现 Y"}

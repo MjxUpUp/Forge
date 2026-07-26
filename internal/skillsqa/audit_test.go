@@ -6,6 +6,9 @@ import (
 	"testing"
 )
 
+// writeSkillFiles builds a skill directory holding multiple files (rel supports
+// subpaths like .git/evil.md).
+//
 // writeSkillFiles 建一个含多文件的 skill 目录（rel 支持子目录如 .git/evil.md）。
 func writeSkillFiles(t *testing.T, name string, files map[string]string) string {
 	t.Helper()
@@ -58,6 +61,12 @@ func TestScan_DataExfil_DE1(t *testing.T) {
 }
 
 func TestScan_HTML_PI4_HiddenInstruction(t *testing.T) {
+	// A .html file with an HTML-comment-hidden injection directive → PI-4 must
+	// fire. PI-4 is designed for hidden-instruction comments, but .html was not
+	// in the markdown/Exec set and was never scanned as real HTML — the
+	// prototype-confirmation skill introduced the first .html canonical asset
+	// and exposed this blind spot.
+	//
 	// .html 含 HTML 注释隐藏注入指令 → PI-4 必须报。PI-4 专为隐藏指令注释设计，
 	// 但 .html 此前不在 markdown/Exec 集合，从不扫真正 HTML——prototype-confirmation
 	// 引入首个 .html canonical 资产暴露此盲区。
@@ -74,6 +83,11 @@ func TestScan_HTML_PI4_HiddenInstruction(t *testing.T) {
 }
 
 func TestScan_HTML_NoFalsePositive_CleanTemplate(t *testing.T) {
+	// A clean HTML prototype template (legitimate localStorage/clipboard/innerHTML,
+	// no injection/exfiltration) must not trip PI/DE — guards the .html coverage
+	// extension so it does not wrongly flag legitimate HTML assets (the
+	// prototype-confirmation template shape).
+	//
 	// 干净 HTML 原型模板（合法 localStorage/clipboard/innerHTML，无注入/外发）不得误报
 	// PI/DE——守护 .html 覆盖扩展不误伤合法 HTML 资产（prototype-confirmation 模板形态）。
 	sd := writeSkillFiles(t, "x", map[string]string{
@@ -96,6 +110,11 @@ el.innerHTML = "<b>ok</b>";
 }
 
 func TestScan_HTML_DE4_Exfiltrate(t *testing.T) {
+	// A .html file containing exfiltrate → DE-4 fires. Guards audit.go's PI/DE
+	// branch `|| r.Cat == data_exfiltration` against accidental removal — PI has
+	// a test (PI-4), DE needs coverage too; otherwise a future deletion of the
+	// DE branch's HtmlExts wiring would let DE silently miss .html files.
+	//
 	// .html 含 exfiltrate → DE-4 命中。守护 audit.go PI/DE 分支的
 	// `|| r.Cat == "data_exfiltration"` 不被误删——PI 有测试（PI-4），DE 也要覆盖，
 	// 否则未来误删 DE 分支的 HtmlExts 接入会让 DE 在 .html 静默漏报。
@@ -110,6 +129,10 @@ func TestScan_HTML_DE4_Exfiltrate(t *testing.T) {
 }
 
 func TestScan_HTML_HtmAndUpperCase(t *testing.T) {
+	// .htm (explicitly listed in HtmlExts) and .HTML (relying on strings.ToLower
+	// folding) must both fire PI-4. Guards the HtmlExts set completeness and the
+	// auditorsForExt ToLower folding behavior.
+	//
 	// .htm（HtmlExts 显式列出）和 .HTML（依赖 strings.ToLower 折叠）都必须命中 PI-4。
 	// 守护 HtmlExts 集合完整性 + auditorsForExt 的 ToLower 折叠行为不被破坏。
 	sd := writeSkillFiles(t, "x", map[string]string{
@@ -124,6 +147,10 @@ func TestScan_HTML_HtmAndUpperCase(t *testing.T) {
 }
 
 func TestScan_HTML_DC1_Eval(t *testing.T) {
+	// A .html file with inline eval() → DC-1 fires (HtmlAlso). eval has no
+	// legitimate use in HTML; <script>eval(payload) is real XSS / arbitrary JS
+	// execution. Guards DC-1's HtmlAlso against accidental removal.
+	//
 	// .html 内嵌 eval() → DC-1 命中（HtmlAlso）。eval 在 HTML 无合法用途，
 	// <script>eval(payload) 是真实 XSS / 任意 JS 执行。守护 DC-1 的 HtmlAlso 不被误删。
 	sd := writeSkillFiles(t, "x", map[string]string{
@@ -137,6 +164,12 @@ func TestScan_HTML_DC1_Eval(t *testing.T) {
 }
 
 func TestScan_HTML_DC7_BrowserXSS(t *testing.T) {
+	// Forward: browser-side code execution vectors → DC-7 fires (new Function /
+	// document.write / setTimeout-string / location.href=javascript:). Reverse:
+	// legitimate callbacks (arrow/variable) → no fire. Guards the post-setTimeout
+	// quote boundary in Pattern; dropping the quote constraint would false-positive
+	// on every setTimeout(fn,100).
+	//
 	// 正向：浏览器端代码执行向量 → DC-7 命中（new Function / document.write /
 	// setTimeout 字符串 / location.href=javascript:）。反向：合法 callback（arrow/变量）
 	// → 不命中——守护 Pattern 的 setTimeout 后引号边界，去掉引号约束会误报所有 setTimeout(fn,100)。
@@ -170,6 +203,8 @@ func TestScan_HTML_DC7_BrowserXSS(t *testing.T) {
 }
 
 func TestScan_DangerousCode_ExecOnly(t *testing.T) {
+	// eval( in .py fires DC-1.
+	//
 	// eval( 在 .py 命中 DC-1
 	sdPy := writeSkillFiles(t, "x", map[string]string{
 		"SKILL.md": "---\nname: x\ndescription: d\n---\n\nclean\n",
@@ -179,6 +214,8 @@ func TestScan_DangerousCode_ExecOnly(t *testing.T) {
 	if !hasRule(fs, "DC-1") {
 		t.Fatalf("expected DC-1 in .py, got %v", ruleIDs(fs))
 	}
+	// The same eval( in .md does not fire dangerous (only executable scripts apply).
+	//
 	// 同样 eval( 在 .md 不命中 dangerous（仅可执行脚本生效）
 	sdMd := writeSkillFiles(t, "y", map[string]string{
 		"SKILL.md": "---\nname: y\ndescription: d\n---\n\nUse eval() here.\n",
@@ -190,6 +227,8 @@ func TestScan_DangerousCode_ExecOnly(t *testing.T) {
 }
 
 func TestScan_DangerousCode_DC2_RegExpVsChildProcess(t *testing.T) {
+	// child_process.exec( → real RCE, DC-2 must fire.
+	//
 	// child_process.exec( → 真 RCE，DC-2 必须报
 	sdRCE := writeSkillFiles(t, "x", map[string]string{
 		"SKILL.md": "---\nname: x\ndescription: d\n---\n\nclean\n",
@@ -200,6 +239,8 @@ func TestScan_DangerousCode_DC2_RegExpVsChildProcess(t *testing.T) {
 		t.Fatalf("child_process.exec() must fire DC-2, got %v", ruleIDs(fs))
 	}
 
+	// child_process.execSync( → also fires (covered by (?:sync)?).
+	//
 	// child_process.execSync( → 同样报（(?:sync)? 覆盖）
 	sdSync := writeSkillFiles(t, "x", map[string]string{
 		"SKILL.md": "---\nname: x\ndescription: d\n---\n\nclean\n",
@@ -210,6 +251,10 @@ func TestScan_DangerousCode_DC2_RegExpVsChildProcess(t *testing.T) {
 		t.Fatalf("child_process.execSync() must fire DC-2, got %v", ruleIDs(fsSync))
 	}
 
+	// RegExp.exec() → harmless regex match, DC-2 must never fire.
+	// This is the root cause of arkts-runtime-fix being misjudged CRITICAL and
+	// its install being blocked.
+	//
 	// RegExp.exec() → 无害正则匹配，DC-2 绝不能报。
 	// 这是 arkts-runtime-fix 被误判 CRITICAL、install 被误拦的根因。
 	sdRe := writeSkillFiles(t, "x", map[string]string{
@@ -270,9 +315,15 @@ func TestScoreFindings_Bands(t *testing.T) {
 }
 
 func TestScan_NonexistentRoot_Propagates(t *testing.T) {
+	// A nonexistent skill root → ScanSkill must return err, not (nil,nil). This
+	// is the safety-gate crux: if downstream skills_audit swallows the err, it
+	// would silently report a nonexistent/no-permission skill as clean with zero
+	// findings, letting HIGH/CRITICAL slip past --gate. Guards propagation of the
+	// walk root error.
+	//
 	// 不存在的 skill 根目录 → ScanSkill 必须返回 err，而不是 (nil,nil)。
-	// 这是安全门的关键：下游 skills_audit 若吞掉 err，会把"不存在/无权限"的 skill
-	// 静默报告为"干净 0 发现"，让 HIGH/CRITICAL 漏过 --gate。守护 walk 根错误传播。
+	// 这是安全门的关键：下游 skills_audit 若吞掉 err，会把「不存在/无权限」的 skill
+	// 静默报告为「干净 0 发现」，让 HIGH/CRITICAL 漏过 --gate。守护 walk 根错误传播。
 	_, err := ScanSkill(filepath.Join(t.TempDir(), "does-not-exist"))
 	if err == nil {
 		t.Fatal("ScanSkill on nonexistent root: want err, got nil (would mask as clean)")
@@ -280,6 +331,8 @@ func TestScan_NonexistentRoot_Propagates(t *testing.T) {
 }
 
 func TestSeverityBand_Boundaries(t *testing.T) {
+	// Pin boundaries: 49→HIGH, 50→CRITICAL (key golden comparison).
+	//
 	// 锁定边界：49→HIGH，50→CRITICAL（黄金对比关键）
 	cases := map[int]string{0: "INFO", 4: "INFO", 5: "LOW", 14: "LOW", 15: "MEDIUM",
 		29: "MEDIUM", 30: "HIGH", 49: "HIGH", 50: "CRITICAL", 100: "CRITICAL"}
@@ -291,6 +344,13 @@ func TestSeverityBand_Boundaries(t *testing.T) {
 }
 
 func TestMustCompile_HtmlAlsoRequiresExecOnly(t *testing.T) {
+	// HtmlAlso modifies ExecOnly: when ExecOnly=false the rule falls into the
+	// switch default of auditorsForExt and silently goes inert. mustCompile
+	// fail-fasts at compile time so a config error panics immediately instead of
+	// silently skipping reports — guards the safety gate against a future
+	// HtmlAlso:true, ExecOnly:false misconfiguration that would leave the rule
+	// never firing.
+	//
 	// HtmlAlso 是 ExecOnly 的修饰：ExecOnly=false 时规则走 auditorsForExt 的 switch default
 	// 沉默失效。mustCompile 编译期 fail-fast，配置错误立即 panic 而非沉默漏报——守护未来
 	// 误写 HtmlAlso:true, ExecOnly:false 致规则永远不 fire 的安全门失守。

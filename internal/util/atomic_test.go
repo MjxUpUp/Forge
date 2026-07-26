@@ -137,18 +137,31 @@ func TestArchivedName_NoCollisionSameInstant(t *testing.T) {
 	}
 }
 
+// TestPruneArchives_DeletesOnlyOld verifies: active files (no "-") and recent archives are kept; only archives
+// older than cutoff are deleted; both nanosecond-precision and legacy second-precision filename timestamps are tolerated.
+//
 // TestPruneArchives_DeletesOnlyOld 验证：active 文件（无 "-"）和新归档保留，只有早于
 // cutoff 的归档被删；兼容纳秒精度与旧版秒精度两种文件名时间戳。
 func TestPruneArchives_DeletesOnlyOld(t *testing.T) {
 	dir := t.TempDir()
+	// active (no "-"): must never be deleted.
+	//
 	// active（无 "-")：绝不能删
 	os.WriteFile(filepath.Join(dir, "checklog.jsonl"), []byte("active"), 0644)
+	// Recent archive (nanosecond precision): keep.
+	//
 	// 新归档（纳秒精度）：保留
 	os.WriteFile(filepath.Join(dir, "checklog-20260701120000.000000000.jsonl"), []byte("new"), 0644)
+	// Old archive (nanosecond precision): delete.
+	//
 	// 老归档（纳秒精度）：删
 	os.WriteFile(filepath.Join(dir, "checklog-20200101120000.000000000.jsonl"), []byte("old-ns"), 0644)
+	// Old archive (legacy second precision): delete.
+	//
 	// 老归档（旧版秒精度）：删
 	os.WriteFile(filepath.Join(dir, "checklog-20200101000000.jsonl"), []byte("old-sec"), 0644)
+	// Old archive (nanosecond precision + same-ns collision suffix -1): delete — covers the "-{i}" strip branch of archiveTimestamp.
+	//
 	// 老归档（纳秒精度 + 同纳秒冲突后缀 -1）：删——覆盖 archiveTimestamp 的 "-{i}" 剥离分支
 	os.WriteFile(filepath.Join(dir, "checklog-20200101120000.000000000-1.jsonl"), []byte("old-collide"), 0644)
 
@@ -173,9 +186,13 @@ func TestPruneArchives_DeletesOnlyOld(t *testing.T) {
 	}
 }
 
+// TestPruneArchives_FallbackMtime: when the filename timestamp cannot be parsed, fall back to mtime.
+//
 // TestPruneArchives_FallbackMtime：文件名时间戳不可解析时 fallback 到 mtime。
 func TestPruneArchives_FallbackMtime(t *testing.T) {
 	dir := t.TempDir()
+	// "garbage" is not a valid timestamp → triggers mtime fallback.
+	//
 	// "garbage" 不是合法时间戳 → 触发 mtime fallback
 	path := filepath.Join(dir, "toollog-garbage.jsonl")
 	os.WriteFile(path, []byte("old"), 0644)

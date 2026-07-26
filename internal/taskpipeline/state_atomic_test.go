@@ -62,6 +62,11 @@ func TestSetActiveTaskRef_AtomicAndReadable(t *testing.T) {
 	}
 }
 
+// completedAt builds a task state with IsComplete()==true and CompletedAt=completedAt, then saves it.
+// All DefaultGates must be filled as passed — MarkComplete only sets CompletedAt / clears CurrentGate,
+// IsComplete() looks at history; when the two disagree, PruneOldTasks follows IsComplete() (stricter, to avoid
+// deleting tasks in abnormal states).
+//
 // completedAt 构造一个 IsComplete()==true 且 CompletedAt=completedAt 的任务状态并存盘。
 // 必须填齐 DefaultGates 全部 passed——MarkComplete 只设 CompletedAt/清 CurrentGate，
 // IsComplete() 看 history，二者不一致时 PruneOldTasks 以 IsComplete() 为准（更严，避免
@@ -79,14 +84,23 @@ func saveCompletedAt(t *testing.T, dir, ref string, completedAt time.Time) {
 	}
 }
 
+// TestPruneOldTasks: only deletes tasks that are IsComplete and whose CompletedAt is before cutoff; recently-completed and
+// in-progress tasks are kept.
+//
 // TestPruneOldTasks：只删 IsComplete 且 CompletedAt 早于 cutoff 的任务；近期完成与
 // 进行中的任务保留。
 func TestPruneOldTasks(t *testing.T) {
 	dir := t.TempDir()
+	// complete + old (2020) → pruned.
+	//
 	// complete + 老（2020）→ 删
 	saveCompletedAt(t, dir, "feat/old", time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC))
+	// complete + recent → kept.
+	//
 	// complete + 近期 → 保留
 	saveCompletedAt(t, dir, "feat/recent", time.Now())
+	// in-progress (not complete) → kept.
+	//
 	// in-progress（未 complete）→ 保留
 	inprog := &TaskState{TaskRef: "feat/inprog", Branch: "feat/inprog", CurrentGate: "task-implement"}
 	if err := SaveTaskState(dir, inprog); err != nil {

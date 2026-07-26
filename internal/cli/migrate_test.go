@@ -1,5 +1,11 @@
 package cli
 
+// migrate_test.go — wiring guard for the `forge migrate` command (cobra RunE + output +
+// flag). Unit tests for the core migration logic live in
+// internal/forgedata/migrate_test.go; this file only pins the command glue: findProject
+// wiring, Moved/DataDir output, --dry-run leaving files untouched, and the non-forge-project
+// error. Chinese strings use raw strings to avoid Windows quote corrosion.
+//
 // migrate_test.go —— forge migrate 命令接线守卫（cobra RunE + 输出 + flag）。
 // 核心迁移逻辑的单测在 internal/forgedata/migrate_test.go；本文件只钉死命令胶水：
 // findProject 接线、Moved/DataDir 输出、--dry-run 不动文件、非 forge 项目报错。
@@ -15,6 +21,8 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 )
 
+// writeMigrateFixture seeds runtime (checklog/throttle) + config (state.json) under root/.forge/.
+//
 // writeMigrateFixture 在 root/.forge/ 下种 runtime（checklog/throttle）+ config（state.json）。
 func writeMigrateFixture(t *testing.T, root string) {
 	t.Helper()
@@ -33,6 +41,9 @@ func writeMigrateFixture(t *testing.T, root string) {
 	}
 }
 
+// TestMigrateCmd_PrintsMovedAndDataDir: cobra wiring + output contains migration entries +
+// the DataDir path.
+//
 // TestMigrateCmd_PrintsMovedAndDataDir：cobra 接线 + 输出含迁移条目 + DataDir 路径。
 func TestMigrateCmd_PrintsMovedAndDataDir(t *testing.T) {
 	root, _ := forgedatatest.RealProject(t)
@@ -52,6 +63,8 @@ func TestMigrateCmd_PrintsMovedAndDataDir(t *testing.T) {
 	if !strings.Contains(out, `DataDir:`) {
 		t.Errorf(`输出应含 DataDir 路径，实得 %q`, out)
 	}
+	// runtime already moved out, config stays.
+	//
 	// runtime 已迁走，config 留
 	if _, err := os.Stat(filepath.Join(root, `.forge`, `checklog.jsonl`)); err == nil {
 		t.Errorf(`checklog.jsonl 应已从 .forge/ 迁走`)
@@ -61,6 +74,8 @@ func TestMigrateCmd_PrintsMovedAndDataDir(t *testing.T) {
 	}
 }
 
+// TestMigrateCmd_DryRunNoMove: --dry-run outputs the marker but source files stay in .forge/.
+//
 // TestMigrateCmd_DryRunNoMove：--dry-run 输出标记但源文件仍在 .forge/。
 func TestMigrateCmd_DryRunNoMove(t *testing.T) {
 	root, _ := forgedatatest.RealProject(t)
@@ -84,6 +99,8 @@ func TestMigrateCmd_DryRunNoMove(t *testing.T) {
 	}
 }
 
+// TestMigrateCmd_NotInForgeProject: non-forge project (no .git/.forge) findProject errors.
+//
 // TestMigrateCmd_NotInForgeProject：非 forge 项目（无 .git/.forge）findProject 报错。
 func TestMigrateCmd_NotInForgeProject(t *testing.T) {
 	tmp := t.TempDir() // 无 .git 无 .forge

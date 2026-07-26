@@ -1,5 +1,11 @@
 package cli
 
+// task_override_test.go — unit tests for describeOverrides. Covers the skill-decisions branch added in
+// component B + the symmetry of the three flags (work-activity/test-coverage/skill-decisions) + empty state.
+// The end-to-end effectiveness of the CLI flag→state.Overrides mapping (the case block of task.go runTaskOverride)
+// is guarded by the executor integration test TestTaskVerify_SkillDecisionsGuardrail_EscapeHatchBypasses
+// (state.Overrides.SkillDecisions=`disable` → not blocked + records CheckEscapeHatch).
+//
 // task_override_test.go — describeOverrides 单元测试。覆盖 B 组件新增的 skill-decisions 分支
 // + 三 flag 对称（work-activity/test-coverage/skill-decisions）+ 空状态。CLI flag→state.Overrides
 // 映射（task.go runTaskOverride 的 case 块）的端到端生效由 executor 集成测试

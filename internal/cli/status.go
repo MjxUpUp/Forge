@@ -18,6 +18,9 @@ func init() {
 	rootCmd.AddCommand(statusCmd)
 	statusCmd.Flags().Bool("json", false, "JSON 格式输出")
 	statusCmd.Flags().Bool("system", false, "系统级健康检查")
+	// --tasks defaults to true: the task list is the main content of status, shown by default. Pass --tasks=false
+	// to hide the task block (Project header + quality signals only), giving the flag real semantics rather than being a dead flag.
+	//
 	// --tasks 默认 true：任务列表是 status 的主体内容，默认显示。传 --tasks=false
 	// 隐藏任务块（只看 Project 头 + 质量信号），让 flag 有真实语义而非 dead flag。
 	statusCmd.Flags().Bool("tasks", true, "显示任务列表（默认开启；--tasks=false 隐藏）")
@@ -47,8 +50,12 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 	taskStates, _ := taskpipeline.ListTaskStates(root)
 
+	// Project-level quality signals (task→project rollup): surface the evidence-blind-spot rate / recurring low-score
+	// dimensions at the status main entry. Otherwise deterministic signals computed in forge health are invisible to the
+	// user in status (the where-is-the-project main entry) — a visibility gap. Omitted when conclusions is empty (no completed tasks yet).
+	//
 	// 项目级质量信号（task→project 上卷）：把证据盲区率/复发低分维度亮在 status 主入口。
-	// 否则 deterministic 信号在 forge health 里算好了，但用户在 status（"项目在哪"主入口）
+	// 否则 deterministic 信号在 forge health 里算好了，但用户在 status（「项目在哪」主入口）
 	// 看不到——可见性缺口。conclusions 为空时省略（项目还没完成任务）。
 	var hs *health.Summary
 	if proj, err := forgedata.ProjectFor(root); err == nil {
@@ -59,7 +66,10 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	if asJSON {
-		// Tasks 不加 omitempty：空任务列表（"tasks": []）也是有效状态，调用方（dashboard/
+		// Tasks has no omitempty: an empty task list (tasks: []) is also a valid state, and callers (dashboard/
+		// scripts/tests) rely on this field existing for destructuring; omitempty would swallow the whole field when there are no tasks, breaking the contract.
+		//
+		// Tasks 不加 omitempty：空任务列表（「tasks»: []）也是有效状态，调用方（dashboard/
 		// 脚本/测试）依赖该字段存在做解构；omitempty 会在无任务时吞掉整个字段，破坏契约。
 		output, _ := json.MarshalIndent(struct {
 			Tasks  []*taskpipeline.TaskState `json:"tasks"`
@@ -69,6 +79,10 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	// By default render the task pipeline status (replacing the old project pipeline rendering — project-level pipeline was removed).
+	// Always print the project header: a fresh project (no tasks) running status should not output a blank — otherwise the user
+	// cannot tell whether forge is in place. An empty task list is explicitly hinted to guide the next step. --tasks=false hides the task block.
+	//
 	// 默认显示任务管道状态（取代原 project pipeline 渲染——项目级管道已删除）。
 	// 始终打印项目头：fresh 项目（无任务）跑 status 也不应输出空白——否则用户无法
 	// 判断 forge 是否已就位。空任务列表显式提示，引导下一步。--tasks=false 隐藏任务块。
@@ -93,6 +107,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		fmt.Println(strings.Repeat("─", 60))
 	}
 
+	// Show detected agents
 	// 显示检测到的 agent
 	if showAgents {
 		agents := agentbridge.DetectAgents(root)
@@ -107,6 +122,9 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Project-level quality signals (same source as --json Health). A compact block, shown only when there are completed tasks:
+	// the blind-spot rate is the headline (project-level LLM-judge blind spot), and recurring low-score dimensions come next. See forge health for full trends.
+	//
 	// 项目级质量信号（与 --json 的 Health 同源）。compact 一块，只在有完成任务时显示：
 	// 盲区率是头条（项目级 LLM-judge 盲区），复发低分维度次之。forge health 看完整趋势。
 	if hs != nil {

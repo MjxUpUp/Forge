@@ -6,9 +6,13 @@ import (
 	"testing"
 )
 
+// testDesc contains Use when (two triggers, separated by or) + SKIP (one skip), all >3 rune.
+//
 // testDesc 含 Use when（两个 trigger，or 分隔）+ SKIP（一个 skip），均 >3 rune。
 const testDesc = "Use when: 编写 React 组件 or 实现前端布局 SKIP: 选择技术栈"
 
+// writeSkill creates a skill directory containing SKILL.md under canonical.
+//
 // writeSkill 在 canonical 下造一个带 SKILL.md 的 skill 目录。
 func writeSkill(t *testing.T, canonical, name, desc string) {
 	t.Helper()

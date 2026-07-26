@@ -1,4 +1,12 @@
+// Package skillsfm parses the frontmatter block at the top of SKILL.md.
+//
 // Package skillsfm 解析 SKILL.md 顶部的 frontmatter 块。
+//
+// The parser is hand-written, a 1:1 port of SkillsHub admin/scripts/registry.py's parse_frontmatter
+// semantics. gopkg.in/yaml.v3 is intentionally not used — yaml.v3's folding rule for `>` folded scalars
+// preserves newlines, causing description length to diverge from the Python implementation, breaking R4 (desc<80)
+// judgment and the golden comparison against Python registry.py --json. Line-by-line parsing + custom block scalar
+// folding is the only implementation that can guarantee byte-for-byte parity between the two.
 //
 // 解析器手写，1:1 移植 SkillsHub admin/scripts/registry.py 的 parse_frontmatter
 // 语义。故意不用 gopkg.in/yaml.v3——yaml.v3 对 `>` folded scalar 的折叠规则会
@@ -13,6 +21,8 @@ import (
 	"strings"
 )
 
+// Frontmatter is the parse result of the YAML block at the top of SKILL.md.
+//
 // Frontmatter 是 SKILL.md 顶部 YAML 块的解析结果。
 type Frontmatter struct {
 	Name          string
@@ -28,6 +38,10 @@ type Frontmatter struct {
 }
 
 var (
+	// frontmatter block: ^---\s*\n(.*?)\n---\s*\n?, (?s) makes . match newlines, mirroring Python re.S.
+	// The trailing \n? allows frontmatter-only files (--- followed directly by EOF with no trailing newline) to match as well;
+	// real SKILL.md all have a body (\n\nbody), unaffected, golden comparison preserved.
+	//
 	// frontmatter 块：^---\s*\n(.*?)\n---\s*\n?，(?s) 让 . 匹配换行，对应 Python re.S。
 	// 尾部 \n? 允许 frontmatter-only 文件（--- 后直接 EOF 无尾换行）也能匹配；
 	// 真实 SKILL.md 都有正文（\n\nbody），不受影响，黄金对比保持。
@@ -36,8 +50,14 @@ var (
 	nestedRe   = regexp.MustCompile(`^\s+([A-Za-z0-9_]+):\s*(.*)$`)
 )
 
+// Parse parses the SKILL.md content. Returns an empty Frontmatter when there is no frontmatter block, with Body as the full text.
+//
 // Parse 解析 SKILL.md 内容。无 frontmatter 块时返回空 Frontmatter，Body 为全文。
 func Parse(text []byte) *Frontmatter {
+	// Normalize: strip UTF-8 BOM + CRLF→LF. Python yaml.safe_load auto-strips BOM,
+	// hand-written parsers must do it themselves — otherwise BOM makes ^--- never match (frontmatter lost entirely),
+	// and CRLF (Windows autocrlf) lets \r slip into field values and break R4/R5/R6 judgments.
+	//
 	// 规范化：strip UTF-8 BOM + CRLF→LF。Python yaml.safe_load 自动 strip BOM，
 	// 手写解析必须自己做——否则 BOM 使 ^--- 永不匹配（frontmatter 整个丢失）、
 	// CRLF（Windows autocrlf）让 \r 混入字段值破坏 R4/R5/R6 判定。
@@ -50,7 +70,9 @@ func Parse(text []byte) *Frontmatter {
 		fm.Body = string(text)
 		return fm
 	}
+	// Capture group 1 (block content)
 	fmRaw := string(text[loc[2]:loc[3]]) // 捕获组 1（块内容）
+	// After the whole match (body)
 	fm.Body = string(text[loc[1]:])      // 整个匹配之后（正文）
 
 	lines := strings.Split(fmRaw, "\n")
@@ -65,6 +87,9 @@ func Parse(text []byte) *Frontmatter {
 		if mm := topLevelRe.FindStringSubmatch(line); mm != nil {
 			key, val := mm[1], strings.TrimSpace(mm[2])
 			if val == ">" || val == "|" {
+				// YAML block scalar: collect subsequent indented lines (starting with space or empty),
+				// `>` folded joins with space, `|` literal joins with newline (aligned with Python).
+				//
 				// YAML block scalar：收集后续缩进行（以空格开头或空行），
 				// `>` folded 用空格 join、`|` literal 用换行 join（对齐 Python）。
 				buf := []string{}
@@ -82,6 +107,8 @@ func Parse(text []byte) *Frontmatter {
 				}
 			} else {
 				i++
+				// Strip quotes (only when both ends are paired)
+				//
 				// 剥引号（仅当两端成对）
 				if (strings.HasPrefix(val, `"`) && strings.HasSuffix(val, `"`)) ||
 					(strings.HasPrefix(val, `'`) && strings.HasSuffix(val, `'`)) {
@@ -106,6 +133,8 @@ func Parse(text []byte) *Frontmatter {
 				fm.Requires = val
 			}
 		} else if strings.HasPrefix(line, " ") && len(fm.Raw) > 0 {
+			// Nested metadata.* (only when a top-level field already exists, aligned with Python `elif ... and fm`)
+			//
 			// 嵌套 metadata.*（仅当已有顶层字段，对齐 Python `elif ... and fm`）
 			if mm2 := nestedRe.FindStringSubmatch(line); mm2 != nil {
 				fm.Metadata[mm2[1]] = strings.TrimSpace(mm2[2])
@@ -118,8 +147,12 @@ func Parse(text []byte) *Frontmatter {
 	return fm
 }
 
+// Pattern returns metadata.pattern (combination patterns like `pipeline + gate` returned as-is).
+//
 // Pattern 返回 metadata.pattern（组合模式如 "pipeline + gate" 原样返回）。
 func (f *Frontmatter) Pattern() string { return f.Metadata["pattern"] }
 
+// Domain returns metadata.domain.
+//
 // Domain 返回 metadata.domain。
 func (f *Frontmatter) Domain() string { return f.Metadata["domain"] }

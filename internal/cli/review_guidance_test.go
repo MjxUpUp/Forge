@@ -5,6 +5,11 @@ import (
 	"testing"
 )
 
+// TestGateGuidance_RoutesToSkills pins dogfood 4.2: the gateGuidance injected by the review-stop hook
+// points not only to code-review-gate but also routes to category-A skills by problem type (systematic-debugging /
+// compile-fix-loop / test-discipline). This replicates the hook-enforced drive of code-review-gate — bugs found in
+// review no longer rely on the agent voluntarily invoking skills; the Stop additionalContext names them directly.
+//
 // TestGateGuidance_RoutesToSkills 钉死 dogfood 4.2：review-stop hook 注入的 gateGuidance
 // 不只指 code-review-gate，还按问题类型路由到 A 类 skill（systematic-debugging /
 // compile-fix-loop / test-discipline）。复刻 code-review-gate 的 hook 强制驱动——审查发现的

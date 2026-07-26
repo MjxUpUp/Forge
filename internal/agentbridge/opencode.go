@@ -6,6 +6,23 @@ import (
 	"path/filepath"
 )
 
+// OpencodeTranslator generates .opencode/plugins/forge.ts — a real, blockable plugin.
+// opencode (opencode.ai, Bun-based) loads TS plugins from .opencode/plugins/ at startup; the plugin's
+// `tool.execute.before` hook runs before each tool call, and throwing inside it short-circuits the Effect so the tool
+// never executes (verified at the opencode packages/opencode/src/session/tools.ts call site and
+// packages/opencode/src/plugin/index.ts trigger). This puts opencode alongside
+// claude-code/codex/cursor/windsurf as an agent where Forge gates can truly be enforced.
+//
+// opencode's hook callback builds a Claude-Code-shape stdin (session_id,
+// hook_event_name, tool_name, tool_input), spawns `forge hook <name>`, and throws when forge
+// blocks. No `--agent` normalizer is needed: the plugin emits the dialect forge parses natively.
+//
+// Field mapping (opencode tool args → Claude tool_input):
+//   - write/edit/applypatch  args.filePath  → tool_input.file_path
+//   - bash                    args.command   → tool_input.command
+//   - write                   args.content   → tool_input.content
+//   - edit                    args.newText   → tool_input.content  (opencode uses newText, not new_string)
+//
 // OpencodeTranslator 生成 .opencode/plugins/forge.ts——一个真实、可 block 的 plugin。
 // opencode（opencode.ai，基于 Bun）启动时从 .opencode/plugins/ 加载 TS plugin；plugin 的
 // `tool.execute.before` hook 在工具执行前跑，在其中 throw 会 short-circuit Effect，工具就
@@ -21,7 +38,7 @@ import (
 //   - write/edit/applypatch  args.filePath  → tool_input.file_path
 //   - bash                    args.command   → tool_input.command
 //   - write                   args.content   → tool_input.content
-//   - edit                    args.newText   → tool_input.content  （opencode 用 newText，非 new_string）
+//   - edit                    args.newText   → tool_input.content  (opencode uses newText, not new_string)
 type OpencodeTranslator struct{}
 
 func (t *OpencodeTranslator) Detect(projectDir string) bool {
@@ -44,6 +61,9 @@ func (t *OpencodeTranslator) Translate(projectDir string, input *TranslationInpu
 		return fmt.Errorf("opencode: write forge.ts: %w", err)
 	}
 
+	// Doc explains how to load the plugin (opencode auto-discovers .opencode/plugins/*.ts, so this README
+	// is guidance for non-standard deployments / troubleshooting).
+	//
 	// 文档说明如何加载 plugin（opencode 自动发现 .opencode/plugins/*.ts，故此 README
 	// 是给非标准部署/排错用的 guidance）。
 	readmeDir := filepath.Join(projectDir, ".opencode")
@@ -57,6 +77,10 @@ func (t *OpencodeTranslator) AgentType() AgentType {
 	return AgentOpencode
 }
 
+// buildOpencodePlugin returns the TypeScript plugin source. The PRE_HOOKS /
+// POST_HOOKS rosters embedded in the TS string mirror the per-matcher wiring in hooks/settings.go GenerateSettings —
+// TestOpencodePluginWiring guards drift by extracting the `forge hook <name>` call sites from this string.
+//
 // buildOpencodePlugin 返回 TypeScript plugin 源码。嵌入 TS 字符串里的 PRE_HOOKS /
 // POST_HOOKS 名单镜像 hooks/settings.go GenerateSettings 中的 per-matcher 接线——
 // TestOpencodePluginWiring 通过从该字符串中提取 `forge hook <name>` 调用点来守卫 drift。

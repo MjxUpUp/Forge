@@ -11,12 +11,21 @@ import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
 )
 
+// CheckNameTestCapability is the checklog name for the repository test-capability
+// scan: does the repo actually have runnable tests? This dimension is orthogonal to
+// test-coverage-gate — the latter only checks whether files changed in this task carry
+// paired tests (writing tests ≠ running tests). This scan answers whether anything is
+// runnable, and the gate advisory uses it to nudge the agent to actually execute before
+// reporting completion.
+//
 // CheckNameTestCapability 是仓库 test-capability 扫描的 checklog 名：仓库是否真有
 // 可跑的测试？此维度与 test-coverage-gate 正交——后者只检查本 task 改动的文件
 // 是否带有配对测试（写测试 ≠ 跑测试）。本扫描回答「有没有可跑的东西」，gate 的
 // advisory 据此提示 agent 在报告完成前实际执行。
 const CheckNameTestCapability checklog.CheckName = "test-capability-scan"
 
+// TestCapability describes the runnable test assets found in the repository.
+//
 // TestCapability 描述仓库中可跑的测试资产。
 type TestCapability struct {
 	HasTests  bool     // 找到任何单元或 e2e 测试文件
@@ -29,6 +38,12 @@ type TestCapability struct {
 	Disabled  bool     // FORGE_TEST_COVERAGE=disable 跳过扫描时为 true
 }
 
+// e2ePathMarkers identifies integration/end-to-end test directories. It mirrors the
+// integration/ detection of verify-before-stop.sh plus common JS e2e dirs. Stored
+// without a leading slash; isE2ETest matches them as full path segments (root-level
+// integration/... or .../integration/... after a slash), so dirs like myintegration/
+// or some_e2e/ do not match by accident.
+//
 // e2ePathMarkers 标识 integration/end-to-end 测试目录。镜像 verify-before-stop.sh
 // 的 integration/ 检测，加上常见 JS e2e 目录。无前导斜杠存储；isE2ETest 把它们作为
 // 完整路径段匹配（根级 integration/... 或斜杠后的 .../integration/...），故
@@ -38,10 +53,17 @@ var e2ePathMarkers = []string{
 	"playwright/", "tests/e2e/", "test/e2e/",
 }
 
+// e2eFileMarkers identifies individual e2e tests by filename, directory-independent
+// (e.g. login.e2e.test.ts, api.integration.test.go).
+//
 // e2eFileMarkers 按文件名标识单个 e2e 测试，不依赖目录
 //（如 login.e2e.test.ts、api.integration.test.go）。
 var e2eFileMarkers = []string{".e2e.", ".integration."}
 
+// walkSkipDirs is pruned on the non-git filepath.Walk fallback path so the scan does
+// not crawl into node_modules/vendor/build artifacts. git ls-files already excludes
+// untracked/ignored files, so this table only matters for the fallback path.
+//
 // walkSkipDirs 在非 git 的 filepath.Walk 回退路径下被剪枝，避免扫描爬进
 // node_modules/vendor/build 产物。git ls-files 已排除未跟踪/被忽略文件，故本表
 // 只对回退路径有意义。
@@ -54,6 +76,16 @@ var walkSkipDirs = map[string]bool{
 
 const capabilitySampleCap = 5
 
+// CheckTestCapability scans the repository (git ls-files for tracked files, falling
+// back to a directory walk for non-git repos), reports which runnable tests exist, and
+// suggests a likely execution command. Pure capability detection — it never looks at
+// what this task changed (that is CheckTestCoverage's job).
+//
+// It honors FORGE_TEST_COVERAGE=disable: that env is the project's signal for "I do
+// not practice test discipline" (set by the test-coverage escape hatch), so nagging to
+// run tests would contradict it. When disabled, the scan is skipped (Disabled=true)
+// and no advisory is emitted.
+//
 // CheckTestCapability 扫描仓库（git ls-files 跟踪文件，非 git 仓库回退到目录
 // walk），报告存在哪些可跑测试，并给一个推测执行命令。纯能力检测——绝不看本
 // task 改了什么（那是 CheckTestCoverage 的活）。
@@ -93,10 +125,16 @@ func CheckTestCapability(root string) TestCapability {
 	return cap
 }
 
+// repoFileList returns tracked files when root is a git repo (the common case — fast,
+// excludes node_modules/vendor), and falls back to a pruned directory walk for non-git
+// projects. Paths are repo-relative with forward slashes.
+//
 // repoFileList 在 root 是 git 仓库时返回跟踪文件（常见情况——快，排除
 // node_modules/vendor），非 git 项目回退到剪枝后的目录 walk。路径是仓库相对、
 // 用正斜杠。
 func repoFileList(root string) []string {
+	// git ls-files: tracked files only. Cheap, ignores build artifacts.
+	//
 	// git ls-files：仅跟踪文件。开销低，忽略 build 产物。
 	if out, err := exec.Command("git", "-C", root, "ls-files").Output(); err == nil {
 		var files []string
@@ -111,6 +149,14 @@ func repoFileList(root string) []string {
 		}
 	}
 
+	// Fallback: pruned walk for non-git repos.
+	// This scan is advisory/best-effort: a single unreadable file or a dangling symlink
+	// must not abort the whole capability scan, so each error inside the callback returns
+	// nil and the walk continues. The Walk return value is therefore always nil in
+	// practice — we discard it (with _=) precisely for this reason, not to mask real
+	// failures. If Walk did return a non-nil error, it would only mean our own callback
+	// returned an error, which it never does.
+	//
 	// 回退：非 git 仓库用剪枝 walk。
 	// 本扫描是 advisory/best-effort：单个不可读文件或失效符号链接都不能让整次
 	// 能力扫描中止，故 callback 内每个错误都返回 nil 继续 walk。Walk 返回值在
@@ -138,6 +184,9 @@ func repoFileList(root string) []string {
 	return files
 }
 
+// isE2ETest reports whether a forward-slash path is an integration/e2e test.
+// It is checked before isTestFile, so integration/foo_test.go counts as e2e, not unit.
+//
 // isE2ETest 报告一条正斜杠路径是否 integration/e2e 测试。
 // 在 isTestFile 之前判定，故 integration/foo_test.go 算 e2e 而非 unit。
 func isE2ETest(norm string) bool {
@@ -146,6 +195,9 @@ func isE2ETest(norm string) bool {
 			return true
 		}
 	}
+	// Segment match: prepend a slash so a root-level dir (integration/...) aligns with
+	// the marker, and require "/"+marker so myintegration/ does not match.
+	//
 	// 段匹配：前面补一个斜杠让根级目录（integration/...）与 marker 对齐，再要求
 	// "/"+marker 防止 myintegration/ 命中。
 	padded := "/" + strings.ToLower(norm)
@@ -157,6 +209,10 @@ func isE2ETest(norm string) bool {
 	return false
 }
 
+// detectStackAndCmd inspects root's manifest files to pick a stack and the most likely
+// command to run its tests. Returns two empty strings when nothing matches — the
+// advisory then omits the command rather than guessing.
+//
 // detectStackAndCmd 检查 root 的 manifest 文件以挑选 stack 及最可能跑其测试的
 // 命令。无匹配时返回两个空串——advisory 随即省略命令，不乱猜。
 func detectStackAndCmd(root string) (stack, cmd string) {
@@ -177,6 +233,12 @@ func detectStackAndCmd(root string) (stack, cmd string) {
 	return "", ""
 }
 
+// nodeTestCmd reads package.json: prefer a framework runner (vitest/jest) when present;
+// otherwise pick a configured non-placeholder test script; otherwise return an empty
+// string (no reliable command). The npm init default script is a placeholder —
+// recommending npm test there would run echo with an error message and exit 1, so we
+// return an empty string and let the advisory omit the command.
+//
 // nodeTestCmd 读 package.json：有 framework runner（vitest/jest）时优先用它；
 // 否则取一条已配置的非占位 test script；再否则返回空串（无可靠命令）。npm init
 // 的默认脚本是占位——在那里推荐 npm test 会跑 echo 错误信息后 exit 1 直接失败，
@@ -187,6 +249,8 @@ func nodeTestCmd(pkgPath string) string {
 		return ""
 	}
 	body := string(data)
+	// devDeps or a real test script naming a framework → use its runner.
+	//
 	// devDeps 或一条命名 framework 的真 test script → 用它的 runner。
 	switch {
 	case strings.Contains(body, "vitest"):
@@ -194,6 +258,10 @@ func nodeTestCmd(pkgPath string) string {
 	case strings.Contains(body, "jest"):
 		return "npx jest"
 	}
+	// A configured non-placeholder test script → npm test will run it. Match the
+	// distinctive substring "no test specified" so npm default value variants with
+	// different quotes/whitespace are still recognized as placeholders.
+	//
 	// 一条已配置的非占位 test script → npm test 会跑它。匹配 distinctive 子串
 	// no test specified，让 npm 默认值的引号/空白变体仍被识别为占位。
 	if strings.Contains(body, "\"test\":") &&
@@ -203,6 +271,9 @@ func nodeTestCmd(pkgPath string) string {
 	return ""
 }
 
+// pyprojectHasPytest reports whether pyproject.toml exists and references pytest (some
+// projects only declare it under [tool.pytest], without a pytest.ini).
+//
 // pyprojectHasPytest 报告 pyproject.toml 是否存在且引用了 pytest（有些项目只
 // 在 [tool.pytest] 下声明、无 pytest.ini）。
 func pyprojectHasPytest(root string) bool {
@@ -218,6 +289,8 @@ func fileExists(path string) bool {
 	return err == nil && !info.IsDir()
 }
 
+// Detail returns a one-line checklog summary of the scan result.
+//
 // Detail 返回扫描结果的单行 checklog 摘要。
 func (c TestCapability) Detail() string {
 	if c.Disabled {
@@ -240,6 +313,12 @@ func (c TestCapability) Detail() string {
 	return detail
 }
 
+// Advisory returns a human-readable nudge printed to stderr when the repo has runnable
+// tests. It writes out the recommended command so the agent can execute it directly,
+// and lists a few sample paths so the agent knows where the tests are. Returns an empty
+// string when there are no tests — the executor only calls this when HasTests, but the
+// method stays self-consistent and never emits "0 tests exist".
+//
 // Advisory 返回可读的 nudge，在仓库存在可跑测试时打印到 stderr。它写出推荐命令
 // 让 agent 可直接执行，并列几条示例路径让 agent 知道测试在哪。无测试时返回
 // 空串——executor 只在 HasTests 时调用，但方法保持自洽，绝不 emit 0 tests exist。

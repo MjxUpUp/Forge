@@ -1,11 +1,23 @@
 package skillseval
 
+// runs.go is the other half of the skill eval closed-loop data layer: run records,
+// normalization, judgment, regression comparison, health score, baseline.
+//
 // runs.go 是 skill eval 闭环数据层的另一半：run 记录、归一化、判定、回归比对、
 // 健康度分、baseline。
+//
+// Closed-loop data flow: the agent fetches the case set via MCP → dispatches a fresh
+// subagent per prompt → batch-refills which skill actually fired to forge (SubmitRun)
+// → forge normalizes + judges + computes health + appends an EvalRun → eval-report
+// compares latest run vs baseline for regression.
 //
 // 闭环数据流：agent 通过 MCP 拿 case 集 → dispatch fresh subagent 跑每个 prompt
 // → 把「实际触发了哪个 skill」整批回填给 forge（SubmitRun）→ forge 归一化 + 判定
 // + 算健康度 + append 一条 EvalRun → eval-report 取 latest run vs baseline 做回归。
+//
+// forge itself cannot spawn AI (pi lacks the claude -p auto mode), so the actual
+// triggering is run by the agent while forge only normalizes / judges / compares —
+// semi-automated positioning.
 //
 // forge 自身 spawn 不了 AI（pi 无 claude -p 自动模式），所以「实际触发」由 agent
 // 跑、forge 只做归一化/判定/比对——半自动定位。
@@ -32,32 +44,45 @@ import (
 
 var runMu sync.Mutex
 
+// CaseResult is the actual run result for a single case (judged by forge after the agent refills it).
+//
 // CaseResult 是单 case 的实际跑结果（agent 回填后由 forge 判定）。
 type CaseResult struct {
 	CaseID          string `json:"case_id"`
 	Kind            string `json:"kind"`
 	Prompt          string `json:"prompt"`
 	Expected        string `json:"expected"`                // trigger/not-trigger/behavior
+	// ActualTriggered: normalized name of the skill that actually fired ("" = did not fire).
 	ActualTriggered string `json:"actual_triggered"`        // 归一化后的实际触发 skill 名（""=没触发）
+	// ActualOutput (behavior kind): the actual output refilled by the agent, including the original text needed by the oracle for judgment; redacted by eval-cases/report before exposure.
 	ActualOutput    string `json:"actual_output,omitempty"` // behavior 类：agent 回填的实际输出（含 oracle 判定所需原文，eval-cases/report 对外脱敏）
 	Pass            bool   `json:"pass"`
 	Note            string `json:"note,omitempty"` // agent 标注的异常/理由
 }
 
+// EvalRun is one complete run (a batch refill), appended to dir/runs/<skill>.jsonl.
+//
 // EvalRun 是一次完整 run（整批回填），append 到 dir/runs/<skill>.jsonl。
 type EvalRun struct {
 	RunID         string       `json:"run_id"`
 	Skill         string       `json:"skill"`
 	Timestamp     time.Time    `json:"timestamp"`
+	// ForgeVersion: guards against cross-version false regressions.
 	ForgeVersion  string       `json:"forge_version"`             // 防跨版本假回归
+	// AgentModel: self-reported by the agent, guards against cross-model false regressions.
 	AgentModel    string       `json:"agent_model"`               // agent 自报，防跨模型假回归
+	// DescHash: fingerprint of the description at run time.
 	DescHash      string       `json:"desc_hash"`                 // run 时刻 description 指纹
+	// CaseSetHash: sha1 of all CaseIDs after sorting, a quick consistency check for the set.
 	CaseSetHash   string       `json:"case_set_hash"`             // 所有 CaseID 排序后 sha1，集一致性快检
+	// BaselineRunID: the baseline locked at run time.
 	BaselineRunID string       `json:"baseline_run_id,omitempty"` // run 时刻锁定的 baseline
 	Results       []CaseResult `json:"results"`
 	HealthScore   float64      `json:"health_score"`
 }
 
+// SubmitResult is the raw result refilled by the agent (not yet normalized or judged).
+//
 // SubmitResult 是 agent 回填的原始结果（未归一化、未判定）。
 type SubmitResult struct {
 	CaseID          string `json:"case_id"`
@@ -66,6 +91,9 @@ type SubmitResult struct {
 	Note            string `json:"note,omitempty"`
 }
 
+// Baseline records the baseline run anchored for a given skill. A baseline is a verified
+// release-worthy point, set explicitly.
+//
 // Baseline 记录某 skill 锚定的 baseline run。baseline = 已验证可发布点，显式设定。
 type Baseline struct {
 	RunID string    `json:"run_id"`
@@ -73,6 +101,11 @@ type Baseline struct {
 	SetBy string    `json:"set_by"` // "manual" / "cli" / "mcp"
 }
 
+// RegressionReport is the regression comparison result of the latest run vs baseline.
+// Three states are distinct: regressions are counted only on the matched set (baseline
+// pass → latest fail); new/removed do not count as regressions (case-set turnover caused
+// by description rewrites is expected behavior).
+//
 // RegressionReport 是 latest run vs baseline 的回归比对结果。
 // 三态分明：regression 只在 matched 集数（baseline pass → latest fail）；
 // new/removed 不计 regression（description 改写导致 case 集换血是预期行为）。
@@ -98,13 +131,17 @@ type RegressionReport struct {
 	BehaviorPassRateLatest     float64      `json:"behavior_pass_rate_latest"`
 }
 
-// newRunID 生成 "run-<unix>-<randhex>"。
+// newRunID generates a run ID of the form run-<unix>-<randhex>.
+//
+// newRunID 生成"run-<unix>-<randhex>"。
 func newRunID() string {
 	var b [4]byte
 	_, _ = rand.Read(b[:])
 	return fmt.Sprintf("run-%d-%s", time.Now().Unix(), hex.EncodeToString(b[:]))
 }
 
+// caseSetHash returns sha1[:12] of all sorted CaseIDs, used as a quick set-consistency check.
+//
 // caseSetHash 返回所有 CaseID 排序后的 sha1[:12]，用于集一致性快检。
 func caseSetHash(results []CaseResult) string {
 	ids := make([]string, 0, len(results))
@@ -116,15 +153,29 @@ func caseSetHash(results []CaseResult) string {
 	return hex.EncodeToString(h[:])[:12]
 }
 
+// NormalizeTriggered normalizes the agent-refilled actual trigger name: trims leading/trailing
+// whitespace and CJK/ASCII punctuation + lowercases + matches canonical exactly. none semantics
+// (none/无/-/n/a) normalize to "". Names that do not match canonical keep their lowercased
+// original value — normalization does not guess for the agent; during judgment, trigger cases
+// fail on !=skill and not-trigger cases pass on !=skill, behavior is deterministic.
+//
+// Stripping leading/trailing punctuation is necessary: agent refills may carry periods/quotes/
+// full-width chars (lark-doc。., "lark-doc"); without stripping they would miss the canonical
+// match and yield trigger fail / not-trigger pass (deterministic but wrong). Only leading/trailing
+// chars are stripped, leaving hyphenated legal skill names intact.
+//
 // NormalizeTriggered 把 agent 回填的实际触发名归一化：trim 首尾空格与中英文标点 +
-// lowercase + canonical 精确匹配。none 语义（none/无/-/n/a）归一为 ""。不匹配
+// lowercase + canonical 精确匹配。none 语义（none/无/-/n/a）归一为""。不匹配
 // canonical 的保留 lowercased 原值——归一化不替 agent 猜测，判定时 trigger 类会因
 // !=skill 而 fail、not-trigger 类会因 !=skill 而 pass，行为确定。
 //
 // strip 首尾标点是必要的：agent 回填可能带句号/引号/全角符（"lark-doc。"、
-// "「lark-doc」"），不 strip 会因不匹配 canonical 而 trigger fail/not-trigger pass
+// "「lark-doc"」），不 strip 会因不匹配 canonical 而 trigger fail/not-trigger pass
 // （确定但错误）。只 strip 首尾，不破坏含连字符的合法 skill 名。
 func NormalizeTriggered(actual string, canonicalSkills []string) string {
+	// Leading/trailing CJK/ASCII punctuation + whitespace. Trim strips repeatedly by character
+	// set (any single char in the set).
+	//
 	// 首尾中英文标点 + 空白。Trim 按字符集（任一字符）反复剥。
 	const punct = ` 	
 .,;:!?()[]。；：！？（）【】「」“”‘’`
@@ -145,6 +196,14 @@ func NormalizeTriggered(actual string, canonicalSkills []string) string {
 	return low
 }
 
+// judgeResult judges whether a single result passes based on the case's Kind.
+//
+//	trigger kind: actual == skill (self-reference)
+//	not-trigger kind: actual != skill (including empty or any other skill) — does not couple
+//	with"which skill it should route to"
+//	behavior kind: judgeBehavior(actualOutput, oracle) — passes only when the output satisfies
+//	the oracle (see probes.go)
+//
 // judgeResult 按 case 的 Kind 判定单结果是否 pass。
 //
 //	trigger 类：actual == skill（自指）
@@ -162,6 +221,11 @@ func judgeResult(c EvalCase, actualTriggered, actualOutput string) bool {
 	return act != skill
 }
 
+// HealthScore is the trigger/not-trigger weighted pass rate minus the regression penalty.
+//
+// When one kind has no cases, the other kind takes the full weight; regressions come from the
+// degradation count vs baseline, pass 0 when there is no baseline.
+//
 // HealthScore 按 trigger/not-trigger 加权通过率减回归惩罚。
 //
 //	baseScore = 100 * (0.6*triggerAcc + 0.4*notTriggerAcc)
@@ -205,6 +269,12 @@ func HealthScore(results []CaseResult, regressions int) float64 {
 	return math.Round(score*100) / 100
 }
 
+// passRates returns (triggerPassRate, notTriggerPassRate, behaviorPassRate).
+// The behavior kind is tracked independently — it measures behavior quality (output satisfies
+// the oracle), a separate dimension from routing health (trigger/not-trigger); therefore
+// HealthScore (routing health) does not count behavior, and this function returns it separately
+// for the report to display.
+//
 // passRates 返回 (triggerPassRate, notTriggerPassRate, behaviorPassRate)。
 // behavior 类独立计——它测行为质量（输出满足 oracle），与路由健康度（trigger/not-trigger）
 // 是两个维度，故 HealthScore（路由健康度）不计 behavior，这里单独返回供 report 展示。
@@ -241,6 +311,12 @@ func passRates(results []CaseResult) (trigRate, notRate, behaviorRate float64) {
 	return
 }
 
+// CompareRuns compares latest vs baseline and produces a RegressionReport.
+// When baseline==nil, HasBaseline=false and only the latest pass rates are filled in.
+// Comparability: Comparable=true only when ForgeVersion/AgentModel/DescHash all match —
+// otherwise"regressions"across models/versions/description changes are false regressions,
+// and the report marks them incomparable.
+//
 // CompareRuns 比对 latest vs baseline，产出 RegressionReport。
 // baseline==nil 时 HasBaseline=false，只填 latest 的 pass rate。
 // 可比性：ForgeVersion/AgentModel/DescHash 三者一致才 Comparable=true——否则
@@ -258,6 +334,8 @@ func CompareRuns(latest, baseline *EvalRun) *RegressionReport {
 	rep.BaselineRun = baseline.RunID
 	rep.TriggerPassRateBaseline, rep.NotTriggerPassRateBaseline, rep.BehaviorPassRateBaseline = passRates(baseline.Results)
 
+	// Comparability check.
+	//
 	// 可比性校验。
 	rep.Comparable = true
 	var reasons []string
@@ -319,6 +397,12 @@ func sortResults(rs []CaseResult) {
 	slices.SortFunc(rs, func(a, b CaseResult) int { return cmp.Compare(a.CaseID, b.CaseID) })
 }
 
+// countRegressions returns the degradation count of the matched set of latest vs baseline
+// (the regressions count among the three states). It is extracted so that SubmitRun (computing
+// the health penalty) uses only the regressions count without touching the rest of the
+// RegressionReport fields — the intent is explicit, avoiding the implicit contract
+// "CompareRuns only takes len(Regressions)" being misread by maintainers.
+//
 // countRegressions 返回 latest vs baseline 的 matched 集退化数（三态里的 regressions
 // 计数）。抽出来让 SubmitRun（算 health 惩罚）只用 regressions 计数，不触碰整张
 // RegressionReport 的其余字段——意图清晰，避免「CompareRuns 只取 len(Regressions)」
@@ -330,6 +414,10 @@ func countRegressions(latest, baseline *EvalRun) int {
 	return len(CompareRuns(latest, baseline).Regressions)
 }
 
+// SubmitRun processes one batch refill: normalize + DescHash check + judge + compute health + append.
+// canonical is used to read the current SKILL.md DescHash and to normalize against the canonical set.
+// Returns the newly created and persisted EvalRun.
+//
 // SubmitRun 处理一次整批回填：归一化 + DescHash 校验 + 判定 + 算 health + append。
 // canonical 用于读当前 SKILL.md 的 DescHash 和 canonical 集归一化。
 // 返回新建并已落盘的 EvalRun。
@@ -342,6 +430,12 @@ func SubmitRun(dir, canonical, skill, agentModel, forgeVersion string, raw []Sub
 		return nil, fmt.Errorf("no eval cases for skill %q — run 'forge skills eval-gen --skill %s --save' first", skill, skill)
 	}
 
+	// DescHash check: the case-set fingerprint must equal the current SKILL.md fingerprint,
+	// otherwise the case set is stale.
+	// Pure behavior sets (DescHash empty, not anchored to description) skip this check —
+	// behavior cases are maintained independently of description, and changing description
+	// should not fail a behavior run.
+	//
 	// DescHash 校验：case 集的指纹必须等于当前 SKILL.md 的指纹，否则 case 集已过期。
 	// 纯 behavior 集（DescHash 空，不锚 description）跳过此校验——behavior case
 	// 独立于 description 维护，改 description 不应让 behavior run 失败。
@@ -363,6 +457,8 @@ func SubmitRun(dir, canonical, skill, agentModel, forgeVersion string, raw []Sub
 	for _, r := range raw {
 		c, ok := caseByID[r.CaseID]
 		if !ok {
+			// Unknown case_id: the case set has changed (re-run eval-gen); skip this entry.
+			//
 			// 未知 case_id：case 集已变（重新 eval-gen），跳过该条。
 			continue
 		}
@@ -378,12 +474,18 @@ func SubmitRun(dir, canonical, skill, agentModel, forgeVersion string, raw []Sub
 			Note:            r.Note,
 		})
 	}
+	// All case_ids unknown (case set just rebuilt, agent holds stale ids) → results empty.
+	// Silent success would let the agent misread"ran successfully but all failed" and persist
+	// an empty run — fail explicitly so it re-fetches the case set.
+	//
 	// 所有 case_id 都未知（case 集刚重建，agent 拿的是旧 id）→ results 空。静默成功
 	// 会让 agent 误判「跑成功只是全挂」并落一条空 run——明确报错让它重新拿 case 集。
 	if len(results) == 0 {
 		return nil, fmt.Errorf("all case_ids unknown — case set regenerated since dispatch, re-fetch via forge_skill_eval_cases / eval-gen --save")
 	}
 
+	// Baseline (locked at run time).
+	//
 	// baseline（run 时刻锁定）。
 	run := &EvalRun{
 		RunID:        newRunID(),
@@ -416,6 +518,8 @@ func SubmitRun(dir, canonical, skill, agentModel, forgeVersion string, raw []Sub
 	return run, nil
 }
 
+// AppendRun appends a run to dir/runs/<skill>.jsonl (thread-safe, mirroring the checklog.Record pattern).
+//
 // AppendRun 追加一条 run 到 dir/runs/<skill>.jsonl（线程安全，复刻 checklog.Record 模式）。
 func AppendRun(dir, skill string, run *EvalRun) error {
 	runMu.Lock()
@@ -432,6 +536,11 @@ func AppendRun(dir, skill string, run *EvalRun) error {
 	if err != nil {
 		return err
 	}
+	// fsync: runs.jsonl is an append-only regression log; a partially written run that gets
+	// truncated would be silently skipped by LoadRuns as a bad line (manifesting as
+	// "submitted but report cannot find latest"). Sync to disk guarantees that a committed
+	// run survives crashes and stays readable, consistent with the fsync trade-off in util.AtomicWrite.
+	//
 	// fsync：runs.jsonl 是 append-only 回归日志，单条 run 写到一半被截断会被
 	// LoadRuns 的坏行跳过静默丢弃（表现「提交了但 report 找不到 latest」）。Sync
 	// 落盘保证已提交 run 在崩溃后可读，与 util.AtomicWrite 的 fsync 取舍一致。
@@ -446,6 +555,10 @@ func AppendRun(dir, skill string, run *EvalRun) error {
 	return f.Close()
 }
 
+// LoadRuns reads all runs (in write order). Returns nil,nil if the file does not exist.
+// Uses an enlarged scanner buffer — a run contains prompts/notes for all cases and a single
+// line may be very long.
+//
 // LoadRuns 读所有 run（按写入顺序）。文件不存在返回 nil,nil。
 // 用增大的 scanner buffer——run 含全部 case 的 prompt/note，单行可能很长。
 func LoadRuns(dir, skill string) ([]EvalRun, error) {
@@ -470,6 +583,8 @@ func LoadRuns(dir, skill string) ([]EvalRun, error) {
 	return runs, scanner.Err()
 }
 
+// LatestRun returns the most recent run (last line of the jsonl). Returns nil,nil if there is no run.
+//
 // LatestRun 返回最新一条 run（jsonl 末行）。无 run 返回 nil,nil。
 func LatestRun(dir, skill string) (*EvalRun, error) {
 	runs, err := LoadRuns(dir, skill)
@@ -482,6 +597,8 @@ func LatestRun(dir, skill string) (*EvalRun, error) {
 	return &runs[len(runs)-1], nil
 }
 
+// LoadRunByID searches all runs by RunID. Returns nil,nil if not found.
+//
 // LoadRunByID 在所有 run 里按 RunID 查找。未找到返回 nil,nil。
 func LoadRunByID(dir, skill, runID string) (*EvalRun, error) {
 	runs, err := LoadRuns(dir, skill)
@@ -496,6 +613,8 @@ func LoadRunByID(dir, skill, runID string) (*EvalRun, error) {
 	return nil, nil
 }
 
+// LoadBaselines reads the baseline map. Returns an empty map if the file does not exist.
+//
 // LoadBaselines 读 baseline 映射。文件不存在返回空 map。
 func LoadBaselines(dir string) (map[string]Baseline, error) {
 	data, err := os.ReadFile(baselinesFile(dir))
@@ -515,6 +634,8 @@ func LoadBaselines(dir string) (map[string]Baseline, error) {
 	return bs, nil
 }
 
+// GetBaseline returns the baseline for a skill. Returns the zero-value Baseline{} if none.
+//
 // GetBaseline 返回某 skill 的 baseline。无则零值 Baseline{}。
 func GetBaseline(dir, skill string) (Baseline, error) {
 	bs, err := LoadBaselines(dir)
@@ -524,6 +645,14 @@ func GetBaseline(dir, skill string) (Baseline, error) {
 	return bs[skill], nil
 }
 
+// SetBaseline marks the baseline run for a skill (atomically writes the whole map).
+//
+// Note: AtomicWrite only guarantees a single atomic write; it does not cover the
+// read-modify-write of"LoadBaselines → mutate map → write" — two concurrent SetBaseline
+// calls (different skills) end with the later writer winning and the earlier writer's change
+// lost. Baselines are set explicitly by humans (CLI/MCP are not high-frequency concurrent),
+// so the convention is to call serially; add baselineMu later if concurrency is needed.
+//
 // SetBaseline 标记某 skill 的 baseline run（原子写整张映射）。
 //
 // 注意：AtomicWrite 只保证单次写原子，不覆盖「LoadBaselines→改 map→写」的读改写——

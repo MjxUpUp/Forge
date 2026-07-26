@@ -290,6 +290,9 @@ func TestArchive_NanosecondNaming(t *testing.T) {
 	t.Fatal("no checklog-* archive produced by Archive")
 }
 
+// TestClear_PrunesOldArchives: Clear prunes expired archives by FORGE_LOG_RETENTION_DAYS after rotation,
+// keeping recent archives and the active-clear semantics.
+//
 // TestClear_PrunesOldArchives：Clear 在轮转后按 FORGE_LOG_RETENTION_DAYS 清超期归档，
 // 保留近期归档与 active 清空语义。
 func TestClear_PrunesOldArchives(t *testing.T) {
@@ -297,8 +300,12 @@ func TestClear_PrunesOldArchives(t *testing.T) {
 	dir := t.TempDir()
 	forgeDir := filepath.Join(dir, ".forge")
 	os.MkdirAll(forgeDir, 0755)
+	// Old archive (year 2000, definitely older than 30 days) → deleted.
+	//
 	// 老归档（2000 年，必然超 30 天）→ 删
 	os.WriteFile(filepath.Join(forgeDir, "checklog-20000101000000.jsonl"), []byte("old"), 0644)
+	// New archive (today's timestamp) → kept.
+	//
 	// 新归档（今天时间戳）→ 保留
 	today := time.Now().Format("20060102150405.000000000")
 	os.WriteFile(filepath.Join(forgeDir, "checklog-"+today+".jsonl"), []byte("new"), 0644)
@@ -319,6 +326,8 @@ func TestClear_PrunesOldArchives(t *testing.T) {
 	}
 }
 
+// TestClear_DisabledRetention: FORGE_LOG_RETENTION_DAYS=0 disables pruning, old archives are kept.
+//
 // TestClear_DisabledRetention：FORGE_LOG_RETENTION_DAYS=0 禁用清理，老归档保留。
 func TestClear_DisabledRetention(t *testing.T) {
 	t.Setenv("FORGE_LOG_RETENTION_DAYS", "0")

@@ -7,7 +7,10 @@ import (
 	"unicode/utf8"
 )
 
-// TestParseAcceptance 锁定 --accept 串解析：分隔符 " :: " 切 Run/Expected，无分隔符→
+// TestParseAcceptance locks down --accept string parsing: the ` :: ` separator splits Run/Expected, no separator →
+// Expected empty (only exit code 0 matters), both sides trimmed. Entry parsing for #3; if broken, acceptance criteria never reach TaskState.
+//
+// TestParseAcceptance 锁定 --accept 串解析：分隔符" :: "切 Run/Expected，无分隔符→
 // Expected 空（只看退出码 0），两侧 trim。#3 的入口解析，断裂则验收标准进不了 TaskState。
 func TestParseAcceptance(t *testing.T) {
 	cases := []struct {
@@ -28,8 +31,12 @@ func TestParseAcceptance(t *testing.T) {
 	}
 }
 
+// TestVerifyAcceptance_RunsAndClassifies end-to-end real run: VerifyAcceptance uses real go subcommands
+// to run each criterion and classifies by `exit code + Expected substring`. Pins four outcome categories — pass (substring matched)/pass (empty expectation,
+// exit code 0)/fail (non-zero exit)/fail (substring missing) — and on failure backfills Output for traceability.
+//
 // TestVerifyAcceptance_RunsAndClassifies 端到端实跑：VerifyAcceptance 用真实 go 子命令
-// 跑每条标准并按"退出码 + Expected 子串"分类。钉住四类结果——pass(含子串)/pass(空期望
+// 跑每条标准并按「退出码 + Expected 子串」分类。钉住四类结果——pass(含子串)/pass(空期望
 // 退出码0)/fail(非0退出)/fail(子串缺失)——以及失败也回填 Output 供排查。
 func TestVerifyAcceptance_RunsAndClassifies(t *testing.T) {
 	dir := t.TempDir()
@@ -58,9 +65,13 @@ func TestVerifyAcceptance_RunsAndClassifies(t *testing.T) {
 	}
 }
 
+// TestTruncateAcceptanceOutput_ValidUTF8 pins the P0 fix: multi-byte UTF-8 (Chinese) output after truncation
+// must still be valid UTF-8. The original byte slice landed the cut point mid-character → invalid UTF-8 → json.Marshal on disk
+// becomes � garbage, losing traceability value (this feature is exactly for traceable evidence). 200 `测` characters = 600 bytes, must trigger truncation.
+//
 // TestTruncateAcceptanceOutput_ValidUTF8 钉住 P0 修复：多字节 UTF-8（中文）输出截断后
 // 必须仍是有效 UTF-8。原字节切片把切点落在字符中间 → 无效 UTF-8 → json.Marshal 落盘
-// 成 � 乱码，丢排查价值（本特性要的就是可追溯证据）。200 个"测"字=600 字节，必触发截断。
+// 成 � 乱码，丢排查价值（本特性要的就是可追溯证据）。200 个「测」字=600 字节，必触发截断。
 func TestTruncateAcceptanceOutput_ValidUTF8(t *testing.T) {
 	s := strings.Repeat(`测`, 200) // 600 字节（3 字节/字），> 500 cap 必截断
 	got := truncateAcceptanceOutput(s)
@@ -72,6 +83,8 @@ func TestTruncateAcceptanceOutput_ValidUTF8(t *testing.T) {
 	}
 }
 
+// TestTruncateAcceptanceOutput_ShortUnchanged pins that short output is returned as-is (no truncation, no prefix added).
+//
 // TestTruncateAcceptanceOutput_ShortUnchanged 钉住短输出原样返回（不截断、不加前缀）。
 func TestTruncateAcceptanceOutput_ShortUnchanged(t *testing.T) {
 	s := `短输出`
@@ -80,6 +93,11 @@ func TestTruncateAcceptanceOutput_ShortUnchanged(t *testing.T) {
 	}
 }
 
+// TestParseAcceptanceFromPlan locks down extracting acceptance criteria from Plan markdown: line-scan Run:/Expected:
+// pairing, merged into `run :: expected` fed to parseOneAcceptance to reuse :: boundary handling. Covers centralized block / Task
+// inline multi-block / no block / bare Run / orphan Expected / consecutive Run — any breakage makes --plan-file auto-extraction void,
+// and the acceptance dimension keeps spinning empty (dogfood evidence: this project's 28 task conclusions all have acceptance 0/0).
+//
 // TestParseAcceptanceFromPlan 锁定从 Plan markdown 提取验收标准：行扫描 Run:/Expected:
 // 配对，合并成 `run :: expected` 喂 parseOneAcceptance 复用 :: 边界处理。覆盖集中块/Task
 // 内联多块/无块/裸 Run/孤立 Expected/连续 Run——任一断裂则 --plan-file 自动提取失效，
@@ -143,6 +161,9 @@ func TestParseAcceptanceFromPlan(t *testing.T) {
 	}
 }
 
+// TestMergeAcceptance locks down that explicit --accept takes priority, and plan extraction deduplicates by Run to supplement.
+// On coexistence, explicit entries expressing override/fine-tuning should win, plan only supplements non-conflicting Runs.
+//
 // TestMergeAcceptance 锁定显式 --accept 优先、plan 提取按 Run 去重补充。
 // 共存时显式条目表达覆盖/微调应胜出，plan 只补未冲突的 Run。
 func TestMergeAcceptance(t *testing.T) {
@@ -168,6 +189,10 @@ func TestMergeAcceptance(t *testing.T) {
 	}
 }
 
+// TestVerifyAcceptance_RecordsAcceptedHeadCommit pins the AcceptedHeadCommit backfill semantics: the proof v2
+// fast path (AcceptedHeadCommit == current HEAD to judge Passed fresh) depends on VerifyAcceptance recording this
+// snapshot during the real run. Under a git repo it must == git rev-parse --short HEAD.
+//
 // TestVerifyAcceptance_RecordsAcceptedHeadCommit 钉住 AcceptedHeadCommit 回填语义：proof v2
 // 快路径（AcceptedHeadCommit == 当前 HEAD 判 Passed fresh）依赖 VerifyAcceptance 实跑时记此
 // 快照。git 仓库下须 == git rev-parse --short HEAD。
@@ -192,8 +217,11 @@ func TestVerifyAcceptance_RecordsAcceptedHeadCommit(t *testing.T) {
 	}
 }
 
+// TestVerifyAcceptance_AcceptedHeadCommit_NonGitEmpty pins the non-git directory degradation: GetHeadCommit
+// fails and returns an empty string (no panic), proof v1 rerun fallback relies on this empty value to judge going through rerun. t.TempDir() is not a git repo.
+//
 // TestVerifyAcceptance_AcceptedHeadCommit_NonGitEmpty 钉住非 git 目录的退化：GetHeadCommit
-// 失败返 ""（不 panic），proof v1 重跑兜底靠此空值判定走重跑。t.TempDir() 非 git 仓库。
+// 失败返""（不 panic），proof v1 重跑兜底靠此空值判定走重跑。t.TempDir() 非 git 仓库。
 func TestVerifyAcceptance_AcceptedHeadCommit_NonGitEmpty(t *testing.T) {
 	dir := t.TempDir()
 	state := &TaskState{Acceptance: ParseAcceptance([]string{`go version :: go version`})}
@@ -203,8 +231,13 @@ func TestVerifyAcceptance_AcceptedHeadCommit_NonGitEmpty(t *testing.T) {
 	}
 }
 
+// TestParseAcceptanceFromPlan_FencedCodeBlock pins fenced-code-block recognition: Run:/Expected: lines inside ```/~~~ code example blocks
+// are not extracted — shell snippets pasted in plan that happen to start with `Run:` would be misextracted as acceptance criteria.
+// isFenceMarker uses the same decision branch for backtick (96) and tilde; here we test with ~~~ fences (plan uses backtick raw
+// strings to write real newlines across lines, avoiding the double-quote corruption pitfall + avoiding raw-string backtick-termination conflicts).
+//
 // TestParseAcceptanceFromPlan_FencedCodeBlock 钉住 fenced 围栏识别：```/~~~ 代码示例块内的
-// Run:/Expected: 不提取——plan 贴的 shell 片段恰好含 "Run:" 开头行会被误提取成验收标准。
+// Run:/Expected: 不提取——plan 贴的 shell 片段恰好含"Run:"开头行会被误提取成验收标准。
 // isFenceMarker 对反引号(96)/波浪号走同一判定分支；这里用 ~~~ 围栏测（plan 用反引号 raw
 // string 跨行写真实换行，规避双引号腐蚀坑 + 避开 raw string 反引号终止冲突）。
 func TestParseAcceptanceFromPlan_FencedCodeBlock(t *testing.T) {
@@ -226,6 +259,11 @@ Expected: ok
 	}
 }
 
+// TestCheckAcceptanceFresh locks down the task-complete acceptance pre-flight deterministic judgment —
+// providing a consumer for AcceptedHeadCommit (after MCP teardown this field is written by VerifyAcceptance but has no production consumer,
+// becoming an orphan field). This test pins that `claimed acceptance passed` must have a verifiable consumer: not actually run / snapshot stale / not passed → BLOCKED.
+// Corresponds to Emergence World affordance gate + Proof of Work.
+//
 // TestCheckAcceptanceFresh 锁定 task-complete acceptance pre-flight 的 deterministic 判定——
 // 给 AcceptedHeadCommit 补消费方（MCP 拆除后该字段在 VerifyAcceptance 写入但无生产消费方，
 // 成孤儿字段）。本测试钉住「声称验收过」必须有可验证 consumer：未实跑/快照过期/未通过 → BLOCKED。
@@ -292,6 +330,10 @@ func TestCheckAcceptanceFresh(t *testing.T) {
 	}
 }
 
+// TestCheckAcceptanceFresh_NonGitShortCircuit pins the non-git directory documentation contract: when GetHeadCommit returns empty
+// the fresh check short-circuits to pass. Under non-git, verify-acceptance writes AcceptedHeadCommit to an empty string (Passed may be true),
+// without the short-circuit case 1 `not actually run` would falsely match and forever BLOCKED — non-git projects (explicitly supported by Forge) running acceptance would fail to complete.
+//
 // TestCheckAcceptanceFresh_NonGitShortCircuit 钉住非 git 目录的文档契约：GetHeadCommit 返空时
 // fresh 检查短路放行。非 git 下 verify-acceptance 写 AcceptedHeadCommit=""（Passed 可能 true），
 // 无短路则 case 1「未实跑」误命中致永远 BLOCKED——非 git 项目（Forge 显式支持）跑验收反而过不了 complete。

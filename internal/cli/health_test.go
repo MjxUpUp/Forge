@@ -7,6 +7,9 @@ import (
 	"github.com/MjxUpUp/Forge/internal/health"
 )
 
+// captureStdout reuses the definition in skills_install_test.go (same package).
+// runForgeStreams reuses the definition in task_nongit_test.go (same package).
+//
 // captureStdout 复用 skills_install_test.go 的定义（同包）。
 // runForgeStreams 复用 task_nongit_test.go 的定义（同包）。
 
@@ -18,6 +21,8 @@ func TestPrintHealth_Empty(t *testing.T) {
 }
 
 func TestPrintHealth_BlindSpotWarning(t *testing.T) {
+	// Blind-spot rate 2/3 ~= 0.67 >= 0.5 -> must print the systemic blind-spot warning (project-level headline signal).
+	//
 	// 盲区率 2/3 ≈ 0.67 ≥ 0.5 → 必须打印系统性盲区告警（项目级头条信号）。
 	s := health.Summary{
 		TotalTasks:     3,
@@ -37,6 +42,8 @@ func TestPrintHealth_BlindSpotWarning(t *testing.T) {
 }
 
 func TestPrintHealth_NoBlindSpotSilent(t *testing.T) {
+	// Blind-spot rate 0 -> should not show the systemic blind-spot warning (avoid noise).
+	//
 	// 盲区率 0 → 不该出现系统性盲区告警（避免噪声）。
 	s := health.Summary{
 		TotalTasks:     2,
@@ -51,12 +58,18 @@ func TestPrintHealth_NoBlindSpotSilent(t *testing.T) {
 	}
 }
 
+// TestHealth_NonGitFriendlyMessage pins dogfood 5.2: running forge health in a non-git directory no longer surfaces a bare
+// error like forgedata: cwd is not in a git repository (AwesomeMutiAgent abandoned after 1 session), instead it shows a friendly hint
+// guiding git init/forge init. Exit code 0 (user error, not a program error).
+//
 // TestHealth_NonGitFriendlyMessage 钉死 dogfood 5.2：非 git 目录跑 forge health 不再裸报
 // "forgedata: cwd is not in a git repository"（AwesomeMutiAgent 1 session 放弃），改友好提示
 // 指引 git init/forge init。退出码 0（用户错误而非程序错误）。
 func TestHealth_NonGitFriendlyMessage(t *testing.T) {
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
 	tmpDir := t.TempDir()
+	// No git, no .forge — the AwesomeMutiAgent scenario.
+	//
 	// 无 git、无 .forge —— AwesomeMutiAgent 场景
 	stdout, _, code := runForgeStreams(t, tmpDir, "health")
 	if code != 0 {
@@ -67,6 +80,8 @@ func TestHealth_NonGitFriendlyMessage(t *testing.T) {
 			t.Errorf("非 git health stdout 缺 %q\nstdout: %s", want, stdout)
 		}
 	}
+	// Should not surface the underlying error.
+	//
 	// 不应裸露底层错误
 	if strings.Contains(stdout, "forgedata: cwd is not in a git repository") {
 		t.Errorf("不应裸报底层 error，got: %s", stdout)

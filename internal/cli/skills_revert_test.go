@@ -1,5 +1,8 @@
 package cli
 
+// skills_revert_test.go — pure-logic tests for scoped revert (decision filtering + locate-by-id).
+// The git revert part is git integration, not covered by unit tests (verified manually/e2e).
+//
 // skills_revert_test.go — scoped revert 纯逻辑测试（决策筛选 + 按 id 定位）。
 // git revert 部分是 git integration，不在单元测试覆盖（manual/e2e 验证）。
 

@@ -1,6 +1,14 @@
 package forgedata
 
+// migrate.go performs a one-shot migration of project-level .forge/ runtime state to the user-level DataDir.
+//
 // migrate.go —— 旧项目级 .forge/ runtime state → 用户级 DataDir 一次性迁移。
+//
+// Background (refactor-data-home): runtime state (tasks/gates/checklog/toollog/act/
+// sessions/quarantine/active-task-ref/.task-verify-throttle.last, etc.) moves from project-level
+// <root>/.forge/ to user-level ~/.forge/projects/<key>/ (DataDir). Projects that accumulated
+// runtime state with an older forge version before release run `forge migrate` after upgrade to
+// move legacy .forge/ runtime state into DataDir; new runtime state is written directly to DataDir.
 //
 // 背景（refactor-data-home）：runtime state（tasks/gates/checklog/toollog/act/
 // sessions/quarantine/active-task-ref/.task-verify-throttle.last 等）从项目级
@@ -8,9 +16,19 @@ package forgedata
 // forge 版本积累过 runtime state 的项目，升级到新版本后用 `forge migrate` 把遗留
 // .forge/ runtime state 搬到 DataDir；新写的 runtime state 已直接落 DataDir。
 //
+// Project config (ConfigDir) is NOT migrated: hooks/ (project-config hook scripts, distinct
+// from the runtime copy DataDir/hooks — zombie accessors are not involved in migration),
+// protocol.yml, CLAUDE.md, and AGENTS.md remain under <root>/.forge/.
+//
 // 项目配置（ConfigDir）不迁：hooks/（项目配置 hook 脚本，区别于 runtime 副本
 // DataDir/hooks——僵尸 accessor 不涉迁移）/protocol.yml/CLAUDE.md/AGENTS.md 仍留
 // <root>/.forge/。
+//
+// Safety design:
+//   - Allowlist (explicit runtime state names listed); never blindly migrate the whole .forge/ — prevents accidental config migration
+//   - Idempotent: re-running yields empty Moved (runtime already in DataDir, .forge/ has no runtime)
+//   - --dry-run previews without executing; --force overwrites existing same-named entries in DataDir (default skip)
+//   - Cross-device Rename failure (project disk ≠ home disk, Windows D:→C: common) falls back to copy+remove
 //
 // 安全设计：
 //   - 白名单（明确列出 runtime state 名），不盲目迁整个 .forge/——防误迁配置
@@ -24,6 +42,10 @@ import (
 	"path/filepath"
 )
 
+// runtimeDirs lists directories under .forge/ belonging to runtime state (migrated to DataDir with the same name).
+// Based on stores actually migrated in commits B/D/E. ConfigDir config directories (hooks/) are excluded —
+// hooks/ holds project-config hook scripts (ConfigHooksDir), not runtime state.
+//
 // runtimeDirs 是 .forge/ 下属 runtime state 的目录（迁到 DataDir 同名）。
 // 基于 commit B/D/E 实际迁移的 store。ConfigDir 配置目录（hooks/）不在此列——
 // hooks/ 是项目配置 hook 脚本（ConfigHooksDir），不是 runtime。
@@ -32,6 +54,8 @@ var runtimeDirs = []string{
 	"act", "stamps", "sessions", "quarantine",
 }
 
+// runtimeFiles lists single files under .forge/ belonging to runtime state (no archive variants).
+//
 // runtimeFiles 是 .forge/ 下属 runtime state 的单文件（无归档变体）。
 var runtimeFiles = []string{
 	"sessions.jsonl", "session.json",
@@ -39,6 +63,10 @@ var runtimeFiles = []string{
 	".task-verify-throttle.last",
 }
 
+// runtimeGlobs lists glob patterns under .forge/ belonging to runtime state (archive/session-scoped variants).
+// active-task-ref* covers legacy active-task-ref and session-scoped active-task-ref-<sid>.
+// checklog-*.jsonl / toollog-*.jsonl are timestamped archives (distinct from the main files in runtimeFiles).
+//
 // runtimeGlobs 是 .forge/ 下属 runtime state 的 glob 模式（归档/session-scoped 变体）。
 // active-task-ref* 覆盖 legacy active-task-ref + session-scoped active-task-ref-<sid>。
 // checklog-*.jsonl / toollog-*.jsonl 是带时间戳的归档（区别于 runtimeFiles 的主文件）。
@@ -47,21 +75,35 @@ var runtimeGlobs = []string{
 	"active-task-ref*",
 }
 
+// MigrateOptions controls the behavior of MigrateProject.
+//
 // MigrateOptions 控制 MigrateProject 行为。
 type MigrateOptions struct {
+	// DryRun: only classify and report what would migrate; do not actually move.
 	DryRun bool // 只分类报告将迁移，不实际移动
+	// Force: overwrite when DataDir already has an entry with the same name (default skip).
 	Force  bool // DataDir 已有同名时覆盖（默认 skip）
 }
 
+// MigrationResult records migration details for the command layer to print a report.
+//
 // MigrationResult 记录迁移明细，供命令层打印报告。
 type MigrationResult struct {
+	// Moved: entries successfully migrated to DataDir (relative names).
 	Moved   []string // 成功迁到 DataDir 的条目（相对名）
+	// Skipped: DataDir already has the same name and Force is not set; skipped.
 	Skipped []string // DataDir 已有同名且非 Force，跳过
+	// Left: entries remaining in ConfigDir after migration (config + unknown); populated only when non-DryRun.
 	Left    []string // 迁移后 ConfigDir 剩余条目（配置 + 未知），仅非 DryRun 填
 }
 
+// MigrateProject moves runtime state under p.ConfigDir (.forge/) to p.DataDir.
+// Idempotent: when runtime state is already in DataDir, .forge/ has no runtime and Moved is empty.
+//
 // MigrateProject 把 p.ConfigDir（.forge/）下的 runtime state 搬到 p.DataDir。
 // 幂等：runtime state 已在 DataDir 时 .forge/ 无 runtime，Moved 为空。
+//
+// Ensure first creates DataDir (including .migration-meta.json); each store's write path is guaranteed to exist afterward.
 //
 // Ensure 先建 DataDir（含 .migration-meta.json），各 store 后续写入路径必然存在。
 func MigrateProject(p *Project, opts MigrateOptions) (*MigrationResult, error) {
@@ -70,6 +112,8 @@ func MigrateProject(p *Project, opts MigrateOptions) (*MigrationResult, error) {
 	}
 	res := &MigrationResult{}
 
+	// Explicit directories + files
+	//
 	// 显式目录 + 文件
 	names := make([]string, 0, len(runtimeDirs)+len(runtimeFiles))
 	names = append(names, runtimeDirs...)
@@ -77,6 +121,7 @@ func MigrateProject(p *Project, opts MigrateOptions) (*MigrationResult, error) {
 	for _, name := range names {
 		src := filepath.Join(p.ConfigDir, name)
 		if _, err := os.Stat(src); err != nil {
+			// Does not exist; skip.
 			continue // 不存在，跳过
 		}
 		moved, err := migrateOne(src, filepath.Join(p.DataDir, name), opts)
@@ -90,6 +135,8 @@ func MigrateProject(p *Project, opts MigrateOptions) (*MigrationResult, error) {
 		}
 	}
 
+	// glob patterns (archive/session variants)
+	//
 	// glob 模式（归档/session 变体）
 	for _, pattern := range runtimeGlobs {
 		matches, err := filepath.Glob(filepath.Join(p.ConfigDir, pattern))
@@ -110,6 +157,8 @@ func MigrateProject(p *Project, opts MigrateOptions) (*MigrationResult, error) {
 		}
 	}
 
+	// Record remaining entries in ConfigDir after migration (config + unknown entries). DryRun does not execute, so leftovers are meaningless and left empty.
+	//
 	// 记录迁移后 ConfigDir 剩余（配置 + 未知条目）。DryRun 不执行，剩余无意义，不填。
 	if !opts.DryRun {
 		entries, err := os.ReadDir(p.ConfigDir)
@@ -122,12 +171,18 @@ func MigrateProject(p *Project, opts MigrateOptions) (*MigrationResult, error) {
 	return res, nil
 }
 
+// migrateOne moves src→dst, returning (actually moved, error).
+// If dst already exists: skip unless Force (returns false with no error); under Force, dst is removed first then moved.
+// DryRun leaves all files untouched (including dst — the pre-check prevents dry-run+force from deleting DataDir data);
+// returns true meaning would migrate/overwrite, false meaning would skip.
+//
 // migrateOne 移动 src→dst，返回 (是否实际移动, error)。
 // dst 已存在：非 Force skip（返 false 无 err），Force 先删 dst 再移。
 // DryRun 时**完全不动文件**（含不删 dst——前置检查防 dry-run+force 误删 DataDir 数据），
-// 返 true 表示"将迁移/覆盖"，false 表示"将 skip"。
+// 返 true 表示「将迁移/覆盖」，false 表示「将 skip」。
 func migrateOne(src, dst string, opts MigrateOptions) (bool, error) {
 	if opts.DryRun {
+		// dry-run only reports intent and touches no files (especially does not delete dst)
 		// dry-run 只报告意图，不碰任何文件（尤其不删 dst）
 		if _, err := os.Stat(dst); err == nil && !opts.Force {
 			return false, nil // dst 已有且非 force → 将 skip
@@ -148,6 +203,10 @@ func migrateOne(src, dst string, opts MigrateOptions) (bool, error) {
 	return true, nil
 }
 
+// moveEntry prefers os.Rename (same-device atomic, moves the whole subtree at once); on cross-device failure it
+// falls back to recursive copy + remove. When the project disk differs from the home disk (D: project / C: ~/.forge),
+// Rename returns a link error (EXDEV equivalent) and copyTree is the safety net.
+//
 // moveEntry 优先 os.Rename（同设备原子，整棵子树一次移动），跨设备失败 fallback
 // 递归 copy + remove。项目盘 ≠ home 盘（D: 项目 / C: ~/.forge）时 Rename 返 link
 // error（EXDEV 等价），copyTree 保底。
@@ -164,6 +223,9 @@ func moveEntry(src, dst string) error {
 	return nil
 }
 
+// copyTree recursively copies src→dst (file or directory), preserving mode. Runtime state has no symlinks,
+// so os.Stat (which follows) is sufficient; when a symlink points to a dir, the target contents are copied as a dir (acceptable).
+//
 // copyTree 递归复制 src→dst（文件或目录），保留模式。runtime state 无 symlink，
 // 用 os.Stat（跟随）足够；遇 symlink 指向 dir 时按 dir 复制目标内容（可接受）。
 func copyTree(src, dst string) error {

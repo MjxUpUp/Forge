@@ -5,11 +5,15 @@ import (
 	"testing"
 )
 
+// al is a shorthand for constructing addedLine (used in detector unit tests).
+//
 // al 是构造 addedLine 的简写（detector 单测用）。
 func al(file string, line int, text string) addedLine {
 	return addedLine{file: file, lineNo: line, text: text}
 }
 
+// TestDetectTypeSuppression pins down hits for each of the 7 suppression directives + no false positives on plain lines/literal mentions.
+//
 // TestDetectTypeSuppression 逐条钉 7 类抑制指令的命中 + 不误报普通行/字面量提及。
 func TestDetectTypeSuppression(t *testing.T) {
 	cases := []struct {
@@ -45,6 +49,8 @@ func TestDetectTypeSuppression(t *testing.T) {
 	}
 }
 
+// TestDetectErrorSwallow: empty catch / except:pass hit; catch with body is not falsely reported.
+//
 // TestDetectErrorSwallow 空 catch / except:pass 命中；有 body 的 catch 不误报。
 func TestDetectErrorSwallow(t *testing.T) {
 	hit := []string{
@@ -73,6 +79,8 @@ func TestDetectErrorSwallow(t *testing.T) {
 	}
 }
 
+// TestDetectDeadBranch: never-true branches hit; legal conditions are not falsely reported.
+//
 // TestDetectDeadBranch 永假分支命中；合法条件不误报。
 func TestDetectDeadBranch(t *testing.T) {
 	hit := []string{
@@ -104,8 +112,12 @@ func TestDetectDeadBranch(t *testing.T) {
 	}
 }
 
+// TestDetectCommentOnly: a file's added lines are all comments/blank lines → hit; mixed-in logic lines do not hit.
+//
 // TestDetectCommentOnly 某文件新增行全是注释/空行 → 命中；混入逻辑行不命中。
 func TestDetectCommentOnly(t *testing.T) {
+	// all-comment file → hit
+	//
 	// 全注释文件 → 命中
 	got := detectCommentOnly([]addedLine{
 		al("only_doc.go", 1, "// 这是个修复"),
@@ -115,6 +127,8 @@ func TestDetectCommentOnly(t *testing.T) {
 	if len(got) != 1 || got[0].File != "only_doc.go" || got[0].Severity != "low" {
 		t.Fatalf(`全注释文件应命中 comment-only (low): %+v`, got)
 	}
+	// mixed-in logic line → no hit
+	//
 	// 混入逻辑行 → 不命中
 	got = detectCommentOnly([]addedLine{
 		al("real_fix.go", 1, "// fix bug"),
@@ -123,6 +137,8 @@ func TestDetectCommentOnly(t *testing.T) {
 	if len(got) != 0 {
 		t.Fatalf(`混入逻辑行不应命中: %+v`, got)
 	}
+	// multi-file: only mark the comment-only one
+	//
 	// 多文件：只标 comment-only 的那个
 	got = detectCommentOnly([]addedLine{
 		al("a.go", 1, "// doc only"),
@@ -133,6 +149,9 @@ func TestDetectCommentOnly(t *testing.T) {
 	}
 }
 
+// TestDetectCommentDebt: debt markers in added comment lines hit; marker words in code lines / plain comments are not falsely reported.
+// Pins comment-as-debt (laziness ladder reverse level 0: comments flag problems but do not fix them).
+//
 // TestDetectCommentDebt 新增注释行里的债务标记命中；代码行里的标记词/普通注释不误报。
 // 钉 comment-as-debt（懒惰阶梯反第 0 级：注释标识问题但不解决）。
 func TestDetectCommentDebt(t *testing.T) {
@@ -171,6 +190,11 @@ func TestDetectCommentDebt(t *testing.T) {
 	}
 }
 
+// TestScanCheatPatterns_SelfScanNoCommentDebt pins the self-match protection invariant: when the scanner's own
+// source code (debtMarkerWords concatenation + commentDebtRe definition) is scanned, comment-as-debt hits must
+// be 0 — code lines (const/var assignments) are skipped by isCommentOrBlank, and comment lines do not write marker words consecutively. This
+// protection is fragile (changing it to consecutive writes breaks it), guarded by e2e against regression.
+//
 // TestScanCheatPatterns_SelfScanNoCommentDebt 钉死自匹配防护 invariant：扫描器自身
 // 源码（debtMarkerWords 拼接 + commentDebtRe 定义）被扫时，comment-as-debt 命中必须
 // 为 0——代码行（const/var 赋值）被 isCommentOrBlank 跳过，注释行不连写标记词。这条
@@ -178,6 +202,8 @@ func TestDetectCommentDebt(t *testing.T) {
 func TestScanCheatPatterns_SelfScanNoCommentDebt(t *testing.T) {
 	dir := t.TempDir()
 	initRepoWithMaster(t, dir)
+	// mini scanner source: regex definition uses string concatenation (code line); comments do not write any marker words consecutively.
+	//
 	// 迷你扫描器源：regex 定义用字符串拼接（代码行），注释不连写任何标记词。
 	writeCommitSource(t, dir, map[string]string{
 		"scan.go": "package main\n" +
@@ -197,6 +223,9 @@ func TestScanCheatPatterns_SelfScanNoCommentDebt(t *testing.T) {
 	}
 }
 
+// TestScanCheatPatterns_RealGitDiff end-to-end: committed source containing 4 types of cheats → all detected.
+// Uses the real git diff path (collectAddedLines goes through git diff -U0).
+//
 // TestScanCheatPatterns_RealGitDiff 端到端：committed 源码含 4 类作弊 → 全检出。
 // 用真实 git diff 路径（collectAddedLines 走 git diff -U0）。
 func TestScanCheatPatterns_RealGitDiff(t *testing.T) {
@@ -224,6 +253,9 @@ func TestScanCheatPatterns_RealGitDiff(t *testing.T) {
 	}
 }
 
+// TestScanCheatPatterns_UntrackedFiles: cheats in untracked files (just created by agent, not git add'd)
+// can also be detected — collectAddedLines goes through the whole-file read path.
+//
 // TestScanCheatPatterns_UntrackedFiles 未跟踪文件（agent 刚建未 git add）的作弊
 // 也能检出——collectAddedLines 走整文件读路径。
 func TestScanCheatPatterns_UntrackedFiles(t *testing.T) {
@@ -246,6 +278,8 @@ func TestScanCheatPatterns_UntrackedFiles(t *testing.T) {
 	}
 }
 
+// TestScanCheatPatterns_CleanDiff: clean code (no cheats) → zero findings.
+//
 // TestScanCheatPatterns_CleanDiff 干净代码（无作弊）→ 零 findings。
 func TestScanCheatPatterns_CleanDiff(t *testing.T) {
 	dir := t.TempDir()
@@ -259,11 +293,15 @@ func TestScanCheatPatterns_CleanDiff(t *testing.T) {
 	}
 }
 
+// TestScanCheatPatterns_NoSource: doc/config changes → not scanned (isSourceFile filter).
+//
 // TestScanCheatPatterns_NoSource 文档/配置变更 → 不扫（isSourceFile 过滤）。
 func TestScanCheatPatterns_NoSource(t *testing.T) {
 	dir := t.TempDir()
 	initRepoWithMaster(t, dir)
-	// .md 文件含 "@ts-ignore" 字样也不该命中——非源码。
+	// .md files containing the @ts-ignore text should not hit either — not source code.
+	//
+	// .md 文件含"@ts-ignore"字样也不该命中——非源码。
 	writeCommitSource(t, dir, map[string]string{
 		"README.md": "# use @ts-ignore sparingly\n",
 	}, "doc only")
@@ -273,6 +311,8 @@ func TestScanCheatPatterns_NoSource(t *testing.T) {
 	}
 }
 
+// TestParseNewStart pins the parsing of the new-file start line number in hunk headers.
+//
 // TestParseNewStart 钉 hunk 头新文件起始行号解析。
 func TestParseNewStart(t *testing.T) {
 	cases := map[string]int{
@@ -289,6 +329,8 @@ func TestParseNewStart(t *testing.T) {
 	}
 }
 
+// TestCheatScanDetail pins the detail summary format (clean vs hit).
+//
 // TestCheatScanDetail 钉 detail 摘要格式（干净 vs 命中）。
 func TestCheatScanDetail(t *testing.T) {
 	if got := cheatScanDetail(nil); !strings.Contains(got, "no ") {
@@ -304,14 +346,20 @@ func TestCheatScanDetail(t *testing.T) {
 	}
 }
 
+// TestCollectAddedLines_CommittedAndUntracked confirms the collector covers both committed and untracked files.
+//
 // TestCollectAddedLines_CommittedAndUntracked 确认收集器同时覆盖已提交和未跟踪文件。
 func TestCollectAddedLines_CommittedAndUntracked(t *testing.T) {
 	dir := t.TempDir()
 	initRepoWithMaster(t, dir)
+	// committed
+	//
 	// 已提交
 	writeCommitSource(t, dir, map[string]string{
 		"committed.go": "package main\n\nfunc C() int { return 1 }\n",
 	}, "add committed")
+	// untracked
+	//
 	// 未跟踪
 	writeUntracked(t, dir, map[string]string{
 		"untracked.go": "package main\n\nfunc U() int { return 2 }\n",
@@ -328,6 +376,8 @@ func TestCollectAddedLines_CommittedAndUntracked(t *testing.T) {
 	if !files["untracked.go"] {
 		t.Errorf(`未跟踪文件的新增行未收集: %+v`, files)
 	}
+	// content check: untracked's func U line should be present
+	//
 	// 内容核对：untracked 的 func U 行应在
 	foundU := false
 	for _, a := range added {

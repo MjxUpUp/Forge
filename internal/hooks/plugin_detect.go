@@ -7,6 +7,24 @@ import (
 	"strings"
 )
 
+// plugin_detect.go — detects whether forge is installed as a Claude Code user-level plugin.
+//
+// Background: the plugin (user-level, ~/.claude/plugins/cache/forge/forge/<sha>/)
+// .claude-plugin/plugin.json registers ForgeHookSpec (hooks). This fully duplicates
+// the project-level settings.local.json hooks written by forge init (GenerateSettings)
+// — Claude Code merges both registrations → the same hook runs twice (perf ×2 +
+// advisory noise ×2; idempotent so no errors, but redundant).
+//
+// Resolution: GenerateSettings stays a pure function (always writes); plugin
+// detection lives only at the command layer (init.go / sync.go's
+// dedupeProjectLevelIfPlugin) — after all writes complete, StripForgeHooks is called
+// uniformly to clean project-level duplicate hooks so the user-level plugin takes
+// over. StripForgeMCPServer additionally cleans leftover .mcp.json in old projects
+// where historical init/sync wrote the forge MCP server (the MCP layer has been
+// fully removed; the plugin no longer ships .mcp.json, this only cleans old residue).
+// Detection is deliberately kept out of Translate / GenerateSettings so unit tests
+// do not depend on the global IsClaudePluginInstalled state.
+//
 // plugin_detect.go — 检测 forge 是否作为 Claude Code user-level plugin 已装。
 //
 // 背景：plugin（user-level，~/.claude/plugins/cache/forge/forge/<sha>/）的
@@ -22,6 +40,12 @@ import (
 // （MCP 层已全拆，plugin 不再带 .mcp.json，仅清旧残留）。
 // 检测不放 Translate / GenerateSettings 内，避免单元测试依赖全局 IsClaudePluginInstalled 状态。
 
+// ClaudeHome returns the Claude Code configuration home directory. It prefers the
+// CLAUDE_CONFIG_DIR env var (a custom config directory supported by Claude Code),
+// falling back to ~/.claude. Used by IsClaudePluginInstalled to resolve the location
+// of installed_plugins.json. An empty string means the home could not be resolved
+// (callers should treat this as not installed).
+//
 // ClaudeHome 返回 Claude Code 配置 home 目录。优先 CLAUDE_CONFIG_DIR env（Claude Code
 // 支持的自定义配置目录），fallback ~/.claude。供 IsClaudePluginInstalled 解析
 // installed_plugins.json 的位置。空串表示无法解析 home（调用方应视为未装）。
@@ -36,6 +60,21 @@ func ClaudeHome() string {
 	return filepath.Join(home, ".claude")
 }
 
+// IsClaudePluginInstalledAt reports whether the forge plugin is installed at the
+// user level under the given Claude home. It reads
+// <claudeHome>/plugins/installed_plugins.json and looks for an entry whose plugin
+// name is forge (key like forge@<marketplace>) and whose scope is user.
+//
+// It matches forge@<any marketplace>: the plugin name forge is fixed (pluginpack
+// PluginName=`forge`), while the marketplace name may vary (users may install from a
+// fork; marketplace.json name is still generator-controlled, but for robustness we
+// do not assume an exact value). Only scope=user counts (a project-scope install
+// does not take over the whole machine like a user-level install).
+//
+// Any read/parse error returns false (fail-safe: on detection failure we treat it
+// as not installed and the caller takes the conservative write-project-level path —
+// the worst case is mere duplication, never missed hooks due to a detection fault).
+//
 // IsClaudePluginInstalledAt 报告给定 Claude home 下是否在 user-level 安装了 forge plugin。
 // 读 <claudeHome>/plugins/installed_plugins.json，找 plugin 名为 forge（key 形如
 // forge@<marketplace>）且 scope=user 的条目。
@@ -76,12 +115,50 @@ func IsClaudePluginInstalledAt(claudeHome string) bool {
 	return false
 }
 
+// IsClaudePluginInstalled is a convenience wrapper around
+// IsClaudePluginInstalledAt(ClaudeHome()) for callers such as init, the claudecode
+// translator, and forge plugin dedupe to detect on the current machine.
+//
 // IsClaudePluginInstalled 是 IsClaudePluginInstalledAt(ClaudeHome()) 的便捷封装，
 // 供 init / claudecode translator / forge plugin dedupe 等调用方检测当前机器。
 func IsClaudePluginInstalled() bool {
 	return IsClaudePluginInstalledAt(ClaudeHome())
 }
 
+// StripForgeHooksUserLevel removes forge hooks from the user-level
+// settings.local.json (ClaudeHome()/settings.local.json). plugin.json already
+// registers every ForgeHookSpec at user level → any forge hook here is necessarily a
+// duplicate (Claude Code runs the same hook twice; idempotent so no errors, but
+// redundant + advisory noise ×2). Sources: historical global `forge init` writing to
+// home / leftover from old npm global installs / user-placed entries — after plugin
+// install these duplicate the plugin manifest.
+//
+// It always passes keepEmpty=true (the parameter is not accepted): user-level
+// settings.local.json is a personal global config and must never be deleted wholesale;
+// we only clear forge hooks and keep the {} shell (unlike project-level manual dedupe
+// where the file may be deleted — project files are local and rebuildable, user files
+// are global and personal and not rebuildable). When ClaudeHome() is empty
+// (CLAUDE_CONFIG_DIR unset and os.UserHomeDir failed — very rare; the outer
+// IsClaudePluginInstalled guard in dedupeProjectLevelIfPlugin/runPluginDedupe already
+// fails fast, this guard is belt-and-suspenders) it is a no-op. Used by
+// dedupeProjectLevelIfPlugin (init/sync) and runPluginDedupe (plugin dedupe /
+// init-suggest SessionStart auto-call) to clean up uniformly once the plugin is
+// installed.
+//
+// Concurrency/TOCTOU (review S1, a known trade-off not fixed here): this function
+// touches the user-level file at the end of every non-init forge command via
+// autoSync's defer, and that file is shared by all forge projects. StripForgeHooksAt
+// does read-modify-write (os.WriteFile is non-atomic, no temp+rename) — when two
+// forge processes (e.g. terminal A `forge status` + terminal B hook callback) or a
+// process and the user's editor write concurrently, the later writer overwrites the
+// earlier one based on a stale buffer and may lose the user's intermediate edits. The
+// project level has the same nature but the blast radius is limited to a single
+// project; the user level is globally shared and riskier. Idempotency limits actual
+// disk writes to the single run that still has forge hooks to clear (subsequent runs
+// are read-only no-ops), compressing the window to a single cleanup. Full convergence
+// is deferred: switch to os.WriteFile(tmp)+os.Rename(tmp,path) on write (same-directory
+// rename is atomic; on Windows it holds within the same volume).
+//
 // StripForgeHooksUserLevel 移除 user-level settings.local.json（ClaudeHome()/settings.local.json）
 // 中的 forge hooks。plugin.json 已在 user-level 注册全部 ForgeHookSpec → 此处的 forge hook
 // 必然重复（Claude Code 双跑同 hook,幂等不出错但冗余 + advisory 噪音 ×2）。来源:历史 global
