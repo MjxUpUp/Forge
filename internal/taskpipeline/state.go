@@ -129,6 +129,41 @@ func activeTaskRefPath(root, sessionID string) string {
 	return filepath.Join(dataHome(root), activeTaskRefFile)
 }
 
+// HasActiveTaskFromOtherSession returns true if at least one other Claude Code
+// session has an active task (via active-task-ref-<sid> file). Used by
+// review-stop hook (non-task mode) to detect concurrent sessions: if another
+// session is actively modifying code, the global git diff belongs to that
+// session's task — its task-complete gate will enforce review, so this
+// session's Stop hook should PASS instead of blocking on changes it didn't make.
+//
+// Returns false when currentSessionID is empty (legacy mode, can't distinguish
+// sessions). Only considers session-scoped files (active-task-ref-* prefix);
+// the legacy global active-task-ref file is excluded.
+func HasActiveTaskFromOtherSession(root, currentSessionID string) bool {
+	if currentSessionID == "" {
+		return false
+	}
+	dir := dataHome(root)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	currentFile := activeTaskRefFile + "-" + util.SanitizeSessionID(currentSessionID)
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasPrefix(name, activeTaskRefFile+"-") {
+			continue // not a session-scoped active-task-ref
+		}
+		if name == currentFile {
+			continue // our own
+		}
+		if info, err := e.Info(); err == nil && info.Size() > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // SetActiveTaskRef writes the task ref to the (session-scoped) active-task-ref.
 // Called by `forge task start` to make the active task unambiguous
 // regardless of how many incomplete tasks exist.
