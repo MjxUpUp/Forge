@@ -84,7 +84,7 @@ Forge 通过 Claude Code 的 Hook 机制实现实时质量检查：
 | **file-sentinel** | Bash 后 | 监控文件变更，未授权修改隔离到 DataDir/quarantine/（`forge data-dir` 查看路径，可恢复，不删除） |
 | **tool-track** | Read 后 | 静默记录 Read 调用到 toollog，供 task-verify 的 read-before-edit 门禁判断（agent 是否先读代码再改） |
 | **task-verify** | 会话结束 | advisory：任务门禁/主分支保护到 stderr+checklog（不阻塞会话结束） |
-| **review-stop** | 会话结束 | code-review-gate 自动挡：未审源码变更 block 会话结束。task 模式不重复拦（task-complete 门禁 ReviewPassed 硬前置已强制），非 task 模式按 diff stamp 决策 |
+| **review-stop** | 会话结束 | code-review-gate 自动挡：未审源码变更 block 会话结束。task 模式不重复拦（task-complete 门禁 ReviewPassed 硬前置已强制），非 task 模式按 diff stamp 决策；并发会话检测——其他 session 有活跃任务时放行（调研 session 不被拦） |
 | **skill-scan** | 会话开始 | advisory：扫描 ~/.claude/skills 安全性（forge audit 19 规则），补 install 门控缺口（手动 clone/junction/git pull 进入的 skill），全局 hook 不依赖 forge project |
 | **mcp-scan** | 会话开始 | advisory：扫描项目级 `.mcp.json` 的 server 配置（管道执行/任意包执行 npx·uvx·dlx·bunx/内联代码/非 https URL/env 明文凭证），补 skill-scan 盲区（攻击者可经 PR 植入恶意 server，clone 即自动连接）；只审 config 层，runtime tool description 注入（Tool Poisoning）不在能力内，全局 hook |
 | **init-suggest** | 会话开始 | advisory：检测 git 项目无 `.forge/` 时，首次提示 agent 询问是否启用 forge（用户拒绝→`forge suggest decline` 永久静默；设 `FORGE_AUTO_INIT=1` 处处自动 init，注意 `forge init` 会写入 `.forge/`、`CLAUDE.md`/`AGENTS.md`、`.claude/settings.local.json`、skills——会对所在项目产生文件变更），全局 hook，补"每项目手动 init"缺口，实现一次安装后项目级资产自动就位 |
@@ -172,7 +172,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 
 | 命令 | 说明 |
 |------|------|
-| `forge act show [--ref <ref>]` | 查看最新（或指定）任务结论 |
+| `forge act show [--ref <ref>]` | 查看最新（或指定）任务结论（含 skill 触达画像——该 task 期间触发了哪些 skill） |
 | `forge act list [--json]` | 列出所有任务结论 |
 | `forge act nudge` | 最新结论有回顾 nudge 时输出一行（否则静默）——供 task-verify 会话结束 hook 消费 |
 
@@ -189,6 +189,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge skills validate` | R1-R9 规范校验 |
 | `forge skills adapters` | 部署 skill-routing adapter（pi/claude/cursor/routes.json） |
 | `forge skills usage` | 使用度量分析（热门 skill + undertrigger 候选） |
+| `forge skills effectiveness` | 技能命中×任务成效关联（命中数/task数/avg分/弱占比，agent-neutral） |
 | `forge skills eval-gen [--save] [--cases-only]` | 生成 eval 清单；`--save`/`--cases-only` 额外落结构化 case 集（回归闭环基准） |
 | `forge skills eval-record --skill X --from <file/->` | 回填一次 eval run（agent dispatch 跑完每个 prompt 后整批提交，归一化+判定+算 health） |
 | `forge skills eval-report --skill X` | latest run vs baseline 回归报告（regression 三态 + pass-rate delta + 可比性） |
