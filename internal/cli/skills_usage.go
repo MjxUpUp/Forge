@@ -17,20 +17,20 @@ var (
 var skillsUsageCmd = &cobra.Command{
 	Use:   "usage",
 	Short: "使用度量分析（热门 skill + 从未触发的 undertrigger 候选）",
-	Long:  `forge skills usage — 读 ~/.forge/research/skill-usage.jsonl，与 canonical skill 集交叉，输出热门排名与从未触发列表。`,
+	Long:  `forge skills usage — 读 toollog.jsonl（tool-track hook 采集的 Skill 工具调用），与 canonical skill 集交叉，输出热门排名与从未触发列表。数据源是 toollog（agent-neutral 采集层），替代断链的 pi 旧源（~/.pi/research/skill-usage.jsonl）。`,
 	RunE:  runSkillsUsage,
 }
 
 func runSkillsUsage(cmd *cobra.Command, args []string) error {
+	proj, err := findProject()
+	if err != nil {
+		return err
+	}
 	canonical, _, err := resolveCanonical()
 	if err != nil {
 		return err
 	}
-	logPath, err := skillseval.DefaultUsageLog()
-	if err != nil {
-		return err
-	}
-	rep, err := skillseval.AnalyzeUsage(canonical, logPath)
+	rep, err := skillseval.AnalyzeUsage(proj.GitRoot, canonical)
 	if err != nil {
 		return err
 	}
@@ -49,8 +49,8 @@ func runSkillsUsage(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	fmt.Printf("Skill 使用度量  (日志: %s)\n", logPath)
-	fmt.Printf("总事件: %d  |  skill 数: %d  |  被用过: %d\n\n", rep.TotalEvents, rep.TotalSkills, rep.UsedSkills)
+	fmt.Printf("Skill 使用度量  (源: toollog.jsonl · agent-neutral)\n")
+	fmt.Printf("总 Skill 调用: %d  |  canonical skill 数: %d  |  被用过: %d\n\n", rep.TotalEvents, rep.TotalSkills, rep.UsedSkills)
 
 	top := rep.HotSkills
 	if skUseTop > 0 && skUseTop < len(top) {
