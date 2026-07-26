@@ -8,7 +8,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Load reads .forge/protocol.yml from the project directory.
+// Load 从项目目录读 .forge/protocol.yml。
 func Load(dir string) (*Protocol, error) {
 	path := filepath.Join(dir, ".forge", "protocol.yml")
 	data, err := os.ReadFile(path)
@@ -25,7 +25,7 @@ func Load(dir string) (*Protocol, error) {
 	return &p, nil
 }
 
-// Save writes the protocol to .forge/protocol.yml.
+// Save 把 protocol 写到 .forge/protocol.yml。
 func Save(dir string, p *Protocol) error {
 	forgeDir := filepath.Join(dir, ".forge")
 	if err := os.MkdirAll(forgeDir, 0755); err != nil {

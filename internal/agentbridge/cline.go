@@ -7,13 +7,12 @@ import (
 	"strings"
 )
 
-// ClineTranslator generates .clinerules/forge-quality.md (guidance rules only).
-// Cline (VS Code extension) has NO lifecycle hooks — no PreToolUse/Stop — so it
-// cannot enforce gates the way claude-code/codex/cursor do. Like copilot/windsurf,
-// Cline gets guidance text only. Cline's project-level .cline/ directory supports
-// rules/skills/hooks (per docs.cline.bot/getting-started/config), so .clinerules/
-// is the official channel and forge-quality.md rides Cline's auto-merge of every
-// .md/.txt there.
+// ClineTranslator 生成 .clinerules/forge-quality.md（仅 guidance 规则）。
+// Cline（VS Code 扩展）没有 lifecycle hooks——无 PreToolUse/Stop——故无法像
+// claude-code/codex/cursor 那样 enforce gate。与 copilot/windsurf 一样，Cline 只拿到
+// guidance 文本。Cline 的 project-level .cline/ 目录支持 rules/skills/hooks
+// （见 docs.cline.bot/getting-started/config），故 .clinerules/ 是官方渠道，forge-quality.md
+// 借 Cline 自动合并该目录下所有 .md/.txt 的机制生效。
 type ClineTranslator struct{}
 
 func (t *ClineTranslator) Detect(projectDir string) bool {
@@ -26,7 +25,7 @@ func (t *ClineTranslator) Translate(projectDir string, input *TranslationInput) 
 		return fmt.Errorf("cline: protocol is required")
 	}
 
-	// .clinerules/ — Cline auto-loads every .md/.txt here as persistent rules.
+	// .clinerules/——Cline 自动加载此目录下所有 .md/.txt 作为 persistent rules。
 	rulesDir := filepath.Join(projectDir, ".clinerules")
 	if err := os.MkdirAll(rulesDir, 0755); err != nil {
 		return fmt.Errorf("cline: failed to create .clinerules dir: %w", err)
@@ -36,9 +35,9 @@ func (t *ClineTranslator) Translate(projectDir string, input *TranslationInput) 
 		return fmt.Errorf("cline: write forge-quality.md: %w", err)
 	}
 
-	// No .cline/mcp.json — Cline does not auto-load project-level MCP (global
-	// only; see the translator doc comment + docs.cline.bot). The rules instruct
-	// the user to wire the forge server via the Cline panel manually.
+	// 不写 .cline/mcp.json——Cline 不自动加载 project-level MCP（仅 global；
+	// 见 translator doc comment + docs.cline.bot）。规则中指引通过 Cline panel 手动接线
+	// forge server。
 	return nil
 }
 
@@ -46,18 +45,17 @@ func (t *ClineTranslator) AgentType() AgentType {
 	return AgentCline
 }
 
-// buildClineRules renders the Forge quality protocol as a Cline rule file.
-// Mirrors cursor's .mdc guidance (quality standards + session rules), but adds
-// a Cline-specific integration note: since Cline has no hooks, the agent must
-// drive the workflow via the forge CLI + the AGENTS.md protocol rather than
-// expecting automatic gate enforcement.
+// buildClineRules 把 Forge 质量协议渲染成 Cline rule 文件。
+// 镜像 cursor 的 .mdc guidance（质量标准 + 会话规则），并加一段 Cline 专属集成说明：
+// 因 Cline 无 hooks，agent 须通过 forge CLI + AGENTS.md 协议驱动 workflow，
+// 不能指望自动 gate enforcement。
 func buildClineRules(input *TranslationInput) string {
 	var sb strings.Builder
 
 	sb.WriteString("# Forge 质量协议\n\n")
 	sb.WriteString("本项目使用 Forge 进行质量保障。Cline 无 lifecycle hooks（无 PreToolUse/Stop），门禁无法自动拦截，以下为 guidance 规则——请主动遵守，并通过 forge CLI 结构化驱动质量流程。\n\n")
 
-	// Quality standards
+	// 质量标准
 	sb.WriteString("## 质量标准\n\n")
 	for _, s := range input.Protocol.Standards {
 		if !s.Enabled {
@@ -78,7 +76,7 @@ func buildClineRules(input *TranslationInput) string {
 	}
 	sb.WriteString("\n")
 
-	// Session rules
+	// 会话规则
 	sb.WriteString("## 会话行为规则\n\n")
 	for _, r := range input.Protocol.SessionRules {
 		prefix := "[MUST]"
@@ -89,7 +87,7 @@ func buildClineRules(input *TranslationInput) string {
 	}
 	sb.WriteString("\n")
 
-	// Cline-specific integration
+	// Cline 专属集成
 	sb.WriteString("## Forge 集成（Cline 专属）\n\n")
 	sb.WriteString("Cline 不支持 lifecycle hooks，因此 forge 门禁（task-guard/file-sentinel 等）无法自动拦截工具调用。替代方案：\n")
 	sb.WriteString("- 通过 forge CLI（task/gate/complete 命令）结构化驱动质量流程，而非靠人工记忆\n")

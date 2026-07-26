@@ -40,7 +40,7 @@ Forge = Loop Engineering 的 **验证 + 状态层**。AI 编码是一个循环�
 | **GitHub Copilot** | plugin marketplace + `forge init --agents copilot` | `.github/instructions` |
 | **Windsurf** | `.windsurf/hooks.json`（forge init 自动生成） | Cascade hooks |
 
-其他 agent（OpenCode / Pi / Kiro / Cline / Gemini CLI / Mistral Vibe 等）由 `plugins/forge/install.sh` 兜底安装（仿 [Understand-Anything](https://github.com/Egonex-AI/Understand-Anything) 的 curl-pipe 单脚本）。
+其他 agent（OpenCode / Pi / Kiro / Cline / Gemini CLI / Mistral Vibe 等）由 `plugins/forge/install.sh` 兜底安装（curl-pipe 单脚本）。
 
 ## 真实证据
 

@@ -15,9 +15,8 @@ import (
 	"github.com/MjxUpUp/Forge/internal/skillseval"
 )
 
-// CheckNameSkillEval is the checklog entry name for the task-verify skill-eval
-// advisory, so trace surfaces the "changed skill has eval baseline" signal even
-// though the gate passes (advisory, never blocking).
+// CheckNameSkillEval 是 task-verify skill-eval advisory 的 checklog 名，让 trace
+// 即使 gate 通过（advisory，永不阻塞）也能照出「变更的 skill 有 eval 基准」信号。
 const CheckNameSkillEval checklog.CheckName = "skill-eval-gate"
 
 // skillEvalAffected 返回变更涉及、且已生成 eval case 集的 skill 名。

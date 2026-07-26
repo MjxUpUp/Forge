@@ -20,15 +20,14 @@ type EvidenceChain struct {
 	UsedEscapeHatch bool
 }
 
-// Total returns the total number of evidence entries (deterministic + agent-claim).
+// Total 返回证据条目总数（deterministic + agent-claim）。
 func (ec EvidenceChain) Total() int {
 	return ec.Deterministic + ec.AgentClaim
 }
 
-// Ratio returns the deterministic share of evidence: Deterministic/Total.
-// 1.0 = fully deterministic-backed; 0.0 = no deterministic evidence. Returns 0
-// when Total==0 — callers should check Strength()==NoData first to distinguish
-// "no evidence" from "all agent-claim".
+// Ratio 返回证据中 deterministic 占比：Deterministic/Total。
+// 1.0 = 完全由 deterministic 支撑；0.0 = 无 deterministic 证据。Total==0 时返回 0——
+// 调用方应先看 Strength()==NoData 来区分「无证据」与「全是 agent-claim」。
 func (ec EvidenceChain) Ratio() float64 {
 	if ec.Total() == 0 {
 		return 0
@@ -55,7 +54,7 @@ const (
 	Strong
 )
 
-// String returns a human-readable band name for trace/review-status output.
+// String 返回人类可读的档位名，供 trace/review-status 输出。
 func (s EvidenceStrength) String() string {
 	switch s {
 	case NoData:
@@ -97,19 +96,15 @@ func (ec EvidenceChain) Strength() EvidenceStrength {
 func BuildEvidenceChain(entries []Entry, taskRef string) EvidenceChain {
 	ec := EvidenceChain{TaskRef: taskRef, Entries: entries}
 	for _, e := range entries {
-		// Advisory/meta checks record OBSERVATIONS, not verification outcomes — they
-		// must NOT count toward evidence strength. scope-drift is an advisory signal
-		// (agent changed unplanned source); counting it as "deterministic verification"
-		// would inflate Strength and mask the very blind-spot EvidenceChain exists to
-		// surface. The entry still lands in Entries (forge trace shows it); only the
-		// bucket counts skip it. Drift is also typically a NEGATIVE signal — treating
-		// it as positive evidence would be doubly wrong.
-		// cheat-scan is the same kind of advisory observation (mechanically-suspected
-		// AI-cheat patterns) — a hit is a negative signal, not verification evidence.
-		// CheckEscapeHatch is the same kind: "used a gate-bypass" is an observation of
-		// skipping, NOT of verifying — counting it as deterministic would inflate
-		// Strength and hide exactly the signal it should surface (a task that "passed"
-		// by dodging a gate). It sets UsedEscapeHatch so Strength can cap to Weak.
+		// Advisory/meta check 记录的是 OBSERVATIONS（观察）而非 verification 结果——
+		// 绝不可计入 evidence strength。scope-drift 是 advisory 信号（agent 改了未声明的
+		// 源码）；把它当作 deterministic verification 会让 Strength 虚高、正好掩盖
+		// EvidenceChain 要暴露的盲区。条目仍落进 Entries（forge trace 会展示），只是分桶
+		// 计数跳过它。Drift 通常还是负向信号——当作正向证据是双重错误。
+		// cheat-scan 同类（机械扫描 AI-cheat 嫌疑模式）——命中是负向信号，非 verification
+		// 证据。CheckEscapeHatch 同类：用过 gate-bypass 是「跳过」的观察、不是「验证」——
+		// 当成 deterministic 会让 Strength 虚高、正好隐藏它该暴露的信号（task 靠躲 gate
+		// 蒙混过关）。它置 UsedEscapeHatch，让 Strength 能 cap 到 Weak。
 		if e.Check == CheckScopeDrift || e.Check == CheckCheatScan || e.Check == CheckEscapeHatch {
 			if e.Check == CheckEscapeHatch {
 				ec.UsedEscapeHatch = true

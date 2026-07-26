@@ -16,7 +16,7 @@ var skillsEffectivenessCmd = &cobra.Command{
 	Short: "skill 命中×task 成效关联（核心信号 agent-neutral）",
 	Long: `forge skills effectiveness — 关联 toollog 的 Skill 调用与 act conclusion 的 task 成效，
 产出每个 skill 的平均评分、证据强度 ratio、弱证据(Weak/Unverified/NoData)占比。全 deterministic，
-无 agent 评分——MUSE/Voyager 式"复用率+成功率"信号在 Forge 的实现。
+无 agent 评分——"复用率+成功率"信号在 Forge 的实现。
 
 数据源：act 结论（评分+证据链）是核心 agent-neutral 信号，任何 agent 跑的 task 都有；Skill
 命中来自 toollog 的 Skill 工具调用，当前仅 Claude Code 产生（cursor/codex 等 skill 经

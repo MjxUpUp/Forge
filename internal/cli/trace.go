@@ -14,9 +14,9 @@ func init() {
 	rootCmd.AddCommand(traceCmd)
 }
 
-// traceCmd implements `forge trace <task-ref>`: replays a task's full quality
-// event timeline (tool calls + check results), turning a single score back into
-// a traceable story. The observability consumption layer over checklog/toolusage.
+// traceCmd 实现 `forge trace <task-ref>`：重放任务的完整质量事件时间线
+// （工具调用 + 检查结果），把单个评分还原成可回溯的故事。checklog/toolusage
+// 之上的可观测性消费层。
 var traceCmd = &cobra.Command{
 	Use:   "trace <task-ref>",
 	Short: "查看任务的完整质量事件时间线",
@@ -29,8 +29,8 @@ var traceCmd = &cobra.Command{
 	RunE: runTrace,
 }
 
-// traceEvent is a unified timeline event merged from the checklog and
-// toolusage sources, normalized to a single sortable time axis.
+// traceEvent 是合并 checklog 与 toolusage 两源的统一时间线事件，
+// 归一化到单一可排序的时间轴。
 type traceEvent struct {
 	ts      time.Time
 	source  string // "check" or "tool"

@@ -93,7 +93,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		fmt.Println(strings.Repeat("─", 60))
 	}
 
-	// Show detected agents
+	// 显示检测到的 agent
 	if showAgents {
 		agents := agentbridge.DetectAgents(root)
 		fmt.Println()

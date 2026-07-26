@@ -2,24 +2,23 @@ package scoring
 
 import "time"
 
-// EvaluateInput holds all data needed to score a completed task.
+// EvaluateInput 持有给完成任务打分所需的全部数据。
 type EvaluateInput struct {
-	// GateHistory is the task's gate pass/fail history.
+	// GateHistory 是任务的 gate 通过/失败历史。
 	GateHistory GateHistory
 
-	// Time range for efficiency scoring.
+	// 时间范围，用于 efficiency 打分。
 	StartedAt   time.Time
 	CompletedAt time.Time
 
-	// Git diff data — empty string means "unavailable" (non-fatal).
-	GitDiffStat string // git diff --numstat output ("added\tdeleted\tpath")
+	// Git diff 数据——空字符串表示「不可用」（非致命）。
+	GitDiffStat string // git diff --numstat 输出（「added\tdeleted\tpath」）
 
-	// Test-coverage gate verdict, sourced from checklog's test-coverage-gate
-	// entry (with a live CheckTestCoverage fallback wired in cli.scoreTask).
-	// Replaces the old GitDiffTest line-ratio heuristic, which returned a
-	// constant 20 when a task's changes were committed before `task start`
-	// (HeadCommit == HEAD → empty diff → "no test lines detected"). Checked=false
-	// (gate never ran) scores neutral; Checked=true scores from the verdict.
+	// Test-coverage gate 裁决，来自 checklog 的 test-coverage-gate 条目（带实时
+	// CheckTestCoverage fallback 接到 cli.scoreTask）。替代旧的 GitDiffTest 行比例
+	// 启发式——后者在任务改动早于 `task start` 提交时返回常量 20（HeadCommit == HEAD
+	// → 空 diff → 「检测不到测试行」）。Checked=false（gate 未运行）打中性分；
+	// Checked=true 按裁决打分。
 	TestCoveragePassed  bool
 	TestCoverageChecked bool
 
@@ -35,11 +34,11 @@ type EvaluateInput struct {
 	TestAssertionCount int // changed 测试文件的断言标记总数
 	TestFileCount      int // changed 测试文件数
 
-	// Hook results.
-	CompilePassed   bool // auto-compile gate passed
-	AssertionPassed bool // assertion-check passed
+	// Hook 结果。
+	CompilePassed   bool // auto-compile gate 通过
+	AssertionPassed bool // assertion-check 通过
 
-	// Flags indicating whether hook data is available (vs not run).
+	// 标志位，指示 hook 数据是否可用（vs 未运行）。
 	CompileChecked   bool
 	AssertionChecked bool
 
@@ -50,9 +49,9 @@ type EvaluateInput struct {
 	EvidenceAgentClaim    int
 }
 
-// GateHistory abstracts the gate result data to avoid importing taskpipeline.
+// GateHistory 抽象 gate 结果数据，避免 import taskpipeline。
 type GateHistory struct {
 	TotalGates int
 	Passed     int
-	Retries    int // gates that failed then passed on retry
+	Retries    int // 先前失败、retry 后通过的 gate 数
 }

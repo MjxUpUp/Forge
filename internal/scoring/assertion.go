@@ -13,13 +13,13 @@ import (
 // 刻意宽松：t.Fatal 覆盖 Fatal/Fatalf，t.Error 覆盖 Error/Errorf（前缀匹配），避免
 // 重复计数。密度数值偏高但作为"是否零断言"的信号足够——目的是抓假测试，非精确度量。
 var assertionMarkers = []string{
-	// Go: testing + testify + panic
+	// Go 语言：testing + testify + panic
 	`t.Fatal`, `t.Error`, `require.`, `assert.`, `panic(`,
-	// JS/TS: jest / vitest / node:assert
+	// JS/TS 语言：jest / vitest / node:assert
 	`expect(`, `toEqual`, `toBe(`, `toThrow`, `strictEqual`, `should(`,
-	// Python: unittest / pytest
+	// Python 语言：unittest / pytest
 	`self.assert`, `pytest.raises`,
-	// Rust
+	// Rust 语言
 	`assert!`, `assert_eq!`, `assert_ne!`,
 }
 

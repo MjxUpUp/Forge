@@ -30,8 +30,7 @@ var HighSignalKW = []string{
 // CSOWorkflowMarkers — description 不应含的工作流总结词（CSO 规则：description 只说
 // what + when，不总结 body 工作流，否则模型照 description 行动而跳过 SKILL.md body）。
 // 启发式高置信中文词组，命中走 advisory（防回归，不阻断 Pass）。
-// 三方背书：Anthropic best-practices（description 不复述 workflow）+ Steve Kinney AP-1
-// + Lost in the Middle（arXiv:2307.03172，模型偏重开头描述而漏 body）。
+// 另：模型偏重开头/结尾、中段（body）易被忽略，description 塞工作流会进一步淹没 body。
 var CSOWorkflowMarkers = []string{
 	"完整工作流", "完整流程", "全流程", "完整协议", "完整编排", "全链路", "全工序",
 }

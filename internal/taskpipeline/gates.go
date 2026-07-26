@@ -1,11 +1,10 @@
 package taskpipeline
 
-// DefaultGates returns the 3 standard task-level quality gates (v0.17: reduced from 5).
-// These are hardcoded — they apply universally to any task.
-// Order matters: gates are executed sequentially.
+// DefaultGates 返回 3 个标准 task 级质量 gate（v0.17：从 5 个精简而来）。这些 gate
+// 是硬编码的——对任何 task 通用。顺序敏感：gate 按序执行。
 func DefaultGates() []TaskGate {
-	// v0.17: reduced from 5 to 3. task-understand and task-design are now
-	// internal workflow steps for the agent, not mandatory gates.
+	// v0.17：从 5 个精简到 3 个。task-understand 和 task-design 现在是 agent 的
+	// 内部工作流步骤，不再是强制 gate。
 	return []TaskGate{
 		{
 			ID:          "task-implement",
@@ -28,7 +27,7 @@ func DefaultGates() []TaskGate {
 	}
 }
 
-// GateByID returns a gate by its ID, or nil if not found.
+// GateByID 按 ID 返回 gate，未找到返回 nil。
 func GateByID(id string) *TaskGate {
 	for _, g := range DefaultGates() {
 		if g.ID == id {
@@ -38,7 +37,7 @@ func GateByID(id string) *TaskGate {
 	return nil
 }
 
-// GateIDs returns the ordered list of gate IDs.
+// GateIDs 返回有序的 gate ID 列表。
 func GateIDs() []string {
 	gates := DefaultGates()
 	ids := make([]string, len(gates))

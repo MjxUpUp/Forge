@@ -56,7 +56,7 @@ func runVerify(cmd *cobra.Command, args []string) error {
 	return runDefaultChecks()
 }
 
-// ---------- Default mode ----------
+// ---------- 默认模式 ----------
 
 type checkResult struct {
 	name string
@@ -91,7 +91,7 @@ func runDefaultChecks() error {
 		}
 	}
 
-	// Print results
+	// 打印结果
 	fmt.Println("Forge 项目完整性检查")
 	fmt.Println()
 	for _, r := range results {
@@ -114,14 +114,13 @@ func runDefaultChecks() error {
 	return fmt.Errorf("some checks failed")
 }
 
-// ---------- Run-tests mode ----------
+// ---------- Run-tests 模式 ----------
 
-// runProjectTestsMode runs the project's detected test suite and records the
-// REAL pass/fail to checklog as deterministic evidence (CheckNameTestRun).
-// forge itself executes the command and observes the exit code, so the record
-// is unforgeable — countering the "agent claims tests pass without running
-// them" blind spot. Distinct from default integrity checks (file existence)
-// and regression mode (forge's own e2e): this runs THE PROJECT's tests.
+// runProjectTestsMode 运行探测到的项目测试套件，并把真实的 pass/fail 作为
+// deterministic 证据（CheckNameTestRun）写入 checklog。由 forge 自己执行命令
+// 并观察退出码，故记录不可伪造——对抗 agent 不跑测试就声称 PASS 的盲区。区别
+// 于默认完整性检查（文件存在性）和 regression 模式（forge 自身的 e2e）：这里
+// 跑的是项目方的测试。
 func runProjectTestsMode() error {
 	root, err := findProjectRoot()
 	if err != nil {
@@ -130,20 +129,19 @@ func runProjectTestsMode() error {
 	return runProjectTestsModeAt(root)
 }
 
-// runProjectTestsModeAt is the root-injected core of runProjectTestsMode, kept
-// separate so it can be unit-tested on a temp project without findProjectRoot.
+// runProjectTestsModeAt 是 runProjectTestsMode 的 root 注入核心，拆出来便于
+// 在临时 project 上做单元测试（不依赖 findProjectRoot）。
 func runProjectTestsModeAt(root string) error {
 	cmdStr := taskpipeline.DetectTestCommand(root)
 	if cmdStr == "" {
 		fmt.Println("未检测到项目测试命令（无 go.mod / Cargo.toml / package.json / pytest 配置）—— 无可运行的测试套件。")
 		return nil
 	}
-	// CurrentSessionID() — NOT "" — so the record is attributed to THIS
-	// session's active task via the session-scoped active-task-ref file. The
-	// empty-sessionID path reads the shared legacy DataDir/active-task-ref,
-	// which can hold a stale ref from a prior session (e.g. leftover
-	// fix/concurrent-session-race) and would mis-attribute the evidence,
-	// hiding it from `forge trace <real-task>`. Matches review.go/task.go.
+	// 用 CurrentSessionID()（而非空串），让记录通过 session-scoped
+	// active-task-ref 文件归到本 session 的 active task 上。空 sessionID 路径
+	// 读的是 shared legacy DataDir/active-task-ref，可能残留前一个 session 的
+	// 旧 ref（例如 fix/concurrent-session-race 遗留），把证据错归到错误 task，
+	// `forge trace <real-task>` 也看不到。与 review.go/task.go 一致。
 	taskRef := taskpipeline.ReadActiveTaskRef(root, taskpipeline.CurrentSessionID())
 	fmt.Printf("运行测试套件: %s\n", cmdStr)
 	passed, output := taskpipeline.RunTestCommand(root, cmdStr)
@@ -162,8 +160,8 @@ func runProjectTestsModeAt(root string) error {
 	return fmt.Errorf("test suite failed")
 }
 
-// passFailWord returns PASS/FAIL for a test-run result — used in the checklog
-// Detail so forge trace shows the suite outcome at a glance.
+// passFailWord 根据测试运行结果返回 PASS/FAIL——用在 checklog Detail 里，让
+// forge trace 一眼能看出套件结果。
 func passFailWord(passed bool) string {
 	if passed {
 		return "PASS"
@@ -171,9 +169,8 @@ func passFailWord(passed bool) string {
 	return "FAIL"
 }
 
-// boundOutput trims a command's output to its last ~40 lines so a failing test
-// suite doesn't flood the terminal while still showing the actionable tail
-// (failure messages live at the end of go/cargo/npm test output).
+// boundOutput 把命令输出截到末尾约 40 行，避免失败套件刷屏、同时保留可操作的
+// 尾部（go/cargo/npm test 的失败信息都在末尾）。
 func boundOutput(s string) string {
 	if s == "" {
 		return "(no output)"
@@ -229,10 +226,10 @@ func checkSettings(root string) checkResult {
 	return checkResult{name: "Settings 配置", ok: true}
 }
 
-// ---------- Regression mode ----------
+// ---------- Regression 模式 ----------
 
 func runRegressionMode(scenario string) error {
-	// Build forge binary to temp location
+	// 把 forge 二进制构建到临时位置
 	tmpDir, err := os.MkdirTemp("", "forge-verify-build")
 	if err != nil {
 		return fmt.Errorf("failed to create temp dir: %w", err)
@@ -252,7 +249,7 @@ func runRegressionMode(scenario string) error {
 		return fmt.Errorf("failed to build forge binary: %v\n%s", err, output)
 	}
 
-	// Collect scenarios to run
+	// 收集要运行的 scenario
 	scenarios := map[string]func(string) ScenarioResult{
 		"fresh-install":   runScenarioFreshInstall,
 		"master-reminder": runScenarioMasterReminder,
@@ -274,12 +271,12 @@ func runRegressionMode(scenario string) error {
 		return nil
 	}
 
-	// Run all scenarios
+	// 运行全部 scenario
 	fmt.Println("Forge E2E Regression Tests")
 	fmt.Println()
 
 	results := make([]ScenarioResult, 0, len(scenarios))
-	// Deterministic order
+	// deterministic 顺序
 	order := []string{"fresh-install", "master-reminder", "upgrade-v040", "upgrade-v030"}
 	for _, name := range order {
 		fn := scenarios[name]
@@ -295,7 +292,7 @@ func runRegressionMode(scenario string) error {
 		}
 		fmt.Printf("[%s] %s\n", status, result.Duration.Round(time.Millisecond))
 		if !result.Passed {
-			// Indent output for readability
+			// 输出缩进以提高可读性
 			for _, line := range splitLines(result.Output) {
 				fmt.Printf("    %s\n", line)
 			}

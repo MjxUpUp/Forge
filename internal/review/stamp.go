@@ -152,7 +152,7 @@ func CurrentState(root string) (string, error) {
 	return b.String(), nil
 }
 
-// --- internals ---
+// --- 内部实现 ---
 
 // computeDiffHash 算当前工作区相对 HEAD 的【源码】变更指纹（sha256），用于判断"这版代码审过没"。
 // 误触发防护（2026-06-27）：审查范围**只统计源码文件**——

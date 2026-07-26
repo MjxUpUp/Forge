@@ -64,7 +64,7 @@ npm uninstall -g @agent_forge/forge   # 卸 binary
 
 ## 多宿主支持
 
-Forge 已为 Claude Code / Codex / Cursor / Copilot / Windsurf 落地分发（`.claude-plugin/`、`.copilot-plugin/`、`.cursor-plugin/` 多宿主元数据）。其他 agent（OpenCode / Pi / Kiro / Cline / Gemini CLI / Mistral Vibe 等）由 `plugins/forge/install.sh` 一站式安装脚本支持（仿 [Understand-Anything](https://github.com/Egonex-AI/Understand-Anything) 的 per-skill / folder 双 style symlink 机制）。
+Forge 已为 Claude Code / Codex / Cursor / Copilot / Windsurf 落地分发（`.claude-plugin/`、`.copilot-plugin/`、`.cursor-plugin/` 多宿主元数据）。其他 agent（OpenCode / Pi / Kiro / Cline / Gemini CLI / Mistral Vibe 等）由 `plugins/forge/install.sh` 一站式安装脚本支持（per-skill / folder 双 style symlink 机制）。
 
 ## 常见问题
 
