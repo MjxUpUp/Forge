@@ -130,7 +130,7 @@ func TestAnalyzeEffectiveness_WeakIncludesUnverified(t *testing.T) {
 
 // TestAnalyzeEffectiveness_UnscoredTaskExcluded：Score==0（未评分，act.BuildConclusion
 // score==nil 哨兵值）不计入 AvgScore 分母——否则人为拉低 avg。但其证据强度仍计入
-// AvgRatio/WeakRate 分母（ratio/证据与 score 独立）。reviewer P2 AvgScore 分母修正。
+// AvgRatio/WeakRate 分母（ratio/证据与 score 独立）。
 func TestAnalyzeEffectiveness_UnscoredTaskExcluded(t *testing.T) {
 	proj, root := newTestProject(t)
 	recordSkillCall(t, root, "s", "t1")
@@ -152,8 +152,8 @@ func TestAnalyzeEffectiveness_UnscoredTaskExcluded(t *testing.T) {
 }
 
 // TestAnalyzeEffectiveness_NoDataIsWeak：NoData（零实跑证据）算入弱占比——effectiveness
-// 语境是暴露盲区，NoData 比 Weak 更盲。reviewer P2，与 RetrospectiveNudge 判据不同
-// （Nudge 只 Weak/Unverified 触发回顾）。
+// 语境是暴露盲区，NoData 比 Weak 更盲。与 RetrospectiveNudge 判据不同（Nudge 只
+// Weak/Unverified 触发回顾）。
 func TestAnalyzeEffectiveness_NoDataIsWeak(t *testing.T) {
 	proj, root := newTestProject(t)
 	recordSkillCall(t, root, "s", "t1")
