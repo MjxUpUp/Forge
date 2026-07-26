@@ -121,8 +121,8 @@ func TestActNudge(t *testing.T) {
 }
 
 // TestPrintSkillReach 钉住 act show 注入的 skill 触达画像：toollog 有该 task 的 Skill
-// 调用时多打印一行 Skills，无调用时静默（不留空 Skills 行）。reviewer P1：用 LoadForTaskAll
-// 跨归档，task start 归档后查历史 task 的 Skills 仍可见（下面 has_skill_calls_archived 验证）。
+// 调用时多打印一行 Skills，无调用时静默（不留空 Skills 行）。用 LoadForTaskAll 跨归档，
+// task start 归档后查历史 task 的 Skills 仍可见（下面 has_skill_calls_archived 验证）。
 func TestPrintSkillReach(t *testing.T) {
 	t.Run(`has_skill_calls_prints`, func(t *testing.T) {
 		root, _ := forgedatatest.RealProject(t)

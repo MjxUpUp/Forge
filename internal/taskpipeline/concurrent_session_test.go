@@ -230,6 +230,25 @@ func TestHasActiveTaskFromOtherSession(t *testing.T) {
 		}
 	})
 
+	// Crash-orphan path: a session that died mid-task leaves a non-empty
+	// active-task-ref-<sid> that ClearActiveTaskRef never removes. Without the
+	// TTL guard, orphans accumulate and disable the concurrent-session check.
+	// Backdate mtime beyond otherSessionActiveTTL → must not be counted.
+	t.Run("stale orphan from crashed session not counted", func(t *testing.T) {
+		dir := isolatedRoot(t)
+		if err := SetActiveTaskRef(dir, "sess-orphan", "feat/dead"); err != nil {
+			t.Fatal(err)
+		}
+		refPath := activeTaskRefPath(dir, "sess-orphan")
+		stale := time.Now().Add(-otherSessionActiveTTL - time.Hour)
+		if err := os.Chtimes(refPath, stale, stale); err != nil {
+			t.Fatal(err)
+		}
+		if HasActiveTaskFromOtherSession(dir, "sess-other") {
+			t.Error("stale crash-orphan (mtime beyond TTL) should not be counted as active")
+		}
+	})
+
 	t.Run("legacy file excluded", func(t *testing.T) {
 		dir := isolatedRoot(t)
 		// Write via activeTaskRefPath("") for the correct legacy path
