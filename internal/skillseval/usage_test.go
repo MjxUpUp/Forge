@@ -1,9 +1,12 @@
 package skillseval
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/toolusage"
 )
 
 func mustWrite(t *testing.T, err error) {
@@ -13,57 +16,89 @@ func mustWrite(t *testing.T, err error) {
 	}
 }
 
-func TestLoadUsage(t *testing.T) {
-	logPath := filepath.Join(t.TempDir(), "skill-usage.jsonl")
-	content := `{"type":"skill-load","skill":"a"}
-{"type":"other","skill":"b"}
-{"type":"skill-load","skill":"a"}
-not-json-line
-{"type":"skill-load","skill":"c"}
-`
-	mustWrite(t, os.WriteFile(logPath, []byte(content), 0644))
-	counts, total, err := LoadUsage(logPath)
+// makeCanonicalSkill 在 canonical 目录造一个 skill（目录名 = frontmatter name）。
+func makeCanonicalSkill(t *testing.T, canonical, name string) {
+	t.Helper()
+	sd := filepath.Join(canonical, name)
+	mustWrite(t, os.MkdirAll(sd, 0755))
+	mustWrite(t, os.WriteFile(filepath.Join(sd, "SKILL.md"),
+		[]byte(fmt.Sprintf("---\nname: %s\ndescription: d\n---\n\nbody\n", name)), 0644))
+}
+
+// recordSkillCall 经 toolusage.Record 写一条 Skill 工具调用到 toollog.jsonl。
+// 走真实采集层（DataDirFor(root)/toollog.jsonl），闭环验证 SkillCountsFromToollog
+// 读取的路径与新数据源。
+func recordSkillCall(t *testing.T, root, skillName, taskRef string) {
+	t.Helper()
+	mustWrite(t, toolusage.Record(root, &toolusage.ToolCall{
+		ToolName:  "Skill",
+		ToolInput: fmt.Sprintf(`{"skill":%q}`, skillName),
+		TaskRef:   taskRef,
+	}))
+}
+
+func recordRead(t *testing.T, root, taskRef string) {
+	t.Helper()
+	mustWrite(t, toolusage.Record(root, &toolusage.ToolCall{
+		ToolName: "Read",
+		TaskRef:  taskRef,
+	}))
+}
+
+func TestExtractSkillName(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{`{"skill":"foo"}`, "foo"},
+		{`{"skill":" foo ","args":"x"}`, "foo"}, // TrimSpace
+		{`{"args":"x"}`, ""},                     // 无 skill 字段
+		{`not json`, ""},                         // 非 JSON
+		{"", ""},                                 // 空
+	}
+	for _, c := range cases {
+		if got := ExtractSkillName(c.in); got != c.want {
+			t.Errorf("ExtractSkillName(%q)=%q want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestSkillCountsFromToollog(t *testing.T) {
+	root := t.TempDir()
+	recordSkillCall(t, root, "alpha", "t1")
+	recordSkillCall(t, root, "alpha", "t1")
+	recordSkillCall(t, root, "beta", "t2")
+	recordRead(t, root, "t1") // 非 Skill，不计
+
+	counts, total, err := SkillCountsFromToollog(root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if total != 3 {
-		t.Fatalf("total=%d want 3", total)
+		t.Fatalf("total=%d want 3（只计 Skill 调用，Read 排除）", total)
 	}
-	if counts["a"] != 2 {
-		t.Fatalf("a=%d want 2", counts["a"])
-	}
-	if counts["c"] != 1 {
-		t.Fatalf("c=%d want 1", counts["c"])
-	}
-	if _, ok := counts["b"]; ok {
-		t.Fatal("b（非 skill-load）不应计入")
+	if counts["alpha"] != 2 || counts["beta"] != 1 {
+		t.Fatalf("counts=%v want alpha:2 beta:1", counts)
 	}
 }
 
-func TestLoadUsage_MissingFile(t *testing.T) {
-	counts, total, err := LoadUsage(filepath.Join(t.TempDir(), "nope.jsonl"))
+func TestSkillCountsFromToollog_Empty(t *testing.T) {
+	root := t.TempDir() // 无 toollog 文件
+	counts, total, err := SkillCountsFromToollog(root)
 	if err != nil {
-		t.Fatalf("缺失文件应返回空而非错误: %v", err)
+		t.Fatalf("无 toollog 应返回空而非错误: %v", err)
 	}
 	if total != 0 || len(counts) != 0 {
-		t.Fatal("want empty counts/total")
+		t.Fatal("want empty")
 	}
 }
 
 func TestAnalyzeUsage(t *testing.T) {
 	canonical := t.TempDir()
-	for _, n := range []string{"triggered", "never-used"} {
-		sd := filepath.Join(canonical, n)
-		mustWrite(t, os.MkdirAll(sd, 0755))
-		mustWrite(t, os.WriteFile(filepath.Join(sd, "SKILL.md"),
-			[]byte("---\nname: "+n+"\ndescription: d\n---\n\nbody\n"), 0644))
-	}
-	logPath := filepath.Join(t.TempDir(), "skill-usage.jsonl")
-	mustWrite(t, os.WriteFile(logPath, []byte(`{"type":"skill-load","skill":"triggered"}
-{"type":"skill-load","skill":"triggered"}
-`), 0644))
+	makeCanonicalSkill(t, canonical, "triggered")
+	makeCanonicalSkill(t, canonical, "never-used")
+	root := t.TempDir()
+	recordSkillCall(t, root, "triggered", "t1")
+	recordSkillCall(t, root, "triggered", "t2")
 
-	rep, err := AnalyzeUsage(canonical, logPath)
+	rep, err := AnalyzeUsage(root, canonical)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,23 +119,18 @@ func TestAnalyzeUsage(t *testing.T) {
 	}
 }
 
-// TestAnalyzeUsage_FiltersGhostSkills：日志含 canonical 已删的"幽灵技能"时，HotSkills/UsedSkills
-// 必须过滤掉——与 NeverTriggered（仅 canonical）对称。否则 used_skills 会 > total_skills，
-// hot_skills 里混入已不存在的名字（原实现把 counts 全量塞进 hot）。
+// TestAnalyzeUsage_FiltersGhostSkills：toollog 残留 canonical 已删的"幽灵技能"，
+// HotSkills/UsedSkills 必须过滤——与 NeverTriggered（仅 canonical）对称。
+// 验证数据源切到 toollog 后幽灵过滤逻辑仍成立。
 func TestAnalyzeUsage_FiltersGhostSkills(t *testing.T) {
 	canonical := t.TempDir()
-	sd := filepath.Join(canonical, "real-skill")
-	mustWrite(t, os.MkdirAll(sd, 0755))
-	mustWrite(t, os.WriteFile(filepath.Join(sd, "SKILL.md"),
-		[]byte("---\nname: real-skill\ndescription: d\n---\n\nbody\n"), 0644))
-	logPath := filepath.Join(t.TempDir(), "skill-usage.jsonl")
-	// real-skill（canonical 存在）+ ghost-skill（日志残留，canonical 已删）
-	mustWrite(t, os.WriteFile(logPath, []byte(`{"type":"skill-load","skill":"real-skill"}
-{"type":"skill-load","skill":"ghost-skill"}
-{"type":"skill-load","skill":"ghost-skill"}
-`), 0644))
+	makeCanonicalSkill(t, canonical, "real-skill")
+	root := t.TempDir()
+	recordSkillCall(t, root, "real-skill", "t1")
+	recordSkillCall(t, root, "ghost-skill", "t2") // 幽灵：toollog 有，canonical 无
+	recordSkillCall(t, root, "ghost-skill", "t3")
 
-	rep, err := AnalyzeUsage(canonical, logPath)
+	rep, err := AnalyzeUsage(root, canonical)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,5 +144,34 @@ func TestAnalyzeUsage_FiltersGhostSkills(t *testing.T) {
 		if h.Name == "ghost-skill" {
 			t.Fatalf("幽灵 ghost-skill 不应进 HotSkills: %v", rep.HotSkills)
 		}
+	}
+}
+
+// TestSkillCountsFromToollog_ArchiveSurvives：forge task start 调 toolusage.Clear 归档
+// active toollog 到 toollog-<ts>.jsonl。SkillCountsFromToollog 必须跨归档读（LoadAllAll），
+// 否则归档后历史任务的 Skill 调用全丢——reviewer P1 CONFIRMED 归档盲区，跨任务分析前提。
+func TestSkillCountsFromToollog_ArchiveSurvives(t *testing.T) {
+	root := t.TempDir()
+	recordSkillCall(t, root, "old-skill", "t1")
+	recordSkillCall(t, root, "old-skill", "t1")
+	// 模拟 forge task start 归档：Clear 把 active toollog 归档后清空
+	if err := toolusage.Clear(root); err != nil {
+		t.Fatal(err)
+	}
+	// 新任务 active toollog
+	recordSkillCall(t, root, "new-skill", "t2")
+
+	counts, total, err := SkillCountsFromToollog(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 3 {
+		t.Fatalf("total=%d want 3（归档的 2 + active 的 1，跨归档累加）", total)
+	}
+	if counts["old-skill"] != 2 {
+		t.Fatalf("old-skill=%d want 2（归档后仍应读到，否则跨任务分析降级）", counts["old-skill"])
+	}
+	if counts["new-skill"] != 1 {
+		t.Fatalf("new-skill=%d want 1", counts["new-skill"])
 	}
 }

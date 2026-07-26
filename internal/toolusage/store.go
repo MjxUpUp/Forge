@@ -103,6 +103,27 @@ func LoadForTaskAll(root, taskRef string) ([]ToolCall, error) {
 	return filtered, nil
 }
 
+// LoadAllAll reads all ToolCall entries from the active toollog AND all archived
+// toollog-*.jsonl files. Symmetric to LoadForTaskAll / checklog.LoadAllAll — used
+// by skill usage & effectiveness analysis so cross-task aggregates (热门排名、
+// hit×成效关联、undertrigger 候选) survive the Archive-on-task-start that clears
+// the active toollog. Without this, skills usage/effectiveness 只反映当前任务。
+func LoadAllAll(root string) ([]ToolCall, error) {
+	matches, err := filepath.Glob(filepath.Join(dataDir(root), `toollog*.jsonl`))
+	if err != nil {
+		return nil, err
+	}
+	var all []ToolCall
+	for _, path := range matches {
+		calls, err := loadFromPath(path)
+		if err != nil {
+			continue
+		}
+		all = append(all, calls...)
+	}
+	return all, nil
+}
+
 // ReadEditCounts returns the number of Read vs Edit/Write tool calls for a task
 // since the given time, sourced from toollog.jsonl. Unlike checklog.WorkActivity
 // (which collapses all tools into one scalar count), this separates reads from

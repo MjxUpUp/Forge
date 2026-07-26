@@ -8,6 +8,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/act"
 	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
+	"github.com/MjxUpUp/Forge/internal/toolusage"
 )
 
 // TestAppendConclusion_WritesAndDirectives 钉住 task.go 的接线边界：appendConclusion
@@ -115,6 +116,52 @@ func TestActNudge(t *testing.T) {
 		}
 		if strings.TrimSpace(out) != `` {
 			t.Errorf(`无结论应静默，got: %q`, out)
+		}
+	})
+}
+
+// TestPrintSkillReach 钉住 act show 注入的 skill 触达画像：toollog 有该 task 的 Skill
+// 调用时多打印一行 Skills，无调用时静默（不留空 Skills 行）。reviewer P1：用 LoadForTaskAll
+// 跨归档，task start 归档后查历史 task 的 Skills 仍可见（下面 has_skill_calls_archived 验证）。
+func TestPrintSkillReach(t *testing.T) {
+	t.Run(`has_skill_calls_prints`, func(t *testing.T) {
+		root, _ := forgedatatest.RealProject(t)
+		for _, s := range []string{`foo`, `bar`} {
+			if err := toolusage.Record(root, &toolusage.ToolCall{
+				ToolName: `Skill`, ToolInput: `{"skill":"` + s + `"}`, TaskRef: `feat/reach`,
+			}); err != nil {
+				t.Fatalf(`seed Skill 调用: %v`, err)
+			}
+		}
+		out := captureStdout(t, func() { printSkillReach(root, `feat/reach`) })
+		if !strings.Contains(out, `Skills:`) || !strings.Contains(out, `foo`) || !strings.Contains(out, `bar`) {
+			t.Errorf(`应有 Skills: foo, bar，got: %q`, out)
+		}
+	})
+
+	t.Run(`no_calls_silent`, func(t *testing.T) {
+		root, _ := forgedatatest.RealProject(t)
+		out := captureStdout(t, func() { printSkillReach(root, `feat/none`) })
+		if strings.TrimSpace(out) != `` {
+			t.Errorf(`无 Skill 调用应静默（不留空 Skills 行），got: %q`, out)
+		}
+	})
+
+	// P1 核心验证：toolusage.Clear 模拟 forge task start 归档。归档后查该 task 的 Skills
+	// 必须仍可见（LoadForTaskAll 跨归档），否则完成的任务再 forge act show 永远看不到 Skills。
+	t.Run(`has_skill_calls_archived`, func(t *testing.T) {
+		root, _ := forgedatatest.RealProject(t)
+		if err := toolusage.Record(root, &toolusage.ToolCall{
+			ToolName: `Skill`, ToolInput: `{"skill":"archived-skill"}`, TaskRef: `feat/old`,
+		}); err != nil {
+			t.Fatalf(`seed: %v`, err)
+		}
+		if err := toolusage.Clear(root); err != nil {
+			t.Fatalf(`Clear（模拟 task start 归档）: %v`, err)
+		}
+		out := captureStdout(t, func() { printSkillReach(root, `feat/old`) })
+		if !strings.Contains(out, `archived-skill`) {
+			t.Errorf(`归档后仍应读到该 task 的 Skills（LoadForTaskAll 跨归档），got: %q`, out)
 		}
 	})
 }
