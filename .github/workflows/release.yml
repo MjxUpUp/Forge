@@ -93,7 +93,10 @@ jobs:
             if npm view "@agent_forge/forge-$pkg@$VER" version >/dev/null 2>&1; then
               echo "already published @agent_forge/forge-$pkg@$VER, skipping"
             else
-              npm publish "platforms/$pkg" --access public
+              # cd 进子包目录再 publish：裸路径 "platforms/$pkg" 含 / 会被 npm-package-arg
+              # 解析成 GitHub shorthand（user/platforms repo/$pkg）→ git ls-remote 失败。
+              # cd 后无参数 publish cwd，npa 当 folder（esbuild/rollup 同模式）。
+              (cd "platforms/$pkg" && npm publish --access public)
             fi
           done
           # 主包 version + optionalDependencies 各项 version 注入后 publish

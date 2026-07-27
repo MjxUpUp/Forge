@@ -1,16 +1,16 @@
 {
   "name": "@agent_forge/forge",
-  "version": "1.15.0",
+  "version": "1.15.1",
   "description": "AI 开发质量门禁引擎 — 结构化门禁管道，在 AI 生成的代码进入仓库前进行质量锻造",
   "bin": {
     "forge": "run.js"
   },
   "optionalDependencies": {
-    "@agent_forge/forge-darwin-arm64": "1.15.0",
-    "@agent_forge/forge-darwin-x64": "1.15.0",
-    "@agent_forge/forge-linux-arm64": "1.15.0",
-    "@agent_forge/forge-linux-x64": "1.15.0",
-    "@agent_forge/forge-win32-x64": "1.15.0"
+    "@agent_forge/forge-darwin-arm64": "1.15.1",
+    "@agent_forge/forge-darwin-x64": "1.15.1",
+    "@agent_forge/forge-linux-arm64": "1.15.1",
+    "@agent_forge/forge-linux-x64": "1.15.1",
+    "@agent_forge/forge-win32-x64": "1.15.1"
   },
   "files": [
     "run.js",
