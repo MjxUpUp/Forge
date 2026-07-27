@@ -5,6 +5,7 @@ metadata:
   pattern: pipeline + gate
   domain: development-discipline
   composes: prototype-confirmation, evidence-based-proposal, tdd-cycle, test-discipline, verification-driver, code-review-gate, systematic-debugging, dev-lookup, release-readiness
+  triggers: [{"event":"UserPromptSubmit","when":"coding_intent"},{"event":"Stop","when":"source_changed_uncommitted"}]
 ---
 
 # 代码实施纪律链
