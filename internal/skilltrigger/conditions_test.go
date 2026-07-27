@@ -118,6 +118,16 @@ func TestCondTestCommandFailed(t *testing.T) {
 			Context{ToolInput: map[string]any{"command": "npm run test"}, ToolOutput: map[string]any{"exit_code": "1"}},
 			true,
 		},
+		{
+			"lngo test（word-boundary：lngo 中 go 前 r 是单词字符，非 go test）",
+			Context{ToolInput: map[string]any{"command": "lngo test"}, ToolOutput: map[string]any{"exit_code": float64(1)}},
+			false,
+		},
+		{
+			"go testbed（word-boundary：testbed 中 test 后 bed 是单词字符，非 test）",
+			Context{ToolInput: map[string]any{"command": "go testbed"}, ToolOutput: map[string]any{"exit_code": float64(1)}},
+			false,
+		},
 	}
 	for _, tt := range tests {
 		if got := condTestCommandFailed(tt.ctx); got != tt.want {
@@ -142,6 +152,12 @@ func TestCondCodingIntent(t *testing.T) {
 		{"", false},
 		{"今天天气不错", false},
 		{"git 是什么", false},
+		{"what is the prefix of this string", false}, // F4: prefix 含 fix 但 \bfix\b 不匹配（pre 是单词字符）
+		{"explain the suffix array", false},          // F4: suffix 含 fix 但 \bfix\b 不匹配（suf 是单词字符）
+		{"building materials are expensive", false},  // F4: building 含 build 但 \bbuild\b 不匹配（ing 接尾）
+		{"addition is commutative", false},           // F4: addition 含 add 但 \badd\b 不匹配（ition 接尾）
+		{"build the feature now", true},              // \bbuild\b 正常命中
+		{"add a unit test", true},                    // \badd\b 正常命中
 	}
 	for _, tt := range tests {
 		if got := condCodingIntent(Context{Prompt: tt.prompt}); got != tt.want {

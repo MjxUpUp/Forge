@@ -3,6 +3,7 @@ package skilltrigger
 import (
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -62,14 +63,13 @@ func isSourcePath(p string) bool {
 	return sourceExt[strings.ToLower(filepath.Ext(p))]
 }
 
-// testCmdSignals 测试命令信号（子串匹配，大小写不敏感）。
-var testCmdSignals = []string{
-	"go test", "pytest", "python -m pytest", "cargo test",
-	"npm test", "npm run test", "yarn test", "pnpm test",
-	"mvn test", "gradle test", "jest", "vitest", "mocha",
-	"rake test", "deno test", "elm-test", "stack test", "cabal test",
-	"dotnet test", "xcodebuild test", "flutter test",
-}
+// testCmdRe 测试命令信号（word-boundary 正则，大小写不敏感）。\b 防 "cargo test" 含
+// "go test"、"lngo test"/"go testbed" 误判——要求信号前后是非单词字符（命令首部或
+// 空格/管道/&&/; 分隔）。
+//
+// testCmdRe matches test-command signals with word boundaries (case-insensitive).
+// \b prevents "cargo test" matching "go test" or "lngo test" false positives.
+var testCmdRe = regexp.MustCompile(`(?i)\b(go test|python -m pytest|pytest|cargo test|npm run test|npm test|yarn test|pnpm test|mvn test|gradle test|jest|vitest|mocha|rake test|deno test|elm-test|stack test|cabal test|dotnet test|xcodebuild test|flutter test)\b`)
 
 // condTestCommandFailed：刚跑的 Bash 是测试命令（command 含测试信号）且失败
 //（exit_code≠0 或 interrupted=true）。缺 exit_code → 无法判定 → false（保守不触发）。
@@ -78,15 +78,7 @@ func condTestCommandFailed(ctx Context) bool {
 	if cmd == "" {
 		return false
 	}
-	lower := strings.ToLower(cmd)
-	isTest := false
-	for _, sig := range testCmdSignals {
-		if strings.Contains(lower, sig) {
-			isTest = true
-			break
-		}
-	}
-	if !isTest {
+	if !testCmdRe.MatchString(cmd) {
 		return false
 	}
 	if interrupted, ok := ctx.ToolOutput["interrupted"].(bool); ok && interrupted {
@@ -125,29 +117,34 @@ func toInt(v any) (int, error) {
 	return 0, strconv.ErrSyntax
 }
 
-// codingIntentKeywords 编码意图关键词（中英文）。覆盖"要动手写代码"的意图；
-// 纯问问题/读代码（"看看""是什么"）不命中——避免把 advisory 注入泛化到每个 prompt。
-var codingIntentKeywords = []string{
-	"实现", "实现一下", "实现个", "帮我写", "写一下", "写个", "写一个", "写一段",
-	"重构", "refactor",
-	"修复", "修一下", "修个", "fix",
-	"添加", "新增", "加上", "add ", "implement",
-	"开发", "develop", "build", "integrate",
-	"编码", "tdd",
+// codingIntentCN 中文编码意图关键词（子串匹配——中文多音节，子串误判风险低）。
+// codingIntentENRe 英文编码意图词（word-boundary 正则）——英文短词（fix/build/add）必须
+// \b 防 "prefix" 含 "fix"、"lumber build workflow" 含 "build" 等误判把 advisory 注入每个
+// 含这些短词的解释性问题。
+//
+// codingIntentCN: Chinese coding-intent keywords (substring match; CJK multi-syllable
+// keeps false positives low). codingIntentENRe: English words with word boundaries —
+// short words (fix/build/add) need \b to avoid "prefix" matching "fix".
+var codingIntentCN = []string{
+	"实现", "帮我写", "写一下", "写个", "写一个", "写一段",
+	"重构", "修复", "修一下", "修个", "添加", "新增", "加上",
+	"开发", "编码",
 }
 
-// condCodingIntent：UserPromptSubmit 的 prompt 含编码意图关键词。
+var codingIntentENRe = regexp.MustCompile(`(?i)\b(refactor|fix|add|implement|develop|build|integrate|tdd)\b`)
+
+// condCodingIntent：UserPromptSubmit 的 prompt 含编码意图关键词（中文子串 + 英文 word-boundary）。
 func condCodingIntent(ctx Context) bool {
 	if ctx.Prompt == "" {
 		return false
 	}
 	lower := strings.ToLower(ctx.Prompt)
-	for _, kw := range codingIntentKeywords {
+	for _, kw := range codingIntentCN {
 		if strings.Contains(lower, strings.ToLower(kw)) {
 			return true
 		}
 	}
-	return false
+	return codingIntentENRe.MatchString(ctx.Prompt)
 }
 
 // condTaskActiveNoReview：当前 session 有 active task 且 ReviewPassed=false（task 流程中未审）。

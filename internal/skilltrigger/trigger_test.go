@@ -127,6 +127,32 @@ func TestEval_Cooldown(t *testing.T) {
 	}
 }
 
+func TestEval_MultiTriggerCooldownMax(t *testing.T) {
+	// F10 回归：同 skill 多 trigger 命中时 cooldown 取最大值，而非数组首条。
+	// 若实现退化回首条 cooldown，90s（>首条60 但 <max120）会误命中，测试即暴露。
+	withCond(t, "c", func(Context) bool { return true })
+	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{
+		{Event: "Stop", When: "c", Cooldown: 60},  // 短冷却
+		{Event: "Stop", When: "c", Cooldown: 120}, // 长冷却
+	}}}
+	noise := NewInMemoryNoiseController()
+	t0 := time.Now()
+	// 两 trigger 都命中 → cooldown = max(60, 120) = 120
+	hits := Eval(Context{Event: "Stop", SessionID: "s1", Now: t0}, all, noise)
+	if len(hits) != 1 {
+		t.Fatalf("首次应命中（两 trigger 都满足），got %d", len(hits))
+	}
+	noise.Mark("s1", "foo", t0)
+	// 90s：在首条 60 cooldown 外，但在 max(120) cooldown 内 → 不应命中（验证取 max）
+	if hits := Eval(Context{Event: "Stop", SessionID: "s1", Now: t0.Add(90 * time.Second)}, all, noise); len(hits) != 0 {
+		t.Fatalf("90s 在 max(120) cooldown 内应不命中（验证 cooldown 取 max 而非首条 60），got %d", len(hits))
+	}
+	// 121s：超 max(120) cooldown → 命中
+	if hits := Eval(Context{Event: "Stop", SessionID: "s1", Now: t0.Add(121 * time.Second)}, all, noise); len(hits) != 1 {
+		t.Fatalf("121s 超 max(120) cooldown 应命中，got %d", len(hits))
+	}
+}
+
 func TestEval_MatchToolName(t *testing.T) {
 	withCond(t, "c", func(Context) bool { return true })
 	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{

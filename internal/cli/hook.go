@@ -102,7 +102,7 @@ type HookInput struct {
 	HookEventName string          `json:"hook_event_name"`
 	ToolName      string          `json:"tool_name"`
 	ToolInput     json.RawMessage `json:"tool_input"`
-	ToolOutput    json.RawMessage `json:"tool_output,omitempty"`
+	ToolOutput    json.RawMessage `json:"tool_response,omitempty"` // Claude Code PostToolUse 实际字段名是 tool_response（非 tool_output）；skill-trigger 是首个消费其内容的 hook
 	Prompt        string          `json:"prompt,omitempty"` // UserPromptSubmit 顶层 prompt（skill-trigger coding_intent condition 用）
 }
 

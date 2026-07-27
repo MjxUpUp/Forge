@@ -157,6 +157,11 @@ func ForgeHookSpec() map[string][]HookMatcher {
 				},
 			},
 		},
+		// SessionStart 链含 skill-trigger，但当前无 canonical skill 声明 SessionStart trigger
+		// （MVP 4 condition + 6 dogfood skill 均未用此 event），故每次会话启动 LoadAll 扫所有
+		// SKILL.md 后必然 0 命中。保留挂载是为未来 SessionStart 触发器（如会话开始即提示加载某
+		// skill）预留接入点，避免届时再改 ForgeHookSpec 触发 plugin.json 重生成。
+		// FORGE_SKILL_TRIGGER=0 可全局早返跳过 LoadAll（F8）。接受这点 hook 链延迟换取触发点完备性。
 		"SessionStart": []HookMatcher{
 			{
 				Hooks: []HookEntry{

@@ -114,6 +114,10 @@ func windsurfHookEvent(action string) string {
 		return "PreToolUse"
 	case "post_write_code", "post_read_code", "post_run_command":
 		return "PostToolUse"
+	case "session_start":
+		return "SessionStart"
+	case "session_end":
+		return "Stop"
 	}
 	return ""
 }
