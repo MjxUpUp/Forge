@@ -22,16 +22,26 @@ WORK=$(mktemp -d)
 INSTALL_DIR=$(mktemp -d)
 VPID=""
 cleanup() {
-  # 铁律 2：kill Verdaccio 后台进程；铁律 1/5：rm 临时目录。
-  # Windows Git Bash 用 kill bash builtin（不走 taskkill，避免 /PID 被转成路径）。
-  [ -n "${VPID:-}" ] && kill "$VPID" 2>/dev/null || true
+  # 铁律 2：kill Verdaccio 进程树。Windows 无进程组，bash kill 只杀 npx 父进程，verdaccio
+  # node 子进程成 orphan 继续占 4873（[[windows-go-bash-pitfalls]]）。PowerShell Stop-Process
+  # 递归杀子进程树，kill 兜底；非 Windows（Linux/mac CI）直接 kill。
+  if [ -n "${VPID:-}" ]; then
+    case "$(uname -s 2>/dev/null)" in
+      MINGW*|MSYS*)
+        if command -v powershell >/dev/null 2>&1; then
+          powershell -NoProfile -Command "Stop-Process -Id $VPID -Force -ErrorAction SilentlyContinue; Get-CimInstance Win32_Process -Filter 'ParentProcessId=$VPID' | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force -ErrorAction SilentlyContinue }" 2>/dev/null || true
+        fi
+        ;;
+    esac
+    kill "$VPID" 2>/dev/null || true
+  fi
   rm -rf "$WORK" "$INSTALL_DIR"
 }
 trap cleanup EXIT INT TERM
 
 PORT=4873
-# 版本号用变量拼接：源码里不出现字面 verdaccio@6（local@domain 模式会被 email-obfuscate
-# 污染源码，参见 windows-input-quote-corruption memory）。
+# 版本号用变量拼接：源码里不出现字面 verdaccio@<ver>（local<at>domain 模式会被 email-
+# obfuscate 污染源码，参见 windows-input-quote-corruption memory）。
 VERDACCIO_VER=6
 echo "=== 方案 B：Verdaccio E2E（工作区 $WORK，install 验证 $INSTALL_DIR）==="
 
@@ -64,10 +74,18 @@ EOF
 
 # 2. 起 Verdaccio 后台
 echo "--- 启动 Verdaccio @ 127.0.0.1:$PORT ---"
+# 端口抢占检测：若 $PORT 已有 Verdaccio（外部实例或上次 orphan 占着），ping 会通但不是本
+# 脚本起的那个，后续 publish 走到陌生实例失败信号被吞。fail-fast 拒绝启动。
+if curl -sf --max-time 2 "http://127.0.0.1:$PORT/-/ping" >/dev/null 2>&1; then
+  echo "❌ 端口 $PORT 已被占用（外部 Verdaccio 或上次 orphan？），拒绝启动"
+  exit 1
+fi
 npx --yes verdaccio@"$VERDACCIO_VER" -c "$WORK/config.yaml" -l "127.0.0.1:$PORT" >/dev/null 2>&1 &
 VPID=$!
-# 首次 npx 下载 Verdaccio（~50MB+deps）可能 >30s，给 120s 轮询窗口
+# 首次 npx 下载 Verdaccio（~50MB+deps）可能 >30s，给 120s 轮询窗口；kill -0 校验 npx 父进程
+# 活着（npx 退出说明 verdaccio 没起来，避免空等 ping 超时）
 for _ in $(seq 1 240); do
+  kill -0 "$VPID" 2>/dev/null || { echo "❌ Verdaccio 进程已退出"; exit 1; }
   curl -sf "http://127.0.0.1:$PORT/-/ping" >/dev/null 2>&1 && break
   sleep 0.5
 done
@@ -79,7 +97,7 @@ export npm_config_registry="http://127.0.0.1:$PORT"
 export npm_config_userconfig="$WORK/.npmrc"   # adduser 的 token 落这，绝不落 ~/.npmrc
 # 注册临时用户：npm adduser 在 Git Bash 非 TTY 下 readline 失败（Username:/Password: 后立即
 # exit，npm 11.18 实测），改直接 curl 调 npm registry adduser API（PUT /-/user/org.couchdb.user:<name>），
-# 拿 token 写隔离的 .npmrc。email 用三段拼接避免字面 local@domain 被 obfuscate。
+# 拿 token 写隔离的 .npmrc。email 用三段拼接避免字面 local<at>domain 被 obfuscate。
 RUSER=rehearsal
 REMAIL="rehearsal""@""local"
 RESP=$(curl -sf -X PUT "http://127.0.0.1:$PORT/-/user/org.couchdb.user:$RUSER" \
