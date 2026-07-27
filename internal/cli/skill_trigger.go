@@ -102,8 +102,11 @@ func runSkillTriggerCore(hookInput HookInput, root, version string, dryRun bool)
 	if os.Getenv("FORGE_SKILL_TRIGGER") == "0" {
 		return "", nil
 	}
-	canonicalDir, ok, err := skillscanonical.Resolve(version)
-	if err != nil || !ok || canonicalDir == "" {
+	// ok（isExternal）仅区分 env 覆盖（FORGE_SKILLS_CANONICAL）vs embed cache，二者都是有效
+	// canonical 源；不可用 !ok 判无源——embed fallback 返回 ok=false 会被误拒，导致生产所有
+	// 事件静默 PASS（P0：1.14.0 skill-trigger 框架因此完全失效）。
+	canonicalDir, _, err := skillscanonical.Resolve(version)
+	if err != nil || canonicalDir == "" {
 		if dryRun {
 			fmt.Fprintf(os.Stderr, "[skill-trigger] 无 canonical 源（version=%s）\n", version)
 		}
