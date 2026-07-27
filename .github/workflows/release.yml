@@ -90,11 +90,20 @@ jobs:
           done
           # dry-run 门禁：真实 publish 前对 6 包跑 npm publish --dry-run，走完整 npm-package-arg
           # 解析 + pack，提前暴露"路径含/被当 github shorthand"类 bug（v1.15.0 npm job 因此 git ls-remote
-          # 失败）。dry-run 不上传，失败则 set -e 中断 step，不进真实 publish。本地预演见 scripts/release-rehearsal.sh。
+          # 失败）。dry-run 不上传。"已发布"版本（CI rerun 或部分包手动发布过，npm 查 registry 发现
+          # version 存在）不算失败——与下方 publish 块的幂等设计一致；只 npa/结构类错误才 exit 1。
+          # 防御性兼容：npm 官方文档称 dry-run 不查 registry，但实测 npm 11.18 + 华为云等镜像
+          # registry 的 dry-run 会查并报 cannot-publish-over，版本/registry 行为不一，故识别此错为
+          # 结构通过（非死代码——本地 npm 11.18 复现过主包 1.15.1 dry-run 报此错）。
+          # 本地预演见 scripts/release-rehearsal.sh。
           for pkg in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-x64; do
-            (cd "platforms/$pkg" && npm publish --dry-run --access public) >/dev/null
+            out=$(cd "platforms/$pkg" && npm publish --dry-run --access public 2>&1) \
+              || echo "$out" | grep -q "cannot publish over the previously published" \
+              || { echo "$out"; exit 1; }
           done
-          npm publish --dry-run --access public >/dev/null
+          out=$(npm publish --dry-run --access public 2>&1) \
+            || echo "$out" | grep -q "cannot publish over the previously published" \
+            || { echo "$out"; exit 1; }
           echo "dry-run gate passed for 6 packages"
           # 先发 5 子包（主包 optionalDependencies 指向它们，必须先就位）
           for pkg in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-x64; do
