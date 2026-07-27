@@ -93,12 +93,14 @@ func ForgeHookSpec() map[string][]HookMatcher {
 				Hooks: []HookEntry{
 					{Type: "command", Command: "forge hook auto-compile"},
 					{Type: "command", Command: "forge hook workflow-test-guard"},
+					{Type: "command", Command: "forge hook skill-trigger"},
 				},
 			},
 			{
 				Matcher: "Bash",
 				Hooks: []HookEntry{
 					{Type: "command", Command: "forge hook file-sentinel"},
+					{Type: "command", Command: "forge hook skill-trigger"},
 				},
 			},
 			{
@@ -134,6 +136,7 @@ func ForgeHookSpec() map[string][]HookMatcher {
 					{Type: "command", Command: "forge hook task-guard"},
 					{Type: "command", Command: "forge hook assertion-check"},
 					{Type: "command", Command: "forge hook read-before-edit"},
+					{Type: "command", Command: "forge hook skill-trigger"},
 				},
 			},
 			{
@@ -141,6 +144,7 @@ func ForgeHookSpec() map[string][]HookMatcher {
 				Hooks: []HookEntry{
 					{Type: "command", Command: "forge hook bash-guard"},
 					{Type: "command", Command: "forge hook hazard-guard"},
+					{Type: "command", Command: "forge hook skill-trigger"},
 				},
 			},
 		},
@@ -149,9 +153,15 @@ func ForgeHookSpec() map[string][]HookMatcher {
 				Hooks: []HookEntry{
 					{Type: "command", Command: "forge hook task-verify"},
 					{Type: "command", Command: "forge hook review-stop"},
+					{Type: "command", Command: "forge hook skill-trigger"},
 				},
 			},
 		},
+		// SessionStart 链含 skill-trigger，但当前无 canonical skill 声明 SessionStart trigger
+		// （MVP 4 condition + 6 dogfood skill 均未用此 event），故每次会话启动 LoadAll 扫所有
+		// SKILL.md 后必然 0 命中。保留挂载是为未来 SessionStart 触发器（如会话开始即提示加载某
+		// skill）预留接入点，避免届时再改 ForgeHookSpec 触发 plugin.json 重生成。
+		// FORGE_SKILL_TRIGGER=0 可全局早返跳过 LoadAll（F8）。接受这点 hook 链延迟换取触发点完备性。
 		"SessionStart": []HookMatcher{
 			{
 				Hooks: []HookEntry{
@@ -159,6 +169,7 @@ func ForgeHookSpec() map[string][]HookMatcher {
 					{Type: "command", Command: "forge hook mcp-scan"},
 					{Type: "command", Command: "forge hook init-suggest"},
 					{Type: "command", Command: "forge hook task-resume"},
+					{Type: "command", Command: "forge hook skill-trigger"},
 				},
 			},
 		},
@@ -186,6 +197,7 @@ func ForgeHookSpec() map[string][]HookMatcher {
 			{
 				Hooks: []HookEntry{
 					{Type: "command", Command: "forge hook resume-reinject"},
+					{Type: "command", Command: "forge hook skill-trigger"},
 				},
 			},
 		},

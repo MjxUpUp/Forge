@@ -1,6 +1,7 @@
 package skillsqa
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -187,6 +188,14 @@ func AuditSkill(skillDir string) (*SkillReport, error) {
 	//
 	// R11 references 结构：≤1 level（无子目录，硬）+ >100 行 ref 需 ToC（advisory）
 	checkReferences(skillDir, &issues, &advisories)
+	// R12 triggers 声明校验（advisory）——通用 skill-trigger 框架的实验字段，skill 不
+	// 写也合法；写了则校验 JSON 合法性 / event∈集 / keywords 或 when 至少一 / when∈词汇
+	// / match 仅对 tool 事件有效。内联 JSON 解析，避免 skillsqa→skilltrigger 循环依赖。
+	//
+	// R12 triggers 声明校验（advisory）——通用 skill-trigger 框架的实验字段，skill 不
+	// 写也合法；写了则校验 JSON 合法性 / event∈集 / keywords 或 when 至少一 / when∈词汇
+	// / match 仅对 tool 事件有效。内联 JSON 解析，避免 skillsqa→skilltrigger 循环依赖。
+	checkTriggers(fm.Metadata["triggers"], &advisories)
 
 	return &SkillReport{
 		Name:        name,
@@ -253,6 +262,61 @@ func checkReferences(skillDir string, issues, advisories *[]string) {
 			strings.Contains(content, "## Table of Contents")
 		if lines > 100 && !hasToC {
 			*advisories = append(*advisories, fmt.Sprintf(`references/%s 过长(%d行 >100) 缺 ## 目录 ToC（>100 行 reference 建议 ToC 助导航）`, e.Name(), lines))
+		}
+	}
+}
+
+// checkTriggers audits metadata.triggers declarations (R12, advisory):
+//   - empty: legal (a skill may opt out of the framework)
+//   - non-empty: must be valid JSON
+//   - per entry: event∈ValidTriggerEvents, keywords or when at least one,
+//     when∈ValidConditions, match only meaningful for PreToolUse/PostToolUse
+//
+// Inline JSON parsing (not via skilltrigger) keeps skillsqa free of an engine
+// dependency (avoids a skillsqa→skilltrigger import cycle).
+//
+// checkTriggers 校验 metadata.triggers 声明（R12，advisory）：
+//   - 空：合法（skill 可不接入框架）
+//   - 非空：须合法 JSON
+//   - 每条：event∈ValidTriggerEvents、keywords 或 when 至少一、when∈ValidConditions、
+//     match 仅对 PreToolUse/PostToolUse 有意义
+//
+// 内联 JSON 解析（不走 skilltrigger）以保持 skillsqa 对引擎包零依赖（避免循环依赖）。
+func checkTriggers(raw string, advisories *[]string) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return
+	}
+	var triggers []struct {
+		Event    string   `json:"event"`
+		Keywords []string `json:"keywords"`
+		When     string   `json:"when"`
+		Match    string   `json:"match"`
+	}
+	if err := json.Unmarshal([]byte(raw), &triggers); err != nil {
+		*advisories = append(*advisories, fmt.Sprintf(`metadata.triggers 非合法 JSON: %v`, err))
+		return
+	}
+	for i, t := range triggers {
+		idx := i + 1
+		isToolEvent := t.Event == "PreToolUse" || t.Event == "PostToolUse"
+		switch {
+		case t.Event == "":
+			*advisories = append(*advisories, fmt.Sprintf(`triggers[%d] 缺 event`, idx))
+		case !ValidTriggerEvents[t.Event]:
+			*advisories = append(*advisories, fmt.Sprintf(`triggers[%d] event 非法(%s)；合法: %v`, idx, t.Event, validTriggerEventsSorted()))
+		}
+		if len(t.Keywords) == 0 && t.When == "" {
+			*advisories = append(*advisories, fmt.Sprintf(`triggers[%d] keywords 与 when 至少需一`, idx))
+		}
+		if t.When != "" && !ValidConditions[t.When] {
+			*advisories = append(*advisories, fmt.Sprintf(`triggers[%d] when 非法(%s)；合法: %v`, idx, t.When, validConditionsSorted()))
+		}
+		if t.Match != "" && !isToolEvent {
+			*advisories = append(*advisories, fmt.Sprintf(`triggers[%d] match 仅对 PreToolUse/PostToolUse 有效（event=%s）`, idx, t.Event))
+		}
+		if isToolEvent && t.Match == "" && len(t.Keywords) == 0 {
+			*advisories = append(*advisories, fmt.Sprintf(`triggers[%d] PreToolUse/PostToolUse 建议带 match（限定 tool_name），否则对所有 tool 命中`, idx))
 		}
 	}
 }

@@ -4,6 +4,7 @@ description: "测试质量守卫。Use when: 测试失败时、声称验证通�
 metadata:
   pattern: reviewer
   domain: testing
+  triggers: [{"event":"PostToolUse","match":"Bash","when":"test_command_failed","cooldown":120}]
 ---
 
 # 测试质量守卫

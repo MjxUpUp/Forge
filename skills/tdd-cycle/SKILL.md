@@ -4,6 +4,7 @@ description: "测试驱动开发强制循环（RED-GREEN-Refactor）。Use when:
 metadata:
   pattern: pipeline + gate
   domain: testing
+  triggers: [{"event":"UserPromptSubmit","keywords":["TDD","先写测试","red green","测试驱动"]}]
 ---
 
 # TDD Cycle — 测试驱动开发

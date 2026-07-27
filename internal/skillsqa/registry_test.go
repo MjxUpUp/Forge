@@ -322,3 +322,155 @@ func TestAuditSkill_R4_Boundaries(t *testing.T) {
 		}
 	}
 }
+
+// R12 triggers declaration: advisory-only validation. checkTriggers is exercised
+// directly (unit-level, fast) and via AuditSkill (integration, confirms the
+// advisory never blocks Pass).
+//
+// R12 triggers 声明：advisory 校验。直接测 checkTriggers（单元级，快）+ 经 AuditSkill
+// （集成，确认 advisory 永不阻断 Pass）。
+
+// triggersAdvisories runs checkTriggers on raw and returns the advisories it appends.
+//
+// triggersAdvisories 对 raw 跑 checkTriggers，返回其追加的 advisory。
+func triggersAdvisories(t *testing.T, raw string) []string {
+	t.Helper()
+	var adv []string
+	checkTriggers(raw, &adv)
+	return adv
+}
+
+// advisoryContains reports whether any advisory contains sub.
+//
+// advisoryContains 判断是否有 advisory 含 sub。
+func advisoryContains(adv []string, sub string) bool {
+	for _, a := range adv {
+		if strings.Contains(a, sub) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestCheckTriggers_Empty(t *testing.T) {
+	if adv := triggersAdvisories(t, ""); len(adv) != 0 {
+		t.Errorf("空 triggers 应无 advisory，got %v", adv)
+	}
+	if adv := triggersAdvisories(t, "   "); len(adv) != 0 {
+		t.Errorf("纯空白 triggers 应无 advisory，got %v", adv)
+	}
+}
+
+func TestCheckTriggers_InvalidJSON(t *testing.T) {
+	adv := triggersAdvisories(t, "not-json")
+	if !advisoryContains(adv, "非合法 JSON") {
+		t.Errorf("非法 JSON 应报 advisory，got %v", adv)
+	}
+}
+
+func TestCheckTriggers_Valid(t *testing.T) {
+	raw := `[{"event":"Stop","when":"task_active_no_review"},{"event":"UserPromptSubmit","when":"coding_intent"}]`
+	if adv := triggersAdvisories(t, raw); len(adv) != 0 {
+		t.Errorf("合法 triggers 应无 advisory，got %v", adv)
+	}
+}
+
+func TestCheckTriggers_BadEvent(t *testing.T) {
+	raw := `[{"event":"Foo","when":"coding_intent"}]`
+	adv := triggersAdvisories(t, raw)
+	if !advisoryContains(adv, "event 非法") {
+		t.Errorf("非法 event 应报 advisory，got %v", adv)
+	}
+}
+
+func TestCheckTriggers_MissingEvent(t *testing.T) {
+	raw := `[{"when":"coding_intent"}]`
+	adv := triggersAdvisories(t, raw)
+	if !advisoryContains(adv, "缺 event") {
+		t.Errorf("缺 event 应报 advisory，got %v", adv)
+	}
+}
+
+func TestCheckTriggers_MissingKeywordsAndWhen(t *testing.T) {
+	raw := `[{"event":"Stop"}]`
+	adv := triggersAdvisories(t, raw)
+	if !advisoryContains(adv, "至少需一") {
+		t.Errorf("缺 keywords+when 应报 advisory，got %v", adv)
+	}
+}
+
+func TestCheckTriggers_BadWhen(t *testing.T) {
+	raw := `[{"event":"Stop","when":"foo"}]`
+	adv := triggersAdvisories(t, raw)
+	if !advisoryContains(adv, "when 非法") {
+		t.Errorf("非法 when 应报 advisory，got %v", adv)
+	}
+}
+
+func TestCheckTriggers_MatchOnNonToolEvent(t *testing.T) {
+	raw := `[{"event":"Stop","when":"coding_intent","match":"Bash"}]`
+	adv := triggersAdvisories(t, raw)
+	if !advisoryContains(adv, "match 仅对") {
+		t.Errorf("非 tool 事件设 match 应报 advisory，got %v", adv)
+	}
+}
+
+func TestCheckTriggers_ToolEventSuggestMatch(t *testing.T) {
+	raw := `[{"event":"PreToolUse","when":"coding_intent"}]`
+	adv := triggersAdvisories(t, raw)
+	if !advisoryContains(adv, "建议带 match") {
+		t.Errorf("tool 事件无 match 无 keywords 应建议 match，got %v", adv)
+	}
+}
+
+func TestCheckTriggers_ToolEventWithKeywordsNoSuggest(t *testing.T) {
+	raw := `[{"event":"PostToolUse","keywords":["TDD"],"match":"Bash"}]`
+	if adv := triggersAdvisories(t, raw); advisoryContains(adv, "建议带 match") {
+		t.Errorf("tool 事件已有 keywords/match 不应再建议，got %v", adv)
+	}
+}
+
+// makeSkillWithTriggers assembles SKILL.md with a metadata.triggers line. triggers
+// must be BARE JSON — frontmatter.go nestedRe does not strip quotes from nested
+// metadata values (only topLevelRe does for top-level fields).
+//
+// makeSkillWithTriggers 组装含 metadata.triggers 行的 SKILL.md。triggers 须为裸 JSON——
+// frontmatter.go nestedRe 不剥嵌套 metadata 引号（仅 topLevelRe 对顶层字段剥）。
+func makeSkillWithTriggers(name, desc, pattern, triggers, body string) string {
+	return "---\nname: " + name + "\ndescription: \"" + desc +
+		"\"\nmetadata:\n  pattern: " + pattern + "\n  domain: testing\n  triggers: " + triggers + "\n---\n\n" + body
+}
+
+// TestAuditSkill_R12_ValidTriggersNoAdvisory: 合法 triggers 经 AuditSkill 后无 R12 advisory。
+func TestAuditSkill_R12_ValidTriggersNoAdvisory(t *testing.T) {
+	raw := `[{"event":"Stop","when":"task_active_no_review"}]`
+	sd := writeSkill(t, t.TempDir(), "r12-valid", makeSkillWithTriggers("r12-valid", longDesc(), "tool-wrapper", raw, signalBody()))
+	r, err := AuditSkill(sd)
+	must(t, err)
+	for _, a := range r.Advisories {
+		if strings.Contains(a, "triggers") {
+			t.Errorf("合法 triggers 不应有 R12 advisory，got: %s", a)
+		}
+	}
+}
+
+// TestAuditSkill_R12_BadTriggersAdvisoryButPass: 非法 triggers 报 R12 advisory 但仍 Pass（advisory 不阻断）。
+func TestAuditSkill_R12_BadTriggersAdvisoryButPass(t *testing.T) {
+	sd := writeSkill(t, t.TempDir(), "r12-bad", makeSkillWithTriggers("r12-bad", longDesc(), "tool-wrapper", "not-json", signalBody()))
+	r, err := AuditSkill(sd)
+	must(t, err)
+	if !r.Pass {
+		t.Errorf("R12 advisory 不应阻断 Pass（issues: %v）", r.Issues)
+	}
+	if !advisoryContains(r.Advisories, "非合法 JSON") {
+		t.Errorf("应报 R12 advisory，got: %v", r.Advisories)
+	}
+}
+
+// drift 守卫 TestValidConditions_MatchEngine 见 internal/skilltrigger/conditions_test.go——
+// skillsqa 测试不能 import skilltrigger（经 taskpipeline→skillsdist→skillsqa 成环），故
+// 守卫放在引擎侧（skilltrigger_test→skillsqa 无环）。
+//
+// drift guard TestValidConditions_MatchEngine lives in internal/skilltrigger/conditions_test.go —
+// skillsqa tests cannot import skilltrigger (taskpipeline→skillsdist→skillsqa cycle), so the
+// guard sits on the engine side (skilltrigger_test→skillsqa is acyclic).
