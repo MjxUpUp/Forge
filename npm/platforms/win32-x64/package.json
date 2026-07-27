@@ -1,0 +1,10 @@
+{
+  "name": "@agent_forge/forge-win32-x64",
+  "version": "1.15.0",
+  "description": "Forge native binary for win32-x64. Auto-installed via optionalDependencies of @agent_forge/forge; do not depend on directly.",
+  "os": ["win32"],
+  "cpu": ["x64"],
+  "files": ["bin"],
+  "license": "Apache-2.0",
+  "private": false
+}
