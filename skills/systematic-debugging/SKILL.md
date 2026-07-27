@@ -4,6 +4,7 @@ description: "系统化调试方法论。Use when: 遇到任何 bug/测试失败
 metadata:
   pattern: pipeline + gate
   domain: debugging
+  triggers: [{"event":"PostToolUse","match":"Bash","when":"test_command_failed","cooldown":120}]
 ---
 
 # Systematic Debugging — 系统化调试

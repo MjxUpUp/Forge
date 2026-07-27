@@ -103,6 +103,7 @@ type HookInput struct {
 	ToolName      string          `json:"tool_name"`
 	ToolInput     json.RawMessage `json:"tool_input"`
 	ToolOutput    json.RawMessage `json:"tool_output,omitempty"`
+	Prompt        string          `json:"prompt,omitempty"` // UserPromptSubmit 顶层 prompt（skill-trigger coding_intent condition 用）
 }
 
 // toolInputFields holds the fields extracted from the tool_input JSON.
@@ -215,13 +216,15 @@ func resolveHookAgent(flagVal, envVal string) string {
 // 恶意 .mcp.json。Project-scoped hook（task-guard、file-sentinel 等）保持原有
 // allow-and-exit 行为。
 func isGlobalHook(name string) bool {
-	return name == "skill-scan" || name == "init-suggest" || name == "mcp-scan"
+	return name == "skill-scan" || name == "init-suggest" || name == "mcp-scan" || name == "skill-trigger"
 }
 
 func runHook(cmd *cobra.Command, args []string) error {
 	name := args[0]
 	content, ok := hooks.EmbeddedContent(name)
-	if !ok {
+	// skill-trigger 走 runHook 特例（Go 内判定，不经 bash embed），无 embed script——
+	// 放行其 name，特例在 hookInput 解析 + agent normalize 之后拦截 return。
+	if !ok && name != "skill-trigger" {
 		return fmt.Errorf("unknown hook: %s", name)
 	}
 
@@ -275,6 +278,19 @@ func runHook(cmd *cobra.Command, args []string) error {
 	agent := resolveHookAgent(hookAgent, os.Getenv("FORGE_HOOK_AGENT"))
 	if agent != "" {
 		normalizeAgentStdin(agent, stdinData, &hookInput)
+	}
+
+	// skill-trigger 特例：Go 内直接判定 + 渲染（不经 bash embed）。
+	// 原因：skill-trigger 需 HookInput 的 Event/Prompt/Tool/command/exit_code 实时字段（来自 stdin），
+	// 而 thin-wrapper bash（exec forge X）拿不到 runHook 已消费的 stdin——task-resume/resume-reinject
+	// 等 thin-wrapper 不依赖 stdin（用 forge data 渲染）故未暴露此问题。在 Go 内处理复用 runHook
+	// 已 normalize 的 hookInput 与 agent stdin normalize，最干净。
+	//
+	// skill-trigger special-case: evaluate + render in Go (no bash embed). skill-trigger needs
+	// live HookInput fields from stdin, which the thin-wrapper bash cannot reach (runHook consumed
+	// stdin). Handling in Go reuses the already-normalized hookInput + agent stdin normalize.
+	if name == "skill-trigger" {
+		return runSkillTriggerHook(hookInput, root, cmd.Root().Version)
 	}
 
 	// 2. Extract tool_input fields on the Go side (reliable JSON parsing).

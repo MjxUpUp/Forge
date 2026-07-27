@@ -93,12 +93,14 @@ func ForgeHookSpec() map[string][]HookMatcher {
 				Hooks: []HookEntry{
 					{Type: "command", Command: "forge hook auto-compile"},
 					{Type: "command", Command: "forge hook workflow-test-guard"},
+					{Type: "command", Command: "forge hook skill-trigger"},
 				},
 			},
 			{
 				Matcher: "Bash",
 				Hooks: []HookEntry{
 					{Type: "command", Command: "forge hook file-sentinel"},
+					{Type: "command", Command: "forge hook skill-trigger"},
 				},
 			},
 			{
@@ -134,6 +136,7 @@ func ForgeHookSpec() map[string][]HookMatcher {
 					{Type: "command", Command: "forge hook task-guard"},
 					{Type: "command", Command: "forge hook assertion-check"},
 					{Type: "command", Command: "forge hook read-before-edit"},
+					{Type: "command", Command: "forge hook skill-trigger"},
 				},
 			},
 			{
@@ -141,6 +144,7 @@ func ForgeHookSpec() map[string][]HookMatcher {
 				Hooks: []HookEntry{
 					{Type: "command", Command: "forge hook bash-guard"},
 					{Type: "command", Command: "forge hook hazard-guard"},
+					{Type: "command", Command: "forge hook skill-trigger"},
 				},
 			},
 		},
@@ -149,6 +153,7 @@ func ForgeHookSpec() map[string][]HookMatcher {
 				Hooks: []HookEntry{
 					{Type: "command", Command: "forge hook task-verify"},
 					{Type: "command", Command: "forge hook review-stop"},
+					{Type: "command", Command: "forge hook skill-trigger"},
 				},
 			},
 		},
@@ -159,6 +164,7 @@ func ForgeHookSpec() map[string][]HookMatcher {
 					{Type: "command", Command: "forge hook mcp-scan"},
 					{Type: "command", Command: "forge hook init-suggest"},
 					{Type: "command", Command: "forge hook task-resume"},
+					{Type: "command", Command: "forge hook skill-trigger"},
 				},
 			},
 		},
@@ -186,6 +192,7 @@ func ForgeHookSpec() map[string][]HookMatcher {
 			{
 				Hooks: []HookEntry{
 					{Type: "command", Command: "forge hook resume-reinject"},
+					{Type: "command", Command: "forge hook skill-trigger"},
 				},
 			},
 		},
