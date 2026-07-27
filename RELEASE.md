@@ -12,11 +12,11 @@ cmd/forge 漏提交的雷拖到 v0.27.1 才爆。
 |-----|------|-------|
 | **test** | `go test ./... -race` + `go vet` | （源头） |
 | **goreleaser** | 跨平台二进制 → GitHub Release | `test` |
-| **npm** | 发 `@agent_forge/forge` 到 npmjs.org | `goreleaser` |
+| **npm** | 发 `@agent_forge/forge` + 5 平台子包到 npmjs.org | `goreleaser` |
 
 - **test** 失败 → goreleaser/npm 都不跑（needs 链由 `internal/ci/release_workflow_test.go` 沙盒守护）
-- **goreleaser** 失败 → npm 不跑（二进制没发，npm 包 `install.js` 下不到平台二进制）
-- **npm** 最后发，`NODE_AUTH_TOKEN` 走 `registry.npmjs.org`（华为云镜像缺新包会 404）
+- **goreleaser** 失败 → npm 不跑（npm 平台子包二进制来自 goreleaser 上传的 GitHub Release 产物，没产物则子包无二进制）
+- **npm** 最后发：先发 5 平台子包（主包 optionalDependencies 依赖它们），再发主包；`NODE_AUTH_TOKEN` 走 `registry.npmjs.org`（华为云镜像缺新包会 404）
 
 ```bash
 # 标准发版（唯一推荐路径）
