@@ -233,6 +233,27 @@ func TestRunSkillTriggerHook_NoHitOutput(t *testing.T) {
 	}
 }
 
+// TestRunSkillTriggerCore_EmbedFallback: P0 回归——不设 FORGE_SKILLS_CANONICAL，强制 Resolve
+// 走 embed fallback（ok=isExternal=false）。runSkillTriggerCore 曾因 !ok 误把 embed cache 判为
+// "无 canonical 源"，导致生产所有事件静默 PASS、skill-trigger 框架完全失效（1.14.0）。
+// 本测试重定向 home 避免污染用户 ~/.forge，验证 embed 路径正常扫描命中。
+func TestRunSkillTriggerCore_EmbedFallback(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("USERPROFILE", tmp)          // Windows: os.UserHomeDir 读 USERPROFILE
+	t.Setenv("HOME", tmp)                 // Unix fallback
+	t.Setenv("FORGE_SKILLS_CANONICAL", "") // 强制 embed fallback（非 env 覆盖）
+
+	rendered, err := runSkillTriggerCore(
+		HookInput{HookEventName: "UserPromptSubmit", Prompt: "帮我实现一个排序算法", SessionID: "embed-fb-test"},
+		"", "v", true) // dryRun=true 用 InMemory noise，不落盘 marker
+	if err != nil {
+		t.Fatalf("runSkillTriggerCore: %v", err)
+	}
+	if !strings.Contains(rendered, "implementation-discipline") {
+		t.Errorf("embed fallback（ok=false）应正常命中 implementation-discipline，不应误判无源，got:\n%s", rendered)
+	}
+}
+
 func TestRunSkillTriggerHook_DeniedSkillSkipped(t *testing.T) {
 	dir := withCanonicalEnv(t)
 	// code-review-gate 在 DeniedSkills——即便声明 triggers 也不注入
