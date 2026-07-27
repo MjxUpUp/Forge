@@ -1433,3 +1433,55 @@ func TestPostToolUseToolTrackMatchesReadSkillAgent(t *testing.T) {
 		t.Error("PostToolUse 缺 Read|Skill|Agent matcher 的 forge hook tool-track（方案 C：Skill/Agent 调用不被审计）")
 	}
 }
+
+// TestForgeHookSpec_SkillTriggerMounted 守护通用 skill-trigger hook 的挂载矩阵：
+// skill-trigger 必须挂在 5 个事件（UserPromptSubmit / PreToolUse / PostToolUse / Stop / SessionStart）
+// 的 7 个 matcher 末尾（PreToolUse/PostToolUse 各 2 个 + Stop/UserPromptSubmit/SessionStart 各 1 个），
+// 且不得挂在 PostCompact（plan 边界：PostCompact 不支持 additionalContext 注入）与 PostToolUse
+// Read|Skill|Agent matcher（无质量 skill 场景，徒增噪声）。直接断言 ForgeHookSpec() 结构，防回归
+// （mirror 守卫 TestPluginPack_HooksMirrorSettings 发现不了单边删除：删 ForgeHookSpec 的同时
+// plugin.json 同步消失，mirror 仍过）。
+func TestForgeHookSpec_SkillTriggerMounted(t *testing.T) {
+	spec := ForgeHookSpec()
+	// 预期挂载 skill-trigger 的 event|matcher 组合。
+	wantMounted := map[string]bool{
+		"PreToolUse|Write|Edit":    true,
+		"PreToolUse|Bash":          true,
+		"PostToolUse|Write|Edit":   true,
+		"PostToolUse|Bash":         true,
+		"Stop|":                    true,
+		"UserPromptSubmit|":        true,
+		"SessionStart|":            true,
+	}
+	gotMounted := map[string]bool{}
+	for event, matchers := range spec {
+		for _, m := range matchers {
+			for _, h := range m.Hooks {
+				if h.Command == "forge hook skill-trigger" {
+					gotMounted[event+"|"+m.Matcher] = true
+				}
+			}
+		}
+	}
+	for key := range wantMounted {
+		if !gotMounted[key] {
+			t.Errorf("skill-trigger 应挂在 %s 末尾，未找到", key)
+		}
+	}
+	// 不应挂载的位置（plan 边界）。
+	for event, matchers := range spec {
+		for _, m := range matchers {
+			for _, h := range m.Hooks {
+				if h.Command != "forge hook skill-trigger" {
+					continue
+				}
+				if event == "PostCompact" {
+					t.Errorf("skill-trigger 不应挂 PostCompact（不支持 additionalContext 注入）")
+				}
+				if event == "PostToolUse" && m.Matcher == "Read|Skill|Agent" {
+					t.Errorf("skill-trigger 不应挂 PostToolUse Read|Skill|Agent（无质量 skill 场景）")
+				}
+			}
+		}
+	}
+}

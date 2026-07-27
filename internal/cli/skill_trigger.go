@@ -1,0 +1,168 @@
+// Package cli skill_trigger.go 是通用 skill-trigger 框架的 CLI 入口与判定核心。
+//
+// 设计要点（与 plan §1 的偏离，技术正确性驱动）：
+// plan 原假设 thin-wrapper bash（exec forge skill trigger --hook）能透传 stdin，但 runHook
+// (hook.go) 已 io.ReadAll(os.Stdin) 消费 stdin 且未设 shCmd.Stdin，子进程拿到空 stdin。
+// task-resume/resume-reinject 等 thin-wrapper 不依赖 stdin（用 forge data 渲染），故未暴露；
+// skill-trigger 必须从 HookInput 取 Event/Prompt/Tool/command/exit_code（只能来自 stdin）。
+// 故采用 runHook 特例方案：name=="skill-trigger" 时 Go 内直接判定 + 渲染，复用 runHook 已
+// normalize 的 hookInput 与 agent stdin normalize，不经 bash embed，避开 stdin 透传难题。
+//
+// Package cli skill_trigger.go is the CLI entry + evaluation core of the generic skill-trigger
+// framework. Deviates from plan §1 (driven by technical correctness): the thin-wrapper bash
+// assumption breaks because runHook consumes stdin; skill-trigger needs live HookInput fields,
+// so a runHook special-case evaluates + renders in Go, reusing the already-normalized hookInput.
+package cli
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/skillscanonical"
+	"github.com/MjxUpUp/Forge/internal/skilltrigger"
+	"github.com/MjxUpUp/Forge/internal/util"
+	"github.com/spf13/cobra"
+)
+
+var (
+	skillTriggerHookFlag bool
+	skillTriggerDryRun   bool
+	skillTriggerEvent    string
+)
+
+// skillTriggerCmd 是 `forge skills trigger` 子命令——主要供 --dry-run 调试（模拟事件、stderr
+// 打扫描/命中详情、不写 marker）。生产 hook 链走 `forge hook skill-trigger` → runHook 特例 →
+// runSkillTriggerHook，不经此子命令。
+var skillTriggerCmd = &cobra.Command{
+	Use:    "trigger",
+	Short:  "(internal) 通用 skill-trigger 判定入口（声明式触发 + 注入指引）",
+	Hidden: true,
+	RunE:   runSkillTriggerCmd,
+}
+
+func init() {
+	skillTriggerCmd.Flags().BoolVar(&skillTriggerHookFlag, "hook", false, "hook 生产入口（读 stdin HookInput，输出 PASS JSON 协议）")
+	skillTriggerCmd.Flags().BoolVar(&skillTriggerDryRun, "dry-run", false, "调试：stderr 打扫描/命中详情，不写 marker")
+	skillTriggerCmd.Flags().StringVar(&skillTriggerEvent, "event", "", "覆盖 HookInput 的事件名（调试模拟其他事件）")
+	skillsCmd.AddCommand(skillTriggerCmd)
+}
+
+// runSkillTriggerCmd 处理 `forge skills trigger`：读 stdin HookInput，调核心，stdout 打渲染结果。
+func runSkillTriggerCmd(cmd *cobra.Command, args []string) error {
+	var hookInput HookInput
+	stdinData, _ := io.ReadAll(os.Stdin)
+	if len(stdinData) > 0 {
+		if err := json.Unmarshal(stdinData, &hookInput); err != nil {
+			fmt.Fprintf(os.Stderr, "[skill-trigger] warning: stdin JSON parse failed: %v\n", err)
+		}
+	}
+	if skillTriggerEvent != "" {
+		hookInput.HookEventName = skillTriggerEvent
+	}
+	root, _ := findProjectRoot()
+	rendered, err := runSkillTriggerCore(hookInput, root, cmd.Root().Version, skillTriggerDryRun)
+	if err != nil {
+		return err
+	}
+	if rendered != "" {
+		fmt.Print(rendered)
+	}
+	return nil
+}
+
+// runSkillTriggerHook 是 runHook 的 skill-trigger 特例入口：复用 runHook 已 normalize 的
+// hookInput，Go 内判定 + 渲染 + 输出 HookOutput JSON（不经 bash embed）。
+func runSkillTriggerHook(hookInput HookInput, root, version string) error {
+	rendered, err := runSkillTriggerCore(hookInput, root, version, false)
+	if err != nil {
+		// 判定异常不阻断 hook 链——skill-trigger 是 advisory 注入，fail-open。
+		fmt.Println(`{"decision":"approve"}`)
+		return nil
+	}
+	out := HookOutput{Decision: "approve"}
+	if rendered != "" {
+		out.HookSpecificOutput = &HookSpecificOutput{
+			HookEventName:     hookInput.HookEventName,
+			AdditionalContext: truncate(rendered, maxAdditionalContextLen),
+		}
+	}
+	data, _ := json.Marshal(out)
+	fmt.Println(string(data))
+	return nil
+}
+
+// runSkillTriggerCore 是判定 + 渲染核心（hook 链 / 子命令 / dry-run 共用）。
+// 返回渲染文本（无命中返 ""，调用方按需 wrap）。无 canonical 源 / 无 triggers 声明 → 静默 ""。
+func runSkillTriggerCore(hookInput HookInput, root, version string, dryRun bool) (string, error) {
+	canonicalDir, ok, err := skillscanonical.Resolve(version)
+	if err != nil || !ok || canonicalDir == "" {
+		if dryRun {
+			fmt.Fprintf(os.Stderr, "[skill-trigger] 无 canonical 源（version=%s）\n", version)
+		}
+		return "", nil
+	}
+	all := skilltrigger.LoadAll(canonicalDir)
+	if len(all) == 0 {
+		if dryRun {
+			fmt.Fprintf(os.Stderr, "[skill-trigger] canonical=%s 无 triggers 声明\n", canonicalDir)
+		}
+		return "", nil
+	}
+	ctx := buildTriggerContext(hookInput, root)
+	baseDir, err := forgedata.GlobalHome()
+	if err != nil || baseDir == "" {
+		baseDir = os.TempDir()
+	}
+	// dry-run 用 InMemory（绕过 cooldown/max-rounds，看原始命中）；生产用 File（落盘 marker）。
+	var noise skilltrigger.NoiseController
+	if dryRun {
+		noise = skilltrigger.NewInMemoryNoiseController()
+	} else {
+		noise = skilltrigger.NewFileNoiseController(filepath.Join(baseDir, "skill-trigger"))
+	}
+	hits := skilltrigger.Eval(ctx, all, noise)
+	if dryRun {
+		fmt.Fprintf(os.Stderr, "[skill-trigger] canonical=%s event=%s tool=%s prompt_len=%d 命中=%d\n",
+			canonicalDir, ctx.Event, ctx.ToolName, len(ctx.Prompt), len(hits))
+		for _, h := range hits {
+			fmt.Fprintf(os.Stderr, "  命中 %s（%s）\n", h.Skill, h.Reason)
+		}
+	}
+	if len(hits) == 0 {
+		return "", nil
+	}
+	// 落盘副作用：Eval 只读判定（ShouldFire/StopRoundAllowed），确认注入后才 Mark/IncrStopRound。
+	if !dryRun {
+		for _, h := range hits {
+			_ = noise.Mark(ctx.SessionID, h.Skill, ctx.Now)
+		}
+		if ctx.Event == "Stop" {
+			_ = noise.IncrStopRound(ctx.SessionID)
+		}
+	}
+	return skilltrigger.Render(hits, ctx), nil
+}
+
+// buildTriggerContext 把 HookInput 转成引擎 Context（agent-neutral）。
+func buildTriggerContext(hookInput HookInput, root string) skilltrigger.Context {
+	ctx := skilltrigger.Context{
+		Event:       hookInput.HookEventName,
+		Prompt:      hookInput.Prompt,
+		ToolName:    hookInput.ToolName,
+		SessionID:   util.SanitizeSessionID(hookInput.SessionID),
+		ProjectRoot: root,
+		Now:         time.Now(),
+	}
+	if len(hookInput.ToolInput) > 0 {
+		_ = json.Unmarshal(hookInput.ToolInput, &ctx.ToolInput)
+	}
+	if len(hookInput.ToolOutput) > 0 {
+		_ = json.Unmarshal(hookInput.ToolOutput, &ctx.ToolOutput)
+	}
+	return ctx
+}

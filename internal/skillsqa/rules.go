@@ -67,6 +67,41 @@ var AllowedFm = map[string]bool{
 	"metadata": true, "compatibility": true, "version": true, "requires": true,
 }
 
+// ValidTriggerEvents — metadata.triggers[].event 合法值（通用 skill-trigger 框架支持的事件）。
+// PostCompact 不在内——该事件不支持 additionalContext 注入（plan 边界）。
+// 与 internal/hooks ForgeHookSpec 挂载的 5 事件一致。
+//
+// ValidTriggerEvents — metadata.triggers[].event 合法值（通用 skill-trigger 框架支持的事件）。
+// PostCompact 不在内——该事件不支持 additionalContext 注入（plan 边界）。
+var ValidTriggerEvents = map[string]bool{
+	"UserPromptSubmit": true, "PreToolUse": true, "PostToolUse": true,
+	"Stop": true, "SessionStart": true,
+}
+
+// ValidConditions — metadata.triggers[].when 合法值（skilltrigger.Conditions 词汇表）。
+// 与 internal/skilltrigger.Conditions 的 key 集合必须一致——drift 守卫
+// TestValidConditions_MatchEngine 断言两者同步（新增 condition 须同时改两处）。
+//
+// ValidConditions — metadata.triggers[].when 合法值（skilltrigger.Conditions 词汇表）。
+// 与 internal/skilltrigger.Conditions 的 key 集合必须一致——drift 守卫
+// TestValidConditions_MatchEngine 断言两者同步（新增 condition 须同时改两处）。
+var ValidConditions = map[string]bool{
+	"source_changed_uncommitted": true,
+	"test_command_failed":        true,
+	"coding_intent":              true,
+	"task_active_no_review":      true,
+}
+
+// validTriggerEventsSorted returns sorted trigger-event names (R12 issue 文案用).
+//
+// validTriggerEventsSorted 返回排序后的 trigger-event 名（R12 issue 文案用）。
+func validTriggerEventsSorted() []string { return slices.Sorted(maps.Keys(ValidTriggerEvents)) }
+
+// validConditionsSorted returns sorted condition names (R12 issue 文案用).
+//
+// validConditionsSorted 返回排序后的 condition 名（R12 issue 文案用）。
+func validConditionsSorted() []string { return slices.Sorted(maps.Keys(ValidConditions)) }
+
 // ExecExts — executable script suffixes (audit.py EXEC_EXTS); the dangerous_code
 // rule only applies to these.
 //

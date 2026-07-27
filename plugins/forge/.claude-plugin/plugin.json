@@ -22,6 +22,10 @@
           {
             "type": "command",
             "command": "forge hook workflow-test-guard"
+          },
+          {
+            "type": "command",
+            "command": "forge hook skill-trigger"
           }
         ]
       },
@@ -31,6 +35,10 @@
           {
             "type": "command",
             "command": "forge hook file-sentinel"
+          },
+          {
+            "type": "command",
+            "command": "forge hook skill-trigger"
           }
         ]
       },
@@ -59,6 +67,10 @@
           {
             "type": "command",
             "command": "forge hook read-before-edit"
+          },
+          {
+            "type": "command",
+            "command": "forge hook skill-trigger"
           }
         ]
       },
@@ -72,6 +84,10 @@
           {
             "type": "command",
             "command": "forge hook hazard-guard"
+          },
+          {
+            "type": "command",
+            "command": "forge hook skill-trigger"
           }
         ]
       }
@@ -94,6 +110,10 @@
           {
             "type": "command",
             "command": "forge hook task-resume"
+          },
+          {
+            "type": "command",
+            "command": "forge hook skill-trigger"
           }
         ]
       }
@@ -108,6 +128,10 @@
           {
             "type": "command",
             "command": "forge hook review-stop"
+          },
+          {
+            "type": "command",
+            "command": "forge hook skill-trigger"
           }
         ]
       }
@@ -118,6 +142,10 @@
           {
             "type": "command",
             "command": "forge hook resume-reinject"
+          },
+          {
+            "type": "command",
+            "command": "forge hook skill-trigger"
           }
         ]
       }

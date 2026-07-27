@@ -109,17 +109,21 @@ func buildWindsurfHooks() map[string]any {
 				{Command: "forge hook task-guard --agent windsurf", ShowOutput: false},
 				{Command: "forge hook assertion-check --agent windsurf", ShowOutput: false},
 				{Command: "forge hook read-before-edit --agent windsurf", ShowOutput: false},
+				{Command: "forge hook skill-trigger --agent windsurf", ShowOutput: false},
 			},
 			"pre_run_command": {
 				{Command: "forge hook bash-guard --agent windsurf", ShowOutput: false},
 				{Command: "forge hook hazard-guard --agent windsurf", ShowOutput: false},
+				{Command: "forge hook skill-trigger --agent windsurf", ShowOutput: false},
 			},
 			"post_write_code": {
 				{Command: "forge hook auto-compile --agent windsurf", ShowOutput: false},
 				{Command: "forge hook workflow-test-guard --agent windsurf", ShowOutput: false},
+				{Command: "forge hook skill-trigger --agent windsurf", ShowOutput: false},
 			},
 			"post_run_command": {
 				{Command: "forge hook file-sentinel --agent windsurf", ShowOutput: false},
+				{Command: "forge hook skill-trigger --agent windsurf", ShowOutput: false},
 			},
 			"post_read_code": {
 				{Command: "forge hook tool-track --agent windsurf", ShowOutput: false},
@@ -129,10 +133,12 @@ func buildWindsurfHooks() map[string]any {
 				{Command: "forge hook mcp-scan", ShowOutput: false},
 				{Command: "forge hook init-suggest", ShowOutput: false},
 				{Command: "forge hook task-resume", ShowOutput: false},
+				{Command: "forge hook skill-trigger", ShowOutput: false},
 			},
 			"session_end": {
 				{Command: "forge hook task-verify", ShowOutput: false},
 				{Command: "forge hook review-stop", ShowOutput: false},
+				{Command: "forge hook skill-trigger", ShowOutput: false},
 			},
 		},
 	}
