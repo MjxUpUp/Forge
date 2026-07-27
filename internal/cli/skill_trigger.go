@@ -22,7 +22,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/skillscanonical"
 	"github.com/MjxUpUp/Forge/internal/skilltrigger"
 	"github.com/MjxUpUp/Forge/internal/util"
@@ -99,6 +98,10 @@ func runSkillTriggerHook(hookInput HookInput, root, version string) error {
 // runSkillTriggerCore 是判定 + 渲染核心（hook 链 / 子命令 / dry-run 共用）。
 // 返回渲染文本（无命中返 ""，调用方按需 wrap）。无 canonical 源 / 无 triggers 声明 → 静默 ""。
 func runSkillTriggerCore(hookInput HookInput, root, version string, dryRun bool) (string, error) {
+	// 全局禁用早返——避免仍跑 Resolve+LoadAll（扫所有 SKILL.md 解析 frontmatter）增加 hook 链延迟。
+	if os.Getenv("FORGE_SKILL_TRIGGER") == "0" {
+		return "", nil
+	}
 	canonicalDir, ok, err := skillscanonical.Resolve(version)
 	if err != nil || !ok || canonicalDir == "" {
 		if dryRun {
@@ -114,10 +117,9 @@ func runSkillTriggerCore(hookInput HookInput, root, version string, dryRun bool)
 		return "", nil
 	}
 	ctx := buildTriggerContext(hookInput, root)
-	baseDir, err := forgedata.GlobalHome()
-	if err != nil || baseDir == "" {
-		baseDir = os.TempDir()
-	}
+	// marker/stop-rounds 是 session 态短命数据，写 $TMPDIR（系统定期清理）而非 GlobalHome
+	// （后者无清理机制会无限增长，F6）。与 reads-log/task-resume（同用 $TMPDIR）一致。
+	baseDir := os.TempDir()
 	// dry-run 用 InMemory（绕过 cooldown/max-rounds，看原始命中）；生产用 File（落盘 marker）。
 	var noise skilltrigger.NoiseController
 	if dryRun {

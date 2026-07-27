@@ -112,7 +112,14 @@ func LoadAll(canonicalDir string) []SkillTriggers {
 			continue
 		}
 		fm := skillsfm.Parse(data)
-		triggers := ParseTriggers(fm.Metadata["triggers"])
+		raw := fm.Metadata["triggers"]
+		triggers := ParseTriggers(raw)
+		trimmed := strings.TrimSpace(raw)
+		if trimmed != "" && trimmed != "[]" && len(triggers) == 0 {
+			// 非空、非合法空数组（"[]"是 skill 明确声明"无 trigger"）但解析失败 = 非法 JSON；
+			// R12 audit 报详情，此处 stderr 警告让运行时也可见，否则 skill 作者不知 triggers 静默失效。
+			fmt.Fprintf(os.Stderr, "[skill-trigger] warning: %s/SKILL.md metadata.triggers 非法 JSON，已跳过（forge skills audit R12 报详情）\n", name)
+		}
 		if len(triggers) == 0 {
 			continue
 		}
@@ -147,30 +154,47 @@ func Eval(ctx Context, all []SkillTriggers, noise NoiseController) []Hit {
 		if DeniedSkills[st.Skill] || seen[st.Skill] {
 			continue
 		}
+		// 收集该 skill 在当前事件下命中的全部 triggers；cooldown 取命中条目的最大值，
+		// 消除"数组顺序决定 cooldown"的隐藏耦合（同 skill 多 trigger 时取最保守/最长冷却）。
+		// reason/event 取首条命中。
+		var matched Trigger
+		maxCD := 0
 		for _, t := range st.Triggers {
 			if !triggerMatches(t, ctx) {
 				continue
 			}
-			cooldown := t.Cooldown
-			if cooldown <= 0 {
-				cooldown = DefaultCooldown
+			if matched.Event == "" {
+				matched = t
 			}
-			if noise != nil && !noise.ShouldFire(ctx.SessionID, st.Skill, time.Duration(cooldown)*time.Second, ctx.Now) {
-				continue
+			cd := t.Cooldown
+			if cd <= 0 {
+				cd = DefaultCooldown
 			}
-			reason := t.Reason
-			if reason == "" {
-				reason = defaultReason(st.Skill, t)
+			if cd > maxCD {
+				maxCD = cd
 			}
-			hits = append(hits, Hit{
-				Skill:    st.Skill,
-				SkillDir: st.SkillDir,
-				Reason:   reason,
-				Trigger:  t,
-			})
-			seen[st.Skill] = true
-			break // 同 skill 命中一条即可
 		}
+		if matched.Event == "" {
+			continue
+		}
+		if noise != nil && !noise.ShouldFire(ctx.SessionID, st.Skill, time.Duration(maxCD)*time.Second, ctx.Now) {
+			continue
+		}
+		// matched 是循环内拷贝，设其 Cooldown 反映实际应用的 maxCD（首条命中 trigger 的 Cooldown
+		// 可能是 0，应用时 normalize 为 DefaultCooldown；maxCD 可能来自后续命中的更大 trigger）。
+		// 不污染原 st.Triggers，且让 Hit.Trigger.Cooldown 这一隐性不变量保持一致（N2）。
+		matched.Cooldown = maxCD
+		reason := matched.Reason
+		if reason == "" {
+			reason = defaultReason(st.Skill, matched)
+		}
+		hits = append(hits, Hit{
+			Skill:    st.Skill,
+			SkillDir: st.SkillDir,
+			Reason:   reason,
+			Trigger:  matched,
+		})
+		seen[st.Skill] = true
 	}
 	return hits
 }
