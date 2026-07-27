@@ -72,7 +72,7 @@ func isSourcePath(p string) bool {
 var testCmdRe = regexp.MustCompile(`(?i)\b(go test|python -m pytest|pytest|cargo test|npm run test|npm test|yarn test|pnpm test|mvn test|gradle test|jest|vitest|mocha|rake test|deno test|elm-test|stack test|cabal test|dotnet test|xcodebuild test|flutter test)\b`)
 
 // condTestCommandFailed：刚跑的 Bash 是测试命令（command 含测试信号）且失败
-//（exit_code≠0 或 interrupted=true）。缺 exit_code → 无法判定 → false（保守不触发）。
+// （exit_code≠0 或 interrupted=true）。缺 exit_code → 无法判定 → false（保守不触发）。
 func condTestCommandFailed(ctx Context) bool {
 	cmd, _ := ctx.ToolInput["command"].(string)
 	if cmd == "" {

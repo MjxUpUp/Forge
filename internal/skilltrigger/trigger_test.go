@@ -200,7 +200,10 @@ func TestLoadAll_EmptyDir(t *testing.T) {
 }
 
 func TestMatchToolName(t *testing.T) {
-	cases := []struct{ match, tool string; want bool }{
+	cases := []struct {
+		match, tool string
+		want        bool
+	}{
 		{"", "Bash", true},
 		{"Bash", "Bash", true},
 		{"Bash", "bash", true}, // 大小写不敏感
