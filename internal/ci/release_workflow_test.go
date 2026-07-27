@@ -143,7 +143,7 @@ func TestReleaseWorkflow_NeedsChain(t *testing.T) {
 		t.Fatal("release.yml 缺 npm job（发 @agent_forge/forge）")
 	}
 	if got := needsList(npm.Needs); len(got) != 1 || got[0] != "goreleaser" {
-		t.Fatalf("npm 必须 needs: [goreleaser]（二进制先发，npm 包 install.js 才能下载到平台二进制），got %v", got)
+		t.Fatalf("npm 必须 needs: [goreleaser]（npm 平台子包的二进制来自 goreleaser 构建并上传的 GitHub Release 产物），got %v", got)
 	}
 }
 

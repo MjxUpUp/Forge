@@ -1,0 +1,10 @@
+{
+  "name": "@agent_forge/forge-linux-arm64",
+  "version": "1.15.0",
+  "description": "Forge native binary for linux-arm64. Auto-installed via optionalDependencies of @agent_forge/forge; do not depend on directly.",
+  "os": ["linux"],
+  "cpu": ["arm64"],
+  "files": ["bin"],
+  "license": "Apache-2.0",
+  "private": false
+}

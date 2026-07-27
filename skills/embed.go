@@ -1,8 +1,8 @@
 // Package skills ships the built-in canonical skill library (go:embed at compile time), as a fallback when no external source exists.
-// Binary +1.5M; release flow unchanged (goreleaser/go build includes it automatically; the npm package is only a downloader).
+// Binary +1.5M; release flow unchanged (goreleaser/go build includes it automatically; the npm package ships the binary via optionalDependencies platform subpackages).
 //
 // Package skills 内置 canonical skill 库（go:embed 编译期嵌入），作为无外部源时的 fallback。
-// 二进制 +1.5M；发布流程零改动（goreleaser/go build 自动含；npm 包只是下载器）。
+// 二进制 +1.5M；发布流程零改动（goreleaser/go build 自动含；npm 包经 optionalDependencies 平台子包带二进制）。
 package skills
 
 import (
