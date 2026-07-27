@@ -88,6 +88,14 @@ jobs:
             tmp=$(mktemp)
             jq --arg v "$VER" '.version = $v' "platforms/$pkg/package.json" > "$tmp" && mv "$tmp" "platforms/$pkg/package.json"
           done
+          # dry-run 门禁：真实 publish 前对 6 包跑 npm publish --dry-run，走完整 npm-package-arg
+          # 解析 + pack，提前暴露"路径含/被当 github shorthand"类 bug（v1.15.0 npm job 因此 git ls-remote
+          # 失败）。dry-run 不上传，失败则 set -e 中断 step，不进真实 publish。本地预演见 scripts/release-rehearsal.sh。
+          for pkg in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-x64; do
+            (cd "platforms/$pkg" && npm publish --dry-run --access public) >/dev/null
+          done
+          npm publish --dry-run --access public >/dev/null
+          echo "dry-run gate passed for 6 packages"
           # 先发 5 子包（主包 optionalDependencies 指向它们，必须先就位）
           for pkg in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-x64; do
             if npm view "@agent_forge/forge-$pkg@$VER" version >/dev/null 2>&1; then
