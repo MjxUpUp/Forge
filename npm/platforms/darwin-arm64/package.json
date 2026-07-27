@@ -1,6 +1,6 @@
 {
   "name": "@agent_forge/forge-darwin-arm64",
-  "version": "1.15.0",
+  "version": "1.15.1",
   "description": "Forge native binary for darwin-arm64. Auto-installed via optionalDependencies of @agent_forge/forge; do not depend on directly.",
   "os": ["darwin"],
   "cpu": ["arm64"],
