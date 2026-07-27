@@ -1,6 +1,7 @@
 package skilltrigger
 
 import (
+	"os"
 	"testing"
 	"time"
 )
@@ -94,5 +95,35 @@ func TestInMemoryNoise_StopRounds(t *testing.T) {
 	}
 	if m.StopRoundAllowed("s1", now) {
 		t.Fatalf("第 %d 轮应拒绝", MaxStopRounds+1)
+	}
+}
+
+// TestFileNoise_ClockRollback: F5 回归——marker mtime 在未来（时钟倒退，如写 marker 后系统时钟
+// 被回拨）时，ShouldFire 不应因 now.Sub(mtime) 为负 < cooldown 而永久阻塞，应允许 fire。
+func TestFileNoise_ClockRollback(t *testing.T) {
+	n := NewFileNoiseController(t.TempDir())
+	now := time.Now()
+	// 先 Mark 建文件，再用 os.Chtimes 显式把 mtime 推到未来——独立于 OS mtime 分辨率。
+	// 若靠 Mark(now+100s) 写内容，文件 mtime 仍由 OS 在写时点设为 ~T0；在 HFS+/粗粒度文件系统
+	// 上 mtime 可能被截断到 now 整秒，now.Sub(mtime)≈0 < cooldown → 误 block → 测试 flake。
+	if err := n.Mark("s1", "foo", now); err != nil {
+		t.Fatalf("Mark 失败: %v", err)
+	}
+	future := now.Add(100 * time.Second)
+	if err := os.Chtimes(n.markerPath("s1", "foo"), future, future); err != nil {
+		t.Fatalf("Chtimes 失败: %v", err)
+	}
+	if !n.ShouldFire("s1", "foo", 60*time.Second, now) {
+		t.Fatal("时钟回退（marker mtime 在未来）应允许 fire，不应因负 duration 永久阻塞")
+	}
+}
+
+// TestInMemoryNoise_ClockRollback: F5 内存态版同上。
+func TestInMemoryNoise_ClockRollback(t *testing.T) {
+	m := NewInMemoryNoiseController()
+	now := time.Now()
+	m.Mark("s1", "foo", now.Add(100*time.Second))
+	if !m.ShouldFire("s1", "foo", 60*time.Second, now) {
+		t.Fatal("时钟回退（marker mtime 在未来）应允许 fire，不应因负 duration 永久阻塞")
 	}
 }

@@ -101,6 +101,32 @@ func TestWindsurfNormalizePreservesClaudeStdin(t *testing.T) {
 	}
 }
 
+// TestWindsurfHookEvent: F2/N4 回归——windsurfHookEvent 必须映射全部 Windsurf action 到 forge
+// HookEventName，尤其 session_start→SessionStart / session_end→Stop（F2 修复前这两个 case
+// 缺失，normalize 后 HookEventName 为空，按 event 分发的 hook 如 skill-trigger 失效成死代码）。
+// 若重构误删 case，本测试捕获。
+func TestWindsurfHookEvent(t *testing.T) {
+	cases := []struct {
+		action string
+		want   string
+	}{
+		{"pre_write_code", "PreToolUse"},
+		{"pre_read_code", "PreToolUse"},
+		{"pre_run_command", "PreToolUse"},
+		{"post_write_code", "PostToolUse"},
+		{"post_read_code", "PostToolUse"},
+		{"post_run_command", "PostToolUse"},
+		{"session_start", "SessionStart"},
+		{"session_end", "Stop"},
+		{"unknown_action", ""},
+	}
+	for _, c := range cases {
+		if got := windsurfHookEvent(c.action); got != c.want {
+			t.Errorf("windsurfHookEvent(%q) = %q, want %q", c.action, got, c.want)
+		}
+	}
+}
+
 func TestNormalizeUnknownAgentNoOp(t *testing.T) {
 	before := HookInput{SessionID: "keep", ToolName: "keep"}
 	normalizeAgentStdin("does-not-exist", []byte(`{"x":1}`), &before)
