@@ -39,10 +39,14 @@ jobs:
           GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
 
   npm:
-    # Publish @agent_forge/forge to npmjs.org. Runs AFTER goreleaser so the
-    # GitHub Release binaries already exist — the package's install.js
-    # (postinstall) downloads the platform binary from the release at
-    # install time, so binaries must be present before the package is usable.
+    # Publish @agent_forge/forge + 5 平台子包到 npmjs.org。主包 optionalDependencies
+    # 声明平台子包，npm install 按 os/cpu 只装匹配当前平台的一个，二进制随子包发布到
+    # registry——不依赖 install script（npm 12 起 install scripts 默认禁用，平台分包是
+    # 官方推荐的二进制分发方式，esbuild/rollup/turbo 同模式）。
+    #
+    # 必须在 goreleaser 之后：从 v<ver> GitHub Release 下载各平台 tar.gz 组装子包 bin/。
+    # 架构变化：与旧 install.js 方案不同，npm 包现在自带二进制（不可变），重建 GitHub
+    # Release 二进制不再自动更新已发 npm 包——需 bump 版本重发（npm 不允许覆盖）。
     needs: goreleaser
     runs-on: ubuntu-latest
     steps:
@@ -50,22 +54,54 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
-          # setup-node writes a .npmrc authenticating via NODE_AUTH_TOKEN
-          # for this registry — the standard CI pattern, avoids project
-          # .npmrc conflicts.
+          # setup-node 写 .npmrc 用 NODE_AUTH_TOKEN 认证该 registry——CI 标准模式，
+          # 避免项目级 .npmrc 冲突。
           registry-url: "https://registry.npmjs.org"
-      - name: Publish to npm (idempotent)
-        # 幂等：npm 不允许覆盖已发布版本（同版本重建场景，如 v1.0.0 GitHub Release 二进制
-        # 重建 - 二进制可重建，npm 包一旦发布不可撤回）。检测已发布则跳过；npm 包的 install.js
-        # 在 install 时按 tag 从 GitHub Release 下载二进制，故重建 Release 后旧 npm 包自动
-        # 指向新二进制，无需重发。
-        run: |
-          PKG_VERSION=$(node -p "require('./package.json').version")
-          if npm view "@agent_forge/forge@$PKG_VERSION" version >/dev/null 2>&1; then
-            echo "already published @agent_forge/forge@$PKG_VERSION, skipping (install.js downloads the rebuilt binary from the v$PKG_VERSION GitHub Release)"
-          else
-            npm publish
-          fi
-        working-directory: npm
+      - name: Publish main + platform subpackages (idempotent)
+        # 幂等：每个包 npm view 检测已发布则跳过（npm 不允许覆盖已发布版本）。
+        # version 从主 package.json 读，用 jq 注入各子包 + 主包 optionalDependencies，
+        # 消除多包版本同步风险。子包先发（主包依赖），主包后发。
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          VER=$(node -p "require('./package.json').version")
+          echo "Releasing @agent_forge/forge@$VER + 5 platform subpackages"
+          # goreleaser archive 命名 forge_<ver>_<os>_<x86_64|aarch64>.tar.gz；
+          # npm 子包按 Node process.platform-process.arch 命名（amd64→x64，windows→win32）。
+          declare -A ARCH_MAP=(
+            [darwin-arm64]=darwin_aarch64
+            [darwin-x64]=darwin_x86_64
+            [linux-arm64]=linux_aarch64
+            [linux-x64]=linux_x86_64
+            [win32-x64]=windows_x86_64
+          )
+          for pkg in "${!ARCH_MAP[@]}"; do
+            archive_arch="${ARCH_MAP[$pkg]}"
+            url="https://github.com/${{ github.repository }}/releases/download/v${VER}/forge_${VER}_${archive_arch}.tar.gz"
+            echo "Fetching $pkg <- $url"
+            mkdir -p "platforms/$pkg/bin"
+            curl -fsSL -H "Authorization: Bearer ${GITHUB_TOKEN}" -o /tmp/forge.tar.gz "$url"
+            tar xzf /tmp/forge.tar.gz -C "platforms/$pkg/bin"
+            # 注入 release 版本（repo 占位被实际版本覆盖，消除同步风险）
+            tmp=$(mktemp)
+            jq --arg v "$VER" '.version = $v' "platforms/$pkg/package.json" > "$tmp" && mv "$tmp" "platforms/$pkg/package.json"
+          done
+          # 先发 5 子包（主包 optionalDependencies 指向它们，必须先就位）
+          for pkg in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-x64; do
+            if npm view "@agent_forge/forge-$pkg@$VER" version >/dev/null 2>&1; then
+              echo "already published @agent_forge/forge-$pkg@$VER, skipping"
+            else
+              npm publish "platforms/$pkg" --access public
+            fi
+          done
+          # 主包 version + optionalDependencies 各项 version 注入后 publish
+          tmp=$(mktemp)
+          jq --arg v "$VER" '.version = $v | .optionalDependencies |= with_entries(.value = $v)' package.json > "$tmp" && mv "$tmp" package.json
+          if npm view "@agent_forge/forge@$VER" version >/dev/null 2>&1; then
+            echo "already published @agent_forge/forge@$VER, skipping"
+          else
+            npm publish --access public
+          fi
+        working-directory: npm

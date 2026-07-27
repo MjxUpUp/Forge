@@ -1,55 +1,32 @@
 #!/usr/bin/env node
 
-const { spawn, execSync } = require("child_process");
-const path = require("path");
-const fs = require("fs");
+const { spawn } = require("child_process");
 
-const binaryName = process.platform === "win32" ? "forge.exe" : "forge";
-const binaryPath = path.join(__dirname, "bin", binaryName);
-const oldPath = binaryPath + ".old";
+// 通过 optionalDependencies 平台子包定位当前平台的二进制。
+// npm install 时按 os/cpu 只装匹配当前平台的一个子包（@agent_forge/forge-<platform>-<arch>），
+// 二进制随子包落进 node_modules，无需 install script——npm 12 起 install scripts 默认
+// 禁用，平台分包是官方推荐的二进制分发方式（esbuild/rollup/turbo 同模式）。
+const exe = process.platform === "win32" ? "forge.exe" : "forge";
+const platformPkg = `@agent_forge/forge-${process.platform}-${process.arch}`;
 
-// --- Windows crash recovery (from lark-cli pattern) ---
-// If forge.exe.old exists, we're recovering from an interrupted or failed update.
-function recoverOldBinary() {
-  if (!fs.existsSync(oldPath)) return;
-
-  if (!fs.existsSync(binaryPath)) {
-    // forge.exe missing but .old exists — rename first, then probe.
-    // On Windows, .old is not a recognized executable extension,
-    // so we must restore the .exe name before testing.
-    try {
-      fs.renameSync(oldPath, binaryPath);
-      execSync(`"${binaryPath}" --version`, { timeout: 5000, stdio: "pipe", env: { ...process.env, FORGE_SKIP_UPDATE_CHECK: "1" } });
-      console.error("[forge] Recovered binary from .old backup");
-    } catch (e) {
-      // Restored binary is broken — put it back as .old so we don't lose it
-      try { fs.renameSync(binaryPath, oldPath); } catch (_) {}
-      console.error("[forge] WARNING: .old binary is also broken");
-    }
-  } else {
-    // Both exist — verify current binary works, then clean up .old
-    try {
-      execSync(`"${binaryPath}" --version`, { timeout: 5000, stdio: "pipe", env: { ...process.env, FORGE_SKIP_UPDATE_CHECK: "1" } });
-      fs.unlinkSync(oldPath);
-    } catch (e) {
-      // Current binary broken — replace with .old (rename first, then probe)
-      try { fs.unlinkSync(binaryPath); } catch (_) {}
-      try {
-        fs.renameSync(oldPath, binaryPath);
-        execSync(`"${binaryPath}" --version`, { timeout: 5000, stdio: "pipe", env: { ...process.env, FORGE_SKIP_UPDATE_CHECK: "1" } });
-        console.error("[forge] Recovered binary from .old backup");
-      } catch (e2) {
-        console.error("[forge] WARNING: both binary and .old are broken");
-      }
-    }
-  }
+// 支持的平台白名单（goreleaser 构建矩阵：linux/darwin × amd64/arm64 + windows/amd64）。
+// 不在此列的平台（如 windows-arm64）无对应子包，require.resolve 必失败——明确 stderr 提示，
+// 不混入"子包未装"的静默 approve，避免用户误以为 Forge 正常工作却零拦截。
+const SUPPORTED = new Set([
+  "darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "win32-x64",
+]);
+const platKey = `${process.platform}-${process.arch}`;
+if (!SUPPORTED.has(platKey)) {
+  console.error(`[forge] unsupported platform: ${platKey} (no prebuilt binary); failing open — hooks will not fire.`);
+  console.log('{"decision":"approve"}');
+  process.exit(0);
 }
 
-recoverOldBinary();
-
-if (!fs.existsSync(binaryPath)) {
-  // Binary not available (e.g., mid npm upgrade). Silently approve to avoid
-  // blocking Claude Code hooks during installation.
+let binaryPath;
+try {
+  binaryPath = require.resolve(`${platformPkg}/bin/${exe}`);
+} catch (_) {
+  // 支持的平台但子包未装（npm 12 + --omit=optional / 安装中断）——静默 approve 避免阻塞 hooks。
   console.log('{"decision":"approve"}');
   process.exit(0);
 }
