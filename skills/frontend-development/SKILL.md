@@ -1,6 +1,6 @@
 ---
 name: frontend-development
-description: "前端开发强制规范：UI 组件 / 状态 / Design Token / a11y / 测试 / 性能 / 审美 / AI 生成 UI 审查。Use when: 写前端组件/页面/应用、改 UI 状态管理、加 a11y、补前端测试、调性能、选 Design Token/技术栈、把控样式审美、AI 工具生成 UI 落地审查时、给 agent 出前端任务 SOP 时。SKIP: 纯样式一次性手写改动（用 code-review-gate 简单 review 即可；但 AI 工具生成的 UI 走 §2.10 不免审）/ 全栈 API 设计（用 backend-development）/ 数据库 schema（用 database-design）。"
+description: "前端开发强制规范：UI 组件 / 状态 / Design Token / a11y / 测试 / 性能。Use when: 写前端组件/页面/应用、改 UI 状态管理、加 a11y、补前端测试、调性能时、给 agent 出前端任务 SOP 时。SKIP: 纯样式一次性改动（用 code-review-gate 简单 review 即可）/ 全栈 API 设计（用 backend-development）/ 数据库 schema（用 database-design）。"
 metadata:
   pattern: tool-wrapper
   domain: frontend
@@ -9,7 +9,7 @@ metadata:
 
 # 前端开发规范
 
-> **本 skill 不重复**: 提交前审查 → `code-review-gate`。Design Token 选型 / 样式审美 / AI 生成 UI 审查已内联本 skill（§2.8 / §2.9 / §2.10）。本 skill 解决"按 SOP 写出/改前端代码"的工作流纪律。
+> **本 skill 不重复**: 设计 Token 选型 → `frontend-stack-selection`；样式审美 → `frontend-aesthetics-execution`；AI 生成 UI 安全性 → `ai-generated-ui-review`；提交前审查 → `code-review-gate`。本 skill 解决"按 SOP 写出/改前端代码"的工作流纪律。
 
 ## 1. 决策树（前端开发路径）
 
@@ -21,13 +21,10 @@ metadata:
 ├─ 性能调优 → §2.4 性能自检清单（re-render/瀑布/打包/bundle）
 ├─ a11y 补强 → §2.5 a11y 必做清单
 ├─ 测试 → §2.6 测试策略（单元/集成/E2E/视觉回归）
-├─ 整页布局/Design Token → §2.7 设计语言边界（什么改/不改）
-├─ 选 Design Token/技术栈 → §2.8 Token 与技术栈选型
-├─ 样式审美把控 → §2.9 审美执行清单
-└─ AI 工具生成 UI → §2.10 AI 生成 UI 安全审查（必经）
+└─ 整页布局/Design Token → §2.7 设计语言边界（什么改/不改）
 ```
 
-## 2. 路径规范
+## 2. 7 路径规范
 
 ### 2.1 新建组件 7 步（按顺序）
 
@@ -97,56 +94,8 @@ forge review pass
 ├─ 颜色/字号/间距 → 改 token，不改样式
 ├─ 组件 API 形状 → 提 PR 到设计系统 owners，不在业务仓改
 ├─ 临时样式（一次性）→ 标 `// TODO(design-system)` + 开 issue
-└─ 框架升级 → 走 §2.8 选型 + ADR（`architecture-decision-record`），不是开发者私自升
+└─ 框架升级 → 走 `frontend-stack-selection`，不是开发者私自升
 ```
-
-### 2.8 Design Token 与技术栈选型
-
-选型是 design system / 团队约定决定，不是开发者自决。
-
-**Token 选型**：
-- 用既有设计系统的 token 体系（颜色/间距/字号/圆角/阴影），不自造新 token
-- 新 token 须设计系统 owner 批准并记 ADR（`architecture-decision-record`）
-- token 命名语义化（`text-color-primary` 非 `color1`），不绑死值
-
-**技术栈/框架选型**（CSS 方案/状态库/组件库/major 升级）：
-- 按团队既有约定，不私自换栈（Tailwind ↔ CSS-in-JS 之类）
-- major 框架升级 / 换栈走 ADR：为何选 / 替代方案 / 迁移成本，不在业务仓私自升
-- 新 UI 库/样式方案引入须评审（包体积/维护/许可证）
-
-**禁止**：开发者私自引新 UI 库、换样式方案、升 major 框架。
-
-### 2.9 样式审美执行（审美与性能 go together）
-
-审美不是凭感觉，是可 checklist 化的一致性纪律。
-
-- [ ] 间距用 token 倍数（4/8 基线），不裸写任意 px
-- [ ] 对齐：相邻元素基线/网格对齐（不差 1-2px）
-- [ ] 视觉层次：大小/粗细/颜色对比体现优先级（主操作最醒目）
-- [ ] 一致性：同类组件同间距/同圆角/同交互态（hover/active/disabled 统一）
-- [ ] 响应式：断点处不破版（不只桌面好看）
-- [ ] 暗色模式：token 驱动，不硬编码颜色
-
-**审美与性能**：动画用 `transform`/`opacity`（不触发 layout），大图压缩 + lazy，CSS 体积监控（§2.4）。
-
-### 2.10 AI 生成 UI 安全审查（v0/bolt/Cursor/Claude 出 UI 后必经）
-
-AI 生成 UI 省时但高频埋雷，落地前必过此清单。
-
-**安全**：
-- [ ] XSS：审 `dangerouslySetInnerHTML`/`v-html`/动态渲染点，AI 常直接插未转义用户输入
-- [ ] 敏感信息：AI 可能硬编码 key/token/密钥进前端（`grep -rniE "key|token|secret|password"` 排查）
-- [ ] 依赖安全：AI 引入的包是否可信（查 npm 下载量/维护/已知 CVE），不盲装
-
-**正确性**：
-- [ ] 幻觉 API：AI 调用的库 API/props/组件名是否真存在（查官方文档，不信 AI 记忆）
-- [ ] 类型：AI 生成的 TS 真过 `tsc --noEmit`（不靠 AI 自述"类型对"）
-
-**a11y（AI 最易漏）**：
-- [ ] AI 常生成 `<div onClick>` 当按钮 → 改语义标签 + 键盘事件（§2.5）
-- [ ] `alt`/ARIA/焦点管理是否齐全
-
-**纪律**：AI 生成 ≠ 验证过。过完清单才提交，再触发 `code-review-gate`。
 
 ## 3. 负向约束 + 替代方案
 
@@ -205,8 +154,8 @@ forge review pass                        # 触发 code-review-gate
 - **架构设计层**：`architecture-decision-record` — 写大改 ADR（多组件/多 store 改动）
 - **测试层**：`tdd-cycle` + `test-discipline` — TDD 流程纪律
 - **审查层**：`code-review-gate` — 提交前审查门禁
-- **AI 生成 UI**：见 §2.10 — 用 AI 工具出 UI 后必经安全审查
-- **审美与性能**：见 §2.9 — 审美执行清单，性能与审美 go together
+- **AI 生成**：`ai-generated-ui-review` — 用 AI 工具出 UI 后必经审查
+- **性能**：`frontend-aesthetics-execution` — 性能与审美 go together
 
 ## 参考
 
