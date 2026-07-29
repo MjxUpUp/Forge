@@ -3,7 +3,7 @@ name: rust-code-review
 description: "Rust 代码结构化审查。Use when: 审查 Rust 代码 PR 时、检查 Rust 代码变更时、做合并前检查时、用户要求 Rust code review 时。特别关注异步 Rust、unsafe 代码和多 crate workspace 模式。SKIP: 非 Rust 代码（用内置 code-review）、只需要快速检查时（用内置 code-review --low）、只做格式化或 lint 建议时。"
 metadata:
   pattern: reviewer
-  domain: rust
+  domain: code-review
   severity-levels: error,warning,info
 ---
 

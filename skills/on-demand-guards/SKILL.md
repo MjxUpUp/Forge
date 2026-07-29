@@ -3,7 +3,7 @@ name: on-demand-guards
 description: "按需激活的临时安全护栏（session 级），补充 always-on 的 hazard-guard 自动挡。Use when: 用户说\"小心点\"\"/careful\"\"别误删\"\"我要动生产环境\"\"锁住这个目录\"\"/freeze\"\"只改这里别动其他\"\"高危操作\"时、即将执行 chmod -R 777 / curl|sh / 写裸设备等 hazard-guard 未覆盖的危险操作时。激活后持续到 session 结束或用户说\"解除\"。SKIP: 日常低风险开发（不需要护栏）、已经在 git protected 分支（git 本身会拦）。注：rm -rf / DROP TABLE / force-push / kubectl delete / TRUNCATE 等已由 hazard-guard hook 自动拦截（HITL via forge hazard confirm），无需本 skill。"
 metadata:
   pattern: gate
-  domain: safety
+  domain: security
 ---
 
 # On-Demand Guards — 按需临时安全护栏

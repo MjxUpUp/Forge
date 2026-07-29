@@ -1,6 +1,6 @@
 ---
 name: project-acceptance
-description: "项目验收审查。Use when: 对整个项目进行验收时、比对设计方案和实施计划时、看下当前项目完整度时、审查项目功能完成性时、准备上线前检查时、用户说\"验收\"\"审查项目\"\"看下项目完整度\"\"准备上线\"时。SKIP: 单文件代码审查（用 code-review-gate）、编译问题排查（用 compile-fix-loop）、运行时bug修复。"
+description: "项目验收审查。Use when: 对整个项目进行验收时、比对设计方案和实施计划时、看下当前项目完整度时、审查项目功能完成性时、准备上线前检查时、用户说\"验收\"\"审查项目\"\"看下项目完整度\"\"准备上线\"时。SKIP: 单文件代码审查（用 code-review-gate）、编译问题排查（用 compile-fix-loop）、运行时bug修复、单个设计文档的功能 landing gap（用 design-audit）。"
 metadata:
   pattern: reviewer + gate
   domain: quality-assurance

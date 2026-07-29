@@ -3,7 +3,7 @@ name: integration-test-architecture
 description: "集成测试架构模式。Use when: 设计集成测试套件时、测试环境需要配置中间件时、测试涉及数据库或 HTTP 连接时、编写 testcontainers 相关测试时、遇到测试间互相影响时。SKIP: 纯单元测试（用 tdd-cycle）、前端组件测试。"
 metadata:
   pattern: tool-wrapper
-  domain: testing-architecture
+  domain: testing
 ---
 
 # 集成测试架构模式
