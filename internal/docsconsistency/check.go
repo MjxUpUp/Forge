@@ -178,3 +178,75 @@ func DriftedInProject(root string) []string {
 	}
 	return DriftedCommands(string(body))
 }
+
+// skillBacktickRef matches a kebab-case token wrapped in backticks — the skill-name
+// analogue of forgeBacktickRef (which targets forge-command paths). The backtick
+// delimiter excludes prose, and the lowercase-first kebab shape excludes CamelCase
+// naming examples (MyCard). Built via rune(0x60) + raw string to dodge the Windows
+// input-layer quote corruption that breaks double-quoted Go string literals.
+//
+// skillBacktickRef 匹配反引号包裹的 kebab-case token——forgeBacktickRef（针对 forge
+// 命令路径）的 skill 名对应物。反引号限定排除散文，小写首字母 kebab 形态排除 CamelCase
+// 命名示例（MyCard）。用 rune(0x60) + raw string 构造，绕过 Windows 输入层双引号腐蚀
+// （会破坏双引号 Go 字符串字面量）。
+var skillBacktickRef = regexp.MustCompile(string(rune(0x60)) + `([a-z][a-z0-9-]*)` + string(rune(0x60)))
+
+// DanglingSkillRefs scans text for backtick-wrapped kebab tokens and returns the ones
+// that look like broken skill references — referenced as if a skill but absent from the
+// canonical skill set. Root-cause guard for the 2026-07 frontend dangling-link regression
+// (frontend-development referenced frontend-stack-selection / ai-generated-ui-review /
+// frontend-aesthetics-execution as skills that did not exist).
+//
+// Two-pass discrimination avoids the false-positive storm a naive "every backtick kebab
+// must be a known skill" check would cause — canonical skill docs contain ~150 backtick
+// kebab tokens that are NOT skills (tools grep/curl, keywords any/while, review-pattern
+// names type-suppression, naming examples user-avatar-card, etc.):
+//
+//  1. Single-segment tokens (no hyphen) are exempt. Every canonical Forge skill name is
+//     multi-segment kebab (enforced by the TestCanonicalSkillNamesAreMultiSegment
+//     meta-guard); single-segment tokens in SKILL.md are overwhelmingly tools/keywords/
+//     concept words, uncheckable without a huge deny-list. If a single-segment skill
+//     name is ever added, the meta-guard fails and flags this exemption for review.
+//  2. Multi-segment tokens: pass if in knownSkills (real skill) or allowlist
+//     (human-confirmed non-skill — review-pattern names, sub-agent contracts, hook
+//     names, tools, naming examples, external skills, pattern values, etc.); else
+//     reported as dangling.
+//
+// The allowlist is the codification of the "which backtick tokens are NOT skill refs"
+// audit knowledge (the false-positive categories from the 2026-07 frontend sweep). The
+// caller owns it so this package stays free of a canonical-skills dependency.
+//
+// DanglingSkillRefs 扫文本反引号 kebab token，返回"疑似 skill 断链"——被当 skill 引用
+// 但不在 canonical skill 集的 token。2026-07 frontend 断链回归的根治（frontend-development
+// 引用了不存在的 frontend-stack-selection / ai-generated-ui-review / frontend-aesthetics-execution）。
+//
+// 两遍判别避免朴素"每个反引号 kebab 必须是已知 skill"检查的误报风暴——canonical skill
+// 文档含 ~150 个非 skill 反引号 kebab token（工具 grep/curl、关键字 any/while、review 模式名
+// type-suppression、命名示例 user-avatar-card 等）：
+//
+//  1. 单段 token（无连字符）豁免。Forge canonical skill 名全为多段 kebab（由
+//     TestCanonicalSkillNamesAreMultiSegment meta 守卫保证）；SKILL.md 里单段 token 压倒性
+//     是工具/关键字/概念词，无超大 deny-list 无法校验。若新增单段 skill 名，meta 守卫 fail
+//     并提示复审此豁免。
+//  2. 多段 token：在 knownSkills（真 skill）或 allowlist（人工确认非 skill——review 模式名/
+//     子agent契约/hook名/工具/命名示例/外部skill/pattern值等）则通过；否则报断链。
+//
+// allowlist 是"哪些反引号 token 不是 skill 引用"的审计知识代码化（2026-07 frontend 梳理的
+// false-positive 类别）。调用方拥有，本包不依赖 canonical-skills。
+func DanglingSkillRefs(text string, knownSkills, allowlist map[string]bool) []string {
+	seen := make(map[string]bool)
+	var out []string
+	for _, m := range skillBacktickRef.FindAllStringSubmatch(text, -1) {
+		tok := m[1]
+		// 单段豁免：canonical skill 全多段 kebab，单段 token 歧义不可校验。
+		if !strings.Contains(tok, "-") {
+			continue
+		}
+		if knownSkills[tok] || allowlist[tok] || seen[tok] {
+			continue
+		}
+		seen[tok] = true
+		out = append(out, tok)
+	}
+	return out
+}

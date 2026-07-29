@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/MjxUpUp/Forge/internal/docsconsistency"
+	"github.com/MjxUpUp/Forge/internal/skillsdist"
 )
 
 // Docs consistency guard — dogfood of the docs-consistency-guard skill.
@@ -167,6 +168,108 @@ func TestReadme_CoversAllTopLevelCommands(t *testing.T) {
 		}
 		if !strings.Contains(s, "forge "+name) {
 			t.Errorf("README.md 缺顶层命令 `forge %s`（rootCmd 注册了它；新增命令组须同步命令参考表）", name)
+		}
+	}
+}
+
+// skillRefAllowlist codifies the "which backtick multi-segment tokens are NOT skill
+// references" knowledge, gathered by manual audit of canonical skills (the 2026-07
+// frontend dangling-link sweep's false-positive categories). A token here is a
+// confirmed non-skill. Without this the DanglingSkillRefs guard (C) would false-positive
+// on every tool/pattern/example token. A NEW multi-segment backtick token not in
+// knownSkills nor here makes guard C fail — the author then judges: real broken link
+// (fix the doc) or non-skill (add it here with its category).
+//
+// skillRefAllowlist 代码化"哪些反引号多段 token 不是 skill 引用"的知识，由 canonical skills
+// 人工审计得出（2026-07 frontend 断链梳理的 false-positive 类别）。此处 token 是已确认非
+// skill。无此表 DanglingSkillRefs 守卫（C）会对每个工具/模式/示例 token 误报。不在
+// knownSkills 也不在此表的新增多段反引号 token 使守卫 C fail——作者判断：真断链（改文档）
+// 或非 skill（加此表并注明类别）。
+var skillRefAllowlist = map[string]bool{
+	// review 模式名（cheat-scan deterministic 分类标签，非 skill）
+	`assertion-strip`: true, `comment-only-fix`: true, `complexity-report`: true,
+	`dead-branch`: true, `error-swallow`: true, `type-suppression`: true, `test-run`: true,
+	// code-review-gate 子 agent 预设契约名（轨道 A/B，非 skill）
+	`cheat-detector`: true, `eng-reviewer`: true,
+	// release-readiness 子角色（审计维度 M1-M7/R1，非独立 skill）
+	`release-risks-auditor`: true, `runtime-readiness-auditor`: true,
+	// hook 名（on-demand-guards 自动挡，非 skill）
+	`hazard-guard`: true,
+	// forge 命令/门禁（task gate ID，非 skill）
+	`task-implement`: true, `task-verify`: true,
+	// forge 机制 / deterministic 扫描名（PlanScope drift、cheat-scan，非 skill）
+	`scope-drift`: true, `cheat-scan`: true,
+	// metadata.pattern 合法值（ValidPatterns，非 skill 名）
+	`tool-wrapper`: true,
+	// references 文件前缀 / design-artifact 环节类型 / backend-development §2.1 类别
+	`template-`: true, `test-design`: true, `api-design`: true,
+	// 工具 / 技术指令（非 skill）
+	`eslint-disable`: true, `force-push`: true, `git-secrets`: true, `v-html`: true, `yt-dlp`: true,
+	// 命名示例（正例 / 反例 / 演示，非 skill）
+	`async-test-helpers`: true, `condition-based-waiting`: true, `debug-techniques`: true,
+	`my-skill-name`: true, `smic-fa`: true, `text-color-primary`: true, `user-avatar-card`: true,
+	// code-review-gate 非正式简称（code-review-gate 的缩写引用）
+	`code-review`: true,
+	// 外部 lark skill（用户全局 skill，非 Forge canonical）
+	`lark-workflow-meeting-summary`: true,
+}
+
+// TestSkills_NoDanglingSkillRefs guard C: every backtick-wrapped multi-segment kebab
+// token in canonical skill docs must be either a real skill (in the canonical set) or a
+// human-confirmed non-skill (in skillRefAllowlist). Single-segment tokens (tools/keywords)
+// are exempt — see DanglingSkillRefs doc. This is the root-cause fix for the 2026-07
+// frontend dangling-link regression (frontend-development referenced
+// frontend-stack-selection / ai-generated-ui-review / frontend-aesthetics-execution as
+// skills that did not exist). Like guard A, it is hard (CI fails) so drift is caught
+// mechanically, not by agent compliance.
+//
+// TestSkills_NoDanglingSkillRefs 守卫 C：canonical skill 文档里每个反引号多段 kebab token
+// 必须是真 skill（在 canonical 集）或人工确认非 skill（在 skillRefAllowlist）。单段 token
+// （工具/关键字）豁免——见 DanglingSkillRefs 文档。这是 2026-07 frontend 断链回归的根治
+// （frontend-development 引用了不存在的 frontend-stack-selection / ai-generated-ui-review /
+// frontend-aesthetics-execution）。同守卫 A，hard（CI 失败）使 drift 被机械抓，不靠 agent 遵循。
+func TestSkills_NoDanglingSkillRefs(t *testing.T) {
+	skillsRoot := filepath.Join(repoRoot, "skills")
+	names, err := skillsdist.ListSkills(skillsRoot)
+	if err != nil {
+		t.Fatalf(`ListSkills(skills/): %v`, err)
+	}
+	known := make(map[string]bool, len(names))
+	for _, n := range names {
+		known[n] = true
+	}
+	bt := string(rune(0x60)) // 反引号，绕过双引号腐蚀
+	for _, file := range guardedDocs(t) {
+		body, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatalf(`read %s: %v`, file, err)
+		}
+		rel, _ := filepath.Rel(repoRoot, file)
+		for _, ref := range docsconsistency.DanglingSkillRefs(string(body), known, skillRefAllowlist) {
+			t.Error(rel + `: 引用疑似断链 skill ` + bt + ref + bt + `（不在 canonical skill 集；若是模式名/工具/示例/契约等非 skill，加入 skillRefAllowlist 并注明类别）`)
+		}
+	}
+}
+
+// TestCanonicalSkillNamesAreMultiSegment is the meta-guard for DanglingSkillRefs's
+// single-segment exemption: that exemption is only safe while every canonical skill
+// name is multi-segment kebab (so exempting single-segment tokens never masks a real
+// skill). If a single-segment skill name is ever added, this fails and flags the
+// exemption for review — otherwise the guard would silently miss a dangling
+// single-segment skill ref.
+//
+// TestCanonicalSkillNamesAreMultiSegment 是 DanglingSkillRefs 单段豁免的 meta 守卫：该豁免
+// 仅当所有 canonical skill 名都是多段 kebab 时安全（豁免单段 token 才不会掩盖真 skill）。
+// 若新增单段 skill 名，此测试 fail 并提示复审豁免——否则守卫会静默漏抓单段 skill 断链。
+func TestCanonicalSkillNamesAreMultiSegment(t *testing.T) {
+	skillsRoot := filepath.Join(repoRoot, "skills")
+	names, err := skillsdist.ListSkills(skillsRoot)
+	if err != nil {
+		t.Fatalf(`ListSkills(skills/): %v`, err)
+	}
+	for _, n := range names {
+		if !strings.Contains(n, "-") {
+			t.Errorf(`canonical skill %q 是单段名——DanglingSkillRefs 单段豁免会漏抓其断链；调整守卫策略`, n)
 		}
 	}
 }

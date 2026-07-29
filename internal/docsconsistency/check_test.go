@@ -118,3 +118,46 @@ func TestDriftedCommands_Dedup(t *testing.T) {
 		}
 	})
 }
+
+// TestDanglingSkillRefs_Mechanism proves the detection catches a real dangling skill
+// ref while exempting single-segment tokens (tools/keywords) and honoring knownSkills +
+// allowlist. Built with rune(0x60) backtick splicing + raw strings to dodge the Windows
+// quote-corruption that breaks double-quoted Go literals. This is the skill-ref analogue
+// of TestDriftedCommands.
+//
+// TestDanglingSkillRefs_Mechanism 证明检测能抓真 skill 断链，同时豁免单段 token（工具/
+// 关键字）并尊重 knownSkills + allowlist。用 rune(0x60) 反引号拼接 + raw string 构造，
+// 绕过 Windows 双引号腐蚀。这是 TestDriftedCommands 的 skill 引用对应物。
+func TestDanglingSkillRefs_Mechanism(t *testing.T) {
+	bt := string(rune(0x60)) // 反引号字符，绕过双引号腐蚀
+	known := map[string]bool{`code-review-gate`: true, `tdd-cycle`: true}
+	allow := map[string]bool{`hazard-guard`: true} // hook 名，非 skill
+
+	cases := []struct {
+		name string
+		text string
+		want []string
+	}{
+		{name: `真 skill 引用放行`, text: `用 ` + bt + `code-review-gate` + bt + ` 审查`, want: nil},
+		{name: `断链 skill 抓到`, text: `走 ` + bt + `frontend-stack-selection` + bt + ` 选型`, want: []string{`frontend-stack-selection`}},
+		{name: `单段工具豁免`, text: `跑 ` + bt + `grep` + bt + ` 与 ` + bt + `curl` + bt, want: nil},
+		{name: `单段关键字豁免`, text: bt + `any` + bt + ` 与 ` + bt + `while` + bt + ` 不报`, want: nil},
+		{name: `allowlist 非skill放行`, text: bt + `hazard-guard` + bt + ` hook 已拦`, want: nil},
+		{name: `CamelCase 命名示例豁免`, text: `不叫 ` + bt + `MyCard` + bt + `/` + bt + `Card1` + bt, want: nil},
+		{name: `多段断链与真skill混合`, text: `用 ` + bt + `code-review-gate` + bt + ` 后走 ` + bt + `ai-generated-ui-review` + bt, want: []string{`ai-generated-ui-review`}},
+		{name: `同token去重`, text: bt + `frontend-stack-selection` + bt + ` 与 ` + bt + `frontend-stack-selection` + bt, want: []string{`frontend-stack-selection`}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := DanglingSkillRefs(tc.text, known, allow)
+			if len(got) != len(tc.want) {
+				t.Fatalf(`DanglingSkillRefs = %v, want %v (text=%q)`, got, tc.want, tc.text)
+			}
+			for i := range tc.want {
+				if got[i] != tc.want[i] {
+					t.Errorf(`got[%d]=%q want %q`, i, got[i], tc.want[i])
+				}
+			}
+		})
+	}
+}
