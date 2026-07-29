@@ -64,7 +64,7 @@ fi
 
 ## 按内容类型选采集方式（路由表）
 
-| 内容类型 | 首选方式 | 本机可用 | 备注 |
+| 内容类型 | 首选方式 | curl agent | 备注 |
 |---|---|---|---|
 | 已知 URL 的静态页/文档 | `curl -sL URL -H "User-Agent: Mozilla/5.0"` | ✅ | 加 `-L` 跟跳转；正文 >500 字符才算成功 |
 | GitHub repo/issue/code | `gh search repos/code`、`gh repo view`、`gh api` | ✅ | **已认证，最可靠**。优先用 gh 而非 curl 抓 github |
@@ -72,8 +72,8 @@ fi
 | 微信公众号文章 | curl 直连 | ✅ | mp.weixin.qq.com 可达，但正文需从 HTML 抽 |
 | 纯文本搜索（找链接） | curl 抓搜索引擎结果页 | ⚠️ | baidu/bing 结果页反爬强，质量差；优先用 gh/官方站搜索 |
 | **通用网络搜索**（定向源不够时） | **web-search-bridge skill**（Tavily/Serper/Exa） | ✅需key | 付费 API；**批量调研前预检额度**（见上「采集前先自检」） |
-| JS 渲染页（Twitter/小红书/LinkedIn） | （Jina 挂、无 browser） | ❌ | **本机不可采**，改走新闻转载/官方公告/学术镜像；Exa 语义搜索可作部分替代 |
-| Reddit | curl JSON API | ❌ | 本机封锁；要代理或换 Exa |
+| JS 渲染页（Twitter/小红书/LinkedIn） | （Jina 挂、无 browser） | ❌ | **curl agent 不可采**，改走新闻转载/官方公告/学术镜像；Exa 语义搜索可作部分替代 |
+| Reddit | curl JSON API | ❌ | curl agent 被封锁；要代理或换 Exa |
 | YouTube/B站字幕 | `yt-dlp --write-auto-sub` | ❌未装 | `pip install yt-dlp` 后可用 |
 | RSS | `python3 + feedparser` | ❌未装 | 装后可用；无 python3 时 curl 抓 feed XML + jq 粗解析 |
 

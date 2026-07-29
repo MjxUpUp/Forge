@@ -185,6 +185,8 @@ mkdir -p ~/.forge/research/{topic}-$(date '+%Y%m%d-%H%M')
 
 ## Phase 5 — 版本化补充融入（增量调研）
 
+> **前置依赖（缺失则跳过此 Phase）**：本 Phase 调用 `lark-cli docs +fetch/+update`（拿线上 current.md 作底稿 + overwrite 覆盖），需 lark-cli（独立安装，非 forge 自带）+ 飞书认证 + 目标 doc 的 `{obj_token}`。**任一缺失则跳过此 Phase**：让用户手动提供 current.md（粘贴既有报告 markdown）作改写底稿；无既有飞书报告时直接走 Phase 6 首发，不做补丁式融入。
+
 当用户要求补充新调研内容时，这是**最易出错**的环节（98% 的结构问题发生于此）。
 旧流程只靠"模型自觉遵守拆散融入规则"反复失败（见 failure-cases 案例 1/3，连修 4 轮）。现升级为**版本化改写机制**——把约束从文档规则升级为流程强制，每步有产物，出错可回滚。
 
