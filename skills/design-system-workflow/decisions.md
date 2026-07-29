@@ -19,3 +19,21 @@ persistent decision history：每条决策记 (诊断, 修订, 脱敏证据, 结
 ### Evidence
 
 forge skills validate R1-R11通过;forge skills audit 0 finding;守卫C验证互引自洽
+
+## [d-18c6be45b0ac15c8-97fd53c4] revise
+
+- **Skill**: design-system-workflow
+- **DecidedAt**: 2026-07-29T11:11:48Z
+- **By**: claude-code
+
+### Diagnosis
+
+description 513 rune 触发 R4 advisory 偏长(>500)；R4 用 utf8.RuneCountInString 计 rune 非字节，中文 1 字=1 rune
+
+### Revision
+
+精简到 446 rune：合并 what 段与 Use when 段对 Figma/Pixso/PenPot 的重复列举、压缩 Use when/SKIP 表述，保留 OKLCH/shadcn registry/composite token/DTCG/Style Dictionary 等关键 what 语义；另将 SKIP「纯视觉审美执行」从无路由（原括号仅说明文字，非 skill 引用）升级为显式指向 frontend-aesthetics-execution（路由表 4→5 条，改进路由完整性）
+
+### Evidence
+
+forge skills validate 原 design-system-workflow description 偏长(513>500) advisory 消失，现 446 rune ≤500

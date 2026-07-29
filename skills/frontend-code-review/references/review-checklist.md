@@ -2,6 +2,17 @@
 
 本文件是 `frontend-code-review` SKILL.md 步骤 2 加载的完整审查清单。按 6 维度 × 严重性分级。
 
+## 目录
+
+- [严重性定义](#严重性定义)
+- [维度 1：a11y（无障碍，最高优先）](#维度-1a11y无障碍最高优先)
+- [维度 2：组件 API](#维度-2组件-api)
+- [维度 3：Tailwind 规范](#维度-3tailwind-规范)
+- [维度 4：Design Token 一致性](#维度-4design-token-一致性)
+- [维度 5：性能](#维度-5性能)
+- [维度 6：TypeScript strict](#维度-6typescript-strict)
+- [审查技巧](#审查技巧)
+
 ## 严重性定义
 
 | 级别 | 含义 | 处理 |
