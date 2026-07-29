@@ -111,6 +111,17 @@ func buildForgeSection(forClaude bool) string {
 	sb.WriteString("每个门禁命令：`forge task gate <id> --ref <ref>`\n\n")
 	sb.WriteString("**门禁退出码契约**：`forge task gate` 非 0 退出 = 硬阻断（输出 `BLOCKED:` 前缀），必须修复后重跑，不是提醒；零退出但见 `ADVISORY:` 前缀 = 软信号（gate 仍过，已记 checklog，应修但不阻断）。按退出码行动，不要靠解析文案判断（硬阻断散文易被误读成提醒而跳过）。\n\n")
 	sb.WriteString("门禁全通过后运行 `forge task complete --ref <ref>` 触发评分。\n\n")
+
+	// Recurrence-driven hardening — the soft↔hard balance. Documents the gate behavior so an agent
+	// knows a recurrent project can have task-verify BLOCKED on test-coverage/scope-drift that would
+	// be mere advisory elsewhere. Without this note an agent hits the BLOCKED message cold.
+	//
+	// 复发驱动升硬——软↔硬平衡。记录门禁行为让 agent 知道：在复发项目里 task-verify 会对别处只是
+	// advisory 的 test-coverage/scope-drift 直接 BLOCKED。无此说明 agent 会冷不丁撞上 BLOCKED。
+	sb.WriteString("### 复发驱动升硬（软↔硬平衡）\n\n")
+	sb.WriteString("task-verify 的 test-coverage 与 scope-drift 默认 advisory（仅提醒不阻塞）。但若本项目已完成任务历史里 testing 或 scope 维度反复低分（≥3 次）——证明 advisory 靠自律已失效——且本次严重（缺配对测试 / 超 scope 多文件 drift），则升为 HARD 阻断。双轴 AND：新项目无履历永不升硬（不误伤陌生项目），单文件 drift 即便在复发项目也保持 advisory（预测噪声不升硬）。\n\n")
+	sb.WriteString("逃生舱：`FORGE_RECURRENT_HARDEN=disable` 回退纯 advisory（不加 Strength 惩罚，表达项目偏好而非跳过验证）；`FORGE_RECURRENT_THRESHOLD=N` 调阈值。\n\n")
+
 	sb.WriteString("### 中止任务（清理 ghost/卡住任务）\n\n")
 	sb.WriteString("任务无法推进（如在非 git 项目半启动、门禁死循环、或临时放弃）时，用 `forge task abort --ref <ref>` 删除任务状态文件并清空 active task ref，**不评分**。代码改动保留不动。task-verify 的 test-coverage/编译/断言为 advisory（仅记录不阻塞），但 skill-decisions guardrail（改 SKILL.md 未记决策）与 work-activity 仍 HARD stop；ghost 任务无论是否阻塞都污染 `task list`，需手动 abort 清理。\n\n")
 
@@ -142,6 +153,7 @@ func buildForgeSection(forClaude bool) string {
 	sb.WriteString("| WARN [bash-guard] ... Bash write without active task | 无任务时 Bash 写文件（仅警告，但源码会被 file-sentinel quarantine） | 先启动任务 |\n")
 	sb.WriteString("| insufficient work activity | 门禁间工具调用 <1 次 | 用 Read/Grep/Glob 探索代码 |\n")
 	sb.WriteString("| task-verify advisory: ... source files changed without a corresponding test | 改了源码没加对应测试文件（铁律4：测试伴随变更，advisory 仅提醒不阻塞） | 为变更的源码加 `_test.go`/`.test.ts`/`test_*.py` 等；入口(main.go/cmd)/生成物(.gen./_generated/.pb.)/纯类型文件(types/dto/models)白名单免测；不可测时用 `forge task override --test-coverage disable`（per-task，优先于 `FORGE_TEST_COVERAGE=disable` env，不污染他任务；用了降 evidence 强度到 Weak） |\n")
+	sb.WriteString("| task-verify 拒绝（复发升 HARD stop）：项目 testing/scope 维度反复低分 | 项目已完成任务历史里该维度低分≥阈值次（advisory 靠自律已被证明失效），且本次严重（缺配对测试 / 超 scope 多文件 drift） | 补测试或 `forge task scope add <glob>` 收编后重跑；或 `FORGE_TEST_COVERAGE=disable`（降 Weak）；或 `FORGE_RECURRENT_HARDEN=disable` 回退纯 advisory |\n")
 	sb.WriteString("| task-verify 拒绝（HARD stop）：改了 skill ... 的 SKILL.md 未记决策 | 改 `skills/<name>/SKILL.md`（行为契约）未在 `decisions.md` 新增 `## [d-` 决策条目（guardrail） | `forge skills decide --skill <name> --outcome <accept/reject> --diagnosis <为何改> --revision <改了啥> --evidence <依据>` 记四元组；trivial 改动用 `forge task override --skill-decisions disable`（per-task，优先于 `FORGE_SKILL_DECISIONS=disable` env，降 evidence 到 Weak） |\n")
 	sb.WriteString("| task-complete 拒绝：验收 #N 未实跑/基于旧代码/未通过 | task 声明了 acceptance（`task start --accept`），complete 时校验每条须 `AcceptedHeadCommit==HEAD` 且 `Passed`（deterministic pre-flight） | `forge task verify-acceptance` 实跑回扣（验收后改码须重跑使快照刷新）；验收不可机器执行用 `forge task override --acceptance-gate disable`（per-task，优先于 `FORGE_ACCEPTANCE_GATE=disable` env，降 evidence 到 Weak） |\n")
 	sb.WriteString("| --branch on non-main | `--branch` 只在 master/main 可用 | 已在 feature 分支时去掉 `--branch` |\n")
