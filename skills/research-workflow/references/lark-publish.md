@@ -13,15 +13,17 @@
 
 本文件是 `research-workflow` Phase 6 的详细命令与异常处理。主文件 SKILL.md 给主控要点。
 
-## 前置：认证
+## 前置：认证 + 依赖
 
-首次使用或遇 permission denied / scope 错误，先走 lark-shared skill 完成认证登录。
+**工具依赖**：`lark-cli`（飞书 CLI，独立安装，非 forge 自带）+ 飞书账号。**目标空间**：`{SPACE_ID}` 由用户提供要发布到的飞书知识库 space_id——**不预设固定空间**。任一缺失则跳过飞书发布，仅交付本地 report.md（调研本身不依赖飞书）。
+
+首次使用或遇 permission denied / scope 错误，先走 `lark-shared` skill 完成认证登录（如已安装 lark-* skill 套件）；未安装则用 `lark-cli` 自身的认证流程。
 发布动作需要 wiki 节点创建权限 + docs 写入权限。
 
 ## 步骤 1：创建主报告节点（父节点）
 
 ```bash
-lark-cli wiki +node-create --space-id 7642344528036252853 --title "{报告标题}"
+lark-cli wiki +node-create --space-id {SPACE_ID} --title "{报告标题}"
 ```
 
 从返回的 JSON 中提取：
@@ -60,7 +62,7 @@ lark-cli docs +update --api-version v2 --doc {obj_token} --command overwrite --d
 ```bash
 for i in 1 2 3 4 5 6 7; do
   TITLE="维度${i} · <维度名>"  # 维度名取自工序 2 切分结果
-  lark-cli wiki +node-create --space-id 7642344528036252853 \
+  lark-cli wiki +node-create --space-id {SPACE_ID} \
     --parent-node-token {主报告 node_token} --title "$TITLE"
 done
 ```
@@ -122,6 +124,7 @@ lark-cli docs +update --api-version v2 --doc {子文档1 obj_token} \
 
 ## 飞书知识库信息
 
-- 空间地址：https://my.feishu.cn/wiki/KDUfw7MNtiIduZk3awpcelI0nRb
-- space_id：7642344528036252853
-- 所有调研报告统一发布到此知识库根目录
+**目标空间由用户在 Phase 0 提供**（不预设固定 space_id）：
+- 向用户确认：发布到哪个飞书知识库？需要 space_id（wiki 空间的数字 ID）+ 账号对该空间的 editor 以上权限
+- 用户给出后填入命令的 `{SPACE_ID}`
+- 多次调研可复用同一 space_id（记进项目记忆），但默认每次确认

@@ -228,7 +228,4 @@ shadcn/ui 的 copy-in 模式（组件源码作为分发单位）需特殊治理�
 
 ## 参考
 
-- DTCG 链路图 + sd-transforms 配置 + composite token 评估：`~/.pi/research/frontend-design-trends-20260621-1400/dive_02.md`
-- OKLCH 双主题代码模板：同目录 `dive_02.md` 第 4 节
-- shadcn registry schema + monorepo 集成 + 安全风险：同目录 `dive_03.md` 第 1 节
 - W3C DTCG 2025.10 规范：https://www.designtokens.org/TR/2025.10

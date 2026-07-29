@@ -9,7 +9,7 @@ metadata:
 
 # Web Search Bridge — 通用网络搜索桥接
 
-本机**无可用通用搜索引擎**（Google/Bing/DuckDuckGo/SearX 均超时或质量差），dev-lookup / fact-research / research-workflow 只能走定向源。本 skill 桥接付费搜索 API（Tavily/Serper/Exa/Brave），提供统一 `web_search(query)` 接口，作为三个调研 skill 的**降级链末位**。
+部分 agent 无内置 `web_search` 工具，或其内置搜索在特定网络环境（如国内直连 Google/Bing/DuckDuckGo/SearX）超时或质量差——此时 dev-lookup / fact-research / research-workflow 只能走定向源，定向源不够时仍需通用搜索。本 skill 桥接付费搜索 API（Tavily/Serper/Exa/Brave），提供统一 `web_search(query)` 接口，作为三个调研 skill 的**降级链末位**。**如果你的 agent 已有可用的内置 web_search，优先用内置工具，无需本 skill。**
 
 ## 本机检索能力分层
 

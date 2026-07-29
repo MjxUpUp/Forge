@@ -1,6 +1,6 @@
 ---
 name: cross-tool-context
-description: "跨 AI 工具上下文共享约定：在项目根维护 AI_CONTEXT.md，让 pi / Claude Code / deveco / zcode 等工具发现的问题、修改、决策互相可见，消除手动复制粘贴。Use when: 同时用多个 AI 工具开发同一项目时、把 A 工具的分析结果搬给 B 工具时、说\"其他 agent 分析出的问题\"\"把这个给 deveco 看\"\"工具间传递上下文\"时、多工具协作发现信息不对称时。SKIP: 单工具内跨会话恢复（用 session-continuity）、纯新项目无多工具协作、临时单次问题直接口头说即可。"
+description: "跨 AI 工具上下文共享约定：在项目根维护 AI_CONTEXT.md，让各 AI 工具（Claude Code / Cursor / Codex / Cline 等）发现的问题、修改、决策互相可见，消除手动复制粘贴。Use when: 同时用多个 AI 工具开发同一项目时、把 A 工具的分析结果搬给 B 工具时、说\"其他 agent 分析出的问题\"\"把这个给别的工具看\"\"工具间传递上下文\"时、多工具协作发现信息不对称时。SKIP: 单工具内跨会话恢复（用 session-continuity）、纯新项目无多工具协作、临时单次问题直接口头说即可。"
 metadata:
   pattern: tool-wrapper
   domain: workflow-management
@@ -19,16 +19,16 @@ metadata:
 └── AI_CONTEXT.md   ← 所有 AI 工具的共同上下文
 ```
 
-**为什么是文件而不是服务**：文件系统是所有工具的共同底座（pi/claude/deveco/zcode 都能读写文件），零基础设施依赖。这正是 Skill 的设计哲学（见 skill-authoring-standard §1）。
+**为什么是文件而不是服务**：文件系统是所有工具的共同底座（任意 agent 都能读写文件），零基础设施依赖。这正是 Skill 的设计哲学（见 skill-authoring-standard §1）。
 
 ## Forge 任务接续（结构化真相源，优先于 AI_CONTEXT.md）
 
 若项目用 forge，**优先把跨工具信息写进 forge task**（持久化进 forge task；refactor-data-home 后 task 状态落用户级 DataDir `~/.forge/projects/<key>/`，不再在项目 `.forge/`），而非只写 AI_CONTEXT.md：
 
 - **开工前**：`forge task resume` 拉回结构化上下文（替代读 AI_CONTEXT.md 的 Decisions/Findings/Changes）。
-- **做了决策**：`forge task decide --content "..." --by [pi]`（替代追加 `## Decisions`）。
-- **发现问题**：`forge task finding --content "..." --source [pi] --evidence file:line`（替代追加 `## Findings`，来源工具自动记录）。
-- **跨工具锚定**：`forge task attach --ref <ref> --tool pi` 把当前工具的 session 锚定到 task——任意工具 resume 即知"谁参与过、用什么工具"。
+- **做了决策**：`forge task decide --content "..." --by [当前工具]`（替代追加 `## Decisions`）。
+- **发现问题**：`forge task finding --content "..." --source [当前工具] --evidence file:line`（替代追加 `## Findings`，来源工具自动记录）。
+- **跨工具锚定**：`forge task attach --ref <ref> --tool <当前工具>` 把当前工具的 session 锚定到 task——任意工具 resume 即知"谁参与过、用什么工具"。
 
 AI_CONTEXT.md 降级为 forge task 的 markdown 导出视图（`forge task context` 输出），供无 forge 的工具/人类阅读。forge task 是结构化真相源（可查询、抗压缩丢失、跨工具双向锚定），AI_CONTEXT.md 是靠纪律维护的文本（易漂移、难查询）。两者信息结构同构（Decisions/Findings/Handoff），但 forge task 持久化进 task 而非靠 agent 自觉读写 md。
 
@@ -80,7 +80,7 @@ AI_CONTEXT.md 降级为 forge task 的 markdown 导出视图（`forge task conte
 - **修改了文件** → 追加到 `## Changes`
 - **有不确定的问题** → 追加到 `## Open Questions`
 
-每条记录**必须标来源工具**（`[pi]`/`[claude]`/`[deveco]`/`[zcode]`），让其他工具知道是谁发现的。
+每条记录**必须标来源工具**（如 `[claude-code]`/`[cursor]`/`[codex]`/`[当前工具]`），让其他工具知道是谁发现的。
 
 ### 会话结束/切换工具时
 
@@ -96,9 +96,9 @@ AI_CONTEXT.md 降级为 forge task 的 markdown 导出视图（`forge task conte
 ├─ 发现了问题/做了决策
 │  ├─ 只在本工具会话内相关？→ 不必写，口头说
 │  └─ 其他工具也会遇到/需要知道？→ 追加到 AI_CONTEXT.md
-├─ 用户说"把这个分析给 deveco 看"
-│  ├─ 旧做法：复制粘贴分析全文给 deveco
-│  └─ 新做法：把分析写进 AI_CONTEXT.md 的 Findings，让 deveco 自己读
+├─ 用户说"把这个分析给别的工具看"
+│  ├─ 旧做法：复制粘贴分析全文给另一个工具
+│  └─ 新做法：把分析写进 AI_CONTEXT.md 的 Findings，让对方自己读
 └─ 会话结束
    └─ 更新 Current Handoff
 ```
@@ -110,11 +110,11 @@ AI_CONTEXT.md 降级为 forge task 的 markdown 导出视图（`forge task conte
 **解决**: 只记**跨工具有价值**的信息：决策、未决问题、关键修改。日常 read/build 不记。"其他工具会遇到吗？"——会才记
 
 ### 问题: 工具间信息格式不统一
-**现象**: pi 写的分析是 markdown，deveco 期待结构化字段，zcode 给纯文本
+**现象**: A 工具写的是 markdown，B 工具期待结构化字段，C 工具给纯文本
 **解决**: 统一用上面的标准结构（markdown 章节 + 每条带 `[日期][工具]` 前缀）。所有工具都能读 markdown
 
 ### 问题: 忘记读就开始干，覆盖了别人的修改
-**现象**: claude 改了 A 文件，deveco 没读 AI_CONTEXT 直接重写 A 文件，丢改动
+**现象**: 一个工具改了 A 文件，另一个工具没读 AI_CONTEXT 直接重写 A 文件，丢改动
 **解决**: 开工前读 Changes 章节。改文件前 `git status` + 读 AI_CONTEXT 双确认
 
 ### 问题: 把 AI_CONTEXT.md 和 HANDOFF.md 搞混
@@ -128,7 +128,7 @@ AI_CONTEXT.md 降级为 forge task 的 markdown 导出视图（`forge task conte
 
 ## 适用边界
 
-- ✅ 多工具开发同一项目（pi+claude+deveco 协作一个鸿蒙项目）
-- ✅ 把 A 工具分析喂给 B 工具决策（review 证据：deveco prompt"其他 agent 分析出的问题"）
+- ✅ 多工具开发同一项目（如 Claude Code + Cursor + Codex 协作同一仓库）
+- ✅ 把 A 工具分析喂给 B 工具决策（review 证据：另一工具 prompt"其他 agent 分析出的问题"）
 - ❌ 单工具单会话（不需要，上下文在会话内）
 - ❌ 临时一次性问题（直接说，不必落文件）
