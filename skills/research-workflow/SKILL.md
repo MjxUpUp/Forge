@@ -15,7 +15,7 @@ metadata:
 
 详细规范分置 references：
 - **`references/deep-research-engine.md`** — Phase 1 调研引擎的完整规范（4 路由判定、6 道工序、产出契约、通信协议、信度分级表）
-- **`references/sourcing-toolkit.md`** — Phase 1 worker 的采集工具路由（pi 本机实测可用性、按内容类型选采集方式、降级链、JS 渲染源终止判定）
+- **`references/sourcing-toolkit.md`** — Phase 1 worker 的采集工具路由（按内容类型选采集方式、agent 能力分级、降级链、JS 渲染源终止判定）
 - **`references/lark-publish.md`** — Phase 6 飞书发布的命令与异常处理
 - **`references/versioned-rewrite.md`** — Phase 5 版本化补充融入的完整规范（快照→映射→改写→自检→发布→归档，回滚机制）
 - **`references/failure-cases.md`** — 真实失败案例（补充融入 / 格式不一致 / 未触发引擎等）
@@ -87,7 +87,7 @@ mkdir -p ~/.forge/research/{topic}-$(date '+%Y%m%d-%H%M')
 **本 Phase 是调研链路的方法论内核，完整规范见 `references/deep-research-engine.md`。**
 此处只列主控要点；执行 worker spawn / 信度分级 / 矛盾消解时必须读 references。
 
-**采集工具路由见 `references/sourcing-toolkit.md`** —— pi 无 web_fetch/web_search/browser 内置工具，联网只能 bash curl；Jina Reader 本机超时、Reddit 封锁、JS 渲染源不可采；免费通用搜索引擎（Google/Bing/DDG）全不可用。worker 开工前先跑该 reference 的「采集前自检」把可用通道写进 `{run_dir}/map.md` 顶部，后续按路由表选工具、JS 源直接找替代不硬抓。定向源不够时可降级用 **web-search-bridge** skill（桥接付费搜索 API，需配 `TAVILY_API_KEY` 等）作为 worker 采集工具之一。
+**采集工具路由见 `references/sourcing-toolkit.md`** —— 该文件按内容类型给采集通道 + 自检脚本。**agent 能力不同采集方式不同**：有内置 `web_search`/`web_fetch`/`browser` 的 agent 优先用内置工具；无内置联网工具的 agent（或本机网络受限，如国内直连 Google/Bing/Jina/Reddit 超时）走 bash curl 定向源。worker 开工前先跑该 reference 的「采集前自检」把**本环境**可用通道写进 `{run_dir}/map.md` 顶部，后续按路由表选工具、JS 源直接找替代不硬抓。定向源不够时可降级用 **web-search-bridge** skill（桥接付费搜索 API，需配 `TAVILY_API_KEY` 等）作为 worker 采集工具之一。
 
 ### 主控流程（6 道工序）
 
@@ -185,6 +185,8 @@ mkdir -p ~/.forge/research/{topic}-$(date '+%Y%m%d-%H%M')
 
 ## Phase 5 — 版本化补充融入（增量调研）
 
+> **前置依赖（缺失则跳过此 Phase）**：本 Phase 调用 `lark-cli docs +fetch/+update`（拿线上 current.md 作底稿 + overwrite 覆盖），需 lark-cli（独立安装，非 forge 自带）+ 飞书认证 + 目标 doc 的 `{obj_token}`。**任一缺失则跳过此 Phase**：让用户手动提供 current.md（粘贴既有报告 markdown）作改写底稿；无既有飞书报告时直接走 Phase 6 首发，不做补丁式融入。
+
 当用户要求补充新调研内容时，这是**最易出错**的环节（98% 的结构问题发生于此）。
 旧流程只靠"模型自觉遵守拆散融入规则"反复失败（见 failure-cases 案例 1/3，连修 4 轮）。现升级为**版本化改写机制**——把约束从文档规则升级为流程强制，每步有产物，出错可回滚。
 
@@ -209,16 +211,18 @@ mkdir -p ~/.forge/research/{topic}-$(date '+%Y%m%d-%H%M')
 
 ## Phase 6 — 飞书发布
 
+> **前置依赖（缺失则跳过发布）**：本 Phase 依赖外部工具 `lark-cli`（飞书 CLI，独立安装，非 forge 自带）+ 飞书账号认证（首次走 `lark-shared` skill 或 lark-cli 自身认证）+ 用户提供的目标知识库 `{SPACE_ID}`。**任一缺失则跳过发布**：仍产出本地 `{run_dir}/report.md` + 各 `dive_NN.md`，告知用户手动发布或后续补发，不阻塞调研本身。
+
 详细命令与异常处理见 **`references/lark-publish.md`**。主控要点：
 
-1. **创建主报告节点**：`lark-cli wiki +node-create --space-id 7642344528036252853 --title "{标题}"`，提取 `node_token`（后续作父节点）/ `obj_token`
+1. **创建主报告节点**：`lark-cli wiki +node-create --space-id {SPACE_ID} --title "{标题}"`，提取 `node_token`（后续作父节点）/ `obj_token`（`{SPACE_ID}` 由用户提供目标飞书知识库的 space_id，不预设固定空间）
 2. **写入主报告**：`cd {run_dir} && lark-cli docs +update --api-version v2 --doc {obj_token} --command overwrite --doc-format markdown --content "@report.md"`
    - `@file` 语法必须先 cd 到文件目录
    - Windows 编码问题设 `$env:PYTHONIOENCODING="utf-8"`
 3. **创建维度子文档**（不可跳过）：用 `--parent-node-token {主报告 node_token}` 为每个 `dive_NN.md` 创建子节点，再逐个写入。形成主报告 + N 个维度子文档的目录树。详见 references/lark-publish.md 步骤 3
 4. **返回结果**：报告标题 / 主报告 + 子文档目录树链接 / 本地文件路径 / 维度数·子代理数·总搜索次数
 
-**飞书知识库**：space_id `7642344528036252853`，空间 https://my.feishu.cn/wiki/KDUfw7MNtiIduZk3awpcelI0nRb
+**飞书知识库**：space_id 由用户在 Phase 0 提供目标知识库（`{SPACE_ID}`），**不预设固定空间**。无飞书/lark-cli 环境时，Phase 6 跳过发布，仅交付本地 `{run_dir}/report.md`。
 
 ---
 
