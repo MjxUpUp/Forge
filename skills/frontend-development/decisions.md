@@ -18,3 +18,21 @@ persistent decision history：每条决策记 (诊断, 修订, 脱敏证据, 结
 ### Evidence
 
 全局断链扫描(grep反引号skill名 vs skills/目录)3名不在canonical;用户决策全内联不新建skill;grep验证内联后无残留引用
+
+## [d-18c6bc897bfaffa0-e758d2d6] accept
+
+- **Skill**: frontend-development
+- **DecidedAt**: 2026-07-29T10:40:00Z
+- **By**: claude-code
+
+### Diagnosis
+
+5c59ff7内联(§2.8/2.9/2.10)因canonical无specialist误判断链;现11 specialist纳入canonical,断链前提消除
+
+### Revision
+
+SKILL.md从215行内联版回退164行引用版;第97行stack-selection规范为反引号frontend-stack-selection
+
+### Evidence
+
+守卫CTestSkills_NoDanglingSkillRefs全绿;forge skills validate R1-R11通过
