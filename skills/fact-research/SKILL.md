@@ -26,9 +26,13 @@ metadata:
 - 查"React 和 Vue 2025 市场份额谁高" → **fact-research**
 - 查"前端框架市场格局深度分析，要发报告" → research-workflow
 
-## 本机检索能力边界（实测，必须遵守）
+## 检索能力边界（按 agent 能力）
 
-pi 无 web_search/web_fetch/browser 内置工具，联网只能 bash curl。**本机无免费可用通用搜索引擎**（Google/Bing/DuckDuckGo 均超时或质量差）。默认走**定向源**；定向源不够时可桥接付费搜索 API（**web-search-bridge** skill，需配 key）：
+**先看你的 agent 联网能力**：
+- **有内置 `web_search`/`web_fetch`** → 直接搜索抓取，通用搜索可达
+- **无内置联网工具（联网只能 bash curl）** → 走下方定向源；定向源不够时桥接付费搜索 API（**web-search-bridge** skill，需配 key）
+
+curl 定向源参考（按你的网络自检为准）：
 
 | 通道 | 状态 | 适用 |
 |---|---|---|
@@ -142,7 +146,7 @@ gh search repos "{关键词}" --sort stars --created ">2025-01-01" --limit 5
 
 ## Gotchas（高信号）
 
-- **本机无免费通用搜索引擎**：Google/Bing/DDG/SearX 都不可用或质量差。别浪费时间试 curl 通用搜索，直接走定向源（HN/GitHub/SE/arXiv/媒体直 curl）。定向源不够时走 **web-search-bridge**（付费 API 桥接，需配 key）
+- **curl agent 无免费通用搜索引擎**：Google/Bing/DDG/SearX 的结果页常超时或质量差，curl 通用搜索不可靠——走定向源（HN/GitHub/SE/arXiv/媒体直 curl）。定向源不够时走 **web-search-bridge**（付费 API 桥接，需配 key）。**有内置 `web_search` 的 agent 不受此限**，可直接搜
 - **Wikipedia 本机超时**：别依赖它查定义，改用多源撞（HN+SE+媒体）
 - **数字/日期必交叉**：融资额、市场份额、版本号这类最易过期和出错，≥2 源验证
 - **时效性标注**：市场数据/融资动态时间敏感，答案必带"截至 YYYY-MM"，提示用户可能已变化

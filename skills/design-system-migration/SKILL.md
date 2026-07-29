@@ -118,7 +118,7 @@ export function MyComponent({ ...props }: Props & HTMLAttributes<HTMLDivElement>
 }
 
 [data-theme="dark"] {
-  /* 暗色 active-stripe 双色硬切（62% 处一刀切，pi.dev 签名）*/
+  /* 暗色 active-stripe 双色硬切（62% 处一刀切，品牌签名示例）*/
   --active-stripe: linear-gradient(90deg, #6a9fcc 0 62%, #4b607c 62% 100%);
 }
 ```
@@ -151,7 +151,7 @@ CRT 步进闪烁（`steps(1,end)`，非 smooth opacity）→ 签名动效。全�
 ### 1.1 Frame（四角取景框）
 
 - compound 组件，5 种 variant：default / highlight / subtle / success / danger
-- 用 4 个绝对定位 `span` 渲染四角标记（非 border，是 pi.dev 签名）
+- 用 4 个绝对定位 `span` 渲染四角标记（非 border，是品牌签名示例：四角取景框）
 - 透传 `HTMLAttributes` + `...props`
 
 ### 1.2 LiveDot（CRT 步进闪烁）
@@ -244,7 +244,7 @@ Composer 加 `steering` prop：运行中时不禁用 textarea，Enter = 插话�
 
 ```html
 <!-- palette 和 theme 正交 -->
-<html data-theme="light" data-palette="pi">
+<html data-theme="light" data-palette="tide">
 <html data-theme="dark" data-palette="ink">
 <!-- 6 种组合：3 palette × 2 theme -->
 ```
@@ -270,7 +270,7 @@ Composer 加 `steering` prop：运行中时不禁用 textarea，Enter = 插话�
 ```typescript
 interface AppSettings {
   theme: 'light' | 'dark' | 'auto';
-  palette: 'pi' | 'ink' | 'moss';  // 新增
+  palette: 'tide' | 'ink' | 'moss';  // 新增（示例品牌名，替换为你的）
 }
 ```
 
@@ -321,11 +321,3 @@ Vite 8 用 lightningcss 作 CSS minifier，不支持 CSS Modules 的 `composes:`
 - 端到端验证 → **verification-driver**
 - 初次建 design token → **design-system-workflow**（本 skill 假设已有旧 token 要迁移，不是从零建）
 - 选组件库底层 → **frontend-stack-selection**
-
----
-
-## 参考
-
-- DevWorkbench v3 全套重做实操记录：`~/.pi/research/agent-gui-20260621-2314/REFACTOR_PLAN.md`
-- pi.dev 完整色彩体系逆向：同目录 `map.md`
-- 三段折叠范式调研：同目录 `dive_07_cursor_codex_chat.md`
