@@ -211,7 +211,9 @@ var skillRefAllowlist = map[string]bool{
 	// code-review-gate 非正式简称（code-review-gate 的缩写引用）
 	`code-review`: true,
 	// 外部 lark skill（用户全局 skill，非 Forge canonical）
-	`lark-workflow-meeting-summary`: true, `lark-doc`: true,
+	`lark-workflow-meeting-summary`: true, `lark-doc`: true, `lark-shared`: true,
+	// 飞书 CLI 工具（独立安装，非 forge 自带，非 skill）
+	`lark-cli`: true,
 	// CSS 属性 / 媒体查询（纳入的 frontend/design specialist 文档引用，非 skill）
 	`grid-template-columns`: true, `box-shadow`: true, `backdrop-filter`: true,
 	`background-image`: true, `prefers-reduced-motion`: true,
