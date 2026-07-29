@@ -27,9 +27,9 @@ metadata:
 | 集成链路（多服务） | 启动全链路 + 请求贯穿 + 每跳验证 |
 | 数据库交互 | 真实 DB 写入 + 读回验证（非 mock） |
 | IPC/进程通信（如 Tauri） | 真实 IPC 调用（非 mock） |
-| 前端渲染 | 实际看到（pi 无 browser 则降级：构建产物 + DOM 断言） |
+| 前端渲染 | 实际看到（无 browser 工具的 agent 则降级：构建产物 + DOM 断言） |
 
-## pi 本机可用的验证工具（实测）
+## 验证工具（按 agent 能力）
 
 | 工具 | 验证用途 | 命令示例 |
 |---|---|---|
@@ -39,9 +39,10 @@ metadata:
 | `node`/`python` | 脚本化断言 | 写验证脚本批量断言 |
 | `cargo`/`go`/`npm` | 构建产物 + 集成测试 | `cargo test --test '*'`（集成测试目录） |
 
-**不可用**（pi 本机限制，不要尝试）：
-- ❌ playwright / puppeteer / headless browser（未装）—— 前端渲染验证降级为"构建 + 静态 DOM 检查"或请用户手动看
-- ❌ web_fetch / browser 工具（pi 无）—— 用 curl 替代
+**按 agent 能力分级（运行时自检为准，非通用断言）**：
+- ❌ 仅 curl 的 agent（无内置联网/browser 工具）：playwright / puppeteer / headless browser 不可用 —— 前端渲染验证降级为"构建 + 静态 DOM 检查"或请用户手动看；不要硬试（会失败）
+- ✅ 有 browser / web_fetch 内置工具的 agent 不受此限，可直接做渲染验证
+- ❌ curl agent 无 web_fetch —— 用 curl 替代
 
 ## 验证流程（pipeline）
 
@@ -59,7 +60,7 @@ metadata:
 
 ### Step 2: 驱动真实工具执行
 
-用 pi 可用工具实际跑，**不 mock**：
+用本机可用工具实际跑，**不 mock**：
 
 ```bash
 # API 验证：实际 curl + jq 断言
@@ -104,7 +105,7 @@ docker exec db psql -U app -c "SELECT count(*) FROM users WHERE email='test@x.co
 - **断言要判定不要肉眼看**：`echo $RESP` 看一眼 ≠ 验证，必须 `[ ... ]` 或 `jq -e` 让脚本判定 pass/fail
 - **边界 case 比主路径更值钱**：主路径对了边界错的产物，上线才暴雷。重复/空值/超时/权限必测
 - **验证失败回 systematic-debugging**：验证脚本是"证人"不是"嫌疑人"，验证失败说明产物有 bug，去查代码根因，别改验证脚本迁就
-- **pi 无 browser 时前端验证降级**：不能 screenshots 对比，则 `npm run build` 成功 + 关键 DOM 节点存在性断言 + 请用户手动确认视觉
+- **无 browser 工具的 agent 前端验证降级**：不能 screenshots 对比，则 `npm run build` 成功 + 关键 DOM 节点存在性断言 + 请用户手动确认视觉
 
 ## Red Flags — STOP
 
@@ -114,7 +115,7 @@ docker exec db psql -U app -c "SELECT count(*) FROM users WHERE email='test@x.co
 - 验证失败时改验证脚本迁就（应改产物代码）
 - 只验证主路径，跳过边界 case
 - 把"我手动试了一下"当验证（不可重复、不可回归）
-- 尝试用 playwright/puppeteer（pi 未装，会失败）
+- 无 Playwright 环境时尝试用 playwright/puppeteer（会失败）；有 browser 工具的 agent 不受此限
 
 ## 与其他 skill 的分工
 

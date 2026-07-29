@@ -148,6 +148,4 @@ git diff -- '*.tsx'   # 看具体变更
 ## 参考
 
 - 完整审查清单（6 维度细化）：[references/review-checklist.md](references/review-checklist.md)
-- a11y + reduced-motion WCAG 2.2 合规：`~/.pi/research/frontend-design-trends-20260621-1400/dive_04.md`
-- 组件 API 范式：同目录 `dive_03.md`（Base UI vs Radix / React Aria）
 - WAI-ARIA APG（组件行为事实规范）：https://www.w3.org/WAI/ARIA/apg/

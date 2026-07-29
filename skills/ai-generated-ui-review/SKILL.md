@@ -178,6 +178,5 @@ block/fix 修复后重审。若判定"需改造"或"重写"，指引走 **ai-ui-
 ## 参考
 
 - 6 类可维护性评估清单完整版（含检测命令）：[references/maintainability-checklist.md](references/maintainability-checklist.md)
-- 五方工具对比 + Addy Osmani 工作流：`~/.pi/research/frontend-design-trends-20260621-1400/dive_05.md`
 - arXiv 2603.28592《Debt Behind the AI Boom》：https://arxiv.org/html/2603.28592v1
 - Vibe Security Radar：https://www.ox.security/blog/vibe-coding-security

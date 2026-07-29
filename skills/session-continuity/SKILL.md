@@ -1,6 +1,6 @@
 ---
 name: session-continuity
-description: "跨会话开发接力。Use when: 恢复项目工作时、从上次会话中断处继续时、用户说“继续”、“恢复”、“上次到哪了”、“接着做”时。SKIP: 当前会话内已有完整上下文时、纯新项目初始化、当前会话内的任务继续（不需要上下文恢复）、**跨不同 AI 工具交接（pi→Claude Code→deveco 等，用 cross-tool-context）**。"
+description: "跨会话开发接力。Use when: 恢复项目工作时、从上次会话中断处继续时、用户说“继续”、“恢复”、“上次到哪了”、“接着做”时。SKIP: 当前会话内已有完整上下文时、纯新项目初始化、当前会话内的任务继续（不需要上下文恢复）、**跨不同 AI 工具交接（用 cross-tool-context）**。"
 metadata:
   pattern: inversion + pipeline
   domain: workflow-management
@@ -158,7 +158,7 @@ git diff --stat
 
 **关键纪律**：
 - HANDOFF 是给**冷启动的下一个会话**看的，不是给自己备忘——写清楚“为什么”不只写“是什么”
-- 跨工具交接（pi→deveco 等）时，双方都读写同一份 `AI_CONTEXT.md`，见 **cross-tool-context** skill
+- 跨工具交接（A 工具→B 工具）时，双方都读写同一份 `AI_CONTEXT.md`，见 **cross-tool-context** skill
 - HANDOFF 不是永久文档，任务完成后可删或归档到 `docs/session-log.md`
 
 ## 易错点
@@ -168,4 +168,4 @@ git diff --stat
 - **过时的子代理工作**：检查 `git diff` 和 `git stash list`。
 - **计划文件漂移**：从磁盘读取计划，不要从记忆中读——可能已被更新。
 - **依赖更新**：如果间隔较长，可能需要 `cargo update` / `pnpm install` / `npm install`。
-- **调研任务恢复**：恢复调研时重点检查已有文档的结构和最后编辑位置，不要凭记忆假设内容。用 `lark-cli docs +fetch --scope outline` 获取实际结构。
+- **调研任务恢复**：恢复调研时重点检查已有文档的结构和最后编辑位置，不要凭记忆假设内容。若调研产出在飞书（且有 `lark-cli`），用 `lark-cli docs +fetch --scope outline` 获取实际结构；否则读本地 run_dir 的报告文件。

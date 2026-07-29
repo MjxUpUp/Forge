@@ -103,8 +103,3 @@ metadata:
 - 提交前审查前端代码 → **frontend-code-review**
 - 选型方案要正式论证 → **evidence-based-proposal**
 - 单点查某库 API 签名 → **dev-lookup**
-
-## 参考
-
-- 完整调研报告：`~/.pi/research/frontend-design-trends-20260621-1400/report.md`（含 6 维度子文档）
-- 选型决策矩阵详细版：同目录 `dive_03.md`（组件库）、`dive_06.md`（桌面端）、`dive_01.md`（lint 工具链）
