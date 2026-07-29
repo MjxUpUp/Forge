@@ -25,12 +25,12 @@ metadata:
 
 主流说"shadcn+Tailwind+v0 是最佳实践"，但调研（2026-06，12 子代理/450 次搜索）发现每个都有硬反方证据：
 
-| 主流说法 | 反方证据 | 来源 |
-|---|---|---|
-| "shadcn 适合所有项目" | 企业级 50+ 组件长期维护有同步成本税（discussion #9756 无解、issue #3579 追不上游、registry RCE 风险）；Design Systems Collective："Shadcn Isn't Ready for Enterprise Design Systems" | scan_anti + dive_03 |
-| "Tailwind 让 bundle 更小" | 实测 57.6% 页面体积是 inline class；CSS 45→8KB 但 HTML 120→340KB 净增 183KB | scan_anti + dive_02 |
-| "v0/Bolt 生成能上生产" | arXiv 2603.28592：89.3% code smell；Lovable 官方承认"不要复用共享组件"；CVE 6→74 | dive_05 + scan_anti |
-| "Tauri 比 Electron 省内存" | Hello World 是；复杂应用反超 16-141%（系统 WebView 子进程未计入，issue #5889） | dive_06 |
+| 主流说法 | 反方证据 |
+|---|---|
+| "shadcn 适合所有项目" | 企业级 50+ 组件长期维护有同步成本税（discussion #9756 无解、issue #3579 追不上游、registry RCE 风险）；Design Systems Collective："Shadcn Isn't Ready for Enterprise Design Systems" |
+| "Tailwind 让 bundle 更小" | 实测 57.6% 页面体积是 inline class；CSS 45→8KB 但 HTML 120→340KB 净增 183KB |
+| "v0/Bolt 生成能上生产" | arXiv 2603.28592：89.3% code smell；Lovable 官方承认"不要复用共享组件"；CVE 6→74 |
+| "Tauri 比 Electron 省内存" | Hello World 是；复杂应用反超 16-141%（系统 WebView 子进程未计入，issue #5889） |
 
 **选型永远实测目标平台的真实复杂场景，不信营销基准。** "营销基准 vs 真实复杂场景"的系统性偏差是本次调研最重要的方法论发现。
 
