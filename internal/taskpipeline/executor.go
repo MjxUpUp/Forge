@@ -423,6 +423,24 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 			Detail:  testCoverageDetail(ok, missing),
 		})
 		if !ok {
+			// Recurrence-driven hardening (recurrent.go): advisory→hard promotion fires only when
+			// BOTH axes hold — the project's testing dimension has gone low ≥threshold times in
+			// history (advisory self-discipline proven to fail here) AND this task still has untested
+			// source. test-coverage's own escape (FORGE_TEST_COVERAGE / per-task override) is handled
+			// inside CheckTestCoverage which returns ok=true, so an escaped task never reaches here;
+			// the only ways out of a hardened block are to add the tests (intended) or lower the
+			// recurrence floor (FORGE_RECURRENT_HARDEN=disable, no Strength penalty).
+			//
+			// 复发驱动升硬（recurrent.go）：advisory→hard 仅当两轴皆真才触发——项目 testing 维度历史
+			// 低分 ≥阈值次（advisory 自律在此已被证明失效）且本任务仍有未测源码。test-coverage 自身
+			// 逃生（FORGE_TEST_COVERAGE / per-task override）由 CheckTestCoverage 内部返回 ok=true 处理，
+			// 逃生任务永不进此分支；升硬后唯一出路是真补测试（预期）或下调复发门槛
+			// （FORGE_RECURRENT_HARDEN=disable，无 Strength 惩罚）。
+			if recurrentHardenEnabled() {
+				if cs := loadConclusions(root); DimRecurrent(cs, dimTesting, recurrentThreshold()) && len(missing) > 0 {
+					return nil, GateBlocked(`task-verify 拒绝（复发升 HARD stop）：项目 testing 维度已 %d 次低分（达到阈值 %d）——advisory 靠自律在此项目已被证明失效，本次 %d 个源文件仍无配对测试。%s出路：补测试后重跑；或 FORGE_TEST_COVERAGE=disable（降 evidence Weak）；或 FORGE_RECURRENT_HARDEN=disable 回退纯 advisory`, LowDimCounts(cs)[dimTesting], recurrentThreshold(), len(missing), formatMissing(missing))
+				}
+			}
 			fmt.Fprintf(os.Stderr, "%s%s\n", GateAdvisory("[task-verify] "), formatMissing(missing))
 		}
 
@@ -454,6 +472,20 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 				Detail:  scopeDriftDetail(drift),
 			})
 			if len(drift) > 0 {
+				// Recurrence-driven hardening (recurrent.go): scope-drift is advisory by design
+				// (impact-prediction recall ~44%, hardening would reject half of legitimate changes).
+				// Promote to BLOCKED only when BOTH the project is recurrent on scope AND this drift is
+				// material (≥severe threshold files) — single-file drift stays advisory even on
+				// recurrent projects (a normal prediction miss).
+				//
+				// 复发驱动升硬（recurrent.go）：scope-drift 设计上 advisory（影响预测召回率 ~44%，硬拦会
+				// 拒一半合法改动）。仅当项目 scope 复发 且 本次 drift 实质（≥严重阈值文件）两者皆真时升
+				// BLOCKED——单文件 drift 即便在复发项目也保持 advisory（正常预测失误）。
+				if recurrentHardenEnabled() && scopeDriftSevere(drift) {
+					if cs := loadConclusions(root); DimRecurrent(cs, dimScope, recurrentThreshold()) {
+						return nil, GateBlocked(`task-verify 拒绝（复发升 HARD stop）：项目 scope 维度已 %d 次低分（达到阈值 %d）——计划漂移已成系统性问题，本次 %d 个源文件超出 PlanScope 声明。出路：forge task scope add <glob> 收编实改；或 FORGE_RECURRENT_HARDEN=disable 回退纯 advisory`, LowDimCounts(cs)[dimScope], recurrentThreshold(), len(drift))
+					}
+				}
 				fmt.Fprintf(os.Stderr, "%sscope-drift——%d 个源码文件超出 PlanScope 声明（advisory 不阻塞；收编: forge task scope add <glob>）\n", GateAdvisory("[task-verify] "), len(drift))
 				for _, f := range drift {
 					fmt.Fprintf(os.Stderr, "  ⚠ %s\n", f)
@@ -1008,7 +1040,7 @@ func isPreviousGateAuto(state *TaskState) bool {
 // nothing to 'spend time on'.
 //
 // isLastGate 返回给定 gate ID 是否是流水线的最后一个 gate。最后一个 gate
-//（task-complete）之后无工作阶段，故跳过工作活动检查——没有可「花时间」的内容。
+// （task-complete）之后无工作阶段，故跳过工作活动检查——没有可「花时间」的内容。
 func isLastGate(gateID string) bool {
 	gates := DefaultGates()
 	return len(gates) > 0 && gates[len(gates)-1].ID == gateID
