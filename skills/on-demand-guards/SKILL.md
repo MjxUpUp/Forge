@@ -17,7 +17,7 @@ metadata:
 
 **核心原则：激活后，每次匹配危险模式的操作前必须 STOP 确认，直到用户说"解除"。**
 
-pi 没有运行时动态注册 hook 的能力，session 级部分用 **skill 正文纪律**模拟——激活后 agent 自我约束，每次危险操作前自检。
+多数 agent 没有运行时动态注册 hook 的能力（session 级无法新增 PreToolUse hook），session 级部分用 **skill 正文纪律**模拟——激活后 agent 自我约束，每次危险操作前自检。
 
 ## When to Use
 
@@ -92,7 +92,7 @@ curl ... | sh   # 执行远程脚本
 - **不与 hazard-guard 重复**：`rm -rf`/`DROP`/`force-push` 等已被 hazard-guard 自动拦，本 skill 不重复 STOP——只覆盖 hazard-guard 模式之外的（chmod -R 777 / curl|sh / 写裸设备）。
 - **STOP 不是拒绝**：STOP 是让用户确认，不是拒绝执行。用户说"确认"就继续——护栏的目的是防误操作不是禁止操作。
 - **不要过度拦截**：只拦高危模式，普通 ls/cat/grep 不拦。过度拦截会让用户烦。
-- **pi 无动态 hook 注册**：session 级部分靠 agent 自我约束模拟，不是真正的 PreToolUse hook（hazard-guard 则是真 hook，全 agent 生效）。
+- **多数 agent 无动态 hook 注册**：session 级部分靠 agent 自我约束模拟，不是真正的 PreToolUse hook（hazard-guard 则是真 hook，全 agent 生效）。
 
 ## Red Flags — STOP
 
@@ -104,6 +104,6 @@ curl ... | sh   # 执行远程脚本
 ## 与其他 skill 的分工
 
 - **hazard-guard hook（always-on 自动挡）**：高危命令（rm -rf / DROP / force-push / kubectl delete 等）的硬拦截 + HITL。本 skill 是 hazard-guard 之外的补充。
-- **delivery-gate**（pi extension）：全局的资产交付门控（写 skill/hook 后验证）。本 skill 是 session 级按需安全护栏。
+- **delivery-gate**：全局的资产交付门控（写 skill/hook 后验证，部分 agent 以扩展形式提供）。本 skill 是 session 级按需安全护栏。
 - **code-review-gate**：代码质量审查。本 skill 是操作安全拦截（防误删/误改）。
 - **systematic-debugging**：调试方法论。调试时配合 /freeze 防止"顺手改了无关代码"。

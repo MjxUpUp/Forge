@@ -274,7 +274,4 @@ AI 生成的原型要上生产，必经以下改造（在 Cursor 里做）：
 
 ## 参考
 
-- 五方工具对比 + 选型决策树：`~/.pi/research/frontend-design-trends-20260621-1400/dive_05.md`
-- SDD 三家方法论 + 四阶段闭环：同目录 `dive_05.md` 第 2 节
-- 可维护性评估清单（6 类）：同目录 `dive_05.md` 第 3 节（→ ai-generated-ui-review 完整版）
 - Addy Osmani 原文：https://addyosmani.com/blog/ai-coding-workflow
