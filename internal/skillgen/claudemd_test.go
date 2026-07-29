@@ -299,3 +299,33 @@ func TestGenerateClaudeMDCarriesSlashCommands(t *testing.T) {
 		t.Error(`CLAUDE.md must not carry the AGENTS.md cross-agent surface line`)
 	}
 }
+
+// TestGenerateClaudeMDCarriesRecurrentHardening locks the recurrence-driven advisory→hard section in
+// the generated CLAUDE.md. Without it an agent on a recurrent project hits the BLOCKED message cold
+// (the whole point of documenting the soft↔hard balance). Guards the claudemd.go generator against
+// silent removal of the section, table-row, and escape-hatch env names.
+//
+// TestGenerateClaudeMDCarriesRecurrentHardening 锁定生成的 CLAUDE.md 里复发驱动 advisory→hard 升硬
+// 小节。无它则复发项目里 agent 会冷不丁撞 BLOCKED（文档化软↔硬平衡的全部意义）。守护 claudemd.go
+// 生成器不静默删小节、表格行与逃生舱 env 名。
+func TestGenerateClaudeMDCarriesRecurrentHardening(t *testing.T) {
+	dir := t.TempDir()
+	if err := GenerateClaudeMD(dir); err != nil {
+		t.Fatalf(`GenerateClaudeMD: %v`, err)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, `.claude`, `CLAUDE.md`))
+	if err != nil {
+		t.Fatalf(`CLAUDE.md not written: %v`, err)
+	}
+	s := string(got)
+	for _, want := range []string{
+		`复发驱动升硬`,
+		`FORGE_RECURRENT_HARDEN=disable`,
+		`FORGE_RECURRENT_THRESHOLD=N`,
+		`复发升 HARD stop`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf(`CLAUDE.md missing recurrence-hardening marker %q`, want)
+		}
+	}
+}
