@@ -7,7 +7,7 @@ description: >
   SKIP: 单页微调（直接改）、从零新建设计系统/Token pipeline 无旧系统（用 design-system-workflow）、只用 Tailwind 不建 design token 的项目、非前端项目。
 metadata:
   pattern: pipeline + gate
-  domain: frontend-design
+  domain: frontend
   steps: 7
   composes: frontend-feature-development, test-discipline, verification-driver
 ---

@@ -3,7 +3,7 @@ name: prototype-confirmation
 description: "动手写真实代码前，把范式/交互方案做成可逐功能点确认的 HTML 原型让用户拍板。Use when: 起底重构/重新设计前端交互/范式级或多功能点方案、用户说'出原型/让我看/让我确认/先看效果/原型给我看/确认形态'、自己想'范式我心里定了直接写代码吧'、改范式级 UI 没先确认形态时、大重构分块实施前。SKIP: 单功能点小改（直接改）、纯后端逻辑无交互形态（直接写）、纯调研出报告（research-workflow）、只改一行配置。"
 metadata:
   pattern: gate
-  domain: product-design-discipline
+  domain: design
   composes: evidence-based-proposal, implementation-discipline
 ---
 

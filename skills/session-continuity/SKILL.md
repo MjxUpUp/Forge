@@ -3,7 +3,7 @@ name: session-continuity
 description: "跨会话开发接力。Use when: 恢复项目工作时、从上次会话中断处继续时、用户说“继续”、“恢复”、“上次到哪了”、“接着做”时。SKIP: 当前会话内已有完整上下文时、纯新项目初始化、当前会话内的任务继续（不需要上下文恢复）、**跨不同 AI 工具交接（用 cross-tool-context）**。"
 metadata:
   pattern: inversion + pipeline
-  domain: workflow-management
+  domain: workflow
   steps: 6
 ---
 

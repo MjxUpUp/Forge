@@ -1,6 +1,6 @@
 ---
 name: code-review-gate
-description: "通用研发代码审查门控（提交前/合并前强制拦截）。Use when: 开发任务完成准备 git commit / push / 提 PR 前、说\"审查代码 / code review / 检查代码质量 / 看看能不能提交 / 代码写得怎么样 / 帮我 review\"时、想拦截 AI 生成的屎山进入主干时、审查任意语言代码变更时。SKIP: 纯测试质量守卫（用 test-discipline）、编译报错（用 compile-fix-loop）、查单一 API/库用法（用 dev-lookup）、运行时 bug 排查（用 systematic-debugging）、项目级验收（用 project-acceptance）。"
+description: "通用研发代码审查门控（提交前/合并前强制拦截）。Use when: 开发任务完成准备 git commit / push / 提 PR 前、说\"审查代码 / code review / 检查代码质量 / 看看能不能提交 / 代码写得怎么样 / 帮我 review\"时、想拦截 AI 生成的屎山进入主干时、审查任意语言代码变更时。SKIP: 纯测试质量守卫（用 test-discipline）、编译报错（用 compile-fix-loop）、查单一 API/库用法（用 dev-lookup）、运行时 bug 排查（用 systematic-debugging）、项目级验收（用 project-acceptance）、可维护性/复杂度规范的 SOP 细则（用 maintainability-and-readability）。"
 metadata:
   pattern: reviewer + gate
   domain: code-review
