@@ -1,6 +1,6 @@
 ---
 name: doc-generator
-description: "按模板 + 变量填空生成结构化文档（PRD/周报/验收报告/会议纪要/技术方案等）。Use when: 用户要生成或起草 PRD、需求文档、周报、日报、验收报告、会议纪要、技术方案、发布说明等结构化文档时、说\"帮我写一份XXX\"\"生成XXX文档\"\"起草XXX\"时。SKIP: 调研报告（用 research-workflow，含多 agent 检索）、架构决策记录（用 architecture-decision-record）、技术方案论证（用 evidence-based-proposal，管可行性验证；本 skill 只管按模板生成文档）、代码生成（直接写代码）。"
+description: "按模板 + 变量填空生成结构化文档（PRD/周报/验收报告/会议纪要/技术方案等）。Use when: 用户要生成或起草 PRD、需求文档、周报、日报、验收报告、会议纪要、技术方案、发布说明等结构化文档时、说\"帮我写一份XXX\"\"生成XXX文档\"\"起草XXX\"时。SKIP: 调研报告（用 research-workflow，含多 agent 检索）、架构决策记录（用 architecture-decision-record）、技术方案论证（用 evidence-based-proposal，管可行性验证；本 skill 只管按模板生成文档）、代码生成（直接写代码）、设计产物该有什么的质量标准自查（用 design-artifact-standards；producer-chain 先填骨架后查达标）。"
 metadata:
   pattern: generator + inversion
   domain: documentation

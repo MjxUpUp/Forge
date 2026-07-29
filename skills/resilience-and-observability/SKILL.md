@@ -3,7 +3,7 @@ name: resilience-and-observability
 description: "韧性与可观测性强制规范：SLO/Error Budget (Google SRE) / 4 golden signals / RED+USE / Trace propagation / 结构化日志 / 告警哲学（multi-window burn rate）/ Circuit Breaker / Retry / Bulkhead / Backpressure / Rate Limit / Timeout chain。Use when: 设计服务 SLO、设置 Grafana dashboard、写告警规则、加熔断限流、调试跨服务性能、review 故障树、postmortem 时。SKIP: 单 API 设计（用 backend-development）/ 单 DB schema（用 database-design）/ 纯安全编码（用 secure-coding）。"
 metadata:
   pattern: tool-wrapper
-  domain: resilience
+  domain: operations
   composes: [systematic-debugging, backend-development, integration-test-architecture, code-review-gate, verification-driver]
 ---
 

@@ -1,15 +1,15 @@
 ---
 name: maintainability-and-readability
-description: "可维护性与可读性强制规范：cyclomatic/cognitive 复杂度 + function size + naming + SOLID 5 原则 + Clean Code + 模块依赖 + 工具链（linter/SAST）。Use when: code review 含复杂度报警、写新代码/重构、refactor 老代码、设 CI 质量门槛、写 ADR 关于代码风格、给团队立规范时。SKIP: 单 API 设计细节（用 backend-development）/ 单组件实现（用 frontend-development）/ 安全/性能（用 secure-coding + resilience-and-observability）。"
+description: "可维护性与可读性强制规范：cyclomatic/cognitive 复杂度 + function size + naming + SOLID 5 原则 + Clean Code + 模块依赖 + 工具链（linter/SAST）。Use when: code review 含复杂度报警、写新代码/重构、refactor 老代码、设 CI 质量门槛、写 ADR 关于代码风格、给团队立规范时。SKIP: 单 API 设计细节（用 backend-development）/ 单组件实现（用 frontend-feature-development）/ 安全/性能（用 secure-coding + resilience-and-observability）、提交前 diff 审查门控（用 code-review-gate）。"
 metadata:
   pattern: tool-wrapper
-  domain: maintainability
-  composes: [code-review-gate, implementation-discipline, systematic-debugging, backend-development, frontend-development]
+  domain: development
+  composes: [code-review-gate, implementation-discipline, systematic-debugging, backend-development, frontend-feature-development]
 ---
 
 # 可维护性与可读性规范
 
-> **本 skill 不重复**: 单 API 设计 → `backend-development`；单组件实现 → `frontend-development`；CI/CD / 部署 → `release-readiness`。本 skill 解决"按 SOP 写出/重构易读易维护代码"——含 cyclomatic + cognitive 复杂度指标 + SOLID + 工具链。
+> **本 skill 不重复**: 单 API 设计 → `backend-development`；单组件实现 → `frontend-feature-development`；CI/CD / 部署 → `release-readiness`。本 skill 解决"按 SOP 写出/重构易读易维护代码"——含 cyclomatic + cognitive 复杂度指标 + SOLID + 工具链。
 
 ## 1. 决策树
 

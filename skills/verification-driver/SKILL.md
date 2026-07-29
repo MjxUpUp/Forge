@@ -3,7 +3,7 @@ name: verification-driver
 description: "驱动外部工具对产物做端到端验证（API 实测、CLI 驱动、docker 集成、HTTP 断言）。Use when: 需要验证 HTTP API/CLI 工具/docker 服务/集成链路是否真正工作（而非单元测试通过）、声称功能完成前要做端到端验证、用户说\"验证下能不能用\"\"测一下实际效果\"\"端到端测\"时。SKIP: 单元测试质量守卫（用 test-discipline）、TDD 循环（用 tdd-cycle）、纯编译错误（用 compile-fix-loop）、调试 bug 根因（用 systematic-debugging）。"
 metadata:
   pattern: pipeline + reviewer
-  domain: verification
+  domain: testing
   triggers: [{"event":"Stop","when":"task_active_no_review"}]
 ---
 

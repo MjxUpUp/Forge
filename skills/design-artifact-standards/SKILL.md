@@ -1,6 +1,6 @@
 ---
 name: design-artifact-standards
-description: "设计产物编写期的质量标准入口，按产物类型路由到对应环节清单（phase-*.md）。Use when: 写设计产物——PRD/需求文档/user story（requirement）｜API 契约/OpenAPI/proto/接口定义（api）｜建表/migration/schema（database）｜页面/组件/路由设计（frontend）｜service/domain/业务逻辑设计（backend）｜测试方案/用例/计划（test-design）——按对应清单搭骨架并自查。SKIP: 代码实现怎么写（backend-development/database-design/frontend-development/system-architecture 管 HOW，本 skill 管产物该有什么）、代码或产物审查（code-review-gate）、查事实（fact-research）、需求未清要先澄清（requirement-clarification）。"
+description: "设计产物编写期的质量标准入口，按产物类型路由到对应环节清单（phase-*.md）。Use when: 写设计产物——PRD/需求文档/user story（requirement）｜API 契约/OpenAPI/proto/接口定义（api）｜建表/migration/schema（database）｜页面/组件/路由设计（frontend）｜service/domain/业务逻辑设计（backend）｜测试方案/用例/计划（test-design）——按对应清单搭骨架并自查。SKIP: 代码实现怎么写（backend-development/database-design/frontend-feature-development/system-architecture）、代码或产物审查（code-review-gate）、查事实（fact-research）、需求未清要先澄清（requirement-clarification）、按模板批量填空生成文档（用 doc-generator；producer-chain 先填骨架后查达标）。"
 metadata:
   pattern: routing
   domain: design
@@ -17,7 +17,7 @@ phase-*.md 是「好设计产物该有什么」的标准清单（IEEE 830 / Goog
 
 - **编写期一次到位 > 写完审查退回**：返工是最贵的质量成本。审查期才发现缺验收条件 / Out of Scope = 推倒重来；编写期按骨架搭 = 一轮过。
 - **phase-*.md 当骨架用，不是事后 checklist**：动笔前读，按它的维度章节组织产物；不是写完才翻它打勾。
-- **本 skill 管「产物该有什么」，不管「代码怎么写」**：实现模式 / 框架用法归 backend-development / database-design / frontend-development / system-architecture。两件事不重叠。
+- **本 skill 管「产物该有什么」，不管「代码怎么写」**：实现模式 / 框架用法归 backend-development / database-design / frontend-feature-development / system-architecture。两件事不重叠。
 
 ## 为什么编写期就要用
 
@@ -51,7 +51,7 @@ phase-*.md 是「好设计产物该有什么」的标准清单（IEEE 830 / Goog
 ## 与其他 skill 的分工
 
 - **code-review-gate**：审查期消费者。步骤 1.5 据 task 的 `DesignPhases` 加载同一批 phase-*.md 做审查。本 skill 是编写期生产者——标准共用，阶段不同。
-- **backend-development / database-design / frontend-development / system-architecture**：管「HOW 写代码」（实现模式、框架用法、架构选型）。本 skill 管「产物是否达标」（该有什么、是否满足机械规则）。写代码前先看开发 skill 学怎么写；写设计产物时看本 skill 学该有什么。
+- **backend-development / database-design / frontend-feature-development / system-architecture**：管「HOW 写代码」（实现模式、框架用法、架构选型）。本 skill 管「产物是否达标」（该有什么、是否满足机械规则）。写代码前先看开发 skill 学怎么写；写设计产物时看本 skill 学该有什么。
 - **doc-generator**：按模板填空生成结构化文档。与本 skill 是 **producer-chain**：doc-generator 先按模板填出结构骨架，本 skill 再按 phase-*.md 标准自查达标度——非互斥，先填后查。
 - **requirement-clarification**：需求本身不清时澄清。本 skill 假设需求已清，管需求文档的编写质量；若需求还没想清楚，先 SKIP 到 requirement-clarification 澄清，再回来写文档。
 - **evidence-based-proposal**：出技术方案要基于实际验证。本 skill 管方案产物（如 API 设计文档）的达标，不管方案论证过程。

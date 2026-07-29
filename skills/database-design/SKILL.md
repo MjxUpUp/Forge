@@ -1,9 +1,9 @@
 ---
 name: database-design
-description: "数据库 schema / migration / 索引 / 查询优化 / ORM 选型强制规范。Use when: 设计新 schema、写 migration、加索引、调慢查询、选 ORM/查询库、写数据库相关 ADR 时。SKIP: 应用层业务逻辑（用 backend-development）/ 表单/UI（用 frontend-development）/ 后端 API 设计（用 backend-development）。"
+description: "数据库 schema / migration / 索引 / 查询优化 / ORM 选型强制规范。Use when: 设计新 schema、写 migration、加索引、调慢查询、选 ORM/查询库、写数据库相关 ADR 时。SKIP: 应用层业务逻辑（用 backend-development）/ 表单/UI（用 frontend-feature-development）/ 后端 API 设计（用 backend-development）。"
 metadata:
   pattern: tool-wrapper
-  domain: database
+  domain: backend
   composes: [integration-test-architecture, verification-driver, backend-development, code-review-gate]
 ---
 
