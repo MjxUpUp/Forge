@@ -211,7 +211,19 @@ var skillRefAllowlist = map[string]bool{
 	// code-review-gate 非正式简称（code-review-gate 的缩写引用）
 	`code-review`: true,
 	// 外部 lark skill（用户全局 skill，非 Forge canonical）
-	`lark-workflow-meeting-summary`: true,
+	`lark-workflow-meeting-summary`: true, `lark-doc`: true,
+	// CSS 属性 / 媒体查询（纳入的 frontend/design specialist 文档引用，非 skill）
+	`grid-template-columns`: true, `box-shadow`: true, `backdrop-filter`: true,
+	`background-image`: true, `prefers-reduced-motion`: true,
+	// HTML / data 属性（非 skill）
+	`aria-label`: true, `data-testid`: true, `data-palette`: true,
+	// 工具（非 skill）
+	`axe-core`: true,
+	// 命名示例（token / store / 组件 / 品牌风格 / 快照，非 skill）
+	`bg-brand-primary`: true, `cart-store`: true, `pulse-dot`: true, `active-stripe`: true,
+	`dell-1996`: true, `nintendo-2001`: true, `bmw-m`: true, `snapshot-2026-06-21-pre-redesign`: true,
+	// API key 占位符示例（非 skill）
+	`sk-xxx`: true,
 }
 
 // TestSkills_NoDanglingSkillRefs guard C: every backtick-wrapped multi-segment kebab
