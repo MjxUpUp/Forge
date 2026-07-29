@@ -3,7 +3,7 @@ name: cross-tool-context
 description: "跨 AI 工具上下文共享约定：在项目根维护 AI_CONTEXT.md，让各 AI 工具（Claude Code / Cursor / Codex / Cline 等）发现的问题、修改、决策互相可见，消除手动复制粘贴。Use when: 同时用多个 AI 工具开发同一项目时、把 A 工具的分析结果搬给 B 工具时、说\"其他 agent 分析出的问题\"\"把这个给别的工具看\"\"工具间传递上下文\"时、多工具协作发现信息不对称时。SKIP: 单工具内跨会话恢复（用 session-continuity）、纯新项目无多工具协作、临时单次问题直接口头说即可。"
 metadata:
   pattern: tool-wrapper
-  domain: workflow-management
+  domain: workflow
 ---
 
 # 跨工具上下文共享

@@ -1,9 +1,9 @@
 ---
 name: design-audit
-description: "飞书设计文档→代码落地审计：判断设计文档里的功能在代码里落地了几个（LANDED/PARTIAL/MISSING 三态判决）。Use when: 给飞书 wiki/docx 设计文档链接要对比代码实现程度时、判断功能 landing 状态时、做设计 vs 实现 gap 分析时、说\"看下实现程度\"\"对比设计稿\"\"哪些没做\"\"landing 了吗\"\"缺口分析\"时。SKIP: 单个功能实现（用 frontend-feature-development）、提交前 diff 审查（用 code-review-gate）、整项目批量审查编排（用 review-batch）、把代码反向导成设计图（用 design-review-snapshot）、纯调研不对比代码（用 research-workflow）。"
+description: "飞书设计文档→代码落地审计：判断设计文档里的功能在代码里落地了几个（LANDED/PARTIAL/MISSING 三态判决）。Use when: 给飞书 wiki/docx 设计文档链接要对比代码实现程度时、判断功能 landing 状态时、做设计 vs 实现 gap 分析时、说\"看下实现程度\"\"对比设计稿\"\"哪些没做\"\"landing 了吗\"\"缺口分析\"时。SKIP: 单个功能实现（用 frontend-feature-development）、提交前 diff 审查（用 code-review-gate）、整项目批量审查编排（用 review-batch）、把代码反向导成设计图（用 design-review-snapshot）、纯调研不对比代码（用 research-workflow）、整项目验收编排（用 project-acceptance）。"
 metadata:
   pattern: pipeline
-  domain: acceptance
+  domain: quality-assurance
 ---
 
 # 设计文档 → 代码落地审计

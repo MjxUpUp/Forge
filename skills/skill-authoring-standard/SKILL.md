@@ -3,7 +3,7 @@ name: skill-authoring-standard
 description: "Skill 编写规范。Use when: 创建新 skill 时、修改现有 skill 时、编写 skill 的 description 字段时、组织 skill 目录结构时、验证 skill 质量时。SKIP: 不涉及 skill 文件编写的工作。"
 metadata:
   pattern: tool-wrapper
-  domain: skill-authoring
+  domain: skill-engineering
 ---
 
 # Skill 编写规范
@@ -18,7 +18,7 @@ name: kebab-case-name        # 必须与目录名一致，^[a-z][a-z0-9-]*$
 description: "≥80字符的触发器描述  # 见下方 description 规范"
 metadata:
   pattern: <pattern-name>    # 可选：pipeline / reviewer / gate / tool-wrapper / inversion
-  domain: <domain-name>      # 可选：领域标签
+  domain: skill-engineering
   steps: <number>            # 可选：步骤数
   composes: <skill-list>     # 可选：组合的其他 skill（本地 skill 名，勿引外部 plugin: 命名空间）
 ---
