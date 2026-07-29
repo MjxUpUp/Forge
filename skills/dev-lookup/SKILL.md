@@ -19,22 +19,25 @@ metadata:
 | 产出 | inline 答案 + URL | run_dir 报告 + 飞书发布 |
 | 互证 | 不做 | 四档信度分级 |
 
-## pi 本机检索基线（实测）
+## 检索基线（按 agent 能力）
 
-pi 无 web_search/web_fetch/browser 内置工具，联网只能 bash curl。本机实测：
+**先看你的 agent 联网能力**：
+- **有内置 `web_search`/`web_fetch`** → 直接搜索抓取，官方文档/SE/crates.io 可直达，无需 curl
+- **无内置联网工具（联网只能 bash curl）** → 走下方定向源（官方文档站 curl + gh + 包仓库 API + SE API）
+
+curl 定向源参考（与 agent 无关，按你的网络自检为准）：
 
 | 通道 | 状态 | 用途 |
 |---|---|---|
-| 官方文档站 curl（MDN/python/node/react/docs.rs/go/k8s） | ✅ 全通 | 查 API/语法/错误码 |
-| `gh` CLI（已认证 5000/h） | ✅ | 找代码示例/issues/README |
-| 包仓库 API（crates.io / npm registry） | ✅ | 查包元数据/版本/依赖 |
-| Stack Exchange API（api.stackexchange.com） | ✅ | 查报错的社区解法 |
-| Bing 搜索结果页 | ⚠️ 可抓但链接质量差，需大量二次筛选 | 仅作兜底 |
-| 百度 | ❌ 验证码墙（技术英文词直接被拦） | 别用 |
-| Stack Overflow 网页版 | ❌ 403 反爬 | 用 SE API 替代 |
-| Jina Reader / JS 渲染源 | ❌ 超时 | 别用 |
+| 官方文档站 curl（MDN/python/node/react/docs.rs/go/k8s） | ✅ 通常通 | 查 API/语法/错误码 |
+| `gh` CLI（认证后 5000/h） | ✅（需装+认证） | 找代码示例/issues/README |
+| 包仓库 API（crates.io / npm registry） | ✅ 通常通 | 查包元数据/版本/依赖 |
+| Stack Exchange API（api.stackexchange.com） | ✅ 通常通 | 查报错的社区解法 |
+| Bing/百度 搜索结果页 | ⚠️ 反爬/验证码墙，质量差 | 仅作兜底 |
+| Stack Overflow 网页版 | ❌ 常返 403 | 用 SE API 替代 |
+| Jina Reader / JS 渲染源 | ❌ 常超时 | 有 browser 工具的 agent 可直接渲染抓 |
 
-**核心纪律**：走官方文档站 + gh + 包仓库 API + SE API 这四条主路，它们精准且本机可靠。别碰百度/SO 网页/Jina。
+**核心纪律**：走官方文档站 + gh + 包仓库 API + SE API 这四条主路，它们精准可靠。有内置 `web_search` 的 agent 优先用内置搜索补充；curl agent 别碰 SO 网页/Jina/通用搜索引擎结果页。
 
 ## 按问题类型选检索路径
 
@@ -128,12 +131,11 @@ gh search repos "{关键词}" --language {lang} --sort stars --limit 5
       建议用户：给出可手动验证的关键词，或说明需要联网检索环境
 ```
 
-**禁止的无效尝试**（本机确定失败，别浪费时间）：
-- ❌ `web_search` / `web_fetch` / `browser`（pi 无此内置工具）
-- ❌ curl 百度搜技术词（验证码墙）
+**curl agent 的无效尝试**（别浪费时间；有内置搜索的 agent 不受此限）：
+- ❌ curl 百度/Bing 搜技术词（验证码墙/质量差）
 - ❌ curl Stack Overflow 网页版（403）
-- ❌ curl r.jina.ai（超时）
-- ❌ curl Google/Bing/DuckDuckGo/SearX（本机超时，走 web-search-bridge 的 API 桥接）
+- ❌ curl r.jina.ai（常超时）
+- ❌ curl Google/Bing/DuckDuckGo/SearX 结果页（常超时；通用搜索走 web-search-bridge 的 API 桥接，或用 agent 内置 web_search）
 
 ## 输出格式
 
@@ -161,7 +163,7 @@ gh search repos "{关键词}" --language {lang} --sort stars --limit 5
 ## Gotchas（高信号）
 
 - **gh 优先于 curl 抓 github**：gh 已认证（5000/h）且结构化，curl 抓 github 页面拿到的是 HTML 壳
-- **JS 渲染源直接放弃**：Twitter/小红书/LinkedIn 在本机不可采（Jina 超时、无 browser），不要用 curl 硬抓 JS 壳，找替代源（官方公告/新闻转载/学术镜像）
+- **JS 渲染源（curl agent 不可采）**：Twitter/小红书/LinkedIn 用 curl 只能拿到 JS 壳（Jina 易超时）；有 browser 工具的 agent 可直接渲染抓，curl agent 找替代源（官方公告/新闻转载/学术镜像）
 - **百度搜技术英文词会被验证码墙**：技术检索别用百度，走官方文档站/gh/SE API
 - **Stack Overflow 网页版 403**：用 SE API（api.stackexchange.com）不反爬，不要抓网页
 - **正文 <500 字符视为失败**：curl 抓到反爬页/验证页常返 200 但内容空，看长度不看状态码

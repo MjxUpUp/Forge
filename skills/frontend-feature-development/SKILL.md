@@ -134,9 +134,3 @@ metadata:
 - 用 AI 工具生成组件 → **ai-ui-generation-workflow**
 - 跨 Rust+前端全栈 → **fullstack-feature**
 - 验证方法学 → **verification-driver**
-
-## 参考
-
-- 组件 API 范式详细对比：`~/.pi/research/frontend-design-trends-20260621-1400/dive_03.md`（Base UI vs Radix / React Aria hooks vs components）
-- a11y + reduced-motion 合规实操：同目录 `dive_04.md`（WCAG 2.2 SC 2.3.3 / C39 代码模板）
-- TS strict 完整配置：同目录 `dive_01.md`
