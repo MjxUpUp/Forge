@@ -3,7 +3,7 @@ name: docs-consistency-guard
 description: "给手维护的衍生文档（README 命令表/hook 表/配置项表/feature 列表/API 示例/版本徽章/平台支持表）建立守卫测试，钉住它不落后于代码真相源。Use when: 文档里有会随代码变化的列表或计数；发布前审计文档与代码是否一致；遇到'文档说 8 个但代码只注册 7 个'这类漂移；想给某段手维护文档加自动化防漂移。SKIP: 纯叙述无代码真相源的文档、一次性临时文档、代码逻辑设计审查（用 code-review-gate）、API 签名查证（用 dev-lookup）。"
 metadata:
   pattern: tool-wrapper
-  domain: docs-quality
+  domain: documentation
 ---
 
 # 衍生文档一致性守卫

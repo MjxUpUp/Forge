@@ -3,7 +3,7 @@ name: skill-routing
 description: "强制 skill 路由：把用户输入按关键词映射到对应 skill，避免 agent 瞎搞不走 skill。Use when: 配置/排查/理解各 agent(claude/cursor/codex) 的 skill 强制路由机制时、改路由表时、路由不生效排查时、给新 agent 接 skill 路由时、用户输入没命中预期 skill 时。SKIP: 写具体 skill 内容（用 skill-authoring-standard）、skill 质量审查（用 forge skills audit）、跨会话上下文恢复（用 session-continuity）。"
 metadata:
   pattern: tool-wrapper
-  domain: agent-routing
+  domain: skill-engineering
 ---
 
 # 强制 Skill 路由

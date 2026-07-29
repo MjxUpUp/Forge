@@ -96,6 +96,13 @@ metadata:
 
 → 详细端到端验证用 **verification-driver**；断言守卫用 **test-discipline**。
 
+## 实现细节参考（references）
+
+阶段 2 实现时的状态归属、性能、命名、自查清单速查见 [references/component-checklist.md](references/component-checklist.md)（合并自原 frontend-development 的规范速查）：
+- 状态决策树（local / lifted / global store / 服务端缓存 / 表单态）
+- 性能自检清单（key / hooks 依赖 / 虚拟化 / lazy load / bundle）
+- 命名（kebab-case + 功能描述）+ Post-Generation 自查 + 易错 Gotchas
+
 ## Common Rationalizations（堵借口）
 
 | 借口 | 现实 |

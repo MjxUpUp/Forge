@@ -3,7 +3,7 @@ name: requirement-clarification
 description: "把模糊需求澄清为清晰、可执行、可验收的规格。Use when: 用户说\"帮我做个X\"但只给一句话时、需求模糊或存在歧义时、隐性假设需要暴露时、验收条件不可测时、范围边界或 Out of Scope 不清时、需求评审前、\"做完了\"的标准未定义时、听到\"需求应该清楚吧\"但实际没文档时。SKIP: 需求变量已全部明确只缺 PRD 文档结构（用 doc-generator 管按模板填空，本 skill 管澄清未知）、要做技术方案选型或可行性论证（用 evidence-based-proposal 管\"怎么做\"，本 skill 管\"做什么\"）、需求已清晰直接进入编码（用 implementation-discipline）、要进入 Plan Mode 整体规划（用 dev-workflow，它是规划编排器，本 skill 是它规划前的需求澄清原子能力）。"
 metadata:
   pattern: inversion
-  domain: requirement-engineering
+  domain: development
 ---
 
 # 需求澄清（模糊→可验收规格）

@@ -3,7 +3,7 @@ name: session-retrospective
 description: "会话或主线任务结束时（或任务中发现值得记的教训时）回顾协作经验，路由到正确载体（memory/skill/代码/hook/CI）并按规范写入，防止经验流失或沉淀错载体。Use when: 一个主线任务或会话结束时；用户说'回顾下这次/沉淀经验/总结教训/这个教训记下来/更新CLAUDE.md/避免下次再犯'；修复反复出现的 bug 后；发现新的易错模式；判断一条经验该记 memory 还是做 skill 还是自动化成代码。SKIP: 任务尚未结束且无即时教训、纯 bug 修复无普遍教训（直接 fix）、用户只要简单确认无需沉淀。"
 metadata:
   pattern: pipeline + gate
-  domain: knowledge-distillation
+  domain: workflow
 ---
 
 # 会话经验沉淀

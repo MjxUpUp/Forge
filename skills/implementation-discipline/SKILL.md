@@ -3,7 +3,7 @@ name: implementation-discipline
 description: "代码实施任务的全程纪律编排。Use when: 接到编码任务准备动手时、写实现代码前、准备 git commit / push / 提 PR 前、声称\"完成了/搞定了/可以了/验证通过了\"前、用户问\"做完了吗/验证了吗/能提交吗/提交代码\"时、长任务中途怀疑走偏或凭记忆猜类型 API 时、接到范式级重构或交互重设计任务时。SKIP: 纯调研出报告（research-workflow）、单一运行时 bug 根因（systematic-debugging）、纯编译错误修复（compile-fix-loop）、纯架构决策记录（architecture-decision-record）、只需规划不需执行纪律（dev-workflow）、只改一行配置验证一下。"
 metadata:
   pattern: pipeline + gate
-  domain: development-discipline
+  domain: development
   composes: prototype-confirmation, evidence-based-proposal, tdd-cycle, test-discipline, verification-driver, code-review-gate, systematic-debugging, dev-lookup, release-readiness
   triggers: [{"event":"UserPromptSubmit","when":"coding_intent"},{"event":"Stop","when":"source_changed_uncommitted"}]
 ---

@@ -3,7 +3,7 @@ name: reverse-engineering-patterns
 description: "源码逆向工程方法论。Use when: 需要从现有项目中提取设计智慧时、分析开源项目架构时、为项目参考其他系统的设计模式时、逆向分析编译产物或混淆代码时。SKIP: 已有清晰文档的项目、用户直接给出设计方案时。"
 metadata:
   pattern: pipeline
-  domain: code-analysis
+  domain: architecture
   steps: 3
 ---
 

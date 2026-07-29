@@ -1,6 +1,6 @@
 ---
 name: system-architecture
-description: "系统架构强制规范：服务拆分（单体/模块化/微服务）/ Bounded Context（DDD）/ C4 模型（System Context/Container/Component/Code）/ ADR 模板 / 12-Factor App 云原生。Use when: 设计新系统、拆分微服务边界、画架构图、写/审 ADR、决定单体 vs 模块化 vs 微服务、评估技术栈生死抉择时。SKIP: 单个 API 设计（用 api-design 类——backend-development）/ 写组件级代码（用 frontend-development 或 backend-development）/ 部署 CI/CD（用 release-readiness）。"
+description: "系统架构强制规范：服务拆分（单体/模块化/微服务）/ Bounded Context（DDD）/ C4 模型（System Context/Container/Component/Code）/ ADR 模板 / 12-Factor App 云原生。Use when: 设计新系统、拆分微服务边界、画架构图、写/审 ADR、决定单体 vs 模块化 vs 微服务、评估技术栈生死抉择时。SKIP: 单个 API 设计（用 api-design 类——backend-development）/ 写组件级代码（用 frontend-feature-development 或 backend-development）/ 部署 CI/CD（用 release-readiness）。"
 metadata:
   pattern: tool-wrapper
   domain: architecture

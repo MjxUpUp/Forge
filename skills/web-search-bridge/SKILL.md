@@ -3,7 +3,7 @@ name: web-search-bridge
 description: "通用网络搜索桥接：当 dev-lookup/fact-research/research-workflow 的定向源（官方文档/包仓库/社区API）查不到、需要通用搜索引擎时调用。Use when: 定向源查不到某非技术事实、需要全网搜索、要桥接 Tavily/Serper/Exa/Brave Search API 时、其他调研 skill 降级链末位、说\"全网搜一下\"\"Google 一下\"时。SKIP: 技术问题（dev-lookup）、轻量事实交叉（fact-research）、深度调研报告（research-workflow）、本机已可用的定向源（直接用）。"
 metadata:
   pattern: routing + fallback
-  domain: search
+  domain: research
   tier: bridge
 ---
 

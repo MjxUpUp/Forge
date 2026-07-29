@@ -3,7 +3,7 @@ name: release-readiness
 description: "发布/上线前的 readiness 门禁清单（能安全上线吗）。Use when: 准备发布/上线/打 tag/发版/灰度时、用户问'能上线了吗'/'可以发布了吗'/'发布前检查'/'上线前 check 一遍'时、版本号已 bump 准备 tag 时、Release 截止前的 go/no-go 评审时。SKIP: 项目功能验收/PRD 对比/完整度审查（用 project-acceptance）、文档 vs 代码一致性专项（用 docs-consistency-guard）、单次 diff 代码审查（用 code-review-gate）、编码任务交付纪律（用 implementation-discipline）、运行时 bug 排查（用 systematic-debugging）。"
 metadata:
   pattern: gate
-  domain: release-engineering
+  domain: operations
   composes: docs-consistency-guard
 ---
 
