@@ -64,7 +64,7 @@ fi
 
 ## 按内容类型选采集方式（路由表）
 
-| 内容类型 | 首选方式 | curl agent | 备注 |
+| 内容类型 | 首选方式 | 本机可用 | 备注 |
 |---|---|---|---|
 | 已知 URL 的静态页/文档 | `curl -sL URL -H "User-Agent: Mozilla/5.0"` | ✅ | 加 `-L` 跟跳转；正文 >500 字符才算成功 |
 | GitHub repo/issue/code | `gh search repos/code`、`gh repo view`、`gh api` | ✅ | **已认证，最可靠**。优先用 gh 而非 curl 抓 github |
