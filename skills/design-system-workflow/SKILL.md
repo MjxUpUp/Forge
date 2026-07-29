@@ -1,6 +1,6 @@
 ---
 name: design-system-workflow
-description: "Design Token 与设计系统建设的端到端工作流：Figma(Tokens Studio) / Pixso(原生 tokens + MCP) / PenPot → DTCG 2025.10 格式 → Style Dictionary → CSS 变量/iOS/Android，含 OKLCH 双主题、shadcn registry 集成与治理。Use when: 建设计系统、管 design token、Figma/Pixso/PenPot 到代码 token 同步、OKLCH 主题切换、shadcn registry 集成、多端 token 流转、composite token 处理、token 命名规范、design system 治理时。SKIP: 选什么组件库（用 frontend-stack-selection）、单点查 Tailwind/@theme API（用 dev-lookup）、纯视觉审美执行（无强流程）、动手写普通组件（用 frontend-feature-development）、改造/迁移已有设计系统或旧 token 换新色板（用 design-system-migration）。"
+description: "Design Token 与设计系统建设端到端工作流：Figma/Pixso/PenPot → DTCG 2025.10 → Style Dictionary → CSS/iOS/Android，含 OKLCH 双主题与 shadcn registry 治理。Use when: 建/管 design token、设计工具到代码 token 同步、OKLCH 主题切换、shadcn registry 集成、多端 token 流转、composite token 处理、token 命名与 design system 治理时。SKIP: 选组件库（frontend-stack-selection）、纯视觉审美执行（frontend-aesthetics-execution）、写普通组件（frontend-feature-development）、查 Tailwind/@theme API（dev-lookup）、迁移旧设计系统/换色板（design-system-migration）。"
 metadata:
   pattern: pipeline + gate
   domain: frontend
