@@ -3,7 +3,7 @@ name: dev-workflow
 description: "开发工作流编排：Plan Mode 先规划后执行。Use when: 开始新功能、规划开发阶段、用户需要指导下一步、项目初始化检测技术栈、用户说\"plan mode\"\"/goal\"\"出计划\"\"先规划再写代码\"时。SKIP: 已有明确实现计划直接执行（用 agent-delegation）、只需调试（用 systematic-debugging）、提技术方案（用 evidence-based-proposal）、执行期纪律自检（用 implementation-discipline）、单步小改（直接做，不需要编排）、用户已明确说了'做X'且X简单直接（不触发编排）。"
 metadata:
   pattern: inversion + pipeline
-  domain: development-process
+  domain: development
   composes: requirement-clarification, agent-delegation, systematic-debugging, tdd-cycle, test-discipline, evidence-based-proposal, session-continuity, architecture-decision-record
 ---
 
