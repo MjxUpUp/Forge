@@ -557,6 +557,43 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 			}
 		}
 
+		// unused-scan (advisory): layer-1 wiring detection — newly-added exported symbols (Go
+		// func/type/method, TS export, Rust pub) that no production line in this task references.
+		// Catches "implemented but never wired" (Forge's own BUG-1: inferDesignPhases had zero
+		// production callers — dead code, surfaced only by review). Unit tests verify the
+		// implementation, not the wiring — a broken wire leaves tests green and the feature dead;
+		// this scan exposes it mechanically. Advisory (library/reflection/external-consumer exports
+		// legitimately have no in-repo caller); never blocks. CheckUnusedScan is excluded from
+		// BuildEvidenceChain — an observation, not verification evidence (same as cheat-scan).
+		// Layer-2 (referenced but semantically unwired — registered but never instantiated) is not
+		// mechanically decidable → stays with the LLM reviewer / code-review-gate.
+		//
+		// unused-scan (advisory)：层 1 接线检测——本次新增的导出符号（Go func/type/method、
+		// TS export、Rust pub）在本任务生产代码里零引用。抓"实现了但没接线"（Forge 自己的
+		// BUG-1：inferDesignPhases 零生产调用方——dead code，靠 review 才浮出）。单测验实现
+		// 不验接线——接线一断测试照绿、功能已死；本扫描机械暴露。advisory（库/反射/外部消费
+		// 的导出合法地无仓内调用方）；绝不阻塞。CheckUnusedScan 在 BuildEvidenceChain 中排除——
+		// 观测非验证证据（同 cheat-scan）。层 2（引用了但语义没接通——注册了但从未实例化）
+		// 机械不可判 → 仍归 LLM reviewer / code-review-gate。
+		unused := ScanUnusedSymbols(root, state)
+		checklog.Record(root, &checklog.Entry{
+			Check:   checklog.CheckUnusedScan,
+			Passed:  len(unused) == 0,
+			Checked: true,
+			TaskRef: state.TaskRef,
+			Detail:  unusedScanDetail(unused),
+		})
+		if len(unused) > 0 {
+			fmt.Fprintf(os.Stderr, "%s"+`unused-scan 发现 %d 个疑似未接线的导出符号（advisory 不阻塞；层1机械检测：确认已挂入调用链/registry/路由，或属外部消费者则忽略）`+"\n", GateAdvisory("[task-verify] "), len(unused))
+			for _, u := range unused {
+				loc := u.File
+				if u.Line > 0 {
+					loc = u.File + ":" + strconv.Itoa(u.Line)
+				}
+				fmt.Fprintf(os.Stderr, "  ⚠ [%s] %s — %s\n", u.Kind, loc, u.Symbol)
+			}
+		}
+
 		// test-capability scan (advisory): when the repo has runnable tests, suggest the agent
 		// actually execute them before verify. Supplements task-verify's 'did you run them'
 		// dimension — the test-coverage above only checks 'tests accompany changes' (wrote a
