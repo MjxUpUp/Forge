@@ -163,7 +163,7 @@ func BuildEvidenceChain(entries []Entry, taskRef string) EvidenceChain {
 		// 证据。CheckEscapeHatch 同类：用过 gate-bypass 是「跳过」的观察、不是「验证」——
 		// 当成 deterministic 会让 Strength 虚高、正好隐藏它该暴露的信号（task 靠躲 gate
 		// 蒙混过关）。它置 UsedEscapeHatch，让 Strength 能 cap 到 Weak。
-		if e.Check == CheckScopeDrift || e.Check == CheckCheatScan || e.Check == CheckEscapeHatch {
+		if e.Check == CheckScopeDrift || e.Check == CheckCheatScan || e.Check == CheckUnusedScan || e.Check == CheckEscapeHatch {
 			if e.Check == CheckEscapeHatch {
 				ec.UsedEscapeHatch = true
 			}
