@@ -43,6 +43,26 @@ const (
 	// 可能，留痕供 review 核查）。本记录把"机械可检的作弊"从 LLM-review 每轮重采样
 	// 抽到一次性 deterministic 判决——对冲"每轮 review 冒新问题"的根因。
 	CheckCheatScan CheckName = "cheat-scan"
+	// CheckUnusedScan records advisory unreferenced-export scan results: at task-verify, mechanically
+	// detects newly-added exported symbols (Go func/type/method, TS export, Rust pub) that no
+	// production line in this task references — suspected "implemented but never wired" (layer-1
+	// wiring detection). Unit tests verify the implementation, not the wiring; a broken wire leaves
+	// tests green and the feature dead (Forge's own BUG-1: inferDesignPhases had zero production
+	// callers). deterministic (the gate computes ScanUnusedSymbols, agent cannot forge). Passed
+	// semantics: no unreferenced export=true, hit=false—but always Checked=true and never blocks
+	// (advisory; library/reflection/external-consumer exports legitimately have no in-repo caller,
+	// the trail is left for review). Layer-2 (referenced but semantically unwired) is not mechanically
+	// decidable → stays with the LLM reviewer / code-review-gate.
+	//
+	// CheckUnusedScan 记录 advisory 未引用导出符号扫描结果：task-verify 时机械检测本次新增
+	// 的导出符号（Go func/type/method、TS export、Rust pub）在本任务生产代码里零引用——疑似
+	// "实现了但没接线"（层 1 接线检测）。单测验实现不验接线；接线一断测试照绿、功能已死
+	// （Forge 自己的 BUG-1：inferDesignPhases 零生产调用方）。deterministic（gate 实算
+	// ScanUnusedSymbols，agent 无法伪造）。Passed 语义：无未引用导出=true，命中=false——但
+	// 永远 Checked=true 且绝不阻塞（advisory；库/反射/外部消费的导出合法地无仓内调用方，
+	// 留痕供 review 核查）。层 2（引用了但语义没接通）机械不可判 → 仍归 LLM reviewer /
+	// code-review-gate。
+	CheckUnusedScan CheckName = "unused-scan"
 	// CheckEscapeHatch records usage of gate-bypass escape hatches (FORGE_TEST_COVERAGE /
 	// FORGE_WORK_ACTIVITY / FORGE_SKIP_VERIFY). These escape hatches are legitimate tools, but their use must
 	// leave an auditable trail and cannot be silent—when an agent bypasses the
