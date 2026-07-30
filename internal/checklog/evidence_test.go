@@ -137,6 +137,32 @@ func TestBuildEvidenceChain_CheatScanExcluded(t *testing.T) {
 	}
 }
 
+// TestBuildEvidenceChain_UnusedScanExcluded pins that CheckUnusedScan is likewise excluded from evidence
+// strength: it is an advisory observation (a newly-added exported symbol with zero production references —
+// suspected wiring miss), not "verification evidence". Counting it would inflate Strength in the wrong direction
+// (a wiring-miss signal must not read as positive evidence). Entries are still kept in Entries for forge trace.
+//
+// TestBuildEvidenceChain_UnusedScanExcluded 钉住 CheckUnusedScan 同样不计入证据强度：它是 advisory
+// 观测（新增导出符号在生产行零引用——疑似接线缺失），非"验证证据"。计入会虚高 Strength 且方向
+// 反了（接线缺失信号绝不能读成正向证据）。条目仍保留在 Entries 供 forge trace。
+func TestBuildEvidenceChain_UnusedScanExcluded(t *testing.T) {
+	entries := []Entry{
+		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckUnusedScan, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckUnusedScan, Source: EvidenceDeterministic, TaskRef: "t"},
+	}
+	ec := BuildEvidenceChain(entries, "t")
+	if ec.Deterministic != 1 {
+		t.Fatalf(`CheckUnusedScan 不应计入 deterministic: got %d, want 1（仅 auto-compile）`, ec.Deterministic)
+	}
+	if ec.AgentClaim != 0 {
+		t.Fatalf(`agent-claim 应为 0, got %d`, ec.AgentClaim)
+	}
+	if len(ec.Entries) != 3 {
+		t.Fatalf(`unused-scan 条目仍应保留在 Entries 供 trace: got %d, want 3`, len(ec.Entries))
+	}
+}
+
 // TestBuildEvidenceChain_EscapeHatchExcludedAndFlags pins plan 5: CheckEscapeHatch is excluded from the
 // deterministic bucket — escape is an observation of "skipped some gate", not "performed verification"; SourceForCheck defaults it to
 // deterministic, so counting it would inflate Strength in the wrong direction (a signal meant to lower confidence would raise it instead). Set the
