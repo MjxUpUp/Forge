@@ -426,6 +426,16 @@ func SubmitRun(dir, canonical, skill, agentModel, forgeVersion string, raw []Sub
 			continue
 		}
 		actual := NormalizeTriggered(r.ActualTriggered, canonicalSkills)
+		if c.Kind != KindTrigger && c.Kind != KindNotTrigger {
+			// Unknown kind (e.g. legacy "behavior" cases from the demolished
+			// behavior-probe dimension): skip rather than silently judging as
+			// not-trigger, which would vacuously pass and pollute the run.
+			//
+			// 未知 kind（如已拆除的 behavior-probe 维度遗留的 "behavior"
+			// case）：跳过，而非按 not-trigger 静默判定——那会 vacuous pass
+			// 并污染 run。
+			continue
+		}
 		results = append(results, CaseResult{
 			CaseID:          c.ID,
 			Kind:            c.Kind,

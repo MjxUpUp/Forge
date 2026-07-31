@@ -74,10 +74,10 @@ func ValidOutcome(s string) bool {
 // 字段对应 decision record h_t = (q_t, r_t, e_t, o_t)：
 //   - Diagnosis  = q_t（诊断：什么失败模式/问题）
 //   - Revision   = r_t（候选修订：改了什么）
-//   - Evidence   = e_t（脱敏评估证据：probe pass rate / 回归比对 / 诊断线索）
+//   - Evidence   = e_t（评估证据：pass-rate / 回归比对 / 诊断线索）
 //   - Outcome    = o_t（accept/reject/revise/defer）
 //
-// CommitHash / ProbeRunID 把决策锚到具体 git commit 和 eval/probe run，支撑 scoped
+// CommitHash / ProbeRunID 把决策锚到具体 git commit 和 eval run，支撑 scoped
 // revert（D 组件）和证据回溯。
 type SkillDecision struct {
 	ID         string    `json:"id"`                   // d-<unixnano>-<randhex>

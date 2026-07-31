@@ -38,7 +38,7 @@ agent 理解 skill「为什么这么改」，避免重复探索已失败方向�
 四元组对应 decision record h_t = (q_t, r_t, e_t, o_t)：
   --diagnosis  q_t：诊断（什么失败模式/问题）
   --revision   r_t：候选修订（改了什么——SKILL.md/scripts/references 哪里）
-  --evidence   e_t：脱敏评估证据（probe pass rate / 回归比对 / 诊断线索，不含 oracle 原文）
+  --evidence   e_t：评估证据（pass-rate / 回归比对 / 诊断线索）
   --outcome    o_t：accept | reject | revise | defer
 
 可选锚点：
@@ -89,11 +89,11 @@ func init() {
 	skillsDecideCmd.Flags().StringVar(&skDecSkill, "skill", "", "记录哪个 skill 的决策")
 	skillsDecideCmd.Flags().StringVar(&skDecDiagnosis, "diagnosis", "", "诊断（q_t：什么问题/失败模式）")
 	skillsDecideCmd.Flags().StringVar(&skDecRevision, "revision", "", "候选修订（r_t：改了什么）")
-	skillsDecideCmd.Flags().StringVar(&skDecEvidence, "evidence", "", "脱敏评估证据（e_t：probe/回归结果）")
+	skillsDecideCmd.Flags().StringVar(&skDecEvidence, "evidence", "", "评估证据（e_t：pass-rate / 回归比对）")
 	skillsDecideCmd.Flags().StringVar(&skDecOutcome, "outcome", "", "结果（o_t：accept|reject|revise|defer）")
 	skillsDecideCmd.Flags().StringVar(&skDecRationale, "rationale", "", "为什么这个 outcome（结合背景）")
 	skillsDecideCmd.Flags().StringVar(&skDecCommit, "commit", "", "修订关联的 git commit（scoped revert 锚点）")
-	skillsDecideCmd.Flags().StringVar(&skDecProbeRun, "probe-run", "", "关联的 eval/probe run ID")
+	skillsDecideCmd.Flags().StringVar(&skDecProbeRun, "probe-run", "", "关联的 eval run ID")
 	skillsDecideCmd.Flags().StringVar(&skDecBy, "by", "", "来源（claude-code/codex/...）")
 	skillsCmd.AddCommand(skillsDecideCmd)
 }
