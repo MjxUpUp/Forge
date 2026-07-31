@@ -400,3 +400,47 @@ func TestSubmitRun_CorruptBaselineWarnsAndSkips(t *testing.T) {
 		t.Errorf("health=%v want 100（跳过比对但不对未证实的回归施加惩罚）", run.HealthScore)
 	}
 }
+
+// TestSubmitRun_UnknownKindSkipped pins the demolition hardening: legacy cases
+// with a kind that no longer exists (e.g. "behavior" from the removed
+// behavior-probe dimension) must be skipped rather than silently judged as
+// not-trigger — a vacuous pass would pollute the run.
+//
+// TestSubmitRun_UnknownKindSkipped 钉住拆除加固：kind 已不存在的遗留 case
+// （如 behavior-probe 维度拆除后的 "behavior"）必须被跳过，而非按
+// not-trigger 静默判定——vacuous pass 会污染 run。
+func TestSubmitRun_UnknownKindSkipped(t *testing.T) {
+	canonical := t.TempDir()
+	dir := t.TempDir()
+	writeSkill(t, canonical, "my-skill", testDesc)
+	cases, _ := EvalCases(canonical, "my-skill")
+	// Inject a legacy unknown-kind case alongside the valid ones.
+	//
+	// 在合法 case 中混入一个未知 kind 的遗留 case。
+	legacy := cases[0]
+	legacy.ID = "legacy-behavior-case"
+	legacy.Kind = "behavior"
+	cases = append(cases, legacy)
+	mustWrite(t, SaveCases(dir, "my-skill", cases))
+
+	raw := make([]SubmitResult, 0, len(cases))
+	for _, c := range cases {
+		act := ""
+		if c.Kind == KindTrigger {
+			act = "my-skill"
+		}
+		raw = append(raw, SubmitResult{CaseID: c.ID, ActualTriggered: act})
+	}
+	run, err := SubmitRun(dir, canonical, "my-skill", "sonnet", "v1", raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range run.Results {
+		if r.CaseID == "legacy-behavior-case" {
+			t.Error("unknown-kind case must be skipped, not judged")
+		}
+	}
+	if run.HealthScore != 100 {
+		t.Fatalf("health=%v want 100 (valid cases all pass, legacy skipped)", run.HealthScore)
+	}
+}
