@@ -141,21 +141,27 @@ func healNpmShim(exePath string) (bool, error) {
 	return true, nil
 }
 
-// npmPrefixFor walks exePath upward looking for a "node_modules" segment and returns
-// the directory above it (the npm prefix whose root holds the global bin shims on
-// Windows). ok=false when exePath is not in an npm layout.
+// npmPrefixFor walks exePath upward and returns the parent of the TOPMOST
+// "node_modules" segment (the npm prefix whose root holds the global bin shims on
+// Windows). The topmost matters: npm may nest the platform subpackage under the main
+// package (<prefix>/node_modules/@agent_forge/forge/node_modules/@agent_forge/
+// forge-win32-x64/...) — taking the deepest node_modules would wrongly return the main
+// package dir as the prefix. ok=false when exePath is not in an npm layout.
 //
-// npmPrefixFor 沿 exePath 向上找 "node_modules" 段，返回其上级的目录（Windows 上
-// npm 全局 bin 垫片所在的 prefix 根）。exePath 不在 npm 布局时 ok=false。
+// npmPrefixFor 沿 exePath 向上返回最外层 "node_modules" 段的父目录（Windows 上
+// npm 全局 bin 垫片所在的 prefix 根）。必须取最外层：npm 可能把平台子包嵌套在主
+// 包下面（<prefix>/node_modules/@agent_forge/forge/node_modules/@agent_forge/
+// forge-win32-x64/...）——取最深 node_modules 会把主包目录误当 prefix。exePath
+// 不在 npm 布局时 ok=false。
 func npmPrefixFor(exePath string) (prefix string, ok bool) {
 	dir := filepath.Clean(exePath)
 	for {
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", false
+			return prefix, ok
 		}
 		if strings.EqualFold(filepath.Base(dir), "node_modules") {
-			return parent, true
+			prefix, ok = parent, true
 		}
 		dir = parent
 	}
