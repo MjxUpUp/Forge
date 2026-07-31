@@ -314,15 +314,14 @@ func loadFromPath(path string) ([]ToolCall, error) {
 	return calls, scanner.Err()
 }
 
-// TruncateInput truncates a string to maxToolInputLen characters (rune-safe).
+// TruncateInput truncates a string to maxToolInputLen characters (rune-safe,
+// ellipsis-marked — see util.TruncateRunes, the single source of truth shared
+// with the hazard package).
 //
-// TruncateInput 把字符串截断到 maxToolInputLen 个字符（rune-safe）。
+// TruncateInput 把字符串截断到 maxToolInputLen 个字符（rune-safe，
+// 截断带省略号——见 util.TruncateRunes，与 hazard 包共享的单一真相源）。
 func TruncateInput(s string) string {
-	runes := []rune(s)
-	if len(runes) <= maxToolInputLen {
-		return s
-	}
-	return string(runes[:maxToolInputLen])
+	return util.TruncateRunes(s, maxToolInputLen)
 }
 
 // EstimateTokens roughly estimates the token count of a string (loop cost proxy,

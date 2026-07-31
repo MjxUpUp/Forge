@@ -83,7 +83,7 @@ func runSkillsRevert(cmd *cobra.Command, args []string) error {
 	if skRevDecision == "" {
 		fmt.Printf("skill %s 带 commit 的决策（用 --decision <id> 选择 revert 目标）：\n", skRevSkill)
 		for _, d := range withCommit {
-			fmt.Printf("  %s  [%s]  %s\n    %s\n", d.ID, d.Outcome, d.CommitHash, truncRunesCLI(d.Diagnosis, 60))
+			fmt.Printf("  %s  [%s]  %s\n    %s\n", d.ID, d.Outcome, d.CommitHash, truncate(d.Diagnosis, 60))
 		}
 		return nil
 	}
@@ -128,7 +128,7 @@ func runSkillsRevert(cmd *cobra.Command, args []string) error {
 	if skRevDryRun {
 		fmt.Printf(`[dry-run] (repo %s) git revert %s  ←  决策 %s [%s]
     %s
-`, gitDir, target.CommitHash, target.ID, target.Outcome, truncRunesCLI(target.Diagnosis, 60))
+`, gitDir, target.CommitHash, target.ID, target.Outcome, truncate(target.Diagnosis, 60))
 		return nil
 	}
 
@@ -222,17 +222,6 @@ func findDecisionByID(decisions []skillsdecisions.SkillDecision, id string) *ski
 		}
 	}
 	return nil
-}
-
-// truncRunesCLI truncates a string to n runes (appends ... if exceeded). Used for the revert list display.
-//
-// truncRunesCLI 把字符串截断到 n rune（超出加 ...）。给 revert 列表展示用。
-func truncRunesCLI(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	return string(r[:n]) + "..."
 }
 
 func init() {

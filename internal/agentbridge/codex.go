@@ -34,15 +34,6 @@ import (
 // 它在 Codex 里不是合法 matcher。
 type CodexTranslator struct{}
 
-func (t *CodexTranslator) Detect(projectDir string) bool {
-	// Only .codex/ — AGENTS.md is not a codex signal (forge generates AGENTS.md generically as cross-agent
-	// instructions; see DetectAgents comment).
-	//
-	// 仅 .codex/——AGENTS.md 不是 codex 信号（forge 把 AGENTS.md 通用生成为跨 agent
-	// 指令；见 DetectAgents 注释）。
-	return dirExists(filepath.Join(projectDir, ".codex"))
-}
-
 func (t *CodexTranslator) Translate(projectDir string, input *TranslationInput) error {
 	codexDir := filepath.Join(projectDir, ".codex")
 	if err := os.MkdirAll(codexDir, 0755); err != nil {

@@ -18,7 +18,6 @@ func runSystemStatus() error {
 	fmt.Println()
 
 	checkGlobalForge(home, &errors, &warnings)
-	checkLarkCLI(&errors, &warnings)
 	checkForgeInPath(&errors, &warnings)
 	checkOrphanHooks(home, &errors, &warnings)
 	checkSkillsManifest(home, &errors, &warnings)
@@ -63,15 +62,6 @@ func checkGlobalForge(home string, errors, warnings *int) {
 			fmt.Printf("  ~/.forge/%s/ missing — %s\n", sub.name, sub.hint)
 			*warnings++
 		}
-	}
-}
-
-func checkLarkCLI(errors, warnings *int) {
-	if _, err := exec.LookPath("lark-cli"); err != nil {
-		fmt.Println("  lark-cli not in PATH — feishu auto-publish disabled")
-		*warnings++
-	} else {
-		fmt.Println("  lark-cli available")
 	}
 }
 

@@ -68,22 +68,6 @@ func (t *KimiTranslator) AgentType() AgentType {
 	return AgentKimi
 }
 
-func (t *KimiTranslator) Detect(projectDir string) bool {
-	// Project-level signal (.kimi-code/) or a user-level kimi installation (~/.kimi-code
-	// or $KIMI_CODE_HOME). The user-level check mirrors the Claude plugin model: once kimi
-	// is installed, wiring its user-level hooks from any project's `forge init` is the
-	// intended behavior.
-	//
-	// 项目级信号（.kimi-code/）或 user-level 的 kimi 安装（~/.kimi-code 或
-	// $KIMI_CODE_HOME）。user-level 检查对齐 Claude plugin 模型：只要装了 kimi，
-	// 在任何项目的 `forge init` 里接线其 user-level hook 都是预期行为。
-	if dirExists(filepath.Join(projectDir, ".kimi-code")) {
-		return true
-	}
-	home, err := KimiConfigHome()
-	return err == nil && dirExists(home)
-}
-
 func (t *KimiTranslator) Translate(projectDir string, input *TranslationInput) error {
 	// Plugin wins: when forge is installed as a kimi plugin (/plugins install), its
 	// manifest already registers every hook machine-wide — the config.toml section

@@ -99,15 +99,15 @@ const (
 	recurrentThresholdEnv = "FORGE_RECURRENT_THRESHOLD"
 )
 
-// LowDimCounts tallies how often each low-score dimension (<70) appears across a project's completed
+// lowDimCounts tallies how often each low-score dimension (<70) appears across a project's completed
 // conclusions. Pure function over the conclusion slice (mirrors health.Summarize's lowCounts but is
-// independently testable without building a full Summary). Exported for executor's BLOCKED message,
+// independently testable without building a full Summary). Used by executor's BLOCKED message,
 // which surfaces the exact recurrence count so the agent sees why this task hardened.
 //
-// LowDimCounts 统计各低分维度（<70）在项目已完成结论里出现的次数。基于结论切片的纯函数
-// （镜像 health.Summarize 的 lowCounts，但无需构造完整 Summary 即可独立单测）。导出供 executor 的
+// lowDimCounts 统计各低分维度（<70）在项目已完成结论里出现的次数。基于结论切片的纯函数
+// （镜像 health.Summarize 的 lowCounts，但无需构造完整 Summary 即可独立单测）。供 executor 的
 // BLOCKED 消息使用——消息里带出确切复发计数，让 agent 看清本次为何升硬。
-func LowDimCounts(cs []act.Conclusion) map[string]int {
+func lowDimCounts(cs []act.Conclusion) map[string]int {
 	counts := map[string]int{}
 	for _, c := range cs {
 		for _, d := range c.LowDimensions {
@@ -117,17 +117,17 @@ func LowDimCounts(cs []act.Conclusion) map[string]int {
 	return counts
 }
 
-// DimRecurrent reports whether dimension dim has gone low (<70) at least threshold times across the
+// dimRecurrent reports whether dimension dim has gone low (<70) at least threshold times across the
 // given conclusions — the recurrence axis. Returns false on empty input or threshold<=0 (fail-open).
 // Callers feed loadConclusions(root) (which itself fails open on read errors).
 //
-// DimRecurrent 报告维度 dim 是否在给定结论里低分（<70）≥ threshold 次——复发轴。空输入或
+// dimRecurrent 报告维度 dim 是否在给定结论里低分（<70）≥ threshold 次——复发轴。空输入或
 // threshold<=0 返回 false（fail-open）。调用方传入 loadConclusions(root)（其自身对读取错误 fail-open）。
-func DimRecurrent(cs []act.Conclusion, dim string, threshold int) bool {
+func dimRecurrent(cs []act.Conclusion, dim string, threshold int) bool {
 	if threshold <= 0 || len(cs) == 0 {
 		return false
 	}
-	return LowDimCounts(cs)[dim] >= threshold
+	return lowDimCounts(cs)[dim] >= threshold
 }
 
 // recurrentThreshold returns the configured recurrence threshold: FORGE_RECURRENT_THRESHOLD if set

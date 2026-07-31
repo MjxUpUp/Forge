@@ -26,7 +26,6 @@ import (
 	"bufio"
 	"cmp"
 	"crypto/rand"
-	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -51,7 +50,6 @@ type CaseResult struct {
 	CaseID          string `json:"case_id"`
 	Kind            string `json:"kind"`
 	Prompt          string `json:"prompt"`
-	Expected        string `json:"expected"`                // trigger/not-trigger/behavior
 	// ActualTriggered: normalized name of the skill that actually fired ("" = did not fire).
 	ActualTriggered string `json:"actual_triggered"`        // 归一化后的实际触发 skill 名（""=没触发）
 	// ActualOutput (behavior kind): the actual output refilled by the agent, including the original text needed by the oracle for judgment; redacted by eval-cases/report before exposure.
@@ -73,8 +71,6 @@ type EvalRun struct {
 	AgentModel    string       `json:"agent_model"`               // agent 自报，防跨模型假回归
 	// DescHash: fingerprint of the description at run time.
 	DescHash      string       `json:"desc_hash"`                 // run 时刻 description 指纹
-	// CaseSetHash: sha1 of all CaseIDs after sorting, a quick consistency check for the set.
-	CaseSetHash   string       `json:"case_set_hash"`             // 所有 CaseID 排序后 sha1，集一致性快检
 	// BaselineRunID: the baseline locked at run time.
 	BaselineRunID string       `json:"baseline_run_id,omitempty"` // run 时刻锁定的 baseline
 	Results       []CaseResult `json:"results"`
@@ -138,19 +134,6 @@ func newRunID() string {
 	var b [4]byte
 	_, _ = rand.Read(b[:])
 	return fmt.Sprintf("run-%d-%s", time.Now().Unix(), hex.EncodeToString(b[:]))
-}
-
-// caseSetHash returns sha1[:12] of all sorted CaseIDs, used as a quick set-consistency check.
-//
-// caseSetHash 返回所有 CaseID 排序后的 sha1[:12]，用于集一致性快检。
-func caseSetHash(results []CaseResult) string {
-	ids := make([]string, 0, len(results))
-	for _, r := range results {
-		ids = append(ids, r.CaseID)
-	}
-	slices.Sort(ids)
-	h := sha1.Sum([]byte(strings.Join(ids, ",")))
-	return hex.EncodeToString(h[:])[:12]
 }
 
 // NormalizeTriggered normalizes the agent-refilled actual trigger name: trims leading/trailing
@@ -477,7 +460,6 @@ func SubmitRun(dir, canonical, skill, agentModel, forgeVersion string, raw []Sub
 			CaseID:          c.ID,
 			Kind:            c.Kind,
 			Prompt:          c.Prompt,
-			Expected:        c.Kind,
 			ActualTriggered: actual,
 			ActualOutput:    r.ActualOutput,
 			Pass:            judgeResult(c, actual, r.ActualOutput),
@@ -504,7 +486,6 @@ func SubmitRun(dir, canonical, skill, agentModel, forgeVersion string, raw []Sub
 		ForgeVersion: forgeVersion,
 		AgentModel:   agentModel,
 		DescHash:     curDH,
-		CaseSetHash:  caseSetHash(results),
 		Results:      results,
 	}
 	regressions := 0

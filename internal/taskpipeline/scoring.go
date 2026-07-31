@@ -218,7 +218,7 @@ func AppendConclusion(root string, state *TaskState) (act.Conclusion, string, er
 	if state.CompletedAt != nil {
 		completedAt = *state.CompletedAt
 	}
-	conc := act.BuildConclusion(state.TaskRef, state.SessionID, state.Score, ec, pass, total, completedAt, PhaseKeys(state.DesignPhases))
+	conc := act.BuildConclusion(state.TaskRef, state.SessionID, state.Score, ec, pass, total, completedAt, phaseKeys(state.DesignPhases))
 	directive := conc.Directive()
 	proj, perr := forgedata.ProjectFor(root)
 	if perr != nil {
@@ -230,11 +230,11 @@ func AppendConclusion(root string, state *TaskState) (act.Conclusion, string, er
 	return conc, directive, nil
 }
 
-// PhaseKeys converts a DesignPhase slice to a string slice (input for act.BuildConclusion). Sunk
+// phaseKeys converts a DesignPhase slice to a string slice (input for act.BuildConclusion). Sunk
 // from cli/task.go.
 //
-// PhaseKeys 把 DesignPhase slice 转 string slice（act.BuildConclusion 入参）。从 cli/task.go 下沉。
-func PhaseKeys(phases []DesignPhase) []string {
+// phaseKeys 把 DesignPhase slice 转 string slice（act.BuildConclusion 入参）。从 cli/task.go 下沉。
+func phaseKeys(phases []DesignPhase) []string {
 	if len(phases) == 0 {
 		return nil
 	}

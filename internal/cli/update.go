@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -219,7 +220,7 @@ func getLatestRelease() (*githubRelease, error) {
 	}
 
 	var release githubRelease
-	if err := jsonUnmarshal(resp.Body, &release); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
 		return nil, fmt.Errorf("解析响应失败: %w", err)
 	}
 
@@ -470,7 +471,7 @@ func extractBinary(archivePath, destDir string) (string, error) {
 			// 只保留权限位。archive/tar 把 setuid/setgid/sticky 映射到
 			// os.FileMode 高位（os.ModeSetuid/...），不在低 12 位——用
 			// 0o6000 掩码剥不掉任何东西。Perm() 只留 rwx 位。
-			safeMode := archiveSafeMode(hdr.FileInfo())
+			safeMode := hdr.FileInfo().Mode().Perm()
 			out, err := os.OpenFile(outPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, safeMode)
 			if err != nil {
 				return "", err
@@ -485,18 +486,6 @@ func extractBinary(archivePath, destDir string) (string, error) {
 	}
 
 	return "", fmt.Errorf("归档中没有找到 %s", binaryName)
-}
-
-// archiveSafeMode reduces a tar entry's FileMode to plain permission bits.
-// archive/tar maps setuid/setgid/sticky onto the high os.FileMode bits
-// (os.ModeSetuid/os.ModeSetgid/os.ModeSticky), not the low 12 bits — masking
-// with 0o6000 strips nothing. Extracted for unit testing.
-//
-// archiveSafeMode 把 tar entry 的 FileMode 收敛为纯权限位。archive/tar 把
-// setuid/setgid/sticky 映射到 os.FileMode 高位（os.ModeSetuid/os.ModeSetgid/
-// os.ModeSticky），不在低 12 位——用 0o6000 掩码剥不掉。抽出便于单测。
-func archiveSafeMode(fi os.FileInfo) os.FileMode {
-	return fi.Mode().Perm()
 }
 
 func selfTest(binaryPath string) error {
@@ -645,14 +634,6 @@ func getCurrentVersion(fullVersion string) string {
 	return fullVersion
 }
 
-func jsonUnmarshal(r io.Reader, v any) error {
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(data, v)
-}
-
 // compareVersions compares two semver-style version strings (e.g. 0.11.1 vs 0.12.0).
 // Returns: 1 if a > b, 0 if a == b, -1 if a < b.
 // When the numeric cores are equal, pre-release is tie-broken per semver §11:
@@ -782,15 +763,12 @@ func comparePreReleases(aPre, bPre string) int {
 //
 // numericIdentifier 判断 pre-release 分段是否纯数字，是则返回其数值。
 func numericIdentifier(s string) (int, bool) {
-	if s == "" {
+	if s == "" || s[0] == '+' || s[0] == '-' {
 		return 0, false
 	}
-	n := 0
-	for _, c := range s {
-		if c < '0' || c > '9' {
-			return 0, false
-		}
-		n = n*10 + int(c-'0')
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0, false
 	}
 	return n, true
 }

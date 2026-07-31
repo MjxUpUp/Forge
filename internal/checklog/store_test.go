@@ -72,7 +72,7 @@ func TestLoadAll_NoFile(t *testing.T) {
 	}
 }
 
-func TestLatestByCheck(t *testing.T) {
+func TestLatestByCheckForSession_LatestWins(t *testing.T) {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, ".forge"), 0755)
 
@@ -82,9 +82,9 @@ func TestLatestByCheck(t *testing.T) {
 	Record(dir, &Entry{Check: CheckAutoCompile, Passed: true, Detail: "passed"})
 	Record(dir, &Entry{Check: CheckAssertion, Passed: true, Detail: "ok"})
 
-	latest, err := LatestByCheck(dir)
+	latest, err := LatestByCheckForSession(dir, "")
 	if err != nil {
-		t.Fatalf("LatestByCheck: %v", err)
+		t.Fatalf("LatestByCheckForSession: %v", err)
 	}
 	if len(latest) != 2 {
 		t.Fatalf("expected 2 entries, got %d", len(latest))
@@ -361,8 +361,9 @@ func TestRecord_WritesToDataDir_GitProject(t *testing.T) {
 		t.Fatal("checklog should NOT be in legacy ConfigDir <root>/.forge/ for a git project")
 	}
 	// checklog must be in the DataDir.
-	if _, err := os.Stat(p.ChecklogPath()); err != nil {
-		t.Errorf("checklog should be in DataDir %s: %v", p.ChecklogPath(), err)
+	checklogPath := filepath.Join(p.DataDir, "checklog.jsonl")
+	if _, err := os.Stat(checklogPath); err != nil {
+		t.Errorf("checklog should be in DataDir %s: %v", checklogPath, err)
 	}
 	// LoadAll reads back from the DataDir.
 	entries, err := LoadAll(root)

@@ -190,20 +190,16 @@ func MergeAcceptance(base, addition []AcceptanceCriterion) []AcceptanceCriterion
 	return base
 }
 
-// JudgeAcceptance is the single source of truth for acceptance three-state judgement: RunTestCommand's passed (exit 0)
-// AND Expected substring match. Two paths share it — VerifyAcceptance (verify-acceptance actually runs and fills state)
-// and forge_task_proof's v1 re-run fallback (read-only judge, no write-back) call the same function, preventing semantic drift (historical bug: proof v1 once
-// judged only exit code and missed Expected substring → when a command exits 0 but output lacks Expected, acceptance false-greened, breaking proof's claim).
+// judgeAcceptance is the single source of truth for acceptance three-state judgement: RunTestCommand's passed (exit 0)
+// AND Expected substring match. Its only consumer is VerifyAcceptance (verify-acceptance actually runs and fills state).
 //
 // Three states: passed=false → false; Expected non-empty → Contains(output, Expected); otherwise → true.
 //
-// JudgeAcceptance 是 acceptance 三态判定的单一真相源：RunTestCommand 的 passed(exit 0)
-// 与 Expected 子串比对。两条路径共用——VerifyAcceptance(verify-acceptance 实跑回填 state)
-// 与 forge_task_proof 的 v1 重跑兜底(只读判不回写)同调，防语义漂移（历史 bug：proof v1 曾只
-// 判退出码漏 Expected 子串 → 命令退出 0 但输出不含 Expected 时假绿 acceptance，击穿 proof 主张）。
+// judgeAcceptance 是 acceptance 三态判定的单一真相源：RunTestCommand 的 passed(exit 0)
+// 与 Expected 子串比对。唯一消费方是 VerifyAcceptance（verify-acceptance 实跑回填 state）。
 //
 // 三态：passed=false → false；Expected 非空 → Contains(output, Expected)；否则 → true。
-func JudgeAcceptance(passed bool, output, expected string) bool {
+func judgeAcceptance(passed bool, output, expected string) bool {
 	switch {
 	case !passed:
 		return false
@@ -213,17 +209,6 @@ func JudgeAcceptance(passed bool, output, expected string) bool {
 		// Exit code 0 and no expected substring.
 		return true // 退出码 0 且无期望子串
 	}
-}
-
-// TruncateAcceptanceOutput exports the truncation helper so forge_task_proof's v1 re-run output reuses the same truncation
-// logic (failure info at the tail + cut-point retreats to rune boundary + prevents MCP payload blowup). The private truncateAcceptanceOutput
-// remains the internal implementation; this export is its stable facade.
-//
-// TruncateAcceptanceOutput 导出截断 helper，供 forge_task_proof 的 v1 重跑输出复用同一截断
-// 逻辑（失败信息在尾部 + 截点退到 rune 边界 + 防 MCP payload 撑爆）。私有 truncateAcceptanceOutput
-// 仍是内部实现，本导出是其稳定门面。
-func TruncateAcceptanceOutput(s string) string {
-	return truncateAcceptanceOutput(s)
 }
 
 // VerifyAcceptance actually runs each Run command of state's acceptance criteria, matches the Expected substring, fills back
@@ -239,7 +224,7 @@ func VerifyAcceptance(root string, state *TaskState) {
 	for i := range state.Acceptance {
 		c := &state.Acceptance[i]
 		passed, output := RunTestCommand(root, c.Run)
-		c.Passed = JudgeAcceptance(passed, output, c.Expected)
+		c.Passed = judgeAcceptance(passed, output, c.Expected)
 		c.Output = truncateAcceptanceOutput(output)
 		// Record the HEAD snapshot at actual-run time: forge_task_proof uses this to decide whether Passed is fresh (== current HEAD).
 		// Old no-snapshot (empty) → proof v1 re-run fallback; has snapshot but != HEAD → acceptance is based on old code, must re-run.
@@ -332,7 +317,7 @@ func CheckAcceptanceFresh(root string, state *TaskState) (ok bool, reasons []str
 	if len(state.Acceptance) == 0 {
 		return true, nil
 	}
-	if EscapeDisabled(state, escapeAcceptanceGate, acceptanceGateDisableEnv) {
+	if escapeDisabled(state, escapeAcceptanceGate, acceptanceGateDisableEnv) {
 		recordAudit(root, &checklog.Entry{
 			Check:   checklog.CheckEscapeHatch,
 			Passed:  true,

@@ -21,10 +21,6 @@ import (
 // （见 internal/cli/hook_normalize.go）。
 type WindsurfTranslator struct{}
 
-func (t *WindsurfTranslator) Detect(projectDir string) bool {
-	return fileExists(filepath.Join(projectDir, ".windsurfrules"))
-}
-
 func (t *WindsurfTranslator) Translate(projectDir string, input *TranslationInput) error {
 	if input.Protocol == nil {
 		return fmt.Errorf("windsurf: protocol is required")

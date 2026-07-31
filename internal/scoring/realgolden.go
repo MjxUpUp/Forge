@@ -7,7 +7,8 @@ package scoring
 // dropped every real B-grade task to C, which hand-written fixtures cannot catch and only surface on real combinations.
 //
 // Collection primitive GoldenCaseFromInput: takes an EvaluateInput, runs Evaluate, and wraps (input, expected)
-// into a GoldenCase. Persistence/loading reuses the GoldenCase JSON format + LoadGoldenCases (only the dir differs).
+// into a GoldenCase. Persistence reuses the GoldenCase JSON format; loading happens test-side via
+// LoadGoldenCases (golden_test.go), only the dir differs.
 //
 // Golden master 采集层：把真实任务的 EvaluateInput 固化成 golden 回归 fixture。
 //
@@ -16,7 +17,8 @@ package scoring
 // B 级真实任务降到 C」这类靠人工 fixture 抓不到、只在真实组合上才暴露的回归。
 //
 // 采集原语 GoldenCaseFromInput：输入 EvaluateInput，跑 Evaluate，把 (input, expected)
-// 封装成 GoldenCase。落盘/读取复用 GoldenCase 的 JSON 格式 + LoadGoldenCases（仅 dir 不同）。
+// 封装成 GoldenCase。落盘复用 GoldenCase 的 JSON 格式；读取在测试侧走
+// LoadGoldenCases（golden_test.go），仅 dir 不同。
 
 import "github.com/MjxUpUp/Forge/internal/scoringtypes"
 

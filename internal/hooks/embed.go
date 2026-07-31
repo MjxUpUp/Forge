@@ -224,19 +224,6 @@ if [ "$_NOW" != "0" ] && [ -f "$_STAMP" ]; then
 fi
 printf '%s' "$_NOW" > "$_STAMP" 2>/dev/null || true
 
-# FORGE_SKIP_VERIFY escape hatch: skip the advisory checks entirely. Even
-# though task-verify no longer blocks, an explicit skip is audited to checklog
-# (A4) so the bypass stays traceable via 'forge trace'.
-if [ "${FORGE_SKIP_VERIFY}" = "1" ]; then
-  echo "PASS"
-  _SKIP_NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)
-  if [ -n "$_SKIP_NOW" ]; then
-    printf '{"check":"escape-hatch","passed":true,"checked":true,"detail":"escape-hatch: FORGE_SKIP_VERIFY=1 (task-verify gate bypassed)","recorded_at":"%s"}\n' \
-      "$_SKIP_NOW" >> "$_DATA_DIR/checklog.jsonl" 2>/dev/null || true
-  fi
-  exit 0
-fi
-
 # is_code_file — BSD-safe source-file filter. grep -E '\.(go|rs|...)$' aborts
 # on BSD/macOS with "Unmatched ( or \(" (ERE alternation in a group); case-glob
 # is portable and mirrors the extension set task-guard / file-sentinel use.

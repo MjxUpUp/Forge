@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
@@ -42,39 +43,6 @@ func projectTagFor(root string) string {
 	return strconv.FormatUint(h.Sum64(), 16)
 }
 
-// findGitRoot walks up from dir to the nearest ancestor directory that contains a .git entry (a directory for normal repos,
-// a file for worktree/submodule). Returns "" if none. It mirrors the bash root-finding of the init-suggest hook so that
-// the tag computed on the Go side aligns with the ROOT the script operates on: same .git predicate, same stop-at-root
-// behavior. Cross-platform safe: on a Windows drive root (E:\) filepath.Dir returns itself, a natural stop condition,
-// so the loop does not spin on the drive root.
-//
-// findGitRoot 从 dir 向上遍历到最近的含 .git 条目的祖先目录（普通仓库是目录，
-// worktree/submodule 是文件）。无则返回 ""。与 init-suggest hook 的 bash
-// root-finding 保持一致，使 Go 侧算出的 tag 与脚本作用的 ROOT 对齐：相同的
-// .git 判定、相同的遇 root 停止行为。跨平台安全：Windows 盘根（E:\）的
-// filepath.Dir 返回自身，正是天然的终止条件，故循环不会在盘根上空转。
-//
-// Known cost: on UNC/SMB network shares each os.Stat may block for about 1s (network probe timeout),
-// adding about 1-3s to SessionStart for users whose cwd is on a network mount. In practice rare — accepted
-// rather than adding a stat timeout (which would complicate the POSIX-correct upward walk for a rare case).
-//
-// 已知开销：在 UNC/SMB 网络共享上每次 os.Stat 可能阻塞约 1s（网络探测超时），
-// 给 cwd 位于网络挂载的用户的 SessionStart 增加约 1-3s。实际罕见——选择接受，
-// 而不是加 stat 超时（会为一个罕见场景复杂化 POSIX-correct 的向上遍历）。
-func findGitRoot(dir string) string {
-	d := filepath.Clean(dir)
-	for {
-		if _, err := os.Stat(filepath.Join(d, ".git")); err == nil {
-			return d
-		}
-		parent := filepath.Dir(d)
-		if parent == d {
-			return "" // 已到文件系统根（Unix 的 / 或 Windows 盘根）
-		}
-		d = parent
-	}
-}
-
 // suggestTagFor returns the init-suggest marker tag for a directory, keyed by its git root,
 // so no matter which subdir the agent runs `forge suggest decline` from, the same project is tagged only
 // once. This guards the decline contract: previously keyed by cwd, declining from a subdir would write a different tag
@@ -90,7 +58,7 @@ func findGitRoot(dir string) string {
 // （FORGE_CWD_TAG）和 `forge suggest` 共用——两者对同一 project 必须产出相同的
 // tag。
 func suggestTagFor(dir string) string {
-	if root := findGitRoot(dir); root != "" {
+	if root := forgedata.FindGitRoot(dir); root != "" {
 		return projectTagFor(root)
 	}
 	return projectTagFor(dir)

@@ -76,7 +76,7 @@ func TestRecurrent_TestCoverage_Hardens(t *testing.T) {
 	captureStderr(t, func() {
 		_, execErr = ExecuteTaskGate(dir, "task-verify", state)
 	})
-	if !IsGateBlocked(execErr) {
+	if !strings.HasPrefix(execErr.Error(), blockedPrefix) {
 		t.Fatalf(`项目 testing 复发(3) + foo.go 无测试 → 应复发升硬 BLOCKED, got: %v`, execErr)
 	}
 	if !strings.Contains(execErr.Error(), "testing") {
@@ -144,7 +144,7 @@ func TestRecurrent_ScopeDrift_Hardens(t *testing.T) {
 	captureStderr(t, func() {
 		_, execErr = ExecuteTaskGate(dir, "task-verify", state)
 	})
-	if !IsGateBlocked(execErr) {
+	if !strings.HasPrefix(execErr.Error(), blockedPrefix) {
 		t.Fatalf(`项目 scope 复发(3) + 3 文件 drift → 应复发升硬 BLOCKED, got: %v`, execErr)
 	}
 	if !strings.Contains(execErr.Error(), "scope") {

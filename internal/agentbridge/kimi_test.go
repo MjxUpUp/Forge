@@ -3,6 +3,7 @@ package agentbridge
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -159,21 +160,17 @@ func TestKimiTranslator_Translate_ReplacesStaleSection(t *testing.T) {
 }
 
 func TestKimiTranslator_Detect(t *testing.T) {
-	// Project-level signal: .kimi-code/ dir.
+	// Project-level signal only: .kimi-code/ dir. The user-level auto-detect
+	// (~/.kimi-code / $KIMI_CODE_HOME) went away with Translator.Detect —
+	// DetectAgents deliberately ignores it (see detect.go: a user-level install
+	// exists on every machine with kimi, so it cannot be an auto-detect signal).
 	dir := t.TempDir()
-	t.Setenv("KIMI_CODE_HOME", filepath.Join(t.TempDir(), "absent"))
-	if (&KimiTranslator{}).Detect(dir) {
-		t.Errorf("Detect true without any kimi signal")
+	if slices.Contains(DetectAgents(dir), AgentKimi) {
+		t.Errorf("DetectAgents true without any kimi signal")
 	}
 	os.MkdirAll(filepath.Join(dir, ".kimi-code"), 0755)
-	if !(&KimiTranslator{}).Detect(dir) {
-		t.Errorf("Detect false with .kimi-code/ present")
-	}
-
-	// User-level signal: existing $KIMI_CODE_HOME.
-	t.Setenv("KIMI_CODE_HOME", t.TempDir())
-	if !(&KimiTranslator{}).Detect(t.TempDir()) {
-		t.Errorf("Detect false with existing KIMI_CODE_HOME")
+	if !slices.Contains(DetectAgents(dir), AgentKimi) {
+		t.Errorf("DetectAgents false with .kimi-code/ present")
 	}
 }
 

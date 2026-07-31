@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/scoring"
-	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
@@ -16,25 +15,14 @@ func init() {
 	verifyCmd.Flags().String(`collect-golden`, ``, `从已完成任务采集真实 golden case 到 testdata/golden_real/（开发工具：固化真实评分形状进 CI 回归）`)
 }
 
-// buildEvaluateInput thin-wrapper: scoring input assembly is pushed down to taskpipeline.BuildEvaluateInput
-// (single source of truth). CollectGoldenFromTask reuses it transparently — cli and MCP forge_task_complete share the same
-// assembly logic, no longer two drifting copies. See taskpipeline.BuildEvaluateInput for notes/limitations.
-//
-// buildEvaluateInput thin-wrapper：评分输入组装下沉到 taskpipeline.BuildEvaluateInput
-// （单一真相源）。CollectGoldenFromTask 透明复用——cli 与 MCP forge_task_complete 共用同一
-// 组装逻辑，不再两份漂移。注释/限制见 taskpipeline.BuildEvaluateInput。
-func buildEvaluateInput(root string, state *taskpipeline.TaskState) (*scoring.EvaluateInput, *scoringtypes.ScoringConfig, error) {
-	return taskpipeline.BuildEvaluateInput(root, state)
-}
-
 // CollectGoldenFromTask derives a golden case (a real scoring shape) from a completed task TaskState,
 // for forge verify --collect-golden to land into testdata/golden_real/ as a CI regression.
-// It reuses buildEvaluateInput (same input and logic as scoring) → GoldenCaseFromInput computes Expected.
+// It reuses taskpipeline.BuildEvaluateInput (same input and logic as scoring) → GoldenCaseFromInput computes Expected.
 // The task must already be scored (state.Score != nil). See taskpipeline.BuildEvaluateInput for git-drift limitations.
 //
 // CollectGoldenFromTask 从已完成任务的 TaskState 派生一个 golden case（真实评分形状），
 // 供 forge verify --collect-golden 沉淀到 testdata/golden_real/ 做 CI 回归。
-// 复用 buildEvaluateInput（与评分同输入同逻辑）→ GoldenCaseFromInput 算 Expected。
+// 复用 taskpipeline.BuildEvaluateInput（与评分同输入同逻辑）→ GoldenCaseFromInput 算 Expected。
 // 任务须已评分（state.Score != nil）。git 漂移限制见 taskpipeline.BuildEvaluateInput 注释。
 func CollectGoldenFromTask(root, taskRef string) (*scoring.GoldenCase, error) {
 	state, err := taskpipeline.LoadTaskState(root, taskRef)
@@ -44,7 +32,7 @@ func CollectGoldenFromTask(root, taskRef string) (*scoring.GoldenCase, error) {
 	if state.Score == nil {
 		return nil, fmt.Errorf(`task %s not scored — complete it first`, taskRef)
 	}
-	input, config, err := buildEvaluateInput(root, state)
+	input, config, err := taskpipeline.BuildEvaluateInput(root, state)
 	if err != nil {
 		return nil, err
 	}
