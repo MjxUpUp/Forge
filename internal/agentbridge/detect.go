@@ -42,6 +42,21 @@ func DetectAgents(projectDir string) []AgentType {
 	if dirExists(filepath.Join(projectDir, ".cline")) || dirExists(filepath.Join(projectDir, ".clinerules")) {
 		agents = append(agents, AgentCline)
 	}
+	// kimi is detected via the project-level .kimi-code/ dir only. The user-level
+	// ~/.kimi-code always exists once kimi is installed — using it as an auto-detect
+	// signal would wire kimi on EVERY `forge init` (and break test hermeticity on any
+	// machine with kimi installed). Kimi users without a project dir pass
+	// `--agents kimi` explicitly; the wiring is user-level and idempotent, so one
+	// explicit init covers all projects (same philosophy as codex, see above).
+	//
+	// kimi 只按项目级 .kimi-code/ 目录检测。user-level 的 ~/.kimi-code 装上 kimi
+	// 后恒存在——拿它做 auto 检测信号会让每次 `forge init` 都接 kimi（并破坏任何
+	// 装有 kimi 机器上的测试密封性）。没有项目目录的 kimi 用户显式传
+	// `--agents kimi`；接线是 user-level 且幂等，显式 init 一次即覆盖所有项目
+	// （与 codex 同一哲学，见上文）。
+	if dirExists(filepath.Join(projectDir, ".kimi-code")) {
+		agents = append(agents, AgentKimi)
+	}
 
 	return agents
 }
@@ -59,7 +74,7 @@ func ParseAgentFlag(projectDir string, flag string) []AgentType {
 	var agents []AgentType
 	for _, name := range splitComma(flag) {
 		switch AgentType(name) {
-		case AgentClaudeCode, AgentCursor, AgentCopilot, AgentWindsurf, AgentCodex, AgentOpencode, AgentCline:
+		case AgentClaudeCode, AgentCursor, AgentCopilot, AgentWindsurf, AgentCodex, AgentOpencode, AgentCline, AgentKimi:
 			agents = append(agents, AgentType(name))
 		}
 	}
