@@ -98,10 +98,7 @@ func inferDesignPhases(changedFiles []string) []DesignPhase {
 		//
 		// 测试设计：*_test.* / *.test.*（后缀中缀，Contains 安全）；test_*.py 前缀
 		// （Python）用 HasPrefix——旧 Contains 会误匹配 latest_feature.go（"la**test_**..."）。
-		case strings.Contains(base, "_test.") ||
-			strings.Contains(base, ".test.") ||
-			strings.HasPrefix(base, "test_") ||
-			dirBase == "test" || dirBase == "tests" || dirBase == "__tests__":
+		case isTestPhasePath(base, dirBase):
 			phases[PhaseTest] = true
 
 		// Backend design: services/*/ / domain/ / *.{go,rs,java}.
@@ -113,7 +110,15 @@ func inferDesignPhases(changedFiles []string) []DesignPhase {
 			phases[PhaseBackend] = true
 		case (ext == ".go" || ext == ".rs" || ext == ".java") &&
 			!strings.Contains(slash, "components/") &&
-			!strings.Contains(slash, "test") &&
+			// Segment/base-level test exclusion — the same predicate as the test-design
+			// case above. A bare strings.Contains(slash, "test") would mis-exclude
+			// latest_feature.go, contest/, testutil/ (the same trap the test-design
+			// case already fixed, still lurking on the backend side).
+			//
+			// segment/base 级测试排除——与上方测试设计 case 同一判定。裸
+			// strings.Contains(slash, "test") 会误排 latest_feature.go、contest/、
+			// testutil/（测试判定里已修掉的同款陷阱，backend 排除侧仍有）。
+			!isTestPhasePath(base, dirBase) &&
 			!strings.Contains(slash, "migrations/") &&
 			!strings.Contains(slash, "openapi") &&
 			!strings.Contains(slash, "docs/prd/"):
@@ -131,6 +136,24 @@ func inferDesignPhases(changedFiles []string) []DesignPhase {
 		}
 	}
 	return result
+}
+
+// isTestPhasePath reports whether a file path looks like a test artifact, using
+// segment/base-level matching (NOT substring over the whole path): suffix/infix
+// _test. / .test., the Python test_* prefix, or a test/tests/__tests__ directory.
+// Shared by the test-design case and the backend fallback's test exclusion so the
+// two can never drift apart — substring matching here mis-fires on latest_feature.go,
+// contest/, testutil/.
+//
+// isTestPhasePath 按 segment/base 级匹配判定路径是否为测试产物（非全路径子串）：
+// 后缀/中缀 _test. / .test.、Python test_* 前缀、或 test/tests/__tests__ 目录。
+// 测试设计 case 与 backend 兜底的测试排除共用此判定，保证两处永不漂移——此处用
+// 子串匹配会误命中 latest_feature.go、contest/、testutil/。
+func isTestPhasePath(base, dirBase string) bool {
+	return strings.Contains(base, "_test.") ||
+		strings.Contains(base, ".test.") ||
+		strings.HasPrefix(base, "test_") ||
+		dirBase == "test" || dirBase == "tests" || dirBase == "__tests__"
 }
 
 // designPhasesEqual compares two DesignPhase slices for equality (order-sensitive—

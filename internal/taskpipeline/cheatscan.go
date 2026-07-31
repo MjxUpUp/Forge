@@ -14,7 +14,8 @@ import (
 //
 // Motivation (root cause in the forge-review-deterministic-shift memory): among the 11
 // AI-cheat categories in code-review-gate, the mechanically detectable ones (type-suppression,
-// error-swallow / dead-branch / comment-only-fix) were previously all judged by LLM sub-agents.
+// error-swallow / dead-branch / comment-only-fix / comment-as-debt) were previously all
+// judged by LLM sub-agents.
 // LLMs re-sample the same diff every round, catching different subsets → the source of the
 // perception that every review surfaces new problems.
 //
@@ -32,7 +33,7 @@ import (
 //
 // 动机（根因见 forge-review-deterministic-shift memory）：code-review-gate 的
 // 11 类 AI 作弊模式里，机械可检的那几类（type-suppression / error-swallow /
-// dead-branch / comment-only-fix）此前全靠 LLM 子 agent 判断。LLM 每轮对同一 diff
+// dead-branch / comment-only-fix / comment-as-debt）此前全靠 LLM 子 agent 判断。LLM 每轮对同一 diff
 // 重新采样、抓不同子集 → "每轮 review 都冒新问题"的体感来源。
 //
 // 本扫描器把这些机械模式抽到 task-verify 时的 deterministic 检测：扫任务范围的
@@ -112,13 +113,14 @@ type addedLine struct {
 	text   string
 }
 
-// ScanCheatPatterns scans task-scoped added lines and mechanically detects 4 AI-cheat patterns.
+// ScanCheatPatterns scans task-scoped added lines and mechanically detects 5 AI-cheat patterns.
 // Purely deterministic (computed by the gate, agent cannot forge). Returns findings (empty = clean).
 // Failure-tolerant: on git/file-read errors it skips that source (returning what was collected),
 // never panics — the reliability of advisory detection comes from what-it-catches-is-accurate,
 // not from must-scan-everything.
 //
-// ScanCheatPatterns 扫描任务范围内的新增行，机械检测 4 类 AI 作弊模式。
+// ScanCheatPatterns 扫描任务范围内的新增行，机械检测 5 类 AI 作弊模式（type-suppression /
+// error-swallow / dead-branch / comment-only-fix / comment-as-debt）。
 // 纯 deterministic（gate 实算，agent 无法伪造）。返回 findings（空=干净）。
 // 失败容忍：git/读文件出错时跳过该源（返回已收集的），绝不 panic——advisory 检测
 // 的可靠性来自"扫到了就准"，不来自"必须扫全"。

@@ -8,6 +8,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/protocol"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // GenerateQualitySkill creates .claude/skills/forge-quality/SKILL.md—a
@@ -25,7 +26,7 @@ func GenerateQualitySkill(projectDir string, proto *protocol.Protocol) error {
 
 	content := buildQualitySkillContent(projectDir, proto)
 	path := filepath.Join(skillDir, "SKILL.md")
-	return os.WriteFile(path, []byte(content), 0644)
+	return util.AtomicWrite(path, []byte(content), 0644)
 }
 
 func buildQualitySkillContent(projectDir string, proto *protocol.Protocol) string {

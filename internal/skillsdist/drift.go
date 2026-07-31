@@ -55,12 +55,21 @@ func DriftCheck(canonical string, opts InstallOpts) (*DriftReport, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(opts.SkillFilter) > 0 {
-		names = filterNames(names, opts.SkillFilter)
-	}
+	// nameSet for target-only orphan detection must use the FULL canonical list (before
+	// SkillFilter). With a filtered set, `--skill foo` would misreport every other legit
+	// skill present in the target as an orphan.
+	//
+	// target-only 孤儿检测的 nameSet 必须用过滤前的完整 canonical 名单。用过滤后的集合，
+	// `--skill foo` 会把 target 里其他正常 skill 全误报成孤儿。
 	nameSet := map[string]bool{}
 	for _, n := range names {
 		nameSet[n] = true
+	}
+	if len(opts.SkillFilter) > 0 {
+		names, err = filterNames(names, opts.SkillFilter)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	targetDirs, err := TargetDirs(opts.Targets, opts.Global, opts.ProjectSkillsDir)
@@ -106,7 +115,12 @@ func DriftCheck(canonical string, opts InstallOpts) (*DriftReport, error) {
 			continue
 		}
 		for _, e := range entries {
-			if !e.IsDir() || nameSet[e.Name()] {
+			// DirEntryIsDir follows junction/symlink (os.Stat semantics); e.IsDir() is
+			// Lstat-based and would silently skip link-form skills in orphan detection.
+			//
+			// DirEntryIsDir 跟随 junction/symlink（os.Stat 语义）；e.IsDir() 基于
+			// Lstat，会在孤儿检测里静默漏掉 link 形态的 skill。
+			if !DirEntryIsDir(tdir, e) || nameSet[e.Name()] {
 				continue
 			}
 			report.Stats.TargetOnly++

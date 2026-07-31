@@ -116,3 +116,22 @@ func TestEnsureEmbeddedCache_ReextractsOnCorruptedVersionMarker(t *testing.T) {
 		t.Fatal("重建后标记未重写")
 	}
 }
+
+// TestRequireValidSkillName pins the cli-boundary path-traversal defense on
+// --skill: empty / "." / ".." / separator-containing names are rejected before
+// the name is joined into skillsdecisions/skillseval store paths.
+//
+// TestRequireValidSkillName 钉住 --skill 的 cli 边界路径遍历防御：空 / "." /
+// ".." / 含分隔符的名字在拼进 skillsdecisions/skillseval store 路径前被拒。
+func TestRequireValidSkillName(t *testing.T) {
+	for _, bad := range []string{"", ".", "..", "../../x", `..\x`, "a/b", `a\b`} {
+		if err := requireValidSkillName(bad); err == nil {
+			t.Errorf("requireValidSkillName(%q) = nil, want error", bad)
+		}
+	}
+	for _, good := range []string{"forge-quality", "my_skill.v2", "a"} {
+		if err := requireValidSkillName(good); err != nil {
+			t.Errorf("requireValidSkillName(%q) = %v, want nil", good, err)
+		}
+	}
+}

@@ -31,6 +31,26 @@ func withCanonicalEnv(t *testing.T) string {
 	return dir
 }
 
+// isolateSkillTriggerTmp redirects the noise-controller marker dir into a
+// per-test temp dir. The production (non-dry-run) path writes per-session
+// cooldown markers under os.TempDir()/skill-trigger; with the fixed session
+// ids these tests use, a marker left by a previous run (same machine, shared
+// $TMPDIR) suppresses injection and the test fails on rerun. Redirecting
+// TMPDIR/TMP/TEMP (Unix/Windows respectively) makes each run hermetic.
+//
+// isolateSkillTriggerTmp 把 noise-controller 的 marker 目录重定向到 per-test
+// 临时目录。生产（非 dry-run）路径在 os.TempDir()/skill-trigger 下写
+// per-session cooldown marker；这些测试用固定 session id，上一次运行遗留的
+// marker（同机共享 $TMPDIR）会抑制注入导致重跑失败。重定向 TMPDIR/TMP/TEMP
+// （分别对应 Unix/Windows）让每次运行自包含。
+func isolateSkillTriggerTmp(t *testing.T) {
+	t.Helper()
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	t.Setenv("TMP", tmp)
+	t.Setenv("TEMP", tmp)
+}
+
 func TestBuildTriggerContext_FieldsMapped(t *testing.T) {
 	hi := HookInput{
 		HookEventName: "PostToolUse",
@@ -178,6 +198,7 @@ func TestRunSkillTriggerCore_DryRunStderr(t *testing.T) {
 
 func TestRunSkillTriggerHook_HitOutput(t *testing.T) {
 	dir := withCanonicalEnv(t)
+	isolateSkillTriggerTmp(t)
 	writeSkill(t, dir, "impl-disc", `[{"event":"UserPromptSubmit","when":"coding_intent"}]`)
 
 	out := captureStdout(t, func() {
@@ -210,6 +231,7 @@ func TestRunSkillTriggerHook_HitOutput(t *testing.T) {
 
 func TestRunSkillTriggerHook_NoHitOutput(t *testing.T) {
 	dir := withCanonicalEnv(t)
+	isolateSkillTriggerTmp(t)
 	writeSkill(t, dir, "td", `[{"event":"Stop"}]`)
 
 	out := captureStdout(t, func() {
@@ -256,6 +278,7 @@ func TestRunSkillTriggerCore_EmbedFallback(t *testing.T) {
 
 func TestRunSkillTriggerHook_DeniedSkillSkipped(t *testing.T) {
 	dir := withCanonicalEnv(t)
+	isolateSkillTriggerTmp(t)
 	// code-review-gate 在 DeniedSkills——即便声明 triggers 也不注入
 	writeSkill(t, dir, "code-review-gate", `[{"event":"UserPromptSubmit","when":"coding_intent"}]`)
 	writeSkill(t, dir, "normal", `[{"event":"UserPromptSubmit","when":"coding_intent"}]`)

@@ -17,12 +17,30 @@ package registry
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
+	"strings"
+	"time"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
+
+// pathKey normalizes a cleaned absolute path for dedupe/equality. Windows filesystems are
+// case-insensitive, so C:\Proj and c:\proj are the same project — plain string comparison
+// would register them as two entries. Other platforms keep exact comparison (case matters there).
+//
+// pathKey 归一化一个已 Clean 的绝对路径用于去重/相等判断。Windows 文件系统大小写
+// 不敏感，C:\Proj 与 c:\proj 是同一个项目——纯字符串比较会把它们登记成两条。
+// 其他平台保持精确比较（那里大小写有区分）。
+func pathKey(cleanedAbs string) string {
+	if runtime.GOOS == "windows" {
+		return strings.ToLower(cleanedAbs)
+	}
+	return cleanedAbs
+}
 
 // File is the on-disk structure of ~/.forge/projects.json: a deduped list of project absolute paths.
 //
@@ -79,19 +97,27 @@ func List() []string {
 	pruned := false
 	for _, pr := range f.Projects {
 		ap := filepath.Clean(pr)
-		if seen[ap] {
+		key := pathKey(ap)
+		if seen[key] {
 			// Duplicate entry within JSON.
 			pruned = true // JSON 内重复条目
 			continue
 		}
 		// Keep only entries that are still forge projects (.forge/ exists); moved/deleted ones do not appear in the global view.
+		// Only os.IsNotExist counts as "gone": any other stat error (permission, invalid path, I/O)
+		// means "unreadable right now", not "disappeared" — pruning on those would silently drop
+		// live projects from the global registry.
 		//
 		// 仅保留仍是 forge 项目的（.forge/ 存在）；移走/删除的不出现在全局视图。
+		// 只有 os.IsNotExist 算「已消失」：其他 stat 错误（权限、非法路径、I/O）是
+		// 「此刻不可读」而非「不存在」——按那些 prune 会把活项目静默踢出全局注册表。
 		if _, err := os.Stat(filepath.Join(ap, `.forge`)); err != nil {
-			pruned = true
-			continue
+			if os.IsNotExist(err) {
+				pruned = true
+				continue
+			}
 		}
-		seen[ap] = true
+		seen[key] = true
 		out = append(out, ap)
 	}
 	// Stable order, dashboard rendering is reproducible.
@@ -148,10 +174,25 @@ func Add(absPath string) error {
 	}
 	var f File
 	if data, rerr := os.ReadFile(p); rerr == nil {
-		_ = json.Unmarshal(data, &f)
+		if uerr := json.Unmarshal(data, &f); uerr != nil {
+			// Corrupt registry: back the file aside before rebuilding from empty — the old
+			// code swallowed the error and then atomically overwrote the registry with just
+			// the current project, silently wiping every other registration. Backup + stderr
+			// warning keep the failure explicit and recoverable.
+			//
+			// 注册表损坏：重建前先把文件备份到一边——旧代码吞掉错误后把仅含当前项目的
+			// 表原子覆盖回去，其他所有登记被静默清空。备份 + stderr 告警让失败显式、可恢复。
+			corrupt := fmt.Sprintf("%s.corrupt-%s", p, time.Now().Format("20060102-150405"))
+			if cerr := os.Rename(p, corrupt); cerr != nil {
+				fmt.Fprintf(os.Stderr, "warn: 备份损坏的注册表 %s 失败: %v\n", p, cerr)
+			} else {
+				fmt.Fprintf(os.Stderr, "warn: 注册表 JSON 损坏（%v），已备份到 %s，从空表重建\n", uerr, corrupt)
+			}
+			f = File{}
+		}
 	}
 	for _, e := range f.Projects {
-		if filepath.Clean(e) == ap {
+		if pathKey(filepath.Clean(e)) == pathKey(ap) {
 			// Already registered, idempotent.
 			return nil // 已登记，幂等
 		}

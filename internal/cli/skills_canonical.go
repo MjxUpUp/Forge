@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/MjxUpUp/Forge/internal/skillscanonical"
+	"github.com/MjxUpUp/Forge/internal/skillsfm"
 )
 
 // resolveCanonical resolves the skill library source directory (real filesystem path) and whether it is an external real source.
@@ -24,4 +25,21 @@ func resolveCanonical() (string, bool, error) {
 		return skillsCanonicalFlag, true, nil
 	}
 	return skillscanonical.Resolve(rootCmd.Version)
+}
+
+// requireValidSkillName rejects --skill values that are not plain skill names
+// (empty, ".", "..", or containing path separators). The name is joined into
+// filesystem paths by the skillsdecisions/skillseval stores — an unchecked
+// "../../x" would traverse out of the skill directory (path traversal defense
+// at the cli boundary; skillsfm.IsValidSkillName is the shared validator).
+//
+// requireValidSkillName 拒绝非纯 skill 名的 --skill 值（空、"."、".." 或含路径
+// 分隔符）。skill 名会被 skillsdecisions/skillseval store 拼进文件系统路径——
+// 不校验的 "../../x" 会遍历出 skill 目录（cli 边界的路径遍历防御；
+// skillsfm.IsValidSkillName 是共享校验器）。
+func requireValidSkillName(name string) error {
+	if !skillsfm.IsValidSkillName(name) {
+		return fmt.Errorf("非法 skill 名 %q（不得为空、\".\"/\"..\" 或含路径分隔符）", name)
+	}
+	return nil
 }

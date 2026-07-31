@@ -86,12 +86,17 @@ func Parse(text []byte) *Frontmatter {
 		}
 		if mm := topLevelRe.FindStringSubmatch(line); mm != nil {
 			key, val := mm[1], strings.TrimSpace(mm[2])
-			if val == ">" || val == "|" {
+			if isBlockScalarHeader(val) {
 				// YAML block scalar: collect subsequent indented lines (starting with space or empty),
 				// `>` folded joins with space, `|` literal joins with newline (aligned with Python).
+				// Chomping indicators (`>-`, `>+`, `|-`, `|+` — `>-` is common in the Anthropic
+				// ecosystem) are recognized by prefix; our buffer join has no trailing newline to
+				// strip/keep, so the indicator only selects fold vs literal.
 				//
 				// YAML block scalar：收集后续缩进行（以空格开头或空行），
 				// `>` folded 用空格 join、`|` literal 用换行 join（对齐 Python）。
+				// chomping 指示符（`>-`、`>+`、`|-`、`|+`——Anthropic 生态常用 `>-`）按前缀
+				// 识别；本实现的 buffer join 无尾部换行可剥/可留，指示符只区分 fold 与 literal。
 				buf := []string{}
 				i++
 				for i < len(lines) && (strings.HasPrefix(lines[i], " ") || lines[i] == "") {
@@ -100,20 +105,14 @@ func Parse(text []byte) *Frontmatter {
 					}
 					i++
 				}
-				if val == ">" {
+				if val[0] == '>' {
 					val = strings.Join(buf, " ")
 				} else {
 					val = strings.Join(buf, "\n")
 				}
 			} else {
 				i++
-				// Strip quotes (only when both ends are paired)
-				//
-				// 剥引号（仅当两端成对）
-				if (strings.HasPrefix(val, `"`) && strings.HasSuffix(val, `"`)) ||
-					(strings.HasPrefix(val, `'`) && strings.HasSuffix(val, `'`)) {
-					val = val[1 : len(val)-1]
-				}
+				val = stripQuotes(val)
 			}
 			fm.Raw[key] = val
 			switch key {
@@ -134,10 +133,14 @@ func Parse(text []byte) *Frontmatter {
 			}
 		} else if strings.HasPrefix(line, " ") && len(fm.Raw) > 0 {
 			// Nested metadata.* (only when a top-level field already exists, aligned with Python `elif ... and fm`)
+			// Values go through the same quote stripping as top-level fields — `pattern: "gate"`
+			// must yield gate, not `"gate"` (a quoted pattern breaks R7's pattern matching).
 			//
 			// 嵌套 metadata.*（仅当已有顶层字段，对齐 Python `elif ... and fm`）
+			// 值与顶层字段走同一套剥引号——`pattern: "gate"` 必须得到 gate 而非 `"gate"`
+			// （带引号的 pattern 会让 R7 模式匹配误判）。
 			if mm2 := nestedRe.FindStringSubmatch(line); mm2 != nil {
-				fm.Metadata[mm2[1]] = strings.TrimSpace(mm2[2])
+				fm.Metadata[mm2[1]] = stripQuotes(strings.TrimSpace(mm2[2]))
 			}
 			i++
 		} else {
@@ -145,6 +148,32 @@ func Parse(text []byte) *Frontmatter {
 		}
 	}
 	return fm
+}
+
+// isBlockScalarHeader reports whether a top-level field value opens a YAML block scalar:
+// `>` / `|` plus their chomping-indicator forms `>-`, `>+`, `|-`, `|+`.
+//
+// isBlockScalarHeader 判断顶层字段值是否开启 YAML block scalar：
+// `>` / `|` 及 chomping 指示符形式 `>-`、`>+`、`|-`、`|+`。
+func isBlockScalarHeader(val string) bool {
+	if len(val) == 0 || (val[0] != '>' && val[0] != '|') {
+		return false
+	}
+	return len(val) == 1 || (len(val) == 2 && (val[1] == '-' || val[1] == '+'))
+}
+
+// stripQuotes removes one layer of matching surrounding quotes. Requires len >= 2 AND
+// identical quote chars at both ends — a single-character value like `"` satisfies
+// HasPrefix+HasSuffix simultaneously, and slicing val[1:len-1] on it panics.
+//
+// stripQuotes 剥一层成对的首尾引号。要求 len >= 2 且首尾为同一引号字符——
+// 单字符值（如 `"`）会同时满足 HasPrefix+HasSuffix，直接切 val[1:len-1] 会 panic。
+func stripQuotes(val string) string {
+	if len(val) >= 2 &&
+		((val[0] == '"' && val[len(val)-1] == '"') || (val[0] == '\'' && val[len(val)-1] == '\'')) {
+		return val[1 : len(val)-1]
+	}
+	return val
 }
 
 // Pattern returns metadata.pattern (combination patterns like `pipeline + gate` returned as-is).

@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -48,7 +49,18 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	taskStates, _ := taskpipeline.ListTaskStates(root)
+	// status is an aggregate view: a task-list failure must not fail the whole
+	// render — warn on stderr and continue rendering the remaining blocks
+	// (task.go:1538 / act.go:100 propagate the error because those commands
+	// exist solely to list tasks; status degrades instead).
+	//
+	// status 是聚合视图：任务列表失败不应让整体渲染失败——stderr 告警后继续渲染
+	// 其余区块（task.go:1538 / act.go:100 传播 error，因为那些命令的唯一职责就是
+	// 列任务；status 降级处理）。
+	taskStates, tsErr := taskpipeline.ListTaskStates(root)
+	if tsErr != nil {
+		fmt.Fprintf(os.Stderr, "warn: 无法列出任务状态（继续渲染其余区块）: %v\n", tsErr)
+	}
 
 	// Project-level quality signals (task→project rollup): surface the evidence-blind-spot rate / recurring low-score
 	// dimensions at the status main entry. Otherwise deterministic signals computed in forge health are invisible to the

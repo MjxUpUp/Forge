@@ -53,7 +53,17 @@ func runCloneCheck(cmd *cobra.Command, args []string) error {
 		for _, r := range results {
 			fmt.Printf("  Similar: %s (%.0f%%)\n", r.FileB, r.Similarity*100)
 		}
-		os.Exit(1) // signal similar files found (shell scripts check exit code)
+		// Return an error instead of os.Exit(1): os.Exit bypasses the deferred
+		// chain (root Execute's panic recovery and any parent defers never run).
+		// Root's Execute prints this error to stderr and exits 1, so shell
+		// scripts checking the exit code are unaffected and stdout stays clean
+		// (only the "Similar:" lines above).
+		//
+		// 返回 error 而非 os.Exit(1)：os.Exit 绕过 defer 链（root Execute 的
+		// panic recovery 与上层 defer 都不会跑）。root 的 Execute 把该错误打到
+		// stderr 并 exit 1，检查退出码的 shell 脚本不受影响，stdout 保持干净
+		// （只有上面的 "Similar:" 行）。
+		return fmt.Errorf("found %d similar file(s)", len(results))
 	}
 	return nil
 }

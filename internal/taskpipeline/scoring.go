@@ -2,6 +2,7 @@ package taskpipeline
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/act"
@@ -32,10 +33,15 @@ import (
 // 任务刚完成时（HEAD≈HeadCommit）精确；事后 HEAD 推进会让 git diff 含后续改动而漂移
 // （scope 维度受影响最大）。故 golden 采集应在任务完成那刻或紧随其后。
 func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, *scoringtypes.ScoringConfig, error) {
-	// Collect git data (failure is non-fatal).
+	// Collect git data (failure is non-fatal: empty diffStat degrades the scope dimension to
+	// neutral 70, but the error is surfaced on stderr instead of being silently swallowed).
 	//
-	// 采集 git 数据（失败不致命）
-	gitDiffStat, _ := scoring.CollectGitData(root, state.Branch, state.HeadCommit)
+	// 采集 git 数据（失败不致命：空 diffStat 让 scope 维度走中性 70，但错误打到 stderr，
+	// 不再静默吞掉）。
+	gitDiffStat, gitErr := scoring.CollectGitData(root, state.Branch, state.HeadCommit)
+	if gitErr != nil {
+		fmt.Fprintf(os.Stderr, "[forge] warning: git diff stat unavailable (%v) — scope dimension scores neutral\n", gitErr)
+	}
 
 	// Infer hook results from gate history and check log.
 	//
@@ -62,12 +68,16 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 	tcOK, tcMissing, tcTotal := CheckTestCoverage(root, state)
 	tcCovered := tcTotal - len(tcMissing)
 	testCoveragePassed := tcOK
-	// checked: whether the gate has run (checklog has a test-coverage-gate entry). No entry →
-	// fallback to checked (covered/total/passed are computed live, scoring remains trustworthy).
+	// checked: always true. covered/total/passed are computed live above (same
+	// CheckTestCoverage logic and task diff as the gate), so the testing dimension does
+	// not depend on a checklog entry being present — an earlier version looked up the
+	// CheckNameTestCoverage entry here, but the result was unconditionally overwritten
+	// to true right after, making the lookup a dead effect.
 	//
-	// checked：门禁是否跑过（checklog 有 test-coverage-gate 条目）。无条目 → fallback 视为
-	// checked（实时已算 covered/total/passed，评分仍可信）。
-	testCoverageChecked := false
+	// checked：恒 true。covered/total/passed 上面实时算（与门禁同 CheckTestCoverage
+	// 逻辑、同 task diff），testing 维度不依赖 checklog 条目是否存在——此前此处会查
+	// CheckNameTestCoverage 条目，但紧接着被无条件覆写为 true，查询是死效果。
+	testCoverageChecked := true
 	if latestChecks, err := checklog.LatestByCheckForSession(root, state.SessionID); err == nil {
 		if entry, ok := latestChecks[checklog.CheckAssertion]; ok {
 			assertionChecked = entry.Checked
@@ -77,12 +87,6 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 			compileChecked = entry.Checked
 			compilePassed = entry.Passed
 		}
-		if entry, ok := latestChecks[CheckNameTestCoverage]; ok {
-			testCoverageChecked = entry.Checked
-		}
-	}
-	if !testCoverageChecked {
-		testCoverageChecked = true
 	}
 
 	// Count retries: gates that appear multiple times with mixed outcomes.

@@ -693,37 +693,75 @@ func TestTestCoveragePerTaskOverride(t *testing.T) {
 }
 
 // TestTestCoverageShouldBlock pins the tiered decision of the task-complete
-// hard-block backstop: large change (≥3 source files without paired tests) plus
-// zero assertions → block (corrupt success); small change (≤2, fudge factor) or
-// with assertions (tests live elsewhere / refactor scenario) → pass. Eval
-// evidence: feat/eval-core 0/19 and feat/m2 0/25 should block; fix/m2-review-fixes
-// 0/2 should pass (small change).
+// hard-block backstop: the input is the count of changed source files WITHOUT a
+// paired test (not total changed files) — many missing (≥3) plus zero assertions →
+// block (corrupt success); few missing (≤2, fudge factor — e.g. partial coverage of
+// an otherwise well-tested change) or with assertions (tests live elsewhere /
+// refactor scenario) → pass. Eval evidence: feat/eval-core 0/19 and feat/m2 0/25
+// (all files missing) should block; fix/m2-review-fixes 0/2 should pass (few missing).
 //
-// TestTestCoverageShouldBlock 钉死 task-complete 兜底硬阻断的分级判定：大改（≥3 源文件
-// 无配对测试）且零断言 → 阻断（corrupt success）；小改（≤2，fudge factor）或有断言
-// （测试在别处/重构场景）→ 放行。eval 证据：feat/eval-core 0/19、feat/m2 0/25 应阻断；
-// fix/m2-review-fixes 0/2 应放行（小改）。
+// TestTestCoverageShouldBlock 钉死 task-complete 兜底硬阻断的分级判定：输入是「无配对
+// 测试的改动源文件数」（非全部改动文件数）——缺测多（≥3）且零断言 → 阻断
+// （corrupt success）；缺测少（≤2，fudge factor——如测试充分的改动只漏个别文件的
+// 部分覆盖）或有断言（测试在别处/重构场景）→ 放行。eval 证据：feat/eval-core 0/19、
+// feat/m2 0/25（全部缺测）应阻断；fix/m2-review-fixes 0/2 应放行（缺测少）。
 func TestTestCoverageShouldBlock(t *testing.T) {
 	cases := []struct {
 		name    string
-		total   int
+		missing int
 		assertN int
 		want    bool
 	}{
 		{"no source changed", 0, 0, false},
-		{"small change fudge factor (2 files, 0 assertion)", 2, 0, false},
+		{"few missing fudge factor (2 files, 0 assertion)", 2, 0, false},
 		{"threshold boundary exactly 2 → pass", 2, 0, false},
 		{"threshold boundary exactly 3 zero assertion → BLOCK", 3, 0, true},
-		{"big change zero assertion (3 files) → BLOCK", 3, 0, true},
-		{"eval-core scale (19 files) → BLOCK", 19, 0, true},
-		{"big change but has assertions (refactor) → pass", 3, 5, false},
-		{"big change one assertion → pass (有验证痕迹)", 5, 1, false},
+		{"many missing zero assertion (3 files) → BLOCK", 3, 0, true},
+		{"eval-core scale (19 files missing) → BLOCK", 19, 0, true},
+		{"many missing but has assertions (refactor) → pass", 3, 5, false},
+		{"many missing one assertion → pass (有验证痕迹)", 5, 1, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := testCoverageShouldBlock(c.total, c.assertN); got != c.want {
-				t.Errorf("testCoverageShouldBlock(total=%d, assertN=%d) = %v, want %v", c.total, c.assertN, got, c.want)
+			if got := testCoverageShouldBlock(c.missing, c.assertN); got != c.want {
+				t.Errorf("testCoverageShouldBlock(missing=%d, assertN=%d) = %v, want %v", c.missing, c.assertN, got, c.want)
 			}
 		})
+	}
+}
+
+// TestTaskCompleteTestCoverageHardGate_PartialCoverageAdvisoryPass pins the
+// missing-count semantics: 3 source files changed, 2 with paired tests, 1 missing →
+// len(missing)=1 < threshold → advisory pass (zero assertions). Before the fix the
+// gate passed `total` (all changed source files) to testCoverageShouldBlock, so this
+// scenario hard-blocked with a BLOCKED text claiming "改了 3 个源文件却无配对测试" —
+// a lie (2 of the 3 did have tests). The documented semantics
+// (testCoverageHardGateThreshold: 「无配对测试的源文件数 ≥ 阈值」) say advisory.
+// Sources are split across packages so the same-package _test.go fallback does not
+// accidentally cover the missing one.
+//
+// TestTaskCompleteTestCoverageHardGate_PartialCoverageAdvisoryPass 钉死 missing 计数
+// 语义：改 3 个源文件，2 个有配对测试，1 个缺 → len(missing)=1 < 阈值 → 零断言也
+// advisory 放行。修复前门禁把 total（全部改动源文件数）传给 testCoverageShouldBlock，
+// 此场景会被硬阻断且 BLOCKED 文案谎称「改了 3 个源文件却无配对测试」（实际 2 个有
+// 测试）——与文档语义（testCoverageHardGateThreshold：「无配对测试的源文件数 ≥
+// 阈值」）矛盾。源文件分散在不同包，避免同包 _test.go fallback 意外覆盖缺测文件。
+func TestTaskCompleteTestCoverageHardGate_PartialCoverageAdvisoryPass(t *testing.T) {
+	dir := t.TempDir()
+	initRepoWithMaster(t, dir)
+	writeCommitSource(t, dir, map[string]string{
+		"pkg1/a.go":      "package pkg1\n\nfunc A() int { return 1 }\n",
+		"pkg1/a_test.go": "package pkg1\n\nimport \"testing\"\n\nfunc TestA(t *testing.T) {}\n",
+		"pkg2/b.go":      "package pkg2\n\nfunc B() int { return 2 }\n",
+		"pkg2/b_test.go": "package pkg2\n\nimport \"testing\"\n\nfunc TestB(t *testing.T) {}\n",
+		"pkg3/c.go":      "package pkg3\n\nfunc C() int { return 3 }\n",
+	}, "add 3 sources, 2 with paired tests, 1 missing")
+
+	state := newVerifyState(t, dir, "partial-coverage")
+	state.RecordGateResult("task-verify", true, "")
+	state.MarkReviewPassed("", "")
+
+	if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
+		t.Fatalf("部分覆盖（缺测 1 个 < 阈值）应 advisory 放行——实现与文档语义（无配对测试的源文件数 ≥ 阈值才硬阻断）须一致, got: %v", err)
 	}
 }

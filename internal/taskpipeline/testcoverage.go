@@ -189,7 +189,7 @@ func CheckTestCoverage(root string, state *TaskState) (ok bool, missing []string
 		if state != nil {
 			taskRef = state.TaskRef
 		}
-		checklog.Record(root, &checklog.Entry{
+		recordAudit(root, &checklog.Entry{
 			Check:   checklog.CheckEscapeHatch,
 			Passed:  true,
 			Checked: true,
@@ -243,20 +243,24 @@ func CheckTestCoverage(root string, state *TaskState) (ok bool, missing []string
 const testCoverageHardGateThreshold = 3
 
 // testCoverageShouldBlock decides whether the task-complete fallback hard-blocks for
-// missing tests. Large change (≥ threshold source files without paired tests) AND zero
-// assertions → block (corrupt success: changed source with neither paired tests nor any
-// assertion). Small change (< threshold, fudge factor) or has-assertions-but-zero-paired
+// missing tests. missingN is the count of changed source files WITHOUT a paired test
+// (NOT total changed source files) — matching the threshold doc above: many missing
+// (≥ threshold) AND zero assertions → block (corrupt success: changed source with
+// neither paired tests nor any assertion). Few missing (< threshold, fudge factor —
+// e.g. partial coverage of a well-tested change) or has-assertions-but-zero-paired
 // coverage (tests live elsewhere / refactor scenario) → advisory pass. The assertion
 // signal reuses scoring.CollectAssertionDensity (13 cross-language markers) to avoid the
 // tautology trap of only checking whether a test exists (AI test fossilization bug).
 //
-// testCoverageShouldBlock 决定 task-complete 兜底是否对缺测试硬阻断。大改（≥阈值源文件
-// 无配对测试）且零断言 → 阻断（corrupt success：改了源码既无配对测试也无任何断言）。
-// 小改（<阈值，fudge factor）或「有断言但 0 配对覆盖」（测试在别处/重构场景）→ advisory 放行。
-// 断言信号复用 scoring.CollectAssertionDensity（13 个跨语言 marker），避免只看「测试是否存在」
+// testCoverageShouldBlock 决定 task-complete 兜底是否对缺测试硬阻断。missingN 是
+// 「无配对测试的改动源文件数」（非全部改动源文件数）——与上方阈值文档一致：缺测
+// 多（≥阈值）且零断言 → 阻断（corrupt success：改了源码既无配对测试也无任何断言）。
+// 缺测少（<阈值，fudge factor——如测试充分改动只漏 1 个文件的部分覆盖）或「有断言
+// 但 0 配对覆盖」（测试在别处/重构场景）→ advisory 放行。断言信号复用
+// scoring.CollectAssertionDensity（13 个跨语言 marker），避免只看「测试是否存在」
 // 的同义反复陷阱（AI 测试固化 bug）。
-func testCoverageShouldBlock(total, assertN int) bool {
-	return total >= testCoverageHardGateThreshold && assertN == 0
+func testCoverageShouldBlock(missingN, assertN int) bool {
+	return missingN >= testCoverageHardGateThreshold && assertN == 0
 }
 
 // taskChangedFiles returns the set of files changed during the task.

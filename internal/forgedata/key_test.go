@@ -441,6 +441,32 @@ func TestGlobalHome_FallsBackToUserHomeDir(t *testing.T) {
 	}
 }
 
+// TestHash12_ZeroPadding pins the slice-overrun fix: hex forms shorter than 12 chars must be
+// zero-padded (not panic on s[:12]). 0x123 → "000000000123".
+//
+// TestHash12_ZeroPadding 钉死 slice 越界修复：hex 不足 12 位的值必须零填充（而非 s[:12] panic）。
+// 0x123 → "000000000123"。
+func TestHash12_ZeroPadding(t *testing.T) {
+	cases := []struct {
+		sum  uint64
+		want string
+	}{
+		{0x123, `000000000123`},
+		{0, `000000000000`},
+		{0xffffffffffffffff, `ffffffffffff`}, // 全长 16 位，截前 12
+		{0xabcdef123456, `abcdef123456`},     // 恰好 12 位
+	}
+	for _, c := range cases {
+		got := hash12(c.sum)
+		if got != c.want {
+			t.Errorf(`hash12(%#x)=%q，期望 %q`, c.sum, got, c.want)
+		}
+		if len(got) != 12 {
+			t.Errorf(`hash12(%#x) 长度=%d，期望 12`, c.sum, len(got))
+		}
+	}
+}
+
 // errorIs wraps errors.Is; inlined here because within this package we cannot import another err package.
 //
 // errorIs wraps errors.Is；这里 inline 因为我们 package 内不能 import 其他 err 包

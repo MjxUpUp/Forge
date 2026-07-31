@@ -42,8 +42,12 @@ func runScenarioFreshInstall(forgeBin string) ScenarioResult {
 	if output, err := verifyRunGit(dir, "init"); err != nil {
 		return failResult("fresh-install", fmt.Sprintf("git init failed: %v\n%s", err, output), start)
 	}
-	verifyRunGit(dir, "config", "user.email", "test@example.com")
-	verifyRunGit(dir, "config", "user.name", "Test")
+	if output, err := verifyRunGit(dir, "config", "user.email", "test@example.com"); err != nil {
+		return failResult("fresh-install", fmt.Sprintf("git config user.email failed: %v\n%s", err, output), start)
+	}
+	if output, err := verifyRunGit(dir, "config", "user.name", "Test"); err != nil {
+		return failResult("fresh-install", fmt.Sprintf("git config user.name failed: %v\n%s", err, output), start)
+	}
 
 	// Write a minimal go project.
 	//
@@ -108,9 +112,15 @@ func runScenarioMasterReminder(forgeBin string) ScenarioResult {
 	// Prepare.
 	//
 	// 准备：git init + go 项目 + forge init
-	verifyRunGit(dir, "init")
-	verifyRunGit(dir, "config", "user.email", "test@example.com")
-	verifyRunGit(dir, "config", "user.name", "Test")
+	if output, err := verifyRunGit(dir, "init"); err != nil {
+		return failResult("master-reminder", fmt.Sprintf("git init failed: %v\n%s", err, output), start)
+	}
+	if output, err := verifyRunGit(dir, "config", "user.email", "test@example.com"); err != nil {
+		return failResult("master-reminder", fmt.Sprintf("git config user.email failed: %v\n%s", err, output), start)
+	}
+	if output, err := verifyRunGit(dir, "config", "user.name", "Test"); err != nil {
+		return failResult("master-reminder", fmt.Sprintf("git config user.name failed: %v\n%s", err, output), start)
+	}
 	writeVerifyFile(dir, "go.mod", "module example.com/test\n\ngo 1.24\n")
 	writeVerifyFile(dir, "main.go", "package main\n\nfunc main() {}\n")
 	if _, err := verifyRunForge(forgeBin, dir, "init"); err != nil {
@@ -120,9 +130,32 @@ func runScenarioMasterReminder(forgeBin string) ScenarioResult {
 	// Commit everything, then create a feature branch.
 	//
 	// 全部 commit，然后创建 feature branch
-	verifyRunGit(dir, "add", ".")
-	verifyRunGit(dir, "commit", "-m", "initial")
-	verifyRunGit(dir, "checkout", "-b", "feature/EXP-1-test")
+	if output, err := verifyRunGit(dir, "add", "."); err != nil {
+		return failResult("master-reminder", fmt.Sprintf("git add failed: %v\n%s", err, output), start)
+	}
+	if output, err := verifyRunGit(dir, "commit", "-m", "initial"); err != nil {
+		return failResult("master-reminder", fmt.Sprintf("git commit failed: %v\n%s", err, output), start)
+	}
+
+	// Detect the actual default branch (master vs main depends on the
+	// environment's init.defaultBranch) — checking out a hardcoded "master"
+	// silently failed on main-default environments, letting the scenario
+	// "pass" on the wrong branch.
+	//
+	// 探测实际默认分支（master/main 取决于环境的 init.defaultBranch）——
+	// 硬编码 checkout master 在 main 默认的环境静默失败，场景会在错误分支上"通过"。
+	branchOut, err := verifyRunGit(dir, "symbolic-ref", "--short", "HEAD")
+	if err != nil {
+		return failResult("master-reminder", fmt.Sprintf("git symbolic-ref HEAD failed: %v\n%s", err, branchOut), start)
+	}
+	defaultBranch := strings.TrimSpace(branchOut)
+	if defaultBranch == "" {
+		return failResult("master-reminder", "git symbolic-ref HEAD returned empty branch name", start)
+	}
+
+	if output, err := verifyRunGit(dir, "checkout", "-b", "feature/EXP-1-test"); err != nil {
+		return failResult("master-reminder", fmt.Sprintf("git checkout -b failed: %v\n%s", err, output), start)
+	}
 
 	// Start a task, pass gates, complete.
 	//
@@ -137,17 +170,23 @@ func runScenarioMasterReminder(forgeBin string) ScenarioResult {
 		return failResult("master-reminder", fmt.Sprintf("task complete failed: %v", err), start)
 	}
 
-	// Switch back to master.
+	// Switch back to the default branch.
 	//
-	// 切回 master
-	verifyRunGit(dir, "checkout", "master")
+	// 切回默认分支
+	if output, err := verifyRunGit(dir, "checkout", defaultBranch); err != nil {
+		return failResult("master-reminder", fmt.Sprintf("git checkout %s failed: %v\n%s", defaultBranch, err, output), start)
+	}
 
 	// Create a source file, commit, then modify it.
 	//
 	// 创建源码文件、commit，再修改
 	writeVerifyFile(dir, "foo.go", "package main\n\nfunc Foo() int { return 42 }\n")
-	verifyRunGit(dir, "add", "foo.go")
-	verifyRunGit(dir, "commit", "-m", "add foo.go")
+	if output, err := verifyRunGit(dir, "add", "foo.go"); err != nil {
+		return failResult("master-reminder", fmt.Sprintf("git add foo.go failed: %v\n%s", err, output), start)
+	}
+	if output, err := verifyRunGit(dir, "commit", "-m", "add foo.go"); err != nil {
+		return failResult("master-reminder", fmt.Sprintf("git commit foo.go failed: %v\n%s", err, output), start)
+	}
 	writeVerifyFile(dir, "foo.go", "package main\n\nfunc Foo() int { return 99 }\n")
 
 	// Run the task-verify hook.
@@ -183,9 +222,15 @@ func runScenarioUpgradeV040(forgeBin string) ScenarioResult {
 	// Prepare.
 	//
 	// 准备
-	verifyRunGit(dir, "init")
-	verifyRunGit(dir, "config", "user.email", "test@example.com")
-	verifyRunGit(dir, "config", "user.name", "Test")
+	if output, err := verifyRunGit(dir, "init"); err != nil {
+		return failResult("upgrade-v040", fmt.Sprintf("git init failed: %v\n%s", err, output), start)
+	}
+	if output, err := verifyRunGit(dir, "config", "user.email", "test@example.com"); err != nil {
+		return failResult("upgrade-v040", fmt.Sprintf("git config user.email failed: %v\n%s", err, output), start)
+	}
+	if output, err := verifyRunGit(dir, "config", "user.name", "Test"); err != nil {
+		return failResult("upgrade-v040", fmt.Sprintf("git config user.name failed: %v\n%s", err, output), start)
+	}
 	writeVerifyFile(dir, "go.mod", "module example.com/test\n\ngo 1.24\n")
 	writeVerifyFile(dir, "main.go", "package main\n\nfunc main() {}\n")
 
@@ -324,9 +369,15 @@ func runScenarioUpgradeV030(forgeBin string) ScenarioResult {
 	// Prepare.
 	//
 	// 准备
-	verifyRunGit(dir, "init")
-	verifyRunGit(dir, "config", "user.email", "test@example.com")
-	verifyRunGit(dir, "config", "user.name", "Test")
+	if output, err := verifyRunGit(dir, "init"); err != nil {
+		return failResult("upgrade-v030", fmt.Sprintf("git init failed: %v\n%s", err, output), start)
+	}
+	if output, err := verifyRunGit(dir, "config", "user.email", "test@example.com"); err != nil {
+		return failResult("upgrade-v030", fmt.Sprintf("git config user.email failed: %v\n%s", err, output), start)
+	}
+	if output, err := verifyRunGit(dir, "config", "user.name", "Test"); err != nil {
+		return failResult("upgrade-v030", fmt.Sprintf("git config user.name failed: %v\n%s", err, output), start)
+	}
 	writeVerifyFile(dir, "go.mod", "module example.com/test\n\ngo 1.24\n")
 	writeVerifyFile(dir, "main.go", "package main\n\nfunc main() {}\n")
 
@@ -420,15 +471,20 @@ scoring:
 		}
 	}
 
-	// Verify hooks were updated.
+	// Verify hooks were updated. A missing hook is a failure (aligned with the
+	// v040 scenario) — silently skipping absent files would let a broken
+	// auto-sync "pass".
 	//
-	// 校验 hook 已更新
+	// 校验 hook 已更新。hook 文件不存在记 failure（与 v040 场景对齐）——
+	// 静默跳过缺失文件会让坏掉的 auto-sync"通过"。
 	for _, hook := range []string{".forge/hooks/auto-compile.sh", ".forge/hooks/task-verify.sh"} {
-		if verifyFileExists(dir, hook) {
-			content, _ := os.ReadFile(filepath.Join(dir, hook))
-			if strings.Contains(string(content), "echo old\n") {
-				failures = append(failures, fmt.Sprintf("%s should have been updated", hook))
-			}
+		if !verifyFileExists(dir, hook) {
+			failures = append(failures, fmt.Sprintf("missing hook: %s", hook))
+			continue
+		}
+		content, _ := os.ReadFile(filepath.Join(dir, hook))
+		if strings.Contains(string(content), "echo old\n") {
+			failures = append(failures, fmt.Sprintf("%s should have been updated", hook))
 		}
 	}
 
@@ -514,7 +570,9 @@ func passAllVerifyGates(forgeBin, dir, ref string) error {
 	//
 	// commit 让 HEAD 超过 base branch——task-implement 的
 	// 代码变更检查要求 feature branch 有新 commit。
-	verifyRunGit(dir, "commit", "--allow-empty", "-m", "verify: move HEAD for task-implement")
+	if out, err := verifyRunGit(dir, "commit", "--allow-empty", "-m", "verify: move HEAD for task-implement"); err != nil {
+		return fmt.Errorf("git commit (move HEAD) failed: %v\n%s", err, out)
+	}
 
 	for _, g := range []string{"task-implement", "task-verify", "task-complete"} {
 		out, err := verifyRunForge(forgeBin, dir, "task", "gate", g, "--ref", ref)
@@ -524,11 +582,3 @@ func passAllVerifyGates(forgeBin, dir, ref string) error {
 	}
 	return nil
 }
-
-// findVerifyRepoRoot searches upward for go.mod — used to build the binary.
-// It is intentionally a separate name from verify.go's findRepoRoot to avoid conflicts.
-// Both behave the same; this version returns '.' on failure.
-//
-// findVerifyRepoRoot 向上查 go.mod——用于构建 binary。
-// 与 verify.go 的 findRepoRoot 同名分离避免冲突。
-// 两者功能相同，本版本失败时返"."。

@@ -18,6 +18,16 @@ func TestParseBranchName(t *testing.T) {
 		{"my-feature", "my-feature", "my-feature"},
 		{"feature/simple", "feature/simple", "simple"},
 		{"fix/minor-typo", "fix/minor-typo", "minor-typo"},
+		// Uppercase-but-non-numeric second segment is NOT a ticket ref: the documented
+		// pattern is PROJ-123 (uppercase key + number). Previously these were misread as
+		// ticket refs and the summary was wiped.
+		//
+		// 大写但非数字的第二段不是 ticket ref：注释承诺的模式是 PROJ-123（大写 key +
+		// 数字）。此前这些被误判为 ticket ref 且 summary 被清空。
+		{"fix/API-crash", "fix/API-crash", "API-crash"},
+		{"hotfix/UI-freeze", "hotfix/UI-freeze", "UI-freeze"},
+		{"PROJ-abc-description", "PROJ-abc-description", "PROJ-abc-description"},
+		{"PROJ-", "PROJ-", "PROJ-"},
 	}
 
 	for _, tt := range tests {

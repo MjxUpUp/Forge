@@ -188,41 +188,23 @@ func (p *Project) ensureMeta() error {
 
 // ---- Runtime state accessors (all under p.DataDir) ----
 //
+// Only accessors with real callers live here. The refactor-data-home zombie accessors
+// (TasksDir/TaskStatePath/GatesDir/GateDir/GateStatusPath/ChecklogGlob/ToollogPath/ToollogGlob/
+// StampsDir/StampPath/SessionsDir/SessionPath/SessionsLogPath/SessionFilePath/ActiveTaskRefPath/
+// ActiveTaskRefSessionPath/ActiveTaskRefGlob/ProtocolYAMLPath/CLAUDEMDPath) had zero production
+// callers and were deleted — the unsanitized ones (TaskStatePath/StampPath joining caller input
+// straight into a path) were a path-traversal hazard if ever revived without sanitize.
+//
 // ---- Runtime state accessor（全部 p.DataDir 下）----
+//
+// 只保留有真实调用方的 accessor。refactor-data-home 遗留的僵尸 accessor
+// （清单见上）零生产调用已删除——其中不做 sanitize 的（TaskStatePath/StampPath 把调用方
+// 输入直接拼进路径）若不经 sanitize 复活即是路径穿越雷。
 
 // MetaPath returns DataDir/.migration-meta.json
 //
 // MetaPath 返回 DataDir/.migration-meta.json
 func (p *Project) MetaPath() string { return filepath.Join(p.DataDir, ".migration-meta.json") }
-
-// TasksDir returns DataDir/tasks
-//
-// TasksDir 返回 DataDir/tasks
-func (p *Project) TasksDir() string { return filepath.Join(p.DataDir, "tasks") }
-
-// TaskStatePath returns DataDir/tasks/<ref>.json
-//
-// TaskStatePath 返回 DataDir/tasks/<ref>.json
-func (p *Project) TaskStatePath(ref string) string {
-	return filepath.Join(p.DataDir, "tasks", ref+".json")
-}
-
-// GatesDir returns DataDir/gates
-//
-// GatesDir 返回 DataDir/gates
-func (p *Project) GatesDir() string { return filepath.Join(p.DataDir, "gates") }
-
-// GateDir returns DataDir/gates/<id>/
-//
-// GateDir 返回 DataDir/gates/<id>/
-func (p *Project) GateDir(gateID string) string { return filepath.Join(p.DataDir, "gates", gateID) }
-
-// GateStatusPath returns DataDir/gates/<id>/status.json
-//
-// GateStatusPath 返回 DataDir/gates/<id>/status.json
-func (p *Project) GateStatusPath(gateID string) string {
-	return filepath.Join(p.DataDir, "gates", gateID, "status.json")
-}
 
 // GateArtifactPath returns DataDir/gates/<id>/<out> (gate run artifact, e.g. feishu report attachment).
 //
@@ -255,21 +237,6 @@ func (p *Project) HazardsConfirmPath(fp string) string {
 // ChecklogPath returns DataDir/checklog.jsonl（主）
 func (p *Project) ChecklogPath() string { return filepath.Join(p.DataDir, "checklog.jsonl") }
 
-// ChecklogGlob returns DataDir/checklog*.jsonl (including archives).
-//
-// ChecklogGlob returns DataDir/checklog*.jsonl（含归档）
-func (p *Project) ChecklogGlob() string { return filepath.Join(p.DataDir, "checklog*.jsonl") }
-
-// ToollogPath returns DataDir/toollog.jsonl (primary).
-//
-// ToollogPath returns DataDir/toollog.jsonl（主）
-func (p *Project) ToollogPath() string { return filepath.Join(p.DataDir, "toollog.jsonl") }
-
-// ToollogGlob returns DataDir/toollog*.jsonl (including archives).
-//
-// ToollogGlob returns DataDir/toollog*.jsonl（含归档）
-func (p *Project) ToollogGlob() string { return filepath.Join(p.DataDir, "toollog*.jsonl") }
-
 // ActDir returns DataDir/act
 //
 // ActDir 返回 DataDir/act
@@ -281,70 +248,3 @@ func (p *Project) ActDir() string { return filepath.Join(p.DataDir, "act") }
 func (p *Project) ActConclusionsPath() string {
 	return filepath.Join(p.DataDir, "act", "conclusions.jsonl")
 }
-
-// StampsDir returns DataDir/stamps
-//
-// StampsDir 返回 DataDir/stamps
-func (p *Project) StampsDir() string { return filepath.Join(p.DataDir, "stamps") }
-
-// StampPath returns DataDir/stamps/<branch>.stamp
-//
-// StampPath 返回 DataDir/stamps/<branch>.stamp
-func (p *Project) StampPath(branch string) string {
-	return filepath.Join(p.DataDir, "stamps", branch+".stamp")
-}
-
-// SessionsDir returns DataDir/sessions
-//
-// SessionsDir 返回 DataDir/sessions
-func (p *Project) SessionsDir() string { return filepath.Join(p.DataDir, "sessions") }
-
-// SessionPath returns DataDir/sessions/<sid>.json
-//
-// SessionPath 返回 DataDir/sessions/<sid>.json
-func (p *Project) SessionPath(sid string) string {
-	return filepath.Join(p.DataDir, "sessions", sid+".json")
-}
-
-// SessionsLogPath returns DataDir/sessions.jsonl
-//
-// SessionsLogPath 返回 DataDir/sessions.jsonl
-func (p *Project) SessionsLogPath() string { return filepath.Join(p.DataDir, "sessions.jsonl") }
-
-// SessionFilePath returns DataDir/session.json (legacy single-session).
-//
-// SessionFilePath 返回 DataDir/session.json（legacy single-session）
-func (p *Project) SessionFilePath() string { return filepath.Join(p.DataDir, "session.json") }
-
-// ActiveTaskRefPath returns DataDir/active-task-ref (legacy single-file).
-//
-// ActiveTaskRefPath 返回 DataDir/active-task-ref（legacy single-file）
-func (p *Project) ActiveTaskRefPath() string {
-	return filepath.Join(p.DataDir, "active-task-ref")
-}
-
-// ActiveTaskRefSessionPath returns DataDir/active-task-ref-<sid> (session-scoped).
-//
-// ActiveTaskRefSessionPath 返回 DataDir/active-task-ref-<sid>（session-scoped）
-func (p *Project) ActiveTaskRefSessionPath(sid string) string {
-	return filepath.Join(p.DataDir, "active-task-ref-"+sid)
-}
-
-// ActiveTaskRefGlob returns DataDir/active-task-ref* (covers legacy and session-scoped).
-//
-// ActiveTaskRefGlob 返回 DataDir/active-task-ref*（覆盖 legacy 与 session-scoped）
-func (p *Project) ActiveTaskRefGlob() string { return filepath.Join(p.DataDir, "active-task-ref*") }
-
-// ---- Project-config accessors (under p.ConfigDir, still project-level .forge/) ----
-//
-// ---- Project-config accessor（p.ConfigDir 下，仍项目级 .forge/）----
-
-// ProtocolYAMLPath returns ConfigDir/protocol.yml
-//
-// ProtocolYAMLPath 返回 ConfigDir/protocol.yml
-func (p *Project) ProtocolYAMLPath() string { return filepath.Join(p.ConfigDir, "protocol.yml") }
-
-// CLAUDEMDPath returns ConfigDir/CLAUDE.md
-//
-// CLAUDEMDPath 返回 ConfigDir/CLAUDE.md
-func (p *Project) CLAUDEMDPath() string { return filepath.Join(p.ConfigDir, "CLAUDE.md") }

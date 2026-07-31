@@ -7,6 +7,7 @@ package clone
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,14 +36,31 @@ func normalizePath(p string) string {
 	return filepath.ToSlash(filepath.Clean(p))
 }
 
+// minTokens is the minimum token count for a meaningful Jaccard comparison: below it the
+// similarity score is noise (a handful of shared keywords can swing it anywhere).
+//
+// minTokens 是 Jaccard 比对有意义的最低 token 数：低于它相似度分数就是噪声
+// （几个共享关键字就能把分数甩到任意值）。
+const minTokens = 10
+
 // DetectClones scans a directory for files that are too similar to the target file.
 // It returns matches whose similarity is above threshold (0.0–1.0). It uses
 // plain-text tokenization (splitting on whitespace) for speed — a full AST diff is a
 // future enhancement.
 //
+// Errors: a target file with fewer than minTokens tokens returns an explicit error (too few
+// tokens to compare meaningfully) rather than a silent (nil, nil) that would masquerade as
+// "scan complete, no clones"; a filepath.Walk failure on the root directory (missing/unreadable)
+// is likewise returned instead of swallowed. Single-file errors inside the walk keep the
+// skip-and-continue policy.
+//
 // DetectClones 扫描某目录，找出与目标文件过于相似的文件。
 // 返回相似度高于 threshold（0.0–1.0）的匹配。为速度采用纯文本 tokenization
 // （按空白拆分）——完整 AST diff 是后续增强项。
+//
+// 错误：目标文件 token 数少于 minTokens 时返回显式错误（token 太少无法有效比对），
+// 而非静默 (nil, nil) 伪装成"扫描完成无克隆"；filepath.Walk 在根目录上的失败
+// （目录不存在/不可读）同样返回而非吞掉。walk 内的单文件错误保持跳过继续策略。
 func DetectClones(dir, targetPath string, threshold float64) ([]SimilarityResult, error) {
 	// Normalize target to absolute, slash-separated form for cross-platform
 	// self-comparison. The CLI passes relative paths while filepath.Walk yields
@@ -55,15 +73,31 @@ func DetectClones(dir, targetPath string, threshold float64) ([]SimilarityResult
 	normTarget := normalizePath(targetPath)
 
 	targetTokens, err := tokenizeFile(targetPath)
-	if err != nil || len(targetTokens) < 10 {
+	if err != nil {
 		return nil, err
+	}
+	if len(targetTokens) < minTokens {
+		return nil, fmt.Errorf("target file %s has only %d tokens (<%d): too few for a meaningful similarity comparison",
+			targetPath, len(targetTokens), minTokens)
 	}
 
 	ext := filepath.Ext(targetPath)
 	var results []SimilarityResult
 
-	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
+	walkErr := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			// A root-directory error (missing/unreadable dir) must propagate — swallowing
+			// it returns (nil, nil) and masquerades as "scan complete, no clones".
+			// Single-file errors keep the skip-and-continue policy.
+			//
+			// 根目录错误（目录不存在/不可读）必须上抛——吞掉会返回 (nil, nil)，
+			// 伪装成"扫描完成无克隆"。单文件错误保持跳过继续策略。
+			if path == dir {
+				return err
+			}
+			return nil
+		}
+		if info.IsDir() {
 			return nil
 		}
 		normPath := normalizePath(path)
@@ -90,7 +124,7 @@ func DetectClones(dir, targetPath string, threshold float64) ([]SimilarityResult
 		}
 
 		tokens, err := tokenizeFile(path)
-		if err != nil || len(tokens) < 10 {
+		if err != nil || len(tokens) < minTokens {
 			return nil
 		}
 
@@ -104,6 +138,9 @@ func DetectClones(dir, targetPath string, threshold float64) ([]SimilarityResult
 		}
 		return nil
 	})
+	if walkErr != nil {
+		return nil, fmt.Errorf("scan directory %s: %w", dir, walkErr)
+	}
 
 	return results, nil
 }

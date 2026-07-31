@@ -88,7 +88,11 @@ func TestDetectClonesSelfExcluded(t *testing.T) {
 
 func TestDetectClonesDissimilar(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "a.go"), []byte("package p\nfunc uniqueA() { return 1 }\n"), 0644)
+	// Both files need >= minTokens (10) tokens, otherwise DetectClones errors out on the
+	// target before comparing.
+	//
+	// 两个文件都需 >= minTokens（10）个 token，否则 DetectClones 在比对前就对目标报错。
+	os.WriteFile(filepath.Join(dir, "a.go"), []byte("package p\nfunc uniqueA() { return 1 }\nfunc extraA() {}\n"), 0644)
 	os.WriteFile(filepath.Join(dir, "b.go"), []byte("package p\nfunc uniqueB() { return 2 }\nfunc extra() {}\n"), 0644)
 
 	results, err := DetectClones(dir, filepath.Join(dir, "a.go"), 0.7)
@@ -97,6 +101,50 @@ func TestDetectClonesDissimilar(t *testing.T) {
 	}
 	if len(results) > 0 {
 		t.Errorf("dissimilar files should not match, got %d results", len(results))
+	}
+}
+
+// TestDetectClonesTargetTooFewTokens: a target with fewer than minTokens tokens must return an
+// explicit error — not (nil, nil), which callers would read as "scan complete, no clones" when
+// in fact nothing was scanned.
+//
+// TestDetectClonesTargetTooFewTokens：目标文件 token 数少于 minTokens 必须返回显式错误
+// ——而非 (nil, nil)，否则调用方会把"什么都没扫"误读成"扫描完成无克隆"。
+func TestDetectClonesTargetTooFewTokens(t *testing.T) {
+	dir := t.TempDir()
+	small := filepath.Join(dir, "small.go")
+	// 8 tokens: package p func tiny() { return 1 }
+	//
+	// 8 个 token：package p func tiny() { return 1 }
+	os.WriteFile(small, []byte("package p\nfunc tiny() { return 1 }\n"), 0644)
+
+	results, err := DetectClones(dir, small, 0.7)
+	if err == nil {
+		t.Fatal("target with <minTokens tokens must return an error, got nil")
+	}
+	if results != nil {
+		t.Errorf("results must be nil on error, got %v", results)
+	}
+}
+
+// TestDetectClonesWalkError: a missing/unreadable scan directory must surface as an error —
+// previously filepath.Walk's return value was discarded and the root error was skipped by the
+// callback, yielding (nil, nil).
+//
+// TestDetectClonesWalkError：目录不存在/不可读必须以错误形式上抛——此前 filepath.Walk 的
+// 返回值被丢弃、根目录错误被回调跳过，产出 (nil, nil)。
+func TestDetectClonesWalkError(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "a.go")
+	os.WriteFile(target, []byte("package p\nfunc foo() { return 1 }\nfunc bar() {}\n"), 0644)
+
+	missing := filepath.Join(dir, "no-such-dir")
+	results, err := DetectClones(missing, target, 0.7)
+	if err == nil {
+		t.Fatal("nonexistent scan directory must return an error, got nil")
+	}
+	if results != nil {
+		t.Errorf("results must be nil on error, got %v", results)
 	}
 }
 

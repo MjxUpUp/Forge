@@ -28,6 +28,7 @@
 package dashboard
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -733,6 +734,29 @@ func localhostOnly(next http.Handler) http.Handler {
 	})
 }
 
+// writeRendered buffers the full render output before touching the ResponseWriter. Writing
+// directly would flush a 200 header on the first byte, so a template/encode failure mid-render
+// would leave the client with truncated HTML/JSON and no way to even report the error. Render
+// into a buffer first; only on success set headers and copy the body; on failure log the real
+// error and answer with a neutral 500 (same style as the aggregate error handling above).
+//
+// writeRendered 先把渲染结果完整落进 buffer 再碰 ResponseWriter。直接写会在第一个字节
+// 刷出 200 header，模板/编码中途失败时客户端只能拿到截断的 HTML/JSON 且无法报错。
+// 先渲染进 buffer；成功才写 header+body；失败记真实 error 并回中性 500（与上方
+// aggregate 错误处理风格一致）。
+func writeRendered(w http.ResponseWriter, root, contentType, neutralMsg string, render func(io.Writer) error) {
+	var buf bytes.Buffer
+	if err := render(&buf); err != nil {
+		log.Printf(`dashboard render %s: %v`, root, err)
+		http.Error(w, neutralMsg, http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set(`Content-Type`, contentType)
+	if _, err := w.Write(buf.Bytes()); err != nil {
+		log.Printf(`dashboard write %s: %v`, root, err)
+	}
+}
+
 // newMux builds the dashboard routes. Extracted so httptest can mount it directly
 // (Serve handles listen + browser launch).
 //
@@ -754,8 +778,9 @@ func newMux(opts Options) *http.ServeMux {
 			http.Error(w, `聚合质量数据失败，请检查 .forge 数据完整性`, http.StatusInternalServerError)
 			return
 		}
-		w.Header().Set(`Content-Type`, `text/html; charset=utf-8`)
-		_ = RenderPage(w, data)
+		writeRendered(w, opts.Root, `text/html; charset=utf-8`, `渲染看板页面失败`, func(out io.Writer) error {
+			return RenderPage(out, data)
+		})
 	})
 	mux.HandleFunc(`/api/data.json`, func(w http.ResponseWriter, r *http.Request) {
 		data, err := opts.aggregate(time.Now())
@@ -764,8 +789,9 @@ func newMux(opts Options) *http.ServeMux {
 			http.Error(w, `聚合质量数据失败`, http.StatusInternalServerError)
 			return
 		}
-		w.Header().Set(`Content-Type`, `application/json`)
-		_ = json.NewEncoder(w).Encode(toPublic(data))
+		writeRendered(w, opts.Root, `application/json`, `序列化看板数据失败`, func(out io.Writer) error {
+			return json.NewEncoder(out).Encode(toPublic(data))
+		})
 	})
 	// favicon: browsers request it automatically; return 204 to avoid console 404 noise
 	// (the dashboard ships no icon asset).
@@ -788,8 +814,9 @@ func newMux(opts Options) *http.ServeMux {
 			http.Error(w, `聚合接续数据失败，请检查任务接续数据完整性`, http.StatusInternalServerError)
 			return
 		}
-		w.Header().Set(`Content-Type`, `text/html; charset=utf-8`)
-		_ = RenderContinuityBoard(w, board)
+		writeRendered(w, opts.Root, `text/html; charset=utf-8`, `渲染接续看板页面失败`, func(out io.Writer) error {
+			return RenderContinuityBoard(out, board)
+		})
 	})
 	mux.HandleFunc(`/api/continuity.json`, func(w http.ResponseWriter, r *http.Request) {
 		board, err := AggregateContinuity(opts.Root, time.Now())
@@ -798,8 +825,9 @@ func newMux(opts Options) *http.ServeMux {
 			http.Error(w, `聚合接续数据失败`, http.StatusInternalServerError)
 			return
 		}
-		w.Header().Set(`Content-Type`, `application/json`)
-		_ = json.NewEncoder(w).Encode(board)
+		writeRendered(w, opts.Root, `application/json`, `序列化接续数据失败`, func(out io.Writer) error {
+			return json.NewEncoder(out).Encode(board)
+		})
 	})
 	return mux
 }

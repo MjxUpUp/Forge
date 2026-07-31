@@ -173,10 +173,24 @@ func BuildEvidenceChain(entries []Entry, taskRef string) EvidenceChain {
 		if src == "" {
 			src = SourceForCheck(e.Check)
 		}
-		if src == EvidenceAgentClaim {
-			ec.AgentClaim++
-		} else {
+		// Credibility requires a positive match: checklog.jsonl is agent-writable, so an
+		// unknown Source value (typo, hand-edited, or injected) must never fall into the
+		// deterministic bucket via a catch-all else — that would be a forgery backdoor.
+		// Anything not positively "deterministic" is counted as agent-claim.
+		//
+		// 可信必须正向匹配：checklog.jsonl 是 agent 可写的，未知 Source 值（笔误、
+		// 手改、注入）绝不能经兜底 else 落进 deterministic 桶——那是伪造后门。
+		// 凡未正向命中 deterministic 的一律计为 agent-claim。
+		switch src {
+		case EvidenceDeterministic:
 			ec.Deterministic++
+		case EvidenceAgentClaim:
+			ec.AgentClaim++
+		default:
+			// Unknown value after the empty-Source fallback: bucket as agent-claim.
+			//
+			// 空 Source 兜底后仍未知的值：计为 agent-claim。
+			ec.AgentClaim++
 		}
 	}
 	return ec

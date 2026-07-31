@@ -36,6 +36,23 @@ const CheckNameDocsConsistency checklog.CheckName = "docs-consistency-gate"
 // 「该任务靠 fail-open 而非真复审通过」，事后可追溯，而非只 stderr 一闪而过。
 const CheckNameReviewSnapshot checklog.CheckName = "review-snapshot-failopen"
 
+// recordAudit persists a checklog entry and makes a persistence failure audible:
+// checklog.Record's error is otherwise easy to drop (the call reads like a pure
+// side effect), but the persisted evidence is indispensable — score/dashboard/trace
+// all read these entries, so a silent write failure leaves 'why did the task stall
+// at this gate' with no signal. Warn on stderr (same style as the other gate
+// warnings) and continue: audit itself must never block the gate.
+//
+// recordAudit 落盘 checklog 条目并让落盘失败可听见：checklog.Record 的 error 极易
+// 被丢掉（调用读起来像纯副作用），但落盘证据不可缺——score/dashboard/trace 都读
+// 这些条目，静默写失败会让「task 为何卡在某门禁」无信号。按包内既有 warning 风格
+// 打 stderr 后继续：审计自身绝不阻断门禁。
+func recordAudit(root string, entry *checklog.Entry) {
+	if err := checklog.Record(root, entry); err != nil {
+		fmt.Fprintf(os.Stderr, "[forge] warning: checklog record failed: %v\n", err)
+	}
+}
+
 // taskStartReadGraceWindow bounds how long before a task's StartedAt a Read still counts
 // toward read-before-edit, recovering the task-start/Read race (see
 // toolusage.ReadEditCountsGraceWindow). 60s covers the parallel-tool-call window — Reads
@@ -156,7 +173,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 			//
 			// fail-open 落盘留痕（非阻塞，Passed=true 表 gate 仍过）：amend 逃审是设计权衡，但
 			// score/dashboard 必须能照出「靠 fail-open 而非真复审通过」，事后可追溯，不能只 stderr。
-			checklog.Record(root, &checklog.Entry{
+			recordAudit(root, &checklog.Entry{
 				Check:   CheckNameReviewSnapshot,
 				Passed:  true,
 				Checked: true,
@@ -171,11 +188,15 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 	// test-coverage backstop hard prerequisite (task-complete): fills the gap left by the
 	// task-verify advisory — under advisory semantics an agent self-report is enough (eval
 	// evidence: 0/19, 0/25 coverage still passed complete; test-discipline loaded 0 times).
-	// Here we hard-block 'large change, zero assertions': ≥3 changed source files with neither
-	// paired tests nor any assertion = slam-dunk corrupt success (large change with no
-	// verification trail). Small changes (≤2 files, fudge factor, aligned with industry Sonar's
-	// <20-line exemption spirit) or 'has assertions but 0 paired coverage' (tests live elsewhere /
-	// refactor scenarios) still pass as advisory — avoid false positives.
+	// Here we hard-block 'large uncovered change, zero assertions': ≥3 changed source files
+	// WITHOUT paired tests and zero assertions anywhere = slam-dunk corrupt success (large
+	// change with no verification trail). Partial coverage (<3 files missing tests, fudge
+	// factor, aligned with the spirit of Sonar's <20-line exemption) or 'has assertions but
+	// 0 paired coverage' (tests live elsewhere / refactor scenarios) still passes as
+	// advisory — avoid false positives. The threshold counts MISSING files (matching the
+	// testCoverageHardGateThreshold doc), not all changed source files — otherwise a
+	// well-tested change with one missing file would be hard-blocked and the BLOCKED text
+	// would lie.
 	// escape (per-task override / FORGE_TEST_COVERAGE) is handled inside CheckTestCoverage which
 	// returns ok=true, naturally passing here (downgrade evidence to Weak with a trace).
 	// Plan B: BLOCKED messages reuse formatMissing's skill routing — under advisory semantics
@@ -188,9 +209,12 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 	//
 	// test-coverage 兜底硬前置（task-complete）：补 task-verify advisory 的缺口——advisory
 	// 语境下 agent 自述即过（eval 证据：0/19、0/25 覆盖照过 complete，0 次加载 test-discipline）。
-	// 此处对「大改零断言」硬阻断：改了 ≥3 个源文件既无配对测试也无任何断言 = corrupt success
-	// 铁证（大改无任何验证痕迹）。小改（≤2 文件，fudge factor，对齐业界 Sonar <20 行豁免精神）
-	// 或「有断言但 0 配对覆盖」（测试在别处/重构场景）仍 advisory 放行——避免误伤。
+	// 此处对「大面积未覆盖且零断言」硬阻断：≥3 个改动源文件无配对测试、且全仓零断言
+	// = corrupt success 铁证（大改无任何验证痕迹）。部分覆盖（缺测试文件 <3 个，
+	// fudge factor，对齐业界 Sonar <20 行豁免精神）或「有断言但 0 配对覆盖」（测试在
+	// 别处/重构场景）仍 advisory 放行——避免误伤。阈值按「无配对测试的文件数」计
+	// （与 testCoverageHardGateThreshold 文档一致），而非全部改动源文件数——否则改 3
+	// 文件只缺 1 个测试也会被硬阻断，且 BLOCKED 文案说谎。
 	// escape（per-task override / FORGE_TEST_COVERAGE）由 CheckTestCoverage 内部返回 ok=true
 	// 处理，此处天然放行（降 evidence Weak 留痕）。
 	// 方案 B：BLOCKED 消息复用 formatMissing 的 skill 路由——advisory 语境失效（0 触发），
@@ -200,17 +224,17 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 	// 测试，Latest 应反映 task-complete 时覆盖状态供 score/trace）。
 	if gateID == "task-complete" && state.CompletedAt == nil {
 		ok, missing, total := CheckTestCoverage(root, state)
-		checklog.Record(root, &checklog.Entry{
+		recordAudit(root, &checklog.Entry{
 			Check:   CheckNameTestCoverage,
 			Passed:  ok,
 			Checked: true,
 			TaskRef: state.TaskRef,
 			Detail:  testCoverageDetail(ok, missing),
 		})
-		if !ok && total > 0 {
+		if !ok && len(missing) > 0 {
 			assertN, _ := scoring.CollectAssertionDensity(root, state.Branch, state.HeadCommit)
-			if testCoverageShouldBlock(total, assertN) {
-				return nil, GateBlocked("task-complete 拒绝（HARD stop）：改了 %d 个源文件却无配对测试且零断言（assertN=0）——corrupt success 风险（大改无任何验证痕迹）。%s", total, formatMissing(missing))
+			if testCoverageShouldBlock(len(missing), assertN) {
+				return nil, GateBlocked("task-complete 拒绝（HARD stop）：改了 %d 个源文件其中 %d 个无配对测试且零断言（assertN=0）——corrupt success 风险（大改无任何验证痕迹）。%s", total, len(missing), formatMissing(missing))
 			}
 			fmt.Fprintf(os.Stderr, "%s%s\n", GateAdvisory("[task-complete] "), formatMissing(missing))
 		}
@@ -229,7 +253,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 	// 命令树回调打破循环）。Passed=true 表 gate 仍通过，trace 保留 drift 信号。
 	if gateID == "task-complete" && state.CompletedAt == nil {
 		if drifted := docsconsistency.DriftedInProject(root); len(drifted) > 0 {
-			checklog.Record(root, &checklog.Entry{
+			recordAudit(root, &checklog.Entry{
 				Check:   CheckNameDocsConsistency,
 				Passed:  true,
 				Checked: true,
@@ -350,7 +374,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 			//
 			// A4：work-activity gate 经 FORGE_WORK_ACTIVITY=disable 绕过。
 			// 落审计——逃生舱为测试/escape 而设，但使用必须可见。
-			checklog.Record(root, &checklog.Entry{
+			recordAudit(root, &checklog.Entry{
 				Check:   checklog.CheckEscapeHatch,
 				Passed:  true,
 				Checked: true,
@@ -415,7 +439,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		}
 
 		ok, missing, _ := CheckTestCoverage(root, state)
-		checklog.Record(root, &checklog.Entry{
+		recordAudit(root, &checklog.Entry{
 			Check:   CheckNameTestCoverage,
 			Passed:  ok,
 			Checked: true,
@@ -464,7 +488,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		// BuildEvidenceChain 中被排除——它是 advisory 观测非「验证证据」，计入会虚高 Strength。
 		if len(state.PlanScope) > 0 {
 			drift := ScopeDrift(gitChanged, state.PlanScope)
-			checklog.Record(root, &checklog.Entry{
+			recordAudit(root, &checklog.Entry{
 				Check:   checklog.CheckScopeDrift,
 				Passed:  len(drift) == 0,
 				Checked: true,
@@ -519,7 +543,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		// CheckCheatScan 在 BuildEvidenceChain 中被排除——它是观测非「验证证据」，计入
 		// 会虚高 Strength。LLM-reviewer 据此退到只做语义判断（设计/架构/mock 是否幻觉）。
 		cheats := ScanCheatPatterns(root, state)
-		checklog.Record(root, &checklog.Entry{
+		recordAudit(root, &checklog.Entry{
 			Check:   checklog.CheckCheatScan,
 			Passed:  len(cheats) == 0,
 			Checked: true,
@@ -576,7 +600,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		// 观测非验证证据（同 cheat-scan）。层 2（引用了但语义没接通——注册了但从未实例化）
 		// 机械不可判 → 仍归 LLM reviewer / code-review-gate。
 		unused := ScanUnusedSymbols(root, state)
-		checklog.Record(root, &checklog.Entry{
+		recordAudit(root, &checklog.Entry{
 			Check:   checklog.CheckUnusedScan,
 			Passed:  len(unused) == 0,
 			Checked: true,
@@ -620,7 +644,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		// 记录，此处仅跳过扫描+advisory，不重复记 escape-hatch 条目。
 		if !EscapeDisabled(state, escapeTestCoverage, testCoverageDisableEnv) {
 			cap := CheckTestCapability(root)
-			checklog.Record(root, &checklog.Entry{
+			recordAudit(root, &checklog.Entry{
 				Check:   CheckNameTestCapability,
 				Passed:  true,
 				Checked: true,
@@ -643,7 +667,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		// 提醒先 eval-gen --save 重建基准。纯 advisory 不阻塞（Passed 恒 true——
 		// 「有 case 集」本身非判定，trace 只留信号让 agent 自检）。
 		if affected := skillEvalAffected(gitChanged); len(affected) > 0 {
-			checklog.Record(root, &checklog.Entry{
+			recordAudit(root, &checklog.Entry{
 				Check:   CheckNameSkillEval,
 				Passed:  true,
 				Checked: true,
@@ -677,7 +701,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		// advisory + CheckEscapeHatch（Weak ceiling）。fail-open：base 空/不可达不阻断。
 		if blocking := skillDecisionsBlockingAffected(gitChanged); len(blocking) > 0 {
 			if EscapeDisabled(state, escapeSkillDecisions, envSkillDecisions) {
-				checklog.Record(root, &checklog.Entry{
+				recordAudit(root, &checklog.Entry{
 					Check:   checklog.CheckEscapeHatch,
 					Passed:  true,
 					Checked: true,
@@ -741,7 +765,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 						// 让 audit 一次看全（不必等修了 unrecorded 重跑才在通过路径见 fail-open）。
 						blockedDetail += `；` + strings.Join(failopenSkills, ", ") + ` fail-open 跳过校验（base 不可达）`
 					}
-					checklog.Record(root, &checklog.Entry{
+					recordAudit(root, &checklog.Entry{
 						Check:   CheckNameSkillDecisions,
 						Passed:  false,
 						Checked: true,
@@ -766,7 +790,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 					}
 					detail += strings.Join(failopenSkills, ", ") + ` fail-open 跳过校验（base 不可达，未真验证 recorded）`
 				}
-				checklog.Record(root, &checklog.Entry{
+				recordAudit(root, &checklog.Entry{
 					Check:   CheckNameSkillDecisions,
 					Passed:  true,
 					Checked: true,
@@ -776,7 +800,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 			}
 		}
 		if advisorySkills := skillDecisionsAdvisoryAffected(gitChanged); len(advisorySkills) > 0 {
-			checklog.Record(root, &checklog.Entry{
+			recordAudit(root, &checklog.Entry{
 				Check:   CheckNameSkillDecisions,
 				Passed:  true,
 				Checked: true,
@@ -820,7 +844,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 	if !gate.Auto && state.CompletedAt == nil {
 		switch gateID {
 		case "task-verify":
-			checklog.Record(root, &checklog.Entry{
+			recordAudit(root, &checklog.Entry{
 				Check:   checklog.CheckTaskVerify,
 				Passed:  true,
 				Checked: true,
@@ -828,7 +852,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 				Detail:  `agent-claim: 通过 task-verify gate（agent 自述验证完成）`,
 			})
 		case "task-complete":
-			checklog.Record(root, &checklog.Entry{
+			recordAudit(root, &checklog.Entry{
 				Check:   checklog.CheckTaskComplete,
 				Passed:  true,
 				Checked: true,
@@ -862,13 +886,20 @@ func runAutoChecks(root string, gateID string, state *TaskState) (*ExecuteResult
 }
 
 // hasCodeChanges reports whether there are real code changes since the task started.
-// It checks the working-tree changes; on a feature branch it also checks for new commits
-// beyond the base branch. Graceful degradation for non-git repositories (returns true to
-// avoid false negatives).
+// It checks the working-tree changes, then new commits since the task's recorded base.
+// The base is state.HeadCommit (recorded at task start) when available — branch-agnostic,
+// so main/master tasks that commit mid-task (the AGENTS.md flow itself encourages an
+// in-task commit) are detected exactly like feature-branch tasks; only when HeadCommit
+// is empty (legacy state) does it fall back to probing base branches on a feature
+// branch. Graceful degradation for non-git repositories (returns true to avoid false
+// negatives).
 //
 // hasCodeChanges 自 task 起算是否真有代码变更。
-// 检查工作树变更；在 feature 分支上还会检查超出 base 分支的新 commit。
-// 非 git 仓库优雅退化（返回 true 以免误判）。
+// 先查工作树变更，再查自 task 记录基准以来的新 commit。基准优先用 state.HeadCommit
+// （task start 时记录）——与分支无关，main/master 上的 task 中途 commit（AGENTS.md
+// 流程本身鼓励中段 commit）与 feature 分支走同一路径；HeadCommit 为空（legacy
+// state）时才回落到 feature 分支的 base 分支探测。非 git 仓库优雅退化（返回 true
+// 以免误判）。
 func hasCodeChanges(root string, state *TaskState) bool {
 	// Check 1: working-tree changes (including staged-but-uncommitted).
 	//
@@ -882,26 +913,53 @@ func hasCodeChanges(root string, state *TaskState) bool {
 		return true
 	}
 
-	// Check 2: new commits on a feature branch beyond base.
+	// Check 2: new commits since the task's recorded base.
 	//
-	// 检查 2：feature 分支上超出 base 的新 commit
-	if state != nil && state.Branch != "" && state.Branch != "main" && state.Branch != "master" {
-		for _, base := range []string{"main", "origin/main", "master", "origin/master"} {
-			cmd = exec.Command("git", "-C", root, "rev-list", "--count", base+"..HEAD")
+	// 检查 2：自 task 记录基准以来的新 commit
+	if state != nil {
+		if state.HeadCommit != "" {
+			// HeadCommit (recorded at task start) is the precise base — the same one
+			// taskChangedFiles/scoring use — and works identically on main/master and
+			// feature branches. gating on Branch != main/master here used to deadlock
+			// main-branch tasks: after a mid-task commit the gate fell through to
+			// 'no code changes' forever.
+			//
+			// HeadCommit（task start 时记录）是精确基准——与 taskChangedFiles/scoring
+			// 同源——且在 main/master 与 feature 分支上行为一致。此前此处按
+			// Branch != main/master 设卡，main 分支 task 中途 commit 后会永远落入
+			// 「no code changes」死锁。
+			cmd = exec.Command("git", "-C", root, "diff", "--name-only", state.HeadCommit+"..HEAD")
 			out, err = cmd.Output()
-			if err == nil {
-				return strings.TrimSpace(string(out)) != "0"
+			if err != nil {
+				// Base unreachable (amend/rebase rewrote history) — pass rather than
+				// falsely reporting 'no code changes'.
+				//
+				// 基准不可达（amend/rebase 改写历史）——放行，不谎报「无代码改动」。
+				return true
 			}
+			return len(strings.TrimSpace(string(out))) > 0
 		}
-		// No base branch found — pass.
-		//
-		// 找不到任何 base 分支——放行
-		return true
+		if state.Branch != "" && state.Branch != "main" && state.Branch != "master" {
+			// Legacy state without HeadCommit: probe base branches on a feature branch.
+			//
+			// 无 HeadCommit 的 legacy state：feature 分支上探测 base 分支
+			for _, base := range []string{"main", "origin/main", "master", "origin/master"} {
+				cmd = exec.Command("git", "-C", root, "rev-list", "--count", base+"..HEAD")
+				out, err = cmd.Output()
+				if err == nil {
+					return strings.TrimSpace(string(out)) != "0"
+				}
+			}
+			// No base branch found — pass.
+			//
+			// 找不到任何 base 分支——放行
+			return true
+		}
 	}
 
-	// On main/master with no uncommitted changes.
+	// On main/master with no HeadCommit and no uncommitted changes.
 	//
-	// main/master 上且无未 commit 改动
+	// main/master 上、无 HeadCommit 且无未 commit 改动
 	return false
 }
 
@@ -935,7 +993,7 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 	// 的磁盘脚本可能让 gate 通过一个 write-time hook 仍会标记为坏的构建）。
 	compilePassed, compileOutput := runEmbeddedHook(root, "auto-compile")
 
-	checklog.Record(root, &checklog.Entry{
+	recordAudit(root, &checklog.Entry{
 		Check:   checklog.CheckAutoCompile,
 		Passed:  compilePassed,
 		Checked: true,
@@ -960,7 +1018,7 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 	// gate 强制的内容。
 	assertPassed, assertOutput := runEmbeddedHook(root, "assertion-check")
 
-	checklog.Record(root, &checklog.Entry{
+	recordAudit(root, &checklog.Entry{
 		Check:   checklog.CheckAssertion,
 		Passed:  assertPassed,
 		Checked: true,
@@ -1054,22 +1112,6 @@ func runEmbeddedHook(root, name string) (passed bool, output string) {
 // task。env 留作 CI/测试 fallback。
 func getDisableWorkActivity(state *TaskState) bool {
 	return EscapeDisabled(state, escapeWorkActivity, envWorkActivity)
-}
-
-// isPreviousGateAuto returns whether the most recently passed gate was auto. An auto gate
-// (e.g. task-implement) is an instantaneous system check — the next gate should not require
-// a work-activity check because no 'work phase' has elapsed.
-//
-// isPreviousGateAuto 返回最近一次通过的 gate 是否是 auto。auto gate（如
-// task-implement）是瞬时系统检查——下一 gate 不应要求工作活动检查，因为没有
-// 经过任何「工作阶段」。
-func isPreviousGateAuto(state *TaskState) bool {
-	if len(state.History) == 0 {
-		return false
-	}
-	last := state.History[len(state.History)-1]
-	g := GateByID(last.Gate)
-	return g != nil && g.Auto
 }
 
 // isLastGate returns whether the given gate ID is the last gate in the pipeline. After the

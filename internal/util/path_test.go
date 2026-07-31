@@ -11,7 +11,7 @@ func TestSanitizeSessionID(t *testing.T) {
 		in   string
 		want string
 	}{
-		{"empty", "", ""},
+		{"empty falls back to session", "", "session"},
 		{"plain safe id", "session123", "session123"},
 		{"path separators become underscore", "a/b\\c", "a_b_c"},
 		{"control chars replaced", "a\x00b\x01c", "a_b_c"},

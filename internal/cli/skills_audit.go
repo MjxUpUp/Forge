@@ -36,7 +36,10 @@ func runSkillsAudit(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if len(skAudSkill) > 0 {
-		names = filterSkillNames(names, skAudSkill)
+		names, err = filterSkillNames(names, skAudSkill)
+		if err != nil {
+			return err
+		}
 	}
 
 	type res struct {

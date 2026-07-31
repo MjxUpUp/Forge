@@ -127,7 +127,7 @@ func buildCursorMDC(input *TranslationInput) string {
 	// Hook 信息段
 	if len(input.HookNames) > 0 {
 		sb.WriteString("## 自动检查\n\n")
-		sb.WriteString("以下检查通过 git hooks 自动执行：\n\n")
+		sb.WriteString("以下检查通过 agent lifecycle hooks（PreToolUse/PostToolUse 等，非 .git/hooks）自动执行：\n\n")
 		for _, h := range input.HookNames {
 			sb.WriteString(fmt.Sprintf("- `%s`\n", h))
 		}

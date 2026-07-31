@@ -58,7 +58,13 @@ func (t *WindsurfTranslator) Translate(projectDir string, input *TranslationInpu
 	path := filepath.Join(projectDir, ".windsurfrules")
 
 	existing, err := os.ReadFile(path)
-	if err == nil && len(existing) > 0 {
+	if err != nil && !os.IsNotExist(err) {
+		// A read error other than NotExist (permissions, IO) must not fall
+		// through to the whole-file overwrite below — that would silently
+		// destroy the user's existing rules. Same contract as kimi.go.
+		return fmt.Errorf("windsurf: failed to read .windsurfrules: %w", err)
+	}
+	if len(existing) > 0 {
 		updated := replaceForgeRules(string(existing), content)
 		return os.WriteFile(path, []byte(updated), 0644)
 	}

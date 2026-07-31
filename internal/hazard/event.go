@@ -46,6 +46,13 @@ const (
 	// EventData：context classification 判定危险串仅在引号内（数据，非执行）而放行，
 	// 如 grep "rm -rf" / git commit -m "fix rm -rf bug"。
 	EventData = "data"
+	// EventConfirm: a confirmation marker was registered (forge hazard confirm). Appended inside
+	// writeConfirmation itself — not by the hook script — so the forgery path (hand-writing the
+	// marker file) at least cannot fake this event, and every legitimate confirm is auditable.
+	//
+	// EventConfirm：确认标记被登记（forge hazard confirm）。由 writeConfirmation 内部追加
+	// ——而非 hook 脚本——伪造路径（手写标记文件）至少造不出这条事件，每次合法 confirm 都可审计。
+	EventConfirm = "confirm"
 )
 
 var eventMu sync.Mutex
@@ -55,7 +62,7 @@ var eventMu sync.Mutex
 // Event 记录一次 hazard-guard 事件，追加写 DataDir/hazards/events.jsonl。
 type Event struct {
 	Ts          time.Time `json:"ts"`
-	Type        string    `json:"type"`        // EventBlock/EventRelease/EventData
+	Type        string    `json:"type"`        // EventBlock/EventRelease/EventData/EventConfirm
 	Fingerprint string    `json:"fingerprint"` // Fingerprint(command)；算不出时为空
 	Command     string    `json:"command"`     // 截断的命令串（审计用，maxCommandStore）
 }

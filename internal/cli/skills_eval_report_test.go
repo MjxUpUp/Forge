@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -58,5 +60,61 @@ func TestFormatJudgeVerdict(t *testing.T) {
 				t.Errorf("输出应含 %q, got %q", c.contains, got)
 			}
 		})
+	}
+}
+
+// TestResolveReportBaseline pins baseline selection honesty: lookup errors
+// propagate (no silent nil baseline lying "未锚定"), a cleaned-out marked
+// baseline degrades to absolute scoring (nil, nil) instead of erroring, and an
+// explicit --baseline that does not exist is an error.
+//
+// TestResolveReportBaseline 钉住 baseline 选择的诚实性：读取 error 传播（不再
+// 静默 nil baseline 谎称「未锚定」）；标记的 baseline run 已被清理时降级为绝对分
+// （nil, nil）而非报错；显式 --baseline 不存在是 error。
+func TestResolveReportBaseline(t *testing.T) {
+	dir := t.TempDir()
+	skill := "demo"
+
+	mustRun := func(id string) {
+		t.Helper()
+		if err := skillseval.AppendRun(dir, skill, &skillseval.EvalRun{RunID: id, Skill: skill}); err != nil {
+			t.Fatalf("AppendRun %s: %v", id, err)
+		}
+	}
+
+	// No mark at all → absolute scoring.
+	if got, err := resolveReportBaseline(dir, skill, ""); err != nil || got != nil {
+		t.Fatalf("no mark: got (%v, %v), want (nil, nil)", got, err)
+	}
+
+	// Explicit run-id that does not exist → error.
+	if _, err := resolveReportBaseline(dir, skill, "nope"); err == nil {
+		t.Fatal("explicit missing run: want error, got nil")
+	}
+
+	// Marked baseline whose run file was cleaned → degrade (nil, nil).
+	mustRun("r1")
+	if err := skillseval.SetBaseline(dir, skill, "ghost-run", "test"); err != nil {
+		t.Fatalf("SetBaseline: %v", err)
+	}
+	if got, err := resolveReportBaseline(dir, skill, ""); err != nil || got != nil {
+		t.Fatalf("stale mark: got (%v, %v), want (nil, nil) degraded", got, err)
+	}
+
+	// Marked baseline with an existing run → returns that run.
+	if err := skillseval.SetBaseline(dir, skill, "r1", "test"); err != nil {
+		t.Fatalf("SetBaseline r1: %v", err)
+	}
+	got, err := resolveReportBaseline(dir, skill, "")
+	if err != nil || got == nil || got.RunID != "r1" {
+		t.Fatalf("marked baseline: got (%v, %v), want run r1", got, err)
+	}
+
+	// Corrupt baselines.json → GetBaseline error must propagate.
+	if err := os.WriteFile(filepath.Join(dir, "baselines.json"), []byte("{not json"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolveReportBaseline(dir, skill, ""); err == nil {
+		t.Fatal("corrupt baselines.json: want error, got nil (silent nil baseline lies 未锚定)")
 	}
 }

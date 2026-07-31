@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 const (
@@ -38,13 +40,13 @@ func GenerateClaudeMD(projectDir string) error {
 		//
 		// 仅更新 Forge section
 		updated := replaceForgeSection(string(existing), forgeSection)
-		return os.WriteFile(path, []byte(updated), 0644)
+		return util.AtomicWrite(path, []byte(updated), 0644)
 	}
 
 	// Create a new file, writing only the Forge section.
 	//
 	// 新建文件，仅写入 Forge section
-	return os.WriteFile(path, []byte(forgeSection), 0644)
+	return util.AtomicWrite(path, []byte(forgeSection), 0644)
 }
 
 // GenerateAgentsMD creates or updates the project-root AGENTS.md, writing the
@@ -70,9 +72,9 @@ func GenerateAgentsMD(projectDir string) error {
 	existing, err := os.ReadFile(path)
 	if err == nil && len(existing) > 0 {
 		updated := replaceForgeSection(string(existing), forgeSection)
-		return os.WriteFile(path, []byte(updated), 0644)
+		return util.AtomicWrite(path, []byte(updated), 0644)
 	}
-	return os.WriteFile(path, []byte(forgeSection), 0644)
+	return util.AtomicWrite(path, []byte(forgeSection), 0644)
 }
 
 func buildForgeSection(forClaude bool) string {
