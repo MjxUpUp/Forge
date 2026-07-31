@@ -336,6 +336,16 @@ func pluginReadme(repoSlug string) string {
 	sb.WriteString("    copilot plugin marketplace add " + repoSlug + "\n")
 	sb.WriteString("    copilot plugin install forge@forge\n\n")
 	sb.WriteString("For .github/instructions gate wiring, run \x60forge init --agents copilot\x60.\n\n")
+	sb.WriteString("#### Kimi Code\n\n")
+	sb.WriteString("Kimi Code reads the plugin manifest committed at the repo root " +
+		"(\x60.kimi-plugin/plugin.json\x60) — no marketplace registration needed:\n\n")
+	sb.WriteString("    /plugins install https://github.com/" + repoSlug + "\n\n")
+	sb.WriteString("This wires the full hook set (PreToolUse/PostToolUse/Stop/SessionStart/" +
+		"PostCompact/UserPromptSubmit) at the user level. Alternative without the " +
+		"plugin: \x60forge init --agents kimi\x60 writes the same hooks into " +
+		"\x60~/.kimi-code/config.toml\x60 (marker-section merge). When both exist, " +
+		"\x60forge init\x60 strips the config.toml section — the plugin wins and " +
+		"hooks never double-run.\n\n")
 
 	// Step 3 — project init (once per project). Honest capability boundary: plugin is
 	// user-level hooks; project-level assets (.forge/CLAUDE.md/AGENTS.md/skills) are NOT in
@@ -416,7 +426,7 @@ func pluginReadme(repoSlug string) string {
 	sb.WriteString("| **Cursor** | marketplace | \x60forge init --agents cursor\x60 | Cursor plugin model carries skills, not Claude-shape hooks |\n")
 	sb.WriteString("| **GitHub Copilot (CLI / VS Code)** | marketplace + \x60.copilot-plugin/\x60 | \x60forge init --agents copilot\x60 (CLI) | VS Code auto-discovers \x60.copilot-plugin/plugin.json\x60 if you open this repo |\n")
 	sb.WriteString("| **Windsurf** | (mirrored \x60buildWindsurfHooks\x60 in code) | (Cascade hooks) | mirrors Claude SessionStart + write hooks via \x60internal/agentbridge/windsurf.go\x60 |\n")
-	sb.WriteString("| **Kimi Code** | (no marketplace) | \x60forge init --agents kimi\x60 | user-level \x60~/.kimi-code/config.toml\x60 \x60[[hooks]]\x60 via marker-section merge; full event set (PreToolUse/PostToolUse/Stop/SessionStart/PostCompact/UserPromptSubmit), exit-2 block protocol |\n")
+	sb.WriteString("| **Kimi Code** | repo-root \x60.kimi-plugin/plugin.json\x60 (\x60/plugins install https://github.com/MjxUpUp/Forge\x60) | automatic (user-level) | full event set (PreToolUse/PostToolUse/Stop/SessionStart/PostCompact/UserPromptSubmit), exit-2 block protocol; fallback \x60forge init --agents kimi\x60 (config.toml marker section, stripped when the plugin is installed) |\n")
 	sb.WriteString("| **OpenCode / Kiro / Cline / Gemini CLI / Mistral Vibe / Trae / Nanobot / Hermes / Antigravity / OpenClaw** | (manual, see \x60install.sh\x60) | \x60forge init --agents <host>\x60 if supported | install.sh script provides one-step symlink-style per-skill/folder install for 14 hosts |\n\n")
 	sb.WriteString("For experimental / bleeding-edge hosts, run \x60./plugins/forge/install.sh --help\x60 for the full supported platform list.\n\n")
 

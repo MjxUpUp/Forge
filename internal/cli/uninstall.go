@@ -109,6 +109,7 @@ var uninstallCmd = &cobra.Command{
 		fmt.Println(`  Claude Code / Cursor:  /plugin uninstall forge@forge`)
 		fmt.Println(`  Codex:                 codex plugin uninstall forge@forge`)
 		fmt.Println(`  Copilot CLI:           copilot plugin uninstall forge@forge`)
+		fmt.Println(`  Kimi Code:             /plugins remove forge`)
 		fmt.Println(`项目级 .forge/ 未动。如需清，在项目内跑 'forge init --reset' 或手动 rm -rf .forge/`)
 		return nil
 	},

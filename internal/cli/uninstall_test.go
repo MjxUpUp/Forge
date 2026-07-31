@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -72,5 +73,46 @@ func TestUninstall_ClearsMarkers_ForgeDataHomeOverride(t *testing.T) {
 	}
 	if _, err := os.Stat(markerDir); !os.IsNotExist(err) {
 		t.Errorf(`FORGE_DATA_HOME 覆盖根下 marker 应被删，实得 stat err=%v`, err)
+	}
+}
+
+// TestUninstall_StripsKimiHooks pins the kimi cleanup added with the kimi plugin
+// adapter: uninstall must strip the forge marker section from kimi's user-level
+// config.toml (those entries would otherwise spawn a deleted binary on every kimi
+// tool call) and print the removal guidance for the TUI-only plugin path.
+//
+// TestUninstall_StripsKimiHooks 钉住随 kimi plugin 适配加入的 kimi 清理：uninstall
+// 必须剥除 kimi user-level config.toml 的 forge 标记段（否则这些条目会在每次
+// kimi 工具调用时 spawn 一个已删除的二进制），并打印 TUI 专属 plugin 卸载指引。
+func TestUninstall_StripsKimiHooks(t *testing.T) {
+	t.Setenv(`FORGE_UNINSTALL_SKIP_NPM`, `1`)
+	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
+	kimiHome := t.TempDir()
+	t.Setenv(`KIMI_CODE_HOME`, kimiHome)
+
+	// Seed a kimi config.toml with a forge marker section (as `forge init --agents kimi` wrote).
+	userConfig := "default_model = \"kimi-code/k3\"\n"
+	cfg := filepath.Join(kimiHome, `config.toml`)
+	seed := userConfig + "\n# FORGE:START — managed by `forge init --agents kimi`; do not edit between markers\n[[hooks]]\nevent = \"Stop\"\ncommand = \"forge hook task-verify --agent kimi\"\n# FORGE:END\n"
+	if err := os.WriteFile(cfg, []byte(seed), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, _, err := captureOutput(t, func() error {
+		return uninstallCmd.RunE(uninstallCmd, nil)
+	})
+	if err != nil {
+		t.Fatalf(`uninstall RunE: %v`, err)
+	}
+
+	data, _ := os.ReadFile(cfg)
+	if string(data) != userConfig {
+		t.Errorf(`kimi config.toml 未还原为用户原内容，实得：\n%q`, string(data))
+	}
+	if !strings.Contains(stdout, `已清除 kimi-code config.toml 中的 forge hooks`) {
+		t.Errorf(`缺少 kimi hooks 清除提示，stdout：\n%s`, stdout)
+	}
+	if !strings.Contains(stdout, `Kimi Code:`) {
+		t.Errorf(`缺少 kimi plugin 卸载指引，stdout：\n%s`, stdout)
 	}
 }

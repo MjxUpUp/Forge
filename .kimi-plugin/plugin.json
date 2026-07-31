@@ -1,0 +1,140 @@
+{
+  "name": "forge",
+  "version": "1.18.0",
+  "description": "Forge loop-engineering quality gates: task-tracked source changes, assertion guards, file-sentinel quarantine, and review-gated completion for AI coding agents.",
+  "hooks": [
+    {
+      "event": "PostCompact",
+      "command": "forge hook compact-resume --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "PostToolUse",
+      "matcher": "Write|Edit",
+      "command": "forge hook auto-compile --agent kimi",
+      "timeout": 60
+    },
+    {
+      "event": "PostToolUse",
+      "matcher": "Write|Edit",
+      "command": "forge hook workflow-test-guard --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "PostToolUse",
+      "matcher": "Write|Edit",
+      "command": "forge hook skill-trigger --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "PostToolUse",
+      "matcher": "Bash",
+      "command": "forge hook file-sentinel --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "PostToolUse",
+      "matcher": "Bash",
+      "command": "forge hook skill-trigger --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "PostToolUse",
+      "matcher": "Read|Skill|Agent",
+      "command": "forge hook tool-track --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "PreToolUse",
+      "matcher": "Write|Edit",
+      "command": "forge hook task-guard --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "PreToolUse",
+      "matcher": "Write|Edit",
+      "command": "forge hook assertion-check --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "PreToolUse",
+      "matcher": "Write|Edit",
+      "command": "forge hook read-before-edit --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "PreToolUse",
+      "matcher": "Write|Edit",
+      "command": "forge hook skill-trigger --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "command": "forge hook bash-guard --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "command": "forge hook hazard-guard --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "command": "forge hook skill-trigger --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "SessionStart",
+      "command": "forge hook skill-scan --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "SessionStart",
+      "command": "forge hook mcp-scan --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "SessionStart",
+      "command": "forge hook init-suggest --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "SessionStart",
+      "command": "forge hook task-resume --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "SessionStart",
+      "command": "forge hook skill-trigger --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "Stop",
+      "command": "forge hook task-verify --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "Stop",
+      "command": "forge hook review-stop --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "Stop",
+      "command": "forge hook skill-trigger --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "UserPromptSubmit",
+      "command": "forge hook resume-reinject --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "UserPromptSubmit",
+      "command": "forge hook skill-trigger --agent kimi",
+      "timeout": 30
+    }
+  ]
+}
