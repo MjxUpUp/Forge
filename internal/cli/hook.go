@@ -876,36 +876,103 @@ func emitKimiOutput(passed bool, detail string) error {
 // %LOCALAPPDATA%\Microsoft\WindowsApps\bash.exe) when forge runs under a native parent
 // (kimi TUI, cmd, PowerShell) whose PATH orders System32 before Git's usr\bin — WSL
 // cannot see the Windows temp path of the script, so every bash hook failed (and before
-// the fail-open guard, failed CLOSED: kimi blocked every turn). Skip known-WSL
-// launchers on Windows; fall back to LookPath when nothing else exists (preserves the
-// old behavior on WSL-only machines; the infra fail-open covers the rest).
+// the fail-open guard, failed CLOSED: kimi blocked every turn). Worse, Git for Windows
+// typically puts only Git\cmd on PATH (no bash.exe at all), so after filtering WSL
+// launchers there may be nothing left on PATH. Resolution order on Windows: PATH scan
+// skipping known-WSL launchers → derive from the git binary's location (MSYS layout
+// usr\bin/bin, up to 4 ancestors) → well-known install dirs → plain LookPath fallback
+// (WSL-only machines; the infra fail-open covers the script-not-visible failure).
 //
 // findBash 解析 hook 脚本的 bash 解释器。Windows 上裸 exec.LookPath("bash") 在
 // forge 跑于原生父进程（kimi TUI、cmd、PowerShell）下可能解析到 WSL 启动器
 // （C:\Windows\System32\bash.exe 或 %LOCALAPPDATA%\Microsoft\WindowsApps\bash.exe）
 // ——这类 PATH 里 System32 排在 Git usr\bin 前面，而 WSL 看不到脚本的 Windows
 // 临时路径，于是所有 bash hook 全挂（在 fail-open 守卫之前还是 fail-CLOSED：
-// kimi 每轮都被硬阻断）。Windows 上跳过已知 WSL 启动器；找不到其他 bash 时回退
-// LookPath（WSL-only 机器保持旧行为；基础设施 fail-open 兜底）。
+// kimi 每轮都被硬阻断）。更糟的是 Git for Windows 通常只把 Git\cmd 加进 PATH
+// （其中没有 bash.exe），过滤 WSL 启动器后 PATH 上可能一个 bash 都不剩。Windows
+// 上的解析顺序：PATH 扫描（跳过已知 WSL 启动器）→ 从 git 二进制位置派生
+// （MSYS 布局 usr\bin/bin，向上最多 4 级）→ 常见安装目录 → 回退普通 LookPath
+// （WSL-only 机器；脚本不可见由基础设施 fail-open 兜底）。
 func findBash() (string, error) {
 	if runtime.GOOS != "windows" {
 		return exec.LookPath("bash")
 	}
+	// 1. PATH scan, skipping known-WSL launchers.
+	//
+	// 1. 扫 PATH，跳过已知 WSL 启动器。
 	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
 		if dir == "" {
 			continue
 		}
 		cand := filepath.Join(dir, "bash.exe")
-		info, err := os.Stat(cand)
-		if err != nil || info.IsDir() {
-			continue
+		if fileExistsExe(cand) && !isWSLBash(cand) {
+			return cand, nil
 		}
-		if isWSLBash(cand) {
-			continue
-		}
-		return cand, nil
 	}
+	// 2. Git-derived: Git for Windows' installer typically adds only Git\cmd (and
+	// Git\mingw64\bin) to PATH — bash.exe is NOT there, it lives in Git\usr\bin. Walk
+	// up from the git binary looking for the MSYS layout (usr\bin, then bin).
+	//
+	// 2. git 派生：Git for Windows 安装器通常只把 Git\cmd（和 Git\mingw64\bin）加进
+	// PATH——bash.exe 不在那里，而在 Git\usr\bin。从 git 二进制向上逐级找 MSYS
+	// 布局（usr\bin，然后 bin）。
+	if gitPath, err := exec.LookPath("git"); err == nil {
+		dir := filepath.Dir(gitPath)
+		for i := 0; i < 4; i++ {
+			// usr\bin first: it holds the real MSYS bash; Git\bin\bash.exe is a thin
+			// wrapper around it — both work, the real one is the surer bet.
+			//
+			// usr\bin 优先：那里是真正的 MSYS bash；Git\bin\bash.exe 是它的薄
+			// 包装——都能用，选真身更稳。
+			for _, sub := range []string{filepath.Join("usr", "bin"), "bin"} {
+				cand := filepath.Join(dir, sub, "bash.exe")
+				if fileExistsExe(cand) && !isWSLBash(cand) {
+					return cand, nil
+				}
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
+		}
+	}
+	// 3. Well-known install locations (covers machines where git is not on PATH either;
+	// includes the per-user Git-for-Windows layout under %LOCALAPPDATA%).
+	//
+	// 3. 常见安装位置（覆盖 git 也不在 PATH 的机器；含 %LOCALAPPDATA% 下的
+	// per-user Git for Windows 布局）。
+	for _, cand := range []string{
+		`C:\Program Files\Git\usr\bin\bash.exe`,
+		`D:\Program Files\Git\usr\bin\bash.exe`,
+		`C:\Program Files (x86)\Git\usr\bin\bash.exe`,
+		filepath.Join(os.Getenv("LOCALAPPDATA"), `Programs\Git\usr\bin\bash.exe`),
+		`C:\msys64\usr\bin\bash.exe`,
+		`C:\cygwin64\bin\bash.exe`,
+	} {
+		if fileExistsExe(cand) {
+			return cand, nil
+		}
+	}
+	// 4. Fallback to a plain lookup (WSL-only machines keep the old behavior; the
+	// infra fail-open covers the script-not-visible failure).
+	//
+	// 4. 回退普通查找（WSL-only 机器保持旧行为；脚本不可见由基础设施
+	// fail-open 兜底）。
 	return exec.LookPath("bash")
+}
+
+// fileExistsExe reports whether path exists and is not a directory. It deliberately
+// does not probe executability (on Windows that means a CreateProcess trial): a
+// non-executable impostor selected here fails at spawn and is caught by the infra
+// fail-open with a visible warning — noisy, not silent.
+//
+// fileExistsExe 报告 path 存在且不是目录。刻意不探测可执行性（Windows 上要
+// CreateProcess 试探）：若选中了同名不可执行文件，spawn 会失败并被基础设施
+// fail-open 捕获并给出可见警告——可感知，非静默。
+func fileExistsExe(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
 
 // isWSLBash reports whether path points at a known WSL bash launcher rather than a
