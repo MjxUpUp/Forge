@@ -100,3 +100,15 @@ func TestNpmPrefixFor(t *testing.T) {
 		t.Error("no node_modules ancestor must be ok=false")
 	}
 }
+
+// TestNpmPrefixFor_Nested pins the real-world nested layout (npm hoisting the platform
+// subpackage under the main package): the topmost node_modules wins, so the prefix is
+// the npm-global root that actually holds the bin shims — not the main package dir.
+func TestNpmPrefixFor_Nested(t *testing.T) {
+	p := filepath.Join("D:", "nodejs", "npm-global", "node_modules", "@agent_forge", "forge", "node_modules", "@agent_forge", "forge-win32-x64", "bin", "forge.exe")
+	got, ok := npmPrefixFor(p)
+	want := filepath.Join("D:", "nodejs", "npm-global")
+	if !ok || got != want {
+		t.Errorf("npmPrefixFor(nested) = (%q, %v), want (%q, true)", got, ok, want)
+	}
+}
