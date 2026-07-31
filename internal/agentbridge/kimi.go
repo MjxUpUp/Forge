@@ -93,7 +93,10 @@ func (t *KimiTranslator) Translate(projectDir string, input *TranslationInput) e
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("kimi: failed to read config.toml: %w", err)
 	}
-	merged := upsertKimiSection(string(existing), BuildKimiHooksTOML())
+	merged, err := upsertKimiSection(string(existing), BuildKimiHooksTOML())
+	if err != nil {
+		return err
+	}
 	if merged == string(existing) {
 		return nil // already up to date — idempotent no-op
 	}
@@ -212,21 +215,29 @@ func tomlBasicString(s string) string {
 
 // upsertKimiSection replaces the marked forge section in content, or appends it when no
 // markers exist. Everything outside the markers (the user's own config) is preserved
-// byte-for-byte; an unchanged result means Translate can skip the write.
+// byte-for-byte; an unchanged result means Translate can skip the write. Unpaired or
+// inverted markers are reported as corruption instead of guessing — the region between an
+// orphaned START and a later END would be user config (model/provider/API keys), and
+// replacing it would be data loss.
 //
 // upsertKimiSection 替换 content 中的 forge 标记段，无标记时追加。标记外的内容
-// （用户自己的配置）逐字节保留；结果不变意味着 Translate 可以跳过写入。
-func upsertKimiSection(content, block string) string {
+// （用户自己的配置）逐字节保留；结果不变意味着 Translate 可以跳过写入。标记不成对
+// 或顺序颠倒时报损坏错误而非猜测——孤儿 START 与后续 END 之间的区域是用户配置
+// （model/provider/API key），替换它就是数据丢失。
+func upsertKimiSection(content, block string) (string, error) {
 	section := kimiMarkStart + " — managed by `forge init --agents kimi`; do not edit between markers\n" +
 		block + kimiMarkEnd + "\n"
 	start := strings.Index(content, kimiMarkStart)
 	end := strings.Index(content, kimiMarkEnd)
-	if start >= 0 && end > start {
+	if (start >= 0) != (end >= 0) || (start >= 0 && end <= start) {
+		return "", fmt.Errorf("kimi: config.toml forge marker section corrupt (unpaired or inverted %s/%s); fix or remove the markers manually", kimiMarkStart, kimiMarkEnd)
+	}
+	if start >= 0 {
 		end += len(kimiMarkEnd)
 		if end < len(content) && content[end] == '\n' {
 			end++
 		}
-		return content[:start] + section + content[end:]
+		return content[:start] + section + content[end:], nil
 	}
 	if content != "" {
 		if !strings.HasSuffix(content, "\n") {
@@ -234,7 +245,7 @@ func upsertKimiSection(content, block string) string {
 		}
 		content += "\n"
 	}
-	return content + section
+	return content + section, nil
 }
 
 // StripKimiHooks removes the forge marked section from kimi's config.toml (uninstall
@@ -255,7 +266,10 @@ func StripKimiHooks() (bool, error) {
 		}
 		return false, fmt.Errorf("kimi: failed to read config.toml: %w", err)
 	}
-	stripped, found := removeKimiSection(string(existing))
+	stripped, found, err := removeKimiSection(string(existing))
+	if err != nil {
+		return false, err
+	}
 	if !found {
 		return false, nil
 	}
@@ -266,15 +280,21 @@ func StripKimiHooks() (bool, error) {
 }
 
 // removeKimiSection deletes the marked section (and the blank line that precedes it when
-// it was appended by upsertKimiSection) from content.
+// it was appended by upsertKimiSection) from content. Unpaired or inverted markers are
+// reported as corruption (same data-loss guard as upsertKimiSection); no markers at all is
+// a clean (content, false, nil).
 //
 // removeKimiSection 从 content 删除标记段（以及 upsertKimiSection 追加时在其前方
-// 加入的空行）。
-func removeKimiSection(content string) (string, bool) {
+// 加入的空行）。标记不成对或颠倒时报损坏错误（与 upsertKimiSection 同款防数据
+// 丢失守卫）；完全没有标记是干净的 (content, false, nil)。
+func removeKimiSection(content string) (string, bool, error) {
 	start := strings.Index(content, kimiMarkStart)
 	end := strings.Index(content, kimiMarkEnd)
-	if start < 0 || end <= start {
-		return content, false
+	if (start >= 0) != (end >= 0) || (start >= 0 && end <= start) {
+		return "", false, fmt.Errorf("kimi: config.toml forge marker section corrupt (unpaired or inverted %s/%s); fix or remove the markers manually", kimiMarkStart, kimiMarkEnd)
+	}
+	if start < 0 {
+		return content, false, nil
 	}
 	end += len(kimiMarkEnd)
 	if end < len(content) && content[end] == '\n' {
@@ -287,5 +307,5 @@ func removeKimiSection(content string) (string, bool) {
 	if start >= 2 && content[start-2:start] == "\n\n" {
 		start--
 	}
-	return content[:start] + content[end:], true
+	return content[:start] + content[end:], true, nil
 }

@@ -222,6 +222,36 @@ func TestKimiCommandAndTimeout(t *testing.T) {
 	}
 }
 
+// TestKimiMarkerCorruption pins the data-loss guard: unpaired or inverted markers must
+// produce an error (and leave the file untouched), never a guess — the region between an
+// orphaned START and a later END is user config (model/provider/API keys).
+func TestKimiMarkerCorruption(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("KIMI_CODE_HOME", home)
+	path := filepath.Join(home, "config.toml")
+
+	corrupt := map[string]string{
+		"orphan START": "default_model = \"x\"\n" + kimiMarkStart + "\ntelemetry = false\n",
+		"orphan END":   "default_model = \"x\"\n" + kimiMarkEnd + "\n",
+		"inverted":     kimiMarkEnd + "\ndefault_model = \"x\"\n" + kimiMarkStart + "\n",
+	}
+	for name, content := range corrupt {
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := (&KimiTranslator{}).Translate(t.TempDir(), testInput()); err == nil {
+			t.Errorf("%s: Translate must fail on corrupt markers", name)
+		}
+		data, _ := os.ReadFile(path)
+		if string(data) != content {
+			t.Errorf("%s: corrupt-marker Translate must not touch the file", name)
+		}
+		if stripped, err := StripKimiHooks(); err == nil || stripped {
+			t.Errorf("%s: StripKimiHooks = (%v, %v), want (false, error)", name, stripped, err)
+		}
+	}
+}
+
 // TestBuildKimiHooksTOML_Deterministic guards golden stability: map iteration order must
 // not leak into the output (idempotency and review diffs depend on it).
 func TestBuildKimiHooksTOML_Deterministic(t *testing.T) {
