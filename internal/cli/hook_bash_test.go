@@ -70,6 +70,45 @@ func TestFindBash_SkipsWSL(t *testing.T) {
 	}
 }
 
+// TestFindBash_GitDerived pins the native-Windows-PATH case: Git for Windows puts only
+// Git\cmd on PATH (no bash.exe there) — findBash must walk from the git binary to the
+// MSYS layout (Git\usr\bin\bash.exe) instead of falling back to the WSL launcher.
+func TestFindBash_GitDerived(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("findBash filtering is Windows-only")
+	}
+	tmp := t.TempDir()
+	wslDir := filepath.Join(tmp, "Windows", "System32")
+	gitCmdDir := filepath.Join(tmp, "Git", "cmd")
+	gitBashDir := filepath.Join(tmp, "Git", "usr", "bin")
+	for _, dir := range []string{wslDir, gitCmdDir, gitBashDir} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, f := range []struct{ dir, name string }{
+		{wslDir, "bash.exe"},
+		{gitCmdDir, "git.exe"},
+		{gitBashDir, "bash.exe"},
+	} {
+		if err := os.WriteFile(filepath.Join(f.dir, f.name), []byte("fake"), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// PATH carries the WSL launcher and Git\cmd but NO bash.exe — the user's real
+	// native-Windows layout (kimi TUI environment).
+	t.Setenv("PATH", wslDir+string(os.PathListSeparator)+gitCmdDir)
+
+	got, err := findBash()
+	if err != nil {
+		t.Fatalf("findBash: %v", err)
+	}
+	want := filepath.Join(gitBashDir, "bash.exe")
+	if got != want {
+		t.Errorf("findBash = %q, want %q (must derive from git location, not fall back to WSL)", got, want)
+	}
+}
+
 // exitErrorOf runs a trivial command that exits with the given code, producing a real
 // *exec.ExitError for isHookInfraFailure tests.
 func exitErrorOf(t *testing.T, code int) error {
