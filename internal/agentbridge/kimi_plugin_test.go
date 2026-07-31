@@ -183,3 +183,41 @@ func TestKimiTranslator_PluginWins(t *testing.T) {
 		t.Errorf("user config not preserved after strip:\n%q", string(data))
 	}
 }
+
+// TestKimiTranslator_PluginWins_Boundary pins the two boundary paths of the plugin-wins
+// branch: no config.toml at all (clean no-op, no error) and a corrupt marker section
+// (StripKimiHooks' corruption error must propagate through Translate, not be swallowed).
+func TestKimiTranslator_PluginWins_Boundary(t *testing.T) {
+	installPlugin := func(t *testing.T, home string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Join(home, "plugins"), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(home, "plugins", "installed.json"),
+			[]byte(`{"plugins":[{"id":"forge","enabled":true}]}`), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("no config.toml", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("KIMI_CODE_HOME", home)
+		installPlugin(t, home)
+		if err := (&KimiTranslator{}).Translate(t.TempDir(), testInput()); err != nil {
+			t.Errorf("plugin installed + no config.toml must be a clean no-op, got %v", err)
+		}
+	})
+
+	t.Run("corrupt markers", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("KIMI_CODE_HOME", home)
+		installPlugin(t, home)
+		corrupt := "default_model = \"x\"\n" + kimiMarkStart + "\ntelemetry = false\n"
+		if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(corrupt), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := (&KimiTranslator{}).Translate(t.TempDir(), testInput()); err == nil {
+			t.Error("corrupt marker section must surface StripKimiHooks' error through Translate")
+		}
+	})
+}
