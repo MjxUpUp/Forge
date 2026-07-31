@@ -31,6 +31,13 @@ var rootCmd = &cobra.Command{
 		// 检查更新（24h 缓存，失败静默）
 		checkForUpdate(cmd.Root().Version, cmd)
 
+		// Self-heal npm's fragile Windows sh shim (coreutils-dependent) so
+		// POSIX-shell hosts (kimi-code) resolve `forge` to the real binary.
+		//
+		// 自愈 npm 的脆弱 Windows sh 垫片（依赖 coreutils），让 POSIX-shell
+		// 宿主（kimi-code）能把 `forge` 解析到真实二进制。
+		healNpmShimIfNeeded()
+
 		// init command skips auto-sync (project does not exist yet)
 		//
 		// init 命令跳过 auto-sync（项目尚不存在）
