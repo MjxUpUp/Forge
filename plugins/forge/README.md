@@ -44,6 +44,14 @@ Copilot officially scans .claude-plugin/marketplace.json:
 
 For .github/instructions gate wiring, run `forge init --agents copilot`.
 
+#### Kimi Code
+
+Kimi Code reads the plugin manifest committed at the repo root (`.kimi-plugin/plugin.json`) — no marketplace registration needed:
+
+    /plugins install https://github.com/MjxUpUp/Forge
+
+This wires the full hook set (PreToolUse/PostToolUse/Stop/SessionStart/PostCompact/UserPromptSubmit) at the user level. Alternative without the plugin: `forge init --agents kimi` writes the same hooks into `~/.kimi-code/config.toml` (marker-section merge). When both exist, `forge init` strips the config.toml section — the plugin wins and hooks never double-run.
+
 ### 3. Initialize each project (once per project)
 
 The plugin wires user-level hooks. It does NOT create the project-level assets forge needs to run: the `.forge/` task state, the `CLAUDE.md`/`AGENTS.md` protocol, and the canonical skills (`/forge-quality`, ...). Generate them per project:
@@ -74,7 +82,7 @@ User-level hooks fire in every Claude Code project. In git projects without `.fo
 | **Cursor** | marketplace | `forge init --agents cursor` | Cursor plugin model carries skills, not Claude-shape hooks |
 | **GitHub Copilot (CLI / VS Code)** | marketplace + `.copilot-plugin/` | `forge init --agents copilot` (CLI) | VS Code auto-discovers `.copilot-plugin/plugin.json` if you open this repo |
 | **Windsurf** | (mirrored `buildWindsurfHooks` in code) | (Cascade hooks) | mirrors Claude SessionStart + write hooks via `internal/agentbridge/windsurf.go` |
-| **Kimi Code** | (no marketplace) | `forge init --agents kimi` | user-level `~/.kimi-code/config.toml` `[[hooks]]` via marker-section merge; full event set (PreToolUse/PostToolUse/Stop/SessionStart/PostCompact/UserPromptSubmit), exit-2 block protocol |
+| **Kimi Code** | repo-root `.kimi-plugin/plugin.json` (`/plugins install https://github.com/MjxUpUp/Forge`) | automatic (user-level) | full event set (PreToolUse/PostToolUse/Stop/SessionStart/PostCompact/UserPromptSubmit), exit-2 block protocol; fallback `forge init --agents kimi` (config.toml marker section, stripped when the plugin is installed) |
 | **OpenCode / Kiro / Cline / Gemini CLI / Mistral Vibe / Trae / Nanobot / Hermes / Antigravity / OpenClaw** | (manual, see `install.sh`) | `forge init --agents <host>` if supported | install.sh script provides one-step symlink-style per-skill/folder install for 14 hosts |
 
 For experimental / bleeding-edge hosts, run `./plugins/forge/install.sh --help` for the full supported platform list.
