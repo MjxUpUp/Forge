@@ -185,14 +185,16 @@ func sessionScopedFilePath(root, sessionID string) string {
 // saveScopedSession 把 session 记录写到它的 scoped 路径。
 func saveScopedSession(root string, s *SessionRecord) error {
 	path := sessionScopedFilePath(root, s.SessionID)
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return err
-	}
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0644)
+	// AtomicWrite (temp+rename): a torn write here would corrupt the JSON every
+	// session loader parses (same argument as state_atomic_test.go for task state).
+	//
+	// AtomicWrite（temp+rename）：半写会损坏所有 session 加载方解析的 JSON
+	// （论证同 state_atomic_test.go 之 task state）。
+	return util.AtomicWrite(path, data, 0644)
 }
 
 // loadSession reads the current session file. Returns nil if it does not exist.
@@ -209,6 +211,13 @@ func loadSession(root string) (*SessionRecord, error) {
 	}
 	var s SessionRecord
 	if err := json.Unmarshal(data, &s); err != nil {
+		// Corrupt JSON is treated as "no session" on purpose — same contract as
+		// ensureScopedSession (see its note): the caller simply rotates in a fresh
+		// session rather than failing task start over an unreadable bookkeeping file.
+		//
+		// JSON 损坏有意视为「无 session」——与 ensureScopedSession 的契约一致（见其
+		// 注释）：调用方直接轮换出新 session，而非为一个不可读的簿记文件让
+		// task start 失败。
 		return nil, nil
 	}
 	return &s, nil
@@ -218,15 +227,14 @@ func loadSession(root string) (*SessionRecord, error) {
 //
 // saveSession 写入当前 session 文件。
 func saveSession(root string, s *SessionRecord) error {
-	dir := filepath.Dir(sessionFilePath(root))
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(sessionFilePath(root), data, 0644)
+	// AtomicWrite (temp+rename) — see saveScopedSession.
+	//
+	// AtomicWrite（temp+rename）——理由见 saveScopedSession。
+	return util.AtomicWrite(sessionFilePath(root), data, 0644)
 }
 
 // archiveSession writes the completed session into the history log.
@@ -325,28 +333,38 @@ func LoadSessions(root string) ([]SessionRecord, error) {
 	return sessions, nil
 }
 
-// detectAgentType checks for known agent configuration directories.
+// detectAgentType checks for known agent configuration directories. The checks run
+// in a FIXED priority order (first hit wins): an earlier version ranged over a map,
+// and Go's random map iteration made OriginTool nondeterministic across process
+// starts when a project has several agent dirs (e.g. .claude + .cursor) — wrong
+// attribution is exactly what types.go's OriginTool comment warns about.
 //
-// detectAgentType 检查已知的 agent 配置目录。
+// detectAgentType 检查已知的 agent 配置目录。按固定优先级顺序检查（首个命中即
+// 返回）：旧版本遍历 map，Go map 顺序随机，项目同时存在多个 agent 目录（如
+// .claude + .cursor）时 OriginTool 每次进程启动随机取——归属错误正是
+// types.go OriginTool 注释论证过的危害。
 func detectAgentType(root string) string {
-	checks := map[string]string{
-		".claude":              "claude-code",
-		".cursor":              "cursor",
-		".github/instructions": "copilot",
-		".windsurfrules":       "windsurf",
+	checks := []struct {
+		dir   string
+		agent string
+	}{
+		{".claude", "claude-code"},
+		{".cursor", "cursor"},
+		{".github/instructions", "copilot"},
+		{".windsurfrules", "windsurf"},
 	}
-	for dir, agent := range checks {
-		path := filepath.Join(root, dir)
+	for _, c := range checks {
+		path := filepath.Join(root, c.dir)
 		if info, err := os.Stat(path); err == nil {
-			if dir == ".windsurfrules" {
+			if c.dir == ".windsurfrules" {
 				// .windsurfrules is a file, not a directory.
 				//
 				// .windsurfrules 是文件而非目录
 				if !info.IsDir() {
-					return agent
+					return c.agent
 				}
 			} else if info.IsDir() {
-				return agent
+				return c.agent
 			}
 		}
 	}

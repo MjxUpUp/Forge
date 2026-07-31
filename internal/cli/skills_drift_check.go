@@ -3,7 +3,6 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 
 	"github.com/MjxUpUp/Forge/internal/skillsdist"
 	"github.com/spf13/cobra"
@@ -32,14 +31,9 @@ func runSkillsDriftCheck(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	global := skDriftGlobal && !skDriftProject
-	projectDir := ""
-	if !global {
-		root, ferr := findProjectRoot()
-		if ferr != nil {
-			return fmt.Errorf("--project 需在 forge 项目内运行；用 --global（默认）查全局")
-		}
-		projectDir = filepath.Join(root, ".claude", "skills")
+	global, projectDir, err := resolveInstallScope(skDriftGlobal, skDriftProject)
+	if err != nil {
+		return err
 	}
 	opts := skillsdist.InstallOpts{
 		Targets:          targets,
@@ -86,6 +80,6 @@ func init() {
 	skillsDriftCheckCmd.Flags().BoolVar(&skDriftJSON, "json", false, "JSON 输出")
 	skillsDriftCheckCmd.Flags().BoolVar(&skDriftGlobal, "global", true, "查全局目标")
 	skillsDriftCheckCmd.Flags().BoolVar(&skDriftProject, "project", false, "查当前 forge 项目目标（覆盖 --global）")
-	skillsDriftCheckCmd.Flags().StringSliceVar(&skDriftTarget, "target", []string{"all"}, "目标工具 claude|pi|cursor|codex|copilot|all")
+	skillsDriftCheckCmd.Flags().StringSliceVar(&skDriftTarget, "target", []string{"all"}, "目标工具 claude|cursor|codex|copilot|all")
 	skillsCmd.AddCommand(skillsDriftCheckCmd)
 }

@@ -25,6 +25,16 @@ var rootCmd = &cobra.Command{
   forge status            查看管道执行状态
 
 文档: https://github.com/MjxUpUp/Forge`,
+	// Silence cobra's own error/usage printing: Execute already prints the error
+	// line to stderr itself (root.go Execute), so cobra's default would produce a
+	// full usage dump plus a duplicated "Error: ..." line on every failure —
+	// polluting the stderr of agent hosts that wrap forge.
+	//
+	// 静默 cobra 自己的错误/usage 打印：Execute 已自行向 stderr 打一行错误，
+	// cobra 默认行为会让每次失败都 dump 完整 usage + 重复一行 "Error: ..."，
+	// 污染包装 forge 的 agent 宿主 stderr。
+	SilenceErrors: true,
+	SilenceUsage:  true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		// Check for updates (24h cache, silent on failure)
 		//

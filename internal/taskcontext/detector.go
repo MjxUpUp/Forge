@@ -124,10 +124,16 @@ func extractTicketRef(s string) (ref, summary string) {
 	// 仅当前缀本身已全大写时才匹配（不强制定大写）。
 	parts := strings.SplitN(s, "-", 3)
 	if len(parts) >= 2 {
-		// Check whether the prefix is already uppercase (a real project key).
+		// Check whether the prefix is already uppercase (a real project key), AND the second
+		// segment starts with a digit — the documented pattern is PROJ-123 (uppercase key +
+		// number). Without the digit check, branches like fix/API-crash or hotfix/UI-freeze
+		// were misread as ticket refs and their summary was wiped (API-crash → ref with empty
+		// summary).
 		//
-		// 检查前缀是否已是大写（真实 project key）
-		if isProjectKey(parts[0]) {
+		// 检查前缀是否已是大写（真实 project key），且第二段以数字开头——注释承诺的
+		// 模式是 PROJ-123（大写 key + 数字）。没有数字校验时，fix/API-crash、
+		// hotfix/UI-freeze 这类分支被误判为 ticket ref，summary 被清空。
+		if isProjectKey(parts[0]) && startsWithDigit(parts[1]) {
 			ref = parts[0] + "-" + parts[1]
 			if len(parts) >= 3 {
 				summary = parts[2]
@@ -140,6 +146,13 @@ func extractTicketRef(s string) (ref, summary string) {
 	//
 	// 未找到 ticket ref——整串作 ref
 	return s, s
+}
+
+// startsWithDigit reports whether s is non-empty and begins with an ASCII digit.
+//
+// startsWithDigit 判断 s 非空且以 ASCII 数字开头。
+func startsWithDigit(s string) bool {
+	return len(s) > 0 && s[0] >= '0' && s[0] <= '9'
 }
 
 // isProjectKey decides whether the string looks like a project key (2-6 uppercase letters).

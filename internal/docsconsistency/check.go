@@ -40,11 +40,14 @@ import (
 var (
 	// forgeBacktickRef matches forge command references inside backticks, such as
 	// `forge experience accept`. The backtick delimiter excludes prose like
-	// `forge 是...` from matching, sharply reducing false positives.
+	// `forge 是...` from matching, sharply reducing false positives. The character class
+	// also excludes \n: without it the class could span lines and splice two independent
+	// code spans across a line break into one phantom reference.
 	//
 	// forgeBacktickRef 匹配反引号内的 forge 命令引用，如 `forge experience accept`。
-	// 反引号限定把散文里的 "forge 是…" 排除在外，大幅减 false positive。
-	forgeBacktickRef = regexp.MustCompile("`forge ([^`]+)`")
+	// 反引号限定把散文里的 "forge 是…" 排除在外，大幅减 false positive。字符类同时
+	// 排除 \n：否则字符类可跨行，把被换行隔开的两个独立 code span 拼成幻影引用。
+	forgeBacktickRef = regexp.MustCompile("`forge ([^`\n]+)`")
 
 	// commandNameRe describes a legal cobra command name (the first word of Use).
 	// Non-command tokens — placeholders like <id>, flags like --force, brackets like

@@ -376,3 +376,73 @@ func TestRecord_WritesToDataDir_GitProject(t *testing.T) {
 		t.Errorf("TaskRef = %q, want t-data", entries[0].TaskRef)
 	}
 }
+
+// TestLoadAll_LongLineOver64KB pins the 1MB scanner buffer: a single entry line larger
+// than bufio.Scanner's default 64KB cap (long Detail payload) must load whole, not fail
+// scoring/trace wholesale with ErrTooLong.
+//
+// TestLoadAll_LongLineOver64KB 钉死 1MB scanner buffer：单条 entry 行超过
+// bufio.Scanner 默认 64KB 上限（长 Detail 载荷）必须完整读出，不能让
+// scoring/trace 全链路因 ErrTooLong 失败。
+func TestLoadAll_LongLineOver64KB(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, ".forge"), 0755)
+
+	long := strings.Repeat("x", 200*1024) // 200KB > 64KB default cap, < 1MB new cap
+	if err := Record(dir, &Entry{Check: CheckAutoCompile, Passed: true, Detail: long}); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	if err := Record(dir, &Entry{Check: CheckAssertion, Passed: true, Detail: "short"}); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+
+	entries, err := LoadAll(dir)
+	if err != nil {
+		t.Fatalf("LoadAll with >64KB line: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(entries))
+	}
+	if entries[0].Detail != long {
+		t.Errorf("long Detail truncated/corrupted: len=%d, want %d", len(entries[0].Detail), len(long))
+	}
+	if entries[1].Detail != "short" {
+		t.Errorf("entry after long line: Detail=%q, want short", entries[1].Detail)
+	}
+}
+
+// TestLoadForTask_LongLineOver64KB pins the same 1MB cap for the archived-history path
+// (LoadForTask globs checklog*.jsonl), and that scanner errors surface instead of being
+// silently truncated.
+//
+// TestLoadForTask_LongLineOver64KB 为归档历史路径（LoadForTask glob
+// checklog*.jsonl）钉同样的 1MB 上限，并保证 scanner 错误显式上抛而非静默截断。
+func TestLoadForTask_LongLineOver64KB(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, ".forge"), 0755)
+
+	long := strings.Repeat("y", 200*1024)
+	if err := Record(dir, &Entry{Check: CheckAutoCompile, Passed: true, TaskRef: "feat/long", Detail: long}); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	// A long line in an archived file must load too.
+	//
+	// 归档文件里的长行同样必须能读出。
+	longEntry := `{"check":"auto-compile","passed":true,"checked":true,"task_ref":"feat/long","detail":"` + long + `","recorded_at":"2026-01-01T00:00:00Z"}` + "\n"
+	if err := os.WriteFile(filepath.Join(dir, ".forge", "checklog-20260101000000.jsonl"), []byte(longEntry), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	entries, err := LoadForTask(dir, "feat/long")
+	if err != nil {
+		t.Fatalf("LoadForTask with >64KB lines: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries (active + archived), got %d", len(entries))
+	}
+	for _, e := range entries {
+		if e.Detail != long {
+			t.Errorf("long Detail truncated: len=%d, want %d", len(e.Detail), len(long))
+		}
+	}
+}

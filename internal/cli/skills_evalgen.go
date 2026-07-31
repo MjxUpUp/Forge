@@ -115,16 +115,30 @@ func runSkillsEvalGen(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
+		// Batch mode must not exit 0 when every skill failed — count failures,
+		// print the tally, and return an error so CI/scripts see the failure.
+		//
+		// 批量模式全部失败也不能 exit 0——累计失败数、打印统计、返回 error，
+		// 让 CI/脚本看到失败。
+		failed := 0
 		for _, n := range names {
 			if err := genOne(n); err != nil {
+				failed++
 				fmt.Fprintf(os.Stderr, "⚠️ %s: %v\n", n, err)
 			}
+		}
+		fmt.Printf("eval-gen --all: 成功 %d / 失败 %d\n", len(names)-failed, failed)
+		if failed > 0 {
+			return fmt.Errorf("%d 个 skill 生成失败", failed)
 		}
 		return nil
 	}
 
 	if skEvalSkill == "" {
 		return fmt.Errorf("需要 --skill NAME 或 --all")
+	}
+	if err := requireValidSkillName(skEvalSkill); err != nil {
+		return err
 	}
 	return genOne(skEvalSkill)
 }

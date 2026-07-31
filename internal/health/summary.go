@@ -103,7 +103,19 @@ func Summarize(cs []act.Conclusion) Summary {
 				phaseGrades[phase][c.Grade]++
 			}
 		}
-		s.StrengthDist[c.Strength]++
+		// Same non-empty guard as Grade above: an empty Strength must not be counted into a
+		// nameless bucket (and it must never reach BlindSpotCount below). Invariant: the write
+		// side (act.BuildConclusion) always sets Strength from
+		// checklog.EvidenceStrength.String(), which is one of Strong/Weak/Unverified/NoData —
+		// never empty — so this guard only defends against hand-crafted or legacy data.
+		//
+		// 与上面 Grade 同款的非空守卫：空 Strength 不得落入无名桶（也不得进入下方的
+		// BlindSpotCount）。不变量：写入侧（act.BuildConclusion）的 Strength 恒由
+		// checklog.EvidenceStrength.String() 赋值，必为 Strong/Weak/Unverified/NoData
+		// 之一——不会为空——此守卫只防手工构造/历史脏数据。
+		if c.Strength != "" {
+			s.StrengthDist[c.Strength]++
+		}
 		if c.Strength == checklog.Unverified.String() || c.Strength == checklog.Weak.String() {
 			s.BlindSpotCount++
 		}

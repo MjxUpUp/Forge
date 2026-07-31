@@ -57,6 +57,9 @@ func runSkillsDecide(cmd *cobra.Command, args []string) error {
 	if skDecSkill == "" {
 		return fmt.Errorf("需要 --skill NAME")
 	}
+	if err := requireValidSkillName(skDecSkill); err != nil {
+		return err
+	}
 	if skDecDiagnosis == "" || skDecRevision == "" || skDecEvidence == "" {
 		return fmt.Errorf("--diagnosis / --revision / --evidence 均必填（四元组的 q_t/r_t/e_t）")
 	}

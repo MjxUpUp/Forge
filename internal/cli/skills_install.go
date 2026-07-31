@@ -78,14 +78,9 @@ func runSkillsInstall(cmd *cobra.Command, args []string) error {
 
 	// --project explicitly overrides --global (global by default); when both are set, project wins
 	// --project 显式覆盖 --global（默认全局）；两者互斥时 project 优先
-	global := skInstGlobal && !skInstProject
-	projectDir := ""
-	if !global {
-		root, ferr := findProjectRoot()
-		if ferr != nil {
-			return fmt.Errorf("--project 需在 forge 项目内运行（未找到 .forge/）；用 --global（默认）分发到全局")
-		}
-		projectDir = filepath.Join(root, ".claude", "skills")
+	global, projectDir, err := resolveInstallScope(skInstGlobal, skInstProject)
+	if err != nil {
+		return err
 	}
 
 	opts := skillsdist.InstallOpts{
@@ -130,7 +125,10 @@ func runSkillsInstall(cmd *cobra.Command, args []string) error {
 	}
 
 	if skInstWithAdapters {
-		home, _ := os.UserHomeDir()
+		home, herr := os.UserHomeDir()
+		if herr != nil {
+			return fmt.Errorf("获取用户 home 目录失败（--with-adapters 部署需要）: %w", herr)
+		}
 		done, plan, aerr := skillsdist.DeployAdapters(canonical, home)
 		if aerr != nil {
 			return aerr
@@ -142,6 +140,35 @@ func runSkillsInstall(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// resolveInstallScope resolves the --global/--project flag combination into
+// (global, projectSkillsDir). --project explicitly overrides --global (which
+// defaults to true); when both are set, project wins. Project scope requires a
+// forge project root — the error names the actual flag combination the user
+// passed (not a hardcoded "--project") and wraps the resolution failure.
+// Shared by install and drift-check (previously two verbatim copies, both
+// dropping the findProjectRoot error and hardcoding the flag name).
+//
+// resolveInstallScope 把 --global/--project flag 组合解析为
+// (global, projectSkillsDir)。--project 显式覆盖 --global（默认 true）；两者同设
+// project 优先。project scope 要求 forge 项目根——报错按用户实际传的 flag 组合
+// 生成（不写死 "--project"），并用 %w 包裹解析失败。install 与 drift-check 共享
+// （此前两处逐字重复，且都丢 findProjectRoot 的 error、写死 flag 名）。
+func resolveInstallScope(global, project bool) (bool, string, error) {
+	g := global && !project
+	if g {
+		return true, "", nil
+	}
+	root, ferr := findProjectRoot()
+	if ferr != nil {
+		flagDesc := "--global=false"
+		if project {
+			flagDesc = "--project"
+		}
+		return false, "", fmt.Errorf("%s 需在 forge 项目内运行（未找到 .forge/）；用 --global（默认）在全局范围操作: %w", flagDesc, ferr)
+	}
+	return false, filepath.Join(root, ".claude", "skills"), nil
+}
+
 // printInstallReport renders the install result (stats + blocked/drift-skip/backup details).
 //
 // printInstallReport 渲染 install 结果（统计 + blocked/drift-skip/backup 明细）。
@@ -150,8 +177,15 @@ func printInstallReport(r *skillsdist.InstallReport) {
 		return
 	}
 	fmt.Printf("install mode=%s canonical=%s\n", r.Mode, r.Canonical)
-	fmt.Printf("  installed=%d  skipped=%d  drifted=%d  failed=%d  total=%d\n",
-		r.Stats.Installed, r.Stats.Skipped, r.Stats.Drifted, r.Stats.Failed, r.Stats.Total)
+	// Two tiers of stats: skill-level (processed/failed) and target-level (installed/skipped/
+	// drifted — 1 skill × N targets counts N times). Printing them as one flat line made the
+	// numbers never reconcile (1 skill to 4 targets → installed=4 total=1).
+	//
+	// 两级统计口径：skill 级（processed/failed）与 target 级（installed/skipped/drifted——
+	// 1 skill × N target 计 N 次）。混在一行打印会让数字永远对不上（装 1 skill 到
+	// 4 target → installed=4 total=1）。
+	fmt.Printf("  skills: processed=%d failed=%d  targets: installed=%d skipped=%d drifted=%d\n",
+		r.Stats.Total, r.Stats.Failed, r.Stats.Installed, r.Stats.Skipped, r.Stats.Drifted)
 	if r.Aborted != "" {
 		fmt.Printf("  ✗ 中止: %s\n", r.Aborted)
 	}
