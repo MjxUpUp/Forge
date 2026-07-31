@@ -11,6 +11,7 @@ package skillscanonical
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -57,5 +58,40 @@ func TestResolve_EmbedFallback(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(got, "CONVENTIONS.md")); err != nil {
 		t.Fatalf("embed 缓存缺 CONVENTIONS.md: %v", err)
+	}
+}
+
+// TestEnsureEmbeddedCache_RemoveAllError: a failed RemoveAll must abort with an error —
+// overwriting a half-deleted cache and stamping a fresh version marker would leave a
+// mixed-version cache claiming to be a pure snapshot.
+// Failure is made deterministic per-platform: Windows refuses to delete a directory
+// containing an open file; Unix refuses to delete entries inside a directory without
+// write permission.
+//
+// TestEnsureEmbeddedCache_RemoveAllError：RemoveAll 失败必须报错中止——在半删除的缓存上
+// 覆盖写并打新版本标记，会得到谎称纯净的混合版本缓存。
+// 失败按平台确定性构造：Windows 拒绝删除含打开文件的目录；Unix 拒绝删除无写权限目录里的条目。
+func TestEnsureEmbeddedCache_RemoveAllError(t *testing.T) {
+	cacheDir := filepath.Join(t.TempDir(), "embedded")
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Create(filepath.Join(cacheDir, "lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS == "windows" {
+		defer f.Close() // 保持句柄打开：Windows 下 RemoveAll 含打开文件的目录必失败
+	} else {
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(cacheDir, 0500); err != nil { // 无写权限：Unix 下删除其内容必失败
+			t.Fatal(err)
+		}
+		defer os.Chmod(cacheDir, 0700) //nolint:errcheck // 清理，便于 TempDir 回收
+	}
+	if err := EnsureEmbeddedCache(cacheDir, "v9.9.9"); err == nil {
+		t.Fatal("RemoveAll 失败应返回 error（旧实现 `_ = os.RemoveAll` 吞错后带病覆盖写），got nil")
 	}
 }

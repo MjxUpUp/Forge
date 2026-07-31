@@ -51,6 +51,10 @@ declare module "node:child_process" {
 interface Buffer {
   toString(encoding?: string): string;
 }
+// Node timer globals used by runForge's 30s hang ceiling (same self-contained
+// rationale as Buffer above — lib es2022 does not declare these).
+declare function setTimeout(fn: () => void, ms: number): any;
+declare function clearTimeout(t: any): void;
 `
 
 	for _, c := range cases {
@@ -108,5 +112,29 @@ func TestSharedSpawnSnippetEmbedded(t *testing.T) {
 		if n := strings.Count(c.ts, anchor); n != 1 {
 			t.Errorf("%s: runForge snippet appears %d times, want 1", c.name, n)
 		}
+	}
+}
+
+// TestForgeSpawnTimeoutContract pins the hang-freeze fix: runForge previously
+// resolved only on error/close, so a hung forge process froze the agent's tool
+// call forever (opencode has no harness timeout). The shared snippet must now
+// carry a 30s ceiling that kills the child and fails open (block:false), in
+// line with the spawn-error / parse-failure contract.
+func TestForgeSpawnTimeoutContract(t *testing.T) {
+	for _, want := range []string{
+		"setTimeout",             // the ceiling exists
+		"30000",                  // 30s
+		"child.kill()",           // the hung process is actually killed
+		"clearTimeout",           // no timer leak on the normal path
+		"resolve({ block: false", // timeout path fails open
+	} {
+		if !strings.Contains(tsSharedForgeSpawn, want) {
+			t.Errorf("forge_spawn.ts missing %q (hang-freeze timeout contract)", want)
+		}
+	}
+	// runForge must never reject — the opencode post-hook relies on plain
+	// `await runForge(...)` (no .catch) for its never-abort contract.
+	if strings.Contains(tsSharedForgeSpawn, "reject(") {
+		t.Error("forge_spawn.ts must not reject (fail-open resolve-only contract; opencode post-hook awaits without .catch)")
 	}
 }

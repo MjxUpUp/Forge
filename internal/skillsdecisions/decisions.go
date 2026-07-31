@@ -32,6 +32,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/skillsfm"
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
@@ -112,10 +113,17 @@ func DecisionsFile(canonical, skill string) string {
 }
 
 // LoadDecisions reads decisions.md and parses it into a decision list in write order.
-// A missing file returns nil, nil.
+// A missing file returns nil, nil. The skill name is validated (skillsfm.IsValidSkillName)
+// before being joined into the path — it comes from external input (--skill flag), and an
+// unvalidated name would be a path traversal into directories outside canonical.
 //
 // LoadDecisions 读 decisions.md 解析为按写入序的决策列表。文件不存在返回 nil,nil。
+// skill 名先过 skillsfm.IsValidSkillName 校验再拼路径——它来自外部输入（--skill
+// flag），不校验就是路径遍历写出 canonical 之外。
 func LoadDecisions(canonical, skill string) ([]SkillDecision, error) {
+	if !skillsfm.IsValidSkillName(skill) {
+		return nil, fmt.Errorf("invalid skill name %q", skill)
+	}
 	data, err := os.ReadFile(DecisionsFile(canonical, skill))
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -136,7 +144,11 @@ func LoadDecisions(canonical, skill string) ([]SkillDecision, error) {
 // AppendDecision 追加一条决策到 decisions.md 末尾。填 ID/Skill/DecidedAt（若空），原子写。
 // 文件不存在则创建（带 header）。读-改-写：decisions.md 是开发期低频文件，约定串行
 // 编辑（同 skillseval SetBaseline 的约定）；高频并发场景再加文件锁。
+// skill 名同样先过 skillsfm.IsValidSkillName（同 LoadDecisions，防路径遍历）。
 func AppendDecision(canonical, skill string, d SkillDecision) error {
+	if !skillsfm.IsValidSkillName(skill) {
+		return fmt.Errorf("invalid skill name %q", skill)
+	}
 	if d.ID == "" {
 		d.ID = NewDecisionID()
 	}

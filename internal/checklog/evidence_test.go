@@ -269,3 +269,38 @@ func TestStrengthClassification(t *testing.T) {
 		}
 	}
 }
+
+// TestBuildEvidenceChain_UnknownSourceCountsAsAgentClaim pins the forgery-backdoor fix:
+// checklog.jsonl is agent-writable, so an unknown Source value must NEVER fall into the
+// deterministic bucket via a catch-all else. Credibility requires a positive match —
+// anything not explicitly "deterministic" (after the empty-Source SourceForCheck fallback)
+// is counted as agent-claim.
+//
+// TestBuildEvidenceChain_UnknownSourceCountsAsAgentClaim 钉死伪造后门修复：
+// checklog.jsonl 是 agent 可写的，未知 Source 值绝不能经兜底 else 落进
+// deterministic 桶。可信必须正向匹配——空 Source 经 SourceForCheck 兜底后仍未
+// 正向命中 deterministic 的一律计为 agent-claim。
+func TestBuildEvidenceChain_UnknownSourceCountsAsAgentClaim(t *testing.T) {
+	entries := []Entry{
+		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckTaskVerify, Source: EvidenceAgentClaim, TaskRef: "t"},
+		// Forged/typoed source strings an agent could write into checklog.jsonl —
+		// must be bucketed as agent-claim, not deterministic.
+		//
+		// agent 可能写进 checklog.jsonl 的伪造/笔误 source 字符串——
+		// 必须计为 agent-claim，不是 deterministic。
+		{Check: CheckAutoCompile, Source: EvidenceSource("deterministic-typo"), TaskRef: "t"},
+		{Check: CheckAutoCompile, Source: EvidenceSource("DETERMINISTIC"), TaskRef: "t"},
+		{Check: CheckAutoCompile, Source: EvidenceSource("hook-verified"), TaskRef: "t"},
+	}
+	ec := BuildEvidenceChain(entries, "t")
+	if ec.Deterministic != 1 {
+		t.Fatalf(`未知 Source 不得计入 deterministic: got %d, want 1（仅正向命中的 auto-compile）`, ec.Deterministic)
+	}
+	if ec.AgentClaim != 4 {
+		t.Fatalf(`未知 Source 应计入 agent-claim: got %d, want 4（task-verify + 3 个未知值）`, ec.AgentClaim)
+	}
+	if len(ec.Entries) != 5 {
+		t.Fatalf(`entries preserved: got %d, want 5`, len(ec.Entries))
+	}
+}

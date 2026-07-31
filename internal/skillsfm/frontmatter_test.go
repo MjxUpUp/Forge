@@ -184,3 +184,66 @@ func TestParse_FrontmatterOnlyEOF(t *testing.T) {
 		t.Fatalf("EOF body should be empty, got %q", fm.Body)
 	}
 }
+
+// TestParse_SingleQuoteCharValue: a field value that is a single quote character (`name: "`)
+// satisfies HasPrefix+HasSuffix simultaneously — stripping must require len>=2, otherwise
+// val[1:len-1] panics. The value is preserved as-is.
+//
+// TestParse_SingleQuoteCharValue：字段值为单个引号字符（`name: "`）时 HasPrefix+HasSuffix
+// 同时成立——剥引号必须要求 len>=2，否则 val[1:len-1] panic。值原样保留。
+func TestParse_SingleQuoteCharValue(t *testing.T) {
+	for _, tc := range []struct{ src, want string }{
+		{"---\nname: \"\ndescription: d\n---\nbody\n", `"`},
+		{"---\nname: '\ndescription: d\n---\nbody\n", `'`},
+	} {
+		fm := Parse([]byte(tc.src)) // must not panic
+		if fm.Name != tc.want {
+			t.Fatalf("单字符引号值应原样保留: name=%q want %q (src=%q)", fm.Name, tc.want, tc.src)
+		}
+	}
+}
+
+// TestParse_BlockScalarChomping: block scalar headers with chomping indicators
+// (`>-`, `>+`, `|-`, `|+` — `>-` is common in the Anthropic ecosystem) must be parsed as
+// block scalars, not kept as the literal string ">-".
+//
+// TestParse_BlockScalarChomping：带 chomping 指示符的 block scalar 头
+// （`>-`、`>+`、`|-`、`|+`——Anthropic 生态常用 `>-`）必须按 block scalar 解析，
+// 不能留成字面字符串 ">-"。
+func TestParse_BlockScalarChomping(t *testing.T) {
+	folded := "---\nname: x\ndescription: >-\n  line1\n  line2\n---\nbody\n"
+	fm := Parse([]byte(folded))
+	if fm.Description != "line1 line2" {
+		t.Fatalf(">- folded = %q, want %q", fm.Description, "line1 line2")
+	}
+	literal := "---\nname: x\ndescription: |+\n  line1\n  line2\n---\nbody\n"
+	fm = Parse([]byte(literal))
+	if fm.Description != "line1\nline2" {
+		t.Fatalf("|+ literal = %q, want %q", fm.Description, "line1\nline2")
+	}
+	// `>+` folded as well
+	//
+	// `>+` 同样按 folded
+	plus := "---\nname: x\ndescription: >+\n  a\n  b\n---\nbody\n"
+	fm = Parse([]byte(plus))
+	if fm.Description != "a b" {
+		t.Fatalf(">+ folded = %q, want %q", fm.Description, "a b")
+	}
+}
+
+// TestParse_MetadataQuotedValue: nested metadata values must go through the same quote
+// stripping as top-level fields — `pattern: "gate"` yields gate (a quoted pattern breaks
+// R7's pattern matching).
+//
+// TestParse_MetadataQuotedValue：嵌套 metadata 值必须与顶层字段走同一套剥引号——
+// `pattern: "gate"` 得到 gate（带引号的 pattern 会让 R7 误判）。
+func TestParse_MetadataQuotedValue(t *testing.T) {
+	src := "---\nname: x\ndescription: d\nmetadata:\n  pattern: \"gate\"\n  domain: 'testing'\n---\nbody\n"
+	fm := Parse([]byte(src))
+	if fm.Pattern() != "gate" {
+		t.Fatalf("quoted metadata pattern = %q, want gate", fm.Pattern())
+	}
+	if fm.Domain() != "testing" {
+		t.Fatalf("quoted metadata domain = %q, want testing", fm.Domain())
+	}
+}

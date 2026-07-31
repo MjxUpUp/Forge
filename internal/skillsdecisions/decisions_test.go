@@ -306,3 +306,29 @@ func TestHeader_Output(t *testing.T) {
 		}
 	}
 }
+
+// TestInvalidSkillNameRejected pins the path-traversal guard: the skill name is joined
+// directly into the decisions.md path, so both entry points must reject names that escape
+// canonical (../../x, absolute-ish, separators, . / ..) via skillsfm.IsValidSkillName —
+// and must not write or read anything outside canonical.
+//
+// TestInvalidSkillNameRejected 钉死路径遍历守卫：skill 名被直接拼进 decisions.md
+// 路径，两个入口都必须经 skillsfm.IsValidSkillName 拒绝逃逸 canonical 的名字
+// （../../x、含分隔符、. / ..）——且不得读写 canonical 之外的任何文件。
+func TestInvalidSkillNameRejected(t *testing.T) {
+	canonical := t.TempDir()
+	for _, bad := range []string{"../../x", "..", ".", "", "a/b", `a\b`} {
+		if err := AppendDecision(canonical, bad, SkillDecision{Diagnosis: "d", Revision: "r", Evidence: "e", Outcome: OutcomeAccept}); err == nil {
+			t.Errorf("AppendDecision(%q) 应拒绝非法 skill 名", bad)
+		}
+		if _, err := LoadDecisions(canonical, bad); err == nil {
+			t.Errorf("LoadDecisions(%q) 应拒绝非法 skill 名", bad)
+		}
+	}
+	// Nothing may have been written outside canonical (e.g. <canonical>/../../x/decisions.md).
+	//
+	// canonical 之外不得有任何写入（如 <canonical>/../../x/decisions.md）。
+	if _, err := os.Stat(filepath.Join(canonical, "..", "..", "x", "decisions.md")); !os.IsNotExist(err) {
+		t.Errorf("路径遍历应被拒且不落盘: %v", err)
+	}
+}

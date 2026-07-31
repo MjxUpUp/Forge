@@ -544,9 +544,24 @@ func passAllGates(t *testing.T, dir, ref string) {
 	os.Setenv("FORGE_WORK_ACTIVITY", "disable")
 	defer os.Unsetenv("FORGE_WORK_ACTIVITY")
 
-	// Commit so HEAD moves ahead of the base branch — task-implement's
-	// code-change check requires a new commit on the feature branch.
-	git(t, dir, "commit", "--allow-empty", "-m", "e2e: move HEAD for task-implement")
+	// Make a real file change and commit it — task-implement's code-change
+	// check compares content (git diff HeadCommit..HEAD), so an empty commit
+	// does not satisfy it.
+	//
+	// 制造一次真实的文件变更并 commit——task-implement 的代码变更检查比对
+	// 内容（git diff HeadCommit..HEAD），空 commit 无法满足。
+	scratch := filepath.Join(dir, "e2e-scratch.txt")
+	f, err := os.OpenFile(scratch, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatalf("create scratch file: %v", err)
+	}
+	if _, err := fmt.Fprintf(f, "change for %s\n", ref); err != nil {
+		f.Close()
+		t.Fatalf("write scratch file: %v", err)
+	}
+	f.Close()
+	git(t, dir, "add", "e2e-scratch.txt")
+	git(t, dir, "commit", "-m", "e2e: code change for task-implement")
 
 	// Pass gates sequentially: task-implement, task-verify, then
 	// task-complete. task-complete has a ReviewPassed hard prerequisite —

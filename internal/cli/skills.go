@@ -21,15 +21,7 @@ var skillsCmd = &cobra.Command{
 	Short: "Skill 库管理与分发",
 	Long: `forge skills — 管理 canonical skill 库并分发到各 AI 工具。
 
-子命令：
-  list          列出 canonical 库中的 skill
-  validate      R1-R11 规范校验（exit code 编码结果）
-  audit         19 条安全规则审查
-  install       分发到全局/项目目标（link/copy）
-  drift-check   检测分发分叉（dry-run）
-  adapters      部署 skill-routing adapter 单文件
-  usage         使用度量（undertrigger 分析）
-  eval-gen      生成 eval 测试 prompt 清单
+子命令清单见下方 "Available Commands"（cobra 自动派生，与注册保持一致）。
 
 canonical 源优先级：--canonical > $FORGE_SKILLS_CANONICAL > 内置 embed 库。`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {

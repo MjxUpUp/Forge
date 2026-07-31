@@ -184,6 +184,29 @@ func TestSessionAgentTypeDetection(t *testing.T) {
 	}
 }
 
+// TestDetectAgentType_DeterministicPriority pins the fixed-priority fix: with several
+// agent dirs present (.claude + .cursor), the result must be deterministic (first hit
+// in the ordered list wins). The old map-range version returned a random pick per
+// process start, mis-attributing OriginTool.
+//
+// TestDetectAgentType_DeterministicPriority 钉死固定优先级修复：同时存在多个 agent
+// 目录（.claude + .cursor）时结果必须确定（有序列表首个命中）。旧 map 遍历版本
+// 每次进程启动随机取，致 OriginTool 归属错误。
+func TestDetectAgentType_DeterministicPriority(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, ".claude"), 0755)
+	os.MkdirAll(filepath.Join(dir, ".cursor"), 0755)
+
+	// Repeated calls: a map-iteration regression would show up as a flip.
+	//
+	// 重复调用：map 遍历回归会表现为结果翻转。
+	for i := 0; i < 20; i++ {
+		if got := detectAgentType(dir); got != "claude-code" {
+			t.Fatalf("detectAgentType with .claude+.cursor = %q, want claude-code (deterministic first-hit wins)", got)
+		}
+	}
+}
+
 func TestNewTaskState_HasSessionID(t *testing.T) {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, ".claude"), 0755)

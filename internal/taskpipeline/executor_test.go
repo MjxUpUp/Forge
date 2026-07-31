@@ -1,6 +1,7 @@
 package taskpipeline
 
 import (
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -350,6 +351,96 @@ func TestHasCodeChanges_FeatureBranchWithCommits(t *testing.T) {
 	}
 }
 
+// TestHasCodeChanges_MainBranchHeadCommit pins the deadlock fix: a task on main whose
+// HeadCommit (recorded at task start) is followed by a mid-task commit must report code
+// changes. Previously Check 2 was gated on Branch != main/master, so after the commit the
+// gate fell through to 'no code changes' and task-implement could never pass.
+//
+// TestHasCodeChanges_MainBranchHeadCommit 钉死死锁修复：main 上的 task 在 HeadCommit
+// （task start 时记录）之后做了中段 commit，必须报有代码变更。此前 Check 2 按
+// Branch != main/master 设卡，commit 后门禁落入「no code changes」永不可得。
+func TestHasCodeChanges_MainBranchHeadCommit(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "initial")
+
+	base := GetHeadCommit(dir)
+	if base == "" {
+		t.Fatal("GetHeadCommit returned empty in a git repo")
+	}
+
+	// Mid-task commit on main (the AGENTS.md flow itself encourages committing mid-task).
+	//
+	// main 上的中段 commit（AGENTS.md 流程本身鼓励中段 commit）
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\nfunc main() {}\n"), 0644)
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "mid-task work")
+
+	state := &TaskState{Branch: "main", HeadCommit: base}
+	if !hasCodeChanges(dir, state) {
+		t.Error("expected hasCodeChanges to return true on main with commits after HeadCommit (gate deadlock)")
+	}
+}
+
+// TestHasCodeChanges_HeadCommitAtHead: HeadCommit == HEAD with a clean tree means no
+// changes since task start — must return false (the HeadCommit path must not degrade
+// into always-true).
+//
+// TestHasCodeChanges_HeadCommitAtHead：HeadCommit == HEAD 且工作树干净 = task 起算
+// 无变更——必须返回 false（HeadCommit 路径不能退化成恒 true）。
+func TestHasCodeChanges_HeadCommitAtHead(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "initial")
+
+	state := &TaskState{Branch: "main", HeadCommit: GetHeadCommit(dir)}
+	if hasCodeChanges(dir, state) {
+		t.Error("expected hasCodeChanges to return false when HEAD == HeadCommit and tree is clean")
+	}
+}
+
+// TestRecordAudit_FailureWarnsOnStderr pins the audit-persistence signal: when
+// checklog.Record fails (here: root is a regular file, so the data dir cannot be
+// created underneath), recordAudit must surface the failure on stderr instead of
+// swallowing it — the persisted evidence is indispensable for score/trace.
+//
+// TestRecordAudit_FailureWarnsOnStderr 钉死审计落盘信号：checklog.Record 失败时
+// （此处 root 是普通文件，其下无法建 data dir），recordAudit 必须把失败打到
+// stderr 而非吞掉——落盘证据对 score/trace 不可缺。
+func TestRecordAudit_FailureWarnsOnStderr(t *testing.T) {
+	bogus := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(bogus, []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	old := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = w
+	recordAudit(bogus, &checklog.Entry{Check: CheckNameTestCoverage, Passed: true, Checked: true})
+	w.Close()
+	os.Stderr = old
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), "checklog record failed") {
+		t.Errorf("recordAudit should warn on stderr when checklog.Record fails, got: %q", out)
+	}
+}
+
 func TestSanitizeRefInStatePath(t *testing.T) {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
@@ -379,6 +470,51 @@ func TestSanitizeRefInStatePath(t *testing.T) {
 	}
 	if loaded.TaskRef != "feature/login" {
 		t.Errorf("TaskRef = %q, want feature/login", loaded.TaskRef)
+	}
+}
+
+// TestLoadTaskState_RefCollisionRejected pins the collision guard: SanitizeRef
+// collapses '/', '\\', ':' and spaces to '-', so distinct refs can share one state
+// file. Loading must verify the TaskRef stored INSIDE the file — otherwise task B
+// silently reads task A's History/ReviewPassed/Acceptance and the review hard
+// prerequisite is bypassed via collision.
+//
+// TestLoadTaskState_RefCollisionRejected 钉死串号防护：SanitizeRef 把 '/'、'\\'、
+// ':'、空格全压成 '-'，不同 ref 可共用同一状态文件。加载必须校验文件内存的
+// TaskRef——否则 B 任务静默读到 A 的 History/ReviewPassed/Acceptance，review
+// 硬前置被串号绕过。
+func TestLoadTaskState_RefCollisionRejected(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
+
+	state := &TaskState{TaskRef: "feat/foo/bar", Branch: "feat/foo/bar"}
+	if err := SaveTaskState(dir, state); err != nil {
+		t.Fatalf("SaveTaskState: %v", err)
+	}
+
+	// The exact ref still loads.
+	//
+	// 精确 ref 照常加载
+	loaded, err := LoadTaskState(dir, "feat/foo/bar")
+	if err != nil {
+		t.Fatalf("LoadTaskState with the exact ref must succeed: %v", err)
+	}
+	if loaded.TaskRef != "feat/foo/bar" {
+		t.Errorf("TaskRef = %q, want feat/foo/bar", loaded.TaskRef)
+	}
+
+	// Colliding refs (same sanitized filename) must be rejected with a clear error.
+	//
+	// 串号 ref（sanitize 后同文件名）必须以明确错误拒绝
+	for _, ref := range []string{"feat/foo bar", "feat/foo:bar", `feat\foo\bar`} {
+		_, err := LoadTaskState(dir, ref)
+		if err == nil {
+			t.Errorf("colliding ref %q must not read another task's state file", ref)
+			continue
+		}
+		if !strings.Contains(err.Error(), "different task ref") {
+			t.Errorf("error for colliding ref %q should name the collision, got: %v", ref, err)
+		}
 	}
 }
 
@@ -455,30 +591,22 @@ func TestIsLastGate(t *testing.T) {
 	}
 }
 
-func TestIsPreviousGateAuto(t *testing.T) {
-	state := &TaskState{}
-	// task-implement is auto
-	if isPreviousGateAuto(state) {
-		t.Error("No gates passed — returns false (no previous gate to check)")
-	}
-
-	state.RecordGateResult("task-implement", true, "")
-	if !isPreviousGateAuto(state) {
-		t.Error("task-implement IS auto — should return true")
-	}
-
-	state.RecordGateResult("task-verify", true, "")
-	if isPreviousGateAuto(state) {
-		t.Error("task-verify is not auto")
-	}
-
-	state.RecordGateResult("task-complete", true, "")
-	if isPreviousGateAuto(state) {
-		t.Error("task-complete is not auto")
-	}
-}
-
-func TestAutoGateSkipsTimingForNextGate(t *testing.T) {
+// TestWorkActivityStillEnforcedAfterAutoGate pins the 3-gate rule documented at the
+// work-activity check in executor.go: the check is intentionally NOT skipped after an
+// auto gate. Under the 3-gate pipeline task-verify immediately follows the auto
+// task-implement, and the implement→verify stretch is exactly the interval where
+// read-before-edit must be enforced — skipping after auto was the old 5-gate-era rule
+// (embodied by the now-deleted isPreviousGateAuto) and would make this check
+// ineffective. With zero logged Reads/activity, task-verify must be BLOCKED even
+// though the previous gate was auto.
+//
+// TestWorkActivityStillEnforcedAfterAutoGate 钉死 executor.go 工作活动检查处记录的
+// 3-gate 规则：auto gate 之后故意不跳过本检查。3-gate 流水线下 task-verify 紧跟
+// auto 的 task-implement，implement→verify 这段正是必须强制 read-before-edit 的
+// 区间——auto 后跳过是 5-gate 时代旧规则（已删除的 isPreviousGateAuto 即其残
+// 留），会让检查失效。零 Read/活动时，即便前一 gate 是 auto，task-verify 也必须
+// BLOCKED。
+func TestWorkActivityStillEnforcedAfterAutoGate(t *testing.T) {
 	dir := t.TempDir()
 	runGit(t, dir, "init")
 	runGit(t, dir, "config", "user.email", "test@test.com")
@@ -487,23 +615,24 @@ func TestAutoGateSkipsTimingForNextGate(t *testing.T) {
 	runGit(t, dir, "add", ".")
 	runGit(t, dir, "commit", "-m", "initial")
 
-	// Set long interval — next gate after auto should skip it
-	os.Setenv("FORGE_WORK_ACTIVITY", "disable")
-	defer os.Unsetenv("FORGE_WORK_ACTIVITY")
+	t.Setenv("FORGE_WORK_ACTIVITY", "") // 确保不受外部环境 escape 影响
 
 	state := &TaskState{
-		TaskRef: "test-auto-next",
+		TaskRef: "test-auto-activity",
 		Branch:  "feat/test",
 	}
 
-	// Pass task-implement (auto)
+	// Pass task-implement (auto) — but log no Reads/activity afterwards.
+	//
+	// 通过 task-implement（auto）——之后不记任何 Read/活动
 	state.RecordGateResult("task-implement", true, "")
 
-	// task-verify should pass immediately despite long interval
-	// because previous gate (task-implement) is auto
 	_, err := ExecuteTaskGate(dir, "task-verify", state)
-	if err != nil {
-		t.Fatalf("task-verify after auto task-implement should skip timing: %v", err)
+	if err == nil {
+		t.Fatal("task-verify after auto gate with zero activity must be BLOCKED — the 5-gate-era skip rule must not come back")
+	}
+	if !IsGateBlocked(err) {
+		t.Fatalf("应是 GateBlocked（HARD stop），got: %v", err)
 	}
 }
 
@@ -710,6 +839,56 @@ func TestActiveTaskState_StaleRefFileFallsThrough(t *testing.T) {
 	active, _ := ActiveTaskState(dir, "")
 	if active != nil {
 		t.Fatal("expected nil when explicit ref points to completed task")
+	}
+}
+
+// TestActiveTaskState_BranchProbeLoadFailureFallsThrough pins the priority-2
+// fall-through: when the branch-derived task state file fails to load (corrupt
+// here), the probe must fall through to the priority-3 fallback scan instead of
+// aborting — otherwise an otherwise-unambiguous active task is lost behind a
+// single broken file.
+//
+// TestActiveTaskState_BranchProbeLoadFailureFallsThrough 钉死优先级 2 的 fall
+// through：branch 探测到的 task state 文件加载失败（此处为损坏）时，探测必须
+// fall through 到优先级 3 兜底扫描而非中断——否则一个本应无歧义的 active task
+// 会被一个坏文件挡掉。
+func TestActiveTaskState_BranchProbeLoadFailureFallsThrough(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "init")
+	runGit(t, dir, "checkout", "-b", "feat/broken")
+
+	// Corrupt state file named after the branch-derived ref (priority-2 probe target).
+	//
+	// 以 branch 探测 ref 命名的损坏 state 文件（优先级 2 的探测目标）
+	tasksDir := filepath.Join(dataHome(dir), "tasks")
+	if err := os.MkdirAll(tasksDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	corrupt := filepath.Join(tasksDir, taskcontext.SanitizeRef("feat/broken")+".json")
+	if err := os.WriteFile(corrupt, []byte("{corrupt"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// One unrelated incomplete task — priority 3 should find it unambiguously.
+	//
+	// 一个无关的未完成 task——优先级 3 应无歧义找到它
+	other := &TaskState{TaskRef: "fix/other", Branch: "master", StartedAt: time.Now()}
+	if err := SaveTaskState(dir, other); err != nil {
+		t.Fatalf("SaveTaskState: %v", err)
+	}
+
+	active, err := ActiveTaskState(dir, "")
+	if err != nil {
+		t.Fatalf("branch-probe load failure must fall through, not abort the probe: %v", err)
+	}
+	if active == nil {
+		t.Fatal("expected the priority-3 fallback to find fix/other behind the corrupt branch state file")
+	}
+	if active.TaskRef != "fix/other" {
+		t.Errorf("TaskRef = %q, want fix/other", active.TaskRef)
 	}
 }
 

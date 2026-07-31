@@ -121,8 +121,17 @@ func MigrateProject(p *Project, opts MigrateOptions) (*MigrationResult, error) {
 	for _, name := range names {
 		src := filepath.Join(p.ConfigDir, name)
 		if _, err := os.Stat(src); err != nil {
-			// Does not exist; skip.
-			continue // 不存在，跳过
+			if os.IsNotExist(err) {
+				// Does not exist; skip.
+				continue // 不存在，跳过
+			}
+			// Permission/IO errors are NOT "does not exist": silently treating them as absent
+			// would drop the entry from the report while its data stays behind (or gets
+			// half-migrated elsewhere). Surface the failure and abort this run.
+			//
+			// 权限/IO 错误不是「不存在」：当不存在静默跳过会让条目从报告凭空消失
+			// （数据残留或别处半迁移）。显式报错，中止本次迁移。
+			return nil, fmt.Errorf("stat %s: %w", name, err)
 		}
 		moved, err := migrateOne(src, filepath.Join(p.DataDir, name), opts)
 		if err != nil {
@@ -184,12 +193,20 @@ func migrateOne(src, dst string, opts MigrateOptions) (bool, error) {
 	if opts.DryRun {
 		// dry-run only reports intent and touches no files (especially does not delete dst)
 		// dry-run 只报告意图，不碰任何文件（尤其不删 dst）
-		if _, err := os.Stat(dst); err == nil && !opts.Force {
+		exists, err := statExists(dst)
+		if err != nil {
+			return false, fmt.Errorf("stat dst: %w", err)
+		}
+		if exists && !opts.Force {
 			return false, nil // dst 已有且非 force → 将 skip
 		}
 		return true, nil // 将迁移（dst 不存在）或将覆盖（force）
 	}
-	if _, err := os.Stat(dst); err == nil {
+	exists, err := statExists(dst)
+	if err != nil {
+		return false, fmt.Errorf("stat dst: %w", err)
+	}
+	if exists {
 		if !opts.Force {
 			return false, nil // skip
 		}
@@ -198,6 +215,24 @@ func migrateOne(src, dst string, opts MigrateOptions) (bool, error) {
 		}
 	}
 	if err := moveEntry(src, dst); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// statExists classifies os.Stat: (true/false, nil) for exists / does-not-exist, and a real
+// error for anything else (permission/IO/invalid-path) so callers never treat an IO failure
+// as "absent" — a migration could otherwise delete a source whose destination was never
+// verified, or silently drop an entry from the report.
+//
+// statExists 分类 os.Stat 结果：(true/false, nil) 表存在/不存在，其余错误（权限/IO/
+// 非法路径）原样返回——调用方不得把 IO 失败当「不存在」，否则迁移可能在目标未验证时
+// 删掉源，或让条目从报告凭空消失。
+func statExists(path string) (bool, error) {
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
 		return false, err
 	}
 	return true, nil

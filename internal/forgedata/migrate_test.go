@@ -241,6 +241,26 @@ func TestMigrateProject_DryRunForceKeepsDst(t *testing.T) {
 	assertExists(t, filepath.Join(root, `.forge`, `checklog.jsonl`), `源文件`)
 }
 
+// TestMigrateProject_StatErrorAborts pins the src-side fix: a non-NotExist os.Stat error on a
+// whitelist entry (here via a NUL in ConfigDir — EINVAL on Windows and Unix alike) must abort
+// with a real error instead of being silently treated as "entry absent" and vanishing from the
+// report.
+//
+// TestMigrateProject_StatErrorAborts 钉死源端修复：白名单条目 os.Stat 的非 NotExist 错误
+// （这里用 ConfigDir 含 NUL 构造——Windows/Unix 均为 EINVAL）必须显式报错中止，而非被
+// 静默当「不存在」从报告中凭空消失。
+func TestMigrateProject_StatErrorAborts(t *testing.T) {
+	p := &forgedata.Project{
+		Key:       `k`,
+		DataDir:   t.TempDir(),
+		ConfigDir: t.TempDir() + string(filepath.Separator) + "bad\x00config",
+	}
+	_, err := forgedata.MigrateProject(p, forgedata.MigrateOptions{})
+	if err == nil {
+		t.Fatal(`ConfigDir 含非法路径时应报错中止，实得 nil`)
+	}
+}
+
 // ---- helpers ----
 
 func mkDir(t *testing.T, path string) {

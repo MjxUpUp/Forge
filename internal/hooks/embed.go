@@ -504,6 +504,36 @@ SNAPSHOT_FILE="${TMPDIR:-/tmp}/forge-snapshot-${SESSION_ID}"
 WRITE_FLAG_FILE="${TMPDIR:-/tmp}/forge-write-${SESSION_ID}"
 [ -z "${WRITE_FLAG_FILE:-}" ] && WRITE_FLAG_FILE="${TMPDIR:-/tmp}/forge-write-unknown"
 
+# Per-invocation pairing: the session-keyed files above are shared by every
+# Bash call in the session, so two PARALLEL Bash calls overwrite each other's
+# snapshot / write-flag and file-sentinel can consume a sibling's pairing
+# (wrong baseline, wrong secondary gate). Keying the authoritative copies with
+# THIS hook process's PID ($$) makes each PreToolUse→PostToolUse pair distinct;
+# file-sentinel globs the newest unconsumed per-invocation snapshot. The legacy
+# session-keyed files are still written below (kept in sync) for backward
+# compatibility with older file-sentinel versions and external tooling.
+SNAP_INV="${SNAPSHOT_FILE}-$$"
+FLAG_INV="${WRITE_FLAG_FILE}-$$"
+
+# forge_cfg_manifest records a content-hash manifest of the config files the
+# self-protection layer guards — .forge/hooks/* and .claude/settings* — WITHOUT
+# relying on git. These paths are gitignored and untracked by design, so the
+# git-based snapshot below (git diff / git ls-files --others --exclude-standard)
+# can never see a Bash rewrite of them: the CONFIG quarantine branch of
+# file-sentinel would be blind on exactly its primary targets. file-sentinel
+# regenerates this manifest and compares; any drift is treated as a config
+# change. Hash: md5sum (GNU/Git-Bash) → md5 -q (BSD) → byte size (last resort).
+forge_cfg_manifest() {
+  local cf _h
+  for cf in .forge/hooks/* .claude/settings*; do
+    [ -f "$cf" ] || continue
+    _h=$(md5sum "$cf" 2>/dev/null | awk '{print $1}')
+    [ -z "$_h" ] && _h=$(md5 -q "$cf" 2>/dev/null)
+    [ -z "$_h" ] && _h="size-$(wc -c < "$cf" 2>/dev/null | tr -d ' ')"
+    [ -n "$_h" ] && printf '%s  %s\n' "$_h" "$cf"
+  done
+}
+
 # --- Detect write patterns in command ---
 # POSIX case-glob + a single BRE — NO grep -E alternation. BSD grep aborts on
 # ERE alternation with "Unmatched ( or \(" (178× in field logs, all under
@@ -517,13 +547,24 @@ has_write_pattern() {
     *writeFile*|*writeFileSync*|*"fs.write"*) return 0 ;;
   esac
   # Shell commands that always write to disk — token scan gives real word
-  # boundaries without ERE alternation.
-  local tok
-  for tok in $cmd; do
-    case "$tok" in
-      cp|mv|dd|install|rsync|scp|cpio|wget|tee) return 0 ;;
-    esac
-  done
+  # boundaries without ERE alternation. Tokens match by BASENAME (${tok##*/})
+  # so absolute paths (/bin/cp, /usr/bin/tar) are caught; archive extractors
+  # (tar/unzip/7z...) write whole trees without any redirect token, and the
+  # decompressors (gunzip/bunzip2/unxz) rewrite the file in place.
+  # set -f (noglob) inside a subshell: an unquoted * in the command would
+  # otherwise glob-expand against the caller's cwd and corrupt the token scan;
+  # the subshell confines the option change.
+  if (
+    set -f
+    for tok in $cmd; do
+      case "${tok##*/}" in
+        cp|mv|dd|install|rsync|scp|cpio|wget|tee|tar|unzip|unrar|7z|7za|7zr|gunzip|bunzip2|unxz) exit 0 ;;
+      esac
+    done
+    exit 1
+  ); then
+    return 0
+  fi
   # Flag-gated writers: in-place editors (-i), download-to-file (-o/-O/--output),
   # git apply, patch -p<n>.
   case " $cmd " in
@@ -540,6 +581,12 @@ has_write_pattern() {
     *"> /dev/null"*) : ;;
     *) printf '%s' "$s" | grep -q '>[[:space:]]*[^[:space:]&][^[:space:]]*[./][^[:space:]]*' && return 0 ;;
   esac
+  # Known gaps — contract: 识别不到 ⇒ 放行. This gate is a heuristic first line
+  # (drives the no-task WARN + file-sentinel's secondary gate); file-sentinel's
+  # snapshot diff is the backstop. Not detected by design: interpreter inline
+  # writes (python -c / node -e / ruby -e writing files), pipes through another
+  # process (curl | sh), base64 -d / xxd -r decoders, git checkout/restore of
+  # tracked paths, and redirect targets carrying no dot or slash.
   return 1
 }
 
@@ -564,10 +611,31 @@ esac
 # （~/.forge 不在 git），file-sentinel 基于 git diff 管不到 DataDir 路径——A6
 # （守 gates/status.json 不被 Bash 篡改）随之失效，见
 # TestHook_FileSentinel_GateStatusBeyondGitDiff（负向，钉死该缺口）。
+#
+# git diff --cached is part of the snapshot AND of file-sentinel's current
+# state (kept symmetric there): a write-then-git-add in one command must not
+# escape detection through the staged tree.
 {
   git diff --name-only 2>/dev/null || true
+  git diff --cached --name-only 2>/dev/null || true
   git ls-files --others --exclude-standard 2>/dev/null || true
-} | sort -u > "$SNAPSHOT_FILE" 2>/dev/null || true
+} | sort -u > "$SNAP_INV" 2>/dev/null || true
+# Legacy session-keyed copy, kept in sync for backward compatibility (see the
+# per-invocation pairing note above).
+cp -f "$SNAP_INV" "$SNAPSHOT_FILE" 2>/dev/null || true
+
+# Snapshot completion marker. file-sentinel uses it to tell a legitimate EMPTY
+# baseline (clean working tree — the common case) apart from a silently failed
+# snapshot (git errors swallowed by 2>/dev/null): marker present + empty list =
+# clean baseline → normal NEW_CHANGES flow; marker missing + snapshot file
+# present = failed snapshot → fail-open WARN. Without this distinction a first
+# Bash source write in a clean repo was fail-opened forever.
+: > "${SNAP_INV}.ok" 2>/dev/null || true
+: > "${SNAPSHOT_FILE}.ok" 2>/dev/null || true
+
+# Git-independent config manifest (see forge_cfg_manifest above): covers the
+# gitignored self-protection targets the git lists can never see.
+forge_cfg_manifest > "${SNAP_INV}.cfg" 2>/dev/null || true
 
 # Record whether THIS command is a write, for file-sentinel's secondary gate.
 # MUST be written BEFORE the no-task WARN-exit below — otherwise, when there is
@@ -579,8 +647,10 @@ esac
 IS_WRITE_CMD=0
 if has_write_pattern "$COMMAND"; then
   IS_WRITE_CMD=1
+  printf '1' > "$FLAG_INV" 2>/dev/null || true
   printf '1' > "$WRITE_FLAG_FILE" 2>/dev/null || true
 else
+  : > "$FLAG_INV" 2>/dev/null || true
   : > "$WRITE_FLAG_FILE" 2>/dev/null || true
 fi
 
@@ -865,26 +935,81 @@ set -eo pipefail
 
 TASK_REF="${FORGE_TASK_REF:-}"
 SESSION_ID="${FORGE_SESSION_ID:-default}"
-SNAPSHOT_FILE="${TMPDIR:-/tmp}/forge-snapshot-${SESSION_ID}"
-# Defensive: never let SNAPSHOT_FILE be empty — an empty value would make a
-# redirect write to a literal/misdirected filename.
-[ -z "${SNAPSHOT_FILE:-}" ] && SNAPSHOT_FILE="${TMPDIR:-/tmp}/forge-snapshot-unknown"
-FORGE_CMD_FILE="${TMPDIR:-/tmp}/forge-cmd-${SESSION_ID}"
-WRITE_FLAG_FILE="${TMPDIR:-/tmp}/forge-write-${SESSION_ID}"
-[ -z "${WRITE_FLAG_FILE:-}" ] && WRITE_FLAG_FILE="${TMPDIR:-/tmp}/forge-write-unknown"
+: "${TMPDIR:=/tmp}"
+# Legacy session-keyed names (pre per-invocation pairing): retained as a
+# fallback when no per-invocation snapshot exists (e.g. planted by an older
+# bash-guard), and still kept in sync by the current bash-guard.
+LEGACY_SNAPSHOT_FILE="${TMPDIR}/forge-snapshot-${SESSION_ID}"
+LEGACY_WRITE_FLAG_FILE="${TMPDIR}/forge-write-${SESSION_ID}"
+FORGE_CMD_FILE="${TMPDIR}/forge-cmd-${SESSION_ID}"
+
+# Per-invocation pairing: bash-guard keys its authoritative snapshot with its
+# own PID (forge-snapshot-<session>-<pid>, plus .ok/.cfg sidecars), so parallel
+# Bash calls in one session no longer overwrite or mis-consume each other's
+# pairing. Consume the NEWEST unconsumed per-invocation snapshot.
+# Heuristic limitation: under truly parallel Bash calls the newest snapshot may
+# belong to a sibling tool call — mis-pairing then degrades to the old
+# shared-file behavior (a wrong but fresh baseline), never worse. The serial
+# single-command flow is exact and unchanged.
+SNAPSHOT_FILE=""
+for f in "${TMPDIR}/forge-snapshot-${SESSION_ID}"-*; do
+  [ -f "$f" ] || continue
+  case "$f" in *.ok|*.cfg) continue ;; esac
+  if [ -z "$SNAPSHOT_FILE" ] || [ "$f" -nt "$SNAPSHOT_FILE" ]; then
+    SNAPSHOT_FILE="$f"
+  fi
+done
+[ -z "$SNAPSHOT_FILE" ] && SNAPSHOT_FILE="$LEGACY_SNAPSHOT_FILE"
+# Matching write-flag: same PID suffix when consuming a per-invocation
+# snapshot, else the legacy session file.
+WRITE_FLAG_FILE="$LEGACY_WRITE_FLAG_FILE"
+case "$SNAPSHOT_FILE" in
+  "$LEGACY_SNAPSHOT_FILE") ;;
+  *)
+    _INV_SUFFIX="${SNAPSHOT_FILE##*forge-snapshot-${SESSION_ID}-}"
+    if [ -f "${TMPDIR}/forge-write-${SESSION_ID}-${_INV_SUFFIX}" ]; then
+      WRITE_FLAG_FILE="${TMPDIR}/forge-write-${SESSION_ID}-${_INV_SUFFIX}"
+    fi
+    ;;
+esac
+# Sidecars written by bash-guard next to the snapshot: .ok = snapshot completed
+# (distinguishes clean baseline from failed snapshot), .cfg = git-independent
+# config manifest of the self-protection targets.
+SNAPSHOT_OK="${SNAPSHOT_FILE}.ok"
+SNAPSHOT_CFG="${SNAPSHOT_FILE}.cfg"
+
+# cleanup_sentinel_state removes every state file this invocation may consume.
+cleanup_sentinel_state() {
+  rm -f "$SNAPSHOT_FILE" "$SNAPSHOT_OK" "$SNAPSHOT_CFG" "$WRITE_FLAG_FILE" \
+    "$LEGACY_SNAPSHOT_FILE" "$LEGACY_WRITE_FLAG_FILE" "$FORGE_CMD_FILE" 2>/dev/null || true
+}
+
+# forge_cfg_manifest must produce byte-identical lines to the same function in
+# bash-guard.sh (content hash of the gitignored self-protection targets:
+# .forge/hooks/* and .claude/settings*). Keep the two in sync.
+forge_cfg_manifest() {
+  local cf _h
+  for cf in .forge/hooks/* .claude/settings*; do
+    [ -f "$cf" ] || continue
+    _h=$(md5sum "$cf" 2>/dev/null | awk '{print $1}')
+    [ -z "$_h" ] && _h=$(md5 -q "$cf" 2>/dev/null)
+    [ -z "$_h" ] && _h="size-$(wc -c < "$cf" 2>/dev/null | tr -d ' ')"
+    [ -n "$_h" ] && printf '%s  %s\n' "$_h" "$cf"
+  done
+}
 
 # No snapshot from PreToolUse → nothing to compare (fail-open). Also clear the
 # write-flag so a stale flag from this session never leaks into a later
 # invocation that has no matching bash-guard snapshot.
 if [ ! -f "$SNAPSHOT_FILE" ]; then
-  rm -f "$WRITE_FLAG_FILE" 2>/dev/null || true
+  rm -f "$LEGACY_WRITE_FLAG_FILE" 2>/dev/null || true
   echo "PASS"
   exit 0
 fi
 
 # Not a git repo → cannot diff, pass silently
 git rev-parse --git-dir >/dev/null 2>&1 || {
-  rm -f "$SNAPSHOT_FILE" "$FORGE_CMD_FILE" 2>/dev/null
+  cleanup_sentinel_state
   echo "PASS"
   exit 0
 }
@@ -896,10 +1021,13 @@ SRC_EXT='\.(go|rs|ts|tsx|js|jsx|py|java|rb|zig|nim)$'
 # 模式留之无用且误导。只守项目级 .forge/hooks/（ConfigDir/hooks 配置层，仍项目级）。
 CFG_EXT='(\.forge/hooks/|\.claude/settings)'
 
-# Get current changed source files only (not all files)
+# Get current changed source files only (not all files).
+# git diff --cached stays symmetric with bash-guard's snapshot — a
+# write-then-git-add in one command must not escape through the staged tree.
 CURRENT_ALL=$(
   {
     git diff --name-only 2>/dev/null || true
+    git diff --cached --name-only 2>/dev/null || true
     git ls-files --others --exclude-standard 2>/dev/null || true
   } | grep -E "${SRC_EXT}|${CFG_EXT}" | sort -u || true
 )
@@ -907,17 +1035,24 @@ CURRENT_ALL=$(
 # Read pre-Bash snapshot
 BEFORE_ALL=$(cat "$SNAPSHOT_FILE" 2>/dev/null | grep -E "${SRC_EXT}|${CFG_EXT}" | sort -u || true)
 
-# EMPTY snapshot = bash-guard's git commands failed silently (errors swallowed
-# by 2>/dev/null: cwd drift, index.lock, Windows newline, session id drift).
-# With no reliable baseline we CANNOT compute a diff — the else-branch below
-# would treat the ENTIRE working tree as "new violations" and quarantine +
-# run "git checkout --" to discard the user's existing uncommitted source. That is
-# fail-destructive on an unprovable violation. Fail-open instead: WARN only.
+# EMPTY snapshot + non-empty current tree: two cases.
+# 1. bash-guard completed the snapshot and wrote the .ok marker: the empty list
+#    is a LEGITIMATE clean baseline (fresh repo, nothing uncommitted — the
+#    common case). Fall through to the normal NEW_CHANGES flow: every current
+#    change is genuinely new. (Without this distinction, a first Bash source
+#    write in a clean repo was always fail-opened by case 2 below.)
+# 2. Snapshot file exists but NO .ok marker: the snapshot failed silently (git
+#    errors swallowed by 2>/dev/null: cwd drift, index.lock, Windows newline)
+#    or was planted without bash-guard. With no reliable baseline we CANNOT
+#    compute a diff — the else-branch below would treat the ENTIRE working
+#    tree as "new violations" and quarantine + run "git checkout --" to discard
+#    the user's existing uncommitted source. That is fail-destructive on an
+#    unprovable violation. Fail-open instead: WARN only.
 # (P0 DevWorkbench incident 2026-06: 71 files moved to quarantine, working
 # tree .tsx/.rs silently restored to HEAD because BEFORE_ALL was empty.)
-if [ -z "$BEFORE_ALL" ] && [ -n "$CURRENT_ALL" ]; then
-  rm -f "$SNAPSHOT_FILE" "$FORGE_CMD_FILE" "$WRITE_FLAG_FILE" 2>/dev/null || true
-  echo "WARN [file-sentinel] PreToolUse snapshot empty (git failed silently) while working tree has uncommitted source/config changes — cannot compute reliable diff, skipping quarantine to protect existing work."
+if [ -z "$BEFORE_ALL" ] && [ -n "$CURRENT_ALL" ] && [ ! -f "$SNAPSHOT_OK" ]; then
+  cleanup_sentinel_state
+  echo "WARN [file-sentinel] PreToolUse snapshot empty WITHOUT completion marker (git failed silently or snapshot planted) while working tree has uncommitted source/config changes — cannot compute reliable diff, skipping quarantine to protect existing work."
   echo "PASS"
   exit 0
 fi
@@ -931,11 +1066,32 @@ IS_FORGE_CMD=0
 IS_WRITE_CMD=0
 [ -s "$WRITE_FLAG_FILE" ] && IS_WRITE_CMD=1
 
+# Git-independent config protection: .forge/hooks/*.sh and .claude/settings*
+# are gitignored/untracked by design, so the git-based lists above NEVER see a
+# Bash rewrite of them — the CONFIG quarantine branch below would be blind on
+# exactly its primary self-protection targets. bash-guard recorded a hash
+# manifest of these files (${SNAPSHOT}.cfg); compare against the current state
+# and treat any drift (changed hash, added, or removed file) as a config
+# change. Skipped when the snapshot carries no manifest (legacy pairing).
+CFG_FROM_MANIFEST=""
+if [ -f "$SNAPSHOT_CFG" ]; then
+  CFG_NOW=$(forge_cfg_manifest)
+  # Symmetric difference of "hash  path" lines, reduced to paths: a changed
+  # hash surfaces both the old and the new line (same path, deduped by sort -u);
+  # an added/removed file surfaces its single line.
+  CFG_FROM_MANIFEST=$(
+    {
+      printf '%s\n' "$CFG_NOW"
+      cat "$SNAPSHOT_CFG"
+    } | sort | uniq -u | awk '{$1=""; sub(/^ +/,""); print}' | sort -u || true
+  )
+fi
+
 # Clean up
-rm -f "$SNAPSHOT_FILE" "$FORGE_CMD_FILE" "$WRITE_FLAG_FILE" 2>/dev/null || true
+cleanup_sentinel_state
 
 # No current changes at all → pass
-[ -z "$CURRENT_ALL" ] && { echo "PASS"; exit 0; }
+[ -z "$CURRENT_ALL" ] && [ -z "$CFG_FROM_MANIFEST" ] && { echo "PASS"; exit 0; }
 
 # Find NEW changes: lines in CURRENT but not in BEFORE
 # Use grep -Fxv for reliable line-by-line exact match
@@ -945,12 +1101,21 @@ else
   NEW_CHANGES="$CURRENT_ALL"
 fi
 
-# No new changes → pass
-[ -z "$NEW_CHANGES" ] && { echo "PASS"; exit 0; }
+# No new changes → pass (manifest-only config drift must still reach the
+# CONFIG branch below, hence the CFG_FROM_MANIFEST disjunct).
+[ -z "$NEW_CHANGES" ] && [ -z "$CFG_FROM_MANIFEST" ] && { echo "PASS"; exit 0; }
 
-# Categorize new changes
+# Categorize new changes. CONFIG_CHANGES merges the git-visible set with the
+# git-independent manifest drift (CFG_FROM_MANIFEST) — the latter carries
+# exactly the gitignored .forge/hooks/*.sh / .claude/settings* rewrites git
+# cannot report.
 SOURCE_CHANGES=$(printf '%s' "$NEW_CHANGES" | grep -E "$SRC_EXT" || true)
-CONFIG_CHANGES=$(printf '%s' "$NEW_CHANGES" | grep -E "$CFG_EXT" || true)
+CONFIG_CHANGES=$(
+  {
+    printf '%s\n' "$NEW_CHANGES"
+    printf '%s\n' "$CFG_FROM_MANIFEST"
+  } | grep -E "$CFG_EXT" | sort -u || true
+)
 
 # No protected changes → pass
 [ -z "$SOURCE_CHANGES" ] && [ -z "$CONFIG_CHANGES" ] && { echo "PASS"; exit 0; }
@@ -972,6 +1137,7 @@ quarantine_files() {
 
   local quarantined=""
   local failed=""
+  local restored=""
   while IFS= read -r f; do
     [ -z "$f" ] && continue
 
@@ -985,6 +1151,15 @@ quarantine_files() {
     # Move to quarantine FIRST — always preserves content for recovery
     if ! mv "$f" "${qdir}/${f}" 2>/dev/null; then
       failed="${failed} ${f}"
+      # mv failed AND the file is currently missing (e.g. the command deleted
+      # it): nothing left to quarantine, but RESTORE is an independent action —
+      # a tracked file is still recovered from HEAD, so a reported FAIL never
+      # leaves the user's file deleted. Restore failures surface via "failed".
+      if [ ! -e "$f" ] && git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
+        if git checkout -- "$f" 2>/dev/null; then
+          restored="${restored} ${f}"
+        fi
+      fi
       continue
     fi
 
@@ -998,6 +1173,7 @@ quarantine_files() {
 
   QUARANTINED="$quarantined"
   QUARANTINE_FAILED="$failed"
+  QUARANTINE_RESTORED="$restored"
   QUARANTINE_DIR="$qdir"
 }
 
@@ -1006,6 +1182,7 @@ if [ -n "$CONFIG_CHANGES" ] && [ $IS_FORGE_CMD -eq 0 ]; then
   quarantine_files "$CONFIG_CHANGES"
   MSG="FAIL [file-sentinel] Quarantined unauthorized changes to Forge config:${QUARANTINED}."
   [ -n "$QUARANTINE_FAILED" ] && MSG="${MSG} FAILED to quarantine:${QUARANTINE_FAILED}."
+  [ -n "$QUARANTINE_RESTORED" ] && MSG="${MSG} Restored from HEAD:${QUARANTINE_RESTORED}."
   MSG="${MSG} Files in ${QUARANTINE_DIR}/. Recover: cp -r ${QUARANTINE_DIR}/* ."
   echo "${MSG} Use forge commands instead."
   exit 1
@@ -1049,6 +1226,7 @@ if [ -z "$TASK_REF" ] && [ -n "$SOURCE_CHANGES" ]; then
   quarantine_files "$SOURCE_CHANGES"
   MSG="FAIL [file-sentinel] Quarantined unauthorized code changes (no active task):${QUARANTINED}."
   [ -n "$QUARANTINE_FAILED" ] && MSG="${MSG} FAILED to quarantine:${QUARANTINE_FAILED}."
+  [ -n "$QUARANTINE_RESTORED" ] && MSG="${MSG} Restored from HEAD:${QUARANTINE_RESTORED}."
   MSG="${MSG} Files in ${QUARANTINE_DIR}/. Recover: cp -r ${QUARANTINE_DIR}/* ."
   echo "${MSG} Start a task: forge task start --ref <type>/<desc> --branch"
   exit 1
@@ -1431,12 +1609,30 @@ cd "$ROOT" 2>/dev/null || { echo "PASS"; exit 0; }
 # internal/ci 不存在 → 无守护测试可跑，静默放行（老项目/未启用 CI 配置守护）。
 [ -d "internal/ci" ] || { echo "PASS"; exit 0; }
 
+# go 不在 PATH：go test 会 exit 127，被下面 CODE!=0 分支误当测试失败 FAIL 阻塞
+# 编辑——工具故障不是测试失败。拦截承诺只覆盖"测试真跑了且挂了"，fail-open skip。
+command -v go >/dev/null 2>&1 || { echo "PASS [workflow-test-guard] go not on PATH, skipping internal/ci guard tests"; exit 0; }
+
+# 守护范围是"任何有 internal/ci 的项目自己的守护测试"（opt-in via internal/ci
+# 存在性，见 e2e setupGuardProject），不限 forge 仓。无 go / package 不可解析
+# 两类环境故障已在上下分支 fail-open，不会误阻塞。
+
 # 跑守护测试，捕获 exit code（不用 set -e，否则 go test 失败会杀脚本拿不到 CODE）。
 OUTPUT=$(go test ./internal/ci/ -count=1 2>&1)
 CODE=$?
 
 if [ "$CODE" -eq 0 ]; then
   echo "PASS [workflow-test-guard] workflow 配置变更后 internal/ci 守护测试全绿"
+  exit 0
+fi
+
+# "package 不存在/不可解析"类错误（目录里无 Go package、路径不解析）不是守护
+# 测试失败——是环境/布局问题，fail-open skip 而非阻塞编辑（grep -qF 固定串，
+# BSD 安全，无 ERE 交替）。
+if printf '%s' "$OUTPUT" | grep -qF 'no required module provides package' || \
+   printf '%s' "$OUTPUT" | grep -qF 'matched no packages' || \
+   printf '%s' "$OUTPUT" | grep -qF 'no Go files'; then
+  echo "PASS [workflow-test-guard] internal/ci package 不可解析（非测试失败），skip: $(printf '%s' "$OUTPUT" | head -1)"
   exit 0
 fi
 

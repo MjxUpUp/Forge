@@ -220,7 +220,9 @@ func ForgeHookSpec() map[string][]HookMatcher {
 // 文件被删、用户 env/model 丢失(1.2.0 回归,1.2.1 修)。
 func GenerateSettings(projectDir string) error {
 	claudeDir := filepath.Join(projectDir, ".claude")
-	os.MkdirAll(claudeDir, 0755)
+	if err := os.MkdirAll(claudeDir, 0755); err != nil {
+		return fmt.Errorf("create .claude dir: %w", err)
+	}
 	path := filepath.Join(claudeDir, "settings.local.json")
 
 	// Read the existing settings.local.json, preserving all top-level fields (user
