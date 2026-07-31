@@ -82,6 +82,19 @@ func (t *KimiTranslator) Detect(projectDir string) bool {
 }
 
 func (t *KimiTranslator) Translate(projectDir string, input *TranslationInput) error {
+	// Plugin wins: when forge is installed as a kimi plugin (/plugins install), its
+	// manifest already registers every hook machine-wide — the config.toml section
+	// would double-run every hook (same dedupe philosophy as claude-code's plugin vs
+	// settings.local.json, internal/hooks/plugin_detect.go). Strip it and stop.
+	//
+	// Plugin 优先：forge 已作为 kimi plugin 安装（/plugins install）时，其 manifest
+	// 已在全机器注册全部 hook——config.toml 标记段会让每个 hook 双跑（与
+	// claude-code 的 plugin vs settings.local.json 同款 dedupe 哲学，见
+	// internal/hooks/plugin_detect.go）。剥除标记段后返回。
+	if IsKimiPluginInstalled() {
+		_, err := StripKimiHooks()
+		return err
+	}
 	path, err := KimiConfigPath()
 	if err != nil {
 		return fmt.Errorf("kimi: %w", err)
