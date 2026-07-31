@@ -23,6 +23,7 @@ skill-name/                # 目录名 = skill id = frontmatter.name
 # 可选
 ├── scripts/               # 确定性操作的执行脚本（能脚本化就不靠模型推理）
 ├── assets/                # 模板文件、示例产物
+├── templates/             # 填空模板（generator 模式 skill 用，如 architecture-decision-record/templates/）
 ├── decisions.md           # 持久决策历史：
                           # 记 (诊断, 修订, 脱敏证据, 结果) 四元组，append-only；`forge skills decide` 追加。
                           # 让下一轮 agent 理解 why，避免重复探索已失败方向。审计/可复现，非泛化学习。
@@ -38,12 +39,14 @@ skill-name/                # 目录名 = skill id = frontmatter.name
 name: kebab-case-name          # [必填] 必须与目录名一致，正则 ^[a-z][a-z0-9-]*$
 description: "≥80 字符的触发器" # [必填] 见 §5
 metadata:
-  pattern: <pattern-name>      # [必填] 见 §6，六选一或组合
+  pattern: <pattern-name>      # [必填] 见 §6，八选一或组合
   domain: <domain-name>        # [可选] 领域标签
   steps: <number>              # [可选] pipeline 步骤数
   composes: [skill-list]       # [可选] 组合的其他 skill
 ---
 ```
+
+允许项目自有扩展 metadata 字段（如 `source`、`severity-levels`），不计入校验。
 
 ## 5. description 规范（最关键字段，触发器不是摘要）
 
@@ -71,8 +74,10 @@ metadata:
 | `inversion` | 先问后做 | "DO NOT start until..." 硬 gate，串行提问 | 需求不明确、复杂方案设计 |
 | `pipeline` | 带检查点的多步工作流 | 严格顺序，每步有 diamond gate | 多阶段内容生产、迁移 |
 | `gate` | 硬门控拦截（Forge 扩展） | mandatory 项不过即阻断，每项配可执行命令 + 量化通过标准 | 提交前审查、发布 readiness、按需安全护栏 |
+| `routing` | 路由分发 | 按关键词/意图把输入映射到正确的下游 skill 或工具，自身不做具体执行 | 意图分类、skill 路由器、多工具入口 |
+| `fallback` | 降级兜底 | 主路径失败/不可用时提供明确降级链，每级说明触发条件与替代行为 | 外部依赖不可靠、多源检索降级 |
 
-前五种源自 Google ADK；`gate` 是 Forge 扩展（门控拦截，区别于 reviewer 的"审查清单"——gate 强制阻断、reviewer 仅发现）。模式可组合：`inversion + pipeline`、`generator + reviewer`、`reviewer + gate`。组合时主模式写在前。
+前五种源自 Google ADK；`gate` 是 Forge 扩展（门控拦截，区别于 reviewer 的"审查清单"——gate 强制阻断、reviewer 仅发现）；`routing`/`fallback` 是 Forge 扩展（`internal/skillsqa/rules.go` ValidPatterns 已放行），可与其他模式组合。模式可组合：`inversion + pipeline`、`generator + reviewer`、`reviewer + gate`、`routing + fallback`。组合时主模式写在前。
 
 ## 7. 内容设计四件套（高信号实践）
 
@@ -101,7 +106,7 @@ metadata:
 
 - [ ] name 与目录名一致且 kebab-case
 - [ ] description ≥ 80 字符且含 `Use when` + `SKIP`
-- [ ] metadata.pattern 存在且为六种之一（或组合）
+- [ ] metadata.pattern 存在且为八种之一（或组合）
 - [ ] SKILL.md ≤ 500 行（超限拆 references）
 - [ ] 有决策树/自查/Gotchas 之一（高信号内容）
 
@@ -127,7 +132,7 @@ metadata:
 
 ### 工具（已实现，非新写）
 
-`forge skills {list,install,audit,validate,usage,adapters,eval,effectiveness}` 命令族已完整。**`forge skills usage [--top N] [--json] [--undertrigger]` 是 skill 用度 dashboard 的现成形态**——读 `toollog.jsonl`（tool-track hook 跨 host 采集，agent-neutral，含跨归档 LoadAllAll）出 hot + undertrigger 候选。`forge skills effectiveness [--json]` 关联 Skill 调用与 act 结论产出命中×成效画像（avg 分/ratio/弱占比）。数据源已于 2026-07 从 pi 旧源（`~/.pi/research/skill-usage.jsonl`）迁移到 toollog。
+`forge skills {list,install,audit,validate,usage,adapters,effectiveness}` + eval 命令族（`eval-gen` / `eval-cases` / `eval-record` / `eval-report` / `eval-baseline`）已完整（无独立的 `eval` 命令）。**`forge skills usage [--top N] [--json] [--undertrigger]` 是 skill 用度 dashboard 的现成形态**——读 `toollog.jsonl`（tool-track hook 跨 host 采集，agent-neutral，含跨归档 LoadAllAll）出 hot + undertrigger 候选。`forge skills effectiveness [--json]` 关联 Skill 调用与 act 结论产出命中×成效画像（avg 分/ratio/弱占比）。数据源已于 2026-07 从 pi 旧源（`~/.pi/research/skill-usage.jsonl`）迁移到 toollog。
 
 ### 实测验证（2026-07-05，本机）
 

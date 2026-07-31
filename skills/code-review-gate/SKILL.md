@@ -123,13 +123,13 @@ forge trace <task-ref>     # 证据链分桶行 + Weak/Unverified 警告（同�
 
 #### 轨道 A：AI 作弊模式扫描（最高信号，先做）
 
-加载 [references/ai-cheat-patterns.md]，逐条检查 11 类 AI 作弊指纹。
+加载 [references/ai-cheat-patterns.md](references/ai-cheat-patterns.md)，逐条检查 11 类 AI 作弊指纹。
 
 **这是人类审查最容易漏、危害最大的模式。** 命中任一条即必须解决（修复或论证），不依赖其他维度即可否决提交。
 
 #### 轨道 B：传统软件工程规范
 
-加载 [references/review-checklist.md]，按维度检查：
+加载 [references/review-checklist.md](references/review-checklist.md)，按维度检查：
 - **正确性 & 逻辑**（边界、分支覆盖、竞态）
 - **错误处理**（不吞错、错误传播、边界输入）
 - **可维护性**（SRP、DRY、YAGNI、抽象层级、依赖方向；过度工程——重造轮子/不必要抽象/可删死代码/引依赖做几行事，delete-list 格式见 [references/over-engineering-checklist.md](references/over-engineering-checklist.md)）
@@ -230,7 +230,7 @@ forge trace <task-ref>     # 证据链分桶行 + Weak/Unverified 警告（同�
 | **异常上下文丢失** exception-rethrow-lost-context | `throw err` → `throw new Error(msg)` 丢了 `cause`/原始栈 | 调试时丢失根因 |
 | **死分支** dead-branch-insertion | `if (false)` / `if (1 === 2)` 等永假分支 | 看起来处理了边界，实际永不执行 |
 
-**检测要点**：审查 diff 时专门看"删除的断言行""新增的 ignore/disable""改名的符号是否更新了所有调用点"。详见 [references/ai-cheat-patterns.md]。
+**检测要点**：审查 diff 时专门看"删除的断言行""新增的 ignore/disable""改名的符号是否更新了所有调用点"。详见 [references/ai-cheat-patterns.md](references/ai-cheat-patterns.md)。
 
 ## Rationalizations（堵借口）
 

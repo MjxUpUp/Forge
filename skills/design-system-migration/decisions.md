@@ -19,3 +19,20 @@ persistent decision history：每条决策记 (诊断, 修订, 脱敏证据, 结
 ### Evidence
 
 forge skills validate R1-R11通过;forge skills audit 0 finding;守卫C验证互引自洽
+
+## [d-18c771b895565118-d161014b] accept
+
+- **Skill**: design-system-migration
+- **DecidedAt**: 2026-07-31T18:00:14Z
+
+### Diagnosis
+
+整体审查发现 frontmatter steps: 7 与正文 Phase 0/1/2/3-N/N 结构不符（流程本非固定步数）
+
+### Revision
+
+删除 steps 字段
+
+### Evidence
+
+grep 章节标题确认正文为 Phase 0/1/2/3-N/N 开放结构，无固定步数可填

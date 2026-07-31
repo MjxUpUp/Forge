@@ -23,7 +23,7 @@ metadata:
 └─ Postmortem → §2.4 blameless 模板
 ```
 
-## 2. 5 路径规范
+## 2. 7 路径规范
 
 ### 2.1 SLO 设计 4 步（用户旅程驱动）
 
@@ -234,11 +234,7 @@ W3C Trace Context 格式：
 ## 6. 提交前必跑
 
 ```bash
-# 静态检查（韧性相关）
-forge skills validate --skill=resilience-and-observability
-
-# 自动测试
-forge integration-test --scope=resilience   # chaos test（如配置）
+# 静态检查（韧性相关）→ 靠 §4 自查清单逐项人工核对
 
 # 可观测 stack 联通测试
 curl -X POST $COLLECTOR_OTLP/v1/traces -d @trace.json
@@ -274,6 +270,5 @@ forge review pass                            # code-review-gate
 
 ## 参考
 
-- 完整 references 进 `references/`（Google SRE 第 4 章 / Pattern: Circuit Breaker 论文 / chaos-mesh 用例 / OTel config 范例 / SLO 模板）
 - 调研权威源：[Google SRE Book](https://sre.google/sre-book/table-of-contents/) / [Google SRE Workbook](https://sre.google/workbook) / [Microsoft Azure Reliability](https://learn.microsoft.com/en-us/azure/architecture/framework) / [OpenTelemetry Docs](https://opentelemetry.io/docs/) / [AWS W-A Reliability Pillar](https://wa.aws.amazon.com/well-architected-pillar-framework.html)
 - 写法参照 `skill-authoring-standard`

@@ -178,10 +178,10 @@ metadata:
 
 阶段 1 的 6 种模板是抽象 **pattern**。当用户**点名具体品牌**（"做 Linear 风""做成 Stripe 那样"）时，先取该品牌的真实 DESIGN.md 作为精确 token 来源，再套对应模板——pattern 管结构（surface ladder / 阴影哲学 / 字距哲学），instance 管精确色值 / 字距 / 圆角。
 
-**本地资产库**：`E:\GitHubForkProject\awesome-design-md\design-md\<slug>\DESIGN.md`（VoltAgent/awesome-design-md fork，74 个真实品牌，`git pull` 更新——引用路径而非搬文件）。
+**品牌资产库**：VoltAgent/awesome-design-md 仓库的 `design-md/<slug>/DESIGN.md`（74 个真实品牌，`git pull` 更新——引用路径而非搬文件）。发现方式：环境变量 `DESIGN_MD_ROOT` 指向仓库克隆根，或查找当前工作区/常用代码目录下的 `awesome-design-md`；未克隆时先 `git clone https://github.com/VoltAgent/awesome-design-md`；仓库不可用或品牌未命中时 fallback 到阶段 1 的 6 种通用风格模板。
 
 **用法**：
-1. 用户点名品牌 → 查下方索引拿 **slug**（注意带点 / 连字符的目录名）→ `Read` 该 `DESIGN.md`
+1. 用户点名品牌 → 列 `design-md/` 目录拿 **slug**（注意带点 / 连字符的目录名），或查 [references/brand-index.md](references/brand-index.md) → `Read` 该 `DESIGN.md`
 2. 从其 front matter 取 `colors`（hex）/ `typography`（px + weight + letterSpacing）/ `rounded` / `spacing` / `components` 的精确值
 3. 套阶段 1 对应模板的**结构**，用 DESIGN.md 的精确值替换模板占位值
 4. hex → OKLCH 转换走 **design-system-workflow**（见下方 gap）
@@ -199,18 +199,9 @@ metadata:
 
 > 未命中 6 模板的品牌（`ferrari`/`bugatti`/`lamborghini` 极致黑金汽车、`wired`/`theverge` 编辑媒体、`ibm` Carbon 等）直接 `Read` DESIGN.md 取值，**不强行套模板**。
 
-### 完整品牌索引（74，按领域；slug 即目录名）
+### 完整品牌索引
 
-- **AI & LLM**：`claude` · `cohere` · `elevenlabs` · `minimax` · `mistral.ai` · `ollama` · `opencode.ai` · `replicate` · `runwayml` · `together.ai` · `voltagent` · `x.ai`
-- **Developer Tools**：`cursor` · `expo` · `lovable` · `raycast` · `superhuman` · `vercel` · `warp`
-- **Backend / DB / DevOps**：`clickhouse` · `composio` · `hashicorp` · `mongodb` · `posthog` · `sanity` · `sentry` · `supabase`
-- **Productivity / SaaS**：`cal` · `intercom` · `linear.app` · `mintlify` · `notion` · `resend` · `slack` · `zapier`
-- **Design / Creative**：`airtable` · `clay` · `figma` · `framer` · `miro` · `webflow`
-- **Fintech / Crypto**：`binance` · `coinbase` · `kraken` · `mastercard` · `revolut` · `stripe` · `wise`
-- **E-commerce**：`airbnb` · `meta` · `nike` · `shopify` · `starbucks`
-- **Media / Consumer**：`apple` · `hp` · `ibm` · `nvidia` · `pinterest` · `playstation` · `spacex` · `spotify` · `theverge` · `uber` · `vodafone` · `wired`
-- **Automotive**：`bmw` · `bmw-m` · `bugatti` · `ferrari` · `lamborghini` · `renault` · `tesla`
-- **Retro Web**：`dell-1996` · `nintendo-2001`
+74 个品牌按领域的完整 slug 索引已下沉到 [references/brand-index.md](references/brand-index.md)；也可以直接列 `design-md/` 目录拿 slug（slug 即目录名）。
 
 ### 格式 gap（DESIGN.md 不能直接当 token 消费）
 

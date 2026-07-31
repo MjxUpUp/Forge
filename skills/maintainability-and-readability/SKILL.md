@@ -23,7 +23,7 @@ metadata:
 └─ 老代码 refactor 优先序 → §2.6 重构优先级矩阵（业务价值 / 重构成本）
 ```
 
-## 2. 6 路径规范
+## 2. 7 路径规范
 
 ### 2.1 5 步写代码流程（Quality First）
 
@@ -34,7 +34,7 @@ metadata:
 4. Self-review → §4 自查清单（post-generation）
 5. PR        → forge review pass（code-review-gate）
 
-反向不允：先写实现 → 后补测试 → 跳过 spec。spec 文档化在 §4.6 / references/。
+反向不允：先写实现 → 后补测试 → 跳过 spec。spec 流程检查见 §4.4 流程类。
 ```
 
 ### 2.2 重构 5 法（Robert C. Martin "Clean Code"）
@@ -232,13 +232,12 @@ fail_build_if:
 ## 6. 提交前必跑
 
 ```bash
-# 1. 静态检查
-forge auto-build                     # auto-compile + linter 综合
+# 1. 静态检查（编译 + lint，按项目实际命令）
+go build ./... && go vet ./...        # Go
+# 其他语言用 §9 多语言适配表的 linter/typecheck
 
 # 2. 复杂度（diff scope）
 lizard src/                          # cyclomatic + cognitive + NLOC
-# 或
-forge skills validate --skill=maintainability-and-readability
 
 # 3. 重复率
 jscpd src/
@@ -295,6 +294,5 @@ go-mutesting                        # Go
 
 ## 参考
 
-- 完整 references 进 `references/`（Clean Code 章节 / Refactoring Catalog / Solid 解读 / 复杂度度量指标）
 - 调研权威源：[Clean Code (Robert C. Martin)](https://www.amazon.com/Clean-Code-Handbook-Software-Craftsmanship/dp/0132350882) / [SonarQube rules](https://rules.sonarsource.com) / [Cognitive Complexity (SonarSource)](https://www.sonarsource.com/blog/white-papers/cognitive-complexity-white-paper/) / [lizard docs](https://github.com/terryyin/lizard)
 - 写法参照 `skill-authoring-standard`

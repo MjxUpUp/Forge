@@ -23,6 +23,9 @@ metadata:
 | 通用 AI 作弊指纹（断言弱化/错误吞没/假重构/类型抑制） | `code-review-gate` 轨道 A |
 | **AI 生成 UI 的结构性问题**（本 skill） | DRY 违反 / 安全债 / 设计系统脱节 / a11y 缺失 / 供应链 |
 | Rust 代码 | `rust-code-review` |
+| 生成方法论（怎么用 AI 工具生成好） | `ai-ui-generation-workflow`（本 skill 是审查它的产出） |
+| 建 design token（修 AI 产出的 token 抽取） | `design-system-workflow` |
+| 生成时规范 | `frontend-feature-development` |
 
 **叠加使用**：AI 生成的代码 → 先 `code-review-gate` 轨道 A 查通用作弊 → 再本 skill 查 AI 生成特有问题 → 再 `frontend-code-review` 查前端规范。
 
@@ -140,6 +143,10 @@ block/fix 修复后重审。若判定"需改造"或"重写"，指引走 **ai-ui-
 | "安全以后再加" | vibe coding 安全债正在显性化（74 CVE）；上线前必查 |
 | "重复几处无所谓" | 89.3% code smell 主因就是重复；AI 生成的头号问题 |
 | "AI 写得快，审查浪费时间" | 22.7% 技术债存活；不审查 = 永久负担 |
+| "人工看过了没大问题" | 人工看是弱校验；跑 6 类量化指标（重复率/圈复杂度/grep 密钥）才叫审过 |
+| "跑起来能点就算过" | 功能能跑 ≠ 适合生产（arXiv 2508.14727）；必跑 SAST + 6 类清单 |
+| "v0 生成的应该没问题" | v0 质量退化已被社区反映；生成后必跑评估，不靠品牌信任 |
+| "安全问题上线再查" | 74 CVE / BOLA 48 天都是上线后被发现的；上线前 grep + SAST 必跑 |
 
 ## Red Flags（我在 rationalize 的信号）
 
@@ -157,23 +164,6 @@ block/fix 修复后重审。若判定"需改造"或"重写"，指引走 **ai-ui-
 - **"通过功能测试" ≠ 适合生产**：arXiv 2508.14727 明确——AI 代码即使通过功能测试也不适合生产。查法：跑 SAST 扫描（Veracode/Endor Labs/Cycode 或免费 `gitleaks`/`semgrep`）+ 按 maintainability-checklist 6 类逐项打分，不靠"看起来能跑"
 - **Escape.tech 数据**：1400 个 AI 生成应用发现 2000+ 严重漏洞；Bolt/Replit 同病
 - **Cursor 全 AI 生成 SaaS 事故**：上线两天暴露 API key + 无认证——真实案例，不是理论
-
-## 与其他 skill 的分工
-
-- **生成方法论**（怎么用 AI 工具生成好） → `ai-ui-generation-workflow`（本 skill 是审查它的产出）
-- **人类手写代码审查** → `frontend-code-review`
-- **通用 AI 作弊指纹** → `code-review-gate` 轨道 A
-- **建 design token**（修 AI 产出的 token 抽取） → `design-system-workflow`
-- **生成时规范** → `frontend-feature-development`
-
-## Common Rationalizations（塔借口，补本 skill 专属）
-
-| 借口 | 现实 |
-|---|---|
-| "人工看过了没大问题" | 人工看是弱校验；跑 6 类量化指标（重复率/圈复杂度/grep 密钥）才叫审过 |
-| "跑起来能点就算过" | 功能能跑 ≠ 适合生产（arXiv 2508.14727）；必跑 SAST + 6 类清单 |
-| "v0 生成的应该没问题" | v0 质量退化已被社区反映；生成后必跑评估，不靠品牌信任 |
-| "安全问题上线再查" | 74 CVE / BOLA 48 天都是上线后被发现的；上线前 grep + SAST 必跑 |
 
 ## 参考
 

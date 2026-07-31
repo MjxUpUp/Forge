@@ -19,3 +19,20 @@ metadata.triggers 加 [{"event":"PostToolUse","match":"Bash","when":"test_comman
 ### Evidence
 
 dogfood-findings-2026-07-09(testing×17 全低分, 质量 skill 0 显式触发) + plan flickering-bubbling-bonbon.md(triggers schema 表)
+
+## [d-18c7718fe574dbac-9b8584be] accept
+
+- **Skill**: systematic-debugging
+- **DecidedAt**: 2026-07-31T17:57:20Z
+
+### Diagnosis
+
+整体审查发现 SKILL.md:146 引用不存在的 verification-before-completion（幻觉 skill 名）
+
+### Revision
+
+改为库内真实存在的 verification-driver
+
+### Evidence
+
+skills/ 目录无 verification-before-completion；verification-driver 存在且语义吻合

@@ -97,5 +97,5 @@ metadata:
 
 ## 参考
 
-- auto-compile hook：自动化编译检查，在 turn_end 时自动运行
+- auto-compile hook：自动化编译检查，在 turn_end 时自动运行；自 v0.25 起为 advisory 提醒（编译通过由 agent 自检），见项目 AGENTS.md「Forge 质量协议」节
 - test-discipline skill：测试质量守卫

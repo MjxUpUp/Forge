@@ -1,6 +1,6 @@
 ---
 name: rust-code-review
-description: "Rust 代码结构化审查。Use when: 审查 Rust 代码 PR 时、检查 Rust 代码变更时、做合并前检查时、用户要求 Rust code review 时。特别关注异步 Rust、unsafe 代码和多 crate workspace 模式。SKIP: 非 Rust 代码（用内置 code-review）、只需要快速检查时（用内置 code-review --low）、只做格式化或 lint 建议时。"
+description: "Rust 代码结构化审查。Use when: 审查 Rust 代码 PR 时、检查 Rust 代码变更时、做合并前检查时、用户要求 Rust code review 时。特别关注异步 Rust、unsafe 代码和多 crate workspace 模式。SKIP: 非 Rust 代码（用 code-review-gate）、只做格式化或 lint 建议时（直接跑 cargo fmt / clippy，不进结构化审查流程）。"
 metadata:
   pattern: reviewer
   domain: code-review
@@ -45,7 +45,7 @@ metadata:
 | `.clone()` 在热路径（循环内 / async 内 / 高频调用）| error | 性能 + 设计问题 |
 | 跨 `.await` 持有 `MutexGuard` / 非 Send 的引用 | error | 编译可能过但运行时死锁/UB |
 | 错误被静默吞掉（`let _ = result;` / `.ok();` 无日志）| error | 隐藏故障 |
-| 测试断言弱化（`assert!(result.is_ok())` 不查值 / `t.Fatal→t.Log`）| error | 虚假测试信心 |
+| 测试断言弱化（`assert!(result.is_ok())` 不查值 / `assert!` 弱化为恒真 / `#[ignore]` 跳过测试）| error | 虚假测试信心 |
 | 无界 channel / 集合增长无上限 | error | 内存爆炸风险 |
 | 硬编码密钥 / 密码 / token | error | 安全漏洞 |
 | 命令注入（`Command::new(user_input)`）| error | 安全漏洞 |
@@ -128,5 +128,5 @@ git diff <上次审查时的 SHA> --name-only -- '*.rs'
 ## 参考
 
 - 完整清单：[references/review-checklist.md](references/review-checklist.md)
-- 测试断言守卫：**test-discipline**（防 t.Fatal→t.Log 等弱化）
+- 测试断言守卫：**test-discipline**（防 `assert!` 弱化、`#[ignore]` 跳过等弱化）
 - 通用 AI 作弊指纹：**code-review-gate** 轨道 A

@@ -8,7 +8,6 @@ description: >
 metadata:
   pattern: pipeline + gate
   domain: frontend
-  steps: 7
   composes: frontend-feature-development, test-discipline, verification-driver
 ---
 

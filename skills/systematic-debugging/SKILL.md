@@ -143,7 +143,7 @@ NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST
 - 纯**编译错误**（语法/类型/借用/生命周期）→ **compile-fix-loop**（本 skill 的编译特化分支）
 - **测试失败**要先判断：是测试本身写错（弱断言）用 **test-discipline**；是代码逻辑 bug 用本 skill
 - Phase 4 写失败测试时 → **tdd-cycle**（RED-GREEN-REFACTOR）
-- 修复后声称完成前 → 验证用 **verification-before-completion** 理念（evidence before claims）
+- 修复后声称完成前 → 验证用 **verification-driver** 理念（evidence before claims）
 - 多 agent 调试复杂问题 → **agent-delegation**（两阶段审查）
 
 ## 参考
