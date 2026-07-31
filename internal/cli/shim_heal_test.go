@@ -52,6 +52,41 @@ func TestHealNpmShim_ReplacesFragileShim(t *testing.T) {
 	}
 }
 
+// TestHealNpmShim_NestedLayout pins the real-world nested install (platform subpackage
+// under the main package): the heal must reach the OUTERMOST prefix's forge shim, and
+// must not write anything into the main package dir.
+func TestHealNpmShim_NestedLayout(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("shim heal is Windows-only")
+	}
+	prefix := t.TempDir()
+	shimContent := "#!/bin/sh\nbasedir=$(dirname \"$0\")\nexec \"$basedir/node\" \"$basedir/run.js\" \"$@\"\n"
+	exePath := filepath.Join(prefix, "node_modules", "@agent_forge", "forge", "node_modules", "@agent_forge", "forge-win32-x64", "bin", "forge.exe")
+	if err := os.MkdirAll(filepath.Dir(exePath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(exePath, []byte("MZ-fake-binary"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(prefix, "forge"), []byte(shimContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	healed, err := healNpmShim(exePath)
+	if err != nil || !healed {
+		t.Fatalf("nested healNpmShim = (%v, %v), want (true, nil)", healed, err)
+	}
+	data, _ := os.ReadFile(filepath.Join(prefix, "forge"))
+	if string(data) != "MZ-fake-binary" {
+		t.Errorf("outermost prefix shim not replaced, content = %q", string(data))
+	}
+	// Nothing may be written inside the main package dir.
+	mainPkgForge := filepath.Join(prefix, "node_modules", "@agent_forge", "forge", "forge")
+	if _, err := os.Stat(mainPkgForge); !os.IsNotExist(err) {
+		t.Errorf("heal must not write into the main package dir: %s exists", mainPkgForge)
+	}
+}
+
 // TestHealNpmShim_UserScriptUntouched pins the signature sniff: a script in the shim
 // slot that is NOT npm's cmd-shim template (no $basedir / node_modules reference) must
 // never be replaced.
