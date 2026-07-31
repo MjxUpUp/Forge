@@ -476,6 +476,8 @@ func WriteHookTemplates(forgeDir string) error {
 //
 // HookNames 返回 Forge 接管的 hook 脚本文件名列表。从 embeddedHooks（hook 名册的
 // 单一真相源）加 .sh 后缀派生，排序保证确定性——增删 hook 只需改 embeddedHooks。
+// 注意：输出为字母序（原字面量是插入序），cursor 等生成文件中的 hook 列表展示序
+// 会随之变化——纯展示序，无顺序敏感消费方。
 func HookNames() []string {
 	names := make([]string, 0, len(embeddedHooks))
 	for name := range embeddedHooks {
