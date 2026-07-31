@@ -36,3 +36,20 @@ forge skills validate R1-R11通过;forge skills audit 0 finding;守卫C验证互
 ### Evidence
 
 design-review-snapshot:192-193 已有同款外部仓库标注法可参照；裸路径在非本机环境不存在
+
+## [d-18c7729c272ff574-e80a6586] accept
+
+- **Skill**: ai-ui-generation-workflow
+- **DecidedAt**: 2026-07-31T18:16:32Z
+
+### Diagnosis
+
+复审发现 composes 标量写法库内 11 处分裂（此前只统一了 2 处），且原决策证据声称多数已是 flow list 与事实相反——一次性根治
+
+### Revision
+
+composes 标量逗号写法改 flow list [a, b]，对齐 CONVENTIONS §4
+
+### Evidence
+
+grep 确认全库 composes 已无标量残留；forge skills validate 50/50

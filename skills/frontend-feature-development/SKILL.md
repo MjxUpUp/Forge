@@ -4,7 +4,7 @@ description: "前端功能开发全程纪律：从 spec 到组件实现到自验
 metadata:
   pattern: inversion + pipeline + gate
   domain: frontend
-  composes: frontend-stack-selection, frontend-code-review, test-discipline, verification-driver
+  composes: [frontend-stack-selection, frontend-code-review, test-discipline, verification-driver]
 ---
 
 # 前端功能开发纪律

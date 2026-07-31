@@ -8,7 +8,7 @@ description: >
 metadata:
   pattern: pipeline + gate
   domain: frontend
-  composes: frontend-feature-development, test-discipline, verification-driver
+  composes: [frontend-feature-development, test-discipline, verification-driver]
 ---
 
 # 设计系统迁移与组件库升级方法论

@@ -37,3 +37,20 @@ description 513 rune 触发 R4 advisory 偏长(>500)；R4 用 utf8.RuneCountInSt
 ### Evidence
 
 forge skills validate 原 design-system-workflow description 偏长(513>500) advisory 消失，现 446 rune ≤500
+
+## [d-18c7729c3f7a5df4-15365136] accept
+
+- **Skill**: design-system-workflow
+- **DecidedAt**: 2026-07-31T18:16:32Z
+
+### Diagnosis
+
+复审发现 composes 标量写法库内 11 处分裂（此前只统一了 2 处），且原决策证据声称多数已是 flow list 与事实相反——一次性根治
+
+### Revision
+
+composes 标量逗号写法改 flow list [a, b]，对齐 CONVENTIONS §4
+
+### Evidence
+
+grep 确认全库 composes 已无标量残留；forge skills validate 50/50

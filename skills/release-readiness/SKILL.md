@@ -4,7 +4,7 @@ description: "发布/上线前的 readiness 门禁清单（能安全上线吗）
 metadata:
   pattern: gate
   domain: operations
-  composes: docs-consistency-guard
+  composes: [docs-consistency-guard]
 ---
 
 # 发布 Readiness 门禁

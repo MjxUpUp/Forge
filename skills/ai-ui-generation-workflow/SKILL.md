@@ -4,7 +4,7 @@ description: "用 AI 工具（v0/Bolt.new/Lovable/Replit/Cursor）生成能上�
 metadata:
   pattern: pipeline + gate
   domain: frontend
-  composes: ai-generated-ui-review, frontend-feature-development, frontend-stack-selection
+  composes: [ai-generated-ui-review, frontend-feature-development, frontend-stack-selection]
 ---
 
 # AI UI 生成工作流

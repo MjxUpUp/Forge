@@ -5,7 +5,7 @@ metadata:
   pattern: reviewer + gate
   domain: frontend
   severity-levels: block,fix,suggest
-  composes: ai-ui-generation-workflow, frontend-code-review
+  composes: [ai-ui-generation-workflow, frontend-code-review]
 ---
 
 # AI 生成 UI 审查
