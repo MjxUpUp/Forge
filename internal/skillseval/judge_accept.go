@@ -8,17 +8,16 @@ package skillseval
 // for eval-report output and skill-evolution SKILL consumption — spec-as-executable: machine criteria replace self-report.
 //
 // Boundary: deterministic. It only reads Regressions already computed by CompareRuns (matched-set baseline pass →
-// latest fail); it does not call LLM, does not guess semantics, does not compare behavior pass-rate. When not
+// latest fail); it does not call LLM, does not guess semantics, does not compare pass-rate deltas. When not
 // comparable (across versions/models/desc), it degrades to accept+advisory — where machine criteria are unreliable
 // it does not force reject (which would falsely kill normal changes from forge upgrades/model swaps); it honestly
 // escalates to human review. This mirrors the Emergence World proof-of-work principle: accept must be backed by
 // a deterministic signal.
 //
-// Why not also judge behavior pass-rate drops separately: CompareRuns's Regressions are based on CaseResult.Pass,
-// and behavior case pass→fail (judged by judgeBehavior) also enters Regressions. So any matched-set regression
-// (trigger/not-trigger/behavior) is already captured by len(Regressions)>0, and a behavior pass-rate drop always
-// comes with Regressions≥1; a separate criterion is redundant and would falsely reject during case-set turnover —
-// remove it; a single regression signal is more honest.
+// Why not also judge pass-rate drops separately: CompareRuns's Regressions are based on CaseResult.Pass,
+// so any matched-set regression (trigger/not-trigger) is already captured by len(Regressions)>0, and a
+// pass-rate drop always comes with Regressions≥1; a separate criterion is redundant and would falsely
+// reject during case-set turnover — a single regression signal is more honest.
 //
 // judge_accept.go — skill 进化闭环的机器验收判据（deterministic，非 LLM-as-judge）。
 //
@@ -28,14 +27,13 @@ package skillseval
 // SKILL 消费——spec-as-executable：机器判据取代自述。
 //
 // 边界：deterministic。只看 CompareRuns 已算出的 Regressions（matched 集 baseline pass →
-// latest fail），不调 LLM、不猜语义、不比对 behavior pass-rate。不可比（跨版本/模型/desc）时
+// latest fail），不调 LLM、不猜语义、不比对 pass-rate delta。不可比（跨版本/模型/desc）时
 // 降级 accept+advisory——机器判据不可靠处不强 reject（会误杀 forge 升级/换模型的正常变更），
 // 诚实交人工复核。对应 Emergence World 的「工作量证明」：accept 必须由确定信号支撑。
 //
-// 为什么不单独判 behavior pass-rate 下降：CompareRuns 的 Regressions 基于 CaseResult.Pass，
-// behavior case 的 pass→fail（judgeBehavior 判定）同样进 Regressions。故 matched 集内任何
-// 退化（trigger/not-trigger/behavior）已被 len(Regressions)>0 捕获，行为通过率下降必伴随
-// Regressions≥1，单独判据冗余且在 case 集换血时会误 reject——删之，单一退化信号更诚实。
+// 为什么不单独判通过率下降：CompareRuns 的 Regressions 基于 CaseResult.Pass，故 matched 集内任何
+// 退化（trigger/not-trigger）已被 len(Regressions)>0 捕获，通过率下降必伴随
+// Regressions≥1，单独判据冗余且在 case 集换血时会误 reject——单一退化信号更诚实。
 
 import (
 	"fmt"
@@ -53,7 +51,7 @@ import (
 //     regression, machine criteria are unreliable, escalate to human review — not forcing reject avoids falsely
 //     killing normal upgrades)
 //  4. Matched-set has regression (len(Regressions)>0) → reject (clear regression of baseline pass → latest fail,
-//     covering trigger/not-trigger/behavior cases)
+//     covering trigger/not-trigger cases)
 //  5. Otherwise → accept (no regression signal, reasons nil)
 //
 // reasons: non-empty on reject (specific case ids, as reject evidence); on accept+advisory contains degradation
@@ -70,7 +68,7 @@ import (
 //  3. 不可比（Comparable=false）→ accept + advisory reason（跨版本/模型/desc 的 delta 是假
 //     回归，机器判据不可靠，交人工复核——不强 reject 避免误杀正常升级）
 //  4. matched 集有退化（len(Regressions)>0）→ reject（baseline pass → latest fail 的明确退化，
-//     含 trigger/not-trigger/behavior 三类 case）
+//     含 trigger/not-trigger 两类 case）
 //  5. 否则 → accept（无退化信号，reasons nil）
 //
 // reasons：reject 时非空（具体 case id，作 reject 证据）；accept+advisory 时含降级说明（首跑

@@ -79,23 +79,7 @@ func runSkillsEvalRecord(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// A pure-behavior run always has HealthScore 0 (HealthScore only counts the routing
-	// dimensions trigger/not-trigger; behavior is not counted) — printing health=0.00 would
-	// mislead (✅ paired with 0.00 looks like a total failure). For all-behavior runs we
-	// print the behavior pass-rate instead.
-	//
-	// 纯 behavior run 的 HealthScore 恒 0（HealthScore 只计路由维度 trigger/not-trigger，
-	// behavior 不计入）——打 health=0.00 会误导（✅ 配 0.00 像全挂）。全 behavior 时
-	// 改打 behavior pass-rate。
-	if allBehavior, pass, total := behaviorOnlyStats(run.Results); allBehavior {
-		rate := 0.0
-		if total > 0 {
-			rate = float64(pass) / float64(total)
-		}
-		fmt.Printf("✅ run %s recorded: behavior pass-rate=%.0f%% (%d/%d)\n", run.RunID, rate*100, pass, total)
-	} else {
-		fmt.Printf("✅ run %s recorded: health=%.2f, %d results\n", run.RunID, run.HealthScore, len(run.Results))
-	}
+	fmt.Printf("✅ run %s recorded: health=%.2f, %d results\n", run.RunID, run.HealthScore, len(run.Results))
 	if run.BaselineRunID != "" {
 		// The run pinned a baseline at record time; prompt for the report to view regression.
 		//
@@ -113,30 +97,6 @@ func readFromArg(from string) ([]byte, error) {
 		return io.ReadAll(os.Stdin)
 	}
 	return os.ReadFile(from)
-}
-
-// behaviorOnlyStats reports whether results are all behavior cases and counts the
-// behavior passes. When all are behavior, HealthScore is always 0 (only the routing
-// dimensions trigger/not-trigger count); callers use this to print the behavior pass-rate
-// instead, avoiding the misleading ✅ paired with health=0.00 output.
-//
-// behaviorOnlyStats 判断 results 是否全为 behavior case，并统计 behavior 通过数。
-// 全 behavior 时 HealthScore 恒 0（只计路由维度 trigger/not-trigger），调用方据此
-// 改打 behavior pass-rate，避免 ✅ 配 health=0.00 的误导输出。
-func behaviorOnlyStats(results []skillseval.CaseResult) (allBehavior bool, pass, total int) {
-	if len(results) == 0 {
-		return false, 0, 0
-	}
-	for _, r := range results {
-		if r.Kind != skillseval.KindBehavior {
-			return false, 0, 0
-		}
-		total++
-		if r.Pass {
-			pass++
-		}
-	}
-	return true, pass, total
 }
 
 func init() {
