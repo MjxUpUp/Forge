@@ -68,9 +68,21 @@ func scoreProcess(h GateHistory) scoringtypes.DimensionScore {
 		}
 	}
 
-	base := 100
-	penalty := h.Retries * 15
-	score := base - penalty
+	// Passed participates in scoring: a task that completed only part of the gate set (reachable
+	// in production — legacy tasks recorded when DefaultGates was longer, or gates skipped via
+	// overrides) must not score the same as a fully-gated task.
+	//
+	// Passed 参与计分：只过了一部分门禁的任务（生产可达——DefaultGates 变长前的老任务、
+	// override 跳过的门禁）不得与全通过的任务同分。
+	passed := h.Passed
+	if passed > h.TotalGates {
+		passed = h.TotalGates
+	}
+	if passed < 0 {
+		passed = 0
+	}
+	base := int(math.Round(100.0 * float64(passed) / float64(h.TotalGates)))
+	score := base - h.Retries*15
 	if score < 20 {
 		score = 20
 	}
@@ -235,6 +247,22 @@ func scoreEfficiency(startedAt, completedAt time.Time) scoringtypes.DimensionSco
 	}
 
 	duration := completedAt.Sub(startedAt)
+
+	// Negative duration (clock skew / CompletedAt written before StartedAt / tampered TaskState)
+	// is untrustworthy data, not an instant completion — treat it like missing data (neutral 70).
+	// Otherwise completedAt < startedAt would hit the minutes<=15 bucket and hand out a free 100.
+	//
+	// 负 duration（时钟回拨 / CompletedAt 先于 StartedAt 写入 / TaskState 被改）是不可信数据，
+	// 不是"秒完成"——按数据不可用处理（中性 70）。否则 completedAt < startedAt 会命中
+	// minutes<=15 桶白拿 100，成为零成本刷分向量。
+	if duration < 0 {
+		return scoringtypes.DimensionScore{
+			Dimension: scoringtypes.DimensionEfficiency,
+			Score:     70,
+			Detail:    fmt.Sprintf(`Time data untrustworthy (negative duration %.0f minutes)`, duration.Minutes()),
+		}
+	}
+
 	minutes := duration.Minutes()
 
 	// Threshold recalibration (dogfood measured the old thresholds as out of touch with reality: <=5min=100/<=60=60/>60=40 pressed 80% of real AI tasks

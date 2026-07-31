@@ -273,7 +273,21 @@ func runHazardStatus(cmd *cobra.Command, args []string) error {
 		if cmd == "" {
 			cmd = "(未记录命令)"
 		}
-		fmt.Printf("  %s  剩余 %-5s  %s\n", c.Fingerprint[:12], remaining, cmd)
+		fmt.Printf("  %s  剩余 %-5s  %s\n", shortFingerprint(c.Fingerprint), remaining, cmd)
 	}
 	return nil
+}
+
+// shortFingerprint returns the display prefix of a confirmation fingerprint.
+// The fingerprint is read back from on-disk confirmation files (untrusted
+// input): a short or empty value must not panic on a fixed [:12] slice.
+//
+// shortFingerprint 返回确认指纹的展示前缀。指纹从磁盘确认文件读回（不可信
+// 输入）：过短或空值不能在固定 [:12] 切片上 panic。
+func shortFingerprint(fp string) string {
+	const maxLen = 12
+	if len(fp) > maxLen {
+		return fp[:maxLen]
+	}
+	return fp
 }

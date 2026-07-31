@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // Load reads .forge/protocol.yml from the project directory.
@@ -27,18 +29,22 @@ func Load(dir string) (*Protocol, error) {
 	return &p, nil
 }
 
-// Save writes the protocol to .forge/protocol.yml.
+// Save writes the protocol to .forge/protocol.yml. It uses util.AtomicWrite (temp+rename) rather
+// than a plain os.WriteFile: Load treats a YAML parse error as corruption, so a half-written file
+// from a crash or concurrent write would make the project permanently unloadable. AtomicWrite
+// creates the .forge directory itself, so no MkdirAll is needed here.
 //
-// Save 把 protocol 写到 .forge/protocol.yml。
+// Save 把 protocol 写到 .forge/protocol.yml。用 util.AtomicWrite（temp+rename）而非裸
+// os.WriteFile：Load 对 YAML 解析错误直接报损坏，崩溃/并发写留下的半文件会让项目永久
+// 不可加载。AtomicWrite 自建 .forge 目录，这里无需 MkdirAll。
 func Save(dir string, p *Protocol) error {
-	forgeDir := filepath.Join(dir, ".forge")
-	if err := os.MkdirAll(forgeDir, 0755); err != nil {
-		return fmt.Errorf("failed to create .forge directory: %w", err)
-	}
 	data, err := yaml.Marshal(p)
 	if err != nil {
 		return fmt.Errorf("failed to marshal protocol: %w", err)
 	}
-	path := filepath.Join(forgeDir, "protocol.yml")
-	return os.WriteFile(path, data, 0644)
+	path := filepath.Join(dir, ".forge", "protocol.yml")
+	if err := util.AtomicWrite(path, data, 0644); err != nil {
+		return fmt.Errorf("failed to write protocol.yml: %w", err)
+	}
+	return nil
 }

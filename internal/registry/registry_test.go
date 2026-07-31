@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -290,5 +292,160 @@ func TestPrune_AlreadyClean(t *testing.T) {
 	pruned, remain, err := Prune()
 	if err != nil || pruned != 0 || remain != 1 {
 		t.Errorf(`已精简 Prune=(%d,%d,%v), want (0,1,nil)`, pruned, remain, err)
+	}
+}
+
+// TestAdd_CorruptRegistryBackedUpAndRebuilds pins the silent-wipe fix: when projects.json is
+// corrupt, Add must back it aside (projects.json.corrupt-<ts>) and warn on stderr before
+// rebuilding from empty — the old code swallowed the Unmarshal error and atomically overwrote
+// the registry with just the current project, silently dropping every other registration.
+//
+// TestAdd_CorruptRegistryBackedUpAndRebuilds 钉死静默清空修复：projects.json 损坏时，
+// Add 必须先把它备份到一边（projects.json.corrupt-<ts>）并 stderr 告警，再从空表
+// 重建——旧代码吞掉 Unmarshal 错误后把仅含当前项目的表原子覆盖回去，其他所有登记
+// 被静默丢弃。
+func TestAdd_CorruptRegistryBackedUpAndRebuilds(t *testing.T) {
+	home := useTempHome(t)
+	a := mkForgeProject(t)
+
+	pj := filepath.Join(home, `projects.json`)
+	corrupt := []byte(`{"projects": ["/old/project", broken`)
+	if err := os.WriteFile(pj, corrupt, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Add(a); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	// The corrupt file must be backed aside, not silently overwritten.
+	//
+	// 损坏文件必须被备份到一边，不是静默覆盖。
+	entries, err := os.ReadDir(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var backup string
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), `projects.json.corrupt-`) {
+			backup = e.Name()
+			break
+		}
+	}
+	if backup == "" {
+		t.Fatal("损坏的 projects.json 应被备份为 projects.json.corrupt-<ts>，未找到")
+	}
+	got, err := os.ReadFile(filepath.Join(home, backup))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(corrupt) {
+		t.Errorf("备份内容 = %q, want 原损坏内容 %q", got, corrupt)
+	}
+
+	// The rebuilt registry holds the newly added project and stays valid JSON.
+	//
+	// 重建后的注册表含有新登记项目且仍是合法 JSON。
+	data, err := os.ReadFile(pj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f File
+	if err := json.Unmarshal(data, &f); err != nil {
+		t.Fatalf("重建后的 projects.json 应为合法 JSON: %v", err)
+	}
+	if len(f.Projects) != 1 || filepath.Clean(f.Projects[0]) != filepath.Clean(a) {
+		t.Errorf("重建注册表 = %v, want [%s]", f.Projects, filepath.Clean(a))
+	}
+}
+
+// TestList_KeepsEntryWhenStatErrorIsNotNotExist pins the prune-condition fix: List may only
+// drop an entry when os.Stat reports IsNotExist (project truly gone). Any other stat error
+// (permission, invalid path, I/O) means "unreadable right now", not "disappeared" — the entry
+// must be kept. A NUL byte in the path triggers a portable invalid-argument error on every OS.
+//
+// TestList_KeepsEntryWhenStatErrorIsNotNotExist 钉死 prune 条件修复：List 只允许在
+// os.Stat 报 IsNotExist（项目真没了）时丢条目。其他 stat 错误（权限、非法路径、
+// I/O）是「此刻不可读」而非「已消失」——条目必须保留。路径里的 NUL 字节在所有
+// 平台都能可移植地触发 invalid-argument 错误。
+func TestList_KeepsEntryWhenStatErrorIsNotNotExist(t *testing.T) {
+	home := useTempHome(t)
+	a := mkForgeProject(t)
+
+	bogus := "bad\x00path" // os.Stat → invalid argument, NOT IsNotExist
+	f := File{Projects: []string{a, bogus}}
+	data, err := json.MarshalIndent(f, ``, `  `)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pj := filepath.Join(home, `projects.json`)
+	if err := os.WriteFile(pj, append(data, '\n'), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	got := List()
+	if len(got) != 2 {
+		t.Fatalf("List = %v, want 2 条（stat 非 IsNotExist 错误的条目必须保留）", got)
+	}
+	foundBogus := false
+	for _, p := range got {
+		if p == filepath.Clean(bogus) {
+			foundBogus = true
+		}
+	}
+	if !foundBogus {
+		t.Errorf("不可读但未消失的条目应保留在 List: %v", got)
+	}
+}
+
+// TestDedupe_CaseInsensitive_Windows pins Windows path-equality: the filesystem is
+// case-insensitive, so C:\Proj and c:\proj are the same project — both Add idempotence and
+// List dedupe must treat them as one entry.
+//
+// TestDedupe_CaseInsensitive_Windows 钉死 Windows 路径相等：文件系统大小写不敏感，
+// C:\Proj 与 c:\proj 是同一个项目——Add 幂等和 List 去重都必须视为一条。
+func TestDedupe_CaseInsensitive_Windows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("路径大小写不敏感去重仅适用于 Windows 文件系统")
+	}
+	home := useTempHome(t)
+	a := mkForgeProject(t)
+
+	// Swap the drive-letter case to build a case variant of the same path.
+	//
+	// 交换盘符大小写，构造同一路径的大小写变体。
+	vol := filepath.VolumeName(a)
+	variantVol := strings.ToLower(vol)
+	if variantVol == vol {
+		variantVol = strings.ToUpper(vol)
+	}
+	variant := variantVol + a[len(vol):]
+	if variant == a {
+		t.Skip("无法构造大小写变体（盘符异常）")
+	}
+
+	if err := Add(a); err != nil {
+		t.Fatal(err)
+	}
+	if err := Add(variant); err != nil {
+		t.Fatal(err)
+	}
+	if got := List(); len(got) != 1 {
+		t.Fatalf("Add 大小写变体应幂等: List = %v, want 1 条", got)
+	}
+
+	// List dedupe must also collapse both casings already inside the JSON.
+	//
+	// List 去重也必须合并 JSON 里已有的两种大小写。
+	f := File{Projects: []string{a, variant}}
+	data, err := json.MarshalIndent(f, ``, `  `)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, `projects.json`), append(data, '\n'), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := List(); len(got) != 1 {
+		t.Fatalf("List 应按大小写不敏感去重: List = %v, want 1 条", got)
 	}
 }

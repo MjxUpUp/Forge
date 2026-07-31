@@ -28,7 +28,20 @@ func dataHome(root string) string { return forgedata.DataDirFor(root) }
 
 // LoadTaskState reads the task state file from DataDir/tasks/.
 //
+// Ref-collision guard: SanitizeRef collapses '/', '\\', ':' and spaces to '-', so refs
+// like feat/foo bar / feat/foo:bar / feat/foo/bar share one state file. Loading then
+// verifies the TaskRef INSIDE the file matches the requested ref — otherwise task B
+// would silently read task A's History/ReviewPassed/Acceptance, letting the review
+// hard-prerequisite be bypassed via collision. SanitizeRef itself is left alone
+// (backward compatibility with existing filenames).
+//
 // LoadTaskState 从 DataDir/tasks/ 读 task state 文件。
+//
+// ref 串号防护：SanitizeRef 把 '/'、'\\'、':'、空格全压成 '-'，feat/foo bar、
+// feat/foo:bar、feat/foo/bar 这类 ref 共用同一状态文件。加载后校验文件内的
+// TaskRef 与请求的 ref 一致——否则 B 任务会静默读到 A 的
+// History/ReviewPassed/Acceptance，review 硬前置被串号绕过。SanitizeRef 本身不动
+// （与既有文件名兼容）。
 func LoadTaskState(root, taskRef string) (*TaskState, error) {
 	filename := taskcontext.SanitizeRef(taskRef) + ".json"
 	path := filepath.Join(dataHome(root), "tasks", filename)
@@ -42,6 +55,9 @@ func LoadTaskState(root, taskRef string) (*TaskState, error) {
 	var s TaskState
 	if err := json.Unmarshal(data, &s); err != nil {
 		return nil, fmt.Errorf("failed to parse task state: %w", err)
+	}
+	if s.TaskRef != taskRef {
+		return nil, fmt.Errorf("state file belongs to different task ref %q (requested %q) — refs sanitize to the same filename; use a different ref (e.g. forge task start --ref <other>)", s.TaskRef, taskRef)
 	}
 	return &s, nil
 }
@@ -106,16 +122,20 @@ func ActiveTaskState(root, sessionID string) (*TaskState, error) {
 	// 优先级 2：基于 branch 探测
 	ctx := taskcontext.Detect(root)
 	if ctx.IsSet() {
-		state, err := LoadTaskState(root, ctx.TaskRef)
-		if err != nil {
-			return nil, err
+		if state, err := LoadTaskState(root, ctx.TaskRef); err == nil && state != nil {
+			if state.CompletedAt == nil {
+				return state, nil
+			}
+			// Task on this branch already completed — fall through to fallback.
+			//
+			// 此 branch 上 task 已完成——fall through 到兜底
 		}
-		if state.CompletedAt == nil {
-			return state, nil
-		}
-		// Task on this branch already completed — fall through to fallback.
+		// Load failure (missing/corrupt state file, or a ref-collision mismatch) also
+		// falls through to the fallback scan — aborting the whole probe here would skip
+		// priority 3 and lose an otherwise unambiguous active task.
 		//
-		// 此 branch 上 task 已完成——fall through 到兜底
+		// 加载失败（state 文件缺失/损坏，或 ref 串号不匹配）同样 fall through 到
+		// 兜底扫描——此处中断会跳过优先级 3，丢掉本应无歧义的 active task。
 	}
 
 	// Priority 3: scan for a single incomplete task (unambiguous context).

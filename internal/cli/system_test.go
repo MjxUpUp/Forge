@@ -54,3 +54,41 @@ func mustMkdir(t *testing.T, err error) {
 		t.Fatal(err)
 	}
 }
+
+// TestCheckGlobalForge_RealLayout pins the post-refactor-data-home layout:
+// checks cover ~/.forge/projects/ (per-project runtime state) and
+// ~/.forge/skills-cache/ (embedded skills) — the previously checked
+// pipeline-templates/hooks/bin dirs were never created by any code path and
+// produced unfixable warnings.
+//
+// TestCheckGlobalForge_RealLayout 钉住 refactor-data-home 后的真实布局：
+// 检查 ~/.forge/projects/（per-project runtime state）与 ~/.forge/skills-cache/
+// （embedded skills）——此前检查的 pipeline-templates/hooks/bin 无任何代码创建，
+// 报的是永远修不好的 warning。
+func TestCheckGlobalForge_RealLayout(t *testing.T) {
+	home := t.TempDir()
+
+	// No ~/.forge at all → 1 error.
+	var e, w int
+	checkGlobalForge(home, &e, &w)
+	if e != 1 || w != 0 {
+		t.Fatalf("missing ~/.forge: want err=1 warn=0, got err=%d warn=%d", e, w)
+	}
+
+	// ~/.forge exists but real-layout subdirs missing → 2 warnings, no error.
+	mustMkdir(t, os.MkdirAll(filepath.Join(home, ".forge"), 0755))
+	e, w = 0, 0
+	checkGlobalForge(home, &e, &w)
+	if e != 0 || w != 2 {
+		t.Fatalf("missing projects+skills-cache: want err=0 warn=2, got err=%d warn=%d", e, w)
+	}
+
+	// Full real layout → clean.
+	mustMkdir(t, os.MkdirAll(filepath.Join(home, ".forge", "projects"), 0755))
+	mustMkdir(t, os.MkdirAll(filepath.Join(home, ".forge", "skills-cache"), 0755))
+	e, w = 0, 0
+	checkGlobalForge(home, &e, &w)
+	if e != 0 || w != 0 {
+		t.Fatalf("full layout: want clean, got err=%d warn=%d", e, w)
+	}
+}

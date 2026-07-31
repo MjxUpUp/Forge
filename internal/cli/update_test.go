@@ -415,8 +415,22 @@ func TestCompareVersions(t *testing.T) {
 		{"0.11.1", "0.11.0", 1},
 		{"0.11.0", "0.11.1", -1},
 		{"2.0.0-beta.1", "1.99.0", 1},
-		{"0.11.0", "0.11.0-beta.1", 0},
 		{"10.0.0", "9.99.99", 1},
+		// semver §11 tie-break on equal cores: release > pre-release (beta users
+		// must see the GA release as an update), and pre-releases order by
+		// dot-segments.
+		//
+		// 核心相等按 semver §11 tie-break：正式版 > pre-release（beta 用户必须
+		// 能看到正式版更新），pre-release 之间按 . 分段排序。
+		{"0.11.0", "0.11.0-beta.1", 1},
+		{"0.11.0-beta.1", "0.11.0", -1},
+		{"0.12.0-beta.1", "0.12.0-beta.1", 0},
+		{"0.12.0-beta.1", "0.12.0-beta.2", -1},
+		{"0.12.0-beta.2", "0.12.0-beta.1", 1},
+		{"0.12.0-beta.2", "0.12.0-beta.10", -1},
+		{"0.12.0-alpha", "0.12.0-beta", -1},
+		{"0.12.0-1", "0.12.0-alpha", -1},
+		{"0.12.0-alpha", "0.12.0-alpha.1", -1},
 	}
 
 	for _, tt := range tests {
@@ -636,5 +650,29 @@ func TestPrintPluginReinstallGuidance(t *testing.T) {
 		if !strings.Contains(out, w) {
 			t.Errorf(`指引输出缺 %q：\n%s`, w, out)
 		}
+	}
+}
+
+// TestArchiveSafeMode pins setuid/setgid stripping on tar extraction:
+// archive/tar maps those bits to the high os.FileMode bits (os.ModeSetuid/...),
+// so only Perm() strips them — masking the low 12 bits (the old 0o6000 mask)
+// stripped nothing.
+//
+// TestArchiveSafeMode 钉住 tar 解包时 setuid/setgid 的剥离：archive/tar 把这些位
+// 映射到 os.FileMode 高位（os.ModeSetuid/...），只有 Perm() 能剥掉——掩低 12 位
+// （旧的 0o6000 掩码）剥不掉任何东西。
+func TestArchiveSafeMode(t *testing.T) {
+	hdr := &tar.Header{Name: "forge", Mode: 0o4755, Size: 1}
+	fi := hdr.FileInfo()
+	if fi.Mode()&os.ModeSetuid == 0 {
+		t.Fatal("precondition broken: tar header mode 04755 should map to os.ModeSetuid")
+	}
+	if got := archiveSafeMode(fi); got != 0o755 {
+		t.Fatalf("archiveSafeMode(setuid 0755) = %o, want 755", got)
+	}
+
+	hdr2 := &tar.Header{Name: "forge", Mode: 0o2750, Size: 1}
+	if got := archiveSafeMode(hdr2.FileInfo()); got != 0o750 {
+		t.Fatalf("archiveSafeMode(setgid 0750) = %o, want 750", got)
 	}
 }

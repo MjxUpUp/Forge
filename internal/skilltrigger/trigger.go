@@ -15,6 +15,7 @@ package skilltrigger
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -87,6 +88,18 @@ func ParseTriggers(raw string) []Trigger {
 	return ts
 }
 
+// dirEntryIsDir 判断 ReadDir 条目是否为目录，跟随 junction/symlink（os.Stat 语义）。
+// e.IsDir() 基于 Lstat，对 junction/symlink 条目返回 false，会漏掉 link 形态的 skill。
+// 与 skillsdist.DirEntryIsDir 同款实现（就地复刻，避免 skilltrigger → skillsdist 依赖）；
+// 若 skillsdist.DirEntryIsDir 语义变更，此处需同步。断链/stat 错误 → false（安全跳过）。
+func dirEntryIsDir(parent string, e fs.DirEntry) bool {
+	if e.IsDir() {
+		return true
+	}
+	info, err := os.Stat(filepath.Join(parent, e.Name()))
+	return err == nil && info.IsDir()
+}
+
 // LoadAll 扫描 canonicalDir 下所有 SKILL.md，解析 triggers。无 triggers / 解析失败 / 被
 // deny 的 skill 一律跳过，绝不阻塞框架。
 func LoadAll(canonicalDir string) []SkillTriggers {
@@ -99,7 +112,7 @@ func LoadAll(canonicalDir string) []SkillTriggers {
 	}
 	var out []SkillTriggers
 	for _, e := range entries {
-		if !e.IsDir() {
+		if !dirEntryIsDir(canonicalDir, e) {
 			continue
 		}
 		name := e.Name()

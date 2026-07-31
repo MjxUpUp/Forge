@@ -207,11 +207,18 @@ func kimiCommand(cmd string) string {
 	return cmd
 }
 
-// kimiTimeout gives auto-compile headroom (a full project compile can exceed kimi's 30s
-// default; on timeout kimi fails open, so this only trades latency for coverage).
+// kimiTimeout no longer serves a compile workload: auto-compile was demoted to
+// a pure advisory in v0.25 (it never invokes a compiler — it only forks git to
+// check whether source was touched), so the original "a full project compile
+// can exceed 30s" rationale is gone. The 60s entry is retained as harmless
+// headroom: kimi fails open on hook timeout, so a larger budget costs nothing
+// but a slightly later advisory on pathologically slow machines (Windows
+// process-spawn storms), while a timeout would silently drop the reminder.
 //
-// kimiTimeout 给 auto-compile 留余量（全量项目编译可能超过 kimi 默认的 30s；超时时
-// kimi fail-open，故这里只是用延迟换覆盖）。
+// kimiTimeout 不再为编译场景服务：auto-compile 自 v0.25 起降为纯提醒（不调编译器，
+// 只 fork git 判断是否触及源码），原"全量项目编译可能超过 30s"的理由已失效。
+// 保留 60s 是无害余量：kimi 超时 fail-open，更大预算的代价只是极端慢机器
+// （Windows 进程创建风暴）上提醒晚到一点，而超时会让提醒静默丢失。
 func kimiTimeout(cmd string) int {
 	if strings.HasPrefix(cmd, "forge hook auto-compile") {
 		return 60

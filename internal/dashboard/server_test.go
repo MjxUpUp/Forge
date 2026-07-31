@@ -739,3 +739,52 @@ func TestRenderPage_SingleProjectNoProjectColumn(t *testing.T) {
 		t.Errorf("单项目视图不应显示全局标题")
 	}
 }
+
+// TestWriteRendered_FailureGives500 pins the error-swallow fix: when the render function fails,
+// the client must get a 500 with the neutral message — never a 200 with truncated content.
+//
+// TestWriteRendered_FailureGives500 钉死吞错修复：渲染函数失败时客户端必须拿到 500 +
+// 中性文案——绝不能是 200 + 截断内容。
+func TestWriteRendered_FailureGives500(t *testing.T) {
+	rec := httptest.NewRecorder()
+	writeRendered(rec, `/tmp/root`, `text/html; charset=utf-8`, `渲染看板页面失败`, func(out io.Writer) error {
+		// Partial output before failing — must NOT leak into the response.
+		//
+		// 失败前的半截输出——不得漏进响应。
+		_, _ = io.WriteString(out, `<html>truncated`)
+		return errors.New(`template exec failed`)
+	})
+	res := rec.Result()
+	if res.StatusCode != http.StatusInternalServerError {
+		t.Fatalf(`render 失败应 500，got %d`, res.StatusCode)
+	}
+	body, _ := io.ReadAll(res.Body)
+	if strings.Contains(string(body), `truncated`) {
+		t.Errorf(`半截渲染输出不得泄露给客户端，body=%q`, string(body))
+	}
+	if !strings.Contains(string(body), `渲染看板页面失败`) {
+		t.Errorf(`应回中性文案，body=%q`, string(body))
+	}
+}
+
+// TestWriteRendered_SuccessWritesBody: successful render sets the content type and copies the
+// full buffered body.
+//
+// TestWriteRendered_SuccessWritesBody：渲染成功时设置 Content-Type 并完整写出 buffer 内容。
+func TestWriteRendered_SuccessWritesBody(t *testing.T) {
+	rec := httptest.NewRecorder()
+	writeRendered(rec, `/tmp/root`, `application/json`, `序列化失败`, func(out io.Writer) error {
+		return json.NewEncoder(out).Encode(map[string]int{`a`: 1})
+	})
+	res := rec.Result()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf(`渲染成功应 200，got %d`, res.StatusCode)
+	}
+	if ct := res.Header.Get(`Content-Type`); ct != `application/json` {
+		t.Errorf(`Content-Type 应 application/json，got %q`, ct)
+	}
+	body, _ := io.ReadAll(res.Body)
+	if !strings.Contains(string(body), `"a":1`) {
+		t.Errorf(`body 应含完整渲染输出，got %q`, string(body))
+	}
+}
