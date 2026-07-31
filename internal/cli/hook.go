@@ -3,12 +3,14 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -380,12 +382,17 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// 4. Run the script with the extracted fields as env vars.
 	//
 	// 4. 用抽出的字段作为 env var 执行该 script。
-	bash, err := exec.LookPath("bash")
+	bash, err := findBash()
 	if err != nil {
 		return fmt.Errorf("bash not found in PATH: %w", err)
 	}
 
-	shCmd := exec.Command(bash, tmpPath)
+	// Pass the script path with forward slashes: safe for Git Bash/MSYS2/Cygwin, and
+	// immune to any backslash-escape reparsing in the spawn chain.
+	//
+	// 脚本路径转正斜杠传递：Git Bash/MSYS2/Cygwin 都安全，且免疫 spawn 链上任何
+	// 反斜杠转义重解析。
+	shCmd := exec.Command(bash, filepath.ToSlash(tmpPath))
 	shCmd.Dir = root
 	cwd, _ := os.Getwd() // 真实 cwd，给 init-suggest global hook 用（FORGE_CWD / FORGE_CWD_TAG）
 	shCmd.Env = append(os.Environ(),
@@ -456,6 +463,22 @@ func runHook(cmd *cobra.Command, args []string) error {
 
 	stdout := strings.TrimSpace(stdoutBuf.String())
 	stderr := strings.TrimSpace(stderrBuf.String())
+
+	// Infrastructure failure is not a gate verdict: bash itself could not run the
+	// script (spawn error, or exit 126/127 = script file unreadable/not found — e.g.
+	// a WSL bash that cannot see the Windows temp path). Blocking here would hard-stop
+	// every turn in kimi (exit 2) or every edit in Claude for an environment problem,
+	// not a quality failure. Fail open with a visible warning instead.
+	//
+	// 基础设施失败不是门禁结论：bash 本身没能跑起脚本（spawn 错误，或 exit
+	// 126/127 = 脚本文件不可读/不存在——例如 WSL bash 看不到 Windows 临时路径）。
+	// 此时阻断会因环境问题硬停 kimi 的每一轮（exit 2）或 Claude 的每次编辑，而这
+	// 并非质量失败。改为 fail-open 放行并给出可见警告。
+	if isHookInfraFailure(exitErr) {
+		warning := fmt.Sprintf("[forge] hook %s 基础设施失败（%v: %s），fail-open 放行", name, exitErr, firstNonEmpty(stderr, "no output"))
+		return emitInfraAllow(agent, warning)
+	}
+
 	passed := exitErr == nil
 
 	// 5. Parse the script output into the structured JSON that Claude Code expects.
@@ -846,6 +869,93 @@ func emitKimiOutput(passed bool, detail string) error {
 	}
 	fmt.Fprintln(os.Stderr, detail)
 	return &HookBlockError{Reason: detail}
+}
+
+// findBash resolves the bash interpreter for hook scripts. On Windows a plain
+// exec.LookPath("bash") can resolve to a WSL launcher (C:\Windows\System32\bash.exe or
+// %LOCALAPPDATA%\Microsoft\WindowsApps\bash.exe) when forge runs under a native parent
+// (kimi TUI, cmd, PowerShell) whose PATH orders System32 before Git's usr\bin — WSL
+// cannot see the Windows temp path of the script, so every bash hook failed (and before
+// the fail-open guard, failed CLOSED: kimi blocked every turn). Skip known-WSL
+// launchers on Windows; fall back to LookPath when nothing else exists (preserves the
+// old behavior on WSL-only machines; the infra fail-open covers the rest).
+//
+// findBash 解析 hook 脚本的 bash 解释器。Windows 上裸 exec.LookPath("bash") 在
+// forge 跑于原生父进程（kimi TUI、cmd、PowerShell）下可能解析到 WSL 启动器
+// （C:\Windows\System32\bash.exe 或 %LOCALAPPDATA%\Microsoft\WindowsApps\bash.exe）
+// ——这类 PATH 里 System32 排在 Git usr\bin 前面，而 WSL 看不到脚本的 Windows
+// 临时路径，于是所有 bash hook 全挂（在 fail-open 守卫之前还是 fail-CLOSED：
+// kimi 每轮都被硬阻断）。Windows 上跳过已知 WSL 启动器；找不到其他 bash 时回退
+// LookPath（WSL-only 机器保持旧行为；基础设施 fail-open 兜底）。
+func findBash() (string, error) {
+	if runtime.GOOS != "windows" {
+		return exec.LookPath("bash")
+	}
+	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+		if dir == "" {
+			continue
+		}
+		cand := filepath.Join(dir, "bash.exe")
+		info, err := os.Stat(cand)
+		if err != nil || info.IsDir() {
+			continue
+		}
+		if isWSLBash(cand) {
+			continue
+		}
+		return cand, nil
+	}
+	return exec.LookPath("bash")
+}
+
+// isWSLBash reports whether path points at a known WSL bash launcher rather than a
+// Windows-native bash (Git Bash / MSYS2 / Cygwin).
+//
+// isWSLBash 报告 path 是否指向已知 WSL bash 启动器而非 Windows 原生 bash
+// （Git Bash / MSYS2 / Cygwin）。
+func isWSLBash(path string) bool {
+	p := strings.ToLower(filepath.ToSlash(path))
+	return strings.Contains(p, "/windows/system32/") ||
+		strings.Contains(p, "/windows/syswow64/") ||
+		strings.Contains(p, "/microsoft/windowsapps/")
+}
+
+// isHookInfraFailure distinguishes "bash could not run the script" from "the script ran
+// and reported FAIL". Spawn errors (bash vanished, permission) and bash exit 126/127
+// (script file not readable / not found — the WSL-bash-on-Windows signature) are
+// infrastructure; any other exit code comes from the script itself and keeps the
+// gate-verdict semantics.
+//
+// isHookInfraFailure 区分"bash 没能跑起脚本"与"脚本跑了并报告 FAIL"。spawn 错误
+// （bash 消失、权限问题）与 bash exit 126/127（脚本文件不可读/不存在——WSL
+// bash on Windows 的特征）属基础设施；其他退出码来自脚本本身，保留门禁结论语义。
+func isHookInfraFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		return true
+	}
+	code := exitErr.ExitCode()
+	return code == 126 || code == 127
+}
+
+// emitInfraAllow fails open for an infrastructure failure: the warning must be VISIBLE
+// (a silently broken gate set is worse than a noisy one) without blocking the turn.
+// kimi: plain stdout text (injected into context on the allow path). Claude: the
+// additionalContext channel of an approve verdict.
+//
+// emitInfraAllow 对基础设施失败 fail-open：警告必须可见（静默失效的门禁比吵闹的
+// 更糟）但不阻断当轮。kimi：纯文本 stdout（放行路径会注入上下文）。Claude：
+// approve 结论的 additionalContext 通道。
+func emitInfraAllow(agent, warning string) error {
+	if agent == "kimi" {
+		fmt.Println(warning)
+		return nil
+	}
+	outputAllow(warning)
+	return nil
 }
 
 // shouldRecordCheck decides whether a hook result is worth writing a checklog entry. It is the
