@@ -13,7 +13,10 @@ import (
 
 // TestIsWSLBash pins the WSL-launcher recognition: System32/SysWOW64/WindowsApps bash
 // are WSL (cannot see Windows temp paths), Git Bash/MSYS2/Cygwin are real Windows-native
-// bash. Case-insensitive (PATH entries vary in case).
+// bash. Case-insensitive (PATH entries vary in case) and separator-agnostic — the
+// classified path is always a WINDOWS path conceptually, so mixed separators must work
+// on any host OS (regression: v1.19.1 CI on Linux failed this test because
+// filepath.ToSlash is a no-op there and backslashes survived).
 func TestIsWSLBash(t *testing.T) {
 	cases := []struct {
 		path string
@@ -24,6 +27,7 @@ func TestIsWSLBash(t *testing.T) {
 		{`C:\Windows\SysWOW64\bash.exe`, true},
 		{`C:\Users\Administrator\AppData\Local\Microsoft\WindowsApps\bash.exe`, true},
 		{`C:/Windows/System32/bash.exe`, true},
+		{`C:\Windows/SYSWOW64\bash.exe`, true}, // 混合分隔符（CI Linux 回归钉）
 		{`D:\Program Files\Git\usr\bin\bash.exe`, false},
 		{`D:\Program Files\Git\bin\bash.exe`, false},
 		{`C:\msys64\usr\bin\bash.exe`, false},
