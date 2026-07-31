@@ -86,9 +86,15 @@ func TestFindBash_GitDerived(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	os.WriteFile(filepath.Join(wslDir, "bash.exe"), []byte("fake"), 0755)
-	os.WriteFile(filepath.Join(gitCmdDir, "git.exe"), []byte("fake"), 0755)
-	os.WriteFile(filepath.Join(gitBashDir, "bash.exe"), []byte("fake"), 0755)
+	for _, f := range []struct{ dir, name string }{
+		{wslDir, "bash.exe"},
+		{gitCmdDir, "git.exe"},
+		{gitBashDir, "bash.exe"},
+	} {
+		if err := os.WriteFile(filepath.Join(f.dir, f.name), []byte("fake"), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
 	// PATH carries the WSL launcher and Git\cmd but NO bash.exe — the user's real
 	// native-Windows layout (kimi TUI environment).
 	t.Setenv("PATH", wslDir+string(os.PathListSeparator)+gitCmdDir)
