@@ -41,11 +41,15 @@ import (
 
 // healNpmShimIfNeeded runs the self-heal against the current executable. Called from
 // PersistentPreRunE so every forge invocation (including hook spawns, when one does get
-// through) repairs the shim for the next one.
+// through) repairs the shim for the next one. quiet suppresses the one-time stderr
+// notice (used for hook subcommands: their stderr may surface into the agent's context
+// as a block reason, and the notice must never be mistaken for one).
 //
 // healNpmShimIfNeeded 对当前可执行文件执行自愈。由 PersistentPreRunE 调用，使每次
-// forge 调用（包括 hook spawn，只要能进来一次）都为下一次修好垫片。
-func healNpmShimIfNeeded() {
+// forge 调用（包括 hook spawn，只要能进来一次）都为下一次修好垫片。quiet 抑制一次
+// 性 stderr 提示（hook 子命令用：其 stderr 可能作为阻断原因进入 agent 上下文，
+// 提示绝不能被误读为阻断）。
+func healNpmShimIfNeeded(quiet bool) {
 	if runtime.GOOS != "windows" {
 		return
 	}
@@ -54,7 +58,7 @@ func healNpmShimIfNeeded() {
 		return
 	}
 	healed, err := healNpmShim(exe)
-	if err == nil && healed {
+	if err == nil && healed && !quiet {
 		fmt.Fprintf(os.Stderr, "[forge] 已将脆弱的 npm sh 垫片替换为真实二进制（kimi 等 POSIX-shell 宿主开箱即用）\n")
 	}
 }
@@ -89,11 +93,29 @@ func healNpmShim(exePath string) (bool, error) {
 	if string(head) != "#!" {
 		return false, nil // already a binary (MZ) or something we should not touch
 	}
-
-	// Replace atomically (temp file + same-dir rename) so a concurrent hook spawn never
-	// reads a half-written shim.
+	// Only touch npm's generated cmd-shim template (sniff its signature), never a
+	// script the user wrote themselves into that slot.
 	//
-	// 原子替换（临时文件 + 同目录 rename），并发 hook spawn 不会读到写了一半的垫片。
+	// 只动 npm 生成的 cmd-shim 模板（嗅探其特征串），绝不替换用户自己在该槽位
+	// 手写的脚本。
+	script, err := os.ReadFile(shim)
+	if err != nil {
+		return false, nil
+	}
+	if !strings.Contains(string(script), "$basedir") && !strings.Contains(string(script), "node_modules") {
+		return false, nil
+	}
+
+	// Replace atomically (temp file + same-dir rename; Go's os.Rename uses
+	// MOVEFILE_REPLACE_EXISTING on Windows) so a concurrent hook spawn never reads a
+	// half-written shim. The remove+retry below only fires when the shim is locked by a
+	// running process — in that case the heal simply fails open and the next forge run
+	// retries.
+	//
+	// 原子替换（临时文件 + 同目录 rename；Windows 上 Go 的 os.Rename 使用
+	// MOVEFILE_REPLACE_EXISTING），并发 hook spawn 不会读到写了一半的垫片。下面
+	// 的删除重试仅在垫片被运行中进程锁定时触发——此时自愈 fail-open，下次 forge
+	// 运行再试。
 	data, err := os.ReadFile(exePath)
 	if err != nil {
 		return false, err
@@ -110,9 +132,6 @@ func healNpmShim(exePath string) (bool, error) {
 	}
 	tmp.Close()
 	if err := os.Rename(tmpPath, shim); err != nil {
-		// Windows rename fails when the target exists — remove and retry once.
-		//
-		// Windows 上目标已存在时 rename 失败——删除后重试一次。
 		os.Remove(shim)
 		if err2 := os.Rename(tmpPath, shim); err2 != nil {
 			os.Remove(tmpPath)
