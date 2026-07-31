@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 
@@ -94,6 +95,15 @@ func Execute() {
 		}
 	}()
 	if err := rootCmd.Execute(); err != nil {
+		// kimi hook protocol: an intentional block must exit 2 — any other non-zero
+		// code would fail open (allow). The reason is already on stderr.
+		//
+		// kimi hook 协议：有意阻断必须 exit 2——其他非零退出码会 fail-open（放行）。
+		// 原因已写在 stderr。
+		var blockErr *HookBlockError
+		if errors.As(err, &blockErr) {
+			os.Exit(2)
+		}
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
