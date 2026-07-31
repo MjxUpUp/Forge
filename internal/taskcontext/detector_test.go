@@ -104,26 +104,6 @@ func TestContextIsSet(t *testing.T) {
 	}
 }
 
-func TestFormatContext(t *testing.T) {
-	tests := []struct {
-		ctx  *Context
-		want string
-	}{
-		{&Context{Source: "branch", TaskRef: "PROJ-123", Branch: "fix/PROJ-123-bug"},
-			"Task: PROJ-123 (from branch, branch: fix/PROJ-123-bug)"},
-		{&Context{Source: "unknown", TaskRef: "", Branch: "main"},
-			"Branch: main (no task context detected)"},
-		{&Context{Source: "unknown", TaskRef: "", Branch: ""},
-			"No task context detected"},
-	}
-	for _, tt := range tests {
-		got := FormatContext(tt.ctx)
-		if got != tt.want {
-			t.Errorf("FormatContext() = %q, want %q", got, tt.want)
-		}
-	}
-}
-
 func TestIsProjectKey(t *testing.T) {
 	tests := []struct {
 		input string

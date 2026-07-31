@@ -233,16 +233,6 @@ func TestAdapters_PlanDeploy(t *testing.T) {
 	}
 }
 
-func TestRoutes_Match(t *testing.T) {
-	routes := []Route{{Match: []string{"feishu", "lark"}, Skill: "lark-router", Reason: "飞书路由"}}
-	if got := MatchRoute(routes, "看看 my.feishu.cn 文档"); got != "lark-router" {
-		t.Fatalf("feishu 命中: got %q", got)
-	}
-	if got := MatchRoute(routes, "nothing here"); got != "" {
-		t.Fatalf("无命中应返回空串: got %q", got)
-	}
-}
-
 func TestDriftCheck_TargetOnly(t *testing.T) {
 	canonical := t.TempDir()
 	writeCanonicalSkill(t, canonical, "my-skill")

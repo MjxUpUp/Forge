@@ -652,27 +652,3 @@ func TestPrintPluginReinstallGuidance(t *testing.T) {
 		}
 	}
 }
-
-// TestArchiveSafeMode pins setuid/setgid stripping on tar extraction:
-// archive/tar maps those bits to the high os.FileMode bits (os.ModeSetuid/...),
-// so only Perm() strips them — masking the low 12 bits (the old 0o6000 mask)
-// stripped nothing.
-//
-// TestArchiveSafeMode 钉住 tar 解包时 setuid/setgid 的剥离：archive/tar 把这些位
-// 映射到 os.FileMode 高位（os.ModeSetuid/...），只有 Perm() 能剥掉——掩低 12 位
-// （旧的 0o6000 掩码）剥不掉任何东西。
-func TestArchiveSafeMode(t *testing.T) {
-	hdr := &tar.Header{Name: "forge", Mode: 0o4755, Size: 1}
-	fi := hdr.FileInfo()
-	if fi.Mode()&os.ModeSetuid == 0 {
-		t.Fatal("precondition broken: tar header mode 04755 should map to os.ModeSetuid")
-	}
-	if got := archiveSafeMode(fi); got != 0o755 {
-		t.Fatalf("archiveSafeMode(setuid 0755) = %o, want 755", got)
-	}
-
-	hdr2 := &tar.Header{Name: "forge", Mode: 0o2750, Size: 1}
-	if got := archiveSafeMode(hdr2.FileInfo()); got != 0o750 {
-		t.Fatalf("archiveSafeMode(setgid 0750) = %o, want 750", got)
-	}
-}

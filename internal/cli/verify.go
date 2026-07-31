@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -397,25 +398,6 @@ func findRepoRoot() string {
 }
 
 func splitLines(s string) []string {
-	var lines []string
-	start := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\n' {
-			line := s[start:i]
-			if len(line) > 0 && line[len(line)-1] == '\r' {
-				line = line[:len(line)-1]
-			}
-			if line != "" {
-				lines = append(lines, line)
-			}
-			start = i + 1
-		}
-	}
-	if start < len(s) {
-		remaining := s[start:]
-		if remaining != "" {
-			lines = append(lines, remaining)
-		}
-	}
-	return lines
+	lines := strings.Split(strings.ReplaceAll(s, "\r\n", "\n"), "\n")
+	return slices.DeleteFunc(lines, func(l string) bool { return l == "" })
 }

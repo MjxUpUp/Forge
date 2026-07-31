@@ -21,10 +21,6 @@ import (
 // enforce 而非仅 suggest 的 agent。
 type CursorTranslator struct{}
 
-func (t *CursorTranslator) Detect(projectDir string) bool {
-	return dirExists(filepath.Join(projectDir, ".cursor"))
-}
-
 func (t *CursorTranslator) Translate(projectDir string, input *TranslationInput) error {
 	if input.Protocol == nil {
 		return fmt.Errorf("cursor: protocol is required")

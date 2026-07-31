@@ -449,3 +449,29 @@ func TestDedupe_CaseInsensitive_Windows(t *testing.T) {
 		t.Fatalf("List 应按大小写不敏感去重: List = %v, want 1 条", got)
 	}
 }
+
+// TestAdd_AtomicWriteLeavesNoResidue pins the writeFile → util.AtomicWrite
+// switch: Add persists the registry with no temp-file residue behind.
+//
+// TestAdd_AtomicWriteLeavesNoResidue 钉住 writeFile → util.AtomicWrite 切换：
+// Add 落盘注册表后无临时文件残留。
+func TestAdd_AtomicWriteLeavesNoResidue(t *testing.T) {
+	useTempHome(t)
+	proj := mkForgeProject(t)
+	if err := Add(proj); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	gp, err := globalPath()
+	if err != nil {
+		t.Fatalf("globalPath: %v", err)
+	}
+	entries, err := os.ReadDir(filepath.Dir(gp))
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	for _, e := range entries {
+		if strings.Contains(e.Name(), ".tmp") {
+			t.Errorf("atomic write residue left behind: %s", e.Name())
+		}
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"time"
 
@@ -1735,13 +1736,9 @@ func findLatestTaskTime(tasks []*taskpipeline.TaskState) time.Time {
 //
 // sortTasksByTime 按开始时间排序 task（最旧在前）。
 func sortTasksByTime(tasks []*taskpipeline.TaskState) {
-	for i := 0; i < len(tasks); i++ {
-		for j := i + 1; j < len(tasks); j++ {
-			if tasks[i].StartedAt.After(tasks[j].StartedAt) {
-				tasks[i], tasks[j] = tasks[j], tasks[i]
-			}
-		}
-	}
+	slices.SortFunc(tasks, func(a, b *taskpipeline.TaskState) int {
+		return a.StartedAt.Compare(b.StartedAt)
+	})
 }
 
 // validateBranchRef ensures ref is a valid conventional branch name.

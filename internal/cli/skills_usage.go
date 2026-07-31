@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/skillseval"
 	"github.com/spf13/cobra"
@@ -58,10 +59,7 @@ func runSkillsUsage(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Printf("=== 热门 skill Top %d ===\n", len(top))
 	for _, h := range top {
-		bar := ""
-		for i := 0; i < h.Count && i < 30; i++ {
-			bar += "█"
-		}
+		bar := strings.Repeat("█", min(h.Count, 30))
 		fmt.Printf("  %-32s %3d %s\n", h.Name, h.Count, bar)
 	}
 	fmt.Printf("\n=== 从未触发（%d/%d）===\n", len(rep.NeverTriggered), rep.TotalSkills)

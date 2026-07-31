@@ -169,7 +169,7 @@ func TestInferDesignPhases(t *testing.T) {
 }
 
 func TestAllDesignPhases(t *testing.T) {
-	all := AllDesignPhases()
+	all := allDesignPhases()
 	if len(all) != 6 {
 		t.Errorf("expected 6 design phases, got %d", len(all))
 	}

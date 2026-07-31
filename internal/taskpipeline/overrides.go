@@ -24,16 +24,16 @@ type TaskOverrides struct {
 	SkillDecisions string `json:"skill_decisions,omitempty"` // "disable" 跳过 skill-decisions guardrail（改 SKILL.md 必须记决策）
 }
 
-// EscapeDisabled reports whether the escape hatch named by which (work-activity / test-coverage / skill-decisions) is
+// escapeDisabled reports whether the escape hatch named by which (work-activity / test-coverage / skill-decisions) is
 // in effect for this task. per-task Overrides take precedence over the process-global env (the anti-leak path); the env
 // remains a CI/test fallback. Callers: the work-activity gate (executor), the test-coverage gate (testcoverage), and the
 // skill-decisions guardrail (executor).
 //
-// EscapeDisabled 报告 which（"work-activity"/"test-coverage"/"skill-decisions"）逃生舱
+// escapeDisabled 报告 which（"work-activity"/"test-coverage"/"skill-decisions"）逃生舱
 // 对本任务是否生效。per-task Overrides 优先于 process-global env（防泄漏路径）；env 留作
 // CI/测试 fallback。调用方：work-activity 门禁（executor）、test-coverage 门禁（testcoverage）、
 // 以及 skill-decisions guardrail（executor）。
-func EscapeDisabled(state *TaskState, which, envVar string) bool {
+func escapeDisabled(state *TaskState, which, envVar string) bool {
 	if state != nil {
 		switch which {
 		case "work-activity":
@@ -58,8 +58,8 @@ func EscapeDisabled(state *TaskState, which, envVar string) bool {
 }
 
 const (
-	// escapeWorkActivity / escapeTestCoverage / escapeAcceptanceGate / escapeSkillDecisions: the which keys of EscapeDisabled.
-	// escapeWorkActivity / escapeTestCoverage / escapeAcceptanceGate / escapeSkillDecisions: EscapeDisabled 的 which 键。
+	// escapeWorkActivity / escapeTestCoverage / escapeAcceptanceGate / escapeSkillDecisions: the which keys of escapeDisabled.
+	// escapeWorkActivity / escapeTestCoverage / escapeAcceptanceGate / escapeSkillDecisions: escapeDisabled 的 which 键。
 	escapeWorkActivity   = "work-activity"
 	escapeTestCoverage   = "test-coverage"
 	escapeAcceptanceGate = "acceptance-gate"

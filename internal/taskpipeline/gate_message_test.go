@@ -1,8 +1,6 @@
 package taskpipeline
 
 import (
-	"errors"
-	"fmt"
 	"strings"
 	"testing"
 )
@@ -19,22 +17,6 @@ func TestGateBlockedPrefix(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "cannot pass") {
 		t.Fatalf("GateBlocked error = %q, want interpolated message", err.Error())
-	}
-}
-
-// TestIsGateBlocked: the contract predicate distinguishes BLOCKED from plain errors.
-func TestIsGateBlocked(t *testing.T) {
-	if !IsGateBlocked(GateBlocked("hard stop")) {
-		t.Error("IsGateBlocked(GateBlocked(...)) = false, want true")
-	}
-	if IsGateBlocked(fmt.Errorf("infrastructure error")) {
-		t.Error("IsGateBlocked(plain error) = true, want false (infra errors stay un-prefixed)")
-	}
-	if IsGateBlocked(nil) {
-		t.Error("IsGateBlocked(nil) = true, want false")
-	}
-	if IsGateBlocked(errors.New("ADVISORY: soft signal")) {
-		t.Error("IsGateBlocked(advisory) = true, want false")
 	}
 }
 

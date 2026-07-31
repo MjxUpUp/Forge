@@ -296,33 +296,6 @@ func TestHelperFunctions(t *testing.T) {
 		}
 	})
 
-	t.Run("jsonMarshal", func(t *testing.T) {
-		type sample struct {
-			Name  string `json:"name"`
-			Value int    `json:"value"`
-		}
-		data, err := jsonMarshal(sample{Name: "test", Value: 42})
-		if err != nil {
-			t.Fatalf("jsonMarshal failed: %v", err)
-		}
-		// Should be indented JSON
-		s := string(data)
-		if !strings.Contains(s, "\"name\": \"test\"") {
-			t.Errorf("jsonMarshal output unexpected: %s", s)
-		}
-		if !strings.Contains(s, "\"value\": 42") {
-			t.Errorf("jsonMarshal output unexpected: %s", s)
-		}
-		// Verify it's valid JSON
-		var parsed sample
-		if err := json.Unmarshal(data, &parsed); err != nil {
-			t.Fatalf("jsonMarshal output is not valid JSON: %v", err)
-		}
-		if parsed.Name != "test" || parsed.Value != 42 {
-			t.Errorf("jsonMarshal roundtrip failed: got %+v", parsed)
-		}
-	})
-
 	t.Run("findProjectRoot", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		projectDir := filepath.Join(tmpDir, "myproject")

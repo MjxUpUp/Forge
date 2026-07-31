@@ -12,7 +12,7 @@ import (
 )
 
 // TestMarkCompleteGrace_WritesEpochTimestamp dogfood 2.3: MarkCompleteGrace writes
-// the current epoch timestamp at CompleteGracePath so file-sentinel can compare
+// the current epoch timestamp at completeGracePath so file-sentinel can compare
 // NOW - stamp < completeGraceWindow to allow the post-complete 'git commit' that
 // would otherwise be quarantined as "no active task + source write". The file
 // content must be a single integer (so bash 'tr -d [:space:]' produces a
@@ -29,9 +29,9 @@ func TestMarkCompleteGrace_WritesEpochTimestamp(t *testing.T) {
 	}
 	after := time.Now().Unix()
 
-	path := CompleteGracePath(root, sid)
+	path := completeGracePath(root, sid)
 	if !strings.HasPrefix(path, forgedata.DataDirFor(root)) {
-		t.Errorf("CompleteGracePath(%q, %q) = %q; want under DataDir %q (A6: project .forge out of reach for git diff)",
+		t.Errorf("completeGracePath(%q, %q) = %q; want under DataDir %q (A6: project .forge out of reach for git diff)",
 			root, sid, path, forgedata.DataDirFor(root))
 	}
 
@@ -57,7 +57,7 @@ func TestMarkCompleteGrace_WritesEpochTimestamp(t *testing.T) {
 	}
 	// Per-session isolation: a different session ID must resolve to a different
 	// path so concurrent sessions don't collide / share grace.
-	if other := CompleteGracePath(root, "sess-other"); other == path {
+	if other := completeGracePath(root, "sess-other"); other == path {
 		t.Errorf("per-session grace path collides: %q == %q (sid=other fails to isolate)", other, path)
 	}
 }
@@ -73,9 +73,9 @@ func TestMarkCompleteGrace_EmptySessionSilent(t *testing.T) {
 		t.Errorf("empty sid must not error: %v", err)
 	}
 	// Sanity: no default-suffix grace file should exist (the "" branch returns
-	// the un-suffixed completeGraceFile in CompleteGracePath; verify it was not
+	// the un-suffixed completeGraceFile in completeGracePath; verify it was not
 	// written).
-	if _, err := os.Stat(CompleteGracePath(root, "")); err == nil {
+	if _, err := os.Stat(completeGracePath(root, "")); err == nil {
 		t.Errorf("MarkCompleteGrace(root, \"\") should not write a default grace file (silent no-op), but it exists")
 	} else if !os.IsNotExist(err) {
 		t.Errorf("stat: %v", err)
@@ -85,7 +85,7 @@ func TestMarkCompleteGrace_EmptySessionSilent(t *testing.T) {
 // TestCompleteGracePath_SessionIDSanitization: per the dogfood claw-back
 // pattern, session IDs are user-controlled environment variables; unsafe bytes
 // would let a session ID escape into the filesystem layer. SanitizeSessionID
-// (called inside CompleteGracePath) must result in a path that lives within
+// (called inside completeGracePath) must result in a path that lives within
 // DataDir (no "../" style escape).
 func TestCompleteGracePath_SessionIDSanitization(t *testing.T) {
 	root, _ := forgedatatest.RealProject(t)
@@ -95,7 +95,7 @@ func TestCompleteGracePath_SessionIDSanitization(t *testing.T) {
 		"sess/with/slash",
 		"sess\\with\\backslash",
 	} {
-		path := CompleteGracePath(root, sid)
+		path := completeGracePath(root, sid)
 		cleaned := filepath.Clean(path)
 		if !strings.HasPrefix(cleaned, dataDir) {
 			t.Errorf("sid=%q → path %q escapes DataDir %q (sanitization broken)", sid, cleaned, dataDir)

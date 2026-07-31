@@ -41,10 +41,6 @@ import (
 //   - edit                    args.newText   → tool_input.content  (opencode uses newText, not new_string)
 type OpencodeTranslator struct{}
 
-func (t *OpencodeTranslator) Detect(projectDir string) bool {
-	return dirExists(filepath.Join(projectDir, ".opencode"))
-}
-
 func (t *OpencodeTranslator) Translate(projectDir string, input *TranslationInput) error {
 	if input.Protocol == nil {
 		return fmt.Errorf("opencode: protocol is required")

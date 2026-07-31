@@ -457,9 +457,9 @@ func TestSourceChangesSince_CommitWorkdirContentStaysEqual(t *testing.T) {
 func TestLoadStamp(t *testing.T) {
 	t.Run("missing file returns empty stamp", func(t *testing.T) {
 		root := initGitRepo(t)
-		s := LoadStamp(root)
+		s := loadStamp(root)
 		if s == nil {
-			t.Fatal("LoadStamp must never return nil")
+			t.Fatal("loadStamp must never return nil")
 		}
 		if s.Reviewed || s.DiffHash != "" {
 			t.Errorf("missing stamp should be empty, got %+v", s)
@@ -475,7 +475,7 @@ func TestLoadStamp(t *testing.T) {
 		if err := os.WriteFile(p, []byte("{not json"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		s := LoadStamp(root)
+		s := loadStamp(root)
 		if s.Reviewed || s.DiffHash != "" {
 			t.Errorf("corrupt stamp should degrade to empty, got %+v", s)
 		}
@@ -487,7 +487,7 @@ func TestLoadStamp(t *testing.T) {
 		if err := MarkPassed(root); err != nil {
 			t.Fatalf("MarkPassed: %v", err)
 		}
-		s := LoadStamp(root)
+		s := loadStamp(root)
 		if !s.Reviewed {
 			t.Error("stamp persisted by MarkPassed should load as Reviewed=true")
 		}

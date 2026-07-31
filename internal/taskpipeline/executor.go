@@ -461,8 +461,8 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 			// 逃生任务永不进此分支；升硬后唯一出路是真补测试（预期）或下调复发门槛
 			// （FORGE_RECURRENT_HARDEN=disable，无 Strength 惩罚）。
 			if recurrentHardenEnabled() {
-				if cs := loadConclusions(root); DimRecurrent(cs, dimTesting, recurrentThreshold()) && len(missing) > 0 {
-					return nil, GateBlocked(`task-verify 拒绝（复发升 HARD stop）：项目 testing 维度已 %d 次低分（达到阈值 %d）——advisory 靠自律在此项目已被证明失效，本次 %d 个源文件仍无配对测试。%s出路：补测试后重跑；或 FORGE_TEST_COVERAGE=disable（降 evidence Weak）；或 FORGE_RECURRENT_HARDEN=disable 回退纯 advisory`, LowDimCounts(cs)[dimTesting], recurrentThreshold(), len(missing), formatMissing(missing))
+				if cs := loadConclusions(root); dimRecurrent(cs, dimTesting, recurrentThreshold()) && len(missing) > 0 {
+					return nil, GateBlocked(`task-verify 拒绝（复发升 HARD stop）：项目 testing 维度已 %d 次低分（达到阈值 %d）——advisory 靠自律在此项目已被证明失效，本次 %d 个源文件仍无配对测试。%s出路：补测试后重跑；或 FORGE_TEST_COVERAGE=disable（降 evidence Weak）；或 FORGE_RECURRENT_HARDEN=disable 回退纯 advisory`, lowDimCounts(cs)[dimTesting], recurrentThreshold(), len(missing), formatMissing(missing))
 				}
 			}
 			fmt.Fprintf(os.Stderr, "%s%s\n", GateAdvisory("[task-verify] "), formatMissing(missing))
@@ -506,8 +506,8 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 				// 拒一半合法改动）。仅当项目 scope 复发 且 本次 drift 实质（≥严重阈值文件）两者皆真时升
 				// BLOCKED——单文件 drift 即便在复发项目也保持 advisory（正常预测失误）。
 				if recurrentHardenEnabled() && scopeDriftSevere(drift) {
-					if cs := loadConclusions(root); DimRecurrent(cs, dimScope, recurrentThreshold()) {
-						return nil, GateBlocked(`task-verify 拒绝（复发升 HARD stop）：项目 scope 维度已 %d 次低分（达到阈值 %d）——计划漂移已成系统性问题，本次 %d 个源文件超出 PlanScope 声明。出路：forge task scope add <glob> 收编实改；或 FORGE_RECURRENT_HARDEN=disable 回退纯 advisory`, LowDimCounts(cs)[dimScope], recurrentThreshold(), len(drift))
+					if cs := loadConclusions(root); dimRecurrent(cs, dimScope, recurrentThreshold()) {
+						return nil, GateBlocked(`task-verify 拒绝（复发升 HARD stop）：项目 scope 维度已 %d 次低分（达到阈值 %d）——计划漂移已成系统性问题，本次 %d 个源文件超出 PlanScope 声明。出路：forge task scope add <glob> 收编实改；或 FORGE_RECURRENT_HARDEN=disable 回退纯 advisory`, lowDimCounts(cs)[dimScope], recurrentThreshold(), len(drift))
 					}
 				}
 				fmt.Fprintf(os.Stderr, "%sscope-drift——%d 个源码文件超出 PlanScope 声明（advisory 不阻塞；收编: forge task scope add <glob>）\n", GateAdvisory("[task-verify] "), len(drift))
@@ -622,9 +622,10 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		// actually execute them before verify. Supplements task-verify's 'did you run them'
 		// dimension — the test-coverage above only checks 'tests accompany changes' (wrote a
 		// test ≠ ran a test); this scan checks 'does the repo have runnable tests': yes → emit
-		// the recommended command (purely advisory, non-blocking); no → silent. Complementary to
-		// verify-before-stop.sh (a Stop hook that forcefully runs the full suite): the gate
-		// reminds mid-session, stop is the backstop. Passed is always true — 'the repo has tests'
+		// the recommended command (purely advisory, non-blocking); no → silent. The earlier
+		// verify-before-stop.sh Stop hook (forcefully ran the full suite at session end) has
+		// since been removed; this advisory scan is the remaining capability signal.
+		// Passed is always true — 'the repo has tests'
 		// is not itself a verdict; the trace only retains the capability signal.
 		// Plan-5 consistency: the test-coverage escape hatch (per-task override or env) must also
 		// skip the capability scan — otherwise users on --test-coverage disable still receive the
@@ -635,14 +636,14 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		// test-capability scan (advisory): 仓库存在可跑的测试时，建议 agent 过 verify
 		// 前实际执行。补 task-verify 的「测过没」维度——上面的 test-coverage 只查「测试
 		// 伴随变更」（写了测试≠跑过测试），本扫描查「仓库有没有可跑的测试」：有→给推荐
-		// 命令建议执行（纯 advisory 不阻塞）；无→静默。与 verify-before-stop.sh（Stop
-		// hook 实跑全量）互补：gate 在会话中段提醒，stop 兜底强跑。Passed 恒 true——
+		// 命令建议执行（纯 advisory 不阻塞）；无→静默。早期 verify-before-stop.sh（Stop
+		// hook 实跑全量）已删除，本 advisory 扫描是现存的能力信号。Passed 恒 true——
 		// 「仓库有测试」本身不是判定，trace 只保留能力信号。
 		// 方案5 一致性：test-coverage 逃生舱（per-task override 或 env）须同时跳过
 		// capability 扫描——否则 --test-coverage disable 的用户仍收「仓库有测试，建议跑」
 		// nag，与「我不做测试纪律」信号矛盾。CheckEscapeHatch 已由上方 CheckTestCoverage
 		// 记录，此处仅跳过扫描+advisory，不重复记 escape-hatch 条目。
-		if !EscapeDisabled(state, escapeTestCoverage, testCoverageDisableEnv) {
+		if !escapeDisabled(state, escapeTestCoverage, testCoverageDisableEnv) {
 			cap := CheckTestCapability(root)
 			recordAudit(root, &checklog.Entry{
 				Check:   CheckNameTestCapability,
@@ -700,7 +701,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		// state.HeadCommit。escape（per-task override / FORGE_SKILL_DECISIONS）→ guardrail 降
 		// advisory + CheckEscapeHatch（Weak ceiling）。fail-open：base 空/不可达不阻断。
 		if blocking := skillDecisionsBlockingAffected(gitChanged); len(blocking) > 0 {
-			if EscapeDisabled(state, escapeSkillDecisions, envSkillDecisions) {
+			if escapeDisabled(state, escapeSkillDecisions, envSkillDecisions) {
 				recordAudit(root, &checklog.Entry{
 					Check:   checklog.CheckEscapeHatch,
 					Passed:  true,
@@ -1111,7 +1112,7 @@ func runEmbeddedHook(root, name string) (passed bool, output string) {
 // 优先于进程级 FORGE_WORK_ACTIVITY env——某 task 逃生不会泄漏到同 shell 的其他
 // task。env 留作 CI/测试 fallback。
 func getDisableWorkActivity(state *TaskState) bool {
-	return EscapeDisabled(state, escapeWorkActivity, envWorkActivity)
+	return escapeDisabled(state, escapeWorkActivity, envWorkActivity)
 }
 
 // isLastGate returns whether the given gate ID is the last gate in the pipeline. After the

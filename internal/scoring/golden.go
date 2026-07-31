@@ -1,11 +1,5 @@
 package scoring
 
-import (
-	"encoding/json"
-	"os"
-	"path/filepath"
-)
-
 // GoldenCase is a single regression fixture for the scoring evaluator: a
 // representative EvaluateInput paired with the score the evaluator produced when the
 // fixture was recorded. The golden test reruns Evaluate and asserts the result
@@ -91,29 +85,4 @@ type ExpectedScore struct {
 	Overall    float64        `json:"overall"`
 	Grade      string         `json:"grade"`
 	Dimensions map[string]int `json:"dimensions"` // dimension name -> score
-}
-
-// LoadGoldenCases reads each *.json fixture under testdata/golden. It returns a slice
-// (not a map) so that filepath.Glob's sort order yields deterministic test ordering.
-//
-// LoadGoldenCases 读取 testdata/golden 下每个 *.json fixture。返回 slice（非 map）
-// 通过 filepath.Glob 的排序保持 deterministic 测试顺序。
-func LoadGoldenCases(dir string) ([]GoldenCase, error) {
-	matches, err := filepath.Glob(filepath.Join(dir, "golden_*.json"))
-	if err != nil {
-		return nil, err
-	}
-	var cases []GoldenCase
-	for _, path := range matches {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return nil, err
-		}
-		var c GoldenCase
-		if err := json.Unmarshal(data, &c); err != nil {
-			return nil, &os.PathError{Op: "parse", Path: path, Err: err}
-		}
-		cases = append(cases, c)
-	}
-	return cases, nil
 }

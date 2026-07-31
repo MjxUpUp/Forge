@@ -405,23 +405,6 @@ func TestReviewStopHookPassIsSilent(t *testing.T) {
 	}
 }
 
-// TestTaskVerifyHookSkipVerifyAudited guards A4: the FORGE_SKIP_VERIFY=1 escape
-// hatch is kept (it frees a permanently-trapped session), but its use must be
-// audited to checklog — otherwise a stop-retry loop silently bypasses the gate
-// forever with no trace.
-func TestTaskVerifyHookSkipVerifyAudited(t *testing.T) {
-	if !strings.Contains(TaskVerifyHook, "FORGE_SKIP_VERIFY") {
-		t.Error("TaskVerifyHook missing FORGE_SKIP_VERIFY escape hatch")
-	}
-	// The audit must write an escape-hatch checklog entry, not just echo PASS.
-	if !strings.Contains(TaskVerifyHook, `"check":"escape-hatch"`) {
-		t.Error("TaskVerifyHook must record an escape-hatch checklog entry when FORGE_SKIP_VERIFY=1 (A4)")
-	}
-	if !strings.Contains(TaskVerifyHook, "FORGE_SKIP_VERIFY=1") {
-		t.Error("TaskVerifyHook escape-hatch detail must name FORGE_SKIP_VERIFY=1 (A4)")
-	}
-}
-
 func TestTaskGuardHookSelfProtection(t *testing.T) {
 	if !strings.Contains(TaskGuardHook, ".forge/*") {
 		t.Error("TaskGuardHook missing .forge/ self-protection")

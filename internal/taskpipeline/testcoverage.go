@@ -22,11 +22,11 @@ import (
 const testCoverageDisableEnv = "FORGE_TEST_COVERAGE"
 
 // sourceExts is the set of file extensions the test-coverage gate treats as source.
-// An earlier bash advisory hook mirrored this set and was deleted during hook trimming;
-// this gate is now the single source of truth (hooks/embed.go no longer exists).
+// An earlier bash advisory hook (embedded via hooks/embed.go) mirrored this set and was
+// deleted during hook trimming; this gate is now the single source of truth.
 //
-// sourceExts 是 test-coverage 门控认定的「源码」后缀集。早期有一层 bash advisory hook
-// 镜像此集合，hook 精简时已删——本门控现是唯一真相源（hooks/embed.go 不复存在）。
+// sourceExts 是 test-coverage 门控认定的「源码」后缀集。早期 hooks/embed.go 内嵌的一层
+// bash advisory hook 镜像此集合，hook 精简时已删——本门控现是唯一真相源。
 var sourceExts = map[string]bool{
 	".go": true, ".rs": true, ".ts": true, ".tsx": true,
 	".js": true, ".jsx": true, ".py": true, ".java": true,
@@ -174,7 +174,7 @@ const CheckNameTestCoverage checklog.CheckName = "test-coverage-gate"
 //
 // 优雅降级：非 git 仓库或空 diff → ok=true（不误报）。
 func CheckTestCoverage(root string, state *TaskState) (ok bool, missing []string, total int) {
-	if EscapeDisabled(state, escapeTestCoverage, testCoverageDisableEnv) {
+	if escapeDisabled(state, escapeTestCoverage, testCoverageDisableEnv) {
 		// A4 + plan 5: audit the bypass (per-task override OR global env). The hatch is
 		// meant for reasonable scenarios (docs-only repo, generated code, whitelist-only
 		// task), but its use must leave a trace — otherwise agents silently bypass the

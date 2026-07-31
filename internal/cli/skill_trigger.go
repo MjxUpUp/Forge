@@ -29,9 +29,8 @@ import (
 )
 
 var (
-	skillTriggerHookFlag bool
-	skillTriggerDryRun   bool
-	skillTriggerEvent    string
+	skillTriggerDryRun bool
+	skillTriggerEvent  string
 )
 
 // skillTriggerCmd 是 `forge skills trigger` 子命令——主要供 --dry-run 调试（模拟事件、stderr
@@ -45,7 +44,6 @@ var skillTriggerCmd = &cobra.Command{
 }
 
 func init() {
-	skillTriggerCmd.Flags().BoolVar(&skillTriggerHookFlag, "hook", false, "hook 生产入口（读 stdin HookInput，输出 PASS JSON 协议）")
 	skillTriggerCmd.Flags().BoolVar(&skillTriggerDryRun, "dry-run", false, "调试：stderr 打扫描/命中详情，不写 marker")
 	skillTriggerCmd.Flags().StringVar(&skillTriggerEvent, "event", "", "覆盖 HookInput 的事件名（调试模拟其他事件）")
 	skillsCmd.AddCommand(skillTriggerCmd)

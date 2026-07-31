@@ -22,11 +22,6 @@ import (
 // 借 Cline 自动合并该目录下所有 .md/.txt 的机制生效。
 type ClineTranslator struct{}
 
-func (t *ClineTranslator) Detect(projectDir string) bool {
-	return dirExists(filepath.Join(projectDir, ".cline")) ||
-		dirExists(filepath.Join(projectDir, ".clinerules"))
-}
-
 func (t *ClineTranslator) Translate(projectDir string, input *TranslationInput) error {
 	if input.Protocol == nil {
 		return fmt.Errorf("cline: protocol is required")

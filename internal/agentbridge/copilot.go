@@ -12,10 +12,6 @@ import (
 // CopilotTranslator 生成 .github/instructions/forge-quality.instructions.md。
 type CopilotTranslator struct{}
 
-func (t *CopilotTranslator) Detect(projectDir string) bool {
-	return dirExists(filepath.Join(projectDir, ".github", "instructions"))
-}
-
 func (t *CopilotTranslator) Translate(projectDir string, input *TranslationInput) error {
 	if input.Protocol == nil {
 		return fmt.Errorf("copilot: protocol is required")

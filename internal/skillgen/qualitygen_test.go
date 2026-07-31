@@ -217,3 +217,18 @@ func TestGenerateQualitySkillAtomicWriteNoResidue(t *testing.T) {
 		}
 	}
 }
+
+// TestQualitySkillDropsRemovedEscapeHatch pins the FORGE_SKIP_VERIFY cleanup:
+// the generated skill must not teach users an escape hatch that no longer
+// exists (TaskVerifyHook is unconditional advisory since v0.25).
+//
+// TestQualitySkillDropsRemovedEscapeHatch 钉住 FORGE_SKIP_VERIFY 清理：生成的
+// skill 不得再教用户一个已不存在的逃生舱（TaskVerifyHook 自 v0.25 无条件
+// advisory）。
+func TestQualitySkillDropsRemovedEscapeHatch(t *testing.T) {
+	proto := &protocol.Protocol{Version: "1"}
+	content := buildQualitySkillContent(t.TempDir(), proto)
+	if strings.Contains(content, "FORGE_SKIP_VERIFY") {
+		t.Error("generated skill must not reference removed FORGE_SKIP_VERIFY escape hatch")
+	}
+}

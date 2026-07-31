@@ -155,7 +155,7 @@ func buildQualitySkillContent(projectDir string, proto *protocol.Protocol) strin
 	sb.WriteString("| task not complete. Missing gates | 未通过所有门禁 | 先 `forge task gate task-complete --ref <ref>` |\n\n")
 
 	sb.WriteString("### 会话结束\n\n")
-	sb.WriteString("session 结束时 task-verify Stop hook 自动运行（advisory：仅记录问题到 checklog，不阻塞会话）。也可设置 `FORGE_SKIP_VERIFY=1` 跳过。\n\n")
+	sb.WriteString("session 结束时 task-verify Stop hook 自动运行（advisory：仅记录问题到 checklog，不阻塞会话）。\n\n")
 
 	sb.WriteString("`forge task complete` 成功后，通过 TaskUpdate 标记对应的 Claude Code task 为 completed。\n\n")
 

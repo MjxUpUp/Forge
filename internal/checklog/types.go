@@ -64,13 +64,13 @@ const (
 	// code-review-gate。
 	CheckUnusedScan CheckName = "unused-scan"
 	// CheckEscapeHatch records usage of gate-bypass escape hatches (FORGE_TEST_COVERAGE /
-	// FORGE_WORK_ACTIVITY / FORGE_SKIP_VERIFY). These escape hatches are legitimate tools, but their use must
+	// FORGE_WORK_ACTIVITY / FORGE_RECURRENT_HARDEN). These escape hatches are legitimate tools, but their use must
 	// leave an auditable trail and cannot be silent—when an agent bypasses the
 	// test-coverage gate via export FORGE_TEST_COVERAGE=disable, a visible trail should be left. A4: recorded so forge trace and scoring can surface
 	// escape-hatch usage. Passed=true (bypass effective), Checked=true, Detail marks the escape-hatch name.
 	//
 	// CheckEscapeHatch 记录 gate-bypass 逃生舱的使用（FORGE_TEST_COVERAGE /
-	// FORGE_WORK_ACTIVITY / FORGE_SKIP_VERIFY）。这些逃生舱是合法工具，但其使用必须
+	// FORGE_WORK_ACTIVITY / FORGE_RECURRENT_HARDEN）。这些逃生舱是合法工具，但其使用必须
 	// 留痕可审计、不能静默——agent 通过 export FORGE_TEST_COVERAGE=disable 绕过
 	// test-coverage gate 时，应留下可见轨迹。A4：记录以便 forge trace 与评分能展示
 	// 逃生舱使用。Passed=true（bypass 已生效）、Checked=true、Detail 标注逃生舱名。

@@ -315,14 +315,15 @@ const completeGraceFile = ".task-complete-grace"
 // 写源码的 session 已非 complete——应新开 task。
 const completeGraceWindow = 5 * time.Minute
 
-// CompleteGracePath returns the per-session sentinel file path under the DataDir.
-// Exported so file-sentinel (in embed.go) mirrors the path and reads the timestamp inside
-// the file, avoiding reliance on mtime stat (GNU and BSD stat behave differently).
+// completeGracePath returns the per-session sentinel file path under the DataDir.
+// The file-sentinel bash hook (embed.go) replicates this path scheme by convention —
+// bash cannot call Go — and reads the timestamp inside the file, avoiding reliance on
+// mtime stat (GNU and BSD stat behave differently). Keep the two in sync.
 //
-// CompleteGracePath 返回 DataDir 下的 per-session sentinel 文件路径。
-// 导出供 file-sentinel（embed.go 中）镜像路径并读文件内 timestamp，避免依赖
-// mtime stat（GNU 与 BSD stat 行为不同）。
-func CompleteGracePath(root, sessionID string) string {
+// completeGracePath 返回 DataDir 下的 per-session sentinel 文件路径。
+// file-sentinel bash hook（embed.go 中）按约定镜像此路径方案——bash 调不了 Go——
+// 并读文件内 timestamp，避免依赖 mtime stat（GNU 与 BSD stat 行为不同）。两处需保持同步。
+func completeGracePath(root, sessionID string) string {
 	if sessionID != "" {
 		safeID := util.SanitizeSessionID(sessionID)
 		return filepath.Join(dataHome(root), completeGraceFile+"-"+safeID)
@@ -330,14 +331,14 @@ func CompleteGracePath(root, sessionID string) string {
 	return filepath.Join(dataHome(root), completeGraceFile)
 }
 
-// MarkCompleteGrace records the current epoch timestamp at CompleteGracePath.
+// MarkCompleteGrace records the current epoch timestamp at completeGracePath.
 // Called by forge task complete right after ClearActiveTaskRef. The file content is an
 // epoch-seconds integer (newline-terminated) so file-sentinel can compare
 // NOW - stamp < completeGraceWindow without a stat. Returns nil silently when sessionID
 // is empty (no session context → no grace; this rare case only triggers a bounded write,
 // so it does not fail loudly).
 //
-// MarkCompleteGrace 在 CompleteGracePath 记录当前 epoch timestamp。
+// MarkCompleteGrace 在 completeGracePath 记录当前 epoch timestamp。
 // 由 forge task complete 在 ClearActiveTaskRef 之后立即调用。文件内容为
 // epoch-seconds 整数（以 newline 结尾），使 file-sentinel 无须 stat 即可比对
 // NOW - stamp < completeGraceWindow。sessionID 为空时静默返回 nil（无 session
@@ -347,7 +348,7 @@ func MarkCompleteGrace(root, sessionID string) error {
 		return nil
 	}
 	stamp := strconv.FormatInt(time.Now().Unix(), 10) + "\n"
-	return util.AtomicWrite(CompleteGracePath(root, sessionID), []byte(stamp), 0644)
+	return util.AtomicWrite(completeGracePath(root, sessionID), []byte(stamp), 0644)
 }
 
 // ReadActiveTaskRef reads the active task ref from the (session-scoped) file.

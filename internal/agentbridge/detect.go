@@ -3,6 +3,7 @@ package agentbridge
 import (
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // DetectAgents scans the project directory for known agent config indicators.
@@ -72,7 +73,11 @@ func ParseAgentFlag(projectDir string, flag string) []AgentType {
 	}
 
 	var agents []AgentType
-	for _, name := range splitComma(flag) {
+	for _, name := range strings.Split(flag, ",") {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
 		switch AgentType(name) {
 		case AgentClaudeCode, AgentCursor, AgentCopilot, AgentWindsurf, AgentCodex, AgentOpencode, AgentCline, AgentKimi:
 			agents = append(agents, AgentType(name))
@@ -89,31 +94,4 @@ func dirExists(path string) bool {
 func fileExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir()
-}
-
-func splitComma(s string) []string {
-	var result []string
-	start := 0
-	for i := 0; i <= len(s); i++ {
-		if i == len(s) || s[i] == ',' {
-			part := trimSpaces(s[start:i])
-			if part != "" {
-				result = append(result, part)
-			}
-			start = i + 1
-		}
-	}
-	return result
-}
-
-func trimSpaces(s string) string {
-	start := 0
-	for start < len(s) && s[start] == ' ' {
-		start++
-	}
-	end := len(s)
-	for end > start && s[end-1] == ' ' {
-		end--
-	}
-	return s[start:end]
 }

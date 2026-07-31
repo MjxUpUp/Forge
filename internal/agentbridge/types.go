@@ -29,10 +29,6 @@ const (
 //
 // Translator 把 Forge config 转成特定 agent 的原生格式。
 type Translator interface {
-	// Detect returns true when the agent's config directory/files exist.
-	//
-	// Detect 在该 agent 的 config 目录/文件存在时返回 true。
-	Detect(projectDir string) bool
 	// Translate generates or updates the agent's config files.
 	//
 	// Translate 生成或更新该 agent 的 config 文件。

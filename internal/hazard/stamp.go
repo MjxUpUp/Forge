@@ -196,7 +196,7 @@ func writeConfirmation(p *forgedata.Project, fp, cmd string) error {
 	now := time.Now()
 	c := Confirmation{
 		Fingerprint: fp,
-		Command:     truncate(cmd, maxCommandStore),
+		Command:     util.TruncateRunes(cmd, maxCommandStore),
 		ConfirmedAt: now,
 		ExpiresAt:   now.Add(ConfirmTTL),
 	}
@@ -336,18 +336,4 @@ func ActiveConfirmations(p *forgedata.Project) ([]Confirmation, error) {
 		return a.ExpiresAt.Compare(b.ExpiresAt)
 	})
 	return out, nil
-}
-
-func truncate(s string, n int) string {
-	// Slice by rune (character), not by byte: a Chinese command char is 3 bytes each, and byte
-	// slicing would cut in the middle of a character, producing invalid UTF-8; json.Marshal would
-	// replace it with U+FFFD and corrupt audit logs / Confirmation records.
-	//
-	// 按 rune（字符）而非字节切片：中文命令每字 3 字节，字节切片会在字符中间切断产生
-	// 无效 UTF-8，json.Marshal 会替换为 U+FFFD 导致审计日志/Confirmation 乱码。
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	return string(r[:n]) + "…"
 }

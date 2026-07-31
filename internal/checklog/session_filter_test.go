@@ -71,19 +71,3 @@ func TestLatestByCheckForSession_IsolatesBySession(t *testing.T) {
 		t.Errorf("legacy latest assertion should be B (newer, passed=false), got ok=%v e=%v", ok, e)
 	}
 }
-
-// TestLatestByCheck_LegacyWrapperReturnsAll verifies LatestByCheck (the original
-// signature) still returns every entry regardless of session.
-func TestLatestByCheck_LegacyWrapperReturnsAll(t *testing.T) {
-	dir := t.TempDir()
-	base := time.Date(2026, 6, 13, 12, 0, 0, 0, time.UTC)
-	writeEntry(t, dir, Entry{Check: CheckAutoCompile, Passed: true, Checked: true, SessionID: "sess-A", RecordedAt: base})
-
-	all, err := LatestByCheck(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(all) != 1 {
-		t.Errorf("LatestByCheck returned %d entries, want 1", len(all))
-	}
-}

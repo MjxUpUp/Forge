@@ -192,26 +192,21 @@ func (p *Project) ensureMeta() error {
 // (TasksDir/TaskStatePath/GatesDir/GateDir/GateStatusPath/ChecklogGlob/ToollogPath/ToollogGlob/
 // StampsDir/StampPath/SessionsDir/SessionPath/SessionsLogPath/SessionFilePath/ActiveTaskRefPath/
 // ActiveTaskRefSessionPath/ActiveTaskRefGlob/ProtocolYAMLPath/CLAUDEMDPath) had zero production
-// callers and were deleted — the unsanitized ones (TaskStatePath/StampPath joining caller input
+// callers and were deleted — the unsanitized ones (TaskStatePath/StampPath/GateArtifactPath joining caller input
 // straight into a path) were a path-traversal hazard if ever revived without sanitize.
+// GateArtifactPath and ChecklogPath later re-audited to zero callers and joined the list.
 //
 // ---- Runtime state accessor（全部 p.DataDir 下）----
 //
 // 只保留有真实调用方的 accessor。refactor-data-home 遗留的僵尸 accessor
-// （清单见上）零生产调用已删除——其中不做 sanitize 的（TaskStatePath/StampPath 把调用方
-// 输入直接拼进路径）若不经 sanitize 复活即是路径穿越雷。
+// （清单见上）零生产调用已删除——其中不做 sanitize 的（TaskStatePath/StampPath/GateArtifactPath
+// 把调用方输入直接拼进路径）若不经 sanitize 复活即是路径穿越雷。
+// GateArtifactPath 与 ChecklogPath 复查零调用方后并入该清单。
 
 // MetaPath returns DataDir/.migration-meta.json
 //
 // MetaPath 返回 DataDir/.migration-meta.json
 func (p *Project) MetaPath() string { return filepath.Join(p.DataDir, ".migration-meta.json") }
-
-// GateArtifactPath returns DataDir/gates/<id>/<out> (gate run artifact, e.g. feishu report attachment).
-//
-// GateArtifactPath returns DataDir/gates/<id>/<out>（gate 运行产物，如 feishu 报告附件）
-func (p *Project) GateArtifactPath(gateID, out string) string {
-	return filepath.Join(p.DataDir, "gates", gateID, out)
-}
 
 // HazardsDir returns DataDir/hazards
 //
@@ -231,11 +226,6 @@ func (p *Project) HazardsEventsPath() string {
 func (p *Project) HazardsConfirmPath(fp string) string {
 	return filepath.Join(p.DataDir, "hazards", fp+".json")
 }
-
-// ChecklogPath returns DataDir/checklog.jsonl (primary).
-//
-// ChecklogPath returns DataDir/checklog.jsonl（主）
-func (p *Project) ChecklogPath() string { return filepath.Join(p.DataDir, "checklog.jsonl") }
 
 // ActDir returns DataDir/act
 //

@@ -14,13 +14,13 @@ func TestEscapeDisabled_Precedence(t *testing.T) {
 	// No override → env applies (fallback).
 	//
 	// 无 override → env 生效（fallback）。
-	if !EscapeDisabled(&TaskState{}, escapeWorkActivity, envWorkActivity) {
+	if !escapeDisabled(&TaskState{}, escapeWorkActivity, envWorkActivity) {
 		t.Error("env set, no override: want disabled=true (env fallback)")
 	}
 	// An explicit empty override ("") does not cancel env — override only fires when value is"disable", env remains fallback.
 	//
 	// override 显式空（""）不取消 env——override 仅在值"disable"时生效，env 仍是 fallback。
-	if !EscapeDisabled(&TaskState{Overrides: TaskOverrides{WorkActivity: ""}}, escapeWorkActivity, envWorkActivity) {
+	if !escapeDisabled(&TaskState{Overrides: TaskOverrides{WorkActivity: ""}}, escapeWorkActivity, envWorkActivity) {
 		t.Error("env set + empty override: env fallback should still fire")
 	}
 }
@@ -32,10 +32,10 @@ func TestEscapeDisabled_NoEnvNoOverride(t *testing.T) {
 	t.Setenv("FORGE_WORK_ACTIVITY", "")
 	t.Setenv("FORGE_TEST_COVERAGE", "")
 	s := &TaskState{}
-	if EscapeDisabled(s, escapeWorkActivity, envWorkActivity) {
+	if escapeDisabled(s, escapeWorkActivity, envWorkActivity) {
 		t.Error("no env, no override (work-activity): want disabled=false")
 	}
-	if EscapeDisabled(s, escapeTestCoverage, "FORGE_TEST_COVERAGE") {
+	if escapeDisabled(s, escapeTestCoverage, "FORGE_TEST_COVERAGE") {
 		t.Error("no env, no override (test-coverage): want disabled=false")
 	}
 }
@@ -46,7 +46,7 @@ func TestEscapeDisabled_NoEnvNoOverride(t *testing.T) {
 func TestEscapeDisabled_OverrideOnly(t *testing.T) {
 	t.Setenv("FORGE_WORK_ACTIVITY", "")
 	s := &TaskState{Overrides: TaskOverrides{WorkActivity: "disable"}}
-	if !EscapeDisabled(s, escapeWorkActivity, envWorkActivity) {
+	if !escapeDisabled(s, escapeWorkActivity, envWorkActivity) {
 		t.Error("override=disable, no env: want disabled=true")
 	}
 }
@@ -56,7 +56,7 @@ func TestEscapeDisabled_OverrideOnly(t *testing.T) {
 // TestEscapeDisabled_NilState：nil state 不 panic，回落 env 判定。
 func TestEscapeDisabled_NilState(t *testing.T) {
 	t.Setenv("FORGE_TEST_COVERAGE", "disable")
-	if !EscapeDisabled(nil, escapeTestCoverage, "FORGE_TEST_COVERAGE") {
+	if !escapeDisabled(nil, escapeTestCoverage, "FORGE_TEST_COVERAGE") {
 		t.Error("nil state + env set: want disabled=true (env fallback, no panic)")
 	}
 }

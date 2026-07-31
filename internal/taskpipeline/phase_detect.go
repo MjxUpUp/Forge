@@ -20,10 +20,10 @@ const (
 	PhaseTest        DesignPhase = "test-design" // 测试用例设计（test 文件）
 )
 
-// AllDesignPhases returns all design phases.
+// allDesignPhases returns all design phases.
 //
-// AllDesignPhases 返回全部设计阶段。
-func AllDesignPhases() []DesignPhase {
+// allDesignPhases 返回全部设计阶段。
+func allDesignPhases() []DesignPhase {
 	return []DesignPhase{
 		PhaseRequirement, PhaseAPI, PhaseDatabase,
 		PhaseFrontend, PhaseBackend, PhaseTest,
@@ -130,7 +130,7 @@ func inferDesignPhases(changedFiles []string) []DesignPhase {
 	//
 	// 转为有序切片（保持确定性）
 	var result []DesignPhase
-	for _, p := range AllDesignPhases() {
+	for _, p := range allDesignPhases() {
 		if phases[p] {
 			result = append(result, p)
 		}
@@ -157,12 +157,12 @@ func isTestPhasePath(base, dirBase string) bool {
 }
 
 // designPhasesEqual compares two DesignPhase slices for equality (order-sensitive—
-// inferDesignPhases outputs in the fixed AllDesignPhases order, so same input implies same order).
+// inferDesignPhases outputs in the fixed allDesignPhases order, so same input implies same order).
 // Used by the task-verify gate to tell whether the inferred result changed, avoiding pointless
 // disk writes on every verify.
 //
 // designPhasesEqual 比较两个 DesignPhase 切片是否相等（顺序敏感——inferDesignPhases
-// 按 AllDesignPhases 固定顺序输出，故同输入必同顺序）。用于 task-verify gate 判断
+// 按 allDesignPhases 固定顺序输出，故同输入必同顺序）。用于 task-verify gate 判断
 // 推断结果是否变化，避免每次 verify 无谓写盘。
 func designPhasesEqual(a, b []DesignPhase) bool {
 	if len(a) != len(b) {

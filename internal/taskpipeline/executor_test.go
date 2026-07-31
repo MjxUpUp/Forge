@@ -631,7 +631,7 @@ func TestWorkActivityStillEnforcedAfterAutoGate(t *testing.T) {
 	if err == nil {
 		t.Fatal("task-verify after auto gate with zero activity must be BLOCKED — the 5-gate-era skip rule must not come back")
 	}
-	if !IsGateBlocked(err) {
+	if !strings.HasPrefix(err.Error(), blockedPrefix) {
 		t.Fatalf("应是 GateBlocked（HARD stop），got: %v", err)
 	}
 }
@@ -1025,7 +1025,7 @@ func TestTaskCompleteTestCoverageHardGate_BlockedOnBigChangeNoAssertion(t *testi
 	if err == nil {
 		t.Fatal("task-complete 应因大改零断言被 BLOCKED——corrupt success 兜底失效（agent 可改 3+ 源文件不写测试不写断言照过 complete）")
 	}
-	if !IsGateBlocked(err) {
+	if !strings.HasPrefix(err.Error(), blockedPrefix) {
 		t.Fatalf("应是 GateBlocked（HARD stop），got: %v", err)
 	}
 }
@@ -1250,12 +1250,12 @@ func TestWorkActivityEscapeHatchAuditsToChecklog(t *testing.T) {
 // TestReadBeforeEditFailureIsBlocked guards Plan-1's exit-code contract: an
 // edit-without-read must hard-fail task-verify carrying the BLOCKED prefix rather
 // than soft advisory prose — the BLOCKED token makes the hard stop unambiguous.
-// The test asserts both IsGateBlocked and the recognizable reason phrase.
+// The test asserts both the BLOCKED: contract prefix and the recognizable reason phrase.
 //
 // TestReadBeforeEditFailureIsBlocked guards 方案1's exit-code contract: editing
 // without reading must hard-fail task-verify with the BLOCKED: prefix, not soft
 // advisory prose — the BLOCKED marker makes the hard stop unambiguous. Asserts both
-// IsGateBlocked and the recognizable reason phrase.
+// the BLOCKED: contract prefix and the recognizable reason phrase.
 func TestReadBeforeEditFailureIsBlocked(t *testing.T) {
 	dir := t.TempDir()
 	runGit(t, dir, "init")
@@ -1277,7 +1277,7 @@ func TestReadBeforeEditFailureIsBlocked(t *testing.T) {
 	if err == nil {
 		t.Fatal("task-verify unexpectedly passed (want BLOCKED hard failure for edit-without-read)")
 	}
-	if !IsGateBlocked(err) {
+	if !strings.HasPrefix(err.Error(), blockedPrefix) {
 		t.Errorf("read-before-edit failure = %q, want BLOCKED contract prefix", err.Error())
 	}
 	if !strings.Contains(err.Error(), "without reading any code") {

@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // MaxStopRounds Stop 事件每 session 最多注入次数（防 Stop→注入→响应→Stop 死循环，
@@ -65,7 +67,7 @@ func (n *FileBasedNoiseController) Mark(sessionID, skill string, now time.Time) 
 	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
 		return err
 	}
-	return atomicWriteFile(p, []byte(now.UTC().Format(time.RFC3339)))
+	return util.AtomicWrite(p, []byte(now.UTC().Format(time.RFC3339)), 0644)
 }
 
 // StopRoundAllowed：本 session 已注入 Stop 次数 < MaxStopRounds。
@@ -91,9 +93,9 @@ func (n *FileBasedNoiseController) IncrStopRound(sessionID string) error {
 	if data, err := os.ReadFile(p); err == nil {
 		cnt, _ = strconv.Atoi(strings.TrimSpace(string(data)))
 	}
-	// atomic write（tmp+rename）防部分写；session-scoped sid 使跨 host RMW 竞态不触发
+	// atomic write（tmp+rename+fsync，见 util.AtomicWrite）防部分写；session-scoped sid 使跨 host RMW 竞态不触发
 	// （各 host 独立 session_id → 不同 sid 落不同文件，无共享计数器碰撞）。
-	return atomicWriteFile(p, []byte(strconv.Itoa(cnt+1)))
+	return util.AtomicWrite(p, []byte(strconv.Itoa(cnt+1)), 0644)
 }
 
 // isSkillDisabled 检查 skill 是否在 FORGE_SKILL_TRIGGER_DISABLE 逗号列表中。
@@ -125,31 +127,6 @@ func sanitizePart(s string) string {
 		}
 	}
 	return b.String()
-}
-
-// atomicWriteFile 原子写：tmp 文件 + 同目录 rename（rename 同目录原子）。防 hook 进程
-// 中途崩溃留半写 marker/stop-rounds。session-scoped sid 隔离下不解决跨 host RMW 竞态
-// （那需 flock），但各 host session_id 不同 → 无共享计数器碰撞。
-//
-// atomicWriteFile writes atomically via tmp + same-dir rename. Prevents half-written
-// marker/stop-rounds on hook-process crash.
-func atomicWriteFile(path string, data []byte) error {
-	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, ".tmp-*")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		os.Remove(tmpName)
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(tmpName)
-		return err
-	}
-	return os.Rename(tmpName, path)
 }
 
 // InMemoryNoiseController 测试用（map-backed，不碰文件系统）。

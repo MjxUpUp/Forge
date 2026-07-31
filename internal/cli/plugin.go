@@ -17,14 +17,7 @@ func init() {
 	pluginCmd.AddCommand(pluginStatusCmd)
 	pluginCmd.AddCommand(pluginDedupeCmd)
 	pluginDedupeCmd.Flags().Bool("keep-empty", false, "保留 settings.local.json 文件壳（清 forge hooks 后写 {} 而非删）——自动调用（init-suggest SessionStart）传 true,手动 dedupe 不传,删空文件")
-	f := pluginPackCmd.Flags()
-	f.String("out", "", "输出目录（默认当前目录，即仓库根）")
-	f.String("repo-slug", "MjxUpUp/Forge", "github owner/repo（README 安装命令用）")
-	f.String("marketplace-name", "forge", "marketplace 标识")
-	f.String("plugin-name", "forge", "plugin 标识")
-	f.String("description", agentbridge.DefaultPluginDescription, "plugin 描述")
-	f.String("owner-name", "MjxUpUp", "owner 名（marketplace owner / plugin author，schema required）")
-	f.String("owner-email", "", "owner 邮箱")
+	pluginPackCmd.Flags().String("out", "", "输出目录（默认当前目录，即仓库根）")
 }
 
 var pluginCmd = &cobra.Command{
@@ -63,29 +56,12 @@ func runPluginPack(cmd *cobra.Command, args []string) error {
 		}
 		out = cwd
 	}
-	spec := agentbridge.PluginPackSpec{
-		RepoDir:         out,
-		RepoSlug:        flagString(cmd, "repo-slug"),
-		MarketplaceName: flagString(cmd, "marketplace-name"),
-		PluginName:      flagString(cmd, "plugin-name"),
-		Description:     flagString(cmd, "description"),
-		OwnerName:       flagString(cmd, "owner-name"),
-		OwnerEmail:      flagString(cmd, "owner-email"),
-	}
+	spec := agentbridge.DefaultPluginPack(out)
 	if err := agentbridge.GeneratePluginPack(spec); err != nil {
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "plugin pack generated at %s\n", out)
 	return nil
-}
-
-// flagString returns the string flag value (errors ignored — cobra guarantees registration).
-// plugin.go local helper.
-//
-// flagString 取 string flag 值（错误忽略——cobra 保证已注册）。plugin.go 局部 helper。
-func flagString(cmd *cobra.Command, name string) string {
-	v, _ := cmd.Flags().GetString(name)
-	return v
 }
 
 // pluginStatusCmd reports whether the forge plugin is installed at user level. Used by

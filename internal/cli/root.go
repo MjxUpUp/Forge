@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -141,8 +140,4 @@ func findProjectRoot() (string, error) {
 // 走 DataDir；config reader（protocol/hooks）续用 findProjectRoot() 走 ConfigDir。
 func findProject() (*forgedata.Project, error) {
 	return projectroot.FindProject()
-}
-
-func jsonMarshal(v any) ([]byte, error) {
-	return json.MarshalIndent(v, "", "  ")
 }

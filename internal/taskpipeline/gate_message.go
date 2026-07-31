@@ -2,7 +2,6 @@ package taskpipeline
 
 import (
 	"fmt"
-	"strings"
 )
 
 // Gate message contract: each gate result carries one of two unambiguous
@@ -60,15 +59,6 @@ const (
 // 错误（未知 gate id、命令执行失败），后者保持普通 fmt.Errorf。
 func GateBlocked(format string, args ...any) error {
 	return fmt.Errorf(blockedPrefix+format, args...)
-}
-
-// IsGateBlocked reports whether err is a hard BLOCKED gate failure. For
-// callers/hooks that branch on contract (not just non-zero exit).
-//
-// IsGateBlocked 报告 err 是否为硬性 BLOCKED gate 失败。供基于契约分支（而非
-// 仅看非零退出）的 caller/hook 使用。
-func IsGateBlocked(err error) bool {
-	return err != nil && strings.HasPrefix(err.Error(), blockedPrefix)
 }
 
 // GateAdvisory formats a soft, non-blocking gate signal. The caller still
