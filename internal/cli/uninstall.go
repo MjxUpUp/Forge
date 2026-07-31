@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/MjxUpUp/Forge/internal/agentbridge"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/spf13/cobra"
 )
@@ -86,6 +87,19 @@ var uninstallCmd = &cobra.Command{
 			fmt.Fprintf(os.Stderr, `警告：删除 %s 失败`+"\n", dir)
 		} else {
 			fmt.Printf(`已清除 init-suggest 标记：%s`+"\n", dir)
+		}
+
+		// 2b. strip forge hooks from kimi-code's user-level config.toml (they would call a
+		// binary that no longer exists; kimi fails open on hook errors, but the noise on
+		// every tool call is not a clean uninstall)
+		//
+		// 2b. 从 kimi-code 的 user-level config.toml 剥除 forge hooks（否则它们会调用
+		// 一个已不存在的二进制；kimi 对 hook 错误 fail-open，但每次工具调用的报错
+		// 噪声不算干净卸载）
+		if stripped, err := agentbridge.StripKimiHooks(); err != nil {
+			fmt.Fprintf(os.Stderr, `警告：清理 kimi hooks 失败：%v`+"\n", err)
+		} else if stripped {
+			fmt.Println(`已清除 kimi-code config.toml 中的 forge hooks`)
 		}
 
 		// 3. plugin uninstall guidance (interactive inside agent CLI, not scriptable)
