@@ -4,7 +4,7 @@ description: "代码实施任务的全程纪律编排。Use when: 接到编码�
 metadata:
   pattern: pipeline + gate
   domain: development
-  composes: prototype-confirmation, evidence-based-proposal, tdd-cycle, test-discipline, verification-driver, code-review-gate, systematic-debugging, dev-lookup, release-readiness
+  composes: [prototype-confirmation, evidence-based-proposal, tdd-cycle, test-discipline, verification-driver, code-review-gate, systematic-debugging, dev-lookup, release-readiness]
   triggers: [{"event":"UserPromptSubmit","when":"coding_intent"},{"event":"Stop","when":"source_changed_uncommitted"}]
 ---
 

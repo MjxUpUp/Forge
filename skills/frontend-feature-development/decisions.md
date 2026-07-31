@@ -53,3 +53,20 @@ skills/ 目录无 fullstack-feature；ls skills/ 确认 backend-development/dev-
 ### Evidence
 
 frontend-aesthetics-execution 阶段 1.5 已定义 DESIGN_MD_ROOT/git clone/fallback 的可发现式约定，此处只需指向它避免双写漂移
+
+## [d-18c7729c5f662ad0-36d09564] accept
+
+- **Skill**: frontend-feature-development
+- **DecidedAt**: 2026-07-31T18:16:33Z
+
+### Diagnosis
+
+复审发现 composes 标量写法库内 11 处分裂（此前只统一了 2 处），且原决策证据声称多数已是 flow list 与事实相反——一次性根治
+
+### Revision
+
+composes 标量逗号写法改 flow list [a, b]，对齐 CONVENTIONS §4
+
+### Evidence
+
+grep 确认全库 composes 已无标量残留；forge skills validate 50/50

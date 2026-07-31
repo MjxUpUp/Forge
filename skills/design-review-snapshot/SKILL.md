@@ -4,7 +4,7 @@ description: "把现有前端项目（React/Vue/Tauri SPA）反向导出成 Pixs
 metadata:
   pattern: inversion + pipeline + gate
   domain: frontend
-  composes: ai-ui-generation-workflow, frontend-feature-development, frontend-aesthetics-execution
+  composes: [ai-ui-generation-workflow, frontend-feature-development, frontend-aesthetics-execution]
 ---
 
 # 设计审核快照：前端项目反向导入 Pixso

@@ -4,7 +4,7 @@ description: "把 UI 做好看、做风格迁移、做高级感动效的可执�
 metadata:
   pattern: inversion + pipeline
   domain: frontend
-  composes: design-system-workflow, frontend-feature-development, frontend-code-review
+  composes: [design-system-workflow, frontend-feature-development, frontend-code-review]
 ---
 
 # 前端审美执行：做好看与风格迁移

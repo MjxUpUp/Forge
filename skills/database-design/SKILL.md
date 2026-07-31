@@ -189,7 +189,7 @@ SQL 跑超过 100ms？
 forge review pass                       # 触发 schema-diff review
 
 # 2. migration 演练（staging）
-forge skills eval-cases --skill database-design
+forge skills eval-cases --skill database-design   # 首次使用先 eval-gen --skill database-design --save 建 case 集
 # 或手动跑（事务包裹，禁止 psql -f：psql 没有 --dry-run，-f 会真实执行！）
 psql <<'SQL'
 BEGIN;

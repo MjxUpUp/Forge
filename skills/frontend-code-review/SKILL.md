@@ -5,7 +5,7 @@ metadata:
   pattern: reviewer + gate
   domain: frontend
   severity-levels: block,fix,suggest
-  composes: frontend-stack-selection, frontend-feature-development
+  composes: [frontend-stack-selection, frontend-feature-development]
 ---
 
 # 前端代码审查门控
