@@ -136,9 +136,11 @@ func MarshalKimiPluginManifest(m KimiPluginManifest) ([]byte, error) {
 // /plugins install/remove is TUI-only, so the on-disk record is the only signal a CLI
 // can read. The parse is deliberately tolerant: the exact record schema is not
 // documented (kimi-code 0.31.0), so any entry whose id (or name) is "forge" counts,
-// and enablement defaults to true unless explicitly disabled — a false positive only
-// means the config.toml section gets stripped while the plugin also registers hooks
-// (the intended plugin-wins behavior), never missed hooks.
+// and enablement defaults to true unless explicitly disabled. The trade-off this
+// accepts: an unrelated third-party plugin also named "forge" (id collision, no source
+// check — checking the source would punish forks) would make Translate strip the
+// config.toml section without that plugin registering forge hooks; judged improbable
+// enough to stay a tolerant read rather than a strict one.
 //
 // The managed copy under plugins/managed/forge/ is NOT a signal: /plugins remove keeps
 // it on disk after uninstalling.
@@ -147,8 +149,10 @@ func MarshalKimiPluginManifest(m KimiPluginManifest) ([]byte, error) {
 // （$KIMI_CODE_HOME/plugins/installed.json 中有记录）。kimi 的
 // /plugins install/remove 只能在 TUI 里跑，磁盘记录是 CLI 唯一可读信号。解析刻意
 // 宽容：记录 schema 无文档（kimi-code 0.31.0），凡 id（或 name）为 "forge" 的条目
-// 即算数，启用状态默认 true 除非显式禁用——误报的后果只是 config.toml 标记段被剥、
-// plugin 同时注册 hooks（正是 plugin 优先的预期行为），绝不会漏接 hooks。
+// 即算数，启用状态默认 true 除非显式禁用。此设计接受的权衡：同名 "forge" 的无关
+// 第三方插件（id 碰撞，不校验 source——校验会误伤 fork 安装）会让 Translate 剥除
+// config.toml 标记段而该插件并不注册 forge hooks；概率足够低，故保持宽容读而非
+// 严格校验。
 //
 // plugins/managed/forge/ 的托管副本不是信号：/plugins remove 卸载后它仍留在磁盘上。
 func IsKimiPluginInstalled() bool {
