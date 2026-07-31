@@ -76,8 +76,16 @@ func runSkillTriggerCmd(cmd *cobra.Command, args []string) error {
 
 // runSkillTriggerHook 是 runHook 的 skill-trigger 特例入口：复用 runHook 已 normalize 的
 // hookInput，Go 内判定 + 渲染 + 输出 HookOutput JSON（不经 bash embed）。
-func runSkillTriggerHook(hookInput HookInput, root, version string) error {
+// kimi 下按 kimi 协议输出：skill-trigger 永不阻断（advisory），渲染文本直接打 stdout
+// （kimi 把 allow 路径 stdout 注入上下文），无渲染则静默。
+func runSkillTriggerHook(hookInput HookInput, root, version, agent string) error {
 	rendered, err := runSkillTriggerCore(hookInput, root, version, false)
+	if agent == "kimi" {
+		if err == nil && rendered != "" {
+			fmt.Print(rendered)
+		}
+		return nil
+	}
 	if err != nil {
 		// 判定异常不阻断 hook 链——skill-trigger 是 advisory 注入，fail-open。
 		fmt.Println(`{"decision":"approve"}`)

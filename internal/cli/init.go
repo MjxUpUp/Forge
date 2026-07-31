@@ -15,7 +15,7 @@ import (
 
 func init() {
 	rootCmd.AddCommand(initCmd)
-	initCmd.Flags().String("agents", "auto", "AI 编码工具: auto（自动检测）, 或逗号分隔如 claude-code,cursor")
+	initCmd.Flags().String("agents", "auto", "AI 编码工具: auto（自动检测）, 或逗号分隔如 claude-code,cursor,kimi")
 	// Deprecated no-op flags. After project-level pipeline removal mode/fresh are meaningless, kept as hidden no-op
 	// for backward compatibility: old scripts/tests running `forge init --mode medium` don't error, just have no effect.
 	//
@@ -140,8 +140,13 @@ func runInit(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  .claude/settings.local.json      — Claude Code 集成\n")
 	}
 	fmt.Printf("  .claude/CLAUDE.md                — 质量协议引用\n")
-	fmt.Printf("  AGENTS.md                        — 跨 agent 质量协议（codex/cursor/copilot/windsurf/cline）\n")
+	fmt.Printf("  AGENTS.md                        — 跨 agent 质量协议（codex/cursor/copilot/windsurf/cline/kimi）\n")
 	fmt.Printf("  .claude/skills/forge-quality/     — 质量协议 Skill\n")
+	for _, a := range agents {
+		if a == agentbridge.AgentKimi {
+			fmt.Printf("  ~/.kimi-code/config.toml         — Kimi Code 集成（user-level hooks，全项目生效）\n")
+		}
+	}
 
 	fmt.Println()
 	fmt.Println("Next step: open Claude Code in this project and describe what you want to build.")

@@ -158,7 +158,16 @@ var hookCmd = &cobra.Command{
 	Long:   "Executes the named hook script embedded in the forge binary. Extracts fields from Claude Code's stdin JSON into env vars, runs the script, and wraps its plain-text output into structured JSON.",
 	Args:   cobra.ExactArgs(1),
 	Hidden: true,
-	RunE:   runHook,
+	// Silence cobra's own error/usage printing: on kimi a block's stderr IS the reason
+	// shown to the model — cobra's "Error: ..." + usage dump would pollute it. runHook
+	// prints what each host needs itself; Execute handles the exit code.
+	//
+	// 静默 cobra 自己的错误/usage 打印：kimi 下阻断的 stderr 就是展示给模型的
+	// 原因——cobra 的 "Error: ..." + usage 会污染它。runHook 自己打印各宿主需要
+	// 的内容；退出码由 Execute 处理。
+	SilenceErrors: true,
+	SilenceUsage:  true,
+	RunE:          runHook,
 }
 
 // hookAgent specifies the non-Claude-Code stdin dialect to normalize. Each agent's translator sets it via the cross-platform
@@ -173,7 +182,7 @@ var hookCmd = &cobra.Command{
 var hookAgent string
 
 func init() {
-	hookCmd.Flags().StringVar(&hookAgent, "agent", "", "agent whose stdin dialect to normalize (windsurf|copilot)")
+	hookCmd.Flags().StringVar(&hookAgent, "agent", "", "agent whose stdin dialect to normalize (windsurf|kimi)")
 	rootCmd.AddCommand(hookCmd)
 }
 
@@ -228,6 +237,37 @@ func runHook(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("unknown hook: %s", name)
 	}
 
+	// Resolve the stdin dialect before parsing: kimi replaces the default Claude unmarshal
+	// entirely (its prompt field is a content-block array that would type-error a plain
+	// unmarshal into HookInput and warn on every call), so the agent must be known first.
+	//
+	// 先解析 stdin 方言：kimi 完全替代默认的 Claude unmarshal（它的 prompt 字段是
+	// content-block 数组，直接 unmarshal 进 HookInput 会类型错误并在每次调用时告警），
+	// 所以必须先知道 agent。
+	agent := resolveHookAgent(hookAgent, os.Getenv("FORGE_HOOK_AGENT"))
+
+	// 1. Read the host's stdin JSON.
+	//
+	// 1. 读取宿主 agent 的 stdin JSON。
+	stdinData, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		stdinData = []byte{}
+	}
+
+	var hookInput HookInput
+	if agent == "kimi" {
+		normalizeAgentStdin(agent, stdinData, &hookInput)
+	} else {
+		if len(stdinData) > 0 {
+			if err := json.Unmarshal(stdinData, &hookInput); err != nil {
+				// Log the parse failure for diagnosis, but continue with empty input.
+				//
+				// 记录解析失败以便诊断，但仍以空输入继续。
+				fmt.Fprintf(os.Stderr, "[forge] warning: hook stdin JSON parse failed: %v\n", err)
+			}
+		}
+	}
+
 	// Not in a forge project — output allow and exit silently.
 	// Global hook (skill-scan scans $HOME/.claude/skills) is relevant in any project,
 	// so it must run even without a forge project root.
@@ -238,28 +278,14 @@ func runHook(cmd *cobra.Command, args []string) error {
 	root, err := findProjectRoot()
 	if err != nil {
 		if !isGlobalHook(name) {
-			outputAllow("")
+			// kimi 的 allow 路径 stdout 会进上下文——Claude 的 JSON envelope 在
+			// 那里是噪声，kimi 下静默即可（exit 0 = allow）。
+			if agent != "kimi" {
+				outputAllow("")
+			}
 			return nil
 		}
 		root = "" // global hook：无需 project root；shCmd.Dir="" 回退到 cwd
-	}
-
-	// 1. Read Claude Code's stdin JSON.
-	//
-	// 1. 读取 Claude Code 的 stdin JSON。
-	stdinData, err := io.ReadAll(os.Stdin)
-	if err != nil {
-		stdinData = []byte{}
-	}
-
-	var hookInput HookInput
-	if len(stdinData) > 0 {
-		if err := json.Unmarshal(stdinData, &hookInput); err != nil {
-			// Log the parse failure for diagnosis, but continue with empty input.
-			//
-			// 记录解析失败以便诊断，但仍以空输入继续。
-			fmt.Fprintf(os.Stderr, "[forge] warning: hook stdin JSON parse failed: %v\n", err)
-		}
 	}
 
 	// 1b. Normalize the stdin of non-Claude-Code agents. Windsurf/Copilot use a different
@@ -275,8 +301,8 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// （task-guard/bash-guard）会 fail open。`--agent` flag（跨平台，由 translator
 	// 设置）选择方言；FORGE_HOOK_AGENT 是兜底。opencode/pi 是 code-based，直接
 	// 在 TS 里构造 Claude stdin，故此处无需 normalizer。
-	agent := resolveHookAgent(hookAgent, os.Getenv("FORGE_HOOK_AGENT"))
-	if agent != "" {
+	// kimi 已在 stdin 解析阶段完成 normalize（见上文）；其余方言在此归一化。
+	if agent != "" && agent != "kimi" {
 		normalizeAgentStdin(agent, stdinData, &hookInput)
 	}
 
@@ -290,7 +316,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// live HookInput fields from stdin, which the thin-wrapper bash cannot reach (runHook consumed
 	// stdin). Handling in Go reuses the already-normalized hookInput + agent stdin normalize.
 	if name == "skill-trigger" {
-		return runSkillTriggerHook(hookInput, root, cmd.Root().Version)
+		return runSkillTriggerHook(hookInput, root, cmd.Root().Version, agent)
 	}
 
 	// 2. Extract tool_input fields on the Go side (reliable JSON parsing).
@@ -440,9 +466,10 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// Script 输出纯文本：PASS [detail] 或 FAIL [reason]。
 	// 这里把它包成 Claude Code hook protocol JSON 格式。
 	eventName := hookInput.HookEventName
+	var detail string
 	var output HookOutput
 	if passed {
-		detail := extractDetail(stdout, "PASS")
+		detail = extractDetail(stdout, "PASS")
 		output = HookOutput{Decision: "approve"}
 		if detail != "" {
 			output.HookSpecificOutput = &HookSpecificOutput{
@@ -451,7 +478,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 			}
 		}
 	} else {
-		detail := stdout
+		detail = stdout
 		if detail == "" {
 			detail = stderr
 		}
@@ -567,9 +594,22 @@ func runHook(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// 7. Output structured JSON to Claude Code.
+	// 7. Output the result in the host's hook protocol. kimi: exit 0 = allow
+	// (stdout text is appended to context — the advisory channel); a block returns
+	// HookBlockError which Execute maps to exit 2 (stderr = reason) — the only exit
+	// code kimi treats as an intentional block; any other non-zero would fail open.
 	//
-	// 7. 向 Claude Code 输出结构化 JSON。
+	// 7. 按宿主的 hook 协议输出结果。kimi：exit 0 = 放行（stdout 文本注入
+	// 上下文——advisory 通道）；阻断返回 HookBlockError，由 Execute 映射为
+	// exit 2（stderr = 原因）——kimi 唯一认定为有意阻断的退出码，其他非零会
+	// fail-open 放行。
+	if agent == "kimi" {
+		return emitKimiOutput(passed, detail)
+	}
+
+	// 7b. Output structured JSON to Claude Code.
+	//
+	// 7b. 向 Claude Code 输出结构化 JSON。
 	outputJSON, err := json.Marshal(output)
 	if err != nil {
 		// Should not happen — HookOutput only contains strings.
@@ -768,6 +808,44 @@ func outputAllow(msg string) {
 	}
 	data, _ := json.Marshal(out)
 	fmt.Println(string(data))
+}
+
+// HookBlockError signals an intentional hook block for hosts whose protocol selects
+// behavior by exit code (kimi: 2 = intentional block, any other non-zero = fail-open
+// allow). Execute maps it to os.Exit(2); the reason is written to stderr at the
+// emission site (kimi shows stderr to the model as the block reason).
+//
+// HookBlockError 表示一次有意的 hook 阻断，面向按退出码区分行为的宿主
+// （kimi：2 = 有意阻断，其他非零 = fail-open 放行）。Execute 把它映射为
+// os.Exit(2)；原因在输出处写入 stderr（kimi 把 stderr 作为阻断原因展示给模型）。
+type HookBlockError struct {
+	Reason string
+}
+
+func (e *HookBlockError) Error() string { return e.Reason }
+
+// emitKimiOutput renders the hook result in kimi's hook protocol: allow = exit 0 with
+// the detail as plain stdout text (kimi appends allow-path stdout to context — the
+// advisory channel, equivalent to Claude's additionalContext); block = reason on
+// stderr + HookBlockError (→ exit 2). Returning HookBlockError instead of calling
+// os.Exit here keeps runHook's defers (temp script cleanup) running.
+//
+// emitKimiOutput 按 kimi 的 hook 协议渲染结果：放行 = exit 0，detail 以纯文本打
+// stdout（kimi 把放行路径的 stdout 注入上下文——advisory 通道，等价 Claude 的
+// additionalContext）；阻断 = 原因写 stderr + HookBlockError（→ exit 2）。返回
+// HookBlockError 而非在此 os.Exit，是为了让 runHook 的 defer（临时脚本清理）照常执行。
+func emitKimiOutput(passed bool, detail string) error {
+	if passed {
+		if detail != "" {
+			fmt.Println(detail)
+		}
+		return nil
+	}
+	if detail == "" {
+		detail = "forge hook blocked the action"
+	}
+	fmt.Fprintln(os.Stderr, detail)
+	return &HookBlockError{Reason: detail}
 }
 
 // shouldRecordCheck decides whether a hook result is worth writing a checklog entry. It is the

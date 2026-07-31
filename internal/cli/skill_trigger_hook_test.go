@@ -185,7 +185,7 @@ func TestRunSkillTriggerHook_HitOutput(t *testing.T) {
 			HookEventName: "UserPromptSubmit",
 			Prompt:        "帮我实现功能",
 			SessionID:     "cli-test-hook-hit",
-		}, "", "v"); err != nil {
+		}, "", "v", ""); err != nil {
 			t.Errorf("runSkillTriggerHook: %v", err)
 		}
 	})
@@ -216,7 +216,7 @@ func TestRunSkillTriggerHook_NoHitOutput(t *testing.T) {
 		if err := runSkillTriggerHook(HookInput{
 			HookEventName: "PostToolUse", // 不匹配 Stop
 			SessionID:     "cli-test-hook-nohit",
-		}, "", "v"); err != nil {
+		}, "", "v", ""); err != nil {
 			t.Errorf("runSkillTriggerHook: %v", err)
 		}
 	})
@@ -265,7 +265,7 @@ func TestRunSkillTriggerHook_DeniedSkillSkipped(t *testing.T) {
 			HookEventName: "UserPromptSubmit",
 			Prompt:        "实现",
 			SessionID:     "cli-test-deny",
-		}, "", "v")
+		}, "", "v", "")
 	})
 	if strings.Contains(out, "code-review-gate") {
 		t.Errorf("denied skill 不应注入，got:\n%s", out)
