@@ -218,7 +218,10 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 		return nil, err
 	}
 	if len(opts.SkillFilter) > 0 {
-		names = filterNames(names, opts.SkillFilter)
+		names, err = filterNames(names, opts.SkillFilter)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	targetDirs, err := TargetDirs(opts.Targets, opts.Global, opts.ProjectSkillsDir)
@@ -701,16 +704,16 @@ func detectState(canonicalSkillDir, targetSkillDir string) string {
 }
 
 // treesInSync reports whether two skill trees have identical content. Walks both
-// trees with copyTree's exact rules (same distSkipDirs, symlinks not followed —
-// copyTree skips them, so they carry no content to compare), hashes every regular
-// file, and requires the relative-path sets AND per-file hashes to be equal. Any
-// missing/extra/different file → not in sync. Any read error → conservatively not
-// in sync (drift), never falsely in-sync.
+// trees with copyTree's exact rules (same distSkipDirs, links not followed — but
+// their target strings ARE compared, so a link-only difference is drift), hashes
+// every regular file, and requires the relative-path sets AND per-entry hashes
+// to be equal. Any missing/extra/different entry → not in sync. Any read error →
+// conservatively not in sync (drift), never falsely in-sync.
 //
 // treesInSync 判断两棵 skill 树内容是否完全一致。双侧按 copyTree 同款规则遍历
-// （同 distSkipDirs、symlink 不跟随——copyTree 会跳过它们，无内容可比），逐文件
-// 算 hash，要求相对路径集合与逐文件 hash 都相等。任一文件缺失/新增/内容不同 →
-// 非同步。任何读取错误 → 保守判非同步（drift），绝不误判为同步。
+// （同 distSkipDirs、link 不跟随——但其 target 串参与对比，仅 link 差异也判
+// drift），逐文件算 hash，要求相对路径集合与逐条目 hash 都相等。任一条目
+// 缺失/新增/内容不同 → 非同步。任何读取错误 → 保守判非同步（drift），绝不误判为同步。
 func treesInSync(src, dst string) bool {
 	srcFiles := hashTree(src)
 	dstFiles := hashTree(dst)
@@ -725,12 +728,14 @@ func treesInSync(src, dst string) bool {
 	return true
 }
 
-// hashTree walks root and returns rel-path → md5 hex for every regular file,
-// following copyTree's walk rules. Returns nil on any walk/read error (treated
-// as "cannot prove identical" by the caller).
+// hashTree walks root and returns rel-path → md5 hex for every regular file
+// (links — symlinks and Windows junctions — contribute a "link-" prefixed hash
+// of their target string), following copyTree's walk rules. Returns nil on any
+// walk/read error (treated as "cannot prove identical" by the caller).
 //
-// hashTree 遍历 root 返回 相对路径 → md5 hex（仅常规文件），遍历规则与 copyTree
-// 一致。任何遍历/读取错误返回 nil（调用方按"无法证明一致"处理）。
+// hashTree 遍历 root 返回 相对路径 → md5 hex（常规文件；link——symlink 与
+// Windows junction——以其 target 串的 "link-" 前缀 hash 参与），遍历规则与
+// copyTree 一致。任何遍历/读取错误返回 nil（调用方按"无法证明一致"处理）。
 func hashTree(root string) map[string]string {
 	out := map[string]string{}
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -743,10 +748,34 @@ func hashTree(root string) map[string]string {
 			}
 			return nil
 		}
-		// Do not follow reparse points (same as copyTree: links are skipped, not expanded).
+		// Do not follow reparse points (same as copyTree: links are not expanded),
+		// but a link is NOT content-free — its target string IS its content.
+		// Skipping links entirely would judge trees differing ONLY by a link
+		// (extra link, different target, single-side link) as in-sync, and
+		// copy-in-sync → link mode deletes the target tree with os.RemoveAll and
+		// no backup. Detect by !IsRegular, not ModeSymlink alone: WalkDir reports
+		// Windows junctions as ModeIrregular (type "?"), not ModeSymlink — but
+		// os.Readlink resolves both. A failed Readlink (or any other non-regular
+		// entry: pipe/socket/device) is an error → conservatively drift.
 		//
-		// 不跟随 reparse point（与 copyTree 一致：link 跳过不展开）
-		if d.Type()&os.ModeSymlink != 0 {
+		// 不跟随 reparse point（与 copyTree 一致：link 不展开），但 link 并非
+		// 无内容——其 target 串就是它的内容。完全跳过 link 会把"唯一差异是
+		// link"（新增 link / 指向不同 / 单侧存在）的两棵树误判为同步，而
+		// copy-in-sync → link 会 os.RemoveAll 整树且无备份。用 !IsRegular 判定
+		// 而非仅 ModeSymlink：WalkDir 把 Windows junction 报为 ModeIrregular
+		// （type "?"）而非 ModeSymlink——但 os.Readlink 两者都能解析。Readlink
+		// 失败（或其他非常规条目：管道/socket/设备）按错误处理 → 保守判 drift。
+		if !d.Type().IsRegular() {
+			rel, rerr := filepath.Rel(root, path)
+			if rerr != nil {
+				return rerr
+			}
+			target, lerr := os.Readlink(path)
+			if lerr != nil {
+				return lerr
+			}
+			sum := md5.Sum([]byte(target))
+			out[rel] = "link-" + hex.EncodeToString(sum[:])[:10]
 			return nil
 		}
 		rel, rerr := filepath.Rel(root, path)
@@ -854,18 +883,34 @@ func ListSkills(canonical string) ([]string, error) {
 	return names, nil
 }
 
-func filterNames(all, want []string) []string {
+// filterNames filters skill names by whitelist (preserves canonical order). Any
+// requested name not present in the canonical library is an error — same
+// semantics and message as the CLI layer's filterSkillNames: silently filtering
+// a misspelled --skill down to an empty set would report "0 installed, exit 0",
+// a false green.
+//
+// filterNames 按白名单过滤 skill 名（保持 canonical 顺序）。任何请求的名字不在
+// canonical 库中直接报错——与 CLI 层 filterSkillNames 同款语义与文案：静默把
+// 拼错的 --skill 过滤成空集会报"安装 0 个，exit 0"，假绿。
+func filterNames(all, want []string) ([]string, error) {
 	set := map[string]bool{}
-	for _, w := range want {
-		set[w] = true
-	}
-	var out []string
 	for _, a := range all {
-		if set[a] {
+		set[a] = true
+	}
+	wantSet := map[string]bool{}
+	for _, w := range want {
+		if !set[w] {
+			return nil, fmt.Errorf("skill %q 不在 canonical 库中", w)
+		}
+		wantSet[w] = true
+	}
+	out := make([]string, 0, len(want))
+	for _, a := range all {
+		if wantSet[a] {
 			out = append(out, a)
 		}
 	}
-	return out
+	return out, nil
 }
 
 // TargetDirs resolves the target-tool → target-skills-directory map. target=all expands to

@@ -591,10 +591,26 @@ has_write_pattern() {
 }
 
 # --- Forge command detection (for file-sentinel exemption) ---
-# case-glob, not grep -E — keeps this BSD-safe too.
+# Strict whole-command form, not a substring: the whitespace-trimmed command
+# must START with "forge " (or be exactly "forge") AND carry no redirect or
+# command separator (> | ; & backtick $(). The old substring match (" forge "
+# anywhere) let 'echo evil > .claude/settings.json && forge --version' walk
+# straight through the CONFIG-quarantine exemption — harmless while the CONFIG
+# branch was blind to the gitignored .claude/settings* / .forge/hooks/*, but a
+# real bypass now that the .cfg manifest covers them. case-glob only, no
+# grep -E — keeps this BSD-safe. (The backtick literal cannot appear in this
+# Go raw string, so it is matched via a printf-built variable.)
 IS_FORGE_CMD=0
-case " $COMMAND " in
-  *" forge "*) IS_FORGE_CMD=1 ;;
+_FORGE_TRIMMED="${COMMAND#"${COMMAND%%[![:space:]]*}"}"
+_FORGE_TRIMMED="${_FORGE_TRIMMED%"${_FORGE_TRIMMED##*[![:space:]]}"}"
+case "$_FORGE_TRIMMED" in
+  forge|"forge "*)
+    _BT=$(printf '\140')
+    case "$_FORGE_TRIMMED" in
+      *">"*|*"|"*|*";"*|*"&"*|*"${_BT}"*|*'$('*) : ;;
+      *) IS_FORGE_CMD=1 ;;
+    esac
+    ;;
 esac
 
 # --- Snapshot file state (always — file-sentinel is defense-in-depth) ---
@@ -604,7 +620,7 @@ esac
 # untracked source, during an otherwise read-only ls/cat) needs a pre-command
 # baseline for every command; gating the snapshot on write-detection blinds it
 # (regression caught by TestHook_FileSentinel_QuarantinesBashWrittenSource). The
-# 2 git calls per command are the cost of that defense — accepted over the false
+# 4 git calls per command are the cost of that defense — accepted over the false
 # economy of skipping them.
 #
 # refactor-data-home commit D: gates/tasks/specs/reviews 迁用户级 DataDir
@@ -615,10 +631,28 @@ esac
 # git diff --cached is part of the snapshot AND of file-sentinel's current
 # state (kept symmetric there): a write-then-git-add in one command must not
 # escape detection through the staged tree.
+#
+# Three-way enumeration with PER-COMMAND exit codes captured (a piped brace
+# group would run in a subshell and lose the status). The .ok completion
+# marker below is written ONLY when every enumeration succeeded (plus a
+# git-dir liveness probe): .ok must mean "git enumeration succeeded", not
+# "bash-guard reached the marker line". A transient git failure at snapshot
+# time (index.lock, cwd drift) with git healthy again at sentinel time would
+# otherwise yield an EMPTY baseline WITH .ok → file-sentinel reads the entire
+# working tree as new violations → mass quarantine — the exact P0 scenario the
+# .ok distinction exists to prevent. On any failure the marker stays absent and
+# file-sentinel takes its snapshot-failed fail-open WARN branch (its designed
+# purpose).
+SNAP_OK=1
+G1=$(git diff --name-only 2>/dev/null) || SNAP_OK=0
+G2=$(git diff --cached --name-only 2>/dev/null) || SNAP_OK=0
+G3=$(git ls-files --others --exclude-standard 2>/dev/null) || SNAP_OK=0
+git rev-parse --git-dir >/dev/null 2>&1 || SNAP_OK=0
 {
-  git diff --name-only 2>/dev/null || true
-  git diff --cached --name-only 2>/dev/null || true
-  git ls-files --others --exclude-standard 2>/dev/null || true
+  [ -n "$G1" ] && printf '%s\n' "$G1"
+  [ -n "$G2" ] && printf '%s\n' "$G2"
+  [ -n "$G3" ] && printf '%s\n' "$G3"
+  true
 } | sort -u > "$SNAP_INV" 2>/dev/null || true
 # Legacy session-keyed copy, kept in sync for backward compatibility (see the
 # per-invocation pairing note above).
@@ -626,12 +660,14 @@ cp -f "$SNAP_INV" "$SNAPSHOT_FILE" 2>/dev/null || true
 
 # Snapshot completion marker. file-sentinel uses it to tell a legitimate EMPTY
 # baseline (clean working tree — the common case) apart from a silently failed
-# snapshot (git errors swallowed by 2>/dev/null): marker present + empty list =
-# clean baseline → normal NEW_CHANGES flow; marker missing + snapshot file
-# present = failed snapshot → fail-open WARN. Without this distinction a first
-# Bash source write in a clean repo was fail-opened forever.
-: > "${SNAP_INV}.ok" 2>/dev/null || true
-: > "${SNAPSHOT_FILE}.ok" 2>/dev/null || true
+# snapshot: marker present + empty list = clean baseline → normal NEW_CHANGES
+# flow; marker missing + snapshot file present = failed snapshot → fail-open
+# WARN. Written ONLY when SNAP_OK=1 (all three enumerations + the liveness
+# probe succeeded) — see the enumeration comment above.
+if [ "$SNAP_OK" -eq 1 ]; then
+  : > "${SNAP_INV}.ok" 2>/dev/null || true
+  : > "${SNAPSHOT_FILE}.ok" 2>/dev/null || true
+fi
 
 # Git-independent config manifest (see forge_cfg_manifest above): covers the
 # gitignored self-protection targets the git lists can never see.
@@ -931,6 +967,12 @@ const FileSentinelHook = `#!/bin/bash
 # Compares against PreToolUse bash-guard snapshot and quarantines violations.
 # NEVER deletes user files — always moves to <DataDir>/quarantine/ for recovery.
 # Only checks source code files and Forge config — ignores all other changes.
+#
+# Trust boundary: the snapshot/.ok/.cfg baseline lives in the agent-writable
+# TMPDIR, so an audited command could rewrite or plant the baseline between
+# PreToolUse and PostToolUse. This defense assumes TMPDIR integrity — it stops
+# accidental and runaway writes, NOT adversarial tampering by the command
+# itself.
 set -eo pipefail
 
 TASK_REF="${FORGE_TASK_REF:-}"
@@ -1121,9 +1163,26 @@ CONFIG_CHANGES=$(
 [ -z "$SOURCE_CHANGES" ] && [ -z "$CONFIG_CHANGES" ] && { echo "PASS"; exit 0; }
 
 # Helper: quarantine files — NEVER delete, always preserve for recovery.
-# Tracked files: moved to quarantine, then HEAD restored from git.
-# Untracked files: moved to quarantine (not in git, so can't restore from HEAD).
+# Tracked files: moved to quarantine, then restored to the HEAD version
+# (worktree AND index). Untracked files: moved to quarantine (not in git, so
+# can't restore from HEAD).
 # All files are recoverable: cp -r <DataDir>/quarantine/<session-id>/* .
+#
+# restore_head <file>: return a tracked path to its HEAD state — worktree AND
+# index. Plain "git checkout --" restores from the INDEX, so a staged violation
+# (detected via git diff --cached) would be put right back into the worktree
+# with its staged entry kept — the quarantine silently undone. checkout HEAD
+# clears the staged entry too; staged-new files (absent in HEAD) are dropped
+# from the index instead (their worktree content is already in quarantine).
+restore_head() {
+  local f="$1"
+  if git cat-file -e "HEAD:$f" 2>/dev/null; then
+    git checkout HEAD -- "$f" 2>/dev/null
+  else
+    git rm -q --cached -- "$f" 2>/dev/null
+  fi
+}
+
 quarantine_files() {
   local files="$1"
   # refactor-data-home commit D: quarantine 进用户级 DataDir（forge data-dir 拿路径）；
@@ -1153,19 +1212,22 @@ quarantine_files() {
       failed="${failed} ${f}"
       # mv failed AND the file is currently missing (e.g. the command deleted
       # it): nothing left to quarantine, but RESTORE is an independent action —
-      # a tracked file is still recovered from HEAD, so a reported FAIL never
-      # leaves the user's file deleted. Restore failures surface via "failed".
+      # a tracked file is still recovered from HEAD (worktree AND index, so a
+      # staged variant cannot resurrect the violation), so a reported FAIL
+      # never leaves the user's file deleted. Restore failures surface via
+      # "failed".
       if [ ! -e "$f" ] && git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
-        if git checkout -- "$f" 2>/dev/null; then
+        if restore_head "$f"; then
           restored="${restored} ${f}"
         fi
       fi
       continue
     fi
 
-    # For tracked files, restore HEAD version from git
+    # For tracked files, restore the HEAD version (worktree AND index — clears
+    # any staged variant of the violation; staged-new entries are dropped).
     if git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
-      git checkout -- "$f" 2>/dev/null || true
+      restore_head "$f" || true
     fi
 
     quarantined="${quarantined} ${f}"
