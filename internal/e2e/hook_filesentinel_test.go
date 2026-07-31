@@ -275,18 +275,32 @@ func TestHook_FileSentinel_FailOpenOnEmptySnapshot(t *testing.T) {
 		return out.String(), errBuf.String(), err
 	}
 
-	// bash-guard writes a snapshot; we then simulate the failure mode by
-	// truncating it to empty — exactly what happens when its git commands fail
-	// under 2>/dev/null.
+	// bash-guard writes a per-invocation snapshot; we then simulate the failure
+	// mode by truncating it to empty and removing the .ok completion marker —
+	// exactly what happens when its git commands fail under 2>/dev/null.
 	bashIn := hookStdin(t, sid, "PreToolUse", "Bash", map[string]any{
 		"command": "git diff --stat",
 	})
 	if _, _, err := runHook("bash-guard", bashIn); err != nil {
 		t.Fatalf("bash-guard failed unexpectedly: %v", err)
 	}
-	snap := filepath.Join(tmp, "forge-snapshot-"+sid)
-	if err := os.WriteFile(snap, []byte(""), 0o644); err != nil {
-		t.Fatal(err)
+	snaps, err := filepath.Glob(filepath.Join(tmp, "forge-snapshot-"+sid+"-*"))
+	if err != nil || len(snaps) == 0 {
+		t.Fatalf("bash-guard must write a per-invocation snapshot, found %v (err %v)", snaps, err)
+	}
+	for _, s := range snaps {
+		switch {
+		case strings.HasSuffix(s, ".ok"):
+			if err := os.Remove(s); err != nil {
+				t.Fatal(err)
+			}
+		case strings.HasSuffix(s, ".cfg"):
+			// config-manifest sidecar — leave as-is
+		default:
+			if err := os.WriteFile(s, []byte(""), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 
 	// file-sentinel: empty snapshot + working-tree source + read-only command.
@@ -343,10 +357,13 @@ func TestHook_FileSentinel_FailOpenOnReadOnlyCommand(t *testing.T) {
 	if _, _, err := runHook("bash-guard", bashIn); err != nil {
 		t.Fatalf("bash-guard failed unexpectedly: %v", err)
 	}
-	// Verify bash-guard recorded an EMPTY write-flag (read-only command).
-	wflag := filepath.Join(tmp, "forge-write-"+sid)
-	if info, err := os.Stat(wflag); err != nil {
-		t.Fatalf("bash-guard must create write-flag file for secondary gate, missing: %v", err)
+	// Verify bash-guard recorded an EMPTY per-invocation write-flag (read-only command).
+	wflags, err := filepath.Glob(filepath.Join(tmp, "forge-write-"+sid+"-*"))
+	if err != nil || len(wflags) != 1 {
+		t.Fatalf("bash-guard must create exactly one per-invocation write-flag for the secondary gate, found %v (err %v)", wflags, err)
+	}
+	if info, serr := os.Stat(wflags[0]); serr != nil {
+		t.Fatalf("stat write-flag: %v", serr)
 	} else if info.Size() != 0 {
 		t.Fatalf("read-only command must produce EMPTY write-flag, got size %d", info.Size())
 	}

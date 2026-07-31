@@ -50,43 +50,22 @@ func buildQualitySkillContent(projectDir string, proto *protocol.Protocol) strin
 	//
 	// 质量标准
 	sb.WriteString("## 质量标准\n\n")
-	for _, s := range proto.Standards {
-		if !s.Enabled {
-			continue
-		}
-		icon := "🔴"
-		switch s.Severity {
-		case "warning":
-			icon = "🟡"
-		case "info":
-			icon = "🔵"
-		}
-		hookInfo := ""
-		if s.EnforceHook != "" {
-			hookInfo = fmt.Sprintf("（自动检查: %s）", s.EnforceHook)
-		}
-		sb.WriteString(fmt.Sprintf("- %s **%s**: %s %s\n", icon, s.Name, s.Description, hookInfo))
-	}
+	protocol.RenderStandards(&sb, proto.Standards, protocol.StandardRenderStyle{
+		SeverityLabel:  protocol.EmojiSeverityLabel,
+		HookInfoFormat: "（自动检查: %s）",
+		LineFormat:     "- %s **%s**: %s %s\n",
+	})
 	sb.WriteString("\n")
 
 	// Session rules.
 	//
 	// session 规则
 	sb.WriteString("## 会话行为规则\n\n")
-	for _, r := range proto.SessionRules {
-		prefix := "必须"
-		if !r.Mandatory {
-			prefix = "建议"
-		}
-		trigger := ""
-		switch r.Trigger {
-		case "on_edit":
-			trigger = "（修改代码时）"
-		case "on_commit":
-			trigger = "（提交代码时）"
-		}
-		sb.WriteString(fmt.Sprintf("- [%s] %s %s\n", prefix, r.Instruction, trigger))
-	}
+	protocol.RenderSessionRules(&sb, proto.SessionRules, protocol.SessionRuleRenderStyle{
+		MandatoryLabel: protocol.CNMandatoryLabel,
+		TriggerSuffix:  protocol.CNTriggerSuffix,
+		LineFormat:     "- [%s] %s %s\n",
+	})
 	sb.WriteString("\n")
 
 	// Task Bridge Protocol section (task/session sync).

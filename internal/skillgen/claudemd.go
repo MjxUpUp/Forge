@@ -181,42 +181,12 @@ func buildForgeSection(forClaude bool) string {
 }
 
 // replaceForgeSection replaces the content between FORGE:START and FORGE:END markers;
-// all content outside the markers is preserved as-is.
+// all content outside the markers is preserved as-is. Thin wrapper over
+// util.ReplaceMarkedSection (shared with agentbridge's .windsurfrules upsert).
 //
 // replaceForgeSection 替换 FORGE:START 与 FORGE:END 标记之间的内容，
-// 标记外的所有内容原样保留。
+// 标记外的所有内容原样保留。util.ReplaceMarkedSection 的薄封装
+// （与 agentbridge 的 .windsurfrules upsert 共享）。
 func replaceForgeSection(content, newSection string) string {
-	startIdx := strings.Index(content, forgeSectionStart)
-	endIdx := strings.Index(content, forgeSectionEnd)
-
-	if startIdx == -1 || endIdx == -1 || endIdx <= startIdx {
-		// Markers not found — append the section.
-		//
-		// 未找到标记——追加该 section
-		return content + "\n" + newSection
-	}
-
-	// Replace content between the markers.
-	//
-	// 替换标记之间的内容
-	before := content[:startIdx]
-	after := content[endIdx+len(forgeSectionEnd):]
-
-	// The trailing newline of newSection comes from forgeSectionEnd+newline; TrimRight it first,
-	// to precisely control the spacing between markers and the surrounding content.
-	//
-	// newSection 末尾的换行来自 forgeSectionEnd+换行，先 TrimRight 掉它，
-	// 以精确控制标记之间以及与后续内容之间的间距
-	section := strings.TrimRight(newSection, "\n")
-
-	result := before + section + "\n"
-
-	// Strip leading blank lines from the after-content.
-	//
-	// 清除 after-content 的前导空白
-	after = strings.TrimLeft(after, "\n")
-	if after != "" {
-		result += "\n" + after
-	}
-	return result
+	return util.ReplaceMarkedSection(content, newSection, forgeSectionStart, forgeSectionEnd)
 }

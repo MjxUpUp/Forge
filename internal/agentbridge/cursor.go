@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/hooks"
+	"github.com/MjxUpUp/Forge/internal/protocol"
 )
 
 // CursorTranslator generates .cursor/hooks.json (real, block-capable lifecycle hooks)
@@ -86,36 +87,21 @@ func buildCursorMDC(input *TranslationInput) string {
 	//
 	// 质量标准段
 	sb.WriteString("## 质量标准\n\n")
-	for _, s := range input.Protocol.Standards {
-		if !s.Enabled {
-			continue
-		}
-		icon := "🔴"
-		switch s.Severity {
-		case "warning":
-			icon = "🟡"
-		case "info":
-			icon = "🔵"
-		}
-		hookInfo := ""
-		if s.EnforceHook != "" {
-			hookInfo = fmt.Sprintf(" (enforced: %s)", s.EnforceHook)
-		}
-		sb.WriteString(fmt.Sprintf("- %s **%s**: %s%s\n", icon, s.Name, s.Description, hookInfo))
-	}
+	protocol.RenderStandards(&sb, input.Protocol.Standards, protocol.StandardRenderStyle{
+		SeverityLabel:  protocol.EmojiSeverityLabel,
+		HookInfoFormat: " (enforced: %s)",
+		LineFormat:     "- %s **%s**: %s%s\n",
+	})
 	sb.WriteString("\n")
 
 	// Session rules section.
 	//
 	// 会话规则段
 	sb.WriteString("## 会话行为规则\n\n")
-	for _, r := range input.Protocol.SessionRules {
-		prefix := "[MUST]"
-		if !r.Mandatory {
-			prefix = "[SHOULD]"
-		}
-		sb.WriteString(fmt.Sprintf("- %s %s\n", prefix, r.Instruction))
-	}
+	protocol.RenderSessionRules(&sb, input.Protocol.SessionRules, protocol.SessionRuleRenderStyle{
+		MandatoryLabel: protocol.MustShouldLabel,
+		LineFormat:     "- %[1]s %[2]s\n",
+	})
 	sb.WriteString("\n")
 
 	// Hook info section.

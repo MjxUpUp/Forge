@@ -232,3 +232,30 @@ func TestQualitySkillDropsRemovedEscapeHatch(t *testing.T) {
 		t.Error("generated skill must not reference removed FORGE_SKIP_VERIFY escape hatch")
 	}
 }
+
+// TestQualitySkillRenderedViaSharedHelper pins the 5-copies → protocol.Render*
+// refactor on the skillgen side: the generated skill's standards section must
+// equal protocol.RenderStandards output with the skillgen style (emoji/必须),
+// proving the shared helper is really wired in.
+//
+// TestQualitySkillRenderedViaSharedHelper 钉住 skillgen 侧的 5 份 →
+// protocol.Render* 重构：生成 skill 的质量标准段必须与 protocol.RenderStandards
+// 用 skillgen 风格参数的输出一致，证明共享 helper 真实接线。
+func TestQualitySkillRenderedViaSharedHelper(t *testing.T) {
+	proto := &protocol.Protocol{
+		Version: "1",
+		Standards: []protocol.Standard{
+			{ID: "compile", Name: "编译必须通过", Description: "每次修改后确认编译通过", Severity: "error", Enabled: true},
+		},
+		SessionRules: []protocol.SessionRule{
+			{Instruction: "修改前先说意图", Mandatory: true, Trigger: "on_edit"},
+		},
+	}
+	content := buildQualitySkillContent(t.TempDir(), proto)
+	if !strings.Contains(content, "🔴 **编译必须通过**: 每次修改后确认编译通过") {
+		t.Error("generated skill standards section does not match shared-helper emoji rendering")
+	}
+	if !strings.Contains(content, "[必须] 修改前先说意图") {
+		t.Error("generated skill session rules section does not match shared-helper 必须/建议 rendering")
+	}
+}
