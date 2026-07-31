@@ -12,12 +12,13 @@ import (
 
 // KimiTranslator wires forge hooks into kimi-code's user-level config.toml.
 //
-// kimi-code has no plugin marketplace and no project-level hook config (its project-local
-// .kimi-code/local.toml only carries [workspace]); lifecycle hooks live exclusively in the
-// [[hooks]] array of $KIMI_CODE_HOME/config.toml (~/.kimi-code/config.toml). This makes kimi
-// a user-level host like the Claude Code plugin: hooks fire in every project, and forge's
-// global hooks (init-suggest/mcp-scan/skill-scan) plus the allow-and-exit behavior of
-// project-scoped hooks in non-forge projects are exactly designed for that.
+// kimi-code has no plugin marketplace dependency for forge: the committed
+// .kimi-plugin/plugin.json at the repo root registers the full hook set when installed
+// via /plugins install. Without the plugin, lifecycle hooks live in the [[hooks]] array
+// of $KIMI_CODE_HOME/config.toml (~/.kimi-code/config.toml) — written by this translator.
+// When the plugin is installed, Translate strips the config.toml section instead
+// (plugin wins, no double-run). Both paths are user-level and machine-wide — like the
+// Claude Code plugin model.
 //
 // The kimi hook protocol differs from Claude Code's in two ways, both handled at the
 // `forge hook <name> --agent kimi` layer (internal/cli/hook.go, hook_normalize.go):
@@ -35,12 +36,14 @@ import (
 //
 // KimiTranslator 把 forge hook 接线进 kimi-code 的 user-level config.toml。
 //
-// kimi-code 没有 plugin marketplace，也没有项目级 hook 配置（项目本地
-// .kimi-code/local.toml 只承载 [workspace]）；lifecycle hook 只存在于
-// $KIMI_CODE_HOME/config.toml（~/.kimi-code/config.toml）的 [[hooks]] 数组。这使
-// kimi 成为与 Claude Code plugin 同类的 user-level 宿主：hook 在每个项目触发，
-// forge 的 global hook（init-suggest/mcp-scan/skill-scan）以及项目级 hook 在非
-// forge 项目的 allow-and-exit 行为正是为此设计。
+// kimi-code 对 forge 无 plugin marketplace 依赖：仓库根提交的
+// .kimi-plugin/plugin.json 经 /plugins install 安装即注册全部 hook。未装 plugin 时，
+// lifecycle hook 写在 $KIMI_CODE_HOME/config.toml（~/.kimi-code/config.toml）的
+// [[hooks]] 数组——由本 translator 写入。plugin 已装时 Translate 改为剥除
+// config.toml 标记段（plugin 优先，不双跑）。两条路径都是 user-level 全机器生效——
+// 与 Claude Code plugin 模型同类：hook 在每个项目触发，forge 的 global hook
+// （init-suggest/mcp-scan/skill-scan）以及项目级 hook 在非 forge 项目的
+// allow-and-exit 行为正是为此设计。
 //
 // kimi 的 hook 协议与 Claude Code 有两处差异，都在
 // `forge hook <name> --agent kimi` 层处理（internal/cli/hook.go、hook_normalize.go）：
