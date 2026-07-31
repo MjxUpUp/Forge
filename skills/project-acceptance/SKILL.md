@@ -37,7 +37,7 @@ metadata:
 | 测试是否全部通过 | Rust: `cargo test --all` / 前端: `npm test` / Go: `go test ./...` | exit code 0，且测试数 >0（配合上一项防"无测试假绿"）|
 | 最高级别测试通过 | 查 `#[ignore]` live 测试 / `tests/integration/` / `e2e/` 目录是否存在，存在则必跑 | 有集成/E2E 必须跑过；只有单元 ≠ 通过 |
 | Lint | Rust: `cargo clippy -- -D warnings` / 前端: `npm run lint`（eslint/biome）/ Go: `go vet ./...` | exit code 0，无 warning |
-| 代码坏味道 | 跑 `grep -nE 'fn .{50,}|if .{5,}' src/` 找过长函数/深嵌套；或用 `plato`/`complexity-report` 跑圈复杂度 | 无函数圈复杂度 >10（warning）/>20（阻断）|
+| 代码坏味道 | 用 `plato` / `complexity-report` / `lizard` 跑圈复杂度 | 无函数圈复杂度 >10（warning）/>20（阻断）|
 | 错误处理 | `grep -rnE 'catch\s*\([^)]*\)\s*\{\s*\}|unwrap\(\)|\.ok\(\);|忽略|todo!\(\)' src/` | 无空 catch/无脑 unwrap/吞错 |
 | 安全 | `grep -rnE 'sk-|ghp_|password\s*=|api_key\s*=' src/`；`grep -rnE 'SELECT.*\+|exec\(' src/` 找 SQL 拼接/命令注入 | 无硬编码密钥、无拼接 SQL、无未校验输入 |
 | 全局中间件可配置 | `grep -rnE 'rate.?limit|cors|auth.*timeout' config/` 或查配置文件 | 限流/CORS/认证超时在 Config 里可调，不在代码里写死 |

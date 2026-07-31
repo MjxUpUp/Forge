@@ -4,7 +4,7 @@ description: "架构决策记录管理。Use when: 做架构选择时、评估�
 metadata:
   pattern: inversion + generator
   domain: architecture
-  steps: 7
+  steps: 5
 ---
 
 # 架构决策记录

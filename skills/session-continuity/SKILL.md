@@ -118,7 +118,7 @@ git diff --stat
 
 ### 结构化记忆（Memory 模式）
 
-同时追加一条机器可读记录到 `~/.forge/research/session-history.jsonl`（稳定目录，不随项目丢失）：
+同时追加一条机器可读记录到 `~/.forge/research/session-history.jsonl`（纯 agent 手写约定，无任何 forge 命令读写它——但路径在用户级目录，不随项目丢失）：
 
 ```json
 {"project":"项目名","date":"YYYY-MM-DD","completed":["完成项"],"blocked":["阻塞项"],"next":["下一步"],"commit":"最新 commit SHA"}
@@ -168,4 +168,4 @@ git diff --stat
 - **过时的子代理工作**：检查 `git diff` 和 `git stash list`。
 - **计划文件漂移**：从磁盘读取计划，不要从记忆中读——可能已被更新。
 - **依赖更新**：如果间隔较长，可能需要 `cargo update` / `pnpm install` / `npm install`。
-- **调研任务恢复**：恢复调研时重点检查已有文档的结构和最后编辑位置，不要凭记忆假设内容。若调研产出在飞书（且有 `lark-cli`），用 `lark-cli docs +fetch --scope outline` 获取实际结构；否则读本地 run_dir 的报告文件。
+- **调研任务恢复**：恢复调研时重点检查已有文档的结构和最后编辑位置，不要凭记忆假设内容。若调研产出在飞书（且有 `lark-cli`），用 `lark-cli docs +fetch --doc-format markdown` 获取实际内容（若你的 lark-cli 版本支持 `--scope outline`，可只取结构大纲）；否则读本地 run_dir 的报告文件。

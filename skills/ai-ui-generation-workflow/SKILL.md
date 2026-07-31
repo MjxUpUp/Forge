@@ -73,7 +73,7 @@ SDD 工具（任选其一对接 Cursor/Claude Code/Cline）：
 | 有 Figma / Pixso 设计稿 | 走模板 C（设计稿转代码） |
 | **无 token 无设计稿，但要某品牌风格** | 复制对应品牌 `DESIGN.md` 到项目根目录，prompt 指明"按根目录 `DESIGN.md` 的 token 生成" |
 
-第三种场景的品牌 DESIGN.md 取自本地库 `E:\GitHubForkProject\awesome-design-md\design-md\<slug>\DESIGN.md`（74 个真实品牌，slug 查 **frontend-aesthetics-execution** 阶段 1.5 索引）——这是 awesome-design-md 官方用法（"Copy a site's DESIGN.md into your project root, tell your AI agent to use it"）。
+第三种场景的品牌 DESIGN.md 取自 awesome-design-md 仓库（VoltAgent/awesome-design-md）的 `design-md/<slug>/DESIGN.md`（74 个真实品牌，slug 查 **frontend-aesthetics-execution** 阶段 1.5 索引）。发现方式：环境变量 `DESIGN_MD_ROOT` 指向仓库克隆根，或查找当前工作区/常用代码目录下的 `awesome-design-md`；未克隆时先 `git clone https://github.com/VoltAgent/awesome-design-md`；仓库不可用或品牌未命中时 fallback 到 **frontend-aesthetics-execution** 阶段 1 的通用风格模板——这是 awesome-design-md 官方用法（"Copy a site's DESIGN.md into your project root, tell your AI agent to use it"）。
 
 **注意**：DESIGN.md 是 hex + Stitch YAML，不是项目 token。生成后必须走阶段 3 步骤 1 抽 token → **design-system-workflow** 转 OKLCH，**别让 AI 把 DESIGN.md 的 hex 硬编码进组件**。
 
@@ -185,7 +185,7 @@ claude mcp add --transport http --header "Token:YOUR_TOKEN" pixso-remote https:/
 |---|---|---|---|
 | **Figma** | **html.to.design**（Builder.io 旗下，付费插件最成熟）或 **Builder.io HTML to Design** | URL / HTML / Chrome 扩展捕获 | 多 viewport + dark/light 主题，近原品质 |
 | **Figma（开源）** | **Yueyin-Tql/htmlToFigma**（MCP server，对标 html.to.design） / **sergcen/html-to-figma** / **Floristeady/html-to-figma**（含 Cursor 集成） | URL / HTML/CSS，Puppeteer 渲染 | Flexbox → Auto Layout，SVG/字体自动转 |
-| **Pixso** | **官方 Pixso MCP `code_to_design`**（本地 18 工具之一） + `pixso_import.py` 批量脚本 | HTML 字符串 / HTML 目录 / ZIP | 需处理 95KB 分块，输出扁平图层 |
+| **Pixso** | **官方 Pixso MCP `code_to_design`**（本地 18 工具之一） + `pixso_import.py` 批量脚本（出自外部仓库 jiaweiwei1961/pixso-design-skill 的 `scripts/pixso_import.py`） | HTML 字符串 / HTML 目录 / ZIP | 需处理 95KB 分块，输出扁平图层 |
 
 #### 通用硬限制（反向路径的核心约束）
 
@@ -193,7 +193,7 @@ claude mcp add --transport http --header "Token:YOUR_TOKEN" pixso-remote https:/
    - 纯静态页（落地页/文档站）：直接抓 HTML 顺畅
    - 动态 SPA：先用 Playwright/Puppeteer 跑各路由抓快照，或 `vite build` + 静态渲染
    - **Tauri 桌面应用（如 DevWorkBench 类）最麻烦**：要用 Tauri webview 截图或独立 Web 构建再抓 HTML
-2. **Pixso MCP 请求大小限制 ~95KB**（超 101KB 返回 HTTP 413）——复杂页面需 `pixso_import.py` 自动分批（会话过期自动刷新 + 重试 3 次）
+2. **Pixso MCP 请求大小限制 ~95KB**（超 101KB 返回 HTTP 413）——复杂页面需 `pixso_import.py`（外部仓库 jiaweiwei1961/pixso-design-skill 的 `scripts/pixso_import.py`）自动分批（会话过期自动刷新 + 重试 3 次）
 3. **转换质量取决于 HTML 语义化**——内联 style 最准；class-based CSS 靠正则提取会丢部分继承关系
 4. **输出是扁平化图层，不是交互组件**——导入后是 Frame/Text/Rectangle，不是设计工具的 Component/Variant，要手动封装才可复用
 
@@ -204,7 +204,7 @@ claude mcp add --transport http --header "Token:YOUR_TOKEN" pixso-remote https:/
   ↓ vite build + 静态渲染（或 Playwright 抓路由 HTML）
 静态 HTML 文件（每路由一个）
   ├─ Figma: html.to.design 插件粘贴 URL/HTML，或 htmlToFigma MCP
-  └─ Pixso: pixso_import.py ./html-pages（自动分批+打标签+垂直排列）
+  └─ Pixso: pixso_import.py ./html-pages（jiaweiwei1961/pixso-design-skill `scripts/pixso_import.py`，自动分批+打标签+垂直排列）
 设计工具设计稿（可编辑）
   ↓ 用户在设计工具里批注/审核/调整细节
 审核反馈 → 代码改造

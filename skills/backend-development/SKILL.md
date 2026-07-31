@@ -21,7 +21,7 @@ metadata:
 ├─ 业务逻辑层 → §2.4 service / repo 分层
 ├─ 性能/排查 → §2.5 性能自检 + 可观测必做项
 ├─ 测试 → §2.6 测试策略（unit/integration/e2e/contract）
-└─ bug 修复 → §2.7 排查 SOP（systematic-debugging + 此 §7）
+└─ bug 修复 → §2.7 排查 SOP（systematic-debugging 主导）
 ```
 
 ## 2. 7 路径规范
@@ -195,9 +195,9 @@ forge review pass                       # 触发 code-review-gate
 | Rust | clippy + cargo fmt | cargo test --all-features | sqlx + diesel |
 | Node | eslint + tsgo | jest/vitest --coverage | prisma / drizzle |
 | Python | ruff + mypy | pytest --cov | sqlalchemy + alembic |
-| 多语言栈各自 stack-selection skill 选型 | | | |
+
+注：前端栈选型见 `frontend-stack-selection` skill（本仓库仅此一个 stack-selection skill）。
 
 ## 参考
 
-- 完整 references 进 `references/`（HTTP code 规范/rbac matrix/perf pattern）
 - 写法参照 `skill-authoring-standard`

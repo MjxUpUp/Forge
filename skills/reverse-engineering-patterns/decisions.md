@@ -23,3 +23,20 @@ grep 确认 SKILL.md + references 无"借鉴/抄袭/抄来"残留
 ### Rationale
 
 措辞中性化，避免暗示抄袭，符合注释卫生要求
+
+## [d-18c7719fb949ebc0-3e7067c7] accept
+
+- **Skill**: reverse-engineering-patterns
+- **DecidedAt**: 2026-07-31T17:58:28Z
+
+### Diagnosis
+
+整体审查发现自相矛盾：正文:12 说'从 Codex 源码逆向'，:104 参考节把 Codex/Claude Code 两名字缝在一行，但实际 reference 是 claude-code-example.md（Claude Code 逆向）
+
+### Revision
+
+:12 与 :104 统一为 Claude Code（以实际 reference 为准）
+
+### Evidence
+
+references/claude-code-example.md 标题即'Claude Code 逆向实例'，内容含 Coordinator/Worker、4 层压缩，与正文描述吻合

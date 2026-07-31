@@ -67,7 +67,7 @@ metadata:
   # CHANGELOG 存在且含本次版本
   test -f CHANGELOG.md && head -50 CHANGELOG.md | grep -E '^##\s+\[?<NEW_VER>\]?'
   # 破坏性变更标注（Keep a Changelog 风格 ### Breaking / ⚠ 或类似）
-  awk '/^##\s+\[?<NEW_VER>\>?/{flag=1} /^##\s+\[?v?[0-9]/{if(flag&&!seen)exit} flag' CHANGELOG.md | grep -iE 'breaking|破坏|不兼容|迁移'
+  awk '/^##\s+\[?<NEW_VER>\]?/{flag=1; next} /^##\s+\[?v?[0-9]/{if(flag)exit} flag' CHANGELOG.md | grep -iE 'breaking|破坏|不兼容|迁移'
   # 自上次发布后的 commit 是否都有归属（无孤儿 commit）
   git log --oneline $(git describe --tags --abbrev=0 2>/dev/null)..HEAD | wc -l
   ```
@@ -141,7 +141,8 @@ metadata:
   done
 
   # 配置项有默认值或显式 fail-fast（不是 nil 解引用/空字符串崩）
-  grep -nE 'config\.[A-Z][a-zA-Z]+\s*\|\|\s*("|"' "'"')' src/ lib/ app/   # 占位空字符串模式 → 警告点
+  grep -nE 'config\.[A-Z][a-zA-Z]+\s*\|\|\s*""' src/ lib/ app/   # 空双引号默认值 → 警告点
+  grep -nE "config\.[A-Z][a-zA-Z]+\s*\|\|\s*''" src/ lib/ app/   # 空单引号默认值 → 警告点
   ```
 - **通过标准**：无硬编码 secret 命中；新增 env 在 `.env.example` 和部署文档都有；新增配置项要么有合理默认值要么有显式 `if v == "" { fatal(...) }`。
 - **不通过怎么办**：硬编码 secret → **立即阻断**（即使是要"以后改"也不能发，撤下用 env 替换）；env 文档缺 → 补；无默认值且不 fail-fast → 补一个或明确必填。

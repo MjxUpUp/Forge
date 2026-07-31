@@ -189,7 +189,7 @@ E Elevation           权限提升      → 谁能干什么？最小权限
 - [ ] Auth/AuthZ 决策进日志（带 user_id + 资源）
 - [ ] 错误响应不泄露内部（stack trace / SQL detail）
 - [ ] SAST 自动 scan（CI）
-- [ ] `forge review pass`（含 security checklist）通过
+- [ ] `forge review pass` 通过（仅标记人工审查完成；OWASP 检查需按本 skill §4 逐项人工核对）
 - [ ] OWASP Top 10 一一对照（**至少我们写的不踩雷**）
 
 ## 5. Gotchas（实操易错点）
@@ -227,11 +227,10 @@ cargo audit                        # Rust
 # 3. Secret 检测（防止 commit 进 git）
 gitleaks detect --staged
 
-# 4. 安全 checklist 跑（人工）
-forge skills audit --skill=secure-coding
+# 4. 安全 checklist（人工）→ 按本 skill §4 逐项核对
 
-# 5. Code review 触发 OWASP checklist
-forge review pass                   # code-review-gate 带 OWASP 子检查
+# 5. Code review 标记
+forge review pass                   # 仅标记人工审查完成；OWASP 逐项核对靠 §4 自查清单
 ```
 
 不过 → §4 自查清单补足；过 → commit + 安全 reviewer 双 sign（高风险改动）。
@@ -273,7 +272,6 @@ forge review pass                   # code-review-gate 带 OWASP 子检查
 
 ## 参考
 
-- 完整 references 进 `references/`（OWASP Cheat Sheet / STRIDE worksheet / SBOM 范例 / 各语言具体 advice：Go/Node/Rust/Python）
 - 调研权威源：[OWASP Top 10 2021](https://owasp.org/Top10/2021/A00_2021_Introduction) / [OWASP Cheat Sheets](https://cheatsheetseries.owasp.org) / [Microsoft SDL](https://www.microsoft.com/en-us/securityengineering/sdl) / [NIST Cybersecurity Framework](https://www.nist.gov/cyberframework)
 - 写法参照 `skill-authoring-standard`
 - 与 `resilience-and-observability` 联动：A09 Logging 进 SIEM
