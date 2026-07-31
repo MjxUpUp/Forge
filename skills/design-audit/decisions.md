@@ -37,3 +37,20 @@ code-reviewer复审发现composes:lark-doc击穿canonical自包含(lark-doc是�
 ### Evidence
 
 守卫C重跑全绿(lark-doc反引号被扫且allowlist放行);forge-skills-validate-R1-R11仍通过
+
+## [d-18c77152d28ded18-676430d6] accept
+
+- **Skill**: design-audit
+- **DecidedAt**: 2026-07-31T17:52:57Z
+
+### Diagnosis
+
+整体审查发现 SKILL.md:71 引用不存在的 fullstack-feature（幽灵引用）
+
+### Revision
+
+MISSING 项实现指向中的 fullstack-feature 改为 backend-development
+
+### Evidence
+
+skills/ 目录无 fullstack-feature；backend-development 存在且后端实现属其职责

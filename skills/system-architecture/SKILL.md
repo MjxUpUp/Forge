@@ -202,14 +202,8 @@ metadata:
 ## 6. 提交前必跑
 
 ```bash
-# 架构相关自审（不阻塞但提示）
-forge auto-build
-
-# 架构评审（提交重要决策前必跑）
-forge skills audit --skill=architecture-decision-record
-
-# C4 图 diff（如果改了架构图）
-forge skills validate --skill=c4-model
+# 编译自审（按项目实际命令）
+go build ./...
 
 # ADR 索引更新检查
 forge review pass                            # 触发 code-review-gate
@@ -247,6 +241,5 @@ forge review pass                            # 触发 code-review-gate
 
 ## 参考
 
-- 完整 references 进 `references/`（AWS W-A pillar 详细 checklist / C4 模板 / ADR 范例 / Bounded Context 实战案例）
 - 调研权威源：[AWS Well-Architected](https://aws.amazon.com/architecture/well-architected) / [Google SRE](https://sre.google/workbook) / [12factor](https://12factor.net) / [DDD 战术](https://learn.microsoft.com/en-us/azure/architecture/microservices/model/tactical-domain-driven-design) / [OWASP](https://owasp.org/Top10/2021/A00_2021_Introduction) / [Web Vitals](https://web.dev/articles/vitals/)
 - 写法参照 `skill-authoring-standard`

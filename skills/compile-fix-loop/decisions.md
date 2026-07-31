@@ -19,3 +19,20 @@ metadata.triggers 加 [{"event":"PostToolUse","match":"Bash","keywords":["compil
 ### Evidence
 
 dogfood-findings-2026-07-09(testing×17 全低分, 质量 skill 0 显式触发) + plan flickering-bubbling-bonbon.md(triggers schema 表)
+
+## [d-18c772220dd8b464-39086b81] accept
+
+- **Skill**: compile-fix-loop
+- **DecidedAt**: 2026-07-31T18:07:47Z
+
+### Diagnosis
+
+整体审查发现 auto-compile hook 参考条目无可定位信息（未说明 hook 语义与权威来源，读者无法查证）
+
+### Revision
+
+参考节补充定位：auto-compile 自 v0.25 起为 advisory 提醒（编译通过由 agent 自检），指向项目 AGENTS.md Forge 质量协议节
+
+### Evidence
+
+项目 AGENTS.md Forge 质量协议节明确写 auto-compile hook 仅 advisory 提醒；internal/checklog 确认 auto-compile hook 存在

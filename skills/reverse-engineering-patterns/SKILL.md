@@ -9,7 +9,7 @@ metadata:
 
 # 源码逆向工程方法论
 
-从 Codex 源码逆向（~45 个工具、Coordinator/Worker 多代理、4 层上下文压缩）中提炼的系统化方法。
+从 Claude Code 源码逆向（~45 个工具、Coordinator/Worker 多代理、4 层上下文压缩）中提炼的系统化方法。
 
 ## 阶段 1：定位核心循环
 
@@ -101,4 +101,4 @@ metadata:
 
 ## 参考
 
-- Codex 逆向实例：[references/claude-code-example.md](references/claude-code-example.md)
+- Claude Code 逆向实例：[references/claude-code-example.md](references/claude-code-example.md)

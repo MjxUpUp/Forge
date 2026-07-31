@@ -68,7 +68,7 @@ metadata:
 ### Step 4: 确认 gap → 进入实现
 
 把 gap report 给用户。用户确认后：
-- MISSING 项 → 进入实现（用 frontend-feature-development / fullstack-feature 等）
+- MISSING 项 → 进入实现（用 frontend-feature-development / backend-development 等）
 - PARTIAL 项 → 补全缺口
 - **不要跳过确认直接实现**——用户可能调整优先级或判定某些 MISSING 是有意为之
 

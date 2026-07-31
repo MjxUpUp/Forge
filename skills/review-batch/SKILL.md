@@ -4,7 +4,7 @@ description: "整项目级批量代码审查编排：拆模块并行 dispatch su
 metadata:
   pattern: pipeline + reviewer
   domain: code-review
-  composes: agent-delegation, code-review-gate
+  composes: [agent-delegation, code-review-gate]
 ---
 
 # 批量代码审查编排

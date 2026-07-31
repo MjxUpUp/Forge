@@ -104,6 +104,6 @@ curl ... | sh   # 执行远程脚本
 ## 与其他 skill 的分工
 
 - **hazard-guard hook（always-on 自动挡）**：高危命令（rm -rf / DROP / force-push / kubectl delete 等）的硬拦截 + HITL。本 skill 是 hazard-guard 之外的补充。
-- **delivery-gate**：全局的资产交付门控（写 skill/hook 后验证，部分 agent 以扩展形式提供）。本 skill 是 session 级按需安全护栏。
+- **delivery-gate**（非本仓库 canonical skill，仅部分 agent 以扩展形式提供）：全局的资产交付门控（写 skill/hook 后验证）。本 skill 是 session 级按需安全护栏。
 - **code-review-gate**：代码质量审查。本 skill 是操作安全拦截（防误删/误改）。
 - **systematic-debugging**：调试方法论。调试时配合 /freeze 防止"顺手改了无关代码"。

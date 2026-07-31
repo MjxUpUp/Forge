@@ -188,19 +188,23 @@ SQL 跑超过 100ms？
 # 1. schema diff
 forge review pass                       # 触发 schema-diff review
 
-# 2. migration dry-run（staging）
-forge skills eval --skill=database-design
-# 或手动跑：
-psql -f up.sql --dry-run
-psql -f down.sql --dry-run
+# 2. migration 演练（staging）
+forge skills eval-cases --skill database-design
+# 或手动跑（事务包裹，禁止 psql -f：psql 没有 --dry-run，-f 会真实执行！）
+psql <<'SQL'
+BEGIN;
+\i up.sql
+-- 检查结果无误后：
+ROLLBACK;
+SQL
+# down.sql 同理演练；确认无误再真实执行（或用 psql --single-transaction）
 
 # 3. EXPLAIN 必查
 psql -c "EXPLAIN ANALYZE <query>"
 # 或
 mysql -e "EXPLAIN <query>"
 
-# 4. perf 回归
-forge integration-test --scope=db
+# 4. perf 回归 → 用 §2.4 慢查询排查流程 + EXPLAIN ANALYZE 对比基线
 ```
 
 不过 → §4 自查清单补足；过 → commit + DBA review（大表）。
@@ -227,5 +231,4 @@ forge integration-test --scope=db
 
 ## 参考
 
-- 完整 references 进 `references/`（SQL 方言差异/索引基数规则/迁移案例）
 - 写法参照 `skill-authoring-standard`

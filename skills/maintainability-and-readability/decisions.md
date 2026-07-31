@@ -23,3 +23,20 @@ SKILL.md 新增 §2.7 注释规范：形式 A（英文文档段→空//行→中
 ### Rationale
 
 注释双语是本任务核心交付，规范须沉淀进 skill 避免下轮 agent 重复探索
+
+## [d-18c77221db2f9190-46f3045b] accept
+
+- **Skill**: maintainability-and-readability
+- **DecidedAt**: 2026-07-31T18:07:47Z
+
+### Diagnosis
+
+整体审查发现幻觉命令与幽灵指针：forge auto-build 不存在（internal/cli 无此命令），forge skills validate 被误当复杂度检查，§4.6 与 references/ 不存在，§2 标题节数写错（6 实为 7）
+
+### Revision
+
+auto-build 替换为 go build/vet 真实编译命令；提交前必跑删除 validate 行（保留 lizard）；删除 references/ 占位句；§4.6 改指 §4.4 流程类；标题改为 7 路径规范
+
+### Evidence
+
+grep internal/cli 确认 Use 列表无 auto-build；SKILL.md 全文标题枚举确认 §2.1–2.7 共 7 节、§4 仅 4.1–4.4

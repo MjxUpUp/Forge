@@ -39,3 +39,20 @@ ReviewedChangeHash 写进 TaskState。task-complete 门禁加硬前置 ReviewPas
 pass 是 agent 自律最薄弱的环节（声明成本极低），绑定快照把「声明」锚到不可伪造
 的 git 状态上，与 file-sentinel 同源思路（git diff = deterministic 证据）。drift
 检测让「审查后偷改」从隐性行为变成硬阻断，比加更多审查 checklist 更治本。
+
+## [d-18c771eb72121754-8d797f6a] accept
+
+- **Skill**: code-review-gate
+- **DecidedAt**: 2026-07-31T18:03:53Z
+
+### Diagnosis
+
+整体审查发现 :126/:132/:233 三处裸方括号 [references/xxx.md] 缺链接目标，Markdown 渲染不成链接
+
+### Revision
+
+三处补齐 (references/xxx.md) 链接目标
+
+### Evidence
+
+改后 grep 'references/.*\.md\]' 无未带 ( 的残留

@@ -1,6 +1,6 @@
 ---
 name: frontend-feature-development
-description: "前端功能开发全程纪律：从 spec 到组件实现到自验证，把 a11y/token-only/组件 API 范式内建到生成时而非事后审查。Use when: 写 React/Vue/Svelte 组件、实现前端功能、做 UI 界面、加交互、用 Tailwind 实现布局、生成组件、写前端页面、改造前端代码时。SKIP: 跨 Rust+前端全栈（用 fullstack-feature）、选什么技术栈（用 frontend-stack-selection）、用 v0/Bolt/Lovable 等 AI 工具生成（用 ai-ui-generation-workflow）、提交前审查（用 frontend-code-review）。"
+description: "前端功能开发全程纪律：从 spec 到组件实现到自验证，把 a11y/token-only/组件 API 范式内建到生成时而非事后审查。Use when: 写 React/Vue/Svelte 组件、实现前端功能、做 UI 界面、加交互、用 Tailwind 实现布局、生成组件、写前端页面、改造前端代码时。SKIP: 跨 Rust+前端全栈（用 dev-workflow 编排 + backend-development 处理后端）、选什么技术栈（用 frontend-stack-selection）、用 v0/Bolt/Lovable 等 AI 工具生成（用 ai-ui-generation-workflow）、提交前审查（用 frontend-code-review）。"
 metadata:
   pattern: inversion + pipeline + gate
   domain: frontend
@@ -16,7 +16,7 @@ metadata:
 **动键盘前确认 4 件事，缺一不可：**
 
 1. **设计稿/交互态来源**：有 Figma/Pixso/PenPot/截图，还是文字描述？复杂交互（drag/combobox/date-picker）是否有明确的状态机？
-2. **design token 来源**：项目已有 design token（CSS 变量/Tailwind @theme）吗？色值/间距/阴影从哪取？**没有 token 先建 token，不临时硬编码。** 项目无 token 但用户指定了品牌风格（Linear/Stripe/Apple…）→ 从 `E:\GitHubForkProject\awesome-design-md\design-md\<slug>\DESIGN.md`（slug 查 **frontend-aesthetics-execution** 阶段 1.5 索引）提取 hex 作 token 起点，但**必须先进 token 体系**（→ design-system-workflow 转 OKLCH）再写组件，绝不把 DESIGN.md 的 hex 直接硬编码进组件
+2. **design token 来源**：项目已有 design token（CSS 变量/Tailwind @theme）吗？色值/间距/阴影从哪取？**没有 token 先建 token，不临时硬编码。** 项目无 token 但用户指定了品牌风格（Linear/Stripe/Apple…）→ 从 awesome-design-md 仓库的 `design-md/<slug>/DESIGN.md`（slug 与仓库发现方式/fallback 查 **frontend-aesthetics-execution** 阶段 1.5）提取 hex 作 token 起点，但**必须先进 token 体系**（→ design-system-workflow 转 OKLCH）再写组件，绝不把 DESIGN.md 的 hex 直接硬编码进组件
 3. **复用 vs 新建**：项目里有没有类似组件可复用/扩展？先 `grep` 搜，不重复造。
 4. **响应式 + 交互态边界**：断点有哪些？hover/focus/active/disabled/loading/error 怎么处理？a11y 要求（键盘导航/ARIA）明确吗？
 
@@ -139,5 +139,5 @@ metadata:
 - 建项目 design token → **design-system-workflow**
 - 写完提交前审查 → **frontend-code-review**
 - 用 AI 工具生成组件 → **ai-ui-generation-workflow**
-- 跨 Rust+前端全栈 → **fullstack-feature**
+- 跨 Rust+前端全栈 → **dev-workflow** 编排 + **backend-development** 处理后端
 - 验证方法学 → **verification-driver**

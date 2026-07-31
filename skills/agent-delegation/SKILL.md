@@ -103,7 +103,7 @@ reviewer 发现 Critical/Important → implementer 修 → re-review，直到 �
 4. 运行全项目编译检查（`cargo check --workspace` / `npm run build` 等）
 5. 对关键逻辑做实际验证（不只编译通过）
 
-**claims → evidence**：子代理报"测试通过"→ 你独立跑一遍看输出。verification-before-completion 理念：声称前必有新鲜证据。
+**claims → evidence**：子代理报"测试通过"→ 你独立跑一遍看输出。**verification-driver** 理念：声称前必有新鲜证据。
 
 ## 处理 implementer 状态
 
