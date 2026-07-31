@@ -74,6 +74,7 @@ User-level hooks fire in every Claude Code project. In git projects without `.fo
 | **Cursor** | marketplace | `forge init --agents cursor` | Cursor plugin model carries skills, not Claude-shape hooks |
 | **GitHub Copilot (CLI / VS Code)** | marketplace + `.copilot-plugin/` | `forge init --agents copilot` (CLI) | VS Code auto-discovers `.copilot-plugin/plugin.json` if you open this repo |
 | **Windsurf** | (mirrored `buildWindsurfHooks` in code) | (Cascade hooks) | mirrors Claude SessionStart + write hooks via `internal/agentbridge/windsurf.go` |
+| **Kimi Code** | (no marketplace) | `forge init --agents kimi` | user-level `~/.kimi-code/config.toml` `[[hooks]]` via marker-section merge; full event set (PreToolUse/PostToolUse/Stop/SessionStart/PostCompact/UserPromptSubmit), exit-2 block protocol |
 | **OpenCode / Kiro / Cline / Gemini CLI / Mistral Vibe / Trae / Nanobot / Hermes / Antigravity / OpenClaw** | (manual, see `install.sh`) | `forge init --agents <host>` if supported | install.sh script provides one-step symlink-style per-skill/folder install for 14 hosts |
 
 For experimental / bleeding-edge hosts, run `./plugins/forge/install.sh --help` for the full supported platform list.

@@ -416,6 +416,7 @@ func pluginReadme(repoSlug string) string {
 	sb.WriteString("| **Cursor** | marketplace | \x60forge init --agents cursor\x60 | Cursor plugin model carries skills, not Claude-shape hooks |\n")
 	sb.WriteString("| **GitHub Copilot (CLI / VS Code)** | marketplace + \x60.copilot-plugin/\x60 | \x60forge init --agents copilot\x60 (CLI) | VS Code auto-discovers \x60.copilot-plugin/plugin.json\x60 if you open this repo |\n")
 	sb.WriteString("| **Windsurf** | (mirrored \x60buildWindsurfHooks\x60 in code) | (Cascade hooks) | mirrors Claude SessionStart + write hooks via \x60internal/agentbridge/windsurf.go\x60 |\n")
+	sb.WriteString("| **Kimi Code** | (no marketplace) | \x60forge init --agents kimi\x60 | user-level \x60~/.kimi-code/config.toml\x60 \x60[[hooks]]\x60 via marker-section merge; full event set (PreToolUse/PostToolUse/Stop/SessionStart/PostCompact/UserPromptSubmit), exit-2 block protocol |\n")
 	sb.WriteString("| **OpenCode / Kiro / Cline / Gemini CLI / Mistral Vibe / Trae / Nanobot / Hermes / Antigravity / OpenClaw** | (manual, see \x60install.sh\x60) | \x60forge init --agents <host>\x60 if supported | install.sh script provides one-step symlink-style per-skill/folder install for 14 hosts |\n\n")
 	sb.WriteString("For experimental / bleeding-edge hosts, run \x60./plugins/forge/install.sh --help\x60 for the full supported platform list.\n\n")
 
