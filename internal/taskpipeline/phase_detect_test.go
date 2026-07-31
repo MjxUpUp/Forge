@@ -119,6 +119,31 @@ func TestInferDesignPhases(t *testing.T) {
 			files:    []string{"pkg/calc/test_calculator.py"},
 			expected: []DesignPhase{PhaseTest},
 		},
+		// Backend-fallback regression guard: the backend fallback case must exclude test
+		// paths with the SAME segment/base-level predicate as the test-design case — a bare
+		// strings.Contains(slash,"test") mis-excluded latest_feature.go and contest/ even
+		// though they are not under services//domain//internal/ (those hit the earlier
+		// backend case). These files reach the fallback only when outside those dirs.
+		//
+		// backend 兜底回归守卫：backend 兜底 case 必须用与测试设计 case 相同的
+		// segment/base 级判定排除测试路径——裸 strings.Contains(slash,"test") 会误排
+		// latest_feature.go、contest/（它们不在 services//domain//internal/ 下，走不到
+		// 前一条 backend case，只能到兜底）。
+		{
+			name:     "backend fallback - latest_feature.go at repo root",
+			files:    []string{"latest_feature.go"},
+			expected: []DesignPhase{PhaseBackend},
+		},
+		{
+			name:     "backend fallback - contest dir not test",
+			files:    []string{"pkg/contest/contest.go"},
+			expected: []DesignPhase{PhaseBackend},
+		},
+		{
+			name:     "backend fallback - real test file still excluded",
+			files:    []string{"pkg/contest/contest_test.go"},
+			expected: []DesignPhase{PhaseTest},
+		},
 	}
 
 	for _, tt := range tests {

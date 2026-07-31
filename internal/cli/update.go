@@ -462,10 +462,15 @@ func extractBinary(archivePath, destDir string) (string, error) {
 		base := filepath.Base(hdr.Name)
 		if base == binaryName && !hdr.FileInfo().IsDir() {
 			outPath := filepath.Join(destDir, "new-"+binaryName)
-			// Strip the setuid/setgid bits from the mode.
+			// Strip everything but the permission bits. archive/tar maps
+			// setuid/setgid/sticky onto the high os.FileMode bits
+			// (os.ModeSetuid/...), not the low 12 bits — masking with 0o6000
+			// stripped nothing. Perm() keeps only the rwx bits.
 			//
-			// 从 mode 中剥离 setuid/setgid 位
-			safeMode := hdr.FileInfo().Mode() &^ 0o6000
+			// 只保留权限位。archive/tar 把 setuid/setgid/sticky 映射到
+			// os.FileMode 高位（os.ModeSetuid/...），不在低 12 位——用
+			// 0o6000 掩码剥不掉任何东西。Perm() 只留 rwx 位。
+			safeMode := archiveSafeMode(hdr.FileInfo())
 			out, err := os.OpenFile(outPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, safeMode)
 			if err != nil {
 				return "", err
@@ -480,6 +485,18 @@ func extractBinary(archivePath, destDir string) (string, error) {
 	}
 
 	return "", fmt.Errorf("归档中没有找到 %s", binaryName)
+}
+
+// archiveSafeMode reduces a tar entry's FileMode to plain permission bits.
+// archive/tar maps setuid/setgid/sticky onto the high os.FileMode bits
+// (os.ModeSetuid/os.ModeSetgid/os.ModeSticky), not the low 12 bits — masking
+// with 0o6000 strips nothing. Extracted for unit testing.
+//
+// archiveSafeMode 把 tar entry 的 FileMode 收敛为纯权限位。archive/tar 把
+// setuid/setgid/sticky 映射到 os.FileMode 高位（os.ModeSetuid/os.ModeSetgid/
+// os.ModeSticky），不在低 12 位——用 0o6000 掩码剥不掉。抽出便于单测。
+func archiveSafeMode(fi os.FileInfo) os.FileMode {
+	return fi.Mode().Perm()
 }
 
 func selfTest(binaryPath string) error {
@@ -638,21 +655,52 @@ func jsonUnmarshal(r io.Reader, v any) error {
 
 // compareVersions compares two semver-style version strings (e.g. 0.11.1 vs 0.12.0).
 // Returns: 1 if a > b, 0 if a == b, -1 if a < b.
-// Strips the pre-release suffix (-beta.1) and compares only the numeric parts.
+// When the numeric cores are equal, pre-release is tie-broken per semver §11:
+// a release outranks its pre-releases (0.12.0 > 0.12.0-beta.1 — otherwise beta
+// users would never see the GA release), and two pre-releases compare
+// dot-segment-wise (numeric segments numerically, numeric < alphanumeric,
+// alphanumeric ASCII-wise; a shorter set is smaller when all preceding match).
 //
 // compareVersions 比较两个 semver 风格的 version 串（如 0.11.1 对 0.12.0）。
 // 返回：a > b 返 1，a == b 返 0，a < b 返 -1。
-// 剥离 pre-release suffix（-beta.1），只比较数字部分。
+// 数字核心相等时按 semver §11 tie-break pre-release：正式版高于 pre-release
+// （0.12.0 > 0.12.0-beta.1——否则 beta 用户永远收不到正式版）；两个 pre-release
+// 按 . 分段比较（数字段按数值、数字段 < 字母段、字母段按 ASCII；前缀全同时
+// 段数少者小）。
 func compareVersions(a, b string) int {
-	aCore := a
-	bCore := b
-	if idx := strings.IndexByte(a, '-'); idx > 0 {
-		aCore = a[:idx]
-	}
-	if idx := strings.IndexByte(b, '-'); idx > 0 {
-		bCore = b[:idx]
-	}
+	aCore, aPre := splitPreRelease(a)
+	bCore, bPre := splitPreRelease(b)
 
+	if c := compareVersionCores(aCore, bCore); c != 0 {
+		return c
+	}
+	if aPre == bPre {
+		return 0
+	}
+	if aPre == "" {
+		return 1 // release > pre-release (semver §11)
+	}
+	if bPre == "" {
+		return -1
+	}
+	return comparePreReleases(aPre, bPre)
+}
+
+// splitPreRelease splits a version string into its numeric core and the
+// pre-release suffix ("" when absent).
+//
+// splitPreRelease 把 version 串拆成数字核心与 pre-release 后缀（无则 ""）。
+func splitPreRelease(v string) (core, pre string) {
+	if idx := strings.IndexByte(v, '-'); idx > 0 {
+		return v[:idx], v[idx+1:]
+	}
+	return v, ""
+}
+
+// compareVersionCores compares the numeric dot-separated cores.
+//
+// compareVersionCores 比较点分数字核心。
+func compareVersionCores(aCore, bCore string) int {
 	aParts := strings.Split(aCore, ".")
 	bParts := strings.Split(bCore, ".")
 
@@ -678,6 +726,73 @@ func compareVersions(a, b string) int {
 		}
 	}
 	return 0
+}
+
+// comparePreReleases compares two pre-release suffixes per semver §11.4:
+// dot-separated identifiers, numeric identifiers compare numerically and are
+// lower than alphanumeric ones, alphanumeric compare ASCII-wise, and a smaller
+// set of identifiers is lower when all preceding identifiers are equal.
+//
+// comparePreReleases 按 semver §11.4 比较两个 pre-release 后缀：. 分段，
+// 数字段按数值且低于字母段，字母段按 ASCII，前缀段全等时段数少者低。
+func comparePreReleases(aPre, bPre string) int {
+	aSegs := strings.Split(aPre, ".")
+	bSegs := strings.Split(bPre, ".")
+
+	maxLen := len(aSegs)
+	if len(bSegs) > maxLen {
+		maxLen = len(bSegs)
+	}
+
+	for i := 0; i < maxLen; i++ {
+		if i >= len(aSegs) {
+			return -1 // a ran out of identifiers: a < b
+		}
+		if i >= len(bSegs) {
+			return 1
+		}
+		aNum, aIsNum := numericIdentifier(aSegs[i])
+		bNum, bIsNum := numericIdentifier(bSegs[i])
+		switch {
+		case aIsNum && bIsNum:
+			if aNum != bNum {
+				if aNum > bNum {
+					return 1
+				}
+				return -1
+			}
+		case aIsNum: // numeric < alphanumeric
+			return -1
+		case bIsNum:
+			return 1
+		default:
+			if c := strings.Compare(aSegs[i], bSegs[i]); c != 0 {
+				if c > 0 {
+					return 1
+				}
+				return -1
+			}
+		}
+	}
+	return 0
+}
+
+// numericIdentifier reports whether a pre-release identifier is purely numeric,
+// returning its value when it is.
+//
+// numericIdentifier 判断 pre-release 分段是否纯数字，是则返回其数值。
+func numericIdentifier(s string) (int, bool) {
+	if s == "" {
+		return 0, false
+	}
+	n := 0
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return 0, false
+		}
+		n = n*10 + int(c-'0')
+	}
+	return n, true
 }
 
 func parseVersionPart(s string) int {

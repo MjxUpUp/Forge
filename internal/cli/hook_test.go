@@ -427,6 +427,20 @@ func TestSanitizeForShell(t *testing.T) {
 	if !utf8.ValidString(gotMulti) {
 		t.Errorf("overlong utf8 produced invalid UTF-8 (mid-rune truncation): %x", gotMulti)
 	}
+
+	// Overlong value whose final 10-byte window is all invalid UTF-8: no
+	// RuneStart exists in the window, so the boundary loop cannot truncate —
+	// the fallback hard-truncation must still cap the length (invalid bytes
+	// are then dropped by the rune-validation pass, so the result only shrinks).
+	//
+	// 超长值且末尾 10 字节窗口全是非法 UTF-8：窗口内找不到 RuneStart，边界
+	// 循环截不断——兜底硬截断必须把长度压住（非法字节随后被 rune 校验剔除，
+	// 结果只会更短）。
+	tricky := strings.Repeat("a", maxEnvValueLen-5) + strings.Repeat("\xff", 100)
+	gotTricky := sanitizeForShell(tricky)
+	if len(gotTricky) > maxEnvValueLen {
+		t.Errorf("overlong invalid-utf8-tail len %d > %d (fallback truncation missing)", len(gotTricky), maxEnvValueLen)
+	}
 }
 
 // TestIsGlobalHook is the truth table for the global-hook gate in runHook.

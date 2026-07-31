@@ -3,6 +3,7 @@ package hazard
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -363,5 +364,193 @@ func TestActiveConfirmations_NoDir(t *testing.T) {
 	}
 	if active != nil {
 		t.Fatalf("expected nil for missing dir, got %v", active)
+	}
+}
+
+// TestIsConfirmed_RejectsInvalidFingerprintFormat pins the read-side format validation: an fp
+// that is not 64-char hex must be treated as unconfirmed — before this check, fp="../../tasks/x"
+// would escape hazards/ through HazardsConfirmPath and probe arbitrary .json files under DataDir
+// (the write side had ValidateFingerprint; the read side did not).
+//
+// TestIsConfirmed_RejectsInvalidFingerprintFormat 钉住读侧格式校验：非 64-hex 的 fp 一律
+// 按未确认处理——此前 fp="../../tasks/x" 会经 HazardsConfirmPath 逃逸出 hazards/，
+// 探测 DataDir 下任意 .json（写侧有 ValidateFingerprint，读侧没有）。
+func TestIsConfirmed_RejectsInvalidFingerprintFormat(t *testing.T) {
+	root := forgedatatest.ForDataDir(t.TempDir())
+
+	// Plant a valid-looking unexpired confirmation OUTSIDE hazards/, reachable only via
+	// path traversal: HazardsConfirmPath("../../tasks/x") == DataDir/tasks/x.json.
+	// Duration is exactly ConfirmTTL so only the format check can reject it.
+	//
+	// 在 hazards/ 外放一个内容合法、未过期的确认文件，只有路径逃逸才能读到：
+	// HazardsConfirmPath("../../tasks/x") == DataDir/tasks/x.json。
+	// 有效期恰为 ConfirmTTL——只有格式校验能拦住它。
+	traversal := "../../tasks/x"
+	outside := Confirmation{
+		Fingerprint: traversal,
+		ConfirmedAt: time.Now(),
+		ExpiresAt:   time.Now().Add(ConfirmTTL),
+	}
+	data, _ := json.MarshalIndent(outside, "", "  ")
+	tasksDir := filepath.Join(root.DataDir, "tasks")
+	if err := os.MkdirAll(tasksDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tasksDir, "x.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	invalid := []struct{ name, fp string }{
+		{"path traversal", traversal},
+		{"empty", ""},
+		{"truncated 63 chars", strings.Repeat("a", 63)},
+		{"too long 65 chars", strings.Repeat("a", 65)},
+		{"64 chars but non-hex", strings.Repeat("a", 63) + "g"},
+	}
+	for _, c := range invalid {
+		ok, err := IsConfirmed(root, c.fp)
+		if err != nil {
+			t.Errorf("%s: invalid fingerprint must not error (treated as unconfirmed), got %v", c.name, err)
+		}
+		if ok {
+			t.Errorf("%s: invalid fingerprint %q must report not confirmed", c.name, c.fp)
+		}
+	}
+}
+
+// TestIsConfirmed_RejectsContentFingerprintMismatch: a forged file named after a real
+// fingerprint but whose content claims a different fingerprint must not pass — the file name
+// is not proof of content.
+//
+// TestIsConfirmed_RejectsContentFingerprintMismatch：文件名是真指纹、内容指纹不同的伪造
+// 文件不得放行——文件名不是内容的证明。
+func TestIsConfirmed_RejectsContentFingerprintMismatch(t *testing.T) {
+	root := forgedatatest.ForDataDir(t.TempDir())
+	realFp := Fingerprint("rm -rf /tmp/forge-test")
+	otherFp := Fingerprint("git push --force")
+
+	c := Confirmation{
+		Fingerprint: otherFp, // 内容与文件名不符
+		ConfirmedAt: time.Now(),
+		ExpiresAt:   time.Now().Add(ConfirmTTL),
+	}
+	data, _ := json.MarshalIndent(c, "", "  ")
+	if err := os.MkdirAll(root.HazardsDir(), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(root.HazardsConfirmPath(realFp), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ok, err := IsConfirmed(root, realFp)
+	if err != nil {
+		t.Fatalf("mismatched content must not error: %v", err)
+	}
+	if ok {
+		t.Fatal("file whose content fingerprint differs from the queried one must report not confirmed")
+	}
+}
+
+// TestIsConfirmed_RejectsUnboundedExpiry: the agent has write access to DataDir, so a
+// hand-written {"expires_at":"2999-..."} must not grant permanent release — the validity
+// window is bounded by ConfirmTTL (plus clock skew), and a future ConfirmedAt is rejected.
+//
+// TestIsConfirmed_RejectsUnboundedExpiry：agent 对 DataDir 有写权限，手写
+// {"expires_at":"2999-..."} 不得永久放行——有效窗口以 ConfirmTTL（加时钟偏差）为上界，
+// 未来 ConfirmedAt 同样拒绝。
+func TestIsConfirmed_RejectsUnboundedExpiry(t *testing.T) {
+	root := forgedatatest.ForDataDir(t.TempDir())
+	if err := os.MkdirAll(root.HazardsDir(), 0755); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	cases := []struct {
+		name string
+		c    Confirmation
+	}{
+		{"far-future expires_at", Confirmation{
+			ConfirmedAt: now,
+			ExpiresAt:   time.Date(2999, 1, 1, 0, 0, 0, 0, time.UTC),
+		}},
+		{"window exceeds TTL", Confirmation{
+			ConfirmedAt: now,
+			ExpiresAt:   now.Add(ConfirmTTL + time.Hour),
+		}},
+		{"future confirmed_at", Confirmation{
+			ConfirmedAt: now.Add(time.Hour),
+			ExpiresAt:   now.Add(time.Hour + ConfirmTTL),
+		}},
+		{"negative window", Confirmation{
+			ConfirmedAt: now,
+			ExpiresAt:   now.Add(-time.Minute),
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fp := Fingerprint("rm -rf " + tc.name)
+			tc.c.Fingerprint = fp
+			data, _ := json.MarshalIndent(tc.c, "", "  ")
+			if err := os.WriteFile(root.HazardsConfirmPath(fp), data, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			ok, err := IsConfirmed(root, fp)
+			if err != nil {
+				t.Fatalf("forged time fields must not error: %v", err)
+			}
+			if ok {
+				t.Fatal("confirmation with out-of-bounds time fields must report not confirmed")
+			}
+		})
+	}
+}
+
+// TestConfirm_AppendsAuditEvent: every confirmation registration must leave a confirm event in
+// events.jsonl — the forgery path (hand-writing the marker file) cannot produce one, so an
+// active marker with no confirm event is detectable as forged.
+//
+// TestConfirm_AppendsAuditEvent：每次确认登记必须在 events.jsonl 留下 confirm 事件——
+// 伪造路径（手写标记文件）造不出该事件，故「有标记无 confirm 事件」可判定为伪造。
+func TestConfirm_AppendsAuditEvent(t *testing.T) {
+	root := forgedatatest.ForDataDir(t.TempDir())
+	cmd := "rm -rf /tmp/forge-test"
+
+	fp, err := Confirm(root, cmd)
+	if err != nil {
+		t.Fatalf("Confirm: %v", err)
+	}
+	events, err := LoadEvents(root)
+	if err != nil {
+		t.Fatalf("LoadEvents: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("Confirm must append exactly one event, got %d", len(events))
+	}
+	e := events[0]
+	if e.Type != EventConfirm {
+		t.Fatalf("event type = %q, want %q", e.Type, EventConfirm)
+	}
+	if e.Fingerprint != fp {
+		t.Fatalf("event fingerprint = %q, want %q", e.Fingerprint, fp)
+	}
+	if e.Command != cmd {
+		t.Fatalf("event command = %q, want %q", e.Command, cmd)
+	}
+
+	// ConfirmByFingerprint goes through the same funnel and must also leave an event.
+	//
+	// ConfirmByFingerprint 走同一漏斗，也必须留痕。
+	fp2 := strings.Repeat("b", 64)
+	if err := ConfirmByFingerprint(root, fp2, "kubectl delete ns prod"); err != nil {
+		t.Fatalf("ConfirmByFingerprint: %v", err)
+	}
+	events, err = LoadEvents(root)
+	if err != nil {
+		t.Fatalf("LoadEvents: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("ConfirmByFingerprint must append a second event, got %d total", len(events))
+	}
+	if events[1].Type != EventConfirm || events[1].Fingerprint != fp2 {
+		t.Fatalf("second event = %+v, want type=%q fingerprint=%q", events[1], EventConfirm, fp2)
 	}
 }

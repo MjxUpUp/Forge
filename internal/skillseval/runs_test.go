@@ -1,6 +1,11 @@
 package skillseval
 
 import (
+	"bytes"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -371,5 +376,76 @@ func TestCountRegressions(t *testing.T) {
 	latest := dims([]CaseResult{{CaseID: "a", Pass: false}})
 	if got := countRegressions(latest, base); got != 1 {
 		t.Fatalf("regression want 1, got %d", got)
+	}
+}
+
+// TestSubmitRun_CorruptBaselineWarnsAndSkips pins the "unreadable baseline is not no-baseline"
+// contract: a corrupt baselines.json must NOT be silently treated as "nothing to compare"
+// (which would make the regression penalty vanish without a trace). SubmitRun still succeeds
+// and records the run, but skips the regression comparison with an explicit stderr warn: —
+// the failure is visible, BaselineRunID is left unset.
+//
+// TestSubmitRun_CorruptBaselineWarnsAndSkips 钉死「baseline 不可读 ≠ 无 baseline」
+// 契约：baselines.json 损坏绝不能被静默当作「无可比 baseline」（那会让回归惩罚无痕
+// 消失）。SubmitRun 仍成功落 run，但跳过回归比对并在 stderr 打显式 warn:——失败
+// 可见，BaselineRunID 不设置。
+func TestSubmitRun_CorruptBaselineWarnsAndSkips(t *testing.T) {
+	canonical := t.TempDir()
+	dir := t.TempDir()
+	writeSkill(t, canonical, "my-skill", testDesc)
+	cases, _ := EvalCases(canonical, "my-skill")
+	mustWrite(t, SaveCases(dir, "my-skill", cases))
+
+	// Corrupt baselines.json.
+	//
+	// 写坏 baselines.json。
+	if err := os.MkdirAll(filepath.Dir(baselinesFile(dir)), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(baselinesFile(dir), []byte("{not json"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Capture stderr to assert the explicit warning.
+	//
+	// 捕获 stderr 断言显式告警。
+	old := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = w
+
+	raw := make([]SubmitResult, 0, len(cases))
+	for _, c := range cases {
+		act := ""
+		if c.Kind == KindTrigger {
+			act = "my-skill"
+		}
+		raw = append(raw, SubmitResult{CaseID: c.ID, ActualTriggered: act})
+	}
+	run, serr := SubmitRun(dir, canonical, "my-skill", "sonnet", "v1", raw)
+
+	w.Close()
+	os.Stderr = old
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, r); err != nil {
+		t.Fatal(err)
+	}
+
+	if serr != nil {
+		t.Fatalf("corrupt baselines.json must not fail SubmitRun: %v", serr)
+	}
+	if run.BaselineRunID != "" {
+		t.Errorf("BaselineRunID = %q, want empty（baseline 不可读时不得锁定比对）", run.BaselineRunID)
+	}
+	if !strings.Contains(buf.String(), "warn:") {
+		t.Errorf("stderr 应有 warn: 显式告警（baseline 不可读 ≠ 无 baseline），got %q", buf.String())
+	}
+	// All cases pass, no regression comparison possible → no penalty, health 100.
+	//
+	// 全部通过且无法回归比对 → 无惩罚，health 100。
+	if run.HealthScore != 100 {
+		t.Errorf("health=%v want 100（跳过比对但不对未证实的回归施加惩罚）", run.HealthScore)
 	}
 }

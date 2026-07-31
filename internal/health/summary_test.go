@@ -194,3 +194,31 @@ func TestSummarize_PhasePassRate_EmptyIsNil(t *testing.T) {
 		t.Errorf(`全无 grade PhasePassRate=%v want nil（无 grade 守门）`, s2.PhasePassRate)
 	}
 }
+
+// TestSummarize_EmptyStrengthGuard: an empty Strength must not be counted into a nameless
+// bucket of StrengthDist, nor into BlindSpotCount — same non-empty guard as Grade. The write
+// side (act.BuildConclusion) never produces an empty Strength, so this only defends against
+// hand-crafted/legacy conclusions.
+//
+// TestSummarize_EmptyStrengthGuard：空 Strength 不得落入 StrengthDist 的无名桶，也不得
+// 计入 BlindSpotCount——与 Grade 同款非空守卫。写入侧（act.BuildConclusion）不会产出
+// 空 Strength，此守卫只防手工构造/历史脏数据。
+func TestSummarize_EmptyStrengthGuard(t *testing.T) {
+	cs := []act.Conclusion{
+		conc(`a`, `A`, `Strong`, 95, nil, at(1)),
+		conc(`b`, `B`, ``, 90, nil, at(2)), // 空 Strength：不进桶、不计盲区
+	}
+	s := Summarize(cs)
+	if _, ok := s.StrengthDist[``]; ok {
+		t.Errorf(`空 Strength 不得落入无名桶，StrengthDist=%v`, s.StrengthDist)
+	}
+	if s.StrengthDist[`Strong`] != 1 {
+		t.Errorf(`StrengthDist[Strong]=%d want 1`, s.StrengthDist[`Strong`])
+	}
+	if s.BlindSpotCount != 0 {
+		t.Errorf(`BlindSpotCount=%d want 0（空 Strength 不算盲区）`, s.BlindSpotCount)
+	}
+	if s.TotalTasks != 2 {
+		t.Errorf(`TotalTasks=%d want 2（空 Strength 任务仍计入总数）`, s.TotalTasks)
+	}
+}

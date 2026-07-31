@@ -329,3 +329,54 @@ func TestGenerateClaudeMDCarriesRecurrentHardening(t *testing.T) {
 		}
 	}
 }
+
+// TestGenerateClaudeMDAtomicWriteNoResidue pins the durability contract after the
+// os.WriteFile → util.AtomicWrite switch: generation leaves a complete file and no
+// temp-file residue behind, and regeneration over an existing file preserves user
+// content outside the Forge section (section-replace stays idempotent).
+//
+// TestGenerateClaudeMDAtomicWriteNoResidue 钉住 os.WriteFile → util.AtomicWrite
+// 后的耐久契约：生成产出完整文件且无临时文件残留，对已有文件重复生成时标记外
+// 的用户内容保留（section-replace 幂等）。
+func TestGenerateClaudeMDAtomicWriteNoResidue(t *testing.T) {
+	dir := t.TempDir()
+	if err := GenerateClaudeMD(dir); err != nil {
+		t.Fatalf("GenerateClaudeMD: %v", err)
+	}
+	first, err := os.ReadFile(filepath.Join(dir, ".claude", "CLAUDE.md"))
+	if err != nil {
+		t.Fatalf("read generated CLAUDE.md: %v", err)
+	}
+	if !strings.Contains(string(first), "FORGE:START") {
+		t.Error("generated CLAUDE.md should contain the Forge section markers")
+	}
+
+	// Regenerate over user content: user text outside the markers must survive.
+	//
+	// 对用户内容重复生成：标记外的用户文本必须保留。
+	user := "# my project\n\nuser notes stay\n"
+	if err := os.WriteFile(filepath.Join(dir, ".claude", "CLAUDE.md"),
+		[]byte(user+string(first)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := GenerateClaudeMD(dir); err != nil {
+		t.Fatalf("GenerateClaudeMD regenerate: %v", err)
+	}
+	second, _ := os.ReadFile(filepath.Join(dir, ".claude", "CLAUDE.md"))
+	if !strings.Contains(string(second), "user notes stay") {
+		t.Error("regeneration must preserve user content outside the Forge section")
+	}
+
+	// No atomic-write temp residue anywhere under .claude.
+	//
+	// .claude 下不得有原子写临时文件残留。
+	entries, err := os.ReadDir(filepath.Join(dir, ".claude"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.Contains(e.Name(), ".tmp") {
+			t.Errorf("atomic write residue left behind: %s", e.Name())
+		}
+	}
+}

@@ -89,10 +89,16 @@ func EnsureEmbeddedCache(cacheDir, version string) error {
 		}
 	}
 	// cache missing or version mismatch (upgrade): full rebuild, ExtractTo
-	// will MkdirAll cacheDir.
+	// will MkdirAll cacheDir. A failed RemoveAll must abort — overwriting a
+	// half-deleted cache and stamping a fresh version marker would leave a
+	// mixed-version cache that claims to be a pure snapshot.
 	//
-	// 缓存缺失或版本不一致(升级)：整体重建，ExtractTo 会 MkdirAll cacheDir
-	_ = os.RemoveAll(cacheDir)
+	// 缓存缺失或版本不一致(升级)：整体重建，ExtractTo 会 MkdirAll cacheDir。
+	// RemoveAll 失败必须中止——在半删除的缓存上覆盖写并打新版本标记，
+	// 会得到一个谎称纯净的混合版本缓存。
+	if err := os.RemoveAll(cacheDir); err != nil {
+		return fmt.Errorf("清理旧缓存 %s 失败: %w", cacheDir, err)
+	}
 	if err := skills.ExtractTo(cacheDir); err != nil {
 		return err
 	}

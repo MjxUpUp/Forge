@@ -14,11 +14,9 @@ var (
 
 var skillsAdaptersCmd = &cobra.Command{
 	Use:   "adapters",
-	Short: "部署/查看 skill-routing adapter 单文件（claude hook/cursor rule/routes 表）",
-	Long: `forge skills adapters — 分发 skill-routing adapter 单文件：
-  claude/skill-router.sh → ~/.claude/hooks/skill-router-claude.sh
-  cursor/skill-routing.mdc → ~/.cursor/rules/skill-routing.mdc
-  routes.json            → skill-routing routes 表
+	Short: "部署/查看 skill-routing adapter 单文件（claude hook/cursor rule/routes 表等）",
+	Long: `forge skills adapters — 分发 skill-routing adapter 单文件到各 AI 工具的
+hook/rule/routes 位置（具体文件集由 skillsdist.Adapters() 派生，随版本增减，不在此枚举）。
 
 不带 --apply 为 dry-run（只显示 deploy/ok/skip）。`,
 	RunE: runSkillsAdapters,

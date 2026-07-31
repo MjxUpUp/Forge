@@ -475,9 +475,14 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	// archives per FORGE_LOG_RETENTION_DAYS — see store.go.)
 	//
 	// 为新 task 清 checklog。（Clear 也会按 FORGE_LOG_RETENTION_DAYS 清理超期 checklog/toollog
-	// 归档——见 store.go。）
-	checklog.Clear(root)
-	toolusage.Clear(root)
+	// 归档——见 store.go。）Clear 失败只 stderr 告警（不阻断 task start），但必须留痕——
+	// 静默失败会让新任务继承上一任务的证据链。
+	if cerr := checklog.Clear(root); cerr != nil {
+		fmt.Fprintf(os.Stderr, "warn: 清空 checklog 失败（新任务可能混入上一任务证据）: %v\n", cerr)
+	}
+	if cerr := toolusage.Clear(root); cerr != nil {
+		fmt.Fprintf(os.Stderr, "warn: 清空 toollog 失败（新任务可能混入上一任务工具记录）: %v\n", cerr)
+	}
 
 	// Prune completed task-state files beyond the retention window to keep
 	// DataDir/tasks/ bounded. Same window as log archival, so task metadata is
@@ -928,13 +933,15 @@ func runTaskVerifyAcceptanceAt(root string) error {
 	taskpipeline.VerifyAcceptance(root, state)
 	allPassed := state.AllAcceptancePassed()
 
-	checklog.Record(root, &checklog.Entry{
+	if recErr := checklog.Record(root, &checklog.Entry{
 		Check:   taskpipeline.CheckNameAcceptance,
 		Passed:  allPassed,
 		Checked: true,
 		TaskRef: state.TaskRef,
 		Detail:  formatAcceptanceDetail(state.Acceptance),
-	})
+	}); recErr != nil {
+		fmt.Fprintf(os.Stderr, "⚠ checklog 记录失败（验收证据未落盘）: %v\n", recErr)
+	}
 
 	if err := taskpipeline.SaveTaskState(root, state); err != nil {
 		return fmt.Errorf("failed to save task state: %w", err)
@@ -1774,12 +1781,3 @@ func createAndSwitchBranch(root, name string) error {
 	}
 	return nil
 }
-
-// phaseKeys converts a slice of taskpipeline.DesignPhase into a slice of strings for
-// act.Conclusion. phaseKeys has been sunk into taskpipeline.PhaseKeys (cli
-// appendConclusion now goes through taskpipeline.AppendConclusion and no longer calls
-// this helper directly).
-//
-// phaseKeys 把 taskpipeline.DesignPhase 切片转 string 切片给 act.Conclusion。
-// phaseKeys 下沉到 taskpipeline.PhaseKeys（cli appendConclusion 改走 taskpipeline.AppendConclusion，
-// 不再直接调本处辅助）。

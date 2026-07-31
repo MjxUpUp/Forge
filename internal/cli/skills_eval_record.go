@@ -49,6 +49,9 @@ func runSkillsEvalRecord(cmd *cobra.Command, args []string) error {
 	if skRecSkill == "" {
 		return fmt.Errorf("需要 --skill NAME")
 	}
+	if err := requireValidSkillName(skRecSkill); err != nil {
+		return err
+	}
 	dir, err := skillseval.EvalDir()
 	if err != nil {
 		return err

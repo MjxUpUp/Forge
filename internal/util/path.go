@@ -30,10 +30,11 @@ import (
 //   - 截断到 64 字符（文件系统可移植性）。
 //   - 若结果为空则回退到 session。
 func SanitizeSessionID(id string) string {
-	if id == "" {
-		return ""
-	}
-
+	// No early return for "": empty input falls through to the empty-result fallback below,
+	// so it yields "session" exactly like an all-dirty-characters input — the doc promise.
+	//
+	// 不对 "" 提前返回：空输入一路走到下方的空结果兜底，与「全是脏字符」的输入一样
+	// 得到 "session"——与 doc 承诺一致。
 	var b strings.Builder
 	b.Grow(len(id))
 	for _, r := range id {

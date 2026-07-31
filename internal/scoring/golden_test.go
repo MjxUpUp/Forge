@@ -2,7 +2,6 @@ package scoring
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -192,5 +191,3 @@ func TestGoldenSet_Regression(t *testing.T) {
 		}
 	}
 }
-
-var _ = fmt.Sprintf

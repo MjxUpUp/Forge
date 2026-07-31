@@ -11,6 +11,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/skillseval"
@@ -34,6 +35,9 @@ func runSkillsEvalReport(cmd *cobra.Command, args []string) error {
 	if skRepSkill == "" {
 		return fmt.Errorf("需要 --skill NAME")
 	}
+	if err := requireValidSkillName(skRepSkill); err != nil {
+		return err
+	}
 	dir, err := skillseval.EvalDir()
 	if err != nil {
 		return err
@@ -50,17 +54,9 @@ func runSkillsEvalReport(cmd *cobra.Command, args []string) error {
 	// baseline selection: --baseline explicit run-id > skill-marked baseline > none (absolute score).
 	//
 	// baseline 选择：--baseline 显式 run-id > 该 skill 标记的 baseline > 无（绝对分）。
-	var baseline *skillseval.EvalRun
-	if skRepBaseline != "" {
-		baseline, err = skillseval.LoadRunByID(dir, skRepSkill, skRepBaseline)
-		if err != nil {
-			return err
-		}
-		if baseline == nil {
-			return fmt.Errorf("baseline run %q 不存在", skRepBaseline)
-		}
-	} else if bl, _ := skillseval.GetBaseline(dir, skRepSkill); bl.RunID != "" {
-		baseline, _ = skillseval.LoadRunByID(dir, skRepSkill, bl.RunID)
+	baseline, err := resolveReportBaseline(dir, skRepSkill, skRepBaseline)
+	if err != nil {
+		return err
 	}
 
 	rep := skillseval.CompareRuns(latest, baseline)
@@ -90,6 +86,49 @@ func runSkillsEvalReport(cmd *cobra.Command, args []string) error {
 	}
 	printEvalReport(rep, latest, baseline, skRepVerbose)
 	return nil
+}
+
+// resolveReportBaseline selects the baseline run for eval-report:
+// explicit run-id > skill-marked baseline > none (absolute score).
+// GetBaseline/LoadRunByID errors are propagated (previously both were swallowed,
+// silently degrading to nil baseline and letting the report lie "未锚定" when the
+// anchor read actually failed). A marked baseline whose run file has since been
+// cleaned (LoadRunByID returns nil, nil) degrades to absolute scoring with a
+// stderr warning — the mark is stale metadata, not a hard failure.
+//
+// resolveReportBaseline 为 eval-report 选择 baseline run：
+// 显式 run-id > 该 skill 标记的 baseline > 无（绝对分）。
+// GetBaseline/LoadRunByID 的 error 一律传播（此前双双被 _ 吞掉，baseline 静默变
+// nil，报告谎称「未锚定」而实际只是读取失败）。标记的 baseline run 文件已被清理
+// （LoadRunByID 返 nil, nil）时 stderr 警告并降级为绝对分——标记是过期元数据，
+// 不是硬失败。
+func resolveReportBaseline(dir, skill, explicit string) (*skillseval.EvalRun, error) {
+	if explicit != "" {
+		baseline, err := skillseval.LoadRunByID(dir, skill, explicit)
+		if err != nil {
+			return nil, fmt.Errorf("加载 baseline run %q 失败: %w", explicit, err)
+		}
+		if baseline == nil {
+			return nil, fmt.Errorf("baseline run %q 不存在", explicit)
+		}
+		return baseline, nil
+	}
+	bl, err := skillseval.GetBaseline(dir, skill)
+	if err != nil {
+		return nil, fmt.Errorf("读取 skill %q 的 baseline 标记失败: %w", skill, err)
+	}
+	if bl.RunID == "" {
+		return nil, nil
+	}
+	baseline, err := skillseval.LoadRunByID(dir, skill, bl.RunID)
+	if err != nil {
+		return nil, fmt.Errorf("加载 baseline run %q 失败: %w", bl.RunID, err)
+	}
+	if baseline == nil {
+		fmt.Fprintf(os.Stderr, "⚠️ baseline run %q 已不存在（标记过期），降级为绝对分\n", bl.RunID)
+		return nil, nil
+	}
+	return baseline, nil
 }
 
 // printEvalReport emits a human-readable report. Defaults to compact (signal first); verbose prints the full three-state breakdown.

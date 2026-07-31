@@ -3,6 +3,7 @@ package checklog
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -92,6 +93,12 @@ func LoadAll(root string) ([]Entry, error) {
 
 	var entries []Entry
 	scanner := bufio.NewScanner(f)
+	// Enlarged line cap (1MB, same as toolusage.LoadAll): entries can carry long Detail
+	// payloads; the default 64KB cap would make one oversized line fail scoring/trace wholesale.
+	//
+	// 放大的单行上限（1MB，同 toolusage.LoadAll）：条目可能带长 Detail 载荷，
+	// 默认 64KB 上限会让一条超限行拖垮 scoring/trace 全链路。
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		var e Entry
 		if err := json.Unmarshal(scanner.Bytes(), &e); err != nil {
@@ -121,9 +128,18 @@ func LoadForTask(root, taskRef string) ([]Entry, error) {
 	for _, path := range matches {
 		f, err := os.Open(path)
 		if err != nil {
-			continue
+			// A glob-matched file that cannot be opened is a read failure, not "no data" —
+			// surface it instead of silently dropping that file's history.
+			//
+			// glob 命中的文件打不开是读失败、不是「无数据」——显式报错，
+			// 不静默丢弃该文件的历史。
+			return nil, fmt.Errorf("open %s: %w", path, err)
 		}
 		scanner := bufio.NewScanner(f)
+		// 1MB line cap, same as LoadAll (see there for rationale).
+		//
+		// 1MB 单行上限，同 LoadAll（理由见该处）。
+		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 		for scanner.Scan() {
 			var e Entry
 			if err := json.Unmarshal(scanner.Bytes(), &e); err != nil {
@@ -134,7 +150,17 @@ func LoadForTask(root, taskRef string) ([]Entry, error) {
 				entries = append(entries, e)
 			}
 		}
+		// A scanner error (oversized line beyond 1MB, I/O error) means everything after
+		// that point in the file was silently truncated — make it explicit instead of
+		// returning a partial timeline as if complete.
+		//
+		// scanner 出错（超 1MB 的行、I/O 错误）意味着该行之后的内容被静默截断——
+		// 显式报错，不把残缺时间线当完整结果返回。
+		serr := scanner.Err()
 		f.Close()
+		if serr != nil {
+			return nil, fmt.Errorf("read %s: %w", path, serr)
+		}
 	}
 	slices.SortFunc(entries, func(a, b Entry) int {
 		return a.RecordedAt.Compare(b.RecordedAt)

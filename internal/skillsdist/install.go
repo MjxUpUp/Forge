@@ -139,9 +139,11 @@ type TargetResult struct {
 	Backup string `json:"backup,omitempty"` // overwrite 前的备份路径（空=未备份：link/断链/非 overwrite）
 }
 
-// InstallStats is the statistical summary of an install.
+// InstallStats is the statistical summary of an install. Two tiers: Total/Failed count skills;
+// Installed/Skipped/Drifted count skill×target operations (1 skill × N targets → N counts).
 //
-// InstallStats 是 install 统计摘要。
+// InstallStats 是 install 统计摘要。两级口径：Total/Failed 按 skill 计；
+// Installed/Skipped/Drifted 按 skill×target 操作计（1 skill × N target → 计 N 次）。
 type InstallStats struct {
 	Total     int `json:"total"`
 	Installed int `json:"installed"`
@@ -155,6 +157,33 @@ type InstallStats struct {
 // skipDirs 与 skillsqa 同步：copyTree 跳过的目录段。
 var distSkipDirs = map[string]bool{
 	"node_modules": true, ".git": true, "__pycache__": true, ".venv": true,
+}
+
+// scanSkillFn is the security scanner used by the quality gate. Package-level var
+// so tests can inject a failing scanner — a ScanSkill error is otherwise unreachable
+// in tests (the walk root always exists once ListSkills has seen the skill).
+//
+// scanSkillFn 是质量门控用的安全扫描器。包级 var 供测试注入失败的扫描器——
+// 否则 ScanSkill 的错误路径在测试中无法触发（ListSkills 见过 skill 后 walk 根必存在）。
+var scanSkillFn = skillsqa.ScanSkill
+
+// DirEntryIsDir reports whether a ReadDir entry is a directory, following
+// junction/symlink (os.Stat semantics). e.IsDir() is Lstat-based and returns false
+// for junction/symlink entries — with link-mode install (default) and externally
+// managed junction skills, most entries under a skills dir ARE links, so Lstat
+// semantics silently drop them. Broken links / stat errors → false (safe skip).
+// parent is the directory the entry was read from.
+//
+// DirEntryIsDir 判断 ReadDir 条目是否为目录，跟随 junction/symlink（os.Stat 语义）。
+// e.IsDir() 基于 Lstat，对 junction/symlink 条目返回 false——link 安装模式（默认）
+// 与外部管理的 junction skill 下，skills 目录里大量条目是 link，Lstat 语义会静默漏掉。
+// 断链/stat 错误 → false（安全跳过）。parent 是读取该条目的目录。
+func DirEntryIsDir(parent string, e fs.DirEntry) bool {
+	if e.IsDir() {
+		return true
+	}
+	info, err := os.Stat(filepath.Join(parent, e.Name()))
+	return err == nil && info.IsDir()
 }
 
 // Install syncs skills under canonical to each target directory.
@@ -196,12 +225,22 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Output target names in a fixed order (alphabetic claude<codex<copilot<cursor<pi>) for stable rendering.
+	// Output target names in a fixed order (alphabetic claude<codex<copilot<cursor) for stable rendering.
 	//
-	// 目标名按固定顺序输出（字母序 claude<codex<copilot<cursor<pi），便于稳定渲染
+	// 目标名按固定顺序输出（字母序 claude<codex<copilot<cursor），便于稳定渲染
 	targetOrder := orderedTargetNames(targetDirs)
 
 	for _, name := range names {
+		// Total counts every processed skill (before the quality gate), so that
+		// Total = passed + blocked/failed + reserved-skipped — the skill-level stats
+		// reconcile. Installed/Skipped/Drifted are target-level (one skill × N targets),
+		// printed as a separate tier by the CLI.
+		//
+		// Total 统计每个被处理的 skill（门控前计），保证 Total = 通过 + 被拦/失败 +
+		// 保留名跳过，skill 级口径对得上。Installed/Skipped/Drifted 是 target 级
+		// （1 skill × N target），CLI 分两级输出。
+		report.Stats.Total++
+
 		if reservedNames[name] {
 			report.Skills = append(report.Skills, SkillInstallResult{
 				Name: name,
@@ -236,7 +275,20 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 				report.Skills = append(report.Skills, res)
 				continue
 			}
-			findings, _ := skillsqa.ScanSkill(skillDir)
+			// ScanSkill error must NOT be swallowed (skillsqa/audit.go's contract): an
+			// unreadable skill would otherwise be scored on zero findings and reported
+			// clean — security gate defeated. Treat as audit failure, same as qerr above.
+			//
+			// ScanSkill 的 err 禁止吞掉（skillsqa/audit.go 的契约）：不可读的 skill
+			// 否则会在零 findings 上打分被报 clean，安全门失守。按审查失败处理，同上 qerr 分支。
+			findings, serr := scanSkillFn(skillDir)
+			if serr != nil {
+				res.Issues = append(res.Issues, "安全审查失败: "+serr.Error())
+				res.Targets = []TargetResult{{Action: actBlocked, Detail: "audit 安全扫描不可读"}}
+				report.Stats.Failed++
+				report.Skills = append(report.Skills, res)
+				continue
+			}
 			_, _, rec := skillsqa.ScoreFindings(findings)
 			if rec == "DO_NOT_INSTALL" {
 				res.Issues = append(res.Issues, "安全门控: DO_NOT_INSTALL（score≥50，CRITICAL）")
@@ -246,8 +298,6 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 				continue
 			}
 		}
-
-		report.Stats.Total++
 
 		for _, tname := range targetOrder {
 			tdir := targetDirs[tname]
@@ -288,6 +338,14 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 				report.Stats.Installed++
 			case actSkipped:
 				report.Stats.Skipped++
+			case actFailed:
+				// Per-target operation failed (e.g. overwrite deletion error — no copy
+				// attempted): record Failed + per-skill issue, continue to next target.
+				//
+				// 单 target 操作失败（如 overwrite 删除失败，未执行 copy）：
+				// 记 Failed + per-skill issue，继续下一个 target。
+				report.Stats.Failed++
+				res.Issues = append(res.Issues, fmt.Sprintf("target %s: %s", tname, detail))
 			}
 			res.Targets = append(res.Targets, tr)
 		}
@@ -346,7 +404,8 @@ func parseRequires(s string) []string {
 // silently extending the set and breaking checkRequires semantics.
 //
 // Non-success actions: blocked (quality gate failed) / aborted (drift-policy=abort triggered) /
-// reserved (forge-quality reserved name) — not in okActions, naturally skipped by checkRequires.
+// reserved (forge-quality reserved name) / failed (per-target operation failed, e.g. overwrite
+// deletion error — no copy was attempted) — not in okActions, naturally skipped by checkRequires.
 //
 // install action 常量（与 handleTarget 及 Install 主循环返回/设置的 action 字面量一致；
 // 反引号 raw string 规避 Windows 输入引号腐蚀）。
@@ -356,7 +415,8 @@ func parseRequires(s string) []string {
 // okActions (3) TestCheckRequires 加用例守护，避免静默扩展破坏 checkRequires 语义。
 //
 // 非成功 action：blocked（质量门控未过）/ aborted（drift-policy=abort 触发）/ reserved
-// （forge-quality 保留名）——不在 okActions，checkRequires 自然跳过。
+// （forge-quality 保留名）/ failed（单 target 操作失败，如 overwrite 删除失败，未执行
+// copy）——不在 okActions，checkRequires 自然跳过。
 const (
 	actLinked   = `linked`
 	actCopied   = `copied`
@@ -365,6 +425,7 @@ const (
 	actAborted  = `aborted`
 	actDrifted  = `drifted`
 	actReserved = `reserved`
+	actFailed   = `failed`
 )
 
 // checkRequires verifies that the frontmatter.requires dependencies of each successfully installed
@@ -447,6 +508,14 @@ func checkRequires(canonical string, results []SkillInstallResult) []string {
 	return warns
 }
 
+// removeTargetTreeFn is the target-tree deleter used by handleTarget. Package-level var so
+// tests can inject a failing deleter — a deterministic cross-platform RemoveAll failure is
+// otherwise not constructible (Windows ignores read-only bits, Unix ignores open handles).
+//
+// removeTargetTreeFn 是 handleTarget 用的目标树删除器。包级 var 供测试注入失败删除器——
+// 确定性的跨平台 RemoveAll 失败无法直接构造（Windows 忽略只读位、Unix 忽略打开句柄）。
+var removeTargetTreeFn = removeTargetTree
+
 // handleTarget decides the action for a single target based on the current state + mode + policy.
 // Returns (action, detail, abortErr); abortErr != nil means drift-policy=abort triggered and the
 // caller should abort the entire install.
@@ -490,7 +559,15 @@ func handleTarget(src, dst, state string, mode Mode, policy DriftPolicy) (string
 		case DriftSkip:
 			return actSkipped, "drift（策略 skip，保留现状）", nil
 		case DriftOverwrite:
-			removeTargetTree(dst)
+			// Deletion failure must NOT fall through to copyTree/link: the result would be
+			// a new-old hybrid tree reported as a clean overwrite. Return actFailed and let
+			// the Install loop record issue + Failed++ and continue to the next target.
+			//
+			// 删除失败禁止带病继续 copyTree/建 link——否则产出新旧混合树却报告纯净覆盖。
+			// 返回 actFailed，由 Install 主循环记 issue + Failed++ 后继续下一个 target。
+			if err := removeTargetTreeFn(dst); err != nil {
+				return actFailed, fmt.Sprintf("drift overwrite：删除旧目标失败（未覆盖，保留现状）: %v", err), nil
+			}
 			if mode == ModeLink {
 				if err := makeDirLink(dst, src); err != nil {
 					return "", "", fmt.Errorf("link %s: %w", dst, err)
@@ -542,7 +619,7 @@ func backupTarget(dst, backupBase, target, skill string) (string, error) {
 	// 路径注入防御：target/skill 须为规范 basename（非 ./..、无分隔符）。
 	// canonical skill 名受文件系统约束天然安全，此处防御性兜底——防未来 canonical 来源
 	// 含恶意名导致 backupBase 越界写。
-	if !isSafeName(target) || !isSafeName(skill) {
+	if !skillsfm.IsValidSkillName(target) || !skillsfm.IsValidSkillName(skill) {
 		return "", fmt.Errorf("非法 target/skill 名（路径注入风险）: %q/%q", target, skill)
 	}
 	// Clear any prior residue before copying, so the backup is a clean point-in-time snapshot —
@@ -561,28 +638,20 @@ func backupTarget(dst, backupBase, target, skill string) (string, error) {
 	return bkDir, nil
 }
 
-// isSafeName reports whether name is a canonical basename (non-empty, not . / .., no path
-// separators), preventing path-injection escape.
-//
-// isSafeName 判断 name 是规范 basename（非空、非 . / ..、无路径分隔符），防路径注入越界。
-func isSafeName(name string) bool {
-	if name == "" || name == "." || name == ".." {
-		return false
-	}
-	return filepath.Base(name) == name
-}
-
 // removeTargetTree deletes the target: for link/junction only the reparse point is removed
-// (source untouched); real directories are removed recursively.
+// (source untouched); real directories are removed recursively. Returns the deletion error —
+// callers MUST NOT proceed to copyTree/link on failure, otherwise old and new content mix
+// into a hybrid tree while the report claims a clean overwrite.
 //
 // removeTargetTree 删除目标：link/junction 只删 reparse point（不删源），真目录递归删。
-func removeTargetTree(path string) {
+// 返回删除错误——调用方失败后禁止继续 copyTree/建 link，否则新旧混成混合树，
+// 报告却谎称"纯净覆盖"。
+func removeTargetTree(path string) error {
 	if isJunctionOrLink(path) {
 		// For junction/symlink, only remove the reparse point itself.
-		_ = os.Remove(path) // 对 junction/symlink 只删 reparse point 本身
-		return
+		return os.Remove(path) // 对 junction/symlink 只删 reparse point 本身
 	}
-	_ = os.RemoveAll(path)
+	return os.RemoveAll(path)
 }
 
 // detectState detects the target's distribution state relative to canonical (aligned with
@@ -614,15 +683,87 @@ func detectState(canonicalSkillDir, targetSkillDir string) string {
 	if errC == nil && errT == nil && os.SameFile(ci, ti) {
 		return StateLinked
 	}
-	// copy-in-sync: SKILL.md md5 identical (independent copy but same content).
+	// copy-in-sync: the whole tree matches canonical (independent copy, same content).
+	// Must compare the ENTIRE tree, not just SKILL.md: copy mode replicates the whole tree,
+	// and handleTarget deletes the target with os.RemoveAll when switching copy-in-sync →
+	// link. A SKILL.md-only comparison would misjudge a target whose references/ etc. the
+	// user edited (SKILL.md untouched) as in-sync and wipe the edits without backup
+	// (backup only triggers on StateDrift) — silent data loss.
 	//
-	// copy-in-sync：SKILL.md md5 相同（独立副本但内容一致）
-	ch, e1 := md5OfFile(filepath.Join(canonicalSkillDir, "SKILL.md"))
-	th, e2 := md5OfFile(filepath.Join(targetSkillDir, "SKILL.md"))
-	if e1 == nil && e2 == nil && ch == th {
+	// copy-in-sync：整树与 canonical 一致（独立副本但内容相同）。
+	// 必须全树对比而非只比 SKILL.md：copy 模式复制整棵树，且 handleTarget 在
+	// copy-in-sync → link 时会 os.RemoveAll 整个目标。单文件对比会把"用户在
+	// references/ 下改过文件（SKILL.md 没动）"误判为同步并无备份整树删除——静默丢数据。
+	if treesInSync(canonicalSkillDir, targetSkillDir) {
 		return StateCopyInSync
 	}
 	return StateDrift
+}
+
+// treesInSync reports whether two skill trees have identical content. Walks both
+// trees with copyTree's exact rules (same distSkipDirs, symlinks not followed —
+// copyTree skips them, so they carry no content to compare), hashes every regular
+// file, and requires the relative-path sets AND per-file hashes to be equal. Any
+// missing/extra/different file → not in sync. Any read error → conservatively not
+// in sync (drift), never falsely in-sync.
+//
+// treesInSync 判断两棵 skill 树内容是否完全一致。双侧按 copyTree 同款规则遍历
+// （同 distSkipDirs、symlink 不跟随——copyTree 会跳过它们，无内容可比），逐文件
+// 算 hash，要求相对路径集合与逐文件 hash 都相等。任一文件缺失/新增/内容不同 →
+// 非同步。任何读取错误 → 保守判非同步（drift），绝不误判为同步。
+func treesInSync(src, dst string) bool {
+	srcFiles := hashTree(src)
+	dstFiles := hashTree(dst)
+	if srcFiles == nil || dstFiles == nil || len(srcFiles) != len(dstFiles) {
+		return false
+	}
+	for rel, h := range srcFiles {
+		if dstFiles[rel] != h {
+			return false
+		}
+	}
+	return true
+}
+
+// hashTree walks root and returns rel-path → md5 hex for every regular file,
+// following copyTree's walk rules. Returns nil on any walk/read error (treated
+// as "cannot prove identical" by the caller).
+//
+// hashTree 遍历 root 返回 相对路径 → md5 hex（仅常规文件），遍历规则与 copyTree
+// 一致。任何遍历/读取错误返回 nil（调用方按"无法证明一致"处理）。
+func hashTree(root string) map[string]string {
+	out := map[string]string{}
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if distSkipDirs[d.Name()] {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		// Do not follow reparse points (same as copyTree: links are skipped, not expanded).
+		//
+		// 不跟随 reparse point（与 copyTree 一致：link 跳过不展开）
+		if d.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
+		rel, rerr := filepath.Rel(root, path)
+		if rerr != nil {
+			return rerr
+		}
+		h, herr := md5OfFile(path)
+		if herr != nil {
+			return herr
+		}
+		out[rel] = h
+		return nil
+	})
+	if err != nil {
+		return nil
+	}
+	return out
 }
 
 // md5OfFile returns the file md5 hex (first 10 chars, aligned with sync.py md5[:10]).
@@ -728,9 +869,13 @@ func filterNames(all, want []string) []string {
 }
 
 // TargetDirs resolves the target-tool → target-skills-directory map. target=all expands to
-// claude/cursor/pi/codex/copilot.
+// claude/cursor/codex/copilot. Unknown targets are an explicit error (never silently dropped):
+// an empty resolved dir would degrade filepath.Join("", name) into a cwd-relative path and
+// write into the current directory.
 //
-// TargetDirs 解析目标工具→目标 skills 目录的映射。target=all 展开 claude/cursor/pi/codex/copilot。
+// TargetDirs 解析目标工具→目标 skills 目录的映射。target=all 展开 claude/cursor/codex/copilot。
+// 未知 target 显式报错（绝不静默丢弃）：空目录会让 filepath.Join("", name) 退化为
+// cwd 相对路径，写到当前目录。
 func TargetDirs(targets []Target, global bool, projectSkillsDir string) (map[string]string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -738,36 +883,55 @@ func TargetDirs(targets []Target, global bool, projectSkillsDir string) (map[str
 	}
 	out := map[string]string{}
 	seen := map[string]bool{}
-	expand := func(t Target) {
+	expand := func(t Target) error {
 		if t == TargetAll {
 			for _, sub := range []Target{TargetClaude, TargetCursor, TargetCodex, TargetCopilot} {
 				if !seen[string(sub)] {
 					seen[string(sub)] = true
-					out[string(sub)] = targetDir(string(sub), global, home, projectSkillsDir)
+					dir, terr := targetDir(string(sub), global, home, projectSkillsDir)
+					if terr != nil {
+						return terr
+					}
+					out[string(sub)] = dir
 				}
 			}
-			return
+			return nil
 		}
 		if !seen[string(t)] {
 			seen[string(t)] = true
-			out[string(t)] = targetDir(string(t), global, home, projectSkillsDir)
+			dir, terr := targetDir(string(t), global, home, projectSkillsDir)
+			if terr != nil {
+				return terr
+			}
+			out[string(t)] = dir
 		}
+		return nil
 	}
 	for _, t := range targets {
-		expand(t)
+		if err := expand(t); err != nil {
+			return nil, err
+		}
 	}
 	return out, nil
 }
 
-func targetDir(name string, global bool, home, projectSkillsDir string) string {
+// targetDir resolves one target's skills directory. Project mode (global=false) always uses
+// projectSkillsDir. Global mode switches on the known target set; an unknown target is an
+// explicit error — returning "" would let filepath.Join("", name) degrade into a cwd-relative
+// path and silently write skills into whatever directory the user ran forge from.
+//
+// targetDir 解析单个 target 的 skills 目录。项目模式（global=false）统一用 projectSkillsDir。
+// 全局模式按已知 target 集合 switch；未知 target 显式报错——返回 "" 会让
+// filepath.Join("", name) 退化为 cwd 相对路径，把 skill 静默写进用户运行 forge 的目录。
+func targetDir(name string, global bool, home, projectSkillsDir string) (string, error) {
 	if !global {
-		return projectSkillsDir // 项目级统一 .claude/skills
+		return projectSkillsDir, nil // 项目级统一 .claude/skills
 	}
 	switch name {
 	case "claude":
-		return filepath.Join(home, ".claude", "skills")
+		return filepath.Join(home, ".claude", "skills"), nil
 	case "cursor":
-		return filepath.Join(home, ".cursor", "skills")
+		return filepath.Join(home, ".cursor", "skills"), nil
 	case "codex":
 		// Since 2025-12 Codex CLI natively reads ~/.codex/skills/<slug>/SKILL.md (aligned with the
 		// Claude/Cursor format). Note openai/codex#17344: Codex once skipped user skills whose
@@ -784,7 +948,7 @@ func targetDir(name string, global bool, home, projectSkillsDir string) string {
 		// junction 内 SKILL.md 是真实文件非 symlink，理论上不受该 bug 影响——
 		// 但 junction 是 Windows reparse point，Codex 实际跟随行为需在本机实测。
 		// 若 Codex 未识别 link 分发的 skill，降级用 --mode copy --target codex。
-		return filepath.Join(home, ".codex", "skills")
+		return filepath.Join(home, ".codex", "skills"), nil
 	case "copilot":
 		// GitHub Copilot personal skills (cross-project) live at
 		// ~/.copilot/skills/<slug>/SKILL.md (project-level ones go to .github/skills/, out of
@@ -792,15 +956,15 @@ func targetDir(name string, global bool, home, projectSkillsDir string) string {
 		//
 		// GitHub Copilot 个人 skill（跨项目）放 ~/.copilot/skills/<slug>/SKILL.md
 		// （项目级放 .github/skills/，这里只管全局个人级）。格式与 Claude SKILL.md 兼容。
-		return filepath.Join(home, ".copilot", "skills")
+		return filepath.Join(home, ".copilot", "skills"), nil
 	}
-	return ""
+	return "", fmt.Errorf("未知 target: %q（合法值: claude/cursor/codex/copilot/all）", name)
 }
 
 // orderedTargetNames returns target names in a fixed order (alphabetic
-// claude<codex<copilot<cursor<pi) for stable output.
+// claude<codex<copilot<cursor) for stable output.
 //
-// orderedTargetNames 返回固定排序的目标名（字母序 claude<codex<copilot<cursor<pi），输出稳定。
+// orderedTargetNames 返回固定排序的目标名（字母序 claude<codex<copilot<cursor），输出稳定。
 func orderedTargetNames(m map[string]string) []string {
 	return slices.Sorted(maps.Keys(m))
 }

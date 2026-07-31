@@ -161,3 +161,26 @@ func TestDanglingSkillRefs_Mechanism(t *testing.T) {
 		})
 	}
 }
+
+// TestDriftedCommands_NoCrossLinePhantom: the regex character class excludes \n, so a code
+// span broken by a line break is not spliced into a phantom reference. Before the fix,
+// "`forge experience\npropose`" matched with m[1]="experience\npropose" and was reported as a
+// drifted path that no doc author ever wrote.
+//
+// TestDriftedCommands_NoCrossLinePhantom：正则字符类排除 \n，被换行截断的 code span 不会
+// 被拼成幻影引用。修复前 "`forge experience\npropose`" 会匹配出 m[1]="experience\npropose"，
+// 报出一个文档作者从未写过的 drift 路径。
+func TestDriftedCommands_NoCrossLinePhantom(t *testing.T) {
+	root := &cobra.Command{Use: "forge"}
+	exp := &cobra.Command{Use: "experience"}
+	exp.AddCommand(&cobra.Command{Use: "accept"})
+	root.AddCommand(exp)
+
+	doc := "第一段 `forge experience\npropose` 跨行；正常的 `forge experience accept` 同行。"
+	withTree(t, root, func() {
+		drifted := DriftedCommands(doc)
+		if len(drifted) != 0 {
+			t.Fatalf("cross-line code span must not form a phantom reference, got %v", drifted)
+		}
+	})
+}

@@ -682,6 +682,17 @@ func readsFilePath(root, sessionID string) string {
 // 保留可读性，但仍可能含某些平台上被文件系统特殊对待的字符；将 [A-Za-z0-9._-]
 // 之外的字符一律折叠为 '_'，使临时文件名始终安全，且不把原始 id 泄漏到 $TMPDIR。
 func readsFileKey(sessionID string) string {
+	// Defensive: pin the empty-input token at the cli layer. util.SanitizeSessionID
+	// is shared with other packages whose fallback semantics may evolve (it now
+	// returns "session" for ""); the reads-log filename contract here stays
+	// "default" for an empty session id regardless.
+	//
+	// 防御式：空输入 token 钉在 cli 层。util.SanitizeSessionID 与其他包共享，
+	// 其兜底语义可能演进（现在 "" 返回 "session"）；本处 reads-log 文件名契约
+	// 对空 session id 保持 "default"。
+	if sessionID == "" {
+		return "default"
+	}
 	s := util.SanitizeSessionID(sessionID)
 	if s == "" {
 		return "default"
@@ -759,6 +770,15 @@ func sanitizeForShell(value string) string {
 				value = value[:offset]
 				break
 			}
+		}
+		// Fallback: invalid UTF-8 in the 10-byte window can leave no RuneStart,
+		// so the loop above finishes without truncating and the overlong value
+		// would reach the env unchanged. Hard-truncate at the limit instead.
+		//
+		// 兜底：10 字节窗口内含非法 UTF-8 时可能找不到 RuneStart，循环走完不
+		// 截断，超长 value 会原样进 env。改为在限制处硬截断。
+		if len(value) > maxEnvValueLen {
+			value = value[:maxEnvValueLen]
 		}
 	}
 
