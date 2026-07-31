@@ -56,3 +56,20 @@ pass 是 agent 自律最薄弱的环节（声明成本极低），绑定快照�
 ### Evidence
 
 改后 grep 'references/.*\.md\]' 无未带 ( 的残留
+
+## [d-18c77baa46f23fa4-886a12ef] accept
+
+- **Skill**: code-review-gate
+- **DecidedAt**: 2026-07-31T21:02:28Z
+
+### Diagnosis
+
+behavior-probe 维度全库仅本 skill 的 probes.yaml 一个消费方（约 500 行服务单点），决策拆除不推广
+
+### Revision
+
+删除 probes.yaml 资产；skillseval 的 probes.go/judgeBehavior/behaviorPassRate 通路、cli eval 命令的 probe 相关输出与脱敏机制同步拆除
+
+### Evidence
+
+audit 确认 53 个 skill 中唯一消费方；probe 字段不参与 caseID/DescHash，拆除对存量 case 集 hash 零影响
