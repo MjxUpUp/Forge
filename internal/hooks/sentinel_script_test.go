@@ -133,6 +133,210 @@ func TestSentinelScripts_StagedWriteDoesNotEscape(t *testing.T) {
 	if _, qerr := os.Stat(filepath.Join(qdir, sid, "staged.go")); qerr != nil {
 		t.Errorf("staged.go must be quarantined (staged blind spot fix): %v\noutput:\n%s", qerr, out)
 	}
+	// The staged entry must NOT survive: staged-new (absent in HEAD) → dropped
+	// from the index, and the worktree file stays gone (it is in quarantine).
+	// Before the restore fix, "git checkout --" resurrected the staged content
+	// into the worktree and kept the index entry — quarantine undone.
+	if _, statErr := os.Stat(target); statErr == nil {
+		t.Errorf("staged-new staged.go must NOT reappear in the worktree (quarantine would be undone):\n%s", out)
+	}
+	if staged := gitCachedNames(t, dir); staged != "" {
+		t.Errorf("git diff --cached --name-only must be empty after quarantine, got %q", staged)
+	}
+}
+
+// gitCachedNames returns `git diff --cached --name-only` output in dir.
+func gitCachedNames(t *testing.T, dir string) string {
+	t.Helper()
+	cmd := exec.Command("git", "diff", "--cached", "--name-only")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git diff --cached: %v\n%s", err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// TestSentinelScripts_StagedModificationRestoredToHead (task 2, HEAD-restore
+// half): a TRACKED file modified and staged in one command. Quarantine must
+// restore the worktree to the HEAD version AND clear the staged entry — plain
+// "git checkout --" restored from the INDEX, putting the staged violation right
+// back and keeping the index entry (quarantine silently undone).
+func TestSentinelScripts_StagedModificationRestoredToHead(t *testing.T) {
+	dir := sentinelRepo(t)
+	const sid = "sess-staged-mod"
+	tmp := t.TempDir()
+	qdir := t.TempDir()
+
+	original := "package main\n\nfunc v1() {}\n"
+	target := filepath.Join(dir, "tracked.go")
+	if err := os.WriteFile(target, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+	add := exec.Command("git", "add", "tracked.go")
+	add.Dir = dir
+	if out, err := add.CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v\n%s", err, out)
+	}
+	sentinelCommit(t, dir)
+
+	env := sentinelEnv(t, sid, tmp, qdir)
+	if out, err := runSentinelScript(t, BashGuardHook, dir, append(env, "FORGE_COMMAND=cat > tracked.go && git add tracked.go")); err != nil {
+		t.Fatalf("bash-guard failed: %v\n%s", err, out)
+	}
+
+	// Modify + stage in one go — the write-then-git-add escape form.
+	if err := os.WriteFile(target, []byte("package main\n\nfunc v2() {}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	add2 := exec.Command("git", "add", "tracked.go")
+	add2.Dir = dir
+	if out, err := add2.CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v\n%s", err, out)
+	}
+
+	out, err := runSentinelScript(t, FileSentinelHook, dir, env)
+	if err == nil {
+		t.Fatalf("file-sentinel must FAIL on staged modification with no task, got PASS:\n%s", out)
+	}
+	// Quarantine preserves the staged (v2) content for recovery.
+	qdata, qerr := os.ReadFile(filepath.Join(qdir, sid, "tracked.go"))
+	if qerr != nil {
+		t.Fatalf("staged tracked.go must be quarantined: %v\noutput:\n%s", qerr, out)
+	}
+	if !strings.Contains(string(qdata), "v2") {
+		t.Errorf("quarantined content must be the staged v2, got %q", string(qdata))
+	}
+	// Worktree restored to the HEAD version (v1) — not to the staged v2.
+	data, statErr := os.ReadFile(target)
+	if statErr != nil {
+		t.Fatalf("tracked.go must be restored from HEAD: %v\noutput:\n%s", statErr, out)
+	}
+	if got, want := strings.ReplaceAll(string(data), "\r\n", "\n"), original; got != want {
+		t.Errorf("worktree must be the HEAD version: got %q want %q (restore-from-index would resurrect the staged v2)", got, want)
+	}
+	// Staged entry cleared.
+	if staged := gitCachedNames(t, dir); staged != "" {
+		t.Errorf("git diff --cached --name-only must be empty after quarantine, got %q", staged)
+	}
+}
+
+// TestSentinelScripts_SnapshotGitFailureFailsOpen (task 3 hardened): the .ok
+// completion marker must mean "git enumeration SUCCEEDED", not "bash-guard
+// reached the marker line". With git failing at snapshot time (invalid GIT_DIR)
+// the marker must stay absent — and file-sentinel (git healthy again) must take
+// its snapshot-failed fail-open WARN branch instead of reading the entire
+// working tree as new violations (the mass-quarantine P0 scenario).
+func TestSentinelScripts_SnapshotGitFailureFailsOpen(t *testing.T) {
+	dir := sentinelRepo(t)
+	const sid = "sess-gitfail"
+	tmp := t.TempDir()
+	qdir := t.TempDir()
+
+	// Pre-existing uncommitted source that must never be touched.
+	victim := filepath.Join(dir, "existing.go")
+	if err := os.WriteFile(victim, []byte("package main\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Snapshot with git broken (invalid GIT_DIR): every enumeration fails →
+	// snapshot file exists but NO .ok marker may be written.
+	badEnv := append(sentinelEnv(t, sid, tmp, qdir),
+		"GIT_DIR="+filepath.ToSlash(filepath.Join(dir, "no-such-git-dir")),
+		"FORGE_COMMAND=cat > existing.go")
+	if out, err := runSentinelScript(t, BashGuardHook, dir, badEnv); err != nil {
+		t.Fatalf("bash-guard failed: %v\n%s", err, out)
+	}
+	okMarkers, err := filepath.Glob(filepath.Join(tmp, "forge-snapshot-"+sid+"-*.ok"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(okMarkers) != 0 {
+		t.Fatalf(".ok marker must NOT be written when git enumeration failed, found %v", okMarkers)
+	}
+	snaps, err := filepath.Glob(filepath.Join(tmp, "forge-snapshot-"+sid+"-*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hasSnap := false
+	for _, s := range snaps {
+		if !strings.HasSuffix(s, ".ok") && !strings.HasSuffix(s, ".cfg") {
+			hasSnap = true
+		}
+	}
+	if !hasSnap {
+		t.Fatalf("per-invocation snapshot file must exist (empty) even when git failed, found %v", snaps)
+	}
+
+	// Sentinel with git healthy again: empty baseline + non-empty tree + NO
+	// marker → fail-open WARN, never mass quarantine.
+	out, err := runSentinelScript(t, FileSentinelHook, dir, sentinelEnv(t, sid, tmp, qdir))
+	if err != nil {
+		t.Fatalf("file-sentinel must fail-open (PASS) on failed snapshot, got FAIL:\n%s", out)
+	}
+	if !strings.Contains(out, "WARN") {
+		t.Errorf("fail-open path must WARN, got:\n%s", out)
+	}
+	if _, statErr := os.Stat(victim); statErr != nil {
+		t.Errorf("existing.go must remain in place (no mass quarantine), was quarantined: %v", statErr)
+	}
+}
+
+// TestSentinelScripts_ConfigForgeSubstringBypassBlocked (exemption tightening):
+// the CONFIG-quarantine exemption must require the WHOLE command to be a forge
+// invocation. `echo evil > .claude/settings.local.json && forge --version`
+// contains the substring " forge " but is a config rewrite — it must NOT be
+// exempted. This bites now that the .cfg manifest covers .claude/settings*.
+func TestSentinelScripts_ConfigForgeSubstringBypassBlocked(t *testing.T) {
+	dir := sentinelRepo(t)
+	const sid = "sess-forge-bypass"
+	tmp := t.TempDir()
+	qdir := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(".forge/\n.claude/\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, ".claude"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	settings := filepath.Join(dir, ".claude", "settings.local.json")
+	if err := os.WriteFile(settings, []byte(`{"hooks":{}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	sentinelCommit(t, dir)
+
+	env := sentinelEnv(t, sid, tmp, qdir)
+	bypass := "echo evil > .claude/settings.local.json && forge --version"
+	if out, err := runSentinelScript(t, BashGuardHook, dir, append(env, "FORGE_COMMAND="+bypass)); err != nil {
+		t.Fatalf("bash-guard failed: %v\n%s", err, out)
+	}
+	// The old substring match would have planted the forge-cmd marker here.
+	if _, err := os.Stat(filepath.Join(tmp, "forge-cmd-"+sid)); err == nil {
+		t.Fatal("forge-cmd marker must NOT be planted for a compound command merely containing ' forge '")
+	}
+
+	if err := os.WriteFile(settings, []byte(`{"hooks":{"PreToolUse":[]}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runSentinelScript(t, FileSentinelHook, dir, env)
+	if err == nil {
+		t.Fatalf("file-sentinel must FAIL on config rewrite behind a ' forge ' substring, got PASS:\n%s", out)
+	}
+	if _, qerr := os.Stat(filepath.Join(qdir, sid, ".claude", "settings.local.json")); qerr != nil {
+		t.Errorf("settings.local.json must be quarantined (substring exemption bypass): %v\noutput:\n%s", qerr, out)
+	}
+
+	// Other side: a genuine whole-command forge invocation IS still exempted.
+	const sid2 = "sess-forge-legit"
+	tmp2 := t.TempDir()
+	env2 := sentinelEnv(t, sid2, tmp2, qdir)
+	if out, err := runSentinelScript(t, BashGuardHook, dir, append(env2, "FORGE_COMMAND=forge task status")); err != nil {
+		t.Fatalf("bash-guard failed: %v\n%s", err, out)
+	}
+	if _, err := os.Stat(filepath.Join(tmp2, "forge-cmd-"+sid2)); err != nil {
+		t.Errorf("whole-command 'forge task status' must plant the forge-cmd marker: %v", err)
+	}
 }
 
 // TestSentinelScripts_GitignoredConfigDetected (task 1): .claude/settings* and

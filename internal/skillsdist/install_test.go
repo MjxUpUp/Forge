@@ -548,11 +548,11 @@ func TestInstall_DriftOverwrite_Backups(t *testing.T) {
 
 // TestTargetDirs_AllExpandsCodexCopilot: TargetAll must expand to include codex and copilot.
 // Guards that target=all does not miss the newly added codex/copilot targets — otherwise user --target all distribution silently drops these two tools,
-// skills only install to claude/cursor/pi, loop engineering multi-agent distribution breaks.
+// skills only install to claude/cursor, loop engineering multi-agent distribution breaks.
 //
 // TestTargetDirs_AllExpandsCodexCopilot：TargetAll 必须展开含 codex 和 copilot。
 // 守护 target=all 不会漏掉新加的 codex/copilot 目标——否则用户 --target all 分发会静默漏掉这两个工具，
-// skills 只装到 claude/cursor/pi，loop engineering 多 agent 分发失效。
+// skills 只装到 claude/cursor，loop engineering 多 agent 分发失效。
 func TestTargetDirs_AllExpandsCodexCopilot(t *testing.T) {
 	dirs, err := TargetDirs([]Target{TargetAll}, true, "")
 	mustMk(t, err)
@@ -852,5 +852,102 @@ func TestInstall_TotalCountsEveryProcessedSkill(t *testing.T) {
 	}
 	if rep.Stats.Failed != 1 {
 		t.Fatalf("failed=%d want 1（bad-skill 门控拦截）", rep.Stats.Failed)
+	}
+}
+
+// TestTreesInSync_SymlinkDifference: a symlink is NOT content-free — its target
+// string participates in the tree comparison. Before the fix, hashTree skipped
+// symlinks entirely, so trees differing ONLY by a symlink (extra link, different
+// target, single-side link) were judged copy-in-sync — and copy-in-sync → link
+// mode deletes the target tree with os.RemoveAll and no backup.
+//
+// TestTreesInSync_SymlinkDifference：symlink 并非无内容——其 target 串参与整树
+// 对比。修复前 hashTree 完全跳过 symlink，"唯一差异是 symlink"（新增 link /
+// 指向不同 / 单侧存在）的两棵树会被误判 copy-in-sync——而 copy-in-sync → link
+// 会 os.RemoveAll 整树且无备份。
+func TestTreesInSync_SymlinkDifference(t *testing.T) {
+	// Junction (Windows, no admin needed) / dir symlink (unix) via makeDirLink —
+	// WalkDir reports Windows junctions as ModeIrregular (type "?"), not
+	// ModeSymlink; hashTree detects links via !IsRegular + os.Readlink. This
+	// subtest runs even where file symlinks need privileges.
+	t.Run("Junction", func(t *testing.T) {
+		mkJuncTree := func(withLink bool, linkTarget string) string {
+			root := t.TempDir()
+			mustMk(t, os.WriteFile(filepath.Join(root, "SKILL.md"), []byte("same"), 0644))
+			if withLink {
+				mustMk(t, makeDirLink(filepath.Join(root, "ref"), linkTarget))
+			}
+			return root
+		}
+		realA := t.TempDir()
+		realB := t.TempDir()
+		if treesInSync(mkJuncTree(false, ""), mkJuncTree(true, realA)) {
+			t.Error("target 多一个 junction/link 必须判 drift（修复前 link 被跳过 → 误判 in-sync → link 模式无备份删树）")
+		}
+		if treesInSync(mkJuncTree(true, realA), mkJuncTree(true, realB)) {
+			t.Error("junction/link 指向不同必须判 drift")
+		}
+		jcA, jcB := mkJuncTree(true, realA), mkJuncTree(true, realA)
+		if !treesInSync(jcA, jcB) {
+			t.Errorf("双侧 junction/link 完全一致应判 in-sync: hashA=%v hashB=%v", hashTree(jcA), hashTree(jcB))
+		}
+	})
+
+	// File symlinks — skipped where the host cannot create them (Windows may
+	// need developer mode).
+	t.Run("FileSymlink", func(t *testing.T) {
+		mkTree := func(withLink bool, linkTarget string) string {
+			root := t.TempDir()
+			mustMk(t, os.WriteFile(filepath.Join(root, "SKILL.md"), []byte("same"), 0644))
+			if withLink {
+				if err := os.Symlink(linkTarget, filepath.Join(root, "ref")); err != nil {
+					t.Skipf("symlinks unavailable on host (Windows may need developer mode): %v", err)
+				}
+			}
+			return root
+		}
+
+		src := mkTree(false, "")
+
+		// Extra symlink on the target side only → drift.
+		if treesInSync(src, mkTree(true, "SKILL.md")) {
+			t.Error("target 多一个 symlink 必须判 drift（修复前 symlink 被跳过 → 误判 in-sync → link 模式无备份删树）")
+		}
+		// Same symlink name, different target → drift.
+		if treesInSync(mkTree(true, "SKILL.md"), mkTree(true, "other.md")) {
+			t.Error("symlink 指向不同必须判 drift")
+		}
+		// Identical symlink on both sides → in sync.
+		if !treesInSync(mkTree(true, "SKILL.md"), mkTree(true, "SKILL.md")) {
+			t.Error("双侧 symlink 完全一致应判 in-sync")
+		}
+	})
+}
+
+// TestInstall_UnknownSkillFilterErrors: a misspelled --skill must be an explicit
+// error (same semantics as the CLI layer's filterSkillNames / audit / validate),
+// never silently filtered to an empty set — "0 installed, exit 0" is a false green.
+//
+// TestInstall_UnknownSkillFilterErrors：拼错的 --skill 必须显式报错（与 CLI 层
+// filterSkillNames / audit / validate 同款语义），绝不静默过滤成空集——
+// "安装 0 个，exit 0" 是假绿。
+func TestInstall_UnknownSkillFilterErrors(t *testing.T) {
+	canonical := t.TempDir()
+	writeCanonicalSkill(t, canonical, "foo")
+
+	opts := copyOpts(t.TempDir())
+	opts.SkillFilter = []string{"fooo"}
+	if _, err := Install(canonical, opts); err == nil {
+		t.Fatal("Install: --skill 拼错必须报错，got nil（静默过滤成空集=假绿）")
+	} else if !strings.Contains(err.Error(), "fooo") {
+		t.Fatalf("Install: 错误应点名未匹配的 skill，got: %v", err)
+	}
+
+	dopts := copyOpts(t.TempDir())
+	dopts.SkillFilter = []string{"fooo"}
+	if _, err := DriftCheck(canonical, dopts); err == nil {
+		t.Fatal("DriftCheck: --skill 拼错必须报错，got nil（静默过滤成空集=假绿）")
+	} else if !strings.Contains(err.Error(), "fooo") {
+		t.Fatalf("DriftCheck: 错误应点名未匹配的 skill，got: %v", err)
 	}
 }

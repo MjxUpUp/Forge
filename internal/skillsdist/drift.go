@@ -66,7 +66,10 @@ func DriftCheck(canonical string, opts InstallOpts) (*DriftReport, error) {
 		nameSet[n] = true
 	}
 	if len(opts.SkillFilter) > 0 {
-		names = filterNames(names, opts.SkillFilter)
+		names, err = filterNames(names, opts.SkillFilter)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	targetDirs, err := TargetDirs(opts.Targets, opts.Global, opts.ProjectSkillsDir)
