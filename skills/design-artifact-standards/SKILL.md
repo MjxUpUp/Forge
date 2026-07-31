@@ -38,7 +38,7 @@ phase-*.md 是「好设计产物该有什么」的标准清单（IEEE 830 / Goog
 | 后端设计 / service / domain / 业务逻辑 | backend | [phase-backend.md](../code-review-gate/references/phase-backend.md) | 分层 / 领域 / 状态 / 事务 |
 | 测试方案 / 测试用例 / 测试计划 | test-design | [phase-test-design.md](../code-review-gate/references/phase-test-design.md) | 覆盖 / 边界 / 等级 / 独立 |
 
-> 6 个环节枚举与 `taskpipeline` 的 `AllDesignPhases`（`internal/taskpipeline/phase_detect.go`）一致。编写期你按意图选环节；审查期 task-verify 的 `inferDesignPhases` 按**文件路径模式**推断环节（如 PRD 需放 `docs/prd/`、API 需路径含 `openapi/api/proto`）——产物按约定路径落盘时两期环节集合一致，路径不匹配时审查期会回退通用清单（编写期自查的有效性不受影响）。
+> 6 个环节枚举与 `taskpipeline` 的 `allDesignPhases`（`internal/taskpipeline/phase_detect.go`）一致。编写期你按意图选环节；审查期 task-verify 的 `inferDesignPhases` 按**文件路径模式**推断环节（如 PRD 需放 `docs/prd/`、API 需路径含 `openapi/api/proto`）——产物按约定路径落盘时两期环节集合一致，路径不匹配时审查期会回退通用清单（编写期自查的有效性不受影响）。
 
 ## 使用流程
 
@@ -92,4 +92,4 @@ phase-*.md 是「好设计产物该有什么」的标准清单（IEEE 830 / Goog
 - backend：[`code-review-gate/references/phase-backend.md`](../code-review-gate/references/phase-backend.md)
 - test-design：[`code-review-gate/references/phase-test-design.md`](../code-review-gate/references/phase-test-design.md)
 
-phase 枚举真相源：`internal/taskpipeline/phase_detect.go`（`AllDesignPhases` + `inferDesignPhases`）。
+phase 枚举真相源：`internal/taskpipeline/phase_detect.go`（`allDesignPhases` + `inferDesignPhases`）。

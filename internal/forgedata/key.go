@@ -48,14 +48,13 @@ var (
 // FindGitRoot walks up from dir to the nearest ancestor containing `.git` (dir or file). Returns empty string if not found.
 // Does not depend on forge project existence — just git repo detection.
 //
-// Same semantics as findGitRoot in cli/hook.go:51; not reused because forgedata is an infrastructure package,
-// not wanting a reverse dependency on cli. When Stage 1 lands, refactor the cli one to call this forge data one.
+// cli 侧（cli/hook.go 的 suggestTagFor、cli/suggest.go）已复用本函数——单一真相源在此，
+// cli 不再保留私有复制品。
 //
 // FindGitRoot walks up from dir 到最近的含 `.git`（dir 或 file）祖先。找不到返 ""。
 // 不依赖 forge 项目存在——只是 git repo 探测。
 //
-// 与 cli/hook.go:51 的 findGitRoot 同语义；不复用是因 forgedata 是基础设施包，
-// 不想反向依赖 cli。等 Stage 1 接入时把 cli 那个重构为调 forge data 这个。
+// cli 侧已复用本函数，不再保留私有复制品。
 func FindGitRoot(dir string) string {
 	d := filepath.Clean(dir)
 	for {

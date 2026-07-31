@@ -141,7 +141,7 @@ func DefaultPluginPack(repoDir string) PluginPackSpec {
 // OwnerName 空时报错（claude marketplace schema required）；幂等：重跑就地覆盖。
 func GeneratePluginPack(spec PluginPackSpec) error {
 	if spec.OwnerName == "" {
-		return fmt.Errorf("plugin pack: OwnerName is required (claude marketplace schema marks owner as required); pass --owner-name or use DefaultPluginPack")
+		return fmt.Errorf("plugin pack: OwnerName is required (claude marketplace schema marks owner as required); use DefaultPluginPack for the defaults")
 	}
 	if spec.MarketplaceName == "" || spec.PluginName == "" {
 		return fmt.Errorf("plugin pack: MarketplaceName and PluginName are required")

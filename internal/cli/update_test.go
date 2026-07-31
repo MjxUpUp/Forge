@@ -652,3 +652,63 @@ func TestPrintPluginReinstallGuidance(t *testing.T) {
 		}
 	}
 }
+
+// TestExtractBinary_StripsSetuid pins the security property previously covered
+// by the deleted TestArchiveSafeMode: a tar entry carrying setuid/setgid bits
+// must land on disk with only plain rwx permission bits (Perm(), not raw Mode()).
+//
+// TestExtractBinary_StripsSetuid 钉住被删 TestArchiveSafeMode 曾覆盖的安全属性：
+// 带 setuid/setgid 位的 tar 条目落盘后必须只剩普通 rwx 权限位（Perm()，而非
+// 原始 Mode()）。
+func TestExtractBinary_StripsSetuid(t *testing.T) {
+	tmpDir := t.TempDir()
+	archivePath := filepath.Join(tmpDir, "setuid.tar.gz")
+
+	f, err := os.Create(archivePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gzw := gzip.NewWriter(f)
+	tw := tar.NewWriter(gzw)
+
+	binaryName := "forge"
+	if runtime.GOOS == "windows" {
+		binaryName = "forge.exe"
+	}
+	content := []byte("#!/bin/sh\necho hi")
+	// 0o4755 = setuid + rwxr-xr-x — a malicious archive trying to plant a
+	// setuid binary. archive/tar maps the setuid bit to os.ModeSetuid.
+	//
+	// 0o4755 = setuid + rwxr-xr-x——恶意 archive 试图落 setuid 二进制。
+	// archive/tar 把 setuid 位映射到 os.ModeSetuid。
+	hdr := &tar.Header{Name: binaryName, Mode: 0o4755, Size: int64(len(content))}
+	if err := tw.WriteHeader(hdr); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write(content); err != nil {
+		t.Fatal(err)
+	}
+	tw.Close()
+	gzw.Close()
+	f.Close()
+
+	extracted, err := extractBinary(archivePath, tmpDir)
+	if err != nil {
+		t.Fatalf("extractBinary: %v", err)
+	}
+	fi, err := os.Stat(extracted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mode := fi.Mode()
+	if mode&os.ModeSetuid != 0 || mode&os.ModeSetgid != 0 {
+		t.Errorf("setuid/setgid survived extraction: mode = %v", mode)
+	}
+	// Windows only honors the read-only bit — 0o755 lands as 0o666 there;
+	// the rwx bits are meaningful on Unix.
+	//
+	// Windows 只认只读位——0o755 落盘为 0o666；rwx 位在 Unix 上才有意义。
+	if runtime.GOOS != "windows" && mode.Perm() != 0o755 {
+		t.Errorf("permission bits = %o, want 755", mode.Perm())
+	}
+}
