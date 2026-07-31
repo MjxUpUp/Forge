@@ -491,14 +491,16 @@ SNAPSHOT_FILE="${TMPDIR:-/tmp}/forge-snapshot-${SESSION_ID}"
 WRITE_FLAG_FILE="${TMPDIR:-/tmp}/forge-write-${SESSION_ID}"
 [ -z "${WRITE_FLAG_FILE:-}" ] && WRITE_FLAG_FILE="${TMPDIR:-/tmp}/forge-write-unknown"
 
-# Per-invocation pairing: the session-keyed files above are shared by every
-# Bash call in the session, so two PARALLEL Bash calls overwrite each other's
-# snapshot / write-flag and file-sentinel can consume a sibling's pairing
-# (wrong baseline, wrong secondary gate). Keying the authoritative copies with
-# THIS hook process's PID ($$) makes each PreToolUse→PostToolUse pair distinct;
-# file-sentinel globs the newest unconsumed per-invocation snapshot. The legacy
-# session-keyed files are still written below (kept in sync) for backward
-# compatibility with older file-sentinel versions and external tooling.
+# Per-invocation pairing: the session-keyed base names above would be shared by
+# every Bash call in the session, so two PARALLEL Bash calls would overwrite
+# each other's snapshot / write-flag and file-sentinel could consume a
+# sibling's pairing (wrong baseline, wrong secondary gate). Keying the
+# authoritative copies with THIS hook process's PID ($$) makes each
+# PreToolUse→PostToolUse pair distinct; file-sentinel globs the newest
+# unconsumed per-invocation snapshot. This per-invocation channel is the ONLY
+# one: both hooks run embedded from the same forge binary (forge hook <name>
+# → EmbeddedContent), so there is no cross-version or external consumer to keep
+# a legacy session-keyed copy in sync for.
 SNAP_INV="${SNAPSHOT_FILE}-$$"
 FLAG_INV="${WRITE_FLAG_FILE}-$$"
 
@@ -641,9 +643,6 @@ git rev-parse --git-dir >/dev/null 2>&1 || SNAP_OK=0
   [ -n "$G3" ] && printf '%s\n' "$G3"
   true
 } | sort -u > "$SNAP_INV" 2>/dev/null || true
-# Legacy session-keyed copy, kept in sync for backward compatibility (see the
-# per-invocation pairing note above).
-cp -f "$SNAP_INV" "$SNAPSHOT_FILE" 2>/dev/null || true
 
 # Snapshot completion marker. file-sentinel uses it to tell a legitimate EMPTY
 # baseline (clean working tree — the common case) apart from a silently failed
@@ -653,7 +652,6 @@ cp -f "$SNAP_INV" "$SNAPSHOT_FILE" 2>/dev/null || true
 # probe succeeded) — see the enumeration comment above.
 if [ "$SNAP_OK" -eq 1 ]; then
   : > "${SNAP_INV}.ok" 2>/dev/null || true
-  : > "${SNAPSHOT_FILE}.ok" 2>/dev/null || true
 fi
 
 # Git-independent config manifest (see forge_cfg_manifest above): covers the
@@ -671,10 +669,8 @@ IS_WRITE_CMD=0
 if has_write_pattern "$COMMAND"; then
   IS_WRITE_CMD=1
   printf '1' > "$FLAG_INV" 2>/dev/null || true
-  printf '1' > "$WRITE_FLAG_FILE" 2>/dev/null || true
 else
   : > "$FLAG_INV" 2>/dev/null || true
-  : > "$WRITE_FLAG_FILE" 2>/dev/null || true
 fi
 
 # --- WARN on write without active task (allowed, just not tracked) ---
@@ -965,17 +961,14 @@ set -eo pipefail
 TASK_REF="${FORGE_TASK_REF:-}"
 SESSION_ID="${FORGE_SESSION_ID:-default}"
 : "${TMPDIR:=/tmp}"
-# Legacy session-keyed names (pre per-invocation pairing): retained as a
-# fallback when no per-invocation snapshot exists (e.g. planted by an older
-# bash-guard), and still kept in sync by the current bash-guard.
-LEGACY_SNAPSHOT_FILE="${TMPDIR}/forge-snapshot-${SESSION_ID}"
-LEGACY_WRITE_FLAG_FILE="${TMPDIR}/forge-write-${SESSION_ID}"
 FORGE_CMD_FILE="${TMPDIR}/forge-cmd-${SESSION_ID}"
 
-# Per-invocation pairing: bash-guard keys its authoritative snapshot with its
-# own PID (forge-snapshot-<session>-<pid>, plus .ok/.cfg sidecars), so parallel
-# Bash calls in one session no longer overwrite or mis-consume each other's
-# pairing. Consume the NEWEST unconsumed per-invocation snapshot.
+# Per-invocation pairing: bash-guard keys its snapshot with its own PID
+# (forge-snapshot-<session>-<pid>, plus .ok/.cfg sidecars), so parallel Bash
+# calls in one session no longer overwrite or mis-consume each other's
+# pairing. Consume the NEWEST unconsumed per-invocation snapshot. This is the
+# only channel — both hooks run embedded from the same forge binary, so there
+# is no legacy session-keyed producer to fall back to.
 # Heuristic limitation: under truly parallel Bash calls the newest snapshot may
 # belong to a sibling tool call — mis-pairing then degrades to the old
 # shared-file behavior (a wrong but fresh baseline), never worse. The serial
@@ -988,19 +981,16 @@ for f in "${TMPDIR}/forge-snapshot-${SESSION_ID}"-*; do
     SNAPSHOT_FILE="$f"
   fi
 done
-[ -z "$SNAPSHOT_FILE" ] && SNAPSHOT_FILE="$LEGACY_SNAPSHOT_FILE"
-# Matching write-flag: same PID suffix when consuming a per-invocation
-# snapshot, else the legacy session file.
-WRITE_FLAG_FILE="$LEGACY_WRITE_FLAG_FILE"
-case "$SNAPSHOT_FILE" in
-  "$LEGACY_SNAPSHOT_FILE") ;;
-  *)
-    _INV_SUFFIX="${SNAPSHOT_FILE##*forge-snapshot-${SESSION_ID}-}"
-    if [ -f "${TMPDIR}/forge-write-${SESSION_ID}-${_INV_SUFFIX}" ]; then
-      WRITE_FLAG_FILE="${TMPDIR}/forge-write-${SESSION_ID}-${_INV_SUFFIX}"
-    fi
-    ;;
-esac
+# Matching write-flag: same PID suffix as the consumed snapshot. Absent (or no
+# snapshot at all) → treated as a read-only command (IS_WRITE_CMD=0 below),
+# which is the fail-open direction.
+WRITE_FLAG_FILE=""
+if [ -n "$SNAPSHOT_FILE" ]; then
+  _INV_SUFFIX="${SNAPSHOT_FILE##*forge-snapshot-${SESSION_ID}-}"
+  if [ -f "${TMPDIR}/forge-write-${SESSION_ID}-${_INV_SUFFIX}" ]; then
+    WRITE_FLAG_FILE="${TMPDIR}/forge-write-${SESSION_ID}-${_INV_SUFFIX}"
+  fi
+fi
 # Sidecars written by bash-guard next to the snapshot: .ok = snapshot completed
 # (distinguishes clean baseline from failed snapshot), .cfg = git-independent
 # config manifest of the self-protection targets.
@@ -1010,7 +1000,7 @@ SNAPSHOT_CFG="${SNAPSHOT_FILE}.cfg"
 # cleanup_sentinel_state removes every state file this invocation may consume.
 cleanup_sentinel_state() {
   rm -f "$SNAPSHOT_FILE" "$SNAPSHOT_OK" "$SNAPSHOT_CFG" "$WRITE_FLAG_FILE" \
-    "$LEGACY_SNAPSHOT_FILE" "$LEGACY_WRITE_FLAG_FILE" "$FORGE_CMD_FILE" 2>/dev/null || true
+    "$FORGE_CMD_FILE" 2>/dev/null || true
 }
 
 # forge_cfg_manifest must produce byte-identical lines to the same function in
@@ -1027,11 +1017,10 @@ forge_cfg_manifest() {
   done
 }
 
-# No snapshot from PreToolUse → nothing to compare (fail-open). Also clear the
-# write-flag so a stale flag from this session never leaks into a later
-# invocation that has no matching bash-guard snapshot.
+# No snapshot from PreToolUse → nothing to compare (fail-open). Stale
+# per-invocation write-flags cannot leak into a later invocation: pairing
+# requires the exact PID suffix AND the matching snapshot file to exist.
 if [ ! -f "$SNAPSHOT_FILE" ]; then
-  rm -f "$LEGACY_WRITE_FLAG_FILE" 2>/dev/null || true
   echo "PASS"
   exit 0
 fi
@@ -1101,7 +1090,8 @@ IS_WRITE_CMD=0
 # exactly its primary self-protection targets. bash-guard recorded a hash
 # manifest of these files (${SNAPSHOT}.cfg); compare against the current state
 # and treat any drift (changed hash, added, or removed file) as a config
-# change. Skipped when the snapshot carries no manifest (legacy pairing).
+# change. bash-guard always writes the manifest next to its snapshot, so a
+# missing manifest means a planted or truncated snapshot — skip the comparison.
 CFG_FROM_MANIFEST=""
 if [ -f "$SNAPSHOT_CFG" ]; then
   CFG_NOW=$(forge_cfg_manifest)

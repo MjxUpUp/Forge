@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/MjxUpUp/Forge/internal/protocol"
 )
 
 // CopilotTranslator generates .github/instructions/forge-quality.instructions.md.
@@ -47,36 +49,21 @@ func buildCopilotInstructions(input *TranslationInput) string {
 	//
 	// 质量标准
 	sb.WriteString("## Quality Standards\n\n")
-	for _, s := range input.Protocol.Standards {
-		if !s.Enabled {
-			continue
-		}
-		severity := "ERROR"
-		switch s.Severity {
-		case "warning":
-			severity = "WARNING"
-		case "info":
-			severity = "INFO"
-		}
-		hookInfo := ""
-		if s.EnforceHook != "" {
-			hookInfo = fmt.Sprintf(" (auto-enforced via %s)", s.EnforceHook)
-		}
-		sb.WriteString(fmt.Sprintf("- [%s] **%s**: %s%s\n", severity, s.Name, s.Description, hookInfo))
-	}
+	protocol.RenderStandards(&sb, input.Protocol.Standards, protocol.StandardRenderStyle{
+		SeverityLabel:  protocol.WordSeverityLabel,
+		HookInfoFormat: " (auto-enforced via %s)",
+		LineFormat:     "- [%s] **%s**: %s%s\n",
+	})
 	sb.WriteString("\n")
 
 	// Session rules as behavioral directives.
 	//
 	// 会话规则作为行为指令
 	sb.WriteString("## Behavioral Rules\n\n")
-	for _, r := range input.Protocol.SessionRules {
-		prefix := "ALWAYS"
-		if !r.Mandatory {
-			prefix = "PREFER"
-		}
-		sb.WriteString(fmt.Sprintf("- %s: %s\n", prefix, r.Instruction))
-	}
+	protocol.RenderSessionRules(&sb, input.Protocol.SessionRules, protocol.SessionRuleRenderStyle{
+		MandatoryLabel: protocol.AlwaysPreferLabel,
+		LineFormat:     "- %[1]s: %[2]s\n",
+	})
 	sb.WriteString("\n")
 
 	return sb.String()

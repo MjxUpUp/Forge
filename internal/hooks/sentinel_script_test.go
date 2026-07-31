@@ -450,8 +450,9 @@ func TestSentinelScripts_MarkerlessSnapshotFailsOpen(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "existing.go"), []byte("package main\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	// Plant an empty snapshot with NO .ok marker — the failure signature.
-	if err := os.WriteFile(filepath.Join(tmp, "forge-snapshot-"+sid), []byte(""), 0644); err != nil {
+	// Plant an empty per-invocation snapshot with NO .ok marker — the failure
+	// signature (bash-guard writes neither content nor marker when git fails).
+	if err := os.WriteFile(filepath.Join(tmp, "forge-snapshot-"+sid+"-4242"), []byte(""), 0644); err != nil {
 		t.Fatal(err)
 	}
 
