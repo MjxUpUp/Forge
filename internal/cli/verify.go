@@ -171,15 +171,22 @@ func runProjectTestsModeAt(root string) error {
 	taskRef := taskpipeline.ReadActiveTaskRef(root, taskpipeline.CurrentSessionID())
 	fmt.Printf("运行测试套件: %s\n", cmdStr)
 	passed, output := taskpipeline.RunTestCommand(root, cmdStr)
-	checklog.Record(root, &checklog.Entry{
+	recErr := checklog.Record(root, &checklog.Entry{
 		Check:   taskpipeline.CheckNameTestRun,
 		Passed:  passed,
 		Checked: true,
 		TaskRef: taskRef,
 		Detail:  fmt.Sprintf("%s — %s", cmdStr, passFailWord(passed)),
 	})
+	if recErr != nil {
+		fmt.Fprintf(os.Stderr, "⚠ checklog 记录失败（证据未落盘）: %v\n", recErr)
+	}
 	if passed {
-		fmt.Printf("✅ 测试通过 — 真实结果已记为 deterministic 证据（checklog: %s）\n", taskpipeline.CheckNameTestRun)
+		if recErr != nil {
+			fmt.Printf("✅ 测试通过（⚠ checklog 记录失败: %v，证据未落盘）\n", recErr)
+		} else {
+			fmt.Printf("✅ 测试通过 — 真实结果已记为 deterministic 证据（checklog: %s）\n", taskpipeline.CheckNameTestRun)
+		}
 		return nil
 	}
 	fmt.Printf("❌ 测试失败 — 失败结果已记入 checklog：\n%s\n", boundOutput(output))

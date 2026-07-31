@@ -1,6 +1,8 @@
 package e2e
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -162,7 +164,16 @@ func TestE2E_TaskComplete_PassAfterVerifyAcceptance(t *testing.T) {
 	// 过 implement/verify gate + review pass（不含 task-complete gate——它 MarkComplete 后 verify 找不到 active task）。
 	t.Setenv("FORGE_GATE_MIN_INTERVAL", "0s")
 	t.Setenv("FORGE_WORK_ACTIVITY", "disable")
-	git(t, dir, "commit", "--allow-empty", "-m", "e2e: move HEAD for task-implement")
+	// Real file change + commit — task-implement compares content
+	// (git diff HeadCommit..HEAD), an empty commit does not satisfy it.
+	//
+	// 真实文件变更 + commit——task-implement 比对内容（git diff
+	// HeadCommit..HEAD），空 commit 无法满足。
+	if err := os.WriteFile(filepath.Join(dir, "e2e-scratch.txt"), []byte("change for pow-ok\n"), 0644); err != nil {
+		t.Fatalf("write scratch file: %v", err)
+	}
+	git(t, dir, "add", "e2e-scratch.txt")
+	git(t, dir, "commit", "-m", "e2e: code change for task-implement")
 	for _, g := range []string{"task-implement", "task-verify"} {
 		if out, err := forgeErr(t, dir, "task", "gate", g, "--ref", "feat/pow-ok"); err != nil {
 			t.Fatalf("forge task gate %s: %v\n%s", g, err, out)

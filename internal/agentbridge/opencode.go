@@ -67,8 +67,12 @@ func (t *OpencodeTranslator) Translate(projectDir string, input *TranslationInpu
 	// 文档说明如何加载 plugin（opencode 自动发现 .opencode/plugins/*.ts，故此 README
 	// 是给非标准部署/排错用的 guidance）。
 	readmeDir := filepath.Join(projectDir, ".opencode")
-	if err := os.MkdirAll(readmeDir, 0755); err == nil {
-		_ = os.WriteFile(filepath.Join(readmeDir, "forge.README.md"), []byte(buildOpencodeReadme()), 0644)
+	if err := os.MkdirAll(readmeDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "opencode: warning: cannot create dir for forge.README.md: %v\n", err)
+	} else if err := os.WriteFile(filepath.Join(readmeDir, "forge.README.md"), []byte(buildOpencodeReadme()), 0644); err != nil {
+		// The README is a promised Translate deliverable; a silent failure would
+		// leave the user without the loading/troubleshooting doc. Warn, don't fail.
+		fmt.Fprintf(os.Stderr, "opencode: warning: write forge.README.md: %v\n", err)
 	}
 	return nil
 }
@@ -112,14 +116,19 @@ const CLAUDE_TOOL: Record<string, string> = {
   read: "Read",
 };
 
-// Pre-tool gate roster, keyed by Claude tool name. Same set Claude Code wires
-// per matcher in hooks/settings.go — keep in sync.
+// Pre-tool gate roster, keyed by Claude tool name. Derived from
+// hooks.ForgeHookSpec's PreToolUse matchers (Write|Edit and Bash) — keep in
+// sync; TestOpencodePluginWiring asserts the derived parity. Edit carries the
+// same gates as Write (the spec matcher is "Write|Edit"); read-before-edit is
+// wired here so opencode gets the same shift-left blind-edit block Claude has.
 const PRE_HOOKS: Record<string, string[]> = {
-  Write: ["forge hook task-guard", "forge hook assertion-check"],
+  Write: ["forge hook task-guard", "forge hook assertion-check", "forge hook read-before-edit"],
+  Edit: ["forge hook task-guard", "forge hook assertion-check", "forge hook read-before-edit"],
   Bash: ["forge hook bash-guard", "forge hook hazard-guard"],
 };
 const POST_HOOKS: Record<string, string[]> = {
   Write: ["forge hook auto-compile", "forge hook workflow-test-guard"],
+  Edit: ["forge hook auto-compile", "forge hook workflow-test-guard"],
   Bash: ["forge hook file-sentinel"],
   Read: ["forge hook tool-track"],
 };
@@ -144,8 +153,10 @@ export default function forgePlugin() {
       if (!hooks) return;
       const payload = buildPayload(input, claudeTool, "PostToolUse", output.args);
       // Post hooks record/advise; a forge error must never abort the turn.
+      // runForge itself fails open on spawn error / parse failure / 30s timeout
+      // (never rejects), so a plain await is sufficient here.
       for (const cmd of hooks) {
-        await runForge(cmd, payload).catch(() => {});
+        await runForge(cmd, payload);
       }
     },
   };

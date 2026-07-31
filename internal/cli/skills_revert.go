@@ -64,6 +64,9 @@ func runSkillsRevert(cmd *cobra.Command, args []string) error {
 	if skRevSkill == "" {
 		return fmt.Errorf("需要 --skill NAME")
 	}
+	if err := requireValidSkillName(skRevSkill); err != nil {
+		return err
+	}
 	decisions, err := skillsdecisions.LoadDecisions(canonical, skRevSkill)
 	if err != nil {
 		return err
@@ -103,9 +106,16 @@ func runSkillsRevert(cmd *cobra.Command, args []string) error {
 	// repo（skills/ 源目录）操作，用 --canonical 指向源 repo。给可行动错误而非通用 not-a-git-repository。
 	var gitDir string
 	if isExternal {
-		out, err := exec.Command(`git`, `-C`, canonical, `rev-parse`, `--show-toplevel`).Output()
+		// CombinedOutput (not Output): git's real diagnosis (e.g. "fatal: not a
+		// git repository") goes to stderr; Output() would reduce the failure to a
+		// bare "exit status 128" with the actionable message discarded.
+		//
+		// 用 CombinedOutput（非 Output）：git 的真实诊断（如 "fatal: not a git
+		// repository"）在 stderr；Output() 会把失败压成裸 "exit status 128"，
+		// 可操作的信息被丢弃。
+		out, err := exec.Command(`git`, `-C`, canonical, `rev-parse`, `--show-toplevel`).CombinedOutput()
 		if err != nil {
-			return fmt.Errorf(`canonical %q 不在 git repo 内——scoped revert 需决策 CommitHash 所在仓库: %w`, canonical, err)
+			return fmt.Errorf(`canonical %q 不在 git repo 内——scoped revert 需决策 CommitHash 所在仓库: %w (%s)`, canonical, err, strings.TrimSpace(string(out)))
 		}
 		gitDir = strings.TrimSpace(string(out))
 		if gitDir == "" {

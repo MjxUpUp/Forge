@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -213,5 +214,55 @@ func TestPrintInstallReport_NoWarnings(t *testing.T) {
 	out := captureStderr(t, func() { printInstallReport(r) })
 	if strings.Contains(out, `requires 依赖警告`) {
 		t.Fatalf(`空 Warnings 不应打印警告标题: %s`, out)
+	}
+}
+
+// TestResolveInstallScope pins the shared --global/--project resolution:
+// --project overrides --global; project scope outside a forge project errors
+// with the actual flag combination in the message (not a hardcoded
+// "--project") and wraps the resolution failure.
+//
+// TestResolveInstallScope 钉住共享的 --global/--project 解析：--project 覆盖
+// --global；非 forge 项目内的 project scope 报错，文案含用户实际传的 flag 组合
+// （不写死 "--project"），并包裹解析失败 error。
+func TestResolveInstallScope(t *testing.T) {
+	// Global scope resolves without any project.
+	g, dir, err := resolveInstallScope(true, false)
+	if err != nil || !g || dir != "" {
+		t.Fatalf("global: got (%v, %q, %v), want (true, \"\", nil)", g, dir, err)
+	}
+
+	// --global=false alone also means project scope; the error must name
+	// --global=false (the flag the user actually passed).
+	t.Chdir(t.TempDir())
+	_, _, err = resolveInstallScope(false, false)
+	if err == nil {
+		t.Fatal("--global=false outside forge project: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "--global=false") {
+		t.Fatalf("error should name --global=false, got: %v", err)
+	}
+
+	// --project outside a forge project: error names --project.
+	_, _, err = resolveInstallScope(true, true)
+	if err == nil {
+		t.Fatal("--project outside forge project: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "--project") {
+		t.Fatalf("error should name --project, got: %v", err)
+	}
+
+	// --project inside a forge project: project skills dir under .claude/skills.
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".forge"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	g, dir, err = resolveInstallScope(true, true)
+	if err != nil || g {
+		t.Fatalf("project in forge project: got (%v, %q, %v), want global=false", g, dir, err)
+	}
+	if dir != filepath.Join(root, ".claude", "skills") {
+		t.Fatalf("project dir = %q, want %q", dir, filepath.Join(root, ".claude", "skills"))
 	}
 }

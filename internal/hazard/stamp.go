@@ -52,6 +52,15 @@ import (
 // 确认——避免一次确认永久放行某高危命令（确认应针对当次操作，不是 carte blanche）。
 const ConfirmTTL = 5 * time.Minute
 
+// expiryCheckSkew is the clock tolerance IsConfirmed allows when validating a marker's time
+// fields: legitimate writes always have ExpiresAt == ConfirmedAt + ConfirmTTL exactly, so only
+// cross-machine clock jitter (a marker file rsynced/shared between hosts) needs slack.
+//
+// expiryCheckSkew 是 IsConfirmed 校验标记时间字段时容忍的时钟偏差：正常写入恒有
+// ExpiresAt == ConfirmedAt + ConfirmTTL，只有跨机器时钟抖动（标记文件在多主机间
+// 同步/共享）需要这点余量。
+const expiryCheckSkew = 5 * time.Second
+
 // maxCommandStore is the truncation length for the command string stored at registration: it is
 // only for audit/display; an overly long command would bloat DataDir/hazards/<fp>.json, and the
 // full command text can be reverse-looked-up from logs via the fingerprint.
@@ -198,6 +207,19 @@ func writeConfirmation(p *forgedata.Project, fp, cmd string) error {
 	if err := util.AtomicWrite(p.HazardsConfirmPath(fp), data, 0o644); err != nil {
 		return fmt.Errorf("write confirmation: %w", err)
 	}
+	// Audit trail: a confirmation registration must leave an event. Previously confirm events
+	// existed only if some caller explicitly ran `forge hazard log`, so the forgery path (an
+	// agent hand-writing the marker file — it has write access to DataDir) left no trace.
+	// Appending here (the single funnel of Confirm/ConfirmByFingerprint) makes every confirm
+	// auditable; the hook script never logs a confirm event itself, so there is no double-write.
+	//
+	// 审计留痕：确认登记必须留下事件。此前确认事件依赖调用方显式 `forge hazard log`，
+	// 伪造路径（agent 直接手写确认文件——它对 DataDir 有写权限）毫无痕迹。在此统一
+	// 追加（Confirm/ConfirmByFingerprint 的唯一漏斗）让 confirm 必留痕；hook 脚本自身
+	// 从不 log confirm 事件，故无重复写。
+	if err := AppendEvent(p, Event{Type: EventConfirm, Fingerprint: fp, Command: cmd}); err != nil {
+		return fmt.Errorf("log confirm event: %w", err)
+	}
 	return nil
 }
 
@@ -205,9 +227,37 @@ func writeConfirmation(p *forgedata.Project, fp, cmd string) error {
 // treated as unconfirmed (next block triggers re-confirmation). The hook script invokes
 // `forge hazard confirmed <fp>` and conveys the result via exit code.
 //
+// Read-side hardening (the agent has write access to DataDir, so a hand-forged marker file must
+// not pass):
+//   - fp is format-validated like the write side (ConfirmByFingerprint has ValidateFingerprint):
+//     an illegal fp such as "../../tasks/x" would otherwise escape hazards/ via HazardsConfirmPath
+//     and probe arbitrary .json files under DataDir. Illegal fp → unconfirmed.
+//   - The file content's Fingerprint must equal fp: a forged file named after a real fingerprint
+//     but with arbitrary content is rejected.
+//   - Time fields are sanity-bounded: ConfirmedAt must not be in the future, and
+//     ExpiresAt-ConfirmedAt must be within [0, ConfirmTTL+skew] — a hand-written
+//     {"expires_at":"2999-..."} must not grant permanent release.
+//
 // IsConfirmed 查指纹是否有未过期确认。不存在/损坏视为未确认（下次拦了重新确认）。
 // hook 脚本调 `forge hazard confirmed <fp>` 用 exit code 传达结果。
+//
+// 读侧加固（agent 对 DataDir 有写权限，手写伪造标记不得放行）：
+//   - fp 与写侧同源做格式校验（写侧 ConfirmByFingerprint 有 ValidateFingerprint）：
+//     非法 fp（如 "../../tasks/x"）否则会经 HazardsConfirmPath 逃逸出 hazards/，
+//     探测 DataDir 下任意 .json。非法 fp 按未确认处理。
+//   - 文件内容的 Fingerprint 必须等于 fp：文件名是真指纹、内容任意的伪造文件被拒。
+//   - 时间字段合理性上界：ConfirmedAt 不得在未来，且 ExpiresAt-ConfirmedAt 必须在
+//     [0, ConfirmTTL+skew] 内——手写 {"expires_at":"2999-..."} 不得永久放行。
 func IsConfirmed(p *forgedata.Project, fp string) (bool, error) {
+	// Normalize like the write side (ConfirmByFingerprint ToLowers before persisting), then
+	// validate format; illegal input is treated as unconfirmed, never as a path.
+	//
+	// 先与写侧同款归一化（ConfirmByFingerprint 落盘前 ToLower），再校验格式；
+	// 非法输入按未确认处理，绝不当路径用。
+	fp = strings.ToLower(fp)
+	if !isValidFingerprint(fp) {
+		return false, nil
+	}
 	data, err := os.ReadFile(p.HazardsConfirmPath(fp))
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -219,7 +269,26 @@ func IsConfirmed(p *forgedata.Project, fp string) (bool, error) {
 	if err := json.Unmarshal(data, &c); err != nil {
 		return false, nil // 损坏视为未确认，下次拦了重新确认
 	}
-	return time.Now().Before(c.ExpiresAt), nil
+	// Content fingerprint must match the queried one (file name is not proof of content).
+	//
+	// 内容指纹必须与查询指纹一致（文件名不是内容的证明）。
+	if c.Fingerprint != fp {
+		return false, nil
+	}
+	now := time.Now()
+	// ConfirmedAt in the future (beyond clock skew) means a forged timestamp.
+	//
+	// ConfirmedAt 在未来（超出时钟偏差）即伪造时间戳。
+	if c.ConfirmedAt.After(now.Add(expiryCheckSkew)) {
+		return false, nil
+	}
+	// The validity window must not exceed ConfirmTTL (plus skew); negative windows are corrupt.
+	//
+	// 有效窗口不得超 ConfirmTTL（加偏差）；负窗口视为损坏。
+	if d := c.ExpiresAt.Sub(c.ConfirmedAt); d < 0 || d > ConfirmTTL+expiryCheckSkew {
+		return false, nil
+	}
+	return now.Before(c.ExpiresAt), nil
 }
 
 // ActiveConfirmations lists currently unexpired confirmations (for forge hazard status). Sorted

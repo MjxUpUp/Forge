@@ -52,3 +52,23 @@ func TestRunHazardConfirm_RejectsInvalidFingerprint(t *testing.T) {
 		t.Fatalf("error must come from fingerprint validation, got: %v", err)
 	}
 }
+
+// TestShortFingerprint pins the length guard on confirmation fingerprints read
+// back from disk (untrusted input): values shorter than 12 chars must not
+// panic on the display slice.
+//
+// TestShortFingerprint 钉住从磁盘读回的确认指纹（不可信输入）的长度守卫：
+// 短于 12 字符的值不得在展示切片上 panic。
+func TestShortFingerprint(t *testing.T) {
+	cases := map[string]string{
+		"":               "",
+		"abc":            "abc",
+		"0123456789ab":   "0123456789ab",
+		"0123456789abcd": "0123456789ab",
+	}
+	for in, want := range cases {
+		if got := shortFingerprint(in); got != want {
+			t.Errorf("shortFingerprint(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

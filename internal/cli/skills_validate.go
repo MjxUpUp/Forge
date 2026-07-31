@@ -35,7 +35,10 @@ func runSkillsValidate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if len(skValSkill) > 0 {
-		names = filterSkillNames(names, skValSkill)
+		names, err = filterSkillNames(names, skValSkill)
+		if err != nil {
+			return err
+		}
 	}
 
 	type res struct {
@@ -93,20 +96,32 @@ func runSkillsValidate(cmd *cobra.Command, args []string) error {
 }
 
 // filterSkillNames filters skill names by whitelist (CLI layer, preserves order).
+// Any requested name not present in the canonical library is an error — silently
+// filtering a misspelled --skill down to an empty set would let `audit --gate`
+// pass with 0 skills scanned, bypassing the CI security gate with a typo.
 //
-// filterSkillNames 按白名单过滤 skill 名（CLI 层，保持 order）。
-func filterSkillNames(all, want []string) []string {
+// filterSkillNames 按白名单过滤 skill 名（CLI 层，保持 order）。任何请求的名字
+// 不在 canonical 库中直接报错——静默把拼错的 --skill 过滤成空集会让 `audit --gate`
+// 扫 0 个 skill 通过，CI 安全门被拼写错误绕过。
+func filterSkillNames(all, want []string) ([]string, error) {
 	set := map[string]bool{}
+	for _, a := range all {
+		set[a] = true
+	}
+	wantSet := map[string]bool{}
 	for _, w := range want {
-		set[w] = true
+		if !set[w] {
+			return nil, fmt.Errorf("skill %q 不在 canonical 库中", w)
+		}
+		wantSet[w] = true
 	}
 	out := make([]string, 0, len(want))
 	for _, a := range all {
-		if set[a] {
+		if wantSet[a] {
 			out = append(out, a)
 		}
 	}
-	return out
+	return out, nil
 }
 
 func init() {

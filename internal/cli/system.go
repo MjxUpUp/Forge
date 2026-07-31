@@ -41,10 +41,26 @@ func checkGlobalForge(home string, errors, warnings *int) {
 	}
 	fmt.Println("  ~/.forge/ exists")
 
-	for _, sub := range []string{"pipeline-templates", "hooks", "bin"} {
-		path := filepath.Join(forgeDir, sub)
+	// Real layout after refactor-data-home: runtime state lives in
+	// ~/.forge/projects/<key>/ (per-project DataDir); embedded skills unpack to
+	// ~/.forge/skills-cache/. The previously checked dirs (pipeline-templates/
+	// hooks/bin) were never created by any code path — every run reported 3
+	// unfixable warnings.
+	//
+	// refactor-data-home 后的真实布局：runtime state 在 ~/.forge/projects/<key>/
+	// （per-project DataDir）；embedded skill 解包到 ~/.forge/skills-cache/。
+	// 之前检查的目录（pipeline-templates/hooks/bin）无任何代码创建——每次运行
+	// 都报 3 条永远修不好的 warning。
+	for _, sub := range []struct {
+		name string
+		hint string
+	}{
+		{"projects", "run 'forge task start' in a project to create its runtime-state dir"},
+		{"skills-cache", "run 'forge skills install' to unpack the embedded skill library"},
+	} {
+		path := filepath.Join(forgeDir, sub.name)
 		if _, err := os.Stat(path); os.IsNotExist(err) {
-			fmt.Printf("  ~/.forge/%s/ missing\n", sub)
+			fmt.Printf("  ~/.forge/%s/ missing — %s\n", sub.name, sub.hint)
 			*warnings++
 		}
 	}
@@ -62,7 +78,7 @@ func checkLarkCLI(errors, warnings *int) {
 func checkForgeInPath(errors, warnings *int) {
 	if _, err := exec.LookPath("forge"); err != nil {
 		fmt.Println("  forge not in PATH — hooks that call 'forge hook' won't work")
-		fmt.Println("     Fix: add ~/.forge/bin/ to PATH")
+		fmt.Println("     Fix: reinstall forge (npm i -g / go install) or add its install dir to PATH")
 		*warnings++
 	} else {
 		fmt.Println("  forge in PATH")
@@ -84,7 +100,16 @@ func checkOrphanHooks(home string, errors, warnings *int) {
 	}
 	settingsStr := string(settingsData)
 
-	entries, _ := os.ReadDir(hooksDir)
+	entries, err := os.ReadDir(hooksDir)
+	if err != nil {
+		// Same policy as settings.json above: an unreadable hooks dir is a
+		// warning, not silently zero orphans.
+		//
+		// 与上面 settings.json 同策略：hooks 目录读不了记 warning，不静默当成零 orphan。
+		*warnings++
+		fmt.Printf("  ~/.claude/hooks/ unreadable — orphan-hook check skipped: %v\n", err)
+		return
+	}
 	for _, e := range entries {
 		if !strings.HasSuffix(e.Name(), ".sh") {
 			continue

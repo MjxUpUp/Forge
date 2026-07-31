@@ -1,6 +1,8 @@
 package skillgen
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -174,5 +176,44 @@ func TestQualitySkillTaskVerifyIsAdvisory(t *testing.T) {
 	// Advisory wording must be present.
 	if !strings.Contains(content, "advisory") {
 		t.Error("quality SKILL.md must document task-verify as advisory")
+	}
+}
+
+// TestGenerateQualitySkillAtomicWriteNoResidue pins the same durability contract
+// for the quality skill file: a complete SKILL.md lands on disk with no temp
+// residue after the util.AtomicWrite switch.
+//
+// TestGenerateQualitySkillAtomicWriteNoResidue 为 quality skill 文件钉住同款
+// 耐久契约：util.AtomicWrite 切换后完整 SKILL.md 落盘且无临时残留。
+func TestGenerateQualitySkillAtomicWriteNoResidue(t *testing.T) {
+	dir := t.TempDir()
+	proto := &protocol.Protocol{
+		Version: "1",
+		Standards: []protocol.Standard{
+			{ID: "compile", Name: "编译必须通过", Description: "每次修改后确认编译通过", Severity: "error", Enabled: true},
+		},
+	}
+	if err := GenerateQualitySkill(dir, proto); err != nil {
+		t.Fatalf("GenerateQualitySkill: %v", err)
+	}
+	var skillPath string
+	filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && strings.HasSuffix(p, "SKILL.md") {
+			skillPath = p
+		}
+		return nil
+	})
+	if skillPath == "" {
+		t.Fatal("GenerateQualitySkill did not produce a SKILL.md")
+	}
+	content, _ := os.ReadFile(skillPath)
+	if !strings.Contains(string(content), "forge") {
+		t.Error("generated SKILL.md should reference forge")
+	}
+	entries, _ := os.ReadDir(filepath.Dir(skillPath))
+	for _, e := range entries {
+		if strings.Contains(e.Name(), ".tmp") {
+			t.Errorf("atomic write residue left behind: %s", e.Name())
+		}
 	}
 }

@@ -27,7 +27,6 @@ import (
 	"hash/fnv"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 )
 
@@ -132,7 +131,17 @@ func Key(cwd string) (string, error) {
 
 	h := fnv.New64a()
 	h.Write([]byte(filepath.Clean(resolvedGitDir)))
-	return strconv.FormatUint(h.Sum64(), 16)[:12], nil
+	return hash12(h.Sum64()), nil
+}
+
+// hash12 returns the first 12 hex chars of sum, zero-padded. strconv.FormatUint does not
+// zero-pad, so a sum whose hex form is shorter than 12 chars (≈1 in 16^12 per path) would
+// panic on s[:12]; %012x always yields >= 12 chars.
+//
+// hash12 返回 sum 的 hex 前 12 字符（零填充）。strconv.FormatUint 不零填充，
+// hex 不足 12 位的 sum（概率约 16^-12）会在 s[:12] 上 slice 越界 panic；%012x 保证 >= 12 位。
+func hash12(sum uint64) string {
+	return fmt.Sprintf("%012x", sum)[:12]
 }
 
 // resolveGitFile parses the gitdir: line of a worktree/submodule `.git` file, walking the parent chain to find the `.git` ancestor.

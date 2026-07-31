@@ -447,7 +447,17 @@ func SubmitRun(dir, canonical, skill, agentModel, forgeVersion string, raw []Sub
 		return nil, fmt.Errorf("eval cases stale: case desc_hash %s != current %s — description changed, re-run 'forge skills eval-gen --skill %s --save'", set.DescHash, curDH, skill)
 	}
 
-	canonicalSkills, _ := skillsdist.ListSkills(canonical)
+	// ListSkills failure is propagated, not swallowed: canonical was just read successfully
+	// by currentDescHash, so a read-dir failure here is anomalous — silently degrading
+	// canonicalSkills to nil would skew NormalizeTriggered for every case.
+	//
+	// ListSkills 失败要传播、不吞掉：canonical 刚被 currentDescHash 成功读过，
+	// 此处读目录失败属异常——静默把 canonicalSkills 降级为 nil 会让所有 case 的
+	// NormalizeTriggered 失真。
+	canonicalSkills, err := skillsdist.ListSkills(canonical)
+	if err != nil {
+		return nil, fmt.Errorf("list canonical skills: %w", err)
+	}
 	caseByID := make(map[string]EvalCase, len(set.Cases))
 	for _, c := range set.Cases {
 		caseByID[c.ID] = c
@@ -498,9 +508,21 @@ func SubmitRun(dir, canonical, skill, agentModel, forgeVersion string, raw []Sub
 		Results:      results,
 	}
 	regressions := 0
-	if bl, _ := GetBaseline(dir, skill); bl.RunID != "" {
-		runs, err := LoadRuns(dir, skill)
-		if err == nil {
+	// Distinguish "no baseline" from "baseline unreadable": a corrupt baselines.json must
+	// warn on stderr, not silently masquerade as "nothing to compare" (which would make
+	// the regression penalty disappear without a trace — the regression gate is only
+	// trustworthy if its failures are explicit).
+	//
+	// 区分「无 baseline」与「baseline 不可读」：baselines.json 损坏必须 stderr 告警，
+	// 不能静默伪装成「无可比 baseline」（那会让回归惩罚无痕消失——回归门禁只有
+	// 失败显式时才可信）。
+	if bl, berr := GetBaseline(dir, skill); berr != nil {
+		fmt.Fprintf(os.Stderr, "warn: baseline 不可读（%v），本次跳过回归比对——不等同于无 baseline，请检查 %s\n", berr, baselinesFile(dir))
+	} else if bl.RunID != "" {
+		runs, rerr := LoadRuns(dir, skill)
+		if rerr != nil {
+			fmt.Fprintf(os.Stderr, "warn: runs 不可读（%v），无法与 baseline %s 比对，本次回归比对跳过\n", rerr, bl.RunID)
+		} else {
 			for i := range runs {
 				if runs[i].RunID == bl.RunID {
 					run.BaselineRunID = bl.RunID

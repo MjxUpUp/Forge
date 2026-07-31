@@ -24,6 +24,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -86,7 +87,7 @@ func Evaluate(root string) (Decision, string, error) {
 		return DecisionPass, "无未提交变更，无需审查", nil
 	}
 
-	stamp, _ := LoadStamp(root)
+	stamp := LoadStamp(root)
 
 	// Same diff already reviewed -> pass
 	//
@@ -140,19 +141,27 @@ func MarkPassed(root string) error {
 }
 
 // LoadStamp reads the review stamp of the current branch; missing/corrupt returns an empty
-// Stamp (not an error).
+// Stamp. By design there is no error return: the stamp is a hint, and every failure mode
+// (absent, unreadable, corrupt) degrades to "empty stamp -> re-review", which is the safe
+// direction. A non-IsNotExist read failure (permission/IO) is logged so it stays observable
+// instead of masquerading as "no stamp yet".
 //
-// LoadStamp 读取当前分支的审查 stamp；不存在/损坏返回空 Stamp（非 error）。
-func LoadStamp(root string) (*Stamp, error) {
+// LoadStamp 读取当前分支的审查 stamp；不存在/损坏返回空 Stamp。设计上没有 error 返回：
+// stamp 只是提示，所有失败模式（不存在/不可读/损坏）都降级为「空 stamp → 重审」，
+// 这是安全方向。非 IsNotExist 的读失败（权限/IO）记 log 保持可观测，不再伪装成「还没有 stamp」。
+func LoadStamp(root string) *Stamp {
 	data, err := os.ReadFile(stampPath(root))
 	if err != nil {
-		return &Stamp{}, nil
+		if !os.IsNotExist(err) {
+			log.Printf("[review] stamp read failed (%v) — treating as empty stamp, re-review required", err)
+		}
+		return &Stamp{}
 	}
 	var s Stamp
 	if err := json.Unmarshal(data, &s); err != nil {
-		return &Stamp{}, nil // 损坏视为空，下次重审
+		return &Stamp{} // 损坏视为空，下次重审
 	}
-	return &s, nil
+	return &s
 }
 
 // CurrentState returns a human-readable view of the current review state (for forge review status).
@@ -163,7 +172,7 @@ func CurrentState(root string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	stamp, _ := LoadStamp(root)
+	stamp := LoadStamp(root)
 	branch := currentBranch(root)
 
 	var b strings.Builder

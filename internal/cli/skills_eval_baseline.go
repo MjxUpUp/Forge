@@ -28,6 +28,9 @@ func runSkillsEvalBaseline(cmd *cobra.Command, args []string) error {
 	if skBaseSkill == "" {
 		return fmt.Errorf("需要 --skill NAME")
 	}
+	if err := requireValidSkillName(skBaseSkill); err != nil {
+		return err
+	}
 	dir, err := skillseval.EvalDir()
 	if err != nil {
 		return err

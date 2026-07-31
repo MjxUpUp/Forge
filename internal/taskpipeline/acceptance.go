@@ -333,7 +333,7 @@ func CheckAcceptanceFresh(root string, state *TaskState) (ok bool, reasons []str
 		return true, nil
 	}
 	if EscapeDisabled(state, escapeAcceptanceGate, acceptanceGateDisableEnv) {
-		checklog.Record(root, &checklog.Entry{
+		recordAudit(root, &checklog.Entry{
 			Check:   checklog.CheckEscapeHatch,
 			Passed:  true,
 			Checked: true,
@@ -358,7 +358,11 @@ func CheckAcceptanceFresh(root string, state *TaskState) (ok bool, reasons []str
 		switch {
 		case c.AcceptedHeadCommit == "":
 			reasons = append(reasons, fmt.Sprintf(`验收 #%d（%s）未实跑（AcceptedHeadCommit 空）——先 forge task verify-acceptance`, i+1, c.Run))
-		case head != "" && c.AcceptedHeadCommit != head:
+		// head is guaranteed non-empty here (empty HEAD already returned above —
+		// the non-git short-circuit).
+		//
+		// 此处 head 恒非空（空 HEAD 已在上方非 git 短路提前 return）。
+		case c.AcceptedHeadCommit != head:
 			reasons = append(reasons, fmt.Sprintf(`验收 #%d（%s）基于旧代码（快照 %s ≠ HEAD %s）——验收后改了码，重跑 forge task verify-acceptance`, i+1, c.Run, c.AcceptedHeadCommit, head))
 		case !c.Passed:
 			reasons = append(reasons, fmt.Sprintf(`验收 #%d（%s）未通过——修码使验收通过或调整验收标准`, i+1, c.Run))

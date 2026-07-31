@@ -447,3 +447,52 @@ func TestSourceChangesSince_CommitWorkdirContentStaysEqual(t *testing.T) {
 		t.Fatalf(`commit 后再改新内容指纹应变（触发复审），但 == 审查时 hash`)
 	}
 }
+
+// TestLoadStamp pins the honest-signature contract: missing/corrupt stamp files
+// degrade to an empty (unreviewed) Stamp — never nil, never an error masquerade —
+// and a stamp persisted via MarkPassed round-trips back.
+//
+// TestLoadStamp 钉住诚实签名契约：缺失/损坏的 stamp 文件降级为空（未审）Stamp
+// ——永不返回 nil、永不伪装错误——经 MarkPassed 落盘的 stamp 能完整读回。
+func TestLoadStamp(t *testing.T) {
+	t.Run("missing file returns empty stamp", func(t *testing.T) {
+		root := initGitRepo(t)
+		s := LoadStamp(root)
+		if s == nil {
+			t.Fatal("LoadStamp must never return nil")
+		}
+		if s.Reviewed || s.DiffHash != "" {
+			t.Errorf("missing stamp should be empty, got %+v", s)
+		}
+	})
+
+	t.Run("corrupt file returns empty stamp", func(t *testing.T) {
+		root := initGitRepo(t)
+		p := stampPath(root)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("{not json"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		s := LoadStamp(root)
+		if s.Reviewed || s.DiffHash != "" {
+			t.Errorf("corrupt stamp should degrade to empty, got %+v", s)
+		}
+	})
+
+	t.Run("persisted stamp round-trips", func(t *testing.T) {
+		root := initGitRepo(t)
+		write(t, root, "a.go", "package main\n")
+		if err := MarkPassed(root); err != nil {
+			t.Fatalf("MarkPassed: %v", err)
+		}
+		s := LoadStamp(root)
+		if !s.Reviewed {
+			t.Error("stamp persisted by MarkPassed should load as Reviewed=true")
+		}
+		if s.DiffHash == "" {
+			t.Error("stamp persisted by MarkPassed should carry a DiffHash")
+		}
+	})
+}

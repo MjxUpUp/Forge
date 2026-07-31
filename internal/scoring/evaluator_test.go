@@ -38,6 +38,38 @@ func TestScoreProcess_NoHistory(t *testing.T) {
 	}
 }
 
+// TestScoreProcess_PartialPassRate pins the pass-rate fix: Passed must participate in scoring —
+// 1/5 gates passed with 0 retries is 20 (100*1/5), not the old free 100 that ignored Passed.
+//
+// TestScoreProcess_PartialPassRate 钉死通过率修复：Passed 必须参与计分——
+// 1/5 通过 0 retry 得 20（100*1/5），不是旧版无视 Passed 白给的 100。
+func TestScoreProcess_PartialPassRate(t *testing.T) {
+	result := scoreProcess(GateHistory{TotalGates: 5, Passed: 1, Retries: 0})
+	if result.Score != 20 {
+		t.Fatalf("expected 20 (100*1/5 pass rate), got %d: %s", result.Score, result.Detail)
+	}
+}
+
+// TestScoreProcess_PartialPassWithRetries: 3/5 pass rate (60) minus 2 retries (30) = 30.
+//
+// TestScoreProcess_PartialPassWithRetries：3/5 通过率（60）减 2 次 retry（30）= 30。
+func TestScoreProcess_PartialPassWithRetries(t *testing.T) {
+	result := scoreProcess(GateHistory{TotalGates: 5, Passed: 3, Retries: 2})
+	if result.Score != 30 {
+		t.Fatalf("expected 30 (60 pass rate - 30 retry penalty), got %d: %s", result.Score, result.Detail)
+	}
+}
+
+// TestScoreProcess_FloorClamped: heavy retries on a low pass rate clamp at the 20 floor.
+//
+// TestScoreProcess_FloorClamped：低通过率叠重 retry 时钳在 20 下限。
+func TestScoreProcess_FloorClamped(t *testing.T) {
+	result := scoreProcess(GateHistory{TotalGates: 3, Passed: 1, Retries: 3})
+	if result.Score != 20 {
+		t.Fatalf("expected 20 (floor), got %d: %s", result.Score, result.Detail)
+	}
+}
+
 func TestScoreTesting_AllCovered(t *testing.T) {
 	result := scoreTesting(1, 1, 3, true)
 	if result.Score != 100 {
@@ -174,6 +206,21 @@ func TestScoreEfficiency_Slow(t *testing.T) {
 	result := scoreEfficiency(start, end)
 	if result.Score != 55 {
 		t.Fatalf("expected 55 (slow, 90min ≤120 bucket), got %d: %s", result.Score, result.Detail)
+	}
+}
+
+// TestScoreEfficiency_NegativeDuration pins the刷分向量 fix: completedAt before startedAt
+// (clock skew / tampered TaskState) must NOT hit the <=15min bucket for a free 100 — it is
+// untrustworthy data and scores neutral 70, same as missing timestamps.
+//
+// TestScoreEfficiency_NegativeDuration 钉死刷分向量修复：completedAt 早于 startedAt
+// （时钟回拨 / TaskState 被改）不得命中 ≤15min 桶白拿 100——数据不可信，按缺失同待遇给中性 70。
+func TestScoreEfficiency_NegativeDuration(t *testing.T) {
+	start := time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC)
+	end := start.Add(-5 * time.Minute) // completed "before" it started
+	result := scoreEfficiency(start, end)
+	if result.Score != 70 {
+		t.Fatalf("expected 70 (neutral, negative duration), got %d: %s", result.Score, result.Detail)
 	}
 }
 

@@ -5,8 +5,29 @@ function runForge(cmd: string, payload: object): Promise<{ block: boolean; reaso
       stdio: ["pipe", "pipe", "pipe"],
     });
     let out = "";
+    let settled = false;
+    // 30s ceiling: a hung forge process (index.lock, blocked stdin, AV scan)
+    // would otherwise never resolve this Promise and freeze the agent's tool
+    // call forever. Timeout → kill + fail open, same contract as spawn error /
+    // JSON parse failure below: tool faults fail open, never block.
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try {
+        child.kill();
+      } catch {
+        // already exited — nothing to kill
+      }
+      resolve({ block: false });
+    }, 30000);
+    const settle = (verdict: { block: boolean; reason?: string }) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(verdict);
+    };
     child.stdout.on("data", (d: Buffer) => (out += d.toString()));
-    child.on("error", () => resolve({ block: false })); // forge missing → fail open
+    child.on("error", () => settle({ block: false })); // forge missing → fail open
     child.on("close", () => {
       // forge ALWAYS emits one JSON line to stdout: {decision:"approve"|"block",
       // hookSpecificOutput?:{additionalContext}}. Block is signaled by the JSON
@@ -16,9 +37,9 @@ function runForge(cmd: string, payload: object): Promise<{ block: boolean; reaso
       try {
         const j = JSON.parse(out);
         const reason = j?.hookSpecificOutput?.additionalContext ?? "denied";
-        return resolve({ block: j?.decision === "block", reason });
+        return settle({ block: j?.decision === "block", reason });
       } catch {
-        resolve({ block: false });
+        settle({ block: false });
       }
     });
     child.stdin.end(JSON.stringify(payload));

@@ -1,9 +1,14 @@
 package skillsdist
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/skillsqa"
 )
 
 func mustMk(t *testing.T, err error) {
@@ -577,14 +582,275 @@ func TestTargetDir_CodexCopilotPath(t *testing.T) {
 		"cursor":  filepath.Join(home, ".cursor", "skills"),
 	}
 	for name, want := range cases {
-		if got := targetDir(name, true, home, ""); got != want {
+		got, err := targetDir(name, true, home, "")
+		if err != nil {
+			t.Errorf("targetDir(%q) 不应报错: %v", name, err)
+			continue
+		}
+		if got != want {
 			t.Errorf("targetDir(%q)=%q want %q", name, got, want)
 		}
 	}
-	// Unknown target returns empty string (no panic, no accidental write to default location)
+	// Unknown target returns an explicit error (never "" — an empty dir would degrade
+	// filepath.Join("", name) into a cwd-relative write).
 	//
-	// 未知 target 返回空串（不 panic、不误写到默认位置）
-	if got := targetDir("unknown-tool", true, home, ""); got != "" {
-		t.Errorf("未知 target 应返回空串，got %q", got)
+	// 未知 target 显式报错（绝不返回 ""——空目录会让 filepath.Join("", name) 退化为 cwd 相对写）
+	if got, err := targetDir("unknown-tool", true, home, ""); err == nil || got != "" {
+		t.Errorf("未知 target 应返回错误，got %q err=%v", got, err)
+	}
+	// TargetDirs propagates the unknown-target error.
+	//
+	// TargetDirs 传播未知 target 错误
+	if _, err := TargetDirs([]Target{"unknown-tool"}, true, ""); err == nil {
+		t.Error("TargetDirs 对未知 target 应报错")
+	}
+}
+
+// writePassingSkill creates a skill that passes the full quality gate (R1-R11):
+// kebab name == dir name, desc ≥80 runes with Use when + SKIP, valid metadata.pattern,
+// high-signal body. Paired with SkipQuality=false tests.
+//
+// writePassingSkill 创建一个能过完整质量门控（R1-R11）的 skill：kebab 名 == 目录名、
+// desc ≥80 字符含 Use when + SKIP、合法 metadata.pattern、高信号正文。配 SkipQuality=false 的测试用。
+func writePassingSkill(t *testing.T, canonical, name string) string {
+	t.Helper()
+	sd := filepath.Join(canonical, name)
+	mustMk(t, os.MkdirAll(sd, 0755))
+	content := "---\nname: " + name + "\n" +
+		"description: \"合格描述前缀。" + strings.Repeat("测试内容段落", 12) + "Use when: 场景触发。SKIP: 跳过场景。\"\n" +
+		"metadata:\n  pattern: pipeline\n  domain: testing\n---\n\n" +
+		"# 标题\n\n决策树：第一步先做这个。自查清单：检查项。\n"
+	mustMk(t, os.WriteFile(filepath.Join(sd, "SKILL.md"), []byte(content), 0644))
+	return sd
+}
+
+// TestDetectState_FullTreeDrift: copy-in-sync must compare the WHOLE tree, not just SKILL.md.
+// Data-loss regression: user edits target references/foo.md (SKILL.md untouched); a SKILL.md-only
+// comparison would misjudge copy-in-sync, and mode=link handleTarget would os.RemoveAll the whole
+// tree WITHOUT backup (backup only triggers on StateDrift) — silent loss of user edits.
+//
+// TestDetectState_FullTreeDrift：copy-in-sync 必须全树对比而非只比 SKILL.md。
+// 数据丢失回归：用户改了 target 的 references/foo.md（SKILL.md 没动）；单文件对比会误判
+// copy-in-sync，mode=link 时 handleTarget 无备份 os.RemoveAll 整树——用户改动静默丢失。
+func TestDetectState_FullTreeDrift(t *testing.T) {
+	canonical := t.TempDir()
+	skillDir := writeCanonicalSkill(t, canonical, "my-skill")
+	mustMk(t, os.MkdirAll(filepath.Join(skillDir, "references"), 0755))
+	mustMk(t, os.WriteFile(filepath.Join(skillDir, "references", "foo.md"), []byte("canonical ref"), 0644))
+
+	target := t.TempDir()
+	dst := filepath.Join(target, "my-skill")
+	mustMk(t, copyTree(skillDir, dst))
+
+	// identical full tree → copy-in-sync
+	//
+	// 全树一致 → copy-in-sync
+	if got := detectState(skillDir, dst); got != StateCopyInSync {
+		t.Fatalf("identical tree: got %s, want copy-in-sync", got)
+	}
+
+	// user edits references/foo.md (SKILL.md identical) → MUST be drift, not copy-in-sync
+	//
+	// 用户改 references/foo.md（SKILL.md 相同）→ 必须判 drift 而非 copy-in-sync
+	mustMk(t, os.WriteFile(filepath.Join(dst, "references", "foo.md"), []byte("user local edit"), 0644))
+	if got := detectState(skillDir, dst); got != StateDrift {
+		t.Fatalf("edited references/: got %s, want drift（SKILL.md 相同但子文件被改）", got)
+	}
+
+	// restore, then add an extra file in target → drift
+	//
+	// 恢复后 target 多一个文件 → drift
+	mustMk(t, os.WriteFile(filepath.Join(dst, "references", "foo.md"), []byte("canonical ref"), 0644))
+	mustMk(t, os.WriteFile(filepath.Join(dst, "extra.md"), []byte("user added"), 0644))
+	if got := detectState(skillDir, dst); got != StateDrift {
+		t.Fatalf("extra file: got %s, want drift（target 多了文件）", got)
+	}
+
+	// remove extra, delete a canonical-copied file in target → drift
+	//
+	// 删掉多余文件，再删 target 里一个 canonical 文件 → drift
+	mustMk(t, os.Remove(filepath.Join(dst, "extra.md")))
+	mustMk(t, os.Remove(filepath.Join(dst, "references", "foo.md")))
+	if got := detectState(skillDir, dst); got != StateDrift {
+		t.Fatalf("missing file: got %s, want drift（target 缺文件）", got)
+	}
+}
+
+// TestHandleTarget_DriftOverwrite_RemoveFailure: overwrite whose deletion fails must NOT fall
+// through to copyTree — that would produce a new-old hybrid tree reported as a clean overwrite.
+// Expects action=failed, no abortErr (per-target failure, install continues elsewhere).
+//
+// TestHandleTarget_DriftOverwrite_RemoveFailure：删除失败的 overwrite 禁止带病 copy——
+// 否则会产出新旧混合树却报告纯净覆盖。期望 action=failed、无 abortErr（单 target 失败，
+// install 其他 target 继续）。
+func TestHandleTarget_DriftOverwrite_RemoveFailure(t *testing.T) {
+	canonical := t.TempDir()
+	skillDir := writeCanonicalSkill(t, canonical, "my-skill")
+	dst := filepath.Join(t.TempDir(), "my-skill")
+
+	// Inject a failing deleter (deterministic cross-platform RemoveAll failure is not
+	// constructible: Windows ignores read-only bits, Unix ignores open file handles).
+	//
+	// 注入失败的删除器（确定性的跨平台 RemoveAll 失败无法直接构造：
+	// Windows 忽略只读位、Unix 忽略打开的文件句柄）。
+	orig := removeTargetTreeFn
+	removeTargetTreeFn = func(string) error { return errors.New("remove boom") }
+	t.Cleanup(func() { removeTargetTreeFn = orig })
+
+	action, detail, abortErr := handleTarget(skillDir, dst, StateDrift, ModeCopy, DriftOverwrite)
+	if abortErr != nil {
+		t.Fatalf("删除失败不应 abort 整个 install，got abortErr=%v", abortErr)
+	}
+	if action != actFailed {
+		t.Fatalf("action=%q want failed（detail=%s）", action, detail)
+	}
+}
+
+// TestRemoveTargetTree_Error: removeTargetTree must surface deletion errors (previously
+// swallowed via `_ = os.Remove...`). Failure is made deterministic per-platform: Windows
+// refuses to delete a directory containing an open file; Unix refuses to delete entries
+// inside a directory without write permission.
+//
+// TestRemoveTargetTree_Error：removeTargetTree 必须上抛删除错误（原先 `_ = os.Remove...` 吞掉）。
+// 失败按平台确定性构造：Windows 拒绝删除含打开文件的目录；Unix 拒绝删除无写权限目录里的条目。
+func TestRemoveTargetTree_Error(t *testing.T) {
+	victim := filepath.Join(t.TempDir(), "victim")
+	mustMk(t, os.MkdirAll(victim, 0755))
+	f, err := os.Create(filepath.Join(victim, "lock"))
+	mustMk(t, err)
+	if runtime.GOOS == "windows" {
+		defer f.Close() // 保持句柄打开：Windows 下删除含打开文件的目录必失败
+	} else {
+		mustMk(t, f.Close())
+		mustMk(t, os.Chmod(victim, 0500)) // 无写权限：Unix 下删除其内容必失败
+		defer os.Chmod(victim, 0700)      //nolint:errcheck // 清理，便于 TempDir 回收
+	}
+	if err := removeTargetTree(victim); err == nil {
+		t.Fatal("不可删除目录应返回 error，got nil")
+	}
+
+	// happy path: real dir removed without error
+	//
+	// 正常路径：真目录删除无 error
+	dir := filepath.Join(t.TempDir(), "victim2")
+	mustMk(t, os.MkdirAll(dir, 0755))
+	if err := removeTargetTree(dir); err != nil {
+		t.Fatalf("正常目录删除不应报错: %v", err)
+	}
+}
+
+// TestInstall_ScanSkillError_Blocks: a ScanSkill error must block the skill (issue + Failed++),
+// never be scored on zero findings as clean — the security gate would otherwise pass unreadable
+// skills (skillsqa/audit.go's explicit downstream contract).
+//
+// TestInstall_ScanSkillError_Blocks：ScanSkill 出错必须拦截该 skill（记 issue + Failed++），
+// 绝不能在零 findings 上打分报 clean——否则安全门放过不可读 skill（skillsqa/audit.go 明确的下游契约）。
+func TestInstall_ScanSkillError_Blocks(t *testing.T) {
+	canonical := t.TempDir()
+	writePassingSkill(t, canonical, "my-skill") // passes AuditSkill so ScanSkill is reached
+
+	orig := scanSkillFn
+	scanSkillFn = func(string) ([]skillsqa.Finding, error) {
+		return nil, errors.New("scan boom")
+	}
+	t.Cleanup(func() { scanSkillFn = orig })
+
+	opts := copyOpts(t.TempDir())
+	opts.SkipQuality = false
+	rep, err := Install(canonical, opts)
+	mustMk(t, err)
+	if rep.Stats.Failed != 1 {
+		t.Fatalf("failed=%d want 1（ScanSkill 错误应按审查失败拦截）", rep.Stats.Failed)
+	}
+	if rep.Stats.Installed != 0 {
+		t.Fatalf("installed=%d want 0（扫描失败的 skill 不许装）", rep.Stats.Installed)
+	}
+	found := false
+	for _, s := range rep.Skills {
+		for _, iss := range s.Issues {
+			if strings.Contains(iss, "安全审查失败") {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("应记录安全审查失败 issue，got %+v", rep.Skills)
+	}
+}
+
+// TestDriftCheck_SkillFilterNoFalseOrphans: target-only orphan detection must use the FULL
+// canonical name list. With `--skill foo`, other legit skills in the target (bar) must NOT be
+// misreported as orphans.
+//
+// TestDriftCheck_SkillFilterNoFalseOrphans：target-only 孤儿检测必须用过滤前的完整名单。
+// `--skill foo` 时 target 里其他正常 skill（bar）不得被误报孤儿。
+func TestDriftCheck_SkillFilterNoFalseOrphans(t *testing.T) {
+	canonical := t.TempDir()
+	writeCanonicalSkill(t, canonical, "foo")
+	writeCanonicalSkill(t, canonical, "bar")
+	projectDir := t.TempDir()
+	// bar is present in the target (installed earlier); foo is not.
+	//
+	// bar 在 target 里（之前装过）；foo 不在。
+	mustMk(t, os.MkdirAll(filepath.Join(projectDir, "bar"), 0755))
+	mustMk(t, os.WriteFile(filepath.Join(projectDir, "bar", "SKILL.md"), []byte("x"), 0644))
+
+	opts := copyOpts(projectDir)
+	opts.SkillFilter = []string{"foo"}
+	rep, err := DriftCheck(canonical, opts)
+	mustMk(t, err)
+	if rep.Stats.TargetOnly != 0 {
+		t.Fatalf("target-only=%d want 0（bar 在 canonical 全集里，--skill foo 不得误报孤儿）", rep.Stats.TargetOnly)
+	}
+}
+
+// TestDirEntryIsDir: DirEntryIsDir must follow junction/symlink (os.Stat semantics) —
+// e.IsDir() is Lstat-based and drops link-form skills.
+//
+// TestDirEntryIsDir：DirEntryIsDir 必须跟随 junction/symlink（os.Stat 语义）——
+// e.IsDir() 基于 Lstat，会漏掉 link 形态的 skill。
+func TestDirEntryIsDir(t *testing.T) {
+	parent := t.TempDir()
+	mustMk(t, os.MkdirAll(filepath.Join(parent, "real-dir"), 0755))
+	mustMk(t, os.WriteFile(filepath.Join(parent, "a-file"), []byte("x"), 0644))
+	realSkill := writeCanonicalSkill(t, t.TempDir(), "linked-skill")
+	mustMk(t, makeDirLink(filepath.Join(parent, "linked-skill"), realSkill))
+
+	entries, err := os.ReadDir(parent)
+	mustMk(t, err)
+	got := map[string]bool{}
+	for _, e := range entries {
+		got[e.Name()] = DirEntryIsDir(parent, e)
+	}
+	if !got["real-dir"] {
+		t.Error("real-dir 应判 true")
+	}
+	if got["a-file"] {
+		t.Error("a-file 应判 false")
+	}
+	if !got["linked-skill"] {
+		t.Error("linked-skill（junction/symlink → 真实目录）应判 true（e.IsDir 基于 Lstat 会漏）")
+	}
+}
+
+// TestInstall_TotalCountsEveryProcessedSkill: Total counts every processed skill — including
+// quality-gate-blocked and reserved ones — so the skill-level tier reconciles
+// (Total = passed + failed + reserved).
+//
+// TestInstall_TotalCountsEveryProcessedSkill：Total 统计每个被处理的 skill——含门控拦截
+// 与保留名——保证 skill 级口径对得上（Total = 通过 + 失败 + 保留）。
+func TestInstall_TotalCountsEveryProcessedSkill(t *testing.T) {
+	canonical := t.TempDir()
+	writeCanonicalSkill(t, canonical, "bad-skill")     // 不合格（desc 过短），被门控拦
+	writeCanonicalSkill(t, canonical, "forge-quality") // 保留名跳过
+	opts := copyOpts(t.TempDir())
+	opts.SkipQuality = false
+	rep, err := Install(canonical, opts)
+	mustMk(t, err)
+	if rep.Stats.Total != 2 {
+		t.Fatalf("total=%d want 2（被拦 skill 与保留名 skill 都计 Total）", rep.Stats.Total)
+	}
+	if rep.Stats.Failed != 1 {
+		t.Fatalf("failed=%d want 1（bad-skill 门控拦截）", rep.Stats.Failed)
 	}
 }

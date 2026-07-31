@@ -286,13 +286,16 @@ func TestHasActiveTaskFromOtherSession(t *testing.T) {
 }
 
 // TestSanitizeSessionID_StripsUnsafeChars verifies the filename is safe even if
-// the session id somehow contained path/path-separator characters.
+// the session id somehow contained path/path-separator characters. Empty input
+// yields the documented "session" fallback (util.SanitizeSessionID: 若结果为空则
+// 回退到 session) — in-package callers never pass "" (all call sites guard on
+// sessionID != ""), so this only pins the cross-package contract.
 func TestSanitizeSessionID_StripsUnsafeChars(t *testing.T) {
 	cases := map[string]string{
 		"uuid-aaa":             "uuid-aaa",
 		"a/b\\c..d":            "a_b_c_d",
 		"  spaces  ":           "spaces",
-		"":                     "",
+		"":                     "session",
 		"46bde758-0ee1-4bc9-b": "46bde758-0ee1-4bc9-b",
 	}
 	for in, want := range cases {

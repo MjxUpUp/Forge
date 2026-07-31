@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -495,6 +496,27 @@ func TestWindsurfTranslator_Detect(t *testing.T) {
 	}
 }
 
+// TestWindsurfTranslator_ReadErrorNoOverwrite pins the data-loss guard: when
+// reading .windsurfrules fails with anything OTHER than NotExist (permissions,
+// IO — here simulated by making the path a directory, which os.ReadFile
+// rejects), Translate must return the error instead of falling through to the
+// whole-file overwrite, which would silently destroy the user's existing
+// rules. Same contract as kimi.go's config.toml handling.
+func TestWindsurfTranslator_ReadErrorNoOverwrite(t *testing.T) {
+	dir := t.TempDir()
+	// .windsurfrules as a DIRECTORY → os.ReadFile returns a non-NotExist error.
+	if err := os.MkdirAll(filepath.Join(dir, ".windsurfrules"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	err := (&WindsurfTranslator{}).Translate(dir, testInput())
+	if err == nil {
+		t.Fatal("Translate must fail on a non-NotExist read error (silent whole-file overwrite would lose user rules)")
+	}
+	if !strings.Contains(err.Error(), "windsurf") {
+		t.Errorf("error must name the windsurf path, got: %v", err)
+	}
+}
+
 func TestBridge_TranslateForAgents(t *testing.T) {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, ".cursor"), 0755)
@@ -647,7 +669,14 @@ func TestCodexTranslator_Detect(t *testing.T) {
 // point opencode offers ("tool.execute.before"), (2) block by throwing (opencode
 // has no return-value block API — verified in opencode source), (3) wire the
 // same `forge hook <name>` set Claude Code uses so gates enforce identically.
-// Drift in any of these silently disables a gate on opencode.
+//
+// The roster assertion is DERIVED from hooks.ForgeHookSpec (the single source
+// of truth), not a hardcoded list — a hardcoded `want` list drifts alongside
+// the code it guards (644b142 lesson, see TestCodexWiringMirrorsClaudeSettings).
+// Expected commands are computed per Claude tool from the spec's PreToolUse /
+// PostToolUse matchers, minus the explicit opencodeExemptions below, and
+// compared for SET EQUALITY against the `forge hook <name>` call sites
+// extracted from the generated TS rosters.
 func TestOpencodePluginWiring(t *testing.T) {
 	dir := t.TempDir()
 	if err := (&OpencodeTranslator{}).Translate(dir, testInput()); err != nil {
@@ -656,15 +685,8 @@ func TestOpencodePluginWiring(t *testing.T) {
 	ts := readOrFail(t, filepath.Join(dir, ".opencode", "plugins", "forge.ts"))
 
 	for _, want := range []string{
-		`"tool.execute.before"`,   // the single pre-tool entry point
-		`throw new Error`,         // block mechanism (opencode blocks via throw)
-		`"forge hook task-guard"`, // PreToolUse write gate
-		`"forge hook assertion-check"`,
-		`"forge hook bash-guard"`,   // PreToolUse bash gate
-		`"forge hook hazard-guard"`, // PreToolUse bash gate (hazardous cmds)
-		`"forge hook auto-compile"`, // PostToolUse
-		`"forge hook file-sentinel"`,
-		`"forge hook tool-track"`,
+		`"tool.execute.before"`, // the single pre-tool entry point
+		`throw new Error`,       // block mechanism (opencode blocks via throw)
 		// Block is read from forge's JSON decision field, NOT an exit code —
 		// cobra surfaces forge's internal errors as exit 1, indistinguishable
 		// from a deny. Guard this so no one re-introduces fragile exit-code logic.
@@ -684,6 +706,100 @@ func TestOpencodePluginWiring(t *testing.T) {
 	// the Claude-shape stdin the plugin builds.
 	if !strings.Contains(ts, "file_path = args.filePath") {
 		t.Error("opencode plugin must map args.filePath → file_path")
+	}
+
+	// Parity: spec-derived expected roster vs the roster extracted from the TS.
+	pre := opencodeTSRoster(t, ts, "PRE_HOOKS")
+	post := opencodeTSRoster(t, ts, "POST_HOOKS")
+	assertOpencodeRosterParity(t, "PreToolUse", pre)
+	assertOpencodeRosterParity(t, "PostToolUse", post)
+}
+
+// opencodeExemptions lists spec hook commands intentionally NOT wired into the
+// opencode TS plugin, with the reason. Anything not listed here must appear in
+// the generated PRE_HOOKS/POST_HOOKS rosters — adding a new exemption requires
+// justifying it here, which is exactly the review tripwire a hardcoded list
+// never provides.
+var opencodeExemptions = map[string]string{
+	"skill-trigger": "skill 触发提示 hook（建议/记录型，非门禁）；opencode 插件只接门禁与 PostToolUse 记录 hook，不为非门禁 hook 增加每次工具调用的 fork 成本",
+}
+
+// opencodeToolUniverse is the set of Claude tool names the opencode plugin can
+// route (values of CLAUDE_TOOL in the generated TS). Spec matchers that name
+// tools outside this universe (Skill/Agent in the PostToolUse tool-track
+// matcher) have no opencode analogue and are excluded from parity.
+var opencodeToolUniverse = map[string]bool{
+	"Write": true, "Edit": true, "Bash": true, "Read": true,
+}
+
+// opencodeTSRoster extracts a `const <NAME>: Record<string, string[]>` block
+// from the generated TS into tool → set of `forge hook <name>` commands.
+func opencodeTSRoster(t *testing.T, ts, constName string) map[string]map[string]bool {
+	t.Helper()
+	start := strings.Index(ts, "const "+constName)
+	if start < 0 {
+		t.Fatalf("generated TS missing const %s", constName)
+	}
+	rest := ts[start:]
+	end := strings.Index(rest, "};")
+	if end < 0 {
+		t.Fatalf("generated TS const %s block unterminated", constName)
+	}
+	block := rest[:end]
+	lineRe := regexp.MustCompile(`(\w+):\s*\[([^\]]*)\]`)
+	cmdRe := regexp.MustCompile(`forge hook [a-z0-9-]+`)
+	out := map[string]map[string]bool{}
+	for _, m := range lineRe.FindAllStringSubmatch(block, -1) {
+		set := map[string]bool{}
+		for _, c := range cmdRe.FindAllString(m[2], -1) {
+			set[c] = true
+		}
+		out[m[1]] = set
+	}
+	if len(out) == 0 {
+		t.Fatalf("generated TS const %s parsed to an empty roster (extractor broken?)", constName)
+	}
+	return out
+}
+
+// assertOpencodeRosterParity derives the expected tool → command set for one
+// Claude event from hooks.ForgeHookSpec and asserts set equality with the
+// roster extracted from the generated TS, per tool and in both directions.
+func assertOpencodeRosterParity(t *testing.T, event string, actual map[string]map[string]bool) {
+	t.Helper()
+	expected := map[string]map[string]bool{}
+	for _, m := range hooks.ForgeHookSpec()[event] {
+		for _, tool := range strings.Split(m.Matcher, "|") {
+			if !opencodeToolUniverse[tool] {
+				continue // Skill/Agent: no opencode analogue (opencodeToolUniverse comment)
+			}
+			if expected[tool] == nil {
+				expected[tool] = map[string]bool{}
+			}
+			for _, h := range m.Hooks {
+				name := strings.TrimPrefix(h.Command, "forge hook ")
+				if _, exempt := opencodeExemptions[name]; exempt {
+					continue
+				}
+				expected[tool][h.Command] = true
+			}
+		}
+	}
+	for tool, want := range expected {
+		got := actual[tool]
+		if got == nil {
+			got = map[string]bool{}
+		}
+		if !stringSetEqual(want, got) {
+			t.Errorf("opencode %s roster for tool %s drifted from ForgeHookSpec:\n  spec-derived: %s\n  opencode TS:  %s",
+				event, tool, sortedSet(want), sortedSet(got))
+		}
+	}
+	for tool := range actual {
+		if _, ok := expected[tool]; !ok {
+			t.Errorf("opencode %s roster wires unexpected tool %s (not derivable from ForgeHookSpec): %s",
+				event, tool, sortedSet(actual[tool]))
+		}
 	}
 }
 
