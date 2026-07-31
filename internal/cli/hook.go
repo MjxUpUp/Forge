@@ -909,12 +909,15 @@ func findBash() (string, error) {
 }
 
 // isWSLBash reports whether path points at a known WSL bash launcher rather than a
-// Windows-native bash (Git Bash / MSYS2 / Cygwin).
+// Windows-native bash (Git Bash / MSYS2 / Cygwin). The path being classified is always
+// a WINDOWS path conceptually, so both separators are normalized explicitly — on Linux
+// (CI) filepath.ToSlash is a no-op and backslashes would survive, breaking the match.
 //
 // isWSLBash 报告 path 是否指向已知 WSL bash 启动器而非 Windows 原生 bash
-// （Git Bash / MSYS2 / Cygwin）。
+// （Git Bash / MSYS2 / Cygwin）。被判断的路径概念上恒为 WINDOWS 路径，故显式归一
+// 两种分隔符——Linux（CI）上 filepath.ToSlash 是 no-op，反斜杠会残留导致匹配失效。
 func isWSLBash(path string) bool {
-	p := strings.ToLower(filepath.ToSlash(path))
+	p := strings.ToLower(strings.ReplaceAll(path, `\`, `/`))
 	return strings.Contains(p, "/windows/system32/") ||
 		strings.Contains(p, "/windows/syswow64/") ||
 		strings.Contains(p, "/microsoft/windowsapps/")
