@@ -197,6 +197,12 @@ var skillRefAllowlist = map[string]bool{
 	`hazard-guard`: true,
 	// forge 命令/门禁（task gate ID，非 skill）
 	`task-implement`: true, `task-verify`: true,
+	// forge skills 子命令名（eval 命令族，CONVENTIONS 命令清单引用，非 skill）
+	`eval-gen`: true, `eval-cases`: true, `eval-record`: true, `eval-report`: true, `eval-baseline`: true,
+	// metadata 扩展字段名示例（CONVENTIONS §4，非 skill）
+	`severity-levels`: true,
+	// 外部 GitHub 仓库名（品牌 DESIGN.md 资产库，非 skill）
+	`awesome-design-md`: true,
 	// forge 机制 / deterministic 扫描名（PlanScope drift、cheat-scan，非 skill）
 	`scope-drift`: true, `cheat-scan`: true,
 	// metadata.pattern 合法值（ValidPatterns，非 skill 名）
