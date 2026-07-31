@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -71,19 +72,15 @@ func exitErrorOf(t *testing.T, code int) error {
 	t.Helper()
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
-		cmd = exec.Command("cmd", "/c", "exit", itoa(code))
+		cmd = exec.Command("cmd", "/c", "exit", strconv.Itoa(code))
 	} else {
-		cmd = exec.Command("sh", "-c", "exit "+itoa(code))
+		cmd = exec.Command("sh", "-c", "exit "+strconv.Itoa(code))
 	}
 	err := cmd.Run()
 	if err == nil {
 		t.Fatalf("command with exit %d returned nil error", code)
 	}
 	return err
-}
-
-func itoa(i int) string {
-	return strconv.Itoa(i)
 }
 
 // TestIsHookInfraFailure pins the fail-open boundary: spawn errors and bash 126/127 are
@@ -109,10 +106,12 @@ func TestIsHookInfraFailure(t *testing.T) {
 }
 
 // TestEmitInfraAllow pins the fail-open output contract: kimi gets plain stdout text +
-// nil error (exit 0), claude gets the approve JSON envelope.
+// nil error (exit 0); claude gets an approve JSON envelope whose hookSpecificOutput
+// carries the event name — without it Claude drops additionalContext and the warning
+// would be silently lost.
 func TestEmitInfraAllow(t *testing.T) {
 	stdout, _, err := captureOutput(t, func() error {
-		return emitInfraAllow("kimi", "[forge] hook x 基础设施失败，fail-open 放行")
+		return emitInfraAllow("kimi", "PreToolUse", "[forge] hook x 基础设施失败，fail-open 放行")
 	})
 	if err != nil {
 		t.Fatalf("kimi infra allow must return nil (exit 0), got %v", err)
@@ -122,12 +121,22 @@ func TestEmitInfraAllow(t *testing.T) {
 	}
 
 	stdout, _, err = captureOutput(t, func() error {
-		return emitInfraAllow("", "warn")
+		return emitInfraAllow("", "PreToolUse", "warn")
 	})
 	if err != nil {
 		t.Fatalf("claude infra allow must return nil, got %v", err)
 	}
-	if !strings.Contains(stdout, `"decision":"approve"`) {
-		t.Errorf("claude path must emit approve JSON, got %q", stdout)
+	var out HookOutput
+	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &out); err != nil {
+		t.Fatalf("claude path must emit valid HookOutput JSON: %v\n%s", err, stdout)
+	}
+	if out.Decision != "approve" {
+		t.Errorf("decision = %q, want approve", out.Decision)
+	}
+	if out.HookSpecificOutput == nil || out.HookSpecificOutput.HookEventName != "PreToolUse" {
+		t.Errorf("hookSpecificOutput.hookEventName missing/wrong: %+v", out.HookSpecificOutput)
+	}
+	if out.HookSpecificOutput == nil || out.HookSpecificOutput.AdditionalContext != "warn" {
+		t.Errorf("additionalContext missing: %+v", out.HookSpecificOutput)
 	}
 }
