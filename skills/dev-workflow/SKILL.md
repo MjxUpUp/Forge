@@ -4,7 +4,7 @@ description: "开发工作流编排：Plan Mode 先规划后执行。Use when: �
 metadata:
   pattern: inversion + pipeline
   domain: development
-  composes: requirement-clarification, agent-delegation, systematic-debugging, tdd-cycle, test-discipline, evidence-based-proposal, session-continuity, architecture-decision-record
+  composes: [requirement-clarification, agent-delegation, systematic-debugging, tdd-cycle, test-discipline, evidence-based-proposal, session-continuity, architecture-decision-record]
 ---
 
 # 开发工作流 — Plan Mode 先规划后执行

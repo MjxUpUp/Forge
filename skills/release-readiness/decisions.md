@@ -18,3 +18,20 @@ persistent decision history：每条决策记 (诊断, 修订, 脱敏证据, 结
 ### Evidence
 
 在 /tmp 用样例 CHANGELOG 实测：原写法与仅修 typo 均无输出，加 next 后正确打印目标章节；两条 grep 对空串默认值得命中、非空值不误报
+
+## [d-18c7729c6f953bd0-2c0abe08] accept
+
+- **Skill**: release-readiness
+- **DecidedAt**: 2026-07-31T18:16:33Z
+
+### Diagnosis
+
+复审发现 composes 标量写法库内 11 处分裂（此前只统一了 2 处），且原决策证据声称多数已是 flow list 与事实相反——一次性根治
+
+### Revision
+
+composes 标量逗号写法改 flow list [a, b]，对齐 CONVENTIONS §4
+
+### Evidence
+
+grep 确认全库 composes 已无标量残留；forge skills validate 50/50

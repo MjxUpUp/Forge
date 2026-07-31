@@ -4,7 +4,7 @@ description: "Design Token 与设计系统建设端到端工作流：Figma/Pixso
 metadata:
   pattern: pipeline + gate
   domain: frontend
-  composes: frontend-stack-selection, frontend-feature-development, frontend-code-review
+  composes: [frontend-stack-selection, frontend-feature-development, frontend-code-review]
 ---
 
 # Design System 与 Token 工作流

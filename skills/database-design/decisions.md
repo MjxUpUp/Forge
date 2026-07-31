@@ -18,3 +18,20 @@ eval 改为真实命令 forge skills eval-cases --skill database-design；删除
 ### Evidence
 
 grep internal/cli 确认无 eval/integration-test；psql 官方文档无 --dry-run 选项
+
+## [d-18c7729c77bfe01c-37e3804f] accept
+
+- **Skill**: database-design
+- **DecidedAt**: 2026-07-31T18:16:33Z
+
+### Diagnosis
+
+复审发现 eval-cases 在无 case 集时非零退出，作为必跑步骤缺前置说明
+
+### Revision
+
+eval-cases 行补注释：首次使用先 eval-gen --skill database-design --save 建 case 集
+
+### Evidence
+
+internal/cli/skills_eval_cases.go:105 无 case 集时报错并提示 eval-gen
