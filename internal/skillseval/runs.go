@@ -52,8 +52,6 @@ type CaseResult struct {
 	Prompt          string `json:"prompt"`
 	// ActualTriggered: normalized name of the skill that actually fired ("" = did not fire).
 	ActualTriggered string `json:"actual_triggered"`        // 归一化后的实际触发 skill 名（""=没触发）
-	// ActualOutput (behavior kind): the actual output refilled by the agent, including the original text needed by the oracle for judgment; redacted by eval-cases/report before exposure.
-	ActualOutput    string `json:"actual_output,omitempty"` // behavior 类：agent 回填的实际输出（含 oracle 判定所需原文，eval-cases/report 对外脱敏）
 	Pass            bool   `json:"pass"`
 	Note            string `json:"note,omitempty"` // agent 标注的异常/理由
 }
@@ -83,7 +81,6 @@ type EvalRun struct {
 type SubmitResult struct {
 	CaseID          string `json:"case_id"`
 	ActualTriggered string `json:"actual_triggered"`
-	ActualOutput    string `json:"actual_output,omitempty"` // behavior 类：dispatch subagent 跑 ProbeInput 的输出
 	Note            string `json:"note,omitempty"`
 }
 
@@ -123,8 +120,6 @@ type RegressionReport struct {
 	TriggerPassRateLatest      float64      `json:"trigger_pass_rate_latest"`
 	NotTriggerPassRateBaseline float64      `json:"not_trigger_pass_rate_baseline,omitempty"`
 	NotTriggerPassRateLatest   float64      `json:"not_trigger_pass_rate_latest"`
-	BehaviorPassRateBaseline   float64      `json:"behavior_pass_rate_baseline,omitempty"`
-	BehaviorPassRateLatest     float64      `json:"behavior_pass_rate_latest"`
 }
 
 // newRunID generates a run ID of the form run-<unix>-<randhex>.
@@ -140,7 +135,7 @@ func newRunID() string {
 // whitespace and CJK/ASCII punctuation + lowercases + matches canonical exactly. none semantics
 // (none/无/-/n/a) normalize to "". Names that do not match canonical keep their lowercased
 // original value — normalization does not guess for the agent; during judgment, trigger cases
-// fail on !=skill and not-trigger cases pass on !=skill, behavior is deterministic.
+// fail on !=skill and not-trigger cases pass on !=skill.
 //
 // Stripping leading/trailing punctuation is necessary: agent refills may carry periods/quotes/
 // full-width chars (lark-doc。., "lark-doc"); without stripping they would miss the canonical
@@ -184,18 +179,12 @@ func NormalizeTriggered(actual string, canonicalSkills []string) string {
 //	trigger kind: actual == skill (self-reference)
 //	not-trigger kind: actual != skill (including empty or any other skill) — does not couple
 //	with"which skill it should route to"
-//	behavior kind: judgeBehavior(actualOutput, oracle) — passes only when the output satisfies
-//	the oracle (see probes.go)
 //
 // judgeResult 按 case 的 Kind 判定单结果是否 pass。
 //
 //	trigger 类：actual == skill（自指）
 //	not-trigger 类：actual != skill（含空、含任何其他 skill）——不耦合「该路由到哪个 skill」
-//	behavior 类：judgeBehavior(actualOutput, oracle)——输出满足 oracle 才 pass（见 probes.go）
-func judgeResult(c EvalCase, actualTriggered, actualOutput string) bool {
-	if c.Kind == KindBehavior {
-		return judgeBehavior(actualOutput, c.Oracle)
-	}
+func judgeResult(c EvalCase, actualTriggered string) bool {
 	act := strings.ToLower(strings.TrimSpace(actualTriggered))
 	skill := strings.ToLower(c.Skill)
 	if c.Kind == KindTrigger {
@@ -252,17 +241,11 @@ func HealthScore(results []CaseResult, regressions int) float64 {
 	return math.Round(score*100) / 100
 }
 
-// passRates returns (triggerPassRate, notTriggerPassRate, behaviorPassRate).
-// The behavior kind is tracked independently — it measures behavior quality (output satisfies
-// the oracle), a separate dimension from routing health (trigger/not-trigger); therefore
-// HealthScore (routing health) does not count behavior, and this function returns it separately
-// for the report to display.
+// passRates returns (triggerPassRate, notTriggerPassRate).
 //
-// passRates 返回 (triggerPassRate, notTriggerPassRate, behaviorPassRate)。
-// behavior 类独立计——它测行为质量（输出满足 oracle），与路由健康度（trigger/not-trigger）
-// 是两个维度，故 HealthScore（路由健康度）不计 behavior，这里单独返回供 report 展示。
-func passRates(results []CaseResult) (trigRate, notRate, behaviorRate float64) {
-	var tp, tt, np, nt, bp, bt int
+// passRates 返回 (triggerPassRate, notTriggerPassRate)。
+func passRates(results []CaseResult) (trigRate, notRate float64) {
+	var tp, tt, np, nt int
 	for _, r := range results {
 		switch r.Kind {
 		case KindTrigger:
@@ -275,11 +258,6 @@ func passRates(results []CaseResult) (trigRate, notRate, behaviorRate float64) {
 			if r.Pass {
 				np++
 			}
-		case KindBehavior:
-			bt++
-			if r.Pass {
-				bp++
-			}
 		}
 	}
 	if tt > 0 {
@@ -287,9 +265,6 @@ func passRates(results []CaseResult) (trigRate, notRate, behaviorRate float64) {
 	}
 	if nt > 0 {
 		notRate = float64(np) / float64(nt)
-	}
-	if bt > 0 {
-		behaviorRate = float64(bp) / float64(bt)
 	}
 	return
 }
@@ -310,12 +285,12 @@ func CompareRuns(latest, baseline *EvalRun) *RegressionReport {
 		LatestRun:   latest.RunID,
 		HasBaseline: baseline != nil,
 	}
-	rep.TriggerPassRateLatest, rep.NotTriggerPassRateLatest, rep.BehaviorPassRateLatest = passRates(latest.Results)
+	rep.TriggerPassRateLatest, rep.NotTriggerPassRateLatest = passRates(latest.Results)
 	if baseline == nil {
 		return rep
 	}
 	rep.BaselineRun = baseline.RunID
-	rep.TriggerPassRateBaseline, rep.NotTriggerPassRateBaseline, rep.BehaviorPassRateBaseline = passRates(baseline.Results)
+	rep.TriggerPassRateBaseline, rep.NotTriggerPassRateBaseline = passRates(baseline.Results)
 
 	// Comparability check.
 	//
@@ -415,13 +390,8 @@ func SubmitRun(dir, canonical, skill, agentModel, forgeVersion string, raw []Sub
 
 	// DescHash check: the case-set fingerprint must equal the current SKILL.md fingerprint,
 	// otherwise the case set is stale.
-	// Pure behavior sets (DescHash empty, not anchored to description) skip this check —
-	// behavior cases are maintained independently of description, and changing description
-	// should not fail a behavior run.
 	//
 	// DescHash 校验：case 集的指纹必须等于当前 SKILL.md 的指纹，否则 case 集已过期。
-	// 纯 behavior 集（DescHash 空，不锚 description）跳过此校验——behavior case
-	// 独立于 description 维护，改 description 不应让 behavior run 失败。
 	curDH, err := currentDescHash(canonical, skill)
 	if err != nil {
 		return nil, fmt.Errorf("read current SKILL.md: %w", err)
@@ -461,8 +431,7 @@ func SubmitRun(dir, canonical, skill, agentModel, forgeVersion string, raw []Sub
 			Kind:            c.Kind,
 			Prompt:          c.Prompt,
 			ActualTriggered: actual,
-			ActualOutput:    r.ActualOutput,
-			Pass:            judgeResult(c, actual, r.ActualOutput),
+			Pass:            judgeResult(c, actual),
 			Note:            r.Note,
 		})
 	}
