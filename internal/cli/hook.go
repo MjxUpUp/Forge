@@ -476,7 +476,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// 并非质量失败。改为 fail-open 放行并给出可见警告。
 	if isHookInfraFailure(exitErr) {
 		warning := fmt.Sprintf("[forge] hook %s 基础设施失败（%v: %s），fail-open 放行", name, exitErr, firstNonEmpty(stderr, "no output"))
-		return emitInfraAllow(agent, warning)
+		return emitInfraAllow(agent, hookInput.HookEventName, warning)
 	}
 
 	passed := exitErr == nil
@@ -924,11 +924,18 @@ func isWSLBash(path string) bool {
 // and reported FAIL". Spawn errors (bash vanished, permission) and bash exit 126/127
 // (script file not readable / not found — the WSL-bash-on-Windows signature) are
 // infrastructure; any other exit code comes from the script itself and keeps the
-// gate-verdict semantics.
+// gate-verdict semantics. Accepted trade-off: a 126/127 from INSIDE a script (an
+// external command the script needs is missing, e.g. no grep) also fails open — for
+// hazard-guard that is a deliberate safety downgrade, but the alternative (the old
+// WSL behavior: every turn hard-blocked) is strictly worse, and the warning stays
+// visible either way.
 //
 // isHookInfraFailure 区分"bash 没能跑起脚本"与"脚本跑了并报告 FAIL"。spawn 错误
 // （bash 消失、权限问题）与 bash exit 126/127（脚本文件不可读/不存在——WSL
 // bash on Windows 的特征）属基础设施；其他退出码来自脚本本身，保留门禁结论语义。
+// 已接受的权衡：脚本内部的 126/127（脚本依赖的外部命令缺失，如没有 grep）同样
+// fail-open——对 hazard-guard 这是有意的安全降级，但替代方案（旧 WSL 行为：每轮
+// 硬阻断）严格更糟，且警告始终可见。
 func isHookInfraFailure(err error) bool {
 	if err == nil {
 		return false
@@ -943,18 +950,30 @@ func isHookInfraFailure(err error) bool {
 
 // emitInfraAllow fails open for an infrastructure failure: the warning must be VISIBLE
 // (a silently broken gate set is worse than a noisy one) without blocking the turn.
-// kimi: plain stdout text (injected into context on the allow path). Claude: the
-// additionalContext channel of an approve verdict.
+// kimi: plain stdout text (injected into context on the allow path). Claude: an approve
+// verdict whose hookSpecificOutput carries hookEventName — required by Claude's hook
+// output schema; an empty one gets the additionalContext dropped and the warning would
+// be silently lost, defeating the purpose.
 //
 // emitInfraAllow 对基础设施失败 fail-open：警告必须可见（静默失效的门禁比吵闹的
 // 更糟）但不阻断当轮。kimi：纯文本 stdout（放行路径会注入上下文）。Claude：
-// approve 结论的 additionalContext 通道。
-func emitInfraAllow(agent, warning string) error {
+// approve 结论且 hookSpecificOutput 必须带 hookEventName——Claude 的 hook 输出
+// schema 要求它合法；空串会导致 additionalContext 被丢弃，警告静默丢失，违背本
+// 函数的设计目标。
+func emitInfraAllow(agent, eventName, warning string) error {
 	if agent == "kimi" {
 		fmt.Println(warning)
 		return nil
 	}
-	outputAllow(warning)
+	out := HookOutput{
+		Decision: "approve",
+		HookSpecificOutput: &HookSpecificOutput{
+			HookEventName:     eventName,
+			AdditionalContext: truncate(warning, maxAdditionalContextLen),
+		},
+	}
+	data, _ := json.Marshal(out)
+	fmt.Println(string(data))
 	return nil
 }
 
