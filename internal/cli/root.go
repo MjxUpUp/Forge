@@ -32,11 +32,13 @@ var rootCmd = &cobra.Command{
 		checkForUpdate(cmd.Root().Version, cmd)
 
 		// Self-heal npm's fragile Windows sh shim (coreutils-dependent) so
-		// POSIX-shell hosts (kimi-code) resolve `forge` to the real binary.
+		// POSIX-shell hosts (kimi-code) resolve `forge` to the real binary. Quiet for
+		// hook subcommands — their stderr may surface into the agent's context.
 		//
 		// 自愈 npm 的脆弱 Windows sh 垫片（依赖 coreutils），让 POSIX-shell
-		// 宿主（kimi-code）能把 `forge` 解析到真实二进制。
-		healNpmShimIfNeeded()
+		// 宿主（kimi-code）能把 `forge` 解析到真实二进制。hook 子命令静默——
+		// 其 stderr 可能进入 agent 上下文。
+		healNpmShimIfNeeded(cmd.Name() == "hook")
 
 		// init command skips auto-sync (project does not exist yet)
 		//
