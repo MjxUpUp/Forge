@@ -265,6 +265,9 @@ func TestPluginPack_Readme(t *testing.T) {
 		"forge init --agents codex",
 		"forge init --agents cursor",
 		"forge init --agents copilot",
+		"Kimi Code",
+		"/plugins install https://github.com/", // kimi plugin install（repo-root .kimi-plugin/plugin.json）
+		"forge init --agents kimi",             // kimi 的 config.toml 回退路径
 		"Claude Code",
 		"not officially confirmed", // D3: Codex 路径诚实表述（OpenAI 未明确）
 	} {
