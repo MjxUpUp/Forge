@@ -3,6 +3,7 @@ package toolusage
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -235,14 +236,18 @@ func TestTruncateInput(t *testing.T) {
 		t.Error("short string should not be truncated")
 	}
 
-	// Long ASCII
+	// Long ASCII: truncated to maxToolInputLen runes + an ellipsis marker
+	// (see util.TruncateRunes).
 	long := ""
 	for range 600 {
 		long += "x"
 	}
 	truncated := TruncateInput(long)
-	if len([]rune(truncated)) != maxToolInputLen {
-		t.Errorf("expected %d runes, got %d", maxToolInputLen, len([]rune(truncated)))
+	if len([]rune(truncated)) != maxToolInputLen+1 {
+		t.Errorf("expected %d runes (incl. ellipsis), got %d", maxToolInputLen+1, len([]rune(truncated)))
+	}
+	if !strings.HasSuffix(truncated, "…") {
+		t.Error("truncated value should carry the ellipsis marker")
 	}
 
 	// Chinese (rune-safe)
@@ -251,8 +256,8 @@ func TestTruncateInput(t *testing.T) {
 		chinese += "中文"
 	}
 	truncatedChinese := TruncateInput(chinese)
-	if len([]rune(truncatedChinese)) != maxToolInputLen {
-		t.Errorf("expected %d runes for Chinese, got %d", maxToolInputLen, len([]rune(truncatedChinese)))
+	if len([]rune(truncatedChinese)) != maxToolInputLen+1 {
+		t.Errorf("expected %d runes for Chinese (incl. ellipsis), got %d", maxToolInputLen+1, len([]rune(truncatedChinese)))
 	}
 }
 

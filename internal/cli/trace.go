@@ -145,10 +145,10 @@ func runTrace(cmd *cobra.Command, args []string) error {
 }
 
 // truncate truncates s to max length (rune-safe), appending ... when over. Originally defined in knowledge.go,
-// moved here after the experience/knowledge loop was removed (trace.go is the only remaining caller).
+// moved here after the experience/knowledge loop was removed.
 //
 // truncate 截断 s 到 max 长度（rune 安全），超长加"..."。原 knowledge.go 定义，
-// experience/knowledge 经验闭环移除后迁此（trace.go 是唯一残留调用方）。
+// experience/knowledge 经验闭环移除后迁此。
 func truncate(s string, max int) string {
 	runes := []rune(s)
 	if len(runes) <= max {

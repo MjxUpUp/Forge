@@ -4,9 +4,11 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
-// suggest_tag_test.go — tag consistency guard for suggestTagFor / findGitRoot (N4 / F1).
+// suggest_tag_test.go — tag consistency guard for suggestTagFor / forgedata.FindGitRoot (N4 / F1).
 // F1 incident: the original tag was keyed by cwd; running 'forge suggest decline' from a
 // subdirectory wrote the wrong tag, and the hook at the project root read a different tag → decline
 // was permanently and silently broken. This test pins 'any subdirectory of the same git project
@@ -15,7 +17,7 @@ import (
 //
 // Chinese strings use raw strings (backticks) to avoid Windows input quote corruption.
 //
-// suggest_tag_test.go — suggestTagFor / findGitRoot 的 tag 一致性守卫（N4 / F1）。
+// suggest_tag_test.go — suggestTagFor / forgedata.FindGitRoot 的 tag 一致性守卫（N4 / F1）。
 // F1 事故：原 tag 按 cwd 键控，agent 从子目录跑 'forge suggest decline' 写错 tag，
 // hook 在项目根读到的是另一个 tag → decline 永久静默失效。本测试钉死「同 git 项目
 // 任意子目录产生同一 tag」，并守 hook（FORGE_CWD_TAG）与 suggest 命令共用
@@ -23,9 +25,9 @@ import (
 //
 // 中文字符串用 raw string（反引号）规避 Windows 输入引号腐蚀。
 
-// mkGitProjCLI creates .git in the dir (findGitRoot decides via os.Stat; dir or file both count).
+// mkGitProjCLI creates .git in the dir (forgedata.FindGitRoot decides via os.Stat; dir or file both count).
 //
-// mkGitProjCLI 在目录建 .git（findGitRoot 用 os.Stat 判定，dir 或 file 都算）。
+// mkGitProjCLI 在目录建 .git（forgedata.FindGitRoot 用 os.Stat 判定，dir 或 file 都算）。
 func mkGitProjCLI(t *testing.T, dir string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Join(dir, `.git`), 0755); err != nil {
@@ -90,16 +92,16 @@ func TestSuggestTagFor_NonGitFallback(t *testing.T) {
 // TestFindGitRoot_NoHangAtRoot: infinite-loop regression guard — walking up from a directory
 // without .git to the filesystem root must return (on a Windows drive root filepath.Dir returns
 // itself, a natural break). This test passing means no hang; if the machine Temp happens to live
-// inside some git repo, findGitRoot may be non-empty, that is not a bug — tolerated via Logf.
+// inside some git repo, FindGitRoot may be non-empty, that is not a bug — tolerated via Logf.
 //
 // TestFindGitRoot_NoHangAtRoot：防死循环回归——从无 .git 的目录向上查到文件系统根
 // 必须返回（Windows 盘根 filepath.Dir 返回自身是天然 break）。本测试通过即未 hang；
-// 若机器 Temp 恰在某个 git repo 内，findGitRoot 可能非空，那不是 bug，用 Logf 宽容。
+// 若机器 Temp 恰在某个 git repo 内，FindGitRoot 可能非空，那不是 bug，用 Logf 宽容。
 func TestFindGitRoot_NoHangAtRoot(t *testing.T) {
 	d := t.TempDir()
-	got := findGitRoot(d)
+	got := forgedata.FindGitRoot(d)
 	if got != `` {
-		t.Logf(`findGitRoot(%s)=%s（Temp 祖先可能有 .git，非 fatal；本测试验不 hang）`, d, got)
+		t.Logf(`forgedata.FindGitRoot(%s)=%s（Temp 祖先可能有 .git，非 fatal；本测试验不 hang）`, d, got)
 	}
 }
 

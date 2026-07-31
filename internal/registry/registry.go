@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // pathKey normalizes a cleaned absolute path for dedupe/equality. Windows filesystems are
@@ -129,31 +130,26 @@ func List() []string {
 	return out
 }
 
-// writeFile atomically writes the registry (projects list, deduped and sorted). Writes a temp file then renames over it —
+// writeFile atomically writes the registry (projects list, deduped and sorted) via
+// util.AtomicWrite (temp file + fsync + rename, with Windows rename retry) —
 // os.WriteFile whole-file overwrite is not atomic, a crash/power loss mid-write leaves a truncated corrupt JSON (making List fail
 // entirely); rename is atomic (on Windows Go os.Rename goes through MoveFileEx REPLACE_EXISTING).
 // read-modify-write is still not concurrency-safe (two processes writing simultaneously may have the later overwrite the earlier and lose one entry), but local-tool
 // concurrency is rare, lost entries can be re-added by re-running init; corrupt JSON is what must be prevented. Shared by Add and List lazy prune.
 //
-// writeFile 原子写注册表（projects 列表，已去重排序）。先写临时文件再 rename 覆盖——
+// writeFile 原子写注册表（projects 列表，已去重排序），走 util.AtomicWrite
+// （临时文件 + fsync + rename，含 Windows rename 重试）——
 // os.WriteFile 整文件覆盖非原子，写到一半崩溃/断电会留下截断的损坏 JSON（让 List 整个
 // 失败）；rename 是原子的（Windows 上 Go os.Rename 走 MoveFileEx REPLACE_EXISTING）。
 // read-modify-write 仍非并发安全（两进程同时写可能后写覆盖先写丢一条），但本地工具并发
 // 概率低，丢失重跑 init 可补；损坏 JSON 才是必防的。供 Add 和 List 惰性精简共用。
 func writeFile(path string, projects []string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return err
-	}
 	f := File{Projects: projects}
 	data, err := json.MarshalIndent(f, ``, `  `)
 	if err != nil {
 		return err
 	}
-	tmp := path + `.tmp`
-	if err := os.WriteFile(tmp, append(data, '\n'), 0644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return util.AtomicWrite(path, append(data, '\n'), 0644)
 }
 
 // Add registers absPath into the global registry (deduped, idempotent). Path is normalized via Abs + Clean.

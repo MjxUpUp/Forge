@@ -38,13 +38,13 @@ type TestCapability struct {
 	Disabled  bool     // FORGE_TEST_COVERAGE=disable 跳过扫描时为 true
 }
 
-// e2ePathMarkers identifies integration/end-to-end test directories. It mirrors the
-// integration/ detection of verify-before-stop.sh plus common JS e2e dirs. Stored
-// without a leading slash; isE2ETest matches them as full path segments (root-level
-// integration/... or .../integration/... after a slash), so dirs like myintegration/
-// or some_e2e/ do not match by accident.
+// e2ePathMarkers identifies integration/end-to-end test directories. It carries over the
+// integration/ detection of the since-removed verify-before-stop.sh hook, plus common JS
+// e2e dirs. Stored without a leading slash; isE2ETest matches them as full path segments
+// (root-level integration/... or .../integration/... after a slash), so dirs like
+// myintegration/ or some_e2e/ do not match by accident.
 //
-// e2ePathMarkers 标识 integration/end-to-end 测试目录。镜像 verify-before-stop.sh
+// e2ePathMarkers 标识 integration/end-to-end 测试目录。沿用已删除的 verify-before-stop.sh
 // 的 integration/ 检测，加上常见 JS e2e 目录。无前导斜杠存储；isE2ETest 把它们作为
 // 完整路径段匹配（根级 integration/... 或斜杠后的 .../integration/...），故
 // myintegration/ 或 some_e2e/ 之类目录不会误命中。

@@ -286,11 +286,11 @@ func TestCursorTranslator_Translate(t *testing.T) {
 
 func TestCursorTranslator_Detect(t *testing.T) {
 	dir := t.TempDir()
-	if (&CursorTranslator{}).Detect(dir) {
+	if slices.Contains(DetectAgents(dir), AgentCursor) {
 		t.Error("should not detect without .cursor/")
 	}
 	os.MkdirAll(filepath.Join(dir, ".cursor"), 0755)
-	if !(&CursorTranslator{}).Detect(dir) {
+	if !slices.Contains(DetectAgents(dir), AgentCursor) {
 		t.Error("should detect with .cursor/")
 	}
 }
@@ -328,11 +328,11 @@ func TestCopilotTranslator_Translate(t *testing.T) {
 
 func TestCopilotTranslator_Detect(t *testing.T) {
 	dir := t.TempDir()
-	if (&CopilotTranslator{}).Detect(dir) {
+	if slices.Contains(DetectAgents(dir), AgentCopilot) {
 		t.Error("should not detect without .github/instructions/")
 	}
 	os.MkdirAll(filepath.Join(dir, ".github", "instructions"), 0755)
-	if !(&CopilotTranslator{}).Detect(dir) {
+	if !slices.Contains(DetectAgents(dir), AgentCopilot) {
 		t.Error("should detect with .github/instructions/")
 	}
 }
@@ -487,11 +487,11 @@ func TestWindsurfTranslator_PreserveContent(t *testing.T) {
 
 func TestWindsurfTranslator_Detect(t *testing.T) {
 	dir := t.TempDir()
-	if (&WindsurfTranslator{}).Detect(dir) {
+	if slices.Contains(DetectAgents(dir), AgentWindsurf) {
 		t.Error("should not detect without .windsurfrules")
 	}
 	os.WriteFile(filepath.Join(dir, ".windsurfrules"), []byte("rules"), 0644)
-	if !(&WindsurfTranslator{}).Detect(dir) {
+	if !slices.Contains(DetectAgents(dir), AgentWindsurf) {
 		t.Error("should detect with .windsurfrules")
 	}
 }
@@ -590,16 +590,16 @@ func TestClineTranslator_Translate(t *testing.T) {
 
 func TestClineTranslator_Detect(t *testing.T) {
 	dir := t.TempDir()
-	if (&ClineTranslator{}).Detect(dir) {
+	if slices.Contains(DetectAgents(dir), AgentCline) {
 		t.Error("should not detect without .cline/ or .clinerules/")
 	}
 	os.MkdirAll(filepath.Join(dir, ".cline"), 0755)
-	if !(&ClineTranslator{}).Detect(dir) {
+	if !slices.Contains(DetectAgents(dir), AgentCline) {
 		t.Error("should detect with .cline/")
 	}
 	dir2 := t.TempDir()
 	os.MkdirAll(filepath.Join(dir2, ".clinerules"), 0755)
-	if !(&ClineTranslator{}).Detect(dir2) {
+	if !slices.Contains(DetectAgents(dir2), AgentCline) {
 		t.Error("should detect with .clinerules/")
 	}
 }
@@ -646,11 +646,11 @@ func TestCodexTranslator_Translate(t *testing.T) {
 
 func TestCodexTranslator_Detect(t *testing.T) {
 	dir := t.TempDir()
-	if (&CodexTranslator{}).Detect(dir) {
+	if slices.Contains(DetectAgents(dir), AgentCodex) {
 		t.Error("should not detect without .codex/")
 	}
 	os.MkdirAll(filepath.Join(dir, ".codex"), 0755)
-	if !(&CodexTranslator{}).Detect(dir) {
+	if !slices.Contains(DetectAgents(dir), AgentCodex) {
 		t.Error("should detect with .codex/")
 	}
 	// AGENTS.md must NOT trigger codex detection: forge generates AGENTS.md as a
@@ -659,7 +659,7 @@ func TestCodexTranslator_Detect(t *testing.T) {
 	// detection is .codex/ only; pure codex-CLI users pass --agents codex.
 	dir2 := t.TempDir()
 	os.WriteFile(filepath.Join(dir2, "AGENTS.md"), []byte("# project"), 0644)
-	if (&CodexTranslator{}).Detect(dir2) {
+	if slices.Contains(DetectAgents(dir2), AgentCodex) {
 		t.Error("should NOT detect with only AGENTS.md (forge generates it universally; codex needs .codex/)")
 	}
 }
@@ -805,11 +805,11 @@ func assertOpencodeRosterParity(t *testing.T, event string, actual map[string]ma
 
 func TestOpencodeTranslator_Detect(t *testing.T) {
 	dir := t.TempDir()
-	if (&OpencodeTranslator{}).Detect(dir) {
+	if slices.Contains(DetectAgents(dir), AgentOpencode) {
 		t.Error("should not detect without .opencode/")
 	}
 	os.MkdirAll(filepath.Join(dir, ".opencode"), 0755)
-	if !(&OpencodeTranslator{}).Detect(dir) {
+	if !slices.Contains(DetectAgents(dir), AgentOpencode) {
 		t.Error("should detect with .opencode/")
 	}
 }

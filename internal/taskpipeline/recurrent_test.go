@@ -31,7 +31,7 @@ func TestLowDimCounts(t *testing.T) {
 		mkConcl("c", "scope"),
 		mkConcl("d"), // 无低分维度
 	}
-	counts := LowDimCounts(cs)
+	counts := lowDimCounts(cs)
 	if counts["testing"] != 2 {
 		t.Errorf(`testing 应计 2 次, got %d`, counts["testing"])
 	}
@@ -49,19 +49,19 @@ func TestDimRecurrent(t *testing.T) {
 		mkConcl("b", "testing"),
 		mkConcl("c", "testing"),
 	}
-	if !DimRecurrent(cs, dimTesting, 3) {
+	if !dimRecurrent(cs, dimTesting, 3) {
 		t.Error(`3 次 testing 低分 >= 阈值 3 → 应复发`)
 	}
-	if DimRecurrent(cs, dimTesting, 4) {
+	if dimRecurrent(cs, dimTesting, 4) {
 		t.Error(`3 次 < 阈值 4 → 不应复发`)
 	}
-	if DimRecurrent(nil, dimTesting, 3) {
+	if dimRecurrent(nil, dimTesting, 3) {
 		t.Error(`空历史 → 不复发（fail-open）`)
 	}
-	if DimRecurrent(cs, dimTesting, 0) {
+	if dimRecurrent(cs, dimTesting, 0) {
 		t.Error(`阈值 <=0 → 不复发`)
 	}
-	if DimRecurrent(cs, dimScope, 3) {
+	if dimRecurrent(cs, dimScope, 3) {
 		t.Error(`scope 0 次 → 不复发`)
 	}
 }

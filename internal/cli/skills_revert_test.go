@@ -48,12 +48,3 @@ func TestFindDecisionByID(t *testing.T) {
 		t.Errorf("missing should return nil, got %+v", got)
 	}
 }
-
-func TestTruncRunesCLI(t *testing.T) {
-	if got := truncRunesCLI("短文本", 10); got != "短文本" {
-		t.Errorf("short text should not truncate, got %q", got)
-	}
-	if got := truncRunesCLI("这是一段比较长的中文文本内容", 5); got != "这是一段比..." {
-		t.Errorf("truncate wrong, got %q", got)
-	}
-}

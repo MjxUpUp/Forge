@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // Event log: records the hazard-guard block/release event stream, completing the "escape code (fingerprint) audit trail".
@@ -87,7 +88,7 @@ func AppendEvent(p *forgedata.Project, e Event) error {
 	defer eventMu.Unlock()
 
 	e.Ts = time.Now()
-	e.Command = truncate(e.Command, maxCommandStore)
+	e.Command = util.TruncateRunes(e.Command, maxCommandStore)
 
 	path := p.HazardsEventsPath()
 	dir := filepath.Dir(path)

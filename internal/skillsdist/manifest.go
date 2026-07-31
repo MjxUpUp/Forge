@@ -82,25 +82,6 @@ func SaveManifest(m *Manifest) error {
 	return util.AtomicWrite(path, data, 0644)
 }
 
-// LoadManifest reads from ~/.forge/skills-manifest.json.
-//
-// LoadManifest 从 ~/.forge/skills-manifest.json 读取。
-func LoadManifest() (*Manifest, error) {
-	path, err := ManifestPath()
-	if err != nil {
-		return nil, err
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	var m Manifest
-	if err := json.Unmarshal(data, &m); err != nil {
-		return nil, err
-	}
-	return &m, nil
-}
-
 // BuildManifest scans all canonical skills and assembles the distribution-state
 // inventory (registry report plus per-target state). Called after a successful
 // install and SaveManifest, kept as the last-install snapshot for system health

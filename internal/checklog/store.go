@@ -168,15 +168,6 @@ func LoadForTask(root, taskRef string) ([]Entry, error) {
 	return entries, nil
 }
 
-// LatestByCheck returns the latest entry per check name (across all sessions). Equivalent to
-// LatestByCheckForSession with an empty session id (no filtering).
-//
-// LatestByCheck 返回每个 check name 的最新条目（所有 session）。等价于
-// LatestByCheckForSession 传空 session id（不过滤）。
-func LatestByCheck(root string) (map[CheckName]*Entry, error) {
-	return LatestByCheckForSession(root, "")
-}
-
 // LatestByCheckForSession returns the latest entry per check name, scoped to the given session.
 //
 // Filtering rules (preventing scoring pollution when two Claude Code sessions run concurrently on a shared checkout):

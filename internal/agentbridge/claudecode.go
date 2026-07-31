@@ -2,7 +2,6 @@ package agentbridge
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/skillgen"
@@ -14,10 +13,6 @@ import (
 // ClaudeCodeTranslator 包装既有的 Forge 生成函数。
 // 不迁移代码——仅提供 Translator 接口的包装。
 type ClaudeCodeTranslator struct{}
-
-func (t *ClaudeCodeTranslator) Detect(projectDir string) bool {
-	return dirExists(filepath.Join(projectDir, ".claude"))
-}
 
 func (t *ClaudeCodeTranslator) Translate(projectDir string, input *TranslationInput) error {
 	// Generate settings.local.json — only when the plugin is NOT user-level installed.

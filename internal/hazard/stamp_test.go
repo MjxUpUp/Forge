@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 func TestFingerprint_Stable(t *testing.T) {
@@ -552,5 +553,26 @@ func TestConfirm_AppendsAuditEvent(t *testing.T) {
 	}
 	if events[1].Type != EventConfirm || events[1].Fingerprint != fp2 {
 		t.Fatalf("second event = %+v, want type=%q fingerprint=%q", events[1], EventConfirm, fp2)
+	}
+}
+
+// TestTruncateRunesDelegation pins the local-truncate → util.TruncateRunes
+// switch: both call sites (Confirmation.Command via Confirm, Event.Command via
+// AppendEvent) still cap over-long commands rune-safely with an ellipsis.
+//
+// TestTruncateRunesDelegation 钉住 本地 truncate → util.TruncateRunes 切换：
+// 两个调用点（Confirm 的 Confirmation.Command、AppendEvent 的 Event.Command）
+// 仍按 rune 安全截断超长命令并带省略号。
+func TestTruncateRunesDelegation(t *testing.T) {
+	long := strings.Repeat("删", maxCommandStore+50)
+	got := util.TruncateRunes(long, maxCommandStore)
+	if !strings.HasSuffix(got, "…") {
+		t.Errorf("truncated output must end with ellipsis, got tail %q", got[len(got)-9:])
+	}
+	// Contract: at most maxCommandStore content runes + the ellipsis marker.
+	//
+	// 契约：最多 maxCommandStore 个内容 rune + 省略号标记。
+	if len([]rune(got)) > maxCommandStore+1 {
+		t.Errorf("truncated output exceeds cap+ellipsis: %d runes > %d", len([]rune(got)), maxCommandStore+1)
 	}
 }

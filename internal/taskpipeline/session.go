@@ -100,7 +100,7 @@ func EnsureSession(root, sessionID string) (*SessionRecord, error) {
 	//
 	// 创建新 session 前先归档旧的
 	if existing != nil {
-		if err := archiveSession(root, existing); err != nil {
+		if err := appendSessionLog(root, existing); err != nil {
 			return nil, err
 		}
 	}
@@ -235,13 +235,6 @@ func saveSession(root string, s *SessionRecord) error {
 	//
 	// AtomicWrite（temp+rename）——理由见 saveScopedSession。
 	return util.AtomicWrite(sessionFilePath(root), data, 0644)
-}
-
-// archiveSession writes the completed session into the history log.
-//
-// archiveSession 把已完成的 session 写入历史日志。
-func archiveSession(root string, s *SessionRecord) error {
-	return appendSessionLog(root, s)
 }
 
 // appendSessionLog appends a session record to DataDir/sessions.jsonl.

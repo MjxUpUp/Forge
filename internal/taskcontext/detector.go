@@ -1,7 +1,6 @@
 package taskcontext
 
 import (
-	"fmt"
 	"os/exec"
 	"strings"
 	"time"
@@ -205,17 +204,4 @@ func SanitizeRef(ref string) string {
 		" ", "-",
 	)
 	return r.Replace(ref)
-}
-
-// FormatContext returns a human-readable summary of the task context.
-//
-// FormatContext 返回 task 上下文的人类可读 summary。
-func FormatContext(ctx *Context) string {
-	if !ctx.IsSet() {
-		if ctx.Branch != "" {
-			return fmt.Sprintf("Branch: %s (no task context detected)", ctx.Branch)
-		}
-		return "No task context detected"
-	}
-	return fmt.Sprintf("Task: %s (from %s, branch: %s)", ctx.TaskRef, ctx.Source, ctx.Branch)
 }

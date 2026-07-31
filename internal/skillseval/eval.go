@@ -8,7 +8,6 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/MjxUpUp/Forge/internal/skillsdist"
 	"github.com/MjxUpUp/Forge/internal/skillsfm"
 )
 
@@ -190,25 +189,4 @@ func EvalSkill(canonical, name string) (string, error) {
 		b.WriteString("| " + firstNRunes(p, 40) + "... | ❌ 不触发 | | | |\n")
 	}
 	return b.String(), nil
-}
-
-// EvalAll generates eval checklists for all skills under canonical (mirrors skill-eval.py --all).
-// Skills whose SKILL.md cannot be read are skipped. Returns name→markdown.
-//
-// EvalAll 为 canonical 下所有 skill 生成 eval 清单（对齐 skill-eval.py --all）。
-// 读不到 SKILL.md 的 skill 跳过。返回 name→markdown。
-func EvalAll(canonical string) (map[string]string, error) {
-	names, err := skillsdist.ListSkills(canonical)
-	if err != nil {
-		return nil, err
-	}
-	out := map[string]string{}
-	for _, n := range names {
-		md, err := EvalSkill(canonical, n)
-		if err != nil {
-			continue
-		}
-		out[n] = md
-	}
-	return out, nil
 }

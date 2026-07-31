@@ -211,8 +211,8 @@ func TestSubmitRun_HappyPath(t *testing.T) {
 	if run.HealthScore != 100 {
 		t.Fatalf("health=%v want 100", run.HealthScore)
 	}
-	if run.DescHash == "" || run.CaseSetHash == "" {
-		t.Fatal("want DescHash and CaseSetHash set")
+	if run.DescHash == "" {
+		t.Fatal("want DescHash set")
 	}
 
 	loaded, _ := LoadRuns(dir, "my-skill")

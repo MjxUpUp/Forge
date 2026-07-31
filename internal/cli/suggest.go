@@ -81,7 +81,7 @@ func projectSuggestTag() string {
 // windows-go-bash-pitfalls）回退全路径，避免显示 '\' 这类丑陋值。
 func suggestProjectName() string {
 	cwd, _ := os.Getwd()
-	if root := findGitRoot(cwd); root != "" {
+	if root := forgedata.FindGitRoot(cwd); root != "" {
 		if name := baseName(root); name != "" {
 			return name
 		}
