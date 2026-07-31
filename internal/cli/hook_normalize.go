@@ -75,6 +75,9 @@ func kimiNormalize(stdinData []byte, hookInput *HookInput) {
 	hookInput.HookEventName = k.HookEventName
 	hookInput.ToolName = k.ToolName
 	hookInput.ToolInput = remapKimiToolInput(k.ToolInput)
+	// kimi 的 tool_output 是纯字符串（非 Claude tool_response 的对象），skill-trigger
+	// 按对象解析会失败 → ctx.ToolOutput 恒 nil：PostToolUse 上 exit_code 类触发条件在
+	// kimi 下不命中（fail-open，不影响门禁）。
 	hookInput.ToolOutput = k.ToolOutput
 	for _, block := range k.Prompt {
 		if block.Type != "text" || block.Text == "" {
