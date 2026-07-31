@@ -5,12 +5,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
 // embeddedHooks maps each script name (without the .sh suffix) to its embedded content.
+// It is the single source of truth for the hook roster: WriteHookTemplates' file
+// set and HookNames() are both derived from it (name + ".sh" suffix).
 //
-// embeddedHooks 把脚本名（不带 .sh 后缀）映射到其嵌入内容。
+// embeddedHooks 把脚本名（不带 .sh 后缀）映射到其嵌入内容。它是 hook 名册的单一
+// 真相源：WriteHookTemplates 的文件集与 HookNames() 都从它派生（名字加 ".sh" 后缀）。
 var embeddedHooks = map[string]string{
 	"auto-compile":        AutoCompileHook,
 	"assertion-check":     AssertionCheckHook,
@@ -424,24 +428,9 @@ func WriteHookTemplates(forgeDir string) error {
 		return err
 	}
 
-	fileHooks := map[string]string{
-		"auto-compile.sh":        AutoCompileHook,
-		"assertion-check.sh":     AssertionCheckHook,
-		"task-verify.sh":         TaskVerifyHook,
-		"review-stop.sh":         ReviewStopHook,
-		"task-guard.sh":          TaskGuardHook,
-		"read-before-edit.sh":    ReadBeforeEditHook,
-		"bash-guard.sh":          BashGuardHook,
-		"hazard-guard.sh":        HazardGuardHook,
-		"file-sentinel.sh":       FileSentinelHook,
-		"tool-track.sh":          ToolTrackHook,
-		"skill-scan.sh":          SkillScanHook,
-		"mcp-scan.sh":            McpScanHook,
-		"init-suggest.sh":        InitSuggestHook,
-		"task-resume.sh":         TaskResumeHook,
-		"compact-resume.sh":      CompactResumeHook,
-		"resume-reinject.sh":     ResumeReinjectHook,
-		"workflow-test-guard.sh": WorkflowTestGuardHook,
+	fileHooks := make(map[string]string, len(embeddedHooks))
+	for name, content := range embeddedHooks {
+		fileHooks[name+".sh"] = content
 	}
 
 	// Clean up stale hook scripts no longer in the embedded set. This directory is owned by
@@ -480,27 +469,18 @@ func WriteHookTemplates(forgeDir string) error {
 	return nil
 }
 
-// HookNames returns the list of hook script file names owned by Forge.
+// HookNames returns the list of hook script file names owned by Forge. Derived
+// from embeddedHooks (the single source of truth for the hook roster) with the
+// .sh suffix, sorted for a deterministic order — adding/removing a hook only
+// touches embeddedHooks.
 //
-// HookNames 返回 Forge 接管的 hook 脚本文件名列表。
+// HookNames 返回 Forge 接管的 hook 脚本文件名列表。从 embeddedHooks（hook 名册的
+// 单一真相源）加 .sh 后缀派生，排序保证确定性——增删 hook 只需改 embeddedHooks。
 func HookNames() []string {
-	return []string{
-		"auto-compile.sh",
-		"assertion-check.sh",
-		"task-verify.sh",
-		"review-stop.sh",
-		"task-guard.sh",
-		"read-before-edit.sh",
-		"bash-guard.sh",
-		"hazard-guard.sh",
-		"file-sentinel.sh",
-		"tool-track.sh",
-		"skill-scan.sh",
-		"mcp-scan.sh",
-		"init-suggest.sh",
-		"task-resume.sh",
-		"compact-resume.sh",
-		"resume-reinject.sh",
-		"workflow-test-guard.sh",
+	names := make([]string, 0, len(embeddedHooks))
+	for name := range embeddedHooks {
+		names = append(names, name+".sh")
 	}
+	slices.Sort(names)
+	return names
 }

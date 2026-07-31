@@ -6,6 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/MjxUpUp/Forge/internal/protocol"
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // WindsurfTranslator generates .windsurf/hooks.json (real, blockable Cascade hooks)
@@ -160,35 +163,20 @@ func buildWindsurfSection(input *TranslationInput) string {
 	// Quality standards.
 	//
 	// 质量标准
-	for _, s := range input.Protocol.Standards {
-		if !s.Enabled {
-			continue
-		}
-		severity := "ERROR"
-		switch s.Severity {
-		case "warning":
-			severity = "WARNING"
-		case "info":
-			severity = "INFO"
-		}
-		hookInfo := ""
-		if s.EnforceHook != "" {
-			hookInfo = fmt.Sprintf(" (enforced: %s)", s.EnforceHook)
-		}
-		sb.WriteString(fmt.Sprintf("- [%s] **%s**: %s%s\n", severity, s.Name, s.Description, hookInfo))
-	}
+	protocol.RenderStandards(&sb, input.Protocol.Standards, protocol.StandardRenderStyle{
+		SeverityLabel:  protocol.WordSeverityLabel,
+		HookInfoFormat: " (enforced: %s)",
+		LineFormat:     "- [%s] **%s**: %s%s\n",
+	})
 	sb.WriteString("\n")
 
 	// Session rules.
 	//
 	// 会话规则
-	for _, r := range input.Protocol.SessionRules {
-		prefix := "ALWAYS"
-		if !r.Mandatory {
-			prefix = "PREFER"
-		}
-		sb.WriteString(fmt.Sprintf("- %s: %s\n", prefix, r.Instruction))
-	}
+	protocol.RenderSessionRules(&sb, input.Protocol.SessionRules, protocol.SessionRuleRenderStyle{
+		MandatoryLabel: protocol.AlwaysPreferLabel,
+		LineFormat:     "- %[1]s: %[2]s\n",
+	})
 	sb.WriteString("\n")
 
 	sb.WriteString(forgeRulesEnd + "\n")
@@ -196,30 +184,10 @@ func buildWindsurfSection(input *TranslationInput) string {
 }
 
 // replaceForgeRules replaces the content between FORGE:START and FORGE:END markers; content outside the markers is preserved as-is.
-// Same pattern as skillgen/claudemd.go.
+// Thin wrapper over util.ReplaceMarkedSection (shared with skillgen's CLAUDE.md/AGENTS.md upsert).
 //
 // replaceForgeRules 替换 FORGE:START 与 FORGE:END 标记之间的内容，标记外的内容原样保留。
-// 与 skillgen/claudemd.go 同一模式。
+// util.ReplaceMarkedSection 的薄封装（与 skillgen 的 CLAUDE.md/AGENTS.md upsert 共享）。
 func replaceForgeRules(content, newSection string) string {
-	startIdx := strings.Index(content, forgeRulesStart)
-	endIdx := strings.Index(content, forgeRulesEnd)
-
-	if startIdx == -1 || endIdx == -1 || endIdx <= startIdx {
-		// No markers — append.
-		//
-		// 无标记——追加
-		return content + "\n" + newSection
-	}
-
-	before := content[:startIdx]
-	after := content[endIdx+len(forgeRulesEnd):]
-
-	section := strings.TrimRight(newSection, "\n")
-	result := before + section + "\n"
-
-	after = strings.TrimLeft(after, "\n")
-	if after != "" {
-		result += "\n" + after
-	}
-	return result
+	return util.ReplaceMarkedSection(content, newSection, forgeRulesStart, forgeRulesEnd)
 }
