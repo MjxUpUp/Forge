@@ -31,7 +31,7 @@ func TestHealNpmShim_ReplacesFragileShim(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("shim heal is Windows-only")
 	}
-	prefix, exePath := seedNpmLayout(t, "#!/bin/sh\nbasedir=$(dirname \"$0\")\n", "MZ-fake-binary")
+	prefix, exePath := seedNpmLayout(t, "#!/bin/sh\nbasedir=$(dirname \"$0\")\nexec \"$basedir/node\" \"$basedir/run.js\" \"$@\"\n", "MZ-fake-binary")
 
 	healed, err := healNpmShim(exePath)
 	if err != nil || !healed {
@@ -49,6 +49,26 @@ func TestHealNpmShim_ReplacesFragileShim(t *testing.T) {
 	healed, err = healNpmShim(exePath)
 	if err != nil || healed {
 		t.Errorf("second healNpmShim = (%v, %v), want (false, nil)", healed, err)
+	}
+}
+
+// TestHealNpmShim_UserScriptUntouched pins the signature sniff: a script in the shim
+// slot that is NOT npm's cmd-shim template (no $basedir / node_modules reference) must
+// never be replaced.
+func TestHealNpmShim_UserScriptUntouched(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("shim heal is Windows-only")
+	}
+	userScript := "#!/bin/sh\necho my own wrapper\n"
+	prefix, exePath := seedNpmLayout(t, userScript, "MZ-fake-binary")
+
+	healed, err := healNpmShim(exePath)
+	if err != nil || healed {
+		t.Fatalf("user script healNpmShim = (%v, %v), want (false, nil)", healed, err)
+	}
+	data, _ := os.ReadFile(filepath.Join(prefix, "forge"))
+	if string(data) != userScript {
+		t.Errorf("user script was modified:\n%q", string(data))
 	}
 }
 
