@@ -236,12 +236,6 @@ func writePluginReadme(spec PluginPackSpec, pluginDir string) error {
 	return os.WriteFile(filepath.Join(pluginDir, "README.md"), []byte(pluginReadme(slug)), 0644)
 }
 
-// pluginReadme lives in plugin_readme.go: the README body is a go:embed'd static
-// template (assets/plugin_readme.md) with the repo slug as its only interpolation.
-//
-// pluginReadme 在 plugin_readme.go：README 正文是 go:embed 的静态模板
-// （assets/plugin_readme.md），repo slug 是唯一插值。
-
 // writeJSONIndent writes JSON to path with 2-space indent (auto-creates parent dirs).
 // All plugin pack files go through this helper to keep format consistent (golden tests
 // depend on this indent).
