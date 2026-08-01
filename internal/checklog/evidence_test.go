@@ -37,6 +37,7 @@ func TestSourceForCheck(t *testing.T) {
 // 按 CheckName 推断写入磁盘。这是历史记录点无需逐个改造即可进证据链的关键。
 func TestRecordSetsSourceDefault(t *testing.T) {
 	dir := t.TempDir()
+	isolateDataHome(t)
 
 	if err := Record(dir, &Entry{Check: CheckAutoCompile, Passed: true}); err != nil {
 		t.Fatal(err)
@@ -219,6 +220,7 @@ func TestStrength_EscapeHatchCapsToWeak(t *testing.T) {
 // TestForTask_LoadsAndBuckets 端到端：Record 写入 → ForTask 加载聚合。
 func TestForTask_LoadsAndBuckets(t *testing.T) {
 	dir := t.TempDir()
+	isolateDataHome(t)
 	Record(dir, &Entry{Check: CheckAutoCompile, Passed: true, TaskRef: "feat/e"})
 	Record(dir, &Entry{Check: CheckTaskVerify, Passed: true, TaskRef: "feat/e"})
 	Record(dir, &Entry{Check: CheckAssertion, Passed: true, TaskRef: "feat/e"})

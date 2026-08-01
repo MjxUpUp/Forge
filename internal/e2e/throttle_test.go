@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
 // TestTaskVerifyThrottle verifies the task-verify hook collapses repeated
@@ -23,7 +25,9 @@ func TestTaskVerifyThrottle(t *testing.T) {
 
 	runHook := func() string {
 		t.Helper()
-		hookPath := filepath.Join(dir, ".forge", "hooks", "task-verify.sh")
+		// Hook reference copies live in the user-level DataDir (user-level-assets);
+		// freshProject pins FORGE_DATA_HOME so this resolves to the per-test home.
+		hookPath := filepath.Join(forgedata.DataDirFor(dir), "hooks", "task-verify.sh")
 		cmd := exec.Command("bash", hookPath)
 		cmd.Dir = dir
 		binDir := filepath.Dir(forgeBin)

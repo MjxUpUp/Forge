@@ -7,6 +7,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
 // TestEstimateTokens: rune/3 heuristic for token estimation (loop cost proxy).
@@ -178,7 +180,8 @@ func TestLoadForTaskAll(t *testing.T) {
 
 	// Archived toollog from a previous task start — feat/x history that the
 	// active-only LoadForTask would miss. LoadForTaskAll must include it.
-	archivePath := filepath.Join(dir, ".forge", "toollog-20260101000000.jsonl")
+	// Archives live in the user-level DataDir alongside the active toollog.
+	archivePath := filepath.Join(forgedata.DataDirFor(dir), "toollog-20260101000000.jsonl")
 	archived := []byte(`{"tool_name":"Bash","task_ref":"feat/x","timestamp":"2026-01-01T00:00:00Z"}` + "\n")
 	if err := os.WriteFile(archivePath, archived, 0644); err != nil {
 		t.Fatal(err)
@@ -281,12 +284,11 @@ func TestClear(t *testing.T) {
 		t.Errorf("expected 0 calls after clear, got %d", len(calls))
 	}
 
-	// Archived file should exist
-	files, _ := filepath.Glob(filepath.Join(dir, ".forge", "toollog-*.jsonl"))
+	// Archived file should exist (user-level DataDir)
+	dataDir := forgedata.DataDirFor(dir)
+	files, _ := filepath.Glob(filepath.Join(dataDir, "toollog-*.jsonl"))
 	if len(files) == 0 {
-		// Archive might be in the temp dir that got cleaned, check .forge dir
-		forgeDir := filepath.Join(dir, ".forge")
-		entries, err := os.ReadDir(forgeDir)
+		entries, err := os.ReadDir(dataDir)
 		if err == nil {
 			found := false
 			for _, e := range entries {
@@ -310,7 +312,7 @@ func TestClear(t *testing.T) {
 func TestClear_PrunesOldArchives(t *testing.T) {
 	t.Setenv("FORGE_LOG_RETENTION_DAYS", "30")
 	dir := t.TempDir()
-	forgeDir := filepath.Join(dir, ".forge")
+	forgeDir := forgedata.DataDirFor(dir)
 	os.MkdirAll(forgeDir, 0755)
 	os.WriteFile(filepath.Join(forgeDir, "toollog.jsonl"), []byte("{}\n"), 0644)
 	os.WriteFile(filepath.Join(forgeDir, "toollog-20000101000000.jsonl"), []byte("old"), 0644)

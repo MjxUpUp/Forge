@@ -6,12 +6,22 @@ import (
 	"path/filepath"
 )
 
-// OpencodeTranslator generates .opencode/plugins/forge.ts — a real, blockable plugin.
-// opencode (opencode.ai, Bun-based) loads TS plugins from .opencode/plugins/ at startup; the plugin's
+// OpencodeTranslator installs forge.ts into opencode's USER-LEVEL global plugin
+// directory ($XDG_CONFIG_HOME/opencode/plugins/forge.ts, or
+// ~/.config/opencode/plugins/forge.ts when XDG_CONFIG_HOME is unset — opencode's
+// documented global plugin location, https://opencode.ai/docs/plugins/).
+// opencode (opencode.ai, Bun-based) loads TS plugins from that directory at startup; the plugin's
 // `tool.execute.before` hook runs before each tool call, and throwing inside it short-circuits the Effect so the tool
 // never executes (verified at the opencode packages/opencode/src/session/tools.ts call site and
 // packages/opencode/src/plugin/index.ts trigger). This puts opencode alongside
 // claude-code/codex/cursor/windsurf as an agent where Forge gates can truly be enforced.
+//
+// The user-level location mirrors the kimi/claude-code model: one machine-wide
+// registration instead of a per-project .opencode/plugins/forge.ts copy, so forge
+// init/sync no longer writes into the project directory (user-level assets migration).
+// forge.ts is fully owned by forge — Translate overwrites it outright (no merge);
+// StripOpenCodeUserPlugin deletes it. The project-level .opencode/forge.README.md is
+// no longer written (loading docs live in the forge docs now that the plugin is global).
 //
 // opencode's hook callback builds a Claude-Code-shape stdin (session_id,
 // hook_event_name, tool_name, tool_input), spawns `forge hook <name>`, and throws when forge
@@ -23,12 +33,21 @@ import (
 //   - write                   args.content   → tool_input.content
 //   - edit                    args.newText   → tool_input.content  (opencode uses newText, not new_string)
 //
-// OpencodeTranslator 生成 .opencode/plugins/forge.ts——一个真实、可 block 的 plugin。
-// opencode（opencode.ai，基于 Bun）启动时从 .opencode/plugins/ 加载 TS plugin；plugin 的
+// OpencodeTranslator 把 forge.ts 装进 opencode 的 user-level 全局 plugin 目录
+// （$XDG_CONFIG_HOME/opencode/plugins/forge.ts；XDG_CONFIG_HOME 未设时为
+// ~/.config/opencode/plugins/forge.ts——opencode 官方文档的全局 plugin 位置，
+// https://opencode.ai/docs/plugins/）。
+// opencode（opencode.ai，基于 Bun）启动时从该目录加载 TS plugin；plugin 的
 // `tool.execute.before` hook 在工具执行前跑，在其中 throw 会 short-circuit Effect，工具就
 // 不会执行（已在 opencode 的 packages/opencode/src/session/tools.ts 调用点与
 // packages/opencode/src/plugin/index.ts trigger 中验证）。这使 opencode 与
 // claude-code/codex/cursor/windsurf 并列，成为 Forge gate 真正能 enforce 的 agent。
+//
+// 用户级路径对齐 kimi/claude-code 模型：一份全机器注册替代逐项目的
+// .opencode/plugins/forge.ts 副本，forge init/sync 不再写项目目录（用户级资产迁移）。
+// forge.ts 完全由 forge 拥有——Translate 直接覆盖写（无 merge）；
+// StripOpenCodeUserPlugin 删除它。项目级 .opencode/forge.README.md 不再写
+// （plugin 已全局化，加载说明归 forge 文档）。
 //
 // opencode 的 hook callback 构造 Claude-Code-shape stdin（session_id、
 // hook_event_name、tool_name、tool_input），spawn `forge hook <name>`，并在 forge
@@ -42,39 +61,71 @@ import (
 type OpencodeTranslator struct{}
 
 func (t *OpencodeTranslator) Translate(projectDir string, input *TranslationInput) error {
-	if input.Protocol == nil {
-		return fmt.Errorf("opencode: protocol is required")
-	}
-
-	pluginsDir := filepath.Join(projectDir, ".opencode", "plugins")
-	if err := os.MkdirAll(pluginsDir, 0755); err != nil {
-		return fmt.Errorf("opencode: create .opencode/plugins dir: %w", err)
-	}
-
-	content := buildOpencodePlugin()
-	path := filepath.Join(pluginsDir, "forge.ts")
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-		return fmt.Errorf("opencode: write forge.ts: %w", err)
-	}
-
-	// Doc explains how to load the plugin (opencode auto-discovers .opencode/plugins/*.ts, so this README
-	// is guidance for non-standard deployments / troubleshooting).
+	// User-level translator: projectDir is intentionally ignored — the registration is
+	// machine-wide (same contract as KimiTranslator). forge.ts is forge-owned, so this
+	// is a plain overwrite (idempotent by construction), not a merge.
 	//
-	// 文档说明如何加载 plugin（opencode 自动发现 .opencode/plugins/*.ts，故此 README
-	// 是给非标准部署/排错用的 guidance）。
-	readmeDir := filepath.Join(projectDir, ".opencode")
-	if err := os.MkdirAll(readmeDir, 0755); err != nil {
-		fmt.Fprintf(os.Stderr, "opencode: warning: cannot create dir for forge.README.md: %v\n", err)
-	} else if err := os.WriteFile(filepath.Join(readmeDir, "forge.README.md"), []byte(buildOpencodeReadme()), 0644); err != nil {
-		// The README is a promised Translate deliverable; a silent failure would
-		// leave the user without the loading/troubleshooting doc. Warn, don't fail.
-		fmt.Fprintf(os.Stderr, "opencode: warning: write forge.README.md: %v\n", err)
+	// 用户级 translator：刻意忽略 projectDir——注册是全机器生效（与 KimiTranslator
+	// 同契约）。forge.ts 由 forge 拥有，故直接覆盖写（天然幂等），不做 merge。
+	path, err := OpencodePluginPath()
+	if err != nil {
+		return fmt.Errorf("opencode: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("opencode: create global plugins dir: %w", err)
+	}
+	if err := os.WriteFile(path, []byte(buildOpencodePlugin()), 0644); err != nil {
+		return fmt.Errorf("opencode: write forge.ts: %w", err)
 	}
 	return nil
 }
 
 func (t *OpencodeTranslator) AgentType() AgentType {
 	return AgentOpencode
+}
+
+// OpencodePluginPath resolves the user-level global forge.ts plugin path:
+// $XDG_CONFIG_HOME/opencode/plugins/forge.ts when XDG_CONFIG_HOME is set, otherwise
+// ~/.config/opencode/plugins/forge.ts (opencode resolves its global config dir via
+// the XDG convention, https://opencode.ai/docs/config/).
+//
+// OpencodePluginPath 解析 user-level 全局 forge.ts plugin 路径：设了
+// XDG_CONFIG_HOME 用 $XDG_CONFIG_HOME/opencode/plugins/forge.ts，否则
+// ~/.config/opencode/plugins/forge.ts（opencode 按 XDG 约定解析全局配置目录，
+// https://opencode.ai/docs/config/）。
+func OpencodePluginPath() (string, error) {
+	base := os.Getenv("XDG_CONFIG_HOME")
+	if base == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("cannot resolve user home: %w", err)
+		}
+		base = filepath.Join(home, ".config")
+	}
+	return filepath.Join(base, "opencode", "plugins", "forge.ts"), nil
+}
+
+// StripOpenCodeUserPlugin deletes the forge-owned user-level global plugin
+// ($XDG_CONFIG_HOME/opencode/plugins/forge.ts or ~/.config/opencode/plugins/forge.ts).
+// Reports whether the file existed and was removed; a missing file is a clean no-op.
+// Nothing else in the plugins directory is touched (other plugins are user-owned).
+//
+// StripOpenCodeUserPlugin 删除 forge 拥有的 user-level 全局 plugin
+// （$XDG_CONFIG_HOME/opencode/plugins/forge.ts 或
+// ~/.config/opencode/plugins/forge.ts）。返回文件是否存在并被删除；文件不存在为
+// 干净 no-op。plugins 目录里的其他文件一律不动（其余 plugin 归用户所有）。
+func StripOpenCodeUserPlugin() (bool, error) {
+	path, err := OpencodePluginPath()
+	if err != nil {
+		return false, err
+	}
+	if err := os.Remove(path); err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("opencode: remove forge.ts: %w", err)
+	}
+	return true, nil
 }
 
 // buildOpencodePlugin returns the TypeScript plugin source. The PRE_HOOKS /
@@ -173,28 +224,4 @@ function buildPayload(input: any, claudeTool: string, event: string, args: any) 
 }
 
 ` + tsSharedForgeSpawn
-}
-
-func buildOpencodeReadme() string {
-	return `# Forge plugin for opencode
-
-This plugin (` + "`.opencode/plugins/forge.ts`" + `) wires Forge quality gates into opencode.
-opencode auto-discovers ` + "`.opencode/plugins/*.ts`" + ` at startup — no config needed.
-
-## What it does
-- ` + "`tool.execute.before`" + `: runs Forge's pre-tool gates (task-guard, assertion-check,
-  bash-guard). If Forge blocks, the plugin throws and opencode aborts the tool call.
-- ` + "`tool.execute.after`" + `: runs post-tool hooks (auto-compile, file-sentinel,
-  workflow-test-guard) for recording/advisory. workflow-test-guard runs the
-  internal/ci guard tests; its block path is advisory here (opencode swallows
-  post-tool verdicts), so the test executes but cannot hard-block the edit.
-
-## Requirements
-- ` + "`forge`" + ` on PATH.
-- Runs under Bun (opencode's runtime); ` + "`node:child_process`" + ` is available there.
-
-## Troubleshooting
-If tools stop working entirely, the plugin fails open on Forge errors — check
-` + "`forge`" + ` is installed (` + "`forge --version`" + `) and on PATH.
-`
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/docsconsistency"
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/review"
 	"github.com/MjxUpUp/Forge/internal/taskcontext"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
@@ -410,18 +411,26 @@ func TestHasCodeChanges_HeadCommitAtHead(t *testing.T) {
 }
 
 // TestRecordAudit_FailureWarnsOnStderr pins the audit-persistence signal: when
-// checklog.Record fails (here: root is a regular file, so the data dir cannot be
-// created underneath), recordAudit must surface the failure on stderr instead of
-// swallowing it — the persisted evidence is indispensable for score/trace.
+// checklog.Record fails (here: FORGE_DATA_HOME is a regular file, so the
+// user-level DataDir cannot be created underneath), recordAudit must surface the
+// failure on stderr instead of swallowing it — the persisted evidence is
+// indispensable for score/trace.
 //
 // TestRecordAudit_FailureWarnsOnStderr 钉死审计落盘信号：checklog.Record 失败时
-// （此处 root 是普通文件，其下无法建 data dir），recordAudit 必须把失败打到
-// stderr 而非吞掉——落盘证据对 score/trace 不可缺。
+// （此处 FORGE_DATA_HOME 是普通文件，其下无法建用户级 DataDir），recordAudit
+// 必须把失败打到 stderr 而非吞掉——落盘证据对 score/trace 不可缺。
 func TestRecordAudit_FailureWarnsOnStderr(t *testing.T) {
 	bogus := filepath.Join(t.TempDir(), "not-a-dir")
 	if err := os.WriteFile(bogus, []byte("x"), 0644); err != nil {
 		t.Fatal(err)
 	}
+	// Record resolves the user-level DataDir under FORGE_DATA_HOME
+	// (DataDirFor → RootDir); a regular file there makes MkdirAll fail.
+	//
+	// Record 把用户级 DataDir 解析到 FORGE_DATA_HOME 下（DataDirFor →
+	// RootDir）；该处是普通文件时 MkdirAll 必失败。
+	t.Setenv("FORGE_DATA_HOME", bogus)
+	root := t.TempDir()
 
 	old := os.Stderr
 	r, w, err := os.Pipe()
@@ -429,7 +438,7 @@ func TestRecordAudit_FailureWarnsOnStderr(t *testing.T) {
 		t.Fatal(err)
 	}
 	os.Stderr = w
-	recordAudit(bogus, &checklog.Entry{Check: CheckNameTestCoverage, Passed: true, Checked: true})
+	recordAudit(root, &checklog.Entry{Check: CheckNameTestCoverage, Passed: true, Checked: true})
 	w.Close()
 	os.Stderr = old
 	out, err := io.ReadAll(r)
@@ -443,7 +452,6 @@ func TestRecordAudit_FailureWarnsOnStderr(t *testing.T) {
 
 func TestSanitizeRefInStatePath(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
 
 	ctx := &taskcontext.Context{
 		Source:     "branch",
@@ -457,8 +465,8 @@ func TestSanitizeRefInStatePath(t *testing.T) {
 		t.Fatalf("Save failed: %v", err)
 	}
 
-	// File should be feature-login.json (slash replaced)
-	expectedPath := filepath.Join(dir, ".forge", "tasks", "feature-login.json")
+	// File should be feature-login.json (slash replaced), under the user-level DataDir
+	expectedPath := filepath.Join(forgedata.DataDirFor(dir), "tasks", "feature-login.json")
 	if _, err := os.Stat(expectedPath); os.IsNotExist(err) {
 		t.Errorf("expected file %s not found", expectedPath)
 	}
