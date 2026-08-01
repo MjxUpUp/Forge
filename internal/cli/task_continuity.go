@@ -206,15 +206,17 @@ func runTaskResume(cmd *cobra.Command, args []string) error {
 	}
 
 	// hook mode (SessionStart auto-injection; bash thin wrapper `exec forge task resume --hook`):
-	// no active task → silent exit 0 (no injection, no error); with an active task, attach
-	// the current session + emit "PASS\n<handoff>". runHook's extractDetail strips the PASS
-	// prefix to get detail, and detail is injected into additionalContext via the generic
-	// truncate fallback. Every branch exits 0 — SessionStart never blocks because of resume.
+	// unambiguous active task → attach the current session + emit "PASS\n<handoff>"; multiple
+	// in flight with no context match → emit "PASS\n<inventory>"; zero incomplete tasks →
+	// silent (no injection, no error). runHook's extractDetail strips the PASS prefix to get
+	// detail, and detail is injected into additionalContext via the generic truncate fallback.
+	// Every branch exits 0 — SessionStart never blocks because of resume.
 	//
 	// hook 模式（SessionStart 自动注入；bash thin wrapper `exec forge task resume --hook`）：
-	// 无活跃任务静默 exit 0（不注入、不报错）；有活跃任务则 attach 当前 session + 输出
-	// "PASS\n<handoff>"。runHook 的 extractDetail 去掉 PASS 前缀取 detail，detail 经通用
-	// truncate 兜底注入 additionalContext。任何分支都 exit 0——SessionStart 绝不因 resume 阻塞。
+	// 无歧义活跃任务 → attach 当前 session + 输出 "PASS\n<handoff>"；多任务在进行且无
+	// 上下文匹配 → 输出 "PASS\n<盘点清单>"；零未完成任务 → 静默（不注入、不报错）。
+	// runHook 的 extractDetail 去掉 PASS 前缀取 detail，detail 经通用 truncate 兜底注入
+	// additionalContext。任何分支都 exit 0——SessionStart 绝不因 resume 阻塞。
 	if hookMode {
 		root, err := findProjectRoot()
 		if err != nil {
@@ -360,14 +362,29 @@ func renderHookResume(root string) (string, error) {
 	}
 	handoff := renderResume(state, gitPorcelain(root))
 	// The current task resumes automatically, but the handoff party should still know
-	// the full in-flight set — one line naming the other incomplete tasks.
+	// the full in-flight set — one line naming the other incomplete tasks. The list is
+	// capped (zombie accumulation would otherwise produce a giant line and push the
+	// closing discipline line past runHook's tail-truncation), and the whole handoff
+	// is re-stripped afterwards: TaskRef comes from user --ref input and renderResume's
+	// strip ran BEFORE this insertion (code-review P1 — ANSI injection asymmetry vs
+	// renderTaskInventory, which strips after building).
 	//
 	// 当前任务自动接续，但接手方仍应知道完整的在进行集合——一行列出其余未完成任务。
+	// 列表带上限（僵尸任务堆积会产生巨长行，把收尾的纪律行顶过 runHook 的尾部截断），
+	// 且拼接后对整个 handoff 重新 strip：TaskRef 来自用户 --ref 输入，renderResume 的
+	// strip 在插入之前就跑了（code-review P1——与 renderTaskInventory 先构建后 strip
+	// 不对称的 ANSI 注入）。
 	if others := otherIncompleteTasks(root, state.TaskRef); len(others) > 0 {
-		handoff = strings.Replace(handoff,
+		shown := others
+		suffix := ""
+		if len(shown) > inventoryListCap {
+			shown = shown[:inventoryListCap]
+			suffix = fmt.Sprintf(" 等 %d 个", len(others))
+		}
+		handoff = stripUnsafeControl(strings.Replace(handoff,
 			"→ 接续纪律用 session-continuity skill",
 			fmt.Sprintf("另有 %d 个未完成任务: %s（forge task resume --ref <ref> 可切换）\n→ 接续纪律用 session-continuity skill",
-				len(others), strings.Join(others, ", ")), 1)
+				len(others), strings.Join(shown, ", ")+suffix), 1))
 	}
 	return "PASS\n" + handoff, nil
 }
@@ -378,6 +395,25 @@ func renderHookResume(root string) (string, error) {
 // inventoryListCap 限定 SessionStart 盘点列出的任务数——输出每次会话启动都进
 // 上下文，必须保持紧凑。
 const inventoryListCap = 8
+
+// inventoryFieldCap bounds the per-field length (summary/next-step) inside one inventory
+// line. runHook tail-truncates at 9500 chars, so unbounded fields could push the closing
+// AskUserQuestion instruction — the whole point of the inventory — past the cut.
+//
+// inventoryFieldCap 限定盘点单行内字段（标题/下一步）的长度。runHook 从尾部截断
+// （9500 字符），字段不设界会把末尾的 AskUserQuestion 引导行——盘点的存在意义——
+// 先切掉。
+const inventoryFieldCap = 60
+
+// truncateRunes shortens s to at most n runes, appending an ellipsis when cut.
+//
+// truncateRunes 把 s 截到最多 n 个 rune，被截时追加省略号。
+func truncateRunes(s string, n int) string {
+	if r := []rune(s); len(r) > n {
+		return string(r[:n]) + "…"
+	}
+	return s
+}
 
 // otherIncompleteTasks returns the refs of incomplete tasks other than currentRef.
 //
@@ -436,11 +472,11 @@ func renderTaskInventory(root string) string {
 			line += " [分支 " + s.Branch + "]"
 		}
 		if s.Summary != "" {
-			line += " — " + s.Summary
+			line += " — " + truncateRunes(s.Summary, inventoryFieldCap)
 		}
 		line += " — 门禁 " + renderGateProgress(s)
 		if len(s.NextSteps) > 0 {
-			line += " — 下一步: " + s.NextSteps[0]
+			line += " — 下一步: " + truncateRunes(s.NextSteps[0], inventoryFieldCap)
 		}
 		w(line)
 	}
