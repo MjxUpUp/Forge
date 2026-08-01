@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -145,6 +146,104 @@ func TestRenderHookResume_NoActiveTask(t *testing.T) {
 	}
 	if out != "" {
 		t.Errorf("无活跃任务应返空串静默，实得 %q", out)
+	}
+}
+
+// TestRenderHookResume_InventoryAmbiguous (interaction flow step 2): with ≥2 incomplete
+// tasks and no context match, the SessionStart hook must NOT stay silent — it injects a
+// compact candidate inventory (refs/gate progress/next step) plus the instruction to let
+// the user pick via the agent's structured-question tool. No session is anchored (the
+// user has not chosen a task yet).
+//
+// TestRenderHookResume_InventoryAmbiguous（交互流程第 2 步）：≥2 个未完成任务且无
+// 上下文匹配时，SessionStart hook 不能静默——注入紧凑候选盘点（ref/门禁进度/下一步）
+// 并指示 agent 用结构化提问工具让用户选择。不锚定 session（用户尚未选定任务）。
+func TestRenderHookResume_InventoryAmbiguous(t *testing.T) {
+	root, _ := forgedatatest.RealProject(t)
+	a := &taskpipeline.TaskState{TaskRef: "feat/inv-a", Branch: "feat/inv-a", Summary: "任务 A"}
+	a.AddNext("做 A 的下一步")
+	b := &taskpipeline.TaskState{TaskRef: "feat/inv-b", Branch: "feat/inv-b", Summary: "任务 B"}
+	for _, s := range []*taskpipeline.TaskState{a, b} {
+		if err := taskpipeline.SaveTaskState(root, s); err != nil {
+			t.Fatalf("SaveTaskState: %v", err)
+		}
+	}
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "sid-inv")
+
+	out, err := renderHookResume(root)
+	if err != nil {
+		t.Fatalf("renderHookResume: %v", err)
+	}
+	if !strings.HasPrefix(out, "PASS\n") {
+		t.Fatalf("歧义时应注入候选清单（PASS 前缀），实得 %q", out)
+	}
+	for _, want := range []string{"检测到 2 个未完成任务", "feat/inv-a", "任务 A", "做 A 的下一步", "feat/inv-b", "AskUserQuestion", "forge task resume --ref", "forge task start"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("候选清单应含 %q\n---OUT---\n%s", want, out)
+		}
+	}
+	// No attach: the user has not picked a task, so no session link may be written.
+	//
+	// 不锚定：用户尚未选定任务，不应写入任何 session 链接
+	reloaded, _ := taskpipeline.LoadTaskState(root, "feat/inv-a")
+	if reloaded != nil && len(reloaded.SessionLinks) > 0 {
+		t.Errorf("盘点注入不应锚定 session，state=%v", reloaded.SessionLinks)
+	}
+}
+
+// TestRenderHookResume_OtherTasksFooter: with an unambiguous active task plus other
+// in-flight tasks, the handoff resumes the current one AND names the others in one
+// line — the handoff party sees the full in-flight set.
+//
+// TestRenderHookResume_OtherTasksFooter：有无歧义活跃任务且另有在进行任务时，handoff
+// 自动接续当前任务，并用一行列出其余任务——接手方看到完整的在进行集合。
+func TestRenderHookResume_OtherTasksFooter(t *testing.T) {
+	root, _ := forgedatatest.RealProject(t)
+	cur := &taskpipeline.TaskState{TaskRef: "feat/current", Branch: "feat/current", Goal: "当前任务"}
+	other := &taskpipeline.TaskState{TaskRef: "feat/other", Branch: "feat/other", Summary: "另一个"}
+	for _, s := range []*taskpipeline.TaskState{cur, other} {
+		if err := taskpipeline.SaveTaskState(root, s); err != nil {
+			t.Fatalf("SaveTaskState: %v", err)
+		}
+	}
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "sid-cur")
+	if err := taskpipeline.SetActiveTaskRef(root, "sid-cur", "feat/current"); err != nil {
+		t.Fatalf("SetActiveTaskRef: %v", err)
+	}
+
+	out, err := renderHookResume(root)
+	if err != nil {
+		t.Fatalf("renderHookResume: %v", err)
+	}
+	if !strings.Contains(out, "feat/current") || !strings.Contains(out, "当前任务") {
+		t.Errorf("应自动接续当前任务\n---OUT---\n%s", out)
+	}
+	if !strings.Contains(out, "另有 1 个未完成任务: feat/other") {
+		t.Errorf("应一行列出其余未完成任务\n---OUT---\n%s", out)
+	}
+}
+
+// TestRenderHookResume_InventoryCap: beyond inventoryListCap the list truncates with a
+// "…还有 N 个" line — SessionStart injection must stay compact no matter how many
+// zombie tasks accumulate.
+//
+// TestRenderHookResume_InventoryCap：超过 inventoryListCap 时清单截断并给「…还有
+// N 个」——无论僵尸任务堆多少，SessionStart 注入都必须保持紧凑。
+func TestRenderHookResume_InventoryCap(t *testing.T) {
+	root, _ := forgedatatest.RealProject(t)
+	for i := 0; i < inventoryListCap+2; i++ {
+		s := &taskpipeline.TaskState{TaskRef: fmt.Sprintf("feat/cap-%02d", i), Branch: fmt.Sprintf("feat/cap-%02d", i)}
+		if err := taskpipeline.SaveTaskState(root, s); err != nil {
+			t.Fatalf("SaveTaskState: %v", err)
+		}
+	}
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "sid-cap")
+	out, err := renderHookResume(root)
+	if err != nil {
+		t.Fatalf("renderHookResume: %v", err)
+	}
+	if !strings.Contains(out, "还有 2 个") {
+		t.Errorf("超过上限应给截断提示\n---OUT---\n%s", out)
 	}
 }
 
