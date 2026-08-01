@@ -419,12 +419,7 @@ func IsMember(cwd string) (root string, ok bool) {
 	// 匹配到已登记的物理路径。两种形态都留作匹配候选——有的系统 temp/home 目录
 	// 本身就是 symlink（macOS /var → /private/var），条目是按未解析形态登记的，
 	// 只按解析后形态匹配会把它们弄丢。
-	absForms := []string{abs}
-	if eval, err := filepath.EvalSymlinks(abs); err == nil {
-		if ev := filepath.Clean(eval); pathKey(ev) != pathKey(abs) {
-			absForms = append(absForms, ev)
-		}
-	}
+	absForms := pathForms(abs)
 
 	if gitRoot := forgedata.FindGitRoot(abs); gitRoot != `` {
 		k, kerr := forgedata.Key(abs)
@@ -439,42 +434,81 @@ func IsMember(cwd string) (root string, ok bool) {
 		return ``, false
 	}
 
-	// Non-git: boundary-aware longest-prefix match.
+	// Non-git: boundary-aware longest-prefix match. BOTH sides are compared in
+	// lexical + symlink-resolved forms: entries may be registered under the
+	// unresolved form (macOS /var → /private/var temp dirs) while the cwd arrives
+	// through a symlink (or vice versa) — matching only one form per side misses.
 	//
-	// 非 git：边界感知的最长前缀匹配。
+	// 非 git：边界感知的最长前缀匹配。两侧都按字面 + symlink 解析双形态比较：
+	// 条目可能按未解析形态登记（macOS /var → /private/var 的 temp 目录），而
+	// cwd 经 symlink 到达（或反之）——单边单形态会漏配。
 	best := ``
 	for _, e := range f.Projects {
-		ep := filepath.Clean(e.Path)
-		for _, af := range absForms {
-			// Exact match goes through pathKey so Windows case variants (C:\Proj vs
-			// c:\proj) hit — plain == would miss them.
-			//
-			// 精确匹配走 pathKey，Windows 大小写变体（C:\Proj vs c:\proj）也能命中——
-			// 裸 == 会漏。
-			if pathKey(ep) == pathKey(af) {
-				if len(ep) > len(best) {
-					best = ep
-				}
-				break
-			}
-			prefix := ep + string(filepath.Separator)
-			if runtime.GOOS == "windows" {
-				if strings.HasPrefix(strings.ToLower(af), strings.ToLower(prefix)) && len(ep) > len(best) {
-					best = ep
+		// The returned root is always the entry's LEXICAL registered form (resolved
+		// forms only widen matching) — EvalSymlinks on Windows expands 8.3 short
+		// names, and handing back the long form would surprise callers/tests
+		// comparing against the registered path.
+		//
+		// 返回的根恒为条目的字面登记形态（解析形态只用于放宽匹配）——Windows 上
+		// EvalSymlinks 会展开 8.3 短名，把长名形式返回会让按登记路径比较的
+		// 调用方/测试困惑。
+		epLexical := filepath.Clean(e.Path)
+		matched := false
+		for _, ep := range pathForms(e.Path) {
+			for _, af := range absForms {
+				// Exact match goes through pathKey so Windows case variants (C:\Proj vs
+				// c:\proj) hit — plain == would miss them.
+				//
+				// 精确匹配走 pathKey，Windows 大小写变体（C:\Proj vs c:\proj）也能命中——
+				// 裸 == 会漏。
+				if pathKey(ep) == pathKey(af) {
+					matched = true
 					break
 				}
-				continue
+				prefix := ep + string(filepath.Separator)
+				if runtime.GOOS == "windows" {
+					if strings.HasPrefix(strings.ToLower(af), strings.ToLower(prefix)) {
+						matched = true
+						break
+					}
+					continue
+				}
+				if strings.HasPrefix(af, prefix) {
+					matched = true
+					break
+				}
 			}
-			if strings.HasPrefix(af, prefix) && len(ep) > len(best) {
-				best = ep
+			if matched {
 				break
 			}
+		}
+		if matched && len(epLexical) > len(best) {
+			best = epLexical
 		}
 	}
 	if best == `` {
 		return ``, false
 	}
 	return best, true
+}
+
+// pathForms returns the match-candidate forms of a path: the cleaned lexical form,
+// plus the symlink-resolved physical form when it differs (macOS /var→/private/var,
+// symlinked project dirs). Both IsMember sides (cwd and registry entries) are
+// matched across these forms.
+//
+// pathForms 返回路径的匹配候选形态：Clean 后的字面形态，以及 symlink 解析后的
+// 物理形态（不同时才含；macOS /var→/private/var、symlink 项目目录）。IsMember
+// 的两侧（cwd 与注册条目）都跨这些形态匹配。
+func pathForms(p string) []string {
+	clean := filepath.Clean(p)
+	forms := []string{clean}
+	if eval, err := filepath.EvalSymlinks(clean); err == nil {
+		if ev := filepath.Clean(eval); pathKey(ev) != pathKey(clean) {
+			forms = append(forms, ev)
+		}
+	}
+	return forms
 }
 
 // Prune explicitly prunes the global registry: removes dead paths (project dir no
