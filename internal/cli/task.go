@@ -221,17 +221,23 @@ func nonGitTaskWarning() string {
 }
 
 // detectOriginTool returns the task's origin tool (declarative truth, distinct from
-// the directory-snooping weak signal of SessionRecord.AgentType). If explicit is
-// non-empty it is used (--origin-tool); otherwise the environment is probed
-// (CLAUDE_CODE_SESSION_ID -> claude-code). Lets the task record 'who started it'
-// across tool handoffs; pi/opencode append their own session+tool via forge task attach.
+// the directory-snooping weak signal of SessionRecord.AgentType). Probe order:
+// explicit (--origin-tool) > FORGE_AGENT (injected by runHook from the resolved
+// --agent flag, so hook-spawned forge processes on kimi/windsurf know their host) >
+// CLAUDE_CODE_SESSION_ID (claude-code). Lets the task record 'who started it'
+// across tool handoffs; other hosts append their own session+tool via forge task attach.
 //
 // detectOriginTool 返回任务的发起工具（声明式真相，区别于 SessionRecord.AgentType 的目录探测弱信号）。
-// explicit 非空则用之（--origin-tool）；否则从环境探测（CLAUDE_CODE_SESSION_ID → claude-code）。
-// 跨工具接续时让 task 记录「谁起的头」，pi/opencode 接续时用 forge task attach 追加自己的 session+工具。
+// 探测顺序：explicit（--origin-tool）> FORGE_AGENT（runHook 把解析出的 --agent 值注入，
+// 使 kimi/windsurf 上 hook 派生的 forge 进程知道自己的 host）> CLAUDE_CODE_SESSION_ID
+// （claude-code）。跨工具接续时让 task 记录「谁起的头」，其他 host 接续时用
+// forge task attach 追加自己的 session+工具。
 func detectOriginTool(explicit string) string {
 	if explicit != "" {
 		return explicit
+	}
+	if agent := os.Getenv("FORGE_AGENT"); agent != "" {
+		return agent
 	}
 	if os.Getenv("CLAUDE_CODE_SESSION_ID") != "" {
 		return "claude-code"
