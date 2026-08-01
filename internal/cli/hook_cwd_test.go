@@ -2,8 +2,12 @@ package cli
 
 import (
 	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 )
 
@@ -32,9 +36,17 @@ func TestAdoptPayloadCwd(t *testing.T) {
 	if !adoptPayloadCwd(projRoot) {
 		t.Fatal("有效项目目录应被采用（返回 true）")
 	}
+	// Compare directories by identity, not string form: os.Getwd may return the
+	// physical path (macOS /var → /private/var symlink, Windows 8.3 short names)
+	// while projRoot is the unresolved form.
+	//
+	// 按目录同一性比较而非字符串：os.Getwd 可能返回物理路径（macOS 的
+	// /var → /private/var 符号链接、Windows 8.3 短名），而 projRoot 是未解析形式。
 	wd, _ := os.Getwd()
-	if wd != projRoot {
-		t.Errorf("chdir 后 cwd = %q, want %q", wd, projRoot)
+	wdInfo, _ := os.Stat(wd)
+	projInfo, _ := os.Stat(projRoot)
+	if !os.SameFile(wdInfo, projInfo) {
+		t.Errorf("chdir 后 cwd = %q, 应与 %q 同一目录", wd, projRoot)
 	}
 	if _, err := findProjectRoot(); err != nil {
 		t.Errorf("采用 payload cwd 后应能解析项目根: %v", err)
@@ -48,14 +60,19 @@ func TestAdoptPayloadCwd(t *testing.T) {
 	}
 }
 
-// TestAdoptPayloadCwd_Invalid: empty and nonexistent payload cwd values leave the
-// process cwd untouched (fallback to the old behavior).
+// TestAdoptPayloadCwd_Invalid: empty, relative and nonexistent payload cwd values leave
+// the process cwd untouched (fallback to the old behavior). Relative paths are rejected
+// outright — they would resolve against the process cwd (the plugin root under kimi).
 //
-// TestAdoptPayloadCwd_Invalid：空值与不存在的 payload cwd 不动进程 cwd（回落原行为）。
+// TestAdoptPayloadCwd_Invalid：空值、相对路径与不存在的 payload cwd 不动进程 cwd
+// （回落原行为）。相对路径直接拒绝——它会相对进程 cwd（kimi 下即插件根）解析。
 func TestAdoptPayloadCwd_Invalid(t *testing.T) {
 	before, _ := os.Getwd()
 	if adoptPayloadCwd("") {
 		t.Error("空 cwd 不应被采用")
+	}
+	if adoptPayloadCwd("relative/subdir") {
+		t.Error("相对路径不应被采用")
 	}
 	if adoptPayloadCwd(`Z:\no\such\dir\anywhere`) {
 		t.Error("不存在的目录不应被采用")
@@ -77,5 +94,63 @@ func TestKimiNormalize_PopulatesCwd(t *testing.T) {
 	kimiNormalize([]byte(kimiPreToolUsePayload), &in)
 	if in.Cwd != "C:/proj" {
 		t.Errorf("Cwd = %q, want %q", in.Cwd, "C:/proj")
+	}
+}
+
+// TestRunHook_AdoptsPayloadCwd is the end-to-end wiring for the kimi plugin-hook fix:
+// the process starts in a NON-project directory (simulating the plugin root), the hook
+// payload carries the real project in its cwd field, and the project-scoped hook
+// (tool-track) must take effect there — before the fix it bailed with a silent allow.
+//
+// TestRunHook_AdoptsPayloadCwd 是 kimi 插件 hook 修复的端到端接线：进程从非项目目录
+// （模拟插件根）启动，hook payload 的 cwd 字段携带真实项目，项目级 hook
+// （tool-track）必须在那里生效——修复前它会静默放行。
+func TestRunHook_AdoptsPayloadCwd(t *testing.T) {
+	projRoot, _ := forgedatatest.RealProject(t)
+
+	// Start from a non-project directory (the plugin root under kimi).
+	//
+	// 从非项目目录（kimi 下的插件根）启动
+	pluginRoot := t.TempDir()
+	originalWd, _ := os.Getwd()
+	os.Chdir(pluginRoot)
+	defer os.Chdir(originalWd)
+
+	if _, err := findProjectRoot(); err == nil {
+		t.Fatal("前置：模拟插件根应解析不到项目")
+	}
+
+	payload := `{"hook_event_name":"PostToolUse","session_id":"s-cwd","cwd":` +
+		strconv.Quote(filepath.ToSlash(projRoot)) +
+		`,"tool_name":"Read","tool_input":{"file_path":"src/main.go"}}`
+
+	oldStdin := os.Stdin
+	tmpStdin, _ := os.CreateTemp("", "hook-stdin-*.json")
+	tmpStdin.WriteString(payload)
+	tmpStdin.Seek(0, 0)
+	os.Stdin = tmpStdin
+	defer func() {
+		os.Stdin = oldStdin
+		tmpStdin.Close()
+		os.Remove(tmpStdin.Name())
+	}()
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	runHook(nil, []string{"tool-track"})
+
+	w.Close()
+	os.Stdout = oldStdout
+	r.Read(make([]byte, 8192))
+
+	toollogPath := filepath.Join(forgedata.DataDirFor(projRoot), "toollog.jsonl")
+	data, err := os.ReadFile(toollogPath)
+	if err != nil {
+		t.Fatalf("tool-track 未在 payload.cwd 项目生效（toollog 未生成）: %v", err)
+	}
+	if !strings.Contains(string(data), `"tool_name":"Read"`) {
+		t.Errorf("toollog 应含 tool_name=Read 条目, got: %s", data)
 	}
 }
