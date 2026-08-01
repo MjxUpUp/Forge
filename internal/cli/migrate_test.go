@@ -112,6 +112,12 @@ func TestMigrateCmd_NotInForgeProject(t *testing.T) {
 
 	err := migrateCmd.RunE(migrateCmd, nil)
 	if err == nil {
-		t.Fatal(`非 forge 项目应返错（findProject 失败）`)
+		// 诊断（CI 偶发，本地不复现）：打印 Find 实际解析结果与注册表内容
+		root, ok := "(err)", false
+		if r, ferr := findProjectRoot(); ferr == nil {
+			root, ok = r, true
+		}
+		regData, _ := os.ReadFile(filepath.Join(os.Getenv("FORGE_DATA_HOME"), "projects.json"))
+		t.Fatalf("非 forge 项目应返错（findProject 失败）\nfindProjectRoot=(%q,%v)\nregistry=%s", root, ok, regData)
 	}
 }
