@@ -262,6 +262,32 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 			})
 			fmt.Fprintf(os.Stderr, "%s文档一致性 drift——README 反引号引用了不存在的 forge 命令：%s（提交前修复，详见 skills/docs-consistency-guard）\n", GateAdvisory("[task-complete] "), strings.Join(drifted, ", "))
 		}
+
+		// Behavior-surface advisory: the doc guards only cover command/flag
+		// REFERENCES, never behavioural prose — so a diff touching the
+		// user-visible behaviour surface (init/sync/uninstall, agent bridges,
+		// instruction generators, protocol/registry) can ship stale README/
+		// homepage descriptions without tripping any guard (observed 2026-08:
+		// the user-level-assets rewrite left "forge init creates .forge/" in
+		// the README until the user noticed). Remind at complete time, when
+		// the diff is known. Advisory only.
+		//
+		// 行为面 advisory：文档守卫只覆盖命令/flag【引用】，从不覆盖行为【描述】
+		// ——触及用户可见行为面（init/sync/uninstall、agent bridge、指令生成器、
+		// protocol/registry）的 diff 可以让 README/homepage 的过时描述不穿任何
+		// 守卫上线（2026-08 实证：user-level-assets 重构后 README 仍写
+		// "forge init 创建 .forge/"，直到用户发现）。在 complete 时（diff 已知）
+		// 提醒。仅 advisory。
+		if surface := behaviorSurfaceHits(taskChangedFiles(root, state)); len(surface) > 0 {
+			recordAudit(root, &checklog.Entry{
+				Check:   CheckNameDocsConsistency,
+				Passed:  true,
+				Checked: true,
+				TaskRef: state.TaskRef,
+				Detail:  "behavior surface: " + strings.Join(surface, ", "),
+			})
+			fmt.Fprintf(os.Stderr, "%s行为面变更（%s）——文档守卫只覆盖命令引用不覆盖行为描述，提交前请确认 README/homepage/插件文档与新行为一致\n", GateAdvisory("[task-complete] "), strings.Join(surface, ", "))
+		}
 	}
 
 	// auto gate: run the actual checks.
@@ -1124,4 +1150,42 @@ func getDisableWorkActivity(state *TaskState) bool {
 func isLastGate(gateID string) bool {
 	gates := DefaultGates()
 	return len(gates) > 0 && gates[len(gates)-1].ID == gateID
+}
+
+// behaviorSurfacePrefixes are the repo paths whose changes alter user-visible
+// behaviour that the doc guards cannot see (behavioural prose in README/
+// homepage/plugin docs). Matched by exact file or directory prefix.
+//
+// behaviorSurfacePrefixes 是改变用户可见行为、而文档守卫看不到（README/
+// homepage/插件文档里的行为描述）的仓库路径。按精确文件或目录前缀匹配。
+var behaviorSurfacePrefixes = []string{
+	"internal/cli/init.go",
+	"internal/cli/sync.go",
+	"internal/cli/uninstall.go",
+	"internal/agentbridge/",
+	"internal/skillgen/",
+	"internal/hooks/settings.go",
+	"internal/protocol/",
+	"internal/registry/",
+	"internal/forgedata/",
+	"internal/projectroot/",
+}
+
+// behaviorSurfaceHits returns the changed files that touch the user-visible
+// behaviour surface (behaviorSurfacePrefixes), for the task-complete docs
+// advisory. Nil when nothing matches.
+//
+// behaviorSurfaceHits 返回触及用户可见行为面（behaviorSurfacePrefixes）的
+// 改动文件，供 task-complete 文档 advisory 使用。无命中返回 nil。
+func behaviorSurfaceHits(changed []string) []string {
+	var out []string
+	for _, f := range changed {
+		for _, p := range behaviorSurfacePrefixes {
+			if f == p || strings.HasPrefix(f, p) {
+				out = append(out, f)
+				break
+			}
+		}
+	}
+	return out
 }

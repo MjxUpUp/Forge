@@ -172,3 +172,27 @@ func TestRecurrent_ScopeDrift_SingleFileStaysAdvisory(t *testing.T) {
 		t.Fatalf(`单文件 drift 即便复发项目也应保持 advisory PASS（严重度轴不满足）, got: %v`, err)
 	}
 }
+
+// TestBehaviorSurfaceHits pins the advisory's surface matching: exact files and
+// directory prefixes hit; unrelated paths (tests, docs, skills) miss.
+//
+// TestBehaviorSurfaceHits 钉死 advisory 的行为面匹配：精确文件与目录前缀命中；
+// 无关路径（测试、文档、skills）不命中。
+func TestBehaviorSurfaceHits(t *testing.T) {
+	changed := []string{
+		"internal/cli/init.go",
+		"internal/agentbridge/codex.go",
+		"internal/skillgen/claudemd.go",
+		"internal/cli/init_test.go", // 不在行为面清单（测试文件非行为面）
+		"docs/plans/x.md",
+		"skills/foo/SKILL.md",
+		"README.md",
+	}
+	got := behaviorSurfaceHits(changed)
+	if len(got) != 3 {
+		t.Fatalf("behaviorSurfaceHits = %v, want 3 hits（init.go/codex.go/claudemd.go）", got)
+	}
+	if got2 := behaviorSurfaceHits([]string{"internal/cli/root.go"}); len(got2) != 0 {
+		t.Errorf("非行为面文件应零命中，got %v", got2)
+	}
+}
