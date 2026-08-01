@@ -67,11 +67,20 @@ func suggestTagFor(dir string) string {
 // adoptPayloadCwd switches the process working directory to the hook payload's cwd when
 // it names an existing directory. Returns true when a chdir happened. See the call site
 // in runHook for why (kimi plugin hooks start from the plugin root, not the project).
+// Relative paths are rejected: they would resolve against the process cwd (the plugin
+// root under kimi) and could chdir to a semantically wrong location — every host sends
+// absolute paths. A chdir failure (e.g. a UNC path on Windows) degrades to the process
+// cwd with a stderr warning, never silently — silent failure here is exactly the
+// "every project hook no-ops" blind spot this fix exists to remove.
 //
 // adoptPayloadCwd 在 hook payload 的 cwd 指向现存目录时把进程工作目录切过去。发生了
 // chdir 则返回 true。原因见 runHook 调用点（kimi 插件 hook 从插件根启动，不是项目）。
+// 拒绝相对路径：它会相对进程 cwd（kimi 下即插件根）解析，可能切到语义错误的位置
+// ——各 host 实际都发绝对路径。chdir 失败（如 Windows 上的 UNC 路径）回落进程 cwd
+// 并给 stderr 警告，绝不静默——静默失败正是本修复要消除的「项目级 hook 全空转」
+// 盲点。
 func adoptPayloadCwd(cwd string) bool {
-	if cwd == "" {
+	if cwd == "" || !filepath.IsAbs(cwd) {
 		return false
 	}
 	info, err := os.Stat(cwd)
@@ -94,7 +103,11 @@ func adoptPayloadCwd(cwd string) bool {
 			return false
 		}
 	}
-	return os.Chdir(cwd) == nil
+	if err := os.Chdir(cwd); err != nil {
+		fmt.Fprintf(os.Stderr, "[forge] warning: adopt payload cwd %q failed: %v (falling back to process cwd)\n", cwd, err)
+		return false
+	}
+	return true
 }
 
 // HookInput represents the JSON that Claude Code sends to a hook via stdin.
