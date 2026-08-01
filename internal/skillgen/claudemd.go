@@ -1,11 +1,15 @@
 package skillgen
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/MjxUpUp/Forge/internal/protocol"
+	"github.com/MjxUpUp/Forge/internal/userassets"
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
@@ -78,8 +82,25 @@ func GenerateAgentsMD(projectDir string) error {
 }
 
 func buildForgeSection(forClaude bool) string {
+	return buildForgeSectionWithLevel(forClaude, false)
+}
+
+// userLevelPreamble is prepended to the user-level forge section (~/.claude/CLAUDE.md,
+// ~/.codex/AGENTS.md). The user-level file is visible in EVERY project, so the section
+// must not unconditionally assert "this project uses Forge" — it activates only when the
+// current project is forge-initialized, and must be ignored otherwise.
+//
+// userLevelPreamble 前置在用户级 forge 段（~/.claude/CLAUDE.md、~/.codex/AGENTS.md）
+// 段首。用户级文件对所有项目可见，段文本不能无条件断言"本项目使用 Forge"——
+// 仅当当前项目已 init 时才激活，否则必须忽略。
+const userLevelPreamble = "**本段为 Forge 用户级全局注入，对你的所有项目可见。仅当当前项目已执行过 `forge init`（即在 Forge 全局项目注册表中）时，才遵守以下协议；若当前项目未使用 Forge，请完全忽略本段。**\n\n"
+
+func buildForgeSectionWithLevel(forClaude bool, userLevel bool) string {
 	var sb strings.Builder
 	sb.WriteString(forgeSectionStart + "\n\n")
+	if userLevel {
+		sb.WriteString(userLevelPreamble)
+	}
 	sb.WriteString("# Forge 质量协议\n\n")
 	sb.WriteString("本项目使用 Forge 进行质量保障。请遵守以下规则：\n\n")
 	sb.WriteString("## 基本规则\n\n")
@@ -189,4 +210,241 @@ func buildForgeSection(forClaude bool) string {
 // （与 agentbridge 的 .windsurfrules upsert 共享）。
 func replaceForgeSection(content, newSection string) string {
 	return util.ReplaceMarkedSection(content, newSection, forgeSectionStart, forgeSectionEnd)
+}
+
+// claudeConfigHome resolves the Claude Code config home: CLAUDE_CONFIG_DIR env
+// first, else ~/.claude — the same convention as internal/hooks/plugin_detect.go
+// ClaudeHome(). Empty string means the home could not be resolved.
+//
+// claudeConfigHome 解析 Claude Code 配置 home：优先 CLAUDE_CONFIG_DIR env，
+// 否则 ~/.claude——与 internal/hooks/plugin_detect.go 的 ClaudeHome() 同一约定。
+// 空串表示无法解析 home。
+func claudeConfigHome() string {
+	if dir := os.Getenv("CLAUDE_CONFIG_DIR"); dir != "" {
+		return dir
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".claude")
+}
+
+// codexConfigHome resolves the codex config home: CODEX_HOME env first,
+// else ~/.codex. Empty string means the home could not be resolved.
+//
+// codexConfigHome 解析 codex 配置 home：优先 CODEX_HOME env，否则 ~/.codex。
+// 空串表示无法解析 home。
+func codexConfigHome() string {
+	if dir := os.Getenv("CODEX_HOME"); dir != "" {
+		return dir
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".codex")
+}
+
+// dirExists reports whether path is an existing directory. Used by the user-level
+// generators' detection-self-poison guard: an agent's config home exists iff the
+// tool is installed (DetectAgents' signal), so the generators must only write into
+// homes that already exist.
+//
+// dirExists 报告 path 是否为已存在目录。供用户级生成器的检测自毒防护使用：
+// agent 的 config home 存在 = 该工具已安装（DetectAgents 的信号），故生成器
+// 只往已存在的 home 里写。
+func dirExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}
+
+// upsertUserForgeSection upserts the conditional (user-level) forge section into
+// a user-level instruction file. Backup-then-append: the original file is backed up
+// via userassets.BackupOriginal BEFORE forge's first write, so the user can roll
+// back. Same idempotent section-replace contract as the project-level generators.
+//
+// upsertUserForgeSection 把条件激活的（用户级）forge 段 upsert 进用户级指令文件。
+// 备份+追加：forge 首次写入前经 userassets.BackupOriginal 备份原文件，用户可回滚。
+// 与项目级生成器同样的幂等 section-replace 契约。
+func upsertUserForgeSection(path string, forClaude bool) error {
+	if err := userassets.BackupOriginal(path); err != nil {
+		return fmt.Errorf("backup %s before user-level write: %w", path, err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("create dir for %s: %w", path, err)
+	}
+	forgeSection := buildForgeSectionWithLevel(forClaude, true)
+	existing, err := os.ReadFile(path)
+	if err == nil && len(existing) > 0 {
+		updated := replaceForgeSection(string(existing), forgeSection)
+		return util.AtomicWrite(path, []byte(updated), 0644)
+	}
+	return util.AtomicWrite(path, []byte(forgeSection), 0644)
+}
+
+// GenerateUserClaudeMD upserts the (conditional) forge section into the user-level
+// ~/.claude/CLAUDE.md — backup-then-append via userassets.BackupOriginal first.
+// Claude home resolution: CLAUDE_CONFIG_DIR env first, else ~/.claude (same
+// convention as internal/hooks/plugin_detect.go ClaudeHome()).
+//
+// No-op when the Claude config home does not exist: the directory's existence is
+// DetectAgents' "claude is installed" signal, so creating it here would poison
+// detection — machines without Claude Code would get wired as if it were installed
+// (detection self-poison). Only installed tools get instruction files.
+//
+// GenerateUserClaudeMD 把（条件激活的）forge 段 upsert 进用户级
+// ~/.claude/CLAUDE.md——先经 userassets.BackupOriginal 备份再追加。Claude home
+// 解析：优先 CLAUDE_CONFIG_DIR env，否则 ~/.claude（与
+// internal/hooks/plugin_detect.go 的 ClaudeHome() 同一约定）。
+//
+// Claude config home 不存在时 no-op：目录存在性是 DetectAgents 判断"claude 已
+// 安装"的信号，在此创建它会毒化检测——没装 Claude Code 的机器会被当成已安装
+// 而接线（检测自毒）。只给已安装的工具写指令文件。
+func GenerateUserClaudeMD() error {
+	home := claudeConfigHome()
+	if home == "" {
+		return fmt.Errorf("cannot resolve Claude config home (CLAUDE_CONFIG_DIR unset, user home unavailable)")
+	}
+	if !dirExists(home) {
+		return nil // Claude Code not installed — do not create its config home (detection self-poison)
+	}
+	return upsertUserForgeSection(filepath.Join(home, "CLAUDE.md"), true)
+}
+
+// GenerateUserAgentsMD upserts the (conditional) forge section into the user-level
+// ~/.codex/AGENTS.md (CODEX_HOME env first, else ~/.codex). Same backup contract
+// as GenerateUserClaudeMD.
+//
+// No-op when the codex config home does not exist — same detection-self-poison
+// guard as GenerateUserClaudeMD (the directory's existence is DetectAgents' "codex
+// is installed" signal).
+//
+// GenerateUserAgentsMD 把（条件激活的）forge 段 upsert 进用户级
+// ~/.codex/AGENTS.md（优先 CODEX_HOME env，否则 ~/.codex）。与
+// GenerateUserClaudeMD 同样的备份契约。
+//
+// codex config home 不存在时 no-op——与 GenerateUserClaudeMD 同款检测自毒防护
+// （目录存在性是 DetectAgents 判断"codex 已安装"的信号）。
+func GenerateUserAgentsMD() error {
+	home := codexConfigHome()
+	if home == "" {
+		return fmt.Errorf("cannot resolve codex config home (CODEX_HOME unset, user home unavailable)")
+	}
+	if !dirExists(home) {
+		return nil // codex not installed — do not create its config home (detection self-poison)
+	}
+	return upsertUserForgeSection(filepath.Join(home, "AGENTS.md"), false)
+}
+
+// StripUserInstructions removes the FORGE:START/END marked section from both
+// user-level files (~/.claude/CLAUDE.md and ~/.codex/AGENTS.md), preserving all
+// other content. If the file becomes empty/whitespace and forge created it, the
+// empty file is left in place — userassets.RestoreOriginal handles deletion.
+// Idempotent. Used by forge uninstall.
+//
+// StripUserInstructions 从两个用户级文件（~/.claude/CLAUDE.md 与
+// ~/.codex/AGENTS.md）中移除 FORGE:START/END 标记段，其余内容全部保留。
+// 若文件变为空且是 forge 创建的，保留空文件——删除由
+// userassets.RestoreOriginal 负责。幂等。供 forge uninstall 使用。
+func StripUserInstructions() error {
+	var targets []string
+	if home := claudeConfigHome(); home != "" {
+		targets = append(targets, filepath.Join(home, "CLAUDE.md"))
+	}
+	if home := codexConfigHome(); home != "" {
+		targets = append(targets, filepath.Join(home, "AGENTS.md"))
+	}
+	for _, path := range targets {
+		existing, err := os.ReadFile(path)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("read %s for stripping: %w", path, err)
+		}
+		stripped := stripMarkedSection(string(existing), forgeSectionStart, forgeSectionEnd)
+		if stripped == string(existing) {
+			continue // no forge section — nothing to do
+		}
+		if err := util.AtomicWrite(path, []byte(stripped), 0644); err != nil {
+			return fmt.Errorf("write stripped %s: %w", path, err)
+		}
+	}
+	return nil
+}
+
+// stripMarkedSection removes the content between startMarker and endMarker
+// (markers included), normalizing the seam so the surrounding content keeps a
+// single blank line. Returns the input unchanged when the markers are missing
+// or inverted (idempotent).
+//
+// stripMarkedSection 移除 startMarker 与 endMarker 之间的内容（含标记），
+// 规整接缝使上下文之间保留单个空行。标记缺失或颠倒时原样返回（幂等）。
+func stripMarkedSection(content, startMarker, endMarker string) string {
+	startIdx := strings.Index(content, startMarker)
+	endIdx := strings.Index(content, endMarker)
+	if startIdx == -1 || endIdx == -1 || endIdx <= startIdx {
+		return content
+	}
+	before := strings.TrimRight(content[:startIdx], "\n")
+	after := strings.TrimLeft(content[endIdx+len(endMarker):], "\n")
+	switch {
+	case before == "" && after == "":
+		return ""
+	case before == "":
+		return after + "\n"
+	case after == "":
+		return before + "\n"
+	default:
+		return before + "\n\n" + after + "\n"
+	}
+}
+
+// GenerateUserQualitySkill writes the forge-quality skill to the user-level
+// ~/.claude/skills/forge-quality/SKILL.md from the given protocol — same content
+// as the project-level GenerateQualitySkill, different target dir. Because the
+// user-level skill is loaded in every project, the unconditional "本项目"
+// wording is adjusted to the conditional form (minimal change).
+//
+// No-op when the Claude config home does not exist — same detection-self-poison
+// guard as GenerateUserClaudeMD (the directory's existence is DetectAgents'
+// "claude is installed" signal).
+//
+// GenerateUserQualitySkill 从给定 protocol 生成用户级
+// ~/.claude/skills/forge-quality/SKILL.md——内容与项目级 GenerateQualitySkill
+// 相同，仅目标目录不同。因用户级 skill 在所有项目中加载，无条件的"本项目"
+// 措辞微调为条件式（最小改动）。
+//
+// Claude config home 不存在时 no-op——与 GenerateUserClaudeMD 同款检测自毒
+// 防护（目录存在性是 DetectAgents 判断"claude 已安装"的信号）。
+func GenerateUserQualitySkill(proto *protocol.Protocol) error {
+	home := claudeConfigHome()
+	if home == "" {
+		return fmt.Errorf("cannot resolve Claude config home (CLAUDE_CONFIG_DIR unset, user home unavailable)")
+	}
+	if !dirExists(home) {
+		return nil // Claude Code not installed — do not create its config home (detection self-poison)
+	}
+	skillDir := filepath.Join(home, "skills", "forge-quality")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		return fmt.Errorf("failed to create user-level quality skill dir: %w", err)
+	}
+	content := buildQualitySkillContent("", proto)
+	// Conditional activation: the user-level skill is visible in non-forge projects
+	// too, so it must not unconditionally claim "this project".
+	//
+	// 条件激活：用户级 skill 在非 forge 项目中也可见，不能无条件断言"本项目"。
+	content = strings.Replace(content,
+		"你是本项目的质量守护者。以下标准在任何开发会话中都有效。",
+		"你是 Forge 项目的质量守护者。仅当当前项目已执行过 `forge init`（在 Forge 全局项目注册表中）时，以下标准才生效；当前项目未使用 Forge 时忽略本 skill。",
+		1)
+	// The project-info section names one concrete project — meaningless at user
+	// level (the skill serves every project). Drop it.
+	//
+	// 项目信息章节指向单个具体项目——用户级无意义（skill 服务所有项目），移除。
+	if idx := strings.Index(content, "## 当前项目信息"); idx != -1 {
+		content = strings.TrimRight(content[:idx], "\n") + "\n"
+	}
+	return util.AtomicWrite(filepath.Join(skillDir, "SKILL.md"), []byte(content), 0644)
 }

@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/userassets"
 )
 
 func TestGenerateSettingsCreatesFile(t *testing.T) {
@@ -1465,6 +1467,310 @@ func TestForgeHookSpec_SkillTriggerMounted(t *testing.T) {
 					t.Errorf("skill-trigger 不应挂 PostToolUse Read|Skill|Agent（无质量 skill 场景）")
 				}
 			}
+		}
+	}
+}
+
+// TestGenerateUserSettings_CreatesFile: with CLAUDE_CONFIG_DIR pointing at a fresh
+// dir, GenerateUserSettings creates <home>/settings.json (the user-level machine-wide
+// settings file — NOT settings.local.json) carrying the full ForgeHookSpec.
+//
+// TestGenerateUserSettings_CreatesFile：CLAUDE_CONFIG_DIR 指向全新目录时，
+// GenerateUserSettings 创建 <home>/settings.json（user-level 全机器 settings 文件
+// ——不是 settings.local.json），携带完整 ForgeHookSpec。
+func TestGenerateUserSettings_CreatesFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	if err := GenerateUserSettings(); err != nil {
+		t.Fatalf("GenerateUserSettings: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(home, "settings.json"))
+	if err != nil {
+		t.Fatalf("settings.json not created: %v", err)
+	}
+	body := string(data)
+	for _, want := range []string{`"hooks"`, "forge hook task-guard", "forge hook skill-scan"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("user-level settings.json missing %q", want)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(home, "settings.local.json")); !os.IsNotExist(err) {
+		t.Errorf("user-level generation must write settings.json, not settings.local.json (err=%v)", err)
+	}
+}
+
+// TestGenerateUserSettings_PreservesUserTopLevelFields: merge semantics identical to
+// GenerateSettings — user-defined top-level fields survive, only the hooks section is
+// replaced, and a second run is byte-identical (idempotent).
+//
+// TestGenerateUserSettings_PreservesUserTopLevelFields：merge 语义与 GenerateSettings
+// 完全一致——用户自定义顶层字段保留，只替换 hooks 段，二次运行逐字节一致（幂等）。
+func TestGenerateUserSettings_PreservesUserTopLevelFields(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	p := filepath.Join(home, "settings.json")
+	existing := `{"env":{"KEY":"val"},"model":"claude-opus-4","hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"forge hook stale-hook"}]}]}}`
+	if err := os.WriteFile(p, []byte(existing), 0644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if err := GenerateUserSettings(); err != nil {
+		t.Fatalf("GenerateUserSettings: %v", err)
+	}
+	data, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	var parsed map[string]json.RawMessage
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	// MarshalIndent re-indents the preserved RawMessage values, so assert the env
+	// field semantically (unmarshal) rather than byte-for-byte.
+	//
+	// MarshalIndent 会重排被保留 RawMessage 值的缩进，故 env 字段按语义（反序列化）
+	// 断言而非逐字节。
+	var env map[string]string
+	if err := json.Unmarshal(parsed["env"], &env); err != nil {
+		t.Fatalf("parse preserved env field: %v", err)
+	}
+	if env["KEY"] != "val" {
+		t.Errorf("user env field was modified: got %s", string(parsed["env"]))
+	}
+	if string(parsed["model"]) != `"claude-opus-4"` {
+		t.Errorf("user model field was modified: got %s", string(parsed["model"]))
+	}
+	if strings.Contains(string(data), "stale-hook") {
+		t.Error("stale forge hook not replaced")
+	}
+
+	// Idempotent: second run must be byte-identical.
+	if err := GenerateUserSettings(); err != nil {
+		t.Fatalf("second GenerateUserSettings: %v", err)
+	}
+	data2, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatalf("read after second run: %v", err)
+	}
+	if string(data) != string(data2) {
+		t.Error("second GenerateUserSettings not idempotent")
+	}
+}
+
+// ---- GenerateUserSettings merge + backup (user-level-assets fix) ----
+
+// setupUserSettingsEnv isolates the Claude config home and the forge backup root
+// into temp dirs — GenerateUserSettings must never touch the real home in tests.
+//
+// setupUserSettingsEnv 把 Claude config home 与 forge 备份根隔离进 temp dir——
+// GenerateUserSettings 在测试中绝不碰真实 home。
+func setupUserSettingsEnv(t *testing.T) (claudeHome string) {
+	t.Helper()
+	claudeHome = t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", claudeHome)
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	return claudeHome
+}
+
+// TestGenerateUserSettings_MergePreservesUserHooks pins the blocker fix: merging
+// ForgeHookSpec into ~/.claude/settings.json must NOT destroy the user's own
+// hooks. User entries stay (unknown fields intact), stale forge entries are
+// replaced, current forge entries appear exactly once, and within one event user
+// entries come before forge entries.
+//
+// TestGenerateUserSettings_MergePreservesUserHooks 钉死 blocker 修复：把
+// ForgeHookSpec 合并进 ~/.claude/settings.json 不得销毁用户自己的 hooks。用户
+// 条目保留（未知字段不丢）、stale forge 条目被替换、当前 forge 条目恰好出现
+// 一次、同事件下用户条目在 forge 条目之前。
+func TestGenerateUserSettings_MergePreservesUserHooks(t *testing.T) {
+	home := setupUserSettingsEnv(t)
+	path := filepath.Join(home, "settings.json")
+	existing := `{
+  "model": "opus",
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Bash", "hooks": [
+        {"type": "command", "command": "./scripts/lint.sh", "timeout": 30},
+        {"type": "command", "command": "forge hook stale-removed-hook"}
+      ]}
+    ],
+    "Notification": [
+      {"hooks": [{"type": "command", "command": "notify-send done"}]}
+    ]
+  }
+}`
+	if err := os.WriteFile(path, []byte(existing), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := GenerateUserSettings(); err != nil {
+		t.Fatalf("GenerateUserSettings: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+
+	// User top-level field preserved.
+	if !strings.Contains(content, `"model"`) || !strings.Contains(content, `"opus"`) {
+		t.Error("user top-level field (model) not preserved")
+	}
+	// User hook entry preserved — including its unknown field (timeout), which a
+	// typed round-trip would have dropped.
+	if !strings.Contains(content, "./scripts/lint.sh") {
+		t.Error("user hook entry not preserved")
+	}
+	if !strings.Contains(content, `"timeout"`) {
+		t.Error("user hook entry's unknown field (timeout) dropped by merge")
+	}
+	// User hook on an event forge does not generate survives.
+	if !strings.Contains(content, "notify-send done") {
+		t.Error("user hook on non-forge event (Notification) not preserved")
+	}
+	// Stale forge entry replaced.
+	if strings.Contains(content, "stale-removed-hook") {
+		t.Error("stale forge hook entry not replaced")
+	}
+	// Forge wiring present exactly once per command.
+	if n := strings.Count(content, `"forge hook task-guard"`); n != 1 {
+		t.Errorf("forge hook task-guard appears %d times, want 1", n)
+	}
+
+	// Within PreToolUse, the user entry must precede the forge entries.
+	var parsed struct {
+		Hooks map[string][]struct {
+			Hooks []struct {
+				Command string `json:"command"`
+			} `json:"hooks"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("parse output: %v", err)
+	}
+	var order []string
+	for _, m := range parsed.Hooks["PreToolUse"] {
+		for _, h := range m.Hooks {
+			order = append(order, h.Command)
+		}
+	}
+	ui, fi := -1, -1
+	for i, c := range order {
+		if c == "./scripts/lint.sh" && ui == -1 {
+			ui = i
+		}
+		if c == "forge hook task-guard" && fi == -1 {
+			fi = i
+		}
+	}
+	if ui == -1 || fi == -1 {
+		t.Fatalf("expected both user and forge entries under PreToolUse, got %v", order)
+	}
+	if ui > fi {
+		t.Errorf("user entry must precede forge entries within one event; order: %v", order)
+	}
+}
+
+// TestGenerateUserSettings_Idempotent pins that a second run is byte-identical
+// (strip-then-append must not duplicate forge entries).
+//
+// TestGenerateUserSettings_Idempotent 钉死第二次运行逐字节一致（先剥后追加不得
+// 重复 forge 条目）。
+func TestGenerateUserSettings_Idempotent(t *testing.T) {
+	home := setupUserSettingsEnv(t)
+	path := filepath.Join(home, "settings.json")
+
+	if err := GenerateUserSettings(); err != nil {
+		t.Fatal(err)
+	}
+	first, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := GenerateUserSettings(); err != nil {
+		t.Fatal(err)
+	}
+	second, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(first) != string(second) {
+		t.Error("second GenerateUserSettings not idempotent")
+	}
+}
+
+// TestGenerateUserSettings_BacksUpBeforeFirstWrite pins the rollback-anchor
+// contract: the original settings.json is backed up before forge's first write,
+// and RestoreOriginal rolls the file back to the user's bytes.
+//
+// TestGenerateUserSettings_BacksUpBeforeFirstWrite 钉死回滚锚点契约：forge 首次
+// 写入前备份原 settings.json，RestoreOriginal 能回滚到用户原始字节。
+func TestGenerateUserSettings_BacksUpBeforeFirstWrite(t *testing.T) {
+	home := setupUserSettingsEnv(t)
+	path := filepath.Join(home, "settings.json")
+	original := `{"model": "opus", "hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "./scripts/lint.sh"}]}]}}`
+	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := GenerateUserSettings(); err != nil {
+		t.Fatal(err)
+	}
+
+	restored, err := userassets.RestoreOriginal(path)
+	if err != nil {
+		t.Fatalf("RestoreOriginal: %v", err)
+	}
+	if !restored {
+		t.Fatal("no backup recorded — GenerateUserSettings must back up before first write")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != original {
+		t.Errorf("restored content mismatch:\n got: %s\nwant: %s", data, original)
+	}
+}
+
+// TestForgeHookSpec_Gap2ReinjectChain 守护 gap#2 重注入链的 spec 结构（settings.go
+// PostCompact/UserPromptSubmit 段注释描述的主机覆盖契约）：PostCompact 必须只挂
+// compact-resume；UserPromptSubmit 必须挂 resume-reinject + skill-trigger
+// （顺序敏感——先重注入上下文再触发 skill）。codex 两个事件都接、cursor 只接
+// UserPromptSubmit 的宿主映射在 agentbridge 侧断言，此测试钉 spec 真相源本身。
+//
+// TestForgeHookSpec_Gap2ReinjectChain guards the spec structure of the gap#2
+// re-injection chain (the host-coverage contract documented at the PostCompact/
+// UserPromptSubmit section in settings.go): PostCompact carries only
+// compact-resume; UserPromptSubmit carries resume-reinject + skill-trigger in
+// that order (context first, skill trigger second). Host mapping (codex takes
+// both, cursor only UserPromptSubmit) is asserted in agentbridge — this pins
+// the spec source of truth itself.
+func TestForgeHookSpec_Gap2ReinjectChain(t *testing.T) {
+	spec := ForgeHookSpec()
+
+	var postCompact []string
+	for _, m := range spec["PostCompact"] {
+		for _, h := range m.Hooks {
+			postCompact = append(postCompact, h.Command)
+		}
+	}
+	if len(postCompact) != 1 || postCompact[0] != "forge hook compact-resume" {
+		t.Errorf("PostCompact hooks = %v, want [forge hook compact-resume]", postCompact)
+	}
+
+	var ups []string
+	for _, m := range spec["UserPromptSubmit"] {
+		for _, h := range m.Hooks {
+			ups = append(ups, h.Command)
+		}
+	}
+	want := []string{"forge hook resume-reinject", "forge hook skill-trigger"}
+	if len(ups) != len(want) {
+		t.Fatalf("UserPromptSubmit hooks = %v, want %v", ups, want)
+	}
+	for i := range want {
+		if ups[i] != want[i] {
+			t.Errorf("UserPromptSubmit hooks[%d] = %q, want %q（顺序：先重注入再触发）", i, ups[i], want[i])
 		}
 	}
 }

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
 // runForgeStreams runs the pre-built forge binary capturing stdout and stderr
@@ -113,9 +115,10 @@ func TestTaskStart_GitRepoNoWarning(t *testing.T) {
 	if strings.Contains(stderr, "不是 git 仓库") {
 		t.Errorf("git project emitted non-git warning (false positive): %s", stderr)
 	}
-	// Sanity: the .forge state dir exists (forge init ran).
-	if _, err := os.Stat(filepath.Join(tmpDir, ".forge")); err != nil {
-		t.Fatalf(".forge dir missing after init: %v", err)
+	// Sanity: the user-level DataDir exists with protocol.yml (forge init ran;
+	// zero-project-write — no project-level .forge).
+	if _, err := os.Stat(filepath.Join(forgedata.DataDirFor(tmpDir), "protocol.yml")); err != nil {
+		t.Fatalf("DataDir protocol.yml missing after init: %v", err)
 	}
 }
 

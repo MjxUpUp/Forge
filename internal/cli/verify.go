@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/protocol"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
@@ -226,13 +227,25 @@ func boundOutput(s string) string {
 }
 
 func checkHooks(root string) checkResult {
-	hooksDir := filepath.Join(root, ".forge", "hooks")
+	// After user-level-assets the canonical hook copies live at DataDir/hooks/
+	// (reference copies of the embedded scripts; runtime never reads them from the
+	// project). Team-mode compatibility: a project-level .forge/hooks/ copy also
+	// counts — those projects deliberately keep project-level assets.
+	//
+	// user-level-assets 之后 hook 副本的正主在 DataDir/hooks/（嵌入脚本的参考
+	// 副本；运行时从不从项目读）。团队模式兼容：项目级 .forge/hooks/ 副本也认——
+	// 那些项目刻意保留项目级资产。
+	userHooksDir := filepath.Join(forgedata.DataDirFor(root), "hooks")
+	projectHooksDir := filepath.Join(root, ".forge", "hooks")
 	missing := []string{}
 	for _, name := range hooks.HookNames() {
-		p := filepath.Join(hooksDir, name)
-		if _, err := os.Stat(p); err != nil {
-			missing = append(missing, name)
+		if _, err := os.Stat(filepath.Join(userHooksDir, name)); err == nil {
+			continue
 		}
+		if _, err := os.Stat(filepath.Join(projectHooksDir, name)); err == nil {
+			continue // 团队模式项目级副本
+		}
+		missing = append(missing, name)
 	}
 	if len(missing) == 0 {
 		return checkResult{name: "Hook 脚本", ok: true, msg: fmt.Sprintf("全部 %d 个 hook 存在", len(hooks.HookNames()))}
@@ -252,19 +265,63 @@ func checkProtocol(root string) checkResult {
 }
 
 func checkQualitySkill(root string) checkResult {
-	p := filepath.Join(root, ".claude", "skills", "forge-quality", "SKILL.md")
-	if _, err := os.Stat(p); err != nil {
-		return checkResult{name: "Quality Skill", ok: false, msg: ".claude/skills/forge-quality/SKILL.md 不存在"}
+	// After user-level-assets the quality skill lives at the user level:
+	// <ClaudeHome>/skills/forge-quality/SKILL.md (ClaudeHome respects
+	// CLAUDE_CONFIG_DIR). Team-mode compatibility: a project-level
+	// .claude/skills/forge-quality/SKILL.md also counts.
+	//
+	// user-level-assets 之后质量 skill 在用户级：<ClaudeHome>/skills/forge-quality/
+	// SKILL.md（ClaudeHome 尊重 CLAUDE_CONFIG_DIR）。团队模式兼容：项目级
+	// .claude/skills/forge-quality/SKILL.md 也认。
+	if home := hooks.ClaudeHome(); home != `` {
+		if _, err := os.Stat(filepath.Join(home, "skills", "forge-quality", "SKILL.md")); err == nil {
+			return checkResult{name: "Quality Skill", ok: true}
+		}
 	}
-	return checkResult{name: "Quality Skill", ok: true}
+	p := filepath.Join(root, ".claude", "skills", "forge-quality", "SKILL.md")
+	if _, err := os.Stat(p); err == nil {
+		return checkResult{name: "Quality Skill", ok: true, msg: "项目级副本（团队模式）"}
+	}
+	return checkResult{name: "Quality Skill", ok: false, msg: "用户级 skills/forge-quality/SKILL.md 不存在"}
 }
 
 func checkSettings(root string) checkResult {
-	p := filepath.Join(root, ".claude", "settings.local.json")
-	if _, err := os.Stat(p); err != nil {
-		return checkResult{name: "Settings 配置", ok: false, msg: ".claude/settings.local.json 不存在"}
+	// After user-level-assets forge hooks are registered in the user-level Claude
+	// settings.json (GenerateUserSettings) — or by the Claude plugin when it is
+	// user-level installed (plugin.json registers ForgeHookSpec machine-wide, so
+	// no settings file is needed). Team-mode compatibility: a project-level
+	// .claude/settings.local.json also counts.
+	//
+	// user-level-assets 之后 forge hook 注册在用户级 Claude settings.json
+	// （GenerateUserSettings）——或由已 user-level 安装的 Claude plugin 接管
+	// （plugin.json 全机器注册 ForgeHookSpec，无需 settings 文件）。团队模式
+	// 兼容：项目级 .claude/settings.local.json 也认。
+	if hooks.IsClaudePluginInstalled() {
+		return checkResult{name: "Settings 配置", ok: true, msg: "forge plugin 已 user-level 接管 hooks"}
 	}
-	return checkResult{name: "Settings 配置", ok: true}
+	if home := hooks.ClaudeHome(); home != `` {
+		for _, name := range []string{"settings.json", "settings.local.json"} {
+			p := filepath.Join(home, name)
+			if data, err := os.ReadFile(p); err == nil && containsForgeHook(data) {
+				return checkResult{name: "Settings 配置", ok: true, msg: "用户级 " + name + " 含 forge hook"}
+			}
+		}
+	}
+	p := filepath.Join(root, ".claude", "settings.local.json")
+	if _, err := os.Stat(p); err == nil {
+		return checkResult{name: "Settings 配置", ok: true, msg: "项目级 settings.local.json（团队模式）"}
+	}
+	return checkResult{name: "Settings 配置", ok: false, msg: "用户级 claude settings.json 不存在或不含 forge hook"}
+}
+
+// containsForgeHook reports whether a settings JSON registers any forge hook
+// (commands written by ForgeHookSpec all start with "forge hook"/"forge gate").
+//
+// containsForgeHook 报告 settings JSON 是否注册了 forge hook（ForgeHookSpec
+// 写入的命令都以 "forge hook"/"forge gate" 开头）。
+func containsForgeHook(data []byte) bool {
+	s := string(data)
+	return strings.Contains(s, "forge hook ") || strings.Contains(s, "forge gate ")
 }
 
 // ---------- Regression mode ----------
