@@ -53,12 +53,27 @@ func taskLockPath(root, ref string) string {
 }
 
 // LockTask acquires the per-task advisory lock and returns the unlock func. The lock is
-// an O_CREATE|O_EXCL file; a lock older than taskLockStaleAfter is treated as abandoned
-// (crash orphan) and broken. Waits up to taskLockWait, then errors.
+// an O_CREATE|O_EXCL file whose content is the acquisition timestamp, doubling as the
+// holder's identity token: unlock only removes the file when the content still matches,
+// so a holder that was suspended past the stale window (laptop sleep) and lost its lock
+// to a breaker cannot delete the breaker's fresh lock on wake. A lock older than
+// taskLockStaleAfter is treated as abandoned (crash orphan) and broken. Waits up to
+// taskLockWait, then errors.
 //
-// LockTask 获取 per-task 建议锁并返回解锁函数。锁是 O_CREATE|O_EXCL 文件；超过
-// taskLockStaleAfter 的锁视为被遗弃（崩溃 orphan）并打破。最多等待 taskLockWait，
-// 超时报错。
+// Delay budget note: a waiter may block up to taskLockWait inside SessionStart /
+// UserPromptSubmit hooks (resume auto-attach, reinject legacy clear). Legitimate holds
+// are sub-second; the full wait is only paid inside a crash window, and hooks still
+// degrade to exit 0 — the "never blocks" contract is about exit codes, not latency.
+//
+// LockTask 获取 per-task 建议锁并返回解锁函数。锁是 O_CREATE|O_EXCL 文件，内容为
+// 获取时刻时间戳，兼作持锁者身份令牌：unlock 只在内容仍匹配时删文件——被挂起超过
+// stale 窗口（合盖睡眠）、锁已被打破者接管的持锁者，醒来 unlock 不会删掉打破者
+// 新建的锁。超过 taskLockStaleAfter 的锁视为被遗弃（崩溃 orphan）并打破。最多等待
+// taskLockWait，超时报错。
+//
+// 延迟预算说明：等待者可能在 SessionStart / UserPromptSubmit hook 内最多阻塞
+// taskLockWait（resume 自动锚定、reinject legacy 清零）。合法持锁是亚秒级，只有
+// 崩溃窗口内才会等满；hook 仍降级 exit 0——「不阻塞」契约管退出码，不管延迟。
 func LockTask(root, ref string) (unlock func(), err error) {
 	path := taskLockPath(root, ref)
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
@@ -68,17 +83,29 @@ func LockTask(root, ref string) (unlock func(), err error) {
 	for {
 		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
 		if err == nil {
-			fmt.Fprintf(f, "%d\n", time.Now().Unix())
+			stamp := fmt.Sprintf("%d\n", time.Now().Unix())
+			f.WriteString(stamp)
 			f.Close()
-			return func() { os.Remove(path) }, nil
+			return func() {
+				// Identity-checked unlock: only remove the lock if it is still ours.
+				//
+				// 带身份校验的解锁：锁仍是自己的才删。
+				if data, err := os.ReadFile(path); err == nil && string(data) == stamp {
+					os.Remove(path)
+				}
+			}, nil
 		}
 		if !os.IsExist(err) {
 			return nil, fmt.Errorf("failed to acquire task lock: %w", err)
 		}
 		// Break the stale lock: a holder that crashed mid-mutation would otherwise block
-		// every future writer of this task forever.
+		// every future writer of this task forever. Known rare race (two breakers at the
+		// same instant, or a breaker removing a freshly recreated lock): the consequence
+		// degrades to the pre-lock lost-update risk, never worse — accepted.
 		//
 		// 打破 stale 锁：持锁者变更中途崩溃，否则该 task 未来的所有写者被永久阻塞。
+		// 已知罕见竞态（两个打破者同刻、或打破者误删刚重建的新锁）：后果退化为加锁前
+		// 的 lost-update 风险，不会更糟——接受。
 		if info, statErr := os.Stat(path); statErr == nil && time.Since(info.ModTime()) > taskLockStaleAfter {
 			os.Remove(path)
 			continue
