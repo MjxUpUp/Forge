@@ -6,14 +6,20 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
 // writeTestEntries writes entries directly to checklog file with preserved RecordedAt.
 // Record() overwrites RecordedAt, so we bypass it for dedup testing.
+// Writes to the user-level DataDir (forgedata.DataDirFor), under an isolated
+// FORGE_DATA_HOME so the real ~/.forge is never touched.
 func writeTestEntries(t *testing.T, dir string, entries []*Entry) {
 	t.Helper()
-	os.MkdirAll(filepath.Join(dir, ".forge"), 0755)
-	f, err := os.OpenFile(filepath.Join(dir, ".forge", "checklog.jsonl"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	isolateDataHome(t)
+	dataDir := forgedata.DataDirFor(dir)
+	os.MkdirAll(dataDir, 0755)
+	f, err := os.OpenFile(filepath.Join(dataDir, "checklog.jsonl"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		t.Fatalf("open checklog: %v", err)
 	}

@@ -126,19 +126,54 @@ func remapKimiToolInput(raw json.RawMessage) json.RawMessage {
 //
 // windsurfNormalize 把 Windsurf Cascade 的 hook stdin 映射到 HookInput。
 //
-// Windsurf schema (see docs.windsurf.com/windsurf/cascade/hooks):
+// Windsurf schema (verified against docs.windsurf.com/windsurf/cascade/hooks):
 //
-// Windsurf schema（见 docs.windsurf.com/windsurf/cascade/hooks）：
+// Windsurf schema（已对 docs.windsurf.com/windsurf/cascade/hooks 核实）：
+//
+// Common fields present on EVERY event (so trajectory_id is always available as
+// the session identifier):
+//
+// 每个 event 都有的公共字段（故 trajectory_id 恒可作为会话标识）：
 //
 //	{
-//	  "agent_action_name": "pre_write_code",
-//	  "trajectory_id":     "<session id>",
-//	  "tool_info": {
-//	    "file_path": "...",
-//	    "command":   "...",                 // pre_run_command
-//	    "edits":     [{"old_string","new_string"}]  // *_write_code
-//	  }
+//	  "agent_action_name": "pre_write_code",   // event name
+//	  "trajectory_id":     "<session id>",      // overall Cascade conversation id
+//	  "execution_id":      "<turn id>",         // single agent turn id
+//	  "timestamp":         "<ISO 8601>",
+//	  "model_name":        "Claude Sonnet 4",
+//	  "tool_info": { ... }                      // event-specific, see below
 //	}
+//
+// Per-event tool_info (per the official docs):
+// 各 event 的 tool_info（按官方文档）：
+//   - pre/post_read_code, pre/post_write_code: {file_path, edits[]?}
+//   - pre/post_run_command:  {command_line, cwd}   — NOTE: the field is
+//     command_line, not command. Older forge versions read tool_info.command,
+//     which never exists in the documented payload, so bash-guard/hazard-guard
+//     silently saw an empty command (fail-open). Both are read now, with
+//     command_line preferred and command kept as a defensive fallback.
+//   - pre_user_prompt:       {user_prompt}         — no cwd/session path field
+//   - post_cascade_response: {response}            — no cwd/session path field
+//
+// pre_user_prompt / post_cascade_response carry NO cwd or project-path field in
+// the documented payload (cwd is documented only for pre/post_run_command, inside
+// tool_info). That is covered structurally rather than by payload mapping: Cascade
+// runs hook commands with working_directory defaulting to the workspace root, and
+// forge's hooks take their project context from the process cwd (FORGE_CWD =
+// os.Getwd() in runHook), so the SessionStart/Stop groups wired onto these events
+// still operate on the right project. Uncertainty: the docs show only example
+// payloads, not a versioned schema — if a Windsurf version omits trajectory_id or
+// renames a field, the affected field simply stays empty and the hook degrades to
+// its existing no-payload behavior (no hard failure).
+//
+// pre_user_prompt / post_cascade_response 的文档化 payload 中没有 cwd 或项目路径
+// 字段（cwd 只在 pre/post_run_command 的 tool_info 里有）。这一点靠结构而非
+// payload 映射兜住：Cascade 以 working_directory 默认 workspace root 执行 hook
+// 命令，而 forge 的 hook 从进程 cwd 取项目上下文（runHook 里 FORGE_CWD =
+// os.Getwd()），故挂在这些 event 上的 SessionStart/Stop 组仍作用于正确项目。
+// 不确定性：文档只给示例 payload 而非版本化 schema——若某 Windsurf 版本缺
+// trajectory_id 或改了字段名，对应字段即为空，hook 退化到既有的无 payload
+// 行为（不硬失败）。
 //
 // 这里把 tool_input 重建成 Claude 的 {file_path, content, command}，让既有
 // toolInputFields 抽取逻辑无需改动即可拿到。
@@ -147,9 +182,11 @@ func windsurfNormalize(stdinData []byte, hookInput *HookInput) {
 		AgentActionName string `json:"agent_action_name"`
 		TrajectoryID    string `json:"trajectory_id"`
 		ToolInfo        struct {
-			FilePath string `json:"file_path"`
-			Command  string `json:"command"`
-			Edits    []struct {
+			FilePath    string `json:"file_path"`
+			CommandLine string `json:"command_line"` // documented field for *_run_command
+			Command     string `json:"command"`      // defensive legacy fallback (undocumented)
+			UserPrompt  string `json:"user_prompt"`  // pre_user_prompt
+			Edits       []struct {
 				NewString string `json:"new_string"`
 			} `json:"edits"`
 		} `json:"tool_info"`
@@ -166,13 +203,27 @@ func windsurfNormalize(stdinData []byte, hookInput *HookInput) {
 	if hookInput.HookEventName == "" {
 		hookInput.HookEventName = windsurfHookEvent(w.AgentActionName)
 	}
+	if hookInput.Prompt == "" {
+		hookInput.Prompt = w.ToolInfo.UserPrompt
+	}
 	if len(hookInput.ToolInput) == 0 {
 		ti := map[string]string{}
 		if w.ToolInfo.FilePath != "" {
 			ti["file_path"] = w.ToolInfo.FilePath
 		}
-		if w.ToolInfo.Command != "" {
-			ti["command"] = w.ToolInfo.Command
+		// command_line is the documented field (docs.windsurf.com/windsurf/cascade/hooks,
+		// pre/post_run_command examples); command is kept as a defensive fallback for
+		// payloads from versions whose shape predates the docs.
+		//
+		// command_line 是文档化字段（docs.windsurf.com/windsurf/cascade/hooks 的
+		// pre/post_run_command 示例）；command 作为防御性 fallback 保留，覆盖形态
+		// 早于文档的版本 payload。
+		command := w.ToolInfo.CommandLine
+		if command == "" {
+			command = w.ToolInfo.Command
+		}
+		if command != "" {
+			ti["command"] = command
 		}
 		if len(w.ToolInfo.Edits) > 0 && w.ToolInfo.Edits[0].NewString != "" {
 			ti["content"] = w.ToolInfo.Edits[0].NewString
@@ -211,9 +262,17 @@ func windsurfHookEvent(action string) string {
 		return "PreToolUse"
 	case "post_write_code", "post_read_code", "post_run_command":
 		return "PostToolUse"
-	case "session_start":
+	// Cascade has no session_start/session_end: the SessionStart group hangs on
+	// pre_user_prompt, the Stop group on post_cascade_response (see
+	// buildWindsurfHooks). The legacy session_* cases stay so hook configs written
+	// by older forge versions still normalize correctly.
+	//
+	// Cascade 没有 session_start/session_end：SessionStart 组挂 pre_user_prompt，
+	// Stop 组挂 post_cascade_response（见 buildWindsurfHooks）。保留遗留
+	// session_* case，让旧版 forge 写入的 hook 配置仍能正确归一化。
+	case "pre_user_prompt", "session_start":
 		return "SessionStart"
-	case "session_end":
+	case "post_cascade_response", "post_cascade_response_with_transcript", "session_end":
 		return "Stop"
 	}
 	return ""

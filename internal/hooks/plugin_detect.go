@@ -185,5 +185,16 @@ func StripForgeHooksUserLevel() (changed bool, err error) {
 	if home == "" {
 		return false, nil
 	}
-	return StripForgeHooksAt(filepath.Join(home, "settings.local.json"), true)
+	// After user-level-assets, forge's canonical user-level hook registration is
+	// settings.json (written by GenerateUserSettings); settings.local.json only
+	// carries legacy residue. Strip both.
+	//
+	// user-level-assets 之后，forge 的用户级 hook 注册正主是 settings.json
+	// （GenerateUserSettings 写）；settings.local.json 只剩遗留残留。两者都剥。
+	c1, err := StripForgeHooksAt(filepath.Join(home, "settings.json"), true)
+	if err != nil {
+		return c1, err
+	}
+	c2, err := StripForgeHooksAt(filepath.Join(home, "settings.local.json"), true)
+	return c1 || c2, err
 }

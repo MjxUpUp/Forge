@@ -391,21 +391,28 @@ func TestProjectFor(t *testing.T) {
 	}
 }
 
-// TestProjectFor_NoForgeConfig: project not initialized (no .forge/) → ErrNoForgeConfig.
+// TestProjectFor_NoForgeConfigDir: no project-level .forge/ → ConfigDir falls back
+// to the user-level DataDir (zero-project-write default). ProjectFor is pure
+// derivation and no longer judges init state (that moved to projectroot/registry).
 //
-// TestProjectFor_NoForgeConfig：项目未 init（无 .forge/）→ ErrNoForgeConfig。
-func TestProjectFor_NoForgeConfig(t *testing.T) {
+// TestProjectFor_NoForgeConfigDir：无项目级 .forge/ → ConfigDir 回落用户级
+// DataDir（零项目写入默认）。ProjectFor 是纯推导，不再判定 init 状态
+// （判定移到 projectroot/registry）。
+func TestProjectFor_NoForgeConfigDir(t *testing.T) {
 	repo := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0755); err != nil {
 		t.Fatalf(`mkdir .git: %v`, err)
 	}
 	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
-	_, err := ProjectFor(repo)
-	if err == nil {
-		t.Fatal(`无 .forge/ 应返 err`)
+	p, err := ProjectFor(repo)
+	if err != nil {
+		t.Fatalf(`无 .forge/ 不应报错（纯推导）: %v`, err)
 	}
-	if !errorIs(err, ErrNoForgeConfig) {
-		t.Errorf(`期望 ErrNoForgeConfig，实得 %v`, err)
+	if p.ConfigDir != p.DataDir {
+		t.Errorf(`无 .forge/ 时 ConfigDir 应回落 DataDir（%s），实得 %s`, p.DataDir, p.ConfigDir)
+	}
+	if p.DataDir == `` || !strings.Contains(p.DataDir, `projects`) {
+		t.Errorf(`DataDir 应在用户级 projects/ 下，实得 %s`, p.DataDir)
 	}
 }
 

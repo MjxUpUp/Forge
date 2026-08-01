@@ -7,6 +7,7 @@ import (
 )
 
 func TestDetectAgents_None(t *testing.T) {
+	isolateHome(t) // DetectAgents also scans user-level install dirs — keep the real home out
 	dir := t.TempDir()
 	agents := DetectAgents(dir)
 	if len(agents) != 0 {
@@ -15,6 +16,7 @@ func TestDetectAgents_None(t *testing.T) {
 }
 
 func TestDetectAgents_ClaudeCode(t *testing.T) {
+	isolateHome(t) // DetectAgents also scans user-level install dirs — keep the real home out
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, ".claude"), 0755)
 
@@ -25,6 +27,7 @@ func TestDetectAgents_ClaudeCode(t *testing.T) {
 }
 
 func TestDetectAgents_Cursor(t *testing.T) {
+	isolateHome(t) // DetectAgents also scans user-level install dirs — keep the real home out
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, ".cursor"), 0755)
 
@@ -35,6 +38,7 @@ func TestDetectAgents_Cursor(t *testing.T) {
 }
 
 func TestDetectAgents_Copilot(t *testing.T) {
+	isolateHome(t) // DetectAgents also scans user-level install dirs — keep the real home out
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, ".github", "instructions"), 0755)
 
@@ -45,6 +49,7 @@ func TestDetectAgents_Copilot(t *testing.T) {
 }
 
 func TestDetectAgents_Windsurf(t *testing.T) {
+	isolateHome(t) // DetectAgents also scans user-level install dirs — keep the real home out
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, ".windsurfrules"), []byte("rules"), 0644)
 
@@ -55,6 +60,7 @@ func TestDetectAgents_Windsurf(t *testing.T) {
 }
 
 func TestDetectAgents_Multiple(t *testing.T) {
+	isolateHome(t) // DetectAgents also scans user-level install dirs — keep the real home out
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, ".claude"), 0755)
 	os.MkdirAll(filepath.Join(dir, ".cursor"), 0755)
@@ -70,6 +76,7 @@ func TestDetectAgents_Multiple(t *testing.T) {
 }
 
 func TestParseAgentFlag_Auto(t *testing.T) {
+	isolateHome(t) // DetectAgents also scans user-level install dirs — keep the real home out
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, ".claude"), 0755)
 
@@ -99,6 +106,7 @@ func TestParseAgentFlag_Unknown(t *testing.T) {
 }
 
 func TestDetectAgents_Codex(t *testing.T) {
+	isolateHome(t) // DetectAgents also scans user-level install dirs — keep the real home out
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, ".codex"), 0755)
 
@@ -149,5 +157,57 @@ func TestParseAgentFlag_CoversAllTranslators(t *testing.T) {
 		if !found {
 			t.Errorf("ParseAgentFlag(%q) silently dropped %q — switch case missing this agent", at, at)
 		}
+	}
+}
+
+// TestDetectAgents_OpencodeXDGConfigHome pins the XDG fix: opencode's global
+// config dir resolves via $XDG_CONFIG_HOME/opencode (same as OpenCodeConfigDir's
+// write path), so a config home that exists ONLY under XDG_CONFIG_HOME must be
+// detected — looking only at ~/.config/opencode would miss it.
+//
+// TestDetectAgents_OpencodeXDGConfigHome 钉死 XDG 修复：opencode 的全局配置目录
+// 按 $XDG_CONFIG_HOME/opencode 解析（与 OpenCodeConfigDir 的写入路径一致），
+// 故只存在于 XDG_CONFIG_HOME 下的配置目录必须被检出——只看
+// ~/.config/opencode 会漏检。
+func TestDetectAgents_OpencodeXDGConfigHome(t *testing.T) {
+	home := isolateHome(t)
+	// isolateHome points XDG_CONFIG_HOME at <home>/.config; create the opencode
+	// dir there (the default ~/.config/opencode path is the same location here,
+	// so additionally point XDG at a DIFFERENT dir to prove the env is honored).
+	xdg := filepath.Join(home, "xdg-config")
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	if err := os.MkdirAll(filepath.Join(xdg, "opencode"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	agents := DetectAgents(t.TempDir())
+	found := false
+	for _, a := range agents {
+		if a == AgentOpencode {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("opencode under XDG_CONFIG_HOME not detected, got %v", agents)
+	}
+}
+
+// TestDetectAgents_WindsurfUserLevel pins the windsurf user-level detection:
+// ~/.codeium (the config root WindsurfTranslator writes into) exists iff
+// windsurf is installed, so it must be a detection signal alongside the legacy
+// project-level .windsurfrules.
+//
+// TestDetectAgents_WindsurfUserLevel 钉死 windsurf 用户级检测：~/.codeium
+// （WindsurfTranslator 写入的配置根）存在 = windsurf 已安装，必须与遗留的
+// 项目级 .windsurfrules 并列为检测信号。
+func TestDetectAgents_WindsurfUserLevel(t *testing.T) {
+	home := isolateHome(t)
+	if err := os.MkdirAll(filepath.Join(home, ".codeium", "windsurf"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	agents := DetectAgents(t.TempDir())
+	if len(agents) != 1 || agents[0] != AgentWindsurf {
+		t.Fatalf("expected [windsurf] from user-level ~/.codeium, got %v", agents)
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
@@ -68,16 +69,16 @@ func TestActiveTaskRef_SessionIsolation(t *testing.T) {
 }
 
 // TestActiveTaskRef_EmptySession_LegacyFile verifies the backward-compat path:
-// empty sessionID writes/reads the legacy global .forge/active-task-ref file and
-// coexists with session-scoped files without interference.
+// empty sessionID writes/reads the legacy global active-task-ref file (now under
+// the user-level DataDir) and coexists with session-scoped files without
+// interference.
 func TestActiveTaskRef_EmptySession_LegacyFile(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, ".forge"), 0755)
 
 	if err := SetActiveTaskRef(dir, "", "feat/legacy"); err != nil {
 		t.Fatalf("SetActiveTaskRef legacy: %v", err)
 	}
-	legacyPath := filepath.Join(dir, ".forge", "active-task-ref")
+	legacyPath := filepath.Join(forgedata.DataDirFor(dir), "active-task-ref")
 	data, err := os.ReadFile(legacyPath)
 	if err != nil {
 		t.Fatalf("legacy file missing: %v", err)
@@ -116,11 +117,11 @@ func TestEnsureSession_Scoped_UsesRealSessionID(t *testing.T) {
 	if s.SessionID != "uuid-aaa" {
 		t.Errorf("SessionID = %q, want uuid-aaa", s.SessionID)
 	}
-	if _, err := os.Stat(filepath.Join(dir, ".forge", "sessions", "uuid-aaa.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(forgedata.DataDirFor(dir), "sessions", "uuid-aaa.json")); err != nil {
 		t.Errorf("scoped session file missing: %v", err)
 	}
 	// Legacy global session.json must NOT be created on the scoped path.
-	if _, err := os.Stat(filepath.Join(dir, ".forge", "session.json")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(forgedata.DataDirFor(dir), "session.json")); !os.IsNotExist(err) {
 		t.Errorf("legacy session.json should not exist on scoped path, got err=%v", err)
 	}
 
@@ -154,10 +155,10 @@ func TestEnsureSession_Scoped_DistinctSessionsIsolated(t *testing.T) {
 	if sA.SessionID != "uuid-A" || sB.SessionID != "uuid-B" {
 		t.Errorf("session ids not isolated: %q / %q", sA.SessionID, sB.SessionID)
 	}
-	if _, err := os.Stat(filepath.Join(dir, ".forge", "sessions", "uuid-A.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(forgedata.DataDirFor(dir), "sessions", "uuid-A.json")); err != nil {
 		t.Errorf("scoped file A missing: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, ".forge", "sessions", "uuid-B.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(forgedata.DataDirFor(dir), "sessions", "uuid-B.json")); err != nil {
 		t.Errorf("scoped file B missing: %v", err)
 	}
 }

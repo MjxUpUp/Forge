@@ -107,6 +107,20 @@ type MigrationResult struct {
 //
 // Ensure 先建 DataDir（含 .migration-meta.json），各 store 后续写入路径必然存在。
 func MigrateProject(p *Project, opts MigrateOptions) (*MigrationResult, error) {
+	// Zero-project-write projects have ConfigDir == DataDir: every whitelist entry's
+	// src IS its dst. There is no project-level residue to migrate — and continuing
+	// would be destructive: under --force migrateOne would RemoveAll(dst) (deleting the
+	// live DataDir data itself) before the move, and even non-force would report a
+	// misleading "skipped, use --force" hint that steers the user toward that path.
+	// Return an empty result instead.
+	//
+	// 零项目写入项目 ConfigDir == DataDir：白名单每条 src 就是 dst。无项目级残留
+	// 可迁——继续跑还是破坏性的：--force 下 migrateOne 会先 RemoveAll(dst)（把活的
+	// DataDir 数据本身删掉）再移动，非 force 也会报告误导性的「已跳过，--force 覆盖」
+	// 提示，把用户引向破坏路径。直接返回空结果。
+	if filepath.Clean(p.ConfigDir) == filepath.Clean(p.DataDir) {
+		return &MigrationResult{}, nil
+	}
 	if err := p.Ensure(); err != nil {
 		return nil, fmt.Errorf("ensure DataDir: %w", err)
 	}

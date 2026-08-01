@@ -5,16 +5,18 @@ import (
 	"testing"
 )
 
-// TestMain redirects the user-level DataDir (where checklog and other runtime
-// state now live after the refactor-data-home migration) to an isolated temp
-// dir. Tests in this package create real git repos via runGit and record
-// checklog entries; without redirection, checklog.Record would resolve a real
+// TestMain redirects the user-level DataDir (where checklog, task state, sessions
+// and other runtime state now live after the user-level-assets migration) to an
+// isolated temp dir. Tests in this package create real git repos via runGit and
+// record runtime state; without redirection, the stores would resolve a real
 // DataDir under ~/.forge/projects/<key>/ and pollute the developer's machine.
+// A fresh MkdirTemp per process avoids cross-run and cross-package leakage.
 //
-// task state still lives in the project-level ConfigDir (<dir>/.forge/), which
-// FORGE_DATA_HOME does not touch, so this only isolates runtime state — it does
-// not affect task-state path assertions. A fresh MkdirTemp per process avoids
-// cross-run and cross-package leakage.
+// TestMain 把用户级 DataDir（user-level-assets 迁移后 checklog、task state、
+// session 等 runtime state 的所在地）重定向到隔离临时目录。本包测试经 runGit
+// 建真实 git 仓库并写 runtime state；不重定向的话 store 会解析到真实
+// ~/.forge/projects/<key>/ 污染开发者机器。每进程新建 MkdirTemp 避免跨次、
+// 跨包泄漏。
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "forge-taskpipeline-datahome-")
 	if err != nil {

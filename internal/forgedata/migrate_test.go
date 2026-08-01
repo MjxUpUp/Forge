@@ -261,6 +261,44 @@ func TestMigrateProject_StatErrorAborts(t *testing.T) {
 	}
 }
 
+// TestMigrateProject_ConfigDirEqualsDataDir_NeverDeletes pins the data-loss fix: for a
+// zero-project-write project (ConfigDir == DataDir) every whitelist entry has src == dst,
+// so --force would RemoveAll(dst) — deleting the user's live tasks/checklog — before the
+// move. MigrateProject must return an empty result immediately and leave every byte
+// untouched, in force, non-force, and dry-run modes alike.
+//
+// TestMigrateProject_ConfigDirEqualsDataDir_NeverDeletes 钉死数据丢失修复：零项目写入
+// 项目（ConfigDir == DataDir）每条白名单 src == dst，--force 会先 RemoveAll(dst)——
+// 删掉用户活的 tasks/checklog——再移动。MigrateProject 必须立即返回空结果且一字节
+// 不动，force / 非 force / dry-run 三种模式皆然。
+func TestMigrateProject_ConfigDirEqualsDataDir_NeverDeletes(t *testing.T) {
+	dd := t.TempDir()
+	p := &forgedata.Project{Key: `k`, DataDir: dd, ConfigDir: dd}
+	mkFile(t, filepath.Join(dd, `tasks`, `feat.json`), `task`)
+	mkFile(t, filepath.Join(dd, `checklog.jsonl`), `main`)
+	mkFile(t, filepath.Join(dd, `active-task-ref`), `feat/x`)
+
+	for _, opts := range []forgedata.MigrateOptions{
+		{Force: true},
+		{},
+		{DryRun: true, Force: true},
+	} {
+		res, err := forgedata.MigrateProject(p, opts)
+		if err != nil {
+			t.Fatalf(`MigrateProject(opts=%+v): %v`, opts, err)
+		}
+		if len(res.Moved) != 0 || len(res.Skipped) != 0 || len(res.Left) != 0 {
+			t.Errorf(`opts=%+v: 结果应为全空（无残留可迁），实得 %+v`, opts, res)
+		}
+		// Data must survive every mode — --force above all.
+		//
+		// 数据必须在每种模式下存活——尤其 --force。
+		assertExists(t, filepath.Join(dd, `tasks`, `feat.json`), `tasks/feat.json`)
+		assertExists(t, filepath.Join(dd, `checklog.jsonl`), `checklog.jsonl`)
+		assertExists(t, filepath.Join(dd, `active-task-ref`), `active-task-ref`)
+	}
+}
+
 // ---- helpers ----
 
 func mkDir(t *testing.T, path string) {

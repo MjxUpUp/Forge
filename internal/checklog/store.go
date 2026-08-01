@@ -16,33 +16,33 @@ import (
 
 var mu sync.Mutex
 
-// filePath returns the active checklog path under the resolved runtime-state directory: git projects use
-// the user-level DataDir (~/.forge/projects/<key>/); non-git forge projects fall back to the legacy
-// project-level <root>/.forge/ so hooks can still record checks. See dataDir.
+// filePath returns the active checklog path under the resolved runtime-state directory,
+// which is ALWAYS user-level (git: ~/.forge/projects/<key>/; non-git:
+// ~/.forge/projects/<path-key>/) — nothing is written into the project tree. See dataDir.
 //
-// filePath 返回解析后的 runtime-state 目录下的 active checklog 路径：git 项目用
-// 用户级 DataDir（~/.forge/projects/<key>/），非 git 的 forge 项目回退到 legacy 的
-// 项目级 <root>/.forge/，让 hook 仍能记录 check。见 dataDir。
+// filePath 返回解析后的 runtime-state 目录下的 active checklog 路径——始终用户级
+// （git：~/.forge/projects/<key>/；非 git：~/.forge/projects/<path-key>/），
+// 不写项目树。见 dataDir。
 func filePath(root string) string {
 	return filepath.Join(dataDir(root), "checklog.jsonl")
 }
 
 // dataDir resolves the runtime-state directory for checklog via the shared forgedata.DataDirFor
-// (only git projects use Key → ~/.forge/projects/<key>/, falling back to <root>/.forge/).
-// The load-bearing rationale for `git-only uses Key` is in forgedata.DataDirFor (a MkdirAll-stable
-// resolution — Record must not switch paths mid-write).
+// (always user-level: git Key → ~/.forge/projects/<key>/, non-git PathKey →
+// ~/.forge/projects/<path-key>/). The load-bearing rationale is in forgedata.DataDirFor
+// (a MkdirAll-stable resolution — Record must not switch paths mid-write).
 //
 // dataDir 通过共享的 forgedata.DataDirFor 解析 checklog 的 runtime-state 目录
-// （仅 git 项目用 Key → ~/.forge/projects/<key>/，回退 <root>/.forge/）。
-// load-bearing 的「仅 git 用 Key」依据见 forgedata.DataDirFor（MkdirAll-stable 的
-// 解析——Record 不得在写入中途切换路径）。
+// （始终用户级：git Key → ~/.forge/projects/<key>/，非 git PathKey →
+// ~/.forge/projects/<path-key>/）。load-bearing 依据见 forgedata.DataDirFor
+// （MkdirAll-stable 的解析——Record 不得在写入中途切换路径）。
 func dataDir(root string) string { return forgedata.DataDirFor(root) }
 
-// Record appends a check log entry to DataDir's checklog.jsonl (non-git projects fall back to
-// <root>/.forge/, see dataDir). It sets RecordedAt to the current time. Thread-safe.
+// Record appends a check log entry to DataDir's checklog.jsonl (always user-level,
+// see dataDir). It sets RecordedAt to the current time. Thread-safe.
 //
-// Record 向 DataDir 的 checklog.jsonl 追加一条 check log entry（非 git 项目回退到
-// <root>/.forge/，见 dataDir）。把 RecordedAt 设为当前时间。线程安全。
+// Record 向 DataDir 的 checklog.jsonl 追加一条 check log entry（始终用户级，
+// 见 dataDir）。把 RecordedAt 设为当前时间。线程安全。
 func Record(root string, entry *Entry) error {
 	mu.Lock()
 	defer mu.Unlock()
@@ -76,11 +76,11 @@ func Record(root string, entry *Entry) error {
 	return err
 }
 
-// LoadAll reads all check log entries from DataDir's checklog.jsonl (non-git projects fall back to
-// <root>/.forge/). Returns entries in chronological order. Returns nil if the file does not exist.
+// LoadAll reads all check log entries from DataDir's checklog.jsonl (always
+// user-level). Returns entries in chronological order. Returns nil if the file does not exist.
 //
-// LoadAll 从 DataDir 的 checklog.jsonl 读取全部 check log entry（非 git 项目回退到
-// <root>/.forge/）。按时间顺序返回。文件不存在时返回 nil。
+// LoadAll 从 DataDir 的 checklog.jsonl 读取全部 check log entry（始终用户级）。
+// 按时间顺序返回。文件不存在时返回 nil。
 func LoadAll(root string) ([]Entry, error) {
 	f, err := os.Open(filePath(root))
 	if err != nil {

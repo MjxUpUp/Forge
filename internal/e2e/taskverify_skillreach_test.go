@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
 // TestTaskVerifyHook_SurfacesTestDisciplineAdvisory dogfood 4.2 + 2.1 reach test:
@@ -75,11 +77,12 @@ func TestTaskVerifyHook_SurfacesTestDisciplineAdvisory(t *testing.T) {
 	// self-sufficient and proofs against refactors of the auto-gate path.
 	run("task", "gate", "task-implement", "--ref", "TD-REACH")
 
-	// Run the task-verify Stop hook script directly. first invocation: no
+	// Run the task-verify Stop hook script directly (reference copy in the
+	// user-level DataDir; freshProject pins FORGE_DATA_HOME). first invocation: no
 	// throttle stamp → full execution → gate runs CheckTestCoverage → formatMissing
 	// emits test-discipline to stderr → hook's new capture greps it into MESSAGES
 	// → final stderr "[task-verify] Advisory (non-blocking): ...test-discipline...".
-	hookPath := filepath.Join(dir, ".forge", "hooks", "task-verify.sh")
+	hookPath := filepath.Join(forgedata.DataDirFor(dir), "hooks", "task-verify.sh")
 	cmd := exec.Command("bash", hookPath)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(),

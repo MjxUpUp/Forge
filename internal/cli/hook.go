@@ -1119,25 +1119,46 @@ func toRelPath(root, absPath string) string {
 }
 
 // resolveSymlinks resolves symlinks on path. If path does not yet exist (e.g. a PreToolUse
-// Write target before the file is created), it resolves the longest existing ancestor directory and appends the base name back,
-// so a not-yet-existing file still gets the physical prefix on macOS. When no segment of path can be resolved,
+// Write target before the file is created), it walks UP to the longest existing ancestor
+// directory, resolves that, and joins the not-yet-existing tail back — so a new file deep
+// under non-existent directories still gets the physical prefix (macOS /var symlinks;
+// Windows 8.3 short names, where EvalSymlinks also expands ADMINI~1 → Administrator).
+// The one-level climb was enough when .forge/ always existed, but after
+// user-level-assets (zero project writes) .forge/ typically does NOT exist — the tail
+// is two segments (`.forge/state.json`) and one level no longer reaches an existing
+// dir, which silently broke the .forge/* self-protection glob (task-guard approved
+// .forge/state.json writes). When no segment of path can be resolved,
 // returns path unchanged, preserving the original fallback behavior on symlink-free systems.
 //
 // resolveSymlinks 对 path 求值 symlink。若 path 尚不存在（例如 PreToolUse
-// Write 目标在文件创建之前），则解析最长已存在的父目录再补回 base name，使
-// 尚未存在的文件在 macOS 上仍能拿到 physical 前缀。当 path 上没有任何可解析
-// 段时原样返回，保留无 symlink 系统上原有的 fallback 行为。
+// Write 目标在文件创建之前），向上爬到最长已存在祖先目录、解析之、再把未存在的
+// 尾部拼回——让深层新文件也能拿到 physical 前缀（macOS /var symlink；Windows
+// 8.3 短名，EvalSymlinks 同时会把 ADMINI~1 展开为 Administrator）。爬一级在
+// .forge/ 恒存在时够用，但 user-level-assets（零项目写入）后 .forge/ 通常不存在，
+// 尾部有两段（`.forge/state.json`），一级上爬够不到已存在目录——曾静默击穿
+// .forge/* 自保护 glob（task-guard 放行 .forge/state.json 写入）。当 path 上没有
+// 任何可解析段时原样返回，保留无 symlink 系统上原有的 fallback 行为。
 func resolveSymlinks(path string) string {
 	if resolved, err := filepath.EvalSymlinks(path); err == nil {
 		return resolved
 	}
-	dir, base := filepath.Split(path)
-	if dir == "" || dir == path {
-		return path
+	// Walk up to the longest existing ancestor, collecting the unresolved tail.
+	//
+	// 向上爬到最长已存在祖先，沿途收集未解析的尾部。
+	var tail []string
+	d := path
+	for {
+		parent := filepath.Dir(d)
+		if parent == d {
+			return path // 到卷根仍不可解析——原样返回
+		}
+		tail = append([]string{filepath.Base(d)}, tail...)
+		d = parent
+		if resolved, err := filepath.EvalSymlinks(d); err == nil {
+			for _, seg := range tail {
+				resolved = filepath.Join(resolved, seg)
+			}
+			return resolved
+		}
 	}
-	resolvedDir, err := filepath.EvalSymlinks(dir)
-	if err != nil {
-		return path
-	}
-	return filepath.Join(resolvedDir, base)
 }

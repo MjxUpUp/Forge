@@ -28,15 +28,18 @@ func chdirAndRestore(t *testing.T, dir string) {
 	t.Cleanup(func() { _ = os.Chdir(old) })
 }
 
-// TestDataDirCmd_NonGitFallback verifies that forge data-dir falls back to <cwd>/.forge in non-git directories.
-// This is the fallback contract basis for hook bash: TaskVerifyHook / file-sentinel in non-git projects
-// must still write runtime state (checklog/throttle/quarantine) to <cwd>/.forge, matching the non-git fallback
-// semantics of forgedata.DataDirFor — hook and Go store must land on the same path, otherwise the chain breaks.
+// TestDataDirCmd_NonGitFallback verifies that forge data-dir resolves non-git
+// directories to the user-level DataDir (~/.forge/projects/<p+路径hash>/), the same
+// value forgedata.DataDirFor derives. This is the contract basis for hook bash:
+// TaskVerifyHook / file-sentinel in non-git projects write runtime state
+// (checklog/throttle/quarantine) under DataDirFor — hook and Go store must land on
+// the same path, otherwise the chain breaks.
 //
-// TestDataDirCmd_NonGitFallback 验证 forge data-dir 在非 git 目录回退 <cwd>/.forge。
-// 这是 hook bash 的 fallback 契约基础：TaskVerifyHook / file-sentinel 在非 git 项目
-// 仍要把 runtime state（checklog/throttle/quarantine）写到 <cwd>/.forge，与 forgedata
-// 的 DataDirFor 非 git 回退语义一致——hook 和 Go store 必须落在同一路径，否则断链。
+// TestDataDirCmd_NonGitFallback 验证 forge data-dir 把非 git 目录解析到用户级
+// DataDir（~/.forge/projects/<p+路径hash>/），与 forgedata.DataDirFor 推导一致。
+// 这是 hook bash 的契约基础：TaskVerifyHook / file-sentinel 在非 git 项目把 runtime
+// state（checklog/throttle/quarantine）写到 DataDirFor 下——hook 和 Go store 必须
+// 落在同一路径，否则断链。
 func TestDataDirCmd_NonGitFallback(t *testing.T) {
 	dir := t.TempDir()
 	chdirAndRestore(t, dir)
@@ -63,9 +66,9 @@ func TestDataDirCmd_NonGitFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Getwd: %v", err)
 	}
-	want := filepath.Join(cwd, ".forge")
+	want := forgedata.DataDirFor(cwd)
 	if got != want {
-		t.Errorf("data-dir non-git = %q, want %q", got, want)
+		t.Errorf("data-dir non-git = %q, want DataDirFor = %q", got, want)
 	}
 }
 

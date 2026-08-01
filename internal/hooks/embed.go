@@ -1166,7 +1166,9 @@ quarantine_files() {
   # FORGE_QUARANTINE_DIR 仍可显式覆盖（测试 / 自定义）。仅违规时调用，非每次 Bash fork。
   local quarantine_base="${FORGE_QUARANTINE_DIR:-}"
   if [ -z "$quarantine_base" ]; then
-    quarantine_base="$(forge data-dir 2>/dev/null || echo ".forge")/quarantine"
+    # user-level-assets: quarantine 永不落项目树——forge data-dir 失败时
+    # 也回落到用户级 home（旧版回落 ".forge" 会在项目里重建 .forge/ 目录）。
+    quarantine_base="$(forge data-dir 2>/dev/null || echo "${FORGE_DATA_HOME:-$HOME/.forge}/quarantine-fallback")/quarantine"
   fi
   local qdir="${quarantine_base}/${SESSION_ID}"
   mkdir -p "$qdir" 2>/dev/null || true
