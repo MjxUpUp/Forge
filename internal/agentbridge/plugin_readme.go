@@ -16,9 +16,10 @@ import (
 //
 // Contracts carried over from the builder version (guarded by TestPluginPack_Readme /
 // TestPluginPack_NoCurlyQuotes):
-//   - Honest capability boundary: the plugin wires user-level hooks only; project-level
-//     .forge/CLAUDE.md/AGENTS.md/skills still need forge init per project (step 3 +
-//     caveat section make this explicit — no "install once, perfect everywhere" claim).
+//   - Honest capability boundary: the plugin wires user-level hooks only; project
+//     registration (global registry + user-level protocol/skill assets) still needs
+//     forge init per project (step 3 + caveat section make this explicit — no
+//     "install once, perfect everywhere" claim).
 //   - Code blocks use 4-space indent; inline commands use backticks; content has no
 //     curly quotes and no raw double quotes (Windows input-quote corruption guard).
 //   - npm package name is @agent_forge/forge (matching npm/package.json), NOT the
@@ -28,8 +29,9 @@ import (
 //     step-2 install commands follow the slug.
 //
 // 从 builder 版本继承的契约（由 TestPluginPack_Readme / TestPluginPack_NoCurlyQuotes 守卫）：
-//   - 诚实能力边界：plugin 只接用户级 hooks；项目级 .forge/CLAUDE.md/AGENTS.md/skills
-//     仍需每项目 forge init（step 3 + caveat 段明示，不宣传"一次安装处处完美"）。
+//   - 诚实能力边界：plugin 只接用户级 hooks；项目登记（全局注册表 + 用户级
+//     协议/skill 资产）仍需每项目 forge init（step 3 + caveat 段明示，不宣传
+//     "一次安装处处完美"）。
 //   - 代码块用 4-space 缩进；行内命令用反引号；内容无弯引号、无裸双引号
 //     （Windows 输入引号腐蚀守卫）。
 //   - npm 包名是 @agent_forge/forge（与 npm/package.json 一致），不是 GitHub owner

@@ -14,10 +14,15 @@ import (
 // GenerateQualitySkill creates .claude/skills/forge-quality/SKILL.md—a
 // quality-protocol skill loaded at session start via the CLAUDE.md reference.
 // It contains quality standards, session rules, and task-pipeline guidance.
+// Project-level generation only happens in team mode (`forge init --project`);
+// the default zero-project-write init writes the user-level copy via
+// GenerateUserQualitySkill instead.
 //
 // GenerateQualitySkill 创建 .claude/skills/forge-quality/SKILL.md——
 // 在 session 启动时经 CLAUDE.md reference 加载的质量协议 skill。
-// 内含质量标准、session 规则与 task pipeline 说明。
+// 内含质量标准、session 规则与 task pipeline 说明。项目级生成只在团队模式
+// （`forge init --project`）发生；默认零项目写入 init 改由
+// GenerateUserQualitySkill 写用户级副本。
 func GenerateQualitySkill(projectDir string, proto *protocol.Protocol) error {
 	skillDir := filepath.Join(projectDir, ".claude", "skills", "forge-quality")
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
@@ -114,10 +119,10 @@ func buildQualitySkillContent(projectDir string, proto *protocol.Protocol) strin
 
 	sb.WriteString("### 三层防御架构\n\n")
 	sb.WriteString("Forge 通过三层防御确保代码变更都在任务流程内：\n\n")
-	sb.WriteString("1. **task-guard**（PreToolUse Write|Edit）：无活跃任务时 Write/Edit 源码只 WARN（`.forge/*` 自保护文件才 FAIL）；feature 分支无任务时自动建任务\n")
+	sb.WriteString("1. **task-guard**（PreToolUse Write|Edit）：无活跃任务时 Write/Edit 源码只 WARN（`.forge/*`/`.claude/settings*` 自保护 FAIL——此类项目级文件只在团队模式/老项目存在）；feature 分支无任务时自动建任务\n")
 	sb.WriteString("2. **bash-guard**（PreToolUse Bash）：无任务时 Bash 写文件模式（writeFile、cat >、sed -i 等）只 WARN\n")
 	sb.WriteString("3. **file-sentinel**（PostToolUse Bash）：对比 Bash 执行前后的文件状态，未授权源码变更 quarantine 到用户级 DataDir/quarantine/（`forge data-dir` 查看路径）\n\n")
-	sb.WriteString("此外，**自保护机制**阻止直接修改 `.forge/*` 和 `.claude/settings*`——这些文件只能通过 `forge` 命令操作。\n\n")
+	sb.WriteString("此外，**自保护机制**阻止直接修改项目级 `.forge/*` 和 `.claude/settings*`（仅团队模式/老项目存在）——这些文件与用户级资产（`~/.claude/settings.json`、`~/.claude/CLAUDE.md`、`~/.codex/AGENTS.md` 等）一样只能通过 `forge` 命令操作。\n\n")
 	sb.WriteString("**read-before-edit**（PreToolUse Write|Edit，活跃任务内）是 read-before-modify 的 shift-left 硬门禁：编辑本会话未 Read 过的现存源文件 → `BLOCKED`。Edit 需精确匹配旧文本，未读即凭记忆盲改——old_string 易撞中错位、错改入库。豁免新建文件/测试文件/非源码；批量重构逃生 `forge task override --work-activity disable`（降 evidence 强度到 Weak）。reads-log 落盘随会话存活，压缩后仍累计——压缩前 Read 过的文件仍算数。\n\n")
 	sb.WriteString("### 辅助质量检查（仅 WARN 不阻塞）\n\n")
 	sb.WriteString("- **assertion-check/auto-compile**：检测断言弱化、提醒编译自检（advisory，仅记录不阻塞，由 agent 自律）\n\n")

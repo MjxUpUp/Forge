@@ -19,7 +19,7 @@ Forge 在 AI 编码过程中自动插入结构化质量门禁——从任务创�
 # 安装
 npm install -g @agent_forge/forge
 
-# 在项目目录初始化
+# 在项目目录初始化（默认零项目写入）
 cd your-project
 forge init
 
@@ -27,11 +27,14 @@ forge init
 # AI 会自动读取 Forge 生成的 Skill 并驱动门禁流程
 ```
 
-初始化后 Forge 会创建：
-- `.forge/` — Hook 脚本、任务状态、协议配置
-- `.claude/settings.local.json` — Hook 集成配置
-- `.claude/CLAUDE.md` — 质量协议引用
-- `.claude/skills/` — 质量协议 Skill
+`forge init` 不在项目目录写任何文件，全部资产落在用户级：
+- `~/.forge/projects.json` — 全局项目注册表
+- `~/.forge/projects/<key>/` — protocol.yml + runtime state（任务状态/hook 参考副本）
+- `~/.claude/settings.json` — Claude Code hooks（plugin 已装则由 plugin 接管）
+- `~/.claude/CLAUDE.md`、`~/.codex/AGENTS.md` — 质量协议（备份+追加，`forge uninstall --restore` 可回滚）
+- `~/.claude/skills/forge-quality/` — 质量协议 Skill
+
+团队要 git 共享协议用 `forge init --project`（团队模式，指令资产写项目目录）。
 
 ## 工作流程
 
@@ -56,7 +59,7 @@ Forge 通过 Claude Code 的 Hook 机制实现实时质量检查：
 
 | Hook | 触发时机 | 功能 |
 |------|----------|------|
-| **task-guard** | Write/Edit 前 | 无活跃任务时 WARN（仅 `.forge/*` 自保护文件 FAIL），保护 Forge 配置不被篡改 |
+| **task-guard** | Write/Edit 前 | 无活跃任务时 WARN（仅 `.forge/*`/`.claude/settings*` 自保护 FAIL——此类项目级文件只在团队模式/老项目存在），保护 Forge 配置不被篡改 |
 | **assertion-check** | Write/Edit 前 | 检测断言弱化（t.Fatal → t.Log、assert! 被删除等），advisory 提醒不阻塞（agent 自检） |
 | **bash-guard** | Bash 前 | 检测命令中的写文件模式（writeFile、cat >、sed -i 等），无任务时 WARN（源码随后被 file-sentinel 隔离） |
 | **auto-compile** | Write/Edit 后 | advisory 提醒用对应技术栈编译命令自检（go build / cargo check / mvn / tsc 等），不强制编译 |
@@ -72,7 +75,7 @@ Forge 通过 Claude Code 的 Hook 机制实现实时质量检查：
 
 ```
 Layer 1: PreToolUse 快速拦截
-  ├─ task-guard: Write/Edit → 检查任务状态 + 保护 .forge/*
+  ├─ task-guard: Write/Edit → 检查任务状态 + 自保护（forge 配置层）
   └─ bash-guard: Bash → 检测写文件模式
 
 Layer 2: PostToolUse 文件监控
@@ -90,7 +93,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 
 | 命令 | 说明 |
 |------|------|
-| `forge init` | 初始化项目（生成 `.forge/` 资产、Hook、质量协议 Skill；旧的 `--mode` 标志已废弃为 no-op） |
+| `forge init` | 初始化项目（默认零项目写入：登记全局注册表，hooks/指令/skill 全在用户级；`--project` 团队模式把指令资产写项目目录供 git 共享；旧的 `--mode` 标志已废弃为 no-op） |
 | `forge status [--json]` | 查看项目状态（任务管道 + 质量信号） |
 | `forge verify` | 项目完整性检查 + 回归测试 |
 | `forge update` | 自更新到最新版本 |

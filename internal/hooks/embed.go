@@ -1516,10 +1516,13 @@ if [ -z "$ROOT" ]; then
   exit 0
 fi
 
-# 已有 .forge/ → 已启用 forge。但若 plugin 也 user-level 接管了 hooks+MCP，清理
+# 已启用 forge（registry 成员或遗留 .forge/）→ 跳过建议。v1.22 起 init 默认
+# 零项目写入（无 .forge/），成员资格必须问注册表——forge status 在已登记项目
+# 里 exit 0，未登记 exit 非 0；[ -d .forge ] 兜底老项目/团队模式。
+# 若 plugin 也 user-level 接管了 hooks+MCP，清理
 # project-level 重复（plugin install 后存量项目残留的 settings.local.json hooks 与
 # .mcp.json forge server，Claude Code 会双重加载）。幂等：dedupe 无重复时 no-op 无输出。
-if [ -d "$ROOT/.forge" ]; then
+if forge status >/dev/null 2>&1 || [ -d "$ROOT/.forge" ]; then
   if forge plugin status >/dev/null 2>&1; then
     DEDUPE=$(forge plugin dedupe "$ROOT" --keep-empty 2>/dev/null)
     if [ -n "$DEDUPE" ]; then
