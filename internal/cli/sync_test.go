@@ -6,32 +6,35 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 	"github.com/MjxUpUp/Forge/internal/hooks"
 )
 
-// writeSyncStamp writes .forge/.sync-version with the given binary version, so
+// writeSyncStamp writes DataDir/.sync-version with the given binary version, so
 // autoSync can read it past its first early-return guard. Replaces the old
 // state.json LastSyncVersion mechanism: the project pipeline (and its
-// state.json) was deleted, so autoSync now no-ops via a .sync-version stamp.
+// state.json) was deleted, so autoSync now no-ops via a .sync-version stamp,
+// which lives in the user-level DataDir after the user-level-assets refactor.
 func writeSyncStamp(t *testing.T, dir, version string) {
 	t.Helper()
-	forgeDir := filepath.Join(dir, ".forge")
-	if err := os.MkdirAll(forgeDir, 0755); err != nil {
-		t.Fatalf("mkdir .forge: %v", err)
+	dataDir := forgedata.DataDirFor(dir)
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		t.Fatalf("mkdir DataDir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(forgeDir, ".sync-version"), []byte(version), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dataDir, ".sync-version"), []byte(version), 0644); err != nil {
 		t.Fatalf("write .sync-version: %v", err)
 	}
 }
 
 // hookWritten reports whether autoSync got past its early-return and ran
-// WriteHookTemplates (the first sync step), by checking for bash-guard.sh.
+// WriteHookTemplates (the first sync step), by checking for bash-guard.sh under
+// DataDir/hooks/ (user-level-assets: hook reference copies live in DataDir).
 // autoSync's later steps (settings/skill generation) may error in a bare temp
 // dir, but hook writing happens first and is what the early-return guards.
 func hookWritten(t *testing.T, dir string) bool {
 	t.Helper()
-	_, err := os.Stat(filepath.Join(dir, ".forge", "hooks", "bash-guard.sh"))
+	_, err := os.Stat(filepath.Join(forgedata.DataDirFor(dir), "hooks", "bash-guard.sh"))
 	return err == nil
 }
 
@@ -350,28 +353,32 @@ func TestAutoSyncMigratesRuntimeOnVersionChange(t *testing.T) {
 	}
 }
 
-// TestMigrateRuntimeResidue_NonGitProjectSilentReturn: in a non-git project (ProjectFor fails),
-// migrateRuntimeResidue returns silently — no panic, no sync block. The autoSync call site is
-// rootCmd PersistentPreRun (before every forge command); if this failed it would block all forge commands
-// (even forge --version would error). Regression guard: if it is mistakenly changed to return err / panic
-// in the future, this test exposes it (the function has no return value; verifying no panic + file untouched).
+// TestMigrateRuntimeResidue_NonGitProjectMigratesToDataDir: after the
+// user-level-assets refactor, forgedata.ProjectFor is a pure path derivation that
+// succeeds for ANY cwd (non-git → PathKey), so migrateRuntimeResidue also migrates
+// non-git projects' .forge/ runtime residue to the user-level DataDir — runtime
+// state never stays in the project tree. The autoSync call site is rootCmd
+// PersistentPreRun (before every forge command); the function has no return value,
+// so this verifies no panic + the residue actually moved.
 //
-// TestMigrateRuntimeResidue_NonGitProjectSilentReturn：非 git 项目（ProjectFor 失败）时
-// migrateRuntimeResidue 静默返回——不 panic、不阻塞 sync。autoSync 调用点是 rootCmd
-// PersistentPreRun（每个 forge 命令前），若此处失败会阻塞所有 forge 命令（forge --version 都报错）。
-// 回归守卫：未来若误改成 return err / panic，本测试暴露（函数无返回值，验不 panic + 文件原封不动）。
-func TestMigrateRuntimeResidue_NonGitProjectSilentReturn(t *testing.T) {
-	dir := t.TempDir() // 无 git init → ProjectFor 失败
+// TestMigrateRuntimeResidue_NonGitProjectMigratesToDataDir：user-level-assets 重构后
+// forgedata.ProjectFor 是纯路径推导、对任意 cwd 成功（非 git → PathKey），故
+// migrateRuntimeResidue 也会把非 git 项目的 .forge/ runtime 残留迁到用户级
+// DataDir——runtime state 绝不留项目树。autoSync 调用点是 rootCmd PersistentPreRun
+// （每个 forge 命令前）；函数无返回值，故验不 panic + 残留真实迁走。
+func TestMigrateRuntimeResidue_NonGitProjectMigratesToDataDir(t *testing.T) {
+	dir := t.TempDir() // 无 git init → PathKey 推导
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	syncMkdir(t, filepath.Join(dir, `.forge`))
 	syncWrite(t, filepath.Join(dir, `.forge`, `checklog.jsonl`), `residue`)
 
 	migrateRuntimeResidue(dir) // 不应 panic
 
-	// Non-git project: runtime file stays untouched (neither migrated nor deleted, ProjectFor fails silently)
+	// Non-git project: runtime residue migrates to the user-level DataDir (PathKey).
 	//
-	// 非 git 项目：runtime 文件原封不动（没迁也没删，ProjectFor 失败静默）
-	if _, err := os.Stat(filepath.Join(dir, `.forge`, `checklog.jsonl`)); err != nil {
-		t.Errorf(`非 git 项目 runtime 文件应原封不动（ProjectFor 失败静默），实得 err：%v`, err)
+	// 非 git 项目：runtime 残留迁到用户级 DataDir（PathKey）。
+	if _, err := os.Stat(filepath.Join(forgedata.DataDirFor(dir), `checklog.jsonl`)); err != nil {
+		t.Errorf(`非 git 项目 runtime 残留应迁到 DataDir，实得 err：%v`, err)
 	}
 }
 

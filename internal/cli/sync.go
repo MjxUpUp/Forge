@@ -15,54 +15,37 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// autoSync keeps .forge/ files (hooks/settings/SKILL.md) in sync with the
-// current binary version. Runs before every command except init.
+// autoSync keeps forge assets in sync with the current binary version. Runs before
+// every command except init. After the user-level-assets refactor, all assets live at
+// user level:
+//   - DataDir/hooks/*.sh        → reference copies, always overwritten from embed
+//   - ~/.claude/settings.json   → user-level hooks, regenerated (plugin not installed)
+//   - ~/.claude/skills/forge-quality/SKILL.md → regenerated from protocol.yml
+//   - ~/.claude/CLAUDE.md + ~/.codex/AGENTS.md → forge sections updated (backup+append)
+//   - agent bridge files        → user-level (~/.codex/hooks.json, ~/.cursor/...)
+//   - protocol.yml              → created from defaults if missing, never overwritten
+//   - DataDir/.sync-version     → stamped with the current binary version (no-op detection)
+//   - project-level residue     → stripped (stripProjectLevelForgeAssets)
 //
-// sync rules:
-//   - .forge/hooks/*.sh  → always overwritten from embed templates
-//   - .claude/settings.local.json → always regenerated
-//   - .claude/skills/forge-quality/SKILL.md → always regenerated from protocol.yml
-//   - .claude/CLAUDE.md → update Forge-managed sections
-//   - .forge/protocol.yml → created from defaults if missing, never overwritten
-//   - .forge/.sync-version → stamped with the current binary version (no-op detection)
-//
-// autoSync 确保 .forge/ 文件（hooks/settings/SKILL.md）与当前 binary version 一致。
-// 除 init 外每条命令前都跑。
-//
-// sync 规则：
-//   - .forge/hooks/*.sh  → 始终用 embed 模板覆盖
-//   - .claude/settings.local.json → 始终重生
-//   - .claude/skills/forge-quality/SKILL.md → 始终从 protocol.yml 重生
-//   - .claude/CLAUDE.md → 更新 Forge 管理的 section
-//   - .forge/protocol.yml → 缺失则从默认值创建，绝不覆盖
-//   - .forge/.sync-version → 盖当前 binary version 戳（no-op 检测）
+// autoSync 确保 forge 资产与当前 binary version 一致。除 init 外每条命令前都跑。
+// user-level-assets 重构后全部资产在用户级（规则见上）。
 func autoSync(dir string, binaryVersion string, force bool) error {
-	// When the plugin is installed at user level, the project-level hooks
-	// (GenerateSettings) written by this function are redundant (plus the
-	// forge-server residue in legacy .mcp.json of old projects, cleaned by
-	// StripForgeMCPServer for historical init/sync of old projects). defer
-	// consolidates cleanup at the end of every return path. Idempotent: no-op
-	// when nothing duplicates, and the version-equal skip path also triggers it
-	// (covers the migration case where the plugin was installed after the last
-	// sync).
+	// When the plugin is installed at user level, project-level hook duplicates
+	// (legacy settings.local.json) + legacy .mcp.json forge-server residue are cleaned
+	// here; idempotent, also fires on the version-equal skip path.
 	//
-	// plugin 已 user-level 装时,本函数写入的 project-level hooks（GenerateSettings）是冗余的
-	// （+ 旧项目 .mcp.json 的 forge server 残留,StripForgeMCPServer 清历史 init/sync 旧项目）,
-	// defer 在所有 return 路径末尾统一清理。幂等:无重复时 no-op,version-equal 跳过路径也会
-	// 触发（正好覆盖"plugin 在上次 sync 后才装"的迁移场景）。
+	// plugin 已 user-level 装时，项目级 hook 重复（遗留 settings.local.json）+
+	// 旧 .mcp.json forge server 残留在此清理；幂等，版本相等跳过路径也会触发。
 	defer dedupeProjectLevelIfPlugin(dir)
 
-	// The .sync-version stamp drives no-op detection (replacing the deleted
-	// state.LastSyncVersion—state.json is no longer generated after project-level
-	// pipeline removal). Three conditions force a sync even when versions match:
-	// the force flag / stamp missing or mismatched / stale hook binding inside
-	// settings.local.json (legacy task-verify wrongly bound to PostToolUse).
+	// The .sync-version stamp (now in DataDir) drives no-op detection. Three conditions
+	// force a sync even when versions match: the force flag / stamp missing or
+	// mismatched / stale hook binding inside a legacy project settings.local.json.
 	//
-	// .sync-version stamp 判 no-op（取代已删除的 state.LastSyncVersion——项目级管道
-	// 删除后 state.json 不再生成）。Three conditions force a sync even when versions
-	// match：force flag / stamp 缺失或不匹配 / settings.local.json 内 stale hook binding
-	// （旧版 task-verify 误绑 PostToolUse）。
-	stampPath := filepath.Join(dir, ".forge", ".sync-version")
+	// .sync-version 戳（现在在 DataDir）判 no-op。三种情况版本相等也强制 sync：
+	// force flag / stamp 缺失或不匹配 / 遗留项目 settings.local.json 内 stale hook 绑定。
+	dataDir := forgedata.DataDirFor(dir)
+	stampPath := filepath.Join(dataDir, ".sync-version")
 	if !force && binaryVersion != "dev" {
 		if stamp, err := os.ReadFile(stampPath); err == nil &&
 			strings.TrimSpace(string(stamp)) == binaryVersion &&
@@ -71,77 +54,69 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 		}
 	}
 
-	forgeDir := filepath.Join(dir, ".forge")
-
-	// 1. sync hook scripts
+	// 1. sync hook script reference copies (runtime executes embedded content, these
+	//    are for inspection only)
 	//
-	// 1. sync hook 脚本
-	if err := hooks.WriteHookTemplates(forgeDir); err != nil {
+	// 1. sync hook 脚本参考副本（运行时执行嵌入内容，副本仅供查看）
+	if err := hooks.WriteHookTemplates(dataDir); err != nil {
 		return fmt.Errorf("auto-sync: failed to update hooks: %w", err)
 	}
 
-	// 2. Sync settings.local.json—only when the plugin is not user-level
-	//    installed. When the plugin is installed, user-level plugin.json
-	//    already registers ForgeHookSpec machine-wide; writing project-level
-	//    hooks is redundant and creates a fragile write-then-immediately-strip
-	//    pattern—any interruption between GenerateSettings and the deferred
-	//    dedupeProjectLevelIfPlugin leaves a corrupted file.
-	//    dedupeProjectLevelIfPlugin still runs via defer to clean legacy hooks
-	//    from older forge versions.
+	// 2. User-level claude settings.json — only when the plugin is not user-level
+	//    installed (plugin.json already registers ForgeHookSpec machine-wide).
 	//
-	// 2. sync settings.local.json——仅在 plugin 未 user-level 安装时。
-	//    plugin 已装时，user-level plugin.json 已全机注册 ForgeHookSpec；写 project-level
-	//    hooks 冗余且制造脆弱的「先写后立即 strip」模式——GenerateSettings 与 defer
-	//    dedupeProjectLevelIfPlugin 之间任何中断都会留下损坏文件。dedupeProjectLevelIfPlugin
-	//    仍经 defer 跑以清旧版 forge 的 legacy hooks。
+	// 2. 用户级 claude settings.json——仅在 plugin 未 user-level 安装时
+	//    （plugin.json 已全机器注册 ForgeHookSpec）。
 	if !hooks.IsClaudePluginInstalled() {
-		if err := hooks.GenerateSettings(dir); err != nil {
-			return fmt.Errorf("auto-sync: failed to update settings: %w", err)
+		if err := hooks.GenerateUserSettings(); err != nil {
+			return fmt.Errorf("auto-sync: failed to update user-level settings: %w", err)
 		}
 	}
 
-	// 3. Ensure protocol.yml exists (create from defaults if missing)
+	// 3. Ensure protocol.yml exists (create from defaults if missing; a project-level
+	//    override always wins and is never touched; a corrupt file is backed aside
+	//    before rewriting defaults — never silently clobbered)
 	//
-	// 3. 确保 protocol.yml 存在（缺失则从默认值创建）
+	// 3. 确保 protocol.yml 存在（缺失则从默认值创建；项目级覆盖恒优先，绝不动；
+	//    损坏文件先备份到一边再写默认——绝不静默覆盖）
+	if err := protocol.EnsureDefault(dir); err != nil {
+		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to ensure protocol.yml: %v\n", err)
+	}
 	proto, err := protocol.Load(dir)
 	if err != nil {
 		proto = protocol.DefaultProtocol()
-		if err := protocol.Save(dir, proto); err != nil {
-			fmt.Fprintf(os.Stderr, "auto-sync warning: failed to create protocol.yml: %v\n", err)
-		}
 	}
 
-	// 4. Sync the quality SKILL.md
+	// 4. Sync the user-level quality SKILL.md
 	//
-	// 4. 同步 quality SKILL.md
-	if err := skillgen.GenerateQualitySkill(dir, proto); err != nil {
+	// 4. 同步用户级 quality SKILL.md
+	if err := skillgen.GenerateUserQualitySkill(proto); err != nil {
 		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to regenerate quality skill: %v\n", err)
 	}
 
-	// 5. Clean up refactor residue: deprecated skills + runtime-state migration to DataDir + dead files
+	// 5. Clean up refactor residue: deprecated skills + runtime-state migration to
+	//    DataDir + dead files + legacy project-level forge writes
 	//
-	// 5. Clean up refactor 残留:废弃 skill + runtime state 迁 DataDir + 死文件
+	// 5. 清理重构残留：废弃 skill + runtime state 迁 DataDir + 死文件 +
+	//    遗留项目级 forge 写入
 	cleanupDeprecatedPipelineSkill(dir)
 	migrateRuntimeResidue(dir)
 	cleanupLegacyDeadFiles(dir)
+	stripProjectLevelForgeAssets(dir)
 
-	// 6. Update CLAUDE.md
+	// 6. Update user-level CLAUDE.md / AGENTS.md forge sections (backup+append)
 	//
-	// 6. 更新 CLAUDE.md
-	if err := skillgen.GenerateClaudeMD(dir); err != nil {
-		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to update CLAUDE.md: %v\n", err)
+	// 6. 更新用户级 CLAUDE.md / AGENTS.md 的 forge 段（备份+追加）
+	if err := skillgen.GenerateUserClaudeMD(); err != nil {
+		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to update user-level CLAUDE.md: %v\n", err)
+	}
+	if err := skillgen.GenerateUserAgentsMD(); err != nil {
+		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to update user-level AGENTS.md: %v\n", err)
 	}
 
-	// 7. Update the project-root AGENTS.md (cross-agent instruction source)
+	// 7. Sync the agent bridge (user-level, for every detected agent)
 	//
-	// 7. 更新 project-root AGENTS.md（跨 agent 指令源）
-	if err := skillgen.GenerateAgentsMD(dir); err != nil {
-		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to update AGENTS.md: %v\n", err)
-	}
-
-	// 8. Sync the agent bridge (translate for every detected agent)
-	//
-	// 8. sync agent bridge（为所有检测到的 agent 翻译）
+	// 7. sync agent bridge（用户级，为所有检测到的 agent）
 	agents := agentbridge.DetectAgents(dir)
 	if len(agents) > 0 {
 		bridgeInput := &agentbridge.TranslationInput{
@@ -155,9 +130,9 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 		}
 	}
 
-	// 9. Update the .sync-version stamp
+	// 8. Update the .sync-version stamp
 	//
-	// 9. 更新 .sync-version 戳
+	// 8. 更新 .sync-version 戳
 	if err := os.WriteFile(stampPath, []byte(binaryVersion), 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to write sync stamp: %v\n", err)
 	}
@@ -203,8 +178,9 @@ func cleanupDeprecatedPipelineSkill(dir string) {
 // equivalent to migration). RemoveSrcOnConflict is deliberately not
 // introduced—to prevent old quarantine data on the skip path (user-code copies
 // isolated by file-sentinel) from being overwritten and lost. Project
-// construction failure (non-git project / missing .forge) returns silently,
-// so autoSync is not blocked.
+// construction failure (derivation errors such as corrupt git metadata) returns
+// silently, so autoSync is not blocked; non-git projects migrate normally via
+// PathKey (DataDir is always user-level).
 //
 // migrateRuntimeResidue 把 .forge/ 下老版本积累的 runtime state 残留迁到 DataDir。
 // refactor-data-home 把 runtime state 从项目级 .forge/ 迁到用户级 DataDir，但老版本
@@ -216,7 +192,8 @@ func cleanupDeprecatedPipelineSkill(dir string) {
 // 默认语义：DataDir 已有同名的 skip 保留 src（不覆盖、不丢数据）；DataDir 没有的整树
 // 搬过去（.forge/ 那份消失但 DataDir 已有副本，等同迁移）。不引入 RemoveSrcOnConflict
 // ——防止 skip 路径下 quarantine 老隔离数据（file-sentinel 隔离的用户代码副本）被覆盖式删除丢失。
-// 构造 Project 失败（非 git 项目/.forge 缺失）静默返回，autoSync 不阻塞。
+// Project 构造失败（git 元数据损坏等推导错误）静默返回，autoSync 不阻塞；
+// 非 git 项目经 PathKey 正常迁移（DataDir 始终用户级）。
 func migrateRuntimeResidue(dir string) {
 	p, err := forgedata.ProjectFor(dir)
 	if err != nil {
@@ -329,12 +306,12 @@ func init() {
 
 var syncCmd = &cobra.Command{
 	Use:   "sync [--force]",
-	Short: "同步 .forge/ 资产到当前二进制版本",
-	Long: `手动触发 .forge/ 自动同步：hooks / settings.local.json / SKILL.md / CLAUDE.md。
+	Short: "同步 forge 资产到当前二进制版本（用户级）",
+	Long: `手动触发 forge 资产自动同步：用户级 hooks / settings / SKILL.md / CLAUDE.md + 存量项目级残留清理。
 
 每次 forge 命令前已自动同步（版本变化或检测到脏绑定时触发）。此命令用于：
   - 升级后强制刷新全部资产
-  - settings.local.json 被旧版本污染（如 task-verify 误绑 PostToolUse）时手动修复
+  - 遗留项目级配置被旧版本污染（如 task-verify 误绑 PostToolUse）时手动修复
 
 --force 跳过版本检查，无条件重生成。`,
 	RunE: runSync,
