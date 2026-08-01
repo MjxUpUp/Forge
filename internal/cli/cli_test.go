@@ -360,6 +360,13 @@ func TestSystemStatusRequiresForge(t *testing.T) {
 // --------------- Test: Status without init ---------------
 
 func TestStatusWithoutInit(t *testing.T) {
+	// Hermetic "not a forge project" premise: the package TestMain registry is
+	// shared and accumulates entries from every init test — this test needs an
+	// EMPTY registry, so it gets its own FORGE_DATA_HOME.
+	//
+	// 密封"非 forge 项目"前提：包级 TestMain 的注册表是共享的，会被各 init
+	// 测试累积条目——本测试需要空注册表，故用自己的 FORGE_DATA_HOME。
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	tmpDir := t.TempDir()
 
 	_, _, code := runForge(t, tmpDir, "status")
