@@ -269,20 +269,34 @@ type cursorHookEntry struct {
 
 // buildCursorHooks derives Cursor's flat hooks.json from hooks.ForgeHookSpec (single
 // source of truth). Cursor's hooks.json is flat: hooks.<event>[], each entry carries
-// {command,matcher,timeout}; event names are camelCase (preToolUse/postToolUse/stop),
-// in contrast to Claude Code's PascalCase nested {matcher,hooks:[{type,command}]} shape.
-// Conversion flattens each matcher's hook list to one entry per hook (carrying matcher
-// + 60s timeout). SessionStart is filtered — Cursor native hooks.json historically
-// accepts only pre/post/stop. No manual copy → no drift.
-// TestCursorWiringMirrorsClaudeSettings guards command-set parity.
+// {command,matcher,timeout}; event names are camelCase, in contrast to Claude Code's
+// PascalCase nested {matcher,hooks:[{type,command}]} shape. The official Cursor Agent
+// event roster (https://cursor.com/docs/agent/hooks) is: sessionStart, sessionEnd,
+// preToolUse, postToolUse, postToolUseFailure, subagentStart, subagentStop,
+// beforeShellExecution, afterShellExecution, beforeMCPExecution, afterMCPExecution,
+// beforeReadFile, afterFileEdit, beforeSubmitPrompt, preCompact, stop,
+// afterAgentResponse, afterAgentThought (plus the Tab-only beforeTabFileRead/
+// afterTabFileEdit). cursorEventName maps the ForgeHookSpec events onto that roster;
+// PostCompact has no Cursor analogue (Cursor ships only the observe-only preCompact)
+// and stays Claude/codex-only. Conversion flattens each matcher's hook list to one
+// entry per hook (carrying matcher + 60s timeout). No manual copy → no drift.
+// TestCursorWiringMirrorsClaudeSettings guards command-set parity;
+// TestCursorHooks_OnlyLegalCursorEvents pins the event-name whitelist.
 //
 // buildCursorHooks 从 hooks.ForgeHookSpec（单一真相源）派生 Cursor 的扁平 hooks.json。
 // Cursor 的 hooks.json 是扁平结构：hooks.<event>[]，每个 entry 自带
-// {command,matcher,timeout}，event 名为 camelCase（preToolUse/postToolUse/stop），
-// 与 Claude Code 的 PascalCase 嵌套 {matcher,hooks:[{type,command}]} 结构相对。转换时
+// {command,matcher,timeout}，event 名为 camelCase，与 Claude Code 的 PascalCase 嵌套
+// {matcher,hooks:[{type,command}]} 结构相对。官方 Cursor Agent event 名册
+// （https://cursor.com/docs/agent/hooks）为：sessionStart、sessionEnd、preToolUse、
+// postToolUse、postToolUseFailure、subagentStart、subagentStop、beforeShellExecution、
+// afterShellExecution、beforeMCPExecution、afterMCPExecution、beforeReadFile、
+// afterFileEdit、beforeSubmitPrompt、preCompact、stop、afterAgentResponse、
+// afterAgentThought（外加 Tab 专用的 beforeTabFileRead/afterTabFileEdit）。
+// cursorEventName 把 ForgeHookSpec 的 event 映射到该名册；PostCompact 无 Cursor
+// 对应物（Cursor 只有 observe-only 的 preCompact），保持 Claude/codex 专属。转换时
 // 把每个 matcher 的 hook 列表扁平化为每 hook 一个 entry（携带 matcher + 60s timeout）。
-// SessionStart 被过滤——Cursor 原生 hooks.json 历史上只接 pre/post/stop。无手工副本 → 无 drift。
-// TestCursorWiringMirrorsClaudeSettings 守卫命令集对等。
+// 无手工副本 → 无 drift。TestCursorWiringMirrorsClaudeSettings 守卫命令集对等；
+// TestCursorHooks_OnlyLegalCursorEvents 钉死 event 名白名单。
 func buildCursorHooks() map[string]any {
 	spec := hooks.ForgeHookSpec()
 	hooksMap := map[string][]cursorHookEntry{}
@@ -308,12 +322,21 @@ func buildCursorHooks() map[string]any {
 }
 
 // cursorEventName maps Claude Code PascalCase event names to Cursor's camelCase
-// hooks.json event names. Events Cursor does not accept (SessionStart) return ok=false,
-// so buildCursorHooks can skip them.
+// hooks.json event names (verified against https://cursor.com/docs/agent/hooks).
+// Events Cursor does not accept return ok=false, so buildCursorHooks can skip them:
+//   - PostCompact — Cursor has no post-compaction event; it ships only the
+//     observe-only preCompact, which cannot deliver compact-resume's re-injection
+//     contract, so the mapping is deliberately not made.
+//   - Any future spec event without a Cursor analogue (Cursor's sessionEnd/
+//     subagent*/preCompact etc. have no ForgeHookSpec counterpart either).
 //
 // cursorEventName 把 Claude Code 的 PascalCase event 名映射到 Cursor 的 camelCase
-// hooks.json event 名。Cursor 不接的 event（SessionStart）返回 ok=false，供
-// buildCursorHooks 跳过。
+// hooks.json event 名（已对 https://cursor.com/docs/agent/hooks 核实）。Cursor 不
+// 接的 event 返回 ok=false，供 buildCursorHooks 跳过：
+//   - PostCompact——Cursor 无 post-compaction event；仅有 observe-only 的
+//     preCompact，无法承载 compact-resume 的重注入契约，故刻意不映射。
+//   - 未来 spec 新增且无 Cursor 对应物的 event（Cursor 侧的 sessionEnd/
+//     subagent*/preCompact 等同样无 ForgeHookSpec 对应物）。
 func cursorEventName(event string) (string, bool) {
 	switch event {
 	case `PreToolUse`:
@@ -322,6 +345,10 @@ func cursorEventName(event string) (string, bool) {
 		return `postToolUse`, true
 	case `Stop`:
 		return `stop`, true
+	case `SessionStart`:
+		return `sessionStart`, true
+	case `UserPromptSubmit`:
+		return `beforeSubmitPrompt`, true
 	default:
 		return ``, false
 	}

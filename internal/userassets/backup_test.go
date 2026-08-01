@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -278,5 +279,69 @@ func TestBackupRoot(t *testing.T) {
 	}
 	if !strings.HasPrefix(root, tmp) || !strings.HasSuffix(root, `backups`) {
 		t.Errorf(`BackupRoot = %q, want <FORGE_DATA_HOME>/backups under %q`, root, tmp)
+	}
+}
+
+// TestBackupOriginal_ConcurrentClaims pins the O_EXCL anchor claim: when many
+// goroutines (standing in for racing forge processes) back up the same file
+// simultaneously, every call succeeds, exactly one meta.json results, and the
+// stored original still holds the PRE-forge bytes (no goroutine's later write
+// can clobber the anchor — the stat-then-write race this test guards against
+// let a slow writer record already-modified bytes as the "original").
+//
+// TestBackupOriginal_ConcurrentClaims 钉死 O_EXCL 锚点认领：大量 goroutine
+// （模拟竞速的 forge 进程）同时备份同一文件时，全部调用成功，只产生一份
+// meta.json，且存下的 original 仍是 forge 修改前的字节（任何后来者都覆盖
+// 不了锚点——本测试防的 stat-then-write 竞态曾让慢写者把已修改字节记为
+// "original"）。
+func TestBackupOriginal_ConcurrentClaims(t *testing.T) {
+	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
+	target := filepath.Join(t.TempDir(), `CLAUDE.md`)
+	if err := os.WriteFile(target, []byte(`pristine bytes`), 0644); err != nil {
+		t.Fatalf(`create target: %v`, err)
+	}
+
+	const racers = 32
+	errs := make(chan error, racers)
+	var wg sync.WaitGroup
+	for i := 0; i < racers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs <- BackupOriginal(target)
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf(`concurrent BackupOriginal: %v`, err)
+		}
+	}
+
+	// Exactly one valid anchor, holding the pre-forge bytes.
+	//
+	// 恰好一份有效锚点，持有 forge 修改前的字节。
+	dir, err := backupDir(target)
+	if err != nil {
+		t.Fatalf(`backupDir: %v`, err)
+	}
+	metaBytes, err := os.ReadFile(filepath.Join(dir, `meta.json`))
+	if err != nil {
+		t.Fatalf(`read meta: %v`, err)
+	}
+	var meta backupMeta
+	if err := json.Unmarshal(metaBytes, &meta); err != nil {
+		t.Fatalf(`parse meta: %v`, err)
+	}
+	if !meta.Existed {
+		t.Errorf(`meta.Existed = false, want true（目标文件备份时已存在）`)
+	}
+	original, err := os.ReadFile(filepath.Join(dir, `original`))
+	if err != nil {
+		t.Fatalf(`read original: %v`, err)
+	}
+	if string(original) != `pristine bytes` {
+		t.Errorf(`original = %q, want %q（锚点被竞态污染）`, original, `pristine bytes`)
 	}
 }

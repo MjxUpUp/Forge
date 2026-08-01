@@ -13,9 +13,16 @@ import (
 
 // CodexTranslator wires forge hooks into codex's USER-LEVEL hooks.json
 // (CodexHome()/hooks.json, i.e. $CODEX_HOME/hooks.json or ~/.codex/hooks.json).
-// Codex's lifecycle hooks (PreToolUse/PostToolUse/Stop) are schema-compatible with Claude Code's —
-// the matcher/hooks/type/command structure is identical, and so is the stdin/stdout JSON protocol — so the same set of
-// `forge hook <name>` commands run unchanged. Alongside claude-code and cursor, codex is one of the agents where hooks truly
+// Codex's lifecycle hooks are schema-compatible with Claude Code's — the
+// matcher/hooks/type/command structure is identical, the event names are the same
+// PascalCase, and so is the stdin/stdout JSON protocol (common stdin fields
+// session_id/transcript_path/cwd/hook_event_name match Claude's) — so the same set
+// of `forge hook <name>` commands run unchanged. The official event roster
+// (https://developers.openai.com/codex/hooks) is SessionStart, SessionEnd,
+// PreToolUse, PermissionRequest, PostToolUse, PreCompact, PostCompact,
+// UserPromptSubmit, SubagentStart, SubagentStop, Stop; buildCodexHooks maps the six
+// of them that have a ForgeHookSpec analogue (see the whitelist there). Alongside
+// claude-code and cursor, codex is one of the agents where hooks truly
 // enforce Forge gates; copilot/windsurf still emit guidance text only.
 // See CursorTranslator for cursor's flat schema variant.
 //
@@ -26,17 +33,24 @@ import (
 // is not forge-sourced (see isForgeBridgeCommand) are preserved verbatim; forge entries are
 // replaced wholesale with the current generated set, making Translate idempotent.
 //
-// Matcher note: Codex compiles the matcher into a regex against tool_name, whereas Claude Code treats it
-// as a tool-name match. Plain names (Bash) and alternations (Write|Edit) are both valid regexes and match
-// identically in both, so the Claude wiring migrates over directly. Forge never emits the glob-style `Bash(...)` form —
-// it is not a legal matcher in Codex.
+// Matcher note: Codex compiles the matcher into a regex (against tool_name for
+// PreToolUse/PostToolUse, against source for SessionStart, against trigger for
+// PreCompact/PostCompact), whereas Claude Code treats it as a tool-name match. Plain
+// names (Bash) and alternations (Write|Edit) are both valid regexes and match
+// identically in both, so the Claude wiring migrates over directly. Forge never emits
+// the glob-style `Bash(...)` form — it is not a legal matcher in Codex.
 //
 // CodexTranslator 把 forge hook 接线进 codex 的 user-level hooks.json
 // （CodexHome()/hooks.json，即 $CODEX_HOME/hooks.json 或 ~/.codex/hooks.json）。Codex 的
-// lifecycle hooks（PreToolUse/PostToolUse/Stop）与 Claude Code 的 schema 兼容——
-// matcher/hooks/type/command 结构相同，stdin/stdout JSON 协议也相同——故同一批
-// `forge hook <name>` 命令原样跑。与 claude-code、cursor 并列，codex 是 hook 真正
-// enforce Forge gate 的 agent 之一；copilot/windsurf 仍只发 guidance 文本。
+// lifecycle hooks 与 Claude Code 的 schema 兼容——matcher/hooks/type/command 结构相同、
+// event 名同为 PascalCase、stdin/stdout JSON 协议相同（stdin 公共字段
+// session_id/transcript_path/cwd/hook_event_name 与 Claude 一致）——故同一批
+// `forge hook <name>` 命令原样跑。官方 event 名册
+// （https://developers.openai.com/codex/hooks）为 SessionStart、SessionEnd、
+// PreToolUse、PermissionRequest、PostToolUse、PreCompact、PostCompact、
+// UserPromptSubmit、SubagentStart、SubagentStop、Stop；buildCodexHooks 接入其中有
+// ForgeHookSpec 对应物的六个（见该处白名单）。与 claude-code、cursor 并列，codex
+// 是 hook 真正 enforce Forge gate 的 agent 之一；copilot/windsurf 仍只发 guidance 文本。
 // cursor 的扁平 schema 变体见 CursorTranslator。
 //
 // 用户级路径对齐 kimi/claude-code 模型：一份全机器注册替代逐项目的 .codex/hooks.json
@@ -44,10 +58,11 @@ import (
 // 处理，不在此处）。merge 语义：command 非 forge 来源的条目（见 isForgeBridgeCommand）
 // 原样保留；forge 条目整体替换为当前生成集，Translate 幂等。
 //
-// Matcher 注意：Codex 把 matcher 编译为针对 tool_name 的 regex，而 Claude Code 把它
-// 当 tool-name 匹配。纯名（Bash）与 alternation（Write|Edit）都是合法 regex，在两者
-// 中匹配结果一致，故 Claude 接线可直接迁移。Forge 从不发 glob 风格的 `Bash(...)` 形式——
-// 它在 Codex 里不是合法 matcher。
+// Matcher 注意：Codex 把 matcher 编译为 regex（PreToolUse/PostToolUse 针对
+// tool_name，SessionStart 针对 source，PreCompact/PostCompact 针对 trigger），而
+// Claude Code 把它当 tool-name 匹配。纯名（Bash）与 alternation（Write|Edit）都是
+// 合法 regex，在两者中匹配结果一致，故 Claude 接线可直接迁移。Forge 从不发 glob
+// 风格的 `Bash(...)` 形式——它在 Codex 里不是合法 matcher。
 type CodexTranslator struct{}
 
 func (t *CodexTranslator) Translate(projectDir string, input *TranslationInput) error {
@@ -238,34 +253,51 @@ func StripCodexHooksUserLevel() (bool, error) {
 
 // buildCodexHooks derives codex's hooks.json from hooks.ForgeHookSpec — that spec is the single source of truth shared with
 // settings.local.json and the plugin pack. Codex's hook schema is identical to Claude Code's
-// nested {matcher, hooks:[{type,command}]} structure (Codex compiles the matcher into a regex against
-// tool_name; Forge emits only plain names and alternations, both legal regexes), so the spec can be marshaled
-// as-is into a legal codex hooks.json. Codex has no SessionStart lifecycle hook, so that event is
-// filtered out (skill-scan is Claude-Code exclusive). No hand-maintained copy → no drift.
-// TestCodexWiringMirrorsClaudeSettings guards command-set parity.
+// nested {matcher, hooks:[{type,command}]} structure, the event names are the same PascalCase,
+// and the stdin payload carries the same common fields (session_id/cwd/hook_event_name), so the spec
+// can be marshaled as-is into a legal codex hooks.json. The official codex event roster
+// (https://developers.openai.com/codex/hooks) is: SessionStart, SessionEnd, PreToolUse,
+// PermissionRequest, PostToolUse, PreCompact, PostCompact, UserPromptSubmit, SubagentStart,
+// SubagentStop, Stop. We wire exactly the events that have a ForgeHookSpec analogue —
+// PreToolUse/PostToolUse/Stop plus the SessionStart group (skill-scan/mcp-scan/init-suggest/
+// task-resume), the UserPromptSubmit group (resume-reinject), and PostCompact (compact-resume);
+// SessionEnd/PermissionRequest/PreCompact/SubagentStart/SubagentStop have no spec counterpart
+// and stay unwired. No hand-maintained copy → no drift.
+// TestCodexWiringMirrorsClaudeSettings guards command-set parity;
+// TestCodexHooks_OnlyLegalCodexEvents pins the event-name whitelist.
 //
 // buildCodexHooks 从 hooks.ForgeHookSpec 派生 codex 的 hooks.json——该 spec 是与
 // settings.local.json、plugin pack 共享的单一真相源。Codex 的 hook schema 与 Claude Code
-// 的嵌套 {matcher, hooks:[{type,command}]} 结构相同（Codex 把 matcher 编译为针对
-// tool_name 的 regex；Forge 只发纯名与 alternation，均合法 regex），故 spec 可原样
-// marshal 为合法 codex hooks.json。Codex 无 SessionStart lifecycle hook，故该 event
-// 被过滤（skill-scan 是 Claude-Code 专属）。无手工副本 → 无 drift。
-// TestCodexWiringMirrorsClaudeSettings 守卫命令集对等。
+// 的嵌套 {matcher, hooks:[{type,command}]} 结构相同，event 名同为 PascalCase，stdin
+// payload 公共字段也相同（session_id/cwd/hook_event_name），故 spec 可原样 marshal 为
+// 合法 codex hooks.json。官方 codex event 名册
+// （https://developers.openai.com/codex/hooks）为：SessionStart、SessionEnd、
+// PreToolUse、PermissionRequest、PostToolUse、PreCompact、PostCompact、UserPromptSubmit、
+// SubagentStart、SubagentStop、Stop。只接有 ForgeHookSpec 对应物的 event——
+// PreToolUse/PostToolUse/Stop，外加 SessionStart 组（skill-scan/mcp-scan/init-suggest/
+// task-resume）、UserPromptSubmit 组（resume-reinject）与 PostCompact（compact-resume）；
+// SessionEnd/PermissionRequest/PreCompact/SubagentStart/SubagentStop 无 spec 对应物，不接。
+// 无手工副本 → 无 drift。TestCodexWiringMirrorsClaudeSettings 守卫命令集对等；
+// TestCodexHooks_OnlyLegalCodexEvents 钉死 event 名白名单。
 func buildCodexHooks() map[string]any {
 	spec := hooks.ForgeHookSpec()
 	codex := make(map[string][]hooks.HookMatcher, len(spec))
 	for event, matchers := range spec {
-		// Whitelist: codex supports only PreToolUse/PostToolUse/Stop (no SessionStart/PostCompact/
-		// UserPromptSubmit or other session/compress/prompt lifecycle). Other claude-code-specific events — including
-		// the gap#2 PostCompact/UserPromptSubmit re-injection chain — are skipped automatically.
+		// Whitelist: the ForgeHookSpec events that exist in codex's official roster
+		// (same PascalCase names — verified against
+		// https://developers.openai.com/codex/hooks). Codex has no SessionEnd/
+		// PermissionRequest/PreCompact/Subagent* analogue in the spec, so those
+		// codex-only events never appear here; any future spec event not in this
+		// list is skipped rather than silently wired into an unsupported event.
 		//
-		// 白名单：codex 只支持 PreToolUse/PostToolUse/Stop（无 SessionStart/PostCompact/
-		// UserPromptSubmit 等会话/压缩/prompt lifecycle）。其余 claude-code 特有 event——含
-		// gap#2 的 PostCompact/UserPromptSubmit 重注入链——自动跳过。
-		if event != "PreToolUse" && event != "PostToolUse" && event != "Stop" {
-			continue
+		// 白名单：ForgeHookSpec 中存在于 codex 官方名册的 event（PascalCase 同名——
+		// 已对 https://developers.openai.com/codex/hooks 核实）。spec 无 SessionEnd/
+		// PermissionRequest/PreCompact/Subagent* 对应物，故这些 codex 侧 event 永不
+		// 出现；未来 spec 新增的不在此表的 event 一律跳过，不静默接进不支持的 event。
+		switch event {
+		case "PreToolUse", "PostToolUse", "Stop", "SessionStart", "UserPromptSubmit", "PostCompact":
+			codex[event] = matchers
 		}
-		codex[event] = matchers
 	}
 	return map[string]any{
 		`hooks`: codex,
@@ -294,7 +326,8 @@ const (
 // config.toml has no [features] table at all.
 //
 // codexFeaturesHooksBlock 是用户 config.toml 完全没有 [features] 表时追加的
-//  canonical 标记段。
+//
+//	canonical 标记段。
 const codexFeaturesHooksBlock = codexMarkStart + ` — managed by ` + "`forge init --agents codex`" + `; do not edit between markers
 [features]
 hooks = true

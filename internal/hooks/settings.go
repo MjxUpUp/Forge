@@ -179,19 +179,23 @@ func ForgeHookSpec() map[string][]HookMatcher {
 				},
 			},
 		},
-		// PostCompact + UserPromptSubmit form the claude-code root-cause fix layer for gap#2
+		// PostCompact + UserPromptSubmit form the root-cause fix layer for gap#2
 		// (auto-reinject the full continuity context after compaction, without relying on
-		// the agent to call forge task resume proactively). Both events are Claude-Code-specific
-		// lifecycle: codex/cursor filter them out in buildCodexHooks/buildCursorHooks, and
-		// opencode's TS plugin does not read ForgeHookSpec (it only wires the equivalent
-		// tool.execute.before), so this chain takes effect only for claude-code — an accepted
-		// boundary (the other hosts fall back to the SessionStart tl;dr tier).
+		// the agent to call forge task resume proactively). Host coverage (verified
+		// against official docs 2026-08, see buildCodexHooks/cursorEventName):
+		// claude-code and codex take both events; cursor takes UserPromptSubmit
+		// (as beforeSubmitPrompt) but has NO post-compaction event (preCompact is
+		// observe-only and cannot carry the re-injection contract), and opencode's
+		// TS plugin does not read ForgeHookSpec — cursor falls back to the
+		// SessionStart tl;dr tier for the compact case.
 		//
-		// PostCompact + UserPromptSubmit 构成 gap#2 的 claude-code 根治层（压缩后自动重注入
-		// 完整接续上下文，不靠 agent 主动 forge task resume）。两 event 都是 Claude Code 特有
-		// lifecycle：codex/cursor 在 buildCodexHooks/buildCursorHooks 过滤，opencode 的 TS plugin
-		// 不读 ForgeHookSpec（只 wire tool.execute.before 等价），故此链只对 claude-code 生效——
-		// 接受的边界（其余 host 靠 SessionStart 的 tl;dr tier 缓解）。
+		// PostCompact + UserPromptSubmit 构成 gap#2 的根治层（压缩后自动重注入
+		// 完整接续上下文，不靠 agent 主动 forge task resume）。宿主覆盖（2026-08
+		// 按官方文档核实，见 buildCodexHooks/cursorEventName）：claude-code 与
+		// codex 两个 event 都接；cursor 接 UserPromptSubmit（映射
+		// beforeSubmitPrompt）但没有 post-compaction 事件（preCompact 仅观察型，
+		// 承载不了重注入契约）；opencode 的 TS plugin 不读 ForgeHookSpec——
+		// cursor 在压缩场景靠 SessionStart 的 tl;dr tier 缓解。
 		"PostCompact": []HookMatcher{
 			{
 				Hooks: []HookEntry{

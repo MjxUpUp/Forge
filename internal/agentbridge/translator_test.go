@@ -75,10 +75,12 @@ func TestCodexWiringMirrorsClaudeSettings(t *testing.T) {
 	claude := hookCommandsByEvent(t, filepath.Join(claudeDir, ".claude", "settings.local.json"))
 	codex := hookCommandsByEvent(t, filepath.Join(codexHome, "hooks.json"))
 
-	// Codex models only PreToolUse/PostToolUse/Stop (no SessionStart lifecycle
-	// hook). For every event Codex declares, Claude Code must wire the SAME
-	// command set — drift in either direction fails. SessionStart/skill-scan is
-	// Claude-Code-only by design and is not compared (it has no Codex analogue).
+	// Codex's event names are the same PascalCase as Claude Code's (verified
+	// against https://developers.openai.com/codex/hooks), so for every event
+	// Codex declares, Claude Code must wire the SAME command set under the
+	// same event name — drift in either direction fails. The codex whitelist
+	// (buildCodexHooks) decides WHICH spec events are wired; this test guards
+	// that whatever is wired matches Claude exactly.
 	if len(codex) == 0 {
 		t.Fatal("codex wiring has no events — generator or parser broken")
 	}
@@ -106,46 +108,66 @@ func TestCodexWiringMirrorsClaudeSettings(t *testing.T) {
 	}
 }
 
-// TestCodexHooksExcludeSessionLifecycle guards the gap#2 cross-host boundary: the
-// claude-code-specific SessionStart/PostCompact/UserPromptSubmit lifecycle (including
-// task-resume injection + compact-resume/resume-reinject reinjection chain) must be
-// excluded from the codex whitelist — codex has no compaction/prompt lifecycle; wiring
-// an unsupported event fails silently. TestCodexWiringMirrorsClaudeSettings only checks
-// "the command set codex declares is consistent" (subset assertion), not 「codex must
-// not declare some event」: if PostCompact were wrongly added back to the codex whitelist
-// and the command set happened to match, that test would still pass. This test adds
-// forward + reverse assertions to pin the whitelist down.
+// TestCodexHooks_OnlyLegalCodexEvents pins the codex event whitelist against the
+// official roster (https://developers.openai.com/codex/hooks): SessionStart,
+// SessionEnd, PreToolUse, PermissionRequest, PostToolUse, PreCompact, PostCompact,
+// UserPromptSubmit, SubagentStart, SubagentStop, Stop. Wiring an event outside
+// that roster would never fire (silent no-op), so any generated event not in the
+// roster fails. The six ForgeHookSpec events that HAVE a codex analogue must all
+// be present (PreToolUse/PostToolUse/Stop gates + SessionStart group +
+// UserPromptSubmit re-injection + PostCompact compact-resume); the codex-only
+// events without a spec counterpart (SessionEnd/PermissionRequest/PreCompact/
+// SubagentStart/SubagentStop) must stay absent. Modeled on
+// TestWindsurfHooks_OnlyLegalCascadeEvents.
 //
-// TestCodexHooksExcludeSessionLifecycle 守卫 gap#2 的跨 host 边界：claude-code 特有的
-// SessionStart/PostCompact/UserPromptSubmit lifecycle（含 task-resume 注入 + compact-resume/
-// resume-reinject 重注入链）必须被 codex 白名单排除——codex 无 compaction/prompt lifecycle，
-// 装上不支持的 event 会静默失效。TestCodexWiringMirrorsClaudeSettings 只查"codex 声明的 event
-// 命令集一致"（单子集断言），不查"codex 不该声明某 event"：若误把 PostCompact 加回 codex 白
-// 名单且命令集恰好一致，那条测试仍过。本测试补正向+反向断言，把白名单钉死。
-func TestCodexHooksExcludeSessionLifecycle(t *testing.T) {
+// TestCodexHooks_OnlyLegalCodexEvents 把 codex event 白名单钉在官方名册上
+// （https://developers.openai.com/codex/hooks）：SessionStart、SessionEnd、
+// PreToolUse、PermissionRequest、PostToolUse、PreCompact、PostCompact、
+// UserPromptSubmit、SubagentStart、SubagentStop、Stop。接名册外的 event 永远
+// 不触发（静默 no-op），故生成接线出现名册外 event 即失败。有 codex 对应物的
+// 六个 ForgeHookSpec event 必须全部在位（PreToolUse/PostToolUse/Stop 门禁 +
+// SessionStart 组 + UserPromptSubmit 重注入 + PostCompact compact-resume）；
+// 无 spec 对应物的 codex 侧 event（SessionEnd/PermissionRequest/PreCompact/
+// SubagentStart/SubagentStop）必须保持缺席。仿
+// TestWindsurfHooks_OnlyLegalCascadeEvents。
+func TestCodexHooks_OnlyLegalCodexEvents(t *testing.T) {
 	raw := buildCodexHooks()
 	hooksMap, ok := raw[`hooks`].(map[string][]hooks.HookMatcher)
 	if !ok {
 		t.Fatalf(`codex wiring shape unexpected: %T`, raw[`hooks`])
 	}
-	for _, banned := range []string{`SessionStart`, `PostCompact`, `UserPromptSubmit`} {
-		if _, present := hooksMap[banned]; present {
-			t.Errorf(`codex must not wire %s (claude-code-only lifecycle, no codex analogue)`, banned)
+	legal := map[string]bool{
+		"SessionStart": true, "SessionEnd": true,
+		"PreToolUse": true, "PermissionRequest": true, "PostToolUse": true,
+		"PreCompact": true, "PostCompact": true,
+		"UserPromptSubmit": true,
+		"SubagentStart":    true, "SubagentStop": true,
+		"Stop": true,
+	}
+	for event := range hooksMap {
+		if !legal[event] {
+			t.Errorf("illegal codex hook event %q (not in the official roster — never fires)", event)
 		}
 	}
-	for _, required := range []string{`PreToolUse`, `PostToolUse`, `Stop`} {
+	for _, required := range []string{`PreToolUse`, `PostToolUse`, `Stop`, `SessionStart`, `UserPromptSubmit`, `PostCompact`} {
 		if _, present := hooksMap[required]; !present {
-			t.Errorf(`codex must wire %s (block-enforcing gate): missing`, required)
+			t.Errorf(`codex must wire %s (has a ForgeHookSpec analogue): missing`, required)
+		}
+	}
+	for _, banned := range []string{`SessionEnd`, `PermissionRequest`, `PreCompact`, `SubagentStart`, `SubagentStop`} {
+		if _, present := hooksMap[banned]; present {
+			t.Errorf(`codex must not wire %s (no ForgeHookSpec analogue)`, banned)
 		}
 	}
 }
 
 // TestCursorWiringMirrorsClaudeSettings guards the sync between cursor.go
 // (buildCursorHooks) and hooks/settings.go (GenerateSettings). Cursor's
-// hooks.json is flat with camelCase event names (preToolUse/postToolUse/stop),
-// but the hook COMMANDS per event must match Claude Code's PascalCase wiring —
-// drift silently disables a gate on Cursor. Maps cursor events to Claude
-// events and asserts command-set equality. Parallel to TestCodexWiringMirrorsClaudeSettings.
+// hooks.json is flat with camelCase event names (preToolUse/sessionStart/
+// beforeSubmitPrompt/...), but the hook COMMANDS per event must match Claude
+// Code's PascalCase wiring — drift silently disables a gate on Cursor. Maps
+// cursor events to Claude events and asserts command-set equality. Parallel to
+// TestCodexWiringMirrorsClaudeSettings.
 func TestCursorWiringMirrorsClaudeSettings(t *testing.T) {
 	// Cursor registers at user level (~/.cursor/hooks.json) — isolate the home.
 	home := isolateHome(t)
@@ -159,11 +181,15 @@ func TestCursorWiringMirrorsClaudeSettings(t *testing.T) {
 	claude := hookCommandsByEvent(t, filepath.Join(claudeDir, ".claude", "settings.local.json"))
 	cursor := cursorHookCommandsByEvent(t, filepath.Join(home, ".cursor", "hooks.json"))
 
-	// Cursor camelCase → Claude PascalCase event mapping.
+	// Cursor camelCase → Claude PascalCase event mapping (verified against
+	// https://cursor.com/docs/agent/hooks). PostCompact has no Cursor analogue
+	// (only the observe-only preCompact) and is intentionally not wired.
 	eventMap := map[string]string{
-		"preToolUse":  "PreToolUse",
-		"postToolUse": "PostToolUse",
-		"stop":        "Stop",
+		"preToolUse":         "PreToolUse",
+		"postToolUse":        "PostToolUse",
+		"stop":               "Stop",
+		"sessionStart":       "SessionStart",
+		"beforeSubmitPrompt": "UserPromptSubmit",
 	}
 	if len(cursor) == 0 {
 		t.Fatal("cursor wiring has no events — generator or parser broken")
@@ -192,6 +218,54 @@ func TestCursorWiringMirrorsClaudeSettings(t *testing.T) {
 			if strings.Contains(cmd, "forge hook "+s) {
 				t.Errorf("sunk hook %q resurfaced in Cursor hooks: %s", s, cmd)
 			}
+		}
+	}
+}
+
+// TestCursorHooks_OnlyLegalCursorEvents pins the cursor event whitelist against
+// the official Cursor Agent roster (https://cursor.com/docs/agent/hooks). Wiring
+// an event outside that roster would never fire (silent no-op), so any generated
+// event not in the roster fails. The five ForgeHookSpec events with a Cursor
+// analogue must all be present; PostCompact must stay absent (Cursor ships only
+// the observe-only preCompact — it cannot carry compact-resume's re-injection
+// contract). Modeled on TestWindsurfHooks_OnlyLegalCascadeEvents.
+//
+// TestCursorHooks_OnlyLegalCursorEvents 把 cursor event 白名单钉在官方 Cursor
+// Agent 名册上（https://cursor.com/docs/agent/hooks）。接名册外的 event 永不
+// 触发（静默 no-op），故生成接线出现名册外 event 即失败。有 Cursor 对应物的
+// 五个 ForgeHookSpec event 必须全部在位；PostCompact 必须保持缺席（Cursor 只有
+// observe-only 的 preCompact——承载不了 compact-resume 的重注入契约）。仿
+// TestWindsurfHooks_OnlyLegalCascadeEvents。
+func TestCursorHooks_OnlyLegalCursorEvents(t *testing.T) {
+	raw := buildCursorHooks()
+	hooksMap, ok := raw[`hooks`].(map[string][]cursorHookEntry)
+	if !ok {
+		t.Fatalf(`cursor wiring shape unexpected: %T`, raw[`hooks`])
+	}
+	legal := map[string]bool{
+		"sessionStart": true, "sessionEnd": true,
+		"preToolUse": true, "postToolUse": true, "postToolUseFailure": true,
+		"subagentStart": true, "subagentStop": true,
+		"beforeShellExecution": true, "afterShellExecution": true,
+		"beforeMCPExecution": true, "afterMCPExecution": true,
+		"beforeReadFile": true, "afterFileEdit": true,
+		"beforeSubmitPrompt": true, "preCompact": true, "stop": true,
+		"afterAgentResponse": true, "afterAgentThought": true,
+		"beforeTabFileRead": true, "afterTabFileEdit": true,
+	}
+	for event := range hooksMap {
+		if !legal[event] {
+			t.Errorf("illegal cursor hook event %q (not in the official roster — never fires)", event)
+		}
+	}
+	for _, required := range []string{`preToolUse`, `postToolUse`, `stop`, `sessionStart`, `beforeSubmitPrompt`} {
+		if _, present := hooksMap[required]; !present {
+			t.Errorf(`cursor must wire %s (has a ForgeHookSpec analogue): missing`, required)
+		}
+	}
+	for _, banned := range []string{`postCompact`, `PostCompact`} {
+		if _, present := hooksMap[banned]; present {
+			t.Errorf(`cursor must not wire %s (no Cursor analogue — only observe-only preCompact exists)`, banned)
 		}
 	}
 }
