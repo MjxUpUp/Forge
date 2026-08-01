@@ -709,7 +709,23 @@ func TestIsMember_SymlinkResolved(t *testing.T) {
 	if !ok {
 		t.Fatalf("symlink 路径应命中成员: IsMember(%q) = (%q, false)", link, root)
 	}
-	if filepath.Clean(root) != filepath.Clean(real) {
-		t.Errorf("root = %q, want %q", root, real)
+	// Compare resolved physical paths: IsMember legitimately returns the lexical
+	// git root (link form), and on macOS t.TempDir() itself is /var→/private/var
+	// symlink form — lexical equality is the wrong assertion; physical identity
+	// is the contract.
+	//
+	// 比较解析后的物理路径：IsMember 返回字面 git root（link 形态）是合法的，
+	// 且 macOS 上 t.TempDir() 本身就是 /var→/private/var 的 symlink 形态——
+	// 字面相等是错误的断言，物理同一路径才是契约。
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(root): %v", err)
+	}
+	resolvedReal, err := filepath.EvalSymlinks(real)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(real): %v", err)
+	}
+	if resolvedRoot != resolvedReal {
+		t.Errorf("resolved root = %q, want %q（同一物理目录）", resolvedRoot, resolvedReal)
 	}
 }
