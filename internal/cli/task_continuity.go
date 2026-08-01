@@ -415,19 +415,28 @@ func renderHookReinject(root string) (string, error) {
 		taskpipeline.ConsumeResumeStale(root, sid)
 		return "", nil
 	}
-	stale := taskpipeline.ConsumeResumeStale(root, sid)
+	stale := false
 	if state.ResumeStale {
 		// Legacy task-scoped mark (no-session fallback or written by an older binary):
-		// honor it once and clear it.
+		// honor it once and clear it. Cleared FIRST, before consuming the sentinel: if the
+		// clear fails (lock timeout/disk error) we return with the sentinel UNTOUCHED, so
+		// the next prompt retries the re-injection — the error path must err toward
+		// injecting twice, never toward losing the one recovery (code-review P1).
 		//
 		// Legacy 的 task-scoped 标记（无 session 回落或旧版 binary 所留）：兑现一次并清零。
-		stale = true
+		// 先清零、后消费 sentinel：清零失败（锁超时/磁盘错误）时 sentinel 原样保留返回，
+		// 下个 prompt 重试重注入——错误路径宁可多注一次，绝不丢掉唯一的一次恢复
+		// （code-review P1）。
 		if err := taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
 			s.ResumeStale = false
 			return nil
 		}); err != nil {
 			return "", err
 		}
+		stale = true
+	}
+	if taskpipeline.ConsumeResumeStale(root, sid) {
+		stale = true
 	}
 	if !stale {
 		return "", nil

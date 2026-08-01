@@ -530,3 +530,67 @@ func TestDetectOriginTool_FallbackChain(t *testing.T) {
 		t.Errorf("claude-code 兜底: %q", got)
 	}
 }
+
+// TestRenderHookResume_MultiHostAttach (fix 1 end-to-end at Go level): a hook-spawned
+// kimi session (FORGE_SESSION_ID + FORGE_AGENT injected by runHook) auto-attaches with
+// the correct tool — before the fallback chain this was silently skipped.
+//
+// TestRenderHookResume_MultiHostAttach（修复 1 的 Go 层端到端）：hook 派生的 kimi
+// session（runHook 注入 FORGE_SESSION_ID + FORGE_AGENT）以正确工具自动锚定——
+// 加兜底链之前这一步被静默跳过。
+func TestRenderHookResume_MultiHostAttach(t *testing.T) {
+	root, _ := forgedatatest.RealProject(t)
+	state := &taskpipeline.TaskState{TaskRef: "feat/kimi-attach", Branch: "feat/kimi-attach", Goal: "多 host 锚定"}
+	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+		t.Fatalf("SaveTaskState: %v", err)
+	}
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
+	t.Setenv("FORGE_SESSION_ID", "kimi-sess-1")
+	t.Setenv("FORGE_AGENT", "kimi")
+
+	out, err := renderHookResume(root)
+	if err != nil {
+		t.Fatalf("renderHookResume: %v", err)
+	}
+	if !strings.HasPrefix(out, "PASS\n") {
+		t.Errorf("hook 输出须以 PASS 前缀开头，实得 %q", out)
+	}
+	reloaded, _ := taskpipeline.LoadTaskState(root, "feat/kimi-attach")
+	if reloaded == nil || !reloaded.HasSession("kimi-sess-1") {
+		t.Fatalf("kimi session 应被锚定，state=%v", reloaded)
+	}
+	for _, l := range reloaded.SessionLinks {
+		if l.SessionID == "kimi-sess-1" && l.Tool != "kimi" {
+			t.Errorf("锚定工具应为 kimi，实得 %q", l.Tool)
+		}
+	}
+}
+
+// TestRenderHookResume_AnchoredNoTool: an already-anchored session whose tool can no
+// longer be detected (sid only, no FORGE_AGENT/CLAUDE env) must not error, not
+// duplicate the link, and not misattribute — attach is a side action.
+//
+// TestRenderHookResume_AnchoredNoTool：已锚定的 session 在工具探测失败时（仅有 sid，
+// 无 FORGE_AGENT/CLAUDE env）不报错、不重复锚定、不错误归属——锚定是附加动作。
+func TestRenderHookResume_AnchoredNoTool(t *testing.T) {
+	root, _ := forgedatatest.RealProject(t)
+	state := &taskpipeline.TaskState{TaskRef: "feat/notool", Branch: "feat/notool", Goal: "锚定无工具"}
+	state.AddSession("kimi-sid", "kimi")
+	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+		t.Fatalf("SaveTaskState: %v", err)
+	}
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
+	t.Setenv("FORGE_AGENT", "")
+	t.Setenv("FORGE_SESSION_ID", "kimi-sid")
+
+	if _, err := renderHookResume(root); err != nil {
+		t.Fatalf("已锚定+无工具不应报错: %v", err)
+	}
+	reloaded, _ := taskpipeline.LoadTaskState(root, "feat/notool")
+	if reloaded == nil || len(reloaded.SessionLinks) != 1 {
+		t.Errorf("不应新增锚定（仍 1 条），state=%v", reloaded)
+	}
+	if reloaded.SessionLinks[0].Tool != "kimi" {
+		t.Errorf("既有锚定的工具归属不应被改写，实得 %q", reloaded.SessionLinks[0].Tool)
+	}
+}
