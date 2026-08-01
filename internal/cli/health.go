@@ -2,12 +2,10 @@ package cli
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/act"
-	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/health"
 	"github.com/spf13/cobra"
 )
@@ -31,16 +29,13 @@ var healthCmd = &cobra.Command{
 func runHealth(cmd *cobra.Command, args []string) error {
 	proj, err := findProject()
 	if err != nil {
-		// dogfood 5.2: uninitialized / non-git directories would surface a bare error like forgedata: cwd is not in a git repository,
-		// confusing users (AwesomeMutiAgent abandoned after 1 session). Show a friendly hint instead of a bare error.
+		// Non-registered directories surface ErrNoForgeConfig ("not a forge project;
+		// run `forge init` first") — an actionable message, no bare low-level error
+		// (dogfood 5.2: a bare "cwd is not in a git repository" confused users).
 		//
-		// dogfood 5.2：未 init / 非 git 目录裸报 "forgedata: cwd is not in a git repository"
-		// 让用户困惑（AwesomeMutiAgent 1 session 放弃）。友好提示而非裸 error。
-		if errors.Is(err, forgedata.ErrNotInGitRepo) {
-			fmt.Println("forge health 需在 git 项目内运行（聚合 ~/.forge/projects/<key>/ 的任务结论）。")
-			fmt.Println("当前目录不是 git 仓库。先 'git init' 再 'forge init' 启用，或切换到 git 项目目录。")
-			return nil
-		}
+		// 未登记目录报 ErrNoForgeConfig（"not a forge project; run forge init
+		// first"）——可行动的提示，不裸报底层错误（dogfood 5.2：裸报
+		// "cwd is not in a git repository" 曾让用户困惑）。
 		return err
 	}
 	cs, err := act.LoadAll(proj)

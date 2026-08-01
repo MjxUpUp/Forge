@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/act"
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/spf13/cobra"
@@ -62,6 +63,26 @@ func TestMain(m *testing.M) {
 	// 子进程（runForge 跑 forge 二进制）继承此 env。
 	os.Setenv("CLAUDE_CONFIG_DIR", tmpDir)
 
+	// Isolate the user HOME for subprocesses: after user-level-assets, init/sync write
+	// user-level assets (~/.codex/AGENTS.md, ~/.cursor/hooks.json, ~/.codeium/...,
+	// ~/.config/opencode/...) and DetectAgents scans user-level install dirs — without
+	// HOME isolation, tests would write into and detect the developer's real home.
+	// Windows uses USERPROFILE, unix HOME; CODEX_HOME is codex's own override.
+	//
+	// 为子进程隔离用户 HOME：user-level-assets 之后 init/sync 会写用户级资产
+	// （~/.codex/AGENTS.md、~/.cursor/hooks.json、~/.codeium/...、
+	// ~/.config/opencode/...），DetectAgents 会扫用户级安装目录——不隔离 HOME，
+	// 测试会写入并检测到开发者的真实 home。Windows 用 USERPROFILE，unix 用 HOME；
+	// CODEX_HOME 是 codex 自己的覆盖。
+	homeDir := filepath.Join(tmpDir, "home")
+	if err := os.MkdirAll(homeDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create isolated home: %v\n", err)
+		os.Exit(1)
+	}
+	os.Setenv("HOME", homeDir)
+	os.Setenv("USERPROFILE", homeDir)
+	os.Setenv("CODEX_HOME", filepath.Join(homeDir, ".codex"))
+
 	code := m.Run()
 	os.RemoveAll(tmpDir)
 	os.Exit(code)
@@ -100,18 +121,23 @@ func TestInitCreatesFiles(t *testing.T) {
 		t.Fatalf("forge init exit code %d, output: %s", code, stdout)
 	}
 
-	// The number of .sh files under .forge/hooks/ must equal hooks.HookNames() (single
+	// The number of .sh files under DataDir/hooks/ must equal hooks.HookNames() (single
 	// source of truth). Adding/removing a hook only changes HookNames() in settings.go,
 	// and this test follows automatically — to avoid the sync gap of "added a hook but
 	// forgot to update a hardcoded expected count" (we once hand-edited 10 to 11).
 	// History: session-health/test-coverage-check were removed (noise); tool-track was
 	// deleted in 644b142 and restored (task-verify gate depends on its Read records).
+	// user-level-assets: hook reference copies live in the user-level DataDir
+	// (FORGE_DATA_HOME is TestMain-isolated; non-git dir → PathKey).
 	//
-	// .forge/hooks/ 下的 .sh 数必须等于 hooks.HookNames()（单一真相源）。加/删 hook 只改
+	// DataDir/hooks/ 下的 .sh 数必须等于 hooks.HookNames()（单一真相源）。加/删 hook 只改
 	// settings.go 的 HookNames()，本测试自动跟随——避免"加 hook 后忘改硬编码期望数"的同步漏
 	// （曾因此把 10 手改成 11）。历史：session-health/test-coverage-check 已移除（噪声），
 	// tool-track 曾在 644b142 删除后恢复（task-verify gate 依赖其 Read 记录）。
-	hooksDir := filepath.Join(tmpDir, ".forge", "hooks")
+	// user-level-assets：hook 参考副本在用户级 DataDir（FORGE_DATA_HOME 已被 TestMain
+	// 隔离；非 git 目录 → PathKey）。
+	dataDir := forgedata.DataDirFor(tmpDir)
+	hooksDir := filepath.Join(dataDir, "hooks")
 	entries, err := os.ReadDir(hooksDir)
 	if err != nil {
 		t.Fatalf("failed to read hooks dir: %v", err)
@@ -126,32 +152,23 @@ func TestInitCreatesFiles(t *testing.T) {
 		t.Fatalf("expected %d .sh files in hooks/ (== len(hooks.HookNames())), got %d", want, shCount)
 	}
 
-	// .claude/settings.local.json exists
-	settingsFile := filepath.Join(tmpDir, ".claude", "settings.local.json")
-	if _, err := os.Stat(settingsFile); err != nil {
-		t.Fatalf(".claude/settings.local.json not found: %v", err)
-	}
-
-	// .forge/protocol.yml exists
-	protoFile := filepath.Join(tmpDir, ".forge", "protocol.yml")
+	// protocol.yml lives in the user-level DataDir (zero-project-write default).
+	//
+	// protocol.yml 在用户级 DataDir（零项目写入默认）。
+	protoFile := filepath.Join(dataDir, "protocol.yml")
 	if _, err := os.Stat(protoFile); err != nil {
-		t.Fatalf(".forge/protocol.yml not found: %v", err)
+		t.Fatalf("DataDir/protocol.yml not found: %v", err)
 	}
 
-	// NOTE: .forge/tasks/ is no longer created by init — task state migrated
-	// to the user-level DataDir (refactor-data-home), created on demand by
-	// SaveTaskState. Asserting it here would lock the old (wrong) semantics.
-
-	// .claude/skills/forge-quality/SKILL.md exists
-	qualitySkillFile := filepath.Join(tmpDir, ".claude", "skills", "forge-quality", "SKILL.md")
-	if _, err := os.Stat(qualitySkillFile); err != nil {
-		t.Fatalf(".claude/skills/forge-quality/SKILL.md not found: %v", err)
-	}
-
-	// .claude/CLAUDE.md exists
-	claudeMDFile := filepath.Join(tmpDir, ".claude", "CLAUDE.md")
-	if _, err := os.Stat(claudeMDFile); err != nil {
-		t.Fatalf(".claude/CLAUDE.md not found: %v", err)
+	// Zero project writes: init must leave the project directory untouched — no
+	// .forge/, no .claude/, no AGENTS.md (user-level-assets contract).
+	//
+	// 零项目写入：init 不得动项目目录——无 .forge/、无 .claude/、无 AGENTS.md
+	// （user-level-assets 契约）。
+	for _, name := range []string{".forge", ".claude", "AGENTS.md", ".cursor", ".codex"} {
+		if _, err := os.Stat(filepath.Join(tmpDir, name)); !os.IsNotExist(err) {
+			t.Errorf("init must not write %s into the project dir (zero-project-write)", name)
+		}
 	}
 }
 
@@ -458,9 +475,9 @@ func TestInitProtocolScoringConfig(t *testing.T) {
 		t.Fatalf("forge init failed: %s", stdout)
 	}
 
-	protoData, err := os.ReadFile(filepath.Join(tmpDir, ".forge", "protocol.yml"))
+	protoData, err := os.ReadFile(filepath.Join(forgedata.DataDirFor(tmpDir), "protocol.yml"))
 	if err != nil {
-		t.Fatalf("protocol.yml not found: %v", err)
+		t.Fatalf("protocol.yml not found in DataDir: %v", err)
 	}
 	protoStr := string(protoData)
 	if !strings.Contains(protoStr, "scoring:") {
@@ -586,20 +603,31 @@ func TestInitWithAgents(t *testing.T) {
 		t.Fatalf("forge init --agents cursor,copilot failed: %s", stdout)
 	}
 
-	// Verify .cursor/rules/forge-quality.mdc was created
-	cursorFile := filepath.Join(tmpDir, ".cursor", "rules", "forge-quality.mdc")
-	if data, err := os.ReadFile(cursorFile); err != nil {
-		t.Fatalf("cursor rules file not created: %v", err)
-	} else if !strings.Contains(string(data), "alwaysApply: true") {
-		t.Fatal("cursor rules file missing frontmatter")
+	// Cursor registers at user level (~/.cursor/hooks.json) — the project-level
+	// .cursor/rules/forge-quality.mdc is gone (zero-project-write). HOME is
+	// TestMain-isolated.
+	//
+	// Cursor 在用户级注册（~/.cursor/hooks.json）——项目级
+	// .cursor/rules/forge-quality.mdc 已不存在（零项目写入）。HOME 已被 TestMain 隔离。
+	home := os.Getenv("HOME")
+	cursorHooks := filepath.Join(home, ".cursor", "hooks.json")
+	data, err := os.ReadFile(cursorHooks)
+	if err != nil {
+		t.Fatalf("cursor user-level hooks.json not created: %v", err)
+	}
+	if !strings.Contains(string(data), "forge hook task-guard") {
+		t.Error("cursor user-level hooks.json missing forge hook wiring")
 	}
 
-	// Verify .github/instructions/forge-quality.instructions.md was created
-	copilotFile := filepath.Join(tmpDir, ".github", "instructions", "forge-quality.instructions.md")
-	if data, err := os.ReadFile(copilotFile); err != nil {
-		t.Fatalf("copilot instructions file not created: %v", err)
-	} else if !strings.Contains(string(data), "applyTo:") {
-		t.Fatal("copilot instructions file missing frontmatter")
+	// Zero project writes for both agents: no .cursor/ (cursor guidance moved to
+	// the skillgen/user level), no .github/ (copilot translator is a no-op).
+	//
+	// 两个 agent 都零项目写入：无 .cursor/（cursor guidance 移到 skillgen/用户级），
+	// 无 .github/（copilot translator 是 no-op）。
+	for _, name := range []string{".cursor", ".github"} {
+		if _, err := os.Stat(filepath.Join(tmpDir, name)); !os.IsNotExist(err) {
+			t.Errorf("init --agents must not write %s into the project dir (zero-project-write)", name)
+		}
 	}
 }
 

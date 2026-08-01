@@ -11,6 +11,25 @@ import (
 //
 // chdirTo 还原原 cwd（t.Cleanup），让 Find 的 os.Getwd 测试不污染其他测试。
 // 不调 t.Parallel——os.Chdir 是进程全局，并行会互相踩。
+
+// TestMain isolates the global forge home: Find self-heals by registering legacy
+// .forge/ hits into the registry (~/.forge/projects.json) — without isolation,
+// in-process tests would write the REAL registry and register the repo itself.
+//
+// TestMain 隔离全局 forge home：Find 会把遗留 .forge/ 命中自愈登记进注册表
+// （~/.forge/projects.json）——不隔离的话，进程内测试会写真实注册表并登记
+// 仓库自身。
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "forge-projectroot-test")
+	if err != nil {
+		panic(err)
+	}
+	os.Setenv("FORGE_DATA_HOME", dir)
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
+}
+
 func chdirTo(t *testing.T, dir string) {
 	t.Helper()
 	wd, err := os.Getwd()
@@ -124,38 +143,60 @@ func TestFind_NotInForgeProject(t *testing.T) {
 	}
 }
 
-// TestIsProjectRoot_ExcludesHome: directly exercises the home-exclusion logic (no cwd/env dependency).
-// home's .forge/ is a global state dir (knowledge/hooks/skills), not a project root — must be excluded;
-// .forge/ under a home subdir is a legitimate project root — must not be falsely rejected.
+// TestLegacyFind_Boundaries: the legacy walk-up must (a) stop at the effective user
+// home (~/.forge there is the global store, not a project), (b) skip any .forge/
+// containing projects.json (the global store, content-sniffed — covers HOME-overridden
+// environments where the effective-home comparison no longer helps), and (c) still
+// accept a legitimate project .forge/ under home.
 //
-// TestIsProjectRoot_ExcludesHome：直接测 home 排除逻辑（不依赖 cwd/环境）。
-// home 的 .forge/ 是全局状态目录（knowledge/hooks/skills），不是项目根——必须排除；
-// home 子目录下的 .forge/ 是合法项目根——不能误杀。
-func TestIsProjectRoot_ExcludesHome(t *testing.T) {
+// TestLegacyFind_Boundaries：遗留 walk-up 必须 (a) 到有效用户 home 即停（那里的
+// ~/.forge 是全局 store，不是项目），(b) 跳过内含 projects.json 的 .forge/
+// （内容嗅探出的全局 store——覆盖 HOME 被覆盖、有效 home 比较失效的环境），
+// (c) 仍接受 home 下合法的项目 .forge/。
+func TestLegacyFind_Boundaries(t *testing.T) {
 	home := t.TempDir()
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOME", home)
+
+	// (a) home itself carries .forge (the global store) → boundary, no match.
+	//
+	// (a) home 自身带 .forge（全局 store）→ 边界，不命中。
 	if err := os.MkdirAll(filepath.Join(home, ".forge"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if isProjectRoot(home, home) {
-		t.Error("home 的 .forge 应被排除（全局状态目录 ≠ 项目根）")
+	if _, ok := legacyFind(home); ok {
+		t.Error("home 的 .forge 应被边界挡住（全局状态目录 ≠ 项目根）")
 	}
 
-	// .forge/ under a home subdir is still a legitimate project root (projects often live under home, e.g. ~/projects/x).
+	// (c) .forge/ under a home subdir is a legitimate project root.
 	//
-	// home 子目录下的 .forge/ 仍是合法项目根（项目常就在 home 下，如 ~/projects/x）。
+	// (c) home 子目录下的 .forge/ 是合法项目根。
 	proj := filepath.Join(home, "proj")
 	if err := os.MkdirAll(filepath.Join(proj, ".forge"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if !isProjectRoot(proj, home) {
-		t.Error("home 子目录的 .forge 是合法项目根，不应被排除")
+	got, ok := legacyFind(proj)
+	if !ok || !samePath(got, proj) {
+		t.Errorf("home 子目录的 .forge 是合法项目根，got %q ok=%v", got, ok)
 	}
 
-	// A dir without .forge/ → not a project root.
+	// (b) a .forge/ containing projects.json is the global store → rejected even
+	// when it is NOT the effective home (HOME-overridden trap).
 	//
-	// 无 .forge/ 的目录 → 非项目根。
-	bare := t.TempDir()
-	if isProjectRoot(bare, home) {
-		t.Error("无 .forge/ 的目录不应判为项目根")
+	// (b) 内含 projects.json 的 .forge/ 是全局 store——即使不是有效 home 也拒判
+	// （HOME 被覆盖的陷阱）。
+	store := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(store, ".forge"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(store, ".forge", "projects.json"), []byte(`{"projects":[]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	under := filepath.Join(store, "sub", "dir")
+	if err := os.MkdirAll(under, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := legacyFind(under); ok {
+		t.Error("内含 projects.json 的 .forge 应判为全局 store，不应命中")
 	}
 }

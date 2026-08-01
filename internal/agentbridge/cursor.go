@@ -11,25 +11,49 @@ import (
 	"github.com/MjxUpUp/Forge/internal/protocol"
 )
 
-// CursorTranslator generates .cursor/hooks.json (real, block-capable lifecycle hooks)
-// and .cursor/rules/forge-quality.mdc (guidance fallback). Cursor ships Claude-Code-compatible
-// lifecycle hooks (exit 2 = deny), so alongside claude-code/codex it is an agent where Forge
+// CursorTranslator wires forge hooks into cursor's USER-LEVEL hooks.json
+// (~/.cursor/hooks.json — Cursor natively supports user-level hooks alongside the
+// project-level .cursor/hooks.json). Cursor ships Claude-Code-compatible lifecycle
+// hooks (exit 2 = deny), so alongside claude-code/codex it is an agent where Forge
 // gates actually enforce rather than merely suggest.
 //
-// CursorTranslator 生成 .cursor/hooks.json（真实、可 block 的 lifecycle hooks）与
-// .cursor/rules/forge-quality.mdc（guidance 兜底）。Cursor 内置与 Claude Code 兼容的
-// lifecycle hooks（exit 2 = deny），故与 claude-code/codex 并列，是 Forge gate 真正
-// enforce 而非仅 suggest 的 agent。
+// The user-level location mirrors the kimi/claude-code model: one machine-wide
+// registration instead of a per-project copy, so forge init/sync no longer writes into
+// the project directory (user-level assets migration). The project-level
+// .cursor/rules/forge-quality.mdc guidance file is no longer generated here either —
+// instruction text is unified by the skillgen layer. Existing project-level files are
+// left untouched (cleanup is the uninstall/cleanup layer's job, not the translator's).
+//
+// Merge semantics: entries whose command is not forge-sourced (see
+// isForgeBridgeCommand) are preserved verbatim; forge entries are replaced wholesale
+// with the current generated set, making Translate idempotent.
+//
+// CursorTranslator 把 forge hook 接线进 cursor 的 user-level hooks.json
+// （~/.cursor/hooks.json——Cursor 官方支持 user-level hooks，与项目级
+// .cursor/hooks.json 并存）。Cursor 内置与 Claude Code 兼容的 lifecycle hooks
+// （exit 2 = deny），故与 claude-code/codex 并列，是 Forge gate 真正 enforce 而非
+// 仅 suggest 的 agent。
+//
+// 用户级路径对齐 kimi/claude-code 模型：一份全机器注册替代逐项目副本，forge
+// init/sync 不再写项目目录（用户级资产迁移）。项目级 .cursor/rules/forge-quality.mdc
+// guidance 文件也不再由此生成——指令文本由 skillgen 层统一处理。既有项目级文件不动
+// （清理由卸载/清理层负责，translator 不管）。
+//
+// merge 语义：command 非 forge 来源的条目（见 isForgeBridgeCommand）原样保留；
+// forge 条目整体替换为当前生成集，Translate 幂等。
 type CursorTranslator struct{}
 
 func (t *CursorTranslator) Translate(projectDir string, input *TranslationInput) error {
-	if input.Protocol == nil {
-		return fmt.Errorf("cursor: protocol is required")
+	// User-level translator: projectDir is intentionally ignored — the registration is
+	// machine-wide (same contract as KimiTranslator).
+	//
+	// 用户级 translator：刻意忽略 projectDir——注册是全机器生效（与 KimiTranslator 同契约）。
+	path, err := CursorHooksPath()
+	if err != nil {
+		return fmt.Errorf("cursor: %w", err)
 	}
-
-	cursorDir := filepath.Join(projectDir, ".cursor")
-	if err := os.MkdirAll(cursorDir, 0755); err != nil {
-		return fmt.Errorf("cursor: failed to create .cursor dir: %w", err)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("cursor: failed to create config dir: %w", err)
 	}
 
 	// Real lifecycle hooks — the actual enforcement interface. Cursor native hooks.json is a
@@ -41,27 +65,16 @@ func (t *CursorTranslator) Translate(projectDir string, input *TranslationInput)
 	// （hooks.<event>[].{command,matcher}），event 名为 camelCase，stdin/exit-code 协议
 	// 与 Claude Code 兼容，故同一批 `forge hook <name>` 命令原样跑，exit 2 即 block
 	// 该工具调用（deny）。
-	hooksData, err := json.MarshalIndent(buildCursorHooks(), "", "  ")
+	existing, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("cursor: failed to read hooks.json: %w", err)
+	}
+	merged, err := mergeCursorHooks(existing)
 	if err != nil {
-		return fmt.Errorf("cursor: marshal hooks.json: %w", err)
+		return err
 	}
-	if err := os.WriteFile(filepath.Join(cursorDir, "hooks.json"), append(hooksData, '\n'), 0644); err != nil {
-		return fmt.Errorf("cursor: write hooks.json: %w", err)
-	}
-
-	// Guidance rules as fallback: for Cursor versions without hook support, or when the
-	// tool-name matcher misses (Cursor tool names may differ from Claude Code). The .mdc
-	// still tells the agent the rules.
-	//
-	// Guidance 规则作为兜底：用于不支持 hook 的 Cursor 版本，或 tool-name matcher
-	// 未命中时（Cursor 的 tool 名可能与 Claude Code 不同）。.mdc 仍把规则告知 agent。
-	rulesDir := filepath.Join(cursorDir, "rules")
-	if err := os.MkdirAll(rulesDir, 0755); err != nil {
-		return fmt.Errorf("cursor: failed to create rules dir: %w", err)
-	}
-	content := buildCursorMDC(input)
-	if err := os.WriteFile(filepath.Join(rulesDir, "forge-quality.mdc"), []byte(content), 0644); err != nil {
-		return fmt.Errorf("cursor: write forge-quality.mdc: %w", err)
+	if err := os.WriteFile(path, merged, 0644); err != nil {
+		return fmt.Errorf("cursor: failed to write hooks.json: %w", err)
 	}
 	return nil
 }
@@ -70,6 +83,181 @@ func (t *CursorTranslator) AgentType() AgentType {
 	return AgentCursor
 }
 
+// CursorHooksPath resolves the user-level hooks.json path (~/.cursor/hooks.json).
+// Cursor has no documented env override for its config home, so the path derives from
+// the user home directly.
+//
+// CursorHooksPath 解析 user-level hooks.json 路径（~/.cursor/hooks.json）。Cursor
+// 没有官方文档化的 config home env 覆盖，故路径直接由用户 home 派生。
+func CursorHooksPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve user home: %w", err)
+	}
+	return filepath.Join(home, ".cursor", "hooks.json"), nil
+}
+
+// mergeCursorHooks merges the generated forge wiring into an existing cursor
+// hooks.json. Unknown top-level fields (version, user keys) are preserved via
+// json.RawMessage; within the flat hooks section, entries whose command is not
+// forge-sourced are kept in place, and forge entries are replaced wholesale with the
+// current generated set. The output is deterministic, so Translate is idempotent.
+// A nil/empty existing input produces a fresh file (carrying version:1).
+//
+// mergeCursorHooks 把生成的 forge 接线合并进已有的 cursor hooks.json。未知顶层字段
+// （version、用户自定义 key）经 json.RawMessage 保留；扁平 hooks 段内，command 非
+// forge 来源的条目原地保留，forge 条目整体替换为当前生成集。输出确定，故
+// Translate 幂等。existing 为 nil/空时生成新文件（带 version:1）。
+func mergeCursorHooks(existing []byte) ([]byte, error) {
+	cfg := map[string]json.RawMessage{}
+	if len(existing) > 0 {
+		if err := json.Unmarshal(existing, &cfg); err != nil {
+			return nil, fmt.Errorf("cursor: parse existing hooks.json: %w", err)
+		}
+	}
+	if _, ok := cfg["version"]; !ok {
+		versionJSON, err := json.Marshal(1)
+		if err != nil {
+			return nil, fmt.Errorf("cursor: marshal version: %w", err)
+		}
+		cfg["version"] = versionJSON
+	}
+	kept := map[string][]cursorHookEntry{}
+	if raw, ok := cfg["hooks"]; ok {
+		var flat map[string][]cursorHookEntry
+		if err := json.Unmarshal(raw, &flat); err != nil {
+			return nil, fmt.Errorf("cursor: parse existing hooks section: %w", err)
+		}
+		kept = stripForgeCursorEntries(flat)
+	}
+	generated, err := cursorGeneratedEntries()
+	if err != nil {
+		return nil, err
+	}
+	for event, entries := range generated {
+		kept[event] = append(kept[event], entries...)
+	}
+	hooksJSON, err := json.Marshal(kept)
+	if err != nil {
+		return nil, fmt.Errorf("cursor: marshal merged hooks: %w", err)
+	}
+	cfg["hooks"] = hooksJSON
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("cursor: marshal hooks.json: %w", err)
+	}
+	return append(data, '\n'), nil
+}
+
+// cursorGeneratedEntries returns the generated forge wiring as typed flat entries
+// (the typed form of buildCursorHooks' hooks section), for mergeCursorHooks.
+//
+// cursorGeneratedEntries 以类型化扁平 entry 形式返回生成的 forge 接线
+// （buildCursorHooks hooks 段的类型化形态），供 mergeCursorHooks 使用。
+func cursorGeneratedEntries() (map[string][]cursorHookEntry, error) {
+	raw, err := json.Marshal(buildCursorHooks()["hooks"])
+	if err != nil {
+		return nil, fmt.Errorf("cursor: marshal generated hooks: %w", err)
+	}
+	var flat map[string][]cursorHookEntry
+	if err := json.Unmarshal(raw, &flat); err != nil {
+		return nil, fmt.Errorf("cursor: reparse generated hooks: %w", err)
+	}
+	return flat, nil
+}
+
+// stripForgeCursorEntries removes every forge-sourced entry (and the events left
+// empty by the removal) from cursor's flat hooks map. User-defined entries are
+// preserved in their original order. Shared by cursor's merge and strip paths.
+//
+// stripForgeCursorEntries 从 cursor 扁平 hooks map 中移除所有 forge 来源的条目
+// （以及因此被掏空的 event）。用户自定义条目按原顺序保留。cursor 的 merge 与
+// strip 两条路径共用。
+func stripForgeCursorEntries(flat map[string][]cursorHookEntry) map[string][]cursorHookEntry {
+	kept := make(map[string][]cursorHookEntry, len(flat))
+	for event, entries := range flat {
+		var keptEntries []cursorHookEntry
+		for _, e := range entries {
+			if isForgeBridgeCommand(e.Command) {
+				continue
+			}
+			keptEntries = append(keptEntries, e)
+		}
+		if len(keptEntries) > 0 {
+			kept[event] = keptEntries
+		}
+	}
+	return kept
+}
+
+// StripCursorHooksUserLevel removes forge hooks from the user-level ~/.cursor/hooks.json
+// (uninstall path). User-defined entries and unknown top-level fields are preserved;
+// the file itself is never deleted. Reports whether the file was actually modified;
+// a missing file or a file without forge hooks is a clean no-op.
+//
+// StripCursorHooksUserLevel 移除 user-level ~/.cursor/hooks.json 中的 forge hooks
+// （卸载路径）。用户自定义条目与未知顶层字段保留；文件本身绝不删除。返回是否实际
+// 改动了文件；文件不存在或无 forge hooks 均为干净 no-op。
+func StripCursorHooksUserLevel() (bool, error) {
+	path, err := CursorHooksPath()
+	if err != nil {
+		return false, err
+	}
+	existing, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("cursor: failed to read hooks.json: %w", err)
+	}
+	cfg := map[string]json.RawMessage{}
+	if err := json.Unmarshal(existing, &cfg); err != nil {
+		return false, fmt.Errorf("cursor: parse existing hooks.json: %w", err)
+	}
+	raw, ok := cfg["hooks"]
+	if !ok {
+		return false, nil
+	}
+	var flat map[string][]cursorHookEntry
+	if err := json.Unmarshal(raw, &flat); err != nil {
+		return false, fmt.Errorf("cursor: parse existing hooks section: %w", err)
+	}
+	hasForge := false
+	for _, entries := range flat {
+		for _, e := range entries {
+			if isForgeBridgeCommand(e.Command) {
+				hasForge = true
+				break
+			}
+		}
+	}
+	if !hasForge {
+		return false, nil
+	}
+	kept := stripForgeCursorEntries(flat)
+	hooksJSON, err := json.Marshal(kept)
+	if err != nil {
+		return false, fmt.Errorf("cursor: marshal stripped hooks: %w", err)
+	}
+	cfg["hooks"] = hooksJSON
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return false, fmt.Errorf("cursor: marshal hooks.json: %w", err)
+	}
+	if err := os.WriteFile(path, append(data, '\n'), 0644); err != nil {
+		return false, fmt.Errorf("cursor: failed to write hooks.json: %w", err)
+	}
+	return true, nil
+}
+
+// buildCursorMDC renders the forge-quality guidance rules in Cursor's .mdc format.
+// It is no longer written by Translate (project-level instruction files are unified
+// by the skillgen layer); the renderer is retained for that layer and for the
+// render-convergence guard (TestProtocolRenderConvergence).
+//
+// buildCursorMDC 以 Cursor 的 .mdc 格式渲染 forge-quality guidance 规则。Translate
+// 不再写它（项目级指令文件由 skillgen 层统一）；渲染器保留给该层与渲染一致性守卫
+// （TestProtocolRenderConvergence）使用。
 func buildCursorMDC(input *TranslationInput) string {
 	var sb strings.Builder
 

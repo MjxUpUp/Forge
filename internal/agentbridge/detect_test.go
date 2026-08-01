@@ -7,6 +7,7 @@ import (
 )
 
 func TestDetectAgents_None(t *testing.T) {
+	isolateHome(t) // DetectAgents also scans user-level install dirs — keep the real home out
 	dir := t.TempDir()
 	agents := DetectAgents(dir)
 	if len(agents) != 0 {
@@ -15,6 +16,7 @@ func TestDetectAgents_None(t *testing.T) {
 }
 
 func TestDetectAgents_ClaudeCode(t *testing.T) {
+	isolateHome(t) // DetectAgents also scans user-level install dirs — keep the real home out
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, ".claude"), 0755)
 
@@ -25,6 +27,7 @@ func TestDetectAgents_ClaudeCode(t *testing.T) {
 }
 
 func TestDetectAgents_Cursor(t *testing.T) {
+	isolateHome(t) // DetectAgents also scans user-level install dirs — keep the real home out
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, ".cursor"), 0755)
 
@@ -35,6 +38,7 @@ func TestDetectAgents_Cursor(t *testing.T) {
 }
 
 func TestDetectAgents_Copilot(t *testing.T) {
+	isolateHome(t) // DetectAgents also scans user-level install dirs — keep the real home out
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, ".github", "instructions"), 0755)
 
@@ -45,6 +49,7 @@ func TestDetectAgents_Copilot(t *testing.T) {
 }
 
 func TestDetectAgents_Windsurf(t *testing.T) {
+	isolateHome(t) // DetectAgents also scans user-level install dirs — keep the real home out
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, ".windsurfrules"), []byte("rules"), 0644)
 
@@ -55,6 +60,7 @@ func TestDetectAgents_Windsurf(t *testing.T) {
 }
 
 func TestDetectAgents_Multiple(t *testing.T) {
+	isolateHome(t) // DetectAgents also scans user-level install dirs — keep the real home out
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, ".claude"), 0755)
 	os.MkdirAll(filepath.Join(dir, ".cursor"), 0755)
@@ -70,6 +76,7 @@ func TestDetectAgents_Multiple(t *testing.T) {
 }
 
 func TestParseAgentFlag_Auto(t *testing.T) {
+	isolateHome(t) // DetectAgents also scans user-level install dirs — keep the real home out
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, ".claude"), 0755)
 
@@ -99,6 +106,7 @@ func TestParseAgentFlag_Unknown(t *testing.T) {
 }
 
 func TestDetectAgents_Codex(t *testing.T) {
+	isolateHome(t) // DetectAgents also scans user-level install dirs — keep the real home out
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, ".codex"), 0755)
 
