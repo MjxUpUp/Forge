@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/MjxUpUp/Forge/internal/userassets"
 )
 
 // embeddedHooks maps each script name (without the .sh suffix) to its embedded content.
@@ -233,42 +235,73 @@ func GenerateSettings(projectDir string) error {
 // GenerateUserSettings merges ForgeHookSpec into the user-level Claude settings
 // (~/.claude/settings.json, respecting CLAUDE_CONFIG_DIR via ClaudeHome()). Merge
 // semantics are identical to GenerateSettings (json.RawMessage preserves the user's
-// other top-level fields, only the hooks section is replaced) — both are thin path
-// wrappers over mergeForgeHooksIntoSettings. The user-level file is settings.json
+// other top-level fields, and within the hooks section user-defined entries are
+// kept — only forge-sourced entries are replaced) — both are thin path wrappers
+// over mergeForgeHooksIntoSettings. The user-level file is settings.json
 // (not settings.local.json): it is the machine-wide settings file Claude Code reads
-// for every project. Callers back up the file before invoking this (backup is the
-// caller's responsibility, not handled here).
+// for every project. The file is backed up via userassets.BackupOriginal BEFORE
+// the first write (first backup wins as the rollback anchor; rollback via
+// `forge uninstall --restore`).
 //
 // GenerateUserSettings 把 ForgeHookSpec 合并进 user-level Claude settings
 // （~/.claude/settings.json，经 ClaudeHome() 尊重 CLAUDE_CONFIG_DIR）。merge 语义与
-// GenerateSettings 完全一致（json.RawMessage 保留用户其他顶层字段，只替换 hooks 段）
-// ——两者都是 mergeForgeHooksIntoSettings 的薄路径封装。user-level 文件是
-// settings.json（非 settings.local.json）：Claude Code 对每个项目都读这份全机器
-// 配置。调用方负责写前备份（备份不在本函数内处理）。
+// GenerateSettings 完全一致（json.RawMessage 保留用户其他顶层字段，hooks 段内用户
+// 自定义条目保留——只替换 forge 来源条目）——两者都是 mergeForgeHooksIntoSettings
+// 的薄路径封装。user-level 文件是 settings.json（非 settings.local.json）：
+// Claude Code 对每个项目都读这份全机器配置。首次写入前经
+// userassets.BackupOriginal 备份（首次备份为回滚锚点；`forge uninstall --restore`
+// 回滚）。
 func GenerateUserSettings() error {
 	home := ClaudeHome()
 	if home == "" {
 		return fmt.Errorf("cannot resolve Claude config home (CLAUDE_CONFIG_DIR unset and user home unavailable)")
 	}
+	// Detection self-poison guard: DetectAgents treats "~/.claude exists" as
+	// "claude installed". Creating the dir on machines WITHOUT claude would make
+	// every later detection wire a non-existent tool. When CLAUDE_CONFIG_DIR is
+	// explicitly set the user (or test) has declared the location — write there;
+	// otherwise write only when ~/.claude already exists (claude installed).
+	//
+	// 检测自毒防线：DetectAgents 以"~/.claude 存在"判定"claude 已安装"。在
+	// 没装 claude 的机器上创建该目录会让后续检测误接一个不存在的工具。
+	// CLAUDE_CONFIG_DIR 显式设置时用户（或测试）已声明位置——写入；否则仅在
+	// ~/.claude 已存在（claude 已安装）时写入。
+	if os.Getenv("CLAUDE_CONFIG_DIR") == "" {
+		if info, err := os.Stat(home); err != nil || !info.IsDir() {
+			return nil
+		}
+	}
 	if err := os.MkdirAll(home, 0755); err != nil {
 		return fmt.Errorf("create Claude config dir: %w", err)
 	}
-	return mergeForgeHooksIntoSettings(filepath.Join(home, "settings.json"))
+	path := filepath.Join(home, "settings.json")
+	if err := userassets.BackupOriginal(path); err != nil {
+		return fmt.Errorf("backup user-level settings.json: %w", err)
+	}
+	return mergeForgeHooksIntoSettings(path)
 }
 
 // mergeForgeHooksIntoSettings reads the settings file at path, preserves all
 // top-level fields (user env/model etc.) via json.RawMessage — avoiding round-trip
-// serialization altering the user's field formatting — and replaces only the hooks
-// section with ForgeHookSpec. Overwriting the whole file would lose user
-// configuration (the 1.2.0 regression, fixed in 1.2.1 — see GenerateSettings).
+// serialization altering the user's field formatting — and MERGES the hooks section:
+// forge-sourced entries (isForgeHookCommand) are stripped from the existing section,
+// user-defined entries are kept verbatim (unknown fields intact — a typed round-trip
+// would silently drop them), then the current ForgeHookSpec entries are appended per
+// event (user entries first, forge entries after). Stripping before appending makes
+// regeneration idempotent. Replacing the whole hooks section would silently destroy
+// the user's own hooks; overwriting the whole file would lose user configuration
+// (the 1.2.0 regression, fixed in 1.2.1 — see GenerateSettings).
 // A missing file is created; a non-NotExist read/parse error is returned (never
 // silently overwrite unreadable user config).
 //
 // mergeForgeHooksIntoSettings 读 path 处的 settings 文件，用 json.RawMessage 保留
-// 所有顶层字段（用户 env/model 等）——避免往返序列化改动用户字段格式——只把 hooks
-// 段替换为 ForgeHookSpec。覆盖整个文件会丢失用户配置（1.2.0 回归，1.2.1 修——见
-// GenerateSettings）。文件不存在则新建；非 NotExist 的读/解析错误原样返回（绝不
-// 静默覆盖读不出的用户配置）。
+// 所有顶层字段（用户 env/model 等）——避免往返序列化改动用户字段格式——并**合并**
+// hooks 段：从既有段中剥除 forge 来源条目（isForgeHookCommand），用户自定义条目
+// 原样保留（未知字段不丢——类型化往返会静默剥掉它们），再把当前 ForgeHookSpec
+// 条目按事件追加（同事件下用户条目在前、forge 在后）。先剥后追加使重生成幂等。
+// 整段替换 hooks 会静默销毁用户自己的 hooks；整文件覆盖会丢失用户配置
+// （1.2.0 回归，1.2.1 修——见 GenerateSettings）。文件不存在则新建；
+// 非 NotExist 的读/解析错误原样返回（绝不静默覆盖读不出的用户配置）。
 func mergeForgeHooksIntoSettings(path string) error {
 	cfg := map[string]json.RawMessage{}
 	if existing, err := os.ReadFile(path); err == nil {
@@ -279,7 +312,26 @@ func mergeForgeHooksIntoSettings(path string) error {
 		return fmt.Errorf("read %s: %w", filepath.Base(path), err)
 	}
 
-	hooksJSON, err := json.Marshal(ForgeHookSpec())
+	kept := map[string][]json.RawMessage{}
+	if raw, ok := cfg["hooks"]; ok {
+		var spec map[string][]json.RawMessage
+		if err := json.Unmarshal(raw, &spec); err != nil {
+			return fmt.Errorf("parse existing hooks section in %s: %w", filepath.Base(path), err)
+		}
+		kept = stripForgeMatchersRaw(spec)
+	}
+	for event, matchers := range ForgeHookSpec() {
+		raw, err := json.Marshal(matchers)
+		if err != nil {
+			return fmt.Errorf("marshal generated hooks: %w", err)
+		}
+		var raws []json.RawMessage
+		if err := json.Unmarshal(raw, &raws); err != nil {
+			return fmt.Errorf("reparse generated hooks: %w", err)
+		}
+		kept[event] = append(kept[event], raws...)
+	}
+	hooksJSON, err := json.Marshal(kept)
 	if err != nil {
 		return fmt.Errorf("marshal hooks: %w", err)
 	}
@@ -290,6 +342,74 @@ func mergeForgeHooksIntoSettings(path string) error {
 		return fmt.Errorf("marshal settings: %w", err)
 	}
 	return os.WriteFile(path, data, 0644)
+}
+
+// stripForgeMatchersRaw removes forge-sourced hook entries (isForgeHookCommand) from
+// a Claude-Code-shaped nested {event: [matcher]} spec. User-defined entries keep
+// their original bytes (unknown fields intact); matchers/events left empty by the
+// removal are dropped. Mirrors agentbridge's raw strip helpers — duplicated here
+// because those are unexported and hooks must not import agentbridge (agentbridge
+// already imports hooks; the reverse would be a cycle).
+//
+// stripForgeMatchersRaw 从 Claude-Code 形嵌套 {event: [matcher]} spec 中移除 forge
+// 来源的 hook 条目（isForgeHookCommand）。用户自定义条目保留原始字节（未知字段
+// 不丢）；被掏空的 matcher/event 一并移除。镜像 agentbridge 的 raw strip helper——
+// 因那些 helper 未导出且 hooks 不能 import agentbridge（agentbridge 已 import
+// hooks，反向会成环）而在此复制。
+func stripForgeMatchersRaw(spec map[string][]json.RawMessage) map[string][]json.RawMessage {
+	kept := make(map[string][]json.RawMessage, len(spec))
+	for event, matchers := range spec {
+		var keptMatchers []json.RawMessage
+		for _, rawMatcher := range matchers {
+			var probe struct {
+				Hooks []json.RawMessage `json:"hooks"`
+			}
+			if err := json.Unmarshal(rawMatcher, &probe); err != nil || probe.Hooks == nil {
+				// Unparseable or hooks-less matcher — user content, keep as-is.
+				keptMatchers = append(keptMatchers, rawMatcher)
+				continue
+			}
+			var keptEntries []json.RawMessage
+			removed := false
+			for _, rawEntry := range probe.Hooks {
+				var cmd struct {
+					Command string `json:"command"`
+				}
+				if err := json.Unmarshal(rawEntry, &cmd); err == nil && isForgeHookCommand(cmd.Command) {
+					removed = true
+					continue
+				}
+				keptEntries = append(keptEntries, rawEntry)
+			}
+			if !removed {
+				keptMatchers = append(keptMatchers, rawMatcher)
+				continue
+			}
+			if len(keptEntries) == 0 {
+				continue // matcher held only forge entries — drop it
+			}
+			// Mixed matcher: rebuild it, preserving the matcher's other fields
+			// (matcher name, etc.) and the kept entries' raw bytes.
+			var obj map[string]json.RawMessage
+			if err := json.Unmarshal(rawMatcher, &obj); err != nil {
+				continue
+			}
+			entriesJSON, err := json.Marshal(keptEntries)
+			if err != nil {
+				continue
+			}
+			obj["hooks"] = entriesJSON
+			rebuilt, err := json.Marshal(obj)
+			if err != nil {
+				continue
+			}
+			keptMatchers = append(keptMatchers, rebuilt)
+		}
+		if len(keptMatchers) > 0 {
+			kept[event] = keptMatchers
+		}
+	}
+	return kept
 }
 
 // StripForgeHooks removes the forge hooks from projectDir/.claude/settings.local.json.

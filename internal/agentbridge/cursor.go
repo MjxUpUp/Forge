@@ -100,14 +100,16 @@ func CursorHooksPath() (string, error) {
 // mergeCursorHooks merges the generated forge wiring into an existing cursor
 // hooks.json. Unknown top-level fields (version, user keys) are preserved via
 // json.RawMessage; within the flat hooks section, entries whose command is not
-// forge-sourced are kept in place, and forge entries are replaced wholesale with the
-// current generated set. The output is deterministic, so Translate is idempotent.
+// forge-sourced are kept byte-for-byte (unknown entry fields intact — see
+// merge_raw.go), and forge entries are replaced wholesale with the current
+// generated set. The output is deterministic, so Translate is idempotent.
 // A nil/empty existing input produces a fresh file (carrying version:1).
 //
 // mergeCursorHooks 把生成的 forge 接线合并进已有的 cursor hooks.json。未知顶层字段
 // （version、用户自定义 key）经 json.RawMessage 保留；扁平 hooks 段内，command 非
-// forge 来源的条目原地保留，forge 条目整体替换为当前生成集。输出确定，故
-// Translate 幂等。existing 为 nil/空时生成新文件（带 version:1）。
+// forge 来源的条目逐字节保留（未知条目字段不丢——见 merge_raw.go），forge 条目
+// 整体替换为当前生成集。输出确定，故 Translate 幂等。existing 为 nil/空时生成
+// 新文件（带 version:1）。
 func mergeCursorHooks(existing []byte) ([]byte, error) {
 	cfg := map[string]json.RawMessage{}
 	if len(existing) > 0 {
@@ -122,17 +124,17 @@ func mergeCursorHooks(existing []byte) ([]byte, error) {
 		}
 		cfg["version"] = versionJSON
 	}
-	kept := map[string][]cursorHookEntry{}
+	kept := map[string][]json.RawMessage{}
 	if raw, ok := cfg["hooks"]; ok {
-		var flat map[string][]cursorHookEntry
+		var flat map[string][]json.RawMessage
 		if err := json.Unmarshal(raw, &flat); err != nil {
 			return nil, fmt.Errorf("cursor: parse existing hooks section: %w", err)
 		}
-		kept = stripForgeCursorEntries(flat)
+		kept, _ = stripForgeFlatEntriesRaw(flat)
 	}
-	generated, err := cursorGeneratedEntries()
+	generated, err := rawHooksSection(buildCursorHooks()["hooks"])
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cursor: marshal generated hooks: %w", err)
 	}
 	for event, entries := range generated {
 		kept[event] = append(kept[event], entries...)
@@ -149,55 +151,16 @@ func mergeCursorHooks(existing []byte) ([]byte, error) {
 	return append(data, '\n'), nil
 }
 
-// cursorGeneratedEntries returns the generated forge wiring as typed flat entries
-// (the typed form of buildCursorHooks' hooks section), for mergeCursorHooks.
-//
-// cursorGeneratedEntries 以类型化扁平 entry 形式返回生成的 forge 接线
-// （buildCursorHooks hooks 段的类型化形态），供 mergeCursorHooks 使用。
-func cursorGeneratedEntries() (map[string][]cursorHookEntry, error) {
-	raw, err := json.Marshal(buildCursorHooks()["hooks"])
-	if err != nil {
-		return nil, fmt.Errorf("cursor: marshal generated hooks: %w", err)
-	}
-	var flat map[string][]cursorHookEntry
-	if err := json.Unmarshal(raw, &flat); err != nil {
-		return nil, fmt.Errorf("cursor: reparse generated hooks: %w", err)
-	}
-	return flat, nil
-}
-
-// stripForgeCursorEntries removes every forge-sourced entry (and the events left
-// empty by the removal) from cursor's flat hooks map. User-defined entries are
-// preserved in their original order. Shared by cursor's merge and strip paths.
-//
-// stripForgeCursorEntries 从 cursor 扁平 hooks map 中移除所有 forge 来源的条目
-// （以及因此被掏空的 event）。用户自定义条目按原顺序保留。cursor 的 merge 与
-// strip 两条路径共用。
-func stripForgeCursorEntries(flat map[string][]cursorHookEntry) map[string][]cursorHookEntry {
-	kept := make(map[string][]cursorHookEntry, len(flat))
-	for event, entries := range flat {
-		var keptEntries []cursorHookEntry
-		for _, e := range entries {
-			if isForgeBridgeCommand(e.Command) {
-				continue
-			}
-			keptEntries = append(keptEntries, e)
-		}
-		if len(keptEntries) > 0 {
-			kept[event] = keptEntries
-		}
-	}
-	return kept
-}
-
 // StripCursorHooksUserLevel removes forge hooks from the user-level ~/.cursor/hooks.json
-// (uninstall path). User-defined entries and unknown top-level fields are preserved;
-// the file itself is never deleted. Reports whether the file was actually modified;
-// a missing file or a file without forge hooks is a clean no-op.
+// (uninstall path). User-defined entries (unknown fields intact, see merge_raw.go) and
+// unknown top-level fields are preserved; the file itself is never deleted. Reports
+// whether the file was actually modified; a missing file or a file without forge hooks
+// is a clean no-op.
 //
 // StripCursorHooksUserLevel 移除 user-level ~/.cursor/hooks.json 中的 forge hooks
-// （卸载路径）。用户自定义条目与未知顶层字段保留；文件本身绝不删除。返回是否实际
-// 改动了文件；文件不存在或无 forge hooks 均为干净 no-op。
+// （卸载路径）。用户自定义条目（未知字段不丢，见 merge_raw.go）与未知顶层字段保留；
+// 文件本身绝不删除。返回是否实际改动了文件；文件不存在或无 forge hooks 均为干净
+// no-op。
 func StripCursorHooksUserLevel() (bool, error) {
 	path, err := CursorHooksPath()
 	if err != nil {
@@ -218,23 +181,14 @@ func StripCursorHooksUserLevel() (bool, error) {
 	if !ok {
 		return false, nil
 	}
-	var flat map[string][]cursorHookEntry
+	var flat map[string][]json.RawMessage
 	if err := json.Unmarshal(raw, &flat); err != nil {
 		return false, fmt.Errorf("cursor: parse existing hooks section: %w", err)
 	}
-	hasForge := false
-	for _, entries := range flat {
-		for _, e := range entries {
-			if isForgeBridgeCommand(e.Command) {
-				hasForge = true
-				break
-			}
-		}
-	}
-	if !hasForge {
+	kept, removedAny := stripForgeFlatEntriesRaw(flat)
+	if !removedAny {
 		return false, nil
 	}
-	kept := stripForgeCursorEntries(flat)
 	hooksJSON, err := json.Marshal(kept)
 	if err != nil {
 		return false, fmt.Errorf("cursor: marshal stripped hooks: %w", err)

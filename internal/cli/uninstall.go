@@ -146,10 +146,28 @@ var uninstallCmd = &cobra.Command{
 			fmt.Println(`已清除 windsurf global_rules.md 中的 forge 段`)
 		}
 
-		// 2e. --restore: roll every user-level file forge touched back to its pre-forge
+		// 2e. remove the user-level forge-quality skill (~/.claude/skills/forge-quality/,
+		//     respecting CLAUDE_CONFIG_DIR) — it is forge-generated content, left behind
+		//     by every init/autoSync otherwise.
+		//
+		// 2e. 删除用户级 forge-quality skill（~/.claude/skills/forge-quality/，尊重
+		//     CLAUDE_CONFIG_DIR）——它是 forge 生成的内容，不删会被历次
+		//     init/autoSync 一直留下。
+		if home := hooks.ClaudeHome(); home != `` {
+			skillDir := filepath.Join(home, `skills`, `forge-quality`)
+			if _, err := os.Stat(skillDir); err == nil {
+				if err := os.RemoveAll(skillDir); err != nil {
+					fmt.Fprintf(os.Stderr, `警告：删除用户级 forge-quality skill 失败：%v`+"\n", err)
+				} else {
+					fmt.Println(`已删除用户级 forge-quality skill`)
+				}
+			}
+		}
+
+		// 2f. --restore: roll every user-level file forge touched back to its pre-forge
 		//     bytes (backup+append contract; backups at ~/.forge/backups/).
 		//
-		// 2e. --restore：把 forge 碰过的用户级文件回滚到 forge 修改前的原始字节
+		// 2f. --restore：把 forge 碰过的用户级文件回滚到 forge 修改前的原始字节
 		//     （备份+追加契约；备份在 ~/.forge/backups/）。
 		if restore {
 			restored, errs := userassets.RestoreAll()

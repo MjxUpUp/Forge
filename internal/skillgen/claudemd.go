@@ -246,6 +246,19 @@ func codexConfigHome() string {
 	return filepath.Join(home, ".codex")
 }
 
+// dirExists reports whether path is an existing directory. Used by the user-level
+// generators' detection-self-poison guard: an agent's config home exists iff the
+// tool is installed (DetectAgents' signal), so the generators must only write into
+// homes that already exist.
+//
+// dirExists 报告 path 是否为已存在目录。供用户级生成器的检测自毒防护使用：
+// agent 的 config home 存在 = 该工具已安装（DetectAgents 的信号），故生成器
+// 只往已存在的 home 里写。
+func dirExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}
+
 // upsertUserForgeSection upserts the conditional (user-level) forge section into
 // a user-level instruction file. Backup-then-append: the original file is backed up
 // via userassets.BackupOriginal BEFORE forge's first write, so the user can roll
@@ -275,14 +288,26 @@ func upsertUserForgeSection(path string, forClaude bool) error {
 // Claude home resolution: CLAUDE_CONFIG_DIR env first, else ~/.claude (same
 // convention as internal/hooks/plugin_detect.go ClaudeHome()).
 //
+// No-op when the Claude config home does not exist: the directory's existence is
+// DetectAgents' "claude is installed" signal, so creating it here would poison
+// detection — machines without Claude Code would get wired as if it were installed
+// (detection self-poison). Only installed tools get instruction files.
+//
 // GenerateUserClaudeMD 把（条件激活的）forge 段 upsert 进用户级
 // ~/.claude/CLAUDE.md——先经 userassets.BackupOriginal 备份再追加。Claude home
 // 解析：优先 CLAUDE_CONFIG_DIR env，否则 ~/.claude（与
 // internal/hooks/plugin_detect.go 的 ClaudeHome() 同一约定）。
+//
+// Claude config home 不存在时 no-op：目录存在性是 DetectAgents 判断"claude 已
+// 安装"的信号，在此创建它会毒化检测——没装 Claude Code 的机器会被当成已安装
+// 而接线（检测自毒）。只给已安装的工具写指令文件。
 func GenerateUserClaudeMD() error {
 	home := claudeConfigHome()
 	if home == "" {
 		return fmt.Errorf("cannot resolve Claude config home (CLAUDE_CONFIG_DIR unset, user home unavailable)")
+	}
+	if !dirExists(home) {
+		return nil // Claude Code not installed — do not create its config home (detection self-poison)
 	}
 	return upsertUserForgeSection(filepath.Join(home, "CLAUDE.md"), true)
 }
@@ -291,13 +316,23 @@ func GenerateUserClaudeMD() error {
 // ~/.codex/AGENTS.md (CODEX_HOME env first, else ~/.codex). Same backup contract
 // as GenerateUserClaudeMD.
 //
+// No-op when the codex config home does not exist — same detection-self-poison
+// guard as GenerateUserClaudeMD (the directory's existence is DetectAgents' "codex
+// is installed" signal).
+//
 // GenerateUserAgentsMD 把（条件激活的）forge 段 upsert 进用户级
 // ~/.codex/AGENTS.md（优先 CODEX_HOME env，否则 ~/.codex）。与
 // GenerateUserClaudeMD 同样的备份契约。
+//
+// codex config home 不存在时 no-op——与 GenerateUserClaudeMD 同款检测自毒防护
+// （目录存在性是 DetectAgents 判断"codex 已安装"的信号）。
 func GenerateUserAgentsMD() error {
 	home := codexConfigHome()
 	if home == "" {
 		return fmt.Errorf("cannot resolve codex config home (CODEX_HOME unset, user home unavailable)")
+	}
+	if !dirExists(home) {
+		return nil // codex not installed — do not create its config home (detection self-poison)
 	}
 	return upsertUserForgeSection(filepath.Join(home, "AGENTS.md"), false)
 }
@@ -372,14 +407,24 @@ func stripMarkedSection(content, startMarker, endMarker string) string {
 // user-level skill is loaded in every project, the unconditional "本项目"
 // wording is adjusted to the conditional form (minimal change).
 //
+// No-op when the Claude config home does not exist — same detection-self-poison
+// guard as GenerateUserClaudeMD (the directory's existence is DetectAgents'
+// "claude is installed" signal).
+//
 // GenerateUserQualitySkill 从给定 protocol 生成用户级
 // ~/.claude/skills/forge-quality/SKILL.md——内容与项目级 GenerateQualitySkill
 // 相同，仅目标目录不同。因用户级 skill 在所有项目中加载，无条件的"本项目"
 // 措辞微调为条件式（最小改动）。
+//
+// Claude config home 不存在时 no-op——与 GenerateUserClaudeMD 同款检测自毒
+// 防护（目录存在性是 DetectAgents 判断"claude 已安装"的信号）。
 func GenerateUserQualitySkill(proto *protocol.Protocol) error {
 	home := claudeConfigHome()
 	if home == "" {
 		return fmt.Errorf("cannot resolve Claude config home (CLAUDE_CONFIG_DIR unset, user home unavailable)")
+	}
+	if !dirExists(home) {
+		return nil // Claude Code not installed — do not create its config home (detection self-poison)
 	}
 	skillDir := filepath.Join(home, "skills", "forge-quality")
 	if err := os.MkdirAll(skillDir, 0755); err != nil {

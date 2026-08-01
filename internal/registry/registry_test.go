@@ -479,3 +479,237 @@ func TestAdd_AtomicWriteLeavesNoResidue(t *testing.T) {
 		}
 	}
 }
+
+// mkGitRepo creates a fake git main worktree: a temp dir with a .git directory.
+// forgedata.Key only stats .git, so no real git binary is needed.
+//
+// mkGitRepo 建一个假 git 主 worktree：临时目录 + .git 目录。forgedata.Key 只
+// stat .git，无需真实 git 二进制。
+func mkGitRepo(t *testing.T) string {
+	t.Helper()
+	d := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(d, `.git`), 0755); err != nil {
+		t.Fatal(err)
+	}
+	return d
+}
+
+// mkWorktree creates a fake linked worktree of mainDir: a temp dir whose .git file
+// points at mainDir/.git, so both dirs share one forge key.
+//
+// mkWorktree 建 mainDir 的假 linked worktree：临时目录的 .git 文件指向
+// mainDir/.git，两个目录共享同一 forge key。
+func mkWorktree(t *testing.T, mainDir string) string {
+	t.Helper()
+	d := t.TempDir()
+	content := `gitdir: ` + filepath.Join(mainDir, `.git`) + "\n"
+	if err := os.WriteFile(filepath.Join(d, `.git`), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	return d
+}
+
+// readEntries reads the registry JSON directly (no List filtering) so tests can
+// inspect stored Path/Key exactly as persisted.
+//
+// readEntries 直接读注册表 JSON（不经 List 过滤），让测试能按落盘原样检查
+// 存储的 Path/Key。
+func readEntries(t *testing.T, home string) []Entry {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(home, `projects.json`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f File
+	if err := json.Unmarshal(data, &f); err != nil {
+		t.Fatal(err)
+	}
+	return f.Projects
+}
+
+// TestAdd_SameKeyKeepsLivePath pins the worktree fix: registering from a worktree of
+// an already-registered repo must NOT rewrite the stored path to the worktree path —
+// otherwise deleting the worktree lets List prune the whole entry (key included) and
+// the main project silently loses membership. The live main path is kept; only the
+// key is refreshed.
+//
+// TestAdd_SameKeyKeepsLivePath 钉死 worktree 修复：已登记 repo 的 worktree 里触发
+// 登记不得把存储路径改写成 worktree 路径——否则 worktree 删除后 List 会把整条
+// （含 key）prune 掉，主项目静默丢成员资格。旧路径仍活则保留，只刷新 key。
+func TestAdd_SameKeyKeepsLivePath(t *testing.T) {
+	home := useTempHome(t)
+	main := mkGitRepo(t)
+	wt := mkWorktree(t, main)
+
+	if err := Add(main); err != nil {
+		t.Fatal(err)
+	}
+	if err := Add(wt); err != nil {
+		t.Fatal(err)
+	}
+
+	entries := readEntries(t, home)
+	if len(entries) != 1 {
+		t.Fatalf("同 key 登记应为 1 条（upsert），实得 %d: %v", len(entries), entries)
+	}
+	if filepath.Clean(entries[0].Path) != filepath.Clean(main) {
+		t.Errorf("旧路径仍活时不得换成 worktree 路径: Path=%s, want %s", entries[0].Path, main)
+	}
+}
+
+// TestAdd_SameKeyUpdatesPathWhenOldGone: two worktrees share one common .git dir
+// (one forge key); when the registered worktree's path no longer exists, re-adding
+// from the sibling worktree updates the stored path (the project "moved").
+//
+// TestAdd_SameKeyUpdatesPathWhenOldGone：两个 worktree 共享同一 common .git dir
+// （同一 forge key）；已登记 worktree 路径不复存在时，从兄弟 worktree 再登记
+// 会更新存储路径（项目「移动」语义）。
+func TestAdd_SameKeyUpdatesPathWhenOldGone(t *testing.T) {
+	home := useTempHome(t)
+	// Common dir named .git so resolveGitFile's .git-ancestor walk resolves both
+	// worktrees to the same key.
+	//
+	// common dir 命名为 .git，让 resolveGitFile 的 .git 祖先查找把两个 worktree
+	// 解析到同一 key。
+	common := filepath.Join(t.TempDir(), `.git`)
+	if err := os.MkdirAll(common, 0755); err != nil {
+		t.Fatal(err)
+	}
+	mkWT := func() string {
+		d := t.TempDir()
+		content := `gitdir: ` + common + "\n"
+		if err := os.WriteFile(filepath.Join(d, `.git`), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+		return d
+	}
+	wt1 := mkWT()
+	wt2 := mkWT()
+
+	if err := Add(wt1); err != nil {
+		t.Fatal(err)
+	}
+	// The registered worktree disappears (deleted); the sibling worktree lives on.
+	//
+	// 已登记 worktree 消失（被删）；兄弟 worktree 仍在。
+	if err := os.RemoveAll(wt1); err != nil {
+		t.Fatal(err)
+	}
+	if err := Add(wt2); err != nil {
+		t.Fatal(err)
+	}
+
+	entries := readEntries(t, home)
+	if len(entries) != 1 {
+		t.Fatalf("同 key 登记应为 1 条，实得 %d: %v", len(entries), entries)
+	}
+	if filepath.Clean(entries[0].Path) != filepath.Clean(wt2) {
+		t.Errorf("旧路径已死时应更新为新路径: Path=%s, want %s", entries[0].Path, wt2)
+	}
+}
+
+// TestRemove_ByKey pins the doc-vs-implementation gap: Remove documents "matched by
+// path or key" — a worktree path (same key, different path) must remove the main
+// project's entry too.
+//
+// TestRemove_ByKey 钉死文档与实现不一致：Remove 声称「按路径或 key 匹配」——传
+// worktree 路径（同 key 不同路径）必须也能删掉主项目条目。
+func TestRemove_ByKey(t *testing.T) {
+	useTempHome(t)
+	main := mkGitRepo(t)
+	wt := mkWorktree(t, main)
+
+	if err := Add(main); err != nil {
+		t.Fatal(err)
+	}
+	if err := Remove(wt); err != nil {
+		t.Fatal(err)
+	}
+	if got := List(); len(got) != 0 {
+		t.Errorf("按 key 匹配应删掉共享 key 的主项目条目: List=%v, want 空", got)
+	}
+}
+
+// TestUnmarshal_SkipsEmptyPathEntries: null and {} entries in projects.json carry no
+// path and are skipped defensively instead of becoming ghost entries.
+//
+// TestUnmarshal_SkipsEmptyPathEntries：projects.json 里的 null 与 {} 条目无 path，
+// 防御性跳过，不变成幽灵条目。
+func TestUnmarshal_SkipsEmptyPathEntries(t *testing.T) {
+	var f File
+	data := []byte(`{"projects": [null, {}, {"path": "/x", "key": "k1"}, "legacy"]}`)
+	if err := json.Unmarshal(data, &f); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.Projects) != 2 {
+		t.Fatalf("null/{} 条目应被跳过: 实得 %d 条 %v, want 2", len(f.Projects), f.Projects)
+	}
+	if f.Projects[0].Path != `/x` || f.Projects[0].Key != `k1` {
+		t.Errorf("entry[0] = %+v, want {Path:/x Key:k1}", f.Projects[0])
+	}
+	if f.Projects[1].Path != `legacy` {
+		t.Errorf("entry[1] = %+v, want legacy string entry {Path:legacy}", f.Projects[1])
+	}
+}
+
+// TestIsMember_ExactMatchCaseInsensitive_Windows pins pathKey normalization on the
+// exact-match branch: C:\Proj registered, c:\proj queried — same project on a
+// case-insensitive filesystem.
+//
+// TestIsMember_ExactMatchCaseInsensitive_Windows 钉死精确匹配分支的 pathKey 归一：
+// 登记 C:\Proj、查询 c:\proj——大小写不敏感文件系统下是同一项目。
+func TestIsMember_ExactMatchCaseInsensitive_Windows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("路径大小写不敏感匹配仅适用于 Windows 文件系统")
+	}
+	useTempHome(t)
+	a := mkForgeProject(t)
+	if err := Add(a); err != nil {
+		t.Fatal(err)
+	}
+
+	vol := filepath.VolumeName(a)
+	variantVol := strings.ToLower(vol)
+	if variantVol == vol {
+		variantVol = strings.ToUpper(vol)
+	}
+	variant := variantVol + a[len(vol):]
+	if variant == a {
+		t.Skip("无法构造大小写变体（盘符异常）")
+	}
+
+	root, ok := IsMember(variant)
+	if !ok {
+		t.Fatalf("大小写变体精确路径应命中成员: IsMember(%q) = (%q, false)", variant, root)
+	}
+	if filepath.Clean(root) != filepath.Clean(a) {
+		t.Errorf("root = %q, want %q", root, a)
+	}
+}
+
+// TestIsMember_SymlinkResolved: a cwd reached through a symlink must match the
+// registered physical path (EvalSymlinks normalization, same semantics as PathKey).
+// Skipped when the platform/user cannot create symlinks (Windows needs privilege).
+//
+// TestIsMember_SymlinkResolved：经 symlink 进入的 cwd 必须匹配已登记的物理路径
+// （EvalSymlinks 归一，与 PathKey 同语义）。平台/用户无法创建 symlink 时跳过
+// （Windows 需要权限）。
+func TestIsMember_SymlinkResolved(t *testing.T) {
+	useTempHome(t)
+	real := mkForgeProject(t)
+	if err := Add(real); err != nil {
+		t.Fatal(err)
+	}
+
+	link := filepath.Join(t.TempDir(), `link`)
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("无法创建 symlink（权限不足或平台限制）: %v", err)
+	}
+	root, ok := IsMember(link)
+	if !ok {
+		t.Fatalf("symlink 路径应命中成员: IsMember(%q) = (%q, false)", link, root)
+	}
+	if filepath.Clean(root) != filepath.Clean(real) {
+		t.Errorf("root = %q, want %q", root, real)
+	}
+}

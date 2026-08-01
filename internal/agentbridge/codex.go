@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/hooks"
+	"github.com/MjxUpUp/Forge/internal/userassets"
 )
 
 // CodexTranslator wires forge hooks into codex's USER-LEVEL hooks.json
@@ -72,6 +73,17 @@ func (t *CodexTranslator) Translate(projectDir string, input *TranslationInput) 
 	if err := os.WriteFile(path, merged, 0644); err != nil {
 		return fmt.Errorf("codex: failed to write hooks.json: %w", err)
 	}
+
+	// Codex's lifecycle hooks are gated behind `[features] hooks = true` in
+	// config.toml (official config-reference; default OFF) — a hooks.json alone
+	// is silently inert. Ensure the feature flag alongside the wiring.
+	//
+	// Codex 的 lifecycle hooks 由 config.toml 的 `[features] hooks = true` 门控
+	// （官方 config-reference；默认关）——只写 hooks.json 会静默不生效。接线
+	// 之外必须确保该开关。
+	if err := ensureCodexHooksFeature(); err != nil {
+		return fmt.Errorf("codex: %w", err)
+	}
 	return nil
 }
 
@@ -108,14 +120,16 @@ func CodexHooksPath() (string, error) {
 
 // mergeCodexHooks merges the generated forge wiring into an existing codex hooks.json.
 // Unknown top-level fields are preserved via json.RawMessage; within the hooks section,
-// entries whose command is not forge-sourced are kept in place, and forge entries are
-// replaced wholesale with the current generated set (appended after the user's entries —
-// hook execution order among forge gates is preserved from the spec, and codex runs
-// per-event entries in order). The output is deterministic, so Translate is idempotent.
-// A nil/empty existing input produces a fresh file.
+// entries whose command is not forge-sourced are kept byte-for-byte (unknown entry
+// fields such as timeout/commandWindows intact — see merge_raw.go), and forge entries
+// are replaced wholesale with the current generated set (appended after the user's
+// entries — hook execution order among forge gates is preserved from the spec, and
+// codex runs per-event entries in order). The output is deterministic, so Translate
+// is idempotent. A nil/empty existing input produces a fresh file.
 //
 // mergeCodexHooks 把生成的 forge 接线合并进已有的 codex hooks.json。未知顶层字段经
-// json.RawMessage 保留；hooks 段内，command 非 forge 来源的条目原地保留，forge 条目
+// json.RawMessage 保留；hooks 段内，command 非 forge 来源的条目逐字节保留（
+// timeout/commandWindows 等未知条目字段不丢——见 merge_raw.go），forge 条目
 // 整体替换为当前生成集（追加在用户条目之后——forge 门禁间的执行顺序按 spec 保持，
 // codex 按序执行同 event 条目）。输出确定，故 Translate 幂等。existing 为 nil/空时
 // 生成新文件。
@@ -126,17 +140,17 @@ func mergeCodexHooks(existing []byte) ([]byte, error) {
 			return nil, fmt.Errorf("codex: parse existing hooks.json: %w", err)
 		}
 	}
-	kept := map[string][]hooks.HookMatcher{}
+	kept := map[string][]json.RawMessage{}
 	if raw, ok := cfg["hooks"]; ok {
-		var spec map[string][]hooks.HookMatcher
+		var spec map[string][]json.RawMessage
 		if err := json.Unmarshal(raw, &spec); err != nil {
 			return nil, fmt.Errorf("codex: parse existing hooks section: %w", err)
 		}
-		kept = stripForgeMatchers(spec)
+		kept, _ = stripForgeMatchersRaw(spec)
 	}
-	generated, err := codexGeneratedMatchers()
+	generated, err := rawHooksSection(buildCodexHooks()["hooks"])
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("codex: marshal generated hooks: %w", err)
 	}
 	for event, matchers := range generated {
 		kept[event] = append(kept[event], matchers...)
@@ -151,55 +165,6 @@ func mergeCodexHooks(existing []byte) ([]byte, error) {
 		return nil, fmt.Errorf("codex: marshal hooks.json: %w", err)
 	}
 	return append(data, '\n'), nil
-}
-
-// codexGeneratedMatchers returns the generated forge wiring as typed matchers (the
-// typed form of buildCodexHooks' hooks section), for mergeCodexHooks.
-//
-// codexGeneratedMatchers 以类型化 matcher 形式返回生成的 forge 接线（buildCodexHooks
-// hooks 段的类型化形态），供 mergeCodexHooks 使用。
-func codexGeneratedMatchers() (map[string][]hooks.HookMatcher, error) {
-	raw, err := json.Marshal(buildCodexHooks()["hooks"])
-	if err != nil {
-		return nil, fmt.Errorf("codex: marshal generated hooks: %w", err)
-	}
-	var spec map[string][]hooks.HookMatcher
-	if err := json.Unmarshal(raw, &spec); err != nil {
-		return nil, fmt.Errorf("codex: reparse generated hooks: %w", err)
-	}
-	return spec, nil
-}
-
-// stripForgeMatchers removes every forge-sourced hook entry (and the matchers/events
-// left empty by the removal) from a Claude-Code-shaped nested spec. User-defined
-// entries are preserved in their original order. Shared by codex's merge and strip
-// paths (both operate on the same nested schema).
-//
-// stripForgeMatchers 从 Claude-Code 形嵌套 spec 中移除所有 forge 来源的 hook 条目
-// （以及因此被掏空的 matcher/event）。用户自定义条目按原顺序保留。codex 的 merge
-// 与 strip 两条路径共用（两者操作同一嵌套 schema）。
-func stripForgeMatchers(spec map[string][]hooks.HookMatcher) map[string][]hooks.HookMatcher {
-	kept := make(map[string][]hooks.HookMatcher, len(spec))
-	for event, matchers := range spec {
-		var keptMatchers []hooks.HookMatcher
-		for _, m := range matchers {
-			var keptHooks []hooks.HookEntry
-			for _, h := range m.Hooks {
-				if isForgeBridgeCommand(h.Command) {
-					continue
-				}
-				keptHooks = append(keptHooks, h)
-			}
-			if len(keptHooks) > 0 {
-				m.Hooks = keptHooks
-				keptMatchers = append(keptMatchers, m)
-			}
-		}
-		if len(keptMatchers) > 0 {
-			kept[event] = keptMatchers
-		}
-	}
-	return kept
 }
 
 // isForgeBridgeCommand reports whether a hook command is forge-sourced (commands written
@@ -219,13 +184,15 @@ func isForgeBridgeCommand(cmd string) bool {
 }
 
 // StripCodexHooksUserLevel removes forge hooks from the user-level ~/.codex/hooks.json
-// (uninstall path). User-defined entries and unknown top-level fields are preserved;
-// the file itself is never deleted. Reports whether the file was actually modified;
-// a missing file or a file without forge hooks is a clean no-op.
+// (uninstall path). User-defined entries (unknown fields intact, see merge_raw.go) and
+// unknown top-level fields are preserved; the file itself is never deleted. Reports
+// whether the file was actually modified; a missing file or a file without forge hooks
+// is a clean no-op.
 //
 // StripCodexHooksUserLevel 移除 user-level ~/.codex/hooks.json 中的 forge hooks
-// （卸载路径）。用户自定义条目与未知顶层字段保留；文件本身绝不删除。返回是否实际
-// 改动了文件；文件不存在或无 forge hooks 均为干净 no-op。
+// （卸载路径）。用户自定义条目（未知字段不丢，见 merge_raw.go）与未知顶层字段保留；
+// 文件本身绝不删除。返回是否实际改动了文件；文件不存在或无 forge hooks 均为干净
+// no-op。
 func StripCodexHooksUserLevel() (bool, error) {
 	path, err := CodexHooksPath()
 	if err != nil {
@@ -246,14 +213,14 @@ func StripCodexHooksUserLevel() (bool, error) {
 	if !ok {
 		return false, nil
 	}
-	var spec map[string][]hooks.HookMatcher
+	var spec map[string][]json.RawMessage
 	if err := json.Unmarshal(raw, &spec); err != nil {
 		return false, fmt.Errorf("codex: parse existing hooks section: %w", err)
 	}
-	if !hasForgeMatcher(spec) {
+	kept, removedAny := stripForgeMatchersRaw(spec)
+	if !removedAny {
 		return false, nil
 	}
-	kept := stripForgeMatchers(spec)
 	hooksJSON, err := json.Marshal(kept)
 	if err != nil {
 		return false, fmt.Errorf("codex: marshal stripped hooks: %w", err)
@@ -267,23 +234,6 @@ func StripCodexHooksUserLevel() (bool, error) {
 		return false, fmt.Errorf("codex: failed to write hooks.json: %w", err)
 	}
 	return true, nil
-}
-
-// hasForgeMatcher reports whether a Claude-Code-shaped nested spec contains any
-// forge-sourced hook entry.
-//
-// hasForgeMatcher 报告 Claude-Code 形嵌套 spec 是否含任何 forge 来源的 hook 条目。
-func hasForgeMatcher(spec map[string][]hooks.HookMatcher) bool {
-	for _, matchers := range spec {
-		for _, m := range matchers {
-			for _, h := range m.Hooks {
-				if isForgeBridgeCommand(h.Command) {
-					return true
-				}
-			}
-		}
-	}
-	return false
 }
 
 // buildCodexHooks derives codex's hooks.json from hooks.ForgeHookSpec — that spec is the single source of truth shared with
@@ -320,4 +270,166 @@ func buildCodexHooks() map[string]any {
 	return map[string]any{
 		`hooks`: codex,
 	}
+}
+
+// Codex's lifecycle hooks are gated behind a feature flag: config.toml must carry
+// `[features] hooks = true` (official config-reference; the default is off, so a
+// hooks.json without it is silently inert). The project has no TOML dependency
+// (vendored modules), so — following kimi.go's precedent — forge-managed content
+// lives inside `# FORGE:START` / `# FORGE:END` markers when forge adds a whole new
+// [features] table; everything outside the markers (the user's own model/provider
+// config) is preserved byte-for-byte.
+//
+// Codex 的 lifecycle hooks 由特性开关门控：config.toml 必须带 `[features]
+// hooks = true`（官方 config-reference；默认关，缺了它 hooks.json 静默不生效）。
+// 项目无 TOML 依赖（vendored modules），故——沿 kimi.go 先例——forge 加整个新
+// [features] 表时把内容包在 `# FORGE:START` / `# FORGE:END` 标记段内；标记外
+// 内容（用户自己的 model/provider 配置）逐字节保留。
+const (
+	codexMarkStart = "# FORGE:START"
+	codexMarkEnd   = "# FORGE:END"
+)
+
+// codexFeaturesHooksBlock is the canonical marked section appended when the user's
+// config.toml has no [features] table at all.
+//
+// codexFeaturesHooksBlock 是用户 config.toml 完全没有 [features] 表时追加的
+//  canonical 标记段。
+const codexFeaturesHooksBlock = codexMarkStart + ` — managed by ` + "`forge init --agents codex`" + `; do not edit between markers
+[features]
+hooks = true
+` + codexMarkEnd + "\n"
+
+// ensureCodexHooksFeature makes sure codex's config.toml enables lifecycle hooks
+// (`[features] hooks = true`). Behavior on an existing config.toml:
+//   - forge markers present        → the marked section is upserted (idempotent).
+//   - [features] with hooks = true → already enabled (by the user) — no-op.
+//   - [features] with hooks set to a non-true value (explicit false) → the user's
+//     choice is respected: nothing is written, a stderr notice explains that codex
+//     hooks stay disabled.
+//   - [features] without a hooks key → `hooks = true` is inserted directly under
+//     the existing table header (appending a second [features] table would be
+//     invalid TOML).
+//   - no [features] table at all   → the canonical marked section is appended.
+//
+// A missing file is created with just the marked section. The original file is
+// backed up via userassets.BackupOriginal before forge's first write (rollback via
+// `forge uninstall --restore`).
+//
+// ensureCodexHooksFeature 确保 codex 的 config.toml 启用 lifecycle hooks
+// （`[features] hooks = true`）。对已有 config.toml 的行为：
+//   - 已有 forge 标记段            → upsert 标记段（幂等）。
+//   - [features] 里 hooks = true   → 已启用（用户自己设的）——no-op。
+//   - [features] 里 hooks 设了非 true 值（显式 false）→ 尊重用户：不写，stderr
+//     提示 codex hooks 保持禁用。
+//   - [features] 无 hooks 键       → 在既有表头下直接插入 `hooks = true`（再追加
+//     第二个 [features] 表是非法 TOML）。
+//   - 完全没有 [features] 表       → 追加 canonical 标记段。
+//
+// 文件不存在则以标记段新建。forge 首次写入前经 userassets.BackupOriginal 备份
+// 原文件（`forge uninstall --restore` 可回滚）。
+func ensureCodexHooksFeature() error {
+	home, err := CodexHome()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(home, "config.toml")
+	existing, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to read config.toml: %w", err)
+	}
+	updated, respectUser, err := upsertCodexFeaturesHooks(string(existing))
+	if err != nil {
+		return err
+	}
+	if respectUser {
+		fmt.Fprintf(os.Stderr, "codex: config.toml 已显式设置 [features] hooks = false，尊重用户配置——codex lifecycle hooks 保持禁用（hooks.json 已接线但 codex 不会触发）\n")
+		return nil
+	}
+	if updated == string(existing) {
+		return nil // already up to date — idempotent no-op
+	}
+	if err := userassets.BackupOriginal(path); err != nil {
+		return fmt.Errorf("failed to back up config.toml: %w", err)
+	}
+	if err := os.WriteFile(path, []byte(updated), 0644); err != nil {
+		return fmt.Errorf("failed to write config.toml: %w", err)
+	}
+	return nil
+}
+
+// upsertCodexFeaturesHooks computes the new config.toml content (pure function for
+// testability; see ensureCodexHooksFeature for the behavior matrix). respectUser
+// reports the explicit-false case (caller prints a notice and writes nothing).
+// Unpaired or inverted forge markers are reported as corruption instead of guessing
+// (same data-loss guard as kimi's upsertKimiSection).
+//
+// upsertCodexFeaturesHooks 计算新的 config.toml 内容（纯函数，便于测试；行为矩阵
+// 见 ensureCodexHooksFeature）。respectUser 报告显式 false 情形（调用方打印提示、
+// 不写文件）。forge 标记不成对或颠倒时报损坏错误而非猜测（与 kimi 的
+// upsertKimiSection 同款防数据丢失守卫）。
+func upsertCodexFeaturesHooks(content string) (updated string, respectUser bool, err error) {
+	start := strings.Index(content, codexMarkStart)
+	end := strings.Index(content, codexMarkEnd)
+	if (start >= 0) != (end >= 0) || (start >= 0 && end <= start) {
+		return "", false, fmt.Errorf("codex: config.toml forge marker section corrupt (unpaired or inverted %s/%s); fix or remove the markers manually", codexMarkStart, codexMarkEnd)
+	}
+	if start >= 0 {
+		end += len(codexMarkEnd)
+		if end < len(content) && content[end] == '\n' {
+			end++
+		}
+		return content[:start] + codexFeaturesHooksBlock + content[end:], false, nil
+	}
+
+	lines := strings.Split(content, "\n")
+	featuresIdx := -1
+	for i, line := range lines {
+		if strings.TrimSpace(line) == "[features]" {
+			featuresIdx = i
+			break
+		}
+	}
+	if featuresIdx == -1 {
+		// No [features] table: append the canonical marked section.
+		if content != "" {
+			if !strings.HasSuffix(content, "\n") {
+				content += "\n"
+			}
+			content += "\n"
+		}
+		return content + codexFeaturesHooksBlock, false, nil
+	}
+
+	// Scan the [features] section body (until the next table header) for a hooks key.
+	for i := featuresIdx + 1; i < len(lines); i++ {
+		trimmed := strings.TrimSpace(lines[i])
+		if strings.HasPrefix(trimmed, "[") {
+			break // next table — section ends
+		}
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		key, value, found := strings.Cut(trimmed, "=")
+		if !found || strings.TrimSpace(key) != "hooks" {
+			continue
+		}
+		// Strip any trailing comment and whitespace from the value token.
+		value = strings.TrimSpace(value)
+		if idx := strings.IndexAny(value, " #"); idx >= 0 {
+			value = value[:idx]
+		}
+		if value == "true" {
+			return content, false, nil // already enabled — nothing to do
+		}
+		return "", true, nil // explicit non-true (false) — respect the user
+	}
+
+	// [features] exists without a hooks key: insert directly under the table header
+	// (a second [features] table would be invalid TOML).
+	out := make([]string, 0, len(lines)+1)
+	out = append(out, lines[:featuresIdx+1]...)
+	out = append(out, "hooks = true")
+	out = append(out, lines[featuresIdx+1:]...)
+	return strings.Join(out, "\n"), false, nil
 }

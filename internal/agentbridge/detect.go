@@ -96,6 +96,30 @@ func DetectAgents(projectDir string) []AgentType {
 		if dirExists(filepath.Join(home, ".cursor")) {
 			add(AgentCursor)
 		}
+		// windsurf's user-level config root (~/.codeium — holds windsurf/hooks.json
+		// and windsurf/memories/global_rules.md, the paths WindsurfTranslator writes).
+		//
+		// windsurf 的用户级配置根（~/.codeium——下有 windsurf/hooks.json 与
+		// windsurf/memories/global_rules.md，即 WindsurfTranslator 写入的路径）。
+		if dirExists(filepath.Join(home, ".codeium")) {
+			add(AgentWindsurf)
+		}
+	}
+	// opencode resolves its global config dir via the XDG convention
+	// ($XDG_CONFIG_HOME/opencode, else ~/.config/opencode) — detection must use the
+	// same resolution as OpenCodeConfigDir's write path, or XDG_CONFIG_HOME users
+	// get wired into a directory opencode never reads while detection looks at the
+	// wrong one.
+	//
+	// opencode 按 XDG 约定解析全局配置目录（$XDG_CONFIG_HOME/opencode，否则
+	// ~/.config/opencode）——检测必须与 OpenCodeConfigDir 的写入路径同解析，
+	// 否则 XDG_CONFIG_HOME 用户被接进 opencode 从不读的目录，而检测看的又是
+	// 另一个错误位置。
+	if base := os.Getenv("XDG_CONFIG_HOME"); base != "" {
+		if dirExists(filepath.Join(base, "opencode")) {
+			add(AgentOpencode)
+		}
+	} else if home, err := os.UserHomeDir(); err == nil {
 		if dirExists(filepath.Join(home, ".config", "opencode")) {
 			add(AgentOpencode)
 		}

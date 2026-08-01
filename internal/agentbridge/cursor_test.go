@@ -1,6 +1,7 @@
 package agentbridge
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -146,5 +147,64 @@ func TestStripCursorHooksUserLevel(t *testing.T) {
 	changed, err = StripCursorHooksUserLevel()
 	if err != nil || changed {
 		t.Fatalf("second strip: changed=%v err=%v, want false/nil", changed, err)
+	}
+}
+
+// TestCursorTranslator_MergePreservesUnknownFields pins the raw-merge fix: user
+// hook entries carrying fields the typed cursorHookEntry struct does not declare
+// (e.g. powershell) must survive Translate with values intact — a typed
+// round-trip silently dropped them.
+//
+// TestCursorTranslator_MergePreservesUnknownFields 钉死 raw-merge 修复：携带
+// 类型化 cursorHookEntry 未声明字段（如 powershell）的用户 hook 条目必须在
+// Translate 后值完整保留——类型化往返会静默丢弃它们。
+func TestCursorTranslator_MergePreservesUnknownFields(t *testing.T) {
+	home := isolateHome(t)
+	path := cursorHooksPathUnder(home)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	existing := `{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {"command": "npx prettier --check .", "matcher": "Write|Edit", "powershell": "prettier --check .", "timeout": 45}
+    ]
+  }
+}`
+	if err := os.WriteFile(path, []byte(existing), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := (&CursorTranslator{}).Translate(t.TempDir(), testInput()); err != nil {
+		t.Fatalf("Translate failed: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Field-level assertion (formatting-agnostic): the kept user entry must carry
+	// every original field with its original value.
+	var cfg struct {
+		Hooks map[string][]map[string]any `json:"hooks"`
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("parse output: %v", err)
+	}
+	var userEntry map[string]any
+	for _, e := range cfg.Hooks["preToolUse"] {
+		if e["command"] == "npx prettier --check ." {
+			userEntry = e
+		}
+	}
+	if userEntry == nil {
+		t.Fatal("user hook entry not preserved")
+	}
+	if userEntry["powershell"] != "prettier --check ." {
+		t.Errorf("user entry unknown field powershell lost or altered: %v", userEntry["powershell"])
+	}
+	if userEntry["timeout"] != float64(45) {
+		t.Errorf("user entry field timeout lost or altered: %v", userEntry["timeout"])
 	}
 }

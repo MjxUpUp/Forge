@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -8,7 +9,6 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/protocol"
 	"github.com/MjxUpUp/Forge/internal/util"
@@ -23,14 +23,17 @@ import (
 // CLAUDE.md/skills), `AGENTS.md`, and agent-bridge files (`.codex/`, `.cursor/`,
 // `.windsurf*`, `.github/instructions/`, `.clinerules/`, `.opencode/`) into the user's
 // project — the "too invasive, accidentally committed" complaint. All of these now live
-// at user level; autoSync runs this stripper on every command (idempotent, cheap stats)
-// so existing projects converge to zero-project-write by simply using forge.
+// at user level; autoSync runs this stripper whenever it fires (version change / force /
+// dirty binding — not literally every command: an equal stamp short-circuits autoSync
+// before this runs), so existing projects converge to zero-project-write by simply
+// using forge.
 //
 // 背景：重构前 forge init/sync 往用户项目写 `.forge/hooks/`、`.claude/`（settings/
 // CLAUDE.md/skills）、`AGENTS.md` 与各 agent bridge 文件（`.codex/`、`.cursor/`、
 // `.windsurf*`、`.github/instructions/`、`.clinerules/`、`.opencode/`）——正是
-// "侵入性太强、一不小心就提交"的投诉来源。这些现在全部在用户级；autoSync 每条命令
-// 跑本清理（幂等、廉价 stat），存量项目只要继续用 forge 即收敛为零项目写入。
+// "侵入性太强、一不小心就提交"的投诉来源。这些现在全部在用户级；autoSync 触发时
+// （版本变化/force/脏绑定——不是每条命令：stamp 相等时 autoSync 提前返回，轮不到
+// 本清理）跑本清理，存量项目只要继续用 forge 即收敛为零项目写入。
 //
 // Boundaries:
 //   - team mode (`forge init --project`, marker .forge/team-mode) is exempt — those
@@ -66,10 +69,11 @@ const teamModeMarker = "team-mode"
 
 // stripProjectLevelForgeAssets removes forge's legacy project-level writes from dir.
 // Idempotent; every step is a cheap stat/no-op when already converged. Called by
-// autoSync (every command) and forge init.
+// autoSync when it fires (version change / force / dirty binding) and by forge init.
 //
 // stripProjectLevelForgeAssets 剥除 dir 里遗留的项目级 forge 写入。幂等；
-// 收敛后每步都是廉价 stat/no-op。由 autoSync（每条命令）与 forge init 调用。
+// 收敛后每步都是廉价 stat/no-op。由 autoSync 触发时（版本变化/force/脏绑定）
+// 与 forge init 调用。
 func stripProjectLevelForgeAssets(dir string) {
 	// Team mode is exempt.
 	//
@@ -150,17 +154,23 @@ func migrateProjectProtocol(dir string) {
 	if err != nil {
 		return
 	}
+	// Strict decode: a file with fields unknown to Protocol is treated as
+	// user-modified and kept. A lenient unmarshal would silently drop those fields
+	// on re-marshal, make a customized file look identical to the default, and get
+	// it deleted — losing the user's edits without a trace.
+	//
+	// 严格解码：含 Protocol 未知字段的文件视为「用户改过」保留。宽松 unmarshal
+	// 会在重 marshal 时静默丢掉这些字段，把改过的文件误判成与默认相等而删掉——
+	// 用户的改动静默丢失。
 	var p protocol.Protocol
-	if err := yaml.Unmarshal(data, &p); err != nil {
-		return // 解析失败不碰（用户文件）
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	if err := dec.Decode(&p); err != nil {
+		return // 解析失败或含未知字段——不碰（用户文件）
 	}
 	def := protocol.DefaultProtocol()
 	defYAML, err := yaml.Marshal(def)
 	if err != nil {
-		return
-	}
-	var defCheck protocol.Protocol
-	if err := yaml.Unmarshal(defYAML, &defCheck); err != nil {
 		return
 	}
 	// Semantic compare via re-marshal: field order/formatting of the on-disk file
@@ -174,11 +184,27 @@ func migrateProjectProtocol(dir string) {
 	if string(gotYAML) != string(defYAML) {
 		return // 用户改过——保留为团队覆盖层
 	}
-	// No user edits: ensure the DataDir copy exists, then drop the project-level file.
+	// No user edits: ensure the DataDir copy exists, then drop the project-level
+	// file. The copy is written explicitly to the DataDir path (SaveDataDir) —
+	// protocol.Save would route to the still-existing project-level file here.
+	// The project file is removed ONLY after the copy is verified on disk: a
+	// non-IsNotExist stat error (permission/IO) means "unverified", not "absent",
+	// and deleting then would strand the project with no protocol at all.
 	//
-	// 无用户改动：确保 DataDir 副本存在，然后删项目级文件。
-	if _, err := os.Stat(filepath.Join(forgedata.DataDirFor(dir), "protocol.yml")); os.IsNotExist(err) {
-		if err := protocol.Save(dir, def); err != nil {
+	// 无用户改动：确保 DataDir 副本存在，然后删项目级文件。副本显式写到 DataDir
+	// 路径（SaveDataDir）——此处 protocol.Save 会路由到仍存在的项目级文件。
+	// 项目文件仅在副本确认落盘后才删：非 IsNotExist 的 stat 错误（权限/IO）是
+	// 「未验证」而非「不存在」，此时删除会让项目没有任何 protocol 可用。
+	ddPath, err := protocol.DataDirPath(dir)
+	if err != nil {
+		warnCleanup("resolve DataDir protocol path", err)
+		return
+	}
+	if _, err := os.Stat(ddPath); err != nil {
+		if !os.IsNotExist(err) {
+			return // 副本状态未验证——不删项目文件
+		}
+		if err := protocol.SaveDataDir(dir, def); err != nil {
 			warnCleanup("migrate protocol.yml to DataDir", err)
 			return
 		}

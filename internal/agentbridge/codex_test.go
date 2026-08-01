@@ -150,3 +150,244 @@ func TestStripCodexHooksUserLevel(t *testing.T) {
 		t.Fatalf("second strip: changed=%v err=%v, want false/nil", changed, err)
 	}
 }
+
+// TestCodexTranslator_MergePreservesUnknownFields pins the raw-merge fix: user
+// hook entries carrying fields the typed struct does not declare (timeout,
+// commandWindows) must survive Translate with values intact — a typed round-trip
+// silently dropped them.
+//
+// TestCodexTranslator_MergePreservesUnknownFields 钉死 raw-merge 修复：携带类型化
+// struct 未声明字段（timeout、commandWindows）的用户 hook 条目必须在 Translate
+// 后值完整保留——类型化往返会静默丢弃它们。
+func TestCodexTranslator_MergePreservesUnknownFields(t *testing.T) {
+	codexHome := t.TempDir()
+	t.Setenv("CODEX_HOME", codexHome)
+	path := filepath.Join(codexHome, "hooks.json")
+
+	existing := `{
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Bash", "hooks": [
+        {"type": "command", "command": "./scripts/lint.sh", "timeout": 30, "commandWindows": "lint.cmd"}
+      ]}
+    ]
+  }
+}`
+	if err := os.WriteFile(path, []byte(existing), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := (&CodexTranslator{}).Translate(t.TempDir(), testInput()); err != nil {
+		t.Fatalf("Translate failed: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Field-level assertion (formatting-agnostic): the kept user entry must carry
+	// every original field with its original value.
+	var cfg struct {
+		Hooks map[string][]struct {
+			Hooks []map[string]any `json:"hooks"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("parse output: %v", err)
+	}
+	var userEntry map[string]any
+	for _, m := range cfg.Hooks["PreToolUse"] {
+		for _, h := range m.Hooks {
+			if h["command"] == "./scripts/lint.sh" {
+				userEntry = h
+			}
+		}
+	}
+	if userEntry == nil {
+		t.Fatal("user hook entry not preserved")
+	}
+	if userEntry["timeout"] != float64(30) {
+		t.Errorf("user entry unknown field timeout lost or altered: %v", userEntry["timeout"])
+	}
+	if userEntry["commandWindows"] != "lint.cmd" {
+		t.Errorf("user entry unknown field commandWindows lost or altered: %v", userEntry["commandWindows"])
+	}
+}
+
+// ---- config.toml [features] hooks = true (codex hooks feature gate) ----
+
+// TestCodexTranslator_EnsuresHooksFeature_Fresh pins the blocker fix: codex
+// lifecycle hooks are gated behind `[features] hooks = true` (default off), so
+// Translate must create config.toml with the flag inside forge markers —
+// otherwise the freshly-written hooks.json is silently inert.
+//
+// TestCodexTranslator_EnsuresHooksFeature_Fresh 钉死 blocker 修复：codex
+// lifecycle hooks 由 `[features] hooks = true` 门控（默认关），Translate 必须
+// 创建带该开关的 config.toml（forge 标记段内）——否则刚写好的 hooks.json
+// 静默不生效。
+func TestCodexTranslator_EnsuresHooksFeature_Fresh(t *testing.T) {
+	codexHome := t.TempDir()
+	t.Setenv("CODEX_HOME", codexHome)
+
+	if err := (&CodexTranslator{}).Translate(t.TempDir(), testInput()); err != nil {
+		t.Fatalf("Translate failed: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(codexHome, "config.toml"))
+	if err != nil {
+		t.Fatalf("config.toml not created: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "[features]") || !strings.Contains(content, "hooks = true") {
+		t.Errorf("config.toml missing [features] hooks = true:\n%s", content)
+	}
+	if !strings.Contains(content, codexMarkStart) || !strings.Contains(content, codexMarkEnd) {
+		t.Error("config.toml forge section missing markers")
+	}
+}
+
+// TestCodexTranslator_EnsuresHooksFeature_Idempotent: a second Translate leaves
+// config.toml byte-identical.
+//
+// TestCodexTranslator_EnsuresHooksFeature_Idempotent：第二次 Translate 后
+// config.toml 逐字节一致。
+func TestCodexTranslator_EnsuresHooksFeature_Idempotent(t *testing.T) {
+	codexHome := t.TempDir()
+	t.Setenv("CODEX_HOME", codexHome)
+	path := filepath.Join(codexHome, "config.toml")
+
+	tr := &CodexTranslator{}
+	if err := tr.Translate(t.TempDir(), testInput()); err != nil {
+		t.Fatal(err)
+	}
+	first, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tr.Translate(t.TempDir(), testInput()); err != nil {
+		t.Fatal(err)
+	}
+	second, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(first) != string(second) {
+		t.Errorf("second Translate changed config.toml:\nfirst:\n%s\nsecond:\n%s", first, second)
+	}
+}
+
+// TestCodexTranslator_EnsuresHooksFeature_PreservesUserConfig: user content
+// outside the markers survives; an existing [features] table without a hooks key
+// gets `hooks = true` inserted under it (a second [features] table would be
+// invalid TOML).
+//
+// TestCodexTranslator_EnsuresHooksFeature_PreservesUserConfig：标记外的用户内容
+// 保留；已有 [features] 表但无 hooks 键时，在其表头下插入 `hooks = true`
+// （再建第二个 [features] 表是非法 TOML）。
+func TestCodexTranslator_EnsuresHooksFeature_PreservesUserConfig(t *testing.T) {
+	codexHome := t.TempDir()
+	t.Setenv("CODEX_HOME", codexHome)
+	path := filepath.Join(codexHome, "config.toml")
+
+	// Case 1: no [features] table — marked section appended, user config intact.
+	existing := "model = \"o3\"\n\n[profiles.work]\nmodel = \"gpt-5\"\n"
+	if err := os.WriteFile(path, []byte(existing), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := (&CodexTranslator{}).Translate(t.TempDir(), testInput()); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+	if !strings.Contains(content, `model = "o3"`) || !strings.Contains(content, "[profiles.work]") {
+		t.Error("user config outside markers not preserved")
+	}
+	if !strings.Contains(content, codexMarkStart) {
+		t.Error("marked forge section not appended")
+	}
+
+	// Case 2: [features] exists without hooks key — inserted under the header, no
+	// duplicate table.
+	existing2 := "model = \"o3\"\n\n[features]\nunified_exec = true\n"
+	if err := os.WriteFile(path, []byte(existing2), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := (&CodexTranslator{}).Translate(t.TempDir(), testInput()); err != nil {
+		t.Fatal(err)
+	}
+	data, err = os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content = string(data)
+	if n := strings.Count(content, "[features]"); n != 1 {
+		t.Errorf("[features] table appears %d times, want 1 (duplicate table is invalid TOML):\n%s", n, content)
+	}
+	if !strings.Contains(content, "unified_exec = true") {
+		t.Error("existing [features] content not preserved")
+	}
+	hooksIdx := strings.Index(content, "hooks = true")
+	if hooksIdx == -1 {
+		t.Fatal("hooks = true not inserted into existing [features] table")
+	}
+	// The inserted line must sit inside the [features] table (before the next
+	// table header or EOF), not appended at the end of the file.
+	featuresIdx := strings.Index(content, "[features]")
+	if next := strings.Index(content[featuresIdx+1:], "\n["); next != -1 && hooksIdx > featuresIdx+1+next {
+		t.Errorf("hooks = true placed outside the [features] table:\n%s", content)
+	}
+}
+
+// TestCodexTranslator_EnsuresHooksFeature_RespectsExplicitFalse: when the user
+// explicitly disabled hooks (`hooks = false`), Translate must not flip it —
+// the file stays untouched.
+//
+// TestCodexTranslator_EnsuresHooksFeature_RespectsExplicitFalse：用户显式
+// `hooks = false` 时 Translate 不得改写——文件保持不动。
+func TestCodexTranslator_EnsuresHooksFeature_RespectsExplicitFalse(t *testing.T) {
+	codexHome := t.TempDir()
+	t.Setenv("CODEX_HOME", codexHome)
+	path := filepath.Join(codexHome, "config.toml")
+
+	existing := "[features]\nhooks = false\n"
+	if err := os.WriteFile(path, []byte(existing), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := (&CodexTranslator{}).Translate(t.TempDir(), testInput()); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != existing {
+		t.Errorf("explicit hooks = false must be respected (file untouched), got:\n%s", data)
+	}
+}
+
+// TestCodexTranslator_EnsuresHooksFeature_AlreadyTrue: a user-managed
+// `hooks = true` needs no marked section — the file stays untouched.
+//
+// TestCodexTranslator_EnsuresHooksFeature_AlreadyTrue：用户自己管理的
+// `hooks = true` 无需标记段——文件保持不动。
+func TestCodexTranslator_EnsuresHooksFeature_AlreadyTrue(t *testing.T) {
+	codexHome := t.TempDir()
+	t.Setenv("CODEX_HOME", codexHome)
+	path := filepath.Join(codexHome, "config.toml")
+
+	existing := "model = \"o3\"\n\n[features]\nhooks = true\n"
+	if err := os.WriteFile(path, []byte(existing), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := (&CodexTranslator{}).Translate(t.TempDir(), testInput()); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != existing {
+		t.Errorf("existing hooks = true must be a no-op, got:\n%s", data)
+	}
+}

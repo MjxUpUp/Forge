@@ -454,7 +454,9 @@ func TestWindsurfWiringMirrorsClaudeSettings(t *testing.T) {
 // windsurfHookCommandsByClaudeEvent parses Windsurf's flat hooks.json and folds
 // its snake_case events onto Claude Code's PascalCase events (PreToolUse =
 // pre_write_code/pre_read_code/pre_run_command; PostToolUse = post_*; Stop =
-// session_end; SessionStart = session_start). Returns claude-event → command set.
+// post_cascade_response; SessionStart = pre_user_prompt — Cascade has no
+// session_start/session_end, so those groups hang on the prompt/response
+// lifecycle events Cascade actually emits). Returns claude-event → command set.
 func windsurfHookCommandsByClaudeEvent(t *testing.T, path string) map[string]map[string]bool {
 	t.Helper()
 	data, err := os.ReadFile(path)
@@ -473,14 +475,14 @@ func windsurfHookCommandsByClaudeEvent(t *testing.T, path string) map[string]map
 	for event, entries := range cfg.Hooks {
 		claudeEvt := ""
 		switch {
+		case event == "pre_user_prompt":
+			claudeEvt = "SessionStart"
+		case event == "post_cascade_response" || event == "post_cascade_response_with_transcript":
+			claudeEvt = "Stop"
 		case strings.HasPrefix(event, "pre_"):
 			claudeEvt = "PreToolUse"
 		case strings.HasPrefix(event, "post_"):
 			claudeEvt = "PostToolUse"
-		case event == "session_start":
-			claudeEvt = "SessionStart"
-		case event == "session_end":
-			claudeEvt = "Stop"
 		default:
 			continue
 		}
