@@ -369,9 +369,10 @@ func TestStatusWithoutInit(t *testing.T) {
 	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	tmpDir := t.TempDir()
 
-	_, _, code := runForge(t, tmpDir, "status")
+	out, _, code := runForge(t, tmpDir, "status")
 	if code == 0 {
-		t.Fatal("expected non-zero exit when status called without init")
+		// 失败时带上完整输出定位解析到了哪个“项目”（CI 偶发，本地不复现）
+		t.Fatalf("expected non-zero exit when status called without init\ncode=%d\noutput:\n%s", code, out)
 	}
 }
 
