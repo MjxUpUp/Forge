@@ -3,6 +3,7 @@ package projectroot
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -198,5 +199,54 @@ func TestLegacyFind_Boundaries(t *testing.T) {
 	}
 	if _, ok := legacyFind(under); ok {
 		t.Error("内含 projects.json 的 .forge 应判为全局 store，不应命中")
+	}
+}
+
+// TestIsGlobalForgeStore pins the content sniff: every global-store marker
+// (projects.json / projects/ / skills-cache/ / skills-manifest.json / backups/ /
+// .init-suggested/) must be detected — including stores that have projects/ but
+// no projects.json yet (the CI runner-home case), while a plain project .forge/
+// (hooks/, protocol.yml) is never misjudged.
+//
+// TestIsGlobalForgeStore 钉死内容嗅探：每个全局 store 标记（projects.json /
+// projects/ / skills-cache/ / skills-manifest.json / backups/ /
+// .init-suggested/）都必须被识别——包括只有 projects/ 还没有 projects.json
+// 的 store（CI runner home 案例）；普通项目 .forge/（hooks/、protocol.yml）
+// 绝不误判。
+func TestIsGlobalForgeStore(t *testing.T) {
+	for _, marker := range globalStoreMarkers {
+		dir := t.TempDir()
+		forge := filepath.Join(dir, ".forge")
+		target := filepath.Join(forge, marker)
+		if strings.HasSuffix(marker, ".json") {
+			if err := os.MkdirAll(forge, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(target, []byte(`{}`), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		} else {
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if !isGlobalForgeStore(forge) {
+			t.Errorf("含标记 %q 的 .forge 应判为全局 store", marker)
+		}
+	}
+
+	// A project .forge/ (hooks/, protocol.yml, team-mode) is NOT the global store.
+	//
+	// 项目 .forge/（hooks/、protocol.yml、team-mode）不是全局 store。
+	proj := t.TempDir()
+	forge := filepath.Join(proj, ".forge")
+	if err := os.MkdirAll(filepath.Join(forge, "hooks"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(forge, "protocol.yml"), []byte("version: 1.0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if isGlobalForgeStore(forge) {
+		t.Error("项目 .forge/ 不应判为全局 store")
 	}
 }

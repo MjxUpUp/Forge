@@ -121,8 +121,24 @@ func legacyFind(dir string) (string, bool) {
 		}
 		candidate := filepath.Join(d, ".forge")
 		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
-			if _, err := os.Stat(filepath.Join(candidate, "projects.json")); err == nil {
-				return "", false // 全局 store（内含全局注册表），不是项目标记
+			// Global-store sniff: the user-level store (~/.forge or FORGE_DATA_HOME)
+			// always carries global-only artifacts (projects.json registry and/or the
+			// projects/ per-project data tree and/or skills-cache/), which a project
+			// .forge/ NEVER contains. Checking all three matters: a store created
+			// only by `forge data-dir` MkdirAll has projects/ but no projects.json
+			// yet (observed on CI: runner home's .forge held only projects/, the
+			// projects.json-only sniff let it through, and every temp dir under home
+			// resolved to "Project: runneradmin").
+			//
+			// 全局 store 嗅探：用户级 store（~/.forge 或 FORGE_DATA_HOME）必然带有
+			// 全局独有的产物（projects.json 注册表 和/或 projects/ 按项目数据树
+			// 和/或 skills-cache/），而项目 .forge/ 绝不会包含这些。三者都查是
+			// 必要的：仅由 `forge data-dir` MkdirAll 创建的 store 只有 projects/
+			// 还没有 projects.json（CI 实证：runner home 的 .forge 只含
+			// projects/，只查 projects.json 的嗅探漏判，home 下所有临时目录
+			// 都解析成 "Project: runneradmin"）。
+			if isGlobalForgeStore(candidate) {
+				return "", false // 全局 store，不是项目标记
 			}
 			return d, true
 		}
@@ -151,4 +167,46 @@ func samePath(a, b string) bool {
 		return os.SameFile(ia, ib)
 	}
 	return filepath.Clean(a) == filepath.Clean(b)
+}
+
+// globalStoreMarkers names artifacts that only the user-level global store
+// (~/.forge or FORGE_DATA_HOME) ever contains: the registry file, the
+// per-project data tree, the skills distribution cache/manifest, file backups,
+// and the init-suggest marker dir. A PROJECT .forge/ holds hooks/, protocol.yml,
+// team-mode, .sync-version — none of these names.
+//
+// globalStoreMarkers 列出只有用户级全局 store（~/.forge 或 FORGE_DATA_HOME）
+// 才会含的产物：注册表文件、按项目数据树、skills 分发缓存/manifest、文件备份、
+// init-suggest 标记目录。项目 .forge/ 装的是 hooks/、protocol.yml、team-mode、
+// .sync-version——与这些名字无交集。
+var globalStoreMarkers = []string{
+	"projects.json",
+	"projects",
+	"skills-cache",
+	"skills-manifest.json",
+	"backups",
+	".init-suggested",
+}
+
+// isGlobalForgeStore reports whether a .forge directory is the user-level global
+// store (not a project marker), by content: any globalStoreMarkers entry present
+// means global store. A store created only by `forge data-dir` MkdirAll holds
+// projects/ but no projects.json yet; one touched by skills distribution holds
+// skills-cache/skills-manifest.json — checking the full marker set covers every
+// creator (observed on CI: runner home's .forge let the projects.json-only sniff
+// through, and every temp dir under home resolved to "Project: runneradmin").
+//
+// isGlobalForgeStore 按内容报告一个 .forge 目录是否用户级全局 store（而非项目
+// 标记）：任一 globalStoreMarkers 条目存在即全局 store。仅由 `forge data-dir`
+// MkdirAll 创建的 store 只有 projects/ 还没有 projects.json；被 skills 分发
+// 碰过的 store 带 skills-cache/skills-manifest.json——查全量标记覆盖所有
+// 创建者（CI 实证：runner home 的 .forge 让只查 projects.json 的嗅探漏判，
+// home 下所有临时目录都解析成 "Project: runneradmin"）。
+func isGlobalForgeStore(forgeDir string) bool {
+	for _, m := range globalStoreMarkers {
+		if _, err := os.Stat(filepath.Join(forgeDir, m)); err == nil {
+			return true
+		}
+	}
+	return false
 }
