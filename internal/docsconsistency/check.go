@@ -226,61 +226,6 @@ func AllFlags(root *cobra.Command) []string {
 	return out
 }
 
-// UndocumentedFlags walks the cobra tree and returns every non-hidden flag (on
-// non-hidden commands) whose --name is absent from doc. Behavioural flags are
-// user-facing contract exactly like commands (guard B covers commands; the
-// 2026-08 user-level-assets release shipped --project/--restore with zero doc
-// coverage because nothing guarded the flag layer). Hidden commands/flags are
-// exempt, as is cobra's auto-injected "help" flag.
-//
-// The caller owns the allowlist for intentionally undocumented flags — kept
-// out of this package so it stays free of policy.
-//
-// UndocumentedFlags 遍历 cobra 命令树，返回 doc 中未出现 --name 的所有非隐藏
-// flag（非隐藏命令上）。行为 flag 与命令一样是用户面对的契约（守卫 B 覆盖
-// 命令；2026-08 user-level-assets 发版时 --project/--restore 零文档上线，
-// 正是因为 flag 层无守卫）。隐藏命令/flag 豁免，cobra 自动注入的 "help"
-// flag 同样豁免。
-//
-// 故意不文档化的 flag 由调用方用 allowlist 豁免——策略不放进本包。
-func UndocumentedFlags(root *cobra.Command, doc string) []string {
-	if root == nil {
-		return nil
-	}
-	seen := make(map[string]bool)
-	var out []string
-	var walk func(c *cobra.Command)
-	walk = func(c *cobra.Command) {
-		if c == nil {
-			return
-		}
-		if !c.Hidden {
-			visit := func(name string) {
-				if seen[name] || strings.Contains(doc, "--"+name) {
-					return
-				}
-				seen[name] = true
-				out = append(out, c.Name()+" --"+name)
-			}
-			c.LocalFlags().VisitAll(func(f *pflag.Flag) {
-				if !f.Hidden && f.Name != "help" {
-					visit(f.Name)
-				}
-			})
-			c.PersistentFlags().VisitAll(func(f *pflag.Flag) {
-				if !f.Hidden && f.Name != "help" {
-					visit(f.Name)
-				}
-			})
-		}
-		for _, sub := range c.Commands() {
-			walk(sub)
-		}
-	}
-	walk(root)
-	return out
-}
-
 // skillBacktickRef matches a kebab-case token wrapped in backticks — the skill-name
 // analogue of forgeBacktickRef (which targets forge-command paths). The backtick
 // delimiter excludes prose, and the lowercase-first kebab shape excludes CamelCase
