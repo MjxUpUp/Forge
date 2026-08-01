@@ -48,6 +48,15 @@ func runInitSuggestHook(t *testing.T, cwd, tag, home, initFlag string, extraEnv 
 	stub := `#!/bin/bash
 forge() {
   if [ "$1" = "plugin" ]; then return 0; fi
+  # v1.22 零项目写入契约：成员资格走注册表（forge status exit 0 = 已登记）。
+  # stub 用 FORGE_STATUS_RC 模拟（默认 1 = 未登记），有 .forge/ 的项目由脚本内
+  # [ -d .forge ] 兜底分支覆盖，不走 status。
+  #
+  # v1.22 zero-project-write contract: membership comes from the registry
+  # (forge status exit 0 = registered). The stub simulates via FORGE_STATUS_RC
+  # (default 1 = unregistered); projects with .forge/ are covered by the script's
+  # own [ -d .forge ] fallback branch, bypassing status.
+  if [ "$1" = "status" ]; then return "${FORGE_STATUS_RC:-1}"; fi
   if [ -n "$FORGE_FORGE_FAIL" ]; then return 1; fi
   touch "$FORGE_INIT_FLAG" 2>/dev/null
   return 0
@@ -133,6 +142,7 @@ func TestInitSuggestHook_Branches(t *testing.T) {
 		marker    string // "", "suggested", "declined"
 		autoInit  bool
 		failForge bool   // stub forge 返回 1（模拟 init 失败，验 partial-state 回显）
+		statusRC0 bool   // stub forge status 返回 0（模拟已登记注册表，验零写入成员判定）
 		wantSub   string // 期望输出子串；空=期望静默（无"未启用 forge"）
 		wantInit  bool   // 期望 forge init 被调（flag 文件存在）
 	}{
@@ -171,6 +181,20 @@ func TestInitSuggestHook_Branches(t *testing.T) {
 			name:    `有 git 有 forge 静默`,
 			cwdFn:   func(t *testing.T) string { return mkGitProj(t, true) },
 			wantSub: ``,
+		},
+		{
+			// v1.22 零项目写入契约：无 .forge/ 但已登记注册表（forge status exit 0）
+			// → 已启用，静默。这是新成员判定路径（registry 而非 .forge/ 存在性）的
+			// 核心断言——没有它，零写入项目会被反复提示 init。
+			//
+			// v1.22 zero-project-write contract: no .forge/ but registered (forge
+			// status exit 0) → enabled, silent. This pins the new membership path
+			// (registry, not .forge/ existence) — without it, zero-write projects
+			// would be re-prompted to init every session.
+			name:      `有 git 无 .forge 已登记静默`,
+			cwdFn:     func(t *testing.T) string { return mkGitProj(t, false) },
+			statusRC0: true,
+			wantSub:   ``,
 		},
 		{
 			name:    `有 git 无 forge 首次提示`,
@@ -219,6 +243,9 @@ func TestInitSuggestHook_Branches(t *testing.T) {
 			}
 			if c.failForge {
 				extra = append(extra, `FORGE_FORGE_FAIL=1`)
+			}
+			if c.statusRC0 {
+				extra = append(extra, `FORGE_STATUS_RC=0`)
 			}
 			out := runInitSuggestHook(t, cwd, tag, home, initFlag, extra...)
 			if c.wantSub != `` && !strings.Contains(out, c.wantSub) {

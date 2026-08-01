@@ -67,7 +67,7 @@ Forge 在 AI 编码过程中自动插入结构化质量门禁——从任务创�
 # 安装
 npm install -g @agent_forge/forge
 
-# 在项目目录初始化
+# 在项目目录初始化（默认零项目写入）
 cd your-project
 forge init
 
@@ -75,16 +75,20 @@ forge init
 # AI 会自动读取 Forge 生成的 Skill 并驱动门禁流程
 ```
 
-初始化后 Forge 会创建：
+`forge init` **不在项目目录写任何文件**（不会被 git add 误提交），全部资产落在用户级：
 
 | 路径 | 说明 |
 |------|------|
-| `.forge/` | Hook 脚本、任务状态、协议配置 |
-| `.claude/settings.local.json` | Hook 集成配置 |
-| `.claude/CLAUDE.md` | 质量协议引用 |
-| `.claude/skills/` | 质量协议 Skill |
+| `~/.forge/projects.json` | 全局项目注册表（forge 项目锚点） |
+| `~/.forge/projects/<key>/` | protocol.yml + runtime state（任务状态/hook 参考副本，key=git hash 或路径 hash） |
+| `~/.claude/settings.json` | Claude Code hooks（plugin 已装则由 plugin 接管，跳过此文件） |
+| `~/.claude/CLAUDE.md`、`~/.codex/AGENTS.md` | 质量协议（备份+追加、条件激活，`forge uninstall --restore` 可回滚） |
+| `~/.claude/skills/forge-quality/` | 质量协议 Skill |
+| `~/.codex/hooks.json`、`~/.cursor/hooks.json` 等 | 其他 agent 的用户级 hook 接线（按检测到的工具） |
 
-> **主要用 Claude Code？** 走 [plugin marketplace](plugins/forge/README.md) 一次性接线用户级 hooks（机器上所有项目共享，无需逐项目配 `.claude/settings.local.json`）。
+> **团队要 git 共享同一份协议？** 用 `forge init --project`（团队模式）——`.forge/protocol.yml`、`CLAUDE.md`、`AGENTS.md` 等指令资产写入项目目录可提交共享；再跑一次普通 `forge init` 即转回零写入。
+
+> **主要用 Claude Code？** 走 [plugin marketplace](plugins/forge/README.md) 一次性接线用户级 hooks（机器上所有项目共享，连 `~/.claude/settings.json` 都不用动）。
 
 ## 🔧 它如何工作
 
@@ -157,7 +161,7 @@ Forge 通过 Claude Code 的 Hook 机制实现实时质量检查。三层纵深�
 
 ```
 Layer 1: PreToolUse 快速拦截
-  ├─ task-guard: Write/Edit → 检查任务状态 + 保护 .forge/*
+  ├─ task-guard: Write/Edit → 检查任务状态 + 自保护（forge 配置层）
   └─ bash-guard: Bash → 检测写文件模式
 
 Layer 2: PostToolUse 文件监控
@@ -174,7 +178,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 
 | Hook | 触发时机 | 功能 |
 |------|----------|------|
-| **task-guard** | Write/Edit 前 | 无活跃任务时 WARN（仅 `.forge/*` 自保护文件 FAIL），保护 Forge 配置不被篡改 |
+| **task-guard** | Write/Edit 前 | 无活跃任务时 WARN（仅 `.forge/*`/`.claude/settings*` 自保护 FAIL——此类项目级文件只在团队模式/老项目存在），保护 Forge 配置不被篡改 |
 | **read-before-edit** | Write/Edit 前（活跃任务内） | 编辑本会话未 Read 过的现存源文件 → 硬阻断（`BLOCKED`）。Edit 需精确匹配旧文本，未读即凭记忆盲改——old_string 撞中即错改入库，先 Read 再 Edit。豁免新建文件/测试文件/非源码；批量重构逃生 `forge task override --work-activity disable`（降 evidence 强度到 Weak）。reads-log 落盘随会话存活，压缩后仍累计 |
 | **assertion-check** | Write/Edit 前 | 检测断言弱化（t.Fatal → t.Log、assert! 被删除等），advisory 提醒不阻塞（agent 自检） |
 | **bash-guard** | Bash 前 | 检测命令中的写文件模式（writeFile、cat >、sed -i 等），无任务时 WARN（源码随后被 file-sentinel 隔离） |
@@ -187,7 +191,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | **review-stop** | 会话结束 | code-review-gate 自动挡：未审源码变更 block 会话结束。task 模式不重复拦（task-complete 门禁 ReviewPassed 硬前置已强制），非 task 模式按 diff stamp 决策；并发会话检测——其他 session 有活跃任务时放行（调研 session 不被拦） |
 | **skill-scan** | 会话开始 | advisory：扫描 ~/.claude/skills 安全性（forge audit 19 规则），补 install 门控缺口（手动 clone/junction/git pull 进入的 skill），全局 hook 不依赖 forge project |
 | **mcp-scan** | 会话开始 | advisory：扫描项目级 `.mcp.json` 的 server 配置（管道执行/任意包执行 npx·uvx·dlx·bunx/内联代码/非 https URL/env 明文凭证），补 skill-scan 盲区（攻击者可经 PR 植入恶意 server，clone 即自动连接）；只审 config 层，runtime tool description 注入（Tool Poisoning）不在能力内，全局 hook |
-| **init-suggest** | 会话开始 | advisory：检测 git 项目无 `.forge/` 时，首次提示 agent 询问是否启用 forge（用户拒绝→`forge suggest decline` 永久静默；设 `FORGE_AUTO_INIT=1` 处处自动 init，注意 `forge init` 会写入 `.forge/`、`CLAUDE.md`/`AGENTS.md`、`.claude/settings.local.json`、skills——会对所在项目产生文件变更），全局 hook，补"每项目手动 init"缺口，实现一次安装后项目级资产自动就位 |
+| **init-suggest** | 会话开始 | advisory：检测到未启用 forge 的 git 项目时，首次提示 agent 询问是否启用（用户拒绝→`forge suggest decline` 永久静默；设 `FORGE_AUTO_INIT=1` 处处自动 init——v1.22 起 init 零项目写入，不再对项目产生任何文件变更），全局 hook，补"每项目手动 init"缺口，实现一次安装后项目自动登记 |
 | **task-resume** | 会话开始 | advisory：自动注入活跃任务的接续上下文（目标/计划/决策/阻塞/门禁进度/git 已改未提交）+ 锚定当前 session——接手方冷启动即知任务在哪一步，无需手动 forge task resume；无活跃任务静默；项目级 hook |
 | **compact-resume** | 压缩后（claude-code only） | PostCompact 时设 `ResumeStale=true` 标志（PostCompact 不在 additionalContext 注入点，只设标志等下个 prompt 重注入），context-rot 抗机制根治层·设标志半边 |
 | **resume-reinject** | 用户提交时（claude-code only） | 检测 `ResumeStale=true`（刚压缩过）→ 输出完整接续上下文并清标志。补 task-resume 缺口（SessionStart 只注入一次，会话中途压缩不补），context-rot 抗机制根治层·重注入半边 |
@@ -201,14 +205,14 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 
 | 命令 | 说明 |
 |------|------|
-| `forge init` | 初始化项目（生成 `.forge/` 资产、Hook、质量协议 Skill；旧的 `--mode` 标志已废弃为 no-op） |
+| `forge init` | 初始化项目（默认**零项目写入**：登记全局注册表 `~/.forge/projects.json`，hooks/指令/skill 全在用户级，protocol.yml + runtime state 在 `~/.forge/projects/<key>/`；`--project` 团队模式把指令资产写项目目录供 git 共享；旧的 `--mode` 标志已废弃为 no-op） |
 | `forge status [--json]` | 查看项目状态（任务管道 + 质量信号） |
 | `forge verify` | 项目完整性检查 + 回归测试 |
 | `forge update [--plugin]` | 自更新到最新版本；加 `--plugin` 在 binary 更新后打印 plugin marketplace 重装指引（marketplace 镜像同步 hook 时建议重装） |
 | `forge suggest decline/status/reset` | 管理 init-suggest hook 的项目 init 提示状态（decline 永久静默当前项目 / status 查看 / reset 清除重新提示） |
-| `forge uninstall` | 一键反装：清 npm global `@agent_forge/forge` + 删 init-suggest 标记（默认 `~/.forge/.init-suggested/`，设 `FORGE_DATA_HOME` 时落该根下）；plugin 卸载须在 agent CLI 内交互运行（不可脚本化） |
-| `forge migrate [--dry-run] [--force]` | 把旧 `.forge/` runtime state（tasks/gates/checklog/toollog/act/sessions/quarantine/active-task-ref 等）迁到用户级 DataDir（`~/.forge/projects/<key>/`）——升级到 runtime state 外迁版本后的迁移路径；项目配置（hooks/protocol.yml 等）不迁仍留 `.forge/`；幂等，`--dry-run` 预览，`--force` 覆盖 DataDir 已有同名 |
-| `forge registry prune` | 精简全局注册表 `~/.forge/projects.json`——移除 `.forge/` 不存在的死路径与重复条目（项目移走/删除/测试残留），原子写回。registry.List 读时惰性精简但只在 `forge dashboard --global` 触发（启 web 阻塞），本命令给不启 web 的主动清理入口 |
+| `forge uninstall [--restore]` | 一键反装：剥除全部用户级 hooks（claude/codex/cursor/windsurf/opencode/kimi）+ 用户级指令段（CLAUDE.md/AGENTS.md/global_rules.md）+ forge-quality skill + 清 npm global `@agent_forge/forge` + 删 init-suggest 标记（默认 `~/.forge/.init-suggested/`，设 `FORGE_DATA_HOME` 时落该根下）；`--restore` 把用户级文件回滚到 forge 修改前字节（备份在 `~/.forge/backups/`）；plugin 卸载须在 agent CLI 内交互运行（不可脚本化） |
+| `forge migrate [--dry-run] [--force]` | 把旧 `.forge/` runtime state（tasks/gates/checklog/toollog/act/sessions/quarantine/active-task-ref 等）迁到用户级 DataDir（`~/.forge/projects/<key>/`）——升级到 runtime state 外迁版本后的迁移路径；未改过的 `.forge/protocol.yml` 由 autoSync 自动迁 DataDir，用户改过的保留为团队共享覆盖层；幂等，`--dry-run` 预览，`--force` 覆盖 DataDir 已有同名 |
+| `forge registry prune` | 精简全局注册表 `~/.forge/projects.json`——移除项目目录已不存在的死路径与重复条目（项目移走/删除/测试残留），原子写回。registry.List 读时惰性精简但只在 `forge dashboard --global` 触发（启 web 阻塞），本命令给不启 web 的主动清理入口 |
 
 </details>
 
@@ -294,8 +298,8 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 |------|------|
 | `forge health [--json]` | 项目级质量趋势——聚合所有任务结论（分数走势/证据盲区率/复发低分维度，task→project 粒度联动） |
 | `forge trace <task-ref>` | 查看任务的完整质量事件时间线（checklog + toollog + token） |
-| `forge dashboard [--global] [--port <n>] [--no-open]` | 本地质量看板——起 HTTP 服务把分数走势/证据盲区率/复发低分维度/最近任务渲染成图形（localhost 只读，自动开浏览器，Ctrl+C 退出）。加 `--global` 聚合 `~/.forge/projects.json` 登记的全部项目（`forge init` 自登记），跨项目比对；项目被移走/删除后 `.forge/` 消失即自动淡出，不留幽灵路径 |
-| `forge sync [--force]` | 同步 .forge/ 资产到当前二进制版本 |
+| `forge dashboard [--global] [--port <n>] [--no-open]` | 本地质量看板——起 HTTP 服务把分数走势/证据盲区率/复发低分维度/最近任务渲染成图形（localhost 只读，自动开浏览器，Ctrl+C 退出）。加 `--global` 聚合 `~/.forge/projects.json` 登记的全部项目（`forge init` 自登记），跨项目比对；项目目录被移走/删除后注册表条目自动淡出（读时惰性精简），不留幽灵路径 |
+| `forge sync [--force]` | 同步 forge 资产到当前二进制版本（用户级 hooks/指令/skill 重生成 + 存量项目级残留收敛） |
 | `forge clone check` | 检测文件代码克隆 |
 | `forge plugin pack [--out <dir>]` | 生成多 host plugin pack（.claude-plugin/.cursor-plugin marketplace + plugins/\<name\>/ 树：claude manifest 含 hooks + 每 host 安装 README），让各 agent 一键 `plugin install forge` 跨工具接线（薄 manifest + 共享内容，单仓即 marketplace） |
 | `forge plugin status` | 报告 forge plugin 是否在 user-level 已装（exit 0=已装，非零=未装；供 init-suggest hook / 脚本检测） |
@@ -318,14 +322,14 @@ npm install -g @agent_forge/forge
 <details>
 <summary><b>📖 通过 Claude Code plugin marketplace（用户级，一次性接线）</b></summary>
 
-若主要用 Claude Code，可走 plugin marketplace 一次性接线用户级 hooks（机器上所有项目共享，无需逐项目配 `.claude/settings.local.json`）：
+若主要用 Claude Code，可走 plugin marketplace 一次性接线用户级 hooks（机器上所有项目共享，连 `~/.claude/settings.json` 都不用动）：
 
 ```
 /plugin marketplace add MjxUpUp/Forge
 /plugin install forge@forge
 ```
 
-仍需 `npm install -g @agent_forge/forge` 装二进制（hooks 都 spawn forge），并在每个项目 `forge init` 生成项目级资产（`.forge/`、`CLAUDE.md`/`AGENTS.md`、skills）。plugin 已装时 `forge init` 会自动去重 project-level 的 hooks，并清理 user-level `settings.local.json` 的重复 forge hooks（避免与 user-level plugin 双重注册——历史 global `forge init` 写 home / 旧全局安装残留的重复），存量项目由 init-suggest SessionStart hook 自动迁移。完整三步与各 host 差异见 `plugins/forge/README.md`。
+仍需 `npm install -g @agent_forge/forge` 装二进制（hooks 都 spawn forge），并在每个项目 `forge init` 登记（v1.22 起零项目写入——协议与 runtime state 全在用户级 `~/.forge/projects/<key>/`，只对用户级配置生效）。plugin 已装时 hooks 由 plugin.json 全机器接管，`forge init` 跳过自己的 settings.json 注册；存量老项目残留的旧版项目级写入（`.forge/hooks/`、`.claude/settings.local.json` 的 forge hooks、CLAUDE.md/AGENTS.md 的 forge 段）由 autoSync 与 init-suggest SessionStart hook 自动收敛。完整三步与各 host 差异见 `plugins/forge/README.md`。
 
 </details>
 

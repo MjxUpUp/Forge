@@ -34,11 +34,13 @@ Forge = Loop Engineering 的 **验证 + 状态层**。AI 编码是一个循环�
 
 | Agent | 安装方式 | 接入 |
 |---|---|---|
-| **Claude Code** | `/plugin marketplace + install` | 全自动（hooks + auto-init） |
-| **Codex** | plugin marketplace 或 `forge init --agents codex` | hooks + guidance |
-| **Cursor** | plugin marketplace + `forge init --agents cursor` | skills |
-| **GitHub Copilot** | plugin marketplace + `forge init --agents copilot` | `.github/instructions` |
-| **Windsurf** | `.windsurf/hooks.json`（forge init 自动生成） | Cascade hooks |
+| **Claude Code** | `/plugin marketplace + install` | 全自动（用户级 hooks + auto-init） |
+| **Codex** | plugin marketplace 或 `forge init --agents codex` | 用户级 hooks（`~/.codex/hooks.json` + config.toml 特性开关；可能需在 codex `/hooks` 里 trust 一次）+ guidance |
+| **Cursor** | plugin marketplace + `forge init --agents cursor` | 用户级 hooks（`~/.cursor/hooks.json`） |
+| **Windsurf** | `forge init --agents windsurf` | 用户级 Cascade hooks（`~/.codeium/windsurf/hooks.json` + `memories/global_rules.md`） |
+| **GitHub Copilot** | plugin marketplace | 无用户级 hook 通道——bridge 为 no-op，marketplace 仅分发入口 |
+
+v1.22 起 `forge init` 默认**零项目写入**：hooks/协议/skill 全部落在上述用户级位置，项目目录不产生任何文件；团队要 git 共享协议用 `forge init --project`。
 
 其他 agent（OpenCode / Pi / Kiro / Cline / Gemini CLI / Mistral Vibe 等）由 `plugins/forge/install.sh` 兜底安装（curl-pipe 单脚本）。
 

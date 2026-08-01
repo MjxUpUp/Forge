@@ -56,7 +56,9 @@ func GenerateClaudeMD(projectDir string) error {
 // GenerateAgentsMD creates or updates the project-root AGENTS.md, writing the
 // quality protocol section taken over by Forge. AGENTS.md is the cross-agent instruction spec read by
 // generic agents such as codex/cursor/copilot/windsurf/cline (detect.go identifies codex via .codex/,
-// not via AGENTS.md — AGENTS.md is a generic file forge generates on every init).
+// not via AGENTS.md). Project-root generation only happens in team mode (`forge init --project`);
+// the default zero-project-write init writes the same section to the user-level ~/.codex/AGENTS.md
+// via GenerateUserAgentsMD instead.
 // Unlike CLAUDE.md (claude-specific, references Claude slash command),
 // AGENTS.md carries the agent-agnostic protocol and points to the forge CLI surface. When the file already exists,
 // only the marker-wrapped Forge section is replaced; user content outside the markers is preserved —
@@ -65,7 +67,9 @@ func GenerateClaudeMD(projectDir string) error {
 // GenerateAgentsMD 创建或更新项目根 AGENTS.md，写入 Forge 接管的
 // 质量协议 section。AGENTS.md 是 codex/cursor/copilot/windsurf/cline 等
 // 通用 agent 读取的跨 agent 指令规范（detect.go 用 .codex/ 识别 codex，
-// 不依赖 AGENTS.md——AGENTS.md 是 forge 每次 init 都会生成的通用文件）。
+// 不依赖 AGENTS.md）。项目根生成只在团队模式（`forge init --project`）发生；
+// 默认零项目写入 init 改由 GenerateUserAgentsMD 把同一段写到用户级
+// ~/.codex/AGENTS.md。
 // 与 CLAUDE.md（claude 专属、引用 Claude slash command）不同，
 // AGENTS.md 承载 agent-agnostic 协议并指向 forge CLI surface。文件已存在时，
 // 仅替换标记包裹的 Forge section，标记外的用户内容保留——
@@ -159,11 +163,11 @@ func buildForgeSectionWithLevel(forClaude bool, userLevel bool) string {
 	sb.WriteString("`git commit` 必须在 `forge task complete` **之前**：`complete` 会清空 active task ref，之后提交源码会被 file-sentinel quarantine。正确顺序：三门禁通过 → `git commit` → `forge task complete`。若已 complete 才发现要提交，开一个 `chore/*-commit` 任务放行。\n\n")
 
 	sb.WriteString("### 安全机制\n\n")
-	sb.WriteString("- **task-guard**（PreToolUse Write|Edit）：无任务时 Write/Edit 源码只 WARN 不拦截（`.forge/*` 自保护文件才 FAIL）；feature 分支无任务时自动建任务\n")
+	sb.WriteString("- **task-guard**（PreToolUse Write|Edit）：无任务时 Write/Edit 源码只 WARN 不拦截（`.forge/*`/`.claude/settings*` 自保护 FAIL——此类项目级文件只在团队模式/老项目存在）；feature 分支无任务时自动建任务\n")
 	sb.WriteString("- **read-before-edit**（PreToolUse Write|Edit，活跃任务内）：编辑本会话未 Read 过的现存源文件 → 硬阻断（`BLOCKED`）。Edit 需精确匹配旧文本，未读即凭记忆盲改——old_string 撞中即错改入库。先 Read 再 Edit。豁免：新建文件/测试文件/非源码；批量重构逃生 `forge task override --work-activity disable`（降 evidence 强度到 Weak）。reads-log 落盘随会话存活，压缩后仍累计\n")
 	sb.WriteString("- **bash-guard**（PreToolUse Bash）：无任务时 Bash 写文件只 WARN（源码随后可能被 file-sentinel quarantine）\n")
 	sb.WriteString("- **file-sentinel**（PostToolUse Bash）：对比 Bash 前后文件状态，未授权源码变更 quarantine 到用户级 DataDir/quarantine/（`forge data-dir` 查看路径）\n")
-	sb.WriteString("- **自保护**：`.forge/*` 和 `.claude/settings*` 不能被直接修改，只能通过 `forge` 命令操作\n")
+	sb.WriteString("- **自保护**：项目级 `.forge/*` 和 `.claude/settings*`（仅团队模式/老项目存在）不能被直接修改；用户级资产（`~/.claude/settings.json`、`~/.claude/CLAUDE.md`、`~/.codex/AGENTS.md` 等）同样只能通过 `forge` 命令操作（`forge uninstall --restore` 可回滚）\n")
 	sb.WriteString("- **skill-scan**（SessionStart）：会话开始扫描 `~/.claude/skills` 安全性（forge audit 19 规则，advisory）——补 install 门控缺口，覆盖手动 clone/junction/git pull 进入的 skill；全局 hook，不依赖 forge project\n")
 	sb.WriteString("- **mcp-scan**（SessionStart）：会话开始扫描项目级 `.mcp.json` 的 server 配置安全性（管道执行 curl\\|sh / 任意包执行 npx·uvx·dlx·bunx / 内联代码 -c·-e / 非 https URL / env 明文凭证，advisory）——补 skill-scan 盲区（攻击者可经 PR 植入恶意 server，clone 即自动连接）；只审 config 层，runtime tool description 注入（Tool Poisoning）不在能力内；全局 hook，不依赖 forge project\n")
 	sb.WriteString("- **task-resume**（SessionStart）：会话启动自动注入活跃任务的接续上下文（`forge task resume --hook`：目标/计划/决策/阻塞/门禁进度/git 已改未提交）+ 把当前 session 锚定到任务——接手方冷启动即知任务在哪一步，无需手动 `forge task resume`；无活跃任务静默；项目级 hook（advisory，不阻塞）\n")
