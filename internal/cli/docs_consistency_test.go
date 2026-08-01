@@ -172,6 +172,80 @@ func TestReadme_CoversAllTopLevelCommands(t *testing.T) {
 	}
 }
 
+// flagDocGrandfather pins the flags that are intentionally undocumented in the
+// root README (ratchet baseline, same philosophy as skillRefAllowlist). The
+// README is a command reference, not an exhaustive flag manual — most of these
+// are sub-command detail flags. Any flag NOT in this list must appear in the
+// root README (guard D) — so a NEW user-facing flag fails CI until the author
+// either documents it or consciously adds it here with a reason.
+//
+// flagDocGrandfather 钉住故意不进根 README 的 flag（棘轮基线，与
+// skillRefAllowlist 同哲学）。README 是命令参考而非穷尽式 flag 手册——这里
+// 大多是子命令细节 flag。不在此表的 flag 必须出现在根 README（守卫 D）——
+// 新增用户可见 flag 不进 README 就会让 CI 挂，作者二选一：补文档，或注明
+// 理由后加进本表。
+var flagDocGrandfather = map[string]bool{
+	`adapters --apply`: true,
+	`attach --session`: true,
+	`audit --gate`: true,
+	`block --resolution`: true,
+	`check --file`: true, `check --threshold`: true,
+	`confirm --fingerprint`: true,
+	`decide --affects`: true, `decide --by`: true, `decide --commit`: true,
+	`decide --diagnosis`: true, `decide --evidence`: true, `decide --outcome`: true,
+	`decide --probe-run`: true, `decide --rationale`: true, `decide --revision`: true,
+	`drift-check --target`: true,
+	`eval-baseline --run-id`: true, `eval-gen --all`: true,
+	`eval-record --agent-model`: true, `eval-record --forge-version`: true,
+	`eval-report --baseline`: true, `eval-report --verbose`: true,
+	`finding --source`: true, `finding --evidence`: true,
+	`gate --silent`: true,
+	`init --agents`: true,
+	`install --drift-policy`: true, `install --skip-quality`: true,
+	`install --skip-require-check`: true, `install --with-adapters`: true, `install --target`: true,
+	`list --timeline`: true,
+	`override --acceptance-gate`: true, `override --skill-decisions`: true, `override --test-coverage`: true,
+	`resume --compact-flag`: true, `resume --hook`: true, `resume --no-attach`: true, `resume --reinject`: true,
+	`revert --decision`: true, `revert --edit`: true,
+	`score --history`: true,
+	`skills --canonical`: true,
+	`start --from-issue`: true, `start --goal`: true, `start --kind`: true,
+	`start --origin-tool`: true, `start --parent`: true, `start --plan-file`: true, `start --title`: true,
+	`status --system`: true, `status --tasks`: true, `status --agents`: true,
+	`usage --top`: true, `usage --undertrigger`: true,
+	`verify --collect-golden`: true, `verify --regression`: true, `verify --run-tests`: true, `verify --scenario`: true,
+}
+
+// TestReadme_NewFlagsAreDocumented guard D (ratchet): every non-hidden flag NOT
+// in flagDocGrandfather must appear in the root README. Root-cause fix for the
+// 2026-08 user-level-assets gap: `init --project` and `uninstall --restore`
+// shipped with zero doc coverage — guards A/B only check command references,
+// not the flag layer, so the drift sailed through. Existing undocumented flags
+// are grandfathered (README is not an exhaustive flag manual); the guard only
+// forces a doc decision for NEW flags.
+//
+// TestReadme_NewFlagsAreDocumented 守卫 D（棘轮）：不在 flagDocGrandfather 里的
+// 非隐藏 flag 必须出现在根 README。2026-08 user-level-assets 缺口的根治：
+// `init --project` 与 `uninstall --restore` 零文档上线——守卫 A/B 只查命令
+// 引用不查 flag 层，drift 直接穿过。存量未文档 flag 已豁免进基线（README
+// 不是穷尽式 flag 手册）；守卫只强制新增 flag 做文档决策。
+func TestReadme_NewFlagsAreDocumented(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join(repoRoot, "README.md"))
+	if err != nil {
+		t.Fatalf("read README.md: %v", err)
+	}
+	s := string(body)
+	for _, id := range docsconsistency.AllFlags(rootCmd) {
+		if flagDocGrandfather[id] {
+			continue
+		}
+		name := id[strings.Index(id, " --")+3:]
+		if !strings.Contains(s, "--"+name) {
+			t.Errorf("README.md 缺 flag --%s（%s；新增用户可见 flag 须进 README，或注明理由加进 flagDocGrandfather）", name, id)
+		}
+	}
+}
+
 // skillRefAllowlist codifies the "which backtick multi-segment tokens are NOT skill
 // references" knowledge, gathered by manual audit of canonical skills (the 2026-07
 // frontend dangling-link sweep's false-positive categories). A token here is a

@@ -184,3 +184,24 @@ func TestDriftedCommands_NoCrossLinePhantom(t *testing.T) {
 		}
 	})
 }
+
+// TestAllFlags pins the flag inventory: hidden flags/commands are excluded, the
+// cobra help flag is excluded, and ids are sorted "cmd --flag".
+//
+// TestAllFlags 钉死 flag 清单：隐藏 flag/命令排除，cobra help flag 排除，
+// id 为排序的 "cmd --flag"。
+func TestAllFlags(t *testing.T) {
+	root := &cobra.Command{Use: "forge"}
+	vis := &cobra.Command{Use: "init"}
+	vis.Flags().Bool("project", false, "team mode")
+	vis.Flags().Bool("secret", false, "hidden flag")
+	_ = vis.Flags().MarkHidden("secret")
+	hid := &cobra.Command{Use: "internal", Hidden: true}
+	hid.Flags().Bool("ghost", false, "on hidden command")
+	root.AddCommand(vis, hid)
+
+	got := AllFlags(root)
+	if len(got) != 1 || got[0] != "init --project" {
+		t.Fatalf("AllFlags = %v, want [init --project]", got)
+	}
+}

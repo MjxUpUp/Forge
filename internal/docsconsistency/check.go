@@ -31,10 +31,12 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 var (
@@ -180,6 +182,103 @@ func DriftedInProject(root string) []string {
 		return nil
 	}
 	return DriftedCommands(string(body))
+}
+
+// AllFlags returns the sorted "command --flag" identifiers of every non-hidden
+// flag on every non-hidden command in the tree (cobra's auto help flag exempt).
+// Used by the ratchet guard: the test pins a grandfathered baseline, so any NEW
+// flag must be documented in the README or consciously added to the baseline.
+//
+// AllFlags 返回树中所有非隐藏命令上的非隐藏 flag 的排序标识（"command --flag"
+// 形式；cobra 自动 help flag 豁免）。供棘轮守卫使用：测试钉住一份豁免基线，
+// 任何新增 flag 必须进 README 或被有意识地加进基线。
+func AllFlags(root *cobra.Command) []string {
+	if root == nil {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var out []string
+	var walk func(c *cobra.Command)
+	walk = func(c *cobra.Command) {
+		if c == nil {
+			return
+		}
+		if !c.Hidden {
+			add := func(f *pflag.Flag) {
+				if f.Hidden || f.Name == "help" {
+					return
+				}
+				id := c.Name() + " --" + f.Name
+				if !seen[id] {
+					seen[id] = true
+					out = append(out, id)
+				}
+			}
+			c.LocalFlags().VisitAll(add)
+			c.PersistentFlags().VisitAll(add)
+		}
+		for _, sub := range c.Commands() {
+			walk(sub)
+		}
+	}
+	walk(root)
+	slices.Sort(out)
+	return out
+}
+
+// UndocumentedFlags walks the cobra tree and returns every non-hidden flag (on
+// non-hidden commands) whose --name is absent from doc. Behavioural flags are
+// user-facing contract exactly like commands (guard B covers commands; the
+// 2026-08 user-level-assets release shipped --project/--restore with zero doc
+// coverage because nothing guarded the flag layer). Hidden commands/flags are
+// exempt, as is cobra's auto-injected "help" flag.
+//
+// The caller owns the allowlist for intentionally undocumented flags — kept
+// out of this package so it stays free of policy.
+//
+// UndocumentedFlags 遍历 cobra 命令树，返回 doc 中未出现 --name 的所有非隐藏
+// flag（非隐藏命令上）。行为 flag 与命令一样是用户面对的契约（守卫 B 覆盖
+// 命令；2026-08 user-level-assets 发版时 --project/--restore 零文档上线，
+// 正是因为 flag 层无守卫）。隐藏命令/flag 豁免，cobra 自动注入的 "help"
+// flag 同样豁免。
+//
+// 故意不文档化的 flag 由调用方用 allowlist 豁免——策略不放进本包。
+func UndocumentedFlags(root *cobra.Command, doc string) []string {
+	if root == nil {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var out []string
+	var walk func(c *cobra.Command)
+	walk = func(c *cobra.Command) {
+		if c == nil {
+			return
+		}
+		if !c.Hidden {
+			visit := func(name string) {
+				if seen[name] || strings.Contains(doc, "--"+name) {
+					return
+				}
+				seen[name] = true
+				out = append(out, c.Name()+" --"+name)
+			}
+			c.LocalFlags().VisitAll(func(f *pflag.Flag) {
+				if !f.Hidden && f.Name != "help" {
+					visit(f.Name)
+				}
+			})
+			c.PersistentFlags().VisitAll(func(f *pflag.Flag) {
+				if !f.Hidden && f.Name != "help" {
+					visit(f.Name)
+				}
+			})
+		}
+		for _, sub := range c.Commands() {
+			walk(sub)
+		}
+	}
+	walk(root)
+	return out
 }
 
 // skillBacktickRef matches a kebab-case token wrapped in backticks — the skill-name
