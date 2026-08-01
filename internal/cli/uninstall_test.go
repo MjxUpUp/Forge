@@ -158,3 +158,21 @@ func TestUninstall_RemovesUserLevelQualitySkill(t *testing.T) {
 		t.Errorf(`缺少 skill 删除提示，stdout：\n%s`, stdout)
 	}
 }
+
+// TestUninstall_GuidanceNoStaleReset pins the guidance text: it must not reference
+// the removed `forge init --reset` command, and must point at --restore for rollback.
+//
+// TestUninstall_GuidanceNoStaleReset 钉死指引文案：不得引用已删除的
+// `forge init --reset` 命令，且必须指向 --restore 回滚。
+func TestUninstall_GuidanceNoStaleReset(t *testing.T) {
+	src, err := os.ReadFile("uninstall.go")
+	if err != nil {
+		t.Fatalf("read uninstall.go: %v", err)
+	}
+	if strings.Contains(string(src), "init --reset") {
+		t.Errorf("uninstall.go 仍引用不存在的 forge init --reset")
+	}
+	if !strings.Contains(string(src), "--restore") {
+		t.Errorf("uninstall.go 指引应包含 --restore 回滚路径")
+	}
+}
