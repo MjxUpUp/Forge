@@ -351,3 +351,23 @@ func TestGenerateUserQualitySkill_SkipsWhenClaudeNotInstalled(t *testing.T) {
 		t.Error("GenerateUserQualitySkill created the Claude config home — detection self-poison")
 	}
 }
+
+// TestProjectSection_TeamModeQualifiers pins the v1.22 qualifier wording in the
+// generated forge section: the self-protection lines must state that project-level
+// .forge/* and .claude/settings* only exist in team mode / legacy projects, and that
+// user-level assets are forge-CLI-managed with uninstall --restore rollback.
+//
+// TestProjectSection_TeamModeQualifiers 钉死生成协议段的 v1.22 限定措辞：
+// 自保护行必须声明项目级 .forge/* 与 .claude/settings* 只在团队模式/老项目
+// 存在，且用户级资产仅经 forge 命令操作、uninstall --restore 可回滚。
+func TestProjectSection_TeamModeQualifiers(t *testing.T) {
+	section := buildForgeSection(true)
+	for _, want := range []string{
+		`团队模式/老项目存在`,
+		`forge uninstall --restore`,
+	} {
+		if !strings.Contains(section, want) {
+			t.Errorf("project-level forge section missing %q", want)
+		}
+	}
+}
