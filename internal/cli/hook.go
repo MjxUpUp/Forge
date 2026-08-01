@@ -64,12 +64,46 @@ func suggestTagFor(dir string) string {
 	return projectTagFor(dir)
 }
 
+// adoptPayloadCwd switches the process working directory to the hook payload's cwd when
+// it names an existing directory. Returns true when a chdir happened. See the call site
+// in runHook for why (kimi plugin hooks start from the plugin root, not the project).
+//
+// adoptPayloadCwd 在 hook payload 的 cwd 指向现存目录时把进程工作目录切过去。发生了
+// chdir 则返回 true。原因见 runHook 调用点（kimi 插件 hook 从插件根启动，不是项目）。
+func adoptPayloadCwd(cwd string) bool {
+	if cwd == "" {
+		return false
+	}
+	info, err := os.Stat(cwd)
+	if err != nil || !info.IsDir() {
+		return false
+	}
+	wd, err := os.Getwd()
+	if err == nil {
+		// Same dir → nothing to do. Compare cleaned absolute paths; on Windows also
+		// fold case (E:\Forge vs e:\forge) to avoid a pointless chdir.
+		//
+		// 同目录 → 无事可做。比较 Clean 后的绝对路径；Windows 再折叠大小写
+		// （E:\Forge vs e:\forge），避免无谓的 chdir。
+		a, _ := filepath.Abs(wd)
+		b, _ := filepath.Abs(cwd)
+		if runtime.GOOS == "windows" {
+			a, b = strings.ToLower(a), strings.ToLower(b)
+		}
+		if filepath.Clean(a) == filepath.Clean(b) {
+			return false
+		}
+	}
+	return os.Chdir(cwd) == nil
+}
+
 // HookInput represents the JSON that Claude Code sends to a hook via stdin.
 //
 // HookInput 表示 Claude Code 通过 stdin 发给 hook 的 JSON。
 type HookInput struct {
 	SessionID     string          `json:"session_id"`
 	HookEventName string          `json:"hook_event_name"`
+	Cwd           string          `json:"cwd"` // 会话项目目录（kimi/Claude Code 均发送）：插件 hook 的进程 cwd 可能是插件根，项目根解析以它为准
 	ToolName      string          `json:"tool_name"`
 	ToolInput     json.RawMessage `json:"tool_input"`
 	ToolOutput    json.RawMessage `json:"tool_response,omitempty"` // Claude Code PostToolUse 实际字段名是 tool_response（非 tool_output）；skill-trigger 是首个消费其内容的 hook
@@ -237,6 +271,26 @@ func runHook(cmd *cobra.Command, args []string) error {
 			}
 		}
 	}
+
+	// Adopt the payload's cwd before resolving the project root. kimi plugin hooks are
+	// spawned with the process cwd set to the plugin root (~/.kimi-code/plugins/managed/<id>)
+	// — never the session project (verified on kimi 0.31.0; matches kimi docs "each hook
+	// runs with its working directory set to the plugin root"). Resolving the project from
+	// the process cwd then makes findProjectRoot fail and every project-scoped hook bail
+	// with a silent allow — the whole gate layer (tool-track/auto-compile/task-guard/
+	// read-before-edit/task-resume/...) silently no-ops, which is exactly the "kimi
+	// PostToolUse 未分发" symptom. The payload's cwd is the session's real project dir
+	// (kimi and Claude Code both send it) — the authoritative location. Adopted only when
+	// it names an existing directory; otherwise the process cwd is used as before.
+	//
+	// 解析项目根之前先采用 payload 的 cwd。kimi 插件 hook 以插件根目录为进程 cwd 拉起
+	// （~/.kimi-code/plugins/managed/<id>）——不是会话项目（kimi 0.31.0 实测，与 kimi
+	// 文档「hook 以插件根为工作目录运行」一致）。按进程 cwd 解析会让 findProjectRoot
+	// 失败、所有项目级 hook 静默放行——整个门禁层（tool-track/auto-compile/task-guard/
+	// read-before-edit/task-resume/...）静默空转，正是「kimi PostToolUse 未分发」的
+	// 表象。payload 的 cwd 是会话真实项目目录（kimi 与 Claude Code 均发送）——权威
+	// 位置。仅当其指向现存目录时采用，否则回落进程 cwd（原行为）。
+	adoptPayloadCwd(hookInput.Cwd)
 
 	// Not in a forge project — output allow and exit silently.
 	// Global hook (skill-scan scans $HOME/.claude/skills) is relevant in any project,
