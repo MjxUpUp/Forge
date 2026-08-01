@@ -444,6 +444,19 @@ func IsMember(cwd string) (root string, ok bool) {
 	// cwd 经 symlink 到达（或反之）——单边单形态会漏配。
 	best := ``
 	for _, e := range f.Projects {
+		// Dead entries confer no membership (same liveness rule as List's prune):
+		// a deleted/moved project dir must not match — IsMember is read-only and
+		// does NOT prune, so without this check a stale entry whose path happens to
+		// be an ancestor of cwd would resurrect a gone project.
+		//
+		// 死条目不赋予成员资格（与 List 精简同一条存活规则）：已删除/移走的
+		// 项目目录不得命中——IsMember 只读不精简，少了这道检查，一个路径恰好
+		// 是 cwd 祖先的失效条目会把已消失的项目复活。
+		if _, err := os.Stat(e.Path); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+		}
 		// The returned root is always the entry's LEXICAL registered form (resolved
 		// forms only widen matching) — EvalSymlinks on Windows expands 8.3 short
 		// names, and handing back the long form would surprise callers/tests
