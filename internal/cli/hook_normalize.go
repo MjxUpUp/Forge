@@ -211,9 +211,17 @@ func windsurfHookEvent(action string) string {
 		return "PreToolUse"
 	case "post_write_code", "post_read_code", "post_run_command":
 		return "PostToolUse"
-	case "session_start":
+	// Cascade has no session_start/session_end: the SessionStart group hangs on
+	// pre_user_prompt, the Stop group on post_cascade_response (see
+	// buildWindsurfHooks). The legacy session_* cases stay so hook configs written
+	// by older forge versions still normalize correctly.
+	//
+	// Cascade 没有 session_start/session_end：SessionStart 组挂 pre_user_prompt，
+	// Stop 组挂 post_cascade_response（见 buildWindsurfHooks）。保留遗留
+	// session_* case，让旧版 forge 写入的 hook 配置仍能正确归一化。
+	case "pre_user_prompt", "session_start":
 		return "SessionStart"
-	case "session_end":
+	case "post_cascade_response", "post_cascade_response_with_transcript", "session_end":
 		return "Stop"
 	}
 	return ""

@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/userassets"
 )
 
 func TestGenerateSettingsCreatesFile(t *testing.T) {
@@ -1551,5 +1553,181 @@ func TestGenerateUserSettings_PreservesUserTopLevelFields(t *testing.T) {
 	}
 	if string(data) != string(data2) {
 		t.Error("second GenerateUserSettings not idempotent")
+	}
+}
+
+// ---- GenerateUserSettings merge + backup (user-level-assets fix) ----
+
+// setupUserSettingsEnv isolates the Claude config home and the forge backup root
+// into temp dirs — GenerateUserSettings must never touch the real home in tests.
+//
+// setupUserSettingsEnv 把 Claude config home 与 forge 备份根隔离进 temp dir——
+// GenerateUserSettings 在测试中绝不碰真实 home。
+func setupUserSettingsEnv(t *testing.T) (claudeHome string) {
+	t.Helper()
+	claudeHome = t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", claudeHome)
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	return claudeHome
+}
+
+// TestGenerateUserSettings_MergePreservesUserHooks pins the blocker fix: merging
+// ForgeHookSpec into ~/.claude/settings.json must NOT destroy the user's own
+// hooks. User entries stay (unknown fields intact), stale forge entries are
+// replaced, current forge entries appear exactly once, and within one event user
+// entries come before forge entries.
+//
+// TestGenerateUserSettings_MergePreservesUserHooks 钉死 blocker 修复：把
+// ForgeHookSpec 合并进 ~/.claude/settings.json 不得销毁用户自己的 hooks。用户
+// 条目保留（未知字段不丢）、stale forge 条目被替换、当前 forge 条目恰好出现
+// 一次、同事件下用户条目在 forge 条目之前。
+func TestGenerateUserSettings_MergePreservesUserHooks(t *testing.T) {
+	home := setupUserSettingsEnv(t)
+	path := filepath.Join(home, "settings.json")
+	existing := `{
+  "model": "opus",
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Bash", "hooks": [
+        {"type": "command", "command": "./scripts/lint.sh", "timeout": 30},
+        {"type": "command", "command": "forge hook stale-removed-hook"}
+      ]}
+    ],
+    "Notification": [
+      {"hooks": [{"type": "command", "command": "notify-send done"}]}
+    ]
+  }
+}`
+	if err := os.WriteFile(path, []byte(existing), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := GenerateUserSettings(); err != nil {
+		t.Fatalf("GenerateUserSettings: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+
+	// User top-level field preserved.
+	if !strings.Contains(content, `"model"`) || !strings.Contains(content, `"opus"`) {
+		t.Error("user top-level field (model) not preserved")
+	}
+	// User hook entry preserved — including its unknown field (timeout), which a
+	// typed round-trip would have dropped.
+	if !strings.Contains(content, "./scripts/lint.sh") {
+		t.Error("user hook entry not preserved")
+	}
+	if !strings.Contains(content, `"timeout"`) {
+		t.Error("user hook entry's unknown field (timeout) dropped by merge")
+	}
+	// User hook on an event forge does not generate survives.
+	if !strings.Contains(content, "notify-send done") {
+		t.Error("user hook on non-forge event (Notification) not preserved")
+	}
+	// Stale forge entry replaced.
+	if strings.Contains(content, "stale-removed-hook") {
+		t.Error("stale forge hook entry not replaced")
+	}
+	// Forge wiring present exactly once per command.
+	if n := strings.Count(content, `"forge hook task-guard"`); n != 1 {
+		t.Errorf("forge hook task-guard appears %d times, want 1", n)
+	}
+
+	// Within PreToolUse, the user entry must precede the forge entries.
+	var parsed struct {
+		Hooks map[string][]struct {
+			Hooks []struct {
+				Command string `json:"command"`
+			} `json:"hooks"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("parse output: %v", err)
+	}
+	var order []string
+	for _, m := range parsed.Hooks["PreToolUse"] {
+		for _, h := range m.Hooks {
+			order = append(order, h.Command)
+		}
+	}
+	ui, fi := -1, -1
+	for i, c := range order {
+		if c == "./scripts/lint.sh" && ui == -1 {
+			ui = i
+		}
+		if c == "forge hook task-guard" && fi == -1 {
+			fi = i
+		}
+	}
+	if ui == -1 || fi == -1 {
+		t.Fatalf("expected both user and forge entries under PreToolUse, got %v", order)
+	}
+	if ui > fi {
+		t.Errorf("user entry must precede forge entries within one event; order: %v", order)
+	}
+}
+
+// TestGenerateUserSettings_Idempotent pins that a second run is byte-identical
+// (strip-then-append must not duplicate forge entries).
+//
+// TestGenerateUserSettings_Idempotent 钉死第二次运行逐字节一致（先剥后追加不得
+// 重复 forge 条目）。
+func TestGenerateUserSettings_Idempotent(t *testing.T) {
+	home := setupUserSettingsEnv(t)
+	path := filepath.Join(home, "settings.json")
+
+	if err := GenerateUserSettings(); err != nil {
+		t.Fatal(err)
+	}
+	first, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := GenerateUserSettings(); err != nil {
+		t.Fatal(err)
+	}
+	second, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(first) != string(second) {
+		t.Error("second GenerateUserSettings not idempotent")
+	}
+}
+
+// TestGenerateUserSettings_BacksUpBeforeFirstWrite pins the rollback-anchor
+// contract: the original settings.json is backed up before forge's first write,
+// and RestoreOriginal rolls the file back to the user's bytes.
+//
+// TestGenerateUserSettings_BacksUpBeforeFirstWrite 钉死回滚锚点契约：forge 首次
+// 写入前备份原 settings.json，RestoreOriginal 能回滚到用户原始字节。
+func TestGenerateUserSettings_BacksUpBeforeFirstWrite(t *testing.T) {
+	home := setupUserSettingsEnv(t)
+	path := filepath.Join(home, "settings.json")
+	original := `{"model": "opus", "hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "./scripts/lint.sh"}]}]}}`
+	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := GenerateUserSettings(); err != nil {
+		t.Fatal(err)
+	}
+
+	restored, err := userassets.RestoreOriginal(path)
+	if err != nil {
+		t.Fatalf("RestoreOriginal: %v", err)
+	}
+	if !restored {
+		t.Fatal("no backup recorded — GenerateUserSettings must back up before first write")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != original {
+		t.Errorf("restored content mismatch:\n got: %s\nwant: %s", data, original)
 	}
 }

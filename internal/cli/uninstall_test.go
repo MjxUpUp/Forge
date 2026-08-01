@@ -116,3 +116,45 @@ func TestUninstall_StripsKimiHooks(t *testing.T) {
 		t.Errorf(`缺少 kimi plugin 卸载指引，stdout：\n%s`, stdout)
 	}
 }
+
+// TestUninstall_RemovesUserLevelQualitySkill pins the uninstall gap fix: the
+// user-level ~/.claude/skills/forge-quality/ (written by every init/autoSync)
+// must be removed on uninstall, respecting CLAUDE_CONFIG_DIR.
+//
+// TestUninstall_RemovesUserLevelQualitySkill 钉死 uninstall 漏删修复：用户级
+// ~/.claude/skills/forge-quality/（每次 init/autoSync 都会写）必须在卸载时
+// 删除，且尊重 CLAUDE_CONFIG_DIR。
+func TestUninstall_RemovesUserLevelQualitySkill(t *testing.T) {
+	t.Setenv(`FORGE_UNINSTALL_SKIP_NPM`, `1`)
+	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
+	t.Setenv(`KIMI_CODE_HOME`, t.TempDir())
+	t.Setenv(`CODEX_HOME`, t.TempDir())
+	t.Setenv(`XDG_CONFIG_HOME`, t.TempDir())
+	home := t.TempDir()
+	t.Setenv(`HOME`, home)
+	t.Setenv(`USERPROFILE`, home)
+	claudeHome := t.TempDir()
+	t.Setenv(`CLAUDE_CONFIG_DIR`, claudeHome)
+
+	skillDir := filepath.Join(claudeHome, `skills`, `forge-quality`)
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, `SKILL.md`), []byte(`# forge-quality`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, _, err := captureOutput(t, func() error {
+		return uninstallCmd.RunE(uninstallCmd, nil)
+	})
+	if err != nil {
+		t.Fatalf(`uninstall RunE: %v`, err)
+	}
+
+	if _, err := os.Stat(skillDir); !os.IsNotExist(err) {
+		t.Errorf(`用户级 forge-quality skill 应被删除，实得 stat err=%v`, err)
+	}
+	if !strings.Contains(stdout, `已删除用户级 forge-quality skill`) {
+		t.Errorf(`缺少 skill 删除提示，stdout：\n%s`, stdout)
+	}
+}

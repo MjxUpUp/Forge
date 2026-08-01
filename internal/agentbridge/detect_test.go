@@ -159,3 +159,55 @@ func TestParseAgentFlag_CoversAllTranslators(t *testing.T) {
 		}
 	}
 }
+
+// TestDetectAgents_OpencodeXDGConfigHome pins the XDG fix: opencode's global
+// config dir resolves via $XDG_CONFIG_HOME/opencode (same as OpenCodeConfigDir's
+// write path), so a config home that exists ONLY under XDG_CONFIG_HOME must be
+// detected — looking only at ~/.config/opencode would miss it.
+//
+// TestDetectAgents_OpencodeXDGConfigHome 钉死 XDG 修复：opencode 的全局配置目录
+// 按 $XDG_CONFIG_HOME/opencode 解析（与 OpenCodeConfigDir 的写入路径一致），
+// 故只存在于 XDG_CONFIG_HOME 下的配置目录必须被检出——只看
+// ~/.config/opencode 会漏检。
+func TestDetectAgents_OpencodeXDGConfigHome(t *testing.T) {
+	home := isolateHome(t)
+	// isolateHome points XDG_CONFIG_HOME at <home>/.config; create the opencode
+	// dir there (the default ~/.config/opencode path is the same location here,
+	// so additionally point XDG at a DIFFERENT dir to prove the env is honored).
+	xdg := filepath.Join(home, "xdg-config")
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	if err := os.MkdirAll(filepath.Join(xdg, "opencode"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	agents := DetectAgents(t.TempDir())
+	found := false
+	for _, a := range agents {
+		if a == AgentOpencode {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("opencode under XDG_CONFIG_HOME not detected, got %v", agents)
+	}
+}
+
+// TestDetectAgents_WindsurfUserLevel pins the windsurf user-level detection:
+// ~/.codeium (the config root WindsurfTranslator writes into) exists iff
+// windsurf is installed, so it must be a detection signal alongside the legacy
+// project-level .windsurfrules.
+//
+// TestDetectAgents_WindsurfUserLevel 钉死 windsurf 用户级检测：~/.codeium
+// （WindsurfTranslator 写入的配置根）存在 = windsurf 已安装，必须与遗留的
+// 项目级 .windsurfrules 并列为检测信号。
+func TestDetectAgents_WindsurfUserLevel(t *testing.T) {
+	home := isolateHome(t)
+	if err := os.MkdirAll(filepath.Join(home, ".codeium", "windsurf"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	agents := DetectAgents(t.TempDir())
+	if len(agents) != 1 || agents[0] != AgentWindsurf {
+		t.Fatalf("expected [windsurf] from user-level ~/.codeium, got %v", agents)
+	}
+}
