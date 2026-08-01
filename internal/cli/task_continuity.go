@@ -87,7 +87,7 @@ func init() {
 	taskResumeCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
 	taskResumeCmd.Flags().Bool("json", false, "JSON 格式输出完整 task state")
 	taskResumeCmd.Flags().Bool("no-attach", false, "仅查看，不把当前 session 锚定到 task")
-	taskResumeCmd.Flags().Bool("hook", false, "SessionStart hook 模式：无活跃任务静默退出；有活跃任务 attach 当前 session 并输出 PASS+接续视图（供 forge hook task-resume 调用）")
+	taskResumeCmd.Flags().Bool("hook", false, "SessionStart hook 模式：零未完成任务静默退出；有唯一活跃任务 attach 当前 session 并输出 PASS+接续视图；多任务歧义输出 PASS+候选清单（供 forge hook task-resume 调用）")
 	taskResumeCmd.Flags().Bool("compact-flag", false, "PostCompact hook 模式：压缩完成时标记「刚压缩过」（有 session ID 写 per-session sentinel，无则置 ResumeStale；压缩根治层·设标志半边，gap#2；供 forge hook compact-resume 调用）")
 	taskResumeCmd.Flags().Bool("reinject", false, "UserPromptSubmit hook 模式：若本 session 刚压缩（per-session sentinel 或 legacy ResumeStale）则重注入完整 handoff 并清标记（压缩根治层·重注入半边，gap#2；供 forge hook resume-reinject 调用）")
 
@@ -325,26 +325,130 @@ func attachCurrentSession(state *taskpipeline.TaskState, root string, silent boo
 	return attached, nil
 }
 
-// renderHookResume produces the SessionStart hook-mode output. No active task returns ""
-// (silent, no injection); with an active task it attaches the current session (silent) +
-// returns "PASS\n<handoff>". The pure logic other than findProjectRoot is factored out so
+// renderHookResume produces the SessionStart hook-mode output. With an unambiguous
+// active task it attaches the current session (silent) + returns "PASS\n<handoff>"
+// (naming any other in-flight tasks in one line). Without one it falls back to
+// renderTaskInventory: a compact candidate list when tasks are in flight, "" (silent)
+// only when nothing is. The pure logic other than findProjectRoot is factored out so
 // runTaskResume's hook branch and unit tests can share it (tests pass root directly,
 // independent of cwd). Truncation is delegated to the runHook generic path
 // (hook.go truncate(detail, maxAdditionalContextLen)).
 //
-// renderHookResume 产出 SessionStart hook 模式输出。无活跃任务返 ""（静默，不注入）；
-// 有活跃任务则 attach 当前 session（silent）+ 返 "PASS\n<handoff>"。把 findProjectRoot 之外
-// 的纯逻辑提出，供 runTaskResume 的 hook 分支与单元测试共用（测试直接传 root，不依赖 cwd）。
-// 截断交给 runHook 通用路径（hook.go truncate(detail, maxAdditionalContextLen)）。
+// renderHookResume 产出 SessionStart hook 模式输出。有无歧义的活跃任务时 attach 当前
+// session（silent）+ 返 "PASS\n<handoff>"（一行列出其余在进行任务）。无则兜底
+// renderTaskInventory：有任务在进行给紧凑候选清单，零任务才返 ""（静默）。把
+// findProjectRoot 之外的纯逻辑提出，供 runTaskResume 的 hook 分支与单元测试共用
+// （测试直接传 root，不依赖 cwd）。截断交给 runHook 通用路径
+// （hook.go truncate(detail, maxAdditionalContextLen)）。
 func renderHookResume(root string) (string, error) {
 	state, _ := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
 	if state == nil {
-		return "", nil
+		// No unambiguous active task (≥2 in flight, or branch doesn't match): fall back
+		// to an inventory of ALL incomplete tasks. Interaction flow this serves: user
+		// invokes agent → agent checks for in-flight tasks → continue one (user picks)
+		// or start new. Previously this path was silent — step 2 of that flow broke
+		// whenever multiple tasks were in flight: the agent never learned they existed.
+		//
+		// 无无歧义的活跃任务（≥2 个在进行，或分支不匹配）：兜底为全部未完成任务的
+		// 盘点。服务的交互流程：用户唤起 agent → agent 检查有无进行中的任务 → 接续
+		// 某个（用户选择）或开新任务。此前这条路径静默——多任务在进行时流程第 2 步
+		// 就断了：agent 根本不知道有任务存在。
+		return renderTaskInventory(root), nil
 	}
 	if _, err := attachCurrentSession(state, root, true); err != nil {
 		return "", err
 	}
-	return "PASS\n" + renderResume(state, gitPorcelain(root)), nil
+	handoff := renderResume(state, gitPorcelain(root))
+	// The current task resumes automatically, but the handoff party should still know
+	// the full in-flight set — one line naming the other incomplete tasks.
+	//
+	// 当前任务自动接续，但接手方仍应知道完整的在进行集合——一行列出其余未完成任务。
+	if others := otherIncompleteTasks(root, state.TaskRef); len(others) > 0 {
+		handoff = strings.Replace(handoff,
+			"→ 接续纪律用 session-continuity skill",
+			fmt.Sprintf("另有 %d 个未完成任务: %s（forge task resume --ref <ref> 可切换）\n→ 接续纪律用 session-continuity skill",
+				len(others), strings.Join(others, ", ")), 1)
+	}
+	return "PASS\n" + handoff, nil
+}
+
+// inventoryListCap bounds how many tasks the SessionStart inventory lists — the output
+// is injected into context every session start, so it must stay compact.
+//
+// inventoryListCap 限定 SessionStart 盘点列出的任务数——输出每次会话启动都进
+// 上下文，必须保持紧凑。
+const inventoryListCap = 8
+
+// otherIncompleteTasks returns the refs of incomplete tasks other than currentRef.
+//
+// otherIncompleteTasks 返回 currentRef 之外其他未完成任务的 ref。
+func otherIncompleteTasks(root, currentRef string) []string {
+	all, err := taskpipeline.ListTaskStates(root)
+	if err != nil {
+		return nil
+	}
+	var refs []string
+	for _, s := range all {
+		if s.CompletedAt == nil && s.TaskRef != currentRef {
+			refs = append(refs, s.TaskRef)
+		}
+	}
+	return refs
+}
+
+// renderTaskInventory renders a compact inventory of all incomplete tasks for the
+// SessionStart hook's ambiguous case: no unambiguous active task, but work is in
+// flight. Returns "" (silent) only when nothing is in flight — the clean new-task
+// path. The closing instruction tells the agent to use its own structured-question
+// tool (AskUserQuestion) to let the user pick: hooks cannot do interactive HITL
+// (verified: kimi has no ask channel, SessionStart is observation-only on every host),
+// so the agent is the interaction layer.
+//
+// renderTaskInventory 为 SessionStart hook 的歧义场景渲染全部未完成任务的紧凑盘点：
+// 无无歧义的活跃任务但有工作在进行。仅当零任务在进行时返 ""（静默）——干净的
+// 新任务路径。末尾指示告诉 agent 用它自己的结构化提问工具（AskUserQuestion）让
+// 用户选择：hook 做不了交互式 HITL（已验证：kimi 无 ask 通道，SessionStart 在所有
+// host 上都是 observation-only），故 agent 是交互层。
+func renderTaskInventory(root string) string {
+	all, err := taskpipeline.ListTaskStates(root)
+	if err != nil {
+		return ""
+	}
+	var open []*taskpipeline.TaskState
+	for _, s := range all {
+		if s.CompletedAt == nil {
+			open = append(open, s)
+		}
+	}
+	if len(open) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	w := func(s string) { b.WriteString(s + "\n") }
+	w(fmt.Sprintf("检测到 %d 个未完成任务（无当前上下文匹配，需选择接续或开新任务）：", len(open)))
+	shown := open
+	if len(shown) > inventoryListCap {
+		shown = shown[:inventoryListCap]
+	}
+	for i, s := range shown {
+		line := fmt.Sprintf("  %d. %s", i+1, s.TaskRef)
+		if s.Branch != "" && s.Branch != s.TaskRef {
+			line += " [分支 " + s.Branch + "]"
+		}
+		if s.Summary != "" {
+			line += " — " + s.Summary
+		}
+		line += " — 门禁 " + renderGateProgress(s)
+		if len(s.NextSteps) > 0 {
+			line += " — 下一步: " + s.NextSteps[0]
+		}
+		w(line)
+	}
+	if len(open) > inventoryListCap {
+		w(fmt.Sprintf("  …还有 %d 个（forge task list 查看全部）", len(open)-inventoryListCap))
+	}
+	w("→ 用结构化提问工具（AskUserQuestion）让用户选择：接续某个任务（forge task resume --ref <ref>），或开新任务（forge task start）。")
+	return "PASS\n" + stripUnsafeControl(strings.TrimRight(b.String(), "\n"))
 }
 
 // renderHookCompactFlag produces the PostCompact hook side effect: marks "just compacted"
