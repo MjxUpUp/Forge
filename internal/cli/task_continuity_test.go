@@ -255,11 +255,13 @@ func TestRenderResumeTldr_NoContinuity(t *testing.T) {
 	}
 }
 
-// TestRenderHookCompactFlag: PostCompact hook (gap#2 set-flag half) sets the active task ResumeStale=true
-// and persists it. No active task -> silent, no error; already ResumeStale -> idempotent, no duplicate write.
+// TestRenderHookCompactFlag: PostCompact hook (gap#2 set-flag half) with a session ID
+// writes a per-session sentinel and leaves the shared task json untouched (ResumeStale
+// stays false). No active task -> silent, no error; repeated calls -> idempotent.
 //
-// TestRenderHookCompactFlag：PostCompact hook（gap#2 设标志半边）设活跃任务 ResumeStale=true
-// 并持久化。无活跃任务静默不报错；已 ResumeStale 幂等不重复写。
+// TestRenderHookCompactFlag：PostCompact hook（gap#2 设标志半边）有 session ID 时写
+// per-session sentinel，不动共享 task json（ResumeStale 保持 false）。无活跃任务静默
+// 不报错；重复调用幂等。
 func TestRenderHookCompactFlag(t *testing.T) {
 	root, _ := forgedatatest.RealProject(t)
 	// No active task → silent, no error.
@@ -277,22 +279,51 @@ func TestRenderHookCompactFlag(t *testing.T) {
 		t.Fatalf("renderHookCompactFlag: %v", err)
 	}
 	reloaded, _ := taskpipeline.LoadTaskState(root, "feat/compact")
-	if reloaded == nil || !reloaded.ResumeStale {
-		t.Errorf("PostCompact hook 应设 ResumeStale=true，state=%v", reloaded)
+	if reloaded == nil || reloaded.ResumeStale {
+		t.Errorf("有 session ID 时不应动 task json 的 ResumeStale，state=%v", reloaded)
 	}
-	// Idempotent: already ResumeStale, calling again does not error.
+	if !taskpipeline.ConsumeResumeStale(root, "sid-compact") {
+		t.Error("PostCompact hook 应写本 session 的 sentinel")
+	}
+	// Idempotent: calling again does not error and re-marks.
 	//
-	// 幂等：已 ResumeStale 再调不报错
+	// 幂等：再调不报错且重新标记
 	if err := renderHookCompactFlag(root); err != nil {
 		t.Fatalf("幂等 renderHookCompactFlag: %v", err)
 	}
+	if !taskpipeline.ConsumeResumeStale(root, "sid-compact") {
+		t.Error("幂等重标后 sentinel 应再次存在")
+	}
 }
 
-// TestRenderHookReinject: UserPromptSubmit hook (gap#2 re-inject half) only re-injects the full handoff when ResumeStale=true
-// and clears the flag; ResumeStale=false -> silent empty return. Guarantees re-injection happens only once.
+// TestRenderHookCompactFlag_LegacyNoSession: without any session ID the hook falls back
+// to the legacy task-scoped ResumeStale bool (set + persisted).
 //
-// TestRenderHookReinject：UserPromptSubmit hook（gap#2 重注入半边）仅在 ResumeStale=true 时
-// 重注入完整 handoff 并清标志；ResumeStale=false 静默返空。保证只重注入一次。
+// TestRenderHookCompactFlag_LegacyNoSession：完全无 session ID 时回落到 legacy 的
+// task-scoped ResumeStale bool（置位并持久化）。
+func TestRenderHookCompactFlag_LegacyNoSession(t *testing.T) {
+	root, _ := forgedatatest.RealProject(t)
+	state := &taskpipeline.TaskState{TaskRef: "feat/legacy", Branch: "feat/legacy", Goal: "legacy"}
+	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+		t.Fatalf("SaveTaskState: %v", err)
+	}
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
+	t.Setenv("FORGE_SESSION_ID", "")
+	if err := renderHookCompactFlag(root); err != nil {
+		t.Fatalf("renderHookCompactFlag: %v", err)
+	}
+	reloaded, _ := taskpipeline.LoadTaskState(root, "feat/legacy")
+	if reloaded == nil || !reloaded.ResumeStale {
+		t.Errorf("无 session ID 应回落置 ResumeStale=true，state=%v", reloaded)
+	}
+}
+
+// TestRenderHookReinject: UserPromptSubmit hook (gap#2 re-inject half) only re-injects
+// the full handoff when this session was marked (sentinel), and consumes the mark —
+// re-injection happens only once. Unmarked session -> silent empty return.
+//
+// TestRenderHookReinject：UserPromptSubmit hook（gap#2 重注入半边）仅在本 session 有
+// 标记（sentinel）时重注入完整 handoff 并消费标记——只重注入一次。无标记静默返空。
 func TestRenderHookReinject(t *testing.T) {
 	root, _ := forgedatatest.RealProject(t)
 	state := &taskpipeline.TaskState{TaskRef: "feat/reinject", Branch: "feat/reinject", Goal: "压缩后恢复"}
@@ -301,43 +332,116 @@ func TestRenderHookReinject(t *testing.T) {
 	}
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "sid-reinject")
 
-	// ResumeStale=false → silent empty return.
+	// No mark → silent empty return.
 	//
-	// ResumeStale=false → 静默返空
+	// 无标记 → 静默返空
 	out, err := renderHookReinject(root)
 	if err != nil {
-		t.Fatalf("renderHookReinject (stale=false): %v", err)
+		t.Fatalf("renderHookReinject (unmarked): %v", err)
 	}
 	if out != "" {
-		t.Errorf("ResumeStale=false 应静默返空，实得 %q", out)
+		t.Errorf("无标记应静默返空，实得 %q", out)
 	}
 
-	// compact-flag sets ResumeStale → reinject re-injects the full handoff.
+	// compact-flag marks this session → reinject re-injects the full handoff.
 	//
-	// compact-flag 设 ResumeStale → reinject 重注入完整 handoff
+	// compact-flag 标记本 session → reinject 重注入完整 handoff
 	if err := renderHookCompactFlag(root); err != nil {
 		t.Fatalf("renderHookCompactFlag: %v", err)
 	}
 	out, err = renderHookReinject(root)
 	if err != nil {
-		t.Fatalf("renderHookReinject (stale=true): %v", err)
+		t.Fatalf("renderHookReinject (marked): %v", err)
 	}
 	if !strings.HasPrefix(out, "PASS\n") {
-		t.Errorf("ResumeStale=true 应返 PASS+handoff，实得 %q", out)
+		t.Errorf("有标记应返 PASS+handoff，实得 %q", out)
 	}
 	if !strings.Contains(out, "feat/reinject") || !strings.Contains(out, "压缩后恢复") {
 		t.Errorf("reinject 应含 task ref/goal，实得 %q", out)
 	}
-	// After reinject, clears ResumeStale=false (silent next time, re-inject only once).
+	// The mark is consumed (silent next time, re-inject only once).
 	//
-	// reinject 后清 ResumeStale=false（下次静默，只重注入一次）
-	reloaded, _ := taskpipeline.LoadTaskState(root, "feat/reinject")
+	// 标记已被消费（下次静默，只重注入一次）
+	out2, _ := renderHookReinject(root)
+	if out2 != "" {
+		t.Errorf("标记消费后应静默返空，实得 %q", out2)
+	}
+}
+
+// TestRenderHookReinject_PerSessionIsolation (multi-session fix): with N sessions on one
+// task (shared user-level DataDir), session B's prompt must NOT consume session A's
+// compaction mark — B stays silent, A still gets its re-injection.
+//
+// TestRenderHookReinject_PerSessionIsolation（多 session 修复）：N 个 session 共享一个
+// task（用户级共享 DataDir）时，session B 的 prompt 不能消费 session A 的压缩标记——
+// B 保持静默，A 仍能拿到自己的重注入。
+func TestRenderHookReinject_PerSessionIsolation(t *testing.T) {
+	root, _ := forgedatatest.RealProject(t)
+	state := &taskpipeline.TaskState{TaskRef: "feat/iso", Branch: "feat/iso", Goal: "多 session 隔离"}
+	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+		t.Fatalf("SaveTaskState: %v", err)
+	}
+
+	// Session A compacts.
+	//
+	// session A 发生压缩
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "sid-a")
+	if err := renderHookCompactFlag(root); err != nil {
+		t.Fatalf("renderHookCompactFlag: %v", err)
+	}
+
+	// Session B's next prompt: silent, and must not consume A's mark.
+	//
+	// session B 的下个 prompt：静默，且不能消费 A 的标记
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "sid-b")
+	out, err := renderHookReinject(root)
+	if err != nil {
+		t.Fatalf("renderHookReinject (sid-b): %v", err)
+	}
+	if out != "" {
+		t.Errorf("sid-b 未被压缩应静默返空，实得 %q", out)
+	}
+
+	// Session A's next prompt still gets the re-injection.
+	//
+	// session A 的下个 prompt 仍能拿到重注入
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "sid-a")
+	out, err = renderHookReinject(root)
+	if err != nil {
+		t.Fatalf("renderHookReinject (sid-a): %v", err)
+	}
+	if !strings.HasPrefix(out, "PASS\n") || !strings.Contains(out, "多 session 隔离") {
+		t.Errorf("sid-a 的标记不应被 sid-b 消费，实得 %q", out)
+	}
+}
+
+// TestRenderHookReinject_LegacyBool: a task carrying the legacy task-scoped
+// ResumeStale=true (written by the no-session fallback or an older binary) is honored
+// once: re-inject fires and the bool is cleared + persisted.
+//
+// TestRenderHookReinject_LegacyBool：带 legacy task-scoped ResumeStale=true 的 task
+// （无 session 回落或旧版 binary 所留）被兑现一次：触发重注入并清零持久化。
+func TestRenderHookReinject_LegacyBool(t *testing.T) {
+	root, _ := forgedatatest.RealProject(t)
+	state := &taskpipeline.TaskState{TaskRef: "feat/legacy-ri", Branch: "feat/legacy-ri", Goal: "legacy 重注入", ResumeStale: true}
+	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+		t.Fatalf("SaveTaskState: %v", err)
+	}
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "sid-legacy")
+	out, err := renderHookReinject(root)
+	if err != nil {
+		t.Fatalf("renderHookReinject: %v", err)
+	}
+	if !strings.HasPrefix(out, "PASS\n") {
+		t.Errorf("legacy ResumeStale=true 应触发重注入，实得 %q", out)
+	}
+	reloaded, _ := taskpipeline.LoadTaskState(root, "feat/legacy-ri")
 	if reloaded == nil || reloaded.ResumeStale {
-		t.Errorf("reinject 后应清 ResumeStale=false，state=%v", reloaded)
+		t.Errorf("legacy 标记兑现后应清零持久化，state=%v", reloaded)
 	}
 	out2, _ := renderHookReinject(root)
 	if out2 != "" {
-		t.Errorf("清标志后应静默返空，实得 %q", out2)
+		t.Errorf("legacy 标记只兑现一次，实得 %q", out2)
 	}
 }
 
@@ -392,5 +496,37 @@ func TestRenderHookReinject_SparseContinuityNudge(t *testing.T) {
 	}
 	if strings.Contains(out2, "刚发生") {
 		t.Errorf("已有 NextSteps 不应追加压缩落盘提示，输出:\n%s", out2)
+	}
+}
+
+// TestDetectOriginTool_FallbackChain (multi-host): explicit wins; FORGE_AGENT (injected
+// by runHook from the resolved --agent flag) identifies hook-spawned kimi/windsurf
+// processes; CLAUDE_CODE_SESSION_ID is the claude-code fallback; all empty -> "".
+//
+// TestDetectOriginTool_FallbackChain（多 host）：显式优先；FORGE_AGENT（runHook 从
+// 解析出的 --agent 注入）识别 hook 派生的 kimi/windsurf 进程；CLAUDE_CODE_SESSION_ID
+// 是 claude-code 兜底；全空 → ""。
+func TestDetectOriginTool_FallbackChain(t *testing.T) {
+	t.Setenv("FORGE_AGENT", "")
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
+	if got := detectOriginTool(""); got != "" {
+		t.Errorf("全空应返回 \"\": %q", got)
+	}
+	if got := detectOriginTool("pi"); got != "pi" {
+		t.Errorf("显式应优先: %q", got)
+	}
+
+	t.Setenv("FORGE_AGENT", "kimi")
+	if got := detectOriginTool(""); got != "kimi" {
+		t.Errorf("FORGE_AGENT 注入: %q", got)
+	}
+	if got := detectOriginTool("pi"); got != "pi" {
+		t.Errorf("显式仍应优先于 FORGE_AGENT: %q", got)
+	}
+
+	t.Setenv("FORGE_AGENT", "")
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "cc-sess")
+	if got := detectOriginTool(""); got != "claude-code" {
+		t.Errorf("claude-code 兜底: %q", got)
 	}
 }

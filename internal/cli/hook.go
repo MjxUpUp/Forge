@@ -371,6 +371,14 @@ func runHook(cmd *cobra.Command, args []string) error {
 		"FORGE_TASK_REF="+sanitizeForShell(activeTaskRef),
 		"FORGE_TASK_GATE="+sanitizeForShell(activeTaskGate),
 		"FORGE_SESSION_ID="+sanitizeForShell(hookInput.SessionID),
+		// The resolved host agent (from --agent / FORGE_HOOK_AGENT; "" for claude-code-shape
+		// hosts). Thin wrappers (`exec forge task resume --hook`) inherit it so the spawned
+		// forge process can attribute session anchors to the right tool (detectOriginTool).
+		//
+		// 解析出的 host agent（来自 --agent / FORGE_HOOK_AGENT；claude-code-shape host 为 ""）。
+		// thin wrapper（`exec forge task resume --hook`）继承它，使派生的 forge 进程能把
+		// session 锚定归属到正确的工具（detectOriginTool）。
+		"FORGE_AGENT="+sanitizeForShell(agent),
 		// Scheme 2 shift-left: absolute path of this session's reads log. The Go dispatcher
 		// (tool-track) appends each Read's repo-relative path here; the PreToolUse
 		// read-before-edit hook greps it to intercept Edit-without-Read. Passed as an absolute path

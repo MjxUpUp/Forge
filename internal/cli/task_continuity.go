@@ -16,13 +16,17 @@ import (
 // compaction) and discipline-driven markdown (HANDOFF.md/AI_CONTEXT.md) with structured
 // first-class fields on task + a sub-second forge task resume. It mirrors the
 // information shape of session-continuity HANDOFF + cross-tool-context AI_CONTEXT, but
-// persists into DataDir/tasks/<ref>.json (refactor-data-home: runtime state migrated to
-// the user level), so cross-tool/cross-person handoff works off a single record.
+// persists into the user-level DataDir/tasks/<ref>.json (refactor-data-home), so
+// same-machine cross-tool/cross-person handoff works off a single record. Note the
+// boundary: user-level state does not travel with the repo — cross-MACHINE handoff is
+// out of scope here (a future task export/import would be the explicit vehicle).
 //
 // task_continuity.go：task 升格为「接续真相源」的命令层。把会话内临时状态（agent 上下文，
 // 压缩即丢）和靠纪律的 markdown（HANDOFF.md/AI_CONTEXT.md）替换为 task 的结构化一等公民字段 +
 // forge task resume 秒级拉回。对应 session-continuity HANDOFF + cross-tool-context AI_CONTEXT 的
-// 信息结构，但持久化进 DataDir/tasks/<ref>.json（refactor-data-home：runtime state 迁用户级），跨工具/跨人基于同一份记录接续。
+// 信息结构，但持久化进用户级 DataDir/tasks/<ref>.json（refactor-data-home），同机跨工具/跨人
+// 基于同一份记录接续。注意边界：用户级 state 不随仓库走——跨机器接续不在本层范围
+// （未来的 task export/import 才是显式载体）。
 
 var taskResumeCmd = &cobra.Command{
 	Use:   "resume [--ref <ref>] [--json] [--no-attach]",
@@ -84,8 +88,8 @@ func init() {
 	taskResumeCmd.Flags().Bool("json", false, "JSON 格式输出完整 task state")
 	taskResumeCmd.Flags().Bool("no-attach", false, "仅查看，不把当前 session 锚定到 task")
 	taskResumeCmd.Flags().Bool("hook", false, "SessionStart hook 模式：无活跃任务静默退出；有活跃任务 attach 当前 session 并输出 PASS+接续视图（供 forge hook task-resume 调用）")
-	taskResumeCmd.Flags().Bool("compact-flag", false, "PostCompact hook 模式：压缩完成时设 ResumeStale=true（claude-code 根治层·设标志半边，gap#2；供 forge hook compact-resume 调用）")
-	taskResumeCmd.Flags().Bool("reinject", false, "UserPromptSubmit hook 模式：若 ResumeStale（刚压缩）则重注入完整 handoff 并清标志（claude-code 根治层·重注入半边，gap#2；供 forge hook resume-reinject 调用）")
+	taskResumeCmd.Flags().Bool("compact-flag", false, "PostCompact hook 模式：压缩完成时标记「刚压缩过」（有 session ID 写 per-session sentinel，无则置 ResumeStale；压缩根治层·设标志半边，gap#2；供 forge hook compact-resume 调用）")
+	taskResumeCmd.Flags().Bool("reinject", false, "UserPromptSubmit hook 模式：若本 session 刚压缩（per-session sentinel 或 legacy ResumeStale）则重注入完整 handoff 并清标记（压缩根治层·重注入半边，gap#2；供 forge hook resume-reinject 调用）")
 
 	taskContextCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
 	taskContextCmd.Flags().Bool("json", false, "JSON 格式输出完整 task state")
@@ -150,19 +154,22 @@ func runTaskResume(cmd *cobra.Command, args []string) error {
 	reinject, _ := cmd.Flags().GetBool("reinject")
 
 	if compactFlag {
-		// PostCompact hook (claude-code root-cause layer · set-flag half, gap#2): on
-		// compaction completion, set ResumeStale=true; the next UserPromptSubmit --reinject
-		// detects it and re-injects the full handoff. Silent exit 0 (no stdout): PostCompact
-		// cannot inject additionalContext (Claude Code docs explicitly list it as a non-
-		// injection point — it can only block or follow up), so this hook only does the
-		// follow-up flag set. No active task or flag already set → idempotent no-op. Any
-		// failure degrades to stderr + exit 0 (advisory, does not block).
+		// PostCompact hook (compaction root-cause layer · set-flag half, gap#2): on
+		// compaction completion, mark "just compacted" for this session (per-session
+		// sentinel, or the legacy ResumeStale bool without a session ID); the next
+		// UserPromptSubmit --reinject of this session detects it and re-injects the full
+		// handoff. Silent exit 0 (no stdout): PostCompact cannot inject additionalContext
+		// (Claude Code docs explicitly list it as a non-injection point — it can only
+		// block or follow up), so this hook only does the follow-up mark. No active task
+		// → idempotent no-op. Any failure degrades to stderr + exit 0 (advisory, does
+		// not block).
 		//
-		// PostCompact hook（claude-code 根治层·设标志半边，gap#2）：压缩完成 → 设
-		// ResumeStale=true，下个 UserPromptSubmit 的 --reinject 检测到即重注入完整 handoff。
+		// PostCompact hook（压缩根治层·设标志半边，gap#2）：压缩完成 → 为本 session
+		// 标记「刚压缩过」（per-session sentinel；无 session ID 则置 legacy ResumeStale），
+		// 本 session 下个 UserPromptSubmit 的 --reinject 检测到即重注入完整 handoff。
 		// 静默 exit 0（无 stdout）：PostCompact 不能注入 additionalContext（Claude Code 文档
-		// 明确不在注入点列表，只能 block 或 follow-up），故此 hook 只做 follow-up 设标志。
-		// 无活跃任务或已设标志 → 幂等不操作。任何失败降级 stderr + exit 0（advisory 不阻塞）。
+		// 明确不在注入点列表，只能 block 或 follow-up），故此 hook 只做 follow-up 设标记。
+		// 无活跃任务 → 幂等不操作。任何失败降级 stderr + exit 0（advisory 不阻塞）。
 		root, err := findProjectRoot()
 		if err != nil {
 			return nil
@@ -174,15 +181,15 @@ func runTaskResume(cmd *cobra.Command, args []string) error {
 	}
 
 	if reinject {
-		// UserPromptSubmit hook (claude-code root-cause layer · re-inject half, gap#2): if
-		// ResumeStale (just compacted) → re-inject the full handoff + clear the flag;
+		// UserPromptSubmit hook (compaction root-cause layer · re-inject half, gap#2): if
+		// this session was just compacted → re-inject the full handoff + clear the mark;
 		// otherwise silent. UserPromptSubmit stdout enters context (Claude Code docs:
 		// UserPromptSubmit is on the additionalContext injection-point list); runHook
 		// wraps it as additionalContext, so the PASS+handoff protocol matches the
 		// SessionStart task-resume one.
 		//
-		// UserPromptSubmit hook（claude-code 根治层·重注入半边，gap#2）：若 ResumeStale
-		// （刚压缩过）→ 重注入完整 handoff + 清标志；否则静默。UserPromptSubmit 的 stdout
+		// UserPromptSubmit hook（压缩根治层·重注入半边，gap#2）：若本 session 刚压缩过
+		// → 重注入完整 handoff + 清标记；否则静默。UserPromptSubmit 的 stdout
 		// 进 context（Claude Code 文档：UserPromptSubmit 在 additionalContext 注入点列表），
 		// runHook 包成 additionalContext 注入，故 PASS+handoff 协议同 SessionStart task-resume。
 		root, err := findProjectRoot()
@@ -295,14 +302,27 @@ func attachCurrentSession(state *taskpipeline.TaskState, root string, silent boo
 		}
 		return false, nil
 	}
-	state.AddSession(sid, tool)
-	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+	// Mutate under the per-task lock with a fresh reload: the state passed in was loaded
+	// before the lock and may be stale (concurrent attach/decide from another worktree).
+	//
+	// 在 per-task 锁内重载再改：传入的 state 是取锁前加载的，可能已过期（其他
+	// worktree 的并发 attach/decide）。
+	attached := false
+	err := taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
+		if s.HasSession(sid) {
+			return nil
+		}
+		s.AddSession(sid, tool)
+		attached = true
+		return nil
+	})
+	if err != nil {
 		return false, fmt.Errorf("锚定 session 失败: %w", err)
 	}
-	if !silent {
+	if attached && !silent {
 		fmt.Fprintf(os.Stderr, "[forge] 已锚定当前 session %s（%s）到任务 %s\n", sid, tool, state.TaskRef)
 	}
-	return true, nil
+	return attached, nil
 }
 
 // renderHookResume produces the SessionStart hook-mode output. No active task returns ""
@@ -327,46 +347,90 @@ func renderHookResume(root string) (string, error) {
 	return "PASS\n" + renderResume(state, gitPorcelain(root)), nil
 }
 
-// renderHookCompactFlag produces the PostCompact hook side effect: sets the active
-// task's ResumeStale to true (persisted). No active task or already set → idempotent
-// no-op, no error. This is the "set-flag" half of the claude-code root-cause layer
-// (gap#2) — PostCompact cannot inject context, so it only marks "just compacted" and
-// waits for the next UserPromptSubmit's renderHookReinject to re-inject. The pure logic
-// other than findProjectRoot is factored out so unit tests can pass root directly.
+// renderHookCompactFlag produces the PostCompact hook side effect: marks "just compacted"
+// for the current session. With a session ID (all hook-driven hosts — runHook injects
+// FORGE_SESSION_ID) it writes a per-session sentinel file (taskpipeline.MarkResumeStale),
+// leaving the shared task json untouched; without one (legacy/manual) it falls back to
+// setting the task-scoped ResumeStale bool. No active task → idempotent no-op, no error.
+// This is the "set-flag" half of the compaction root-cause layer (gap#2) — PostCompact
+// cannot inject context, so it only marks "just compacted" and waits for the next
+// UserPromptSubmit's renderHookReinject to re-inject. The pure logic other than
+// findProjectRoot is factored out so unit tests can pass root directly.
 //
-// renderHookCompactFlag 产出 PostCompact hook 的副作用：把活跃任务的 ResumeStale 置 true
-// （持久化）。无活跃任务或已置位 → 幂等不操作不报错。这是 claude-code 根治层（gap#2）的
-// 「设标志」半边——PostCompact 不能注入 context，只标记「刚压缩过」，等下个 UserPromptSubmit
-// 的 renderHookReinject 重注入。把 findProjectRoot 之外的纯逻辑提出，供单测直接传 root。
+// renderHookCompactFlag 产出 PostCompact hook 的副作用：为当前 session 标记「刚压缩过」。
+// 有 session ID（所有 hook 驱动的 host——runHook 注入 FORGE_SESSION_ID）时写
+// per-session sentinel 文件（taskpipeline.MarkResumeStale），不动共享的 task json；
+// 无 session ID（legacy/手动）时回落到置 task-scoped 的 ResumeStale bool。无活跃任务
+// → 幂等不操作不报错。这是压缩根治层（gap#2）的「设标志」半边——PostCompact 不能注入
+// context，只标记「刚压缩过」，等下个 UserPromptSubmit 的 renderHookReinject 重注入。
+// 把 findProjectRoot 之外的纯逻辑提出，供单测直接传 root。
 func renderHookCompactFlag(root string) error {
 	state, _ := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
-	if state == nil || state.ResumeStale {
+	if state == nil {
 		return nil
 	}
-	state.ResumeStale = true
-	return taskpipeline.SaveTaskState(root, state)
+	if sid := taskpipeline.CurrentSessionID(); sid != "" {
+		// 幂等：sentinel 已存在时 AtomicWrite 覆写同一路径，无副作用
+		return taskpipeline.MarkResumeStale(root, sid)
+	}
+	// Legacy 回落（无 session ID）：task-scoped bool，两 session 共享 task 时可能互相
+	// 消费（见 types.go ResumeStale 注释），仅 hook 外手动场景才走到。
+	if state.ResumeStale {
+		return nil
+	}
+	return taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
+		s.ResumeStale = true
+		return nil
+	})
 }
 
-// renderHookReinject produces the UserPromptSubmit hook-mode output: if the active task
-// has ResumeStale=true (just compacted) → return "PASS\n<handoff>" and clear ResumeStale
-// (persisted); otherwise return "" (silent, no injection). This is the "re-inject" half
-// of the claude-code root-cause layer (gap#2) — the first user prompt after a compaction
+// renderHookReinject produces the UserPromptSubmit hook-mode output: if the current
+// session was just compacted → return "PASS\n<handoff>" and clear the mark; otherwise
+// return "" (silent, no injection). "Just compacted" is judged per session: the
+// per-session sentinel (taskpipeline.ConsumeResumeStale clears it on read), or the
+// legacy task-scoped ResumeStale bool (cleared + persisted here) for sessions without
+// an ID and for tasks marked by older binaries. This is the "re-inject" half of the
+// compaction root-cause layer (gap#2) — the first user prompt after a compaction
 // auto-restores the full continuity context, without relying on the agent to call
-// `forge task resume` proactively. The clear flag guarantees only one re-injection (the
-// next prompt is silent).
+// `forge task resume` proactively. Consuming the mark guarantees only one re-injection
+// (the next prompt is silent), and per-session sentinels mean one session's prompt
+// never consumes another session's mark.
 //
-// renderHookReinject 产出 UserPromptSubmit hook 模式输出：若活跃任务 ResumeStale=true（刚压缩
-// 过）→ 返 "PASS\n<handoff>" 并清零 ResumeStale（持久化）；否则返 ""（静默，不注入）。这是
-// claude-code 根治层（gap#2）的「重注入」半边——压缩后第一个 user prompt 自动恢复完整接续
-// 上下文，不靠 agent 主动 forge task resume。clear 标志保证只重注入一次（下个 prompt 静默）。
+// renderHookReinject 产出 UserPromptSubmit hook 模式输出：若当前 session 刚压缩过
+// → 返 "PASS\n<handoff>" 并清标记；否则返 ""（静默，不注入）。「刚压缩过」按
+// session 判定：per-session sentinel（taskpipeline.ConsumeResumeStale 读即清），或
+// legacy 的 task-scoped ResumeStale bool（此处清零并持久化）——后者服务无 session ID
+// 的 session 和被旧版 binary 标记过的 task。这是压缩根治层（gap#2）的「重注入」
+// 半边——压缩后第一个 user prompt 自动恢复完整接续上下文，不靠 agent 主动
+// forge task resume。消费标记保证只重注入一次（下个 prompt 静默），per-session
+// sentinel 保证一个 session 的 prompt 不会消费掉别的 session 的标记。
 func renderHookReinject(root string) (string, error) {
-	state, _ := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
-	if state == nil || !state.ResumeStale {
+	sid := taskpipeline.CurrentSessionID()
+	state, _ := taskpipeline.ActiveTaskState(root, sid)
+	if state == nil {
+		// No active task: still consume any orphaned mark of this session so it cannot
+		// mis-fire later under a different task.
+		//
+		// 无活跃任务：仍消费本 session 可能残留的标记，避免日后在别的 task 下误触发。
+		taskpipeline.ConsumeResumeStale(root, sid)
 		return "", nil
 	}
-	state.ResumeStale = false
-	if err := taskpipeline.SaveTaskState(root, state); err != nil {
-		return "", err
+	stale := taskpipeline.ConsumeResumeStale(root, sid)
+	if state.ResumeStale {
+		// Legacy task-scoped mark (no-session fallback or written by an older binary):
+		// honor it once and clear it.
+		//
+		// Legacy 的 task-scoped 标记（无 session 回落或旧版 binary 所留）：兑现一次并清零。
+		stale = true
+		if err := taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
+			s.ResumeStale = false
+			return nil
+		}); err != nil {
+			return "", err
+		}
+	}
+	if !stale {
+		return "", nil
 	}
 	handoff := renderResume(state, gitPorcelain(root))
 	// Plan 4 (mid-way checkpoint explicit persist · active driving): right after a
@@ -432,16 +496,20 @@ func runTaskDecide(cmd *cobra.Command, args []string) error {
 	}
 	affects, _ := cmd.Flags().GetStringArray("affects")
 	rationale, _ := cmd.Flags().GetString("rationale")
-	state.AddDecision(taskpipeline.Decision{
-		Content:   content,
-		By:        by,
-		Affects:   affects,
-		Rationale: rationale,
+	var d taskpipeline.Decision
+	err = taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
+		s.AddDecision(taskpipeline.Decision{
+			Content:   content,
+			By:        by,
+			Affects:   affects,
+			Rationale: rationale,
+		})
+		d = s.Decisions[len(s.Decisions)-1]
+		return nil
 	})
-	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+	if err != nil {
 		return fmt.Errorf("保存失败: %w", err)
 	}
-	d := state.Decisions[len(state.Decisions)-1]
 	fmt.Printf("✓ 决策已记 [%s]: %s\n", d.ID, content)
 	return nil
 }
@@ -451,13 +519,18 @@ func runTaskNext(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	for _, step := range args {
-		state.AddNext(step)
-	}
-	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+	total := 0
+	err = taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
+		for _, step := range args {
+			s.AddNext(step)
+		}
+		total = len(s.NextSteps)
+		return nil
+	})
+	if err != nil {
 		return fmt.Errorf("保存失败: %w", err)
 	}
-	fmt.Printf("✓ 已追加 %d 条下一步（共 %d 条）\n", len(args), len(state.NextSteps))
+	fmt.Printf("✓ 已追加 %d 条下一步（共 %d 条）\n", len(args), total)
 	return nil
 }
 
@@ -468,11 +541,14 @@ func runTaskBlock(cmd *cobra.Command, args []string) error {
 	}
 	if resolveID, _ := cmd.Flags().GetString("resolve"); resolveID != "" {
 		resolution, _ := cmd.Flags().GetString("resolution")
-		if !state.ResolveBlocker(resolveID, resolution) {
-			return fmt.Errorf("未找到阻塞 ID %q（forge task resume 查看现有 ID）", resolveID)
-		}
-		if err := taskpipeline.SaveTaskState(root, state); err != nil {
-			return fmt.Errorf("保存失败: %w", err)
+		err = taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
+			if !s.ResolveBlocker(resolveID, resolution) {
+				return fmt.Errorf("未找到阻塞 ID %q（forge task resume 查看现有 ID）", resolveID)
+			}
+			return nil
+		})
+		if err != nil {
+			return err
 		}
 		fmt.Printf("✓ 阻塞 [%s] 已解决: %s\n", resolveID, resolution)
 		return nil
@@ -481,11 +557,15 @@ func runTaskBlock(cmd *cobra.Command, args []string) error {
 	if content == "" {
 		return fmt.Errorf("需要 --content <text> 新增阻塞，或 --resolve <id> 解决")
 	}
-	state.AddBlocker(taskpipeline.Blocker{Content: content})
-	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+	var b taskpipeline.Blocker
+	err = taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
+		s.AddBlocker(taskpipeline.Blocker{Content: content})
+		b = s.Blockers[len(s.Blockers)-1]
+		return nil
+	})
+	if err != nil {
 		return fmt.Errorf("保存失败: %w", err)
 	}
-	b := state.Blockers[len(state.Blockers)-1]
 	fmt.Printf("✓ 阻塞已登记 [%s]: %s\n", b.ID, content)
 	return nil
 }
@@ -496,11 +576,14 @@ func runTaskFinding(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if resolveID, _ := cmd.Flags().GetString("resolve"); resolveID != "" {
-		if !state.ResolveFinding(resolveID) {
-			return fmt.Errorf("未找到发现 ID %q（forge task resume 查看现有 ID）", resolveID)
-		}
-		if err := taskpipeline.SaveTaskState(root, state); err != nil {
-			return fmt.Errorf("保存失败: %w", err)
+		err = taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
+			if !s.ResolveFinding(resolveID) {
+				return fmt.Errorf("未找到发现 ID %q（forge task resume 查看现有 ID）", resolveID)
+			}
+			return nil
+		})
+		if err != nil {
+			return err
 		}
 		fmt.Printf("✓ 发现 [%s] 已标 fixed\n", resolveID)
 		return nil
@@ -514,15 +597,19 @@ func runTaskFinding(cmd *cobra.Command, args []string) error {
 		source = detectOriginTool("")
 	}
 	evidence, _ := cmd.Flags().GetString("evidence")
-	state.AddFinding(taskpipeline.Finding{
-		Content:  content,
-		Source:   source,
-		Evidence: evidence,
+	var f taskpipeline.Finding
+	err = taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
+		s.AddFinding(taskpipeline.Finding{
+			Content:  content,
+			Source:   source,
+			Evidence: evidence,
+		})
+		f = s.Findings[len(s.Findings)-1]
+		return nil
 	})
-	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+	if err != nil {
 		return fmt.Errorf("保存失败: %w", err)
 	}
-	f := state.Findings[len(state.Findings)-1]
 	fmt.Printf("✓ 发现已记 [%s] (%s): %s\n", f.ID, source, content)
 	return nil
 }
@@ -557,15 +644,21 @@ func runTaskAttach(cmd *cobra.Command, args []string) error {
 	if tool == "" {
 		return fmt.Errorf(`无法探测当前工具（无 agent env）。跨工具 attach 请显式传 --tool <tool>（如 pi/claude-code/opencode），避免把接手方 session 错误归属到创建方工具`)
 	}
-	already := state.HasSession(sid)
-	state.AddSession(sid, tool)
-	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+	var already bool
+	var participants int
+	err = taskpipeline.MutateTaskState(root, ref, func(s *taskpipeline.TaskState) error {
+		already = s.HasSession(sid)
+		s.AddSession(sid, tool)
+		participants = len(s.SessionLinks)
+		return nil
+	})
+	if err != nil {
 		return fmt.Errorf("保存失败: %w", err)
 	}
 	if already {
-		fmt.Printf("✓ session %s 已锚定（工具=%s），任务 %s 现有 %d 个参与 session\n", sid, tool, ref, len(state.SessionLinks))
+		fmt.Printf("✓ session %s 已锚定（工具=%s），任务 %s 现有 %d 个参与 session\n", sid, tool, ref, participants)
 	} else {
-		fmt.Printf("✓ 已锚定 session %s（工具=%s）到任务 %s（共 %d 个参与 session）\n", sid, tool, ref, len(state.SessionLinks))
+		fmt.Printf("✓ 已锚定 session %s（工具=%s）到任务 %s（共 %d 个参与 session）\n", sid, tool, ref, participants)
 	}
 	return nil
 }

@@ -395,6 +395,27 @@ func newSessionID() string {
 // 测试）绝不依赖环境 env（否则在 Claude Code 下测试会 flaky）。
 //
 // 不在 Claude Code 下（手动终端）返回空串。
+//
+// Multi-host (user-level management): hooks of every host run via `forge hook <name>`,
+// which normalizes each host's stdin session_id and injects it as FORGE_SESSION_ID into
+// the hook script env (cli/hook.go); thin wrappers (`exec forge task resume --hook`)
+// inherit it. So after the Claude-specific env, fall back to FORGE_SESSION_ID so
+// kimi/windsurf/codex sessions also get session-scoped state (active-task-ref-<sid>,
+// resume-stale sentinel) instead of all collapsing onto the legacy global file.
+// "default" is the scripts' own empty-placeholder — treat it as empty.
+//
+// 多 host（用户级管理）：各 host 的 hook 都经 `forge hook <name>` 运行，runHook 把
+// 各 host stdin 的 session_id normalize 后以 FORGE_SESSION_ID 注入 hook 脚本 env
+// （cli/hook.go），thin wrapper（`exec forge task resume --hook`）继承它。故在
+// Claude 专属 env 之后回落 FORGE_SESSION_ID，让 kimi/windsurf/codex session 也获得
+// session-scoped 状态（active-task-ref-<sid>、resume-stale sentinel），而非全挤到
+// legacy 全局文件。"default" 是脚本侧的空占位符——按空处理。
 func CurrentSessionID() string {
-	return os.Getenv("CLAUDE_CODE_SESSION_ID")
+	if sid := os.Getenv("CLAUDE_CODE_SESSION_ID"); sid != "" {
+		return sid
+	}
+	if sid := os.Getenv("FORGE_SESSION_ID"); sid != "" && sid != "default" {
+		return sid
+	}
+	return ""
 }

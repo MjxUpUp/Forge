@@ -1,0 +1,204 @@
+package taskpipeline
+
+import (
+	"os"
+	"sync"
+	"testing"
+	"time"
+)
+
+// TestLockTask_MutualExclusion guards the core contract of the per-task lock: while one
+// holder holds it, a second acquirer cannot take it (and errors after taskLockWait would
+// be too slow for a unit test — so we assert non-acquisition indirectly: the second
+// acquire must not succeed while the first holds). After unlock, acquisition succeeds
+// again (no leftover lock file).
+//
+// TestLockTask_MutualExclusion 钉住 per-task 锁的核心契约：持锁期间第二个获取者拿不到
+// （直接等到 taskLockWait 超时对单测太慢——故间接断言不获取：第一持锁期间第二次获取
+// 必不成功）。解锁后可再次获取（无残留锁文件）。
+func TestLockTask_MutualExclusion(t *testing.T) {
+	dir := t.TempDir()
+
+	unlock, err := LockTask(dir, "feat/lock")
+	if err != nil {
+		t.Fatalf("first LockTask: %v", err)
+	}
+
+	// A second acquire must not succeed while the first holds. We cannot wait the full
+	// taskLockWait in a unit test, so probe in a goroutine and assert it does NOT
+	// complete quickly.
+	//
+	// 第一持锁期间第二次获取必不成功。单测不能真等满 taskLockWait，故用 goroutine
+	// 探测并断言它不会很快完成。
+	acquired := make(chan struct{})
+	go func() {
+		u, err := LockTask(dir, "feat/lock")
+		if err == nil {
+			u()
+			close(acquired)
+		}
+	}()
+	select {
+	case <-acquired:
+		t.Fatal("持锁期间第二个 LockTask 不应成功")
+	case <-time.After(300 * time.Millisecond):
+		// expected: still waiting
+	}
+
+	unlock()
+	select {
+	case <-acquired:
+		// acquired after unlock — correct
+	case <-time.After(taskLockWait + 2*time.Second):
+		t.Fatal("解锁后第二个 LockTask 应能获取")
+	}
+}
+
+// TestLockTask_StaleBreak: a lock file older than taskLockStaleAfter is treated as a
+// crash orphan and broken, so a crashed holder never blocks a task forever.
+//
+// TestLockTask_StaleBreak：超过 taskLockStaleAfter 的锁文件视为崩溃 orphan 并打破——
+// 崩溃的持锁者不会永久阻塞该 task。
+func TestLockTask_StaleBreak(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(dataHome(dir)+"/tasks", 0755); err != nil {
+		t.Fatal(err)
+	}
+	stale := taskLockPath(dir, "feat/stale")
+	if err := os.WriteFile(stale, []byte("0\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-taskLockStaleAfter - time.Minute)
+	if err := os.Chtimes(stale, old, old); err != nil {
+		t.Fatal(err)
+	}
+	unlock, err := LockTask(dir, "feat/stale")
+	if err != nil {
+		t.Fatalf("stale 锁应被打破并获取成功: %v", err)
+	}
+	unlock()
+}
+
+// TestMutateTaskState_SequentialLostUpdate: the whole point of MutateTaskState — two
+// mutators that both read-modify-write the same field no longer lose each other's
+// update. Simulates the pre-lock bug shape (load stale snapshot, append, save) by
+// running N mutators whose fn appends one NextStep; without the lock+reload the final
+// count would be < N.
+//
+// TestMutateTaskState_SequentialLostUpdate：MutateTaskState 的存在意义——两个都走
+// read-modify-write 的变更者不再互丢更新。模拟加锁前的 bug 形态（读过期快照、追加、
+// 保存）：跑 N 个各追加一条 NextStep 的变更者；无锁+重载时最终计数会 < N。
+func TestMutateTaskState_SequentialLostUpdate(t *testing.T) {
+	dir := t.TempDir()
+	state := &TaskState{TaskRef: "feat/mut", Branch: "feat/mut"}
+	if err := SaveTaskState(dir, state); err != nil {
+		t.Fatal(err)
+	}
+
+	const n = 20
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = MutateTaskState(dir, "feat/mut", func(s *TaskState) error {
+				s.AddNext("step")
+				return nil
+			})
+		}()
+	}
+	wg.Wait()
+
+	reloaded, err := LoadTaskState(dir, "feat/mut")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reloaded.NextSteps) != n {
+		t.Errorf("并发 MutateTaskState 丢更新: got %d NextSteps, want %d", len(reloaded.NextSteps), n)
+	}
+}
+
+// TestMutateTaskState_FnErrorNoSave: when fn errors, nothing is saved (no partial
+// mutation persisted) and the error propagates.
+//
+// TestMutateTaskState_FnErrorNoSave：fn 报错时不保存（不落盘半截变更）且错误向上传。
+func TestMutateTaskState_FnErrorNoSave(t *testing.T) {
+	dir := t.TempDir()
+	state := &TaskState{TaskRef: "feat/err", Branch: "feat/err"}
+	if err := SaveTaskState(dir, state); err != nil {
+		t.Fatal(err)
+	}
+	err := MutateTaskState(dir, "feat/err", func(s *TaskState) error {
+		s.AddNext("should-not-persist")
+		return os.ErrPermission
+	})
+	if err == nil {
+		t.Fatal("fn 报错应向上传")
+	}
+	reloaded, _ := LoadTaskState(dir, "feat/err")
+	if len(reloaded.NextSteps) != 0 {
+		t.Errorf("fn 报错不应保存变更: %v", reloaded.NextSteps)
+	}
+}
+
+// TestResumeStale_PerSession: the per-session sentinel — Mark then Consume for the same
+// sid returns true exactly once; a different sid is unaffected (the multi-session fix:
+// B's prompt no longer consumes A's compaction mark).
+//
+// TestResumeStale_PerSession：per-session sentinel——同 sid Mark 后 Consume 恰为 true
+// 一次；不同 sid 互不影响（多 session 修复：B 的 prompt 不再消费 A 的压缩标记）。
+func TestResumeStale_PerSession(t *testing.T) {
+	dir := t.TempDir()
+	if err := MarkResumeStale(dir, "sid-a"); err != nil {
+		t.Fatal(err)
+	}
+	if ConsumeResumeStale(dir, "sid-b") {
+		t.Error("sid-b 不应消费 sid-a 的标记")
+	}
+	if !ConsumeResumeStale(dir, "sid-a") {
+		t.Error("sid-a 应消费到自己的标记")
+	}
+	if ConsumeResumeStale(dir, "sid-a") {
+		t.Error("标记应只被消费一次")
+	}
+	// Empty sid never consumes (legacy sessions use the task-scoped bool).
+	//
+	// 空 sid 永不消费（legacy session 走 task-scoped bool）
+	if err := MarkResumeStale(dir, "sid-c"); err != nil {
+		t.Fatal(err)
+	}
+	if ConsumeResumeStale(dir, "") {
+		t.Error("空 sid 不应消费任何标记")
+	}
+}
+
+// TestCurrentSessionID_FallbackChain: multi-host session detection — Claude env wins;
+// FORGE_SESSION_ID (injected by runHook from any host's stdin session_id) is the
+// fallback; "default" (the scripts' empty placeholder) and unset both yield "".
+//
+// TestCurrentSessionID_FallbackChain：多 host session 探测——Claude env 优先；
+// FORGE_SESSION_ID（runHook 从任意 host stdin 的 session_id 注入）兜底；"default"
+// （脚本侧空占位符）与未设都返回 ""。
+func TestCurrentSessionID_FallbackChain(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
+	t.Setenv("FORGE_SESSION_ID", "")
+	if got := CurrentSessionID(); got != "" {
+		t.Errorf("全空应返回 \"\": %q", got)
+	}
+
+	t.Setenv("FORGE_SESSION_ID", "kimi-sess-1")
+	if got := CurrentSessionID(); got != "kimi-sess-1" {
+		t.Errorf("FORGE_SESSION_ID 兜底: %q", got)
+	}
+
+	t.Setenv("FORGE_SESSION_ID", "default")
+	if got := CurrentSessionID(); got != "" {
+		t.Errorf("\"default\" 占位符应按空处理: %q", got)
+	}
+
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "cc-sess")
+	t.Setenv("FORGE_SESSION_ID", "kimi-sess-1")
+	if got := CurrentSessionID(); got != "cc-sess" {
+		t.Errorf("CLAUDE_CODE_SESSION_ID 应优先: %q", got)
+	}
+}

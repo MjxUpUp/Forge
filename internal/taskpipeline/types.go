@@ -145,7 +145,7 @@ type TaskState struct {
 	SessionID      string                    `json:"session_id,omitempty"`      // 创建本 task 的 agent session
 	ExternalOrigin ExternalOrigin            `json:"external_origin,omitempty"` // 外部 issue 来源（--from_issue 解析）；空=本地 branch 推断 origin
 	ReviewPassed   bool                      `json:"review_passed,omitempty"`   // code-review-gate 通过标记；task-complete 门禁的硬前置
-	ResumeStale    bool                      `json:"resume_stale,omitempty"`    // gap#2 claude-code 根治层：PostCompact hook 设 true → 下个 UserPromptSubmit reinject 注入完整 handoff 后清零。codex/cursor/opencode 无 compaction lifecycle，ForgeHookSpec 过滤不装此链。task-scoped 非 session-scoped：两 session 共享同一 task 时，B 的 prompt 可能在 A 压缩后先消费并清掉标志（最坏漏注一次，handoff 内容相同故无数据损坏，可接受边界）。
+	ResumeStale    bool                      `json:"resume_stale,omitempty"`    // legacy 的 task-scoped「刚压缩过」标志：仅无 session ID 的回落路径与旧版 binary 写入；有 session ID 的 host 一律用 per-session sentinel（.resume-stale-<sid>，见 state.go），reinject 读到本字段会兑现一次并清零。task-scoped 的固有边界：两 session 共享同一 task 时，B 的 prompt 可能在 A 压缩后先消费并清掉标志（最坏漏注一次，handoff 内容相同故无数据损坏）——per-session sentinel 已对新路径消除该边界。
 	// ReviewedHeadCommit/ReviewedChangeHash bind the code snapshot at review-pass time — the key to the review-fix-recheck loop.
 	// At review pass, (HEAD, SourceChangesSince(HEAD)) is recorded; the task-complete gate recomputes SourceChangesSince(ReviewedHeadCommit)
 	// and compares it to ReviewedChangeHash — a mismatch means code changed after review, forcing a re-review (no longer relying on agent self-discipline). See executor.go.
@@ -193,15 +193,18 @@ type TaskState struct {
 
 	// Continuity source of truth: promotes plan/decisions/next-steps/blockers/cross-tool-findings/artifacts from in-session
 	// transient state (agent context, lost on compaction) and discipline-reliant markdown (HANDOFF.md/AI_CONTEXT.md) into structured
-	// first-class fields of the task. Any new session cold-starts forge task resume to pull them back, and cross-tool/cross-person
-	// handoff continues from the same record. It corresponds to the information structure of session-continuity HANDOFF + cross-tool-context AI_CONTEXT,
-	// but is persisted into DataDir/tasks/<ref>.json rather than relying on the agent to self-disciplinedly read/write md.
+	// first-class fields of the task. Any new session cold-starts forge task resume to pull them back, and same-machine
+	// cross-tool/cross-person handoff continues from the same record. It corresponds to the information structure of
+	// session-continuity HANDOFF + cross-tool-context AI_CONTEXT, but is persisted into the user-level DataDir/tasks/<ref>.json
+	// rather than relying on the agent to self-disciplinedly read/write md. Boundary: user-level state does not travel with the
+	// repo — cross-machine handoff needs an explicit export/import vehicle (not built yet).
 	//
 	// 接续真相源（continuity）：把 plan/决策/下一步/阻塞/跨工具发现/产物从会话内临时状态
 	// （agent 上下文，压缩即丢）和靠纪律的 markdown（HANDOFF.md/AI_CONTEXT.md）升格为 task 的
-	// 结构化一等公民字段。任何新会话冷启动 forge task resume 即拉回，跨工具/跨人基于同一份
+	// 结构化一等公民字段。任何新会话冷启动 forge task resume 即拉回，同机跨工具/跨人基于同一份
 	// 记录接续。对应 session-continuity HANDOFF + cross-tool-context AI_CONTEXT 的信息结构，
-	// 但持久化进 DataDir/tasks/<ref>.json 而非靠 agent 自觉读写 md。
+	// 但持久化进用户级 DataDir/tasks/<ref>.json 而非靠 agent 自觉读写 md。边界：用户级 state
+	// 不随仓库走——跨机器接续需要显式的 export/import 载体（尚未建）。
 	Kind          string        `json:"kind,omitempty"`            // "" | "code" = 走 3 道门禁（默认，向后兼容）；"generic" = 不走门禁，承载调研/设计/纯接续任务
 	OriginTool    string        `json:"origin_tool,omitempty"`     // 声明式发起工具（pi/claude-code/opencode/codex/cursor…）；区别于 SessionRecord.AgentType 的目录探测弱信号
 	Goal          string        `json:"goal,omitempty"`            // 目标叙述（可多行；比 Summary 一行标题更丰富，是"为什么做"）

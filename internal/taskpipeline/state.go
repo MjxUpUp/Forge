@@ -351,6 +351,59 @@ func MarkCompleteGrace(root, sessionID string) error {
 	return util.AtomicWrite(completeGracePath(root, sessionID), []byte(stamp), 0644)
 }
 
+// resumeStaleFile is the sentinel name (with prefix) marking "this session's context was
+// just compacted — re-inject the task handoff on its next prompt". Per-session
+// (.resume-stale-<sid>), replacing the task-scoped TaskState.ResumeStale bool: with the
+// user-level DataDir shared across worktrees and multiple hosts, N sessions share one
+// task, and a task-scoped flag let session B consume (and clear) the mark meant for
+// session A — a missed re-injection. A per-session sentinel makes each session consume
+// exactly its own mark; it also needs no task-state mutation, so the PostCompact hook
+// stays write-free on the shared json. Go-only (compact-resume/resume-reinject are thin
+// wrappers into forge task resume) — no bash mirror, unlike completeGracePath.
+//
+// resumeStaleFile 是标记「本 session 的 context 刚被压缩——下个 prompt 重注入任务
+// handoff」的 sentinel 名（带前缀）。Per-session（.resume-stale-<sid>），取代
+// task-scoped 的 TaskState.ResumeStale bool：用户级 DataDir 跨 worktree/多 host
+// 共享后，N 个 session 共享一个 task，task-scoped 标志会让 session B 消费（并清掉）
+// 本属于 A 的标记——漏注一次。per-session sentinel 让每个 session 只消费自己的标记；
+// 且不需要改 task state，PostCompact hook 对共享 json 保持零写。仅 Go 侧使用
+// （compact-resume/resume-reinject 都是进 forge task resume 的 thin wrapper）——
+// 不像 completeGracePath 需要 bash 镜像。
+const resumeStaleFile = ".resume-stale"
+
+// resumeStalePath returns the per-session resume-stale sentinel path under the DataDir.
+//
+// resumeStalePath 返回 DataDir 下 per-session 的 resume-stale sentinel 路径。
+func resumeStalePath(root, sessionID string) string {
+	return filepath.Join(dataHome(root), resumeStaleFile+"-"+util.SanitizeSessionID(sessionID))
+}
+
+// MarkResumeStale records that this session's context was just compacted. Called by the
+// PostCompact hook (compact-resume) after confirming an active task exists. sessionID
+// must be non-empty (the caller falls back to the legacy task-scoped bool otherwise).
+//
+// MarkResumeStale 记录本 session 的 context 刚被压缩。由 PostCompact hook
+// （compact-resume）在确认有活跃任务后调用。sessionID 必须非空（否则 caller 回落到
+// legacy 的 task-scoped bool）。
+func MarkResumeStale(root, sessionID string) error {
+	stamp := strconv.FormatInt(time.Now().Unix(), 10) + "\n"
+	return util.AtomicWrite(resumeStalePath(root, sessionID), []byte(stamp), 0644)
+}
+
+// ConsumeResumeStale reports whether a resume-stale mark exists for this session, and
+// clears it if so — guaranteeing a single re-injection per compaction. Returns false
+// when sessionID is empty (legacy sessions use the task-scoped bool instead).
+//
+// ConsumeResumeStale 报告本 session 是否存在 resume-stale 标记，存在则清除——保证
+// 每次压缩只重注入一次。sessionID 为空时返回 false（legacy session 改用 task-scoped
+// bool）。
+func ConsumeResumeStale(root, sessionID string) bool {
+	if sessionID == "" {
+		return false
+	}
+	return os.Remove(resumeStalePath(root, sessionID)) == nil
+}
+
 // ReadActiveTaskRef reads the active task ref from the (session-scoped) file.
 // Returns an empty string when the file is missing or empty.
 //
