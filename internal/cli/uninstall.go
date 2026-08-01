@@ -20,7 +20,7 @@ import (
 // (per-project init prompt markers). Plugin uninstall must run interactively inside the agent
 // CLI (`/plugin uninstall forge@forge` etc. are not scriptable) — print guidance instead.
 // Project-level `.forge/` is left untouched (user decides whether to keep; to clear, run
-// `forge init --reset` or manually `rm -rf .forge/` first).
+// manually `rm -rf .forge/`.).
 //
 // Test hook: FORGE_UNINSTALL_SKIP_NPM=1 skips the npm call (for tests or when npm is unavailable).
 //
@@ -31,7 +31,7 @@ import (
 // 设计：清 `npm uninstall -g @agent_forge/forge`（binary）+ `~/.forge/.init-suggested/`
 // （per-project init 提示标记）。Plugin 卸载必须在 agent CLI 内交互跑（`/plugin
 // uninstall forge@forge` 等不可脚本化）——打印指引。项目级 `.forge/` 不动（用户
-// 决定是否留；若要清先跑 `forge init --reset` 或手动 rm -rf .forge/）。
+// 决定是否留；若要清手动 rm -rf .forge/）。
 //
 // 测试钩子：FORGE_UNINSTALL_SKIP_NPM=1 跳过 npm 调用（测试或 npm 不可用场景）。
 //
@@ -192,7 +192,7 @@ var uninstallCmd = &cobra.Command{
 		fmt.Println(`  Codex:                 codex plugin uninstall forge@forge`)
 		fmt.Println(`  Copilot CLI:           copilot plugin uninstall forge@forge`)
 		fmt.Println(`  Kimi Code:             /plugins remove forge`)
-		fmt.Println(`项目级 .forge/ 未动。如需清，在项目内跑 'forge init --reset' 或手动 rm -rf .forge/`)
+		fmt.Println(`项目级 .forge/ 未动（团队模式/老项目残留）。如需清，手动 rm -rf .forge/；用户级资产可用 --restore 回滚`)
 		return nil
 	},
 }
