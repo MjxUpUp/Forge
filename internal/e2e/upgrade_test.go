@@ -13,6 +13,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
 var forgeBin string
@@ -59,6 +61,26 @@ func TestMain(m *testing.M) {
 	// 当前断言只查 settings.local.json 存在（fileExists）,但保留隔离为未来加内容断言留
 	// 确定性,避免本地（装 plugin）与 CI（未装）飘忽。
 	os.Setenv("CLAUDE_CONFIG_DIR", tmpDir)
+
+	// Isolate the user HOME for subprocesses: after user-level-assets, init/sync write
+	// user-level assets (~/.codex/AGENTS.md, ~/.cursor/hooks.json, ~/.codeium/...,
+	// ~/.config/opencode/...) and DetectAgents scans user-level install dirs — without
+	// HOME isolation, e2e would write into and detect the developer's real home.
+	// Windows uses USERPROFILE, unix HOME; CODEX_HOME is codex's own override.
+	//
+	// 为子进程隔离用户 HOME：user-level-assets 之后 init/sync 会写用户级资产
+	// （~/.codex/AGENTS.md、~/.cursor/hooks.json、~/.codeium/...、
+	// ~/.config/opencode/...），DetectAgents 会扫用户级安装目录——不隔离 HOME，
+	// e2e 会写入并检测到开发者的真实 home。Windows 用 USERPROFILE，unix 用 HOME；
+	// CODEX_HOME 是 codex 自己的覆盖。
+	homeDir := filepath.Join(tmpDir, "home")
+	if err := os.MkdirAll(homeDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "e2e: failed to create isolated home: %v\n", err)
+		os.Exit(1)
+	}
+	os.Setenv("HOME", homeDir)
+	os.Setenv("USERPROFILE", homeDir)
+	os.Setenv("CODEX_HOME", filepath.Join(homeDir, ".codex"))
 
 	os.Exit(m.Run())
 }
@@ -180,12 +202,10 @@ func freshProject(t *testing.T) string {
 	// Redirect the user-level data home to a per-test temp dir: forge
 	// subprocesses (init/hazard/hooks) and this test process's store reads
 	// both resolve DataDir via FORGE_DATA_HOME, so they agree and do not
-	// pollute the real ~/.forge. Un-migrated stores (state/checklog/...) still
-	// write to project-level .forge/ and are unaffected.
+	// pollute the real ~/.forge.
 	//
 	// 把用户级 data home 重定向到 per-test temp dir：forge 子进程（init/hazard/hooks）
 	// 与本测试进程的 store 读取都按 FORGE_DATA_HOME 解析 DataDir，二者一致且不污染真实 ~/.forge。
-	// 未迁移的 store（state/checklog/...）仍写项目级 .forge/，不受影响。
 	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	git(t, dir, "init")
 	git(t, dir, "config", "user.email", "test@example.com")
@@ -212,26 +232,52 @@ func freshProjectOnBranch(t *testing.T, branch string) string {
 func TestFreshInstall(t *testing.T) {
 	dir := freshProject(t)
 
-	// Verify core files exist. Project-level pipeline has been removed: no
-	// pipeline.yml/state.json/forge-pipeline skill; new .sync-version stamp +
-	// CLAUDE.md.
+	// user-level-assets contract: init writes NOTHING into the project (no
+	// .forge/, no .claude/). Hook reference copies + protocol.yml + sync stamp
+	// live in the user-level DataDir (freshProject pins FORGE_DATA_HOME);
+	// claude integration lives under CLAUDE_CONFIG_DIR (TestMain-isolated).
 	//
-	// Verify core files exist. 项目级管道已删除：无 pipeline.yml/state.json/
-	// forge-pipeline skill；新增 .sync-version stamp + CLAUDE.md。
+	// user-level-assets 契约：init 不写项目目录（无 .forge/、无 .claude/）。
+	// hook 参考副本 + protocol.yml + sync 戳在用户级 DataDir（freshProject 已钉
+	// FORGE_DATA_HOME）；claude 集成在 CLAUDE_CONFIG_DIR 下（TestMain 已隔离）。
+	dataDir := forgedata.DataDirFor(dir)
 	for _, path := range []string{
-		".forge",
-		".forge/.sync-version",
-		".forge/protocol.yml",
-		".forge/hooks/auto-compile.sh",
-		".forge/hooks/assertion-check.sh",
-		".forge/hooks/task-verify.sh",
-		".claude/settings.local.json",
-		".claude/CLAUDE.md",
-		".claude/skills/forge-quality/SKILL.md",
+		".sync-version",
+		"protocol.yml",
+		"hooks/auto-compile.sh",
+		"hooks/assertion-check.sh",
+		"hooks/task-verify.sh",
 	} {
-		if !fileExists(t, dir, path) {
-			t.Errorf("expected %s to exist after forge init", path)
+		if !fileExists(t, dataDir, path) {
+			t.Errorf("expected DataDir/%s to exist after forge init", path)
 		}
+	}
+
+	// Zero project writes.
+	//
+	// 零项目写入。
+	for _, path := range []string{".forge", ".claude"} {
+		if fileExists(t, dir, path) {
+			t.Errorf("forge init must not write %s into the project (zero-project-write)", path)
+		}
+	}
+
+	// User-level claude integration: settings.json wires the forge hooks, the
+	// quality skill is installed, CLAUDE.md carries the forge section.
+	//
+	// 用户级 claude 集成：settings.json 接线 forge hook，质量 skill 已装，
+	// CLAUDE.md 带 forge 段。
+	claudeHome := os.Getenv("CLAUDE_CONFIG_DIR")
+	settings := readFile(t, claudeHome, "settings.json")
+	if !strings.Contains(settings, "forge hook") {
+		t.Error("user-level settings.json should wire forge hooks")
+	}
+	if !fileExists(t, claudeHome, "skills/forge-quality/SKILL.md") {
+		t.Error("user-level forge-quality SKILL.md should exist after forge init")
+	}
+	claudeMD := readFile(t, claudeHome, "CLAUDE.md")
+	if !strings.Contains(claudeMD, "FORGE:START") {
+		t.Error("user-level CLAUDE.md should carry the forge section")
 	}
 
 	// forge status should succeed.
@@ -263,9 +309,9 @@ func TestMasterBranchReminder(t *testing.T) {
 	// Now modify it so it appears in git diff.
 	writeFile(t, dir, "foo.go", "package main\n\nfunc Foo() int { return 99 }\n")
 
-	// Run task-verify hook directly.
+	// Run task-verify hook directly (reference copy in the user-level DataDir).
 	// The hook uses forge internally, so we need forge on PATH.
-	hookPath := filepath.Join(dir, ".forge", "hooks", "task-verify.sh")
+	hookPath := filepath.Join(forgedata.DataDirFor(dir), "hooks", "task-verify.sh")
 	cmd := exec.Command("bash", hookPath)
 	cmd.Dir = dir
 	binDir := filepath.Dir(forgeBin)
@@ -282,8 +328,10 @@ func TestMasterBranchReminder(t *testing.T) {
 }
 
 // TestUpgradeFromV040State verifies that upgrading from a v0.4.0-like state
-// triggers auto-sync and creates new hooks/skills without breaking user config.
+// triggers auto-sync: hook reference copies converge into the user-level DataDir,
+// legacy project-level forge writes are stripped, and user config is not broken.
 func TestUpgradeFromV040State(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	dir := t.TempDir()
 	git(t, dir, "init")
 	git(t, dir, "config", "user.email", "test@example.com")
@@ -363,33 +411,56 @@ scoring:
 		t.Fatalf("forge status output should contain 'Project:', got: %s", out)
 	}
 
-	// Verify: new hooks now exist.
+	// Verify: the full current hook set now exists in the user-level DataDir.
+	//
+	// Verify：当前全量 hook 在用户级 DataDir 就位。
+	dataDir := forgedata.DataDirFor(dir)
 	for _, hook := range []string{
-		".forge/hooks/auto-compile.sh",
-		".forge/hooks/assertion-check.sh",
-		".forge/hooks/task-verify.sh",
+		"hooks/auto-compile.sh",
+		"hooks/assertion-check.sh",
+		"hooks/task-verify.sh",
 	} {
-		if !fileExists(t, dir, hook) {
-			t.Errorf("expected %s to exist after upgrade sync", hook)
+		if !fileExists(t, dataDir, hook) {
+			t.Errorf("expected DataDir/%s to exist after upgrade sync", hook)
 		}
 	}
 
 	// Verify hooks were actually updated (not the old content).
-	hookContent := readFile(t, dir, ".forge/hooks/auto-compile.sh")
+	hookContent := readFile(t, dataDir, "hooks/auto-compile.sh")
 	if strings.Contains(hookContent, "old-auto-compile") {
-		t.Error("auto-compile.sh should have been overwritten, still has old content")
+		t.Error("DataDir auto-compile.sh should have been overwritten, still has old content")
 	}
 
-	// Verify: quality SKILL.md regenerated (the forge-pipeline skill was
-	// removed alongside the project-level pipeline).
+	// Verify: legacy project-level forge writes are stripped (zero-project-write
+	// convergence) — hooks copies, dead pipeline files, sync stamp.
 	//
-	// Verify: quality SKILL.md regenerated (forge-pipeline skill 已随项目级管道删除).
-	skillContent := readFile(t, dir, ".claude/skills/forge-quality/SKILL.md")
-	if skillContent == "" {
-		t.Error("expected forge-quality SKILL.md to be regenerated")
+	// Verify：遗留项目级 forge 写入被剥除（收敛零项目写入）——hooks 副本、
+	// 死管道文件、sync 戳。
+	for _, path := range []string{
+		".forge/hooks",
+		".forge/pipeline.yml",
+		".forge/state.json",
+		".forge/.sync-version",
+	} {
+		if fileExists(t, dir, path) {
+			t.Errorf("legacy project-level %s should be stripped after upgrade sync", path)
+		}
 	}
 
-	// Verify: protocol.yml NOT overwritten — still has user's custom standard.
+	// Verify: quality SKILL.md regenerated at user level (CLAUDE_CONFIG_DIR is
+	// TestMain-isolated).
+	//
+	// Verify：质量 SKILL.md 在用户级重生成（CLAUDE_CONFIG_DIR 已被 TestMain 隔离）。
+	skillContent := readFile(t, os.Getenv("CLAUDE_CONFIG_DIR"), "skills/forge-quality/SKILL.md")
+	if skillContent == "" {
+		t.Error("expected user-level forge-quality SKILL.md to be regenerated")
+	}
+
+	// Verify: protocol.yml NOT overwritten — still has user's custom standard
+	// (customized → kept as the team-shared override layer at project level).
+	//
+	// Verify：protocol.yml 未被覆盖——仍是用户自定义标准（改过 → 作为团队共享
+	// 覆盖层留在项目级）。
 	protoContent := readFile(t, dir, ".forge/protocol.yml")
 	if !strings.Contains(protoContent, "my-custom-standard") {
 		t.Error("protocol.yml should still contain user's custom standard after upgrade")
@@ -398,14 +469,10 @@ scoring:
 		t.Error("protocol.yml should still contain user's custom session rule after upgrade")
 	}
 
-	// Verify: .sync-version stamp written with current binary version.
-	// autoSync now uses the stamp file for the no-op check (replacing the
-	// deleted state.json.last_sync_version); it no longer reads or writes
-	// state.json.
+	// Verify: .sync-version stamp written with current binary version (in DataDir).
 	//
-	// Verify: .sync-version stamp written with current binary version. autoSync 现在用
-	// stamp 文件判 no-op（取代已删的 state.json.last_sync_version），不再读写 state.json。
-	stamp := readFile(t, dir, ".forge/.sync-version")
+	// Verify：.sync-version 戳写入当前 binary version（在 DataDir）。
+	stamp := readFile(t, dataDir, ".sync-version")
 	if strings.TrimSpace(stamp) == "" {
 		t.Fatal(".sync-version stamp should be written after upgrade sync")
 	}
@@ -417,6 +484,7 @@ scoring:
 // TestUpgradePreservesUserProtocol verifies that auto-sync never overwrites
 // a user's customized protocol.yml, even from older versions.
 func TestUpgradePreservesUserProtocol(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	dir := t.TempDir()
 	git(t, dir, "init")
 	git(t, dir, "config", "user.email", "test@example.com")
@@ -505,30 +573,44 @@ scoring:
 		t.Error("protocol.yml should still contain 'review-before-merge' session rule")
 	}
 
-	// Verify: hooks were updated (not old content).
+	// Verify: hook reference copies were updated in the user-level DataDir (not
+	// old content), and the legacy project-level copies are stripped.
+	//
+	// Verify：hook 参考副本在用户级 DataDir 更新（非旧内容），遗留项目级副本被剥除。
+	dataDir := forgedata.DataDirFor(dir)
 	for _, hook := range []string{
-		".forge/hooks/auto-compile.sh",
-		".forge/hooks/task-verify.sh",
+		"hooks/auto-compile.sh",
+		"hooks/task-verify.sh",
 	} {
-		if fileExists(t, dir, hook) {
-			content := readFile(t, dir, hook)
-			if strings.Contains(content, "echo old\n") {
-				t.Errorf("%s should have been updated", hook)
-			}
+		if !fileExists(t, dataDir, hook) {
+			t.Errorf("expected DataDir/%s after auto-sync", hook)
+			continue
+		}
+		content := readFile(t, dataDir, hook)
+		if strings.Contains(content, "echo old\n") {
+			t.Errorf("DataDir/%s should have been updated", hook)
 		}
 	}
-
-	// Verify: settings.local.json updated.
-	if !fileExists(t, dir, ".claude/settings.local.json") {
-		t.Error("settings.local.json should exist after auto-sync")
+	if fileExists(t, dir, ".forge/hooks") {
+		t.Error("legacy .forge/hooks should be stripped after auto-sync")
 	}
 
-	// Verify: quality SKILL.md updated (the forge-pipeline skill was
+	// Verify: user-level claude settings.json wires the forge hooks (project-level
+	// settings.local.json is no longer written).
+	//
+	// Verify：用户级 claude settings.json 接线 forge hook（项目级
+	// settings.local.json 不再写入）。
+	settings := readFile(t, os.Getenv("CLAUDE_CONFIG_DIR"), "settings.json")
+	if !strings.Contains(settings, "forge hook") {
+		t.Error("user-level settings.json should wire forge hooks after auto-sync")
+	}
+
+	// Verify: quality SKILL.md updated at user level (the forge-pipeline skill was
 	// retired together with the project-level pipeline).
 	//
-	// Verify: quality SKILL.md updated (forge-pipeline skill 已随项目级管道删除).
-	if !fileExists(t, dir, ".claude/skills/forge-quality/SKILL.md") {
-		t.Error("forge-quality SKILL.md should exist after auto-sync")
+	// Verify：质量 SKILL.md 在用户级更新（forge-pipeline skill 已随项目级管道删除）。
+	if !fileExists(t, os.Getenv("CLAUDE_CONFIG_DIR"), "skills/forge-quality/SKILL.md") {
+		t.Error("user-level forge-quality SKILL.md should exist after auto-sync")
 	}
 }
 

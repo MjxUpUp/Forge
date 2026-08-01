@@ -8,6 +8,9 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/agentbridge"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/hooks"
+	"github.com/MjxUpUp/Forge/internal/skillgen"
+	"github.com/MjxUpUp/Forge/internal/userassets"
 	"github.com/spf13/cobra"
 )
 
@@ -63,6 +66,8 @@ var uninstallCmd = &cobra.Command{
 	Use:   `uninstall`,
 	Short: `卸载 forge 二进制 + init-suggest 标记（plugin 卸载需在 agent CLI 内进行）`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		restore, _ := cmd.Flags().GetBool("restore")
+
 		// 1. npm uninstall -g @agent_forge/forge (skip via SKIP_NPM in test/offline scenarios)
 		//
 		// 1. npm uninstall -g @agent_forge/forge（测试 / 离线场景可 SKIP_NPM 跳过）
@@ -102,6 +107,65 @@ var uninstallCmd = &cobra.Command{
 			fmt.Println(`已清除 kimi-code config.toml 中的 forge hooks`)
 		}
 
+		// 2c. strip forge hooks from every agent's USER-LEVEL config (the post
+		//     user-level-assets registration points). Best-effort, warn-not-fail.
+		//
+		// 2c. 剥除各 agent 用户级配置里的 forge hooks（user-level-assets 之后的
+		//     注册点）。best-effort，告警不阻断。
+		if stripped, err := hooks.StripForgeHooksUserLevel(); err != nil {
+			fmt.Fprintf(os.Stderr, `警告：清理 claude 用户级 settings 失败：%v`+"\n", err)
+		} else if stripped {
+			fmt.Println(`已清除 claude 用户级 settings 中的 forge hooks`)
+		}
+		for name, strip := range map[string]func() (bool, error){
+			`codex`:    agentbridge.StripCodexHooksUserLevel,
+			`cursor`:   agentbridge.StripCursorHooksUserLevel,
+			`opencode`: agentbridge.StripOpenCodeUserPlugin,
+			`windsurf`: agentbridge.StripWindsurfHooksUserLevel,
+		} {
+			if stripped, err := strip(); err != nil {
+				fmt.Fprintf(os.Stderr, `警告：清理 %s 用户级 hooks 失败：%v`+"\n", name, err)
+			} else if stripped {
+				fmt.Printf(`已清除 %s 用户级配置中的 forge hooks`+"\n", name)
+			}
+		}
+
+		// 2d. strip the forge instruction sections from user-level CLAUDE.md / AGENTS.md /
+		//     windsurf global_rules.md (preserving all user content outside the markers).
+		//
+		// 2d. 剥除用户级 CLAUDE.md / AGENTS.md / windsurf global_rules.md 的 forge
+		//     指令段（标记外的用户内容全部保留）。
+		if err := skillgen.StripUserInstructions(); err != nil {
+			fmt.Fprintf(os.Stderr, `警告：清理用户级指令段失败：%v`+"\n", err)
+		} else {
+			fmt.Println(`已清除用户级 CLAUDE.md / AGENTS.md 中的 forge 段`)
+		}
+		if stripped, err := agentbridge.StripWindsurfGlobalRules(); err != nil {
+			fmt.Fprintf(os.Stderr, `警告：清理 windsurf global_rules.md 失败：%v`+"\n", err)
+		} else if stripped {
+			fmt.Println(`已清除 windsurf global_rules.md 中的 forge 段`)
+		}
+
+		// 2e. --restore: roll every user-level file forge touched back to its pre-forge
+		//     bytes (backup+append contract; backups at ~/.forge/backups/).
+		//
+		// 2e. --restore：把 forge 碰过的用户级文件回滚到 forge 修改前的原始字节
+		//     （备份+追加契约；备份在 ~/.forge/backups/）。
+		if restore {
+			restored, errs := userassets.RestoreAll()
+			for _, p := range restored {
+				fmt.Printf(`已回滚：%s`+"\n", p)
+			}
+			for _, e := range errs {
+				fmt.Fprintf(os.Stderr, `警告：回滚失败：%v`+"\n", e)
+			}
+			if len(restored) == 0 && len(errs) == 0 {
+				fmt.Println(`无可回滚的备份（~/.forge/backups/ 为空）`)
+			}
+		} else {
+			fmt.Println(`提示：加 --restore 可把用户级文件回滚到 forge 修改前的原始内容（备份在 ~/.forge/backups/）`)
+		}
+
 		// 3. plugin uninstall guidance (interactive inside agent CLI, not scriptable)
 		//
 		// 3. plugin 卸载指引（agent CLI 内交互，不可脚本化）
@@ -117,4 +181,5 @@ var uninstallCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(uninstallCmd)
+	uninstallCmd.Flags().Bool("restore", false, "回滚用户级文件到 forge 修改前的原始内容（~/.forge/backups/）")
 }

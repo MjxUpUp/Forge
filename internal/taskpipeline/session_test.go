@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/taskcontext"
 )
 
@@ -31,13 +32,13 @@ func TestEnsureSession_CreatesNewSession(t *testing.T) {
 		t.Errorf("AgentType = %q, want claude-code", session.AgentType)
 	}
 
-	// Verify session file was created
-	if _, err := os.Stat(filepath.Join(dir, ".forge", "session.json")); os.IsNotExist(err) {
+	// Verify session file was created (user-level DataDir)
+	if _, err := os.Stat(filepath.Join(forgedata.DataDirFor(dir), "session.json")); os.IsNotExist(err) {
 		t.Error("session.json was not created")
 	}
 
 	// Verify sessions log was created
-	if _, err := os.Stat(filepath.Join(dir, ".forge", "sessions.jsonl")); os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(forgedata.DataDirFor(dir), "sessions.jsonl")); os.IsNotExist(err) {
 		t.Error("sessions.jsonl was not created")
 	}
 }
@@ -77,9 +78,9 @@ func TestEnsureSession_WritesStartedEpoch(t *testing.T) {
 			scoped.StartedEpoch, scoped.StartedAt.Unix())
 	}
 
-	// The on-disk global session.json must marshal the field by its json tag so
-	// the bash hook's extract_num started_epoch finds it.
-	raw, err := os.ReadFile(filepath.Join(dir, ".forge", "session.json"))
+	// The on-disk global session.json (user-level DataDir) must marshal the field
+	// by its json tag so the bash hook's extract_num started_epoch finds it.
+	raw, err := os.ReadFile(filepath.Join(forgedata.DataDirFor(dir), "session.json"))
 	if err != nil {
 		t.Fatalf("read session.json: %v", err)
 	}

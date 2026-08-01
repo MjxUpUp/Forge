@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
 func TestDefaultProtocol(t *testing.T) {
@@ -114,6 +116,7 @@ func TestSaveAndLoad(t *testing.T) {
 }
 
 func TestLoadMissing(t *testing.T) {
+	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
 	dir := t.TempDir()
 	_, err := Load(dir)
 	if err == nil {
@@ -121,7 +124,13 @@ func TestLoadMissing(t *testing.T) {
 	}
 }
 
-func TestSaveCreatesForgeDir(t *testing.T) {
+// TestSaveCreatesDataDir: Save with no project-level override creates the user-level
+// DataDir copy (via util.AtomicWrite) — and must NOT create a project-level .forge/.
+//
+// TestSaveCreatesDataDir：无项目级覆盖时 Save 创建用户级 DataDir 副本
+// （经 util.AtomicWrite）——且不得创建项目级 .forge/。
+func TestSaveCreatesDataDir(t *testing.T) {
+	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
 	dir := t.TempDir()
 	// .forge/ doesn't exist yet
 	forgeDir := filepath.Join(dir, ".forge")
@@ -134,8 +143,11 @@ func TestSaveCreatesForgeDir(t *testing.T) {
 		t.Fatalf("Save failed: %v", err)
 	}
 
-	if _, err := os.Stat(filepath.Join(forgeDir, "protocol.yml")); err != nil {
-		t.Fatalf("protocol.yml not created: %v", err)
+	if _, err := os.Stat(forgeDir); !os.IsNotExist(err) {
+		t.Fatal("Save must not create project-level .forge/ (zero-project-write)")
+	}
+	if _, err := os.Stat(filepath.Join(forgedata.DataDirFor(dir), "protocol.yml")); err != nil {
+		t.Fatalf("protocol.yml not created in DataDir: %v", err)
 	}
 }
 

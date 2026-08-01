@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
 func TestHookOutput_AllowOnMissingProject(t *testing.T) {
@@ -125,6 +126,9 @@ func TestHookOutput_StructuredJSON(t *testing.T) {
 }
 
 func TestHookOutput_CheckLogRecorded(t *testing.T) {
+	// Isolate the forge global home: checklog now records to the user-level
+	// DataDir (forgedata.DataDirFor), never the project tree.
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	// Create a temp project with .forge/ directory
 	tmpDir := t.TempDir()
 	forgeDir := filepath.Join(tmpDir, ".forge", "hooks")
@@ -158,8 +162,8 @@ func TestHookOutput_CheckLogRecorded(t *testing.T) {
 	os.Stdout = oldStdout
 	r.Read(make([]byte, 8192))
 
-	// Check that checklog.jsonl was created
-	checklogPath := filepath.Join(tmpDir, ".forge", "checklog.jsonl")
+	// Check that checklog.jsonl was created in the user-level DataDir
+	checklogPath := filepath.Join(forgedata.DataDirFor(tmpDir), "checklog.jsonl")
 	data, err := os.ReadFile(checklogPath)
 	if err != nil {
 		t.Fatalf("checklog.jsonl not created: %v", err)
@@ -224,6 +228,7 @@ func TestShouldRecordCheck(t *testing.T) {
 // scoring-dependent hook's PASS IS still recorded (scoring's LatestByCheck
 // depends on it). auto-compile is scoring-dependent.
 func TestHookCheckLogNoiseGate_ScoringPassRecorded(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	tmpDir := t.TempDir()
 	os.MkdirAll(filepath.Join(tmpDir, ".forge", "hooks"), 0755)
 	os.WriteFile(filepath.Join(tmpDir, ".forge", "state.json"), []byte(`{"pipeline_version":"2.0","mode":"small"}`), 0644)
@@ -254,8 +259,8 @@ func TestHookCheckLogNoiseGate_ScoringPassRecorded(t *testing.T) {
 	os.Stdout = oldStdout
 	r.Read(make([]byte, 8192))
 
-	// auto-compile is scoring-dependent → its PASS MUST be recorded.
-	checklogPath := filepath.Join(tmpDir, ".forge", "checklog.jsonl")
+	// auto-compile is scoring-dependent → its PASS MUST be recorded (user-level DataDir).
+	checklogPath := filepath.Join(forgedata.DataDirFor(tmpDir), "checklog.jsonl")
 	data, err := os.ReadFile(checklogPath)
 	if err != nil {
 		t.Fatalf("expected checklog entry for scoring PASS (auto-compile), got read err: %v", err)
@@ -673,6 +678,7 @@ func TestAppendSessionRead_RecordsAndMatches(t *testing.T) {
 // Read 仍省略 tool_input（频繁，gate 只需 tool_name+timestamp）；Skill/Agent 填 tool_input
 // 让"质量 skill 是否被驱动"可追溯（advisory 语境下质量 skill 0 触发的根因可追溯）。
 func TestHookToolTrackRecordsSkillInput(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	tmpDir := t.TempDir()
 	os.MkdirAll(filepath.Join(tmpDir, ".forge", "hooks"), 0755)
 	os.WriteFile(filepath.Join(tmpDir, ".forge", "state.json"), []byte(`{"pipeline_version":"2.0","mode":"small"}`), 0644)
@@ -702,10 +708,12 @@ func TestHookToolTrackRecordsSkillInput(t *testing.T) {
 	os.Stdout = oldStdout
 	r.Read(make([]byte, 8192))
 
-	// toollog is written to <root>/.forge/toollog.jsonl (non-git fallback, same path convention as checklog).
+	// toollog is written to the user-level DataDir (forgedata.DataDirFor), same
+	// path convention as checklog — never the project tree.
 	//
-	// toollog 写到 <root>/.forge/toollog.jsonl（非 git fallback，同 checklog 路径惯例）。
-	toollogPath := filepath.Join(tmpDir, ".forge", "toollog.jsonl")
+	// toollog 写到用户级 DataDir（forgedata.DataDirFor），同 checklog 路径惯例——
+	// 绝不写项目树。
+	toollogPath := filepath.Join(forgedata.DataDirFor(tmpDir), "toollog.jsonl")
 	data, err := os.ReadFile(toollogPath)
 	if err != nil {
 		t.Fatalf("toollog.jsonl 未生成（Skill 调用未被 tool-track 记录——matcher 或 dispatch 缺失）: %v", err)
@@ -725,6 +733,7 @@ func TestHookToolTrackRecordsSkillInput(t *testing.T) {
 // TestHookToolTrackReadOmitsToolInput 对照：Read 仍省略 tool_input（保持 toollog lean，
 // gate 只需 tool_name+timestamp）。方案 C 只对 Skill/Agent 填 tool_input，Read 不变。
 func TestHookToolTrackReadOmitsToolInput(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	tmpDir := t.TempDir()
 	os.MkdirAll(filepath.Join(tmpDir, ".forge", "hooks"), 0755)
 	os.WriteFile(filepath.Join(tmpDir, ".forge", "state.json"), []byte(`{"pipeline_version":"2.0","mode":"small"}`), 0644)
@@ -754,7 +763,7 @@ func TestHookToolTrackReadOmitsToolInput(t *testing.T) {
 	os.Stdout = oldStdout
 	r.Read(make([]byte, 8192))
 
-	toollogPath := filepath.Join(tmpDir, ".forge", "toollog.jsonl")
+	toollogPath := filepath.Join(forgedata.DataDirFor(tmpDir), "toollog.jsonl")
 	data, err := os.ReadFile(toollogPath)
 	if err != nil {
 		t.Fatalf("toollog.jsonl 未生成: %v", err)

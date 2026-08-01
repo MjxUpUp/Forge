@@ -84,13 +84,16 @@ func TestAdd_Idempotent(t *testing.T) {
 	}
 }
 
-// TestList_SkipsNonForge: paths without .forge/ never appear even after Add (project fades out).
+// TestList_SkipsDeadPath: registered paths that no longer exist never appear in List
+// (project fades out). After user-level-assets, liveness is judged by the project path
+// itself — init writes no project-level .forge/ anymore.
 //
-// TestList_SkipsNonForge 无 .forge/ 的路径登记了也不出现（项目淡出）。
-func TestList_SkipsNonForge(t *testing.T) {
+// TestList_SkipsDeadPath 已登记但不复存在的路径不出现在 List（项目淡出）。
+// user-level-assets 之后存活按项目路径本身判定——init 不再写项目级 .forge/。
+func TestList_SkipsDeadPath(t *testing.T) {
 	useTempHome(t)
 	real := mkForgeProject(t)
-	fake := t.TempDir() // 无 .forge
+	fake := filepath.Join(t.TempDir(), `gone`) // 不存在的路径
 
 	if err := Add(real); err != nil {
 		t.Fatal(err)
@@ -100,7 +103,7 @@ func TestList_SkipsNonForge(t *testing.T) {
 	}
 	got := List()
 	if len(got) != 1 || got[0] != filepath.Clean(real) {
-		t.Errorf(`List 应仅含真实 forge 项目, got %v`, got)
+		t.Errorf(`List 应仅含存活项目, got %v`, got)
 	}
 }
 
@@ -114,23 +117,24 @@ func TestList_NoRegistry(t *testing.T) {
 	}
 }
 
-// TestList_ProjectRemoved: a registered project whose .forge is later removed stops appearing in List.
+// TestList_ProjectRemoved: a registered project whose directory is later removed stops
+// appearing in List.
 //
-// TestList_ProjectRemoved 项目登记后被删（.forge 移走），List 不再返回它。
+// TestList_ProjectRemoved 项目登记后目录被删，List 不再返回它。
 func TestList_ProjectRemoved(t *testing.T) {
 	useTempHome(t)
 	a := mkForgeProject(t)
 	if err := Add(a); err != nil {
 		t.Fatal(err)
 	}
-	// Simulate the project being moved away: delete .forge/.
+	// Simulate the project being moved away: delete the project dir.
 	//
-	// 模拟项目移走：删掉 .forge/。
-	if err := os.RemoveAll(filepath.Join(a, `.forge`)); err != nil {
+	// 模拟项目移走：删掉项目目录。
+	if err := os.RemoveAll(a); err != nil {
 		t.Fatal(err)
 	}
 	if got := List(); len(got) != 0 {
-		t.Errorf(`项目 .forge 删除后 List 应空, got %v`, got)
+		t.Errorf(`项目目录删除后 List 应空, got %v`, got)
 	}
 }
 
@@ -176,7 +180,7 @@ func TestRegistry_UsesForgeDataHome(t *testing.T) {
 func TestList_PrunesDeadAndWritesBack(t *testing.T) {
 	home := useTempHome(t)
 	a := mkForgeProject(t)
-	fake := t.TempDir() // 无 .forge，登记后即死路径
+	fake := filepath.Join(t.TempDir(), `gone`) // 不存在的路径，登记后即死路径
 
 	if err := Add(a); err != nil {
 		t.Fatal(err)
@@ -220,7 +224,7 @@ func TestList_PrunesDeadAndWritesBack(t *testing.T) {
 	if err := json.Unmarshal(data2, &f2); err != nil {
 		t.Fatal(err)
 	}
-	if len(f2.Projects) != 1 || filepath.Clean(f2.Projects[0]) != filepath.Clean(a) {
+	if len(f2.Projects) != 1 || filepath.Clean(f2.Projects[0].Path) != filepath.Clean(a) {
 		t.Errorf("写回后 projects.json=%v want [%s]（死路径+重复应被精简）", f2.Projects, filepath.Clean(a))
 	}
 }
@@ -231,7 +235,7 @@ func TestList_PrunesDeadAndWritesBack(t *testing.T) {
 func TestPrune(t *testing.T) {
 	home := useTempHome(t)
 	a := mkForgeProject(t)
-	fake := t.TempDir() // 无 .forge，死路径
+	fake := filepath.Join(t.TempDir(), `gone`) // 不存在的路径，死路径
 
 	if err := Add(a); err != nil {
 		t.Fatal(err)
@@ -354,7 +358,7 @@ func TestAdd_CorruptRegistryBackedUpAndRebuilds(t *testing.T) {
 	if err := json.Unmarshal(data, &f); err != nil {
 		t.Fatalf("重建后的 projects.json 应为合法 JSON: %v", err)
 	}
-	if len(f.Projects) != 1 || filepath.Clean(f.Projects[0]) != filepath.Clean(a) {
+	if len(f.Projects) != 1 || filepath.Clean(f.Projects[0].Path) != filepath.Clean(a) {
 		t.Errorf("重建注册表 = %v, want [%s]", f.Projects, filepath.Clean(a))
 	}
 }
@@ -373,7 +377,7 @@ func TestList_KeepsEntryWhenStatErrorIsNotNotExist(t *testing.T) {
 	a := mkForgeProject(t)
 
 	bogus := "bad\x00path" // os.Stat → invalid argument, NOT IsNotExist
-	f := File{Projects: []string{a, bogus}}
+	f := File{Projects: []Entry{{Path: a}, {Path: bogus}}}
 	data, err := json.MarshalIndent(f, ``, `  `)
 	if err != nil {
 		t.Fatal(err)
@@ -437,7 +441,7 @@ func TestDedupe_CaseInsensitive_Windows(t *testing.T) {
 	// List dedupe must also collapse both casings already inside the JSON.
 	//
 	// List 去重也必须合并 JSON 里已有的两种大小写。
-	f := File{Projects: []string{a, variant}}
+	f := File{Projects: []Entry{{Path: a}, {Path: variant}}}
 	data, err := json.MarshalIndent(f, ``, `  `)
 	if err != nil {
 		t.Fatal(err)

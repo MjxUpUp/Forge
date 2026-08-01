@@ -58,32 +58,38 @@ func TestPrintHealth_NoBlindSpotSilent(t *testing.T) {
 	}
 }
 
-// TestHealth_NonGitFriendlyMessage pins dogfood 5.2: running forge health in a non-git directory no longer surfaces a bare
-// error like forgedata: cwd is not in a git repository (AwesomeMutiAgent abandoned after 1 session), instead it shows a friendly hint
-// guiding git init/forge init. Exit code 0 (user error, not a program error).
+// TestHealth_NonGitFriendlyMessage pins dogfood 5.2: running forge health in a
+// non-git directory must not surface a bare confusing error like "forgedata: cwd
+// is not in a git repository" (AwesomeMutiAgent abandoned after 1 session).
+// After the user-level-assets anchor contract, an unregistered project (no
+// registry entry, no legacy .forge/) exits non-zero — but the message must stay
+// actionable (points at `forge init`), not a raw internals dump.
 //
-// TestHealth_NonGitFriendlyMessage 钉死 dogfood 5.2：非 git 目录跑 forge health 不再裸报
-// "forgedata: cwd is not in a git repository"（AwesomeMutiAgent 1 session 放弃），改友好提示
-// 指引 git init/forge init。退出码 0（用户错误而非程序错误）。
+// TestHealth_NonGitFriendlyMessage 钉死 dogfood 5.2：非 git 目录跑 forge health
+// 不裸报 "forgedata: cwd is not in a git repository" 这类令人困惑的底层 error
+// （AwesomeMutiAgent 1 session 放弃）。user-level-assets 锚点契约后，未登记项目
+// （无注册表条目、无遗留 .forge/）退出非零——但消息必须可行动（指向
+// `forge init`），而非内部细节裸奔。
 func TestHealth_NonGitFriendlyMessage(t *testing.T) {
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
 	tmpDir := t.TempDir()
 	// No git, no .forge — the AwesomeMutiAgent scenario.
 	//
 	// 无 git、无 .forge —— AwesomeMutiAgent 场景
-	stdout, _, code := runForgeStreams(t, tmpDir, "health")
-	if code != 0 {
-		t.Fatalf("forge health 非 git 目录应 exit 0（友好提示，非程序错误），got %d", code)
+	_, stderr, code := runForgeStreams(t, tmpDir, "health")
+	if code == 0 {
+		t.Fatal("forge health 未登记项目应 exit 非零（锚点契约：无注册表条目且无 .forge/）")
 	}
-	for _, want := range []string{"需在 git 项目内运行", "不是 git 仓库", "git init"} {
-		if !strings.Contains(stdout, want) {
-			t.Errorf("非 git health stdout 缺 %q\nstdout: %s", want, stdout)
-		}
+	// The message must be actionable — point the user at forge init.
+	//
+	// 消息必须可行动——指引用户 forge init
+	if !strings.Contains(stderr, "forge init") {
+		t.Errorf("非 git health stderr 应指引 forge init\nstderr: %s", stderr)
 	}
 	// Should not surface the underlying error.
 	//
 	// 不应裸露底层错误
-	if strings.Contains(stdout, "forgedata: cwd is not in a git repository") {
-		t.Errorf("不应裸报底层 error，got: %s", stdout)
+	if strings.Contains(stderr, "forgedata: cwd is not in a git repository") {
+		t.Errorf("不应裸报底层 error，got: %s", stderr)
 	}
 }

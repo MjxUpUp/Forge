@@ -227,21 +227,56 @@ func GenerateSettings(projectDir string) error {
 	if err := os.MkdirAll(claudeDir, 0755); err != nil {
 		return fmt.Errorf("create .claude dir: %w", err)
 	}
-	path := filepath.Join(claudeDir, "settings.local.json")
+	return mergeForgeHooksIntoSettings(filepath.Join(claudeDir, "settings.local.json"))
+}
 
-	// Read the existing settings.local.json, preserving all top-level fields (user
-	// env/model etc.). Use json.RawMessage to avoid round-trip serialization altering the
-	// user's field formatting.
-	//
-	// 读现有 settings.local.json,保留所有顶层字段(用户 env/model 等)。用
-	// json.RawMessage 避免往返序列化改动用户字段格式。
+// GenerateUserSettings merges ForgeHookSpec into the user-level Claude settings
+// (~/.claude/settings.json, respecting CLAUDE_CONFIG_DIR via ClaudeHome()). Merge
+// semantics are identical to GenerateSettings (json.RawMessage preserves the user's
+// other top-level fields, only the hooks section is replaced) — both are thin path
+// wrappers over mergeForgeHooksIntoSettings. The user-level file is settings.json
+// (not settings.local.json): it is the machine-wide settings file Claude Code reads
+// for every project. Callers back up the file before invoking this (backup is the
+// caller's responsibility, not handled here).
+//
+// GenerateUserSettings 把 ForgeHookSpec 合并进 user-level Claude settings
+// （~/.claude/settings.json，经 ClaudeHome() 尊重 CLAUDE_CONFIG_DIR）。merge 语义与
+// GenerateSettings 完全一致（json.RawMessage 保留用户其他顶层字段，只替换 hooks 段）
+// ——两者都是 mergeForgeHooksIntoSettings 的薄路径封装。user-level 文件是
+// settings.json（非 settings.local.json）：Claude Code 对每个项目都读这份全机器
+// 配置。调用方负责写前备份（备份不在本函数内处理）。
+func GenerateUserSettings() error {
+	home := ClaudeHome()
+	if home == "" {
+		return fmt.Errorf("cannot resolve Claude config home (CLAUDE_CONFIG_DIR unset and user home unavailable)")
+	}
+	if err := os.MkdirAll(home, 0755); err != nil {
+		return fmt.Errorf("create Claude config dir: %w", err)
+	}
+	return mergeForgeHooksIntoSettings(filepath.Join(home, "settings.json"))
+}
+
+// mergeForgeHooksIntoSettings reads the settings file at path, preserves all
+// top-level fields (user env/model etc.) via json.RawMessage — avoiding round-trip
+// serialization altering the user's field formatting — and replaces only the hooks
+// section with ForgeHookSpec. Overwriting the whole file would lose user
+// configuration (the 1.2.0 regression, fixed in 1.2.1 — see GenerateSettings).
+// A missing file is created; a non-NotExist read/parse error is returned (never
+// silently overwrite unreadable user config).
+//
+// mergeForgeHooksIntoSettings 读 path 处的 settings 文件，用 json.RawMessage 保留
+// 所有顶层字段（用户 env/model 等）——避免往返序列化改动用户字段格式——只把 hooks
+// 段替换为 ForgeHookSpec。覆盖整个文件会丢失用户配置（1.2.0 回归，1.2.1 修——见
+// GenerateSettings）。文件不存在则新建；非 NotExist 的读/解析错误原样返回（绝不
+// 静默覆盖读不出的用户配置）。
+func mergeForgeHooksIntoSettings(path string) error {
 	cfg := map[string]json.RawMessage{}
 	if existing, err := os.ReadFile(path); err == nil {
 		if err := json.Unmarshal(existing, &cfg); err != nil {
-			return fmt.Errorf("parse existing settings.local.json: %w", err)
+			return fmt.Errorf("parse existing %s: %w", filepath.Base(path), err)
 		}
 	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("read settings.local.json: %w", err)
+		return fmt.Errorf("read %s: %w", filepath.Base(path), err)
 	}
 
 	hooksJSON, err := json.Marshal(ForgeHookSpec())

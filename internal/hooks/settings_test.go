@@ -1468,3 +1468,88 @@ func TestForgeHookSpec_SkillTriggerMounted(t *testing.T) {
 		}
 	}
 }
+
+// TestGenerateUserSettings_CreatesFile: with CLAUDE_CONFIG_DIR pointing at a fresh
+// dir, GenerateUserSettings creates <home>/settings.json (the user-level machine-wide
+// settings file — NOT settings.local.json) carrying the full ForgeHookSpec.
+//
+// TestGenerateUserSettings_CreatesFile：CLAUDE_CONFIG_DIR 指向全新目录时，
+// GenerateUserSettings 创建 <home>/settings.json（user-level 全机器 settings 文件
+// ——不是 settings.local.json），携带完整 ForgeHookSpec。
+func TestGenerateUserSettings_CreatesFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	if err := GenerateUserSettings(); err != nil {
+		t.Fatalf("GenerateUserSettings: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(home, "settings.json"))
+	if err != nil {
+		t.Fatalf("settings.json not created: %v", err)
+	}
+	body := string(data)
+	for _, want := range []string{`"hooks"`, "forge hook task-guard", "forge hook skill-scan"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("user-level settings.json missing %q", want)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(home, "settings.local.json")); !os.IsNotExist(err) {
+		t.Errorf("user-level generation must write settings.json, not settings.local.json (err=%v)", err)
+	}
+}
+
+// TestGenerateUserSettings_PreservesUserTopLevelFields: merge semantics identical to
+// GenerateSettings — user-defined top-level fields survive, only the hooks section is
+// replaced, and a second run is byte-identical (idempotent).
+//
+// TestGenerateUserSettings_PreservesUserTopLevelFields：merge 语义与 GenerateSettings
+// 完全一致——用户自定义顶层字段保留，只替换 hooks 段，二次运行逐字节一致（幂等）。
+func TestGenerateUserSettings_PreservesUserTopLevelFields(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	p := filepath.Join(home, "settings.json")
+	existing := `{"env":{"KEY":"val"},"model":"claude-opus-4","hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"forge hook stale-hook"}]}]}}`
+	if err := os.WriteFile(p, []byte(existing), 0644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if err := GenerateUserSettings(); err != nil {
+		t.Fatalf("GenerateUserSettings: %v", err)
+	}
+	data, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	var parsed map[string]json.RawMessage
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	// MarshalIndent re-indents the preserved RawMessage values, so assert the env
+	// field semantically (unmarshal) rather than byte-for-byte.
+	//
+	// MarshalIndent 会重排被保留 RawMessage 值的缩进，故 env 字段按语义（反序列化）
+	// 断言而非逐字节。
+	var env map[string]string
+	if err := json.Unmarshal(parsed["env"], &env); err != nil {
+		t.Fatalf("parse preserved env field: %v", err)
+	}
+	if env["KEY"] != "val" {
+		t.Errorf("user env field was modified: got %s", string(parsed["env"]))
+	}
+	if string(parsed["model"]) != `"claude-opus-4"` {
+		t.Errorf("user model field was modified: got %s", string(parsed["model"]))
+	}
+	if strings.Contains(string(data), "stale-hook") {
+		t.Error("stale forge hook not replaced")
+	}
+
+	// Idempotent: second run must be byte-identical.
+	if err := GenerateUserSettings(); err != nil {
+		t.Fatalf("second GenerateUserSettings: %v", err)
+	}
+	data2, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatalf("read after second run: %v", err)
+	}
+	if string(data) != string(data2) {
+		t.Error("second GenerateUserSettings not idempotent")
+	}
+}

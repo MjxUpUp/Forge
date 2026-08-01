@@ -8,13 +8,29 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 )
 
+// isolateDataHome points the forge global home at a temp dir so DataDirFor
+// resolves under the test sandbox and stores never touch the real ~/.forge.
+// Idempotent within a test: helpers that wrap multiple writes (writeEntry)
+// call it per write, so a second call must not re-point the home elsewhere.
+//
+// isolateDataHome 把 forge 全局 home 指向临时目录，DataDirFor 解析进测试沙盒，
+// store 绝不触碰真实 ~/.forge。测试内幂等：包装多次写入的 helper（writeEntry）
+// 每次写入都调它，第二次调用不得把 home 重新指向别处。
+func isolateDataHome(t *testing.T) {
+	t.Helper()
+	if os.Getenv("FORGE_DATA_HOME") != "" {
+		return
+	}
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+}
+
 func TestRecordAndLoadAll(t *testing.T) {
 	dir := t.TempDir()
-	forgeDir := filepath.Join(dir, ".forge")
-	os.MkdirAll(forgeDir, 0755)
+	isolateDataHome(t)
 
 	entry1 := &Entry{
 		Check:   CheckAutoCompile,
@@ -63,6 +79,7 @@ func TestRecordAndLoadAll(t *testing.T) {
 
 func TestLoadAll_NoFile(t *testing.T) {
 	dir := t.TempDir()
+	isolateDataHome(t)
 	entries, err := LoadAll(dir)
 	if err != nil {
 		t.Fatalf("LoadAll on missing file: %v", err)
@@ -74,7 +91,7 @@ func TestLoadAll_NoFile(t *testing.T) {
 
 func TestLatestByCheckForSession_LatestWins(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, ".forge"), 0755)
+	isolateDataHome(t)
 
 	// Record two entries for auto-compile: one fail, then one pass
 	Record(dir, &Entry{Check: CheckAutoCompile, Passed: false, Detail: "failed"})
@@ -104,12 +121,13 @@ func TestLatestByCheckForSession_LatestWins(t *testing.T) {
 
 func TestClear(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, ".forge"), 0755)
+	isolateDataHome(t)
+	logPath := filepath.Join(forgedata.DataDirFor(dir), "checklog.jsonl")
 
 	Record(dir, &Entry{Check: CheckAutoCompile, Passed: true, Detail: "ok"})
 
 	// File should exist
-	if _, err := os.Stat(filepath.Join(dir, ".forge", "checklog.jsonl")); os.IsNotExist(err) {
+	if _, err := os.Stat(logPath); os.IsNotExist(err) {
 		t.Fatal("checklog.jsonl should exist after Record")
 	}
 
@@ -118,7 +136,7 @@ func TestClear(t *testing.T) {
 	}
 
 	// File should be gone
-	if _, err := os.Stat(filepath.Join(dir, ".forge", "checklog.jsonl")); !os.IsNotExist(err) {
+	if _, err := os.Stat(logPath); !os.IsNotExist(err) {
 		t.Fatal("checklog.jsonl should be removed after Clear")
 	}
 
@@ -130,7 +148,8 @@ func TestClear(t *testing.T) {
 
 func TestArchive(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, ".forge"), 0755)
+	isolateDataHome(t)
+	dataDir := forgedata.DataDirFor(dir)
 
 	Record(dir, &Entry{Check: CheckAutoCompile, Passed: true, Detail: "ok"})
 
@@ -139,12 +158,12 @@ func TestArchive(t *testing.T) {
 	}
 
 	// Original file should be gone
-	if _, err := os.Stat(filepath.Join(dir, ".forge", "checklog.jsonl")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(dataDir, "checklog.jsonl")); !os.IsNotExist(err) {
 		t.Fatal("checklog.jsonl should not exist after Archive")
 	}
 
 	// Timestamped archive should exist
-	entries, err := os.ReadDir(filepath.Join(dir, ".forge"))
+	entries, err := os.ReadDir(dataDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +175,7 @@ func TestArchive(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal("no timestamped archive found in .forge/")
+		t.Fatal("no timestamped archive found in DataDir")
 	}
 
 	// Archive on nonexistent should be idempotent
@@ -167,7 +186,7 @@ func TestArchive(t *testing.T) {
 
 func TestRecord_SetsRecordedAt(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, ".forge"), 0755)
+	isolateDataHome(t)
 
 	before := time.Now()
 	Record(dir, &Entry{Check: CheckAutoCompile, Passed: true})
@@ -181,7 +200,7 @@ func TestRecord_SetsRecordedAt(t *testing.T) {
 
 func TestLoadForTask(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, ".forge"), 0755)
+	isolateDataHome(t)
 
 	// Active checklog: two task refs interleaved.
 	Record(dir, &Entry{Check: CheckAutoCompile, Passed: true, TaskRef: "feat/x", Detail: "active-auto"})
@@ -190,7 +209,7 @@ func TestLoadForTask(t *testing.T) {
 
 	// Archived checklog (produced by Archive on a previous task start) — feat/x
 	// history that LoadAll would miss. This is the gap LoadForTask closes.
-	archivePath := filepath.Join(dir, ".forge", "checklog-20260101000000.jsonl")
+	archivePath := filepath.Join(forgedata.DataDirFor(dir), "checklog-20260101000000.jsonl")
 	archived := []byte(`{"check":"auto-compile","passed":true,"checked":true,"task_ref":"feat/x","detail":"archived","recorded_at":"2026-01-01T00:00:00Z"}` + "\n")
 	if err := os.WriteFile(archivePath, archived, 0644); err != nil {
 		t.Fatal(err)
@@ -217,7 +236,7 @@ func TestLoadForTask(t *testing.T) {
 
 func TestLoadForTask_NoMatch(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, ".forge"), 0755)
+	isolateDataHome(t)
 	Record(dir, &Entry{Check: CheckAutoCompile, Passed: true, TaskRef: "feat/x"})
 
 	got, err := LoadForTask(dir, "nonexistent-ref")
@@ -235,6 +254,7 @@ func TestLoadForTask_NoMatch(t *testing.T) {
 // the non-reentrant mutex (a re-entry would deadlock; the timeout surfaces it).
 func TestRecordAndClear_ConcurrentNoDeadlock(t *testing.T) {
 	dir := t.TempDir()
+	isolateDataHome(t)
 	var wg sync.WaitGroup
 	for i := 0; i < 50; i++ {
 		wg.Add(2)
@@ -265,14 +285,14 @@ func TestRecordAndClear_ConcurrentNoDeadlock(t *testing.T) {
 // precision so two same-second rotations don't collide.
 func TestArchive_NanosecondNaming(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, ".forge"), 0755)
+	isolateDataHome(t)
 	if err := Record(dir, &Entry{Check: CheckAutoCompile, Passed: true}); err != nil {
 		t.Fatal(err)
 	}
 	if err := Archive(dir); err != nil {
 		t.Fatalf("Archive: %v", err)
 	}
-	entries, err := os.ReadDir(filepath.Join(dir, ".forge"))
+	entries, err := os.ReadDir(forgedata.DataDirFor(dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +318,8 @@ func TestArchive_NanosecondNaming(t *testing.T) {
 func TestClear_PrunesOldArchives(t *testing.T) {
 	t.Setenv("FORGE_LOG_RETENTION_DAYS", "30")
 	dir := t.TempDir()
-	forgeDir := filepath.Join(dir, ".forge")
+	isolateDataHome(t)
+	forgeDir := forgedata.DataDirFor(dir)
 	os.MkdirAll(forgeDir, 0755)
 	// Old archive (year 2000, definitely older than 30 days) → deleted.
 	//
@@ -332,7 +353,8 @@ func TestClear_PrunesOldArchives(t *testing.T) {
 func TestClear_DisabledRetention(t *testing.T) {
 	t.Setenv("FORGE_LOG_RETENTION_DAYS", "0")
 	dir := t.TempDir()
-	forgeDir := filepath.Join(dir, ".forge")
+	isolateDataHome(t)
+	forgeDir := forgedata.DataDirFor(dir)
 	os.MkdirAll(forgeDir, 0755)
 	os.WriteFile(filepath.Join(forgeDir, "checklog-20000101000000.jsonl"), []byte("old"), 0644)
 	Record(dir, &Entry{Check: CheckAutoCompile, Passed: true})
@@ -387,7 +409,7 @@ func TestRecord_WritesToDataDir_GitProject(t *testing.T) {
 // scoring/trace 全链路因 ErrTooLong 失败。
 func TestLoadAll_LongLineOver64KB(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, ".forge"), 0755)
+	isolateDataHome(t)
 
 	long := strings.Repeat("x", 200*1024) // 200KB > 64KB default cap, < 1MB new cap
 	if err := Record(dir, &Entry{Check: CheckAutoCompile, Passed: true, Detail: long}); err != nil {
@@ -420,7 +442,7 @@ func TestLoadAll_LongLineOver64KB(t *testing.T) {
 // checklog*.jsonl）钉同样的 1MB 上限，并保证 scanner 错误显式上抛而非静默截断。
 func TestLoadForTask_LongLineOver64KB(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, ".forge"), 0755)
+	isolateDataHome(t)
 
 	long := strings.Repeat("y", 200*1024)
 	if err := Record(dir, &Entry{Check: CheckAutoCompile, Passed: true, TaskRef: "feat/long", Detail: long}); err != nil {
@@ -430,7 +452,7 @@ func TestLoadForTask_LongLineOver64KB(t *testing.T) {
 	//
 	// 归档文件里的长行同样必须能读出。
 	longEntry := `{"check":"auto-compile","passed":true,"checked":true,"task_ref":"feat/long","detail":"` + long + `","recorded_at":"2026-01-01T00:00:00Z"}` + "\n"
-	if err := os.WriteFile(filepath.Join(dir, ".forge", "checklog-20260101000000.jsonl"), []byte(longEntry), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(forgedata.DataDirFor(dir), "checklog-20260101000000.jsonl"), []byte(longEntry), 0644); err != nil {
 		t.Fatal(err)
 	}
 

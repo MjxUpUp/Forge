@@ -1,132 +1,137 @@
 // Package projectroot resolves the forge project root from the current working
-// directory (the directory containing the .forge/ subdirectory).
+// directory.
 //
-// Centralizes the "walk up from cwd to find .forge/" logic in one place to
+// After the user-level-assets refactor, the anchor of "is this a forge project" is
+// the GLOBAL REGISTRY (~/.forge/projects.json), not a project-level .forge/ marker:
+// forge init writes nothing into the project by default. Resolution order:
+//  1. registry.IsMember(cwd) — git-key match (worktree-safe) or non-git path-prefix match
+//  2. legacy fallback: walk up for a project-level .forge/ (projects init'd by older
+//     forge versions) — on hit, self-heal by registering the project
+//  3. otherwise: ErrNoForgeConfig
+//
+// Centralizes the "which project am I in" logic in one place to
 // avoid cross-package duplication (originally extracted from cli/root.go and
 // the now-removed mcpserver/server.go; mcpserver removed on 2026-07-24).
 //
-// Package projectroot 从当前工作目录解析 forge project root
-// （即包含 .forge/ 子目录的目录）。
+// Package projectroot 从当前工作目录解析 forge project root。
 //
-// 把"从 cwd 向上 walk up 找 .forge/"的逻辑集中在一处，
-// 避免跨包重复（最初从 cli/root.go 以及现已移除的 mcpserver/server.go
-// 中抽取；mcpserver 于 2026-07-24 移除）。
+// user-level-assets 重构后，"这是不是 forge 项目"的锚点是全局注册表
+// （~/.forge/projects.json），而非项目级 .forge/ 标记：forge init 默认不向项目
+// 写任何东西。解析顺序：
+//  1. registry.IsMember(cwd)——git key 匹配（跨 worktree）或非 git 路径前缀匹配
+//  2. 遗留兜底：向上 walk 找项目级 .forge/（老版本 forge init 的项目）——
+//     命中后自愈登记
+//  3. 否则：ErrNoForgeConfig
+//
+// 把"我在哪个项目"的判定集中在一处，避免跨包重复（最初从 cli/root.go 以及
+// 现已移除的 mcpserver/server.go 中抽取；mcpserver 于 2026-07-24 移除）。
 package projectroot
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/registry"
 )
 
-// FindProject resolves cwd → *forgedata.Project (three roots: GitRoot / DataDir
-// / ConfigDir).
+// FindProject resolves cwd → *forgedata.Project (Key / Root / GitRoot / DataDir /
+// ConfigDir). Membership is judged via the global registry (with the legacy .forge/
+// walk-up as fallback); the Project itself is derived by forgedata.ProjectFor
+// (ConfigDir = <root>/.forge/ when it exists, else DataDir).
 //
-// This is the main entry of the dual-root architecture
-// (docs/plans/refactor-data-home.md):
-//   - GitRoot   = git working-tree root (the basis for git -C operations)
-//   - DataDir   = ~/.forge/projects/<hash12>/ (runtime state: state.json/tasks/
-//                 gates/...)
-//   - ConfigDir = <gitroot>/.forge/ (project config: pipeline.yml/protocol.yml/
-//                 CLAUDE.md/hooks/)
-//
-// Difference from the old Find: Find returns only the single root 「directory
-// containing .forge」; FindProject returns three roots, and the caller picks by
-// purpose (runtime state → DataDir, config → ConfigDir, git ops → GitRoot).
-//
-// The global home ~/.forge is naturally excluded: forgedata.ProjectFor requires
-// cwd to be inside a git repo, and findForgeConfigDir's walk-up stops at the
-// gitRoot boundary—~/.forge is not within any project git repo's gitRoot
-// subtree (unless the user makes home itself a git repo, an extreme edge case).
-//
-// FindProject 解析 cwd → *forgedata.Project（三根：GitRoot / DataDir / ConfigDir）。
-//
-// 这是双根架构（docs/plans/refactor-data-home.md）的主入口：
-//   - GitRoot   = git working tree 根（git -C 操作基准）
-//   - DataDir   = ~/.forge/projects/<hash12>/ （runtime state：state.json/tasks/gates/...）
-//   - ConfigDir = <gitroot>/.forge/ （项目配置：pipeline.yml/protocol.yml/CLAUDE.md/hooks/）
-//
-// 与旧 Find 的区别：Find 只返回"含 .forge 的目录"单根；FindProject 返回三根，
-// caller 按用途取（runtime state 用 DataDir，config 用 ConfigDir，git 操作用 GitRoot）。
-//
-// ~/.forge 全局 home 天然被排除：forgedata.ProjectFor 要求 cwd 在 git repo 内，
-// 且 findForgeConfigDir walk-up 不超过 gitRoot 边界——~/.forge 不在任何项目 git repo
-// 的 gitRoot 子树内（除非用户把 home 本身设成 git repo，属极边界异常）。
+// FindProject 解析 cwd → *forgedata.Project（Key / Root / GitRoot / DataDir /
+// ConfigDir）。成员资格经全局注册表判定（遗留 .forge/ walk-up 兜底）；Project 本身
+// 由 forgedata.ProjectFor 推导（ConfigDir = <root>/.forge/ 存在时，否则 DataDir）。
 func FindProject() (*forgedata.Project, error) {
-	cwd, err := os.Getwd()
+	root, err := Find()
 	if err != nil {
 		return nil, err
 	}
-	return forgedata.ProjectFor(cwd)
+	return forgedata.ProjectFor(root)
 }
 
-// Find walks up from the current working directory to find the nearest
-// directory containing a project .forge/ subdirectory. Returns the project
-// root; returns an error when cwd is not inside a forge project.
+// Find resolves the current working directory to the forge project root. Returns
+// forgedata.ErrNoForgeConfig when cwd is not inside a forge project.
 //
-// Keeps the legacy walk-up implementation (does not delegate to FindProject):
-// FindProject requires cwd to be inside a git repo (forgedata.Key failure is
-// an error), but Find historically supports non-git projects (anything with
-// .forge/, e.g. the task-nongit case). The two differ semantically and
-// coexist until all callers migrate.
+// ~/.forge/ under the user home is a GLOBAL state store, not a project root — the
+// legacy walk-up excludes it (a real project's .forge/ is always closer to cwd than
+// home, so this exclusion never shadows a legitimate project).
 //
-// ~/.forge/ under the user home is a GLOBAL state store (hooks, skills,
-// per-project runtime state under projects/<key>/), not a project root.
-// Excluding it makes running forge from a non-project directory under home
-// (e.g. ~/Downloads) report "not in a forge project" rather than mistaking
-// home for the project root. A real project's .forge/ is always closer to cwd
-// than home, so this exclusion never shadows a legitimate project.
+// Find 把当前工作目录解析到 forge 项目根。cwd 不在 forge 项目内时返回
+// forgedata.ErrNoForgeConfig。
 //
-// Find 从当前工作目录向上查找最近的、含项目 .forge/ 子目录的目录。
-// 返回 project root；cwd 不在 forge project 内时返回 error。
-//
-// 保留旧 walk-up 实现（不委托 FindProject）：FindProject 要求 cwd 在 git repo 内
-// （forgedata.Key 失败即报错），但 Find 历史上支持非 git 项目（只要有 .forge/，
-// 如 task-nongit 场景）。两者语义不同，共存到全部 caller 迁移完毕。
-//
-// 用户 home 目录下的 ~/.forge/ 是 GLOBAL state store（hooks、skills、
-// projects/<key>/ 下的 per-project runtime state），而非 project root。
-// 把它排除，使在 home 下非项目目录（如 ~/Downloads）运行 forge 时
-// 报 not in a forge project，而不是把 home 误作 project root。
-// 真实项目的 .forge/ 总是比 home 离 cwd 更近，故此排除不会遮蔽合法项目。
+// 用户 home 下的 ~/.forge/ 是 GLOBAL state store，不是项目根——遗留 walk-up 排除
+// 它（真实项目的 .forge/ 总是比 home 离 cwd 更近，此排除不会遮蔽合法项目）。
 func Find() (string, error) {
-	dir, err := os.Getwd()
+	cwd, err := os.Getwd()
 	if err != nil {
 		return "", err
 	}
-	homeDir, _ := os.UserHomeDir() // 全局状态目录约定在 home/.forge；解析失败则不排除（退化原行为）
-	for {
-		if isProjectRoot(dir, homeDir) {
-			return dir, nil
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", fmt.Errorf("not in a forge project (no .forge/ directory found)")
-		}
-		dir = parent
+
+	// 1. Registry membership (the post-refactor anchor).
+	//
+	// 1. 注册表成员资格（重构后的锚点）。
+	if root, ok := registry.IsMember(cwd); ok {
+		return root, nil
 	}
+
+	// 2. Legacy fallback: walk up for a project-level .forge/ (projects init'd
+	//    before the user-level-assets refactor). Self-heal: register the project so
+	//    subsequent resolutions hit the fast path (and the entry gains a key).
+	//
+	// 2. 遗留兜底：向上 walk 找项目级 .forge/（user-level-assets 重构前 init 的
+	//    项目）。自愈：登记该项目，后续解析走快路径（条目同时获得 key）。
+	if root, ok := legacyFind(cwd); ok {
+		_ = registry.Add(root) // 自愈登记，失败不阻断
+		return root, nil
+	}
+
+	return "", forgedata.ErrNoForgeConfig
 }
 
-// isProjectRoot reports whether dir holds a project .forge/ directory: dir
-// must contain .forge/ and must not be the user home (~/.forge/ under home is
-// a global state store, indistinguishable from a project-level .forge/ by name
-// or content—both carry checklog.jsonl/toollog.jsonl; location is the only
-// clean discriminator).
+// legacyFind walks up from dir to find the nearest directory containing a project
+// .forge/ subdirectory. Two boundaries prevent mistaking the GLOBAL STORE for a
+// project marker:
+//  1. stop at the effective user home (os.UserHomeDir) — ~/.forge under home is the
+//     global store, never a project;
+//  2. skip any .forge/ that CONTAINS projects.json — that is the global registry
+//     file, so the .forge is the global store itself. This second check is what saves
+//     HOME-overridden environments (tests): the walk can reach the REAL ~/.forge
+//     above the fake home, where the effective-home comparison no longer helps
+//     (observed: forge status in a temp dir resolving to "Project: Administrator").
 //
-// isProjectRoot 报告 dir 是否持有一个项目 .forge/ 目录：dir 必须含 .forge/
-// 且不得是用户 home（home 下的 ~/.forge/ 是 global state store，从名字或
-// 内容上都与项目级 .forge/ 无法区分——两者都带 checklog.jsonl/toollog.jsonl；
-// 位置是唯一干净的判别依据）。
-func isProjectRoot(dir, homeDir string) bool {
-	if info, err := os.Stat(filepath.Join(dir, ".forge")); err != nil || !info.IsDir() {
-		return false
+// legacyFind 从 dir 向上查找最近的、含项目 .forge/ 子目录的目录。两道边界防止把
+// 全局 store 误认成项目标记：
+//  1. 到有效用户 home（os.UserHomeDir）即停——home 下的 ~/.forge 是全局 store，
+//     绝不是项目；
+//  2. 跳过任何内含 projects.json 的 .forge/——projects.json 是全局注册表文件，
+//     该 .forge 即全局 store 本身。第二道才是 HOME 被覆盖环境（测试）的保障：
+//     walk 可能越过假 home 命中真实的 ~/.forge，此时有效 home 比较已帮不上忙
+//     （实测：临时目录里 forge status 解析出 "Project: Administrator"）。
+func legacyFind(dir string) (string, bool) {
+	d, err := filepath.Abs(dir)
+	if err != nil {
+		return "", false
 	}
-	if homeDir != "" && samePath(dir, homeDir) {
-		return false
+	homeDir, _ := os.UserHomeDir() // 有效 home 边界；解析失败则不设（退化原行为）
+	for {
+		if homeDir != "" && samePath(d, homeDir) {
+			return "", false // 到 home 边界停止
+		}
+		candidate := filepath.Join(d, ".forge")
+		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+			if _, err := os.Stat(filepath.Join(candidate, "projects.json")); err == nil {
+				return "", false // 全局 store（内含全局注册表），不是项目标记
+			}
+			return d, true
+		}
+		parent := filepath.Dir(d)
+		if parent == d {
+			return "", false
+		}
+		d = parent
 	}
-	return true
 }
 
 // samePath reports whether a and b point to the same filesystem path. Uses
@@ -136,8 +141,8 @@ func isProjectRoot(dir, homeDir string) bool {
 // cannot be stat-ed.
 //
 // samePath 报告 a 与 b 是否指向同一文件系统路径。用 os.SameFile
-// （device+inode），可跨大小写不敏感、symlink、分隔符/风格差异
-// （Git Bash 形如 /c/Users 对 Windows 形如 C:\Users）保持稳健。
+// （device+inode），可跨大小写不敏感、symlink、分隔符/风格差异（Git Bash
+// 形如 /c/Users 对 Windows 形如 C:\Users）保持稳健。
 // 任一路径无法 stat 时回退到 cleaned lexical compare。
 func samePath(a, b string) bool {
 	ia, ea := os.Stat(a)

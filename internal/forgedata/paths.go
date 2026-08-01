@@ -6,39 +6,38 @@ import (
 	"path/filepath"
 )
 
-// Project describes the three-root identity of a forge project:
-//   - GitRoot   git working tree root = base for `git -C` ops (used by GetHeadCommit/IsGitRepo/taskcontext.Detect)
-//   - DataDir   user-level data home = ~/.forge/projects/<key>/  (runtime state)
-//   - ConfigDir project-level config = <cwd>/.forge/             (protocol/CLAUDE.md/hooks)
+// Project describes the identity of a forge project:
+//   - Key       git: hash of .git common dir; non-git: PathKey ("p"+path hash)
+//   - Root      project root (git working-tree root, or the registered path for non-git)
+//   - GitRoot   git working tree root = base for `git -C` ops ("" for non-git projects)
+//   - DataDir   user-level data home = ~/.forge/projects/<key>/  (runtime state + default config)
+//   - ConfigDir config home = <root>/.forge/ when it exists (team mode / legacy),
+//               otherwise DataDir (zero-project-write default)
 //
-// Why three roots: DataDir is a hash-derived user-level path independent of the git
-// working tree location; git ops (rev-parse/diff) must use GitRoot; ConfigDir is the
-// .forge ancestor found by walking up, usually equal to GitRoot but not guaranteed
-// (.forge may live in a subdirectory). Carried independently; callers pick by purpose.
+// Why the split: DataDir is a hash-derived user-level path independent of the git
+// working tree location; git ops (rev-parse/diff) must use GitRoot. After the
+// user-level-assets refactor, ALL forge writes default to user level — ConfigDir
+// only points at a project-level .forge/ when one already exists (a project-level
+// protocol.yml there acts as the team-shared override layer).
 //
-// Two-root decision (docs/plans/refactor-data-home.md §1.1): runtime state goes user-level
-// (tasks/gates/checklog/toollog/act/sessions/quarantine/stamps/hazards/reviews/experience/
-// active-task-ref/.task-verify-throttle.last), project config stays project-level
-// (protocol.yml/CLAUDE.md/hooks — git tracked + user-editable + task-guard exempt).
+// Project 描述一个 forge 项目的身份：
+//   - Key       git：.git common dir hash；非 git：PathKey（"p"+路径 hash）
+//   - Root      项目根（git working tree 根，或非 git 的注册路径）
+//   - GitRoot   git working tree 根 = `git -C` 操作基准（非 git 项目为 ""）
+//   - DataDir   用户级数据 home = ~/.forge/projects/<key>/（runtime state + 默认配置）
+//   - ConfigDir 配置 home = <root>/.forge/（存在时：团队模式/老项目），否则 DataDir
+//               （零项目写入默认）
 //
-// Project 描述一个 forge 项目的「三根」身份：
-//   - GitRoot   git working tree 根 = `git -C` 操作基准（GetHeadCommit/IsGitRepo/taskcontext.Detect 用）
-//   - DataDir   用户级数据 home = ~/.forge/projects/<key>/ （runtime state）
-//   - ConfigDir 项目级配置 = <cwd>/.forge/                （protocol/CLAUDE.md/hooks）
-//
-// 三根必要性：DataDir 是 hash 派生的用户级路径，与 git working tree 物理位置无关；
-// git 操作（rev-parse/diff）必须用 GitRoot；ConfigDir 是 walk-up 找到的 .forge 父目录，
-// 通常等于 GitRoot 但不保证（.forge 可能在子目录）。三者独立携带，caller 按用途取。
-//
-// 双根决策（docs/plans/refactor-data-home.md §1.1）：runtime state 进用户级（tasks/
-// gates/checklog/toollog/act/sessions/quarantine/stamps/hazards/reviews/experience/
-// active-task-ref/.task-verify-throttle.last），项目配置留项目级（protocol.yml/
-// CLAUDE.md/hooks—— git tracked + user-editable + task-guard 豁免）。
+// 拆分必要性：DataDir 是 hash 派生的用户级路径，与 git working tree 物理位置无关；
+// git 操作（rev-parse/diff）必须用 GitRoot。user-level-assets 重构后 forge 全部写入
+// 默认在用户级——ConfigDir 仅在项目级 .forge/ 已存在时指向它（其中的 protocol.yml
+// 作为团队共享覆盖层）。
 type Project struct {
-	Key       string // .git common dir 的 hash12
-	GitRoot   string // git working tree root（git -C 操作基准）
+	Key       string // git: .git common dir hash12；非 git: PathKey
+	Root      string // 项目根（git 项目 = GitRoot）
+	GitRoot   string // git working tree root（git -C 操作基准；非 git 为 ""）
 	DataDir   string // ~/.forge/projects/<key>/（或 FORGE_DATA_HOME 覆盖）
-	ConfigDir string // <cwd>/.forge/（项目级 config）
+	ConfigDir string // <root>/.forge/（存在时）否则 DataDir
 }
 
 // Directory-name constant for the config directory.
@@ -46,116 +45,92 @@ type Project struct {
 // 配置目录的目录名常量
 const configDirName = ".forge"
 
-// ErrNoForgeConfig: project-level `.forge/` does not exist (project not initialized).
+// ErrNoForgeConfig: the cwd is not inside a forge project (not registered in the
+// global registry and no legacy project-level `.forge/` found). Returned by
+// projectroot.Find/FindProject — forgedata.ProjectFor itself is a pure path
+// derivation and no longer judges init state.
 //
-// ErrNoForgeConfig: project-level `.forge/` 不存在（项目未 init）
-var ErrNoForgeConfig = errors.New(`forgedata: project-level .forge/ does not exist; run ` + "`forge init` first")
+// ErrNoForgeConfig：cwd 不在 forge 项目内（全局注册表无登记且找不到遗留的项目级
+// `.forge/`）。由 projectroot.Find/FindProject 返回——forgedata.ProjectFor 本身
+// 是纯路径推导，不再判定 init 状态。
+var ErrNoForgeConfig = errors.New(`forgedata: not a forge project; run ` + "`forge init` first")
 
-// ProjectFor derives Key from cwd, plus the DataDir / ConfigDir two roots.
+// ProjectFor derives the project identity from cwd. Pure derivation — it does NOT
+// check registry membership (that is projectroot's job); any cwd gets a stable
+// DataDir so stores (checklog/toollog/...) can record even outside forge projects.
 //
 // Errors:
-//   - ErrNotInGitRepo: cwd is not a git repo
 //   - ErrKeyDerivation: .git file corrupted (F1 fix refines ErrInvalidGitFile)
-//   - ErrNoForgeConfig: project not initialized (no .forge/)
 //
-// ProjectFor 从 cwd 推 Key，DataDir / ConfigDir 双根。
+// ProjectFor 从 cwd 推导项目身份。纯推导——不查注册表成员资格（那是 projectroot
+// 的职责）；任意 cwd 都得到稳定 DataDir，让 store（checklog/toollog/...）在
+// forge 项目外也能记录。
 //
 // 错误：
-//   - ErrNotInGitRepo: cwd 非 git repo
-//   - ErrKeyDerivation: .git file 损坏（F1 修复中细分 ErrInvalidGitFile）
-//   - ErrNoForgeConfig: 项目未 init (无 .forge/)
+//   - ErrKeyDerivation：.git file 损坏（F1 修复中细分 ErrInvalidGitFile）
 func ProjectFor(cwd string) (*Project, error) {
 	cwdAbs, err := filepath.Abs(cwd)
 	if err != nil {
 		return nil, err
 	}
 
-	key, err := Key(cwdAbs)
-	if err != nil {
-		return nil, err
+	gitRoot := FindGitRoot(cwdAbs)
+	root := gitRoot
+	var key string
+	if gitRoot != "" {
+		key, err = Key(cwdAbs)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// Non-git project: callers pass the project root (registry-matched by
+		// projectroot). Identity = normalized absolute path.
+		//
+		// 非 git 项目：调用方传入项目根（projectroot 经注册表匹配）。
+		// 身份 = 归一化绝对路径。
+		root = cwdAbs
+		key = PathKey(root)
 	}
 
-	// Walk up to find the ancestor containing `.forge/`, but do not cross the gitRoot
-	// boundary (prevents false hit on ~/.forge).
-	//
-	// walk-up 找含 `.forge/` 的祖先，但不超过 gitRoot 边界（防 ~/.forge 漏检）
-	gitRoot := FindGitRoot(cwdAbs)
-	if gitRoot == "" {
-		return nil, ErrNotInGitRepo
-	}
-	configDir, err := findForgeConfigDir(cwdAbs, gitRoot)
-	if err != nil {
-		return nil, err
+	dataDir := RootDir(key)
+	configDir := filepath.Join(root, configDirName)
+	if info, serr := os.Stat(configDir); serr != nil || !info.IsDir() {
+		// Zero-project-write default: no project-level .forge/ → config
+		// (protocol.yml) lives in the user-level DataDir.
+		//
+		// 零项目写入默认：无项目级 .forge/ → 配置（protocol.yml）在用户级 DataDir。
+		configDir = dataDir
 	}
 
 	return &Project{
 		Key:       key,
+		Root:      root,
 		GitRoot:   gitRoot,
-		DataDir:   RootDir(key),
+		DataDir:   dataDir,
 		ConfigDir: configDir,
 	}, nil
 }
 
-// DataDirFor returns the runtime-state DataDir for root, without a full Project (no .forge/ needed):
-// git projects get the user-level ~/.forge/projects/<key>/, non-git projects fall back to <root>/.forge/,
-// so hooks firing outside a forge project can still record runtime state.
+// DataDirFor returns the runtime-state DataDir for root, without a full Project:
+// git projects get ~/.forge/projects/<key>/, non-git projects get
+// ~/.forge/projects/<path-key>/ — ALWAYS user-level, so stores never write into
+// the user's project tree (the pre-refactor fallback created <root>/.forge/).
 //
-// It depends only on git-derived Key (needs .git, not .forge/) — the resolution stays stable under
-// the MkdirAll side effect: when some store's MkdirAll creates <root>/.forge/ on the fallback path,
-// re-resolution must not flip to DataDir (that was a stateful bug silently dropping checklog Records).
+// It depends only on Key/PathKey derivation — the resolution stays stable under
+// the MkdirAll side effect (no store may create project-level dirs anymore).
 // Stores (checklog / task state) should prefer this helper over re-deriving on their own.
 //
-// DataDirFor 返回 root 的 runtime-state DataDir，无需完整 Project（不要 .forge/）：
-// git 项目返用户级 ~/.forge/projects/<key>/，非 git 项目回落 <root>/.forge/，
-// 让 hook 在 forge 项目之外触发时仍能记录 runtime state。
+// DataDirFor 返回 root 的 runtime-state DataDir，无需完整 Project：
+// git 项目返 ~/.forge/projects/<key>/，非 git 项目返 ~/.forge/projects/<path-key>/
+// ——始终用户级，store 永不写用户项目树（重构前的回落会创建 <root>/.forge/）。
 //
-// 仅依赖 git 的 Key（需 .git，不需要 .forge/）——解析在 MkdirAll 副作用下保持稳定：
-// 某 store 的 MkdirAll 在 fallback 路径上创建 <root>/.forge/ 时，不得让重新解析翻到
-// DataDir（那个静默丢弃 checklog Records 的 stateful bug）。store（checklog / task state）
-// 优先用此函数而非自己重新推导。
+// 仅依赖 Key/PathKey 推导——解析在 MkdirAll 副作用下保持稳定（store 不再
+// 创建项目级目录）。store（checklog / task state）优先用此函数而非自己重新推导。
 func DataDirFor(root string) string {
 	if key, err := Key(root); err == nil {
 		return RootDir(key)
 	}
-	return filepath.Join(root, configDirName)
-}
-
-// findForgeConfigDir walks up to find the ancestor containing `.forge/`, without crossing stopAt.
-// Returns ErrNoForgeConfig if not found (project not initialized).
-//
-// Design: the boundary stopAt = gitRoot. .forge must live in the same git repo as .git (semantic
-// sanity); walking beyond gitRoot (e.g. up to ~/.forge) is forbidden (false-hit risk + nested-repo confusion).
-//
-// findForgeConfigDir walk-up 找含 `.forge/` 的祖先，但不超过 stopAt 边界。
-// 找不到返 ErrNoForgeConfig（项目未 init）。
-//
-// 设计：边界 stopAt = gitRoot。.forge 必须与 .git 在同一 git repo 内（语义合理）；超出 gitRoot
-// 的 walk-up（如到用户 ~/.forge）应被禁止（漏检风险 + 多 repo 嵌套混淆）。
-func findForgeConfigDir(cwd, stopAt string) (string, error) {
-	d := filepath.Clean(cwd)
-	stop := filepath.Clean(stopAt)
-	for {
-		candidate := filepath.Join(d, configDirName)
-		if info, err := os.Stat(candidate); err == nil {
-			if info.IsDir() {
-				return candidate, nil
-			}
-			// Exists but is not a dir (e.g. a leftover file); keep walking up.
-			//
-			// 存在但不是 dir（比如遗留下的 file），继续向上
-		}
-		// Stop at the gitRoot boundary (includes one lookup round at gitRoot itself).
-		//
-		// 到 gitRoot 边界停止（含 gitRoot 自身一轮的 lookup）
-		if d == stop {
-			return "", ErrNoForgeConfig
-		}
-		parent := filepath.Dir(d)
-		if parent == d {
-			return "", ErrNoForgeConfig
-		}
-		d = parent
-	}
+	return RootDir(PathKey(root))
 }
 
 // Ensure creates DataDir (including subdirs) and stamps .migration-meta.json.

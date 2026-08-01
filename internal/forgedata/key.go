@@ -27,6 +27,7 @@ import (
 	"hash/fnv"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -141,6 +142,40 @@ func Key(cwd string) (string, error) {
 // hex 不足 12 位的 sum（概率约 16^-12）会在 s[:12] 上 slice 越界 panic；%012x 保证 >= 12 位。
 func hash12(sum uint64) string {
 	return fmt.Sprintf("%012x", sum)[:12]
+}
+
+// PathKey derives a stable key for a NON-git project root: "p" + hash12 of the
+// FNV-64a of the normalized absolute path. Git projects use Key (git common dir
+// hash); non-git projects have no .git to hash, so the absolute path itself is
+// the identity. The "p" prefix keeps the two key namespaces disjoint
+// (a pure-hex git key can never collide with a path key).
+//
+// Windows paths are lower-cased before hashing (case-insensitive filesystem —
+// C:\Proj and c:\proj must share one DataDir). Symlinks are resolved when
+// possible so a symlinked root gets the same key.
+//
+// PathKey 为非 git 项目根推导稳定 key：归一化绝对路径的 FNV-64a hash12 加 "p" 前缀。
+// git 项目用 Key（git common dir hash）；非 git 项目没有 .git 可 hash，
+// 绝对路径本身就是身份。"p" 前缀让两个 key 命名空间互不相撞
+// （纯 hex 的 git key 永远不会与 path key 冲突）。
+//
+// Windows 路径 hash 前转小写（大小写不敏感文件系统——C:\Proj 与 c:\proj 必须
+// 共享同一 DataDir）。可能时解析 symlink，让 symlink 根得到相同 key。
+func PathKey(root string) string {
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		abs = root
+	}
+	abs = filepath.Clean(abs)
+	if eval, err := filepath.EvalSymlinks(abs); err == nil {
+		abs = eval
+	}
+	if runtime.GOOS == "windows" {
+		abs = strings.ToLower(abs)
+	}
+	h := fnv.New64a()
+	h.Write([]byte(abs))
+	return "p" + hash12(h.Sum64())
 }
 
 // resolveGitFile parses the gitdir: line of a worktree/submodule `.git` file, walking the parent chain to find the `.git` ancestor.

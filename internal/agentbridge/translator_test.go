@@ -20,6 +20,32 @@ func testInput() *TranslationInput {
 	}
 }
 
+// isolateHome points the user-home-derived config locations (os.UserHomeDir,
+// XDG_CONFIG_HOME, CLAUDE_CONFIG_DIR, CODEX_HOME) at a temp dir so the user-level
+// translators and DetectAgents' user-level install detection never touch the real
+// home. Sets both HOME (unix) and USERPROFILE (windows) — os.UserHomeDir keys on one
+// or the other depending on platform. CLAUDE_CONFIG_DIR/CODEX_HOME are pointed at
+// nonexistent subdirs (a set-but-empty env redirects detection/resolution away from
+// the real home just like an unset one falling back to the isolated home); tests
+// needing a real codex home set CODEX_HOME again afterwards.
+//
+// isolateHome 把 user-home 派生的配置位置（os.UserHomeDir、XDG_CONFIG_HOME、
+// CLAUDE_CONFIG_DIR、CODEX_HOME）指向临时目录，user-level translator 与
+// DetectAgents 的用户级安装检测绝不触碰真实 home。HOME（unix）与 USERPROFILE
+// （windows）都设——os.UserHomeDir 按平台取其一。CLAUDE_CONFIG_DIR/CODEX_HOME
+// 指向不存在的子目录（设为空的 env 与未设后回落隔离 home 一样能把检测/解析引离
+// 真实 home）；需要真实 codex home 的测试随后再自行设置 CODEX_HOME。
+func isolateHome(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
+	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
+	return home
+}
+
 // TestCodexWiringMirrorsClaudeSettings guards the hand-maintained sync between
 // codex.go (buildCodexHooks) and hooks/settings.go (GenerateSettings). Both
 // tables wire the same `forge hook <name>` commands so Forge
@@ -35,17 +61,19 @@ func testInput() *TranslationInput {
 // of truth — so the guard can no longer be defeated by forgetting to update a
 // list alongside the code.
 func TestCodexWiringMirrorsClaudeSettings(t *testing.T) {
-	// Generate both wirings into temp dirs and parse the hook commands per event.
+	// Generate both wirings and parse the hook commands per event. Codex registers
+	// at user level ($CODEX_HOME/hooks.json) — point CODEX_HOME at a temp dir.
+	codexHome := t.TempDir()
+	t.Setenv("CODEX_HOME", codexHome)
 	claudeDir := t.TempDir()
 	if err := hooks.GenerateSettings(claudeDir); err != nil {
 		t.Fatalf("GenerateSettings: %v", err)
 	}
-	codexDir := t.TempDir()
-	if err := (&CodexTranslator{}).Translate(codexDir, testInput()); err != nil {
+	if err := (&CodexTranslator{}).Translate(t.TempDir(), testInput()); err != nil {
 		t.Fatalf("codex Translate: %v", err)
 	}
 	claude := hookCommandsByEvent(t, filepath.Join(claudeDir, ".claude", "settings.local.json"))
-	codex := hookCommandsByEvent(t, filepath.Join(codexDir, ".codex", "hooks.json"))
+	codex := hookCommandsByEvent(t, filepath.Join(codexHome, "hooks.json"))
 
 	// Codex models only PreToolUse/PostToolUse/Stop (no SessionStart lifecycle
 	// hook). For every event Codex declares, Claude Code must wire the SAME
@@ -119,16 +147,17 @@ func TestCodexHooksExcludeSessionLifecycle(t *testing.T) {
 // drift silently disables a gate on Cursor. Maps cursor events to Claude
 // events and asserts command-set equality. Parallel to TestCodexWiringMirrorsClaudeSettings.
 func TestCursorWiringMirrorsClaudeSettings(t *testing.T) {
+	// Cursor registers at user level (~/.cursor/hooks.json) — isolate the home.
+	home := isolateHome(t)
 	claudeDir := t.TempDir()
 	if err := hooks.GenerateSettings(claudeDir); err != nil {
 		t.Fatalf("GenerateSettings: %v", err)
 	}
-	cursorDir := t.TempDir()
-	if err := (&CursorTranslator{}).Translate(cursorDir, testInput()); err != nil {
+	if err := (&CursorTranslator{}).Translate(t.TempDir(), testInput()); err != nil {
 		t.Fatalf("cursor Translate: %v", err)
 	}
 	claude := hookCommandsByEvent(t, filepath.Join(claudeDir, ".claude", "settings.local.json"))
-	cursor := cursorHookCommandsByEvent(t, filepath.Join(cursorDir, ".cursor", "hooks.json"))
+	cursor := cursorHookCommandsByEvent(t, filepath.Join(home, ".cursor", "hooks.json"))
 
 	// Cursor camelCase → Claude PascalCase event mapping.
 	eventMap := map[string]string{
@@ -254,37 +283,47 @@ func sortedSet(s map[string]bool) string {
 	return "[" + strings.Join(out, ", ") + "]"
 }
 
+// TestCursorTranslator_Translate verifies the user-level registration: Translate
+// writes ~/.cursor/hooks.json (flat, camelCase events, gate-enforcing commands) and
+// no longer writes any project-level file (the .cursor/rules/forge-quality.mdc
+// guidance moved to the skillgen layer; project-level residue is cleaned elsewhere).
 func TestCursorTranslator_Translate(t *testing.T) {
+	home := isolateHome(t)
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, ".cursor"), 0755)
 
 	translator := &CursorTranslator{}
 	if err := translator.Translate(dir, testInput()); err != nil {
 		t.Fatal(err)
 	}
 
-	path := filepath.Join(dir, ".cursor", "rules", "forge-quality.mdc")
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(filepath.Join(home, ".cursor", "hooks.json"))
 	if err != nil {
-		t.Fatalf("file not created: %v", err)
+		t.Fatalf("user-level hooks.json not created: %v", err)
+	}
+	content := string(data)
+	for _, want := range []string{
+		`"version": 1`,
+		`"preToolUse"`,
+		`"postToolUse"`,
+		`"stop"`,
+		`forge hook task-guard`,
+		`forge hook bash-guard`,
+		`forge hook review-stop`,
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("cursor user-level hooks.json missing %q", want)
+		}
 	}
 
-	content := string(data)
-	if !strings.Contains(content, "description: \"Forge quality protocol\"") {
-		t.Error("missing MDC frontmatter")
-	}
-	if !strings.Contains(content, "alwaysApply: true") {
-		t.Error("missing alwaysApply")
-	}
-	if !strings.Contains(content, "质量标准") {
-		t.Error("missing quality standards section")
-	}
-	if !strings.Contains(content, "代码编译") {
-		t.Error("missing compile standard")
+	// No project-level writes: the user-level translator must leave the project
+	// directory untouched.
+	if entries, err := os.ReadDir(dir); err != nil || len(entries) != 0 {
+		t.Errorf("cursor Translate must not write into the project dir (entries=%v, err=%v)", entries, err)
 	}
 }
 
 func TestCursorTranslator_Detect(t *testing.T) {
+	isolateHome(t) // DetectAgents also scans user-level install dirs — keep the real home out
 	dir := t.TempDir()
 	if slices.Contains(DetectAgents(dir), AgentCursor) {
 		t.Error("should not detect without .cursor/")
@@ -295,6 +334,11 @@ func TestCursorTranslator_Detect(t *testing.T) {
 	}
 }
 
+// TestCopilotTranslator_Translate pins the user-level-assets contract: Copilot has
+// no lifecycle hooks and no writable user-level instruction channel, so the
+// translator is a deliberate no-op — it must succeed and write NOTHING into the
+// project directory (zero-project-write default; legacy project files are stripped
+// by the cleanup layer).
 func TestCopilotTranslator_Translate(t *testing.T) {
 	dir := t.TempDir()
 
@@ -303,26 +347,8 @@ func TestCopilotTranslator_Translate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	path := filepath.Join(dir, ".github", "instructions", "forge-quality.instructions.md")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("file not created: %v", err)
-	}
-
-	content := string(data)
-	if !strings.Contains(content, "applyTo:") {
-		t.Error("missing applyTo frontmatter")
-	}
-	// v0.25 advisory rewrite: compile-gate/no-assertion-weaken dropped from
-	// error to warning severity (auto-compile.sh / assertion-check.sh no longer
-	// block), so Copilot instructions render [WARNING] not [ERROR]. Guard the
-	// advisory severity — [ERROR] would mislead Copilot into treating the
-	// advisory hooks as hard blocks.
-	if !strings.Contains(content, "[WARNING]") {
-		t.Error("missing WARNING severity (v0.25: advisory standards are warning, not error)")
-	}
-	if !strings.Contains(content, "ALWAYS:") {
-		t.Error("missing ALWAYS rules")
+	if entries, err := os.ReadDir(dir); err != nil || len(entries) != 0 {
+		t.Errorf("copilot Translate must be a no-op (entries=%v, err=%v)", entries, err)
 	}
 }
 
@@ -338,6 +364,7 @@ func TestCopilotTranslator_Detect(t *testing.T) {
 }
 
 func TestWindsurfTranslator_Translate(t *testing.T) {
+	isolateHome(t) // Translate writes the user-level hooks.json + global_rules.md
 	dir := t.TempDir()
 
 	translator := &WindsurfTranslator{}
@@ -345,10 +372,13 @@ func TestWindsurfTranslator_Translate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	path := filepath.Join(dir, ".windsurfrules")
-	data, err := os.ReadFile(path)
+	rulesPath, err := WindsurfGlobalRulesPath()
 	if err != nil {
-		t.Fatalf("file not created: %v", err)
+		t.Fatalf("WindsurfGlobalRulesPath: %v", err)
+	}
+	data, err := os.ReadFile(rulesPath)
+	if err != nil {
+		t.Fatalf("user-level global_rules.md not created: %v", err)
 	}
 
 	content := string(data)
@@ -371,16 +401,17 @@ func TestWindsurfTranslator_Translate(t *testing.T) {
 // be present on every intercept hook (task-guard/bash-guard/etc.) since
 // Windsurf's stdin schema differs from Claude Code's.
 func TestWindsurfWiringMirrorsClaudeSettings(t *testing.T) {
+	// Windsurf registers at user level (~/.codeium/windsurf/hooks.json) — isolate the home.
+	home := isolateHome(t)
 	claudeDir := t.TempDir()
 	if err := hooks.GenerateSettings(claudeDir); err != nil {
 		t.Fatalf("GenerateSettings: %v", err)
 	}
-	windsurfDir := t.TempDir()
-	if err := (&WindsurfTranslator{}).Translate(windsurfDir, testInput()); err != nil {
+	if err := (&WindsurfTranslator{}).Translate(t.TempDir(), testInput()); err != nil {
 		t.Fatalf("windsurf Translate: %v", err)
 	}
 	claude := hookCommandsByEvent(t, filepath.Join(claudeDir, ".claude", "settings.local.json"))
-	windsurf := windsurfHookCommandsByClaudeEvent(t, filepath.Join(windsurfDir, ".windsurf", "hooks.json"))
+	windsurf := windsurfHookCommandsByClaudeEvent(t, filepath.Join(home, ".codeium", "windsurf", "hooks.json"))
 
 	// Every enforcement command must carry --agent windsurf (skill-scan /
 	// task-verify are session events with no tool_input, so no agent flag).
@@ -466,16 +497,24 @@ func windsurfHookCommandsByClaudeEvent(t *testing.T, path string) map[string]map
 }
 
 func TestWindsurfTranslator_PreserveContent(t *testing.T) {
+	isolateHome(t) // Translate writes the user-level hooks.json + global_rules.md
 	dir := t.TempDir()
+	rulesPath, err := WindsurfGlobalRulesPath()
+	if err != nil {
+		t.Fatalf("WindsurfGlobalRulesPath: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(rulesPath), 0755); err != nil {
+		t.Fatal(err)
+	}
 	existing := "# My custom rules\nDo something cool.\n\n"
-	os.WriteFile(filepath.Join(dir, ".windsurfrules"), []byte(existing), 0644)
+	os.WriteFile(rulesPath, []byte(existing), 0644)
 
 	translator := &WindsurfTranslator{}
 	if err := translator.Translate(dir, testInput()); err != nil {
 		t.Fatal(err)
 	}
 
-	data, _ := os.ReadFile(filepath.Join(dir, ".windsurfrules"))
+	data, _ := os.ReadFile(rulesPath)
 	content := string(data)
 	if !strings.Contains(content, "My custom rules") {
 		t.Error("existing content should be preserved")
@@ -497,18 +536,23 @@ func TestWindsurfTranslator_Detect(t *testing.T) {
 }
 
 // TestWindsurfTranslator_ReadErrorNoOverwrite pins the data-loss guard: when
-// reading .windsurfrules fails with anything OTHER than NotExist (permissions,
-// IO — here simulated by making the path a directory, which os.ReadFile
-// rejects), Translate must return the error instead of falling through to the
-// whole-file overwrite, which would silently destroy the user's existing
+// reading the user-level global_rules.md fails with anything OTHER than NotExist
+// (permissions, IO — here simulated by making the path a directory, which
+// os.ReadFile rejects), Translate must return the error instead of falling through
+// to the whole-file overwrite, which would silently destroy the user's existing
 // rules. Same contract as kimi.go's config.toml handling.
 func TestWindsurfTranslator_ReadErrorNoOverwrite(t *testing.T) {
+	isolateHome(t) // Translate writes the user-level hooks.json + global_rules.md
 	dir := t.TempDir()
-	// .windsurfrules as a DIRECTORY → os.ReadFile returns a non-NotExist error.
-	if err := os.MkdirAll(filepath.Join(dir, ".windsurfrules"), 0755); err != nil {
+	rulesPath, err := WindsurfGlobalRulesPath()
+	if err != nil {
+		t.Fatalf("WindsurfGlobalRulesPath: %v", err)
+	}
+	// global_rules.md as a DIRECTORY → os.ReadFile returns a non-NotExist error.
+	if err := os.MkdirAll(rulesPath, 0755); err != nil {
 		t.Fatal(err)
 	}
-	err := (&WindsurfTranslator{}).Translate(dir, testInput())
+	err = (&WindsurfTranslator{}).Translate(dir, testInput())
 	if err == nil {
 		t.Fatal("Translate must fail on a non-NotExist read error (silent whole-file overwrite would lose user rules)")
 	}
@@ -518,6 +562,7 @@ func TestWindsurfTranslator_ReadErrorNoOverwrite(t *testing.T) {
 }
 
 func TestBridge_TranslateForAgents(t *testing.T) {
+	home := isolateHome(t)
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, ".cursor"), 0755)
 
@@ -526,10 +571,10 @@ func TestBridge_TranslateForAgents(t *testing.T) {
 		t.Fatalf("expected no errors, got %v", errs)
 	}
 
-	// Verify file was created
-	path := filepath.Join(dir, ".cursor", "rules", "forge-quality.mdc")
+	// Cursor registers at user level (~/.cursor/hooks.json), not in the project.
+	path := filepath.Join(home, ".cursor", "hooks.json")
 	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("cursor rules file not created: %v", err)
+		t.Fatalf("cursor user-level hooks.json not created: %v", err)
 	}
 }
 
@@ -557,34 +602,18 @@ func TestAllTranslators(t *testing.T) {
 	}
 }
 
+// TestClineTranslator_Translate pins the user-level-assets contract: Cline has no
+// lifecycle hooks and its global rules location is not a stable programmatic
+// target, so the translator is a deliberate no-op — it must succeed and write
+// NOTHING into the project directory (zero-project-write default; legacy project
+// files are stripped by the cleanup layer).
 func TestClineTranslator_Translate(t *testing.T) {
 	dir := t.TempDir()
 	if err := (&ClineTranslator{}).Translate(dir, testInput()); err != nil {
 		t.Fatal(err)
 	}
-	// .clinerules/forge-quality.md — guidance rules (Cline has no hooks)
-	rules := readOrFail(t, filepath.Join(dir, ".clinerules", "forge-quality.md"))
-	for _, want := range []string{
-		"# Forge 质量协议",
-		"质量标准",
-		"会话行为规则",
-		"forge CLI", // Cline 无 hooks，通过 forge CLI 驱动质量流程（非 MCP，MCP 层已拆）
-		"AGENTS.md", // points at cross-agent protocol
-	} {
-		if !strings.Contains(rules, want) {
-			t.Errorf("cline rules missing %q", want)
-		}
-	}
-
-	// Regression guard: Cline does not write .cline/mcp.json (Cline does not auto-load project-level MCP, global only;
-	// and the MCP layer was fully torn out on 2026-07-24, forge no longer generates any forge MCP server). If someone adds back
-	// project-level MCP writes, this assertion catches it.
-	//
-	// 防回归守卫:Cline 不写 .cline/mcp.json（Cline 不自动加载项目级 MCP,仅全局;
-	// 且 MCP 层已于 2026-07-24 全拆,forge 不再生成任何 forge MCP server）。有人若加回
-	// 项目级 MCP 写入,此断言抓住。
-	if _, err := os.Stat(filepath.Join(dir, ".cline", "mcp.json")); !os.IsNotExist(err) {
-		t.Errorf("Cline must not write .cline/mcp.json — err=%v", err)
+	if entries, err := os.ReadDir(dir); err != nil || len(entries) != 0 {
+		t.Errorf("cline Translate must be a no-op (entries=%v, err=%v)", entries, err)
 	}
 }
 
@@ -605,15 +634,25 @@ func TestClineTranslator_Detect(t *testing.T) {
 }
 
 func TestCodexTranslator_Translate(t *testing.T) {
+	// Codex registers at user level ($CODEX_HOME/hooks.json) — point CODEX_HOME at
+	// a temp dir and confirm Translate writes there, not into the project.
+	codexHome := t.TempDir()
+	t.Setenv("CODEX_HOME", codexHome)
 	dir := t.TempDir()
 
 	if err := (&CodexTranslator{}).Translate(dir, testInput()); err != nil {
 		t.Fatal(err)
 	}
 
-	data, err := os.ReadFile(filepath.Join(dir, ".codex", "hooks.json"))
+	data, err := os.ReadFile(filepath.Join(codexHome, "hooks.json"))
 	if err != nil {
-		t.Fatalf("hooks.json not created: %v", err)
+		t.Fatalf("user-level hooks.json not created: %v", err)
+	}
+
+	// No project-level writes: the user-level translator must leave the project
+	// directory untouched.
+	if entries, err := os.ReadDir(dir); err != nil || len(entries) != 0 {
+		t.Errorf("codex Translate must not write into the project dir (entries=%v, err=%v)", entries, err)
 	}
 
 	content := string(data)
@@ -645,6 +684,7 @@ func TestCodexTranslator_Translate(t *testing.T) {
 }
 
 func TestCodexTranslator_Detect(t *testing.T) {
+	isolateHome(t) // DetectAgents also scans user-level install dirs — keep the real home out
 	dir := t.TempDir()
 	if slices.Contains(DetectAgents(dir), AgentCodex) {
 		t.Error("should not detect without .codex/")
@@ -664,8 +704,8 @@ func TestCodexTranslator_Detect(t *testing.T) {
 	}
 }
 
-// TestOpencodePluginWiring verifies the generated .opencode/plugins/forge.ts is
-// a REAL, block-capable plugin: it must (1) register the only pre-tool entry
+// TestOpencodePluginWiring verifies the generated forge.ts (installed at the
+// user-level global plugin dir) is a REAL, block-capable plugin: it must (1) register the only pre-tool entry
 // point opencode offers ("tool.execute.before"), (2) block by throwing (opencode
 // has no return-value block API — verified in opencode source), (3) wire the
 // same `forge hook <name>` set Claude Code uses so gates enforce identically.
@@ -678,11 +718,13 @@ func TestCodexTranslator_Detect(t *testing.T) {
 // compared for SET EQUALITY against the `forge hook <name>` call sites
 // extracted from the generated TS rosters.
 func TestOpencodePluginWiring(t *testing.T) {
-	dir := t.TempDir()
-	if err := (&OpencodeTranslator{}).Translate(dir, testInput()); err != nil {
+	// Opencode registers at user level ($XDG_CONFIG_HOME/opencode/plugins/forge.ts)
+	// — isolate the home so Translate never touches the real config dir.
+	home := isolateHome(t)
+	if err := (&OpencodeTranslator{}).Translate(t.TempDir(), testInput()); err != nil {
 		t.Fatalf("opencode Translate: %v", err)
 	}
-	ts := readOrFail(t, filepath.Join(dir, ".opencode", "plugins", "forge.ts"))
+	ts := readOrFail(t, filepath.Join(home, ".config", "opencode", "plugins", "forge.ts"))
 
 	for _, want := range []string{
 		`"tool.execute.before"`, // the single pre-tool entry point
@@ -804,6 +846,7 @@ func assertOpencodeRosterParity(t *testing.T, event string, actual map[string]ma
 }
 
 func TestOpencodeTranslator_Detect(t *testing.T) {
+	isolateHome(t) // DetectAgents also scans user-level install dirs — keep the real home out
 	dir := t.TempDir()
 	if slices.Contains(DetectAgents(dir), AgentOpencode) {
 		t.Error("should not detect without .opencode/")
