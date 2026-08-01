@@ -1731,3 +1731,46 @@ func TestGenerateUserSettings_BacksUpBeforeFirstWrite(t *testing.T) {
 		t.Errorf("restored content mismatch:\n got: %s\nwant: %s", data, original)
 	}
 }
+
+// TestForgeHookSpec_Gap2ReinjectChain 守护 gap#2 重注入链的 spec 结构（settings.go
+// PostCompact/UserPromptSubmit 段注释描述的主机覆盖契约）：PostCompact 必须只挂
+// compact-resume；UserPromptSubmit 必须挂 resume-reinject + skill-trigger
+// （顺序敏感——先重注入上下文再触发 skill）。codex 两个事件都接、cursor 只接
+// UserPromptSubmit 的宿主映射在 agentbridge 侧断言，此测试钉 spec 真相源本身。
+//
+// TestForgeHookSpec_Gap2ReinjectChain guards the spec structure of the gap#2
+// re-injection chain (the host-coverage contract documented at the PostCompact/
+// UserPromptSubmit section in settings.go): PostCompact carries only
+// compact-resume; UserPromptSubmit carries resume-reinject + skill-trigger in
+// that order (context first, skill trigger second). Host mapping (codex takes
+// both, cursor only UserPromptSubmit) is asserted in agentbridge — this pins
+// the spec source of truth itself.
+func TestForgeHookSpec_Gap2ReinjectChain(t *testing.T) {
+	spec := ForgeHookSpec()
+
+	var postCompact []string
+	for _, m := range spec["PostCompact"] {
+		for _, h := range m.Hooks {
+			postCompact = append(postCompact, h.Command)
+		}
+	}
+	if len(postCompact) != 1 || postCompact[0] != "forge hook compact-resume" {
+		t.Errorf("PostCompact hooks = %v, want [forge hook compact-resume]", postCompact)
+	}
+
+	var ups []string
+	for _, m := range spec["UserPromptSubmit"] {
+		for _, h := range m.Hooks {
+			ups = append(ups, h.Command)
+		}
+	}
+	want := []string{"forge hook resume-reinject", "forge hook skill-trigger"}
+	if len(ups) != len(want) {
+		t.Fatalf("UserPromptSubmit hooks = %v, want %v", ups, want)
+	}
+	for i := range want {
+		if ups[i] != want[i] {
+			t.Errorf("UserPromptSubmit hooks[%d] = %q, want %q（顺序：先重注入再触发）", i, ups[i], want[i])
+		}
+	}
+}
