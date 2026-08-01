@@ -74,15 +74,17 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 	}
 
 	// 3. Ensure protocol.yml exists (create from defaults if missing; a project-level
-	//    override always wins and is never touched)
+	//    override always wins and is never touched; a corrupt file is backed aside
+	//    before rewriting defaults — never silently clobbered)
 	//
-	// 3. 确保 protocol.yml 存在（缺失则从默认值创建；项目级覆盖恒优先，绝不动）
+	// 3. 确保 protocol.yml 存在（缺失则从默认值创建；项目级覆盖恒优先，绝不动；
+	//    损坏文件先备份到一边再写默认——绝不静默覆盖）
+	if err := protocol.EnsureDefault(dir); err != nil {
+		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to ensure protocol.yml: %v\n", err)
+	}
 	proto, err := protocol.Load(dir)
 	if err != nil {
 		proto = protocol.DefaultProtocol()
-		if err := protocol.Save(dir, proto); err != nil {
-			fmt.Fprintf(os.Stderr, "auto-sync warning: failed to create protocol.yml: %v\n", err)
-		}
 	}
 
 	// 4. Sync the user-level quality SKILL.md

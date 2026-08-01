@@ -289,3 +289,65 @@ func TestGenerateUserQualitySkill(t *testing.T) {
 		t.Error(`user-level SKILL.md must not carry the single-project info section`)
 	}
 }
+
+// ---- detection self-poison guard (user-level-assets fix) ----
+
+// TestGenerateUserClaudeMD_SkipsWhenClaudeNotInstalled pins the self-poison fix:
+// the Claude config home's existence is DetectAgents' "claude is installed"
+// signal, so GenerateUserClaudeMD must NOT create it — a machine without Claude
+// Code must stay undetected and get no instruction file.
+//
+// TestGenerateUserClaudeMD_SkipsWhenClaudeNotInstalled 钉死自毒修复：Claude
+// config home 的存在性是 DetectAgents 判断"claude 已安装"的信号，
+// GenerateUserClaudeMD 不得创建它——没装 Claude Code 的机器必须保持未检出，
+// 也不写指令文件。
+func TestGenerateUserClaudeMD_SkipsWhenClaudeNotInstalled(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "claude-not-installed")
+	t.Setenv(`CLAUDE_CONFIG_DIR`, missing)
+	t.Setenv(`CODEX_HOME`, t.TempDir())
+	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
+
+	if err := GenerateUserClaudeMD(); err != nil {
+		t.Fatalf("GenerateUserClaudeMD should no-op (nil), got: %v", err)
+	}
+	if _, err := os.Stat(missing); !os.IsNotExist(err) {
+		t.Error("GenerateUserClaudeMD created the Claude config home — detection self-poison")
+	}
+}
+
+// TestGenerateUserAgentsMD_SkipsWhenCodexNotInstalled is the codex-side guard of
+// the same contract.
+//
+// TestGenerateUserAgentsMD_SkipsWhenCodexNotInstalled 是同一契约的 codex 侧守卫。
+func TestGenerateUserAgentsMD_SkipsWhenCodexNotInstalled(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "codex-not-installed")
+	t.Setenv(`CLAUDE_CONFIG_DIR`, t.TempDir())
+	t.Setenv(`CODEX_HOME`, missing)
+	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
+
+	if err := GenerateUserAgentsMD(); err != nil {
+		t.Fatalf("GenerateUserAgentsMD should no-op (nil), got: %v", err)
+	}
+	if _, err := os.Stat(missing); !os.IsNotExist(err) {
+		t.Error("GenerateUserAgentsMD created the codex config home — detection self-poison")
+	}
+}
+
+// TestGenerateUserQualitySkill_SkipsWhenClaudeNotInstalled is the quality-skill
+// guard of the same contract.
+//
+// TestGenerateUserQualitySkill_SkipsWhenClaudeNotInstalled 是同一契约的
+// quality-skill 守卫。
+func TestGenerateUserQualitySkill_SkipsWhenClaudeNotInstalled(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "claude-not-installed")
+	t.Setenv(`CLAUDE_CONFIG_DIR`, missing)
+	t.Setenv(`CODEX_HOME`, t.TempDir())
+	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
+
+	if err := GenerateUserQualitySkill(protocol.DefaultProtocol()); err != nil {
+		t.Fatalf("GenerateUserQualitySkill should no-op (nil), got: %v", err)
+	}
+	if _, err := os.Stat(missing); !os.IsNotExist(err) {
+		t.Error("GenerateUserQualitySkill created the Claude config home — detection self-poison")
+	}
+}

@@ -85,6 +85,13 @@ func (f *File) UnmarshalJSON(data []byte) error {
 	for _, r := range raw.Projects {
 		var e Entry
 		if err := json.Unmarshal(r, &e); err == nil {
+			// Defensive: null / {} entries carry no path and can never match —
+			// skip them instead of registering a ghost entry.
+			//
+			// 防御：null / {} 条目没有 path，永远匹配不上——跳过而非登记幽灵条目。
+			if e.Path == `` {
+				continue
+			}
 			f.Projects = append(f.Projects, e)
 			continue
 		}
@@ -252,15 +259,16 @@ func writeEntries(entries []Entry) error {
 // normalized via Abs + Clean. The forge project key (git common-dir hash, or PathKey
 // for non-git) is computed and stored so membership checks survive worktrees and
 // match without .forge/. Upsert semantics: an existing entry for the same path gets
-// its key refreshed; an entry with the same key but a different path (project moved)
-// gets its path updated. Used by forge init self-registration + dashboard --global
-// self-registration of the current project.
+// its key refreshed; an entry with the same key but a different path gets its path
+// updated only when the old path is gone (project moved) — a live old path means we
+// are inside a worktree and the old path is kept. Used by forge init
+// self-registration + dashboard --global self-registration of the current project.
 //
 // Add 把 absPath 登记到全局注册表（去重、幂等）。路径会 Abs + Clean 规范化。
 // forge 项目 key（git common-dir hash，非 git 为 PathKey）一并计算存储，让成员
 // 检查跨 worktree 命中、无需 .forge/。Upsert 语义：同路径条目刷新 key；同 key
-// 不同路径（项目被移动）更新路径。用于 forge init 自登记 + dashboard --global
-// 自登记当前项目。
+// 不同路径的条目仅当旧路径已消失（项目被移动）才更新路径——旧路径仍活说明身处
+// worktree，保留旧路径。用于 forge init 自登记 + dashboard --global 自登记当前项目。
 func Add(absPath string) error {
 	ap, err := filepath.Abs(absPath)
 	if err != nil {
@@ -302,6 +310,26 @@ func Add(absPath string) error {
 		samePath := pathKey(filepath.Clean(e.Path)) == pathKey(ap)
 		sameKey := key != `` && keyOf(e) == key
 		if samePath || sameKey {
+			if sameKey && !samePath {
+				// Same key but a different path: the project moved, OR this is a
+				// worktree of an already-registered repo. Swap the path only when the
+				// old one is gone (os.Stat IsNotExist) — if it is still alive we are
+				// in a worktree and must keep the old path: overwriting it with the
+				// worktree path would let List prune the whole entry (key included)
+				// once the worktree is deleted, silently stripping the main project's
+				// membership. Any non-IsNotExist stat error means "unreadable right
+				// now", not "gone" — keep the old path then too.
+				//
+				// 同 key 不同路径：项目被移动，或这是已登记 repo 的 worktree。仅当
+				// 旧路径已不存在（os.Stat IsNotExist）才换路径——旧路径仍活说明身处
+				// worktree，必须保留旧路径：换成 worktree 路径会让 List 在 worktree
+				// 删除后把整条（含 key）prune 掉，主项目静默丢成员资格。其他
+				// 非 IsNotExist 的 stat 错误是「此刻不可读」而非「已消失」，同样保留。
+				if _, serr := os.Stat(filepath.Clean(e.Path)); !os.IsNotExist(serr) {
+					f.Projects[i] = Entry{Path: filepath.Clean(e.Path), Key: key}
+					return writeEntries(f.Projects)
+				}
+			}
 			// Upsert: refresh key (legacy entry) and path (moved project).
 			//
 			// Upsert：刷新 key（遗留条目）与路径（被移动的项目）。
@@ -313,17 +341,27 @@ func Add(absPath string) error {
 	return writeEntries(f.Projects)
 }
 
-// Remove unregisters absPath (matched by path or key). Idempotent: absent path is a
-// no-op. Used by forge uninstall-style flows and tests.
+// Remove unregisters absPath, matched by path OR by project key — the key match
+// (git common-dir hash, or PathKey for non-git) makes removal worktree-safe: asking
+// to remove a worktree path removes the main project's entry that shares the key.
+// Idempotent: absent path is a no-op. Used by forge uninstall-style flows and tests.
 //
-// Remove 注销 absPath（按路径或 key 匹配）。幂等：不存在即 no-op。
-// 供 forge uninstall 类流程与测试使用。
+// Remove 注销 absPath，按路径或项目 key 匹配——key 匹配（git common-dir hash，
+// 非 git 为 PathKey）让注销跨 worktree 生效：传 worktree 路径也能删掉共享同一
+// key 的主项目条目。幂等：不存在即 no-op。供 forge uninstall 类流程与测试使用。
 func Remove(absPath string) error {
 	ap, err := filepath.Abs(absPath)
 	if err != nil {
 		return err
 	}
 	ap = filepath.Clean(ap)
+
+	key := ``
+	if k, kerr := forgedata.Key(ap); kerr == nil {
+		key = k
+	} else {
+		key = forgedata.PathKey(ap)
+	}
 
 	f, ok := readFile()
 	if !ok {
@@ -332,7 +370,7 @@ func Remove(absPath string) error {
 	kept := f.Projects[:0]
 	removed := false
 	for _, e := range f.Projects {
-		if pathKey(filepath.Clean(e.Path)) == pathKey(ap) {
+		if pathKey(filepath.Clean(e.Path)) == pathKey(ap) || (key != `` && keyOf(e) == key) {
 			removed = true
 			continue
 		}
@@ -371,6 +409,22 @@ func IsMember(cwd string) (root string, ok bool) {
 		return ``, false
 	}
 	abs = filepath.Clean(abs)
+	// Resolve symlinks when possible, matching PathKey semantics: a cwd reached
+	// through a symlink must match the registered physical path. Keep BOTH forms as
+	// match candidates — on systems where the temp/home dir is itself a symlink
+	// (macOS /var → /private/var), entries were registered under the unresolved
+	// form, so matching only the resolved form would break those.
+	//
+	// 可能时解析 symlink，与 PathKey 语义一致：经 symlink 进入的 cwd 必须能
+	// 匹配到已登记的物理路径。两种形态都留作匹配候选——有的系统 temp/home 目录
+	// 本身就是 symlink（macOS /var → /private/var），条目是按未解析形态登记的，
+	// 只按解析后形态匹配会把它们弄丢。
+	absForms := []string{abs}
+	if eval, err := filepath.EvalSymlinks(abs); err == nil {
+		if ev := filepath.Clean(eval); pathKey(ev) != pathKey(abs) {
+			absForms = append(absForms, ev)
+		}
+	}
 
 	if gitRoot := forgedata.FindGitRoot(abs); gitRoot != `` {
 		k, kerr := forgedata.Key(abs)
@@ -391,21 +445,30 @@ func IsMember(cwd string) (root string, ok bool) {
 	best := ``
 	for _, e := range f.Projects {
 		ep := filepath.Clean(e.Path)
-		if ep == abs {
-			if len(ep) > len(best) {
-				best = ep
+		for _, af := range absForms {
+			// Exact match goes through pathKey so Windows case variants (C:\Proj vs
+			// c:\proj) hit — plain == would miss them.
+			//
+			// 精确匹配走 pathKey，Windows 大小写变体（C:\Proj vs c:\proj）也能命中——
+			// 裸 == 会漏。
+			if pathKey(ep) == pathKey(af) {
+				if len(ep) > len(best) {
+					best = ep
+				}
+				break
 			}
-			continue
-		}
-		prefix := ep + string(filepath.Separator)
-		if runtime.GOOS == "windows" {
-			if strings.HasPrefix(strings.ToLower(abs), strings.ToLower(prefix)) && len(ep) > len(best) {
-				best = ep
+			prefix := ep + string(filepath.Separator)
+			if runtime.GOOS == "windows" {
+				if strings.HasPrefix(strings.ToLower(af), strings.ToLower(prefix)) && len(ep) > len(best) {
+					best = ep
+					break
+				}
+				continue
 			}
-			continue
-		}
-		if strings.HasPrefix(abs, prefix) && len(ep) > len(best) {
-			best = ep
+			if strings.HasPrefix(af, prefix) && len(ep) > len(best) {
+				best = ep
+				break
+			}
 		}
 	}
 	if best == `` {

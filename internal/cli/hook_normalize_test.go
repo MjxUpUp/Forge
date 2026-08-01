@@ -102,9 +102,10 @@ func TestWindsurfNormalizePreservesClaudeStdin(t *testing.T) {
 }
 
 // TestWindsurfHookEvent: F2/N4 回归——windsurfHookEvent 必须映射全部 Windsurf action 到 forge
-// HookEventName，尤其 session_start→SessionStart / session_end→Stop（F2 修复前这两个 case
-// 缺失，normalize 后 HookEventName 为空，按 event 分发的 hook 如 skill-trigger 失效成死代码）。
-// 若重构误删 case，本测试捕获。
+// HookEventName。Cascade 无 session_start/session_end：现接线用 pre_user_prompt→SessionStart /
+// post_cascade_response→Stop（旧 session_* case 保留以兼容旧版 forge 写入的配置；
+// F2 修复前这两个 case 缺失，normalize 后 HookEventName 为空，按 event 分发的 hook 如
+// skill-trigger 失效成死代码）。若重构误删 case，本测试捕获。
 func TestWindsurfHookEvent(t *testing.T) {
 	cases := []struct {
 		action string
@@ -116,6 +117,10 @@ func TestWindsurfHookEvent(t *testing.T) {
 		{"post_write_code", "PostToolUse"},
 		{"post_read_code", "PostToolUse"},
 		{"post_run_command", "PostToolUse"},
+		{"pre_user_prompt", "SessionStart"},
+		{"post_cascade_response", "Stop"},
+		{"post_cascade_response_with_transcript", "Stop"},
+		// Legacy events written by older forge versions — keep normalizing.
 		{"session_start", "SessionStart"},
 		{"session_end", "Stop"},
 		{"unknown_action", ""},
