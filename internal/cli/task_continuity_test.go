@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"time"
 	"fmt"
 	"strings"
 	"testing"
@@ -244,6 +245,85 @@ func TestRenderHookResume_InventoryCap(t *testing.T) {
 	}
 	if !strings.Contains(out, "还有 2 个") {
 		t.Errorf("超过上限应给截断提示\n---OUT---\n%s", out)
+	}
+}
+
+// TestRenderHookResume_InventorySkipsCompleted: completed tasks never enter the
+// inventory — a single incomplete task auto-resumes even alongside completed ones
+// (no false ambiguity), and a fully-completed set stays silent.
+//
+// TestRenderHookResume_InventorySkipsCompleted：已完成任务不进盘点——唯一未完成任务
+// 即使伴着已完成任务也自动接续（不产生假歧义）；全部已完成时保持静默。
+func TestRenderHookResume_InventorySkipsCompleted(t *testing.T) {
+	root, _ := forgedatatest.RealProject(t)
+	now := time.Now()
+	done := &taskpipeline.TaskState{TaskRef: "feat/done", Branch: "feat/done", CompletedAt: &now}
+	open := &taskpipeline.TaskState{TaskRef: "feat/still-open", Branch: "feat/still-open", Goal: "进行中"}
+	for _, s := range []*taskpipeline.TaskState{done, open} {
+		if err := taskpipeline.SaveTaskState(root, s); err != nil {
+			t.Fatalf("SaveTaskState: %v", err)
+		}
+	}
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "sid-mix")
+	out, err := renderHookResume(root)
+	if err != nil {
+		t.Fatalf("renderHookResume: %v", err)
+	}
+	if !strings.Contains(out, "feat/still-open") || !strings.Contains(out, "进行中") {
+		t.Errorf("唯一未完成任务应自动接续\n---OUT---\n%s", out)
+	}
+	if strings.Contains(out, "feat/done") {
+		t.Errorf("已完成任务不应出现\n---OUT---\n%s", out)
+	}
+
+	// All completed → silent.
+	//
+	// 全部已完成 → 静默
+	root2, _ := forgedatatest.RealProject(t)
+	done2 := &taskpipeline.TaskState{TaskRef: "feat/done2", Branch: "feat/done2", CompletedAt: &now}
+	if err := taskpipeline.SaveTaskState(root2, done2); err != nil {
+		t.Fatalf("SaveTaskState: %v", err)
+	}
+	out2, err := renderHookResume(root2)
+	if err != nil {
+		t.Fatalf("renderHookResume: %v", err)
+	}
+	if out2 != "" {
+		t.Errorf("全部已完成应静默，实得 %q", out2)
+	}
+}
+
+// TestRenderHookResume_InventoryBranchAndANSI: the inventory renders the [分支 x]
+// suffix when Branch differs from TaskRef, and strips ANSI control from user-controlled
+// fields (ref/summary come from --ref/--title input — same threat model as
+// TestRenderResume_StripsANSI).
+//
+// TestRenderHookResume_InventoryBranchAndANSI：Branch 与 TaskRef 不同时盘点渲染
+// [分支 x] 后缀；用户可控字段（ref/标题来自 --ref/--title 输入）的 ANSI 控制字符
+// 被剥离——与 TestRenderResume_StripsANSI 同一威胁模型。
+func TestRenderHookResume_InventoryBranchAndANSI(t *testing.T) {
+	root, _ := forgedatatest.RealProject(t)
+	esc := string(rune(0x1b))
+	a := &taskpipeline.TaskState{TaskRef: "feat/ansi-a", Branch: "topic/branch-a", Summary: "正常" + esc + "[31m红"}
+	b := &taskpipeline.TaskState{TaskRef: "feat/ansi-b", Branch: "feat/ansi-b"}
+	for _, s := range []*taskpipeline.TaskState{a, b} {
+		if err := taskpipeline.SaveTaskState(root, s); err != nil {
+			t.Fatalf("SaveTaskState: %v", err)
+		}
+	}
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "sid-ansi")
+	out, err := renderHookResume(root)
+	if err != nil {
+		t.Fatalf("renderHookResume: %v", err)
+	}
+	if strings.Contains(out, esc) {
+		t.Errorf("盘点输出不应含 ANSI 转义: %q", out)
+	}
+	if !strings.Contains(out, "[分支 topic/branch-a]") {
+		t.Errorf("Branch≠TaskRef 应渲染 [分支] 后缀\n---OUT---\n%s", out)
+	}
+	if !strings.Contains(out, "正常") || !strings.Contains(out, "红") {
+		t.Errorf("剥离 ANSI 后正常内容应保留\n---OUT---\n%s", out)
 	}
 }
 
