@@ -59,6 +59,7 @@ func kimiNormalize(stdinData []byte, hookInput *HookInput) {
 	var k struct {
 		SessionID     string          `json:"session_id"`
 		HookEventName string          `json:"hook_event_name"`
+		Cwd           string          `json:"cwd"`
 		ToolName      string          `json:"tool_name"`
 		ToolInput     json.RawMessage `json:"tool_input"`
 		ToolOutput    json.RawMessage `json:"tool_output"`
@@ -73,6 +74,7 @@ func kimiNormalize(stdinData []byte, hookInput *HookInput) {
 	}
 	hookInput.SessionID = k.SessionID
 	hookInput.HookEventName = k.HookEventName
+	hookInput.Cwd = k.Cwd
 	hookInput.ToolName = k.ToolName
 	hookInput.ToolInput = remapKimiToolInput(k.ToolInput)
 	// kimi 的 tool_output 是纯字符串（非 Claude tool_response 的对象），skill-trigger
