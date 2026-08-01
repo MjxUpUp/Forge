@@ -313,3 +313,24 @@ func TestPluginPack_CommittedManifestMatchesGenerator(t *testing.T) {
 		t.Errorf("committed plugin.json hooks drifted from generator output (run `forge plugin pack` and commit the result):\n generated: %s\n committed: %s", a, b)
 	}
 }
+
+// TestPluginPack_Readme_UserLevelContract pins the v1.22 user-level wording in the
+// plugin README: zero project writes since v1.22, and the uninstall --restore
+// rollback path (guards the plugin_readme.go capability-boundary comment contract).
+//
+// TestPluginPack_Readme_UserLevelContract 钉死 plugin README 的 v1.22 用户级表述：
+// v1.22 起零项目写入 + uninstall --restore 回滚路径（守卫 plugin_readme.go
+// 能力边界注释契约）。
+func TestPluginPack_Readme_UserLevelContract(t *testing.T) {
+	dir := generatePack(t)
+	content := readOrFail(t, filepath.Join(dir, "plugins", "forge", "README.md"))
+	for _, want := range []string{
+		"Since v1.22 `forge init` writes nothing into the project",
+		"--restore",
+		"zero project writes",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("README missing user-level wording %q", want)
+		}
+	}
+}
