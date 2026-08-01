@@ -72,6 +72,10 @@ func TestPrintHealth_NoBlindSpotSilent(t *testing.T) {
 // `forge init`），而非内部细节裸奔。
 func TestHealth_NonGitFriendlyMessage(t *testing.T) {
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
+	// Empty registry required — see TestStatusWithoutInit for the rationale.
+	//
+	// 需要空注册表——理由同 TestStatusWithoutInit。
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	tmpDir := t.TempDir()
 	// No git, no .forge — the AwesomeMutiAgent scenario.
 	//

@@ -103,6 +103,10 @@ func TestMigrateCmd_DryRunNoMove(t *testing.T) {
 //
 // TestMigrateCmd_NotInForgeProject：非 forge 项目（无 .git/.forge）findProject 报错。
 func TestMigrateCmd_NotInForgeProject(t *testing.T) {
+	// Empty registry required — see TestStatusWithoutInit for the rationale.
+	//
+	// 需要空注册表——理由同 TestStatusWithoutInit。
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	tmp := t.TempDir() // 无 .git 无 .forge
 	chdirAndRestore(t, tmp)
 

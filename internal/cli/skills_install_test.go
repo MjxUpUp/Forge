@@ -233,7 +233,11 @@ func TestResolveInstallScope(t *testing.T) {
 	}
 
 	// --global=false alone also means project scope; the error must name
-	// --global=false (the flag the user actually passed).
+	// --global=false (the flag the user actually passed). Empty registry
+	// required — see TestStatusWithoutInit for the rationale.
+	//
+	// 需要空注册表——理由同 TestStatusWithoutInit。
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	t.Chdir(t.TempDir())
 	_, _, err = resolveInstallScope(false, false)
 	if err == nil {
