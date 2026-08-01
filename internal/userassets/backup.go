@@ -84,6 +84,15 @@ func backupDir(path string) (string, error) {
 // Backing up a nonexistent file records existed=false (rollback then deletes
 // the forge-created file).
 //
+// Concurrency: the anchor is claimed with O_CREATE|O_EXCL on meta.json — when two
+// forge processes race the first backup, exactly one wins the claim; the loser
+// sees EEXIST and returns (the winner's backup covers it). The previous
+// stat-then-write sequence let both pass the stat check, and the slower writer
+// could record already-forge-modified bytes as the "original", corrupting the
+// anchor. Crash window: a winner dying between the meta claim and the original
+// write leaves meta without original — RestoreOriginal reports that loudly
+// (delete the backup dir to reset), which beats a silently poisoned anchor.
+//
 // BackupOriginal 在 forge 首次修改前备份一个用户级文件。存储到
 // <BackupRoot>/<safe-id>/ 下：
 //   - original  （文件字节；仅当文件已存在）
@@ -92,17 +101,17 @@ func backupDir(path string) (string, error) {
 // 绝不覆盖已有备份——首次备份生效，因为它是回滚锚点（forge 触碰文件之前
 // 的状态）。备份不存在的文件会记录 existed=false（回滚时删除 forge 创建
 // 的文件）。
+//
+// 并发：锚点经 meta.json 的 O_CREATE|O_EXCL 认领——两个 forge 进程竞速首备时
+// 只有一个赢得认领；负者见 EEXIST 返回（胜者的备份已覆盖）。此前的
+// stat-then-write 序列让双方都过 stat 检查，慢者可能把已被 forge 改过的
+// 字节记为"original"，污染锚点。崩溃窗口：胜者在 meta 认领与 original
+// 写入之间死掉会留下有 meta 无 original 的备份——RestoreOriginal 会响亮报错
+// （删除该备份目录即可重置），这好过锚点被静默污染。
 func BackupOriginal(path string) error {
 	dir, err := backupDir(path)
 	if err != nil {
 		return err
-	}
-	metaPath := filepath.Join(dir, "meta.json")
-	if _, err := os.Stat(metaPath); err == nil {
-		// First backup wins — keep the rollback anchor untouched.
-		//
-		// 首次备份生效——回滚锚点保持不动。
-		return nil
 	}
 
 	meta := backupMeta{Path: path, BackedUpAt: time.Now().UTC().Format(time.RFC3339)}
@@ -119,17 +128,37 @@ func BackupOriginal(path string) error {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("create backup dir: %w", err)
 	}
-	if meta.Existed {
-		if err := util.AtomicWrite(filepath.Join(dir, "original"), original, 0644); err != nil {
-			return fmt.Errorf("write backup original: %w", err)
-		}
-	}
 	metaBytes, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal backup meta: %w", err)
 	}
-	if err := util.AtomicWrite(metaPath, metaBytes, 0644); err != nil {
+	// Atomic claim: only the first process creates meta.json (O_EXCL). A loser
+	// returns immediately — the winner's anchor covers it.
+	//
+	// 原子认领：只有首个进程能创建 meta.json（O_EXCL）。负者立即返回——
+	// 胜者的锚点已覆盖。
+	metaPath := filepath.Join(dir, "meta.json")
+	fd, err := os.OpenFile(metaPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+	if errors.Is(err, fs.ErrExist) {
+		// First backup wins — keep the rollback anchor untouched.
+		//
+		// 首次备份生效——回滚锚点保持不动。
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("claim backup meta: %w", err)
+	}
+	if _, err := fd.Write(metaBytes); err != nil {
+		fd.Close()
 		return fmt.Errorf("write backup meta: %w", err)
+	}
+	if err := fd.Close(); err != nil {
+		return fmt.Errorf("close backup meta: %w", err)
+	}
+	if meta.Existed {
+		if err := util.AtomicWrite(filepath.Join(dir, "original"), original, 0644); err != nil {
+			return fmt.Errorf("write backup original: %w", err)
+		}
 	}
 	return nil
 }
