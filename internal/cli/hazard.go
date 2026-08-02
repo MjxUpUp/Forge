@@ -71,7 +71,8 @@ DELETE 无 WHERE 等）后，用你的确认工具向用户说明风险获明确
   confirmed <指纹>   查指纹是否已确认（hook 内部用，exit 0=是/1=否）
   status             列出当前有效确认
 
-测试/CI 可设 FORGE_ALLOW_HAZARD=1 让 hazard-guard 直接放行（不经确认）。`,
+FORGE_ALLOW_HAZARD env 豁免已移除（可被 agent 自我放行滥用）——confirm 链
+（events.jsonl 审计 + 5min TTL）是唯一放行路径，测试/CI 同样走 forge hazard confirm。`,
 }
 
 var hazardConfirmCmd = &cobra.Command{

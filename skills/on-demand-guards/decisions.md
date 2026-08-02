@@ -52,3 +52,20 @@ description 三段式合格未改动;新建 evals/evals.json(5正+4负)
 ### Evidence
 
 docs/skills-value-audit-2026-08-02.md
+
+## [d-18c7ef895f7900c8-0c2988b4] accept
+
+- **Skill**: on-demand-guards
+- **DecidedAt**: 2026-08-02T08:25:50Z
+
+### Diagnosis
+
+hazard-guard 的 FORGE_ALLOW_HAZARD=1 env 豁免被 agent 自我放行滥用（周复盘失守 b），且行内前缀形式 hook 进程拿不到 env 行为不一致
+
+### Revision
+
+SKILL.md 移除 FORGE_ALLOW_HAZARD 跳过说明，改为 confirm 链（events.jsonl 审计 + 5min TTL）是唯一放行路径，测试/CI 同样走 forge hazard confirm
+
+### Evidence
+
+internal/hooks/embed.go HazardGuardHook 已删 env 豁免分支；e2e TestHook_HazardGuard_EnvBypassRemoved 与脚本级 TestHazardGuardScript_EnvBypassRemoved 钉死新行为

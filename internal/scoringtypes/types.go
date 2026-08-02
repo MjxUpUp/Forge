@@ -50,6 +50,17 @@ type ScoreResult struct {
 	// 不参与打分：让 review/评分消费者看到"完成声明背后有多少 deterministic 证据"，
 	// 对冲 LLM-judge 看不出"agent 跳过前置就声明完成"的盲区。nil=无证据数据。
 	Evidence *EvidenceSummary `json:"evidence,omitempty"`
+	// CappedReason, when non-empty, records that Overall was capped after evaluation and why
+	// (currently: the task used an escape hatch — per-task override or env-form escape — so its
+	// total is capped at 89, the top of the B band: escape makes A unreachable, and escape must
+	// have a visible cost instead of still taking home 96-99/A). Observability only; the cap
+	// itself is applied by taskpipeline.ScoreTask, not Evaluate, so golden fixtures are unaffected.
+	//
+	// CappedReason 非空时记录 Overall 在评分后被封顶及原因（当前：任务用了逃生舱——
+	// per-task override 或 env 形式逃生——总分封顶 89（B 档上限）：逃生拿不到 A，
+	// 逃生必须有可见代价，不能照拿 96-99/A）。仅可观测；封顶由
+	// taskpipeline.ScoreTask 施加而非 Evaluate，故 golden fixture 不受影响。
+	CappedReason string `json:"capped_reason,omitempty"`
 }
 
 // EvidenceSummary summarizes the source distribution of a task's evidence chain.

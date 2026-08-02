@@ -3,7 +3,6 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"hash/fnv"
 	"io"
@@ -18,6 +17,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/hooks"
+	"github.com/MjxUpUp/Forge/internal/shellexec"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
 	"github.com/MjxUpUp/Forge/internal/util"
@@ -430,6 +430,19 @@ func runHook(cmd *cobra.Command, args []string) error {
 	shCmd := exec.Command(bash, filepath.ToSlash(tmpPath))
 	shCmd.Dir = root
 	cwd, _ := os.Getwd() // 真实 cwd，给 init-suggest global hook 用（FORGE_CWD / FORGE_CWD_TAG）
+	// file-sentinel 自伤豁免用：项目 DataDir 的绝对路径，由 Go 侧解析后传入——
+	// bash 侧自行拼接必分叉（bash 的 ${TMPDIR} 是 MSYS 路径、Go 的 os.TempDir()
+	// 是 Windows 路径），与 FORGE_READS_FILE 同模式。global hook（root==""）时为
+	// 空串，项目级 hook（file-sentinel 等）root 恒非空不受影响。
+	//
+	// Absolute project DataDir for the file-sentinel self-deploy exemption, resolved
+	// on the Go side — bash-side reconstruction would diverge (MSYS ${TMPDIR} vs
+	// Windows os.TempDir()), same pattern as FORGE_READS_FILE. Empty for global
+	// hooks (root==""); project-scoped hooks always have a root.
+	dataDirEnv := ""
+	if root != "" {
+		dataDirEnv = forgedata.DataDirFor(root)
+	}
 	shCmd.Env = append(os.Environ(),
 		"FORGE_FILE_PATH="+sanitizeForShell(toRelPath(root, fields.FilePath)),
 		"FORGE_CONTENT="+sanitizeForShell(fields.Content),
@@ -471,6 +484,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 		// skill-scan）来说 root="" ，于是这里哈希的是真实 cwd——init-suggest
 		// 绝不能依赖它（非 forge project 没有 forge root）；改用下面的 FORGE_CWD_TAG。
 		"FORGE_PROJECT_TAG="+projectTagFor(root),
+		"FORGE_DATA_DIR="+sanitizeForShell(dataDirEnv),
 		// The cwd and its git-root-keyed tag, for init-suggest (a global hook) to use:
 		// the hook finds the git root from FORGE_CWD, then writes a per-project marker keyed by FORGE_CWD_TAG.
 		// Keyed by git root (via suggestTagFor), not cwd, so no matter which subdir runs
@@ -593,11 +607,50 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// scoring 依赖的 check（assertion-check/auto-compile）的 PASS——它们的
 	// LatestByCheck 会喂给 CompilePassed/AssertionPassed。Non-scoring PASS 丢弃，
 	// 削减约 86% 的 checklog 体积。参见 shouldRecordCheck。
-	if shouldRecordCheck(checkName, passed) {
+	// Noise gate (axis A of checklog layered governance): scoring reads only the
+	// LATEST entry per check (task.go scoreTask's LatestByCheckForSession), so writing PASS on every
+	// tool call is pure audit noise — measured 15946 lines of checklog, 100% PASS, zero FAIL.
+	// Only record FAIL (block/warn signal traceability and diagnostics that are actually needed) plus the
+	// PASS of scoring-dependent checks (assertion-check/auto-compile) — their
+	// LatestByCheck feeds CompilePassed/AssertionPassed. Non-scoring PASS is dropped,
+	// cutting about 86% of the checklog volume. See shouldRecordCheck.
+	//
+	// Axis A refinement (weekly-hardening): a scoring check's PASS is recorded only
+	// on STATE CHANGE — if the latest entry for the check is already a PASS, a
+	// repeat PASS carries zero information (scoring's LatestByCheck still resolves
+	// to that earlier PASS, so the semantics do not regress) but was 54% of the
+	// checklog volume (auto-compile/assertion-check fire on every Write/Edit).
+	// FAIL is always recorded (a FAIL→PASS transition is a state change and is
+	// recorded; PASS→PASS is skipped). See scoringPassUnchanged.
+	//
+	// Noise gate（checklog 分层治理的 axis A）：scoring 只读每个 check 的
+	// LATEST 条目（task.go scoreTask 的 LatestByCheckForSession），所以每次
+	// tool call 都写 PASS 纯属审计噪声——实测 15946 行 checklog 中 100% 是
+	// PASS、零 FAIL。仅记录 FAIL（block/warn 信号追溯和诊断真正需要的）以及
+	// scoring 依赖的 check（assertion-check/auto-compile）的 PASS——它们的
+	// LatestByCheck 会喂给 CompilePassed/AssertionPassed。Non-scoring PASS 丢弃，
+	// 削减约 86% 的 checklog 体积。参见 shouldRecordCheck。
+	//
+	// axis A 细化（周复盘加固）：scoring check 的 PASS 只在状态变化时记录——
+	// 该 check 最新条目已是 PASS 时，重复 PASS 零信息量（scoring 的
+	// LatestByCheck 仍解析到那条更早的 PASS，语义不回归），却占 checklog
+	// 体积 54%（auto-compile/assertion-check 每次 Write/Edit 都触发）。FAIL
+	// 保持全记（FAIL→PASS 是状态变化会记录；PASS→PASS 跳过）。参见
+	// scoringPassUnchanged。
+	if shouldRecordCheck(checkName, passed) &&
+		!(passed && scoringPassUnchanged(root, util.SanitizeSessionID(hookInput.SessionID), checkName)) {
+		// Level 显式设置：hook 的 FAIL 是真 block（decision:block 拦下工具调用），
+		// 不是普通 fail——derive 只能从 Detail 前缀区分 gate 的 BLOCKED:/ADVISORY:，
+		// 对 hook 输出会退化成 fail，语义不够精确。
+		level := checklog.LevelPass
+		if !passed {
+			level = checklog.LevelBlocked
+		}
 		if err := checklog.Record(root, &checklog.Entry{
 			Check:     checkName,
 			Passed:    passed,
 			Checked:   true,
+			Level:     level,
 			ToolName:  recordedToolName,
 			TaskRef:   taskRef,
 			SessionID: util.SanitizeSessionID(hookInput.SessionID),
@@ -934,151 +987,30 @@ func emitKimiOutput(passed bool, detail string) error {
 	return &HookBlockError{Reason: detail}
 }
 
-// findBash resolves the bash interpreter for hook scripts. On Windows a plain
-// exec.LookPath("bash") can resolve to a WSL launcher (C:\Windows\System32\bash.exe or
-// %LOCALAPPDATA%\Microsoft\WindowsApps\bash.exe) when forge runs under a native parent
-// (kimi TUI, cmd, PowerShell) whose PATH orders System32 before Git's usr\bin — WSL
-// cannot see the Windows temp path of the script, so every bash hook failed (and before
-// the fail-open guard, failed CLOSED: kimi blocked every turn). Worse, Git for Windows
-// typically puts only Git\cmd on PATH (no bash.exe at all), so after filtering WSL
-// launchers there may be nothing left on PATH. Resolution order on Windows: PATH scan
-// skipping known-WSL launchers → derive from the git binary's location (MSYS layout
-// usr\bin/bin, up to 4 ancestors) → well-known install dirs → plain LookPath fallback
-// (WSL-only machines; the infra fail-open covers the script-not-visible failure).
+// findBash resolves the bash interpreter for hook scripts. The implementation
+// (including the Windows WSL-avoidance logic) lives in internal/shellexec and is
+// shared with the gate path (taskpipeline.runEmbeddedHook) — a bare PATH lookup
+// there resolved to WSL bash and failed every gate auto-compile with
+// 'forge-gate-*.sh: No such file or directory'.
 //
-// findBash 解析 hook 脚本的 bash 解释器。Windows 上裸 exec.LookPath("bash") 在
-// forge 跑于原生父进程（kimi TUI、cmd、PowerShell）下可能解析到 WSL 启动器
-// （C:\Windows\System32\bash.exe 或 %LOCALAPPDATA%\Microsoft\WindowsApps\bash.exe）
-// ——这类 PATH 里 System32 排在 Git usr\bin 前面，而 WSL 看不到脚本的 Windows
-// 临时路径，于是所有 bash hook 全挂（在 fail-open 守卫之前还是 fail-CLOSED：
-// kimi 每轮都被硬阻断）。更糟的是 Git for Windows 通常只把 Git\cmd 加进 PATH
-// （其中没有 bash.exe），过滤 WSL 启动器后 PATH 上可能一个 bash 都不剩。Windows
-// 上的解析顺序：PATH 扫描（跳过已知 WSL 启动器）→ 从 git 二进制位置派生
-// （MSYS 布局 usr\bin/bin，向上最多 4 级）→ 常见安装目录 → 回退普通 LookPath
-// （WSL-only 机器；脚本不可见由基础设施 fail-open 兜底）。
+// findBash 解析 hook 脚本的 bash 解释器。实现（含 Windows WSL 规避逻辑）在
+// internal/shellexec，与 gate 路径（taskpipeline.runEmbeddedHook）共用——那里
+// 曾用裸 PATH 查找解析到 WSL bash，导致 gate 的 auto-compile 全部报
+// 'forge-gate-*.sh: No such file or directory'。
 func findBash() (string, error) {
-	if runtime.GOOS != "windows" {
-		return exec.LookPath("bash")
-	}
-	// 1. PATH scan, skipping known-WSL launchers.
-	//
-	// 1. 扫 PATH，跳过已知 WSL 启动器。
-	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
-		if dir == "" {
-			continue
-		}
-		cand := filepath.Join(dir, "bash.exe")
-		if fileExistsExe(cand) && !isWSLBash(cand) {
-			return cand, nil
-		}
-	}
-	// 2. Git-derived: Git for Windows' installer typically adds only Git\cmd (and
-	// Git\mingw64\bin) to PATH — bash.exe is NOT there, it lives in Git\usr\bin. Walk
-	// up from the git binary looking for the MSYS layout (usr\bin, then bin).
-	//
-	// 2. git 派生：Git for Windows 安装器通常只把 Git\cmd（和 Git\mingw64\bin）加进
-	// PATH——bash.exe 不在那里，而在 Git\usr\bin。从 git 二进制向上逐级找 MSYS
-	// 布局（usr\bin，然后 bin）。
-	if gitPath, err := exec.LookPath("git"); err == nil {
-		dir := filepath.Dir(gitPath)
-		for i := 0; i < 4; i++ {
-			// usr\bin first: it holds the real MSYS bash; Git\bin\bash.exe is a thin
-			// wrapper around it — both work, the real one is the surer bet.
-			//
-			// usr\bin 优先：那里是真正的 MSYS bash；Git\bin\bash.exe 是它的薄
-			// 包装——都能用，选真身更稳。
-			for _, sub := range []string{filepath.Join("usr", "bin"), "bin"} {
-				cand := filepath.Join(dir, sub, "bash.exe")
-				if fileExistsExe(cand) && !isWSLBash(cand) {
-					return cand, nil
-				}
-			}
-			parent := filepath.Dir(dir)
-			if parent == dir {
-				break
-			}
-			dir = parent
-		}
-	}
-	// 3. Well-known install locations (covers machines where git is not on PATH either;
-	// includes the per-user Git-for-Windows layout under %LOCALAPPDATA%).
-	//
-	// 3. 常见安装位置（覆盖 git 也不在 PATH 的机器；含 %LOCALAPPDATA% 下的
-	// per-user Git for Windows 布局）。
-	for _, cand := range []string{
-		`C:\Program Files\Git\usr\bin\bash.exe`,
-		`D:\Program Files\Git\usr\bin\bash.exe`,
-		`C:\Program Files (x86)\Git\usr\bin\bash.exe`,
-		filepath.Join(os.Getenv("LOCALAPPDATA"), `Programs\Git\usr\bin\bash.exe`),
-		`C:\msys64\usr\bin\bash.exe`,
-		`C:\cygwin64\bin\bash.exe`,
-	} {
-		if fileExistsExe(cand) {
-			return cand, nil
-		}
-	}
-	// 4. Fallback to a plain lookup (WSL-only machines keep the old behavior; the
-	// infra fail-open covers the script-not-visible failure).
-	//
-	// 4. 回退普通查找（WSL-only 机器保持旧行为；脚本不可见由基础设施
-	// fail-open 兜底）。
-	return exec.LookPath("bash")
+	return shellexec.FindBash()
 }
 
-// fileExistsExe reports whether path exists and is not a directory. It deliberately
-// does not probe executability (on Windows that means a CreateProcess trial): a
-// non-executable impostor selected here fails at spawn and is caught by the infra
-// fail-open with a visible warning — noisy, not silent.
+// isHookInfraFailure distinguishes "bash could not run the script" from "the
+// script ran and reported FAIL" (spawn error or bash exit 126/127 → fail-open,
+// not a gate verdict). Implementation shared with the gate path in
+// internal/shellexec.
 //
-// fileExistsExe 报告 path 存在且不是目录。刻意不探测可执行性（Windows 上要
-// CreateProcess 试探）：若选中了同名不可执行文件，spawn 会失败并被基础设施
-// fail-open 捕获并给出可见警告——可感知，非静默。
-func fileExistsExe(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && !info.IsDir()
-}
-
-// isWSLBash reports whether path points at a known WSL bash launcher rather than a
-// Windows-native bash (Git Bash / MSYS2 / Cygwin). The path being classified is always
-// a WINDOWS path conceptually, so both separators are normalized explicitly — on Linux
-// (CI) filepath.ToSlash is a no-op and backslashes would survive, breaking the match.
-//
-// isWSLBash 报告 path 是否指向已知 WSL bash 启动器而非 Windows 原生 bash
-// （Git Bash / MSYS2 / Cygwin）。被判断的路径概念上恒为 WINDOWS 路径，故显式归一
-// 两种分隔符——Linux（CI）上 filepath.ToSlash 是 no-op，反斜杠会残留导致匹配失效。
-func isWSLBash(path string) bool {
-	p := strings.ToLower(strings.ReplaceAll(path, `\`, `/`))
-	return strings.Contains(p, "/windows/system32/") ||
-		strings.Contains(p, "/windows/syswow64/") ||
-		strings.Contains(p, "/microsoft/windowsapps/")
-}
-
-// isHookInfraFailure distinguishes "bash could not run the script" from "the script ran
-// and reported FAIL". Spawn errors (bash vanished, permission) and bash exit 126/127
-// (script file not readable / not found — the WSL-bash-on-Windows signature) are
-// infrastructure; any other exit code comes from the script itself and keeps the
-// gate-verdict semantics. Accepted trade-off: a 126/127 from INSIDE a script (an
-// external command the script needs is missing, e.g. no grep) also fails open — for
-// hazard-guard that is a deliberate safety downgrade, but the alternative (the old
-// WSL behavior: every turn hard-blocked) is strictly worse, and the warning stays
-// visible either way.
-//
-// isHookInfraFailure 区分"bash 没能跑起脚本"与"脚本跑了并报告 FAIL"。spawn 错误
-// （bash 消失、权限问题）与 bash exit 126/127（脚本文件不可读/不存在——WSL
-// bash on Windows 的特征）属基础设施；其他退出码来自脚本本身，保留门禁结论语义。
-// 已接受的权衡：脚本内部的 126/127（脚本依赖的外部命令缺失，如没有 grep）同样
-// fail-open——对 hazard-guard 这是有意的安全降级，但替代方案（旧 WSL 行为：每轮
-// 硬阻断）严格更糟，且警告始终可见。
+// isHookInfraFailure 区分"bash 没能跑起脚本"与"脚本跑了并报告 FAIL"（spawn
+// 错误或 bash exit 126/127 → fail-open，非门禁结论）。实现与 gate 路径共用在
+// internal/shellexec。
 func isHookInfraFailure(err error) bool {
-	if err == nil {
-		return false
-	}
-	var exitErr *exec.ExitError
-	if !errors.As(err, &exitErr) {
-		return true
-	}
-	code := exitErr.ExitCode()
-	return code == 126 || code == 127
+	return shellexec.IsHookInfraFailure(err)
 }
 
 // emitInfraAllow fails open for an infrastructure failure: the warning must be VISIBLE
@@ -1126,6 +1058,38 @@ func shouldRecordCheck(name checklog.CheckName, passed bool) bool {
 		return true
 	}
 	return isScoringCheck(name)
+}
+
+// scoringPassUnchanged reports whether a scoring check's PASS would be a
+// duplicate of the current state: the latest entry for the check (same session
+// scope scoring uses) is already a PASS. In that case the repeat PASS is
+// skipped — scoring's LatestByCheckForSession still resolves to the earlier
+// PASS, so CompilePassed/AssertionPassed semantics do not regress. Returns
+// false (record) when there is no prior entry, the latest is a FAIL (state
+// change FAIL→PASS), the check is non-scoring, or the lookup fails (a lookup
+// error must not silently drop audit data — fail toward recording).
+// Session-filtering caveat (accepted): if the previous PASS belongs to a
+// different session, this session's first PASS is still written — the cross
+// process cost of one entry per session per check is fine.
+//
+// scoringPassUnchanged 报告某 scoring check 的 PASS 是否是当前状态的重复：
+// 该 check 的最新条目（与 scoring 相同的 session 过滤）已是 PASS。此时跳过
+// 重复 PASS——scoring 的 LatestByCheckForSession 仍解析到那条更早的 PASS，
+// CompilePassed/AssertionPassed 语义不回归。无先前条目 / 最新是 FAIL
+// （FAIL→PASS 状态变化）/ 非 scoring check / 查询失败时返回 false（记录——
+// 查询出错不得静默丢审计数据，宁多记）。session 过滤的已知边界（可接受）：
+// 上次 PASS 属于其他 session 时，本 session 的首个 PASS 仍会写——每个
+// session 每个 check 一条的成本可接受。
+func scoringPassUnchanged(root, sessionID string, name checklog.CheckName) bool {
+	if !isScoringCheck(name) {
+		return false
+	}
+	latest, err := checklog.LatestByCheckForSession(root, sessionID)
+	if err != nil {
+		return false
+	}
+	e, ok := latest[name]
+	return ok && e.Passed
 }
 
 // isScoringCheck decides whether a hook check's PASS will be consumed by task scoring.

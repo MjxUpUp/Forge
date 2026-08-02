@@ -3,8 +3,11 @@ package taskpipeline
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/checklog"
 )
 
 // TestRunEmbeddedHook_AutoCompileAdvisory_IgnoresTamper verifies the v0.25
@@ -40,11 +43,14 @@ func TestRunEmbeddedHook_AutoCompileAdvisory_IgnoresTamper(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	passed, output := runEmbeddedHook(dir, "auto-compile")
+	passed, infra, output := runEmbeddedHook(dir, "auto-compile")
 
 	// Advisory: passes without compiling — broken.go no longer fails the gate.
 	if !passed {
 		t.Fatalf("advisory auto-compile must PASS on a broken module (no compile enforced), got fail:\n%q", output)
+	}
+	if infra {
+		t.Fatalf("a normally-executed hook is not an infrastructure failure, got infra=true:\n%q", output)
 	}
 	// A3 invariant: the embed ran, not the disk hook.
 	if strings.Contains(output, "TAMPERED_DISK_HOOK_PASSES") {
@@ -68,7 +74,7 @@ func TestRunEmbeddedHook_AutoCompileAdvisory_PassesOnCleanModule(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	passed, output := runEmbeddedHook(dir, "auto-compile")
+	passed, _, output := runEmbeddedHook(dir, "auto-compile")
 	if !passed {
 		t.Fatalf("advisory auto-compile should PASS, got fail:\n%q", output)
 	}
@@ -81,11 +87,120 @@ func TestRunEmbeddedHook_AutoCompileAdvisory_PassesOnCleanModule(t *testing.T) {
 // silently pass: EmbeddedContent returns ok=false and runEmbeddedHook reports
 // not-found with passed=false rather than skipping the check.
 func TestRunEmbeddedHook_UnknownHookFailsClosed(t *testing.T) {
-	passed, output := runEmbeddedHook(t.TempDir(), "no-such-hook")
+	passed, infra, output := runEmbeddedHook(t.TempDir(), "no-such-hook")
 	if passed {
 		t.Fatalf("unknown hook must fail closed (passed=false), got passed=true: %q", output)
 	}
+	if infra {
+		t.Fatalf("unknown hook name is a programming error, not infrastructure (infra=false required): %q", output)
+	}
 	if !strings.Contains(output, "not found") {
 		t.Fatalf("expected not-found detail for unknown hook, got: %q", output)
+	}
+}
+
+// --- Infra-failure classification (weekly-hardening 改动 3) ---
+// The gate path used to treat every bash execution failure as a gate FAIL;
+// 45/53 recorded FAILs were 'forge-gate-*.sh: No such file or directory' —
+// infrastructure (bare PATH lookup resolving to WSL bash, which cannot see the
+// Windows temp path), not a compile verdict. runEmbeddedHook now classifies
+// spawn errors / exit 126/127 as infra; checkImplement records them with an
+// INFRA: Detail prefix (Passed=false, so the infra rate stays countable) but
+// does not fail the gate.
+
+// TestRunEmbeddedHook_InfraFailure_SpawnError: a bash path that does not exist
+// makes the spawn fail → passed=false, infra=true.
+func TestRunEmbeddedHook_InfraFailure_SpawnError(t *testing.T) {
+	old := findBashForHook
+	t.Cleanup(func() { findBashForHook = old })
+	findBashForHook = func() (string, error) {
+		return filepath.Join(t.TempDir(), "no-such-bash-binary"), nil
+	}
+
+	passed, infra, output := runEmbeddedHook(t.TempDir(), "auto-compile")
+	if passed {
+		t.Fatalf("spawn failure must not pass: %q", output)
+	}
+	if !infra {
+		t.Fatalf("spawn error must classify as infrastructure failure (infra=true), got infra=false: %q", output)
+	}
+}
+
+// TestRunEmbeddedHook_InfraFailure_Exit127: bash exiting 127 (script file not
+// found/readable — the WSL-bash-on-Windows signature) is infrastructure, not a
+// gate verdict. Unix-only: the fake "bash" is a shebang script, which Go cannot
+// spawn directly on Windows.
+func TestRunEmbeddedHook_InfraFailure_Exit127(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shebang fake-bash cannot be spawned by Go on Windows — exit-code path covered on unix")
+	}
+	dir := t.TempDir()
+	fakeBash := filepath.Join(dir, "fakebash")
+	if err := os.WriteFile(fakeBash, []byte("#!/bin/bash\nexit 127\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	old := findBashForHook
+	t.Cleanup(func() { findBashForHook = old })
+	findBashForHook = func() (string, error) { return fakeBash, nil }
+
+	passed, infra, output := runEmbeddedHook(t.TempDir(), "auto-compile")
+	if passed {
+		t.Fatalf("exit 127 must not pass: %q", output)
+	}
+	if !infra {
+		t.Fatalf("bash exit 127 must classify as infrastructure failure (infra=true), got infra=false: %q", output)
+	}
+}
+
+// TestCheckImplement_InfraFailureDoesNotFailGate: with bash unspawnable, BOTH
+// embedded hooks report infrastructure failures — checkImplement must still
+// pass the gate (fail-open, aligned with the write-time hook path's
+// isHookInfraFailure philosophy) and the checklog entries must carry the
+// INFRA: Detail prefix with Passed=false (infra-failure rate stays countable).
+// The temp dir is not a git repo, so hasCodeChanges degrades gracefully to
+// true — isolating the infra dimension under test.
+func TestCheckImplement_InfraFailureDoesNotFailGate(t *testing.T) {
+	dir := t.TempDir()
+	old := findBashForHook
+	t.Cleanup(func() { findBashForHook = old })
+	findBashForHook = func() (string, error) {
+		return filepath.Join(t.TempDir(), "no-such-bash-binary"), nil
+	}
+
+	result, err := checkImplement(dir, &TaskState{TaskRef: "feat/infra-test"})
+	if err != nil {
+		t.Fatalf("checkImplement returned error: %v", err)
+	}
+	if !result.Passed {
+		t.Fatalf("infrastructure failure must NOT fail the gate (fail-open), got Passed=false: %s", result.Message)
+	}
+
+	entries, err := checklog.LoadAll(dir)
+	if err != nil {
+		t.Fatalf("LoadAll: %v", err)
+	}
+	var autoCompile, assertion *checklog.Entry
+	for i := range entries {
+		e := &entries[i]
+		if e.TaskRef != "feat/infra-test" {
+			continue
+		}
+		switch e.Check {
+		case checklog.CheckAutoCompile:
+			autoCompile = e
+		case checklog.CheckAssertion:
+			assertion = e
+		}
+	}
+	for name, e := range map[string]*checklog.Entry{"auto-compile": autoCompile, "assertion-check": assertion} {
+		if e == nil {
+			t.Fatalf("%s checklog entry missing", name)
+		}
+		if e.Passed {
+			t.Errorf("%s entry must keep Passed=false (infra-failure stats)", name)
+		}
+		if !strings.HasPrefix(e.Detail, "INFRA: ") {
+			t.Errorf("%s entry Detail must carry the INFRA: prefix, got %q", name, e.Detail)
+		}
 	}
 }

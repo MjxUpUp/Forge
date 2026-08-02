@@ -193,6 +193,7 @@ func CheckTestCoverage(root string, state *TaskState) (ok bool, missing []string
 			Check:   checklog.CheckEscapeHatch,
 			Passed:  true,
 			Checked: true,
+			Level:   checklog.LevelWarn, // 逃生舱使用是 warn 语义（bypass 已生效但须留痕），derive 只会给 pass
 			TaskRef: taskRef,
 			Detail:  "escape-hatch: test-coverage gate bypassed (per-task override or FORGE_TEST_COVERAGE=disable)",
 		})
@@ -362,9 +363,23 @@ func taskChangedFiles(root string, state *TaskState) []string {
 }
 
 // isSourceFile reports whether path is a source file (not a test, not config).
+// Vendored dependencies (any vendor/ path segment) are excluded: they are
+// third-party baselines, never project code the task must pair tests with —
+// a vendored update otherwise floods "missing tests" (cooking project: 986
+// files). The exclusion also benefits scope-drift and DesignPhases inference,
+// which share taskChangedFiles — dropping vendor noise is directionally
+// consistent everywhere.
 //
-// isSourceFile 报告 path 是否为源码文件（非测试、非 config）。
+// isSourceFile 报告 path 是否为源码文件（非测试、非 config）。vendor/ 依赖
+// 排除：它们是第三方基线，不是本任务要配对测试的项目代码——一次 vendor
+// 更新会把 "missing tests" 打爆（cooking 项目报 986 文件）。该排除同时惠及
+// 共用 taskChangedFiles 的 scope-drift 与 DesignPhases 推断——排除 vendor
+// 噪声在各处方向一致。
 func isSourceFile(path string) bool {
+	norm := filepath.ToSlash(path)
+	if strings.Contains(norm, "vendor/") {
+		return false
+	}
 	ext := filepath.Ext(path)
 	if !sourceExts[ext] {
 		return false

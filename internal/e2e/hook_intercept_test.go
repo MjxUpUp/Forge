@@ -836,3 +836,111 @@ func TestHook_ReadBeforeEdit_PerTaskOverrideEscape(t *testing.T) {
 		t.Errorf("expected decision=approve under work-activity override, got:\n%s", stdout)
 	}
 }
+
+// forgeHookEnv runs `forge hook <name>` like forgeHook, with extra env vars
+// appended (used to pin FORGE_* overrides for a single invocation).
+//
+// forgeHookEnv 与 forgeHook 相同，额外追加 env var（用于单次调用的 FORGE_* 覆盖）。
+func forgeHookEnv(t *testing.T, dir, hookName, stdinJSON string, extraEnv ...string) (string, string, error) {
+	t.Helper()
+	cmd := exec.Command(forgeBin, "hook", hookName)
+	cmd.Dir = dir
+	cmd.Stdin = strings.NewReader(stdinJSON)
+	tmp := t.TempDir()
+	binDir := filepath.Dir(forgeBin)
+	cmd.Env = append(os.Environ(),
+		"TMPDIR="+tmp,
+		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+	)
+	cmd.Env = append(cmd.Env, extraEnv...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	return stdout.String(), stderr.String(), err
+}
+
+// TestHook_HazardGuard_InterpreterDeleteBypassBlocked pins weekly-hardening fix (c):
+// `python -c "import os;os.remove(...)"` carries no rm-style danger string, so
+// is_hazardous passed it silently and is_exec_wrapped (consulted only after an
+// is_hazardous hit) never saw it. The interpreter inline-delete pre-check must
+// route these into the block flow.
+//
+// TestHook_HazardGuard_InterpreterDeleteBypassBlocked 钉死周复盘加固 (c)：
+// python -c "import os;os.remove(...)" 不含 rm 类危险串，is_hazardous 曾直接放行、
+// is_exec_wrapped（只在 is_hazardous 命中后调用）看不到它。解释器内联删除前置
+// 判定必须把这类命令打进拦截流程。
+func TestHook_HazardGuard_InterpreterDeleteBypassBlocked(t *testing.T) {
+	dir := freshProject(t)
+	block := []string{
+		`python -c "import os;os.remove('./important.txt')"`,
+		`python3 -c "import shutil;shutil.rmtree('./build')"`,
+		`node -e "require('fs').rmSync('./data',{recursive:true})"`,
+	}
+	for _, cmd := range block {
+		in := hookStdin(t, "sess-hazard-interp-block", "PreToolUse", "Bash", map[string]any{
+			"command": cmd,
+		})
+		stdout, _, err := forgeHook(t, dir, "hazard-guard", in)
+		if err == nil {
+			t.Fatalf("hazard-guard must block interpreter inline-delete %q, got exit 0. stdout:\n%s", cmd, stdout)
+		}
+		if !strings.Contains(stdout, "hazard-guard") {
+			t.Errorf("block output missing hazard-guard identifier for %q:\n%s", cmd, stdout)
+		}
+	}
+
+	// Regression guard: benign interpreter one-liners must still pass.
+	//
+	// 回归保护：无害的解释器一行命令必须放行。
+	pass := []string{
+		`python -c "print(1)"`,
+		`node -e "console.log('ok')"`,
+		`python scripts/train.py --epochs 3`,
+	}
+	for _, cmd := range pass {
+		in := hookStdin(t, "sess-hazard-interp-pass", "PreToolUse", "Bash", map[string]any{
+			"command": cmd,
+		})
+		stdout, _, err := forgeHook(t, dir, "hazard-guard", in)
+		if err != nil {
+			t.Fatalf("hazard-guard must pass benign interpreter command %q, got block. stdout:\n%s", cmd, stdout)
+		}
+	}
+}
+
+// TestHook_HazardGuard_EnvBypassRemoved pins weekly-hardening fix (b):
+// FORGE_ALLOW_HAZARD=1 no longer releases a hazardous command — the env escape
+// was removed (agent self-release abuse + inline-prefix form never reaching the
+// hook process). The confirm chain is the only release path: with the env set
+// the command must still block pre-confirm and pass post-confirm.
+//
+// TestHook_HazardGuard_EnvBypassRemoved 钉死周复盘加固 (b)：FORGE_ALLOW_HAZARD=1
+// 不再放行高危命令——env 逃生已移除（agent 自我放行滥用 + 行内前缀形式 hook 进程
+// 拿不到 env 行为不一致）。confirm 链是唯一放行路径：env 在位时命令确认前仍
+// 被拦、confirm 登记后放行。
+func TestHook_HazardGuard_EnvBypassRemoved(t *testing.T) {
+	dir := freshProject(t)
+	const hazardous = "rm -rf ./important-data"
+	in := hookStdin(t, "sess-hazard-envbypass", "PreToolUse", "Bash", map[string]any{
+		"command": hazardous,
+	})
+
+	stdout, _, err := forgeHookEnv(t, dir, "hazard-guard", in, "FORGE_ALLOW_HAZARD=1")
+	if err == nil {
+		t.Fatalf("hazard-guard must block %q even with FORGE_ALLOW_HAZARD=1 (env escape removed), got exit 0. stdout:\n%s", hazardous, stdout)
+	}
+
+	// The confirm chain still releases with the env set (confirm is the only path).
+	//
+	// env 在位时 confirm 链仍放行（confirm 是唯一路径）。
+	confirm := exec.Command(forgeBin, "hazard", "confirm", hazardous)
+	confirm.Dir = dir
+	if out, cerr := confirm.CombinedOutput(); cerr != nil {
+		t.Fatalf("forge hazard confirm failed: %v\n%s", cerr, out)
+	}
+	stdout, _, err = forgeHookEnv(t, dir, "hazard-guard", in, "FORGE_ALLOW_HAZARD=1")
+	if err != nil {
+		t.Fatalf("hazard-guard should pass post-confirm (env set or not), got error. stdout:\n%s", stdout)
+	}
+}

@@ -37,7 +37,7 @@ func renderStatusWithEvidence(t *testing.T, det, claim int) string {
 	for i := 0; i < claim; i++ {
 		checklog.Record(dir, &checklog.Entry{Check: checklog.CheckTaskVerify, Passed: true, TaskRef: taskRef})
 	}
-	return captureStdout(t, func() { _ = renderReviewStatus(dir) })
+	return captureStdout(t, func() { _ = renderReviewStatus(dir, "") })
 }
 
 // TestRenderReviewStatus_WeakDirective pins the core of #2: on Weak evidence (ratio<0.5)

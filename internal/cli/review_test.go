@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/taskpipeline"
+	"github.com/spf13/cobra"
 )
 
 // TestRenderReviewPassBlindSpot (scheme 3 blind_spot trigger): `forge review pass` is a
@@ -72,5 +74,88 @@ func TestRenderReviewPassBlindSpot(t *testing.T) {
 	adv = renderReviewPassBlindSpot(checklog.EvidenceChain{Deterministic: 1, AgentClaim: 3, UsedEscapeHatch: true})
 	if !strings.HasPrefix(adv, "ADVISORY:") || !strings.Contains(adv, "占比低") || strings.Contains(adv, "本不弱") {
 		t.Errorf("ratio<0.5+escape 应回落占比低措辞（本不弱是假声明），得 %q", adv)
+	}
+}
+
+// TestRunReviewPassAt_ExplicitRef pins the `forge review pass --ref` path: an explicit
+// ref loads THAT task directly (bypassing active-task detection — the common case is
+// marking review for a task started in another session) and persists ReviewPassed.
+// A nonexistent ref must error out and NOT fall through to the branch-stamp branch —
+// silently stamping the branch when the agent meant a specific task would mark the
+// wrong thing.
+//
+// TestRunReviewPassAt_ExplicitRef 钉住 `forge review pass --ref` 路径：显式 ref
+// 直接加载该任务（绕过活跃任务检测——常见场景是给另一个 session 起的任务补标
+// review）并持久化 ReviewPassed。不存在的 ref 必须报错，且不得回落分支 stamp
+// 分支——agent 指明任务时静默标分支等于标错对象。
+func TestRunReviewPassAt_ExplicitRef(t *testing.T) {
+	dir := t.TempDir()
+	const ref = `feat/explicit-ref`
+	state := &taskpipeline.TaskState{TaskRef: ref, Branch: `feat/explicit-ref`}
+	if err := taskpipeline.SaveTaskState(dir, state); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runReviewPassAt(dir, ref); err != nil {
+		t.Fatalf("runReviewPassAt(--ref): %v", err)
+	}
+	reloaded, err := taskpipeline.LoadTaskState(dir, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reloaded.ReviewPassed {
+		t.Error("显式 ref 的任务应被标记 ReviewPassed=true")
+	}
+
+	// Nonexistent ref → hard error, no stamp fallback.
+	//
+	// 不存在的 ref → 硬报错，不回落 stamp
+	if err := runReviewPassAt(dir, `feat/nonexistent`); err == nil {
+		t.Fatal("ref 不存在应报错返回（不回落分支 stamp 分支）")
+	}
+}
+
+// TestReviewRefFlagsRegistered pins the --ref flag registration on all three review
+// subcommands (pass is the primary; gate/status share the same active-task detection
+// limitation and get the flag for consistency).
+//
+// TestReviewRefFlagsRegistered 钉住三个 review 子命令的 --ref flag 注册（pass 是
+// 主目标；gate/status 有同样的活跃任务检测局限，为一致性一并加）。
+func TestReviewRefFlagsRegistered(t *testing.T) {
+	for name, cmd := range map[string]*cobra.Command{
+		"pass":   reviewPassCmd,
+		"gate":   reviewGateCmd,
+		"status": reviewStatusCmd,
+	} {
+		if cmd.Flags().Lookup("ref") == nil {
+			t.Errorf("review %s 应注册 --ref flag", name)
+		}
+	}
+}
+
+// TestRenderReviewStatus_ExplicitRef pins the status side of the --ref contract:
+// explicit ref renders that task's status without any active-task context.
+//
+// TestRenderReviewStatus_ExplicitRef 钉住 status 侧的 --ref 契约：显式 ref 在无
+// 活跃任务上下文时也能渲染该任务的状态。
+func TestRenderReviewStatus_ExplicitRef(t *testing.T) {
+	dir := t.TempDir()
+	const ref = `feat/status-ref`
+	state := &taskpipeline.TaskState{TaskRef: ref, Branch: `feat/status-ref`}
+	if err := taskpipeline.SaveTaskState(dir, state); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureStdout(t, func() {
+		if err := renderReviewStatus(dir, ref); err != nil {
+			t.Fatalf("renderReviewStatus(--ref): %v", err)
+		}
+	})
+	if !strings.Contains(out, ref) {
+		t.Errorf("status 输出应包含任务 ref %q，got: %q", ref, out)
+	}
+
+	if err := renderReviewStatus(dir, `feat/nonexistent`); err == nil {
+		t.Fatal("status 的 ref 不存在应报错返回")
 	}
 }

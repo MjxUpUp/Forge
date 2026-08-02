@@ -322,6 +322,7 @@ func CheckAcceptanceFresh(root string, state *TaskState) (ok bool, reasons []str
 			Check:   checklog.CheckEscapeHatch,
 			Passed:  true,
 			Checked: true,
+			Level:   checklog.LevelWarn,
 			TaskRef: state.TaskRef,
 			Detail:  `escape-hatch: acceptance gate bypassed (per-task override or FORGE_ACCEPTANCE_GATE=disable)`,
 		})

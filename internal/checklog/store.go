@@ -56,6 +56,15 @@ func Record(root string, entry *Entry) error {
 	if entry.Source == "" {
 		entry.Source = SourceForCheck(entry.Check)
 	}
+	// Fallback inference for severity level: when the caller does not explicitly set
+	// Level, derive it from Passed + Detail prefixes (BLOCKED: / ADVISORY:), same
+	// pattern as the Source fallback above. Explicit Level always wins.
+	//
+	// 兜底推断级别：调用方未显式设置 Level 时，从 Passed + Detail 前缀
+	// （BLOCKED: / ADVISORY:）推导，与上方 Source 兜底同款模式。显式 Level 恒优先。
+	if entry.Level == "" {
+		entry.Level = DeriveLevel(entry)
+	}
 
 	path := filePath(root)
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {

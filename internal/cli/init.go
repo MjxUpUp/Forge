@@ -121,9 +121,15 @@ func runInitUserLevel(dir string, agents []agentbridge.AgentType, proto *protoco
 	}
 
 	// 4. Reference copies of the hook scripts → DataDir/hooks/ (runtime executes the
-	//    embedded content, never the disk copies).
+	//    embedded content, never the disk copies). Deploy stamp first — file-sentinel
+	//    exempts .forge/hooks/ drift only within its grace window (see autoSync).
 	//
 	// 4. hook 脚本的参考副本 → DataDir/hooks/（运行时执行嵌入内容，从不读磁盘副本）。
+	//    deploy stamp 先落盘——file-sentinel 只在 grace 窗口内豁免 .forge/hooks/ drift
+	//    （见 autoSync）。stamp 失败仅告警。
+	if err := hooks.WriteHookDeployStamp(forgedata.DataDirFor(dir), projectTagFor(dir)); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to write hook deploy stamp: %v\n", err)
+	}
 	if err := hooks.WriteHookTemplates(forgedata.DataDirFor(dir)); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to write hook copies: %v\n", err)
 	}
@@ -242,6 +248,16 @@ func runInitTeamMode(dir string, agents []agentbridge.AgentType, proto *protocol
 	forgeDir := filepath.Join(dir, ".forge")
 	if err := os.MkdirAll(filepath.Join(forgeDir, "hooks"), 0755); err != nil {
 		return fmt.Errorf("failed to create %s: %w", forgeDir, err)
+	}
+	// Deploy stamp first: this rewrites PROJECT-level .forge/hooks/*.sh — exactly the
+	// drift file-sentinel's manifest watches; the grace marker keeps a concurrent
+	// sentinel run from quarantining Forge's own write (2026-08-02 incident).
+	//
+	// deploy stamp 先落盘：此处重写的是项目级 .forge/hooks/*.sh——正是 file-sentinel
+	// manifest 盯防的 drift；grace marker 防止并发 sentinel 把 Forge 自身写入
+	// quarantine（2026-08-02 事故）。stamp 失败仅告警。
+	if err := hooks.WriteHookDeployStamp(forgedata.DataDirFor(dir), projectTagFor(dir)); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to write hook deploy stamp: %v\n", err)
 	}
 	if err := hooks.WriteHookTemplates(forgeDir); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to copy hooks: %v\n", err)

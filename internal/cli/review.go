@@ -35,6 +35,9 @@ func init() {
 	reviewCmd.AddCommand(reviewPassCmd)
 	reviewCmd.AddCommand(reviewGateCmd)
 	reviewCmd.AddCommand(reviewStatusCmd)
+	reviewPassCmd.Flags().String("ref", "", "指定任务引用（不依赖活跃任务检测；ref 不存在直接报错，不回落分支 stamp）")
+	reviewGateCmd.Flags().String("ref", "", "指定任务引用（不依赖活跃任务检测）")
+	reviewStatusCmd.Flags().String("ref", "", "指定任务引用（不依赖活跃任务检测）")
 }
 
 var reviewCmd = &cobra.Command{
@@ -94,11 +97,32 @@ func runReviewPass(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	explicitRef, _ := cmd.Flags().GetString("ref")
+	return runReviewPassAt(root, explicitRef)
+}
 
+// runReviewPassAt is the root/ref-injected core of `forge review pass` (mirroring
+// runTaskComplete's --ref pattern): an explicit ref loads that task directly and a
+// missing ref errors out — it must NOT fall through to the branch-stamp branch, which
+// would silently mark the wrong thing. No ref keeps the legacy active-task detection.
+//
+// runReviewPassAt 是 `forge review pass` 的 root/ref 注入核心（对齐 runTaskComplete
+// 的 --ref 模式）：显式 ref 直接加载该任务，ref 不存在直接报错——绝不回落分支
+// stamp 分支（那会静默标错对象）。不给 ref 保持旧的活跃任务检测。
+func runReviewPassAt(root, explicitRef string) error {
 	// task mode: write task state fields, consumed by the task-complete gate
 	//
 	// task 模式：写任务状态字段，由 task-complete 门禁消费
-	state, _ := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
+	var state *taskpipeline.TaskState
+	if explicitRef != "" {
+		var err error
+		state, err = taskpipeline.LoadTaskState(root, explicitRef)
+		if err != nil {
+			return err
+		}
+	} else {
+		state, _ = taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
+	}
 	if state != nil {
 		// Bind the code snapshot at review time (HEAD, fingerprint of source changes in the workdir relative to HEAD)—the task-complete gate uses this
 		// to enforce "re-review after post-review code changes". If head is unavailable → pass empty to skip the snapshot check (leaving only the ReviewPassed hard prerequisite);
@@ -206,7 +230,16 @@ func runReviewGate(cmd *cobra.Command, args []string) error {
 	//
 	// task 模式：审查由 task-complete 门禁强制（ReviewPassed 硬前置），Stop 不拦——
 	// 否则 task 流程里每次改代码都被拦，与门禁重复且扰人。
-	state, _ := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
+	explicitRef, _ := cmd.Flags().GetString("ref")
+	var state *taskpipeline.TaskState
+	if explicitRef != "" {
+		state, err = taskpipeline.LoadTaskState(root, explicitRef)
+		if err != nil {
+			return err
+		}
+	} else {
+		state, _ = taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
+	}
 	if state != nil {
 		passed := "未通过"
 		if state.ReviewPassed {
@@ -267,16 +300,30 @@ func runReviewStatus(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	return renderReviewStatus(root)
+	explicitRef, _ := cmd.Flags().GetString("ref")
+	return renderReviewStatus(root, explicitRef)
 }
 
 // renderReviewStatus is the root-injected core of `forge review status`, extracted separately
 // so that evidence-strength rendering in task mode can be unit-tested on a temporary project, without depending on findProjectRoot / cwd.
+// An explicit ref loads that task directly (missing ref = error, same contract as review pass --ref);
+// empty ref keeps the legacy active-task detection.
 //
 // renderReviewStatus 是 `forge review status` 的 root 注入核心，独立出来
 // 让 task 模式的证据强度渲染可在临时项目上单测，不依赖 findProjectRoot / cwd。
-func renderReviewStatus(root string) error {
-	state, _ := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
+// 显式 ref 直接加载该任务（ref 不存在即报错，与 review pass --ref 同契约）；
+// 空 ref 保持旧的活跃任务检测。
+func renderReviewStatus(root, explicitRef string) error {
+	var state *taskpipeline.TaskState
+	if explicitRef != "" {
+		var err error
+		state, err = taskpipeline.LoadTaskState(root, explicitRef)
+		if err != nil {
+			return err
+		}
+	} else {
+		state, _ = taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
+	}
 	if state != nil {
 		fmt.Println("Mode:         task")
 		fmt.Printf("Task:         %s\n", state.TaskRef)

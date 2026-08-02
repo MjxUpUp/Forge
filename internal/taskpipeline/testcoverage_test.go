@@ -765,3 +765,35 @@ func TestTaskCompleteTestCoverageHardGate_PartialCoverageAdvisoryPass(t *testing
 		t.Fatalf("部分覆盖（缺测 1 个 < 阈值）应 advisory 放行——实现与文档语义（无配对测试的源文件数 ≥ 阈值才硬阻断）须一致, got: %v", err)
 	}
 }
+
+// TestIsSourceFile_VendorExcluded pins the vendor baseline exclusion
+// (weekly-hardening 4c): vendored dependencies are third-party baselines, not
+// project source the task must pair tests with — a vendor update otherwise
+// floods "missing tests" (cooking project: 986 files).
+//
+// TestIsSourceFile_VendorExcluded 钉死 vendor 基线排除（周复盘加固 4c）：
+// vendor 依赖是第三方基线，不是本任务要配对测试的项目源码——一次 vendor
+// 更新会把 "missing tests" 打爆（cooking 项目报 986 文件）。
+func TestIsSourceFile_VendorExcluded(t *testing.T) {
+	vendor := []string{
+		"vendor/github.com/foo/bar/baz.go",
+		"sub/vendor/mod/x.ts",
+		"vendor/golang.org/x/sys/cpu.go",
+	}
+	for _, p := range vendor {
+		if isSourceFile(p) {
+			t.Errorf("vendor path %q must NOT count as source (third-party baseline)", p)
+		}
+	}
+	nonVendor := []string{
+		"internal/foo/bar.go",
+		"vendorutil/x.go",   // "vendor" substring but no vendor/ segment
+		"src/vendored/x.go", // vendored ≠ vendor/
+		"internal/vendorx/y.go",
+	}
+	for _, p := range nonVendor {
+		if !isSourceFile(p) {
+			t.Errorf("non-vendor path %q must count as source", p)
+		}
+	}
+}
