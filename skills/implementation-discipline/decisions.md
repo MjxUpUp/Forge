@@ -36,3 +36,37 @@ composes 标量逗号写法改 flow list [a, b]，对齐 CONVENTIONS §4
 ### Evidence
 
 grep 确认全库 composes 已无标量残留；forge skills validate 50/50
+
+## [d-18c7e5a6572b4e90-42ba6935] accept
+
+- **Skill**: implementation-discipline
+- **DecidedAt**: 2026-08-02T05:24:39Z
+
+### Diagnosis
+
+skills 库价值审计 13 项改进落地
+
+### Revision
+
+改名符号 grep 规则改指针(D4)
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md 逐项价值审计
+
+## [d-18c7e620a496fc68-87ddc41d] accept
+
+- **Skill**: implementation-discipline
+- **DecidedAt**: 2026-08-02T05:33:25Z
+
+### Diagnosis
+
+项10 description 审计+触发回归
+
+### Revision
+
+description 三段式合格未改动;新建 evals/evals.json(5正+4负)
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md

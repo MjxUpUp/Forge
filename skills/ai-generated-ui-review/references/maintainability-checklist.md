@@ -1,16 +1,15 @@
-# AI 生成 UI 可维护性评估清单（6 类）
+# AI 生成 UI 审查清单（4 个独有块 + 通用维度指针）
 
-本文件是 `ai-generated-ui-review` SKILL.md 步骤 2 加载的完整清单。6 类 × 严重性分级，上线前必查。
+本文件是 `ai-generated-ui-review` SKILL.md 步骤 2 加载的完整清单。通用维度（DRY/设计系统/a11y）不重复——各一行指针到 frontend-code-review / code-review-gate；本文件的正文是 4 个 AI 生成独有块 × 严重性分级，上线前必查。
 
 ## 目录
 
 - [严重性定义](#严重性定义)
-- [类 1：DRY 违反（AI 生成的头号问题）](#类-1dry-违反ai-生成的头号问题)
-- [类 2：安全债（最高优先，生产化必查）](#类-2安全债最高优先生产化必查)
-- [类 3：设计系统脱节](#类-3设计系统脱节)
-- [类 4：a11y 缺失（AI 生成普遍缺）](#类-4a11y-缺失ai-生成普遍缺)
-- [类 5：shadcn registry 供应链风险](#类-5shadcn-registry-供应链风险)
-- [类 6：可维护性税量化（纵向指标）](#类-6可维护性税量化纵向指标)
+- [通用维度指针（不重复查）](#通用维度指针不重复查)
+- [块 1：安全债（最高优先，生产化必查）](#块-1安全债最高优先生产化必查)
+- [块 2：shadcn registry 供应链风险](#块-2shadcn-registry-供应链风险)
+- [块 3：可维护性税量化（纵向指标）](#块-3可维护性税量化纵向指标)
+- [块 4：来源风险（vibe coding 定级）](#块-4来源风险vibe-coding-定级)
 - [判定矩阵](#判定矩阵)
 - [审查心态（Addy Osmani 定调）](#审查心态addy-osmani-定调)
 
@@ -24,28 +23,19 @@
 
 ---
 
-## 类 1：DRY 违反（AI 生成的头号问题）
+## 通用维度指针（不重复查）
 
-**依据**：Lovable 官方文档自认 "do not reuse shared components unless clearly scoped"；arXiv 2603.28592：89.3% code smell 主因。
-
-### Block
-- **3+ 近似组件各自实现**：ButtonA/ButtonB/ButtonC、UserCard1/UserCard2 各写各的 → 必须抽公共组件
-- **整段逻辑 copy-paste ≥3 处**：未抽 hook/工具函数
-
-### Fix
-- **inline 样式/逻辑重复**：相同样式块或逻辑块出现 2 次以上
-- **同一图标/常量硬编码多处**：未集中管理
-- **props 传递链 >3 层**：prop drilling 该用 Context/store
-
-### 量化指标
-- 重复率 > 15% → 警告（用 jscpd/duplicate-code-detection 检测）
-- 重复率 > 25% → block
+| 维度 | 为什么对 AI 生成代码尤其重要 | 完整清单在哪 |
+|---|---|---|
+| **DRY 违反** | AI 生成头号问题：Lovable 官方文档自认 "do not reuse shared components unless clearly scoped"；[arXiv 2603.28592](https://arxiv.org/abs/2603.28592) 89.3% code smell 主因是重复 | code-review-gate 轨道 B「可维护性」；量化阈值用本文件块 3（重复率 >15% 警告 / >25% block） |
+| **设计系统脱节** | AI 生成倾向硬编码色值/间距而非走 token、自造组件而非复用项目组件 | frontend-code-review 维度 4「Design Token 一致性」；修 token 抽取用 design-system-workflow |
+| **a11y 缺失** | AI 生成 UI 普遍缺 a11y（`<div onClick>`、无 reduced-motion、焦点未管理） | frontend-code-review 维度 1「a11y」 |
 
 ---
 
-## 类 2：安全债（最高优先，生产化必查）
+## 块 1：安全债（最高优先，生产化必查）
 
-**依据**：Georgia Tech Vibe Security Radar CVE 6→74；OX.Security 62% 有漏洞；Escape.tech 1400 应用 2000+ 严重漏洞。
+**依据**：[Georgia Tech Vibe Security Radar](https://news.research.gatech.edu/2026/04/13/bad-vibes-ai-generated-code-vulnerable-researchers-warn) CVE 累计 74 个（2026-03 单月 35 个）；[OX.Security](https://www.ox.security/blog/vibe-coding-security) 62% 有漏洞；[Escape.tech](https://escape.tech/blog/methodology-how-we-discovered-vulnerabilities-apps-built-with-vibe-coding/) 1400 应用 2000+ 严重漏洞。
 
 ### Block（命中任一不可合并）
 - **API key / 密钥前端暴露**：
@@ -54,13 +44,13 @@
   - `.env` 进 client 构建
 - **数据库无认证**：client 直连 DB、API 无 auth 中间件
 - **SQL 拼接**：未参数化查询、未用 ORM
-- **BOLA（越权）**：用户能访问他人资源（Lovable 曾 BOLA 暴露 48 天）
+- **BOLA（越权）**：用户能访问他人资源（[Lovable 曾 BOLA 暴露 48 天](https://thenextweb.com/news/lovable-vibe-coding-security-crisis-exposed)）
 - **无输入校验**：未用 zod/valibot 校验请求体
 - **CORS 全开 + 凭证**：`Access-Control-Allow-Origin: *` 配合 `credentials: include`
 - **命令注入**：未 sanitizing 的输入拼进 exec/spawn
 
 ### Fix
-- ** secrets 在日志**：console.log(req.body) 泄露密码/token
+- **secrets 在日志**：console.log(req.body) 泄露密码/token
 - **弱加密/哈希**：MD5 存密码、自造加密
 
 ### 检测命令
@@ -73,38 +63,7 @@ grep -r 'NEXT_PUBLIC_' src/ | grep -v '\.d\.ts'
 
 ---
 
-## 类 3：设计系统脱节
-
-AI 生成倾向硬编码而非走 token。
-
-### Fix
-- **硬编码色值**：`#5e6ad2` → `var(--color-brand-primary)`
-- **硬编码间距/圆角/阴影**：未走 design token
-- **未复用项目组件**：自己造 Button 而非用 `@/components/ui/button`
-- **字体/圆角/阴影风格不一致**：与项目 design language 偏离
-
-### Suggest
-- **图标库混用**：同时引入 lucide/heroicons/feather 多套
-
----
-
-## 类 4：a11y 缺失（AI 生成普遍缺）
-
-### Block
-- **`<div onClick>` 处理交互**：无键盘可达性
-- **动效无 reduced-motion**：违反 WCAG 2.2 SC 2.3.3
-- **modal 焦点未管理**：打开未移入、关闭未归还、未 trap focus
-
-### Fix
-- **缺 ARIA/键盘导航**
-- **对比度不足**
-- **表单无 label**
-
-→ 详细 a11y 清单用 `frontend-code-review` 维度 1。
-
----
-
-## 类 5：shadcn registry 供应链风险
+## 块 2：shadcn registry 供应链风险
 
 ### Block
 - **非可信 registry 来源**：RCE 注入攻击面（DEV.to "Risk of Registry Injection Attacks with shadcn"）
@@ -119,7 +78,7 @@ AI 生成倾向硬编码而非走 token。
 
 ---
 
-## 类 6：可维护性税量化（纵向指标）
+## 块 3：可维护性税量化（纵向指标）
 
 ### 量化检测
 - **重复率**：jscpd / duplicate-code-detection
@@ -130,7 +89,7 @@ AI 生成倾向硬编码而非走 token。
   - Framer Motion 125KB 仅用 fade-in → suggest 换 CSS
   - Spline runtime 544KB 不可 tree-shake → 评估必要性
   - moment.js → 换 dayjs/date-fns
-- **存活技术债**：arXiv 22.7% AI 技术债存活
+- **存活技术债**：[arXiv 2603.28592](https://arxiv.org/abs/2603.28592) 22.7% AI 技术债存活
   - 标记的 TODO/FIXME 必须修，不能"先留着"
 
 ### 检测命令
@@ -145,6 +104,15 @@ ANALYZE=true npm run build
 
 ---
 
+## 块 4：来源风险（vibe coding 定级）
+
+- **无 spec.md = vibe coding**：风险翻倍——所有发现升一级看待，判定矩阵按"无 spec"行执行
+- **生成工具可确认时按已知问题模式加权**（v0/Bolt/Lovable/Replit/Cursor 各有高发模式）；确认不到不阻断审查，只是失去加权信号
+- **通过功能测试 ≠ 适合生产**（[arXiv 2508.14727](https://arxiv.org/abs/2508.14727)）：必跑 SAST + 本清单逐项查
+- **把 AI 产出当"成品"而非"起点"** 本身即是 Red Flag
+
+---
+
 ## 判定矩阵
 
 | 条件 | 判定 |
@@ -152,7 +120,7 @@ ANALYZE=true npm run build
 | 无 spec + 多 block | ❌ 重写（走 ai-ui-generation-workflow 重新生成） |
 | 有 spec + block 全修 | ✅ 可合并 |
 | 有 spec + fix 多 | ⚠️ 需改造后合并（走 ai-ui-generation-workflow 阶段 3 生产化 5 步） |
-| DRY 违反 >25% | ❌ 重构后再审 |
+| 重复率 >25% | ❌ 重构后再审 |
 | 任一安全 block | ❌ 不可合并，立即修 |
 
 ---
@@ -161,6 +129,6 @@ ANALYZE=true npm run build
 
 > "treat every AI-generated snippet as if it came from a junior developer."
 
-- 通过功能测试 ≠ 适合生产（arXiv 2508.14727）
+- 通过功能测试 ≠ 适合生产（[arXiv 2508.14727](https://arxiv.org/abs/2508.14727)）
 - AI 生成 = 起点，不是终点
 - 不审查 = 制造永久技术债（22.7% 存活率）

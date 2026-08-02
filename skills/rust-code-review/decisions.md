@@ -40,3 +40,37 @@ SKIP 改指 canonical 存在的 code-review-gate + fmt/clippy 直跑；t.Fatal�
 ### Evidence
 
 skills/ 内无内置 code-review 概念；本 skill 面向 Rust 代码审查，Go 术语与上下文语言不一致
+
+## [d-18c7e5a6415012e0-499b7527] accept
+
+- **Skill**: rust-code-review
+- **DecidedAt**: 2026-08-02T05:24:39Z
+
+### Diagnosis
+
+skills 库价值审计 13 项改进落地
+
+### Revision
+
+删 references 外部项目模板残留(EventBus/Ulid)；error/warning/info 映射为 block/fix/suggest、删 N/10 评分；触发词加强；塔借口错别字修
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md 逐项价值审计
+
+## [d-18c7e620b2f5de28-314ceba9] accept
+
+- **Skill**: rust-code-review
+- **DecidedAt**: 2026-08-02T05:33:25Z
+
+### Diagnosis
+
+项10 description 审计+触发回归
+
+### Revision
+
+description 三段式合格未改动;新建 evals/evals.json(5正+4负)
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md

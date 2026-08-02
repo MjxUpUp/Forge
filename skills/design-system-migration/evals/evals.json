@@ -1,0 +1,14 @@
+{
+  "trigger_cases": [
+    { "query": "把旧色板迁移到新的 design token", "should_trigger": true },
+    { "query": "我们要全套重做 UI 统一风格", "should_trigger": true },
+    { "query": "把散落的 class 收敛成一个组件库", "should_trigger": true },
+    { "query": "现有设计系统要换主题色板", "should_trigger": true },
+    { "query": "给组件库加多套正交主题", "should_trigger": true },
+    { "query": "从零开始建 design token pipeline", "should_trigger": false },
+    { "query": "就帮我选个组件库用用", "should_trigger": false },
+    { "query": "帮我写个新按钮组件", "should_trigger": false },
+    { "query": "Figma 的 token 怎么同步到代码里", "should_trigger": false },
+    { "query": "这个页面就微调下间距", "should_trigger": false }
+  ]
+}

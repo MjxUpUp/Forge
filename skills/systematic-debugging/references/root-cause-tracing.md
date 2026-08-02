@@ -40,7 +40,7 @@
 
 ## 真实案例形状
 
-- **"端口导致限流失效"**：限流 key 含 RemoteAddr:port，httptest 固定 RemoteAddr 测不出来 → 追到 key 生成处，发现生产环境每次请求端口不同导致 key 不命中
+- **"端口导致限流失效"**：案例唯一真相源：integration-test-architecture `references/test-architecture-example.md`「坑 1: 限流器 key 包含端口」，此处不复制——形态：追到 key 生成处才发现生产环境每次请求端口不同导致 key 不命中
 - **"配置没生效"**：env → workflow → build script → runtime 四层，逐层打印 env，发现 workflow→build 之间 env 没透传
 - **"随机失败"**：坏值是竞态产生的共享状态 → 追到共享状态的读写处，发现无锁
 

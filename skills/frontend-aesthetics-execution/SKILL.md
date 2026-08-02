@@ -13,7 +13,7 @@ metadata:
 
 ## 铁律：动效与风格必须过 a11y 门
 
-**任何动效/风格调整必须过 `prefers-reduced-motion`（WCAG 2.2 SC 2.3.3）。** 这不是建议是法律红线（欧盟 EAA 2025-06 强制）。前端审美不能以牺牲无障碍为代价。详见本 skill 阶段 4 + frontend-code-review 维度 1。
+**任何动效/风格调整必须过 `prefers-reduced-motion`（WCAG 2.2 SC 2.3.3）。** 这不是建议是法律红线（欧盟 EAA 2025-06 强制）。前端审美不能以牺牲无障碍为代价。本 skill 阶段 4 是 reduced-motion/WCAG 2.3.3 实现模板的唯一权威版本——其他 skill 引用不复制；审查侧见 frontend-code-review 维度 1。
 
 ## 阶段 0 — 确认风格意图（Inversion）
 
@@ -28,149 +28,41 @@ metadata:
 
 ## 阶段 1 — 6 种风格 Token 模板（核心，可直接 copy）
 
-每种风格给：定位 / surface ladder / 阴影 / 字体 / 适用场景 / 陷阱。**token 值来自调研实测，非编造。**
+每种风格给：定位 / surface ladder / 阴影 / 字体 / 适用场景 / 陷阱。**token 值来自调研实测，非编造。** 完整 CSS token 模板（可直接 copy，含全部注释细节）见 [references/style-templates.md](references/style-templates.md)；本节留风格定位与适用/陷阱决策信息。
 
 ### 风格 A — 暗色精致 SaaS（Linear/Vercel/Raycast 风）
 
 **定位**：开发者工具/B2B SaaS 的安全基线。2026 调研发现四家在此结构层收敛，是"做得不像 AI"的最稳选择。
-
-```css
-@theme {
-  /* Surface ladder — near-black base + 灰阶分层 */
-  --color-canvas: oklch(8% 0 0);          /* #08090a 级，最暗 */
-  --color-surface: oklch(13% 0 0);        /* 卡/面板 */
-  --color-surface-elevated: oklch(18% 0 0);
-  --color-ink: oklch(98% 0 0);            /* 最亮 / CTA 白 */
-  --color-ink-secondary: oklch(65% 0 0);  /* 文字 4 档灰阶 */
-  --color-ink-tertiary: oklch(45% 0 0);
-  --color-brand-accent: oklch(62% 0.19 264);  /* indigo，Linear #5e6ad2 */
-
-  /* 阴影哲学 — 二选一 */
-  /* A1. Linear/Raycast 派：无装饰阴影，靠 hairline border */
-  --border-hairline: oklch(20% 0 0);
-  /* A2. Vercel 派：shadow-as-border（零偏移零模糊 1px spread）*/
-  --shadow-border: 0 0 0 1px rgba(0,0,0,0.08);
-  --shadow-elevation: 0 2px 2px rgba(0,0,0,0.04);
-
-  /* 字体 — Inter 系 + 负字距（Vercel 最激进 -2.88px）*/
-  --font-sans: 'Inter Variable', system-ui, sans-serif;
-  --font-mono: 'Berkeley Mono', ui-monospace, monospace;
-  --tracking-display: -0.04em;   /* hero 大字负字距 */
-  --tracking-body: -0.011em;
-
-  /* 圆角 — 6-10px 收敛 */
-  --radius-card: 8px;
-  --radius-pill: 9999px;
-}
-```
-
 **适用**：开发者工具、B2B SaaS、命令行式高密度 UI。
 **陷阱**：① 这套已是"新同质化"——四家长得像，必须在 brand accent / 内容 / 动效层差异化才不沦为 AI slop；② dark-first 是工效学选择（NN/g：long session/frequent/low-light/little media 四条件命中），非纯审美。
 
 ### 风格 B — Apple Liquid Glass（WWDC 2025/2026）
 
 **定位**：跨平台统一语言，web 端 glassmorphism 2.0 的合法依据。Apple WWDC 2026 自我修订 reduced default transparency + 推出 slider——承认默认过激。
-
-```css
-@theme {
-  --color-bg: oklch(95% 0.02 250);       /* 浅色底 */
-  --color-glass-tint: oklch(100% 0 0 / 0.6);  /* 半透明玻璃 */
-  --blur-glass: 24px saturate(180%);
-  --border-glass: 1px solid rgba(255,255,255,0.3);
-  --shadow-glass: 0 8px 32px rgba(0,0,0,0.12);
-}
-.glass-panel {
-  background: var(--color-glass-tint);
-  backdrop-filter: var(--blur-glass);
-  border: var(--border-glass);
-  box-shadow: var(--shadow-glass);
-}
-```
-
 **适用**：跨平台应用、需要"系统融合感"的桌面/Web 应用。
 **陷阱**：① `backdrop-filter` 在 sRGB 设备 + 高对比度模式下可能冲突——必须测对比度；② WWDC 2026 的 reduced transparency 是官方信号，别把透明度拉满；③ 性能成本高，低端设备 fallback 静态背景。
 
 ### 风格 C — Neo-brutalism
 
 **定位**：raw / high-contrast / visible grids / 厚边框 / 生阴影。Figma Trend 12。**品牌/机构站工具，B2B SaaS 主产品慎用。**
-
-```css
-@theme {
-  --color-bg: #fef3c7;            /* 高饱和黄底 */
-  --color-ink: #000000;
-  --color-accent: #ef4444;        /* 高对比红 */
-  --border-brutal: 3px solid #000;
-  --shadow-brutal: 6px 6px 0 #000; /* 硬阴影，无模糊 */
-  --radius-brutal: 0;             /* 直角或极小圆角 */
-}
-```
-
 **适用**：创意机构站、个人作品集、品牌营销页、实验性产品。
 **陷阱**：① storifyagency 原话 "high-contrast colors and grid structures that feel more like controlled chaos... It's not for the faint of heart"——企业级产品不用；② 厚黑边 + 硬阴影对 a11y 对比度友好（高对比），但动效要克制否则视觉过载。
 
 ### 风格 D — Bento Grid
 
 **定位**：Apple 产品宣传页带火的模块化布局。信息密度高、模块独立、视觉有序。
-
-```css
-@theme {
-  --grid-gap: 12px;
-  --grid-col-min: 280px;
-  --radius-card: 16px;       /* Apple 风，大圆角 */
-  --shadow-card: 0 1px 3px rgba(0,0,0,0.1);
-}
-.bento {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(var(--grid-col-min), 1fr));
-  gap: var(--grid-gap);
-  grid-auto-rows: minmax(180px, auto);
-}
-.bento > * { border-radius: var(--radius-card); }
-```
-
 **适用**：产品宣传页、功能展示、dashboard 卡片墙。
 **陷阱**：① 别为 Bento 而 Bento——模块内容不独立时强行切格子反而割裂；② 响应式断点要测，移动端通常退化为单列。
 
 ### 风格 E — Dopamine / 高饱和
 
 **定位**：高饱和、情绪化、抓眼球。Figma Trend 3。**2026 下半场出现疲劳反信号**（jasminedirectory："by late 2026, dopamine color fatigue"）。
-
-```css
-@theme {
-  --color-dopamine-1: oklch(75% 0.28 0);     /* 饱和橙 */
-  --color-dopamine-2: oklch(70% 0.25 320);   /* 饱和紫 */
-  --color-dopamine-3: oklch(80% 0.22 150);   /* 饱和绿 */
-  /* 搭配大量留白 + 一个主饱和色，避免视觉过载 */
-}
-```
-
 **适用**：消费类品牌、活动营销页、情绪化产品（健身/社交）。
 **陷阱**：① 疲劳信号已现——用 1 个主饱和色 + 中性辅色，别全饱和；② 对比度要测，高饱和色对白字常不达 4.5:1。
 
 ### 风格 F — Human Touch / Anti-AI Crafting（2026 元叙事）
 
 **定位**：反 AI 同质化的系统化手法。designmagazine 称 "$50M Handmade Rebellion"。**核心：把 imperfection 编码进 design token，而非贴 scribble overlay 装饰。**
-
-```css
-@theme {
-  /* A. 颜色 — 避开 AI safe palette（muted 蓝灰 + 单 accent）*/
-  --color-found-moss: oklch(58% 0.08 140);   /* 带情感命名，slightly too warm */
-  --color-weathered-paper: oklch(92% 0.02 80);
-
-  /* B. 字体 — variable font 非整数 axis（反算法）*/
-  --font-display-handcrafted: 'Fraunces', serif;
-  --wght-display: 510;   /* 非 500/600 整数，Linear 做法 */
-  --opsz-hero: 64;       /* opsz 锚定 px，字形真的在变 */
-
-  /* C. texture 作为 token（不是每页贴）*/
-  --texture-grain-opacity: 0.04;
-  --rotate-handplaced: -0.6deg;   /* 略微歪，可控变量 */
-
-  /* D. font-feature 开 ss03（Raycast 全站开）*/
-  --font-feature-display: "ss03", "liga";
-}
-```
-
 **适用**：品牌站、agency、奢侈品、需要差异化的产品。
 **陷阱**：① 低段位做法（贴 scribble overlay）无法 scale 且仍是"AI 打底 + 人补丁"；② 高段位（token 编码 imperfection）才系统化——判定标准：手工痕迹能在 token 文件被命名并跨页复用。
 
@@ -178,37 +70,7 @@ metadata:
 
 阶段 1 的 6 种模板是抽象 **pattern**。当用户**点名具体品牌**（"做 Linear 风""做成 Stripe 那样"）时，先取该品牌的真实 DESIGN.md 作为精确 token 来源，再套对应模板——pattern 管结构（surface ladder / 阴影哲学 / 字距哲学），instance 管精确色值 / 字距 / 圆角。
 
-**品牌资产库**：VoltAgent/awesome-design-md 仓库的 `design-md/<slug>/DESIGN.md`（74 个真实品牌，`git pull` 更新——引用路径而非搬文件）。发现方式：环境变量 `DESIGN_MD_ROOT` 指向仓库克隆根，或查找当前工作区/常用代码目录下的 `awesome-design-md`；未克隆时先 `git clone https://github.com/VoltAgent/awesome-design-md`；仓库不可用或品牌未命中时 fallback 到阶段 1 的 6 种通用风格模板。
-
-**用法**：
-1. 用户点名品牌 → 列 `design-md/` 目录拿 **slug**（注意带点 / 连字符的目录名），或查 [references/brand-index.md](references/brand-index.md) → `Read` 该 `DESIGN.md`
-2. 从其 front matter 取 `colors`（hex）/ `typography`（px + weight + letterSpacing）/ `rounded` / `spacing` / `components` 的精确值
-3. 套阶段 1 对应模板的**结构**，用 DESIGN.md 的精确值替换模板占位值
-4. hex → OKLCH 转换走 **design-system-workflow**（见下方 gap）
-
-### 6 模板 ← 代表品牌
-
-| 阶段 1 模板 | 代表品牌（slug） |
-|---|---|
-| A 暗色精致 SaaS | `linear.app` · `vercel` · `raycast` · `cursor` · `superhuman` · `warp` · `resend` |
-| B Liquid Glass | `apple` |
-| C Neo-brutalism | `dell-1996` · `nintendo-2001` |
-| D Bento 模块化 | `meta` · `playstation` |
-| E Dopamine 高饱和 | `spotify` · `binance` · `figma` · `slack` |
-| F Human Touch 编辑暖色 | `notion` · `stripe` · `airbnb` · `cal` · `mastercard` |
-
-> 未命中 6 模板的品牌（`ferrari`/`bugatti`/`lamborghini` 极致黑金汽车、`wired`/`theverge` 编辑媒体、`ibm` Carbon 等）直接 `Read` DESIGN.md 取值，**不强行套模板**。
-
-### 完整品牌索引
-
-74 个品牌按领域的完整 slug 索引已下沉到 [references/brand-index.md](references/brand-index.md)；也可以直接列 `design-md/` 目录拿 slug（slug 即目录名）。
-
-### 格式 gap（DESIGN.md 不能直接当 token 消费）
-
-- DESIGN.md front matter 是 **hex + 自定义 YAML**（`colors`/`typography`/`rounded`/`spacing`/`components`，用 `{colors.primary}` 引用），**不是 DTCG tokens.json**——不能直接喂 Style Dictionary
-- hex → **OKLCH** 转换、YAML → DTCG `$type/$value` 重组走 **design-system-workflow** 阶段 3
-- `preview.html` / `preview-dark.html`：README 声称每个站点有，**仓库实际不存在**（只在 getdesign.md 网站）——只能用 DESIGN.md 文本，别声称能看预览
-- 字体多为品牌私有（Linear Display / Stripe Sans / Apple SF Pro）——DESIGN.md 自带 fallback 与开源替代（Inter / Geist），用替代值即可
+品牌资产库（VoltAgent/awesome-design-md，74 个真实品牌）的发现方式与 fallback、用法步骤、完整 slug 索引、6 模板 ← 代表品牌映射、DESIGN.md 格式 gap（hex + 自定义 YAML，不能直接当 DTCG token 消费）——全部见 [references/brand-index.md](references/brand-index.md)。
 
 ## 阶段 2 — 风格迁移工作流（Pipeline）
 
@@ -226,30 +88,19 @@ metadata:
 - [ ] 8. a11y 复测（对比度/reduced-motion）
 ```
 
-**门控**：步骤 8 不过不算完成。OKLCH 主题切换会因 gamut mapping 静默改变对比度，必须在真实设备复测。
+**门控**：步骤 8 不过不算完成。OKLCH 主题切换会因 gamut mapping 静默改变对比度（警告全文唯一真相源：design-system-workflow「阶段 3 — OKLCH 双主题切换」节），必须在真实设备复测。
 
 ## 阶段 3 — 动效与微交互（"高级感"的关键）
 
-### 3.1 动效曲线 token（四家都未公开，需自建）
+### 3.1 动效曲线 token 与微交互范式
 
-2026 调研发现四家 design token 文件**均无 motion/easing token**——这是 token 体系的结构性缺口。建议自建：
-
-```css
-@theme {
-  /* 进入动画 — ease-out-expo（Framer Motion 默认）*/
-  --ease-enter: cubic-bezier(0.16, 1, 0.3, 1);
-  /* 状态切换 — spring 而非 keyframe tween */
-  --spring-stiffness: 300;
-  --spring-damping: 30;
-  /* hover/微交互 — 快速 */
-  --duration-micro: 0.15s;
-  --ease-micro: cubic-bezier(0.4, 0, 0.2, 1);
-}
-```
+2026 调研发现四家 design token 文件**均无 motion/easing token**——这是 token 体系的结构性缺口，需自建。自建 token 的 CSS 模板、四家收敛的微交互参数（hover/focus/状态切换/页面转场）见 [references/motion.md](references/motion.md)。
 
 **反 AI 信号**：① 避开 `linear` 和默认 `ease`（最算法）；② spring 给"质量感"；③ 微交互 duration 0.15-0.2s。
 
 ### 3.2 动效工具选型决策（调研实测 bundle）
+
+**本节为动效库选型表的唯一权威版本——其他 skill（frontend-stack-selection 等）引用本节，不复制。**
 
 | 你要做的是 | 选 | 理由 |
 |---|---|---|
@@ -264,14 +115,9 @@ metadata:
 
 **反直觉**：Spline runtime.js 实测 544KB gzip **比 three.js 全量还重**（不可 tree-shake，导出含完整 runtime）。"用 Spline 省事"在性能预算紧的页面是反向选择。
 
-### 3.3 微交互范式（四家收敛规律）
-
-- **hover**：duration 0.15s，背景色微变（surface 升一档）或 scale 1.02
-- **focus**：ring（`box-shadow: 0 0 0 2px var(--color-ring)`），不用 outline
-- **状态切换**：spring（stiffness 300/damping 30），不用 tween
-- **页面转场**：duration 0.3s ease-out-expo，淡入 + 轻微位移（y: 8px → 0）
-
 ## 阶段 4 — 动效 a11y 门（WCAG 2.2 SC 2.3.3 强制）
+
+**本节为 reduced-motion/WCAG 2.3.3 实现模板的唯一权威版本——其他 skill 引用本节，不复制。**
 
 **universal reset（pope.tech 推荐生产级写法）：**
 

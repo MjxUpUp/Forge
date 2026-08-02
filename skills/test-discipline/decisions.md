@@ -19,3 +19,37 @@ metadata.triggers 加 [{"event":"PostToolUse","match":"Bash","when":"test_comman
 ### Evidence
 
 dogfood-findings-2026-07-09(testing×17 全低分, 质量 skill 0 显式触发) + plan flickering-bubbling-bonbon.md(triggers schema 表)
+
+## [d-18c7e5a664804618-ced0c98d] accept
+
+- **Skill**: test-discipline
+- **DecidedAt**: 2026-08-02T05:24:40Z
+
+### Diagnosis
+
+skills 库价值审计 13 项改进落地
+
+### Revision
+
+trigger 让渡 test_command_failed 给 systematic-debugging、改 commit 前守卫场景；httptest RemoteAddr 案例两处改指针(含 anti-patterns.md 第5处)
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md 逐项价值审计
+
+## [d-18c7e6229ed702a8-6cd7af6e] accept
+
+- **Skill**: test-discipline
+- **DecidedAt**: 2026-08-02T05:33:33Z
+
+### Diagnosis
+
+项10 description 审计+触发回归
+
+### Revision
+
+description 审计合格未改动 + 新建 evals.json 10 条
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md

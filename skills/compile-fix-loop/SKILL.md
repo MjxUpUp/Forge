@@ -1,6 +1,6 @@
 ---
 name: compile-fix-loop
-description: "编译报错修复闭环方法论。Use when: 用户粘贴编译报错时、修复编译错误后又出现新错误时、同一类编译错误反复出现时、用户说\"检查下编译报错\"\"看下这个报错\"\"检查下新的编译报错\"\"提交前先编译检查\"时、Go/Rust/TS 任一语言编译失败时。SKIP: 运行时逻辑bug（不是编译错误）、测试失败（用 test-discipline）、纯代码审查。"
+description: "编译报错修复闭环方法论。Use when: 用户粘贴编译报错时、修复编译错误后又出现新错误时、同一类编译错误反复出现时、用户说\"检查下编译报错\"\"看下这个报错\"\"检查下新的编译报错\"\"提交前先编译检查\"时、Go/Rust/TS 任一语言编译失败时。SKIP: 运行时逻辑bug（不是编译错误）、测试运行失败（用 systematic-debugging 找根因，断言本身写错才转 test-discipline）、纯代码审查。"
 metadata:
   pattern: pipeline
   domain: development
@@ -39,6 +39,8 @@ metadata:
 - 理解报错类型：语法错误 / 类型错误 / 借用检查 / 生命周期 / 链接错误 / 依赖冲突 / **未定义符号** / **模块缺失** / **rune 字面量**
 - 定位到具体文件和行号
 - **在脑中模拟为什么这个代码会导致这个错误**，不要直接改
+
+**分界**：构建失败/链接错误（编译器、链接器直接报的错）归本 skill；测试运行失败（编译通过但测试挂了）归 systematic-debugging；构建系统/CI 编排本身失败（脚本错误、env 缺失、产物找不到）也走 systematic-debugging 收集证据。
 
 ### Step 2: 检查是否同类错误
 
@@ -99,3 +101,4 @@ metadata:
 
 - auto-compile hook：自动化编译检查，在 turn_end 时自动运行；自 v0.25 起为 advisory 提醒（编译通过由 agent 自检），见项目 AGENTS.md「Forge 质量协议」节
 - test-discipline skill：测试质量守卫
+- systematic-debugging skill：测试运行失败、构建系统/CI 编排失败的根因调查

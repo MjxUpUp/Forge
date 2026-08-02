@@ -73,3 +73,37 @@ behavior-probe 维度全库仅本 skill 的 probes.yaml 一个消费方（约 50
 ### Evidence
 
 audit 确认 53 个 skill 中唯一消费方；probe 字段不参与 caseID/DescHash，拆除对存量 case 集 hash 零影响
+
+## [d-18c7e5a6381ad110-43d8bf25] accept
+
+- **Skill**: code-review-gate
+- **DecidedAt**: 2026-08-02T05:24:39Z
+
+### Diagnosis
+
+skills 库价值审计 13 项改进落地
+
+### Revision
+
+建「改名/删符号后的调用方检查」canonical 节(D4)；forge 段落下沉 references/forge-integration.md；补叠加专项审查输出协议(block 以下也须显式回应)；86%/72% 统计补 Veracode 2025 来源；双语注释规范迁入(maintainability-and-readability 合并)
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md 逐项价值审计
+
+## [d-18c7e620ad442c3c-2679d4f1] accept
+
+- **Skill**: code-review-gate
+- **DecidedAt**: 2026-08-02T05:33:25Z
+
+### Diagnosis
+
+项10 description 审计+触发回归
+
+### Revision
+
+description 三段式合格未改动;新建 evals/evals.json(5正+4负)
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md

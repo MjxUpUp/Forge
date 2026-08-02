@@ -80,6 +80,7 @@ func init() {
 	//
 	// 集成与安全：agent 接口 + 拦截 + 内部 hook 分发 + 多 host plugin marketplace
 	hazardCmd.GroupID = "integrate"
+	freezeCmd.GroupID = "integrate"
 	hookCmd.GroupID = "integrate"
 	cloneCmd.GroupID = "integrate"
 	pluginCmd.GroupID = "integrate"

@@ -1,10 +1,10 @@
 ---
 name: rust-code-review
-description: "Rust 代码结构化审查。Use when: 审查 Rust 代码 PR 时、检查 Rust 代码变更时、做合并前检查时、用户要求 Rust code review 时。特别关注异步 Rust、unsafe 代码和多 crate workspace 模式。SKIP: 非 Rust 代码（用 code-review-gate）、只做格式化或 lint 建议时（直接跑 cargo fmt / clippy，不进结构化审查流程）。"
+description: "Rust 代码结构化审查。Use when: 审查 Rust 代码 PR 时、检查 Rust 代码变更时、做合并前检查时、用户要求 Rust code review 时、说\"review 一下这段 Rust 代码 / 帮我看看这个 Rust PR / 这个 Rust 改动能不能合并 / Rust 代码写得怎么样\"时。特别关注异步 Rust、unsafe 代码和多 crate workspace 模式。SKIP: 非 Rust 代码（用 code-review-gate）、只做格式化或 lint 建议时（直接跑 cargo fmt / clippy，不进结构化审查流程）。"
 metadata:
   pattern: reviewer
   domain: code-review
-  severity-levels: error,warning,info
+  severity-levels: block,fix,suggest
 ---
 
 # Rust 代码审查
@@ -29,32 +29,34 @@ metadata:
 对每个被审查的文件，检查每条适用规则。对每个发现：
 
 - **行号**：问题所在位置
-- **严重性**：`error`（合并前必须修复）、`warning`（应当修复）、`info`（建议考虑）
+- **严重性**：`block`（合并前必须修复）、`fix`（应当修复）、`suggest`（建议考虑）——与 frontend-code-review / ai-generated-ui-review 统一标签（旧 error/warning/info 分别映射为 block/fix/suggest）
 - **规则**：违反了清单的哪一项
 - **原因**：解释**为什么**是问题，不只是说**什么**有问题
 - **修复**：给出具体的修正代码
 
+**叠加 code-review-gate 时**：分级只表达处理顺序——block 以下（fix/suggest）也必须逐条显式回应（修复或论证不需修），裁决见 code-review-gate 步骤 3「叠加专项审查的输出协议」。
+
 ### 步骤 3.5：严重性升级规则（不能凭感觉定级）
 
-以下命中条件**直接定 error**，不需权衡（合并前必须修）：
+以下命中条件**直接定 block**，不需权衡（合并前必须修）：
 
 | 命中条件 | 严重性 | 理由 |
 |---|---|---|
-| `unsafe` 块无 `// SAFETY:` 注释 | error | unsafe 是安全合约，无注释 = 无法审查 |
-| `.unwrap()` / `.expect()` 在非测试代码且错误路径不可控 | error | 生产环境 panic 风险 |
-| `.clone()` 在热路径（循环内 / async 内 / 高频调用）| error | 性能 + 设计问题 |
-| 跨 `.await` 持有 `MutexGuard` / 非 Send 的引用 | error | 编译可能过但运行时死锁/UB |
-| 错误被静默吞掉（`let _ = result;` / `.ok();` 无日志）| error | 隐藏故障 |
-| 测试断言弱化（`assert!(result.is_ok())` 不查值 / `assert!` 弱化为恒真 / `#[ignore]` 跳过测试）| error | 虚假测试信心 |
-| 无界 channel / 集合增长无上限 | error | 内存爆炸风险 |
-| 硬编码密钥 / 密码 / token | error | 安全漏洞 |
-| 命令注入（`Command::new(user_input)`）| error | 安全漏洞 |
+| `unsafe` 块无 `// SAFETY:` 注释 | block | unsafe 是安全合约，无注释 = 无法审查 |
+| `.unwrap()` / `.expect()` 在非测试代码且错误路径不可控 | block | 生产环境 panic 风险 |
+| `.clone()` 在热路径（循环内 / async 内 / 高频调用）| block | 性能 + 设计问题 |
+| 跨 `.await` 持有 `MutexGuard` / 非 Send 的引用 | block | 编译可能过但运行时死锁/UB |
+| 错误被静默吞掉（`let _ = result;` / `.ok();` 无日志）| block | 隐藏故障 |
+| 测试断言弱化（`assert!(result.is_ok())` 不查值 / `assert!` 弱化为恒真 / `#[ignore]` 跳过测试）| block | 虚假测试信心 |
+| 无界 channel / 集合增长无上限 | block | 内存爆炸风险 |
+| 硬编码密钥 / 密码 / token | block | 安全漏洞 |
+| 命令注入（`Command::new(user_input)`）| block | 安全漏洞 |
 
-以下定为 **warning**（应修不阻断）：函数圈复杂度 >10、重复代码块、命名不清、缺文档注释、未处理的 `Result`（但已传播）、过度抽象。
+以下定为 **fix**（应当修复）：函数圈复杂度 >10、重复代码块、命名不清、缺文档注释、未处理的 `Result`（但已传播）、过度抽象。
 
-以下定为 **info**（建议）：风格偏好、可简化的语法、非关键性能优化。
+以下定为 **suggest**（建议考虑）：风格偏好、可简化的语法、非关键性能优化。
 
-**门控**：发现上述 error 条件直接定 error，不许"降级为 warning 因为……"。rationalization 见下方表。
+**门控**：发现上述 block 条件直接定 block，不许"降级为 fix 因为……"。rationalization 见下方表。
 
 ### 步骤 4：产出结构化审查
 
@@ -62,19 +64,16 @@ metadata:
 ## 代码审查摘要
 
 **审查文件数**：N
-**总发现数**：N（X 个 error、Y 个 warning、Z 个 info）
+**总发现数**：N（X 个 block、Y 个 fix、Z 个 suggest）
 
-### Error（必须修复）
+### Block（必须修复）
 1. `file.rs:42` — [描述] — [修复]
 
-### Warning（应当修复）
+### Fix（应当修复）
 1. `file.rs:88` — [描述] — [修复]
 
-### Info（建议考虑）
+### Suggest（建议考虑）
 1. `file.rs:15` — [描述] — [建议]
-
-### 评分：N/10
-[评分理由]
 
 ### 优先改进建议 Top 3
 1. [最有影响力的改进]
@@ -114,16 +113,16 @@ git diff <上次审查时的 SHA> --name-only -- '*.rs'
 - **`unsafe` 不是天生坏的**：但每个 `unsafe` 块需要 `// SAFETY:` 注释解释为什么是安全的。
 - **审查错误处理路径**：正常路径通常能工作。审查出错时会发生什么——是否记了日志？传播了？还是被静默吞掉了？
 
-## Common Rationalizations（塔借口）
+## Common Rationalizations（堵借口）
 
 | 借口 | 现实 |
 |---|---|
-| "unsafe 这里应该没问题" | 无 `// SAFETY:` 注释 = 无法审查，直接 error；有注释但理由不充分也是 error |
+| "unsafe 这里应该没问题" | 无 `// SAFETY:` 注释 = 无法审查，直接 block；有注释但理由不充分也是 block |
 | "`.unwrap()` 这个场景不会 panic" | 生产代码不靠"应该不会"；用 `?` 或明确处理 |
-| "这个 error 我降成 warning 吧" | 命中步骤 3.5 升级规则的不得降级；降级需明示理由并记在审查报告 |
+| "这个 block 我降成 fix 吧" | 命中步骤 3.5 升级规则的不得降级；降级需明示理由并记在审查报告 |
 | "迭代看一眼差不多" | 凭眼看会漏；`git diff --name-only` 拿文件清单逐个重跑清单 |
-| "跨 await 持锁应该不会死锁" | 编译可能过但运行时 UB；跨 await 持 MutexGuard 直接 error |
-| "测试过了就行不管断言" | 弱断言测试比没测试更坏（虚假信心）；断言弱化直接 error |
+| "跨 await 持锁应该不会死锁" | 编译可能过但运行时 UB；跨 await 持 MutexGuard 直接 block |
+| "测试过了就行不管断言" | 弱断言测试比没测试更坏（虚假信心）；断言弱化直接 block |
 
 ## 参考
 

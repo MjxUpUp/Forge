@@ -1,6 +1,6 @@
 ---
 name: on-demand-guards
-description: "按需激活的临时安全护栏（session 级），补充 always-on 的 hazard-guard 自动挡。Use when: 用户说\"小心点\"\"/careful\"\"别误删\"\"我要动生产环境\"\"锁住这个目录\"\"/freeze\"\"只改这里别动其他\"\"高危操作\"时、即将执行 chmod -R 777 / curl|sh / 写裸设备等 hazard-guard 未覆盖的危险操作时。激活后持续到 session 结束或用户说\"解除\"。SKIP: 日常低风险开发（不需要护栏）、已经在 git protected 分支（git 本身会拦）。注：rm -rf / DROP TABLE / force-push / kubectl delete / TRUNCATE 等已由 hazard-guard hook 自动拦截（HITL via forge hazard confirm），无需本 skill。"
+description: "按需激活的临时安全护栏（session 级），补充 always-on 的 hazard-guard 自动挡。Use when: 用户说\"小心点\"\"/careful\"\"别误删\"\"我要动生产环境\"\"锁住这个目录\"\"/freeze\"\"只改这里别动其他\"\"高危操作\"时、即将执行 chmod -R 777 / curl|sh / git clean -fd / npm publish 等 hazard-guard 未覆盖的危险操作时。激活后持续到 session 结束或用户说\"解除\"。SKIP: 日常低风险开发（不需要护栏）、已经在 git protected 分支（git 本身会拦）。注：rm -rf / DROP TABLE / force-push / kubectl delete / TRUNCATE 等已由 hazard-guard hook 自动拦截（HITL via forge hazard confirm），无需本 skill。"
 metadata:
   pattern: gate
   domain: security
@@ -13,11 +13,9 @@ metadata:
 | 层 | 覆盖 | 形态 |
 |---|---|---|
 | **always-on（自动挡）** | `rm -rf` / `git push --force` / `git reset --hard` / `DROP DATABASE\|TABLE\|SCHEMA` / `TRUNCATE` / `GRANT ALL` / `kubectl delete` / `docker system prune` / `shred` / 无 WHERE 的 `DELETE\|UPDATE` | hazard-guard hook（PreToolUse Bash），自动 block + HITL（`forge hazard confirm` 登记 5min 标记后放行）|
-| **session 级（本 skill）** | hazard-guard 未覆盖的（`chmod -R 777` / `curl … \| sh` / `> /dev/sda` 等危险模式）+ 目录锁定（/freeze） | 激活后 agent 自我约束，每次匹配操作前 STOP 确认 |
+| **session 级（本 skill）** | /freeze 目录锁定 + hazard-guard 未覆盖的危险模式（`chmod -R 777` / `curl … \| sh` / `git clean -fd` / `npm publish` 等） | /freeze 主路径走 **forge freeze-guard 真 hook**（硬阻断）；/careful 与无 forge 环境的 fallback 用正文纪律，每次匹配操作前 STOP 确认 |
 
 **核心原则：激活后，每次匹配危险模式的操作前必须 STOP 确认，直到用户说"解除"。**
-
-多数 agent 没有运行时动态注册 hook 的能力（session 级无法新增 PreToolUse hook），session 级部分用 **skill 正文纪律**模拟——激活后 agent 自我约束，每次危险操作前自检。
 
 ## When to Use
 
@@ -25,8 +23,8 @@ metadata:
 
 | Guard | 触发信号 | 激活后效果 |
 |---|---|---|
-| **/careful** | "小心点""别误删""动生产环境""/careful" | 阻止 hazard-guard 之外的危险模式（chmod -R 777 / curl\|sh / 写裸设备等），每次 STOP 确认 |
-| **/freeze** | "锁住这个目录""只改这里""/freeze <dir>" | 阻止对指定目录外的 Edit/Write，每次 STOP 确认 |
+| **/careful** | "小心点""别误删""动生产环境""/careful" | 阻止 hazard-guard 之外的危险模式（chmod -R 777 / curl\|sh / git clean -fd 等），每次 STOP 确认 |
+| **/freeze** | "锁住这个目录""只改这里""/freeze <dir>" | 阻止对指定目录外的 Edit/Write——有 forge 环境时由 freeze-guard hook 硬阻断，无 forge 时降级为 STOP 确认 |
 
 > `rm -rf` / `DROP TABLE` / `git push --force` / `kubectl delete` / `truncate` 等已由 **hazard-guard hook 自动拦截**（不需要本 skill 激活）——见下文「always-on：hazard-guard」。
 
@@ -48,9 +46,13 @@ metadata:
 **激活后，每次执行以下模式命令前 STOP 确认**（hazard-guard 已拦的不重复，这里只列未覆盖的）：
 
 ```bash
-chmod -R 777    # 危险权限
-curl ... | sh   # 执行远程脚本
-> /dev/sda      # 写裸设备
+chmod -R 777      # 危险权限
+curl ... | sh     # 执行远程脚本
+> /dev/sda        # 写裸设备
+git clean -fd     # 不可逆清未跟踪文件（含未提交的新文件，git 无法找回）
+npm publish       # 不可逆公开发布（旧版不可撤回，撤包有窗口期限制）
+ssh prod-host     # 直接操作生产机（命令在远程执行，本地 hook 管不到）
+> existing-file   # 重定向覆盖已有文件（静默截断，区别于 >> 追加）
 ```
 
 **STOP 确认格式**：
@@ -66,7 +68,19 @@ curl ... | sh   # 执行远程脚本
 
 **激活条件**：用户说"锁住 X 目录""只改这里""/freeze src/"。
 
-**激活后，每次 Edit/Write 到锁定目录外的文件前 STOP 确认**：
+### 主路径（有 forge 环境）：forge freeze 真 hook
+
+```bash
+forge freeze <path>     # 激活：冻结 <path> 之外的写入
+forge freeze --status   # 查看当前冻结状态
+forge freeze --off      # 解除
+```
+
+激活后 **freeze-guard hook（PreToolUse Write|Edit）硬阻断冻结路径外的写入**——真 hook，不依赖 agent 每回合记得自检，长会话/上下文压缩后依然生效。优先走这条路。
+
+### fallback（无 forge 环境）：prompt 纪律模拟
+
+多数 agent 没有运行时动态注册 hook 的能力，无 forge 时用 **skill 正文纪律**模拟——激活后每次 Edit/Write 到锁定目录外的文件前 STOP 确认：
 
 ```
 ⚠️ /freeze 已激活（锁定目录：src/），检测到目录外修改：
@@ -74,30 +88,32 @@ curl ... | sh   # 执行远程脚本
 确认修改？说"确认"继续，或其他取消。
 ```
 
+**可靠性上限（诚实声明）**：prompt 型护栏的可靠性 = agent 每回合记得自检。长会话/上下文压缩后激活状态必然漂移——恰是它要防的场景。**能装 forge 就不要依赖 fallback**；用了 fallback 就把冻结范围告诉用户，请用户在发现越界时直接纠正。
+
 **典型场景**：调试时"我只加日志，别让我不小心改了无关代码"——freeze 后只允许改指定目录。
 
-**解除**：用户说"解除 freeze""解锁""可以改其他了"。
+**解除**：`forge freeze --off`，或用户说"解除 freeze""解锁""可以改其他了"。
 
 ## 激活状态记忆
 
-激活后，agent 在**每个回合开始**自检当前激活状态（/careful？/freeze 哪个目录？），不需要用户重复声明。状态持续到：
-- 用户明示"解除"
-- session 结束
+- **/freeze（forge 路径）**：状态由 forge 持有，`forge freeze --status` 随时可查，不靠 agent 记忆。
+- **/careful 与 fallback /freeze**：agent 在**每个回合开始**自检当前激活状态，不需要用户重复声明。激活时把状态记到 session 上下文（如"当前激活：/careful + /freeze src/"），后续回合读这个状态。
 
-**状态记录**：激活时把状态记到 session 上下文（如"当前激活：/careful + /freeze src/"），后续回合读这个状态。
+状态持续到：用户明示"解除"，或 session 结束。
 
 ## Gotchas（高信号）
 
 - **激活后不能"忘记"**：用户说了 /careful，后续整个 session 都生效，不是只管下一次。每个回合开始自检状态。
-- **不与 hazard-guard 重复**：`rm -rf`/`DROP`/`force-push` 等已被 hazard-guard 自动拦，本 skill 不重复 STOP——只覆盖 hazard-guard 模式之外的（chmod -R 777 / curl|sh / 写裸设备）。
+- **不与 hazard-guard 重复**：`rm -rf`/`DROP`/`force-push` 等已被 hazard-guard 自动拦，本 skill 不重复 STOP——只覆盖 hazard-guard 模式之外的（chmod -R 777 / curl|sh / git clean -fd / npm publish / ssh 生产机 / `>` 覆盖已有文件）。
 - **STOP 不是拒绝**：STOP 是让用户确认，不是拒绝执行。用户说"确认"就继续——护栏的目的是防误操作不是禁止操作。
 - **不要过度拦截**：只拦高危模式，普通 ls/cat/grep 不拦。过度拦截会让用户烦。
-- **多数 agent 无动态 hook 注册**：session 级部分靠 agent 自我约束模拟，不是真正的 PreToolUse hook（hazard-guard 则是真 hook，全 agent 生效）。
+- **fallback 不是真 hook**：无 forge 时 session 级部分靠 agent 自我约束模拟，长会话/压缩后必漂移（见 /freeze 节的可靠性声明）；hazard-guard 与 freeze-guard 是真 hook，全 agent 生效。
 
 ## Red Flags — STOP
 
-- 激活了 /careful 却直接执行 chmod -R 777 不确认（忘记激活状态）
+- 激活了 /careful 却直接执行 chmod -R 777 / git clean -fd 不确认（忘记激活状态）
 - /freeze 后改了锁定目录外文件不确认
+- 有 forge 环境却用 prompt 纪律模拟 /freeze（该走 `forge freeze` 真 hook）
 - 用户说"解除"后还在拦截（状态没更新）
 - 拦截低风险命令（ls/grep/cat 等只读操作不该拦）
 

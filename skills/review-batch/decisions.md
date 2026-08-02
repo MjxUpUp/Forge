@@ -18,3 +18,37 @@ composes 改 flow list [agent-delegation, code-review-gate]
 ### Evidence
 
 库内多数 skill 用 [a, b] flow list；CONVENTIONS §4 规定该格式
+
+## [d-18c7e5a65bd21154-059362b7] accept
+
+- **Skill**: review-batch
+- **DecidedAt**: 2026-08-02T05:24:39Z
+
+### Diagnosis
+
+skills 库价值审计 13 项改进落地
+
+### Revision
+
+grep 规则细节改指针(D4)，编排层 changed-symbols 注入保留
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md 逐项价值审计
+
+## [d-18c7e620ccfa1884-c1bdf93b] accept
+
+- **Skill**: review-batch
+- **DecidedAt**: 2026-08-02T05:33:25Z
+
+### Diagnosis
+
+项10 description 审计+触发回归
+
+### Revision
+
+description SKIP 补 project-acceptance/release-readiness 边界(撞车点);新建 evals/evals.json(5正+4负)
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md

@@ -35,3 +35,37 @@ composes 标量逗号写法改 flow list [a, b]，对齐 CONVENTIONS §4
 ### Evidence
 
 grep 确认全库 composes 已无标量残留；forge skills validate 50/50
+
+## [d-18c7e49b6c653ca0-6f3e6a2b] accept
+
+- **Skill**: release-readiness
+- **DecidedAt**: 2026-08-02T05:05:33Z
+
+### Diagnosis
+
+审计发现：382 行过长——Gotchas/Rationalizations/Red Flags 共约 40 行纯文本经验库正是该拆 references 的部分；M5 secrets 扫描与 secure-coding 有重叠但分工节未列
+
+### Revision
+
+Gotchas/Rationalizations/Red Flags 拆 references/gotchas-and-rationalizations.md；checklist 模板拆 references/checklist-template.md；R1-R5 完整检查命令拆 references/recommended-checks.md（正文留摘要表）；决策树完整版拆 references/decision-tree.md（正文留四分支压缩版）；防注水自检节改为指针（规则唯一真相源 skill-authoring-standard「防注水自检」节）；M5 与「与其他 skill 的分工」补 secure-coding 划界（编码期安全基线归它，M5 只做发布前增量扫描）；382 行瘦身至 235 行
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md 逐项审计（release-readiness 详评 + 改进清单项 9/13）
+
+## [d-18c7e620bb9fa0a4-7e78bb21] accept
+
+- **Skill**: release-readiness
+- **DecidedAt**: 2026-08-02T05:33:25Z
+
+### Diagnosis
+
+项10 description 审计+触发回归
+
+### Revision
+
+description 三段式合格未改动;新建 evals/evals.json(5正+4负)
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md

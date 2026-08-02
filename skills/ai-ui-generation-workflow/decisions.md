@@ -53,3 +53,37 @@ composes 标量逗号写法改 flow list [a, b]，对齐 CONVENTIONS §4
 ### Evidence
 
 grep 确认全库 composes 已无标量残留；forge skills validate 50/50
+
+## [d-18c7e5a698a4deb8-b804d466] accept
+
+- **Skill**: ai-ui-generation-workflow
+- **DecidedAt**: 2026-08-02T05:24:40Z
+
+### Diagnosis
+
+skills 库价值审计 13 项改进落地
+
+### Revision
+
+拆 references(pixso-mcp-setup/reverse-workflow) 277→215 行；删 composes 解除循环(D2)；0★ 仓库加 fallback；时点数据加快照标注
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md 逐项价值审计
+
+## [d-18c7e620ca1d3c04-7369e7a5] accept
+
+- **Skill**: ai-ui-generation-workflow
+- **DecidedAt**: 2026-08-02T05:33:25Z
+
+### Diagnosis
+
+项10 description 审计+触发回归
+
+### Revision
+
+description 三段式合格未改动;新建 evals/evals.json(5正+4负)
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md

@@ -80,7 +80,7 @@ User-level hooks fire in every Claude Code project. In git projects not yet init
 | **Claude Code** | `plugin.json` marketplace | automatic (user-level) | full hooks; auto-init via `init-suggest` SessionStart hook |
 | **Codex (CLI / App)** | marketplace (path not officially confirmed) | `forge init --agents codex` | if marketplace path fails, fall back to manual |
 | **Cursor** | marketplace | `forge init --agents cursor` | Cursor plugin model carries skills, not Claude-shape hooks; user-level `~/.cursor/hooks.json`, zero project writes |
-| **GitHub Copilot (CLI / VS Code)** | marketplace + `.copilot-plugin/` | none (no user-level channel) | bridge is a no-op — marketplace is a distribution entry point only; VS Code auto-discovers `.copilot-plugin/plugin.json` if you open this repo |
+| **GitHub Copilot (CLI / VS Code)** | marketplace | none (no user-level channel) | bridge is a no-op — marketplace is a distribution entry point only |
 | **Windsurf** | `forge init --agents windsurf` | user-level Cascade hooks | `~/.codeium/windsurf/hooks.json` + `memories/global_rules.md` via `internal/agentbridge/windsurf.go` |
 | **Kimi Code** | repo-root `.kimi-plugin/plugin.json` (`/plugins install https://github.com/MjxUpUp/Forge`) | automatic (user-level) | full event set (PreToolUse/PostToolUse/Stop/SessionStart/PostCompact/UserPromptSubmit), exit-2 block protocol; fallback `forge init --agents kimi` (config.toml marker section, stripped when the plugin is installed) |
 | **OpenCode / Kiro / Cline / Gemini CLI / Mistral Vibe / Trae / Nanobot / Hermes / Antigravity / OpenClaw** | (manual, see `install.sh`) | `forge init --agents <host>` if supported | install.sh script provides one-step symlink-style per-skill/folder install for 14 hosts |
@@ -95,17 +95,17 @@ When this model stops being sufficient (e.g. agents whose marketplace can not re
 
 ## Developing locally (cache copy, not symlinks)
 
-Claude Code plugin cache (`~/.claude/plugins/cache/forge/forge/<version>/`) does **not** follow symlinks — `Search`/`Glob` tools in the agent skip symlinked dirs. To test local plugin changes:
+Claude Code plugin cache (`~/.claude/plugins/cache/forge/forge/<version>/`) does **not** follow symlinks — `Search`/`Glob` tools in the agent skip symlinked dirs. The plugin manifest deliberately omits `version` (git SHA drives updates), so do NOT try to read it with `jq -r .version` (yields `null`) — locate the cache dir by listing it (usually a single entry named after the git SHA). To test local plugin changes:
 
 1. Rebuild after changes: `go build ./...`
-2. Find current version: `cat plugins/forge/.claude-plugin/plugin.json | jq -r .version`
-3. Copy the freshly-built assets into the cache, replacing `<VERSION>`:
+2. Locate the cache dir by listing: `ls ~/.claude/plugins/cache/forge/forge/`
+3. Replace its contents with the freshly-built assets:
 
 ```bash
-VERSION=$(jq -r .version plugins/forge/.claude-plugin/plugin.json)
-rm -rf "$HOME/.claude/plugins/cache/forge/forge/$VERSION"
-mkdir -p "$HOME/.claude/plugins/cache/forge/forge/$VERSION"
-cp -R plugins/forge/* "$HOME/.claude/plugins/cache/forge/forge/$VERSION/"
+CACHE_DIR=$(ls -d "$HOME"/.claude/plugins/cache/forge/forge/*/ | head -1)
+rm -rf "$CACHE_DIR"
+mkdir -p "$CACHE_DIR"
+cp -R plugins/forge/* "$CACHE_DIR"
 ```
 
 4. Start a fresh Claude Code session (existing sessions keep old prompts in context).

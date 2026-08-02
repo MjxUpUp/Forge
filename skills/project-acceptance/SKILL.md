@@ -1,6 +1,6 @@
 ---
 name: project-acceptance
-description: "项目验收审查。Use when: 对整个项目进行验收时、比对设计方案和实施计划时、看下当前项目完整度时、审查项目功能完成性时、准备上线前检查时、用户说\"验收\"\"审查项目\"\"看下项目完整度\"\"准备上线\"时。SKIP: 单文件代码审查（用 code-review-gate）、编译问题排查（用 compile-fix-loop）、运行时bug修复、单个设计文档的功能 landing gap（用 design-audit）。"
+description: "项目验收审查。Use when: 对整个项目进行验收时、比对设计方案和实施计划时、看下当前项目完整度时、审查项目功能完成性时、准备上线前检查时、用户说\"验收\"\"审查项目\"\"看下项目完整度\"\"准备上线\"时。SKIP: 单文件代码审查（用 code-review-gate）、编译问题排查（用 compile-fix-loop）、运行时bug修复、单个设计文档的功能 landing gap（用 design-audit）、整项目批量模块审查/重构后全量验收深查（用 review-batch）、发布 go/no-go 门禁（版本/迁移/回滚/观测/secrets，用 release-readiness）。"
 metadata:
   pattern: reviewer + gate
   domain: quality-assurance
@@ -44,6 +44,8 @@ metadata:
 
 **门控**：维度 3 任一项查不出具体输出（只能说"应该没问题"）→ 该项判 ❌，不得打✅。
 
+**大项目深查**：模块多、单遍跑不完时，维度 3 的逐模块深查委托 **review-batch**（拆模块并行 subagent 审查），本 skill 保留 5 维度汇总裁决。
+
 ### 维度 4: README / 文档是否更新
 - [ ] README 是否有项目简介和使用说明
 - [ ] 是否有安装/构建/运行步骤
@@ -85,9 +87,7 @@ metadata:
 
 ## 输出位置
 
-验收报告写入 `<项目根>/docs/issues/` 目录（若不存在则创建）。
-
-文件命名：`acceptance-report-YYYY-MM-DD.md`
+默认**直接打印**验收报告到对话中。用户要求落盘时，写入 `<项目根>/docs/issues/` 目录（若不存在则创建），文件命名：`acceptance-report-YYYY-MM-DD.md`。
 
 ## Gotchas
 
@@ -103,7 +103,7 @@ metadata:
 **现象**: 报告把所有发现都标为"必须修复"，用户难以区分优先级
 **解决**: 严格区分：阻断 = 功能不可用/数据会丢失/安全漏洞；重要 = 影响维护性/可读性/性能；建议 = 锦上添花
 
-## Common Rationalizations（塔借口）
+## Common Rationalizations（堵借口）
 
 | 借口 | 现实 |
 |---|---|

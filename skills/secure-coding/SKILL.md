@@ -1,6 +1,6 @@
 ---
 name: secure-coding
-description: "安全编码强制规范：OWASP Top 10 (2021) + Threat Modeling (STRIDE) + Secret Management + 输入验证 + 输出编码 + 依赖审计 / SBOM。Use when: 写新代码、加鉴权/API、audit 安全漏洞、评估第三方库、处理用户输入/敏感数据、写 ADR 关于安全选型时。SKIP: 网络/WAF 部署（用 release-readiness）/ 渗透测试（出 skill 范围，是独立服务）/ 安全合规审计（独立流程）。"
+description: "安全编码强制规范：OWASP Top 10 (2025) + Threat Modeling (STRIDE) + Secret Management + 输入验证 + 输出编码 + 依赖审计 / SBOM + Agent/LLM 威胁（prompt injection / MCP 工具安全 / skill 供应链投毒）。Use when: 写新代码、加鉴权/API、audit 安全漏洞、评估第三方库、处理用户输入/敏感数据、接 MCP server / 装第三方 skill、写 ADR 关于安全选型时。SKIP: 网络/WAF 部署（用 release-readiness）/ 渗透测试（出 skill 范围，是独立服务）/ 安全合规审计（独立流程）。"
 metadata:
   pattern: tool-wrapper
   domain: security
@@ -9,7 +9,7 @@ metadata:
 
 # 安全编码规范
 
-> **本 skill 不重复**: 部署/WAF → `release-readiness`；Auth 业务设计（JWT/OAuth）→ `backend-development` §2.3；CA/证书/HTTPS → 基础设施层。本 skill 解决"按 SOP 写出安全代码"的纪律，覆盖 OWASP Top 10 2021 + Threat Modeling + 依赖审计。
+> **本 skill 不重复**: 部署/WAF → `release-readiness`；Auth 业务设计（JWT/OAuth）→ `backend-development` §2.3；CA/证书/HTTPS → 基础设施层。本 skill 解决"按 SOP 写出安全代码"的纪律，覆盖 OWASP Top 10 2025 + Threat Modeling + 依赖审计 + Agent/LLM 特有威胁。
 
 ## 1. 决策树
 
@@ -20,14 +20,15 @@ metadata:
 ├─ 集成第三方库 → §2.3 依赖审计 + SBOM
 ├─ 设计威胁模型 → §2.4 STRIDE threat modeling 6 类
 ├─ 处理 secret/凭证 → §2.5 secret management 5 路径
-└─ 漏洞响应（已知 CVE）→ §2.6 CVE triage + 修复 SOP
+├─ 漏洞响应（已知 CVE）→ §2.6 CVE triage + 修复 SOP
+└─ 接 LLM / MCP server / 第三方 skill → §2.7 Agent 时代威胁
 ```
 
-## 2. 6 路径规范
+## 2. 7 路径规范
 
 ### 2.1 输入验证 4 步（信任用户为恶意）
 
-OWASP A03: Injection 第一防线 = 验证输入。
+OWASP A05:2025 Injection 第一防线 = 验证输入。
 
 ```
 输入处理（每次必跑）：
@@ -63,21 +64,22 @@ AuthZ 模型：
 └─ PBAC（policy-based）→ OPA / Cedar（声明式 policy）
 ```
 
-**A01 Broken Access Control 防范**：
+**A01 Broken Access Control 防范**（2025 版已并入 SSRF）：
 - **拒绝默认**：所有 endpoint 默认 deny，显式 allow
 - **最小权限**：每个 role 最小权限集
 - **服务端校验**：**永不** 信任前端按钮（仅显示，不鉴权）
 - **资源 owner 校验**："user A 不能改 user B 的数据" — 始终校验 not just role
+- **SSRF**：URL 白名单 + 网络隔离 + 不把用户给的 URL 直接传给服务端请求
 - **日志记录**：所有 auth/authz 决策记 log（含 user_id + 资源 + 决定）
 
-**A07 Identification and Auth Failures 防范**：
+**A07 Authentication Failures 防范**：
 - 密码强度（≥12 字符 + NIST 推荐 zxcvbn）
 - MFA 推荐（高风险功能强制）
 - 防 credential stuffing（rate limit + IP/device fingerprint）
 - Session 失效（idle 30min + absolute 24h）
 - Cookie 属性（HttpOnly + Secure + SameSite=Strict）
 
-### 2.3 依赖审计 + SBOM（OWASP A06）
+### 2.3 依赖审计 + SBOM（OWASP A03:2025 Software Supply Chain Failures）
 
 ```
 每加一个依赖必跑：
@@ -142,6 +144,8 @@ E Elevation           权限提升      → 谁能干什么？最小权限
 
 ### 2.6 漏洞响应（CVE / 渗透测试 / Bug Bounty）
 
+**适用条件**：以下 SLA 面向有安全团队/oncall 的组织；个人/小项目按 Critical/High 尽快修、其余随版本节奏，不必照搬天数。
+
 ```
 收到 CVE 报告 → triage → fix → release → postmortem：
 
@@ -162,6 +166,25 @@ E Elevation           权限提升      → 谁能干什么？最小权限
 
 **内部 Found-resolved chain**：开发 → 安全 → 用户（透明披露 + 修复）。
 
+### 2.7 Agent / LLM 特有威胁（AI 组件必读）
+
+传统 OWASP 不覆盖的三类攻击面——这是 agent 质量保障项目分发物自身最该补的安全面。
+
+**1. Prompt injection（提示注入）**
+- LLM 输出不是可信数据：进工具调用 / SQL / shell / HTTP 请求前按 §2.1 同等强度校验
+- 间接注入：检索内容 / 网页 / 邮件 / 文档里藏的指令会劫持 agent——外部内容一律标记为不可信上下文，不让它触发高权限工具
+- 系统提示与用户/外部输入分离；高权限操作（写文件 / 发请求 / 支付）前要求显式用户确认
+
+**2. MCP 工具安全**
+- 接入 MCP server 前审配置：管道执行（`curl | sh`）、任意包执行（npx / uvx / dlx / bunx）、内联代码（`-c` / `-e`）、非 https URL、env 明文凭证——都是红旗
+- tool description 本身可注入指令（tool poisoning）——只装可信来源的 server，工具描述当不可信输入看
+- 工具权限最小化：只读 server 不给写权限，限定可达路径/域名
+
+**3. Skill / agent 资产供应链投毒**
+- Snyk ToxicSkills 数据：扫描 3,984 个公开 skill，36.8% 有缺陷、13.4% 严重、76 个确认恶意；恶意载荷多以自然语言藏在 SKILL.md 正文——不是代码，传统 SAST 扫不出
+- 安装第三方 skill 前：通读正文找"忽略之前指令"类注入，审 scripts/ 里的网络外联与凭据读取
+- 对照 [OWASP Top 10 for LLM Applications](https://genai.owasp.org/llm-top-10/)（LLM01 Prompt Injection / LLM05 Supply Chain）
+
 ## 3. 负向约束 + 替代方案
 
 | 不要做 ❌ | 应该做 ✅ |
@@ -176,6 +199,7 @@ E Elevation           权限提升      → 谁能干什么？最小权限
 | 把 user session 写服务端 file | 集中 session store（Redis / DB） |
 | "我们用 HTTPS 就 secure 了" | HTTPS + HSTS + CSP + input validation + least privilege |
 | "我们的金丝雀 demo 不审" | 全部环境都按 production 安全标准 |
+| 第三方 skill / MCP server 拿来即用 | 审正文 + 配置 + scripts（§2.7） |
 
 ## 4. Post-Generation 自查清单
 
@@ -189,8 +213,9 @@ E Elevation           权限提升      → 谁能干什么？最小权限
 - [ ] Auth/AuthZ 决策进日志（带 user_id + 资源）
 - [ ] 错误响应不泄露内部（stack trace / SQL detail）
 - [ ] SAST 自动 scan（CI）
+- [ ] 含 LLM/MCP/skill 资产时已按 §2.7 过 agent 威胁
 - [ ] `forge review pass` 通过（仅标记人工审查完成；OWASP 检查需按本 skill §4 逐项人工核对）
-- [ ] OWASP Top 10 一一对照（**至少我们写的不踩雷**）
+- [ ] OWASP Top 10:2025 一一对照（**至少我们写的不踩雷**）
 
 ## 5. Gotchas（实操易错点）
 
@@ -211,6 +236,8 @@ E Elevation           权限提升      → 谁能干什么？最小权限
 **G8**: "高权限错就错，反正没人知道" → 实际暴露日志可发现。预防：Auth 决策 + access log 进 SIEM。
 
 ## 6. 提交前必跑
+
+以下工具命令以**已安装**为前提。未安装时的手工核对路径：依赖漏洞查 OSV / GitHub Advisory 数据库；secret 泄漏 `git log -p | grep` 搜 key 模式；SAST 用语言内置 linter + §4 清单人工逐项过。
 
 ```bash
 # 1. SAST 静态扫描（自动）
@@ -239,7 +266,7 @@ forge review pass                   # 仅标记人工审查完成；OWASP 逐项
 
 - **API 设计层**：`backend-development` §2.3 鉴权层 + §2.2 endpoint 变更
 - **韧性层**：`resilience-and-observability` — rate limit 也防 DDoS，security event 进 SIEM
-- **依赖管理**：`system-architecture` §2.6 12-factor + SBOM 对接
+- **依赖管理**：`system-architecture` §2.1 云原生合规 + SBOM 对接
 - **代码审查**：`code-review-gate` — 应集成 OWASP checklist 子集
 - **部署**：`release-readiness` — Secret rotation + CVE scan 准入
 
@@ -255,23 +282,25 @@ forge review pass                   # 仅标记人工审查完成；OWASP 逐项
 
 **原则**：按 risk level 调节，**绝不** 全站 2FA（用户体验崩坏）。
 
-## 9. OWASP Top 10 2021 一一映射
+## 9. OWASP Top 10:2025 一一映射
+
+2021 → 2025 主要变化：A02 提为 Security Misconfiguration、A03 从 Injection 变 Software Supply Chain Failures、SSRF 并入 A01、Injection 降为 A05、新增 A10 异常条件处理不当。
 
 | OWASP 类别 | 主要防御 | 在本 skill |
 |---|---|---|
-| A01 Broken Access Control | deny default + owner check + audit log | §2.2 + §3 |
-| A02 Cryptographic Failures | TLS + 库 + secret mgmt + 现 algorithm | §2.5 + §3 |
-| A03 Injection | 白名单 + 参数化 + 输出编码 | §2.1 |
-| A04 Insecure Design | Threat model + secure design pattern | §2.4 |
-| A05 Security Misconfiguration | hardening + 最小权限 + 默认 secure | §3 + §4 |
-| A06 Vulnerable Components | audit + SBOM + 自动更新 | §2.3 |
-| A07 Auth Failures | MFA + 防 credential stuffing + Session | §2.2 |
-| A08 Software/Data Integrity | 签名验证 + SLSA + code review | §2.3 + §6 |
-| A09 Logging/Monitoring Failures | SIEM + alert on security event | 与 `resilience-and-observability` 联动 |
-| A10 SSRF | URL 白名单 + 网络隔离 + 不传用户 URL | §2.1 |
+| A01 Broken Access Control（SSRF 已并入） | deny default + owner check + audit log；SSRF：URL 白名单 + 网络隔离 | §2.2 |
+| A02 Security Misconfiguration | hardening + 最小权限 + 默认 secure | §3 + §4 |
+| A03 Software Supply Chain Failures | 依赖 audit + SBOM + CI 扫描；agent 资产投毒 | §2.3 + §2.7 |
+| A04 Cryptographic Failures | TLS + 成熟库 + secret mgmt + argon2id | §2.5 + §3 |
+| A05 Injection | 白名单 + 参数化 + 输出编码 | §2.1 |
+| A06 Insecure Design | Threat model + secure design pattern | §2.4 |
+| A07 Authentication Failures | MFA + 防 credential stuffing + Session | §2.2 |
+| A08 Software or Data Integrity Failures | 签名验证 + SLSA + code review | §2.3 + §6 |
+| A09 Security Logging and Alerting Failures | SIEM + alert on security event | 与 `resilience-and-observability` 联动 |
+| A10 Mishandling of Exceptional Conditions（新增） | fail-closed + 错误响应不泄内部 | §4 + §3 |
 
 ## 参考
 
-- 调研权威源：[OWASP Top 10 2021](https://owasp.org/Top10/2021/A00_2021_Introduction) / [OWASP Cheat Sheets](https://cheatsheetseries.owasp.org) / [Microsoft SDL](https://www.microsoft.com/en-us/securityengineering/sdl) / [NIST Cybersecurity Framework](https://www.nist.gov/cyberframework)
+- 调研权威源：[OWASP Top 10:2025](https://owasp.org/Top10/2025/) / [OWASP Top 10 for LLM Applications](https://genai.owasp.org/llm-top-10/) / [OWASP Cheat Sheets](https://cheatsheetseries.owasp.org) / [Microsoft SDL](https://www.microsoft.com/en-us/securityengineering/sdl) / [NIST Cybersecurity Framework](https://www.nist.gov/cyberframework)
 - 写法参照 `skill-authoring-standard`
 - 与 `resilience-and-observability` 联动：A09 Logging 进 SIEM

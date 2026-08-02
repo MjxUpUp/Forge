@@ -4,7 +4,7 @@ description: "用 AI 工具（v0/Bolt.new/Lovable/Replit/Cursor）生成能上�
 metadata:
   pattern: pipeline + gate
   domain: frontend
-  composes: [ai-generated-ui-review, frontend-feature-development, frontend-stack-selection]
+  composes: [frontend-feature-development, frontend-stack-selection]
 ---
 
 # AI UI 生成工作流
@@ -12,6 +12,8 @@ metadata:
 用 AI 工具生成**能上生产**的前端 UI，而非停留在原型级。核心立场：**"原型即生产"是伪命题**——arXiv 2603.28592 分析 302,579 个 AI 生成 commit 发现 89.3% code smell；Lovable 官方文档自己承认"不要复用共享组件"；AI 代码相关 CVE 从 2026-01 的 6 个涨到 74 个。
 
 AI 生成 = 起点，不是终点。本 skill 教如何用 SDD（spec-driven development）+ spec 先行 + 正确工具分工，把原型变成可维护的生产代码。
+
+> **数据快照日期**：本文 stars 数 / CVE 数 / arXiv 结论等时点数据快照于 2026-08，引用前请复核最新值。
 
 ## 铁律：Addy Osmani 2026 LLM 工作流（Google Chrome 团队定调）
 
@@ -55,7 +57,7 @@ spec.md 至少含：
 - **不复用清单**：明确哪些已有组件**不要**改动（防止 AI 乱改全局）
 
 SDD 工具（任选其一对接 Cursor/Claude Code/Cline）：
-- **spec-kit**（GitHub，114K stars，开源，对接 Copilot/Claude Code/Gemini CLI）
+- **spec-kit**（GitHub，114K stars @2026-08，开源，对接 Copilot/Claude Code/Gemini CLI）
 - **Amazon Kiro**（AWS，商业化）
 - **Tessl**（商业化）
 
@@ -136,81 +138,15 @@ SDD 工具（任选其一对接 Cursor/Claude Code/Cline）：
 | **Pixso** | **官方 Pixso MCP**（AI 原生，推荐） | MCP 是 Cursor/Claude/Cline 原生协议，比插件式集成更顺；详见下方接入 |
 | **PenPot** | 导出 SVG/HTML 起点手写 | 无成熟 AI 转码工具 |
 
-#### Pixso MCP 接入（2026 实证，国内团队首选）
-
-Pixso 有**官方 MCP**，两条路：
-
-**路径 A：本地 MCP（18 工具，需 Pixso 桌面端运行）**
-- Server: `http://127.0.0.1:3667/mcp`（HTTP + SSE，mcp-session-id 鉴权）
-- 18 个工具含 `design_to_code` / `get_node_dsl` / `get_variables` / `get_variable_sets` / `get_local_styles` / `get_all_components` / `create_instance` / `set_bound_variables` / `code_to_design` / `refine_generated_code` 等
-- 支持框架：React / Vue / HTML / Flutter / ArkUI
-- 可用 jiaweiwei1961/pixso-design-skill（Claude Code skill 封装，含 CLI）
-
-**路径 B：云端 MCP（6 工具，不开 Pixso 也能用）**
-- Server: `https://pixso.cn/api/mcp/mcp`（Streamable HTTP，Token Header 鉴权）
-- 需 Personal Access Token（Pixso web → 用户中心 → Personal Access Tokens）
-- 6 个核心工具：`getCode` / `getNodeDSL` / `get_local_styles` / `get_variable_sets` / `get_variables` / `get_variants`
-- 可用 jiaweiwei1961/pixso-remote-skill
-
-**4 IDE 配置（实证可用）**：
-
-```bash
-# Claude Code
-claude mcp add --transport http --header "Token:YOUR_TOKEN" pixso-remote https://pixso.cn/api/mcp/mcp
-```
-```json
-// Cursor (~/.cursor/mcp.json)
-{"mcpServers":{"pixso-remote":{"url":"https://pixso.cn/api/mcp/mcp","headers":{"Token":"YOUR_TOKEN"}}}}
-```
-```json
-// Cline (VS Code) — autoApprove getCode/getNodeDSL
-{"pixso-remote":{"type":"streamableHttp","url":"https://pixso.cn/api/mcp/mcp","headers":{"Token":"YOUR_TOKEN"}}}
-```
-```json
-// Windsurf (~/.codeium/windsurf/mcp_config.json)
-{"mcpServers":{"pixso-remote":{"serverUrl":"https://pixso.cn/api/mcp/mcp","headers":{"Token":"YOUR_TOKEN"}}}}
-```
-
-**为什么 Pixso MCP 比 Builder.io 更贴 AI coding**：MCP 是 Cursor/Claude/Cline 原生协议，agent 直接调工具读设计稿（含 tokens/styles/DSL），不需复制粘贴设计链接到插件；Figma 还在追赶 MCP（Figma Dev Mode 付费 + 第三方 Figma MCP）。但 Pixso MCP 生态较新（社区 repo 多为 2026 新建、0★），生产前需验证稳定性。
+**Pixso 接入细节**（本地 18 工具 / 云端 6 工具两条路、4 IDE 配置、生态现状与 0★ 仓库 fallback）见 [references/pixso-mcp-setup.md](references/pixso-mcp-setup.md)。
 
 **通用纪律**："一键完美产出"不存在，无论 Figma 还是 Pixso 路径，设计稿转代码都应作为起点而非终点，配合 Cursor/Onlook 二次编辑。
 
 ### 模板 D：反向路径（代码 → 设计图供审核）
 
-双向能力**真实存在但有硬限制**，常用于把现有前端反向导入设计工具供用户评审/批注。
+双向能力真实存在但有硬限制（只吃静态 HTML、Pixso 95KB 分块、输出扁平图层），常用于把现有前端反向导入设计工具供用户评审/批注。**反向是"评审/快照"用途，不是"代码→设计→再回代码"的循环**——导入的设计图是当前代码的静态映射，后续改动仍以代码为准、定期重新快照。
 
-#### 按设计工具选反向工具
-
-| 设计工具 | 反向工具 | 输入 | 质量 |
-|---|---|---|---|
-| **Figma** | **html.to.design**（Builder.io 旗下，付费插件最成熟）或 **Builder.io HTML to Design** | URL / HTML / Chrome 扩展捕获 | 多 viewport + dark/light 主题，近原品质 |
-| **Figma（开源）** | **Yueyin-Tql/htmlToFigma**（MCP server，对标 html.to.design） / **sergcen/html-to-figma** / **Floristeady/html-to-figma**（含 Cursor 集成） | URL / HTML/CSS，Puppeteer 渲染 | Flexbox → Auto Layout，SVG/字体自动转 |
-| **Pixso** | **官方 Pixso MCP `code_to_design`**（本地 18 工具之一） + `pixso_import.py` 批量脚本（出自外部仓库 jiaweiwei1961/pixso-design-skill 的 `scripts/pixso_import.py`） | HTML 字符串 / HTML 目录 / ZIP | 需处理 95KB 分块，输出扁平图层 |
-
-#### 通用硬限制（反向路径的核心约束）
-
-1. **只吃 HTML，不吃 React/Vue 源码**——反向工具全部要求静态 HTML。React/TSX 组件必须先 build 成静态 HTML 才能导入。
-   - 纯静态页（落地页/文档站）：直接抓 HTML 顺畅
-   - 动态 SPA：先用 Playwright/Puppeteer 跑各路由抓快照，或 `vite build` + 静态渲染
-   - **Tauri 桌面应用（如 DevWorkBench 类）最麻烦**：要用 Tauri webview 截图或独立 Web 构建再抓 HTML
-2. **Pixso MCP 请求大小限制 ~95KB**（超 101KB 返回 HTTP 413）——复杂页面需 `pixso_import.py`（外部仓库 jiaweiwei1961/pixso-design-skill 的 `scripts/pixso_import.py`）自动分批（会话过期自动刷新 + 重试 3 次）
-3. **转换质量取决于 HTML 语义化**——内联 style 最准；class-based CSS 靠正则提取会丢部分继承关系
-4. **输出是扁平化图层，不是交互组件**——导入后是 Frame/Text/Rectangle，不是设计工具的 Component/Variant，要手动封装才可复用
-
-#### 完整反向工作流（React/Tauri 项目 → 设计图审核）
-
-```
-现有 React/TSX 代码
-  ↓ vite build + 静态渲染（或 Playwright 抓路由 HTML）
-静态 HTML 文件（每路由一个）
-  ├─ Figma: html.to.design 插件粘贴 URL/HTML，或 htmlToFigma MCP
-  └─ Pixso: pixso_import.py ./html-pages（jiaweiwei1961/pixso-design-skill `scripts/pixso_import.py`，自动分批+打标签+垂直排列）
-设计工具设计稿（可编辑）
-  ↓ 用户在设计工具里批注/审核/调整细节
-审核反馈 → 代码改造
-```
-
-**关键判定**：反向是"评审/快照"用途，不是"代码→设计→再回代码"的循环。导入的设计图是当前代码的静态映射，后续改动仍以代码为准、定期重新快照重新导入。
+→ 反向工具对照表 + 硬限制 + 完整流程见 [references/reverse-workflow.md](references/reverse-workflow.md)；Pixso 反向的端到端 SOP（含 token 双向校验）走 **design-review-snapshot**。
 
 ## 阶段 3 — 生产化改造（原型 → 生产，必经 5 步）
 
@@ -274,4 +210,6 @@ AI 生成的原型要上生产，必经以下改造（在 Cursor 里做）：
 
 ## 参考
 
+- Pixso MCP 接入细节（本地/云端、4 IDE 配置、0★ 仓库 fallback）：[references/pixso-mcp-setup.md](references/pixso-mcp-setup.md)
+- 反向路径细节（工具对照、硬限制、完整流程）：[references/reverse-workflow.md](references/reverse-workflow.md)
 - Addy Osmani 原文：https://addyosmani.com/blog/ai-coding-workflow

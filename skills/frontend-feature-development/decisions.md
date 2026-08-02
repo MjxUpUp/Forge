@@ -70,3 +70,37 @@ composes 标量逗号写法改 flow list [a, b]，对齐 CONVENTIONS §4
 ### Evidence
 
 grep 确认全库 composes 已无标量残留；forge skills validate 50/50
+
+## [d-18c7e5a675b8a768-5bdee667] accept
+
+- **Skill**: frontend-feature-development
+- **DecidedAt**: 2026-08-02T05:24:40Z
+
+### Diagnosis
+
+skills 库价值审计 13 项改进落地
+
+### Revision
+
+数据型论据改指针(inline 体积/container query/OKLCH)；token-only/reduced-motion 加单源指针
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md 逐项价值审计
+
+## [d-18c7e62b0bbb5574-b76f7e4d] accept
+
+- **Skill**: frontend-feature-development
+- **DecidedAt**: 2026-08-02T05:34:09Z
+
+### Diagnosis
+
+项10 description 审计+触发回归
+
+### Revision
+
+description 审计合格未改动 + evals.json 建立
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md

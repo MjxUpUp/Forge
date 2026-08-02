@@ -53,3 +53,37 @@ composes 标量逗号写法改 flow list [a, b]，对齐 CONVENTIONS §4
 ### Evidence
 
 grep 确认全库 composes 已无标量残留；forge skills validate 50/50
+
+## [d-18c7e5a645aa7808-2937d793] accept
+
+- **Skill**: ai-generated-ui-review
+- **DecidedAt**: 2026-08-02T05:24:39Z
+
+### Diagnosis
+
+skills 库价值审计 13 项改进落地
+
+### Revision
+
+删与 frontend-code-review 重复维度 1/3/4 改指针，保留四个独有块；解除对 ai-ui-generation-workflow 循环 composes(D2)；arXiv/CVE 数据核实补链接
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md 逐项价值审计
+
+## [d-18c7e620b5e24658-92b20ce6] accept
+
+- **Skill**: ai-generated-ui-review
+- **DecidedAt**: 2026-08-02T05:33:25Z
+
+### Diagnosis
+
+项10 description 审计+触发回归
+
+### Revision
+
+description 三段式合格未改动;新建 evals/evals.json(5正+4负)
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md

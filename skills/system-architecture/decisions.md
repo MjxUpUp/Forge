@@ -18,3 +18,37 @@ persistent decision history：每条决策记 (诊断, 修订, 脱敏证据, 结
 ### Evidence
 
 grep internal/cli 确认无 auto-build；ls skills/ 确认无 c4-model；skills_audit.go 确认 audit 语义为 skill 文件审查
+
+## [d-18c7e4715781431c-21327188] accept
+
+- **Skill**: system-architecture
+- **DecidedAt**: 2026-08-02T05:02:32Z
+
+### Diagnosis
+
+审计判决'改进（大幅瘦身）'：当前是 DDD/C4/12-factor/Well-Architected 教科书合订本；§2.5 ADR 模板与 architecture-decision-record 模板双头分叉（两套字段不同）；§2.6 12-factor 逐条表和 §2.3 DDD 六种关系是纯知识复述；§6 提交前必跑是 go build 张冠李戴（架构交付物是文档/图）；§8/§9 为完整而完整，参考链接混入 Web Vitals
+
+### Revision
+
+245 行压到 ~130 行：§2.5 ADR 模板整节删除改指针到 architecture-decision-record（全库唯一模板）；§2.6 12-factor 压成一行官方链接；C4 表删（保留画图硬规则进 §2.1）；§2.3 删六种关系复述保留边界识别步骤；§6 改为 ADR 索引检查+forge review pass；§8/§9 整节删除；保留带阈值判断规则（拆微服务 5 信号≥2、集成模式决策树、负向约束、Gotchas）
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md 逐项审计
+
+## [d-18c7e622d9c71d58-269da35f] accept
+
+- **Skill**: system-architecture
+- **DecidedAt**: 2026-08-02T05:33:34Z
+
+### Diagnosis
+
+项10 description 审计+触发回归
+
+### Revision
+
+description 审计合格未改动 + 新建 evals.json 10 条
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md

@@ -36,3 +36,37 @@ dogfood-findings-2026-07-09(testing×17 全低分, 质量 skill 0 显式触发) 
 ### Evidence
 
 skills/ 目录无 verification-before-completion；verification-driver 存在且语义吻合
+
+## [d-18c7e5a6717cc404-b329e2f2] accept
+
+- **Skill**: systematic-debugging
+- **DecidedAt**: 2026-08-02T05:24:40Z
+
+### Diagnosis
+
+skills 库价值审计 13 项改进落地
+
+### Revision
+
+When to Use 移除构建失败消除与 SKIP 矛盾；test_command_failed 独占；限流案例改指针
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md 逐项价值审计
+
+## [d-18c7e622bc3327dc-1d03c10b] accept
+
+- **Skill**: systematic-debugging
+- **DecidedAt**: 2026-08-02T05:33:34Z
+
+### Diagnosis
+
+项10 description 审计+触发回归
+
+### Revision
+
+description 审计合格未改动 + 新建 evals.json 10 条
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md

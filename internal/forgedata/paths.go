@@ -207,6 +207,18 @@ func (p *Project) HazardsConfirmPath(fp string) string {
 // ActDir 返回 DataDir/act
 func (p *Project) ActDir() string { return filepath.Join(p.DataDir, "act") }
 
+// FreezeDir returns DataDir/freeze
+//
+// FreezeDir 返回 DataDir/freeze
+func (p *Project) FreezeDir() string { return filepath.Join(p.DataDir, "freeze") }
+
+// FreezeStatePath returns DataDir/freeze/state.json
+//
+// FreezeStatePath 返回 DataDir/freeze/state.json
+func (p *Project) FreezeStatePath() string {
+	return filepath.Join(p.DataDir, "freeze", "state.json")
+}
+
 // ActConclusionsPath returns DataDir/act/conclusions.jsonl
 //
 // ActConclusionsPath 返回 DataDir/act/conclusions.jsonl

@@ -31,7 +31,7 @@ metadata:
 
 1. **User Journey**：列出 3-5 个核心用户路径（"下单"/"登录"/"搜索"），每个 journey 选 1-2 个指标
 2. **SLI 选型**：用 4 golden signals（Latency / Traffic / Errors / Saturation），**不用**衍生聚合（如 QPS 自创指标）
-3. **SLO 数值**：用户可忍受的失败率（典型 99% / 99.9% / 99.99% = "three nines" = 月停机 43min / 4.3min / 26s）
+3. **SLO 数值**：用户可忍受的失败率（典型 99% / 99.9% / 99.99%，30 天窗口停机约 7.2h / 43min / 4.3min）
 4. **Error Budget**：100% - SLO = 失败率配额（用这配额做 vs feature work 的决策）
 
 ```
@@ -133,7 +133,7 @@ USE（Brendan Gregg，资源视角）：
 - 用：调用外部/downstream 服务（不可控）
 - 不：用：本地内存调用（同进程）
 - 阈值：5 次失败 / 10s → open（30s），half-open（5s），close
-- 工具：resilience4j / Hystrix / Polly / sentinel
+- 工具：resilience4j（Java）/ Polly（.NET）/ opossum（Node）/ gobreaker（Go）/ Sentinel / Envoy outlier detection（网格层）。**不要用 Hystrix**（2018 年起维护模式）
 
 **模式 2: Retry**（重试）—— 处理瞬时失败
 - 用：幂等 + 瞬时失败（网络抖动）
@@ -144,7 +144,7 @@ USE（Brendan Gregg，资源视角）：
 **模式 3: Bulkhead**（舱壁）—— 隔离线程/连接池
 - 用：多下游共用资源（线程池被一个慢下游拖死）
 - 不：用：单下游（无隔离必要）
-- 工具：resilience4j Bulkhead / Hystrix ThreadPool / 连接池限数
+- 工具：resilience4j Bulkhead / 连接池与线程池限数（语言/框架内置）
 
 **模式 4: Rate Limit**（限流）—— 保护资源
 - 用：API 网关 / 防滥用 / 资源稀缺
@@ -231,19 +231,20 @@ W3C Trace Context 格式：
 
 **G8**: Postmortem 找责任人 → blameless 文化坏。预防：模板强调"系统漏洞"非"个人过失"。
 
-## 6. 提交前必跑
+## 6. 提交前必跑（可执行检查清单）
 
 ```bash
-# 静态检查（韧性相关）→ 靠 §4 自查清单逐项人工核对
+# 1. 韧性静态核对 → 按 §4 自查清单逐项人工核对
 
-# 可观测 stack 联通测试
-curl -X POST $COLLECTOR_OTLP/v1/traces -d @trace.json
-# 验证 trace 出现 + service.name 正确
+# 2. 可观测栈联通（OTel-first：换成你实际的 collector 地址，4318 = OTLP/HTTP）
+curl -X POST http://localhost:4318/v1/traces \
+  -H 'Content-Type: application/json' -d @trace.json
+# 验证：后端（Jaeger/Tempo）能查到该 trace 且 service.name 正确
 
-# SLO 配置检查
-# Grafana: rate(sli_errors_total[5m]) / rate(sli_total[5m]) > 0.001 → alert
+# 3. SLO 告警规则存在性（Prometheus/Grafana 规则文件里有 burn-rate 告警）
+grep -rn "burn_rate\|slo" prometheus/rules/ 2>/dev/null || echo "缺 SLO 告警规则"
 
-# 提交前必过
+# 4. 提交前必过
 forge review pass                            # code-review-gate
 ```
 
@@ -251,13 +252,13 @@ forge review pass                            # code-review-gate
 
 ## 7. 与其他 skill 的协作
 
-- **服务级**：`backend-development` — §2.6 韧性模式落地 + 同步/异步选型
+- **服务级**：`backend-development` — §2.5 可观测指针回到本 skill，同步/异步选型在 system-architecture
 - **API 设计**：`api-design` 类（在 backend-development §2.1）— 错误码 + Retry-After 头
 - **可观测栈**：`integration-test-architecture` — chaos test 验证韧性
 - **调试**：`systematic-debugging` — Postmortem 阶段主导
-- **架构**：`system-architecture` — §2.6 集成模式 + service decomposition 影响韧性设计
+- **架构**：`system-architecture` — §2.4 集成模式 + service decomposition 影响韧性设计
 
-## 8. SRE / 阿里 / Google 实践融合
+## 8. 实践来源对照
 
 | 来源 | 关键贡献 | 集成到本 skill |
 |---|---|---|
