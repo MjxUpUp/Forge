@@ -268,7 +268,7 @@ var skillRefAllowlist = map[string]bool{
 	// release-readiness 子角色（审计维度 M1-M7/R1，非独立 skill）
 	`release-risks-auditor`: true, `runtime-readiness-auditor`: true,
 	// hook 名（on-demand-guards 自动挡，非 skill）
-	`hazard-guard`: true,
+	`hazard-guard`: true, `freeze-guard`: true,
 	// forge 命令/门禁（task gate ID，非 skill）
 	`task-implement`: true, `task-verify`: true,
 	// forge skills 子命令名（eval 命令族，CONVENTIONS 命令清单引用，非 skill）
@@ -298,7 +298,9 @@ var skillRefAllowlist = map[string]bool{
 	`grid-template-columns`: true, `box-shadow`: true, `backdrop-filter`: true,
 	`background-image`: true, `prefers-reduced-motion`: true,
 	// HTML / data 属性（非 skill）
-	`aria-label`: true, `data-testid`: true, `data-palette`: true,
+	`aria-label`: true, `data-testid`: true, `data-palette`: true, `data-theme`: true,
+	// frontmatter / 规范字段名与高信号关键词（validation-rules.md 引用，非 skill）
+	`allowed-tools`: true, `post-generation`: true,
 	// 工具（非 skill）
 	`axe-core`: true,
 	// 命名示例（token / store / 组件 / 品牌风格 / 快照，非 skill）

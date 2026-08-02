@@ -1,6 +1,6 @@
 ---
 name: dev-lookup
-description: "开发期单点快速检索：查 API 签名、查报错含义、查库用法、查版本兼容、查语法、查官方示例。Use when: 开发或调试时需要确认某个具体技术点——\"这个 API 怎么调\"\"这个错误什么意思\"\"这个库怎么用\"\"这两个版本兼容吗\"\"这个语法对不对\"。SKIP: 深度调研/多源对比/产出调研报告（用 research-workflow）；提方案前的环境验证（用 evidence-based-proposal）；飞书/云文档操作（用 lark-*）。"
+description: "开发期单点快速检索：查 API 签名、查报错含义、查库用法、查版本兼容、查语法、查官方示例。Use when: 开发或调试时需要确认某个具体技术点——\"这个 API 怎么调\"\"这个错误什么意思\"\"这个库怎么用\"\"这两个版本兼容吗\"\"这个语法对不对\"。SKIP: 深度调研/多源对比/产出调研报告（用 research-workflow）；非技术事实核查/数据对比需多源交叉（用 fact-research）；提方案前的环境验证（用 evidence-based-proposal）；飞书/云文档操作（用 lark-*）。"
 metadata:
   pattern: routing + fallback
   domain: development
@@ -10,14 +10,7 @@ metadata:
 
 开发或调试时确认某个具体技术点。**单点、即时、直接返回答案，不写报告不 spawn worker**。
 
-和调研类 skill 的量级区别：
-
-| | dev-lookup（本 skill） | research-workflow |
-|---|---|---|
-| 场景 | 查 API/报错/用法/版本/语法 | 调研某方向/竞品/趋势 |
-| 查询次数 | ≤5 次，拿到就用 | ≥60 次，多 agent |
-| 产出 | inline 答案 + URL | run_dir 报告 + 飞书发布 |
-| 互证 | 不做 | 四档信度分级 |
+和调研类 skill 的量级区别见「三层调研量级」路由表——唯一真相源：fact-research「三层调研量级（路由依据）」节，此处不复制。本 skill 是最轻一层：单点技术检索，≤5 次查询，inline 答案，不做互证。
 
 ## 检索基线（按 agent 能力）
 
@@ -25,17 +18,7 @@ metadata:
 - **有内置 `web_search`/`web_fetch`** → 直接搜索抓取，官方文档/SE/crates.io 可直达，无需 curl
 - **无内置联网工具（联网只能 bash curl）** → 走下方定向源（官方文档站 curl + gh + 包仓库 API + SE API）
 
-curl 定向源参考（与 agent 无关，按你的网络自检为准）：
-
-| 通道 | 状态 | 用途 |
-|---|---|---|
-| 官方文档站 curl（MDN/python/node/react/docs.rs/go/k8s） | ✅ 通常通 | 查 API/语法/错误码 |
-| `gh` CLI（认证后 5000/h） | ✅（需装+认证） | 找代码示例/issues/README |
-| 包仓库 API（crates.io / npm registry） | ✅ 通常通 | 查包元数据/版本/依赖 |
-| Stack Exchange API（api.stackexchange.com） | ✅ 通常通 | 查报错的社区解法 |
-| Bing/百度 搜索结果页 | ⚠️ 反爬/验证码墙，质量差 | 仅作兜底 |
-| Stack Overflow 网页版 | ❌ 常返 403 | 用 SE API 替代 |
-| Jina Reader / JS 渲染源 | ❌ 常超时 | 有 browser 工具的 agent 可直接渲染抓 |
+curl 定向源通道状态见 fact-research 的 [`references/curl-sourcing.md`](../fact-research/references/curl-sourcing.md)「技术单点检索通道（dev-lookup 用）」节——该表为**特定网络环境实测，非通用结论**，以你的自检结果为准。
 
 **核心纪律**：走官方文档站 + gh + 包仓库 API + SE API 这四条主路，它们精准可靠。有内置 `web_search` 的 agent 优先用内置搜索补充；curl agent 别碰 SO 网页/Jina/通用搜索引擎结果页。
 

@@ -5,6 +5,7 @@ metadata:
   pattern: inversion + pipeline
   domain: workflow
   steps: 6
+  适用前提: 多阶段长周期任务或跨会话协作；恢复源按可用性降级——有 forge 任务优先 `forge task resume`，无 forge 走 git/文档/转录完整 pipeline；纯单会话短任务不适用
 ---
 
 # 跨会话开发接力
@@ -116,50 +117,11 @@ git diff --stat
 - 下一步：[下次做什么]
 ```
 
-### 结构化记忆（Memory 模式）
-
-同时追加一条机器可读记录到 `~/.forge/research/session-history.jsonl`（纯 agent 手写约定，无任何 forge 命令读写它——但路径在用户级目录，不随项目丢失）：
-
-```json
-{"project":"项目名","date":"YYYY-MM-DD","completed":["完成项"],"blocked":["阻塞项"],"next":["下一步"],"commit":"最新 commit SHA"}
-```
-
-**下次恢复时（阶段 1 步骤 1 前）**：先读 `session-history.jsonl` 找到本项目的上次记录，对比 git log 看从上次到现在发生了什么变化——比从零重建上下文更快。
-
 ## 标准 HANDOFF 格式（跨会话/跨工具交接）
 
-> **forge task 是真相源，HANDOFF.md 是导出视图**：决策/下一步/阻塞优先写进 `forge task decide/next/block`（持久化进 forge task；refactor-data-home 后落用户级 DataDir，跨会话/跨工具 resume 即拉回）。`HANDOFF.md` 降级为 `forge task context` 的文本导出，供无 forge 环境/人类阅读——别再靠纪律手写两份。下面的格式用于导出视图或无 forge 的降级场景。
+> **forge task 是真相源，HANDOFF.md 是导出视图**：决策/下一步/阻塞优先写进 `forge task decide/next/block`（持久化进 forge task；refactor-data-home 后落用户级 DataDir，跨会话/跨工具 resume 即拉回）。`HANDOFF.md` 降级为 `forge task context` 的文本导出，供无 forge 环境/人类阅读——别再靠纪律手写两份。
 
-会话结束或切换工具时，写一份结构化 HANDOFF 到项目根 `HANDOFF.md`（或 `AI_CONTEXT.md` 的 `## Current Handoff` 节），让下一个会话/工具能冷启动续做。**统一格式，不要每次手抄不同结构**：
-
-```markdown
-# HANDOFF — <项目名> @ <YYYY-MM-DD HH:MM>
-
-## 当前任务
-- 主线：[一句话当前在做什么]
-- 进度：[做到哪一步 / 完成度]
-
-## 调用栈（恢复时按序读）
-1. <文件:行> — <这个文件当前状态/为什么重要>
-2. <文件:行> — <同上>
-
-## 已修改未提交
-- <文件> — <改了什么，是否验证过>
-
-## 待验证项
-- [ ] <编译/测试/端到端验证还没跑的>
-
-## 已知问题/阻塞
-- <问题> — < workaround 或状态>
-
-## 下一步
-1. <恢复后第一件事>
-```
-
-**关键纪律**：
-- HANDOFF 是给**冷启动的下一个会话**看的，不是给自己备忘——写清楚“为什么”不只写“是什么”
-- 跨工具交接（A 工具→B 工具）时，双方都读写同一份 `AI_CONTEXT.md`，见 **cross-tool-context** skill
-- HANDOFF 不是永久文档，任务完成后可删或归档到 `docs/session-log.md`
+会话结束或切换工具时，写一份结构化 HANDOFF 到项目根 `HANDOFF.md`（或 `AI_CONTEXT.md` 的 `## Current Handoff` 节），让下一个会话/工具能冷启动续做。**统一格式，不要每次手抄不同结构**——完整模板与填写纪律见 [references/handoff-format.md](references/handoff-format.md)，此处不复制。
 
 ## 易错点
 

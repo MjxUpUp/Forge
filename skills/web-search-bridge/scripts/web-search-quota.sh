@@ -6,14 +6,15 @@
 #   web-search-quota.sh status             查看本地累计调用统计
 #
 # 参数:
-#   check [tavily|serper|exa]              查指定 provider；省略=查所有可用
+#   check [tavily|serper|brave|exa]         查指定 provider；省略=查所有可用
 #
 # 能力差异（实测）:
 #   Tavily  GET /usage 返回月度计划额度（plan_usage/plan_limit）—— 能预检月度余额
 #   Serper  响应头 x-ratelimit-* 只反映速率窗口（25req/s）—— 只能防瞬时超限
+#   Brave   无额度 endpoint、无响应头额度字段 —— 无法预检，靠调用失败被动应对
 #   Exa     无额度 endpoint、无响应头额度字段 —— 无法预检，靠调用失败被动应对
 #
-# 环境变量: TAVILY_API_KEY / SERPER_API_KEY / EXA_API_KEY
+# 环境变量: TAVILY_API_KEY / SERPER_API_KEY / BRAVE_SEARCH_API_KEY / EXA_API_KEY
 # 退出码: 0 正常；1 额度低/不可用；2 环境问题
 
 set -euo pipefail
@@ -22,7 +23,7 @@ set -euo pipefail
 STATS_DIR="${WEB_SEARCH_STATS_DIR:-$HOME/.forge/web-search-stats}"
 mkdir -p "$STATS_DIR"
 STATS_FILE="$STATS_DIR/usage.json"
-[ -f "$STATS_FILE" ] || echo '{"tavily":0,"serper":0,"exa":0}' > "$STATS_FILE"
+[ -f "$STATS_FILE" ] || echo '{"tavily":0,"serper":0,"brave":0,"exa":0}' > "$STATS_FILE"
 
 # Tavily 阈值：剩余 < 此值警告（百分比）
 TAVILY_WARN_PCT=20
@@ -78,6 +79,13 @@ check_serper() {
   return 0
 }
 
+check_brave() {
+  if [ -z "${BRAVE_SEARCH_API_KEY:-}" ]; then echo "BRAVE: ❌ 未配置 key"; return 2; fi
+  # Brave 无额度 endpoint，无响应头额度字段
+  echo "BRAVE: ⚠️ 无额度预检能力（Brave 不提供 usage API，响应头也无额度）— 靠调用失败被动应对（429=超额）"
+  return 0
+}
+
 check_exa() {
   if [ -z "${EXA_API_KEY:-}" ]; then echo "EXA: ❌ 未配置 key"; return 2; fi
   # Exa 无任何额度 endpoint，无响应头额度字段
@@ -93,21 +101,24 @@ cmd_check() {
   case "$target" in
     tavily)  check_tavily || worst=1 ;;
     serper)  check_serper || worst=1 ;;
+    brave)   check_brave  || worst=1 ;;
     exa)     check_exa    || worst=1 ;;
     all)
       check_tavily || worst=1
       echo ""
       check_serper || worst=1
       echo ""
+      check_brave  || worst=1
+      echo ""
       check_exa    || worst=1
       ;;
-    *) echo "未知 provider: $target（可选: tavily|serper|exa|all）"; exit 2 ;;
+    *) echo "未知 provider: $target（可选: tavily|serper|brave|exa|all）"; exit 2 ;;
   esac
   echo ""
   echo "=== 建议（按能力排序选择）==="
   echo "  预检月度额度优先 Tavily（有完整 usage API）"
   echo "  Tavily 额度低时切 Serper（无月度预检但有速率保护）"
-  echo "  Exa 作语义搜索备用（无任何额度信息，按需用）"
+  echo "  Brave/Exa 作备用（无任何额度信息，按需用）"
   return $worst
 }
 
@@ -138,5 +149,5 @@ case "${1:-}" in
   record) record_call "${2:-}" ;;
   -h|--help)
     sed -n '2,25p' "$0"; exit 0 ;;
-  *) echo "用法: web-search-quota.sh check [tavily|serper|exa|all] | status"; exit 2 ;;
+  *) echo "用法: web-search-quota.sh check [tavily|serper|brave|exa|all] | status"; exit 2 ;;
 esac

@@ -23,6 +23,7 @@ var embeddedHooks = map[string]string{
 	"task-verify":         TaskVerifyHook,
 	"review-stop":         ReviewStopHook,
 	"task-guard":          TaskGuardHook,
+	"freeze-guard":        FreezeGuardHook,
 	"read-before-edit":    ReadBeforeEditHook,
 	"bash-guard":          BashGuardHook,
 	"hazard-guard":        HazardGuardHook,
@@ -139,6 +140,9 @@ func ForgeHookSpec() map[string][]HookMatcher {
 			{
 				Matcher: "Write|Edit",
 				Hooks: []HookEntry{
+					// freeze-guard 排最前：`forge freeze` 激活时优先给出 freeze
+					// 阻断原因，而非 task-guard 的告警/自保护判定（freeze 优先判定契约）。
+					{Type: "command", Command: "forge hook freeze-guard"},
 					{Type: "command", Command: "forge hook task-guard"},
 					{Type: "command", Command: "forge hook assertion-check"},
 					{Type: "command", Command: "forge hook read-before-edit"},

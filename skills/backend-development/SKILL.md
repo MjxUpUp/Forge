@@ -9,32 +9,31 @@ metadata:
 
 # 后端开发规范
 
-> **本 skill 不重复**: 数据库 schema/迁移 → `database-design`；性能 e2e → `integration-test-architecture`；CI/CD → `release-readiness`；架构 ADR → `architecture-decision-record`。本 skill 解决"按 SOP 写出/改后端代码"的工作流纪律，覆盖多语言（Rust/Node/Go/Python 通用 + 跨 stack 适配引用）。
+> **本 skill 不重复**: 数据库 schema/迁移 → `database-design`；性能 e2e → `integration-test-architecture`；CI/CD → `release-readiness`；架构 ADR → `architecture-decision-record`；可观测/韧性 → `resilience-and-observability`；安全编码 → `secure-coding`；系统分层 → `system-architecture`。本 skill 解决"按 SOP 写出/改后端代码"的工作流纪律，覆盖多语言（Rust/Node/Go/Python 通用 + 跨 stack 适配引用）。
 
 ## 1. 决策树（后端开发路径）
 
 ```
 任务是什么？
-├─ 新 API endpoint → §2.1 REST/GraphQL/gRPC 设计 7 步
+├─ 新 API endpoint → §2.1 决策点 + 反模式
 ├─ 改现有 endpoint → §2.2 改不破坏（contract-stable）
-├─ 加鉴权/中间件 → §2.3 鉴权决策 + 中间件顺序
-├─ 业务逻辑层 → §2.4 service / repo 分层
-├─ 性能/排查 → §2.5 性能自检 + 可观测必做项
-├─ 测试 → §2.6 测试策略（unit/integration/e2e/contract）
+├─ 加鉴权/中间件 → §2.3 鉴权指针 + 中间件反模式
+├─ 业务逻辑层 → §2.4 分层指针
+├─ 性能/排查 → §2.5 可观测/慢查询指针
+├─ 测试 → §2.6 测试铁律
 └─ bug 修复 → §2.7 排查 SOP（systematic-debugging 主导）
 ```
 
 ## 2. 7 路径规范
 
-### 2.1 新 API endpoint 7 步
+### 2.1 新 API endpoint — 决策点 + 反模式
 
-1. **确定资源模型 + URL**：名词复数（`/users` 不是 `/getUsers`），HTTP 方法语义（GET/POST/PUT/PATCH/DELETE）
-2. **定义契约**：request/response schema（OpenAPI/Protobuf/JSON Schema）+ 错误码
-3. **数据校验**：边界值 + 长度 + enum + 格式（拒绝"裸类型"——所有入参必须校验）
-4. **鉴权**：每 endpoint 显式声明权限要求（不靠"隐藏"安全）
-5. **错误处理**：统一错误结构（code + message + detail），不泄内部
-6. **测试**：unit（业务逻辑）+ integration（HTTP）+ e2e（真实路径）+ contract（契约不变）
-7. **可观测**：log/trace/metric（§2.5）+ 提交前 `code-review-gate`
+**决策点**：资源模型（名词复数 URL + HTTP 方法语义）→ 契约先行（OpenAPI/Protobuf/JSON Schema + 错误码）→ 入参全部 schema 校验（拒绝"裸类型"）→ 统一错误结构（code + message + detail，不泄内部）。
+
+**反模式**：
+- URL 里放动词（`/getUsers`）
+- 无契约直接写 handler，事后补文档
+- 错误处理每 endpoint 各写一套
 
 ### 2.2 改现有 endpoint — 不破坏契约
 
@@ -45,68 +44,33 @@ grep -rn "v1/users" src/
 ```
 **禁止**：silent break（rename 字段不加 `@deprecated`、删字段不留 redirect）。
 
-### 2.3 鉴权 + 中间件顺序（铁律）
+### 2.3 鉴权 + 中间件
 
-```
-中间件栈从外到内（express/gin/axum 同理）：
-1. Tracing/Logging          → 最早，记录完整上下文
-2. Request ID               → 跨服务关联
-3. CORS                     → 浏览器跨域必需
-4. Rate limit / Quota       → 资源保护
-5. 鉴权（auth）              → 通过才有权进
-6. 业务鉴权（authz/policy）  → 角色+资源级权限（区别 auth）
-7. Schema 校验              → 入参验完再进 service
-8. Service 业务             → 不重复 auth/authz（上层已做）
-9. DB / 外部依赖            → 仅 service 调
-10. Error handler / Response → 最外兜
-```
+**鉴权（AuthN/AuthZ 选型、OWASP 防范）唯一真相源：secure-coding「鉴权与权限」节，此处不复制。**
 
-**反模式**：
-- 在 service 层查 req.user 鉴权（应在上层做）
-- 中间件顺序错（auth 在 schema 校验后 → 未授权用户能跑 schema 解析开销）
-- 自定义鉴权逻辑（用成熟库：JWT/OAuth2/PASETO + 标准中间件）
+中间件反模式（高频踩坑）：
+- auth 放在 schema 校验之后 → 未授权请求白跑解析开销
+- 在 service 层查 req.user 鉴权 → 应在上层中间件做，service 不重复 auth/authz
+- 自定义鉴权逻辑 → 用成熟库（JWT/OAuth2/PASETO）+ 标准中间件
 
 ### 2.4 Service / Repo 分层
 
-```
-handler/      → 参数解析 + 调 service + 返回 HTTP（薄）
-service/      → 业务逻辑编排（事务边界、跨 repo 调用）
-repo/         → 单表/单领域的数据访问（不写业务）
-domain/       → 实体 + 业务规则（纯函数优先，不依赖框架）
-```
+**应用分层与模块边界规则唯一真相源：system-architecture「新系统设计流程」节，此处不复制。**
 
-**铁律**：
-- service 不返 HTTP 类型（http.Request 之类的）
-- repo 不做 join 跨表（join 进 service 层组装）
-- domain 不 import framework（可纯单测）
-- handler 不写业务逻辑（只解析 + 调 service + 序列化）
+### 2.5 性能 + 可观测
 
-### 2.5 性能 + 可观测必做项
+**可观测与韧性规则唯一真相源：resilience-and-observability（SLO / 告警 / 超时链 / 三支柱），此处不复制。** 慢查询与 N+1 排查走 `database-design`「慢查询优化决策树」。
 
-**性能自检**：
-- [ ] 慢查询 log：`query_time > 100ms` warn
-- [ ] N+1 检测（用 dataloader / batch）
-- [ ] 缓存层（hot path），失效策略明确
-- [ ] 分页/limit（list endpoint 必须有上限）
-- [ ] 超时链路（HTTP 2s / DB 1s / Redis 100ms）
-
-**可观测必做**（不靠运气 debug）：
-- [ ] trace（OpenTelemetry/W3C trace context）
-- [ ] structured log（JSON，request_id 全链路）
-- [ ] metric（latency histogram + error rate + QPS）
-- [ ] health check（`/health` liveness + `/ready` readiness，区别依赖是否就绪）
+性能 dev 自检只留两条高频：
+- [ ] list endpoint 必须有分页/limit 上限
+- [ ] hot path 缓存必须声明失效策略
 
 ### 2.6 测试策略
 
-| 层 | 工具 | 测什么 |
-|---|---|---|
-| unit | Go test / pytest / vitest | 纯函数、domain 规则 |
-| integration | httptest / supertest | 整 endpoint + 真 DB（testcontainers） |
-| contract | pact / spectral | API 契约对消费者不破坏 |
-| e2e | Playwright / k6 / ghz | 真实链路、性能 |
-| chaos | chaos-mesh / toxiproxy | 依赖故障容忍 |
-
-**铁律**：不测 SQL 拼装（用 DB driver testcontainers），不 mock service 层（mock 会掩盖真 bug），按层测层。
+**分层测试与集成测试架构唯一真相源：integration-test-architecture，此处不复制。** 本 skill 只留三条铁律：
+- 不测 SQL 拼装（用 testcontainers 真 DB），不 mock service 层（mock 会掩盖真 bug）
+- 每 endpoint 至少 unit（业务逻辑）+ integration（HTTP）各一
+- API 契约变更必须 contract test 护航
 
 ### 2.7 Bug 排查 SOP
 
@@ -132,13 +96,13 @@ domain/       → 实体 + 业务规则（纯函数优先，不依赖框架）
 
 ## 4. Post-Generation 自查清单
 
-- [ ] 文件 < 200 行（不超 300）
+- [ ] 文件行数按项目约定（本 skill 不设一刀切数字）
 - [ ] 错误统一处理（不每 endpoint 自己捉）
 - [ ] 无 `panic` / `process.exit` 冒到顶层
 - [ ] 无硬编码 secret / token / URL
 - [ ] 无未处理的 error（`if err != nil` 路径有处理）
 - [ ] API 契约文档同步（OpenAPI/JSON Schema）
-- [ ] unit + integration 测试覆盖率 ≥ 80%
+- [ ] 测试覆盖率按项目约定达标
 - [ ] `forge review pass` 通过
 
 ## 5. Gotchas（实操易错点）

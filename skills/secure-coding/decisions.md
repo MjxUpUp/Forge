@@ -18,3 +18,37 @@ persistent decision history：每条决策记 (诊断, 修订, 脱敏证据, 结
 ### Evidence
 
 grep internal/cli 确认 review pass 仅为人工审查标记命令；code-review-gate skill 内容无 OWASP 子检查
+
+## [d-18c7e49911141c10-36d88ba1] accept
+
+- **Skill**: secure-coding
+- **DecidedAt**: 2026-08-02T05:05:23Z
+
+### Diagnosis
+
+审计判决'改进（更新基线+补 AI 时代盲区）'：全文按 OWASP Top 10 2021 组织而 2025 已正式发布（A03 变 Software Supply Chain Failures、SSRF 并入 A01、新增 A10 Mishandling of Exceptional Conditions），§9 映射表整体过时；作为 AI agent 质量保障项目分发的安全 skill 零提及 prompt injection/MCP 安全/skill 供应链投毒；CVE triage SLA 对小项目不现实；§6 默认已装 snyk/semgrep/gitleaks 无降级路径
+
+### Revision
+
+§9 按官方 OWASP Top 10:2025 重映射（已核实 owasp.org 正式版清单）；新增 §2.7 Agent/LLM 特有威胁（prompt injection/MCP 工具安全/skill 供应链投毒，引 Snyk ToxicSkills 3984 skill 36.8% 缺陷 76 恶意数据）；§2.1/§2.2/§2.3 类目标注同步 2025；§2.6 SLA 加适用条件；§6 工具命令标注'若已安装'并给手工核对路径；参考链接换 2025 + LLM Top 10
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md 逐项审计；owasp.org/Top10/2025 官方清单已 FetchURL 核实
+
+## [d-18c7e622e89c9934-c4d11852] accept
+
+- **Skill**: secure-coding
+- **DecidedAt**: 2026-08-02T05:33:34Z
+
+### Diagnosis
+
+项10 description 审计+触发回归
+
+### Revision
+
+description 审计合格未改动 + 新建 evals.json 10 条
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md

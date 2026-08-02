@@ -405,6 +405,44 @@ fi
 echo "PASS"
 `
 
+const FreezeGuardHook = `#!/bin/bash
+# freeze-guard.sh — PreToolUse hook for Write|Edit（硬阻断）。
+# on-demand-guards /freeze 目录锁定的 forge 侧落地：` + "`forge freeze <路径>...`" + ` 激活后，
+# 写入冻结路径之外的文件一律 BLOCKED——「只改这里别动其他」的 session 级硬护栏，
+# 不依赖 agent 每回合自检（prompt 型护栏在长会话/压缩后必漂移，恰是它防的场景）。
+#
+# 判定与路径归一化全在 Go 端（forge freeze check → internal/freeze）：多路径、
+# 相对路径归一化、Windows 大小写不敏感都有单测覆盖；bash 只做退出码转发——
+# 路径比较逻辑进 bash 是 BSD/大小写/symlink 三重漂移源，故保持薄。
+#
+# 顺序契约：本 hook 在 ForgeHookSpec 的 PreToolUse Write|Edit matcher 里排在
+# task-guard 之前——freeze 激活时优先给出 freeze 原因，而不是 task 告警。
+#
+# 退出码契约（与 freeze check 对齐）：0=放行；1=阻断（stdout 原因进 FAIL 行）；
+# 其他=check 自身异常 → fail-open（护栏故障不得硬停每次编辑）。
+# Protocol: stdout FAIL 行 → runHook 转 decision:block 进 additionalContext。
+set -eo pipefail
+
+FILE_PATH="${FORGE_FILE_PATH:-}"
+# 无文件路径（非文件工具 / batch 模式）— 放行
+[ -z "$FILE_PATH" ] && exit 0
+
+CODE=0
+OUT=$(forge freeze check --path "$FILE_PATH" 2>/dev/null) || CODE=$?
+case "$CODE" in
+  0) exit 0 ;;
+  1)
+    [ -z "$OUT" ] && OUT="目录已 freeze，该路径不在允许范围内（forge freeze --status 查看，forge freeze --off 解除）"
+    echo "FAIL [freeze-guard] $OUT"
+    exit 1
+    ;;
+esac
+
+# check 自身异常（非 freeze 判定结论）→ fail-open 放行并留可见警告
+echo "PASS [freeze-guard] forge freeze check 异常（exit $CODE），fail-open 放行"
+exit 0
+`
+
 const ReadBeforeEditHook = `#!/bin/bash
 # read-before-edit.sh — PreToolUse hook for Write|Edit (方案2 shift-left).
 # Blocks editing a source file NOT Read this session — immediate feedback at

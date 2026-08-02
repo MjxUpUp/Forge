@@ -2,10 +2,16 @@
 // (registry.py R1-R11) and security audit (audit.py 19 rules + weighted scoring).
 // 1:1 alignment with Python semantics ensures per-rule judgments match registry.py
 // --json / audit.py (golden comparison baseline).
+// R12-R17 are forge-local extensions on top of the Python-aligned R1-R11
+// (R12 triggers declarations; R13-R17 from the 2026-08 skills value audit,
+// improvement item 11 — see docs/skills-value-audit-2026-08-02.md).
 //
 // Package skillsqa 实现 SkillsHub 的质量校验：规范契约（registry.py 的 R1-R11）
 // 与安全审查（audit.py 的 19 条规则 + 加权评分）。1:1 对齐 Python 语义，确保与
 // registry.py --json / audit.py 的判定逐条一致（黄金对比基准）。
+// R12-R17 是 forge 在 Python 对齐的 R1-R11 之上的本地扩展
+// （R12 triggers 声明；R13-R17 来自 2026-08 skills 价值审计清单项 11，
+// 见 docs/skills-value-audit-2026-08-02.md）。
 package skillsqa
 
 import (
@@ -25,6 +31,10 @@ var ValidPatterns = map[string]bool{
 	"tool-wrapper": true, "generator": true, "reviewer": true,
 	"inversion": true, "pipeline": true, "gate": true,
 	"routing": true, "fallback": true,
+	// reference — 经验/踩坑记录型（无流程无门控的知识参考），2026-08 新增：
+	// integration-test-architecture 类 skill 原被误标 tool-wrapper。
+	// reference — experience/pitfall-reference skills (no pipeline, no gate).
+	"reference": true,
 }
 
 // HighSignalKW — any one present in body is treated as high-signal content
@@ -148,6 +158,41 @@ var SeverityWeight = map[string]int{
 //
 // kebabRe — R1 name 合法格式（registry.py r'[a-z][a-z0-9-]*' fullmatch）。
 var kebabRe = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+
+// imperativeRe — R15 ALL-CAPS 命令式词（整词匹配，仅全大写形式；小写 always/must
+// 是普通叙述不计入）。
+//
+// imperativeRe — R15 ALL-CAPS imperative words (whole-word, uppercase only;
+// lowercase always/must is ordinary prose and does not count).
+var imperativeRe = regexp.MustCompile(`\b(ALWAYS|NEVER|MUST)\b`)
+
+// RuleDescriptions — rule ID → rule text definition (exported single source of
+// truth; docs generation greps this table instead of copying rule text, and CLI
+// output stays aligned with it). R1-R11 align with SkillsHub registry.py;
+// R12-R17 are forge-local extensions (see package doc).
+//
+// RuleDescriptions — 规则编号 → 规则文本定义（可导出的单一真相源；文档生成 grep
+// 本表而非复制规则文本，CLI 输出与之对齐）。R1-R11 对齐 SkillsHub registry.py；
+// R12-R17 为 forge 本地扩展（见 package doc）。
+var RuleDescriptions = map[string]string{
+	"R1":  "name 须 kebab-case（硬）",
+	"R2":  "name 与目录名一致（硬）",
+	"R3":  "frontmatter 字段白名单，防 typo（硬）",
+	"R4":  "description 长度 80-1024 字符（硬）；>500 偏长走 advisory",
+	"R5":  "description 须含 Use when（硬）",
+	"R6":  "description 须含 SKIP（硬）",
+	"R7":  "metadata.pattern 必填，单值或 + 组合每段须合法（硬）",
+	"R8":  "SKILL.md 总行数 ≤500（硬，对齐 Python 计行口径）",
+	"R9":  "正文须含高信号内容：决策树/自查/Gotchas 等（硬）",
+	"R10": "description 不应总结 body 工作流，只说 what+when（CSO，advisory）",
+	"R11": "references/ ≤1 level 无子目录（硬）；>100 行 markdown ref 需 ToC（advisory）",
+	"R12": "metadata.triggers 声明须合法 JSON 且 event/when ∈ 词汇表（advisory）",
+	"R13": "SKILL.md 正文（不含 frontmatter）≤500 行（硬）",
+	"R14": "frontmatter 必填 name 与 description（硬；description ≤1024 字符上限由 R4 覆盖）",
+	"R15": "正文 ALL-CAPS 命令式词（ALWAYS/NEVER/MUST）合计 >5 次时提醒改「指令+原因」写法（advisory）",
+	"R16": "references/ 下 >300 行文件需 ToC（advisory；markdown 文件由 R11 以 >100 行更低门槛先行覆盖，不重复报）",
+	"R17": "evals/evals.json 存在时须符 schema：对象含 trigger_cases 数组，每项 {query: string, should_trigger: boolean}（advisory）",
+}
 
 // allowedFmSorted returns the sorted allowed-field list (used in R3 issue text;
 // aligns with Python sorted(ALLOWED_FM)).

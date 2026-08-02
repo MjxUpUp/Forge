@@ -1,6 +1,6 @@
 ---
 name: skill-evolution
-description: "agent skill 持续进化编排（诊断→优化→记决策→accept/revert）。Use when: skill 在实际任务里漏检或误触发想系统性改进时、跑 forge skills eval-report 发现回归时、想给某 skill 的改动做回归验证防退化时、复盘某次 skill 优化为何这么改时。SKIP: 一次性 typo/格式修复（直接改）、从零新建 skill（用 CONVENTIONS + skill 规范）、非 skill 的业务代码优化。"
+description: "agent skill 持续进化编排（诊断→优化→记决策→accept/revert）。Use when: skill 在实际任务里漏检或误触发想系统性改进时、跑 forge skills eval-report 发现回归时、想给某 skill 的改动做回归验证防退化时、复盘某次 skill 优化为何这么改时。SKIP: 一次性 typo/格式修复（直接改）、从零新建 skill（用 skill-authoring-standard）、会话结束沉淀经验/记教训（用 session-retrospective）、非 skill 的业务代码优化。"
 metadata:
   pattern: pipeline
   domain: skill-engineering
@@ -37,7 +37,7 @@ agent 理解 why，**eval 回归**防退化。
 
 ### 2. revise（优化 skill）
 
-改 SKILL.md / scripts / references 修诊断出的失败模式。改完重建 case 集：
+改 SKILL.md / scripts / references 修诊断出的失败模式。**改动须过 skill-authoring-standard「验证（新建/修改后）」节的清单**（validate/audit/防注水/TDD 基线），此处不复制。改完重建 case 集：
 
 ```bash
 forge skills eval-gen --skill <X> --save   # 派生 trigger/not-trigger case 集
@@ -86,10 +86,62 @@ forge skills eval-report --skill <X>                   # 看 pass-rate / 回归 
 | 触发对但输出漏检查 | 改 references/checklist → record |
 | 优化后其他 case 回归 | scoped revert 这次 → record reject → 重新设计优化 |
 
+## 触发回归（evals）
+
+`evals/evals.json` 是 description 触发行为的回归用例集——改 description 前后跑一遍，
+防止「修好一个触发词、撞坏三个路由」。
+
+### Schema（R17 机器校验）
+
+```json
+{"trigger_cases": [{"query": "用户自然语言说法", "should_trigger": true}]}
+```
+
+- 顶层只能有 `trigger_cases`，每项 `{query: string, should_trigger: boolean}`——不要加
+  其他顶层字段，R17 只认这个结构。
+- `forge skills validate` 对 schema 做机器校验（R17，advisory），存在即校验，不强制创建。
+
+### 用例配比与取材
+
+- 8-10 条：约 **5 条正例** + **4-5 条 near-miss 负例**。
+- 正例：用户自然语言说法的改写（口语化，该触发本 skill）——覆盖 `Use when` 列的主要
+  触发词。
+- **near-miss 负例从兄弟 skill 的路由撞车点出**：看着像、但应路由到兄弟 skill 的说法
+  （如 systematic-debugging 的负例出「测试挂了」→ test-discipline、「编译报错」→
+  compile-fix-loop）。负例撞车点即 description `SKIP` 段的逐条镜像——写了 SKIP 就要有
+  对应负例，否则 SKIP 是不可验证的措辞。
+- query 用中文口语化表达，不用 skill 名字本身（否则测不出路由能力）。
+
+### 纪律
+
+- **改 description 后必须过一遍 trigger_cases 自查**：逐条 query 问自己「新 description
+  会不会正确触发/排除」；判不准的 dispatch fresh subagent 实测。
+- 用例随 description 演进同步更新：新增触发词补正例，新增 SKIP 补负例。
+- 批量实跑回归走核心循环的 step 4（eval-cases → eval-record → eval-report），本节只定
+  case 集本身的编写纪律。
+
 ## 与 task-verify 的衔接
 
 改 skill 源码时，task-verify gate 会 advisory 提醒「记决策」（skill-decisions-advisory）：
 非平凡优化（改了行为/检查项/流程）就 `forge skills decide` 记一条；trivial（typo/格式）忽略。
+
+## 与其他 skill 的衔接
+
+- **skill-authoring-standard**：revise 步的改动规范唯一真相源（验证清单/R1-R11/description 规范都在它那里），本 skill 只管「改完怎么回归验证+留痕」。
+- **session-retrospective**：会话复盘判定「经验该沉淀进 skill」时，具体改动走本 skill 的 diagnose→revise→record→accept 循环落地——它管「该不该沉淀、进哪个载体」，本 skill 管「skill 改动怎么安全落地」（双向衔接）。
+
+## 体检：留痕覆盖率（防 decide 机制形同虚设）
+
+定期（建议每 30 天，或发版前）核对「skill 改动」与「决策留痕」是否配对：
+
+```bash
+# 近 30 天改过的 skill
+git log --since="30 days ago" --name-only --pretty=format: -- 'skills/*/SKILL.md' | sort -u
+# 各 skill 最近一次决策时间
+grep -h 'DecidedAt' skills/*/decisions.md | sort | tail -5
+```
+
+某个 skill 近 N 天有 SKILL.md 改动但 decisions.md 无对应条目 → 留痕漏了：非平凡改动补记 `forge skills decide`，trivial（typo/格式）不改。**有改动无留痕 = 下次退化无从归因**。
 
 ## 反模式
 

@@ -1,6 +1,6 @@
 ---
 name: session-retrospective
-description: "会话或主线任务结束时（或任务中发现值得记的教训时）回顾协作经验，路由到正确载体（memory/skill/代码/hook/CI）并按规范写入，防止经验流失或沉淀错载体。Use when: 一个主线任务或会话结束时；用户说'回顾下这次/沉淀经验/总结教训/这个教训记下来/更新CLAUDE.md/避免下次再犯'；修复反复出现的 bug 后；发现新的易错模式；判断一条经验该记 memory 还是做 skill 还是自动化成代码。SKIP: 任务尚未结束且无即时教训、纯 bug 修复无普遍教训（直接 fix）、用户只要简单确认无需沉淀。"
+description: "会话或主线任务结束时（或任务中发现值得记的教训时）回顾协作经验，路由到正确载体（memory/skill/代码/hook/CI）并按规范写入，防止经验流失或沉淀错载体。Use when: 一个主线任务或会话结束时；用户说'回顾下这次/沉淀经验/总结教训/这个教训记下来/更新CLAUDE.md/避免下次再犯'；修复反复出现的 bug 后；发现新的易错模式；判断一条经验该记 memory 还是做 skill 还是自动化成代码。SKIP: 任务尚未结束且无即时教训、纯 bug 修复无普遍教训（直接 fix）、系统性改进某个 skill 并跑回归验证（用 skill-evolution）、从零编写 skill 文件的规范（用 skill-authoring-standard）、用户只要简单确认无需沉淀。"
 metadata:
   pattern: pipeline + gate
   domain: workflow
@@ -38,6 +38,8 @@ metadata:
 - **看项目级系统性模式**（跨任务，非个例）：跑 `forge health`——证据盲区率高（过半完成声明 Unverified/Weak）= agent 系统性"声明完成却没真验证"，该查验证流程为何没真跑；**复发低分维度**（×N）= 该方向有共性缺口，优先沉淀成守卫测试/CLAUDE.md 铁律（载体决策树第 1/2 档）而非只记单次个例
 
 这是 Act 反馈臂的入口：回顾从"agent 临结束想起什么"变成"读 forge 跑出来的结构化结论"。Strong 且 >=70 的干净完成不强制回顾证据（无盲区），但仍走下面 5 步看协作类教训。
+
+**无 forge 时的降级路径**：没有 `forge act` 可读，不等于回到凭回忆。用手工事实锚替代结构化结论——先跑 `git log --oneline -20` 和 `git status` 确认这次实际改了什么，再实跑一遍项目的验证命令（编译/测试，取尾部输出）确认"完成声明"当下仍成立。把这两份输出摊在眼前再回顾，同样锚住"别靠记忆美化"。
 
 ### 1. 回顾——扫本次协作的非显然经验
 
@@ -108,6 +110,8 @@ skill 的成本是"靠 agent 遵循"——会漏。能用代码/CI/hook 机器�
 - **高频/重要**？低频冷门的 → 不值得占 skill 空间
 - **不与现有 skill 重叠**？重叠的 → 合并/补充，别新建
 
+四问全过后，落地前按 skill-authoring-standard「验证（新建/修改后）」节的清单逐项校验（validate/audit/防注水），此处不复制该清单。
+
 ## Red Flags（出现这些想法 = STOP，你在选错载体）
 
 - "这条记 memory 就行"——但它其实是可程序化的检查 → 该进守卫测试/CI
@@ -145,6 +149,7 @@ skill 的成本是"靠 agent 遵循"——会漏。能用代码/CI/hook 机器�
 - **docs-consistency-guard**：当路由判定"进守卫测试"时，转交它建具体的文档一致性测试。
 - **session-continuity**：跨会话**恢复**（handoff 接力）。本 skill 是会话**结束**的沉淀。二者衔接：本 skill 产出的 memory/经验，是 session-continuity 下次恢复的素材。
 - **skill-authoring-standard**：当路由判定"进 skill"时，用它写符合 R1-R11 规范的 skill。
+- **skill-evolution**：当路由判定"改进已有 skill"时，走它的 revise→eval→decide 循环（改动回归验证+决策留痕），与本 skill 双向衔接——本 skill 负责"该不该沉淀、进哪个载体"，它负责"skill 改动怎么安全落地"。
 - **code-review-gate**：审代码质量。本 skill 是经验沉淀，不审代码。
 
 ## 参考

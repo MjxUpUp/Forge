@@ -18,3 +18,37 @@ persistent decision history：每条决策记 (诊断, 修订, 脱敏证据, 结
 ### Evidence
 
 全仓 grep session-history 仅此 skill 两处；grep 'doc-format markdown|--scope outline' 显示 5 处 --doc-format markdown vs 1 处 --scope outline
+
+## [d-18c7e5a69cff6514-ded2c7fc] accept
+
+- **Skill**: session-continuity
+- **DecidedAt**: 2026-08-02T05:24:41Z
+
+### Diagnosis
+
+skills 库价值审计 13 项改进落地
+
+### Revision
+
+删 session-history.jsonl 死约定(D7)；HANDOFF 格式拆 references/handoff-format.md；frontmatter 加适用前提
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md 逐项价值审计
+
+## [d-18c7e62b33f0e1e4-1fccda01] accept
+
+- **Skill**: session-continuity
+- **DecidedAt**: 2026-08-02T05:34:10Z
+
+### Diagnosis
+
+项10 description 审计+触发回归
+
+### Revision
+
+description 审计合格未改动 + evals.json 建立
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md

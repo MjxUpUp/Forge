@@ -92,6 +92,38 @@ func TestGenerateSettingsHookEntries(t *testing.T) {
 	}
 }
 
+// TestFreezeGuardRegisteredFirst pins the freeze-priority contract: freeze-guard
+// must be registered and must be the FIRST PreToolUse Write|Edit entry so an
+// active freeze reports its block reason before task-guard warnings.
+//
+// TestFreezeGuardRegisteredFirst 钉住 freeze 优先判定契约：freeze-guard 必须注册
+// 且排在 PreToolUse Write|Edit 首位——freeze 激活时先报 freeze 阻断原因而非
+// task-guard 告警。
+func TestFreezeGuardRegisteredFirst(t *testing.T) {
+	if _, ok := embeddedHooks["freeze-guard"]; !ok {
+		t.Fatal("freeze-guard missing from embeddedHooks")
+	}
+	spec := ForgeHookSpec()
+	found := false
+	for event, matchers := range spec {
+		if event != "PreToolUse" {
+			continue
+		}
+		for _, m := range matchers {
+			if m.Matcher != "Write|Edit" {
+				continue
+			}
+			found = true
+			if len(m.Hooks) == 0 || !strings.Contains(m.Hooks[0].Command, "freeze-guard") {
+				t.Errorf("PreToolUse Write|Edit first hook = %+v, want freeze-guard first", m.Hooks)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("no PreToolUse Write|Edit matcher in ForgeHookSpec")
+	}
+}
+
 func TestGenerateSettingsUsesForgeHook(t *testing.T) {
 	dir := t.TempDir()
 	if err := GenerateSettings(dir); err != nil {

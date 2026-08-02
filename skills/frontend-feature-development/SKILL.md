@@ -31,8 +31,8 @@ metadata:
 - **语义化 HTML 优先**：用 `<button>` 不用 `<div onClick>`；用 `<nav>/<main>/<article>` 不用全 `<div>`
 - **键盘导航**：所有交互元素可 Tab 到、可 Enter/Space 触发；自定义组件实现 `tabindex` + 键盘事件
 - **ARIA 正确性**：参照 WAI-ARIA APG（https://www.w3.org/WAI/ARIA/apg/）的 dialog/menu/combobox 等复杂 pattern；不滥用 `aria-label`（有可见文字别加）
-- **reduced-motion 必写**：所有动效用 `@media (prefers-reduced-motion: reduce)` 包裹，或用 Framer Motion 的 `useReducedMotion()`
-- **对比度**：文字 ≥ 4.5:1（WCAG AA）；OKLCH 色彩注意 sRGB gamut mapping 退化
+- **reduced-motion 必写**：所有动效用 `@media (prefers-reduced-motion: reduce)` 包裹，或用 Framer Motion 的 `useReducedMotion()`；完整实现模板（CSS universal reset + JS matchMedia + 静态等价物）唯一真相源：frontend-aesthetics-execution「阶段 4 — 动效 a11y 门」节，此处不复制
+- **对比度**：文字 ≥ 4.5:1（WCAG AA）；OKLCH 的 sRGB gamut mapping 退化警告唯一真相源：design-system-workflow「阶段 3 — OKLCH 双主题切换」节，此处不复制
 
 ### 1.2 token-only（禁止硬编码）
 
@@ -47,6 +47,7 @@ metadata:
 - 色值 / 间距 / 圆角 / 阴影 / 字号 / 动效曲线——**全部从 design token 取**
 - 没有 token 的值，先加 token（→ design-system-workflow），不临时写死
 - Tailwind 项目：用 `@theme` 定义 token，组件用 `bg-brand-primary` 等语义类
+- 铁律唯一真相源：design-system-workflow「铁律：token-only 是底线」节；本节是生成时的执行约束
 
 ### 1.3 组件 API 范式（参照 Base UI/Radix）
 
@@ -59,7 +60,7 @@ metadata:
 
 - **@theme 定义 token**：所有自定义色彩/间距在 `@theme` 里定义，组件用语义类引用
 - **class 排序**：开 Biome `useSortedClasses` 或 prettier-plugin-tailwindcss，避免 class 顺序混乱
-- **避免 inline class 体积陷阱**：重复 ≥3 次的 class 组合抽成 `@apply` 或组件；调研发现 57.6% 页面体积来自 inline class
+- **避免 inline class 体积陷阱**：重复 ≥3 次的 class 组合抽成 `@apply` 或组件（体积数据论据唯一真相源：frontend-stack-selection「反主流 framing」节，此处不复制）
 - **container query 优先**：响应式用 `@container`（Tailwind v4 一等公民），不只靠 `@media`
 
 ### 1.5 RSC 兼容（Next.js App Router 项目）
@@ -130,8 +131,8 @@ metadata:
 - **shadcn copy-in 组件改了要追上游**：copy 进来的组件如果上游修了 bug，你不会自动得到；定期 diff 同步（用 `shadcn diff`）
 - **Radix 的 `asChild` 与 React 19 的 ref forwarding**：React 19 ref as prop 后，`asChild` 模式需更新写法
 - **Framer Motion 125KB 是纯负担**（未复用场景）：简单动效用 CSS `transition`/`@keyframes`，别为 fade-in 引整个 Framer Motion
-- **OKLCH gamut mapping 静默退化**：sRGB 设备上 OKLCH 颜色会被浏览器自动映射，可能改变对比度；双主题必须实测
-- **container query 不是银弹**：36%/43% 开发者放入 reading list 但实际用 7%/<1%（State of CSS 2025）；组件级响应式用它，页面级还是 @media
+- **OKLCH gamut mapping 静默退化**：警告全文唯一真相源：design-system-workflow「阶段 3 — OKLCH 双主题切换」节，此处不复制；双主题必须实测对比度
+- **container query 不是银弹**：组件级响应式用它，页面级还是 @media（"想用 vs 真用"落差数据唯一真相源：design-system-workflow「Gotchas」节，此处不复制）
 
 ## 与其他 skill 的分工
 

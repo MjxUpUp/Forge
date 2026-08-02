@@ -37,6 +37,10 @@ git diff -- '*.tsx'   # 看具体变更
 
 对每个被审查的文件，按以下 6 维度检查。每个发现标注：行号 + 严重性（block/fix/suggest）+ 规则 + 原因 + 修复代码。
 
+**按项目实际技术栈跳过不适用维度**：不用 Tailwind 的项目跳过维度 3、无设计 token 体系的项目跳过维度 4——在报告里注明"维度 N 不适用（项目未用 X）"，不硬套清单制造噪声。
+
+**叠加 code-review-gate 时**：分级只表达处理顺序——block 以下（fix/suggest）也必须逐条显式回应（修复或论证不需修），裁决见 code-review-gate 步骤 3「叠加专项审查的输出协议」。
+
 #### 维度 1：a11y（无障碍，最高优先）
 
 - **语义化 HTML**：`<div onClick>` 处理交互 → block（应 `<button>`/`<a>`）
@@ -96,9 +100,6 @@ git diff -- '*.tsx'   # 看具体变更
 ### Suggest（建议考虑）
 1. `List.tsx:20` — props 8 个未拆 compound — [建议：拆 `<List.Item>`]
 
-### 评分：N/10
-[评分理由]
-
 ### 优先改进 Top 3
 1. [最有影响力的改进]
 2. [次有影响力]
@@ -131,10 +132,10 @@ git diff -- '*.tsx'   # 看具体变更
 ## 易错点（Gotchas）
 
 - **不只查 `+` 行，更要查 `-` 行**：AI 作弊常删 a11y 属性/断言/测试块来"让代码通过"
-- **shadcn copy-in 组件的审查特殊**：copy 的代码归你，但要看是否漏了上游安全修复（issue #3579 sonner style overrides 失效 35 评论 open）
+- **shadcn copy-in 组件的审查特殊**：copy 的代码归你，但要看是否漏了上游安全修复（[shadcn-ui/ui issue #3579](https://github.com/shadcn-ui/ui/issues/3579)：sonner style overrides 失效，长期 open）
 - **OKLCH 对比度陷阱**：sRGB 设备 gamut mapping 会静默改变亮度；审查 dark 主题对比度必须在真实设备测
 - **client component 边界**：Next.js App Router 审 `'use client'` 是否过度（污染服务端边界）
-- **container query 滥用**：36%/43% 放 reading list 实际用 7%/<1%；审查是否为用而用
+- **container query 滥用**：社区关注度高但生产实际采用率很低；审查是否为用而用（媒体查询能解决的别上 container query）
 
 ## 与其他 skill 的分工
 

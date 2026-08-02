@@ -54,3 +54,37 @@ MISSING 项实现指向中的 fullstack-feature 改为 backend-development
 ### Evidence
 
 skills/ 目录无 fullstack-feature；backend-development 存在且后端实现属其职责
+
+## [d-18c7e5a69442afd0-57e7a97a] accept
+
+- **Skill**: design-audit
+- **DecidedAt**: 2026-08-02T05:24:40Z
+
+### Diagnosis
+
+skills 库价值审计 13 项改进落地
+
+### Revision
+
+description/开篇点破通用价值(三态判决+file:line 证据)，飞书只是输入源之一；决策树压缩
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md 逐项价值审计
+
+## [d-18c7e620c74fa994-5158c3fa] accept
+
+- **Skill**: design-audit
+- **DecidedAt**: 2026-08-02T05:33:25Z
+
+### Diagnosis
+
+项10 description 审计+触发回归
+
+### Revision
+
+description 三段式合格未改动;新建 evals/evals.json(5正+4负)
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md

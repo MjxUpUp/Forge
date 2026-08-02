@@ -35,3 +35,37 @@ eval-cases 行补注释：首次使用先 eval-gen --skill database-design --sav
 ### Evidence
 
 internal/cli/skills_eval_cases.go:105 无 case 集时报错并提示 eval-gen
+
+## [d-18c7e45989aa10d4-15148f6d] accept
+
+- **Skill**: database-design
+- **DecidedAt**: 2026-08-02T05:00:50Z
+
+### Diagnosis
+
+审计判决'改进（中度瘦身）'：§2.1 schema 7 步/§2.7 备份表/§2.5 ORM 排序/§8 SQL-NoSQL 适配表偏教科书，ORM 排序无依据标注；§4 与 code-review-gate phase-database.md 条目级重复；§6 提交前必跑混入 forge skills eval-cases（位置误导）
+
+### Revision
+
+§2.1 砍为决策点密度；§2.5 删无依据语言排序保留查询场景+反 ORM 纪律；§2.7 删 RPO/RTO 备份表保留恢复演练铁律；§8 适配表整节删除；§4 机械可检项改指针到 phase-database.md；§6 移除 eval-cases；expand/contract 迁移纪律与 psql BEGIN/ROLLBACK 演练原样保留
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md 逐项审计
+
+## [d-18c7e622cb2d8520-5f5eda86] accept
+
+- **Skill**: database-design
+- **DecidedAt**: 2026-08-02T05:33:34Z
+
+### Diagnosis
+
+项10 description 审计+触发回归
+
+### Revision
+
+description 审计合格未改动 + 新建 evals.json 10 条
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md

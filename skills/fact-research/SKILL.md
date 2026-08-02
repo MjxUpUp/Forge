@@ -32,18 +32,7 @@ metadata:
 - **有内置 `web_search`/`web_fetch`** → 直接搜索抓取，通用搜索可达
 - **无内置联网工具（联网只能 bash curl）** → 走下方定向源；定向源不够时桥接付费搜索 API（**web-search-bridge** skill，需配 key）
 
-curl 定向源参考（按你的网络自检为准）：
-
-| 通道 | 状态 | 适用 |
-|---|---|---|
-| HackerNews Algolia API | ✅ 通 | 技术新闻/融资/产品发布/社区讨论 |
-| GitHub API（repos/issues/search code） | ✅ 通 | 公司动态/项目活跃度/真实代码示例 |
-| Stack Exchange API | ✅ 通 | 技术社区高票问答/对比经验 |
-| arXiv API | ✅ 通（http→https 重定向） | 学术/技术进展/论文 |
-| techcrunch / theverge / 主流科技媒体 | ✅ 可直 curl | 行业新闻/融资/产品（需解析 HTML） |
-| Bing 搜索结果页 | ⚠️ 302/质量差 | 兜底，需大量二次筛选 |
-| DuckDuckGo / Google / Wikipedia / SearX | ❌ 超时/reset | 别用 |
-| Jina Reader / JS 渲染源 | ❌ 超时 | 别用 |
+curl 定向源通道状态与自检方法见 [`references/curl-sourcing.md`](references/curl-sourcing.md)（该表为**特定网络环境实测，非通用结论**，开工前先按其中的自检方法逐条验证，以你的自检结果为准）。
 
 **核心纪律**：走 HN + GitHub + SE + arXiv + 主流媒体直 curl 这几条定向路。查不到就诚实说"本机未查到"，不编造。
 

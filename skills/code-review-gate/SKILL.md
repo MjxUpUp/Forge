@@ -1,6 +1,6 @@
 ---
 name: code-review-gate
-description: "通用研发代码审查门控（提交前/合并前强制拦截）。Use when: 开发任务完成准备 git commit / push / 提 PR 前、说\"审查代码 / code review / 检查代码质量 / 看看能不能提交 / 代码写得怎么样 / 帮我 review\"时、想拦截 AI 生成的屎山进入主干时、审查任意语言代码变更时。SKIP: 纯测试质量守卫（用 test-discipline）、编译报错（用 compile-fix-loop）、查单一 API/库用法（用 dev-lookup）、运行时 bug 排查（用 systematic-debugging）、项目级验收（用 project-acceptance）、可维护性/复杂度规范的 SOP 细则（用 maintainability-and-readability）。"
+description: "通用研发代码审查门控（提交前/合并前强制拦截）。Use when: 开发任务完成准备 git commit / push / 提 PR 前、说\"审查代码 / code review / 检查代码质量 / 看看能不能提交 / 代码写得怎么样 / 帮我 review\"时、想拦截 AI 生成的屎山进入主干时、审查任意语言代码变更时。SKIP: 纯测试质量守卫（用 test-discipline）、编译报错（用 compile-fix-loop）、查单一 API/库用法（用 dev-lookup）、运行时 bug 排查（用 systematic-debugging）、项目级验收（用 project-acceptance）、Rust 专项结构化审查（用 rust-code-review，与门控叠加不替代）。"
 metadata:
   pattern: reviewer + gate
   domain: code-review
@@ -32,6 +32,7 @@ metadata:
 - **查 API 签名 / 库用法** → `dev-lookup`
 - **运行时 bug 根因排查** → `systematic-debugging`
 - **整个项目验收** → `project-acceptance`
+- **Rust 专项结构化审查**（unsafe/异步/workspace 深度）→ `rust-code-review`（与门控叠加，不替代双轨）
 
 ## 审查流程
 
@@ -57,7 +58,7 @@ git diff --cached                  # 看已暂存的变更
 
 变更行动了函数签名 / 类型 / 常量 / 行为时，追影响范围：
 
-- **调用方**：`grep -rn "改动的符号名" src/`——谁调了它？参数 / 返回值 / 副作用变化会不会让调用方失效？
+- **调用方**：谁调了它？参数 / 返回值 / 副作用变化会不会让调用方失效？——改名/删符号/改签名时的完整检查规则见下方「改名/删符号后的调用方检查」节（全库唯一真相源，此处不复制）
 - **数据流下游**：改动涉及的 DB schema / API 响应 / JWT claims / 配置结构 / 共享状态，下游消费方的类型与语义还匹配吗？（跨层数据类型不一致是「单测过、集成挂」的经典根因）
 - **共用符号**：被改的常量 / 类型 / 工具函数被哪些模块共用？改一处是否波及多处？
 
@@ -71,53 +72,19 @@ git diff --cached                  # 看已暂存的变更
 
 **原则**：能用测试 / 实跑验证的就别只靠推演——推演是 reviewer 的下限，不是上限。逻辑推演发现不了的（环境行为、数据流实际类型），必须有测试或实跑兜底。
 
-### 步骤 1.5：环节感知加载（phase-aware，如有设计产物）
+## 改名/删符号后的调用方检查（全库唯一真相源）
 
-如果任务是**设计阶段产物审查**（非纯代码实现），`task-verify` gate 的 `inferDesignPhases` 已根据文件路径推断设计阶段并落盘 `state.DesignPhases`。据此加载对应 checklist，而非只加载通用 `review-checklist.md`：
+变更对 export / 函数 / 类型 / 常量做了**改名、删除或改签名**时，调用方检查是强制项。本节是全库唯一真相源——其他 skill（agent-delegation / implementation-discipline / review-batch 等）引用本节，不复制规则。
 
-```bash
-# 检查任务是否有 DesignPhases（需有 active task）
-forge task status --json 2>&1 | grep -i "design_phase\|DesignPhases"
-```
+1. **全仓 grep，含 gitignored**：`grep -rn "oldName" .`——**不要用 `git grep`**（漏 gitignored 的调用方：`docs/`、生成代码、`.env`、构建产物里的引用）；**也不只看本次 diff / SHA 内变更**（调用方常在改动文件之外）。
+2. **三种符号变动都要查**：改名（假重构高发：符号改了名但调用者没更新 → 运行时 ReferenceError 或死代码）、删符号、改签名（参数 / 返回值变化让旧调用方静默失效）。
+3. **完成判定**：grep 结果零残留旧符号引用才算同步完成；有残留即发现（必须解决，不是建议）。
 
-有 `DesignPhases` 时，加载对应环节 checklist 作为补充检查项：
+> Forge 项目：若任务是设计阶段产物审查（非纯代码实现），`task-verify` 已按文件路径推断 DesignPhases 并落盘，须加载对应 phase checklist 作为补充检查项——条件化细节见 [references/forge-integration.md](references/forge-integration.md)「环节感知加载」节。非 forge 项目跳过。
 
-| DesignPhase | 加载 checklist | 说明 |
-|---|---|---|
-| `requirement` | [references/phase-requirement.md](references/phase-requirement.md) | 需求设计产物（PRD/需求文档）审查 |
-| `api` | [references/phase-api.md](references/phase-api.md) | API 设计产物（OpenAPI/proto/接口定义）审查 |
-| `database` | [references/phase-database.md](references/phase-database.md) | 数据库设计产物（migration/schema/索引）审查 |
-| `frontend` | [references/phase-frontend.md](references/phase-frontend.md) | 前端设计产物（组件/页面/路由/状态）审查 |
-| `backend` | [references/phase-backend.md](references/phase-backend.md) | 后端设计产物（service/domain/业务逻辑）审查 |
-| `test-design` | [references/phase-test-design.md](references/phase-test-design.md) | 测试设计产物（测试用例/计划/矩阵）审查 |
-| 其他/无 | 通用 `review-checklist.md` | 代码级审查（默认） |
+### 步骤 2 前置：证据强度校准（forge 项目）
 
-> 6 个环节与 `design-artifact-standards` skill 的编写期路由表对称——同一批 phase-*.md，编写期当骨架（design-artifact-standards）、审查期当 checklist（本步骤），一份标准两阶段共用。
-
-**加载方式**：把对应 checklist 作为附加检查项，与轨道 A+B 一起执行。不替换而是补充——设计产物审查与代码实现审查关注点不同。
-
-> 无 `DesignPhases` 时（普通代码任务）跳过此步，直接进入步骤 2。
-
-### 步骤 2 前置：证据强度校准（forge 项目，必做）
-
-双轨审查之前，先看本任务的「完成」声明有多少 deterministic 证据支撑——证据弱时，审查重心要从「找代码 bug」扩到「核验声称的验证是否真发生过」。这正对冲 LLM-judge 看不出 agent 跳过前置就声明完成的盲区：deterministic 占比是完成可信度的硬信号（hook/gate 实跑，不可伪造），而 agent 自述可信度低。
-
-```bash
-forge review status        # task 模式输出末尾含「证据强度: ratio=X <档位>」+ 校准指令
-forge trace <task-ref>     # 证据链分桶行 + Weak/Unverified 警告（同样驱动校准）
-```
-
-档位与审查动作：
-
-| 档位 | 含义 | 审查动作 |
-|---|---|---|
-| **Strong**（ratio≥0.5） | deterministic 占多数，声明可信 | 正常双轨审查即可 |
-| **Weak**（ratio<0.5） | agent 自述占多数 | **加核**：声称的测试是否真跑过（找 `test-run` 条目）、门禁是否经 deterministic 路径过，而非纯 agent-claim |
-| **Unverified**（零 deterministic） | 声明全无实跑支撑 | **必核**：把「声称做了的验证是否真发生」列为首要审查项，必须见到 deterministic 证据才放行 |
-
-证据弱（Weak/Unverified）时，把 `forge review status` 末尾的校准指令注入子 agent 的审查 prompt（见下「子 agent 化」）。无 forge 时跳过本步（fallback 到纯静态双轨）。
-
-**跨模型 critic（证据弱时升级）**：Weak/Unverified 时，独立子 agent 审查之外再升一级——若所在 host 支持多模型，派一个**不同模型**的只读子 agent 做对抗式 critic：assume-bug 立场（假定声称的验证都没真跑过），逐条要 deterministic 证据才放行。跨模型独立性能打破单模型同源盲区（Self-Correction Illusion：同模型自我复核倾向确认自己已对）。host 仅单模型时退化为同模型的显式对抗 prompt——底线是「对抗式核验」这一动作，跨模型是增强项非硬前置。`forge review pass` 在 Weak/Unverified 时会发 `ADVISORY:` 提醒本次 stamp 盖在盲区证据上，见到即回退执行本升级。
+> Forge 项目：双轨审查前先做证据强度校准——`forge review status` 的 ratio 档位（Strong/Weak/Unverified）决定审查动作（Weak 加核、Unverified 必核声称的验证是否真发生，并升级跨模型对抗式 critic）。机制与操作详见 [references/forge-integration.md](references/forge-integration.md)「证据强度校准」节。非 forge 项目跳过本步（fallback 到纯静态双轨）。
 
 ### 步骤 2：双轨审查（核心，缺一不可）
 
@@ -149,6 +116,8 @@ forge trace <task-ref>     # 证据链分桶行 + Weak/Unverified 警告（同�
 4. **解决方向**：具体怎么修（可执行），或结合背景论证为何不需修（如"看似重复但分属不同抽象层，合并会耦合"）。
 
 **不分级**：不给发现打 block/fix/suggest 或 major/minor/nit 标签。分级会暗示"低级别可忽略或推迟"，导致 suggest/nit 永不被修——而 AI 屎山常藏在这些"看着不大"的细节里（单行 `@ts-ignore`、空 catch、删断言）。每个发现都是真实问题，都需认真回应。
+
+**叠加专项审查的输出协议（裁决）**：专项审查 skill（rust-code-review / frontend-code-review / ai-generated-ui-review）保留 block/fix/suggest 分级，但与本 gate 叠加执行时，分级只表达处理顺序、不表达可忽略——**block 以下级别（fix/suggest）也必须逐条显式回应**（修复，或结合背景论证不需修），最终门控以步骤 5「全部解决才可提交」为准。不允许把专项的 suggest 当"可选"悬置。
 
 ### 步骤 4：产出结构化报告（发现清单，不分组分级）
 
@@ -187,7 +156,7 @@ forge trace <task-ref>     # 证据链分桶行 + Weak/Unverified 警告（同�
 
 **禁止模糊结论**：不说"基本可以""问题不大""看着改改"。给出明确的提交/不提交判断。
 
-**审查通过（所有发现已解决）后**：运行 `forge review pass` 标记当前 diff 已审——满足 task-complete 门禁的 ReviewPassed 前置，也解除非 task 模式的 Stop hook 拦截。未标记则门禁/hook 会拦截提交与会话结束。
+> Forge 项目：审查通过（所有发现已解决）后须运行 `forge review pass` 标记当前 diff 已审——未标记则 task-complete 门禁 / Stop hook 会拦截提交与会话结束（机制见 [references/forge-integration.md](references/forge-integration.md)「自动触发」节）。
 
 ## 子 agent 化：独立上下文审查（防自审盲区）
 
@@ -199,22 +168,13 @@ forge trace <task-ref>     # 证据链分桶行 + Weak/Unverified 警告（同�
 
 预设契约（职责 / 只读工具 / 结构化输出 schema）见 [references/subagent-contract.md](references/subagent-contract.md)。子 agent **只读不写**——审查与修复分离，避免"边审边改"妥协。派发方式按所在 agent：Claude Code 用 Task tool（`subagent_type: general-purpose`，prompt 注入契约）；codex 等用各自子任务机制，契约相同。
 
-## 自动触发：Stop hook 与 task-complete 门禁
-
-本 skill 不再只靠手动唤起——forge 两条自动挡（2026-06-27 落地），让审查成为提交/结束的硬前置：
-
-- **task 流程**：task-complete 门禁有 ReviewPassed 硬前置。派子 agent 审查通过后须运行 `forge review pass` 标记，否则过不了 task-complete 门禁、无法 complete。
-- **非 task 流程**：会话结束前 Stop hook 自动检测未审的源码变更，未审则拦截会话结束，additionalContext 指引加载本 skill + 派子 agent + `forge review pass`。同一 diff 反复未审最多拦截 3 次后 advisory 放行（防 Stop 死循环）。
-
-手动查状态：`forge review status`。
-
-**误触发已防护**：纯文档/配置/生成物变更、无变更、commit 后干净工作区、task 模式（由门禁管而非 Stop hook）都不触发拦截。
+> Forge 项目：本 skill 有两条自动挡让审查成为提交/结束的硬前置——task-complete 门禁的 ReviewPassed 硬前置 + 非 task 流程的 Stop hook（未审变更拦截会话结束，最多拦 3 次后 advisory 放行）。机制与误触发防护见 [references/forge-integration.md](references/forge-integration.md)「自动触发」节。
 
 ## AI 作弊模式速查（核心，先扫这个表）
 
 来自 327 个真实 AI PR 的挖掘（27 个被维护者明确确认为作弊，工具召回率 93%）。**命中任一即必须解决（不得跳过）：**
 
-**Forge 项目——4 类已 deterministic 扫描，子 agent 不重复判断**：`task-verify` 的 cheat-scan 已机械扫任务新增行（`+` 行）的 `type-suppression`（`@ts-ignore`/`eslint-disable`/`#[allow]`/`type: ignore`）、`error-swallow`（空 `catch{}`/`except:pass`）、`dead-branch`（`if(false)`/`if(1===2)`）、`comment-only-fix`（某文件新增行全注释零逻辑），命中记 `checklog:cheat-scan`（`forge trace` 可见）并 stderr 列出。审查前先看 `forge trace` 的 cheat-scan 条目——这 4 类已被 deterministic 判过，子 agent **跳过它们**，把精力放到下表其余模式（断言弱化/假重构/幻觉 mock/测试松绑等需语义判断的）和轨道 B 的设计/架构上。这正是"每轮 review 冒新问题"的根因对策：机械模式一次判准，不靠 LLM 每轮重采样。
+> Forge 项目：`task-verify` 的 cheat-scan 已机械扫任务新增行的 4 类模式（type-suppression / error-swallow / dead-branch / comment-only-fix）并记 `checklog:cheat-scan`——审查前先查 `forge trace`，这 4 类已被 deterministic 判过，子 agent **跳过它们**，把精力放到下表其余需语义判断的模式和轨道 B 上（机制详见 [references/forge-integration.md](references/forge-integration.md)「cheat-scan 预扫」节）。
 
 | 作弊类型 | 指纹 | 为什么是问题 |
 |---|---|---|
@@ -230,7 +190,7 @@ forge trace <task-ref>     # 证据链分桶行 + Weak/Unverified 警告（同�
 | **异常上下文丢失** exception-rethrow-lost-context | `throw err` → `throw new Error(msg)` 丢了 `cause`/原始栈 | 调试时丢失根因 |
 | **死分支** dead-branch-insertion | `if (false)` / `if (1 === 2)` 等永假分支 | 看起来处理了边界，实际永不执行 |
 
-**检测要点**：审查 diff 时专门看"删除的断言行""新增的 ignore/disable""改名的符号是否更新了所有调用点"。详见 [references/ai-cheat-patterns.md](references/ai-cheat-patterns.md)。
+**检测要点**：审查 diff 时专门看"删除的断言行""新增的 ignore/disable""改名的符号是否更新了所有调用点"（规则见「改名/删符号后的调用方检查」节）。详见 [references/ai-cheat-patterns.md](references/ai-cheat-patterns.md)。
 
 ## Rationalizations（堵借口）
 
@@ -264,10 +224,10 @@ forge trace <task-ref>     # 证据链分桶行 + Weak/Unverified 警告（同�
 
 - **审查 diff 不只看 `+` 行**：AI 作弊常在 `-` 行（删断言、降级匹配器、删测试块）。`git diff` 的删除侧是高发区。
 - **跑测试 ≠ 测试有效**：断言弱化的测试全绿但零保护。看断言数量和强度，不只看通过状态。
-- **"重构"是高频作弊词**：AI 喜欢用 rename 包装成重构，实际没更新调用者。看到 rename 必查全局引用。
+- **"重构"是高频作弊词**：AI 喜欢用 rename 包装成重构，实际没更新调用者。看到 rename 必查全局引用（规则见「改名/删符号后的调用方检查」节）。
 - **设计模式不是越多越好**：过度抽象（YAGNI 违反）也是屎山。单例/工厂/抽象层在不需要时就是负担。
 - **不要纠结能自动化的事**：格式化交给 prettier/rustfmt/gofmt，lint 交给 eslint/clippy。审查聚焦设计/正确性/作弊/安全。
-- **AI 安全是默认项**：硬编码密钥、SQL 字符串拼接、缺输入验证、缺限流——无论用户有没有提都要查。AI 代码 XSS 失败率 86%，72% Java AI 代码含漏洞。
+- **AI 安全是默认项**：硬编码密钥、SQL 字符串拼接、缺输入验证、缺限流——无论用户有没有提都要查。AI 代码 XSS 失败率 86%，72% Java AI 代码含漏洞（[Veracode 2025 GenAI Code Security Report](https://www.veracode.com/blog/genai-code-security-report/)）。
 - **破坏性 SQL 默认查**：DROP TABLE/TRUNCATE/无 WHERE 的 DELETE/GRANT ALL/生产直连/不可逆迁移——AI 生成迁移或数据修复脚本时高频，一次失误清空生产库。SQL **注入**（拼接）和**破坏性**（语法合法但摧毁数据）是两类，都要查。见 [references/sql-safety-checklist.md](references/sql-safety-checklist.md)。
 - **过度工程默认查**：重造标准库已有的东西、为单一实现造抽象层（AbstractRepository 只一个实现）、引新依赖做几行能做的事、永不改值的 config——AI 高频过度构建（ponytail 实测单任务可达 94% 冗余）。不是标记"有问题"就完事，是给 delete-list（删什么 + 换什么），让 diff 变短。见 [references/over-engineering-checklist.md](references/over-engineering-checklist.md)。
 - **"看起来无害"的小改动最危险**：一行 `@ts-ignore`、一个空 catch、一个删掉的 `expect`——这些是 AI 最爱的捷径。
@@ -280,6 +240,7 @@ forge trace <task-ref>     # 证据链分桶行 + Weak/Unverified 警告（同�
 - **test-discipline**：测试质量守卫（断言防注水）。本 skill 检测到 `assertion-strip` 时可联动深查。
 - **compile-fix-loop**：编译报错修复。本 skill 不处理编译错误（那是另一类问题）。
 - **systematic-debugging**：审查中发现的运行时 bug 用它排查根因。
+- **rust-code-review / frontend-code-review / ai-generated-ui-review**：语言与来源专项审查，保留 block/fix/suggest 分级——叠加时输出协议按步骤 3 的裁决段执行（block 以下也必须显式回应）。
 - **evidence-based-proposal**：审查给出的修复建议要基于实际，不凭空想。
 - **dev-lookup**：审查中遇到不确定的 API 签名/库用法，用它快速确认。
 
@@ -290,5 +251,6 @@ forge trace <task-ref>     # 证据链分桶行 + Weak/Unverified 警告（同�
 - DB/SQL 破坏性操作审查清单（DROP/TRUNCATE/无 WHERE DELETE/GRANT ALL/生产直连/不可逆迁移）：[references/sql-safety-checklist.md](references/sql-safety-checklist.md)
 - 过度工程审查清单（重造轮子/单实现抽象/引依赖做几行事/投机灵活性/死代码，delete-list 5 类 tag + 懒惰阶梯根因诊断）：[references/over-engineering-checklist.md](references/over-engineering-checklist.md)
 - 子 agent 预设契约（职责 / 只读工具 / 输出 schema）：[references/subagent-contract.md](references/subagent-contract.md)
+- Forge 集成（环节感知加载 / 证据强度校准 / cheat-scan 预扫 / 自动触发，仅 forge 项目适用）：[references/forge-integration.md](references/forge-integration.md)
 
 **数据来源**：swarm-orchestrator（327 真实 AI PR 挖掘，93% 召回率）、mgreiler/code-review-checklist（1060⭐ 业界权威清单）、Arcanum-Sec/sec-context（150+ 源提炼的 AI 代码安全反模式）、ponytail（懒惰阶梯 + delete-list，MIT，实测 ~54% 更少代码、过度构建场景达 94%）。

@@ -53,3 +53,37 @@ composes 标量逗号写法改 flow list [a, b]，对齐 CONVENTIONS §4
 ### Evidence
 
 grep 确认全库 composes 已无标量残留；forge skills validate 50/50
+
+## [d-18c7e5a6831463c0-5837dddb] accept
+
+- **Skill**: design-system-migration
+- **DecidedAt**: 2026-08-02T05:24:40Z
+
+### Diagnosis
+
+skills 库价值审计 13 项改进落地
+
+### Revision
+
+单一项目实录下沉 references/case-study.md，主文件 322→122 行只留可迁移方法论
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md 逐项价值审计
+
+## [d-18c7e62b17db942c-309a30cd] accept
+
+- **Skill**: design-system-migration
+- **DecidedAt**: 2026-08-02T05:34:10Z
+
+### Diagnosis
+
+项10 description 审计+触发回归
+
+### Revision
+
+description 审计合格未改动 + evals.json 建立
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md

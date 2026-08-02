@@ -137,7 +137,23 @@
 - [ ] 无注释掉的代码（git 里有历史）
 - [ ] 注释解释"为什么"不是"做什么"（代码已说做什么）
 - [ ] 复杂逻辑有注释说明意图
-- [ ] 注释双语并存且同步（英文段 + 空注释行 + 中文段；改一语须同步另一，见 maintainability-and-readability §2.7 注释规范）
+- [ ] 注释双语并存且同步（规范见下方「注释规范：双语并存 + why-not-what」）
+
+### 注释规范：双语并存 + why-not-what（全库唯一真相源）
+
+**双语并存**：项目注释中英双语并存——英文段在上、单独空注释行 `//`、中文段在下，两语同义。任一变动须同步另一（只改一语 = 过期注释 = 误导后续读者）。
+
+- **形式**：英文 doc 段（godoc summary 取英文首行，国际友好）→ 空注释行 `//` → 中文段（逐字保留，母语理解）
+- **同步铁律**：改注释时中英一起改；新增注释即写双语，不留待补
+- **范围**：独立行 `//` 注释（doc 注释 + 块内说明 + 测试注释）；行尾内联注释（`code // 中文`）语法不允许加段，不强求双语
+- **why not what**：注释解释设计决策/为什么，不重复代码已表达的 what——大段 what 注释是噪声，双语也救不回
+
+示例（Go doc 注释，英文段 + 空注释行 + 中文段）：
+
+	// dataDir returns the runtime-state DataDir for root (refactor-data-home).
+	//
+	// dataDir 返回 root 的 runtime-state DataDir（refactor-data-home）。
+	func dataDir(root string) string
 - [ ] 嵌套不超过 3 层（超了用 early return/guard clause）
 - [ ] 控制流直观（避免深层嵌套的 if/else）
 - [ ] 文件/模块放在正确的位置（按项目约定）

@@ -126,6 +126,7 @@ metadata:
 ### M5. 配置 / Secrets：无硬编码、env 有默认值与文档
 
 - **检查什么**：本次发布的代码无新增硬编码 secret；新增配置项有默认值或 fail-fast；env 变量在 README/.env.example/部署文档有记录。
+- **划界**：编码期安全基线（OWASP/注入/认证等系统安全审查）归 secure-coding；本项只做发布前增量扫描——新增硬编码 secret + env 默认值/文档同步，不重复其检查表。
 - **怎么查**：
   ```bash
   # 硬编码 secret 扫描（同 project-acceptance 维度 3）
@@ -181,185 +182,36 @@ metadata:
 
 ## Recommended 建议（未过项进发布说明"已知风险"段）
 
-### R1. 回滚预案存在且演练过
+| 项 | 检查什么 | 未过的处置 |
+|---|---|---|
+| R1 回滚预案 | 回滚步骤明确、上一版本 tag/镜像保留、staging 演练过 | 补 RUNBOOK 含具体回滚命令；N-1 必留；未演练至少 staging 走一次 |
+| R2 已知问题与降级策略 | 已知 bug/限制列发布说明；高风险变更有 feature flag | 补 Known Issues 段；破坏性变更强烈建议补 flag |
+| R3 发布后观测 | 仪表盘/告警存在；日志保留 ≥7 天覆盖回滚调查窗口 | 建最小可观测盘（错误率/p95/部署标记）+ 至少设错误率告警 |
+| R4 通知与公告 | 发版窗口通知、breaking change 公告、文档站更新 | 补 Release Notes；breaking 未公告推迟一个版本 |
+| R5 灰度计划 | 灰度档位（1%→10%→50%→100%）+ 每档回退判断点 | 补灰度计划；无法灰度（如 CLI 二进制）至少内部 dogfood 一周 |
 
-- **检查什么**：发布失败时如何回退到上一版本——回滚步骤明确、上一版本 tag/镜像保留、数据回滚路径可行。
-- **怎么查**：
-  ```bash
-  test -f docs/rollback.md || test -f RUNBOOK.md
-  # 上一版本 tag/镜像仍在
-  git tag -l | grep "$(git describe --tags --abbrev=0 HEAD~ 2>/dev/null | sed 's/v//')"
-  docker pull <image>:<PREV_VER>   # 镜像类
-  # 演练：staging 上来回滚一次（与 M4 回滚迁移配合）
-  ```
-- **不通过怎么办**：补 `RUNBOOK.md` 含具体回滚命令；上一版本不可达 → 立即补建保留策略（N-1 必留）；未演练 → 至少在 staging 走一次回滚流程。
-
-### R2. 已知问题与降级策略
-
-- **检查什么**：本版本已知 bug/限制列在发布说明；高风险变更有 feature flag 可关；降级路径在 RUNBOOK 标注。
-- **怎么查**：
-  ```bash
-  grep -iE 'known issues|已知问题|limitations|限制' CHANGELOG.md docs/release-notes-*.md
-  grep -rnE 'feature.?flag|FEATURE_FLAG|FF_' src/ lib/ app/   # 关键开关存在
-  ```
-- **不通过怎么办**：补"Known Issues"段；高风险变更无 flag → 评估补 flag 的成本 vs 不发版的成本（破坏性变更强烈建议补 flag）。
-
-### R3. 发布后观测（指标 / 告警 / 日志保留）
-
-- **检查什么**：发布后关键指标有仪表盘、告警阈值已设、日志保留期覆盖回滚调查窗口。
-- **怎么查**：
-  ```bash
-  # 仪表盘/告警存在
-  curl -sf 'https://grafana.example.com/api/dashboards/uid/<release-overview>'
-  curl -sf 'https://alertmanager.example.com/api/v2/alerts' | grep '<service>-error-rate'
-
-  # 日志保留期 ≥ 7 天（足够发版后 24-48h 调查 + buffer）
-  # 按日志栈查保留策略（ELK/CloudWatch/Loki）
-  ```
-- **不通过怎么办**：无仪表盘 → 发布前建一个最小可观测盘（错误率/p95/部署标记）；告警未设 → 至少设错误率告警；日志保留不足 → 调长。
-
-### R4. 通知与公告
-
-- **检查什么**：用户/干系人知道这次发版——发版窗口通知、breaking change 公告、文档站更新。
-- **怎么查**：
-  ```bash
-  # Release notes 草稿存在
-  test -f docs/release-notes-<NEW_VER>.md
-  # breaking change 是否提前公告（邮件/Slack/issue）
-  # 文档站是否随发布更新（CI 部署 docs 站）
-  ```
-- **不通过怎么办**：补 Release Notes；breaking change 未提前告知 → 推迟一个版本公告后再发。
-
-### R5. 灰度计划（高频发布/重大变更）
-
-- **检查什么**：非 100% 一次性放出，有灰度策略（1% → 10% → 50% → 100%）和每档的回退判断点。
-- **怎么查**：
-  ```bash
-  grep -iE 'canary|灰度|rolling.out|ramp' docs/deploy.md RUNBOOK.md
-  # 灰度配置实际存在（feature flag service / load balancer rule）
-  ```
-- **不通过怎么办**：补灰度计划；无法灰度的服务（如 CLI 二进制）→ 至少做内部 dogfood 一周。
+每项的完整检查命令与通过标准：见 [references/recommended-checks.md](references/recommended-checks.md)。
 
 ## 决策树：什么算 Ready 可放行
 
-```
-Start
-  │
-  ├── 任一 Mandatory（M1-M7）未过？
-  │     └── YES → 🚫 NO-GO. 列出阻断项 + 不通过怎么办的方案，回到修复。
-  │              禁止"差不多能发先发了再说"。
-  │
-  ├── M6 仅人工核对通过（无 docs-consistency-guard 守卫）？
-  │     └── YES → ⚠ GO-WITH-RISK（强制，不能升 GO）。
-  │              即使其他 M 全过、R 全过——M6 无自动化守卫 = 文档一致性是弱校验（§防注水自检 点名的反模式）。
-  │              "已知风险"段注明"M6 无自动化守卫，人工核对 N 表"，并要求下次发布前建立守卫，不能长期依赖人工。
-  │
-  ├── 全部 Mandatory 过（M6 经守卫测试绿）+ 全部 Recommended 过？
-  │     └── YES → ✅ GO. 产出 checklist.md，按发布流程执行。
-  │
-  └── 全部 Mandatory 过（M6 经守卫测试绿）+ 部分 Recommended 未过？
-        │
-        ├── 未过的 Recommended 项影响范围可控（用户无感知 / 有降级路径）？
-        │     └── YES → ⚠ GO-WITH-RISK.
-        │              在发布说明"已知风险"段逐项记录：
-        │              - 未过项 / 影响范围 / 降级策略 / 触发回滚的条件
-        │              并取得干系人 explicit ack（不是默认同意）。
-        │
-        └── 未过的 Recommended 项影响用户数据/安全/收入？
-              └── YES → 🚫 NO-GO. 升级为阻断（Recommended 不等于可忽略）。
-```
+- 任一 Mandatory（M1-M7）未过 → 🚫 **NO-GO**：列出阻断项 + 修复方案，回到修复。禁止"差不多能发先发了再说"。
+- M6 仅人工核对通过（无 docs-consistency-guard 守卫）→ ⚠ **GO-WITH-RISK**（强制，不能升 GO）："已知风险"段注明"M6 无自动化守卫，人工核对 N 表"，并要求下次发布前建立守卫。
+- 全部 Mandatory 过（M6 经守卫测试绿）+ 全部 Recommended 过 → ✅ **GO**：产出 checklist.md，按发布流程执行。
+- 全部 Mandatory 过 + 部分 Recommended 未过：影响范围可控（用户无感知/有降级路径）→ ⚠ **GO-WITH-RISK**（"已知风险"段逐项记录未过项/影响/降级策略/回滚触发条件，取得干系人 explicit ack）；影响用户数据/安全/收入 → 🚫 **NO-GO**（Recommended 不等于可忽略）。
 
-**禁止模糊结论**：不说"差不多能发""应该没问题""先发了看看"。给明确的 GO / NO-GO / GO-WITH-RISK 三档之一，附阻断项或风险项。
+**禁止模糊结论**：不说"差不多能发""应该没问题""先发了看看"。完整决策树：见 [references/decision-tree.md](references/decision-tree.md)。
 
 ## checklist.md 产出格式
 
-```markdown
-# Release Readiness: <project> <NEW_VER>
+清单 + 命令输出 + 决策结论的归档模板（gate-8 产出物）：见 [references/checklist-template.md](references/checklist-template.md)。
 
-**决策结论**：✅ GO / ⚠ GO-WITH-RISK / 🚫 NO-GO
-**发版窗口**：YYYY-MM-DD HH:MM ~ HH:MM (TZ)
-**决策人**：<name>
+## Gotchas / Rationalizations / Red Flags
 
-## Mandatory（必须全绿才 GO）
-| 项 | 命令 | 结果 | 状态 |
-|---|---|---|---|
-| M1 版本号一致性 | `grep ...` | 4/4 出处一致 | ✅ |
-| M2 CHANGELOG | `head -20 ...` | 含 [X.Y.Z] + Breaking 段 | ✅ |
-| M3 构建产物 | `npm run build` | exit 0, 1.2MB (+5%) | ✅ |
-| M4 迁移 + 回滚 | staging up+down | 双向 OK | ✅ |
-| M5 secrets | grep sk-/ghp_ | 0 命中 | ✅ |
-| M6 文档一致性 | docs-consistency-guard | 守卫全绿 | ✅ |
-| M7 smoke | staging e2e | 关键路径 8/8 | ✅ |
-
-## Recommended
-| 项 | 状态 | 说明 |
-|---|---|---|
-| R1 回滚预案 | ✅ | RUNBOOK.md 已演练 |
-| R2 已知问题 | ⚠ | issue #123 未修，发布说明已列 |
-| R3 观测 | ✅ | 仪表盘 + 错误率告警 |
-| R4 通知 | ✅ | 邮件已发 |
-| R5 灰度 | ⚠ | CLI 二进制无法灰度，已内部 dogfood |
-
-## 已知风险（GO-WITH-RISK 时必填）
-- R2: issue #123 ... — 影响 ... — 降级策略 ... — 回滚触发条件 ...
-
-## 签字
-- 发布人：<name>
-- 干系人 ack：<name>（GO-WITH-RISK 必填）
-```
-
-## Gotchas（从实际事故积累——最高信号）
-
-- **复用已 push 的 tag**：tag 推到远程后被强制删除重打 → 用户/CI 缓存了旧 commit，部分人拉到旧版部分拉到新版，定位极慢。**铁律：tag 一旦 push，永不复用**，要修就发新版本号。Forge npm 旧版不可撤回的事故就是这个坑。
-- **迁移只测了前向没测回滚**：上线后出 bug 想回滚，发现回滚迁移半年没人跑、语法错了 / 数据格式不兼容前版本代码 → 卡在中间态。**M4 强制 staging 双向跑**。
-- **破坏性 SQL 被审过但没人当回事**：审阅者"看起来 OK"签字，实际是 `DELETE FROM users WHERE id = ANY($1)` 漏了 `AND deleted_at IS NULL`——code-review-gate 的 sql-safety-checklist 同源。破坏性 SQL 必须双签。
-- **secrets 硬编码进镜像层**：源码里 `apiKey := os.Getenv("KEY")` 但 Dockerfile `ENV KEY=sk-xxx` 把生产 key 烤进镜像层，推到公共 registry 泄露。M5 不只扫源码，要扫 Dockerfile/CI yaml。
-- **CHANGELOG 漏 Breaking Change**：commit message 写了 BREAKING 但 CHANGELOG 只列在 Improvements，用户没看到 → 升级后生产崩。M2 强制 grep `breaking|破坏|不兼容`。
-- **多包/多 README 漂移**：monorepo 根 README 对了，发包的 `npm/README.md` 滞后——发出去用户看到的还是旧 hook 表/旧版本号。M6 必须覆盖每份派生副本。Forge 反复踩过（见 memory skillgen-asset-sync-discipline）。
-- **回滚预案写了没演练**：RUNBOOK.md 写得很漂亮，真出事时发现"上一版本镜像 7 天清理策略已删了 N-1" / "数据库 schema 不兼容 N-1 代码"。R1 强制演练。
-- **体积暴涨没人在意**：新依赖引入 50MB，CI 都绿，发布后用户安装时间翻倍 / 镜像 pull 超时。M3 强制对比上次发布的体积。
-- **发布窗口与并发变更冲突**：发版进行中有人 merge 了新 commit，构建产物混了半新半旧。发布窗口期间 freeze main，或从特定 commit 切出 release branch 构建。
-- **"灰度 1% 五分钟没事就全放"**：1% 流量可能根本没触达关键路径（夜间、低峰）。灰度要确认**关键路径流量真的流过新版本**，不是看总错误率，看新版本标签的错误率。
-
-## Rationalizations（堵借口）
-
-| 借口 | 现实 |
-|---|---|
-| "代码都测过了能上线" | 代码测过 ≠ 发布风险覆盖。迁移/版本号/回滚是发布特有的坑，单测管不到 |
-| "回滚以后再说" | "以后"= 永不。出事时慌乱回滚比预先演练贵 100 倍 |
-| "Breaking change 用户应该会看 commit" | 用户不看 commit，看 CHANGELOG。Breaking 必须在 CHANGELOG 显式段 |
-| "CHANGELOG 等发完再补" | 发完就忘。Tag 推上去 CHANGELOG 还没更新 = 用户拉到无文档版本 |
-| "体积涨一点没事" | 涨 50% 用户安装时间翻倍，CI 镜像 pull 超时。>30% 要解释 |
-| "staging 跑过就行不用回滚演练" | staging 前向跑过不代表回滚能跑。回滚迁移必须实测 |
-| "secret 先硬编码下个版本改" | 一次都不能发。硬编码 secret 进镜像 = 公开泄露 |
-| "Recommended 项可以跳" | Recommended 不等于可忽略。未过项必须进"已知风险"段，取得干系人 explicit ack |
-| "tag 推错了 force push 修一下" | tag 永不复用。force push 后部分缓存仍指向旧 commit，定位极慢 |
-| "灰度五分钟没报错就全放" | 1% 流量可能没触达关键路径。看新版本标签的错误率，不是全局 |
-
-## Red Flags（看到这些想法 = STOP，你在 rationalize 发布）
-
-- "M4 回滚先跳过，前向测过应该没问题" → NO-GO，回滚迁移必须实测
-- "M5 secret grep 出一个，先发了再改" → 立即阻断，撤下用 env 替换
-- "CHANGELOG 等发完一起写" → 必须先写，tag 一上就不可逆
-- "体积涨了 50% 但应该没事" → 必须解释，否则 NO-GO
-- "回滚 RUNBOOK 写了，演练下次吧" → 至少 staging 走一次
-- "破坏性 SQL 我看了应该 OK" → "看起来 OK"不是评审，要有书面记录或双签
-- "Recommended 项先跳过，发完再补风险说明" → 风险说明在发版前，不是发版后
-- "差不多能发" → 门控不是建议，NO-GO 就是 NO-GO
-- "上个版本发的时候也没出事" → 上次没出事 ≠ 这次没风险，每项都要查
-- "灰度跑了五分钟没报错" → 看新版本标签的错误率，确认流量真的过
+发布事故经验库（tag 永不复用、迁移必须双向演练、secrets 还要扫 Dockerfile/CI yaml、灰度看新版本标签错误率等）、堵借口表、STOP 信号清单：见 [references/gotchas-and-rationalizations.md](references/gotchas-and-rationalizations.md)。
 
 ## 防注水自检（避免清单写得比实际做法松）
 
-同 skill-authoring-standard §防注水自检——发布清单最易注水的三类：
-
-| 类型 | 特征 | 修复 |
-|---|---|---|
-| 弱校验措辞 | "人工校验/肉眼对比/大致核对/应该通过" | 换可执行命令 + 量化阈值（`grep sk- 命中 0`/`体积涨 <30%`）|
-| 门控无方法 | 有"门控/必跑/强制"但无具体命令 | 每项配命令 + 通过标准（M1-M7 每项都给了）|
-| checklist 无命令 | `- [ ] 版本号一致` 无配套命令 | 每项配命令（本 skill 已配）|
-
-发布前对 checklist.md 跑一次自检：每个 ✅ 旁边必须有命令输出，不是印象。
+规则唯一真相源：skill-authoring-standard「防注水自检」节（弱校验措辞 / 门控无方法 / checklist 无命令三类），此处不复制。发布前对 checklist.md 跑一次自检：每个 ✅ 旁边必须有命令输出，不是印象。
 
 ## 子 agent 化：独立上下文审查
 
@@ -377,6 +229,7 @@ Start
 - **docs-consistency-guard**：M6 文档一致性专项**委托给它**。本 skill 不重复其检查表，消费其守卫测试结论。
 - **project-acceptance**：项目级验收（PRD 对比、功能完整度、设计一致性）。前者管"功能做完了没"，本 skill 管"能安全上线吗"——发布是 project-acceptance 之后的独立门禁。
 - **code-review-gate**：单次 diff 代码质量审查（AI 作弊 / SOLID / 安全）。前者管代码层质量，本 skill 管发布层风险（版本/迁移/回滚/观测），不重审代码。
+- **secure-coding**：编码期安全基线（OWASP/STRIDE/安全编码规范）。M5 secrets 扫描只做发布前增量（新增硬编码 secret + env 文档同步），系统性安全审查归它。
 - **implementation-discipline**：编码任务的交付纪律（先读再改/测试伴随/聚焦变更）。前者管开发期，本 skill 管发布期。
 - **systematic-debugging**：smoke check 失败或灰度报错时，用它排查根因，不要在发布窗口边猜边改。
 - **session-retrospective**：发布事故复盘后，决定经验进什么载体（守卫测试 / RUNBOOK / 本 skill 的 Gotchas）。当它判定"进发布清单"时，转交本 skill 加具体项。

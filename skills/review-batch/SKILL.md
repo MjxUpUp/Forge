@@ -1,6 +1,6 @@
 ---
 name: review-batch
-description: "整项目级批量代码审查编排：拆模块并行 dispatch subagent 审查，输出去重分级的 punch-list。Use when: 审查整个项目/大范围代码时、重构后做全量验收时、说\"审查整个项目\"\"全项目 review\"\"大规模审查\"\"重构完验收\"\"分模块审查\"时。SKIP: 提交前单次 diff 审查（用 code-review-gate）。"
+description: "整项目级批量代码审查编排：拆模块并行 dispatch subagent 审查，输出去重分级的 punch-list。Use when: 审查整个项目/大范围代码时、重构后做全量验收时、说\"审查整个项目\"\"全项目 review\"\"大规模审查\"\"重构完验收\"\"分模块审查\"时。SKIP: 提交前单次 diff 审查（用 code-review-gate）、项目功能验收/PRD 覆盖度对比（用 project-acceptance）、发布 go/no-go 门禁（用 release-readiness）。"
 metadata:
   pattern: pipeline + reviewer
   domain: code-review
@@ -117,7 +117,7 @@ punch-list 给用户确认后逐项修复（用对应实现 skill）。**不要�
 
 ### 问题: 模块互斥漏跨模块调用方（重构验收场景）
 **现象**: 重构后验收时，A 模块改了接口/改名符号，B 模块的调用方仍用旧名。但 A、B 分属不同 subagent（文件集互斥），A subagent 看不到 B，B subagent 不知 A 改了什么 → 跨模块断链无人报
-**解决**: 若审查针对**重构/改动**（非全量摸底），Step 1 额外提取 changed-symbols 清单（被改名/删除/改签名的 export·函数·类型），注入**每个** subagent 的 prompt："除审你模块的代码质量，还 `grep -rn` 你模块里是否引用了清单中的旧符号（含 gitignored）"。模块互斥保证文件不重复审，但不该让调用方检查也互斥
+**解决**: 若审查针对**重构/改动**（非全量摸底），Step 1 额外提取 changed-symbols 清单（被改名/删除/改签名的 export·函数·类型），注入**每个** subagent 的 prompt，要求其检查本模块是否引用了清单中的旧符号——检查规则唯一真相源：code-review-gate「改名/删符号后的调用方检查」节，此处不复制。模块互斥保证文件不重复审，但不该让调用方检查也互斥
 
 ## 与其他 skill 的分工
 
