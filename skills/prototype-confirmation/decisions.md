@@ -35,3 +35,20 @@ description 三段式合格未改动;新建 evals/evals.json(5正+4负)
 ### Evidence
 
 docs/skills-value-audit-2026-08-02.md
+
+## [d-18c7e7b34ebf7f10-3ca62f41] accept
+
+- **Skill**: prototype-confirmation
+- **DecidedAt**: 2026-08-02T06:02:14Z
+
+### Diagnosis
+
+composes 与 implementation-discipline 互引成环（机检全库发现的第二对）
+
+### Revision
+
+composes 移除 implementation-discipline（保留调用方 implementation-discipline→本 skill 单向 compose）；确认后进入实施链的衔接正文 :128/:132 已有文本
+
+### Evidence
+
+task-complete 审查子 agent 发现（旧账）；全库 composes 机检
