@@ -37,7 +37,7 @@ metadata:
 - SQL 破坏性 DDL / 权限：`DROP DATABASE|TABLE|SCHEMA` / `TRUNCATE` / `GRANT ALL` / `GRANT … TO PUBLIC` / 无 WHERE 的 `DELETE|UPDATE`
 - 基础设施破坏：`kubectl delete` / `docker system prune` / `docker volume rm` / `docker rm -f`
 
-**拦截后（HITL 闭环，不是硬 block）**：hook 给出指纹和指引 → agent 用所在 AI 工具的提问确认工具（Claude Code→AskUserQuestion；codex/cursor/windsurf→各自机制）向用户说明风险获明确确认 → 运行 `forge hazard confirm "<命令>"` 登记 5min 限时标记 → 重试原命令自动放行。测试/CI 可设 `FORGE_ALLOW_HAZARD=1` 跳过。
+**拦截后（HITL 闭环，不是硬 block）**：hook 给出指纹和指引 → agent 用所在 AI 工具的提问确认工具（Claude Code→AskUserQuestion；codex/cursor/windsurf→各自机制）向用户说明风险获明确确认 → 运行 `forge hazard confirm "<命令>"` 登记 5min 限时标记 → 重试原命令自动放行。`FORGE_ALLOW_HAZARD` env 豁免已移除（可被 agent 自我放行滥用）——confirm 链（events.jsonl 审计 + 5min TTL）是唯一放行路径，测试/CI 同样走 `forge hazard confirm`。
 
 ## /careful — hazard-guard 之外的补充护栏
 

@@ -73,9 +73,20 @@ func runTrace(cmd *cobra.Command, args []string) error {
 	var events []traceEvent
 	for i := range checks {
 		c := checks[i]
-		mark := "✗"
-		if c.Passed {
-			mark = "✓"
+		// Mark from the structured level (EffectiveLevel derives it for pre-level
+		// archive lines): blocked/fail → ✗, warn/advisory → ⚠, pass → ✓. This makes
+		// the level field the trace classification source instead of re-deriving
+		// from Passed + Detail prose here.
+		//
+		// 标记取结构化 level（EffectiveLevel 对 level 字段引入前的归档行兜底推导）：
+		// blocked/fail → ✗，warn/advisory → ⚠，pass → ✓。trace 的分类真相源是
+		// level 字段，不在此重新解析 Passed + Detail 散文。
+		mark := "✓"
+		switch c.EffectiveLevel() {
+		case checklog.LevelBlocked, checklog.LevelFail:
+			mark = "✗"
+		case checklog.LevelWarn, checklog.LevelAdvisory:
+			mark = "⚠"
 		}
 		events = append(events, traceEvent{
 			ts:      c.RecordedAt,

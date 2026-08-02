@@ -776,3 +776,61 @@ func TestHookToolTrackReadOmitsToolInput(t *testing.T) {
 		t.Errorf("Read 的 tool_input 不应被记录（保持 lean）, got: %s", body)
 	}
 }
+
+// TestScoringPassUnchanged pins the state-change gating of scoring PASS
+// records (weekly-hardening 4b): a repeat PASS of a scoring check is skipped
+// (scoring's LatestByCheck still resolves to the earlier PASS — no regression),
+// while the first PASS, a FAIL→PASS transition, non-scoring checks, and a PASS
+// last seen in a DIFFERENT session are all still recorded.
+//
+// TestScoringPassUnchanged 钉死 scoring PASS 记录的状态变化门控（周复盘加固
+// 4b）：scoring check 的重复 PASS 被跳过（scoring 的 LatestByCheck 仍解析到
+// 更早的 PASS——不回归），而首个 PASS、FAIL→PASS 转换、非 scoring check、
+// 上次 PASS 在其他 session 的情形都仍记录。
+func TestScoringPassUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+
+	// No prior entry → record (the first PASS must land or scoring sees nothing).
+	//
+	// 无先前条目 → 记录（首个 PASS 必须落盘，否则 scoring 看不到）。
+	if scoringPassUnchanged(dir, "s1", checklog.CheckAutoCompile) {
+		t.Error("no prior entry → must record the first PASS")
+	}
+	// Non-scoring check → never consulted for dedup (its PASS is already dropped
+	// by shouldRecordCheck; the helper must not change that).
+	//
+	// 非 scoring check → 不参与去重（它的 PASS 已被 shouldRecordCheck 丢弃，
+	// helper 不得改变这一点）。
+	if scoringPassUnchanged(dir, "s1", checklog.CheckBashGuard) {
+		t.Error("non-scoring check must return false")
+	}
+
+	// Latest is FAIL → the FAIL→PASS transition is a state change, must record.
+	//
+	// 最新是 FAIL → FAIL→PASS 转换是状态变化，必须记录。
+	if err := checklog.Record(dir, &checklog.Entry{Check: checklog.CheckAutoCompile, Passed: false, SessionID: "s1", Detail: "broke"}); err != nil {
+		t.Fatal(err)
+	}
+	if scoringPassUnchanged(dir, "s1", checklog.CheckAutoCompile) {
+		t.Error("latest FAIL → PASS transition must be recorded")
+	}
+
+	// Latest is PASS → repeat PASS is skipped.
+	//
+	// 最新是 PASS → 重复 PASS 跳过。
+	if err := checklog.Record(dir, &checklog.Entry{Check: checklog.CheckAutoCompile, Passed: true, SessionID: "s1", Detail: "ok"}); err != nil {
+		t.Fatal(err)
+	}
+	if !scoringPassUnchanged(dir, "s1", checklog.CheckAutoCompile) {
+		t.Error("latest PASS → repeat PASS must be skipped")
+	}
+	// ...but only within the same session scope: another session's first PASS is
+	// still written (accepted cost: one entry per session per check).
+	//
+	// ……但只在同一 session 范围内：其他 session 的首个 PASS 仍写（可接受成本：
+	// 每 session 每 check 一条）。
+	if scoringPassUnchanged(dir, "s2", checklog.CheckAutoCompile) {
+		t.Error("previous PASS belongs to another session → this session's first PASS must record")
+	}
+}

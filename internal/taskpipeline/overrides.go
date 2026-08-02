@@ -1,6 +1,10 @@
 package taskpipeline
 
-import "os"
+import (
+	"os"
+
+	"github.com/MjxUpUp/Forge/internal/checklog"
+)
 
 // TaskOverrides holds the per-task escape-hatch settings. It takes precedence over the global env and is the
 // anti-leak mechanism of plan 5: one task escaping (via `forge task override`) does not pollute other tasks in the
@@ -55,6 +59,43 @@ func escapeDisabled(state *TaskState, which, envVar string) bool {
 		}
 	}
 	return os.Getenv(envVar) == "disable"
+}
+
+// usedAnyOverride reports whether any per-task escape hatch is set to "disable".
+// ScoreTask uses this (rather than checklog escape-hatch entries) as one of the two
+// escape signals for score capping: a task that SET an override but never hit the
+// bypass branch has no checklog entry, yet the intent to escape is on record and
+// must cost the same. The complementary signal is taskEscapeHatchRecorded, which
+// covers env-form escapes that bypass without touching state.Overrides.
+//
+// usedAnyOverride 报告是否有任一 per-task 逃生舱被设为 "disable"。ScoreTask 用它
+// 作封顶的两个逃生信号之一：设了 override 但没走到 bypass 分支的任务 checklog
+// 无条目，但逃生意图已留痕，必须付同样代价。互补信号是
+// taskEscapeHatchRecorded——覆盖不动 state.Overrides 的 env 形式逃生。
+func usedAnyOverride(o TaskOverrides) bool {
+	return o.WorkActivity == "disable" || o.TestCoverage == "disable" ||
+		o.AcceptanceGate == "disable" || o.SkillDecisions == "disable"
+}
+
+// taskEscapeHatchRecorded reports whether the task's checklog contains any
+// CheckEscapeHatch entry. This is the cap signal for env-form escapes
+// (FORGE_TEST_COVERAGE=disable and friends): they bypass via escapeDisabled without
+// touching state.Overrides, but every bypass branch records the escape-hatch entry.
+//
+// taskEscapeHatchRecorded 报告任务的 checklog 是否含任一 CheckEscapeHatch 条目。
+// 这是 env 形式逃生（FORGE_TEST_COVERAGE=disable 等）的封顶信号：它们经
+// escapeDisabled 绕过、不动 state.Overrides，但每个 bypass 分支都会记录逃生舱条目。
+func taskEscapeHatchRecorded(root, taskRef string) (bool, error) {
+	entries, err := checklog.LoadForTask(root, taskRef)
+	if err != nil {
+		return false, err
+	}
+	for _, e := range entries {
+		if e.Check == checklog.CheckEscapeHatch {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 const (
