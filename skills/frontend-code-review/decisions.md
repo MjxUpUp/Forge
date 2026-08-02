@@ -70,3 +70,20 @@ description 三段式合格未改动;新建 evals/evals.json(5正+4负)
 ### Evidence
 
 docs/skills-value-audit-2026-08-02.md
+
+## [d-18c7e7b349568654-b689f877] accept
+
+- **Skill**: frontend-code-review
+- **DecidedAt**: 2026-08-02T06:02:14Z
+
+### Diagnosis
+
+composes 与 frontend-feature-development 互引成环，加载语义不清
+
+### Revision
+
+composes 移除 frontend-feature-development（单向化：开发→审查）；正文分工节已有普通文本指针不丢信息
+
+### Evidence
+
+task-complete 审查子 agent 发现（旧账）；全库 composes 机检

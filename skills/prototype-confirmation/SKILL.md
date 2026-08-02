@@ -4,7 +4,7 @@ description: "动手写真实代码前，把范式/交互方案做成可逐功�
 metadata:
   pattern: gate
   domain: design
-  composes: [evidence-based-proposal, implementation-discipline]
+  composes: [evidence-based-proposal]
 ---
 
 # 原型确认门（动手前先让用户拍板）
