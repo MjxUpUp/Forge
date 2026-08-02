@@ -14,6 +14,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/review"
 	"github.com/MjxUpUp/Forge/internal/scoring"
+	"github.com/MjxUpUp/Forge/internal/shellexec"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
 )
 
@@ -35,6 +36,34 @@ const CheckNameDocsConsistency checklog.CheckName = "docs-consistency-gate"
 // （amend 是正常工作流，强复审会死循环），但必须落盘留痕——让 score/dashboard 能反映
 // 「该任务靠 fail-open 而非真复审通过」，事后可追溯，而非只 stderr 一闪而过。
 const CheckNameReviewSnapshot checklog.CheckName = "review-snapshot-failopen"
+
+// CheckNameTelemetryMissing is the checklog name for the work-activity telemetry-missing
+// degrade (hosts whose PostToolUse dispatch is not wired, e.g. kimi): both telemetry
+// channels (toollog + hook-dispatched checklog entries) are empty, so the work-activity
+// hard gate would be a 100% false positive and degrades to advisory. Persisted so
+// score/dashboard/trace can see the gate passed on degraded telemetry, not real activity.
+//
+// CheckNameTelemetryMissing 是 work-activity 遥测缺失降级的 checklog 名（host 的
+// PostToolUse 分发未接，如 kimi）：两条遥测通道（toollog + hook 分发的 checklog 条目）
+// 都为空，此时 work-activity 硬门禁是 100% 误报，降级为 advisory。落盘让
+// score/dashboard/trace 能看到该 gate 是在遥测降级下放行的，而非有真实工作活动。
+const CheckNameTelemetryMissing checklog.CheckName = "telemetry-missing"
+
+// CheckNameBranchUnmerged is the checklog name for the task-complete branch-merged
+// advisory: the task's feature branch is not yet merged into the mainline at complete
+// time — 'complete' is not 'delivered'. Advisory only, never blocks.
+//
+// CheckNameBranchUnmerged 是 task-complete 分支归属 advisory 的 checklog 名：完成时
+// 任务的 feature 分支尚未合入主干——「完成」不等于「交付」。仅 advisory，永不阻塞。
+const CheckNameBranchUnmerged checklog.CheckName = "branch-unmerged"
+
+// CheckNameGoalOutputMismatch is the checklog name for the task-complete goal↔output
+// coarse-match advisory: the task title and the actually-changed files share no keyword
+// at all — a smell of delivering the wrong content. Advisory only, never blocks.
+//
+// CheckNameGoalOutputMismatch 是 task-complete 目标↔产出粗匹配 advisory 的 checklog
+// 名：任务标题与实改文件零关键词交集——交付内容可能有误的信号。仅 advisory，永不阻塞。
+const CheckNameGoalOutputMismatch checklog.CheckName = "goal-output-mismatch"
 
 // recordAudit persists a checklog entry and makes a persistence failure audible:
 // checklog.Record's error is otherwise easy to drop (the call reads like a pure
@@ -278,7 +307,13 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		// 守卫上线（2026-08 实证：user-level-assets 重构后 README 仍写
 		// "forge init 创建 .forge/"，直到用户发现）。在 complete 时（diff 已知）
 		// 提醒。仅 advisory。
-		if surface := behaviorSurfaceHits(taskChangedFiles(root, state)); len(surface) > 0 {
+		// taskChangedFiles is needed twice below (behavior surface + goal↔output match) —
+		// compute once: it spawns several git subprocesses.
+		//
+		// taskChangedFiles 下面要用两次（行为面 + 目标↔产出匹配）——算一次：它会起多个
+		// git 子进程。
+		changedFiles := taskChangedFiles(root, state)
+		if surface := behaviorSurfaceHits(changedFiles); len(surface) > 0 {
 			recordAudit(root, &checklog.Entry{
 				Check:   CheckNameDocsConsistency,
 				Passed:  true,
@@ -287,6 +322,55 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 				Detail:  "behavior surface: " + strings.Join(surface, ", "),
 			})
 			fmt.Fprintf(os.Stderr, "%s行为面变更（%s）——文档守卫只覆盖命令引用不覆盖行为描述，提交前请确认 README/homepage/插件文档与新行为一致\n", GateAdvisory("[task-complete] "), strings.Join(surface, ", "))
+		}
+
+		// Branch-merged advisory: completing a task whose feature branch has not been
+		// merged into the mainline means 'complete' but not 'delivered'. Skipped when
+		// the branch is empty or IS the mainline; fail-open when the repo/mainline ref
+		// is not judgeable (git error, no main/master ref). Advisory only.
+		//
+		// 分支归属 advisory：feature 分支尚未合入主干就完成任务 = 「完成」不等于
+		// 「交付」。分支为空或本身就是主干时跳过；仓库/主干 ref 不可判定时
+		// fail-open（git 出错、无 main/master ref）。仅 advisory。
+		if state.Branch != "" && state.Branch != "main" && state.Branch != "master" && IsGitRepo(root) {
+			if mainline := resolveMainlineRef(root); mainline != "" {
+				if merged, determinable := branchMergedInto(root, state.Branch, mainline); determinable && !merged {
+					recordAudit(root, &checklog.Entry{
+						Check:   CheckNameBranchUnmerged,
+						Passed:  true,
+						Checked: true,
+						Level:   checklog.LevelAdvisory,
+						TaskRef: state.TaskRef,
+						Detail:  fmt.Sprintf("branch %s not merged into %s at task complete", state.Branch, mainline),
+					})
+					fmt.Fprintf(os.Stderr, "%s\n", GateAdvisory("[task-complete] 任务分支 %s 尚未合入主干 %s——完成不等于交付（合入后再算交付）", state.Branch, mainline))
+				}
+			}
+		}
+
+		// Goal↔output coarse-match advisory: the task title and the changed files share
+		// no keyword at all — a smell of delivering the wrong content. Coarse by design
+		// (ASCII words >=4 chars from the title vs path-segment tokens of changed files
+		// and PlanScope globs; CJK title words are skipped, no segmentation dependency).
+		// Skipped when the title yields no keywords or no files changed. Advisory only —
+		// false positives must be absorbed, never block (宁缺毋滥).
+		//
+		// 目标↔产出粗匹配 advisory：任务标题与实改文件零关键词交集——交付内容可能有误
+		// 的信号。刻意粗粒度（标题取 >=4 字符 ASCII 词，对比变更文件与 PlanScope glob
+		// 的路径 segment token；中文词跳过，不引入分词依赖）。标题切不出关键词或无
+		// 变更文件时跳过。仅 advisory——误报必须被吸收，永不阻断（宁缺毋滥）。
+		if goalWords := goalKeywords(state.Summary); len(goalWords) > 0 && len(changedFiles) > 0 {
+			if !hasIntersection(goalWords, pathSegmentKeywords(changedFiles, state.PlanScope)) {
+				recordAudit(root, &checklog.Entry{
+					Check:   CheckNameGoalOutputMismatch,
+					Passed:  true,
+					Checked: true,
+					Level:   checklog.LevelAdvisory,
+					TaskRef: state.TaskRef,
+					Detail:  fmt.Sprintf("goal %q shares no keyword with changed files", state.Summary),
+				})
+				fmt.Fprintf(os.Stderr, "%s\n", GateAdvisory("[task-complete] 任务目标（%s）与变更文件无明显关联——确认交付内容", state.Summary))
+			}
 		}
 	}
 
@@ -379,18 +463,103 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 					}
 				}
 			} else {
-				// toollog is empty (old projects with no auto-compile logs) — fall back to checklog.
+				// toollog has no entries for this task. Before enforcing, distinguish two
+				// cases that both surface as zero counts:
+				//  (a) telemetry channel missing: the host's PostToolUse dispatch is not
+				//      wired (e.g. kimi) — toollog file absent/empty AND no hook-dispatched
+				//      checklog entries (ToolName set) for this task. Counts are then
+				//      structurally 0, so the hard gate is a 100% false positive and
+				//      degrades to advisory (with an audit trail).
+				//  (b) telemetry alive but genuinely no calls — enforce via the checklog
+				//      fallback as before.
+				// Only hook-dispatched entries (ToolName != "") count for signal (a):
+				// gate-written audit entries carry no ToolName, so the advisory audit below
+				// does not flip the signal on a re-run (idempotent). The determination must
+				// also complete BEFORE recordAudit — writing first would make checklog
+				// non-empty and mask telemetry loss.
 				//
-				// toollog 为空（老项目无 auto-compile 日志）——回退到 checklog。
-				activity, err := checklog.WorkActivity(root, state.TaskRef, since)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "[forge] warning: WorkActivity check failed: %v\n", err)
-				} else if activity < 1 {
-					return nil, GateBlocked(
-						"gate %q cannot pass without sufficient work activity during this task (%d tool uses, minimum 1). "+
-							"HARD stop, not a reminder — Read files, explore code, or write design notes before advancing",
-						gateID, activity,
-					)
+				// toollog 无本任务条目。强制前先区分两种都表现为零计数的情形：
+				//  (a) 遥测通道缺失：host 的 PostToolUse 分发未接（如 kimi）——toollog
+				//      文件缺失/为空 且 checklog 中本任务无 hook 分发条目（带 ToolName）。
+				//      此时计数恒为 0，硬门禁是 100% 误报，降级为 advisory（落审计留痕）。
+				//  (b) 遥测在工作但确实无调用——照旧走 checklog 回退强制。
+				// 信号 (a) 只数 hook 分发条目（ToolName != ""）：gate 写的审计条目不带
+				// ToolName，故下方 advisory 审计不会在重跑时翻转信号（幂等）。判定也必须
+				// 在 recordAudit 之前完成——先写会让 checklog 变非空，掩盖遥测缺失。
+				toollogHas := toolusage.ToollogHasData(root)
+				taskEntries, lerr := checklog.LoadForTask(root, state.TaskRef)
+				if lerr != nil {
+					fmt.Fprintf(os.Stderr, "[forge] warning: checklog load failed: %v\n", lerr)
+				}
+				hookEntries := 0
+				for _, e := range taskEntries {
+					if e.ToolName != "" {
+						hookEntries++
+					}
+				}
+				// Session-scoped cross-check (code-review 2026-08): toollog.jsonl lives in the
+				// agent-writable DataDir — deleting it fabricates signal (a) for a fresh task
+				// with no entries yet. But a session whose PostToolUse dispatch works
+				// accumulates hook-dispatched entries across tasks; any such entry proves
+				// telemetry is alive and the degrade must not fire. kimi-style hosts
+				// (dispatch never wired) have zero such entries, so the degrade still
+				// triggers there. Two pitfalls, both caught in review:
+				//  - full scan, NOT LatestByCheckForSession: that map folds to latest-per-
+				//    check, and gate audit entries (ToolName="") written after hook entries
+				//    would mask them, resurrecting the forged degrade in a clean session.
+				//  - empty state.SessionID (legacy/kimi): match empty-session entries ONLY.
+				//    Session-filtering treats "" as "no filter", which in a mixed-host
+				//    project would count Claude's entries as kimi's telemetry and
+				//    re-introduce the 100% false-positive BLOCK this degrade exists to fix.
+				//
+				// session 级交叉验证（code-review 2026-08）：toollog.jsonl 在 agent 可写的
+				// DataDir——删掉它即可为一个还没有条目的新任务伪造信号 (a)。但分发正常的
+				// session 会跨任务累积 hook 分发条目；任一此类条目即证明遥测存活，不得
+				// 降级。kimi 类 host（分发从未接通过）无此类条目，降级照常触发。两个坑
+				// 均为复审所擒：
+				//  - 全量扫描而非 LatestByCheckForSession：那个 map 按 check 折叠到最新
+				//    一条，gate 审计条目（ToolName=""）写在 hook 条目之后会遮蔽它们，
+				//    让干净 session 里的伪造降级复活。
+				//  - state.SessionID 为空（legacy/kimi）：只认空 session 条目。session
+				//    过滤把 "" 当「不过滤」，混合 host 项目里会把 Claude 的条目误算成
+				//    kimi 的遥测，让本降级要消除的 100% 误 BLOCK 复活。
+				sessionAlive := false
+				if all, serr := checklog.LoadAll(root); serr == nil {
+					for i := range all {
+						e := &all[i]
+						if e.ToolName == "" {
+							continue
+						}
+						if e.SessionID == "" || (state.SessionID != "" && e.SessionID == state.SessionID) {
+							sessionAlive = true
+							break
+						}
+					}
+				}
+				if !toollogHas && lerr == nil && hookEntries == 0 && !sessionAlive {
+					recordAudit(root, &checklog.Entry{
+						Check:   CheckNameTelemetryMissing,
+						Passed:  true,
+						Checked: true,
+						Level:   checklog.LevelAdvisory,
+						TaskRef: state.TaskRef,
+						Detail:  "telemetry unavailable: toollog empty and zero hook-dispatched checklog entries for this task — work-activity enforcement skipped (host hook dispatch not wired)",
+					})
+					fmt.Fprintf(os.Stderr, "%s\n", GateAdvisory("[%s] telemetry unavailable（toollog 与 checklog 均无本任务 hook 数据，host hook 分发未通）——work-activity 强制跳过，本次放行不代表已验证工作活动", gateID))
+				} else {
+					// toollog is empty (old projects with no auto-compile logs) — fall back to checklog.
+					//
+					// toollog 为空（老项目无 auto-compile 日志）——回退到 checklog。
+					activity, err := checklog.WorkActivity(root, state.TaskRef, since)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "[forge] warning: WorkActivity check failed: %v\n", err)
+					} else if activity < 1 {
+						return nil, GateBlocked(
+							"gate %q cannot pass without sufficient work activity during this task (%d tool uses, minimum 1). "+
+								"HARD stop, not a reminder — Read files, explore code, or write design notes before advancing",
+							gateID, activity,
+						)
+					}
 				}
 			}
 		} else if state.TaskRef != "" && getDisableWorkActivity(state) {
@@ -404,6 +573,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 				Check:   checklog.CheckEscapeHatch,
 				Passed:  true,
 				Checked: true,
+				Level:   checklog.LevelWarn,
 				TaskRef: state.TaskRef,
 				Detail:  "escape-hatch: work-activity gate bypassed (per-task override or FORGE_WORK_ACTIVITY=disable)",
 			})
@@ -732,6 +902,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 					Check:   checklog.CheckEscapeHatch,
 					Passed:  true,
 					Checked: true,
+					Level:   checklog.LevelWarn,
 					TaskRef: state.TaskRef,
 					Detail:  `escape-hatch: skill-decisions guardrail bypassed (per-task override or FORGE_SKILL_DECISIONS=disable): ` + strings.Join(blocking, ", "),
 				})
@@ -1018,17 +1189,31 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 	//（cli.runHook）使用同一份源。改读磁盘上的 .forge/hooks/auto-compile.sh 会让
 	// gate 检查可篡改副本、而 write-time hook 检查受信 embed，两者会漂移（被篡改
 	// 的磁盘脚本可能让 gate 通过一个 write-time hook 仍会标记为坏的构建）。
-	compilePassed, compileOutput := runEmbeddedHook(root, "auto-compile")
+	compilePassed, compileInfra, compileOutput := runEmbeddedHook(root, "auto-compile")
 
-	recordAudit(root, &checklog.Entry{
+	compileDetail := fmt.Sprintf("auto-compile.sh: %s", compileOutput)
+	if compileInfra {
+		// 基建故障（bash spawn error / exit 126/127——WSL bash 看不到 Windows 临时
+		// 路径的特征）：Detail 加 INFRA: 前缀（Passed=false 保留，便于统计基建故障率），
+		// 但不判 gate fail——fail-open 对齐 hook 路径 isHookInfraFailure 哲学（环境
+		// 问题不是质量失败）。真实编译错误（脚本正常执行、编译器报错）语义不变。
+		compileDetail = "INFRA: " + compileDetail
+	}
+	compileEntry := &checklog.Entry{
 		Check:   checklog.CheckAutoCompile,
 		Passed:  compilePassed,
 		Checked: true,
 		TaskRef: taskRef,
-		Detail:  fmt.Sprintf("auto-compile.sh: %s", compileOutput),
-	})
+		Detail:  compileDetail,
+	}
+	if compileInfra {
+		// 基建故障 fail-open 不是质量失败——Level warn（trace 渲染 ⚠ 而非 ✗）；
+		// scoring 侧按 INFRA: 前缀跳过（scoring.go），Passed=false 仅用于故障率统计。
+		compileEntry.Level = checklog.LevelWarn
+	}
+	recordAudit(root, compileEntry)
 
-	if !compilePassed {
+	if !compilePassed && !compileInfra {
 		return &ExecuteResult{
 			GateID:  "task-implement",
 			Passed:  false,
@@ -1043,17 +1228,27 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 	// 2. 断言弱化检查——与 write-time PreToolUse hook 同源 embed。无磁盘回退：
 	// embed 即 canonical，故被篡改的 .forge/hooks/assertion-check.sh 无法削弱
 	// gate 强制的内容。
-	assertPassed, assertOutput := runEmbeddedHook(root, "assertion-check")
+	assertPassed, assertInfra, assertOutput := runEmbeddedHook(root, "assertion-check")
 
-	recordAudit(root, &checklog.Entry{
+	assertDetail := fmt.Sprintf("assertion-check.sh: %s", assertOutput)
+	if assertInfra {
+		// 基建故障分级同 auto-compile（见上）：INFRA: 前缀记录，不判 gate fail。
+		assertDetail = "INFRA: " + assertDetail
+	}
+	assertEntry := &checklog.Entry{
 		Check:   checklog.CheckAssertion,
 		Passed:  assertPassed,
 		Checked: true,
 		TaskRef: taskRef,
-		Detail:  fmt.Sprintf("assertion-check.sh: %s", assertOutput),
-	})
+		Detail:  assertDetail,
+	}
+	if assertInfra {
+		// 同 auto-compile：基建故障 Level warn，非质量失败。
+		assertEntry.Level = checklog.LevelWarn
+	}
+	recordAudit(root, assertEntry)
 
-	if !assertPassed {
+	if !assertPassed && !assertInfra {
 		return &ExecuteResult{
 			GateID:  "task-implement",
 			Passed:  false,
@@ -1087,30 +1282,60 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 // previous disk-hook invocation so scripts resolving the project via $1 or $PWD behave
 // consistently.
 //
+// The infra return marks infrastructure failures (bash spawn error / exit 126/127 —
+// the WSL-bash signature, script file invisible): NOT a gate verdict. checkImplement
+// records them with an INFRA: Detail prefix (Passed=false, so the infra-failure rate
+// stays countable) but does not fail the gate — the fail-open philosophy of the
+// write-time hook path (cli.isHookInfraFailure). A real compile failure (script ran,
+// compiler errored) keeps passed=false, infra=false and fails the gate as before.
+//
+// bash resolution goes through shellexec.FindBash — the same WSL-avoidance logic the
+// write-time path uses. The pre-shellexec bare exec.Command("bash", ...) resolved to
+// WSL bash under native parents, and 45/53 gate auto-compile FAILs were
+// 'forge-gate-*.sh: No such file or directory'.
+//
 // runEmbeddedHook 执行 embed 的 hook 脚本（hooks.EmbeddedContent）：写临时文件后
 // 用 bash 跑——镜像 write-time 路径（cli.runHook）跑 hook 的方式。gate 层使用与
 // write-time 检查同源的 embed 源；改读磁盘 .forge/hooks/*.sh 会让 gate 检查可
 // 篡改副本、可能与受信 embed 漂移。root 作为 $1 与工作目录传入，对齐此前磁盘
 // hook 调用方式，让脚本经 $1 或 $PWD 解析项目时表现一致。
-func runEmbeddedHook(root, name string) (passed bool, output string) {
+//
+// infra 返回值标记基础设施故障（bash spawn 错误 / exit 126/127——WSL bash 特征，
+// 脚本文件不可见）：不是门禁结论。checkImplement 用 INFRA: Detail 前缀记录它们
+// （Passed=false 保留，基建故障率可统计）但不判 gate fail——与 write-time hook
+// 路径（cli.isHookInfraFailure）的 fail-open 哲学对齐。真实编译失败（脚本正常
+// 执行、编译器报错）保持 passed=false, infra=false，gate 照旧 fail。
+//
+// bash 解析走 shellexec.FindBash——与 write-time 路径同源的 WSL 规避逻辑。
+// shellexec 之前的裸 exec.Command("bash", ...) 在原生父进程下解析到 WSL bash，
+// 45/53 次 gate auto-compile FAIL 都是 'forge-gate-*.sh: No such file or directory'。
+func runEmbeddedHook(root, name string) (passed bool, infra bool, output string) {
 	content, ok := hooks.EmbeddedContent(name)
 	if !ok {
-		return false, fmt.Sprintf("embedded hook %q not found", name)
+		// Unknown hook name is a programming error, not infrastructure — fail closed.
+		//
+		// 未知 hook 名是编程错误而非基建故障——fail closed。
+		return false, false, fmt.Sprintf("embedded hook %q not found", name)
 	}
 	tmp, err := os.CreateTemp("", "forge-gate-*.sh")
 	if err != nil {
-		return false, fmt.Sprintf("create temp hook file: %v", err)
+		return false, true, fmt.Sprintf("create temp hook file: %v", err)
 	}
 	tmpPath := tmp.Name()
 	defer os.Remove(tmpPath)
 	if _, err := tmp.WriteString(content); err != nil {
 		tmp.Close()
-		return false, fmt.Sprintf("write temp hook file: %v", err)
+		return false, true, fmt.Sprintf("write temp hook file: %v", err)
 	}
 	tmp.Close()
 	// bash reads the file as an argument; no chmod needed (not exec'd directly).
 	//
 	// bash 把文件作为参数读；无需 chmod（不直接 exec）。
+
+	bashPath, err := findBashForHook()
+	if err != nil {
+		return false, true, fmt.Sprintf("resolve bash: %v", err)
+	}
 
 	// Windows: os.CreateTemp returns a backslash path (C:\Users\...\forge-gate-*.sh); bash
 	// treats backslashes as escape characters and swallows them → 'No such file or directory',
@@ -1123,11 +1348,26 @@ func runEmbeddedHook(root, name string) (passed bool, output string) {
 	// 转义吃掉 → "No such file or directory"，task-implement 的 build 检查因此误判失败。
 	// filepath.ToSlash 转正斜杠（Git Bash 可解析）。cmd.Dir 仍用原生 root——Go exec 在
 	// Windows 启动 bash 子进程要原生路径做 cwd，bash 自身能处理 Windows cwd。
-	cmd := exec.Command("bash", filepath.ToSlash(tmpPath), filepath.ToSlash(root))
+	cmd := exec.Command(bashPath, filepath.ToSlash(tmpPath), filepath.ToSlash(root))
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
-	return err == nil, strings.TrimSpace(string(out))
+	if shellexec.IsHookInfraFailure(err) {
+		return false, true, strings.TrimSpace(fmt.Sprintf("%v: %s", err, string(out)))
+	}
+	return err == nil, false, strings.TrimSpace(string(out))
 }
+
+// findBashForHook resolves the bash interpreter for embedded gate hooks. Seamed
+// as a package var so tests can simulate infrastructure failures (spawn error /
+// exit 127). Production value: shellexec.FindBash — the same WSL-avoidance
+// resolution the write-time hook path (cli.runHook) uses; single source, one fix
+// locus.
+//
+// findBashForHook 解析 embedded gate hook 的 bash 解释器。以包级变量留缝，
+// 供测试模拟基建故障（spawn 错误 / exit 127）。生产值为 shellexec.FindBash——
+// 与 write-time hook 路径（cli.runHook）同源的 WSL 规避解析；单一真相源，
+// 一个修复落点。
+var findBashForHook = shellexec.FindBash
 
 // getDisableWorkActivity returns whether work-activity / read-before-edit checks are
 // disabled for this task. Plan-5: per-task Overrides (forge task override) take precedence
