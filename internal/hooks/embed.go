@@ -278,11 +278,13 @@ fi
 # Advisory: always PASS, never block. Surface issues to stderr (user-visible)
 # and checklog (trace-queryable). Detail is a fixed string — MESSAGES may carry
 # quotes/paths that would break the JSON line, so it goes to stderr only.
+# level 显式写 "advisory"（checklog Level 字段）：Detail 无 ADVISORY: 前缀，
+# 读取侧 derive 只会给 pass——本条目实为 advisory 语义，必须显式标注。
 if [ -n "$MESSAGES" ]; then
   echo "[task-verify] ${MESSAGES}" >&2
   _NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)
   if [ -n "$_NOW" ]; then
-    printf '{"check":"task-verify","passed":true,"checked":false,"detail":"advisory: non-blocking issues surfaced to stderr","recorded_at":"%s"}\n' \
+    printf '{"check":"task-verify","passed":true,"checked":false,"detail":"advisory: non-blocking issues surfaced to stderr","level":"advisory","recorded_at":"%s"}\n' \
       "$_NOW" >> "$_DATA_DIR/checklog.jsonl" 2>/dev/null || true
   fi
 fi
@@ -764,8 +766,10 @@ COMMAND="${FORGE_COMMAND:-}"
 # 空命令 / 非命令工具：放行
 [ -z "$COMMAND" ] && { echo "PASS"; exit 0; }
 
-# 逃生：FORGE_ALLOW_HAZARD=1（测试/CI）直接放行
-[ "${FORGE_ALLOW_HAZARD:-0}" = "1" ] && { echo "PASS [hazard-guard] FORGE_ALLOW_HAZARD=1 跳过"; exit 0; }
+# FORGE_ALLOW_HAZARD env 豁免已移除（周复盘 2026-08：agent 自我放行滥用——hook 只拦
+# 别人拦不了自己，且行内前缀形式 FORGE_ALLOW_HAZARD=1 cmd 由宿主进程持有、hook 进程
+# 拿不到 env，两种形式行为不一致）。confirm 链（events.jsonl 审计 + 5min TTL）是唯一
+# 放行路径，测试/CI 同样走 forge hazard confirm。
 
 # 豁免 forge hazard 命令本身：agent 运行 forge hazard confirm "rm -rf x" 登记确认时，
 # 这个 Bash 命令的 FORGE_COMMAND 含 "rm -rf" 会被自己拦——必须豁免 forge hazard 前缀。
@@ -918,6 +922,36 @@ strip_quotes() {
     }'
 }
 
+# is_interp_delete_bypass 收窄解释器内联删除旁路：python/node/ruby/perl 的 -c/-e
+# 代码体不含 rm 等危险串，is_hazardous 对 python -c "import os;os.remove(...)" 直接
+# PASS——解释器旁路（周复盘失守 c：is_exec_wrapped 只在 is_hazardous 命中后才调，
+# 覆盖不到无危险串的删除代码）。在 PASS 前前置判定：命中即视为 hazardous，落入下方
+# STRIPPED / 拦截流程。保守方向与 is_exec_wrapped 同款：-c/-e 宽匹配只影响"已含文件
+# 删除调用"的命令，正常 python script.py -v / node app.js 不命中。
+# 已知限制：echo "python -c os.remove" 这类把解释器命令当数据的 echo 会被宽匹配
+# 误拦（is_exec_wrapped 同款权衡，confirm 链可豁免，方向安全）。
+is_interp_delete_bypass() {
+  local lower
+  # 引号归一（删除引号字符本身而非内容——与 strip_quotes 相反方向）：node 的
+  # require('fs').rmSync 去掉引号成 require(fs).rmSync 才能匹配 fs.rm；python 的
+  # os.remove 本来无引号不受影响。空白压缩对齐 is_hazardous——python<TAB>-c 这类
+  # 制表符分隔也要命中 "python -c" 模式（\ 转义的空格只匹配字面空格）。
+  lower=$(printf '%s' "$1" | tr -d "'\"" | tr '[:upper:]' '[:lower:]' | tr -s '[:space:]' ' ')
+  # 解释器 + 内联代码 flag（-c/-e）
+  case "$lower" in
+    *python*\ -c*|*node*\ -e*|*ruby*\ -e*|*perl*\ -e*|*perl*\ -E*) ;;
+    *) return 1 ;;
+  esac
+  # 代码体内的文件删除调用模式：os.remove/os.unlink/shutil.rmtree（python）、
+  # fs.rm/fs.unlink/.unlink（node；Path().unlink 同属 .unlink）、rmdir（shell 与
+  # python os.rmdir/shutil.rmdir 同串）。node 的 require('fs').rmSync 引号归一后是
+  # require(fs).rmsync( —— "fs.rm" 中间隔了 ")"，故补 .rm(/.rmsync 两个方法调用形态。
+  case "$lower" in
+    *os.remove*|*os.unlink*|*shutil.rmtree*|*fs.rm*|*.rm\(*|*.rmsync*|*fs.unlink*|*.unlink*|*rmdir*) return 0 ;;
+  esac
+  return 1
+}
+
 # is_exec_wrapped 判定命令是否把字符串当代码执行——这类即使危险串在引号内也是真高危，
 # context classification 不能放行。strip_quotes 会剥离引号内代码串，若不兜底会漏放：
 # bash -c "rm -rf" / mysql -e 'DROP TABLE' / python -c "os.remove()" 等。case-glob，BSD
@@ -940,7 +974,7 @@ is_exec_wrapped() {
   return 1
 }
 
-if ! is_hazardous "$COMMAND"; then
+if ! is_hazardous "$COMMAND" && ! is_interp_delete_bypass "$COMMAND"; then
   echo "PASS"
   exit 0
 fi
@@ -957,11 +991,21 @@ if [ "$STRIPPED" != "$COMMAND" ] && ! is_hazardous "$STRIPPED" && ! is_exec_wrap
 fi
 
 # --- 命中高危：查是否已 human-in-the-loop 确认（forge hazard confirm 登记） ---
+# confirmed 的 stderr 不再全吞（周复盘失守 a：>/dev/null 2>&1 让确认链故障无迹可查）。
+# confirmed exit 0=已确认放行；exit 1 多为"未确认"（正常路径），但若它打了 stderr
+# （[hazard] 错误），说明确认链本身异常——kimi 30s 超时/autoSync 拖慢 forge 启动/环境
+# 问题——把 stderr 前 200 字符带进 block 输出，失败可诊断。
 FP=$(forge hazard fingerprint "$COMMAND" 2>/dev/null)
-if [ -n "$FP" ] && forge hazard confirmed "$FP" >/dev/null 2>&1; then
-  forge hazard log release "$COMMAND" >/dev/null 2>&1 || true
-  echo "PASS [hazard-guard] 已确认放行（5min 窗口内）: $COMMAND"
-  exit 0
+_CONFIRM_DIAG=""
+if [ -n "$FP" ]; then
+  if _CONFIRM_STDERR=$(forge hazard confirmed "$FP" 2>&1 >/dev/null); then
+    forge hazard log release "$COMMAND" >/dev/null 2>&1 || true
+    echo "PASS [hazard-guard] 已确认放行（5min 窗口内）: $COMMAND"
+    exit 0
+  fi
+  if [ -n "$_CONFIRM_STDERR" ]; then
+    _CONFIRM_DIAG=$(printf '%s' "$_CONFIRM_STDERR" | head -c 200)
+  fi
 fi
 
 # --- 未确认：block + HITL 指引（落盘 block 事件供审计追溯） ---
@@ -978,7 +1022,16 @@ echo "     （回传上方 hex 指纹；勿复制命令串——shell 会吃掉�
 echo "  3. 逐字重试原命令（5min 内同指纹自动放行）——重试时勿加 && echo/&& ls 等验证"
 echo "     后缀：命令串变了→指纹变→重新被拦（这是 confirm 后仍被反复拦截的最常见原因）"
 echo ""
-echo "测试/CI 可设 FORGE_ALLOW_HAZARD=1 临时跳过拦截。"
+if [ -n "$_CONFIRM_DIAG" ]; then
+  echo "确认链诊断："
+  echo "  forge hazard confirmed 查询异常（非单纯未确认），stderr 前 200 字符："
+  echo "  $_CONFIRM_DIAG"
+  echo "  可运行 forge hazard status 查看确认链状态；若反复异常请检查 forge 环境"
+  echo "  （kimi 30s 超时内串行 fork 多次 forge，autoSync 拖慢启动是主要嫌疑）。"
+fi
+echo ""
+echo "FORGE_ALLOW_HAZARD env 豁免已移除（可被 agent 自我放行滥用）——confirm 链"
+echo "（events.jsonl 审计 + 5min TTL）是唯一放行路径，测试/CI 同样走 forge hazard confirm。"
 exit 1
 `
 
@@ -1258,6 +1311,51 @@ quarantine_files() {
 
 # Self-protection: quarantine config changes (unless forge command was detected)
 if [ -n "$CONFIG_CHANGES" ] && [ $IS_FORGE_CMD -eq 0 ]; then
+  # forge 自部署豁免（2026-08-02 自伤事故）：被监控的非 forge Bash 命令触发 hook 链
+  # 时，链上 forge 子进程 autoSync 恰好重写项目级 .forge/hooks/*.sh（team-mode/老项目
+  # 残留），manifest drift + IS_FORGE_CMD=0 → 整目录被 quarantine。Go 侧部署写入前在
+  # <DataDir>/stamps/hook-deploy 落 "<epoch> <tag>" marker（grace 窗口模式，与下方
+  # task-complete _GRACE_FILE 同款）：drift 全部位于 .forge/hooks/ 且 marker 新鲜
+  # （<120s）且 tag 匹配 → 视为 forge 自身部署写入，PASS 不 quarantine；窗口外/
+  # 无 marker/混有非 hooks drift 时仍严格 quarantine。防伪造：marker 在 DataDir
+  # （agent 可写，与 snapshot/.cfg 基线同一信任边界，可接受）+ project tag 校验。
+  _HOOKS_ONLY=1
+  while IFS= read -r _cf; do
+    [ -z "$_cf" ] && continue
+    if [[ $_cf != .forge/hooks/* ]]; then
+      _HOOKS_ONLY=0
+      break
+    fi
+  done <<< "$CONFIG_CHANGES"
+  if [ "$_HOOKS_ONLY" -eq 1 ]; then
+    _DEPLOY_DD="${FORGE_DATA_DIR:-}"
+    if [ -z "$_DEPLOY_DD" ]; then
+      _DEPLOY_DD="$(forge data-dir 2>/dev/null || true)"
+    fi
+    _DEPLOY_MARKER="${_DEPLOY_DD}/stamps/hook-deploy"
+    if [ -n "$_DEPLOY_DD" ] && [ -f "$_DEPLOY_MARKER" ]; then
+      _DEPLOY_STAMP=$(cat "$_DEPLOY_MARKER" 2>/dev/null || true)
+      _DEPLOY_EPOCH="${_DEPLOY_STAMP%% *}"
+      _DEPLOY_TAG="${_DEPLOY_STAMP#* }"
+      # 纯数字校验（非数字置空，下游 -ge 比较不会炸）
+      case "$_DEPLOY_EPOCH" in
+        ""|*[!0-9]*) _DEPLOY_EPOCH="" ;;
+      esac
+      _NOW=$(date +%s 2>/dev/null || echo 0)
+      if [ -n "$_DEPLOY_EPOCH" ] && [ "$_NOW" != "0" ] && [ $((_NOW - _DEPLOY_EPOCH)) -ge 0 ] && [ $((_NOW - _DEPLOY_EPOCH)) -lt 120 ]; then
+        # tag 双保险：DataDir 本就按项目分桶，tag 不一致视为串项目不豁免；任一侧
+        # 为空（老 marker 无 tag 字段）则跳过 tag 校验。
+        _TAG_OK=1
+        if [ -n "${FORGE_PROJECT_TAG:-}" ] && [ -n "$_DEPLOY_TAG" ] && [ "$_DEPLOY_TAG" != "${FORGE_PROJECT_TAG:-}" ]; then
+          _TAG_OK=0
+        fi
+        if [ "$_TAG_OK" -eq 1 ]; then
+          echo "PASS [file-sentinel] .forge/hooks drift within forge deploy window (<120s), treating as forge self-deploy:${CONFIG_CHANGES}"
+          exit 0
+        fi
+      fi
+    fi
+  fi
   quarantine_files "$CONFIG_CHANGES"
   MSG="FAIL [file-sentinel] Quarantined unauthorized changes to Forge config:${QUARANTINED}."
   [ -n "$QUARANTINE_FAILED" ] && MSG="${MSG} FAILED to quarantine:${QUARANTINE_FAILED}."

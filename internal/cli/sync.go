@@ -55,9 +55,19 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 	}
 
 	// 1. sync hook script reference copies (runtime executes embedded content, these
-	//    are for inspection only)
+	//    are for inspection only). The deploy stamp must land FIRST: file-sentinel's
+	//    CONFIG branch exempts .forge/hooks/ drift only within its grace window —
+	//    without it, this rewrite by a forge subprocess inside a monitored Bash
+	//    command's hook chain gets quarantined as unauthorized (2026-08-02 incident).
 	//
-	// 1. sync hook 脚本参考副本（运行时执行嵌入内容，副本仅供查看）
+	// 1. sync hook 脚本参考副本（运行时执行嵌入内容，副本仅供查看）。deploy stamp
+	//    必须先落盘：file-sentinel 的 CONFIG 分支只在它的 grace 窗口内豁免
+	//    .forge/hooks/ drift——没有它，被监控 Bash 命令 hook 链上的 forge 子进程
+	//    重写 hooks 会被当未授权改写 quarantine（2026-08-02 事故）。stamp 失败仅
+	//    告警：缺失只退回事故前的严格 quarantine，不阻塞 sync。
+	if err := hooks.WriteHookDeployStamp(dataDir, projectTagFor(dir)); err != nil {
+		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to write hook deploy stamp: %v\n", err)
+	}
 	if err := hooks.WriteHookTemplates(dataDir); err != nil {
 		return fmt.Errorf("auto-sync: failed to update hooks: %w", err)
 	}

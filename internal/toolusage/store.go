@@ -155,6 +155,23 @@ func LoadAllAll(root string) ([]ToolCall, error) {
 	return all, nil
 }
 
+// ToollogHasData reports whether the active toollog.jsonl exists and is non-empty.
+// loadFromPath returns nil,nil both for a missing file and an empty one, so callers
+// cannot distinguish 'telemetry never arrived' from 'telemetry arrived but matched
+// nothing' through the load path — this stat-based probe closes that gap. Used by
+// the work-activity gate to tell 'hook dispatch not wired on this host' (toollog
+// missing/empty) apart from 'hook dispatch works but genuinely zero calls'.
+//
+// ToollogHasData 报告 active toollog.jsonl 是否存在且非空。loadFromPath 对文件
+// 不存在与文件为空都返回 nil,nil，调用方无法经 load 路径区分「遥测从未到达」与
+// 「遥测到了但没匹配」——这个基于 stat 的探测补上该缺口。供 work-activity 门禁
+// 区分「本 host 的 hook 分发未接」（toollog 缺失/为空）与「hook 分发正常但确实
+// 零调用」。
+func ToollogHasData(root string) bool {
+	info, err := os.Stat(filepath.Join(dataDir(root), toollogFile))
+	return err == nil && info.Size() > 0
+}
+
 // ReadEditCounts returns Read and Edit/Write tool call counts from toollog.jsonl
 // since the given time, scoped to a task. Unlike checklog.WorkActivity (which
 // folds all tools into a scalar count), this function splits read vs edit so the

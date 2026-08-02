@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/MjxUpUp/Forge/internal/userassets"
 )
@@ -580,6 +581,38 @@ func isForgeHookCommand(cmd string) bool {
 	return strings.HasPrefix(cmd, "forge hook ") ||
 		strings.HasPrefix(cmd, "forge gate ") ||
 		cmd == "forge hook" || cmd == "forge gate"
+}
+
+// WriteHookDeployStamp writes the hook-deploy grace marker
+// (<dataDir>/stamps/hook-deploy, content "<epoch> <projectTag>") immediately
+// before Forge rewrites its hook script copies. file-sentinel's CONFIG branch
+// reads it: when the manifest drift lies entirely under .forge/hooks/ and the
+// marker is fresh (<120s) with a matching project tag, the drift is treated as
+// Forge's own deploy write, not an unauthorized rewrite — the 2026-08-02
+// self-injury incident (a monitored non-forge Bash command fired the hook chain
+// while a forge subprocess's autoSync rewrote project-level .forge/hooks/*.sh,
+// and the whole directory got quarantined). The marker is deliberately NOT
+// deleted after the write: the grace decision is timestamp-based, mirroring the
+// task-complete grace stamp. dataDir is user-level (agent-writable — same trust
+// boundary as the snapshot/.cfg baseline, accepted); the project tag is the
+// cheap anti-cross-project check (FORGE_PROJECT_TAG precedent).
+//
+// WriteHookDeployStamp 在 Forge 重写 hook 脚本副本前一刻写部署 grace marker
+// （<dataDir>/stamps/hook-deploy，内容 "<epoch> <projectTag>"）。file-sentinel
+// 的 CONFIG 分支读它：manifest drift 全部位于 .forge/hooks/ 且 marker 新鲜
+// （<120s）且 project tag 匹配时，drift 视为 Forge 自身部署写入而非未授权改写
+// ——2026-08-02 自伤事故（被监控的非 forge Bash 命令触发 hook 链，链上 forge
+// 子进程 autoSync 恰好重写项目级 .forge/hooks/*.sh，整目录被 quarantine）。
+// marker 写后刻意不删：grace 判定基于时间戳，与 task-complete grace stamp 同款。
+// dataDir 在用户级（agent 可写——与 snapshot/.cfg 基线同一信任边界，可接受）；
+// project tag 是廉价的防跨项目校验（FORGE_PROJECT_TAG 先例）。
+func WriteHookDeployStamp(dataDir, projectTag string) error {
+	stampsDir := filepath.Join(dataDir, "stamps")
+	if err := os.MkdirAll(stampsDir, 0755); err != nil {
+		return err
+	}
+	content := fmt.Sprintf("%d %s\n", time.Now().Unix(), projectTag)
+	return os.WriteFile(filepath.Join(stampsDir, "hook-deploy"), []byte(content), 0644)
 }
 
 // WriteHookTemplates writes the embedded hook scripts into .forge/hooks/.
