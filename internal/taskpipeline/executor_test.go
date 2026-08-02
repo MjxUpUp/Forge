@@ -599,22 +599,20 @@ func TestIsLastGate(t *testing.T) {
 	}
 }
 
-// TestWorkActivityStillEnforcedAfterAutoGate pins the 3-gate rule documented at the
-// work-activity check in executor.go: the check is intentionally NOT skipped after an
-// auto gate. Under the 3-gate pipeline task-verify immediately follows the auto
-// task-implement, and the implement→verify stretch is exactly the interval where
-// read-before-edit must be enforced — skipping after auto was the old 5-gate-era rule
-// (embodied by the now-deleted isPreviousGateAuto) and would make this check
-// ineffective. With zero logged Reads/activity, task-verify must be BLOCKED even
-// though the previous gate was auto.
+// TestWorkActivityTelemetryMissingDegradesToAdvisory pins the telemetry-missing degrade:
+// when BOTH telemetry channels are empty (toollog file absent/empty AND zero hook-dispatched
+// checklog entries for the task — the signature of a host whose PostToolUse dispatch is not
+// wired, e.g. kimi), the work-activity counts are structurally 0 and the hard gate would be a
+// 100% false positive. The gate must therefore PASS with a stderr advisory and persist a
+// CheckNameTelemetryMissing audit entry, so score/dashboard/trace can see the gate passed on
+// degraded telemetry rather than verified activity.
 //
-// TestWorkActivityStillEnforcedAfterAutoGate 钉死 executor.go 工作活动检查处记录的
-// 3-gate 规则：auto gate 之后故意不跳过本检查。3-gate 流水线下 task-verify 紧跟
-// auto 的 task-implement，implement→verify 这段正是必须强制 read-before-edit 的
-// 区间——auto 后跳过是 5-gate 时代旧规则（已删除的 isPreviousGateAuto 即其残
-// 留），会让检查失效。零 Read/活动时，即便前一 gate 是 auto，task-verify 也必须
-// BLOCKED。
-func TestWorkActivityStillEnforcedAfterAutoGate(t *testing.T) {
+// TestWorkActivityTelemetryMissingDegradesToAdvisory 钉住遥测缺失降级：两条遥测通道都空
+// （toollog 文件缺失/为空 且 checklog 无本任务 hook 条目——host 的 PostToolUse 分发未接的
+// 特征，如 kimi）时，work-activity 计数恒为 0，硬门禁是 100% 误报。门禁必须放行、stderr
+// 含 advisory、并落 CheckNameTelemetryMissing 审计条目，让 score/dashboard/trace 能看到
+// 该 gate 是在遥测降级下放行的，而非验证了真实活动。
+func TestWorkActivityTelemetryMissingDegradesToAdvisory(t *testing.T) {
 	dir := t.TempDir()
 	runGit(t, dir, "init")
 	runGit(t, dir, "config", "user.email", "test@test.com")
@@ -635,12 +633,268 @@ func TestWorkActivityStillEnforcedAfterAutoGate(t *testing.T) {
 	// 通过 task-implement（auto）——之后不记任何 Read/活动
 	state.RecordGateResult("task-implement", true, "")
 
+	var gateErr error
+	stderr := captureStderr(t, func() {
+		_, gateErr = ExecuteTaskGate(dir, "task-verify", state)
+	})
+	if gateErr != nil {
+		t.Fatalf("遥测缺失时 task-verify 应 advisory 放行，got: %v", gateErr)
+	}
+	if !strings.Contains(stderr, advisoryPrefix) {
+		t.Fatalf("stderr 应含 advisory 说明遥测缺失，got: %q", stderr)
+	}
+
+	// Audit trail persisted — the degrade must be visible, not silent.
+	//
+	// 审计已落盘——降级必须可见，不能静默。
+	entries, err := checklog.LoadForTask(dir, "test-auto-activity")
+	if err != nil {
+		t.Fatalf("LoadForTask: %v", err)
+	}
+	found := false
+	for _, e := range entries {
+		if e.Check == CheckNameTelemetryMissing {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("checklog 应有 CheckNameTelemetryMissing 审计条目，got: %+v", entries)
+	}
+}
+
+// TestWorkActivityStillEnforcedAfterAutoGate pins the 3-gate rule documented at the
+// work-activity check in executor.go: the check is intentionally NOT skipped after an
+// auto gate. Under the 3-gate pipeline task-verify immediately follows the auto
+// task-implement, and the implement→verify stretch is exactly the interval where
+// read-before-edit must be enforced — skipping after auto was the old 5-gate-era rule
+// (embodied by the now-deleted isPreviousGateAuto) and would make this check
+// ineffective. When the telemetry channel is ALIVE (a hook-dispatched checklog entry
+// exists for the task) but activity is genuinely zero, task-verify must still be
+// BLOCKED — the telemetry-missing degrade must not become an escape lane.
+//
+// TestWorkActivityStillEnforcedAfterAutoGate 钉死 executor.go 工作活动检查处记录的
+// 3-gate 规则：auto gate 之后故意不跳过本检查。3-gate 流水线下 task-verify 紧跟
+// auto 的 task-implement，implement→verify 这段正是必须强制 read-before-edit 的
+// 区间——auto 后跳过是 5-gate 时代旧规则（已删除的 isPreviousGateAuto 即其残
+// 留），会让检查失效。遥测通道存活（本任务有 hook 分发的 checklog 条目）但活动
+// 确实为零时，task-verify 仍必须 BLOCKED——遥测缺失降级不得成为借道逃逸。
+func TestWorkActivityStillEnforcedAfterAutoGate(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "initial")
+
+	t.Setenv("FORGE_WORK_ACTIVITY", "") // 确保不受外部环境 escape 影响
+
+	state := &TaskState{
+		TaskRef: "test-auto-activity-blocked",
+		Branch:  "feat/test",
+	}
+
+	// Telemetry alive: a hook-dispatched checklog entry (ToolName set) exists for this
+	// task. ToolName "Bash" is excluded from WorkActivity's workTools, so activity is
+	// still genuinely 0 — the gate must BLOCK, proving the degrade only fires when BOTH
+	// channels are empty.
+	//
+	// 遥测存活：本任务存在一条 hook 分发的 checklog 条目（带 ToolName）。ToolName
+	// "Bash" 不在 WorkActivity 的 workTools 内，故活动仍确实为 0——门禁必须 BLOCK，
+	// 证明降级只在两条通道都空时触发。
+	if err := checklog.Record(dir, &checklog.Entry{
+		Check:    checklog.CheckAutoCompile,
+		ToolName: "Bash",
+		Passed:   true,
+		Checked:  true,
+		TaskRef:  "test-auto-activity-blocked",
+	}); err != nil {
+		t.Fatalf("checklog.Record: %v", err)
+	}
+
+	// Pass task-implement (auto) — but log no Reads/activity afterwards.
+	//
+	// 通过 task-implement（auto）——之后不记任何 Read/活动
+	state.RecordGateResult("task-implement", true, "")
+
 	_, err := ExecuteTaskGate(dir, "task-verify", state)
 	if err == nil {
-		t.Fatal("task-verify after auto gate with zero activity must be BLOCKED — the 5-gate-era skip rule must not come back")
+		t.Fatal("task-verify after auto gate with zero activity (telemetry alive) must be BLOCKED — the 5-gate-era skip rule must not come back")
 	}
 	if !strings.HasPrefix(err.Error(), blockedPrefix) {
 		t.Fatalf("应是 GateBlocked（HARD stop），got: %v", err)
+	}
+}
+
+// TestWorkActivitySessionAlivePreventsDegrade pins the session-scoped cross-check
+// (code-review 2026-08): toollog.jsonl lives in the agent-writable DataDir, so
+// "toollog empty" alone cannot prove telemetry loss — an agent could delete it to
+// fabricate the degrade for a fresh task with no task-scoped entries. A session
+// whose PostToolUse dispatch works accumulates hook-dispatched entries across
+// tasks; any such entry in the CURRENT session (even under another task ref) must
+// suppress the degrade and keep the HARD stop.
+//
+// TestWorkActivitySessionAlivePreventsDegrade 钉住 session 级交叉验证
+// （code-review 2026-08）：toollog.jsonl 在 agent 可写的 DataDir，「toollog 为空」
+// 本身不能证明遥测缺失——agent 删掉它即可为一个还没有任务级条目的新任务伪造
+// 降级。分发正常的 session 会跨任务累积 hook 分发条目；当前 session 存在任一
+// 此类条目（即便挂在别的 task ref 下）就必须抑制降级、维持 HARD stop。
+func TestWorkActivitySessionAlivePreventsDegrade(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "initial")
+
+	t.Setenv("FORGE_WORK_ACTIVITY", "") // 确保不受外部环境 escape 影响
+
+	state := &TaskState{
+		TaskRef:   "test-session-alive",
+		Branch:    "feat/test",
+		SessionID: "sess-telemetry-alive",
+	}
+
+	// 无 toollog、本任务零条目，但当前 session 有 hook 分发条目（挂在同 session
+	// 前一个任务下）——证明本机本 session 的 PostToolUse 分发是通的。
+	if err := checklog.Record(dir, &checklog.Entry{
+		Check:     checklog.CheckAutoCompile,
+		ToolName:  "Write",
+		Passed:    true,
+		Checked:   true,
+		TaskRef:   "test-session-alive-previous-task",
+		SessionID: "sess-telemetry-alive",
+	}); err != nil {
+		t.Fatalf("checklog.Record: %v", err)
+	}
+
+	state.RecordGateResult("task-implement", true, "")
+
+	_, err := ExecuteTaskGate(dir, "task-verify", state)
+	if err == nil {
+		t.Fatal("session 遥测存活时（即便 toollog 被删、本任务零条目）不得降级——必须 BLOCKED")
+	}
+	if !strings.HasPrefix(err.Error(), blockedPrefix) {
+		t.Fatalf("应是 GateBlocked（HARD stop），got: %v", err)
+	}
+}
+
+// TestWorkActivitySessionAliveNotMaskedByGateAudit pins pitfall 3a (code-review
+// 2026-08): the session-alive check must full-scan, not fold to latest-per-check.
+// A gate audit entry (ToolName="") recorded AFTER a hook-dispatched entry under the
+// same check name would mask the hook entry in a latest-per-check map and
+// resurrect the forged degrade in an otherwise clean session.
+//
+// TestWorkActivitySessionAliveNotMaskedByGateAudit 钉住坑 3a（code-review 2026-08）：
+// session 存活检查必须全量扫描，不能按 check 折叠到最新一条。同名 check 下、时间
+// 更晚的 gate 审计条目（ToolName=""）会在折叠 map 里遮蔽更早的 hook 分发条目，
+// 让干净 session 里的伪造降级复活。
+func TestWorkActivitySessionAliveNotMaskedByGateAudit(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "initial")
+
+	t.Setenv("FORGE_WORK_ACTIVITY", "")
+
+	state := &TaskState{
+		TaskRef:   "test-session-masked",
+		Branch:    "feat/test",
+		SessionID: "sess-masked",
+	}
+	now := time.Now()
+	// 较早：hook 分发条目（ToolName 有值；取 "Bash"——不在 WorkActivity 的
+	// workTools 内，活动仍确实为 0）。挂在前一个任务名下——本任务的 hookEntries
+	// 必须为 0，降级能否触发才完全取决于 sessionAlive（否则折叠 map 的旧实现
+	// 也能假通过，钉不住 3a）；较晚：同 check 名的 gate 审计条目
+	// （ToolName=""）——折叠 map 里后者遮蔽前者，全量扫描不受骗。
+	if err := checklog.Record(dir, &checklog.Entry{
+		Check:      checklog.CheckAutoCompile,
+		ToolName:   "Bash",
+		Passed:     true,
+		Checked:    true,
+		TaskRef:    "test-session-masked-previous-task",
+		SessionID:  "sess-masked",
+		RecordedAt: now,
+	}); err != nil {
+		t.Fatalf("record hook entry: %v", err)
+	}
+	if err := checklog.Record(dir, &checklog.Entry{
+		Check:      checklog.CheckAutoCompile,
+		Passed:     true,
+		Checked:    true,
+		TaskRef:    "test-session-masked",
+		SessionID:  "sess-masked",
+		Detail:     "auto-compile.sh: PASS",
+		RecordedAt: now.Add(time.Second),
+	}); err != nil {
+		t.Fatalf("record gate audit entry: %v", err)
+	}
+
+	state.RecordGateResult("task-implement", true, "")
+
+	_, err := ExecuteTaskGate(dir, "task-verify", state)
+	if err == nil {
+		t.Fatal("hook 条目被 gate 审计条目遮蔽时仍须判定遥测存活——必须 BLOCKED")
+	}
+	if !strings.HasPrefix(err.Error(), blockedPrefix) {
+		t.Fatalf("应是 GateBlocked（HARD stop），got: %v", err)
+	}
+}
+
+// TestWorkActivityMixedHostKimiStillDegrades pins pitfall 3b (code-review 2026-08):
+// when state.SessionID is empty (kimi/legacy), the session-alive check must count
+// ONLY empty-session hook entries. Session-filtering treats "" as "no filter", so a
+// naive check would count Claude's entries in a mixed-host project as kimi's
+// telemetry — re-introducing the 100% false-positive BLOCK the degrade exists to fix.
+//
+// TestWorkActivityMixedHostKimiStillDegrades 钉住坑 3b（code-review 2026-08）：
+// state.SessionID 为空（kimi/legacy）时，session 存活检查只认空 session 的 hook
+// 条目。session 过滤把 "" 当「不过滤」，朴素实现会把混合 host 项目里 Claude 的
+// 条目误算成 kimi 的遥测——让本降级要消除的 100% 误 BLOCK 复活。
+func TestWorkActivityMixedHostKimiStillDegrades(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "initial")
+
+	t.Setenv("FORGE_WORK_ACTIVITY", "")
+
+	// kimi 任务：SessionID 为空。项目里有 Claude session 留下的 hook 分发条目
+	// （SessionID 非空）——不得算作 kimi 的遥测。
+	state := &TaskState{
+		TaskRef: "test-mixed-host-kimi",
+		Branch:  "feat/test",
+	}
+	if err := checklog.Record(dir, &checklog.Entry{
+		Check:     checklog.CheckAutoCompile,
+		ToolName:  "Write",
+		Passed:    true,
+		Checked:   true,
+		TaskRef:   "some-earlier-claude-task",
+		SessionID: "claude-session-123",
+	}); err != nil {
+		t.Fatalf("record claude entry: %v", err)
+	}
+
+	state.RecordGateResult("task-implement", true, "")
+
+	var gateErr error
+	stderr := captureStderr(t, func() {
+		_, gateErr = ExecuteTaskGate(dir, "task-verify", state)
+	})
+	if gateErr != nil {
+		t.Fatalf("混合 host 下 kimi 任务（无空 session 条目）应照常降级放行，got: %v", gateErr)
+	}
+	if !strings.Contains(stderr, advisoryPrefix) {
+		t.Fatalf("stderr 应含遥测缺失 advisory，got: %q", stderr)
 	}
 }
 

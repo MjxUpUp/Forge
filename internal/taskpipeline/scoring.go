@@ -3,6 +3,7 @@ package taskpipeline
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/act"
@@ -79,11 +80,19 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 	// CheckNameTestCoverage 条目，但紧接着被无条件覆写为 true，查询是死效果。
 	testCoverageChecked := true
 	if latestChecks, err := checklog.LatestByCheckForSession(root, state.SessionID); err == nil {
-		if entry, ok := latestChecks[checklog.CheckAssertion]; ok {
+		// INFRA:-prefixed entries are fail-open infrastructure failures (bash spawn
+		// error / WSL exit 126/127), not quality verdicts — the gate treats them as
+		// fail-open, so scoring must not read them as compile/assertion failures
+		// (code-review 2026-08: gate放行与score扣分互相矛盾).
+		//
+		// INFRA: 前缀条目是 fail-open 基建故障（bash spawn 错误 / WSL exit 126/127），
+		// 不是质量结论——gate 按 fail-open 放行，scoring 也不能把它们读成编译/断言
+		// 失败（code-review 2026-08：gate 放行与 score 扣分互相矛盾）。
+		if entry, ok := latestChecks[checklog.CheckAssertion]; ok && !strings.HasPrefix(entry.Detail, "INFRA: ") {
 			assertionChecked = entry.Checked
 			assertionPassed = entry.Passed
 		}
-		if entry, ok := latestChecks[checklog.CheckAutoCompile]; ok {
+		if entry, ok := latestChecks[checklog.CheckAutoCompile]; ok && !strings.HasPrefix(entry.Detail, "INFRA: ") {
 			compileChecked = entry.Checked
 			compilePassed = entry.Passed
 		}
@@ -171,6 +180,15 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 	return input, config, nil
 }
 
+// escapeCapMaxScore caps the overall score of any task that used an escape-hatch
+// override (see ScoreTask). Set at the top of the B band (89): escape makes A
+// unreachable, but a legitimate single escape (e.g. dead-code test waiver) is not
+// pushed all the way to C.
+//
+// escapeCapMaxScore 是用了逃生舱 override 的任务总分上限（见 ScoreTask）。取 B 档
+// 上限 89：逃生任务拿不到 A，但合理的单次逃生（如死代码删除豁免测试）不被压到 C。
+const escapeCapMaxScore = 89
+
 // ScoreTask scores and persists. No-op if already scored. Proof-of-work loop: the complete
 // endpoint produces the Score that feeds act/health/dashboard. Sunk from cli/task.go; MCP
 // complete and CLI share the same scoring path.
@@ -189,6 +207,44 @@ func ScoreTask(root string, state *TaskState) error {
 
 	result := scoring.Evaluate(input, config)
 	result.TaskRef = state.TaskRef
+
+	// Escape-hatch cost: a task that used any escape hatch gets its total capped at
+	// escapeCapMaxScore, with the grade recomputed from the capped value — Weak evidence
+	// must not still take home 96-99/A. Two complementary signals (code-review 2026-08):
+	//  - state.Overrides: a task that set a per-task override but never hit the bypass
+	//    branch leaves no checklog entry, yet the escape intent is on record;
+	//  - checklog CheckEscapeHatch entries: env-form escapes (FORGE_TEST_COVERAGE=disable
+	//    etc.) bypass via escapeDisabled without touching state.Overrides, but the bypass
+	//    branch always records the escape-hatch entry. Overrides-only signal would let
+	//    env escapes take home A.
+	// CappedReason persists the cause so trace/dashboard can show WHY the score is 89;
+	// Conclusion.Score/Grade copy these values (act.BuildConclusion) and stay consistent.
+	// Trust boundary (accepted): TaskState JSON in DataDir is agent-writable — deleting
+	// Overrides by hand dodges signal 1, same level as the existing snapshot baseline.
+	//
+	// 逃生舱代价：用过任一逃生舱的任务总分封顶 escapeCapMaxScore，并按封顶值重算
+	// grade——Weak 证据不能照拿 96-99/A。两个互补信号（code-review 2026-08）：
+	//  - state.Overrides：设了 per-task override 但没走 bypass 分支的任务 checklog
+	//    无条目，但逃生意图已留痕；
+	//  - checklog CheckEscapeHatch 条目：env 形式逃生（FORGE_TEST_COVERAGE=disable
+	//    等）经 escapeDisabled 绕过、不动 state.Overrides，但 bypass 分支必然记录
+	//    逃生舱条目。只看 Overrides 会让 env 逃生照拿 A。
+	// CappedReason 持久化原因，让 trace/dashboard 能显示 89 分从何来；
+	// Conclusion.Score/Grade 抄这些值（act.BuildConclusion）自动一致。
+	// 信任边界（接受）：DataDir 的 TaskState JSON 是 agent 可写的——手删 Overrides
+	// 可躲信号 1，与现有快照基线同级。
+	escaped := usedAnyOverride(state.Overrides)
+	if !escaped {
+		if recorded, err := taskEscapeHatchRecorded(root, state.TaskRef); err == nil {
+			escaped = recorded
+		}
+	}
+	if escaped && result.Overall > escapeCapMaxScore {
+		result.Overall = escapeCapMaxScore
+		result.Grade = scoringtypes.GradeFromScore(result.Overall, config.Thresholds)
+		result.CappedReason = "escape-hatch used (forge task override or env-form escape) — total score capped"
+		fmt.Fprintf(os.Stderr, "%s\n", GateAdvisory("[score] 本任务用过逃生舱（override 或 env 豁免）——总分封顶 %.0f（Grade=%s），逃生有代价", result.Overall, result.Grade))
+	}
 
 	state.Score = result
 	return SaveTaskState(root, state)

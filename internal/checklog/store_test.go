@@ -469,3 +469,95 @@ func TestLoadForTask_LongLineOver64KB(t *testing.T) {
 		}
 	}
 }
+
+// TestRecord_DerivesLevelFallback pins the Record-time Level fallback: entries
+// whose caller leaves Level empty are classified from Passed + Detail prefixes
+// (BLOCKED: / ADVISORY:), mirroring the Source fallback; an explicit Level
+// always wins. The persisted JSON line carries the level field.
+//
+// TestRecord_DerivesLevelFallback 钉死 Record 时的 Level 兜底：调用方留空
+// Level 的条目按 Passed + Detail 前缀（BLOCKED: / ADVISORY:）分级，与 Source
+// 兜底同款；显式 Level 恒优先。落盘的 JSON 行带 level 字段。
+func TestRecord_DerivesLevelFallback(t *testing.T) {
+	dir := t.TempDir()
+	isolateDataHome(t)
+
+	entries := []*Entry{
+		{Check: CheckAutoCompile, Passed: true, Detail: "all good"},                            // → pass
+		{Check: CheckAutoCompile, Passed: false, Detail: "compile broke"},                      // → fail
+		{Check: CheckTaskGuard, Passed: false, Detail: "BLOCKED: unread source edit"},          // → blocked
+		{Check: CheckScopeDrift, Passed: true, Detail: "ADVISORY: drift beyond PlanScope"},     // → advisory
+		{Check: CheckEscapeHatch, Passed: true, Level: LevelWarn, Detail: "escape-hatch: x"},   // explicit wins → warn
+		{Check: CheckAutoCompile, Passed: false, Level: LevelWarn, Detail: "INFRA: spawn err"}, // explicit wins over derive
+	}
+	for _, e := range entries {
+		if err := Record(dir, e); err != nil {
+			t.Fatalf("Record: %v", err)
+		}
+	}
+
+	got, err := LoadAll(dir)
+	if err != nil {
+		t.Fatalf("LoadAll: %v", err)
+	}
+	want := []Level{LevelPass, LevelFail, LevelBlocked, LevelAdvisory, LevelWarn, LevelWarn}
+	if len(got) != len(want) {
+		t.Fatalf("expected %d entries, got %d", len(want), len(got))
+	}
+	for i, w := range want {
+		if got[i].Level != w {
+			t.Errorf("entry[%d] (%q) Level = %q, want %q", i, got[i].Detail, got[i].Level, w)
+		}
+	}
+
+	// The JSON line persists the derived level (structured consumers must not
+	// need to re-derive for newly written entries).
+	raw, err := os.ReadFile(filepath.Join(forgedata.DataDirFor(dir), "checklog.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"level":"blocked"`) {
+		t.Errorf("persisted JSON must carry the derived level field, got:\n%s", raw)
+	}
+}
+
+// TestEffectiveLevel_OldLinesDerive pins the read-side derive fallback: lines
+// written before the level field existed (no "level" key — history is NOT
+// rewritten) still classify correctly via EffectiveLevel, while Entry.Level
+// stays empty on load (no mutation of the archived data in memory either).
+//
+// TestEffectiveLevel_OldLinesDerive 钉死读取侧 derive 兜底：level 字段引入前
+// 写入的行（无 "level" 键——历史不改写）经 EffectiveLevel 仍正确分级，且
+// 加载后的 Entry.Level 保持为空（内存里也不篡改归档数据）。
+func TestEffectiveLevel_OldLinesDerive(t *testing.T) {
+	dir := t.TempDir()
+	isolateDataHome(t)
+
+	old := `{"check":"auto-compile","passed":false,"checked":true,"detail":"BLOCKED: legacy hard stop","recorded_at":"2026-01-01T00:00:00Z"}` + "\n" +
+		`{"check":"auto-compile","passed":true,"checked":true,"detail":"legacy pass","recorded_at":"2026-01-01T00:00:01Z"}` + "\n" +
+		`{"check":"scope-drift","passed":false,"checked":true,"detail":"ADVISORY: legacy drift","recorded_at":"2026-01-01T00:00:02Z"}` + "\n"
+	path := filepath.Join(forgedata.DataDirFor(dir), "checklog.jsonl")
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(old), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	entries, err := LoadAll(dir)
+	if err != nil {
+		t.Fatalf("LoadAll: %v", err)
+	}
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 entries, got %d", len(entries))
+	}
+	want := []Level{LevelBlocked, LevelPass, LevelAdvisory}
+	for i, w := range want {
+		if entries[i].Level != "" {
+			t.Errorf("entry[%d] Level must stay empty on load (history not rewritten), got %q", i, entries[i].Level)
+		}
+		if got := entries[i].EffectiveLevel(); got != w {
+			t.Errorf("entry[%d] EffectiveLevel() = %q, want %q", i, got, w)
+		}
+	}
+}
