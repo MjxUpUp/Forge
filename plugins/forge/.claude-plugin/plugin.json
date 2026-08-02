@@ -58,6 +58,10 @@
         "hooks": [
           {
             "type": "command",
+            "command": "forge hook freeze-guard"
+          },
+          {
+            "type": "command",
             "command": "forge hook task-guard"
           },
           {

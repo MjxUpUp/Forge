@@ -54,3 +54,37 @@ composes 标量逗号写法改 flow list [a, b]，对齐 CONVENTIONS §4
 ### Evidence
 
 grep 确认全库 composes 已无标量残留；forge skills validate 50/50
+
+## [d-18c7e5a687593898-650e43d1] accept
+
+- **Skill**: design-system-workflow
+- **DecidedAt**: 2026-08-02T05:24:40Z
+
+### Diagnosis
+
+skills 库价值审计 13 项改进落地
+
+### Revision
+
+Stitch DESIGN.md 长段压缩改指针；token-only 铁律/OKLCH gamut 警告标唯一权威版本
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md 逐项价值审计
+
+## [d-18c7e62b1ba7b6f8-d3d2da29] accept
+
+- **Skill**: design-system-workflow
+- **DecidedAt**: 2026-08-02T05:34:10Z
+
+### Diagnosis
+
+项10 description 审计+触发回归
+
+### Revision
+
+description 审计合格未改动 + evals.json 建立
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md

@@ -18,3 +18,37 @@ persistent decision history：每条决策记 (诊断, 修订, 脱敏证据, 结
 ### Evidence
 
 grep internal/cli 确认 Use 列表无 integration-test；SKILL.md 标题枚举确认 §2.1–2.7 共 7 节
+
+## [d-18c7e4ad63f373b8-bf8c05c2] accept
+
+- **Skill**: resilience-and-observability
+- **DecidedAt**: 2026-08-02T05:06:50Z
+
+### Diagnosis
+
+审计判决'改进（瘦身+淘汰过期工具）'：§2.6 三处推荐 Hystrix（2018 年起维护模式，推荐它是负价值）；§2.1 SLO 停机时间数值错位（99% 对应月停机 7.2h 而非 43min）；§6 用未定义的 $COLLECTOR_OTLP 环境变量不是可执行步骤；§8 表标题提'阿里'但表内零阿里内容
+
+### Revision
+
+§2.6 模式 1/3 删 Hystrix 换现役生态（resilience4j/Polly/opossum/gobreaker/Sentinel/Envoy outlier detection）并显式标注勿用 Hystrix；§2.1 SLO 数值修正为 30 天窗口 99%/99.9%/99.99% = 7.2h/43min/4.3min；§6 改可执行检查清单（OTel 4318 联通 curl + SLO 告警规则 grep + review pass）；§8 标题改'实践来源对照'
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md 逐项审计
+
+## [d-18c7e622effdecc8-526f9d8f] accept
+
+- **Skill**: resilience-and-observability
+- **DecidedAt**: 2026-08-02T05:33:35Z
+
+### Diagnosis
+
+项10 description 审计+触发回归
+
+### Revision
+
+description 审计合格未改动 + 新建 evals.json 10 条
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md

@@ -19,6 +19,8 @@ func TestSurvivingAccessors(t *testing.T) {
 		"HazardsEventsPath":  p.HazardsEventsPath(),
 		"HazardsConfirmPath": p.HazardsConfirmPath("deadbeef"),
 		"ActConclusionsPath": p.ActConclusionsPath(),
+		"FreezeDir":          p.FreezeDir(),
+		"FreezeStatePath":    p.FreezeStatePath(),
 	} {
 		if !strings.HasPrefix(got, p.DataDir+string(filepath.Separator)) {
 			t.Errorf("%s escapes DataDir: %q", name, got)
@@ -26,5 +28,8 @@ func TestSurvivingAccessors(t *testing.T) {
 	}
 	if got := p.HazardsConfirmPath("deadbeef"); filepath.Base(got) != "deadbeef.json" {
 		t.Errorf("HazardsConfirmPath filename = %q, want deadbeef.json", filepath.Base(got))
+	}
+	if got := p.FreezeStatePath(); got != filepath.Join(p.FreezeDir(), "state.json") {
+		t.Errorf("FreezeStatePath = %q, want <FreezeDir>/state.json", got)
 	}
 }

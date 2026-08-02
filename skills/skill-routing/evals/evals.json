@@ -1,0 +1,13 @@
+{
+  "trigger_cases": [
+    { "query": "skill 路由怎么配置", "should_trigger": true },
+    { "query": "用户输入没命中预期的 skill 帮我排查下", "should_trigger": true },
+    { "query": "给新 agent 接上 skill 路由", "should_trigger": true },
+    { "query": "路由表在哪里改", "should_trigger": true },
+    { "query": "路由不生效帮我看看", "should_trigger": true },
+    { "query": "帮我写个新 skill 文件", "should_trigger": false },
+    { "query": "这个 skill 老误触发想系统性改进", "should_trigger": false },
+    { "query": "继续上次的工作", "should_trigger": false },
+    { "query": "帮我审查下这个 skill 写得好不好", "should_trigger": false }
+  ]
+}

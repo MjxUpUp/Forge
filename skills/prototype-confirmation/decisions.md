@@ -18,3 +18,20 @@ composes 改 flow list [evidence-based-proposal, implementation-discipline]
 ### Evidence
 
 库内多数 skill 用 [a, b] flow list；CONVENTIONS §4 规定该格式（另一 agent 同步修 CONVENTIONS）
+
+## [d-18c7e620aa5fe038-216e6119] accept
+
+- **Skill**: prototype-confirmation
+- **DecidedAt**: 2026-08-02T05:33:25Z
+
+### Diagnosis
+
+项10 description 审计+触发回归
+
+### Revision
+
+description 三段式合格未改动;新建 evals/evals.json(5正+4负)
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md

@@ -40,3 +40,37 @@ grep 确认 SKILL.md + references 无"借鉴/抄袭/抄来"残留
 ### Evidence
 
 references/claude-code-example.md 标题即'Claude Code 逆向实例'，内容含 Coordinator/Worker、4 层压缩，与正文描述吻合
+
+## [d-18c7e49ffdad692c-85e26f51] accept
+
+- **Skill**: reverse-engineering-patterns
+- **DecidedAt**: 2026-08-02T05:05:53Z
+
+### Diagnosis
+
+审计发现：description 承诺「逆向分析编译产物或混淆代码」但正文 90% 是源码阅读方法论，承诺与交付落差大；内容偏方法论说教缺可验证步骤（没有任何具体命令）；正文「~45 个工具」数字宣称无 references 佐证
+
+### Revision
+
+description 收窄到「源码架构分析与模式提取」（删编译产物/混淆代码承诺）；三个阶段各补可执行侦察命令（rg/find 文件清单动作）；选「删正文具体数字宣称」分支：删「~45 个工具」，保留 example 文件可佐证的 4 层压缩与 Coordinator/Worker 并指向 references
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md 逐项审计
+
+## [d-18c7e622ff690ecc-45097db9] accept
+
+- **Skill**: reverse-engineering-patterns
+- **DecidedAt**: 2026-08-02T05:33:35Z
+
+### Diagnosis
+
+项10 description 审计+触发回归
+
+### Revision
+
+description 审计合格未改动 + 新建 evals.json 10 条
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md

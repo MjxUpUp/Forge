@@ -21,7 +21,7 @@ var (
 // exit code 契约：0=全部通过，2=存在规范失败。
 var skillsValidateCmd = &cobra.Command{
 	Use:   "validate",
-	Short: "R1-R11 规范校验（exit code: 0=通过 2=规范失败）",
+	Short: "R1-R17 规范校验（exit code: 0=通过 2=规范失败）",
 	RunE:  runSkillsValidate,
 }
 

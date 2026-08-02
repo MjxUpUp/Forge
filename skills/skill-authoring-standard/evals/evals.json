@@ -1,0 +1,13 @@
+{
+  "trigger_cases": [
+    { "query": "帮我新建一个 skill", "should_trigger": true },
+    { "query": "这个 skill 的 description 怎么写", "should_trigger": true },
+    { "query": "skill 目录结构怎么组织", "should_trigger": true },
+    { "query": "帮我看看这个 skill 写得规不规范", "should_trigger": true },
+    { "query": "skill 的 frontmatter 该怎么写", "should_trigger": true },
+    { "query": "这个 skill 经常漏检想系统性优化并跑回归验证", "should_trigger": false },
+    { "query": "回顾下这次会话沉淀经验", "should_trigger": false },
+    { "query": "路由表怎么配置让用户输入命中 skill", "should_trigger": false },
+    { "query": "帮我写个普通业务功能", "should_trigger": false }
+  ]
+}

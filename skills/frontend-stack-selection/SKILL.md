@@ -10,6 +10,8 @@ metadata:
 
 选型不是"选最流行的"，是"选当前场景最合适的"。2025-2026 主流 framing（shadcn+Tailwind+v0）在多个场景下都有硬反方证据，无脑套用 = 制造未来维护负担。
 
+> **数据快照日期：2026-08**。本文件决策表与反方证据内的版本/统计断言（Base UI v1 2025-12、shadcn 117K stars、CVE 计数、bundle 体积实测、stars/下载量等）均为调研时点快照，是全库时效衰减最快的内容之一——用于关键选型决策前必须复核最新数据，别直接把快照当现状引用。
+
 ## 铁律：开工前必须问 4 个场景问题（Inversion 门控）
 
 **推荐技术栈前，先确认以下 4 个问题，缺一不可。用户没答全 → 问完再推荐，不猜：**
@@ -63,9 +65,8 @@ metadata:
 - 多框架：**Ark UI**（Zag.js 状态机，React/Vue/Solid/Svelte）
 
 ### 动效
-- 轻交互：**Rive**（state machine，~200KB gzip，文件比 Lottie 小 10-15 倍）
-- 3D 沉浸：**Spline**（no-code，runtime 544KB）/ **React Three Fiber**（代码控制，three.js ~150KB）
-- **必须过 prefers-reduced-motion**（WCAG 2.2 SC 2.3.3 强制）
+- **先决策"是否引动效库"**：简单 hover/fade 用 CSS `transition`/`@keyframes` 即可，不为简单动效引库；确认需要库时，具体库选型表（Rive/Spline/R3F/Framer Motion）唯一真相源：frontend-aesthetics-execution「阶段 3.2 动效工具选型决策」节，此处不复制
+- **必须过 prefers-reduced-motion**（WCAG 2.2 SC 2.3.3 强制）——实现模板唯一真相源：frontend-aesthetics-execution「阶段 4 — 动效 a11y 门」节，此处不复制
 
 ## Common Rationalizations（堵借口）
 
@@ -91,9 +92,9 @@ metadata:
 
 - **shadcn 的"NOT a component library"定位**：2025-05 起官方改为 "code distribution platform"，是源码分发不是 npm 依赖；选它意味着接受"组件源码归你，同步成本也归你"
 - **Base UI vs Radix 不是非此即彼**：shadcn 2025-12 起底层二选一；新项目选 Base UI（势头），存量 Radix 别动
-- **OKLCH 在 sRGB 设备会静默 gamut mapping**：改变亮度致对比度退化，dark/light 双主题需复测对比度
+- **OKLCH 在 sRGB 设备会静默 gamut mapping**：警告全文唯一真相源：design-system-workflow「阶段 3 — OKLCH 双主题切换」节，此处不复制；dark/light 双主题需复测对比度
 - **Tauri 三平台 WebView 质量不均**：Linux WebKitGTK 渲染最差；选 Tauri 前实测目标平台
-- **WCAG 2.2 SC 2.3.3 不只是"加个 media query"**：relying on 'Reduce Motion' is NOT enough（r/accessibility 共识），需主动动效克制
+- **WCAG 2.2 SC 2.3.3 不只是"加个 media query"**：relying on 'Reduce Motion' is NOT enough（r/accessibility 共识），需主动动效克制；实现模板唯一真相源：frontend-aesthetics-execution「阶段 4 — 动效 a11y 门」节
 
 ## 与其他 skill 的分工
 

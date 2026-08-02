@@ -18,3 +18,37 @@ persistent decision history：每条决策记 (诊断, 修订, 脱敏证据, 结
 ### Evidence
 
 ls skills/backend-development 确认无 references/；ls skills/ 确认 stack-selection skill 仅 frontend 一个；SKILL.md 标题枚举确认 §7 语义为协作
+
+## [d-18c7e43de2da2674-13284593] accept
+
+- **Skill**: backend-development
+- **DecidedAt**: 2026-08-02T04:58:51Z
+
+### Diagnosis
+
+审计判决'改进（大幅瘦身）'：过半内容是强模型基线教科书；§2.5 可观测、§2.3 鉴权、§2.4 分层与 resilience-and-observability/secure-coding/system-architecture 三处双写；§4 '文件<200行''覆盖率≥80%' 一刀切数字
+
+### Revision
+
+§2.3 鉴权改单行指针→secure-coding、§2.4 分层改单行指针→system-architecture、§2.5 可观测改单行指针→resilience-and-observability；§2.1 API 7 步/§2.6 测试金字塔砍为决策点+反模式密度；§4 一刀切数字改按项目约定；保留负向约束/Gotchas/forge 集成等真增量
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md 逐项审计
+
+## [d-18c7e622c3df1ce8-4075ec60] accept
+
+- **Skill**: backend-development
+- **DecidedAt**: 2026-08-02T05:33:34Z
+
+### Diagnosis
+
+项10 description 审计+触发回归
+
+### Revision
+
+description 审计合格未改动 + 新建 evals.json 10 条
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md

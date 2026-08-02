@@ -330,6 +330,7 @@ func buildWindsurfHooks() map[string]any {
 	return map[string]any{
 		"hooks": map[string][]windsurfHookEntry{
 			"pre_write_code": {
+				{Command: "forge hook freeze-guard --agent windsurf", ShowOutput: false},
 				{Command: "forge hook task-guard --agent windsurf", ShowOutput: false},
 				{Command: "forge hook assertion-check --agent windsurf", ShowOutput: false},
 				{Command: "forge hook read-before-edit --agent windsurf", ShowOutput: false},

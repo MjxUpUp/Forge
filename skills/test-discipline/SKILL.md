@@ -1,15 +1,15 @@
 ---
 name: test-discipline
-description: "测试质量守卫。Use when: 测试失败时、声称验证通过时、审查提交 diff 时、编写测试时、修改测试让测试通过时。专注检测断言弱化、验证假阳性、区分单元测试与端到端验证。SKIP: 需要 TDD 循环指引时（用 tdd-cycle）、纯文档变更。"
+description: "测试质量守卫（提交前 diff 审查 + 断言防注水）。Use when: 审查提交 diff 时、准备 git commit/push 前、编写或修改测试时、准备为让测试通过而改断言时、声称验证通过前自查断言强度时。专注检测断言弱化、验证假阳性、区分单元测试与端到端验证。SKIP: 需要 TDD 循环指引时（用 tdd-cycle）、测试运行失败找根因（用 systematic-debugging）、纯文档变更。"
 metadata:
   pattern: reviewer
   domain: testing
-  triggers: [{"event":"PostToolUse","match":"Bash","when":"test_command_failed","cooldown":120}]
+  triggers: [{"event":"PreToolUse","match":"Bash","keywords":["git commit","git push"],"cooldown":120}]
 ---
 
 # 测试质量守卫
 
-测试质量守卫。检测断言弱化、验证假阳性、区分单元测试与端到端验证。
+测试质量守卫。提交前 diff 审查清单：检测断言弱化、验证假阳性、区分单元测试与端到端验证。
 
 ## 铁律 1：禁止断言弱化
 
@@ -55,7 +55,7 @@ metadata:
 - **Vue Test Utils**: `wrapper.text()` 不包含 `<input>` 元素的值。测输入框用 `wrapper.findAll("input")[0].element.value`。
 - **单例 composable**: `useGraph` 等模块级 ref 的 composable，测试必须在 `beforeEach()` 调 `clearAll()`。
 - **共享测试服务器**: 多个测试共享同一 server 实例时，注意中间件（限流等）和数据库状态隔离。
-- **httptest.NewRequest vs 真实连接**: `httptest.NewRequest` 使用固定 `RemoteAddr`，无法暴露 TCP 层面的 bug（如限流 key 包含端口）。
+- **httptest.NewRequest vs 真实连接**: 案例唯一真相源：integration-test-architecture `references/test-architecture-example.md`「坑 1/坑 2」，此处不复制——结论：`httptest.NewRequest` 固定 `RemoteAddr`，暴露不了 TCP 层 bug（如限流 key 含端口），网络行为用真实连接测。
 
 ## Common Rationalizations
 

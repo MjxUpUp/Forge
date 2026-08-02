@@ -13,15 +13,7 @@ metadata:
 
 ## 本机检索能力分层
 
-```
-通用网络搜索（本 skill，需 API key）
-  ↑ 降级
-深度调研（research-workflow，多 worker + 报告）
-  ↑ 升级
-轻量事实交叉（fact-research，HN/SE/媒体定向源）
-  ↑ 升级
-单点技术检索（dev-lookup，文档站/包仓库/SE）
-```
+「三层调研量级」路由表唯一真相源：fact-research「三层调研量级（路由依据）」节，此处不复制。本 skill 在三层之外作**降级链末位**——通用网络搜索桥接（需 API key）。
 
 **本 skill 不是默认检索入口**——是当定向源不够时的补充桥。优先用 dev-lookup / fact-research，它们已覆盖大多数场景且零成本。
 
@@ -58,16 +50,17 @@ for key_var in TAVILY_API_KEY SERPER_API_KEY BRAVE_SEARCH_API_KEY EXA_API_KEY; d
 done
 ```
 
-全空 → 本 skill 不可用，诚实告知用户"未配置搜索 API key，只能用定向源"。
+全空 → 本 skill 不可用，诚实告知用户"未配置搜索 API key，只能用定向源"。任一可用即可；用户配置环境变量后即时生效（无需重启，skill 每次调用读环境变量）。
 
 ## 额度管理（调用前预检）
 
-各 provider 额度能力差异显著（实测）：
+各 provider 额度能力差异显著（作者联调实测，2026-07 前，具体日期未留痕；以 `check` 实测为准）：
 
 | Provider | 预检能力 | 说明 |
 |---|---|---|
-| **Tavily** | ✅ 月度额度 | `GET /usage` 返回 plan_usage/plan_limit，可预检月度余额 |
+| **Tavily** | ✅ 月度额度 | `GET /usage` 返回 plan_usage/plan_limit 可预检月度余额（作者联调实测，公开文档未核实——以 `scripts/web-search-quota.sh check tavily` 实测为准） |
 | **Serper** | ⚠️ 仅速率窗口 | 响应头 `x-ratelimit-*`（25req/s），无月度额度预检 |
+| **Brave** | ❌ 无预检 | 无 usage API、响应头无额度，靠调用失败（429）被动应对 |
 | **Exa** | ❌ 无预检 | 无 usage API、响应头无额度，靠调用失败（429）被动应对 |
 
 **调用前预检**（避免无谓消耗额度）：
@@ -89,65 +82,16 @@ bash scripts/web-search-quota.sh status
 - **单次降级查询不预检**（fact-research 偶尔用一次）：直接调，预检成本 > 价值
 - Tavily 能预检月度余额，优先用它（额度低于 20% 自动警告）
 - Serper 只能防瞬时超限（速率窗口），不防月度耗尽
-- Exa 无预检能力，调用失败报 429 时才知超额——谨慎用
-- 每次成功调用后 `record <provider>` 记录本地统计，避免重复查询额度 API
+- Brave/Exa 无预检能力，调用失败报 429 时才知超额——谨慎用
+- 每次成功调用后 `record <provider>` 记录本地统计（tavily/serper/brave/exa 各一个 key），避免重复查询额度 API
 
 ## 统一调用接口
 
-所有 provider 封装成相同的输入输出：query 进、带引用的结果出。
+所有 provider 封装成相同的输入输出：query 进、带引用的结果出。**四个 provider 的完整 curl 示例见 [`references/provider-curl-examples.md`](references/provider-curl-examples.md)**，调用时必读。要点：
 
-### Tavily（首选）
-
-```bash
-curl -s --max-time 15 "https://api.tavily.com/search" \
-  -H "Content-Type: application/json" \
-  -d "$(jq -n --arg key \"$TAVILY_API_KEY\" --arg q \"$QUERY\" '{
-    api_key: $key, query: $q, max_results: 5,
-    include_answer: true, search_depth: "advanced"
-  }')" | jq '{
-    answer: .answer,
-    results: [.results[]? | {title, url, content: (.content[:200])}]
-  }'
-```
-
-**注意**：`search_depth: "advanced"` 是必要的——basic 模式结果少且对中文查询支持差（见 Gotchas）。body 用 `jq -n` 构造，避免 key/查询里的特殊字符破坏 JSON。
-
-### Serper
-
-```bash
-curl -s --max-time 15 "https://google.serper.dev/search" \
-  -H "X-API-KEY: $SERPER_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d "{\"q\": \"$QUERY\", \"num\": 5}" \
-  | jq '{
-    organic: [.organic[]? | {title, link, snippet: (.snippet[:200])}],
-    news: [.news[]? | {title, link, date}][:3],
-    answer: (.knowledgeGraph.description // .answerBox.snippet // null)
-  }'
-```
-
-### Brave Search
-
-```bash
-curl -s --max-time 15 "https://api.search.brave.com/res/v1/web/search?q=$(jq -rn --arg q "$QUERY" '$q|@uri')&count=5" \
-  -H "Accept: application/json" \
-  -H "X-Subscription-Token: $BRAVE_SEARCH_API_KEY" \
-  | jq '{
-    results: [.web.results[]? | {title, url, description: (.description[:200])}]
-  }'
-```
-
-### Exa（语义搜索，找"类似内容"）
-
-```bash
-curl -s --max-time 15 "https://api.exa.ai/search" \
-  -H "x-api-key: $EXA_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d "{\"query\": \"$QUERY\", \"numResults\": 5, \"type\": \"neural\", \"contents\": {\"text\": {\"maxCharacters\": 200}}}" \
-  | jq '{
-    results: [.results[]? | {title, url, text: (.text[:200])}]
-  }'
-```
+- body 一律用 `jq -n` 构造，避免 key/查询里的特殊字符破坏 JSON（Windows 下尤其重要）
+- Tavily 必须带 `search_depth: "advanced"`——basic 模式结果少且对中文查询支持差（见 Gotchas）
+- 解析统一取 answer（如有）+ results（title/url/snippet）
 
 ## 执行流程
 
@@ -186,7 +130,7 @@ curl -s --max-time 15 "https://api.exa.ai/search" \
 
 ## Gotchas（高信号）
 
-- **额度能力差异大**：Tavily 能预检月度额度（优先用），Serper 只能看速率窗口（防瞬时超限不防月耗尽），Exa 完全无预检（靠 429 被动应对）。长任务前跑 `check all` 预检
+- **额度能力差异大**：Tavily 能预检月度额度（优先用），Serper 只能看速率窗口（防瞬时超限不防月耗尽），Brave/Exa 完全无预检（靠 429 被动应对）。长任务前跑 `check all` 预检
 - **预检本身也消耗额度**：Serper 的额度检查需要一次真实调用读响应头，别频繁跑；用 `record` 维护本地统计减少预检次数
 - **本 skill 是桥不是主入口**：优先 dev-lookup / fact-research 的定向源，它们零成本且更精准。本 skill 只在定向源不够时补
 - **环境变量而非配置文件**：key 通过 `TAVILY_API_KEY` 等环境变量传入，不写死在脚本里（安全 + 多 provider 切换）
@@ -196,38 +140,19 @@ curl -s --max-time 15 "https://api.exa.ai/search" \
 - **语义搜索 vs 关键词**：Exa 是 neural 搜索，适合"找类似 X 的内容"；找精确事实用 Tavily/Serper 的关键词搜索
 - **结果≠事实**：搜索引擎返回的结果仍可能是过时/错误信息，关键事实按 fact-research 的交叉验证纪律处理
 - **provider 失败降级**：第一个 provider 超时/报错，自动试下一个，不全空不放弃
-- **中文查询用英文重试**（实测高频坑）：Tavily 对中文查询支持差——"OpenAI 最新融资 2025" 返回 0 结果，但 "OpenAI funding 2025" 返回完整答案。**中文查询查不到时，先期译成英文重试**。Serper/Exa 中文支持较好，Tavily 尤其要注意
+- **中文查询用英文重试**（作者联调实测高频坑，2026-07 前记录、具体日期未留痕）：Tavily 对中文查询支持差——"OpenAI 最新融资 2025" 返回 0 结果，但 "OpenAI funding 2025" 返回完整答案。**中文查询查不到时，先期译成英文重试**。Serper/Exa 中文支持较好，Tavily 尤其要注意
 - **Tavily search_depth 影响**：basic 模式下结果较少，深度查询加 `"search_depth":"advanced"`（成本略高但结果全）
 - **错误 key 返回 401 不崩溃**：联调实测错误 key 返回 HTTP 401，provider 路由逻辑应捕获此状态试下一个 provider，不报告为脚本崩溃
 
-## 与其他 skill 的分工（降级链）
-
-```
-dev-lookup（技术单点，定向源）
-  └─ 查不到非技术内容 → fact-research
-      └─ HN/SE/媒体定向源查不到 → web-search-bridge（本 skill）
-          └─ 需深度多源报告 → research-workflow（多 worker 编排）
-```
+## 与其他 skill 的分工（降级链末位）
 
 - **dev-lookup / fact-research**：本 skill 是它们的降级链末位，定向源查不到时才调用
 - **research-workflow**：它的 worker 可在工序 3 调用本 skill 作为采集工具之一
 
-## 配置检查（开工前一次性确认）
-
-```bash
-# 看 4 个 provider 哪些可用
-echo "搜索 API 可用性："
-[ -n "${TAVILY_API_KEY:-}" ] && echo "  ✅ Tavily" || echo "  ❌ Tavily (未配 TAVILY_API_KEY)"
-[ -n "${SERPER_API_KEY:-}" ] && echo "  ✅ Serper" || echo "  ❌ Serper (未配 SERPER_API_KEY)"
-[ -n "${BRAVE_SEARCH_API_KEY:-}" ] && echo "  ✅ Brave" || echo "  ❌ Brave (未配 BRAVE_SEARCH_API_KEY)"
-[ -n "${EXA_API_KEY:-}" ] && echo "  ✅ Exa" || echo "  ❌ Exa (未配 EXA_API_KEY)"
-```
-
-任一可用即可使用本 skill。用户配置环境变量后即时生效（无需重启，skill 每次调用读环境变量）。
-
 ## 参考
 
+- Provider curl 调用示例：[references/provider-curl-examples.md](references/provider-curl-examples.md)
 - 额度预检脚本：[scripts/web-search-quota.sh](scripts/web-search-quota.sh)
-  - `check [tavily|serper|exa|all]`：预检额度状态（Tavily 月度余额 / Serper 速率窗口 / Exa 无预检）
+  - `check [tavily|serper|brave|exa|all]`：预检额度状态（Tavily 月度余额 / Serper 速率窗口 / Brave、Exa 无预检）
   - `status`：查看本地累计调用统计
   - `record <provider>`：记录一次调用（供调用脚本 source 使用）

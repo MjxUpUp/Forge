@@ -1,0 +1,13 @@
+{
+  "trigger_cases": [
+    {"query": "接到一个编码任务,准备动手了,帮我按纪律走", "should_trigger": true},
+    {"query": "代码写完了,准备 git commit 前帮我检查一遍", "should_trigger": true},
+    {"query": "做完了吗,验证过了吗,能提交吗", "should_trigger": true},
+    {"query": "长任务做一半,我感觉有点走偏了,帮我拉回来", "should_trigger": true},
+    {"query": "提交代码前帮我把关下", "should_trigger": true},
+    {"query": "开始一个新功能,先帮我规划开发阶段", "should_trigger": false},
+    {"query": "构建挂了,看下这个编译报错", "should_trigger": false},
+    {"query": "这个运行时 bug 为什么一直复现", "should_trigger": false},
+    {"query": "帮我调研下这个方向,出一份报告", "should_trigger": false}
+  ]
+}

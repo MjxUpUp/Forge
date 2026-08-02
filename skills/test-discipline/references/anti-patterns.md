@@ -17,7 +17,7 @@
 ## 反模式 3：用 mock 测试代替真实连接
 
 **做了什么**: 限流器单元测试用 `httptest.NewRequest` + 手工构造的固定 `RemoteAddr`。
-**隐藏的真 bug**: 真实 HTTP 连接的 `RemoteAddr` 包含源端口（`127.0.0.1:54321`），每个请求看起来都是不同的客户端。110 个请求从未触发限流。
+**案例全文**: 唯一真相源：integration-test-architecture `references/test-architecture-example.md`「坑 1/坑 2」，此处不复制。
 **教训**: 涉及网络层行为的测试必须用真实连接。
 
 ## 反模式 4：策略文档当成交付物

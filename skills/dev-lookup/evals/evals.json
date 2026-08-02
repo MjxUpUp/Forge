@@ -1,0 +1,14 @@
+{
+  "trigger_cases": [
+    { "query": "这个 API 怎么调", "should_trigger": true },
+    { "query": "这个报错是啥意思", "should_trigger": true },
+    { "query": "这两个版本兼容吗", "should_trigger": true },
+    { "query": "这个库的用法帮我查下", "should_trigger": true },
+    { "query": "这个语法这么写对不对", "should_trigger": true },
+    { "query": "查下某产品的市场份额帮我核实下", "should_trigger": false },
+    { "query": "深度调研下这个技术方向出份报告", "should_trigger": false },
+    { "query": "帮我论证下要不要上这个方案", "should_trigger": false },
+    { "query": "读取下这个飞书文档", "should_trigger": false },
+    { "query": "帮我写个新功能", "should_trigger": false }
+  ]
+}

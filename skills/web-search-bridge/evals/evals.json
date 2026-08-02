@@ -1,0 +1,13 @@
+{
+  "trigger_cases": [
+    { "query": "帮我全网搜一下这个", "should_trigger": true },
+    { "query": "Google 一下这个问题", "should_trigger": true },
+    { "query": "定向源都查不到，用通用搜索引擎找找", "should_trigger": true },
+    { "query": "怎么接 Tavily 的搜索 API", "should_trigger": true },
+    { "query": "内置搜索用不了，帮我桥接一个 Brave Search", "should_trigger": true },
+    { "query": "这个 API 怎么调", "should_trigger": false },
+    { "query": "帮我核实一个事实，两个来源交叉下", "should_trigger": false },
+    { "query": "深度调研一个方向出份报告", "should_trigger": false },
+    { "query": "这个库的版本兼容性帮我查下", "should_trigger": false }
+  ]
+}

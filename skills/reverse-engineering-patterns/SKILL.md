@@ -1,6 +1,6 @@
 ---
 name: reverse-engineering-patterns
-description: "源码逆向工程方法论。Use when: 需要从现有项目中提取设计智慧时、分析开源项目架构时、为项目参考其他系统的设计模式时、逆向分析编译产物或混淆代码时。SKIP: 已有清晰文档的项目、用户直接给出设计方案时。"
+description: "源码架构分析与模式提取方法论。Use when: 需要从现有项目中提取设计智慧时、分析开源项目架构时、为项目参考其他系统的设计模式时。SKIP: 已有清晰文档的项目、用户直接给出设计方案时。"
 metadata:
   pattern: pipeline
   domain: architecture
@@ -9,7 +9,7 @@ metadata:
 
 # 源码逆向工程方法论
 
-从 Claude Code 源码逆向（~45 个工具、Coordinator/Worker 多代理、4 层上下文压缩）中提炼的系统化方法。
+从 Claude Code 源码逆向（Coordinator/Worker 多代理、4 层上下文压缩，实例见 references/claude-code-example.md）中提炼的系统化方法。
 
 ## 阶段 1：定位核心循环
 
@@ -19,6 +19,13 @@ metadata:
 1. 从入口文件开始（`main.ts`、`index.ts`、`app.ts`）
 2. 找到主循环结构（`while`、`for await`、递归调用）
 3. 识别循环中的状态对象——它记录了跨迭代的可变状态
+
+**侦察命令：**
+```bash
+ls src/ lib/ app/ 2>/dev/null                          # 顶层结构，找入口候选
+rg -ln "for await|while \(true\)|async function\*" src/ | head -10   # 定位主循环结构
+rg -n "interface \w*State|type \w*State" src/ | head -10             # 找跨迭代状态对象
+```
 
 **输出格式：**
 ```
@@ -48,6 +55,13 @@ metadata:
 - **How**: 怎么做的（关键机制）
 - **Design Pattern**: 用了什么设计模式（State、Strategy、Chain of Responsibility 等）
 
+**侦察命令：**
+```bash
+find src -maxdepth 2 -type d | sort                    # 顶层目录 = 功能域候选
+for d in src/*/; do echo "$d $(find "$d" -type f | wc -l) 个文件"; done   # 各域规模排序，先大后小
+rg -ln "<域名关键词，如 compact>" src/                  # 关键词反查某域涉及哪些文件
+```
+
 ## 阶段 3：参考分析
 
 对每个有参考价值的模式，输出：
@@ -73,6 +87,12 @@ metadata:
 - 只参考解决实际问题的模式，不参考"看起来优雅"的模式
 - 每个参考必须回答 "目标项目中什么场景用得上"
 - 如果目标项目的技术栈不同，说明如何适配
+
+**侦察命令：**
+```bash
+rg -n "<机制关键词>" src/ -A 5 | head -40   # 找机制实现点，读上下文确认 How
+rg -c "<机制关键词>" src/ | sort -t: -k2 -rn | head   # 出现频率判断它是核心路径还是边缘代码
+```
 
 ## 分层降级理念
 

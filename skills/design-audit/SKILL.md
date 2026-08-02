@@ -1,6 +1,6 @@
 ---
 name: design-audit
-description: "飞书设计文档→代码落地审计：判断设计文档里的功能在代码里落地了几个（LANDED/PARTIAL/MISSING 三态判决）。Use when: 给飞书 wiki/docx 设计文档链接要对比代码实现程度时、判断功能 landing 状态时、做设计 vs 实现 gap 分析时、说\"看下实现程度\"\"对比设计稿\"\"哪些没做\"\"landing 了吗\"\"缺口分析\"时。SKIP: 单个功能实现（用 frontend-feature-development）、提交前 diff 审查（用 code-review-gate）、整项目批量审查编排（用 review-batch）、把代码反向导成设计图（用 design-review-snapshot）、纯调研不对比代码（用 research-workflow）、整项目验收编排（用 project-acceptance）。"
+description: "设计文档→代码落地审计：判断设计文档里的功能在代码里落地了几个——LANDED/PARTIAL/MISSING 三态判决，每条附 file:line 证据，对抗「看起来都做了」的印象式汇报。设计文档来源不限：飞书 wiki/docx、本地 markdown、用户粘贴文本均可，飞书只是输入源之一。Use when: 给设计文档（飞书链接/本地文件/粘贴文本）要对比代码实现程度时、判断功能 landing 状态时、做设计 vs 实现 gap 分析时、说\"看下实现程度\"\"对比设计稿\"\"哪些没做\"\"landing 了吗\"\"缺口分析\"时。SKIP: 单个功能实现（用 frontend-feature-development）、提交前 diff 审查（用 code-review-gate）、整项目批量审查编排（用 review-batch）、把代码反向导成设计图（用 design-review-snapshot）、纯调研不对比代码（用 research-workflow）、整项目验收编排（用 project-acceptance）。"
 metadata:
   pattern: pipeline
   domain: quality-assurance
@@ -8,7 +8,7 @@ metadata:
 
 # 设计文档 → 代码落地审计
 
-解决"设计文档说做 10 个功能，代码到底落地了几个"的反复手动对比。每次给飞书 wiki 链接都要手工让 agent 读文档+搜代码+做判断——本 skill 把它固化成标准 gap report 流程。
+解决"设计文档说做 10 个功能，代码到底落地了几个"的反复手动对比。核心价值是**三态判决 + file:line 证据**，对抗"看起来都做了"的印象式汇报；设计文档来源不限——飞书 wiki/docx、本地 markdown、用户粘贴文本均可，飞书只是输入源之一。本 skill 把"读文档 + 搜代码 + 逐条判决"固化成标准 gap report 流程。
 
 > **前置依赖**：Step 1 读飞书设计文档依赖 `lark-doc` skill（非 canonical，需单独安装）。**未安装 lark-doc 时降级**：请用户直接粘贴设计文档文本/导出 markdown，跳过飞书读取直接进 Step 1 的 feature 提取。后续 Step 2-4（搜证/判决/报告）纯代码操作，不依赖飞书。
 
@@ -72,22 +72,11 @@ metadata:
 - PARTIAL 项 → 补全缺口
 - **不要跳过确认直接实现**——用户可能调整优先级或判定某些 MISSING 是有意为之
 
-## 决策树
+## 决策树（简版）
 
-```
-拿到飞书设计链接
-├─ 是 wiki/docx 吗？→ 是：用 `lark-doc` 读
-│                   → 否（sheets/base 等）：先用 `lark-doc` 提 token 再切对应 skill
-├─ feature 清单提取后
-│  ├─ 清单 ≥20 条？→ 太多，问用户聚焦哪几个模块再审计
-│  └─ 清单清晰？→ 进 Step 2
-├─ 搜证时某 feature 搜不到
-│  ├─ 换 2-3 近义词仍无？→ MISSING
-│  └─ 找到了但行为不全？→ PARTIAL
-└─ gap report 出来后
-   ├─ MISSING 过半？→ 可能项目刚起步，报告"整体处于早期"，别逐条列
-   └─ 用户要直接实现 MISSING？→ 走对应实现 skill
-```
+- 文档是飞书 sheets/base 等非 wiki/docx？→ 先用 `lark-doc` 提 token 再切对应 skill
+- feature 清单 ≥20 条？→ 太多，问用户聚焦哪几个模块再审计
+- MISSING 过半？→ 可能项目刚起步，报告"整体处于早期"，别逐条列
 
 ## Gotchas（高信号）
 

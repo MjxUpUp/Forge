@@ -47,6 +47,12 @@
     {
       "event": "PreToolUse",
       "matcher": "Write|Edit",
+      "command": "forge hook freeze-guard --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "PreToolUse",
+      "matcher": "Write|Edit",
       "command": "forge hook task-guard --agent kimi",
       "timeout": 30
     },

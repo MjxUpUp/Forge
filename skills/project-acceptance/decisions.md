@@ -18,3 +18,37 @@ persistent decision history：每条决策记 (诊断, 修订, 脱敏证据, 结
 ### Evidence
 
 该正则按字符长度匹配，无法反映嵌套深度或分支数，必然大量误报/漏报
+
+## [d-18c7e5a649ee0a38-7e9ae24d] accept
+
+- **Skill**: project-acceptance
+- **DecidedAt**: 2026-08-02T05:24:39Z
+
+### Diagnosis
+
+skills 库价值审计 13 项改进落地
+
+### Revision
+
+SKIP 补 review-batch 和 release-readiness；输出改默认打印、落盘带日期文件名；塔借口错别字修
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md 逐项价值审计
+
+## [d-18c7e620b8c69edc-e8912f3e] accept
+
+- **Skill**: project-acceptance
+- **DecidedAt**: 2026-08-02T05:33:25Z
+
+### Diagnosis
+
+项10 description 审计+触发回归
+
+### Revision
+
+description 三段式合格未改动;新建 evals/evals.json(5正+4负)
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md

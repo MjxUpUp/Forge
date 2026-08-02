@@ -25,6 +25,8 @@ Design Token 是设计系统的基石——把设计决策（色值/间距/字�
 
 **所有色值/间距/圆角/阴影/字号/动效曲线必须从 design token 取，禁止硬编码。** 这是 frontend-feature-development 的生成时约束，也是 frontend-code-review 的事后检查项。没有 token 的项目，先建 token 再写组件。
 
+**本节为 token-only 铁律的唯一权威版本——其他 skill 引用本节，不复制。**
+
 ## 阶段 0 — 确认 token 成熟度（Inversion）
 
 **建/改 token 前先确认：**
@@ -142,7 +144,7 @@ export default {
 }
 ```
 
-**⚠️ sRGB fallback + 对比度退化**：OKLCH 在 sRGB 设备会被浏览器自动 gamut mapping，**静默改变亮度**，致对比度退化。dark/light 双主题必须在真实 sRGB 设备复测 WCAG 对比度（≥4.5:1）。
+**⚠️ sRGB fallback + 对比度退化**：OKLCH 在 sRGB 设备会被浏览器自动 gamut mapping，**静默改变亮度**，致对比度退化。dark/light 双主题必须在真实 sRGB 设备复测 WCAG 对比度（≥4.5:1）。**本警告为 OKLCH gamut mapping 风险的唯一权威版本——其他 skill 引用本节，不复制。**
 
 **color-mix 运行时混色**（W3C CSS Color Level 5）：
 ```css
@@ -210,14 +212,14 @@ shadcn/ui 的 copy-in 模式（组件源码作为分发单位）需特殊治理�
 ## Gotchas
 
 - **DTCG 2025.10 是 Community Group Report**：非正式 W3C 标准，工具实现可参考但无强制合规；仍是事实标准
-- **容器查询的"想用 vs 真用"落差**：36%/43% 开发者放 reading list，实际用 7%/<1%；别为用而用
+- **容器查询的"想用 vs 真用"落差**：36%/43% 开发者放 reading list，实际用 7%/<1%（State of CSS 2025）；别为用而用
 - **Figma 原生 Variables vs Tokens Studio**：Figma 2024 推原生 Variables 后，部分团队绕开 DTCG JSON 直接走"Figma Variables → 导出 CSS"；两套并存注意选型
 - **Pixso 无 Tokens Studio 但有原生 tokens + 官方 MCP**：别误以为 Pixso 做不了 token 工作流——原生 Design Tokens（2.0 起）+ Plugin API + MCP（18 本地工具 / 6 云端工具）三条路，AI coding 场景下甚至比 Figma 的 Tokens Studio 更顺（MCP 是 Cursor/Claude 原生协议）
 - **Pixso 官方 MCP 是客户端能力**：本地 18 工具需 Pixso 桌面端运行（端口 3667）；云端 6 工具走 `pixso.cn/api/mcp/mcp` 需 Personal Access Token，不开应用也能用
 - **Style Dictionary 是 Amazon 维护**（周下载 177 万），是 token 流转的事实标准；别自己写转换器
 - **shadcn copy-in 后追上游**：上游修 bug 你不会自动得到；定期 `shadcn diff` 同步
 
-- **Stitch DESIGN.md（awesome-design-md）不是 DTCG tokens.json**：`frontend-aesthetics-execution` 引来的品牌 DESIGN.md 用 hex + 自定义 YAML front matter（`{colors.primary}` 引用语法），**不能直接喂 Style Dictionary**。转换是手工/脚本活：① 每个 hex 按阶段 3 转 OKLCH；② `colors`/`typography`/`spacing`/`rounded` 的 YAML 重组为 DTCG `$type`/`$value`（color / dimension / typography）；③ `components` composite 段（按钮/卡片）按阶段 2 拆解或限定 Web 用。以 `linear.app/DESIGN.md` 为例：20+ 色 token、13 级 typography、8 级 rounded、8 级 spacing——分钟级手活，无一键工具。`preview.html` 仓库不存在，校验只能读文本。
+- **Stitch DESIGN.md（awesome-design-md）不是 DTCG tokens.json**：`frontend-aesthetics-execution` 引来的品牌 DESIGN.md 用 hex + 自定义 YAML front matter，**不能直接喂 Style Dictionary**——需手工/脚本把 hex 转 OKLCH、把 YAML 重组为 DTCG `$type`/`$value`，无一键工具。转换步骤与坑（`preview.html` 仓库不存在等）唯一真相源：frontend-aesthetics-execution `references/brand-index.md`「格式 gap」节，此处不复制。
 
 ## 与其他 skill 的分工
 

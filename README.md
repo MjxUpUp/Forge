@@ -174,11 +174,12 @@ Layer 3: 会话结束验证
 Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 task JSON 等方式绕过——bash-guard 拦截工具层，file-sentinel 监控文件层，task-guard 保护配置层。
 
 <details>
-<summary><b>📖 内置 Hook 完整清单（17 个）</b></summary>
+<summary><b>📖 内置 Hook 完整清单（18 个）</b></summary>
 
 | Hook | 触发时机 | 功能 |
 |------|----------|------|
 | **task-guard** | Write/Edit 前 | 无活跃任务时 WARN（仅 `.forge/*`/`.claude/settings*` 自保护 FAIL——此类项目级文件只在团队模式/老项目存在），保护 Forge 配置不被篡改 |
+| **freeze-guard** | Write/Edit 前 | `forge freeze <路径>...` 激活后硬阻断冻结路径之外的 Write/Edit——「只改这里别动其他」的 session 级硬护栏（on-demand-guards /freeze 的 forge 侧落地）；多路径、相对路径归一化、Windows 大小写不敏感；排在 task-guard 之前优先判定；`forge freeze --off` 解除 |
 | **read-before-edit** | Write/Edit 前（活跃任务内） | 编辑本会话未 Read 过的现存源文件 → 硬阻断（`BLOCKED`）。Edit 需精确匹配旧文本，未读即凭记忆盲改——old_string 撞中即错改入库，先 Read 再 Edit。豁免新建文件/测试文件/非源码；批量重构逃生 `forge task override --work-activity disable`（降 evidence 强度到 Weak）。reads-log 落盘随会话存活，压缩后仍累计 |
 | **assertion-check** | Write/Edit 前 | 检测断言弱化（t.Fatal → t.Log、assert! 被删除等），advisory 提醒不阻塞（agent 自检） |
 | **bash-guard** | Bash 前 | 检测命令中的写文件模式（writeFile、cat >、sed -i 等），无任务时 WARN（源码随后被 file-sentinel 隔离） |
@@ -258,6 +259,14 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 |------|------|
 | `forge hazard confirm <命令>` | 登记一次高危命令确认（5min 内同命令重试放行） |
 | `forge hazard status` | 列出当前有效确认及剩余时间 |
+
+**写入范围冻结**：`forge freeze` 把 on-demand-guards 的 /freeze 目录锁定从「agent 每回合自检」的 prompt 型护栏落地为真 hook——激活后 freeze-guard hook（PreToolUse Write|Edit，排在 task-guard 之前优先判定）硬阻断所有冻结路径之外的写入，长会话/压缩后不漂移。支持多路径、相对路径（相对当前目录归一化）、Windows 大小写不敏感比较。
+
+| 命令 | 说明 |
+|------|------|
+| `forge freeze <路径>...` | 激活 freeze（可多路径；再次激活即替换范围） |
+| `forge freeze --off` | 解除 freeze（幂等） |
+| `forge freeze --status` | 查看当前 freeze 状态 |
 
 **Act 反馈臂（证据驱动结论）**：`forge task complete` 时把本任务的证据驱动结论（评分 + 证据强度 + 验收通过率 + 低分维度）落盘到 `~/.forge/projects/<项目key>/act/conclusions.jsonl`，喂给 `session-retrospective`。证据弱（Unverified/Weak）或低分（<70）的结论标 RetrospectiveNudge——对冲"高分但没真验证"的 LLM-judge 盲区。
 

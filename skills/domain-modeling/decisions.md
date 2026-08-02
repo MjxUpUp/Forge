@@ -35,3 +35,37 @@ code-review-gate 子 agent 审查（无 Blocker/Major）指出 2 Minor + 2 可�
 ### Evidence
 
 explore 子 agent 审查报告（git diff main...HEAD 三文件，对照 CONVENTIONS.md 逐项核查 + 保真度比对）。
+
+## [d-18c7e4b5db547698-54e56ab8] accept
+
+- **Skill**: domain-modeling
+- **DecidedAt**: 2026-08-02T05:07:26Z
+
+### Diagnosis
+
+审计判决'保留'带微改进建议：'省 token'作为核心价值论据牵强（收益是消歧，token 账算不平反而削弱可信度）；决策树与五条纪律一一对应是装饰性的；Gotchas 第一条'会话越长用词越发散'才是真痛点应提为第一论据
+
+### Revision
+
+删'省 token'论据；删装饰性决策树（102→91 行）；核心价值新增第一论据'对抗用词漂移'（从 Gotchas 第一条提升）；其余不动
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md 逐项审计
+
+## [d-18c7e622d28b3ce0-f6a91ae9] accept
+
+- **Skill**: domain-modeling
+- **DecidedAt**: 2026-08-02T05:33:34Z
+
+### Diagnosis
+
+项10 description 审计+触发回归
+
+### Revision
+
+description 审计合格未改动 + 新建 evals.json 10 条
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md

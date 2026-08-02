@@ -19,3 +19,37 @@ metadata.triggers 加 [{"event":"Stop","when":"task_active_no_review"}]
 ### Evidence
 
 dogfood-findings-2026-07-09(testing×17 全低分, 质量 skill 0 显式触发) + plan flickering-bubbling-bonbon.md(triggers schema 表)
+
+## [d-18c7e5a668e8f0c4-7d76e755] accept
+
+- **Skill**: verification-driver
+- **DecidedAt**: 2026-08-02T05:24:40Z
+
+### Diagnosis
+
+skills 库价值审计 13 项改进落地
+
+### Revision
+
+单测≠验证完成单源化改指针到 test-discipline 铁律2；RemoteAddr 案例改指针
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md 逐项价值审计
+
+## [d-18c7e622a5f80adc-c7475846] accept
+
+- **Skill**: verification-driver
+- **DecidedAt**: 2026-08-02T05:33:33Z
+
+### Diagnosis
+
+项10 description 审计+触发回归
+
+### Revision
+
+description 审计合格未改动 + 新建 evals.json 10 条
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md

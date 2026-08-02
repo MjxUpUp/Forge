@@ -1,0 +1,71 @@
+# skill-authoring-standard — 持久决策历史
+
+persistent decision history：每条决策记 (诊断, 修订, 脱敏证据, 结果)，让下一轮 agent 理解「为什么这么改」，避免重复探索已失败方向。审计/可复现，非泛化学习。append-only：新决策追加到末尾。
+
+## [d-18c7e438dc639154-6bb67968] accept
+
+- **Skill**: skill-authoring-standard
+- **DecidedAt**: 2026-08-02T04:58:30Z
+
+### Diagnosis
+
+审计发现：正文引用 R1-R11 但全文从未列出定义（规范依赖外部黑盒）；291 行超自定的 progressive disclosure 要求；自身违反自定的 token 效率要求（约 2900 字），自我违反程度批内最高
+
+### Revision
+
+新建 references/validation-rules.md 落 R1-R11+R12 文本定义（从 internal/skillsqa/registry.go AuditSkill 导出，标注真相源以代码为准）；四类 skill 测试法拆 references/testing-patterns.md、设计模式表拆 references/design-patterns.md、内容结构/目录结构模板拆 references/structure-template.md、防注水自检详情拆 references/anti-degradation.md；正文压缩冗长示例，291 行瘦身至 177 行（≤200 达标），自我违反随瘦身修正
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md 逐项审计（skill-authoring-standard 详评 + 改进清单项 4/9）
+
+## [d-18c7e5ce4a9ec760-b7f76f57] accept
+
+- **Skill**: skill-authoring-standard
+- **DecidedAt**: 2026-08-02T05:27:31Z
+
+### Diagnosis
+
+pattern taxonomy 缺经验参考型取值，integration-test-architecture 类 skill 被误标 tool-wrapper
+
+### Revision
+
+ValidPatterns 新增 reference 合法值；validation-rules.md R7/design-patterns.md/SKILL.md 同步；R1-R11 文案更新为 R1-R17；挂载 skill-pattern-guide.md 链接并注明与 design-patterns.md 分工
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md；批次C 修正触发
+
+## [d-18c7e6076f568708-4e301541] accept
+
+- **Skill**: skill-authoring-standard
+- **DecidedAt**: 2026-08-02T05:31:36Z
+
+### Diagnosis
+
+项11 rubric 机制库内化：机器校验 R1-R17 管不了质量维度，需人工/LLM 评审 rubric
+
+### Revision
+
+新建 references/quality-rubric.md（四维评分+0/10/20/25锚点+总分<75合并阻断线），SKILL.md 验证节+参考节挂载
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md；业界调研 grafana/skills 四维 rubric（conciseness/actionability/workflow clarity/progressive disclosure）
+
+## [d-18c7e62b3fb9e8e0-4679c2a6] accept
+
+- **Skill**: skill-authoring-standard
+- **DecidedAt**: 2026-08-02T05:34:10Z
+
+### Diagnosis
+
+项10 description 审计+触发回归
+
+### Revision
+
+description SKIP 边界补全 + evals.json 建立
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md

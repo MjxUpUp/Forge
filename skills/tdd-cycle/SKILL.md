@@ -1,10 +1,10 @@
 ---
 name: tdd-cycle
-description: "测试驱动开发强制循环（RED-GREEN-Refactor）。Use when: 实现任何功能或修 bug 前、在写实现代码之前、重构行为变更时、想\"这次跳过 TDD 吧\"时、听到\"先写代码后补测试\"\"后补测目的一样\"\"这次跳过\"时。SKIP: 测试质量守卫/断言防注水（用 test-discipline）、一次性原型/配置文件/生成代码（与人确认后可跳过）。"
+description: "测试驱动开发强制循环（RED-GREEN-Refactor）。Use when: 实现任何功能或修 bug 前、在写实现代码之前、重构行为变更时、想\"这次跳过 TDD 吧\"时、听到\"先写代码后补测试\"\"后补测目的一样\"\"这次跳过\"时、给存量代码补测试时。SKIP: 测试质量守卫/断言防注水（用 test-discipline）、一次性原型/配置文件/生成代码（与人确认后可跳过）。"
 metadata:
   pattern: pipeline + gate
   domain: testing
-  triggers: [{"event":"UserPromptSubmit","keywords":["TDD","先写测试","red green","测试驱动"]}]
+  triggers: [{"event":"UserPromptSubmit","keywords":["TDD","先写测试","red green","测试驱动","补测试","后补测试"]}]
 ---
 
 # TDD Cycle — 测试驱动开发
@@ -37,7 +37,18 @@ NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST
 
 **例外（与人确认后）：** 一次性原型、生成代码、配置文件
 
+**存量代码没测试：** 不适用"删掉重来"，走下节补救路径。
+
 想"就这次跳过 TDD"？STOP，那是 rationalization。
+
+## 存量代码没有测试时
+
+Iron Law 约束的是**你正在写或改的代码**，不是让你把无测试的存量库整个删掉重来。补救路径：
+
+1. **先钉住现状**：为要触动的行为写特征测试（characterization test）——断言当前实际行为，不管它对不对。它保证你的改动不改坏既有行为
+2. **新行为走正常 RED**：在特征测试保护下，为新增/变更的行为先写一个失败测试，进入正常循环
+3. **修 bug 照旧**：先写复现 bug 的失败测试（见「Bug 修复也用 TDD」）
+4. **别自欺**：一次性给存量代码补的测试秒过是预期现象（见 Gotchas 第一条），它的价值是回归保护，代替不了 RED
 
 ## Red-Green-Refactor 循环
 
@@ -64,12 +75,11 @@ test('retries failed operations 3 times', async () => {
   expect(attempts).toBe(3);
 });
 
-// ❌ 坏：含糊名字，测的是 mock 不是代码
+// ❌ 坏：含糊名字，把被测函数本身 mock 掉了，断言永真
 test('retry works', async () => {
-  const mock = jest.fn().mockRejectedValueOnce(new Error())
-    .mockRejectedValueOnce(new Error()).mockResolvedValueOnce('success');
-  await retryOperation(mock);
-  expect(mock).toHaveBeenCalledTimes(3);
+  const retryOperation = jest.fn().mockResolvedValue('success');
+  const result = await retryOperation(() => Promise.resolve('x'));
+  expect(result).toBe('success'); // mock 说啥就是啥，一行真代码没测
 });
 ```
 

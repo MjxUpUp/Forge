@@ -36,7 +36,7 @@ metadata:
 直接抓：每个页面 `curl -sL URL > page.html`，或 `wget --mirror`。
 
 ### 1B. Web SPA（React/Vue/Next 等）
-用 **Playwright 抓渲染后的 DOM + computed style 内联化**（脚本骨架见 [references/snapshot-script.ts](references/snapshot-script.ts)）。**前置依赖**：需 Node 环境，首次运行 `npx playwright install chromium` 自动装无头浏览器（需联网下载）；整个 skill 还需 Pixso 桌面端跑本地 MCP（见铁律段），二者缺失则无法反向导入。
+用 **Playwright 抓渲染后的 DOM + computed style 内联化**（脚本骨架见 [references/snapshot-script.md](references/snapshot-script.md)）。**前置依赖**：需 Node 环境，首次运行 `npx playwright install chromium` 自动装无头浏览器（需联网下载）；整个 skill 还需 Pixso 桌面端跑本地 MCP（见铁律段），二者缺失则无法反向导入。
 - 启动无头浏览器 → 导航到路由 → 等待网络空闲 + 关键元素渲染
 - 抓 `document.documentElement.outerHTML`
 - **遍历每个元素，把 `getComputedStyle` 的关键属性内联到 `style` 属性**（这一步是质量关键，见阶段 2）
@@ -57,7 +57,7 @@ Tauri 没有"网页 URL"可抓，三条路：
 Pixso MCP `code_to_design` 有硬限制，阶段 1 的原始 HTML 直接丢进去会失败或质量差。逐项处理：
 
 ### 2.1 样式内联化（最关键）
-`code_to_design` 解析 class-based CSS 靠正则，会丢继承关系（父元素 `color` 子元素不继承、媒体查询失效、伪类丢失）。**把 computed style 内联到每个元素的 `style` 属性**，质量最稳。脚本骨架见 references/snapshot-script.ts 的 `inlineComputedStyles`。
+`code_to_design` 解析 class-based CSS 靠正则，会丢继承关系（父元素 `color` 子元素不继承、媒体查询失效、伪类丢失）。**把 computed style 内联到每个元素的 `style` 属性**，质量最稳。脚本骨架见 references/snapshot-script.md 的 `inlineComputedStyles`。
 
 代价：HTML 体积膨胀（每个元素都带完整 style），所以要先于 2.2 的分块。
 
@@ -65,6 +65,8 @@ Pixso MCP `code_to_design` 有硬限制，阶段 1 的原始 HTML 直接丢进�
 Pixso MCP 单次请求 >101KB 返回 HTTP 413，推荐 ≤95KB。复杂页面内联化后必超限。用 `pixso_import.py`（jiaweiwei1961/pixso-design-skill）自动分批，或自写分块：
 - 单页超限 → 按顶层区域拆成多个 HTML 片段，分次 `code_to_design` 挂到同一 parentId 下不同子节点
 - 多页 → 自动分批（~95KB/批），会话过期自动刷新
+
+> **外部仓库 fallback**：`jiaweiwei1961/pixso-design-skill` 是社区 0★ 封装（非官方），用前先验证仓库可用（clone 后跑通一次导入）；不可用走通用路径——自写最小分块脚本（按顶层区域拆 HTML、每片 ≤95KB 分次 `code_to_design` 挂同一 parentId 下不同子节点）或直接 HTTP 调本地 MCP，流程不依赖该仓库。
 
 ### 2.3 重复样式去重
 内联化后大量重复 `style`（按钮/卡片列表项）。`pixso_import.py` 的 `extract_styles` 自动去重合并成 `<style>` 块 + class 引用，减小体积。自写脚本可参照。
@@ -187,7 +189,7 @@ CSS `grid-template-columns` 在 Pixso **无原生对应**，会被转成绝对�
 
 ## 参考
 
-- Playwright 抓 SPA + computed style 内联化脚本骨架：[references/snapshot-script.ts](references/snapshot-script.ts)
+- Playwright 抓 SPA + computed style 内联化脚本骨架：[references/snapshot-script.md](references/snapshot-script.md)
 - 95KB 分块 + 样式去重 + 动态内容冻结细节：[references/snapshot-checklist.md](references/snapshot-checklist.md)
 - Pixso MCP 本地工具 API（code_to_design 等）：jiaweiwei1961/pixso-design-skill `references/api-reference.md`
 - 批量导入脚本：jiaweiwei1961/pixso-design-skill `scripts/pixso_import.py`

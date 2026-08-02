@@ -1,6 +1,6 @@
 ---
 name: research-workflow
-description: "深度调研与结构化报告发布。Use when: 用户说\"调研XXX/研究下XXX方向/深度调研/补充调研/调研并发布\"、需要输出结构化调研报告、给定文件要求\"只看文件/基于这些调研\"、要把调研结果发到飞书时。SKIP: 纯技术方案设计（用 evidence-based-proposal）、单次信息查询（直接搜索）、纯对话不产出文档时。"
+description: "深度调研与结构化报告发布。Use when: 用户说\"调研XXX/研究下XXX方向/深度调研/补充调研/调研并发布\"、需要输出结构化调研报告、给定文件要求\"只看文件/基于这些调研\"、要把调研结果发到飞书时。SKIP: 纯技术方案设计（用 evidence-based-proposal）、单次信息查询（直接搜索）、轻量事实核查/数据对比不出报告（用 fact-research）、按模板生成 PRD/周报等结构化文档（用 doc-generator）、纯对话不产出文档时。"
 metadata:
   pattern: pipeline + gate
   domain: research
@@ -98,7 +98,7 @@ mkdir -p ~/.forge/research/{topic}-$(date '+%Y%m%d-%H%M')
 
    **429/限流容错**（并行 spawn 常撞模型 API 限流）：worker 返回含 `429` / `rate limit` / `访问量过大` / `5xx` 时，**不丢不弃**：
    - 首选**指数退避重试**：等 30s → 60s → 120s 重发，最多 3 次
-   - 仍失败则**模型降级**：主力模型(如 glm-4.6) → 备选(doubao/deepseek/glm-4-flash)重发
+   - 仍失败则**模型降级**：按当前可用模型配置降级链（主力模型 → 任一可用备选）重发，不写死具体型号
    - 同维度 worker 重试 3 次仍失败，标记该维度 `BLOCKED`，在 Phase 2 显式标注信度降级，不静默吞掉
    - 主 agent 汇报时必须列出失败维度，让用户决定补跑或接受 gap
 5. **工序 4 — 互证分级**：跨维度比对，按四档分信度（高/中/低/矛盾）。引用全局重编号 → `{run_dir}/verify.md` + 映射表
@@ -247,15 +247,9 @@ mkdir -p ~/.forge/research/{topic}-$(date '+%Y%m%d-%H%M')
 
 ## SKIP（轻量调研转其他 skill）
 
-本 skill 是**重量级深度调研**（≥60 searches、多 worker、出报告 + 飞书发布）。以下场景转更轻的 skill：
+本 skill 是**重量级深度调研**（≥60 searches、多 worker、出报告 + 飞书发布）。更轻量的场景转其他 skill。
 
-| 用户意图 | 转向 | 依据 |
-|---|---|---|
-| 查 API 签名/报错含义/库用法/版本兼容 | **dev-lookup** | 单点技术检索，≤5 次 |
-| 查数据/对比/进展/事实核实（需≥2源交叉但不出报告） | **fact-research** | 轻量网络调研，5-20 次，inline 答案 |
-| 提方案前验证本机环境/API 能力 | **evidence-based-proposal** | 方案要有依据 |
-
-**三层调研量级**：dev-lookup（即时单点） < fact-research（分钟级交叉） < research-workflow（多轮深度报告）。拿不准量级时，先看 fact-research 的对比表。
+「三层调研量级」路由表唯一真相源：fact-research「三层调研量级（路由依据）」节，此处不复制——按该表把单点技术检索转 **dev-lookup**、轻量交叉验证（≥2 源但不出报告）转 **fact-research**；提方案前验证本机环境/API 能力转 **evidence-based-proposal**。
 
 ## 搜索预算（给用户预期）
 

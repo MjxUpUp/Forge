@@ -42,10 +42,12 @@ type SkillReport struct {
 	Pass        bool     `json:"pass"`
 }
 
-// AuditSkill runs R1-R11 spec checks on a single skill directory; 1:1 aligned
-// with registry.py audit_skill.
+// AuditSkill runs R1-R17 spec checks on a single skill directory; R1-R11 are
+// 1:1 aligned with registry.py audit_skill, R12-R17 are forge-local extensions
+// (rule text definitions: RuleDescriptions).
 //
-// AuditSkill 对单个 skill 目录跑 R1-R11 规范校验。1:1 对齐 registry.py audit_skill。
+// AuditSkill 对单个 skill 目录跑 R1-R17 规范校验。R1-R11 逐条对齐
+// registry.py audit_skill，R12-R17 为 forge 本地扩展（规则文本定义见 RuleDescriptions）。
 func AuditSkill(skillDir string) (*SkillReport, error) {
 	skillPath := filepath.Join(skillDir, "SKILL.md")
 	data, err := os.ReadFile(skillPath)
@@ -196,6 +198,48 @@ func AuditSkill(skillDir string) (*SkillReport, error) {
 	// 写也合法；写了则校验 JSON 合法性 / event∈集 / keywords 或 when 至少一 / when∈词汇
 	// / match 仅对 tool 事件有效。内联 JSON 解析，避免 skillsqa→skilltrigger 循环依赖。
 	checkTriggers(fm.Metadata["triggers"], &advisories)
+	// R13 正文行数（硬，不含 frontmatter）——与 R8 的关系：R8 计全文行数（对齐
+	// Python），R13 只计正文。body >500 ⇒ 全文 >500，故 R13 触发时 R8 必然也触发；
+	// R13 的价值是把「正文」口径显式化（frontmatter 膨胀不会再吃掉正文预算的语义）。
+	//
+	// R13 body line count (hard, frontmatter excluded) — relationship to R8: R8 counts
+	// the whole file (Python parity), R13 counts the body only. body >500 implies
+	// total >500, so whenever R13 fires R8 fires too; R13 makes the body-only
+	// semantics explicit.
+	checkBodyLines(fm.Body, &issues)
+	// R14 frontmatter 必填字段（硬）：name/description 缺一不可。description 的
+	// ≤1024 字符上限由 R4 覆盖，此处不重复报。注意 name 为空时上方已回退 dirName
+	// （R1/R2 不误报），R14 用 fm.Name/fm.Description 原始值判定缺失。
+	//
+	// R14 required frontmatter fields (hard): name and description are mandatory.
+	// The ≤1024-char description cap is covered by R4 and not duplicated here. Note
+	// the empty name falls back to dirName above (so R1/R2 stay accurate); R14 judges
+	// presence from the raw fm.Name/fm.Description values.
+	checkRequiredFrontmatter(fm, &issues)
+	// R15 ALL-CAPS 命令式词密度（advisory）：ALWAYS/NEVER/MUST 合计 >5 次提醒改
+	// 「指令+原因」写法——解释为什么比堆命令更有效（模型对裸命令式词会脱敏）。
+	//
+	// R15 ALL-CAPS imperative density (advisory): more than 5 combined
+	// ALWAYS/NEVER/MUST occurrences suggests switching to "instruction + reason"
+	// style — explaining why beats stacking bare imperatives.
+	checkImperativeDensity(fm.Body, &advisories)
+	// R16 references/ 下 >300 行文件需 ToC（advisory）。markdown 文件由 R11 以
+	// >100 行的更低门槛先行覆盖，R16 跳过 markdown 避免同一文件重复 advisory；
+	// R16 实际增量是覆盖非 markdown 参考文件（如大段 .txt 资料）。
+	//
+	// R16 references/ files over 300 lines need a ToC (advisory). Markdown files are
+	// already covered by R11 at the stricter >100-line threshold, so R16 skips
+	// markdown to avoid duplicate advisories; R16's real increment is non-markdown
+	// reference files.
+	checkOversizedRefs(skillDir, &advisories)
+	// R17 evals/evals.json schema（advisory）：文件存在才校验（skill 不建 evals
+	// 合法）；schema = 对象含 trigger_cases 数组，每项 {query: string,
+	// should_trigger: boolean}。
+	//
+	// R17 evals/evals.json schema (advisory): validated only when the file exists
+	// (a skill may have no evals); schema = object with a trigger_cases array of
+	// {query: string, should_trigger: boolean}.
+	checkEvalsSchema(skillDir, &advisories)
 
 	return &SkillReport{
 		Name:        name,
@@ -317,6 +361,124 @@ func checkTriggers(raw string, advisories *[]string) {
 		}
 		if isToolEvent && t.Match == "" && len(t.Keywords) == 0 {
 			*advisories = append(*advisories, fmt.Sprintf(`triggers[%d] PreToolUse/PostToolUse 建议带 match（限定 tool_name），否则对所有 tool 命中`, idx))
+		}
+	}
+}
+
+// checkBodyLines enforces R13: the SKILL.md body (everything after the
+// frontmatter block) must be ≤500 lines (hard issue). Line counting mirrors
+// R8's newline-count + 1 convention; an empty body counts as 0 lines.
+//
+// checkBodyLines 执行 R13：SKILL.md 正文（frontmatter 块之后的全部内容）
+// ≤500 行（硬 issue）。计行口径与 R8 一致（换行数 + 1）；空正文计 0 行。
+func checkBodyLines(body string, issues *[]string) {
+	bodyLines := 0
+	if body != "" {
+		bodyLines = strings.Count(body, "\n") + 1
+	}
+	if bodyLines > 500 {
+		*issues = append(*issues, fmt.Sprintf("SKILL.md 正文过长(%d行 >500，不含 frontmatter；拆 references)", bodyLines))
+	}
+}
+
+// checkRequiredFrontmatter enforces R14: name and description are mandatory
+// frontmatter fields (hard issues). The description ≤1024-char upper bound is
+// owned by R4 and intentionally not duplicated here.
+//
+// checkRequiredFrontmatter 执行 R14：frontmatter 必填 name 与 description
+// （硬 issue）。description ≤1024 字符上限由 R4 负责，此处不重复报。
+func checkRequiredFrontmatter(fm *skillsfm.Frontmatter, issues *[]string) {
+	if fm.Name == "" {
+		*issues = append(*issues, "frontmatter 缺 name（必填字段）")
+	}
+	if fm.Description == "" {
+		*issues = append(*issues, "frontmatter 缺 description（必填字段）")
+	}
+}
+
+// checkImperativeDensity enforces R15: more than 5 combined whole-word
+// ALWAYS/NEVER/MUST occurrences in the body goes advisory, suggesting the
+// "instruction + reason" style instead of stacked bare imperatives.
+//
+// checkImperativeDensity 执行 R15：正文整词 ALWAYS/NEVER/MUST 合计 >5 次走
+// advisory，建议改「指令+原因」写法而非堆叠裸命令式词。
+func checkImperativeDensity(body string, advisories *[]string) {
+	n := len(imperativeRe.FindAllStringIndex(body, -1))
+	if n > 5 {
+		*advisories = append(*advisories, fmt.Sprintf(`正文命令式全大写词密度过高(ALWAYS/NEVER/MUST 共 %d 次 >5；建议改「指令+原因」写法，解释为什么比堆命令更有效)`, n))
+	}
+}
+
+// checkOversizedRefs enforces R16: non-markdown files under references/ over
+// 300 lines without a ToC go advisory. Markdown files are skipped — R11 already
+// covers them at the stricter >100-line threshold, and reporting both would
+// duplicate advisories for the same file. Missing/unreadable references dir is
+// silent (R11 owns those advisories).
+//
+// checkOversizedRefs 执行 R16：references/ 下 >300 行的非 markdown 文件无 ToC
+// 走 advisory。markdown 文件跳过——R11 已以 >100 行更低门槛覆盖，重复报会同
+// 文件双 advisory。references 目录不存在/不可读时静默（归 R11 的 advisory）。
+func checkOversizedRefs(skillDir string, advisories *[]string) {
+	refsDir := filepath.Join(skillDir, "references")
+	entries, err := os.ReadDir(refsDir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() || markdownExt(filepath.Ext(e.Name())) {
+			continue
+		}
+		data, rerr := os.ReadFile(filepath.Join(refsDir, e.Name()))
+		if rerr != nil {
+			continue
+		}
+		content := string(data)
+		lines := strings.Count(content, "\n") + 1
+		hasToC := strings.Contains(content, "## 目录") ||
+			strings.Contains(content, "## Contents") ||
+			strings.Contains(content, "## Table of Contents")
+		if lines > 300 && !hasToC {
+			*advisories = append(*advisories, fmt.Sprintf(`references/%s 过长(%d行 >300) 缺 ToC（超长参考文件建议 ToC 助导航；markdown 文件由 R11 以 >100 行门槛覆盖）`, e.Name(), lines))
+		}
+	}
+}
+
+// checkEvalsSchema enforces R17: when evals/evals.json exists it must match the
+// schema — a JSON object with a trigger_cases array, each item
+// {query: string, should_trigger: boolean}. All violations are advisory (evals
+// are an opt-in regression asset, schema drift should not block Pass).
+//
+// checkEvalsSchema 执行 R17：evals/evals.json 存在时须符 schema——JSON 对象含
+// trigger_cases 数组，每项 {query: string, should_trigger: boolean}。全部违例
+// 走 advisory（evals 是可选回归资产，schema 漂移不应阻断 Pass）。
+func checkEvalsSchema(skillDir string, advisories *[]string) {
+	data, err := os.ReadFile(filepath.Join(skillDir, "evals", "evals.json"))
+	if err != nil {
+		if !os.IsNotExist(err) {
+			*advisories = append(*advisories, fmt.Sprintf(`evals/evals.json 不可读: %v`, err))
+		}
+		return
+	}
+	var doc struct {
+		TriggerCases []struct {
+			Query         string `json:"query"`
+			ShouldTrigger *bool  `json:"should_trigger"`
+		} `json:"trigger_cases"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		*advisories = append(*advisories, fmt.Sprintf(`evals/evals.json 不符 schema（须为对象含 trigger_cases 数组，每项 {query: string, should_trigger: boolean}）: %v`, err))
+		return
+	}
+	if doc.TriggerCases == nil {
+		*advisories = append(*advisories, `evals/evals.json 缺 trigger_cases 数组`)
+		return
+	}
+	for i, c := range doc.TriggerCases {
+		if c.Query == "" {
+			*advisories = append(*advisories, fmt.Sprintf(`evals/evals.json trigger_cases[%d] 缺 query（非空 string）`, i))
+		}
+		if c.ShouldTrigger == nil {
+			*advisories = append(*advisories, fmt.Sprintf(`evals/evals.json trigger_cases[%d] 缺 should_trigger（boolean）`, i))
 		}
 	}
 }

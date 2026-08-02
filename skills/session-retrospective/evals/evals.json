@@ -1,0 +1,13 @@
+{
+  "trigger_cases": [
+    { "query": "回顾下这次会话", "should_trigger": true },
+    { "query": "这个教训帮我记下来", "should_trigger": true },
+    { "query": "沉淀下这次的经验", "should_trigger": true },
+    { "query": "总结下这次的教训避免下次再犯", "should_trigger": true },
+    { "query": "这条经验该记 memory 还是做成 skill", "should_trigger": true },
+    { "query": "帮我新建一个 skill 文件", "should_trigger": false },
+    { "query": "这个 skill 老误触发想系统性改进下并跑回归", "should_trigger": false },
+    { "query": "继续上次的工作", "should_trigger": false },
+    { "query": "这个 bug 帮我修一下就行", "should_trigger": false }
+  ]
+}

@@ -59,10 +59,3 @@
 - [ ] `mod.rs` 只做重导出，不含逻辑
 - [ ] 命名一致：函数 `snake_case`，类型 `CamelCase`
 
-## 项目约定（按项目调整）
-
-- [ ] ID 类型与项目约定一致（如 `Ulid`、`Uuid` 或整数）
-- [ ] EventBus 事件使用正确的枚举变体（如适用）
-- [ ] Plugin/Handler 实现了项目要求的 trait 并有正确的生命周期
-- [ ] 配置使用 `serde` 反序列化并带 `#[serde(default)]`
-- [ ] 依赖来自 workspace：Cargo.toml 中使用 `workspace = true`（如适用）

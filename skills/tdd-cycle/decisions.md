@@ -19,3 +19,37 @@ metadata.triggers 加 [{"event":"UserPromptSubmit","keywords":["TDD","先写测�
 ### Evidence
 
 dogfood-findings-2026-07-09(testing×17 全低分, 质量 skill 0 显式触发) + plan flickering-bubbling-bonbon.md(triggers schema 表)
+
+## [d-18c7e5a66034de70-6fcbc2f7] accept
+
+- **Skill**: tdd-cycle
+- **DecidedAt**: 2026-08-02T05:24:40Z
+
+### Diagnosis
+
+skills 库价值审计 13 项改进落地
+
+### Revision
+
+RED 坏例子换真反例(原例站不住)；新增存量代码无测试补救节(Iron Law 例外路径)；description 补补测试触发词
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md 逐项价值审计
+
+## [d-18c7e62296f01ee4-f1b23d56] accept
+
+- **Skill**: tdd-cycle
+- **DecidedAt**: 2026-08-02T05:33:33Z
+
+### Diagnosis
+
+项10 description 审计+触发回归
+
+### Revision
+
+description 审计合格未改动 + 新建 evals.json 10 条
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md

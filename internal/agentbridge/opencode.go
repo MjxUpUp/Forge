@@ -169,8 +169,8 @@ const CLAUDE_TOOL: Record<string, string> = {
 // same gates as Write (the spec matcher is "Write|Edit"); read-before-edit is
 // wired here so opencode gets the same shift-left blind-edit block Claude has.
 const PRE_HOOKS: Record<string, string[]> = {
-  Write: ["forge hook task-guard", "forge hook assertion-check", "forge hook read-before-edit"],
-  Edit: ["forge hook task-guard", "forge hook assertion-check", "forge hook read-before-edit"],
+  Write: ["forge hook freeze-guard", "forge hook task-guard", "forge hook assertion-check", "forge hook read-before-edit"],
+  Edit: ["forge hook freeze-guard", "forge hook task-guard", "forge hook assertion-check", "forge hook read-before-edit"],
   Bash: ["forge hook bash-guard", "forge hook hazard-guard"],
 };
 const POST_HOOKS: Record<string, string[]> = {

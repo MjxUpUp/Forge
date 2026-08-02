@@ -18,3 +18,37 @@ persistent decision history：每条决策记 (诊断, 修订, 脱敏证据, 结
 ### Evidence
 
 grep 章节标题确认正文仅 步骤 1：研究备选方案 … 步骤 5：建立索引 共 5 步
+
+## [d-18c7e4c4ecfb234c-5d3dc403] accept
+
+- **Skill**: architecture-decision-record
+- **DecidedAt**: 2026-08-02T05:08:31Z
+
+### Diagnosis
+
+审计判决'保留'带微改进建议：'何时创建'判断与 domain-modeling 的 ADR 三条件语义重叠两处维护（domain-modeling 版本更精确）；步骤 2 决策矩阵示例玩具化；system-architecture §2.5 ADR 模板与本 skill 模板双头分叉需单源化
+
+### Revision
+
+'何时创建'改指针对齐 domain-modeling 三条件（只留一处定义）；删玩具决策矩阵示例改真实约束对比；步骤 3 明确声明 templates/adr-template.md 是全库唯一 ADR 模板（system-architecture §2.5 已删模板改指针，已确认库内无第二套模板）
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md 逐项审计
+
+## [d-18c7e622e1372754-128a18eb] accept
+
+- **Skill**: architecture-decision-record
+- **DecidedAt**: 2026-08-02T05:33:34Z
+
+### Diagnosis
+
+项10 description 审计+触发回归
+
+### Revision
+
+description 审计合格未改动 + 新建 evals.json 10 条
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md

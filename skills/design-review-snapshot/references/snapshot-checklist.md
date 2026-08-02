@@ -42,10 +42,10 @@
 ### 代价
 HTML 体积膨胀 3-10 倍（每个元素带完整 style）。所以必须配合 2.2 去重 + 2.3 分块。
 
-### 脚本见 [snapshot-script.ts](snapshot-script.ts) 的 `inlineComputedStyles` 函数。
+### 脚本见 [snapshot-script.md](snapshot-script.md) 的 `inlineComputedStyles` 函数。
 
 ### 属性白名单（控制膨胀）
-全保留所有 CSS 属性会让 HTML 巨大且 Pixso 解析慢。只保留视觉相关属性（snapshot-script.ts 里的 `VISUAL_PROPS`）：
+全保留所有 CSS 属性会让 HTML 巨大且 Pixso 解析慢。只保留视觉相关属性（snapshot-script.md 里的 `VISUAL_PROPS`）：
 - 布局：display/position/flex/grid/margin/padding/width/height
 - 视觉：background/color/border/border-radius/box-shadow/opacity
 - 文字：font-*/line-height/letter-spacing/text-*

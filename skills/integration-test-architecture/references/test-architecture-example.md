@@ -77,6 +77,15 @@ func NewServer(cfg ServerConfig) *Server {
 - 原因: `r.RemoteAddr` = "127.0.0.1:54321"，端口每次不同
 - 修复: `net.SplitHostPort(r.RemoteAddr)` 取 IP
 
+```go
+ip, _, err := net.SplitHostPort(r.RemoteAddr)
+if err != nil {
+    ip = r.RemoteAddr // fallback for Unix sockets
+}
+```
+
+注意：`httptest.NewRequest` 用手工构造的固定 `RemoteAddr`，这个 bug 在单测里测不出来，必须真实连接。
+
 ### 坑 2: 测试共享限流预算
 - 症状: 前 20 个测试通过，后面的全部 429
 - 原因: 修好 key bug 后，32 个测试共享 100/min 限额
@@ -91,3 +100,8 @@ func NewServer(cfg ServerConfig) *Server {
 - 症状: 本地通过 CI 失败
 - 原因: 本地 DLL 在项目根目录，CI 在子目录
 - 修复: 用 `runtime.GOOS` + `os.Executable()` 计算相对路径
+
+### 坑 5: 子进程 stderr 被缓冲丢日志
+- 症状: Go server 子进程崩了但看不到任何日志
+- 原因: 子进程 stderr 被缓冲
+- 修复: `cmd.Stderr = os.Stderr`，或用 `cmd.CombinedOutput()` 收集输出

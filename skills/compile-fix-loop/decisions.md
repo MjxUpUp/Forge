@@ -36,3 +36,37 @@ dogfood-findings-2026-07-09(testing×17 全低分, 质量 skill 0 显式触发) 
 ### Evidence
 
 项目 AGENTS.md Forge 质量协议节明确写 auto-compile hook 仅 advisory 提醒；internal/checklog 确认 auto-compile hook 存在
+
+## [d-18c7e5a66d218f70-0047e5f2] accept
+
+- **Skill**: compile-fix-loop
+- **DecidedAt**: 2026-08-02T05:24:40Z
+
+### Diagnosis
+
+skills 库价值审计 13 项改进落地
+
+### Revision
+
+SKIP 方向修正(测试失败→systematic-debugging)；补构建失败/测试运行失败分界句
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md 逐项价值审计
+
+## [d-18c7e622b4e9bbd0-adf43b27] accept
+
+- **Skill**: compile-fix-loop
+- **DecidedAt**: 2026-08-02T05:33:34Z
+
+### Diagnosis
+
+项10 description 审计+触发回归
+
+### Revision
+
+description 审计合格未改动 + 新建 evals.json 10 条
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md

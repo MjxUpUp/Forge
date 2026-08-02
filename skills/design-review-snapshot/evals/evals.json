@@ -1,0 +1,14 @@
+{
+  "trigger_cases": [
+    { "query": "把现有前端项目导成设计图给设计看", "should_trigger": true },
+    { "query": "想把这个 SPA 反向导入 Pixso 审核", "should_trigger": true },
+    { "query": "做个设计评审快照让设计批注", "should_trigger": true },
+    { "query": "怎么把现在的界面变成 Pixso 设计稿", "should_trigger": true },
+    { "query": "Tauri 应用的界面能导出成设计图吗", "should_trigger": true },
+    { "query": "把 Figma 设计稿转成代码", "should_trigger": false },
+    { "query": "审查下 AI 生成的前端代码能不能上生产", "should_trigger": false },
+    { "query": "从零建 design token 体系", "should_trigger": false },
+    { "query": "前端项目选型用什么框架", "should_trigger": false },
+    { "query": "帮我写个新的落地页", "should_trigger": false }
+  ]
+}

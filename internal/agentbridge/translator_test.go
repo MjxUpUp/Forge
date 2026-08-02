@@ -492,6 +492,7 @@ func TestWindsurfWiringMirrorsClaudeSettings(t *testing.T) {
 	for _, cmds := range windsurf {
 		for cmd := range cmds {
 			if strings.Contains(cmd, "forge hook task-guard") ||
+				strings.Contains(cmd, "forge hook freeze-guard") ||
 				strings.Contains(cmd, "forge hook assertion-check") ||
 				strings.Contains(cmd, "forge hook read-before-edit") ||
 				strings.Contains(cmd, "forge hook bash-guard") ||

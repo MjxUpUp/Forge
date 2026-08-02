@@ -27,16 +27,16 @@ phase-*.md 是「好设计产物该有什么」的标准清单（IEEE 830 / Goog
 
 先识别在写什么，Read 对应 phase-*.md（含分维度 checklist + 确定性机械规则 + 大厂规范映射）。
 
-**路径锚点**：phase-*.md 在 `code-review-gate/references/` 下。下表链接是相对本 skill 的 `../code-review-gate/references/`（同 host 同装时可达）。若按相对路径 Read 失败（agent 以 cwd 为基解析 `..` 可能断），用绝对路径：部署态 `<skills 根>/code-review-gate/references/phase-<name>.md`（Claude Code：`~/.claude/skills/code-review-gate/references/...`），开发态 `skills/code-review-gate/references/phase-<name>.md`（仓库根起）。
+**路径锚点**：phase-*.md 在 `code-review-gate/references/` 下。下表链接是相对本 skill 的 `../code-review-gate/references/`（同 host 同装、且 agent 按「相对 SKILL.md 目录」解析时可达——2026-08 实测见「维护注记」）。若按相对路径 Read 失败（主流宿主 Read 以 cwd 为基解析，裸 `../` 会断），用绝对路径：部署态 `<skills 根>/code-review-gate/references/phase-<name>.md`（Claude Code：`~/.claude/skills/code-review-gate/references/...`），开发态 `skills/code-review-gate/references/phase-<name>.md`（仓库根起）。
 
-| 你在写 | 环节 | 读这个标准 | 核心维度 |
-|---|---|---|---|
-| PRD / 需求文档 / user story | requirement | [phase-requirement.md](../code-review-gate/references/phase-requirement.md) | 完整 / 可测 / 无歧义 |
-| API 契约 / OpenAPI / proto / 接口定义 | api | [phase-api.md](../code-review-gate/references/phase-api.md) | 一致 / 版本 / 兼容 / 契约 |
-| 数据库设计 / 建表 / migration / schema | database | [phase-database.md](../code-review-gate/references/phase-database.md) | 范式 / 索引 / 迁移可逆 |
-| 前端设计 / 页面 / 组件 / 路由 / 状态 | frontend | [phase-frontend.md](../code-review-gate/references/phase-frontend.md) | 组件 / 状态 / a11y / 性能 |
-| 后端设计 / service / domain / 业务逻辑 | backend | [phase-backend.md](../code-review-gate/references/phase-backend.md) | 分层 / 领域 / 状态 / 事务 |
-| 测试方案 / 测试用例 / 测试计划 | test-design | [phase-test-design.md](../code-review-gate/references/phase-test-design.md) | 覆盖 / 边界 / 等级 / 独立 |
+| 你在写 | 环节 | 读这个标准 |
+|---|---|---|
+| PRD / 需求文档 / user story | requirement | [phase-requirement.md](../code-review-gate/references/phase-requirement.md) |
+| API 契约 / OpenAPI / proto / 接口定义 | api | [phase-api.md](../code-review-gate/references/phase-api.md) |
+| 数据库设计 / 建表 / migration / schema | database | [phase-database.md](../code-review-gate/references/phase-database.md) |
+| 前端设计 / 页面 / 组件 / 路由 / 状态 | frontend | [phase-frontend.md](../code-review-gate/references/phase-frontend.md) |
+| 后端设计 / service / domain / 业务逻辑 | backend | [phase-backend.md](../code-review-gate/references/phase-backend.md) |
+| 测试方案 / 测试用例 / 测试计划 | test-design | [phase-test-design.md](../code-review-gate/references/phase-test-design.md) |
 
 > 6 个环节枚举与 `taskpipeline` 的 `allDesignPhases`（`internal/taskpipeline/phase_detect.go`）一致。编写期你按意图选环节；审查期 task-verify 的 `inferDesignPhases` 按**文件路径模式**推断环节（如 PRD 需放 `docs/prd/`、API 需路径含 `openapi/api/proto`）——产物按约定路径落盘时两期环节集合一致，路径不匹配时审查期会回退通用清单（编写期自查的有效性不受影响）。
 
@@ -79,7 +79,7 @@ phase-*.md 是「好设计产物该有什么」的标准清单（IEEE 830 / Goog
 
 - **跨 skill 引用首例**：本 skill 是 canonical 内首个跨 skill 相对引用（`../code-review-gate/references/`）的 skill，其余 skill 均引用自身 `references/`。失效条件：`code-review-gate` 改名、phase-*.md 改路径/改名、或单装本 skill 不装 code-review-gate 时，下表 6 个链接断链。
 - **同步要求**：phase-*.md 的路径 / 文件名变更时，本 skill 路由表 6 个链接 + `requires` 字段需同步更新；反之本 skill 重命名时 `code-review-gate/SKILL.md` 无反向依赖（consumer 不依赖 producer 的存在）。
-- **agent Read 解析未实测**：跨 skill `..` 的 agent Read 行为（cwd 基 vs SKILL.md 目录基）未跨项目实测，已用「路径锚点」段的绝对路径兜底；若实测发现 `..` 普遍断链，应改为在 SKILL.md 内联各 phase 核心条目（牺牲单一真相源换可达性）。
+- **agent Read 解析实测（2026-08，Kimi 宿主）**：Read 工具以 cwd 为基解析相对路径——裸 `../code-review-gate/references/phase-requirement.md` 断链（解析到仓库根之外被拒绝）；以 SKILL.md 目录为基拼接（`skills/design-artifact-standards/../code-review-gate/references/phase-requirement.md`）后 `..` 正常归一化、可读。结论：保留下表 `..` 链接（约定按「相对 SKILL.md 目录」解析）+「路径锚点」绝对路径兜底，**不改内联**（守住单一真相源）。其他宿主未逐一实测，断链时一律走绝对路径兜底。
 
 ## 参考
 

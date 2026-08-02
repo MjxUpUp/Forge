@@ -11,9 +11,9 @@ metadata:
 
 **驱动外部工具（curl/jq/docker/gh/CLI）验证产物真的工作**，而非依赖单元测试通过就声称完成。
 
-**核心原则：单元测试通过 ≠ 产物能用。涉及 HTTP/CLI/集成链路的变更，必须驱动真实工具做端到端验证。**
+**核心原则：单元测试通过 ≠ 验证完成。** 规则唯一真相源：test-discipline「铁律 2：单元测试通过 ≠ 验证完成」，此处不复制；本 skill 管落地——涉及 HTTP/CLI/集成链路的变更，必须驱动真实工具做端到端验证。
 
-**"应该能用"不是验证。运行命令、看到输出、断言状态，才是验证。**
+**"应该能用"不是验证。运行命令、看到输出、程序化断言状态，才是验证。**
 
 ## When to Use
 
@@ -101,7 +101,7 @@ docker exec db psql -U app -c "SELECT count(*) FROM users WHERE email='test@x.co
 ## Gotchas（高信号）
 
 - **"编译通过/单测通过"≠ 能用**：HTTP 服务单测全绿但实际端口没监听、CORS 没配、认证中间件顺序错——只有端到端 curl 能抓到
-- **mock 是最大陷阱**：httptest.NewRequest 固定 RemoteAddr 测不出限流 bug（test-discipline 已证），端到端必须真实连接
+- **mock 是最大陷阱**：案例唯一真相源：integration-test-architecture `references/test-architecture-example.md`「坑 1/坑 2」，此处不复制——结论：端到端必须真实连接，mock/httptest 固定 RemoteAddr 测不出 TCP 层 bug
 - **断言要判定不要肉眼看**：`echo $RESP` 看一眼 ≠ 验证，必须 `[ ... ]` 或 `jq -e` 让脚本判定 pass/fail
 - **边界 case 比主路径更值钱**：主路径对了边界错的产物，上线才暴雷。重复/空值/超时/权限必测
 - **验证失败回 systematic-debugging**：验证脚本是"证人"不是"嫌疑人"，验证失败说明产物有 bug，去查代码根因，别改验证脚本迁就

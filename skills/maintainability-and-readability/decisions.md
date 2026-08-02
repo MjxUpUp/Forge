@@ -40,3 +40,20 @@ auto-build 替换为 go build/vet 真实编译命令；提交前必跑删除 val
 ### Evidence
 
 grep internal/cli 确认 Use 列表无 auto-build；SKILL.md 全文标题枚举确认 §2.1–2.7 共 7 节、§4 仅 4.1–4.4
+
+## [d-18c7e668e66ee0f4-de478784] accept
+
+- **Skill**: maintainability-and-readability
+- **DecidedAt**: 2026-08-02T05:38:35Z
+
+### Diagnosis
+
+审计判决: 全库「正确的废话」浓度最高，教科书内容对强模型零增量
+
+### Revision
+
+§2.7 双语注释规范迁入 code-review-gate references/review-checklist.md，其余废弃，整个 skill 目录删除；routes.json 等全库引用清零
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md 工程素养批详评
