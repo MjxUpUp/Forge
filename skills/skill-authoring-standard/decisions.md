@@ -69,3 +69,20 @@ description SKIP 边界补全 + evals.json 建立
 ### Evidence
 
 docs/skills-value-audit-2026-08-02.md
+
+## [d-18c7e7627f24fa00-9595f2b6] accept
+
+- **Skill**: skill-authoring-standard
+- **DecidedAt**: 2026-08-02T05:56:27Z
+
+### Diagnosis
+
+提交前审查发现 validation-rules.md 出生即过时: 标题 R1-R11、缺本提交新增的 R13-R17，与 SKILL.md 两处指针文案矛盾
+
+### Revision
+
+补 R13-R17 五条定义(硬: R13/R14; advisory: R15/R16/R17)、标题改 R1-R17、注明 R12-R17 为 forge 本地扩展
+
+### Evidence
+
+task-complete 前 code-review-gate 子 agent 审查 (fix 级发现)

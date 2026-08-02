@@ -1,7 +1,7 @@
-# R1-R11 校验规则文本定义
+# R1-R17 校验规则文本定义
 
 `forge skills validate` 的规范校验规则（exit code：0=全部通过，2=存在规范失败）。
-**真相源是代码**：`internal/skillsqa/registry.go`（`AuditSkill`，1:1 对齐 SkillsHub registry.py）。
+**真相源是代码**：`internal/skillsqa/registry.go`（`AuditSkill`；R1-R11 对齐 SkillsHub registry.py，R12-R17 为 forge 本地扩展）。
 本文件是文本镜像，两边漂移时以代码为准；改规则先改代码再同步本文件。
 
 ## 硬规则（违反 = issue，validate exit 2）
@@ -18,6 +18,8 @@
 | R8 | SKILL.md ≤500 行（超了拆 references） |
 | R9 | 正文须含高信号内容，命中任一关键词即过：`decision tree` / `决策树` / `post-generation` / `自查` / `review` / `gotcha` / `易错` / `checklist` / `检查清单` / `red flag` / `rationaliz` / `红旗` / `借口` |
 | R11（硬部分） | `references/` 平铺 ≤1 层——文件直接放 references/ 下，不允许子目录 |
+| R13 | SKILL.md 正文（不含 frontmatter）≤500 行（2026-08 新增；R8 对齐 Python 计全文行，R13 显式化正文口径，body >500 时两者同报） |
+| R14 | frontmatter 必填 `name` 与 `description`（2026-08 新增；description ≤1024 字符上限由 R4 覆盖不重复报） |
 
 ## Advisory（不阻断 Pass，但应修）
 
@@ -27,6 +29,9 @@
 | R10（CSO） | description 不应总结 body 工作流——命中工作流总结词（`完整工作流` / `完整流程` / `全流程` / `完整协议` / `完整编排` / `全链路` / `全工序`）报 advisory。否则模型照 description 行动、跳过 SKILL.md 正文 |
 | R11（软部分） | >100 行的 markdown reference 建议带 ToC（认 `## 目录` / `## Contents` / `## Table of Contents`） |
 | R12 | `metadata.triggers` 声明校验（实验字段，不写合法；写了则校验）：合法 JSON；`event` ∈ `UserPromptSubmit` / `PreToolUse` / `PostToolUse` / `Stop` / `SessionStart`；`keywords` 或 `when` 至少一；`when` ∈ `source_changed_uncommitted` / `test_command_failed` / `coding_intent` / `task_active_no_review`；`match` 仅对 PreToolUse/PostToolUse 有意义 |
+| R15 | 正文 ALL-CAPS 命令式词（`ALWAYS`/`NEVER`/`MUST`，整词、仅全大写计）合计 >5 次：提醒改「指令+原因」写法（2026-08 新增） |
+| R16 | `references/` 下 >300 行文件需 ToC（2026-08 新增；markdown 由 R11 以 >100 行更低门槛先行覆盖，不重复报，实际增量是非 markdown 参考文件） |
+| R17 | `evals/evals.json` 存在时校验 schema：对象含 `trigger_cases` 数组，每项 `{query: string, should_trigger: boolean}`（2026-08 新增；文件不存在则跳过） |
 
 ## 配套
 
