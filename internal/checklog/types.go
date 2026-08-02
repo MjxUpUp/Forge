@@ -1,6 +1,9 @@
 package checklog
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // CheckName identifies a specific hook check.
 //
@@ -129,6 +132,89 @@ func SourceForCheck(c CheckName) EvidenceSource {
 	return EvidenceDeterministic
 }
 
+// Level classifies a checklog entry's severity in one structured field, so
+// consumers (dashboard/trace/review) no longer parse the Detail prose prefixes
+// (BLOCKED: / ADVISORY:) to tell a hard block from a soft signal. The text
+// prefixes stay — task-verify's hook greps -F 'ADVISORY:' as a cross-process
+// contract — Level is additive metadata, not a replacement.
+//
+// Level 用一个结构化字段标注 checklog 条目的级别，消费方
+// （dashboard/trace/review）不必再解析 Detail 散文前缀（BLOCKED: / ADVISORY:）
+// 来区分硬阻断与软信号。文本前缀保留——task-verify 的 hook 用 grep -F
+// 'ADVISORY:' 是跨进程契约——Level 是增量元数据，非替代。
+type Level string
+
+const (
+	// LevelPass: the check ran and passed.
+	//
+	// LevelPass：检查实跑且通过。
+	LevelPass Level = "pass"
+	// LevelFail: the check ran and failed (hard signal, gate-relevant).
+	//
+	// LevelFail：检查实跑且失败（硬信号，门禁相关）。
+	LevelFail Level = "fail"
+	// LevelWarn: a noteworthy but tolerated condition (e.g. escape-hatch usage,
+	// infrastructure degraded but fail-open).
+	//
+	// LevelWarn：值得注意但被容忍的状况（如逃生舱使用、基建降级但 fail-open）。
+	LevelWarn Level = "warn"
+	// LevelBlocked: a hard block (gate BLOCKED: verdict / hook blocked the tool call).
+	//
+	// LevelBlocked：硬阻断（gate 的 BLOCKED: 裁定 / hook 拦截了工具调用）。
+	LevelBlocked Level = "blocked"
+	// LevelAdvisory: a soft, non-blocking signal (gate ADVISORY: verdict).
+	//
+	// LevelAdvisory：软性不阻塞信号（gate 的 ADVISORY: 裁定）。
+	LevelAdvisory Level = "advisory"
+)
+
+// Detail prefixes mirrored from taskpipeline/gate_message.go (blockedPrefix /
+// advisoryPrefix). Duplicated as literals because checklog is a leaf package —
+// importing taskpipeline would create a cycle (taskpipeline imports checklog).
+// The derivation is a best-effort fallback for entries whose caller left Level
+// empty; explicit Level always wins.
+const (
+	blockedDetailPrefix  = "BLOCKED: "
+	advisoryDetailPrefix = "ADVISORY: "
+)
+
+// DeriveLevel infers the Level of an entry from Passed + Detail prefixes when
+// the caller did not set one explicitly. Mirrors the Source fallback pattern
+// (SourceForCheck): legacy recording points and old archived lines (written
+// before the field existed) still classify correctly with no per-site retrofit.
+//
+// DeriveLevel 在调用方未显式设置时，从 Passed + Detail 前缀推导条目的 Level。
+// 与 Source 兜底模式（SourceForCheck）同款：历史记录点与旧归档行（字段引入前
+// 写入）无需逐点改造也能正确分级。显式 Level 恒优先。
+func DeriveLevel(e *Entry) Level {
+	if e == nil {
+		return ""
+	}
+	if strings.HasPrefix(e.Detail, blockedDetailPrefix) {
+		return LevelBlocked
+	}
+	if strings.HasPrefix(e.Detail, advisoryDetailPrefix) {
+		return LevelAdvisory
+	}
+	if e.Passed {
+		return LevelPass
+	}
+	return LevelFail
+}
+
+// EffectiveLevel returns the entry's Level, deriving it from Passed + Detail
+// when the field is empty (old archived lines have no level — history is not
+// rewritten; the fallback is applied at read time).
+//
+// EffectiveLevel 返回条目的 Level；字段为空时（旧归档行无 level——不改写
+// 历史，读取时兜底）从 Passed + Detail 推导。
+func (e *Entry) EffectiveLevel() Level {
+	if e.Level != "" {
+		return e.Level
+	}
+	return DeriveLevel(e)
+}
+
 // Entry records the result of a single hook execution.
 //
 // Entry 记录一次 hook 执行的结果。
@@ -140,6 +226,14 @@ type Entry struct {
 	TaskRef   string    `json:"task_ref,omitempty"`   // 该 check 所属的 task
 	SessionID string    `json:"session_id,omitempty"` // Claude Code session——隔离并发 session
 	Detail    string    `json:"detail"`               // 人类可读的摘要
+	// Level is the structured severity (pass/fail/warn/blocked/advisory). If left
+	// empty at Record time, DeriveLevel fills it from Passed + Detail prefixes;
+	// readers use EffectiveLevel for the same fallback on old lines.
+	//
+	// Level 是结构化级别（pass/fail/warn/blocked/advisory）。Record 时若留空，
+	// 由 DeriveLevel 从 Passed + Detail 前缀兜底推导；读取侧用 EffectiveLevel
+	// 对旧行做同样的兜底。
+	Level Level `json:"level,omitempty"`
 	// Source marks the evidence source (deterministic vs agent-claim). If left empty at Record time,
 	// SourceForCheck is used as fallback, so historical record sites need no per-site retrofit to enter evidence-chain bucketing.
 	//

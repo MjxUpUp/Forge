@@ -1,11 +1,13 @@
 package hooks
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Script-level tests for the bash-guard → file-sentinel pair: the embedded
@@ -575,5 +577,150 @@ func TestWorkflowTestGuardHook_ToolFaultSkips(t *testing.T) {
 	}
 	if strings.Contains(WorkflowTestGuardHook, "module github.com/MjxUpUp/Forge") {
 		t.Error("WorkflowTestGuardHook must not restrict to the forge repo — guard is opt-in via internal/ci presence")
+	}
+}
+
+// --- forge self-deploy exemption (weekly-hardening 改动 2) ---
+// The 2026-08-02 self-injury incident: a monitored non-forge Bash command fired
+// the hook chain while a forge subprocess's autoSync rewrote project-level
+// .forge/hooks/*.sh; the .cfg manifest saw the drift with IS_FORGE_CMD=0 and the
+// whole directory was quarantined. The Go side now writes a
+// <DataDir>/stamps/hook-deploy marker ("<epoch> <tag>") before rewriting hooks;
+// the CONFIG branch exempts hooks-only drift inside the 120s grace window.
+
+// setupHooksDeployRepo builds a repo with a gitignored .forge/hooks/task-guard.sh
+// — the layout of team-mode / legacy projects whose project-level hook copies the
+// sentinel manifest watches.
+func setupHooksDeployRepo(t *testing.T) (dir, hooksFile string) {
+	t.Helper()
+	dir = sentinelRepo(t)
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(".forge/\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	hooksDir := filepath.Join(dir, ".forge", "hooks")
+	if err := os.MkdirAll(hooksDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	hooksFile = filepath.Join(hooksDir, "task-guard.sh")
+	if err := os.WriteFile(hooksFile, []byte("#!/bin/bash\necho v1\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	sentinelCommit(t, dir)
+	return dir, hooksFile
+}
+
+// writeDeployStamp writes a <dataDir>/stamps/hook-deploy marker with the given
+// epoch and tag (mirrors hooks.WriteHookDeployStamp's format).
+func writeDeployStamp(t *testing.T, dataDir string, epoch int64, tag string) {
+	t.Helper()
+	stampsDir := filepath.Join(dataDir, "stamps")
+	if err := os.MkdirAll(stampsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	content := fmt.Sprintf("%d %s\n", epoch, tag)
+	if err := os.WriteFile(filepath.Join(stampsDir, "hook-deploy"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// runHooksDrift drives one bash-guard snapshot + a .forge/hooks rewrite + one
+// file-sentinel run, returning the sentinel output and error.
+func runHooksDrift(t *testing.T, dir, hooksFile, sid string, env []string) (string, error) {
+	t.Helper()
+	if out, err := runSentinelScript(t, BashGuardHook, dir, append(env, "FORGE_COMMAND=cat > .forge/hooks/task-guard.sh")); err != nil {
+		t.Fatalf("bash-guard failed: %v\n%s", err, out)
+	}
+	// Forge's own deploy write (autoSync / init team-mode rewriting the copies).
+	if err := os.WriteFile(hooksFile, []byte("#!/bin/bash\necho v2\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	return runSentinelScript(t, FileSentinelHook, dir, env)
+}
+
+// TestSentinelScripts_HooksDeployMarkerExempts: a FRESH deploy marker +
+// hooks-only drift → PASS without quarantine (forge self-deploy).
+func TestSentinelScripts_HooksDeployMarkerExempts(t *testing.T) {
+	dir, hooksFile := setupHooksDeployRepo(t)
+	const sid = "sess-deploy-fresh"
+	tmp := t.TempDir()
+	qdir := t.TempDir()
+	dataDir := t.TempDir()
+	writeDeployStamp(t, dataDir, time.Now().Unix(), "tag-abc")
+
+	env := append(sentinelEnv(t, sid, tmp, qdir), "FORGE_DATA_DIR="+dataDir)
+	out, err := runHooksDrift(t, dir, hooksFile, sid, env)
+	if err != nil {
+		t.Fatalf("file-sentinel must PASS within the deploy grace window, got FAIL:\n%s", out)
+	}
+	if !strings.Contains(out, "deploy window") {
+		t.Errorf("output must identify the deploy-window exemption, got:\n%s", out)
+	}
+	if _, statErr := os.Stat(hooksFile); statErr != nil {
+		t.Errorf("deployed hook file must stay in place (no quarantine): %v", statErr)
+	}
+	if entries, _ := filepath.Glob(filepath.Join(qdir, sid, ".forge", "hooks", "*")); len(entries) != 0 {
+		t.Errorf("nothing may be quarantined inside the deploy window, found %v", entries)
+	}
+}
+
+// TestSentinelScripts_HooksDeployMarkerStaleQuarantines: an EXPIRED marker
+// (older than the 120s window) must NOT exempt — the drift is quarantined as
+// before. Also covers the no-marker case (second half).
+func TestSentinelScripts_HooksDeployMarkerStaleQuarantines(t *testing.T) {
+	dir, hooksFile := setupHooksDeployRepo(t)
+	const sid = "sess-deploy-stale"
+	tmp := t.TempDir()
+	qdir := t.TempDir()
+	dataDir := t.TempDir()
+	writeDeployStamp(t, dataDir, time.Now().Unix()-600, "tag-abc")
+
+	env := append(sentinelEnv(t, sid, tmp, qdir), "FORGE_DATA_DIR="+dataDir)
+	out, err := runHooksDrift(t, dir, hooksFile, sid, env)
+	if err == nil {
+		t.Fatalf("file-sentinel must FAIL on hooks drift with an expired deploy marker, got PASS:\n%s", out)
+	}
+	if _, qerr := os.Stat(filepath.Join(qdir, sid, ".forge", "hooks", "task-guard.sh")); qerr != nil {
+		t.Errorf("task-guard.sh must be quarantined when the marker is stale: %v\noutput:\n%s", qerr, out)
+	}
+
+	// No marker at all → same strict behavior.
+	const sid2 = "sess-deploy-none"
+	tmp2 := t.TempDir()
+	dataDir2 := t.TempDir()
+	env2 := append(sentinelEnv(t, sid2, tmp2, qdir), "FORGE_DATA_DIR="+dataDir2)
+	out, err = runHooksDrift(t, dir, hooksFile, sid2, env2)
+	if err == nil {
+		t.Fatalf("file-sentinel must FAIL on hooks drift without a deploy marker, got PASS:\n%s", out)
+	}
+	if _, qerr := os.Stat(filepath.Join(qdir, sid2, ".forge", "hooks", "task-guard.sh")); qerr != nil {
+		t.Errorf("task-guard.sh must be quarantined without a marker: %v\noutput:\n%s", qerr, out)
+	}
+}
+
+// TestSentinelScripts_HooksDeployTagMismatchQuarantines: a fresh marker whose
+// project tag does not match FORGE_PROJECT_TAG must NOT exempt (cross-project
+// anti-forgery check). A matching tag exempts.
+func TestSentinelScripts_HooksDeployTagMismatchQuarantines(t *testing.T) {
+	dir, hooksFile := setupHooksDeployRepo(t)
+	qdir := t.TempDir()
+
+	const sid = "sess-deploy-tagbad"
+	tmp := t.TempDir()
+	dataDir := t.TempDir()
+	writeDeployStamp(t, dataDir, time.Now().Unix(), "tag-abc")
+	env := append(sentinelEnv(t, sid, tmp, qdir),
+		"FORGE_DATA_DIR="+dataDir, "FORGE_PROJECT_TAG=tag-other")
+	out, err := runHooksDrift(t, dir, hooksFile, sid, env)
+	if err == nil {
+		t.Fatalf("file-sentinel must FAIL on tag-mismatched deploy marker, got PASS:\n%s", out)
+	}
+
+	const sid2 = "sess-deploy-tagok"
+	tmp2 := t.TempDir()
+	env2 := append(sentinelEnv(t, sid2, tmp2, qdir),
+		"FORGE_DATA_DIR="+dataDir, "FORGE_PROJECT_TAG=tag-abc")
+	out, err = runHooksDrift(t, dir, hooksFile, sid2, env2)
+	if err != nil {
+		t.Fatalf("file-sentinel must PASS on tag-matched fresh deploy marker, got FAIL:\n%s", out)
 	}
 }

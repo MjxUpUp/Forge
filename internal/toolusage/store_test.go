@@ -375,3 +375,40 @@ func TestRecordAndClear_ConcurrentNoDeadlock(t *testing.T) {
 		t.Fatalf("LoadAll after concurrent Record/Clear: %v", err)
 	}
 }
+
+// TestToollogHasData pins the stat-based telemetry probe: false when toollog.jsonl is
+// missing (loadFromPath would return nil,nil here, indistinguishable from empty), false
+// when the file exists but is zero bytes, true once any entry is recorded. The
+// work-activity gate relies on this to tell 'hook dispatch not wired' apart from
+// 'dispatch works but zero calls'.
+//
+// TestToollogHasData 钉住基于 stat 的遥测探测：toollog.jsonl 缺失时 false
+// （loadFromPath 在此返回 nil,nil，与空文件不可区分）、文件存在但零字节时 false、
+// 记入任一条目后 true。work-activity 门禁靠它区分「hook 分发未接」与「分发正常但零调用」。
+func TestToollogHasData(t *testing.T) {
+	dir := t.TempDir()
+	if ToollogHasData(dir) {
+		t.Fatal("toollog.jsonl 不存在时应为 false")
+	}
+
+	// Zero-byte file — exists but no telemetry payload.
+	//
+	// 零字节文件——存在但无遥测内容。
+	empty := t.TempDir()
+	if err := os.MkdirAll(dataDir(empty), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir(empty), toollogFile), nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if ToollogHasData(empty) {
+		t.Fatal("toollog.jsonl 零字节时应为 false")
+	}
+
+	if err := Record(dir, &ToolCall{ToolName: "Read", TaskRef: "t"}); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	if !ToollogHasData(dir) {
+		t.Fatal("记入条目后应为 true")
+	}
+}
