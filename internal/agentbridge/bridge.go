@@ -13,6 +13,7 @@ func AllTranslators() []Translator {
 		&OpencodeTranslator{},
 		&ClineTranslator{},
 		&KimiTranslator{},
+		&CodeBuddyTranslator{},
 	}
 }
 
