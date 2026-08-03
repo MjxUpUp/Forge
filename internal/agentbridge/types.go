@@ -24,6 +24,7 @@ const (
 	AgentCline      AgentType = "cline"
 	AgentKimi       AgentType = "kimi"
 	AgentCodeBuddy  AgentType = "codebuddy"
+	AgentReasonix   AgentType = "reasonix"
 )
 
 // Translator converts Forge config into the native format of a specific agent.

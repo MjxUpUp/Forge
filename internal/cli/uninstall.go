@@ -164,6 +164,24 @@ var uninstallCmd = &cobra.Command{
 			}
 		}
 
+		// 2e'. remove the user-level reasonix forge-quality skill
+		// (~/.reasonix/skills/forge-quality/, respecting REASONIX_HOME) — written by
+		// the reasonix translator; symmetric uninstall.
+		//
+		// 2e'. 删除 reasonix 用户级 forge-quality skill
+		// （~/.reasonix/skills/forge-quality/，尊重 REASONIX_HOME）——由 reasonix
+		// translator 写入；对称卸载。
+		if rHome, err := agentbridge.ReasonixConfigHome(); err == nil {
+			rSkillDir := filepath.Join(rHome, `skills`, `forge-quality`)
+			if _, statErr := os.Stat(rSkillDir); statErr == nil {
+				if err := os.RemoveAll(rSkillDir); err != nil {
+					fmt.Fprintf(os.Stderr, `警告：删除 reasonix 用户级 forge-quality skill 失败：%v`+"\n", err)
+				} else {
+					fmt.Println(`已删除 reasonix 用户级 forge-quality skill`)
+				}
+			}
+		}
+
 		// 2f. --restore: roll every user-level file forge touched back to its pre-forge
 		//     bytes (backup+append contract; backups at ~/.forge/backups/).
 		//

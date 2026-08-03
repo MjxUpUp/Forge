@@ -14,6 +14,7 @@ func AllTranslators() []Translator {
 		&ClineTranslator{},
 		&KimiTranslator{},
 		&CodeBuddyTranslator{},
+		&ReasonixTranslator{},
 	}
 }
 
