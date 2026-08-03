@@ -89,11 +89,24 @@ func adoptPayloadCwd(cwd string) bool {
 	}
 	wd, err := os.Getwd()
 	if err == nil {
-		// Same dir → nothing to do. Compare cleaned absolute paths; on Windows also
-		// fold case (E:\Forge vs e:\forge) to avoid a pointless chdir.
+		// Same dir → nothing to do. Compare by inode identity (os.SameFile) first,
+		// which is symlink-robust: on macOS os.TempDir/Getwd straddle the
+		// /var → /private/var symlink, so the physical path os.Getwd returns
+		// (/private/var/...) never string-equals the unresolved form the payload cwd
+		// carries (/var/...) — a string-only compare mis-detects "different" and chdirs
+		// every call, breaking the no-op contract (v0.27.2 projectroot, same class).
+		// The cleaned-path fallback below still covers Windows case folding
+		// (E:\Forge vs e:\forge).
 		//
-		// 同目录 → 无事可做。比较 Clean 后的绝对路径；Windows 再折叠大小写
-		// （E:\Forge vs e:\forge），避免无谓的 chdir。
+		// 同目录 → 无事可做。先按 inode 同一性比较（os.SameFile），symlink 鲁棒：
+		// macOS 上 os.TempDir/Getwd 横跨 /var → /private/var 符号链接，os.Getwd 返回
+		// 的物理路径（/private/var/...）永不等 payload cwd 携带的未解析形式
+		// （/var/...）——纯字符串比较会误判"不同"导致每次都 chdir，no-op 契约破裂
+		// （v0.27.2 projectroot 同类）。下方 Clean 路径回落仍覆盖 Windows 大小写
+		// 折叠（E:\Forge vs e:\forge）。
+		if cur, e := os.Stat(wd); e == nil && os.SameFile(cur, info) {
+			return false
+		}
 		a, _ := filepath.Abs(wd)
 		b, _ := filepath.Abs(cwd)
 		if runtime.GOOS == "windows" {
@@ -120,7 +133,7 @@ type HookInput struct {
 	ToolName      string          `json:"tool_name"`
 	ToolInput     json.RawMessage `json:"tool_input"`
 	ToolOutput    json.RawMessage `json:"tool_response,omitempty"` // Claude Code PostToolUse 实际字段名是 tool_response（非 tool_output）；skill-trigger 是首个消费其内容的 hook
-	Prompt        string          `json:"prompt,omitempty"` // UserPromptSubmit 顶层 prompt（skill-trigger coding_intent condition 用）
+	Prompt        string          `json:"prompt,omitempty"`        // UserPromptSubmit 顶层 prompt（skill-trigger coding_intent condition 用）
 }
 
 // toolInputFields holds the fields extracted from the tool_input JSON.
