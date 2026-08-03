@@ -139,3 +139,38 @@ func TestMigrateProjectProtocol_UnverifiableCopyKeepsProjectFile(t *testing.T) {
 		t.Errorf("DataDir 副本未验证时项目文件必须保留: %v", err)
 	}
 }
+
+// TestStripProjectLevelForgeAssets_Reasonix pins the reasonix cleanup boundary:
+// the forge-written .reasonix/skills/forge-quality/ skill is stripped (and the
+// now-empty .reasonix/skills/ removed), while .reasonix/ itself — the agent's
+// session data — is never touched.
+//
+// TestStripProjectLevelForgeAssets_Reasonix 钉死 reasonix 清理边界：forge 写入的
+// .reasonix/skills/forge-quality/ skill 被剥除（空掉的 .reasonix/skills/ 一并删），
+// 而 .reasonix/ 本身——agent 的会话数据——绝不被碰。
+func TestStripProjectLevelForgeAssets_Reasonix(t *testing.T) {
+	dir := t.TempDir()
+	skillDir := filepath.Join(dir, ".reasonix", "skills", "forge-quality")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("# forge-quality"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	sessionData := filepath.Join(dir, ".reasonix", "desktop-topic-titles.json")
+	if err := os.WriteFile(sessionData, []byte(`{"k":"v"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	stripProjectLevelForgeAssets(dir)
+
+	if _, err := os.Stat(skillDir); !os.IsNotExist(err) {
+		t.Errorf("forge-written reasonix skill 应被剥除，实得 stat err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".reasonix", "skills")); !os.IsNotExist(err) {
+		t.Errorf("空掉的 .reasonix/skills 应被移除，实得 stat err=%v", err)
+	}
+	if _, err := os.Stat(sessionData); err != nil {
+		t.Errorf(".reasonix/ 会话数据必须保留: %v", err)
+	}
+}

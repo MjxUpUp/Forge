@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/protocol"
 )
 
 // TestClaudeMDCommonErrorsIncludesTestCoverage guards the common-errors table
@@ -378,5 +380,47 @@ func TestGenerateClaudeMDAtomicWriteNoResidue(t *testing.T) {
 		if strings.Contains(e.Name(), ".tmp") {
 			t.Errorf("atomic write residue left behind: %s", e.Name())
 		}
+	}
+}
+
+// TestGenerateUserQualitySkillTo pins the shared user-level skill writer used by
+// both GenerateUserQualitySkill (~/.claude/skills) and the reasonix translator
+// (~/.reasonix/skills): content is the conditional-activation form, and a missing
+// agent home is a no-op (self-poison guard — Forge never creates an agent's config
+// home itself).
+//
+// TestGenerateUserQualitySkillTo 钉住共享的用户级 skill 写入器（GenerateUserQualitySkill
+// 与 reasonix translator 共用）：内容为条件激活形态；agent home 缺失时 no-op
+// （自毒防护——Forge 绝不自行创建 agent 的配置 home）。
+func TestGenerateUserQualitySkillTo(t *testing.T) {
+	// Home exists → skill written with conditional-activation content.
+	//
+	// home 存在 → skill 写入，内容为条件激活形态。
+	home := t.TempDir()
+	skillsRoot := filepath.Join(home, "skills")
+	if err := GenerateUserQualitySkillTo(skillsRoot, protocol.DefaultProtocol()); err != nil {
+		t.Fatalf("GenerateUserQualitySkillTo: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(skillsRoot, "forge-quality", "SKILL.md"))
+	if err != nil {
+		t.Fatalf("read SKILL.md: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "仅当当前项目已执行过 `forge init`") {
+		t.Errorf("user-level skill 必须是条件激活措辞")
+	}
+	if strings.Contains(content, "## 当前项目信息") {
+		t.Errorf("user-level skill 必须移除项目信息章节")
+	}
+
+	// Missing home → clean no-op, nothing created.
+	//
+	// home 缺失 → 干净 no-op，不创建任何东西。
+	missing := filepath.Join(t.TempDir(), "no-such-home")
+	if err := GenerateUserQualitySkillTo(filepath.Join(missing, "skills"), protocol.DefaultProtocol()); err != nil {
+		t.Fatalf("GenerateUserQualitySkillTo (missing home): %v", err)
+	}
+	if _, err := os.Stat(missing); !os.IsNotExist(err) {
+		t.Errorf("缺失的 agent home 不得被创建（自毒防护），stat err=%v", err)
 	}
 }
