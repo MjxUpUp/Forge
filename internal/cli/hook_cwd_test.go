@@ -154,3 +154,45 @@ func TestRunHook_AdoptsPayloadCwd(t *testing.T) {
 		t.Errorf("toollog 应含 tool_name=Read 条目, got: %s", data)
 	}
 }
+
+// TestAdoptPayloadCwd_SymlinkNoop is the cross-platform pin for the macOS
+// /var → /private/var case: chdir into a symlink, os.Getwd resolves to the physical
+// target, but the payload cwd may still carry the symlink form. adoptPayloadCwd must
+// treat them as the same dir (os.SameFile) — a string-only compare chdirs every call.
+// Skipped where symlinks cannot be created (Windows without dev mode / admin).
+//
+// TestAdoptPayloadCwd_SymlinkNoop 是 macOS /var → /private/var 场景的跨平台钉子：
+// chdir 进符号链接后 os.Getwd 解析到物理目标，而 payload cwd 可能仍携带符号链接形式。
+// adoptPayloadCwd 必须按同一目录处理（os.SameFile）——纯字符串比较会每次都 chdir。
+// 无法创建符号链接时跳过（Windows 未开发者模式/管理员）。
+func TestAdoptPayloadCwd_SymlinkNoop(t *testing.T) {
+	realDir := t.TempDir()
+	link := filepath.Join(t.TempDir(), `forgelink`)
+	if err := os.Symlink(realDir, link); err != nil {
+		t.Skipf(`symlink unsupported on this host, skipping: %v`, err)
+	}
+	originalWd, _ := os.Getwd()
+	defer os.Chdir(originalWd)
+	if err := os.Chdir(link); err != nil {
+		t.Skipf(`chdir into symlink failed: %v`, err)
+	}
+	// Precondition: this test only matters where Getwd resolves the symlink to the physical
+	// target. On a host whose getcwd doesn't resolve symlinks, wd == link and a string
+	// compare would already pass — SameFile's robustness wouldn't be exercised, so skip to
+	// keep the assertion semantically honest.
+	//
+	// 前置条件：本测试仅在 Getwd 把符号链接解析到物理目标时有意义。在 getcwd 不解析
+	// 符号链接的宿主上，wd == link，纯字符串比较就已通过——SameFile 的鲁棒性根本没被
+	// 验证到，故跳过以保持断言语义诚实。
+	if wd, _ := os.Getwd(); wd == link {
+		t.Skipf(`Getwd 未解析 symlink（wd==link），本平台无此 bug，跳过`)
+	}
+	// Getwd resolves link to realDir (physical); payload cwd carries the symlink form.
+	// SameFile must match → no-op (false). A string compare returns true (the bug).
+	//
+	// Getwd 把 link 解析成 realDir（物理）；payload cwd 携带符号链接形式。
+	// SameFile 必命中 → 无操作（false）。字符串比较返回 true（bug）。
+	if adoptPayloadCwd(link) {
+		t.Errorf(`payload cwd（符号链接形式 %s）与 Getwd（解析后物理 %s）应判同目录（SameFile），返回 false`, link, realDir)
+	}
+}
