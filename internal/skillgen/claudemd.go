@@ -427,10 +427,30 @@ func GenerateUserQualitySkill(proto *protocol.Protocol) error {
 	if home == "" {
 		return fmt.Errorf("cannot resolve Claude config home (CLAUDE_CONFIG_DIR unset, user home unavailable)")
 	}
-	if !dirExists(home) {
-		return nil // Claude Code not installed — do not create its config home (detection self-poison)
+	return GenerateUserQualitySkillTo(filepath.Join(home, "skills"), proto)
+}
+
+// GenerateUserQualitySkillTo writes the forge-quality skill under the given
+// skills root (e.g. ~/.claude/skills or ~/.reasonix/skills) — the shared
+// user-level skill writer used by GenerateUserQualitySkill and the reasonix
+// translator. Same conditional-activation content, same self-poison guard: a
+// missing agent home (the parent of skillsRoot) is a no-op, so Forge never
+// creates an agent's config home itself.
+//
+// GenerateUserQualitySkillTo 把 forge-quality skill 写到给定 skills root
+// （如 ~/.claude/skills 或 ~/.reasonix/skills）——GenerateUserQualitySkill 与
+// reasonix translator 共享的用户级 skill 写入器。同样的条件激活内容与自毒
+// 防护：agent home（skillsRoot 的父目录）不存在时 no-op，Forge 绝不自行创建
+// agent 的配置 home。
+func GenerateUserQualitySkillTo(skillsRoot string, proto *protocol.Protocol) error {
+	home := filepath.Dir(skillsRoot)
+	if home == "" || home == "." {
+		return fmt.Errorf("cannot resolve agent config home from skills root %q", skillsRoot)
 	}
-	skillDir := filepath.Join(home, "skills", "forge-quality")
+	if !dirExists(home) {
+		return nil // agent not installed — do not create its config home (detection self-poison)
+	}
+	skillDir := filepath.Join(skillsRoot, "forge-quality")
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
 		return fmt.Errorf("failed to create user-level quality skill dir: %w", err)
 	}

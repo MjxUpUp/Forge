@@ -79,6 +79,25 @@ func DetectAgents(projectDir string) []AgentType {
 	if dirExists(filepath.Join(projectDir, ".kimi-code")) {
 		add(AgentKimi)
 	}
+	// reasonix is detected via the project-level .reasonix/ dir only — the same
+	// philosophy as kimi: reasonix's user-level home (~/.reasonix) exists whenever
+	// reasonix is installed, so using it as an auto-detect signal would wire
+	// reasonix on EVERY `forge init` (and break test hermeticity on any machine
+	// with reasonix installed). A project dir that has run reasonix at least once
+	// carries .reasonix/ — that's the "the user develops this project with
+	// reasonix" signal. Users on a fresh project pass `--agents reasonix` explicitly;
+	// the wiring is user-level and idempotent, so one explicit init covers all
+	// projects.
+	//
+	// reasonix 只按项目级 .reasonix/ 目录检测——与 kimi 同一哲学：reasonix 的用户级
+	// home（~/.reasonix）装上 reasonix 后恒存在，拿它做 auto 检测信号会让每次
+	// `forge init` 都接 reasonix（并破坏任何装有 reasonix 机器上的测试密封性）。
+	// 项目目录跑过至少一次 reasonix 即有 .reasonix/——那才是"用户用 reasonix 开发
+	// 此项目"的信号。新项目用户显式传 `--agents reasonix`；接线是 user-level 且
+	// 幂等，显式 init 一次即覆盖所有项目。
+	if dirExists(filepath.Join(projectDir, ".reasonix")) {
+		add(AgentReasonix)
+	}
 
 	// User-level install indicators: the agent's config home exists iff the tool is
 	// installed. User-level wiring is idempotent + machine-wide — wiring a detected
@@ -177,7 +196,7 @@ func ParseAgentFlag(projectDir string, flag string) []AgentType {
 			continue
 		}
 		switch AgentType(name) {
-		case AgentClaudeCode, AgentCursor, AgentCopilot, AgentWindsurf, AgentCodex, AgentOpencode, AgentCline, AgentKimi, AgentCodeBuddy:
+		case AgentClaudeCode, AgentCursor, AgentCopilot, AgentWindsurf, AgentCodex, AgentOpencode, AgentCline, AgentKimi, AgentCodeBuddy, AgentReasonix:
 			agents = append(agents, AgentType(name))
 		}
 	}
