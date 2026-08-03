@@ -159,6 +159,49 @@ func TestUninstall_RemovesUserLevelQualitySkill(t *testing.T) {
 	}
 }
 
+// TestUninstall_RemovesReasonixQualitySkill pins the symmetric reasonix uninstall:
+// the user-level ~/.reasonix/skills/forge-quality/ (written by the reasonix
+// translator) must be removed on uninstall, respecting REASONIX_HOME.
+//
+// TestUninstall_RemovesReasonixQualitySkill 钉死对称的 reasonix 卸载：用户级
+// ~/.reasonix/skills/forge-quality/（由 reasonix translator 写入）必须在卸载时
+// 删除，且尊重 REASONIX_HOME。
+func TestUninstall_RemovesReasonixQualitySkill(t *testing.T) {
+	t.Setenv(`FORGE_UNINSTALL_SKIP_NPM`, `1`)
+	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
+	t.Setenv(`KIMI_CODE_HOME`, t.TempDir())
+	t.Setenv(`CODEX_HOME`, t.TempDir())
+	t.Setenv(`XDG_CONFIG_HOME`, t.TempDir())
+	t.Setenv(`CLAUDE_CONFIG_DIR`, t.TempDir())
+	home := t.TempDir()
+	t.Setenv(`HOME`, home)
+	t.Setenv(`USERPROFILE`, home)
+	reasonixHome := t.TempDir()
+	t.Setenv(`REASONIX_HOME`, reasonixHome)
+
+	skillDir := filepath.Join(reasonixHome, `skills`, `forge-quality`)
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, `SKILL.md`), []byte(`# forge-quality`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, _, err := captureOutput(t, func() error {
+		return uninstallCmd.RunE(uninstallCmd, nil)
+	})
+	if err != nil {
+		t.Fatalf(`uninstall RunE: %v`, err)
+	}
+
+	if _, err := os.Stat(skillDir); !os.IsNotExist(err) {
+		t.Errorf(`reasonix 用户级 forge-quality skill 应被删除，实得 stat err=%v`, err)
+	}
+	if !strings.Contains(stdout, `已删除 reasonix 用户级 forge-quality skill`) {
+		t.Errorf(`缺少 reasonix skill 删除提示，stdout：\n%s`, stdout)
+	}
+}
+
 // TestUninstall_GuidanceNoStaleReset pins the guidance text: it must not reference
 // the removed `forge init --reset` command, and must point at --restore for rollback.
 //
