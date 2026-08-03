@@ -139,14 +139,6 @@ func stripProjectLevelForgeAssets(dir string) {
 	os.Remove(filepath.Join(dir, ".opencode", "forge.README.md"))
 	removeDirIfEmpty(filepath.Join(dir, ".opencode", "plugins"))
 	removeDirIfEmpty(filepath.Join(dir, ".opencode"))
-
-	// reasonix: strip the forge-written skill only — .reasonix/ itself holds the
-	// agent's session data and is never removed (same boundary as .github).
-	//
-	// reasonix：只剥 forge 写入的 skill——.reasonix/ 本身存放 agent 的会话数据，
-	// 绝不删除（与 .github 同边界）。
-	os.RemoveAll(filepath.Join(dir, ".reasonix", "skills", "forge-quality"))
-	removeDirIfEmpty(filepath.Join(dir, ".reasonix", "skills"))
 }
 
 // migrateProjectProtocol moves a project-level .forge/protocol.yml into the DataDir
