@@ -274,10 +274,23 @@ func (t *CodeBuddyTranslator) Translate(projectDir string, input *TranslationInp
 // printCodeBuddyManualSetup 在 codebuddy 二进制无法自动定位时，打印用户需手动跑的两条
 // CLI 命令及 marketplace 目录。输出到 stdout，让用户在 forge init 流程里看到。
 func printCodeBuddyManualSetup(dir string) {
-	fmt.Printf("CodeBuddy/WorkBuddy: forge plugin assets written to:\n  %s\n", dir)
-	fmt.Printf("Register manually (codebuddy CLI not auto-located):\n")
-	fmt.Printf("  codebuddy plugin marketplace add %q --name %s\n", dir, codebuddyMarketplaceName)
-	fmt.Printf("  codebuddy plugin install %s@%s --scope user\n", codebuddyPluginName, codebuddyMarketplaceName)
+	q := string([]rune{0x22}) // ASCII double-quote via rune — dodges [[windows-input-quote-corruption]]
+	fmt.Println(`CodeBuddy/WorkBuddy: forge plugin assets written to:`)
+	fmt.Println(`  ` + dir)
+	wbHome, err := codebuddyWorkBuddyHome()
+	if err != nil {
+		wbHome = `<WorkBuddy home>`
+	}
+	fmt.Println(`Register manually (codebuddy CLI not auto-located).`)
+	fmt.Println(`IMPORTANT: set CODEBUDDY_CONFIG_DIR so the CLI writes to the WorkBuddy app home`)
+	fmt.Println(`(` + wbHome + `), NOT the CLI default ~/.codebuddy — otherwise the app never loads it.`)
+	fmt.Println(`  bash:`)
+	fmt.Println(`    CODEBUDDY_CONFIG_DIR=` + q + wbHome + q + ` codebuddy plugin marketplace add ` + q + dir + q + ` --name ` + codebuddyMarketplaceName)
+	fmt.Println(`    CODEBUDDY_CONFIG_DIR=` + q + wbHome + q + ` codebuddy plugin install ` + codebuddyPluginName + `@` + codebuddyMarketplaceName + ` --scope user`)
+	fmt.Println(`  Windows cmd:`)
+	fmt.Println(`    set CODEBUDDY_CONFIG_DIR=` + wbHome)
+	fmt.Println(`    codebuddy plugin marketplace add ` + q + dir + q + ` --name ` + codebuddyMarketplaceName)
+	fmt.Println(`    codebuddy plugin install ` + codebuddyPluginName + `@` + codebuddyMarketplaceName + ` --scope user`)
 }
 
 // registerCodeBuddyPlugin runs `codebuddy plugin marketplace add` + `plugin install --scope user`
@@ -295,17 +308,66 @@ func registerCodeBuddyPlugin(run codebuddyRun, dir string) error {
 	if err != nil {
 		abs = dir
 	}
+	wbHome, err := codebuddyWorkBuddyHome()
+	if err != nil {
+		return fmt.Errorf(`codebuddy: resolve WorkBuddy config home: %w`, err)
+	}
 	add := run.Command(`plugin`, `marketplace`, `add`, abs, `--name`, codebuddyMarketplaceName)
+	add.Env = withCodeBuddyConfigDir(os.Environ(), wbHome)
 	if out, err := add.CombinedOutput(); err != nil {
-		return fmt.Errorf("codebuddy: plugin marketplace add failed: %w: %s", err, strings.TrimSpace(string(out)))
+		return fmt.Errorf(`codebuddy: plugin marketplace add failed: %w: %s`, err, strings.TrimSpace(string(out)))
 	}
-	install := run.Command("plugin", "install",
-		codebuddyPluginName+"@"+codebuddyMarketplaceName, "--scope", "user")
+	install := run.Command(`plugin`, `install`,
+		codebuddyPluginName+`@`+codebuddyMarketplaceName, `--scope`, `user`)
+	install.Env = withCodeBuddyConfigDir(os.Environ(), wbHome)
 	if out, err := install.CombinedOutput(); err != nil {
-		return fmt.Errorf("codebuddy: plugin install failed: %w: %s", err, strings.TrimSpace(string(out)))
+		return fmt.Errorf(`codebuddy: plugin install failed: %w: %s`, err, strings.TrimSpace(string(out)))
 	}
-	fmt.Printf("CodeBuddy/WorkBuddy: forge plugin installed (forge@%s, user scope).\n", codebuddyMarketplaceName)
+	fmt.Println(`CodeBuddy/WorkBuddy: forge plugin installed (forge@` + codebuddyMarketplaceName + `, user scope).`)
 	return nil
+}
+
+// codebuddyWorkBuddyHome returns the config directory the WorkBuddy desktop app reads plugins
+// from. The app's own workbuddySettingsPath resolves to WORKBUDDY_CONFIG_DIR || ~/.workbuddy;
+// forge mirrors that so the CLI is pointed at whichever home the app actually uses. This is
+// the fix for config separation: the codebuddy CLI binary defaults its write-home to
+// ~/.codebuddy (CODEBUDDY_CONFIG_DIR unset), while the app reads ~/.workbuddy — without
+// redirecting the CLI, registration lands in ~/.codebuddy and the app never loads it (verified
+// end-to-end: stdout reports success yet ~/.workbuddy is untouched).
+//
+// codebuddyWorkBuddyHome 返回 WorkBuddy 桌面 app 读取 plugin 的 config 目录。app 自己的
+// workbuddySettingsPath 解析为 WORKBUDDY_CONFIG_DIR || ~/.workbuddy；forge 照此镜像，把 CLI 指向
+// app 实际使用的 home。这是配置分离的修复：codebuddy CLI 二进制的写入 home 默认是
+// ~/.codebuddy（CODEBUDDY_CONFIG_DIR 未设），而 app 读 ~/.workbuddy——不重定向 CLI，注册会落进
+// ~/.codebuddy，app 从不加载（端到端验证：stdout 报成功但 ~/.workbuddy 纹丝不动）。
+func codebuddyWorkBuddyHome() (string, error) {
+	if v := strings.TrimSpace(os.Getenv(`WORKBUDDY_CONFIG_DIR`)); v != "" {
+		return v, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, `.workbuddy`), nil
+}
+
+// withCodeBuddyConfigDir returns env with CODEBUDDY_CONFIG_DIR set to dir, replacing any
+// existing value. Duplicate env keys' last-one-wins behavior is platform-dependent, so the
+// existing entry is stripped first to make the override deterministic.
+//
+// withCodeBuddyConfigDir 返回设了 CODEBUDDY_CONFIG_DIR=dir 的 env，替换已有值。重复 env 键的
+// last-one-wins 行为平台依赖，故先剔除已有项让覆盖确定。
+func withCodeBuddyConfigDir(env []string, dir string) []string {
+	const key = `CODEBUDDY_CONFIG_DIR`
+	out := make([]string, 0, len(env)+1)
+	for _, kv := range env {
+		// Exact-key strip via Cut so a sibling like CODEBUDDY_CONFIG_DIR_BACKUP survives.
+		if k, _, ok := strings.Cut(kv, `=`); ok && k == key {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return append(out, key+`=`+dir)
 }
 
 // codebuddyRun describes how to invoke the codebuddy CLI. WorkBuddy ships the CLI as a bare
@@ -328,6 +390,15 @@ type codebuddyRun struct {
 // Command 为 codebuddy 子命令构造 exec.Cmd。argv[0] 是解释器/可执行文件；argv[1:]
 // （node 解释时的脚本路径）位于子命令参数之前。
 func (r codebuddyRun) Command(args ...string) *exec.Cmd {
+	if len(r.argv) == 0 {
+		// Defensive: a zero-value codebuddyRun means FindCodeBuddyCLI's error wasn't checked.
+		// exec.Command("") yields a Cmd whose Start fails clearly rather than panicking on
+		// r.argv[0]; the caller surfaces it as a registration error.
+		//
+		// 防御：零值 codebuddyRun 意味着 FindCodeBuddyCLI 的错误没被检查。exec.Command("") 产出
+		// 的 Cmd 其 Start 会明确失败，而非在 r.argv[0] 上 panic；调用方将其报为注册错误。
+		return exec.Command(``, args...)
+	}
 	full := make([]string, 0, len(r.argv)+len(args))
 	full = append(full, r.argv[1:]...)
 	full = append(full, args...)
@@ -414,7 +485,10 @@ func FindCodeBuddyCLI() (codebuddyRun, error) {
 func codebuddyCLIInstallCandidates() []string {
 	rel := filepath.Join("resources", "app.asar.unpacked", "cli", "bin", "codebuddy")
 	var cands []string
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
 	if runtime.GOOS == "windows" {
 		for _, base := range []string{
 			filepath.Join(home, `AppData`, `Local`, `Programs`, `WorkBuddy`),

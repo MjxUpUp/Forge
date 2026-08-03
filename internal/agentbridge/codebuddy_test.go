@@ -296,3 +296,121 @@ func TestIsWindowsExecutable(t *testing.T) {
 		}
 	}
 }
+
+// TestCodeBuddyWorkBuddyHome: WORKBUDDY_CONFIG_DIR wins when set (incl. over whitespace);
+// otherwise the home defaults to ~/.workbuddy (the app's read location). This is the config-
+// separation fix — without it the CLI writes ~/.codebuddy and the app never loads the plugin.
+//
+// TestCodeBuddyWorkBuddyHome：设了 WORKBUDDY_CONFIG_DIR 就胜出（含覆盖纯空白）；否则 home 默认
+// ~/.workbuddy（app 读取处）。这是配置分离修复——没它 CLI 写 ~/.codebuddy，app 从不加载 plugin。
+func TestCodeBuddyWorkBuddyHome(t *testing.T) {
+	t.Setenv(`WORKBUDDY_CONFIG_DIR`, `/custom/wb`)
+	got, err := codebuddyWorkBuddyHome()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != `/custom/wb` {
+		t.Errorf(`WORKBUDDY_CONFIG_DIR set: got %q, want /custom/wb`, got)
+	}
+	// whitespace-only = unset → default.
+	t.Setenv(`WORKBUDDY_CONFIG_DIR`, `   `)
+	got, err = codebuddyWorkBuddyHome()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(got, `.workbuddy`) {
+		t.Errorf(`default home should end in .workbuddy, got %q`, got)
+	}
+}
+
+// TestWithCodeBuddyConfigDir: the override replaces any existing CODEBUDDY_CONFIG_DIR (no
+// duplicate), appends the new value, and leaves other env entries in place.
+//
+// TestWithCodeBuddyConfigDir：覆盖替换任何已有 CODEBUDDY_CONFIG_DIR（无重复），追加新值，其余 env
+// 原位保留。
+func TestWithCodeBuddyConfigDir(t *testing.T) {
+	got := withCodeBuddyConfigDir(
+		[]string{`PATH=/usr/bin`, `CODEBUDDY_CONFIG_DIR=/old`, `CODEBUDDY_CONFIG_DIR_BACKUP=/keep`, `HOME=/root`},
+		`/new`)
+	last := got[len(got)-1]
+	if last != `CODEBUDDY_CONFIG_DIR=/new` {
+		t.Errorf(`override should be appended last, got %q`, last)
+	}
+	joined := strings.Join(got, "\n")
+	if !strings.Contains(joined, `CODEBUDDY_CONFIG_DIR_BACKUP=/keep`) {
+		t.Errorf(`sibling key CODEBUDDY_CONFIG_DIR_BACKUP must survive exact-key strip, got %s`, joined)
+	}
+	if strings.Contains(joined, `CODEBUDDY_CONFIG_DIR=/old`) {
+		t.Errorf(`old CODEBUDDY_CONFIG_DIR must be replaced, got %s`, joined)
+	}
+	exact := 0
+	for _, kv := range got {
+		if k, _, ok := strings.Cut(kv, `=`); ok && k == `CODEBUDDY_CONFIG_DIR` {
+			exact++
+		}
+	}
+	if exact != 1 {
+		t.Errorf(`expected exactly 1 exact CODEBUDDY_CONFIG_DIR key, got %d (%v)`, exact, got)
+	}
+}
+
+// TestCodeBuddyTranslator_Translate: Translate must write all on-disk assets and return no
+// error regardless of whether the CLI is found. FORGE_DATA_HOME isolates the pack location;
+// WORKBUDDY_CONFIG_DIR isolates where the CLI writes (so a CLI-present run does NOT pollute the
+// real ~/.workbuddy). On a CLI-present host the plugin must register into that isolated home.
+//
+// TestCodeBuddyTranslator_Translate：无论 CLI 是否找到，Translate 必须写全部盘上资产且不报错。
+// FORGE_DATA_HOME 隔离 pack 位置；WORKBUDDY_CONFIG_DIR 隔离 CLI 写入处（故 CLI 在的机器不污染真实
+// ~/.workbuddy）。CLI 在时 plugin 必须注册进该隔离 home。
+func TestCodeBuddyTranslator_Translate(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv(`FORGE_DATA_HOME`, tmp)
+	t.Setenv(`WORKBUDDY_CONFIG_DIR`, tmp)
+	if err := (&CodeBuddyTranslator{}).Translate(``, nil); err != nil {
+		t.Fatalf(`Translate returned error: %v`, err)
+	}
+	dir := filepath.Join(tmp, `agents`, `codebuddy`, codebuddyMarketplaceName)
+	for _, rel := range []string{
+		filepath.Join(`.codebuddy-plugin`, `marketplace.json`),
+		filepath.Join(`plugins`, codebuddyPluginName, `.codebuddy-plugin`, `plugin.json`),
+		filepath.Join(`plugins`, codebuddyPluginName, `hooks`, `hooks.json`),
+	} {
+		if _, err := os.Stat(filepath.Join(dir, rel)); err != nil {
+			t.Errorf(`asset missing after Translate: %s (%v)`, rel, err)
+		}
+	}
+	// If the CLI was found, registration must land in the isolated home (proving the config-dir
+	// redirect works end-to-end). CLI-absent hosts skip this assertion.
+	if data, err := os.ReadFile(filepath.Join(tmp, `plugins`, `known_marketplaces.json`)); err == nil {
+		if !strings.Contains(string(data), codebuddyMarketplaceName) {
+			t.Errorf(`CLI present but %s not registered in isolated home: %s`, codebuddyMarketplaceName, data)
+		}
+	}
+}
+
+// TestGenerateCodeBuddyPluginPack_EmptyDir: empty dir is rejected (guard against silent
+// writes to cwd).
+//
+// TestGenerateCodeBuddyPluginPack_EmptyDir：空 dir 被拒（防静默写进 cwd）。
+func TestGenerateCodeBuddyPluginPack_EmptyDir(t *testing.T) {
+	if err := GenerateCodeBuddyPluginPack(``, ``); err == nil {
+		t.Fatal(`GenerateCodeBuddyPluginPack("") should error on empty dir`)
+	}
+}
+
+// TestCodeBuddyRun_Command_EmptyArgv: a zero-value codebuddyRun must not panic — it yields a
+// Cmd whose Start fails clearly (defensive guard for an unchecked FindCodeBuddyCLI error).
+//
+// TestCodeBuddyRun_Command_EmptyArgv：零值 codebuddyRun 不得 panic——产出 Start 会明确失败的 Cmd
+// （FindCodeBuddyCLI 错误未检查的防御守卫）。
+func TestCodeBuddyRun_Command_EmptyArgv(t *testing.T) {
+	r := codebuddyRun{}
+	cmd := r.Command(`plugin`, `list`)
+	if cmd == nil {
+		t.Fatal(`empty argv: Command returned nil`)
+	}
+	if err := cmd.Start(); err == nil {
+		_ = cmd.Process.Kill()
+		t.Errorf(`empty argv: expected Start to fail, got nil`)
+	}
+}
