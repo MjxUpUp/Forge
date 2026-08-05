@@ -53,3 +53,21 @@ description 审计合格未改动 + 新建 evals.json 10 条
 ### Evidence
 
 docs/skills-value-audit-2026-08-02.md
+
+## [d-9a3f1c02d4e8b670-2f5a8e1c] accept
+
+- **Skill**: verification-driver
+- **DecidedAt**: 2026-08-05T10:20:00Z
+- **By**: claude-code
+
+### Diagnosis
+
+metadata.triggers 的 `task_active_no_review` 是语义错配：该 condition 判定的是 `!state.ReviewPassed`（code-review-gate 的审查通过标记，见 conditions.go condTaskActiveNoReview），而 code-review-gate 本身被 skilltrigger.DeniedSkills 排除（由 review-stop hook 专属驱动）——故该 condition 实际无合法消费者。本 skill 是端到端验证（curl/docker/CLI 实测），绑这个 code-review 语义的 condition 造成两类伤害：主 agent 按 code-review-gate 派子 agent 审查代码、等待结果时触发 Stop，Stop 命中该 condition 后注入「端到端验证」提醒——既把审查中的 `ReviewPassed=false` 误判成「没审查」（审查进行中悖论），又让正在做 code-review 的 agent 去做语义无关的 curl/docker。
+
+### Revision
+
+移除 metadata.triggers（原 `[{"event":"Stop","when":"task_active_no_review"}]`）。verification-driver 退化为靠路由/引用加载（与 test-discipline 等 advisory skill 一致）。task 模式的审查强制力已由 task-complete 门禁的 ReviewPassed 硬前置兜底，非 task 模式由 review-stop hook 兜底（task 模式该 hook 直接 PASS 放行），Stop 阶段无须再注入 skill。task_active_no_review condition 词汇本身保留（合法词汇，留待未来 code-review 类 skill 合法消费）。
+
+### Evidence
+
+conditions.go:153 condTaskActiveNoReview 判 !state.ReviewPassed；trigger.go:70 DeniedSkills 排除 code-review-gate；internal/cli/review.go:228-248 task 模式 review gate 实施 PASS 放行（脚本注释见 internal/hooks/embed.go:299）；用户 2026-08-05 报告 Stop 误触发（派审查子 agent 等待时被注入端到端验证提醒）。回归测试 skills/embed_test.go TestNoSKILLMDBindsTaskActiveNoReview 固化「SKILL.md 不绑该 condition」。
