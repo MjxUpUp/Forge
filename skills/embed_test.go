@@ -1,6 +1,7 @@
 package skills
 
 import (
+	"bytes"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -66,5 +67,43 @@ func TestExtractTo_NoGoFiles(t *testing.T) {
 	}
 	if len(leaked) > 0 {
 		t.Fatalf(".go files leaked into extract dir (test artifacts pollute cache): %v", leaked)
+	}
+}
+
+// TestNoSKILLMDBindsTaskActiveNoReview 守护:task_active_no_review condition 判定的是
+// !state.ReviewPassed（code-review 语义），而 code-review-gate 被 skilltrigger.DeniedSkills
+// 排除（由 review-stop hook 专属驱动）——该 condition 当前无合法消费者。任何 SKILL.md 绑定
+// 它都是语义错配：2026-08-05 verification-driver 曾错配致 Stop 误注入（主 agent 派审查子 agent
+// 等待结果时触发 Stop，被注入端到端验证提醒）。未来若解禁 code-review-gate 或新增合法消费者，
+// 同步改本测试并论证语义对口。
+//
+// Guards: no SKILL.md may bind task_active_no_review. The condition has no legitimate
+// consumer today (code-review-gate is denied, driven exclusively by the review-stop hook),
+// so binding it is a code-review→non-code-review category mismatch.
+func TestNoSKILLMDBindsTaskActiveNoReview(t *testing.T) {
+	const orphan = `task_active_no_review`
+	var hit []string
+	err := fs.WalkDir(FS, `.`, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || filepath.Base(path) != `SKILL.md` {
+			return nil
+		}
+		data, rerr := fs.ReadFile(FS, path)
+		if rerr != nil {
+			return rerr
+		}
+		if bytes.Contains(data, []byte(orphan)) {
+			hit = append(hit, path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf(`walk embed FS: %v`, err)
+	}
+	if len(hit) > 0 {
+		t.Fatalf(`task_active_no_review 是 code-review 语义 condition（判 !state.ReviewPassed），
+code-review-gate 被 DeniedSkills 排除后无合法消费者。以下 SKILL.md 错配绑定了它：%v`, hit)
 	}
 }

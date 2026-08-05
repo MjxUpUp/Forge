@@ -4,7 +4,6 @@ description: "驱动外部工具对产物做端到端验证（API 实测、CLI �
 metadata:
   pattern: pipeline + reviewer
   domain: testing
-  triggers: [{"event":"Stop","when":"task_active_no_review"}]
 ---
 
 # Verification Driver — 产物端到端验证驱动
