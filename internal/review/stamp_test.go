@@ -228,6 +228,113 @@ func TestEvaluate_NewDiffReTriggers(t *testing.T) {
 	}
 }
 
+// TestEvaluate_CrossBranchSameHashPasses scope-portability: a diff reviewed & stamped on one branch
+// must still pass on another branch when the content (hence diff hash) is identical — the fast-forward
+// merge + checkout case (block 4 in the 2026-08-06 cooking session). Before the fix the stamp was
+// branch-scoped, so master re-blocked byte-identical already-reviewed code: a false positive. Safe
+// because identical content shares a hash; differing content has a differing hash and still needs review.
+//
+// TestEvaluate_CrossBranchSameHashPasses scope 可移植性：在一个分支审查并打过戳的 diff，切到另一
+// 分支内容（因而 diff hash）一致时仍应放行——ff-merge + checkout 场景（2026-08-06 cooking 会话的
+// 拦截4）。修复前戳按分支存，master 会重新 block 字节级一致的已审代码：假阳性。安全是因为内容
+// 一致则 hash 一致；内容不同则 hash 不同，仍需审。
+func TestEvaluate_CrossBranchSameHashPasses(t *testing.T) {
+	dir := initGitRepo(t)
+	defaultBranch := currentGitBranch(t, dir)
+	write(t, dir, "a.go", "package a\n")
+
+	// Create a feature branch (same HEAD, a.go untracked) and mark the diff reviewed there.
+	//
+	// 建特性分支（同一 HEAD，a.go 仍 untracked）并在其上标记审查通过。
+	gitCheckout(t, dir, "checkout", "-b", "feat/x")
+	if err := MarkPassed(dir); err != nil {
+		t.Fatalf("MarkPassed: %v", err)
+	}
+
+	// Switch back to the default branch (same HEAD, a.go still untracked → identical hash).
+	// No stamp exists for the default branch; the pass must come from feat/x's stamp.
+	//
+	// 切回默认分支（同一 HEAD，a.go 仍 untracked → 同一 hash）。默认分支无戳，
+	// 放行必须来自 feat/x 的戳。
+	gitCheckout(t, dir, "checkout", defaultBranch)
+	dec, reason, err := Evaluate(dir)
+	if err != nil {
+		t.Fatalf("Evaluate: %v", err)
+	}
+	if dec != DecisionPass {
+		t.Fatalf("跨分支同 hash 应 Pass（已在他分支审查），实际 %v（%s）——ff-merge 后误拦", dec, reason)
+	}
+}
+
+// TestEvaluate_CrossBranchDifferentHashStillNeedsReview guardrail: cross-branch portability must not
+// mask a genuinely different diff. A reviewed stamp exists for content X on feat/x, but the default
+// branch holds different content (hash Y) → still NeedReview (no false pass).
+//
+// TestEvaluate_CrossBranchDifferentHashStillNeedsReview 护栏：跨分支可移植不能掩盖真正不同的 diff。
+// feat/x 上有内容 X 的已审戳，但默认分支是不同内容（hash Y）→ 仍 NeedReview（不假放行）。
+func TestEvaluate_CrossBranchDifferentHashStillNeedsReview(t *testing.T) {
+	dir := initGitRepo(t)
+	defaultBranch := currentGitBranch(t, dir)
+	write(t, dir, "a.go", "package a\n")
+	gitCheckout(t, dir, "checkout", "-b", "feat/x")
+	if err := MarkPassed(dir); err != nil {
+		t.Fatalf("MarkPassed: %v", err)
+	}
+	gitCheckout(t, dir, "checkout", defaultBranch)
+	// Different content on the default branch → different hash, no reviewed stamp matches → NeedReview.
+	//
+	// 默认分支上内容不同 → hash 不同，无已审戳命中 → NeedReview。
+	write(t, dir, "a.go", "package a\nfunc F() {}\n")
+	dec, _, err := Evaluate(dir)
+	if err != nil {
+		t.Fatalf("Evaluate: %v", err)
+	}
+	if dec != DecisionNeedReview {
+		t.Fatalf("跨分支不同 hash 应 NeedReview，实际 %v——跨分支放行掩盖了新内容", dec)
+	}
+}
+
+// TestEvaluate_OwnBranchBlockingButCrossBranchReviewedRescues pins the subtle rescue: the own-branch
+// stamp exists for this hash but Reviewed=false (a prior Evaluate seeded BlockCount=1), AND a peer branch
+// reviewed the identical content. Evaluate must Pass via the cross-branch scan rather than increment the
+// own-branch block counter — the content has been reviewed, so the pending own-branch block is moot.
+//
+// TestEvaluate_OwnBranchBlockingButCrossBranchReviewedRescues 钉住微妙的 rescue：own 分支有该 hash 的
+// 戳但 Reviewed=false（之前 Evaluate 种了 BlockCount=1），且兄弟分支审过同一内容。Evaluate 必须
+// 经跨分支扫描放行，而不是累加 own 分支 block 计数——内容已审，own 分支的待 block 无意义。
+func TestEvaluate_OwnBranchBlockingButCrossBranchReviewedRescues(t *testing.T) {
+	dir := initGitRepo(t)
+	defaultBranch := currentGitBranch(t, dir)
+	write(t, dir, "a.go", "package a\n")
+
+	// Seed a non-reviewed stamp on the default branch (Evaluate blocks → writes BlockCount=1).
+	//
+	// 在默认分支种一个未审戳（Evaluate block → 写 BlockCount=1）。
+	if dec, _, _ := Evaluate(dir); dec != DecisionNeedReview {
+		t.Fatalf("首次应 NeedReview，实际 %v", dec)
+	}
+
+	// Peer branch, identical content → mark reviewed there.
+	//
+	// 兄弟分支，同一内容 → 在其上标记已审。
+	gitCheckout(t, dir, "checkout", "-b", "feat/x")
+	if err := MarkPassed(dir); err != nil {
+		t.Fatalf("MarkPassed: %v", err)
+	}
+
+	// Back on default: own-branch stamp is Reviewed=false for the SAME hash, but feat/x reviewed it.
+	//
+	// 切回默认分支：own 分支戳对该 hash 是 Reviewed=false，但 feat/x 已审过。
+	gitCheckout(t, dir, "checkout", defaultBranch)
+	dec, reason, err := Evaluate(dir)
+	if err != nil {
+		t.Fatalf("Evaluate: %v", err)
+	}
+	if dec != DecisionPass {
+		t.Fatalf("own 分支 Reviewed=false 但他分支已审同 hash 应 Pass（跨分支 rescue），实际 %v（%s）", dec, reason)
+	}
+}
+
 // TestEvaluate_MaxRoundsAdvisory fallback: when the agent never calls forge review pass,
 // the Stop hook repeatedly blocking the same diff will advisory-pass after MaxReviewRounds (prevents dead loop).
 //
@@ -321,6 +428,32 @@ func gitHeadShort(t *testing.T, dir string) string {
 	out, err := exec.Command("git", "-C", dir, "rev-parse", "--short", "HEAD").Output()
 	if err != nil {
 		t.Fatalf(`git rev-parse HEAD failed: %v`, err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// gitCheckout runs git checkout in the temp repo (helper for cross-branch tests; errors are fatal).
+//
+// gitCheckout 在临时仓库跑 git checkout（跨分支测试 helper；错误即 fatal）。
+func gitCheckout(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", dir, "-c", "commit.gpgsign=false"}, args...)...)
+	cmd.Env = gitEnv
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+// currentGitBranch returns the current branch name (default branch differs master/main by OS/git version,
+// so cross-branch tests resolve it instead of hard-coding).
+//
+// currentGitBranch 返回当前分支名（默认分支随 OS/git 版本是 master 或 main，
+// 故跨分支测试动态解析而非硬编码）。
+func currentGitBranch(t *testing.T, dir string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", dir, "rev-parse", "--abbrev-ref", "HEAD").Output()
+	if err != nil {
+		t.Fatalf(`git rev-parse --abbrev-ref HEAD failed: %v`, err)
 	}
 	return strings.TrimSpace(string(out))
 }

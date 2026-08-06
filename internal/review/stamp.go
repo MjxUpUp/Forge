@@ -96,6 +96,25 @@ func Evaluate(root string) (Decision, string, error) {
 		return DecisionPass, "当前 diff 已通过 code-review-gate", nil
 	}
 
+	// Same diff already reviewed on ANOTHER branch -> pass. A review pass is bound to the code
+	// snapshot (diff hash), not to the branch/mode scope the stamp lives under, so a legitimate
+	// zero-content transition that only changes the scope key — fast-forward merging a reviewed
+	// branch into master then checking out master (identical HEAD + worktree → identical hash) —
+	// must not re-block code that already passed review. Safe: a hash match means byte-identical
+	// source content; differing content differs in hash and still needs review below.
+	//
+	// 同一 diff 已在其他分支审过 → 放行。审查通过绑的是代码快照（diff hash），不是戳所在的
+	// branch/mode scope，故只改 scope key、内容不变的合法迁移——把已审分支 ff-merge 进 master
+	// 再 checkout master（同一 HEAD + 工作区 → 同一 hash）——不该重新 block 已审过的代码。
+	// 安全：hash 命中即源码字节一致；内容不同则 hash 不同，下面照常需审。
+	if other, ok := knownReviewed(root, hash); ok {
+		branch := other.Branch
+		if branch == "" {
+			branch = "其他分支"
+		}
+		return DecisionPass, fmt.Sprintf("当前 diff 已在分支 %s 通过 code-review-gate（内容一致，跨分支放行）", branch), nil
+	}
+
 	// Hit max rounds fallback pass (prevents Stop infinite loop)
 	//
 	// 撞 max rounds 兜底放行（防 Stop 死循环）
@@ -164,6 +183,38 @@ func loadStamp(root string) *Stamp {
 	return &s
 }
 
+// knownReviewed reports whether the given diff hash has been marked reviewed on ANY branch stamp
+// (not only the current branch). This makes a review pass portable across scope-only transitions
+// (see Evaluate): the same content reviewed elsewhere still counts. Returns the matching stamp so the
+// caller can name the originating branch. Failures (no stamps dir, unreadable/corrupt files) degrade
+// to "not found" — safe direction, re-review.
+//
+// knownReviewed 报告给定 diff hash 是否在【任意】分支 stamp 上被标过已审（不限当前分支）。
+// 这让审查通过跨「只改 scope」的迁移可移植（见 Evaluate）：别处审过的同一内容照样认。返回
+// 命中 stamp 供调用方点名来源分支。失败（无 stamps 目录/不可读/损坏）降级为「未找到」——
+// 安全方向，重审。
+func knownReviewed(root, hash string) (*Stamp, bool) {
+	dir := filepath.Join(forgedata.DataDirFor(root), "stamps")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, false
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".stamp") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			continue
+		}
+		var s Stamp
+		if json.Unmarshal(data, &s) == nil && s.DiffHash == hash && s.Reviewed {
+			return &s, true
+		}
+	}
+	return nil, false
+}
+
 // CurrentState returns a human-readable view of the current review state (for forge review status).
 //
 // CurrentState 返回人读的当前审查状态（forge review status 用）。
@@ -190,9 +241,25 @@ func CurrentState(root string) (string, error) {
 	}
 	fmt.Fprintf(&b, "Block count:   %d/%d\n", stamp.BlockCount, MaxReviewRounds)
 
+	// Cross-branch portability for display: if the current branch has no matching reviewed stamp,
+	// but another branch reviewed this exact hash, surface that (consistent with Evaluate's pass).
+	//
+	// 跨分支可移植的展示：当前分支无匹配已审戳，但别处审过同一 hash 时点出来（与 Evaluate 放行一致）。
+	crossBranch := ""
+	if hasChanges && !(stamp.DiffHash == hash && stamp.Reviewed) {
+		if other, ok := knownReviewed(root, hash); ok {
+			crossBranch = other.Branch
+			if crossBranch == "" {
+				crossBranch = "其他分支" // mirror Evaluate's fallback so display never drifts from the decision
+			}
+		}
+	}
+
 	switch {
 	case !hasChanges:
 		b.WriteString("\n→ 无未提交变更，无需审查\n")
+	case crossBranch != "":
+		fmt.Fprintf(&b, "\n→ 当前 diff 已在分支 %s 通过审查（内容一致，跨分支放行）\n", crossBranch)
 	case stamp.DiffHash == hash && stamp.Reviewed:
 		b.WriteString("\n→ 当前 diff 已通过审查\n")
 	default:
