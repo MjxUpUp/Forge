@@ -119,16 +119,17 @@ func LoadAll(root string) ([]Entry, error) {
 	return entries, scanner.Err()
 }
 
-// LoadForTask filters by task ref and reads check entries from the active checklog and all archived checklog-*.jsonl,
-// returning them in chronological order. Used by `forge trace <ref>` to reconstruct a task's full event timeline.
-// LoadAll only reads the active checklog.jsonl and misses archived history; this function globs all checklog*.jsonl,
-// letting trace cover tasks whose logs were archived at the next task start. Entries with mismatched TaskRef are excluded.
+// loadAllArchives reads every entry from the active checklog.jsonl and all archived checklog-*.jsonl,
+// in chronological order. Shared core of LoadAllAll (no filter) and LoadForTask (task filter): the glob
+// matches checklog*.jsonl (active checklog.jsonl included — * matches empty), so active + archived history
+// is read in one pass then sorted by RecordedAt. A glob-matched file that cannot be opened is a read failure,
+// not "no data"; a scanner error (oversized line >1MB, I/O error) surfaces instead of silently truncating.
 //
-// LoadForTask 按 task ref 过滤，从 active checklog 与所有归档 checklog-*.jsonl 中
-// 读取 check entry，按时间序返回。供 forge trace <ref> 重建 task 完整事件时间线。
-// LoadAll 只读 active checklog.jsonl、错过归档历史；本函数 glob 全部 checklog*.jsonl，
-// 让 trace 覆盖那些日志在下一次 task 启动时被归档的 task。TaskRef 不一致的条目被排除。
-func LoadForTask(root, taskRef string) ([]Entry, error) {
+// loadAllArchives 从 active checklog.jsonl 与所有归档 checklog-*.jsonl 读取全部条目，按时间序。
+// 是 LoadAllAll（无过滤）与 LoadForTask（task 过滤）的共用核心：glob 匹配 checklog*.jsonl
+// （active checklog.jsonl 也命中——* 可为空），故 active + 归档历史一次读全，再按 RecordedAt 排序。
+// glob 命中的文件打不开是读失败、不是「无数据」；scanner 出错（超 1MB 行、I/O 错误）显式上抛而非静默截断。
+func loadAllArchives(root string) ([]Entry, error) {
 	matches, err := filepath.Glob(filepath.Join(dataDir(root), "checklog*.jsonl"))
 	if err != nil {
 		return nil, err
@@ -155,16 +156,14 @@ func LoadForTask(root, taskRef string) ([]Entry, error) {
 				// Skip malformed lines.
 				continue // 跳过格式错误的行
 			}
-			if e.TaskRef == taskRef {
-				entries = append(entries, e)
-			}
+			entries = append(entries, e)
 		}
 		// A scanner error (oversized line beyond 1MB, I/O error) means everything after
 		// that point in the file was silently truncated — make it explicit instead of
-		// returning a partial timeline as if complete.
+		// returning a partial set as if complete.
 		//
 		// scanner 出错（超 1MB 的行、I/O 错误）意味着该行之后的内容被静默截断——
-		// 显式报错，不把残缺时间线当完整结果返回。
+		// 显式报错，不把残缺结果当完整返回。
 		serr := scanner.Err()
 		f.Close()
 		if serr != nil {
@@ -175,6 +174,41 @@ func LoadForTask(root, taskRef string) ([]Entry, error) {
 		return a.RecordedAt.Compare(b.RecordedAt)
 	})
 	return entries, nil
+}
+
+// LoadAllAll reads all entries from the active checklog.jsonl AND every archived checklog-*.jsonl
+// (chronological). Cross-archive counterpart to LoadAll (active-only): forge task start archives the
+// previous checklog, so LoadAll sees only the current task — consumers aggregating across the whole project
+// history (e.g. skillseval usage reading CheckSkillTrigger across all past tasks) need this. Mirrors
+// toolusage.LoadAllAll. Returns nil if nothing exists yet.
+//
+// LoadAllAll 从 active checklog.jsonl 与所有归档 checklog-*.jsonl 读取全部条目（时间序）。
+// 是 LoadAll（仅 active）的跨归档对应：forge task start 归档上一份 checklog，LoadAll 只能看到
+// 当前任务——跨整个项目历史聚合的消费者（如 skillseval usage 跨所有历史 task 读 CheckSkillTrigger）
+// 需要本函数。对称 toolusage.LoadAllAll。尚无任何文件时返回 nil。
+func LoadAllAll(root string) ([]Entry, error) {
+	return loadAllArchives(root)
+}
+
+// LoadForTask filters by task ref across the active checklog and all archived checklog-*.jsonl,
+// returning matches in chronological order. Used by `forge trace <ref>` to reconstruct a task's full event
+// timeline. Built on loadAllArchives (active + archived in one pass); entries with mismatched TaskRef are excluded.
+//
+// LoadForTask 按 task ref 跨 active checklog 与所有归档 checklog-*.jsonl 过滤，按时间序返回命中。
+// 供 forge trace <ref> 重建 task 完整事件时间线。基于 loadAllArchives（active + 归档一次读全）；
+// TaskRef 不一致的条目被排除。
+func LoadForTask(root, taskRef string) ([]Entry, error) {
+	all, err := loadAllArchives(root)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Entry, 0, len(all))
+	for _, e := range all {
+		if e.TaskRef == taskRef {
+			out = append(out, e)
+		}
+	}
+	return out, nil
 }
 
 // LatestByCheckForSession returns the latest entry per check name, scoped to the given session.

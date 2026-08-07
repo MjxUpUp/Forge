@@ -73,7 +73,7 @@ func TestBuildEvidenceChain_BucketsAndLegacyFallback(t *testing.T) {
 		{Check: CheckFileSentinel, Source: "", TaskRef: "t"}, // 旧数据无 Source，兜底为 deterministic
 		// Legacy data, falls back to deterministic.
 		//
-		{Check: CheckTaskGuard, Source: "", TaskRef: "t"},    // 旧数据，兜底为 deterministic
+		{Check: CheckTaskGuard, Source: "", TaskRef: "t"}, // 旧数据，兜底为 deterministic
 	}
 	ec := BuildEvidenceChain(entries, "t")
 	if ec.Deterministic != 4 {
@@ -304,5 +304,88 @@ func TestBuildEvidenceChain_UnknownSourceCountsAsAgentClaim(t *testing.T) {
 	}
 	if len(ec.Entries) != 5 {
 		t.Fatalf(`entries preserved: got %d, want 5`, len(ec.Entries))
+	}
+}
+
+// TestBuildEvidenceChain_WorkActivityEscapeDoesNotCap pins the precision fix: work-activity is a RHYTHM gate
+// (requires tool calls between gates — prevents jumping straight to the gate without reading code), NOT a
+// verification gate. Using it does NOT mean the "done" claim rests on skipped verification, so a work-activity
+// escape-hatch entry must NOT set UsedEscapeHatch and Strength must NOT be capped. Refactor/migration/demolition
+// tasks legitimately use the batch-refactor escape and typically have ample deterministic evidence (compiles,
+// assertions, existing tests). Verification-class escapes (test-coverage/acceptance/skill-decisions) still cap.
+//
+// Without this fix, a refactor-heavy week inflates the blind-spot rate to ~50% and mis-fires RetrospectiveNudge on
+// well-evidenced tasks — exactly the false signal this round of review uncovered.
+//
+// TestBuildEvidenceChain_WorkActivityEscapeDoesNotCap 钉住精度修复：work-activity 是节奏门禁
+// （要求门禁间有工具调用——防 agent 不读代码直跳门禁），非验证门禁。用它不代表"完成"靠
+// 跳过验证撑，故 work-activity escape-hatch 条目不得置 UsedEscapeHatch、Strength 不得 cap。
+// 重构/迁移/拆除任务合理用批量重构逃生舱，且确定性证据通常充分（编译/断言/既有测试）。
+// 验证类逃生舱（test-coverage/acceptance/skill-decisions）仍 cap。
+//
+// 无此修复，重构密集周会让盲区率虚高到 ~50%，对证据充分的任务误触
+// RetrospectiveNudge——正是本轮回流审查发现的假信号。
+func TestBuildEvidenceChain_WorkActivityEscapeDoesNotCap(t *testing.T) {
+	// work-activity escape: rhythm gate, must NOT cap. 4 det + 1 escape(work-activity) →
+	// escape excluded from bucketing, ratio stays 4/4=1.0, Strength=Strong (not capped).
+	//
+	// work-activity 逃生：节奏门禁，不得 cap。4 det + 1 escape(work-activity) →
+	// escape 不计入分桶，ratio 仍 4/4=1.0，Strength=Strong（不被 cap）。
+	entries := []Entry{
+		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckAssertion, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckAssertion, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckAssertion, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckEscapeHatch, Source: EvidenceDeterministic, TaskRef: "t",
+			Detail: `escape-hatch: work-activity gate bypassed (per-task override or FORGE_WORK_ACTIVITY=disable)`},
+	}
+	ec := BuildEvidenceChain(entries, "t")
+	if ec.UsedEscapeHatch {
+		t.Fatalf(`work-activity escape 不应置 UsedEscapeHatch（节奏门禁非验证门禁）: got true`)
+	}
+	if got := ec.Strength(); got != Strong {
+		t.Fatalf(`work-activity escape + ratio 1.0: Strength=%s, want Strong（不被 cap）`, got)
+	}
+
+	// Verification-class escape (test-coverage): still caps. Same evidence shape, escape detail is test-coverage.
+	//
+	// 验证类逃生（test-coverage）：仍 cap。同样证据形状，escape detail 是 test-coverage。
+	entriesVerify := []Entry{
+		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckAssertion, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckAssertion, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckAssertion, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckEscapeHatch, Source: EvidenceDeterministic, TaskRef: "t",
+			Detail: `escape-hatch: test-coverage gate bypassed (per-task override or FORGE_TEST_COVERAGE=disable)`},
+	}
+	ecVerify := BuildEvidenceChain(entriesVerify, "t")
+	if !ecVerify.UsedEscapeHatch {
+		t.Fatal(`test-coverage escape 应置 UsedEscapeHatch（验证类，cap 触发）: got false`)
+	}
+	if got := ecVerify.Strength(); got != Weak {
+		t.Fatalf(`test-coverage escape + ratio 1.0: Strength=%s, want Weak（被 cap）`, got)
+	}
+}
+
+// TestBuildEvidenceChain_SkillTriggerExcluded pins that CheckSkillTrigger is excluded from evidence strength:
+// a skill firing (passive injection) is an observation, not verification evidence — counting it would inflate
+// Strength in the wrong direction (a skill firing says nothing about whether the task's verification actually ran).
+// Entries are still kept in Entries for trace.
+//
+// TestBuildEvidenceChain_SkillTriggerExcluded 钉住 CheckSkillTrigger 不计入证据强度：
+// skill 触发（被动注入）是观测，非验证证据——计入会虚高 Strength 且方向错（skill 触发
+// 不说明本任务的验证真跑过）。条目仍留 Entries 供 trace。
+func TestBuildEvidenceChain_SkillTriggerExcluded(t *testing.T) {
+	entries := []Entry{
+		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckSkillTrigger, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckSkillTrigger, Source: EvidenceDeterministic, TaskRef: "t"},
+	}
+	ec := BuildEvidenceChain(entries, "t")
+	if ec.Deterministic != 1 {
+		t.Fatalf(`CheckSkillTrigger 不应计入 deterministic: got %d, want 1（仅 auto-compile）`, ec.Deterministic)
+	}
+	if len(ec.Entries) != 3 {
+		t.Fatalf(`skill-trigger 条目仍应保留在 Entries 供 trace: got %d, want 3`, len(ec.Entries))
 	}
 }

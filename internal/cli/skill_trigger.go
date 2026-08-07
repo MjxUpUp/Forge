@@ -22,8 +22,10 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/skillscanonical"
 	"github.com/MjxUpUp/Forge/internal/skilltrigger"
+	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/util"
 	"github.com/spf13/cobra"
 )
@@ -155,6 +157,10 @@ func runSkillTriggerCore(hookInput HookInput, root, version string, dryRun bool)
 		if ctx.Event == "Stop" {
 			_ = noise.IncrStopRound(ctx.SessionID)
 		}
+		// 记录触发的 canonical skill 到 checklog——让 skill 触达在下游可观测（usage/effectiveness）。
+		// 否则 skill-trigger 静默注入 AdditionalContext、零持久轨迹，Forge 无法回答"哪些 skill 真触发过"
+		// （dogfood 0 触发盲区）。CheckSkillTrigger 不计入 evidence strength（观测非验证）——见 BuildEvidenceChain。
+		recordSkillTriggerHits(root, ctx, hits)
 	}
 	return skilltrigger.Render(hits, ctx), nil
 }
@@ -176,4 +182,47 @@ func buildTriggerContext(hookInput HookInput, root string) skilltrigger.Context 
 		_ = json.Unmarshal(hookInput.ToolOutput, &ctx.ToolOutput)
 	}
 	return ctx
+}
+
+// recordSkillTriggerHits records each fired canonical skill to checklog so skill reach is observable downstream
+// (`forge skills usage`/`effectiveness`). skill-trigger otherwise injects silently into AdditionalContext with
+// zero persistent trail — Forge could not answer "which canonical skills actually fired" (the dogfood 0-trigger
+// blind spot). CheckSkillTrigger is deterministic (the engine evaluates declared triggers, agent cannot forge) and
+// excluded from evidence strength (observation, not verification) — see checklog.BuildEvidenceChain. task_ref is
+// attached only when an active (non-completed) task is bound to this session, so post-complete Stop triggers are
+// not misattributed to a finished task.
+//
+// recordSkillTriggerHits 把每个触发的 canonical skill 落进 checklog，让 skill 触达在下游可观测
+// （`forge skills usage`/`effectiveness`）。否则 skill-trigger 经 AdditionalContext 静默注入、零持久轨迹——
+// Forge 无法回答"哪些 canonical skill 真触发过"（dogfood 0 触发盲区）。CheckSkillTrigger 是 deterministic
+// （引擎实算声明式触发，agent 无法伪造）且不计入 evidence strength（观测非验证）——见 checklog.BuildEvidenceChain。
+// task_ref 仅当本 session 绑定了活跃（未完成）任务时附加，避免 complete 之后的 Stop 触发被错挂到已完成任务。
+func recordSkillTriggerHits(root string, ctx skilltrigger.Context, hits []skilltrigger.Hit) {
+	taskRef := ""
+	if active, err := taskpipeline.ActiveTaskState(root, ctx.SessionID); err == nil && active != nil {
+		taskRef = active.TaskRef
+	}
+	for _, h := range hits {
+		// Detail 经 checklog.DetailForSkillTrigger 单一真相源构造，与读取方
+		// (skillseval.SkillCountsFromChecklog → checklog.SkillFromTriggerDetail) 共契约，杜绝
+		// 两侧手工镜像格式串漂移致被动触发信号静默丢失（minor-1：跨包 stringly-typed 契约）。
+		//
+		// Detail is built via the checklog.DetailForSkillTrigger single source of truth, sharing the contract
+		// with the reader (skillseval.SkillCountsFromChecklog → checklog.SkillFromTriggerDetail), eliminating
+		// hand-mirrored format-string drift that would silently drop passive-trigger signals (minor-1).
+		detail := checklog.DetailForSkillTrigger(h.Skill, ctx.Event, h.Reason)
+		if err := checklog.Record(root, &checklog.Entry{
+			Check:     checklog.CheckSkillTrigger,
+			Passed:    true,
+			Checked:   true,
+			ToolName:  ctx.ToolName,
+			TaskRef:   taskRef,
+			SessionID: ctx.SessionID,
+			Detail:    detail,
+			Source:    checklog.EvidenceDeterministic,
+			Level:     checklog.LevelAdvisory,
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "[skill-trigger] warning: checklog record failed: %v\n", err)
+		}
+	}
 }
