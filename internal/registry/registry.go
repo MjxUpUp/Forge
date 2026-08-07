@@ -431,6 +431,33 @@ func IsMember(cwd string) (root string, ok bool) {
 				return gitRoot, true
 			}
 		}
+		// Key-drift path fallback: a project forge-init'd while NON-git stores a PathKey;
+		// after `git init` the computed git-key never matches that stale path-key (keyOf
+		// trusts the stored non-empty key), so the key loop misses and the project is
+		// "forgotten" — forge then reports "not a forge project" and every project-scoped
+		// enforcement hook degrades to allow-and-exit (the AgentOffice bug). Match the
+		// entry's path against the git working-tree root instead: an entry whose registered
+		// path equals the git root is the same project (registered before it became git).
+		// Read-only on purpose — IsMember is a hot path fired from concurrent hook
+		// processes, and a write here would race (writeEntries is not concurrency-safe);
+		// the stale key is re-keyed by the next `forge init` (Add upsert).
+		//
+		// key 漂移路径回退：项目在非 git 状态下 forge init 存的是 PathKey；`git init`
+		// 之后算出的 git-key 永不匹配该陈旧 path-key（keyOf 信任已存的非空 key），于是
+		// key 循环落空、项目被「遗忘」——forge 报「not a forge project」，所有 project-scoped
+		// 强制 hook 降级放行（AgentOffice bug）。改为按 git working-tree 根匹配条目路径：
+		// 登记路径等于 git 根的条目就是同一项目（在它变 git 之前登记的）。刻意只读——
+		// IsMember 是被并发 hook 进程触发的热路径，此处写回会竞态（writeEntries 非并发安全）；
+		// 陈旧 key 由下次 `forge init`（Add upsert）刷新。
+		for _, e := range f.Projects {
+			for _, ep := range pathForms(e.Path) {
+				for _, grf := range pathForms(gitRoot) {
+					if pathKey(ep) == pathKey(grf) {
+						return gitRoot, true
+					}
+				}
+			}
+		}
 		return ``, false
 	}
 

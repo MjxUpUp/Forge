@@ -3,10 +3,13 @@ package registry
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
 // useTempHome redirects the global home (FORGE_DATA_HOME) to a temp dir so tests stay isolated and never touch the real
@@ -727,5 +730,90 @@ func TestIsMember_SymlinkResolved(t *testing.T) {
 	}
 	if resolvedRoot != resolvedReal {
 		t.Errorf("resolved root = %q, want %q（同一物理目录）", resolvedRoot, resolvedReal)
+	}
+}
+
+// gitInit turns dir into a real git repo, skipping the test when git is unavailable. Used by
+// the key-drift test which needs the project to be git AFTER a non-git registration.
+//
+// gitInit 把 dir 变成真实 git 仓库，git 不可用时跳过测试。key 漂移测试需要项目在非 git
+// 登记之后才变 git。
+func gitInit(t *testing.T, dir string) {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skipf("git 不在 PATH，跳过 git 相关测试: %v", err)
+	}
+	if out, err := exec.Command("git", "init", dir).CombinedOutput(); err != nil {
+		t.Fatalf("git init %s: %v\n%s", dir, err, out)
+	}
+}
+
+// TestIsMember_GitKeyDriftFromPathKey pins the path↔git key-drift fallback: a project
+// forge-init'd while NON-git (registry entry stores a PathKey) that later ran `git init`
+// must still resolve as a member. The git branch's key match misses the stale path-key
+// (keyOf trusts the stored non-empty key), so a path-based fallback against the git
+// working-tree root must catch it. This is the AgentOffice bug: forge init at 16:11
+// (non-git → path-key pc3f3d8507069) → git init at 16:35 → IsMember returned false →
+// forge forgot the project → all enforcement hooks degraded to allow-and-exit →
+// reasonix "不走协议". Read-only (no self-heal write): IsMember is a hot path invoked
+// from concurrent hook processes; the stale key is re-keyed by the next `forge init`
+// (Add upsert).
+//
+// TestIsMember_GitKeyDriftFromPathKey 钉死 path↔git key 漂移的路径回退：项目在非 git
+// 状态下 forge init（注册表存 PathKey），后来跑了 `git init`，仍须解析为成员。git 分支
+// 的 key 匹配命中不了陈旧 path-key（keyOf 信任已存的非空 key），故按 git working-tree
+// 根做路径回退兜住。这正是 AgentOffice bug：16:11 非 git init（→ path-key
+// pc3f3d8507069）→ 16:35 git init → IsMember 返 false → forge 遗忘项目 → 所有强制
+// hook 降级放行 → reasonix「不走协议」。只读（不自愈写回）：IsMember 是被并发 hook
+// 进程调用的热路径，陈旧 key 由下次 `forge init`（Add upsert）刷新。
+func TestIsMember_GitKeyDriftFromPathKey(t *testing.T) {
+	useTempHome(t)
+	d := t.TempDir()
+	gitInit(t, d) // make it a real git project (the post-git-init state)
+
+	// Simulate the stale registry state: registered as non-git (PathKey) BEFORE git init.
+	// Writing the entry directly (not via Add) is deterministic — Add now would compute the
+	// correct git-key and never reproduce the drift.
+	//
+	// 直接写陈旧注册表状态：git init 之前以非 git（PathKey）登记。直接写条目（而非 Add）
+	// 是确定性的——现在跑 Add 会算出正确的 git-key，复现不了漂移。
+	staleKey := forgedata.PathKey(d)
+	if err := writeEntries([]Entry{{Path: d, Key: staleKey}}); err != nil {
+		t.Fatal(err)
+	}
+	// Sanity: the live git-key differs from the stale path-key (precondition for the bug).
+	// 健全性：实时 git-key 与陈旧 path-key 不同（bug 的前置条件）。
+	liveKey, err := forgedata.Key(d)
+	if err != nil {
+		t.Fatalf("forgedata.Key: %v", err)
+	}
+	if liveKey == staleKey {
+		t.Fatalf("前置条件不成立：git-key == path-key（%q），漂移场景未触发", liveKey)
+	}
+
+	// The project root itself must resolve.
+	// 项目根本身须解析。
+	root, ok := IsMember(d)
+	if !ok {
+		t.Fatalf("git-key 漂移场景应命中成员（路径回退）: IsMember(%q) = (%q, false)", d, root)
+	}
+	if filepath.Clean(root) != filepath.Clean(d) {
+		t.Errorf("root = %q, want %q", root, d)
+	}
+
+	// A cwd DEEP inside the drifted project must also resolve (git root == project root) —
+	// mirrors reasonix editing a file deep in AgentOffice.
+	// 漂移项目深处的 cwd 也须解析（git 根 == 项目根）——对应 reasonix 在 AgentOffice
+	// 深处改文件的场景。
+	sub := filepath.Join(d, "src", "sub")
+	if err := os.MkdirAll(sub, 0755); err != nil {
+		t.Fatal(err)
+	}
+	root2, ok2 := IsMember(sub)
+	if !ok2 {
+		t.Fatalf("漂移项目子目录应命中成员: IsMember(%q) = (%q, false)", sub, root2)
+	}
+	if filepath.Clean(root2) != filepath.Clean(d) {
+		t.Errorf("子目录 root = %q, want %q", root2, d)
 	}
 }
