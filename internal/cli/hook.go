@@ -201,18 +201,18 @@ var hookCmd = &cobra.Command{
 }
 
 // hookAgent specifies the non-Claude-Code stdin dialect to normalize. Each agent's translator sets it via the cross-platform
-// `--agent` flag when the hook stdin differs from the Claude Code shape (Windsurf, Copilot). opencode/pi construct Claude-shape
-// stdin in TS and do not set this variable. FORGE_HOOK_AGENT is the fallback for translators already wired via env
+// `--agent` flag when the hook stdin differs from the Claude Code shape (Windsurf, Copilot, reasonix). opencode/pi construct
+// Claude-shape stdin in TS and do not set this variable. FORGE_HOOK_AGENT is the fallback for translators already wired via env
 // (and for TS code that sets the env).
 //
 // hookAgent 指定要 normalize 的非 Claude Code stdin 方言。由各 agent 的 translator
-// 在 hook stdin 与 Claude Code 形状不同时（Windsurf、Copilot）通过跨平台
+// 在 hook stdin 与 Claude Code 形状不同时（Windsurf、Copilot、reasonix）通过跨平台
 // `--agent` flag 设置。opencode/pi 在 TS 里构造 Claude-shape stdin，不设此变量。
 // FORGE_HOOK_AGENT 是已通过 env 接线的 translator（以及设 env 的 TS 代码）的兜底。
 var hookAgent string
 
 func init() {
-	hookCmd.Flags().StringVar(&hookAgent, "agent", "", "agent whose stdin dialect to normalize (windsurf|kimi)")
+	hookCmd.Flags().StringVar(&hookAgent, "agent", "", "agent whose stdin dialect to normalize (windsurf|kimi|reasonix)")
 	rootCmd.AddCommand(hookCmd)
 }
 

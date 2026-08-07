@@ -4,62 +4,62 @@
   "hooks": {
     "PostToolUse": [
       {
-        "match": "Write|Edit",
-        "command": "forge hook auto-compile"
+        "match": "write_file|edit_file|multi_edit|move_file",
+        "command": "forge hook auto-compile --agent reasonix"
       },
       {
-        "match": "Write|Edit",
-        "command": "forge hook workflow-test-guard"
+        "match": "write_file|edit_file|multi_edit|move_file",
+        "command": "forge hook workflow-test-guard --agent reasonix"
       },
       {
-        "match": "Write|Edit",
-        "command": "forge hook skill-trigger"
+        "match": "write_file|edit_file|multi_edit|move_file",
+        "command": "forge hook skill-trigger --agent reasonix"
       },
       {
-        "match": "Bash",
-        "command": "forge hook file-sentinel"
+        "match": "bash",
+        "command": "forge hook file-sentinel --agent reasonix"
       },
       {
-        "match": "Bash",
-        "command": "forge hook skill-trigger"
+        "match": "bash",
+        "command": "forge hook skill-trigger --agent reasonix"
       },
       {
-        "match": "Read|Skill|Agent",
-        "command": "forge hook tool-track"
+        "match": "read_file",
+        "command": "forge hook tool-track --agent reasonix"
       }
     ],
     "PreToolUse": [
       {
-        "match": "Write|Edit",
-        "command": "forge hook freeze-guard"
+        "match": "write_file|edit_file|multi_edit|move_file",
+        "command": "forge hook freeze-guard --agent reasonix"
       },
       {
-        "match": "Write|Edit",
-        "command": "forge hook task-guard"
+        "match": "write_file|edit_file|multi_edit|move_file",
+        "command": "forge hook task-guard --agent reasonix"
       },
       {
-        "match": "Write|Edit",
-        "command": "forge hook assertion-check"
+        "match": "write_file|edit_file|multi_edit|move_file",
+        "command": "forge hook assertion-check --agent reasonix"
       },
       {
-        "match": "Write|Edit",
-        "command": "forge hook read-before-edit"
+        "match": "write_file|edit_file|multi_edit|move_file",
+        "command": "forge hook read-before-edit --agent reasonix"
       },
       {
-        "match": "Write|Edit",
-        "command": "forge hook skill-trigger"
+        "match": "write_file|edit_file|multi_edit|move_file",
+        "command": "forge hook skill-trigger --agent reasonix"
       },
       {
-        "match": "Bash",
-        "command": "forge hook bash-guard"
+        "match": "bash",
+        "command": "forge hook bash-guard --agent reasonix"
       },
       {
-        "match": "Bash",
-        "command": "forge hook hazard-guard"
+        "match": "bash",
+        "command": "forge hook hazard-guard --agent reasonix"
       },
       {
-        "match": "Bash",
-        "command": "forge hook skill-trigger"
+        "match": "bash",
+        "command": "forge hook skill-trigger --agent reasonix"
       }
     ],
     "SessionStart": [

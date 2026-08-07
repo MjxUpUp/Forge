@@ -443,3 +443,59 @@ func TestPluginPack_CommittedReasonixManifestMatchesGenerator(t *testing.T) {
 		t.Errorf("committed reasonix version = %v, want %v (writeReasonixPluginManifest hardcodes it — re-run forge plugin pack)", committedManifest["version"], genManifest["version"])
 	}
 }
+
+// TestPluginPack_ReasonixLaunchersCommitted: reasonix anchors the hook command's first token
+// ("forge") to the plugin directory (and prepends the plugin dir to PATH), so a launcher shim
+// — forge.cmd on Windows, forge on Unix — MUST ship inside plugins/forge/ or every hook fails
+// with "command not found" and nothing enforces. These are static plugin assets (like install.sh
+// / install.ps1), NOT generator output, so GeneratePluginPack does not write them; a
+// committed-presence + content guard is the only thing catching accidental deletion or a
+// recursion-guard regression. Regression source: the original reasonix wiring shipped no
+// launcher, so even with hooks registered the commands could not resolve.
+//
+// TestPluginPack_ReasonixLaunchersCommitted：reasonix 把 hook 命令的首 token（"forge"）锚定到
+// plugin 目录（并把 plugin 目录前置到 PATH），故必须在 plugins/forge/ 内附 launcher shim——Windows
+// 上 forge.cmd、Unix 上 forge——否则每个 hook 都 "command not found"、啥也不 enforce。它们是静态
+// plugin 资产（如 install.sh / install.ps1），非生成器输出，故 GeneratePluginPack 不写它们；
+// committed-presence + 内容守卫是唯一能抓误删或递归防线回退的东西。回归源：原始 reasonix 接线
+// 未附 launcher，故即便 hook 注册了命令也解析不了。
+func TestPluginPack_ReasonixLaunchersCommitted(t *testing.T) {
+	// Absence is a hard FAILURE here, not a skip. Unlike the sibling manifest tests above (whose
+	// files are generator outputs bound to expectedPluginFiles / TestPluginPack_WritesAllFiles),
+	// these launchers are STATIC untracked assets — exactly what gets forgotten at `git add` time.
+	// A skip would let CI go green on a committed tree that silently dropped them: the launchers
+	// are untracked until explicitly added, so "forgotten at commit" → fresh-checkout CI run hits
+	// os.Stat failure → skip → false green → reasonix ships with no launcher → every hook fails
+	// "command not found". That reachable false-confidence case is what this guard exists to catch.
+	for _, rel := range []string{
+		filepath.Join("..", "..", "plugins", "forge", "forge.cmd"),
+		filepath.Join("..", "..", "plugins", "forge", "forge"),
+	} {
+		if _, err := os.Stat(rel); err != nil {
+			t.Fatalf("committed launcher missing at %s — these are hand-committed static assets (forge plugin pack does NOT generate them); absence means the whole reasonix hook stack fails to resolve. %v", rel, err)
+		}
+	}
+	// Windows shim resolves forge via `where forge`, skipping its own dir (%~dp0) to avoid
+	// re-invoking itself (the plugin dir is prepended to PATH, so where lists this shim first).
+	cmdBody, err := os.ReadFile(filepath.Join("..", "..", "plugins", "forge", "forge.cmd"))
+	if err != nil {
+		t.Fatalf("read forge.cmd: %v", err)
+	}
+	if !strings.Contains(string(cmdBody), "where forge") {
+		t.Errorf("forge.cmd must resolve forge via `where forge`, got:\n%s", cmdBody)
+	}
+	if !strings.Contains(string(cmdBody), "%~dp0") {
+		t.Errorf("forge.cmd must recursion-guard its own dir (%%~dp0), got:\n%s", cmdBody)
+	}
+	// Unix shim exec's the first forge on PATH outside its own dir (self_dir guard).
+	unixBody, err := os.ReadFile(filepath.Join("..", "..", "plugins", "forge", "forge"))
+	if err != nil {
+		t.Fatalf("read forge: %v", err)
+	}
+	if !strings.Contains(string(unixBody), "exec") {
+		t.Errorf("forge launcher must exec the resolved binary, got:\n%s", unixBody)
+	}
+	if !strings.Contains(string(unixBody), "self_dir") {
+		t.Errorf("forge launcher must recursion-guard its own dir (self_dir), got:\n%s", unixBody)
+	}
+}

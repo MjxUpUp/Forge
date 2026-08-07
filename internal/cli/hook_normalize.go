@@ -28,6 +28,8 @@ func normalizeAgentStdin(agent string, stdinData []byte, hookInput *HookInput) {
 		windsurfNormalize(stdinData, hookInput)
 	case "kimi":
 		kimiNormalize(stdinData, hookInput)
+	case "reasonix":
+		reasonixNormalize(stdinData, hookInput)
 	}
 }
 
@@ -278,6 +280,107 @@ func windsurfHookEvent(action string) string {
 		return "Stop"
 	}
 	return ""
+}
+
+// reasonixNormalize maps the reasonix plugin-hook stdin to HookInput. reasonix's payload is
+// camelCase and diverges from Claude Code in two load-bearing ways (verified by probing a live
+// reasonix install — a tee wrapper captured real PreToolUse/PostToolUse/SessionStart/Stop payloads):
+//   - Field names are camelCase: {event, sessionId, cwd, toolName, toolArgs} vs Claude's
+//     {hook_event_name, session_id, cwd, tool_name, tool_input}. A direct unmarshal into HookInput
+//     fills only Cwd (the one field whose name matches); SessionID, HookEventName, ToolName and
+//     ToolInput all stay empty, so every path/command-based hook (task-guard, read-before-edit,
+//     bash-guard, file-sentinel) failed open — the hooks fired once the snake_case matchers were
+//     translated (see buildReasonixHooks) but parsed empty tool fields and could not enforce.
+//   - Tool names are snake_case: write_file/edit_file/multi_edit/move_file/bash/read_file
+//     (reasonix's [sandbox] roster) vs Claude's Write/Edit/Bash/Read. forge dispatches on the CC
+//     name (e.g. hook.go records a read in the reads-log only when ToolName == "Read"), so
+//     reasonixToCCToolName maps them back.
+//
+// toolArgs carries {path, old_string, new_string, command, ...}; path is the file path (Claude's
+// file_path), aliased via remapKimiToolInput so FORGE_FILE_PATH resolves. runHook calls this AFTER
+// the default unmarshal (like windsurf), filling only fields still empty so a Claude-shape payload
+// is never clobbered.
+//
+// reasonixNormalize 把 reasonix plugin-hook 的 stdin 映射到 HookInput。reasonix 的 payload 是
+// camelCase，在两处关键点上与 Claude Code 不同（已对真实 reasonix 安装探测——tee 包装器捕获了
+// 真实的 PreToolUse/PostToolUse/SessionStart/Stop payload）：
+//   - 字段名是 camelCase：{event, sessionId, cwd, toolName, toolArgs} 对比 Claude 的
+//     {hook_event_name, session_id, cwd, tool_name, tool_input}。直接 unmarshal 进 HookInput 只填
+//     得上 Cwd（唯一名字匹配的字段）；SessionID、HookEventName、ToolName、ToolInput 全空，故每个
+//     基于路径/命令的 hook（task-guard、read-before-edit、bash-guard、file-sentinel）都 fail
+//     open——snake_case matcher 翻译后 hook 确实触发了（见 buildReasonixHooks），但解析出空的
+//     工具字段，无法 enforce。
+//   - 工具名是 snake_case：write_file/edit_file/multi_edit/move_file/bash/read_file
+//     （reasonix 的 [sandbox] 名册）对比 Claude 的 Write/Edit/Bash/Read。forge 按 CC 名分发（如
+//     hook.go 仅当 ToolName == "Read" 时在 reads-log 记一次读），故 reasonixToCCToolName 把它们
+//     映射回去。
+//
+// toolArgs 携带 {path, old_string, new_string, command, ...}；path 是文件路径（Claude 的
+// file_path），经 remapKimiToolInput 别名，使 FORGE_FILE_PATH 得以解析。runHook 在默认 unmarshal
+// 之后调用本函数（同 windsurf），仅填充仍为空的字段，故绝不覆盖 Claude-shape payload。
+func reasonixNormalize(stdinData []byte, hookInput *HookInput) {
+	if len(stdinData) == 0 {
+		return
+	}
+	var r struct {
+		Event     string          `json:"event"`
+		SessionID string          `json:"sessionId"`
+		Cwd       string          `json:"cwd"`
+		ToolName  string          `json:"toolName"`
+		ToolArgs  json.RawMessage `json:"toolArgs"`
+	}
+	if err := json.Unmarshal(stdinData, &r); err != nil {
+		fmt.Fprintf(os.Stderr, "[forge] warning: reasonix hook stdin JSON parse failed: %v\n", err)
+		return
+	}
+	if hookInput.HookEventName == "" {
+		hookInput.HookEventName = r.Event
+	}
+	if hookInput.SessionID == "" {
+		hookInput.SessionID = r.SessionID
+	}
+	if hookInput.Cwd == "" {
+		hookInput.Cwd = r.Cwd
+	}
+	if hookInput.ToolName == "" {
+		hookInput.ToolName = reasonixToCCToolName(r.ToolName)
+	}
+	if len(hookInput.ToolInput) == 0 {
+		// reasonix's file tools carry {path, ...}; alias path→file_path so the path-based hooks
+		// (read-before-edit, task-guard's .forge/* self-protection) resolve FORGE_FILE_PATH. Other
+		// fields (old_string/new_string/command) pass through untouched.
+		//
+		// reasonix 的文件工具携带 {path, ...}；把 path 别名到 file_path，使基于路径的 hook
+		// （read-before-edit、task-guard 的 .forge/* 自保护）能解析 FORGE_FILE_PATH。其余字段
+		// （old_string/new_string/command）原样透传。
+		hookInput.ToolInput = remapKimiToolInput(r.ToolArgs)
+	}
+}
+
+// reasonixToCCToolName maps reasonix's snake_case tool names back to the Claude Code names forge
+// dispatches on. reasonix's file-writers split into write_file/edit_file/multi_edit/move_file
+// (config.toml [sandbox]); forge treats edit_file/multi_edit/move_file as Edit (the path-extraction
+// hooks — read-before-edit, task-guard — care about file_path, not the Write/Edit distinction, the
+// same call windsurf makes collapsing both write events to Write). bash→Bash, read_file→Read (the
+// reads-log record at hook.go keys on exactly "Read"). Unknown names pass through unchanged.
+//
+// reasonixToCCToolName 把 reasonix 的 snake_case 工具名映射回 forge 据以分发的 Claude Code 名。
+// reasonix 的文件写入器拆成 write_file/edit_file/multi_edit/move_file（config.toml [sandbox]）；
+// forge 把 edit_file/multi_edit/move_file 当 Edit（基于路径的 hook——read-before-edit、
+// task-guard——关心 file_path 而非 Write/Edit 之别，与 windsurf 把两个 write 事件都归到 Write 同
+// 判断）。bash→Bash、read_file→Read（hook.go 的 reads-log 记录恰以 "Read" 为键）。未知名原样透传。
+func reasonixToCCToolName(name string) string {
+	switch name {
+	case "write_file":
+		return "Write"
+	case "edit_file", "multi_edit", "move_file":
+		return "Edit"
+	case "bash":
+		return "Bash"
+	case "read_file":
+		return "Read"
+	}
+	return name
 }
 
 // (copilotNormalize removed: refactor-data-home locked in five specialized agents, copilot is no longer adapted.

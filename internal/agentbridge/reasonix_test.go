@@ -417,6 +417,25 @@ func TestReasonixWiringMirrorsClaudeSettings(t *testing.T) {
 	if len(reasonix) == 0 {
 		t.Fatal("reasonix wiring has no events — generator or parser broken")
 	}
+	// Every tool-event command (Pre/PostToolUse) must carry --agent reasonix: reasonix's stdin
+	// is camelCase ({toolName, toolArgs}, not {tool_name, tool_input}), so without the flag
+	// reasonixNormalize never runs and tool_name/file_path parse empty — hooks fire but fail
+	// open. Session events (SessionStart/Stop) carry no tool_input, so they stay bare (mirrors
+	// windsurf's pre_user_prompt / post_cascade_response).
+	for _, evt := range []string{"PreToolUse", "PostToolUse"} {
+		for cmd := range reasonix[evt] {
+			if !strings.Contains(cmd, "--agent reasonix") {
+				t.Errorf("reasonix tool-event command missing --agent reasonix (stdin would fail to normalize): %s", cmd)
+			}
+		}
+	}
+	for _, evt := range []string{"SessionStart", "Stop"} {
+		for cmd := range reasonix[evt] {
+			if strings.Contains(cmd, "--agent reasonix") {
+				t.Errorf("reasonix session command must not carry --agent reasonix (no tool_input to normalize): %s", cmd)
+			}
+		}
+	}
 	for rEvt, rCmds := range reasonix {
 		claudeEvt, ok := eventMap[rEvt]
 		if !ok {
@@ -428,9 +447,15 @@ func TestReasonixWiringMirrorsClaudeSettings(t *testing.T) {
 			t.Errorf("Claude Code settings missing event %q that reasonix wires", claudeEvt)
 			continue
 		}
-		if !stringSetEqual(claudeCmds, rCmds) {
+		// Strip the `--agent reasonix` suffix so the command surfaces match Claude Code's
+		// (`forge hook <name>`).
+		stripped := map[string]bool{}
+		for cmd := range rCmds {
+			stripped[strings.TrimSuffix(cmd, " --agent reasonix")] = true
+		}
+		if !stringSetEqual(claudeCmds, stripped) {
 			t.Errorf("hook commands for reasonix %q / claude %q drifted — keep settings.go GenerateSettings and reasonix.go buildReasonixHooks in sync:\n  claude:  %s\n  reasonix: %s",
-				rEvt, claudeEvt, sortedSet(claudeCmds), sortedSet(rCmds))
+				rEvt, claudeEvt, sortedSet(claudeCmds), sortedSet(stripped))
 		}
 	}
 
@@ -490,6 +515,72 @@ func TestReasonixHooks_OnlyLegalReasonixEvents(t *testing.T) {
 	for _, deferred := range []string{`PostCompact`, `UserPromptSubmit`} {
 		if _, present := hooksMap[deferred]; present {
 			t.Errorf(`reasonix must not yet wire %s (deferred pending empirical probe — add a reasonixEventName case + update this test before re-enabling)`, deferred)
+		}
+	}
+}
+
+// TestReasonixMatchersTranslated pins the Claude-Code PascalCase → reasonix snake_case matcher
+// translation (reasonixMatcher). This is the fix for the "reasonix hooks never fire" root cause:
+// ForgeHookSpec's "Write|Edit" does not match reasonix's edit_file, so without translation every
+// Pre/PostToolUse hook silently failed to match (the user observed "reasonix rarely follows
+// Forge" — the hooks were registered but never fired on real edits). Skill/Agent have no reasonix
+// equivalent and are dropped (tool-track still fires on read_file).
+//
+// TestReasonixMatchersTranslated 钉住 Claude-Code PascalCase → reasonix snake_case matcher 翻译
+// （reasonixMatcher）。这是 "reasonix hook 永不触发" 根因的修复：ForgeHookSpec 的 "Write|Edit"
+// 匹配不上 reasonix 的 edit_file，故不翻译则每个 Pre/PostToolUse hook 静默不匹配（用户观察到
+// "reasonix 很少遵循 Forge"——hook 注册了但真实编辑上从不触发）。Skill/Agent 在 reasonix 无等价物，
+// 丢弃（tool-track 仍会在 read_file 上触发）。
+func TestReasonixMatchersTranslated(t *testing.T) {
+	raw := buildReasonixHooks()
+	hooksMap, ok := raw[`hooks`].(map[string][]reasonixHookEntry)
+	if !ok {
+		t.Fatalf(`reasonix wiring shape unexpected: %T`, raw[`hooks`])
+	}
+	got := map[string]map[string]bool{}
+	for event, entries := range hooksMap {
+		set := map[string]bool{}
+		for _, e := range entries {
+			set[e.Match] = true
+		}
+		got[event] = set
+	}
+	writers := "write_file|edit_file|multi_edit|move_file"
+	// Write|Edit → the four reasonix writers ; Bash → bash.
+	if !got["PreToolUse"][writers] {
+		t.Errorf("PreToolUse missing translated Write|Edit matcher %q, got: %v", writers, got["PreToolUse"])
+	}
+	if !got["PreToolUse"]["bash"] {
+		t.Errorf("PreToolUse missing translated Bash matcher, got: %v", got["PreToolUse"])
+	}
+	// PostToolUse adds Read|Skill|Agent → read_file (Skill/Agent dropped).
+	if !got["PostToolUse"][writers] {
+		t.Errorf("PostToolUse missing translated Write|Edit matcher %q, got: %v", writers, got["PostToolUse"])
+	}
+	if !got["PostToolUse"]["bash"] {
+		t.Errorf("PostToolUse missing translated Bash matcher, got: %v", got["PostToolUse"])
+	}
+	if !got["PostToolUse"]["read_file"] {
+		t.Errorf("PostToolUse missing translated Read matcher (Read→read_file, Skill/Agent dropped), got: %v", got["PostToolUse"])
+	}
+	// SessionStart / Stop carry no matcher in the spec → empty match (omitempty drops the key).
+	for _, evt := range []string{"SessionStart", "Stop"} {
+		for _, e := range hooksMap[evt] {
+			if e.Match != "" {
+				t.Errorf("%s entry must have empty match (spec carries no matcher), got %q on %q", evt, e.Match, e.Command)
+			}
+		}
+	}
+	// No untranslated PascalCase token leaks through — that would mean reasonixMatcher was
+	// bypassed (e.g. someone reverted to Match: m.Matcher). Case-sensitive Contains is safe:
+	// snake_case names (write_file/bash/read_file) contain none of the PascalCase tokens.
+	for event, entries := range hooksMap {
+		for _, e := range entries {
+			for _, leak := range []string{"Write", "Edit", "Bash", "Read", "Skill", "Agent"} {
+				if strings.Contains(e.Match, leak) {
+					t.Errorf("%s matcher %q still carries untranslated CC token %q (reasonixMatcher not applied)", event, e.Match, leak)
+				}
+			}
 		}
 	}
 }

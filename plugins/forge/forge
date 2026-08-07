@@ -1,0 +1,23 @@
+#!/bin/sh
+# Forge launcher shim for reasonix plugin hooks.
+#
+# reasonix resolves the hook command's first token ("forge") relative to the plugin directory
+# (and prepends the plugin dir to PATH), so a shim here is REQUIRED to reach the real forge
+# binary elsewhere on PATH — without it reasonix logs "command not found" and no hook fires.
+# Recursion guard: PATH iteration hits this shim first (plugin dir is prepended to PATH), so we
+# skip any match in this shim's own directory and take the first real forge instead. Static
+# plugin asset (like install.sh / install.ps1), NOT generator output — forge plugin pack does
+# not touch it.
+self_dir=$(cd "$(dirname "$0")" && pwd)
+save_ifs=$IFS
+IFS=:
+for dir in $PATH; do
+	[ "$dir" = "$self_dir" ] && continue
+	[ -n "$dir" ] || continue
+	[ -x "$dir/forge" ] || continue
+	IFS=$save_ifs
+	exec "$dir/forge" "$@"
+done
+IFS=$save_ifs
+echo "forge: not found on PATH outside plugin dir" 1>&2
+exit 127
