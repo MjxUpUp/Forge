@@ -1,5 +1,7 @@
 package checklog
 
+import "strings"
+
 // EvidenceChain aggregates evidence entries scattered across checklog.jsonl (including archived history)
 // for a task into a structured view of "what verifications were claimed, and how many have deterministic evidence".
 //
@@ -20,22 +22,32 @@ type EvidenceChain struct {
 	//
 	// Entries 按时间序（来自 LoadForTask）。Source 为空的旧条目按 SourceForCheck
 	// 在分桶时兜底推断，但 Entries 内保留原值（不回填），调用方需显式推断时自理。
-	Entries       []Entry
+	Entries []Entry
 	// Deterministic: count of entries with Source=deterministic (including empty-Source fallback).
 	//
 	Deterministic int // Source=deterministic（含空 Source 兜底）的条目数
 	// AgentClaim: count of entries with Source=agent-claim.
 	//
-	AgentClaim    int // Source=agent-claim 的条目数
-	// UsedEscapeHatch reports whether this task has used an escape hatch (FORGE_WORK_ACTIVITY,
-	// FORGE_TEST_COVERAGE, etc. — gate-bypass). Escape is a legitimate tool, but when the "done" claim relies on
-	// skipping gates, credibility must be discounted — Strength is capped at Weak accordingly (plan 5: give escape
-	// a cost, countering the backlash of "hard gate + global escape hatch = fake hard gate").
+	AgentClaim int // Source=agent-claim 的条目数
+	// UsedEscapeHatch reports whether this task has used a VERIFICATION-class escape hatch
+	// (FORGE_TEST_COVERAGE / FORGE_ACCEPTANCE_GATE / FORGE_SKILL_DECISIONS — gate-bypasses that skip actual
+	// verification). Escape is a legitimate tool, but when the "done" claim relies on skipping verification gates,
+	// credibility must be discounted — Strength is capped at Weak accordingly (plan 5: give escape a cost, countering
+	// the backlash of "hard gate + global escape hatch = fake hard gate").
 	//
-	// UsedEscapeHatch 报告本任务是否用过逃生舱（FORGE_WORK_ACTIVITY/
-	// FORGE_TEST_COVERAGE 等 gate-bypass）。逃生是合法工具，但"完成"声明若靠
-	// 跳过 gate 撑住，可信度必须打折——Strength 据此 cap 到 Weak（方案5：让逃生
-	// 有代价，对冲"硬门禁 + 全局逃生舱 = 假硬门禁"的反噬）。
+	// NOT set by the work-activity escape (FORGE_WORK_ACTIVITY): that is a rhythm gate (requires tool calls between
+	// gates — prevents shortcutting straight to a gate without reading code), NOT a verification gate. Using it does
+	// not prop the "done" claim on skipped verification, so capping would punish legitimate batch-refactor escapes
+	// (refactor/migration/demolition tasks) and inflate the blind-spot rate. See isRhythmEscapeHatch.
+	//
+	// UsedEscapeHatch 报告本任务是否用了验证类逃生舱
+	// （FORGE_TEST_COVERAGE / FORGE_ACCEPTANCE_GATE / FORGE_SKILL_DECISIONS——跳过真验证的 gate-bypass）。
+	// 逃生是合法工具，但"完成"声明若靠跳过验证 gate 撑住，可信度必须打折——Strength 据此 cap 到 Weak
+	// （方案5：让逃生有代价，对冲"硬门禁 + 全局逃生舱 = 假硬门禁"的反噬）。
+	//
+	// work-activity 逃生（FORGE_WORK_ACTIVITY）不置本标志：它是节奏门禁（要求门禁间有工具调用——
+	// 防 agent 不读代码直跳门禁），非验证门禁。用它不靠跳过验证撑住"完成"，cap 会惩罚合理的批量重构
+	// 逃生（重构/迁移/拆除任务）并虚高盲区率。见 isRhythmEscapeHatch。
 	UsedEscapeHatch bool
 }
 
@@ -121,13 +133,16 @@ func (ec EvidenceChain) Strength() EvidenceStrength {
 	if ec.Ratio() >= 0.5 {
 		s = Strong
 	}
-	// Plan 5: using an escape hatch = the "done" claim is propped up by skipping gates, so it cannot be rated Strong. Cap at Weak —
-	// give escape a cost rather than merely logging it, countering the backlash of "hard gate + global escape hatch = fake hard gate". Use downgrade
-	// rather than block: keep escape legitimate (doc-only, generated code, etc.) while making it no longer free.
+	// Plan 5: using a verification-class escape hatch = the "done" claim is propped up by skipping verification gates,
+	// so it cannot be rated Strong. Cap at Weak — give escape a cost rather than merely logging it, countering the backlash
+	// of "hard gate + global escape hatch = fake hard gate". Use downgrade rather than block: keep escape legitimate
+	// (doc-only, generated code, etc.) while making it no longer free. work-activity (rhythm gate) does NOT set
+	// UsedEscapeHatch, so it never triggers this cap — see isRhythmEscapeHatch.
 	//
-	// 方案5：用了逃生舱 = "完成"声明靠跳过 gate 撑住，不可评 Strong。cap 到 Weak——
+	// 方案5：用了验证类逃生舱 = "完成"声明靠跳过验证 gate 撑住，不可评 Strong。cap 到 Weak——
 	// 让逃生有代价而非仅记 log，对冲"硬门禁 + 全局逃生舱 = 假硬门禁"的反噬。用降档
-	// 而非阻断：既保逃生合法（doc-only/生成码等正当场景），又让它不再免费。
+	// 而非阻断：既保逃生合法（doc-only/生成码等正当场景），又让它不再免费。work-activity
+	// （节奏门禁）不置 UsedEscapeHatch，故永不触发本 cap——见 isRhythmEscapeHatch。
 	if ec.UsedEscapeHatch && s == Strong {
 		s = Weak
 	}
@@ -153,6 +168,11 @@ func BuildEvidenceChain(entries []Entry, taskRef string) EvidenceChain {
 		// evidence. CheckEscapeHatch is the same: using a gate-bypass is an observation of "skipping", not "verifying" —
 		// treating it as deterministic would inflate Strength and hide the signal it should expose (task slipping through by dodging gates).
 		// It sets UsedEscapeHatch so Strength can be capped at Weak.
+		// CheckSkillTrigger is the same observation class but semantically NEUTRAL: it records that a canonical skill
+		// fired (passive injection), not verification — counting it as deterministic would inflate Strength while the
+		// entry says nothing about whether the task's verification actually ran. Unlike drift/cheat-scan (negative
+		// signals), a skill firing is neither good nor bad for the claim; it simply must not feed evidence strength.
+		// Entries are kept in Entries for skill-usage/effectiveness analytics.
 		//
 		// Advisory/meta check 记录的是 OBSERVATIONS（观察）而非 verification 结果——
 		// 绝不可计入 evidence strength。scope-drift 是 advisory 信号（agent 改了未声明的
@@ -163,8 +183,20 @@ func BuildEvidenceChain(entries []Entry, taskRef string) EvidenceChain {
 		// 证据。CheckEscapeHatch 同类：用过 gate-bypass 是「跳过」的观察、不是「验证」——
 		// 当成 deterministic 会让 Strength 虚高、正好隐藏它该暴露的信号（task 靠躲 gate
 		// 蒙混过关）。它置 UsedEscapeHatch，让 Strength 能 cap 到 Weak。
-		if e.Check == CheckScopeDrift || e.Check == CheckCheatScan || e.Check == CheckUnusedScan || e.Check == CheckEscapeHatch {
-			if e.Check == CheckEscapeHatch {
+		// CheckSkillTrigger 同属 observation 类但语义中性：记录某 canonical skill 触发（被动注入），非
+		// verification——计入 deterministic 会让 Strength 虚高，而该条目对"本任务验证是否真跑"一字未提。
+		// 与 drift/cheat-scan（负向信号）不同，skill 触发对声明既不好也不坏；它只是绝不能喂给 evidence
+		// strength。条目保留在 Entries 供 skill-usage/effectiveness 分析。
+		if e.Check == CheckScopeDrift || e.Check == CheckCheatScan || e.Check == CheckUnusedScan || e.Check == CheckEscapeHatch || e.Check == CheckSkillTrigger {
+			// Only VERIFICATION-class escape hatches (test-coverage/acceptance/skill-decisions) set the cap flag.
+			// work-activity is a rhythm gate (tool calls between gates), not verification — using it does not prop the
+			// "done" claim on skipped verification, so it must not cap Strength (else refactor-heavy weeks inflate the
+			// blind-spot rate and mis-fire RetrospectiveNudge on well-evidenced tasks).
+			//
+			// 仅验证类逃生舱（test-coverage/acceptance/skill-decisions）置 cap 标志。
+			// work-activity 是节奏门禁（门禁间工具调用），非验证——用它不靠跳过验证撑住"完成"，
+			// 故不得 cap Strength（否则重构密集周会让盲区率虚高、对证据充分任务误触 RetrospectiveNudge）。
+			if e.Check == CheckEscapeHatch && !isRhythmEscapeHatch(e.Detail) {
 				ec.UsedEscapeHatch = true
 			}
 			continue
@@ -194,6 +226,26 @@ func BuildEvidenceChain(entries []Entry, taskRef string) EvidenceChain {
 		}
 	}
 	return ec
+}
+
+// isRhythmEscapeHatch reports whether an escape-hatch entry's Detail describes the work-activity rhythm gate
+// (vs a verification gate like test-coverage/acceptance/skill-decisions). work-activity requires tool calls
+// BETWEEN gates — it is a rhythm/anti-shortcut gate, not a verification gate: using it does not mean the "done"
+// claim rests on skipped verification, so it must NOT trigger the Strength cap. The Detail prose is produced by
+// taskpipeline at four sites — work-activity & skill-decisions (executor.go), acceptance (acceptance.go),
+// test-coverage (testcoverage.go) — in the fixed form `escape-hatch: <kind> ...`; substring match on
+// "work-activity" is stable against that contract. Unknown/empty detail returns false (→ caps): a new escape
+// hatch is conservatively treated as verification-class until explicitly recognized here.
+//
+// isRhythmEscapeHatch 报告一条 escape-hatch 条目的 Detail 是否描述 work-activity 节奏门禁
+// （相对 test-coverage/acceptance/skill-decisions 等验证门禁）。work-activity 要求门禁之间有
+// 工具调用——它是节奏/反抄近道门禁，非验证门禁：用它不代表"完成"靠跳过验证撑，故不得触发
+// Strength cap。Detail 散文由 taskpipeline 在四处产出——work-activity 与 skill-decisions（executor.go）、
+// acceptance（acceptance.go）、test-coverage（testcoverage.go）——以固定形式
+// "escape-hatch: <kind> ..." 产出；按 "work-activity" 子串匹配对该契约稳定。未知/空 detail
+// 返回 false（→ cap）：新逃生舱在未被此处显式识别前，保守按验证类对待。
+func isRhythmEscapeHatch(detail string) bool {
+	return strings.Contains(detail, "work-activity")
 }
 
 // ForTask loads all evidence for a task from disk (including archived checklog-*.jsonl) and aggregates it.

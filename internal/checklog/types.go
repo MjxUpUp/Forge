@@ -78,6 +78,19 @@ const (
 	// test-coverage gate 时，应留下可见轨迹。A4：记录以便 forge trace 与评分能展示
 	// 逃生舱使用。Passed=true（bypass 已生效）、Checked=true、Detail 标注逃生舱名。
 	CheckEscapeHatch CheckName = "escape-hatch"
+	// CheckSkillTrigger records a canonical skill that the skill-trigger framework fired (passive injection via
+	// AdditionalContext) — making skill reach observable downstream. Without it, skill-trigger injected silently and
+	// `forge skills usage`/`effectiveness` could not answer "which canonical skills actually fired" (the dogfood
+	// 0-trigger blind spot). deterministic (the engine evaluates declared triggers, agent cannot forge). Passed=true,
+	// Checked=true, Detail marks the skill name + firing reason. Excluded from evidence strength (it is an observation
+	// of a skill firing, not verification evidence) — see BuildEvidenceChain.
+	//
+	// CheckSkillTrigger 记录 skill-trigger 框架触发（经 AdditionalContext 被动注入）的 canonical skill——
+	// 让 skill 触达在下游可观测。无此记录，skill-trigger 静默注入，`forge skills usage`/`effectiveness`
+	// 无法回答"哪些 canonical skill 真触发过"（dogfood 0 触发盲区）。deterministic（引擎实算声明式触发，
+	// agent 无法伪造）。Passed=true、Checked=true、Detail 标 skill 名 + 触发原因。不计入证据强度
+	// （它是 skill 触发的观测，非验证证据）——见 BuildEvidenceChain。
+	CheckSkillTrigger CheckName = "skill-trigger"
 )
 
 // EvidenceSource marks the source of a checklog evidence entry, distinguishing deterministic (hook/external
