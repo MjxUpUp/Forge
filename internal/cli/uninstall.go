@@ -122,6 +122,7 @@ var uninstallCmd = &cobra.Command{
 			`cursor`:   agentbridge.StripCursorHooksUserLevel,
 			`opencode`: agentbridge.StripOpenCodeUserPlugin,
 			`windsurf`: agentbridge.StripWindsurfHooksUserLevel,
+			`reasonix`: agentbridge.StripReasonixHooksUserLevel,
 		} {
 			if stripped, err := strip(); err != nil {
 				fmt.Fprintf(os.Stderr, `警告：清理 %s 用户级 hooks 失败：%v`+"\n", name, err)
@@ -165,12 +166,13 @@ var uninstallCmd = &cobra.Command{
 		}
 
 		// 2e'. remove the user-level reasonix forge-quality skill
-		// (~/.reasonix/skills/forge-quality/, respecting REASONIX_HOME) — written by
-		// the reasonix translator; symmetric uninstall.
+		// (<reasonix home>/skills/forge-quality/ = %APPDATA%\reasonix on Windows,
+		// respecting REASONIX_HOME) — written by the reasonix translator; symmetric
+		// uninstall.
 		//
 		// 2e'. 删除 reasonix 用户级 forge-quality skill
-		// （~/.reasonix/skills/forge-quality/，尊重 REASONIX_HOME）——由 reasonix
-		// translator 写入；对称卸载。
+		// （<reasonix home>/skills/forge-quality/，Windows 上 = %APPDATA%\reasonix，
+		// 尊重 REASONIX_HOME）——由 reasonix translator 写入；对称卸载。
 		if rHome, err := agentbridge.ReasonixConfigHome(); err == nil {
 			rSkillDir := filepath.Join(rHome, `skills`, `forge-quality`)
 			if _, statErr := os.Stat(rSkillDir); statErr == nil {

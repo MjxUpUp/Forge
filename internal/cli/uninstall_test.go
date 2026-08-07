@@ -117,6 +117,64 @@ func TestUninstall_StripsKimiHooks(t *testing.T) {
 	}
 }
 
+// TestUninstall_StripsReasonixHooks pins the reasonix hook-strip wiring: uninstall must
+// remove forge hooks from reasonix's user-level settings.json (flat schema) while preserving
+// user content, and print the removal guidance. Mirrors TestUninstall_StripsKimiHooks; full
+// agent-home isolation (every agent home → TempDir via env + HOME/USERPROFILE) so RunE touches
+// no real config.
+//
+// TestUninstall_StripsReasonixHooks 钉死 reasonix hook 剥除接线：uninstall 必须从 reasonix
+// 用户级 settings.json（扁平 schema）移除 forge hooks 同时保留用户内容，并打印清除指引。
+// 镜像 TestUninstall_StripsKimiHooks；全 agent home 隔离（每个 agent home 经 env +
+// HOME/USERPROFILE 指向 TempDir），RunE 不碰真实配置。
+func TestUninstall_StripsReasonixHooks(t *testing.T) {
+	t.Setenv(`FORGE_UNINSTALL_SKIP_NPM`, `1`)
+	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
+	t.Setenv(`KIMI_CODE_HOME`, t.TempDir())
+	t.Setenv(`CODEX_HOME`, t.TempDir())
+	t.Setenv(`XDG_CONFIG_HOME`, t.TempDir())
+	t.Setenv(`CLAUDE_CONFIG_DIR`, t.TempDir())
+	home := t.TempDir()
+	t.Setenv(`HOME`, home)
+	t.Setenv(`USERPROFILE`, home)
+	reasonixHome := t.TempDir()
+	t.Setenv(`REASONIX_HOME`, reasonixHome)
+
+	// Seed reasonix settings.json: a forge hook + a user hook in one event + a user top-level key.
+	settingsPath := filepath.Join(reasonixHome, `settings.json`)
+	seed := `{
+		"myKey": "keep-me",
+		"hooks": {
+			"PreToolUse": [
+				{ "match": "Bash", "command": "forge hook bash-guard" },
+				{ "match": "Bash", "command": "echo user-hook" }
+			]
+		}
+	}`
+	if err := os.WriteFile(settingsPath, []byte(seed), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, _, err := captureOutput(t, func() error {
+		return uninstallCmd.RunE(uninstallCmd, nil)
+	})
+	if err != nil {
+		t.Fatalf(`uninstall RunE: %v`, err)
+	}
+
+	data, _ := os.ReadFile(settingsPath)
+	body := string(data)
+	if strings.Contains(body, `forge hook`) {
+		t.Errorf(`reasonix settings.json 中应无 forge hooks 残留，实得：\n%s`, body)
+	}
+	if !strings.Contains(body, `keep-me`) || !strings.Contains(body, `echo user-hook`) {
+		t.Errorf(`reasonix 用户内容未原样保留，实得：\n%s`, body)
+	}
+	if !strings.Contains(stdout, `已清除 reasonix 用户级配置中的 forge hooks`) {
+		t.Errorf(`缺少 reasonix hooks 清除提示，stdout：\n%s`, stdout)
+	}
+}
+
 // TestUninstall_RemovesUserLevelQualitySkill pins the uninstall gap fix: the
 // user-level ~/.claude/skills/forge-quality/ (written by every init/autoSync)
 // must be removed on uninstall, respecting CLAUDE_CONFIG_DIR.
@@ -160,11 +218,11 @@ func TestUninstall_RemovesUserLevelQualitySkill(t *testing.T) {
 }
 
 // TestUninstall_RemovesReasonixQualitySkill pins the symmetric reasonix uninstall:
-// the user-level ~/.reasonix/skills/forge-quality/ (written by the reasonix
+// the user-level <reasonix home>/skills/forge-quality/ (written by the reasonix
 // translator) must be removed on uninstall, respecting REASONIX_HOME.
 //
 // TestUninstall_RemovesReasonixQualitySkill 钉死对称的 reasonix 卸载：用户级
-// ~/.reasonix/skills/forge-quality/（由 reasonix translator 写入）必须在卸载时
+// <reasonix home>/skills/forge-quality/（由 reasonix translator 写入）必须在卸载时
 // 删除，且尊重 REASONIX_HOME。
 func TestUninstall_RemovesReasonixQualitySkill(t *testing.T) {
 	t.Setenv(`FORGE_UNINSTALL_SKIP_NPM`, `1`)
