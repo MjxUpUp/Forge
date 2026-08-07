@@ -58,7 +58,7 @@ Reasonix reads the NATIVE plugin manifest committed at `plugins/forge/reasonix-p
 
     reasonix plugin install https://github.com/MjxUpUp/Forge/tree/main/plugins/forge
 
-This wires the hook set (PreToolUse/PostToolUse/Stop/SessionStart) at the user level (machine-wide, `%!A(MISSING)PPDATA%!\(MISSING)reasonix` on Windows). Alternative without the plugin: `forge init --agents reasonix` writes the same hooks into `<reasonix home>/settings.json` (flat-schema merge). When both exist, `forge init` strips the settings.json hooks — the plugin wins and hooks never double-run.
+This wires the hook set (PreToolUse/PostToolUse/Stop/SessionStart) at the user level (machine-wide, `%APPDATA%\reasonix` on Windows). Alternative without the plugin: `forge init --agents reasonix` writes the same hooks into `<reasonix home>/settings.json` (flat-schema merge). When both exist, `forge init` strips the settings.json hooks — the plugin wins and hooks never double-run.
 
 ### 3. Initialize each project (once per project)
 

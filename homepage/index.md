@@ -60,4 +60,4 @@ v1.22 起 `forge init` 默认**零项目写入**：hooks/协议/skill 全部落�
 
 ## 许可
 
-[MIT](../LICENSE)
+[Apache-2.0](../LICENSE)

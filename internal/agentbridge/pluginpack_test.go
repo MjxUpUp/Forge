@@ -285,6 +285,23 @@ func TestPluginPack_Readme(t *testing.T) {
 	if strings.Contains(content, "@mjxupup/forge") {
 		t.Errorf("README references @mjxupup/forge (stale wrong package name; want @agent_forge/forge)")
 	}
+	// Mojibake guard: the embedded template runs through fmt.Sprintf (pluginReadme interpolates the
+	// repo slug), so a literal percent in the template (e.g. the Windows path %APPDATA%) is parsed as
+	// a format verb and renders as "%!A(MISSING)...". The template escapes such literals as a
+	// double-percent (rendering a single percent). Assert the rendered README carries the correct
+	// Windows path and never the (MISSING) fmt-mojibake signature. Regression source: the reasonix
+	// section's Windows path was eaten by fmt.Sprintf and shipped in v1.28.0.
+	//
+	// Mojibake 守卫：embed 模板经 fmt.Sprintf 渲染（pluginReadme 插值 repo slug），故模板里的字面量
+	// 百分号（如 Windows 路径 %APPDATA%）会被当成格式动词渲染成 "%!A(MISSING)..."。模板把这类字面量
+	// 转义成双百分号（渲染出单个百分号）。断言渲染后的 README 带正确的 Windows 路径，且永不出现
+	// (MISSING) 这类 fmt 乱码签名。回归源：reasonix 段的 Windows 路径被 fmt.Sprintf 吃掉，随 v1.28.0 发布。
+	if !strings.Contains(content, `%APPDATA%\reasonix`) {
+		t.Errorf("README missing literal Windows path APPDATA (template must double-escape percent signs so fmt.Sprintf renders them): see plugin_readme.md reasonix section")
+	}
+	if strings.Contains(content, "(MISSING)") {
+		t.Errorf("README contains fmt.Sprintf mojibake (MISSING) — a literal percent in the embedded template is being eaten as a format verb; escape it as a double-percent")
+	}
 }
 
 // TestPluginPack_CommittedManifestMatchesGenerator: the hooks field of the committed plugins/forge/.claude-plugin/
