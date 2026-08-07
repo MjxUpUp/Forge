@@ -15,6 +15,12 @@ package agentbridge
 //	  .claude-plugin/plugin.json      claude plugin manifest: hooks field = ForgeHookSpec,
 //	                                  so `claude plugin install <name>` directly gets the same gate
 //	                                  wiring byte-identical to forge init (single source of truth)
+//	  reasonix-plugin.json            reasonix NATIVE plugin manifest (apiVersion reasonix.io/plugin/v1):
+//	                                  hooks field = buildReasonixHooks flat {match,command}, so
+//	                                  `reasonix plugin install <name>` gets identical gate wiring.
+//	                                  reasonix's Claude compat does NOT resolve .claude-plugin/plugin.json
+//	                                  hooks, so this native manifest is required; reasonix prefers it
+//	                                  when both are present (no cross-contamination).
 //	  README.md                       one install-command block per host
 //
 // Key design: source uses the ./plugins/<PluginName> subdirectory rather than the repo
@@ -47,6 +53,12 @@ package agentbridge
 //	  .claude-plugin/plugin.json      claude plugin manifest：hooks 字段 = ForgeHookSpec，
 //	                                  让 `claude plugin install <name>` 直接获得与 forge init
 //	                                  字节相同的 gate 接线（单一真相源）
+//	  reasonix-plugin.json            reasonix NATIVE plugin manifest（apiVersion reasonix.io/plugin/v1）：
+//	                                  hooks 字段 = buildReasonixHooks 扁平 {match,command}，让
+//	                                  `reasonix plugin install <name>` 获得相同的 gate 接线。
+//	                                  reasonix 的 Claude 兼容不解析 .claude-plugin/plugin.json 的
+//	                                  hooks，故此 native manifest 必需；两者并存时 reasonix 优先
+//	                                  native（互不污染）。
 //	  README.md                       每 host 一段安装命令
 //
 // 关键设计：source 用 ./plugins/<PluginName> 子目录而非仓库根 —— forge 是 Go 工具仓
@@ -163,6 +175,9 @@ func GeneratePluginPack(spec PluginPackSpec) error {
 	if err := writeClaudePluginManifest(spec, pluginDir); err != nil {
 		return err
 	}
+	if err := writeReasonixPluginManifest(spec, pluginDir); err != nil {
+		return err
+	}
 	if err := writePluginReadme(spec, pluginDir); err != nil {
 		return err
 	}
@@ -226,6 +241,51 @@ func writeClaudePluginManifest(spec PluginPackSpec, pluginDir string) error {
 		"hooks":       hooks.ForgeHookSpec(),
 	}
 	return writeJSONIndent(filepath.Join(pluginDir, ".claude-plugin", "plugin.json"), manifest)
+}
+
+// writeReasonixPluginManifest writes plugins/<name>/reasonix-plugin.json — reasonix's NATIVE
+// plugin manifest (apiVersion reasonix.io/plugin/v1). reasonix's Claude compatibility does NOT
+// resolve the hooks field of .claude-plugin/plugin.json (empirically rejected with "no Reasonix-
+// compatible capabilities", kinds all 0), so a native manifest alongside the claude one is
+// required for reasonix. reasonix PREFERS the native manifest when both are present (confirmed:
+// manifestKind "reasonix", compatibility full, mappedCapabilities ["hooks"]), so the two coexist
+// in the same plugin dir — claude reads .claude-plugin/plugin.json, reasonix reads
+// reasonix-plugin.json, no cross-contamination. The native schema is flat {match, command} per
+// event (NOT claude's nested {matcher, hooks:[{type,command}]} — reasonix rejects matcher/type/
+// nested hooks fields), which is exactly the shape buildReasonixHooks produces for settings.json.
+// Reusing it keeps `reasonix plugin install` gate wiring identical to `forge init --agents
+// reasonix` — single source of truth. TestPluginPack_ReasonixManifestHooksMirror guards this.
+//
+// version is a static display string ("1.0.0"): reasonix requires the field (the native manifest
+// struct models it non-omitempty), and the pack generator takes no version input (claude omits
+// version for SHA-driven updates, but reasonix's native format wants it present). It is plugin
+// display metadata, decoupled from forge's own release version.
+//
+// writeReasonixPluginManifest 写 plugins/<name>/reasonix-plugin.json——reasonix 的 NATIVE
+// plugin manifest（apiVersion reasonix.io/plugin/v1）。reasonix 的 Claude 兼容不解析
+// .claude-plugin/plugin.json 的 hooks 字段（实测被判 "no Reasonix-compatible capabilities"、
+// kinds 全 0），故 reasonix 需在 claude manifest 旁加一份 native manifest。两者并存时
+// reasonix 优先 native（已确认：manifestKind "reasonix"、compatibility full、
+// mappedCapabilities ["hooks"]），故两份 manifest 共处同一 plugin 目录——claude 读
+// .claude-plugin/plugin.json，reasonix 读 reasonix-plugin.json，互不污染。native schema 是
+// 每 event 扁平 {match, command}（非 claude 的嵌套 {matcher, hooks:[{type,command}]}——
+// reasonix 拒绝 matcher/type/嵌套 hooks 字段），正是 buildReasonixHooks 为 settings.json
+// 产出的形态。复用它使 `reasonix plugin install` 的 gate 接线与 `forge init --agents
+// reasonix` 一致——单一真相源。TestPluginPack_ReasonixManifestHooksMirror 守卫此点。
+//
+// version 是静态展示串（"1.0.0"）：reasonix 要求该字段（native manifest 结构体把它建模为
+// 非 omitempty），而 pack 生成器不接收 version 输入（claude 省略 version 走 SHA 自动更新，
+// 但 reasonix 的 native 格式要求 version 在场）。它是 plugin 展示元数据，与 forge 自身发布
+// 版本解耦。
+func writeReasonixPluginManifest(spec PluginPackSpec, pluginDir string) error {
+	manifest := map[string]any{
+		"apiVersion":  "reasonix.io/plugin/v1",
+		"name":        spec.PluginName,
+		"version":     "1.0.0",
+		"description": spec.Description,
+		"hooks":       buildReasonixHooks()["hooks"],
+	}
+	return writeJSONIndent(filepath.Join(pluginDir, "reasonix-plugin.json"), manifest)
 }
 
 func writePluginReadme(spec PluginPackSpec, pluginDir string) error {

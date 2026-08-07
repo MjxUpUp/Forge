@@ -27,7 +27,7 @@ var pluginCmd = &cobra.Command{
 
 var pluginPackCmd = &cobra.Command{
 	Use:   "pack [--out dir]",
-	Short: "生成多 host plugin pack（claude/codex/cursor/copilot）",
+	Short: "生成多 host plugin pack（claude/codex/cursor/copilot/reasonix）",
 	Long: `生成一个 plugin pack，让各 AI 编码 agent 通过自己的 plugin marketplace 一键安装 forge。
 
 写入（默认当前目录）：
@@ -35,7 +35,7 @@ var pluginPackCmd = &cobra.Command{
   .cursor-plugin/marketplace.json   cursor
   plugins/<name>/
     .claude-plugin/plugin.json      claude manifest（hooks = ForgeHookSpec，与 forge init 字节一致）
-    .mcp.json                       共享 MCP（claude/codex 自动发现）
+    reasonix-plugin.json            reasonix native manifest（flat hooks；Claude 兼容不解析 hooks，故 reasonix 需 native manifest）
     README.md                       每 host 安装命令
 
 采用多 host 插件市场的通用模式：薄 manifest + 共享内容，单仓即 marketplace。

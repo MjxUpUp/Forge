@@ -52,6 +52,14 @@ Kimi Code reads the plugin manifest committed at the repo root (`.kimi-plugin/pl
 
 This wires the full hook set (PreToolUse/PostToolUse/Stop/SessionStart/PostCompact/UserPromptSubmit) at the user level. Alternative without the plugin: `forge init --agents kimi` writes the same hooks into `~/.kimi-code/config.toml` (marker-section merge). When both exist, `forge init` strips the config.toml section — the plugin wins and hooks never double-run.
 
+#### Reasonix
+
+Reasonix reads the NATIVE plugin manifest committed at `plugins/forge/reasonix-plugin.json` (reasonix's limited Claude compatibility does NOT resolve the hooks field of `.claude-plugin/plugin.json`, so a native manifest is required — reasonix prefers it when both are present). Install from GitHub:
+
+    reasonix plugin install https://github.com/MjxUpUp/Forge/tree/main/plugins/forge
+
+This wires the hook set (PreToolUse/PostToolUse/Stop/SessionStart) at the user level (machine-wide, `%!A(MISSING)PPDATA%!\(MISSING)reasonix` on Windows). Alternative without the plugin: `forge init --agents reasonix` writes the same hooks into `<reasonix home>/settings.json` (flat-schema merge). When both exist, `forge init` strips the settings.json hooks — the plugin wins and hooks never double-run.
+
 ### 3. Initialize each project (once per project)
 
 The plugin wires user-level hooks. What it does NOT do is tell forge which directories are forge projects. `forge init` registers the project in the global registry (`~/.forge/projects.json`) and, on first run, lays down the user-level protocol assets (the quality protocol in `~/.claude/CLAUDE.md` + `~/.codex/AGENTS.md`, the `/forge-quality` skill, protocol.yml + runtime state under `~/.forge/projects/<key>/`). Since v1.22 it writes nothing into the project directory itself:
@@ -83,6 +91,7 @@ User-level hooks fire in every Claude Code project. In git projects not yet init
 | **GitHub Copilot (CLI / VS Code)** | marketplace | none (no user-level channel) | bridge is a no-op — marketplace is a distribution entry point only |
 | **Windsurf** | `forge init --agents windsurf` | user-level Cascade hooks | `~/.codeium/windsurf/hooks.json` + `memories/global_rules.md` via `internal/agentbridge/windsurf.go` |
 | **Kimi Code** | repo-root `.kimi-plugin/plugin.json` (`/plugins install https://github.com/MjxUpUp/Forge`) | automatic (user-level) | full event set (PreToolUse/PostToolUse/Stop/SessionStart/PostCompact/UserPromptSubmit), exit-2 block protocol; fallback `forge init --agents kimi` (config.toml marker section, stripped when the plugin is installed) |
+| **Reasonix** | `plugins/forge/reasonix-plugin.json` (`reasonix plugin install https://github.com/MjxUpUp/Forge/tree/main/plugins/forge`) | automatic (user-level) | native manifest (Claude compat does not resolve hooks); fallback `forge init --agents reasonix` (settings.json flat hooks, stripped when the plugin is installed) |
 | **OpenCode / Kiro / Cline / Gemini CLI / Mistral Vibe / Trae / Nanobot / Hermes / Antigravity / OpenClaw** | (manual, see `install.sh`) | `forge init --agents <host>` if supported | install.sh script provides one-step symlink-style per-skill/folder install for 14 hosts |
 
 For experimental / bleeding-edge hosts, run `./plugins/forge/install.sh --help` for the full supported platform list.

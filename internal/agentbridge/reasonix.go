@@ -115,6 +115,28 @@ func (t *ReasonixTranslator) Translate(projectDir string, input *TranslationInpu
 	if err := skillgen.GenerateUserQualitySkillTo(filepath.Join(home, "skills"), input.Protocol); err != nil {
 		return fmt.Errorf("reasonix: %w", err)
 	}
+	// Plugin wins (kimi-style dedupe): when forge is installed as a reasonix plugin
+	// (`reasonix plugin install`), the plugin's reasonix-plugin.json manifest already
+	// registers every hook at the user level — merging into settings.json would double-run
+	// every hook (same dedupe philosophy as kimi.go's config.toml path and claude-code's
+	// plugin vs settings.local.json, internal/hooks/plugin_detect.go). The skill above is
+	// still written (the plugin pack ships no skill — writeReasonixPluginManifest emits only
+	// the hooks manifest), so this strip happens AFTER the skill write. Then we stop: plugin
+	// wins, no double-run.
+	//
+	// Plugin 优先（kimi 式 dedupe）：forge 已作为 reasonix plugin 安装
+	// （`reasonix plugin install`）时，plugin 的 reasonix-plugin.json manifest 已在 user
+	// level 注册全部 hook——再合并进 settings.json 会让每个 hook 双跑（与 kimi.go 的
+	// config.toml 路径、claude-code 的 plugin vs settings.local.json 同款 dedupe 哲学，见
+	// internal/hooks/plugin_detect.go）。上面的 skill 仍写入（plugin pack 不附 skill——
+	// writeReasonixPluginManifest 只输出 hooks manifest），故此 strip 发生在 skill 写入之后。
+	// 然后返回：plugin 优先，不双跑。
+	if IsReasonixPluginInstalled() {
+		if _, err := StripReasonixHooksUserLevel(); err != nil {
+			return fmt.Errorf("reasonix: %w", err)
+		}
+		return nil
+	}
 	// 2. Enforcement hooks — settings.json, flat schema derived from ForgeHookSpec. Backup
 	// first so `forge uninstall --restore` can roll back (reasonix's settings.json may hold
 	// user content beyond hooks, same reason claude-code backs up its user-level settings).
@@ -341,4 +363,103 @@ func StripReasonixHooksUserLevel() (bool, error) {
 		return false, fmt.Errorf("reasonix: write settings.json: %w", err)
 	}
 	return true, nil
+}
+
+// reasonixPluginName is the plugin id reasonix registers under. Must stay "forge": the
+// plugin-wins detection keys on it, matching writeReasonixPluginManifest's manifest name.
+//
+// reasonixPluginName 是 reasonix 注册时用的 plugin id。必须保持 "forge"：plugin-wins 检测
+// 以它为 key，与 writeReasonixPluginManifest 的 manifest name 一致。
+const reasonixPluginName = "forge"
+
+// IsReasonixPluginInstalled reports whether the forge plugin is installed (and active) in
+// reasonix, by reading <reasonix home>/plugin-packages.json — the registry reasonix's
+// `reasonix plugin install` writes (configPath surfaced by `--dry-run`). reasonix's
+// plugin add/remove is also exposed via the `/plugins` in-app slash command, so the
+// on-disk registry is the only signal a CLI can read (same situation as IsKimiPluginInstalled).
+//
+// The parse is deliberately TOLERANT and recursive: the exact record schema is not
+// documented (reasonix pre-1.0), and the registry may be a top-level array, an object
+// keyed by plugin name, an object with a `packages`/`plugins` array, or a nested tree.
+// reasonixFindForge walks any such shape looking for a map whose `name` (the manifest
+// field writeReasonixPluginManifest writes) is "forge"; an entry counts only when not
+// explicitly disabled (enabled defaults true — mirrors IsKimiPluginInstalled). The
+// trade-off this accepts: an unrelated third-party plugin also named "forge" (id
+// collision, no source check — checking source would punish forks) would make Translate
+// strip settings.json hooks without that plugin registering forge hooks; judged
+// improbable enough to stay a tolerant read rather than a strict one (same call kimi
+// made). A missing/unreadable/garbled registry is a clean false.
+//
+// IsReasonixPluginInstalled 报告 forge plugin 是否已在 reasonix 安装（且激活），读
+// <reasonix home>/plugin-packages.json——reasonix 的 `reasonix plugin install` 写入的
+// 注册表（`--dry-run` 暴露的 configPath）。reasonix 的 plugin add/remove 也经应用内
+// `/plugins` 斜杠命令，故磁盘注册表是 CLI 唯一可读信号（与 IsKimiPluginInstalled 同境）。
+//
+// 解析刻意宽容且递归：记录 schema 无文档（reasonix 1.0 前），注册表可能是顶层数组、按
+// plugin name 为 key 的对象、带 `packages`/`plugins` 数组的对象、或嵌套树。reasonixFindForge
+// 遍历任意此类形态，找 `name`（writeReasonixPluginManifest 写入的 manifest 字段）为
+// "forge" 的 map；条目仅在未显式禁用时算数（启用默认 true——镜像 IsKimiPluginInstalled）。
+// 此设计接受的权衡：同名 "forge" 的无关第三方插件（id 碰撞，不校验 source——校验会误伤
+// fork）会让 Translate 剥除 settings.json hooks 而该插件并不注册 forge hooks；概率足够低，
+// 故保持宽容读而非严格校验（与 kimi 同判断）。缺失/读不出/损坏的注册表是干净 false。
+func IsReasonixPluginInstalled() bool {
+	home, err := ReasonixConfigHome()
+	if err != nil {
+		return false
+	}
+	data, err := os.ReadFile(filepath.Join(home, "plugin-packages.json"))
+	if err != nil {
+		return false
+	}
+	var reg any
+	if err := json.Unmarshal(data, &reg); err != nil {
+		return false
+	}
+	return reasonixFindForge(reg)
+}
+
+// reasonixFindForge walks an arbitrary decoded-JSON value looking for an active forge
+// plugin entry (see IsReasonixPluginInstalled). A node that IS a forge entry is a leaf
+// for the search (we never recurse into an entry's own children looking for more entries),
+// so a disabled forge entry returns false from its own call without poisoning the search
+// for an enabled sibling elsewhere in the tree.
+//
+// reasonixFindForge 在任意解码后的 JSON 值里找激活的 forge plugin 条目（见
+// IsReasonixPluginInstalled）。本身是 forge 条目的节点是搜索的叶子（绝不递归进条目自身
+// 的子树找更多条目），故被禁用的 forge 条目从其自身调用返回 false，不会毒化树中别处
+// 激活兄弟条目的搜索。
+func reasonixFindForge(v any) bool {
+	switch node := v.(type) {
+	case map[string]any:
+		if name, _ := node["name"].(string); name == reasonixPluginName {
+			// This node is a forge entry. It is a search leaf: count it only when active.
+			// Returning false here (disabled) does not abort the enclosing loop — the caller
+			// keeps scanning siblings for an active forge entry.
+			//
+			// 本节点是 forge 条目。它是搜索叶子：仅激活时算数。此处返回 false（被禁用）
+			// 不会中止外层循环——调用方会继续扫兄弟节点找激活的 forge 条目。
+			if enabled, ok := node["enabled"].(bool); ok && !enabled {
+				return false
+			}
+			if disabled, ok := node["disabled"].(bool); ok && disabled {
+				return false
+			}
+			return true
+		}
+		for _, child := range node {
+			if reasonixFindForge(child) {
+				return true
+			}
+		}
+		return false
+	case []any:
+		for _, child := range node {
+			if reasonixFindForge(child) {
+				return true
+			}
+		}
+		return false
+	default:
+		return false
+	}
 }

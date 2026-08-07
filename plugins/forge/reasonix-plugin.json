@@ -1,0 +1,96 @@
+{
+  "apiVersion": "reasonix.io/plugin/v1",
+  "description": "Forge loop-engineering quality gates: task-tracked source changes, assertion guards, file-sentinel quarantine, and review-gated completion for AI coding agents.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "match": "Write|Edit",
+        "command": "forge hook auto-compile"
+      },
+      {
+        "match": "Write|Edit",
+        "command": "forge hook workflow-test-guard"
+      },
+      {
+        "match": "Write|Edit",
+        "command": "forge hook skill-trigger"
+      },
+      {
+        "match": "Bash",
+        "command": "forge hook file-sentinel"
+      },
+      {
+        "match": "Bash",
+        "command": "forge hook skill-trigger"
+      },
+      {
+        "match": "Read|Skill|Agent",
+        "command": "forge hook tool-track"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "match": "Write|Edit",
+        "command": "forge hook freeze-guard"
+      },
+      {
+        "match": "Write|Edit",
+        "command": "forge hook task-guard"
+      },
+      {
+        "match": "Write|Edit",
+        "command": "forge hook assertion-check"
+      },
+      {
+        "match": "Write|Edit",
+        "command": "forge hook read-before-edit"
+      },
+      {
+        "match": "Write|Edit",
+        "command": "forge hook skill-trigger"
+      },
+      {
+        "match": "Bash",
+        "command": "forge hook bash-guard"
+      },
+      {
+        "match": "Bash",
+        "command": "forge hook hazard-guard"
+      },
+      {
+        "match": "Bash",
+        "command": "forge hook skill-trigger"
+      }
+    ],
+    "SessionStart": [
+      {
+        "command": "forge hook skill-scan"
+      },
+      {
+        "command": "forge hook mcp-scan"
+      },
+      {
+        "command": "forge hook init-suggest"
+      },
+      {
+        "command": "forge hook task-resume"
+      },
+      {
+        "command": "forge hook skill-trigger"
+      }
+    ],
+    "Stop": [
+      {
+        "command": "forge hook task-verify"
+      },
+      {
+        "command": "forge hook review-stop"
+      },
+      {
+        "command": "forge hook skill-trigger"
+      }
+    ]
+  },
+  "name": "forge",
+  "version": "1.0.0"
+}
