@@ -75,7 +75,7 @@ forge uninstall --restore  # 加 --restore 把用户级文件回滚到 forge 修
 
 ## 多宿主支持
 
-Forge 已为 Claude Code / Codex / Cursor / Copilot / Windsurf 落地分发（`.claude-plugin/`、`.copilot-plugin/`、`.cursor-plugin/` 多宿主元数据）。其他 agent（OpenCode / Pi / Kiro / Cline / Gemini CLI / Mistral Vibe 等）由 `plugins/forge/install.sh` 一站式安装脚本支持（per-skill / folder 双 style symlink 机制）。
+Forge 已为 Claude Code / Codex / Cursor / Copilot / Kimi Code / Reasonix 落地分发（`.claude-plugin/`（claude+codex+copilot 共享）、`.cursor-plugin/`（cursor）、`.kimi-plugin/`（kimi）、`plugins/forge/reasonix-plugin.json`（reasonix native）多宿主元数据；Windsurf 走 `forge init --agents windsurf`）。其他 agent（OpenCode / Pi / Kiro / Cline / Gemini CLI / Mistral Vibe 等）由 `plugins/forge/install.sh` 一站式安装脚本支持（per-skill / folder 双 style symlink 机制）。
 
 ## 常见问题
 
