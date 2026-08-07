@@ -524,3 +524,140 @@ func reasonixHookCommandsByEvent(t *testing.T, path string) map[string]map[strin
 	}
 	return out
 }
+
+// TestIsReasonixPluginInstalled pins the tolerant recursive registry read. reasonix's
+// plugin-packages.json schema is undocumented (reasonix pre-1.0), so the parser must find
+// an active forge entry in a top-level array, a {plugins:[]}/{packages:[]} object, an
+// object keyed by plugin name, or a nested tree — and must NOT count an explicitly
+// disabled entry. The "disabled-then-enabled" case specifically guards the no-poisoning
+// contract of reasonixFindForge: a disabled forge entry must not abort the search for an
+// enabled sibling elsewhere. A missing/unreadable/garbled registry is a clean false.
+//
+// TestIsReasonixPluginInstalled 钉住宽容的递归注册表读。reasonix 的 plugin-packages.json
+// schema 无文档（reasonix 1.0 前），故解析器须在顶层数组、{plugins:[]}/{packages:[]} 对象、
+// 按 plugin name 为 key 的对象、或嵌套树中找到激活的 forge 条目——且不得把显式禁用的条目
+// 算数。"disabled-then-enabled" 用例专守 reasonixFindForge 的不毒化契约：被禁用的 forge
+// 条目不得中止对别处激活兄弟的搜索。缺失/读不出/损坏的注册表是干净 false。
+func TestIsReasonixPluginInstalled(t *testing.T) {
+	cases := []struct {
+		name string
+		seed string
+		want bool
+	}{
+		{"array with forge entry", `[{"name":"forge"}]`, true},
+		{"plugins array", `{"plugins":[{"name":"forge","version":"1.0.0"}]}`, true},
+		{"packages array", `{"packages":[{"name":"forge"}]}`, true},
+		{"object keyed by name", `{"forge":{"name":"forge","enabled":true}}`, true},
+		{"nested under owner", `{"owners":[{"plugins":[{"name":"forge"}]}]}`, true},
+		{"disabled entry", `{"plugins":[{"name":"forge","enabled":false}]}`, false},
+		{"disabled alt field", `{"plugins":[{"name":"forge","disabled":true}]}`, false},
+		{"disabled then enabled sibling", `{"plugins":[{"name":"forge","enabled":false},{"name":"forge","enabled":true}]}`, true},
+		{"unrelated plugin", `{"plugins":[{"name":"other"}]}`, false},
+		{"empty object", `{}`, false},
+		{"garbage", `not-json`, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("REASONIX_HOME", home)
+			if err := os.WriteFile(filepath.Join(home, "plugin-packages.json"), []byte(c.seed), 0644); err != nil {
+				t.Fatalf("write seed: %v", err)
+			}
+			if got := IsReasonixPluginInstalled(); got != c.want {
+				t.Errorf("IsReasonixPluginInstalled = %v, want %v\nseed: %s", got, c.want, c.seed)
+			}
+		})
+	}
+	// Missing registry file is a clean false.
+	home := t.TempDir()
+	t.Setenv("REASONIX_HOME", home)
+	if IsReasonixPluginInstalled() {
+		t.Error("missing registry must report false")
+	}
+}
+
+// TestReasonixTranslator_PluginWins: when the forge plugin is installed (active entry in
+// plugin-packages.json), Translate writes the advisory skill (the plugin pack ships NO skill,
+// so the skill write is never skipped) but does NOT merge hooks into settings.json — the
+// plugin's reasonix-plugin.json manifest already registers them machine-wide, so merging
+// would double-run every hook (kimi-style plugin-wins dedup). settings.json is not created at
+// all (the hooks branch is skipped; StripReasonixHooksUserLevel is a no-op on a missing file).
+//
+// TestReasonixTranslator_PluginWins：forge plugin 已装（plugin-packages.json 有激活条目）时，
+// Translate 写 advisory skill（plugin pack 不附 skill，故 skill 写入永不跳过）但不把 hooks 合并
+// 进 settings.json——plugin 的 reasonix-plugin.json manifest 已全机器注册它们，合并会让每个
+// hook 双跑（kimi 式 plugin-wins 去重）。settings.json 根本不被创建（hooks 分支跳过；
+// StripReasonixHooksUserLevel 对缺失文件是 no-op）。
+func TestReasonixTranslator_PluginWins(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("REASONIX_HOME", home)
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	if err := os.MkdirAll(home, 0755); err != nil {
+		t.Fatalf("mkdir home: %v", err)
+	}
+	// Seed the reasonix plugin registry with an active forge entry (no settings.json yet).
+	if err := os.WriteFile(filepath.Join(home, "plugin-packages.json"),
+		[]byte(`{"plugins":[{"name":"forge","version":"1.0.0"}]}`), 0644); err != nil {
+		t.Fatalf("write registry: %v", err)
+	}
+	if !IsReasonixPluginInstalled() {
+		t.Fatal("IsReasonixPluginInstalled = false, want true (forge entry present)")
+	}
+
+	if err := (&ReasonixTranslator{}).Translate(t.TempDir(), testInput()); err != nil {
+		t.Fatalf("Translate: %v", err)
+	}
+	// Skill IS written — the plugin pack ships no skill, so the skill write never skips.
+	if _, err := os.Stat(filepath.Join(home, "skills", "forge-quality", "SKILL.md")); err != nil {
+		t.Errorf("skill must still be written when the plugin is installed (plugin ships no skill): %v", err)
+	}
+	// settings.json must NOT be created — plugin wins, the hooks merge branch is skipped.
+	settingsPath := filepath.Join(home, "settings.json")
+	if _, err := os.Stat(settingsPath); err == nil {
+		data, _ := os.ReadFile(settingsPath)
+		t.Errorf("settings.json must not be written when the plugin is installed (plugin wins, no double-run), got: %s", data)
+	}
+}
+
+// TestReasonixTranslator_PluginWinsStripsStaleSettingsHooks: the plugin-wins path also STRIPS
+// stale forge hooks from a pre-existing settings.json — e.g. left over from a pre-plugin
+// `forge init --agents reasonix`. Without the strip, those stale hooks would double-run with
+// the plugin's manifest. User content is preserved (StripReasonixHooksUserLevel contract).
+//
+// TestReasonixTranslator_PluginWinsStripsStaleSettingsHooks：plugin-wins 路径还从既有
+// settings.json 剥除陈旧 forge hooks——如装 plugin 前跑过 `forge init --agents reasonix` 的残留。
+// 不剥则这些陈旧 hook 会与 plugin manifest 双跑。用户内容保留（StripReasonixHooksUserLevel 契约）。
+func TestReasonixTranslator_PluginWinsStripsStaleSettingsHooks(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("REASONIX_HOME", home)
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	if err := os.MkdirAll(home, 0755); err != nil {
+		t.Fatalf("mkdir home: %v", err)
+	}
+	// Plugin registry has an active forge entry.
+	if err := os.WriteFile(filepath.Join(home, "plugin-packages.json"),
+		[]byte(`{"plugins":[{"name":"forge"}]}`), 0644); err != nil {
+		t.Fatalf("write registry: %v", err)
+	}
+	// Pre-existing settings.json carries STALE forge hooks + a user top-level key.
+	seed := `{"myKey":"keep","hooks":{"PreToolUse":[{"match":"Bash","command":"forge hook bash-guard"}]}}`
+	settingsPath := filepath.Join(home, "settings.json")
+	if err := os.WriteFile(settingsPath, []byte(seed), 0644); err != nil {
+		t.Fatalf("write seed: %v", err)
+	}
+
+	if err := (&ReasonixTranslator{}).Translate(t.TempDir(), testInput()); err != nil {
+		t.Fatalf("Translate: %v", err)
+	}
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatalf("read settings.json: %v", err)
+	}
+	body := string(data)
+	if strings.Contains(body, "forge hook") {
+		t.Errorf("stale forge hooks must be stripped when the plugin is installed (would double-run): %s", body)
+	}
+	if !strings.Contains(body, "keep") {
+		t.Errorf("user content must be preserved through the strip: %s", body)
+	}
+}

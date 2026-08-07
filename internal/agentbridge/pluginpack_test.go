@@ -21,6 +21,7 @@ var expectedPluginFiles = []string{
 	".claude-plugin/marketplace.json",
 	".cursor-plugin/marketplace.json",
 	"plugins/forge/.claude-plugin/plugin.json",
+	"plugins/forge/reasonix-plugin.json",
 	"plugins/forge/README.md",
 }
 
@@ -269,6 +270,9 @@ func TestPluginPack_Readme(t *testing.T) {
 		"/plugins install https://github.com/", // kimi plugin install（repo-root .kimi-plugin/plugin.json）
 		"forge init --agents kimi",             // kimi 的 config.toml 回退路径
 		"Claude Code",
+		"Reasonix",
+		"reasonix plugin install", // reasonix native plugin（plugins/forge/reasonix-plugin.json）
+		"forge init --agents reasonix", // reasonix 的 settings.json flat hooks 回退路径
 		"not officially confirmed", // D3: Codex 路径诚实表述（OpenAI 未明确）
 	} {
 		if !strings.Contains(content, want) {
@@ -332,5 +336,93 @@ func TestPluginPack_Readme_UserLevelContract(t *testing.T) {
 		if !strings.Contains(content, want) {
 			t.Errorf("README missing user-level wording %q", want)
 		}
+	}
+}
+
+// TestPluginPack_ReasonixManifestHooksMirror: the hooks field of reasonix-plugin.json must equal the
+// flat hooks shape buildReasonixHooks produces (the same one reasonix's Translate writes into
+// settings.json). reasonix is the 5th host: its Claude compatibility does NOT resolve
+// .claude-plugin/plugin.json's nested hooks (empirically rejected), so a NATIVE flat manifest is
+// required — and it must mirror the settings.json path's single source of truth or `reasonix
+// plugin install` and `forge init --agents reasonix` would wire different gates. Also pins the
+// native manifest identity fields (apiVersion/name) so a future rename drift is caught.
+//
+// TestPluginPack_ReasonixManifestHooksMirror：reasonix-plugin.json 的 hooks 字段必须等于
+// buildReasonixHooks 产出的扁平 hooks 形态（与 reasonix 的 Translate 写进 settings.json 的相同）。
+// reasonix 是第 5 host：其 Claude 兼容不解析 .claude-plugin/plugin.json 的嵌套 hooks（实测被拒），
+// 故需 NATIVE 扁平 manifest——且它必须镜像 settings.json 路径的单一真相源，否则
+// `reasonix plugin install` 与 `forge init --agents reasonix` 会接不同的 gate。同时钉住 native
+// manifest 标识字段（apiVersion/name），以抓将来的改名 drift。
+func TestPluginPack_ReasonixManifestHooksMirror(t *testing.T) {
+	pdir := generatePack(t)
+	var manifest map[string]any
+	loadJSON(t, filepath.Join(pdir, "plugins", "forge", "reasonix-plugin.json"), &manifest)
+	// Native manifest identity fields.
+	if manifest["apiVersion"] != "reasonix.io/plugin/v1" {
+		t.Errorf("reasonix apiVersion = %v, want reasonix.io/plugin/v1 (native reasonix plugin manifest)", manifest["apiVersion"])
+	}
+	if manifest["name"] != "forge" {
+		t.Errorf("reasonix manifest name = %v, want forge", manifest["name"])
+	}
+	// hooks field == buildReasonixHooks flat shape (single source of truth shared with the
+	// settings.json path). End-to-end comparison: read the generated file, marshal the function
+	// output writeReasonixPluginManifest and reasonix settings.json both consume. Both sides are
+	// round-tripped through map[string]any so struct-declaration-order (match,command) vs
+	// alphabetical-map-key-order (command,match) differences don't masquerade as drift —
+	// loadJSON yields map[string]any (alphabetical keys), a direct struct marshal yields
+	// declaration-order keys; same data, different string.
+	a, _ := json.Marshal(manifest["hooks"])
+	builtRaw, _ := json.Marshal(buildReasonixHooks()["hooks"])
+	var builtNorm any
+	if err := json.Unmarshal(builtRaw, &builtNorm); err != nil {
+		t.Fatalf("normalize built hooks: %v", err)
+	}
+	b, _ := json.Marshal(builtNorm)
+	if string(a) != string(b) {
+		t.Errorf("reasonix-plugin.json hooks != buildReasonixHooks output (single-source-of-truth drift between plugin manifest and settings.json path):\n manifest: %s\n built:    %s", a, b)
+	}
+	// Sanity: the flat reasonix entry shape must be present (match, not matcher; bare command,
+	// no type wrapper) — guards against accidentally reusing the claude nested shape.
+	if strings.Contains(string(a), `"matcher"`) || strings.Contains(string(a), `"type"`) {
+		t.Errorf("reasonix manifest must use the flat {match, command} shape, not claude's nested form:\n %s", a)
+	}
+}
+
+// TestPluginPack_CommittedReasonixManifestMatchesGenerator: the hooks field of the committed
+// plugins/forge/reasonix-plugin.json must equal the current output of GeneratePluginPack. Mirrors
+// TestPluginPack_CommittedManifestMatchesGenerator for the reasonix native manifest — catches the
+// drift of changing ForgeHookSpec (or reasonixEventName) but forgetting to run `forge plugin pack`
+// to re-commit reasonix-plugin.json. The committed reasonix manifest is the 5th-host distribution
+// artifact; a stale one ships wrong gates to reasonix plugin installs.
+//
+// TestPluginPack_CommittedReasonixManifestMatchesGenerator：committed 的
+// plugins/forge/reasonix-plugin.json 的 hooks 字段必须等于 GeneratePluginPack 当前输出。镜像
+// TestPluginPack_CommittedManifestMatchesGenerator 用于 reasonix native manifest——抓"改了
+// ForgeHookSpec（或 reasonixEventName）但忘记跑 `forge plugin pack` 重新提交 reasonix-plugin.json"
+// 的 drift。committed 的 reasonix manifest 是第 5 host 的分发产物；陈旧的会给 reasonix plugin
+// 安装发错的 gate。
+func TestPluginPack_CommittedReasonixManifestMatchesGenerator(t *testing.T) {
+	committed := filepath.Join("..", "..", "plugins", "forge", "reasonix-plugin.json")
+	if _, err := os.Stat(committed); err != nil {
+		t.Skipf("committed reasonix manifest not found at %s (non-forge repo layout): %v", committed, err)
+	}
+	generated := generatePack(t)
+	var genManifest, committedManifest map[string]any
+	loadJSON(t, filepath.Join(generated, "plugins", "forge", "reasonix-plugin.json"), &genManifest)
+	loadJSON(t, committed, &committedManifest)
+	a, _ := json.Marshal(genManifest["hooks"])
+	b, _ := json.Marshal(committedManifest["hooks"])
+	if string(a) != string(b) {
+		t.Errorf("committed reasonix-plugin.json hooks drifted from generator output (run `forge plugin pack` and commit the result):\n generated: %s\n committed: %s", a, b)
+	}
+	// The committed file's identity fields must also match (apiVersion/name) — a stale committed
+	// manifest could carry a renamed field the current generator no longer emits. version is checked
+	// too: writeReasonixPluginManifest hardcodes it, so changing that constant without re-running
+	// `forge plugin pack` would leave the committed artifact stale on version.
+	if committedManifest["apiVersion"] != genManifest["apiVersion"] {
+		t.Errorf("committed reasonix apiVersion = %v, want %v", committedManifest["apiVersion"], genManifest["apiVersion"])
+	}
+	if committedManifest["version"] != genManifest["version"] {
+		t.Errorf("committed reasonix version = %v, want %v (writeReasonixPluginManifest hardcodes it — re-run forge plugin pack)", committedManifest["version"], genManifest["version"])
 	}
 }

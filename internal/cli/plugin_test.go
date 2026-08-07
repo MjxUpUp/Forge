@@ -322,3 +322,41 @@ func TestRunPluginDedupe_ProjectAndUserBothDirty(t *testing.T) {
 		t.Errorf(`应输出 user-level 段, got %q`, got)
 	}
 }
+
+// TestPluginPackCmd_ReasonixHelpAndGeneration: the `forge plugin pack` command must advertise
+// reasonix as a host in its help AND actually write the reasonix native manifest when run.
+// Two coupled assertions: (1) the Short/Long help mentions reasonix + the reasonix-plugin.json
+// file, guarding help-vs-generator drift (the 5th host was added to the generator, so the
+// user-facing --help must reflect it or it under-advertises); (2) running runPluginPack writes
+// plugins/forge/reasonix-plugin.json, guarding the cli→generator wiring (the new
+// writeReasonixPluginManifest call in GeneratePluginPack must be reachable from the command).
+//
+// TestPluginPackCmd_ReasonixHelpAndGeneration：`forge plugin pack` 命令须在帮助里宣传
+// reasonix 这个 host 且跑起来真的写出 reasonix native manifest。两条耦合断言：(1) Short/Long
+// 帮助提到 reasonix + reasonix-plugin.json 文件，守护帮助与生成器不漂移（第 5 host 已加进
+// 生成器，故用户可见的 --help 须反映它，否则低报）；(2) 跑 runPluginPack 写出
+// plugins/forge/reasonix-plugin.json，守护 cli→generator 接线（GeneratePluginPack 里新加的
+// writeReasonixPluginManifest 调用须从命令可达）。
+func TestPluginPackCmd_ReasonixHelpAndGeneration(t *testing.T) {
+	// (1) Help reflects the 5th host — guards help-vs-generator drift.
+	if !strings.Contains(pluginPackCmd.Short, "reasonix") {
+		t.Errorf("plugin pack Short must advertise the reasonix host, got %q", pluginPackCmd.Short)
+	}
+	if !strings.Contains(pluginPackCmd.Long, "reasonix-plugin.json") {
+		t.Errorf("plugin pack Long must mention the reasonix-plugin.json manifest the generator emits, got %q", pluginPackCmd.Long)
+	}
+
+	// (2) Running the command actually writes the reasonix manifest (cli→generator wiring).
+	dir := t.TempDir()
+	cmd := &cobra.Command{RunE: runPluginPack}
+	cmd.Flags().String("out", "", "")
+	if err := cmd.Flags().Set("out", dir); err != nil {
+		t.Fatalf("set out: %v", err)
+	}
+	if err := runPluginPack(cmd, nil); err != nil {
+		t.Fatalf("runPluginPack: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "plugins", "forge", "reasonix-plugin.json")); err != nil {
+		t.Errorf("runPluginPack must write plugins/forge/reasonix-plugin.json (5th-host wiring): %v", err)
+	}
+}
