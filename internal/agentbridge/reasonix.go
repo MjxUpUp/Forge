@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/skillgen"
@@ -26,11 +27,21 @@ import (
 //
 // reasonix's settings.json schema is flatter than Claude Code's nested
 // {matcher, hooks:[{type,command}]}: the field is `match` (not `matcher`) and the command
-// sits directly on the entry (no `type` wrapper). The stdin/exit-code protocol is
-// Claude-Code-compatible, so the bare `forge hook <name>` commands run as-is and forge's
-// existing CC-shape block output ({"decision":"block",...} + exit 1) is honored unchanged —
-// no --agent reasonix flag is needed (it would be a no-op that correctly collapses to the
-// CC-shape path).
+// sits directly on the entry (no `type` wrapper). TWO reasonix-specific divergences from the
+// Claude Code shape are handled here, both load-bearing — without them the hooks fire but
+// enforce nothing (the original "reasonix rarely follows Forge" symptom):
+//  1. Tool names are snake_case. reasonix's tool roster is write_file/edit_file/multi_edit/
+//     move_file/bash/read_file (its [sandbox] config), so ForgeHookSpec's PascalCase matchers
+//     ("Write|Edit", "Bash") are translated by reasonixMatcher — else the Pre/PostToolUse hooks
+//     never match and never fire.
+//  2. The hook STDIN is camelCase ({event, sessionId, cwd, toolName, toolArgs}), not Claude's
+//     {hook_event_name, session_id, cwd, tool_name, tool_input}. So every Pre/PostToolUse command
+//     carries `--agent reasonix`, routing through reasonixNormalize (internal/cli/hook_normalize.go)
+//     — else tool_name/file_path parse empty and the path/command hooks (task-guard,
+//     read-before-edit, bash-guard, file-sentinel) fail open.
+//
+// The exit-code/block-JSON protocol IS Claude-Code-compatible, so forge's existing
+// {"decision":"block",...} + exit 1 output is honored unchanged (no protocol adaptation).
 //
 // No-op when the reasonix home does not exist — Forge never creates an agent's config home
 // (the detection self-poison guard: materializing the home on a machine without reasonix
@@ -61,10 +72,19 @@ import (
 //
 // reasonix 的 settings.json schema 比 Claude Code 的嵌套
 // {matcher, hooks:[{type,command}]} 更扁平：字段是 `match`（非 `matcher`），command 直接
-// 挂在条目上（无 `type` 包装）。stdin/exit-code 协议与 Claude Code 兼容，故裸
-// `forge hook <name>` 命令原样跑，forge 既有 CC-shape block 输出
-// （{"decision":"block",...} + exit 1）原样被尊重——无需 --agent reasonix 标志
-// （它是 no-op，会正确归并到 CC-shape 路径）。
+// 挂在条目上（无 `type` 包装）。这里处理两处 reasonix 专属的与 Claude Code 形态的差异，二者都
+// 承重——少了它们 hook 触发却不 enforce（原始的 "reasonix 很少遵循 Forge" 症状）：
+//  1. 工具名是 snake_case。reasonix 的工具名册是 write_file/edit_file/multi_edit/move_file/
+//     bash/read_file（其 [sandbox] 配置），故 ForgeHookSpec 的 PascalCase matcher
+//     （"Write|Edit"、"Bash"）经 reasonixMatcher 翻译——否则 Pre/PostToolUse hook 永不匹配、永不触发。
+//  2. hook STDIN 是 camelCase（{event, sessionId, cwd, toolName, toolArgs}），非 Claude 的
+//     {hook_event_name, session_id, cwd, tool_name, tool_input}。故每个 Pre/PostToolUse 命令带
+//     `--agent reasonix`，走 reasonixNormalize（internal/cli/hook_normalize.go）——否则
+//     tool_name/file_path 解析为空，基于路径/命令的 hook（task-guard、read-before-edit、
+//     bash-guard、file-sentinel）fail open。
+//
+// exit-code/block-JSON 协议与 Claude Code 兼容，故 forge 既有
+// （{"decision":"block",...} + exit 1）输出原样被尊重（无需协议适配）。
 //
 // reasonix home 不存在时 no-op——Forge 绝不创建 agent 的配置 home（检测自毒防线：在
 // 没装 reasonix 的机器上具象化其 home 是错的，况且 reasonix 的 home 本就不是 auto-detect
@@ -241,11 +261,30 @@ func buildReasonixHooks() map[string]any {
 		if !ok {
 			continue
 		}
+		// Tool events (PreToolUse/PostToolUse) carry toolName/toolArgs in reasonix's camelCase
+		// dialect, so their commands carry `--agent reasonix` to route through reasonixNormalize
+		// (without it, tool_name/file_path parse empty and every path/command hook — task-guard,
+		// read-before-edit, bash-guard, file-sentinel — fails open). Session events
+		// (SessionStart/Stop) carry no tool_input — Cwd arrives via the process working directory
+		// — so they stay bare, mirroring windsurf's pre_user_prompt / post_cascade_response
+		// commands (session events have no tool_input, so no agent flag).
+		//
+		// 工具事件（PreToolUse/PostToolUse）在 reasonix 的 camelCase 方言里携带 toolName/toolArgs，
+		// 故其命令带 `--agent reasonix` 走 reasonixNormalize（否则 tool_name/file_path 解析为空，
+		// 每个基于路径/命令的 hook——task-guard、read-before-edit、bash-guard、file-sentinel——
+		// fail open）。会话事件（SessionStart/Stop）不携带 tool_input——Cwd 经进程工作目录到达——
+		// 故保持裸命令，镜像 windsurf 的 pre_user_prompt / post_cascade_response 命令
+		// （会话事件无 tool_input，故不带 agent 标志）。
+		needsAgent := event == "PreToolUse" || event == "PostToolUse"
 		for _, m := range matchers {
 			for _, h := range m.Hooks {
+				cmd := h.Command
+				if needsAgent {
+					cmd += " --agent reasonix"
+				}
 				hooksMap[re] = append(hooksMap[re], reasonixHookEntry{
-					Match:   m.Matcher,
-					Command: h.Command,
+					Match:   reasonixMatcher(m.Matcher),
+					Command: cmd,
 				})
 			}
 		}
@@ -253,6 +292,66 @@ func buildReasonixHooks() map[string]any {
 	return map[string]any{
 		`hooks`: hooksMap,
 	}
+}
+
+// reasonixMatcher translates a Claude-Code tool-name matcher (pipe-separated PascalCase tokens,
+// as in ForgeHookSpec: "Write|Edit", "Bash", "Read|Skill|Agent") into the equivalent reasonix
+// matcher. reasonix's tool surface is snake_case and finer-grained than Claude Code: a single CC
+// Edit covers edit_file + multi_edit + move_file, the shell is bash, and reads are read_file;
+// there is no Skill/Agent tool (those tokens map to nothing — tool-track still fires on
+// read_file). reasonix's `match` is a pipe-separated regex with the same alternation semantics as
+// Claude Code, so translation is a per-token remap joined back with "|". Unknown tokens pass
+// through verbatim (forward-compat). This is the fix for the original "reasonix hooks never fire"
+// root cause: ForgeHookSpec's PascalCase matchers ("Write|Edit") do not match reasonix's
+// snake_case tool names ("edit_file"), so every Pre/PostToolUse hook silently failed to match.
+//
+// reasonixMatcher 把 Claude-Code 工具名 matcher（管道分隔的 PascalCase token，如 ForgeHookSpec
+// 里的 "Write|Edit"、"Bash"、"Read|Skill|Agent"）翻译成等价的 reasonix matcher。reasonix 的工具面
+// 是 snake_case 且比 Claude Code 更细：一个 CC Edit 覆盖 edit_file + multi_edit + move_file，shell
+// 是 bash，读是 read_file；没有 Skill/Agent 工具（这俩 token 映射为空——tool-track 仍会在
+// read_file 上触发）。reasonix 的 `match` 是管道分隔的正则，与 Claude Code 的交替语义相同，故
+// 翻译是逐 token 重映射后再用 "|" 拼回。未知名原样透传（前向兼容）。这是 "reasonix hook 永不
+// 触发" 原始根因的修复：ForgeHookSpec 的 PascalCase matcher（"Write|Edit"）匹配不上 reasonix 的
+// snake_case 工具名（"edit_file"），故每个 Pre/PostToolUse hook 静默不匹配。
+func reasonixMatcher(matcher string) string {
+	var out []string
+	seen := map[string]bool{}
+	for _, tok := range strings.Split(matcher, "|") {
+		for _, r := range reasonixMatcherTokens(tok) {
+			if r == "" || seen[r] {
+				continue
+			}
+			seen[r] = true
+			out = append(out, r)
+		}
+	}
+	return strings.Join(out, "|")
+}
+
+// reasonixMatcherTokens maps one Claude-Code matcher token to zero or more reasonix tool-name
+// tokens. Verified against reasonix's [sandbox] tool roster (config.toml): write_file is the
+// creator, edit_file/multi_edit/move_file are the editors (all map to CC Edit — the path hooks
+// care about file_path, not the create/edit distinction), bash is the shell, read_file is the
+// reader. Skill/Agent have no reasonix equivalent and map to nothing.
+//
+// reasonixMatcherTokens 把单个 Claude-Code matcher token 映射为零或多个 reasonix 工具名 token。
+// 已对 reasonix 的 [sandbox] 工具名册（config.toml）核实：write_file 是创建器，
+// edit_file/multi_edit/move_file 是编辑器（都映射到 CC Edit——基于路径的 hook 关心 file_path
+// 而非创建/编辑之别），bash 是 shell，read_file 是读取器。Skill/Agent 在 reasonix 无等价物，映射为空。
+func reasonixMatcherTokens(tok string) []string {
+	switch tok {
+	case "Write":
+		return []string{"write_file"}
+	case "Edit":
+		return []string{"edit_file", "multi_edit", "move_file"}
+	case "Bash":
+		return []string{"bash"}
+	case "Read":
+		return []string{"read_file"}
+	case "Skill", "Agent":
+		return nil
+	}
+	return []string{tok}
 }
 
 // mergeReasonixHooks merges the generated forge wiring into reasonix's settings.json at path.

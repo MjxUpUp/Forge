@@ -240,6 +240,135 @@ func TestResolveHookAgent(t *testing.T) {
 	}
 }
 
+// TestReasonixNormalizeEditFile: reasonix PreToolUse for edit_file — camelCase fields
+// ({event, sessionId, cwd, toolName, toolArgs}) + snake_case tool name + path (not file_path).
+// This is the case that matters most for read-before-edit / task-guard enforcement: without
+// normalization, tool_name/file_path parse empty and the hooks fire but fail open (the original
+// "reasonix rarely follows Forge" root cause). toolArgs.path must alias to file_path so
+// FORGE_FILE_PATH resolves; new_string passes through (assertion-check reads tool_input.new_string,
+// which CC Edit also uses — CC Edit has no `content` field).
+func TestReasonixNormalizeEditFile(t *testing.T) {
+	stdin := mustJSON(t, map[string]any{
+		"event":     "PreToolUse",
+		"sessionId": "rsx-123",
+		"cwd":       `E:\AgentFare`,
+		"toolName":  "edit_file",
+		"toolArgs": map[string]any{
+			"path":       `E:\AgentFare\main.go`,
+			"old_string": "a",
+			"new_string": "b",
+		},
+	})
+	var hi HookInput
+	normalizeAgentStdin("reasonix", stdin, &hi)
+
+	if hi.HookEventName != "PreToolUse" {
+		t.Errorf("HookEventName: got %q, want PreToolUse", hi.HookEventName)
+	}
+	if hi.SessionID != "rsx-123" {
+		t.Errorf("SessionID: got %q, want rsx-123 (sessionId→SessionID)", hi.SessionID)
+	}
+	if hi.Cwd != `E:\AgentFare` {
+		t.Errorf("Cwd: got %q, want E:\\AgentFare", hi.Cwd)
+	}
+	if hi.ToolName != "Edit" {
+		t.Errorf("ToolName: got %q, want Edit (edit_file→Edit)", hi.ToolName)
+	}
+	var f toolInputFields
+	if err := json.Unmarshal(hi.ToolInput, &f); err != nil {
+		t.Fatalf("unmarshal normalized tool_input: %v", err)
+	}
+	if f.FilePath != `E:\AgentFare\main.go` {
+		t.Errorf("FilePath: got %q, want toolArgs.path aliased to file_path", f.FilePath)
+	}
+}
+
+// TestReasonixNormalizeBash: bash → Bash + command passthrough (bash-guard / hazard-guard).
+func TestReasonixNormalizeBash(t *testing.T) {
+	stdin := mustJSON(t, map[string]any{
+		"event":     "PreToolUse",
+		"sessionId": "rsx-1",
+		"cwd":       "/app",
+		"toolName":  "bash",
+		"toolArgs":  map[string]any{"command": "rm -rf /tmp/x"},
+	})
+	var hi HookInput
+	normalizeAgentStdin("reasonix", stdin, &hi)
+
+	if hi.ToolName != "Bash" {
+		t.Errorf("ToolName: got %q, want Bash", hi.ToolName)
+	}
+	var f toolInputFields
+	json.Unmarshal(hi.ToolInput, &f)
+	if f.Command != "rm -rf /tmp/x" {
+		t.Errorf("Command: got %q, want 'rm -rf /tmp/x' (toolArgs.command passthrough)", f.Command)
+	}
+}
+
+// TestReasonixNormalizeRead: read_file → Read is load-bearing — hook.go records a read in the
+// reads-log only when ToolName == "Read". Without this map, read-before-edit would false-positive
+// (every edit looks unread) on reasonix.
+func TestReasonixNormalizeRead(t *testing.T) {
+	stdin := mustJSON(t, map[string]any{
+		"event":     "PostToolUse",
+		"sessionId": "rsx-1",
+		"cwd":       "/app",
+		"toolName":  "read_file",
+		"toolArgs":  map[string]any{"path": "/app/main.go"},
+	})
+	var hi HookInput
+	normalizeAgentStdin("reasonix", stdin, &hi)
+
+	if hi.ToolName != "Read" {
+		t.Errorf("ToolName: got %q, want Read (read_file→Read, load-bearing for reads-log)", hi.ToolName)
+	}
+	if hi.HookEventName != "PostToolUse" {
+		t.Errorf("HookEventName: got %q, want PostToolUse", hi.HookEventName)
+	}
+}
+
+// TestReasonixNormalizeSessionStart: the session events carry {event, sessionId, cwd} in
+// camelCase too — HookEventName/SessionID would stay empty under default unmarshal (event≠
+// hook_event_name, sessionId≠session_id), so reasonixNormalize fills them.
+func TestReasonixNormalizeSessionStart(t *testing.T) {
+	stdin := mustJSON(t, map[string]any{
+		"event":     "SessionStart",
+		"sessionId": "rsx-sess-9",
+		"cwd":       "/app",
+		"source":    "startup",
+	})
+	var hi HookInput
+	normalizeAgentStdin("reasonix", stdin, &hi)
+
+	if hi.HookEventName != "SessionStart" {
+		t.Errorf("HookEventName: got %q, want SessionStart (event→HookEventName)", hi.HookEventName)
+	}
+	if hi.SessionID != "rsx-sess-9" {
+		t.Errorf("SessionID: got %q, want rsx-sess-9", hi.SessionID)
+	}
+}
+
+// TestReasonixToCCToolName pins the snake_case → PascalCase map for every tool in reasonix's
+// [sandbox] roster. A future reasonix tool (or a rename) that forge doesn't map passes through
+// unchanged rather than silently matching nothing.
+func TestReasonixToCCToolName(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"write_file", "Write"},
+		{"edit_file", "Edit"},
+		{"multi_edit", "Edit"},
+		{"move_file", "Edit"},
+		{"bash", "Bash"},
+		{"read_file", "Read"},
+		{"unknown_tool", "unknown_tool"}, // passthrough (forward-compat)
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := reasonixToCCToolName(c.in); got != c.want {
+			t.Errorf("reasonixToCCToolName(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
 func mustJSON(t *testing.T, v any) []byte {
 	t.Helper()
 	b, err := json.Marshal(v)
