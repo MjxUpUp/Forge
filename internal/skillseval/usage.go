@@ -21,6 +21,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/skillsdist"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
 )
@@ -106,18 +107,28 @@ type UsageReport struct {
 	HotSkills      []SkillCount `json:"hot_skills"`
 }
 
-// AnalyzeUsage crosses toollog Skill calls with the canonical skill set to produce an undertrigger analysis.
+// AnalyzeUsage merges two reach signals and crosses them with the canonical skill set to produce an
+// undertrigger analysis: (1) active Skill tool calls from toollog, (2) passive skill-trigger firings from
+// checklog (CheckSkillTrigger). Passive is the larger signal in practice — skill-trigger fires on every
+// matching event while the Skill tool is only invoked on explicit load — so counting only active calls would
+// false-positive NeverTriggered on skills that fire passively but are never explicitly called.
 //
-// AnalyzeUsage 交叉 toollog 的 Skill 调用与 canonical skill 集，产出 undertrigger 分析。
+// Both sources are agent-neutral (tool-track hook + skill-trigger engine, deterministic). The canonical set
+// filters out "ghost skills" (log residue but canonical deleted), symmetric with NeverTriggered (canonical-only).
 //
-// The data source is toollog (agent-neutral) — the fundamental difference from the old pi source
-// (agent-coupled, broken after pi exited specialization). The canonical set filters out "ghost skills" (toollog residue but canonical deleted), symmetric with NeverTriggered (canonical-only).
+// AnalyzeUsage 合并两个触达信号并与 canonical skill 集交叉，产出 undertrigger 分析：（1）toollog 的
+// 主动 Skill 工具调用，（2）checklog 的被动 skill-trigger 触发（CheckSkillTrigger）。实践中被动是更大
+// 信号——skill-trigger 每个匹配事件都触发，而 Skill 工具只在显式加载时调用——故只数主动调用会让
+// 「被动触发过但从未显式调用」的 skill 在 NeverTriggered 假阳性。
 //
-// 数据源是 toollog（agent-neutral）——与旧 pi 源（agent-coupled，pi 退出专精后断链）的根本
-// 区别。canonical 集过滤"幽灵技能"（toollog 残留但 canonical 已删），与 NeverTriggered（仅
-// canonical）对称。
+// 两源均 agent-neutral（tool-track hook + skill-trigger 引擎，deterministic）。canonical 集过滤
+// "幽灵技能"（日志残留但 canonical 已删），与 NeverTriggered（仅 canonical）对称。
 func AnalyzeUsage(root, canonical string) (*UsageReport, error) {
-	counts, total, err := SkillCountsFromToollog(root)
+	activeCounts, activeTotal, err := SkillCountsFromToollog(root)
+	if err != nil {
+		return nil, err
+	}
+	passiveCounts, passiveTotal, err := SkillCountsFromChecklog(root)
 	if err != nil {
 		return nil, err
 	}
@@ -125,6 +136,25 @@ func AnalyzeUsage(root, canonical string) (*UsageReport, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Merge active (Skill tool calls, toollog) + passive (skill-trigger firings, checklog) into one reach
+	// signal. skill-trigger injects skills passively via AdditionalContext — the agent then reads SKILL.md via
+	// Read, NOT the Skill tool — so toollog's Skill-tool counts severely undercount skill reach (passive firings
+	// are invisible there). Merging both stops NeverTriggered from false-positive on skills that fire passively
+	// but are never explicitly called (the dogfood 0-trigger blind spot on the usage side).
+	//
+	// 合并主动（Skill 工具调用，toollog）+ 被动（skill-trigger 触发，checklog）为一个触达信号。
+	// skill-trigger 经 AdditionalContext 被动注入——agent 随后用 Read 读 SKILL.md、而非 Skill 工具——
+	// 故 toollog 的 Skill 工具计数严重低估 skill 触达（被动触发在那边不可见）。合并两者避免 NeverTriggered
+	// 对「被动触发过但从未显式调用」的 skill 假阳性（usage 侧的 dogfood 0 触发盲区）。
+	counts := map[string]int{}
+	for n, c := range activeCounts {
+		counts[n] += c
+	}
+	for n, c := range passiveCounts {
+		counts[n] += c
+	}
+	total := activeTotal + passiveTotal
 
 	never := []string{}
 	for _, n := range all {
@@ -169,4 +199,39 @@ func AnalyzeUsage(root, canonical string) (*UsageReport, error) {
 		NeverTriggered: never,
 		HotSkills:      hot,
 	}, nil
+}
+
+// SkillCountsFromChecklog counts passive skill-trigger firings from checklog (CheckSkillTrigger entries) —
+// the second data source for usage analysis. skill-trigger injects skills passively via AdditionalContext
+// (the agent then reads SKILL.md via Read, NOT the Skill tool), so toollog's Skill-tool counts severely
+// undercount skill reach — passive firings are invisible there. This closes the dogfood 0-trigger blind spot
+// on the usage side. Goes through checklog.LoadAllAll (active + archived) for cross-task coverage, symmetric
+// with SkillCountsFromToollog. Returns skill→count and total trigger events. Detail that fails to parse
+// (format drift / corruption) is skipped.
+//
+// SkillCountsFromChecklog 从 checklog（CheckSkillTrigger 条目）统计被动 skill-trigger 触发——
+// usage 分析的第二数据源。skill-trigger 经 AdditionalContext 被动注入 skill（agent 随后用 Read
+// 读 SKILL.md、而非 Skill 工具），故 toollog 的 Skill 工具计数严重低估 skill 触达——被动触发
+// 在那边不可见。本函数在 usage 侧闭合 dogfood 0 触发盲区。走 checklog.LoadAllAll
+// （active + 归档）获跨任务覆盖，对称 SkillCountsFromToollog。返回 skill→count 与总触发事件数。
+// 解析失败（格式漂移/损坏）的 Detail 被跳过。
+func SkillCountsFromChecklog(root string) (map[string]int, int, error) {
+	entries, err := checklog.LoadAllAll(root)
+	if err != nil {
+		return nil, 0, err
+	}
+	counts := map[string]int{}
+	total := 0
+	for _, e := range entries {
+		if e.Check != checklog.CheckSkillTrigger {
+			continue
+		}
+		name := checklog.SkillFromTriggerDetail(e.Detail)
+		if name == "" {
+			continue
+		}
+		counts[name]++
+		total++
+	}
+	return counts, total, nil
 }

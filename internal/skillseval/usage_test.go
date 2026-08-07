@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
 )
 
@@ -55,9 +56,9 @@ func TestExtractSkillName(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{`{"skill":"foo"}`, "foo"},
 		{`{"skill":" foo ","args":"x"}`, "foo"}, // TrimSpace
-		{`{"args":"x"}`, ""},                     // 无 skill 字段
-		{`not json`, ""},                         // 非 JSON
-		{"", ""},                                 // 空
+		{`{"args":"x"}`, ""},                    // 无 skill 字段
+		{`not json`, ""},                        // 非 JSON
+		{"", ""},                                // 空
 	}
 	for _, c := range cases {
 		if got := ExtractSkillName(c.in); got != c.want {
@@ -191,5 +192,96 @@ func TestSkillCountsFromToollog_ArchiveSurvives(t *testing.T) {
 	}
 	if counts["new-skill"] != 1 {
 		t.Fatalf("new-skill=%d want 1", counts["new-skill"])
+	}
+}
+
+// recordSkillTrigger writes a CheckSkillTrigger entry to checklog via the real Record path, mirroring what
+// cli/recordSkillTriggerHits produces in production. Both go through the single source of truth
+// checklog.DetailForSkillTrigger — this helper no longer hand-mirrors the format string (minor-1: a hand-mirrored
+// format could drift from the reader checklog.SkillFromTriggerDetail and silently drop passive signals).
+//
+// recordSkillTrigger 经真实 Record 路径写一条 CheckSkillTrigger 到 checklog，镜像 cli/recordSkillTriggerHits
+// 在生产的产出。两者都走唯一真相源 checklog.DetailForSkillTrigger——本 helper 不再手工镜像格式串
+// （minor-1：手工镜像格式可能漂离读取方 checklog.SkillFromTriggerDetail、静默丢失被动信号）。
+func recordSkillTrigger(t *testing.T, root, skillName, taskRef string) {
+	t.Helper()
+	mustWrite(t, checklog.Record(root, &checklog.Entry{
+		Check:   checklog.CheckSkillTrigger,
+		Passed:  true,
+		Checked: true,
+		TaskRef: taskRef,
+		Detail:  checklog.DetailForSkillTrigger(skillName, `UserPromptSubmit`, `coding_intent`),
+	}))
+}
+
+func TestSkillCountsFromChecklog(t *testing.T) {
+	root := t.TempDir()
+	recordSkillTrigger(t, root, "alpha", "t1")
+	recordSkillTrigger(t, root, "alpha", "t1")
+	recordSkillTrigger(t, root, "beta", "t2")
+	// 非 CheckSkillTrigger 条目不计入被动触发统计。
+	//
+	// non-CheckSkillTrigger entries do not count toward passive-trigger stats.
+	mustWrite(t, checklog.Record(root, &checklog.Entry{Check: checklog.CheckAutoCompile, Passed: true, Detail: "x"}))
+
+	counts, total, err := SkillCountsFromChecklog(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 3 {
+		t.Fatalf("total=%d want 3（只计 CheckSkillTrigger）", total)
+	}
+	if counts["alpha"] != 2 || counts["beta"] != 1 {
+		t.Fatalf("counts=%v want alpha:2 beta:1", counts)
+	}
+}
+
+// TestAnalyzeUsage_MergesPassiveTriggers: a skill that fires passively (skill-trigger) but is never explicitly
+// called (no Skill tool event) must NOT appear in NeverTriggered — merging active + passive closes the
+// undertrigger false-positive (the dogfood 0-trigger blind spot on the usage side). Its Count is the passive total.
+//
+// TestAnalyzeUsage_MergesPassiveTriggers：一个被动触发（skill-trigger）但从未显式调用（无 Skill 工具事件）
+// 的 skill 不得进 NeverTriggered——合并主动+被动闭合 undertrigger 假阳性（usage 侧的 dogfood 0 触发盲区）。
+// 其 Count 为被动总数。
+func TestAnalyzeUsage_MergesPassiveTriggers(t *testing.T) {
+	canonical := t.TempDir()
+	makeCanonicalSkill(t, canonical, "passive-only")
+	makeCanonicalSkill(t, canonical, "never-used")
+	root := t.TempDir()
+	// passive-only 只被 skill-trigger 触发，无 Skill 工具调用。
+	//
+	// passive-only only fires via skill-trigger, never via the Skill tool.
+	recordSkillTrigger(t, root, "passive-only", "t1")
+	recordSkillTrigger(t, root, "passive-only", "t2")
+
+	rep, err := AnalyzeUsage(root, canonical)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range rep.NeverTriggered {
+		if n == "passive-only" {
+			t.Fatalf("passive-only 不应在 NeverTriggered（被动触发过）：%v", rep.NeverTriggered)
+		}
+	}
+	if len(rep.NeverTriggered) != 1 || rep.NeverTriggered[0] != "never-used" {
+		t.Fatalf("never=%v want [never-used]", rep.NeverTriggered)
+	}
+	var found bool
+	for _, h := range rep.HotSkills {
+		if h.Name == "passive-only" {
+			found = true
+			if h.Count != 2 {
+				t.Fatalf("passive-only Count=%d want 2（被动触发合并）", h.Count)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("passive-only 应在 HotSkills（被动触发计入触达）：%v", rep.HotSkills)
+	}
+	if rep.UsedSkills != 1 {
+		t.Fatalf("UsedSkills=%d want 1（passive-only）", rep.UsedSkills)
+	}
+	if rep.TotalEvents != 2 {
+		t.Fatalf("TotalEvents=%d want 2（被动 2 + 主动 0）", rep.TotalEvents)
 	}
 }

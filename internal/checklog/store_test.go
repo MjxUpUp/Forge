@@ -248,6 +248,52 @@ func TestLoadForTask_NoMatch(t *testing.T) {
 	}
 }
 
+// TestLoadAllAll pins the cross-archive counterpart to LoadAll: it must read the active checklog.jsonl AND
+// every archived checklog-*.jsonl (chronological), so cross-task consumers (skillseval usage reading
+// CheckSkillTrigger across project history) do not see only the current task after forge task start archives.
+//
+// TestLoadAllAll 钉死 LoadAll 的跨归档对应：必须读 active checklog.jsonl 与所有归档 checklog-*.jsonl
+// （时间序），让跨任务消费者（skillseval usage 跨项目历史读 CheckSkillTrigger）在 forge task start
+// 归档后不至于只看到当前任务。
+func TestLoadAllAll(t *testing.T) {
+	dir := t.TempDir()
+	isolateDataHome(t)
+
+	// Active checklog: one auto-compile entry for the current task.
+	//
+	// active checklog：当前 task 的一条 auto-compile。
+	Record(dir, &Entry{Check: CheckAutoCompile, Passed: true, TaskRef: "t-now", Detail: "active"})
+
+	// Archived checklog (what forge task start rotates away): a skill-trigger entry from an older task.
+	// This is exactly the line LoadAll (active-only) would miss and LoadAllAll must surface — the whole
+	// reason skillseval usage needs the cross-archive read.
+	//
+	// 归档 checklog（forge task start 轮转走的）：一条来自旧 task 的 skill-trigger 条目。
+	// 这正是 LoadAll（仅 active）会漏、LoadAllAll 必须暴露的行——skillseval usage 需要跨归档读的全部理由。
+	archivePath := filepath.Join(forgedata.DataDirFor(dir), "checklog-20260101000000.jsonl")
+	archived := []byte(`{"check":"skill-trigger","passed":true,"checked":true,"task_ref":"t-old","detail":"skill-trigger: tdd-cycle hit (event=Stop test_keyword)","recorded_at":"2026-01-01T00:00:00Z"}` + "\n")
+	if err := os.WriteFile(archivePath, archived, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := LoadAllAll(dir)
+	if err != nil {
+		t.Fatalf("LoadAllAll: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 entries (active + archive), got %d: %+v", len(got), got)
+	}
+	// Sorted ascending by RecordedAt — the archived entry (2026-01-01) is earliest.
+	//
+	// 按 RecordedAt 升序——归档条目（2026-01-01）最早。
+	if got[0].Check != CheckSkillTrigger {
+		t.Errorf("first entry should be the archived skill-trigger, got Check=%q", got[0].Check)
+	}
+	if got[1].TaskRef != "t-now" {
+		t.Errorf("second entry should be the active one, got TaskRef=%q", got[1].TaskRef)
+	}
+}
+
 // TestRecordAndClear_ConcurrentNoDeadlock guards the C2 fix: checklog Clear and
 // Archive now hold the same mutex as Record. The fix splits archiveLocked out of
 // Archive so Clear can archive-then-remove under one lock WITHOUT re-entering
