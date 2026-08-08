@@ -46,6 +46,26 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
+# SBOM：每个 tar.gz 附一份 SPDX 清单（依赖组成可见，供应链审计/SCA 工具的输入）。
+# 依赖 CI 里预装的 syft（release.yml "Install syft" 步，goreleaser-action 不自带）。
+sboms:
+  - artifacts: archive
+
+# cosign keyless 签名 checksums.txt：用户可验证"这份 checksum 确实由本仓库的
+# GitHub Actions 签出"（Sigstore 透明日志可查），防 release 资产被替换后无法察觉。
+# keyless 用 CI 的 OIDC 身份，无需管理私钥；需要 workflow 的 id-token: write。
+signs:
+  - cmd: cosign
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - --yes
+      - "${artifact}"
+    artifacts: checksum
+    output: true
+
 snapshot:
   version_template: "{{ .Version }}-next"
 

@@ -1,0 +1,13 @@
+# Dependabot 依赖更新：gomod（含 vendor 同步）+ GitHub Actions 版本。
+# 与 workflow 里的 action SHA pin 配合：dependabot 会同时更新 SHA 和 # 版本注释。
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    vendor: true
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
