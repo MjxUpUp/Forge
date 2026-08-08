@@ -5,31 +5,54 @@ on:
     tags:
       - "v*"
 
+# 顶层最小权限；各 job 按需提权（最小授权原则——id-token 只有签名/溯源两个 job 拿得到）。
 permissions:
-  contents: write  # goreleaser 创建 Release 用；npm job 走 NODE_AUTH_TOKEN 连外部 registry，不经 GITHUB_TOKEN
+  contents: read
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
-          go-version: "1.25"
+          go-version-file: go.mod
       - run: go test ./... -count=1 -race
       - run: go vet ./...
+      # 版本对账门禁放在 needs 链源头：tag 必须等于 npm/package.json 的 version，
+      # 不一致 1 分钟内终止整条链（放在 npm job 则 goreleaser 白跑 30min 才拦）。
+      # release.js 保证两者一致，此门禁防 RELEASE.md 允许的手动打 tag 路径出错——
+      # 没有对账时打错 tag 会发出货不对板的包（二进制是 tag 的，包版本号是 package.json 的）。
+      - name: Tag/version consistency gate
+        run: |
+          TAG_VER="${GITHUB_REF_NAME#v}"
+          PKG_VER=$(jq -r .version npm/package.json)
+          if [ "$TAG_VER" != "$PKG_VER" ]; then
+            echo "::error::tag v$TAG_VER != npm/package.json version $PKG_VER — 先对齐版本号再发版"
+            exit 1
+          fi
 
   goreleaser:
     needs: test
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write  # 创建 GitHub Release + 上传资产
+      id-token: write  # cosign keyless 签名的 OIDC token（GitHub Actions 身份凭证，非 secret）
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
-          go-version: "1.25"
-      - uses: goreleaser/goreleaser-action@v7
+          go-version-file: go.mod
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      # syft：goreleaser sboms 块的外部依赖（goreleaser-action 不自带）。
+      # install.sh 按 commit pin（与 actions 的 SHA pin 同一供应链姿势），产物版本 pin v1.50.0。
+      - name: Install syft (SBOM generator)
+        run: curl -sSfL https://raw.githubusercontent.com/anchore/syft/16223e6dd7893fe578787658ceb876257483d404/install.sh | sh -s -- -b /usr/local/bin v1.50.0
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7
         with:
           distribution: goreleaser
           version: "~> v2"
@@ -49,9 +72,13 @@ jobs:
     # Release 二进制不再自动更新已发 npm 包——需 bump 版本重发（npm 不允许覆盖）。
     needs: goreleaser
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read  # checkout + 下载 Release 资产
+      id-token: write  # npm publish --provenance 的 OIDC token
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "22"
           # setup-node 写 .npmrc 用 NODE_AUTH_TOKEN 认证该 registry——CI 标准模式，
@@ -66,6 +93,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
+          # tag↔package.json 版本对账已在 test job（needs 链源头）拦过，此处直接读版本。
           VER=$(node -p "require('./package.json').version")
           echo "Releasing @agent_forge/forge@$VER + 5 platform subpackages"
           # goreleaser archive 命名 forge_<ver>_<os>_<x86_64|aarch64>.tar.gz；
@@ -105,7 +133,10 @@ jobs:
             || echo "$out" | grep -q "cannot publish over the previously published" \
             || { echo "$out"; exit 1; }
           echo "dry-run gate passed for 6 packages"
-          # 先发 5 子包（主包 optionalDependencies 指向它们，必须先就位）
+          # 先发 5 子包（主包 optionalDependencies 指向它们，必须先就位）。
+          # --provenance：用 GitHub Actions OIDC 给包附 Sigstore 溯源声明（npm 官方供应链
+          # 加固，公开仓库 + package.json repository 字段匹配即可，无需额外配置）。
+          # 只加在真实 publish 上：dry-run 在本地预演（无 OIDC 环境）也要能跑。
           for pkg in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-x64; do
             if npm view "@agent_forge/forge-$pkg@$VER" version >/dev/null 2>&1; then
               echo "already published @agent_forge/forge-$pkg@$VER, skipping"
@@ -113,7 +144,7 @@ jobs:
               # cd 进子包目录再 publish：裸路径 "platforms/$pkg" 含 / 会被 npm-package-arg
               # 解析成 GitHub shorthand（user/platforms repo/$pkg）→ git ls-remote 失败。
               # cd 后无参数 publish cwd，npa 当 folder（esbuild/rollup 同模式）。
-              (cd "platforms/$pkg" && npm publish --access public)
+              (cd "platforms/$pkg" && npm publish --access public --provenance)
             fi
           done
           # 主包 version + optionalDependencies 各项 version 注入后 publish
@@ -122,6 +153,6 @@ jobs:
           if npm view "@agent_forge/forge@$VER" version >/dev/null 2>&1; then
             echo "already published @agent_forge/forge@$VER, skipping"
           else
-            npm publish --access public
+            npm publish --access public --provenance
           fi
         working-directory: npm
