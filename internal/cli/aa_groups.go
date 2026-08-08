@@ -44,16 +44,16 @@ func init() {
 	updateCmd.GroupID = "lifecycle"
 	// init-suggest hook prompt-state management (semantic extension of init).
 	//
-	suggestCmd.GroupID = "lifecycle"   // init-suggest hook 的提示状态管理（init 的语义延伸）
+	suggestCmd.GroupID = "lifecycle" // init-suggest hook 的提示状态管理（init 的语义延伸）
 	// One-click uninstall (npm binary + init-suggest markers).
 	//
 	uninstallCmd.GroupID = "lifecycle" // 一键反装（npm binary + init-suggest markers）
 	// Legacy .forge runtime state → DataDir migration (upgrade path).
 	//
-	migrateCmd.GroupID = "lifecycle"   // 旧 .forge runtime state → DataDir 迁移（升级路径）
+	migrateCmd.GroupID = "lifecycle" // 旧 .forge runtime state → DataDir 迁移（升级路径）
 	// Global project registry cleanup (cleanup counterpart to init's self-registration; backticks guard against Windows quote corruption).
 	//
-	registryCmd.GroupID = `lifecycle`  // 全局项目注册表清理（init 自登记的对应清理入口；反引号防 Windows 引号腐蚀）
+	registryCmd.GroupID = `lifecycle` // 全局项目注册表清理（init 自登记的对应清理入口；反引号防 Windows 引号腐蚀）
 
 	// Project pipeline: project-level state (status is the main entry).
 	//

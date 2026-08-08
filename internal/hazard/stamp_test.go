@@ -133,8 +133,8 @@ func TestConfirmByFingerprint_RejectsInvalidFormat(t *testing.T) {
 			continue
 		}
 		// A rejected invalid fingerprint must not be persisted—otherwise DataDir/hazards/ is left with junk files.
-	//
-	// 非法指纹被拒不应落盘——否则 DataDir/hazards/ 留垃圾文件
+		//
+		// 非法指纹被拒不应落盘——否则 DataDir/hazards/ 留垃圾文件
 		if c.fp != "" {
 			if _, err := os.Stat(root.HazardsConfirmPath(c.fp)); err == nil {
 				t.Errorf("%s: rejected fingerprint must not be written to disk", c.name)

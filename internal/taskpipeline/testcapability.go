@@ -57,7 +57,7 @@ var e2ePathMarkers = []string{
 // (e.g. login.e2e.test.ts, api.integration.test.go).
 //
 // e2eFileMarkers 按文件名标识单个 e2e 测试，不依赖目录
-//（如 login.e2e.test.ts、api.integration.test.go）。
+// （如 login.e2e.test.ts、api.integration.test.go）。
 var e2eFileMarkers = []string{".e2e.", ".integration."}
 
 // walkSkipDirs is pruned on the non-git filepath.Walk fallback path so the scan does
@@ -91,7 +91,7 @@ const capabilitySampleCap = 5
 // task 改了什么（那是 CheckTestCoverage 的活）。
 //
 // 遵从 FORGE_TEST_COVERAGE=disable：该 env 是项目「我不做测试纪律」的信号
-//（由 test-coverage 逃生舱设置），此时再 nag 跑测试与它相悖。disable 时跳过
+// （由 test-coverage 逃生舱设置），此时再 nag 跑测试与它相悖。disable 时跳过
 // 扫描（Disabled=true），不发 advisory。
 func CheckTestCapability(root string) TestCapability {
 	if os.Getenv(testCoverageDisableEnv) == "disable" {

@@ -429,10 +429,10 @@ func ReadActiveTaskRef(root, sessionID string) string {
 func NewTaskState(ctx *taskcontext.Context) *TaskState {
 	gates := DefaultGates()
 	return &TaskState{
-		TaskRef:     ctx.TaskRef,
-		Branch:      ctx.Branch,
-		Source:      ctx.Source,
-		Summary:     ctx.Summary,
+		TaskRef: ctx.TaskRef,
+		Branch:  ctx.Branch,
+		Source:  ctx.Source,
+		Summary: ctx.Summary,
 		// Start from the first gate.
 		CurrentGate: gates[0].ID, // 从首道门禁开始
 		History:     nil,

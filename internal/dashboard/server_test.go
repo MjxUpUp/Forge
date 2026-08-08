@@ -492,7 +492,7 @@ func TestSecureHeaders(t *testing.T) {
 
 // TestServe_JSONNoSessionID ensures /api/data.json never contains SessionID — even when the
 // Conclusion does, the toPublic projection strips it. A SessionID value containing the substring
-//"session"is injected into the conclusion to verify the JSON endpoint does not leak it.
+// "session"is injected into the conclusion to verify the JSON endpoint does not leak it.
 //
 // TestServe_JSONNoSessionID /api/data.json 必须不含 SessionID——即便 Conclusion 里有，
 // toPublic 投影剥掉它。结论里塞个含"session"字样的 SessionID 值，验证 JSON 端点不泄露。

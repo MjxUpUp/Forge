@@ -145,7 +145,7 @@ func TestScanUnusedSymbols_TestReferenceDoesNotCount(t *testing.T) {
 	dir := t.TempDir()
 	initRepoWithMaster(t, dir)
 	writeCommitSource(t, dir, map[string]string{
-		"prod.go":     "package main\n\nfunc Foo() int { return 1 }\n",
+		"prod.go":      "package main\n\nfunc Foo() int { return 1 }\n",
 		"prod_test.go": "package main\n\nimport \"testing\"\n\nfunc TestFoo(t *testing.T) { Foo() }\n",
 	}, "add prod+test")
 	state := newVerifyState(t, dir, "test-ref")

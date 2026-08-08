@@ -73,7 +73,7 @@ func Parse(text []byte) *Frontmatter {
 	// Capture group 1 (block content)
 	fmRaw := string(text[loc[2]:loc[3]]) // 捕获组 1（块内容）
 	// After the whole match (body)
-	fm.Body = string(text[loc[1]:])      // 整个匹配之后（正文）
+	fm.Body = string(text[loc[1]:]) // 整个匹配之后（正文）
 
 	lines := strings.Split(fmRaw, "\n")
 	i := 0

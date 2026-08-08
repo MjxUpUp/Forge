@@ -12,7 +12,7 @@ import (
 //   - GitRoot   git working tree root = base for `git -C` ops ("" for non-git projects)
 //   - DataDir   user-level data home = ~/.forge/projects/<key>/  (runtime state + default config)
 //   - ConfigDir config home = <root>/.forge/ when it exists (team mode / legacy),
-//               otherwise DataDir (zero-project-write default)
+//     otherwise DataDir (zero-project-write default)
 //
 // Why the split: DataDir is a hash-derived user-level path independent of the git
 // working tree location; git ops (rev-parse/diff) must use GitRoot. After the
@@ -26,7 +26,7 @@ import (
 //   - GitRoot   git working tree 根 = `git -C` 操作基准（非 git 项目为 ""）
 //   - DataDir   用户级数据 home = ~/.forge/projects/<key>/（runtime state + 默认配置）
 //   - ConfigDir 配置 home = <root>/.forge/（存在时：团队模式/老项目），否则 DataDir
-//               （零项目写入默认）
+//     （零项目写入默认）
 //
 // 拆分必要性：DataDir 是 hash 派生的用户级路径，与 git working tree 物理位置无关；
 // git 操作（rev-parse/diff）必须用 GitRoot。user-level-assets 重构后 forge 全部写入

@@ -159,7 +159,7 @@ func TestAnalyzeEffectiveness_UnscoredTaskExcluded(t *testing.T) {
 	proj, root := newTestProject(t)
 	recordSkillCall(t, root, "s", "t1")
 	recordSkillCall(t, root, "s", "t2")
-	recordConclusion(t, proj, "t1", 0, "Strong", 0.9)  // 未评分（Score=0 哨兵）
+	recordConclusion(t, proj, "t1", 0, "Strong", 0.9) // 未评分（Score=0 哨兵）
 	recordConclusion(t, proj, "t2", 90, "Strong", 1.0)
 
 	effs, err := AnalyzeEffectiveness(proj)

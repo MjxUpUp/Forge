@@ -82,7 +82,7 @@ type MigrateOptions struct {
 	// DryRun: only classify and report what would migrate; do not actually move.
 	DryRun bool // 只分类报告将迁移，不实际移动
 	// Force: overwrite when DataDir already has an entry with the same name (default skip).
-	Force  bool // DataDir 已有同名时覆盖（默认 skip）
+	Force bool // DataDir 已有同名时覆盖（默认 skip）
 }
 
 // MigrationResult records migration details for the command layer to print a report.
@@ -90,11 +90,11 @@ type MigrateOptions struct {
 // MigrationResult 记录迁移明细，供命令层打印报告。
 type MigrationResult struct {
 	// Moved: entries successfully migrated to DataDir (relative names).
-	Moved   []string // 成功迁到 DataDir 的条目（相对名）
+	Moved []string // 成功迁到 DataDir 的条目（相对名）
 	// Skipped: DataDir already has the same name and Force is not set; skipped.
 	Skipped []string // DataDir 已有同名且非 Force，跳过
 	// Left: entries remaining in ConfigDir after migration (config + unknown); populated only when non-DryRun.
-	Left    []string // 迁移后 ConfigDir 剩余条目（配置 + 未知），仅非 DryRun 填
+	Left []string // 迁移后 ConfigDir 剩余条目（配置 + 未知），仅非 DryRun 填
 }
 
 // MigrateProject moves runtime state under p.ConfigDir (.forge/) to p.DataDir.

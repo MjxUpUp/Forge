@@ -47,11 +47,11 @@ var runMu sync.Mutex
 //
 // CaseResult 是单 case 的实际跑结果（agent 回填后由 forge 判定）。
 type CaseResult struct {
-	CaseID          string `json:"case_id"`
-	Kind            string `json:"kind"`
-	Prompt          string `json:"prompt"`
+	CaseID string `json:"case_id"`
+	Kind   string `json:"kind"`
+	Prompt string `json:"prompt"`
 	// ActualTriggered: normalized name of the skill that actually fired ("" = did not fire).
-	ActualTriggered string `json:"actual_triggered"`        // 归一化后的实际触发 skill 名（""=没触发）
+	ActualTriggered string `json:"actual_triggered"` // 归一化后的实际触发 skill 名（""=没触发）
 	Pass            bool   `json:"pass"`
 	Note            string `json:"note,omitempty"` // agent 标注的异常/理由
 }
@@ -60,15 +60,15 @@ type CaseResult struct {
 //
 // EvalRun 是一次完整 run（整批回填），append 到 dir/runs/<skill>.jsonl。
 type EvalRun struct {
-	RunID         string       `json:"run_id"`
-	Skill         string       `json:"skill"`
-	Timestamp     time.Time    `json:"timestamp"`
+	RunID     string    `json:"run_id"`
+	Skill     string    `json:"skill"`
+	Timestamp time.Time `json:"timestamp"`
 	// ForgeVersion: guards against cross-version false regressions.
-	ForgeVersion  string       `json:"forge_version"`             // 防跨版本假回归
+	ForgeVersion string `json:"forge_version"` // 防跨版本假回归
 	// AgentModel: self-reported by the agent, guards against cross-model false regressions.
-	AgentModel    string       `json:"agent_model"`               // agent 自报，防跨模型假回归
+	AgentModel string `json:"agent_model"` // agent 自报，防跨模型假回归
 	// DescHash: fingerprint of the description at run time.
-	DescHash      string       `json:"desc_hash"`                 // run 时刻 description 指纹
+	DescHash string `json:"desc_hash"` // run 时刻 description 指纹
 	// BaselineRunID: the baseline locked at run time.
 	BaselineRunID string       `json:"baseline_run_id,omitempty"` // run 时刻锁定的 baseline
 	Results       []CaseResult `json:"results"`

@@ -271,9 +271,9 @@ func TestPluginPack_Readme(t *testing.T) {
 		"forge init --agents kimi",             // kimi 的 config.toml 回退路径
 		"Claude Code",
 		"Reasonix",
-		"reasonix plugin install", // reasonix native plugin（plugins/forge/reasonix-plugin.json）
+		"reasonix plugin install",      // reasonix native plugin（plugins/forge/reasonix-plugin.json）
 		"forge init --agents reasonix", // reasonix 的 settings.json flat hooks 回退路径
-		"not officially confirmed", // D3: Codex 路径诚实表述（OpenAI 未明确）
+		"not officially confirmed",     // D3: Codex 路径诚实表述（OpenAI 未明确）
 	} {
 		if !strings.Contains(content, want) {
 			t.Errorf("README missing %q", want)

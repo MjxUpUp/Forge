@@ -47,7 +47,7 @@ type EvaluateInput struct {
 	// TestCoverageCovered: number of source files with paired tests.
 	TestCoverageCovered int // 有配对测试的源码文件数
 	// TestCoverageTotal: number of source files that should have paired tests.
-	TestCoverageTotal   int // 应配对测试的源码文件数
+	TestCoverageTotal int // 应配对测试的源码文件数
 
 	// Assertion-density signal, used for fake-test detection (industry STREW Assertion-McCabe ratio).
 	// A test file with only setup/log and no assertions is not real coverage — the testing dimension down-scores cases where covered>0
@@ -59,13 +59,13 @@ type EvaluateInput struct {
 	// TestAssertionCount: total assertion markers in changed test files.
 	TestAssertionCount int // changed 测试文件的断言标记总数
 	// TestFileCount: number of changed test files.
-	TestFileCount      int // changed 测试文件数
+	TestFileCount int // changed 测试文件数
 
 	// Hook results.
 	//
 	// Hook 结果。
 	// CompilePassed: auto-compile gate passed.
-	CompilePassed   bool // auto-compile gate 通过
+	CompilePassed bool // auto-compile gate 通过
 	// AssertionPassed: assertion-check passed.
 	AssertionPassed bool // assertion-check 通过
 
@@ -93,5 +93,5 @@ type GateHistory struct {
 	TotalGates int
 	Passed     int
 	// Retries: number of gates that previously failed and passed after retry.
-	Retries    int // 先前失败、retry 后通过的 gate 数
+	Retries int // 先前失败、retry 后通过的 gate 数
 }

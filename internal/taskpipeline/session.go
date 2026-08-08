@@ -388,7 +388,7 @@ func newSessionID() string {
 //
 // CurrentSessionID 从 env 返回 Claude Code 的 session id。Claude Code 把
 // CLAUDE_CODE_SESSION_ID 注入它跑的每条 Bash 命令，同一值也经 stdin
-//（hookInput.SessionID / FORGE_SESSION_ID）送给 hooks。把它用作 per-session key
+// （hookInput.SessionID / FORGE_SESSION_ID）送给 hooks。把它用作 per-session key
 // 让共享 checkout 上并发的 session 各自隔离 .forge/ 状态。
 //
 // 这是本包唯一读取该 env 的位置——调用方把解析出的 id 显式下传，包内函数（及其

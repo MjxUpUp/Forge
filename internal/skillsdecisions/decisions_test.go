@@ -229,9 +229,9 @@ func TestNormalizeOutcome(t *testing.T) {
 	}{
 		{"accept", "accept"},
 		{"accept (with caveat)", "accept"}, // 尾注剥离
-		{"accept  备注", "accept"},          // 空白后尾注剥离
+		{"accept  备注", "accept"},           // 空白后尾注剥离
 		{"reject", "reject"},
-		{"bogus", "bogus"},        // 无效原值，保留
+		{"bogus", "bogus"},         // 无效原值，保留
 		{"bogus (x)", "bogus (x)"}, // 首 token 也无效，保留原值不丢数据
 	}
 	for _, c := range cases {
