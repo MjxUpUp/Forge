@@ -6,17 +6,45 @@ on:
   pull_request:
     branches: [main, master]
 
+# 最小权限：CI 只读代码，不写仓库。显式声明避免吃仓库默认值（默认可能是 write）。
+permissions:
+  contents: read
+
+# 同一 ref 反复 push 时取消在跑的旧 run，避免排队堆积。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
-          go-version: "1.25"
+          # Go 版本唯一真相源是 go.mod，消除 ci.yml/release.yml 多处硬编码漂移。
+          go-version-file: go.mod
       - run: go build ./...
       - run: go vet ./...
       - run: go test ./... -count=1 -race
+      # gofmt 门禁（仅 ubuntu 跑一份即可，格式化结果与 OS 无关）。
+      # 覆盖根 module 全部 .go 目录（cmd/internal/skills，vendor/ 不参与）；
+      # 与仓库 .gitattributes 的 eol=lf 配合只报真实格式问题。
+      # `! gofmt -l ... | grep .`：违规文件名直接进 CI 日志（test -z 会吞掉输出，失败只见 exit 1）。
+      - if: matrix.os == 'ubuntu-latest'
+        run: "! gofmt -l cmd internal skills | grep ."
+
+  # 发版脚本（scripts/release.js）的 node:test 测试。原来只存在于本地，CI 不跑 = 没测试。
+  scripts-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "22"
+      - run: node --test scripts/release.test.js
