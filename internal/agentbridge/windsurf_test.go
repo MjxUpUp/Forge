@@ -243,7 +243,7 @@ func TestWindsurfHooks_OnlyLegalCascadeEvents(t *testing.T) {
 		"pre_write_code": true, "post_write_code": true,
 		"pre_run_command": true, "post_run_command": true,
 		"pre_mcp_tool_use": true, "post_mcp_tool_use": true,
-		"pre_user_prompt": true,
+		"pre_user_prompt":       true,
 		"post_cascade_response": true, "post_cascade_response_with_transcript": true,
 		"post_setup_worktree": true,
 	}

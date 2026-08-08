@@ -261,8 +261,8 @@ func TestRunSkillTriggerHook_NoHitOutput(t *testing.T) {
 // 本测试重定向 home 避免污染用户 ~/.forge，验证 embed 路径正常扫描命中。
 func TestRunSkillTriggerCore_EmbedFallback(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("USERPROFILE", tmp)          // Windows: os.UserHomeDir 读 USERPROFILE
-	t.Setenv("HOME", tmp)                 // Unix fallback
+	t.Setenv("USERPROFILE", tmp)           // Windows: os.UserHomeDir 读 USERPROFILE
+	t.Setenv("HOME", tmp)                  // Unix fallback
 	t.Setenv("FORGE_SKILLS_CANONICAL", "") // 强制 embed fallback（非 env 覆盖）
 
 	rendered, err := runSkillTriggerCore(

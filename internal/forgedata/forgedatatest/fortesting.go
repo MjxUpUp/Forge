@@ -4,7 +4,7 @@
 //   - ForDataDir: lightweight — points DataDir/GitRoot directly at dir, with no git and no ProjectFor.
 //     Suited to store unit tests (pure IO round-trip of act/checklog/hazard Append/Load), it does not trigger hash derivation.
 //   - RealProject: heavyweight — git init + .forge placeholder + FORGE_DATA_HOME isolation
-//     + a real ProjectFor. Suited to integration tests (cli subprocess / dashboard HTTP), where the code path under test
+//   - a real ProjectFor. Suited to integration tests (cli subprocess / dashboard HTTP), where the code path under test
 //     itself calls ProjectFor; the test process and the forge subprocess must resolve to the same DataDir, which only a real
 //     ProjectFor can guarantee.
 //
@@ -18,7 +18,7 @@
 //   - ForDataDir：lightweight——直接把 DataDir/GitRoot 指向 dir，无 git、无 ProjectFor。
 //     适合 store 单测（act/checklog/hazard 的 Append/Load 纯 IO round-trip），不触发 hash 推导。
 //   - RealProject：heavyweight——git init + .forge placeholder + FORGE_DATA_HOME 隔离
-//     + 真实 ProjectFor。适合集成测试（cli subprocess / dashboard HTTP），被测代码路径自身
+//   - 真实 ProjectFor。适合集成测试（cli subprocess / dashboard HTTP），被测代码路径自身
 //     会调用 ProjectFor；测试进程与 forge 子进程必须解析到同一 DataDir，这只有真实
 //     ProjectFor 能保证。
 //

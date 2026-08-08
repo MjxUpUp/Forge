@@ -80,16 +80,16 @@ func ValidOutcome(s string) bool {
 // CommitHash / ProbeRunID 把决策锚到具体 git commit 和 eval run，支撑 scoped
 // revert（D 组件）和证据回溯。
 type SkillDecision struct {
-	ID         string    `json:"id"`                   // d-<unixnano>-<randhex>
-	Skill      string    `json:"skill"`                // skill 名（== 目录名）
-	Diagnosis  string    `json:"diagnosis"`            // 诊断
-	Revision   string    `json:"revision"`             // 候选修订
-	Evidence   string    `json:"evidence"`             // 脱敏评估证据
-	Outcome    string    `json:"outcome"`              // accept|reject|revise|defer
-	Rationale  string    `json:"rationale,omitempty"`  // 为什么这个 outcome（结合背景）
-	CommitHash string    `json:"commit_hash,omitempty"` // 修订关联 git commit（scoped revert 锚点）
+	ID         string    `json:"id"`                     // d-<unixnano>-<randhex>
+	Skill      string    `json:"skill"`                  // skill 名（== 目录名）
+	Diagnosis  string    `json:"diagnosis"`              // 诊断
+	Revision   string    `json:"revision"`               // 候选修订
+	Evidence   string    `json:"evidence"`               // 脱敏评估证据
+	Outcome    string    `json:"outcome"`                // accept|reject|revise|defer
+	Rationale  string    `json:"rationale,omitempty"`    // 为什么这个 outcome（结合背景）
+	CommitHash string    `json:"commit_hash,omitempty"`  // 修订关联 git commit（scoped revert 锚点）
 	ProbeRunID string    `json:"probe_run_id,omitempty"` // 关联 eval/probe run
-	By         string    `json:"by,omitempty"`         // 来源（claude-code/codex/...）
+	By         string    `json:"by,omitempty"`           // 来源（claude-code/codex/...）
 	DecidedAt  time.Time `json:"decided_at"`
 }
 

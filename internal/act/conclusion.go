@@ -43,26 +43,26 @@ var mu sync.Mutex
 // 全字段从 deterministic 来源聚合（评分/checklog/TaskState），供 session-retrospective
 // 消费：回顾"这次完成声明有多少实跑证据支撑"，而非靠 agent 临结束回忆。
 type Conclusion struct {
-	TaskRef         string    `json:"task_ref"`
-	SessionID       string    `json:"session_id,omitempty"`
+	TaskRef   string `json:"task_ref"`
+	SessionID string `json:"session_id,omitempty"`
 	// 0-100; 0 when unscored.
-	Score           float64   `json:"score"`                    // 0-100；未评分时 0
-	Grade           string    `json:"grade,omitempty"`          // A/B/C/D/F
+	Score float64 `json:"score"`           // 0-100；未评分时 0
+	Grade string  `json:"grade,omitempty"` // A/B/C/D/F
 	// Strong/Weak/Unverified/NoData (checklog.EvidenceStrength.String).
-	Strength        string    `json:"strength"`                 // Strong/Weak/Unverified/NoData（checklog.EvidenceStrength.String）
+	Strength string `json:"strength"` // Strong/Weak/Unverified/NoData（checklog.EvidenceStrength.String）
 	// deterministic/total; 0 when total=0.
-	Ratio           float64   `json:"ratio"`                    // deterministic/total；total=0 时 0
+	Ratio float64 `json:"ratio"` // deterministic/total；total=0 时 0
 	// Count of run (hook/gate) evidence entries.
-	Deterministic   int       `json:"deterministic"`            // 实跑（hook/gate）证据条目数
+	Deterministic int `json:"deterministic"` // 实跑（hook/gate）证据条目数
 	// Count of agent self-claim entries.
-	AgentClaim      int       `json:"agent_claim"`              // agent 自述条目数
+	AgentClaim int `json:"agent_claim"` // agent 自述条目数
 	// Number of verify-acceptance passed entries.
-	AcceptancePass  int       `json:"acceptance_pass"`          // verify-acceptance 通过条目数
+	AcceptancePass int `json:"acceptance_pass"` // verify-acceptance 通过条目数
 	// Total number of acceptance criteria.
-	AcceptanceTotal int       `json:"acceptance_total"`         // 验收标准总数
+	AcceptanceTotal int `json:"acceptance_total"` // 验收标准总数
 	// Scoring dimensions below 70.
-	LowDimensions   []string  `json:"low_dimensions,omitempty"` // <70 的评分维度
-	CompletedAt     time.Time `json:"completed_at"`
+	LowDimensions []string  `json:"low_dimensions,omitempty"` // <70 的评分维度
+	CompletedAt   time.Time `json:"completed_at"`
 	// RetrospectiveNudge: weak evidence (Unverified/Weak) or low score (<70) → true.
 	// Drives session-retrospective to review this completion claim at session end —
 	// especially the "high-score but weak-evidence" blind spot (score cannot tell whether

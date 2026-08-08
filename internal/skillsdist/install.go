@@ -36,9 +36,9 @@ type DriftPolicy string
 
 const (
 	// Return an error immediately on drift (default, CI-friendly).
-	DriftAbort     DriftPolicy = "abort"     // 遇 drift 立即返回错误（默认，CI 友好）
+	DriftAbort DriftPolicy = "abort" // 遇 drift 立即返回错误（默认，CI 友好）
 	// Skip the drifting skill.
-	DriftSkip      DriftPolicy = "skip"      // 跳过 drift 的 skill
+	DriftSkip DriftPolicy = "skip" // 跳过 drift 的 skill
 	// Force-overwrite with canonical.
 	DriftOverwrite DriftPolicy = "overwrite" // 强制以 canonical 覆盖
 )
@@ -49,10 +49,10 @@ const (
 type Target string
 
 const (
-	TargetClaude  Target = "claude"
-	TargetCursor  Target = "cursor"
+	TargetClaude Target = "claude"
+	TargetCursor Target = "cursor"
 	// OpenAI Codex CLI (~/.codex/skills, native SKILL.md support since 2025-12).
-	TargetCodex   Target = "codex"   // OpenAI Codex CLI（~/.codex/skills，2025-12 起 SKILL.md 原生支持）
+	TargetCodex Target = "codex" // OpenAI Codex CLI（~/.codex/skills，2025-12 起 SKILL.md 原生支持）
 	// GitHub Copilot (~/.copilot/skills, cross-project personal skill).
 	TargetCopilot Target = "copilot" // GitHub Copilot（~/.copilot/skills，跨项目个人 skill）
 	TargetAll     Target = "all"
@@ -63,13 +63,13 @@ const (
 // 分发态（对齐 sync.py 四态）。
 const (
 	// Target is already a link pointing to canonical.
-	StateLinked     = "linked"       // 目标已是指向 canonical 的 link
+	StateLinked = "linked" // 目标已是指向 canonical 的 link
 	// Target is a copy whose content matches canonical.
 	StateCopyInSync = "copy-in-sync" // 目标是副本且内容与 canonical 一致
 	// Target exists but content diverges from canonical.
-	StateDrift      = "drift"        // 目标存在但内容与 canonical 分叉
+	StateDrift = "drift" // 目标存在但内容与 canonical 分叉
 	// Target does not exist.
-	StateMissing    = "missing"      // 目标不存在
+	StateMissing = "missing" // 目标不存在
 )
 
 // reservedNames are skill names managed by forge's own skillgen; install must skip them —
@@ -86,21 +86,21 @@ var reservedNames = map[string]bool{
 //
 // InstallOpts 是 Install 的输入。
 type InstallOpts struct {
-	Mode             Mode
-	DriftPolicy      DriftPolicy
-	Targets          []Target
+	Mode        Mode
+	DriftPolicy DriftPolicy
+	Targets     []Target
 	// Install only the named skills (empty = all).
-	SkillFilter      []string // 只装指定 skill（空=全部）
+	SkillFilter []string // 只装指定 skill（空=全部）
 	// Skip the registry+audit dual gate before install.
-	SkipQuality      bool     // 跳过 install 前的 registry+audit 双门控
+	SkipQuality bool // 跳过 install 前的 registry+audit 双门控
 	// Skip the frontmatter.requires dependency co-install check (escape hatch).
-	SkipRequireCheck bool     // 跳过 frontmatter.requires 依赖同装检查（逃生舱）
+	SkipRequireCheck bool // 跳过 frontmatter.requires 依赖同装检查（逃生舱）
 	// true → ~/.claude/skills etc.; false → ProjectSkillsDir.
-	Global           bool     // true→~/.claude/skills 等；false→ProjectSkillsDir
+	Global bool // true→~/.claude/skills 等；false→ProjectSkillsDir
 	// Used when Global=false (project .claude/skills).
-	ProjectSkillsDir string   // Global=false 时用（项目 .claude/skills）
+	ProjectSkillsDir string // Global=false 时用（项目 .claude/skills）
 	// Backup root for overwrite (test injection; empty in production → auto ~/.forge/skills-backup/<ts>).
-	BackupBase       string   // overwrite 备份根目录（测试注入；生产留空→自动 ~/.forge/skills-backup/<ts>）
+	BackupBase string // overwrite 备份根目录（测试注入；生产留空→自动 ~/.forge/skills-backup/<ts>）
 }
 
 // InstallReport is the full result of one Install.
@@ -113,7 +113,7 @@ type InstallReport struct {
 	Stats     InstallStats         `json:"stats"`
 	Aborted   string               `json:"aborted,omitempty"`
 	// Non-blocking warnings such as unmet requires dependencies.
-	Warnings  []string             `json:"warnings,omitempty"` // requires 依赖未满足等非阻断警告
+	Warnings []string `json:"warnings,omitempty"` // requires 依赖未满足等非阻断警告
 }
 
 // SkillInstallResult is the install result of a single skill across all targets.
