@@ -26,7 +26,7 @@ type TaskGate struct {
 // into an unforgeable verification that counters the blind spot of an agent self-reporting acceptance satisfied.
 //
 // AcceptanceCriterion 是一条可执行的验收标准（来自 dev-workflow Plan 的
-//"Run: <cmd>, Expected: <output>"）。持久化进 TaskState，使验收标准不随 plan 文本
+// "Run: <cmd>, Expected: <output>"）。持久化进 TaskState，使验收标准不随 plan 文本
 // 消失；verify-acceptance 实跑 Run、比对 Expected，记 deterministic 证据——把 spec
 // 变成不可伪造的验证，对冲 agent 自述「满足验收」的盲区。
 type AcceptanceCriterion struct {
@@ -106,7 +106,7 @@ type Finding struct {
 // letting a successor know what this task produced and which key files it changed.
 //
 // Artifact 是任务的相关产物引用（文件/命令输出/url/文档）。仅索引不门禁——让接手方知道
-//「这个任务产出了什么、改了哪些关键文件」。
+// 「这个任务产出了什么、改了哪些关键文件」。
 type Artifact struct {
 	Path string `json:"path"` // 文件路径 / url
 	Kind string `json:"kind"` // file | cmd-output | url | doc

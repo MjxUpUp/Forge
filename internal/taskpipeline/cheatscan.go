@@ -95,12 +95,12 @@ const (
 // CheatFinding 是一次机械检测到的疑似作弊。advisory——检测有假阳性可能，留痕供
 // review 核查，绝不阻塞。
 type CheatFinding struct {
-	Pattern  CheatPattern `json:"pattern"`
-	File     string       `json:"file"`
-	Line     int          `json:"line,omitempty"`
-	Snippet  string       `json:"snippet"`
+	Pattern CheatPattern `json:"pattern"`
+	File    string       `json:"file"`
+	Line    int          `json:"line,omitempty"`
+	Snippet string       `json:"snippet"`
 	// Severity: high (mechanically high confidence) / low (heuristic).
-	Severity string       `json:"severity"` // "high"（机械高置信）/ "low"（启发式）
+	Severity string `json:"severity"` // "high"（机械高置信）/ "low"（启发式）
 }
 
 // addedLine is a single added line from the task-scoped diff (just the + line content, owning
@@ -213,19 +213,19 @@ func ScanCheatPatterns(root string, state *TaskState) []CheatFinding {
 // （指令名不带 sigil/前缀）不触发正则，故安全。
 var typeSuppressionRe = []*regexp.Regexp{
 	// TS whole-file suppression.
-	regexp.MustCompile(`@ts-nocheck`),        // TS 整文件抑制
+	regexp.MustCompile(`@ts-nocheck`), // TS 整文件抑制
 	// TS single-line suppression.
-	regexp.MustCompile(`@ts-ignore`),         // TS 单行抑制
+	regexp.MustCompile(`@ts-ignore`), // TS 单行抑制
 	// TS expected error (still a suppression).
-	regexp.MustCompile(`@ts-expect-error`),   // TS 期望错误（仍是抑制）
+	regexp.MustCompile(`@ts-expect-error`), // TS 期望错误（仍是抑制）
 	// eslint line/block disable.
-	regexp.MustCompile(`eslint-disable`),     // eslint 行/块禁用
+	regexp.MustCompile(`eslint-disable`), // eslint 行/块禁用
 	// Python mypy (requires # prefix).
 	regexp.MustCompile(`#\s*type:\s*ignore`), // Python mypy（要求 # 前缀）
 	// Rust attribute (requires #[ prefix).
-	regexp.MustCompile(`#\[allow`),           // Rust 属性（要求 #[ 前缀）
+	regexp.MustCompile(`#\[allow`), // Rust 属性（要求 #[ 前缀）
 	// Java annotation.
-	regexp.MustCompile(`@SuppressWarnings`),  // Java 注解
+	regexp.MustCompile(`@SuppressWarnings`), // Java 注解
 }
 
 // detectTypeSuppression: new lines containing type/warning suppression directives (anywhere),

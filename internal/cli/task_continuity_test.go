@@ -1,10 +1,10 @@
 package cli
 
 import (
-	"time"
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"

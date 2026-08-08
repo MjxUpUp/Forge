@@ -179,7 +179,7 @@ var taskOverrideCmd = &cobra.Command{
 // phaseExplosionWarning returns a non-empty warning when the given session already
 // has too many incomplete tasks — the 'phase explosion' anti-pattern (one plan split
 // into N tasks each running the full gate pipeline). Advisory only (non-blocking).
-// Returns '' when no warning is needed (fewer than 3, unknown session, or on error).
+// Returns ” when no warning is needed (fewer than 3, unknown session, or on error).
 //
 // phaseExplosionWarning 在指定 session 已有过多未完成 task 时返回非空告警——
 // 即「phase 爆炸」反模式（一个 plan 拆成 N 个 task 各跑全套门禁）。仅 advisory

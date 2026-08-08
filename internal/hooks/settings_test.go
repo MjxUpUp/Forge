@@ -1462,13 +1462,13 @@ func TestForgeHookSpec_SkillTriggerMounted(t *testing.T) {
 	spec := ForgeHookSpec()
 	// 预期挂载 skill-trigger 的 event|matcher 组合。
 	wantMounted := map[string]bool{
-		"PreToolUse|Write|Edit":    true,
-		"PreToolUse|Bash":          true,
-		"PostToolUse|Write|Edit":   true,
-		"PostToolUse|Bash":         true,
-		"Stop|":                    true,
-		"UserPromptSubmit|":        true,
-		"SessionStart|":            true,
+		"PreToolUse|Write|Edit":  true,
+		"PreToolUse|Bash":        true,
+		"PostToolUse|Write|Edit": true,
+		"PostToolUse|Bash":       true,
+		"Stop|":                  true,
+		"UserPromptSubmit|":      true,
+		"SessionStart|":          true,
 	}
 	gotMounted := map[string]bool{}
 	for event, matchers := range spec {

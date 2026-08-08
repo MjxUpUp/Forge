@@ -62,9 +62,9 @@ type effectivenessAggregator struct {
 	ratioSum float64
 	weak     int
 	// conN is the number of tasks with a corresponding act conclusion (AvgRatio/WeakRate denominator).
-	conN     int // 有对应 act conclusion 的 task 数（AvgRatio/WeakRate 分母）
+	conN int // 有对应 act conclusion 的 task 数（AvgRatio/WeakRate 分母）
 	// scoredN is the number of those tasks with Score>0 (AvgScore denominator, excluding unscored).
-	scoredN  int // 其中 Score>0 的 task 数（AvgScore 分母，排除未评分）
+	scoredN int // 其中 Score>0 的 task 数（AvgScore 分母，排除未评分）
 }
 
 // AnalyzeEffectiveness correlates Skill calls in toollog with task effectiveness in act conclusion.

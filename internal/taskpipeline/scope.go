@@ -95,7 +95,7 @@ func MatchesScope(file string, scope []string) bool {
 // splitting the same glob differently across OSes — a potential cross-platform drift-detection bug).
 //
 // scopeMatchOne 测试单条 scope glob 对一条规范化文件路径的匹配。path.Match
-//（非 filepath.Match）是故意选择：它在所有平台上把 '/' 当作唯一分隔符，故 '*'
+// （非 filepath.Match）是故意选择：它在所有平台上把 '/' 当作唯一分隔符，故 '*'
 // 在 Windows 与 POSIX 上行为一致（filepath.Match 会让 '*' 在 Windows 上跨 '/'，
 // 使同一 glob 在不同 OS 上拆分不同——潜在的跨平台 drift 检测 bug）。
 func scopeMatchOne(glob, file string) bool {
