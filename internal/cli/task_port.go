@@ -143,7 +143,8 @@ func runTaskExport(cmd *cobra.Command, args []string) error {
 	if includeChecklog {
 		note += fmt.Sprintf(` 含 %d 条 checklog`, len(entries))
 	}
-	fmt.Fprintf(cmd.ErrOrStderr(), `✓ 已导出任务 %s 到 %s%s\n`, state.TaskRef, out, note)
+	fmt.Fprintf(cmd.ErrOrStderr(), `✓ 已导出任务 %s 到 %s%s`, state.TaskRef, out, note)
+	fmt.Fprintln(cmd.ErrOrStderr())
 	return nil
 }
 
@@ -240,7 +241,8 @@ func runTaskImport(cmd *cobra.Command, args []string) error {
 		if err := taskpipeline.SaveTaskState(root, bundle.Task); err != nil {
 			return fmt.Errorf(`写入任务失败: %w`, err)
 		}
-		fmt.Fprintf(cmd.ErrOrStderr(), `✓ 已覆盖导入任务 %s（--force，源自 %s）\n`, ref, originLabel(bundle.SourceProject))
+		fmt.Fprintf(cmd.ErrOrStderr(), `✓ 已覆盖导入任务 %s（--force，源自 %s）`, ref, originLabel(bundle.SourceProject))
+		fmt.Fprintln(cmd.ErrOrStderr())
 	case exists && merge:
 		// Merge: local task keeps its identity/definition; collaborative records (decisions/findings/
 		// blockers/history/sessions/next-steps/artifacts) are unioned by ID/key. Incoming links are ghosts.
@@ -248,13 +250,15 @@ func runTaskImport(cmd *cobra.Command, args []string) error {
 		if err := taskpipeline.SaveTaskState(root, existing); err != nil {
 			return fmt.Errorf(`合并写入任务失败: %w`, err)
 		}
-		fmt.Fprintf(cmd.ErrOrStderr(), `✓ 已合并导入任务 %s（--merge，源自 %s）\n`, ref, originLabel(bundle.SourceProject))
+		fmt.Fprintf(cmd.ErrOrStderr(), `✓ 已合并导入任务 %s（--merge，源自 %s）`, ref, originLabel(bundle.SourceProject))
+		fmt.Fprintln(cmd.ErrOrStderr())
 	default:
 		// Fresh: no local task — write the bundled task (links already ghosted, gate signals stripped).
 		if err := taskpipeline.SaveTaskState(root, bundle.Task); err != nil {
 			return fmt.Errorf(`写入任务失败: %w`, err)
 		}
-		fmt.Fprintf(cmd.ErrOrStderr(), `✓ 已导入任务 %s（源自 %s）\n`, ref, originLabel(bundle.SourceProject))
+		fmt.Fprintf(cmd.ErrOrStderr(), `✓ 已导入任务 %s（源自 %s）`, ref, originLabel(bundle.SourceProject))
+		fmt.Fprintln(cmd.ErrOrStderr())
 	}
 
 	// Replay bundled checklog (if any) into the local evidence chain — preserves source timing so
@@ -271,11 +275,13 @@ func runTaskImport(cmd *cobra.Command, args []string) error {
 		// derr != nil → 读本地失败，best-effort 回落到全量追加（绝不在读故障时静默丢证据）。
 		if len(toAppend) > 0 {
 			if err := checklog.AppendEntries(root, toAppend); err != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), `⚠ 任务已导入，但回放 checklog 失败（不影响任务）: %v\n`, err)
+				fmt.Fprintf(cmd.ErrOrStderr(), `⚠ 任务已导入，但回放 checklog 失败（不影响任务）: %v`, err)
+				fmt.Fprintln(cmd.ErrOrStderr())
 			}
 		}
 	}
-	fmt.Fprintf(cmd.ErrOrStderr(), `提示：导入不继承源机器的 review/验收/评分；完成前请在本机重跑门禁。接续用 forge task resume --ref %s\n`, ref)
+	fmt.Fprintf(cmd.ErrOrStderr(), `提示：导入不继承源机器的 review/验收/评分；完成前请在本机重跑门禁。接续用 forge task resume --ref %s`, ref)
+	fmt.Fprintln(cmd.ErrOrStderr())
 	return nil
 }
 
