@@ -251,6 +251,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge task reopen --ref <ref> --reason <text>` | 交付后重开（delivered→claimed，交付后发现 bug） |
 | `forge task export --ref <ref> [-o\|--output file] [--include-checklog] [--redact]` | 把任务导出为跨机器 JSON Bundle（task state 存于用户级 DataDir 不随仓库走，跨机器交接需此载体；--include-checklog 附带证据链；--redact 抹除 issue/agent/commit/证据供对外分享） |
 | `forge task import --file <bundle> [--force\|--merge]` | 从 Bundle 导入任务到本地（导入 session 标记幽灵仅溯源；默认同 ref 拒绝，--force 覆盖，--merge 按 ID 并集协作记录；含 checklog 则回放进本地 trace） |
+| `forge task health [--json]` | 扫描全 project 上浮僵尸/死锁/长期未答复任务（只读告警，不改状态）：offered>7d / claimed>TTL（无 checklog 活动）/ input-required>7d / abandoned_count≥2 标黄，DependsOn 指向 failed/canceled/缺失的死锁链与环主动报；与 mine/看板共享同一检测真相源 |
 
 </details>
 
