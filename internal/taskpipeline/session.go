@@ -2,6 +2,7 @@ package taskpipeline
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/agentsignals"
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
@@ -161,11 +163,17 @@ func ensureScopedSession(root, sessionID string) (*SessionRecord, error) {
 		return nil, err
 	}
 
-	// Append to the history log (idempotent enough: a duplicate line in an
-	// append-only log is harmless, LoadSessions dedupes by SessionID).
+	// Append to the history log. A duplicate line is harmless: LoadSessions does NOT
+	// dedup across log lines (it preserves every parseable line), so duplicate lines for
+	// the same SessionID are tolerated as-is; the jsonl agent-upsert
+	// (upsertSessionAgentInLog) updates EVERY matching line, keeping duplicates consistent
+	// rather than leaving copies with an empty agent_type. Do NOT "simplify" that upsert to
+	// update only the first match — it would reintroduce the empty-agent metric gap.
 	//
-	// 追加到历史日志（足够幂等：append-only 日志里一行重复无害，LoadSessions
-	// 会按 SessionID 去重）。
+	// 追加到历史日志。一行重复无害：LoadSessions 不在日志行间去重（保留每个可解析行），
+	// 故同一 SessionID 的重复行原样容忍；jsonl agent-upsert（upsertSessionAgentInLog）
+	// 更新每一条匹配行，使重复行保持一致，而非留下空 agent_type 的副本。切勿把该 upsert
+	// 「简化」为只改首条命中——那会重新引入空 agent 的指标缺口。
 	if err := appendSessionLog(root, session); err != nil {
 		return nil, err
 	}
@@ -326,42 +334,210 @@ func LoadSessions(root string) ([]SessionRecord, error) {
 	return sessions, nil
 }
 
-// detectAgentType checks for known agent configuration directories. The checks run
-// in a FIXED priority order (first hit wins): an earlier version ranged over a map,
-// and Go's random map iteration made OriginTool nondeterministic across process
-// starts when a project has several agent dirs (e.g. .claude + .cursor) — wrong
-// attribution is exactly what types.go's OriginTool comment warns about.
+// detectAgentType checks for known agent configuration directories, returning the
+// first match in a FIXED priority order (first hit wins). Delegated to the shared
+// agentsignals table — the SAME source agentbridge.DetectAgents uses for wiring — so
+// session attribution and agent wiring can never disagree on which project markers
+// count, and coverage is the full nine-agent set (not just the four legacy markers).
+// First-match precedence is deterministic (an ordered slice, not a map): an earlier
+// map-ranging version made OriginTool nondeterministic across process starts when a
+// project has several agent dirs (e.g. .claude + .cursor) — wrong attribution is
+// exactly what types.go's OriginTool comment warns about.
 //
-// detectAgentType 检查已知的 agent 配置目录。按固定优先级顺序检查（首个命中即
-// 返回）：旧版本遍历 map，Go map 顺序随机，项目同时存在多个 agent 目录（如
-// .claude + .cursor）时 OriginTool 每次进程启动随机取——归属错误正是
-// types.go OriginTool 注释论证过的危害。
+// detectAgentType 检查已知的 agent 配置目录，按固定优先级顺序返回首个命中。委托给共享
+// agentsignals 表——与 agentbridge.DetectAgents 接线同源——使会话归因与 agent 接线对
+// "哪些项目标记算数"永不分歧，且覆盖全部九个 agent（不再只是四个遗留标记）。首次匹配
+// 优先级确定（有序切片，非 map）：早期遍历 map 的版本在项目含多个 agent 目录（如
+// .claude + .cursor）时使 OriginTool 跨进程启动不确定——归属错误正是 types.go
+// OriginTool 注释论证过的危害。
 func detectAgentType(root string) string {
-	checks := []struct {
-		dir   string
-		agent string
-	}{
-		{".claude", "claude-code"},
-		{".cursor", "cursor"},
-		{".github/instructions", "copilot"},
-		{".windsurfrules", "windsurf"},
+	return agentsignals.ProjectAgentMarker(root)
+}
+
+// StampSessionAgent fills an EMPTY AgentType on the authoritative session record with
+// the given agent, best-effort, and reflects the same value in the append-only
+// sessions.jsonl so LoadSessions / attribution queries — which read the jsonl, NOT the
+// scoped file — see the stamped agent.
+//
+// It serves the marker-ABSENT case: agents whose translators rewrite hook commands to
+// carry `--agent <name>` (kimi, reasonix, windsurf) fire hooks with a resolved agent even
+// when the project has NO marker detectAgentType recognizes, so the session is created
+// with an empty AgentType. The first Pre/PostToolUse after session start stamps that
+// authoritative agent onto the record.
+//
+// It does NOT help the Claude-compatible-stdin translators (codex, codebuddy, opencode):
+// those fire hooks with agent=="" (no --agent on their commands), so the stamp is a no-op
+// for them — they rely on Part 1's project markers (codex/opencode have markers; codebuddy
+// has none by design and is a known attribution gap).
+//
+// Contract — intentionally narrow so a stamp can never make attribution WORSE:
+//   - fills ONLY an empty AgentType on the live record AND in the jsonl (never
+//     overwrites a non-empty value, which would clobber a correct marker-based
+//     attribution);
+//   - creates NO file if the session record is absent (a stamp before the session
+//     exists is meaningless — EnsureSession creates it on the next task start);
+//   - rotates nothing;
+//   - touches the jsonl at most ONCE per session (only when a file-stamp actually fills
+//     an empty slot);
+//   - swallows all errors (best-effort bookkeeping — a stamp failure must never break
+//     a tool call).
+//
+// The jsonl rewrite is best-effort under concurrency: two sessions stamping their first
+// tool event at the same instant could race on the read-modify-write and one jsonl line
+// stays empty. This is acceptable because (a) it happens at most once per session, (b) the
+// scoped/legacy file remains the authoritative live record, and the jsonl is a
+// best-effort history — the scoped value is never lost.
+//
+// StampSessionAgent 用给定 agent 填充权威 session 记录上空的 AgentType（尽力而为），并把同
+// 一值反映到 append-only 的 sessions.jsonl，使读 jsonl（而非 scoped 文件）的 LoadSessions /
+// 归因查询能看到盖戳的 agent。
+//
+// 它服务无标记场景：翻译器会把 hook 命令改写为携带 `--agent <name>` 的 agent
+// （kimi、reasonix、windsurf），即便项目没有 detectAgentType 认识的标记，它们也会带解析出
+// 的 agent 触发 hook，故 session 以空 AgentType 创建。session 起始后的首个 Pre/PostToolUse
+// 把该权威 agent 盖到记录上。
+//
+// 它帮不到 Claude-兼容-stdin 翻译器（codex、codebuddy、opencode）：这些以 agent=="" 触发
+// hook（命令上无 --agent），故盖戳对它们是 no-op——它们依赖 Part 1 的项目标记（codex/
+// opencode 有标记；codebuddy 设计上无标记，是已知归因缺口）。
+//
+// 契约——刻意收窄，使盖戳绝不使归因更糟：
+//   - 在 live 记录与 jsonl 上都只填空的 AgentType（绝不覆盖非空值，否则会冲掉正确的标记归因）；
+//   - session 记录不存在时不创建文件（session 还不存在时盖戳无意义——下次 task start 时
+//     EnsureSession 会创建）；
+//   - 不轮换；
+//   - 每 session 至多碰 jsonl 一次（仅当文件盖戳确实填了空）；
+//   - 所有错误吞掉（尽力而为的簿记——盖戳失败绝不能打断工具调用）。
+//
+// jsonl 重写在并发下是尽力而为：两个 session 在首个工具事件同时盖戳可能在 read-modify-
+// write 上竞争，其中一条 jsonl 行保持空。这可接受，因为（a）每 session 至多一次，
+// （b）scoped/legacy 文件仍是权威 live 记录，jsonl 是尽力而为的历史——scoped 值不会丢。
+func StampSessionAgent(root, sessionID, agent string) {
+	if agent == "" {
+		return
 	}
-	for _, c := range checks {
-		path := filepath.Join(root, c.dir)
-		if info, err := os.Stat(path); err == nil {
-			if c.dir == ".windsurfrules" {
-				// .windsurfrules is a file, not a directory.
-				//
-				// .windsurfrules 是文件而非目录
-				if !info.IsDir() {
-					return c.agent
-				}
-			} else if info.IsDir() {
-				return c.agent
-			}
+	var changed bool
+	var logSID string
+	if sessionID != "" {
+		changed = stampScopedSession(root, sessionID, agent)
+		logSID = sessionID
+	} else {
+		changed, logSID = stampLegacySession(root, agent)
+	}
+	if changed && logSID != "" {
+		upsertSessionAgentInLog(root, logSID, agent)
+	}
+}
+
+// stampScopedSession stamps the session-scoped record at sessions/<sid>.json. It returns
+// true only when it actually filled an empty AgentType (used to decide whether the jsonl
+// needs the same update). It writes back to the exact path it READ — not saveScopedSession,
+// which re-derives the path from s.SessionID and would diverge from the filename if the
+// two ever drift.
+//
+// stampScopedSession 盖戳 session-scoped 记录 sessions/<sid>.json。仅当确实填了空 AgentType
+// 时返回 true（用于判断 jsonl 是否需要同步更新）。写回的是它读取的那个确切路径——而非
+// saveScopedSession（后者按 s.SessionID 重新推导路径，一旦 SessionID 与文件名漂移就会写偏）。
+func stampScopedSession(root, sessionID, agent string) bool {
+	path := sessionScopedFilePath(root, sessionID)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false // absent or unreadable — nothing to stamp (do NOT create).
+	}
+	var s SessionRecord
+	if err := json.Unmarshal(data, &s); err != nil {
+		return false // corrupt — leave it (EnsureSession rebuilds on the next start).
+	}
+	if s.AgentType != "" {
+		return false // already attributed — never overwrite.
+	}
+	s.AgentType = agent
+	out, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		return false
+	}
+	if err := util.AtomicWrite(path, out, 0644); err != nil {
+		return false
+	}
+	return true
+}
+
+// stampLegacySession stamps the legacy global session.json. Returns (changed, sid): sid is
+// the record's own SessionID (passed to the jsonl upsert, since legacy callers pass an
+// empty sessionID but the jsonl line is keyed by the record's real id).
+//
+// stampLegacySession 盖戳 legacy 全局 session.json。返回 (changed, sid)：sid 是记录自身的
+// SessionID（传给 jsonl upsert，因 legacy 调用方传空 sessionID，而 jsonl 行以记录真实 id 为键）。
+func stampLegacySession(root, agent string) (changed bool, sid string) {
+	s, err := loadSession(root)
+	if err != nil || s == nil {
+		return false, ""
+	}
+	if s.AgentType != "" {
+		return false, ""
+	}
+	s.AgentType = agent
+	if err := saveSession(root, s); err != nil {
+		return false, ""
+	}
+	return true, s.SessionID
+}
+
+// upsertSessionAgentInLog rewrites DataDir/sessions.jsonl so the line(s) matching sessionID
+// carry the given agent where their AgentType is currently empty. This is what makes a
+// stamped agent visible to LoadSessions and the attribution metric: appendSessionLog only
+// writes a line at session creation (when AgentType is still empty), and LoadSessions reads
+// the jsonl — NOT the scoped sessions/<sid>.json — so a stamp that only touches the scoped
+// file would be invisible to every jsonl-based consumer. Without this, the stamp's
+// contribution to the "53% missing agent_type" metric is exactly zero for scoped sessions.
+//
+// Best-effort + idempotent: only lines with an empty AgentType are touched (never
+// overwrite); if no line matches, nothing is written (the session may not have been logged
+// yet); AtomicWrite (temp+rename) keeps the rewrite tear-free. The line/byte structure is
+// preserved on round-trip (split-on-newline rejoined with the same delimiter, including the
+// trailing newline if present).
+//
+// upsertSessionAgentInLog 重写 DataDir/sessions.jsonl，使匹配 sessionID 的行在其 AgentType
+// 当前为空时填上给定 agent。这是让盖戳的 agent 对 LoadSessions 与归因指标可见的关键：
+// appendSessionLog 只在 session 创建时写一行（彼时 AgentType 仍为空），而 LoadSessions 读
+// jsonl——不读 scoped 的 sessions/<sid>.json——故只动 scoped 文件的盖戳对一切 jsonl 消费方
+// 不可见。没有这一步，盖戳对"53% agent_type 缺失"指标在 scoped session 上的贡献恰好为零。
+//
+// 尽力而为 + 幂等：只改 AgentType 为空的行（绝不覆盖）；无匹配行则不写（session 可能尚未记
+// 日志）；AtomicWrite（temp+rename）使重写无撕裂。行/字节结构在往返中保持（按换行分割后以同
+// 分隔符重新连接，含尾随换行时也保留）。
+func upsertSessionAgentInLog(root, sessionID, agent string) {
+	if sessionID == "" {
+		return
+	}
+	path := sessionsLogPath(root)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return // no log yet — nothing to update.
+	}
+	lines := bytes.Split(data, []byte("\n"))
+	changed := false
+	for i, ln := range lines {
+		if len(bytes.TrimSpace(ln)) == 0 {
+			continue
+		}
+		var s SessionRecord
+		if err := json.Unmarshal(ln, &s); err != nil {
+			continue // skip unparseable line, preserve it as-is.
+		}
+		if s.SessionID != sessionID || s.AgentType != "" {
+			continue
+		}
+		s.AgentType = agent
+		if rewritten, err := json.Marshal(s); err == nil {
+			lines[i] = rewritten
+			changed = true
 		}
 	}
-	return ""
+	if !changed {
+		return
+	}
+	_ = util.AtomicWrite(path, bytes.Join(lines, []byte("\n")), 0644)
 }
 
 // newSessionID generates a unique session identifier, with a timestamp and a
