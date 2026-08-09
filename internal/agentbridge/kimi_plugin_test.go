@@ -142,6 +142,111 @@ func TestIsKimiPluginInstalled(t *testing.T) {
 	})
 }
 
+// TestKimiPluginStaleInfo pins the staleness signal: only an enabled forge entry with a
+// tag ref yields a trimmed bare version; everything else (non-tag ref, missing github/ref,
+// disabled, no entry, garbage, no file) is ok=false so the advisory never fires on noise.
+//
+// TestKimiPluginStaleInfo 钉住 staleness 信号：只有已启用 forge 条目带 tag ref 才产出
+// trim 后的裸版本；其余（非 tag ref、缺 github/ref、禁用、无条目、垃圾、无文件）一律
+// ok=false，确保 advisory 不会被噪声触发。
+func TestKimiPluginStaleInfo(t *testing.T) {
+	writeReg := func(t *testing.T, home, content string) {
+		t.Helper()
+		dir := filepath.Join(home, "plugins")
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "installed.json"), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	tests := []struct {
+		name    string
+		json    string
+		wantVer string
+		wantOk  bool
+	}{
+		{
+			name:    "tag ref v1.19.0",
+			json:    `{"plugins":[{"id":"forge","enabled":true,"github":{"owner":"MjxUpUp","repo":"Forge","ref":{"kind":"tag","value":"v1.19.0"}}}]}`,
+			wantVer: "1.19.0",
+			wantOk:  true,
+		},
+		{
+			name:    "tag ref without v prefix",
+			json:    `{"plugins":[{"id":"forge","github":{"ref":{"kind":"tag","value":"1.20.0"}}}]}`,
+			wantVer: "1.20.0",
+			wantOk:  true,
+		},
+		{
+			name:   "commit ref not comparable",
+			json:   `{"plugins":[{"id":"forge","enabled":true,"github":{"ref":{"kind":"commit","value":"abc123"}}}]}`,
+			wantOk: false,
+		},
+		{
+			name:   "missing github field",
+			json:   `{"plugins":[{"id":"forge","enabled":true}]}`,
+			wantOk: false,
+		},
+		{
+			name:   "missing ref",
+			json:   `{"plugins":[{"id":"forge","enabled":true,"github":{"owner":"MjxUpUp"}}]}`,
+			wantOk: false,
+		},
+		{
+			name:   "empty ref value",
+			json:   `{"plugins":[{"id":"forge","enabled":true,"github":{"ref":{"kind":"tag","value":""}}}]}`,
+			wantOk: false,
+		},
+		{
+			name:   "disabled forge",
+			json:   `{"plugins":[{"id":"forge","enabled":false,"github":{"ref":{"kind":"tag","value":"v1.19.0"}}}]}`,
+			wantOk: false,
+		},
+		{
+			name:   "disabled flag true",
+			json:   `{"plugins":[{"id":"forge","disabled":true,"github":{"ref":{"kind":"tag","value":"v1.19.0"}}}]}`,
+			wantOk: false,
+		},
+		{
+			name:   "no forge entry",
+			json:   `{"plugins":[{"id":"other","enabled":true,"github":{"ref":{"kind":"tag","value":"v1.0.0"}}}]}`,
+			wantOk: false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("KIMI_CODE_HOME", home)
+			writeReg(t, home, tc.json)
+			ver, ok := KimiPluginStaleInfo()
+			if ok != tc.wantOk {
+				t.Fatalf("ok = %v, want %v", ok, tc.wantOk)
+			}
+			if ok && ver != tc.wantVer {
+				t.Errorf("version = %q, want %q", ver, tc.wantVer)
+			}
+		})
+	}
+
+	t.Run("no file", func(t *testing.T) {
+		t.Setenv("KIMI_CODE_HOME", t.TempDir())
+		if _, ok := KimiPluginStaleInfo(); ok {
+			t.Error("missing installed.json must be ok=false")
+		}
+	})
+
+	t.Run("garbage", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("KIMI_CODE_HOME", home)
+		writeReg(t, home, "not json")
+		if _, ok := KimiPluginStaleInfo(); ok {
+			t.Error("garbage installed.json must be ok=false")
+		}
+	})
+}
+
 // TestKimiTranslator_PluginWins verifies the dedupe: with the kimi plugin installed,
 // Translate strips the config.toml marker section (no double-run) and preserves user
 // config — mirroring claude-code's plugin-vs-settings dedupe.

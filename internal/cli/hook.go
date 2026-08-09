@@ -587,6 +587,19 @@ func runHook(cmd *cobra.Command, args []string) error {
 	var output HookOutput
 	if passed {
 		detail = extractDetail(stdout, "PASS")
+		// kimi-code installs the forge plugin by locking a repo tag and has no plugin
+		// auto-update (CLI has no plugin management subcommands), so a kimi install drifts
+		// behind the forge binary over time. Detect the drift here and append a remediation
+		// advisory through init-suggest's existing non-blocking channel (exit 0). The agent
+		// and hook-name guards keep this kimi-only: claude/codex/etc. never reach it.
+		//
+		// kimi-code 装插件靠锁仓库 tag，且无 plugin 自动更新（CLI 无任何 plugin 管理
+		// 子命令），故 kimi 安装会随时间落后于 forge 二进制。在此检测漂移，经
+		// init-suggest 既有的非阻断通道（exit 0）追加修复 advisory。agent 与 hook 名
+		// 双重 guard 使其仅 kimi 生效：claude/codex 等永不进入。
+		if name == "init-suggest" && agent == "kimi" {
+			detail = appendKimiStaleAdvisory(detail, cmd.Root().Version)
+		}
 		output = HookOutput{Decision: "approve"}
 		if detail != "" {
 			output.HookSpecificOutput = &HookSpecificOutput{
