@@ -10,6 +10,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
 func TestHookOutput_AllowOnMissingProject(t *testing.T) {
@@ -774,6 +775,78 @@ func TestHookToolTrackReadOmitsToolInput(t *testing.T) {
 	}
 	if strings.Contains(body, "src/main.go") {
 		t.Errorf("Read 的 tool_input 不应被记录（保持 lean）, got: %s", body)
+	}
+}
+
+// TestHookStampsResolvedAgentOnSessionRecord is the end-to-end wiring test for the
+// marker-absent attribution fix: a session created with NO project marker (empty
+// agent_type — the kimi/reasonix/codex-without-marker case) gets its authoritative
+// agent stamped by the first hook invocation carrying --agent/FORGE_HOOK_AGENT. This is
+// the only path that attributes marker-absent agents correctly; without it such sessions
+// misattribute to claude-code (the leaked CLAUDE_CODE_SESSION_ID default). The stamp
+// fires right after root resolution, before any hook-specific logic, so it is robust to
+// what the rest of the hook does.
+//
+// TestHookStampsResolvedAgentOnSessionRecord 是无标记归因修复的端到端接线测试：无项目
+// 标记创建的 session（空 agent_type——无标记的 kimi/reasonix/codex 场景）被首个携带
+// --agent/FORGE_HOOK_AGENT 的 hook 调用盖上权威 agent。这是唯一能正确归因无标记 agent
+// 的路径；缺它这类 session 会误归 claude-code（泄漏的 CLAUDE_CODE_SESSION_ID 默认值）。
+// 盖戳在项目根解析后立即触发、先于任何 hook 专属逻辑，故对 hook 其余部分做什么鲁棒。
+func TestHookStampsResolvedAgentOnSessionRecord(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	tmpDir := t.TempDir()
+	os.MkdirAll(filepath.Join(tmpDir, ".forge", "hooks"), 0755)
+	os.WriteFile(filepath.Join(tmpDir, ".forge", "state.json"), []byte(`{"pipeline_version":"2.0","mode":"small"}`), 0644)
+	// Deliberately NO project marker (.reasonix etc.) — detectAgentType is empty at
+	// creation. This is exactly the case the stamp must recover.
+	originalWd, _ := os.Getwd()
+	os.Chdir(tmpDir)
+	defer os.Chdir(originalWd)
+
+	// Pre-create the scoped session (as the SessionStart/resume hook would in prod).
+	// No marker → AgentType empty (the precondition the stamp exists to fix).
+	const sid = `stamp-wiring-sid`
+	sess, err := taskpipeline.EnsureSession(tmpDir, sid)
+	if err != nil {
+		t.Fatalf("EnsureSession: %v", err)
+	}
+	if sess.AgentType != "" {
+		t.Fatalf("precondition: AgentType=%q, want empty (no project marker present)", sess.AgentType)
+	}
+
+	// Resolve agent via the --agent flag path (the same path translators set).
+	oldAgent := hookAgent
+	hookAgent = `reasonix`
+	defer func() { hookAgent = oldAgent }()
+
+	// Stdin carries the session id, as every host's hook payload does.
+	oldStdin := os.Stdin
+	tmpStdin, _ := os.CreateTemp("", "hook-stdin-*.json")
+	tmpStdin.WriteString(`{"hook_event_name":"PreToolUse","session_id":"` + sid + `","tool_name":"Write","tool_input":{"file_path":"src/main.go"}}`)
+	tmpStdin.Seek(0, 0)
+	os.Stdin = tmpStdin
+	defer func() {
+		os.Stdin = oldStdin
+		tmpStdin.Close()
+		os.Remove(tmpStdin.Name())
+	}()
+
+	// Drain stdout (the hook emits a decision JSON we do not assert here).
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	runHook(nil, []string{"tool-track"})
+	w.Close()
+	os.Stdout = oldStdout
+	r.Read(make([]byte, 8192))
+
+	// Reload the scoped record — it must now carry the stamped agent.
+	reloaded, err := taskpipeline.EnsureSession(tmpDir, sid)
+	if err != nil {
+		t.Fatalf("reload EnsureSession: %v", err)
+	}
+	if reloaded.AgentType != `reasonix` {
+		t.Errorf("AgentType after hook = %q, want reasonix (hook must stamp resolved agent onto marker-absent session)", reloaded.AgentType)
 	}
 }
 
