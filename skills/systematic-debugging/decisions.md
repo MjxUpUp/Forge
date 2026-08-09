@@ -70,3 +70,21 @@ description 审计合格未改动 + 新建 evals.json 10 条
 ### Evidence
 
 docs/skills-value-audit-2026-08-02.md
+
+## [d-18c7e622bc3327dc-audit0809] accept
+
+- **Skill**: systematic-debugging
+- **DecidedAt**: 2026-08-09T00:00:00Z
+- **By**: claude-code
+
+### Diagnosis
+
+weekly-audit-2026-08-09 发现 trigger `test_command_failed` 生产 0 触发（5/50 trigger skill 唯一死配置）：与 test-discipline 在测试失败场景语义重叠 + 依赖 hook 侧 `ToolOutput.exit_code` 传递（condTestCommandFailed 缺 exit_code 保守返 false，conditions.go:87-90）
+
+### Revision
+
+trigger 从 `PostToolUse test_command_failed` 改为 `UserPromptSubmit keywords`（用户表达调试困境：卡住了 / 为什么还不行 / still failing / keeps failing / can't figure out 等）cooldown 300；贴合 SKILL 设计意图（用户说"卡住了""为什么还不行"时），避开撞车与 exit_code 依赖
+
+### Evidence
+
+forge-weekly-audit-2026-08-09（systematic-debugging 生产触发 0 次）；docs/skills-value-audit-2026-08-02.md:51（撞车已诊断）；internal/skilltrigger/conditions.go:87-90
