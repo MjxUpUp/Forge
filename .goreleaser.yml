@@ -54,15 +54,17 @@ sboms:
 # cosign keyless 签名 checksums.txt：用户可验证"这份 checksum 确实由本仓库的
 # GitHub Actions 签出"（Sigstore 透明日志可查），防 release 资产被替换后无法察觉。
 # keyless 用 CI 的 OIDC 身份，无需管理私钥；需要 workflow 的 id-token: write。
+# cosign v3（2025-11）用单个 --bundle（.sigstore.json，证书+签名合一）取代旧的
+# --output-certificate/--output-signature 双文件；旧标志在 v3 下为空路径→
+# "create bundle file: open : no such file or directory"（v1.28.3 发布失败根因）。
 signs:
   - cmd: cosign
-    certificate: "${artifact}.pem"
+    signature: "${artifact}.sigstore.json"
     args:
       - sign-blob
-      - "--output-certificate=${certificate}"
-      - "--output-signature=${signature}"
-      - --yes
+      - "--bundle=${signature}"
       - "${artifact}"
+      - "--yes"
     artifacts: checksum
     output: true
 
