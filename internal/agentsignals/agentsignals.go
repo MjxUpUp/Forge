@@ -145,3 +145,42 @@ func ProjectAgentMarkers(projectDir string) []string {
 	}
 	return agents
 }
+
+// KnownAgents returns the deduplicated list of agent names recognized by project markers,
+// in projectMarkers order (first occurrence wins for dedup). This is the closed set a task
+// can be delegated to — forge task assign validates --assignee against it so an unknown
+// agent does not silently create a task no worker can match (a black hole). Agents that
+// carry no project marker (e.g. codebuddy, signalled only via plugin config) are absent;
+// assign warns but still accepts them when the user insists explicitly.
+//
+// KnownAgents 返回 project markers 识别的 agent 名（去重），顺序遵循 projectMarkers
+// （首次出现保留）。这是 task 可被分派的封闭集——forge task assign 用它校验 --assignee，
+// 避免未知 agent 静默创建无人认领的任务（黑洞）。无项目标记的 agent（如 codebuddy，仅经
+// plugin 配置探测）不在内；用户显式坚持时 assign 警告但仍接受。
+func KnownAgents() []string {
+	var agents []string
+	seen := map[string]bool{}
+	for _, m := range projectMarkers {
+		if seen[m.agent] {
+			continue
+		}
+		seen[m.agent] = true
+		agents = append(agents, m.agent)
+	}
+	return agents
+}
+
+// IsKnownAgent reports whether name is one of the recognized agent names (the closed set
+// drawn from projectMarkers). Cheaper than KnownAgents() for single lookups; used by the
+// assign command to decide warn-but-accept vs silently-valid.
+//
+// IsKnownAgent 报告 name 是否为已知 agent 名（projectMarkers 封闭集）。单次查找比
+// KnownAgents() 更省；assign 命令用它区分「警告后接受」与「静默合法」。
+func IsKnownAgent(name string) bool {
+	for _, m := range projectMarkers {
+		if m.agent == name {
+			return true
+		}
+	}
+	return false
+}
