@@ -177,3 +177,71 @@ func TestReleaseWorkflow_TestJobIsGateSource(t *testing.T) {
 		t.Fatal("test job 必须带 -race（与 ci.yml 一致的竞态检测标准）——现未发现 -race")
 	}
 }
+
+// readGoreleaserYAML loads .goreleaser.yml from the repo root (go test cwd = internal/ci/).
+//
+// readGoreleaserYAML 从仓库根读 .goreleaser.yml（go test cwd = internal/ci/）。
+func readGoreleaserYAML(t *testing.T) []byte {
+	t.Helper()
+	path := filepath.Join("..", "..", ".goreleaser.yml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("读 .goreleaser.yml 失败: %v（cwd 是否在 internal/ci/?）", err)
+	}
+	return data
+}
+
+// goreleaserSign captures only the signs: block fields this guard inspects (cmd + args);
+// yaml.v3 ignores the other signs fields (signature, artifacts, output).
+//
+// goreleaserSign 只取守护 signs: 块所需字段（cmd + args）；
+// yaml.v3 忽略 signs 的其它字段（signature/artifacts/output）。
+type goreleaserSign struct {
+	Cmd  string   `yaml:"cmd"`
+	Args []string `yaml:"args"`
+}
+
+// goreleaserSignsConfig holds the top-level signs list.
+//
+// goreleaserSignsConfig 持有顶层 signs 列表。
+type goreleaserSignsConfig struct {
+	Signs []goreleaserSign `yaml:"signs"`
+}
+
+// TestGoreleaserSigns_CosignV3Bundle: the checksums signing step must use cosign v3's --bundle
+// format (single .sigstore.json, cert+signature merged). The v2-era --output-signature/
+// --output-certificate flags resolve to an empty path under cosign v3
+// ("create bundle file: open : no such file or directory") and broke the v1.28.3 release.
+// This guard prevents silently regressing back to the deprecated flags.
+//
+// Structural parse of the signs args list (not raw text) — so explanatory comments that merely
+// name the deprecated flags don't false-trip the guard.
+//
+// TestGoreleaserSigns_CosignV3Bundle：checksums 签名步必须用 cosign v3 的 --bundle
+// 格式（单个 .sigstore.json，证书+签名合一）。v2 旧 --output-signature/
+// --output-certificate 在 cosign v3 下解析成空路径
+// （"create bundle file: open : no such file or directory"），致 v1.28.3 发布失败。
+// 本守护防 silently 退化回废弃 flags。
+//
+// 只结构化解析 signs 的 args 列表（非原始文本）——注释里提到废弃 flags 不会误触发守护。
+func TestGoreleaserSigns_CosignV3Bundle(t *testing.T) {
+	var cfg goreleaserSignsConfig
+	if err := yaml.Unmarshal(readGoreleaserYAML(t), &cfg); err != nil {
+		t.Fatalf("unmarshal .goreleaser.yml signs: %v", err)
+	}
+	if len(cfg.Signs) == 0 {
+		t.Fatal(".goreleaser.yml 缺 signs: 块（checksums keyless 签名）——" +
+			"删签名会让 release 资产可被静默替换（Sigstore 透明日志可验证性丢失）")
+	}
+	for i, s := range cfg.Signs {
+		joined := strings.Join(s.Args, " ")
+		if !strings.Contains(joined, "--bundle") {
+			t.Fatalf("signs[%d] 必须用 cosign v3 的 --bundle（证书+签名合一），got args %v——" +
+				"v2 旧 --output-signature/--output-certificate 在 cosign v3 下产空路径致发布失败", i, s.Args)
+		}
+		if strings.Contains(joined, "--output-signature") || strings.Contains(joined, "--output-certificate") {
+			t.Fatalf("signs[%d] 含 cosign v2 废弃 flags（--output-signature/--output-certificate），got args %v——" +
+				"v3 下被忽略产空路径，须改 --bundle", i, s.Args)
+		}
+	}
+}

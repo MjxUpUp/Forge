@@ -47,7 +47,13 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.mod
+      # cosign：goreleaser signs 块用 v3 的 --bundle（证书+签名合一的 .sigstore.json）。
+      # pin 产物版本 v3.1.3——cosign-installer 默认装 latest，曾因 v2→v3 升级把
+      # --output-signature 变空路径致 v1.28.3 发布失败；pin 住已知良好的 v3 bundle 行为，
+      # 与下方 syft v1.50.0 同一供应链姿势。升 v4 前须人工验证 flags 兼容。
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
       # syft：goreleaser sboms 块的外部依赖（goreleaser-action 不自带）。
       # install.sh 按 commit pin（与 actions 的 SHA pin 同一供应链姿势），产物版本 pin v1.50.0。
       - name: Install syft (SBOM generator)
