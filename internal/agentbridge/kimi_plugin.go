@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/hooks"
 )
@@ -185,4 +186,71 @@ func IsKimiPluginInstalled() bool {
 		return true
 	}
 	return false
+}
+
+// KimiPluginStaleInfo reads the installed forge plugin's source ref tag and returns the
+// bare version (v prefix trimmed). It is the trustworthy "which version is installed"
+// signal for staleness detection: the manifest's version field is release metadata
+// (intentionally independent of the forge release, see kimiPluginVersion) and the managed
+// copy under plugins/managed/forge/ survives uninstall (see IsKimiPluginInstalled notes) —
+// only installed.json's github.ref records the tag the user actually installed from.
+//
+// ok is true only when a forge entry exists, is enabled, and carries github.ref.kind=="tag"
+// with a non-empty value. Non-tag refs (commit/branch) return ok=false — they cannot be
+// semver-compared, and flagging them as stale would be noise.
+//
+// KimiPluginStaleInfo 读取已装 forge plugin 的来源 ref tag，返回裸版本号（已 trim v 前缀）。
+// 它是 staleness 检测的可信"装了哪个版本"信号：manifest 的 version 字段是发布元数据
+// （刻意独立于 forge release，见 kimiPluginVersion），而 plugins/managed/forge/ 下的托管
+// 副本在卸载后仍留存（见 IsKimiPluginInstalled 注释）——只有 installed.json 的 github.ref
+// 记录了用户实际安装来源的 tag。
+//
+// 仅当存在 forge 条目、已启用、且带 github.ref.kind=="tag" 与非空 value 时 ok=true。
+// 非 tag ref（commit/branch）返回 ok=false——它们无法 semver 比对，标为过期只会是噪声。
+func KimiPluginStaleInfo() (installed string, ok bool) {
+	home, err := KimiConfigHome()
+	if err != nil {
+		return "", false
+	}
+	data, err := os.ReadFile(filepath.Join(home, "plugins", "installed.json"))
+	if err != nil {
+		return "", false
+	}
+	var reg struct {
+		Plugins []map[string]any `json:"plugins"`
+	}
+	if err := json.Unmarshal(data, &reg); err != nil {
+		return "", false
+	}
+	for _, p := range reg.Plugins {
+		id, _ := p["id"].(string)
+		name, _ := p["name"].(string)
+		if id != kimiPluginName && name != kimiPluginName {
+			continue
+		}
+		if enabled, ok := p["enabled"].(bool); ok && !enabled {
+			continue
+		}
+		if disabled, ok := p["disabled"].(bool); ok && disabled {
+			continue
+		}
+		github, _ := p["github"].(map[string]any)
+		ref, _ := github["ref"].(map[string]any)
+		kind, _ := ref["kind"].(string)
+		if kind != "tag" {
+			// continue rather than early return: if a future installed.json schema ever
+			// carries multiple forge records, we want the first comparable tag ref, not a
+			// dead end on a non-tag sibling. Single-record behavior is unchanged.
+			//
+			// continue 而非提前 return：若将来 installed.json schema 出现多条 forge 记录，
+			// 我们要第一个可比对的 tag ref，而非在非 tag 兄弟条目上死锁。单条目行为不变。
+			continue
+		}
+		value, _ := ref["value"].(string)
+		if value == "" {
+			continue
+		}
+		return strings.TrimPrefix(value, "v"), true
+	}
+	return "", false
 }
