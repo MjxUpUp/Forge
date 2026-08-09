@@ -338,6 +338,30 @@ func runHook(cmd *cobra.Command, args []string) error {
 		root = "" // global hook：无需 project root；shCmd.Dir="" 回退到 cwd
 	}
 
+	// Stamp the resolved agent onto the authoritative session record, best-effort. This
+	// only reaches translators that rewrite hook commands to carry --agent (kimi/reasonix/
+	// windsurf) — for marker-absent projects those fire hooks with the true agent even
+	// though detectAgentType at session creation only sees project markers, so the session
+	// is created with an empty agent_type and would otherwise misattribute to claude-code
+	// (the leaked CLAUDE_CODE_SESSION_ID default). The Claude-compatible-stdin translators
+	// (codex/codebuddy/opencode) do NOT carry --agent, so agent=="" here and the stamp is a
+	// no-op for them — they rely on Part 1's project markers (codex/opencode have markers;
+	// codebuddy has none and is a known attribution gap). StampSessionAgent fills ONLY an
+	// empty value, also reflects it in sessions.jsonl, and creates/rotates nothing, so firing
+	// on every event is safe and idempotent.
+	//
+	// 把解析出的 agent 盖到权威 session 记录上，尽力而为。这只能触及把 hook 命令改写为携带
+	// --agent 的翻译器（kimi/reasonix/windsurf）——对无标记项目，它们即便创建时的
+	// detectAgentType 只看项目标记，也会带真实 agent 触发 hook，故 session 以空 agent_type
+	// 创建，否则会误归 claude-code（泄漏的 CLAUDE_CODE_SESSION_ID 默认值）。Claude-兼容-stdin
+	// 翻译器（codex/codebuddy/opencode）不携带 --agent，故此处 agent==""，盖戳对它们是 no-op
+	// ——它们依赖 Part 1 的项目标记（codex/opencode 有标记；codebuddy 无标记，是已知归因缺口）。
+	// StampSessionAgent 只填空值、同步反映到 sessions.jsonl、不创建不轮换，故每次事件都触发是
+	// 安全且幂等的。
+	if agent != "" && root != "" {
+		taskpipeline.StampSessionAgent(root, hookInput.SessionID, agent)
+	}
+
 	// 1b. Normalize the stdin of non-Claude-Code agents. Windsurf/Copilot use a different
 	// hook stdin schema (Windsurf: {agent_action_name, trajectory_id,
 	// tool_info}); without this step forge would extract empty file_path/command and blocking hooks
