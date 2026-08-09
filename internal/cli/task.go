@@ -448,12 +448,14 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	// Delegation: optionally hand this task to a specific agent at creation time. --assignee
 	// drives AssignTo (no-assignment → offered); the orchestrator creates the task already
 	// offered and the worker claims it. --depends-on persists the upstream dependency graph
-	// (fan-in ordering); blocking semantics land in a later phase. Runs after OriginTool is
-	// set so OfferedBy records who actually offered the task.
+	// (fan-in ordering) with cycle detection (DAG enforced via AddDependency); the task-verify /
+	// task-complete gates block until every upstream is delivered (phase 3). Runs after OriginTool
+	// is set so OfferedBy records who actually offered the task.
 	//
 	// 分派：创建时可选把本任务交给指定 agent。--assignee 驱动 AssignTo（无→offered）；
-	// 编排器创建即 offered，工作方认领。--depends-on 持久化上游依赖图（fan-in 顺序），
-	// 阻塞语义后续阶段落地。须在 OriginTool 设置之后运行，使 OfferedBy 记录真正的发起方。
+	// 编排器创建即 offered，工作方认领。--depends-on 持久化上游依赖图（fan-in 顺序）并做环检测
+	// （经 AddDependency 强制 DAG）；task-verify/task-complete 门禁在上游全部交付前阻断（阶段3）。
+	// 须在 OriginTool 设置之后运行，使 OfferedBy 记录真正的发起方。
 	if assignee, _ := cmd.Flags().GetString(`assignee`); assignee != `` {
 		warnIfUnknownAgent(cmd.ErrOrStderr(), assignee)
 		role, _ := cmd.Flags().GetString(`role`)
@@ -462,7 +464,24 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		}
 	}
 	if deps, _ := cmd.Flags().GetStringArray(`depends-on`); len(deps) > 0 {
-		state.DependsOn = deps
+		// AddDependency rejects a self-reference and any ref whose transitive deps lead back to
+		// this task (a cycle would deadlock the ring). lookup loads each ref's state for the DFS;
+		// a missing ref is tolerated here (the edge is recorded; the gate later treats missing as
+		// not-delivered), so a forward reference to a task created moments later is allowed.
+		//
+		// AddDependency 拒绝自引用及任何传递依赖指回本 task 的 ref（环会死锁环上 task）。lookup 为
+		// DFS 载入各 ref 的 state；缺失 ref 此处容忍（边已记；门禁后把缺失当未交付），故对稍后创建
+		// 的 task 的前向引用是允许的。
+		lookup := func(ref string) *taskpipeline.TaskState {
+			st, err := taskpipeline.LoadTaskState(root, ref)
+			if err != nil || st == nil {
+				return nil
+			}
+			return st
+		}
+		if err := state.AddDependency(deps, lookup); err != nil {
+			return fmt.Errorf(`依赖设置失败: %w`, err)
+		}
 	}
 
 	// Take a Claude Code session id once — used to scope active-task-ref and session
@@ -661,6 +680,30 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 		state = loaded
 	}
 
+	// Reverse-dependency scan (design phase 3): aborting a task that others DependsOn leaves
+	// those dependents blocked forever (their gate reports the ref missing/not-delivered and never
+	// unblocks). We do NOT cascade-abort — a dependent may still be valuable with its upstream
+	// re-pointed — but we surface the dangling edge so the orchestrator can re-point or explicitly
+	// abort the dependents. Computed before delete so the just-aborted state is still scannable.
+	//
+	// 反向依赖扫描（设计阶段3）：abort 一个被其他 task DependsOn 的 task，会让那些依赖方永远阻塞
+	// （门禁报该 ref 缺失/未交付且永不放行）。我们不级联 abort——依赖方在上游重指后可能仍有价值——
+	// 但暴露这条悬空边，让编排器可重指或显式 abort 依赖方。delete 前算，使刚 abort 的 state 仍可扫。
+	var dependents []string
+	if all, err := taskpipeline.ListTaskStates(root); err == nil {
+		for _, t := range all {
+			if t == nil || t.TaskRef == taskRef {
+				continue
+			}
+			for _, d := range t.DependsOn {
+				if d == taskRef {
+					dependents = append(dependents, t.TaskRef)
+					break
+				}
+			}
+		}
+	}
+
 	// Delete the task-state file. ENOENT is acceptable (already deleted / stale ref).
 	//
 	// 删除 task state 文件。ENOENT 可接受（已删除 / stale ref）。
@@ -689,6 +732,9 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 			out["was_complete"] = state.IsComplete()
 			out["branch"] = state.Branch
 		}
+		if len(dependents) > 0 {
+			out[`dependents_blocked`] = dependents
+		}
 		b, _ := json.Marshal(out)
 		fmt.Println(string(b))
 		return nil
@@ -702,6 +748,10 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 		if state.Branch != "" {
 			fmt.Printf("Branch: %s (left untouched — abort only removes forge state)\n", state.Branch)
 		}
+	}
+	if len(dependents) > 0 {
+		fmt.Fprintf(os.Stderr, `Warning: %d task(s) depend on this one (%s); their gate will now block on a missing upstream — re-point the dependency or abort them too.`, len(dependents), strings.Join(dependents, `, `))
+		fmt.Fprintln(os.Stderr)
 	}
 	fmt.Println("Code changes are untouched. Re-start with: forge task start --ref " + taskRef)
 	return nil
