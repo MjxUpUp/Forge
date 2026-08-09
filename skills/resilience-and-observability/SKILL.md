@@ -5,6 +5,7 @@ metadata:
   pattern: tool-wrapper
   domain: operations
   composes: [systematic-debugging, backend-development, integration-test-architecture, code-review-gate, verification-driver]
+  triggers: [{"event":"UserPromptSubmit","keywords":["重试","retry","限流","熔断","错误处理","告警规则","可观测","grafana","SLO"],"cooldown":300}]
 ---
 
 # 韧性与可观测性规范
