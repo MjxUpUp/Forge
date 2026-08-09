@@ -244,6 +244,11 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge task claim --ref <ref> [--as <agent>]` | 工作方认领分派给自己的任务（offered→claimed，自动锚定 session） |
 | `forge task deliver --ref <ref>` | 工作方交付任务（claimed→delivered，交回编排器） |
 | `forge task mine [--agent <agent>] [--role] [--json]` | 列出分派给当前/指定 agent 的任务（offered 待认领 + 已处理历史） |
+| `forge task question --ref <ref> --content <text>` | 工作方回抛问题（claimed→input-required，暂停等编排器/人答复） |
+| `forge task answer --ref <ref> [--content <text>]` | 编排器答复回抛（input-required→claimed，答复记入 Decisions；空答复仅恢复 claimed） |
+| `forge task fail --ref <ref> --reason <text>` | 工作方标记任务失败（claimed→failed，记录原因） |
+| `forge task cancel --ref <ref> --reason <text>` | 编排器撤回分派（offered/claimed/input-required→canceled，记录原因） |
+| `forge task reopen --ref <ref> --reason <text>` | 交付后重开（delivered→claimed，交付后发现 bug） |
 
 </details>
 

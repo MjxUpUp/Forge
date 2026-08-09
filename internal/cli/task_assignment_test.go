@@ -201,3 +201,129 @@ func TestTaskStart_AssigneeWarnAccepted(t *testing.T) {
 		}
 	}
 }
+
+// TestTaskQuestionAnswer_Lifecycle walks the回抛/答复 path: claim→question(input-required)→
+// answer(回 claimed)→deliver。钉住「答复后任务恢复到可交付态」——这是 input-required 不死锁的保证。
+//
+// TestTaskQuestionAnswer_Lifecycle 走回抛/答复路径：claim→question(input-required)→answer(回
+// claimed)→deliver。钉住「答复后任务恢复到可交付态」——input-required 不死锁的保证。
+func TestTaskQuestionAnswer_Lifecycle(t *testing.T) {
+	dir := setupDelegateProject(t)
+	runForge(t, dir, "task", "start", "--ref", "feat/delegate", "--title", "x")
+	runForge(t, dir, "task", "assign", "--ref", "feat/delegate", "--to", "kimi", "--by", "claude-code")
+	runForge(t, dir, "task", "claim", "--ref", "feat/delegate", "--as", "kimi")
+
+	// question: claimed → input-required
+	stdout, _, code := runForge(t, dir, "task", "question", "--ref", "feat/delegate", "--content", "API 契约不明")
+	if code != 0 {
+		t.Fatalf("question exit %d: %s", code, stdout)
+	}
+	if !strings.Contains(stdout, `input-required`) {
+		t.Errorf("question 输出应含 input-required, got: %s", stdout)
+	}
+
+	// answer: input-required → claimed
+	stdout, _, code = runForge(t, dir, "task", "answer", "--ref", "feat/delegate", "--content", "用 REST")
+	if code != 0 {
+		t.Fatalf("answer exit %d: %s", code, stdout)
+	}
+	if !strings.Contains(stdout, `claimed`) {
+		t.Errorf("answer 输出应含 claimed, got: %s", stdout)
+	}
+
+	// 回 claimed 后必须能 deliver（input-required 不卡死后续交付）
+	stdout, _, code = runForge(t, dir, "task", "deliver", "--ref", "feat/delegate")
+	if code != 0 {
+		t.Fatalf("deliver after answer exit %d: %s", code, stdout)
+	}
+	if !strings.Contains(stdout, `delivered`) {
+		t.Errorf("deliver 输出应含 delivered, got: %s", stdout)
+	}
+}
+
+// TestTaskFailCancelReopen covers the three terminal/diversion transitions via CLI, each from its
+// legal前置: fail(claimed), cancel(offered), reopen(delivered). 状态机合法性已在 assignment_test
+// 枚举覆盖；此处只验 CLI 接线（命令解析 + 状态 + 原因回显）。
+//
+// TestTaskFailCancelReopen 经 CLI 覆盖三个终态/ diversion 转换，各从合法前置触发：fail(claimed)、
+// cancel(offered)、reopen(delivered)。状态机合法性已在 assignment_test 枚举覆盖；此处只验 CLI 接线
+// （命令解析 + 状态 + 原因回显）。
+func TestTaskFailCancelReopen(t *testing.T) {
+	t.Run("fail: claimed->failed", func(t *testing.T) {
+		dir := setupDelegateProject(t)
+		runForge(t, dir, "task", "start", "--ref", "feat/delegate", "--title", "x")
+		runForge(t, dir, "task", "assign", "--ref", "feat/delegate", "--to", "kimi", "--by", "claude-code")
+		runForge(t, dir, "task", "claim", "--ref", "feat/delegate", "--as", "kimi")
+		stdout, _, code := runForge(t, dir, "task", "fail", "--ref", "feat/delegate", "--reason", "编译不过")
+		if code != 0 {
+			t.Fatalf("fail exit %d: %s", code, stdout)
+		}
+		if !strings.Contains(stdout, `failed`) || !strings.Contains(stdout, `编译不过`) {
+			t.Errorf("fail 输出应含 failed+原因, got: %s", stdout)
+		}
+	})
+	t.Run("cancel: offered->canceled", func(t *testing.T) {
+		dir := setupDelegateProject(t)
+		runForge(t, dir, "task", "start", "--ref", "feat/delegate", "--title", "x")
+		runForge(t, dir, "task", "assign", "--ref", "feat/delegate", "--to", "kimi", "--by", "claude-code")
+		stdout, _, code := runForge(t, dir, "task", "cancel", "--ref", "feat/delegate", "--reason", "需求变了")
+		if code != 0 {
+			t.Fatalf("cancel exit %d: %s", code, stdout)
+		}
+		if !strings.Contains(stdout, `canceled`) || !strings.Contains(stdout, `需求变了`) {
+			t.Errorf("cancel 输出应含 canceled+原因, got: %s", stdout)
+		}
+	})
+	t.Run("reopen: delivered->claimed", func(t *testing.T) {
+		dir := setupDelegateProject(t)
+		runForge(t, dir, "task", "start", "--ref", "feat/delegate", "--title", "x")
+		runForge(t, dir, "task", "assign", "--ref", "feat/delegate", "--to", "kimi", "--by", "claude-code")
+		runForge(t, dir, "task", "claim", "--ref", "feat/delegate", "--as", "kimi")
+		runForge(t, dir, "task", "deliver", "--ref", "feat/delegate")
+		stdout, _, code := runForge(t, dir, "task", "reopen", "--ref", "feat/delegate", "--reason", "联调发现 bug")
+		if code != 0 {
+			t.Fatalf("reopen exit %d: %s", code, stdout)
+		}
+		if !strings.Contains(stdout, `claimed`) || !strings.Contains(stdout, `联调发现 bug`) {
+			t.Errorf("reopen 输出应含 claimed+原因, got: %s", stdout)
+		}
+	})
+}
+
+// TestTaskQuestion_RequiresContent: --content is mandatory for question (回抛需有内容，无内容无意义)。
+//
+// TestTaskQuestion_RequiresContent：question 的 --content 必填（回抛需有内容）。
+func TestTaskQuestion_RequiresContent(t *testing.T) {
+	dir := setupDelegateProject(t)
+	runForge(t, dir, "task", "start", "--ref", "feat/delegate", "--title", "x")
+	runForge(t, dir, "task", "assign", "--ref", "feat/delegate", "--to", "kimi", "--by", "claude-code")
+	runForge(t, dir, "task", "claim", "--ref", "feat/delegate", "--as", "kimi")
+	stdout, _, code := runForge(t, dir, "task", "question", "--ref", "feat/delegate")
+	if code == 0 {
+		t.Fatalf("question without --content should fail, got exit 0: %s", stdout)
+	}
+	if !strings.Contains(stdout, `--content 必填`) {
+		t.Errorf("error should guide with「--content 必填」, got: %s", stdout)
+	}
+}
+
+// TestTaskAnswer_EmptyAllowed: answer with no --content is accepted (resume-only, no Decision
+// recorded) — the design contract that an empty reply still unblocks input-required without forcing
+// the orchestrator to fabricate a rationale.
+//
+// TestTaskAnswer_EmptyAllowed：answer 无 --content 被接受（仅恢复 claimed 不记 Decision）——设计契约：
+// 空答复仍能解除 input-required 死锁，不强制编排器编造 rationale。
+func TestTaskAnswer_EmptyAllowed(t *testing.T) {
+	dir := setupDelegateProject(t)
+	runForge(t, dir, "task", "start", "--ref", "feat/delegate", "--title", "x")
+	runForge(t, dir, "task", "assign", "--ref", "feat/delegate", "--to", "kimi", "--by", "claude-code")
+	runForge(t, dir, "task", "claim", "--ref", "feat/delegate", "--as", "kimi")
+	runForge(t, dir, "task", "question", "--ref", "feat/delegate", "--content", "q")
+	stdout, _, code := runForge(t, dir, "task", "answer", "--ref", "feat/delegate")
+	if code != 0 {
+		t.Fatalf("empty answer should be accepted (resume only), got exit %d: %s", code, stdout)
+	}
+	if !strings.Contains(stdout, `空答复`) {
+		t.Errorf("empty answer should note「空答复」, got: %s", stdout)
+	}
+}
