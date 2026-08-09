@@ -46,8 +46,8 @@ var taskDeliverCmd = &cobra.Command{
 }
 
 var taskMineCmd = &cobra.Command{
-	Use:   `mine [--agent <agent>] [--role <role>] [--json]`,
-	Short: `列出分派给当前/指定 agent 的任务（offered 待认领 + 已处理历史）`,
+	Use:   `mine [--agent <agent>] [--role <role>] [--blocked] [--json]`,
+	Short: `列出分派给当前/指定 agent 的任务（offered 待认领 + 已处理历史；--blocked 只看被上游依赖卡住的）`,
 	RunE:  runTaskMine,
 }
 
@@ -108,6 +108,7 @@ func init() {
 
 	taskMineCmd.Flags().String(`agent`, ``, `查询哪个 agent 的分派（默认探测当前工具）`)
 	taskMineCmd.Flags().String(`role`, ``, `只看指定角色的分派`)
+	taskMineCmd.Flags().Bool(`blocked`, false, `只看被上游依赖卡住的任务（DependsOn 未全交付）`)
 	taskMineCmd.Flags().Bool(`json`, false, `JSON 格式输出`)
 
 	taskQuestionCmd.Flags().String(`ref`, ``, `任务引用（不依赖分支检测）`)
@@ -321,11 +322,12 @@ func runTaskReopen(cmd *cobra.Command, args []string) error {
 
 // delegatedEntry is the JSON shape of one row in forge task mine output.
 type delegatedEntry struct {
-	Ref       string `json:"ref"`
-	Title     string `json:"title"`
-	Role      string `json:"role,omitempty"`
-	Status    string `json:"status"`
-	OfferedBy string `json:"offered_by,omitempty"`
+	Ref         string   `json:"ref"`
+	Title       string   `json:"title"`
+	Role        string   `json:"role,omitempty"`
+	Status      string   `json:"status"`
+	OfferedBy   string   `json:"offered_by,omitempty"`
+	PendingDeps []string `json:"pending_deps,omitempty"`
 }
 
 func runTaskMine(cmd *cobra.Command, args []string) error {
@@ -341,6 +343,7 @@ func runTaskMine(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf(`无法探测当前 agent（无 agent env）。显式传 --agent <agent>（如 kimi/reasonix/cursor）查看分派给该 agent 的任务`)
 	}
 	role, _ := cmd.Flags().GetString(`role`)
+	blocked, _ := cmd.Flags().GetBool(`blocked`)
 	asJSON, _ := cmd.Flags().GetBool(`json`)
 
 	states, err := taskpipeline.ListTaskStates(root)
@@ -355,12 +358,26 @@ func runTaskMine(cmd *cobra.Command, args []string) error {
 		if role != `` && s.Assignment.Role != role {
 			continue
 		}
+		// Pending upstream deps (design phase 3): a task whose DependsOn is not fully delivered is
+		// blocked at verify/complete. Computed via the same PendingDependencies the gate uses, so mine
+		// and the gate can never disagree on what "blocked" means. --blocked filters to only these.
+		//
+		// 未交付的上游依赖（设计阶段3）：DependsOn 未全交付的 task 在 verify/complete 被阻。用与门禁相同的
+		// PendingDependencies 计算，使 mine 与门禁对「阻塞」永远一致。--blocked 只留这些。
+		var pend []string
+		if len(s.DependsOn) > 0 {
+			pend = taskpipeline.PendingDependencies(root, s.DependsOn)
+		}
+		if blocked && len(pend) == 0 {
+			continue
+		}
 		entries = append(entries, delegatedEntry{
-			Ref:       s.TaskRef,
-			Title:     s.Summary,
-			Role:      s.Assignment.Role,
-			Status:    s.Assignment.Status,
-			OfferedBy: s.Assignment.OfferedBy,
+			Ref:         s.TaskRef,
+			Title:       s.Summary,
+			Role:        s.Assignment.Role,
+			Status:      s.Assignment.Status,
+			OfferedBy:   s.Assignment.OfferedBy,
+			PendingDeps: pend,
 		})
 	}
 	if asJSON {
@@ -385,7 +402,11 @@ func runTaskMine(cmd *cobra.Command, args []string) error {
 		if roleStr == `` {
 			roleStr = `-`
 		}
-		fmt.Printf(`  %s  [%s]  角色=%s  分派方=%s  %s\n`, e.Status, e.Ref, roleStr, e.OfferedBy, e.Title)
+		fmt.Printf(`  %s  [%s]  角色=%s  分派方=%s  %s`, e.Status, e.Ref, roleStr, e.OfferedBy, e.Title)
+		if len(e.PendingDeps) > 0 {
+			fmt.Printf(`  ⏳阻塞于: %s`, strings.Join(e.PendingDeps, `, `))
+		}
+		fmt.Println()
 	}
 	return nil
 }

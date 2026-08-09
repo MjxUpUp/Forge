@@ -4,6 +4,7 @@ import (
 	crand "crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -336,6 +337,102 @@ func (s *TaskState) MarkComplete() {
 	now := time.Now()
 	s.CompletedAt = &now
 	s.CurrentGate = ""
+}
+
+// IsDelivered reports whether this task's output is available to dependents — the unblock signal
+// for DependsOn. An ASSIGNED task's delivery is its Assignment status alone: deliver sets
+// Status==delivered, and reopen/fail/cancel revoke it. IsComplete is deliberately NOT consulted
+// for assigned tasks — it stays true across a reopen (gate history is retained), so using it would
+// falsely unblock dependents after a bug-driven reopen of a task that had finished its gates. A
+// task with NO assignment (ordinary/generic) has only the completion signal, so IsComplete is its
+// delivery. Missing/aborted tasks are never loaded, so the caller does not call IsDelivered on them.
+//
+// IsDelivered 报告本 task 的产出是否对依赖方可用——DependsOn 的放行信号。有分派的 task 的交付只看
+// Assignment 状态：deliver 置 Status==delivered，reopen/fail/cancel 撤销。刻意不对分派 task 查
+// IsComplete——它跨 reopen 仍 true（gate 历史保留），若用它会在「已过门禁的 task 因 bug 被 reopen」后
+// 错误放行依赖方。无分派的 task（普通/generic）只有完成信号，故 IsComplete 即其交付。缺失/已 abort
+// 的 task 根本不被 load，故调用方不会对它们调此方法。
+func (s *TaskState) IsDelivered() bool {
+	if s.Assignment != nil {
+		return s.Assignment.Status == AssignDelivered
+	}
+	return s.IsComplete()
+}
+
+// AddDependency appends refs to DependsOn with dedup + cycle detection, all-or-nothing: validated
+// refs accumulate in a local slice and commit to s.DependsOn only after every ref passes, so a
+// mid-batch cycle error leaves s.DependsOn untouched (the caller need not reason about partial
+// writes). lookup resolves a ref to its TaskState so the cycle check can walk the dependency chain
+// without types.go reaching back into the storage layer (the caller injects LoadTaskState). Adding
+// a ref whose transitive dependencies lead back to this task is rejected — a cycle would deadlock
+// every task in the ring. A self-reference (ref == this task) is likewise rejected. Dedup checks
+// both the existing DependsOn and the current batch (so --depends-on A --depends-on A collapses).
+//
+// AddDependency 把 refs 追加进 DependsOn，去重 + 环检测，all-or-nothing：校验通过的 ref 先攒在局部
+// slice，全部通过后才提交到 s.DependsOn，故批次中途的环错误不碰 s.DependsOn（调用方无需操心部分写入）。
+// lookup 把 ref 解析成 TaskState，使环检测能遍历依赖链而 types.go 不反向依赖存储层（调用方注入
+// LoadTaskState）。若某 ref 的传递依赖最终指回本 task 则拒绝——环会让环上每个 task 死锁。自引用
+// （ref == 本 task）同样拒绝。去重同时查既有 DependsOn 与本批次（故 --depends-on A --depends-on A 折叠）。
+func (s *TaskState) AddDependency(refs []string, lookup func(string) *TaskState) error {
+	added := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		if ref == `` {
+			continue
+		}
+		if ref == s.TaskRef {
+			return fmt.Errorf(`dependency cycle: %s 不能依赖自身`, s.TaskRef)
+		}
+		dup := false
+		for _, d := range s.DependsOn {
+			if d == ref {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			for _, d := range added {
+				if d == ref {
+					dup = true
+					break
+				}
+			}
+		}
+		if dup {
+			continue
+		}
+		if createsCycle(s.TaskRef, ref, lookup) {
+			return fmt.Errorf(`dependency cycle: %s→%s 将引入环（环上每个 task 互相等待，死锁）`, s.TaskRef, ref)
+		}
+		added = append(added, ref)
+	}
+	s.DependsOn = append(s.DependsOn, added...)
+	return nil
+}
+
+// createsCycle reports whether walking the DependsOn chain from start (via lookup) ever reaches
+// self — i.e. start transitively depends on self, so self→start would close a ring. DFS with a
+// visited set guards against pre-existing cycles and bounds the walk.
+//
+// createsCycle 报告从 start 出发沿 DependsOn 链（经 lookup）是否会到达 self——即 start 传递依赖
+// self，故 self→start 会闭合环。DFS + visited 集合既防预存环也限查找范围。
+func createsCycle(self, start string, lookup func(string) *TaskState) bool {
+	visited := map[string]bool{}
+	stack := []string{start}
+	for len(stack) > 0 {
+		cur := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if cur == self {
+			return true
+		}
+		if visited[cur] {
+			continue
+		}
+		visited[cur] = true
+		if t := lookup(cur); t != nil {
+			stack = append(stack, t.DependsOn...)
+		}
+	}
+	return false
 }
 
 // MarkReviewPassed records that this task has run code-review-gate and passed,

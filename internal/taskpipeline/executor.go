@@ -141,6 +141,25 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		}, nil
 	}
 
+	// DependsOn gate (design phase 3): a task with unsatisfied upstream dependencies cannot pass
+	// task-verify or task-complete — the worker could not have verified/completed work whose inputs
+	// were never delivered. Checked only at verify/complete: implement may proceed while an upstream
+	// is still in flight (writing code against an expected interface is fine; blocking there would
+	// needlessly serialize the graph). A missing upstream ref counts as pending (not delivered) so
+	// an aborted or typo'd dependency cannot be silently bypassed. generic tasks already returned.
+	//
+	// DependsOn 门禁（设计阶段3）：上游依赖未满足的 task 不能过 task-verify/task-complete——工作方无法
+	// 验收/完成一个输入从未交付的工作。仅在 verify/complete 查：implement 可在上游进行中时推进（针对
+	// 预期接口写代码无妨，那时阻塞只会无谓串行化依赖图）。缺失的上游 ref 计为 pending（未交付），故
+	// abort/拼错的依赖无法被静默绕过。generic task 已在上方 return。
+	if len(state.DependsOn) > 0 && state.CompletedAt == nil &&
+		(gateID == `task-verify` || gateID == `task-complete`) {
+		pending := PendingDependencies(root, state.DependsOn)
+		if len(pending) > 0 {
+			return nil, GateBlocked(`%s 拒绝（HARD stop）：上游 task 未交付或不存在（%s，可能是未创建/已 abort/拼错）；forge task mine --blocked 查看详情，或先推进上游交付`, gateID, strings.Join(pending, `, `))
+		}
+	}
+
 	// Prerequisite check: all earlier gates must have passed.
 	//
 	// 校验前置：所有更早的 gate 必须已通过
@@ -1065,6 +1084,33 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		Passed:  true,
 		Message: fmt.Sprintf("%s - passed (verified by AI agent)", gate.Name),
 	}, nil
+}
+
+// PendingDependencies returns the subset of refs not yet delivered — the DependsOn gate's block
+// list. A ref that fails to load counts as pending: a dependency that was never created, was
+// aborted, or is typo'd is not "delivered", and treating it as such would let a task verify past
+// a broken edge. The returned strings are bare refs (joined in the BLOCKED message); mine --blocked
+// is where status detail is expanded for the human.
+//
+// PendingDependencies 返回尚未交付的 ref 子集——DependsOn 门禁的阻断清单。加载失败的 ref 计为
+// pending：从未创建、已 abort、或拼错的依赖都非「已交付」，若放过会让 task 校验过一个断裂的依赖边。
+// 返回的是裸 ref（在 BLOCKED 信息里拼接）；状态细节在 mine --blocked 处为人展开。
+func PendingDependencies(root string, refs []string) []string {
+	var pending []string
+	for _, ref := range refs {
+		if ref == `` {
+			continue
+		}
+		st, err := LoadTaskState(root, ref)
+		if err != nil || st == nil {
+			pending = append(pending, ref)
+			continue
+		}
+		if !st.IsDelivered() {
+			pending = append(pending, ref)
+		}
+	}
+	return pending
 }
 
 // runAutoChecks runs the automated checks for a task gate.
