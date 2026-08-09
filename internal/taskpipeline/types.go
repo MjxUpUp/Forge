@@ -195,6 +195,17 @@ type SessionLink struct {
 	SessionID string    `json:"session_id"`
 	Tool      string    `json:"tool,omitempty"` // 该 session 所属工具（pi/claude-code/opencode…）
 	JoinedAt  time.Time `json:"joined_at"`
+	// Imported 标记本链接是跨机器 task import 带入的「幽灵 session」——它记录的是源机器上谁参与过本
+	// task，仅用于溯源/看板显示（SessionTools 仍计入它），但不代表本机 session 已锚定。故 attach 路径
+	// （HasSession/AddSession）忽略 Imported 链接：本机 session 的锚定永远独立于幽灵记录，不会被它
+	// 误判为「已锚定」而跳过，也不会与它去重而吞掉本机链接。
+	//
+	// Imported marks this link as a "ghost session" carried in by a cross-machine task import — it records
+	// who participated on the SOURCE machine and is for provenance/dashboard display only (SessionTools
+	// still counts it), NOT a signal that the local session is anchored. So the attach path (HasSession/
+	// AddSession) ignores Imported links: a local session's anchoring is always independent of the ghost
+	// record, never short-circuited as "already attached" nor deduped away by it.
+	Imported bool `json:"imported,omitempty"`
 }
 
 // TaskState tracks the state of a single task pipeline.
@@ -573,8 +584,13 @@ func (s *TaskState) AddSession(sid, tool string) {
 	if sid == "" {
 		return
 	}
+	// Dedup against LOCAL links only: an imported ghost with the same sid (cross-machine collision)
+	// must not swallow this local attach — see SessionLink.Imported for the ghost semantics.
+	//
+	// 只对本机链接去重：同 sid 的导入幽灵（跨机器碰撞）不能吞掉本次本机 attach——幽灵语义见
+	// SessionLink.Imported。
 	for _, l := range s.SessionLinks {
-		if l.SessionID == sid {
+		if !l.Imported && l.SessionID == sid {
 			return
 		}
 	}
@@ -613,10 +629,33 @@ func (s *TaskState) SessionTools() []string {
 	return out
 }
 
-// HasSession reports whether sid is already anchored to this task.
+// HasSession reports whether sid is already anchored to this task as a LOCAL session.
+// Imported (ghost) links are ignored: a ghost records that sid participated on another machine,
+// not that the local session is anchored — so attach always proceeds for a local session even if a
+// ghost with the same id was imported (cross-machine collision). Use HasAnySession to count ghosts too.
 //
-// HasSession 报告 sid 是否已锚定到本 task。
+// HasSession 报告 sid 是否已作为本机 session 锚定到本 task。Imported（幽灵）链接被忽略：幽灵只记录
+// 该 sid 在另一台机器上参与过，不代表本机 session 已锚定——故即便导入了同 id 的幽灵（跨机器碰撞），
+// 本机 attach 仍照常进行。统计幽灵用 HasAnySession。
 func (s *TaskState) HasSession(sid string) bool {
+	for _, l := range s.SessionLinks {
+		if l.Imported {
+			continue
+		}
+		if l.SessionID == sid {
+			return true
+		}
+	}
+	return false
+}
+
+// HasAnySession reports whether any link (local OR imported ghost) carries sid — used where the full
+// provenance record matters (e.g. de-duping a re-import), as opposed to HasSession which answers the
+// local-anchoring question. Kept separate so the attach path can never mistake a ghost for a local anchor.
+//
+// HasAnySession 报告是否有任意链接（本机或导入幽灵）携带 sid——用于关心完整溯源记录处（如重复 import
+// 去重），区别于回答「本机是否已锚定」的 HasSession。分离二者使 attach 路径绝不会把幽灵当本机锚点。
+func (s *TaskState) HasAnySession(sid string) bool {
 	for _, l := range s.SessionLinks {
 		if l.SessionID == sid {
 			return true

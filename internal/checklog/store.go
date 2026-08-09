@@ -85,6 +85,43 @@ func Record(root string, entry *Entry) error {
 	return err
 }
 
+// AppendEntries writes pre-built entries (carried in by a cross-machine task import) to the active
+// checklog.jsonl, preserving each entry's original fields — notably RecordedAt is NOT rewritten, so
+// imported evidence keeps its real source-machine timing in `forge trace`. Lock-protected like Record.
+// Entries are appended as-is (no de-dup): re-importing the same bundle duplicates lines — the caller
+// controls that. A nil/empty slice is a no-op.
+//
+// AppendEntries 把预构建的条目（跨机器 task import 带入）写入 active checklog.jsonl，保留每条原
+// 字段——特别是 RecordedAt 不重写，使导入证据在 forge trace 里保留真实源机器时序。同 Record 加锁。
+// 条目原样追加（不去重）：重复 import 同一 bundle 会重复行——由调用方控制。nil/空切片为 no-op。
+func AppendEntries(root string, entries []Entry) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	mu.Lock()
+	defer mu.Unlock()
+
+	path := filePath(root)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	for _, e := range entries {
+		data, err := json.Marshal(e)
+		if err != nil {
+			return err
+		}
+		if _, err := f.Write(append(data, '\n')); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // LoadAll reads all check log entries from DataDir's checklog.jsonl (always
 // user-level). Returns entries in chronological order. Returns nil if the file does not exist.
 //
