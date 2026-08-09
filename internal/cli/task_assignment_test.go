@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // setupDelegateProject prepares an isolated forge project (git + forge init + initial commit
@@ -492,4 +494,68 @@ func TestTaskMine_MultipleDepsPendingList(t *testing.T) {
 	if strings.Contains(out, `feat/a`) {
 		t.Errorf(`已交付的 feat/a 不应出现在 mine 输出/pending_deps, got: %s`, out)
 	}
+}
+
+// TestTaskMine_AnnotatesZombie: a delegation that has stalled (offered>7d here) is flagged on the
+// mine row — the worker-facing surface of the same zombie signal `task health` and the dashboard
+// render (design §12 标黄). Asserts both the JSON is_zombie field and the human ⚠ marker, and that a
+// fresh task is NOT flagged. The stale offer is seeded via the package-shared saveOfferedAgo helper
+// (the CLI stamps now, so an 8-days-ago offer can only be set in-process).
+//
+// TestTaskMine_AnnotatesZombie：停滞的分派（此处 offered>7d）在 mine 行被标记——工作方视角看与
+// task health / 看板同一僵尸信号（设计 §12 标黄）。断言 JSON is_zombie 字段 + 人类 ⚠ 标记两者，
+// 且刚 offered 的任务不被标记。陈旧 offered 经包内共享 saveOfferedAgo 助手种入（CLI 盖当前时间，
+// 8 天前的 offered 只能进程内设置）。
+func TestTaskMine_AnnotatesZombie(t *testing.T) {
+	dir := setupDelegateProject(t)
+	// Stalled: offered 8 days ago → offered>7d zombie.
+	saveOfferedAgo(t, dir, `feat/stalled`, `kimi`, time.Now().Add(-8*24*time.Hour))
+	// Fresh: offered just now → not a zombie (negative control).
+	saveOfferedAgo(t, dir, `feat/fresh`, `kimi`, time.Now())
+
+	t.Run(`json carries is_zombie for stalled only`, func(t *testing.T) {
+		out, _, code := runForge(t, dir, `task`, `mine`, `--agent`, `kimi`, `--json`)
+		if code != 0 {
+			t.Fatalf(`mine --json exit %d: %s`, code, out)
+		}
+		var rows []delegatedEntry
+		if err := json.Unmarshal([]byte(out), &rows); err != nil {
+			t.Fatalf(`解析 mine JSON 失败: %v\n输出: %s`, err, out)
+		}
+		byRef := map[string]delegatedEntry{}
+		for _, r := range rows {
+			byRef[r.Ref] = r
+		}
+		stalled, ok := byRef[`feat/stalled`]
+		if !ok {
+			t.Fatalf(`feat/stalled 应在 mine 结果中, got %+v`, byRef)
+		}
+		if !stalled.IsZombie || len(stalled.ZombieReasons) == 0 || stalled.ZombieReasons[0] != `offered>7d` {
+			t.Errorf(`feat/stalled 应 is_zombie 且 reason=offered>7d, got %+v`, stalled)
+		}
+		if fresh, ok := byRef[`feat/fresh`]; ok && fresh.IsZombie {
+			t.Errorf(`feat/fresh 刚 offered 不应标僵尸, got %+v`, fresh)
+		}
+	})
+
+	t.Run(`text shows marker for stalled`, func(t *testing.T) {
+		out, _, code := runForge(t, dir, `task`, `mine`, `--agent`, `kimi`)
+		if code != 0 {
+			t.Fatalf(`mine exit %d: %s`, code, out)
+		}
+		// Both rows appear; the stalled one carries the ⚠僵尸(offered>7d) marker.
+		idxStalled := strings.Index(out, `feat/stalled`)
+		if idxStalled < 0 {
+			t.Fatalf(`应含 feat/stalled 行, got:\n%s`, out)
+		}
+		// The marker must be on the stalled row — find the next newline after feat/stalled and check
+		// the marker is within that line (not on the fresh row).
+		line := out[idxStalled:]
+		if nl := strings.IndexByte(line, '\n'); nl >= 0 {
+			line = line[:nl]
+		}
+		if !strings.Contains(line, `⚠僵尸`) || !strings.Contains(line, `offered>7d`) {
+			t.Errorf(`feat/stalled 行应含 ⚠僵尸(offered>7d) 标记, got 行: %q`, line)
+		}
+	})
 }

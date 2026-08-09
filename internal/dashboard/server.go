@@ -490,6 +490,16 @@ type continuityCard struct {
 	Findings      int       `json:"findings"`
 	ParentTaskRef string    `json:"parent_task_ref,omitempty"`
 	StartedAt     time.Time `json:"started_at"`
+	// IsZombie marks a delegation that has stalled (offered>7d / claimed>TTL /
+	// input-required>7d / abandoned_count≥2) — rendered yellow on the board (design §12 标黄).
+	// Computed in AggregateContinuity (which has root for the checklog-activity judgment) via the
+	// shared taskpipeline.IsZombie, so the board, `task mine`, and `task health` never disagree.
+	//
+	// IsZombie 标记停滞的分派（offered>7d / claimed>TTL / input-required>7d /
+	// abandoned_count≥2）——看板渲染黄色（设计 §12 标黄）。在 AggregateContinuity（持有 root 供
+	// checklog 活动判断）经共享 taskpipeline.IsZombie 计算，使看板、task mine、task health 永不分歧。
+	IsZombie     bool   `json:"is_zombie,omitempty"`
+	ZombieReason string `json:"zombie_reason,omitempty"`
 }
 
 // ContinuityBoard is the continuity-dashboard payload: cards for every task in the project
@@ -525,6 +535,18 @@ func AggregateContinuity(root string, now time.Time) (ContinuityBoard, error) {
 	incomplete, complete := 0, 0
 	for _, s := range states {
 		c := toContinuityCard(s)
+		// Zombie annotation (design §12): root is available here (needed for the checklog-activity
+		// judgment behind claimed>TTL / input-required>7d), so the board computes it at aggregation
+		// time rather than in toContinuityCard (which only sees the state). Reuses the shared
+		// taskpipeline.IsZombie — single truth across board / mine / health.
+		//
+		// 僵尸标注（设计 §12）：此处 root 可用（claimed>TTL / input-required>7d 背后的 checklog
+		// 活动判断需要它），故看板在聚合时计算而非在只看 state 的 toContinuityCard 里算。复用共享的
+		// taskpipeline.IsZombie——看板 / mine / health 单一真相。
+		if zombie, reasons := taskpipeline.IsZombie(root, s, now); zombie {
+			c.IsZombie = true
+			c.ZombieReason = strings.Join(reasons, `, `)
+		}
 		if c.IsComplete {
 			complete++
 		} else {
