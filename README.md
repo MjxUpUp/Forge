@@ -133,6 +133,7 @@ AI 编码是一个循环：写代码 → 运行 → 读反馈 → 修正 → 再
 ```bash
 forge task start --ref feat/add-login --branch --accept "go test ./... :: PASS"   # 创建任务+分支+登记验收标准（--accept 可重复）
 forge task start --ref feat/add-login --scope "internal/auth/*.go"                # 声明计划改动白名单（规划前置→可度量契约，advisory 检测 scope-drift）
+forge task start --ref feat/frontend --assignee kimi --role frontend --depends-on feat/api   # 创建即分派给 kimi（offered），记录上游依赖 feat/api（阻塞门禁在后续阶段落地，本阶段仅持久化 DependsOn）
 # AI 自动完成工作...
 forge task gate task-implement    # ✅ 代码实现（advisory：编译/断言提醒，agent 自检）
 forge task verify-acceptance      # ✅ 实跑验收标准，记 deterministic 证据（spec-as-gate）
@@ -239,6 +240,10 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge task block --content/--resolve <id>` | 登记阻塞或解决阻塞（open→resolved） |
 | `forge task finding --content/--resolve <id>` | 记录跨工具发现（带来源工具）或标 fixed |
 | `forge task attach --ref --tool` | 锚定 session+工具到 task（跨工具多向锚定：pi 起、claude-code 接） |
+| `forge task assign --ref <ref> --to <agent> [--role] [--by]` | 把任务分派给指定 agent（offered 起步，编排器侧；未知 agent 警告但接受） |
+| `forge task claim --ref <ref> [--as <agent>]` | 工作方认领分派给自己的任务（offered→claimed，自动锚定 session） |
+| `forge task deliver --ref <ref>` | 工作方交付任务（claimed→delivered，交回编排器） |
+| `forge task mine [--agent <agent>] [--role] [--json]` | 列出分派给当前/指定 agent 的任务（offered 待认领 + 已处理历史） |
 
 </details>
 

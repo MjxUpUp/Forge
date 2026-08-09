@@ -60,8 +60,14 @@ func init() {
 	taskStartCmd.Flags().String("goal", "", "目标叙述（为什么做，可多行；比 title 一行标题更丰富，持久化供 resume 拉回）")
 	taskStartCmd.Flags().String("plan-file", "", "计划正文 markdown 文件路径（读取存入 task.Plan，供 resume 拉回）")
 	taskStartCmd.Flags().String("origin-tool", "", "发起工具（pi/claude-code/opencode/codex/cursor），默认从环境探测")
-	taskStartCmd.Flags().String("parent", "", "父任务 ref（建立子任务→父任务关系，subtask 拆解）")
-	taskStartCmd.Flags().String("ref", "", "任务引用（如 feat/add-auto-branch），默认从分支名推断")
+	taskStartCmd.Flags().String(`parent`, ``, `父任务 ref（建立子任务→父任务关系，subtask 拆解）`)
+	// Delegation flags（多 agent 任务分派）：创建时即把任务交给指定 agent（offered 起步），
+	// 编排器 fan-out；--depends-on 串依赖图（fan-in 顺序）。worker 侧用 forge task assign/
+	// claim/deliver 推进 offered→claimed→delivered 生命周期。
+	taskStartCmd.Flags().String(`assignee`, ``, `分派给指定 agent（如 kimi/reasonix/cursor），任务创建即 offered；建议配合 --role 说明角色`)
+	taskStartCmd.Flags().String(`role`, ``, `分派角色（如 frontend/backend/testing），随 --assignee 记入 Assignment.Role`)
+	taskStartCmd.Flags().StringArray(`depends-on`, nil, `依赖的上游 task ref（可重复 --depends-on）：本任务等待它们 delivered 后再开工`)
+	taskStartCmd.Flags().String(`ref`, ``, `任务引用（如 feat/add-auto-branch），默认从分支名推断`)
 	taskStartCmd.Flags().String("from-issue", "", "外部 issue URL（linear/github），解析为 task.ExternalOrigin 锚定外部 issue（衔接 spawn 式编排器）")
 	taskStartCmd.Flags().Bool("branch", false, "从 main/master 创建新分支并切换（ref 作为分支名）")
 	taskStartCmd.Flags().Bool("json", false, "JSON 格式输出")
@@ -436,8 +442,27 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	//
 	// 外部 issue origin：把 task 的来源从 branch 扩展到外部 issue（linear/github），
 	// 衔接 spawn 式编排器（Symphony 类）——编排器拉起 run 时 task 天然关联 issue，不靠 branch 推断。
-	if fromIssue, _ := cmd.Flags().GetString("from-issue"); fromIssue != "" {
+	if fromIssue, _ := cmd.Flags().GetString(`from-issue`); fromIssue != `` {
 		state.ExternalOrigin = taskpipeline.ParseExternalOriginURL(fromIssue)
+	}
+	// Delegation: optionally hand this task to a specific agent at creation time. --assignee
+	// drives AssignTo (no-assignment → offered); the orchestrator creates the task already
+	// offered and the worker claims it. --depends-on persists the upstream dependency graph
+	// (fan-in ordering); blocking semantics land in a later phase. Runs after OriginTool is
+	// set so OfferedBy records who actually offered the task.
+	//
+	// 分派：创建时可选把本任务交给指定 agent。--assignee 驱动 AssignTo（无→offered）；
+	// 编排器创建即 offered，工作方认领。--depends-on 持久化上游依赖图（fan-in 顺序），
+	// 阻塞语义后续阶段落地。须在 OriginTool 设置之后运行，使 OfferedBy 记录真正的发起方。
+	if assignee, _ := cmd.Flags().GetString(`assignee`); assignee != `` {
+		warnIfUnknownAgent(cmd.ErrOrStderr(), assignee)
+		role, _ := cmd.Flags().GetString(`role`)
+		if err := state.AssignTo(assignee, role, state.OriginTool); err != nil {
+			return fmt.Errorf(`分派失败: %w`, err)
+		}
+	}
+	if deps, _ := cmd.Flags().GetStringArray(`depends-on`); len(deps) > 0 {
+		state.DependsOn = deps
 	}
 
 	// Take a Claude Code session id once — used to scope active-task-ref and session
