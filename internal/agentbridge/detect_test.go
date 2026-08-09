@@ -211,3 +211,41 @@ func TestDetectAgents_WindsurfUserLevel(t *testing.T) {
 		t.Fatalf("expected [windsurf] from user-level ~/.codeium, got %v", agents)
 	}
 }
+
+// TestDetectAgents_ProjectMarkersForAllAgents pins that DetectAgents detects the
+// project-level markers for the agents whose detection was NOT previously covered at
+// this layer (opencode/cline/clinerules/kimi/reasonix). These are now routed through
+// the shared agentsignals table (DetectAgents → agentsignals.ProjectAgentMarkers), so a
+// regression in that delegation would silently drop them — exactly the "53% agent_type
+// missing" failure mode. Each case asserts exactly ONE agent (isolateHome neutralizes
+// user-level detection, so only the project marker counts).
+//
+// TestDetectAgents_ProjectMarkersForAllAgents 钉死 DetectAgents 对此前未在本层覆盖的
+// agent（opencode/cline/clinerules/kimi/reasonix）项目级标记的检测。这些现经共享
+// agentsignals 表路由（DetectAgents → agentsignals.ProjectAgentMarkers），故该委托的回归
+// 会静默丢掉它们——正是"53% agent_type 缺失"的失败模式。每条断言恰好一个 agent
+// （isolateHome 中和用户级检测，故只算项目标记）。
+func TestDetectAgents_ProjectMarkersForAllAgents(t *testing.T) {
+	cases := []struct {
+		name  string
+		setup func(dir string)
+		want  AgentType
+	}{
+		{`opencode`, func(d string) { os.MkdirAll(filepath.Join(d, `.opencode`), 0755) }, AgentOpencode},
+		{`cline`, func(d string) { os.MkdirAll(filepath.Join(d, `.cline`), 0755) }, AgentCline},
+		{`clinerules`, func(d string) { os.MkdirAll(filepath.Join(d, `.clinerules`), 0755) }, AgentCline},
+		{`kimi`, func(d string) { os.MkdirAll(filepath.Join(d, `.kimi-code`), 0755) }, AgentKimi},
+		{`reasonix`, func(d string) { os.MkdirAll(filepath.Join(d, `.reasonix`), 0755) }, AgentReasonix},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			isolateHome(t) // keep the real home out of user-level detection
+			dir := t.TempDir()
+			tc.setup(dir)
+			agents := DetectAgents(dir)
+			if len(agents) != 1 || agents[0] != tc.want {
+				t.Fatalf("expected [%s], got %v", tc.want, agents)
+			}
+		})
+	}
+}
