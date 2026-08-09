@@ -51,11 +51,50 @@ var taskMineCmd = &cobra.Command{
 	RunE:  runTaskMine,
 }
 
+// 失败/回抛/撤回路径（设计阶段2）：question/answer/fail/cancel/reopen。状态机方法在 types.go
+// 已就绪（phase 1 预留 + assignment_test 覆盖），本层是薄 CLI 表层驱动它们——与 assign/claim/
+// deliver 同构（loadTaskOrActive + MutateTaskState + 方法调用 + 输出指引下一步）。
+//
+// Failure/clarify/withdraw paths (design phase 2): question/answer/fail/cancel/reopen. The state-
+// machine methods are already in place in types.go (phase 1 reservation + assignment_test coverage);
+// this layer is the thin CLI surface driving them — isomorphic with assign/claim/deliver
+// (loadTaskOrActive + MutateTaskState + method call + output guiding the next step).
+var taskQuestionCmd = &cobra.Command{
+	Use:   `question --ref <ref> --content <text>`,
+	Short: `工作方回抛问题（claimed→input-required，暂停等编排器/人答复）`,
+	RunE:  runTaskQuestion,
+}
+var taskAnswerCmd = &cobra.Command{
+	Use:   `answer --ref <ref> [--content <text>]`,
+	Short: `编排器答复回抛（input-required→claimed，答复记入 Decisions 可追溯）`,
+	RunE:  runTaskAnswer,
+}
+var taskFailCmd = &cobra.Command{
+	Use:   `fail --ref <ref> --reason <text>`,
+	Short: `工作方标记任务失败（claimed→failed，记录原因）`,
+	RunE:  runTaskFail,
+}
+var taskCancelCmd = &cobra.Command{
+	Use:   `cancel --ref <ref> --reason <text>`,
+	Short: `编排器撤回分派（offered/claimed/input-required→canceled，记录原因）`,
+	RunE:  runTaskCancel,
+}
+var taskReopenCmd = &cobra.Command{
+	Use:   `reopen --ref <ref> --reason <text>`,
+	Short: `交付后重开（delivered→claimed，交付后发现 bug）`,
+	RunE:  runTaskReopen,
+}
+
 func init() {
 	taskCmd.AddCommand(taskAssignCmd)
 	taskCmd.AddCommand(taskClaimCmd)
 	taskCmd.AddCommand(taskDeliverCmd)
 	taskCmd.AddCommand(taskMineCmd)
+	taskCmd.AddCommand(taskQuestionCmd)
+	taskCmd.AddCommand(taskAnswerCmd)
+	taskCmd.AddCommand(taskFailCmd)
+	taskCmd.AddCommand(taskCancelCmd)
+	taskCmd.AddCommand(taskReopenCmd)
 
 	taskAssignCmd.Flags().String(`ref`, ``, `任务引用（不依赖分支检测）`)
 	taskAssignCmd.Flags().String(`to`, ``, `分派给哪个 agent（如 kimi/reasonix/cursor）`)
@@ -70,6 +109,17 @@ func init() {
 	taskMineCmd.Flags().String(`agent`, ``, `查询哪个 agent 的分派（默认探测当前工具）`)
 	taskMineCmd.Flags().String(`role`, ``, `只看指定角色的分派`)
 	taskMineCmd.Flags().Bool(`json`, false, `JSON 格式输出`)
+
+	taskQuestionCmd.Flags().String(`ref`, ``, `任务引用（不依赖分支检测）`)
+	taskQuestionCmd.Flags().String(`content`, ``, `回抛的问题内容（必填）`)
+	taskAnswerCmd.Flags().String(`ref`, ``, `任务引用（不依赖分支检测）`)
+	taskAnswerCmd.Flags().String(`content`, ``, `答复内容（空则仅恢复 claimed 不记决策）`)
+	taskFailCmd.Flags().String(`ref`, ``, `任务引用（不依赖分支检测）`)
+	taskFailCmd.Flags().String(`reason`, ``, `失败原因（必填）`)
+	taskCancelCmd.Flags().String(`ref`, ``, `任务引用（不依赖分支检测）`)
+	taskCancelCmd.Flags().String(`reason`, ``, `撤回原因（必填）`)
+	taskReopenCmd.Flags().String(`ref`, ``, `任务引用（不依赖分支检测）`)
+	taskReopenCmd.Flags().String(`reason`, ``, `重开原因（交付后发现的问题，必填）`)
 }
 
 // warnIfUnknownAgent writes a warning to w when name is absent from the known-agent set,
@@ -170,6 +220,102 @@ func runTaskDeliver(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf(`交付失败: %w`, err)
 	}
 	fmt.Printf(`✓ 任务 %s 已交付（delivered）。编排器可用 forge task resume --ref %s 验收\n`, state.TaskRef, state.TaskRef)
+	return nil
+}
+
+func runTaskQuestion(cmd *cobra.Command, args []string) error {
+	state, root, err := loadTaskOrActive(cmd)
+	if err != nil {
+		return err
+	}
+	content, _ := cmd.Flags().GetString(`content`)
+	if content == `` {
+		return fmt.Errorf(`--content 必填（回抛的问题内容）`)
+	}
+	err = taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
+		return s.Question(content)
+	})
+	if err != nil {
+		return fmt.Errorf(`回抛失败: %w`, err)
+	}
+	fmt.Printf(`✓ 任务 %s 已回抛问题（input-required）。编排器用 forge task answer --ref %s 答复\n`, state.TaskRef, state.TaskRef)
+	return nil
+}
+
+func runTaskAnswer(cmd *cobra.Command, args []string) error {
+	state, root, err := loadTaskOrActive(cmd)
+	if err != nil {
+		return err
+	}
+	content, _ := cmd.Flags().GetString(`content`)
+	err = taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
+		return s.Answer(content)
+	})
+	if err != nil {
+		return fmt.Errorf(`答复失败: %w`, err)
+	}
+	note := ``
+	if content == `` {
+		note = `（空答复，仅恢复 claimed 未记决策）`
+	}
+	fmt.Printf(`✓ 已答复任务 %s，回 claimed%s\n`, state.TaskRef, note)
+	return nil
+}
+
+func runTaskFail(cmd *cobra.Command, args []string) error {
+	state, root, err := loadTaskOrActive(cmd)
+	if err != nil {
+		return err
+	}
+	reason, _ := cmd.Flags().GetString(`reason`)
+	if reason == `` {
+		return fmt.Errorf(`--reason 必填（失败原因）`)
+	}
+	err = taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
+		return s.Fail(reason)
+	})
+	if err != nil {
+		return fmt.Errorf(`标记失败出错: %w`, err)
+	}
+	fmt.Printf(`✓ 任务 %s 已标记失败（failed）：%s\n`, state.TaskRef, reason)
+	return nil
+}
+
+func runTaskCancel(cmd *cobra.Command, args []string) error {
+	state, root, err := loadTaskOrActive(cmd)
+	if err != nil {
+		return err
+	}
+	reason, _ := cmd.Flags().GetString(`reason`)
+	if reason == `` {
+		return fmt.Errorf(`--reason 必填（撤回原因）`)
+	}
+	err = taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
+		return s.Cancel(reason)
+	})
+	if err != nil {
+		return fmt.Errorf(`撤回失败: %w`, err)
+	}
+	fmt.Printf(`✓ 任务 %s 已撤回分派（canceled）：%s\n`, state.TaskRef, reason)
+	return nil
+}
+
+func runTaskReopen(cmd *cobra.Command, args []string) error {
+	state, root, err := loadTaskOrActive(cmd)
+	if err != nil {
+		return err
+	}
+	reason, _ := cmd.Flags().GetString(`reason`)
+	if reason == `` {
+		return fmt.Errorf(`--reason 必填（重开原因，交付后发现的问题）`)
+	}
+	err = taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
+		return s.Reopen(reason)
+	})
+	if err != nil {
+		return fmt.Errorf(`重开失败: %w`, err)
+	}
+	fmt.Printf(`✓ 任务 %s 已重开（回 claimed，交付后发现 bug）：%s\n`, state.TaskRef, reason)
 	return nil
 }
 
