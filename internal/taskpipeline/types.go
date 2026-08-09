@@ -3,6 +3,7 @@ package taskpipeline
 import (
 	crand "crypto/rand"
 	"encoding/hex"
+	"errors"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -113,6 +114,75 @@ type Artifact struct {
 	Note string `json:"note,omitempty"`
 }
 
+// Assignment status values (Assignment.Status). A compressed A2A Task lifecycle: the full A2A set is
+// submitted/working/input-required/completed/failed/canceled; Forge collapses submitted→offered,
+// working→claimed, completed→delivered, keeping input-required/failed/canceled intact because they
+// carry distinct handoff semantics (worker回抛 / 做失败 / 派发撤回).
+//
+// 分派状态值（Assignment.Status）。压缩版 A2A Task lifecycle：完整 A2A 是
+// submitted/working/input-required/completed/failed/canceled；Forge 把 submitted→offered、
+// working→claimed、completed→delivered，保留 input-required/failed/canceled 因其承载不同接续语义。
+const (
+	AssignOffered       = `offered`
+	AssignClaimed       = `claimed`
+	AssignInputRequired = `input-required`
+	AssignDelivered     = `delivered`
+	AssignFailed        = `failed`
+	AssignCanceled      = `canceled`
+)
+
+// Assignment carries a task's delegation to one agent plus its full collaboration lifecycle
+// (a Forge-simplified A2A Task lifecycle). Single-valued pointer enforces "one task, one owner" —
+// multi-agent collaboration is split into multiple tasks (each pointing at the same orchestrator task
+// via ParentTaskRef), not one task with multiple assignees. nil = an ordinary non-delegated task,
+// fully backward-compatible (zero behavior change).
+//
+// Assignment 承载任务向某 agent 的分派 + 完整协作生命周期（A2A Task lifecycle 的 Forge 简化版）。
+// 单值指针强制「一任务一 owner」——多 agent 协作拆成多个 task（靠 ParentTaskRef 指同一编排任务），
+// 而非一个 task 多 assignee。nil = 普通未分派任务，完全向后兼容（零行为变化）。
+//
+// Status is the collaboration dimension (who works on it, which handoff phase); task gates are the
+// quality dimension (implement/verify/complete). delivered ≠ complete — a delivered task whose gates
+// are not all passed is a legitimate intermediate state. This layering decouples handoff from QA.
+//
+// Status 是协作维度（谁在做、协作到哪阶段）；task gate 是质量维度（implement/verify/complete）。
+// delivered ≠ complete——交付了但门禁未全过是合法中间态。此分层让「交付」与「质量验收」解耦。
+type Assignment struct {
+	Agent          string     `json:"agent"`                     // ∈ agentsignals 已知集（写入校验，未知即拒）
+	Role           string     `json:"role,omitempty"`            // frontend/backend/orchestrator（可选）
+	Status         string     `json:"status"`                    // Assign* 枚举之一
+	OfferedBy      string     `json:"offered_by,omitempty"`      // 派发的编排器 agent
+	OfferedAt      *time.Time `json:"offered_at,omitempty"`        // 派发时间（TTL 基准；*time.Time 因 encoding/json 的 omitempty 对 time.Time 不生效）
+	ClaimedAt      *time.Time `json:"claimed_at,omitempty"`
+	DeliveredAt    *time.Time `json:"delivered_at,omitempty"`
+	LastQuestion   string     `json:"last_question,omitempty"`   // input-required 时的回抛内容
+	FailReason     string     `json:"fail_reason,omitempty"`     // failed 时的原因
+	CancelReason   string     `json:"cancel_reason,omitempty"`   // canceled 时的原因
+	NotifiedAt     *time.Time `json:"notified_at,omitempty"`     // 上次 hook 推送时间（去重防轰炸）
+	AbandonedCount int        `json:"abandoned_count,omitempty"` // claimed 超 TTL 回收次数（僵尸信号）
+	AbandonedAt    *time.Time `json:"abandoned_at,omitempty"`    // 最近一次回收时间
+}
+
+// Assignment state-transition errors. Sentinel values (not fmt.Errorf inline) so callers can match
+// specific failures (e.g. mine silently skips errClaimNotOffered after a TOCTOU race).
+//
+// 分派状态转换错误。用哨兵值（非 fmt.Errorf 内联），使调用方能精确匹配（如 mine 在 TOCTOU 竞态后
+// 静默跳过 errClaimNotOffered）。
+var (
+	errAssignmentEmptyAgent = errors.New(`assignment: assignee agent must not be empty`)
+	errAssignmentExists     = errors.New(`assignment: task already has an assignment (use reassign to change owner)`)
+	errNoAssignment         = errors.New(`assignment: task has no assignment`)
+	errClaimWrongAgent      = errors.New(`assignment: claim agent does not match the offered assignee`)
+	errClaimNotOffered      = errors.New(`assignment: can only claim an offered task`)
+	errDeliverNotClaimed    = errors.New(`assignment: can only deliver a claimed task`)
+	errQuestionNotClaimed   = errors.New(`assignment: can only raise a question on a claimed task`)
+	errAnswerNotInputReq    = errors.New(`assignment: can only answer a task awaiting input (input-required)`)
+	errFailNotClaimed       = errors.New(`assignment: can only fail a claimed task`)
+	errCancelTerminal       = errors.New(`assignment: can only cancel a non-terminal task (offered/claimed/input-required)`)
+	errReopenNotDelivered   = errors.New(`assignment: can only reopen a delivered task`)
+	errAbandonNotClaimed    = errors.New(`assignment: can only abandon a claimed task`)
+)
+
 // SessionLink is the anchoring of a task to an agent session (one item of multi-way anchoring). A task records only the
 // creator session by default; a successor (cross-session/cross-tool) appends via forge task attach, forming a two-way anchoring
 // where N sessions jointly advance one task — any successor resuming knows who participated and with which tool.
@@ -217,6 +287,7 @@ type TaskState struct {
 	Artifacts     []Artifact    `json:"artifacts,omitempty"`       // 相关产物（文件/命令输出/url，关联但不门禁）
 	ParentTaskRef string        `json:"parent_task_ref,omitempty"` // 子任务指向父 task ref（subtask 拆解）
 	DependsOn     []string      `json:"depends_on,omitempty"`      // 依赖的前序 task ref（任务间依赖）
+	Assignment    *Assignment   `json:"assignment,omitempty"`      // 任务分派（owner agent + 协作生命周期状态）；nil = 普通未分派任务，零行为变化
 }
 
 // TaskGateResult records the result of a single task gate.
@@ -557,6 +628,205 @@ func (s *TaskState) ResolveFinding(id string) bool {
 // AddArtifact 追加一条产物引用。
 func (s *TaskState) AddArtifact(a Artifact) {
 	s.Artifacts = append(s.Artifacts, a)
+}
+
+// --- assignment methods ---
+//
+// --- 分派方法（assignment）---
+
+// HasAssignment reports whether the task is delegated to an agent (Assignment != nil).
+//
+// HasAssignment 报告 task 是否已分派给某 agent（Assignment != nil）。
+func (s *TaskState) HasAssignment() bool { return s.Assignment != nil }
+
+// IsOfferedTo reports whether the task is offered (awaiting claim) to the given agent.
+// Note: mine matches by Assignment.Agent across ALL statuses (incl. delivered/failed/canceled), so
+// it does NOT use this method — IsOfferedTo is a state-machine predicate for future hook/TTL logic
+// needing the offered-awaiting-claim signal. Agent normalization is the caller's duty so the
+// storage layer stays agent-neutral.
+//
+// 注意：mine 按 Assignment.Agent 匹配全状态（含 delivered/failed/canceled），不用此方法——
+// IsOfferedTo 是状态机谓词，供未来 hook/TTL 判定 offered 待认领态用。agent 归一化是调用方职责，
+// 使存储层保持 agent-neutral。
+func (s *TaskState) IsOfferedTo(agent string) bool {
+	return s.Assignment != nil && s.Assignment.Status == AssignOffered && s.Assignment.Agent == agent
+}
+
+// AssignTo creates an offered-status Assignment delegating the task to agent. It refuses if an
+// assignment already exists (re-delegation goes through a dedicated reassign path that records the
+// prior owner), so a task never silently changes owner. by is the orchestrator agent that offered it.
+//
+// AssignTo 创建一个 offered 状态的 Assignment，把 task 派给 agent。若已存在分派则拒绝（改派走专门
+// 的 reassign 路径以记录原 owner），故 task 绝不静默易主。by 是发起派发的编排器 agent。
+func (s *TaskState) AssignTo(agent, role, by string) error {
+	if agent == `` {
+		return errAssignmentEmptyAgent
+	}
+	if s.Assignment != nil {
+		return errAssignmentExists
+	}
+	now := time.Now()
+	s.Assignment = &Assignment{
+		Agent:     agent,
+		Role:      role,
+		Status:    AssignOffered,
+		OfferedBy: by,
+		OfferedAt: &now,
+	}
+	return nil
+}
+
+// Claim transitions offered→claimed, anchoring owner work. It requires the claiming agent to match
+// the offered Agent (a kimi-offered task cannot be claimed by reasonix), and refuses if the status is
+// not offered (already claimed / delivered / canceled). The caller sets the session's active-task-ref
+// after a successful claim (claim = start working) — done in the CLI layer, not here, so this storage
+// method stays free of session/root coupling.
+//
+// Claim 把 offered→claimed，锚定 owner 工作。要求认领 agent 匹配派发的 Agent（派给 kimi 的任务
+// reasonix 不能认领），且 status 非 offered（已认领/已交付/已取消）则拒绝。认领成功后由调用方
+// （CLI 层）设 session 的 active-task-ref（认领 = 开始工作）——不放存储方法，使方法不耦合 session/root。
+func (s *TaskState) Claim(agent string) error {
+	if s.Assignment == nil {
+		return errNoAssignment
+	}
+	if s.Assignment.Agent != agent {
+		return errClaimWrongAgent
+	}
+	if s.Assignment.Status != AssignOffered {
+		return errClaimNotOffered
+	}
+	now := time.Now()
+	s.Assignment.Status = AssignClaimed
+	s.Assignment.ClaimedAt = &now
+	return nil
+}
+
+// Deliver transitions claimed→delivered — the signal that unblocks dependents. Requires claimed
+// (forbids the offered→delivered skip). DeliveredAt set.
+//
+// Deliver 把 claimed→delivered——这是放行依赖方的信号。要求 claimed（禁止 offered→delivered 跳跃）。设 DeliveredAt。
+func (s *TaskState) Deliver() error {
+	if s.Assignment == nil {
+		return errNoAssignment
+	}
+	if s.Assignment.Status != AssignClaimed {
+		return errDeliverNotClaimed
+	}
+	now := time.Now()
+	s.Assignment.Status = AssignDelivered
+	s.Assignment.DeliveredAt = &now
+	return nil
+}
+
+// Question transitions claimed→input-required, recording a回抛 (worker needs the orchestrator/human to
+// clarify before proceeding). Requires claimed. The orchestrator's answer (task answer) appends this
+// question into Decisions so the resolution is traceable.
+//
+// Question 把 claimed→input-required，记一条回抛（worker 需编排器/人澄清后才能继续）。要求 claimed。
+// 编排器的答复（task answer）会把这个 question 追加进 Decisions，使决议可追溯。
+func (s *TaskState) Question(content string) error {
+	if s.Assignment == nil {
+		return errNoAssignment
+	}
+	if s.Assignment.Status != AssignClaimed {
+		return errQuestionNotClaimed
+	}
+	s.Assignment.Status = AssignInputRequired
+	s.Assignment.LastQuestion = content
+	return nil
+}
+
+// Answer transitions input-required→claimed, recording the orchestrator's resolution as a Decision so
+// the回抛's outcome is durable (survives compaction, visible cross-tool). Requires input-required.
+//
+// Answer 把 input-required→claimed，把编排器的答复记成一条 Decision，使回抛的结局持久（抗压缩、跨工具可见）。要求 input-required。
+func (s *TaskState) Answer(content string) error {
+	if s.Assignment == nil {
+		return errNoAssignment
+	}
+	if s.Assignment.Status != AssignInputRequired {
+		return errAnswerNotInputReq
+	}
+	s.Assignment.Status = AssignClaimed
+	if content != `` {
+		q := s.Assignment.LastQuestion
+		s.AddDecision(Decision{Content: content, By: s.Assignment.OfferedBy, Rationale: q})
+	}
+	return nil
+}
+
+// Fail transitions claimed→failed, recording why the owner could not complete it. Requires claimed.
+//
+// Fail 把 claimed→failed，记录 owner 为何无法完成。要求 claimed。
+func (s *TaskState) Fail(reason string) error {
+	if s.Assignment == nil {
+		return errNoAssignment
+	}
+	if s.Assignment.Status != AssignClaimed {
+		return errFailNotClaimed
+	}
+	s.Assignment.Status = AssignFailed
+	s.Assignment.FailReason = reason
+	return nil
+}
+
+// Cancel transitions a non-terminal task (offered/claimed/input-required)→canceled, recording the
+// orchestrator's reason for withdrawing the delegation. Terminal states (delivered/failed/canceled)
+// cannot be canceled.
+//
+// Cancel 把非终态 task（offered/claimed/input-required）→canceled，记录编排器撤回分派的原因。终态（delivered/failed/canceled）不能 cancel。
+func (s *TaskState) Cancel(reason string) error {
+	if s.Assignment == nil {
+		return errNoAssignment
+	}
+	switch s.Assignment.Status {
+	case AssignOffered, AssignClaimed, AssignInputRequired:
+		s.Assignment.Status = AssignCanceled
+		s.Assignment.CancelReason = reason
+		return nil
+	default:
+		return errCancelTerminal
+	}
+}
+
+// Reopen transitions delivered→claimed when a delivered task is found to have a bug. The reason is
+// recorded as a FailReason-equivalent note on the assignment for traceability.
+//
+// Reopen 把 delivered→claimed，用于交付后发现 bug。原因记入 assignment 供追溯。
+func (s *TaskState) Reopen(reason string) error {
+	if s.Assignment == nil {
+		return errNoAssignment
+	}
+	if s.Assignment.Status != AssignDelivered {
+		return errReopenNotDelivered
+	}
+	s.Assignment.Status = AssignClaimed
+	s.Assignment.DeliveredAt = nil
+	s.Assignment.FailReason = reason
+	return nil
+}
+
+// Abandon transitions claimed→offered (TTL recovery for a claimed task whose owner went away).
+// Bumps AbandonedCount (a zombie signal surfaced in mine/health) and clears ClaimedAt so it is
+// re-offered fresh. Requires claimed. TTL triggering itself is wired in a later phase (hook/health);
+// this method is the storage primitive.
+//
+// Abandon 把 claimed→offered（claimed 的 owner 失联时的 TTL 回收）。AbandonedCount++（在 mine/health
+// 上浮的僵尸信号）并清 ClaimedAt 使其重新 offered。要求 claimed。TTL 触发本身在后续阶段接线
+// （hook/health）；本方法是存储原语。
+func (s *TaskState) Abandon() error {
+	if s.Assignment == nil {
+		return errNoAssignment
+	}
+	if s.Assignment.Status != AssignClaimed {
+		return errAbandonNotClaimed
+	}
+	s.Assignment.Status = AssignOffered
+	s.Assignment.ClaimedAt = nil
+	s.Assignment.AbandonedCount++
+	now := time.Now()
+	s.Assignment.AbandonedAt = &now
+	return nil
 }
 
 // continuityCounter ensures that continuity IDs generated within the same process at the same nanosecond do not collide either (low-precision Windows clock /
