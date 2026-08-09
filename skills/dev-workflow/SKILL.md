@@ -5,6 +5,7 @@ metadata:
   pattern: inversion + pipeline
   domain: development
   composes: [requirement-clarification, agent-delegation, systematic-debugging, tdd-cycle, test-discipline, evidence-based-proposal, session-continuity, architecture-decision-record]
+  triggers: [{"event":"UserPromptSubmit","keywords":["先规划","出个计划","plan mode","拆解任务","开发阶段","下一步该"],"cooldown":300}]
 ---
 
 # 开发工作流 — Plan Mode 先规划后执行
