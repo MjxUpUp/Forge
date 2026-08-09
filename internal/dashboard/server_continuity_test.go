@@ -190,3 +190,94 @@ func TestAggregateContinuity_GenericHidesGates(t *testing.T) {
 		t.Errorf("Kind 应为 generic，实际 %q", c.Kind)
 	}
 }
+
+// TestAggregateContinuity_AnnotatesZombie: a delegation that has stalled (offered>7d here) is
+// projected onto the card as IsZombie + ZombieReason, and a fresh offer is NOT flagged. This is
+// the board surface of the same taskpipeline.IsZombie signal mine/health share (design §12 标黄).
+// OfferedAt is forced 8 days into the past because the state machine stamps now.
+//
+// TestAggregateContinuity_AnnotatesZombie：停滞的分派（此处 offered>7d）投影到卡片为 IsZombie +
+// ZombieReason，刚 offered 的不被标记。这是 mine/health 共享的同一 taskpipeline.IsZombie 信号的
+// 看板表面（设计 §12 标黄）。OfferedAt 被强制为 8 天前，因状态机盖当前时间。
+func TestAggregateContinuity_AnnotatesZombie(t *testing.T) {
+	root := t.TempDir()
+	// Stalled offer (8 days ago) → offered>7d zombie.
+	stalled := &taskpipeline.TaskState{TaskRef: "feat/stalled", Branch: "feat/stalled", Goal: "停滞"}
+	if err := stalled.AssignTo("kimi", "frontend", "claude-code"); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-8 * 24 * time.Hour)
+	stalled.Assignment.OfferedAt = &old
+	if err := taskpipeline.SaveTaskState(root, stalled); err != nil {
+		t.Fatal(err)
+	}
+	// Fresh offer → not a zombie (negative control).
+	fresh := &taskpipeline.TaskState{TaskRef: "feat/fresh", Branch: "feat/fresh", Goal: "新鲜"}
+	if err := fresh.AssignTo("cursor", "frontend", "claude-code"); err != nil {
+		t.Fatal(err)
+	}
+	if err := taskpipeline.SaveTaskState(root, fresh); err != nil {
+		t.Fatal(err)
+	}
+
+	b, err := AggregateContinuity(root, time.Now())
+	if err != nil {
+		t.Fatalf("AggregateContinuity: %v", err)
+	}
+	byRef := map[string]continuityCard{}
+	for _, c := range b.Cards {
+		byRef[c.TaskRef] = c
+	}
+	s, ok := byRef["feat/stalled"]
+	if !ok {
+		t.Fatalf("feat/stalled 卡片应在板上, got %+v", byRef)
+	}
+	if !s.IsZombie || !strings.Contains(s.ZombieReason, "offered>7d") {
+		t.Errorf("feat/stalled 应 IsZombie 且 reason 含 offered>7d, got %+v", s)
+	}
+	if f, ok := byRef["feat/fresh"]; ok && f.IsZombie {
+		t.Errorf("feat/fresh 刚 offered 不应标僵尸, got %+v", f)
+	}
+}
+
+// TestServe_ContinuityHTML_ZombieBadge: the rendered board HTML carries the zombie badge + zombie
+// card class for a stalled delegation (design §12 标黄), proving the template wiring end-to-end
+// through the HTTP layer.
+//
+// TestServe_ContinuityHTML_ZombieBadge：渲染的看板 HTML 对停滞分派带僵尸徽标 + zombie 卡片类
+// （设计 §12 标黄），证明模板接线经 HTTP 层端到端生效。
+func TestServe_ContinuityHTML_ZombieBadge(t *testing.T) {
+	root := t.TempDir()
+	stalled := &taskpipeline.TaskState{TaskRef: "feat/stalled", Branch: "feat/stalled", Goal: "停滞"}
+	if err := stalled.AssignTo("kimi", "frontend", "claude-code"); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-8 * 24 * time.Hour)
+	stalled.Assignment.OfferedAt = &old
+	if err := taskpipeline.SaveTaskState(root, stalled); err != nil {
+		t.Fatal(err)
+	}
+	handler := localhostOnly(securityHeaders(newMux(Options{Root: root})))
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/continuity")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	s := string(body)
+	// The badge renders (html/template escapes the > in the reason to &gt;, so we assert the
+	// marker + that the reason token survives in escaped form; the raw reason is checked in the
+	// AggregateContinuity card test, which sees the unescaped data field).
+	//
+	// 徽标已渲染（html/template 把 reason 里的 > 转义成 &gt;，故断言标记 + reason 经转义后仍在；
+	// 原始 reason 在 AggregateContinuity 卡片测试里断言，那里看到的是未转义的 data 字段）。
+	if !strings.Contains(s, "⚠僵尸") || !strings.Contains(s, "offered&gt;7d") {
+		t.Errorf("HTML 应含僵尸徽标 + offered>7d（转义为 offered&gt;7d）reason:\n%s", s)
+	}
+	if !strings.Contains(s, `card zombie`) {
+		t.Errorf("HTML 应给僵尸卡片加 zombie 类（class=\"card zombie\"）:\n%s", s)
+	}
+}

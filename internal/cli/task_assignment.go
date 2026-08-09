@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/MjxUpUp/Forge/internal/agentsignals"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
@@ -138,7 +139,8 @@ func warnIfUnknownAgent(w io.Writer, name string) {
 	if agentsignals.IsKnownAgent(name) {
 		return
 	}
-	fmt.Fprintf(w, `⚠ agent %q 不在已知集（%s），task mine 无法自动匹配；确认该 agent 用 --as 显式认领\n`, name, strings.Join(agentsignals.KnownAgents(), `/`))
+	fmt.Fprintf(w, `⚠ agent %q 不在已知集（%s），task mine 无法自动匹配；确认该 agent 用 --as 显式认领`, name, strings.Join(agentsignals.KnownAgents(), `/`))
+	fmt.Fprintln(w)
 }
 
 func runTaskAssign(cmd *cobra.Command, args []string) error {
@@ -169,7 +171,8 @@ func runTaskAssign(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf(`分派失败: %w`, err)
 	}
-	fmt.Printf(`✓ 任务 %s 已分派给 %s（角色=%s，状态=%s）\n`, state.TaskRef, to, role, status)
+	fmt.Printf(`✓ 任务 %s 已分派给 %s（角色=%s，状态=%s）`, state.TaskRef, to, role, status)
+	fmt.Println()
 	fmt.Println(`对方用 forge task claim --ref ` + state.TaskRef + ` 认领；forge task mine 查看分派给自己的任务`)
 	return nil
 }
@@ -202,10 +205,12 @@ func runTaskClaim(cmd *cobra.Command, args []string) error {
 	// state 才是接续读取的真相源。
 	if sid := taskpipeline.CurrentSessionID(); sid != `` {
 		if err := taskpipeline.SetActiveTaskRef(root, sid, state.TaskRef); err != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(), `⚠ session 锚定失败（不影响认领）: %v\n`, err)
+			fmt.Fprintf(cmd.ErrOrStderr(), `⚠ session 锚定失败（不影响认领）: %v`, err)
+			fmt.Fprintln(cmd.ErrOrStderr())
 		}
 	}
-	fmt.Printf(`✓ 已认领任务 %s（%s）。交付时用 forge task deliver --ref %s\n`, state.TaskRef, as, state.TaskRef)
+	fmt.Printf(`✓ 已认领任务 %s（%s）。交付时用 forge task deliver --ref %s`, state.TaskRef, as, state.TaskRef)
+	fmt.Println()
 	return nil
 }
 
@@ -220,7 +225,8 @@ func runTaskDeliver(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf(`交付失败: %w`, err)
 	}
-	fmt.Printf(`✓ 任务 %s 已交付（delivered）。编排器可用 forge task resume --ref %s 验收\n`, state.TaskRef, state.TaskRef)
+	fmt.Printf(`✓ 任务 %s 已交付（delivered）。编排器可用 forge task resume --ref %s 验收`, state.TaskRef, state.TaskRef)
+	fmt.Println()
 	return nil
 }
 
@@ -239,7 +245,8 @@ func runTaskQuestion(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf(`回抛失败: %w`, err)
 	}
-	fmt.Printf(`✓ 任务 %s 已回抛问题（input-required）。编排器用 forge task answer --ref %s 答复\n`, state.TaskRef, state.TaskRef)
+	fmt.Printf(`✓ 任务 %s 已回抛问题（input-required）。编排器用 forge task answer --ref %s 答复`, state.TaskRef, state.TaskRef)
+	fmt.Println()
 	return nil
 }
 
@@ -259,7 +266,8 @@ func runTaskAnswer(cmd *cobra.Command, args []string) error {
 	if content == `` {
 		note = `（空答复，仅恢复 claimed 未记决策）`
 	}
-	fmt.Printf(`✓ 已答复任务 %s，回 claimed%s\n`, state.TaskRef, note)
+	fmt.Printf(`✓ 已答复任务 %s，回 claimed%s`, state.TaskRef, note)
+	fmt.Println()
 	return nil
 }
 
@@ -278,7 +286,8 @@ func runTaskFail(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf(`标记失败出错: %w`, err)
 	}
-	fmt.Printf(`✓ 任务 %s 已标记失败（failed）：%s\n`, state.TaskRef, reason)
+	fmt.Printf(`✓ 任务 %s 已标记失败（failed）：%s`, state.TaskRef, reason)
+	fmt.Println()
 	return nil
 }
 
@@ -297,7 +306,8 @@ func runTaskCancel(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf(`撤回失败: %w`, err)
 	}
-	fmt.Printf(`✓ 任务 %s 已撤回分派（canceled）：%s\n`, state.TaskRef, reason)
+	fmt.Printf(`✓ 任务 %s 已撤回分派（canceled）：%s`, state.TaskRef, reason)
+	fmt.Println()
 	return nil
 }
 
@@ -316,18 +326,21 @@ func runTaskReopen(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf(`重开失败: %w`, err)
 	}
-	fmt.Printf(`✓ 任务 %s 已重开（回 claimed，交付后发现 bug）：%s\n`, state.TaskRef, reason)
+	fmt.Printf(`✓ 任务 %s 已重开（回 claimed，交付后发现 bug）：%s`, state.TaskRef, reason)
+	fmt.Println()
 	return nil
 }
 
 // delegatedEntry is the JSON shape of one row in forge task mine output.
 type delegatedEntry struct {
-	Ref         string   `json:"ref"`
-	Title       string   `json:"title"`
-	Role        string   `json:"role,omitempty"`
-	Status      string   `json:"status"`
-	OfferedBy   string   `json:"offered_by,omitempty"`
-	PendingDeps []string `json:"pending_deps,omitempty"`
+	Ref           string   `json:"ref"`
+	Title         string   `json:"title"`
+	Role          string   `json:"role,omitempty"`
+	Status        string   `json:"status"`
+	OfferedBy     string   `json:"offered_by,omitempty"`
+	PendingDeps   []string `json:"pending_deps,omitempty"`
+	IsZombie      bool     `json:"is_zombie,omitempty"`
+	ZombieReasons []string `json:"zombie_reasons,omitempty"`
 }
 
 func runTaskMine(cmd *cobra.Command, args []string) error {
@@ -351,6 +364,13 @@ func runTaskMine(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf(`读取任务列表失败: %w`, err)
 	}
 	var entries []delegatedEntry
+	// now is captured once for the zombie scan (offered>7d / claimed>TTL / input-required>7d all
+	// age against the same instant). Reuses taskpipeline.IsZombie so mine, the dashboard, and
+	// `task health` share ONE truth about what "zombie" means (design §12).
+	//
+	// now 只取一次供僵尸扫描（offered>7d / claimed>TTL / input-required>7d 都相对同一时刻老化）。
+	// 复用 taskpipeline.IsZombie，使 mine、看板、task health 对「僵尸」共享同一真相源（设计 §12）。
+	now := time.Now()
 	for _, s := range states {
 		if s == nil || s.Assignment == nil || s.Assignment.Agent != agent {
 			continue
@@ -371,13 +391,16 @@ func runTaskMine(cmd *cobra.Command, args []string) error {
 		if blocked && len(pend) == 0 {
 			continue
 		}
+		isZombie, zombieReasons := taskpipeline.IsZombie(root, s, now)
 		entries = append(entries, delegatedEntry{
-			Ref:         s.TaskRef,
-			Title:       s.Summary,
-			Role:        s.Assignment.Role,
-			Status:      s.Assignment.Status,
-			OfferedBy:   s.Assignment.OfferedBy,
-			PendingDeps: pend,
+			Ref:           s.TaskRef,
+			Title:         s.Summary,
+			Role:          s.Assignment.Role,
+			Status:        s.Assignment.Status,
+			OfferedBy:     s.Assignment.OfferedBy,
+			PendingDeps:   pend,
+			IsZombie:      isZombie,
+			ZombieReasons: zombieReasons,
 		})
 	}
 	if asJSON {
@@ -396,7 +419,8 @@ func runTaskMine(cmd *cobra.Command, args []string) error {
 		fmt.Println()
 		return nil
 	}
-	fmt.Printf(`分派给 %s 的任务（%d）:\n`, agent, len(entries))
+	fmt.Printf(`分派给 %s 的任务（%d）:`, agent, len(entries))
+	fmt.Println()
 	for _, e := range entries {
 		roleStr := e.Role
 		if roleStr == `` {
@@ -405,6 +429,17 @@ func runTaskMine(cmd *cobra.Command, args []string) error {
 		fmt.Printf(`  %s  [%s]  角色=%s  分派方=%s  %s`, e.Status, e.Ref, roleStr, e.OfferedBy, e.Title)
 		if len(e.PendingDeps) > 0 {
 			fmt.Printf(`  ⏳阻塞于: %s`, strings.Join(e.PendingDeps, `, `))
+		}
+		// Zombie annotation (design §12 标黄): a row whose delegation has stalled (offered>7d /
+		// claimed>TTL / input-required>7d / abandoned_count≥2) gets a ⚠ marker with its reasons.
+		// Human-color terminals can't reliably render ANSI here, so the marker + reasons are the
+		// signal; the dashboard renders true yellow.
+		//
+		// 僵尸标注（设计 §12 标黄）：分派停滞的行（offered>7d / claimed>TTL /
+		// input-required>7d / abandoned_count≥2）挂 ⚠ 标记并附 reason。终端难可靠渲染 ANSI，
+		// 故标记 + reason 即信号；真黄色在看板渲染。
+		if e.IsZombie {
+			fmt.Printf(`  ⚠僵尸(%s)`, strings.Join(e.ZombieReasons, `,`))
 		}
 		fmt.Println()
 	}

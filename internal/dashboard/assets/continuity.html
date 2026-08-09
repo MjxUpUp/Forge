@@ -20,6 +20,7 @@
   .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:12px; }
   .card { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:14px; }
   .card.blocked { border-left:3px solid var(--bad); }
+  .card.zombie { border-left:3px solid var(--warn); }
   .card .ref { font-weight:700; font-size:14px; }
   .card .meta { color:var(--muted); font-size:12px; margin:4px 0 8px; }
   .card .goal { font-size:13px; margin-bottom:8px; color:var(--fg); white-space:pre-line; }
@@ -29,6 +30,7 @@
   .badge.warn { background:rgba(248,81,73,.15); color:var(--bad); }
   .badge.good { background:rgba(63,185,80,.15); color:var(--good); }
   .badge.generic { background:rgba(210,153,34,.15); color:var(--warn); }
+  .badge.zombie { background:rgba(210,153,34,.2); color:var(--warn); font-weight:600; }
   .gate { display:block; font-size:11px; color:var(--muted); margin-top:8px; }
   .empty { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:40px; text-align:center; color:var(--muted); }
   code { background:rgba(255,255,255,.06); padding:1px 5px; border-radius:3px; font-size:12px; }
@@ -53,7 +55,7 @@
   <h2>进行中（{{.Incomplete}}）</h2>
   <div class="cards">
   {{range .Cards}}{{if not .IsComplete}}
-    <div class="card{{if gt .OpenBlockers 0}} blocked{{end}}">
+    <div class="card{{if gt .OpenBlockers 0}} blocked{{end}}{{if .IsZombie}} zombie{{end}}">
       <div class="ref">{{.TaskRef}}{{if eq .Kind "generic"}} <span class="badge generic">generic</span>{{end}}</div>
       <div class="meta">{{.Branch}}{{if .OriginTool}} · 发起 {{.OriginTool}}{{end}}</div>
       {{if .Goal}}<div class="goal">{{.Goal}}</div>{{end}}
@@ -63,6 +65,7 @@
         {{if gt .NextSteps 0}}<span class="badge">{{.NextSteps}} 下一步</span>{{end}}
         {{if gt .OpenBlockers 0}}<span class="badge warn">{{.OpenBlockers}} 阻塞</span>{{end}}
         {{if gt .Findings 0}}<span class="badge warn">{{.Findings}} 发现</span>{{end}}
+        {{if .IsZombie}}<span class="badge zombie">⚠僵尸 {{.ZombieReason}}</span>{{end}}
       </div>
       {{if gt .GateTotal 0}}<span class="gate">门禁 {{.GatePassed}}/{{.GateTotal}}{{if .CurrentGate}} · 当前 {{.CurrentGate}}{{end}}</span>{{end}}
     </div>
