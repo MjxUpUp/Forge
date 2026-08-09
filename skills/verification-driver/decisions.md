@@ -71,3 +71,25 @@ metadata.triggers 的 `task_active_no_review` 是语义错配：该 condition �
 ### Evidence
 
 conditions.go:153 condTaskActiveNoReview 判 !state.ReviewPassed；trigger.go:70 DeniedSkills 排除 code-review-gate；internal/cli/review.go:228-248 task 模式 review gate 实施 PASS 放行（脚本注释见 internal/hooks/embed.go:299）；用户 2026-08-05 报告 Stop 误触发（派审查子 agent 等待时被注入端到端验证提醒）。回归测试 skills/embed_test.go TestNoSKILLMDBindsTaskActiveNoReview 固化「SKILL.md 不绑该 condition」。
+
+## [d-18ca0700f5f7ec40-2e905647] accept
+
+- **Skill**: verification-driver
+- **DecidedAt**: 2026-08-09T03:58:22Z
+- **By**: claude-code
+
+### Diagnosis
+
+该 skill 无声明式 trigger，纯靠 agent 自觉加载——dogfood transcript 证明 0 命中，skill 形同被动文档从未注入
+
+### Revision
+
+在 SKILL.md frontmatter metadata 加 triggers 声明（事件 + keywords 或 when condition + cooldown），让 skill-trigger 框架在匹配事件时主动注入加载指引
+
+### Evidence
+
+forge skills validate R1-R17 全 49 通过；trigger 覆盖 5→15（31%）；dry-run 验证 research-workflow/secure-coding 匹配 prompt 正确触发
+
+### Rationale
+
+扩展 trigger 覆盖是 2026-08 审计 P1 优化项；声明式触发是把 skill 从被动文档转主动注入的唯一可靠手段（见 dogfood 发现）

@@ -5,6 +5,7 @@ metadata:
   pattern: tool-wrapper
   domain: security
   composes: [code-review-gate, on-demand-guards, verification-driver, backend-development, resilience-and-observability]
+  triggers: [{"event":"UserPromptSubmit","keywords":["登录","认证","鉴权","加密","解密","密码","password","crypto","sql注入","xss","csrf","漏洞","vulnerability"],"cooldown":300}]
 ---
 
 # 安全编码规范

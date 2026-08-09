@@ -4,6 +4,7 @@ description: "子代理委派与编排协议。Use when: 用 subagent 工具分�
 metadata:
   pattern: pipeline + reviewer
   domain: skill-engineering
+  triggers: [{"event":"UserPromptSubmit","keywords":["派个子agent","派子agent","并行agent","多agent","spawn a subagent","delegate to","拆成几个agent"],"cooldown":300}]
 ---
 
 # 子代理委派与编排

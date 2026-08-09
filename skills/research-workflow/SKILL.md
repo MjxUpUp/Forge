@@ -5,6 +5,7 @@ metadata:
   pattern: pipeline + gate
   domain: research
   source: merged from deep-research + research-workflow + research-and-publish
+  triggers: [{"event":"UserPromptSubmit","keywords":["做调研","技术调研","调研一下","深度调研","调研并","research the","do research"],"cooldown":300}]
 ---
 
 # Research Workflow — 调研全流程

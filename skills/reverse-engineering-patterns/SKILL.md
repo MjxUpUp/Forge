@@ -5,6 +5,7 @@ metadata:
   pattern: pipeline
   domain: architecture
   steps: 3
+  triggers: [{"event":"UserPromptSubmit","keywords":["看懂这段","理解这个代码","这段代码是","代码是怎么","怎么实现的","how does this work","读一下源码","trace the code"],"cooldown":300}]
 ---
 
 # 源码逆向工程方法论

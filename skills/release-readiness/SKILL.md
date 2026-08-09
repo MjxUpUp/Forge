@@ -5,6 +5,7 @@ metadata:
   pattern: gate
   domain: operations
   composes: [docs-consistency-guard]
+  triggers: [{"event":"PreToolUse","match":"Bash","keywords":["git tag","npm publish","goreleaser","docker push","cargo publish"],"cooldown":300}]
 ---
 
 # 发布 Readiness 门禁
