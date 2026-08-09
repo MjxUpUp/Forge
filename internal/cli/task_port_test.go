@@ -494,3 +494,91 @@ func TestFilterImportedChecklog_DropsDuplicates(t *testing.T) {
 		t.Errorf(`保留的应是 fresh-remote, got %q`, got[0].Detail)
 	}
 }
+
+// realNewlineByte is 0x0A, declared as a numeric byte (not the '\n' rune) so this test source carries
+// NO ASCII quote — double or single — that the Windows editor toolchain has been observed to mangle
+// into CJK punctuation (the very corruption that once broke Go literals in this repo). The value is
+// obviously 10; the const is about source-encoding safety, not magic numbers.
+//
+// realNewlineByte 为 0x0A，以数字字节（非 '\n' rune）声明，使本测试源码不带任何 ASCII 引号（单或双）——
+// Windows 编辑工具链曾被观察到把引号误转为 CJK 标点（正是曾在本仓库破坏 Go 字面量的腐蚀）。值显然是 10；
+// 此 const 关乎源码编码安全，非魔数。
+const realNewlineByte byte = 10
+
+// assertEndsWithRealNewline locates anchor in out and asserts the byte right after it (or right after
+// closer, when given) is a REAL newline (0x0A), NOT the literal two-char sequence backslash+n that a
+// Go raw-string `\n` would emit. Regression guard for task_port.go's output convention: a raw string
+// (no \n) followed by a separate fmt.Fprintln. closer handles messages of shape "...源自 <path>）" where
+// the path may contain OS backslashes — pass the fullwidth 」）」 as closer to anchor on the path-free
+// trailing token AFTER the path.
+//
+// assertEndsWithRealNewline 在 out 中定位 anchor，断言其紧后字节（或 closer 给定时 closer 之后）是真实
+// 换行（0x0A），而非 Go raw-string `\n` 会吐出的字面两字符反斜杠+n。task_port.go 输出惯例的回归守卫：
+// raw string（无 \n）后接独立 fmt.Fprintln。closer 处理「...源自 <path>）」形消息（路径可能含 OS 反斜杠）——
+// 传全角」）」作 closer 锚定路径之后那个无路径的尾 token。
+func assertEndsWithRealNewline(t *testing.T, out, anchor, closer, label string) {
+	t.Helper()
+	idx := strings.Index(out, anchor)
+	if idx < 0 {
+		t.Fatalf(`%s：anchor %q 未找到（无法断言换行契约），输出：%s`, label, anchor, out)
+	}
+	tail := out[idx+len(anchor):]
+	if closer != `` {
+		cidx := strings.Index(tail, closer)
+		if cidx < 0 {
+			t.Fatalf(`%s：closer %q 未找到（anchor 之后），输出：%s`, label, closer, tail)
+		}
+		tail = tail[cidx+len(closer):]
+	}
+	if len(tail) == 0 || tail[0] != realNewlineByte {
+		peek := tail
+		if len(peek) > 16 {
+			peek = peek[:16]
+		}
+		t.Errorf(`%s：anchor/closer 之后应为真实换行 0x0A（非字面反斜杠+n 即 raw-string bug），实际：%q`, label, peek)
+	}
+}
+
+// TestTaskPort_OutputNewlinesAreReal guards the raw-string-newline convention in task_port.go. Go raw
+// strings do not process \n: a `...\n` inside backticks prints a LITERAL backslash+n, never a line
+// break. The export/import success + hint messages must end with a REAL newline (emitted by a separate
+// Fprintln). Each anchor targets a path-free trailing token (or uses a fullwidth closer after a path)
+// so the assertion is deterministic on Windows where temp paths contain backslashes. Covers the three
+// distinct message shapes: export success (含 N 条 checklog), import success (源自 <path>）), import hint.
+//
+// TestTaskPort_OutputNewlinesAreReal 守护 task_port.go 的 raw-string 换行惯例。Go raw string 不处理 \n：
+// 反引号里的 `...\n` 打印字面反斜杠+n，绝非换行。export/import 成功 + 提示消息必须以真实换行收尾（由独立
+// Fprintln 发出）。每个 anchor 锚定无路径的尾 token（或用全角 closer 跟在路径后），使断言在临时路径含反斜杠
+// 的 Windows 上仍确定。覆盖三种不同消息形：export 成功（含 N 条 checklog）、import 成功（源自 <path>）、import 提示。
+func TestTaskPort_OutputNewlinesAreReal(t *testing.T) {
+	// Machine A: export WITH --include-checklog so the success note = " 含 N 条 checklog" — a path-free
+	// trailing token right before the newline (without the flag the line would end in the output path,
+	// which on Windows carries backslashes and can't be newline-asserted deterministically).
+	//
+	// 机器 A：带 --include-checklog 导出，使成功 note = " 含 N 条 checklog"——换行正前方的无路径尾 token
+	// （不加 flag 则该行以输出路径结尾，Windows 上路径含反斜杠，无法确定性断言换行）。
+	dirA := setupDelegateProject(t)
+	runForge(t, dirA, `task`, `start`, `--ref`, `feat/delegate`, `--title`, `newline-guard`)
+	bundlePath := filepath.Join(t.TempDir(), `b.json`)
+	exportOut, _, code := runForge(t, dirA, `task`, `export`, `--ref`, `feat/delegate`, `-o`, bundlePath, `--include-checklog`)
+	if code != 0 {
+		t.Fatalf(`A export: %s`, exportOut)
+	}
+	assertEndsWithRealNewline(t, exportOut, ` 条 checklog`, ``, `export 成功行`)
+
+	// Machine B: fresh import prints the success line + the review/acceptance hint (both to stderr,
+	// captured in runForge's combined output).
+	//
+	// 机器 B：全新 import 打印成功行 + review/验收提示（均到 stderr，被 runForge 的合并输出捕获）。
+	dirB := switchMachine(t, `b-sid-nl`)
+	importOut, _, code := runForge(t, dirB, `task`, `import`, `--file`, bundlePath)
+	if code != 0 {
+		t.Fatalf(`B import: %s`, importOut)
+	}
+	// Success line "...已导入任务 feat/delegate（源自 <path>）": closer 」）」 sits AFTER the path.
+	// 成功行「...已导入任务 feat/delegate（源自 <path>）」：closer」）」在路径之后。
+	assertEndsWithRealNewline(t, importOut, `已导入任务 feat/delegate（源自`, `）`, `import 成功行`)
+	// Hint line ends with the ref (path-free): "...接续用 forge task resume --ref feat/delegate".
+	// 提示行以 ref 收尾（无路径）：「...接续用 forge task resume --ref feat/delegate」。
+	assertEndsWithRealNewline(t, importOut, `接续用 forge task resume --ref feat/delegate`, ``, `import 提示行`)
+}
