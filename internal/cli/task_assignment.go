@@ -1,0 +1,245 @@
+package cli
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"strings"
+
+	"github.com/MjxUpUp/Forge/internal/agentsignals"
+	"github.com/MjxUpUp/Forge/internal/taskpipeline"
+	"github.com/spf13/cobra"
+)
+
+// task_assignment.go: the multi-agent delegation command layer. A task transitions through an
+// A2A lifecycle — offered (orchestrator assigns) → claimed (worker accepts) → delivered
+// (worker hands back). The state machine lives in types.go (AssignTo/Claim/Deliver/...);
+// these commands are the thin CLI surface that drives it and keep the worker's session
+// anchored to the claimed task (claim = "I take it", which is exactly the multi-directional
+// anchoring "successor attaches" action). mine lets a worker discover what is offered to it.
+//
+// task_assignment.go：多 agent 分派命令层。任务经 A2A 生命周期——offered（编排器分派）→
+// claimed（工作方认领）→ delivered（工作方交回）。状态机在 types.go（AssignTo/Claim/
+// Deliver/...）；本命令是驱动它的薄 CLI 表层，并把工作方 session 锚定到所认领的任务
+// （claim = 我接手，正是多向锚定的「接手方 attach」动作）。mine 让工作方发现分派给自己的任务。
+var taskAssignCmd = &cobra.Command{
+	Use:   `assign --ref <ref> --to <agent> [--role <role>] [--by <tool>]`,
+	Short: `把任务分派给指定 agent（offered 起步，编排器侧）`,
+	Long: `forge task assign 是多 agent 分派的入口：编排器把一个已存在的任务交给指定 agent，
+任务进入 offered 态等待对方 claim。--to 建议是 agentsignals 已知 agent（kimi/reasonix/cursor/
+copilot/windsurf/codex/opencode/cline/claude-code）；未知 agent 仅警告但仍接受（如 codebuddy
+这类无项目标记的 agent，需用户显式确认）。
+创建任务时即可用 forge task start --assignee <agent> 一步到位；assign 用于给已存在任务追加分派。`,
+	RunE: runTaskAssign,
+}
+
+var taskClaimCmd = &cobra.Command{
+	Use:   `claim --ref <ref> [--as <agent>]`,
+	Short: `工作方认领分派给自己的任务（offered→claimed，并把当前 session 锚定到该任务）`,
+	RunE:  runTaskClaim,
+}
+
+var taskDeliverCmd = &cobra.Command{
+	Use:   `deliver --ref <ref>`,
+	Short: `工作方交付任务（claimed→delivered，交回编排器）`,
+	RunE:  runTaskDeliver,
+}
+
+var taskMineCmd = &cobra.Command{
+	Use:   `mine [--agent <agent>] [--role <role>] [--json]`,
+	Short: `列出分派给当前/指定 agent 的任务（offered 待认领 + 已处理历史）`,
+	RunE:  runTaskMine,
+}
+
+func init() {
+	taskCmd.AddCommand(taskAssignCmd)
+	taskCmd.AddCommand(taskClaimCmd)
+	taskCmd.AddCommand(taskDeliverCmd)
+	taskCmd.AddCommand(taskMineCmd)
+
+	taskAssignCmd.Flags().String(`ref`, ``, `任务引用（不依赖分支检测）`)
+	taskAssignCmd.Flags().String(`to`, ``, `分派给哪个 agent（如 kimi/reasonix/cursor）`)
+	taskAssignCmd.Flags().String(`role`, ``, `分派角色（如 frontend/backend/testing）`)
+	taskAssignCmd.Flags().String(`by`, ``, `分派发起方（工具/人，默认探测当前工具）`)
+
+	taskClaimCmd.Flags().String(`ref`, ``, `任务引用（不依赖分支检测）`)
+	taskClaimCmd.Flags().String(`as`, ``, `以哪个 agent 身份认领（默认探测当前工具）`)
+
+	taskDeliverCmd.Flags().String(`ref`, ``, `任务引用（不依赖分支检测）`)
+
+	taskMineCmd.Flags().String(`agent`, ``, `查询哪个 agent 的分派（默认探测当前工具）`)
+	taskMineCmd.Flags().String(`role`, ``, `只看指定角色的分派`)
+	taskMineCmd.Flags().Bool(`json`, false, `JSON 格式输出`)
+}
+
+// warnIfUnknownAgent writes a warning to w when name is absent from the known-agent set,
+// WITHOUT rejecting — marker-less agents (codebuddy) are legitimate when the user insists.
+// Centralized so `task assign` and `task start --assignee` share ONE black-hole guard: a
+// typo'd --assignee/--to would otherwise silently create a task no `mine` can match (mine
+// filters by Assignment.Agent exact string). Writes to w (stderr) so it never pollutes stdout
+// and JSON consumers stay clean.
+//
+// warnIfUnknownAgent 在 name 不属于已知 agent 集时写 w 警告但不拒绝——无标记 agent（codebuddy）
+// 在用户坚持时合法。集中化使 task assign 与 task start --assignee 共享同一防黑洞守卫：否则拼错的
+// --assignee/--to 会静默创建 mine（按 Assignment.Agent 精确串过滤）匹配不到的任务。写 w（stderr）
+// 绝不污染 stdout，JSON 消费者保持干净。
+func warnIfUnknownAgent(w io.Writer, name string) {
+	if agentsignals.IsKnownAgent(name) {
+		return
+	}
+	fmt.Fprintf(w, `⚠ agent %q 不在已知集（%s），task mine 无法自动匹配；确认该 agent 用 --as 显式认领\n`, name, strings.Join(agentsignals.KnownAgents(), `/`))
+}
+
+func runTaskAssign(cmd *cobra.Command, args []string) error {
+	to, _ := cmd.Flags().GetString(`to`)
+	if to == `` {
+		return fmt.Errorf(`--to 必填（分派给哪个 agent）。已知 agent: %s`, strings.Join(agentsignals.KnownAgents(), `/`))
+	}
+	// Soft validation shared with `task start --assignee` via warnIfUnknownAgent — see that
+	// helper for why unknown agents are warned but not rejected (black-hole guard).
+	warnIfUnknownAgent(cmd.ErrOrStderr(), to)
+	state, root, err := loadTaskOrActive(cmd)
+	if err != nil {
+		return err
+	}
+	role, _ := cmd.Flags().GetString(`role`)
+	by, _ := cmd.Flags().GetString(`by`)
+	if by == `` {
+		by = detectOriginTool(``)
+	}
+	var status string
+	err = taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
+		if err := s.AssignTo(to, role, by); err != nil {
+			return err
+		}
+		status = s.Assignment.Status
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf(`分派失败: %w`, err)
+	}
+	fmt.Printf(`✓ 任务 %s 已分派给 %s（角色=%s，状态=%s）\n`, state.TaskRef, to, role, status)
+	fmt.Println(`对方用 forge task claim --ref ` + state.TaskRef + ` 认领；forge task mine 查看分派给自己的任务`)
+	return nil
+}
+
+func runTaskClaim(cmd *cobra.Command, args []string) error {
+	state, root, err := loadTaskOrActive(cmd)
+	if err != nil {
+		return err
+	}
+	as, _ := cmd.Flags().GetString(`as`)
+	if as == `` {
+		as = detectOriginTool(``)
+	}
+	if as == `` {
+		return fmt.Errorf(`无法探测当前 agent（无 agent env）。跨工具认领请显式传 --as <agent>（如 kimi/reasonix/cursor）`)
+	}
+	err = taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
+		return s.Claim(as)
+	})
+	if err != nil {
+		return fmt.Errorf(`认领失败: %w`, err)
+	}
+	// claim is the "successor attaches" action of multi-directional anchoring: the worker now
+	// owns the task, so anchor this session to it (same effect as forge task attach, but
+	// implicit in the claim). Anchor failures are non-fatal — the claim itself already
+	// succeeded and the task state is what continuity reads from.
+	//
+	// claim 即多向锚定的「接手方 attach」：工作方此刻拥有任务，故把当前 session 锚定过去
+	// （等价 forge task attach，但 claim 内含）。锚定失败不致命——认领本身已成功，而任务
+	// state 才是接续读取的真相源。
+	if sid := taskpipeline.CurrentSessionID(); sid != `` {
+		if err := taskpipeline.SetActiveTaskRef(root, sid, state.TaskRef); err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), `⚠ session 锚定失败（不影响认领）: %v\n`, err)
+		}
+	}
+	fmt.Printf(`✓ 已认领任务 %s（%s）。交付时用 forge task deliver --ref %s\n`, state.TaskRef, as, state.TaskRef)
+	return nil
+}
+
+func runTaskDeliver(cmd *cobra.Command, args []string) error {
+	state, root, err := loadTaskOrActive(cmd)
+	if err != nil {
+		return err
+	}
+	err = taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
+		return s.Deliver()
+	})
+	if err != nil {
+		return fmt.Errorf(`交付失败: %w`, err)
+	}
+	fmt.Printf(`✓ 任务 %s 已交付（delivered）。编排器可用 forge task resume --ref %s 验收\n`, state.TaskRef, state.TaskRef)
+	return nil
+}
+
+// delegatedEntry is the JSON shape of one row in forge task mine output.
+type delegatedEntry struct {
+	Ref       string `json:"ref"`
+	Title     string `json:"title"`
+	Role      string `json:"role,omitempty"`
+	Status    string `json:"status"`
+	OfferedBy string `json:"offered_by,omitempty"`
+}
+
+func runTaskMine(cmd *cobra.Command, args []string) error {
+	root, err := findProjectRoot()
+	if err != nil {
+		return err
+	}
+	agent, _ := cmd.Flags().GetString(`agent`)
+	if agent == `` {
+		agent = detectOriginTool(``)
+	}
+	if agent == `` {
+		return fmt.Errorf(`无法探测当前 agent（无 agent env）。显式传 --agent <agent>（如 kimi/reasonix/cursor）查看分派给该 agent 的任务`)
+	}
+	role, _ := cmd.Flags().GetString(`role`)
+	asJSON, _ := cmd.Flags().GetBool(`json`)
+
+	states, err := taskpipeline.ListTaskStates(root)
+	if err != nil {
+		return fmt.Errorf(`读取任务列表失败: %w`, err)
+	}
+	var entries []delegatedEntry
+	for _, s := range states {
+		if s == nil || s.Assignment == nil || s.Assignment.Agent != agent {
+			continue
+		}
+		if role != `` && s.Assignment.Role != role {
+			continue
+		}
+		entries = append(entries, delegatedEntry{
+			Ref:       s.TaskRef,
+			Title:     s.Summary,
+			Role:      s.Assignment.Role,
+			Status:    s.Assignment.Status,
+			OfferedBy: s.Assignment.OfferedBy,
+		})
+	}
+	if asJSON {
+		if entries == nil {
+			entries = []delegatedEntry{}
+		}
+		out, _ := json.MarshalIndent(entries, ``, `  `)
+		fmt.Println(string(out))
+		return nil
+	}
+	if len(entries) == 0 {
+		fmt.Printf(`没有分派给 %s 的任务`, agent)
+		if role != `` {
+			fmt.Printf(`（角色 %s）`, role)
+		}
+		fmt.Println()
+		return nil
+	}
+	fmt.Printf(`分派给 %s 的任务（%d）:\n`, agent, len(entries))
+	for _, e := range entries {
+		roleStr := e.Role
+		if roleStr == `` {
+			roleStr = `-`
+		}
+		fmt.Printf(`  %s  [%s]  角色=%s  分派方=%s  %s\n`, e.Status, e.Ref, roleStr, e.OfferedBy, e.Title)
+	}
+	return nil
+}
