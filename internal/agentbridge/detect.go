@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/MjxUpUp/Forge/internal/agentsignals"
 )
 
 // DetectAgents scans for known agent config indicators — both project-level markers
@@ -30,73 +32,19 @@ func DetectAgents(projectDir string) []AgentType {
 		}
 	}
 
-	// Project-level markers (legacy/team-mode projects).
+	// Project-level markers (legacy/team-mode projects). Delegated to the shared
+	// agentsignals table — the single source of truth for project-level agent markers,
+	// shared with taskpipeline's session attribution (detectAgentType) so the wiring
+	// scan and the attribution scan can never drift apart. The per-marker rationale
+	// (why .codex but not AGENTS.md, why project-marker-only for kimi/reasonix, etc.)
+	// lives next to each entry in agentsignals.projectMarkers.
 	//
-	// 项目级标记（遗留/团队模式项目）。
-	if dirExists(filepath.Join(projectDir, ".claude")) {
-		add(AgentClaudeCode)
-	}
-	if dirExists(filepath.Join(projectDir, ".cursor")) {
-		add(AgentCursor)
-	}
-	if dirExists(filepath.Join(projectDir, ".github", "instructions")) {
-		add(AgentCopilot)
-	}
-	if fileExists(filepath.Join(projectDir, ".windsurfrules")) {
-		add(AgentWindsurf)
-	}
-	// codex is detected via the .codex/ directory. AGENTS.md is NOT a codex signal — forge
-	// init proactively generates AGENTS.md as a universal cross-agent instruction source
-	// (codex/cursor/copilot/windsurf/cline all read it); treating it as a codex signal
-	// would make forge's own AGENTS.md trigger codex wiring (.codex/ cascade false positive).
-	// Pure codex-CLI users (only AGENTS.md, no .codex/) use --agents codex explicitly.
-	//
-	// codex 靠 .codex/ 目录检测。AGENTS.md 不作为 codex 信号——forge init 会主动生成
-	// AGENTS.md 作为跨 agent 通用指令源（codex/cursor/copilot/windsurf/cline 都读），若把它
-	// 当 codex 信号，forge 自己写的 AGENTS.md 会触发自身给 codex 接线（.codex/ 级联误判）。
-	// 纯 codex CLI 用户（仅 AGENTS.md 无 .codex/）用 --agents codex 显式声明。
-	if dirExists(filepath.Join(projectDir, ".codex")) {
-		add(AgentCodex)
-	}
-	if dirExists(filepath.Join(projectDir, ".opencode")) {
-		add(AgentOpencode)
-	}
-	if dirExists(filepath.Join(projectDir, ".cline")) || dirExists(filepath.Join(projectDir, ".clinerules")) {
-		add(AgentCline)
-	}
-	// kimi is detected via the project-level .kimi-code/ dir only. The user-level
-	// ~/.kimi-code always exists once kimi is installed — using it as an auto-detect
-	// signal would wire kimi on EVERY `forge init` (and break test hermeticity on any
-	// machine with kimi installed). Kimi users without a project dir pass
-	// `--agents kimi` explicitly; the wiring is user-level and idempotent, so one
-	// explicit init covers all projects (same philosophy as codex, see above).
-	//
-	// kimi 只按项目级 .kimi-code/ 目录检测。user-level 的 ~/.kimi-code 装上 kimi
-	// 后恒存在——拿它做 auto 检测信号会让每次 `forge init` 都接 kimi（并破坏任何
-	// 装有 kimi 机器上的测试密封性）。没有项目目录的 kimi 用户显式传
-	// `--agents kimi`；接线是 user-level 且幂等，显式 init 一次即覆盖所有项目
-	// （与 codex 同一哲学，见上文）。
-	if dirExists(filepath.Join(projectDir, ".kimi-code")) {
-		add(AgentKimi)
-	}
-	// reasonix is detected via the project-level .reasonix/ dir only — the same
-	// philosophy as kimi: reasonix's user-level home (~/.reasonix) exists whenever
-	// reasonix is installed, so using it as an auto-detect signal would wire
-	// reasonix on EVERY `forge init` (and break test hermeticity on any machine
-	// with reasonix installed). A project dir that has run reasonix at least once
-	// carries .reasonix/ — that's the "the user develops this project with
-	// reasonix" signal. Users on a fresh project pass `--agents reasonix` explicitly;
-	// the wiring is user-level and idempotent, so one explicit init covers all
-	// projects.
-	//
-	// reasonix 只按项目级 .reasonix/ 目录检测——与 kimi 同一哲学：reasonix 的用户级
-	// home（~/.reasonix）装上 reasonix 后恒存在，拿它做 auto 检测信号会让每次
-	// `forge init` 都接 reasonix（并破坏任何装有 reasonix 机器上的测试密封性）。
-	// 项目目录跑过至少一次 reasonix 即有 .reasonix/——那才是"用户用 reasonix 开发
-	// 此项目"的信号。新项目用户显式传 `--agents reasonix`；接线是 user-level 且
-	// 幂等，显式 init 一次即覆盖所有项目。
-	if dirExists(filepath.Join(projectDir, ".reasonix")) {
-		add(AgentReasonix)
+	// 项目级标记（遗留/团队模式项目）。委托给共享的 agentsignals 表——项目级 agent 标记的
+	// 唯一真相源，与 taskpipeline 的会话归因（detectAgentType）共享，使接线扫描与归因
+	// 扫描永不漂移。每条标记的设计理由（为何 .codex 而非 AGENTS.md、为何 kimi/reasonix
+	// 仅项目标记等）见 agentsignals.projectMarkers 各条旁。
+	for _, name := range agentsignals.ProjectAgentMarkers(projectDir) {
+		add(AgentType(name))
 	}
 
 	// User-level install indicators: the agent's config home exists iff the tool is
