@@ -327,3 +327,169 @@ func TestTaskAnswer_EmptyAllowed(t *testing.T) {
 		t.Errorf("empty answer should note「空答复」, got: %s", stdout)
 	}
 }
+
+// TestTaskDependsOn_GateBlocksUntilUpstreamDelivered pins the DependsOn gate (design phase 3): a
+// task cannot pass task-verify while an upstream it DependsOn is not delivered, and unblocks the
+// moment that upstream is delivered. Deliver is via the assignment path (assign→claim→deliver),
+// which sets Assignment.Status=delivered → IsDelivered true without forcing the upstream through
+// its own gates — proving the gate honors all three delivery shapes, not just "complete".
+//
+// TestTaskDependsOn_GateBlocksUntilUpstreamDelivered 钉住 DependsOn 门禁（设计阶段3）：task 在上游未交付时
+// 不能过 task-verify，上游一交付立即放行。交付走分派路径（assign→claim→deliver），置 Assignment.Status=
+// delivered → IsDelivered true，不强制上游过自身门禁——证明门禁认全部三种交付形态，而非仅 complete。
+func TestTaskDependsOn_GateBlocksUntilUpstreamDelivered(t *testing.T) {
+	dir := setupDelegateProject(t)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/up`, `--title`, `上游`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/down`, `--depends-on`, `feat/up`, `--title`, `下游`)
+
+	// B 过 task-verify：上游 feat/up 未交付 → HARD BLOCK（注入点在 prerequisite 之前，故最先触发）
+	stdout, _, code := runForge(t, dir, `task`, `gate`, `task-verify`, `--ref`, `feat/down`)
+	if code == 0 {
+		t.Fatalf(`task-verify 应因上游未交付 BLOCKED, got exit 0: %s`, stdout)
+	}
+	if !strings.Contains(stdout, `上游 task 未交付`) || !strings.Contains(stdout, `feat/up`) {
+		t.Errorf(`BLOCKED 信息应含「上游 task 未交付」+ feat/up, got: %s`, stdout)
+	}
+
+	// 让上游交付（assignment-delivered，无需过上游门禁）
+	runForge(t, dir, `task`, `assign`, `--ref`, `feat/up`, `--to`, `kimi`, `--by`, `claude-code`)
+	runForge(t, dir, `task`, `claim`, `--ref`, `feat/up`, `--as`, `kimi`)
+	runForge(t, dir, `task`, `deliver`, `--ref`, `feat/up`)
+
+	// 再过 B 的 task-verify：DependsOn 已满足，不再因依赖 BLOCKED（可能因 prerequisite 等其他原因 BLOCK，
+	// 但绝不应再是「上游未交付」——这正是门禁放行依赖的信号）
+	stdout, _, _ = runForge(t, dir, `task`, `gate`, `task-verify`, `--ref`, `feat/down`)
+	if strings.Contains(stdout, `上游 task 未交付`) {
+		t.Errorf(`上游已交付后不应再因依赖 BLOCKED, got: %s`, stdout)
+	}
+}
+
+// TestTaskMine_BlockedShowsPendingDeps: mine --blocked lists only tasks whose DependsOn is not
+// fully delivered, with the pending upstream refs in pending_deps. After the upstream is delivered
+// the task drops out of --blocked. This is the worker-facing view of the same PendingDependencies
+// the gate uses — mine and the gate cannot disagree on "blocked".
+//
+// TestTaskMine_BlockedShowsPendingDeps：mine --blocked 只列 DependsOn 未全交付的 task，pending_deps 带未
+// 交付上游 ref。上游交付后该 task 退出 --blocked。这是工作方视角看与门禁相同的 PendingDependencies——
+// mine 与门禁对「阻塞」不可能不一致。
+func TestTaskMine_BlockedShowsPendingDeps(t *testing.T) {
+	dir := setupDelegateProject(t)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/up`, `--title`, `上游`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/down`, `--depends-on`, `feat/up`, `--assignee`, `kimi`, `--role`, `frontend`, `--title`, `下游`)
+
+	out, _, code := runForge(t, dir, `task`, `mine`, `--agent`, `kimi`, `--blocked`, `--json`)
+	if code != 0 {
+		t.Fatalf(`mine --blocked exit %d: %s`, code, out)
+	}
+	if !strings.Contains(out, `feat/down`) {
+		t.Errorf(`mine --blocked 应含被阻塞的 feat/down, got: %s`, out)
+	}
+	if !strings.Contains(out, `pending_deps`) || !strings.Contains(out, `feat/up`) {
+		t.Errorf(`mine --blocked JSON 应含 pending_deps=[feat/up], got: %s`, out)
+	}
+
+	// 上游交付后 feat/down 不再 blocked，应从 --blocked 结果消失
+	runForge(t, dir, `task`, `assign`, `--ref`, `feat/up`, `--to`, `kimi`, `--by`, `claude-code`)
+	runForge(t, dir, `task`, `claim`, `--ref`, `feat/up`, `--as`, `kimi`)
+	runForge(t, dir, `task`, `deliver`, `--ref`, `feat/up`)
+	out, _, code = runForge(t, dir, `task`, `mine`, `--agent`, `kimi`, `--blocked`, `--json`)
+	if code != 0 {
+		t.Fatalf(`mine --blocked after deliver exit %d: %s`, code, out)
+	}
+	if strings.Contains(out, `feat/down`) {
+		t.Errorf(`上游交付后 feat/down 不再 blocked，应退出 --blocked 结果, got: %s`, out)
+	}
+}
+
+// TestTaskAbort_WarnsReverseDeps: aborting a task that others DependsOn surfaces the dangling
+// edge — the dependent's gate would now block forever on a missing upstream. We do NOT cascade-
+// abort, but the JSON carries dependents_blocked so an orchestrator can re-point or abort them.
+//
+// TestTaskAbort_WarnsReverseDeps：abort 一个被其他 task DependsOn 的 task 会暴露悬空边——依赖方门禁将
+// 因上游缺失永远阻塞。我们不级联 abort，但 JSON 带 dependents_blocked 让编排器可重指或 abort 它们。
+func TestTaskAbort_WarnsReverseDeps(t *testing.T) {
+	dir := setupDelegateProject(t)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/up`, `--title`, `上游`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/down`, `--depends-on`, `feat/up`, `--title`, `下游`)
+
+	out, _, code := runForge(t, dir, `task`, `abort`, `--ref`, `feat/up`, `--json`)
+	if code != 0 {
+		t.Fatalf(`abort exit %d: %s`, code, out)
+	}
+	if !strings.Contains(out, `dependents_blocked`) || !strings.Contains(out, `feat/down`) {
+		t.Errorf(`abort JSON 应含 dependents_blocked=[feat/down], got: %s`, out)
+	}
+}
+
+// TestTaskStart_DependsOnCycleRejected: AddDependency's cycle check has teeth at the CLI. A first
+// task may forward-reference a not-yet-created upstream (the edge is recorded; the gate later
+// treats missing as not-delivered), but closing a ring is rejected: A depends-on B, then B
+// depends-on A would deadlock the ring, so the second start fails with a cycle error.
+//
+// TestTaskStart_DependsOnCycleRejected：AddDependency 的环检测在 CLI 有牙。首个 task 可前向引用尚未创建
+// 的上游（边已记；门禁后把缺失当未交付），但闭合环被拒：A 依赖 B，再 B 依赖 A 会死锁环，故第二次 start
+// 因环错误失败。
+func TestTaskStart_DependsOnCycleRejected(t *testing.T) {
+	dir := setupDelegateProject(t)
+	// A 依赖 B（B 尚不存在 → 前向引用允许，lookup 返回 nil → 无环 → 接受）
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/a`, `--depends-on`, `feat/b`, `--title`, `A`)
+	// B 依赖 A：B→A→B（A 已依赖 B）闭合环 → 拒绝
+	stdout, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/b`, `--depends-on`, `feat/a`, `--title`, `B`)
+	if code == 0 {
+		t.Fatalf(`start feat/b --depends-on feat/a 应因环拒绝（B→A→B）, got exit 0: %s`, stdout)
+	}
+	if !strings.Contains(stdout, `环`) {
+		t.Errorf(`环拒绝信息应含「环」, got: %s`, stdout)
+	}
+}
+
+// TestTaskDependsOn_GateCompleteAlsoBlocks is a regression guard: the DependsOn gate condition is
+// `gateID == task-verify || gateID == task-complete`. The other E2E only exercises task-verify, so
+// if task-complete were dropped from the condition this test would catch it — an upstream-locked
+// task must not slip through completion either.
+//
+// TestTaskDependsOn_GateCompleteAlsoBlocks 是回归守卫：DependsOn 门禁条件是
+// `gateID == task-verify || gateID == task-complete`。另一 E2E 只走 task-verify，若 task-complete 被从
+// 条件里回归掉，本测试会抓到——上游未交付的 task 也不该溜过 completion。
+func TestTaskDependsOn_GateCompleteAlsoBlocks(t *testing.T) {
+	dir := setupDelegateProject(t)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/up`, `--title`, `上游`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/down`, `--depends-on`, `feat/up`, `--title`, `下游`)
+	stdout, _, code := runForge(t, dir, `task`, `gate`, `task-complete`, `--ref`, `feat/down`)
+	if code == 0 {
+		t.Fatalf(`task-complete 应因上游未交付 BLOCKED, got exit 0: %s`, stdout)
+	}
+	if !strings.Contains(stdout, `未交付`) {
+		t.Errorf(`task-complete BLOCKED 应含依赖未交付信息, got: %s`, stdout)
+	}
+}
+
+// TestTaskMine_MultipleDepsPendingList: with two upstream deps where one is delivered and the other
+// is not, mine --blocked must list only the still-pending one in pending_deps — the delivered
+// upstream must not appear. This guards PendingDependencies against reporting already-delivered refs.
+//
+// TestTaskMine_MultipleDepsPendingList：两个上游依赖中一个已交付一个未交付时，mine --blocked 的
+// pending_deps 必须只列仍未交付的那个——已交付的上游不应出现。守卫 PendingDependencies 不误报已交付 ref。
+func TestTaskMine_MultipleDepsPendingList(t *testing.T) {
+	dir := setupDelegateProject(t)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/a`, `--title`, `A`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/b`, `--title`, `B`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/down`, `--depends-on`, `feat/a`, `--depends-on`, `feat/b`, `--assignee`, `kimi`, `--title`, `下游`)
+	// 交付 A，B 仍 pending
+	runForge(t, dir, `task`, `assign`, `--ref`, `feat/a`, `--to`, `kimi`, `--by`, `claude-code`)
+	runForge(t, dir, `task`, `claim`, `--ref`, `feat/a`, `--as`, `kimi`)
+	runForge(t, dir, `task`, `deliver`, `--ref`, `feat/a`)
+	out, _, code := runForge(t, dir, `task`, `mine`, `--agent`, `kimi`, `--blocked`, `--json`)
+	if code != 0 {
+		t.Fatalf(`mine --blocked exit %d: %s`, code, out)
+	}
+	if !strings.Contains(out, `feat/down`) {
+		t.Errorf(`应含被阻塞的 feat/down, got: %s`, out)
+	}
+	if !strings.Contains(out, `feat/b`) {
+		t.Errorf(`pending_deps 应含未交付的 feat/b, got: %s`, out)
+	}
+	if strings.Contains(out, `feat/a`) {
+		t.Errorf(`已交付的 feat/a 不应出现在 mine 输出/pending_deps, got: %s`, out)
+	}
+}
