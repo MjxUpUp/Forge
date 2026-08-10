@@ -11,15 +11,15 @@ import (
 // delegation can stall in three ways: a zombie (offered unclaimed / claimed with the claimer
 // gone / a question left unanswered / a task no one keeps) or a deadlock (a dependency that can
 // never deliver). This file REPORTS those signals; it never mutates state. The actual claimed→
-// offered recovery is Abandon() in types.go, triggered by the hook layer (deferred) — task health
-// only surfaces the signal so a stuck task is not silently invisible (§16 phase 5 milestone:
-// 卡住的任务主动暴露). All time-based helpers take `now` so tests can mock the clock.
+// offered recovery is Abandon() in types.go, triggered by `forge task reclaim` (cli/task_assignment.go)
+// — task health only surfaces the signal so a stuck task is not silently invisible (§16 phase 5
+// milestone: 卡住的任务主动暴露). All time-based helpers take `now` so tests can mock the clock.
 //
 // health.go：只读的分派健康检测（设计 §12/§15 阶段5 可观测）。任务的分派可能以三种方式停滞：
 // 僵尸（offered 无人认领 / claimed 但认领方失联 / 问题无人答复 / 反复无人接手）或死锁（依赖永不可达）。
 // 本文件只「报告」这些信号，绝不改状态。真正的 claimed→offered 回收是 types.go 的 Abandon()，
-// 由 hook 层（延后）触发——task health 只把信号上浮，使卡住的任务不致静默隐形（§16 阶段5 里程碑：
-// 卡住的任务主动暴露）。所有基于时间的 helper 都接收 now，使测试可 mock 时钟。
+// 由 forge task reclaim（cli/task_assignment.go）触发——task health 只把信号上浮，使卡住的任务不致
+// 静默隐形（§16 阶段5 里程碑：卡住的任务主动暴露）。所有基于时间的 helper 都接收 now，使测试可 mock 时钟。
 
 // Zombie / deadlock thresholds (design §3/§12). A delegation idle past these windows is a zombie.
 //
@@ -322,4 +322,64 @@ func ClassifyTaskHealth(root string, s *TaskState, now time.Time, lookupState fu
 		h.DeadlockReason = `DependsOn 存在环（写入本应拒绝，疑似 import/损坏数据）`
 	}
 	return h
+}
+
+// childTerminal reports whether a child task has reached a state the orchestrator need not wait on
+// further: delivered (success), or failed/canceled (terminal-failure). Mirrors IsDelivered's
+// assigned-vs-unassigned split for the success case (an assigned child's delivery is its Assignment
+// status alone; an unassigned child — ordinary/generic — has only IsComplete), and additionally
+// accepts the two failure terminals per design §5 ("delivered 或终态"). Reusing IsDelivered's rule
+// keeps "is this child done?" consistent with "is this dependency done?" (DependencyReady), so a
+// code-task child that finishes its gates counts just like a delivered delegated child. An unassigned
+// generic child reaches IsComplete via `forge task complete` (its own gates) — it is NOT stuck; the
+// orchestrator just runs complete on the child (no Deliver path, since it has no Assignment).
+//
+// childTerminal 报告子任务是否已达编排器无需再等的态：delivered（成功）或 failed/canceled（终态失败）。
+// 成功分支镜像 IsDelivered 的有/无分派拆分（有分派子任务的交付只看 Assignment 状态；无分派子任务
+// ——普通/generic——只有 IsComplete），并按设计 §5「delivered 或终态」额外接受两种失败终态。复用
+// IsDelivered 的规则使「子任务是否完成?」与「依赖是否完成?」（DependencyReady）一致——跑完门禁的
+// code-task 子任务与已 delivered 的分派子任务同等对待。无分派的 generic 子任务经 forge task complete
+// （其自身门禁）达 IsComplete——不会卡死，编排器只需对该子任务跑 complete（无 Assignment 故无 Deliver 路径）。
+func childTerminal(s *TaskState) bool {
+	if s == nil {
+		return false
+	}
+	if s.Assignment != nil {
+		switch s.Assignment.Status {
+		case AssignDelivered, AssignFailed, AssignCanceled:
+			return true
+		}
+		return false
+	}
+	return s.IsComplete()
+}
+
+// OrchestrationReady reports whether a parent (orchestrator) task is ready to complete: true when
+// it has NO child tasks, or when ALL children (tasks whose ParentTaskRef points at parentRef) have
+// reached a terminal state (delivered/failed/canceled, or a complete unassigned child — see
+// childTerminal). When not ready, pending returns the still-non-terminal child refs in stable
+// iteration order. This is the single truth source for design §5 "全部子任务 delivered 或终态 → 编排
+// task 可 complete": surfaced as an advisory at complete-time and as a "ready" hint in task health.
+// A parent with non-terminal children is still COMPLETABLE (design: 不强制 complete) — this helper
+// only reports readiness, it never gates.
+//
+// OrchestrationReady 报告父（编排器）任务是否就绪可 complete：无子任务，或全部子任务（ParentTaskRef
+// 指向 parentRef 的）已达终态（delivered/failed/canceled，或无分派子任务 complete——见 childTerminal）
+// 时为 true。未就绪时 pending 返回仍非终态的子任务 ref，按稳定遍历序。这是设计 §5「全部子任务
+// delivered 或终态 → 编排 task 可 complete」的单一真相源：在 complete 时 advisory 提示、在 task
+// health 作「就绪」提示上浮。有非终态子任务的父任务仍可 complete（设计：不强制 complete）——本 helper
+// 只报就绪态，从不作门禁。
+func OrchestrationReady(states []*TaskState, parentRef string) (ready bool, pending []string) {
+	if parentRef == `` {
+		return true, nil
+	}
+	for _, s := range states {
+		if s == nil || s.ParentTaskRef != parentRef {
+			continue
+		}
+		if !childTerminal(s) {
+			pending = append(pending, s.TaskRef)
+		}
+	}
+	return len(pending) == 0, pending
 }
