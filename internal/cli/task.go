@@ -78,6 +78,8 @@ func init() {
 	taskCompleteCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
 	taskAbortCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
 	taskAbortCmd.Flags().Bool("json", false, "JSON 格式输出")
+	taskAbortCmd.Flags().Bool(`cascade`, false, `一并 abort 所有依赖此任务的 task（传递闭包，清除死链）`)
+	taskAbortCmd.Flags().Bool(`detach-deps`, false, `从依赖此任务的 task 的 DependsOn 移除该边（解除依赖，保留依赖方任务）`)
 	taskScoreCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
 	taskScoreCmd.Flags().Bool("json", false, "JSON 格式输出")
 	taskScoreCmd.Flags().Bool("history", false, "显示所有已完成任务的评分历史")
@@ -135,7 +137,7 @@ var taskCompleteCmd = &cobra.Command{
 }
 
 var taskAbortCmd = &cobra.Command{
-	Use:   "abort [--ref <ref>]",
+	Use:   "abort [--ref <ref>] [--cascade|--detach-deps]",
 	Short: "中止并删除任务（清理 ghost/卡住任务，不评分）",
 	RunE:  runTaskAbort,
 }
@@ -687,6 +689,21 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no task to abort. Specify --ref <task-ref> or run on a branch with an active task")
 	}
 
+	cascade, _ := cmd.Flags().GetBool(`cascade`)
+	detachDeps, _ := cmd.Flags().GetBool(`detach-deps`)
+	// The two flags are the two non-default branches of the design §4 "three-way" abort of a task
+	// others depend on. Mutually exclusive: --cascade deletes the dependents, --detach-deps keeps
+	// them but removes the now-dangling edge. Default = neither: abort only + warn, the milestone
+	// "废弃链被提示" behavior. The agent-neutral CLI surface replaces the design's interactive
+	// three-way prompt (an agent driving forge cannot answer an interactive stdin prompt reliably).
+	//
+	// 两个 flag 是设计§4 abort 被依赖任务「三选一」的两个非默认分支，互斥：--cascade 删依赖方，
+	// --detach-deps 留依赖方但摘掉悬空边。默认两者皆不传：仅 abort + warn，里程碑「废弃链被提示」行为。
+	// agent-neutral CLI 表层替代了设计的交互式三选一 prompt（驱动 forge 的 agent 无法可靠回答交互 stdin）。
+	if cascade && detachDeps {
+		return fmt.Errorf(`--cascade 与 --detach-deps 互斥：--cascade 一并 abort 依赖方，--detach-deps 仅摘依赖边保留依赖方`)
+	}
+
 	// Load before delete so the report can say whether the task was complete and
 	// retain the branch for the user's mental model. Missing file is not fatal: a stale
 	// active-task-ref may point to a task that no longer exists; the dangling pointer
@@ -699,27 +716,57 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 		state = loaded
 	}
 
-	// Reverse-dependency scan (design phase 3): aborting a task that others DependsOn leaves
-	// those dependents blocked forever (their gate reports the ref missing/not-delivered and never
-	// unblocks). We do NOT cascade-abort — a dependent may still be valuable with its upstream
-	// re-pointed — but we surface the dangling edge so the orchestrator can re-point or explicitly
-	// abort the dependents. Computed before delete so the just-aborted state is still scannable.
+	// Reverse-dependency scan (design phase 3 + §4 three-way): aborting a task that others
+	// DependsOn leaves those dependents blocked forever (their gate reports the ref missing/not-
+	// delivered and never unblocks). By default we do NOT cascade-abort — a dependent may still be
+	// valuable with its upstream re-pointed — but surface the dangling edge. --cascade aborts the
+	// whole transitive closure; --detach-deps removes just the edge. Computed before delete so the
+	// just-aborted state is still scannable.
 	//
-	// 反向依赖扫描（设计阶段3）：abort 一个被其他 task DependsOn 的 task，会让那些依赖方永远阻塞
-	// （门禁报该 ref 缺失/未交付且永不放行）。我们不级联 abort——依赖方在上游重指后可能仍有价值——
-	// 但暴露这条悬空边，让编排器可重指或显式 abort 依赖方。delete 前算，使刚 abort 的 state 仍可扫。
-	var dependents []string
-	if all, err := taskpipeline.ListTaskStates(root); err == nil {
-		for _, t := range all {
-			if t == nil || t.TaskRef == taskRef {
+	// 反向依赖扫描（设计阶段3 + §4 三选一）：abort 一个被其他 task DependsOn 的 task，会让依赖方永远阻塞
+	// （门禁报该 ref 缺失/未交付且永不放行）。默认不级联 abort——依赖方在上游重指后可能仍有价值——但暴露
+	// 悬空边。--cascade abort 整个传递闭包；--detach-deps 仅摘边。delete 前算，使刚 abort 的 state 仍可扫。
+	dependentsMap := map[string][]string{}
+	allStates, listErr := taskpipeline.ListTaskStates(root)
+	if listErr == nil {
+		for _, t := range allStates {
+			if t == nil {
 				continue
 			}
 			for _, d := range t.DependsOn {
-				if d == taskRef {
-					dependents = append(dependents, t.TaskRef)
-					break
-				}
+				dependentsMap[d] = append(dependentsMap[d], t.TaskRef)
 			}
+		}
+	}
+	// H1: --cascade/--detach-deps 是明确的「处理依赖」意图（非默认 warn 流程）。ListTaskStates 失败时
+	// 若静默跳过，空的 dependentsMap 会让级联/解绑降级为 no-op，而主 abort 仍成功——用户误以为依赖已处理，
+	// 实际停滞的依赖任务原样留存（JSON 还省略 cascaded 字段）。故扫描失败时对这两个 flag 明确报错，让用户
+	// 知道未执行并重试；默认 warn 流程不受影响（仍尽力 abort 主任务）。
+	if listErr != nil && (cascade || detachDeps) {
+		return fmt.Errorf(`扫描反向依赖失败，未执行 --cascade/--detach-deps：%v（请重试）`, listErr)
+	}
+	var dependents []string
+	for _, dep := range dependentsMap[taskRef] {
+		dependents = append(dependents, dep)
+	}
+	// cascade closure: transitive dependents (direct + indirect), breadth-first over the reverse
+	// map. A dependent whose upstream is gone can never pass its gate, so cascade clears the chain.
+	//
+	// cascade 闭包：传递依赖方（直接 + 间接），对反向 map 广度优先。依赖方上游已没，门禁永远过不了，
+	// 故 cascade 清除死链。
+	var cascaded []string
+	if cascade {
+		visited := map[string]bool{}
+		queue := append([]string{}, dependents...)
+		for len(queue) > 0 {
+			cur := queue[0]
+			queue = queue[1:]
+			if visited[cur] {
+				continue
+			}
+			visited[cur] = true
+			cascaded = append(cascaded, cur)
+			queue = append(queue, dependentsMap[cur]...)
 		}
 	}
 
@@ -742,6 +789,56 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// --cascade: abort every transitive dependent and clear its active-task-ref. Done after the
+	// primary delete; each DeleteTaskState tolerates ENOENT.
+	//
+	// --cascade：abort 每个传递依赖方并清其 active-task-ref。在主 delete 之后；各 DeleteTaskState 容忍 ENOENT。
+	//
+	// M3 已知限制（follow-up）：DeleteTaskState 是 os.Remove 无任务锁，与并发的 MutateTaskState 存在 TOCTOU——
+	// 若另一 forge 进程正持有某级联目标的任务锁、已 load 准备 save，我们的 remove 后其 save 会重建文件，
+	// 级联「成功」但目标复现。主 abort 同样如此；--cascade 把窗口放大 N 倍。彻底修复需 DeleteTaskState 走
+	// LockTask+remove+unlock，本任务不扩范围。
+	for _, depRef := range cascaded {
+		if err := taskpipeline.DeleteTaskState(root, depRef); err != nil && !os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, `Warning: failed to cascade-abort %s: %v`+"\n", depRef, err)
+		}
+		if ref := taskpipeline.ReadActiveTaskRef(root, sid); ref == depRef {
+			_ = taskpipeline.ClearActiveTaskRef(root, sid)
+		}
+	}
+
+	// --detach-deps: remove the now-dangling edge from each direct dependent, leaving the dependent
+	// task alive (it may still be valuable, just no longer waiting on this aborted upstream).
+	//
+	// --detach-deps：从每个直接依赖方摘掉这条悬空边，保留依赖方任务（它可能仍有价值，只是不再等这个已
+	// abort 的上游）。
+	var detached []string
+	if detachDeps {
+		for _, depRef := range dependents {
+			err := taskpipeline.MutateTaskState(root, depRef, func(s *taskpipeline.TaskState) error {
+				var kept []string
+				for _, d := range s.DependsOn {
+					if d != taskRef {
+						kept = append(kept, d)
+					}
+				}
+				s.DependsOn = kept
+				return nil
+			})
+			if err != nil {
+				fmt.Fprintf(os.Stderr, `Warning: failed to detach dep edge on %s: %v`+"\n", depRef, err)
+				continue
+			}
+			detached = append(detached, depRef)
+		}
+	}
+
+	// M1: dependents/cascaded/detached 的原始顺序随 ListTaskStates 的 ReadDir（跨平台 FS 顺序不定），
+	// 排序后输出稳定——JSON 消费者不因遍历顺序间歇失败，stderr warn 也确定。级联最终状态与顺序无关。
+	slices.Sort(dependents)
+	slices.Sort(cascaded)
+	slices.Sort(detached)
+
 	if asJSON {
 		out := map[string]any{
 			"task_ref": taskRef,
@@ -753,6 +850,12 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 		}
 		if len(dependents) > 0 {
 			out[`dependents_blocked`] = dependents
+		}
+		if len(cascaded) > 0 {
+			out[`cascaded`] = cascaded
+		}
+		if len(detached) > 0 {
+			out[`detached`] = detached
 		}
 		b, _ := json.Marshal(out)
 		fmt.Println(string(b))
@@ -768,9 +871,14 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 			fmt.Printf("Branch: %s (left untouched — abort only removes forge state)\n", state.Branch)
 		}
 	}
-	if len(dependents) > 0 {
-		fmt.Fprintf(os.Stderr, `Warning: %d task(s) depend on this one (%s); their gate will now block on a missing upstream — re-point the dependency or abort them too.`, len(dependents), strings.Join(dependents, `, `))
-		fmt.Fprintln(os.Stderr)
+	if len(cascaded) > 0 {
+		fmt.Fprintf(os.Stderr, `Cascade-aborted %d dependent(s): %s`+"\n", len(cascaded), strings.Join(cascaded, `, `))
+	}
+	if len(detached) > 0 {
+		fmt.Fprintf(os.Stderr, `Detached dep edge on %d dependent(s): %s`+"\n", len(detached), strings.Join(detached, `, `))
+	}
+	if len(dependents) > 0 && !cascade && !detachDeps {
+		fmt.Fprintf(os.Stderr, `Warning: %d task(s) depend on this one (%s); their gate will now block on a missing upstream. Re-run with --cascade to abort them too, or --detach-deps to unlink them.`+"\n", len(dependents), strings.Join(dependents, `, `))
 	}
 	fmt.Println("Code changes are untouched. Re-start with: forge task start --ref " + taskRef)
 	return nil
