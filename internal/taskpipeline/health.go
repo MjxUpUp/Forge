@@ -99,6 +99,24 @@ func assignmentInFlight(s *TaskState) bool {
 	return false
 }
 
+// effectiveTTL returns the per-task zombie-window override when the task sets one (s.TTL > 0),
+// otherwise the supplied global default. This is the single read point for design §3/§9 --ttl:
+// IsOfferedZombie / IsClaimedStale / IsInputReqStale each pass their own global constant here, so a
+// task with a TTL is overridden uniformly and a task without is untouched. A nil state or
+// non-positive TTL falls back — zero is the omitempty default, so legacy tasks pre-dating the field
+// behave exactly as before.
+//
+// effectiveTTL 在任务设置了 per-task TTL（s.TTL > 0）时返回它，否则返回传入的全局默认。这是设计
+// §3/§9 --ttl 的唯一读取点：IsOfferedZombie / IsClaimedStale / IsInputReqStale 各把自己的全局常量
+// 传进来，设了 TTL 的任务被统一覆盖，没设的任务不受影响。nil state 或非正 TTL 回落——零值是
+// omitempty 默认，故早于该字段的 legacy 任务行为完全不变。
+func effectiveTTL(s *TaskState, globalDefault time.Duration) time.Duration {
+	if s != nil && s.TTL > 0 {
+		return s.TTL
+	}
+	return globalDefault
+}
+
 // IsOfferedZombie reports whether an offered task has sat unclaimed past OfferedZombieTTL, and
 // its age since the baseline. The baseline is the NEWEST of OfferedAt and AbandonedAt: Abandon()
 // (claimed→offered recovery) sets AbandonedAt=now, so a freshly-reclaimed task resets its clock
@@ -121,7 +139,7 @@ func IsOfferedZombie(s *TaskState, now time.Time) (bool, time.Duration) {
 		return false, 0
 	}
 	age := now.Sub(baseline)
-	return age > OfferedZombieTTL, age
+	return age > effectiveTTL(s, OfferedZombieTTL), age
 }
 
 // IsClaimedStale reports whether a claimed task has had no checklog activity past ClaimedZombieTTL
@@ -144,7 +162,7 @@ func IsClaimedStale(root string, s *TaskState, now time.Time) (bool, time.Durati
 		return false, 0
 	}
 	age := now.Sub(baseline)
-	return age > ClaimedZombieTTL, age
+	return age > effectiveTTL(s, ClaimedZombieTTL), age
 }
 
 // IsInputReqStale reports whether an input-required task has had no progress past InputReqZombieTTL
@@ -171,7 +189,7 @@ func IsInputReqStale(root string, s *TaskState, now time.Time) (bool, time.Durat
 		return false, 0
 	}
 	age := now.Sub(baseline)
-	return age > InputReqZombieTTL, age
+	return age > effectiveTTL(s, InputReqZombieTTL), age
 }
 
 // IsRepeatAbandon reports whether an in-flight task has been reclaimed (claimed→offered via

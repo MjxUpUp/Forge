@@ -149,11 +149,11 @@ const (
 // Status 是协作维度（谁在做、协作到哪阶段）；task gate 是质量维度（implement/verify/complete）。
 // delivered ≠ complete——交付了但门禁未全过是合法中间态。此分层让「交付」与「质量验收」解耦。
 type Assignment struct {
-	Agent          string     `json:"agent"`                     // ∈ agentsignals 已知集（写入校验，未知即拒）
-	Role           string     `json:"role,omitempty"`            // frontend/backend/orchestrator（可选）
-	Status         string     `json:"status"`                    // Assign* 枚举之一
-	OfferedBy      string     `json:"offered_by,omitempty"`      // 派发的编排器 agent
-	OfferedAt      *time.Time `json:"offered_at,omitempty"`        // 派发时间（TTL 基准；*time.Time 因 encoding/json 的 omitempty 对 time.Time 不生效）
+	Agent          string     `json:"agent"`                // ∈ agentsignals 已知集（写入校验，未知即拒）
+	Role           string     `json:"role,omitempty"`       // frontend/backend/orchestrator（可选）
+	Status         string     `json:"status"`               // Assign* 枚举之一
+	OfferedBy      string     `json:"offered_by,omitempty"` // 派发的编排器 agent
+	OfferedAt      *time.Time `json:"offered_at,omitempty"` // 派发时间（TTL 基准；*time.Time 因 encoding/json 的 omitempty 对 time.Time 不生效）
 	ClaimedAt      *time.Time `json:"claimed_at,omitempty"`
 	DeliveredAt    *time.Time `json:"delivered_at,omitempty"`
 	LastQuestion   string     `json:"last_question,omitempty"`   // input-required 时的回抛内容
@@ -300,6 +300,18 @@ type TaskState struct {
 	ParentTaskRef string        `json:"parent_task_ref,omitempty"` // 子任务指向父 task ref（subtask 拆解）
 	DependsOn     []string      `json:"depends_on,omitempty"`      // 依赖的前序 task ref（任务间依赖）
 	Assignment    *Assignment   `json:"assignment,omitempty"`      // 任务分派（owner agent + 协作生命周期状态）；nil = 普通未分派任务，零行为变化
+
+	// TTL is the per-task zombie-window override (design §3/§9 --ttl). When > 0 it overrides the
+	// global Offered/Claimed/InputReq zombie constants for THIS task only, so a short-fuse delegation
+	// surfaces as stale sooner (or a long runner gets more room) without changing the window every
+	// other task shares. Zero — the default for tasks started without --ttl — falls back to the
+	// global constant: fully backward compatible, no migration. health.effectiveTTL is the read side.
+	//
+	// TTL 是 per-task 僵尸窗口覆盖（设计 §3/§9 --ttl）。> 0 时仅对本任务覆盖全局
+	// Offered/Claimed/InputReq 僵尸常量：短时效分派更快被标失联（或长跑任务给更多余量），而不改
+	// 所有其他任务共享的窗口。零值——不带 --ttl 启动的默认——回落全局常量：完全向后兼容，无需迁移。
+	// health.effectiveTTL 是读取侧。
+	TTL time.Duration `json:"ttl,omitempty"`
 }
 
 // TaskGateResult records the result of a single task gate.
