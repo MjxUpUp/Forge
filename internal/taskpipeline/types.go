@@ -788,6 +788,38 @@ func (s *TaskState) IsOfferedTo(agent string) bool {
 	return s.Assignment != nil && s.Assignment.Status == AssignOffered && s.Assignment.Agent == agent
 }
 
+// ShouldNotify reports whether this offered task should be pushed at SessionStart at instant now
+// (design §8 ③ NotifiedAt 去重). Rule: the offer-baseline — max(OfferedAt, AbandonedAt), mirroring
+// IsOfferedZombie — must be newer than the last NotifiedAt (or NotifiedAt must be nil). After
+// Abandon re-offers a task, AbandonedAt advances past the prior NotifiedAt, so the next session
+// re-notifies; without a fresh abandon/re-offer, subsequent sessions stay silent (anti-轰炸). now
+// is injected (not time.Now) so tests are deterministic. nil-receiver safe.
+//
+// ShouldNotify 报告此 offered 任务在 now 时刻是否应在 SessionStart 推送（设计 §8 ③ NotifiedAt
+// 去重）。规则：派发基线——max(OfferedAt, AbandonedAt)，镜像 IsOfferedZombie——须晚于上次
+// NotifiedAt（或 NotifiedAt 为 nil）。Abandon 重新派发后 AbandonedAt 越过旧 NotifiedAt，故下次
+// 会话重新推送；无新的 abandon/重新派发则后续会话保持静默（防轰炸）。now 注入（非 time.Now）
+// 使测试确定。nil 接收者安全。
+func (a *Assignment) ShouldNotify(now time.Time) bool {
+	if a == nil || a.Status != AssignOffered {
+		return false
+	}
+	var baseline time.Time
+	if a.OfferedAt != nil {
+		baseline = *a.OfferedAt
+	}
+	if a.AbandonedAt != nil && a.AbandonedAt.After(baseline) {
+		baseline = *a.AbandonedAt
+	}
+	if a.NotifiedAt == nil {
+		return true // 首次推送（即便基线为零——legacy 状态也推一次）
+	}
+	if baseline.IsZero() {
+		return false // 无基线可越过 NotifiedAt——已推过一次
+	}
+	return baseline.After(*a.NotifiedAt)
+}
+
 // AssignTo creates an offered-status Assignment delegating the task to agent. It refuses if an
 // assignment already exists (re-delegation goes through a dedicated reassign path that records the
 // prior owner), so a task never silently changes owner. by is the orchestrator agent that offered it.

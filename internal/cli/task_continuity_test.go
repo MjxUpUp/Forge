@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -771,5 +772,465 @@ func TestRenderHookResume_AnchoredNoTool(t *testing.T) {
 	}
 	if reloaded.SessionLinks[0].Tool != "kimi" {
 		t.Errorf("既有锚定的工具归属不应被改写，实得 %q", reloaded.SessionLinks[0].Tool)
+	}
+}
+
+// ── phase-1 remainder: offered-chain + offered-block + auto-claim tests ──
+// All literals below are backtick raw strings: Windows quote-corrosion turns ASCII " into CJK
+// curly quotes in Go source, so no double-quoted literal is introduced here. No raw string holds
+// a \n (a literal backslash-n under backticks); the only newline inside renderOfferedBlock is built
+// from the numeric byte 10 (realNewlineString) in the production code itself.
+//
+// 以下为 phase-1 剩余的 offered-chain / offered-block / 自动认领测试。所有字面量均为反引号 raw
+// string：Windows 引号腐蚀会把 Go 源里的 ASCII " 转成 CJK 弯引号，故此处不引入双引号字面。
+// raw string 内不含 \n（反引号下是字面 backslash-n）；renderOfferedBlock 内唯一换行在生产代码里
+// 用数值字节 10（realNewlineString）构造。
+
+// ptrHoursAgo returns a pointer to a time n hours in the past — for explicit NotifiedAt/OfferedAt
+// in tests that must not depend on Windows' ~15ms clock resolution (near-simultaneous time.Now()
+// calls are flaky there).
+func ptrHoursAgo(n int) *time.Time {
+	t := time.Now().Add(-time.Duration(n) * time.Hour)
+	return &t
+}
+
+// offeredKimiTask builds an incomplete task offered to kimi (Status=offered, OfferedAt=now). parent
+// is the optional ParentTaskRef (empty = not in a chain). Stands up the offered-to-me population
+// that appendOfferedBlock filters + renders. Mirrors what TaskState.AssignTo would produce.
+func offeredKimiTask(ref, parent, summary string) *taskpipeline.TaskState {
+	now := time.Now()
+	return &taskpipeline.TaskState{
+		TaskRef:       ref,
+		Branch:        ref,
+		ParentTaskRef: parent,
+		Summary:       summary,
+		Assignment: &taskpipeline.Assignment{
+			Agent:     `kimi`,
+			Role:      `frontend`,
+			Status:    taskpipeline.AssignOffered,
+			OfferedBy: `claude-code`,
+			OfferedAt: &now,
+		},
+	}
+}
+
+func saveAll(t *testing.T, root string, states ...*taskpipeline.TaskState) {
+	t.Helper()
+	for _, s := range states {
+		if e := taskpipeline.SaveTaskState(root, s); e != nil {
+			t.Fatalf(`SaveTaskState %s: %v`, s.TaskRef, e)
+		}
+	}
+}
+
+// noOfferedEnv sets the env that makes ActiveTaskState fall to the inventory branch (no session
+// ref, branch won't match) while detectOriginTool resolves to kimi — the no-active offered-block
+// case. CLAUDE_CODE_SESSION_ID is cleared so FORGE_AGENT=kimi wins detection unambiguously.
+func noOfferedEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv(`FORGE_AGENT`, `kimi`)
+	t.Setenv(`CLAUDE_CODE_SESSION_ID`, ``)
+	t.Setenv(`FORGE_SESSION_ID`, ``)
+}
+
+// TestOfferedChainSiblings pins the v1 chain definition: same ParentTaskRef (exact match), active
+// excluded from its own sibling set, and nil when active is nil or has no parent.
+func TestOfferedChainSiblings(t *testing.T) {
+	active := &taskpipeline.TaskState{TaskRef: `feat/me`, ParentTaskRef: `feat/orch`}
+	sib := func(ref string) *taskpipeline.TaskState {
+		return &taskpipeline.TaskState{TaskRef: ref, ParentTaskRef: `feat/orch`}
+	}
+	if got := offeredChainSiblings(nil, []*taskpipeline.TaskState{sib(`feat/a`)}); got != nil {
+		t.Errorf(`nil active 须返 nil，实得 %v`, got)
+	}
+	noParent := &taskpipeline.TaskState{TaskRef: `feat/me`}
+	if got := offeredChainSiblings(noParent, []*taskpipeline.TaskState{sib(`feat/a`)}); got != nil {
+		t.Errorf(`active 无 ParentTaskRef 须返 nil，实得 %v`, got)
+	}
+	offered := []*taskpipeline.TaskState{
+		sib(`feat/a`),
+		{TaskRef: `feat/me`, ParentTaskRef: `feat/orch`},
+		{TaskRef: `feat/b`, ParentTaskRef: `feat/other`},
+		sib(`feat/c`),
+	}
+	got := offeredChainSiblings(active, offered)
+	if len(got) != 2 {
+		t.Fatalf(`应得 2 个同链兄弟（feat/a, feat/c），实得 %d: %v`, len(got), got)
+	}
+	refs := map[string]bool{}
+	for _, s := range got {
+		refs[s.TaskRef] = true
+	}
+	if !refs[`feat/a`] || !refs[`feat/c`] || refs[`feat/me`] {
+		t.Errorf(`同链兄弟集错误，应只含 feat/a 与 feat/c（排除自身），实得 %v`, refs)
+	}
+}
+
+// TestOfferedBlock_AppendAdditive: with no active task, the inventory AND the offered one-liner
+// both appear (additive — inventory is not replaced), and NotifiedAt is stamped on emit.
+func TestOfferedBlock_AppendAdditive(t *testing.T) {
+	root, _ := forgedatatest.RealProject(t)
+	noOfferedEnv(t)
+	saveAll(t, root,
+		offeredKimiTask(`feat/a`, ``, `任务甲`),
+		offeredKimiTask(`feat/b`, ``, `任务乙`),
+	)
+	out, err := renderHookResume(root)
+	if err != nil {
+		t.Fatalf(`renderHookResume: %v`, err)
+	}
+	if !strings.Contains(out, `feat/a`) || !strings.Contains(out, `feat/b`) {
+		t.Errorf(`additive: 盘点应仍在（feat/a/feat/b），实得 %q`, out)
+	}
+	if !strings.Contains(out, `待认领`) || !strings.Contains(out, `本 project 有 2 个待认领`) {
+		t.Errorf(`应附加 one-liner「本 project 有 2 个待认领」，实得 %q`, out)
+	}
+	for _, ref := range []string{`feat/a`, `feat/b`} {
+		s, _ := taskpipeline.LoadTaskState(root, ref)
+		if s == nil || s.Assignment == nil || s.Assignment.NotifiedAt == nil {
+			t.Errorf(`%s 推送后应落 NotifiedAt，state=%v`, ref, s)
+		}
+	}
+}
+
+// TestOfferedBlock_DedupAndReNotify pins the NotifiedAt wiring end-to-end: first call emits +
+// stamps; second call is suppressed (NotifiedAt >= OfferedAt); a genuine re-offer (OfferedAt
+// bumped past NotifiedAt) re-notifies only the re-offered task.
+func TestOfferedBlock_DedupAndReNotify(t *testing.T) {
+	root, _ := forgedatatest.RealProject(t)
+	noOfferedEnv(t)
+	saveAll(t, root,
+		offeredKimiTask(`feat/a`, ``, `任务甲`),
+		offeredKimiTask(`feat/b`, ``, `任务乙`),
+	)
+	out1, err := renderHookResume(root)
+	if err != nil {
+		t.Fatalf(`第 1 次 renderHookResume: %v`, err)
+	}
+	if !strings.Contains(out1, `待认领`) {
+		t.Fatalf(`首次应推送待认领，实得 %q`, out1)
+	}
+	out2, err := renderHookResume(root)
+	if err != nil {
+		t.Fatalf(`第 2 次 renderHookResume: %v`, err)
+	}
+	if strings.Contains(out2, `待认领`) {
+		t.Errorf(`第 2 次应去重不推送，实得 %q`, out2)
+	}
+	// re-offer B: bump OfferedAt past its NotifiedAt → fresh again → re-notify (only B).
+	b, _ := taskpipeline.LoadTaskState(root, `feat/b`)
+	if b == nil || b.Assignment == nil || b.Assignment.NotifiedAt == nil {
+		t.Fatalf(`feat/b 应已被首次推送设 NotifiedAt，state=%v`, b)
+	}
+	now := time.Now()
+	b.Assignment.OfferedAt = &now
+	if e := taskpipeline.SaveTaskState(root, b); e != nil {
+		t.Fatalf(`SaveTaskState feat/b: %v`, e)
+	}
+	out3, err := renderHookResume(root)
+	if err != nil {
+		t.Fatalf(`re-offer 后 renderHookResume: %v`, err)
+	}
+	if !strings.Contains(out3, `待认领`) {
+		t.Errorf(`re-offer 后应重新推送待认领，实得 %q`, out3)
+	}
+	if !strings.Contains(out3, `本 project 有 1 个待认领`) {
+		t.Errorf(`re-offer 后应只剩 feat/b（1 个）待认领，实得 %q`, out3)
+	}
+}
+
+// TestOfferedBlock_WithActiveNotInChain: an active task with no ParentTaskRef collapses the offered
+// set to a one-liner (the active-is-orchestrator case — orchestrators use task mine; the push is
+// worker-facing). Handoff stays intact.
+func TestOfferedBlock_WithActiveNotInChain(t *testing.T) {
+	root, _ := forgedatatest.RealProject(t)
+	t.Setenv(`FORGE_AGENT`, `kimi`)
+	t.Setenv(`CLAUDE_CODE_SESSION_ID`, ``)
+	t.Setenv(`FORGE_SESSION_ID`, `sid-x`)
+	active := &taskpipeline.TaskState{TaskRef: `feat/me`, Branch: `feat/me`, Goal: `编排主任务`}
+	saveAll(t, root, active,
+		offeredKimiTask(`feat/a`, ``, `任务甲`),
+		offeredKimiTask(`feat/b`, ``, `任务乙`),
+	)
+	if e := taskpipeline.SetActiveTaskRef(root, `sid-x`, `feat/me`); e != nil {
+		t.Fatalf(`SetActiveTaskRef: %v`, e)
+	}
+	out, err := renderHookResume(root)
+	if err != nil {
+		t.Fatalf(`renderHookResume: %v`, err)
+	}
+	if !strings.Contains(out, `待认领`) || !strings.Contains(out, `本 project 有 2 个待认领`) {
+		t.Errorf(`应 one-liner「2 个待认领」，实得 %q`, out)
+	}
+	if strings.Contains(out, `同链待认领`) {
+		t.Errorf(`active 无 ParentTaskRef 不应进同链分档，实得 %q`, out)
+	}
+	if !strings.Contains(out, `编排主任务`) {
+		t.Errorf(`handoff 应仍在（编排主任务），实得 %q`, out)
+	}
+}
+
+// TestOfferedBlock_WithActiveInChain: an active task inside an orchestration chain lists same-chain
+// offered siblings (ready-ordered) and folds non-siblings into a count — never the one-liner.
+func TestOfferedBlock_WithActiveInChain(t *testing.T) {
+	root, _ := forgedatatest.RealProject(t)
+	t.Setenv(`FORGE_AGENT`, `kimi`)
+	t.Setenv(`CLAUDE_CODE_SESSION_ID`, ``)
+	t.Setenv(`FORGE_SESSION_ID`, `sid-x`)
+	active := &taskpipeline.TaskState{TaskRef: `feat/me`, Branch: `feat/me`, ParentTaskRef: `feat/orch`, Goal: `编排链主任务`}
+	saveAll(t, root, active,
+		offeredKimiTask(`feat/sib-a`, `feat/orch`, `兄弟甲`),
+		offeredKimiTask(`feat/sib-b`, `feat/orch`, `兄弟乙`),
+		offeredKimiTask(`feat/other`, `feat/x`, `非同链`),
+	)
+	if e := taskpipeline.SetActiveTaskRef(root, `sid-x`, `feat/me`); e != nil {
+		t.Fatalf(`SetActiveTaskRef: %v`, e)
+	}
+	out, err := renderHookResume(root)
+	if err != nil {
+		t.Fatalf(`renderHookResume: %v`, err)
+	}
+	if !strings.Contains(out, `同链待认领`) {
+		t.Errorf(`应进同链分档，实得 %q`, out)
+	}
+	if !strings.Contains(out, `feat/sib-a`) || !strings.Contains(out, `feat/sib-b`) {
+		t.Errorf(`应列出同链兄弟 feat/sib-a/feat/sib-b，实得 %q`, out)
+	}
+	if !strings.Contains(out, `另有 1 个非同链待认领`) {
+		t.Errorf(`应附「另有 1 个非同链」，实得 %q`, out)
+	}
+	if strings.Contains(out, `本 project 有`) {
+		t.Errorf(`同链分档时不应出 one-liner，实得 %q`, out)
+	}
+}
+
+// TestOfferedBlock_ReadinessMarker: a sibling with an undelivered DependsOn is marked ⏳阻塞中;
+// one with no pending deps is marked ✅可开干. PendingDependencies is the same primitive the
+// DependsOn gate + task mine --blocked use, so push and gate cannot disagree.
+func TestOfferedBlock_ReadinessMarker(t *testing.T) {
+	root, _ := forgedatatest.RealProject(t)
+	t.Setenv(`FORGE_AGENT`, `kimi`)
+	t.Setenv(`CLAUDE_CODE_SESSION_ID`, ``)
+	t.Setenv(`FORGE_SESSION_ID`, `sid-x`)
+	active := &taskpipeline.TaskState{TaskRef: `feat/me`, Branch: `feat/me`, ParentTaskRef: `feat/orch`, Goal: `编排链主任务`}
+	dep := &taskpipeline.TaskState{TaskRef: `feat/dep`, Branch: `feat/dep`, Goal: `前置依赖`} // incomplete → blocks
+	sibReady := offeredKimiTask(`feat/sib-ready`, `feat/orch`, `就绪兄弟`)
+	sibBlocked := offeredKimiTask(`feat/sib-blocked`, `feat/orch`, `阻塞兄弟`)
+	sibBlocked.DependsOn = []string{`feat/dep`}
+	saveAll(t, root, active, dep, sibReady, sibBlocked)
+	if e := taskpipeline.SetActiveTaskRef(root, `sid-x`, `feat/me`); e != nil {
+		t.Fatalf(`SetActiveTaskRef: %v`, e)
+	}
+	out, err := renderHookResume(root)
+	if err != nil {
+		t.Fatalf(`renderHookResume: %v`, err)
+	}
+	if !strings.Contains(out, `✅可开干`) {
+		t.Errorf(`就绪兄弟应标 ✅可开干，实得 %q`, out)
+	}
+	if !strings.Contains(out, `⏳阻塞中`) {
+		t.Errorf(`依赖未交付的兄弟应标 ⏳阻塞中，实得 %q`, out)
+	}
+}
+
+// TestOfferedBlock_AgentEmptySkip: when the agent can't be attributed (codex/cursor/opencode/
+// codebuddy gap), appendOfferedBlock is a clean no-op — output unchanged, zero NotifiedAt mutation.
+func TestOfferedBlock_AgentEmptySkip(t *testing.T) {
+	root, _ := forgedatatest.RealProject(t)
+	t.Setenv(`FORGE_AGENT`, ``)
+	t.Setenv(`CLAUDE_CODE_SESSION_ID`, ``)
+	t.Setenv(`FORGE_SESSION_ID`, ``)
+	saveAll(t, root,
+		offeredKimiTask(`feat/a`, ``, `任务甲`),
+		offeredKimiTask(`feat/b`, ``, `任务乙`),
+	)
+	out, err := renderHookResume(root)
+	if err != nil {
+		t.Fatalf(`renderHookResume: %v`, err)
+	}
+	if strings.Contains(out, `待认领`) {
+		t.Errorf(`agent 未知时应 no-op（不附加块），实得 %q`, out)
+	}
+	for _, ref := range []string{`feat/a`, `feat/b`} {
+		s, _ := taskpipeline.LoadTaskState(root, ref)
+		if s != nil && s.Assignment != nil && s.Assignment.NotifiedAt != nil {
+			t.Errorf(`%s no-op 时不应落 NotifiedAt，state=%v`, ref, s)
+		}
+	}
+}
+
+// TestOfferedBlock_ZombieExcluded: a >7d-stale offered task is an offered-zombie — excluded from
+// the push (zombies surface via task mine/dashboard, not the per-session push) and gets no
+// NotifiedAt.
+func TestOfferedBlock_ZombieExcluded(t *testing.T) {
+	root, _ := forgedatatest.RealProject(t)
+	noOfferedEnv(t)
+	zombie := offeredKimiTask(`feat/zombie`, ``, `僵尸 offer`)
+	zombie.Assignment.OfferedAt = ptrHoursAgo(10 * 24) // >7d stale → offered-zombie
+	saveAll(t, root, zombie,
+		&taskpipeline.TaskState{TaskRef: `feat/plain`, Branch: `feat/plain`, Goal: `普通任务`},
+	)
+	out, err := renderHookResume(root)
+	if err != nil {
+		t.Fatalf(`renderHookResume: %v`, err)
+	}
+	if strings.Contains(out, `待认领`) {
+		t.Errorf(`offered 僵尸应排除不推送，实得 %q`, out)
+	}
+	z, _ := taskpipeline.LoadTaskState(root, `feat/zombie`)
+	if z != nil && z.Assignment != nil && z.Assignment.NotifiedAt != nil {
+		t.Errorf(`僵尸排除时不应落 NotifiedAt，state=%v`, z)
+	}
+}
+
+// TestOfferedBlock_DoesNotAlterHandoff: when the active task is itself offered-to-me (resolved via
+// SetActiveTaskRef), it is handed off AND excluded from the offered block — listing it as 待认领
+// while handing it off would be contradictory. Block shows only the other offered task (count 1).
+func TestOfferedBlock_DoesNotAlterHandoff(t *testing.T) {
+	root, _ := forgedatatest.RealProject(t)
+	t.Setenv(`FORGE_AGENT`, `kimi`)
+	t.Setenv(`CLAUDE_CODE_SESSION_ID`, ``)
+	t.Setenv(`FORGE_SESSION_ID`, `sid-x`)
+	active := offeredKimiTask(`feat/me`, ``, `被接手的 offered 任务`)
+	saveAll(t, root, active, offeredKimiTask(`feat/other`, ``, `另一个 offered`))
+	if e := taskpipeline.SetActiveTaskRef(root, `sid-x`, `feat/me`); e != nil {
+		t.Fatalf(`SetActiveTaskRef: %v`, e)
+	}
+	out, err := renderHookResume(root)
+	if err != nil {
+		t.Fatalf(`renderHookResume: %v`, err)
+	}
+	if !strings.Contains(out, `feat/me`) {
+		t.Errorf(`handoff 应含 feat/me，实得 %q`, out)
+	}
+	if !strings.Contains(out, `本 project 有 1 个待认领`) {
+		t.Errorf(`offered 块应只 1 个（feat/other，排除 active），实得 %q`, out)
+	}
+	if strings.Contains(out, `本 project 有 2 个待认领`) {
+		t.Errorf(`active 不应被重复列为待认领，实得 %q`, out)
+	}
+}
+
+// TestTaskResume_AutoClaim_HappyPath: resume of an offered-to-me task auto-claims it (offered→
+// claimed), prints the stderr notice, and anchors the session — the manual `task claim` step is
+// gone (design §3).
+func TestTaskResume_AutoClaim_HappyPath(t *testing.T) {
+	dir := setupDelegateProject(t)
+	if out, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/delegate`, `--title`, `被分派`); code != 0 {
+		t.Fatalf(`task start exit %d: %s`, code, out)
+	}
+	if out, _, code := runForge(t, dir, `task`, `assign`, `--ref`, `feat/delegate`, `--to`, `kimi`, `--role`, `frontend`, `--by`, `claude-code`); code != 0 {
+		t.Fatalf(`task assign exit %d: %s`, code, out)
+	}
+	t.Setenv(`FORGE_AGENT`, `kimi`)
+	out, _, code := runForge(t, dir, `task`, `resume`, `--ref`, `feat/delegate`)
+	if code != 0 {
+		t.Fatalf(`resume exit %d: %s`, code, out)
+	}
+	if !strings.Contains(out, `已自动认领任务 feat/delegate（kimi）`) {
+		t.Errorf(`应 stderr 提示已自动认领，实得 %q`, out)
+	}
+	st, _ := taskpipeline.LoadTaskState(dir, `feat/delegate`)
+	if st == nil || st.Assignment == nil || st.Assignment.Status != taskpipeline.AssignClaimed {
+		t.Fatalf(`auto-claim 后应 claimed，state=%v`, st)
+	}
+	if got := taskpipeline.ReadActiveTaskRef(dir, `delegate-test-sid`); got != `feat/delegate` {
+		t.Errorf(`应锚定 active-task-ref-delegate-test-sid=feat/delegate，实得 %q`, got)
+	}
+}
+
+// TestTaskResume_AutoClaim_NotOffered: a plain (never-assigned) task is not auto-claimed.
+func TestTaskResume_AutoClaim_NotOffered(t *testing.T) {
+	dir := setupDelegateProject(t)
+	if out, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/delegate`, `--title`, `普通任务`); code != 0 {
+		t.Fatalf(`task start exit %d: %s`, code, out)
+	}
+	t.Setenv(`FORGE_AGENT`, `kimi`)
+	out, _, code := runForge(t, dir, `task`, `resume`, `--ref`, `feat/delegate`)
+	if code != 0 {
+		t.Fatalf(`resume exit %d: %s`, code, out)
+	}
+	if strings.Contains(out, `已自动认领`) {
+		t.Errorf(`未分派的任务不应自动认领，实得 %q`, out)
+	}
+	st, _ := taskpipeline.LoadTaskState(dir, `feat/delegate`)
+	if st == nil || st.Assignment != nil {
+		t.Fatalf(`未分派任务应无 Assignment，state=%v`, st)
+	}
+}
+
+// TestTaskResume_AutoClaim_OtherAgent: a task offered to reasonix is not auto-claimed by kimi.
+func TestTaskResume_AutoClaim_OtherAgent(t *testing.T) {
+	dir := setupDelegateProject(t)
+	if out, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/delegate`, `--title`, `派给 reasonix`); code != 0 {
+		t.Fatalf(`task start exit %d: %s`, code, out)
+	}
+	if out, _, code := runForge(t, dir, `task`, `assign`, `--ref`, `feat/delegate`, `--to`, `reasonix`, `--role`, `backend`, `--by`, `claude-code`); code != 0 {
+		t.Fatalf(`task assign exit %d: %s`, code, out)
+	}
+	t.Setenv(`FORGE_AGENT`, `kimi`)
+	out, _, code := runForge(t, dir, `task`, `resume`, `--ref`, `feat/delegate`)
+	if code != 0 {
+		t.Fatalf(`resume exit %d: %s`, code, out)
+	}
+	if strings.Contains(out, `已自动认领`) {
+		t.Errorf(`派给 reasonix 的任务 kimi 不应自动认领，实得 %q`, out)
+	}
+	st, _ := taskpipeline.LoadTaskState(dir, `feat/delegate`)
+	if st == nil || st.Assignment == nil || st.Assignment.Status != taskpipeline.AssignOffered || st.Assignment.Agent != `reasonix` {
+		t.Fatalf(`应仍 offered 给 reasonix，state=%v`, st)
+	}
+}
+
+// TestTaskResume_AutoClaim_NoAgent: when no agent can be attributed, auto-claim is skipped — the
+// task stays offered. (A genuine TOCTOU race between IsOfferedTo and Claim is inherently
+// non-deterministic and is not asserted here; the non-fatal error path is covered by review.)
+func TestTaskResume_AutoClaim_NoAgent(t *testing.T) {
+	dir := setupDelegateProject(t)
+	if out, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/delegate`, `--title`, `被分派`); code != 0 {
+		t.Fatalf(`task start exit %d: %s`, code, out)
+	}
+	if out, _, code := runForge(t, dir, `task`, `assign`, `--ref`, `feat/delegate`, `--to`, `kimi`, `--role`, `frontend`, `--by`, `claude-code`); code != 0 {
+		t.Fatalf(`task assign exit %d: %s`, code, out)
+	}
+	t.Setenv(`FORGE_AGENT`, ``)
+	t.Setenv(`CLAUDE_CODE_SESSION_ID`, ``)
+	out, _, code := runForge(t, dir, `task`, `resume`, `--ref`, `feat/delegate`, `--no-attach`)
+	if code != 0 {
+		t.Fatalf(`resume exit %d: %s`, code, out)
+	}
+	if strings.Contains(out, `已自动认领`) {
+		t.Errorf(`agent 未知时不应自动认领，实得 %q`, out)
+	}
+	st, _ := taskpipeline.LoadTaskState(dir, `feat/delegate`)
+	if st == nil || st.Assignment == nil || st.Assignment.Status != taskpipeline.AssignOffered {
+		t.Fatalf(`应仍 offered（未认领），state=%v`, st)
+	}
+}
+
+// TestTaskResume_AutoClaim_JSON: under --json the auto-claim still takes effect (status reflected
+// in the JSON) but the stderr notice is suppressed, so the output stays valid JSON.
+func TestTaskResume_AutoClaim_JSON(t *testing.T) {
+	dir := setupDelegateProject(t)
+	if out, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/delegate`, `--title`, `被分派`); code != 0 {
+		t.Fatalf(`task start exit %d: %s`, code, out)
+	}
+	if out, _, code := runForge(t, dir, `task`, `assign`, `--ref`, `feat/delegate`, `--to`, `kimi`, `--role`, `frontend`, `--by`, `claude-code`); code != 0 {
+		t.Fatalf(`task assign exit %d: %s`, code, out)
+	}
+	t.Setenv(`FORGE_AGENT`, `kimi`)
+	out, _, code := runForge(t, dir, `task`, `resume`, `--ref`, `feat/delegate`, `--json`, `--no-attach`)
+	if code != 0 {
+		t.Fatalf(`resume --json exit %d: %s`, code, out)
+	}
+	if strings.Contains(out, `已自动认领`) {
+		t.Errorf(`--json 下应抑制 auto-claim stderr，实得 %q`, out)
+	}
+	var v interface{}
+	if e := json.Unmarshal([]byte(out), &v); e != nil {
+		t.Fatalf(`--json 输出应为合法 JSON: %v；实得 %q`, e, out)
+	}
+	if !strings.Contains(out, `claimed`) {
+		t.Errorf(`JSON 应含 claimed（auto-claim 已生效），实得 %q`, out)
 	}
 }
