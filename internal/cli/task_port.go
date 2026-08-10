@@ -128,6 +128,14 @@ func runTaskExport(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf(`序列化 Bundle 失败: %w`, err)
 	}
 
+	// #8/#9（设计§11）：默认导出静默成功是跨机器交接盲区——checklog 不含则对方 forge task import 后
+	// forge trace <ref> 重建不了时间线（门禁证据丢失），且导出侧此前零跨机器提示（只在导入侧有）。
+	// 导出落盘前 warn 一次；--include-checklog 时用户已显式带证据，不再 warn。
+	if !includeChecklog {
+		fmt.Fprintf(cmd.ErrOrStderr(), `⚠ 跨机器导出默认不含 checklog 证据链——对方 import 后 forge trace %s 无法重建时间线；如需附带用 --include-checklog（敏感场景配 --redact）`, state.TaskRef)
+		fmt.Fprintln(cmd.ErrOrStderr())
+	}
+
 	out, _ := cmd.Flags().GetString(`output`)
 	if out == `` {
 		fmt.Println(string(data))

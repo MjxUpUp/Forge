@@ -198,6 +198,10 @@ func runTaskAssign(cmd *cobra.Command, args []string) error {
 	fmt.Printf(`✓ 任务 %s 已分派给 %s（角色=%s，状态=%s）`, state.TaskRef, to, role, status)
 	fmt.Println()
 	fmt.Println(`对方用 forge task claim --ref ` + state.TaskRef + ` 认领；forge task mine 查看分派给自己的任务`)
+	// #7（设计§14）：task 的 findings/decisions 是跨 agent 共享的——被分派方 claim/resume 后即见。
+	// 分派时提醒编排器：你记的 findings/decisions 会被对方看到，若含敏感内容先审视。
+	fmt.Fprintf(cmd.ErrOrStderr(), `⚠ 该任务的 findings/decisions 将对被分派方 %s 可见（跨 agent 共享）；若含敏感内容请先审视`, to)
+	fmt.Fprintln(cmd.ErrOrStderr())
 	return nil
 }
 
