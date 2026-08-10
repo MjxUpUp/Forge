@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
@@ -247,6 +249,42 @@ func runTaskResume(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Auto-claim (design §3 "claim | worker task claim 或 resume 自动 | offered → claimed"): when the
+	// resolved task is offered to the current agent, claim it implicitly — removing the manual
+	// `task claim` step (the worker just resumes). Non-fatal: a TOCTOU race (another session claimed
+	// between resolve and mutate) logs to stderr and renders without claiming; resume never fails
+	// because of an auto-claim race. Suppressed under --json (JSON consumers stay clean). IsOfferedTo
+	// already guards Assignment!=nil + Status==offered + Agent==agent, so state is claimable iff true.
+	//
+	// 自动认领（设计 §3「claim | worker task claim 或 resume 自动 | offered → claimed」）：解析出的
+	// 任务若正 offered 给当前 agent，则隐式认领——省去手动 task claim（worker 直接 resume）。非致命：
+	// TOCTOU 竞态（resolve 与 mutate 之间被别的 session 认领）只 stderr 提示并按未认领渲染；resume
+	// 绝不因自动认领竞态失败。--json 下不输出提示（JSON 消费方保持干净）。IsOfferedTo 已守
+	// Assignment!=nil + Status==offered + Agent==agent，故 state 可认领当且仅当它为 true。
+	agent := detectOriginTool(``)
+	if agent != `` && state.IsOfferedTo(agent) {
+		if claimed, claimErr := tryAutoClaim(root, state.TaskRef, agent); claimed {
+			if reloaded, e := taskpipeline.LoadTaskState(root, state.TaskRef); e == nil && reloaded != nil {
+				state = reloaded // 拾取新的 ClaimedAt/Status 供 renderResume
+			}
+			if !asJSON {
+				fmt.Fprintf(os.Stderr, `[forge] 已自动认领任务 %s（%s）`+realNewlineString, state.TaskRef, agent)
+			}
+			// 认领成功但 session 锚定失败：认领是持久的，锚定是副作用——镜像 runTaskClaim 的提示，
+			// 免得用户在 session 未锚定时毫无信号。
+			if claimErr != nil && !asJSON {
+				fmt.Fprintf(os.Stderr, `[forge] session 锚定失败（不影响认领）: %v`+realNewlineString, claimErr)
+			}
+		} else if claimErr != nil {
+			// 输掉 TOCTOU 竞态（别的 session 已认领）：重载使 renderResume 显示当前盘上状态，
+			// 而非陈旧的 offered 快照。非致命——stderr 提示已告知用户自动认领未生效。
+			if reloaded, e := taskpipeline.LoadTaskState(root, state.TaskRef); e == nil && reloaded != nil {
+				state = reloaded
+			}
+			fmt.Fprintf(os.Stderr, `[forge] 自动认领未生效（不影响 resume）: %v`+realNewlineString, claimErr)
+		}
+	}
+
 	// Handoff semantics: resume by default anchors the current session to the task (the
 	// "takeover" action of multi-way anchoring). This persists the relationship of N
 	// sessions collaborating on one task — any handoff-party resume knows who participated
@@ -355,7 +393,7 @@ func renderHookResume(root string) (string, error) {
 		// 盘点。服务的交互流程：用户唤起 agent → agent 检查有无进行中的任务 → 接续
 		// 某个（用户选择）或开新任务。此前这条路径静默——多任务在进行时流程第 2 步
 		// 就断了：agent 根本不知道有任务存在。
-		return renderTaskInventory(root), nil
+		return appendOfferedBlock(root, nil, renderTaskInventory(root)), nil
 	}
 	if _, err := attachCurrentSession(state, root, true); err != nil {
 		return "", err
@@ -386,7 +424,223 @@ func renderHookResume(root string) (string, error) {
 			fmt.Sprintf("另有 %d 个未完成任务: %s（forge task resume --ref <ref> 可切换）\n→ 接续纪律用 session-continuity skill",
 				len(others), strings.Join(shown, ", ")+suffix), 1))
 	}
-	return "PASS\n" + handoff, nil
+	return appendOfferedBlock(root, state, passPrefix+handoff), nil
+}
+
+// realNewlineString is a single newline expressed without a "\n" rune literal or a double-quoted
+// source literal — Windows quote-corrosion turns ASCII " into CJK curly quotes in Go source, and
+// the project rule forbids \n inside backtick raw strings (it is a literal backslash-n there).
+// Built from the numeric byte value 10 so source stays ASCII-clean.
+//
+// realNewlineString 是单个换行，不用 \n rune 字面也不用双引号源字面——Windows 引号腐蚀会把 Go
+// 源里的 ASCII " 转成 CJK 弯引号，且项目规则禁止反引号 raw string 内的 \n（那里是字面 backslash-n）。
+// 用数值字节 10 构造，源码保持 ASCII 干净。
+var realNewlineString = string([]byte{10})
+
+// passPrefix is the SessionStart injection marker (runHook.extractDetail strips it to recover the
+// detail payload). Built from realNewlineString for the same ASCII-clean reason (no "PASS\n" literal).
+//
+// passPrefix 是 SessionStart 注入标记（runHook.extractDetail 据此剥离取 detail 载荷）。用
+// realNewlineString 构造，同属 ASCII 干净（无 "PASS\n" 字面）。
+var passPrefix = `PASS` + realNewlineString
+
+// tryAutoClaim attempts offered→claimed under the per-task lock, then anchors the current session to
+// the task (the same sequence as runTaskClaim, minus its CLI surface). Returns (claimed, err):
+// claimed=true iff the mutation actually flipped Status to claimed. A race (another session claimed
+// first) surfaces as a Claim error → (false, err); the caller logs it and continues. SetActiveTaskRef
+// mirrors runTaskClaim (unconditional, no conflict check — the worker invoked resume, so re-anchoring
+// is intended).
+//
+// tryAutoClaim 在 per-task 锁下尝试 offered→claimed，再把当前 session 锚到 task（与 runTaskClaim
+// 同序，只是无其 CLI 表面）。返回 (claimed, err)：claimed=true 仅当 mutation 确实把 Status 翻成
+// claimed。竞态（别的 session 先认领）体现为 Claim 错误 → (false, err)，调用方记日志后继续。
+// SetActiveTaskRef 镜像 runTaskClaim（无条件、无冲突检查——worker 主动 resume 故重新锚定是预期）。
+func tryAutoClaim(root, ref, agent string) (bool, error) {
+	claimed := false
+	err := taskpipeline.MutateTaskState(root, ref, func(s *taskpipeline.TaskState) error {
+		if e := s.Claim(agent); e != nil {
+			return e // errClaimNotOffered / errClaimWrongAgent / errNoAssignment
+		}
+		claimed = true
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+	if sid := taskpipeline.CurrentSessionID(); sid != `` {
+		if e := taskpipeline.SetActiveTaskRef(root, sid, ref); e != nil {
+			return claimed, e
+		}
+	}
+	return claimed, nil
+}
+
+// appendOfferedBlock appends the additive "待认领" notification (design §8 ②) to the existing
+// SessionStart output. Additive: it never alters the existing handoff/inventory, only appends —
+// overlap with the inventory is acceptable (the user explicitly chose this over precedence). No-op
+// (returns out unchanged) when: the agent is unknown (codex/cursor/opencode/codebuddy attribution
+// gap — agent-neutral); no offered-to-me tasks; offered-zombies (excluded — a >7d-stale offer is
+// exactly the noise this push avoids; zombies surface via task mine/dashboard); the active task
+// itself (in the handoff branch it can be an offered-to-me task resolved via branch/single-incomplete
+// — listing it as "待认领" while also handing it off would be contradictory); or nothing freshly
+// notifiable after NotifiedAt dedup. NotifiedAt is set to now via MutateTaskState ONLY on actual emit
+// (gated by a non-empty fresh set + non-empty block); the in-lock Status==AssignOffered guard
+// prevents clobbering a concurrent claim/abandon.
+//
+// appendOfferedBlock 把「待认领」通知（设计 §8 ②）附加到现有 SessionStart 输出之后。additive：
+// 绝不改动现有 handoff/盘点，只追加——与盘点的重叠可接受（用户显式选择此方案而非优先级）。下列情况
+// 返 out 不变（no-op）：agent 未知（codex/cursor/opencode/codebuddy 归因缺口——agent-neutral）；无
+// offered 给我的任务；offered 僵尸（排除——>7d 的陈旧 offer 正是本推送要避免的噪声，僵尸经 task
+// mine/看板上浮）；活跃任务自身（handoff 分支里它可能是个经 branch/单任务解析出的 offered 给我的
+// 任务——一边 handoff 一边又列「待认领」会自相矛盾）；或 NotifiedAt 去重后无可新鲜推送的。
+// NotifiedAt 仅在实际推送时（非空 fresh 集 + 非空 block）经 MutateTaskState 设为 now；锁内
+// Status==AssignOffered 守卫防覆盖并发的 claim/abandon。
+func appendOfferedBlock(root string, active *taskpipeline.TaskState, out string) string {
+	agent := detectOriginTool(``)
+	if agent == `` {
+		return out
+	}
+	all, err := taskpipeline.ListTaskStates(root)
+	if err != nil {
+		return out
+	}
+	now := time.Now()
+	activeRef := ``
+	if active != nil {
+		activeRef = active.TaskRef
+	}
+	var fresh []*taskpipeline.TaskState
+	for _, s := range all {
+		if s == nil || !s.IsOfferedTo(agent) {
+			continue
+		}
+		if s.TaskRef == activeRef {
+			continue // 活跃任务已 handoff，不重复列待认领
+		}
+		if z, _ := taskpipeline.IsOfferedZombie(s, now); z {
+			continue // 僵尸 offered 任务不推送（避免轰炸，僵尸经 mine/看板上浮）
+		}
+		if s.Assignment.ShouldNotify(now) {
+			fresh = append(fresh, s)
+		}
+	}
+	if len(fresh) == 0 {
+		return out
+	}
+	block := renderOfferedBlock(active, fresh, root)
+	if block == `` {
+		return out
+	}
+	// 仅在实际推送时落 NotifiedAt（锁内重载 + Status 守卫防并发覆盖）。
+	for _, s := range fresh {
+		ref := s.TaskRef
+		_ = taskpipeline.MutateTaskState(root, ref, func(st *taskpipeline.TaskState) error {
+			if st.Assignment != nil && st.Assignment.Status == taskpipeline.AssignOffered {
+				t := now
+				st.Assignment.NotifiedAt = &t
+			}
+			return nil
+		})
+	}
+	trimmed := strings.TrimRight(out, realNewlineString)
+	if trimmed == `` {
+		return passPrefix + block
+	}
+	return trimmed + realNewlineString + block
+}
+
+// renderOfferedBlock renders the tiered "待认领" block (design §8 ②). When the active task is part of
+// an orchestration chain (has a ParentTaskRef), same-chain offered siblings are listed with a per-line
+// readiness marker (✅可开干 / ⏳阻塞中, ready-first then ref-ascending); any non-sibling offered
+// tasks collapse to a count. Otherwise (no active, or active not in a chain) the whole set collapses
+// to a one-line count. Readiness reuses PendingDependencies (the same primitive task mine --blocked
+// uses), so push and gate cannot disagree. Output is ANSI-stripped (refs/summaries are user-controlled).
+//
+// renderOfferedBlock 渲染分档「待认领」块（设计 §8 ②）。活跃任务属编排链（有 ParentTaskRef）时，
+// 同链 offered 兄弟逐行列出并带就绪标记（✅可开干 / ⏳阻塞中，就绪优先再按 ref 升序）；非同链的
+// offered 折叠成计数。否则（无活跃，或活跃不在链中）整集折叠成一行计数。就绪复用
+// PendingDependencies（task mine --blocked 同原语），使推送与门禁不会不一致。输出经 ANSI 剥离
+// （ref/标题为用户可控）。
+func renderOfferedBlock(active *taskpipeline.TaskState, offered []*taskpipeline.TaskState, root string) string {
+	siblings := offeredChainSiblings(active, offered)
+	var others []*taskpipeline.TaskState
+	if len(siblings) > 0 {
+		seen := make(map[string]bool, len(siblings))
+		for _, s := range siblings {
+			seen[s.TaskRef] = true
+		}
+		for _, s := range offered {
+			if !seen[s.TaskRef] {
+				others = append(others, s)
+			}
+		}
+	} else {
+		others = offered
+	}
+	// 预算就绪一次（PendingDependencies 每调一次都做磁盘 I/O），让排序比较器与逐行标记共用一次
+	// 查询，而非 O(n log n) 次冗余 load。
+	readyMap := make(map[string]bool, len(siblings))
+	for _, s := range siblings {
+		readyMap[s.TaskRef] = len(taskpipeline.PendingDependencies(root, s.DependsOn)) == 0
+	}
+	ready := func(s *taskpipeline.TaskState) bool { return readyMap[s.TaskRef] }
+	var b strings.Builder
+	w := func(s string) { b.WriteString(s); b.WriteString(realNewlineString) }
+	if len(siblings) > 0 {
+		sort.SliceStable(siblings, func(i, j int) bool {
+			ri, rj := ready(siblings[i]), ready(siblings[j])
+			if ri != rj {
+				return ri // 就绪优先
+			}
+			return siblings[i].TaskRef < siblings[j].TaskRef
+		})
+		w(`【同链待认领（按就绪序）】`)
+		for _, s := range siblings {
+			mark := `⏳阻塞中`
+			if ready(s) {
+				mark = `✅可开干`
+			}
+			line := `  ` + mark + `  ` + s.TaskRef
+			if s.Summary != `` {
+				line += ` — ` + truncateRunes(s.Summary, inventoryFieldCap)
+			}
+			w(line)
+		}
+		if len(others) > 0 {
+			w(fmt.Sprintf(`另有 %d 个非同链待认领（forge task mine 查看）`, len(others)))
+		}
+		w(`→ forge task resume --ref <ref> 接手同链任务，或 forge task mine 查看全部`)
+	} else {
+		w(fmt.Sprintf(`本 project 有 %d 个待认领任务（forge task mine 查看，或 forge task resume --ref <ref> 接手）`, len(others)))
+	}
+	return strings.TrimRight(stripUnsafeControl(b.String()), realNewlineString)
+}
+
+// offeredChainSiblings returns the subset of `offered` whose ParentTaskRef equals active.ParentTaskRef
+// (v1 chain definition: exact-string match — the canonical fan-out shape where one orchestrator
+// delegates N children each sharing the parent ref). Returns nil when active is nil or has no parent
+// (the "active IS the orchestrator" case falls to the one-liner — orchestrators use task mine/
+// dashboard; the SessionStart push is worker-facing). Walk-up to a root orchestrator and
+// inter-sibling DependsOn topo are deferred to v2.
+//
+// offeredChainSiblings 返回 `offered` 中 ParentTaskRef 等于 active.ParentTaskRef 的子集（v1 链定义：
+// 精确串匹配——一个编排器派 N 个子任务、各子共享父 ref 的典型 fan-out）。active 为 nil 或无父时
+// 返 nil（「active 即编排器」回落到一行式——编排器用 task mine/看板；SessionStart 推送面向 worker）。
+// 上溯到根编排器与兄弟间 DependsOn 拓扑推迟到 v2。
+func offeredChainSiblings(active *taskpipeline.TaskState, offered []*taskpipeline.TaskState) []*taskpipeline.TaskState {
+	if active == nil || active.ParentTaskRef == `` {
+		return nil
+	}
+	var out []*taskpipeline.TaskState
+	for _, o := range offered {
+		if o == nil {
+			continue
+		}
+		if o.ParentTaskRef == active.ParentTaskRef && o.TaskRef != active.TaskRef {
+			out = append(out, o)
+		}
+	}
+	return out
 }
 
 // inventoryListCap bounds how many tasks the SessionStart inventory lists — the output
