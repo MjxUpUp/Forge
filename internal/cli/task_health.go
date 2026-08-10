@@ -45,7 +45,7 @@ var taskHealthCmd = &cobra.Command{
   • 死锁：DependsOn 指向已 failed/canceled 或已缺失（abort）的任务——依赖方永久阻塞。
   • 依赖环：DependsOn 形成环（写入时本应拒绝；出现即疑似 import/损坏数据）。
 
-真正的 claimed→offered 回收（abandon）由后续 hook 触发；本命令只暴露信号，使卡住的任务不被
+真正的 claimed→offered 回收（abandon）由 forge task reclaim 触发；本命令只暴露信号，使卡住的任务不被
 静默忽略。检测逻辑与 task mine / 看板共享同一真相源，三处对「僵尸」永不分歧。`,
 	RunE: runTaskHealth,
 }
@@ -100,14 +100,49 @@ func runTaskHealth(cmd *cobra.Command, args []string) error {
 	}
 	lookupCycle := func(ref string) *taskpipeline.TaskState { return byRef[ref] }
 
+	// childCount[parent] = number of tasks whose ParentTaskRef == parent. Precomputed once so the
+	// orchestration-readiness hint (design §5: "全部子任务已交付，可综合") can tell an orchestrator
+	// parent (has children) from a childless generic task without an O(n²) walk per row.
+	//
+	// childCount[parent] = ParentTaskRef == parent 的任务数。一次性预算，使编排就绪提示
+	// （设计 §5「全部子任务已交付，可综合」）能区分有子任务的编排器父任务与无子 generic 任务，
+	// 而不必每行 O(n²) 遍历。
+	childCount := map[string]int{}
+	for _, s := range states {
+		if s != nil && s.ParentTaskRef != `` {
+			childCount[s.ParentTaskRef]++
+		}
+	}
+
 	var rows []healthRow
+	var readyOrch []string
 	for _, s := range states {
 		if s == nil {
 			continue
 		}
 		h := taskpipeline.ClassifyTaskHealth(root, s, now, lookupState, lookupCycle)
+		// Orchestration readiness (design §5): a generic parent with children all delivered/terminal
+		// is ready to synthesize — the orchestrator's "可 complete" signal. Collected for every task
+		// (cheap) and printed in a separate info section, NOT counted as a problem row, so the problem
+		// report stays focused on what's stuck. Same OrchestrationReady truth source completeGenericTask
+		// consults, so the hint and the complete-time warn can never disagree.
+		//
+		// 编排就绪（设计 §5）：子任务全 delivered/终态的 generic 父任务已可综合——编排器的「可 complete」
+		// 信号。对每个任务收集（廉价），在独立 info 段打印，不计入问题行，使问题报告聚焦于卡住的。
+		// 复用 completeGenericTask 询问的同一 OrchestrationReady 真相源，故提示与 complete 时告警永不分歧。
+		if s.IsGeneric() && !s.IsComplete() && childCount[s.TaskRef] > 0 {
+			// !s.IsComplete(): a generic orchestrator that already passed its gates is done — don't
+			// re-flag it as "可 complete". Only an as-yet-unfinished orchestrator with all children
+			// terminal is the actionable hint.
+			//
+			// !s.IsComplete()：已跑完门禁的 generic 编排器即完成——不应再标「可 complete」。
+			// 只有尚未完成且子任务全终态的编排器才是可操作的提示。
+			if ready, _ := taskpipeline.OrchestrationReady(states, s.TaskRef); ready {
+				readyOrch = append(readyOrch, s.TaskRef)
+			}
+		}
 		if !h.IsZombie && !h.Deadlocked {
-			continue // healthy — omitted from the report
+			continue // healthy — omitted from the problem report
 		}
 		row := healthRow{
 			TaskRef:        h.TaskRef,
@@ -131,38 +166,54 @@ func runTaskHealth(cmd *cobra.Command, args []string) error {
 		fmt.Println(string(out))
 		return nil
 	}
-	if len(rows) == 0 {
+	if len(rows) == 0 && len(readyOrch) == 0 {
 		fmt.Println(`✓ 未发现僵尸/死锁/长期未答复任务`)
 		return nil
 	}
-	fmt.Printf(`发现 %d 个需关注任务:`, len(rows))
-	fmt.Println()
-	for _, r := range rows {
-		// NOTE: a raw-string format passed to fmt.Printf does NOT interpret \n (the lexer leaves
-		// raw strings unescaped, and fmt only handles % verbs) — newlines come from Println(),
-		// matching the codebase convention. See task_assignment.go runTaskMine.
-		//
-		// 注意：传给 fmt.Printf 的 raw-string 格式串不解释 \n（词法器不转义 raw string，fmt 只处理
-		// % 动词）——换行来自 Println()，与代码库约定一致。见 task_assignment.go runTaskMine。
-		marks := ``
-		if r.IsZombie {
-			marks += ` ⚠僵尸(` + strings.Join(r.ZombieReasons, `,`) + `)`
-		}
-		if r.Deadlocked {
-			marks += ` 🔒死锁`
-		}
-		status := r.Status
-		if status == `` {
-			status = `-`
-		}
-		fmt.Printf(`  %s  [%s]%s  %s`, r.TaskRef, status, marks, r.Title)
+	if len(rows) > 0 {
+		fmt.Printf(`发现 %d 个需关注任务:`, len(rows))
 		fmt.Println()
-		if r.DeadlockReason != `` {
-			fmt.Printf(`      → %s`, r.DeadlockReason)
+		for _, r := range rows {
+			// NOTE: a raw-string format passed to fmt.Printf does NOT interpret \n (the lexer leaves
+			// raw strings unescaped, and fmt only handles % verbs) — newlines come from Println(),
+			// matching the codebase convention. See task_assignment.go runTaskMine.
+			//
+			// 注意：传给 fmt.Printf 的 raw-string 格式串不解释 \n（词法器不转义 raw string，fmt 只处理
+			// % 动词）——换行来自 Println()，与代码库约定一致。见 task_assignment.go runTaskMine。
+			marks := ``
+			if r.IsZombie {
+				marks += ` ⚠僵尸(` + strings.Join(r.ZombieReasons, `,`) + `)`
+			}
+			if r.Deadlocked {
+				marks += ` 🔒死锁`
+			}
+			status := r.Status
+			if status == `` {
+				status = `-`
+			}
+			fmt.Printf(`  %s  [%s]%s  %s`, r.TaskRef, status, marks, r.Title)
+			fmt.Println()
+			if r.DeadlockReason != `` {
+				fmt.Printf(`      → %s`, r.DeadlockReason)
+				fmt.Println()
+			}
+		}
+		fmt.Println()
+		fmt.Println(`提示：claimed 僵尸（>7d 无活动）可用 forge task reclaim 回收为 offered；本命令只读暴露信号。`)
+	}
+	// Orchestration readiness hint (design §5 "hook 提示所有子任务已交付，可综合"): a generic parent
+	// whose children are all delivered/terminal can now be synthesized. Printed as a separate
+	// positive section — NOT a problem — so the orchestrator sees "可 complete" without scanning.
+	//
+	// 编排就绪提示（设计 §5「hook 提示所有子任务已交付，可综合」）：子任务全 delivered/终态的
+	// generic 父任务此刻可综合。作独立正向段打印——非问题——使编排器无需扫即可见「可 complete」。
+	if len(readyOrch) > 0 {
+		fmt.Printf(`✓ 可 complete 的编排任务（所有子任务已交付/终态，%d）:`, len(readyOrch))
+		fmt.Println()
+		for _, ref := range readyOrch {
+			fmt.Printf(`  %s`, ref)
 			fmt.Println()
 		}
 	}
-	fmt.Println()
-	fmt.Println(`提示：真正的 claimed→offered 回收（abandon）由后续 hook 触发；本命令只读暴露信号。`)
 	return nil
 }

@@ -372,3 +372,127 @@ func TestHasDependencyCycle(t *testing.T) {
 		}
 	})
 }
+
+// childStatus builds a delegated child task (ParentTaskRef=parent) whose assignment is in `status`.
+// Used to plant children in every terminal/non-terminal state for OrchestrationReady.
+//
+// childStatus 构造一个已分派子任务（ParentTaskRef=parent），分派态为 status。用于为
+// OrchestrationReady 在每种终态/非终态下种入子任务。
+func childStatus(ref, parent, status string) *TaskState {
+	s := &TaskState{TaskRef: ref, ParentTaskRef: parent}
+	if err := s.AssignTo(`kimi`, `backend`, `claude-code`); err != nil {
+		panic(`childStatus: AssignTo failed: ` + err.Error())
+	}
+	s.Assignment.Status = status
+	return s
+}
+
+// completeNoAssign builds an UNASSIGNED child (ordinary/generic) that has finished its gates — the
+// IsComplete path. OrchestrationReady must treat this child as terminal just like a delivered one.
+//
+// completeNoAssign 构造一个无分派子任务（普通/generic）且已跑完门禁——IsComplete 路径。
+// OrchestrationReady 须像对待 delivered 子任务一样把它判为终态。
+func completeNoAssign(ref, parent string) *TaskState {
+	s := &TaskState{TaskRef: ref, ParentTaskRef: parent}
+	for _, g := range DefaultGates() {
+		s.RecordGateResult(g.ID, true, ``)
+	}
+	return s
+}
+
+func TestOrchestrationReady(t *testing.T) {
+	t.Run(`empty parent ref is ready`, func(t *testing.T) {
+		if ready, pending := OrchestrationReady(nil, ``); !ready || len(pending) != 0 {
+			t.Fatalf(`空 parentRef 应就绪、无 pending，got ready=%v pending=%v`, ready, pending)
+		}
+	})
+	t.Run(`no children is ready`, func(t *testing.T) {
+		states := []*TaskState{{TaskRef: `feat/other`}}
+		if ready, pending := OrchestrationReady(states, `feat/orch`); !ready || len(pending) != 0 {
+			t.Fatalf(`无子任务应就绪，got ready=%v pending=%v`, ready, pending)
+		}
+	})
+	t.Run(`all delivered is ready`, func(t *testing.T) {
+		states := []*TaskState{
+			childStatus(`feat/a`, `feat/orch`, AssignDelivered),
+			childStatus(`feat/b`, `feat/orch`, AssignDelivered),
+		}
+		ready, pending := OrchestrationReady(states, `feat/orch`)
+		if !ready || len(pending) != 0 {
+			t.Fatalf(`全 delivered 应就绪，got ready=%v pending=%v`, ready, pending)
+		}
+	})
+	t.Run(`all terminal (delivered+failed+canceled) is ready`, func(t *testing.T) {
+		// design §5: "delivered 或终态（failed/canceled）" → 编排可 complete. A failed/canceled
+		// child will never deliver, so the orchestrator need not wait on it.
+		//
+		// 设计 §5：「delivered 或终态（failed/canceled）」→ 编排可 complete。failed/canceled
+		// 子任务永不会交付，故编排器无需等它。
+		states := []*TaskState{
+			childStatus(`feat/a`, `feat/orch`, AssignDelivered),
+			childStatus(`feat/b`, `feat/orch`, AssignFailed),
+			childStatus(`feat/c`, `feat/orch`, AssignCanceled),
+		}
+		ready, pending := OrchestrationReady(states, `feat/orch`)
+		if !ready || len(pending) != 0 {
+			t.Fatalf(`全终态应就绪，got ready=%v pending=%v`, ready, pending)
+		}
+	})
+	t.Run(`unassigned complete child counts as terminal`, func(t *testing.T) {
+		// A code-task child with no Assignment finishes via gates; IsComplete is its delivery. Must
+		// not strand the parent "not ready" forever.
+		//
+		// 无分派的 code-task 子任务靠门禁完成；IsComplete 即其交付。不应让父任务永远「未就绪」。
+		states := []*TaskState{completeNoAssign(`feat/a`, `feat/orch`)}
+		if ready, pending := OrchestrationReady(states, `feat/orch`); !ready || len(pending) != 0 {
+			t.Fatalf(`无分派 complete 子任务应判终态，got ready=%v pending=%v`, ready, pending)
+		}
+	})
+	t.Run(`non-terminal child is not ready`, func(t *testing.T) {
+		states := []*TaskState{
+			childStatus(`feat/a`, `feat/orch`, AssignDelivered),
+			childStatus(`feat/b`, `feat/orch`, AssignClaimed), // 仍 claimed，未交付
+		}
+		ready, pending := OrchestrationReady(states, `feat/orch`)
+		if ready {
+			t.Fatal(`有 claimed 未交付子任务应未就绪`)
+		}
+		if len(pending) != 1 || pending[0] != `feat/b` {
+			t.Fatalf(`pending 应只有 feat/b，got %v`, pending)
+		}
+	})
+	t.Run(`pending collects all non-terminal in stable order`, func(t *testing.T) {
+		states := []*TaskState{
+			childStatus(`feat/a`, `feat/orch`, AssignOffered),
+			childStatus(`feat/b`, `feat/orch`, AssignDelivered),
+			childStatus(`feat/c`, `feat/orch`, AssignInputRequired),
+			childStatus(`feat/d`, `feat/orch`, AssignClaimed),
+		}
+		ready, pending := OrchestrationReady(states, `feat/orch`)
+		if ready {
+			t.Fatal(`有非终态子任务应未就绪`)
+		}
+		want := []string{`feat/a`, `feat/c`, `feat/d`}
+		if len(pending) != len(want) {
+			t.Fatalf(`pending 数量应为 %d，got %d (%v)`, len(want), len(pending), pending)
+		}
+		for i := range want {
+			if pending[i] != want[i] {
+				t.Fatalf(`pending[%d] 应为 %s，got %s（pending=%v）`, i, want[i], pending[i], pending)
+			}
+		}
+	})
+	t.Run(`unrelated children of other parents ignored`, func(t *testing.T) {
+		states := []*TaskState{
+			childStatus(`feat/a`, `feat/orch`, AssignClaimed),
+			childStatus(`feat/b`, `feat/other`, AssignClaimed), // 另一个编排器的子任务
+		}
+		ready, pending := OrchestrationReady(states, `feat/orch`)
+		if ready {
+			t.Fatal(`feat/orch 有 claimed 子任务 feat/a 应未就绪`)
+		}
+		if len(pending) != 1 || pending[0] != `feat/a` {
+			t.Fatalf(`只应 pending feat/a，got %v`, pending)
+		}
+	})
+}
