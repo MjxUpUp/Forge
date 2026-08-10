@@ -262,6 +262,25 @@ func detectOriginTool(explicit string) string {
 // MarkComplete + 清 active-task-ref。不评分、不创建 review——generic 任务的价值在持久化的
 // 接续字段，不在代码质量门禁。
 func completeGenericTask(root string, state *taskpipeline.TaskState) error {
+	// Design §5 orchestration completion trigger: a generic task that is an orchestrator (has child
+	// tasks pointing at it via ParentTaskRef) is "可 complete" when all children are delivered or
+	// terminal (failed/canceled). "不全 delivered 不强制 complete" → this is an ADVISORY warn to
+	// stderr, never a block: the orchestrator may legitimately synthesize partial results, but the
+	// pending children are surfaced so completing with unfinished work is a deliberate choice, not
+	// a silent one. A generic task with NO children (ordinary research/design/handoff) is unaffected.
+	// ListTaskState failure is non-fatal — completion must not be gated on the readiness probe.
+	//
+	// 设计 §5 编排完成触发：作为编排器的 generic 任务（经 ParentTaskRef 有子任务指向它）在全子任务
+	// delivered 或终态（failed/canceled）时「可 complete」。「不全 delivered 不强制 complete」→ 此处是
+	// 到 stderr 的 advisory 告警，绝不阻断：编排器可合理地综合部分成果，但上浮未交付子任务使「带未完成
+	// 工作完成」成为显式选择而非静默。无子任务的 generic 任务（普通调研/设计/接续）不受影响。
+	// ListTaskState 失败非致命——完成不应被就绪探测门禁住。
+	if states, err := taskpipeline.ListTaskStates(root); err == nil {
+		if _, pending := taskpipeline.OrchestrationReady(states, state.TaskRef); len(pending) > 0 {
+			fmt.Fprintf(os.Stderr, `⚠ 编排任务 %s 尚有 %d 个子任务未交付/终态: %s；仍可 complete（设计：不强制），建议先综合子任务成果`, state.TaskRef, len(pending), strings.Join(pending, `, `))
+			fmt.Fprintln(os.Stderr)
+		}
+	}
 	head := taskpipeline.GetHeadCommit(root)
 	for _, g := range taskpipeline.DefaultGates() {
 		state.RecordGateResult(g.ID, true, head)

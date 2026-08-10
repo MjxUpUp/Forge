@@ -86,6 +86,19 @@ var taskReopenCmd = &cobra.Command{
 	RunE:  runTaskReopen,
 }
 
+var taskReclaimCmd = &cobra.Command{
+	Use:   `reclaim [--dry-run] [--json]`,
+	Short: `回收 claimed 僵尸任务（claimed>TTL 无 checklog 活动）回 offered`,
+	Long: `forge task reclaim 扫描当前项目的 claimed 任务，把认领方失联（超过默认 TTL 7 天无
+checklog 活动）的任务回收到 offered，使其他 agent 可重新认领——补齐设计 §3 的 TTL 回收接线
+（Abandon 原语 + IsClaimedStale 检测先前已就绪，只缺触发）。
+
+复用 task health 的僵尸检测同一真相源（IsClaimedStale），故 health 报告的 claimed>TTL 与本命令
+回收的目标永远一致。--dry-run 只列出将回收的任务不改状态；--json 输出 {reclaimed, dry_run, count}。
+offered/delivered/终态任务不受影响（Abandon 只接受 claimed）。`,
+	RunE: runTaskReclaim,
+}
+
 func init() {
 	taskCmd.AddCommand(taskAssignCmd)
 	taskCmd.AddCommand(taskClaimCmd)
@@ -96,6 +109,7 @@ func init() {
 	taskCmd.AddCommand(taskFailCmd)
 	taskCmd.AddCommand(taskCancelCmd)
 	taskCmd.AddCommand(taskReopenCmd)
+	taskCmd.AddCommand(taskReclaimCmd)
 
 	taskAssignCmd.Flags().String(`ref`, ``, `任务引用（不依赖分支检测）`)
 	taskAssignCmd.Flags().String(`to`, ``, `分派给哪个 agent（如 kimi/reasonix/cursor）`)
@@ -122,6 +136,9 @@ func init() {
 	taskCancelCmd.Flags().String(`reason`, ``, `撤回原因（必填）`)
 	taskReopenCmd.Flags().String(`ref`, ``, `任务引用（不依赖分支检测）`)
 	taskReopenCmd.Flags().String(`reason`, ``, `重开原因（交付后发现的问题，必填）`)
+
+	taskReclaimCmd.Flags().Bool(`dry-run`, false, `只列出将回收的任务，不修改状态`)
+	taskReclaimCmd.Flags().Bool(`json`, false, `JSON 格式输出`)
 }
 
 // warnIfUnknownAgent writes a warning to w when name is absent from the known-agent set,
@@ -329,6 +346,122 @@ func runTaskReopen(cmd *cobra.Command, args []string) error {
 	fmt.Printf(`✓ 任务 %s 已重开（回 claimed，交付后发现 bug）：%s`, state.TaskRef, reason)
 	fmt.Println()
 	return nil
+}
+
+// runTaskReclaim wires the §3 TTL recovery trigger: it scans for claimed tasks whose claimer has
+// gone silent (IsClaimedStale — claimed >ClaimedZombieTTL with no checklog activity) and reclaims
+// each to offered via Abandon(), so another agent can pick it up. This closes the phase-2 milestone
+// "claimed 僵死能回收" — previously health only REPORTED these, never recovered them. Detection
+// reuses IsClaimedStale (the same primitive task health uses), so the report and the reclamation
+// can never disagree on what a "claimed zombie" is. Each candidate is reclaimed under its own lock
+// (MutateTaskState → Abandon); Abandon() re-checks Status==claimed under the lock, so a candidate
+// whose state drifted between detection and reclamation is skipped with a non-fatal warning rather
+// than failing the batch. --dry-run lists candidates without mutating; --json emits
+// {reclaimed, dry_run, count}.
+//
+// runTaskReclaim 接线 §3 的 TTL 回收触发：扫描认领方失联的 claimed 任务（IsClaimedStale——
+// claimed 超 ClaimedZombieTTL 且无 checklog 活动），用 Abandon() 把每个回收为 offered，使别的
+// agent 可接手。这补齐阶段2 里程碑「claimed 僵死能回收」——先前 health 只报告、从不回收。
+// 检测复用 IsClaimedStale（与 task health 同一原语），故报告与回收对「claimed 僵尸」永不分歧。
+// 每个候选在各自锁内回收（MutateTaskState → Abandon）；Abandon() 在锁内复检 Status==claimed，
+// 故检测与回收间状态漂移的候选以非致命告警跳过，不让整批失败。--dry-run 只列候选不改状态；
+// --json 输出 {reclaimed, dry_run, count}。
+func runTaskReclaim(cmd *cobra.Command, args []string) error {
+	root, err := findProjectRoot()
+	if err != nil {
+		return err
+	}
+	dryRun, _ := cmd.Flags().GetBool(`dry-run`)
+	asJSON, _ := cmd.Flags().GetBool(`json`)
+	now := time.Now()
+
+	states, err := taskpipeline.ListTaskStates(root)
+	if err != nil {
+		return fmt.Errorf(`读取任务列表失败: %w`, err)
+	}
+	// Detect candidates with the SAME primitive task health uses (IsClaimedStale), so the report
+	// and the reclamation can never disagree on what "claimed zombie" means.
+	//
+	// 用与 task health 相同的原语（IsClaimedStale）检测候选，使报告与回收对「claimed 僵尸」永不分歧。
+	var candidates []string
+	for _, s := range states {
+		if s == nil {
+			continue
+		}
+		if ok, _ := taskpipeline.IsClaimedStale(root, s, now); ok {
+			candidates = append(candidates, s.TaskRef)
+		}
+	}
+
+	if dryRun {
+		if asJSON {
+			out, _ := json.MarshalIndent(reclaimResult{Reclaimed: candidates, DryRun: true, Count: len(candidates)}, ``, `  `)
+			fmt.Println(string(out))
+			return nil
+		}
+		if len(candidates) == 0 {
+			fmt.Println(`✓ 无 claimed 僵尸任务需回收（无 claimed>TTL）`)
+			return nil
+		}
+		fmt.Printf(`将回收 %d 个 claimed 僵尸（干跑，未改状态）:`, len(candidates))
+		fmt.Println()
+		for _, ref := range candidates {
+			fmt.Printf(`  %s`, ref)
+			fmt.Println()
+		}
+		return nil
+	}
+
+	// Reclaim each candidate under its own lock. A candidate could drift between detection and
+	// reclamation (another worker claimed/abandoned it); Abandon() re-checks Status==claimed under
+	// the lock and returns errAbandonNotClaimed, which we treat as skip-not-fail.
+	//
+	// 每个候选在各自锁内回收。候选在检测与回收间可能漂移（别的 worker 认领/回收了它）；
+	// Abandon() 在锁内复检 Status==claimed 并返 errAbandonNotClaimed，此处视作跳过不致命。
+	var reclaimed []string
+	for _, ref := range candidates {
+		if err := taskpipeline.MutateTaskState(root, ref, func(s *taskpipeline.TaskState) error {
+			return s.Abandon()
+		}); err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), `⚠ 跳过 %s: %v`, ref, err)
+			fmt.Fprintln(cmd.ErrOrStderr())
+			continue
+		}
+		reclaimed = append(reclaimed, ref)
+	}
+
+	if asJSON {
+		out, _ := json.MarshalIndent(reclaimResult{Reclaimed: reclaimed, DryRun: false, Count: len(reclaimed)}, ``, `  `)
+		fmt.Println(string(out))
+		return nil
+	}
+	if len(reclaimed) == 0 {
+		if len(candidates) == 0 {
+			fmt.Println(`✓ 无 claimed 僵尸任务需回收（无 claimed>TTL）`)
+		} else {
+			fmt.Printf(`✓ 候选 %d 个但回收时均已非 claimed（可能刚被认领/回收）`, len(candidates))
+			fmt.Println()
+		}
+		return nil
+	}
+	fmt.Printf(`✓ 已回收 %d 个 claimed 僵尸 → offered:`, len(reclaimed))
+	fmt.Println()
+	for _, ref := range reclaimed {
+		fmt.Printf(`  %s`, ref)
+		fmt.Println()
+	}
+	return nil
+}
+
+// reclaimResult is the JSON shape of `forge task reclaim --json` output: the reclaimed refs (or
+// would-be-reclaimed under --dry-run), the dry-run flag, and the count.
+//
+// reclaimResult 是 forge task reclaim --json 输出的 JSON 形状：回收的 ref（或 --dry-run 下将
+// 回收的 ref）、dry-run 标志、数量。
+type reclaimResult struct {
+	Reclaimed []string `json:"reclaimed"`
+	DryRun    bool     `json:"dry_run"`
+	Count     int      `json:"count"`
 }
 
 // delegatedEntry is the JSON shape of one row in forge task mine output.

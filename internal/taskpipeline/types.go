@@ -976,12 +976,12 @@ func (s *TaskState) Reopen(reason string) error {
 
 // Abandon transitions claimed→offered (TTL recovery for a claimed task whose owner went away).
 // Bumps AbandonedCount (a zombie signal surfaced in mine/health) and clears ClaimedAt so it is
-// re-offered fresh. Requires claimed. TTL triggering itself is wired in a later phase (hook/health);
-// this method is the storage primitive.
+// re-offered fresh. Requires claimed. The TTL trigger is forge task reclaim
+// (cli/task_assignment.go runTaskReclaim), which scans for IsClaimedStale tasks and calls this.
 //
 // Abandon 把 claimed→offered（claimed 的 owner 失联时的 TTL 回收）。AbandonedCount++（在 mine/health
-// 上浮的僵尸信号）并清 ClaimedAt 使其重新 offered。要求 claimed。TTL 触发本身在后续阶段接线
-// （hook/health）；本方法是存储原语。
+// 上浮的僵尸信号）并清 ClaimedAt 使其重新 offered。要求 claimed。TTL 触发是 forge task reclaim
+// （cli/task_assignment.go runTaskReclaim），它扫描 IsClaimedStale 任务并调用本方法。
 func (s *TaskState) Abandon() error {
 	if s.Assignment == nil {
 		return errNoAssignment
