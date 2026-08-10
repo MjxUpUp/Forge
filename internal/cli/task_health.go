@@ -130,7 +130,13 @@ func runTaskHealth(cmd *cobra.Command, args []string) error {
 		// 编排就绪（设计 §5）：子任务全 delivered/终态的 generic 父任务已可综合——编排器的「可 complete」
 		// 信号。对每个任务收集（廉价），在独立 info 段打印，不计入问题行，使问题报告聚焦于卡住的。
 		// 复用 completeGenericTask 询问的同一 OrchestrationReady 真相源，故提示与 complete 时告警永不分歧。
-		if s.IsGeneric() && childCount[s.TaskRef] > 0 {
+		if s.IsGeneric() && !s.IsComplete() && childCount[s.TaskRef] > 0 {
+			// !s.IsComplete(): a generic orchestrator that already passed its gates is done — don't
+			// re-flag it as "可 complete". Only an as-yet-unfinished orchestrator with all children
+			// terminal is the actionable hint.
+			//
+			// !s.IsComplete()：已跑完门禁的 generic 编排器即完成——不应再标「可 complete」。
+			// 只有尚未完成且子任务全终态的编排器才是可操作的提示。
 			if ready, _ := taskpipeline.OrchestrationReady(states, s.TaskRef); ready {
 				readyOrch = append(readyOrch, s.TaskRef)
 			}
