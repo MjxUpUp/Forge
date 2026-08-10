@@ -116,6 +116,40 @@ func TestTaskExportImport_FreshRoundTrip(t *testing.T) {
 	}
 }
 
+// TestTaskExport_WarnsWhenChecklogOmitted (#8/#9, 设计§11): default export silently succeeds with no
+// cross-machine hint — the recipient's forge trace can't rebuild the timeline. export must warn once
+// to stderr when --include-checklog is absent, and stay silent when it's present. Asserts on the
+// warn-unique phrase "无法重建时间线" (the success note also says "checklog", so the bare word lies).
+//
+// TestTaskExport_WarnsWhenChecklogOmitted（#8/#9，设计§11）：默认导出静默成功且无跨机器提示——对方的
+// forge trace 重建不了时间线。export 缺 --include-checklog 时必须向 stderr warn 一次，带时不 warn。
+// 用 warn 独有的「无法重建时间线」断言（成功 note 也说"checklog"，裸词会骗人）。
+func TestTaskExport_WarnsWhenChecklogOmitted(t *testing.T) {
+	dir := setupDelegateProject(t)
+	if out, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/x`, `--title`, `X`); code != 0 {
+		t.Fatalf(`start: %s`, out)
+	}
+	bundle := filepath.Join(t.TempDir(), `bundle.json`)
+	// runForge 用 CombinedOutput，stderr 合入第一返回值；-o 写文件时 stdout 空，故 output 即 warn+✓。
+	// 默认（无 --include-checklog）→ output 含跨机器/checklog 缺失 warn。
+	output, _, code := runForge(t, dir, `task`, `export`, `--ref`, `feat/x`, `-o`, bundle)
+	if code != 0 {
+		t.Fatalf(`export exit %d`, code)
+	}
+	if !strings.Contains(output, `无法重建时间线`) {
+		t.Errorf(`默认 export 应 warn checklog 缺失致 trace 无法重建, output=%q`, output)
+	}
+	// 带 --include-checklog → warn 不触发（用户已显式带证据）。
+	bundle2 := filepath.Join(t.TempDir(), `bundle2.json`)
+	output2, _, code2 := runForge(t, dir, `task`, `export`, `--ref`, `feat/x`, `-o`, bundle2, `--include-checklog`)
+	if code2 != 0 {
+		t.Fatalf(`export --include-checklog exit %d`, code2)
+	}
+	if strings.Contains(output2, `无法重建时间线`) {
+		t.Errorf(`--include-checklog 时不应再 warn 证据链缺失, output=%q`, output2)
+	}
+}
+
 // TestTaskImport_DefaultRejectsExisting: importing a bundle whose ref already exists locally, with
 // no strategy flag, must refuse (safe default — never silently clobber local work).
 //
