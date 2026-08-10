@@ -134,6 +134,7 @@ AI 编码是一个循环：写代码 → 运行 → 读反馈 → 修正 → 再
 forge task start --ref feat/add-login --branch --accept "go test ./... :: PASS"   # 创建任务+分支+登记验收标准（--accept 可重复）
 forge task start --ref feat/add-login --scope "internal/auth/*.go"                # 声明计划改动白名单（规划前置→可度量契约，advisory 检测 scope-drift）
 forge task start --ref feat/frontend --assignee kimi --role frontend --depends-on feat/api   # 创建即分派给 kimi（offered），声明上游依赖 feat/api（DAG 环检测；task-verify/task-complete 在 feat/api 交付前阻断）
+forge task start --ref feat/hotfix --assignee kimi --ttl 24h   # per-task TTL 覆盖全局 7d 僵尸窗口：短时效分派 24h 无活动即标僵尸（offered/claimed/input-required 通用；0=用全局默认）
 # AI 自动完成工作...
 forge task gate task-implement    # ✅ 代码实现（advisory：编译/断言提醒，agent 自检）
 forge task verify-acceptance      # ✅ 实跑验收标准，记 deterministic 证据（spec-as-gate）
