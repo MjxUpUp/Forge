@@ -147,3 +147,90 @@ func TestTaskHealth_CleanProjectReportsNothing(t *testing.T) {
 		t.Errorf(`无问题时应输出「未发现」, got:\n%s`, out)
 	}
 }
+
+// saveDeliveredChild writes a child of parent in the delivered terminal state (assign→claim→deliver
+// in-process), the shape OrchestrationReady counts as terminal.
+//
+// saveDeliveredChild 写一个 parent 的子任务，处于 delivered 终态（进程内 assign→claim→deliver），
+// 即 OrchestrationReady 计为终态的形态。
+func saveDeliveredChild(t *testing.T, dir, ref, parent, agent string) {
+	t.Helper()
+	s := &taskpipeline.TaskState{TaskRef: ref, Summary: ref + ` 子任务`, ParentTaskRef: parent}
+	if err := s.AssignTo(agent, `backend`, `claude-code`); err != nil {
+		t.Fatalf(`AssignTo %s: %v`, ref, err)
+	}
+	if err := s.Claim(agent); err != nil {
+		t.Fatalf(`Claim %s: %v`, ref, err)
+	}
+	if err := s.Deliver(); err != nil {
+		t.Fatalf(`Deliver %s: %v`, ref, err)
+	}
+	if err := taskpipeline.SaveTaskState(dir, s); err != nil {
+		t.Fatalf(`SaveTaskState %s: %v`, ref, err)
+	}
+}
+
+// TestTaskHealth_ReadyOrchestration covers the design §5 proactive hint: a generic parent whose
+// children are ALL delivered is surfaced as "✓ 可 complete" — a separate positive section, NOT a
+// problem row. With no zombies/deadlocks and one ready orchestrator, the "未发现" line is replaced
+// by the ready section.
+//
+// TestTaskHealth_ReadyOrchestration 覆盖设计 §5 的主动提示：子任务全 delivered 的 generic 父任务
+// 上浮为「✓ 可 complete」——独立正向段，非问题行。无僵尸/死锁且有一个就绪编排器时，「未发现」
+// 行被就绪段取代。
+func TestTaskHealth_ReadyOrchestration(t *testing.T) {
+	dir := setupDelegateProject(t)
+
+	// Generic orchestrator parent + one delivered child → parent ready to complete.
+	//
+	// generic 编排器父任务 + 一个 delivered 子任务 → 父任务可 complete。
+	parent := &taskpipeline.TaskState{TaskRef: `feat/orch`, Summary: `编排任务`, Kind: taskpipeline.TaskKindGeneric}
+	if err := taskpipeline.SaveTaskState(dir, parent); err != nil {
+		t.Fatalf(`SaveTaskState parent: %v`, err)
+	}
+	saveDeliveredChild(t, dir, `feat/child`, `feat/orch`, `kimi`)
+
+	out, _, code := runForge(t, dir, `task`, `health`)
+	if code != 0 {
+		t.Fatalf(`task health exit %d: %s`, code, out)
+	}
+	for _, want := range []string{`可 complete 的编排任务`, `feat/orch`} {
+		if !strings.Contains(out, want) {
+			t.Errorf(`health 输出应含 %q, got:\n%s`, want, out)
+		}
+	}
+	// No problems → the "未发现" line must NOT print (ready section replaces it).
+	//
+	// 无问题 → 不应输出「未发现」（就绪段取代它）。
+	if strings.Contains(out, `未发现`) {
+		t.Errorf(`有就绪编排任务时不应输出「未发现」, got:\n%s`, out)
+	}
+
+	t.Run(`generic parent with pending child is NOT ready`, func(t *testing.T) {
+		dir2 := setupDelegateProject(t)
+		parent2 := &taskpipeline.TaskState{TaskRef: `feat/orch`, Summary: `编排`, Kind: taskpipeline.TaskKindGeneric}
+		if err := taskpipeline.SaveTaskState(dir2, parent2); err != nil {
+			t.Fatalf(`SaveTaskState: %v`, err)
+		}
+		// A claimed (not delivered) child → parent not ready.
+		//
+		// 一个 claimed（未 delivered）的子任务 → 父任务未就绪。
+		pending := &taskpipeline.TaskState{TaskRef: `feat/child`, Summary: `子`, ParentTaskRef: `feat/orch`}
+		if err := pending.AssignTo(`kimi`, `backend`, `claude-code`); err != nil {
+			t.Fatalf(`AssignTo: %v`, err)
+		}
+		if err := pending.Claim(`kimi`); err != nil {
+			t.Fatalf(`Claim: %v`, err)
+		}
+		if err := taskpipeline.SaveTaskState(dir2, pending); err != nil {
+			t.Fatalf(`SaveTaskState: %v`, err)
+		}
+		out, _, code := runForge(t, dir2, `task`, `health`)
+		if code != 0 {
+			t.Fatalf(`task health exit %d: %s`, code, out)
+		}
+		if strings.Contains(out, `可 complete 的编排任务`) {
+			t.Errorf(`子任务未全交付的编排器不应标「可 complete」, got:\n%s`, out)
+		}
+	})
+}
