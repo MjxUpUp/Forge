@@ -226,12 +226,13 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge task start --ref <type/desc> --branch` | 创建任务（自动创建分支） |
 | `forge task status` | 查看当前任务门禁状态 |
 | `forge task list` | 列出所有任务 |
+| `forge task mine [--agent <agent>] [--role <role>] [--all-projects] [--blocked] [--json]` | 列出分派给当前/指定 agent 的任务（`--all-projects` 全仓扫描按项目分组；`--blocked` 仅被依赖阻塞的，标注卡在哪环 [status, gate 进度 passed/total]） |
 | `forge task gate <gate-id>` | 验证单道任务门禁 |
 | `forge task verify-acceptance` | 实跑验收标准（task start --accept 登记），记 deterministic 证据 |
 | `forge task scope add <glob>` | 追加计划改动文件到白名单（支持中途迭代） |
 | `forge task scope show` | 查看声明的白名单 + 实时 scope-drift（advisory，不阻塞） |
 | `forge task complete` | 标记任务完成（自动评分） |
-| `forge task abort [--ref <ref>]` | 中止并删除任务（清理 ghost/卡住任务，不评分） |
+| `forge task abort [--ref <ref>] [--cascade\|--detach-deps]` | 中止并删除任务（清理 ghost/卡住任务，不评分；存在反向依赖时默认仅提示，`--cascade` 递归中止所有依赖它的任务，`--detach-deps` 从依赖它的任务移除该依赖边） |
 | `forge task score` | 查看任务质量评分 |
 | `forge task resume [--ref <ref>]` | 拉回任务接续上下文（目标/计划/决策/阻塞/参与工具+门禁进度+git 已改），跨会话/跨工具秒级恢复 |
 | `forge task context [--ref <ref>]` | 只读查看接续上下文（resume 的不改 state 别名） |

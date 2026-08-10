@@ -405,6 +405,35 @@ func TestTaskMine_BlockedShowsPendingDeps(t *testing.T) {
 	}
 }
 
+// TestTaskMine_BlockedAnnotatesDepStatus: mine --blocked's pending_dep_detail annotates each pending
+// upstream with its collaboration status + gate progress (design §4: "卡在 feat/backend[claimed, 进度 60%]").
+// The upstream is assigned+claimed (no gate passed) so it is still pending (delivered is the unblock
+// signal) and its detail reads [claimed, 0/3].
+//
+// TestTaskMine_BlockedAnnotatesDepStatus：mine --blocked 的 pending_dep_detail 为每条待交上游标注协作
+// 状态 + 门禁进度（设计§4：「卡在 feat/backend[claimed, 进度 60%]」）。上游被分派+认领（无门禁通过）故
+// 仍 pending（delivered 才放行），其 detail 读作 [claimed, 0/3]。
+func TestTaskMine_BlockedAnnotatesDepStatus(t *testing.T) {
+	dir := setupDelegateProject(t)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/up`, `--assignee`, `kimi`, `--title`, `上游`)
+	runForge(t, dir, `task`, `claim`, `--ref`, `feat/up`, `--as`, `kimi`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/down`, `--depends-on`, `feat/up`, `--assignee`, `kimi`, `--title`, `下游`)
+
+	out, _, code := runForge(t, dir, `task`, `mine`, `--agent`, `kimi`, `--blocked`, `--json`)
+	if code != 0 {
+		t.Fatalf(`mine --blocked exit %d: %s`, code, out)
+	}
+	if !strings.Contains(out, `pending_dep_detail`) {
+		t.Errorf(`应含 pending_dep_detail（设计§4 状态/进度标注）, got: %s`, out)
+	}
+	if !strings.Contains(out, `"status": "claimed"`) {
+		t.Errorf(`上游 claimed，pending_dep_detail.status 应为 claimed, got: %s`, out)
+	}
+	if !strings.Contains(out, `"gate_passed": 0`) || !strings.Contains(out, `"gate_total": 3`) {
+		t.Errorf(`上游无门禁通过，应 gate_passed=0/gate_total=3, got: %s`, out)
+	}
+}
+
 // TestTaskAbort_WarnsReverseDeps: aborting a task that others DependsOn surfaces the dangling
 // edge — the dependent's gate would now block forever on a missing upstream. We do NOT cascade-
 // abort, but the JSON carries dependents_blocked so an orchestrator can re-point or abort them.
@@ -422,6 +451,178 @@ func TestTaskAbort_WarnsReverseDeps(t *testing.T) {
 	}
 	if !strings.Contains(out, `dependents_blocked`) || !strings.Contains(out, `feat/down`) {
 		t.Errorf(`abort JSON 应含 dependents_blocked=[feat/down], got: %s`, out)
+	}
+}
+
+// TestTaskAbort_CascadeAbortsDependents: --cascade aborts the transitive closure of dependents.
+// Chain feat/up <- feat/mid <- feat/down: abort feat/up --cascade deletes all three; cascaded lists
+// mid + down, and a subsequent mine no longer sees the delegated feat/down.
+//
+// TestTaskAbort_CascadeAbortsDependents：--cascade abort 依赖方传递闭包。链 feat/up <- feat/mid <-
+// feat/down：abort feat/up --cascade 删三者；cascaded 列 mid+down，且随后的 mine 不再见已分派的 feat/down。
+func TestTaskAbort_CascadeAbortsDependents(t *testing.T) {
+	dir := setupDelegateProject(t)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/up`, `--title`, `上游`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/mid`, `--depends-on`, `feat/up`, `--title`, `中游`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/down`, `--depends-on`, `feat/mid`, `--assignee`, `kimi`, `--title`, `下游`)
+
+	out, _, code := runForge(t, dir, `task`, `abort`, `--ref`, `feat/up`, `--cascade`, `--json`)
+	if code != 0 {
+		t.Fatalf(`abort --cascade exit %d: %s`, code, out)
+	}
+	if !strings.Contains(out, `cascaded`) {
+		t.Errorf(`--cascade 应在 JSON 含 cascaded, got: %s`, out)
+	}
+	if !strings.Contains(out, `feat/mid`) || !strings.Contains(out, `feat/down`) {
+		t.Errorf(`cascaded 应含传递闭包 feat/mid + feat/down, got: %s`, out)
+	}
+	mineOut, _, _ := runForge(t, dir, `task`, `mine`, `--agent`, `kimi`, `--json`)
+	if strings.Contains(mineOut, `feat/down`) {
+		t.Errorf(`cascade 后 feat/down 应已删，mine 不应再含, got: %s`, mineOut)
+	}
+}
+
+// TestTaskAbort_DetachDepsRemovesEdge: --detach-deps removes the edge from each direct dependent,
+// keeping the dependent task alive. feat/up <- feat/down: abort feat/up --detach-deps leaves
+// feat/down still visible to mine but its DependsOn emptied of feat/up (detached lists feat/down).
+//
+// TestTaskAbort_DetachDepsRemovesEdge：--detach-deps 摘掉每个直接依赖方的边，保留依赖方任务。
+// feat/up <- feat/down：abort feat/up --detach-deps 留下 feat/down 仍被 mine 可见，但 DependsOn 不再含
+// feat/up（detached 列 feat/down）。
+func TestTaskAbort_DetachDepsRemovesEdge(t *testing.T) {
+	dir := setupDelegateProject(t)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/up`, `--title`, `上游`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/down`, `--depends-on`, `feat/up`, `--assignee`, `kimi`, `--title`, `下游`)
+
+	out, _, code := runForge(t, dir, `task`, `abort`, `--ref`, `feat/up`, `--detach-deps`, `--json`)
+	if code != 0 {
+		t.Fatalf(`abort --detach-deps exit %d: %s`, code, out)
+	}
+	if !strings.Contains(out, `detached`) || !strings.Contains(out, `feat/down`) {
+		t.Errorf(`--detach-deps 应在 JSON 含 detached=[feat/down], got: %s`, out)
+	}
+	mineOut, _, _ := runForge(t, dir, `task`, `mine`, `--agent`, `kimi`, `--json`)
+	if !strings.Contains(mineOut, `feat/down`) {
+		t.Errorf(`detach 后 feat/down 应仍存在（mine 可见）, got: %s`, mineOut)
+	}
+	if strings.Contains(mineOut, `feat/up`) {
+		t.Errorf(`detach 后 feat/down 的 DependsOn 不应再含 feat/up, got: %s`, mineOut)
+	}
+}
+
+// TestTaskAbort_DetachDepsKeepsOtherEdges (L5): --detach-deps rebuilds DependsOn by excluding only the
+// aborted ref, so other edges survive. feat/down depends on feat/up AND feat/other; abort feat/up
+// --detach-deps must leave feat/other in feat/down's DependsOn (mine still shows feat/down blocked on
+// feat/other) while feat/up is gone. Pins the closure's kept-edge correctness.
+//
+// TestTaskAbort_DetachDepsKeepsOtherEdges（L5）：--detach-deps 重建 DependsOn 时只排除被 abort 的 ref，
+// 其他边存活。feat/down 依赖 feat/up 且 feat/other；abort feat/up --detach-deps 必须保留 feat/other 在
+// feat/down 的 DependsOn（mine 仍显示 feat/down 阻塞于 feat/other），而 feat/up 消失。钉住闭包保边正确性。
+func TestTaskAbort_DetachDepsKeepsOtherEdges(t *testing.T) {
+	dir := setupDelegateProject(t)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/up`, `--title`, `上游`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/other`, `--title`, `其他上游`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/down`, `--depends-on`, `feat/up`, `--depends-on`, `feat/other`, `--assignee`, `kimi`, `--title`, `下游`)
+
+	out, _, code := runForge(t, dir, `task`, `abort`, `--ref`, `feat/up`, `--detach-deps`, `--json`)
+	if code != 0 {
+		t.Fatalf(`abort --detach-deps exit %d: %s`, code, out)
+	}
+	mineOut, _, _ := runForge(t, dir, `task`, `mine`, `--agent`, `kimi`, `--json`)
+	if strings.Contains(mineOut, `feat/up`) {
+		t.Errorf(`detach 后 feat/down 不应再依赖 feat/up, got: %s`, mineOut)
+	}
+	if !strings.Contains(mineOut, `feat/other`) {
+		t.Errorf(`detach 只摘 feat/up 边，feat/other 应保留在 feat/down 的 DependsOn, got: %s`, mineOut)
+	}
+}
+
+// TestTaskAbort_CascadeDiamondTopology (L1): --cascade over a diamond (A<-B, A<-C, B<-D, C<-D) must
+// collect B/C/D with the visited guard preventing D from being entered twice via its two paths. A
+// subsequent mine no longer shows the delegated feat/d. Exercises non-linear topology beyond the
+// linear chain covered by CascadeAbortsDependents.
+//
+// TestTaskAbort_CascadeDiamondTopology（L1）：--cascade 跨钻石拓扑（A<-B, A<-C, B<-D, C<-D）必须收
+// B/C/D，visited 守卫防 D 经两条路径入队两次。随后的 mine 不再见已分派的 feat/d。覆盖 CascadeAbortsDependents
+// 的线性链之外的非线性拓扑。
+func TestTaskAbort_CascadeDiamondTopology(t *testing.T) {
+	dir := setupDelegateProject(t)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/a`, `--title`, `A`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/b`, `--depends-on`, `feat/a`, `--title`, `B`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/c`, `--depends-on`, `feat/a`, `--title`, `C`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/d`, `--depends-on`, `feat/b`, `--depends-on`, `feat/c`, `--assignee`, `kimi`, `--title`, `D`)
+
+	out, _, code := runForge(t, dir, `task`, `abort`, `--ref`, `feat/a`, `--cascade`, `--json`)
+	if code != 0 {
+		t.Fatalf(`abort --cascade exit %d: %s`, code, out)
+	}
+	for _, ref := range []string{`feat/b`, `feat/c`, `feat/d`} {
+		if !strings.Contains(out, ref) {
+			t.Errorf(`钻石拓扑 cascaded 应含 %s, got: %s`, ref, out)
+		}
+	}
+	mineOut, _, _ := runForge(t, dir, `task`, `mine`, `--agent`, `kimi`, `--json`)
+	if strings.Contains(mineOut, `feat/d`) {
+		t.Errorf(`钻石 cascade 后 feat/d 应已删，mine 不应再含, got: %s`, mineOut)
+	}
+}
+
+// TestTaskAbort_CascadeAndDetachMutuallyExclusive: the two non-default branches of the design §4
+// three-way abort cannot combine — --cascade deletes dependents, --detach-deps keeps them.
+//
+// TestTaskAbort_CascadeAndDetachMutuallyExclusive：设计§4 三选一的两个非默认分支不可组合——
+// --cascade 删依赖方，--detach-deps 留依赖方。
+func TestTaskAbort_CascadeAndDetachMutuallyExclusive(t *testing.T) {
+	dir := setupDelegateProject(t)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/x`, `--title`, `X`)
+	out, _, code := runForge(t, dir, `task`, `abort`, `--ref`, `feat/x`, `--cascade`, `--detach-deps`)
+	if code == 0 {
+		t.Fatalf(`--cascade 与 --detach-deps 互斥应失败, got exit 0: %s`, out)
+	}
+	if !strings.Contains(out, `互斥`) {
+		t.Errorf(`应报互斥错误, got: %s`, out)
+	}
+}
+
+// TestTaskMine_AllProjects: --all-projects scans every registered project (design §8) and groups by
+// project. Two projects each delegate to kimi; the global view lists both with a project label and
+// never auto-resumes. FORGE_DATA_HOME is shared so both forge-init registrations land in one registry.
+//
+// TestTaskMine_AllProjects：--all-projects 扫描每个已登记 project（设计§8）并按 project 分组。两个
+// project 各分派给 kimi；全局视图列两组带 project 标签且绝不自动 resume。共享 FORGE_DATA_HOME 使两次
+// forge init 的注册落进同一 registry。
+func TestTaskMine_AllProjects(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "allproj-sid")
+	makeProject := func(ref string) string {
+		d := t.TempDir()
+		runGit(t, d, "init")
+		runGit(t, d, "config", "user.email", "t@t.com")
+		runGit(t, d, "config", "user.name", "T")
+		if stdout, _, code := runForge(t, d, "init", "--mode", "medium"); code != 0 {
+			t.Fatalf("forge init failed: %s", stdout)
+		}
+		os.WriteFile(filepath.Join(d, "main.go"), []byte(`package main
+
+func main() {}
+`), 0644)
+		runGit(t, d, "add", ".")
+		runGit(t, d, "commit", "-m", "init")
+		runForge(t, d, "task", "start", "--ref", ref, "--assignee", "kimi", "--title", ref)
+		return d
+	}
+	dirA := makeProject("feat/a")
+	makeProject("feat/b")
+
+	out, _, code := runForge(t, dirA, "task", "mine", "--agent", "kimi", "--all-projects", "--json")
+	if code != 0 {
+		t.Fatalf(`mine --all-projects exit %d: %s`, code, out)
+	}
+	if !strings.Contains(out, "projects") {
+		t.Errorf(`--all-projects JSON 应含 projects 分组, got: %s`, out)
+	}
+	if !strings.Contains(out, "feat/a") || !strings.Contains(out, "feat/b") {
+		t.Errorf(`--all-projects 应跨 project 列出 feat/a + feat/b, got: %s`, out)
 	}
 }
 
