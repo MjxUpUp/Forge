@@ -4,10 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/agentsignals"
+	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/registry"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
 )
@@ -47,7 +51,7 @@ var taskDeliverCmd = &cobra.Command{
 }
 
 var taskMineCmd = &cobra.Command{
-	Use:   `mine [--agent <agent>] [--role <role>] [--blocked] [--json]`,
+	Use:   `mine [--agent <agent>] [--role <role>] [--all-projects] [--blocked] [--json]`,
 	Short: `列出分派给当前/指定 agent 的任务（offered 待认领 + 已处理历史；--blocked 只看被上游依赖卡住的）`,
 	RunE:  runTaskMine,
 }
@@ -125,6 +129,7 @@ func init() {
 
 	taskMineCmd.Flags().String(`agent`, ``, `查询哪个 agent 的分派（默认探测当前工具）`)
 	taskMineCmd.Flags().String(`role`, ``, `只看指定角色的分派`)
+	taskMineCmd.Flags().Bool(`all-projects`, false, `全局扫描所有已登记 project（标注 project 归属，不自动 resume）`)
 	taskMineCmd.Flags().Bool(`blocked`, false, `只看被上游依赖卡住的任务（DependsOn 未全交付）`)
 	taskMineCmd.Flags().Bool(`json`, false, `JSON 格式输出`)
 
@@ -508,44 +513,79 @@ type reclaimResult struct {
 
 // delegatedEntry is the JSON shape of one row in forge task mine output.
 type delegatedEntry struct {
-	Ref           string   `json:"ref"`
-	Title         string   `json:"title"`
-	Role          string   `json:"role,omitempty"`
-	Status        string   `json:"status"`
-	OfferedBy     string   `json:"offered_by,omitempty"`
-	PendingDeps   []string `json:"pending_deps,omitempty"`
-	IsZombie      bool     `json:"is_zombie,omitempty"`
-	ZombieReasons []string `json:"zombie_reasons,omitempty"`
+	Ref              string       `json:"ref"`
+	Title            string       `json:"title"`
+	Role             string       `json:"role,omitempty"`
+	Status           string       `json:"status"`
+	OfferedBy        string       `json:"offered_by,omitempty"`
+	PendingDeps      []string     `json:"pending_deps,omitempty"`
+	PendingDepDetail []pendingDep `json:"pending_dep_detail,omitempty"`
+	IsZombie         bool         `json:"is_zombie,omitempty"`
+	ZombieReasons    []string     `json:"zombie_reasons,omitempty"`
 }
 
-func runTaskMine(cmd *cobra.Command, args []string) error {
-	root, err := findProjectRoot()
-	if err != nil {
-		return err
-	}
-	agent, _ := cmd.Flags().GetString(`agent`)
-	if agent == `` {
-		agent = detectOriginTool(``)
-	}
-	if agent == `` {
-		return fmt.Errorf(`无法探测当前 agent（无 agent env）。显式传 --agent <agent>（如 kimi/reasonix/cursor）查看分派给该 agent 的任务`)
-	}
-	role, _ := cmd.Flags().GetString(`role`)
-	blocked, _ := cmd.Flags().GetBool(`blocked`)
-	asJSON, _ := cmd.Flags().GetBool(`json`)
+// pendingDep annotates one pending upstream dependency with its collaboration status and gate
+// progress, so a worker sees WHERE it is blocked (design §4: "卡在 feat/backend[claimed, 进度 60%]").
+// Status is the Assignment.Status for a delegated dep, or complete/incomplete/missing for an
+// ordinary or absent predecessor. Gate progress is passed/total of DefaultGates.
+//
+// pendingDep 标注一条待交付上游依赖的协作状态与门禁进度，让工作方看清卡在哪一环
+// （设计§4：「卡在 feat/backend[claimed, 进度 60%]」）。Status 对分派依赖取 Assignment.Status，
+// 对普通/缺失前序取 complete/incomplete/missing。门禁进度为 DefaultGates 的 passed/total。
+type pendingDep struct {
+	Ref        string `json:"ref"`
+	Status     string `json:"status"`
+	GatePassed int    `json:"gate_passed"`
+	GateTotal  int    `json:"gate_total"`
+}
 
+// annotateDep describes one pending upstream dependency: collaboration status + gate progress.
+// A delegated dep → its Assignment.Status; an ordinary predecessor → complete/incomplete; a
+// missing/aborted ref → "missing". Gate progress is passed/total over DefaultGates.
+//
+// annotateDep 描述一条待交付上游依赖：协作状态 + 门禁进度。分派依赖 → 其 Assignment.Status；
+// 普通前序 → complete/incomplete；缺失/已 abort 的 ref → "missing"。门禁进度为 DefaultGates 的 passed/total。
+func annotateDep(ref string, byRef map[string]*taskpipeline.TaskState) (status string, passed, total int) {
+	total = len(taskpipeline.DefaultGates())
+	s := byRef[ref]
+	if s == nil {
+		return `missing`, 0, total
+	}
+	passed = len(s.CompletedGates())
+	if s.Assignment != nil {
+		return s.Assignment.Status, passed, total
+	}
+	if s.IsComplete() {
+		return `complete`, passed, total
+	}
+	return `incomplete`, passed, total
+}
+
+// scanDelegations collects the delegated tasks matching agent (and optional role/blocked filters)
+// under one project root. It builds a ref→state index so each pending dep can be annotated with its
+// status + gate progress. Returns (nil, err) only when ListTaskStates fails; an empty slice means
+// the agent has no matching delegations under this root. Shared by the single-project and
+// --all-projects paths so the two views never disagree on what matches.
+//
+// scanDelegations 收集某 project root 下匹配 agent（及可选 role/blocked 过滤）的分派任务。建 ref→state
+// 索引使每条待交依赖可标注其状态 + 门禁进度。仅 ListTaskStates 失败返 (nil, err)；空切片表示该 root 下
+// agent 无匹配分派。单 project 与 --all-projects 共用，使两种视图对「匹配」永不分歧。
+func scanDelegations(root, agent, role string, blocked bool, now time.Time) ([]delegatedEntry, error) {
 	states, err := taskpipeline.ListTaskStates(root)
 	if err != nil {
-		return fmt.Errorf(`读取任务列表失败: %w`, err)
+		return nil, err
+	}
+	// Index states by ref so each pending dep can be annotated with its status + gate progress
+	// without a second ListTaskStates pass.
+	//
+	// 按 ref 索引 states，使每条待交依赖无需二次 ListTaskStates 即可标注其状态 + 门禁进度。
+	byRef := make(map[string]*taskpipeline.TaskState, len(states))
+	for _, s := range states {
+		if s != nil {
+			byRef[s.TaskRef] = s
+		}
 	}
 	var entries []delegatedEntry
-	// now is captured once for the zombie scan (offered>7d / claimed>TTL / input-required>7d all
-	// age against the same instant). Reuses taskpipeline.IsZombie so mine, the dashboard, and
-	// `task health` share ONE truth about what "zombie" means (design §12).
-	//
-	// now 只取一次供僵尸扫描（offered>7d / claimed>TTL / input-required>7d 都相对同一时刻老化）。
-	// 复用 taskpipeline.IsZombie，使 mine、看板、task health 对「僵尸」共享同一真相源（设计 §12）。
-	now := time.Now()
 	for _, s := range states {
 		if s == nil || s.Assignment == nil || s.Assignment.Agent != agent {
 			continue
@@ -566,18 +606,104 @@ func runTaskMine(cmd *cobra.Command, args []string) error {
 		if blocked && len(pend) == 0 {
 			continue
 		}
+		// Annotate each pending dep with WHERE it is stuck (design §4): the dep's collaboration
+		// status + gate progress, so the worker knows not just that it is blocked but on whom/what.
+		//
+		// 标注每条待交依赖卡在哪一环（设计§4）：依赖的协作状态 + 门禁进度，
+		// 让工作方不只知被阻塞，更知被谁/什么阻塞。
+		var details []pendingDep
+		for _, d := range pend {
+			st, passed, tot := annotateDep(d, byRef)
+			details = append(details, pendingDep{Ref: d, Status: st, GatePassed: passed, GateTotal: tot})
+		}
 		isZombie, zombieReasons := taskpipeline.IsZombie(root, s, now)
 		entries = append(entries, delegatedEntry{
-			Ref:           s.TaskRef,
-			Title:         s.Summary,
-			Role:          s.Assignment.Role,
-			Status:        s.Assignment.Status,
-			OfferedBy:     s.Assignment.OfferedBy,
-			PendingDeps:   pend,
-			IsZombie:      isZombie,
-			ZombieReasons: zombieReasons,
+			Ref:              s.TaskRef,
+			Title:            s.Summary,
+			Role:             s.Assignment.Role,
+			Status:           s.Assignment.Status,
+			OfferedBy:        s.Assignment.OfferedBy,
+			PendingDeps:      pend,
+			PendingDepDetail: details,
+			IsZombie:         isZombie,
+			ZombieReasons:    zombieReasons,
 		})
 	}
+	return entries, nil
+}
+
+// formatEntry renders one delegatedEntry as an indented single-line row (status, ref, role,
+// offerer, title, blocking-dep annotations, zombie marker). Shared by the single-project and
+// --all-projects outputs so the two views never drift in row format.
+//
+// formatEntry 把一条 delegatedEntry 渲染为缩进单行（状态/ref/角色/分派方/标题/阻塞依赖标注/僵尸标记）。
+// 单 project 与 --all-projects 共用，使两种视图行格式永不漂移。
+func formatEntry(e delegatedEntry) string {
+	roleStr := e.Role
+	if roleStr == `` {
+		roleStr = `-`
+	}
+	s := fmt.Sprintf(`  %s  [%s]  角色=%s  分派方=%s  %s`, e.Status, e.Ref, roleStr, e.OfferedBy, e.Title)
+	if len(e.PendingDepDetail) > 0 {
+		parts := make([]string, 0, len(e.PendingDepDetail))
+		for _, d := range e.PendingDepDetail {
+			parts = append(parts, fmt.Sprintf(`%s[%s,%d/%d gate]`, d.Ref, d.Status, d.GatePassed, d.GateTotal))
+		}
+		s += fmt.Sprintf(`  ⏳阻塞于: %s`, strings.Join(parts, `, `))
+	}
+	// Zombie annotation (design §12 标黄): a row whose delegation has stalled (offered>7d /
+	// claimed>TTL / input-required>7d / abandoned_count≥2) gets a ⚠ marker with its reasons.
+	// Human-color terminals can't reliably render ANSI here, so the marker + reasons are the
+	// signal; the dashboard renders true yellow.
+	//
+	// 僵尸标注（设计 §12 标黄）：分派停滞的行（offered>7d / claimed>TTL /
+	// input-required>7d / abandoned_count≥2）挂 ⚠ 标记并附 reason。终端难可靠渲染 ANSI，
+	// 故标记 + reason 即信号；真黄色在看板渲染。
+	if e.IsZombie {
+		s += fmt.Sprintf(`  ⚠僵尸(%s)`, strings.Join(e.ZombieReasons, `,`))
+	}
+	return s
+}
+
+func runTaskMine(cmd *cobra.Command, args []string) error {
+	agent, _ := cmd.Flags().GetString(`agent`)
+	if agent == `` {
+		agent = detectOriginTool(``)
+	}
+	if agent == `` {
+		return fmt.Errorf(`无法探测当前 agent（无 agent env）。显式传 --agent <agent>（如 kimi/reasonix/cursor）查看分派给该 agent 的任务`)
+	}
+	role, _ := cmd.Flags().GetString(`role`)
+	blocked, _ := cmd.Flags().GetBool(`blocked`)
+	allProjects, _ := cmd.Flags().GetBool(`all-projects`)
+	asJSON, _ := cmd.Flags().GetBool(`json`)
+	// now is captured once for the zombie scan (offered>7d / claimed>TTL / input-required>7d all
+	// age against the same instant). Reuses taskpipeline.IsZombie so mine, the dashboard, and
+	// `task health` share ONE truth about what "zombie" means (design §12).
+	//
+	// now 只取一次供僵尸扫描（offered>7d / claimed>TTL / input-required>7d 都相对同一时刻老化）。
+	// 复用 taskpipeline.IsZombie，使 mine、看板、task health 对「僵尸」共享同一真相源（设计 §12）。
+	now := time.Now()
+
+	if allProjects {
+		return runTaskMineAllProjects(agent, role, blocked, now, asJSON)
+	}
+	root, err := findProjectRoot()
+	if err != nil {
+		return err
+	}
+	entries, err := scanDelegations(root, agent, role, blocked, now)
+	if err != nil {
+		return fmt.Errorf(`读取任务列表失败: %w`, err)
+	}
+	return printDelegations(entries, agent, role, asJSON)
+}
+
+// printDelegations renders the single-project view: a JSON array, or the human header + one row
+// per entry. Empty → a "no delegations" line.
+//
+// printDelegations 渲染单 project 视图：JSON 数组，或人类可读表头 + 每条一行。空 → 「无分派」行。
+func printDelegations(entries []delegatedEntry, agent, role string, asJSON bool) error {
 	if asJSON {
 		if entries == nil {
 			entries = []delegatedEntry{}
@@ -597,26 +723,73 @@ func runTaskMine(cmd *cobra.Command, args []string) error {
 	fmt.Printf(`分派给 %s 的任务（%d）:`, agent, len(entries))
 	fmt.Println()
 	for _, e := range entries {
-		roleStr := e.Role
-		if roleStr == `` {
-			roleStr = `-`
+		fmt.Println(formatEntry(e))
+	}
+	return nil
+}
+
+// runTaskMineAllProjects renders the cross-project view (design §8): scan every registered project
+// for delegations to agent, group by project with a project-key label, and give overview counts +
+// per-project rows. Never auto-resumes (unlike the SessionStart hook — mine is read-only discovery).
+// A failed project is warned on stderr and skipped so one broken root does not blind the global view.
+//
+// runTaskMineAllProjects 渲染跨 project 视图（设计§8）：扫描每个已登记 project 分派给 agent 的任务，
+// 按 project 分组并标 project-key，给概览计数 + 每 project 明细。绝不自动 resume（区别于 SessionStart
+// hook——mine 是只读发现）。失败的 project 在 stderr 警告并跳过，使一个坏 root 不致盲全局视图。
+func runTaskMineAllProjects(agent, role string, blocked bool, now time.Time, asJSON bool) error {
+	roots := registry.List()
+	if len(roots) == 0 {
+		return fmt.Errorf(`全局视图无已登记项目——在项目目录跑 forge init 登记后重试`)
+	}
+	type projectGroup struct {
+		Project string           `json:"project"`
+		Root    string           `json:"root"`
+		Count   int              `json:"count"`
+		Entries []delegatedEntry `json:"entries"`
+	}
+	var groups []projectGroup
+	for _, r := range roots {
+		entries, err := scanDelegations(r, agent, role, blocked, now)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, `Warning: 扫描 project %s 失败（跳过）: %v`+"\n", r, err)
+			continue
 		}
-		fmt.Printf(`  %s  [%s]  角色=%s  分派方=%s  %s`, e.Status, e.Ref, roleStr, e.OfferedBy, e.Title)
-		if len(e.PendingDeps) > 0 {
-			fmt.Printf(`  ⏳阻塞于: %s`, strings.Join(e.PendingDeps, `, `))
+		// M2: forgedata.Key 失败（如注册后 .git 被移除、worktree 清理）时 key 为空——text 分支会
+		// 回退 filepath.Base，但 JSON 的 project 字段会拿到空串无法区分「无 key」与「key 为空」。这里
+		// 统一回退 base，使 JSON 与 text 一致、消费者不收空值。
+		key, keyErr := forgedata.Key(r)
+		if keyErr != nil {
+			key = filepath.Base(r)
 		}
-		// Zombie annotation (design §12 标黄): a row whose delegation has stalled (offered>7d /
-		// claimed>TTL / input-required>7d / abandoned_count≥2) gets a ⚠ marker with its reasons.
-		// Human-color terminals can't reliably render ANSI here, so the marker + reasons are the
-		// signal; the dashboard renders true yellow.
-		//
-		// 僵尸标注（设计 §12 标黄）：分派停滞的行（offered>7d / claimed>TTL /
-		// input-required>7d / abandoned_count≥2）挂 ⚠ 标记并附 reason。终端难可靠渲染 ANSI，
-		// 故标记 + reason 即信号；真黄色在看板渲染。
-		if e.IsZombie {
-			fmt.Printf(`  ⚠僵尸(%s)`, strings.Join(e.ZombieReasons, `,`))
+		if entries == nil {
+			entries = []delegatedEntry{}
 		}
+		groups = append(groups, projectGroup{Project: key, Root: r, Count: len(entries), Entries: entries})
+	}
+	if asJSON {
+		if groups == nil {
+			groups = []projectGroup{}
+		}
+		out, _ := json.MarshalIndent(map[string]any{`projects`: groups}, ``, `  `)
+		fmt.Println(string(out))
+		return nil
+	}
+	total := 0
+	for _, g := range groups {
+		total += g.Count
+	}
+	fmt.Printf(`全局分派给 %s 的任务（%d 个 project，共 %d）:`, agent, len(groups), total)
+	fmt.Println()
+	for _, g := range groups {
+		label := g.Project
+		if label == `` {
+			label = filepath.Base(g.Root)
+		}
+		fmt.Printf(`▶ project %s: %d 个`, label, g.Count)
 		fmt.Println()
+		for _, e := range g.Entries {
+			fmt.Println(formatEntry(e))
+		}
 	}
 	return nil
 }
