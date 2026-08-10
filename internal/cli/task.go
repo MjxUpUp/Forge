@@ -67,6 +67,14 @@ func init() {
 	taskStartCmd.Flags().String(`assignee`, ``, `分派给指定 agent（如 kimi/reasonix/cursor），任务创建即 offered；建议配合 --role 说明角色`)
 	taskStartCmd.Flags().String(`role`, ``, `分派角色（如 frontend/backend/testing），随 --assignee 记入 Assignment.Role`)
 	taskStartCmd.Flags().StringArray(`depends-on`, nil, `依赖的上游 task ref（可重复 --depends-on）：本任务等待它们 delivered 后再开工`)
+	// Per-task zombie TTL override (design §3/§9 --ttl): a delegation that should expire on its own
+	// clock — faster than the global 7d default (short-fuse), or slower (long runner) — sets this.
+	// Zero (no flag) keeps the global constant, fully backward compatible. health.effectiveTTL reads it.
+	//
+	// Per-task 僵尸 TTL 覆盖（设计 §3/§9 --ttl）：需按自己的时钟失联的分派——比全局 7d 默认更快
+	//（短时效）或更慢（长跑任务）——设此项。零（不带 flag）保持全局常量，完全向后兼容。
+	// health.effectiveTTL 读取它。
+	taskStartCmd.Flags().Duration(`ttl`, 0, `每任务僵尸 TTL，覆盖全局 7d 默认（如 24h/30m/72h）；0=用全局（向后兼容）。offered/claimed/input-required 超此时长无活动即标僵尸`)
 	taskStartCmd.Flags().String(`ref`, ``, `任务引用（如 feat/add-auto-branch），默认从分支名推断`)
 	taskStartCmd.Flags().String("from-issue", "", "外部 issue URL（linear/github），解析为 task.ExternalOrigin 锚定外部 issue（衔接 spawn 式编排器）")
 	taskStartCmd.Flags().Bool("branch", false, "从 main/master 创建新分支并切换（ref 作为分支名）")
@@ -419,6 +427,15 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	}
 	if goal, _ := cmd.Flags().GetString("goal"); goal != "" {
 		state.Goal = goal
+	}
+	// Per-task TTL override (design §3/§9 --ttl): persists into state.TTL so health.effectiveTTL
+	// surfaces this task as stale on its own clock, independent of the global 7d constant. Zero
+	// (no --ttl) leaves state.TTL at its zero-value fallback — no behavior change for legacy tasks.
+	//
+	// Per-task TTL 覆盖（设计 §3/§9 --ttl）：持久化进 state.TTL，使 health.effectiveTTL 按本任务自己
+	// 的时钟标失联，独立于全局 7d 常量。零（无 --ttl）留 state.TTL 于零值回落——legacy 任务无行为变化。
+	if ttl, _ := cmd.Flags().GetDuration("ttl"); ttl > 0 {
+		state.TTL = ttl
 	}
 	// planAcceptanceAdded: the net count of entries actually added from --plan-file
 	// after extraction (net of duplicates deduped against explicit --accept), used only

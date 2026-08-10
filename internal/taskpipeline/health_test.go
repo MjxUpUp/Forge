@@ -136,6 +136,56 @@ func TestIsClaimedStale(t *testing.T) {
 	})
 }
 
+// TestEffectiveTTL (#6, design §3/§9 --ttl): the per-task TTL overrides the global default when
+// set, and falls back on zero/nil. This is the single read point wiring state.TTL into the Is*
+// zombie checks — a backward-compat regression here would silently re-enable the 7d global for tasks
+// that declared a shorter window.
+//
+// TestEffectiveTTL（#6，设计 §3/§9 --ttl）：per-task TTL 设了覆盖全局默认，零/nil 回落。这是把
+// state.TTL 接入 Is* 僵尸检查的唯一读取点——此处回归会悄悄给声明了更短窗口的任务重新启用 7d 全局。
+func TestEffectiveTTL(t *testing.T) {
+	global := 7 * 24 * time.Hour
+	if got := effectiveTTL(nil, global); got != global {
+		t.Errorf(`nil state 应回落全局默认, got=%v want=%v`, got, global)
+	}
+	s := &TaskState{}
+	if got := effectiveTTL(s, global); got != global {
+		t.Errorf(`TTL=零值应回落全局默认, got=%v want=%v`, got, global)
+	}
+	s.TTL = 1 * time.Hour
+	if got := effectiveTTL(s, global); got != 1*time.Hour {
+		t.Errorf(`TTL>0 应覆盖全局默认, got=%v want=1h`, got)
+	}
+}
+
+// TestIsOfferedZombie_PerTaskTTL (#6, design §3/§9 --ttl): a per-task TTL both shrinks and extends
+// the global 7d window. A 2h-old offered task is NOT a zombie under the 7d global, but IS under a
+// 1h per-task TTL (shrink). Conversely an 8d-old offered task IS a zombie under the 7d global but
+// NOT under a 30d per-task TTL (extend). This pins effectiveTTL's wiring into IsOfferedZombie.
+//
+// TestIsOfferedZombie_PerTaskTTL（#6，设计 §3/§9 --ttl）：per-task TTL 既缩短也延长全局 7d 窗口。
+// 2h 前的 offered 任务在 7d 全局下非僵尸，但在 1h per-task TTL 下是僵尸（缩短）。反向 8d 前的
+// offered 任务在 7d 全局下是僵尸，但在 30d per-task TTL 下不是（延长）。钉住 effectiveTTL 接入 IsOfferedZombie。
+func TestIsOfferedZombie_PerTaskTTL(t *testing.T) {
+	twoHoursAgo := fixedNow.Add(-2 * time.Hour)
+	t.Run(`per-task TTL shorter than global flags earlier`, func(t *testing.T) {
+		s := offeredTask(`kimi`)
+		s.Assignment.OfferedAt = ptrTime(twoHoursAgo)
+		s.TTL = 1 * time.Hour // 2h old > 1h per-task (even though 2h < 7d global)
+		if ok, _ := IsOfferedZombie(s, fixedNow); !ok {
+			t.Fatal(`per-task TTL=1h 时，2h 前的 offered 应判僵尸（覆盖全局 7d）`)
+		}
+	})
+	t.Run(`per-task TTL longer than global defers flagging`, func(t *testing.T) {
+		s := offeredTask(`kimi`)
+		s.Assignment.OfferedAt = ptrTime(eightDaysAgo)
+		s.TTL = 30 * 24 * time.Hour // 8d old < 30d per-task (even though 8d > 7d global)
+		if ok, _ := IsOfferedZombie(s, fixedNow); ok {
+			t.Fatal(`per-task TTL=30d 时，8d 前的 offered 不应判僵尸（覆盖全局 7d）`)
+		}
+	})
+}
+
 func TestIsInputReqStale(t *testing.T) {
 	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
 	root := t.TempDir()
