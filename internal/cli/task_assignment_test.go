@@ -157,6 +157,28 @@ func TestTaskAssign_RequiresTo(t *testing.T) {
 	}
 }
 
+// TestTaskAssign_WarnsFindingsVisibleToAssignee (#7, 设计§14): task findings/decisions are cross-agent
+// shared — the assignee sees them on claim/resume. assign must warn the orchestrator that recorded
+// findings/decisions become visible to the assignee, so sensitive content can be reviewed first.
+//
+// TestTaskAssign_WarnsFindingsVisibleToAssignee（#7，设计§14）：task 的 findings/decisions 跨 agent
+// 共享——被分派方 claim/resume 即见。assign 必须提醒编排器：已记的 findings/decisions 会对被分派方
+// 可见，敏感内容可先审视。
+func TestTaskAssign_WarnsFindingsVisibleToAssignee(t *testing.T) {
+	dir := setupDelegateProject(t)
+	if out, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/x`, `--title`, `X`); code != 0 {
+		t.Fatalf(`start: %s`, out)
+	}
+	// runForge 用 CombinedOutput，stderr 合入第一返回值，故 output 含 warn。
+	output, _, code := runForge(t, dir, `task`, `assign`, `--ref`, `feat/x`, `--to`, `kimi`)
+	if code != 0 {
+		t.Fatalf(`assign exit %d`, code)
+	}
+	if !strings.Contains(output, `findings/decisions`) || !strings.Contains(output, `可见`) {
+		t.Errorf(`assign 应 warn findings/decisions 对被分派方可见, output=%q`, output)
+	}
+}
+
 // TestTaskMine_EmptyReturnsArray: mine with no matching delegations returns a JSON array
 // (never nil/null) so downstream JSON consumers do not need a null special-case.
 //
