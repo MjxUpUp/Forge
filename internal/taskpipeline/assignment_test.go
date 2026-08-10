@@ -421,3 +421,87 @@ func TestAddDependency_PartialWriteRollback(t *testing.T) {
 		t.Fatalf(`all-or-nothing：环错误后 DependsOn 应空（B 不残留）, got %v`, a.DependsOn)
 	}
 }
+
+// TestShouldNotify covers the NotifiedAt dedup rule (design §8 ③): an offered task pushes at most
+// once per offer-baseline, re-notifying only after a genuine re-offer (Abandon bumps AbandonedAt
+// past the prior NotifiedAt). All times derive from fixedNow (never time.Now) so the rule is
+// exercised deterministically. Reuses ptrTime/fixedNow/eightDaysAgo/oneHourAgo from health_test.go.
+//
+// TestShouldNotify 覆盖 NotifiedAt 去重规则（设计 §8 ③）：一个 offered 任务每个派发基线最多推送
+// 一次，只在真正的重新派发（Abandon 把 AbandonedAt 越过旧 NotifiedAt）后重新推送。所有时间
+// 派生自 fixedNow（绝不用 time.Now）使规则被确定地测试。复用 health_test.go 的 ptrTime/
+// fixedNow/eightDaysAgo/oneHourAgo。
+func TestShouldNotify(t *testing.T) {
+	t.Run(`first notify when NotifiedAt nil`, func(t *testing.T) {
+		s := offeredTask(`kimi`)
+		s.Assignment.OfferedAt = ptrTime(oneHourAgo)
+		if !s.Assignment.ShouldNotify(fixedNow) {
+			t.Fatal(`NotifiedAt 为 nil 应首次推送`)
+		}
+	})
+	t.Run(`second session suppresses when baseline not newer`, func(t *testing.T) {
+		s := offeredTask(`kimi`)
+		s.Assignment.OfferedAt = ptrTime(eightDaysAgo)
+		s.Assignment.NotifiedAt = ptrTime(eightDaysAgo) // 推送时刻 == 基线，无更新
+		if s.Assignment.ShouldNotify(fixedNow) {
+			t.Fatal(`基线未越过 NotifiedAt（推送时刻==基线）不应重复推送`)
+		}
+	})
+	t.Run(`baseline older than NotifiedAt suppresses`, func(t *testing.T) {
+		s := offeredTask(`kimi`)
+		s.Assignment.OfferedAt = ptrTime(eightDaysAgo)
+		s.Assignment.NotifiedAt = ptrTime(oneHourAgo) // 推送晚于基线
+		if s.Assignment.ShouldNotify(fixedNow) {
+			t.Fatal(`基线早于 NotifiedAt 不应推送`)
+		}
+	})
+	t.Run(`re-offer after abandon re-notifies`, func(t *testing.T) {
+		// 关键回归：原 offer 在 eightDaysAgo 且已推送（NotifiedAt=eightDaysAgo）；后 Abandon 在
+		// oneHourAgo 重新派发 → AbandonedAt 越过旧 NotifiedAt → 必须重新推送。这是「重新派发重新
+		// 提醒」语义的核心，去掉它 worker 永远不会再被告知回收的任务。
+		s := offeredTask(`kimi`)
+		s.Assignment.OfferedAt = ptrTime(eightDaysAgo)
+		s.Assignment.AbandonedAt = ptrTime(oneHourAgo)
+		s.Assignment.NotifiedAt = ptrTime(eightDaysAgo)
+		if !s.Assignment.ShouldNotify(fixedNow) {
+			t.Fatal(`Abandon 重新派发后 AbandonedAt 越过 NotifiedAt 应重新推送`)
+		}
+	})
+	t.Run(`non-offered status never notifies`, func(t *testing.T) {
+		for _, setup := range []func(*TaskState){
+			func(s *TaskState) { _ = s.Claim(`kimi`) },
+			func(s *TaskState) { _ = s.Claim(`kimi`); _ = s.Deliver() },
+			func(s *TaskState) { _ = s.Claim(`kimi`); _ = s.Fail(`boom`) },
+		} {
+			s := offeredTask(`kimi`)
+			setup(s)
+			s.Assignment.NotifiedAt = nil // 即便 nil，非 offered 也不推
+			if s.Assignment.ShouldNotify(fixedNow) {
+				t.Fatal(`非 offered 状态不应推送`)
+			}
+		}
+	})
+	t.Run(`nil receiver safe`, func(t *testing.T) {
+		var a *Assignment
+		if a.ShouldNotify(fixedNow) {
+			t.Fatal(`nil 接收者应安全返回 false`)
+		}
+	})
+	t.Run(`legacy missing OfferedAt notifies once`, func(t *testing.T) {
+		t.Run(`NotifiedAt nil -> notify once`, func(t *testing.T) {
+			s := offeredTask(`kimi`)
+			s.Assignment.OfferedAt = nil // legacy 无 OfferedAt
+			if !s.Assignment.ShouldNotify(fixedNow) {
+				t.Fatal(`legacy 无 OfferedAt 且未推送过应推送一次`)
+			}
+		})
+		t.Run(`NotifiedAt set -> suppress`, func(t *testing.T) {
+			s := offeredTask(`kimi`)
+			s.Assignment.OfferedAt = nil
+			s.Assignment.NotifiedAt = ptrTime(oneHourAgo)
+			if s.Assignment.ShouldNotify(fixedNow) {
+				t.Fatal(`legacy 无 OfferedAt 但已推送过不应再推`)
+			}
+		})
+	})
+}
