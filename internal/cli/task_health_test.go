@@ -233,4 +233,40 @@ func TestTaskHealth_ReadyOrchestration(t *testing.T) {
 			t.Errorf(`子任务未全交付的编排器不应标「可 complete」, got:\n%s`, out)
 		}
 	})
+
+	// L2: an ALREADY-COMPLETED orchestrator must not be re-flagged "可 complete". completeGenericTask
+	// marks IsComplete(); the readiness hint filters on !IsComplete() so it targets only as-yet-
+	// unfinished orchestrators. Without the filter, every finished generic orchestrator would
+	// forever resurface as actionable noise.
+	//
+	// L2：已完成的编排器不应再被标「可 complete」。completeGenericTask 标 IsComplete()；就绪提示按
+	// !IsComplete() 过滤，只针对尚未完成的编排器。缺该过滤则每个已完成的 generic 编排器会永久重复上浮为噪声。
+	t.Run(`completed orchestrator is not re-flagged`, func(t *testing.T) {
+		dir3 := setupDelegateProject(t)
+		if out, _, code := runForge(t, dir3, `task`, `start`, `--kind`, `generic`, `--ref`, `feat/orch`, `--title`, `编排`); code != 0 {
+			t.Fatalf(`start exit %d: %s`, code, out)
+		}
+		startChild(t, dir3, `feat/child`, `feat/orch`)
+		deliverChild(t, dir3, `feat/child`, `kimi`)
+		// Complete the orchestrator first — it is now done.
+		//
+		// 先 complete 编排器——此刻已完成。
+		if out, _, code := runForge(t, dir3, `task`, `complete`, `--ref`, `feat/orch`); code != 0 {
+			t.Fatalf(`complete exit %d: %s`, code, out)
+		}
+		orch, err := taskpipeline.LoadTaskState(dir3, `feat/orch`)
+		if err != nil {
+			t.Fatalf(`LoadTaskState: %v`, err)
+		}
+		if !orch.IsComplete() {
+			t.Fatalf(`前置：编排器应已完成, got %+v`, orch)
+		}
+		out, _, code := runForge(t, dir3, `task`, `health`)
+		if code != 0 {
+			t.Fatalf(`task health exit %d: %s`, code, out)
+		}
+		if strings.Contains(out, `可 complete 的编排任务`) {
+			t.Errorf(`已完成的编排器不应再被标「可 complete」, got:\n%s`, out)
+		}
+	})
 }
