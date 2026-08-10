@@ -588,9 +588,21 @@ func saveClaimedAgo(t *testing.T, dir, ref, agent string, ago time.Time) {
 // the stale claim without mutating → reclaim flips it to offered (AbandonedCount++) and leaves a
 // fresh claim + an offered task untouched → a second reclaim finds nothing.
 //
+// Coverage note: this exercises the HAPPY path — state does not drift between the IsClaimedStale
+// scan and the per-task lock, so the in-lock IsClaimedStale re-check (the M2 TOCTOU guard) is a
+// no-op here (it returns the same verdict as the outer scan). Pinning that re-check would require
+// mutating checklog activity in the sub-millisecond window between ListTaskStates and LockTask,
+// which is not deterministic from the CLI; do NOT remove the in-lock check assuming the outer scan
+// suffices — it does not.
+//
 // TestTaskReclaim 端到端跑 forge task reclaim——§3 的 TTL 回收触发。以单一线性流程跑（reclaim
 // 改状态，子测试会顺序耦合）：dry-run 列出 stale 认领但不动 → 回收把它翻为 offered
 // （AbandonedCount++）且不动刚认领 + offered 任务 → 第二次回收无候选。
+//
+// 覆盖说明：本测试只覆盖「快乐路径」——状态在 IsClaimedStale 扫描与按 task 加锁之间不漂移，故
+// 锁内的 IsClaimedStale 复检（M2 TOCTOU 守卫）在此是 no-op（与外层扫描返回同样判定）。钉住该复检
+// 需在 ListTaskStates 与 LockTask 之间的亚毫秒窗口内写入 checklog 活动，CLI 无法确定性触发；
+// 切勿以外层扫描已过滤为由删除锁内复检——并不冗余。
 func TestTaskReclaim(t *testing.T) {
 	dir := setupDelegateProject(t)
 
@@ -675,6 +687,39 @@ func TestTaskReclaim(t *testing.T) {
 	}
 	if !strings.Contains(out2, `无 claimed 僵尸`) {
 		t.Errorf(`第二次 reclaim 应报告无候选, got:\n%s`, out2)
+	}
+}
+
+// TestTaskReclaim_EmptyJSON pins the M1 fix: reclaim --json with NO stale tasks must emit
+// "reclaimed": [] (a stable empty array), not the Go-default null. Sibling commands (mine/health
+// JSON) share the same convention so consumers can range over the field unconditionally.
+//
+// TestTaskReclaim_EmptyJSON 钉住 M1 修复：无 stale 任务时 reclaim --json 必须输出
+// "reclaimed": []（稳定空数组），而非 Go 默认的 null。兄弟命令（mine/health JSON）同约定，
+// 使消费者可无条件遍历该字段。
+func TestTaskReclaim_EmptyJSON(t *testing.T) {
+	dir := setupDelegateProject(t)
+	// A fresh (non-stale) claim → reclaim finds nothing.
+	//
+	// 刚认领（非僵尸）的任务 → reclaim 无候选。
+	saveClaimedAgo(t, dir, `feat/fresh`, `kimi`, time.Now())
+
+	out, _, code := runForge(t, dir, `task`, `reclaim`, `--json`)
+	if code != 0 {
+		t.Fatalf(`reclaim --json exit %d: %s`, code, out)
+	}
+	if !strings.Contains(out, `"reclaimed": []`) {
+		t.Errorf(`空结果应序列化为 "reclaimed": [] 而非 null, got:\n%s`, out)
+	}
+	if strings.Contains(out, `null`) {
+		t.Errorf(`空结果不应含 null, got:\n%s`, out)
+	}
+	var res reclaimResult
+	if err := json.Unmarshal([]byte(out), &res); err != nil {
+		t.Fatalf(`解析失败: %v\n输出: %s`, err, out)
+	}
+	if res.Count != 0 || len(res.Reclaimed) != 0 {
+		t.Errorf(`应 count=0/reclaimed 空, got %+v`, res)
 	}
 }
 

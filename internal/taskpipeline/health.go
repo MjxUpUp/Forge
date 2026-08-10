@@ -330,14 +330,20 @@ func ClassifyTaskHealth(root string, s *TaskState, now time.Time, lookupState fu
 // status alone; an unassigned child — ordinary/generic — has only IsComplete), and additionally
 // accepts the two failure terminals per design §5 ("delivered 或终态"). Reusing IsDelivered's rule
 // keeps "is this child done?" consistent with "is this dependency done?" (DependencyReady), so a
-// code-task child that finishes its gates counts just like a delivered delegated child.
+// code-task child that finishes its gates counts just like a delivered delegated child. An unassigned
+// generic child reaches IsComplete via `forge task complete` (its own gates) — it is NOT stuck; the
+// orchestrator just runs complete on the child (no Deliver path, since it has no Assignment).
 //
 // childTerminal 报告子任务是否已达编排器无需再等的态：delivered（成功）或 failed/canceled（终态失败）。
 // 成功分支镜像 IsDelivered 的有/无分派拆分（有分派子任务的交付只看 Assignment 状态；无分派子任务
 // ——普通/generic——只有 IsComplete），并按设计 §5「delivered 或终态」额外接受两种失败终态。复用
 // IsDelivered 的规则使「子任务是否完成?」与「依赖是否完成?」（DependencyReady）一致——跑完门禁的
-// code-task 子任务与已 delivered 的分派子任务同等对待。
+// code-task 子任务与已 delivered 的分派子任务同等对待。无分派的 generic 子任务经 forge task complete
+// （其自身门禁）达 IsComplete——不会卡死，编排器只需对该子任务跑 complete（无 Assignment 故无 Deliver 路径）。
 func childTerminal(s *TaskState) bool {
+	if s == nil {
+		return false
+	}
 	if s.Assignment != nil {
 		switch s.Assignment.Status {
 		case AssignDelivered, AssignFailed, AssignCanceled:
