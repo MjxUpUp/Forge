@@ -65,6 +65,17 @@ const CheckNameBranchUnmerged checklog.CheckName = "branch-unmerged"
 // 名：任务标题与实改文件零关键词交集——交付内容可能有误的信号。仅 advisory，永不阻塞。
 const CheckNameGoalOutputMismatch checklog.CheckName = "goal-output-mismatch"
 
+// CheckNameDependencyGate is the checklog name recorded when task-verify/task-complete BLOCKS on an
+// undelivered upstream dependency. Matches the established "BLOCKED 必落盘" pattern (skill-decisions /
+// test-coverage also record before blocking) so score / dashboard / forge trace can see a task
+// repeatedly stalling at the gate waiting on an upstream — otherwise that repeated-stall signal is
+// invisible and indistinguishable from "never attempted".
+//
+// CheckNameDependencyGate 是 task-verify/task-complete 因上游依赖未交付而 BLOCKED 时记的 checklog 名。
+// 对齐既有的「BLOCKED 必落盘」模式（skill-decisions / test-coverage 阻断前也落盘），使 score /
+// dashboard / forge trace 能照出任务反复卡在门禁等上游——否则该反复停滞信号不可见，与「从未尝试」无法区分。
+const CheckNameDependencyGate checklog.CheckName = "dependency-gate"
+
 // recordAudit persists a checklog entry and makes a persistence failure audible:
 // checklog.Record's error is otherwise easy to drop (the call reads like a pure
 // side effect), but the persisted evidence is indispensable — score/dashboard/trace
@@ -156,6 +167,23 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		(gateID == `task-verify` || gateID == `task-complete`) {
 		pending := PendingDependencies(root, state.DependsOn)
 		if len(pending) > 0 {
+			// BLOCKED 必落盘（与 skill-decisions / test-coverage 阻断前落盘一致）：否则任务反复卡在
+			// 依赖门禁的停滞信号对 score/dashboard/forge trace 不可见，与「从未尝试」无法区分。
+			//
+			// BLOCKED must hit disk (matching skill-decisions / test-coverage recording before a
+			// block): otherwise the signal that a task repeatedly stalls at the dependency gate is
+			// invisible to score/dashboard/forge trace, indistinguishable from "never attempted".
+			recordAudit(root, &checklog.Entry{
+				Check:   CheckNameDependencyGate,
+				Passed:  false,
+				Checked: true,
+				TaskRef: state.TaskRef,
+				// 显式标 LevelBlocked：Detail 不以 "BLOCKED: " 起头（是「%s 拒绝：…」），DeriveLevel 不会判
+				// 为 blocked，导致这条 HARD 阻断在 score/dashboard/forge trace 里被分桶成普通告警——与「它确实
+				// 是硬阻断」不符。caller-set Level 恒优先于 DeriveLevel（store.go Record）。
+				Level:  checklog.LevelBlocked,
+				Detail: fmt.Sprintf(`%s 拒绝：上游依赖未交付或不存在（%s）`, gateID, strings.Join(pending, `, `)),
+			})
 			return nil, GateBlocked(`%s 拒绝（HARD stop）：上游 task 未交付或不存在（%s，可能是未创建/已 abort/拼错）；forge task mine --blocked 查看详情，或先推进上游交付`, gateID, strings.Join(pending, `, `))
 		}
 	}
@@ -1095,6 +1123,13 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 // PendingDependencies 返回尚未交付的 ref 子集——DependsOn 门禁的阻断清单。加载失败的 ref 计为
 // pending：从未创建、已 abort、或拼错的依赖都非「已交付」，若放过会让 task 校验过一个断裂的依赖边。
 // 返回的是裸 ref（在 BLOCKED 信息里拼接）；状态细节在 mine --blocked 处为人展开。
+//
+// API 分工（与 health.DeadlockedDependency 的双形态是有意为之，非 DRY 违反）：本函数接收 root + refs，
+// 内部对每个 ref 跑 LoadTaskState（per-ref 磁盘读、无缓存），返回裸 ref 列表——契合门禁侧的调用点
+// （门禁已有 root，只需知道「卡住没」+阻断清单）。DeadlockedDependency 接收单个 TaskState + lookup 回调，
+// 返回 (ref, bool)——契合 health 扫描侧（调用方可缓存/限定 scope/复用 state map）。门禁侧无须 state map
+// （它只判本任务），故采 root 形态更直接；若未来门禁也需 deadlock 判定，可在调用点自建 lookup 复用，
+// 不必在此统一两 API（强行统一会迫使门禁侧为「只判本任务」而构建无用 state map）。
 func PendingDependencies(root string, refs []string) []string {
 	var pending []string
 	for _, ref := range refs {
