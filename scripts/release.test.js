@@ -12,10 +12,11 @@ const path = require('path');
 const os = require('os');
 const { execSync } = require('child_process');
 
-const { inferBump, bumpVersion, readCommitMessages } = require('./release.js');
+const { inferBump, bumpVersion, readCommitMessages, replaceVersionField } = require('./release.js');
 
 const SCRIPT = path.join(__dirname, 'release.js');
 const PKG = path.join(__dirname, '..', 'npm', 'package.json');
+const KIMI_PLUGIN = path.join(__dirname, '..', '.kimi-plugin', 'plugin.json');
 
 // --- bumpVersion:纯函数,版本号计算正确性(发版事故高价值点) ---
 
@@ -132,12 +133,49 @@ test('readCommitMessages 端到端：trim 前导换行 + feat 推断为 minor', 
   }
 });
 
+// --- replaceVersionField:纯函数,version 字段替换正确性(发版高价值点) ---
+// npm/package.json 与 .kimi-plugin/plugin.json 的 version bump 共用此函数。
+
+test('replaceVersionField 替换 version 字段', () => {
+  const src = '{\n  "name": "forge",\n  "version": "1.2.3"\n}';
+  const { content, ok } = replaceVersionField(src, '1.2.4');
+  assert.strictEqual(ok, true);
+  assert.strictEqual(content, '{\n  "name": "forge",\n  "version": "1.2.4"\n}');
+});
+
+test('replaceVersionField 只替换第一个匹配（多 version 字段取首个）', () => {
+  // plugin.json 理论上只有一个 version，但守卫首个语义：避免误伤 hooks 里可能出现的
+  // "version" 串（kimi hook 无 version 字段，但函数契约须明确）。
+  const src = '{"version": "1.0.0", "other": {"version": "9.9.9"}}';
+  const { content, ok } = replaceVersionField(src, '2.0.0');
+  assert.strictEqual(ok, true);
+  assert.ok(content.startsWith('{"version": "2.0.0"'));
+  assert.ok(content.includes('"9.9.9"'), 'second version field must be untouched');
+});
+
+test('replaceVersionField 缺 version 字段返回 ok=false', () => {
+  const src = '{\n  "name": "x"\n}';
+  const { content, ok } = replaceVersionField(src, '1.0.0');
+  assert.strictEqual(ok, false);
+  assert.strictEqual(content, src, 'content unchanged on miss');
+});
+
+test('replaceVersionField 保留周围格式（缩进/引号风格）', () => {
+  const src = '{\r\n  "name":  "forge",\r\n  "version":   "0.1.0"\r\n}';
+  const { content, ok } = replaceVersionField(src, '0.2.0');
+  assert.strictEqual(ok, true);
+  assert.ok(content.includes('"version": "0.2.0"'), 'irregular spacing normalized by replace');
+  assert.ok(content.includes('"name":  "forge"'), 'unrelated formatting preserved');
+});
+
 // --- 端到端:dry-run 不改 package.json ---
 
-test('dry-run auto 打印版本信息且不修改 package.json', () => {
+test('dry-run auto 打印版本信息且不修改 package.json / plugin.json', () => {
   const before = fs.readFileSync(PKG, 'utf8');
+  const beforeKimi = fs.readFileSync(KIMI_PLUGIN, 'utf8');
   const out = execSync(`node ${SCRIPT} --dry-run`, { encoding: 'utf8' });
   const after = fs.readFileSync(PKG, 'utf8');
+  const afterKimi = fs.readFileSync(KIMI_PLUGIN, 'utf8');
 
   assert.match(out, /current:/);
   assert.match(out, /bump:/);
@@ -145,6 +183,7 @@ test('dry-run auto 打印版本信息且不修改 package.json', () => {
   assert.match(out, /tag:\s+v\d+\.\d+\.\d+/);
   assert.match(out, /dry-run, no changes/);
   assert.strictEqual(before, after, 'dry-run must not modify npm/package.json');
+  assert.strictEqual(beforeKimi, afterKimi, 'dry-run must not modify .kimi-plugin/plugin.json');
 });
 
 test('dry-run minor 覆盖 auto 推断', () => {

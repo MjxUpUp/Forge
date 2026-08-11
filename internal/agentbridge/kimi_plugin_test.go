@@ -2,6 +2,7 @@ package agentbridge
 
 import (
 	"bytes"
+	"encoding/json"
 	"flag"
 	"os"
 	"path/filepath"
@@ -10,15 +11,33 @@ import (
 	"github.com/MjxUpUp/Forge/internal/hooks"
 )
 
-// kimiPluginVersion is the display version committed into .kimi-plugin/plugin.json. It is
-// release metadata (shown in /plugins and used for update badges), intentionally NOT
-// auto-bumped by scripts/release.js — bump it here when the plugin surface (hooks roster
-// excluded, that one is guarded) meaningfully changes.
+// readReleaseVersion reads the canonical release version from npm/package.json — the
+// single source of truth that scripts/release.js bumps and that .kimi-plugin/plugin.json's
+// version field now tracks (see TestKimiPluginManifestVersionTracksRelease). Centralizing
+// the read here keeps the Go guard and the -update-kimi-plugin regenerator on the same
+// source the release script writes.
 //
-// kimiPluginVersion 是提交进 .kimi-plugin/plugin.json 的展示版本。它是发布元数据
-// （显示在 /plugins 并用于更新角标），刻意不由 scripts/release.js 自动 bump——
-// 当插件面（hooks 名册除外，那个有守卫）发生实质变化时在此手动升。
-const kimiPluginVersion = "1.18.0"
+// readReleaseVersion 从 npm/package.json 读权威发布版本——scripts/release.js bump 的
+// 单一真相源，.kimi-plugin/plugin.json 的 version 字段现在跟随它（见
+// TestKimiPluginManifestVersionTracksRelease）。集中读取使 Go 守卫与 -update-kimi-plugin
+// 重生成器盯上同一个 release 脚本写入的源。
+func readReleaseVersion(t *testing.T) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("..", "..", "npm", "package.json"))
+	if err != nil {
+		t.Fatalf("read npm/package.json: %v", err)
+	}
+	var pkg struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(data, &pkg); err != nil {
+		t.Fatalf("unmarshal npm/package.json: %v", err)
+	}
+	if pkg.Version == "" {
+		t.Fatal("npm/package.json has empty version")
+	}
+	return pkg.Version
+}
 
 const kimiPluginDescription = "Forge loop-engineering quality gates: task-tracked source changes, assertion guards, file-sentinel quarantine, and review-gated completion for AI coding agents."
 
@@ -34,42 +53,55 @@ var updateKimiPlugin = flag.Bool("update-kimi-plugin", false, "rewrite .kimi-plu
 // GitHub install reads the manifest from the repo root, so it must be committed — and
 // any hook roster change without a manifest refresh fails here.
 //
+// The version field is deliberately excluded from drift sensitivity: it now tracks the
+// forge release (scripts/release.js syncs it), so want is generated with the version read
+// back from the committed file — only hooks/name/description are byte-compared. The
+// version==release binding itself is guarded by TestKimiPluginManifestVersionTracksRelease.
+//
 // TestKimiPluginManifestMirrorsSpec 把已提交的 .kimi-plugin/plugin.json 钉在由
 // hooks.ForgeHookSpec（单一真相源）派生的生成器输出上。kimi 的 GitHub 安装从仓库
 // 根读 manifest，故它必须提交进库——任何 hooks 名册变更而不同步 manifest 都会在此
 // 失败。
+//
+// version 字段刻意排除在 drift 敏感范围外：它现在跟随 forge release（scripts/release.js
+// 同步），故 want 用从已提交文件读回的 version 生成——只对 hooks/name/description 做
+// 字节比对。version==release 的绑定本身由 TestKimiPluginManifestVersionTracksRelease 守卫。
 func TestKimiPluginManifestMirrorsSpec(t *testing.T) {
-	manifest := BuildKimiPluginManifest(kimiPluginVersion, kimiPluginDescription)
-	want, err := MarshalKimiPluginManifest(manifest)
-	if err != nil {
-		t.Fatalf("marshal manifest: %v", err)
-	}
+	path := filepath.Join("..", "..", ".kimi-plugin", "plugin.json")
 
-	// Roster parity: one manifest hook per spec command.
+	// Roster parity: one manifest hook per spec command. Asserted before the byte compare
+	// so a hooks/spec mismatch surfaces with a precise count rather than a diffuse diff.
 	total := 0
 	for _, matchers := range hooks.ForgeHookSpec() {
 		for _, m := range matchers {
 			total += len(m.Hooks)
 		}
 	}
-	if len(manifest.Hooks) != total {
-		t.Fatalf("manifest has %d hooks, spec has %d commands", len(manifest.Hooks), total)
+	manifestHooks := BuildKimiPluginHooks()
+	if len(manifestHooks) != total {
+		t.Fatalf("manifest has %d hooks, spec has %d commands", len(manifestHooks), total)
 	}
-	for _, h := range manifest.Hooks {
+	for _, h := range manifestHooks {
 		if h.Timeout <= 0 || h.Timeout > 600 {
 			t.Errorf("hook %s/%s timeout %d outside kimi's 1-600 range", h.Event, h.Command, h.Timeout)
 		}
 	}
 
-	path := filepath.Join("..", "..", ".kimi-plugin", "plugin.json")
 	if *updateKimiPlugin {
+		// Regenerate from the release version (single source of truth) so a hooks roster
+		// refresh also resyncs the version field to the current release.
+		version := readReleaseVersion(t)
+		want, err := MarshalKimiPluginManifest(BuildKimiPluginManifest(version, kimiPluginDescription))
+		if err != nil {
+			t.Fatalf("marshal manifest: %v", err)
+		}
 		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.WriteFile(path, want, 0644); err != nil {
 			t.Fatalf("update manifest: %v", err)
 		}
-		t.Logf("rewrote %s", path)
+		t.Logf("rewrote %s (version=%s from npm/package.json)", path, version)
 		return
 	}
 
@@ -77,8 +109,50 @@ func TestKimiPluginManifestMirrorsSpec(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read committed manifest: %v (run with -update-kimi-plugin to create)", err)
 	}
+
+	// Generate want with the version read back from the committed file: the version field
+	// now tracks the release and changes every release, so it must not be part of the
+	// hooks-mirror comparison. Only hooks/name/description are byte-compared.
+	var committed struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(got, &committed); err != nil {
+		t.Fatalf("unmarshal committed manifest for version: %v", err)
+	}
+	want, err := MarshalKimiPluginManifest(BuildKimiPluginManifest(committed.Version, kimiPluginDescription))
+	if err != nil {
+		t.Fatalf("marshal manifest: %v", err)
+	}
 	if !bytes.Equal(got, want) {
 		t.Errorf("committed .kimi-plugin/plugin.json drifted from ForgeHookSpec — regenerate: go test ./internal/agentbridge -run TestKimiPluginManifestMirrorsSpec -update-kimi-plugin")
+	}
+}
+
+// TestKimiPluginManifestVersionTracksRelease pins the committed .kimi-plugin/plugin.json
+// version field to npm/package.json's version. scripts/release.js syncs the two on every
+// release; this guard fails if a release ships without the sync (the version field would
+// lag and misreport which release the committed manifest corresponds to). kimi's staleness
+// detection reads installed.json's github.ref tag, NOT this field, so a lagging field has
+// no behavioral impact — but correct display metadata is worth guarding.
+//
+// TestKimiPluginManifestVersionTracksRelease 把已提交 .kimi-plugin/plugin.json 的 version
+// 字段钉在 npm/package.json 的 version 上。scripts/release.js 每次发版同步两者；若某次
+// 发版漏同步（version 字段滞后、对不上 release），此守卫失败。kimi 的 staleness 检测读
+// installed.json 的 github.ref tag，不读此字段，故滞后无行为影响——但展示元数据正确值得守卫。
+func TestKimiPluginManifestVersionTracksRelease(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", ".kimi-plugin", "plugin.json"))
+	if err != nil {
+		t.Fatalf("read committed manifest: %v", err)
+	}
+	var manifest struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		t.Fatalf("unmarshal manifest: %v", err)
+	}
+	want := readReleaseVersion(t)
+	if manifest.Version != want {
+		t.Errorf("committed .kimi-plugin/plugin.json version=%q, npm/package.json version=%q — resync: go test ./internal/agentbridge -run TestKimiPluginManifestMirrorsSpec -update-kimi-plugin", manifest.Version, want)
 	}
 }
 

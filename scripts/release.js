@@ -69,6 +69,16 @@ function bumpVersion(cur, bump) {
   return `${maj}.${min}.${pat + 1}`;
 }
 
+// replaceVersionField 把 JSON 文本里第一个 "version": "..." 替换为 next。返回
+// {content, ok}：ok=false 表示模式未匹配（文件缺 version 字段，发版事故级）。抽成
+// 纯函数：npm/package.json 与 .kimi-plugin/plugin.json 的 version bump 共用同一段
+// 替换逻辑，且可被 release.test.js 单测（version 替换是发版高价值点）。
+function replaceVersionField(content, next) {
+  const re = /"version":\s*"[^"]+"/;
+  if (!re.test(content)) return { content, ok: false };
+  return { content: content.replace(re, `"version": "${next}"`), ok: true };
+}
+
 // readCommitMessages 取 range 内所有 commit 的完整 message。可选 cwdRoot 供测试
 // 注入临时仓库(默认用 release.js 所在的项目根),让 readCommitMessages 能端到端测。
 function readCommitMessages(range, cwdRoot = ROOT) {
@@ -126,31 +136,45 @@ function main() {
   console.log(`tag:     v${next}`);
 
   if (dryRun) {
-    console.log('(dry-run, no changes)');
+    console.log('(dry-run, no changes — would bump npm/package.json + .kimi-plugin/plugin.json)');
     return;
   }
 
   // --- edit npm/package.json (string replace → minimal diff, preserves formatting) ---
-  const updated = content.replace(
-    /"version":\s*"[^"]+"/,
-    `"version": "${next}"`
-  );
-  if (updated === content) {
-    console.error('failed to replace version field (pattern not matched)');
+  const pkgNext = replaceVersionField(content, next);
+  if (!pkgNext.ok) {
+    console.error(`failed to replace version field in ${REL_PKG} (pattern not matched)`);
     process.exit(1);
   }
-  fs.writeFileSync(PKG, updated);
+  fs.writeFileSync(PKG, pkgNext.content);
 
-  // verify round-trip
-  const reread = fs.readFileSync(PKG, 'utf8');
-  const actual = (reread.match(/"version":\s*"([^"]+)"/) || [])[1];
-  if (actual !== next) {
-    console.error(`version mismatch after edit: expected ${next}, got ${actual}`);
+  // --- sync .kimi-plugin/plugin.json version to release ---
+  // kimi 的 committed manifest version 字段跟 forge release 走（非刻意独立）：每次
+  // 发版把 plugin.json 的 version 同步到 next，Go 守卫测试
+  // TestKimiPluginManifestVersionTracksRelease 钉住 plugin.json==package.json。kimi
+  // 的 staleness 检测仍读 installed.json 的 github.ref tag（不受影响），此处仅让
+  // committed 展示元数据不再滞后撒谎。
+  const KIMI_PLUGIN = path.join(ROOT, '.kimi-plugin', 'plugin.json');
+  const REL_KIMI = path.relative(ROOT, KIMI_PLUGIN);
+  const kimiContent = fs.readFileSync(KIMI_PLUGIN, 'utf8');
+  const kimiNext = replaceVersionField(kimiContent, next);
+  if (!kimiNext.ok) {
+    console.error(`failed to replace version field in ${REL_KIMI} (pattern not matched)`);
     process.exit(1);
+  }
+  fs.writeFileSync(KIMI_PLUGIN, kimiNext.content);
+
+  // --- verify round-trip (both files must read back exactly next) ---
+  for (const [file, rel] of [[PKG, REL_PKG], [KIMI_PLUGIN, REL_KIMI]]) {
+    const actual = (fs.readFileSync(file, 'utf8').match(/"version":\s*"([^"]+)"/) || [])[1];
+    if (actual !== next) {
+      console.error(`version mismatch in ${rel}: expected ${next}, got ${actual}`);
+      process.exit(1);
+    }
   }
 
   // --- commit + tag ---
-  git(`add ${REL_PKG}`);
+  git(`add ${REL_PKG} ${REL_KIMI}`);
   git(`commit -m "chore(release): bump npm version to ${next}" -m "Co-Authored-By: Claude <noreply@anthropic.com>"`);
   git(`tag v${next}`);
 
@@ -160,7 +184,7 @@ function main() {
   console.log(`  git push origin v${next}`);
 }
 
-module.exports = { inferBump, bumpVersion, readCommitMessages };
+module.exports = { inferBump, bumpVersion, readCommitMessages, replaceVersionField };
 
 if (require.main === module) {
   main();
