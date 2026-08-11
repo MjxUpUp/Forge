@@ -625,7 +625,17 @@ func runHook(cmd *cobra.Command, args []string) error {
 	//
 	// 6. 记入 checklog（noise-gated）。
 	checkName := checklog.CheckName(name)
-	logDetail := firstNonEmpty(stderr, stdout, "completed")
+	// No `completed` placeholder: assertion-check/auto-compile pass silently (no stderr/stdout)
+	// in the common case, and a fake `completed` detail polluted checklog stats (~713 placeholder
+	// entries/week, forge-weekly-audit-2026-08-09). Empty detail is honest — the entry still carries
+	// Passed/Checked (what scoring's LatestByCheck reads) and TaskRef (forge trace bucketing); only the
+	// meaningless Detail text is dropped.
+	//
+	// 无 `completed` 占位符：assertion-check/auto-compile 静默通过（无 stderr/stdout）是
+	// 常态，假的 `completed` detail 污染 checklog 统计（每周 ~713 条占位条目，
+	// forge-weekly-audit-2026-08-09）。空 detail 诚实——条目仍带 Passed/Checked（scoring 的
+	// LatestByCheck 读这俩）与 TaskRef（forge trace 桶用）；只去掉无意义的 Detail 文本。
+	logDetail := firstNonEmpty(stderr, stdout)
 
 	// Reuse the task ref detected earlier for audit traceability.
 	//
