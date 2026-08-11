@@ -4,6 +4,7 @@ description: "按模板 + 变量填空生成结构化文档（PRD/周报/验收�
 metadata:
   pattern: generator + inversion
   domain: documentation
+  triggers: [{"event":"UserPromptSubmit","keywords":["写一份","生成文档","写个readme","起草","生成 prd","draft a"],"cooldown":300}]
 ---
 
 # Doc Generator — 结构化文档生成器

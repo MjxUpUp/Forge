@@ -52,3 +52,25 @@ description 审计合格未改动 + 新建 evals.json 10 条
 ### Evidence
 
 docs/skills-value-audit-2026-08-02.md
+
+## [d-18ca070108736354-0c21bc17] accept
+
+- **Skill**: system-architecture
+- **DecidedAt**: 2026-08-09T03:58:23Z
+- **By**: claude-code
+
+### Diagnosis
+
+该 skill 无声明式 trigger，纯靠 agent 自觉加载——dogfood transcript 证明 0 命中，skill 形同被动文档从未注入
+
+### Revision
+
+在 SKILL.md frontmatter metadata 加 triggers 声明（事件 + keywords 或 when condition + cooldown），让 skill-trigger 框架在匹配事件时主动注入加载指引
+
+### Evidence
+
+forge skills validate R1-R17 全 49 通过；trigger 覆盖 5→15（31%）；dry-run 验证 research-workflow/secure-coding 匹配 prompt 正确触发
+
+### Rationale
+
+扩展 trigger 覆盖是 2026-08 审计 P1 优化项；声明式触发是把 skill 从被动文档转主动注入的唯一可靠手段（见 dogfood 发现）
