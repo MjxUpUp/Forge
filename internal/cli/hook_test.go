@@ -194,6 +194,28 @@ func TestHookOutput_CheckLogRecorded(t *testing.T) {
 	}
 }
 
+// TestFirstNonEmpty documents the checklog-detail contract: the detail fallback must be empty,
+// not a `completed` placeholder. assertion-check/auto-compile pass silently in the common case,
+// and a fake `completed` detail would pollute checklog stats (~713 placeholder entries/week,
+// forge-weekly-audit-2026-08-09). The contract is locked here at the helper level so a call-site
+// regression is caught directly.
+//
+// TestFirstNonEmpty 文档化 checklog-detail 契约：detail 回退须为空，而非 `completed` 占位符。
+// assertion-check/auto-compile 常态静默通过，假的 `completed` detail 会污染 checklog 统计
+// （每周 ~713 条占位条目，forge-weekly-audit-2026-08-09）。契约在 helper 层锁定，调用处
+// 回归能被直接捕获。
+func TestFirstNonEmpty(t *testing.T) {
+	if got := firstNonEmpty("", ""); got != "" {
+		t.Errorf("firstNonEmpty(empty, empty) = %q, want empty (no placeholder fallback)", got)
+	}
+	if got := firstNonEmpty("warn", "out"); got != "warn" {
+		t.Errorf("firstNonEmpty(warn, out) = %q, want warn (stderr precedence)", got)
+	}
+	if got := firstNonEmpty("", "PASS"); got != "PASS" {
+		t.Errorf("firstNonEmpty(empty, PASS) = %q, want PASS", got)
+	}
+}
+
 // TestShouldRecordCheck is the truth table for the checklog noise gate.
 // Scoring reads only the latest entry per check name, so a per-call PASS is
 // redundant for any check scoring does not consume. FAIL is always recorded
