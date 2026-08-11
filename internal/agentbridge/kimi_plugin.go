@@ -106,10 +106,13 @@ func BuildKimiPluginHooks() []KimiPluginHook {
 }
 
 // BuildKimiPluginManifest renders the full manifest. version is the plugin's display
-// version (release metadata, independent of the hooks roster).
+// version, now tracked to the forge release (scripts/release.js syncs it; pinned by
+// TestKimiPluginManifestVersionTracksRelease). The caller supplies it — tests read it
+// from npm/package.json, the single source of truth.
 //
-// BuildKimiPluginManifest 渲染完整 manifest。version 是 plugin 的展示版本（发布元
-// 数据，与 hooks 名册无关）。
+// BuildKimiPluginManifest 渲染完整 manifest。version 是 plugin 的展示版本，现跟随
+// forge release（scripts/release.js 同步；由 TestKimiPluginManifestVersionTracksRelease
+// 钉住）。由调用方传入——测试从单一真相源 npm/package.json 读。
 func BuildKimiPluginManifest(version, description string) KimiPluginManifest {
 	return KimiPluginManifest{
 		Name:        kimiPluginName,
@@ -190,8 +193,8 @@ func IsKimiPluginInstalled() bool {
 
 // KimiPluginStaleInfo reads the installed forge plugin's source ref tag and returns the
 // bare version (v prefix trimmed). It is the trustworthy "which version is installed"
-// signal for staleness detection: the manifest's version field is release metadata
-// (intentionally independent of the forge release, see kimiPluginVersion) and the managed
+// signal for staleness detection: the manifest's version field is committed metadata
+// (now release-tracked via scripts/release.js, but only refreshed on reinstall) and the managed
 // copy under plugins/managed/forge/ survives uninstall (see IsKimiPluginInstalled notes) —
 // only installed.json's github.ref records the tag the user actually installed from.
 //
@@ -200,8 +203,8 @@ func IsKimiPluginInstalled() bool {
 // semver-compared, and flagging them as stale would be noise.
 //
 // KimiPluginStaleInfo 读取已装 forge plugin 的来源 ref tag，返回裸版本号（已 trim v 前缀）。
-// 它是 staleness 检测的可信"装了哪个版本"信号：manifest 的 version 字段是发布元数据
-// （刻意独立于 forge release，见 kimiPluginVersion），而 plugins/managed/forge/ 下的托管
+// 它是 staleness 检测的可信"装了哪个版本"信号：manifest 的 version 字段是 committed 元数据
+// （现经 scripts/release.js 跟随 release，但只在重装时刷新），而 plugins/managed/forge/ 下的托管
 // 副本在卸载后仍留存（见 IsKimiPluginInstalled 注释）——只有 installed.json 的 github.ref
 // 记录了用户实际安装来源的 tag。
 //
