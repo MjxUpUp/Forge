@@ -111,6 +111,9 @@ func TestQuestionAnswer(t *testing.T) {
 		if s.Assignment.Status != AssignInputRequired || s.Assignment.LastQuestion != `API 契约不明` {
 			t.Fatal(`状态应为 input-required 且 LastQuestion 记录`)
 		}
+		if s.Assignment.QuestionAt == nil || s.Assignment.QuestionAt.IsZero() {
+			t.Fatal(`Question 应设置 QuestionAt（input-required 年龄基线，否则假阳性僵尸）`)
+		}
 		before := len(s.Decisions)
 		if err := s.Answer(`用 REST，字段见 openapi.yaml`); err != nil {
 			t.Fatalf(`Answer 应成功: %v`, err)
@@ -120,6 +123,9 @@ func TestQuestionAnswer(t *testing.T) {
 		}
 		if len(s.Decisions) != before+1 {
 			t.Fatal(`Answer 应追加一条 Decision 使决议可追溯`)
+		}
+		if s.Assignment.LastQuestion != `` {
+			t.Fatal(`Answer 后 LastQuestion 应清空（问题已解决，残留会误导看板显示陈旧问题）`)
 		}
 	})
 	t.Run(`answer on non-input-required rejected`, func(t *testing.T) {

@@ -87,13 +87,19 @@ func Record(root string, entry *Entry) error {
 
 // AppendEntries writes pre-built entries (carried in by a cross-machine task import) to the active
 // checklog.jsonl, preserving each entry's original fields — notably RecordedAt is NOT rewritten, so
-// imported evidence keeps its real source-machine timing in `forge trace`. Lock-protected like Record.
-// Entries are appended as-is (no de-dup): re-importing the same bundle duplicates lines — the caller
-// controls that. A nil/empty slice is a no-op.
+// imported evidence keeps its real source-machine timing in `forge trace`. Empty Source/Level are
+// filled by the same fallback as Record (caller-set values win), so a legacy / hand-constructed
+// entry buckets consistently with a locally-Recorded one. NOTE: the fallback is written back to the
+// caller's slice in place (entries[i].Source/Level), so the input slice is mutated — callers that
+// reuse the slice after the call will see the filled values. Lock-protected like Record. Entries
+// are appended without de-dup: re-importing the same bundle duplicates lines — the caller controls
+// that. A nil/empty slice is a no-op.
 //
 // AppendEntries 把预构建的条目（跨机器 task import 带入）写入 active checklog.jsonl，保留每条原
-// 字段——特别是 RecordedAt 不重写，使导入证据在 forge trace 里保留真实源机器时序。同 Record 加锁。
-// 条目原样追加（不去重）：重复 import 同一 bundle 会重复行——由调用方控制。nil/空切片为 no-op。
+// 字段——特别是 RecordedAt 不重写，使导入证据在 forge trace 里保留真实源机器时序。注意：兜底值会写回
+// 调用方切片本身（entries[i].Source/Level），即输入切片被原地修改——调用后再复用切片会看到填充后的值。
+// 同 Record 加锁。条目原样追加（不去重）：重复 import 同一 bundle 会重复行——由调用方控制。nil/空切片
+// 为 no-op。
 func AppendEntries(root string, entries []Entry) error {
 	if len(entries) == 0 {
 		return nil
@@ -110,8 +116,23 @@ func AppendEntries(root string, entries []Entry) error {
 		return err
 	}
 	defer f.Close()
-	for _, e := range entries {
-		data, err := json.Marshal(e)
+	for i := range entries {
+		// Same Source/Level fallback as Record: an imported entry that never had Source/Level set
+		// (legacy / hand-constructed) would otherwise land with empty fields and bucket inconsistently
+		// vs a locally-Recorded entry of the same shape. Caller-set values always win (empty here
+		// means MISSING, not an original value to preserve). RecordedAt is still NOT rewritten, so
+		// imported evidence keeps its real source-machine timing in forge trace.
+		//
+		// 同 Record 的 Source/Level 兜底：导入条目若从未设过 Source/Level（legacy/手工构造）会以空字段
+		// 落盘，与本地 Record 的同形条目分桶不一致。调用方设过的值恒优先（此处的空=缺失，非须保留的
+		// 原值）。RecordedAt 仍不重写，导入证据在 forge trace 里保留真实源机器时序。
+		if len(entries[i].Source) == 0 {
+			entries[i].Source = SourceForCheck(entries[i].Check)
+		}
+		if len(entries[i].Level) == 0 {
+			entries[i].Level = DeriveLevel(&entries[i])
+		}
+		data, err := json.Marshal(entries[i])
 		if err != nil {
 			return err
 		}

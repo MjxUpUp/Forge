@@ -155,9 +155,10 @@ type Assignment struct {
 	OfferedBy      string     `json:"offered_by,omitempty"` // 派发的编排器 agent
 	OfferedAt      *time.Time `json:"offered_at,omitempty"` // 派发时间（TTL 基准；*time.Time 因 encoding/json 的 omitempty 对 time.Time 不生效）
 	ClaimedAt      *time.Time `json:"claimed_at,omitempty"`
+	QuestionAt     *time.Time `json:"question_at,omitempty"` // 进入 input-required 的时刻；IsInputReqStale 基线之一——claim→立即回抛时与 ClaimedAt 等价（canonical 卡问题仍标僵尸），claim 久后近期才回抛则不再误判
 	DeliveredAt    *time.Time `json:"delivered_at,omitempty"`
 	LastQuestion   string     `json:"last_question,omitempty"`   // input-required 时的回抛内容
-	FailReason     string     `json:"fail_reason,omitempty"`     // failed 时的原因
+	FailReason     string     `json:"fail_reason,omitempty"`     // failed 时的原因；Reopen() 也复用此字段记「交付后重开理由」——双用途但语义不冲突：Fail 是终态、禁止 Reopen，故同一字段在不同状态分支下不会被两种含义同时读到
 	CancelReason   string     `json:"cancel_reason,omitempty"`   // canceled 时的原因
 	NotifiedAt     *time.Time `json:"notified_at,omitempty"`     // 上次 hook 推送时间（去重防轰炸）
 	AbandonedCount int        `json:"abandoned_count,omitempty"` // claimed 超 TTL 回收次数（僵尸信号）
@@ -396,6 +397,12 @@ func (s *TaskState) IsDelivered() bool {
 // lookup 把 ref 解析成 TaskState，使环检测能遍历依赖链而 types.go 不反向依赖存储层（调用方注入
 // LoadTaskState）。若某 ref 的传递依赖最终指回本 task 则拒绝——环会让环上每个 task 死锁。自引用
 // （ref == 本 task）同样拒绝。去重同时查既有 DependsOn 与本批次（故 --depends-on A --depends-on A 折叠）。
+//
+// 并发契约：环检测的 lookup 遍历「其他」task 的 DependsOn，而 MutateTaskState 只串行化「单个」task 的
+// load→mutate→save——故本方法不自行加跨任务锁。当前唯一生产调用方（cli/task.go 的 task start）作用于一
+// 个全新构建、无并发的 state，今天安全。任何未来在 MutateTaskState 锁内调用本方法的调用方，须自行保证
+// lookup 反映一个静止的依赖图（跨 lookup 涉及的所有 task 串行），否则并发 AddDependency 可能在 DFS 进行
+// 中加边，使 visited-set BFS 漏判一个短暂存在的环。需要并发安全的图变更应改走 per-task 锁遍历。
 func (s *TaskState) AddDependency(refs []string, lookup func(string) *TaskState) error {
 	added := make([]string, 0, len(refs))
 	for _, ref := range refs {
@@ -911,8 +918,10 @@ func (s *TaskState) Question(content string) error {
 	if s.Assignment.Status != AssignClaimed {
 		return errQuestionNotClaimed
 	}
+	now := time.Now()
 	s.Assignment.Status = AssignInputRequired
 	s.Assignment.LastQuestion = content
+	s.Assignment.QuestionAt = &now
 	return nil
 }
 
@@ -932,6 +941,13 @@ func (s *TaskState) Answer(content string) error {
 		q := s.Assignment.LastQuestion
 		s.AddDecision(Decision{Content: content, By: s.Assignment.OfferedBy, Rationale: q})
 	}
+	// The回抛 is now resolved — clear its text so a later deliver / re-open does not surface stale
+	// "current question" content to a reader (mirrors Abandon clearing ClaimedAt on the reverse
+	// transition). QuestionAt (the timestamp) is kept as history; only the pending text is ephemeral.
+	//
+	// 回抛已解决——清其文本，使后续 deliver/re-open 不向读者暴露陈旧的「当前问题」内容（镜像
+	// Abandon 在反向转换时清 ClaimedAt）。QuestionAt（时间戳）作为历史保留；仅 pending 文本是短暂的。
+	s.Assignment.LastQuestion = ``
 	return nil
 }
 
