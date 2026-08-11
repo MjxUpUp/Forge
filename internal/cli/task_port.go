@@ -114,11 +114,32 @@ func runTaskExport(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf(`读取 checklog 证据失败: %w`, err)
 		}
 	}
+	// checklog Detail routinely embeds absolute paths / command output; SessionID/ToolName are
+	// session+tool identity. Without this pass a --redact --include-checklog bundle leaks them
+	// verbatim (redactTask only touches the Task body, never the entries). Preserves the evidence
+	// SHAPE (Check/Passed/Level/Source/RecordedAt stay) so trace still shows which checks ran.
+	//
+	// checklog Detail 常嵌绝对路径/命令输出；SessionID/ToolName 是会话+工具身份。不处理则
+	// --redact --include-checklog 的 bundle 原样外泄（redactTask 只动 Task 体，不碰 entries）。
+	// 保留证据「形状」（Check/Passed/Level/Source/RecordedAt 不变）使 trace 仍显示跑了哪些检查。
+	if redact {
+		redactChecklogEntries(entries)
+	}
 
+	// SourceProject carries the source machine's project root. The absolute path leaks username /
+	// customer names (/Users/jsmith/projects/secret-foo); under --redact keep only the last segment
+	// so the envelope stays provenance-shaped without an identity leak.
+	//
+	// SourceProject 带源机器项目根。绝对路径泄露用户名/客户名（/Users/jsmith/projects/secret-foo）；
+	// --redact 下仅留末段，信封保持来源形状而不泄露身份。
+	sourceProject := root
+	if redact {
+		sourceProject = projectBaseName(root)
+	}
 	bundle := taskBundle{
 		SchemaVersion: taskBundleSchemaVersion,
 		ExportedAt:    time.Now(),
-		SourceProject: root,
+		SourceProject: sourceProject,
 		Task:          task,
 		Checklog:      entries,
 		Redacted:      redact,
@@ -298,7 +319,9 @@ func runTaskImport(cmd *cobra.Command, args []string) error {
 // as provenance — it never satisfies the task-complete hard prerequisite.
 //
 // stripForeignGateSignals 清除导入的 review/验收/评分信号，使本机须重跑门禁建立自己的证据（见
-// runTaskImport）。History 刻意保留为溯源——它永不满足 task-complete 的硬前置。
+// runTaskImport）。History 保留 task-implement/task-verify 作溯源，但 task-complete 条目被剔除——
+// 否则手改/有 bug 的 bundle 在 History 塞 task-complete 会让本机 IsComplete() 为真（展示/编排提示
+// 面），而本机从未真跑过 complete。硬门禁（review/验收）由上方剥离兜底，此处收紧展示面与注释一致性。
 func stripForeignGateSignals(s *taskpipeline.TaskState) {
 	s.ReviewPassed = false
 	s.ReviewedHeadCommit = ``
@@ -309,6 +332,22 @@ func stripForeignGateSignals(s *taskpipeline.TaskState) {
 		s.Acceptance[i].AcceptedHeadCommit = ``
 		s.Acceptance[i].Output = ``
 	}
+	// A forged bundle can put task-complete in History, which IsComplete() reads as "complete" on
+	// the importer (display / orchestration-hint surfaces — the hard gates are the review/
+	// acceptance strips above). Drop the task-complete entry so an imported task is never shown as
+	// complete without a local complete run; task-implement/task-verify stay as legitimate provenance.
+	//
+	// 手改的 bundle 可在 History 塞 task-complete，使本机 IsComplete() 读为「完成」（展示/编排提示
+	// 面——硬门禁是上方的 review/验收剥离）。剔除 task-complete 条目，使导入任务未经本机 complete
+	// 跑过就绝不显示为完成；task-implement/task-verify 作为合法溯源保留。
+	kept := make([]taskpipeline.TaskGateResult, 0, len(s.History))
+	for _, h := range s.History {
+		if h.Gate == `task-complete` {
+			continue
+		}
+		kept = append(kept, h)
+	}
+	s.History = kept
 }
 
 // filterImportedChecklog drops entries already present locally so a repeated --merge import does not
@@ -412,7 +451,11 @@ func redactTask(s *taskpipeline.TaskState) {
 	s.NextSteps = nil
 	s.SessionID = ``
 	for i := range s.SessionLinks {
-		s.SessionLinks[i].SessionID = redactedPlaceholder // 保留 Tool/Imported 以维持形状
+		// SessionID 是身份，Tool 是发起该 session 的 agent 身份（claude-code/pi/codex…）——与 OriginTool
+		// 同类，必须一并脱敏，否则「哪个 agent 干的」经 SessionLinks 残留。Imported 是 bool 形状标记（是否
+		// 跨机器 import 带入），保留以维持结构。
+		s.SessionLinks[i].SessionID = redactedPlaceholder
+		s.SessionLinks[i].Tool = redactedPlaceholder
 	}
 	// Commit SHAs — leak repo state.
 	s.HeadCommit = ``
@@ -431,27 +474,95 @@ func redactTask(s *taskpipeline.TaskState) {
 	if s.Assignment != nil {
 		s.Assignment.Agent = redactedPlaceholder
 		s.Assignment.OfferedBy = redactedPlaceholder
+		s.Assignment.Role = redactedPlaceholder // 角色自由文本可带客户名（customer-acme-frontend）
 		s.Assignment.LastQuestion = ``
 		s.Assignment.FailReason = ``
 		s.Assignment.CancelReason = ``
 	}
-	// Collaborative record content/evidence/code-paths.
+	// Collaborative record content/evidence/code-paths. By/Source carry agent identity
+	// ([pi]/[claude-code]/…) — same class as Assignment.Agent, redacted for consistency so the
+	// "who" never survives even though the "what" (Content) is already replaced.
+	//
+	// 协作记录内容/证据/代码路径。By/Source 带 agent 身份（[pi]/[claude-code]/…）——与
+	// Assignment.Agent 同类，一致脱敏，使「谁」绝不残留（尽管「什么」即 Content 已替换）。
 	for i := range s.Decisions {
 		s.Decisions[i].Content = redactedPlaceholder
+		s.Decisions[i].By = redactedPlaceholder
 		s.Decisions[i].Rationale = ``
 		s.Decisions[i].Affects = nil
 	}
 	for i := range s.Findings {
 		s.Findings[i].Content = redactedPlaceholder
+		s.Findings[i].Source = redactedPlaceholder
 		s.Findings[i].Evidence = ``
 	}
 	for i := range s.Blockers {
 		s.Blockers[i].Content = redactedPlaceholder
+		s.Blockers[i].By = redactedPlaceholder
 		s.Blockers[i].Resolution = ``
 	}
 	for i := range s.Artifacts {
 		s.Artifacts[i].Path = redactedPlaceholder
 		s.Artifacts[i].Note = ``
+	}
+	// Originating tool is agent identity (pi/claude-code/opencode/codex/cursor…) — redact last so
+	// every identity surface on TaskState is covered uniformly.
+	//
+	// 发起工具是 agent 身份（pi/claude-code/opencode/codex/cursor…）——最后脱敏，使 TaskState 上
+	// 每个身份面被均匀覆盖。
+	s.OriginTool = redactedPlaceholder
+}
+
+// projectBaseName returns the last path segment of a project root, dropping the leading
+// directories that leak username/customer names (e.g. /Users/jsmith/projects/secret-foo →
+// secret-foo, or E:\users\admin\Forge → Forge). Used only for the redacted bundle envelope so the
+// absolute source path never leaves the machine. Rune literals (not double-quoted strings) keep
+// this helper free of the ASCII-double-quote corruption on Windows edits.
+//
+// projectBaseName 返回项目根最后一段路径，丢掉前导目录（泄露用户名/客户名，如
+// /Users/jsmith/projects/secret-foo → secret-foo，或 E:\users\admin\Forge → Forge）。仅用于脱敏
+// bundle 信封，使绝对源路径不外泄。用 rune 字面量（非双引号字符串）避免 Windows 编辑时的双引号腐蚀。
+func projectBaseName(p string) string {
+	for len(p) > 0 && (p[len(p)-1] == '/' || p[len(p)-1] == '\\') {
+		p = p[:len(p)-1]
+	}
+	name := p
+	for i := len(p) - 1; i >= 0; i-- {
+		if p[i] == '/' || p[i] == '\\' {
+			name = p[i+1:]
+			break
+		}
+	}
+	// 盘根输入（"/" 修剪后为空、"C:\" 修剪后为 "C:"）无项目名可取——回退中性占位，避免信封名为空
+	// 或泄露盘符。bare-drive 形如 len==2、第二字符 ':'、首字符为字母（用 rune 字面量避免双引号腐蚀）。
+	if len(name) == 0 {
+		return `redacted-project`
+	}
+	if len(name) == 2 && name[1] == ':' {
+		c := name[0]
+		if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') {
+			return `redacted-project`
+		}
+	}
+	return name
+}
+
+// redactChecklogEntries scrubs identity/path-carrying fields of checklog entries in place so a
+// --redact --include-checklog bundle does not leak absolute paths, command output, or session
+// identity embedded in Detail/SessionID/ToolName. Structural fields (Check/Passed/Checked/Level/
+// Source/RecordedAt/TaskRef) are preserved — they carry the evidence-chain SHAPE (which check ran,
+// when, pass/fail, which subsystem) without identity. Detail becomes the placeholder so trace still
+// shows "an entry existed here" rather than a silent gap.
+//
+// redactChecklogEntries 就地抹除 checklog 条目里携带身份/路径的字段，使 --redact --include-checklog
+// 的 bundle 不外泄 Detail/SessionID/ToolName 里嵌入的绝对路径/命令输出/会话身份。结构性字段
+// （Check/Passed/Checked/Level/Source/RecordedAt/TaskRef）保留——承载证据链「形状」（跑了哪个检查、
+// 何时、通过与否、哪个子系统）而无身份。Detail 置占位符，使 trace 仍显示「此处曾有条目」而非空白。
+func redactChecklogEntries(entries []checklog.Entry) {
+	for i := range entries {
+		entries[i].SessionID = redactedPlaceholder
+		entries[i].Detail = redactedPlaceholder
+		entries[i].ToolName = ``
 	}
 }
 

@@ -60,3 +60,39 @@ func TestAppendEntries_EmptyIsNoop(t *testing.T) {
 		t.Errorf(`空 AppendEntries 不应创建文件: %v`, err)
 	}
 }
+
+// TestAppendEntries_FillsEmptySourceLevel: a legacy / hand-constructed import entry that never had
+// Source or Level set must land with both inferred by the same fallback as Record — otherwise it
+// buckets inconsistently vs a locally-Recorded compile-pass (e.g. empty Source drops it out of an
+// evidence-chain query that filters by source). Caller-set values always win (verified here too).
+//
+// TestAppendEntries_FillsEmptySourceLevel：legacy/手工构造的 import 条目从未设过 Source/Level 时，必须由
+// 与 Record 同款的兜底推断填上——否则与本地 Record 的 compile-pass 分桶不一致（如空 Source 使其被按来源
+// 过滤的证据链查询漏掉）。调用方设过的值恒优先（此处一并验证）。
+func TestAppendEntries_FillsEmptySourceLevel(t *testing.T) {
+	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
+	dir := t.TempDir()
+	entries := []Entry{
+		{Check: `compile`, TaskRef: `feat/x`, Passed: true, RecordedAt: time.Unix(1000, 0).UTC()},                                               // Source/Level 空 → 兜底填
+		{Check: `compile`, TaskRef: `feat/y`, Passed: true, RecordedAt: time.Unix(2000, 0).UTC(), Source: EvidenceAgentClaim, Level: LevelPass}, // 已设 → 保留
+	}
+	if err := AppendEntries(dir, entries); err != nil {
+		t.Fatalf(`AppendEntries: %v`, err)
+	}
+	got, err := LoadAll(dir)
+	if err != nil {
+		t.Fatalf(`LoadAll: %v`, err)
+	}
+	if len(got) != 2 {
+		t.Fatalf(`got %d entries, want 2`, len(got))
+	}
+	if got[0].Source != EvidenceDeterministic {
+		t.Errorf(`空 Source 应兜底为 deterministic, got %q`, got[0].Source)
+	}
+	if got[0].Level != LevelPass {
+		t.Errorf(`空 Level（Passed=true）应兜底为 pass, got %q`, got[0].Level)
+	}
+	if got[1].Source != EvidenceAgentClaim || got[1].Level != LevelPass {
+		t.Errorf(`调用方已设值应保留, got Source=%q Level=%q`, got[1].Source, got[1].Level)
+	}
+}

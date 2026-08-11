@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
@@ -376,6 +377,31 @@ func TestTaskDependsOn_GateBlocksUntilUpstreamDelivered(t *testing.T) {
 	if !strings.Contains(stdout, `上游 task 未交付`) || !strings.Contains(stdout, `feat/up`) {
 		t.Errorf(`BLOCKED 信息应含「上游 task 未交付」+ feat/up, got: %s`, stdout)
 	}
+	// The BLOCK must also record a dependency-gate audit entry in the checklog (Passed=false) so the
+	// reason is visible in forge trace — a blocked gate that leaves no evidence is invisible to
+	// observability. Asserts the recordAudit(CheckNameDependencyGate) call in executor.go.
+	//
+	// BLOCK 还必须在 checklog 记一条 dependency-gate 审计条目（Passed=false）使原因在 forge trace
+	// 可见——不留证据的被阻门禁对可观测性是不可见的。断言 executor.go 的 recordAudit(CheckNameDependencyGate) 调用。
+	entries, err := checklog.LoadAll(dir)
+	if err != nil {
+		t.Fatalf(`load checklog: %v`, err)
+	}
+	foundDepGateBlock := false
+	for _, e := range entries {
+		if e.TaskRef == `feat/down` && e.Check == taskpipeline.CheckNameDependencyGate && !e.Passed {
+			foundDepGateBlock = true
+			// Detail（"%s 拒绝：…"）不以 "BLOCKED: " 起头，DeriveLevel 不会判为 blocked——故 executor.go 必须显式
+			// 标 Level=LevelBlocked，否则这条 HARD 阻断在 score/dashboard/forge trace 被分桶成普通告警。钉死该显式标注。
+			if e.Level != checklog.LevelBlocked {
+				t.Errorf(`dependency-gate BLOCKED 条目 Level 应为 %q（HARD 阻断须显式标 blocked，非依赖 DeriveLevel）, got %q`, checklog.LevelBlocked, e.Level)
+			}
+			break
+		}
+	}
+	if !foundDepGateBlock {
+		t.Errorf(`task-verify 因依赖未交付 BLOCKED 应记一条 dependency-gate(Passed=false) checklog, got %d 条: %+v`, len(entries), entries)
+	}
 
 	// 让上游交付（assignment-delivered，无需过上游门禁）
 	runForge(t, dir, `task`, `assign`, `--ref`, `feat/up`, `--to`, `kimi`, `--by`, `claude-code`)
@@ -482,6 +508,13 @@ func TestTaskAbort_WarnsReverseDeps(t *testing.T) {
 //
 // TestTaskAbort_CascadeAbortsDependents：--cascade abort 依赖方传递闭包。链 feat/up <- feat/mid <-
 // feat/down：abort feat/up --cascade 删三者；cascaded 列 mid+down，且随后的 mine 不再见已分派的 feat/down。
+//
+// 已知未覆盖（justified gap，决策 ddkltp44tto8o-1-31332e0a）：单条级联删除的【失败分支】（DeleteTaskState 返
+// 非 ENOENT 错）未单测。根因是依赖无注入手段——ListTaskStates（state.go）对目录条目 IsDir 跳过，使非空目录
+// 不可作 dependent；chmod 0444 / icacls deny :(D) 经实证 os.Remove 仍成功；x/sys op-lock 或 ACL 需引新依赖
+// （YAGNI），为单一错误分支抽 deleteFn seam 属 over-engineering。行为正确性已由代码审读 + 本测试 happy-path
+// 精确集（cascaded==cascadedDone）钉死：失败删除走 continue 被排除出 cascadedDone，且正确跳过盘上仍在的
+// 任务的 ClearActiveTaskRef。
 func TestTaskAbort_CascadeAbortsDependents(t *testing.T) {
 	dir := setupDelegateProject(t)
 	runForge(t, dir, `task`, `start`, `--ref`, `feat/up`, `--title`, `上游`)
@@ -492,11 +525,25 @@ func TestTaskAbort_CascadeAbortsDependents(t *testing.T) {
 	if code != 0 {
 		t.Fatalf(`abort --cascade exit %d: %s`, code, out)
 	}
-	if !strings.Contains(out, `cascaded`) {
-		t.Errorf(`--cascade 应在 JSON 含 cascaded, got: %s`, out)
+	// JSON `cascaded` must report EXACTLY the successfully-deleted dependents (cascadedDone), sorted —
+	// not the attempted BFS closure. A loose substring check would pass even if a failed delete were
+	// wrongly listed. Parsing pins the fix: cascaded == [feat/down, feat/mid] (both deleted, sorted).
+	//
+	// JSON `cascaded` 必须精确报实际删除成功的依赖方（cascadedDone）并排序——不是 BFS 试图闭包。
+	// 松散子串检查即便错把失败删除列进去也会过。解析钉死修复：cascaded == [feat/down, feat/mid]（皆删、排序）。
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf(`abort --json 输出应可解析为 JSON, got %q: %v`, out, err)
 	}
-	if !strings.Contains(out, `feat/mid`) || !strings.Contains(out, `feat/down`) {
-		t.Errorf(`cascaded 应含传递闭包 feat/mid + feat/down, got: %s`, out)
+	cascaded, _ := payload[`cascaded`].([]any)
+	got := map[string]bool{}
+	for _, c := range cascaded {
+		if s, ok := c.(string); ok {
+			got[s] = true
+		}
+	}
+	if len(got) != 2 || !got[`feat/mid`] || !got[`feat/down`] {
+		t.Errorf(`cascaded 应恰为 [feat/down, feat/mid]（皆成功删除），got %v (raw %s)`, cascaded, out)
 	}
 	mineOut, _, _ := runForge(t, dir, `task`, `mine`, `--agent`, `kimi`, `--json`)
 	if strings.Contains(mineOut, `feat/down`) {
@@ -578,10 +625,22 @@ func TestTaskAbort_CascadeDiamondTopology(t *testing.T) {
 	if code != 0 {
 		t.Fatalf(`abort --cascade exit %d: %s`, code, out)
 	}
-	for _, ref := range []string{`feat/b`, `feat/c`, `feat/d`} {
-		if !strings.Contains(out, ref) {
-			t.Errorf(`钻石拓扑 cascaded 应含 %s, got: %s`, ref, out)
+	// 双重钉法：原始切片长度（len(cascaded)）+ 集合（got）双检。集合会去重——若 visited 守卫失效，D 经两
+	// 路径被 BFS 入队两次，cascaded=[b,c,d,d]（第二次删走 ENOENT 容忍仍计成功），集合塌缩到 len 3 漏掉该回归。
+	// 故必须先检原始长度==3（捕获重复入队），再检集合恰为 {feat/b, feat/c, feat/d}（捕获误列/漏列）。
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf(`abort --json 输出应可解析为 JSON, got %q: %v`, out, err)
+	}
+	cascaded, _ := payload[`cascaded`].([]any)
+	got := map[string]bool{}
+	for _, c := range cascaded {
+		if s, ok := c.(string); ok {
+			got[s] = true
 		}
+	}
+	if len(cascaded) != 3 || len(got) != 3 || !got[`feat/b`] || !got[`feat/c`] || !got[`feat/d`] {
+		t.Errorf(`钻石 cascaded 应恰为 {feat/b, feat/c, feat/d}（皆删、visited 守卫防 D 重复入队），got rawLen=%d set=%v (raw %s)`, len(cascaded), got, out)
 	}
 	mineOut, _, _ := runForge(t, dir, `task`, `mine`, `--agent`, `kimi`, `--json`)
 	if strings.Contains(mineOut, `feat/d`) {

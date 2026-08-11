@@ -206,6 +206,7 @@ func TestIsInputReqStale(t *testing.T) {
 		// 从未跑过门禁写 checklog）。
 		s := raiseQuestion()
 		s.Assignment.ClaimedAt = ptrTime(eightDaysAgo)
+		s.Assignment.QuestionAt = ptrTime(eightDaysAgo) // 问题与认领同龄（claim→立即回抛→静默）：QuestionAt≈ClaimedAt，仍判僵尸
 		if ok, _ := IsInputReqStale(root, s, fixedNow); !ok {
 			t.Fatal(`input-required，claimed 8 天前且无后续活动应判僵尸（ClaimedAt 兜底基线）`)
 		}
@@ -213,7 +214,8 @@ func TestIsInputReqStale(t *testing.T) {
 	t.Run(`recent checklog activity resets window`, func(t *testing.T) {
 		s := raiseQuestion()
 		s.Assignment.ClaimedAt = ptrTime(eightDaysAgo)
-		seedChecklog(t, root, s.TaskRef, oneHourAgo) // worked 1h ago → not abandoned
+		s.Assignment.QuestionAt = ptrTime(eightDaysAgo) // 问题也 8 天前，确保是 checklog 活动（而非 QuestionAt）救活它
+		seedChecklog(t, root, s.TaskRef, oneHourAgo)    // worked 1h ago → not abandoned
 		if ok, _ := IsInputReqStale(root, s, fixedNow); ok {
 			t.Fatal(`1 小时前仍有 checklog 活动不应判僵尸`)
 		}
@@ -221,8 +223,24 @@ func TestIsInputReqStale(t *testing.T) {
 	t.Run(`claimed fresh is not stale`, func(t *testing.T) {
 		s := raiseQuestion()
 		s.Assignment.ClaimedAt = ptrTime(oneHourAgo)
+		s.Assignment.QuestionAt = ptrTime(oneHourAgo) // 问题也 1 小时前，排除 QuestionAt 干扰，纯靠年龄判新
 		if ok, _ := IsInputReqStale(root, s, fixedNow); ok {
 			t.Fatal(`claimed 1 小时前不应判僵尸`)
+		}
+	})
+	t.Run(`claim old but question recent is not stale (QuestionAt dominates)`, func(t *testing.T) {
+		// The QuestionAt fix: a task claimed long ago but only recently sent back for clarification
+		// must NOT be flagged stale merely because the claim is old — the fresh question is the
+		// signal the human just re-engaged. Before QuestionAt, baseline=ClaimedAt=8d → false-positive
+		// stale (the reviewer's false-positive case).
+		//
+		// QuestionAt 修复：很久前认领、近期才回抛的任务不应仅因认领久远就判僵尸——新近的回抛才是人刚
+		// 重新介入的信号。加 QuestionAt 前 baseline=ClaimedAt=8d → 假阳性僵尸（审查者点名的假阳性）。
+		s := raiseQuestion()
+		s.Assignment.ClaimedAt = ptrTime(eightDaysAgo)
+		s.Assignment.QuestionAt = ptrTime(oneHourAgo) // 回抛 1 小时前，压过 8 天前的认领
+		if ok, _ := IsInputReqStale(root, s, fixedNow); ok {
+			t.Fatal(`claim 8 天前但 1 小时前才回抛，不应判僵尸（QuestionAt 占优）`)
 		}
 	})
 	t.Run(`non-input-required is not checked`, func(t *testing.T) {

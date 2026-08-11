@@ -768,10 +768,18 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 	}
 	// cascade closure: transitive dependents (direct + indirect), breadth-first over the reverse
 	// map. A dependent whose upstream is gone can never pass its gate, so cascade clears the chain.
+	// cascaded = the attempted set (BFS closure, drives the delete loop); cascadedDone = those actually
+	// deleted. A delete can fail on permission / Windows file lock — that dependent emits an INLINE
+	// per-item stderr Warning inside the loop (NOT by re-reading `cascaded` later) and is excluded from
+	// cascadedDone, so it must NOT be reported as aborted in JSON, or a JSON consumer believes a live
+	// task is gone.
 	//
 	// cascade 闭包：传递依赖方（直接 + 间接），对反向 map 广度优先。依赖方上游已没，门禁永远过不了，
-	// 故 cascade 清除死链。
-	var cascaded []string
+	// 故 cascade 清除死链。cascaded = 试图集（BFS 闭包，驱动删除循环）；cascadedDone = 实际删除成功的。
+	// 删除可能因权限/Windows 文件锁失败——该依赖方在循环内发一条内联 per-item stderr Warning（并非后续回读
+	// `cascaded`），且不计入 cascadedDone，故绝不能报进 JSON 的已 abort，否则 JSON 消费者会以为一个仍在
+	// 盘上的任务已没了。
+	var cascaded, cascadedDone []string
 	if cascade {
 		visited := map[string]bool{}
 		queue := append([]string{}, dependents...)
@@ -818,9 +826,16 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 	for _, depRef := range cascaded {
 		if err := taskpipeline.DeleteTaskState(root, depRef); err != nil && !os.IsNotExist(err) {
 			fmt.Fprintf(os.Stderr, `Warning: failed to cascade-abort %s: %v`+"\n", depRef, err)
+			continue // 删除失败：留 stderr Warning，不计入 cascadedDone（JSON 只报实际已删）
 		}
+		cascadedDone = append(cascadedDone, depRef)
 		if ref := taskpipeline.ReadActiveTaskRef(root, sid); ref == depRef {
-			_ = taskpipeline.ClearActiveTaskRef(root, sid)
+			// 清依赖方的 active-task-ref 失败时记 stderr 而非吞掉：该 ref 仍指向一个已删任务，会让
+			// 下一次 `forge task status` / resume 锚定到幽灵。删除本身已成功，故不计入 cascade 失败，
+			// 只作为非致命告警暴露出来。
+			if err := taskpipeline.ClearActiveTaskRef(root, sid); err != nil {
+				fmt.Fprintf(os.Stderr, `Warning: cascade-aborted %s but failed to clear its active task ref: %v`+"\n", depRef, err)
+			}
 		}
 	}
 
@@ -853,7 +868,9 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 	// M1: dependents/cascaded/detached 的原始顺序随 ListTaskStates 的 ReadDir（跨平台 FS 顺序不定），
 	// 排序后输出稳定——JSON 消费者不因遍历顺序间歇失败，stderr warn 也确定。级联最终状态与顺序无关。
 	slices.Sort(dependents)
-	slices.Sort(cascaded)
+	// cascaded（试图集）此处不排序：它仅作删除循环的迭代源（task.go:823，循环在排序之前），删除失败者
+	// 已在循环内发内联 per-item stderr Warning，排序后既不入 JSON（JSON 只取 cascadedDone）也不入任何汇总行。
+	slices.Sort(cascadedDone)
 	slices.Sort(detached)
 
 	if asJSON {
@@ -868,8 +885,14 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 		if len(dependents) > 0 {
 			out[`dependents_blocked`] = dependents
 		}
-		if len(cascaded) > 0 {
-			out[`cascaded`] = cascaded
+		// JSON 的 `cascaded` 只报实际删除成功的（cascadedDone）——失败的已走 stderr Warning，
+		// 报进 JSON 会让编排 agent 误以为一个仍在盘上的任务已 abort。
+		//
+		// JSON `cascaded` reports only successful deletions (cascadedDone) — failures already went
+		// to stderr Warning; reporting them in JSON would make an orchestrator agent believe a task
+		// still on disk was aborted.
+		if len(cascadedDone) > 0 {
+			out[`cascaded`] = cascadedDone
 		}
 		if len(detached) > 0 {
 			out[`detached`] = detached
@@ -888,8 +911,15 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 			fmt.Printf("Branch: %s (left untouched — abort only removes forge state)\n", state.Branch)
 		}
 	}
-	if len(cascaded) > 0 {
-		fmt.Fprintf(os.Stderr, `Cascade-aborted %d dependent(s): %s`+"\n", len(cascaded), strings.Join(cascaded, `, `))
+	// Summary line reports ONLY successful deletes (cascadedDone), mirroring the JSON path — a failed
+	// delete already got its own "Warning: failed to cascade-abort X" above; listing it again here as
+	// "aborted" would make a task still on disk look finished (the very leak cascaded/cascadedDone split fixes).
+	//
+	// 汇总行只报成功删除（cascadedDone），与 JSON 路径一致——失败的删除上方已有独立的"Warning: failed to
+	// cascade-abort X"；此处再当"已 abort"列出会让一个仍在盘上的任务看起来已完成（正是 cascaded/cascadedDone
+	// 拆分要堵的泄露）。
+	if len(cascadedDone) > 0 {
+		fmt.Fprintf(os.Stderr, `Cascade-aborted %d dependent(s): %s`+"\n", len(cascadedDone), strings.Join(cascadedDone, `, `))
 	}
 	if len(detached) > 0 {
 		fmt.Fprintf(os.Stderr, `Detached dep edge on %d dependent(s): %s`+"\n", len(detached), strings.Join(detached, `, `))
