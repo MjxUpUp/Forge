@@ -162,7 +162,7 @@ func TestTaskImport_DefaultRejectsExisting(t *testing.T) {
 	runForge(t, dirA, `task`, `export`, `--ref`, `feat/delegate`, `-o`, bundlePath)
 
 	dirB := switchMachine(t, `b-sid-2`)
-	runForge(t, dirB, `task`, `import`, `--file`, bundlePath) // fresh: ok
+	runForge(t, dirB, `task`, `import`, `--file`, bundlePath)                 // fresh: ok
 	out, _, code := runForge(t, dirB, `task`, `import`, `--file`, bundlePath) // again, default
 	if code == 0 {
 		t.Fatalf(`重复 import 默认应拒绝（非 0 退出），got exit 0: %s`, out)
@@ -275,6 +275,22 @@ func TestTaskExport_Redacts(t *testing.T) {
 	seeded.Acceptance = []taskpipeline.AcceptanceCriterion{
 		{Run: `go test ./internal/billing/...`, Expected: `ok`, Passed: true, AcceptedHeadCommit: `deadbeef`, Output: `secret output`},
 	}
+	// Seed the assignment-role / decision-by / finding-source / blocker-by / origin-tool identity fields
+	// the redactor must catch (Role comes from assign --role; By/Source from decide/finding --by/--source;
+	// Blocker.By + OriginTool are seeded directly here).
+	//
+	// 播种脱敏器必须抓到的 assignment-role / decision-by / finding-source / blocker-by / origin-tool
+	// 身份字段（Role 来自 assign --role；By/Source 来自 decide/finding --by/--source；Blocker.By + OriginTool
+	// 在此直接播种）。
+	seeded.OriginTool = `claude-code`
+	seeded.Blockers = []taskpipeline.Blocker{
+		{ID: `blk-1`, Content: `blocked by upstream billing api`, Status: `open`, By: `claude-code`},
+	}
+	// SessionLink.Tool 是发起该 session 的 agent 身份（与 OriginTool 同类）——播种后须被脱敏，否则
+	// 「哪个 agent 干的」经 SessionLinks 残留。Imported 保留（形状标记，非身份）。
+	seeded.SessionLinks = []taskpipeline.SessionLink{
+		{SessionID: `link-session-secret`, Tool: `claude-code`, Imported: true},
+	}
 	if err := taskpipeline.SaveTaskState(dirA, seeded); err != nil {
 		t.Fatalf(`seed save: %v`, err)
 	}
@@ -304,16 +320,61 @@ func TestTaskExport_Redacts(t *testing.T) {
 	if bundle.Task.Assignment != nil && bundle.Task.Assignment.OfferedBy != `[redacted]` {
 		t.Errorf(`Assignment.OfferedBy 应 [redacted], got %q`, bundle.Task.Assignment.OfferedBy)
 	}
+	if bundle.Task.Assignment != nil && bundle.Task.Assignment.Role != `[redacted]` {
+		t.Errorf(`Assignment.Role 应 [redacted]（角色可侧写团队结构），got %q`, bundle.Task.Assignment.Role)
+	}
 	// Decision content replaced, rationale cleared; finding evidence cleared.
 	if len(bundle.Task.Decisions) == 0 || bundle.Task.Decisions[0].Content != `[redacted]` {
 		t.Errorf(`bundle 决策内容应 [redacted], got %+v`, bundle.Task.Decisions)
 	}
+	if len(bundle.Task.Decisions) == 0 || bundle.Task.Decisions[0].By != `[redacted]` {
+		t.Errorf(`Decision.By 应 [redacted]（确认方=工具身份），got %+v`, bundle.Task.Decisions)
+	}
 	if len(bundle.Task.Findings) == 0 || bundle.Task.Findings[0].Evidence != `` {
 		t.Errorf(`bundle finding evidence 应清空, got %+v`, bundle.Task.Findings)
+	}
+	if len(bundle.Task.Findings) == 0 || bundle.Task.Findings[0].Source != `[redacted]` {
+		t.Errorf(`Finding.Source 应 [redacted]（来源工具=身份），got %+v`, bundle.Task.Findings)
 	}
 	// ExternalOrigin cleared entirely.
 	if bundle.Task.ExternalOrigin.URL != `` || bundle.Task.ExternalOrigin.Identifier != `` {
 		t.Errorf(`ExternalOrigin 应整体清空, got %+v`, bundle.Task.ExternalOrigin)
+	}
+	// Blocker.By + OriginTool are tool identity — must be redacted (they profile who/which-tool).
+	//
+	// Blocker.By + OriginTool 是工具身份——必须脱敏（它们侧写谁/哪个工具）。
+	if len(bundle.Task.Blockers) == 0 || bundle.Task.Blockers[0].By != `[redacted]` {
+		t.Errorf(`Blocker.By 应 [redacted], got %+v`, bundle.Task.Blockers)
+	}
+	if bundle.Task.OriginTool != `[redacted]` {
+		t.Errorf(`OriginTool 应 [redacted]（发起工具身份），got %q`, bundle.Task.OriginTool)
+	}
+	// SessionLinks[].Tool 是 agent 身份——须与 OriginTool 一致脱敏；Imported（形状标记）保留。
+	if len(bundle.Task.SessionLinks) == 0 {
+		t.Error(`SessionLinks 应保留形状（至少 1 条），脱敏不应清空切片`)
+	}
+	for i, l := range bundle.Task.SessionLinks {
+		if l.Tool != `[redacted]` {
+			t.Errorf(`SessionLinks[%d].Tool 应 [redacted]（发起工具身份，与 OriginTool 同类），got %q`, i, l.Tool)
+		}
+		if l.SessionID != `[redacted]` {
+			t.Errorf(`SessionLinks[%d].SessionID 应 [redacted]（身份），got %q`, i, l.SessionID)
+		}
+	}
+	// SourceProject is reduced to a basename under --redact — the absolute path leaks the machine's
+	// directory layout ( usernames, drive letters, project root naming). A basename keeps the
+	// "which project" shape without leaking the host filesystem.
+	//
+	// SourceProject 在 --redact 下降为 basename——绝对路径泄露机器目录结构（用户名/盘符/项目根命名）。
+	// basename 保留「哪个项目」形状而不泄露宿主文件系统。
+	if bundle.SourceProject == `` {
+		t.Error(`SourceProject 不应为空（保留项目形状的 basename）`)
+	}
+	if bundle.SourceProject == dirA {
+		t.Errorf(`SourceProject 不得是绝对路径（泄露主机目录），got %q`, bundle.SourceProject)
+	}
+	if strings.ContainsAny(bundle.SourceProject, `/\`) {
+		t.Errorf(`SourceProject 应为无分隔符的 basename，got %q`, bundle.SourceProject)
 	}
 
 	// Code-path / free-text redactions (the --redact contract: not leak issue/agent/commit/code-paths).
@@ -368,6 +429,83 @@ func TestTaskExport_Redacts(t *testing.T) {
 	}
 	if len(orig.Acceptance) == 0 || orig.Acceptance[0].Run != `go test ./internal/billing/...` {
 		t.Errorf(`脱敏不得改原件：Acceptance.Run 应仍在, got %+v`, orig.Acceptance)
+	}
+	if orig.OriginTool != `claude-code` {
+		t.Errorf(`脱敏不得改原件：OriginTool 应仍 claude-code, got %q`, orig.OriginTool)
+	}
+	if len(orig.Blockers) == 0 || orig.Blockers[0].By != `claude-code` {
+		t.Errorf(`脱敏不得改原件：Blocker.By 应仍 claude-code, got %+v`, orig.Blockers)
+	}
+}
+
+// TestTaskExport_RedactsChecklog: under --redact --include-checklog, every bundled checklog entry's
+// identity-bearing fields (SessionID, Detail, ToolName) must be scrubbed — they carry the source
+// machine's session ids, free-text error detail, and tool names. RecordedAt + Check + TaskRef (the
+// timeline shape) stay. Deep-copy: the on-disk checklog is untouched.
+//
+// TestTaskExport_RedactsChecklog：--redact --include-checklog 下，每条 bundled checklog 条目的身份字段
+// （SessionID/Detail/ToolName）必须被洗——它们携带源机器的 session id、自由文本错误详情、工具名。
+// RecordedAt + Check + TaskRef（时间线形状）保留。深拷贝：盘上 checklog 不被动。
+func TestTaskExport_RedactsChecklog(t *testing.T) {
+	dirA := setupDelegateProject(t)
+	runForge(t, dirA, `task`, `start`, `--ref`, `feat/delegate`, `--title`, `redact-cl`)
+	// Seed a checklog entry with identity-bearing fields directly (Record stamps ToolName; we set the
+	// full identity triplet explicitly so the assertion is unambiguous).
+	//
+	// 直接播种一条带身份字段的 checklog 条目（Record 会盖 ToolName；我们显式设全身份三元组使断言无歧义）。
+	root := dirA
+	leaked := []checklog.Entry{
+		{Check: `compile`, TaskRef: `feat/delegate`, SessionID: `machine-a-session-secret`, Detail: `error in internal/billing/handler.go`, ToolName: `claude-code`},
+	}
+	if err := checklog.AppendEntries(root, leaked); err != nil {
+		t.Fatalf(`seed checklog: %v`, err)
+	}
+	bundlePath := filepath.Join(t.TempDir(), `b.json`)
+	if out, _, code := runForge(t, dirA, `task`, `export`, `--ref`, `feat/delegate`, `-o`, bundlePath, `--include-checklog`, `--redact`); code != 0 {
+		t.Fatalf(`redact+checklog export: %s`, out)
+	}
+	data, err := os.ReadFile(bundlePath)
+	if err != nil {
+		t.Fatalf(`read bundle: %v`, err)
+	}
+	var bundle taskBundle
+	if err := json.Unmarshal(data, &bundle); err != nil {
+		t.Fatalf(`parse bundle: %v`, err)
+	}
+	if !bundle.Redacted {
+		t.Error(`bundle.Redacted 应 true`)
+	}
+	if len(bundle.Checklog) != 1 {
+		t.Fatalf(`应含 1 条 checklog, got %d`, len(bundle.Checklog))
+	}
+	e := bundle.Checklog[0]
+	if e.SessionID != `[redacted]` {
+		t.Errorf(`checklog SessionID 应 [redacted], got %q`, e.SessionID)
+	}
+	if e.Detail != `[redacted]` {
+		t.Errorf(`checklog Detail 应 [redacted], got %q`, e.Detail)
+	}
+	if e.ToolName != `` {
+		t.Errorf(`checklog ToolName 应清空, got %q`, e.ToolName)
+	}
+	// Timeline shape preserved (Check + TaskRef stay so forge trace can still bucket the entry).
+	//
+	// 时间线形状保留（Check + TaskRef 留下，使 forge trace 仍能分桶该条目）。
+	if e.Check != `compile` || e.TaskRef != `feat/delegate` {
+		t.Errorf(`checklog Check/TaskRef 是形状不应改, got %+v`, e)
+	}
+	// Deep-copy: the ORIGINAL on-disk checklog keeps its identity fields.
+	//
+	// 深拷贝：盘上 ORIGINAL checklog 保留身份字段。
+	orig, err := checklog.LoadAll(root)
+	if err != nil {
+		t.Fatalf(`reload original checklog: %v`, err)
+	}
+	if len(orig) != 1 {
+		t.Fatalf(`原件应 1 条, got %d`, len(orig))
+	}
+	if orig[0].SessionID != `machine-a-session-secret` || orig[0].Detail != `error in internal/billing/handler.go` {
+		t.Errorf(`脱敏不得改原件 checklog: SessionID/Detail 应仍在, got %+v`, orig[0])
 	}
 }
 
@@ -429,6 +567,17 @@ func TestTaskImport_StripsForeignGateSignals(t *testing.T) {
 	src.Acceptance = []taskpipeline.AcceptanceCriterion{
 		{Run: `go test ./...`, Expected: `ok`, Passed: true, AcceptedHeadCommit: `aaa111`, Output: `ok`},
 	}
+	// Seed gate History: task-implement + task-verify (provenance, must survive import) AND a
+	// task-complete entry (a completion CLAIM from A — foreign, must be stripped: a hand-edited
+	// bundle carrying task-complete in History would otherwise make the task look finished on B
+	// without B ever running its own task-complete gate).
+	//
+	// 播种 gate History：task-implement + task-verify（溯源，import 后须保留）AND 一条 task-complete
+	// （A 的完成「声明」——外来，必须剥离：手改的 bundle 带着 History 里的 task-complete 会让任务在 B 上
+	// 看起来已完成，而 B 从未跑过自己的 task-complete 门禁）。
+	src.RecordGateResult(`task-implement`, true, `aaa111`)
+	src.RecordGateResult(`task-verify`, true, `aaa111`)
+	src.RecordGateResult(`task-complete`, true, `aaa111`)
 	if err := taskpipeline.SaveTaskState(dirA, src); err != nil {
 		t.Fatalf(`save A: %v`, err)
 	}
@@ -463,6 +612,29 @@ func TestTaskImport_StripsForeignGateSignals(t *testing.T) {
 	// Run/Expected preserved (they are the spec, not a trust signal) — only the pass-result is foreign.
 	if got.Acceptance[0].Run != `go test ./...` {
 		t.Errorf(`Acceptance.Run 是 spec 不应清, got %q`, got.Acceptance[0].Run)
+	}
+	// History: task-complete (a foreign completion claim) is stripped; task-implement/task-verify
+	// (provenance) survive. Without this strip, a bundle could carry a task-complete History entry
+	// that makes the task look finished on B without B running its own task-complete gate.
+	//
+	// History：task-complete（外来完成声明）被剥离；task-implement/task-verify（溯源）保留。
+	// 无此剥离，bundle 可带一条 task-complete History 使任务在 B 上看起来已完成而 B 未跑自己的门禁。
+	hasImplement, hasVerify, hasComplete := false, false, false
+	for _, h := range got.History {
+		switch h.Gate {
+		case `task-implement`:
+			hasImplement = true
+		case `task-verify`:
+			hasVerify = true
+		case `task-complete`:
+			hasComplete = true
+		}
+	}
+	if !hasImplement || !hasVerify {
+		t.Errorf(`task-implement/task-verify 是溯源应保留, got History=%+v`, got.History)
+	}
+	if hasComplete {
+		t.Errorf(`外来 task-complete History 应剥离（本机须重跑 task-complete），got History=%+v`, got.History)
 	}
 }
 
@@ -615,4 +787,33 @@ func TestTaskPort_OutputNewlinesAreReal(t *testing.T) {
 	// Hint line ends with the ref (path-free): "...接续用 forge task resume --ref feat/delegate".
 	// 提示行以 ref 收尾（无路径）：「...接续用 forge task resume --ref feat/delegate」。
 	assertEndsWithRealNewline(t, importOut, `接续用 forge task resume --ref feat/delegate`, ``, `import 提示行`)
+}
+
+// TestProjectBaseName_RootAndDriveLetter pins the fallback for root/drive-letter inputs (B8): a
+// project root like "/", "\", "C:\", or "D:\" trims down to empty / "C:" — which has no project name
+// to take and would either leak a drive letter or produce an empty SourceProject envelope. The guard
+// returns a neutral placeholder so the redacted bundle envelope never leaks the host filesystem even
+// when the source project lives at a filesystem root.
+//
+// TestProjectBaseName_RootAndDriveLetter 钉死根/盘符输入的兜底（B8）：项目根如 "/"、"\"、"C:\"、"D:\" 修剪后
+// 为空 / "C:"——无项目名可取，会泄露盘符或产出空 SourceProject 信封。守卫返回中性占位，使脱敏 bundle 信封
+// 即便源项目位于文件系统根也不泄露宿主文件系统。
+func TestProjectBaseName_RootAndDriveLetter(t *testing.T) {
+	cases := map[string]string{
+		`/`:                 `redacted-project`,
+		`\`:                 `redacted-project`,
+		`C:\`:               `redacted-project`,
+		`D:\`:               `redacted-project`,
+		`c:\`:               `redacted-project`, // 小写盘符同样
+		``:                  `redacted-project`, // 空输入
+		`C:`:                `redacted-project`, // 裸盘符无分隔符
+		`/Users/jsmith/x`:   `x`,                // 正常 unix 路径取末段
+		`E:\users\me\Forge`: `Forge`,            // 正常 windows 路径取末段
+		`Forge`:             `Forge`,            // 无分隔符的普通名（非盘符）
+	}
+	for in, want := range cases {
+		if got := projectBaseName(in); got != want {
+			t.Errorf(`projectBaseName(%q) = %q, want %q（根/盘符须回退中性占位）`, in, got, want)
+		}
+	}
 }
