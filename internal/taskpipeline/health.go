@@ -166,12 +166,15 @@ func IsClaimedStale(root string, s *TaskState, now time.Time) (bool, time.Durati
 }
 
 // IsInputReqStale reports whether an input-required task has had no progress past InputReqZombieTTL
-// — the question has gone unanswered too long. Question() requires Claim(), so ClaimedAt is always
-// set for input-required state and is the fallback baseline when no gate has run yet: a task that
-// was claimed, immediately questioned, then left silent must still surface (the canonical stuck-
-// question case — exactly what phase 5 exists to expose). Any newer checklog activity dominates,
-// so an actively-worked task is never a false positive; a missing ClaimedAt with no activity
-// cannot be aged → not flagged.
+// — the question has gone unanswered too long. The baseline is the NEWEST of ClaimedAt, QuestionAt
+// (set by Question()), and last checklog activity. Question() requires Claim(), so ClaimedAt is
+// always set for input-required state and is the fallback baseline when no gate has run yet: a
+// task that was claimed, immediately questioned, then left silent must still surface (the canonical
+// stuck-question case — QuestionAt≈ClaimedAt there, so it still flags — exactly what phase 5 exists
+// to expose). QuestionAt dominating ClaimedAt prevents the symmetric false positive: a task claimed
+// long ago but only recently sent back for clarification is not stale merely because the claim is
+// old. Any newer checklog activity dominates both, so an actively-worked task is never a false
+// positive; a missing ClaimedAt with no activity cannot be aged → not flagged.
 //
 // IsInputReqStale 报告一个 input-required 任务是否已无进展超过 InputReqZombieTTL——问题已太久未答复。
 // Question() 要求 Claim()，故 input-required 态的 ClaimedAt 总已设置，并在尚未跑过门禁时作为兜底基线：
@@ -182,6 +185,17 @@ func IsInputReqStale(root string, s *TaskState, now time.Time) (bool, time.Durat
 		return false, 0
 	}
 	baseline := pointerTime(s.Assignment.ClaimedAt)
+	// QuestionAt (set by Question()) dominates ClaimedAt when newer: a task claimed long ago but
+	// only recently sent back for clarification should NOT be flagged stale merely because the claim
+	// is old — the question is the freshest signal. In the canonical claim→immediately-question→
+	// silent case, QuestionAt≈ClaimedAt so the stuck task still surfaces.
+	//
+	// QuestionAt（Question() 设置）新于 ClaimedAt 时占优：很久前认领、近期才回抛的任务不应仅因认领
+	// 久远就被标僵尸——回抛才是最新信号。在典型「认领→立即回抛→静默」场景下 QuestionAt≈ClaimedAt，
+	// 故卡住的任务仍上浮。
+	if qa := pointerTime(s.Assignment.QuestionAt); qa.After(baseline) {
+		baseline = qa
+	}
 	if act := lastChecklogActivity(root, s.TaskRef); act.After(baseline) {
 		baseline = act
 	}
