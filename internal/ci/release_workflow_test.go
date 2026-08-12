@@ -236,11 +236,11 @@ func TestGoreleaserSigns_CosignV3Bundle(t *testing.T) {
 	for i, s := range cfg.Signs {
 		joined := strings.Join(s.Args, " ")
 		if !strings.Contains(joined, "--bundle") {
-			t.Fatalf("signs[%d] 必须用 cosign v3 的 --bundle（证书+签名合一），got args %v——" +
+			t.Fatalf("signs[%d] 必须用 cosign v3 的 --bundle（证书+签名合一），got args %v——"+
 				"v2 旧 --output-signature/--output-certificate 在 cosign v3 下产空路径致发布失败", i, s.Args)
 		}
 		if strings.Contains(joined, "--output-signature") || strings.Contains(joined, "--output-certificate") {
-			t.Fatalf("signs[%d] 含 cosign v2 废弃 flags（--output-signature/--output-certificate），got args %v——" +
+			t.Fatalf("signs[%d] 含 cosign v2 废弃 flags（--output-signature/--output-certificate），got args %v——"+
 				"v3 下被忽略产空路径，须改 --bundle", i, s.Args)
 		}
 	}
