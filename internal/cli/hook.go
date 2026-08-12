@@ -328,7 +328,8 @@ func runHook(cmd *cobra.Command, args []string) error {
 	root, err := findProjectRoot()
 	if err != nil {
 		if !isGlobalHook(name) {
-			// kimi 的 allow 路径 stdout 会进上下文——Claude 的 JSON envelope 在
+			// kimi 的 allow 路径 stdout 多数事件不进上下文（仅 UserPromptSubmit 例外，
+			// 见 internal/agentbridge/kimi-hook-routing.md）——Claude 的 JSON envelope 在
 			// 那里是噪声，kimi 下静默即可（exit 0 = allow）。
 			if agent != "kimi" {
 				outputAllow("")
@@ -590,13 +591,20 @@ func runHook(cmd *cobra.Command, args []string) error {
 		// kimi-code installs the forge plugin by locking a repo tag and has no plugin
 		// auto-update (CLI has no plugin management subcommands), so a kimi install drifts
 		// behind the forge binary over time. Detect the drift here and append a remediation
-		// advisory through init-suggest's existing non-blocking channel (exit 0). The agent
-		// and hook-name guards keep this kimi-only: claude/codex/etc. never reach it.
+		// advisory to init-suggest's stdout (exit 0). The agent and hook-name guards keep
+		// this kimi-only: claude/codex/etc. never reach it. CAVEAT: init-suggest is a
+		// SessionStart hook, and on kimi 0.35.0 SessionStart stdout is observation-only
+		// (dropped), so this advisory is silently inert on kimi — but the drift is still
+		// recorded in the checklog regardless.
+		// See internal/agentbridge/kimi-hook-routing.md.
 		//
 		// kimi-code 装插件靠锁仓库 tag，且无 plugin 自动更新（CLI 无任何 plugin 管理
-		// 子命令），故 kimi 安装会随时间落后于 forge 二进制。在此检测漂移，经
-		// init-suggest 既有的非阻断通道（exit 0）追加修复 advisory。agent 与 hook 名
-		// 双重 guard 使其仅 kimi 生效：claude/codex 等永不进入。
+		// 子命令），故 kimi 安装会随时间落后于 forge 二进制。在此检测漂移，把修复
+		// advisory 追加到 init-suggest 的 stdout（exit 0）。agent 与 hook 名双重 guard
+		// 使其仅 kimi 生效：claude/codex 等永不进入。注意：init-suggest 是 SessionStart
+		// hook，而 kimi 0.35.0 的 SessionStart stdout 是 observation-only（丢弃），故此
+		// advisory 在 kimi 上静默失效——但漂移无论如何都记进 checklog。见
+		// internal/agentbridge/kimi-hook-routing.md。
 		if name == "init-suggest" && agent == "kimi" {
 			detail = appendKimiStaleAdvisory(detail, cmd.Root().Version)
 		}
@@ -773,15 +781,24 @@ func runHook(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// 7. Output the result in the host's hook protocol. kimi: exit 0 = allow
-	// (stdout text is appended to context — the advisory channel); a block returns
-	// HookBlockError which Execute maps to exit 2 (stderr = reason) — the only exit
-	// code kimi treats as an intentional block; any other non-zero would fail open.
+	// 7. Output the result in the host's hook protocol. kimi: exit 0 = allow; a block
+	// returns HookBlockError which Execute maps to exit 2 (stderr = reason) — the only
+	// exit code kimi treats as an intentional block; any other non-zero fails open. The
+	// old `exit 0 = stdout→context (advisory channel)` shorthand is FALSE on kimi 0.35.0:
+	// only PreToolUse exit-2, Stop exit-2, and UserPromptSubmit stdout reach the model;
+	// PostToolUse/SessionStart stdout is observation-only (dropped). Advisory hooks are
+	// rerouted per internal/agentbridge/kimi-hook-routing.md (P0 promotes PreToolUse advisories to exit-2;
+	// P1 converges skill-trigger to UserPromptSubmit; P3 backfills SessionStart task-resume
+	// via UserPromptSubmit).
 	//
-	// 7. 按宿主的 hook 协议输出结果。kimi：exit 0 = 放行（stdout 文本注入
-	// 上下文——advisory 通道）；阻断返回 HookBlockError，由 Execute 映射为
-	// exit 2（stderr = 原因）——kimi 唯一认定为有意阻断的退出码，其他非零会
-	// fail-open 放行。
+	// 7. 按宿主的 hook 协议输出结果。kimi：exit 0 = 放行；阻断返回 HookBlockError，由
+	// Execute 映射为 exit 2（stderr = 原因）——kimi 唯一认定为有意阻断的退出码，其他非零
+	// fail-open 放行。旧的 `exit 0 = stdout→上下文（advisory 通道）` 简写在 kimi 0.35.0
+	// 上不成立：只有 PreToolUse exit-2、Stop exit-2、UserPromptSubmit stdout 能到模型；
+	// PostToolUse/SessionStart 的 stdout 是 observation-only（丢弃）。advisory hook 按
+	// internal/agentbridge/kimi-hook-routing.md 重路由（P0 把 PreToolUse advisory 升 exit-2；P1 把
+	// skill-trigger 收敛到 UserPromptSubmit；P3 把 SessionStart task-resume 经
+	// UserPromptSubmit 回填）。
 	if agent == "kimi" {
 		return emitKimiOutput(passed, detail)
 	}
@@ -1024,15 +1041,26 @@ type HookBlockError struct {
 func (e *HookBlockError) Error() string { return e.Reason }
 
 // emitKimiOutput renders the hook result in kimi's hook protocol: allow = exit 0 with
-// the detail as plain stdout text (kimi appends allow-path stdout to context — the
-// advisory channel, equivalent to Claude's additionalContext); block = reason on
-// stderr + HookBlockError (→ exit 2). Returning HookBlockError instead of calling
-// os.Exit here keeps runHook's defers (temp script cleanup) running.
+// the detail as plain stdout text; block = reason on stderr + HookBlockError (→ exit 2).
+// Returning HookBlockError instead of calling os.Exit here keeps runHook's defers (temp
+// script cleanup) running.
+//
+// CAVEAT — kimi 0.35.0 does NOT append allow-path stdout to the model context the way
+// Claude Code treats additionalContext. Only UserPromptSubmit stdout reaches the model
+// (delivered on the NEXT prompt); PreToolUse/Stop reach it via exit-2 BLOCK. PostToolUse/
+// SessionStart allow-path stdout is observation-only (dropped). So the detail printed on
+// the allow path here is model-visible ONLY on UserPromptSubmit; advisory hooks are
+// rerouted per internal/agentbridge/kimi-hook-routing.md.
 //
 // emitKimiOutput 按 kimi 的 hook 协议渲染结果：放行 = exit 0，detail 以纯文本打
-// stdout（kimi 把放行路径的 stdout 注入上下文——advisory 通道，等价 Claude 的
-// additionalContext）；阻断 = 原因写 stderr + HookBlockError（→ exit 2）。返回
-// HookBlockError 而非在此 os.Exit，是为了让 runHook 的 defer（临时脚本清理）照常执行。
+// stdout；阻断 = 原因写 stderr + HookBlockError（→ exit 2）。返回 HookBlockError 而非
+// 在此 os.Exit，是为了让 runHook 的 defer（临时脚本清理）照常执行。
+//
+// 注意——kimi 0.35.0 并不像 Claude Code 那样把 allow 路径 stdout 注入模型上下文
+// （additionalContext）。只有 UserPromptSubmit 的 stdout 能到模型（下一 prompt 送达）；
+// PreToolUse/Stop 经 exit-2 阻断到模型。PostToolUse/SessionStart 的 allow 路径 stdout
+// 是 observation-only（丢弃）。故此处 allow 路径打印的 detail 仅在 UserPromptSubmit 时
+// 模型可见；advisory hook 按 internal/agentbridge/kimi-hook-routing.md 重路由。
 func emitKimiOutput(passed bool, detail string) error {
 	if passed {
 		if detail != "" {
@@ -1075,13 +1103,15 @@ func isHookInfraFailure(err error) bool {
 
 // emitInfraAllow fails open for an infrastructure failure: the warning must be VISIBLE
 // (a silently broken gate set is worse than a noisy one) without blocking the turn.
-// kimi: plain stdout text (injected into context on the allow path). Claude: an approve
+// kimi: plain stdout text (model-visible only on UserPromptSubmit; on PostToolUse/SessionStart
+// it is dropped — see internal/agentbridge/kimi-hook-routing.md). Claude: an approve
 // verdict whose hookSpecificOutput carries hookEventName — required by Claude's hook
 // output schema; an empty one gets the additionalContext dropped and the warning would
 // be silently lost, defeating the purpose.
 //
 // emitInfraAllow 对基础设施失败 fail-open：警告必须可见（静默失效的门禁比吵闹的
-// 更糟）但不阻断当轮。kimi：纯文本 stdout（放行路径会注入上下文）。Claude：
+// 更糟）但不阻断当轮。kimi：纯文本 stdout（仅 UserPromptSubmit 时模型可见；PostToolUse/
+// SessionStart 下被丢弃——见 internal/agentbridge/kimi-hook-routing.md）。Claude：
 // approve 结论且 hookSpecificOutput 必须带 hookEventName——Claude 的 hook 输出
 // schema 要求它合法；空串会导致 additionalContext 被丢弃，警告静默丢失，违背本
 // 函数的设计目标。

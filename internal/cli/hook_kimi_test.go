@@ -118,7 +118,7 @@ func TestEmitKimiOutput_Pass(t *testing.T) {
 		t.Fatalf("pass must return nil error (exit 0), got %v", err)
 	}
 	if !strings.Contains(stdout, "task 已接续：feat/xxx") {
-		t.Errorf("advisory detail must go to stdout (kimi injects it into context), got %q", stdout)
+		t.Errorf("advisory detail must go to stdout on the allow path, got %q", stdout)
 	}
 	if stderr != "" {
 		t.Errorf("pass must not write stderr, got %q", stderr)
