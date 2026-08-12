@@ -2,11 +2,14 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/checklog"
 )
 
 // writeSkill 在 canonical dir 下建一个带 triggers 的 skill（裸 JSON——frontmatter.go
@@ -295,5 +298,101 @@ func TestRunSkillTriggerHook_DeniedSkillSkipped(t *testing.T) {
 	}
 	if !strings.Contains(out, "normal") {
 		t.Errorf("normal skill 应注入，got:\n%s", out)
+	}
+}
+
+// TestRunSkillTriggerHook_KimiSuppressedOffUserPromptSubmit is the P1 core guard: on kimi,
+// skill-trigger MUST bail before runSkillTriggerCore on every event except UserPromptSubmit.
+// kimi 0.35.0 drops allow-path stdout from the model context for all other events (verified via
+// wire.jsonl: advisories reached the model 0 times across a 42-edit session), so running the
+// engine there would (a) never reach the model and (b) write a false checklog "delivered"
+// entry (recordSkillTriggerHits) — the false-prosperity observability bug where
+// `forge skills usage` reports triggers the model never saw. Each subtest sets up a skill that
+// WOULD trigger on the event, then asserts the guard short-circuits: NO stdout AND ZERO
+// skill-trigger checklog entries.
+//
+// TestRunSkillTriggerHook_KimiSuppressedOffUserPromptSubmit 是 P1 核心守卫：kimi 下
+// skill-trigger 必须在除 UserPromptSubmit 外的每个事件上，于 runSkillTriggerCore 之前 bail。
+// kimi 0.35.0 对其他事件丢弃 allow-path stdout（wire.jsonl 实测：42 次编辑会话里 advisory
+// 0 次到达模型），故此时跑引擎既到不了模型，又写一条假的"已送达"checklog（假繁荣可观测
+// bug——`forge skills usage` 报告模型从未见过的触发）。每个子测试建一个本会在该事件触发的
+// skill，然后断言守卫短路：无 stdout 且零 skill-trigger checklog 条目。
+func TestRunSkillTriggerHook_KimiSuppressedOffUserPromptSubmit(t *testing.T) {
+	events := []string{"PreToolUse", "PostToolUse", "Stop", "SessionStart"}
+	for _, ev := range events {
+		t.Run(ev, func(t *testing.T) {
+			dir := withCanonicalEnv(t)
+			isolateSkillTriggerTmp(t)
+			root := t.TempDir()
+			// A skill that WOULD trigger on this event — the guard must suppress it regardless.
+			writeSkill(t, dir, "probe-skill", fmt.Sprintf(`[{"event":%q,"when":"coding_intent"}]`, ev))
+
+			out := captureStdout(t, func() {
+				if err := runSkillTriggerHook(HookInput{
+					HookEventName: ev,
+					Prompt:        "帮我实现功能", // coding_intent true → would trigger absent the guard
+					SessionID:     "kimi-suppress-" + ev,
+				}, root, "v", "kimi"); err != nil {
+					t.Errorf("runSkillTriggerHook kimi %s: %v", ev, err)
+				}
+			})
+
+			if out != "" {
+				t.Errorf("kimi %s: guard must emit NO stdout (kimi drops it for this event + it'd record a false trigger), got %q", ev, out)
+			}
+			// The false-prosperity bug core assertion: recordSkillTriggerHits must NOT have run.
+			entries, err := checklog.LoadAll(root)
+			if err != nil {
+				t.Fatalf("LoadAll checklog: %v", err)
+			}
+			for _, e := range entries {
+				if e.Check == checklog.CheckSkillTrigger {
+					t.Errorf("kimi %s: guard must write NO skill-trigger checklog entry (false-prosperity bug), got %+v", ev, e)
+				}
+			}
+		})
+	}
+}
+
+// TestRunSkillTriggerHook_KimiUserPromptSubmitStillInjects is the positive complement to the
+// suppression test: UserPromptSubmit is the ONE event kimi reaches the model on, so skill-trigger
+// must STILL run + inject + record a checklog there. This proves the guard is event-specific
+// (not a blanket kimi suppression) and that the legit delivered-trigger signal survives.
+//
+// TestRunSkillTriggerHook_KimiUserPromptSubmitStillInjects 是抑制测试的正向补集：UserPromptSubmit
+// 是 kimi 唯一能到达模型的事件，故 skill-trigger 必须在此处照常运行 + 注入 + 记 checklog。
+// 证明守卫是按事件的（非 kimi 一刀切抑制），且合法"已送达"触发信号得以保留。
+func TestRunSkillTriggerHook_KimiUserPromptSubmitStillInjects(t *testing.T) {
+	dir := withCanonicalEnv(t)
+	isolateSkillTriggerTmp(t)
+	root := t.TempDir()
+	writeSkill(t, dir, "probe-skill", `[{"event":"UserPromptSubmit","when":"coding_intent"}]`)
+
+	out := captureStdout(t, func() {
+		if err := runSkillTriggerHook(HookInput{
+			HookEventName: "UserPromptSubmit",
+			Prompt:        "帮我实现功能",
+			SessionID:     "kimi-ups-inject",
+		}, root, "v", "kimi"); err != nil {
+			t.Errorf("runSkillTriggerHook kimi UserPromptSubmit: %v", err)
+		}
+	})
+
+	if !strings.Contains(out, "probe-skill") {
+		t.Errorf("kimi UserPromptSubmit must STILL inject (only non-UPS events are suppressed), got %q", out)
+	}
+	// And it DID record a checklog entry — the legit delivered trigger.
+	entries, err := checklog.LoadAll(root)
+	if err != nil {
+		t.Fatalf("LoadAll: %v", err)
+	}
+	var found bool
+	for _, e := range entries {
+		if e.Check == checklog.CheckSkillTrigger {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("kimi UserPromptSubmit must record a skill-trigger checklog entry (legit delivered trigger), got %d entries", len(entries))
 	}
 }
