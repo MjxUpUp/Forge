@@ -833,6 +833,62 @@ func renderHookReinject(root string) (string, error) {
 		stale = true
 	}
 	if !stale {
+		// P3 cold-start backfill: hosts that drop SessionStart hook output (kimi 0.35.0 —
+		// SessionStart is observation-only there, verified via wire.jsonl) never receive the
+		// cold-start task handoff that SessionStart's renderHookResume produces. The
+		// UserPromptSubmit channel is the one inject channel those hosts DO reach, so we
+		// backfill the active-task handoff here on the first prompt of such a session. Gated
+		// by sessionStartOutputDropped(agent) and deduped by a per-session sentinel — one
+		// session needs its cold-start handoff exactly once. Silent on Claude Code / codex /
+		// ... (they inject SessionStart output, so they already got the handoff; backfilling
+		// would duplicate it) and silent on kimi after the first prompt (sentinel set).
+		//
+		// Known gap (pre-existing, NOT introduced by P3): the offered-tasks ("待认领") block
+		// is NOT recovered here. appendOfferedBlock advances NotifiedAt during SessionStart
+		// regardless of whether its stdout reaches the model, so by the time this backfill
+		// runs the freshly-offered tasks read as already-notified (ShouldNotify=false) and
+		// the block is omitted. SessionStart already lost it on kimi; P3 recovers the active
+		// -task handoff (the primary value) but leaves the offered-block loss in place.
+		// Properly fixing it means gating NotifiedAt on actual delivery inside the shared
+		// appendOfferedBlock (used by SessionStart on ALL hosts) — a separate, larger change.
+		//
+		// 已知缺口（既有，非 P3 引入）：offered-tasks（"待认领"）块在此不恢复。
+		// appendOfferedBlock 在 SessionStart 期间无论 stdout 是否触达模型都推进 NotifiedAt，
+		// 故本回填跑时刚 offered 的任务读为已通知（ShouldNotify=false），块被省略。SessionStart
+		// 在 kimi 上本就丢了它；P3 恢复活跃任务 handoff（主价值）但保留 offered 块丢失现状。
+		// 彻底修复需在共享的 appendOfferedBlock（SessionStart 在所有 host 上用）内部把
+		// NotifiedAt 门控在实际送达上——是独立的更大改动。
+		//
+		// P3 冷启动回填：丢弃 SessionStart hook 输出的 host（kimi 0.35.0——SessionStart 在那里
+		// 是 observation-only，经 wire.jsonl 核实）永远收不到 SessionStart 的 renderHookResume
+		// 产出的冷启动 task handoff。UserPromptSubmit 是这些 host 唯一能触达的注入通道，故在此——
+		// 这类 session 的首个 prompt——回填同一份 handoff。门控为 sessionStartOutputDropped(agent)
+		// 且用 per-session sentinel 去重——一个 session 恰需一次冷启动 handoff。对 Claude Code/
+		// codex/... 静默（它们注入 SessionStart 输出，已拿到 handoff，回填会重复），对 kimi 首个
+		// prompt 之后也静默（sentinel 已设）。
+		agent := detectOriginTool("")
+		if sid != "" && sessionStartOutputDropped(agent) && !taskpipeline.IsColdStartInjected(root, sid) {
+			// Render FIRST, mark the sentinel only on success: renderHookResume's only error
+			// source is attachCurrentSession→MutateTaskState under per-task lock timeout / disk
+			// error. Leaving the sentinel unset on a failed render lets the next prompt retry
+			// the backfill; marking first would persist the sentinel on a failed render and
+			// permanently suppress the handoff for the whole session (code-review MEDIUM-1).
+			// The mark itself is best-effort (error ignored): a mark failure only risks one
+			// duplicate handoff next prompt, never a lost one — mirroring the compact-reinject
+			// path's emit-then-best-effort-mark.
+			//
+			// 先渲染，仅成功才设 sentinel：renderHookResume 唯一错误源是
+			// attachCurrentSession→MutateTaskState 在 per-task 锁超时/磁盘错误下。渲染失败时不设
+			// sentinel 使下个 prompt 重试回填；先标记会在渲染失败时持久化 sentinel 并永久抑制本
+			// session 的 handoff（code-review MEDIUM-1）。标记本身 best-effort（忽略错误）：失败只
+			// 冒下一次重复 handoff 的风险，绝不丢——镜像 compact-reinject 路径的「先发后尽力标记」。
+			out, err := renderHookResume(root)
+			if err != nil {
+				return "", err
+			}
+			_ = taskpipeline.MarkColdStartInjected(root, sid)
+			return out, nil
+		}
 		return "", nil
 	}
 	handoff := renderResume(state, gitPorcelain(root))
@@ -862,7 +918,37 @@ func renderHookReinject(root string) (string, error) {
   forge task block --content "<卡住的事>"             # 若有阻塞
 `
 	}
+	// The compact-reinject just delivered a full handoff — that satisfies cold-start too.
+	// Mark the cold-start sentinel so the next prompt (stale now consumed) does not ALSO
+	// backfill via the cold-start path and double-inject. Best-effort: a mark failure only
+	// risks one duplicate handoff, not data loss.
+	//
+	// compact-reinject 刚交付了完整 handoff——这也满足冷启动。设 cold-start sentinel 使下个
+	// prompt（stale 已消费）不再经冷启动路径回填造成双注。best-effort：标记失败只冒一次重复
+	// handoff 的风险，无数据丢失。
+	_ = taskpipeline.MarkColdStartInjected(root, sid)
 	return "PASS\n" + handoff, nil
+}
+
+// sessionStartOutputDropped reports whether the given host agent drops SessionStart hook
+// stdout from the model context — making the SessionStart task-resume handoff never reach
+// the model. Such hosts need the handoff backfilled on the UserPromptSubmit channel (the
+// one inject channel they DO reach). Verified cases: kimi 0.35.0 (SessionStart
+// observation-only, confirmed by wire.jsonl cross-check: 0 forge texts reached the model
+// despite 42 edits + 39 Bash calls; only UserPromptSubmit stdout reaches it, laggy).
+// Claude Code / codex / cursor / windsurf / opencode / pi / reasonix inject SessionStart
+// output, so they do NOT need backfill and must stay excluded — backfilling there would
+// duplicate the handoff SessionStart already delivered.
+//
+// sessionStartOutputDropped 报告给定 host agent 是否把 SessionStart hook stdout 丢弃出模型
+// 上下文——使 SessionStart task-resume 的 handoff 到不了模型。这类 host 需在 UserPromptSubmit
+// 通道（它们唯一能触达的注入通道）回填 handoff。已核实案例：kimi 0.35.0（SessionStart 为
+// observation-only，经 wire.jsonl 交叉验证：42 次编辑 + 39 次 Bash 仍 0 条 forge 文本触达模型；
+// 仅 UserPromptSubmit stdout 能触达，且滞后）。Claude Code/codex/cursor/windsurf/opencode/pi/
+// reasonix 注入 SessionStart 输出，不需回填，须保持排除——回填会与 SessionStart 已交付的 handoff
+// 重复。
+func sessionStartOutputDropped(agent string) bool {
+	return agent == "kimi"
 }
 
 func runTaskContext(cmd *cobra.Command, args []string) error {

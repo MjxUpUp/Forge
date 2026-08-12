@@ -172,6 +172,58 @@ func TestResumeStale_PerSession(t *testing.T) {
 	}
 }
 
+// TestColdStartInjected_PerSessionNotConsumed: the per-session cold-start sentinel differs
+// from resume-stale in ONE way — it is NOT consumed on read (a session needs its cold-start
+// handoff exactly once, so the sentinel persists for the session lifetime). Mark is idempotent
+// (AtomicWrite overwrites). Cross-session isolation mirrors resume-stale (shared user-level
+// DataDir). Empty sid never marks nor reports injected (the backfill is gated on non-empty sid
+// upstream, but the guard prevents an empty-id sentinel that would collide across sessions).
+//
+// TestColdStartInjected_PerSessionNotConsumed：per-session cold-start sentinel 与 resume-stale
+// 唯一不同——读时不被消费（一个 session 恰需一次冷启动 handoff，故 sentinel 存活整个 session
+// 生命周期）。Mark 幂等（AtomicWrite 覆写）。跨 session 隔离镜像 resume-stale（用户级共享 DataDir）。
+// 空 sid 既不标记也不报已注入（回填上游已门控在非空 sid，此守卫防空 id sentinel 跨 session 碰撞）。
+func TestColdStartInjected_PerSessionNotConsumed(t *testing.T) {
+	dir := t.TempDir()
+	if err := MarkColdStartInjected(dir, "sid-a"); err != nil {
+		t.Fatal(err)
+	}
+	if !IsColdStartInjected(dir, "sid-a") {
+		t.Error("sid-a Mark 后应报已注入")
+	}
+	// NOT consumed: IsColdStartInjected is read-only, a second read still true (the key
+	// difference from ConsumeResumeStale which clears on read).
+	//
+	// 不被消费：IsColdStartInjected 只读，第二次读仍 true（与 ConsumeResumeStale 读即清的关键区别）
+	if !IsColdStartInjected(dir, "sid-a") {
+		t.Error("cold-start sentinel 不应被读消费，第二次应仍报已注入")
+	}
+	// Cross-session isolation: sid-b unaffected by sid-a's sentinel.
+	//
+	// 跨 session 隔离：sid-b 不受 sid-a 的 sentinel 影响
+	if IsColdStartInjected(dir, "sid-b") {
+		t.Error("sid-b 不应被 sid-a 的 sentinel 影响")
+	}
+	// Idempotent: a second Mark overwrites the same path, sentinel still present.
+	//
+	// 幂等：第二次 Mark 覆写同路径，sentinel 仍在
+	if err := MarkColdStartInjected(dir, "sid-a"); err != nil {
+		t.Fatal(err)
+	}
+	if !IsColdStartInjected(dir, "sid-a") {
+		t.Error("重复 Mark 后应仍报已注入")
+	}
+	// Empty sid never marks nor reports injected.
+	//
+	// 空 sid 既不标记也不报已注入
+	if err := MarkColdStartInjected(dir, ""); err != nil {
+		t.Fatalf("空 sid Mark 应 no-op 不报错: %v", err)
+	}
+	if IsColdStartInjected(dir, "") {
+		t.Error("空 sid 不应报已注入")
+	}
+}
+
 // TestCurrentSessionID_FallbackChain: multi-host session detection — Claude env wins;
 // FORGE_SESSION_ID (injected by runHook from any host's stdin session_id) is the
 // fallback; "default" (the scripts' empty placeholder) and unset both yield "".
