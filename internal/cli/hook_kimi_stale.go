@@ -23,7 +23,11 @@ const kimiStaleMarker = ".kimi-plugin-stale"
 // appendKimiStaleAdvisory detects whether the kimi-installed forge plugin lags behind the
 // running forge binary and, if so, appends a remediation hint to detail. It reuses the
 // init-suggest advisory channel (exit 0, non-blocking): the caller wraps detail into the
-// hook output's AdditionalContext / kimi stdout injection.
+// hook output's AdditionalContext / stdout. CAVEAT: init-suggest is SessionStart, and on
+// kimi 0.35.0 SessionStart stdout is observation-only (dropped), so this advisory is
+// silently inert on kimi (the function has a single production caller, which sits inside
+// the agent+hook-name kimi guard; the drift is still checklogged regardless). See
+// internal/agentbridge/kimi-hook-routing.md.
 //
 // Throttled to once per day via kimiStaleMarker. Returns detail unchanged whenever the
 // check does not apply: non-stale, dev build, unreadable install info, or already nudged
@@ -31,7 +35,10 @@ const kimiStaleMarker = ".kimi-plugin-stale"
 //
 // appendKimiStaleAdvisory 检测 kimi 已装 forge plugin 是否落后于运行中的 forge 二进制，
 // 若落后则把修复提示追加到 detail。复用 init-suggest 的 advisory 通道（exit 0，非阻断）：
-// 调用方把 detail 包进 hook 输出的 AdditionalContext / kimi stdout 注入。
+// 调用方把 detail 包进 hook 输出的 AdditionalContext / stdout。注意：init-suggest 是
+// SessionStart，而 kimi 0.35.0 的 SessionStart stdout 是 observation-only（丢弃），故此
+// advisory 在 kimi 上静默失效（本函数唯一生产调用方在 agent+hook 名双重 guard 内，
+// kimi-only；漂移无论如何都记 checklog）。见 internal/agentbridge/kimi-hook-routing.md。
 //
 // 经 kimiStaleMarker 按日节流（每日最多一次）。当检测不适用时原样返回 detail：
 // 未过期、dev 构建、读不到安装信息、或今日已提醒。

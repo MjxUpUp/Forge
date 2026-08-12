@@ -77,7 +77,7 @@ func runSkillTriggerCmd(cmd *cobra.Command, args []string) error {
 // runSkillTriggerHook 是 runHook 的 skill-trigger 特例入口：复用 runHook 已 normalize 的
 // hookInput，Go 内判定 + 渲染 + 输出 HookOutput JSON（不经 bash embed）。
 // kimi 下按 kimi 协议输出：skill-trigger 永不阻断（advisory），渲染文本直接打 stdout
-// （kimi 把 allow 路径 stdout 注入上下文），无渲染则静默。
+// （仅 UserPromptSubmit 时模型可见，其余事件 stdout 被 kimi 丢弃——见 internal/agentbridge/kimi-hook-routing.md），无渲染则静默。
 func runSkillTriggerHook(hookInput HookInput, root, version, agent string) error {
 	// kimi 0.35.0 drops allow-path stdout from the model context for every event except
 	// UserPromptSubmit (verified via wire.jsonl: advisories reached the model 0 times across a

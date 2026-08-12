@@ -24,8 +24,14 @@ import (
 // `forge hook <name> --agent kimi` layer (internal/cli/hook.go, hook_normalize.go):
 //   - stdin: Claude-shaped except prompt (content-block array) and tool_output (string) —
 //     normalized by kimiNormalize.
-//   - result: exit 0 = allow (stdout text → context), exit 2 = block (stderr = reason) —
-//     rendered by emitKimiOutput; every generated command carries `--agent kimi`.
+//   - result: exit 0 = allow, exit 2 = block (stderr = reason) — rendered by emitKimiOutput;
+//     every generated command carries `--agent kimi`. kimi 0.35.0 honors only THREE model
+//     channels: PreToolUse exit-2 (block), Stop exit-2 (block), UserPromptSubmit stdout
+//     (inject, delivered on the NEXT prompt). PostToolUse/SessionStart stdout is
+//     observation-only (dropped — verified: 0 reached the model across 76 tool calls in a
+//     960-line wire.jsonl). The `exit 0 = stdout→context` shorthand is FALSE for
+//     PostToolUse/SessionStart; PostToolUse exit-2 blocking is UNVERIFIED. Per-hook routing:
+//     internal/agentbridge/kimi-hook-routing.md.
 //
 // Merge strategy: config.toml always carries the user's own model/provider/permission
 // settings, so whole-file overwrite is out of the question; and the project has no TOML
@@ -49,8 +55,13 @@ import (
 // `forge hook <name> --agent kimi` 层处理（internal/cli/hook.go、hook_normalize.go）：
 //   - stdin：与 Claude 同构，除 prompt（content-block 数组）与 tool_output（字符串）
 //     ——由 kimiNormalize 归一化。
-//   - 结果：exit 0 = 放行（stdout 文本进上下文），exit 2 = 阻断（stderr = 原因）
-//     ——由 emitKimiOutput 渲染；每条生成的 command 都带 `--agent kimi`。
+//   - 结果：exit 0 = 放行，exit 2 = 阻断（stderr = 原因）——由 emitKimiOutput 渲染；
+//     每条生成的 command 都带 `--agent kimi`。kimi 0.35.0 仅 3 条通道能影响模型：
+//     PreToolUse exit-2（阻断）、Stop exit-2（阻断）、UserPromptSubmit stdout（注入，
+//     下一 prompt 送达）。PostToolUse/SessionStart 的 stdout 是 observation-only（丢弃
+//     ——实证：960 行 wire.jsonl 中 76 次工具调用 0 条进模型）。`exit 0 = stdout→上下文`
+//     对 PostToolUse/SessionStart 不成立；PostToolUse exit-2 是否阻断未决。逐 hook 路由
+//     见 internal/agentbridge/kimi-hook-routing.md。
 //
 // 合并策略：config.toml 必含用户自己的 model/provider/permission 配置，整文件覆盖
 // 不可行；项目也没有 TOML 依赖（vendored modules）——故生成的条目放在
