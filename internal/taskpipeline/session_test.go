@@ -554,7 +554,7 @@ func TestUpsertSessionAgentInLog_PreservesByteStructure(t *testing.T) {
 	})
 
 	t.Run(`absent-file-no-error`, func(t *testing.T) {
-		dir := t.TempDir() // no sessions.jsonl at all
+		dir := t.TempDir()                         // no sessions.jsonl at all
 		upsertSessionAgentInLog(dir, `T4`, `kimi`) // must not panic / not create
 		if _, err := os.Stat(sessionsLogPath(dir)); !os.IsNotExist(err) {
 			t.Errorf("upsert created a jsonl for an absent file: %v", err)
