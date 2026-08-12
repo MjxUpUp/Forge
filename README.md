@@ -245,12 +245,12 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge task assign --ref <ref> --to <agent> [--role] [--by]` | 把任务分派给指定 agent（offered 起步，编排器侧；未知 agent 警告但接受） |
 | `forge task claim --ref <ref> [--as <agent>]` | 工作方认领分派给自己的任务（offered→claimed，自动锚定 session） |
 | `forge task deliver --ref <ref>` | 工作方交付任务（claimed→delivered，交回编排器） |
-| `forge task mine [--agent <agent>] [--role] [--blocked] [--json]` | 列出分派给当前/指定 agent 的任务（--blocked 只看被上游依赖卡住的，pending_deps 带未交付上游 ref） |
 | `forge task question --ref <ref> --content <text>` | 工作方回抛问题（claimed→input-required，暂停等编排器/人答复） |
 | `forge task answer --ref <ref> [--content <text>]` | 编排器答复回抛（input-required→claimed，答复记入 Decisions；空答复仅恢复 claimed） |
 | `forge task fail --ref <ref> --reason <text>` | 工作方标记任务失败（claimed→failed，记录原因） |
 | `forge task cancel --ref <ref> --reason <text>` | 编排器撤回分派（offered/claimed/input-required→canceled，记录原因） |
 | `forge task reopen --ref <ref> --reason <text>` | 交付后重开（delivered→claimed，交付后发现 bug） |
+| `forge task reclaim [--dry-run] [--json]` | 回收 claimed 僵尸任务（claimed>TTL 默认 7d 无 checklog 活动）回 offered、重置认领时钟（补齐设计 §3 TTL 回收触发；复用 task health 的 IsClaimedStale 同一真相源，故 health 报告与本命令目标永远一致）。回收保留 Agent 不变 → 只有原认领 agent 崩溃/重启后能重新认领；改派用 cancel+assign。`--dry-run` 只列出不改状态 |
 | `forge task export --ref <ref> [-o\|--output file] [--include-checklog] [--redact]` | 把任务导出为跨机器 JSON Bundle（task state 存于用户级 DataDir 不随仓库走，跨机器交接需此载体；--include-checklog 附带证据链；--redact 抹除 issue/agent/commit/证据供对外分享） |
 | `forge task import --file <bundle> [--force\|--merge]` | 从 Bundle 导入任务到本地（导入 session 标记幽灵仅溯源；默认同 ref 拒绝，--force 覆盖，--merge 按 ID 并集协作记录；含 checklog 则回放进本地 trace） |
 | `forge task health [--json]` | 扫描全 project 上浮僵尸/死锁/长期未答复任务（只读告警，不改状态）：offered>7d / claimed>TTL（无 checklog 活动）/ input-required>7d / abandoned_count≥2 标黄，DependsOn 指向 failed/canceled/缺失的死锁链与环主动报；与 mine/看板共享同一检测真相源 |
