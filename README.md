@@ -126,6 +126,19 @@ AI 编码是一个循环：写代码 → 运行 → 读反馈 → 修正 → 再
 
 换言之，coding agent 负责**跑循环**，Forge 负责**让每一轮循环产出可信、状态可追**。Forge 不 discovery、不规划需求——那些是循环前端的事；Forge 守的是循环的执行质量。
 
+<details>
+<summary><b>📖 为什么是确定性门禁，而不是让模型自检？</b></summary>
+
+代码可执行（executable）是编码域相对研究/对话域的结构性优势——跑一遍 test / lint / compiler 拿到的退出码是**事实**，模型自评只是**概率判断**。Forge 的门禁尽量把判定交给确定性检查器，而非 LLM-as-judge：
+
+- **Sonar AC/DC 两段式验证**：「a failing build is a fact; an opinion is a starting point」——LLM 审查作 advisory，deterministic build/test 作 hard gate。
+- **Code-as-Harness 宣言**（arXiv:2605.18747）：「termination should be governed by verification rather than by model confidence」——结束条件由验证决定，不由模型自信度决定。
+- **反直觉但关键**：模型越强、自主循环越长，越需要非模型的客观检查兜底——产出越快，无人复核的代码就越多；门禁是把吞吐量从 liability 变回 leverage 的那一个组件。
+
+Forge 退出码三态（`BLOCKED` 硬阻断 / `ADVISORY` 软信号）即这一思路的落地：LLM 判定走 advisory，deterministic 事实走 hard。机械可判的模式（cheat-scan / scope-drift / read-before-edit / verify-acceptance）优先抽成 deterministic 扫描器，LLM-reviewer 退到只做语义判断。
+
+</details>
+
 ## 🔧 工作流程
 
 每个开发任务自动走 3 道门禁：
