@@ -625,6 +625,163 @@ func TestRenderHookReinject_LegacyBool(t *testing.T) {
 	}
 }
 
+// TestRenderHookReinject_KimiColdStartBackfill (P3): kimi drops SessionStart hook output, so
+// the SessionStart task-resume handoff never reaches the model. The UserPromptSubmit
+// resume-reinject backfills it on the first prompt of a kimi session, gated by a per-session
+// sentinel so it fires exactly once — the second prompt is silent. No compaction mark is
+// involved here (that path is exercised separately).
+//
+// TestRenderHookReinject_KimiColdStartBackfill（P3）：kimi 丢弃 SessionStart hook 输出，故
+// SessionStart task-resume 的 handoff 到不了模型。UserPromptSubmit 的 resume-reinject 在 kimi
+// session 首个 prompt 回填它，由 per-session sentinel 去重只触发一次——第二个 prompt 静默。
+// 此处不涉及压缩标记（那条路径另行测试）。
+func TestRenderHookReinject_KimiColdStartBackfill(t *testing.T) {
+	root, _ := forgedatatest.RealProject(t)
+	state := &taskpipeline.TaskState{TaskRef: "feat/kimi-cold", Branch: "feat/kimi-cold", Goal: "kimi 冷启动回填"}
+	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+		t.Fatalf("SaveTaskState: %v", err)
+	}
+	// Simulate a hook-spawned kimi session (runHook injects FORGE_SESSION_ID + FORGE_AGENT).
+	//
+	// 模拟 hook 派生的 kimi session（runHook 注入 FORGE_SESSION_ID + FORGE_AGENT）
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
+	t.Setenv("FORGE_SESSION_ID", "kimi-cold-1")
+	t.Setenv("FORGE_AGENT", "kimi")
+
+	// First prompt: no compaction mark, but kimi drops SessionStart → backfill the handoff.
+	//
+	// 首个 prompt：无压缩标记，但 kimi 丢弃 SessionStart → 回填 handoff
+	out, err := renderHookReinject(root)
+	if err != nil {
+		t.Fatalf("renderHookReinject (first prompt): %v", err)
+	}
+	if !strings.HasPrefix(out, "PASS\n") {
+		t.Errorf("kimi 首个 prompt 应回填 PASS+handoff，实得 %q", out)
+	}
+	if !strings.Contains(out, "feat/kimi-cold") || !strings.Contains(out, "kimi 冷启动回填") {
+		t.Errorf("回填应含 task ref/goal，实得 %q", out)
+	}
+	if !taskpipeline.IsColdStartInjected(root, "kimi-cold-1") {
+		t.Error("首个 prompt 回填后应设 cold-start sentinel")
+	}
+
+	// Second prompt: sentinel dedupes → silent (no double-inject).
+	//
+	// 第二个 prompt：sentinel 去重 → 静默（不双注）
+	out2, err := renderHookReinject(root)
+	if err != nil {
+		t.Fatalf("renderHookReinject (second prompt): %v", err)
+	}
+	if out2 != "" {
+		t.Errorf("sentinel 去重后应静默返空，实得 %q", out2)
+	}
+}
+
+// TestRenderHookReinject_KimiColdStartAfterCompactReinject (P3): a compact-reinject delivers
+// a full handoff (satisfying cold-start too), so it marks the cold-start sentinel — otherwise
+// the NEXT prompt (stale now consumed) would hit the cold-start path and double-inject. The
+// sentinel set during compact-reinject keeps the following prompt silent.
+//
+// TestRenderHookReinject_KimiColdStartAfterCompactReinject（P3）：compact-reinject 交付了
+// 完整 handoff（也满足冷启动），故它设 cold-start sentinel——否则下个 prompt（stale 已消费）
+// 会命中冷启动路径造成双注。compact-reinject 设的 sentinel 使后续 prompt 静默。
+func TestRenderHookReinject_KimiColdStartAfterCompactReinject(t *testing.T) {
+	root, _ := forgedatatest.RealProject(t)
+	state := &taskpipeline.TaskState{TaskRef: "feat/kimi-compact", Branch: "feat/kimi-compact", Goal: "kimi 压缩后不双注"}
+	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+		t.Fatalf("SaveTaskState: %v", err)
+	}
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
+	t.Setenv("FORGE_SESSION_ID", "kimi-compact-1")
+	t.Setenv("FORGE_AGENT", "kimi")
+
+	// Compact just happened → compact-reinject fires (full handoff) AND marks cold-start.
+	//
+	// 刚压缩 → compact-reinject 触发（完整 handoff）并设 cold-start
+	if err := renderHookCompactFlag(root); err != nil {
+		t.Fatalf("renderHookCompactFlag: %v", err)
+	}
+	out, err := renderHookReinject(root)
+	if err != nil {
+		t.Fatalf("renderHookReinject (compact): %v", err)
+	}
+	if !strings.HasPrefix(out, "PASS\n") {
+		t.Errorf("压缩后应返 PASS+handoff，实得 %q", out)
+	}
+	if !taskpipeline.IsColdStartInjected(root, "kimi-compact-1") {
+		t.Error("compact-reinject 后应设 cold-start sentinel 防双注")
+	}
+
+	// Next prompt: stale consumed AND cold-start marked → silent (no double-inject).
+	//
+	// 下个 prompt：stale 已消费且 cold-start 已设 → 静默（不双注）
+	out2, err := renderHookReinject(root)
+	if err != nil {
+		t.Fatalf("renderHookReinject (after compact): %v", err)
+	}
+	if out2 != "" {
+		t.Errorf("compact-reinject 已设 cold-start，下个 prompt 应静默返空，实得 %q", out2)
+	}
+}
+
+// TestRenderHookReinject_ColdStartNonKimiExcluded (P3): the cold-start backfill is kimi-only
+// — hosts that inject SessionStart output (Claude Code, codex, ...) already received the
+// handoff at SessionStart, so backfilling on UserPromptSubmit would duplicate it. A
+// claude-code session with an active task and no compaction mark stays silent.
+//
+// TestRenderHookReinject_ColdStartNonKimiExcluded（P3）：冷启动回填仅限 kimi——注入 SessionStart
+// 输出的 host（Claude Code、codex 等）在 SessionStart 已拿到 handoff，UserPromptSubmit 再回填会
+// 重复。有活跃任务且无压缩标记的 claude-code session 保持静默。
+func TestRenderHookReinject_ColdStartNonKimiExcluded(t *testing.T) {
+	root, _ := forgedatatest.RealProject(t)
+	state := &taskpipeline.TaskState{TaskRef: "feat/cc-cold", Branch: "feat/cc-cold", Goal: "CC 不回填"}
+	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+		t.Fatalf("SaveTaskState: %v", err)
+	}
+	// claude-code session: CLAUDE_CODE_SESSION_ID set, no FORGE_AGENT. SessionStart output
+	// IS injected on CC, so cold-start backfill must NOT fire.
+	//
+	// claude-code session：CLAUDE_CODE_SESSION_ID 已设，无 FORGE_AGENT。CC 注入 SessionStart
+	// 输出，故冷启动回填不得触发
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "cc-cold-1")
+	t.Setenv("FORGE_AGENT", "")
+
+	out, err := renderHookReinject(root)
+	if err != nil {
+		t.Fatalf("renderHookReinject: %v", err)
+	}
+	if out != "" {
+		t.Errorf("claude-code 不应触发冷启动回填（SessionStart 已注入），实得 %q", out)
+	}
+	if taskpipeline.IsColdStartInjected(root, "cc-cold-1") {
+		t.Error("claude-code 不应设 cold-start sentinel")
+	}
+}
+
+// TestRenderHookReinject_KimiColdStartNoActiveTask (P3): with no active task there is
+// nothing to backfill — the cold-start path is unreachable (the state==nil guard returns
+// first). A kimi session with no task stays silent and sets no sentinel.
+//
+// TestRenderHookReinject_KimiColdStartNoActiveTask（P3）：无活跃任务则无可回填——冷启动路径
+// 不可达（state==nil 守卫先返回）。无任务的 kimi session 保持静默且不设 sentinel。
+func TestRenderHookReinject_KimiColdStartNoActiveTask(t *testing.T) {
+	root, _ := forgedatatest.RealProject(t)
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
+	t.Setenv("FORGE_SESSION_ID", "kimi-notask-1")
+	t.Setenv("FORGE_AGENT", "kimi")
+
+	out, err := renderHookReinject(root)
+	if err != nil {
+		t.Fatalf("renderHookReinject: %v", err)
+	}
+	if out != "" {
+		t.Errorf("无活跃任务应静默返空（无可回填），实得 %q", out)
+	}
+	if taskpipeline.IsColdStartInjected(root, "kimi-notask-1") {
+		t.Error("无活跃任务不应设 cold-start sentinel")
+	}
+}
+
 // TestRenderHookReinject_SparseContinuityNudge (plan 4 mid-way checkpoint active driving): after compression, during re-injection,
 // if the task has not persisted any mid-way thread (decisions/next-step), a strong hint is appended to the end of the handoff to push the agent to persist explicitly —
 // what compression loses is exactly this working memory, otherwise the next compression rebuilds from scratch. When NextSteps already exist, nothing is appended (the thread is already on disk,
