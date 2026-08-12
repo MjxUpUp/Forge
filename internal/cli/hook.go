@@ -621,6 +621,27 @@ func runHook(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// 5b. kimi advisory promotion. kimi 0.35.0 drops allow-path (exit 0) stdout from the
+	// model context, so forge's core advisories (task-guard/bash-guard/assertion-check)
+	// silently evaporate and the agent runs untracked. Promote the REAL advisory to a block
+	// (passed true→false) here — BEFORE step 6's checklog record — so the promoted value flows
+	// into both the audit trail (Passed=false / LevelBlocked) and emitKimiOutput (exit 2, stderr
+	// shown to the model). Placing this at step 7 instead would desync checklog (recorded as
+	// PASS) from the actually-emitted block. promoteKimiAdvisory's predicate isolates real
+	// advisories from each hook's success/clean branch; skill-trigger returned before step 5 and
+	// is unaffected. Escape hatch: FORGE_KIMI_ADVISORY=soft.
+	//
+	// 5b. kimi advisory 提升。kimi 0.35.0 丢弃放行路径（exit 0）的 stdout，forge 核心
+	// advisory（task-guard/bash-guard/assertion-check）静默蒸发，agent 无任务裸奔。在此把
+	// 真 advisory 提升为阻断（passed true→false）——在 step 6 的 checklog 记录之前——让提升
+	// 后的值同时流入审计轨迹（Passed=false / LevelBlocked）与 emitKimiOutput（exit 2，stderr
+	// 展示给模型）。若放在 step 7，checklog（记 PASS）与实际发出的 block 会脱节。
+	// promoteKimiAdvisory 的谓词把真 advisory 与各 hook 的成功/干净分支隔开；skill-trigger 在
+	// step 5 之前已返回，不受影响。逃生舱：FORGE_KIMI_ADVISORY=soft。
+	if agent == "kimi" && promoteKimiAdvisory(name, passed, detail) {
+		passed = false
+	}
+
 	// 6. Record into checklog (noise-gated).
 	//
 	// 6. 记入 checklog（noise-gated）。
@@ -1022,6 +1043,82 @@ type HookBlockError struct {
 }
 
 func (e *HookBlockError) Error() string { return e.Reason }
+
+// kimiPromoteAdvisory maps an advisory hook name to a predicate that decides whether a given
+// detail qualifies as a "must-reach-the-model" advisory on kimi. Background: kimi 0.35.0 drops
+// allow-path (exit 0) stdout from the model context, so the task-guard/bash-guard/assertion-check
+// advisories silently evaporate and the agent runs untracked on master (verified: a real session
+// made 42 untracked master edits with zero WARN reaching the model). Promoting the REAL advisory
+// to a block (passed true→false) repoints it through the one PreToolUse channel kimi honors:
+// exit 2 (stderr shown to the model). These are forge's quality invariants (source changes need a
+// task; assertions must not be weakened) — block is the correct compensation for a missing advisory
+// channel, not a UX downgrade.
+//
+// The predicate (not a bare name allowlist) is load-bearing: each hook emits BOTH an advisory
+// branch and a success/clean branch that share the hook name. A name allowlist would over-block:
+//   - task-guard's "Auto-created task" is a SUCCESS path (it just started a task for the agent) —
+//     blocking it would hard-stop the very edit task-guard enabled.
+//   - assertion-check's "no weakening detected (advisory)" is the CLEAN branch — blocking it would
+//     hard-stop every clean Edit on kimi.
+//
+// The predicate reads the detail text to isolate the real-advisory cases. extractDetail handles
+// both PASS and WARN prefixes, so task-guard's "WARN [task-guard] ..." stdout reaches here.
+//
+// Escape hatch: FORGE_KIMI_ADVISORY=soft reverts to pure advisory (no promotion) for ad-hoc
+// no-task edits. The block is the desired default — kimi has no advisory channel, so blocking the
+// FIRST untracked edit (the one that compounds into a 42-edit bareback session) is the fix.
+//
+// kimiPromoteAdvisory 把 advisory hook 名映射到谓词，判定给定 detail 是否属于"必须送达
+// 模型"的 advisory。背景：kimi 0.35.0 丢弃放行路径（exit 0）的 stdout，故
+// task-guard/bash-guard/assertion-check 的 advisory 静默蒸发，agent 在 master 上无任务裸奔
+// （实测：某会话 42 次未追踪 master 编辑，WARN 抵达模型 0 次）。把真 advisory 提升为阻断
+// （passed true→false）让它改走 kimi 唯一认的 PreToolUse 通道：exit 2（stderr 展示给模型）。
+// 这些是 forge 质量铁律（改源码须有任务、断言不可弱化）——阻断是对缺失 advisory 通道的
+// 正确补偿，非体验降级。
+//
+// 用谓词（非裸名字白名单）是承重设计：每个 hook 同时发 advisory 分支与成功/干净分支，共享
+// 同一 hook 名。名字白名单会过度阻断：
+//   - task-guard 的 "Auto-created task" 是成功路径（刚为 agent 建了任务）——阻断它会硬停
+//     task-guard 刚放行的那次编辑。
+//   - assertion-check 的 "no weakening detected (advisory)" 是干净分支——阻断它会硬停 kimi
+//     上每次干净的 Edit。
+//
+// 谓词读 detail 文本隔离真 advisory。extractDetail 同时处理 PASS 和 WARN 前缀，故 task-guard
+// 的 "WARN [task-guard] ..." stdout 能到达此处。
+//
+// 逃生舱：FORGE_KIMI_ADVISORY=soft 回退纯 advisory（不提升），供临时无任务快改。阻断是预期
+// 默认——kimi 无 advisory 通道，故阻断第一次未追踪编辑（它会滚成 42 次裸奔）才是修复。
+var kimiPromoteAdvisory = map[string]func(detail string) bool{
+	"task-guard": func(d string) bool {
+		return strings.Contains(d, "[task-guard]") && !strings.Contains(d, "Auto-created")
+	},
+	"bash-guard":      func(d string) bool { return strings.Contains(d, "[bash-guard]") },
+	"assertion-check": func(d string) bool { return strings.Contains(d, "Advisory:") },
+}
+
+// promoteKimiAdvisory reports whether an advisory (passed=true, non-empty detail) result for the
+// given hook should be promoted to a block on kimi. Returns false for: the FORGE_KIMI_ADVISORY=soft
+// escape hatch, already-blocked results (no double-flip), empty/whitespace detail (clean/silent
+// PASS), and unknown hooks. The caller gates on agent=="kimi"; this helper is agent-agnostic so it
+// is unit-testable without spinning up a full kimi runHook.
+//
+// promoteKimiAdvisory 报告给定 hook 的 advisory（passed=true、detail 非空）结果在 kimi 下是否
+// 应提升为阻断。以下返回 false：FORGE_KIMI_ADVISORY=soft 逃生舱、已阻断结果（不二次翻转）、
+// 空/纯空白 detail（干净/静默 PASS）、未知 hook。调用处已判 agent=="kimi"；本函数不依赖 agent，
+// 便于不经完整 kimi runHook 即可单测。
+func promoteKimiAdvisory(name string, passed bool, detail string) bool {
+	if os.Getenv("FORGE_KIMI_ADVISORY") == "soft" {
+		return false
+	}
+	if !passed || strings.TrimSpace(detail) == "" {
+		return false
+	}
+	pred, ok := kimiPromoteAdvisory[name]
+	if !ok {
+		return false
+	}
+	return pred(detail)
+}
 
 // emitKimiOutput renders the hook result in kimi's hook protocol: allow = exit 0 with
 // the detail as plain stdout text (kimi appends allow-path stdout to context — the
