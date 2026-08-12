@@ -79,6 +79,20 @@ func runSkillTriggerCmd(cmd *cobra.Command, args []string) error {
 // kimi 下按 kimi 协议输出：skill-trigger 永不阻断（advisory），渲染文本直接打 stdout
 // （kimi 把 allow 路径 stdout 注入上下文），无渲染则静默。
 func runSkillTriggerHook(hookInput HookInput, root, version, agent string) error {
+	// kimi 0.35.0 drops allow-path stdout from the model context for every event except
+	// UserPromptSubmit (verified via wire.jsonl: advisories reached the model 0 times across a
+	// 42-edit session). Running the engine here on PreToolUse/PostToolUse/Stop/SessionStart would
+	// (a) never reach the model and (b) record checklog entries (recordSkillTriggerHits, inside
+	// runSkillTriggerCore) that mislead `forge skills usage` into reporting delivered triggers the
+	// model never saw — the false-prosperity observability bug. Bail BEFORE runSkillTriggerCore so
+	// neither the render nor the marker/checklog side-effects happen. This also neutralizes stale
+	// installed manifests still binding skill-trigger to other events. UserPromptSubmit is the only
+	// kimi-reachable inject channel. BuildKimiPluginHooks now emits skill-trigger only there; this
+	// guard is defense in depth (and the single point that kills the false checklog regardless of
+	// which manifest a stale install carries).
+	if agent == "kimi" && hookInput.HookEventName != "UserPromptSubmit" {
+		return nil
+	}
 	rendered, err := runSkillTriggerCore(hookInput, root, version, false)
 	if agent == "kimi" {
 		if err == nil && rendered != "" {
