@@ -69,19 +69,35 @@ var updateKimiPlugin = flag.Bool("update-kimi-plugin", false, "rewrite .kimi-plu
 func TestKimiPluginManifestMirrorsSpec(t *testing.T) {
 	path := filepath.Join("..", "..", ".kimi-plugin", "plugin.json")
 
-	// Roster parity: one manifest hook per spec command. Asserted before the byte compare
-	// so a hooks/spec mismatch surfaces with a precise count rather than a diffuse diff.
-	total := 0
-	for _, matchers := range hooks.ForgeHookSpec() {
+	// Spec total and the count of skill-trigger entries the filter drops (those bound to non-
+	// UserPromptSubmit events). The manifest must contain exactly total-dropped. This count
+	// assertion restores the dropped-hook guard the old count-parity check (manifest == spec
+	// total) provided before the filter existed: a bug that silently drops a NON-skill-trigger
+	// hook from BuildKimiPluginHooks would pass the skill-trigger invariant below AND the byte
+	// compare further down (if -update-kimi-plugin regenerated both sides), so only an explicit
+	// expected-count check catches it. Asserted before the byte compare so a roster regression
+	// surfaces with a precise count rather than a diffuse diff.
+	total, dropped := 0, 0
+	for ev, matchers := range hooks.ForgeHookSpec() {
 		for _, m := range matchers {
-			total += len(m.Hooks)
+			for _, entry := range m.Hooks {
+				total++
+				if ev != "UserPromptSubmit" && isSkillTriggerCommand(entry.Command) {
+					dropped++
+				}
+			}
 		}
 	}
 	manifestHooks := BuildKimiPluginHooks()
-	if len(manifestHooks) != total {
-		t.Fatalf("manifest has %d hooks, spec has %d commands", len(manifestHooks), total)
+	if len(manifestHooks) != total-dropped {
+		t.Errorf("manifest has %d hooks, want %d (spec %d minus %d filtered skill-trigger); a non-skill-trigger hook may have been silently dropped from BuildKimiPluginHooks", len(manifestHooks), total-dropped, total, dropped)
 	}
 	for _, h := range manifestHooks {
+		// Positive invariant: skill-trigger, when present, must sit only under UserPromptSubmit
+		// (the filter's purpose). isSkillTriggerCommand matches the translated --agent form here.
+		if isSkillTriggerCommand(h.Command) && h.Event != "UserPromptSubmit" {
+			t.Errorf("skill-trigger must appear only under UserPromptSubmit on kimi; got event=%s command=%s", h.Event, h.Command)
+		}
 		if h.Timeout <= 0 || h.Timeout > 600 {
 			t.Errorf("hook %s/%s timeout %d outside kimi's 1-600 range", h.Event, h.Command, h.Timeout)
 		}
