@@ -88,7 +88,8 @@
     -webkit-font-smoothing: antialiased;
   }
   @media (prefers-reduced-motion: reduce) {
-    * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+    /* 伪元素也要覆盖：transition 不继承，`*` 只匹配元素本身（如 .skill-fold summary::after） */
+    *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
   }
   .mono { font-family: var(--font-mono); }
   button { font-family: inherit; }
@@ -215,6 +216,21 @@
     word-break: break-word;
   }
   .evt-body .mono { font-family: var(--font-mono); font-size: 11.5px; }
+
+  /* 会话级 skill 触发折叠卡：summary 原生可聚焦/回车切换（a11y 免 JS），箭头指示展开态 */
+  .skill-fold { padding: 10px 0; }
+  .skill-fold summary {
+    display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none;
+    border-radius: var(--radius-md);
+  }
+  .skill-fold summary::-webkit-details-marker { display: none; }
+  .skill-fold summary::after {
+    content: '▸'; color: var(--text-tertiary); font-size: 11px; margin-left: 6px;
+    transition: transform 0.15s ease;
+  }
+  .skill-fold[open] summary::after { transform: rotate(90deg); }
+  .skill-fold .fold-body { margin-left: 0; border-left: 1px solid var(--border); padding-left: 14px; }
+  .skill-fold .fold-body .evt { padding: 6px 0; cursor: default; }
 
   .grade-chip {
     display: inline-flex; align-items: center; justify-content: center;
@@ -472,7 +488,8 @@ function feedHTML(events, opts) {
 function tsNum(v) { var t = Date.parse(v); return isNaN(t) ? 0 : t; }
 /* 主流按 project+taskRef 聚合成任务卡：一个任务一行（最新状态摘要），完整事件
  * 序列在右栏 transcript 看——避免与详情页平铺重复。无 taskRef 的事件（如会话级
- * skill 触发）保持独立流条目。events 为 time 降序。 */
+ * skill 触发）保持独立流条目——量大时由 groupedFeedHTML 折叠成汇总卡。events 为
+ * time 降序。 */
 function groupFeedItems(events) {
   var groups = {}, items = [];
   events.forEach(function (e) {
@@ -522,12 +539,51 @@ function taskCardHTML(g) {
   return '<div class="evt task-card" data-project="' + esc(g.project || '') + '" data-ref="' + esc(g.ref) + '">' +
     '<span class="evt-dot ' + dot + '"></span><div class="evt-head">' + head + '</div>' + body + '</div>';
 }
+/* 会话级（无 taskRef）skill 触发达到阈值时折叠为一张可展开汇总卡：主面板只占一行
+ * （次数 + 覆盖 skill 数 + 最新时间），明细经原生 <details> 展开——零 JS 交互、键盘
+ * 可达（summary 原生可聚焦/回车切换）。阈值以下保持独立条目：少量时逐条本身是信息，
+ * 折叠反而多一次点击。折叠位置取最新一条的槽位，内行各带自己的时间戳。 */
+var SKILL_FOLD_MIN = 3;
+function skillFoldHTML(items) {
+  var latest = items[0], names = {}, projects = {}, oneProject = '';
+  items.forEach(function (it) {
+    var m = /^skill 触发: /.exec(it.evt.title || '');
+    if (m && it.evt.title.length > m[0].length) names[it.evt.title.slice(m[0].length)] = 1;
+    if (it.evt.project) projects[it.evt.project] = 1;
+  });
+  var nameKeys = Object.keys(names), projKeys = Object.keys(projects);
+  if (projKeys.length === 1) oneProject = projKeys[0];
+  var head = '<span class="evt-kind kind-skill">skill-trigger</span>' +
+    '<span class="evt-title">会话级 skill 触发 ×' + items.length + '</span>';
+  if (nameKeys.length && nameKeys.length < items.length) head += '<span class="proj-chip">' + nameKeys.length + ' 个 skill</span>';
+  if (oneProject) head += '<span class="proj-chip">' + esc(oneProject) + '</span>';
+  head += '<span class="evt-time">最新 ' + esc(fmtDateTime(latest.time)) + '</span>';
+  var rows = items.map(function (it) { return evtHTML(it.evt); }).join('');
+  /* summary 内容模型是 phrasing content——内部用 span（.evt-head 本就 display:flex），
+   * 不用 div（flow content，浏览器宽容但校验器报错）。 */
+  return '<details class="evt skill-fold"><summary><span class="evt-dot accent"></span>' +
+    '<span class="evt-head">' + head + '</span></summary><div class="fold-body">' + rows + '</div></details>';
+}
 function groupedFeedHTML(events) {
   if (!events.length) {
     return '<div class="empty">还没有任何任务或事件<br><span class="mono">任务与 skill 触发会聚合出现在这里</span></div>';
   }
+  var items = groupFeedItems(events);
+  var fold = null;
+  var standalone = items.filter(function (it) { return !it.task && it.evt.kind === 'skill-trigger'; });
+  if (standalone.length >= SKILL_FOLD_MIN) fold = standalone;
   var html = '<div class="feed">', lastDay = '';
-  groupFeedItems(events).forEach(function (it) {
+  items.forEach(function (it) {
+    if (fold && fold.indexOf(it) !== -1) {
+      if (it === fold[0]) {
+        /* 折叠槽位同样参与日期分组：不 emit 分隔线会让卡片落在错误的天数标题下，
+         * 或让下一条非折叠项在卡片下方补出本应在卡片上方的天数标签。 */
+        var fdk = dayKey(it.time);
+        if (fdk !== lastDay) { html += '<div class="feed-day">' + esc(fmtDate(it.time)) + '</div>'; lastDay = fdk; }
+        html += skillFoldHTML(fold);
+      }
+      return;
+    }
     var dk = dayKey(it.time);
     if (dk !== lastDay) { html += '<div class="feed-day">' + esc(fmtDate(it.time)) + '</div>'; lastDay = dk; }
     html += it.task ? taskCardHTML(it.task) : evtHTML(it.evt);
