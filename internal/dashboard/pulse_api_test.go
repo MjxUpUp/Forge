@@ -512,7 +512,7 @@ func TestServe_PulsePage(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatalf("status = %d: %s", resp.StatusCode, body)
 	}
-	for _, marker := range []string{`Forge <span class="accent">Pulse</span>`, `/api/pulse/feed.json`, `data-theme`} {
+	for _, marker := range []string{`Forge <span class="accent">Pulse</span>`, `/api/pulse/feed.json`, `data-theme`, `SKILL_FOLD_MIN`, `skill-fold`} {
 		if !strings.Contains(string(body), marker) {
 			t.Errorf("页面缺关键标记 %q", marker)
 		}
