@@ -36,6 +36,22 @@ const EnvName = "FORGE_SKILLS_CANONICAL"
 // Resolve 比较它：标记缺失或不等于当前版本（forge 升级）→ re-extract。
 const VersionFile = ".embedded-version"
 
+// EmbeddedCacheDir returns the embed extraction cache dir under the user home
+// (path computation only, no disk touch). Exported so read-only consumers
+// (e.g. the dashboard) resolve the same location as Resolve without copying
+// the path logic — single truth source for the cache path.
+//
+// EmbeddedCacheDir 返回用户 home 下的 embed 解压缓存目录（只算路径，不碰盘）。
+// 导出供只读消费方（如 dashboard）与 Resolve 解析同一位置，避免复制路径逻辑——
+// 缓存路径的单一真相源。
+func EmbeddedCacheDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".forge", "skills-cache", "embedded"), nil
+}
+
 // Resolve resolves the canonical directory and whether it is an external real
 // source.
 //
@@ -58,11 +74,10 @@ func Resolve(version string) (string, bool, error) {
 		}
 		return env, true, nil
 	}
-	home, err := os.UserHomeDir()
+	cacheDir, err := EmbeddedCacheDir()
 	if err != nil {
 		return "", false, err
 	}
-	cacheDir := filepath.Join(home, ".forge", "skills-cache", "embedded")
 	if err := EnsureEmbeddedCache(cacheDir, version); err != nil {
 		return "", false, fmt.Errorf("解压内置 skill 库失败: %w", err)
 	}

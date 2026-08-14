@@ -611,6 +611,32 @@ func toContinuityCard(s *taskpipeline.TaskState) continuityCard {
 // continuityAsset 是接续看板模板的嵌入路径（与 assetFile 同构）。
 const continuityAsset = `assets/continuity.html`
 
+// pulseAsset is the embedded path of the pulse panel page.
+//
+// pulseAsset 是 pulse 面板页面的嵌入路径。
+const pulseAsset = `assets/pulse.html`
+
+// pulsePage holds the static pulse panel bytes, read once at init. Unlike index/continuity
+// it is NOT an html/template: the page is static and fetches /api/pulse/*.json client-side.
+// A missing asset is a compile-time embed misconfiguration, so panic directly (same Must
+// semantics as pageTmpl).
+//
+// pulsePage 保存静态 pulse 面板字节，启动时读一次。与 index/continuity 不同，它不走
+// html/template：页面是静态的，由前端 fetch /api/pulse/*.json。资产缺失属于编译期
+// embed 配置错误，直接 panic（与 pageTmpl 的 Must 同义）。
+var pulsePage = mustReadAsset(pulseAsset)
+
+// mustReadAsset reads an embedded asset or panics (mirrors template.Must semantics).
+//
+// mustReadAsset 读内嵌资产，失败即 panic（语义对齐 template.Must）。
+func mustReadAsset(path string) []byte {
+	b, err := assetsFS.ReadFile(path)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+
 // continuityTmpl is parsed once at process start. Reuses funcMap.
 //
 // continuityTmpl 进程启动时解析一次。复用 funcMap。
@@ -851,6 +877,27 @@ func newMux(opts Options) *http.ServeMux {
 			return json.NewEncoder(out).Encode(board)
 		})
 	})
+	// Pulse panel page: static HTML consuming the six /api/pulse/*.json endpoints below.
+	// The single-file zero-dependency red line requires inline <script>, so this route
+	// overrides the middleware's CSP (script-src 'none') with script-src 'unsafe-inline';
+	// no external origins are added, all other directives stay identical.
+	//
+	// pulse 面板页面：静态 HTML，消费下方六个 /api/pulse/*.json 端点。单文件零依赖红线
+	// 要求内联 <script>，故本路由覆盖 middleware 的 CSP（script-src 'none'）放行
+	// script-src 'unsafe-inline'；不放行任何外部源，其余指令原样。
+	mux.HandleFunc(`/pulse`, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(`Content-Security-Policy`, `default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' data:`)
+		writeRendered(w, opts.Root, `text/html; charset=utf-8`, `渲染 pulse 面板失败`, func(out io.Writer) error {
+			_, err := out.Write(pulsePage)
+			return err
+		})
+	})
+	// Pulse panel JSON APIs (read-only event stream + skills aggregation). They live on the
+	// same mux so they inherit the Host validation / security headers middleware unchanged.
+	//
+	// pulse 面板 JSON API（只读事件流 + skills 聚合）。挂在同一 mux 上，原样继承
+	// Host 校验 / 安全头中间件。
+	registerPulseRoutes(mux, opts)
 	return mux
 }
 
