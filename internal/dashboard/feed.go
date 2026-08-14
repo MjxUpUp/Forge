@@ -1,0 +1,363 @@
+// feed.go — multi-source event merger for the pulse panel: TaskState (task-start + gate),
+// checklog (skill-trigger), and act conclusions merge into one time-descending event stream.
+// Read-only: every source is loaded through the existing store read paths, nothing is written.
+//
+// feed.go —— pulse 面板的多源事件归并器：TaskState（task-start + gate）、checklog
+// （skill-trigger）、act 结论归并成一条时间降序事件流。只读：所有源都走现有 store 的
+// 读路径加载，不做任何写操作。
+package dashboard
+
+import (
+	"fmt"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/MjxUpUp/Forge/internal/act"
+	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/taskpipeline"
+)
+
+// Feed event kinds / severities — the wire contract the frontend consumes.
+//
+// Feed 事件 kind / severity——前端消费的线上契约。
+const (
+	FeedKindTaskStart    = "task-start"
+	FeedKindGate         = "gate"
+	FeedKindSkillTrigger = "skill-trigger"
+	FeedKindConclusion   = "conclusion"
+
+	FeedSeverityOK   = "ok"
+	FeedSeverityWarn = "warn"
+	FeedSeverityFail = "fail"
+	FeedSeverityInfo = "info"
+)
+
+// defaultFeedLimit caps the feed response so polling never ships a huge body.
+//
+// defaultFeedLimit 截断 feed 响应，轮询永不发出大包。
+const defaultFeedLimit = 200
+
+// FeedEvent is one merged stream event. Field names are the frontend contract.
+// SessionID is deliberately absent — same defense-in-depth as taskPublic (localhost +
+// Host check, but never serialize session identifiers).
+//
+// FeedEvent 是归并流的一条事件。字段名即前端契约。刻意无 SessionID——与 taskPublic
+// 同款纵深防御（localhost + Host 校验，但绝不序列化 session 标识）。
+type FeedEvent struct {
+	Time     time.Time `json:"time"`
+	Kind     string    `json:"kind"`    // "task-start" | "gate" | "skill-trigger" | "conclusion"
+	Project  string    `json:"project"` // 项目名（projectName 末两段）
+	TaskRef  string    `json:"taskRef"`
+	Severity string    `json:"severity"` // "ok" | "warn" | "fail" | "info"
+	Title    string    `json:"title"`
+	Detail   string    `json:"detail,omitempty"`
+	Gate     string    `json:"gate,omitempty"`   // gate 事件: implement/verify/complete
+	Passed   *bool     `json:"passed,omitempty"` // gate 事件
+	Commit   string    `json:"commit,omitempty"` // gate 事件 HeadCommit 短哈希
+	Grade    string    `json:"grade,omitempty"`  // conclusion 事件
+	Score    int       `json:"score,omitempty"`  // conclusion 事件
+}
+
+// FeedQuery filters AggregateFeed. Since is exclusive (Time > since) for polling
+// increments; Project matches the forge key OR the display name; TaskRef scopes to one
+// task; Limit 0 means defaultFeedLimit.
+//
+// FeedQuery 是 AggregateFeed 的过滤条件。Since 为排他（Time > since）供轮询增量；
+// Project 同时匹配 forge key 与显示名；TaskRef 限定单任务；Limit 0 = 默认 200。
+type FeedQuery struct {
+	Since   time.Time
+	Project string
+	TaskRef string
+	Limit   int
+}
+
+// pulseRoot is one project in scope: its root plus both identities (forge key for
+// filtering, display name for attribution).
+//
+// pulseRoot 是范围内的一个项目：root + 两重身份（forge key 供过滤，显示名供归属）。
+type pulseRoot struct {
+	root string
+	key  string // forge 项目 key（推导失败为 ""）
+	name string // projectName(root)
+}
+
+// resolvePulseRoots expands Options into the project scope: Roots (global) when non-empty,
+// otherwise the single Root. Empty roots are dropped. The registry→Roots resolution and the
+// empty-registry fallback live in the cli layer (cli/dashboard.go), same as the existing
+// dashboard — feed just consumes Options like Aggregate/AggregateGlobal do.
+//
+// resolvePulseRoots 把 Options 展开成项目范围：Roots 非空走全局，否则单 Root。空 root
+// 丢弃。registry→Roots 的解析与空 registry 退化在 cli 层（cli/dashboard.go），与现有
+// 看板一致——feed 像 Aggregate/AggregateGlobal 一样只消费 Options。
+func resolvePulseRoots(opts Options) []pulseRoot {
+	roots := opts.Roots
+	if len(roots) == 0 && opts.Root != "" {
+		roots = []string{opts.Root}
+	}
+	out := make([]pulseRoot, 0, len(roots))
+	for _, r := range roots {
+		if r == "" {
+			continue
+		}
+		pr := pulseRoot{root: r, name: projectName(r)}
+		if proj, err := forgedata.ProjectFor(r); err == nil {
+			pr.key = proj.Key
+		}
+		out = append(out, pr)
+	}
+	return out
+}
+
+// matches reports whether the query project filter selects this root (key or name).
+//
+// matches 报告 query 的 project 过滤是否命中本 root（key 或名）。
+func (pr pulseRoot) matches(filter string) bool {
+	return filter == "" || filter == pr.key || filter == pr.name
+}
+
+// AggregateFeed merges all event sources across the projects in scope into one
+// time-descending stream, then applies the query filters (project / taskRef / since /
+// limit). Per-project and per-source read failures are skipped non-fatally (mirroring
+// AggregateGlobal: one broken project must not blank the whole panel); ListTaskStates
+// errors propagate (mirroring AggregateContinuity → 500). Empty data returns an empty
+// non-nil slice so JSON serializes [] rather than null.
+//
+// AggregateFeed 把范围内各项目的全部事件源归并成一条时间降序流，再应用查询过滤
+// （project / taskRef / since / limit）。单项目/单源读失败跳过不致命（镜像
+// AggregateGlobal：一个坏项目不应让整面板空白）；ListTaskStates 错误上抛（镜像
+// AggregateContinuity → 500）。空数据返回非 nil 空切片，JSON 序列化为 [] 而非 null。
+func AggregateFeed(opts Options, now time.Time, q FeedQuery) ([]FeedEvent, error) {
+	events := []FeedEvent{}
+	for _, pr := range resolvePulseRoots(opts) {
+		if !pr.matches(q.Project) {
+			continue
+		}
+		evs, err := feedForProject(pr, now)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, evs...)
+	}
+	if q.TaskRef != "" {
+		events = slices.DeleteFunc(events, func(e FeedEvent) bool { return e.TaskRef != q.TaskRef })
+	}
+	if !q.Since.IsZero() {
+		events = slices.DeleteFunc(events, func(e FeedEvent) bool { return !e.Time.After(q.Since) })
+	}
+	// Most recent first; stable so same-time events keep source order (task-start before
+	// its gates before the conclusion).
+	//
+	// 最近在前；稳定排序使同刻事件保持来源序（task-start 先于其 gate 先于结论）。
+	slices.SortStableFunc(events, func(a, b FeedEvent) int {
+		return b.Time.Compare(a.Time)
+	})
+	limit := q.Limit
+	if limit <= 0 {
+		limit = defaultFeedLimit
+	}
+	if len(events) > limit {
+		events = events[:limit]
+	}
+	return events, nil
+}
+
+// feedForProject loads the three sources of one project and projects them into events.
+//
+// feedForProject 加载单项目的三类源并投影成事件。
+func feedForProject(pr pulseRoot, now time.Time) ([]FeedEvent, error) {
+	var events []FeedEvent
+
+	states, err := taskpipeline.ListTaskStates(pr.root)
+	if err != nil {
+		return nil, err
+	}
+	for _, s := range states {
+		events = append(events, taskStartEvent(pr, s, now))
+		events = append(events, gateEvents(pr, s)...)
+	}
+
+	// checklog / act failures are non-fatal (same skip semantics as AggregateGlobal).
+	//
+	// checklog / act 失败不致命（与 AggregateGlobal 同款跳过语义）。
+	if entries, err := checklog.LoadAllAll(pr.root); err == nil {
+		for _, e := range entries {
+			if e.Check != checklog.CheckSkillTrigger {
+				continue
+			}
+			name := checklog.SkillFromTriggerDetail(e.Detail)
+			title := "skill 触发"
+			if name != "" {
+				title = "skill 触发: " + name
+			}
+			events = append(events, FeedEvent{
+				Time: e.RecordedAt, Kind: FeedKindSkillTrigger, Project: pr.name,
+				TaskRef: e.TaskRef, Severity: FeedSeverityInfo,
+				Title: title, Detail: e.Detail,
+			})
+		}
+	}
+
+	if proj, err := forgedata.ProjectFor(pr.root); err == nil {
+		if cs, err := act.LoadAll(proj); err == nil {
+			for _, c := range cs {
+				events = append(events, conclusionEvent(pr, c))
+			}
+		}
+	}
+	return events, nil
+}
+
+// taskStartEvent projects TaskState.StartedAt into a task-start event: in-progress tasks
+// are info (title carries origin tool + gate progress), zombies escalate to warn with the
+// stall duration in the title, completed tasks are ok.
+//
+// taskStartEvent 把 TaskState.StartedAt 投影成 task-start 事件：进行中为 info（标题带
+// origin tool + gate 进度），僵尸升级为 warn 且标题标注停滞时长，已完成为 ok。
+func taskStartEvent(pr pulseRoot, s *taskpipeline.TaskState, now time.Time) FeedEvent {
+	ev := FeedEvent{
+		Time: s.StartedAt, Kind: FeedKindTaskStart, Project: pr.name, TaskRef: s.TaskRef,
+	}
+	if s.IsComplete() {
+		ev.Severity = FeedSeverityOK
+		ev.Title = s.TaskRef + " 已完成"
+		return ev
+	}
+	ev.Severity = FeedSeverityInfo
+	var title strings.Builder
+	title.WriteString(s.TaskRef + " 进行中")
+	if !s.IsGeneric() {
+		fmt.Fprintf(&title, " · gate %d/%d", len(s.CompletedGates()), len(taskpipeline.DefaultGates()))
+	}
+	if s.OriginTool != "" {
+		title.WriteString(" · via " + s.OriginTool)
+	}
+	if zombie, _ := taskpipeline.IsZombie(pr.root, s, now); zombie {
+		ev.Severity = FeedSeverityWarn
+		fmt.Fprintf(&title, " · 僵尸 %s", formatStallAge(stallAge(pr.root, s, now)))
+	}
+	ev.Title = title.String()
+	return ev
+}
+
+// stallAge returns the longest measured stall among the zombie checks (0 when the signal
+// is repeat-abandon, which carries no timestamp).
+//
+// stallAge 返回各僵尸检查中量到的最长停滞时长（反复回收类信号无时间戳时为 0）。
+func stallAge(root string, s *taskpipeline.TaskState, now time.Time) time.Duration {
+	var age time.Duration
+	if ok, a := taskpipeline.IsOfferedZombie(s, now); ok && a > age {
+		age = a
+	}
+	if ok, a := taskpipeline.IsClaimedStale(root, s, now); ok && a > age {
+		age = a
+	}
+	if ok, a := taskpipeline.IsInputReqStale(root, s, now); ok && a > age {
+		age = a
+	}
+	if age == 0 {
+		age = now.Sub(s.StartedAt) // 无时间戳信号（abandoned_count≥2）退化用存活时长
+	}
+	return age
+}
+
+// formatStallAge renders a stall duration compactly (8d / 3h / 45m).
+//
+// formatStallAge 把停滞时长紧凑渲染（8d / 3h / 45m）。
+func formatStallAge(d time.Duration) string {
+	switch {
+	case d >= 24*time.Hour:
+		return fmt.Sprintf("%dd", int(d.Hours()/24))
+	case d >= time.Hour:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	}
+}
+
+// gateEvents projects each History entry into a gate event: pass→ok / fail→fail, the gate
+// id stripped of the task- prefix (implement/verify/complete), HeadCommit shortened, and a
+// retry note in Detail when the same gate was attempted before.
+//
+// gateEvents 把每条 History 投影成 gate 事件：过→ok / 败→fail，gate id 剥掉 task-
+// 前缀（implement/verify/complete），HeadCommit 截短，同 gate 有前次尝试时 Detail 带
+// retry 信息。
+func gateEvents(pr pulseRoot, s *taskpipeline.TaskState) []FeedEvent {
+	events := make([]FeedEvent, 0, len(s.History))
+	attempts := map[string]int{}
+	for _, h := range s.History {
+		attempts[h.Gate]++
+		passed := h.Passed
+		ev := FeedEvent{
+			Time: h.CompletedAt, Kind: FeedKindGate, Project: pr.name, TaskRef: s.TaskRef,
+			Gate:   strings.TrimPrefix(h.Gate, "task-"),
+			Passed: &passed,
+			Commit: shortCommit(h.HeadCommit),
+			Title:  fmt.Sprintf("%s · %s %s", s.TaskRef, strings.TrimPrefix(h.Gate, "task-"), gateVerdict(h.Passed)),
+		}
+		if h.Passed {
+			ev.Severity = FeedSeverityOK
+		} else {
+			ev.Severity = FeedSeverityFail
+		}
+		if n := attempts[h.Gate]; n > 1 {
+			ev.Detail = fmt.Sprintf("第 %d 次尝试（重试）", n)
+		}
+		events = append(events, ev)
+	}
+	return events
+}
+
+func gateVerdict(passed bool) string {
+	if passed {
+		return "通过"
+	}
+	return "失败"
+}
+
+// shortCommit trims a full hash to the conventional 7-char short form.
+//
+// shortCommit 把完整哈希截成惯例的 7 位短形式。
+func shortCommit(h string) string {
+	if len(h) > 7 {
+		return h[:7]
+	}
+	return h
+}
+
+// conclusionEvent projects an act conclusion: severity maps from grade (A/B→ok, C→info,
+// D→warn, F→fail), Detail carries evidence strength + det/claim counts + acceptance x/y.
+//
+// conclusionEvent 投影 act 结论：severity 按 grade 映射（A/B→ok、C→info、D→warn、
+// F→fail），Detail 带证据强度 + det/claim 数 + 验收 x/y。
+func conclusionEvent(pr pulseRoot, c act.Conclusion) FeedEvent {
+	score := int(c.Score + 0.5) // 四舍五入到 int（线上契约为 int 分）
+	return FeedEvent{
+		Time: c.CompletedAt, Kind: FeedKindConclusion, Project: pr.name, TaskRef: c.TaskRef,
+		Severity: gradeSeverity(c.Grade),
+		Title:    fmt.Sprintf("%s 完成 · %s %d 分", c.TaskRef, c.Grade, score),
+		Detail: fmt.Sprintf("证据 %s · det=%d claim=%d · 验收 %d/%d",
+			c.Strength, c.Deterministic, c.AgentClaim, c.AcceptancePass, c.AcceptanceTotal),
+		Grade: c.Grade,
+		Score: score,
+	}
+}
+
+// gradeSeverity maps a letter grade to a feed severity; unknown/empty grades stay info.
+//
+// gradeSeverity 把字母 grade 映射成 feed severity；未知/空 grade 保持 info。
+func gradeSeverity(grade string) string {
+	switch grade {
+	case "A", "B":
+		return FeedSeverityOK
+	case "C":
+		return FeedSeverityInfo
+	case "D":
+		return FeedSeverityWarn
+	case "F":
+		return FeedSeverityFail
+	default:
+		return FeedSeverityInfo
+	}
+}
