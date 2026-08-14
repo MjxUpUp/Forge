@@ -192,6 +192,11 @@ var flagDocGrandfather = map[string]bool{
 	`check --file`:       true, `check --threshold`: true,
 	`confirm --fingerprint`: true,
 	`decide --affects`:      true, `decide --by`: true, `decide --commit`: true,
+	// skills 子命令的 scope flag（--global/--project 二选一）：此前从未真被文档化，
+	// 守卫 D 的全局子串匹配被根 README 里 dashboard 行的 `--global` 假阳性掩盖；
+	// dashboard 收敛为全局单面板删掉该 flag 后暴露。子命令细节 flag，进基线。
+	`drift-check --global`: true,
+	`install --global`:     true,
 	`decide --diagnosis`: true, `decide --evidence`: true, `decide --outcome`: true,
 	`decide --probe-run`: true, `decide --rationale`: true, `decide --revision`: true,
 	`drift-check --target`:   true,
