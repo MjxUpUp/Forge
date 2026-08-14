@@ -7,8 +7,7 @@
 // .forge/ walk-up survives only as a backward-compat fallback for projects init'd by
 // older versions (and self-heals by registering them).
 //
-// Single-project dashboard (forge dashboard) only reads the current project. Global view
-// (forge dashboard --global) reads List() — the same store.
+// forge dashboard aggregates the global Pulse panel from List() — this store.
 //
 // Package registry 维护 forge 项目的全局注册表 ~/.forge/projects.json。
 //
@@ -17,8 +16,7 @@
 // 存在性检查。projectroot.Find/FindProject 经 IsMember 解析项目根；遗留的 .forge/
 // walk-up 仅作为老版本 init 项目的向后兼容兜底（命中后自愈登记）。
 //
-// 单项目看板（forge dashboard）只读当前项目。全局视图（forge dashboard --global）
-// 读 List()——同一 store。
+// forge dashboard 聚合全局 Pulse 面板即读 List()——同一 store。
 package registry
 
 import (
@@ -262,13 +260,13 @@ func writeEntries(entries []Entry) error {
 // its key refreshed; an entry with the same key but a different path gets its path
 // updated only when the old path is gone (project moved) — a live old path means we
 // are inside a worktree and the old path is kept. Used by forge init
-// self-registration + dashboard --global self-registration of the current project.
+// self-registration + dashboard-startup self-registration of the current project.
 //
 // Add 把 absPath 登记到全局注册表（去重、幂等）。路径会 Abs + Clean 规范化。
 // forge 项目 key（git common-dir hash，非 git 为 PathKey）一并计算存储，让成员
 // 检查跨 worktree 命中、无需 .forge/。Upsert 语义：同路径条目刷新 key；同 key
 // 不同路径的条目仅当旧路径已消失（项目被移动）才更新路径——旧路径仍活说明身处
-// worktree，保留旧路径。用于 forge init 自登记 + dashboard --global 自登记当前项目。
+// worktree，保留旧路径。用于 forge init 自登记 + dashboard 启动时自登记当前项目。
 func Add(absPath string) error {
 	ap, err := filepath.Abs(absPath)
 	if err != nil {
@@ -555,7 +553,7 @@ func pathForms(p string) []string {
 // longer exists) + duplicate entries within JSON, atomically writes back.
 // Returns (pruned, remain): pruned = number of entries removed this time (dead paths + duplicates), remain = number of active projects kept.
 //
-// Same logic as List() lazy prune, but explicitly triggered and returns counts — List only prunes when forge dashboard --global
+// Same logic as List() lazy prune, but explicitly triggered and returns counts — List only prunes when forge dashboard
 // reads (and that command starts a web server that blocks), so ordinary users have no way to clean up proactively. Prune gives forge registry
 // prune a cleanup entry point that does not start a web server (the root-cause gap for dogfood registry historical-residue cleanup).
 //
@@ -564,7 +562,7 @@ func pathForms(p string) []string {
 // Prune 显式精简全局注册表：移除项目目录已不存在的死路径 + JSON 内重复条目，原子写回。
 // 返回 (pruned, remain)：pruned=本次移除条数（死路径+重复），remain=保留的活跃项目数。
 //
-// 与 List() 的惰性精简同逻辑，但显式触发并返回计数——List 只在 forge dashboard --global
+// 与 List() 的惰性精简同逻辑，但显式触发并返回计数——List 只在 forge dashboard
 // 读时精简（且该命令启 web server 阻塞），普通用户无从主动清理。Prune 给 forge registry
 // prune 提供不启动 web 的清理入口（dogfood registry 历史残留清理的治本缺口）。
 //
