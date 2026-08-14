@@ -15,6 +15,9 @@
   header { padding: 18px 28px; border-bottom: 1px solid var(--border); display: flex; align-items: baseline; gap: 16px; }
   header h1 { margin: 0; font-size: 18px; }
   .muted { color: var(--muted); font-size: 12px; }
+  /* 与 continuity.html 的 header a 同款：页面互链不用 UA 默认蓝/下划线 */
+  header a { color: var(--muted); font-size: 12px; text-decoration: none; }
+  header a:hover { color: var(--accent); }
   main { padding: 24px 28px; max-width: 1100px; margin: 0 auto; }
   section { margin-bottom: 28px; }
   h2 { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 0 0 12px; }
@@ -59,6 +62,7 @@
 <header>
   <h1>{{if .IsGlobal}}Forge 全局质量看板{{else}}Forge 质量看板{{end}}</h1>
   <span class="muted">{{if .IsGlobal}}{{.ProjectCount}} 个项目 · {{end}}本地只读 · 每 30s 自动刷新 · 生成于 {{.Now.Format "2006-01-02 15:04:05"}}</span>
+  <span class="muted">· <a href="/pulse">Pulse 面板</a> · <a href="/continuity">接续看板</a></span>
 </header>
 
 <main>

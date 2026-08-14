@@ -116,6 +116,8 @@
     padding: 5px 11px; cursor: pointer; font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary);
   }
   .btn:hover { background: var(--surface-3); color: var(--text-primary); }
+  /* 互链按钮（质量看板/接续看板）：a 元素默认下划线/基线对齐，抹平与 button 一致 */
+  a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 
   /* === 离线提示 === */
   .offline {
@@ -306,6 +308,8 @@
       <button class="tab" data-tab="quality">触发质量</button>
     </nav>
     <span class="spacer"></span>
+    <a class="btn" href="/" title="质量看板">&larr; 质量看板</a>
+    <a class="btn" href="/continuity" title="任务接续看板">接续看板</a>
     <button class="btn" id="stripToggle" title="收起/展开全局状态条">状态条 ▾</button>
     <button class="btn" id="themeToggle" title="切换暗色/亮色主题">◐ 主题</button>
   </header>
