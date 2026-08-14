@@ -176,9 +176,10 @@ type pulseGateProgress struct {
 	Total  int `json:"total"`
 }
 
-// pulseTaskState is the state block of task.json (no SessionID — same rule as taskPublic).
+// pulseTaskState is the state block of task.json (no SessionID — never serialize session
+// identifiers to the panel).
 //
-// pulseTaskState 是 task.json 的 state 块（无 SessionID——与 taskPublic 同规则）。
+// pulseTaskState 是 task.json 的 state 块（无 SessionID——绝不向面板序列化 session 标识）。
 type pulseTaskState struct {
 	CurrentGate  string            `json:"currentGate"`
 	StartedAt    time.Time         `json:"startedAt"`
@@ -249,12 +250,12 @@ type pulseTaskResponse struct {
 // AggregateFeed's TaskRef filter), the score block from TaskState.Score (backfilled from
 // the latest act conclusion for legacy tasks), and acceptance + evidence strength joined
 // from that conclusion. A feed aggregation error is returned, not swallowed — the handler
-// turns it into a 500, same semantics as feed.json and AggregateContinuity.
+// turns it into a 500, same semantics as feed.json.
 //
 // buildPulseTask 组装 task.json 载荷：状态投影（僵尸经共享 taskpipeline.IsZombie 计算）、
 // 任务级事件流（复用 AggregateFeed 的 TaskRef 过滤）、来自 TaskState.Score 的评分块
 // （存量任务从最新 act 结论回填），以及 join 自该结论的验收 + 证据强度。事件流归并
-// 失败返回 error 不吞没——handler 转成 500，与 feed.json / AggregateContinuity 同语义。
+// 失败返回 error 不吞没——handler 转成 500，与 feed.json 同语义。
 func buildPulseTask(opts Options, pr pulseRoot, state *taskpipeline.TaskState, now time.Time) (pulseTaskResponse, error) {
 	resp := pulseTaskResponse{
 		TaskRef: state.TaskRef,
@@ -397,10 +398,10 @@ type pulseProject struct {
 
 // aggregatePulseProjects lists every project in scope with its active/zombie counts and
 // latest conclusion. Per-project read failures degrade to zero rows for that project
-// (same non-fatal skip as AggregateGlobal).
+// (non-fatal skip — one broken project must not blank the panel).
 //
 // aggregatePulseProjects 列出范围内每个项目的活跃/僵尸计数与最新结论。单项目读失败
-// 降级为该项目的零值行（与 AggregateGlobal 同款不致命跳过）。
+// 降级为该项目的零值行（不致命跳过——一个坏项目不应让整面板空白）。
 func aggregatePulseProjects(opts Options, now time.Time) []pulseProject {
 	rows := []pulseProject{}
 	for _, pr := range resolvePulseRoots(opts) {

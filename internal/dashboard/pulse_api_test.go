@@ -490,17 +490,18 @@ func TestServe_PulseSkill(t *testing.T) {
 	}
 }
 
-// TestServe_PulsePage: /pulse serves the embedded static page (200 + key markers) and
+// TestServe_PulsePage: / serves the embedded static pulse page (200 + key markers) and
 // overrides the global script-src 'none' CSP so the single-file inline <script> can run;
-// existing pages keep the strict CSP.
+// the legacy /pulse URL redirects there; non-page routes keep the strict CSP.
 //
-// TestServe_PulsePage：/pulse 返回内嵌静态页（200 + 关键标记），并覆盖全局
-// script-src 'none' 的 CSP 使单文件内联 <script> 可运行；现有页面保持严格 CSP。
+// TestServe_PulsePage：/ 返回内嵌静态 pulse 页（200 + 关键标记），并覆盖全局
+// script-src 'none' 的 CSP 使单文件内联 <script> 可运行；旧 /pulse 地址重定向到 /；
+// 非页面路由保持严格 CSP。
 func TestServe_PulsePage(t *testing.T) {
 	root, _, _ := feedFixture(t)
 	srv := pulseServer(t, Options{Root: root})
 
-	resp, err := http.Get(srv.URL + "/pulse")
+	resp, err := http.Get(srv.URL + "/")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -525,13 +526,28 @@ func TestServe_PulsePage(t *testing.T) {
 		t.Errorf("CSP 不得放行外部源，got %q", csp)
 	}
 
-	resp2, err := http.Get(srv.URL + "/")
+	// Legacy /pulse URL: permanent redirect to / (http.Get follows; assert the landing).
+	//
+	// 旧 /pulse 地址：永久重定向到 /（http.Get 自动跟随；断言最终落点）。
+	respP, err := http.Get(srv.URL + "/pulse")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer respP.Body.Close()
+	if respP.StatusCode != 200 || respP.Request.URL.Path != `/` {
+		t.Errorf("GET /pulse 应重定向到 /，got %s status %d", respP.Request.URL.Path, respP.StatusCode)
+	}
+
+	// Non-page routes keep the middleware's strict CSP.
+	//
+	// 非页面路由保持 middleware 的严格 CSP。
+	resp2, err := http.Get(srv.URL + `/api/pulse/feed.json`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer resp2.Body.Close()
 	if csp2 := resp2.Header.Get(`Content-Security-Policy`); !strings.Contains(csp2, `script-src 'none'`) {
-		t.Errorf("现有页面 CSP 应保持 script-src 'none'，got %q", csp2)
+		t.Errorf("API 路由 CSP 应保持 script-src 'none'，got %q", csp2)
 	}
 }
 

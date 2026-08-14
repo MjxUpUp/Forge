@@ -59,7 +59,7 @@ func ForDataDir(dir string) *forgedata.Project {
 //   - root is passed to runForge subprocesses or to functions that still take a root string (e.g. appendConclusion);
 //   - p is passed to stores that have migrated to a *Project signature (e.g. act.Append(p, ...)).
 //
-// When the code path under test itself calls forgedata.ProjectFor (inside dashboard.Aggregate, or a forge subprocess),
+// When the code path under test itself calls forgedata.ProjectFor (inside dashboard aggregation, or a forge subprocess),
 // RealProject is required: on a git-less t.TempDir(), ProjectFor fails, writes/reads land in different
 // DataDirs, and the test never sees the data. A pure store round-trip (no ProjectFor in the path) keeps using
 // ForDataDir.
@@ -72,7 +72,7 @@ func ForDataDir(dir string) *forgedata.Project {
 //   - root 传给 runForge 子进程或仍取 root string 的函数（如 appendConclusion）；
 //   - p 传给已迁移到 *Project 签名的 store（如 act.Append(p, ...)）。
 //
-// 当被测代码路径自身调用 forgedata.ProjectFor（dashboard.Aggregate 内部、forge 子进程）
+// 当被测代码路径自身调用 forgedata.ProjectFor（dashboard 聚合内部、forge 子进程）
 // 时，RealProject 是必需的：在无 git 的 t.TempDir() 上 ProjectFor 失败，写/读落到不同
 // DataDir，测试永远看不到数据。纯 store round-trip（路径中无 ProjectFor）继续用
 // ForDataDir。
@@ -101,14 +101,14 @@ func RealProject(t *testing.T) (root string, p *forgedata.Project) {
 		t.Fatalf("mkdir .forge: %v", err)
 	}
 	// FORGE_DATA_HOME isolation: set once per test (idempotent). Multiple RealProject calls within the same test
-	// (e.g. AggregateGlobal using rootA + rootB) must share one DATA_HOME — otherwise the second overwrites the first,
-	// and ProjectFor(rootA) inside AggregateGlobal resolves to a different DataDir than where act.Append(pA) wrote,
+	// (e.g. a global aggregation using rootA + rootB) must share one DATA_HOME — otherwise the second overwrites the first,
+	// and ProjectFor(rootA) inside the aggregation resolves to a different DataDir than where act.Append(pA) wrote,
 	// so rootA's data vanishes. Isolation between different projects relies on the git-root-derived key
 	// (<DATA_HOME>/projects/<key>/), not on separate DATA_HOMEs.
 	//
 	// FORGE_DATA_HOME 隔离：每个 test 设置一次（幂等）。同一 test 中多次 RealProject 调用
-	// （如 AggregateGlobal 用 rootA + rootB）必须共享一个 DATA_HOME——否则第二次覆盖第一次，
-	// AggregateGlobal 内部的 ProjectFor(rootA) 解析到与 act.Append(pA) 写入位置不同的
+	// （如全局聚合用 rootA + rootB）必须共享一个 DATA_HOME——否则第二次覆盖第一次，
+	// 聚合内部的 ProjectFor(rootA) 解析到与 act.Append(pA) 写入位置不同的
 	// DataDir，rootA 的数据消失。不同项目的隔离靠 git-root-derived key
 	// （<DATA_HOME>/projects/<key>/），不靠分离的 DATA_HOME。
 	if os.Getenv("FORGE_DATA_HOME") == "" {
