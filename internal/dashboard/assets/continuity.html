@@ -40,6 +40,7 @@
 <header>
   <h1>任务接续看板</h1>
   <a href="/">&larr; 质量看板</a>
+  <a href="/pulse">Pulse 面板</a>
   <span class="muted">{{if .Project}}{{.Project}} · {{end}}{{len .Cards}} 个任务（{{.Incomplete}} 进行中 / {{.Complete}} 已完成）· 本地只读 · 每 30s 刷新 · 生成于 {{.Now.Format "2006-01-02 15:04:05"}}</span>
 </header>
 <main>
