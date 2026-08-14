@@ -8,7 +8,7 @@ Stop trusting AI-generated code. Start gating it.
 </div>
 
 <div align="center">
-  <img src="../dashboard-render.png" alt="Forge Dashboard 质量看板" width="860"/>
+  <img src="../dashboard-render.png" alt="Forge Pulse 全局质量面板" width="860"/>
 </div>
 
 > 完整英文文档见根 [README.md](../README.md)。本中文版为国内用户精简说明，覆盖安装 / 日常使用 / 命令参考，命令以代码块为准。
