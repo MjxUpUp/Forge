@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Forge Pulse · 全局任务质量面板</title>
+<script>
+// 首屏前定主题，避免闪烁：localStorage 优先，缺省跟随 prefers-color-scheme。
+(function () {
+  var t = 'dark';
+  try { t = localStorage.getItem('forge-pulse-theme') || ''; } catch (e) {}
+  if (t !== 'dark' && t !== 'light') {
+    t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+  }
+  document.documentElement.setAttribute('data-theme', t);
+})();
+</script>
+<style>
+  /* === 设计 token：暗色（默认）===
+     与形态确认原型同源：暗色精致 SaaS 基底 + 熔橙 accent。
+     字体走 system stack（localhost 离线环境，不引外部字体）。 */
+  :root {
+    --canvas: #0a0b0e;
+    --surface-1: #101218;
+    --surface-2: #161922;
+    --surface-3: #1e222d;
+    --border: rgba(255,255,255,0.08);
+    --border-subtle: rgba(255,255,255,0.05);
+    --text-primary: rgba(236,234,230,0.95);
+    --text-secondary: rgba(236,234,230,0.60);
+    --text-tertiary: rgba(236,234,230,0.42);
+    --accent: #e07a3f;                 /* 熔橙，forge 主题色 */
+    --accent-muted: rgba(224,122,63,0.12);
+    --accent-on: #14100c;              /* accent 底色上的文字 */
+    --grade-a: #4ade80; --grade-b: #a3e635; --grade-c: #facc15;
+    --grade-d: #fb923c; --grade-f: #f87171;
+    --ok: #4ade80; --warn: #facc15; --fail: #f87171; --info: #7aa2f7;
+    --grade-a-bg: rgba(74,222,128,0.14); --grade-b-bg: rgba(163,230,53,0.14);
+    --grade-c-bg: rgba(250,204,21,0.14); --grade-d-bg: rgba(251,146,60,0.14);
+    --grade-f-bg: rgba(248,113,113,0.14);
+    --warn-bg: rgba(250,204,21,0.08); --warn-border: rgba(250,204,21,0.25);
+    --fail-bg: rgba(248,113,113,0.08); --fail-border: rgba(248,113,113,0.30);
+    --ok-bg: rgba(74,222,128,0.08); --ok-border: rgba(74,222,128,0.25);
+    --info-bg: rgba(122,162,247,0.14);
+    --shadow: 0 8px 30px rgba(0,0,0,0.5);
+  }
+  /* === 亮色 token（D2 调整项）：canvas 近白、surface 灰白阶梯、文字深灰；
+     熔橙压暗保正文对比度 ≥ 4.5:1。 */
+  html[data-theme="light"] {
+    --canvas: #f6f5f2;
+    --surface-1: #ffffff;
+    --surface-2: #efeeea;
+    --surface-3: #e3e1db;
+    --border: rgba(20,18,14,0.12);
+    --border-subtle: rgba(20,18,14,0.07);
+    --text-primary: rgba(24,22,18,0.93);
+    --text-secondary: rgba(24,22,18,0.64);
+    --text-tertiary: rgba(24,22,18,0.52);
+    --accent: #b04a10;                 /* 熔橙压暗，白底对比度 ≈ 5.4:1 */
+    --accent-muted: rgba(176,74,16,0.10);
+    --accent-on: #ffffff;
+    --grade-a: #15803d; --grade-b: #4d7c0f; --grade-c: #a16207;
+    --grade-d: #c2410c; --grade-f: #b91c1c;
+    --ok: #15803d; --warn: #a16207; --fail: #b91c1c; --info: #1d4ed8;
+    --grade-a-bg: rgba(21,128,61,0.10); --grade-b-bg: rgba(77,124,15,0.10);
+    --grade-c-bg: rgba(161,98,7,0.10); --grade-d-bg: rgba(194,65,12,0.10);
+    --grade-f-bg: rgba(185,28,28,0.10);
+    --warn-bg: rgba(161,98,7,0.07); --warn-border: rgba(161,98,7,0.30);
+    --fail-bg: rgba(185,28,28,0.06); --fail-border: rgba(185,28,28,0.30);
+    --ok-bg: rgba(21,128,61,0.07); --ok-border: rgba(21,128,61,0.28);
+    --info-bg: rgba(29,78,216,0.09);
+    --shadow: 0 8px 30px rgba(0,0,0,0.18);
+  }
+  :root {
+    --radius-sm: 6px; --radius-md: 8px; --radius-lg: 12px;
+    --font-sans: -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+    --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, 'Courier New', monospace;
+    --tracking-display: -0.03em;
+    --tracking-body: -0.011em;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font-sans);
+    background: var(--canvas);
+    color: var(--text-primary);
+    font-size: 14px; line-height: 1.55; letter-spacing: var(--tracking-body);
+    -webkit-font-smoothing: antialiased;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    /* 伪元素也要覆盖：transition 不继承，`*` 只匹配元素本身（如 .skill-fold summary::after） */
+    *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  }
+  .mono { font-family: var(--font-mono); }
+  button { font-family: inherit; }
+
+  /* === 顶栏 === */
+  .app { display: grid; grid-template-rows: 52px auto auto 1fr; height: 100vh; }
+  .topbar {
+    display: flex; align-items: center; gap: 14px; padding: 0 18px;
+    background: var(--surface-1); border-bottom: 1px solid var(--border-subtle);
+  }
+  .logo { font-size: 15px; font-weight: 700; letter-spacing: var(--tracking-display); }
+  .logo .accent { color: var(--accent); }
+  .logo-sub { font-size: 11px; color: var(--text-tertiary); font-family: var(--font-mono); }
+  .tabs { display: flex; gap: 4px; margin-left: 12px; }
+  .tab {
+    background: transparent; border: 1px solid transparent; border-radius: var(--radius-md);
+    padding: 5px 13px; cursor: pointer; font-size: 13px; color: var(--text-secondary);
+  }
+  .tab:hover { background: var(--surface-2); color: var(--text-primary); }
+  .tab.active { background: var(--accent-muted); color: var(--accent); font-weight: 600; }
+  .spacer { flex: 1; }
+  .btn {
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-md);
+    padding: 5px 11px; cursor: pointer; font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary);
+  }
+  .btn:hover { background: var(--surface-3); color: var(--text-primary); }
+  /* 互链按钮（质量看板/接续看板）：a 元素默认下划线/基线对齐，抹平与 button 一致 */
+  a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+
+  /* === 离线提示 === */
+  .offline {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    background: var(--fail-bg); color: var(--fail); border-bottom: 1px solid var(--fail-border);
+    font-family: var(--font-mono); font-size: 12px; padding: 6px 12px;
+  }
+  .offline[hidden] { display: none; }
+
+  /* === 全局状态条（A3，可收起）=== */
+  .stat-strip { display: flex; gap: 12px; flex-wrap: wrap; padding: 12px 18px 4px; }
+  .stat-strip.collapsed { display: none; }
+  .stat {
+    flex: 1; min-width: 130px; background: var(--surface-1); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg); padding: 12px 14px;
+  }
+  .stat .k { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-tertiary); }
+  .stat .v { font-size: 24px; font-weight: 600; letter-spacing: var(--tracking-display); margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .stat .v.alarm { color: var(--fail); }
+  .stat .s { font-size: 11px; color: var(--text-tertiary); font-family: var(--font-mono); }
+
+  /* === 三栏布局（D1）=== */
+  .body { display: grid; grid-template-columns: 216px 1fr 330px; overflow: hidden; }
+  .projbar { background: var(--surface-1); border-right: 1px solid var(--border-subtle); overflow-y: auto; padding: 12px 10px; }
+  .bar-title {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--text-tertiary); font-family: var(--font-mono); padding: 4px 8px 10px;
+  }
+  .proj-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: var(--radius-md); cursor: pointer; }
+  .proj-item:hover { background: var(--surface-2); }
+  .proj-item.sel { background: var(--surface-2); box-shadow: inset 2px 0 0 var(--accent); }
+  .proj-name { font-size: 13px; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .proj-meta { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-tertiary); margin-left: auto; text-align: right; flex-shrink: 0; }
+  .proj-meta .z { color: var(--warn); }
+  .main { overflow-y: auto; padding: 14px 22px 60px; position: relative; }
+  .detail { background: var(--surface-1); border-left: 1px solid var(--border-subtle); overflow-y: auto; padding: 16px; }
+  .detail-hint { color: var(--text-tertiary); font-size: 12.5px; text-align: center; margin-top: 40px; }
+  .detail-close { display: none; float: right; }
+
+  /* <1100px：右栏变抽屉（不追求复杂响应式） */
+  @media (max-width: 1100px) {
+    .body { grid-template-columns: 200px 1fr; }
+    .detail {
+      position: fixed; top: 52px; right: 0; bottom: 0; width: min(430px, 92vw);
+      transform: translateX(105%); transition: transform 200ms ease;
+      z-index: 40; box-shadow: var(--shadow); border-left: 1px solid var(--border);
+    }
+    .detail.open { transform: none; }
+    .detail-close { display: inline-block; }
+  }
+
+  /* === 新事件提示条（D3：不抢滚动）=== */
+  .new-pill-wrap { position: sticky; top: 0; display: flex; justify-content: center; z-index: 10; margin-bottom: 10px; }
+  .new-pill {
+    background: var(--accent); color: var(--accent-on); font-size: 12px; font-weight: 600;
+    padding: 4px 14px; border-radius: 999px; cursor: pointer; border: none;
+    box-shadow: var(--shadow);
+  }
+  .new-pill[hidden] { display: none; }
+
+  /* === 事件流（A1/B1/B4）=== */
+  .feed { position: relative; padding-left: 22px; }
+  .feed::before { content: ''; position: absolute; left: 7px; top: 6px; bottom: 6px; width: 1px; background: var(--border); }
+  .feed-day {
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary);
+    letter-spacing: 0.06em; text-transform: uppercase; padding: 14px 0 2px; position: relative;
+  }
+  .feed-day::before { content: ''; position: absolute; left: -19px; top: 22px; width: 9px; height: 1px; background: var(--border); }
+  .evt { position: relative; padding: 10px 0; cursor: pointer; border-radius: var(--radius-md); }
+  .evt:hover .evt-title { color: var(--accent); }
+  .evt-dot {
+    position: absolute; left: -19px; top: 16px; width: 9px; height: 9px; border-radius: 50%;
+    background: var(--surface-3); border: 2px solid var(--text-tertiary);
+  }
+  .evt-dot.ok { border-color: var(--ok); }
+  .evt-dot.fail { border-color: var(--fail); }
+  .evt-dot.warn { border-color: var(--warn); }
+  .evt-dot.info { border-color: var(--info); }
+  .evt-dot.accent { border-color: var(--accent); }
+  .evt-dot.pulse { border-color: var(--accent); animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(224,122,63,0.35);} 50% { box-shadow: 0 0 0 6px rgba(224,122,63,0);} }
+  .evt-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .evt-kind { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; padding: 1px 7px; border-radius: 4px; }
+  .kind-gate { background: var(--info-bg); color: var(--info); }
+  .kind-skill { background: var(--accent-muted); color: var(--accent); }
+  .kind-conclusion { background: var(--surface-3); color: var(--text-secondary); }
+  .kind-task { background: var(--surface-3); color: var(--text-primary); }
+  .kind-decision { background: var(--surface-3); color: var(--text-secondary); }
+  .evt-title { font-size: 13.5px; font-weight: 550; }
+  .evt-time { font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); margin-left: auto; }
+  .proj-chip {
+    font-family: var(--font-mono); font-size: 10.5px; padding: 1px 7px; border-radius: 999px;
+    border: 1px solid var(--border); color: var(--text-secondary); background: var(--surface-2);
+  }
+  .evt-body {
+    margin-top: 6px; background: var(--surface-2); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md); padding: 10px 12px; font-size: 12.5px; color: var(--text-secondary);
+    word-break: break-word;
+  }
+  .evt-body .mono { font-family: var(--font-mono); font-size: 11.5px; }
+
+  /* 会话级 skill 触发折叠卡：summary 原生可聚焦/回车切换（a11y 免 JS），箭头指示展开态 */
+  .skill-fold { padding: 10px 0; }
+  .skill-fold summary {
+    display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none;
+    border-radius: var(--radius-md);
+  }
+  .skill-fold summary::-webkit-details-marker { display: none; }
+  .skill-fold summary::after {
+    content: '▸'; color: var(--text-tertiary); font-size: 11px; margin-left: 6px;
+    transition: transform 0.15s ease;
+  }
+  .skill-fold[open] summary::after { transform: rotate(90deg); }
+  .skill-fold .fold-body { margin-left: 0; border-left: 1px solid var(--border); padding-left: 14px; }
+  .skill-fold .fold-body .evt { padding: 6px 0; cursor: default; }
+
+  .grade-chip {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px; border-radius: var(--radius-sm);
+    font-family: var(--font-mono); font-weight: 700; font-size: 12px; flex-shrink: 0;
+  }
+  .grade-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 40px; height: 40px; border-radius: var(--radius-md);
+    font-family: var(--font-mono); font-weight: 700; font-size: 19px; flex-shrink: 0;
+  }
+  .g-A { background: var(--grade-a-bg); color: var(--grade-a); }
+  .g-B { background: var(--grade-b-bg); color: var(--grade-b); }
+  .g-C { background: var(--grade-c-bg); color: var(--grade-c); }
+  .g-D { background: var(--grade-d-bg); color: var(--grade-d); }
+  .g-F { background: var(--grade-f-bg); color: var(--grade-f); }
+
+  /* === 评分块（B2）/ 维度条 / 触发质量条（C3）=== */
+  .panel-block { background: var(--surface-2); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 14px; margin-bottom: 14px; }
+  .panel-title { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 10px; }
+  .dim-row { display: grid; grid-template-columns: 108px 1fr 44px; gap: 10px; align-items: center; margin: 5px 0; }
+  .dim-name { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dim-track { height: 5px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
+  .dim-fill { height: 100%; border-radius: 3px; }
+  .dim-val { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-tertiary); text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* === 证据条（B3）=== */
+  .evi-track { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--surface-3); }
+  .evi-det { background: var(--ok); }
+  .evi-claim { background: var(--warn); }
+
+  .caveat {
+    display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 11px;
+    color: var(--warn); background: var(--warn-bg); border: 1px solid var(--warn-border);
+    padding: 3px 9px; border-radius: 999px;
+  }
+  .caveat.bad { color: var(--fail); background: var(--fail-bg); border-color: var(--fail-border); }
+  .caveat.good { color: var(--ok); background: var(--ok-bg); border-color: var(--ok-border); }
+  .caveat.neutral { color: var(--text-tertiary); background: var(--surface-2); border-color: var(--border); }
+
+  /* === Skills 表格（C1）=== */
+  .skill-grid { display: grid; grid-template-columns: 1fr 70px 60px 76px 80px; gap: 8px; align-items: center; padding: 9px 4px; border-bottom: 1px solid var(--border-subtle); }
+  .skill-grid.head { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  .skill-grid:not(.head) { cursor: pointer; border-radius: var(--radius-sm); }
+  .skill-grid:not(.head):hover { background: var(--surface-2); }
+  .num { font-family: var(--font-mono); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* === 触发质量卡片（C3）=== */
+  .q-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+  .q-card { background: var(--surface-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 14px; cursor: pointer; }
+  .q-card:hover { border-color: var(--border); }
+  .q-name { font-weight: 600; font-size: 13.5px; margin-bottom: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* === 空态 === */
+  .empty { text-align: center; color: var(--text-tertiary); padding: 48px 16px; font-size: 13px; }
+  .empty .mono { font-size: 11px; }
+
+  .section-title { font-size: 15px; font-weight: 600; letter-spacing: var(--tracking-display); margin: 4px 0 12px; }
+  .spark { width: 100%; height: 84px; display: block; }
+  .detail-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .detail-title { font-size: 16px; font-weight: 650; letter-spacing: var(--tracking-display); word-break: break-all; }
+  .meta-line { font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); margin-top: 2px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <span class="logo">Forge <span class="accent">Pulse</span></span>
+    <span class="logo-sub">全局任务质量面板</span>
+    <nav class="tabs" id="tabs">
+      <button class="tab active" data-tab="feed">事件流</button>
+      <button class="tab" data-tab="skills">Skills</button>
+      <button class="tab" data-tab="quality">触发质量</button>
+    </nav>
+    <span class="spacer"></span>
+    <a class="btn" href="/" title="质量看板">&larr; 质量看板</a>
+    <a class="btn" href="/continuity" title="任务接续看板">接续看板</a>
+    <button class="btn" id="stripToggle" title="收起/展开全局状态条">状态条 ▾</button>
+    <button class="btn" id="themeToggle" title="切换暗色/亮色主题">◐ 主题</button>
+  </header>
+  <div class="offline" id="offlineBar">⚠ 连接中断 · 数据获取失败，下个周期自动重试</div>
+  <div class="stat-strip" id="statStrip"></div>
+  <div class="body">
+    <aside class="projbar" id="projbar"></aside>
+    <main class="main" id="main">
+      <div class="new-pill-wrap"><button class="new-pill" id="newPill" hidden></button></div>
+      <section id="view-feed"></section>
+      <section id="view-skills" hidden></section>
+      <section id="view-quality" hidden></section>
+    </main>
+    <aside class="detail" id="detail"></aside>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ============================================================
+ * Forge Pulse 前端：消费 6 个 /api/pulse/*.json 端点。
+ * 纯静态渲染 + 30s 轮询增量（since 排他），零依赖。
+ * ============================================================ */
+var POLL_MS = 30000;
+
+/* ---------- 工具 ---------- */
+function $(sel) { return document.querySelector(sel); }
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+function fmtNum(v, digits) {
+  if (v === null || v === undefined || isNaN(v)) return '—';
+  return digits ? Number(v).toFixed(digits) : String(Math.round(Number(v)));
+}
+function fmtPct(r) { return (r === null || r === undefined) ? '—' : Math.round(r * 100) + '%'; }
+function scoreVar(s) { // 分数段着色：≥90 a / ≥75 b / ≥60 c / ≥40 d / 否则 f
+  if (s === null || s === undefined) return 'var(--text-tertiary)';
+  return s >= 90 ? 'var(--grade-a)' : s >= 75 ? 'var(--grade-b)' : s >= 60 ? 'var(--grade-c)' : s >= 40 ? 'var(--grade-d)' : 'var(--grade-f)';
+}
+function gradeClass(g) { return 'g-' + (['A','B','C','D','F'].indexOf(g) >= 0 ? g : 'F'); }
+function fmtTime(iso) {
+  var d = new Date(iso);
+  return isNaN(d) ? '' : ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+}
+function fmtDate(iso) {
+  var d = new Date(iso);
+  if (isNaN(d)) return '';
+  var now = new Date();
+  var day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  var diff = Math.round((today - day) / 86400000);
+  if (diff === 0) return '今天';
+  if (diff === 1) return '昨天';
+  return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+}
+function dayKey(iso) { var d = new Date(iso); return isNaN(d) ? '' : d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate(); }
+function fmtDateTime(iso) {
+  var d = new Date(iso);
+  if (isNaN(d)) return '';
+  return ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2) + ' ' + fmtTime(iso);
+}
+function api(path) {
+  return fetch(path, { headers: { 'Accept': 'application/json' } }).then(function (r) {
+    if (!r.ok) throw new Error(path + ' → HTTP ' + r.status);
+    return r.json();
+  });
+}
+
+/* ---------- 全局状态 ---------- */
+var state = {
+  tab: 'feed',
+  projectFilter: '',        // '' = 全部项目；否则 forge key（或显示名，后端两者都匹配）
+  projects: [],
+  stats: null,
+  events: [],
+  pending: [],              // 轮询到但未并入的新事件
+  lastEventTime: '',        // 最新已知事件时间（since 排他，故不重复拉取）
+  skills: null,             // skills.json 载荷
+  quality: null,            // 触发质量卡片数据（skill.json 汇总）
+  selectedTask: null,       // {project, ref}
+  selectedSkill: null
+};
+
+/* ---------- 主题（D2）---------- */
+function currentTheme() { return document.documentElement.getAttribute('data-theme') || 'dark'; }
+function toggleTheme() {
+  var next = currentTheme() === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  try { localStorage.setItem('forge-pulse-theme', next); } catch (e) {}
+  updateThemeBtn();
+}
+function updateThemeBtn() { $('#themeToggle').textContent = currentTheme() === 'dark' ? '◐ 亮色' : '◐ 暗色'; }
+
+/* ---------- 状态条（A3）---------- */
+var TREND_TEXT = { improving: '↗ 上升', regressing: '↘ 下滑', stable: '→ 平稳', insufficient: '样本不足' };
+function renderStats() {
+  var s = state.stats;
+  if (!s) { $('#statStrip').innerHTML = ''; return; }
+  var trend = TREND_TEXT[s.trend] || s.trend || '—';
+  var trendColor = s.trend === 'improving' ? 'var(--ok)' : s.trend === 'regressing' ? 'var(--fail)' : 'var(--text-tertiary)';
+  var alerts = (typeof s.alerts === 'number') ? s.alerts : null;
+  $('#statStrip').innerHTML =
+    stat('项目', fmtNum(s.projects), 'registry') +
+    stat('进行中', fmtNum(s.activeTasks), (s.zombies ? s.zombies + ' 僵尸' : '无僵尸')) +
+    stat('全局均分', fmtNum(s.avgScore), '中位 ' + fmtNum(s.medianScore) + ' · <span style="color:' + trendColor + '">' + esc(trend) + '</span>', true) +
+    stat('告警', fmtNum(alerts), (s.zombies || 0) + ' zombie · 含回顾提醒', false, alerts !== null && alerts > 3) +
+    stat('证据盲区', s.evidenceBlindRate === null || s.evidenceBlindRate === undefined ? '—' : fmtPct(s.evidenceBlindRate), 'NoData 占比');
+  function stat(k, v, sub, html, alarm) {
+    return '<div class="stat"><div class="k">' + k + '</div>' +
+      '<div class="v' + (alarm ? ' alarm' : '') + '">' + v + '</div>' +
+      '<div class="s">' + (html ? sub : esc(sub)) + '</div></div>';
+  }
+}
+
+/* ---------- 项目栏（A2）---------- */
+function renderProjects() {
+  var ps = state.projects || [];
+  var html = '<div class="bar-title">项目</div>';
+  html += '<div class="proj-item' + (state.projectFilter === '' ? ' sel' : '') + '" data-key="">' +
+    '<span class="proj-name" style="color:var(--text-tertiary)">＋ 全部项目</span><span class="proj-meta">默认</span></div>';
+  if (!ps.length) {
+    html += '<div class="empty" style="padding:24px 8px">无项目<br><span class="mono">project registry 为空</span></div>';
+  }
+  ps.forEach(function (p) {
+    var meta = esc(p.activeTasks + ' 进行中');
+    if (p.zombies > 0) meta += '<br><span class="z">' + p.zombies + ' 僵尸 ⚠</span>';
+    if (p.lastGrade) meta += '<br>' + esc(p.lastGrade) + (p.lastScore !== null && p.lastScore !== undefined ? ' · ' + Math.round(p.lastScore) : '');
+    html += '<div class="proj-item' + (state.projectFilter === p.key ? ' sel' : '') + '" data-key="' + esc(p.key) + '">' +
+      '<span class="proj-name">' + esc(p.name) + '</span><span class="proj-meta">' + meta + '</span></div>';
+  });
+  $('#projbar').innerHTML = html;
+  Array.prototype.forEach.call(document.querySelectorAll('#projbar .proj-item'), function (el) {
+    el.addEventListener('click', function () { selectProject(el.getAttribute('data-key') || ''); });
+  });
+}
+function selectProject(key) {
+  state.projectFilter = key;
+  state.events = []; state.pending = []; state.lastEventTime = '';
+  renderProjects(); updatePill();
+  loadFeed(true);
+}
+
+/* ---------- 事件流（A1/B4/D3）---------- */
+function dotClass(e) {
+  if (e.kind === 'task-start' && e.severity === 'info') return 'pulse';  // 进行中任务脉冲点
+  if (e.kind === 'skill-trigger') return 'accent';
+  return { ok: 'ok', warn: 'warn', fail: 'fail', info: 'info' }[e.severity] || 'info';
+}
+var KIND_LABEL = { 'task-start': 'task', 'gate': 'gate', 'skill-trigger': 'skill-trigger', 'conclusion': 'conclusion' };
+var KIND_CLASS = { 'task-start': 'kind-task', 'gate': 'kind-gate', 'skill-trigger': 'kind-skill', 'conclusion': 'kind-conclusion' };
+function evtHTML(e, opts) {
+  opts = opts || {};
+  var head = '<span class="evt-kind ' + (KIND_CLASS[e.kind] || 'kind-task') + '">' +
+    esc(KIND_LABEL[e.kind] || e.kind) + (e.gate ? ' · ' + esc(e.gate) : '') + '</span>' +
+    '<span class="evt-title">' + esc(e.title) + '</span>';
+  if (e.grade) head += '<span class="grade-chip ' + gradeClass(e.grade) + '">' + esc(e.grade) + '</span>';
+  if (!opts.hideProject && e.project) head += '<span class="proj-chip">' + esc(e.project) + '</span>';
+  head += '<span class="evt-time">' + esc(fmtDateTime(e.time)) + (e.commit ? ' · ' + esc(e.commit) : '') + '</span>';
+  var body = e.detail ? '<div class="evt-body mono">' + esc(e.detail) + '</div>' : '';
+  var attrs = ' data-project="' + esc(e.project || '') + '" data-ref="' + esc(e.taskRef || '') + '"';
+  return '<div class="evt"' + attrs + '><span class="evt-dot ' + dotClass(e) + '"></span>' +
+    '<div class="evt-head">' + head + '</div>' + body + '</div>';
+}
+function feedHTML(events, opts) {
+  if (!events.length) {
+    return '<div class="empty">还没有任何事件<br><span class="mono">任务开始 / gate / skill 触发 / 结论会出现在这里</span></div>';
+  }
+  var html = '<div class="feed">', lastDay = '';
+  events.forEach(function (e) {
+    var dk = dayKey(e.time);
+    if (dk !== lastDay) { html += '<div class="feed-day">' + esc(fmtDate(e.time)) + '</div>'; lastDay = dk; }
+    html += evtHTML(e, opts);
+  });
+  return html + '</div>';
+}
+/* 时间戳数值化：RFC3339Nano 整秒不带小数部分，字典序会把 "T10:00:00.5Z" 排在
+ * "T10:00:00Z" 前（'.' < 'Z'），必须经 Date.parse 数值比较。 */
+function tsNum(v) { var t = Date.parse(v); return isNaN(t) ? 0 : t; }
+/* 主流按 project+taskRef 聚合成任务卡：一个任务一行（最新状态摘要），完整事件
+ * 序列在右栏 transcript 看——避免与详情页平铺重复。无 taskRef 的事件（如会话级
+ * skill 触发）保持独立流条目——量大时由 groupedFeedHTML 折叠成汇总卡。events 为
+ * time 降序。 */
+function groupFeedItems(events) {
+  var groups = {}, items = [];
+  events.forEach(function (e) {
+    if (!e.taskRef) { items.push({ task: null, evt: e, time: e.time, t: tsNum(e.time) }); return; }
+    var key = (e.project || '') + '|' + e.taskRef;
+    var g = groups[key];
+    if (!g) {
+      g = groups[key] = { ref: e.taskRef, project: e.project, events: [], time: e.time, t: tsNum(e.time) };
+      items.push({ task: g, evt: null, time: e.time, t: g.t });
+    }
+    g.events.push(e);
+    var et = tsNum(e.time);
+    if (et > g.t) { g.time = e.time; g.t = et; }
+  });
+  items.forEach(function (it) { if (it.task) { it.time = it.task.time; it.t = it.task.t; } });
+  items.sort(function (a, b) { return b.t - a.t; });
+  return items;
+}
+function taskCardHTML(g) {
+  var conclusion = null, start = null, gatesPassed = 0, gatesTotal = 0, skillHits = 0;
+  g.events.forEach(function (e) {
+    if (e.kind === 'conclusion' && !conclusion) conclusion = e;
+    if (e.kind === 'task-start' && !start) start = e;
+    if (e.kind === 'gate') { gatesTotal++; if (e.passed) gatesPassed++; }
+    if (e.kind === 'skill-trigger') skillHits++;
+  });
+  var latest = g.events[0];
+  /* 摘要：有结论 → 完成 + 分数 + 证据明细；否则 → 进行中/僵尸状态（剥掉 title 里的 ref 前缀） */
+  var summary = '';
+  if (conclusion) {
+    summary = '完成' + (conclusion.detail ? ' · ' + conclusion.detail : '');
+  } else if (start) {
+    summary = start.title.indexOf(g.ref) === 0 ? start.title.slice(g.ref.length).replace(/^ · /, '') : start.title;
+  }
+  var meta = [];
+  if (gatesTotal) meta.push('gate ' + gatesPassed + '/' + gatesTotal);
+  if (skillHits) meta.push('skill ×' + skillHits);
+  meta.push(g.events.length + ' 条事件');
+  /* 圆点：未完成的任务保持 task-start 的形态（进行中脉冲 / 僵尸 warn），已完成跟结论等级 */
+  var dot = conclusion ? dotClass(conclusion) : (start ? dotClass(start) : dotClass(latest));
+  var head = '<span class="evt-kind kind-task">task</span><span class="evt-title">' + esc(g.ref) + '</span>';
+  if (conclusion && conclusion.grade) head += '<span class="grade-chip ' + gradeClass(conclusion.grade) + '">' + esc(conclusion.grade) + '</span>';
+  if (g.project) head += '<span class="proj-chip">' + esc(g.project) + '</span>';
+  head += '<span class="evt-time">' + esc(fmtDateTime(g.time)) + '</span>';
+  var body = '<div class="evt-body mono">' + esc(summary) +
+    '<span style="color:var(--text-tertiary)"> · ' + esc(meta.join(' · ')) + '</span></div>';
+  return '<div class="evt task-card" data-project="' + esc(g.project || '') + '" data-ref="' + esc(g.ref) + '">' +
+    '<span class="evt-dot ' + dot + '"></span><div class="evt-head">' + head + '</div>' + body + '</div>';
+}
+/* 会话级（无 taskRef）skill 触发达到阈值时折叠为一张可展开汇总卡：主面板只占一行
+ * （次数 + 覆盖 skill 数 + 最新时间），明细经原生 <details> 展开——零 JS 交互、键盘
+ * 可达（summary 原生可聚焦/回车切换）。阈值以下保持独立条目：少量时逐条本身是信息，
+ * 折叠反而多一次点击。折叠位置取最新一条的槽位，内行各带自己的时间戳。 */
+var SKILL_FOLD_MIN = 3;
+function skillFoldHTML(items) {
+  var latest = items[0], names = {}, projects = {}, oneProject = '';
+  items.forEach(function (it) {
+    var m = /^skill 触发: /.exec(it.evt.title || '');
+    if (m && it.evt.title.length > m[0].length) names[it.evt.title.slice(m[0].length)] = 1;
+    if (it.evt.project) projects[it.evt.project] = 1;
+  });
+  var nameKeys = Object.keys(names), projKeys = Object.keys(projects);
+  if (projKeys.length === 1) oneProject = projKeys[0];
+  var head = '<span class="evt-kind kind-skill">skill-trigger</span>' +
+    '<span class="evt-title">会话级 skill 触发 ×' + items.length + '</span>';
+  if (nameKeys.length && nameKeys.length < items.length) head += '<span class="proj-chip">' + nameKeys.length + ' 个 skill</span>';
+  if (oneProject) head += '<span class="proj-chip">' + esc(oneProject) + '</span>';
+  head += '<span class="evt-time">最新 ' + esc(fmtDateTime(latest.time)) + '</span>';
+  var rows = items.map(function (it) { return evtHTML(it.evt); }).join('');
+  /* summary 内容模型是 phrasing content——内部用 span（.evt-head 本就 display:flex），
+   * 不用 div（flow content，浏览器宽容但校验器报错）。 */
+  return '<details class="evt skill-fold"><summary><span class="evt-dot accent"></span>' +
+    '<span class="evt-head">' + head + '</span></summary><div class="fold-body">' + rows + '</div></details>';
+}
+function groupedFeedHTML(events) {
+  if (!events.length) {
+    return '<div class="empty">还没有任何任务或事件<br><span class="mono">任务与 skill 触发会聚合出现在这里</span></div>';
+  }
+  var items = groupFeedItems(events);
+  var fold = null;
+  var standalone = items.filter(function (it) { return !it.task && it.evt.kind === 'skill-trigger'; });
+  if (standalone.length >= SKILL_FOLD_MIN) fold = standalone;
+  var html = '<div class="feed">', lastDay = '';
+  items.forEach(function (it) {
+    if (fold && fold.indexOf(it) !== -1) {
+      if (it === fold[0]) {
+        /* 折叠槽位同样参与日期分组：不 emit 分隔线会让卡片落在错误的天数标题下，
+         * 或让下一条非折叠项在卡片下方补出本应在卡片上方的天数标签。 */
+        var fdk = dayKey(it.time);
+        if (fdk !== lastDay) { html += '<div class="feed-day">' + esc(fmtDate(it.time)) + '</div>'; lastDay = fdk; }
+        html += skillFoldHTML(fold);
+      }
+      return;
+    }
+    var dk = dayKey(it.time);
+    if (dk !== lastDay) { html += '<div class="feed-day">' + esc(fmtDate(it.time)) + '</div>'; lastDay = dk; }
+    html += it.task ? taskCardHTML(it.task) : evtHTML(it.evt);
+  });
+  return html + '</div>';
+}
+function bindTaskClicks(container) {
+  Array.prototype.forEach.call(container.querySelectorAll('.evt[data-ref]'), function (el) {
+    if (!el.getAttribute('data-ref')) return;
+    el.addEventListener('click', function () {
+      openTask(el.getAttribute('data-project'), el.getAttribute('data-ref'));
+    });
+  });
+}
+function renderFeed() {
+  $('#view-feed').innerHTML = groupedFeedHTML(state.events);
+  bindTaskClicks($('#view-feed'));
+}
+function updatePill() {
+  var pill = $('#newPill');
+  if (!state.pending.length) { pill.hidden = true; return; }
+  pill.hidden = false;
+  pill.textContent = '↑ ' + state.pending.length + ' 条新事件 · 点击查看';
+}
+
+/* ---------- 任务 transcript（B1/B2/B3）---------- */
+function openTask(project, ref) {
+  if (!ref) return;
+  state.selectedTask = { project: project, ref: ref };
+  state.selectedSkill = null;
+  $('#detail').innerHTML = '<div class="empty">加载任务线程…</div>';
+  openDetailDrawer();
+  var q = '?ref=' + encodeURIComponent(ref) + (project ? '&project=' + encodeURIComponent(project) : '');
+  api('/api/pulse/task.json' + q).then(renderTask).catch(function (err) {
+    $('#detail').innerHTML = '<div class="empty">任务加载失败<br><span class="mono">' + esc(err.message) + '</span></div>';
+  });
+}
+function renderTask(t) {
+  var st = t.state || {};
+  var gp = st.gateProgress || {};
+  var html = '<button class="btn detail-close" id="detailClose">✕ 关闭</button>' +
+    '<div class="detail-head"><span class="detail-title">' + esc(t.taskRef) + '</span>' +
+    '<span class="proj-chip">' + esc(t.project) + '</span></div>' +
+    '<div class="meta-line">' + esc(fmtDateTime(st.startedAt)) + ' 开始' +
+    (st.originTool ? ' · via ' + esc(st.originTool) : '') +
+    (gp.total ? ' · gate ' + gp.passed + '/' + gp.total : '') +
+    (st.zombie ? ' · <span style="color:var(--warn)">僵尸 ⚠</span>' : '') +
+    (st.currentGate ? ' · 当前 gate: ' + esc(st.currentGate) : ' · 已完成') + '</div>';
+
+  /* 评分块（B2） */
+  if (t.score) {
+    var sc = t.score;
+    html += '<div class="panel-block"><div class="panel-title">评分</div>' +
+      '<div style="display:flex;gap:14px;align-items:center;margin-bottom:12px">' +
+      '<span class="grade-badge ' + gradeClass(sc.grade) + '">' + esc(sc.grade || '?') + '</span>' +
+      '<div><div style="font-size:20px;font-weight:600;font-variant-numeric:tabular-nums">' + fmtNum(sc.overall) + '</div>' +
+      (sc.cappedReason ? '<div class="mono" style="font-size:11px;color:var(--warn)">⚠ capped: ' + esc(sc.cappedReason) + '</div>' : '') +
+      (sc.fromConclusion ? '<div class="mono" style="font-size:11px;color:var(--text-tertiary)">评分来自任务结论 · 无维度明细</div>' : '') +
+      '</div></div>';
+    (sc.dimensions || []).forEach(function (d) {
+      var w = Math.round((d.weight || 0) * 100);
+      html += '<div class="dim-row"><span class="dim-name" title="' + esc(d.detail || '') + '">' + esc(d.name) + ' ·' + ('0' + w).slice(-2) + '</span>' +
+        '<div class="dim-track"><div class="dim-fill" style="width:' + Math.max(0, Math.min(100, d.score)) + '%;background:' + scoreVar(d.score) + '"></div></div>' +
+        '<span class="dim-val">' + d.score + '</span></div>';
+    });
+    /* 证据链块（B3） */
+    if (sc.evidence) {
+      var ev = sc.evidence;
+      var total = (ev.deterministic || 0) + (ev.agentClaim || 0);
+      var detW = total ? Math.round(ev.deterministic / total * 100) : 0;
+      html += '<div class="panel-title" style="margin-top:14px">证据链</div>' +
+        '<div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:11px;color:var(--text-tertiary);margin-bottom:6px">' +
+        '<span style="color:var(--ok)">■ deterministic ' + (ev.deterministic || 0) + '</span>' +
+        '<span style="color:var(--warn)">■ agent-claim ' + (ev.agentClaim || 0) + '</span>' +
+        '<span>ratio ' + (ev.ratio !== undefined ? Number(ev.ratio).toFixed(2) : '—') + '</span></div>' +
+        '<div class="evi-track"><div class="evi-det" style="width:' + detW + '%"></div><div class="evi-claim" style="width:' + (100 - detW) + '%"></div></div>';
+      var strength = ev.strength || '';
+      if (strength === 'NoData') html += '<div style="margin-top:10px"><span class="caveat">⚠ NoData · 无证据记录</span></div>';
+      else if (strength === 'Unverified') html += '<div style="margin-top:10px"><span class="caveat">⚠ Unverified · 证据未经确定性验证</span></div>';
+      else if (strength) html += '<div style="margin-top:10px"><span class="caveat good">证据强度 ' + esc(strength) + '</span></div>';
+      if (total > 0 && (ev.agentClaim || 0) > (ev.deterministic || 0)) {
+        html += '<div style="margin-top:8px"><span class="caveat bad">⚠ claim 占比过半 · 大部分是 agent 自称</span></div>';
+      }
+    }
+    html += '</div>';
+  } else {
+    html += '<div class="panel-block"><div class="panel-title">评分</div>' +
+      '<div class="empty" style="padding:18px">未评分<br><span class="mono">任务完成后由 forge 评分流程写入</span></div></div>';
+  }
+
+  /* 验收 x/y */
+  var ac = t.acceptance || {};
+  if (ac.total) {
+    html += '<div class="panel-block"><div class="panel-title">验收</div>' +
+      '<span class="' + (ac.pass === ac.total ? 'caveat good' : 'caveat bad') + '">' + ac.pass + ' / ' + ac.total + ' 通过</span></div>';
+  }
+
+  /* 完整事件序列（B1）：API 降序 → transcript 按时间升序渲染 */
+  var evs = (t.events || []).slice().reverse();
+  html += '<div class="panel-title" style="margin:16px 0 8px">事件序列</div>' + feedHTML(evs, { hideProject: true });
+  $('#detail').innerHTML = html;
+  bindDetailClose();
+}
+
+/* ---------- Skills 总览（C1）---------- */
+function renderSkills() {
+  var d = state.skills;
+  if (!d) { $('#view-skills').innerHTML = '<div class="empty">加载中…</div>'; return; }
+  var html = '<div class="section-title">Skills 总览</div>';
+  if (d.coverage) html += '<div style="margin-bottom:12px"><span class="caveat">⚠ ' + esc(d.coverage) + '</span></div>';
+  if (d.neverTriggered && d.neverTriggered.length) {
+    html += '<div class="panel-block" style="border-color:var(--warn-border)">' +
+      '<div class="panel-title" style="color:var(--warn)">⚠ ' + d.neverTriggered.length + ' 个 skill 从未触发</div>' +
+      '<div class="mono" style="font-size:11.5px;color:var(--text-secondary);line-height:1.9">' +
+      d.neverTriggered.map(esc).join(' · ') + '</div></div>';
+  }
+  if (!d.skills || !d.skills.length) {
+    html += '<div class="empty">尚未有 skill 被触发<br><span class="mono">skill 命中与 eval 数据会出现在这里</span></div>';
+  } else {
+    html += '<div class="skill-grid head"><span>skill</span><span style="text-align:right">健康分</span>' +
+      '<span style="text-align:right">命中</span><span style="text-align:right">任务数</span><span style="text-align:right">任务均分</span></div>';
+    d.skills.forEach(function (s) {
+      html += '<div class="skill-grid" data-skill="' + esc(s.name) + '">' +
+        '<span style="font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(s.name) + '</span>' +
+        '<span class="num" style="color:' + scoreVar(s.health) + '">' + fmtNum(s.health) + '</span>' +
+        '<span class="num">' + s.hits + '</span>' +
+        '<span class="num">' + (s.taskCount || 0) + '</span>' +
+        '<span class="num" style="color:' + scoreVar(s.avgScore) + '">' + fmtNum(s.avgScore) + '</span></div>';
+    });
+  }
+  $('#view-skills').innerHTML = html;
+  bindSkillClicks($('#view-skills'));
+}
+function bindSkillClicks(container) {
+  Array.prototype.forEach.call(container.querySelectorAll('[data-skill]'), function (el) {
+    el.addEventListener('click', function () { openSkill(el.getAttribute('data-skill')); });
+  });
+}
+
+/* ---------- Skill 个体页（C2，右栏）---------- */
+function openSkill(name) {
+  if (!name) return;
+  state.selectedSkill = name; state.selectedTask = null;
+  $('#detail').innerHTML = '<div class="empty">加载 skill 详情…</div>';
+  openDetailDrawer();
+  api('/api/pulse/skill.json?name=' + encodeURIComponent(name)).then(renderSkill).catch(function (err) {
+    $('#detail').innerHTML = '<div class="empty">skill 加载失败<br><span class="mono">' + esc(err.message) + '</span></div>';
+  });
+}
+function sparkSVG(runs, baselineRunId) {
+  /* inline SVG polyline：runs 按时间序，基线点特殊标记 */
+  var W = 600, H = 84, PAD = 14;
+  var pts = runs.map(function (r, i) {
+    var x = runs.length === 1 ? W / 2 : PAD + i * (W - 2 * PAD) / (runs.length - 1);
+    var y = H - 10 - (Math.max(0, Math.min(100, r.health)) / 100) * (H - 24);
+    return { x: x, y: y, r: r };
+  });
+  var poly = pts.map(function (p) { return p.x.toFixed(1) + ',' + p.y.toFixed(1); }).join(' ');
+  var svg = '<svg class="spark" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' +
+    '<line x1="0" y1="' + (H - 10) + '" x2="' + W + '" y2="' + (H - 10) + '" stroke="var(--border)" stroke-dasharray="3 4"/>';
+  if (pts.length > 1) svg += '<polyline points="' + poly + '" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>';
+  pts.forEach(function (p) {
+    var isBase = baselineRunId && p.r.runId === baselineRunId;
+    var isLast = p === pts[pts.length - 1];
+    if (isBase) svg += '<circle cx="' + p.x + '" cy="' + p.y + '" r="5" fill="none" stroke="var(--info)" stroke-width="2"/>' +
+      '<text x="' + Math.min(p.x + 7, W - 60) + '" y="' + Math.min(p.y + 14, H - 2) + '" fill="var(--info)" font-size="9" font-family="monospace">baseline</text>';
+    svg += '<circle cx="' + p.x + '" cy="' + p.y + '" r="3" fill="' + (isLast ? 'var(--accent)' : 'var(--text-tertiary)') + '"/>';
+  });
+  if (pts.length) {
+    var last = pts[pts.length - 1];
+    svg += '<text x="' + Math.max(2, Math.min(last.x - 40, W - 70)) + '" y="' + Math.max(10, last.y - 8) +
+      '" fill="var(--text-tertiary)" font-size="9" font-family="monospace">' + Math.round(last.r.health) + ' · ' + esc(last.r.runId) + '</text>';
+  }
+  return svg + '</svg>';
+}
+function compareBadge(cmp) {
+  if (!cmp || !cmp.comparable) return '';
+  if (cmp.netRegressions > 0) return '<span class="caveat bad">▼ 较 baseline 净回归 ' + cmp.netRegressions + ' 例</span>';
+  if (cmp.improvements > 0) return '<span class="caveat good">▲ 较 baseline 改进 ' + cmp.improvements + ' 例</span>';
+  return '<span class="caveat neutral">与 baseline 持平</span>';
+}
+function accRow(label, acc) {
+  var pct = acc === null || acc === undefined ? null : Math.round(acc * 100);
+  return '<div class="dim-row"><span class="dim-name">' + label + '</span>' +
+    '<div class="dim-track"><div class="dim-fill" style="width:' + (pct || 0) + '%;background:' + scoreVar(pct) + '"></div></div>' +
+    '<span class="dim-val">' + (pct === null ? '—' : pct + '%') + '</span></div>';
+}
+function renderSkill(d) {
+  var html = '<button class="btn detail-close" id="detailClose">✕ 关闭</button>' +
+    '<div class="detail-head"><span class="detail-title">' + esc(d.name) + '</span>' + compareBadge(d.compare) + '</div>' +
+    '<div class="meta-line">' + (d.runs || []).length + ' runs' +
+    (d.baselineRunId ? ' · baseline ' + esc(d.baselineRunId) : ' · 无 baseline') + '</div>';
+
+  /* 健康分演化曲线 */
+  var runs = (d.runs || []).slice().sort(function (a, b) { return new Date(a.ts) - new Date(b.ts); });
+  html += '<div class="panel-block"><div class="panel-title">健康分演化</div>';
+  if (!runs.length) {
+    html += '<div class="empty" style="padding:18px">尚无 eval 记录<br><span class="mono">forge skills eval-run 建立第一条 baseline</span></div>';
+  } else {
+    html += sparkSVG(runs, d.baselineRunId);
+  }
+  /* 触发质量双准确率条 */
+  html += '<div class="panel-title" style="margin-top:14px">触发质量</div>';
+  if (d.triggerQuality) {
+    var tq = d.triggerQuality;
+    html += accRow('应触发', tq.triggerAcc) + accRow('不应触发', tq.notTriggerAcc) +
+      '<div style="margin-top:8px"><span class="caveat neutral">来自 eval ' + esc(tq.fromRun) + ' · ' + tq.cases + ' cases</span></div>';
+  } else {
+    html += '<div class="meta-line">无 eval run，准确率不可知</div>';
+  }
+  html += '<div style="margin-top:8px"><span class="caveat neutral">线上误触发率 N/A · 生产路径不采集该信号</span></div></div>';
+
+  /* 决策史流 */
+  html += '<div class="panel-title" style="margin:4px 0 8px">决策史</div>';
+  var ds = (d.decisions || []).slice().sort(function (a, b) { return new Date(b.ts) - new Date(a.ts); });
+  if (!ds.length) {
+    html += '<div class="empty" style="padding:14px">暂无决策记录</div>';
+  } else {
+    html += '<div class="feed">';
+    ds.forEach(function (dec) {
+      var dot = dec.outcome === 'revise' ? 'accent' : 'info';
+      html += '<div class="evt" style="cursor:default"><span class="evt-dot ' + dot + '"></span>' +
+        '<div class="evt-head"><span class="evt-kind kind-decision">' + esc(dec.outcome || 'decision') + '</span>' +
+        '<span class="evt-title">' + esc(dec.diagnosis || dec.id) + '</span>' +
+        '<span class="evt-time">' + esc(fmtDateTime(dec.ts)) + (dec.commit ? ' · ' + esc(dec.commit) : '') + '</span></div>' +
+        (dec.rationale ? '<div class="evt-body mono">' + esc(dec.rationale) + '</div>' : '') + '</div>';
+    });
+    html += '</div>';
+  }
+  $('#detail').innerHTML = html;
+  bindDetailClose();
+}
+
+/* ---------- 触发质量 tab（C3）---------- */
+function renderQuality() {
+  var q = state.quality;
+  if (!q) { $('#view-quality').innerHTML = '<div class="empty">加载中…</div>'; return; }
+  var html = '<div class="section-title">触发质量</div>' +
+    '<div style="margin-bottom:12px"><span class="caveat">⚠ 准确率数字只来自离线 eval；线上没有误触发率采集，不伪装成实时指标</span></div>';
+  if (!q.length) { html += '<div class="empty">尚无 skill 数据</div>'; }
+  html += '<div class="q-cards">';
+  q.forEach(function (d) {
+    html += '<div class="q-card" data-skill="' + esc(d.name) + '"><div class="q-name">' + esc(d.name) + '</div>';
+    if (d.triggerQuality) {
+      html += accRow('应触发', d.triggerQuality.triggerAcc) + accRow('不应触发', d.triggerQuality.notTriggerAcc) +
+        '<div style="margin-top:10px"><span class="caveat neutral">来自 eval ' + esc(d.triggerQuality.fromRun) + ' · ' + d.triggerQuality.cases + ' cases</span></div>';
+    } else {
+      html += '<div class="empty" style="padding:12px">尚无 eval 记录<br><span class="mono">forge skills eval-run 建立第一条 baseline</span></div>';
+    }
+    if (d.compare && d.compare.comparable) html += '<div style="margin-top:8px">' + compareBadge(d.compare) + '</div>';
+    html += '<div style="margin-top:10px"><span class="caveat neutral">线上误触发率 N/A · 生产路径不采集该信号</span></div></div>';
+  });
+  html += '</div>';
+  $('#view-quality').innerHTML = html;
+  bindSkillClicks($('#view-quality'));
+}
+function loadQuality() {
+  if (state.quality) { renderQuality(); return; }
+  renderQuality();
+  api('/api/pulse/skills.json').then(function (ov) {
+    var names = (ov.skills || []).map(function (s) { return s.name; });
+    return Promise.all(names.map(function (n) {
+      return api('/api/pulse/skill.json?name=' + encodeURIComponent(n)).catch(function () { return null; });
+    })).then(function (details) {
+      state.quality = details.filter(Boolean);
+      renderQuality();
+    });
+  }).catch(function () {
+    $('#view-quality').innerHTML = '<div class="empty">触发质量数据加载失败<br><span class="mono">下个周期自动重试</span></div>';
+    state.quality = null;
+  });
+}
+
+/* ---------- 抽屉 / 详情栏 ---------- */
+function openDetailDrawer() { $('#detail').classList.add('open'); }
+function bindDetailClose() {
+  var b = $('#detailClose');
+  if (b) b.addEventListener('click', function () { $('#detail').classList.remove('open'); });
+}
+function renderDetailHint() {
+  $('#detail').innerHTML = '<div class="detail-hint">点击事件流中的任务查看 transcript<br>点击 skill 查看个体页</div>';
+}
+
+/* ---------- 数据加载 / 轮询（D3）---------- */
+function setOffline(on) { $('#offlineBar').hidden = !on; }
+function loadFeed(initial) {
+  var q = '';
+  var params = [];
+  if (!initial && state.lastEventTime) params.push('since=' + encodeURIComponent(state.lastEventTime));
+  if (state.projectFilter) params.push('project=' + encodeURIComponent(state.projectFilter));
+  if (params.length) q = '?' + params.join('&');
+  return api('/api/pulse/feed.json' + q).then(function (data) {
+    var evs = data.events || [];
+    if (evs.length) state.lastEventTime = evs[0].time; // time 降序，首条最新
+    if (initial) {
+      state.events = evs; state.pending = [];
+      renderFeed();
+    } else if (evs.length) {
+      state.pending = evs.concat(state.pending);
+    }
+    updatePill();
+    setOffline(false);
+  }).catch(function () { setOffline(true); });
+}
+function loadStatsProjects() {
+  api('/api/pulse/stats.json').then(function (s) { state.stats = s; renderStats(); setOffline(false); }).catch(function () { setOffline(true); });
+  api('/api/pulse/projects.json').then(function (p) { state.projects = p || []; renderProjects(); }).catch(function () { setOffline(true); });
+}
+function loadSkills() {
+  return api('/api/pulse/skills.json').then(function (d) { state.skills = d; renderSkills(); }).catch(function () {
+    $('#view-skills').innerHTML = '<div class="empty">skills 数据加载失败</div>';
+  });
+}
+function poll() {
+  loadFeed(false);
+  loadStatsProjects();
+}
+
+/* ---------- tab 切换 ---------- */
+function selectTab(tab) {
+  state.tab = tab;
+  Array.prototype.forEach.call(document.querySelectorAll('#tabs .tab'), function (el) {
+    el.classList.toggle('active', el.getAttribute('data-tab') === tab);
+  });
+  $('#view-feed').hidden = tab !== 'feed';
+  $('#view-skills').hidden = tab !== 'skills';
+  $('#view-quality').hidden = tab !== 'quality';
+  if (tab === 'skills' && !state.skills) loadSkills();
+  if (tab === 'quality') loadQuality();
+}
+
+/* ---------- 启动 ---------- */
+function init() {
+  updateThemeBtn();
+  $('#themeToggle').addEventListener('click', toggleTheme);
+  $('#tabs').addEventListener('click', function (e) {
+    var b = e.target.closest('.tab');
+    if (b) selectTab(b.getAttribute('data-tab'));
+  });
+  $('#newPill').addEventListener('click', function () {
+    state.events = state.pending.concat(state.events);
+    state.pending = [];
+    renderFeed(); updatePill();
+    $('#main').scrollTop = 0;
+  });
+  var strip = $('#statStrip'), stripBtn = $('#stripToggle');
+  var collapsed = false;
+  try { collapsed = localStorage.getItem('forge-pulse-strip') === 'collapsed'; } catch (e) {}
+  function applyStrip() {
+    strip.classList.toggle('collapsed', collapsed);
+    stripBtn.textContent = collapsed ? '状态条 ▸' : '状态条 ▾';
+  }
+  stripBtn.addEventListener('click', function () {
+    collapsed = !collapsed;
+    try { localStorage.setItem('forge-pulse-strip', collapsed ? 'collapsed' : 'open'); } catch (e) {}
+    applyStrip();
+  });
+  applyStrip();
+  renderDetailHint();
+  renderStats(); renderProjects(); renderFeed();
+  loadFeed(true);
+  loadStatsProjects();
+  setInterval(poll, POLL_MS);
+}
+init();
+</script>
+</body>
+</html>
