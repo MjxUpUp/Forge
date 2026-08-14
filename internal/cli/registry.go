@@ -9,11 +9,11 @@ import (
 
 // forge registry manages the global project registry ~/.forge/projects.json—records
 // which projects the user has run forge in (forge init self-registers), consumed by
-// forge dashboard --global to aggregate the global dashboard.
+// forge dashboard to aggregate the global Pulse panel.
 //
 // The registry accumulates dead paths: test-history residue plus entries that never
 // faded after projects were moved or deleted. registry.List() prunes lazily on read,
-// but only when triggered by forge dashboard --global (that command starts a web
+// but only when triggered by forge dashboard (that command starts a web
 // server and blocks, unsuitable for pure cleanup). This command group gives users
 // an active cleanup entry that does not start a web server (the root-cause gap for
 // dogfood registry historical-residue cleanup).
@@ -23,10 +23,10 @@ import (
 // breaking compilation (see memory windows-input-quote-corruption); raw strings dodge it.
 //
 // forge registry 管理全局项目注册表 ~/.forge/projects.json——记录用户在哪些项目跑过 forge
-//（forge init 自登记），供 forge dashboard --global 聚合全局看板。
+//（forge init 自登记），供 forge dashboard 聚合全局 Pulse 面板。
 //
 // 注册表会累积死路径：测试历史残留 + 项目移走/删除后未淡出的条目。registry.List() 读时
-// 惰性精简，但只在 forge dashboard --global 触发（该命令启 web server 阻塞，不适合纯清理）。
+// 惰性精简，但只在 forge dashboard 触发（该命令启 web server 阻塞，不适合纯清理）。
 // 本命令组给用户一个不启动 web 的主动清理入口（dogfood registry 历史残留清理的治本缺口）。
 //
 // 字符串全用反引号 raw string：Windows 下 Edit/Write 写 Go 源码时 ASCII 双引号偶发被转成
@@ -42,8 +42,8 @@ var registryCmd = &cobra.Command{
 	Short: `管理全局项目注册表（~/.forge/projects.json）`,
 	Long: `forge registry 管理全局项目注册表 ~/.forge/projects.json。
 
-注册表记录用户在哪些项目跑过 forge（forge init 自登记），供 forge dashboard --global
-聚合全局看板。它会累积死路径（项目移走/删除/测试残留），子命令提供清理入口。
+注册表记录用户在哪些项目跑过 forge（forge init 自登记），供 forge dashboard
+聚合全局 Pulse 面板。它会累积死路径（项目移走/删除/测试残留），子命令提供清理入口。
 
 子命令：
   prune  精简注册表——移除 .forge/ 不存在的死路径与重复条目，原子写回`,

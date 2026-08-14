@@ -40,11 +40,11 @@ const (
 const defaultFeedLimit = 200
 
 // FeedEvent is one merged stream event. Field names are the frontend contract.
-// SessionID is deliberately absent — same defense-in-depth as taskPublic (localhost +
-// Host check, but never serialize session identifiers).
+// SessionID is deliberately absent — defense-in-depth: localhost + Host check, but never
+// serialize session identifiers.
 //
-// FeedEvent 是归并流的一条事件。字段名即前端契约。刻意无 SessionID——与 taskPublic
-// 同款纵深防御（localhost + Host 校验，但绝不序列化 session 标识）。
+// FeedEvent 是归并流的一条事件。字段名即前端契约。刻意无 SessionID——纵深防御：
+// localhost + Host 校验，但绝不序列化 session 标识。
 type FeedEvent struct {
 	Time     time.Time `json:"time"`
 	Kind     string    `json:"kind"`    // "task-start" | "gate" | "skill-trigger" | "conclusion"
@@ -84,13 +84,13 @@ type pulseRoot struct {
 }
 
 // resolvePulseRoots expands Options into the project scope: Roots (global) when non-empty,
-// otherwise the single Root. Empty roots are dropped. The registry→Roots resolution and the
-// empty-registry fallback live in the cli layer (cli/dashboard.go), same as the existing
-// dashboard — feed just consumes Options like Aggregate/AggregateGlobal do.
+// otherwise the single Root (test/library fallback). Empty roots are dropped. The
+// registry→Roots resolution and the empty-registry fallback live in the cli layer
+// (cli/dashboard.go) — feed just consumes Options.
 //
-// resolvePulseRoots 把 Options 展开成项目范围：Roots 非空走全局，否则单 Root。空 root
-// 丢弃。registry→Roots 的解析与空 registry 退化在 cli 层（cli/dashboard.go），与现有
-// 看板一致——feed 像 Aggregate/AggregateGlobal 一样只消费 Options。
+// resolvePulseRoots 把 Options 展开成项目范围：Roots 非空走全局，否则单 Root（测试/
+// 库调用兜底）。空 root 丢弃。registry→Roots 的解析与空 registry 退化在 cli 层
+// （cli/dashboard.go）——feed 只消费 Options。
 func resolvePulseRoots(opts Options) []pulseRoot {
 	roots := opts.Roots
 	if len(roots) == 0 && opts.Root != "" {
@@ -119,15 +119,14 @@ func (pr pulseRoot) matches(filter string) bool {
 
 // AggregateFeed merges all event sources across the projects in scope into one
 // time-descending stream, then applies the query filters (project / taskRef / since /
-// limit). Per-project and per-source read failures are skipped non-fatally (mirroring
-// AggregateGlobal: one broken project must not blank the whole panel); ListTaskStates
-// errors propagate (mirroring AggregateContinuity → 500). Empty data returns an empty
-// non-nil slice so JSON serializes [] rather than null.
+// limit). Per-source read failures (checklog / act) are skipped non-fatally — one broken
+// source must not blank the whole panel; ListTaskStates errors propagate (→ HTTP 500).
+// Empty data returns an empty non-nil slice so JSON serializes [] rather than null.
 //
 // AggregateFeed 把范围内各项目的全部事件源归并成一条时间降序流，再应用查询过滤
-// （project / taskRef / since / limit）。单项目/单源读失败跳过不致命（镜像
-// AggregateGlobal：一个坏项目不应让整面板空白）；ListTaskStates 错误上抛（镜像
-// AggregateContinuity → 500）。空数据返回非 nil 空切片，JSON 序列化为 [] 而非 null。
+// （project / taskRef / since / limit）。单源读失败（checklog / act）跳过不致命——
+// 一个坏源不应让整面板空白；ListTaskStates 错误上抛（→ HTTP 500）。空数据返回
+// 非 nil 空切片，JSON 序列化为 [] 而非 null。
 func AggregateFeed(opts Options, now time.Time, q FeedQuery) ([]FeedEvent, error) {
 	events := []FeedEvent{}
 	for _, pr := range resolvePulseRoots(opts) {
@@ -178,9 +177,9 @@ func feedForProject(pr pulseRoot, now time.Time) ([]FeedEvent, error) {
 		events = append(events, gateEvents(pr, s)...)
 	}
 
-	// checklog / act failures are non-fatal (same skip semantics as AggregateGlobal).
+	// checklog / act failures are non-fatal — one broken source must not blank the panel.
 	//
-	// checklog / act 失败不致命（与 AggregateGlobal 同款跳过语义）。
+	// checklog / act 失败不致命——一个坏源不应让整面板空白。
 	if entries, err := checklog.LoadAllAll(pr.root); err == nil {
 		for _, e := range entries {
 			if e.Check != checklog.CheckSkillTrigger {
