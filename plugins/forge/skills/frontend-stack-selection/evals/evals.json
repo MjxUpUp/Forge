@@ -1,0 +1,14 @@
+{
+  "trigger_cases": [
+    { "query": "新项目前端用什么框架比较好", "should_trigger": true },
+    { "query": "Tauri 和 Electron 选哪个", "should_trigger": true },
+    { "query": "组件库选 shadcn 还是 Ant Design", "should_trigger": true },
+    { "query": "这个项目要不要上 Tailwind", "should_trigger": true },
+    { "query": "Biome 和 ESLint 怎么选", "should_trigger": true },
+    { "query": "帮我写一个 React 表格组件", "should_trigger": false },
+    { "query": "这个库的 API 怎么调用", "should_trigger": false },
+    { "query": "帮我论证下这个技术方案可行不可行", "should_trigger": false },
+    { "query": "提交前帮我审查下组件代码", "should_trigger": false },
+    { "query": "把这个页面做得好看一点", "should_trigger": false }
+  ]
+}

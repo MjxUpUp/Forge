@@ -2,17 +2,23 @@ package agentbridge
 
 import (
 	"encoding/json"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/MjxUpUp/Forge/internal/hooks"
+	"github.com/MjxUpUp/Forge/skills"
 )
 
 // expectedPluginFiles is the set of relative paths that GeneratePluginPack(DefaultPluginPack) should generate (relative to
 // RepoDir). Forgetting to list a new output file here would let TestPluginPack_WritesAllFiles miss it — intentionally hardcoded to force the generator
 // and tests to stay in sync. Paths contain `forge` because DefaultPluginPack.PluginName=`forge`.
+// The skills/ output class is NOT listed here (its count tracks the canonical library and
+// cannot be hardcoded) — TestPluginPack_SkillsShipped / _SkillsConvergeOnRegen /
+// _CommittedSkillsMatchGenerator guard the same sync contract via the dynamic embeddedSkillDirs set.
 //
 // expectedPluginFiles 是 GeneratePluginPack(DefaultPluginPack) 应生成的相对路径集（相对
 // RepoDir）。加新输出文件忘加这里，TestPluginPack_WritesAllFiles 会漏检——故意列死，逼生成器
@@ -219,17 +225,33 @@ func TestPluginPack_Idempotent(t *testing.T) {
 	}
 }
 
-// TestPluginPack_NoCurlyQuotes: regression guard for [[windows-input-quote-corruption]] — all generated files
-// must never contain curly quotes U+201C/U+201D. Target strings are built from runes (bypassing whether the test source literal is corrupted).
+// TestPluginPack_NoCurlyQuotes: regression guard for [[windows-input-quote-corruption]] — all
+// GENERATOR-RENDERED files must never contain curly quotes U+201C/U+201D (the corruption
+// signature of Windows input eating Go source literals). The skills/ subtree is EXEMPT: it is
+// a byte-verbatim copy of the authored canonical library, where curly quotes are legitimate
+// Chinese prose punctuation (the corruption this guard catches is in files the generator
+// composes from Go string literals, not in authored content copied verbatim).
+// Target strings are built from runes (bypassing whether the test source literal is corrupted).
 //
-// TestPluginPack_NoCurlyQuotes：回归守卫 [[windows-input-quote-corruption]]——生成的所有文件
-// 绝不能含弯引号 U+201C/U+201D。用 rune 构造目标串（绕过测试源码字面量是否被腐蚀）。
+// TestPluginPack_NoCurlyQuotes：回归守卫 [[windows-input-quote-corruption]]——所有**生成器渲染**
+// 的文件绝不能含弯引号 U+201C/U+201D（Windows 输入吃掉 Go 源码字面量的腐蚀签名）。skills/
+// 子树豁免：它是 authored canonical 库的逐字节复制，弯引号在那里是合法的中文正文标点（本守卫
+// 抓的是生成器从 Go 字符串字面量拼出的文件里的腐蚀，不是逐字复制的 authored 内容）。用 rune
+// 构造目标串（绕过测试源码字面量是否被腐蚀）。
 func TestPluginPack_NoCurlyQuotes(t *testing.T) {
 	dir := generatePack(t)
 	curly := string([]rune{0x201c, 0x201d})
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return err
+		}
+		// Authored skill content ships verbatim — curly quotes there are legitimate Chinese
+		// punctuation, not corruption. Only generator-composed files are guarded.
+		//
+		// authored skill 内容逐字分发——其中的弯引号是合法中文标点，非腐蚀。只守卫生成器
+		// 组合产出的文件。
+		if strings.Contains(filepath.ToSlash(path), "plugins/forge/skills/") {
+			return nil
 		}
 		data, e := os.ReadFile(path)
 		if e != nil {
@@ -497,5 +519,228 @@ func TestPluginPack_ReasonixLaunchersCommitted(t *testing.T) {
 	}
 	if !strings.Contains(string(unixBody), "self_dir") {
 		t.Errorf("forge launcher must recursion-guard its own dir (self_dir), got:\n%s", unixBody)
+	}
+}
+
+// embeddedSkillDirs returns the skill dir names in the embedded canonical library (top-level
+// dirs carrying SKILL.md) — the expected set the plugin pack must ship. Shared by the skills
+// tests below so "what is a skill" has one definition.
+//
+// embeddedSkillDirs 返回内嵌 canonical 库里的 skill 目录名（带 SKILL.md 的顶层目录）——
+// plugin pack 必须分发的期望集。下方 skills 测试共用，让"什么算一个 skill"只有一种定义。
+func embeddedSkillDirs(t *testing.T) []string {
+	t.Helper()
+	entries, err := fs.ReadDir(skills.FS, ".")
+	if err != nil {
+		t.Fatalf("read embedded skills: %v", err)
+	}
+	var names []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if _, serr := fs.Stat(skills.FS, path.Join(e.Name(), "SKILL.md")); serr == nil {
+			names = append(names, e.Name())
+		}
+	}
+	return names
+}
+
+// TestPluginPack_SkillsShipped: the pack must ship the full embedded skill library — one dir
+// per skill under plugins/<name>/skills/, each with SKILL.md, content byte-equal to the embed.
+// Regression source: GeneratePluginPack shipped hooks-only for the plugin's whole life, so
+// plugin users saw zero skills and still needed the manual `forge skills install --global`.
+//
+// TestPluginPack_SkillsShipped：pack 必须分发完整内嵌 skill 库——plugins/<name>/skills/ 下
+// 每 skill 一目录、各有 SKILL.md、内容与 embed 字节一致。回归源：GeneratePluginPack 有史以来
+// 只带 hooks，plugin 用户看不到任何 skill，仍需手动 `forge skills install --global`。
+func TestPluginPack_SkillsShipped(t *testing.T) {
+	dir := generatePack(t)
+	want := embeddedSkillDirs(t)
+	if len(want) == 0 {
+		t.Fatal("embedded canonical library resolved 0 skills — test precondition broken")
+	}
+	skillsDir := filepath.Join(dir, "plugins", "forge", "skills")
+	entries, err := os.ReadDir(skillsDir)
+	if err != nil {
+		t.Fatalf("read plugin skills dir: %v", err)
+	}
+	got := map[string]bool{}
+	for _, e := range entries {
+		if !e.IsDir() {
+			t.Errorf("unexpected non-dir entry in plugin skills/: %s", e.Name())
+			continue
+		}
+		if _, serr := os.Stat(filepath.Join(skillsDir, e.Name(), "SKILL.md")); serr != nil {
+			t.Errorf("skill dir %s has no SKILL.md (not loadable)", e.Name())
+		}
+		got[e.Name()] = true
+	}
+	for _, name := range want {
+		if !got[name] {
+			t.Errorf("plugin skills/ missing embedded skill %q (%d of %d shipped)", name, len(got), len(want))
+		}
+	}
+	for name := range got {
+		found := false
+		for _, w := range want {
+			if w == name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("plugin skills/ has extra dir %q not in embedded library (stale entry)", name)
+		}
+	}
+	// Spot-check content byte-equality: a shipped skill must be the embed verbatim (single
+	// source of truth), not a re-rendered variant. Checks every file of the first skill that
+	// carries extra assets beyond SKILL.md (exercises the recursive WalkDir copy).
+	//
+	// 内容字节相等抽查：分发的 skill 必须与 embed 逐字一致（单一真相源），不是重渲染变体。
+	// 检查第一个带额外资产（超出 SKILL.md）的 skill 的全部文件（覆盖递归 WalkDir 复制）。
+	var probe string
+	for _, name := range want {
+		sub, _ := fs.ReadDir(skills.FS, name)
+		if len(sub) > 1 {
+			probe = name
+			break
+		}
+	}
+	if probe == "" {
+		probe = want[0]
+	}
+	werr := fs.WalkDir(skills.FS, probe, func(p string, d fs.DirEntry, werr error) error {
+		if werr != nil || d.IsDir() || filepath.Ext(p) == ".go" {
+			return werr
+		}
+		emb, rerr := skills.FS.ReadFile(p)
+		if rerr != nil {
+			return rerr
+		}
+		disk, rerr := os.ReadFile(filepath.Join(skillsDir, filepath.FromSlash(p)))
+		if rerr != nil {
+			t.Errorf("skill file %s not shipped: %v", p, rerr)
+			return nil
+		}
+		if string(emb) != string(disk) {
+			t.Errorf("skill file %s drifted from embed (single-source-of-truth violation)", p)
+		}
+		return nil
+	})
+	if werr != nil {
+		t.Fatalf("walk probe skill %s: %v", probe, werr)
+	}
+}
+
+// TestPluginPack_SkillsConvergeOnRegen: regeneration must converge, not accumulate — a skill
+// deleted from the canonical library (simulated by planting a stale dir) must disappear from
+// the pack on the next run. Without the RemoveAll-first design, stale dirs linger in the
+// committed pack forever.
+//
+// TestPluginPack_SkillsConvergeOnRegen：regen 必须收敛而非只增不减——canonical 库里删掉的
+// skill（用植入陈旧目录模拟）须在下一次生成时从 pack 消失。若无先 RemoveAll 的设计，
+// 陈旧目录会永远残留在 committed pack 里。
+func TestPluginPack_SkillsConvergeOnRegen(t *testing.T) {
+	dir := t.TempDir()
+	spec := DefaultPluginPack(dir)
+	if err := GeneratePluginPack(spec); err != nil {
+		t.Fatalf("GeneratePluginPack: %v", err)
+	}
+	stale := filepath.Join(dir, "plugins", "forge", "skills", "zz-stale-skill")
+	if err := os.MkdirAll(stale, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stale, "SKILL.md"), []byte("stale"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := GeneratePluginPack(spec); err != nil {
+		t.Fatalf("regen: %v", err)
+	}
+	if _, err := os.Stat(stale); err == nil {
+		t.Error("stale skill dir survived regeneration (pack must converge, not accumulate)")
+	}
+	// The real skills must all still be there after the stale wipe.
+	//
+	// 清掉陈旧条目后，真实 skills 必须全部仍在。
+	for _, name := range embeddedSkillDirs(t) {
+		if _, serr := os.Stat(filepath.Join(dir, "plugins", "forge", "skills", name, "SKILL.md")); serr != nil {
+			t.Errorf("skill %s lost after regen (RemoveAll wiped more than the stale entry): %v", name, serr)
+		}
+	}
+}
+
+// TestPluginPack_CommittedSkillsMatchGenerator: the committed plugins/forge/skills/ tree must
+// match the embedded library (file set + bytes). Mirrors TestPluginPack_CommittedManifestMatchesGenerator:
+// the committed pack is the marketplace source users install from, so forgetting to re-run
+// `forge plugin pack` after editing a skill ships stale skills to every plugin install.
+//
+// TestPluginPack_CommittedSkillsMatchGenerator：committed 的 plugins/forge/skills/ 树必须与
+// 内嵌库一致（文件集 + 字节）。镜像 TestPluginPack_CommittedManifestMatchesGenerator：committed
+// pack 是用户安装的 marketplace 源，改了 skill 忘跑 `forge plugin pack` 会给每次 plugin 安装
+// 发陈旧 skills。
+func TestPluginPack_CommittedSkillsMatchGenerator(t *testing.T) {
+	committed := filepath.Join("..", "..", "plugins", "forge", "skills")
+	if _, err := os.Stat(committed); err != nil {
+		// Absence is a hard FAILURE when the repo carries the plugin layout at all (committed
+		// plugin.json present): the skills tree is a required committed distribution asset —
+		// forgotten at `git add` time would otherwise skip green on fresh checkouts (the exact
+		// false-green pattern TestPluginPack_ReasonixLaunchersCommitted's comment rejects).
+		// Only skip when the whole plugins/forge layout is absent (non-Forge repo layout).
+		//
+		// 仓库带着 plugin 布局（committed plugin.json 在）时缺失即硬失败：skills 树是必需的
+		// committed 分发资产——漏 git add 会在 fresh checkout 上静默 skip 变绿（正是
+		// TestPluginPack_ReasonixLaunchersCommitted 注释否决的假绿模式）。仅当整个
+		// plugins/forge 布局缺失（非 Forge 仓库布局）才 skip。
+		if _, perr := os.Stat(filepath.Join("..", "..", "plugins", "forge", ".claude-plugin", "plugin.json")); perr == nil {
+			t.Fatalf("committed plugin layout exists but plugins/forge/skills/ is missing — the skills tree is a required distribution asset (run `forge plugin pack` and git add it): %v", err)
+		}
+		t.Skipf("committed plugin skills not found at %s (non-forge repo layout): %v", committed, err)
+	}
+	// 1. Every embedded skill file must be committed verbatim.
+	//
+	// 1. 每个内嵌 skill 文件必须逐字 committed。
+	for _, name := range embeddedSkillDirs(t) {
+		werr := fs.WalkDir(skills.FS, name, func(p string, d fs.DirEntry, werr error) error {
+			if werr != nil || d.IsDir() || filepath.Ext(p) == ".go" {
+				return werr
+			}
+			emb, rerr := skills.FS.ReadFile(p)
+			if rerr != nil {
+				return rerr
+			}
+			disk, rerr := os.ReadFile(filepath.Join(committed, filepath.FromSlash(p)))
+			if rerr != nil {
+				if os.IsNotExist(rerr) {
+					t.Errorf("committed skills missing file %s (run `forge plugin pack` and commit)", p)
+				} else {
+					t.Errorf("read committed %s: %v", p, rerr)
+				}
+				return nil
+			}
+			if string(emb) != string(disk) {
+				t.Errorf("committed skill file %s drifted from embed (run `forge plugin pack` and commit)", p)
+			}
+			return nil
+		})
+		if werr != nil {
+			t.Fatalf("walk %s: %v", name, werr)
+		}
+	}
+	// 2. No stale committed dirs beyond the embedded set (deleted skills must be re-packed out).
+	//
+	// 2. committed 不得有内嵌集之外的陈旧目录（删掉的 skill 须随 re-pack 移出）。
+	entries, err := os.ReadDir(committed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{}
+	for _, name := range embeddedSkillDirs(t) {
+		want[name] = true
+	}
+	for _, e := range entries {
+		if e.IsDir() && !want[e.Name()] {
+			t.Errorf("committed skills has stale dir %q (deleted from canonical library; run `forge plugin pack` and commit)", e.Name())
+		}
 	}
 }

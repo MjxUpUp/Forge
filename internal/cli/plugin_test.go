@@ -360,3 +360,51 @@ func TestPluginPackCmd_ReasonixHelpAndGeneration(t *testing.T) {
 		t.Errorf("runPluginPack must write plugins/forge/reasonix-plugin.json (5th-host wiring): %v", err)
 	}
 }
+
+// TestPluginPackCmd_SkillsHelpAndGeneration: the `forge plugin pack` help must advertise the
+// skills distribution AND running runPluginPack must actually write the skills tree — guards
+// the cli→generator wiring for writePluginSkills (the pack shipped hooks-only for its whole
+// life; if this wiring regresses, plugin users see zero skills again).
+//
+// TestPluginPackCmd_SkillsHelpAndGeneration：`forge plugin pack` 帮助须宣传 skills 分发，
+// 且跑 runPluginPack 必须真的写出 skills 树——守护 writePluginSkills 的 cli→generator 接线
+// （pack 有史以来只带 hooks；此接线回退，plugin 用户再次看不到任何 skill）。
+func TestPluginPackCmd_SkillsHelpAndGeneration(t *testing.T) {
+	// (1) Help reflects skills distribution — guards help-vs-generator drift.
+	//
+	// (1) 帮助反映 skills 分发——守护帮助与生成器不漂移。
+	if !strings.Contains(pluginPackCmd.Long, "skills/<skill>/") {
+		t.Errorf("plugin pack Long must mention the skills/<skill>/ distribution the generator emits, got %q", pluginPackCmd.Long)
+	}
+
+	// (2) Running the command actually writes the skills tree (cli→generator wiring): at
+	// least one skill dir with SKILL.md under plugins/<name>/skills/.
+	//
+	// (2) 跑命令真的写出 skills 树（cli→generator 接线）：plugins/<name>/skills/ 下至少
+	// 一个带 SKILL.md 的 skill 目录。
+	dir := t.TempDir()
+	cmd := &cobra.Command{RunE: runPluginPack}
+	cmd.Flags().String("out", "", "")
+	if err := cmd.Flags().Set("out", dir); err != nil {
+		t.Fatalf("set out: %v", err)
+	}
+	if err := runPluginPack(cmd, nil); err != nil {
+		t.Fatalf("runPluginPack: %v", err)
+	}
+	skillsDir := filepath.Join(dir, "plugins", "forge", "skills")
+	entries, err := os.ReadDir(skillsDir)
+	if err != nil {
+		t.Fatalf("runPluginPack must write plugins/forge/skills/ (skills distribution wiring): %v", err)
+	}
+	shipped := 0
+	for _, e := range entries {
+		if e.IsDir() {
+			if _, serr := os.Stat(filepath.Join(skillsDir, e.Name(), "SKILL.md")); serr == nil {
+				shipped++
+			}
+		}
+	}
+	if shipped == 0 {
+		t.Errorf("plugins/forge/skills/ has 0 dirs with SKILL.md — skills distribution regressed to hooks-only")
+	}
+}
