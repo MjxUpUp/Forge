@@ -1,0 +1,13 @@
+{
+  "trigger_cases": [
+    { "query": "继续上次的工作", "should_trigger": true },
+    { "query": "上次做到哪了帮我恢复下", "should_trigger": true },
+    { "query": "接着昨天的任务做", "should_trigger": true },
+    { "query": "恢复下之前的项目上下文", "should_trigger": true },
+    { "query": "上个会话中断的地方继续", "should_trigger": true },
+    { "query": "把 Claude 的分析结果同步给 Cursor", "should_trigger": false },
+    { "query": "帮我从零初始化一个新项目", "should_trigger": false },
+    { "query": "回顾下这次会话沉淀下经验", "should_trigger": false },
+    { "query": "排查下 skill 路由为啥不生效", "should_trigger": false }
+  ]
+}

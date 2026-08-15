@@ -35,6 +35,7 @@ var pluginPackCmd = &cobra.Command{
   .cursor-plugin/marketplace.json   cursor
   plugins/<name>/
     .claude-plugin/plugin.json      claude manifest（hooks = ForgeHookSpec，与 forge init 字节一致）
+    skills/<skill>/...              内嵌 canonical skill 库（每 skill 一目录，claude plugin 按约定加载）
     reasonix-plugin.json            reasonix native manifest（flat hooks；Claude 兼容不解析 hooks，故 reasonix 需 native manifest）
     README.md                       每 host 安装命令
 

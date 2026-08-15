@@ -15,6 +15,12 @@ package agentbridge
 //	  .claude-plugin/plugin.json      claude plugin manifest: hooks field = ForgeHookSpec,
 //	                                  so `claude plugin install <name>` directly gets the same gate
 //	                                  wiring byte-identical to forge init (single source of truth)
+//	  skills/<skill>/...              embedded canonical skill library, one dir per skill — the
+//	                                  claude plugin skills layout (plugin-root skills/ dir,
+//	                                  convention-based, no manifest field needed), so plugin
+//	                                  install ships the full skill library alongside the hooks;
+//	                                  shipped from the same go:embed other paths use (single
+//	                                  source; guards against a skills-less plugin distribution)
 //	  reasonix-plugin.json            reasonix NATIVE plugin manifest (apiVersion reasonix.io/plugin/v1):
 //	                                  hooks field = buildReasonixHooks flat {match,command}, so
 //	                                  `reasonix plugin install <name>` gets identical gate wiring.
@@ -53,6 +59,11 @@ package agentbridge
 //	  .claude-plugin/plugin.json      claude plugin manifest：hooks 字段 = ForgeHookSpec，
 //	                                  让 `claude plugin install <name>` 直接获得与 forge init
 //	                                  字节相同的 gate 接线（单一真相源）
+//	  skills/<skill>/...              内嵌 canonical skill 库，每 skill 一个目录——claude
+//	                                  plugin 的 skills 布局（plugin 根下 skills/ 目录，按约定
+//	                                  加载，无需 manifest 字段），plugin 安装即随 hooks 带走
+//	                                  整个 skill 库；来源与其他路径共用的同一 go:embed（单一
+//	                                  真相源；防止分发出一个没有 skills 的 plugin）
 //	  reasonix-plugin.json            reasonix NATIVE plugin manifest（apiVersion reasonix.io/plugin/v1）：
 //	                                  hooks 字段 = buildReasonixHooks 扁平 {match,command}，让
 //	                                  `reasonix plugin install <name>` 获得相同的 gate 接线。
@@ -78,11 +89,15 @@ package agentbridge
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 
 	"github.com/MjxUpUp/Forge/internal/hooks"
+	"github.com/MjxUpUp/Forge/skills"
 )
 
 // DefaultPluginDescription is the single source of truth for the plugin/marketplace
@@ -176,6 +191,9 @@ func GeneratePluginPack(spec PluginPackSpec) error {
 		return err
 	}
 	if err := writeReasonixPluginManifest(spec, pluginDir); err != nil {
+		return err
+	}
+	if err := writePluginSkills(pluginDir); err != nil {
 		return err
 	}
 	if err := writePluginReadme(spec, pluginDir); err != nil {
@@ -286,6 +304,96 @@ func writeReasonixPluginManifest(spec PluginPackSpec, pluginDir string) error {
 		"hooks":       buildReasonixHooks()["hooks"],
 	}
 	return writeJSONIndent(filepath.Join(pluginDir, "reasonix-plugin.json"), manifest)
+}
+
+// writePluginSkills ships the embedded canonical skill library into plugins/<name>/skills/
+// — the claude plugin skills layout (plugin-root skills/ dir, one dir per skill, loaded by
+// convention with no manifest field). Without this, `claude plugin install` wires the gates
+// but ships zero skills: users would still need the manual `forge skills install --global`
+// step (the exact gap reported by plugin users). Source is the same go:embed (skills.FS)
+// other distribution paths use — single source of truth.
+//
+// Convergence: the skills tree is RemoveAll'd first so skills deleted from the canonical
+// library do not linger as stale entries in the committed pack (regen must converge, not
+// just accumulate). Root-level files (CONVENTIONS.md, *.go) are library metadata, not
+// skills; orphan dirs without SKILL.md are skipped (they are not loadable skills).
+//
+// writePluginSkills 把内嵌 canonical skill 库展开到 plugins/<name>/skills/——claude plugin
+// 的 skills 布局（plugin 根下 skills/ 目录，每 skill 一个目录，按约定加载，无需 manifest
+// 字段）。缺了这一步，`claude plugin install` 只接线 gate、不带任何 skill：用户仍需手动
+// `forge skills install --global`（正是 plugin 用户反馈的缺口）。来源与其他分发路径共用
+// 同一 go:embed（skills.FS）——单一真相源。
+//
+// 收敛性：先 RemoveAll 整个 skills 树，canonical 库里删掉的 skill 不会以陈旧条目残留
+// 在 committed pack 里（regen 必须收敛，而非只增不减）。根级文件（CONVENTIONS.md、*.go）
+// 是库元数据，不是 skill；无 SKILL.md 的孤儿目录跳过（非可加载 skill）。
+func writePluginSkills(pluginDir string) error {
+	skillsDir := filepath.Join(pluginDir, "skills")
+	if err := os.RemoveAll(skillsDir); err != nil {
+		return fmt.Errorf("remove stale plugin skills: %w", err)
+	}
+	entries, err := fs.ReadDir(skills.FS, ".")
+	if err != nil {
+		return fmt.Errorf("read embedded skill library: %w", err)
+	}
+	shipped := 0
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue // root files (CONVENTIONS.md, *.go) are library metadata, not skills
+		}
+		if _, serr := fs.Stat(skills.FS, path.Join(e.Name(), "SKILL.md")); serr != nil {
+			// Only a genuine NotExist means "orphan dir without SKILL.md — not a loadable
+			// skill"; any other Stat error must propagate, not silently drop a skill.
+			//
+			// 只有真正的 NotExist 才表示"无 SKILL.md 的孤儿目录——非可加载 skill"；
+			// 其他 Stat 错误必须上报，不能静默少发一个 skill。
+			if !errors.Is(serr, fs.ErrNotExist) {
+				return fmt.Errorf("stat skill %s: %w", e.Name(), serr)
+			}
+			continue
+		}
+		werr := fs.WalkDir(skills.FS, e.Name(), func(p string, d fs.DirEntry, werr error) error {
+			if werr != nil {
+				return werr
+			}
+			target := filepath.Join(skillsDir, filepath.FromSlash(p))
+			if d.IsDir() {
+				return os.MkdirAll(target, 0755)
+			}
+			// Skip .go: embed only excludes directive-carrying .go files; directive-less test
+			// artifacts ride the embed (same skip as skills.ExtractTo).
+			//
+			// 跳过 .go：embed 只排除含 build 指令的 .go；无指令的测试产物会随 embed 混入
+			//（与 skills.ExtractTo 同款跳过）。
+			if filepath.Ext(p) == ".go" {
+				return nil
+			}
+			data, rerr := skills.FS.ReadFile(p)
+			if rerr != nil {
+				return rerr
+			}
+			return os.WriteFile(target, data, 0644)
+		})
+		if werr != nil {
+			// The RemoveAll above already cleared the committed tree — a mid-walk failure
+			// leaves it partial. Name the recovery explicitly so the operator knows to
+			// re-run until success rather than shipping a stripped distribution.
+			//
+			// 上面的 RemoveAll 已清掉 committed 树——walk 中途失败会留下残缺。显式给出
+			// 恢复动作，让操作者知道须重跑到成功，而不是分发一个被削过的包。
+			return fmt.Errorf("write skill %s: %w (committed skills tree at %s is now PARTIAL — re-run `forge plugin pack` until it succeeds before committing)", e.Name(), werr, skillsDir)
+		}
+		shipped++
+	}
+	// Empty library = distribution regression (embed FS missing/exhausted) — refuse to ship
+	// a skills-less plugin silently; zero count also breaks the claude plugin skills contract.
+	//
+	// 空库 = 分发回退（embed FS 缺失/被清空）——拒绝静默分发无 skills 的 plugin；
+	// 零数量同样破坏 claude plugin 的 skills 契约。
+	if shipped == 0 {
+		return fmt.Errorf("plugin pack: embedded skill library resolved 0 skills — refusing to ship a skills-less plugin (distribution regression)")
+	}
+	return nil
 }
 
 func writePluginReadme(spec PluginPackSpec, pluginDir string) error {
