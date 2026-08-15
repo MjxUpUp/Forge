@@ -389,3 +389,28 @@ func TestBuildEvidenceChain_SkillTriggerExcluded(t *testing.T) {
 		t.Fatalf(`skill-trigger 条目仍应保留在 Entries 供 trace: got %d, want 3`, len(ec.Entries))
 	}
 }
+
+// TestBuildEvidenceChain_KimiPluginStaleExcluded pins that CheckKimiPluginStale is excluded
+// from evidence strength (code-review F1, 2026-08-15): the entry records that the kimi plugin
+// install lags the binary — a distribution-health observation, not verification evidence.
+// It carries TaskRef (recorded while a task is active), so without the exclusion
+// LoadForTask+BuildEvidenceChain would bucket it as deterministic and inflate Strength off
+// a once-daily distribution warning.
+//
+// TestBuildEvidenceChain_KimiPluginStaleExcluded 钉住 CheckKimiPluginStale 不计入证据强度
+// （code-review F1，2026-08-15）：该条目记录 kimi plugin 安装落后于二进制——分发健康度
+// 观测，非验证证据。它带 TaskRef（任务活跃期间记录），不排除的话 LoadForTask+
+// BuildEvidenceChain 会把它分桶成 deterministic，让每日一次的分发告警虚增 Strength。
+func TestBuildEvidenceChain_KimiPluginStaleExcluded(t *testing.T) {
+	entries := []Entry{
+		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckKimiPluginStale, Source: EvidenceDeterministic, TaskRef: "t"},
+	}
+	ec := BuildEvidenceChain(entries, "t")
+	if ec.Deterministic != 1 {
+		t.Fatalf(`CheckKimiPluginStale 不应计入 deterministic: got %d, want 1（仅 auto-compile）`, ec.Deterministic)
+	}
+	if len(ec.Entries) != 2 {
+		t.Fatalf(`kimi-plugin-stale 条目仍应保留在 Entries 供 trace: got %d, want 2`, len(ec.Entries))
+	}
+}
