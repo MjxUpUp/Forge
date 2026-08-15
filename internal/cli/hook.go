@@ -151,7 +151,16 @@ type toolInputFields struct {
 // HookOutput 表示 Claude Code 期望在 stdout 收到的结构化 JSON。
 // 字段语义参见 Claude Code hook 文档。
 type HookOutput struct {
-	Decision           string              `json:"decision"`
+	// Decision/reason are both omitempty: the allow path emits a bare
+	// hookSpecificOutput (no decision) so the host's default flow is untouched —
+	// decision:"approve" would bypass Claude's permission system on PreToolUse and
+	// marks the hook as failed on codex (see emitAgentOutput).
+	//
+	// Decision/reason 均 omitempty：allow 路径发裸 hookSpecificOutput（无 decision），
+	// 不触碰宿主默认流程——decision:"approve" 在 Claude PreToolUse 会绕过权限系统，
+	// 在 codex 会被判 hook failed（见 emitAgentOutput）。
+	Decision           string              `json:"decision,omitempty"`
+	Reason             string              `json:"reason,omitempty"`
 	HookSpecificOutput *HookSpecificOutput `json:"hookSpecificOutput,omitempty"`
 }
 
@@ -200,34 +209,45 @@ var hookCmd = &cobra.Command{
 	RunE:          runHook,
 }
 
-// hookAgent specifies the non-Claude-Code stdin dialect to normalize. Each agent's translator sets it via the cross-platform
-// `--agent` flag when the hook stdin differs from the Claude Code shape (Windsurf, Copilot, reasonix). opencode/pi construct
-// Claude-shape stdin in TS and do not set this variable. FORGE_HOOK_AGENT is the fallback for translators already wired via env
-// (and for TS code that sets the env).
+// hookAgent specifies the non-Claude-Code host. Each agent's translator sets it via
+// the cross-platform `--agent` flag; it selects BOTH the stdin dialect to normalize
+// (windsurf/kimi/reasonix/cline differ from the Claude shape) AND the output protocol
+// to emit (see emitAgentOutput — codex/cursor/copilot share Claude-shape stdin but
+// parse different stdout/exit-code contracts). opencode/pi/codebuddy construct
+// Claude-shape stdin in-process and speak the Claude protocol, so they carry no flag.
+// FORGE_HOOK_AGENT is the fallback for translators already wired via env (and for
+// TS code that sets the env).
 //
-// hookAgent 指定要 normalize 的非 Claude Code stdin 方言。由各 agent 的 translator
-// 在 hook stdin 与 Claude Code 形状不同时（Windsurf、Copilot、reasonix）通过跨平台
-// `--agent` flag 设置。opencode/pi 在 TS 里构造 Claude-shape stdin，不设此变量。
-// FORGE_HOOK_AGENT 是已通过 env 接线的 translator（以及设 env 的 TS 代码）的兜底。
+// hookAgent 指定非 Claude Code 的宿主。由各 agent 的 translator 通过跨平台
+// `--agent` flag 设置；它同时选择要 normalize 的 stdin 方言（windsurf/kimi/
+// reasonix/cline 与 Claude 形状不同）**和**要输出的协议（见 emitAgentOutput——
+// codex/cursor/copilot 的 stdin 与 Claude 同形，但 stdout/退出码契约不同）。
+// opencode/pi/codebuddy 在进程内构造 Claude-shape stdin 且说 Claude 协议，
+// 故不带 flag。FORGE_HOOK_AGENT 是已通过 env 接线的 translator（以及设 env 的
+// TS 代码）的兜底。
 var hookAgent string
 
 func init() {
-	hookCmd.Flags().StringVar(&hookAgent, "agent", "", "agent whose stdin dialect to normalize (windsurf|kimi|reasonix)")
+	hookCmd.Flags().StringVar(&hookAgent, "agent", "", "host agent: selects the stdin dialect AND the output protocol (windsurf|kimi|reasonix|codex|cursor|copilot|cline)")
 	rootCmd.AddCommand(hookCmd)
 }
 
-// resolveHookAgent decides which agent's stdin dialect to normalize. The --agent flag
+// resolveHookAgent decides which host agent is speaking. The --agent flag
 // (set by translators, cross-platform — Windows cmd cannot parse ENV=val cmd) takes precedence;
 // FORGE_HOOK_AGENT is the fallback for callers wired via env (and for TS extensions that set the env before
-// spawning forge). Returning an empty string means Claude-Code-shape stdin, no normalization needed —
-// this is the default behavior for claude-code/codex/cursor and for opencode/pi (which construct Claude stdin in TS).
+// spawning forge). The value drives BOTH the stdin normalizer (empty = Claude-Code-shape stdin,
+// no normalization needed) and the output emitter (emitAgentOutput) — codex/cursor/copilot share
+// Claude-shape stdin but speak different stdout/exit-code protocols, so they carry the flag for
+// the output side. An empty string (claude-code, and opencode/pi/codebuddy which construct
+// Claude stdin in-process) means Claude on both sides.
 //
-// resolveHookAgent 决定要 normalize 哪个 agent 的 stdin 方言。--agent flag
-// （由 translator 设置，跨平台——Windows cmd 无法解析 ENV=val cmd）优先；
-// FORGE_HOOK_AGENT 是改走 env 接线的调用方（以及在 spawn forge 前设 env 的
-// TS 扩展）的兜底。返回空串表示 Claude-Code-shape stdin、无需 normalize——
-// 这是 claude-code/codex/cursor 以及 opencode/pi（在 TS 里构造 Claude stdin）
-// 的默认行为。
+// resolveHookAgent 决定说话的宿主 agent。--agent flag（由 translator 设置，跨平台
+// ——Windows cmd 无法解析 ENV=val cmd）优先；FORGE_HOOK_AGENT 是改走 env 接线的
+// 调用方（以及在 spawn forge 前设 env 的 TS 扩展）的兜底。该值同时驱动 stdin
+// normalizer（空 = Claude-Code-shape stdin、无需 normalize）与输出 emitter
+// （emitAgentOutput）——codex/cursor/copilot 的 stdin 与 Claude 同形，但 stdout/
+// 退出码协议不同，故为输出侧携带 flag。空串（claude-code，以及在进程内构造
+// Claude stdin 的 opencode/pi/codebuddy）表示两侧都按 Claude 处理。
 func resolveHookAgent(flagVal, envVal string) string {
 	if flagVal != "" {
 		return flagVal
@@ -298,6 +318,41 @@ func runHook(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// 1b. Normalize the stdin of non-Claude-Code agents BEFORE adopting the payload cwd
+	// and resolving the project root. Windsurf/cline/reasonix use a different hook stdin
+	// schema (Windsurf: {agent_action_name, trajectory_id, tool_info}; cline:
+	// {hookName, taskId, workspaceRoots, ...}); without this step forge would extract
+	// empty file_path/command and blocking hooks (task-guard/bash-guard) would fail open.
+	// The ordering is load-bearing for cline: its payload has NO cwd field — the project
+	// dir only reaches hookInput.Cwd when clineNormalize maps workspaceRoots[0] (and
+	// taskId→SessionID likewise). Normalizing after adoptPayloadCwd/findProjectRoot (the
+	// original position) left cline's Cwd mapping as dead code: findProjectRoot resolved
+	// against the process cwd, and when cline spawns the wrapper outside the workspace
+	// every project-scoped hook silently allowed — the exact fail-open class
+	// adoptPayloadCwd was built to close for kimi. The `--agent` flag (cross-platform,
+	// set by the translator) selects the dialect; FORGE_HOOK_AGENT is the fallback.
+	// opencode/pi are code-based and directly construct Claude stdin in TS, so no
+	// normalizer runs for them. kimi already normalized at parse time (see above); the
+	// other dialects normalize here.
+	//
+	// 1b. 在采用 payload cwd、解析项目根**之前**归一化非 Claude Code agent 的 stdin。
+	// Windsurf/cline/reasonix 使用不同的 hook stdin schema（Windsurf:
+	// {agent_action_name, trajectory_id, tool_info}；cline: {hookName, taskId,
+	// workspaceRoots, ...}）；不做这步，forge 会抽出空的 file_path/command，拦截类
+	// hook（task-guard/bash-guard）会 fail open。时序对 cline 是承重的：其 payload
+	// 没有 cwd 字段——项目目录只有在 clineNormalize 映射 workspaceRoots[0] 时才
+	// 进入 hookInput.Cwd（taskId→SessionID 同理）。若在 adoptPayloadCwd/
+	// findProjectRoot 之后归一化（原位置），cline 的 Cwd 映射就是死代码：
+	// findProjectRoot 按进程 cwd 解析，当 cline 在 workspace 之外拉起 wrapper 时
+	// 所有项目级 hook 静默放行——正是 adoptPayloadCwd 为 kimi 堵上的那类 fail-open。
+	// `--agent` flag（跨平台，由 translator 设置）选择方言；FORGE_HOOK_AGENT 是
+	// 兜底。opencode/pi 是 code-based，直接在 TS 里构造 Claude stdin，无需
+	// normalizer。kimi 已在 stdin 解析阶段完成 normalize（见上文）；其余方言在此
+	// 归一化。
+	if agent != "" && agent != "kimi" {
+		normalizeAgentStdin(agent, stdinData, &hookInput)
+	}
+
 	// Adopt the payload's cwd before resolving the project root. kimi plugin hooks are
 	// spawned with the process cwd set to the plugin root (~/.kimi-code/plugins/managed/<id>)
 	// — never the session project (verified on kimi 0.31.0; matches kimi docs "each hook
@@ -328,57 +383,46 @@ func runHook(cmd *cobra.Command, args []string) error {
 	root, err := findProjectRoot()
 	if err != nil {
 		if !isGlobalHook(name) {
-			// kimi 的 allow 路径 stdout 多数事件不进上下文（仅 UserPromptSubmit 例外，
-			// 见 internal/agentbridge/kimi-hook-routing.md）——Claude 的 JSON envelope 在
-			// 那里是噪声，kimi 下静默即可（exit 0 = allow）。
-			if agent != "kimi" {
-				outputAllow("")
-			}
+			// Allow silently for every host: exit 0 with no stdout is a legal allow on
+			// all supported protocols (claude/codex/cursor/copilot/windsurf/cline). The
+			// old `{"decision":"approve"}` JSON envelope was noise on hosts that don't
+			// parse stdout JSON, and decision:"approve" would bypass the permission
+			// flow on Claude PreToolUse — an allow hook must not grant permissions.
+			//
+			// 对所有宿主静默放行：exit 0 且无 stdout 在全部受支持协议上都是合法
+			// allow（claude/codex/cursor/copilot/windsurf/cline）。旧的
+			// `{"decision":"approve"}` JSON envelope 在不解析 stdout JSON 的宿主上是
+			// 噪声，且 decision:"approve" 会在 Claude PreToolUse 上绕过权限流程——
+			// allow hook 不得授予权限。
 			return nil
 		}
 		root = "" // global hook：无需 project root；shCmd.Dir="" 回退到 cwd
 	}
 
 	// Stamp the resolved agent onto the authoritative session record, best-effort. This
-	// only reaches translators that rewrite hook commands to carry --agent (kimi/reasonix/
-	// windsurf) — for marker-absent projects those fire hooks with the true agent even
+	// reaches every translator that rewrites hook commands to carry --agent (kimi/reasonix/
+	// windsurf/cline for the stdin dialect; codex/cursor/copilot for the output protocol)
+	// — for marker-absent projects those fire hooks with the true agent even
 	// though detectAgentType at session creation only sees project markers, so the session
 	// is created with an empty agent_type and would otherwise misattribute to claude-code
-	// (the leaked CLAUDE_CODE_SESSION_ID default). The Claude-compatible-stdin translators
-	// (codex/codebuddy/opencode) do NOT carry --agent, so agent=="" here and the stamp is a
-	// no-op for them — they rely on Part 1's project markers (codex/opencode have markers;
-	// codebuddy has none and is a known attribution gap). StampSessionAgent fills ONLY an
+	// (the leaked CLAUDE_CODE_SESSION_ID default). codebuddy/opencode/pi carry no --agent,
+	// so agent=="" here and the stamp is a no-op for them — they rely on Part 1's project
+	// markers (opencode has markers; codebuddy has none and is a known attribution gap).
+	// StampSessionAgent fills ONLY an
 	// empty value, also reflects it in sessions.jsonl, and creates/rotates nothing, so firing
 	// on every event is safe and idempotent.
 	//
-	// 把解析出的 agent 盖到权威 session 记录上，尽力而为。这只能触及把 hook 命令改写为携带
-	// --agent 的翻译器（kimi/reasonix/windsurf）——对无标记项目，它们即便创建时的
-	// detectAgentType 只看项目标记，也会带真实 agent 触发 hook，故 session 以空 agent_type
-	// 创建，否则会误归 claude-code（泄漏的 CLAUDE_CODE_SESSION_ID 默认值）。Claude-兼容-stdin
-	// 翻译器（codex/codebuddy/opencode）不携带 --agent，故此处 agent==""，盖戳对它们是 no-op
-	// ——它们依赖 Part 1 的项目标记（codex/opencode 有标记；codebuddy 无标记，是已知归因缺口）。
-	// StampSessionAgent 只填空值、同步反映到 sessions.jsonl、不创建不轮换，故每次事件都触发是
-	// 安全且幂等的。
+	// 把解析出的 agent 盖到权威 session 记录上，尽力而为。这能触及所有把 hook 命令改写为
+	// 携带 --agent 的翻译器（kimi/reasonix/windsurf/cline 为 stdin 方言；codex/cursor/
+	// copilot 为输出协议）——对无标记项目，它们即便创建时的 detectAgentType 只看项目
+	// 标记，也会带真实 agent 触发 hook，故 session 以空 agent_type 创建，否则会误归
+	// claude-code（泄漏的 CLAUDE_CODE_SESSION_ID 默认值）。codebuddy/opencode/pi
+	// 不携带 --agent，故此处 agent==""，盖戳对它们是 no-op——它们依赖 Part 1 的项目
+	// 标记（opencode 有标记；codebuddy 无标记，是已知归因缺口）。StampSessionAgent
+	// 只填空值、同步反映到 sessions.jsonl、不创建不轮换，故每次事件都触发是安全且
+	// 幂等的。
 	if agent != "" && root != "" {
 		taskpipeline.StampSessionAgent(root, hookInput.SessionID, agent)
-	}
-
-	// 1b. Normalize the stdin of non-Claude-Code agents. Windsurf/Copilot use a different
-	// hook stdin schema (Windsurf: {agent_action_name, trajectory_id,
-	// tool_info}); without this step forge would extract empty file_path/command and blocking hooks
-	// (task-guard/bash-guard) would fail open. The `--agent` flag (cross-platform, set by the translator)
-	// selects the dialect; FORGE_HOOK_AGENT is the fallback. opencode/pi are code-based and directly
-	// construct Claude stdin in TS, so no normalizer is needed here.
-	//
-	// 1b. normalize 非 Claude Code agent 的 stdin。Windsurf/Copilot 使用不同的
-	// hook stdin schema（Windsurf: {agent_action_name, trajectory_id,
-	// tool_info}）；不做这步，forge 会抽出空的 file_path/command，拦截类 hook
-	// （task-guard/bash-guard）会 fail open。`--agent` flag（跨平台，由 translator
-	// 设置）选择方言；FORGE_HOOK_AGENT 是兜底。opencode/pi 是 code-based，直接
-	// 在 TS 里构造 Claude stdin，故此处无需 normalizer。
-	// kimi 已在 stdin 解析阶段完成 normalize（见上文）；其余方言在此归一化。
-	if agent != "" && agent != "kimi" {
-		normalizeAgentStdin(agent, stdinData, &hookInput)
 	}
 
 	// skill-trigger 特例：Go 内直接判定 + 渲染（不经 bash embed）。
@@ -394,6 +438,24 @@ func runHook(cmd *cobra.Command, args []string) error {
 		return runSkillTriggerHook(hookInput, root, cmd.Root().Version, agent)
 	}
 
+	// 1c. codex apply_patch exemption for read-before-edit. codex reports file edits as
+	// tool_name "apply_patch" (single tool, patch text in tool_input.command), and the
+	// per-session reads log only records ToolName=="Read" — codex's file reads go through
+	// its own read tools, never named "Read", so the log is structurally empty on codex
+	// and read-before-edit would false-block EVERY apply_patch. The patch itself carries
+	// the old/new context. Silent allow (exit 0, no stdout) — see the non-forge branch
+	// for why allow never emits an approve JSON.
+	//
+	// 1c. codex apply_patch 对 read-before-edit 的豁免。codex 的文件编辑以 tool_name
+	// "apply_patch" 上报（单工具，patch 文本在 tool_input.command），而 per-session
+	// reads log 只记录 ToolName=="Read"——codex 的文件读走它自己的 read 工具，从不叫
+	// "Read"，故该 log 在 codex 上结构性为空，read-before-edit 会假阻断每一次
+	// apply_patch。patch 本身携带 old/new 上下文。静默放行（exit 0、无 stdout）——
+	// 为何 allow 不发 approve JSON 见非 forge 分支注释。
+	if name == "read-before-edit" && hookInput.ToolName == "apply_patch" {
+		return nil
+	}
+
 	// 2. Extract tool_input fields on the Go side (reliable JSON parsing).
 	//
 	// 2. 在 Go 侧抽取 tool_input 字段（可靠的 JSON 解析）。
@@ -402,6 +464,22 @@ func runHook(cmd *cobra.Command, args []string) error {
 		if err := json.Unmarshal(hookInput.ToolInput, &fields); err != nil {
 			fmt.Fprintf(os.Stderr, "[forge] warning: tool_input parse failed: %v\n", err)
 		}
+	}
+
+	// 2a. codex apply_patch file_path synthesis. codex's apply_patch tool_input carries
+	// ONLY {command: <patch text>} — no file_path — so without this synthesis every
+	// path-based gate (task-guard's .forge/* self-protection, freeze-guard) sees an
+	// empty FORGE_FILE_PATH on codex file edits and fails open. Extract the FIRST
+	// *** Add/Update/Delete File: header's path; multi-file patches get the first
+	// target only (documented limitation — the common case is single-file).
+	//
+	// 2a. codex apply_patch 的 file_path 合成。codex 的 apply_patch tool_input 只带
+	// {command: <patch 文本>}——没有 file_path——不合成的话每个基于路径的门禁
+	// （task-guard 的 .forge/* 自保护、freeze-guard）在 codex 文件编辑上都看到空的
+	// FORGE_FILE_PATH 并 fail open。取第一个 *** Add/Update/Delete File: 头的路径；
+	// 多文件 patch 只取第一个目标（已文档化的限制——常见情形是单文件）。
+	if hookInput.ToolName == "apply_patch" && fields.FilePath == "" {
+		fields.FilePath = applyPatchFilePath(fields.Command)
 	}
 
 	// 2b. Detect the active task as context for the task-guard hook.
@@ -576,16 +654,16 @@ func runHook(cmd *cobra.Command, args []string) error {
 
 	passed := exitErr == nil
 
-	// 5. Parse the script output into the structured JSON that Claude Code expects.
-	// The script outputs plain text: PASS [detail] or FAIL [reason].
-	// Here we wrap it into the Claude Code hook protocol JSON format.
+	// 5. Parse the script output into the per-host verdict. The script outputs plain
+	// text: PASS [detail] or FAIL [reason]; the protocol shaping (JSON shape, exit
+	// code, which events may carry context) is deferred to emitAgentOutput (step 7),
+	// which knows the host.
 	//
-	// 5. 把 script 输出解析成 Claude Code 需要的结构化 JSON。
-	// Script 输出纯文本：PASS [detail] 或 FAIL [reason]。
-	// 这里把它包成 Claude Code hook protocol JSON 格式。
+	// 5. 把 script 输出解析成 per-host 结论。Script 输出纯文本：PASS [detail] 或
+	// FAIL [reason]；协议塑形（JSON 形态、退出码、哪些事件可带上下文）推迟到知
+	// 道宿主的 emitAgentOutput（step 7）。
 	eventName := hookInput.HookEventName
 	var detail string
-	var output HookOutput
 	if passed {
 		detail = extractDetail(stdout, "PASS")
 		// kimi-code installs the forge plugin by locking a repo tag and has no plugin
@@ -608,24 +686,10 @@ func runHook(cmd *cobra.Command, args []string) error {
 		if name == "init-suggest" && agent == "kimi" {
 			detail = appendKimiStaleAdvisory(detail, cmd.Root().Version)
 		}
-		output = HookOutput{Decision: "approve"}
-		if detail != "" {
-			output.HookSpecificOutput = &HookSpecificOutput{
-				HookEventName:     eventName,
-				AdditionalContext: truncate(detail, maxAdditionalContextLen),
-			}
-		}
 	} else {
 		detail = stdout
 		if detail == "" {
 			detail = stderr
-		}
-		output = HookOutput{
-			Decision: "block",
-			HookSpecificOutput: &HookSpecificOutput{
-				HookEventName:     eventName,
-				AdditionalContext: truncate(detail, maxAdditionalContextLen),
-			},
 		}
 	}
 
@@ -802,46 +866,29 @@ func runHook(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// 7. Output the result in the host's hook protocol. kimi: exit 0 = allow; a block
-	// returns HookBlockError which Execute maps to exit 2 (stderr = reason) — the only
-	// exit code kimi treats as an intentional block; any other non-zero fails open. The
-	// old `exit 0 = stdout→context (advisory channel)` shorthand is FALSE on kimi 0.35.0:
-	// only PreToolUse exit-2, Stop exit-2, and UserPromptSubmit stdout reach the model;
-	// PostToolUse/SessionStart stdout is observation-only (dropped). Advisory hooks are
-	// rerouted per internal/agentbridge/kimi-hook-routing.md (P0 promotes PreToolUse advisories to exit-2;
-	// P1 converges skill-trigger to UserPromptSubmit; P3 backfills SessionStart task-resume
-	// via UserPromptSubmit).
+	// 7. Output the result in the HOST's hook protocol (per-agent dispatch). The old
+	// single-shape path printed Claude's JSON for every host and returned a generic
+	// error on block — which Execute maps to exit 1, a code only Claude Code (via the
+	// stdout decision JSON) treats as blocking; on codex/cursor/windsurf/copilot the
+	// same block FAILED OPEN. Every per-agent emitter below returns *HookBlockError on
+	// block → exit 2, the one non-zero code that codex (stderr+exit 2), cursor
+	// (permission-deny equivalent) and copilot preToolUse (deny, fail-closed) all
+	// honor. Host-specific context-injection channels are also keyed here (codex:
+	// bare hookSpecificOutput.additionalContext on 4 events; cursor: top-level
+	// snake_case additional_context; copilot: top-level camelCase additionalContext;
+	// kimi: see internal/agentbridge/kimi-hook-routing.md).
 	//
-	// 7. 按宿主的 hook 协议输出结果。kimi：exit 0 = 放行；阻断返回 HookBlockError，由
-	// Execute 映射为 exit 2（stderr = 原因）——kimi 唯一认定为有意阻断的退出码，其他非零
-	// fail-open 放行。旧的 `exit 0 = stdout→上下文（advisory 通道）` 简写在 kimi 0.35.0
-	// 上不成立：只有 PreToolUse exit-2、Stop exit-2、UserPromptSubmit stdout 能到模型；
-	// PostToolUse/SessionStart 的 stdout 是 observation-only（丢弃）。advisory hook 按
-	// internal/agentbridge/kimi-hook-routing.md 重路由（P0 把 PreToolUse advisory 升 exit-2；P1 把
-	// skill-trigger 收敛到 UserPromptSubmit；P3 把 SessionStart task-resume 经
-	// UserPromptSubmit 回填）。
-	if agent == "kimi" {
-		return emitKimiOutput(passed, detail)
-	}
-
-	// 7b. Output structured JSON to Claude Code.
-	//
-	// 7b. 向 Claude Code 输出结构化 JSON。
-	outputJSON, err := json.Marshal(output)
-	if err != nil {
-		// Should not happen — HookOutput only contains strings.
-		//
-		// 不应发生——HookOutput 只含字符串。
-		fmt.Fprintf(os.Stderr, "[forge] error: failed to marshal hook output: %v\n", err)
-		fmt.Println(`{"decision":"approve"}`)
-	} else {
-		fmt.Println(string(outputJSON))
-	}
-
-	if !passed {
-		return fmt.Errorf("hook %s failed", name)
-	}
-	return nil
+	// 7. 按**宿主**的 hook 协议输出结果（按 agent 分发）。旧的单一形态路径对所有
+	// 宿主打 Claude 的 JSON、阻断时返回 generic error——Execute 把它映射成 exit 1，
+	// 而只有 Claude Code（经 stdout decision JSON）把 exit 1 当阻断；在
+	// codex/cursor/windsurf/copilot 上同一阻断会 FAIL OPEN。下方每个 per-agent
+	// emitter 阻断时都返回 *HookBlockError → exit 2——codex（stderr+exit 2）、cursor
+	// （等价 permission deny）、copilot preToolUse（deny、fail-closed）共同认可的
+	// 唯一非零码。宿主特有的上下文注入通道也在此分流（codex：4 个事件上的裸
+	// hookSpecificOutput.additionalContext；cursor：顶层 snake_case
+	// additional_context；copilot：顶层 camelCase additionalContext；kimi：见
+	// internal/agentbridge/kimi-hook-routing.md）。
+	return emitAgentOutput(agent, eventName, name, passed, detail)
 }
 
 // readsFilePath returns the absolute path of this session's reads log — the PreToolUse
@@ -1038,13 +1085,308 @@ func extractDetail(stdout, prefix string) string {
 	return stdout
 }
 
-func outputAllow(msg string) {
-	out := HookOutput{Decision: "approve"}
-	if msg != "" {
-		out.HookSpecificOutput = &HookSpecificOutput{AdditionalContext: msg}
+// emitAgentOutput dispatches the hook verdict to the host's output protocol. agent==""
+// (claude-code and every Claude-JSON-compatible host that carries no --agent flag:
+// codebuddy/opencode/pi) takes the claude default. The load-bearing invariants:
+//   - allow NEVER emits decision:"approve" — on Claude PreToolUse it bypasses the
+//     permission system (an allow hook must not grant permissions), and codex parses
+//     it but marks the hook as FAILED.
+//   - block ALWAYS returns *HookBlockError → exit 2 (except copilot Stop, where exit 2
+//     is a warning and the decision JSON + exit 0 is the only block channel). Exit 2
+//     is the block code codex (stderr+exit2), cursor (deny-equivalent) and copilot
+//     preToolUse (deny, fail-closed) all honor; the old generic error (exit 1) was
+//     non-blocking on all of them.
+//
+// emitAgentOutput 把 hook 结论分发到宿主的输出协议。agent==""（claude-code 及所有
+// 不带 --agent flag 的 Claude-JSON 兼容宿主：codebuddy/opencode/pi）走 claude 默认。
+// 关键不变式：
+//   - allow 绝不发 decision:"approve"——Claude PreToolUse 上它会绕过权限系统
+//     （allow hook 不得授予权限），codex 则解析它但把 hook 判为 FAILED。
+//   - block 恒返回 *HookBlockError → exit 2（唯一例外 copilot Stop：那里 exit 2 是
+//     warning，decision JSON + exit 0 才是唯一阻断通道）。exit 2 是 codex（stderr+
+//     exit2）、cursor（等价 deny）、copilot preToolUse（deny、fail-closed）共同认可
+//     的阻断码；旧 generic error（exit 1）在它们上面都不构成阻断。
+func emitAgentOutput(agent, eventName, hookName string, passed bool, detail string) error {
+	detail = truncate(detail, maxAdditionalContextLen)
+	switch agent {
+	case "kimi":
+		return emitKimiOutput(passed, detail)
+	case "codex":
+		return emitCodexOutput(eventName, passed, detail)
+	case "cursor":
+		return emitCursorOutput(eventName, passed, detail)
+	case "copilot":
+		return emitCopilotOutput(eventName, hookName, passed, detail)
+	case "windsurf":
+		return emitWindsurfOutput(hookName, passed, detail)
+	case "cline":
+		return emitClineOutput(passed, detail)
+	default:
+		return emitClaudeOutput(eventName, passed, detail)
+	}
+}
+
+// emitClaudeOutput renders the claude-code default (also codebuddy/opencode/pi — every
+// host that parses Claude's stdout JSON but carries no --agent flag): allow = silent
+// (exit 0, default flow untouched; with detail, a bare hookSpecificOutput whose
+// additionalContext Claude injects — no decision field); block = decision:block JSON +
+// reason on stderr + HookBlockError (Execute maps it to exit 2, Claude's blocking
+// error code, with stderr shown to the model).
+//
+// emitClaudeOutput 渲染 claude-code 默认形态（也覆盖 codebuddy/opencode/pi——所有
+// 解析 Claude stdout JSON 但不带 --agent flag 的宿主）：allow = 静默（exit 0，默认
+// 流程不动；有 detail 时发裸 hookSpecificOutput，Claude 会注入其 additionalContext
+// ——无 decision 字段）；block = decision:block JSON + 原因写 stderr +
+// HookBlockError（Execute 映射为 exit 2——Claude 的阻断错误码，stderr 会展示给模型）。
+func emitClaudeOutput(eventName string, passed bool, detail string) error {
+	if passed {
+		if detail == "" {
+			return nil
+		}
+		out := HookOutput{HookSpecificOutput: &HookSpecificOutput{
+			HookEventName:     eventName,
+			AdditionalContext: detail,
+		}}
+		data, _ := json.Marshal(out)
+		fmt.Println(string(data))
+		return nil
+	}
+	if detail == "" {
+		detail = "forge hook blocked the action"
+	}
+	out := HookOutput{
+		Decision: "block",
+		Reason:   detail,
+		HookSpecificOutput: &HookSpecificOutput{
+			HookEventName:     eventName,
+			AdditionalContext: detail,
+		},
 	}
 	data, _ := json.Marshal(out)
 	fmt.Println(string(data))
+	fmt.Fprintln(os.Stderr, detail)
+	return &HookBlockError{Reason: detail}
+}
+
+// emitCodexOutput renders codex's protocol (developers.openai.com/codex/hooks):
+// hookSpecificOutput.additionalContext is honored on SessionStart/PreToolUse/
+// PostToolUse/UserPromptSubmit (SubagentStart — not a forge event); Stop/PostCompact
+// have no context channel. decision:"approve" is parsed-but-UNSUPPORTED — codex marks
+// the hook as failed — so the allow path emits a BARE hookSpecificOutput (Claude-legal
+// and codex-legal). Block = stderr + exit 2 (codex's only reliable block channel;
+// decision:"block" stdout is legacy and not relied on).
+//
+// emitCodexOutput 渲染 codex 协议（developers.openai.com/codex/hooks）：
+// hookSpecificOutput.additionalContext 仅在 SessionStart/PreToolUse/PostToolUse/
+// UserPromptSubmit 上被采纳（SubagentStart 非 forge 事件）；Stop/PostCompact 无上下文
+// 通道。decision:"approve" 会被解析但**不支持**——codex 把 hook 判为 failed——故
+// allow 路径发**裸** hookSpecificOutput（Claude 合法且 codex 合法）。阻断 =
+// stderr + exit 2（codex 唯一可靠的阻断通道；stdout decision:"block" 是遗留行为，
+// 不依赖它）。
+func emitCodexOutput(eventName string, passed bool, detail string) error {
+	if passed {
+		switch eventName {
+		case "SessionStart", "PreToolUse", "PostToolUse", "UserPromptSubmit":
+			if detail != "" {
+				out := HookOutput{HookSpecificOutput: &HookSpecificOutput{
+					HookEventName:     eventName,
+					AdditionalContext: detail,
+				}}
+				data, _ := json.Marshal(out)
+				fmt.Println(string(data))
+			}
+		}
+		return nil
+	}
+	if detail == "" {
+		detail = "forge hook blocked the action"
+	}
+	fmt.Fprintln(os.Stderr, detail)
+	return &HookBlockError{Reason: detail}
+}
+
+// emitCursorOutput renders cursor's protocol (cursor.com/docs/agent/hooks):
+// postToolUse/sessionStart read a TOP-LEVEL snake_case additional_context; the other
+// events' allow path has no context channel. Block = stderr + exit 2 (cursor treats
+// exit 2 as the permission-deny equivalent on every event).
+//
+// emitCursorOutput 渲染 cursor 协议（cursor.com/docs/agent/hooks）：
+// postToolUse/sessionStart 读**顶层** snake_case additional_context；其余事件的
+// allow 路径无上下文通道。阻断 = stderr + exit 2（cursor 在所有事件上把 exit 2 当
+// 等价 permission deny）。
+func emitCursorOutput(eventName string, passed bool, detail string) error {
+	if passed {
+		switch eventName {
+		case "PostToolUse", "SessionStart":
+			if detail != "" {
+				fmt.Printf(`{"additional_context":%s}`+"\n", jsonString(detail))
+			}
+		}
+		return nil
+	}
+	if detail == "" {
+		detail = "forge hook blocked the action"
+	}
+	fmt.Fprintln(os.Stderr, detail)
+	return &HookBlockError{Reason: detail}
+}
+
+// emitCopilotOutput renders GitHub Copilot's protocol
+// (docs.github.com/en/copilot/reference/hooks-reference — verified in full this
+// session). Exit codes: 0 = success (stdout parsed as JSON), 2 = warning (stderr
+// surfaced, run continues) EXCEPT preToolUse where exit 2 = deny merged with the
+// stdout decision. agentStop/subagentStop block ONLY via stdout {"decision":"block"}
+// + exit 0 — exit 2 there is a warning, not a block. Context channels: sessionStart/
+// postToolUse top-level camelCase additionalContext (joined double-newline across
+// hooks, 10KB cap); userPromptSubmitted stdout is DROPPED for command hooks.
+// PascalCase event keys (as wired by the plugin pack) give Claude matcher semantics
+// and snake_case payloads, so the stdin side needs no normalizer.
+//
+// emitCopilotOutput 渲染 GitHub Copilot 协议
+// （docs.github.com/en/copilot/reference/hooks-reference——本会话全文核实）。退出码：
+// 0 = 成功（stdout 按 JSON 解析）、2 = warning（stderr 上浮、继续执行）——唯一例外
+// preToolUse 的 exit 2 = deny 并与 stdout decision 合并。agentStop/subagentStop 只能
+// 经 stdout {"decision":"block"} + exit 0 阻断——那里的 exit 2 是 warning 不是阻断。
+// 上下文通道：sessionStart/postToolUse 顶层 camelCase additionalContext（多 hook 以
+// 双换行拼接、10KB 上限）；userPromptSubmitted 的 stdout 对 command hook 会被丢弃。
+// PascalCase 事件键（plugin pack 的接线方式）给出 Claude matcher 语义与 snake_case
+// payload，故 stdin 侧无需 normalizer。
+func emitCopilotOutput(eventName, hookName string, passed bool, detail string) error {
+	if passed {
+		switch eventName {
+		case "PostToolUse", "SessionStart":
+			if detail != "" {
+				fmt.Printf(`{"additionalContext":%s}`+"\n", jsonString(detail))
+			}
+		}
+		return nil
+	}
+	if detail == "" {
+		detail = "forge hook blocked the action"
+	}
+	switch eventName {
+	case "PreToolUse":
+		// Fail-closed event: any non-zero denies, and exit 2 merges with the stdout
+		// deny decision — emit both so the reason survives the merge.
+		//
+		// fail-closed 事件：任何非零都 deny，且 exit 2 与 stdout deny decision 合并
+		// ——两者都发，让原因在合并后仍可见。
+		fmt.Printf(`{"permissionDecision":"deny","permissionDecisionReason":%s}`+"\n", jsonString(detail))
+		return &HookBlockError{Reason: detail}
+	case "Stop":
+		// exit 2 on agentStop is only a warning — the decision JSON with exit 0 is the
+		// ONLY block channel (block forces another turn; runaway guard after 8
+		// consecutive blocks).
+		//
+		// agentStop 上 exit 2 只是 warning——decision JSON + exit 0 是唯一阻断通道
+		// （block 强制再来一轮；连续 8 次阻断后有 runaway guard）。
+		fmt.Printf(`{"decision":"block","reason":%s}`+"\n", jsonString(detail))
+		return nil
+	default:
+		// Other events (postToolUse/...): no documented block channel; exit 2 behaves
+		// as a warning whose stderr reaches the model. task-verify/review-stop (the
+		// forge Stop hooks) are handled above; PostToolUse hooks rarely block.
+		//
+		// 其余事件（postToolUse/...）：无文档化阻断通道；exit 2 表现为 warning、
+		// stderr 可达模型。task-verify/review-stop（forge 的 Stop hook）已在上面
+		// 处理；PostToolUse hook 极少阻断。
+		fmt.Fprintln(os.Stderr, detail)
+		return &HookBlockError{Reason: detail}
+	}
+}
+
+// emitWindsurfOutput renders Windsurf Cascade's protocol: there is NO stdout JSON
+// protocol at all (hook entries run with show_output:false; stdout JSON would be noise
+// if ever displayed) — allow is silent, block is stderr + exit 2. Exit 2 denies on the
+// pre_* hooks; post_cascade_response (where the Stop group hangs) is an async
+// post-hook that CANNOT block — there exit 2 only surfaces the stderr reason to the
+// agent as an advisory (documented honestly in buildWindsurfHooks).
+//
+// emitWindsurfOutput 渲染 Windsurf Cascade 协议：完全没有 stdout JSON 协议（hook
+// 条目以 show_output:false 运行；stdout JSON 即便被显示也只是噪声）——allow 静默、
+// 阻断 = stderr + exit 2。pre_* hook 上 exit 2 deny；post_cascade_response（Stop 组
+// 挂载处）是异步 post-hook，**无法阻断**——那里 exit 2 只把 stderr 原因以 advisory
+// 形式上浮给 agent（已在 buildWindsurfHooks 诚实文档化）。
+func emitWindsurfOutput(hookName string, passed bool, detail string) error {
+	if passed {
+		return nil
+	}
+	if detail == "" {
+		detail = "forge hook blocked the action"
+	}
+	fmt.Fprintln(os.Stderr, detail)
+	return &HookBlockError{Reason: detail}
+}
+
+// emitClineOutput renders Cline's file-hook protocol (v3.36+ hooks blog): a hook
+// speaks by printing {"cancel":bool,"errorMessage":...,"contextModification":...} —
+// cancel blocks the action, contextModification injects text into the task. The forge
+// wrapper script (~/Documents/Cline/Rules/Hooks/<Event>) fans one Cline event out to
+// several forge hooks and merges verdicts, using the EXIT CODE as the robust block
+// signal (block = exit 2 via HookBlockError, with this ready-made cancel JSON already
+// on stdout); contextModification is forwarded on the allow path. Emission is compact
+// JSON ({"cancel":true,…) on purpose — nothing parses it in-band, but the wrapper's
+// context sniffing relies on the field name never appearing inside forge's own allow
+// output shape by accident.
+//
+// emitClineOutput 渲染 Cline 的文件 hook 协议（v3.36+ hooks 博客）：hook 通过打印
+// {"cancel":bool,"errorMessage":...,"contextModification":...} 表态——cancel 阻断动作、
+// contextModification 向任务注入文本。forge 的 wrapper 脚本
+// （~/Documents/Cline/Rules/Hooks/<Event>）把一个 Cline 事件扇出到多个 forge hook
+// 并合并结论，用**退出码**作稳健的阻断信号（阻断 = 经 HookBlockError 的 exit 2，
+// 且这份现成的 cancel JSON 已在 stdout）；allow 路径转发 contextModification。
+// 刻意输出紧凑 JSON（{"cancel":true,…）——没有谁在带内解析它，但 wrapper 的上下文
+// 嗅探依赖该字段名不会碰巧出现在 forge 自身的 allow 输出形态里。
+func emitClineOutput(passed bool, detail string) error {
+	if passed {
+		if detail == "" {
+			return nil
+		}
+		fmt.Printf(`{"cancel":false,"contextModification":%s}`+"\n", jsonString(detail))
+		return nil
+	}
+	if detail == "" {
+		detail = "forge hook blocked the action"
+	}
+	fmt.Printf(`{"cancel":true,"errorMessage":%s}`+"\n", jsonString(detail))
+	return &HookBlockError{Reason: detail}
+}
+
+// jsonString marshals s as a JSON string literal (escaping, quotes) for embedding in
+// hand-composed protocol envelopes. Never fails for a string input.
+//
+// jsonString 把 s 编组为 JSON 字符串字面量（转义、引号），用于嵌进手工组合的协议
+// envelope。对字符串输入不会失败。
+func jsonString(s string) string {
+	b, err := json.Marshal(s)
+	if err != nil {
+		return `""`
+	}
+	return string(b)
+}
+
+// applyPatchFilePath extracts the first target path from a codex apply_patch payload.
+// The patch headers are `*** Add File: <path>` / `*** Update File: <path>` /
+// `*** Delete File: <path>`; the first header wins for multi-file patches (the common
+// case is single-file). Returns "" when no header is present (malformed/unrelated
+// command) — the hooks then see an empty path, same as today.
+//
+// applyPatchFilePath 从 codex apply_patch payload 抽取第一个目标路径。patch 头是
+// `*** Add File: <path>` / `*** Update File: <path>` / `*** Delete File: <path>`；
+// 多文件 patch 取第一个头（常见情形是单文件）。无头（畸形/无关命令）返回 ""——
+// hook 于是看到空路径，与现状一致。
+func applyPatchFilePath(patch string) string {
+	for _, line := range strings.Split(patch, "\n") {
+		body := strings.TrimPrefix(strings.TrimSpace(line), "*** ")
+		for _, header := range []string{"Add File:", "Update File:", "Delete File:"} {
+			if strings.HasPrefix(body, header) {
+				if p := strings.TrimSpace(strings.TrimPrefix(body, header)); p != "" {
+					return p
+				}
+			}
+		}
+	}
+	return ""
 }
 
 // HookBlockError signals an intentional hook block for hosts whose protocol selects
@@ -1200,33 +1542,26 @@ func isHookInfraFailure(err error) bool {
 
 // emitInfraAllow fails open for an infrastructure failure: the warning must be VISIBLE
 // (a silently broken gate set is worse than a noisy one) without blocking the turn.
-// kimi: plain stdout text (model-visible only on UserPromptSubmit; on PostToolUse/SessionStart
-// it is dropped — see internal/agentbridge/kimi-hook-routing.md). Claude: an approve
-// verdict whose hookSpecificOutput carries hookEventName — required by Claude's hook
-// output schema; an empty one gets the additionalContext dropped and the warning would
-// be silently lost, defeating the purpose.
+// Routed through emitAgentOutput's allow-with-detail path so every host gets its own
+// context channel: kimi plain stdout (model-visible only on UserPromptSubmit — see
+// internal/agentbridge/kimi-hook-routing.md); claude default a bare hookSpecificOutput
+// (hookEventName present — Claude's schema requires it or additionalContext is
+// dropped); codex the same bare shape on the four context-carrying events; cursor
+// top-level additional_context; copilot top-level additionalContext; cline
+// contextModification; windsurf silent (no stdout channel — unchanged visibility).
+// No host receives decision:"approve" (see emitAgentOutput).
 //
 // emitInfraAllow 对基础设施失败 fail-open：警告必须可见（静默失效的门禁比吵闹的
-// 更糟）但不阻断当轮。kimi：纯文本 stdout（仅 UserPromptSubmit 时模型可见；PostToolUse/
-// SessionStart 下被丢弃——见 internal/agentbridge/kimi-hook-routing.md）。Claude：
-// approve 结论且 hookSpecificOutput 必须带 hookEventName——Claude 的 hook 输出
-// schema 要求它合法；空串会导致 additionalContext 被丢弃，警告静默丢失，违背本
-// 函数的设计目标。
+// 更糟）但不阻断当轮。经 emitAgentOutput 的 allow-with-detail 路径分发，让每个
+// 宿主走自己的上下文通道：kimi 纯文本 stdout（仅 UserPromptSubmit 时模型可见——
+// 见 internal/agentbridge/kimi-hook-routing.md）；claude 默认裸 hookSpecificOutput
+// （hookEventName 必在——Claude schema 要求它，否则 additionalContext 被丢弃）；
+// codex 在四个可带上下文的事件上发同样的裸形态；cursor 顶层 additional_context；
+// copilot 顶层 additionalContext；cline contextModification；windsurf 静默（无
+// stdout 通道——可见性与之前一致）。任何宿主都不会收到 decision:"approve"
+// （见 emitAgentOutput）。
 func emitInfraAllow(agent, eventName, warning string) error {
-	if agent == "kimi" {
-		fmt.Println(warning)
-		return nil
-	}
-	out := HookOutput{
-		Decision: "approve",
-		HookSpecificOutput: &HookSpecificOutput{
-			HookEventName:     eventName,
-			AdditionalContext: truncate(warning, maxAdditionalContextLen),
-		},
-	}
-	data, _ := json.Marshal(out)
-	fmt.Println(string(data))
-	return nil
+	return emitAgentOutput(agent, eventName, "", true, warning)
 }
 
 // shouldRecordCheck decides whether a hook result is worth writing a checklog entry. It is the

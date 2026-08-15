@@ -42,7 +42,7 @@ Copilot officially scans .claude-plugin/marketplace.json:
     copilot plugin marketplace add MjxUpUp/Forge
     copilot plugin install forge@forge
 
-Copilot has no user-level hook channel, so the forge bridge (`forge init --agents copilot`) is a no-op — no hooks, and no user-level location for guidance. The marketplace install above is a distribution entry point only.
+Copilot officially supports lifecycle hooks, and this plugin ships its own `hooks.json` at the plugin root (copilot's documented plugin-hook location) — the marketplace install above wires the gate set (PreToolUse/PostToolUse/Stop/SessionStart/UserPromptSubmit) directly, no extra step. Two copilot-specific behaviors to know: `agentStop` (Stop) blocks only via the hook's stdout decision, and `userPromptSubmitted` command-hook output is dropped by copilot — context injection on that event is a no-op there (the hooks still run and record). The forge bridge without the plugin (`forge init --agents copilot`) remains a no-op — no user-level channel that forge writes.
 
 #### Kimi Code
 
@@ -93,11 +93,12 @@ User-level hooks fire in every Claude Code project. With the plugin installed, t
 | **Claude Code** | `plugin.json` marketplace | automatic (user-level) | full hooks; auto-init via `init-suggest` SessionStart hook |
 | **Codex (CLI / App)** | marketplace (path not officially confirmed) | `forge init --agents codex` | if marketplace path fails, fall back to manual |
 | **Cursor** | marketplace | `forge init --agents cursor` | Cursor plugin model carries skills, not Claude-shape hooks; user-level `~/.cursor/hooks.json`, zero project writes |
-| **GitHub Copilot (CLI / VS Code)** | marketplace | none (no user-level channel) | bridge is a no-op — marketplace is a distribution entry point only |
+| **GitHub Copilot (CLI / VS Code)** | marketplace | automatic via plugin `hooks.json` | plugin-root hooks.json (Wave 2c); `forge init --agents copilot` remains a no-op |
 | **Windsurf** | `forge init --agents windsurf` | user-level Cascade hooks | `~/.codeium/windsurf/hooks.json` + `memories/global_rules.md` via `internal/agentbridge/windsurf.go` |
 | **Kimi Code** | repo-root `.kimi-plugin/plugin.json` (`/plugins install https://github.com/MjxUpUp/Forge`) | automatic (user-level) | full event set (PreToolUse/PostToolUse/Stop/SessionStart/PostCompact/UserPromptSubmit), exit-2 block protocol; fallback `forge init --agents kimi` (config.toml marker section, stripped when the plugin is installed) |
 | **Reasonix** | `plugins/forge/reasonix-plugin.json` (`reasonix plugin install https://github.com/MjxUpUp/Forge/tree/main/plugins/forge`) | automatic (user-level) | native manifest (Claude compat does not resolve hooks); fallback `forge init --agents reasonix` (settings.json flat hooks, stripped when the plugin is installed) |
-| **OpenCode / Kiro / Cline / Gemini CLI / Mistral Vibe / Trae / Nanobot / Hermes / Antigravity / OpenClaw** | (manual, see `install.sh`) | `forge init --agents <host>` if supported | install.sh script provides one-step symlink-style per-skill/folder install for 14 hosts |
+| **Cline** | (none — not a marketplace host) | `forge init --agents cline` | wrapper scripts in `~/Documents/Cline/Rules/Hooks/` (cline v3.36+ file hooks: PreToolUse/PostToolUse/UserPromptSubmit/TaskStart); macOS/Linux only at runtime; cline has no Stop event, so Stop-group gates cannot enforce there |
+| **OpenCode / Kiro / Gemini CLI / Mistral Vibe / Trae / Nanobot / Hermes / Antigravity / OpenClaw** | (manual, see `install.sh`) | `forge init --agents <host>` if supported | install.sh script provides one-step symlink-style per-skill/folder install for 14 hosts |
 
 For experimental / bleeding-edge hosts, run `./plugins/forge/install.sh --help` for the full supported platform list.
 
