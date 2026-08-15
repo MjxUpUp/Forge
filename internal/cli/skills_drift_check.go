@@ -18,7 +18,7 @@ var (
 var skillsDriftCheckCmd = &cobra.Command{
 	Use:   "drift-check",
 	Short: "检测分发分叉（dry-run，不写）",
-	Long:  `forge skills drift-check — 检测 canonical 与各目标的分发态（linked/copy-in-sync/drift/missing/target-only）。`,
+	Long:  `forge skills drift-check — 检测 canonical 与各目标的分发态（linked/copy-in-sync/drift/missing/target-only）。项目画像（.forge/skills-profile）生效时只遍历画像内 skill；被画像排除但残留在目标里的 skill 不在此视图（install 会以告警浮出）。`,
 	RunE:  runSkillsDriftCheck,
 }
 
