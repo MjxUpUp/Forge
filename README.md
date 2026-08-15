@@ -366,7 +366,7 @@ npm install -g @agent_forge/forge
 /plugin install forge@forge
 ```
 
-仍需 `npm install -g @agent_forge/forge` 装二进制（hooks 都 spawn forge），并在每个项目 `forge init` 登记（v1.22 起零项目写入——协议与 runtime state 全在用户级 `~/.forge/projects/<key>/`，只对用户级配置生效）。plugin 已装时 hooks 由 plugin.json 全机器接管，`forge init` 跳过自己的 settings.json 注册；存量老项目残留的旧版项目级写入（`.forge/hooks/`、`.claude/settings.local.json` 的 forge hooks、CLAUDE.md/AGENTS.md 的 forge 段）由 autoSync 与 init-suggest SessionStart hook 自动收敛。完整三步与各 host 差异见 `plugins/forge/README.md`。
+仍需 `npm install -g @agent_forge/forge` 装二进制（hooks 都 spawn forge）。项目登记无需手动：plugin 已装（= 显式 opt-in）时，init-suggest SessionStart hook 会在任意 git 项目首次会话静默自动 `forge init`（v1.22 起零项目写入——协议与 runtime state 全在用户级 `~/.forge/projects/<key>/`，只对用户级配置生效；`forge suggest decline` 可按项目退出）。hooks 由 plugin.json 全机器接管，`forge init` 跳过自己的 settings.json 注册；存量老项目残留的旧版项目级写入（`.forge/hooks/`、`.claude/settings.local.json` 的 forge hooks、CLAUDE.md/AGENTS.md 的 forge 段）由 autoSync 与 init-suggest SessionStart hook 自动收敛。完整三步与各 host 差异见 `plugins/forge/README.md`。
 
 </details>
 
