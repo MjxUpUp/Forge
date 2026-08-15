@@ -4,6 +4,7 @@ description: "Skill 编写规范。Use when: 创建新 skill 时、修改现有 
 metadata:
   pattern: tool-wrapper
   domain: skill-engineering
+  triggers: [{"event":"PreToolUse","match":"Write|Edit","when":"skill_file_touched","reason":"编辑 SKILL.md 时须遵守编写规范（description/结构/行数/决策记录）","cooldown":0}]
 ---
 
 # Skill 编写规范

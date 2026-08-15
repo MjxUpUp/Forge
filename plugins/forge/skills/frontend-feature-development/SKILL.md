@@ -5,6 +5,7 @@ metadata:
   pattern: inversion + pipeline + gate
   domain: frontend
   composes: [frontend-stack-selection, frontend-code-review, test-discipline, verification-driver]
+  triggers: [{"event":"UserPromptSubmit","keywords":["写组件","写页面","前端功能","加交互","做个界面","改样式","UI 改动","Tailwind 布局"],"cooldown":600}]
 ---
 
 # 前端功能开发纪律

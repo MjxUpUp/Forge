@@ -1,6 +1,6 @@
 ---
 name: evidence-based-proposal
-description: "方案必须有依据。Use when: 提出技术方案时、建议架构选型时、推荐第三方库或工具时、回答“应该怎么做”类问题时。SKIP: 执行用户已经明确指定的方案时、纯信息查询时、单点 API/报错/库用法查证（用 dev-lookup）、查数据/对比/进展（用 fact-research）、生成结构化文档（用 doc-generator，管按模板填空；本 skill 管方案可行性论证）、产出 ADR 决策记录文档（用 architecture-decision-record；本 skill 管论证过程，ADR 管决策产物）。"
+description: "方案必须有依据。Use when: 提出技术方案时、建议架构选型时、推荐第三方库或工具时、回答“应该怎么做”类问题时。SKIP: 执行用户已经明确指定的方案时、纯信息查询时、单点 API/报错/库用法查证（用 dev-lookup）、查数据/对比/进展（用 research-workflow 轻量档 Phase L）、生成结构化文档（用 doc-generator，管按模板填空；本 skill 管方案可行性论证）、产出 ADR 决策记录文档（用 architecture-decision-record；本 skill 管论证过程，ADR 管决策产物）。"
 metadata:
   pattern: gate
   domain: research

@@ -16,7 +16,7 @@ curl -sL --max-time 10 "https://developer.mozilla.org/en-US/docs/Web/JavaScript"
 
 把自检结论写进当前工作环境记录（如 run_dir/map.md 顶部），后续按自检后的路由选通道。
 
-## 通用事实调研通道（fact-research 用）
+## 通用事实调研通道（research-workflow Phase L 用）
 
 | 通道 | 状态 | 适用 |
 |---|---|---|

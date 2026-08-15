@@ -4,6 +4,7 @@ description: "设计文档→代码落地审计：判断设计文档里的功能
 metadata:
   pattern: pipeline
   domain: quality-assurance
+  triggers: [{"event":"UserPromptSubmit","keywords":["落地了吗","实现程度","对比设计","设计对比","哪些没做","设计稿对比","gap 分析","缺口分析","landing"],"cooldown":600}]
 ---
 
 # 设计文档 → 代码落地审计

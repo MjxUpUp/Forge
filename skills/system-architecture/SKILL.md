@@ -5,7 +5,7 @@ metadata:
   pattern: tool-wrapper
   domain: architecture
   composes: [architecture-decision-record, evidence-based-proposal, dev-workflow, requirement-clarification, backend-development, database-design]
-  triggers: [{"event":"UserPromptSubmit","keywords":["系统架构","架构设计","服务拆分","微服务","单体还是","high-level design","系统设计"],"cooldown":300}]
+  triggers: [{"event":"UserPromptSubmit","keywords":["系统架构","架构设计","服务拆分","微服务","单体还是","high-level design","系统设计","拆服务","服务怎么拆","画架构图"],"cooldown":300}]
 ---
 
 # 系统架构规范

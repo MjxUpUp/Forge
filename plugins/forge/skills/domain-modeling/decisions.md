@@ -69,3 +69,20 @@ description 审计合格未改动 + 新建 evals.json 10 条
 ### Evidence
 
 docs/skills-value-audit-2026-08-02.md
+
+## [d-18cbf6ad6b312574-cb335b36] accept
+
+- **Skill**: domain-modeling
+- **DecidedAt**: 2026-08-15T11:21:41Z
+
+### Diagnosis
+
+无通道skill命中率审查:该skill无triggers纯靠自觉路由,真实用户语料存在明确触发词
+
+### Revision
+
+metadata补triggers(keywords/cooldown;skill-authoring-standard用新condition skill_file_touched;doc-generator/system-architecture补词修订)
+
+### Evidence
+
+skills-hitrate-review-2026-08-15:四源425会话挖掘语料+trigger覆盖10%缺口

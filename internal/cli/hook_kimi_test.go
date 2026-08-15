@@ -41,9 +41,59 @@ func TestKimiNormalize_PreToolUse(t *testing.T) {
 func TestKimiNormalize_PostToolUse_ToolOutput(t *testing.T) {
 	var in HookInput
 	kimiNormalize([]byte(kimiPostToolUsePayload), &in)
-	// kimi 的 tool_output（纯字符串）映射进 HookInput.ToolOutput（Claude 的 tool_response 槽位）。
-	if got := string(in.ToolOutput); got != `"hello\n"` {
-		t.Errorf("ToolOutput = %q", got)
+	// kimi 的 tool_output（纯字符串）包装成 {"output": "..."} 对象——纯字符串会让
+	// skill-trigger 的对象解析静默失败，kimi 上所有 PostToolUse 触发条件全灭。
+	var out map[string]any
+	if err := json.Unmarshal(in.ToolOutput, &out); err != nil {
+		t.Fatalf("ToolOutput 必须是可解析对象（包装产物），got %s: %v", in.ToolOutput, err)
+	}
+	if out["output"] != "hello\n" {
+		t.Errorf("ToolOutput.output = %q, want %q", out["output"], "hello\n")
+	}
+}
+
+func TestKimiNormalize_PostToolUse_ToolOutputEmbeddedJSON(t *testing.T) {
+	// 字符串内容本身是对象的序列化 JSON（部分工具输出如此）→ 直接采用内嵌对象，
+	// 保留 exit_code 等字段供 test_command_failed condition 使用。
+	payload := `{"hook_event_name":"PostToolUse","session_id":"s1","cwd":"C:/proj","tool_name":"Bash","tool_input":{"command":"go test ./..."},"tool_output":"{\"exit_code\":1,\"stderr\":\"--- FAIL: TestX\"}"}`
+	var in HookInput
+	kimiNormalize([]byte(payload), &in)
+	var out map[string]any
+	if err := json.Unmarshal(in.ToolOutput, &out); err != nil {
+		t.Fatalf("内嵌 JSON 字符串必须解包为对象，got %s: %v", in.ToolOutput, err)
+	}
+	if code, _ := out["exit_code"].(float64); code != 1 {
+		t.Errorf("exit_code = %v, want 1", out["exit_code"])
+	}
+}
+
+func TestKimiNormalize_PostToolUse_ToolOutputEdgeStates(t *testing.T) {
+	// wrapKimiToolOutput 的三态边界（审查 L3 补测）：null 字面量会经
+	// json.Unmarshal(null, &s) 得空串并包装成 {"output":""}（良性变形，钉住防回退）；
+	// 字符串以 { 开头但非合法 JSON 走包装回退；数组序列化字符串同样包装（matchKeywords
+	// 只读 output 键，数组裸放反而取不到文本）。
+	tests := []struct {
+		name    string
+		output  string // tool_output 的原始 JSON 值
+		wantOut string // 期望包装后的 output 键值；"*" 表示断言可解析对象即可
+	}{
+		{"null literal wraps to empty output", `null`, ""},
+		{"brace-prefixed invalid JSON falls back to wrap", `"{oops"`, "{oops"},
+		{"array-JSON string wraps output key", `"[1,2]"`, "[1,2]"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			payload := `{"hook_event_name":"PostToolUse","session_id":"s1","cwd":"C:/proj","tool_name":"Bash","tool_input":{},"tool_output":` + tt.output + `}`
+			var in HookInput
+			kimiNormalize([]byte(payload), &in)
+			var out map[string]any
+			if err := json.Unmarshal(in.ToolOutput, &out); err != nil {
+				t.Fatalf("ToolOutput 必须是可解析对象，got %s: %v", in.ToolOutput, err)
+			}
+			if out["output"] != tt.wantOut {
+				t.Errorf("ToolOutput.output = %#v, want %#v", out["output"], tt.wantOut)
+			}
+		})
 	}
 }
 

@@ -35,3 +35,37 @@ description SKIP 边界补全 + evals.json 建立
 ### Evidence
 
 docs/skills-value-audit-2026-08-02.md
+
+## [d-18cbf6ad7d4aa8c0-8ce7b4d0] accept
+
+- **Skill**: dev-lookup
+- **DecidedAt**: 2026-08-15T11:21:42Z
+
+### Diagnosis
+
+无通道skill命中率审查:该skill无triggers纯靠自觉路由,真实用户语料存在明确触发词
+
+### Revision
+
+metadata补triggers(keywords/cooldown;skill-authoring-standard用新condition skill_file_touched;doc-generator/system-architecture补词修订)
+
+### Evidence
+
+skills-hitrate-review-2026-08-15:四源425会话挖掘语料+trigger覆盖10%缺口
+
+## [d-18cbf713ead4ab78-891e013d] accept
+
+- **Skill**: dev-lookup
+- **DecidedAt**: 2026-08-15T11:29:02Z
+
+### Diagnosis
+
+研究族合并连带引用修复:fact-research/web-search-bridge 已并入 research-workflow,本skill对二者的 SKIP/分工/降级链引用悬空
+
+### Revision
+
+引用改指 research-workflow 轻量档(Phase L)/通用搜索桥接节;dev-lookup 的 curl-sourcing 相对路径改 ../research-workflow/
+
+### Evidence
+
+forge skills validate 51/51 + TestSkills_NoDanglingSkillRefs 守卫

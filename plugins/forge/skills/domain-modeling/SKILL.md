@@ -4,6 +4,7 @@ description: "项目领域语言治理：构建并打磨 CONTEXT.md 术语表（
 metadata:
   pattern: tool-wrapper
   domain: architecture
+  triggers: [{"event":"UserPromptSubmit","keywords":["术语表","CONTEXT.md","一词多义","统一术语","领域语言","ubiquitous"],"cooldown":600}]
 ---
 
 # 领域建模（领域语言治理）

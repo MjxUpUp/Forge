@@ -5,6 +5,7 @@ metadata:
   pattern: tool-wrapper
   domain: workflow
   forge依赖梯度: 有 forge → 全套双向锚定（本 skill 主路径）；无 forge → 降级为 AI_CONTEXT.md 纯纪律约定（无工具强制，长期易漂移，只作过渡）
+  triggers: [{"event":"UserPromptSubmit","keywords":["交接","接力","接手","给别的工具","另一个工具","其他 agent","跨工具","复制给"],"cooldown":600}]
 ---
 
 # 跨工具上下文接续
