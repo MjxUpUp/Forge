@@ -401,6 +401,37 @@ func TestPluginPack_Readme_UserLevelContract(t *testing.T) {
 	}
 }
 
+// TestPluginPack_Readme_CopilotVSCodeCaveat pins the Wave 2c code-review finding,
+// doc-confirmed against code.visualstudio.com: VS Code detects a plugin's format by
+// its manifest marker (.claude-plugin/plugin.json = Claude format → hooks read ONLY
+// from hooks/hooks.json; root hooks.json is the Copilot-format location). The pack
+// ships the Claude marker, so the root hooks.json may be inert on VS Code; the README
+// must say so honestly instead of implying VS Code is wired (same pattern as the
+// codex "not officially confirmed" caveat). Guards against the caveat being dropped
+// in a README rewrite while the structural fix (hooks/hooks.json + double-fire
+// verification on Claude Code) remains an open follow-up.
+//
+// TestPluginPack_Readme_CopilotVSCodeCaveat 钉死 Wave 2c 代码审查发现（已对照
+// code.visualstudio.com 文档核实）：VS Code 按 manifest 标记检测 plugin 格式
+// （.claude-plugin/plugin.json = Claude 格式 → hooks 只从 hooks/hooks.json 读；
+// 根 hooks.json 是 Copilot 格式位置）。pack 带 Claude 标记，故根 hooks.json 在
+// VS Code 上可能无效；README 必须诚实说明，而非暗示 VS Code 已接线（与 codex
+// 「未官方确认」caveat 同款模式）。防止结构性修复（hooks/hooks.json + Claude
+// Code 双跑验证）仍是开放 follow-up 期间，caveat 在 README 重写中被丢掉。
+func TestPluginPack_Readme_CopilotVSCodeCaveat(t *testing.T) {
+	dir := generatePack(t)
+	content := readOrFail(t, filepath.Join(dir, "plugins", "forge", "README.md"))
+	for _, want := range []string{
+		"VS Code caveat",
+		"hooks/hooks.json",
+		"VS Code unverified",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("README missing copilot VS Code caveat wording %q — the root hooks.json is inert on VS Code (Claude-format detection) and the README must say so honestly", want)
+		}
+	}
+}
+
 // TestPluginPack_ReasonixManifestHooksMirror: the hooks field of reasonix-plugin.json must equal the
 // flat hooks shape buildReasonixHooks produces (the same one reasonix's Translate writes into
 // settings.json). reasonix is the 5th host: its Claude compatibility does NOT resolve

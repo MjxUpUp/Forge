@@ -318,6 +318,41 @@ func runHook(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// 1b. Normalize the stdin of non-Claude-Code agents BEFORE adopting the payload cwd
+	// and resolving the project root. Windsurf/cline/reasonix use a different hook stdin
+	// schema (Windsurf: {agent_action_name, trajectory_id, tool_info}; cline:
+	// {hookName, taskId, workspaceRoots, ...}); without this step forge would extract
+	// empty file_path/command and blocking hooks (task-guard/bash-guard) would fail open.
+	// The ordering is load-bearing for cline: its payload has NO cwd field — the project
+	// dir only reaches hookInput.Cwd when clineNormalize maps workspaceRoots[0] (and
+	// taskId→SessionID likewise). Normalizing after adoptPayloadCwd/findProjectRoot (the
+	// original position) left cline's Cwd mapping as dead code: findProjectRoot resolved
+	// against the process cwd, and when cline spawns the wrapper outside the workspace
+	// every project-scoped hook silently allowed — the exact fail-open class
+	// adoptPayloadCwd was built to close for kimi. The `--agent` flag (cross-platform,
+	// set by the translator) selects the dialect; FORGE_HOOK_AGENT is the fallback.
+	// opencode/pi are code-based and directly construct Claude stdin in TS, so no
+	// normalizer runs for them. kimi already normalized at parse time (see above); the
+	// other dialects normalize here.
+	//
+	// 1b. 在采用 payload cwd、解析项目根**之前**归一化非 Claude Code agent 的 stdin。
+	// Windsurf/cline/reasonix 使用不同的 hook stdin schema（Windsurf:
+	// {agent_action_name, trajectory_id, tool_info}；cline: {hookName, taskId,
+	// workspaceRoots, ...}）；不做这步，forge 会抽出空的 file_path/command，拦截类
+	// hook（task-guard/bash-guard）会 fail open。时序对 cline 是承重的：其 payload
+	// 没有 cwd 字段——项目目录只有在 clineNormalize 映射 workspaceRoots[0] 时才
+	// 进入 hookInput.Cwd（taskId→SessionID 同理）。若在 adoptPayloadCwd/
+	// findProjectRoot 之后归一化（原位置），cline 的 Cwd 映射就是死代码：
+	// findProjectRoot 按进程 cwd 解析，当 cline 在 workspace 之外拉起 wrapper 时
+	// 所有项目级 hook 静默放行——正是 adoptPayloadCwd 为 kimi 堵上的那类 fail-open。
+	// `--agent` flag（跨平台，由 translator 设置）选择方言；FORGE_HOOK_AGENT 是
+	// 兜底。opencode/pi 是 code-based，直接在 TS 里构造 Claude stdin，无需
+	// normalizer。kimi 已在 stdin 解析阶段完成 normalize（见上文）；其余方言在此
+	// 归一化。
+	if agent != "" && agent != "kimi" {
+		normalizeAgentStdin(agent, stdinData, &hookInput)
+	}
+
 	// Adopt the payload's cwd before resolving the project root. kimi plugin hooks are
 	// spawned with the process cwd set to the plugin root (~/.kimi-code/plugins/managed/<id>)
 	// — never the session project (verified on kimi 0.31.0; matches kimi docs "each hook
@@ -388,24 +423,6 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// 幂等的。
 	if agent != "" && root != "" {
 		taskpipeline.StampSessionAgent(root, hookInput.SessionID, agent)
-	}
-
-	// 1b. Normalize the stdin of non-Claude-Code agents. Windsurf/Copilot use a different
-	// hook stdin schema (Windsurf: {agent_action_name, trajectory_id,
-	// tool_info}); without this step forge would extract empty file_path/command and blocking hooks
-	// (task-guard/bash-guard) would fail open. The `--agent` flag (cross-platform, set by the translator)
-	// selects the dialect; FORGE_HOOK_AGENT is the fallback. opencode/pi are code-based and directly
-	// construct Claude stdin in TS, so no normalizer is needed here.
-	//
-	// 1b. normalize 非 Claude Code agent 的 stdin。Windsurf/Copilot 使用不同的
-	// hook stdin schema（Windsurf: {agent_action_name, trajectory_id,
-	// tool_info}）；不做这步，forge 会抽出空的 file_path/command，拦截类 hook
-	// （task-guard/bash-guard）会 fail open。`--agent` flag（跨平台，由 translator
-	// 设置）选择方言；FORGE_HOOK_AGENT 是兜底。opencode/pi 是 code-based，直接
-	// 在 TS 里构造 Claude stdin，故此处无需 normalizer。
-	// kimi 已在 stdin 解析阶段完成 normalize（见上文）；其余方言在此归一化。
-	if agent != "" && agent != "kimi" {
-		normalizeAgentStdin(agent, stdinData, &hookInput)
 	}
 
 	// skill-trigger 特例：Go 内直接判定 + 渲染（不经 bash embed）。
