@@ -56,6 +56,32 @@ import (
 // {"decision":"block"} + exit 0 阻断；见 internal/cli/hook.go 的 emitCopilotOutput）；
 // 每个条目设 timeoutSec 60（copilot 默认 30s，重型门禁——task-verify 要 fork 多个
 // forge 子进程——有被杀风险）。
+//
+// KNOWN GAP — VS Code (code review Wave 2c finding, doc-confirmed against
+// code.visualstudio.com/docs/agent-customization/agent-plugins): VS Code
+// auto-detects the plugin FORMAT by the manifest marker — .claude-plugin/plugin.json
+// means CLAUDE format, and Claude-format hooks are read ONLY from hooks/hooks.json;
+// the ROOT hooks.json is the Copilot-format location. Forge ships the Claude marker
+// (needed for Claude Code), so on VS Code the root hooks.json is likely INERT (VS
+// Code resolves hooks/hooks.json, which this pack does not ship). Copilot CLI itself
+// documents "each plugin's own hooks.json (or hooks/hooks.json)" — both paths — so
+// the CLI route works. Shipping hooks/hooks.json to close the VS Code gap would
+// double-fire every hook on Claude Code (it loads hooks/hooks.json alongside the
+// plugin.json hooks field); restructuring safely requires live verification on both
+// hosts, which this environment cannot do — documented honestly here + README until
+// then (same pattern as the codex "not officially confirmed" caveat).
+//
+// 已知缺口——VS Code（Wave 2c 代码审查发现，已对照 code.visualstudio.com/docs/
+// agent-customization/agent-plugins 文档核实）：VS Code 按 manifest 标记自动检测
+// plugin 格式——.claude-plugin/plugin.json 即 CLAUDE 格式，而 Claude 格式的 hooks
+// 只从 hooks/hooks.json 读取；根 hooks.json 是 Copilot 格式的位置。Forge 带 Claude
+// 标记（Claude Code 需要），故 VS Code 上根 hooks.json 很可能无效（VS Code 去解析
+// hooks/hooks.json，而本 pack 不提供）。Copilot CLI 自身文档是"plugin 自己的
+// hooks.json（或 hooks/hooks.json）"——两条路径都收，CLI 路线可用。为补 VS Code
+// 缺口而发 hooks/hooks.json 会让 Claude Code 上每个 hook 双跑（它在 plugin.json
+// hooks 字段之外也加载 hooks/hooks.json）；安全重构需要两宿主活体验证，本环境
+// 做不到——在此之前在此 + README 诚实文档化（与 codex"未官方确认"caveat 同款
+// 模式）。
 
 // copilotHookEntry is copilot's flat hook-entry shape: {type, command, matcher,
 // timeoutSec}. Copilot's config format is flatter than Claude Code's nested

@@ -44,6 +44,8 @@ Copilot officially scans .claude-plugin/marketplace.json:
 
 Copilot officially supports lifecycle hooks, and this plugin ships its own `hooks.json` at the plugin root (copilot's documented plugin-hook location) — the marketplace install above wires the gate set (PreToolUse/PostToolUse/Stop/SessionStart/UserPromptSubmit) directly, no extra step. Two copilot-specific behaviors to know: `agentStop` (Stop) blocks only via the hook's stdout decision, and `userPromptSubmitted` command-hook output is dropped by copilot — context injection on that event is a no-op there (the hooks still run and record). The forge bridge without the plugin (`forge init --agents copilot`) remains a no-op — no user-level channel that forge writes.
 
+**VS Code caveat**: VS Code auto-detects a plugin's format by its manifest marker — `.claude-plugin/plugin.json` means Claude format, and Claude-format hooks are read only from `hooks/hooks.json`, while the plugin-root `hooks.json` is the Copilot-format location (code.visualstudio.com/docs/agent-customization/agent-plugins). This plugin ships the Claude marker, so on VS Code the root `hooks.json` may not load; the Copilot CLI accepts both locations and is unaffected. Closing the VS Code gap would require shipping `hooks/hooks.json`, which would double-fire hooks on Claude Code — pending live verification on both hosts, treat VS Code hook wiring as unverified.
+
 #### Kimi Code
 
 Kimi Code reads the plugin manifest committed at the repo root (`.kimi-plugin/plugin.json`) — no marketplace registration needed:
@@ -93,7 +95,7 @@ User-level hooks fire in every Claude Code project. With the plugin installed, t
 | **Claude Code** | `plugin.json` marketplace | automatic (user-level) | full hooks; auto-init via `init-suggest` SessionStart hook |
 | **Codex (CLI / App)** | marketplace (path not officially confirmed) | `forge init --agents codex` | if marketplace path fails, fall back to manual |
 | **Cursor** | marketplace | `forge init --agents cursor` | Cursor plugin model carries skills, not Claude-shape hooks; user-level `~/.cursor/hooks.json`, zero project writes |
-| **GitHub Copilot (CLI / VS Code)** | marketplace | automatic via plugin `hooks.json` | plugin-root hooks.json (Wave 2c); `forge init --agents copilot` remains a no-op |
+| **GitHub Copilot (CLI / VS Code)** | marketplace | automatic via plugin `hooks.json` (CLI); VS Code unverified | plugin-root hooks.json (Wave 2c); VS Code reads Claude-format hooks from `hooks/hooks.json` only (see caveat above); `forge init --agents copilot` remains a no-op |
 | **Windsurf** | `forge init --agents windsurf` | user-level Cascade hooks | `~/.codeium/windsurf/hooks.json` + `memories/global_rules.md` via `internal/agentbridge/windsurf.go` |
 | **Kimi Code** | repo-root `.kimi-plugin/plugin.json` (`/plugins install https://github.com/MjxUpUp/Forge`) | automatic (user-level) | full event set (PreToolUse/PostToolUse/Stop/SessionStart/PostCompact/UserPromptSubmit), exit-2 block protocol; fallback `forge init --agents kimi` (config.toml marker section, stripped when the plugin is installed) |
 | **Reasonix** | `plugins/forge/reasonix-plugin.json` (`reasonix plugin install https://github.com/MjxUpUp/Forge/tree/main/plugins/forge`) | automatic (user-level) | native manifest (Claude compat does not resolve hooks); fallback `forge init --agents reasonix` (settings.json flat hooks, stripped when the plugin is installed) |

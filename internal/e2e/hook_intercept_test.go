@@ -117,6 +117,66 @@ func TestHook_TaskGuard_BlocksForgeManagedFile(t *testing.T) {
 	}
 }
 
+// TestHook_Cline_ProjectResolvedFromWorkspaceRoots pins the runHook ordering that
+// code review exposed on the Wave 3b diff: normalizeAgentStdin must run BEFORE
+// adoptPayloadCwd/findProjectRoot, or cline's workspaceRoots[0]→Cwd mapping is
+// dead code (cline's payload has no cwd field — the mapping is the ONLY source of
+// the project dir). This test simulates the undocumented worst case — cline
+// spawning the wrapper script with a process cwd OUTSIDE the workspace — and
+// asserts the project still resolves: task-guard blocks the .forge write through
+// the cline block protocol (cancel:true + exit 2). Under the old ordering
+// findProjectRoot resolved against the process cwd, failed, and the hook silently
+// allowed — the entire cline gate layer no-opped with zero symptoms.
+//
+// TestHook_Cline_ProjectResolvedFromWorkspaceRoots 钉死 Wave 3b diff 上代码审查
+// 暴露的 runHook 时序：normalizeAgentStdin 必须先于 adoptPayloadCwd/
+// findProjectRoot 执行，否则 cline 的 workspaceRoots[0]→Cwd 映射是死代码
+// （cline payload 没有 cwd 字段——该映射是项目目录的唯一来源）。本测试模拟
+// 未文档化的最坏情形——cline 在 workspace 之外拉起 wrapper 脚本（进程 cwd 在
+// 项目外）——并断言项目仍被解析：task-guard 经 cline 阻断协议（cancel:true +
+// exit 2）拦下 .forge 写入。旧时序下 findProjectRoot 按进程 cwd 解析、失败、
+// hook 静默放行——整个 cline 门禁层零症状空转。
+func TestHook_Cline_ProjectResolvedFromWorkspaceRoots(t *testing.T) {
+	dir := freshProject(t)
+	outside := t.TempDir() // process cwd: outside any forge project
+
+	clineIn, err := json.Marshal(map[string]any{
+		"clineVersion":   "3.36.0",
+		"hookName":       "PreToolUse",
+		"taskId":         "sess-cline-cwd",
+		"workspaceRoots": []string{dir},
+		"tool":           "write_to_file",
+		"parameters": map[string]any{
+			"path":    filepath.Join(dir, ".forge", "state.json"),
+			"content": `{"hacked":true}`,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command(forgeBin, "hook", "task-guard", "--agent", "cline")
+	cmd.Dir = outside
+	cmd.Stdin = strings.NewReader(string(clineIn))
+	cmd.Env = append(os.Environ(),
+		"TMPDIR="+t.TempDir(),
+		"PATH="+filepath.Dir(forgeBin)+string(os.PathListSeparator)+os.Getenv("PATH"),
+	)
+	var out, errBuf bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err == nil {
+		t.Fatalf("task-guard must resolve the project from cline workspaceRoots and BLOCK the .forge write even when spawned outside the workspace; exit 0 = silent allow (the normalize-before-adoptPayloadCwd ordering regressed). stdout:\n%s", out.String())
+	}
+	stdout := out.String()
+	if !strings.Contains(stdout, `"cancel":true`) {
+		t.Errorf("cline block protocol must emit cancel:true, got:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "task-guard") {
+		t.Errorf("stdout missing task-guard identifier in the block reason:\n%s", stdout)
+	}
+}
+
 // TestHook_HazardGuard_BlocksHazardousCommand verifies the on-demand-guards
 // auto-tier: hazard-guard must BLOCK destructive commands (rm -rf / git push
 // --force / DROP TABLE / kubectl delete / DELETE without WHERE) and emit the
