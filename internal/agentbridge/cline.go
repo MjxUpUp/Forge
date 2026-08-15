@@ -43,7 +43,8 @@ import (
 // hook_normalize.go); the output dialect by emitClineOutput.
 //
 // The wrapper is POSIX sh (macOS /bin/sh is bash-3.2 in posix mode — no bashisms;
-// case actions stay assignments-only per the bash-3.2 parser hazard).
+// inside case actions, avoid the documented bash-3.2 parse-error forms — a nested
+// `case` and `[[ ]] && cmd ;;` — plain assignments and a simple `if..fi` parse fine).
 //
 // Cline 接线（Wave 3b）。Cline v3.36+ 提供基于文件的 lifecycle hooks：以 hook 类型
 // 精确命名（无扩展名）的可执行脚本，从 ~/Documents/Cline/Rules/Hooks/（全局）或
@@ -73,7 +74,8 @@ import (
 // 归一化；输出方言由 emitClineOutput 处理。
 //
 // wrapper 是 POSIX sh（macOS 的 /bin/sh 是 bash-3.2 posix 模式——不用 bashism；
-// case action 只放赋值，遵循 bash-3.2 解析器坑）。
+// case action 内避开文档化的 bash-3.2 parse-error 形态——嵌套 `case` 与
+// `[[ ]] && cmd ;;`——纯赋值与简单 `if..fi` 均可正常解析）。
 
 // clineWrapperMarker identifies a wrapper script as forge-generated. Translate only
 // ever overwrites files carrying this marker — a user-authored script named e.g.
@@ -183,10 +185,12 @@ func buildClineWrapperScript(event string, roster []string) string {
 	b.WriteString("\tfi\n")
 	// Envelope surgery: strip the fixed prefix and suffix, then the value's outer
 	// quotes, leaving the already-escaped payload — embeddable directly inside a new
-	// JSON string. Case actions are assignments only (bash-3.2 posix parser hazard).
+	// JSON string. The case action must avoid the bash-3.2 parse-error forms (nested
+	// `case`, `[[ ]] && cmd ;;`) — assignments and a simple `if..fi` are safe.
 	//
 	// 信封手术：剥掉固定前缀与后缀，再剥值的两侧引号，留下已转义的 payload——可直接
-	// 嵌进新的 JSON 字符串。case action 只放赋值（bash-3.2 posix 解析器坑）。
+	// 嵌进新的 JSON 字符串。case action 须避开 bash-3.2 parse-error 形态（嵌套
+	// `case`、`[[ ]] && cmd ;;`）——赋值与简单 `if..fi` 是安全的。
 	b.WriteString("\tcase \"$out\" in\n")
 	b.WriteString("\t'{\"cancel\":false,\"contextModification\":'*'}')\n")
 	b.WriteString("\t\tpiece=${out#'{\"cancel\":false,\"contextModification\":'}\n")
