@@ -1,0 +1,149 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "type": "command",
+        "command": "forge hook auto-compile --agent copilot",
+        "matcher": "Write|Edit",
+        "timeoutSec": 60
+      },
+      {
+        "type": "command",
+        "command": "forge hook workflow-test-guard --agent copilot",
+        "matcher": "Write|Edit",
+        "timeoutSec": 60
+      },
+      {
+        "type": "command",
+        "command": "forge hook skill-trigger --agent copilot",
+        "matcher": "Write|Edit",
+        "timeoutSec": 60
+      },
+      {
+        "type": "command",
+        "command": "forge hook file-sentinel --agent copilot",
+        "matcher": "Bash",
+        "timeoutSec": 60
+      },
+      {
+        "type": "command",
+        "command": "forge hook skill-trigger --agent copilot",
+        "matcher": "Bash",
+        "timeoutSec": 60
+      },
+      {
+        "type": "command",
+        "command": "forge hook tool-track --agent copilot",
+        "matcher": "Read|Skill|Agent",
+        "timeoutSec": 60
+      }
+    ],
+    "PreToolUse": [
+      {
+        "type": "command",
+        "command": "forge hook freeze-guard --agent copilot",
+        "matcher": "Write|Edit",
+        "timeoutSec": 60
+      },
+      {
+        "type": "command",
+        "command": "forge hook task-guard --agent copilot",
+        "matcher": "Write|Edit",
+        "timeoutSec": 60
+      },
+      {
+        "type": "command",
+        "command": "forge hook assertion-check --agent copilot",
+        "matcher": "Write|Edit",
+        "timeoutSec": 60
+      },
+      {
+        "type": "command",
+        "command": "forge hook read-before-edit --agent copilot",
+        "matcher": "Write|Edit",
+        "timeoutSec": 60
+      },
+      {
+        "type": "command",
+        "command": "forge hook skill-trigger --agent copilot",
+        "matcher": "Write|Edit",
+        "timeoutSec": 60
+      },
+      {
+        "type": "command",
+        "command": "forge hook bash-guard --agent copilot",
+        "matcher": "Bash",
+        "timeoutSec": 60
+      },
+      {
+        "type": "command",
+        "command": "forge hook hazard-guard --agent copilot",
+        "matcher": "Bash",
+        "timeoutSec": 60
+      },
+      {
+        "type": "command",
+        "command": "forge hook skill-trigger --agent copilot",
+        "matcher": "Bash",
+        "timeoutSec": 60
+      }
+    ],
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "forge hook skill-scan --agent copilot",
+        "timeoutSec": 60
+      },
+      {
+        "type": "command",
+        "command": "forge hook mcp-scan --agent copilot",
+        "timeoutSec": 60
+      },
+      {
+        "type": "command",
+        "command": "forge hook init-suggest --agent copilot",
+        "timeoutSec": 60
+      },
+      {
+        "type": "command",
+        "command": "forge hook task-resume --agent copilot",
+        "timeoutSec": 60
+      },
+      {
+        "type": "command",
+        "command": "forge hook skill-trigger --agent copilot",
+        "timeoutSec": 60
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "forge hook task-verify --agent copilot",
+        "timeoutSec": 60
+      },
+      {
+        "type": "command",
+        "command": "forge hook review-stop --agent copilot",
+        "timeoutSec": 60
+      },
+      {
+        "type": "command",
+        "command": "forge hook skill-trigger --agent copilot",
+        "timeoutSec": 60
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "type": "command",
+        "command": "forge hook resume-reinject --agent copilot",
+        "timeoutSec": 60
+      },
+      {
+        "type": "command",
+        "command": "forge hook skill-trigger --agent copilot",
+        "timeoutSec": 60
+      }
+    ]
+  },
+  "version": 1
+}

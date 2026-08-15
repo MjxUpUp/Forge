@@ -369,6 +369,206 @@ func TestReasonixToCCToolName(t *testing.T) {
 	}
 }
 
+// TestClineNormalize_WriteToFile: cline PreToolUse for write_to_file with the
+// documented base fields plus a `parameters` payload — the case read-before-edit /
+// task-guard enforcement hangs on. workspaceRoots[0]→Cwd, taskId→SessionID,
+// parameters.path aliased to file_path, write_to_file→Write.
+//
+// TestClineNormalize_WriteToFile：cline 的 write_to_file PreToolUse，携带文档化基础
+// 字段加 `parameters` payload——read-before-edit / task-guard enforce 所系的场景。
+// workspaceRoots[0]→Cwd、taskId→SessionID、parameters.path 别名到 file_path、
+// write_to_file→Write。
+func TestClineNormalize_WriteToFile(t *testing.T) {
+	stdin := mustJSON(t, map[string]any{
+		"clineVersion":   "3.36.0",
+		"hookName":       "PreToolUse",
+		"taskId":         "cline-task-7",
+		"workspaceRoots": []string{"/home/u/proj"},
+		"userId":         "u1",
+		"tool":           "write_to_file",
+		"parameters": map[string]any{
+			"path":    "/home/u/proj/main.go",
+			"content": "package main",
+		},
+	})
+	var hi HookInput
+	normalizeAgentStdin("cline", stdin, &hi)
+
+	if hi.HookEventName != "PreToolUse" {
+		t.Errorf("HookEventName: got %q, want PreToolUse (hookName→HookEventName)", hi.HookEventName)
+	}
+	if hi.SessionID != "cline-task-7" {
+		t.Errorf("SessionID: got %q, want cline-task-7 (taskId→SessionID)", hi.SessionID)
+	}
+	if hi.Cwd != "/home/u/proj" {
+		t.Errorf("Cwd: got %q, want /home/u/proj (workspaceRoots[0]→Cwd)", hi.Cwd)
+	}
+	if hi.ToolName != "Write" {
+		t.Errorf("ToolName: got %q, want Write (write_to_file→Write)", hi.ToolName)
+	}
+	var f toolInputFields
+	if err := json.Unmarshal(hi.ToolInput, &f); err != nil {
+		t.Fatalf("unmarshal normalized tool_input: %v", err)
+	}
+	if f.FilePath != "/home/u/proj/main.go" {
+		t.Errorf("FilePath: got %q, want parameters.path aliased to file_path", f.FilePath)
+	}
+}
+
+// TestClineNormalize_CamelCaseCandidates: the tool payload's exact field names are
+// only partially documented — toolName/toolInput (camelCase) must resolve identically
+// to tool/parameters, and execute_command must map to Bash with command passthrough
+// (bash-guard / hazard-guard input).
+//
+// TestClineNormalize_CamelCaseCandidates：工具 payload 的确切字段名仅部分文档化——
+// toolName/toolInput（camelCase）须与 tool/parameters 同等解析，且 execute_command
+// 须映射到 Bash、command 原样透传（bash-guard / hazard-guard 的输入）。
+func TestClineNormalize_CamelCaseCandidates(t *testing.T) {
+	stdin := mustJSON(t, map[string]any{
+		"hookName":       "PreToolUse",
+		"taskId":         "cline-1",
+		"workspaceRoots": []string{"/app"},
+		"toolName":       "execute_command",
+		"toolInput":      map[string]any{"command": "rm -rf /tmp/x"},
+	})
+	var hi HookInput
+	normalizeAgentStdin("cline", stdin, &hi)
+
+	if hi.ToolName != "Bash" {
+		t.Errorf("ToolName: got %q, want Bash (execute_command→Bash)", hi.ToolName)
+	}
+	var f toolInputFields
+	json.Unmarshal(hi.ToolInput, &f)
+	if f.Command != "rm -rf /tmp/x" {
+		t.Errorf("Command: got %q, want 'rm -rf /tmp/x' (toolInput.command passthrough)", f.Command)
+	}
+}
+
+// TestClineNormalize_TaskStartMapsToSessionStart: the SessionStart group hangs on
+// cline's TaskStart (see clineEventMappings) — clineNormalize must map the event back
+// to "SessionStart" or every session-scoped hook (which dispatches on exactly that
+// name) would silently never fire. This is the load-bearing event translation.
+//
+// TestClineNormalize_TaskStartMapsToSessionStart：SessionStart 组挂在 cline 的
+// TaskStart 上（见 clineEventMappings）——clineNormalize 必须把事件映射回
+// "SessionStart"，否则每个会话级 hook（恰以该名分发）静默永不触发。这是关键的
+// 事件翻译。
+func TestClineNormalize_TaskStartMapsToSessionStart(t *testing.T) {
+	stdin := mustJSON(t, map[string]any{
+		"hookName":       "TaskStart",
+		"taskId":         "cline-sess-1",
+		"workspaceRoots": []string{"/app"},
+	})
+	var hi HookInput
+	normalizeAgentStdin("cline", stdin, &hi)
+
+	if hi.HookEventName != "SessionStart" {
+		t.Errorf("HookEventName: got %q, want SessionStart (TaskStart carries the SessionStart group)", hi.HookEventName)
+	}
+}
+
+// TestClineNormalize_OverridesDefaultUnmarshalSnakeToolName: guards the UNCONDITIONAL
+// ToolName override. cline's snake_case `tool_name` field (when a version sends it)
+// collides with HookInput's own json tag, so the default unmarshal fills ToolName with
+// the raw cline name BEFORE the normalizer runs — a fill-empty policy would preserve
+// "write_to_file" and skip the mapping, the exact fail-open shape the normalizer
+// exists to prevent.
+//
+// TestClineNormalize_OverridesDefaultUnmarshalSnakeToolName：守卫 ToolName 的无条件
+// 覆盖。cline 的 snake_case `tool_name` 字段（某版本发送时）与 HookInput 自身的
+// json tag 撞名，默认 unmarshal 会在 normalizer 之前把原始 cline 名填进 ToolName——
+// 填空策略会保留 "write_to_file" 而跳过映射，恰是 normalizer 要防的 fail-open 形态。
+func TestClineNormalize_OverridesDefaultUnmarshalSnakeToolName(t *testing.T) {
+	stdin := mustJSON(t, map[string]any{
+		"hookName":  "PreToolUse",
+		"taskId":    "cline-2",
+		"tool_name": "write_to_file",
+		"tool_input": map[string]any{
+			"path": "/app/main.go",
+		},
+	})
+	// Simulate runHook's default unmarshal first (the production sequence for cline).
+	//
+	// 先模拟 runHook 的默认 unmarshal（cline 的生产时序）。
+	var hi HookInput
+	if err := json.Unmarshal(stdin, &hi); err != nil {
+		t.Fatalf("default unmarshal: %v", err)
+	}
+	normalizeAgentStdin("cline", stdin, &hi)
+
+	if hi.ToolName != "Write" {
+		t.Errorf("ToolName: got %q, want Write — normalizer must override the raw snake_case name the default unmarshal filled", hi.ToolName)
+	}
+	var f toolInputFields
+	if err := json.Unmarshal(hi.ToolInput, &f); err != nil {
+		t.Fatalf("unmarshal normalized tool_input: %v", err)
+	}
+	if f.FilePath != "/app/main.go" {
+		t.Errorf("FilePath: got %q, want tool_input.path aliased to file_path", f.FilePath)
+	}
+}
+
+// TestClineNormalize_UserPromptSubmitPrompt: the prompt candidates (prompt/userPrompt/
+// question — exact name partially documented) land in Prompt, which resume-reinject /
+// skill-trigger read.
+//
+// TestClineNormalize_UserPromptSubmitPrompt：prompt 候选（prompt/userPrompt/question
+// ——确切名仅部分文档化）落入 Prompt，供 resume-reinject / skill-trigger 读取。
+func TestClineNormalize_UserPromptSubmitPrompt(t *testing.T) {
+	stdin := mustJSON(t, map[string]any{
+		"hookName":       "UserPromptSubmit",
+		"taskId":         "cline-3",
+		"workspaceRoots": []string{"/app"},
+		"prompt":         "continue the task",
+	})
+	var hi HookInput
+	normalizeAgentStdin("cline", stdin, &hi)
+
+	if hi.HookEventName != "UserPromptSubmit" {
+		t.Errorf("HookEventName: got %q, want UserPromptSubmit", hi.HookEventName)
+	}
+	if hi.Prompt != "continue the task" {
+		t.Errorf("Prompt: got %q, want 'continue the task'", hi.Prompt)
+	}
+}
+
+// TestClineToCCToolName pins the snake_case → PascalCase map for cline's documented
+// tool roster; unknown names pass through unchanged (forward-compat — a future cline
+// tool must not silently match nothing forge dispatches on).
+//
+// TestClineToCCToolName 钉死 cline 文档化工具名册的 snake_case → PascalCase 映射；
+// 未知名原样透传（向前兼容——未来的 cline 工具不得静默匹配不到 forge 的分发名）。
+func TestClineToCCToolName(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"write_to_file", "Write"},
+		{"insert_content", "Edit"},
+		{"search_and_replace", "Edit"},
+		{"read_file", "Read"},
+		{"execute_command", "Bash"},
+		{"future_tool", "future_tool"}, // passthrough (forward-compat)
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := clineToCCToolName(c.in); got != c.want {
+			t.Errorf("clineToCCToolName(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// TestClineNormalize_EmptyAndGarbage: empty stdin and non-JSON garbage must not panic
+// and must leave the input untouched (hooks degrade to no-payload behavior).
+//
+// TestClineNormalize_EmptyAndGarbage：空 stdin 与非 JSON 垃圾输入不得 panic、不得
+// 改动输入（hook 退化到无 payload 行为）。
+func TestClineNormalize_EmptyAndGarbage(t *testing.T) {
+	var hi HookInput
+	normalizeAgentStdin("cline", nil, &hi)
+	normalizeAgentStdin("cline", []byte("not json"), &hi)
+	if hi.ToolName != "" || hi.SessionID != "" || hi.HookEventName != "" {
+		t.Errorf("garbage stdin must leave HookInput empty, got %+v", hi)
+	}
+}
+
 func mustJSON(t *testing.T, v any) []byte {
 	t.Helper()
 	b, err := json.Marshal(v)

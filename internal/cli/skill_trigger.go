@@ -100,21 +100,20 @@ func runSkillTriggerHook(hookInput HookInput, root, version, agent string) error
 		}
 		return nil
 	}
-	if err != nil {
-		// 判定异常不阻断 hook 链——skill-trigger 是 advisory 注入，fail-open。
-		fmt.Println(`{"decision":"approve"}`)
-		return nil
+	// skill-trigger never blocks (advisory injection) — the allow-with-detail path of
+	// the per-agent emitter picks each host's context channel. The old fixed
+	// `{"decision":"approve"}` envelope was Claude-only shape noise, and codex marks
+	// decision:"approve" as a FAILED hook — the injection would never land there.
+	//
+	// skill-trigger 永不阻断（advisory 注入）——走 per-agent emitter 的
+	// allow-with-detail 路径，按宿主选择上下文通道。旧的固定
+	// `{"decision":"approve"}` envelope 是 Claude 专属形态的噪声，且 codex 会把
+	// decision:"approve" 判为 FAILED hook——注入在那里永远落不了地。
+	detail := ""
+	if err == nil {
+		detail = rendered
 	}
-	out := HookOutput{Decision: "approve"}
-	if rendered != "" {
-		out.HookSpecificOutput = &HookSpecificOutput{
-			HookEventName:     hookInput.HookEventName,
-			AdditionalContext: truncate(rendered, maxAdditionalContextLen),
-		}
-	}
-	data, _ := json.Marshal(out)
-	fmt.Println(string(data))
-	return nil
+	return emitAgentOutput(agent, hookInput.HookEventName, "skill-trigger", true, detail)
 }
 
 // runSkillTriggerCore 是判定 + 渲染核心（hook 链 / 子命令 / dry-run 共用）。
