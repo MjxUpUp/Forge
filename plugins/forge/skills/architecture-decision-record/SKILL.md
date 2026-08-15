@@ -5,6 +5,7 @@ metadata:
   pattern: inversion + generator
   domain: architecture
   steps: 5
+  triggers: [{"event":"UserPromptSubmit","keywords":["为什么选","技术选型","选型","方案对比","怎么选","换成","架构决策","权衡一下","ADR"],"cooldown":600}]
 ---
 
 # 架构决策记录

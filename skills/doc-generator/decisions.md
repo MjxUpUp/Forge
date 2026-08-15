@@ -57,3 +57,20 @@ forge skills validate R1-R17 全 49 通过；trigger 覆盖 5→15（31%）；dr
 ### Rationale
 
 扩展 trigger 覆盖是 2026-08 审计 P1 优化项；声明式触发是把 skill 从被动文档转主动注入的唯一可靠手段（见 dogfood 发现）
+
+## [d-18cbf6ad81d1149c-f510109d] accept
+
+- **Skill**: doc-generator
+- **DecidedAt**: 2026-08-15T11:21:42Z
+
+### Diagnosis
+
+无通道skill命中率审查:该skill无triggers纯靠自觉路由,真实用户语料存在明确触发词
+
+### Revision
+
+metadata补triggers(keywords/cooldown;skill-authoring-standard用新condition skill_file_touched;doc-generator/system-architecture补词修订)
+
+### Evidence
+
+skills-hitrate-review-2026-08-15:四源425会话挖掘语料+trigger覆盖10%缺口

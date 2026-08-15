@@ -5,6 +5,7 @@ metadata:
   pattern: tool-wrapper
   domain: backend
   composes: [code-review-gate, test-discipline, tdd-cycle, integration-test-architecture, verification-driver]
+  triggers: [{"event":"UserPromptSubmit","keywords":["写接口","加个接口","接口设计","API 设计","后端开发","写后端","service 层","中间件","鉴权","登录态","分页","写个 e2e"],"cooldown":600}]
 ---
 
 # 后端开发规范

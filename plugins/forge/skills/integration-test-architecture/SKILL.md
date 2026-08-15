@@ -4,6 +4,7 @@ description: "集成测试架构模式。Use when: 设计集成测试套件时�
 metadata:
   pattern: reference
   domain: testing
+  triggers: [{"event":"UserPromptSubmit","keywords":["集成测试","integration test","testcontainers","测试互相影响","测试隔离","e2e 测试架构"],"cooldown":600}]
 ---
 
 # 集成测试架构模式

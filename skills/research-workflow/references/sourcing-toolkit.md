@@ -45,12 +45,12 @@ command -v gh      >/dev/null && echo "✅ gh"      || echo "❌ gh"
 command -v yt-dlp  >/dev/null && echo "✅ yt-dlp"  || echo "❌ yt-dlp(未装)"
 command -v python3 >/dev/null && echo "✅ python3" || echo "❌ python3(未装)"
 
-# === web-search-bridge 额度预检（批量调研前必跑，避免跑到一半额度耗尽）===
-# 定向源不够时会用 web-search-bridge（付费搜索 API），批量调用前预检额度
+# === 通用搜索桥接额度预检（批量调研前必跑，避免跑到一半额度耗尽）===
+# 定向源不够时会用 research-workflow 的通用搜索桥接（付费搜索 API），批量调用前预检额度
 # Tavily 能预检月度额度（优先看）；Serper 只能看速率窗口；Exa 无法预检
-QUOTA_SCRIPT="$HOME/.claude/skills/web-search-bridge/scripts/web-search-quota.sh"
+QUOTA_SCRIPT="$HOME/.claude/skills/research-workflow/scripts/web-search-quota.sh"
 if [ -f "$QUOTA_SCRIPT" ]; then
-  echo "--- web-search-bridge 额度 ---"
+  echo "--- 通用搜索桥接额度 ---"
   bash "$QUOTA_SCRIPT" check all 2>&1 | grep -E 'TAVILY|SERPER|EXA'
 fi
 ```
@@ -59,8 +59,8 @@ fi
 
 **额度预检的使用决策**（避免预检本身浪费额度）：
 - **批量调研**（撒网≥10、锁定≥6 worker、文件增强）：开工前跑一次预检，写到 map.md。成本低（1 次）价值高（避免中途额度耗尽）
-- **单次降级查询**（fact-research 偶尔用一次 web-search-bridge）：**不预检**，直接调（预检成本 > 价值）
-- 预检发现 Tavily 月度额度 <20% → worker 优先走 Serper/Exa，或在 map.md 标注「web-search-bridge 额度紧张，优先用定向源」
+- **单次降级查询**（Phase L 偶尔用一次通用搜索桥接）：**不预检**，直接调（预检成本 > 价值）
+- 预检发现 Tavily 月度额度 <20% → worker 优先走 Serper/Exa，或在 map.md 标注「桥接额度紧张，优先用定向源」
 
 ## 按内容类型选采集方式（路由表）
 
@@ -71,7 +71,7 @@ fi
 | arXiv / 学术静态页 | curl 直连 | ✅ | arxiv 本机可达 |
 | 微信公众号文章 | curl 直连 | ✅ | mp.weixin.qq.com 可达，但正文需从 HTML 抽 |
 | 纯文本搜索（找链接） | curl 抓搜索引擎结果页 | ⚠️ | baidu/bing 结果页反爬强，质量差；优先用 gh/官方站搜索 |
-| **通用网络搜索**（定向源不够时） | **web-search-bridge skill**（Tavily/Serper/Exa） | ✅需key | 付费 API；**批量调研前预检额度**（见上「采集前先自检」） |
+| **通用网络搜索**（定向源不够时） | **research-workflow 通用搜索桥接**（Tavily/Serper/Exa） | ✅需key | 付费 API；**批量调研前预检额度**（见上「采集前先自检」） |
 | JS 渲染页（Twitter/小红书/LinkedIn） | （Jina 挂、无 browser） | ❌ | **curl agent 不可采**，改走新闻转载/官方公告/学术镜像；Exa 语义搜索可作部分替代 |
 | Reddit | curl JSON API | ❌ | curl agent 被封锁；要代理或换 Exa |
 | YouTube/B站字幕 | `yt-dlp --write-auto-sub` | ❌未装 | `pip install yt-dlp` 后可用 |

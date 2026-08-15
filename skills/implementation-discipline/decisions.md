@@ -70,3 +70,20 @@ description 三段式合格未改动;新建 evals/evals.json(5正+4负)
 ### Evidence
 
 docs/skills-value-audit-2026-08-02.md
+
+## [d-18cbf6dc6346cf38-dfecd930] accept
+
+- **Skill**: implementation-discipline
+- **DecidedAt**: 2026-08-15T11:25:03Z
+
+### Diagnosis
+
+三层冗余:阶段3/4断言清单与test-discipline铁律1/2/3逐字重复,提交时刻双注入(本skill阶段4+test-discipline trigger)正文漂移风险
+
+### Revision
+
+阶段3断言禁令改指针+场景清单指向铁律2,阶段4清单收敛为双指针(test-discipline铁律3=提交时刻唯一执行通道,code-review-gate=调用方检查)
+
+### Evidence
+
+skills-hitrate-review-2026-08-15 P2去重项;同构先例:已对code-review-gate做唯一真相源指针
