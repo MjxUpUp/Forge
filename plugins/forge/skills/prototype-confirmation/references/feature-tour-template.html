@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<!--
+  功能点原型导览模板 · feature-tour-template.html
+  ====================================================================
+  用途：把范式级/交互重设计方案做成「逐功能点可确认」的原型，让用户在每个功能点
+        上明确表态（✅认可 / ✏调整 / ❌推翻）+ 备注，再动手写真实代码。
+        配合 prototype-confirmation skill 使用（动手前的原型确认门）。
+
+  这是模板——只需改两处即可变成你的原型：
+    1. <style> 里 :root 的设计令牌 → 镜像你项目的 variables.css / 设计系统（单一真相源）
+    2. <script> 里 GROUPS + DEMOS → 替换为你项目的功能点（grep 实际代码枚举，标来源，不凭记忆）
+
+  硬要求（skill 步骤 3，缺一不可，已内建）：
+    ✓ 逐项确认 UI（三态单选 + 备注框）
+    ✓ 顶栏进度条 + 左导航已确认打勾
+    ✓ localStorage 持久化（刷新不丢）
+    ✓ 导出按钮（剪贴板 + console 双写汇总文本，用户粘贴给 agent）
+
+  用户流程：浏览器打开 → 逐项勾选 + 填备注 → 点「📋 导出确认」→ 粘贴回会话。
+  agent 据导出文本实施：✅保留 / ✏按备注改 / ❌重来 / 未勾找用户确认（不替用户默认）。
+  ====================================================================
+-->
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>功能点原型导览（待确认）</title>
+<style>
+  /* === 设计令牌——镜像你项目的 variables.css / 设计系统（单一真相源）===
+     下面是示例令牌。替换为你项目的真实颜色/字体/圆角/间距，保证原型视觉与成品一致，
+     避免用户确认的是一个「不像成品」的原型（视觉漂移）。 */
+  :root {
+    --color-success: #5db87a;
+    --color-warning: #e8993a;
+    --color-error: #e8704f;
+
+    --bg-canvas: #ebe7e4;
+    --surface-0: #f3f2f0;
+    --surface-1: #f4f2f0;
+    --surface-2: #eef1f3;
+    --surface-3: #e5e7eb;
+    --border: rgba(139, 132, 125, 0.35);
+    --border-subtle: rgba(139, 132, 125, 0.20);
+    --text-primary: rgba(37, 47, 61, 0.96);
+    --text-secondary: #5c5752;
+    --text-tertiary: rgba(92, 87, 82, 0.65);
+    --accent: #4b607c;
+    --accent-muted: rgba(75, 96, 124, 0.10);
+    --gradient-accent: linear-gradient(135deg, #5457d6 0%, #6366f1 100%);
+    --status-success: var(--color-success);
+    --status-warning: var(--color-warning);
+    --status-error: var(--color-error);
+
+    --radius-sm: 6px; --radius-md: 8px; --radius-lg: 12px;
+    --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+    --space-5: 20px; --space-6: 24px; --space-7: 32px; --space-8: 40px;
+    --font-sans: -apple-system, 'Segoe UI', sans-serif;
+    --font-mono: 'SF Mono', Consolas, monospace;
+  }
+  [data-theme="dark"] {
+    --bg-canvas: #1a1816;
+    --surface-0: #232120;
+    --surface-1: #2a2826;
+    --surface-2: #32302e;
+    --surface-3: #3a3835;
+    --border: rgba(255,255,255,0.10);
+    --border-subtle: rgba(255,255,255,0.06);
+    --text-primary: rgba(240,236,230,0.96);
+    --text-secondary: rgba(220,214,206,0.72);
+    --text-tertiary: rgba(200,194,186,0.50);
+    --accent-muted: rgba(120,140,170,0.16);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font-sans);
+    background: var(--bg-canvas);
+    color: var(--text-primary);
+    font-size: 14px; line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* === 导览布局：顶栏 + (左导航 | 右内容) === */
+  .tour { display: grid; grid-template-rows: 52px 1fr; height: 100vh; }
+  .topbar {
+    display: flex; align-items: center; gap: var(--space-4);
+    padding: 0 var(--space-5);
+    background: var(--surface-1);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .topbar h1 { font-size: 15px; font-weight: 600; }
+  .topbar .sub { font-size: 12px; color: var(--text-tertiary); font-family: var(--font-mono); }
+  .topbar .spacer { flex: 1; }
+  .progress-pill {
+    display: flex; align-items: center; gap: var(--space-2);
+    font-size: 12px; color: var(--text-secondary); font-family: var(--font-mono);
+  }
+  .progress-track {
+    width: 120px; height: 6px; border-radius: 3px;
+    background: var(--surface-3); overflow: hidden;
+  }
+  .progress-fill { height: 100%; background: var(--gradient-accent); transition: width 200ms; width: 0%; }
+  .theme-btn {
+    background: var(--surface-2); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md); padding: 6px 10px; cursor: pointer;
+    font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary);
+  }
+  .theme-btn:hover { background: var(--surface-3); }
+
+  .body { display: grid; grid-template-columns: 280px 1fr; overflow: hidden; }
+  .sidebar {
+    background: var(--surface-1);
+    border-right: 1px solid var(--border-subtle);
+    overflow-y: auto; padding: var(--space-4) 0;
+  }
+  .group-title {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    padding: var(--space-4) var(--space-5) var(--space-2);
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: var(--space-2);
+    padding: 7px var(--space-5); cursor: pointer;
+    color: var(--text-secondary); font-size: 13px;
+    border-left: 2px solid transparent; transition: background 100ms;
+  }
+  .nav-item:hover { background: var(--surface-2); }
+  .nav-item.active {
+    background: var(--surface-2); color: var(--text-primary);
+    border-left-color: var(--accent);
+  }
+  .nav-code {
+    font-family: var(--font-mono); font-size: 11px;
+    color: var(--text-tertiary); margin-left: auto;
+  }
+  .nav-item.confirmed .nav-code::before {
+    content: '✓ '; color: var(--status-success); font-weight: 600;
+  }
+  .content { overflow-y: auto; padding: var(--space-7) var(--space-8); }
+
+  /* === 功能点详情（通用结构，demo body 自由发挥）=== */
+  .feature { display: none; max-width: 920px; }
+  .feature.active { display: block; }
+  .f-head { display: flex; align-items: baseline; gap: var(--space-3); margin-bottom: var(--space-2); }
+  .f-id {
+    font-family: var(--font-mono); font-size: 13px; font-weight: 600;
+    color: var(--accent); padding: 2px 8px; border-radius: var(--radius-sm);
+    background: var(--accent-muted);
+  }
+  .f-title { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+  .f-source { display: flex; gap: var(--space-2); margin-bottom: var(--space-4); flex-wrap: wrap; }
+  .chip {
+    font-family: var(--font-mono); font-size: 11px;
+    padding: 2px 8px; border-radius: var(--radius-sm);
+    background: var(--surface-2); color: var(--text-secondary);
+    border: 1px solid var(--border-subtle);
+  }
+  .f-what {
+    font-size: 14px; color: var(--text-secondary);
+    background: var(--surface-1); border-left: 3px solid var(--accent);
+    padding: var(--space-3) var(--space-4); border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    margin-bottom: var(--space-6);
+  }
+  .f-what code {
+    font-family: var(--font-mono); font-size: 12px;
+    background: var(--surface-2); padding: 1px 5px; border-radius: 3px;
+    color: var(--text-primary);
+  }
+
+  /* demo 容器（demo body 用这些通用类搭建，状态变体并排展示边界情况）*/
+  .demo-label {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--text-tertiary);
+    font-family: var(--font-mono); margin-bottom: var(--space-2);
+  }
+  .demo-row {
+    display: flex; gap: var(--space-4); flex-wrap: wrap;
+    margin-bottom: var(--space-6); align-items: flex-start;
+  }
+  .demo-card {
+    background: var(--surface-0); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg); padding: var(--space-4);
+    flex: 1; min-width: 200px;
+  }
+  .demo-card.tight { flex: 0 0 auto; }
+  .demo-caption {
+    font-size: 11px; color: var(--text-tertiary);
+    font-family: var(--font-mono); margin-top: var(--space-2);
+    text-align: center;
+  }
+  .demo-stage {
+    background: var(--surface-1); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg); padding: var(--space-5);
+    margin-bottom: var(--space-6);
+  }
+
+  /* === 确认框（三态 + 备注，硬要求）=== */
+  .confirm-box {
+    background: var(--surface-1); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg); padding: var(--space-4) var(--space-5);
+    margin-top: var(--space-7);
+  }
+  .confirm-title {
+    font-size: 13px; font-weight: 600; margin-bottom: var(--space-3);
+  }
+  .confirm-options { display: flex; gap: var(--space-5); flex-wrap: wrap; }
+  .confirm-opt {
+    display: flex; align-items: center; gap: var(--space-2);
+    font-size: 13px; cursor: pointer; color: var(--text-secondary);
+  }
+  .confirm-opt input { width: 16px; height: 16px; cursor: pointer; }
+  .confirm-opt:has(input:checked) { color: var(--text-primary); font-weight: 500; }
+  .confirm-note {
+    width: 100%; margin-top: var(--space-3); padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+    font-family: var(--font-sans); font-size: 13px; background: var(--surface-0);
+    color: var(--text-primary);
+  }
+  .confirm-note:focus { outline: 2px solid var(--accent); }
+</style>
+</head>
+<body>
+<div class="tour">
+  <!-- 顶栏 -->
+  <header class="topbar">
+    <h1>功能点原型导览</h1>
+    <span class="sub">逐项确认</span>
+    <span class="spacer"></span>
+    <div class="progress-pill">
+      <span id="progressText">已确认 0 / 0</span>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    </div>
+    <button class="theme-btn" id="exportBtn" title="汇总全部确认到剪贴板">📋 导出确认</button>
+    <button class="theme-btn" id="themeBtn">🌙 暗色</button>
+  </header>
+
+  <div class="body">
+    <!-- 左导航（JS 渲染）-->
+    <nav class="sidebar" id="sidebar"></nav>
+    <!-- 右内容（JS 渲染）-->
+    <main class="content" id="content"></main>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+ * 功能点数据——替换为你项目的功能点（grep 实际代码枚举，标来源，不凭记忆）
+ * GROUPS: 分组结构。tag=短标签，label=组名，subtitle=组主题，items=功能点列表
+ *   item: id=编号(A1/B2...), code=代码位置(文件:行), block=所属块, commit=来源 commit
+ * DEMOS: 每个功能点的演示。title=标题, what=一句话说明(用 <code> 标关键实现),
+ *        body=HTML 字符串(视觉原型，用上面 .demo-* 通用类 + 真实数据 mock)
+ * ============================================================ */
+const GROUPS = [
+  { tag: 'A', label: '模块A · 示例分组', subtitle: '替换为你的模块主题', items: [
+    { id: 'A1', code: 'src/ModuleA.tsx:34', block: '块1', commit: 'abc1234' },
+    { id: 'A2', code: 'src/ModuleA.tsx:82', block: '块1', commit: 'abc1234' },
+  ]},
+  { tag: 'B', label: '模块B · 示例分组', subtitle: '替换为你的模块主题', items: [
+    { id: 'B1', code: 'src/ModuleB.tsx:63', block: '块2', commit: 'def5678' },
+  ]},
+];
+
+const DEMOS = {
+  A1: {
+    title: '示例功能点 1（状态变体并排）',
+    what: '一句话说明这个功能点是什么，用 <code>code</code> 标注关键实现。替换为基于实际代码的描述——grep 出来源，不凭记忆。',
+    body: `
+      <div class="demo-label">状态变体并排（空 / 正常 / 告警 / 失败）——让用户看到边界情况</div>
+      <div class="demo-row">
+        <div class="demo-card tight">
+          <div style="padding:var(--space-3);text-align:center;color:var(--text-tertiary);min-height:48px">空态占位</div>
+          <div class="demo-caption">空态</div>
+        </div>
+        <div class="demo-card tight">
+          <div style="padding:var(--space-3);color:var(--status-success);min-height:48px">✓ 正常态 mock</div>
+          <div class="demo-caption">正常</div>
+        </div>
+        <div class="demo-card tight">
+          <div style="padding:var(--space-3);color:var(--status-warning);min-height:48px">⚠ 告警态 mock</div>
+          <div class="demo-caption">告警</div>
+        </div>
+        <div class="demo-card tight">
+          <div style="padding:var(--space-3);color:var(--status-error);min-height:48px">✗ 失败态 mock</div>
+          <div class="demo-caption">失败</div>
+        </div>
+      </div>`,
+  },
+  A2: {
+    title: '示例功能点 2（单一原型主体）',
+    what: '不是每个功能点都要四态并排。单态原型也可以，但要用真实场景数据 mock，不要空壳。',
+    body: `
+      <div class="demo-stage">
+        <div class="demo-label">视觉原型主体——镜像项目真实设计 token，渲染带真实数据的 mock 组件</div>
+        <div style="padding:var(--space-3);font-size:13px;color:var(--text-secondary)">
+          这里是该功能点的视觉原型。用你项目真实的组件样式（颜色/字体/圆角/间距）渲染，
+          填真实场景数据（不是 lorem ipsum），让用户能判断形态对不对。
+        </div>
+      </div>`,
+  },
+  B1: {
+    title: '示例功能点 3（流程/时序态）',
+    what: '流程类功能点展示时序态：进行中 / 完成 / 失败，每个态用真实步骤数据 mock。',
+    body: `
+      <div class="demo-row">
+        <div class="demo-card tight"><div style="padding:var(--space-3);color:var(--accent)">▸ 进行中（步骤 3/5）</div><div class="demo-caption">running</div></div>
+        <div class="demo-card tight"><div style="padding:var(--space-3);color:var(--status-success)">✓ 完成</div><div class="demo-caption">done</div></div>
+        <div class="demo-card tight"><div style="padding:var(--space-3);color:var(--status-error)">✗ 失败（步骤 4）</div><div class="demo-caption">error</div></div>
+      </div>`,
+  },
+};
+
+/* ============================================================
+ * 渲染 + 状态管理（localStorage 持久化，硬要求——刷新不丢）
+ * ============================================================ */
+const sidebarEl = document.getElementById('sidebar');
+const contentEl = document.getElementById('content');
+const state = {};  // id -> 'accept' | 'adjust' | 'reject'
+const notes = {};  // id -> 备注
+const STORAGE_KEY = 'feature-tour-v1';  // 每个原型换一个 key，避免多原型互相污染
+
+function saveState() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ state, notes })); } catch (e) {}
+}
+function loadState() {
+  try {
+    const d = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    Object.assign(state, d.state || {});
+    Object.assign(notes, d.notes || {});
+  } catch (e) {}
+}
+
+function renderSidebar() {
+  sidebarEl.innerHTML = GROUPS.map(g => `
+    <div class="group-title">${g.label}</div>
+    ${g.items.map(it => `
+      <div class="nav-item" data-id="${it.id}">
+        <span>${it.id}</span>
+        <span class="nav-code">${it.code}</span>
+      </div>
+    `).join('')}
+  `).join('');
+  sidebarEl.querySelectorAll('.nav-item').forEach(el => {
+    el.addEventListener('click', () => selectFeature(el.dataset.id));
+  });
+}
+
+function renderContent() {
+  contentEl.innerHTML = GROUPS.flatMap(g => g.items.map(it => {
+    const meta = DEMOS[it.id];
+    return `
+      <section class="feature" data-id="${it.id}">
+        <div class="f-head">
+          <span class="f-id">${it.id}</span>
+          <span class="f-title">${meta.title}</span>
+        </div>
+        <div class="f-source">
+          <span class="chip">${it.block}</span>
+          <span class="chip">${it.commit}</span>
+          <span class="chip">${it.code}</span>
+        </div>
+        <div class="f-what">${meta.what}</div>
+        ${meta.body}
+        <div class="confirm-box">
+          <div class="confirm-title">这个功能点的形态——你的判断：</div>
+          <div class="confirm-options">
+            <label class="confirm-opt"><input type="radio" name="cf-${it.id}" value="accept" data-id="${it.id}"> ✅ 认可，保留</label>
+            <label class="confirm-opt"><input type="radio" name="cf-${it.id}" value="adjust" data-id="${it.id}"> ✏ 需调整（在下方备注）</label>
+            <label class="confirm-opt"><input type="radio" name="cf-${it.id}" value="reject" data-id="${it.id}"> ❌ 推翻，不要这个</label>
+          </div>
+          <input type="text" class="confirm-note" data-id="${it.id}" placeholder="调整说明 / 推翻理由（可选）" />
+        </div>
+      </section>
+    `;
+  })).join('');
+
+  contentEl.querySelectorAll('input[type="radio"]').forEach(r => {
+    if (state[r.dataset.id] === r.value) r.checked = true;
+    r.addEventListener('change', () => {
+      state[r.dataset.id] = r.value;
+      updateProgress();
+      updateNavState(r.dataset.id);
+      saveState();
+    });
+  });
+  contentEl.querySelectorAll('.confirm-note').forEach(n => {
+    if (notes[n.dataset.id]) n.value = notes[n.dataset.id];
+    n.addEventListener('input', () => { notes[n.dataset.id] = n.value; saveState(); });
+  });
+}
+
+function selectFeature(id) {
+  contentEl.querySelectorAll('.feature').forEach(s => s.classList.toggle('active', s.dataset.id === id));
+  sidebarEl.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.id === id));
+  contentEl.scrollTop = 0;
+}
+
+function updateNavState(id) {
+  const nav = sidebarEl.querySelector(`.nav-item[data-id="${id}"]`);
+  if (nav) nav.classList.toggle('confirmed', !!state[id]);
+}
+
+function totalItems() { return GROUPS.flatMap(g => g.items).length; }
+
+function updateProgress() {
+  const done = Object.keys(state).length;
+  const total = totalItems();
+  document.getElementById('progressText').textContent = `已确认 ${done} / ${total}`;
+  document.getElementById('progressFill').style.width = total ? `${(done / total) * 100}%` : '0%';
+}
+
+/* === 导出确认结果（剪贴板 + console 双写，硬要求——用户粘贴给 agent）=== */
+function exportConfirm() {
+  const V = { accept: '✅认可', adjust: '✏调整', reject: '❌推翻' };
+  const lines = [];
+  for (const g of GROUPS) {
+    const items = g.items.map(it => {
+      const v = state[it.id] ? V[state[it.id]] : '未勾选';
+      const note = notes[it.id] ? ` — ${notes[it.id]}` : '';
+      return `  - ${it.id} [${v}] ${DEMOS[it.id].title}${note}`;
+    });
+    lines.push(`### ${g.label}（${g.subtitle}）\n${items.join('\n')}`);
+  }
+  const out = `# 功能点确认结果\n\n${lines.join('\n\n')}`;
+  const ok = (function () { try { navigator.clipboard.writeText(out); return true; } catch (e) { return false; } })();
+  const done = Object.keys(state).length;
+  alert((ok ? '✅ 已复制到剪贴板' : '⚠ 剪贴板失败，见下方 console 输出') + `（${done}/${totalItems()} 项已勾）\n请粘贴给 agent。`);
+  console.log('===== 确认结果开始 =====\n' + out + '\n===== 确认结果结束 =====');
+}
+document.getElementById('exportBtn').addEventListener('click', exportConfirm);
+
+/* === 初始化 === */
+loadState();
+renderSidebar();
+renderContent();
+Object.keys(state).forEach(updateNavState);
+updateProgress();
+selectFeature(GROUPS[0].items[0].id);
+
+/* === 主题切换 === */
+document.getElementById('themeBtn').addEventListener('click', () => {
+  const html = document.documentElement;
+  const dark = html.dataset.theme === 'dark';
+  html.dataset.theme = dark ? 'light' : 'dark';
+  document.getElementById('themeBtn').textContent = dark ? '🌙 暗色' : '☀ 亮色';
+});
+</script>
+</body>
+</html>
