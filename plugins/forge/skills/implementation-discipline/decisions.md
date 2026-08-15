@@ -1,0 +1,72 @@
+# implementation-discipline — 持久决策历史
+
+persistent decision history：每条决策记 (诊断, 修订, 脱敏证据, 结果)，让下一轮 agent 理解「为什么这么改」，避免重复探索已失败方向。审计/可复现，非泛化学习。append-only：新决策追加到末尾。
+
+## [d-18c613d1fc2dae90-11dfc5f4] accept
+
+- **Skill**: implementation-discipline
+- **DecidedAt**: 2026-07-27T07:08:14Z
+- **By**: claude-code
+
+### Diagnosis
+
+接入通用 skill-trigger 框架(feat/skill-trigger): 声明式 metadata.triggers 让通用 hook 在事件点主动驱动本 skill, 解决 dogfood 量化的质量/流程 skill 显式触发=0、靠 agent 自觉必漏问题(code-review-gate 因有 review-stop hook 独活)
+
+### Revision
+
+metadata.triggers 加 [{"event":"UserPromptSubmit","when":"coding_intent"},{"event":"Stop","when":"source_changed_uncommitted"}]
+
+### Evidence
+
+dogfood-findings-2026-07-09(testing×17 全低分, 质量 skill 0 显式触发) + plan flickering-bubbling-bonbon.md(triggers schema 表)
+
+## [d-18c7729c67986c54-986df64a] accept
+
+- **Skill**: implementation-discipline
+- **DecidedAt**: 2026-07-31T18:16:33Z
+
+### Diagnosis
+
+复审发现 composes 标量写法库内 11 处分裂（此前只统一了 2 处），且原决策证据声称多数已是 flow list 与事实相反——一次性根治
+
+### Revision
+
+composes 标量逗号写法改 flow list [a, b]，对齐 CONVENTIONS §4
+
+### Evidence
+
+grep 确认全库 composes 已无标量残留；forge skills validate 50/50
+
+## [d-18c7e5a6572b4e90-42ba6935] accept
+
+- **Skill**: implementation-discipline
+- **DecidedAt**: 2026-08-02T05:24:39Z
+
+### Diagnosis
+
+skills 库价值审计 13 项改进落地
+
+### Revision
+
+改名符号 grep 规则改指针(D4)
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md 逐项价值审计
+
+## [d-18c7e620a496fc68-87ddc41d] accept
+
+- **Skill**: implementation-discipline
+- **DecidedAt**: 2026-08-02T05:33:25Z
+
+### Diagnosis
+
+项10 description 审计+触发回归
+
+### Revision
+
+description 三段式合格未改动;新建 evals/evals.json(5正+4负)
+
+### Evidence
+
+docs/skills-value-audit-2026-08-02.md

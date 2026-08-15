@@ -1,0 +1,13 @@
+{
+  "trigger_cases": [
+    {"query": "这个交互范式我心里有数了,先出个原型让用户确认再写代码", "should_trigger": true},
+    {"query": "前端交互要重新设计,先做个 HTML 原型给我看看", "should_trigger": true},
+    {"query": "大重构前先分块出原型,让我逐个功能点拍板", "should_trigger": true},
+    {"query": "先别写代码,把方案做成可点的原型给我确认", "should_trigger": true},
+    {"query": "这个多功能点方案出原型给我看效果", "should_trigger": true},
+    {"query": "就改个按钮颜色,直接帮我改了", "should_trigger": false},
+    {"query": "后端这个接口加个字段,不涉及界面", "should_trigger": false},
+    {"query": "帮我调研下竞品的交互模式,出份报告", "should_trigger": false},
+    {"query": "用 v0 帮我生成这个页面", "should_trigger": false}
+  ]
+}
