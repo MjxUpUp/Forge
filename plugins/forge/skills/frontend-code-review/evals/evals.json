@@ -1,0 +1,13 @@
+{
+  "trigger_cases": [
+    {"query": "帮我审查下这个 React 组件写得怎么样", "should_trigger": true},
+    {"query": "提交前检查下这段前端代码,a11y 有没有问题", "should_trigger": true},
+    {"query": "这段 Tailwind 写法对吗,帮我 review", "should_trigger": true},
+    {"query": "前端 code review 一下这个 Vue 组件", "should_trigger": true},
+    {"query": "这个 Svelte 组件的 Design Token 用得规范吗", "should_trigger": true},
+    {"query": "review 一下这段 Rust 代码能不能合并", "should_trigger": false},
+    {"query": "这个 diff 有没有 AI 注水的痕迹,通用扫一遍", "should_trigger": false},
+    {"query": "测试断言被改成 t.Log 了,能这么过吗", "should_trigger": false},
+    {"query": "v0 生成的这段前端代码能不能直接合并", "should_trigger": false}
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "trigger_cases": [
+    {"query": "这份设计文档里的功能在代码里落地了几个,对比下", "should_trigger": true},
+    {"query": "帮我看下这些功能的 landing 状态", "should_trigger": true},
+    {"query": "做个设计 vs 实现的 gap 分析", "should_trigger": true},
+    {"query": "哪些功能还没做,给我一份缺口分析", "should_trigger": true},
+    {"query": "设计稿说做 10 个功能,代码实现了几个,带证据给我", "should_trigger": true},
+    {"query": "帮我实现这个功能的前端界面", "should_trigger": false},
+    {"query": "这个 diff 提交前帮我审查一下", "should_trigger": false},
+    {"query": "把整个项目拆成模块批量审查", "should_trigger": false},
+    {"query": "帮我调研下这个技术方向的现状", "should_trigger": false}
+  ]
+}
