@@ -197,7 +197,7 @@ var flagDocGrandfather = map[string]bool{
 	// dashboard 收敛为全局单面板删掉该 flag 后暴露。子命令细节 flag，进基线。
 	`drift-check --global`: true,
 	`install --global`:     true,
-	`decide --diagnosis`: true, `decide --evidence`: true, `decide --outcome`: true,
+	`decide --diagnosis`:   true, `decide --evidence`: true, `decide --outcome`: true,
 	`decide --probe-run`: true, `decide --rationale`: true, `decide --revision`: true,
 	`drift-check --target`:   true,
 	`eval-baseline --run-id`: true, `eval-gen --all`: true,
