@@ -668,23 +668,54 @@ func runHook(cmd *cobra.Command, args []string) error {
 		detail = extractDetail(stdout, "PASS")
 		// kimi-code installs the forge plugin by locking a repo tag and has no plugin
 		// auto-update (CLI has no plugin management subcommands), so a kimi install drifts
-		// behind the forge binary over time. Detect the drift here and append a remediation
-		// advisory to init-suggest's stdout (exit 0). The agent and hook-name guards keep
-		// this kimi-only: claude/codex/etc. never reach it. CAVEAT: init-suggest is a
-		// SessionStart hook, and on kimi 0.35.0 SessionStart stdout is observation-only
-		// (dropped), so this advisory is silently inert on kimi — but the drift is still
-		// recorded in the checklog regardless.
-		// See internal/agentbridge/kimi-hook-routing.md.
+		// behind the forge binary over time. Detect the drift here and prepend a remediation
+		// advisory to resume-reinject's stdout — UserPromptSubmit, the ONE stdout channel
+		// kimi 0.35.0 delivers to the model (delivered on the next prompt; see
+		// internal/agentbridge/kimi-hook-routing.md). This is a MOVE off init-suggest
+		// (SessionStart), whose ride was triple-invisible in production (2026-08-15 audit,
+		// E:\AgentOffice): kimi drops SessionStart stdout, the checklog noise gate drops
+		// init-suggest PASS, and nothing reached model/user/logs. It must stay a MOVE, not
+		// a duplicate: SessionStart precedes the first UserPromptSubmit in every session,
+		// so an inert init-suggest append would consume prependKimiStaleAdvisory's
+		// once-daily marker before the visible channel ever fires. PREPEND, not append
+		// (code-review F2): emitAgentOutput truncates detail's TAIL at 9500 runes — a
+		// tail-appended advisory would be cut off after the marker was consumed and the
+		// checklog entry recorded. When the advisory does fire, also record a
+		// kimi-plugin-stale warn entry in the checklog — the third invisibility layer (log
+		// visibility) closed; the noise gate would otherwise drop this hook's PASS and
+		// logDetail is computed from the script's raw stdout, which never carries the
+		// prepended advisory.
 		//
 		// kimi-code 装插件靠锁仓库 tag，且无 plugin 自动更新（CLI 无任何 plugin 管理
 		// 子命令），故 kimi 安装会随时间落后于 forge 二进制。在此检测漂移，把修复
-		// advisory 追加到 init-suggest 的 stdout（exit 0）。agent 与 hook 名双重 guard
-		// 使其仅 kimi 生效：claude/codex 等永不进入。注意：init-suggest 是 SessionStart
-		// hook，而 kimi 0.35.0 的 SessionStart stdout 是 observation-only（丢弃），故此
-		// advisory 在 kimi 上静默失效——但漂移无论如何都记进 checklog。见
-		// internal/agentbridge/kimi-hook-routing.md。
-		if name == "init-suggest" && agent == "kimi" {
-			detail = appendKimiStaleAdvisory(detail, cmd.Root().Version)
+		// advisory 前置到 resume-reinject 的 stdout——UserPromptSubmit，kimi 0.35.0 唯一
+		// 把 stdout 送达模型的通道（下一 prompt 送达；见 internal/agentbridge/
+		// kimi-hook-routing.md）。这是从 init-suggest（SessionStart）**迁移**而非复制：
+		// 后者在生产三重不可见（2026-08-15 E:\AgentOffice 审计实测）——kimi 丢
+		// SessionStart stdout、checklog noise gate 丢 init-suggest PASS、模型/用户/日志
+		// 三层全无信号。且必须只保留 UserPromptSubmit 一处：每个 session 里
+		// SessionStart 先于首个 UserPromptSubmit，若 init-suggest 处仍追加，那个不可见
+		// 的追加会先消耗掉 prependKimiStaleAdvisory 的按日 marker，可见通道反而永不触发。
+		// 前置而非追加（code-review F2）：emitAgentOutput 在 9500 rune 处截 detail 尾部
+		// ——尾接的 advisory 会在 marker 已消耗、checklog 条目已记录之后被截掉。
+		// advisory 真触发时，同时往 checklog 记一条 kimi-plugin-stale warn——补上第三层
+		// 不可见（日志可见性）；否则 noise gate 会丢掉本 hook 的 PASS，且 logDetail 取自
+		// 脚本原始 stdout，本就不含这里前置的 advisory。
+		if kimiStaleRidesHook(agent, name) {
+			if prepended := prependKimiStaleAdvisory(detail, cmd.Root().Version); prepended != detail {
+				detail = prepended
+				if err := checklog.Record(root, &checklog.Entry{
+					Check:     checklog.CheckKimiPluginStale,
+					Passed:    true, // escape-hatch pattern: the warn rides Level, Passed stays neutral
+					Checked:   true,
+					Level:     checklog.LevelWarn,
+					TaskRef:   activeTaskRef,
+					SessionID: util.SanitizeSessionID(hookInput.SessionID),
+					Detail:    truncate(detail, maxChecklogDetail),
+				}); err != nil {
+					fmt.Fprintf(os.Stderr, "[forge] warning: checklog record failed: %v\n", err)
+				}
+			}
 		}
 	} else {
 		detail = stdout

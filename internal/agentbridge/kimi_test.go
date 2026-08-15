@@ -71,6 +71,40 @@ func TestKimiWiringMirrorsClaudeSettings(t *testing.T) {
 	}
 }
 
+// TestKimiHooks_WireResumeReinjectOnUserPromptSubmit pins the channel dependency of the
+// 2026-08-15 staleness-advisory move: the kimi [[hooks]] block must wire resume-reinject
+// under UserPromptSubmit — the ONE stdout channel kimi 0.35.0 delivers to the model
+// (next-prompt delivery). The plugin-stale advisory rides that hook
+// (cli.kimiStaleRidesHook); if resume-reinject ever drops off UserPromptSubmit (spec
+// edit, event rename), the advisory AND the P3 compaction handoff both go silent on
+// kimi with nothing else failing — this is the only guard. Complements
+// TestKimiWiringMirrorsClaudeSettings (which proves spec↔TOML parity but cannot catch a
+// spec-level regression).
+//
+// TestKimiHooks_WireResumeReinjectOnUserPromptSubmit 钉死 2026-08-15 staleness advisory
+// 迁移的通道依赖：kimi [[hooks]] 块必须把 resume-reinject 接在 UserPromptSubmit 下——
+// kimi 0.35.0 唯一把 stdout 送达模型的通道（下一 prompt 送达）。plugin-stale advisory
+// 搭载该 hook（cli.kimiStaleRidesHook）；若 resume-reinject 从 UserPromptSubmit 掉线
+// （spec 改动、event 改名），advisory 与 P3 压缩 handoff 在 kimi 上双双静默且无其他
+// 测试报警——本守卫是唯一防线。补充 TestKimiWiringMirrorsClaudeSettings（它证明
+// spec↔TOML 对等，但抓不住 spec 层回退）。
+func TestKimiHooks_WireResumeReinjectOnUserPromptSubmit(t *testing.T) {
+	blocks := strings.Split(BuildKimiHooksTOML(), "[[hooks]]\n")
+	found := false
+	for _, block := range blocks {
+		if !strings.Contains(block, "event = "+tomlBasicString("UserPromptSubmit")) {
+			continue
+		}
+		if strings.Contains(block, "command = "+tomlBasicString(kimiCommand("forge hook resume-reinject"))) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("kimi [[hooks]] must wire resume-reinject under UserPromptSubmit — the stale advisory (kimiStaleRidesHook) and the P3 compaction handoff both ride it; losing this wiring silences both on kimi")
+	}
+}
+
 // TestKimiTranslator_Translate verifies the user-level config.toml merge: existing user
 // config (model/provider/permission) is preserved byte-for-byte, the forge section is
 // appended inside markers, and a second Translate is a no-op (idempotent).

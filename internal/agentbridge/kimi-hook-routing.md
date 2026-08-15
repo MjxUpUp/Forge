@@ -42,14 +42,21 @@ forge 旧假设（`internal/agentbridge/kimi.go` 与 `internal/cli/hook.go` 的�
 PostToolUse / SessionStart / PostCompact 的 stdout 是 **observation-only**（fire-and-forget）：
 无论脚本返回什么，主流程不受影响——**stdout 不进上下文**。
 
-> ⚠️ **未决项（需活体验证）**：PostToolUse 的 **exit-2 阻断**是否在 kimi 上生效，wire 无法
-> 证实（样本会话里没有 PostToolUse hook 返回过非零）。PostToolUse 既然连 stdout 都丢，
-> **疑似 exit code 也失效（全 observation-only）**，但未证实。见下方「待验证」节。
+> ⚠️ **U1（2026-08-15 生产观测收窄）**：PostToolUse **exit-2 的 stderr 不达模型**——生产观测
+> （单会话 n=1）：E:\AgentOffice 8/8 会话 file-sentinel（PostToolUse）exit-2 隔离了 3 次文件，但阻断
+> 原因在整个 wire transcript **零出现**（无 isError tool.result、无上下文增量）。即
+> PostToolUse 整条通道（stdout + exit-2 stderr）对模型均不可见；enforcement 只靠 hook 自身
+> 副作用（file-sentinel 搬文件、tool-track 写日志）兜底。仍未做的是**受控实验**（装 exit-1
+> PostToolUse hook 看是否阻断后续轮次）——「是否影响后续轮次」保持未决，见「待验证」节。
 >
-> ⚠️ **Unresolved (needs live probe)**: whether PostToolUse **exit-2 BLOCKS** on kimi cannot be
-> settled from the wire (no PostToolUse hook returned non-zero in the sample). Since kimi drops
-> PostToolUse stdout, it is **suspected fully observation-only**, but unverified. See "Remaining
-> verification" below.
+> ⚠️ **U1 (narrowed by 2026-08-15 production observation)**: PostToolUse **exit-2 stderr never
+> reaches the model** — observed in production, single session (n=1): the Aug 8 E:\AgentOffice session's file-sentinel
+> (PostToolUse) exit-2 quarantined 3 files, yet the block reason had ZERO occurrences in the
+> entire wire transcript (no isError tool.result, no context delta). The whole PostToolUse
+> channel (stdout + exit-2 stderr) is model-invisible; enforcement survives only via hook side
+> effects (file-sentinel moving files, tool-track writing logs). Still missing is the
+> **controlled experiment** (install an exit-1 PostToolUse hook, watch whether subsequent turns
+> are blocked) — "does it affect later turns" remains unresolved; see "Remaining verification".
 
 ## 证据基础 / Evidence basis
 
@@ -102,7 +109,7 @@ pre_tool_use    0    # 本会话无 PreToolUse 阻断发生（非通道失效，
 
 | Hook | 类别 | kimi 路由 | PR |
 |---|---|---|---|
-| resume-reinject | 注入 | stdout 注入（原生效）+ **P3 承载冷启动 handoff** | **P3** |
+| resume-reinject | 注入 | stdout 注入（原生效）+ **P3 承载冷启动 handoff** + **2026-08-15 承载 plugin staleness advisory**（原 init-suggest/SessionStart 通道三重不可见，见下。注意覆盖范围：resume-reinject 是项目级 hook，非 forge 项目目录在 step 5 之前即退出——staleness advisory 只在 forge 项目内提示，非全局） | **P3** + staleness 迁移 |
 | skill-trigger | 注入 | stdout 注入（skill 框架在 kimi 下唯一生效事件） | **P1** 收敛点 |
 
 ### SessionStart（5 hook = 4 命名 + skill-trigger×1）— stdout observation-only，主价值经 P3 迁移到 UserPromptSubmit
@@ -111,7 +118,7 @@ pre_tool_use    0    # 本会话无 PreToolUse 阻断发生（非通道失效，
 |---|---|---|---|
 | skill-scan | advisory 安全 | **失效**（stdout 丢）→ 依赖 CI / 手动 `forge audit` 兜底 | 文档 |
 | mcp-scan | advisory 安全 | **失效**（stdout 丢）→ 依赖 `.mcp.json` 审查兜底 | 文档 |
-| init-suggest | advisory | **失效**（含 kimi-drift 漂移提醒；stdout 丢，checklog 仍记） | 文档 |
+| init-suggest | advisory | **失效**（stdout 丢；plugin staleness advisory 已于 2026-08-15 迁至 resume-reinject/UserPromptSubmit，因本通道三重不可见：kimi 丢 stdout、noise gate 丢 init-suggest PASS、checklog 也无痕。注：代码中本就不存在单独的 kimi-drift 检测——init-suggest 的建议文本随项目快照生成，无独立漂移提醒可迁） | staleness 迁移 |
 | **task-resume** | 接续 | **P3 经 resume-reinject 冷启动回填**（首 prompt 注入，sentinel 去重） | **P3** |
 | skill-trigger | advisory | **P1 移除 manifest + 运行时 noop** | **P1** |
 
@@ -120,8 +127,8 @@ pre_tool_use    0    # 本会话无 PreToolUse 阻断发生（非通道失效，
 | Hook | 类别 | kimi 命运 Fate | PR |
 |---|---|---|---|
 | auto-compile | advisory | **失效**（advisory stdout 丢，确认）→ 本就无硬价值，接受 | 文档 |
-| workflow-test-guard | 强制(block) | **未决**（exit-2 是否阻断未证实；forge 仓专属守护）→ 依赖 CI 兜底 | 文档 |
-| file-sentinel | 副作用 | **不受影响**（写 quarantine 快照，靠文件副作用；wire 实证快照存在） | — |
+| workflow-test-guard | 强制(block) | **stderr 不达模型**（2026-08-15 生产观测·单会话，见 U1；forge 仓专属守护）→ 是否阻后续轮次未受控验证，依赖 CI 兜底 | 文档 |
+| file-sentinel | 副作用 | **不受影响**（写 quarantine 快照，靠文件副作用；wire 实证快照存在，且 8/8 生产实测 exit-2 隔离 3 次成功——只是隔离原因模型看不见） | — |
 | tool-track | 副作用 | **不受影响**（写 toollog + reads-log，靠文件副作用） | — |
 | skill-trigger（Write\|Edit + Bash，共 2 条） | advisory | **P1 移除 manifest + 运行时 noop** | **P1** |
 
@@ -138,20 +145,24 @@ pre_tool_use    0    # 本会话无 PreToolUse 阻断发生（非通道失效，
 1. **auto-compile**（PostToolUse advisory）— 无硬价值，接受。
 2. **skill-scan / mcp-scan**（SessionStart 安全扫描）— 滞后到 CI / `forge audit` / `.mcp.json`
    审查。深度防御层，非唯一闸门。
-3. **init-suggest + kimi-drift 提醒**（SessionStart）— 漂移仍记 checklog；plugin staleness
-   另有 `hook_kimi_stale` 提醒通道。
+3. **init-suggest + kimi-drift 提醒**（SessionStart）— stdout 丢；plugin staleness advisory
+   已于 2026-08-15 迁至 resume-reinject（UserPromptSubmit）+ 触发时记 `kimi-plugin-stale`
+   warn checklog 条目（原三重不可见：模型/用户/日志全无信号）。
 4. **workflow-test-guard**（PostToolUse block）— 见下「待验证」。
 5. **compact-resume 压缩重注入**（PostCompact）— P3 冷启动注入覆盖冷启动主场景。
 
 ## 待验证 / Remaining verification
 
-**PostToolUse exit-2 是否阻断**是唯一未决项。两种可能：
+**PostToolUse exit-2 是否阻断后续轮次**是唯一未决项。2026-08-15 生产观测已收窄一半：
+**stderr 不达模型**（file-sentinel exit-2 隔离 3 次、原因在 wire transcript 零出现），
+即「模型可见性」层面确认失效；未决的只剩「是否影响后续轮次」（kimi 内部对 PostToolUse
+非零退出是否有任何处置）：
 
-- **若 exit-2 也失效（确认全 observation-only）**：`workflow-test-guard` 在 kimi 下失效，
+- **若 exit-2 连轮次都不影响（全 observation-only）**：`workflow-test-guard` 在 kimi 下失效，
   依赖 CI 兜底（已是 workflow 变更的权威闸门）。`auto-compile` 本就失效。`file-sentinel` /
   `tool-track` 副作用类不受影响。
-- **若仅 stdout 失效、exit-2 仍阻断**：`workflow-test-guard` 继续工作，只有 `auto-compile`
-  advisory 失效。
+- **若仍阻断后续轮次（仅 stderr 不可见）**：`workflow-test-guard` 的 enforcement 继续工作
+  （模型看不到原因，但被拦住），只有 `auto-compile` advisory 失效。
 
 **活体验证方法**（需在真实 kimi 会话执行，claude-code 会话无法代办）：在 kimi 会话装一个
 `exit 1` 的 PostToolUse hook，观察是否阻断后续模型轮次。结论回来后订正本表与
