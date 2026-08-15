@@ -109,7 +109,8 @@ func runSkillsInstall(cmd *cobra.Command, args []string) error {
 		return perr
 	}
 	opts.Profile = profile
-	if len(profile) > 0 && !skInstJSON {
+	if profile != nil && !skInstJSON {
+		// != nil 而非 len>0：全注释的空画像同样「生效」（白名单 0），要让用户看见
 		fmt.Printf("profile: .forge/skills-profile 生效（白名单 %d 个 skill）\n", len(profile))
 	}
 
