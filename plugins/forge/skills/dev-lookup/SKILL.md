@@ -1,16 +1,17 @@
 ---
 name: dev-lookup
-description: "开发期单点快速检索：查 API 签名、查报错含义、查库用法、查版本兼容、查语法、查官方示例。Use when: 开发或调试时需要确认某个具体技术点——\"这个 API 怎么调\"\"这个错误什么意思\"\"这个库怎么用\"\"这两个版本兼容吗\"\"这个语法对不对\"。SKIP: 深度调研/多源对比/产出调研报告（用 research-workflow）；非技术事实核查/数据对比需多源交叉（用 fact-research）；提方案前的环境验证（用 evidence-based-proposal）；飞书/云文档操作（用 lark-*）。"
+description: "开发期单点快速检索：查 API 签名、查报错含义、查库用法、查版本兼容、查语法、查官方示例。Use when: 开发或调试时需要确认某个具体技术点——\"这个 API 怎么调\"\"这个错误什么意思\"\"这个库怎么用\"\"这两个版本兼容吗\"\"这个语法对不对\"。SKIP: 深度调研/多源对比/产出调研报告（用 research-workflow）；非技术事实核查/数据对比需多源交叉（用 research-workflow 轻量档 Phase L）；提方案前的环境验证（用 evidence-based-proposal）；飞书/云文档操作（用 lark-*）。"
 metadata:
   pattern: routing + fallback
   domain: development
+  triggers: [{"event":"UserPromptSubmit","keywords":["这个 API 怎么","这个错误什么意思","这个库怎么用","版本兼容吗","这个语法对不对","官方示例","怎么调用","报错含义"],"cooldown":300}]
 ---
 
 # Dev Lookup — 开发期单点快速检索
 
 开发或调试时确认某个具体技术点。**单点、即时、直接返回答案，不写报告不 spawn worker**。
 
-和调研类 skill 的量级区别见「三层调研量级」路由表——唯一真相源：fact-research「三层调研量级（路由依据）」节，此处不复制。本 skill 是最轻一层：单点技术检索，≤5 次查询，inline 答案，不做互证。
+和调研类 skill 的量级区别见「三层调研量级」路由表——唯一真相源：research-workflow「三层调研量级（路由依据）」节，此处不复制。本 skill 是最轻一层：单点技术检索，≤5 次查询，inline 答案，不做互证。
 
 ## 检索基线（按 agent 能力）
 
@@ -18,7 +19,7 @@ metadata:
 - **有内置 `web_search`/`web_fetch`** → 直接搜索抓取，官方文档/SE/crates.io 可直达，无需 curl
 - **无内置联网工具（联网只能 bash curl）** → 走下方定向源（官方文档站 curl + gh + 包仓库 API + SE API）
 
-curl 定向源通道状态见 fact-research 的 [`references/curl-sourcing.md`](../fact-research/references/curl-sourcing.md)「技术单点检索通道（dev-lookup 用）」节——该表为**特定网络环境实测，非通用结论**，以你的自检结果为准。
+curl 定向源通道状态见 research-workflow 的 [`references/curl-sourcing.md`](../research-workflow/references/curl-sourcing.md)「技术单点检索通道（dev-lookup 用）」节——该表为**特定网络环境实测，非通用结论**，以你的自检结果为准。
 
 **核心纪律**：走官方文档站 + gh + 包仓库 API + SE API 这四条主路，它们精准可靠。有内置 `web_search` 的 agent 优先用内置搜索补充；curl agent 别碰 SO 网页/Jina/通用搜索引擎结果页。
 
@@ -108,9 +109,9 @@ gh search repos "{关键词}" --language {lang} --sort stars --limit 5
   │   拿到答案 → inline 返回，结束
   ├─ 官方没讲清/要实战经验 → SE API + gh search code
   │   拿到答案 → inline 返回，结束
-  ├─ 都没命中 → web-search-bridge（需配置搜索 API key）
+  ├─ 都没命中 → research-workflow「通用搜索桥接」（需配置搜索 API key）
   │   定向源查不到的非技术内容走通用搜索桥接
-  └─ web-search-bridge 不可用或仍无 → 诚实说"本机未查到可靠答案"
+  └─ 桥接不可用或仍无 → 诚实说"本机未查到可靠答案"
       建议用户：给出可手动验证的关键词，或说明需要联网检索环境
 ```
 
@@ -118,7 +119,7 @@ gh search repos "{关键词}" --language {lang} --sort stars --limit 5
 - ❌ curl 百度/Bing 搜技术词（验证码墙/质量差）
 - ❌ curl Stack Overflow 网页版（403）
 - ❌ curl r.jina.ai（常超时）
-- ❌ curl Google/Bing/DuckDuckGo/SearX 结果页（常超时；通用搜索走 web-search-bridge 的 API 桥接，或用 agent 内置 web_search）
+- ❌ curl Google/Bing/DuckDuckGo/SearX 结果页（常超时；通用搜索走 research-workflow 的 API 桥接，或用 agent 内置 web_search）
 
 ## 输出格式
 
@@ -155,5 +156,5 @@ gh search repos "{关键词}" --language {lang} --sort stars --limit 5
 
 - 写代码前要确认环境/方案可行性 → **evidence-based-proposal**（方法论：先验证再提方案）
 - 调研一个方向/竞品/技术趋势，要出报告 → **research-workflow**（多 agent 深度调研）
-- 查数据/对比/进展/事实核实（需≥2源交叉但不出报告） → **fact-research**（轻量网络调研，5-20 次）
+- 查数据/对比/进展/事实核实（需≥2源交叉但不出报告） → **research-workflow Phase L**（轻量档，5-20 次）
 - 开发中卡在某个具体技术点，要快速查清 → **dev-lookup**（本 skill）

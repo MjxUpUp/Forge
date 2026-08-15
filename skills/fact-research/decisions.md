@@ -35,3 +35,12 @@ description 审计合格未改动 + evals.json 建立
 ### Evidence
 
 docs/skills-value-audit-2026-08-02.md
+
+## [d-p2-merge-20260815] accept
+
+> ⚠️ 本 skill 已于 2026-08-15（任务 feat/skill-hitrate-optimization，P2 研究族合并）整体并入 **research-workflow**——本文件是合并墓碑，后续维护与决策记录在 `skills/research-workflow/decisions.md`。
+
+- 诊断: fact-research 与 research-workflow 职责重叠（轻量事实核查 vs 深度调研），三层调研量级路由表需要单一真相源，两 skill 并存导致 dev-lookup/证据链引用摇摆
+- 修订: 整体并入 research-workflow「量级判定与轻量档（Phase L）」节（三层量级表+4步协议）；SKILL.md 删除；本决策历史归档至 research-workflow/decisions.md
+- 证据: cross-skill 引用（evidence-based-proposal/design-artifact-standards/adversarial-verification/dev-lookup）已全部改指 research-workflow Phase L；引用完整性 grep 零残留
+- 结果: accept（合并落地）

@@ -55,7 +55,12 @@ const (
 	TargetCodex Target = "codex" // OpenAI Codex CLI（~/.codex/skills，2025-12 起 SKILL.md 原生支持）
 	// GitHub Copilot (~/.copilot/skills, cross-project personal skill).
 	TargetCopilot Target = "copilot" // GitHub Copilot（~/.copilot/skills，跨项目个人 skill）
-	TargetAll     Target = "all"
+	// Cross-agent shared skills directory (~/.agents/skills) — the emerging multi-agent
+	// convention; agent-neutral hosts read it without per-tool namespaces. Brought under
+	// install management so link mode reclaims the P0-era plain copies (copy-in-sync →
+	// safely replaced with a link to canonical).
+	TargetAgents Target = "agents" // 跨 agent 共享目录（~/.agents/skills，多 agent 通用约定）
+	TargetAll    Target = "all"
 )
 
 // Distribution states (aligned with sync.py's four states).
@@ -91,6 +96,9 @@ type InstallOpts struct {
 	Targets     []Target
 	// Install only the named skills (empty = all).
 	SkillFilter []string // 只装指定 skill（空=全部）
+	// Per-project distribution profile (<project>/.forge/skills-profile allowlist;
+	// empty = no profile = full set). Applied after SkillFilter in project scope.
+	Profile []string // 项目分发画像白名单（空=无画像=全量）；在 SkillFilter 之后生效
 	// Skip the registry+audit dual gate before install.
 	SkipQuality bool // 跳过 install 前的 registry+audit 双门控
 	// Skip the frontmatter.requires dependency co-install check (escape hatch).
@@ -217,6 +225,19 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 		names, err = filterNames(names, opts.SkillFilter)
 		if err != nil {
 			return nil, err
+		}
+	}
+	// Project profile: trim the distribution set to the allowlist. Unknown profile
+	// entries (skills removed upstream) are warnings, not errors — see filterByProfile.
+	//
+	// 项目画像：把分发集裁到白名单。画像里未知的条目（上游已移除的 skill）记告警
+	// 不报错——见 filterByProfile。
+	profileUnknown := []string{}
+	if len(opts.Profile) > 0 {
+		names, profileUnknown = filterByProfile(names, opts.Profile)
+		for _, u := range profileUnknown {
+			report.Warnings = append(report.Warnings, fmt.Sprintf(
+				"skills-profile: %q 不在 canonical（画像引用了已移除/不存在的 skill，已忽略）", u))
 		}
 	}
 
@@ -364,8 +385,50 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 	// requires 依赖检查：对本次成功装的 skill 读 frontmatter.requires，检查声明的依赖
 	// 是否在 canonical 全集（声明有效）且本次同装。不满足记入 Warnings（仅提示，不阻断）。
 	// 解除 requires 字段无消费方的既有缺陷——单装依赖 skill 会断链，此处显式提示。
+	// Profile trimming visibility: skills already present in a target but excluded by the
+	// profile are NOT deleted (install never destroys user content), yet the user believes
+	// the profile took effect — surfacing them as warnings closes that gap. Without this,
+	// a stale full-set install lingers invisibly next to the trimmed set.
+	//
+	// 画像裁剪可见性：已在目标但被画像排除的 skill 不会被删（install 绝不销毁用户
+	// 内容），而用户以为画像已生效——以告警浮出，堵住这个认知差。否则旧的全量安装
+	// 残留会静默混在裁剪后的集合旁。
+	if len(opts.Profile) > 0 {
+		profSet := map[string]bool{}
+		for _, p := range opts.Profile {
+			profSet[p] = true
+		}
+		allNames, aerr := ListSkills(canonical)
+		if aerr == nil {
+			canonSet := map[string]bool{}
+			for _, n := range allNames {
+				canonSet[n] = true
+			}
+			for _, tname := range targetOrder {
+				tdir := targetDirs[tname]
+				entries, rerr := os.ReadDir(tdir)
+				if rerr != nil {
+					continue // 目标目录不存在/不可读：无残留可报
+				}
+				for _, e := range entries {
+					name := e.Name()
+					// Only canonical-known skills excluded by the profile: foreign/external-managed
+					// skills are target-only orphans (drift-check's job), not profile residue.
+					//
+					// 只看 canonical 里存在但被画像排除的：外部管理的 skill 是
+					// target-only 孤儿（drift-check 管），不是画像残留。
+					if !DirEntryIsDir(tdir, e) || !canonSet[name] || profSet[name] || reservedNames[name] {
+						continue
+					}
+					report.Warnings = append(report.Warnings, fmt.Sprintf(
+						"skills-profile: %s 已在目标 %s 但不在画像内（保留未删；如需裁剪请手动移除）", name, tname))
+				}
+			}
+		}
+	}
+
 	if !opts.SkipRequireCheck {
-		report.Warnings = checkRequires(canonical, report.Skills)
+		report.Warnings = append(report.Warnings, checkRequires(canonical, report.Skills)...)
 	}
 	return report, nil
 }
@@ -910,11 +973,11 @@ func filterNames(all, want []string) ([]string, error) {
 }
 
 // TargetDirs resolves the target-tool → target-skills-directory map. target=all expands to
-// claude/cursor/codex/copilot. Unknown targets are an explicit error (never silently dropped):
+// claude/cursor/codex/copilot/agents. Unknown targets are an explicit error (never silently dropped):
 // an empty resolved dir would degrade filepath.Join("", name) into a cwd-relative path and
 // write into the current directory.
 //
-// TargetDirs 解析目标工具→目标 skills 目录的映射。target=all 展开 claude/cursor/codex/copilot。
+// TargetDirs 解析目标工具→目标 skills 目录的映射。target=all 展开 claude/cursor/codex/copilot/agents。
 // 未知 target 显式报错（绝不静默丢弃）：空目录会让 filepath.Join("", name) 退化为
 // cwd 相对路径，写到当前目录。
 func TargetDirs(targets []Target, global bool, projectSkillsDir string) (map[string]string, error) {
@@ -926,7 +989,7 @@ func TargetDirs(targets []Target, global bool, projectSkillsDir string) (map[str
 	seen := map[string]bool{}
 	expand := func(t Target) error {
 		if t == TargetAll {
-			for _, sub := range []Target{TargetClaude, TargetCursor, TargetCodex, TargetCopilot} {
+			for _, sub := range []Target{TargetClaude, TargetCursor, TargetCodex, TargetCopilot, TargetAgents} {
 				if !seen[string(sub)] {
 					seen[string(sub)] = true
 					dir, terr := targetDir(string(sub), global, home, projectSkillsDir)
@@ -998,14 +1061,23 @@ func targetDir(name string, global bool, home, projectSkillsDir string) (string,
 		// GitHub Copilot 个人 skill（跨项目）放 ~/.copilot/skills/<slug>/SKILL.md
 		// （项目级放 .github/skills/，这里只管全局个人级）。格式与 Claude SKILL.md 兼容。
 		return filepath.Join(home, ".copilot", "skills"), nil
+	case "agents":
+		// Cross-agent shared directory ~/.agents/skills — the multi-agent convention: any
+		// agent-neutral host reads this single location without per-tool namespaces. Contents
+		// are the same SKILL.md format as claude/cursor/codex/copilot.
+		//
+		// 跨 agent 共享目录 ~/.agents/skills——多 agent 通用约定：任何 agent-neutral
+		// 宿主都读这一个位置，无需按工具分命名空间。内容与 claude/cursor/codex/copilot
+		// 同为 SKILL.md 格式。
+		return filepath.Join(home, ".agents", "skills"), nil
 	}
-	return "", fmt.Errorf("未知 target: %q（合法值: claude/cursor/codex/copilot/all）", name)
+	return "", fmt.Errorf("未知 target: %q（合法值: claude/cursor/codex/copilot/agents/all）", name)
 }
 
 // orderedTargetNames returns target names in a fixed order (alphabetic
-// claude<codex<copilot<cursor) for stable output.
+// agents<claude<codex<copilot<cursor) for stable output.
 //
-// orderedTargetNames 返回固定排序的目标名（字母序 claude<codex<copilot<cursor），输出稳定。
+// orderedTargetNames 返回固定排序的目标名（字母序 agents<claude<codex<copilot<cursor），输出稳定。
 func orderedTargetNames(m map[string]string) []string {
 	return slices.Sorted(maps.Keys(m))
 }

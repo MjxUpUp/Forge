@@ -52,3 +52,20 @@ description 三段式合格未改动;新建 evals/evals.json(5正+4负)
 ### Evidence
 
 docs/skills-value-audit-2026-08-02.md
+
+## [d-18cbf6ad743394b8-2d135c63] accept
+
+- **Skill**: project-acceptance
+- **DecidedAt**: 2026-08-15T11:21:42Z
+
+### Diagnosis
+
+无通道skill命中率审查:该skill无triggers纯靠自觉路由,真实用户语料存在明确触发词
+
+### Revision
+
+metadata补triggers(keywords/cooldown;skill-authoring-standard用新condition skill_file_touched;doc-generator/system-architecture补词修订)
+
+### Evidence
+
+skills-hitrate-review-2026-08-15:四源425会话挖掘语料+trigger覆盖10%缺口

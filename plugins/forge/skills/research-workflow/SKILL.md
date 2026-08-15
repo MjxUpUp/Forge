@@ -1,11 +1,11 @@
 ---
 name: research-workflow
-description: "深度调研与结构化报告发布。Use when: 用户说\"调研XXX/研究下XXX方向/深度调研/补充调研/调研并发布\"、需要输出结构化调研报告、给定文件要求\"只看文件/基于这些调研\"、要把调研结果发到飞书时。SKIP: 纯技术方案设计（用 evidence-based-proposal）、单次信息查询（直接搜索）、轻量事实核查/数据对比不出报告（用 fact-research）、按模板生成 PRD/周报等结构化文档（用 doc-generator）、纯对话不产出文档时。"
+description: "调研全量级流水线：轻量事实核查（≤20 查询、≥2 源交叉、inline 带引用答案，不出报告）到深度调研报告（多 worker、run_dir、飞书发布）。Use when: 查市场份额/融资金额/产品对比（A vs B 怎么选）/技术最新进展/某事实核实（需多源交叉但不出报告）、用户说\"调研XXX/深度调研/补充调研/调研并发布\"、需要输出结构化调研报告、给定文件要求\"只看文件/基于这些调研\"、要把调研结果发到飞书、定向源查不到需要桥接通用搜索 API 时。SKIP: 单点技术问题（API 签名/报错含义/库用法/版本兼容→dev-lookup）、纯技术方案设计（用 evidence-based-proposal）、按模板生成 PRD/周报等结构化文档（用 doc-generator）、纯对话不产出调研时。"
 metadata:
   pattern: pipeline + gate
   domain: research
-  source: merged from deep-research + research-workflow + research-and-publish
-  triggers: [{"event":"UserPromptSubmit","keywords":["做调研","技术调研","调研一下","深度调研","调研并","research the","do research"],"cooldown":300}]
+  source: merged from deep-research + research-workflow + research-and-publish + fact-research + web-search-bridge
+  triggers: [{"event":"UserPromptSubmit","keywords":["做调研","技术调研","调研一下","深度调研","调研并","research the","do research","市场份额","怎么选","对比一下","vs 哪个","最新进展","事实核实","交叉验证","融了多少","全网搜","Google 一下"],"cooldown":300}]
 ---
 
 # Research Workflow — 调研全流程
@@ -17,6 +17,9 @@ metadata:
 详细规范分置 references：
 - **`references/deep-research-engine.md`** — Phase 1 调研引擎的完整规范（4 路由判定、6 道工序、产出契约、通信协议、信度分级表）
 - **`references/sourcing-toolkit.md`** — Phase 1 worker 的采集工具路由（按内容类型选采集方式、agent 能力分级、降级链、JS 渲染源终止判定）
+- **`references/curl-sourcing.md`** — curl 定向源通道实测状态、自检方法、按问题类型选源的命令模板（含 dev-lookup 用的技术单点检索通道节）
+- **`references/provider-curl-examples.md`** — 通用搜索桥接四 provider（Tavily/Serper/Brave/Exa）的 curl 调用模板
+- **`scripts/web-search-quota.sh`** — 搜索 API 额度预检/统计脚本（check/status/record）
 - **`references/lark-publish.md`** — Phase 6 飞书发布的命令与异常处理
 - **`references/versioned-rewrite.md`** — Phase 5 版本化补充融入的完整规范（快照→映射→改写→自检→发布→归档，回滚机制）
 - **`references/failure-cases.md`** — 真实失败案例（补充融入 / 格式不一致 / 未触发引擎等）
@@ -37,6 +40,40 @@ metadata:
 - **搜索前不编断言**：任何事实声明都要等搜索结果落地；搜索前的脑补不算
 - **搜索语言匹配用户语言**：用户中文 → 中文源；用户英文 → 英文源
 - **全程 `[^N^]`**：任何外部事实必带 inline citation，Phase 1 起就开始编号
+
+---
+
+## 量级判定与轻量档（原 fact-research，已并入）
+
+### 三层调研量级（路由依据，唯一真相源在本节）
+
+| | dev-lookup | **本 skill 轻量档（Phase L）** | 本 skill 深度档（Phase 0-6） |
+|---|---|---|---|
+| 场景 | API/报错/库用法 | 数据/对比/进展/事实核实 | 方向/竞品/趋势深度调研 |
+| 查询次数 | ≤5 | 5-20 | ≥60 |
+| 多源交叉 | 不做 | **≥2 源撞同一事实才采信** | ≥6 worker 四档信度 |
+| 产出 | inline 一句话 | inline 结构化带引用 | run_dir 报告 + 飞书发布 |
+| 耗时 | 即时 | 几分钟 | 多轮多 agent |
+
+- 查"这个 API 怎么调" → **dev-lookup**
+- 查"React 和 Vue 2025 市场份额谁高" → **本 skill Phase L**
+- 查"前端框架市场格局深度分析，要发报告" → **本 skill Phase 0 起步**
+
+### Phase L — 轻量事实核查（≤20 查询；不建 run_dir、不 spawn worker、不发飞书）
+
+1. **看联网能力**：agent 有内置 `web_search`/`web_fetch` 直接搜；无则走 curl 定向源（HN / GitHub / SE / arXiv / 主流媒体直 curl）。通道实测状态、自检方法、按问题类型选源的命令模板见 `references/curl-sourcing.md`（该表为特定网络环境实测，开工前先自检）。
+2. **多源交叉（核心纪律，区别于 dev-lookup）**：单源不采信，≥2 源撞同一事实才写入答案。来源冲突 → 明示冲突 + 各源说法，不强行统一；找不到第二源 → 标"单一来源，未交叉验证"；数字/日期/金额类事实尤其要交叉（易错、易过期）。
+3. **输出 inline**（不落文件）：结论一句话 + 关键事实（每条 ≥2 引用，URL + 日期）+ 对比表（如适用）+ 时效标注（"截至 YYYY-MM，可能已变化"）。
+4. **上限**：≤20 次查询，拿到交叉验证的答案即停（深挖是深度档的事）。查不到诚实说"本机定向源未查到"，给可手动验证的关键词，**不编造**；已配搜索 API 时可走「通用搜索桥接」再试一次。
+
+## 通用搜索桥接（原 web-search-bridge，已并入）
+
+定向源不够时的**降级链末位**：桥接付费搜索 API（Tavily/Serper/Brave/Exa，环境变量传 key，任一可用即可）。**agent 已有可用内置 web_search 时优先内置，无需本节。**
+
+- **Provider 路由**（按序第一个可用即用，401/超时自动试下一个）：**Tavily**（`TAVILY_API_KEY`，AI 优化返回摘要+来源，通用首选）→ **Serper**（`SERPER_API_KEY`，Google 级结果）→ **Brave**（`BRAVE_SEARCH_API_KEY`，独立索引去重视角）→ **Exa**（`EXA_API_KEY`，语义搜索找"类似内容"）。全部未配 → 诚实说"未配置搜索 API key，只能用定向源"。
+- **调用**：四 provider 的 curl 模板见 `references/provider-curl-examples.md`。要点：body 用 `jq -n` 构造（防 key/查询特殊字符破坏 JSON）；Tavily 必带 `search_depth:"advanced"`（basic 结果少且中文支持差）；**中文查询查不到先译英文重试**（Tavily 高频坑）；优先取 provider 的 `answer`/`answerBox`。
+- **额度预检**：`bash scripts/web-search-quota.sh check all`——**批量调研前必跑**（撒网模式 / worker 开工 10+ 次调用），优先额度充裕的 provider；**单次降级查询不预检**（预检成本 > 价值）。Tavily 可查月度余额（<20% 警告）优先用；Serper 仅速率窗口；Brave/Exa 无预检靠 429 被动应对。`record <provider>` 记本地统计。
+- **纪律**：≤10 次 API 调用即停；付费 API 别滥用，深度挖掘交给深度档 worker；API 返回的多结果是"同源"，关键事实仍需跨 provider/定向源交叉；全失败明确说"搜索 API 不可用"，不伪造结果。
 
 ---
 
@@ -88,7 +125,7 @@ mkdir -p ~/.forge/research/{topic}-$(date '+%Y%m%d-%H%M')
 **本 Phase 是调研链路的方法论内核，完整规范见 `references/deep-research-engine.md`。**
 此处只列主控要点；执行 worker spawn / 信度分级 / 矛盾消解时必须读 references。
 
-**采集工具路由见 `references/sourcing-toolkit.md`** —— 该文件按内容类型给采集通道 + 自检脚本。**agent 能力不同采集方式不同**：有内置 `web_search`/`web_fetch`/`browser` 的 agent 优先用内置工具；无内置联网工具的 agent（或本机网络受限，如国内直连 Google/Bing/Jina/Reddit 超时）走 bash curl 定向源。worker 开工前先跑该 reference 的「采集前自检」把**本环境**可用通道写进 `{run_dir}/map.md` 顶部，后续按路由表选工具、JS 源直接找替代不硬抓。定向源不够时可降级用 **web-search-bridge** skill（桥接付费搜索 API，需配 `TAVILY_API_KEY` 等）作为 worker 采集工具之一。
+**采集工具路由见 `references/sourcing-toolkit.md`** —— 该文件按内容类型给采集通道 + 自检脚本。**agent 能力不同采集方式不同**：有内置 `web_search`/`web_fetch`/`browser` 的 agent 优先用内置工具；无内置联网工具的 agent（或本机网络受限，如国内直连 Google/Bing/Jina/Reddit 超时）走 bash curl 定向源。worker 开工前先跑该 reference 的「采集前自检」把**本环境**可用通道写进 `{run_dir}/map.md` 顶部，后续按路由表选工具、JS 源直接找替代不硬抓。定向源不够时可降级用本 skill「通用搜索桥接」节（付费搜索 API，需配 `TAVILY_API_KEY` 等）作为 worker 采集工具之一。
 
 ### 主控流程（6 道工序）
 
@@ -246,11 +283,9 @@ mkdir -p ~/.forge/research/{topic}-$(date '+%Y%m%d-%H%M')
 - ❌ **只发主报告不发维度子文档**：用户只能看到总览无法回溯每个维度的原始证据，违反 "Raw evidence required"。每个 `dive_NN.md` 必须作为主报告子文档发布
 - ❌ **文件 only 模式偷偷外搜**：用户明示"只看文件"绝不外搜（违反用户意图）
 
-## SKIP（轻量调研转其他 skill）
+## SKIP（轻量场景转其他 skill）
 
-本 skill 是**重量级深度调研**（≥60 searches、多 worker、出报告 + 飞书发布）。更轻量的场景转其他 skill。
-
-「三层调研量级」路由表唯一真相源：fact-research「三层调研量级（路由依据）」节，此处不复制——按该表把单点技术检索转 **dev-lookup**、轻量交叉验证（≥2 源但不出报告）转 **fact-research**；提方案前验证本机环境/API 能力转 **evidence-based-proposal**。
+本 skill 深度档（Phase 0-6）是**重量级深度调研**（≥60 searches、多 worker、出报告 + 飞书发布）。更轻量的场景：「三层调研量级」路由表唯一真相源在本 skill「量级判定与轻量档」节——按该表把单点技术检索转 **dev-lookup**；轻量交叉验证（≥2 源但不出报告）走本 skill **Phase L**（不必起 run_dir）；提方案前验证本机环境/API 能力转 **evidence-based-proposal**。
 
 ## 搜索预算（给用户预期）
 

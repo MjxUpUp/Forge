@@ -35,3 +35,20 @@ description 补 dev-lookup SKIP 边界 + 新建 evals.json 10 条
 ### Evidence
 
 docs/skills-value-audit-2026-08-02.md
+
+## [d-18cbf713f0161798-39b0c8ca] accept
+
+- **Skill**: evidence-based-proposal
+- **DecidedAt**: 2026-08-15T11:29:02Z
+
+### Diagnosis
+
+研究族合并连带引用修复:fact-research/web-search-bridge 已并入 research-workflow,本skill对二者的 SKIP/分工/降级链引用悬空
+
+### Revision
+
+引用改指 research-workflow 轻量档(Phase L)/通用搜索桥接节;dev-lookup 的 curl-sourcing 相对路径改 ../research-workflow/
+
+### Evidence
+
+forge skills validate 51/51 + TestSkills_NoDanglingSkillRefs 守卫
