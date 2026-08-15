@@ -30,7 +30,11 @@ import (
 //     (inject, delivered on the NEXT prompt). PostToolUse/SessionStart stdout is
 //     observation-only (dropped — verified: 0 reached the model across 76 tool calls in a
 //     960-line wire.jsonl). The `exit 0 = stdout→context` shorthand is FALSE for
-//     PostToolUse/SessionStart; PostToolUse exit-2 blocking is UNVERIFIED. Per-hook routing:
+//     PostToolUse/SessionStart. PostToolUse exit-2 stderr is ALSO model-invisible
+//     (2026-08-15 production observation, single session n=1: file-sentinel exit-2
+//     quarantined 3 files, the reason had zero occurrences in the wire transcript);
+//     whether it still affects later
+//     turns is the one unresolved question. Per-hook routing:
 //     internal/agentbridge/kimi-hook-routing.md.
 //
 // Merge strategy: config.toml always carries the user's own model/provider/permission
@@ -60,7 +64,9 @@ import (
 //     PreToolUse exit-2（阻断）、Stop exit-2（阻断）、UserPromptSubmit stdout（注入，
 //     下一 prompt 送达）。PostToolUse/SessionStart 的 stdout 是 observation-only（丢弃
 //     ——实证：960 行 wire.jsonl 中 76 次工具调用 0 条进模型）。`exit 0 = stdout→上下文`
-//     对 PostToolUse/SessionStart 不成立；PostToolUse exit-2 是否阻断未决。逐 hook 路由
+//     对 PostToolUse/SessionStart 不成立。PostToolUse exit-2 的 stderr 同样不达模型
+//     （2026-08-15 生产观测：file-sentinel exit-2 隔离 3 次，阻断原因在 wire transcript
+//     零出现）；是否仍影响后续轮次是唯一未决问题。逐 hook 路由
 //     见 internal/agentbridge/kimi-hook-routing.md。
 //
 // 合并策略：config.toml 必含用户自己的 model/provider/permission 配置，整文件覆盖
