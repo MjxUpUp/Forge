@@ -27,6 +27,12 @@ package agentbridge
 //	                                  reasonix's Claude compat does NOT resolve .claude-plugin/plugin.json
 //	                                  hooks, so this native manifest is required; reasonix prefers it
 //	                                  when both are present (no cross-contamination).
+//	  hooks.json                      copilot plugin hooks, at the plugin ROOT (copilot's documented
+//	                                  "each plugin's own hooks.json" location — NOT hooks/hooks.json,
+//	                                  which Claude Code would double-fire alongside plugin.json's
+//	                                  hooks field): {"version":1,"hooks":{PascalCase events}} with
+//	                                  flat {type,command,matcher,timeoutSec} entries carrying
+//	                                  `--agent copilot` (Wave 2c; see copilot_hooks.go)
 //	  README.md                       one install-command block per host
 //
 // Key design: source uses the ./plugins/<PluginName> subdirectory rather than the repo
@@ -70,6 +76,12 @@ package agentbridge
 //	                                  reasonix 的 Claude 兼容不解析 .claude-plugin/plugin.json 的
 //	                                  hooks，故此 native manifest 必需；两者并存时 reasonix 优先
 //	                                  native（互不污染）。
+//	  hooks.json                      copilot plugin hooks，位于 plugin 根（copilot 文档化的
+//	                                  "每个 plugin 自己的 hooks.json" 位置——非 hooks/hooks.json，
+//	                                  那会让 Claude Code 与 plugin.json 的 hooks 字段双跑）：
+//	                                  {"version":1,"hooks":{PascalCase event}}，扁平
+//	                                  {type,command,matcher,timeoutSec} 条目带
+//	                                  `--agent copilot`（Wave 2c；见 copilot_hooks.go）
 //	  README.md                       每 host 一段安装命令
 //
 // 关键设计：source 用 ./plugins/<PluginName> 子目录而非仓库根 —— forge 是 Go 工具仓
@@ -191,6 +203,9 @@ func GeneratePluginPack(spec PluginPackSpec) error {
 		return err
 	}
 	if err := writeReasonixPluginManifest(spec, pluginDir); err != nil {
+		return err
+	}
+	if err := writeCopilotHooksManifest(pluginDir); err != nil {
 		return err
 	}
 	if err := writePluginSkills(pluginDir); err != nil {
