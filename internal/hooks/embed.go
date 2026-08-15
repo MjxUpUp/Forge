@@ -1589,12 +1589,14 @@ fi
 const InitSuggestHook = `#!/bin/bash
 # init-suggest.sh — SessionStart hook (advisory, non-blocking, global).
 # 用户级"项目自动 init"检测：装了 forge（plugin/npm）后，用户在任意 git 项目开
-# Claude Code，若无 .forge/ → 首次输出提示给 agent，引导询问用户是否启用 forge。
+# Claude Code，若无 .forge/ 且未登记 → 首次输出提示给 agent，引导询问用户是否启用 forge。
 # 拒绝则永久静默（forge suggest decline 写 declined 标记）。FORGE_AUTO_INIT=1 时
-# 直接 forge init（处处无感模式，代价是污染每个 git 项目）。补"每项目手动 init"
-# 缺口——plugin install 接用户级 hooks+MCP，但项目级 .forge/CLAUDE.md/skills 仍需
-# forge init，本 hook 让这步从"用户记得敲"变"agent 主动询问"。advisory：默认不自动
-# 写文件（除 FORGE_AUTO_INIT），exit 0 不阻塞会话。
+# 直接 forge init（处处无感模式）。plugin auto-takeover：user-level plugin 已装时
+# git 项目静默自动 forge init（安装即 opt-in，declined 标记仍可每项目退出；v1.22 起
+# init 零项目写入，自动 init 不再污染项目）。补"每项目手动 init"缺口——plugin
+# install 接用户级 hooks+MCP+skills，项目注册表登记仍需 forge init，本 hook 让这步
+# 从"用户记得敲"变"自动完成（plugin 用户）或 agent 主动询问（npm 用户）"。advisory：
+# 默认不自动写文件（除 FORGE_AUTO_INIT 与 plugin auto-takeover），exit 0 不阻塞会话。
 #
 # 全局 hook：在非 forge 项目正是要发现它们（isGlobalHook）。不依赖 forge project root。
 # 一次标记（${FORGE_DATA_HOME:-$HOME/.forge}/.init-suggested/<tag>）避免重复提示：suggested=提示过不重复，
@@ -1684,6 +1686,47 @@ if [ "${FORGE_AUTO_INIT}" = "1" ]; then
     TAIL=$(printf '%s' "$INIT_OUT" | tail -c 400 | tr '\n' ' ')
     [ -z "$TAIL" ] && TAIL="(无 stderr 输出)"
     echo "PASS [init-suggest] Advisory: FORGE_AUTO_INIT=1 但 forge init 失败（exit $RC），请手动 'forge init'。错误尾部: $TAIL"
+  fi
+  exit 0
+fi
+
+# Plugin auto-takeover：user-level 装了 forge plugin = 显式 opt-in，git 项目静默自动
+# forge init（v1.22 起 init 零项目写入，全部资产落 ~/.forge，自动 init 不污染仓库本身，
+# "污染换无感"的历史顾虑已不成立）。declined 标记（forge suggest decline）仍然尊重——
+# 每项目退出权高于 plugin 级默认开启；suggested 标记不拦截（它只是静音询问，而这里没有询问）。
+# 非成员才走到本分支（上方 forge status/[ -d .forge ] 已放行成员）。失败回显 stderr 尾部
+# （与 FORGE_AUTO_INIT 同款 partial-state 契约）。放在 FORGE_AUTO_INIT 之后：显式 env
+# 语义（declined 也不拦）保持原样不动。
+#
+# Plugin auto-takeover: a user-level installed plugin IS the opt-in — silently forge init
+# this git project (since v1.22 init writes nothing into the project; all assets land in
+# ~/.forge, so the old pollution concern behind the ask-first default is gone). The declined
+# marker (forge suggest decline) is still honored — per-project opt-out beats plugin-wide
+# default-on; the suggested marker does NOT block (it only mutes the ask, and there is no
+# ask here). Only non-members reach this branch (members exited above). Failure echoes the
+# stderr tail (same partial-state contract as FORGE_AUTO_INIT). Positioned after the
+# FORGE_AUTO_INIT branch: explicit-env semantics (declined does not block it) stay intact.
+# declined 检查前置（先于 forge plugin status 子进程）：已退出的项目每次会话不再付
+# plugin status 子进程开销。npm 用户语义不变——declined 在提示模式的标记检查本就静默
+# exit 0，只是提前到此处。
+#
+# The declined check is hoisted (before the forge plugin status subprocess): opted-out
+# projects stop paying the plugin-status subprocess cost every session. npm-user semantics
+# are unchanged — declined was already a silent exit 0 at the prompt-mode marker check.
+PTAG="${FORGE_CWD_TAG:-}"
+PMARKER="${FORGE_DATA_HOME:-$HOME/.forge}/.init-suggested/$PTAG"
+if [ -n "$PTAG" ] && [ -f "$PMARKER" ] && [ "$(cat "$PMARKER" 2>/dev/null)" = "declined" ]; then
+  exit 0
+fi
+if forge plugin status >/dev/null 2>&1; then
+  INIT_OUT=$( { cd "$ROOT" && forge init; } 2>&1 )
+  RC="$?"
+  if [ "$RC" = "0" ]; then
+    echo "PASS [init-suggest] plugin auto-takeover: 已在 $ROOT 自动启用 forge（plugin 安装即接管；forge suggest decline 可退出该项目）。"
+  else
+    TAIL=$(printf '%s' "$INIT_OUT" | tail -c 400 | tr '\n' ' ')
+    [ -z "$TAIL" ] && TAIL="(无 stderr 输出)"
+    echo "PASS [init-suggest] Advisory: plugin 自动接管时 forge init 失败（exit $RC），请手动 'forge init'。错误尾部: $TAIL"
   fi
   exit 0
 fi
