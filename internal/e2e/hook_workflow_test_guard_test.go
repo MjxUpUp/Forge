@@ -99,9 +99,7 @@ func TestWorkflowTestGuard_NonWorkflowFile_Passes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("非 workflow 文件应 PASS（case-glob 不匹配，不跑测试），got error: %v\n%s", err, stdout)
 	}
-	if !strings.Contains(stdout, `"decision":"approve"`) {
-		t.Errorf("期望 decision:approve，got:\n%s", stdout)
-	}
+	assertAllowOutput(t, stdout)
 }
 
 // TestWorkflowTestGuard_FailOpenWithoutInternalCI: editing a workflow yaml in a
@@ -117,9 +115,7 @@ func TestWorkflowTestGuard_FailOpenWithoutInternalCI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("无 internal/ci 应 fail-open PASS，got error: %v\n%s", err, stdout)
 	}
-	if !strings.Contains(stdout, `"decision":"approve"`) {
-		t.Errorf("期望 fail-open decision:approve，got:\n%s", stdout)
-	}
+	assertAllowOutput(t, stdout)
 }
 
 // TestWorkflowTestGuard_PassesIntactWorkflow: intact needs chain → the hook's
@@ -135,9 +131,7 @@ func TestWorkflowTestGuard_PassesIntactWorkflow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("完整 needs 链应 PASS（守护测试绿），got error:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, `"decision":"approve"`) {
-		t.Errorf("期望 decision:approve，got:\n%s", stdout)
-	}
+	assertAllowOutput(t, stdout)
 }
 
 // TestWorkflowTestGuard_BlocksBrokenWorkflow is THE end-to-end proof that the

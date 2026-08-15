@@ -80,7 +80,9 @@ func TestCodexWiringMirrorsClaudeSettings(t *testing.T) {
 	// Codex declares, Claude Code must wire the SAME command set under the
 	// same event name — drift in either direction fails. The codex whitelist
 	// (buildCodexHooks) decides WHICH spec events are wired; this test guards
-	// that whatever is wired matches Claude exactly.
+	// that whatever is wired matches Claude exactly. Since Wave 1b every codex
+	// command carries the `--agent codex` suffix (output-protocol selection);
+	// strip it before comparing command surfaces.
 	if len(codex) == 0 {
 		t.Fatal("codex wiring has no events — generator or parser broken")
 	}
@@ -90,9 +92,16 @@ func TestCodexWiringMirrorsClaudeSettings(t *testing.T) {
 			t.Errorf("Claude Code settings missing event %q that Codex wires", event)
 			continue
 		}
-		if !stringSetEqual(claudeCmds, codexCmds) {
+		stripped := map[string]bool{}
+		for cmd := range codexCmds {
+			if !strings.Contains(cmd, " --agent codex") {
+				t.Errorf("codex hook command missing --agent codex suffix (output protocol would fall back to Claude shapes): %s", cmd)
+			}
+			stripped[strings.TrimSuffix(cmd, " --agent codex")] = true
+		}
+		if !stringSetEqual(claudeCmds, stripped) {
 			t.Errorf("hook commands for %q drifted between Claude Code and Codex — keep settings.go GenerateSettings and codex.go buildCodexHooks in sync:\n  claude: %s\n  codex:  %s",
-				event, sortedSet(claudeCmds), sortedSet(codexCmds))
+				event, sortedSet(claudeCmds), sortedSet(stripped))
 		}
 	}
 
@@ -205,9 +214,18 @@ func TestCursorWiringMirrorsClaudeSettings(t *testing.T) {
 			t.Errorf("Claude Code settings missing event %q that Cursor wires", claudeEvt)
 			continue
 		}
-		if !stringSetEqual(claudeCmds, cursorCmds) {
+		// Since Wave 1b every cursor command carries the `--agent cursor` suffix
+		// (output-protocol selection); strip it before comparing command surfaces.
+		stripped := map[string]bool{}
+		for cmd := range cursorCmds {
+			if !strings.Contains(cmd, " --agent cursor") {
+				t.Errorf("cursor hook command missing --agent cursor suffix (output protocol would fall back to Claude shapes): %s", cmd)
+			}
+			stripped[strings.TrimSuffix(cmd, " --agent cursor")] = true
+		}
+		if !stringSetEqual(claudeCmds, stripped) {
 			t.Errorf("hook commands for cursor %q / claude %q drifted — keep settings.go GenerateSettings and cursor.go buildCursorHooks in sync:\n  claude: %s\n  cursor: %s",
-				cursorEvt, claudeEvt, sortedSet(claudeCmds), sortedSet(cursorCmds))
+				cursorEvt, claudeEvt, sortedSet(claudeCmds), sortedSet(stripped))
 		}
 	}
 
@@ -487,22 +505,15 @@ func TestWindsurfWiringMirrorsClaudeSettings(t *testing.T) {
 	claude := hookCommandsByEvent(t, filepath.Join(claudeDir, ".claude", "settings.local.json"))
 	windsurf := windsurfHookCommandsByClaudeEvent(t, filepath.Join(home, ".codeium", "windsurf", "hooks.json"))
 
-	// Every enforcement command must carry --agent windsurf (skill-scan /
-	// task-verify are session events with no tool_input, so no agent flag).
+	// Every forge command must carry --agent windsurf. Before Wave 2b the two
+	// session-lifecycle groups (pre_user_prompt / post_cascade_response) were
+	// missing the flag — those hooks then emitted Claude-protocol stdout on a host
+	// with no stdout channel. Tightened to ALL forge commands (stdin normalization
+	// AND output protocol both need the host).
 	for _, cmds := range windsurf {
 		for cmd := range cmds {
-			if strings.Contains(cmd, "forge hook task-guard") ||
-				strings.Contains(cmd, "forge hook freeze-guard") ||
-				strings.Contains(cmd, "forge hook assertion-check") ||
-				strings.Contains(cmd, "forge hook read-before-edit") ||
-				strings.Contains(cmd, "forge hook bash-guard") ||
-				strings.Contains(cmd, "forge hook hazard-guard") ||
-				strings.Contains(cmd, "forge hook auto-compile") ||
-				strings.Contains(cmd, "forge hook file-sentinel") ||
-				strings.Contains(cmd, "forge hook tool-track") {
-				if !strings.Contains(cmd, "--agent windsurf") {
-					t.Errorf("windsurf hook command missing --agent windsurf (stdin would fail to normalize): %s", cmd)
-				}
+			if strings.HasPrefix(cmd, "forge hook ") && !strings.Contains(cmd, " --agent windsurf") {
+				t.Errorf("windsurf hook command missing --agent windsurf (stdin normalization and output protocol both need the host): %s", cmd)
 			}
 		}
 	}
@@ -679,18 +690,25 @@ func TestAllTranslators(t *testing.T) {
 	}
 }
 
-// TestClineTranslator_Translate pins the user-level-assets contract: Cline has no
-// lifecycle hooks and its global rules location is not a stable programmatic
-// target, so the translator is a deliberate no-op — it must succeed and write
-// NOTHING into the project directory (zero-project-write default; legacy project
-// files are stripped by the cleanup layer).
+// TestClineTranslator_Translate pins the zero-project-write half of the cline
+// contract: since v3.36 cline HAS lifecycle hooks and the translator wires real
+// wrapper scripts (see cline_test.go) — but only at the USER level
+// (~/Documents/Cline/Rules/Hooks/); the project directory must stay untouched
+// (zero-project-write default since v1.22; legacy project files are stripped by the
+// cleanup layer).
+//
+// TestClineTranslator_Translate 钉死 cline 契约的零项目写入半边：v3.36 起 cline 有
+// lifecycle hooks、translator 接线真正的 wrapper 脚本（见 cline_test.go）——但只在
+// 用户级（~/Documents/Cline/Rules/Hooks/）；项目目录必须不被触碰（v1.22 起的零项目
+// 写入默认；遗留项目文件由清理层剥除）。
 func TestClineTranslator_Translate(t *testing.T) {
+	isolateHome(t)
 	dir := t.TempDir()
 	if err := (&ClineTranslator{}).Translate(dir, testInput()); err != nil {
 		t.Fatal(err)
 	}
 	if entries, err := os.ReadDir(dir); err != nil || len(entries) != 0 {
-		t.Errorf("cline Translate must be a no-op (entries=%v, err=%v)", entries, err)
+		t.Errorf("cline Translate must not write into the project dir (entries=%v, err=%v)", entries, err)
 	}
 }
 

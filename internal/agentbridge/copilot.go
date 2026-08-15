@@ -1,24 +1,27 @@
 package agentbridge
 
-// CopilotTranslator is a no-op after the user-level-assets refactor.
+// CopilotTranslator is a no-op — but no longer because copilot lacks hooks. Copilot
+// DOES support lifecycle hooks (docs.github.com/en/copilot/reference/hooks-reference),
+// and since Wave 2c the plugin pack ships the gate wiring as plugins/forge/hooks.json
+// at the plugin root (copilot's documented plugin-hook location; see copilot_hooks.go)
+// — the marketplace install wires copilot directly, with no manual init step. What
+// copilot still has no analogue of is a USER-LEVEL config file forge could merge hooks
+// into (its hooks ride plugin manifests / editor settings, not a plain on-disk file),
+// so this translator has nothing to write: `forge init --agents copilot` is a no-op by
+// design and the plugin is the only wiring path. Legacy project files
+// (.github/instructions/) are stripped by stripProjectLevelForgeAssets. AgentCopilot
+// remains a valid --agents value (parse compatibility) but translates to nothing.
 //
-// Copilot's only integration channel was guidance text at
-// .github/instructions/forge-quality.instructions.md (project-level — Copilot has no
-// lifecycle hooks to enforce gates, and no plain-file user-level instruction channel
-// forge can write: VS Code user instructions live in editor settings, not on disk).
-// Writing project files conflicts with the zero-project-write default, so the
-// translator no longer emits anything; legacy project files are stripped by
-// stripProjectLevelForgeAssets. AgentCopilot remains a valid --agents value (parse
-// compatibility) but translates to nothing.
-//
-// CopilotTranslator 在 user-level-assets 重构后是 no-op。
-//
-// Copilot 唯一的集成渠道是 .github/instructions/forge-quality.instructions.md 的
-// guidance 文本（项目级——Copilot 没有 lifecycle hooks 可 enforce 门禁，也没有
-// forge 可写的纯文件用户级指令渠道：VS Code 用户指令存在编辑器设置里，不在磁盘上）。
-// 写项目文件与零项目写入默认冲突，故 translator 不再产出；遗留项目文件由
-// stripProjectLevelForgeAssets 剥除。AgentCopilot 仍是合法的 --agents 值
-// （解析兼容），但翻译为空。
+// CopilotTranslator 是 no-op——但不再是因为 copilot 没有 hooks。Copilot 确实支持
+// lifecycle hooks（docs.github.com/en/copilot/reference/hooks-reference），且自
+// Wave 2c 起 plugin pack 以 plugin 根的 plugins/forge/hooks.json 携带 gate 接线
+// （copilot 文档化的 plugin-hook 位置；见 copilot_hooks.go）——marketplace 安装直接
+// 接线 copilot，无手动 init 步骤。copilot 仍然没有的，是 forge 可以把 hooks 合并进
+// 去的**用户级配置文件**（其 hooks 随 plugin manifest / 编辑器设置走，不在磁盘上的
+// 纯文件里），故本 translator 无东西可写：`forge init --agents copilot` 设计上就是
+// no-op，plugin 是唯一接线路径。遗留项目文件（.github/instructions/）由
+// stripProjectLevelForgeAssets 剥除。AgentCopilot 仍是合法的 --agents 值（解析兼
+// 容），但翻译为空。
 type CopilotTranslator struct{}
 
 func (t *CopilotTranslator) Translate(projectDir string, input *TranslationInput) error {

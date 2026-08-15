@@ -13,17 +13,20 @@ import (
 
 // CodexTranslator wires forge hooks into codex's USER-LEVEL hooks.json
 // (CodexHome()/hooks.json, i.e. $CODEX_HOME/hooks.json or ~/.codex/hooks.json).
-// Codex's lifecycle hooks are schema-compatible with Claude Code's — the
-// matcher/hooks/type/command structure is identical, the event names are the same
-// PascalCase, and so is the stdin/stdout JSON protocol (common stdin fields
-// session_id/transcript_path/cwd/hook_event_name match Claude's) — so the same set
-// of `forge hook <name>` commands run unchanged. The official event roster
+// Codex's hook FILE schema is compatible with Claude Code's — the
+// matcher/hooks/type/command structure is identical and the event names are the same
+// PascalCase; the stdin payload's common fields (session_id/cwd/hook_event_name)
+// match Claude's, so the same `forge hook <name>` commands run. The OUTPUT protocol,
+// however, differs from Claude's: decision:"approve" is parsed-but-unsupported
+// (marks the hook FAILED), hookSpecificOutput.additionalContext is honored only on
+// SessionStart/PreToolUse/PostToolUse/UserPromptSubmit, and the only reliable block
+// channel is stderr + exit 2 — hence every generated command carries
+// `--agent codex` so the dispatcher emits the codex shapes (Wave 1b; see
+// emitCodexOutput in internal/cli/hook.go). The official event roster
 // (https://developers.openai.com/codex/hooks) is SessionStart, SessionEnd,
 // PreToolUse, PermissionRequest, PostToolUse, PreCompact, PostCompact,
 // UserPromptSubmit, SubagentStart, SubagentStop, Stop; buildCodexHooks maps the six
-// of them that have a ForgeHookSpec analogue (see the whitelist there). Alongside
-// claude-code and cursor, codex is one of the agents where hooks truly
-// enforce Forge gates; copilot/windsurf still emit guidance text only.
+// of them that have a ForgeHookSpec analogue (see the whitelist there).
 // See CursorTranslator for cursor's flat schema variant.
 //
 // The user-level location mirrors the kimi/claude-code model: one machine-wide registration
@@ -38,20 +41,26 @@ import (
 // PreCompact/PostCompact), whereas Claude Code treats it as a tool-name match. Plain
 // names (Bash) and alternations (Write|Edit) are both valid regexes and match
 // identically in both, so the Claude wiring migrates over directly. Forge never emits
-// the glob-style `Bash(...)` form — it is not a legal matcher in Codex.
+// the glob-style `Bash(...)` form — it is not a legal matcher in Codex. Codex reports
+// file edits as tool_name "apply_patch" (patch text in tool_input.command, no
+// file_path), so codexMatchers widens every Write/Edit matcher with |apply_patch —
+// without it every file gate silently no-ops on codex file edits.
 //
 // CodexTranslator 把 forge hook 接线进 codex 的 user-level hooks.json
 // （CodexHome()/hooks.json，即 $CODEX_HOME/hooks.json 或 ~/.codex/hooks.json）。Codex 的
-// lifecycle hooks 与 Claude Code 的 schema 兼容——matcher/hooks/type/command 结构相同、
-// event 名同为 PascalCase、stdin/stdout JSON 协议相同（stdin 公共字段
-// session_id/transcript_path/cwd/hook_event_name 与 Claude 一致）——故同一批
-// `forge hook <name>` 命令原样跑。官方 event 名册
+// hook **文件** schema 与 Claude Code 兼容——matcher/hooks/type/command 结构相同、
+// event 名同为 PascalCase；stdin payload 公共字段（session_id/cwd/hook_event_name）
+// 与 Claude 一致，故同一批 `forge hook <name>` 命令可跑。但**输出协议**与 Claude
+// 不同：decision:"approve" 会被解析但不支持（判 hook FAILED）、
+// hookSpecificOutput.additionalContext 仅在 SessionStart/PreToolUse/PostToolUse/
+// UserPromptSubmit 上被采纳、唯一可靠阻断通道是 stderr + exit 2——故生成的每条
+// 命令都带 `--agent codex`，让 dispatcher 发 codex 形态（Wave 1b；见
+// internal/cli/hook.go 的 emitCodexOutput）。官方 event 名册
 // （https://developers.openai.com/codex/hooks）为 SessionStart、SessionEnd、
 // PreToolUse、PermissionRequest、PostToolUse、PreCompact、PostCompact、
 // UserPromptSubmit、SubagentStart、SubagentStop、Stop；buildCodexHooks 接入其中有
-// ForgeHookSpec 对应物的六个（见该处白名单）。与 claude-code、cursor 并列，codex
-// 是 hook 真正 enforce Forge gate 的 agent 之一；copilot/windsurf 仍只发 guidance 文本。
-// cursor 的扁平 schema 变体见 CursorTranslator。
+// ForgeHookSpec 对应物的六个（见该处白名单）。cursor 的扁平 schema 变体见
+// CursorTranslator。
 //
 // 用户级路径对齐 kimi/claude-code 模型：一份全机器注册替代逐项目的 .codex/hooks.json
 // 副本，forge init/sync 不再写项目目录（用户级资产迁移；项目级残留由卸载/清理层
@@ -62,7 +71,10 @@ import (
 // tool_name，SessionStart 针对 source，PreCompact/PostCompact 针对 trigger），而
 // Claude Code 把它当 tool-name 匹配。纯名（Bash）与 alternation（Write|Edit）都是
 // 合法 regex，在两者中匹配结果一致，故 Claude 接线可直接迁移。Forge 从不发 glob
-// 风格的 `Bash(...)` 形式——它在 Codex 里不是合法 matcher。
+// 风格的 `Bash(...)` 形式——它在 Codex 里不是合法 matcher。codex 的文件编辑以
+// tool_name "apply_patch" 上报（patch 文本在 tool_input.command、无 file_path），
+// 故 codexMatchers 给每个 Write/Edit matcher 扩上 |apply_patch——不扩的话每个
+// 文件门禁在 codex 文件编辑上静默空转。
 type CodexTranslator struct{}
 
 func (t *CodexTranslator) Translate(projectDir string, input *TranslationInput) error {
@@ -254,8 +266,10 @@ func StripCodexHooksUserLevel() (bool, error) {
 // buildCodexHooks derives codex's hooks.json from hooks.ForgeHookSpec — that spec is the single source of truth shared with
 // settings.local.json and the plugin pack. Codex's hook schema is identical to Claude Code's
 // nested {matcher, hooks:[{type,command}]} structure, the event names are the same PascalCase,
-// and the stdin payload carries the same common fields (session_id/cwd/hook_event_name), so the spec
-// can be marshaled as-is into a legal codex hooks.json. The official codex event roster
+// and the stdin payload carries the same common fields (session_id/cwd/hook_event_name), so the
+// spec maps directly — EXCEPT the two codex-specific deltas applied per-copy by codexMatchers
+// (`--agent codex` on every command for the output protocol; |apply_patch on Write/Edit
+// matchers for codex's edit tool name). The official codex event roster
 // (https://developers.openai.com/codex/hooks) is: SessionStart, SessionEnd, PreToolUse,
 // PermissionRequest, PostToolUse, PreCompact, PostCompact, UserPromptSubmit, SubagentStart,
 // SubagentStop, Stop. We wire exactly the events that have a ForgeHookSpec analogue —
@@ -269,8 +283,10 @@ func StripCodexHooksUserLevel() (bool, error) {
 // buildCodexHooks 从 hooks.ForgeHookSpec 派生 codex 的 hooks.json——该 spec 是与
 // settings.local.json、plugin pack 共享的单一真相源。Codex 的 hook schema 与 Claude Code
 // 的嵌套 {matcher, hooks:[{type,command}]} 结构相同，event 名同为 PascalCase，stdin
-// payload 公共字段也相同（session_id/cwd/hook_event_name），故 spec 可原样 marshal 为
-// 合法 codex hooks.json。官方 codex event 名册
+// payload 公共字段也相同（session_id/cwd/hook_event_name），故 spec 可直接映射——
+// 唯 codexMatchers 在副本上应用的两个 codex 专属 delta 除外（每条命令带
+// `--agent codex` 选输出协议；Write/Edit matcher 扩 |apply_patch 适配 codex 的编辑
+// 工具名）。官方 codex event 名册
 // （https://developers.openai.com/codex/hooks）为：SessionStart、SessionEnd、
 // PreToolUse、PermissionRequest、PostToolUse、PreCompact、PostCompact、UserPromptSubmit、
 // SubagentStart、SubagentStop、Stop。只接有 ForgeHookSpec 对应物的 event——
@@ -296,12 +312,79 @@ func buildCodexHooks() map[string]any {
 		// 出现；未来 spec 新增的不在此表的 event 一律跳过，不静默接进不支持的 event。
 		switch event {
 		case "PreToolUse", "PostToolUse", "Stop", "SessionStart", "UserPromptSubmit", "PostCompact":
-			codex[event] = matchers
+			codex[event] = codexMatchers(matchers)
 		}
 	}
 	return map[string]any{
 		`hooks`: codex,
 	}
+}
+
+// codexMatchers deep-copies the shared ForgeHookSpec matchers into codex-local form.
+// It never mutates the spec (single source of truth shared with settings.local.json
+// and the plugin pack); the two codex-specific deltas are applied on the copy:
+//   - every forge command gains ` --agent codex` — codex's stdout/exit-code output
+//     contract differs from Claude's (no decision:"approve", context only on 4 events,
+//     block = stderr+exit 2), so the dispatcher must know the host (Wave 1b);
+//   - matchers containing Write/Edit tokens are widened with apply_patch — codex
+//     reports file edits as tool_name "apply_patch" (single tool, patch text in
+//     tool_input.command), which a plain Write|Edit regex never matches; without the
+//     widening every file gate (task-guard/freeze-guard/auto-compile/...) silently
+//     no-ops on codex file edits.
+//
+// codexMatchers 把共享的 ForgeHookSpec matcher 深拷贝为 codex 本地形态，绝不改动
+// spec（与 settings.local.json、plugin pack 共享的单一真相源）。两个 codex 专属
+// delta 应用在副本上：
+//   - 每条 forge 命令追加 ` --agent codex`——codex 的 stdout/退出码输出契约与 Claude
+//     不同（无 decision:"approve"、上下文仅在 4 个事件、阻断 = stderr+exit 2），
+//     dispatcher 必须知道宿主是谁（Wave 1b）；
+//   - 含 Write/Edit token 的 matcher 扩上 apply_patch——codex 的文件编辑以 tool_name
+//     "apply_patch" 上报（单工具、patch 文本在 tool_input.command），纯 Write|Edit
+//     regex 永远匹配不到；不扩的话每个文件门禁（task-guard/freeze-guard/
+//     auto-compile/...）在 codex 文件编辑上静默空转。
+func codexMatchers(matchers []hooks.HookMatcher) []hooks.HookMatcher {
+	out := make([]hooks.HookMatcher, 0, len(matchers))
+	for _, m := range matchers {
+		cm := hooks.HookMatcher{
+			Matcher: codexApplyPatchMatcher(m.Matcher),
+			Hooks:   make([]hooks.HookEntry, len(m.Hooks)),
+		}
+		for i, e := range m.Hooks {
+			cmd := e.Command
+			if isForgeBridgeCommand(cmd) {
+				cmd += " --agent codex"
+			}
+			cm.Hooks[i] = hooks.HookEntry{Type: e.Type, Command: cmd}
+		}
+		out = append(out, cm)
+	}
+	return out
+}
+
+// codexApplyPatchMatcher widens a tool-name alternation with apply_patch when it
+// contains a Write or Edit token. Both are plain alternations and stay legal
+// codex regex matchers. Returns the input unchanged otherwise (Bash, Read|Skill|Agent,
+// empty string — SessionStart/Stop groups match events, not tool names).
+//
+// codexApplyPatchMatcher 在 tool-name alternation 含 Write 或 Edit token 时扩上
+// apply_patch。两者都是纯 alternation，仍是合法的 codex regex matcher。其余情形
+// （Bash、Read|Skill|Agent、空串——SessionStart/Stop 组匹配的是事件不是工具名）
+// 原样返回。
+func codexApplyPatchMatcher(matcher string) string {
+	if matcher == "" {
+		return matcher
+	}
+	hasFileEdit := false
+	for _, tok := range strings.Split(matcher, "|") {
+		if tok == "Write" || tok == "Edit" {
+			hasFileEdit = true
+			break
+		}
+	}
+	if !hasFileEdit || strings.Contains(matcher, "apply_patch") {
+		return matcher
+	}
+	return matcher + "|apply_patch"
 }
 
 // Codex's lifecycle hooks are gated behind a feature flag: config.toml must carry

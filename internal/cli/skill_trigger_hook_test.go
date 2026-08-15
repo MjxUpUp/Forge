@@ -218,8 +218,10 @@ func TestRunSkillTriggerHook_HitOutput(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &ho); err != nil {
 		t.Fatalf("输出非合法 HookOutput JSON: %v\n%s", err, out)
 	}
-	if ho.Decision != "approve" {
-		t.Errorf("decision 应 approve，got %s", ho.Decision)
+	// allow-with-detail 现为裸 hookSpecificOutput——decision 必须为空
+	// （decision:"approve" 会绕过 Claude 权限流程，codex 会判 hook failed）。
+	if ho.Decision != "" {
+		t.Errorf("decision 应为空（裸 hookSpecificOutput），got %q", ho.Decision)
 	}
 	if ho.HookSpecificOutput == nil {
 		t.Fatal("命中时应含 hookSpecificOutput")
@@ -246,15 +248,10 @@ func TestRunSkillTriggerHook_NoHitOutput(t *testing.T) {
 		}
 	})
 
-	var ho HookOutput
-	if err := json.Unmarshal([]byte(out), &ho); err != nil {
-		t.Fatalf("输出非合法 JSON: %v\n%s", err, out)
-	}
-	if ho.Decision != "approve" {
-		t.Errorf("无命中也应 approve，got %s", ho.Decision)
-	}
-	if ho.HookSpecificOutput != nil {
-		t.Errorf("无命中不应有 additionalContext，got %+v", ho.HookSpecificOutput)
+	// 无命中 = 无 detail 的 allow → 各宿主均静默（exit 0、零 stdout），
+	// 不再打 {"decision":"approve"} envelope。
+	if strings.TrimSpace(out) != "" {
+		t.Errorf("无命中应静默（无 stdout），got %q", out)
 	}
 }
 

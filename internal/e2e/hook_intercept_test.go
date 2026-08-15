@@ -57,6 +57,30 @@ func hookStdin(t *testing.T, sessionID, eventName, toolName string, toolInput ma
 	return string(b)
 }
 
+// assertAllowOutput pins the Wave-1 allow contract for the default (Claude Code)
+// output protocol: an allowing hook exits 0 (asserted by the caller) with stdout
+// that is either empty or a {"hookSpecificOutput":{...,"additionalContext":...}}
+// context object — and NEVER "decision":"approve" (an allow hook must not grant
+// permissions) nor any block marker. The old `{"decision":"approve"}` envelope
+// was removed intentionally in the per-agent output-protocol wave; these
+// assertions pin the new contract, they do not weaken the old one.
+//
+// assertAllowOutput 钉死 Wave-1 默认（Claude Code）输出协议的放行契约：放行的
+// hook 以退出码 0 结束（调用方已断言），stdout 为空或
+// {"hookSpecificOutput":{...,"additionalContext":...}} 上下文对象——绝不能是
+// "decision":"approve"（放行 hook 不得授予权限）或任何 block 标记。旧的
+// `{"decision":"approve"}` 信封在按 agent 分发输出协议的波次中刻意移除；这些
+// 断言钉住新契约，并非弱化旧断言。
+func assertAllowOutput(t *testing.T, stdout string) {
+	t.Helper()
+	if strings.Contains(stdout, `"decision":"block"`) {
+		t.Errorf("hook blocked (decision:block) where allow was required:\n%s", stdout)
+	}
+	if strings.Contains(stdout, `"decision":"approve"`) {
+		t.Errorf("allow output must not carry decision:approve (Wave-1 contract: an allow hook must not grant permissions):\n%s", stdout)
+	}
+}
+
 // TestHook_TaskGuard_BlocksForgeManagedFile verifies the self-protection
 // contract: task-guard must BLOCK any direct write to Forge-managed files
 // (.forge/* except protocol.yml, and .claude/settings*). This is the
@@ -162,9 +186,7 @@ func TestHook_HazardGuard_ConfirmReleases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("hazard-guard should pass post-confirm, got error. stdout:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, `"decision":"approve"`) {
-		t.Errorf("expected decision=approve post-confirm, got:\n%s", stdout)
-	}
+	assertAllowOutput(t, stdout)
 }
 
 // TestHook_HazardGuard_FingerprintReleases verifies the --fingerprint path the hook
@@ -209,9 +231,7 @@ func TestHook_HazardGuard_FingerprintReleases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("hazard-guard should pass post-confirm, got error. stdout:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, `"decision":"approve"`) {
-		t.Errorf("expected decision=approve post-confirm, got:\n%s", stdout)
-	}
+	assertAllowOutput(t, stdout)
 }
 
 // TestHook_HazardGuard_RmFPathNotFlag regressions the 2026-06 .lark-report.xml false
@@ -231,9 +251,7 @@ func TestHook_HazardGuard_RmFPathNotFlag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("hazard-guard must pass 'rm -f <path-with-r>' (not rm -rf), got block. stdout:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, `"decision":"approve"`) {
-		t.Errorf("expected decision=approve, got:\n%s", stdout)
-	}
+	assertAllowOutput(t, stdout)
 }
 
 // TestHook_HazardGuard_TmpDirWhitelisted covers the e2e/CI probe-cleanup pattern:
@@ -256,9 +274,7 @@ func TestHook_HazardGuard_TmpDirWhitelisted(t *testing.T) {
 		if err != nil {
 			t.Fatalf("hazard-guard should whitelist %q, got block. stdout:\n%s", cmd, stdout)
 		}
-		if !strings.Contains(stdout, `"decision":"approve"`) {
-			t.Errorf("expected decision=approve for %q, got:\n%s", cmd, stdout)
-		}
+		assertAllowOutput(t, stdout)
 	}
 
 	// Regression guard: /tmp/../etc traversal must NOT be whitelisted.
@@ -293,9 +309,7 @@ func TestHook_HazardGuard_ForceWithLeaseAllowed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("hazard-guard should allow --force-with-lease, got block. stdout:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, `"decision":"approve"`) {
-		t.Errorf("expected decision=approve for --force-with-lease, got:\n%s", stdout)
-	}
+	assertAllowOutput(t, stdout)
 
 	// Valued variant --force-with-lease=<ref>:<expect> (most common CI form) is also approved.
 	//
@@ -307,9 +321,7 @@ func TestHook_HazardGuard_ForceWithLeaseAllowed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("hazard-guard should allow --force-with-lease=<ref>:<expect>, got block. stdout:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, `"decision":"approve"`) {
-		t.Errorf("expected decision=approve for lease=<ref>:<expect>, got:\n%s", stdout)
-	}
+	assertAllowOutput(t, stdout)
 
 	// Bare --force still blocks (regression guard: the lease allowance must not let bare force slip through).
 	//
@@ -738,9 +750,7 @@ func TestHook_ReadBeforeEdit_AllowsAfterRead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read-before-edit must ALLOW an edit to a file Read this session, got block. stdout:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, `"decision":"approve"`) {
-		t.Errorf("expected decision=approve after Read, got:\n%s", stdout)
-	}
+	assertAllowOutput(t, stdout)
 }
 
 // TestHook_ReadBeforeEdit_SkipsWithoutTask pins the scope: with no active task the hook silently
@@ -767,9 +777,7 @@ func TestHook_ReadBeforeEdit_SkipsWithoutTask(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read-before-edit must skip (approve) when no active task, got block. stdout:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, `"decision":"approve"`) {
-		t.Errorf("expected decision=approve without active task, got:\n%s", stdout)
-	}
+	assertAllowOutput(t, stdout)
 }
 
 // TestHook_ReadBeforeEdit_AllowsNewFile pins the new-file exemption: Writing a new source file not
@@ -792,9 +800,7 @@ func TestHook_ReadBeforeEdit_AllowsNewFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read-before-edit must ALLOW Write of a new file (not on disk), got block. stdout:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, `"decision":"approve"`) {
-		t.Errorf("expected decision=approve for new file, got:\n%s", stdout)
-	}
+	assertAllowOutput(t, stdout)
 }
 
 // TestHook_ReadBeforeEdit_PerTaskOverrideEscape (plan 5 leak-prevention path, e2e):
@@ -832,9 +838,7 @@ func TestHook_ReadBeforeEdit_PerTaskOverrideEscape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read-before-edit must APPROVE an unread source edit under per-task work-activity override, got block. stdout:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, `"decision":"approve"`) {
-		t.Errorf("expected decision=approve under work-activity override, got:\n%s", stdout)
-	}
+	assertAllowOutput(t, stdout)
 }
 
 // forgeHookEnv runs `forge hook <name>` like forgeHook, with extra env vars

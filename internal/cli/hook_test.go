@@ -14,7 +14,9 @@ import (
 )
 
 func TestHookOutput_AllowOnMissingProject(t *testing.T) {
-	// Run in a temp dir without .forge/ — should output allow JSON
+	// Run in a temp dir without .forge/ — allow must be SILENT (exit 0, no stdout).
+	// The old contract printed {"decision":"approve"}, which bypassed Claude's
+	// permission flow on PreToolUse and marked the hook failed on codex.
 	tmpDir := t.TempDir()
 	originalWd, _ := os.Getwd()
 	os.Chdir(tmpDir)
@@ -41,13 +43,9 @@ func TestHookOutput_AllowOnMissingProject(t *testing.T) {
 	n, _ := r.Read(buf)
 	output := strings.TrimSpace(string(buf[:n]))
 
-	// Should be valid JSON with decision: allow
-	var result HookOutput
-	if err := json.Unmarshal([]byte(output), &result); err != nil {
-		t.Fatalf("output is not valid JSON: %q, err: %v", output, err)
-	}
-	if result.Decision != "approve" {
-		t.Errorf("decision = %q, want %q", result.Decision, "approve")
+	// Allow with no detail emits NOTHING — no approve envelope on any host.
+	if output != "" {
+		t.Errorf("allow on missing project must be silent, got stdout: %q", output)
 	}
 }
 
@@ -95,15 +93,18 @@ func TestHookOutput_StructuredJSON(t *testing.T) {
 	w.Close()
 	os.Stdout = oldStdout
 
-	// May error if go build fails — that's OK, we just check the JSON output
+	// May error if the embedded script fails — the emission contract holds either way.
 	_ = err
 
 	buf := make([]byte, 8192)
 	n, _ := r.Read(buf)
 	output := strings.TrimSpace(string(buf[:n]))
 
+	// Allow with no detail is silent; allow with detail is a BARE hookSpecificOutput
+	// (no decision); a block is decision:"block". The one forbidden shape on the allow
+	// path is decision:"approve" (bypasses Claude permissions, fails the hook on codex).
 	if output == "" {
-		t.Fatal("no output from hook")
+		return
 	}
 
 	// Must be valid JSON
@@ -112,9 +113,8 @@ func TestHookOutput_StructuredJSON(t *testing.T) {
 		t.Fatalf("output is not valid JSON: %q, err: %v", output, err)
 	}
 
-	// Decision must be "approve" or "block"
-	if result.Decision != "approve" && result.Decision != "block" {
-		t.Errorf("decision = %q, want 'approve' or 'block'", result.Decision)
+	if result.Decision != "" && result.Decision != "block" {
+		t.Errorf("decision = %q, want \"\" (bare allow) or 'block'", result.Decision)
 	}
 
 	// If hookSpecificOutput is present, it must include hookEventName
@@ -575,8 +575,10 @@ func TestHookOutput_GlobalHookRunsOutsideProject(t *testing.T) {
 	if err := json.Unmarshal([]byte(output), &result); err != nil {
 		t.Fatalf("output not valid JSON: %q, err: %v", output, err)
 	}
-	if result.Decision != "approve" {
-		t.Errorf("decision = %q, want approve", result.Decision)
+	// The allow-with-detail shape is a BARE hookSpecificOutput — decision must be
+	// empty (decision:"approve" bypasses Claude permissions / fails the hook on codex).
+	if result.Decision != "" {
+		t.Errorf("decision = %q, want \"\" (bare hookSpecificOutput on allow)", result.Decision)
 	}
 	// The hook ran (not silently allowed): advisory PASS detail is present.
 	if result.HookSpecificOutput == nil || !strings.Contains(result.HookSpecificOutput.AdditionalContext, "skill-scan") {
@@ -607,15 +609,9 @@ func TestHookOutput_ProjectScopedHookStillSkipsOutsideProject(t *testing.T) {
 	n, _ := r.Read(buf)
 	output := strings.TrimSpace(string(buf[:n]))
 
-	var result HookOutput
-	if err := json.Unmarshal([]byte(output), &result); err != nil {
-		t.Fatalf("output not valid JSON: %q, err: %v", output, err)
-	}
-	if result.Decision != "approve" {
-		t.Errorf("decision = %q, want approve", result.Decision)
-	}
-	if result.HookSpecificOutput != nil {
-		t.Errorf("project-scoped hook outside forge project must allow silently (no AdditionalContext), got: %+v", result.HookSpecificOutput)
+	// Silent allow on every host: exit 0 with NO stdout at all.
+	if output != "" {
+		t.Errorf("project-scoped hook outside forge project must allow silently, got stdout: %q", output)
 	}
 }
 
