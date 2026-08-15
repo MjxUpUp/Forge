@@ -4,6 +4,7 @@ description: "项目验收审查。Use when: 对整个项目进行验收时、�
 metadata:
   pattern: reviewer + gate
   domain: quality-assurance
+  triggers: [{"event":"UserPromptSubmit","keywords":["验收","项目完整度","上线前检查","准备上线","交付检查"],"cooldown":600}]
 ---
 
 # 项目验收

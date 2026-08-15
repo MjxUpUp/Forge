@@ -71,6 +71,17 @@ func DriftCheck(canonical string, opts InstallOpts) (*DriftReport, error) {
 			return nil, err
 		}
 	}
+	// Project profile scopes the drift walk the same way install does: excluded skills are
+	// not managed by this project's distribution, so reporting them would be noise. Unknown
+	// profile entries are silently dropped here (read-only view; install is the surface that
+	// warns about them).
+	//
+	// 项目画像以与 install 相同的方式界定 drift 遍历范围：被排除的 skill 不归本项目
+	// 分发管，报告它们是噪声。画像里的未知条目在此静默丢弃（只读视图；告警它们是
+	// install 的职责）。
+	if len(opts.Profile) > 0 {
+		names, _ = filterByProfile(names, opts.Profile)
+	}
 
 	targetDirs, err := TargetDirs(opts.Targets, opts.Global, opts.ProjectSkillsDir)
 	if err != nil {

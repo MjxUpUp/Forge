@@ -4,6 +4,7 @@ description: "给手维护的衍生文档（README 命令表/hook 表/配置项�
 metadata:
   pattern: tool-wrapper
   domain: documentation
+  triggers: [{"event":"UserPromptSubmit","keywords":["文档一致性","文档漂移","文档过时","文档没更新","更新 README","README 同步","守卫测试","文档落后"],"cooldown":600}]
 ---
 
 # 衍生文档一致性守卫

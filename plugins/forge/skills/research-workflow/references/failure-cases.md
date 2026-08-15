@@ -77,10 +77,10 @@
 
 **正确做法**：先判调研量级。
 - 用户请求包含"调研""研究""分析"且需多源对比 + 出报告 → research-workflow Phase 1
-- 用户只是查个事实/数据/对比/进展（需≥2源交叉但不出报告） → **fact-research**（轻量网络调研，别套用重量级流程）
+- 用户只是查个事实/数据/对比/进展（需≥2源交叉但不出报告） → **research-workflow Phase L**（轻量档，别套用重量级流程）
 - 开发中查 API/报错/库用法 → dev-lookup
 
-**对应流程**：research-workflow Phase 0 模式判定 → Phase 1 引擎；轻量场景转 fact-research。
+**对应流程**：research-workflow Phase 0 模式判定 → Phase 1 引擎；轻量场景走同 skill 的 Phase L。
 
 ---
 

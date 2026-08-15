@@ -4,6 +4,7 @@ description: "把模糊需求澄清为清晰、可执行、可验收的规格。
 metadata:
   pattern: inversion
   domain: development
+  triggers: [{"event":"UserPromptSubmit","keywords":["需求不清楚","需求澄清","明确需求","需求是什么","验收标准","做完了的标准","范围不清"],"cooldown":600}]
 ---
 
 # 需求澄清（模糊→可验收规格）

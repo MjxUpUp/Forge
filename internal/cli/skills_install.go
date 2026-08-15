@@ -31,11 +31,12 @@ var skillsInstallCmd = &cobra.Command{
 目标：
   --global            (默认) 分发到 ~/.claude/skills 等
   --project           分发到当前 forge 项目 .claude/skills（覆盖 --global）
-  --target claude|cursor|codex|copilot|all  选择工具（默认 claude）
+  --target claude|cursor|codex|copilot|agents|all  选择工具（默认 claude）
     claude   → ~/.claude/skills
     cursor   → ~/.cursor/skills
     codex    → ~/.codex/skills     (OpenAI Codex CLI，2025-12 起 SKILL.md 原生支持)
     copilot  → ~/.copilot/skills   (GitHub Copilot 个人 skill，跨项目)
+    agents   → ~/.agents/skills    (跨 agent 共享目录，agent-neutral 宿主通用)
     all      → 以上全部
 
 模式：
@@ -46,6 +47,10 @@ drift 处理（目标与 canonical 内容分叉时）：
   --drift-policy abort     (默认) 报错中止（CI 友好）
   --drift-policy skip      跳过该 skill
   --drift-policy overwrite 以 canonical 强制覆盖
+
+项目画像（--project 时生效）：
+  <项目>/.forge/skills-profile  存在时按白名单裁剪分发集（每行一个 skill 名，# 注释）；
+                               不存在 = 全量分发。已在目标但被排除的 skill 保留不删，仅告警提示。
 
 其他：
   --skill NAME       只装指定 skill（可重复）
@@ -93,6 +98,20 @@ func runSkillsInstall(cmd *cobra.Command, args []string) error {
 		Global:           global,
 		ProjectSkillsDir: projectDir,
 	}
+	// Project scope: consume the per-project distribution profile (<root>/.forge/skills-profile).
+	// Hard error on a malformed profile — silently falling back to full distribution while the
+	// user believes the set is trimmed would defeat the feature. Absent file = full set (default).
+	//
+	// 项目范围：消费项目分发画像（<root>/.forge/skills-profile）。格式错误按硬错误——
+	// 用户以为已裁剪实则静默回退全量，特性落空。文件不存在 = 全量（默认）。
+	profile, perr := loadProjectProfile(global)
+	if perr != nil {
+		return perr
+	}
+	opts.Profile = profile
+	if len(profile) > 0 && !skInstJSON {
+		fmt.Printf("profile: .forge/skills-profile 生效（白名单 %d 个 skill）\n", len(profile))
+	}
 
 	report, instErr := skillsdist.Install(canonical, opts)
 
@@ -138,6 +157,31 @@ func runSkillsInstall(cmd *cobra.Command, args []string) error {
 		}
 	}
 	return nil
+}
+
+// loadProjectProfile loads the per-project distribution profile in project scope
+// (nil in global scope or when the file is absent). Delegates error policy to
+// skillsdist.LoadProfile: malformed profile = hard error, absent = full set.
+// In practice findProjectRoot cannot fail here (resolveInstallScope already required
+// it for project scope), but the error is still propagated rather than swallowed.
+//
+// loadProjectProfile 在项目范围加载项目分发画像（全局范围或文件不存在时返回 nil）。
+// 错误策略委托 skillsdist.LoadProfile：画像格式错误 = 硬错误，不存在 = 全量。
+// 实践中此处 findProjectRoot 不会失败（项目范围下 resolveInstallScope 已要求它），
+// 但错误仍向上传播而非吞掉。
+func loadProjectProfile(global bool) ([]string, error) {
+	if global {
+		return nil, nil
+	}
+	root, err := findProjectRoot()
+	if err != nil {
+		return nil, fmt.Errorf("定位项目根失败（读取 skills-profile 需要）: %w", err)
+	}
+	profile, err := skillsdist.LoadProfile(root)
+	if err != nil {
+		return nil, err
+	}
+	return profile, nil
 }
 
 // resolveInstallScope resolves the --global/--project flag combination into
@@ -243,10 +287,10 @@ func parseSkillTargets(raw []string) ([]skillsdist.Target, error) {
 	var out []skillsdist.Target
 	for _, t := range raw {
 		switch t {
-		case "claude", "cursor", "codex", "copilot", "all":
+		case "claude", "cursor", "codex", "copilot", "agents", "all":
 			out = append(out, skillsdist.Target(t))
 		default:
-			return nil, fmt.Errorf("--target 须为 claude|cursor|codex|copilot|all，got %q", t)
+			return nil, fmt.Errorf("--target 须为 claude|cursor|codex|copilot|agents|all，got %q", t)
 		}
 	}
 	return out, nil
@@ -255,7 +299,7 @@ func parseSkillTargets(raw []string) ([]skillsdist.Target, error) {
 func init() {
 	skillsInstallCmd.Flags().BoolVar(&skInstGlobal, "global", true, "分发到全局目录（~/.claude/skills 等）")
 	skillsInstallCmd.Flags().BoolVar(&skInstProject, "project", false, "分发到当前 forge 项目 .claude/skills（覆盖 --global）")
-	skillsInstallCmd.Flags().StringSliceVar(&skInstTarget, "target", []string{"claude"}, "目标工具 claude|cursor|codex|copilot|all")
+	skillsInstallCmd.Flags().StringSliceVar(&skInstTarget, "target", []string{"claude"}, "目标工具 claude|cursor|codex|copilot|agents|all")
 	skillsInstallCmd.Flags().StringSliceVar(&skInstSkill, "skill", nil, "只装指定 skill（可重复）")
 	skillsInstallCmd.Flags().StringVar(&skInstMode, "mode", "link", "分发模式 link|copy")
 	skillsInstallCmd.Flags().StringVar(&skInstDriftPolicy, "drift-policy", "abort", "drift 处理 abort|skip|overwrite")

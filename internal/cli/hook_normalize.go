@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 )
 
 // normalizeAgentStdin translates the hook stdin of non-Claude-Code agents into the HookInput shape that forge extracts.
@@ -235,9 +236,9 @@ func kimiNormalize(stdinData []byte, hookInput *HookInput) {
 	hookInput.ToolName = k.ToolName
 	hookInput.ToolInput = remapKimiToolInput(k.ToolInput)
 	// kimi 的 tool_output 是纯字符串（非 Claude tool_response 的对象），skill-trigger
-	// 按对象解析会失败 → ctx.ToolOutput 恒 nil：PostToolUse 上 exit_code 类触发条件在
-	// kimi 下不命中（fail-open，不影响门禁）。
-	hookInput.ToolOutput = k.ToolOutput
+	// 按对象解析会失败 → ctx.ToolOutput 恒 nil：PostToolUse 上 exit_code/输出关键词类
+	// 触发条件在 kimi 下全灭。包装成对象形状让下游解析成功（见 wrapKimiToolOutput）。
+	hookInput.ToolOutput = wrapKimiToolOutput(k.ToolOutput)
 	for _, block := range k.Prompt {
 		if block.Type != "text" || block.Text == "" {
 			continue
@@ -247,6 +248,41 @@ func kimiNormalize(stdinData []byte, hookInput *HookInput) {
 		}
 		hookInput.Prompt += block.Text
 	}
+}
+
+// wrapKimiToolOutput wraps kimi's plain-string tool_output into an object shape so
+// skill-trigger's object parse (json.Unmarshal into ctx.ToolOutput) succeeds instead
+// of silently yielding nil — the gap that killed every PostToolUse trigger on kimi
+// (verification-driver's test_command_failed, compile-fix-loop's output keywords).
+// If the string content is itself serialized JSON of an object, that object is used
+// directly (preserving exit_code etc.); otherwise it becomes {"output": "..."}
+// (matchKeywords already reads the "output" key). Object-shaped payloads pass through.
+//
+// wrapKimiToolOutput 把 kimi 纯字符串形式的 tool_output 包装成对象形状，让
+// skill-trigger 的对象解析（json.Unmarshal 进 ctx.ToolOutput）成功而非静默得 nil
+// ——正是这个缺口灭掉了 kimi 上所有 PostToolUse 触发（verification-driver 的
+// test_command_failed、compile-fix-loop 的输出关键词）。字符串内容本身若是对象的
+// 序列化 JSON 则直接采用（保留 exit_code 等）；否则包装成 {"output": "..."}
+// （matchKeywords 已检查 output 键）。对象形状原样透传。
+func wrapKimiToolOutput(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 {
+		return raw
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return raw // 已是对象/数组形状
+	}
+	if trimmed := strings.TrimSpace(s); strings.HasPrefix(trimmed, "{") {
+		var obj map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(trimmed), &obj); err == nil {
+			return json.RawMessage(trimmed)
+		}
+	}
+	wrapped, err := json.Marshal(map[string]string{"output": s})
+	if err != nil {
+		return raw
+	}
+	return wrapped
 }
 
 // remapKimiToolInput aliases kimi's `path` field to Claude's `file_path`. kimi's
