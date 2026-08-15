@@ -47,7 +47,7 @@ func runInitSuggestHook(t *testing.T, cwd, tag, home, initFlag string, extraEnv 
 	t.Helper()
 	stub := `#!/bin/bash
 forge() {
-  if [ "$1" = "plugin" ]; then return 0; fi
+  if [ "$1" = "plugin" ]; then return "${FORGE_PLUGIN_RC:-1}"; fi
   # v1.22 零项目写入契约：成员资格走注册表（forge status exit 0 = 已登记）。
   # stub 用 FORGE_STATUS_RC 模拟（默认 1 = 未登记），有 .forge/ 的项目由脚本内
   # [ -d .forge ] 兜底分支覆盖，不走 status。
@@ -129,12 +129,13 @@ func writeSuggestMarker(t *testing.T, home, tag, value string) {
 	}
 }
 
-// TestInitSuggestHook_Branches runs the real script through 11 branches, asserting output +
-// AUTO_INIT side effects. If a future edit breaks git-root lookup / marker silencing / the
-// AUTO_INIT branch, these cases fail.
+// TestInitSuggestHook_Branches runs the real script through 18 branches, asserting output +
+// AUTO_INIT/plugin-takeover side effects. If a future edit breaks git-root lookup / marker
+// silencing / the AUTO_INIT branch / plugin auto-takeover, these cases fail.
 //
-// TestInitSuggestHook_Branches 跑真实脚本过 11 个分支，断言输出 + AUTO_INIT side effect。
-// 若未来编辑破坏 git-root 查找 / 标记静默 / AUTO_INIT 分支，这些 case 失败。
+// TestInitSuggestHook_Branches 跑真实脚本过 18 个分支，断言输出 + AUTO_INIT/plugin 接管
+// side effect。若未来编辑破坏 git-root 查找 / 标记静默 / AUTO_INIT 分支 / plugin 自动接管，
+// 这些 case 失败。
 func TestInitSuggestHook_Branches(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -143,6 +144,7 @@ func TestInitSuggestHook_Branches(t *testing.T) {
 		autoInit  bool
 		failForge bool   // stub forge 返回 1（模拟 init 失败，验 partial-state 回显）
 		statusRC0 bool   // stub forge status 返回 0（模拟已登记注册表，验零写入成员判定）
+		pluginRC0 bool   // stub forge plugin status 返回 0（模拟 plugin 已 user-level 安装，验自动接管）
 		wantSub   string // 期望输出子串；空=期望静默（无"未启用 forge"）
 		wantInit  bool   // 期望 forge init 被调（flag 文件存在）
 	}{
@@ -227,6 +229,76 @@ func TestInitSuggestHook_Branches(t *testing.T) {
 			wantSub:   `失败`,
 			wantInit:  false,
 		},
+		// ---- plugin auto-takeover：plugin 已 user-level 安装 = opt-in，git 项目静默自动 init ----
+		{
+			// 安装即接管：plugin 在、git 项目、非成员、无标记 → 直接 forge init（不再询问）。
+			//
+			// Install = opt-in: plugin present, git project, non-member, no marker → straight
+			// forge init (no ask).
+			name:      `有 git plugin 已装自动接管`,
+			cwdFn:     func(t *testing.T) string { return mkGitProj(t, false) },
+			pluginRC0: true,
+			wantSub:   `自动启用 forge`,
+			wantInit:  true,
+		},
+		{
+			// 每项目退出权高于 plugin 级默认开启：declined 标记拦截自动接管，静默。
+			//
+			// Per-project opt-out beats plugin-wide default-on: the declined marker blocks
+			// auto-takeover, silent.
+			name:      `有 git plugin 已装 declined 退出`,
+			cwdFn:     func(t *testing.T) string { return mkGitProj(t, false) },
+			pluginRC0: true,
+			marker:    `declined`,
+			wantSub:   ``,
+			wantInit:  false,
+		},
+		{
+			// suggested 只静音询问、不拦自动接管（plugin 路径没有询问）。
+			//
+			// suggested only mutes the ask; it does not block auto-takeover (there is no
+			// ask on the plugin path).
+			name:      `有 git plugin 已装 suggested 仍自动接管`,
+			cwdFn:     func(t *testing.T) string { return mkGitProj(t, false) },
+			pluginRC0: true,
+			marker:    `suggested`,
+			wantSub:   `自动启用 forge`,
+			wantInit:  true,
+		},
+		{
+			// init 失败回显 stderr 尾部（与 FORGE_AUTO_INIT 同款 partial-state 契约）。
+			//
+			// init failure echoes the stderr tail (same partial-state contract as
+			// FORGE_AUTO_INIT).
+			name:      `有 git plugin 已装 init 失败回显`,
+			cwdFn:     func(t *testing.T) string { return mkGitProj(t, false) },
+			pluginRC0: true,
+			failForge: true,
+			wantSub:   `失败`,
+			wantInit:  false,
+		},
+		{
+			// 非 git 目录不自动 git init（自动创建仓库过于激进）：仍走 advisory 提示。
+			//
+			// Non-git dirs do NOT auto git init (auto-creating a repo is too aggressive):
+			// the advisory prompt stays.
+			name:      `无 git plugin 已装仍提示`,
+			cwdFn:     func(t *testing.T) string { return t.TempDir() },
+			pluginRC0: true,
+			wantSub:   `不是 Git 仓库`,
+			wantInit:  false,
+		},
+		{
+			// 成员项目（已登记）在 plugin 分支之前已放行，静默不重复 init。
+			//
+			// Member project (registered) exits before the plugin branch, silent, no re-init.
+			name:      `有 git 已登记且 plugin 已装静默`,
+			cwdFn:     func(t *testing.T) string { return mkGitProj(t, false) },
+			pluginRC0: true,
+			statusRC0: true,
+			wantSub:   ``,
+			wantInit:  false,
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -246,6 +318,9 @@ func TestInitSuggestHook_Branches(t *testing.T) {
 			}
 			if c.statusRC0 {
 				extra = append(extra, `FORGE_STATUS_RC=0`)
+			}
+			if c.pluginRC0 {
+				extra = append(extra, `FORGE_PLUGIN_RC=0`)
 			}
 			out := runInitSuggestHook(t, cwd, tag, home, initFlag, extra...)
 			if c.wantSub != `` && !strings.Contains(out, c.wantSub) {
