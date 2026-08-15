@@ -123,6 +123,7 @@ var uninstallCmd = &cobra.Command{
 			`opencode`: agentbridge.StripOpenCodeUserPlugin,
 			`windsurf`: agentbridge.StripWindsurfHooksUserLevel,
 			`reasonix`: agentbridge.StripReasonixHooksUserLevel,
+			`cline`:    agentbridge.StripClineHooks,
 		} {
 			if stripped, err := strip(); err != nil {
 				fmt.Fprintf(os.Stderr, `警告：清理 %s 用户级 hooks 失败：%v`+"\n", name, err)
