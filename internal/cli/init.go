@@ -38,6 +38,12 @@ hooks 注册进各 agent 的用户级配置（~/.claude/settings.json、~/.codex
 protocol.yml 与 runtime state 在 ~/.forge/projects/<key>/。
 项目目录默认零写入——不会被 git add 误提交。
 
+装了 forge plugin 的用户通常无需手动跑本命令：init-suggest SessionStart hook
+检测到 user-level plugin 已装（= 显式 opt-in）时，会在 git 项目首次打开会话
+静默自动 init（declined 标记仍可每项目退出，见 forge suggest decline）。
+手动 init 的定位：修复/补登记（自动接管失败、非 plugin 的 npm 用户）、
+非 git 环境显式接入、以及下面的团队模式。
+
 --project 团队模式：资产写入项目目录（.forge/protocol.yml、.claude/ 等），
 供团队经 git 共享同一份质量协议。`,
 	RunE: runInit,
