@@ -35,3 +35,12 @@ description 审计合格未改动 + evals.json 建立
 ### Evidence
 
 docs/skills-value-audit-2026-08-02.md
+
+## [d-p2-merge-20260815] accept
+
+> ⚠️ 本 skill 已于 2026-08-15（任务 feat/skill-hitrate-optimization，P2 研究族合并）整体并入 **research-workflow**——本文件是合并墓碑，后续维护与决策记录在 `skills/research-workflow/decisions.md`。
+
+- 诊断: web-search-bridge（通用搜索 API 桥接）只被调研族消费，独立成 skill 导致触发与引用碎片化，降级链末位指向两跳
+- 修订: 整体并入 research-workflow「通用搜索桥接」节（Tavily→Serper→Brave→Exa 路由+jq body 构造+配额预检脚本）；SKILL.md 删除；scripts/references 迁至 research-workflow/ 下
+- 证据: dev-lookup 降级链已改指 research-workflow「通用搜索桥接」；本决策历史归档至 research-workflow/decisions.md
+- 结果: accept（合并落地）

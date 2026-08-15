@@ -137,6 +137,7 @@ func TestParseSkillTargets_CodexCopilot(t *testing.T) {
 	}{
 		{"codex", []string{"codex"}, 1, false},
 		{"copilot", []string{"copilot"}, 1, false},
+		{"agents", []string{"agents"}, 1, false},
 		{"codex+copilot", []string{"codex", "copilot"}, 2, false},
 		{"all", []string{"all"}, 1, false},
 		{"claude", []string{"claude"}, 1, false},
@@ -268,5 +269,69 @@ func TestResolveInstallScope(t *testing.T) {
 	}
 	if dir != filepath.Join(root, ".claude", "skills") {
 		t.Fatalf("project dir = %q, want %q", dir, filepath.Join(root, ".claude", "skills"))
+	}
+}
+
+// TestLoadProjectProfile: global scope → nil regardless of files; project scope without
+// .forge/skills-profile → nil (full set); with profile → allowlist; malformed profile →
+// hard error (silently falling back to full distribution would defeat the trimming intent).
+//
+// TestLoadProjectProfile：全局范围 → 恒 nil；项目范围无 .forge/skills-profile → nil（全量）；
+// 有画像 → 白名单；画像格式错 → 硬错误（静默回退全量会让裁剪落空）。
+func TestLoadProjectProfile(t *testing.T) {
+	// Global scope: nil even inside a project with a profile file.
+	//
+	// 全局范围：即便项目内有画像文件也返回 nil。
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".forge"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".forge", "skills-profile"), []byte("alpha\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	prof, err := loadProjectProfile(true)
+	if err != nil || prof != nil {
+		t.Fatalf("global: got (%v, %v), want (nil, nil)", prof, err)
+	}
+
+	// Project scope, no profile file → nil.
+	//
+	// 项目范围，无画像文件 → nil。
+	noproj := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(noproj, ".forge"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(noproj)
+	prof, err = loadProjectProfile(false)
+	if err != nil || prof != nil {
+		t.Fatalf("project no profile: got (%v, %v), want (nil, nil)", prof, err)
+	}
+
+	// Project scope with profile → allowlist content.
+	//
+	// 项目范围有画像 → 白名单内容。
+	t.Chdir(root)
+	prof, err = loadProjectProfile(false)
+	if err != nil {
+		t.Fatalf("project with profile: %v", err)
+	}
+	if len(prof) != 1 || prof[0] != "alpha" {
+		t.Fatalf("profile = %v, want [alpha]", prof)
+	}
+
+	// Malformed profile → hard error.
+	//
+	// 画像格式错 → 硬错误。
+	bad := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(bad, ".forge"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bad, ".forge", "skills-profile"), []byte("has space\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(bad)
+	if _, err := loadProjectProfile(false); err == nil {
+		t.Fatal("malformed profile: want error, got nil")
 	}
 }
