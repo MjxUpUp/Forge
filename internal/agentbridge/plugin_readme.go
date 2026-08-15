@@ -3,23 +3,31 @@ package agentbridge
 import (
 	_ "embed"
 	"fmt"
+	"io/fs"
+	"path"
+
+	"github.com/MjxUpUp/Forge/skills"
 )
 
 // pluginReadmeTemplate is the static three-step first-run plugin README, embedded from
 // a real .md file (same precedent as forge_spawn.ts in ts_shared.go) instead of a
-// strings.Builder chain: the only runtime interpolation is the repo slug in the six
-// install-command lines (%[1]s, one operand referenced six times).
+// strings.Builder chain: the runtime interpolations are the repo slug in the six
+// install-command lines (%[1]s, one operand referenced six times) and the embedded
+// skill count (%[2]d — counted from skills.FS at render time so the advertised number
+// can never drift from the embed, review P3-1).
 //
 // pluginReadmeTemplate 是静态的三步首体验 plugin README，从真实 .md 文件 embed
 // （与 ts_shared.go 的 forge_spawn.ts 同一先例），替代 strings.Builder 长链：
-// 唯一的运行时插值是六条安装命令里的 repo slug（%[1]s，一个操作数引用六次）。
+// 运行时插值有两处——六条安装命令里的 repo slug（%[1]s，一个操作数引用六次）
+// 与内嵌 skill 数量（%[2]d——渲染时从 skills.FS 现数，宣传数字永不与 embed 漂移，
+// review P3-1）。
 //
 // Contracts carried over from the builder version (guarded by TestPluginPack_Readme /
 // TestPluginPack_NoCurlyQuotes):
-//   - Honest capability boundary: the plugin wires user-level hooks only; project
-//     registration (global registry + user-level protocol/skill assets) still needs
-//     forge init per project (step 3 + caveat section make this explicit — no
-//     "install once, perfect everywhere" claim).
+//   - Honest capability boundary: the plugin wires user-level hooks; project
+//     registration is covered by init-suggest auto-takeover for plugin users
+//     (step 3 + caveat section make this explicit — no "install once, perfect
+//     everywhere" overclaim beyond what the hook actually does).
 //   - Code blocks use 4-space indent; inline commands use backticks; content has no
 //     curly quotes and no raw double quotes (Windows input-quote corruption guard).
 //   - npm package name is @agent_forge/forge (matching npm/package.json), NOT the
@@ -29,8 +37,8 @@ import (
 //     step-2 install commands follow the slug.
 //
 // 从 builder 版本继承的契约（由 TestPluginPack_Readme / TestPluginPack_NoCurlyQuotes 守卫）：
-//   - 诚实能力边界：plugin 只接用户级 hooks；项目登记（全局注册表 + 用户级
-//     协议/skill 资产）仍需每项目 forge init（step 3 + caveat 段明示，不宣传
+//   - 诚实能力边界：plugin 接用户级 hooks；项目登记由 init-suggest 自动接管覆盖
+//     plugin 用户（step 3 + caveat 段明示，不宣传超出 hook 实际行为的
 //     "一次安装处处完美"）。
 //   - 代码块用 4-space 缩进；行内命令用反引号；内容无弯引号、无裸双引号
 //     （Windows 输入引号腐蚀守卫）。
@@ -42,11 +50,38 @@ import (
 //go:embed assets/plugin_readme.md
 var pluginReadmeTemplate string
 
-// pluginReadme returns the plugin README with the repo slug interpolated into the
-// install commands. writePluginReadme supplies the default slug when RepoSlug is empty.
+// embeddedSkillCount returns the number of canonical skills in the embedded skills.FS
+// (top-level dirs containing SKILL.md — the same truth writePluginSkills ships and
+// tests count against). Interpolated into the plugin README so the advertised count
+// tracks the embed at render time instead of a hardcoded number that silently rots
+// (the historical count moved 30→32→37→38→49).
 //
-// pluginReadme 返回插值 repo slug 后的 plugin README。RepoSlug 为空时由
-// writePluginReadme 提供默认 slug。
+// embeddedSkillCount 返回内嵌 skills.FS 的 canonical skill 数（含 SKILL.md 的顶层
+// 目录——与 writePluginSkills 分发、测试计数的同一真相源）。插值进 plugin README，
+// 宣传数字在渲染时跟踪 embed，而非硬编码静默腐烂（历史数量 30→32→37→38→49）。
+func embeddedSkillCount() int {
+	entries, err := skills.FS.ReadDir(".")
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if _, serr := fs.Stat(skills.FS, path.Join(e.Name(), "SKILL.md")); serr == nil {
+			n++
+		}
+	}
+	return n
+}
+
+// pluginReadme returns the plugin README with the repo slug interpolated into the
+// install commands and the embedded skill count into the skills paragraph.
+// writePluginReadme supplies the default slug when RepoSlug is empty.
+//
+// pluginReadme 返回插值 repo slug（安装命令）与内嵌 skill 数（skills 段）后的
+// plugin README。RepoSlug 为空时由 writePluginReadme 提供默认 slug。
 func pluginReadme(repoSlug string) string {
-	return fmt.Sprintf(pluginReadmeTemplate, repoSlug)
+	return fmt.Sprintf(pluginReadmeTemplate, repoSlug, embeddedSkillCount())
 }
