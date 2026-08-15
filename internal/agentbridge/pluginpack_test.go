@@ -2,6 +2,7 @@ package agentbridge
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"os"
 	"path"
@@ -268,11 +269,13 @@ func TestPluginPack_NoCurlyQuotes(t *testing.T) {
 }
 
 // TestPluginPack_Readme: README contains the three-step first-experience structure + per-host install commands + honest statement about unconfirmed Codex paths
-// + correct npm package name (@agent_forge/forge, matching npm/package.json) + capability boundary (init still required per project).
+// + correct npm package name (@agent_forge/forge, matching npm/package.json) + capability boundary (Phase 3: project registration is AUTOMATIC for plugin
+// users via init-suggest auto-takeover; manual init demoted to repair/non-plugin/team-mode).
 // Negative assertion on @mjxupup/forge catches historical regression: early pluginReadme wrote the wrong package name using the GitHub owner slug.
 //
 // TestPluginPack_Readme：README 含三步首体验结构 + 每 host 安装命令 + Codex 路径未确认的诚实表述
-// + npm 包名正确（@agent_forge/forge，与 npm/package.json 一致）+ 能力边界（每项目仍需 init）。
+// + npm 包名正确（@agent_forge/forge，与 npm/package.json 一致）+ 能力边界（Phase 3：plugin 用户
+// 项目登记经 init-suggest 自动接管；手动 init 降级为修复/非 plugin/团队模式）。
 // 负向断言 @mjxupup/forge 抓历史回退：早期 pluginReadme 写过错用 GitHub owner slug 的包名。
 func TestPluginPack_Readme(t *testing.T) {
 	dir := generatePack(t)
@@ -282,7 +285,18 @@ func TestPluginPack_Readme(t *testing.T) {
 		"@agent_forge/forge", // npm 包名（与 npm/package.json 一致）
 		"once per machine",   // step 1：二进制是机器级硬前置
 		"once per agent",     // step 2：plugin 是 agent 级
-		"once per project",   // step 3：项目级资产每项目一次（能力边界）
+		// step 3（Phase 3 新契约）：plugin 用户登记自动化 + 手动 init 的三个残留场景 + 退出/清理指引
+		"automatic for plugin users", // init-suggest 自动接管（装即 opt-in）
+		"forge registry prune",       // 项目目录移动后的死路径清理指引
+		"forge suggest decline",      // 每项目退出指引（退出权高于默认开启）
+		"forge init --project",       // 团队模式仍走手动 init
+		// skills 段（P3-1）：宣传数量运行时从 embed 现数（%[2]d 插值），渲染结果必须
+		// 携带真实数量且无 fmt 动词误用残渣（"%!d"）——钉住插值接线，防数量硬编码回潮。
+		//
+		// skills paragraph (P3-1): the advertised count is rendered from the embed at
+		// runtime (%[2]d); the render must carry the real count and no fmt-verb mojibake
+		// ("%!d") — pins the interpolation wiring against a hardcoded number returning.
+		fmt.Sprintf("%d skills", embeddedSkillCount()),
 		"/plugin install forge@forge",
 		"MjxUpUp/Forge",
 		"forge init --agents codex",
@@ -323,6 +337,13 @@ func TestPluginPack_Readme(t *testing.T) {
 	}
 	if strings.Contains(content, "(MISSING)") {
 		t.Errorf("README contains fmt.Sprintf mojibake (MISSING) — a literal percent in the embedded template is being eaten as a format verb; escape it as a double-percent")
+	}
+	// Count-verb mojibake: the skill-count interpolation (%[2]d) must never leak a raw
+	// verb or bad-format signature into the render.
+	//
+	// 数量动词乱码：skill 数量插值（%[2]d）不得把裸动词或坏格式签名漏进渲染结果。
+	if strings.Contains(content, "%!d") || strings.Contains(content, "%[2]d") {
+		t.Errorf("README contains unrendered/mojibake skill-count verb (%%!d or %%[2]d) — the count interpolation is broken")
 	}
 }
 

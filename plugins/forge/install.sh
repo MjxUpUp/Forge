@@ -78,7 +78,8 @@ Next step: install the plugin inside your agent CLI (interactive; not scriptable
     copilot plugin marketplace add MjxUpUp/Forge
     copilot plugin install forge@forge
 
-After plugin install, opening any git project in your agent triggers the
-init-suggest SessionStart hook to ask whether to enable forge (one-shot
-prompt). On a Windows machine, run install.ps1 instead.
+After plugin install, opening any git project in your agent lets the
+init-suggest SessionStart hook silently enable forge there (auto-takeover;
+run 'forge suggest decline' in a project to keep it out). On a Windows
+machine, run install.ps1 instead.
 NEXT

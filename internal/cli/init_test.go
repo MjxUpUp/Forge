@@ -126,3 +126,31 @@ func TestRunInitUserLevel_ConvergesTeamModeProject(t *testing.T) {
 		t.Error("user-level settings.json missing forge hooks")
 	}
 }
+
+// TestInitCmd_HelpDemotesManualInit pins the Phase-3 help demotion: `forge init`'s
+// Long help must tell plugin users they normally do NOT need to run it manually
+// (init-suggest auto-takeover covers git projects), and position manual init as
+// repair / non-plugin / team-mode. Guards help-vs-behavior drift: the hook gained
+// the auto-takeover branch (feat/auto-takeover-init), so a stale help that still
+// frames init as the required per-project step would send plugin users through a
+// redundant manual ritual.
+//
+// TestInitCmd_HelpDemotesManualInit 钉死 Phase 3 的 help 降级：`forge init` 的
+// Long 帮助须告知 plugin 用户通常无需手动跑（init-suggest 自动接管覆盖 git
+// 项目），并把手动 init 定位为修复/非 plugin/团队模式。守护 help 与行为不
+// 漂移：hook 已加自动接管分支（feat/auto-takeover-init），过时帮助仍把 init
+// 描述成每项目必做步骤，会让 plugin 用户走多余的重复仪式。
+func TestInitCmd_HelpDemotesManualInit(t *testing.T) {
+	for _, sub := range []string{
+		`无需手动跑本命令`,
+		`init-suggest`,
+		`plugin`,
+		`forge suggest decline`,
+		`修复`,
+		`团队模式`,
+	} {
+		if !strings.Contains(initCmd.Long, sub) {
+			t.Errorf("initCmd.Long 应含 %q（plugin 用户免手动 init 的降级文案），实得:\n%s", sub, initCmd.Long)
+		}
+	}
+}
