@@ -79,7 +79,7 @@ func DriftCheck(canonical string, opts InstallOpts) (*DriftReport, error) {
 	// 项目画像以与 install 相同的方式界定 drift 遍历范围：被排除的 skill 不归本项目
 	// 分发管，报告它们是噪声。画像里的未知条目在此静默丢弃（只读视图；告警它们是
 	// install 的职责）。
-	if len(opts.Profile) > 0 {
+	if opts.Profile != nil { // 非 nil 即画像生效（含空画像=一个不遍历），勿用 len>0
 		names, _ = filterByProfile(names, opts.Profile)
 	}
 

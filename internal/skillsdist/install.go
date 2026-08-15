@@ -229,15 +229,42 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 	}
 	// Project profile: trim the distribution set to the allowlist. Unknown profile
 	// entries (skills removed upstream) are warnings, not errors — see filterByProfile.
+	// `!= nil` (not len>0): a present-but-empty profile means "allowlist empty",
+	// not "no profile".
 	//
 	// 项目画像：把分发集裁到白名单。画像里未知的条目（上游已移除的 skill）记告警
-	// 不报错——见 filterByProfile。
+	// 不报错——见 filterByProfile。用 `!= nil` 而非 len>0：存在但为空的画像
+	// 意为「白名单为空」，不是「无画像」。
 	profileUnknown := []string{}
-	if len(opts.Profile) > 0 {
+	if opts.Profile != nil {
+		requested := names // --skill 显式点名的集合（画像过滤前）
 		names, profileUnknown = filterByProfile(names, opts.Profile)
 		for _, u := range profileUnknown {
 			report.Warnings = append(report.Warnings, fmt.Sprintf(
 				"skills-profile: %q 不在 canonical（画像引用了已移除/不存在的 skill，已忽略）", u))
+		}
+		// 「画像为空」只描述画像本身全注释的情形；画像非空但与 --skill 交集为空
+		// 走下面的显式请求告警，两条都打会互相矛盾（复核 LOW：文案误述）。
+		if len(opts.Profile) == 0 {
+			report.Warnings = append(report.Warnings,
+				"skills-profile: 画像为空（全部条目被注释/空行），本次不安装任何 skill")
+		}
+		// --skill explicitly requested but excluded by the profile: a silent no-op
+		// swallows an explicit user request — warn so Total=0 is explainable.
+		//
+		// --skill 显式点名但被画像剔除：静默 no-op 会吞掉显式请求——告警让
+		// Total=0 有解释。
+		if len(opts.SkillFilter) > 0 {
+			keptSet := make(map[string]bool, len(names))
+			for _, n := range names {
+				keptSet[n] = true
+			}
+			for _, n := range requested {
+				if !keptSet[n] {
+					report.Warnings = append(report.Warnings, fmt.Sprintf(
+						"skills-profile: --skill %s 被画像排除，未安装", n))
+				}
+			}
 		}
 	}
 
@@ -393,7 +420,7 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 	// 画像裁剪可见性：已在目标但被画像排除的 skill 不会被删（install 绝不销毁用户
 	// 内容），而用户以为画像已生效——以告警浮出，堵住这个认知差。否则旧的全量安装
 	// 残留会静默混在裁剪后的集合旁。
-	if len(opts.Profile) > 0 {
+	if opts.Profile != nil {
 		profSet := map[string]bool{}
 		for _, p := range opts.Profile {
 			profSet[p] = true

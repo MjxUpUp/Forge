@@ -62,6 +62,27 @@ func TestLoadProfile_InvalidName(t *testing.T) {
 	}
 }
 
+// TestLoadProfile_EmptyFileIsNotNil: a present file with only comments/blank lines is
+// "profile active, allowlist empty" (non-nil empty slice) — NOT the absent-file nil.
+// Downstream distinguishes via != nil; conflating the two would silently widen an
+// all-commented debugging profile back to full distribution (review M1).
+//
+// TestLoadProfile_EmptyFileIsNotNil：文件存在但全注释/空行 = 「画像生效、白名单为空」
+// （非 nil 空 slice）——不是「无画像」的 nil。下游用 != nil 区分；混同二者会让
+// 调试期全注释画像被静默放大回全量分发（审查 M1）。
+func TestLoadProfile_EmptyFileIsNotNil(t *testing.T) {
+	root := t.TempDir()
+	writeProfile(t, root, "# 全部注释掉调试中\n\n# alpha\n")
+	prof, err := LoadProfile(root)
+	mustMk(t, err)
+	if prof == nil {
+		t.Fatal("存在但为空的画像应返回非 nil 空 slice（≠无画像），got nil——下游 len>0 判定会退化为全量分发")
+	}
+	if len(prof) != 0 {
+		t.Fatalf("全注释画像应解析为空，got %v", prof)
+	}
+}
+
 // TestFilterByProfile: canonical order preserved; unknown entries collected for warnings.
 //
 // TestFilterByProfile：保持 canonical 顺序；未知条目收集为告警。
@@ -160,6 +181,71 @@ func TestInstall_ProfileExcludedPresentWarns(t *testing.T) {
 	// beta content preserved (never destroy user content)
 	if _, err := os.Stat(filepath.Join(projectDir, "beta", "SKILL.md")); err != nil {
 		t.Fatalf("beta 应保留未删: %v", err)
+	}
+}
+
+// TestInstall_EmptyProfileInstallsNothing: a non-nil empty profile (all lines commented)
+// installs NOTHING (not everything) and says why — the silent full-distribution fallback
+// is the exact trap review M1 flagged.
+//
+// TestInstall_EmptyProfileInstallsNothing：非 nil 空画像（全行注释）一个不装（而非
+// 全量），且给出原因告警——静默回退全量正是审查 M1 点名的陷阱。
+func TestInstall_EmptyProfileInstallsNothing(t *testing.T) {
+	canonical := t.TempDir()
+	writeCanonicalSkill(t, canonical, "alpha")
+	writeCanonicalSkill(t, canonical, "beta")
+	projectDir := t.TempDir()
+	opts := copyOpts(projectDir)
+	opts.Profile = []string{} // LoadProfile 对「存在但全注释」文件的返回形状
+
+	rep, err := Install(canonical, opts)
+	mustMk(t, err)
+	if rep.Stats.Total != 0 || rep.Stats.Installed != 0 {
+		t.Fatalf("空画像应一个不装，total=%d installed=%d", rep.Stats.Total, rep.Stats.Installed)
+	}
+	foundWhy := false
+	for _, w := range rep.Warnings {
+		if strings.Contains(w, "画像为空") {
+			foundWhy = true
+		}
+	}
+	if !foundWhy {
+		t.Fatalf("空画像应有解释性告警，warnings=%v", rep.Warnings)
+	}
+}
+
+// TestInstall_SkillFilterExcludedByProfileWarns: --skill names an in-canonical skill the
+// profile excludes → the explicit request is dropped; a warning must say so, otherwise
+// the silent Total=0 is unexplainable (review M2).
+//
+// TestInstall_SkillFilterExcludedByProfileWarns：--skill 点名 canonical 内但被画像
+// 排除的 skill → 显式请求被丢弃；必须告警说明，否则 Total=0 无从解释（审查 M2）。
+func TestInstall_SkillFilterExcludedByProfileWarns(t *testing.T) {
+	canonical := t.TempDir()
+	writeCanonicalSkill(t, canonical, "alpha")
+	writeCanonicalSkill(t, canonical, "beta")
+	projectDir := t.TempDir()
+	opts := copyOpts(projectDir)
+	opts.SkillFilter = []string{"alpha"}
+	opts.Profile = []string{"beta"}
+
+	rep, err := Install(canonical, opts)
+	mustMk(t, err)
+	// --skill 先收窄到 [alpha]，画像再剔除 alpha → 一个不装；告警让 Total=0 可解释。
+	if rep.Stats.Total != 0 {
+		t.Fatalf("total=%d want 0（--skill alpha 被画像剔除）", rep.Stats.Total)
+	}
+	if _, err := os.Stat(filepath.Join(projectDir, "beta", "SKILL.md")); !os.IsNotExist(err) {
+		t.Fatalf("beta 不在 --skill 集合内，不应安装（err=%v）", err)
+	}
+	found := false
+	for _, w := range rep.Warnings {
+		if strings.Contains(w, "--skill alpha") && strings.Contains(w, "画像排除") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("--skill alpha 被画像剔除应有告警，warnings=%v", rep.Warnings)
 	}
 }
 
