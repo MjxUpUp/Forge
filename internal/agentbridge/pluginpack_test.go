@@ -29,6 +29,7 @@ var expectedPluginFiles = []string{
 	".cursor-plugin/marketplace.json",
 	"plugins/forge/.claude-plugin/plugin.json",
 	"plugins/forge/reasonix-plugin.json",
+	"plugins/forge/hooks.json",
 	"plugins/forge/README.md",
 }
 
@@ -309,6 +310,7 @@ func TestPluginPack_Readme(t *testing.T) {
 		"Reasonix",
 		"reasonix plugin install",      // reasonix native plugin（plugins/forge/reasonix-plugin.json）
 		"forge init --agents reasonix", // reasonix 的 settings.json flat hooks 回退路径
+		"forge init --agents cline",    // cline wrapper 脚本路径（Wave 3b：~/Documents/Cline/Rules/Hooks/）
 		"not officially confirmed",     // D3: Codex 路径诚实表述（OpenAI 未明确）
 	} {
 		if !strings.Contains(content, want) {
@@ -399,6 +401,37 @@ func TestPluginPack_Readme_UserLevelContract(t *testing.T) {
 	}
 }
 
+// TestPluginPack_Readme_CopilotVSCodeCaveat pins the Wave 2c code-review finding,
+// doc-confirmed against code.visualstudio.com: VS Code detects a plugin's format by
+// its manifest marker (.claude-plugin/plugin.json = Claude format → hooks read ONLY
+// from hooks/hooks.json; root hooks.json is the Copilot-format location). The pack
+// ships the Claude marker, so the root hooks.json may be inert on VS Code; the README
+// must say so honestly instead of implying VS Code is wired (same pattern as the
+// codex "not officially confirmed" caveat). Guards against the caveat being dropped
+// in a README rewrite while the structural fix (hooks/hooks.json + double-fire
+// verification on Claude Code) remains an open follow-up.
+//
+// TestPluginPack_Readme_CopilotVSCodeCaveat 钉死 Wave 2c 代码审查发现（已对照
+// code.visualstudio.com 文档核实）：VS Code 按 manifest 标记检测 plugin 格式
+// （.claude-plugin/plugin.json = Claude 格式 → hooks 只从 hooks/hooks.json 读；
+// 根 hooks.json 是 Copilot 格式位置）。pack 带 Claude 标记，故根 hooks.json 在
+// VS Code 上可能无效；README 必须诚实说明，而非暗示 VS Code 已接线（与 codex
+// 「未官方确认」caveat 同款模式）。防止结构性修复（hooks/hooks.json + Claude
+// Code 双跑验证）仍是开放 follow-up 期间，caveat 在 README 重写中被丢掉。
+func TestPluginPack_Readme_CopilotVSCodeCaveat(t *testing.T) {
+	dir := generatePack(t)
+	content := readOrFail(t, filepath.Join(dir, "plugins", "forge", "README.md"))
+	for _, want := range []string{
+		"VS Code caveat",
+		"hooks/hooks.json",
+		"VS Code unverified",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("README missing copilot VS Code caveat wording %q — the root hooks.json is inert on VS Code (Claude-format detection) and the README must say so honestly", want)
+		}
+	}
+}
+
 // TestPluginPack_ReasonixManifestHooksMirror: the hooks field of reasonix-plugin.json must equal the
 // flat hooks shape buildReasonixHooks produces (the same one reasonix's Translate writes into
 // settings.json). reasonix is the 5th host: its Claude compatibility does NOT resolve
@@ -484,6 +517,178 @@ func TestPluginPack_CommittedReasonixManifestMatchesGenerator(t *testing.T) {
 	}
 	if committedManifest["version"] != genManifest["version"] {
 		t.Errorf("committed reasonix version = %v, want %v (writeReasonixPluginManifest hardcodes it — re-run forge plugin pack)", committedManifest["version"], genManifest["version"])
+	}
+}
+
+// TestPluginPack_CopilotHooksManifest: the copilot hooks.json (Wave 2c) must carry
+// copilot's config format — {"version":1,"hooks":{PascalCase events}} with flat
+// {type,command,matcher,timeoutSec} entries — at the plugin ROOT (NOT hooks/hooks.json:
+// Claude Code also loads that location and would double-fire every hook alongside
+// .claude-plugin/plugin.json's hooks field). Every forge command carries
+// ` --agent copilot` (output-protocol selection — copilot parses no decision:"approve"
+// and agentStop blocks only via stdout decision JSON), matchers pass through verbatim
+// (copilot matches Claude tool names), PostCompact stays absent (no copilot analogue —
+// only the observe-only preCompact, whose output is not processed), and timeoutSec is
+// set (copilot's 30s default risks killing heavier gates like task-verify).
+//
+// TestPluginPack_CopilotHooksManifest：copilot hooks.json（Wave 2c）必须是 copilot 的
+// 配置格式——{"version":1,"hooks":{PascalCase event}} 加扁平 {type,command,matcher,
+// timeoutSec} 条目——且位于 plugin 根（非 hooks/hooks.json：Claude Code 也加载该位置，
+// 会与 .claude-plugin/plugin.json 的 hooks 字段双跑每个 hook）。每条 forge 命令带
+// ` --agent copilot`（输出协议选择——copilot 不解析 decision:"approve"，agentStop 只能
+// 经 stdout decision JSON 阻断），matcher 原样透传（copilot 匹配 Claude 工具名），
+// PostCompact 保持缺席（无 copilot 对应物——只有 observe-only 的 preCompact，其输出
+// 不被处理），timeoutSec 必须设置（copilot 默认 30s 有杀掉 task-verify 等重型门禁的风险）。
+func TestPluginPack_CopilotHooksManifest(t *testing.T) {
+	dir := generatePack(t)
+	// Root location, not hooks/hooks.json (the Claude double-fire trap).
+	//
+	// 根位置，非 hooks/hooks.json（Claude 双跑陷阱）。
+	path := filepath.Join(dir, "plugins", "forge", "hooks.json")
+	var manifest map[string]any
+	loadJSON(t, path, &manifest)
+	if manifest["version"] != float64(1) {
+		t.Errorf("version = %v, want 1", manifest["version"])
+	}
+	hooksMap, ok := manifest["hooks"].(map[string]any)
+	if !ok {
+		t.Fatalf("hooks field not an object: %T", manifest["hooks"])
+	}
+	// Event whitelist: everything copilot supports must be wired; PostCompact (the one
+	// spec event with no copilot analogue) must stay absent.
+	//
+	// event 白名单：copilot 支持的必须全接；PostCompact（唯一无 copilot 对应物的
+	// spec event）必须缺席。
+	for _, required := range []string{"PreToolUse", "PostToolUse", "Stop", "SessionStart", "UserPromptSubmit"} {
+		if _, present := hooksMap[required]; !present {
+			t.Errorf("copilot hooks.json must wire %s: missing", required)
+		}
+	}
+	if _, present := hooksMap["PostCompact"]; present {
+		t.Error("copilot hooks.json must not wire PostCompact (no copilot analogue — unknown event keys risk item drops at load)")
+	}
+	sawForge := false
+	for event, entries := range hooksMap {
+		list, ok := entries.([]any)
+		if !ok {
+			t.Fatalf("%s entries not a list: %T", event, entries)
+		}
+		for _, raw := range list {
+			e, ok := raw.(map[string]any)
+			if !ok {
+				t.Fatalf("%s entry not an object: %T", event, raw)
+			}
+			if e["type"] != "command" {
+				t.Errorf("%s entry type = %v, want command", event, e["type"])
+			}
+			cmd, _ := e["command"].(string)
+			if !strings.HasPrefix(cmd, "forge hook ") {
+				continue
+			}
+			sawForge = true
+			if !strings.HasSuffix(cmd, " --agent copilot") {
+				t.Errorf("%s: forge command missing --agent copilot suffix: %s", event, cmd)
+			}
+			// Matchers pass through VERBATIM (copilot matches Claude tool names —
+			// bash→Bash, edit/str_replace_editor/apply_patch→Edit). Any translated
+			// token here would silently disarm the gate. Session-level events carry
+			// no matcher (omitempty → absent).
+			//
+			// matcher 原样透传（copilot 匹配 Claude 工具名——bash→Bash、
+			// edit/str_replace_editor/apply_patch→Edit）。这里出现任何被翻译的
+			// token 都等于静默解除门禁。会话级 event 无 matcher（omitempty → 缺席）。
+			if matcher, ok := e["matcher"].(string); ok && matcher != "" {
+				for _, tok := range strings.Split(matcher, "|") {
+					switch tok {
+					case "Shell", "Task", "Write|Edit":
+						t.Errorf("%s: matcher token %q looks translated (copilot matches Claude tool names verbatim): %v", event, tok, matcher)
+					}
+				}
+			}
+			if timeout, ok := e["timeoutSec"].(float64); !ok || timeout < 60 {
+				t.Errorf("%s: timeoutSec = %v, want >= 60 (copilot's 30s default risks killing heavier gates)", event, e["timeoutSec"])
+			}
+		}
+	}
+	if !sawForge {
+		t.Fatal("no forge commands generated in copilot hooks.json")
+	}
+}
+
+// TestPluginPack_CopilotHooksMirrorSpec: the per-event forge command sets in the
+// copilot manifest must equal ForgeHookSpec's (suffix-stripped) — a single-source-of-
+// truth guard parallel to TestPluginPack_HooksMirrorSettings. A hardcoded or drifted
+// copilot table would wire different gates than every other host.
+//
+// TestPluginPack_CopilotHooksMirrorSpec：copilot manifest 里每 event 的 forge 命令集
+// 必须等于 ForgeHookSpec 的（剥后缀比对）——与 TestPluginPack_HooksMirrorSettings 平行
+// 的单一真相源守卫。硬编码或漂移的 copilot 表会接出与其他 host 不同的 gate。
+func TestPluginPack_CopilotHooksMirrorSpec(t *testing.T) {
+	dir := generatePack(t)
+	var manifest map[string]any
+	loadJSON(t, filepath.Join(dir, "plugins", "forge", "hooks.json"), &manifest)
+	hooksMap := manifest["hooks"].(map[string]any)
+
+	for event, entries := range hooksMap {
+		list, _ := entries.([]any)
+		got := map[string]bool{}
+		for _, raw := range list {
+			e := raw.(map[string]any)
+			cmd, _ := e["command"].(string)
+			if cmd != "" {
+				got[strings.TrimSuffix(cmd, " --agent copilot")] = true
+			}
+		}
+		want := map[string]bool{}
+		for _, m := range hooks.ForgeHookSpec()[event] {
+			for _, h := range m.Hooks {
+				want[h.Command] = true
+			}
+		}
+		if !stringSetEqual(want, got) {
+			t.Errorf("copilot %s commands drifted from ForgeHookSpec:\n  spec:    %s\n  copilot: %s", event, sortedSet(want), sortedSet(got))
+		}
+	}
+}
+
+// TestPluginPack_CommittedCopilotManifestMatchesGenerator: the committed
+// plugins/forge/hooks.json must equal the current generator output. Mirrors
+// TestPluginPack_CommittedReasonixManifestMatchesGenerator for the copilot manifest —
+// catches the drift of changing ForgeHookSpec (or copilotEventName) but forgetting to
+// run `forge plugin pack` to re-commit. A stale committed copilot manifest ships wrong
+// gates to every copilot plugin install (copilot is the 6th host served by the pack).
+//
+// TestPluginPack_CommittedCopilotManifestMatchesGenerator：committed 的
+// plugins/forge/hooks.json 必须等于生成器当前输出。镜像
+// TestPluginPack_CommittedReasonixManifestMatchesGenerator 用于 copilot manifest——抓
+// "改了 ForgeHookSpec（或 copilotEventName）但忘记跑 `forge plugin pack` 重新提交"的
+// drift。陈旧的 committed copilot manifest 会给每次 copilot plugin 安装发错的 gate
+// （copilot 是 pack 服务的第 6 个 host）。
+func TestPluginPack_CommittedCopilotManifestMatchesGenerator(t *testing.T) {
+	committed := filepath.Join("..", "..", "plugins", "forge", "hooks.json")
+	if _, err := os.Stat(committed); err != nil {
+		// Same hard-failure-if-layout-exists contract as the skills tree: the copilot
+		// manifest is a generator output listed in expectedPluginFiles — once the
+		// committed plugin layout exists, its absence means `forge plugin pack` output
+		// was not committed. Skipping here would false-green on fresh checkouts.
+		//
+		// 与 skills 树同款的"布局在即硬失败"契约：copilot manifest 是列在
+		// expectedPluginFiles 里的生成器输出——committed plugin 布局存在后，它的
+		// 缺席意味着 `forge plugin pack` 的产物没提交。这里 skip 会在 fresh
+		// checkout 上假绿。
+		if _, perr := os.Stat(filepath.Join("..", "..", "plugins", "forge", ".claude-plugin", "plugin.json")); perr == nil {
+			t.Fatalf("committed plugin layout exists but plugins/forge/hooks.json is missing — the copilot manifest is a required distribution asset (run `forge plugin pack` and commit it): %v", err)
+		}
+		t.Skipf("committed copilot manifest not found at %s (non-forge repo layout): %v", committed, err)
+	}
+	generated := generatePack(t)
+	var genManifest, committedManifest map[string]any
+	loadJSON(t, filepath.Join(generated, "plugins", "forge", "hooks.json"), &genManifest)
+	loadJSON(t, committed, &committedManifest)
+	a, _ := json.Marshal(genManifest)
+	b, _ := json.Marshal(committedManifest)
+	if string(a) != string(b) {
+		t.Errorf("committed hooks.json drifted from generator output (run `forge plugin pack` and commit the result):\n generated: %s\n committed: %s", a, b)
 	}
 }
 

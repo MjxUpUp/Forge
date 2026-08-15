@@ -165,12 +165,13 @@ func runFreezeGuardHook(t *testing.T, dir, filePath string) HookOutput {
 	buf := make([]byte, 8192)
 	n, _ := r.Read(buf)
 	output := strings.TrimSpace(string(buf[:n]))
-	if output == "" {
-		t.Fatalf("no output from freeze-guard hook (runHook err = %v)", err)
-	}
+	// Silent allow (exit 0, no stdout) is the legal allow shape since Wave 1 —
+	// returns a zero HookOutput whose Decision is "" (never "block").
 	var result HookOutput
-	if err := json.Unmarshal([]byte(output), &result); err != nil {
-		t.Fatalf("output is not valid JSON: %q, err: %v", output, err)
+	if output != "" {
+		if err := json.Unmarshal([]byte(output), &result); err != nil {
+			t.Fatalf("output is not valid JSON: %q, err: %v", output, err)
+		}
 	}
 	return result
 }
@@ -183,8 +184,8 @@ func TestHook_FreezeGuardBlocksOutsideFrozenPath(t *testing.T) {
 
 	inside := filepath.Join(dir, "src", "main.go")
 	out := runFreezeGuardHook(t, dir, inside)
-	if out.Decision != "approve" {
-		t.Errorf("write inside frozen path: decision = %q, want approve", out.Decision)
+	if out.Decision == "block" {
+		t.Errorf("write inside frozen path must allow (silent or bare), got decision = %q", out.Decision)
 	}
 
 	outside := filepath.Join(dir, "docs", "readme.md")
@@ -200,7 +201,7 @@ func TestHook_FreezeGuardBlocksOutsideFrozenPath(t *testing.T) {
 func TestHook_FreezeGuardInactiveAllows(t *testing.T) {
 	dir := setupFreezeProject(t)
 	out := runFreezeGuardHook(t, dir, filepath.Join(dir, "anywhere", "x.go"))
-	if out.Decision != "approve" {
-		t.Errorf("no freeze active: decision = %q, want approve", out.Decision)
+	if out.Decision == "block" {
+		t.Errorf("no freeze active: must allow (silent or bare), got decision = %q", out.Decision)
 	}
 }

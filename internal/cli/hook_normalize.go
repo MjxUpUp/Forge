@@ -30,7 +30,162 @@ func normalizeAgentStdin(agent string, stdinData []byte, hookInput *HookInput) {
 		kimiNormalize(stdinData, hookInput)
 	case "reasonix":
 		reasonixNormalize(stdinData, hookInput)
+	case "cline":
+		clineNormalize(stdinData, hookInput)
 	}
+}
+
+// clineNormalize maps cline's hook stdin (v3.36+ hooks) to HookInput. Documented base
+// fields ({clineVersion, hookName, timestamp, taskId, workspaceRoots, userId} plus a
+// tool name/parameters object whose exact field names are only partially documented)
+// diverge from Claude's shape in four load-bearing ways:
+//   - Session identity is taskId (no session_id); project root is workspaceRoots[0]
+//     (no cwd field).
+//   - Event name is hookName, whose value is the SCRIPT name — PreToolUse/
+//     PostToolUse/UserPromptSubmit match Claude, but the SessionStart group hangs on
+//     cline's TaskStart, so the event is mapped back (clineHookEvent) or the
+//     session-scoped hooks' dispatch (keyed on "SessionStart") would never fire.
+//   - Tool names are cline's snake_case roster (write_to_file/insert_content/
+//     search_and_replace/read_file/execute_command) — mapped to the Claude names
+//     forge dispatches on (clineToCCToolName), same call reasonix makes.
+//   - The tool payload's exact key is undocumented: tool_name/toolName/tool and
+//     tool_input/toolInput/parameters are all accepted as candidates, first
+//     non-empty wins. The payload's file tools carry {path, ...} — aliased to
+//     file_path via remapKimiToolInput so FORGE_FILE_PATH resolves.
+//
+// ToolName and ToolInput are overridden UNCONDITIONALLY when a candidate is present
+// (unlike reasonix's fill-empty): the default unmarshal already fills ToolName from a
+// same-named snake_case tool_name field — fill-empty would then preserve the raw
+// cline name ("write_to_file") and skip the mapping, exactly the fail-open shape the
+// normalizer exists to prevent. Cline never sends a Claude-shape payload, so the
+// override is safe. Field names beyond the documented base are best-effort
+// candidates: an undocumented rename leaves the field empty and the hook degrades to
+// its no-payload behavior (no hard failure).
+//
+// clineNormalize 把 cline 的 hook stdin（v3.36+ hooks）映射到 HookInput。文档化的
+// 基础字段（{clineVersion, hookName, timestamp, taskId, workspaceRoots, userId} 加
+// 一个字段名仅部分文档化的工具名/参数对象）与 Claude 形状有四处关键差异：
+//   - 会话标识是 taskId（无 session_id）；项目根是 workspaceRoots[0]（无 cwd 字段）。
+//   - 事件名是 hookName，值为**脚本名**——PreToolUse/PostToolUse/UserPromptSubmit 与
+//     Claude 一致，但 SessionStart 组挂在 cline 的 TaskStart 上，故须映射回
+//     （clineHookEvent），否则会话级 hook 的分发（以 "SessionStart" 为键）永不触发。
+//   - 工具名是 cline 的 snake_case 名册（write_to_file/insert_content/
+//     search_and_replace/read_file/execute_command）——映射到 forge 据以分发的
+//     Claude 名（clineToCCToolName），与 reasonix 同判断。
+//   - 工具 payload 的确切键未文档化：tool_name/toolName/tool 与
+//     tool_input/toolInput/parameters 都作为候选接受，首个非空者胜。payload 的文件
+//     类工具携带 {path, ...}——经 remapKimiToolInput 别名到 file_path，使
+//     FORGE_FILE_PATH 得以解析。
+//
+// ToolName 与 ToolInput 在候选在场时**无条件覆盖**（区别于 reasonix 的填空）：
+// 默认 unmarshal 已从同名的 snake_case tool_name 字段填了 ToolName——填空策略会
+// 保留原始 cline 名（"write_to_file"）而跳过映射，恰是 normalizer 要防的 fail-open
+// 形态。cline 绝不发送 Claude 形状 payload，故覆盖安全。超出文档化基础的字段名是
+// 尽力而为的候选：未文档化的改名会让字段留空、hook 退化到无 payload 行为（不硬
+// 失败）。
+func clineNormalize(stdinData []byte, hookInput *HookInput) {
+	if len(stdinData) == 0 {
+		return
+	}
+	var c struct {
+		HookName       string          `json:"hookName"`
+		TaskID         string          `json:"taskId"`
+		WorkspaceRoots []string        `json:"workspaceRoots"`
+		ToolNameSnake  string          `json:"tool_name"`
+		ToolNameCamel  string          `json:"toolName"`
+		Tool           string          `json:"tool"`
+		ToolInputSnake json.RawMessage `json:"tool_input"`
+		ToolInputCamel json.RawMessage `json:"toolInput"`
+		Parameters     json.RawMessage `json:"parameters"`
+		Prompt         string          `json:"prompt"`
+		UserPrompt     string          `json:"userPrompt"`
+		Question       string          `json:"question"`
+	}
+	if err := json.Unmarshal(stdinData, &c); err != nil {
+		fmt.Fprintf(os.Stderr, "[forge] warning: cline hook stdin JSON parse failed: %v\n", err)
+		return
+	}
+	if hookInput.HookEventName == "" {
+		hookInput.HookEventName = clineHookEvent(c.HookName)
+	}
+	if hookInput.SessionID == "" {
+		hookInput.SessionID = c.TaskID
+	}
+	if hookInput.Cwd == "" && len(c.WorkspaceRoots) > 0 {
+		hookInput.Cwd = c.WorkspaceRoots[0]
+	}
+	// Unconditional override when a candidate exists — see the function comment for
+	// why fill-empty here would preserve the unmapped snake_case name the default
+	// unmarshal already filled.
+	//
+	// 候选在场时无条件覆盖——为何此处不能用填空，见函数注释（填空会保留默认
+	// unmarshal 已填入的未映射 snake_case 名）。
+	if name := firstNonEmpty(c.ToolNameSnake, c.ToolNameCamel, c.Tool); name != "" {
+		hookInput.ToolName = clineToCCToolName(name)
+	}
+	if raw := firstRawJSON(c.ToolInputSnake, c.ToolInputCamel, c.Parameters); len(raw) > 0 {
+		hookInput.ToolInput = remapKimiToolInput(raw)
+	}
+	if hookInput.Prompt == "" {
+		hookInput.Prompt = firstNonEmpty(c.Prompt, c.UserPrompt, c.Question)
+	}
+}
+
+// clineHookEvent maps cline hook script names (== hookName values) to the Claude
+// event names forge's hooks dispatch on. TaskStart carries the SessionStart group
+// (see clineEventMappings); the tool/prompt events share Claude's names; unknown
+// future names pass through unchanged so an unlisted cline event degrades to its
+// no-payload behavior instead of being misfiled.
+//
+// clineHookEvent 把 cline hook 脚本名（== hookName 值）映射到 forge hook 据以分发的
+// Claude 事件名。TaskStart 载着 SessionStart 组（见 clineEventMappings）；工具/
+// prompt 事件与 Claude 同名；未知的未来名原样透传，使未列出的 cline 事件退化到无
+// payload 行为而非被错归。
+func clineHookEvent(hookName string) string {
+	switch hookName {
+	case "TaskStart":
+		return "SessionStart"
+	default:
+		return hookName
+	}
+}
+
+// clineToCCToolName maps cline's snake_case tool names to the Claude Code names forge
+// dispatches on. write_to_file→Write; insert_content/search_and_replace→Edit (the
+// path-extraction hooks care about file_path, not the Write/Edit distinction);
+// read_file→Read (the reads-log record keys on exactly "Read"); execute_command→Bash.
+// Unknown names pass through unchanged.
+//
+// clineToCCToolName 把 cline 的 snake_case 工具名映射到 forge 据以分发的 Claude Code
+// 名。write_to_file→Write；insert_content/search_and_replace→Edit（基于路径的 hook
+// 关心 file_path 而非 Write/Edit 之别）；read_file→Read（reads-log 记录恰以 "Read"
+// 为键）；execute_command→Bash。未知名原样透传。
+func clineToCCToolName(name string) string {
+	switch name {
+	case "write_to_file":
+		return "Write"
+	case "insert_content", "search_and_replace":
+		return "Edit"
+	case "read_file":
+		return "Read"
+	case "execute_command":
+		return "Bash"
+	}
+	return name
+}
+
+// firstRawJSON returns the first non-empty RawMessage argument (nil when all are
+// empty). The string twin firstNonEmpty already lives in hook.go.
+//
+// firstRawJSON 返回首个非空的 RawMessage 实参（全空时返回 nil）。字符串版的
+// firstNonEmpty 已在 hook.go。
+func firstRawJSON(raws ...json.RawMessage) json.RawMessage {
+	for _, r := range raws {
+		if len(r) > 0 {
+			return r
+		}
+	}
+	return nil
 }
 
 // kimiNormalize parses kimi's hook stdin into HookInput. kimi's payload is Claude-shaped

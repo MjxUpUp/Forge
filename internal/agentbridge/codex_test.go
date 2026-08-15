@@ -2,10 +2,13 @@ package agentbridge
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/hooks"
 )
 
 // TestCodexTranslator_Translate_CreatesFile verifies Translate works when the codex
@@ -65,11 +68,12 @@ func TestCodexTranslator_MergePreservesUserEntries(t *testing.T) {
 	if strings.Contains(content, "stale-removed-hook") {
 		t.Error("stale forge hook entry not replaced")
 	}
-	// Forge wiring present exactly once per command.
-	if n := strings.Count(content, `"forge hook task-guard"`); n != 1 {
+	// Forge wiring present exactly once per command. Since Wave 1b every generated
+	// command carries the --agent codex suffix (output-protocol selection).
+	if n := strings.Count(content, `"forge hook task-guard --agent codex"`); n != 1 {
 		t.Errorf("forge hook task-guard appears %d times, want 1", n)
 	}
-	if !strings.Contains(content, "forge hook bash-guard") {
+	if !strings.Contains(content, "forge hook bash-guard --agent codex") {
 		t.Error("generated forge wiring missing")
 	}
 }
@@ -389,5 +393,69 @@ func TestCodexTranslator_EnsuresHooksFeature_AlreadyTrue(t *testing.T) {
 	}
 	if string(data) != existing {
 		t.Errorf("existing hooks = true must be a no-op, got:\n%s", data)
+	}
+}
+
+// TestCodexMatchers_ApplyPatchAndAgentSuffix pins the two codex-specific deltas
+// applied on the spec copy (Wave 1b + 3a): every forge command gains
+// ` --agent codex` (output-protocol selection — codex parses no decision:"approve"
+// and blocks only via stderr+exit 2), and matchers containing Write/Edit are
+// widened with apply_patch (codex reports file edits as tool_name "apply_patch";
+// a plain Write|Edit regex never matches, silently disarming every file gate).
+// The shared spec itself must stay untouched.
+func TestCodexMatchers_ApplyPatchAndAgentSuffix(t *testing.T) {
+	spec := hooks.ForgeHookSpec()
+	// Snapshot the PreToolUse matchers before, to prove codexMatchers never
+	// mutates the shared spec (settings.local.json / plugin pack share it).
+	before := fmt.Sprintf("%v", spec["PreToolUse"])
+
+	got := codexMatchers(spec["PreToolUse"])
+	if len(got) == 0 {
+		t.Fatal("codexMatchers returned no matchers")
+	}
+	sawApplyPatch, sawAgentSuffix := false, false
+	for _, m := range got {
+		for _, tok := range strings.Split(m.Matcher, "|") {
+			if tok == "apply_patch" {
+				sawApplyPatch = true
+			}
+		}
+		for _, e := range m.Hooks {
+			if strings.Contains(e.Command, "forge hook") && !strings.HasSuffix(e.Command, " --agent codex") {
+				t.Errorf("forge command missing --agent codex suffix: %s", e.Command)
+			}
+			if strings.HasSuffix(e.Command, " --agent codex") {
+				sawAgentSuffix = true
+			}
+		}
+	}
+	if !sawApplyPatch {
+		t.Error("no Write|Edit matcher was widened with apply_patch — file gates would no-op on codex edits")
+	}
+	if !sawAgentSuffix {
+		t.Error("no command carries --agent codex")
+	}
+	if after := fmt.Sprintf("%v", spec["PreToolUse"]); after != before {
+		t.Error("codexMatchers must not mutate the shared ForgeHookSpec")
+	}
+}
+
+// TestCodexApplyPatchMatcher covers the matcher-widening edge cases: only
+// Write/Edit tokens trigger the widening, an already-widened matcher is not
+// double-widened, and non-file matchers (Bash, Read|Skill|Agent, empty) pass
+// through unchanged.
+func TestCodexApplyPatchMatcher(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"Write|Edit", "Write|Edit|apply_patch"},
+		{"Bash", "Bash"},
+		{"Read|Skill|Agent", "Read|Skill|Agent"},
+		{"", ""},
+		{"Write|Edit|apply_patch", "Write|Edit|apply_patch"},
+		{"apply_patch", "apply_patch"},
+	}
+	for _, tc := range cases {
+		if got := codexApplyPatchMatcher(tc.in); got != tc.want {
+			t.Errorf("codexApplyPatchMatcher(%q) = %q, want %q", tc.in, got, tc.want)
+		}
 	}
 }

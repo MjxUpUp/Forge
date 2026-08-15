@@ -58,13 +58,17 @@ func (t *CursorTranslator) Translate(projectDir string, input *TranslationInput)
 
 	// Real lifecycle hooks — the actual enforcement interface. Cursor native hooks.json is a
 	// flat structure (hooks.<event>[].{command,matcher}), event names are camelCase, and the
-	// stdin/exit-code protocol is Claude-Code-compatible, so the same `forge hook <name>`
-	// commands run as-is; exit 2 blocks that tool call (deny).
+	// stdin protocol is Claude-Code-shaped, so the same `forge hook <name>` commands run —
+	// each carrying `--agent cursor` because the OUTPUT protocol differs (context goes in a
+	// top-level snake_case additional_context, block = stderr + exit 2 with no stdout JSON
+	// decision; see emitCursorOutput in internal/cli/hook.go).
 	//
 	// 真实 lifecycle hooks——实际 enforcement 接口。Cursor 原生 hooks.json 是扁平结构
-	// （hooks.<event>[].{command,matcher}），event 名为 camelCase，stdin/exit-code 协议
-	// 与 Claude Code 兼容，故同一批 `forge hook <name>` 命令原样跑，exit 2 即 block
-	// 该工具调用（deny）。
+	// （hooks.<event>[].{command,matcher}），event 名为 camelCase，stdin 协议与
+	// Claude Code 同形，故同一批 `forge hook <name>` 命令可跑——每条带
+	// `--agent cursor`，因为**输出协议**不同（上下文走顶层 snake_case
+	// additional_context，阻断 = stderr + exit 2、无 stdout JSON decision；见
+	// internal/cli/hook.go 的 emitCursorOutput）。
 	existing, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("cursor: failed to read hooks.json: %w", err)
@@ -278,10 +282,15 @@ type cursorHookEntry struct {
 // afterAgentResponse, afterAgentThought (plus the Tab-only beforeTabFileRead/
 // afterTabFileEdit). cursorEventName maps the ForgeHookSpec events onto that roster;
 // PostCompact has no Cursor analogue (Cursor ships only the observe-only preCompact)
-// and stays Claude/codex-only. Conversion flattens each matcher's hook list to one
-// entry per hook (carrying matcher + 60s timeout). No manual copy → no drift.
-// TestCursorWiringMirrorsClaudeSettings guards command-set parity;
-// TestCursorHooks_OnlyLegalCursorEvents pins the event-name whitelist.
+// and stays Claude/codex-only. Two cursor-specific deltas are applied per-copy:
+// every forge command gains ` --agent cursor` (output-protocol selection — Wave 1b),
+// and matcher tokens are translated to Cursor's tool roster via cursorMatcherTokens
+// (Bash→Shell, Edit→Write, Agent→Task, Skill dropped — Claude tool names would never
+// match on Cursor, silently disarming every tool gate). Conversion flattens each
+// matcher's hook list to one entry per hook (carrying matcher + 60s timeout).
+// No manual copy → no drift. TestCursorWiringMirrorsClaudeSettings guards
+// command-set parity; TestCursorHooks_OnlyLegalCursorEvents pins the event-name
+// whitelist.
 //
 // buildCursorHooks 从 hooks.ForgeHookSpec（单一真相源）派生 Cursor 的扁平 hooks.json。
 // Cursor 的 hooks.json 是扁平结构：hooks.<event>[]，每个 entry 自带
@@ -293,8 +302,12 @@ type cursorHookEntry struct {
 // afterFileEdit、beforeSubmitPrompt、preCompact、stop、afterAgentResponse、
 // afterAgentThought（外加 Tab 专用的 beforeTabFileRead/afterTabFileEdit）。
 // cursorEventName 把 ForgeHookSpec 的 event 映射到该名册；PostCompact 无 Cursor
-// 对应物（Cursor 只有 observe-only 的 preCompact），保持 Claude/codex 专属。转换时
-// 把每个 matcher 的 hook 列表扁平化为每 hook 一个 entry（携带 matcher + 60s timeout）。
+// 对应物（Cursor 只有 observe-only 的 preCompact），保持 Claude/codex 专属。
+// 两个 cursor 专属 delta 应用在副本上：每条 forge 命令追加 ` --agent cursor`
+// （输出协议选择——Wave 1b），matcher token 经 cursorMatcherTokens 翻译到 Cursor
+// 工具名册（Bash→Shell、Edit→Write、Agent→Task、Skill 丢弃——Claude 工具名在
+// Cursor 上永远匹配不到，等于静默解除所有工具门禁）。转换时把每个 matcher 的
+// hook 列表扁平化为每 hook 一个 entry（携带 matcher + 60s timeout）。
 // 无手工副本 → 无 drift。TestCursorWiringMirrorsClaudeSettings 守卫命令集对等；
 // TestCursorHooks_OnlyLegalCursorEvents 钉死 event 名白名单。
 func buildCursorHooks() map[string]any {
@@ -306,10 +319,21 @@ func buildCursorHooks() map[string]any {
 			continue
 		}
 		for _, m := range matchers {
+			match, keep := cursorMatcherTokens(m.Matcher)
+			if !keep {
+				// Every token was dropped (a Skill-only matcher): Cursor has no tool to
+				// fire it on — wiring it as match-all would widen the gate to every tool
+				// call. Skip the entries (documented limitation).
+				continue
+			}
 			for _, h := range m.Hooks {
+				cmd := h.Command
+				if isForgeBridgeCommand(cmd) {
+					cmd += " --agent cursor"
+				}
 				hooksMap[ce] = append(hooksMap[ce], cursorHookEntry{
-					Command: h.Command,
-					Matcher: m.Matcher,
+					Command: cmd,
+					Matcher: match,
 					Timeout: 60,
 				})
 			}
@@ -319,6 +343,53 @@ func buildCursorHooks() map[string]any {
 		`version`: 1,
 		`hooks`:   hooksMap,
 	}
+}
+
+// cursorMatcherTokens translates a Claude tool-name matcher alternation into
+// Cursor's tool roster (verified against https://cursor.com/docs/agent/hooks):
+// Bash→Shell, Edit→Write (cursor reports file create AND edit as Write), Read→Read,
+// Agent→Task; Skill has no Cursor tool analogue and is dropped (a Skill-only matcher
+// yields keep=false — see the caller for why the entries are skipped rather than
+// wired match-all). Unknown tokens pass through verbatim (better to surface a new
+// token for a human than silently drop it). Tokens are deduplicated after
+// translation (Write|Edit → Write). An empty input stays empty (match-all groups —
+// stop/sessionStart — match events, not tool names). The result keeps the plain
+// STRING alternation form, which cursor accepts as its matcher.
+//
+// cursorMatcherTokens 把 Claude 的 tool-name matcher alternation 翻译到 Cursor 的
+// 工具名册（已对 https://cursor.com/docs/agent/hooks 核实）：Bash→Shell、Edit→Write
+// （cursor 的文件创建与编辑都上报为 Write）、Read→Read、Agent→Task；Skill 无 Cursor
+// 工具对应物，丢弃（Skill-only matcher 返回 keep=false——为何跳过条目而非接成
+// match-all 见调用处）。未知 token 原样透传（新 token 暴露给人看，好过静默丢弃）。
+// 翻译后去重（Write|Edit → Write）。空输入保持空（match-all 组——stop/sessionStart
+// ——匹配的是事件不是工具名）。结果保持纯 STRING alternation 形式，cursor 接受它
+// 作 matcher。
+func cursorMatcherTokens(matcher string) (string, bool) {
+	if matcher == "" {
+		return "", true
+	}
+	var out []string
+	seen := map[string]bool{}
+	for _, tok := range strings.Split(matcher, "|") {
+		switch tok {
+		case "Bash":
+			tok = "Shell"
+		case "Edit":
+			tok = "Write"
+		case "Agent":
+			tok = "Task"
+		case "Skill":
+			continue
+		}
+		if !seen[tok] {
+			seen[tok] = true
+			out = append(out, tok)
+		}
+	}
+	if len(out) == 0 {
+		return "", false
+	}
+	return strings.Join(out, "|"), true
 }
 
 // cursorEventName maps Claude Code PascalCase event names to Cursor's camelCase

@@ -16,9 +16,14 @@ import (
 // (~/.codeium/windsurf/hooks.json — Windsurf natively supports user-level hooks,
 // loaded and merged with system/workspace levels by Cascade; see
 // https://docs.windsurf.com/windsurf/cascade/hooks), and updates .windsurfrules
-// (guidance fallback). Cascade has built-in lifecycle hooks; exit-code-2 means deny,
-// so it stands alongside claude-code/codex/cursor as an agent that Forge gates can truly enforce. Its stdin
-// schema differs from Claude Code, so hook commands carry `--agent windsurf` and are normalized by forge
+// (guidance fallback). Cascade has built-in lifecycle hooks; exit-code-2 on the
+// pre_* events means deny, so pre-tool Forge gates (task-guard/bash-guard/...)
+// genuinely enforce. HONESTY CAVEAT (Wave 2b): post_cascade_response — where the
+// Stop group (task-verify/review-stop) hangs — is an async post-hook that CANNOT
+// block, so end-of-turn gates are advisory-only on Windsurf (see the wiring note in
+// buildWindsurfHooks). There is also no stdout JSON protocol: allow is silent, block
+// reason goes to stderr. Its stdin schema differs from Claude Code, so hook commands
+// carry `--agent windsurf` and are normalized by forge
 // (see internal/cli/hook_normalize.go).
 //
 // The user-level location mirrors the kimi/claude-code model: one machine-wide
@@ -32,10 +37,13 @@ import (
 // （~/.codeium/windsurf/hooks.json——Windsurf 官方支持 user-level hooks，Cascade
 // 会把 system/workspace 各级加载合并；见
 // https://docs.windsurf.com/windsurf/cascade/hooks），并更新 .windsurfrules
-// （guidance 兜底）。Cascade 内置 lifecycle hooks，exit-code-2 即 deny，
-// 故与 claude-code/codex/cursor 并列为 Forge gate 真正能 enforce 的 agent。其 stdin
-// schema 与 Claude Code 不同，故 hook 命令带 `--agent windsurf`，由 forge 归一化
-// （见 internal/cli/hook_normalize.go）。
+// （guidance 兜底）。Cascade 内置 lifecycle hooks，pre_* 事件上 exit-code-2 即
+// deny，故 pre-tool 的 Forge gate（task-guard/bash-guard/...）是真 enforce。
+// 诚实化警告（Wave 2b）：post_cascade_response——Stop 组（task-verify/review-stop）
+// 的挂载点——是异步 post-hook，**无法阻断**，故回合末门禁在 Windsurf 上是
+// advisory-only（接线说明见 buildWindsurfHooks）。也无 stdout JSON 协议：allow
+// 静默、阻断原因走 stderr。其 stdin schema 与 Claude Code 不同，故 hook 命令带
+// `--agent windsurf`，由 forge 归一化（见 internal/cli/hook_normalize.go）。
 //
 // 用户级路径对齐 kimi/claude-code 模型：一份全机器注册替代逐项目的
 // .windsurf/hooks.json 副本，forge init/sync 不再往项目目录写 hook 配置（用户级
@@ -356,28 +364,44 @@ func buildWindsurfHooks() map[string]any {
 			// No session_start exists in Cascade: the SessionStart group (skill-scan /
 			// mcp-scan / init-suggest / task-resume / skill-trigger) hangs on
 			// pre_user_prompt instead — it fires on the first prompt of every session.
+			// The --agent windsurf suffix (Wave 2b honesty fix): without it these hooks
+			// emitted Claude-protocol stdout on a host with no stdout channel — the
+			// flags were missing from exactly these two groups, an oversight when the
+			// earlier enforcement events were suffixed.
 			//
 			// Cascade 没有 session_start：SessionStart 组（skill-scan / mcp-scan /
 			// init-suggest / task-resume / skill-trigger）改挂 pre_user_prompt——
-			// 每个会话首个 prompt 时触发。
+			// 每个会话首个 prompt 时触发。--agent windsurf 后缀（Wave 2b 诚实化
+			// 修复）：缺了它这些 hook 会在无 stdout 通道的宿主上发 Claude 协议的
+			// stdout——恰好这两组漏了后缀，是早期给 enforcement 事件补后缀时的
+			// 疏漏。
 			"pre_user_prompt": {
-				{Command: "forge hook skill-scan", ShowOutput: false},
-				{Command: "forge hook mcp-scan", ShowOutput: false},
-				{Command: "forge hook init-suggest", ShowOutput: false},
-				{Command: "forge hook task-resume", ShowOutput: false},
-				{Command: "forge hook skill-trigger", ShowOutput: false},
+				{Command: "forge hook skill-scan --agent windsurf", ShowOutput: false},
+				{Command: "forge hook mcp-scan --agent windsurf", ShowOutput: false},
+				{Command: "forge hook init-suggest --agent windsurf", ShowOutput: false},
+				{Command: "forge hook task-resume --agent windsurf", ShowOutput: false},
+				{Command: "forge hook skill-trigger --agent windsurf", ShowOutput: false},
 			},
 			// No session_end exists in Cascade: the Stop group (task-verify /
 			// review-stop / skill-trigger) hangs on post_cascade_response — the
-			// closest session-end equivalent Cascade actually emits.
+			// closest session-end equivalent Cascade actually emits. HONESTY NOTE
+			// (Wave 2b): post_cascade_response is an ASYNC post-hook — it fires after
+			// the cascade has already responded, so exit 2 there CANNOT block or force
+			// another turn; it only surfaces the stderr reason to the agent as an
+			// advisory. The task-verify/review-stop gates are therefore advisory-only
+			// on Windsurf (unlike Claude's Stop, which blocks). Documented, not hidden.
 			//
 			// Cascade 没有 session_end：Stop 组（task-verify / review-stop /
 			// skill-trigger）改挂 post_cascade_response——Cascade 真实存在的、
-			// 最接近会话结束的事件。
+			// 最接近会话结束的事件。诚实化说明（Wave 2b）：post_cascade_response 是
+			// **异步** post-hook——它在 cascade 已经应答之后才触发，exit 2 在那里
+			// **无法阻断**或强制再来一轮，只能把 stderr 原因以 advisory 形式上浮给
+			// agent。故 task-verify/review-stop 门禁在 Windsurf 上是 advisory-only
+			// （与 Claude 的 Stop 可阻断不同）。如实文档化，不藏着。
 			"post_cascade_response": {
-				{Command: "forge hook task-verify", ShowOutput: false},
-				{Command: "forge hook review-stop", ShowOutput: false},
-				{Command: "forge hook skill-trigger", ShowOutput: false},
+				{Command: "forge hook task-verify --agent windsurf", ShowOutput: false},
+				{Command: "forge hook review-stop --agent windsurf", ShowOutput: false},
+				{Command: "forge hook skill-trigger --agent windsurf", ShowOutput: false},
 			},
 		},
 	}

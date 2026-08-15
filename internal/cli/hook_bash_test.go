@@ -55,9 +55,9 @@ func TestIsHookInfraFailure(t *testing.T) {
 }
 
 // TestEmitInfraAllow pins the fail-open output contract: kimi gets plain stdout text +
-// nil error (exit 0); claude gets an approve JSON envelope whose hookSpecificOutput
-// carries the event name — without it Claude drops additionalContext and the warning
-// would be silently lost.
+// nil error (exit 0); claude gets a BARE hookSpecificOutput (no decision — an allow
+// hook must not grant permissions) whose hookEventName is present — without it Claude
+// drops additionalContext and the warning would be silently lost.
 func TestEmitInfraAllow(t *testing.T) {
 	stdout, _, err := captureOutput(t, func() error {
 		return emitInfraAllow("kimi", "PreToolUse", "[forge] hook x 基础设施失败，fail-open 放行")
@@ -79,8 +79,8 @@ func TestEmitInfraAllow(t *testing.T) {
 	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &out); err != nil {
 		t.Fatalf("claude path must emit valid HookOutput JSON: %v\n%s", err, stdout)
 	}
-	if out.Decision != "approve" {
-		t.Errorf("decision = %q, want approve", out.Decision)
+	if out.Decision != "" {
+		t.Errorf("decision = %q, want \"\" (bare hookSpecificOutput; allow must never emit approve)", out.Decision)
 	}
 	if out.HookSpecificOutput == nil || out.HookSpecificOutput.HookEventName != "PreToolUse" {
 		t.Errorf("hookSpecificOutput.hookEventName missing/wrong: %+v", out.HookSpecificOutput)

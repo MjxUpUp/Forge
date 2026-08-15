@@ -70,7 +70,7 @@ func TestCursorTranslator_MergePreservesUserEntries(t *testing.T) {
 	if strings.Contains(content, "stale-removed-hook") {
 		t.Error("stale forge hook entry not replaced")
 	}
-	if n := strings.Count(content, `"forge hook task-guard"`); n != 1 {
+	if n := strings.Count(content, `"forge hook task-guard --agent cursor"`); n != 1 {
 		t.Errorf("forge hook task-guard appears %d times, want 1", n)
 	}
 }
@@ -206,5 +206,69 @@ func TestCursorTranslator_MergePreservesUnknownFields(t *testing.T) {
 	}
 	if userEntry["timeout"] != float64(45) {
 		t.Errorf("user entry field timeout lost or altered: %v", userEntry["timeout"])
+	}
+}
+
+// TestCursorMatcherTokens pins the Claude→Cursor tool-name translation (Wave 2a):
+// Bash→Shell, Edit→Write (cursor reports file create AND edit as Write), Agent→Task,
+// Skill dropped; tokens deduplicated after translation; unknown tokens pass through;
+// empty stays empty (match-all event groups); an all-dropped (Skill-only) matcher
+// yields keep=false so the caller skips the entries instead of wiring match-all.
+func TestCursorMatcherTokens(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"Write|Edit", "Write"},
+		{"Bash", "Shell"},
+		{"Read|Skill|Agent", "Read|Task"},
+		{"Read", "Read"},
+		{"", ""},
+		{"SomeFutureTool", "SomeFutureTool"},
+	}
+	for _, tc := range cases {
+		got, keep := cursorMatcherTokens(tc.in)
+		if !keep {
+			t.Errorf("cursorMatcherTokens(%q) unexpectedly dropped all tokens", tc.in)
+			continue
+		}
+		if got != tc.want {
+			t.Errorf("cursorMatcherTokens(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+	if _, keep := cursorMatcherTokens("Skill"); keep {
+		t.Error("Skill-only matcher must yield keep=false (no Cursor tool to fire on)")
+	}
+}
+
+// TestBuildCursorHooks_AgentSuffixAndMatchers verifies the generated cursor wiring
+// end-to-end: every forge command carries ` --agent cursor`, and no matcher still
+// uses a Claude-only tool token (Bash/Edit/Agent/Skill — they never match on
+// Cursor and silently disarm the gate).
+func TestBuildCursorHooks_AgentSuffixAndMatchers(t *testing.T) {
+	hooksMap, ok := buildCursorHooks()["hooks"].(map[string][]cursorHookEntry)
+	if !ok {
+		t.Fatal("buildCursorHooks shape changed — hooks map missing")
+	}
+	sawForge := false
+	for event, entries := range hooksMap {
+		for _, e := range entries {
+			if !strings.HasPrefix(e.Command, "forge hook ") {
+				continue
+			}
+			sawForge = true
+			if !strings.HasSuffix(e.Command, " --agent cursor") {
+				t.Errorf("%s: forge command missing --agent cursor suffix: %s", event, e.Command)
+			}
+			for _, tok := range strings.Split(e.Matcher, "|") {
+				switch tok {
+				case "Bash", "Edit", "Agent", "Skill":
+					t.Errorf("%s: matcher %q still uses Claude-only token %q (never matches on Cursor)", event, e.Matcher, tok)
+				}
+			}
+		}
+	}
+	if !sawForge {
+		t.Fatal("no forge commands generated")
 	}
 }

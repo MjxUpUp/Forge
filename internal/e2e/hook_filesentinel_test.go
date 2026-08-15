@@ -141,9 +141,7 @@ func TestHook_FileSentinel_PassesWithActiveTask(t *testing.T) {
 	if err != nil {
 		t.Fatalf("file-sentinel must allow source changes under an active task, got block:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, `"decision":"approve"`) {
-		t.Errorf("file-sentinel stdout missing decision=approve:\n%s", stdout)
-	}
+	assertAllowOutput(t, stdout)
 	// Source stays in the working tree, nothing quarantined.
 	if !fileExists(t, dir, "src.go") {
 		t.Errorf("src.go must remain in the working tree under an active task\nstdout:\n%s", stdout)
@@ -233,9 +231,7 @@ func TestHook_FileSentinel_GateStatusBeyondGitDiff(t *testing.T) {
 	if err != nil {
 		t.Fatalf("file-sentinel must PASS (DataDir/gates beyond git-diff reach — known gap), got block:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, `"decision":"approve"`) {
-		t.Errorf("file-sentinel stdout missing decision=approve:\n%s", stdout)
-	}
+	assertAllowOutput(t, stdout)
 	// Tampered file remains in place (file-sentinel cannot reach DataDir).
 	//
 	// 篡改文件仍在原位（file-sentinel 管不到 DataDir）。
@@ -312,9 +308,7 @@ func TestHook_FileSentinel_FailOpenOnEmptySnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("file-sentinel must fail-open (PASS) on empty snapshot with existing work, got block:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, `"decision":"approve"`) {
-		t.Errorf("file-sentinel stdout missing decision=approve:\n%s", stdout)
-	}
+	assertAllowOutput(t, stdout)
 	if !fileExists(t, dir, "existing.go") {
 		t.Errorf("existing.go must remain in working tree (fail-open), was quarantined\nstdout:\n%s", stdout)
 	}
@@ -380,9 +374,7 @@ func TestHook_FileSentinel_FailOpenOnReadOnlyCommand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("file-sentinel must fail-open (PASS) for read-only command, got block:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, `"decision":"approve"`) {
-		t.Errorf("file-sentinel stdout missing decision=approve:\n%s", stdout)
-	}
+	assertAllowOutput(t, stdout)
 	if !fileExists(t, dir, "external.go") {
 		t.Errorf("external.go must remain in working tree (read-only fail-open), was quarantined\nstdout:\n%s", stdout)
 	}
