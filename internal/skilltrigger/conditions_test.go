@@ -128,6 +128,21 @@ func TestCondTestCommandFailed(t *testing.T) {
 			Context{ToolInput: map[string]any{"command": "go testbed"}, ToolOutput: map[string]any{"exit_code": float64(1)}},
 			false,
 		},
+		{
+			"缺 exit_code 但输出含 --- FAIL（kimi 宿主降级：失败签名）",
+			Context{ToolInput: map[string]any{"command": "go test ./..."}, ToolOutput: map[string]any{"output": "=== RUN TestX\n--- FAIL: TestX (0.00s)\nFAIL\nexit status 1"}},
+			true,
+		},
+		{
+			"缺 exit_code 输出干净（ok 摘要，无失败签名）",
+			Context{ToolInput: map[string]any{"command": "go test ./..."}, ToolOutput: map[string]any{"output": "ok  \tpkg\t0.01s"}},
+			false,
+		},
+		{
+			"缺 exit_code，fail 一词不在行首（防误报）",
+			Context{ToolInput: map[string]any{"command": "go test ./..."}, ToolOutput: map[string]any{"output": "covering cases where tests fail gracefully: all pass"}},
+			false,
+		},
 	}
 	for _, tt := range tests {
 		if got := condTestCommandFailed(tt.ctx); got != tt.want {
@@ -162,6 +177,27 @@ func TestCondCodingIntent(t *testing.T) {
 	for _, tt := range tests {
 		if got := condCodingIntent(Context{Prompt: tt.prompt}); got != tt.want {
 			t.Errorf("prompt %q: got %v want %v", tt.prompt, got, tt.want)
+		}
+	}
+}
+
+func TestCondSkillFileTouched(t *testing.T) {
+	cases := []struct {
+		name string
+		ctx  Context
+		want bool
+	}{
+		{"Write file_path 指向 SKILL.md", Context{ToolInput: map[string]any{"file_path": "skills/foo/SKILL.md"}}, true},
+		{"file_path 大小写不敏感", Context{ToolInput: map[string]any{"file_path": "E:\\skills\\foo\\Skill.MD"}}, true},
+		{"path 键（kimi 文件类工具）", Context{ToolInput: map[string]any{"path": "skills/foo/SKILL.md"}}, true},
+		{"普通源码文件", Context{ToolInput: map[string]any{"file_path": "internal/cli/hook.go"}}, false},
+		{"decisions.md 不算（只锚 SKILL.md 行为契约）", Context{ToolInput: map[string]any{"file_path": "skills/foo/decisions.md"}}, false},
+		{"无路径输入", Context{ToolInput: map[string]any{}}, false},
+		{"空 Context", Context{}, false},
+	}
+	for _, c := range cases {
+		if got := condSkillFileTouched(c.ctx); got != c.want {
+			t.Errorf("%s: got %v want %v", c.name, got, c.want)
 		}
 	}
 }

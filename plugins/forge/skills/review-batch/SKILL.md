@@ -5,6 +5,7 @@ metadata:
   pattern: pipeline + reviewer
   domain: code-review
   composes: [agent-delegation, code-review-gate]
+  triggers: [{"event":"UserPromptSubmit","keywords":["批量审查","全项目审查","审查整个项目","全项目 review","大规模审查","重构完验收","分模块审查","整体审查"],"cooldown":600}]
 ---
 
 # 批量代码审查编排

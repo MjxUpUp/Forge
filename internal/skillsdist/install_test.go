@@ -536,38 +536,41 @@ func TestInstall_DriftOverwrite_Backups(t *testing.T) {
 	}
 }
 
-// TestTargetDirs_AllExpandsCodexCopilot: TargetAll must expand to include codex and copilot.
-// Guards that target=all does not miss the newly added codex/copilot targets — otherwise user --target all distribution silently drops these two tools,
+// TestTargetDirs_AllExpandsCodexCopilot: TargetAll must expand to include codex/copilot/agents.
+// Guards that target=all does not miss the newly added targets — otherwise user --target all distribution silently drops those tools,
 // skills only install to claude/cursor, loop engineering multi-agent distribution breaks.
 //
-// TestTargetDirs_AllExpandsCodexCopilot：TargetAll 必须展开含 codex 和 copilot。
-// 守护 target=all 不会漏掉新加的 codex/copilot 目标——否则用户 --target all 分发会静默漏掉这两个工具，
+// TestTargetDirs_AllExpandsCodexCopilot：TargetAll 必须展开含 codex/copilot/agents。
+// 守护 target=all 不会漏掉新加的目标——否则用户 --target all 分发会静默漏掉这些工具，
 // skills 只装到 claude/cursor，loop engineering 多 agent 分发失效。
 func TestTargetDirs_AllExpandsCodexCopilot(t *testing.T) {
 	dirs, err := TargetDirs([]Target{TargetAll}, true, "")
 	mustMk(t, err)
-	for _, want := range []string{"claude", "cursor", "codex", "copilot"} {
+	for _, want := range []string{"claude", "cursor", "codex", "copilot", "agents"} {
 		if _, ok := dirs[want]; !ok {
-			t.Errorf("target=all 应展开含 %q，实际 keys=%v（codex/copilot 漏装会让多 agent 分发静默失效）", want, dirs)
+			t.Errorf("target=all 应展开含 %q，实际 keys=%v（漏装会让多 agent 分发静默失效）", want, dirs)
 		}
 	}
-	if len(dirs) != 4 {
-		t.Fatalf("target=all 应展开 4 个目标，got %d: %v", len(dirs), dirs)
+	if len(dirs) != 5 {
+		t.Fatalf("target=all 应展开 5 个目标，got %d: %v", len(dirs), dirs)
 	}
 }
 
-// TestTargetDir_CodexCopilotPath: codex/copilot global directory paths are correct.
-// Codex CLI reads ~/.codex/skills (official since 2025-12), Copilot personal skill reads ~/.copilot/skills (GitHub Docs).
+// TestTargetDir_CodexCopilotPath: codex/copilot/agents global directory paths are correct.
+// Codex CLI reads ~/.codex/skills (official since 2025-12), Copilot personal skill reads ~/.copilot/skills (GitHub Docs),
+// agents target reads the cross-agent shared ~/.agents/skills.
 // Wrong paths would cause distribution to wrong locations, tools cannot detect skills.
 //
-// TestTargetDir_CodexCopilotPath：codex/copilot 全局目录路径正确。
-// Codex CLI 读 ~/.codex/skills（2025-12 起官方），Copilot 个人 skill 读 ~/.copilot/skills（GitHub Docs）。
+// TestTargetDir_CodexCopilotPath：codex/copilot/agents 全局目录路径正确。
+// Codex CLI 读 ~/.codex/skills（2025-12 起官方），Copilot 个人 skill 读 ~/.copilot/skills（GitHub Docs），
+// agents 目标读跨 agent 共享的 ~/.agents/skills。
 // 路径写错会导致分发到错误位置，工具识别不到 skill。
 func TestTargetDir_CodexCopilotPath(t *testing.T) {
 	home := "/tmp/fake-home"
 	cases := map[string]string{
 		"codex":   filepath.Join(home, ".codex", "skills"),
 		"copilot": filepath.Join(home, ".copilot", "skills"),
+		"agents":  filepath.Join(home, ".agents", "skills"),
 		"claude":  filepath.Join(home, ".claude", "skills"),
 		"cursor":  filepath.Join(home, ".cursor", "skills"),
 	}

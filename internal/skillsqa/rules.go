@@ -100,6 +100,7 @@ var ValidConditions = map[string]bool{
 	"test_command_failed":        true,
 	"coding_intent":              true,
 	"task_active_no_review":      true,
+	"skill_file_touched":         true,
 }
 
 // validTriggerEventsSorted returns sorted trigger-event names (R12 issue 文案用).
