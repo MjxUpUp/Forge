@@ -173,6 +173,9 @@ func BuildEvidenceChain(entries []Entry, taskRef string) EvidenceChain {
 		// entry says nothing about whether the task's verification actually ran. Unlike drift/cheat-scan (negative
 		// signals), a skill firing is neither good nor bad for the claim; it simply must not feed evidence strength.
 		// Entries are kept in Entries for skill-usage/effectiveness analytics.
+		// CheckKimiPluginStale is the same neutral observation class: it records that the kimi plugin install lags
+		// the binary (distribution health), not that any verification ran — bucketing it as deterministic would
+		// inflate Strength off a once-daily distribution warning (code-review F1, 2026-08-15).
 		//
 		// Advisory/meta check 记录的是 OBSERVATIONS（观察）而非 verification 结果——
 		// 绝不可计入 evidence strength。scope-drift 是 advisory 信号（agent 改了未声明的
@@ -187,7 +190,10 @@ func BuildEvidenceChain(entries []Entry, taskRef string) EvidenceChain {
 		// verification——计入 deterministic 会让 Strength 虚高，而该条目对"本任务验证是否真跑"一字未提。
 		// 与 drift/cheat-scan（负向信号）不同，skill 触发对声明既不好也不坏；它只是绝不能喂给 evidence
 		// strength。条目保留在 Entries 供 skill-usage/effectiveness 分析。
-		if e.Check == CheckScopeDrift || e.Check == CheckCheatScan || e.Check == CheckUnusedScan || e.Check == CheckEscapeHatch || e.Check == CheckSkillTrigger {
+		// CheckKimiPluginStale 同属中性 observation 类：记录 kimi plugin 安装落后于二进制
+		// （分发健康度），不是任何验证实跑——分桶成 deterministic 会让每日一次的分发告警
+		// 虚增 Strength（code-review F1，2026-08-15）。
+		if e.Check == CheckScopeDrift || e.Check == CheckCheatScan || e.Check == CheckUnusedScan || e.Check == CheckEscapeHatch || e.Check == CheckSkillTrigger || e.Check == CheckKimiPluginStale {
 			// Only VERIFICATION-class escape hatches (test-coverage/acceptance/skill-decisions) set the cap flag.
 			// work-activity is a rhythm gate (tool calls between gates), not verification — using it does not prop the
 			// "done" claim on skipped verification, so it must not cap Strength (else refactor-heavy weeks inflate the

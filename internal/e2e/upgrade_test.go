@@ -19,6 +19,19 @@ import (
 
 var forgeBin string
 
+// forgeBuildDir is the TestMain-owned build dir (defer os.RemoveAll): per-version
+// binaries from buildVersionedForge (kimi_stale_test.go) MUST live here, not in any
+// test's t.TempDir() — a cached path outliving its creating test's cleanup dangles for
+// every later cached caller (hit 2026-08-15: second kimi stale test fork/exec failed on
+// the first test's already-removed temp dir).
+//
+// forgeBuildDir 是 TestMain 持有的构建目录（defer os.RemoveAll）：
+// buildVersionedForge（kimi_stale_test.go）的按版本二进制必须放这里，不能放进任何
+// 测试自己的 t.TempDir()——缓存路径比创建它的测试活得久，后续缓存调用方会拿到悬空
+// 路径（2026-08-15 踩坑：第二个 kimi stale 测试 fork/exec 失败于第一个测试已删除的
+// temp 目录）。
+var forgeBuildDir string
+
 func TestMain(m *testing.M) {
 	// Build forge binary once for all tests.
 	tmpDir, err := os.MkdirTemp("", "forge-e2e-build")
@@ -27,6 +40,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	defer os.RemoveAll(tmpDir)
+	forgeBuildDir = tmpDir
 
 	binPath := filepath.Join(tmpDir, "forge")
 	if runtime.GOOS == "windows" {

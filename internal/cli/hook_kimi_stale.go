@@ -20,48 +20,83 @@ import (
 // session 启动都重复唠叨。
 const kimiStaleMarker = ".kimi-plugin-stale"
 
-// appendKimiStaleAdvisory detects whether the kimi-installed forge plugin lags behind the
-// running forge binary and, if so, appends a remediation hint to detail. It reuses the
-// init-suggest advisory channel (exit 0, non-blocking): the caller wraps detail into the
-// hook output's AdditionalContext / stdout. CAVEAT: init-suggest is SessionStart, and on
-// kimi 0.35.0 SessionStart stdout is observation-only (dropped), so this advisory is
-// silently inert on kimi (the function has a single production caller, which sits inside
-// the agent+hook-name kimi guard; the drift is still checklogged regardless). See
+// kimiStaleRidesHook is the single routing predicate for the kimi plugin-stale advisory:
+// it rides the resume-reinject hook (UserPromptSubmit) — the ONE stdout channel kimi
+// 0.35.0 delivers to the model. Deliberately NOT init-suggest (the advisory's old
+// SessionStart ride): that channel was triple-invisible in production (kimi drops
+// SessionStart stdout, the noise gate drops the hook's PASS, nothing reached
+// model/user/logs), and since SessionStart precedes the first UserPromptSubmit in every
+// session, keeping both rides would let the inert append consume the once-daily marker
+// before the visible channel fires. See internal/agentbridge/kimi-hook-routing.md.
+//
+// kimiStaleRidesHook 是 kimi plugin-stale advisory 的唯一路由谓词：搭载 resume-reinject
+// hook（UserPromptSubmit）——kimi 0.35.0 唯一把 stdout 送达模型的通道。刻意不用
+// init-suggest（advisory 旧的 SessionStart 通道）：该通道在生产三重不可见（kimi 丢
+// SessionStart stdout、noise gate 丢该 hook 的 PASS、模型/用户/日志全无信号），且每个
+// session 里 SessionStart 先于首个 UserPromptSubmit，两处都保留会让不可见追加先消耗
+// 按日 marker、可见通道反而永不触发。见 internal/agentbridge/kimi-hook-routing.md。
+func kimiStaleRidesHook(agent, hookName string) bool {
+	return agent == "kimi" && hookName == "resume-reinject"
+}
+
+// prependKimiStaleAdvisory detects whether the kimi-installed forge plugin lags behind the
+// running forge binary and, if so, prepends a remediation hint to detail. Its single
+// production caller sits in runHook inside the agent+hook-name kimi guard and rides the
+// resume-reinject hook (UserPromptSubmit) — the ONE stdout channel kimi 0.35.0 delivers
+// to the model (next-prompt delivery). The advisory's previous ride, init-suggest
+// (SessionStart), was triple-invisible in production (2026-08-15 audit): kimi drops
+// SessionStart stdout, the checklog noise gate drops the hook's PASS, and the drift
+// stayed silent to model/user/logs. The caller also records a kimi-plugin-stale warn
+// checklog entry when this function fires, closing the log-visibility layer. See
 // internal/agentbridge/kimi-hook-routing.md.
+//
+// PREPEND (code-review F2, 2026-08-15), not append: emitAgentOutput truncates detail to
+// maxAdditionalContextLen (9500 runes) at the TAIL. A post-compaction resume-reinject
+// handoff can approach that cap, and a tail-appended advisory would be silently cut off
+// AFTER the once-daily marker was consumed and the checklog entry recorded — the exact
+// "marker eaten, model never sees it" leak this channel fix exists to close. The head
+// always survives truncation.
 //
 // Throttled to once per day via kimiStaleMarker. Returns detail unchanged whenever the
 // check does not apply: non-stale, dev build, unreadable install info, or already nudged
 // today.
 //
-// appendKimiStaleAdvisory 检测 kimi 已装 forge plugin 是否落后于运行中的 forge 二进制，
-// 若落后则把修复提示追加到 detail。复用 init-suggest 的 advisory 通道（exit 0，非阻断）：
-// 调用方把 detail 包进 hook 输出的 AdditionalContext / stdout。注意：init-suggest 是
-// SessionStart，而 kimi 0.35.0 的 SessionStart stdout 是 observation-only（丢弃），故此
-// advisory 在 kimi 上静默失效（本函数唯一生产调用方在 agent+hook 名双重 guard 内，
-// kimi-only；漂移无论如何都记 checklog）。见 internal/agentbridge/kimi-hook-routing.md。
+// prependKimiStaleAdvisory 检测 kimi 已装 forge plugin 是否落后于运行中的 forge 二进制，
+// 若落后则把修复提示**前置**到 detail。唯一生产调用方在 runHook 的 agent+hook 名 kimi
+// 双重 guard 内，搭载 resume-reinject hook（UserPromptSubmit）——kimi 0.35.0 唯一把
+// stdout 送达模型的通道（下一 prompt 送达）。旧通道 init-suggest（SessionStart）在
+// 生产三重不可见（2026-08-15 审计）：kimi 丢 SessionStart stdout、checklog noise gate
+// 丢该 hook 的 PASS、漂移对模型/用户/日志全程静默。本函数触发时调用方还会记一条
+// kimi-plugin-stale warn checklog 条目，补上日志可见性层。见
+// internal/agentbridge/kimi-hook-routing.md。
+//
+// 前置而非追加（code-review F2，2026-08-15）：emitAgentOutput 会在**尾部**把 detail
+// 截到 maxAdditionalContextLen（9500 rune）。压缩后的 resume-reinject handoff 可逼近
+// 该上限，尾接的 advisory 会在按日 marker 已消耗、checklog 条目已记录之后被静默截掉
+// ——正是本次通道修复要关死的「marker 被吃、模型看不到」泄漏。头部永远存活于截断。
 //
 // 经 kimiStaleMarker 按日节流（每日最多一次）。当检测不适用时原样返回 detail：
 // 未过期、dev 构建、读不到安装信息、或今日已提醒。
-func appendKimiStaleAdvisory(detail, fullForgeVersion string) string {
+func prependKimiStaleAdvisory(detail, fullForgeVersion string) string {
 	dataHome, err := forgedata.GlobalHome()
 	if err != nil {
 		return detail
 	}
-	return appendKimiStaleAdvisoryAt(detail, fullForgeVersion, time.Now(), dataHome)
+	return prependKimiStaleAdvisoryAt(detail, fullForgeVersion, time.Now(), dataHome)
 }
 
-// appendKimiStaleAdvisoryAt is the testable core: now and dataHome are injected so the
+// prependKimiStaleAdvisoryAt is the testable core: now and dataHome are injected so the
 // throttle and comparison can be asserted without touching the real clock or home.
 //
 // installed and current are both bare versions (v prefix trimmed) before compareVersions;
 // getCurrentVersion may leave a v prefix from `git describe`, so trim it here too.
 //
-// appendKimiStaleAdvisoryAt 是可测核心：now 与 dataHome 注入，使节流与比对可脱离
+// prependKimiStaleAdvisoryAt 是可测核心：now 与 dataHome 注入，使节流与比对可脱离
 // 真实时钟与 home 断言。
 //
 // installed 与 current 在 compareVersions 前均为裸版本（已 trim v）；getCurrentVersion
 // 可能从 `git describe` 留下 v 前缀，故此处一并 trim。
-func appendKimiStaleAdvisoryAt(detail, fullForgeVersion string, now time.Time, dataHome string) string {
+func prependKimiStaleAdvisoryAt(detail, fullForgeVersion string, now time.Time, dataHome string) string {
 	installed, ok := agentbridge.KimiPluginStaleInfo()
 	if !ok {
 		return detail
@@ -96,5 +131,10 @@ func appendKimiStaleAdvisoryAt(detail, fullForgeVersion string, now time.Time, d
 	if detail == "" {
 		return msg
 	}
-	return detail + "\n" + msg
+	// Head placement (F2): emitAgentOutput truncates the TAIL at 9500 runes — the
+	// advisory must sit before the (potentially long) handoff detail so it survives.
+	//
+	// 头部放置（F2）：emitAgentOutput 在 9500 rune 处截尾——advisory 必须放在（可能
+	// 很长的）handoff detail 之前才能存活。
+	return msg + "\n" + detail
 }

@@ -91,6 +91,26 @@ const (
 	// agent 无法伪造）。Passed=true、Checked=true、Detail 标 skill 名 + 触发原因。不计入证据强度
 	// （它是 skill 触发的观测，非验证证据）——见 BuildEvidenceChain。
 	CheckSkillTrigger CheckName = "skill-trigger"
+	// CheckKimiPluginStale records that the kimi-installed forge plugin lags behind the
+	// running forge binary (tag-locked install, no auto-update). Passed=true with
+	// Level=LevelWarn (escape-hatch pattern: Passed stays neutral so evidence aggregation
+	// is unaffected; the warn signal rides Level), Checked=true, Detail carries the
+	// remediation advisory. Recorded once per day at most (kimiStaleMarker throttle) when
+	// the advisory actually fires on the resume-reinject (UserPromptSubmit) channel.
+	// Exists because the drift was triple-invisible in production (2026-08-15 audit):
+	// kimi drops SessionStart stdout (the advisory's old ride), the noise gate drops the
+	// hook's PASS, and model/user/logs all stayed silent while the plugin drifted two
+	// releases behind. Without this entry `forge trace`/dashboard cannot see plugin drift.
+	//
+	// CheckKimiPluginStale 记录 kimi 已装 forge plugin 落后于运行中的 forge 二进制
+	// （tag 锁定安装、无自动更新）。Passed=true 且 Level=LevelWarn（escape-hatch 模式：
+	// Passed 保持中性不影响证据聚合，warn 信号走 Level），Checked=true，Detail 带修复
+	// 提示。仅在 advisory 真正于 resume-reinject（UserPromptSubmit）通道触发时记录，
+	// 每日至多一条（kimiStaleMarker 节流）。存在理由：该漂移在生产曾三重不可见
+	// （2026-08-15 审计）——kimi 丢 SessionStart stdout（advisory 旧通道）、noise gate
+	// 丢该 hook 的 PASS、plugin 落后两个 release 期间模型/用户/日志全静默。无此条目，
+	// `forge trace`/看板看不到 plugin 漂移。
+	CheckKimiPluginStale CheckName = "kimi-plugin-stale"
 )
 
 // EvidenceSource marks the source of a checklog evidence entry, distinguishing deterministic (hook/external
