@@ -1,0 +1,13 @@
+{
+  "trigger_cases": [
+    {"query": "帮我审查整个项目的代码", "should_trigger": true},
+    {"query": "重构完了,做一次全量验收审查", "should_trigger": true},
+    {"query": "把项目按模块拆开,分模块并行审查", "should_trigger": true},
+    {"query": "全项目 review 一遍,输出一份去重的问题清单", "should_trigger": true},
+    {"query": "大范围代码审查,帮我编排下怎么搞", "should_trigger": true},
+    {"query": "这个 PR 的 diff 提交前帮我审查一下", "should_trigger": false},
+    {"query": "项目要验收了,看下功能完整度够不够", "should_trigger": false},
+    {"query": "能上线了吗,发布前帮我 go/no-go 检查", "should_trigger": false},
+    {"query": "review 一下这段 Rust 代码写得怎么样", "should_trigger": false}
+  ]
+}

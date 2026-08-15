@@ -1,0 +1,14 @@
+{
+  "trigger_cases": [
+    { "query": "这个页面太丑了帮我调好看点", "should_trigger": true },
+    { "query": "把界面做成 Linear 那种暗色精致风", "should_trigger": true },
+    { "query": "想给按钮加个高级感动效", "should_trigger": true },
+    { "query": "怎么做反 AI 同质化的设计", "should_trigger": true },
+    { "query": "帮我实现 Apple 液态玻璃那种风格", "should_trigger": true },
+    { "query": "新前端项目选什么技术栈", "should_trigger": false },
+    { "query": "帮我写个 Vue 表单组件", "should_trigger": false },
+    { "query": "提交前帮我审查下代码", "should_trigger": false },
+    { "query": "从零建一套 design token 体系", "should_trigger": false },
+    { "query": "把旧设计系统迁移到新色板", "should_trigger": false }
+  ]
+}

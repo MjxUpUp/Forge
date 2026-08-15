@@ -1,0 +1,13 @@
+{
+  "trigger_cases": [
+    { "query": "查下这个产品最近融了多少钱", "should_trigger": true },
+    { "query": "A 和 B 两个产品怎么选帮我对比下", "should_trigger": true },
+    { "query": "帮我核实下这个数据是不是真的", "should_trigger": true },
+    { "query": "这个技术的最新进展是什么", "should_trigger": true },
+    { "query": "查下这家公司的市场份额", "should_trigger": true },
+    { "query": "这个报错是什么意思", "should_trigger": false },
+    { "query": "深度调研下这个行业出份报告发飞书", "should_trigger": false },
+    { "query": "提方案前帮我验证下环境支持不支持", "should_trigger": false },
+    { "query": "这个库的 API 怎么调", "should_trigger": false }
+  ]
+}

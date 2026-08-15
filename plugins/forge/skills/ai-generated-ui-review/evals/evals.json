@@ -1,0 +1,13 @@
+{
+  "trigger_cases": [
+    {"query": "v0 生成的这段前端代码能不能用,帮我审查下", "should_trigger": true},
+    {"query": "Lovable 出的这个原型能上生产吗", "should_trigger": true},
+    {"query": "帮我审查下这段 AI 生成的 UI 代码", "should_trigger": true},
+    {"query": "这个 AI 写的前端能合并吗,做一下 vibe coding 审查", "should_trigger": true},
+    {"query": "Bolt.new 生成的代码帮我做下安全审查", "should_trigger": true},
+    {"query": "我手写的这个 React 组件帮我 review 下", "should_trigger": false},
+    {"query": "用 v0 帮我生成一个落地页", "should_trigger": false},
+    {"query": "这个 diff 有没有断言弱化的问题", "should_trigger": false},
+    {"query": "帮我审查下这段 Rust 代码", "should_trigger": false}
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "trigger_cases": [
+    { "query": "我同时用 Claude Code 和 Cursor 开发，怎么同步上下文", "should_trigger": true },
+    { "query": "把这个分析结果给其他 AI 工具看", "should_trigger": true },
+    { "query": "多个 agent 协作信息不同步怎么办", "should_trigger": true },
+    { "query": "把 A 工具发现的问题传给 B 工具", "should_trigger": true },
+    { "query": "工具间怎么传递修改记录", "should_trigger": true },
+    { "query": "继续上次会话的工作", "should_trigger": false },
+    { "query": "回顾沉淀下这次的经验", "should_trigger": false },
+    { "query": "帮我写个新 skill", "should_trigger": false },
+    { "query": "新项目从零开始搭建", "should_trigger": false }
+  ]
+}

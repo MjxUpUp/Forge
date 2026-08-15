@@ -1,0 +1,14 @@
+{
+  "trigger_cases": [
+    { "query": "帮我深度调研下 AI coding 这个方向", "should_trigger": true },
+    { "query": "调研下竞品并出一份结构化报告", "should_trigger": true },
+    { "query": "基于这几个文件做调研，只看这些文件", "should_trigger": true },
+    { "query": "调研完之后发到飞书上", "should_trigger": true },
+    { "query": "研究下这个领域的发展趋势写个报告", "should_trigger": true },
+    { "query": "查下这个 API 怎么调", "should_trigger": false },
+    { "query": "帮我核实一个数据，两个来源对一下就行", "should_trigger": false },
+    { "query": "帮我按模板起草一份周报", "should_trigger": false },
+    { "query": "这个方案技术上可行吗帮我论证下", "should_trigger": false },
+    { "query": "这个报错是什么意思", "should_trigger": false }
+  ]
+}

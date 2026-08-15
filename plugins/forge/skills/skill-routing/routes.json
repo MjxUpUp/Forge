@@ -1,0 +1,159 @@
+[
+  {
+    "_comment": "skill-router 共享路由表（canonical）。命中的用户输入会被提示路由到对应 skill。match 数组任一关键词命中（子串匹配，不区分大小写）即触发。单一真相源：claude/cursor/codex 共用本文件。修改后 claude/cursor 重启会话生效（codex 走 AGENTS.md 文字，重新部署即更新）。"
+  },
+  {
+    "_comment": "canonical 约束：本文件只收录指向 skills/ 目录已分发 skill 的路由，发布前跑 scripts/check-routes.sh 守卫校验。个人/环境专属路由（如 lark-*）不要进本文件，放用户级覆盖层 ~/.forge/skill-routes.json（格式见 examples/personal-overlay.example.json），路由表源解析时作为末位候选生效。"
+  },
+  {
+    "match": [
+      "代码审查",
+      "code review",
+      "审查代码",
+      "帮我 review",
+      "review 一下代码"
+    ],
+    "skill": "code-review-gate",
+    "reason": "纯代码审查"
+  },
+  {
+    "match": [
+      "提交代码",
+      "能提交吗",
+      "合并分支",
+      "提交前检查",
+      "交付检查"
+    ],
+    "skill": "implementation-discipline",
+    "reason": "实施到交付纪律（提交卫生 + 门控顺序）"
+  },
+  {
+    "match": [
+      "回顾下这次",
+      "沉淀经验",
+      "总结教训",
+      "经验沉淀",
+      "复盘这次",
+      "这次协作",
+      "哪些经验要沉淀",
+      "记 memory 还是做 skill",
+      "该做 skill 还是自动化"
+    ],
+    "skill": "session-retrospective",
+    "reason": "会话/任务结束经验回顾与载体路由"
+  },
+  {
+    "match": [
+      "文档滞后",
+      "文档过期",
+      "README 不一致",
+      "文档和代码不一致",
+      "文档漂移",
+      "守卫测试",
+      "hook 表对不上",
+      "文档说有但代码没有",
+      "发布前审计文档"
+    ],
+    "skill": "docs-consistency-guard",
+    "reason": "衍生文档 vs 真相源一致性守卫"
+  },
+  {
+    "match": [
+      "前端",
+      "前端开发",
+      "frontend",
+      "写组件",
+      "写页面",
+      "UI 组件",
+      "状态管理",
+      "前端测试",
+      "前端 a11y",
+      "前端性能"
+    ],
+    "skill": "frontend-feature-development",
+    "reason": "前端开发规范（组件/状态/a11y/测试/性能）"
+  },
+  {
+    "match": [
+      "后端",
+      "后端开发",
+      "backend",
+      "API 设计",
+      "写 endpoint",
+      "service 层",
+      "鉴权",
+      "中间件",
+      "后端测试",
+      "性能调优"
+    ],
+    "skill": "backend-development",
+    "reason": "后端开发规范（API/鉴权/性能/测试）"
+  },
+  {
+    "match": [
+      "数据库设计",
+      "schema 设计",
+      "建表",
+      "加字段",
+      "加索引",
+      "迁移",
+      "migration",
+      "慢查询",
+      "ORM 选型"
+    ],
+    "skill": "database-design",
+    "reason": "数据库设计规范（schema/迁移/索引/ORM）"
+  },
+  {
+    "match": [
+      "架构",
+      "系统架构",
+      "system architecture",
+      "画架构图",
+      "服务拆分",
+      "bounded context",
+      "C4 model",
+      "12-factor",
+      "微服务拆分",
+      "ADR"
+    ],
+    "skill": "system-architecture",
+    "reason": "系统架构（服务拆分/C4/DDD strategic/12-factor/ADR）"
+  },
+  {
+    "match": [
+      "SLO",
+      "Error Budget",
+      "可观测性",
+      "observability",
+      "熔断",
+      "circuit breaker",
+      "限流",
+      "rate limit",
+      "retry",
+      "4 golden signals",
+      "Trace"
+    ],
+    "skill": "resilience-and-observability",
+    "reason": "韧性与可观测性（SLO/4 golden signals/Circuit Breaker/Retry/Bulkhead/Backpressure）"
+  },
+  {
+    "match": [
+      "OWASP",
+      "SQL 注入",
+      "XSS",
+      "CSRF",
+      "安全漏洞",
+      "secret 管理",
+      "Threat Modeling",
+      "STRIDE",
+      "依赖漏洞",
+      "安全审计",
+      "MFA",
+      "AuthN",
+      "AuthZ"
+    ],
+    "skill": "secure-coding",
+    "reason": "安全编码（OWASP Top 10/STRIDE/secret mgmt/输入验证/依赖审计/SBOM）"
+  }
+]

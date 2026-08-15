@@ -1,0 +1,13 @@
+{
+  "trigger_cases": [
+    {"query": "我要用 v0 生成一个落地页,怎么做才能上生产", "should_trigger": true},
+    {"query": "用 Cursor 写前端,帮我走个工程化流程", "should_trigger": true},
+    {"query": "AI 出原型然后改,正确的工作流是什么", "should_trigger": true},
+    {"query": "Figma 设计稿转代码,用 Builder.io 怎么做", "should_trigger": true},
+    {"query": "Pixso 设计稿怎么通过 MCP 生成代码", "should_trigger": true},
+    {"query": "v0 生成的这段代码帮我审查下能不能合并", "should_trigger": false},
+    {"query": "帮我手写一个 React 组件", "should_trigger": false},
+    {"query": "前端项目选型,组件库选哪个好", "should_trigger": false},
+    {"query": "帮我调研下现在 AI 生成 UI 工具哪个强", "should_trigger": false}
+  ]
+}
