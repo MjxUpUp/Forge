@@ -5,6 +5,7 @@ metadata:
   pattern: inversion + pipeline + gate
   domain: frontend
   composes: [ai-ui-generation-workflow, frontend-feature-development, frontend-aesthetics-execution]
+  triggers: [{"event":"UserPromptSubmit","keywords":["导成设计图","导出设计图","反向导入","设计评审快照","变成设计图","给设计看"],"cooldown":600}]
 ---
 
 # 设计审核快照：前端项目反向导入 Pixso

@@ -53,3 +53,20 @@ description 审计合格未改动 + evals.json 建立
 ### Evidence
 
 docs/skills-value-audit-2026-08-02.md
+
+## [d-18cc4bec127dc8a8-cfde6add] accept
+
+- **Skill**: frontend-stack-selection
+- **DecidedAt**: 2026-08-16T13:23:49Z
+
+### Diagnosis
+
+同UI族:前端选型请求无触发
+
+### Revision
+
+metadata.triggers新增UserPromptSubmit关键词(前端选型/选组件库/组件库选/Tauri 还是/Tauri vs/Electron 还是/CSS 方案/前端用什么/桌面端用什么/技术栈选型),cooldown 600
+
+### Evidence
+
+选型请求高频,触发覆盖缺口

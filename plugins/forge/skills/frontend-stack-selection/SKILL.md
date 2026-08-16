@@ -4,6 +4,7 @@ description: "前端技术栈选型决策器，强制先问场景再推荐，反
 metadata:
   pattern: inversion + gate
   domain: frontend
+  triggers: [{"event":"UserPromptSubmit","keywords":["前端选型","选组件库","组件库选","Tauri 还是","Tauri vs","Electron 还是","CSS 方案","前端用什么","桌面端用什么","技术栈选型"],"cooldown":600}]
 ---
 
 # 前端技术栈选型决策器

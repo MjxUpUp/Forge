@@ -5,6 +5,7 @@ metadata:
   pattern: gate
   domain: design
   composes: [evidence-based-proposal]
+  triggers: [{"event":"UserPromptSubmit","keywords":["出原型","原型给我看","让我先看","先看效果","确认形态","做个原型","原型确认"],"cooldown":600}]
 ---
 
 # 原型确认门（动手前先让用户拍板）

@@ -5,6 +5,7 @@ metadata:
   pattern: tool-wrapper
   domain: backend
   composes: [integration-test-architecture, verification-driver, backend-development, code-review-gate]
+  triggers: [{"event":"UserPromptSubmit","keywords":["建表","表结构","schema 设计","写 migration","加索引","慢查询","ORM 选型","选 ORM","数据库设计"],"cooldown":600}]
 ---
 
 # 数据库设计规范

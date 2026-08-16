@@ -113,6 +113,18 @@ func claudeConfigHome() string {
 	return filepath.Join(home, ".claude")
 }
 
+// ClaudeConfigHomeDir exports claudeConfigHome for cross-agent environment auditing
+// (forge doctor): the user-level Claude Code config home where settings.json hooks live.
+// Single source of the CLAUDE_CONFIG_DIR-first convention — doctor must not carry a
+// second copy that can drift.
+//
+// ClaudeConfigHomeDir 导出 claudeConfigHome 供跨 agent 环境审计（forge doctor）使用：
+// user-level 的 Claude Code 配置目录，settings.json hooks 所在地。CLAUDE_CONFIG_DIR
+// 优先约定的单一真相源——doctor 不得持有会漂移的第二份副本。
+func ClaudeConfigHomeDir() string {
+	return claudeConfigHome()
+}
+
 // codexConfigHome resolves codex's config home: CODEX_HOME first, else ~/.codex.
 //
 // codexConfigHome 解析 codex 的 config home：CODEX_HOME 优先，否则 ~/.codex。

@@ -74,3 +74,20 @@ description 三段式合格未改动;新建 evals/evals.json(5正+4负)
 ### Evidence
 
 docs/skills-value-audit-2026-08-02.md
+
+## [d-18cc4bedd8b9ef3c-c90c9348] accept
+
+- **Skill**: rust-code-review
+- **DecidedAt**: 2026-08-16T13:23:57Z
+
+### Diagnosis
+
+同族:Rust审查请求无触发
+
+### Revision
+
+metadata.triggers新增UserPromptSubmit关键词(Rust review/review Rust/审查 Rust/Rust PR/Rust 代码审查/Rust 改动/这个 Rust),cooldown 600
+
+### Evidence
+
+Rust项目审查请求出现,触发覆盖缺口
