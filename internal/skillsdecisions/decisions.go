@@ -87,9 +87,9 @@ type SkillDecision struct {
 	Evidence   string    `json:"evidence"`               // 脱敏评估证据
 	Outcome    string    `json:"outcome"`                // accept|reject|revise|defer
 	Rationale  string    `json:"rationale,omitempty"`    // 为什么这个 outcome（结合背景）
-	CommitHash string `json:"commit_hash,omitempty"`  // 修订关联 git commit（scoped revert 锚点）
-	ProbeRunID string `json:"probe_run_id,omitempty"` // 关联 eval/probe run
-	By         string `json:"by,omitempty"`           // 来源（claude-code/codex/...）
+	CommitHash string    `json:"commit_hash,omitempty"`  // 修订关联 git commit（scoped revert 锚点）
+	ProbeRunID string    `json:"probe_run_id,omitempty"` // 关联 eval/probe run
+	By         string    `json:"by,omitempty"`           // 来源（claude-code/codex/...）
 	DecidedAt  time.Time `json:"decided_at"`
 	// Prediction is the testable prediction declared at edit time (AHE decision observability):
 	// which observable signal should improve if the revision works. Declared BEFORE outcomes are

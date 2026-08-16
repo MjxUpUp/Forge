@@ -73,8 +73,8 @@ type Conclusion struct {
 	// 需要数字：67 和 40 在 LowDimensions 里都是「低」，但按 AutoDesign margin 校准，
 	// 70 切线附近 0-3 分的边界抖动折价后只有 40 是明确低。BuildConclusion 在 score != nil
 	// 时填充；存量结论（早于该字段）反序列化为 nil——消费方须回落 LowDimensions。
-	DimScores []DimScore `json:"dim_scores,omitempty"`
-	CompletedAt time.Time `json:"completed_at"`
+	DimScores   []DimScore `json:"dim_scores,omitempty"`
+	CompletedAt time.Time  `json:"completed_at"`
 	// RetrospectiveNudge: weak evidence (Unverified/Weak) or low score (<70) → true.
 	// Drives session-retrospective to review this completion claim at session end —
 	// especially the "high-score but weak-evidence" blind spot (score cannot tell whether

@@ -283,7 +283,7 @@ func TestRunTaskVerifyAcceptanceAt_ForeignRequiresTrust(t *testing.T) {
 // 正是恶意内容操纵 LLM agent，被注入的 agent 大可直接照拒绝文案的指引加 flag。stdin 非
 // char device（agent 的 Bash 管道）时，即便带 --trust-foreign 也必须拒绝：不执行、不清
 // 标记。判别器的 true 侧由 TestRunTaskVerifyAcceptanceAt_ForeignRequiresTrust 的受信段覆盖
-//（那里覆写了变量）。
+// （那里覆写了变量）。
 func TestRunTaskVerifyAcceptanceAt_TrustForeignRequiresHumanTTY(t *testing.T) {
 	dir, taskRef := setupAcceptanceTask(t, []string{`go version :: go version`})
 	if err := taskpipeline.MutateTaskState(dir, taskRef, func(s *taskpipeline.TaskState) error {
