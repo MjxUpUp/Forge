@@ -424,9 +424,17 @@ func TestRun_ClaudePluginCache_LiveRegistryPreferred(t *testing.T) {
 		writeFile(t, filepath.Join(d, ".claude-plugin", "plugin.json"),
 			`{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"forge hook --agent claude-code pre-tool-use"}]}]}}`)
 	}
+	// installPath 原生 %q 写入（Windows 上即 JSON 双反斜杠字节）——钉住 liveClaudePluginTargets
+	// 的 \\ 折叠 + ToSlash + 前缀检查链条在真实字节形状下工作；用 ToSlash 会让夹具永远是
+	// 正斜杠、折叠逻辑只在手动 E2E 里被执行（评审四轮 LOW，shape-contract 教训）。
+	//
+	// installPath written natively via %q (on Windows that's the JSON doubled-backslash
+	// bytes) — pins the \\-fold + ToSlash + prefix-check chain in liveClaudePluginTargets
+	// against the REAL byte shape; a ToSlash fixture is always forward slashes, leaving
+	// the fold exercised only by manual E2E (round-4 review LOW, shape-contract lesson).
 	writeFile(t, filepath.Join(root, ".claude", "plugins", "installed_plugins.json"),
 		fmt.Sprintf(`{"version":2,"plugins":{"forge@forge":[{"scope":"user","installPath":%q}]}}`,
-			filepath.ToSlash(live)))
+			live))
 	rep := Run("1.30.0", fakeEnv(map[string]string{`/fake/forge.exe`: "1.30.0"}))
 	h := hostOf(t, rep, "claude-code")
 	if h.Status != StatusOK {
@@ -452,9 +460,12 @@ func TestRun_ClaudePluginCache_RegistryVanished(t *testing.T) {
 	cache := filepath.Join(root, ".claude", "plugins", "cache", "forge", "forge")
 	writeFile(t, filepath.Join(cache, "abc123def", ".claude-plugin", "plugin.json"),
 		`{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"forge hook --agent claude-code pre-tool-use"}]}]}}`)
+	// 同上：原生 %q，注册表字节形状与生产一致（评审四轮 LOW）。
+	//
+	// Same as above: native %q, registry byte shape matches production (round-4 LOW).
 	writeFile(t, filepath.Join(root, ".claude", "plugins", "installed_plugins.json"),
 		fmt.Sprintf(`{"version":2,"plugins":{"forge@forge":[{"scope":"user","installPath":%q}]}}`,
-			filepath.ToSlash(filepath.Join(cache, "deleted0sha"))))
+			filepath.Join(cache, "deleted0sha")))
 	rep := Run("1.30.0", fakeEnv(map[string]string{`/fake/forge.exe`: "1.30.0"}))
 	h := hostOf(t, rep, "claude-code")
 	if h.Status != StatusOK {
