@@ -325,6 +325,10 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge skills eval-record --skill X --from <file/->` | 回填一次 eval run（agent dispatch 跑完每个 prompt 后整批提交，归一化+判定+算 health） |
 | `forge skills eval-report --skill X` | latest run vs baseline 回归报告（regression 三态 + pass-rate delta + 可比性） |
 | `forge skills eval-baseline --skill X` | 标记 baseline run（回归基准，显式人工决策） |
+| `forge skills battery [--gate]` | 全库回归电池：逐 skill latest vs baseline 判回归（JudgeSkillAccept 单一判源），`--gate` 任一回归即阻断（exit 4）；无 baseline/陈旧锚点降级 advisory |
+| `forge skills analyze [--json]` | 弱点挖掘报告（只读）：低分维度聚簇/验证盲区率/从未触发 skill/低成效 skill + 数据 caveat，供人选题 |
+| `forge skills decide --prediction <p>` | 记录 skill 决策四元组；`--prediction` 声明可检验预测（哪个可观测信号应改善），供验证闭环回扣 |
+| `forge skills verify --skill X --decision <id> --result <r>` | 回填决策验证结果（预测→验证闭环第二步；`--at` 指定时间、`--history`/`--history-json` 查全量可证伪台账） |
 
 </details>
 

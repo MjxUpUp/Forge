@@ -87,10 +87,29 @@ type SkillDecision struct {
 	Evidence   string    `json:"evidence"`               // 脱敏评估证据
 	Outcome    string    `json:"outcome"`                // accept|reject|revise|defer
 	Rationale  string    `json:"rationale,omitempty"`    // 为什么这个 outcome（结合背景）
-	CommitHash string    `json:"commit_hash,omitempty"`  // 修订关联 git commit（scoped revert 锚点）
-	ProbeRunID string    `json:"probe_run_id,omitempty"` // 关联 eval/probe run
-	By         string    `json:"by,omitempty"`           // 来源（claude-code/codex/...）
+	CommitHash string `json:"commit_hash,omitempty"`  // 修订关联 git commit（scoped revert 锚点）
+	ProbeRunID string `json:"probe_run_id,omitempty"` // 关联 eval/probe run
+	By         string `json:"by,omitempty"`           // 来源（claude-code/codex/...）
 	DecidedAt  time.Time `json:"decided_at"`
+	// Prediction is the testable prediction declared at edit time (AHE decision observability):
+	// which observable signal should improve if the revision works. Declared BEFORE outcomes are
+	// known; verified later by VerifyDecision — turns every edit into a falsifiable contract
+	// instead of a retrospective narrative. Optional (legacy decisions predate the field).
+	//
+	// Prediction 是修改时刻声明的可检验预测（AHE 决策可观测）：修订若有效，哪个可观测信号
+	// 应改善。在结果已知之前声明，之后由 VerifyDecision 回填对账——让每次修改成为可证伪
+	// 契约，而非事后叙述。可选（存量决策早于该字段）。
+	Prediction string `json:"prediction,omitempty"`
+	// Verification is the backfilled verification of Prediction: what actual outcomes showed
+	// (hit / miss / inconclusive + numbers). Empty until VerifyDecision fills it.
+	//
+	// Verification 是 Prediction 的回填验证：实际结果如何（命中/未命中/不可判 + 数字）。
+	// VerifyDecision 回填前为空。
+	Verification string `json:"verification,omitempty"`
+	// VerifiedAt is when the verification was backfilled.
+	//
+	// VerifiedAt 是验证回填时刻。
+	VerifiedAt time.Time `json:"verified_at,omitempty"`
 }
 
 // NewDecisionID generates a d-<unixnano-hex>-<randhex> identifier. Cross-process collision
@@ -210,11 +229,25 @@ func formatDecision(d SkillDecision) string {
 	if d.ProbeRunID != "" {
 		b.WriteString("- **ProbeRun**: " + d.ProbeRunID + "\n")
 	}
+	if !d.VerifiedAt.IsZero() {
+		b.WriteString("- **VerifiedAt**: " + d.VerifiedAt.UTC().Format(time.RFC3339) + "\n")
+	}
 	b.WriteString("\n### Diagnosis\n\n" + strings.TrimRight(d.Diagnosis, "\n") + "\n\n")
 	b.WriteString("### Revision\n\n" + strings.TrimRight(d.Revision, "\n") + "\n\n")
+	// Prediction renders between Revision and Evidence: it is declared at edit time as part of
+	// the change contract, while Evidence is the evaluation data backing the decision.
+	//
+	// Prediction 渲染在 Revision 与 Evidence 之间：它与修改同时声明、属变更契约的一部分，
+	// 而 Evidence 是支撑决策的评估数据。
+	if d.Prediction != "" {
+		b.WriteString("### Prediction\n\n" + strings.TrimRight(d.Prediction, "\n") + "\n\n")
+	}
 	b.WriteString("### Evidence\n\n" + strings.TrimRight(d.Evidence, "\n") + "\n")
 	if d.Rationale != "" {
 		b.WriteString("\n### Rationale\n\n" + strings.TrimRight(d.Rationale, "\n") + "\n")
+	}
+	if d.Verification != "" {
+		b.WriteString("\n### Verification\n\n" + strings.TrimRight(d.Verification, "\n") + "\n")
 	}
 	return b.String()
 }
@@ -250,6 +283,10 @@ func parseDecisions(md string) []SkillDecision {
 			cur.Evidence = content
 		case "Rationale":
 			cur.Rationale = content
+		case "Prediction":
+			cur.Prediction = content
+		case "Verification":
+			cur.Verification = content
 		}
 		body.Reset()
 	}
@@ -387,5 +424,9 @@ func parseField(d *SkillDecision, line string) {
 		d.CommitHash = val
 	case "ProbeRun":
 		d.ProbeRunID = val
+	case "VerifiedAt":
+		if t, err := time.Parse(time.RFC3339, val); err == nil {
+			d.VerifiedAt = t
+		}
 	}
 }
