@@ -120,6 +120,50 @@ func TestBuildConclusion_LowDimensionsCaptured(t *testing.T) {
 	}
 }
 
+func TestBuildConclusion_DimScoresFilled(t *testing.T) {
+	// Noise-band contract (P4): DimScores carries EVERY dimension's raw number (not just the
+	// <70 binary) so recurrence hardening can tell a 67 (boundary flap) from a 40 (clear low).
+	// JSON round-trip must preserve the numbers; legacy lines lacking dim_scores unmarshal
+	// to nil (fallback path).
+	//
+	// 噪声带契约（P4）：DimScores 携带每个维度的原始分（非只有 <70 二值），让复发升硬能
+	// 区分 67（边界抖动）与 40（明确低）。JSON 往返须保留数字；缺 dim_scores 的存量行
+	// 反序列化为 nil（回落路径）。
+	c := BuildConclusion(`feat/x`, ``, score(70, `C`,
+		dim(`completeness`, 60),
+		dim(`tests`, 95),
+		dim(`design`, 67),
+	), ec(0, 0), 0, 0, fixedTime, nil)
+	if len(c.DimScores) != 3 {
+		t.Fatalf(`DimScores len=%d want 3（全量维度，含 >=70）`, len(c.DimScores))
+	}
+	want := []DimScore{
+		{Dimension: `completeness`, Score: 60},
+		{Dimension: `tests`, Score: 95},
+		{Dimension: `design`, Score: 67},
+	}
+	for i, w := range want {
+		if c.DimScores[i] != w {
+			t.Errorf(`DimScores[%d]=%+v want %+v`, i, c.DimScores[i], w)
+		}
+	}
+
+	// JSON round-trip preserves the raw numbers.
+	//
+	// JSON 往返保留原始数字。
+	root := forgedatatest.ForDataDir(t.TempDir())
+	if err := Append(root, &c); err != nil {
+		t.Fatalf(`Append: %v`, err)
+	}
+	got, err := LoadAll(root)
+	if err != nil {
+		t.Fatalf(`LoadAll: %v`, err)
+	}
+	if len(got) != 1 || len(got[0].DimScores) != 3 || got[0].DimScores[2].Score != 67 {
+		t.Errorf(`DimScores round-trip 丢失：got=%+v`, got[0].DimScores)
+	}
+}
+
 func TestBuildConclusion_NilScore(t *testing.T) {
 	// Unscored (score=nil): Score=0, Grade empty, LowDimensions empty; nudge depends on strength alone.
 	//
@@ -133,6 +177,9 @@ func TestBuildConclusion_NilScore(t *testing.T) {
 	}
 	if len(c.LowDimensions) != 0 {
 		t.Errorf(`LowDimensions=%v want 空（nil score 无维度）`, c.LowDimensions)
+	}
+	if len(c.DimScores) != 0 {
+		t.Errorf(`DimScores=%v want 空（nil score 无维度）`, c.DimScores)
 	}
 	if !c.RetrospectiveNudge {
 		t.Error(`RetrospectiveNudge=false want true（Unverified 应触发）`)
