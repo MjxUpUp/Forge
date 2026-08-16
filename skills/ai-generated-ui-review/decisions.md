@@ -87,3 +87,20 @@ description 三段式合格未改动;新建 evals/evals.json(5正+4负)
 ### Evidence
 
 docs/skills-value-audit-2026-08-02.md
+
+## [d-18cc4be8334ceab8-0f697264] accept
+
+- **Skill**: ai-generated-ui-review
+- **DecidedAt**: 2026-08-16T13:23:32Z
+
+### Diagnosis
+
+UI/设计族12个skill全无trigger,协作记录中AI生成UI审查类请求高频(vibe coding/Lovable/Bolt产物能否上生产)
+
+### Revision
+
+metadata.triggers新增UserPromptSubmit关键词(AI 生成的/AI生成的/AI 写的前端/vibe coding/Lovable/Bolt.new/能上生产吗/AI 生成 UI),cooldown 600
+
+### Evidence
+
+2026-08-16扫描:UI设计类请求为跨项目第三高频簇;触发覆盖47/51,本族全在缺失名单

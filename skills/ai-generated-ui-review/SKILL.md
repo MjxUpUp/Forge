@@ -6,6 +6,7 @@ metadata:
   domain: frontend
   severity-levels: block,fix,suggest
   composes: [frontend-code-review]
+  triggers: [{"event":"UserPromptSubmit","keywords":["AI 生成的","AI生成的","AI 写的前端","AI 写的代码","vibe coding","Lovable","Bolt.new","能上生产吗","AI 生成 UI"],"cooldown":600}]
 ---
 
 # AI 生成 UI 审查

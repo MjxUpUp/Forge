@@ -35,3 +35,20 @@ description SKIP 边界补全 + evals.json 建立
 ### Evidence
 
 docs/skills-value-audit-2026-08-02.md
+
+## [d-18cc4be5816c1adc-fa4c8db4] accept
+
+- **Skill**: session-retrospective
+- **DecidedAt**: 2026-08-16T13:23:21Z
+
+### Diagnosis
+
+近月协作扫描发现周度复盘类请求出现过4次但skill零触发——95%触达靠hook,纯声明无trigger的skill不会被加载
+
+### Revision
+
+SKILL.md metadata.triggers新增UserPromptSubmit关键词组(回流审查/周度复盘/近一周/协作效果/协作记录/使用情况审查/沉淀经验),cooldown 7200(周度仪式,重复注入纯噪音)
+
+### Evidence
+
+2026-08-16扫描668条用户消息:该类请求4次全靠agent自觉;触发框架落地后47/51 skill已有trigger,本skill在缺失名单

@@ -87,3 +87,20 @@ composes 移除 frontend-feature-development（单向化：开发→审查）；
 ### Evidence
 
 task-complete 审查子 agent 发现（旧账）；全库 composes 机检
+
+## [d-18cc4bec0d0eb954-bbb87303] accept
+
+- **Skill**: frontend-code-review
+- **DecidedAt**: 2026-08-16T13:23:49Z
+
+### Diagnosis
+
+同UI族:前端审查请求无触发
+
+### Revision
+
+metadata.triggers新增UserPromptSubmit关键词(前端 code review/前端 review/审查前端/前端审查/a11y/无障碍检查),cooldown 600
+
+### Evidence
+
+前端审查请求多次出现,触发覆盖缺口

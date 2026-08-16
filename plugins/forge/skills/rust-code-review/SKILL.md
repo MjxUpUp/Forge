@@ -5,6 +5,7 @@ metadata:
   pattern: reviewer
   domain: code-review
   severity-levels: block,fix,suggest
+  triggers: [{"event":"UserPromptSubmit","keywords":["Rust review","review Rust","审查 Rust","Rust PR","Rust 代码审查","Rust 改动","这个 Rust"],"cooldown":600}]
 ---
 
 # Rust 代码审查
