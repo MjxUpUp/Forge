@@ -23,8 +23,14 @@ func mkHit(session, skill string, at time.Time, delivered *bool) checklog.Entry 
 	}
 }
 
-// mkRead 造一条 Read 工具调用（读某 skill 的 SKILL.md）。
-// mkRead builds one Read tool call (on some skill's SKILL.md).
+// mkRead 造一条 Read 工具调用（读某 skill 的 SKILL.md）。形状契约的生产侧一半在
+// TestHookToolTrackRecordsReadFilePath（tool-track 写 {"file_path":...}）——2026-08-16
+// 审查 HIGH-1：两侧曾静默分叉（生产不写、测试手造），join 在真实数据上死亡而单测全绿。
+//
+// mkRead builds one Read tool call (on some skill's SKILL.md). The production half of this
+// shape contract is TestHookToolTrackRecordsReadFilePath (tool-track writing {"file_path":...})
+// — review HIGH-1 (2026-08-16): the two halves once diverged silently (production wrote
+// nothing, tests hand-marshaled), killing the join on real data while unit tests stayed green.
 func mkRead(session, path string, at time.Time) toolusage.ToolCall {
 	ti, _ := json.Marshal(map[string]string{"file_path": path})
 	return toolusage.ToolCall{ToolName: "Read", ToolInput: string(ti), SessionID: session, Timestamp: at}
@@ -73,16 +79,20 @@ func TestBuildTriggerFunnel_ReadEngagement(t *testing.T) {
 	}
 }
 
-// TestBuildTriggerFunnel_SkillCallEngagement Skill(<name>) 显式调用也算遵循。
-// TestBuildTriggerFunnel_SkillCallEngagement: an explicit Skill(<name>) call also counts.
+// TestBuildTriggerFunnel_SkillCallEngagement Skill(<name>) 显式调用也算遵循；仅大小写
+// 差异的调用名同样命中（审查 LOW-3：与 Read 分支的大小写归一对齐）。
+//
+// TestBuildTriggerFunnel_SkillCallEngagement: an explicit Skill(<name>) call also counts;
+// a call name differing only in case matches too (review LOW-3: aligned with the Read
+// branch's case normalization).
 func TestBuildTriggerFunnel_SkillCallEngagement(t *testing.T) {
 	base := time.Date(2026, 8, 16, 10, 0, 0, 0, time.UTC)
 	rep := BuildTriggerFunnel(
 		[]checklog.Entry{mkHit("s1", "tdd-cycle", base, boolPtr(true))},
-		[]toolusage.ToolCall{mkSkillCall("s1", "tdd-cycle", base.Add(time.Minute))},
+		[]toolusage.ToolCall{mkSkillCall("s1", "TDD-Cycle", base.Add(time.Minute))},
 	)
 	if rep.TotalEngaged != 1 {
-		t.Fatalf("Engaged=%d, want 1", rep.TotalEngaged)
+		t.Fatalf("Engaged=%d, want 1（大小写变体也须命中）", rep.TotalEngaged)
 	}
 }
 
