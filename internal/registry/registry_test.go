@@ -611,28 +611,6 @@ func TestAdd_SameKeyUpdatesPathWhenOldGone(t *testing.T) {
 	}
 }
 
-// TestRemove_ByKey pins the doc-vs-implementation gap: Remove documents "matched by
-// path or key" — a worktree path (same key, different path) must remove the main
-// project's entry too.
-//
-// TestRemove_ByKey 钉死文档与实现不一致：Remove 声称「按路径或 key 匹配」——传
-// worktree 路径（同 key 不同路径）必须也能删掉主项目条目。
-func TestRemove_ByKey(t *testing.T) {
-	useTempHome(t)
-	main := mkGitRepo(t)
-	wt := mkWorktree(t, main)
-
-	if err := Add(main); err != nil {
-		t.Fatal(err)
-	}
-	if err := Remove(wt); err != nil {
-		t.Fatal(err)
-	}
-	if got := List(); len(got) != 0 {
-		t.Errorf("按 key 匹配应删掉共享 key 的主项目条目: List=%v, want 空", got)
-	}
-}
-
 // TestUnmarshal_SkipsEmptyPathEntries: null and {} entries in projects.json carry no
 // path and are skipped defensively instead of becoming ghost entries.
 //

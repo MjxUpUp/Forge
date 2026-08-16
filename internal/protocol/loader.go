@@ -140,33 +140,12 @@ func EnsureDefault(dir string) error {
 	return saveTo(path, DefaultProtocol())
 }
 
-// Save writes the protocol to the effective location: the project-level override
-// when it already exists, otherwise the user-level DataDir copy. It uses
-// util.AtomicWrite (temp+rename) rather than a plain os.WriteFile: Load treats a
-// YAML parse error as corruption, so a half-written file from a crash or
-// concurrent write would make the project permanently unloadable. AtomicWrite
-// creates the parent directory itself, so no MkdirAll is needed here.
-//
-// Save 把 protocol 写到生效位置：项目级覆盖已存在时写它，否则写用户级 DataDir
-// 副本。用 util.AtomicWrite（temp+rename）而非裸 os.WriteFile：Load 对 YAML
-// 解析错误直接报损坏，崩溃/并发写留下的半文件会让项目永久不可加载。
-// AtomicWrite 自建父目录，这里无需 MkdirAll。
-func Save(dir string, p *Protocol) error {
-	path, err := pathFor(dir)
-	if err != nil {
-		return err
-	}
-	return saveTo(path, p)
-}
-
 // SaveDataDir writes the protocol explicitly to the user-level DataDir copy,
 // ignoring any project-level override — used by migration code that must create
-// the DataDir copy while the project-level file still exists (protocol.Save would
-// route to the project-level path in that situation).
+// the DataDir copy while the project-level file still exists.
 //
 // SaveDataDir 显式把 protocol 写到用户级 DataDir 副本，无视项目级覆盖——供迁移
-// 代码在项目级文件仍存在时创建 DataDir 副本（那种情况下 protocol.Save 会路由到
-// 项目级路径）。
+// 代码在项目级文件仍存在时创建 DataDir 副本。
 func SaveDataDir(dir string, p *Protocol) error {
 	path, err := DataDirPath(dir)
 	if err != nil {

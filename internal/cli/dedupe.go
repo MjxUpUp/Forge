@@ -13,20 +13,22 @@ import (
 // dedupe.go — plugin 已 user-level 安装时,清理 project-level 重复注册。
 //
 // Background: forge plugin (user-level, ~/.claude/plugins/cache/...) registers ForgeHookSpec (hooks) in its plugin.json.
-// This fully duplicates the project-level settings.local.json hooks written by forge init/sync (written by
-// hooks.GenerateSettings) — Claude Code merges both registrations so the same hook runs twice
-// (perf x2 + advisory noise x2; idempotent so no errors, but redundant).
+// The user-level settings.json written by GenerateUserSettings registers the same spec — Claude Code merges both
+// registrations so the same hook runs twice (perf x2 + advisory noise x2; idempotent so no errors, but redundant).
+// Project-level settings.local.json forge hooks are no longer written (the GenerateSettings path was removed); any
+// found on disk are residue from historical installs and are cleaned here too.
 //
 // 背景:forge plugin(user-level,~/.claude/plugins/cache/...)的 plugin.json 注册了
-// ForgeHookSpec（hooks）。这与 forge init/sync 写的 project-level settings.local.json
-// 的 hooks（hooks.GenerateSettings 写）完全重复——Claude Code 合并两份注册 → 同一 hook
-// 跑两遍（性能 ×2 + advisory 噪音 ×2,幂等所以不出错,但冗余）。
+// ForgeHookSpec（hooks）。GenerateUserSettings 写的 user-level settings.json 注册了同一份
+// spec——Claude Code 合并两份注册 → 同一 hook 跑两遍（性能 ×2 + advisory 噪音 ×2,幂等
+// 所以不出错,但冗余）。project-level settings.local.json 的 forge hooks 已不再写
+// （GenerateSettings 路径已删除）；盘上发现的均为历史安装残留,也在此一并清理。
 //
-// Design: dedup is a [command-layer responsibility]. Translate / GenerateSettings stay pure functions (always write,
-// never couple to plugin detection) — so unit tests do not depend on the global IsClaudePluginInstalled state.
+// Design: dedup is a [command-layer responsibility]. Translate / GenerateUserSettings stay pure functions (always
+// write, never couple to plugin detection) — so unit tests do not depend on the global IsClaudePluginInstalled state.
 // init/sync calls this helper for unified cleanup after all writes complete.
 //
-// 设计:dedup 是【命令层职责】。Translate / GenerateSettings 保持纯函数（总写,不耦合
+// 设计:dedup 是【命令层职责】。Translate / GenerateUserSettings 保持纯函数（总写,不耦合
 // plugin 检测）——避免单元测试依赖全局 IsClaudePluginInstalled 状态。init/sync 在所有
 // 写入完成后调本 helper 统一清理。
 //

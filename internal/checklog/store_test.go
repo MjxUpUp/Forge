@@ -146,20 +146,20 @@ func TestClear(t *testing.T) {
 	}
 }
 
-func TestArchive(t *testing.T) {
+func TestClear_RotatesArchive(t *testing.T) {
 	dir := t.TempDir()
 	isolateDataHome(t)
 	dataDir := forgedata.DataDirFor(dir)
 
 	Record(dir, &Entry{Check: CheckAutoCompile, Passed: true, Detail: "ok"})
 
-	if err := Archive(dir); err != nil {
-		t.Fatalf("Archive: %v", err)
+	if err := Clear(dir); err != nil {
+		t.Fatalf("Clear: %v", err)
 	}
 
 	// Original file should be gone
 	if _, err := os.Stat(filepath.Join(dataDir, "checklog.jsonl")); !os.IsNotExist(err) {
-		t.Fatal("checklog.jsonl should not exist after Archive")
+		t.Fatal("checklog.jsonl should not exist after Clear")
 	}
 
 	// Timestamped archive should exist
@@ -178,9 +178,9 @@ func TestArchive(t *testing.T) {
 		t.Fatal("no timestamped archive found in DataDir")
 	}
 
-	// Archive on nonexistent should be idempotent
-	if err := Archive(dir); err != nil {
-		t.Fatalf("Archive on nonexistent: %v", err)
+	// Clear on nonexistent should be idempotent
+	if err := Clear(dir); err != nil {
+		t.Fatalf("Clear on nonexistent: %v", err)
 	}
 }
 
@@ -207,7 +207,7 @@ func TestLoadForTask(t *testing.T) {
 	Record(dir, &Entry{Check: CheckAssertion, Passed: false, TaskRef: "feat/y", Detail: "other-task"})
 	Record(dir, &Entry{Check: CheckTaskVerify, Passed: true, TaskRef: "feat/x", Detail: "active-exp"})
 
-	// Archived checklog (produced by Archive on a previous task start) — feat/x
+	// Archived checklog (rotated by Clear on a previous task start) — feat/x
 	// history that LoadAll would miss. This is the gap LoadForTask closes.
 	archivePath := filepath.Join(forgedata.DataDirFor(dir), "checklog-20260101000000.jsonl")
 	archived := []byte(`{"check":"auto-compile","passed":true,"checked":true,"task_ref":"feat/x","detail":"archived","recorded_at":"2026-01-01T00:00:00Z"}` + "\n")
@@ -294,9 +294,9 @@ func TestLoadAllAll(t *testing.T) {
 	}
 }
 
-// TestRecordAndClear_ConcurrentNoDeadlock guards the C2 fix: checklog Clear and
-// Archive now hold the same mutex as Record. The fix splits archiveLocked out of
-// Archive so Clear can archive-then-remove under one lock WITHOUT re-entering
+// TestRecordAndClear_ConcurrentNoDeadlock guards the C2 fix: checklog Clear
+// holds the same mutex as Record. archiveLocked (split out of the since-removed
+// Archive export) lets Clear archive-then-remove under one lock WITHOUT re-entering
 // the non-reentrant mutex (a re-entry would deadlock; the timeout surfaces it).
 func TestRecordAndClear_ConcurrentNoDeadlock(t *testing.T) {
 	dir := t.TempDir()
@@ -320,23 +320,23 @@ func TestRecordAndClear_ConcurrentNoDeadlock(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("Record/Clear deadlocked (Clear→Archive mutex re-entry?)")
+		t.Fatal("Record/Clear deadlocked (Clear→archiveLocked mutex re-entry?)")
 	}
 	if _, err := LoadAll(dir); err != nil {
 		t.Fatalf("LoadAll after concurrent Record/Clear: %v", err)
 	}
 }
 
-// TestArchive_NanosecondNaming guards the C3 fix: archive names carry nanosecond
+// TestClear_NanosecondNaming guards the C3 fix: archive names carry nanosecond
 // precision so two same-second rotations don't collide.
-func TestArchive_NanosecondNaming(t *testing.T) {
+func TestClear_NanosecondNaming(t *testing.T) {
 	dir := t.TempDir()
 	isolateDataHome(t)
 	if err := Record(dir, &Entry{Check: CheckAutoCompile, Passed: true}); err != nil {
 		t.Fatal(err)
 	}
-	if err := Archive(dir); err != nil {
-		t.Fatalf("Archive: %v", err)
+	if err := Clear(dir); err != nil {
+		t.Fatalf("Clear: %v", err)
 	}
 	entries, err := os.ReadDir(forgedata.DataDirFor(dir))
 	if err != nil {
@@ -353,7 +353,7 @@ func TestArchive_NanosecondNaming(t *testing.T) {
 		}
 		return
 	}
-	t.Fatal("no checklog-* archive produced by Archive")
+	t.Fatal("no checklog-* archive produced by Clear")
 }
 
 // TestClear_PrunesOldArchives: Clear prunes expired archives by FORGE_LOG_RETENTION_DAYS after rotation,

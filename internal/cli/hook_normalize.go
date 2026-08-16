@@ -18,10 +18,10 @@ import (
 // agent stdin 会解析出空的 file_path/command，拦截类 hook（task-guard、
 // bash-guard）会 fail open。
 //
-// opencode and pi are code-based: their TS extensions directly construct Claude-shape stdin before spawning forge,
+// opencode is code-based: their TS extensions directly construct Claude-shape stdin before spawning forge,
 // so no normalizer is needed here.
 //
-// opencode 和 pi 是 code-based：它们的 TS 扩展在 spawn forge 前就直接构造
+// opencode 是 code-based：它们的 TS 扩展在 spawn forge 前就直接构造
 // Claude-shape stdin，故此处无需 normalizer。
 func normalizeAgentStdin(agent string, stdinData []byte, hookInput *HookInput) {
 	switch agent {

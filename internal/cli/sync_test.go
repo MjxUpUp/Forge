@@ -8,7 +8,6 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
-	"github.com/MjxUpUp/Forge/internal/hooks"
 )
 
 // writeSyncStamp writes DataDir/.sync-version with the given binary version, so
@@ -130,19 +129,17 @@ func TestSettingsHasStaleBindingFalseForCleanSettings(t *testing.T) {
 	dir := t.TempDir()
 	writeSyncStamp(t, dir, "v0.17.0")
 	// Generate the canonical clean settings via the generator itself.
-	if err := hooks.GenerateSettings(dir); err != nil {
-		t.Fatalf("GenerateSettings: %v", err)
-	}
+	writeClaudeSettingsFixture(t, dir)
 	if settingsHasStaleBinding(dir) {
 		t.Fatal("clean generated settings must not be flagged as stale")
 	}
 }
 
 // When plugin is installed at user level, autoSync must NOT write project-level
-// hooks via GenerateSettings — the "write then immediately strip" pattern corrupts
+// hooks — the "write then immediately strip" pattern corrupts
 // settings.local.json if the process is interrupted between the two steps.
 // dedupeProjectLevelIfPlugin (deferred) still cleans up legacy hooks.
-func TestAutoSyncSkipsGenerateSettingsWhenPluginInstalled(t *testing.T) {
+func TestAutoSyncSkipsSettingsWriteWhenPluginInstalled(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("CLAUDE_CONFIG_DIR", home)
 	writeForgePluginFixture(t, home)
@@ -160,7 +157,7 @@ func TestAutoSyncSkipsGenerateSettingsWhenPluginInstalled(t *testing.T) {
 		t.Fatalf("write settings: %v", err)
 	}
 
-	// autoSync with version mismatch — would normally call GenerateSettings.
+	// autoSync with version mismatch — would normally rewrite host settings.
 	_ = autoSync(dir, "v0.17.0", false)
 
 	// Verify: settings.local.json must be untouched (no hooks written).
@@ -173,7 +170,7 @@ func TestAutoSyncSkipsGenerateSettingsWhenPluginInstalled(t *testing.T) {
 		t.Fatalf("parse settings: %v", err)
 	}
 	if _, hasHooks := parsed["hooks"]; hasHooks {
-		t.Error("plugin installed: GenerateSettings must not write hooks to settings.local.json")
+		t.Error("plugin installed: settings writer must not write hooks to settings.local.json")
 	}
 	if string(parsed["env"]) != `{"KEY":"val"}` {
 		t.Errorf("user env field was modified: got %s", string(parsed["env"]))
@@ -334,9 +331,9 @@ func TestCleanupLegacyDeadFiles(t *testing.T) {
 // 漏接）。autoSync 其他 step（skill/settings gen）在 git 项目 root 跑产 stderr warning，忽略。
 func TestAutoSyncMigratesRuntimeOnVersionChange(t *testing.T) {
 	root, p := forgedatatest.RealProject(t)
-	// Isolate CLAUDE_CONFIG_DIR so GenerateSettings/dedupe do not hit the real ~/.claude
+	// Isolate CLAUDE_CONFIG_DIR so settings writers/dedupe do not hit the real ~/.claude
 	//
-	// 隔离 CLAUDE_CONFIG_DIR，避免 GenerateSettings/dedupe 命中真实 ~/.claude
+	// 隔离 CLAUDE_CONFIG_DIR，避免 settings writers/dedupe 命中真实 ~/.claude
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	syncWrite(t, filepath.Join(root, `.forge`, `checklog-20260101.jsonl`), `archive`)
 	syncMkdir(t, filepath.Join(root, `.forge`, `tasks`))

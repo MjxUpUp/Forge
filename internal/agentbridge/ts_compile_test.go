@@ -16,7 +16,7 @@ import (
 // agent SDK imports, then type-checks it with `tsc --noEmit` when tsc is on PATH.
 //
 // We deliberately check at a permissive level (no strict/noImplicitAny): the
-// generated plugins run inside opencode/pi, whose own tsconfig supplies
+// generated plugins run inside opencode, whose own tsconfig supplies
 // @types/node and strictness. Here we only verify the GENERATED source parses,
 // resolves its imports, and is internally consistent — catching the failure
 // modes string-contains cannot (e.g. a raw-string backtick bug that once split

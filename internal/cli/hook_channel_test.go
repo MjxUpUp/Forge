@@ -50,10 +50,10 @@ func TestContextChannelDelivered(t *testing.T) {
 		// cline: contextModification injected on every fanned-out event.
 		{"cline", "PostToolUse", true, "cline/contextModification"},
 		{"cline", "Stop", true, "cline/contextModification"},
-		// 默认行（claude-code / codebuddy / opencode / pi 等无 --agent 的 Claude-JSON
+		// 默认行（claude-code / codebuddy / opencode  等无 --agent 的 Claude-JSON
 		// 宿主）：additionalContext 每事件都注入。agent="" 是 debug 路径（skill-trigger
 		// 命令直跑）——落 claude 默认行。
-		// Default row (claude-code / codebuddy / opencode / pi — Claude-JSON hosts without
+		// Default row (claude-code / codebuddy / opencode  — Claude-JSON hosts without
 		// --agent): additionalContext injected on every event. agent="" is the debug path
 		// (running the skill-trigger command directly) — lands on the claude default row.
 		{"", "UserPromptSubmit", true, "claude/additionalContext"},

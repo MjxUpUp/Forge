@@ -339,47 +339,6 @@ func Add(absPath string) error {
 	return writeEntries(f.Projects)
 }
 
-// Remove unregisters absPath, matched by path OR by project key — the key match
-// (git common-dir hash, or PathKey for non-git) makes removal worktree-safe: asking
-// to remove a worktree path removes the main project's entry that shares the key.
-// Idempotent: absent path is a no-op. Used by forge uninstall-style flows and tests.
-//
-// Remove 注销 absPath，按路径或项目 key 匹配——key 匹配（git common-dir hash，
-// 非 git 为 PathKey）让注销跨 worktree 生效：传 worktree 路径也能删掉共享同一
-// key 的主项目条目。幂等：不存在即 no-op。供 forge uninstall 类流程与测试使用。
-func Remove(absPath string) error {
-	ap, err := filepath.Abs(absPath)
-	if err != nil {
-		return err
-	}
-	ap = filepath.Clean(ap)
-
-	key := ``
-	if k, kerr := forgedata.Key(ap); kerr == nil {
-		key = k
-	} else {
-		key = forgedata.PathKey(ap)
-	}
-
-	f, ok := readFile()
-	if !ok {
-		return nil
-	}
-	kept := f.Projects[:0]
-	removed := false
-	for _, e := range f.Projects {
-		if pathKey(filepath.Clean(e.Path)) == pathKey(ap) || (key != `` && keyOf(e) == key) {
-			removed = true
-			continue
-		}
-		kept = append(kept, e)
-	}
-	if !removed {
-		return nil
-	}
-	return writeEntries(kept)
-}
-
 // IsMember reports whether cwd is inside a registered forge project, returning the
 // project root. Match rules:
 //   - git cwd: the repo's forge key (git common-dir hash) equals a registered key —

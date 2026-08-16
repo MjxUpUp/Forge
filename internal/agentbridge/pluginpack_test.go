@@ -59,18 +59,16 @@ func TestPluginPack_WritesAllFiles(t *testing.T) {
 	}
 }
 
-// TestPluginPack_HooksMirrorSettings: the hooks field of plugin.json must equal the hooks field that GenerateSettings
+// TestPluginPack_HooksMirrorSettings: the hooks field of plugin.json must equal the hooks field that the ForgeHookSpec fixture
 // writes to settings.local.json — a single-source-of-truth guard. End-to-end comparison (reading two real files,
 // not function return values). If someone changes ForgeHookSpec but pluginpack switches to a hardcoded copy, this test catches the drift.
 //
-// TestPluginPack_HooksMirrorSettings：plugin.json 的 hooks 字段必须等于 GenerateSettings
+// TestPluginPack_HooksMirrorSettings：plugin.json 的 hooks 字段必须等于 ForgeHookSpec fixture
 // 写到 settings.local.json 的 hooks 字段——单一真相源守卫。端到端比对（读两个真实文件，
 // 非函数返回值）。若有人改 ForgeHookSpec 但 pluginpack 改用硬编码副本，此测试抓住 drift。
 func TestPluginPack_HooksMirrorSettings(t *testing.T) {
 	sdir := t.TempDir()
-	if err := hooks.GenerateSettings(sdir); err != nil {
-		t.Fatalf("GenerateSettings: %v", err)
-	}
+	writeClaudeSettingsFixture(t, sdir)
 	var settings map[string]any
 	loadJSON(t, filepath.Join(sdir, ".claude", "settings.local.json"), &settings)
 
