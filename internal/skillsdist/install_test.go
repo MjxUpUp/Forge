@@ -185,6 +185,87 @@ func TestInstall_QualityBlock(t *testing.T) {
 	}
 }
 
+// TestInstall_BlocksOnSingleCritical is the #4 score-math guard: the install gate used to block
+// only on rec==DO_NOT_INSTALL (score≥50 — reachable with ≥3 CRITICALs). A single CRITICAL finding
+// (e.g. DE-1 conf 0.9 → 22.5) lands in CAUTION and was let through to all targets. Any CRITICAL
+// must block, regardless of the aggregate score.
+//
+// TestInstall_BlocksOnSingleCritical 是 #4 分数数学守卫：install 门禁此前只在
+// rec==DO_NOT_INSTALL（score≥50——需 ≥3 条 CRITICAL）时阻断。单条 CRITICAL（如 DE-1 conf 0.9 →
+// 22.5）落在 CAUTION 被放行到全部 target。任何 CRITICAL 必须无视聚合分直接阻断。
+func TestInstall_BlocksOnSingleCritical(t *testing.T) {
+	canonical := t.TempDir()
+	writePassingSkill(t, canonical, "my-skill") // 过 registry 门，走到安全扫描
+	opts := copyOpts(t.TempDir())
+	opts.SkipQuality = false
+	old := scanSkillFn
+	scanSkillFn = func(string) ([]skillsqa.Finding, error) {
+		return []skillsqa.Finding{{RuleID: "DE-1", Severity: "CRITICAL", Confidence: 0.9}}, nil
+	}
+	defer func() { scanSkillFn = old }()
+	rep, err := Install(canonical, opts)
+	mustMk(t, err)
+	if rep.Stats.Failed != 1 {
+		t.Fatalf("单条 CRITICAL（score 22，CAUTION）必须阻断: failed=%d want 1", rep.Stats.Failed)
+	}
+	if rep.Stats.Installed != 0 {
+		t.Fatalf("被阻断的 skill 不应安装到任何 target, installed=%d", rep.Stats.Installed)
+	}
+	// The Issue text must say WHY it blocked (any-CRITICAL), so the failure is diagnosable
+	// from the report without re-running the audit.
+	//
+	// Issue 文案必须说明阻断原因（任一 CRITICAL），让失败无需重跑 audit 即可从报告诊断。
+	var issueText string
+	for _, s := range rep.Skills {
+		for _, iss := range s.Issues {
+			issueText += iss + "\n"
+		}
+	}
+	if !strings.Contains(issueText, "存在 CRITICAL finding") {
+		t.Fatalf("阻断 Issue 应注明「存在 CRITICAL finding」, got %q", issueText)
+	}
+}
+
+// TestInstall_CautionSurfacesWarning is the second half of #4: below-block findings (CAUTION band,
+// no CRITICAL) used to be dropped entirely — res.Issues only ever carried ScanSkill results on the
+// blocked path, so a CAUTION skill installed silently. Non-blocking ≠ silent: the findings must
+// surface as a report warning (text-visible) while install proceeds.
+//
+// TestInstall_CautionSurfacesWarning 是 #4 的另一半：低于阻断线的 findings（CAUTION 带、无
+// CRITICAL）此前被整体丢弃——res.Issues 只在阻断路径携带 ScanSkill 结果，CAUTION skill 静默
+// 安装。不阻断 ≠ 静默：findings 必须以 report warning 浮出（文本可见），安装照常进行。
+func TestInstall_CautionSurfacesWarning(t *testing.T) {
+	canonical := t.TempDir()
+	writePassingSkill(t, canonical, "my-skill")
+	opts := copyOpts(t.TempDir())
+	opts.SkipQuality = false
+	old := scanSkillFn
+	scanSkillFn = func(string) ([]skillsqa.Finding, error) {
+		// 4 × MEDIUM(8) × 0.75 = 24 → CAUTION（20-49），无 CRITICAL
+		return []skillsqa.Finding{
+			{RuleID: "DC-10", Severity: "MEDIUM", Confidence: 0.75},
+			{RuleID: "DC-10", Severity: "MEDIUM", Confidence: 0.75},
+			{RuleID: "DC-10", Severity: "MEDIUM", Confidence: 0.75},
+			{RuleID: "DC-10", Severity: "MEDIUM", Confidence: 0.75},
+		}, nil
+	}
+	defer func() { scanSkillFn = old }()
+	rep, err := Install(canonical, opts)
+	mustMk(t, err)
+	if rep.Stats.Failed != 0 || rep.Stats.Installed != 1 {
+		t.Fatalf("CAUTION 无 CRITICAL 不应阻断: failed=%d installed=%d", rep.Stats.Failed, rep.Stats.Installed)
+	}
+	found := false
+	for _, w := range rep.Warnings {
+		if strings.Contains(w, "my-skill") && strings.Contains(w, "CAUTION") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("CAUTION findings 不得静默——Warnings 应含该 skill 的安全提示, got %v", rep.Warnings)
+	}
+}
+
 // TestInstall_LinkMode_NewLink: link mode actually creates junction/symlink and is detected as linked.
 //
 // TestInstall_LinkMode_NewLink：link 模式实际创建 junction/symlink 并被识别为 linked。

@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/skillsqa"
 )
 
 // TestRunSkillsAudit_JSONReportsFindings: a skill with PI-1 injection → audit --json output contains a HIGH finding.
@@ -51,5 +53,38 @@ func TestRunSkillsAudit_JSONReportsFindings(t *testing.T) {
 	}
 	if !strings.Contains(string(out), "PI-1") {
 		t.Fatalf("JSON 输出缺 PI-1 finding（应检测到 prompt 注入）: %s", out)
+	}
+}
+
+// TestAuditGateBlocked_AnyCritical pins the #4 score-math fix for `forge skills audit --gate`:
+// the gate used to decide on severity BAND alone (HIGH≥30/CRITICAL≥50). A single CRITICAL
+// finding scores ≤23.75 → MEDIUM band → gate passed. auditGateBlocked (extracted so the
+// decision is testable without the os.Exit(4) process exit) must block on band OR any single
+// CRITICAL finding.
+//
+// TestAuditGateBlocked_AnyCritical 钉住 #4 分数数学修复在 `forge skills audit --gate` 的落点：
+// 门禁此前只看严重度带（HIGH≥30/CRITICAL≥50）。单条 CRITICAL 得分 ≤23.75 → MEDIUM 带 →
+// 门禁放行。auditGateBlocked（抽出以便绕开 os.Exit(4) 直接测判定）必须在带命中或存在任一
+// CRITICAL finding 时阻断。
+func TestAuditGateBlocked_AnyCritical(t *testing.T) {
+	// 既有语义：HIGH/CRITICAL 带照旧阻断。
+	if !auditGateBlocked("HIGH", nil) {
+		t.Fatal("band=HIGH must block")
+	}
+	if !auditGateBlocked("CRITICAL", nil) {
+		t.Fatal("band=CRITICAL must block")
+	}
+	// #4 核心：单条 CRITICAL（聚合分 22 → MEDIUM 带）也必须阻断。
+	single := []skillsqa.Finding{{RuleID: "PI-2", Severity: "CRITICAL", Confidence: 0.95}}
+	if !auditGateBlocked("MEDIUM", single) {
+		t.Fatal("band=MEDIUM + single CRITICAL finding must block (score math hole #4)")
+	}
+	// 无 CRITICAL 的 MEDIUM 带维持 advisory（不阻断）。
+	mediums := []skillsqa.Finding{{RuleID: "DC-10", Severity: "MEDIUM", Confidence: 0.6}}
+	if auditGateBlocked("MEDIUM", mediums) {
+		t.Fatal("band=MEDIUM without CRITICAL must stay advisory (no block)")
+	}
+	if auditGateBlocked("LOW", nil) {
+		t.Fatal("band=LOW must not block")
 	}
 }
