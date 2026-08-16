@@ -761,9 +761,9 @@ func TestHookToolTrackRecordsSkillInput(t *testing.T) {
 // 契约的生产侧一半；funnel_test.go 的 mkRead 是 join 侧一半——两者不得再分叉。
 func TestHookToolTrackRecordsReadFilePath(t *testing.T) {
 	cases := []struct {
-		name    string
-		stdin   string
-		assert  func(t *testing.T, body string)
+		name   string
+		stdin  string
+		assert func(t *testing.T, body string)
 	}{
 		{
 			// 最小形状 + 最小性：原始 input 带 limit，落盘不得含——写入方回归成记完整

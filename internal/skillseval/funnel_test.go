@@ -13,13 +13,13 @@ import (
 // mkHit builds one CheckSkillTrigger entry. delivered=nil means a legacy entry (no stamp).
 func mkHit(session, skill string, at time.Time, delivered *bool) checklog.Entry {
 	return checklog.Entry{
-		Check:     checklog.CheckSkillTrigger,
-		Passed:    true,
-		Checked:   true,
-		SessionID: session,
-		Detail:    checklog.DetailForSkillTrigger(skill, "UserPromptSubmit", "keywords"),
+		Check:      checklog.CheckSkillTrigger,
+		Passed:     true,
+		Checked:    true,
+		SessionID:  session,
+		Detail:     checklog.DetailForSkillTrigger(skill, "UserPromptSubmit", "keywords"),
 		RecordedAt: at,
-		Delivered: delivered,
+		Delivered:  delivered,
 	}
 }
 
