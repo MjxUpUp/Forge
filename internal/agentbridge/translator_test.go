@@ -47,7 +47,7 @@ func isolateHome(t *testing.T) string {
 }
 
 // TestCodexWiringMirrorsClaudeSettings guards the hand-maintained sync between
-// codex.go (buildCodexHooks) and hooks/settings.go (GenerateSettings). Both
+// codex.go (buildCodexHooks) and hooks/settings.go (ForgeHookSpec). Both
 // tables wire the same `forge hook <name>` commands so Forge
 // gates enforce identically on Claude Code and Codex — the only two agents
 // whose hooks actually block. codex.go's buildCodexHooks comment warns this
@@ -66,9 +66,7 @@ func TestCodexWiringMirrorsClaudeSettings(t *testing.T) {
 	codexHome := t.TempDir()
 	t.Setenv("CODEX_HOME", codexHome)
 	claudeDir := t.TempDir()
-	if err := hooks.GenerateSettings(claudeDir); err != nil {
-		t.Fatalf("GenerateSettings: %v", err)
-	}
+	writeClaudeSettingsFixture(t, claudeDir)
 	if err := (&CodexTranslator{}).Translate(t.TempDir(), testInput()); err != nil {
 		t.Fatalf("codex Translate: %v", err)
 	}
@@ -100,7 +98,7 @@ func TestCodexWiringMirrorsClaudeSettings(t *testing.T) {
 			stripped[strings.TrimSuffix(cmd, " --agent codex")] = true
 		}
 		if !stringSetEqual(claudeCmds, stripped) {
-			t.Errorf("hook commands for %q drifted between Claude Code and Codex — keep settings.go GenerateSettings and codex.go buildCodexHooks in sync:\n  claude: %s\n  codex:  %s",
+			t.Errorf("hook commands for %q drifted between Claude Code and Codex — keep ForgeHookSpec (settings.go) and codex.go buildCodexHooks in sync:\n  claude: %s\n  codex:  %s",
 				event, sortedSet(claudeCmds), sortedSet(stripped))
 		}
 	}
@@ -171,7 +169,7 @@ func TestCodexHooks_OnlyLegalCodexEvents(t *testing.T) {
 }
 
 // TestCursorWiringMirrorsClaudeSettings guards the sync between cursor.go
-// (buildCursorHooks) and hooks/settings.go (GenerateSettings). Cursor's
+// (buildCursorHooks) and hooks/settings.go (ForgeHookSpec). Cursor's
 // hooks.json is flat with camelCase event names (preToolUse/sessionStart/
 // beforeSubmitPrompt/...), but the hook COMMANDS per event must match Claude
 // Code's PascalCase wiring — drift silently disables a gate on Cursor. Maps
@@ -181,9 +179,7 @@ func TestCursorWiringMirrorsClaudeSettings(t *testing.T) {
 	// Cursor registers at user level (~/.cursor/hooks.json) — isolate the home.
 	home := isolateHome(t)
 	claudeDir := t.TempDir()
-	if err := hooks.GenerateSettings(claudeDir); err != nil {
-		t.Fatalf("GenerateSettings: %v", err)
-	}
+	writeClaudeSettingsFixture(t, claudeDir)
 	if err := (&CursorTranslator{}).Translate(t.TempDir(), testInput()); err != nil {
 		t.Fatalf("cursor Translate: %v", err)
 	}
@@ -224,7 +220,7 @@ func TestCursorWiringMirrorsClaudeSettings(t *testing.T) {
 			stripped[strings.TrimSuffix(cmd, " --agent cursor")] = true
 		}
 		if !stringSetEqual(claudeCmds, stripped) {
-			t.Errorf("hook commands for cursor %q / claude %q drifted — keep settings.go GenerateSettings and cursor.go buildCursorHooks in sync:\n  claude: %s\n  cursor: %s",
+			t.Errorf("hook commands for cursor %q / claude %q drifted — keep ForgeHookSpec (settings.go) and cursor.go buildCursorHooks in sync:\n  claude: %s\n  cursor: %s",
 				cursorEvt, claudeEvt, sortedSet(claudeCmds), sortedSet(stripped))
 		}
 	}
@@ -486,7 +482,7 @@ func TestWindsurfTranslator_Translate(t *testing.T) {
 }
 
 // TestWindsurfWiringMirrorsClaudeSettings guards the sync between windsurf.go
-// (buildWindsurfHooks) and hooks/settings.go (GenerateSettings). Windsurf uses
+// (buildWindsurfHooks) and hooks/settings.go (ForgeHookSpec). Windsurf uses
 // snake_case events (pre_write_code/post_run_command/...) that map N:M onto
 // Claude Code's PascalCase PreToolUse/PostToolUse; we flatten each agent's
 // wiring to a command set and compare per Claude event. `--agent windsurf` must
@@ -496,9 +492,7 @@ func TestWindsurfWiringMirrorsClaudeSettings(t *testing.T) {
 	// Windsurf registers at user level (~/.codeium/windsurf/hooks.json) — isolate the home.
 	home := isolateHome(t)
 	claudeDir := t.TempDir()
-	if err := hooks.GenerateSettings(claudeDir); err != nil {
-		t.Fatalf("GenerateSettings: %v", err)
-	}
+	writeClaudeSettingsFixture(t, claudeDir)
 	if err := (&WindsurfTranslator{}).Translate(t.TempDir(), testInput()); err != nil {
 		t.Fatalf("windsurf Translate: %v", err)
 	}
@@ -533,6 +527,22 @@ func TestWindsurfWiringMirrorsClaudeSettings(t *testing.T) {
 		if !stringSetEqual(want, stripped) {
 			t.Errorf("windsurf commands for claude %q drifted:\n  claude: %s\n  windsurf: %s",
 				claudeEvt, sortedSet(want), sortedSet(stripped))
+		}
+	}
+	// Negative pin: UserPromptSubmit and PostCompact groups must NOT exist on Windsurf.
+	// UserPromptSubmit (resume-reinject/skill-trigger) is unwired because Windsurf has
+	// no PostCompact event → compact-resume never sets the reinject flag; PostCompact
+	// doesn't exist in Cascade's hook registry. This is a deliberate gap, not a drift.
+	// Pin on HOOK COMMAND names (resume-reinject / compact-resume), not event names — the
+	// command text never contains the event name, so a "PostCompact" literal would be a
+	// vacuously-true assertion forever (2026-08-16 review finding).
+	// If Windsurf adds these events in the future, this test forces explicit wiring changes.
+	for _, cmds := range windsurf {
+		for cmd := range cmds {
+			stripped := strings.TrimSuffix(cmd, " --agent windsurf")
+			if strings.Contains(stripped, "resume-reinject") || strings.Contains(stripped, "compact-resume") {
+				t.Errorf("windsurf must NOT have UserPromptSubmit (resume-reinject) or PostCompact (compact-resume) hooks (deliberate gap, not drift): %s", cmd)
+			}
 		}
 	}
 }
@@ -954,7 +964,7 @@ func TestOpencodeTranslator_Detect(t *testing.T) {
 
 // TestClaudeCodeTranslatorSkipsGenerateSettingsWhenPluginInstalled: when forge
 // plugin is installed at user level, ClaudeCodeTranslator.Translate must NOT
-// call GenerateSettings — user-level plugin.json already registers ForgeHookSpec
+// write project-level hooks — user-level plugin.json already registers ForgeHookSpec
 // machine-wide. Writing project-level hooks is redundant and creates a fragile
 // "write then immediately strip" pattern.
 func TestClaudeCodeTranslatorSkipsGenerateSettingsWhenPluginInstalled(t *testing.T) {
@@ -982,7 +992,7 @@ func TestClaudeCodeTranslatorSkipsGenerateSettingsWhenPluginInstalled(t *testing
 		t.Fatalf("write settings: %v", err)
 	}
 
-	// Run Translate — should skip GenerateSettings because plugin IS installed.
+	// Run Translate — should skip the project-level hooks write because plugin IS installed.
 	if err := (&ClaudeCodeTranslator{}).Translate(dir, testInput()); err != nil {
 		t.Fatalf("Translate: %v", err)
 	}
@@ -997,7 +1007,7 @@ func TestClaudeCodeTranslatorSkipsGenerateSettingsWhenPluginInstalled(t *testing
 		t.Fatalf("parse settings: %v", err)
 	}
 	if _, hasHooks := parsed["hooks"]; hasHooks {
-		t.Error("plugin installed: Translate must not call GenerateSettings — hooks found in settings.local.json")
+		t.Error("plugin installed: Translate must not write project-level hooks — hooks found in settings.local.json")
 	}
 	if string(parsed["env"]) != `{"KEY":"val"}` {
 		t.Errorf("user env field was modified: got %s", string(parsed["env"]))
@@ -1019,4 +1029,27 @@ func readOrFail(t *testing.T, path string) string {
 		t.Fatalf("read %s: %v", path, err)
 	}
 	return string(data)
+}
+
+// writeClaudeSettingsFixture writes a project-level .claude/settings.local.json whose
+// hooks section is exactly hooks.ForgeHookSpec — the test-side stand-in for the removed
+// hooks.GenerateSettings writer. Host parity tests read the file as the Claude Code
+// wiring ground truth.
+//
+// writeClaudeSettingsFixture 写项目级 .claude/settings.local.json，hooks 段恰为
+// hooks.ForgeHookSpec——已删除的 hooks.GenerateSettings writer 的测试侧替身。
+// host parity 测试把它读作 Claude Code 接线基准。
+func writeClaudeSettingsFixture(t *testing.T, dir string) {
+	t.Helper()
+	data, err := json.Marshal(map[string]any{"hooks": hooks.ForgeHookSpec()})
+	if err != nil {
+		t.Fatalf("marshal ForgeHookSpec: %v", err)
+	}
+	path := filepath.Join(dir, ".claude", "settings.local.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatalf("mkdir .claude: %v", err)
+	}
+	if err := os.WriteFile(path, append(data, '\n'), 0644); err != nil {
+		t.Fatalf("write settings.local.json: %v", err)
+	}
 }

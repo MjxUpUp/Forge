@@ -301,11 +301,13 @@ func LatestByCheckForSession(root, sessionID string) (map[CheckName]*Entry, erro
 	return result, nil
 }
 
-// archiveLocked renames the existing checklog to a timestamped backup but does **not** acquire the lock; the caller must hold mu.
-// See Archive for the deadlock rationale. Uses nanosecond-precision naming (util.ArchivedName) so multiple rotations within the same second do not collide.
+// archiveLocked renames the existing checklog to a timestamped backup but does **not** acquire the lock; the caller must hold mu
+// (the same mutex as Record, so concurrent entry appends and rotations do not interleave — callers Clear/…HoldMu variants serialize).
+// Uses nanosecond-precision naming (util.ArchivedName) so multiple rotations within the same second do not collide.
 //
-// archiveLocked 把现存 checklog 重命名为带时间戳的备份，但**不**加锁；调用方必须持有 mu。
-// 死锁原因见 Archive。用纳秒精度命名（util.ArchivedName），同一秒内的多次轮转不会撞名。
+// archiveLocked 把现存 checklog 重命名为带时间戳的备份，但**不**加锁；调用方必须持有 mu
+// （与 Record 同一把 mutex，使并发的 entry 追加与轮转不会交错）。用纳秒精度命名（util.ArchivedName），
+// 同一秒内的多次轮转不会撞名。
 func archiveLocked(root string) error {
 	src := filePath(root)
 	if _, err := os.Stat(src); os.IsNotExist(err) {
@@ -313,19 +315,6 @@ func archiveLocked(root string) error {
 	}
 	dst := util.ArchivedName(filepath.Dir(src), "checklog", time.Now())
 	return os.Rename(src, dst)
-}
-
-// Archive renames the existing checklog to a timestamped backup file, preserving an audit trail across task starts.
-// It holds the same mutex as Record so concurrent entry appends and rotations do not interleave. Returns nil when
-// the checklog does not exist (idempotent).
-//
-// Archive 把现存 checklog 重命名为带时间戳的备份文件，跨 task 启动保留审计轨迹。
-// 持有与 Record 同一把 mutex，使并发的 entry 追加与轮转不会交错。checklog 不存在时
-// 返回 nil（幂等）。
-func Archive(root string) error {
-	mu.Lock()
-	defer mu.Unlock()
-	return archiveLocked(root)
 }
 
 // Clear deletes the check log file after archiving. Called at task start. Both archiving and deletion run inside the mutex
