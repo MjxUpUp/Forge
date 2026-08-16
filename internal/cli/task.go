@@ -82,6 +82,7 @@ func init() {
 	taskStatusCmd.Flags().Bool("json", false, "JSON 格式输出")
 	taskStatusCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
 	taskGateCmd.Flags().Bool("silent", false, "静默模式（仅返回退出码）")
+	taskVerifyAcceptanceCmd.Flags().Bool(`trust-foreign`, false, `受信外来验收命令（task import/.forge migrate 带入）：确认已人工审阅命令清单后执行，首次受信运行清除外来标记`)
 	taskGateCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
 	taskCompleteCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
 	taskAbortCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
@@ -129,12 +130,15 @@ var taskGateCmd = &cobra.Command{
 }
 
 var taskVerifyAcceptanceCmd = &cobra.Command{
-	Use:   "verify-acceptance",
+	Use:   "verify-acceptance [--trust-foreign]",
 	Short: "实跑验收标准并记 deterministic 证据（spec-as-gate）",
 	Long: `forge task verify-acceptance 实跑 task start --accept 登记的每条验收标准（Run 命令），
 按"退出码 0 + Expected 子串"判定，回填 Passed/Output，并记 checklog:acceptance（deterministic）。
 把 dev-workflow Plan 的 "Run: <cmd>, Expected: <out>" 验收标准从 plan 文本变成不可伪造的实跑证据，
-对冲 agent 自述"满足验收"但没真跑的盲区。`,
+对冲 agent 自述"满足验收"但没真跑的盲区。
+
+验收命令若来自 task import / .forge migrate（外来标记），首次执行前须人工审阅命令清单并加
+--trust-foreign 显式受信——外来命令串是可任意执行的载荷，不审阅就跑等于把执行权交给 bundle 作者。`,
 	RunE: runTaskVerifyAcceptance,
 }
 
@@ -1157,7 +1161,33 @@ func runTaskVerifyAcceptance(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	return runTaskVerifyAcceptanceAt(root)
+	trustForeign, _ := cmd.Flags().GetBool(`trust-foreign`)
+	return runTaskVerifyAcceptanceAt(root, trustForeign)
+}
+
+// stdinIsHumanTerminal reports whether stdin is attached to a human terminal (char device) —
+// the discriminator the --trust-foreign gate uses to keep an LLM agent (whose Bash-spawned
+// stdin is a pipe) from self-trusting foreign acceptance commands by simply following the
+// refusal text's own instruction. Var (not func) so tests can inject both sides.
+//
+// KNOWN LIMITATION (review 2026-08-16): mintty (Git Bash's default terminal) hands native
+// processes a named pipe instead of a char device, so a real human is refused there too. No
+// in-place escape hatch is offered on purpose — any env/flag bypass is equally settable by an
+// injected agent, re-opening the self-trust hole this gate exists to close. The refusal message
+// detects TERM_PROGRAM=mintty and tells the human to re-run from a ConPTY terminal (Windows
+// Terminal / PowerShell) instead.
+//
+// stdinIsHumanTerminal 报告 stdin 是否挂在真人终端（char device）上——--trust-foreign 受信门
+// 用来阻止 LLM agent（其 Bash 生成的 stdin 是管道）照拒绝文案自己的指引自我受信外来验收
+// 命令的判别器。用变量（非函数）以便测试注入两侧。
+//
+// 已知局限（2026-08-16 复审）：mintty（Git Bash 默认终端）给原生进程的 stdin 是命名管道而非
+// char device，真人在该终端下同样会被拒。刻意不提供就地逃生舱——任何 env/flag 旁路被注入的
+// agent 同样设得了，等于重新打开本门要堵的自我受信洞。拒绝信息会探测 TERM_PROGRAM=mintty
+// 并指引用户改用 ConPTY 终端（Windows Terminal / PowerShell）重跑。
+var stdinIsHumanTerminal = func() bool {
+	fi, err := os.Stdin.Stat()
+	return err == nil && (fi.Mode()&os.ModeCharDevice) != 0
 }
 
 // runTaskVerifyAcceptanceAt is the root-injected core of runTaskVerifyAcceptance,
@@ -1173,7 +1203,7 @@ func runTaskVerifyAcceptance(cmd *cobra.Command, args []string) error {
 // TaskState 并记一条 checklog:acceptance（deterministic——forge 自己跑命令看结果，不可伪造）。
 // 这是把 dev-workflow Plan 的"Run: <cmd>, Expected: <out>"变成不可伪造实跑证据的入口，
 // 对冲 agent 自述「满足验收」却没真跑的盲区（spec-as-gate）。
-func runTaskVerifyAcceptanceAt(root string) error {
+func runTaskVerifyAcceptanceAt(root string, trustForeign bool) error {
 	state, err := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
 	if err != nil {
 		return fmt.Errorf("failed to load task state: %w", err)
@@ -1185,6 +1215,62 @@ func runTaskVerifyAcceptanceAt(root string) error {
 		fmt.Println("本任务未登记验收标准（forge task start --accept \"run :: expected\"）。")
 		return nil
 	}
+
+	// Foreign-acceptance trust gate: Run commands that entered this TaskState via task import or
+	// .forge migrate are attacker-authorable executable strings (a cloned malicious repo / a hostile
+	// bundle). verify-acceptance executes them with full env — running unreviewed foreign commands is
+	// arbitrary command execution steered by the very BLOCKED guidance this tool emits. So the first
+	// execution demands an explicit, review-based opt-in: without --trust-foreign, print the command
+	// list for human review and refuse (the marker is already on disk, so an untrusted refusal is
+	// durable — nothing to persist in that branch); with it, clear the marker once under the
+	// per-task lock (subsequent re-runs are local-verified evidence, not foreign payloads).
+	//
+	// --trust-foreign additionally requires a HUMAN terminal (stdin is a char device): the threat
+	// model of this very fix is hostile content steering an LLM agent, and an injected agent can
+	// simply follow the refusal text's own instruction and add the flag — the char-device check is
+	// the one discriminator between a human shell and an agent's piped stdin.
+	//
+	// 外来验收受信门：经 task import 或 .forge migrate 进入本 TaskState 的 Run 命令是攻击者可
+	// 书写的可执行字符串（clone 恶意仓库 / 敌意 bundle）。verify-acceptance 以完整环境执行它们
+	// ——未审阅就跑外来命令等于被本工具自己的 BLOCKED 指引导向的任意命令执行。故首次执行要求
+	// 显式的、基于审阅的受信：无 --trust-foreign 时打印命令清单供人工审阅并拒绝（标记已在盘上，
+	// 未受信的拒绝天然持久——该分支无须落盘）；带 flag 则在 per-task 锁内一次性清除标记（之后
+	// 的重跑是本机验证证据，非外来载荷）。
+	//
+	// --trust-foreign 额外要求真人终端（stdin 是 char device）：本修复的威胁模型正是恶意内容
+	// 操纵 LLM agent，而被注入的 agent 大可直接照拒绝文案的指引加上 flag——char device 检查是
+	// 区分人类 shell 与 agent 管道 stdin 的唯一判别器。
+	if state.AcceptanceForeign && !trustForeign {
+		fmt.Println("⚠ 本任务的验收命令来自外来源（task import / .forge migrate），未审阅前拒绝执行。命令清单：")
+		for i, c := range state.Acceptance {
+			fmt.Printf("  [%d] %s\n", i+1, c.Run)
+		}
+		fmt.Println("人工审阅以上命令后，在真人终端中加 --trust-foreign 重新执行；确认无害前不要受信。")
+		return fmt.Errorf("acceptance commands are foreign-marked; review them then re-run with --trust-foreign in a human terminal")
+	}
+	trusted := state.AcceptanceForeign && trustForeign
+	if trusted && !stdinIsHumanTerminal() {
+		// mintty (Git Bash's default terminal) hands native processes a named pipe instead of a
+		// char device — a real human is refused here too, with no in-place escape hatch: an
+		// env/flag bypass an agent could also set would re-open the self-trust hole this gate
+		// exists to close. The actionable path is switching to a ConPTY terminal.
+		//
+		// mintty（Git Bash 默认终端）给原生进程的 stdin 是命名管道而非 char device——真人
+		// 在此同样被拒，且不提供就地逃生舱：agent 也能设置的 env/flag 旁路会重新打开本门
+		// 要堵的自我受信洞。可行动路径是换 ConPTY 终端。
+		if os.Getenv(`TERM_PROGRAM`) == `mintty` {
+			return fmt.Errorf("--trust-foreign 须真人在终端运行：Git Bash/mintty 的 stdin 是命名管道（非 char device），无法与 agent 管道区分——请改用 Windows Terminal / PowerShell 等 ConPTY 终端执行本命令")
+		}
+		return fmt.Errorf("--trust-foreign 是人工审阅决策：须由真人在终端中运行（当前 stdin 非终端——agent/管道环境不得自我受信外来命令）")
+	}
+	// NOTE: the foreign marker is cleared only AFTER the run, together with the result merge below —
+	// clearing it before the run would let a crash mid-run leave unmarked foreign commands runnable
+	// without trust on the next attempt; fail-closed instead (a crash leaves the marker on and
+	// re-demands --trust-foreign).
+	//
+	// 注意：外来标记改为实跑之后、随下方结果合并一并清除——先清后跑会让跑到一半崩溃的下次
+	// 尝试在无受信的情况下执行已去标记的外来命令；改为 fail-closed（崩溃后标记仍在，重跑
+	// 重新要求 --trust-foreign）。
 
 	taskpipeline.VerifyAcceptance(root, state)
 	allPassed := state.AllAcceptancePassed()
@@ -1199,8 +1285,26 @@ func runTaskVerifyAcceptanceAt(root string) error {
 		fmt.Fprintf(os.Stderr, "⚠ checklog 记录失败（验收证据未落盘）: %v\n", recErr)
 	}
 
-	if err := taskpipeline.SaveTaskState(root, state); err != nil {
-		return fmt.Errorf("failed to save task state: %w", err)
+	// Merge acceptance RESULTS onto the freshest on-disk state under the per-task lock (design
+	// §13): a bare SaveTaskState of the pre-run snapshot would clobber concurrent resume/decide
+	// continuity writes — a lost-update on exactly the data import exists to preserve. MutateTaskState
+	// reloads inside the lock; results are matched onto the fresh acceptance spec by the
+	// (Run, Expected) pair so a concurrently edited spec is never stamped with another command's
+	// outcome, and the foreign marker (trusted branch) flips here too — after the run,
+	// fail-closed (see NOTE above).
+	//
+	// 在 per-task 锁内把验收「结果」合并到最新盘上状态（设计§13）：裸 SaveTaskState 回写实跑前
+	// 快照会覆盖并发 resume/decide 的接续写入——丢的恰是 import 要保的数据。MutateTaskState
+	// 锁内重载；结果按 (Run, Expected) 二元组匹配到最新 acceptance spec 上，并发改过的 spec
+	// 不会被盖上另一条命令的结果；外来标记（受信分支）也在此翻——实跑之后、fail-closed（见上 NOTE）。
+	if err := taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
+		taskpipeline.MergeAcceptanceResults(s, state.Acceptance, trusted)
+		return nil
+	}); err != nil {
+		return fmt.Errorf("failed to save acceptance results: %w", err)
+	}
+	if trusted {
+		fmt.Println("已受信外来验收命令（--trust-foreign）——验收实跑完成、外来标记已清除，后续重跑按本机证据处理。")
 	}
 
 	fmt.Println("验收标准实跑结果：")

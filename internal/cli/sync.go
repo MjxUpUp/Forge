@@ -209,8 +209,50 @@ func migrateRuntimeResidue(dir string) {
 	if err != nil {
 		return
 	}
-	if _, err := forgedata.MigrateProject(p, forgedata.MigrateOptions{}); err != nil {
+	res, err := forgedata.MigrateProject(p, forgedata.MigrateOptions{})
+	// Trust boundary (2026-08-15): task files just promoted from repo-committable .forge/ carry
+	// attacker-authorable gate/trust signals — strip them the moment they land (see
+	// migrate_sanitize.go). This must ALSO run when MigrateProject errored with a partial
+	// result (tasks already moved, a later entry failed) — the promoted files are in the
+	// trusted DataDir regardless of how the run ended, and a re-run would SKIP the move
+	// without ever sanitizing. Only fires when the tasks dir actually MOVED in this run; the
+	// skip path (DataDir already had tasks) introduced nothing foreign.
+	//
+	// 信任边界（2026-08-15）：刚从可提交 .forge/ 提升的 task 文件携带攻击者可书写的门禁/信任
+	// 信号——落地即刻剥离（见 migrate_sanitize.go）。MigrateProject 带部分结果返回 error 时
+	// （tasks 已迁移，后续条目失败）同样必须清洗——无论本次运行怎么结束，已提升的文件都在
+	// 受信 DataDir 里，而重跑会 SKIP 该次迁移且永不清洗。仅当本次 run 实际 MOVE 了 tasks 目录
+	// 才触发；skip 路径（DataDir 已有 tasks）没有引入任何外来内容。
+	var sanErr error
+	if res != nil {
+		_, sanErr = sanitizeAfterMigration(p.Root, res.Moved)
+	}
+	if err != nil {
+		// Partial-migration path: sanitize may ALSO have failed right after the tasks dir moved —
+		// warning only about the migrate error would swallow the sanitize warning (the pending
+		// marker keeps it retryable, but the user must see it; review 2026-08-16). Warn both.
+		//
+		// 部分迁移路径：tasks 目录刚搬完、清洗也可能随即失败——只告警迁移错误会把清洗告警
+		// 吞掉（pending 标记保其可重试，但用户必须看见；2026-08-16 复审）。两个都报。
 		fmt.Fprintf(os.Stderr, "auto-sync warning: migrate runtime residue: %v\n", err)
+		if sanErr != nil {
+			fmt.Fprintf(os.Stderr, "auto-sync warning: 迁移了 tasks 但外来门禁信号清洗也失败（hostile task 状态可能在 DataDir）: %v\n"+
+				"  修复根因后运行 forge migrate 重试清洗（pending 标记已记录，后续 autoSync 也会自动重试）\n", sanErr)
+		}
+		return
+	}
+	if sanErr != nil {
+		// autoSync must not brick every forge command on a sanitize failure, but it must not be
+		// silent either (fail-closed spirit of the 2026-08-15 review): loud stderr + explicit
+		// remediation. sanitizeAfterMigration left a pending marker, so the next migrate/autoSync
+		// re-attempts automatically even though the tasks move itself will SKIP (dst exists).
+		//
+		// autoSync 不能因清洗失败把每条 forge 命令都砖死，但也不能沉默（2026-08-15 审查的
+		// fail-closed 精神）：响亮 stderr + 明确修复指引。sanitizeAfterMigration 已留下
+		// pending 标记，之后的 migrate/autoSync 即便 tasks 迁移本身会 SKIP（dst 已存在）也
+		// 会自动重试清洗。
+		fmt.Fprintf(os.Stderr, "auto-sync warning: 迁移了 tasks 但外来门禁信号清洗失败（hostile task 状态可能在 DataDir）: %v\n"+
+			"  修复根因后运行 forge migrate 重试清洗（pending 标记已记录，后续 autoSync 也会自动重试）\n", sanErr)
 	}
 }
 
