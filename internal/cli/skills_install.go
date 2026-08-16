@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/skillsdist"
 	"github.com/spf13/cobra"
@@ -271,11 +272,37 @@ func printInstallReport(r *skillsdist.InstallReport) {
 		fmt.Printf("    forge skills install --drift-policy overwrite\n")
 	}
 
+	// Warnings carry two kinds with different audiences — partition by the security-advisory
+	// prefix install.go stamps (LOW-3): `安全提示（不阻断）` lines are audit findings for the
+	// user to review, the rest are requires-dependency notices. Rendering them all under the
+	// requires header mislabels security advisories as dependency warnings.
+	//
+	// Warnings 混装两类受众不同的内容——按 install.go 盖的 security-advisory 前缀分区
+	// （LOW-3）：`安全提示（不阻断）` 行是给用户复核的审计 findings，其余是 requires 依赖
+	// 提示。全部塞进 requires 头下会把安全提示错标成依赖警告。
+	var secWarns, depWarns []string
+	for _, w := range r.Warnings {
+		if strings.HasPrefix(w, "安全提示（不阻断）") {
+			secWarns = append(secWarns, w)
+		} else {
+			depWarns = append(depWarns, w)
+		}
+	}
+	// security advisory: non-blocking audit findings surfaced by the install gate (#4 second
+	// half) — visible but clearly not a dependency issue.
+	//
+	// 安全提示：install 门控浮出的非阻断审计 findings（#4 后半）——可见但明确不是依赖问题。
+	if len(secWarns) > 0 {
+		fmt.Fprintln(os.Stderr, `  ⚠ 安全提示（不阻断安装）：`)
+		for _, w := range secWarns {
+			fmt.Fprintln(os.Stderr, `    - `+w)
+		}
+	}
 	// requires-dependency warning: a dependency was declared but not co-installed or is invalid; non-blocking (stderr separates normal output from warnings).
 	// requires 依赖警告：声明了依赖但未同装或无效，非阻断（stderr 区分正常输出与告警）。
-	if len(r.Warnings) > 0 {
+	if len(depWarns) > 0 {
 		fmt.Fprintln(os.Stderr, `  ⚠ requires 依赖警告（不阻断安装）：`)
-		for _, w := range r.Warnings {
+		for _, w := range depWarns {
 			fmt.Fprintln(os.Stderr, `    - `+w)
 		}
 	}

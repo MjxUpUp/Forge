@@ -1,5 +1,6 @@
 // Package skillsqa implements SkillsHub quality validation: spec contracts
-// (registry.py R1-R11) and security audit (audit.py 19 rules + weighted scoring).
+// (registry.py R1-R11) and security audit (audit.py 19 rules + weighted scoring,
+// plus forge-local DC-8/DC-9/DC-10 markdown supply-chain extensions).
 // 1:1 alignment with Python semantics ensures per-rule judgments match registry.py
 // --json / audit.py (golden comparison baseline).
 // R12-R17 are forge-local extensions on top of the Python-aligned R1-R11
@@ -7,7 +8,8 @@
 // improvement item 11 — see docs/skills-value-audit-2026-08-02.md).
 //
 // Package skillsqa 实现 SkillsHub 的质量校验：规范契约（registry.py 的 R1-R11）
-// 与安全审查（audit.py 的 19 条规则 + 加权评分）。1:1 对齐 Python 语义，确保与
+// 与安全审查（audit.py 的 19 条规则 + 加权评分，另有 forge 本地 DC-8/DC-9/DC-10
+// markdown 供应链扩展）。1:1 对齐 Python 语义，确保与
 // registry.py --json / audit.py 的判定逐条一致（黄金对比基准）。
 // R12-R17 是 forge 在 Python 对齐的 R1-R11 之上的本地扩展
 // （R12 triggers 声明；R13-R17 来自 2026-08 skills 价值审计清单项 11，

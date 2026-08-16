@@ -336,13 +336,37 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 				report.Skills = append(report.Skills, res)
 				continue
 			}
-			_, _, rec := skillsqa.ScoreFindings(findings)
-			if rec == "DO_NOT_INSTALL" {
-				res.Issues = append(res.Issues, "安全门控: DO_NOT_INSTALL（score≥50，CRITICAL）")
-				res.Targets = []TargetResult{{Action: actBlocked, Detail: "audit 安全门控 DO_NOT_INSTALL"}}
+			score, _, rec := skillsqa.ScoreFindings(findings)
+			// #4 fix: block on ANY CRITICAL finding, not just aggregate DO_NOT_INSTALL. The old
+			// score-only gate needed ≥3 CRITICALs to reach 50 — a single CRITICAL (≤23.75 points)
+			// landed in CAUTION and was installed to every target. HasCritical is shared with
+			// `forge skills audit --gate` (single source of truth — two paths judging the same
+			// property must not drift into one of them re-opening the hole).
+			//
+			// #4 修复：任一 CRITICAL finding 即阻断，而非只看聚合 DO_NOT_INSTALL。旧的纯分数
+			// 门禁要 ≥3 条 CRITICAL 才够 50 分——单条 CRITICAL（≤23.75 分）落在 CAUTION 被装进
+			// 所有 target。HasCritical 与 `forge skills audit --gate` 共用（单一真相源——同一
+			// 性质的两处判定不得漂移成其中一处重新放开洞）。
+			if skillsqa.HasCritical(findings) || rec == "DO_NOT_INSTALL" {
+				res.Issues = append(res.Issues, fmt.Sprintf("安全门控: %s（score=%d，%s）", rec, score,
+					map[bool]string{true: "存在 CRITICAL finding", false: "聚合分 DO_NOT_INSTALL"}[skillsqa.HasCritical(findings)]))
+				res.Targets = []TargetResult{{Action: actBlocked, Detail: "audit 安全门控 " + rec}}
 				report.Stats.Failed++
 				report.Skills = append(report.Skills, res)
 				continue
+			}
+			// Non-blocking ≠ silent (#4 second half): findings below the block line used to be
+			// dropped entirely here — a CAUTION skill installed with zero surfaced signal.
+			// Surface every non-blocked finding set as a report warning (text-visible; matches the
+			// mcp-scan/skill-scan advisory precedent — visibility without blocking).
+			//
+			// 不阻断 ≠ 静默（#4 后半）：低于阻断线的 findings 此前在此被整体丢弃——CAUTION 的
+			// skill 零信号装完。把每个未阻断的 finding 集浮出为 report warning（文本可见；
+			// 对齐 mcp-scan/skill-scan 的 advisory 先例——可见而不阻断）。
+			if len(findings) > 0 {
+				report.Warnings = append(report.Warnings, fmt.Sprintf(
+					"安全提示（不阻断）: skill %s 安全扫描 score=%d（%s，%d 条 finding）——用 forge skills audit --skill %s 核查",
+					name, score, rec, len(findings), name))
 			}
 		}
 
