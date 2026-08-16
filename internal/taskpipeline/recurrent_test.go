@@ -31,11 +31,11 @@ func mkConcl(ref string, lowDims ...string) act.Conclusion {
 // 落盘的形态。
 func mkConclDims(ref string, dims ...act.DimScore) act.Conclusion {
 	return act.Conclusion{
-		TaskRef:    ref,
-		Score:      60,
-		Grade:      "C",
-		Strength:   "Strong",
-		DimScores:  dims,
+		TaskRef:     ref,
+		Score:       60,
+		Grade:       "C",
+		Strength:    "Strong",
+		DimScores:   dims,
 		CompletedAt: time.Now(),
 	}
 }
