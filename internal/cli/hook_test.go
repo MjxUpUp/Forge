@@ -760,53 +760,93 @@ func TestHookToolTrackRecordsSkillInput(t *testing.T) {
 // join 在生产数据上结构性死亡，而漏斗单测用手工 marshal 的输入照样全绿。本测试是形状
 // 契约的生产侧一半；funnel_test.go 的 mkRead 是 join 侧一半——两者不得再分叉。
 func TestHookToolTrackRecordsReadFilePath(t *testing.T) {
-	t.Setenv("FORGE_DATA_HOME", t.TempDir())
-	tmpDir := t.TempDir()
-	os.MkdirAll(filepath.Join(tmpDir, ".forge", "hooks"), 0755)
-	os.WriteFile(filepath.Join(tmpDir, ".forge", "state.json"), []byte(`{"pipeline_version":"2.0","mode":"small"}`), 0644)
-
-	originalWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(originalWd)
-
-	oldStdin := os.Stdin
-	tmpStdin, _ := os.CreateTemp("", "hook-stdin-*.json")
-	tmpStdin.WriteString(`{"hook_event_name":"PostToolUse","tool_name":"Read","tool_input":{"file_path":"src/main.go"}}`)
-	tmpStdin.Seek(0, 0)
-	os.Stdin = tmpStdin
-	defer func() {
-		os.Stdin = oldStdin
-		tmpStdin.Close()
-		os.Remove(tmpStdin.Name())
-	}()
-
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	runHook(nil, []string{"tool-track"})
-
-	w.Close()
-	os.Stdout = oldStdout
-	r.Read(make([]byte, 8192))
-
-	toollogPath := filepath.Join(forgedata.DataDirFor(tmpDir), "toollog.jsonl")
-	data, err := os.ReadFile(toollogPath)
-	if err != nil {
-		t.Fatalf("toollog.jsonl 未生成: %v", err)
+	cases := []struct {
+		name    string
+		stdin   string
+		assert  func(t *testing.T, body string)
+	}{
+		{
+			// 最小形状 + 最小性：原始 input 带 limit，落盘不得含——写入方回归成记完整
+			// input 时此臂变红（复审 LOW(i)）。
+			//
+			// Minimal shape + minimality: the raw input carries limit, which must NOT
+			// land — this arm goes red if the writer regresses to recording the full
+			// input (re-review LOW(i)).
+			name:  "minimal shape",
+			stdin: `{"hook_event_name":"PostToolUse","tool_name":"Read","tool_input":{"file_path":"src/main.go","limit":50}}`,
+			assert: func(t *testing.T, body string) {
+				// tool_input 在 JSONL 里是转义过的内嵌 JSON（\"file_path\":\"...\"），
+				// 断言按裸 token 查——字段名与路径值都在即覆盖最小形状语义。
+				//
+				// tool_input is an escaped embedded JSON inside JSONL
+				// (\"file_path\":\"...\"), so assert on bare tokens — both the field
+				// name and the path value present covers the minimal-shape semantics.
+				if !strings.Contains(body, "file_path") || !strings.Contains(body, "src/main.go") {
+					t.Errorf("Read 的 tool_input 须记最小 {\"file_path\":...}（漏斗 join 依赖，审查 HIGH-1）, got: %s", body)
+				}
+				if strings.Contains(body, "limit") {
+					t.Errorf("最小形状契约：limit 等其余字段不得落盘（lean 契约，复审 LOW(i)）, got: %s", body)
+				}
+			},
+		},
+		{
+			// 零回归臂：input 无 file_path（旧 host / 解析失败形状）→ 条目照旧无
+			// tool_input（omitempty 整键缺席），与修复前逐字节等价（复审 LOW(ii)）。
+			//
+			// Zero-regression arm: input without file_path (legacy hosts / parse-failure
+			// shape) → the entry lands WITHOUT tool_input as before (omitempty drops the
+			// whole key), byte-identical to pre-fix behavior (re-review LOW(ii)).
+			name:  "no file_path stays lean",
+			stdin: `{"hook_event_name":"PostToolUse","tool_name":"Read","tool_input":{"offset":10}}`,
+			assert: func(t *testing.T, body string) {
+				if !strings.Contains(body, `"tool_name":"Read"`) {
+					t.Errorf("toollog 应含 tool_name=Read 条目, got: %s", body)
+				}
+				if strings.Contains(body, "tool_input") || strings.Contains(body, "offset") {
+					t.Errorf("无 file_path 的 Read 应照旧省略整个 tool_input 键（零回归）, got: %s", body)
+				}
+			},
+		},
 	}
-	body := string(data)
-	if !strings.Contains(body, `"tool_name":"Read"`) {
-		t.Errorf("toollog 应含 tool_name=Read 条目, got: %s", body)
-	}
-	// tool_input 在 JSONL 里是转义过的内嵌 JSON（\"file_path\":\"...\"），断言按裸 token
-	// 查——字段名与路径值都在即覆盖最小形状语义。
-	//
-	// tool_input is an escaped embedded JSON inside JSONL (\"file_path\":\"...\"), so assert
-	// on bare tokens — both the field name and the path value present covers the minimal-shape
-	// semantics.
-	if !strings.Contains(body, "file_path") || !strings.Contains(body, "src/main.go") {
-		t.Errorf("Read 的 tool_input 须记最小 {\"file_path\":...}（漏斗 join 依赖，审查 HIGH-1）, got: %s", body)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("FORGE_DATA_HOME", t.TempDir())
+			tmpDir := t.TempDir()
+			os.MkdirAll(filepath.Join(tmpDir, ".forge", "hooks"), 0755)
+			os.WriteFile(filepath.Join(tmpDir, ".forge", "state.json"), []byte(`{"pipeline_version":"2.0","mode":"small"}`), 0644)
+
+			originalWd, _ := os.Getwd()
+			os.Chdir(tmpDir)
+			defer os.Chdir(originalWd)
+
+			oldStdin := os.Stdin
+			tmpStdin, _ := os.CreateTemp("", "hook-stdin-*.json")
+			tmpStdin.WriteString(tc.stdin)
+			tmpStdin.Seek(0, 0)
+			os.Stdin = tmpStdin
+			defer func() {
+				os.Stdin = oldStdin
+				tmpStdin.Close()
+				os.Remove(tmpStdin.Name())
+			}()
+
+			oldStdout := os.Stdout
+			r, w, _ := os.Pipe()
+			os.Stdout = w
+
+			runHook(nil, []string{"tool-track"})
+
+			w.Close()
+			os.Stdout = oldStdout
+			r.Read(make([]byte, 8192))
+
+			toollogPath := filepath.Join(forgedata.DataDirFor(tmpDir), "toollog.jsonl")
+			data, err := os.ReadFile(toollogPath)
+			if err != nil {
+				t.Fatalf("toollog.jsonl 未生成: %v", err)
+			}
+			tc.assert(t, string(data))
+		})
 	}
 }
 
