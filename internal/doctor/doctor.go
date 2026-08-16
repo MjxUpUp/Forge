@@ -172,21 +172,43 @@ func hostSpecs() []hostSpec {
 			// 两代接线载体：settings.json 内联 hooks（老）与 plugins/cache/ 下的
 			// marketplace 插件（plugin pack + autotakeover 后的主分发模型——settings.json
 			// 被 dedupe 清干净，hook 全在 cache/forge/forge/<sha>/ 里）。只扫 settings.json
-			// 会把 plugin 接线的机器误报 missing（评审二轮 MEDIUM，本机实测）。cache 树深
-			// （sha 层 + 仓库子树），故 depth 8 + 基名白名单。
+			// 会把 plugin 接线的机器误报 missing（评审二轮 MEDIUM，本机实测）。
 			//
 			// Two wiring carriers: inline hooks in settings.json (legacy) and the
 			// marketplace plugin under plugins/cache/ (the primary distribution model
 			// since plugin pack + autotakeover — settings.json is deduped clean, hooks
 			// live in cache/forge/forge/<sha>/). Scanning settings.json-only misreports
 			// plugin-wired machines as missing (round-2 review MEDIUM, hit on this
-			// machine). The cache tree is deep (sha layer + repo subtree), hence depth 8
-			// + the basename whitelist.
+			// machine).
 			home := agentbridge.ClaudeConfigHomeDir()
-			return []scanTarget{
-				{path: filepath.Join(home, "settings.json")},
-				{path: filepath.Join(home, "plugins", "cache"), depth: 8, names: hookCarrierNames},
-			}, nil
+			targets := []scanTarget{{path: filepath.Join(home, "settings.json")}}
+			if live := liveClaudePluginTargets(home); len(live) > 0 {
+				// 注册表指向的活副本优先（评审三轮 MEDIUM-1）：cache 按 sha 累积历史
+				// 副本（本机 13 个），全树扫描会引用字典序第一个死副本当 HookPath、
+				// ForgeCmds 按副本数膨胀，更糟的是活副本坏了会被完好的死副本掩盖成
+				// 假 ok。installed_plugins.json 是 claude-code 自己判定加载哪份的真
+				// 相源，以它为准。
+				//
+				// Prefer the registry-named LIVE copy (round-3 review MEDIUM-1): the
+				// cache accumulates one copy per historical sha (13 on this machine);
+				// a full-tree scan cites whichever stale copy sorts first as HookPath,
+				// multiplies ForgeCmds by copy count, and — worse — a broken live copy
+				// gets masked into a false ok by intact stale ones.
+				// installed_plugins.json is the source of truth claude-code itself uses
+				// to decide what loads.
+				return append(targets, live...), nil
+			}
+			// 回退：注册表不可读/未提 forge/指向的路径已消失时，全树深扫（depth 8 +
+			// 基名白名单——cache 树深：sha 层 + 仓库子树）。
+			//
+			// Fallback: registry unreadable / silent about forge / pointing at a
+			// vanished path — deep-scan the whole tree (depth 8 + basename whitelist;
+			// the cache tree is deep: sha layer + repo subtree).
+			return append(targets, scanTarget{
+				path:  filepath.Join(home, "plugins", "cache"),
+				depth: 8,
+				names: hookCarrierNames,
+			}), nil
 		}},
 		{"codex", func() ([]scanTarget, error) {
 			p, err := agentbridge.CodexHooksPath()
@@ -239,6 +261,60 @@ func hostSpecs() []hostSpec {
 			return []scanTarget{{path: p}}, err
 		}},
 	}
+}
+
+// liveClaudePluginTargets resolves the LIVE forge plugin install(s) claude-code's own
+// registry points at (~/.claude/plugins/installed_plugins.json, schema v2:
+// plugins["forge@forge"][].installPath). Mining stays token-oriented like the rest of
+// doctor — JSON shapes vary and only the path matters. Tokens qualify when they name
+// forge, sit under the cache dir, and actually exist on disk; JSON-escaped doubled
+// backslashes are collapsed. Returns nil (→ full-tree fallback) when the registry is
+// unreadable or names no existing forge path.
+//
+// liveClaudePluginTargets 解析 claude-code 自己的注册表（~/.claude/plugins/
+// installed_plugins.json，schema v2：plugins["forge@forge"][].installPath）指向的
+// 活 forge 插件安装。挖掘保持与 doctor 其余部分同级的 token 导向——JSON 形态多变，
+// 需要的只有路径。token 需同时满足：含 forge、位于 cache 目录下、磁盘上确实存在；
+// JSON 转义的双反斜杠折叠为单。注册表不可读或未指向任何存在的 forge 路径时返回
+// nil（→ 全树回退）。
+func liveClaudePluginTargets(home string) []scanTarget {
+	data, err := os.ReadFile(filepath.Join(home, "plugins", "installed_plugins.json"))
+	if err != nil {
+		return nil
+	}
+	cachePrefix := strings.ToLower(filepath.ToSlash(filepath.Join(home, "plugins", "cache")))
+	seen := map[string]bool{}
+	var out []scanTarget
+	for _, ln := range strings.Split(string(data), "\n") {
+		if !strings.Contains(strings.ToLower(ln), "forge") {
+			continue
+		}
+		for _, m := range tokenRe.FindAllStringIndex(ln, -1) {
+			tok := strings.ReplaceAll(ln[m[0]:m[1]], `\\`, `\`)
+			low := strings.ToLower(filepath.ToSlash(tok))
+			// forge 性在路径段（cache/forge/forge/<sha>），不在末段（sha）——按整路
+			// 径子串判，非 basename。
+			//
+			// The forge-ness is in path segments (cache/forge/forge/<sha>), not the
+			// last segment (the sha) — substring over the whole path, not basename.
+			if !strings.Contains(low, "forge") {
+				continue
+			}
+			if !strings.HasPrefix(low, cachePrefix+"/") {
+				continue
+			}
+			if _, err := os.Stat(tok); err != nil {
+				continue
+			}
+			key := low
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			out = append(out, scanTarget{path: tok, depth: 8, names: hookCarrierNames})
+		}
+	}
+	return out
 }
 
 // Run performs the full audit. selfVersion is the running forge's version string
@@ -514,7 +590,7 @@ func scanFile(path string, lookPath func(string) (string, error)) (int, []binCan
 		// "id": "forge"、URL、codebuddy known_marketplaces.json 里 "Forge loop-engineering
 		// quality gates: …" 这类 description）只是元数据/文案。九个 host 的 forge 接线
 		// 命令一律是 `forge hook <event>` 的调用形态（含 --agent 变体；`forge gate <id>`
-		// 是 settings 层认可的等价前缀，见 internal/cli/settings.go 的合法命令判定），
+		// 是 settings 层认可的等价前缀，见 internal/hooks/settings.go isForgeHookCommand 的合法命令判定），
 		// 故只认"紧跟在 forge token 后的子命令词位上是 hook/gate"的行——词在任何位置
 		// 出现都不算。否则 plugin 接线坏了但注册表还在的机器会假报 ok（评审 #1 的失效
 		// 场景），bare 词门槛则被 "quality gates" 文案击穿（本轮 E2E 实证）。
@@ -525,7 +601,7 @@ func scanFile(path string, lookPath func(string) (string, error)) (int, []binCan
 		// metadata/prose. All nine hosts' forge wiring is an invocation of the shape
 		// `forge hook <event>` (--agent variants included; `forge gate <id>` is the
 		// settings layer's accepted equivalent prefix — see the legal-command check in
-		// internal/cli/settings.go), so only lines with hook/gate in the subcommand
+		// internal/hooks/settings.go), so only lines with hook/gate in the subcommand
 		// position right after the forge token count — the word appearing anywhere else
 		// doesn't. Otherwise a machine whose plugin hooks broke while the registry stayed
 		// intact false-reports ok (review #1's scenario), and a bare-word gate is defeated
@@ -554,11 +630,11 @@ var tokenRe = regexp.MustCompile(`[A-Za-z0-9_\-./\\:~@]+`)
 
 // invocationSubcommands are the subcommand words that turn a forge token into wiring:
 // `forge hook <event>` (every host's hook wiring) and `forge gate <id>` (the settings
-// layer's accepted equivalent prefix — internal/cli/settings.go's legal-command check).
+// layer's accepted equivalent prefix — internal/hooks/settings.go's isForgeHookCommand, mirrored in agentbridge/codex.go).
 //
 // invocationSubcommands 是让 forge token 构成接线的子命令词：`forge hook <event>`
 // （所有 host 的 hook 接线）与 `forge gate <id>`（settings 层认可的等价前缀——见
-// internal/cli/settings.go 的合法命令判定）。
+// internal/hooks/settings.go 的 isForgeHookCommand，agentbridge/codex.go 有镜像）。
 var invocationSubcommands = []string{"hook", "gate"}
 
 // forgeInvocation extracts the first forge token that sits in an invocation position —
@@ -585,11 +661,16 @@ func forgeInvocation(line string) (string, bool) {
 // subcommandAt reports whether a legal subcommand sits at a word boundary right after
 // position end in line. JSON/shell separators (quotes, whitespace, commas, colons,
 // equals) between the binary and its argument are skipped; the matched word must also
-// END at a boundary so "gateway"/"hooks" prose doesn't count.
+// END at a boundary so "gateway"/"hooks" prose doesn't count. Known leniency (accepted,
+// round-3 review): the separator set admits `,=:` (so `forge=hook` counts) and isWordByte
+// excludes `.` (so `forge hook.json` counts) — both contrived for the scanned file
+// types; the empirically observed prose class is rejected.
 //
 // subcommandAt 判定 line 中 end 位之后是否恰好是合法子命令且带词边界。二进制与参数间
 // 的 JSON/shell 分隔符（引号、空白、逗号、冒号、等号）跳过；命中的词还必须在尾部也
-// 有边界——"gateway"/"hooks" 这类文案不算。
+// 有边界——"gateway"/"hooks" 这类文案不算。已知宽容（接受，评审三轮）：分隔集含 `,=:`
+// （`forge=hook` 会计）、isWordByte 不含 `.`（`forge hook.json` 会计）——对所扫文件类型
+// 皆为构造形态，实证观察到的文案类已被拒。
 func subcommandAt(line string, end int) bool {
 	rest := strings.TrimLeft(line[end:], "\"' \t\r\n,=:")
 	low := strings.ToLower(rest)

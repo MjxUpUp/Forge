@@ -236,6 +236,14 @@ func TestForgeInvocation(t *testing.T) {
 		{("json命令"), `"command": "forge hook stop"`, `forge`, true},
 		{("exe裸名"), `forge.exe hook pre`, `forge.exe`, true},
 		{("带盘符路径"), `"C:\\tools\\forge.exe" hook`, `C:\\tools\\forge.exe`, true},
+		// JSON 转义形态（生产 settings.json/插件清单的真实字节）：token 吸收转义引号的
+		// 反斜杠成尾缀，Base 剥掉后仍认 forge——钉住该行为，防 tokenRe 改动静默丢合法调用。
+		//
+		// JSON-escaped shape (the real bytes in production settings.json/plugin
+		// manifests): the token absorbs the escape-quote backslash as a tail; Base
+		// strips it and forge still matches — pinned so tokenRe tweaks can't silently
+		// drop legal invocations (round-3 review test gap A).
+		{("json转义引号路径"), `{"command":"\"C:\\tools\\forge.exe\" hook stop"}`, `C:\\tools\\forge.exe\`, true},
 		{("toml赋值"), `command = 'forge hook'`, `forge`, true},
 		{("gate等价前缀"), `forge gate review-pass`, `forge`, true},
 		{("agent变体"), `forge hook --agent kimi pre-tool-use`, `forge`, true},
@@ -395,7 +403,69 @@ func TestAuditHost_UnresolvedTokenNeverProbed(t *testing.T) {
 	}
 }
 
-// TestRun_ClaudePluginCacheLayout 评审二轮 MEDIUM 的回归守卫：plugin pack + autotakeover
+// TestRun_ClaudePluginCache_LiveRegistryPreferred 评审三轮 MEDIUM-1 守卫：cache 按 sha
+// 累积历史副本（本机 13 个），全树字典序扫描会引用字典序第一个死副本当 HookPath、
+// ForgeCmds 按副本数膨胀。installed_plugins.json 指向活副本时必须只认活副本——字典序
+// 在后的 zzz-live 被点名，aaaa-stale 虽排前且同样带接线也不得贡献计数。
+//
+// TestRun_ClaudePluginCache_LiveRegistryPreferred round-3 review MEDIUM-1 guard: the
+// cache accumulates one copy per historical sha (13 on this machine); a lexical
+// full-tree scan cites whichever stale copy sorts first as HookPath and multiplies
+// ForgeCmds by copy count. When installed_plugins.json names the live copy, only that
+// copy counts — lexically-later zzz-live is named; aaaa-stale sorts first and carries
+// wiring too, yet must not contribute.
+func TestRun_ClaudePluginCache_LiveRegistryPreferred(t *testing.T) {
+	root := isolate(t)
+	writeFile(t, filepath.Join(root, ".claude", "settings.json"), `{"enabledPlugins":{"forge@forge":true}}`)
+	cache := filepath.Join(root, ".claude", "plugins", "cache", "forge", "forge")
+	stale := filepath.Join(cache, "aaaa-stale")
+	live := filepath.Join(cache, "zzzz-live")
+	for _, d := range []string{stale, live} {
+		writeFile(t, filepath.Join(d, ".claude-plugin", "plugin.json"),
+			`{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"forge hook --agent claude-code pre-tool-use"}]}]}}`)
+	}
+	writeFile(t, filepath.Join(root, ".claude", "plugins", "installed_plugins.json"),
+		fmt.Sprintf(`{"version":2,"plugins":{"forge@forge":[{"scope":"user","installPath":%q}]}}`,
+			filepath.ToSlash(live)))
+	rep := Run("1.30.0", fakeEnv(map[string]string{`/fake/forge.exe`: "1.30.0"}))
+	h := hostOf(t, rep, "claude-code")
+	if h.Status != StatusOK {
+		t.Fatalf("活副本应被扫到且为 ok，got %q (ForgeCmds=%d hookPath=%q)", h.Status, h.ForgeCmds, h.HookPath)
+	}
+	if h.ForgeCmds != 1 {
+		t.Fatalf("只应计活副本一份（stale 不参与），ForgeCmds 应为 1，got %d", h.ForgeCmds)
+	}
+	if !strings.HasSuffix(filepath.ToSlash(h.HookPath), "zzzz-live/.claude-plugin/plugin.json") {
+		t.Fatalf("HookPath 应指向注册表点名的活副本，got %q", h.HookPath)
+	}
+}
+
+// TestRun_ClaudePluginCache_RegistryVanished 回退路径：注册表指向的路径已不存在 →
+// 回退全树深扫，接线仍可见（stale 副本总比瞎报 missing 好）。
+//
+// TestRun_ClaudePluginCache_RegistryVanished fallback: the registry names a vanished
+// path → fall back to the full-tree deep scan; wiring is still visible (a stale copy
+// beats a blind missing report).
+func TestRun_ClaudePluginCache_RegistryVanished(t *testing.T) {
+	root := isolate(t)
+	writeFile(t, filepath.Join(root, ".claude", "settings.json"), `{"enabledPlugins":{"forge@forge":true}}`)
+	cache := filepath.Join(root, ".claude", "plugins", "cache", "forge", "forge")
+	writeFile(t, filepath.Join(cache, "abc123def", ".claude-plugin", "plugin.json"),
+		`{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"forge hook --agent claude-code pre-tool-use"}]}]}}`)
+	writeFile(t, filepath.Join(root, ".claude", "plugins", "installed_plugins.json"),
+		fmt.Sprintf(`{"version":2,"plugins":{"forge@forge":[{"scope":"user","installPath":%q}]}}`,
+			filepath.ToSlash(filepath.Join(cache, "deleted0sha"))))
+	rep := Run("1.30.0", fakeEnv(map[string]string{`/fake/forge.exe`: "1.30.0"}))
+	h := hostOf(t, rep, "claude-code")
+	if h.Status != StatusOK {
+		t.Fatalf("注册表失效应回退全树扫描并报 ok，got %q (ForgeCmds=%d)", h.Status, h.ForgeCmds)
+	}
+	if !strings.HasSuffix(filepath.ToSlash(h.HookPath), "abc123def/.claude-plugin/plugin.json") {
+		t.Fatalf("回退扫描应找到树内接线，got %q", h.HookPath)
+	}
+}
+
+// TestRun_ClaudePluginCacheLayout 评审二轮 MEDIUM 的回归守卫（现钉回退路径）：plugin pack + autotakeover
 // 后的 claude-code 机器上 settings.json 被 dedupe 清干净，hook 全在 plugins/cache/forge/
 // forge/<sha>/ 深树里。doctor 必须经深扫（depth 8 + 基名白名单）到达 plugin.json——只扫
 // settings.json 会把这类机器误报 missing。树里再放一个同深的 golden .json 钉住白名单：
@@ -433,7 +503,7 @@ func TestRun_ClaudePluginCacheLayout(t *testing.T) {
 // missing（评审二轮 LOW #1）。
 //
 // TestScanFile_GatePrefix `forge gate <id>` is an accepted equivalent prefix at the
-// settings layer (the legal-command check in internal/cli/settings.go); the wiring gate
+// settings layer (isForgeHookCommand in internal/hooks/settings.go (mirrored in agentbridge/codex.go)); the wiring gate
 // must accept it too — otherwise a host wired only via gate false-reports missing
 // (round-2 review LOW #1).
 func TestScanFile_GatePrefix(t *testing.T) {
