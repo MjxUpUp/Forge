@@ -87,3 +87,20 @@ description 三段式合格未改动;新建 evals/evals.json(5正+4负)
 ### Evidence
 
 docs/skills-value-audit-2026-08-02.md
+
+## [d-18cc4be83a5fdb1c-cb41e84c] accept
+
+- **Skill**: ai-ui-generation-workflow
+- **DecidedAt**: 2026-08-16T13:23:32Z
+
+### Diagnosis
+
+同UI族:prompt-to-UI/Figma-to-code工作流请求无触发
+
+### Revision
+
+metadata.triggers新增UserPromptSubmit关键词(prompt-to-UI/Figma-to-code/Pixso-to-code/用 v0/用 Bolt/用 Lovable/AI 出原型/生成页面),cooldown 600
+
+### Evidence
+
+协作记录AI出原型类请求高频;无trigger依赖agent记忆路由,命中率不稳定
