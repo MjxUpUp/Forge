@@ -84,6 +84,13 @@ func TestRun_HostMissing(t *testing.T) {
 	if h.Err != "" {
 		t.Fatalf("missing 不应有 Err，got %q", h.Err)
 	}
+	// 评审二轮 NIT #4：missing 不展示候选首文件当伪证据。
+	//
+	// Round-2 review NIT #4: missing hosts never show the first candidate file as
+	// pseudo-evidence.
+	if h.HookPath != "" {
+		t.Fatalf("missing 时 HookPath 应为空，got %q", h.HookPath)
+	}
 }
 
 // TestRun_HostOK 已接线且版本一致：settings.json 含 forge hook 命令、hook 引用的
@@ -171,6 +178,9 @@ func TestRun_NonForgeFile(t *testing.T) {
 	if h.Status != StatusMissing {
 		t.Fatalf("非 forge hook 应为 missing，got %q", h.Status)
 	}
+	if h.HookPath != "" {
+		t.Fatalf("非 forge hook 时 HookPath 应为空（无伪证据），got %q", h.HookPath)
+	}
 }
 
 // TestRun_NineHosts 报告覆盖 9 个 host（copilot 刻意不在列——其 VS Code 扩展配置
@@ -214,28 +224,39 @@ func TestScanPATH_MultipleForges(t *testing.T) {
 	}
 }
 
-// TestForgeToken 各 token 形态：裸名/带路径/带引号/JSON 值内嵌命令。
-func TestForgeToken(t *testing.T) {
+// TestForgeInvocation 各调用形态与拒绝形态：裸名/带路径/带引号/JSON 值内嵌命令命中；
+// 文案/注册表元数据（子命令位无 hook/gate）拒绝。
+func TestForgeInvocation(t *testing.T) {
 	cases := []struct {
+		name string
 		line string
 		want string
 		ok   bool
 	}{
-		{`"command": "forge hook stop"`, `forge`, true},
-		{`forge.exe hook pre`, `forge.exe`, true},
-		{`"C:\\tools\\forge.exe" hook`, `C:\\tools\\forge.exe`, true},
-		{`command = 'forge hook'`, `forge`, true},
-		// 说明性文本也命中 token——宁多勿漏的既定取舍（见 TestSanitizeCommand_NonCommand）
-		{`echo forge is great`, `forge`, true},
+		{("json命令"), `"command": "forge hook stop"`, `forge`, true},
+		{("exe裸名"), `forge.exe hook pre`, `forge.exe`, true},
+		{("带盘符路径"), `"C:\\tools\\forge.exe" hook`, `C:\\tools\\forge.exe`, true},
+		{("toml赋值"), `command = 'forge hook'`, `forge`, true},
+		{("gate等价前缀"), `forge gate review-pass`, `forge`, true},
+		{("agent变体"), `forge hook --agent kimi pre-tool-use`, `forge`, true},
+		{("minified引号紧邻"), `"command":"forge hook stop"`, `forge`, true},
+		// 拒绝形态：forge 出现但子命令位不是 hook/gate
+		{("说明性文本"), `echo forge is great`, ``, false},
+		{("注册表id"), `"id": "forge", "version": "1.30.0"`, ``, false},
+		{("描述文案带gates"), `"description": "Forge loop-engineering quality gates: task-tracked"`, ``, false},
+		{("hooks复数不算"), `"description": "Forge hooks for quality"`, ``, false},
+		{("gateway词不算"), `forge gateway config`, ``, false},
 	}
 	for _, c := range cases {
-		tok, ok := forgeToken(c.line)
-		if ok != c.ok {
-			t.Fatalf("forgeToken(%q) ok=%v want=%v", c.line, ok, c.ok)
-		}
-		if c.ok && tok != c.want {
-			t.Fatalf("forgeToken(%q) = %q, want %q", c.line, tok, c.want)
-		}
+		t.Run(c.name, func(t *testing.T) {
+			tok, ok := forgeInvocation(c.line)
+			if ok != c.ok {
+				t.Fatalf("forgeInvocation(%q) ok=%v want=%v", c.line, ok, c.ok)
+			}
+			if c.ok && tok != c.want {
+				t.Fatalf("forgeInvocation(%q) = %q, want %q", c.line, tok, c.want)
+			}
+		})
 	}
 }
 
@@ -243,6 +264,7 @@ func TestForgeToken(t *testing.T) {
 func TestNormalizeVersion(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"forge version 1.30.0 (commit: abc)", "1.30.0"},
+		{"forge version dev (built 2026-08-16)", "dev (built 2026-08-16)"},
 		{"1.28.4", "1.28.4"},
 		{"v1.30.0-beta.1", "1.30.0-beta.1"},
 		{"dev", "dev"},
@@ -255,13 +277,23 @@ func TestNormalizeVersion(t *testing.T) {
 	}
 }
 
-// TestSanitizeCommand_NonCommand 说明性文本（如 "echo forge is great" 这类 forge 出现
-// 但无命令语义的行）仍会被 forgeToken 命中——token 层"宁多勿漏"是既定取舍；接线
-// 计数层的防误报由 scanFile 的 "hook" 词门槛承担（见 TestRun_RegistryMetadataNotWiring）。
-// 该测试钉住 token 层取舍，防止未来无意识改变行为。
+// TestSanitizeCommand_NonCommand 说明性文本（如 "echo forge is great"、codebuddy
+// known_marketplaces.json 的 "quality gates" description——forge 出现但无调用语义）
+// 在调用位判定层被拒：不构成接线。该测试钉住防误报不变量，防止退回 bare 词门槛
+// （"hook"/"gate" 词在任何位置出现即计）——bare 门槛已被 "quality gates" 文案实证击穿。
+//
+// TestSanitizeCommand_NonCommand pins the false-positive guard: prose (like "echo forge
+// is great", or codebuddy known_marketplaces.json's "quality gates" description — forge
+// present, no invocation semantics) is rejected at the invocation-position layer. This
+// prevents regression to a bare-word gate ("hook"/"gate" counted anywhere on the line)
+// — empirically defeated by "quality gates" prose.
 func TestSanitizeCommand_NonCommand(t *testing.T) {
-	if _, ok := forgeToken(`echo forge is great`); !ok {
-		t.Fatal("forge 出现即命中是既定取舍（宁多勿漏），行为不应漂移")
+	root := t.TempDir()
+	p := filepath.Join(root, "known_marketplaces.json")
+	writeFile(t, p, "{\"name\":\"Forge\",\"description\":\"Forge loop-engineering quality gates: task-tracked source changes, and review-gated completion.\"}")
+	cmds, bins := scanFile(p, nil)
+	if cmds != 0 || len(bins) != 0 {
+		t.Fatalf("描述文案不应计为接线，got cmds=%d bins=%v", cmds, bins)
 	}
 }
 
@@ -360,6 +392,60 @@ func TestAuditHost_UnresolvedTokenNeverProbed(t *testing.T) {
 	}
 	if len(probed) != 0 {
 		t.Fatalf("无任何可解析 token 时不应执行版本探测，却探测了 %v", probed)
+	}
+}
+
+// TestRun_ClaudePluginCacheLayout 评审二轮 MEDIUM 的回归守卫：plugin pack + autotakeover
+// 后的 claude-code 机器上 settings.json 被 dedupe 清干净，hook 全在 plugins/cache/forge/
+// forge/<sha>/ 深树里。doctor 必须经深扫（depth 8 + 基名白名单）到达 plugin.json——只扫
+// settings.json 会把这类机器误报 missing。树里再放一个同深的 golden .json 钉住白名单：
+// 扩展名过滤会把它扫进来，基名过滤必须跳过。
+//
+// TestRun_ClaudePluginCacheLayout regression guard for round-2 review MEDIUM: on a
+// claude-code machine after plugin pack + autotakeover, settings.json is deduped clean
+// and hooks live in the deep plugins/cache/forge/forge/<sha>/ tree. doctor must reach
+// plugin.json via the deep scan (depth 8 + basename whitelist) — settings.json-only
+// misreports such machines as missing. A same-depth golden .json pins the whitelist:
+// an extension filter would sweep it in, the basename filter must skip it.
+func TestRun_ClaudePluginCacheLayout(t *testing.T) {
+	root := isolate(t)
+	writeFile(t, filepath.Join(root, ".claude", "settings.json"), `{"enabledPlugins":{"forge@forge":true}}`)
+	sha := filepath.Join(root, ".claude", "plugins", "cache", "forge", "forge", "abc123def")
+	writeFile(t, filepath.Join(sha, ".claude-plugin", "plugin.json"),
+		`{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"forge hook --agent claude-code pre-tool-use"}]}]}}`)
+	writeFile(t, filepath.Join(sha, "internal", "testdata", "golden.json"),
+		`{"hint":"forge hook fake","bin":"/does/not/exist/forge"}`)
+	rep := Run("1.30.0", fakeEnv(map[string]string{`/fake/forge.exe`: "1.30.0"}))
+	h := hostOf(t, rep, "claude-code")
+	if h.Status != StatusOK {
+		t.Fatalf("plugin cache 载体应被扫到且为 ok，got %q (ForgeCmds=%d hookPath=%q)", h.Status, h.ForgeCmds, h.HookPath)
+	}
+	if h.ForgeCmds != 1 {
+		t.Fatalf("golden.json 应被基名白名单跳过，ForgeCmds 应为 1，got %d", h.ForgeCmds)
+	}
+	if !strings.HasSuffix(filepath.ToSlash(h.HookPath), "plugins/cache/forge/forge/abc123def/.claude-plugin/plugin.json") {
+		t.Fatalf("HookPath 应指向 cache 内 plugin.json，got %q", h.HookPath)
+	}
+}
+
+// TestScanFile_GatePrefix `forge gate <id>` 是 settings 层认可的等价前缀（internal/cli
+// settings.go 的合法命令判定），接线门槛必须同样接受——否则仅用 gate 接线的 host 假报
+// missing（评审二轮 LOW #1）。
+//
+// TestScanFile_GatePrefix `forge gate <id>` is an accepted equivalent prefix at the
+// settings layer (the legal-command check in internal/cli/settings.go); the wiring gate
+// must accept it too — otherwise a host wired only via gate false-reports missing
+// (round-2 review LOW #1).
+func TestScanFile_GatePrefix(t *testing.T) {
+	root := t.TempDir()
+	p := filepath.Join(root, "hooks.json")
+	writeFile(t, p, `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"forge gate review-pass"}]}]}}`)
+	cmds, bins := scanFile(p, nil)
+	if cmds != 1 {
+		t.Fatalf("forge gate 行应计为接线，ForgeCmds 应为 1，got %d", cmds)
+	}
+	if len(bins) != 1 || bins[0].path != "forge" {
+		t.Fatalf("应解析出 forge 裸名 bin，got %v", bins)
 	}
 }
 
