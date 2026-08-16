@@ -70,3 +70,20 @@ description 审计合格未改动 + evals.json 建立
 ### Evidence
 
 docs/skills-value-audit-2026-08-02.md
+
+## [d-18cc4be84cddbc28-fc19bfb2] accept
+
+- **Skill**: design-review-snapshot
+- **DecidedAt**: 2026-08-16T13:23:33Z
+
+### Diagnosis
+
+同UI族:导出设计评审快照请求无触发
+
+### Revision
+
+metadata.triggers新增UserPromptSubmit关键词(导成设计图/导出设计图/反向导入/设计评审快照/变成设计图/给设计看),cooldown 600
+
+### Evidence
+
+给设计看/导设计图类请求多次出现,触发覆盖缺口

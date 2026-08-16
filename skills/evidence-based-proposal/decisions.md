@@ -52,3 +52,20 @@ docs/skills-value-audit-2026-08-02.md
 ### Evidence
 
 forge skills validate 51/51 + TestSkills_NoDanglingSkillRefs 守卫
+
+## [d-18cc4bec01e36d40-027cbaf5] accept
+
+- **Skill**: evidence-based-proposal
+- **DecidedAt**: 2026-08-16T13:23:49Z
+
+### Diagnosis
+
+同UI族:方案论证类请求无触发
+
+### Revision
+
+metadata.triggers新增UserPromptSubmit关键词(方案依据/凭什么/备选方案/方案对比/选型理由/可行性论证/为什么选),cooldown 600
+
+### Evidence
+
+选型论证请求高频(研究类簇),触发覆盖缺口

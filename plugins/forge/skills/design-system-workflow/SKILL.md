@@ -5,6 +5,7 @@ metadata:
   pattern: pipeline + gate
   domain: frontend
   composes: [frontend-stack-selection, frontend-feature-development, frontend-code-review]
+  triggers: [{"event":"UserPromptSubmit","keywords":["design token","Design Token","设计系统","token 同步","OKLCH","shadcn registry","Style Dictionary"],"cooldown":600}]
 ---
 
 # Design System 与 Token 工作流

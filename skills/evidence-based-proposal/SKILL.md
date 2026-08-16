@@ -4,6 +4,7 @@ description: "方案必须有依据。Use when: 提出技术方案时、建议�
 metadata:
   pattern: gate
   domain: research
+  triggers: [{"event":"UserPromptSubmit","keywords":["方案依据","凭什么","备选方案","方案对比","选型理由","可行性论证","为什么选"],"cooldown":600}]
 ---
 
 # 方案必须有依据

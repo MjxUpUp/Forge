@@ -5,6 +5,7 @@ metadata:
   pattern: pipeline + gate
   domain: frontend
   composes: [frontend-feature-development, frontend-stack-selection]
+  triggers: [{"event":"UserPromptSubmit","keywords":["prompt-to-UI","Figma-to-code","Pixso-to-code","用 v0","用 Bolt","用 Lovable","AI 出原型","生成页面"],"cooldown":600}]
 ---
 
 # AI UI 生成工作流
