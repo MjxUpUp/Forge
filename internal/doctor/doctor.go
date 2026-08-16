@@ -92,8 +92,12 @@ type Options struct {
 }
 
 // semver extracts a bare version token (1.30.0, 1.30.0-beta.1) from a version string.
+// Unanchored by design — accepts date-shaped stamps (2026.08.16) too; a date-stamped
+// dev build may report spurious drift against a semver self, an accepted edge (review #10).
 //
-// semver 从版本串中提取裸版本 token（1.30.0、1.30.0-beta.1）。
+// semver 从版本串中提取裸版本 token（1.30.0、1.30.0-beta.1）。刻意不锚定——日期形态
+// （2026.08.16）也会被收；日期戳 dev 构建对 semver self 可能报假 drift，接受的边缘
+// （评审 #10）。
 var semver = regexp.MustCompile(`[0-9]+\.[0-9]+\.[0-9]+[0-9A-Za-z.+-]*`)
 
 func (o *Options) fill() {
@@ -197,7 +201,10 @@ func hostSpecs() []hostSpec {
 func Run(selfVersion string, opts Options) Report {
 	opts.fill()
 	self := normalizeVersion(selfVersion)
-	rep := Report{SelfVersion: self}
+	// 空切片而非 nil：--json 时 [] 比 null 对机器消费方更友好（评审 #7）。
+	//
+	// Empty slices, not nil: [] beats null for machine consumers of --json (review #7).
+	rep := Report{SelfVersion: self, PathForge: []PathEntry{}, Hosts: []HostReport{}}
 	if p, err := opts.LookPath("forge"); err == nil {
 		rep.Resolved = p
 	}
@@ -208,14 +215,25 @@ func Run(selfVersion string, opts Options) Report {
 	return rep
 }
 
-// scanPATH lists every forge executable on PATH (in PATH order) with versions,
-// capped at 5 version probes. Multiple hits = the classic stray-exe/wins-shim setup.
+// maxVersionProbes caps per-source version executions (PATH scan and each host's bin
+// loop alike): every probe can cost up to the 3s timeout, and tokens are mined from
+// config text — bounded probing keeps a garbage-token pile from stalling the audit
+// (review #6).
 //
-// scanPATH 按 PATH 顺序列出其上全部 forge 可执行文件及版本，版本探测上限 5 个。
-// 多个命中 = 经典的游离 exe/shim 并存局面。
+// maxVersionProbes 限制每来源的版本执行次数（PATH 扫描与各 host 的 bin 循环同限）：
+// 每次探测最多耗 3s 超时，且 token 挖自配置文本——有界探测防垃圾 token 堆拖死审计
+// （评审 #6）。
+const maxVersionProbes = 5
+
+// scanPATH lists every forge executable on PATH (in PATH order) with versions,
+// capped at maxVersionProbes version probes. Multiple hits = the classic
+// stray-exe/wins-shim setup.
+//
+// scanPATH 按 PATH 顺序列出其上全部 forge 可执行文件及版本，版本探测上限
+// maxVersionProbes 个。多个命中 = 经典的游离 exe/shim 并存局面。
 func scanPATH(opts Options) []PathEntry {
 	seen := map[string]bool{}
-	var out []PathEntry
+	out := []PathEntry{}
 	names := []string{"forge.exe", "forge", "forge.bat", "forge.cmd"}
 	for _, dir := range opts.ScanPATH() {
 		if dir == "" {
@@ -223,15 +241,21 @@ func scanPATH(opts Options) []PathEntry {
 		}
 		for _, name := range names {
 			p := filepath.Join(dir, name)
-			if seen[p] {
+			// Windows 大小写不敏感文件系统：C:\a 与 c:\a 是同一目录，小写键去重、
+			// 展示保留原路径（评审 #8）。
+			//
+			// Windows case-insensitive filesystem: C:\a and c:\a are the same dir —
+			// dedupe on a lowercase key, keep the original path for display (review #8).
+			key := strings.ToLower(p)
+			if seen[key] {
 				continue
 			}
 			if _, err := os.Stat(p); err != nil {
 				continue
 			}
-			seen[p] = true
+			seen[key] = true
 			e := PathEntry{Path: p}
-			if len(out) < 5 {
+			if len(out) < maxVersionProbes {
 				if v, err := opts.VersionRunner(p); err == nil {
 					e.Version = normalizeVersion(v)
 				}
@@ -262,22 +286,46 @@ func auditHost(spec hostSpec, self string, opts Options) HostReport {
 		return r
 	}
 	r.HookPath = files[0]
-	var bins []string
+	var resolved, raw []string
 	for _, f := range files {
-		cmds, bs := scanFile(f, opts.LookPath)
+		cmds, cands := scanFile(f, opts.LookPath)
+		if r.ForgeCmds == 0 && cmds > 0 {
+			// 证据源归位：HookPath 指向真正携带 forge 接线的第一个文件，而非候选列表
+			// 首项（kimi 双载体时首项是无接线的 config.toml）（评审 #9）。
+			//
+			// Evidence-source honesty: HookPath points at the first file actually
+			// carrying forge wiring, not the first candidate (kimi's dual-carrier list
+			// starts with the unwired config.toml) (review #9).
+			r.HookPath = f
+		}
 		r.ForgeCmds += cmds
-		bins = append(bins, bs...)
+		for _, c := range cands {
+			if c.resolved {
+				resolved = append(resolved, c.path)
+			} else {
+				raw = append(raw, c.path)
+			}
+		}
 	}
 	if r.ForgeCmds == 0 {
 		return r // 文件在但没有 forge 接线 → missing
 	}
-	// 版本探测循环：多个 bin token 时取第一个真能跑出版本的——plugin 树扫描可能捞到
-	// 文档衍生的垃圾 token，它们在版本探测处自然出局。
+	// 只对"解析成功"的 bin 做版本探测（评审 #2/#6）：解析失败的 token 原样展示但不执行
+	// ——doctor 不该执行用户从未提名、仅因字面含 forge 而捞到的路径；上限
+	// maxVersionProbes 防 N×3s 停顿。解析成功的 token 里取第一个真能跑出版本的。
 	//
-	// Version-probe loop: with multiple bin tokens, take the first one that actually
-	// yields a version — garbage tokens mined out of plugin-tree docs lose here naturally.
-	sort.Strings(bins)
-	for _, bin := range bins {
+	// Version-probe ONLY tokens that resolved (review #2/#6): unresolved tokens are
+	// displayed verbatim but never executed — doctor must not run paths it merely mined
+	// out of text for containing "forge"; the maxVersionProbes cap prevents N×3s stalls.
+	// Among resolved ones, the first to actually yield a version wins.
+	sort.Strings(resolved)
+	sort.Strings(raw)
+	probes := 0
+	for _, bin := range resolved {
+		if probes >= maxVersionProbes {
+			break
+		}
+		probes++
 		v, err := opts.VersionRunner(bin)
 		if err != nil || strings.TrimSpace(v) == "" {
 			continue
@@ -295,8 +343,10 @@ func auditHost(spec hostSpec, self string, opts Options) HostReport {
 		return r
 	}
 	r.Status = StatusNoVer
-	if len(bins) > 0 {
-		r.Bin = bins[0]
+	if len(resolved) > 0 {
+		r.Bin = resolved[0]
+	} else if len(raw) > 0 {
+		r.Bin = raw[0]
 	}
 	return r
 }
@@ -321,8 +371,17 @@ func expandHookFiles(p string) []string {
 			return nil //nolint:跳过不可读条目
 		}
 		if d.IsDir() {
-			// plugins 树深度上限 3，防病态深树拖慢审计
-			if strings.Count(strings.TrimPrefix(filepath.ToSlash(path), filepath.ToSlash(p)), "/") >= 3 {
+			// plugins 树深度上限 4，防病态深树拖慢审计。上限必须 ≥4：kimi 的 plugin 载体在
+			// plugins/managed/forge/.kimi-plugin/plugin.json（相对深度 3 的目录 + 其下文件），
+			// 卡 3 会剪掉 .kimi-plugin/ 整棵——doctor 对 kimi 的头条用例（plugin 接线版本
+			// 漂移）静默失效（评审 #1 实证复现）。
+			//
+			// Depth cap 4 for plugin trees, guarding against pathologically deep trees.
+			// The cap MUST be ≥4: kimi's plugin carrier lives at plugins/managed/forge/
+			// .kimi-plugin/plugin.json (depth-3 dir + file beneath); capping at 3 prunes
+			// the whole .kimi-plugin/ tree — silently defeating doctor's headline kimi
+			// use case (plugin-wiring version drift), empirically reproduced in review #1.
+			if strings.Count(strings.TrimPrefix(filepath.ToSlash(path), filepath.ToSlash(p)), "/") >= 4 {
 				return filepath.SkipDir
 			}
 			return nil
@@ -344,6 +403,17 @@ func expandHookFiles(p string) []string {
 	return out
 }
 
+// binCandidate is one forge binary token mined from a hook file: path plus whether it
+// resolved to something the filesystem/PATH actually knows (doctor only ever EXECUTES
+// resolved candidates — see auditHost).
+//
+// binCandidate 是从 hook 文件挖到的一个 forge 二进制 token：路径 + 是否解析到文件
+// 系统/PATH 真正认识的东西（doctor 只执行解析成功的候选——见 auditHost）。
+type binCandidate struct {
+	path     string
+	resolved bool
+}
+
 // scanFile counts lines referencing forge and collects the forge binary tokens they
 // invoke. Line-oriented scanning is format-agnostic across the nine hosts' hook
 // schemas (nested JSON / flat TOML / shell wrappers) — precision is not needed, the
@@ -354,26 +424,38 @@ func expandHookFiles(p string) []string {
 // host 的 hook schema（嵌套 JSON/扁平 TOML/shell wrapper）格式无关——不需要精确解析，
 // 报告只需在"接没接"与"哪个二进制"上正确。lookPath 注入（Options.LookPath）让测试
 // 可控裸名解析。
-func scanFile(path string, lookPath func(string) (string, error)) (int, []string) {
+func scanFile(path string, lookPath func(string) (string, error)) (int, []binCandidate) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return 0, nil
 	}
 	cmds := 0
 	seen := map[string]bool{}
-	var bins []string
+	var bins []binCandidate
 	for _, ln := range strings.Split(string(data), "\n") {
 		low := strings.ToLower(ln)
 		if !strings.Contains(low, "forge") {
 			continue
 		}
-		// 含 forge 的行未必是命令（注释/说明文本），只统计行内出现 forge 可执行 token 的
+		// 含 forge 的行未必是接线命令：注册表/文档行（kimi installed.json 的
+		// "id": "forge"、URL）只是元数据。九个 host 的 forge 接线命令一律形如
+		// `forge hook <event>`（含 --agent 变体），故要求行内同时出现 "hook" 才计数——
+		// 否则 plugin 接线坏了但注册表还在的机器会假报 ok（评审 #1 的失效场景）。
+		//
+		// A forge-carrying line is not necessarily wiring: registry/doc lines (kimi
+		// installed.json's "id": "forge", URLs) are metadata. All nine hosts' forge hook
+		// commands take the shape `forge hook <event>` (--agent variants included), so a
+		// line must also contain "hook" to count — otherwise a machine whose plugin hooks
+		// broke while the registry stayed intact false-reports ok (review #1's scenario).
+		if !strings.Contains(low, "hook") {
+			continue
+		}
 		if tok, ok := forgeToken(ln); ok {
 			cmds++
-			bin := resolveBin(tok, lookPath)
+			bin, ok := resolveBin(tok, lookPath)
 			if !seen[bin] {
 				seen[bin] = true
-				bins = append(bins, bin)
+				bins = append(bins, binCandidate{path: bin, resolved: ok})
 			}
 		}
 	}
@@ -404,25 +486,27 @@ func forgeToken(line string) (string, bool) {
 	return "", false
 }
 
-// resolveBin turns a token into something VersionRunner can execute: an existing path
-// stays; a bare name resolves via the injected LookPath; unresolvable tokens stay
-// verbatim so the report shows what the hook actually references.
+// resolveBin turns a token into something VersionRunner may execute: an existing path
+// stays; a bare name resolves via the injected LookPath. Returns resolved=false for
+// tokens neither Stat nor LookPath could confirm — those are reported verbatim but
+// NEVER executed (doctor must not run binaries the user never nominated; review #2).
 //
 // resolveBin 把 token 变成 VersionRunner 可执行的东西：存在的路径保留；裸名走注入的
-// LookPath；解析不了的原样保留，让报告显示 hook 实际引用的内容。
-func resolveBin(tok string, lookPath func(string) (string, error)) string {
+// LookPath。Stat 与 LookPath 都确认不了的 token 返回 resolved=false——原样上报但从
+// 不执行（doctor 不运行用户从未提名的二进制；评审 #2）。
+func resolveBin(tok string, lookPath func(string) (string, error)) (string, bool) {
 	tok = strings.TrimPrefix(tok, `\`)
 	if filepath.IsAbs(tok) || strings.HasPrefix(tok, ".") {
 		if _, err := os.Stat(tok); err == nil {
-			return tok
+			return tok, true
 		}
 	}
 	if lookPath != nil {
 		if lp, err := lookPath(tok); err == nil {
-			return lp
+			return lp, true
 		}
 	}
-	return tok
+	return tok, false
 }
 
 // normalizeVersion reduces any version output to its semver-ish token

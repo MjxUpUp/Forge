@@ -1,6 +1,7 @@
 package doctor
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -255,9 +256,9 @@ func TestNormalizeVersion(t *testing.T) {
 }
 
 // TestSanitizeCommand_NonCommand 说明性文本（如 "echo forge is great" 这类 forge 出现
-// 但无命令语义的行）仍会被 forgeToken 命中——这是已知取舍：按行扫描是格式无关的
-// 近似，宁可多报一条 ForgeCmds 也不漏报接线。该测试把这一取舍钉住，防止未来无意识
-// 改变行为。
+// 但无命令语义的行）仍会被 forgeToken 命中——token 层"宁多勿漏"是既定取舍；接线
+// 计数层的防误报由 scanFile 的 "hook" 词门槛承担（见 TestRun_RegistryMetadataNotWiring）。
+// 该测试钉住 token 层取舍，防止未来无意识改变行为。
 func TestSanitizeCommand_NonCommand(t *testing.T) {
 	if _, ok := forgeToken(`echo forge is great`); !ok {
 		t.Fatal("forge 出现即命中是既定取舍（宁多勿漏），行为不应漂移")
@@ -276,7 +277,108 @@ func TestScanFile_QuotedJSON(t *testing.T) {
 	if len(bins) != 1 {
 		t.Fatalf("应收集到 1 个 bin，got %v", bins)
 	}
-	if !strings.Contains(bins[0], "forge") {
-		t.Fatalf("bin 应含 forge，got %q", bins[0])
+	if !strings.Contains(bins[0].path, "forge") {
+		t.Fatalf("bin 应含 forge，got %q", bins[0].path)
+	}
+}
+
+// TestRun_KimiPluginLayout 钉 kimi plugin 载体的真实目录深度（评审 #1 的回归守卫）：
+// hook 在 plugins/managed/forge/.kimi-plugin/plugin.json（深度 3 目录 + 文件）。WalkDir
+// 深度上限若卡 3，.kimi-plugin/ 整棵被剪、plugin.json 永远扫不到——kimi 接线误报
+// missing。config.toml 无 [[hooks]]（plugin 模型机器的真实形态）。
+//
+// TestRun_KimiPluginLayout pins kimi's plugin carrier at its REAL directory depth
+// (regression guard for review #1): hooks live at plugins/managed/forge/.kimi-plugin/
+// plugin.json (depth-3 dir + file). With the WalkDir cap at 3 the whole .kimi-plugin/
+// tree is pruned, plugin.json is never scanned — kimi wiring misreported as missing.
+// config.toml has no [[hooks]] (the real shape of a plugin-model machine).
+func TestRun_KimiPluginLayout(t *testing.T) {
+	root := isolate(t)
+	writeFile(t, filepath.Join(root, ".kimi-code", "config.toml"), "# no hooks section\n")
+	writeFile(t, filepath.Join(root, ".kimi-code", "plugins", "managed", "forge", ".kimi-plugin", "plugin.json"),
+		`{"name":"forge","hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"forge hook --agent kimi pre-tool-use"}]}]}}`)
+	rep := Run("1.30.0", fakeEnv(map[string]string{`/fake/forge.exe`: "1.30.0"}))
+	h := hostOf(t, rep, "kimi")
+	if h.Status != StatusOK {
+		t.Fatalf("kimi plugin 载体应被扫到且为 ok，got %q (ForgeCmds=%d hookPath=%q)", h.Status, h.ForgeCmds, h.HookPath)
+	}
+	if !strings.Contains(filepath.ToSlash(h.HookPath), "plugins/managed/forge/.kimi-plugin/plugin.json") {
+		t.Fatalf("HookPath 应指向 plugin.json（证据源归位），got %q", h.HookPath)
+	}
+}
+
+// TestScanPATH_ProbeCap 版本探测上限（评审 #6）：7 个 forge.exe 只探测前 5 个。
+//
+// TestScanPATH_ProbeCap version-probe cap (review #6): 7 forge.exe files, only the
+// first 5 get probed.
+func TestScanPATH_ProbeCap(t *testing.T) {
+	isolate(t)
+	var dirs []string
+	versions := map[string]string{}
+	for i := 0; i < 7; i++ {
+		d := filepath.Join(t.TempDir(), fmt.Sprintf("d%d", i))
+		writeFile(t, filepath.Join(d, "forge.exe"), "binary")
+		dirs = append(dirs, d)
+		versions[filepath.Join(d, "forge.exe")] = "1.30.0"
+	}
+	calls := 0
+	opts := fakeEnv(versions)
+	opts.VersionRunner = func(bin string) (string, error) {
+		calls++
+		return "1.30.0", nil
+	}
+	opts.ScanPATH = func() []string { return dirs }
+	rep := Run("1.30.0", opts)
+	if len(rep.PathForge) != 7 {
+		t.Fatalf("应列出全部 7 个条目，got %d", len(rep.PathForge))
+	}
+	if calls > maxVersionProbes {
+		t.Fatalf("版本探测应 ≤%d 次，got %d", maxVersionProbes, calls)
+	}
+}
+
+// TestAuditHost_UnresolvedTokenNeverProbed 评审 #2 守卫：文档衍生的垃圾 token
+// （Stat/LookPath 都确认不了）原样展示但绝不执行。
+//
+// TestAuditHost_UnresolvedTokenNeverProbed review #2 guard: garbage tokens mined out
+// of docs (confirmed by neither Stat nor LookPath) are displayed verbatim but never
+// executed.
+func TestAuditHost_UnresolvedTokenNeverProbed(t *testing.T) {
+	root := isolate(t)
+	writeFile(t, filepath.Join(root, ".claude", "settings.json"),
+		`{"command": "/.claude/plugins/cache/forge/forge/ hook doc-path"}`)
+	probed := map[string]bool{}
+	opts := fakeEnv(nil)
+	opts.VersionRunner = func(bin string) (string, error) {
+		probed[bin] = true
+		return "", fmt.Errorf("no such binary")
+	}
+	rep := Run("1.30.0", opts)
+	h := hostOf(t, rep, "claude-code")
+	if h.Status != StatusNoVer {
+		t.Fatalf("不可解析 token 应为 nover，got %q (bin=%q)", h.Status, h.Bin)
+	}
+	if len(probed) != 0 {
+		t.Fatalf("无任何可解析 token 时不应执行版本探测，却探测了 %v", probed)
+	}
+}
+
+// TestRun_RegistryMetadataNotWiring 评审 #1 失效场景守卫：plugin 注册表条目
+// （"id": "forge"、repo URL——字面含 forge 但无 hook 命令语义）不构成接线。插件
+// hook 坏了但注册表完好的机器必须报 missing/nover，绝不因注册表元数据假报 ok。
+//
+// TestRun_RegistryMetadataNotWiring guard for review #1's failure scenario: plugin
+// registry entries ("id": "forge", repo URLs — literally containing forge but with no
+// hook-command semantics) do NOT constitute wiring. A machine whose plugin hooks broke
+// while the registry stayed intact must report missing/nover, never a registry-
+// metadata-induced ok.
+func TestRun_RegistryMetadataNotWiring(t *testing.T) {
+	root := isolate(t)
+	writeFile(t, filepath.Join(root, ".kimi-code", "plugins", "installed.json"),
+		`{"plugins":[{"id":"forge","source":"github.com/MjxUpUp/Forge","version":"1.30.0"}]}`)
+	rep := Run("1.30.0", fakeEnv(map[string]string{`/fake/forge.exe`: "1.30.0"}))
+	h := hostOf(t, rep, "kimi")
+	if h.Status != StatusMissing {
+		t.Fatalf("纯注册表元数据不构成接线，应为 missing，got %q (cmds=%d)", h.Status, h.ForgeCmds)
 	}
 }
