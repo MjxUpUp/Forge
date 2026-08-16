@@ -2,6 +2,7 @@ package taskpipeline
 
 import (
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -83,11 +84,30 @@ func TestLockTask_StaleBreak(t *testing.T) {
 // mutators that both read-modify-write the same field no longer lose each other's
 // update. Simulates the pre-lock bug shape (load stale snapshot, append, save) by
 // running N mutators whose fn appends one NextStep; without the lock+reload the final
-// count would be < N.
+// count would be < the number of SUCCESSFUL mutations.
+//
+// Contract split (2026-08-16 CI flake): the invariant this test exists for is
+// lost-update-freedom — count == succeeded — not "all N finish within taskLockWait".
+// On a thrashing -race CI runner a waiter can legitimately hit the 10s lock-wait
+// timeout; that is MutateTaskState's DESIGNED fail-loud behavior (see lock.go), not a
+// lost update. The old shape asserted count == N while swallowing errors with `_ =`,
+// so a timeout surfaced as a misleading "lost update: got 19, want 20" (CI run
+// 31953505720, unreproducible in 25 local -race runs). Guards: zero successes fails
+// outright; and only lock-wait-timeout failures are tolerated — any other error shape
+// (flaky save, dir failure) fails the test rather than passing in a timeout costume.
 //
 // TestMutateTaskState_SequentialLostUpdate：MutateTaskState 的存在意义——两个都走
 // read-modify-write 的变更者不再互丢更新。模拟加锁前的 bug 形态（读过期快照、追加、
-// 保存）：跑 N 个各追加一条 NextStep 的变更者；无锁+重载时最终计数会 < N。
+// 保存）：跑 N 个各追加一条 NextStep 的变更者；无锁+重载时最终计数会 < 成功的
+// 变更数。
+//
+// 契约拆分（2026-08-16 CI 偶发）：本测试的存在意义是不丢更新——count == succeeded
+// ——而非「N 个全都在 taskLockWait 内完成」。高负载 -race CI runner 上等待者可能合法
+// 触发 10s 锁等待超时；那是 MutateTaskState 设计好的 fail-loud 行为（见 lock.go），
+// 不是丢更新。旧形状断言 count == N 且用 `_ =` 吞错，超时就伪装成 "丢更新: got 19,
+// want 20"（CI run 31953505720，本地 25 次 -race 复现不出）。守卫：零成功直接失败；
+// 且只容忍锁等待超时这一种失败形态——其他错误形态（保存间歇失败、目录故障）直接
+// 失败，不许穿着超时外衣假绿。
 func TestMutateTaskState_SequentialLostUpdate(t *testing.T) {
 	dir := t.TempDir()
 	state := &TaskState{TaskRef: "feat/mut", Branch: "feat/mut"}
@@ -96,25 +116,60 @@ func TestMutateTaskState_SequentialLostUpdate(t *testing.T) {
 	}
 
 	const n = 20
+	errs := make([]error, n)
 	var wg sync.WaitGroup
 	for i := 0; i < n; i++ {
 		wg.Add(1)
-		go func() {
+		go func(i int) {
 			defer wg.Done()
-			_ = MutateTaskState(dir, "feat/mut", func(s *TaskState) error {
+			errs[i] = MutateTaskState(dir, "feat/mut", func(s *TaskState) error {
 				s.AddNext("step")
 				return nil
 			})
-		}()
+		}(i)
 	}
 	wg.Wait()
+
+	succeeded := 0
+	var firstErr error // 首个非 nil 错误做代表（errs[0] 可能恰好是成功者，打出来是 <nil>）
+	for _, err := range errs {
+		if err == nil {
+			succeeded++
+		} else if firstErr == nil {
+			firstErr = err
+		}
+	}
+	if succeeded == 0 {
+		t.Fatalf("全部 %d 个变更者都失败（不是丢更新，是系统性错误）: %v", n, firstErr)
+	}
+	// 容忍的失败形态只有锁等待超时（lock.go 的 fail-loud 文案）——其他任何错误（保存失败、
+	// 目录故障等间歇问题）穿着超时外衣绿过就是假绿（评审 3a）。
+	//
+	// The only tolerated failure shape is the lock-wait timeout (lock.go's fail-loud
+	// message) — any other error (flaky save, dir failure, …) passing green in a
+	// timeout costume is a false green (review 3a).
+	for _, err := range errs {
+		if err != nil && !strings.Contains(err.Error(), "lock held by another forge process") {
+			t.Fatalf("非超时形态的失败不容忍（不是丢更新契约的一部分）: %v", err)
+		}
+	}
 
 	reloaded, err := LoadTaskState(dir, "feat/mut")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(reloaded.NextSteps) != n {
-		t.Errorf("并发 MutateTaskState 丢更新: got %d NextSteps, want %d", len(reloaded.NextSteps), n)
+	if len(reloaded.NextSteps) != succeeded {
+		t.Errorf("并发 MutateTaskState 丢更新: got %d NextSteps, 成功变更者 %d（失败 %d 个: %v）",
+			len(reloaded.NextSteps), succeeded, n-succeeded, firstErr)
+	}
+	if succeeded < n {
+		// 锁等待超时是设计内 fail-loud（非丢更新），记录供诊断不计失败——慢 CI runner
+		// 上 20 路串行竞争可能超 taskLockWait。
+		//
+		// Lock-wait timeouts are designed fail-loud (not lost updates) — logged for
+		// diagnosis, not failed: 20-way serialized contention can exceed taskLockWait
+		// on a slow CI runner.
+		t.Logf("note: %d/%d mutators hit the designed lock-wait timeout (fail-loud, not lost update); first: %v", n-succeeded, n, firstErr)
 	}
 }
 
