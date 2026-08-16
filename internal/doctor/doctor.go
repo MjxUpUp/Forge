@@ -130,28 +130,77 @@ func (o *Options) fill() {
 // hostSpec 把 host 名与其候选 hook 位置配对。路径解析一律复用 agentbridge 的既有导出
 // helper——doctor 不得持有任何 host 路径约定的第二份副本（会漂移，见 ClaudeConfigHomeDir）。
 type hostSpec struct {
-	host  string
-	paths func() ([]string, error)
+	host   string
+	target func() ([]scanTarget, error)
+}
+
+// scanTarget is one candidate location: a file, or a directory walked with a depth cap.
+// names != nil switches file filtering from extension-based (shallow plugin trees) to
+// basename-whitelist (deep trees like the claude plugin cache, where an extension filter
+// would scan a full repo copy's internals).
+//
+// scanTarget 是一个候选位置：文件，或带深度上限遍历的目录。names 非 nil 时文件过滤从
+// 按扩展名（浅 plugin 树）切换为按基名白名单（claude plugin cache 这类深树——扩展名
+// 过滤会把整个仓库副本的内部文件都扫进来）。
+type scanTarget struct {
+	path  string
+	depth int
+	names map[string]bool
+}
+
+// defaultScanDepth is the plugin-tree walk cap (see expandHookFiles for why ≥4).
+//
+// defaultScanDepth 是 plugin 树遍历深度上限（为何 ≥4 见 expandHookFiles）。
+const defaultScanDepth = 4
+
+// hookCarrierNames is the basename whitelist for deep-tree walks: only files that can
+// actually carry hook wiring. Inside a plugin cache's repo copy this skips every other
+// .json/.toml (golden fixtures, manifests) while still reaching hooks.json/plugin.json.
+//
+// hookCarrierNames 是深树遍历的基名白名单：只收真正可能承载 hook 接线的文件。plugin
+// cache 里的仓库副本中，其他一切 .json/.toml（golden fixture、manifest）都被跳过，
+// hooks.json/plugin.json 仍可达。
+var hookCarrierNames = map[string]bool{
+	"plugin.json": true,
+	"hooks.json":  true,
+	"hooks.toml":  true,
 }
 
 func hostSpecs() []hostSpec {
 	return []hostSpec{
-		{"claude-code", func() ([]string, error) {
-			return []string{filepath.Join(agentbridge.ClaudeConfigHomeDir(), "settings.json")}, nil
+		{"claude-code", func() ([]scanTarget, error) {
+			// 两代接线载体：settings.json 内联 hooks（老）与 plugins/cache/ 下的
+			// marketplace 插件（plugin pack + autotakeover 后的主分发模型——settings.json
+			// 被 dedupe 清干净，hook 全在 cache/forge/forge/<sha>/ 里）。只扫 settings.json
+			// 会把 plugin 接线的机器误报 missing（评审二轮 MEDIUM，本机实测）。cache 树深
+			// （sha 层 + 仓库子树），故 depth 8 + 基名白名单。
+			//
+			// Two wiring carriers: inline hooks in settings.json (legacy) and the
+			// marketplace plugin under plugins/cache/ (the primary distribution model
+			// since plugin pack + autotakeover — settings.json is deduped clean, hooks
+			// live in cache/forge/forge/<sha>/). Scanning settings.json-only misreports
+			// plugin-wired machines as missing (round-2 review MEDIUM, hit on this
+			// machine). The cache tree is deep (sha layer + repo subtree), hence depth 8
+			// + the basename whitelist.
+			home := agentbridge.ClaudeConfigHomeDir()
+			return []scanTarget{
+				{path: filepath.Join(home, "settings.json")},
+				{path: filepath.Join(home, "plugins", "cache"), depth: 8, names: hookCarrierNames},
+			}, nil
 		}},
-		{"codex", func() ([]string, error) {
+		{"codex", func() ([]scanTarget, error) {
 			p, err := agentbridge.CodexHooksPath()
-			return []string{p}, err
+			return []scanTarget{{path: p}}, err
 		}},
-		{"cursor", func() ([]string, error) {
+		{"cursor", func() ([]scanTarget, error) {
 			p, err := agentbridge.CursorHooksPath()
-			return []string{p}, err
+			return []scanTarget{{path: p}}, err
 		}},
-		{"windsurf", func() ([]string, error) {
+		{"windsurf", func() ([]scanTarget, error) {
 			p, err := agentbridge.WindsurfHooksPath()
-			return []string{p}, err
+			return []scanTarget{{path: p}}, err
 		}},
-		{"kimi", func() ([]string, error) {
+		{"kimi", func() ([]scanTarget, error) {
 			// kimi 有两代接线载体：config.toml 的 [[hooks]] 块（老）与 plugins/managed/
 			// 树（plugin 模型，hook 在 .kimi-plugin/plugin.json）。doctor 两者都扫——只扫
 			// config.toml 会把 plugin 接线的机器误报成 missing（本机实测踩到）。
@@ -165,29 +214,29 @@ func hostSpecs() []hostSpec {
 				return nil, err
 			}
 			home, _ := agentbridge.KimiConfigHome()
-			return []string{p, filepath.Join(home, "plugins")}, nil
+			return []scanTarget{{path: p}, {path: filepath.Join(home, "plugins")}}, nil
 		}},
-		{"reasonix", func() ([]string, error) {
+		{"reasonix", func() ([]scanTarget, error) {
 			home, err := agentbridge.ReasonixConfigHome()
 			if err != nil {
 				return nil, err
 			}
-			return []string{filepath.Join(home, "plugins")}, nil
+			return []scanTarget{{path: filepath.Join(home, "plugins")}}, nil
 		}},
-		{"codebuddy", func() ([]string, error) {
+		{"codebuddy", func() ([]scanTarget, error) {
 			home, err := agentbridge.CodeBuddyWorkBuddyHome()
 			if err != nil {
 				return nil, err
 			}
-			return []string{filepath.Join(home, "plugins")}, nil
+			return []scanTarget{{path: filepath.Join(home, "plugins")}}, nil
 		}},
-		{"cline", func() ([]string, error) {
+		{"cline", func() ([]scanTarget, error) {
 			d, err := agentbridge.ClineHooksDir()
-			return []string{d}, err
+			return []scanTarget{{path: d}}, err
 		}},
-		{"opencode", func() ([]string, error) {
+		{"opencode", func() ([]scanTarget, error) {
 			p, err := agentbridge.OpencodePluginPath()
-			return []string{p}, err
+			return []scanTarget{{path: p}}, err
 		}},
 	}
 }
@@ -273,19 +322,18 @@ func scanPATH(opts Options) []PathEntry {
 // 二进制、对照 self 版本。
 func auditHost(spec hostSpec, self string, opts Options) HostReport {
 	r := HostReport{Host: spec.host, Status: StatusMissing}
-	paths, err := spec.paths()
+	targets, err := spec.target()
 	if err != nil {
 		r.Err = fmt.Sprintf("路径解析失败: %v", err)
 		return r
 	}
 	var files []string
-	for _, p := range paths {
-		files = append(files, expandHookFiles(p)...)
+	for _, tgt := range targets {
+		files = append(files, expandHookFiles(tgt)...)
 	}
 	if len(files) == 0 {
 		return r
 	}
-	r.HookPath = files[0]
 	var resolved, raw []string
 	for _, f := range files {
 		cmds, cands := scanFile(f, opts.LookPath)
@@ -308,6 +356,11 @@ func auditHost(spec hostSpec, self string, opts Options) HostReport {
 		}
 	}
 	if r.ForgeCmds == 0 {
+		// HookPath 只在扫到真接线时才赋值（见上）——missing host 不展示 files[0] 当
+		// 伪证据（评审二轮 NIT #4）。
+		//
+		// HookPath is only assigned when real wiring is found (see above) — a missing
+		// host never shows files[0] as pseudo-evidence (round-2 review NIT #4).
 		return r // 文件在但没有 forge 接线 → missing
 	}
 	// 只对"解析成功"的 bin 做版本探测（评审 #2/#6）：解析失败的 token 原样展示但不执行
@@ -351,13 +404,16 @@ func auditHost(spec hostSpec, self string, opts Options) HostReport {
 	return r
 }
 
-// expandHookFiles turns a candidate path (file or dir) into the concrete file list to
-// scan. Dirs are walked non-recursively-bounded (plugins/ trees are shallow); unreadable
-// entries are skipped, not fatal.
+// expandHookFiles turns a candidate target (file or dir) into the concrete file list to
+// scan. Dirs are walked with the target's depth cap (default defaultScanDepth); unreadable
+// entries are skipped, not fatal. File filtering follows the target's mode: extension
+// whitelist by default, basename whitelist when names is set (deep trees).
 //
-// expandHookFiles 把候选路径（文件或目录）展开成待扫描的具体文件列表。目录走有界
-// 遍历（plugins/ 树很浅）；不可读条目跳过、不致命。
-func expandHookFiles(p string) []string {
+// expandHookFiles 把候选目标（文件或目录）展开成待扫描的具体文件列表。目录按目标的
+// 深度上限遍历（默认 defaultScanDepth）；不可读条目跳过、不致命。文件过滤按目标模式：
+// 默认扩展名白名单，names 已设时按基名白名单（深树）。
+func expandHookFiles(tgt scanTarget) []string {
+	p := tgt.path
 	fi, err := os.Stat(p)
 	if err != nil {
 		return nil
@@ -365,24 +421,42 @@ func expandHookFiles(p string) []string {
 	if !fi.IsDir() {
 		return []string{p}
 	}
+	maxDepth := tgt.depth
+	if maxDepth == 0 {
+		maxDepth = defaultScanDepth
+	}
+	root := filepath.ToSlash(p)
 	var out []string
 	_ = filepath.WalkDir(p, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil //nolint:跳过不可读条目
 		}
 		if d.IsDir() {
-			// plugins 树深度上限 4，防病态深树拖慢审计。上限必须 ≥4：kimi 的 plugin 载体在
-			// plugins/managed/forge/.kimi-plugin/plugin.json（相对深度 3 的目录 + 其下文件），
-			// 卡 3 会剪掉 .kimi-plugin/ 整棵——doctor 对 kimi 的头条用例（plugin 接线版本
-			// 漂移）静默失效（评审 #1 实证复现）。
+			// plugins 树深度上限，防病态深树拖慢审计。默认上限必须 ≥4：kimi 的 plugin
+			// 载体在 plugins/managed/forge/.kimi-plugin/plugin.json（相对深度 3 的目录 +
+			// 其下文件），卡 3 会剪掉 .kimi-plugin/ 整棵——doctor 对 kimi 的头条用例
+			// （plugin 接线版本漂移）静默失效（评审 #1 实证复现）。
 			//
-			// Depth cap 4 for plugin trees, guarding against pathologically deep trees.
-			// The cap MUST be ≥4: kimi's plugin carrier lives at plugins/managed/forge/
-			// .kimi-plugin/plugin.json (depth-3 dir + file beneath); capping at 3 prunes
-			// the whole .kimi-plugin/ tree — silently defeating doctor's headline kimi
-			// use case (plugin-wiring version drift), empirically reproduced in review #1.
-			if strings.Count(strings.TrimPrefix(filepath.ToSlash(path), filepath.ToSlash(p)), "/") >= 4 {
+			// Depth cap for plugin trees, guarding against pathologically deep trees.
+			// The default cap MUST be ≥4: kimi's plugin carrier lives at plugins/managed/
+			// forge/.kimi-plugin/plugin.json (depth-3 dir + file beneath); capping at 3
+			// prunes the whole .kimi-plugin/ tree — silently defeating doctor's headline
+			// kimi use case (plugin-wiring version drift), empirically reproduced in
+			// review #1.
+			if strings.Count(strings.TrimPrefix(filepath.ToSlash(path), root), "/") >= maxDepth {
 				return filepath.SkipDir
+			}
+			return nil
+		}
+		if tgt.names != nil {
+			// 深树基名白名单：claude plugin cache 里是完整仓库副本，扩展名过滤会把
+			// golden fixture/manifest 等一切 .json 都扫进来。
+			//
+			// Deep-tree basename whitelist: the claude plugin cache holds full repo
+			// copies; an extension filter would sweep in every golden fixture/manifest
+			// .json in them.
+			if tgt.names[filepath.Base(path)] {
+				out = append(out, path)
 			}
 			return nil
 		}
@@ -433,29 +507,35 @@ func scanFile(path string, lookPath func(string) (string, error)) (int, []binCan
 	seen := map[string]bool{}
 	var bins []binCandidate
 	for _, ln := range strings.Split(string(data), "\n") {
-		low := strings.ToLower(ln)
-		if !strings.Contains(low, "forge") {
+		if !strings.Contains(strings.ToLower(ln), "forge") {
 			continue
 		}
 		// 含 forge 的行未必是接线命令：注册表/文档行（kimi installed.json 的
-		// "id": "forge"、URL）只是元数据。九个 host 的 forge 接线命令一律形如
-		// `forge hook <event>`（含 --agent 变体），故要求行内同时出现 "hook" 才计数——
-		// 否则 plugin 接线坏了但注册表还在的机器会假报 ok（评审 #1 的失效场景）。
+		// "id": "forge"、URL、codebuddy known_marketplaces.json 里 "Forge loop-engineering
+		// quality gates: …" 这类 description）只是元数据/文案。九个 host 的 forge 接线
+		// 命令一律是 `forge hook <event>` 的调用形态（含 --agent 变体；`forge gate <id>`
+		// 是 settings 层认可的等价前缀，见 internal/cli/settings.go 的合法命令判定），
+		// 故只认"紧跟在 forge token 后的子命令词位上是 hook/gate"的行——词在任何位置
+		// 出现都不算。否则 plugin 接线坏了但注册表还在的机器会假报 ok（评审 #1 的失效
+		// 场景），bare 词门槛则被 "quality gates" 文案击穿（本轮 E2E 实证）。
 		//
 		// A forge-carrying line is not necessarily wiring: registry/doc lines (kimi
-		// installed.json's "id": "forge", URLs) are metadata. All nine hosts' forge hook
-		// commands take the shape `forge hook <event>` (--agent variants included), so a
-		// line must also contain "hook" to count — otherwise a machine whose plugin hooks
-		// broke while the registry stayed intact false-reports ok (review #1's scenario).
-		if !strings.Contains(low, "hook") {
-			continue
-		}
-		if tok, ok := forgeToken(ln); ok {
+		// installed.json's "id": "forge", URLs, and descriptions like "Forge
+		// loop-engineering quality gates: …" in codebuddy's known_marketplaces.json) are
+		// metadata/prose. All nine hosts' forge wiring is an invocation of the shape
+		// `forge hook <event>` (--agent variants included; `forge gate <id>` is the
+		// settings layer's accepted equivalent prefix — see the legal-command check in
+		// internal/cli/settings.go), so only lines with hook/gate in the subcommand
+		// position right after the forge token count — the word appearing anywhere else
+		// doesn't. Otherwise a machine whose plugin hooks broke while the registry stayed
+		// intact false-reports ok (review #1's scenario), and a bare-word gate is defeated
+		// by "quality gates" prose (empirically hit in this round's E2E).
+		if tok, ok := forgeInvocation(ln); ok {
 			cmds++
-			bin, ok := resolveBin(tok, lookPath)
+			bin, resolved := resolveBin(tok, lookPath)
 			if !seen[bin] {
 				seen[bin] = true
-				bins = append(bins, binCandidate{path: bin, resolved: ok})
+				bins = append(bins, binCandidate{path: bin, resolved: resolved})
 			}
 		}
 	}
@@ -472,18 +552,61 @@ func scanFile(path string, lookPath func(string) (string, error)) (int, []binCan
 // TOML 与 shell 行。仅按空白切分在 minified JSON 上失效（整行是一个 token）。
 var tokenRe = regexp.MustCompile(`[A-Za-z0-9_\-./\\:~@]+`)
 
-// forgeToken extracts the first path-ish token containing "forge". Returns ok=false
-// when no such token exists.
+// invocationSubcommands are the subcommand words that turn a forge token into wiring:
+// `forge hook <event>` (every host's hook wiring) and `forge gate <id>` (the settings
+// layer's accepted equivalent prefix — internal/cli/settings.go's legal-command check).
 //
-// forgeToken 提取行内第一个含 "forge" 的路径形态 token。不存在此类 token 时返回
-// ok=false。
-func forgeToken(line string) (string, bool) {
-	for _, f := range tokenRe.FindAllString(line, -1) {
-		if strings.Contains(strings.ToLower(filepath.Base(f)), "forge") {
-			return f, true
+// invocationSubcommands 是让 forge token 构成接线的子命令词：`forge hook <event>`
+// （所有 host 的 hook 接线）与 `forge gate <id>`（settings 层认可的等价前缀——见
+// internal/cli/settings.go 的合法命令判定）。
+var invocationSubcommands = []string{"hook", "gate"}
+
+// forgeInvocation extracts the first forge token that sits in an invocation position —
+// a legal subcommand word immediately after it — and reports ok=true. Prose/registry
+// lines name forge but never in the subcommand position ("Forge loop-engineering
+// quality gates: …", "id": "forge"), so they are rejected here rather than counted.
+//
+// forgeInvocation 提取行内第一个处于调用位的 forge token——其后紧跟合法子命令词——
+// 并返回 ok=true。文案/注册表行会提到 forge 但从不落在子命令位（"Forge
+// loop-engineering quality gates: …"、"id": "forge"），在此被拒、不计入接线。
+func forgeInvocation(line string) (string, bool) {
+	for _, m := range tokenRe.FindAllStringIndex(line, -1) {
+		tok := line[m[0]:m[1]]
+		if !strings.Contains(strings.ToLower(filepath.Base(tok)), "forge") {
+			continue
+		}
+		if subcommandAt(line, m[1]) {
+			return tok, true
 		}
 	}
 	return "", false
+}
+
+// subcommandAt reports whether a legal subcommand sits at a word boundary right after
+// position end in line. JSON/shell separators (quotes, whitespace, commas, colons,
+// equals) between the binary and its argument are skipped; the matched word must also
+// END at a boundary so "gateway"/"hooks" prose doesn't count.
+//
+// subcommandAt 判定 line 中 end 位之后是否恰好是合法子命令且带词边界。二进制与参数间
+// 的 JSON/shell 分隔符（引号、空白、逗号、冒号、等号）跳过；命中的词还必须在尾部也
+// 有边界——"gateway"/"hooks" 这类文案不算。
+func subcommandAt(line string, end int) bool {
+	rest := strings.TrimLeft(line[end:], "\"' \t\r\n,=:")
+	low := strings.ToLower(rest)
+	for _, w := range invocationSubcommands {
+		if !strings.HasPrefix(low, w) {
+			continue
+		}
+		tail := low[len(w):]
+		if tail == "" || !isWordByte(tail[0]) {
+			return true
+		}
+	}
+	return false
+}
+
+func isWordByte(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '-'
 }
 
 // resolveBin turns a token into something VersionRunner may execute: an existing path
@@ -510,10 +633,13 @@ func resolveBin(tok string, lookPath func(string) (string, error)) (string, bool
 }
 
 // normalizeVersion reduces any version output to its semver-ish token
-// ("forge version 1.30.0 (commit..)" → "1.30.0"); returns "" when none found.
+// ("forge version 1.30.0 (commit..)" → "1.30.0"). When no semver is present it strips
+// a trailing "… version X" envelope so a bare `forge --version` line still yields just
+// the version part ("forge version dev" → "dev"), not the whole sentence (round-2 NIT #3).
 //
 // normalizeVersion 把任意版本输出归一为 semver 形态 token（"forge version 1.30.0
-// (commit..)" → "1.30.0"）；找不到时返回 ""。
+// (commit..)" → "1.30.0"）。无 semver 时剥掉 "… version X" 外壳，裸 `forge --version`
+// 行也只留版本部分（"forge version dev" → "dev"）而非整句（评审二轮 NIT #3）。
 func normalizeVersion(s string) string {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -521,6 +647,9 @@ func normalizeVersion(s string) string {
 	}
 	if m := semver.FindString(s); m != "" {
 		return m
+	}
+	if i := strings.LastIndex(s, " version "); i >= 0 {
+		s = strings.TrimSpace(s[i+len(" version "):])
 	}
 	return s
 }
