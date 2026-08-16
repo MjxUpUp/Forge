@@ -72,7 +72,7 @@ func TestRunTaskVerifyAcceptanceAt_RecordsDeterministic(t *testing.T) {
 	dir, taskRef := setupAcceptanceTask(t, []string{`go version :: go version`})
 
 	var runErr error
-	out := captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir) })
+	out := captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir, false) })
 	if runErr != nil {
 		t.Fatalf(`green acceptance should not error: %v`, runErr)
 	}
@@ -119,7 +119,7 @@ func TestRunTaskVerifyAcceptanceAt_RecordsFailure(t *testing.T) {
 	dir, taskRef := setupAcceptanceTask(t, []string{`go version :: NONEXISTENT_SUBSTRING`})
 
 	var runErr error
-	_ = captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir) })
+	_ = captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir, false) })
 	if runErr == nil {
 		t.Fatal(`failing acceptance should return a non-nil error`)
 	}
@@ -160,7 +160,7 @@ func TestRunTaskVerifyAcceptanceAt_NoAcceptanceSilent(t *testing.T) {
 	dir, _ := setupAcceptanceTask(t, nil) // 无验收标准
 
 	var runErr error
-	out := captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir) })
+	out := captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir, false) })
 	if runErr != nil {
 		t.Fatalf(`no-acceptance path should not error: %v`, runErr)
 	}
@@ -170,6 +170,204 @@ func TestRunTaskVerifyAcceptanceAt_NoAcceptanceSilent(t *testing.T) {
 	entries, _ := checklog.LoadAll(dir)
 	if len(entries) != 0 {
 		t.Errorf(`无验收标准 → 不应写 checklog 条目，got %d`, len(entries))
+	}
+}
+
+// TestRunTaskVerifyAcceptanceAt_ForeignRequiresTrust pins the foreign-acceptance trust gate (2026-08-15
+// trust-boundary fix): a task whose acceptance came from an untrusted source (task import / .forge
+// migrate → AcceptanceForeign=true) must NOT execute any Run command without --trust-foreign — the
+// command list is printed for human review instead, and re-running without the flag cannot shake the
+// marker off. With --trust-foreign, the first run clears the marker and executes normally.
+//
+// TestRunTaskVerifyAcceptanceAt_ForeignRequiresTrust 钉住外来验收受信门（2026-08-15 信任边界
+// 修复）：验收来自不可信源的任务（task import / .forge migrate → AcceptanceForeign=true）在无
+// --trust-foreign 时绝不能执行任何 Run 命令——改为打印命令清单供人工审阅，且不带 flag 重跑
+// 无法甩掉标记。带 --trust-foreign 的首次运行清除标记并正常执行。
+func TestRunTaskVerifyAcceptanceAt_ForeignRequiresTrust(t *testing.T) {
+	dir, taskRef := setupAcceptanceTask(t, []string{`go version :: go version`})
+
+	// Simulate the foreign marker exactly as StripForeignGateSignals sets it (import/migrate path).
+	//
+	// 按 StripForeignGateSignals（import/migrate 路径）设置外来标记，模拟同一状态。
+	if err := taskpipeline.MutateTaskState(dir, taskRef, func(s *taskpipeline.TaskState) error {
+		s.AcceptanceForeign = true
+		return nil
+	}); err != nil {
+		t.Fatalf(`MutateTaskState: %v`, err)
+	}
+
+	// 1. Without --trust-foreign: refuse BEFORE any execution — criterion untouched, error returned,
+	//    command list printed for review, and the foreign marker PERSISTS (no save-side shake-off).
+	//
+	// 1. 无 --trust-foreign：在任何执行前拒绝——criterion 不被跑、返回 error、打印命令清单
+	//    供审阅，且外来标记保留（落盘侧甩不掉）。
+	var runErr error
+	out := captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir, false) })
+	if runErr == nil {
+		t.Fatal(`foreign acceptance without --trust-foreign must error（未审阅的外来命令不得执行）`)
+	}
+	if !strings.Contains(out, `--trust-foreign`) {
+		t.Errorf(`refusal output should point at --trust-foreign, got: %s`, out)
+	}
+	if !strings.Contains(out, `go version`) {
+		t.Errorf(`refusal output should list the command for review, got: %s`, out)
+	}
+	refused, err := taskpipeline.LoadTaskState(dir, taskRef)
+	if err != nil {
+		t.Fatalf(`LoadTaskState: %v`, err)
+	}
+	if refused.Acceptance[0].Passed || refused.Acceptance[0].Output != `` {
+		t.Errorf(`refusal must not execute the criterion: Passed=%v Output=%q`, refused.Acceptance[0].Passed, refused.Acceptance[0].Output)
+	}
+	if !refused.AcceptanceForeign {
+		t.Errorf(`foreign marker must persist after an untrusted refusal（不带 flag 重跑不能甩掉标记）`)
+	}
+	entries, _ := checklog.LoadAll(dir)
+	if len(entries) != 0 {
+		t.Errorf(`refusal path should record no checklog evidence, got %d entries`, len(entries))
+	}
+
+	// 2. With --trust-foreign: marker cleared once, commands actually run (green), evidence recorded.
+	//    The human-terminal discriminator must be overridden to TRUE for this leg — `go test`
+	//    stdin is whatever the test runner got (often NUL/dev-null, char-device on some
+	//    platforms, pipe on others), so the env-dependent default would make the trusted leg
+	//    flaky across shells. The false side is pinned separately below.
+	//
+	// 2. 带 --trust-foreign：标记一次性清除、命令真跑（绿）、证据落盘。此段必须把真人终端
+	//    判别器覆写为 TRUE——`go test` 的 stdin 是测试运行器给的（各平台有的是 NUL/dev-null
+	//    char-device，有的是管道），依赖环境的默认值会让受信段跨 shell 间歇失败。false 侧
+	//    由下方独立测试钉住。
+	origTTY := stdinIsHumanTerminal
+	stdinIsHumanTerminal = func() bool { return true }
+	t.Cleanup(func() { stdinIsHumanTerminal = origTTY })
+	out2 := captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir, true) })
+	if runErr != nil {
+		t.Fatalf(`trusted foreign acceptance should run normally: %v`, runErr)
+	}
+	if !strings.Contains(out2, `全部通过`) {
+		t.Errorf(`trusted run output missing 全部通过: %s`, out2)
+	}
+	trusted, err := taskpipeline.LoadTaskState(dir, taskRef)
+	if err != nil {
+		t.Fatalf(`LoadTaskState: %v`, err)
+	}
+	if trusted.AcceptanceForeign {
+		t.Errorf(`--trust-foreign 首次运行后外来标记应被清除`)
+	}
+	if !trusted.Acceptance[0].Passed {
+		t.Errorf(`trusted run should backfill Passed=true`)
+	}
+
+	// 3. Post-trust re-run (no flag): plain local evidence path — no refusal, marker stays cleared.
+	//
+	// 3. 受信后重跑（无 flag）：普通本机证据路径——不再拒绝，标记保持清除。
+	out3 := captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir, false) })
+	if runErr != nil {
+		t.Fatalf(`post-trust re-run should not hit the trust gate: %v`, runErr)
+	}
+	if strings.Contains(out3, `--trust-foreign`) {
+		t.Errorf(`post-trust re-run should not mention --trust-foreign: %s`, out3)
+	}
+}
+
+// TestRunTaskVerifyAcceptanceAt_TrustForeignRequiresHumanTTY pins the agent-self-trust guard
+// (2026-08-15 trust fix, review round 2): --trust-foreign is a HUMAN review decision — the very
+// threat model of this fix is hostile content steering an LLM agent, and an injected agent can
+// simply follow the refusal text's own instruction and add the flag. When stdin is NOT a char
+// device (an agent's Bash-spawned pipe), even --trust-foreign must refuse: no execution, no
+// marker clear. The true side of the discriminator is covered by the trusted leg of
+// TestRunTaskVerifyAcceptanceAt_ForeignRequiresTrust (var overridden there).
+//
+// TestRunTaskVerifyAcceptanceAt_TrustForeignRequiresHumanTTY 钉住 agent 自我受信守卫
+// （2026-08-15 信任修复，复审第二轮）：--trust-foreign 是真人审阅决策——本修复的威胁模型
+// 正是恶意内容操纵 LLM agent，被注入的 agent 大可直接照拒绝文案的指引加 flag。stdin 非
+// char device（agent 的 Bash 管道）时，即便带 --trust-foreign 也必须拒绝：不执行、不清
+// 标记。判别器的 true 侧由 TestRunTaskVerifyAcceptanceAt_ForeignRequiresTrust 的受信段覆盖
+//（那里覆写了变量）。
+func TestRunTaskVerifyAcceptanceAt_TrustForeignRequiresHumanTTY(t *testing.T) {
+	dir, taskRef := setupAcceptanceTask(t, []string{`go version :: go version`})
+	if err := taskpipeline.MutateTaskState(dir, taskRef, func(s *taskpipeline.TaskState) error {
+		s.AcceptanceForeign = true
+		return nil
+	}); err != nil {
+		t.Fatalf(`MutateTaskState: %v`, err)
+	}
+
+	origTTY := stdinIsHumanTerminal
+	stdinIsHumanTerminal = func() bool { return false } // agent 的管道 stdin
+	t.Cleanup(func() { stdinIsHumanTerminal = origTTY })
+
+	var runErr error
+	_ = captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir, true) })
+	if runErr == nil {
+		t.Fatal(`agent 环境（stdin 非终端）带 --trust-foreign 也必须拒绝——人工审阅决策不得由 agent 自我完成`)
+	}
+	if !strings.Contains(runErr.Error(), `真人`) {
+		t.Errorf(`拒绝信息应说明须真人终端运行, got: %v`, runErr)
+	}
+	loaded, err := taskpipeline.LoadTaskState(dir, taskRef)
+	if err != nil {
+		t.Fatalf(`LoadTaskState: %v`, err)
+	}
+	if !loaded.AcceptanceForeign {
+		t.Errorf(`agent 自我受信被拒后外来标记必须保留（未被清除）`)
+	}
+	if loaded.Acceptance[0].Passed || loaded.Acceptance[0].Output != `` {
+		t.Errorf(`拒绝路径绝不能执行外来命令: Passed=%v Output=%q`, loaded.Acceptance[0].Passed, loaded.Acceptance[0].Output)
+	}
+}
+
+// TestRunTaskVerifyAcceptanceAt_MinttyGuidance pins the mintty caveat handling (review
+// 2026-08-16): under Git Bash/mintty a real human's stdin is also a named pipe, so the
+// char-device discriminator refuses them too. The refusal must stay a REFUSAL (no bypass —
+// anything an agent can set is not a discriminator) but carry actionable guidance: switch to
+// a ConPTY terminal (Windows Terminal / PowerShell).
+//
+// TestRunTaskVerifyAcceptanceAt_MinttyGuidance 钉住 mintty 局限的处理（2026-08-16 复审）：
+// Git Bash/mintty 下真人的 stdin 同样是命名管道，char device 判别器会连真人一起拒。拒绝必须
+// 仍是拒绝（不设旁路——agent 能设的东西都不是判别器），但要给出可行动指引：换 ConPTY 终端
+// （Windows Terminal / PowerShell）。
+func TestRunTaskVerifyAcceptanceAt_MinttyGuidance(t *testing.T) {
+	dir, taskRef := setupAcceptanceTask(t, []string{`go version :: go version`})
+	if err := taskpipeline.MutateTaskState(dir, taskRef, func(s *taskpipeline.TaskState) error {
+		s.AcceptanceForeign = true
+		return nil
+	}); err != nil {
+		t.Fatalf(`MutateTaskState: %v`, err)
+	}
+	origTTY := stdinIsHumanTerminal
+	stdinIsHumanTerminal = func() bool { return false } // mintty 真人也是管道
+	t.Cleanup(func() { stdinIsHumanTerminal = origTTY })
+	t.Setenv(`TERM_PROGRAM`, `mintty`)
+
+	var runErr error
+	_ = captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir, true) })
+	if runErr == nil {
+		t.Fatal(`mintty 管道 stdin 下即便带 --trust-foreign 也必须拒绝（判别器无法区分真人与 agent）`)
+	}
+	for _, want := range []string{`mintty`, `Windows Terminal`} {
+		if !strings.Contains(runErr.Error(), want) {
+			t.Errorf(`mintty 拒绝信息应含 %q 指引, got: %v`, want, runErr)
+		}
+	}
+	loaded, err := taskpipeline.LoadTaskState(dir, taskRef)
+	if err != nil {
+		t.Fatalf(`LoadTaskState: %v`, err)
+	}
+	if !loaded.AcceptanceForeign {
+		t.Error(`拒绝路径外来标记必须保留`)
+	}
+}
+
+// TestTaskVerifyAcceptance_TrustForeignFlagRegistered pins the cobra flag binding: the foreign
+// trust gate is only reachable via --trust-foreign, so a dropped flag registration would
+// silently reduce the gate to "always refuse" with no compile error.
+//
+// TestTaskVerifyAcceptance_TrustForeignFlagRegistered 钉住 cobra flag 绑定：外来受信门只
+// 经 --trust-foreign 可达，flag 注册一旦丢失会把门禁静默降级为「永远拒绝」且无编译错误。
+func TestTaskVerifyAcceptance_TrustForeignFlagRegistered(t *testing.T) {
+	if taskVerifyAcceptanceCmd.Flags().Lookup(`trust-foreign`) == nil {
+		t.Fatal(`verify-acceptance 须注册 --trust-foreign flag（外来验收受信门的唯一入口）`)
 	}
 }
 
