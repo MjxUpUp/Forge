@@ -347,3 +347,61 @@ func TestCheckAcceptanceFresh_NonGitShortCircuit(t *testing.T) {
 		t.Fatalf(`非 git 目录应短路放行（head 空），got reasons=%v`, reasons)
 	}
 }
+
+// TestMergeAcceptanceResults pins the §13 lost-update fix helper (review 2026-08-16): results from
+// a just-finished run are merged onto the AUTHORITATIVE fresh state by Run string — only the three
+// result fields move, a concurrently-changed spec entry is never stamped with another command's
+// outcome, and the foreign marker flips only when asked.
+//
+// TestMergeAcceptanceResults 钉住 §13 丢更新修复的 helper（2026-08-16 复审）：刚实跑完的结果按
+// Run 字符串合并进「权威」最新状态——只有三个结果字段会搬过去，并发改过的 spec 条目绝不盖上
+// 另一条命令的结果，外来标记仅在要求时翻转。
+func TestMergeAcceptanceResults(t *testing.T) {
+	fresh := &TaskState{TaskRef: `feat/merge`, AcceptanceForeign: true, Plan: `concurrent resume wrote this`}
+	fresh.Acceptance = []AcceptanceCriterion{
+		{Run: `go test ./...`, Expected: `ok`},      // spec unchanged → gets the result
+		{Run: `NEW-CMD go vet ./...`, Expected: ``}, // spec edited concurrently → untouched
+		// Same Run, different Expected = two DIFFERENT checks sharing one command (review round 2):
+		// a Run-only match key would stamp the failing variant with the passing one's result.
+		//
+		// 同 Run 不同 Expected = 共用一条命令的两个「不同检查」（二轮复审）：单 Run 匹配键会把
+		// 失败变体的结果盖成通过变体的。
+		{Run: `go version`, Expected: `go version`},
+		{Run: `go version`, Expected: `NONEXISTENT`},
+	}
+	results := []AcceptanceCriterion{
+		{Run: `go test ./...`, Expected: `ok`, Passed: true, AcceptedHeadCommit: `bbb222`, Output: `ok`},
+		{Run: `go vet ./...`, Expected: ``, Passed: true, AcceptedHeadCommit: `bbb222`, Output: ``}, // old spec entry, no fresh match
+		{Run: `go version`, Expected: `go version`, Passed: true, AcceptedHeadCommit: `bbb222`, Output: `go version x`},
+		{Run: `go version`, Expected: `NONEXISTENT`, Passed: false, AcceptedHeadCommit: `bbb222`, Output: `go version x`},
+	}
+	MergeAcceptanceResults(fresh, results, true)
+
+	if !fresh.Acceptance[0].Passed || fresh.Acceptance[0].AcceptedHeadCommit != `bbb222` || fresh.Acceptance[0].Output != `ok` {
+		t.Errorf(`matched entry should receive the run results, got %+v`, fresh.Acceptance[0])
+	}
+	if fresh.Acceptance[1].Passed || fresh.Acceptance[1].AcceptedHeadCommit != `` {
+		t.Errorf(`concurrently-changed spec entry must NOT be stamped with another command's result, got %+v`, fresh.Acceptance[1])
+	}
+	if !fresh.Acceptance[2].Passed {
+		t.Errorf(`same-Run passing variant should get Passed=true, got %+v`, fresh.Acceptance[2])
+	}
+	if fresh.Acceptance[3].Passed || fresh.Acceptance[3].Output != `go version x` {
+		t.Errorf(`same-Run failing variant must keep its own outcome (Run-only key would fake-green it), got %+v`, fresh.Acceptance[3])
+	}
+	if fresh.AcceptanceForeign {
+		t.Error(`clearForeign=true should flip the marker`)
+	}
+	if fresh.Plan != `concurrent resume wrote this` {
+		t.Errorf(`non-acceptance fields of the fresh state must survive untouched, got Plan=%q`, fresh.Plan)
+	}
+
+	// clearForeign=false leaves the marker on (the refusal path never merges).
+	//
+	// clearForeign=false 时标记保留（拒绝路径不合并）。
+	other := &TaskState{TaskRef: `feat/merge2`, AcceptanceForeign: true}
+	MergeAcceptanceResults(other, nil, false)
+	if !other.AcceptanceForeign {
+		t.Error(`clearForeign=false must keep the foreign marker`)
+	}
+}

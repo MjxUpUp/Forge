@@ -235,6 +235,50 @@ func VerifyAcceptance(root string, state *TaskState) {
 	}
 }
 
+// MergeAcceptanceResults merges freshly-run acceptance results (the run-side copy carrying
+// Passed/Output/AcceptedHeadCommit) into the AUTHORITATIVE on-disk state, matching by Run string.
+// It exists for the §13 lost-update fix: verify-acceptance loads the TaskState, runs the (possibly
+// long) commands, and must not then bare-save that pre-run snapshot — a concurrent resume/decide
+// write in between would be clobbered, losing exactly the continuity data import exists to
+// preserve. The caller reloads inside the per-task lock and merges through here, so only the
+// acceptance RESULT fields (and optionally the foreign marker) move onto the freshest state:
+// spec/handoff fields stay whatever the fresh state says, and an entry whose Run changed
+// concurrently is left untouched rather than stamped with another command's outcome.
+//
+// MergeAcceptanceResults 把实跑出的验收结果（携带 Passed/Output/AcceptedHeadCommit 的跑侧副本）
+// 按 Run 字符串匹配合并进「权威」盘上状态。为 §13 丢更新修复而生：verify-acceptance 加载
+// TaskState、（可能长时间）执行命令后，绝不能裸回写实跑前快照——期间并发 resume/decide 的写入
+// 会被覆盖，丢的恰是 import 要保的接续数据。调用方在 per-task 锁内重载后经本函数合并：只有
+// 验收「结果」字段（及可选的外来标记）落到最新状态上，spec/交接字段以最新状态为准；并发改过
+// Run 的条目原样保留，不会被盖上另一条命令的结果。
+func MergeAcceptanceResults(s *TaskState, results []AcceptanceCriterion, clearForeign bool) {
+	for i := range s.Acceptance {
+		for j := range results {
+			// Match key is (Run, Expected), not Run alone (review round 2, 2026-08-16): two criteria
+			// sharing a Run with different Expected values (e.g. `go version :: go version` and
+			// `go version :: NONEXISTENT`) are different checks — a Run-only key stamps the second
+			// with the first's result, persisting Passed=true for a criterion that actually failed.
+			// Fully-identical duplicates get the same outcome either way, so the pair key is safe.
+			//
+			// 匹配键是 (Run, Expected) 二元组，不是单 Run（2026-08-16 二轮复审）：同 Run 不同
+			// Expected 的两条 criterion（如 `go version :: go version` 与
+			// `go version :: NONEXISTENT`）是两个不同检查——单 Run 键会把第一条的结果盖到
+			// 第二条上，实际失败的第二条被持久化成 Passed=true。完全相同的重复条目无论用哪个键
+			// 结果都一样，二元组安全。
+			if results[j].Run != s.Acceptance[i].Run || results[j].Expected != s.Acceptance[i].Expected {
+				continue
+			}
+			s.Acceptance[i].Passed = results[j].Passed
+			s.Acceptance[i].Output = results[j].Output
+			s.Acceptance[i].AcceptedHeadCommit = results[j].AcceptedHeadCommit
+			break
+		}
+	}
+	if clearForeign {
+		s.AcceptanceForeign = false
+	}
+}
+
 // truncateAcceptanceOutput truncates the actual-run output to the last ~500 bytes: failure info is at the tail,
 // keeping the tail is enough for debugging; also avoids large output blowing up TaskState JSON. Key: the cut-point must retreat to a rune
 // boundary — a byte cut-point lands inside a multi-byte UTF-8 character (common in Chinese compile errors / exception stacks), producing invalid

@@ -299,6 +299,79 @@ func TestMigrateProject_ConfigDirEqualsDataDir_NeverDeletes(t *testing.T) {
 	}
 }
 
+// TestMigrateProject_NeverMigratesStamps pins the 2026-08-15 trust-boundary fix: .forge/stamps
+// is repo-committable attacker-authorable content — a cloned malicious repo could ship stamps that
+// forge would treat as local trust anchors once promoted into the user-level DataDir. stamps must
+// stay project-local under .forge/ and never land in DataDir, in every migrate mode (incl. --force).
+//
+// TestMigrateProject_NeverMigratesStamps 钉住 2026-08-15 信任边界修复：.forge/stamps 是可提交
+// 进 repo 的攻击者可书写内容——clone 一个恶意仓库即可带上被 forge 当本机信任锚的 stamps（一旦
+// 被提升进用户级 DataDir）。stamps 必须保持项目局部于 .forge/，任何 migrate 模式（含 --force）
+// 都不得落进 DataDir。
+func TestMigrateProject_NeverMigratesStamps(t *testing.T) {
+	root, p := forgedatatest.RealProject(t)
+	mkDir(t, filepath.Join(root, `.forge`, `stamps`))
+	mkFile(t, filepath.Join(root, `.forge`, `stamps`, `review.passed`), `forged`)
+
+	for _, opts := range []forgedata.MigrateOptions{
+		{},
+		{Force: true},
+		{DryRun: true, Force: true},
+	} {
+		res, err := forgedata.MigrateProject(p, opts)
+		if err != nil {
+			t.Fatalf(`MigrateProject(opts=%+v): %v`, opts, err)
+		}
+		for _, m := range res.Moved {
+			if m == `stamps` {
+				t.Errorf(`opts=%+v: stamps 不得出现在 Moved（repo 可提交内容不是 runtime 信任锚）`, opts)
+			}
+		}
+		assertNotExists(t, filepath.Join(p.DataDir, `stamps`), `DataDir/stamps`)
+	}
+	// stamps stays project-local in every mode — --force never deletes it either.
+	//
+	// 任何模式下 stamps 保持项目局部——--force 也不得删它。
+	assertExists(t, filepath.Join(root, `.forge`, `stamps`, `review.passed`), `.forge/stamps/review.passed`)
+}
+
+// TestMigrateProject_NeverMigratesHazards pins the 2026-08-15 trust-boundary fix: .forge/hazards
+// holds hazard-confirmations forge treats as local trust anchors (a repo that controls the
+// hazard-triggering command can precompute the fingerprint offline and ship the confirmation).
+// hazards must stay project-local under .forge/ and never land in DataDir, in every migrate mode
+// (incl. --force) — same rationale as stamps above.
+//
+// TestMigrateProject_NeverMigratesHazards 钉住 2026-08-15 信任边界修复：.forge/hazards 存的是
+// forge 当本机信任锚的 hazard 确认（控制高危命令的 repo 可离线预算指纹并随仓库携带确认）。
+// hazards 必须保持项目局部于 .forge/，任何 migrate 模式（含 --force）都不得落进 DataDir
+// ——与上方 stamps 同理。
+func TestMigrateProject_NeverMigratesHazards(t *testing.T) {
+	root, p := forgedatatest.RealProject(t)
+	mkDir(t, filepath.Join(root, `.forge`, `hazards`))
+	mkFile(t, filepath.Join(root, `.forge`, `hazards`, `cmd-fingerprint`), `forged`)
+
+	for _, opts := range []forgedata.MigrateOptions{
+		{},
+		{Force: true},
+		{DryRun: true, Force: true},
+	} {
+		res, err := forgedata.MigrateProject(p, opts)
+		if err != nil {
+			t.Fatalf(`MigrateProject(opts=%+v): %v`, opts, err)
+		}
+		for _, m := range res.Moved {
+			if m == `hazards` {
+				t.Errorf(`opts=%+v: hazards 不得出现在 Moved（repo 可预计算的信任锚不是 runtime）`, opts)
+			}
+		}
+		assertNotExists(t, filepath.Join(p.DataDir, `hazards`), `DataDir/hazards`)
+	}
+	// hazards stays project-local in every mode — --force never deletes it either.
+	//
+	// 任何模式下 hazards 保持项目局部——--force 也不得删它。
+	assertExists(t, filepath.Join(root, `.forge`, `hazards`, `cmd-fingerprint`), `.forge/hazards/cmd-fingerprint`)
+}
+
 // ---- helpers ----
 
 func mkDir(t *testing.T, path string) {
