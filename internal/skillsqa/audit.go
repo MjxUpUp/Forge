@@ -39,7 +39,16 @@ type Rule struct {
 	// The dangerous_code rule additionally applies to .html/.htm (browser-side XSS vectors: DC-1 eval / DC-7 browser execution vectors); other DC rules only apply to executable scripts.
 	//
 	HtmlAlso bool // dangerous_code 规则额外在 .html/.htm 生效（浏览器端 XSS 向量：DC-1 eval / DC-7 浏览器执行向量）；其余 DC 只接可执行脚本
-	re       *regexp.Regexp
+	// The dangerous_code rule additionally applies to .md/.markdown (DC-8/DC-9 remote-script-into-shell /
+	// DC-10 arbitrary-registry-package). SKILL.md is instructions an agent follows verbatim — a line like
+	// `curl <url> | bash` in markdown executes exactly as it would in a script; pre-DC-8 the DC family only
+	// routed through ExecExts and malicious SKILL.md payloads scanned clean (blind spot #3).
+	//
+	// dangerous_code 规则额外在 .md/.markdown 生效（DC-8/DC-9 远端脚本进 shell / DC-10 任意注册表包）。
+	// SKILL.md 是 agent 逐字跟随的指令——markdown 里的 `curl <url> | bash` 与脚本里同等可执行；
+	// DC-8 之前 DC 族只经 ExecExts 路由，恶意 SKILL.md payload 扫描为干净（盲区 #3）。
+	MdAlso bool
+	re     *regexp.Regexp
 }
 
 // skipDirs — directory segments skipped during scanning (aligned with audit.py node_modules/.git/__pycache__/.venv).
@@ -49,11 +58,13 @@ var skipDirs = map[string]bool{
 	"node_modules": true, ".git": true, "__pycache__": true, ".venv": true,
 }
 
-// auditRules is the set of 19 rules. Regexes have been converted from Python syntax to Go RE2:
+// auditRules is the set of 22 rules (19 aligned with audit.py + forge-local DC-8/DC-9/DC-10 for the
+// markdown supply-chain blind spot). Regexes have been converted from Python syntax to Go RE2:
 //   - PI-5 zero-width characters → \x{200b} (Go does not support \u)
 //   - Each rule has a (?i) prefix to align with Python re.IGNORECASE
 //
-// auditRules 是 19 条规则。正则已从 Python 语法转为 Go RE2：
+// auditRules 是 22 条规则（19 条对齐 audit.py + forge 本地 DC-8/DC-9/DC-10 补 markdown 供应链
+// 盲区）。正则已从 Python 语法转为 Go RE2：
 //   - PI-5 零宽字符 → \x{200b}（Go 不支持 \u）
 //   - 每条加 (?i) 前缀对齐 Python re.IGNORECASE
 var auditRules = mustCompile([]Rule{
@@ -139,6 +150,49 @@ var auditRules = mustCompile([]Rule{
 	// （DC-6 curl/wget 不接 HTML），留待 DC-8 follow-up。
 	{ID: "DC-7", Cat: "dangerous_code", Severity: "HIGH", Conf: 0.75, Msg: "浏览器端动态代码执行向量（Function 构造器/document.write/字符串定时器）", Fix: "避免动态代码执行；用静态 DOM（textContent）/事件绑定", ExecOnly: true, HtmlAlso: true,
 		Pattern: `(?i)(?:new\s+Function\s*\(|document\.write\s*\(|\b(?:setTimeout|setInterval)\s*\(\s*['"]|location\.href\s*=\s*['"]javascript:)`},
+	// DC-8/DC-9/DC-10 — markdown-visible supply-chain execution vectors (blind spot #3, 2026-08-15 global
+	// review). DC-1~DC-7 route through ExecOnly and never scanned SKILL.md: a skill teaching
+	// `curl <url> | bash` / `bash <(curl <url>)` / `npx attacker-pkg` produced ZERO findings → SAFE →
+	// installed to 5 hosts. MdAlso routes these three into markdown alongside executable scripts.
+	// All three require a real https?:// URL / package token so canonical TEACHING content stays clean:
+	// on-demand-guards legitimately writes `curl ... | sh` (no URL — pattern), dev-lookup legitimately
+	// pipes real-URL curls into DATA processors (jq/grep/head — the tail requires a shell, jq ≠ sh),
+	// and canonical npx usages (tsc/playwright/shadcn) surface as non-blocking MEDIUM advisories
+	// (4×MEDIUM×0.6=19 < CAUTION) — supply-chain visibility without breaking canonical distribution.
+	// Known under-reporting (deliberate, keeps RE2-compatible and canonical clean):
+	// ① multi-stage pipes (`curl url | base64 | sh`) — the tail anchors to the first pipe;
+	// ② `|sh` glued without spaces is caught (\s*) but newline-continuation pipes and bash's
+	//    pipe-both `|&` (`curl url |& bash`) are not;
+	// ③ env-var-only URLs (`curl $URL | sh`) — the URL requirement is the FP boundary, its cost is this miss;
+	// ④ PowerShell vectors (`iwr ... | iex`) — out of scope, never claimed;
+	// ⑤ `xargs sh` / `; `-chained forms. Case is NOT a miss: (?i) catches `| BASH`, `SUDO bash`.
+	// Review round 1 (2026-08-16) hardened three initially-missed forms, now covered:
+	// `&`-bearing query-string URLs (`?src=gh&v=2` — URL class allows `&`), flags-after-URL
+	// (`curl URL -s | bash` — ≤40 non-pipe chars allowed between URL and pipe), and command
+	// substitution (`sh -c "$(curl …)"` / `eval "$(curl …)"` — folded into DC-9).
+	//
+	// DC-8/DC-9/DC-10 —— markdown 可见的供应链执行向量（盲区 #3，2026-08-15 全局审查）。
+	// DC-1~DC-7 走 ExecOnly 从不扫 SKILL.md：教唆 `curl <url> | bash` / `bash <(curl <url>)` /
+	// `npx attacker-pkg` 的 skill 零 findings → SAFE → 装进 5 host。MdAlso 让这三条同时路由进
+	// markdown 与可执行脚本。三条都要求真实 https?:// URL / 包名 token，canonical 教学内容保持
+	// 干净：on-demand-guards 合法写 `curl ... | sh`（无 URL——不命中），dev-lookup 合法把真实 URL
+	// 的 curl 管道进数据处理器（jq/grep/head——尾部要求 shell，jq ≠ sh），canonical 的 npx 用法
+	// （tsc/playwright/shadcn）浮出为非阻断 MEDIUM advisory（4×MEDIUM×0.6=19 < CAUTION）——
+	// 供应链可见性而不破坏 canonical 分发。已知漏报（刻意，保 RE2 兼容与 canonical 干净）：
+	// ① 多级管道（`curl url | base64 | sh`）——尾部锚定第一个管道；
+	// ② 无空格 `|sh` 能抓（\s*）但换行续接管道与 bash 的 pipe-both `|&`（`curl url |& bash`）不抓；
+	// ③ 仅环境变量 URL（`curl $URL | sh`）——URL 前置是 FP 边界，其代价即此漏报；
+	// ④ PowerShell 向量（`iwr ... | iex`）——范围外，从未声明覆盖；
+	// ⑤ `xargs sh` / `; ` 链式形态。大小写不是漏报：(?i) 抓 `| BASH`、`SUDO bash`。
+	// 审查第 1 轮（2026-08-16）加固了三个初始漏掉的形态：带 `&` 的查询串 URL（`?src=gh&v=2`
+	// ——URL 类允许 `&`）、URL 后置 flag（`curl URL -s | bash`——URL 与管道间允许 ≤40 个非管道
+	// 字符）、命令替换（`sh -c "$(curl …)"` / `eval "$(curl …)"`——并入 DC-9）。
+	{ID: "DC-8", Cat: "dangerous_code", Severity: "CRITICAL", Conf: 0.9, Msg: "curl/wget 远端脚本直接管道进 shell（远程代码执行）", Fix: "删除该命令；先下载并校验（checksum/签名）再执行，或用包管理器", ExecOnly: true, MdAlso: true,
+		Pattern: "(?i)\\b(?:curl|wget)\\b[^|\\n]{0,160}?https?://[^\\s|;\"']+[^|\\n]{0,40}?\\|\\s*(?:sudo\\s+)?\\b(?:ba|z|a|k|da)?sh\\b"},
+	{ID: "DC-9", Cat: "dangerous_code", Severity: "CRITICAL", Conf: 0.85, Msg: "sh <(curl) 进程替换 / sh -c \"$(curl)\" 命令替换执行远端脚本（curl|sh 的无管道变体）", Fix: "删除该命令；先下载并校验再执行", ExecOnly: true, MdAlso: true,
+		Pattern: "(?i)\\b(?:(?:ba|z|a|k|da)?sh\\b\\s*(?:<\\(|-c\\s+['\\\"]?\\s*\\$\\()\\s*|eval\\b\\s+['\\\"]?\\s*\\$\\()\\s*(?:curl|wget)\\b[^)\\n]{0,160}?https?://"},
+	{ID: "DC-10", Cat: "dangerous_code", Severity: "MEDIUM", Conf: 0.6, Msg: "npx/uvx/dlx/bunx 执行任意注册表包（供应链代码执行面）", Fix: "确认包名可信并 pin 版本；优先用本地依赖运行工具", ExecOnly: true, MdAlso: true,
+		Pattern: "(?i)\\b(?:npx|uvx|dlx|bunx)[ \\t]+(?:-{1,2}[a-z0-9-]+[ \\t]+)*@?[a-z0-9][a-z0-9@/._-]*"},
 })
 
 func mustCompile(in []Rule) []Rule {
@@ -154,22 +208,32 @@ func mustCompile(in []Rule) []Rule {
 		if r.HtmlAlso && !r.ExecOnly {
 			panic("rule " + r.ID + ": HtmlAlso requires ExecOnly=true (otherwise rule never fires)")
 		}
+		// MdAlso carries the same silent-failure shape (see HtmlAlso above) — fail fast on the
+		// misconfiguration instead of letting the rule go inert.
+		//
+		// MdAlso 同 HtmlAlso 的沉默失效形态（见上）——对误配置 fail-fast，而非让规则失效。
+		if r.MdAlso && !r.ExecOnly {
+			panic("rule " + r.ID + ": MdAlso requires ExecOnly=true (otherwise rule never fires)")
+		}
 		r.re = regexp.MustCompile(r.Pattern)
 		out[i] = r
 	}
 	return out
 }
 
-// auditorsForExt returns the applicable rules by file extension (aligned with audit.py AUDITORS_BY_TYPE):
-//   - .md/.markdown → injection + exfil + leak
+// auditorsForExt returns the applicable rules by file extension (aligned with audit.py AUDITORS_BY_TYPE,
+// plus forge-local MdAlso routing):
+//   - .md/.markdown → injection + exfil + leak + MdAlso DC rules (DC-8/DC-9/DC-10 — SKILL.md lines
+//     are verbatim agent instructions, supply-chain execution payloads there execute exactly as in a script)
 //   - executable scripts → injection + exfil + dangerous_code
 //   - .html/.htm → injection + exfil (HTML is a prompt injection carrier: PI-4 is designed for hidden
 //     instruction comments) + dangerous_code rules with HtmlAlso=true (DC-1 eval / DC-7 browser execution
 //     vectors); other DC rules (child_process/os.system/subprocess and other backend APIs) are not covered — HTML is not directly
 //     executable, and backend API keywords are prone to false positives in descriptive text.
 //
-// auditorsForExt 按文件后缀返回适用规则（对齐 audit.py AUDITORS_BY_TYPE）：
-//   - .md/.markdown → injection + exfil + leak
+// auditorsForExt 按文件后缀返回适用规则（对齐 audit.py AUDITORS_BY_TYPE + forge 本地 MdAlso 路由）：
+//   - .md/.markdown → injection + exfil + leak + MdAlso 的 DC 规则（DC-8/DC-9/DC-10——SKILL.md
+//     的行是 agent 逐字跟随的指令，供应链执行 payload 与脚本里同等生效）
 //   - 可执行脚本   → injection + exfil + dangerous_code
 //   - .html/.htm   → injection + exfil（HTML 是 prompt injection 载体：PI-4 专为隐藏
 //     指令注释设计）+ dangerous_code 中 HtmlAlso=true 的（DC-1 eval / DC-7 浏览器执行
@@ -182,11 +246,15 @@ func auditorsForExt(ext string) []Rule {
 		switch {
 		case r.ExecOnly:
 			// dangerous_code by default only applies to executable scripts; rules with HtmlAlso=true (DC-1 eval / DC-7
-			// browser execution vectors) additionally apply to .html/.htm — inline <script> in HTML is a real execution carrier.
+			// browser execution vectors) additionally apply to .html/.htm — inline <script> in HTML is a real execution carrier;
+			// rules with MdAlso=true (DC-8/DC-9/DC-10) additionally apply to markdown — SKILL.md lines are
+			// instructions an agent executes verbatim (blind spot #3).
 			//
 			// dangerous_code 默认仅可执行脚本；HtmlAlso=true 的规则（DC-1 eval / DC-7
-			// 浏览器执行向量）额外在 .html/.htm 生效——HTML 内嵌 <script> 是真实执行载体。
-			if ExecExts[ext] || (r.HtmlAlso && HtmlExts[ext]) {
+			// 浏览器执行向量）额外在 .html/.htm 生效——HTML 内嵌 <script> 是真实执行载体；
+			// MdAlso=true 的规则（DC-8/DC-9/DC-10）额外在 markdown 生效——SKILL.md 的行是
+			// agent 逐字执行的指令（盲区 #3）。
+			if ExecExts[ext] || (r.HtmlAlso && HtmlExts[ext]) || (r.MdAlso && markdownExt(ext)) {
 				out = append(out, r)
 			}
 		case r.Cat == "system_prompt_leakage":
@@ -310,6 +378,25 @@ func SeverityBand(score int) string {
 	default:
 		return "INFO"
 	}
+}
+
+// HasCritical reports whether findings contain at least one CRITICAL entry. Single source of truth
+// for the install gate and `forge skills audit --gate` (blind spot #4): both used to decide on the
+// aggregate score/band alone — a single CRITICAL finding contributes ≤25×0.95=23.75 points, which can
+// never reach DO_NOT_INSTALL(≥50) and usually not even the HIGH band(≥30), so one confirmed CRITICAL
+// sailed through as CAUTION/MEDIUM. Any CRITICAL blocks regardless of the aggregate.
+//
+// HasCritical 报告 findings 是否含至少一条 CRITICAL。install 门禁与 `forge skills audit --gate`
+// 的单一真相源（盲区 #4）：两者此前只看聚合分/带——单条 CRITICAL 贡献 ≤25×0.95=23.75 分，
+// 永远够不到 DO_NOT_INSTALL(≥50)、通常也够不到 HIGH 带(≥30)，一条确认的 CRITICAL 就以
+// CAUTION/MEDIUM 溜过。任何 CRITICAL 无视聚合直接阻断。
+func HasCritical(findings []Finding) bool {
+	for _, f := range findings {
+		if f.Severity == "CRITICAL" {
+			return true
+		}
+	}
+	return false
 }
 
 // Recommendation maps a score to an install recommendation (aligned with audit.py recommend).
