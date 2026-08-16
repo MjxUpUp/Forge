@@ -254,6 +254,18 @@ type TaskState struct {
 	// references/phase-X.md checklist。空 = 无匹配设计产物，回落到通用 review-checklist.md。
 	DesignPhases []DesignPhase         `json:"design_phases,omitempty"`
 	Acceptance   []AcceptanceCriterion `json:"acceptance,omitempty"` // 验收标准（dev-workflow Plan 的 Run+Expected），verify-acceptance 实跑回扣
+	// AcceptanceForeign marks that the acceptance Run commands entered this TaskState from an
+	// untrusted source (task import bundle / .forge migrate of repo-committed state) — never typed
+	// by a local user flag. Run commands are executable strings; executing foreign-authored ones
+	// is arbitrary command execution, so verify-acceptance refuses to run them until the user has
+	// reviewed the command list and explicitly trusted them (--trust-foreign); the first trusted
+	// run clears this flag (re-runs are then local-verified evidence).
+	//
+	// AcceptanceForeign 标记验收 Run 命令来自不可信源（task import bundle / repo 提交状态经
+	// .forge migrate 提升）——绝非本机用户 flag 亲手输入。Run 命令是可执行字符串，执行外来
+	// 作者的命令即任意命令执行，故 verify-acceptance 拒绝直接跑：须用户审阅命令清单并显式
+	// 受信（--trust-foreign）后才执行；首次受信运行会清掉本标记（之后的重跑即本机验证证据）。
+	AcceptanceForeign bool `json:"acceptance_foreign,omitempty"`
 	// PlanScope is the planned-changed-files allowlist declared before a task starts (globs, repo-relative forward-slash paths).
 	// It corresponds to the planning precondition of which files you intend to change — turning it into a measurable contract. Advisory:
 	// the diff between actually changed files (TaskChangedFiles) and it is recorded as scope-drift for review, non-blocking. Change-impact-analysis

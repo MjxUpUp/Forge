@@ -227,7 +227,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge update [--plugin]` | 自更新到最新版本；加 `--plugin` 在 binary 更新后打印 plugin marketplace 重装指引（marketplace 镜像同步 hook 时建议重装） |
 | `forge suggest decline/status/reset` | 管理 init-suggest hook 的项目 init 提示状态（decline 永久静默当前项目 / status 查看 / reset 清除重新提示） |
 | `forge uninstall [--restore]` | 一键反装：剥除全部用户级 hooks（claude/codex/cursor/windsurf/opencode/kimi/reasonix）+ 用户级指令段（CLAUDE.md/AGENTS.md/global_rules.md）+ forge-quality skill + 清 npm global `@agent_forge/forge` + 删 init-suggest 标记（默认 `~/.forge/.init-suggested/`，设 `FORGE_DATA_HOME` 时落该根下）；`--restore` 把用户级文件回滚到 forge 修改前字节（备份在 `~/.forge/backups/`）；plugin 卸载须在 agent CLI 内交互运行（不可脚本化） |
-| `forge migrate [--dry-run] [--force]` | 把旧 `.forge/` runtime state（tasks/gates/checklog/toollog/act/sessions/quarantine/active-task-ref 等）迁到用户级 DataDir（`~/.forge/projects/<key>/`）——升级到 runtime state 外迁版本后的迁移路径；未改过的 `.forge/protocol.yml` 由 autoSync 自动迁 DataDir，用户改过的保留为团队共享覆盖层；幂等，`--dry-run` 预览，`--force` 覆盖 DataDir 已有同名 |
+| `forge migrate [--dry-run] [--force]` | 把旧 `.forge/` runtime state（tasks/gates/checklog/toollog/act/sessions/quarantine/active-task-ref 等）迁到用户级 DataDir（`~/.forge/projects/<key>/`）——升级到 runtime state 外迁版本后的迁移路径；未改过的 `.forge/protocol.yml` 由 autoSync 自动迁 DataDir，用户改过的保留为团队共享覆盖层；迁移的 task 文件落地即剥离外来门禁信号（review/验收/评分/完成/逃生舱/generic 须本机重挣，验收命令带外来标记）；幂等，`--dry-run` 预览，`--force` 覆盖 DataDir 已有同名 |
 | `forge registry prune` | 精简全局注册表 `~/.forge/projects.json`——移除项目目录已不存在的死路径与重复条目（项目移走/删除/测试残留），原子写回。registry.List 读时惰性精简但只在 `forge dashboard` 启动时触发（启 web 阻塞），本命令给不启 web 的主动清理入口 |
 
 </details>
@@ -242,7 +242,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge task list` | 列出所有任务 |
 | `forge task mine [--agent <agent>] [--role <role>] [--all-projects] [--blocked] [--json]` | 列出分派给当前/指定 agent 的任务（`--all-projects` 全仓扫描按项目分组；`--blocked` 仅被依赖阻塞的，标注卡在哪环 [status, gate 进度 passed/total]） |
 | `forge task gate <gate-id>` | 验证单道任务门禁 |
-| `forge task verify-acceptance` | 实跑验收标准（task start --accept 登记），记 deterministic 证据 |
+| `forge task verify-acceptance [--trust-foreign]` | 实跑验收标准（task start --accept 登记），记 deterministic 证据；验收命令来自 task import / .forge migrate（外来标记）时首跑须 `--trust-foreign`（人工审阅命令清单后显式受信，防外来命令串直接执行） |
 | `forge task scope add <glob>` | 追加计划改动文件到白名单（支持中途迭代） |
 | `forge task scope show` | 查看声明的白名单 + 实时 scope-drift（advisory，不阻塞） |
 | `forge task complete` | 标记任务完成（自动评分） |
