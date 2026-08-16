@@ -850,8 +850,10 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// with an edit (644b142 deleted the original Read recorder).
 	// tool_input population: auto-compile (Edit/Write) records file_path/content; tool-track's Skill/Agent
 	// records the skill name/subagent_type (scheme C: lets toollog audits see which quality skill the agent loaded and what kind of
-	// subagent it dispatched — root cause of zero quality-skill fires in advisory context is traceable). Read still omits tool_input
-	// (frequent; gate only needs tool_name+timestamp, keep toollog lean).
+	// subagent it dispatched — root cause of zero quality-skill fires in advisory context is traceable). Read records a minimal
+	// {"file_path":...} (2026-08-16 review HIGH-1: the funnel join — skillseval.BuildTriggerFunnel — matches Read tool_input
+	// suffixes to attribute "loaded the skill after the trigger hit"; omitting it made that join structurally dead on production
+	// data while unit tests stayed green on hand-marshaled inputs. The lean-toollog tradeoff lost to the observability signal).
 	//
 	// 6b. 记录 tool usage 用于 activity-ratio 检测。auto-compile 记 Write/Edit；
 	// tool-track 记 Read|Skill|Agent（matcher 在 ForgeHookSpec 中），让
@@ -859,8 +861,10 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// edit 的 task 上恒失败（644b142 删过原来的 Read recorder）。
 	// tool_input 填充：auto-compile（Edit/Write）记 file_path/content；tool-track 的 Skill/Agent
 	// 记 skill 名/subagent_type（方案 C：让 toollog 审计能看到 agent 加载了哪个质量 skill、派了
-	// 哪类子 agent——advisory 语境下质量 skill 0 触发的根因可追溯）。Read 仍省略 tool_input
-	// （频繁，gate 只需 tool_name+timestamp，保持 toollog lean）。
+	// 哪类子 agent——advisory 语境下质量 skill 0 触发的根因可追溯）。Read 记最小 {"file_path":...}
+	// （2026-08-16 审查 HIGH-1：漏斗 join——skillseval.BuildTriggerFunnel——靠 Read tool_input 的
+	// 后缀匹配归因「命中后加载了该 skill」；省略它使该 join 在生产数据上结构性死亡，而单测用手工
+	// marshal 的输入照样全绿。lean 权衡让位于可观测信号）。
 	if name == "auto-compile" || name == "tool-track" {
 		call := &toolusage.ToolCall{
 			ToolName:  hookInput.ToolName,
@@ -872,21 +876,39 @@ func runHook(cmd *cobra.Command, args []string) error {
 			call.ToolInput = toolusage.TruncateInput(raw)
 			call.InputLen = len(raw)
 			call.EstTokens = toolusage.EstimateTokens(raw)
+		} else if name == "tool-track" && hookInput.ToolName == "Read" && fields.FilePath != "" {
+			// Minimal shape: ONLY file_path (not the full tool input) — the funnel join
+			// (skillseval.BuildTriggerFunnel → readFilePath) suffix-matches this field; every other
+			// Read field stays unrecorded. Pinned by TestHookToolTrackRecordsReadFilePath; the two
+			// must not silently diverge again (that divergence was review HIGH-1).
+			//
+			// 最小形状：只记 file_path（非完整 tool input）——漏斗 join
+			// （skillseval.BuildTriggerFunnel → readFilePath）按本字段做后缀匹配；Read 的其余
+			// 字段照旧不记。由 TestHookToolTrackRecordsReadFilePath 钉死；两者不得再静默分叉
+			// （该分叉即审查 HIGH-1）。
+			minimal, _ := json.Marshal(map[string]string{"file_path": fields.FilePath})
+			call.ToolInput = toolusage.TruncateInput(string(minimal))
+			raw := string(hookInput.ToolInput)
+			call.InputLen = len(raw)
+			call.EstTokens = toolusage.EstimateTokens(raw)
 		}
 		if err := toolusage.Record(root, call); err != nil {
 			fmt.Fprintf(os.Stderr, "[forge] warning: toollog record failed: %v\n", err)
 		}
 		// Scheme 2 shift-left: append this Read's file_path to the per-session reads log,
 		// so the PreToolUse read-before-edit hook can intercept Edit-without-Read at Edit time.
-		// toollog does not record Read's file_path (kept lean); this is a dedicated side channel.
-		// PostToolUse fires after the Read completes, so this round's Read is recorded before the subsequent Edit —
+		// toollog now also records Read's file_path (funnel join, see 6b above), but this side
+		// channel stays: it stores the PROJECT-RELATIVE path (gate matching is project-anchored)
+		// and is read at Edit time without parsing toollog JSON. PostToolUse fires after the Read
+		// completes, so this round's Read is recorded before the subsequent Edit —
 		// the Edit's PreToolUse hook can then see the path. Only tool-track
 		// (Read) records paths; auto-compile (Edit/Write) does not.
 		//
 		// 方案2 shift-left：把本次 Read 的 file_path 追加到 per-session reads log，
 		// 让 PreToolUse read-before-edit hook 能在 Edit 时拦截 Edit-without-Read。
-		// toollog 不记 Read 的 file_path（保持 lean）；这是一条专用 side-channel。
-		// PostToolUse 在 Read 完成之后触发，所以本回合的 Read 会先于随后的 Edit
+		// toollog 现在也记 Read 的 file_path（漏斗 join，见上 6b），但本 side-channel 保留：
+		// 它存项目相对路径（gate 匹配锚定项目根），且 Edit 时直接读取、无需解析 toollog
+		// JSON。PostToolUse 在 Read 完成之后触发，所以本回合的 Read 会先于随后的 Edit
 		// 被记录——Edit 的 PreToolUse hook 就能看到该路径。只有 tool-track
 		// （Read）记路径；auto-compile（Edit/Write）不记。
 		if name == "tool-track" && hookInput.ToolName == "Read" && fields.FilePath != "" {
@@ -1154,6 +1176,91 @@ func emitAgentOutput(agent, eventName, hookName string, passed bool, detail stri
 		return emitClineOutput(passed, detail)
 	default:
 		return emitClaudeOutput(eventName, passed, detail)
+	}
+}
+
+// contextChannelDelivered reports whether an ALLOW-path detail emission on (agent, event)
+// actually reaches the model's context on that host, plus a short channel label. It encodes
+// the same per-host channel knowledge as the emitXxxOutput family above (each case cites its
+// emitter) — kept in one function so the record site (recordSkillTriggerHits) can stamp
+// Delivered/Channel into checklog without re-deriving the routing table, and so analysis
+// (usage funnel) has a truthful delivery denominator instead of counting entries the model
+// never saw. This generalizes the kimi 2026-08-15 false-prosperity fix (bail before recording
+// on invisible channels) to every host: recording may stay (audit trail), but "delivered"
+// must say the truth.
+//
+// contextChannelDelivered 报告 (agent, event) 上 allow 路径的 detail 输出是否真到达该宿主
+// 的模型上下文，并给出简短通道标签。它编码与上面 emitXxxOutput 家族相同的每宿主通道知识
+// （每个 case 注明出处 emitter）——集中在单个函数，记录点（recordSkillTriggerHits）就能把
+// Delivered/Channel 落章进 checklog 而无需重推路由表，分析侧（usage 漏斗）也拿到真实的
+// 送达分母，而不是把模型从未见过的条目也计成送达。这是 kimi 2026-08-15 虚假繁荣修复
+// （不可见通道先 bail 再记录）的泛化：记录可以留（审计轨迹），但 delivered 必须说真话。
+func contextChannelDelivered(agent, eventName string) (bool, string) {
+	switch agent {
+	case "kimi":
+		// emitKimiOutput prints detail to stdout; kimi only carries stdout into model context
+		// on UserPromptSubmit (wire.jsonl-verified, see internal/agentbridge/kimi-hook-routing.md).
+		// runSkillTriggerHook bails earlier for other events — this row is defense in depth.
+		//
+		// emitKimiOutput 把 detail 打 stdout；kimi 仅在 UserPromptSubmit 把 stdout 送进模型
+		// 上下文（wire.jsonl 实证，见 internal/agentbridge/kimi-hook-routing.md）。
+		// runSkillTriggerHook 对其余事件更早 bail——本行是纵深防御。
+		if eventName == "UserPromptSubmit" {
+			return true, "kimi/stdout-UserPromptSubmit"
+		}
+		return false, "kimi/no-channel"
+	case "codex":
+		// emitCodexOutput: hookSpecificOutput.additionalContext honored on SessionStart/
+		// PreToolUse/PostToolUse/UserPromptSubmit; Stop/PostCompact have no context channel.
+		//
+		// emitCodexOutput：hookSpecificOutput.additionalContext 仅在 SessionStart/
+		// PreToolUse/PostToolUse/UserPromptSubmit 被采纳；Stop/PostCompact 无上下文通道。
+		switch eventName {
+		case "SessionStart", "PreToolUse", "PostToolUse", "UserPromptSubmit":
+			return true, "codex/hookSpecificOutput"
+		}
+		return false, "codex/no-channel"
+	case "cursor":
+		// emitCursorOutput: top-level additional_context read only on PostToolUse/SessionStart.
+		//
+		// emitCursorOutput：顶层 additional_context 仅 PostToolUse/SessionStart 被读。
+		switch eventName {
+		case "PostToolUse", "SessionStart":
+			return true, "cursor/additional_context"
+		}
+		return false, "cursor/no-channel"
+	case "copilot":
+		// emitCopilotOutput: camelCase additionalContext on sessionStart/postToolUse;
+		// userPromptSubmitted stdout is DROPPED for command hooks.
+		//
+		// emitCopilotOutput：camelCase additionalContext 仅 sessionStart/postToolUse；
+		// userPromptSubmitted 的 stdout 对 command hook 会被丢弃。
+		switch eventName {
+		case "PostToolUse", "SessionStart":
+			return true, "copilot/additionalContext"
+		}
+		return false, "copilot/no-channel"
+	case "windsurf":
+		// emitWindsurfOutput: no stdout JSON protocol at all — allow is silent (show_output:false).
+		//
+		// emitWindsurfOutput：完全没有 stdout JSON 协议——allow 静默（show_output:false）。
+		return false, "windsurf/no-context-channel"
+	case "cline":
+		// emitClineOutput: contextModification injects into the task on the allow path
+		// (wrapper forwards it for every fanned-out event).
+		//
+		// emitClineOutput：allow 路径的 contextModification 注入任务（wrapper 对每个
+		// 扇出事件都转发）。
+		return true, "cline/contextModification"
+	default:
+		// emitClaudeOutput (claude-code and every Claude-JSON host without --agent: codebuddy/
+		// opencode/pi): allow-with-detail emits a bare hookSpecificOutput whose
+		// additionalContext Claude injects on every event.
+		//
+		// emitClaudeOutput（claude-code 及所有无 --agent 的 Claude-JSON 宿主：codebuddy/
+		// opencode/pi）：allow-with-detail 发裸 hookSpecificOutput，其 additionalContext
+		// 在每个事件上都被 Claude 注入。
+		return true, "claude/additionalContext"
 	}
 }
 
