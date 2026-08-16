@@ -58,6 +58,21 @@ func TestSanitizeCommand(t *testing.T) {
 			in:   "(cat <<A\nnpm publish\nA\n)",
 			want: "(cat <<A\n)",
 		},
+		{
+			name: "CRLF行尾不破坏终止判定",
+			in:   "python - <<'EOF'\r\nprint('npm publish')\r\nEOF\r\necho done",
+			want: "python - <<'EOF'\r\necho done",
+		},
+		{
+			name: "带尾空格的定界词行不算终止",
+			in:   "cat <<A\nA \nstill body npm publish\nA",
+			want: "cat <<A",
+		},
+		{
+			name: "无空格cat<<EOF不识别（既定取舍）",
+			in:   "cat<<EOF\ngit tag v9\nEOF",
+			want: "cat<<EOF\ngit tag v9\nEOF",
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
