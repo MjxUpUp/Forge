@@ -46,17 +46,55 @@ import (
 // Based on stores actually migrated in commits B/D/E. ConfigDir config directories (hooks/) are excluded —
 // hooks/ holds project-config hook scripts (ConfigHooksDir), not runtime state.
 //
+// stamps and hazards are deliberately ABSENT (2026-08-15 trust-boundary review): .forge/ is
+// repo-committable, so anything promoted from it is attacker-authorable — a cloned malicious repo
+// could ship stamps/hazard-confirmations that forge treats as local trust anchors (hazard
+// fingerprints are derivable offline by a repo that controls the hazard-triggering command).
+// Hazard confirmations are also 5-minute TTL markers, so migrating old ones is worthless anyway.
+// Both stay project-local and are never migrated.
+//
+// ORDERING is a trust-boundary requirement: "tasks" MUST be the last entry. The caller sanitizes
+// foreign gate signals off promoted task files only when the tasks move actually completed
+// (tasks ∈ Moved); with tasks first, a later entry's failure would strand already-promoted,
+// unsanitized task files in DataDir (a re-run then skips the move — skip never sanitizes — and
+// the hostile state is live forever). Tasks last means any earlier failure aborts BEFORE a
+// single task file lands.
+//
 // runtimeDirs 是 .forge/ 下属 runtime state 的目录（迁到 DataDir 同名）。
 // 基于 commit B/D/E 实际迁移的 store。ConfigDir 配置目录（hooks/）不在此列——
 // hooks/ 是项目配置 hook 脚本（ConfigHooksDir），不是 runtime。
+//
+// stamps 与 hazards 刻意不在列（2026-08-15 信任边界审查）：.forge/ 是可提交进 repo 的，从它
+// 提升的任何内容都是攻击者可书写的——clone 一个恶意仓库即可带上被 forge 当本机信任锚的
+// stamps/hazard 确认（控制高危命令的 repo 可离线推算 hazard 指纹）。hazard 确认本身是 5 分钟
+// TTL 标记，迁移旧值也毫无价值。两者保持项目局部，永不迁移。
+//
+// 顺序是信任边界要求："tasks" 必须排最后。调用方只在 tasks 迁移实际完成（tasks ∈ Moved）
+// 时对提升的 task 文件清洗外来门禁信号；tasks 排第一时，更晚条目失败会把已提升、未清洗的
+// task 文件搁浅在 DataDir（重跑会 skip 该次迁移——skip 永不清洗——hostile 状态永久存活）。
+// tasks 排最后使任何更早的失败在第一个 task 文件落地前中止。
 var runtimeDirs = []string{
-	"tasks", "gates", "hazards",
-	"act", "stamps", "sessions", "quarantine",
+	"gates", "act", "sessions", "quarantine",
+	"tasks",
 }
 
 // runtimeFiles lists single files under .forge/ belonging to runtime state (no archive variants).
 //
+// KNOWN TRUST RESIDUAL (review 2026-08-16): checklog.jsonl / toollog.jsonl are lifted verbatim
+// from repo-committable .forge/, i.e. attacker-authorable — and work-activity (a HARD gate) counts
+// toollog entries as local evidence, so a malicious repo could pre-satisfy it. Accepted for now:
+// only the legacy path can carry these (new installs never write toollog under .forge/), and
+// work-activity is deliberately designed around weak evidence (tool calls are advisory-grade
+// proxies, not proof of review). Task-level trust signals are NOT covered by this residual —
+// they live in tasks/*.json and go through StripForeignGateSignals.
+//
 // runtimeFiles 是 .forge/ 下属 runtime state 的单文件（无归档变体）。
+//
+// 已知信任残留（2026-08-16 复审）：checklog.jsonl / toollog.jsonl 从可提交的 .forge/ 逐字提升，
+// 即攻击者可书写——而 work-activity（HARD 门禁）以 toollog 条目计数为本机证据，恶意仓库可
+// 预先满足它。暂接受：仅 legacy 路径可能带上这些（新装从不往 .forge/ 写 toollog），且
+// work-activity 本就按弱证据设计（工具调用是 advisory 级代理，非审查证明）。任务级信任信号
+// 不在此残留内——它们在 tasks/*.json，走 StripForeignGateSignals。
 var runtimeFiles = []string{
 	"sessions.jsonl", "session.json",
 	"checklog.jsonl", "toollog.jsonl",
@@ -145,11 +183,24 @@ func MigrateProject(p *Project, opts MigrateOptions) (*MigrationResult, error) {
 			//
 			// 权限/IO 错误不是「不存在」：当不存在静默跳过会让条目从报告凭空消失
 			// （数据残留或别处半迁移）。显式报错，中止本次迁移。
-			return nil, fmt.Errorf("stat %s: %w", name, err)
+			return res, fmt.Errorf("stat %s: %w", name, err)
 		}
 		moved, err := migrateOne(src, filepath.Join(p.DataDir, name), opts)
 		if err != nil {
-			return nil, fmt.Errorf("migrate %s: %w", name, err)
+			// Roll back a PARTIAL tasks move: moveEntry's cross-device fallback (copyTree +
+			// remove-src) can die mid-copy, leaving half a hostile tasks tree in DataDir that a
+			// re-run would then SKIP (dst exists) and never sanitize. Whatever sits at dst at
+			// this point is purely this run's partial copy (non-force: dst did not exist;
+			// force: dst was already removed above), so removing it is safe.
+			//
+			// 回滚「半途的 tasks 迁移」：moveEntry 跨设备 fallback（copyTree + 删源）可能
+			// 半路死掉，在 DataDir 留下半个 hostile tasks 树——重跑会 SKIP（dst 已存在）且
+			// 永不清洗。此刻 dst 上的任何内容都纯粹是本次的部分拷贝（非 force：dst 原不存在；
+			// force：dst 已在上方被删），删除是安全的。
+			if name == "tasks" {
+				_ = os.RemoveAll(filepath.Join(p.DataDir, name))
+			}
+			return res, fmt.Errorf("migrate %s: %w", name, err)
 		}
 		if moved {
 			res.Moved = append(res.Moved, name)
@@ -170,7 +221,12 @@ func MigrateProject(p *Project, opts MigrateOptions) (*MigrationResult, error) {
 			name := filepath.Base(src)
 			moved, err := migrateOne(src, filepath.Join(p.DataDir, name), opts)
 			if err != nil {
-				return nil, fmt.Errorf("migrate %s: %w", name, err)
+				// Partial result returned WITH the error (see the loop above): the caller reads
+				// res.Moved to decide whether promoted task files need sanitizing even on abort.
+				//
+				// 随 error 一起返回部分结果（见上方循环）：调用方读 res.Moved 判断即便中止
+				// 也是否需要清洗已提升的 task 文件。
+				return res, fmt.Errorf("migrate %s: %w", name, err)
 			}
 			if moved {
 				res.Moved = append(res.Moved, name)
