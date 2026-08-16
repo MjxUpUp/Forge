@@ -28,7 +28,7 @@ func TestRecordSkillTriggerHits(t *testing.T) {
 		{Skill: "implementation-discipline", Reason: "coding_intent"},
 		{Skill: "tdd-cycle", Reason: "test_keyword"},
 	}
-	recordSkillTriggerHits(dir, ctx, hits)
+	recordSkillTriggerHits(dir, ctx, hits, "", "1.99.0-test")
 
 	entries, err := checklog.LoadAll(dir)
 	if err != nil {
@@ -50,6 +50,21 @@ func TestRecordSkillTriggerHits(t *testing.T) {
 		}
 		if e.SessionID != "sess-abc" {
 			t.Fatalf("entry %d SessionID=%q, want sess-abc", i, e.SessionID)
+		}
+		// L1 送达章：agent="" → claude 默认行（UserPromptSubmit 上 additionalContext 可达），
+		// Delivered/Channel/ForgeVersion 必须逐条落盘——usage 漏斗的送达分母依赖这些字段。
+		//
+		// L1 delivery stamp: agent="" takes the claude default row (additionalContext reachable
+		// on UserPromptSubmit); Delivered/Channel/ForgeVersion must be stamped on every entry —
+		// the usage funnel's delivery denominator depends on these fields.
+		if e.Delivered == nil || !*e.Delivered {
+			t.Fatalf("entry %d Delivered=%v, want pointer to true", i, e.Delivered)
+		}
+		if e.Channel != "claude/additionalContext" {
+			t.Fatalf("entry %d Channel=%q, want claude/additionalContext", i, e.Channel)
+		}
+		if e.ForgeVersion != "1.99.0-test" {
+			t.Fatalf("entry %d ForgeVersion=%q, want 1.99.0-test", i, e.ForgeVersion)
 		}
 		seen[e.Detail] = true
 	}
