@@ -242,17 +242,17 @@ func recordSkillTriggerHits(root string, ctx skilltrigger.Context, hits []skillt
 		// hand-mirrored format-string drift that would silently drop passive-trigger signals (minor-1).
 		detail := checklog.DetailForSkillTrigger(h.Skill, ctx.Event, h.Reason)
 		if err := checklog.Record(root, &checklog.Entry{
-			Check:     checklog.CheckSkillTrigger,
-			Passed:    true,
-			Checked:   true,
-			ToolName:  ctx.ToolName,
-			TaskRef:   taskRef,
-			SessionID: ctx.SessionID,
-			Detail:    detail,
-			Source:    checklog.EvidenceDeterministic,
-			Level:     checklog.LevelAdvisory,
-			Delivered: &delivered,
-			Channel:   channel,
+			Check:        checklog.CheckSkillTrigger,
+			Passed:       true,
+			Checked:      true,
+			ToolName:     ctx.ToolName,
+			TaskRef:      taskRef,
+			SessionID:    ctx.SessionID,
+			Detail:       detail,
+			Source:       checklog.EvidenceDeterministic,
+			Level:        checklog.LevelAdvisory,
+			Delivered:    &delivered,
+			Channel:      channel,
 			ForgeVersion: version,
 		}); err != nil {
 			fmt.Fprintf(os.Stderr, "[skill-trigger] warning: checklog record failed: %v\n", err)

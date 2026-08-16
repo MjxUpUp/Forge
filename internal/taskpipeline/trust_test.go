@@ -17,10 +17,10 @@ import (
 func TestStripForeignGateSignals_ControlFlow(t *testing.T) {
 	now := time.Now()
 	s := &TaskState{
-		TaskRef:            `feat/foreign`,
-		CurrentGate:        ``, // set via RecordGateResult below
-		Kind:               TaskKindGeneric,
-		ReviewPassed:       true,
+		TaskRef:      `feat/foreign`,
+		CurrentGate:  ``, // set via RecordGateResult below
+		Kind:         TaskKindGeneric,
+		ReviewPassed: true,
 		SessionLinks: []SessionLink{
 			{SessionID: `src-machine-session`},
 		},

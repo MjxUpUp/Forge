@@ -108,7 +108,7 @@ func VerifyDecision(canonical, skill, decisionID, result string, verifiedAt time
 	// Already-verified guard + insertion anchors, both scoped to [start, end).
 	//
 	// 已验证守卫 + 插入锚点，均限定在 [start, end) 内。
-	lastField := -1  // last `- **Field**:` line in the contiguous field block at the section top
+	lastField := -1    // last `- **Field**:` line in the contiguous field block at the section top
 	fieldBlock := true // false once the first `### ` subsection starts
 	for i := start + 1; i < end; i++ {
 		line := lines[i]
