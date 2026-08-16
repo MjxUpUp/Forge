@@ -9,33 +9,33 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
-// TestSaveLoadRoundTrip verifies Save persists a loadable protocol.yml: with no
-// project-level override, Save writes the user-level DataDir copy (creating the dir
-// via util.AtomicWrite) and Load reads back an equivalent Protocol.
+// TestSaveDataDirLoadRoundTrip verifies SaveDataDir persists a loadable protocol.yml:
+// it writes the user-level DataDir copy (creating the dir via util.AtomicWrite) and
+// Load reads back an equivalent Protocol.
 //
-// TestSaveLoadRoundTrip 验证 Save 落盘的 protocol.yml 可加载：无项目级覆盖时
-// Save 写用户级 DataDir 副本（经 util.AtomicWrite 自建目录），Load 读回等价 Protocol。
-func TestSaveLoadRoundTrip(t *testing.T) {
+// TestSaveDataDirLoadRoundTrip 验证 SaveDataDir 落盘的 protocol.yml 可加载：
+// 写用户级 DataDir 副本（经 util.AtomicWrite 自建目录），Load 读回等价 Protocol。
+func TestSaveDataDirLoadRoundTrip(t *testing.T) {
 	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
 	dir := t.TempDir()
 	want := DefaultProtocol()
 
-	if err := Save(dir, want); err != nil {
-		t.Fatalf("Save: %v", err)
+	if err := SaveDataDir(dir, want); err != nil {
+		t.Fatalf("SaveDataDir: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(forgedata.DataDirFor(dir), "protocol.yml")); err != nil {
-		t.Fatalf("protocol.yml must exist in DataDir after Save: %v", err)
+		t.Fatalf("protocol.yml must exist in DataDir after SaveDataDir: %v", err)
 	}
-	// Zero-project-write: Save must NOT create a project-level .forge/.
+	// Zero-project-write: SaveDataDir must NOT create a project-level .forge/.
 	//
-	// 零项目写入：Save 不得创建项目级 .forge/。
+	// 零项目写入：SaveDataDir 不得创建项目级 .forge/。
 	if _, err := os.Stat(filepath.Join(dir, ".forge")); !os.IsNotExist(err) {
-		t.Fatalf("Save must not create project-level .forge/ (zero-project-write)")
+		t.Fatalf("SaveDataDir must not create project-level .forge/ (zero-project-write)")
 	}
 
 	got, err := Load(dir)
 	if err != nil {
-		t.Fatalf("Load after Save: %v", err)
+		t.Fatalf("Load after SaveDataDir: %v", err)
 	}
 	if got.Version != want.Version {
 		t.Errorf("Version = %q, want %q", got.Version, want.Version)
@@ -60,11 +60,12 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 
 // TestProjectLevelOverride pins the two-layer contract: when <dir>/.forge/protocol.yml
 // exists (team-shared override, `forge init --project`), Load reads IT — not the
-// DataDir copy — and Save writes back to it.
+// DataDir copy — and updating the override goes through SaveProjectLevel (the removed
+// routed Save used to pick the layer implicitly; callers now pick explicitly).
 //
 // TestProjectLevelOverride 钉死双层契约：<dir>/.forge/protocol.yml 存在时
 // （团队共享覆盖，`forge init --project`），Load 读它而非 DataDir 副本，
-// Save 也写回它。
+// 更新覆盖层经 SaveProjectLevel（已删除的路由式 Save 曾隐式选层；现在调用方显式选）。
 func TestProjectLevelOverride(t *testing.T) {
 	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
 	dir := t.TempDir()
@@ -72,8 +73,8 @@ func TestProjectLevelOverride(t *testing.T) {
 	// DataDir copy with default version; project-level override with a custom version.
 	//
 	// DataDir 副本用默认 version；项目级覆盖用自定义 version。
-	if err := Save(dir, DefaultProtocol()); err != nil {
-		t.Fatalf("Save DataDir copy: %v", err)
+	if err := SaveDataDir(dir, DefaultProtocol()); err != nil {
+		t.Fatalf("SaveDataDir copy: %v", err)
 	}
 	override := DefaultProtocol()
 	override.Version = "team-override"
@@ -89,31 +90,31 @@ func TestProjectLevelOverride(t *testing.T) {
 		t.Errorf("Load 应读项目级覆盖 version=team-override，实得 %q", got.Version)
 	}
 
-	// Save must write back to the override (project-level), leaving the DataDir copy alone.
+	// Updating the override goes through SaveProjectLevel; the DataDir copy stays alone.
 	//
-	// Save 必须写回覆盖层（项目级），不动 DataDir 副本。
+	// 更新覆盖层经 SaveProjectLevel；DataDir 副本不动。
 	override.Version = "team-override-v2"
-	if err := Save(dir, override); err != nil {
-		t.Fatalf("Save: %v", err)
+	if err := SaveProjectLevel(dir, override); err != nil {
+		t.Fatalf("SaveProjectLevel: %v", err)
 	}
 	got2, err := Load(dir)
 	if err != nil {
-		t.Fatalf("Load after Save: %v", err)
+		t.Fatalf("Load after SaveProjectLevel: %v", err)
 	}
 	if got2.Version != "team-override-v2" {
-		t.Errorf("Save 应写回项目级覆盖，Load version 实得 %q", got2.Version)
+		t.Errorf("SaveProjectLevel 应写项目级覆盖，Load version 实得 %q", got2.Version)
 	}
 }
 
 // TestSaveLoad_FailFastWhenDataDirUnresolvable pins the silent-mislocation fix: when
 // the DataDir cannot be resolved (FORGE_DATA_HOME unset and os.UserHomeDir failing),
-// Save/Load must return an explicit error instead of writing a bare "protocol.yml"
-// into the process cwd.
+// SaveDataDir/Load must return an explicit error instead of writing a bare
+// "protocol.yml" into the process cwd.
 //
-// TestSaveLoad_FailFastWhenDataDirUnresolvable 钉死静默错位修复：DataDir 无法解析
-// （FORGE_DATA_HOME 未设且 os.UserHomeDir 失败）时，Save/Load 必须显式报错，
-// 而不是把裸 "protocol.yml" 写进进程 cwd。
-func TestSaveLoad_FailFastWhenDataDirUnresolvable(t *testing.T) {
+// TestSaveDataDirLoad_FailFastWhenDataDirUnresolvable 钉死静默错位修复：DataDir
+// 无法解析（FORGE_DATA_HOME 未设且 os.UserHomeDir 失败）时，SaveDataDir/Load
+// 必须显式报错，而不是把裸 "protocol.yml" 写进进程 cwd。
+func TestSaveDataDirLoad_FailFastWhenDataDirUnresolvable(t *testing.T) {
 	t.Setenv(`FORGE_DATA_HOME`, ``)
 	// Break os.UserHomeDir on every platform: unix reads HOME; Windows reads
 	// USERPROFILE, then HOMEDRIVE+HOMEPATH.
@@ -126,8 +127,8 @@ func TestSaveLoad_FailFastWhenDataDirUnresolvable(t *testing.T) {
 	t.Setenv(`HOMEPATH`, ``)
 
 	dir := t.TempDir()
-	if err := Save(dir, DefaultProtocol()); err == nil {
-		t.Fatal("Save 在 DataDir 不可解析时必须报错（拒绝写相对路径），实得 nil")
+	if err := SaveDataDir(dir, DefaultProtocol()); err == nil {
+		t.Fatal("SaveDataDir 在 DataDir 不可解析时必须报错（拒绝写相对路径），实得 nil")
 	}
 	if _, err := Load(dir); err == nil {
 		t.Fatal("Load 在 DataDir 不可解析时必须报错，实得 nil")
@@ -177,8 +178,8 @@ func TestEnsureDefault_KeepsValidFile(t *testing.T) {
 
 	custom := DefaultProtocol()
 	custom.Version = "user-edited"
-	if err := Save(dir, custom); err != nil {
-		t.Fatalf("Save: %v", err)
+	if err := SaveDataDir(dir, custom); err != nil {
+		t.Fatalf("SaveDataDir: %v", err)
 	}
 	if err := EnsureDefault(dir); err != nil {
 		t.Fatalf("EnsureDefault: %v", err)
@@ -259,13 +260,13 @@ func TestEnsureDefault_CorruptBackedAside(t *testing.T) {
 // DataDir — AtomicWrite renames its temp file over the target, so a stray .tmp-*
 // file would indicate the write path is not atomic.
 //
-// TestSave_AtomicNoTempLeftover 验证 Save 不在 DataDir 留临时文件——AtomicWrite
-// 把临时文件 rename 覆盖目标，残留 .tmp-* 说明写路径不再原子。
-func TestSave_AtomicNoTempLeftover(t *testing.T) {
+// TestSaveDataDir_AtomicNoTempLeftover 验证 SaveDataDir 不在 DataDir 留临时文件
+// ——AtomicWrite 把临时文件 rename 覆盖目标，残留 .tmp-* 说明写路径不再原子。
+func TestSaveDataDir_AtomicNoTempLeftover(t *testing.T) {
 	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
 	dir := t.TempDir()
-	if err := Save(dir, DefaultProtocol()); err != nil {
-		t.Fatalf("Save: %v", err)
+	if err := SaveDataDir(dir, DefaultProtocol()); err != nil {
+		t.Fatalf("SaveDataDir: %v", err)
 	}
 	entries, err := os.ReadDir(forgedata.DataDirFor(dir))
 	if err != nil {
