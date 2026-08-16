@@ -205,7 +205,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | **tool-track** | Read 后 | 静默记录 Read 调用到 toollog，供 task-verify 的 read-before-edit 门禁判断（agent 是否先读代码再改） |
 | **task-verify** | 会话结束 | advisory：任务门禁/主分支保护到 stderr+checklog（不阻塞会话结束） |
 | **review-stop** | 会话结束 | code-review-gate 自动挡：未审源码变更 block 会话结束。task 模式不重复拦（task-complete 门禁 ReviewPassed 硬前置已强制），非 task 模式按 diff stamp 决策；并发会话检测——其他 session 有活跃任务时放行（调研 session 不被拦） |
-| **skill-scan** | 会话开始 | advisory：扫描 ~/.claude/skills 安全性（forge audit 19 规则），补 install 门控缺口（手动 clone/junction/git pull 进入的 skill），全局 hook 不依赖 forge project |
+| **skill-scan** | 会话开始 | advisory：扫描 ~/.claude/skills 安全性（forge audit 22 规则），补 install 门控缺口（手动 clone/junction/git pull 进入的 skill），全局 hook 不依赖 forge project |
 | **mcp-scan** | 会话开始 | advisory：扫描项目级 `.mcp.json` 的 server 配置（管道执行/任意包执行 npx·uvx·dlx·bunx/内联代码/非 https URL/env 明文凭证），补 skill-scan 盲区（攻击者可经 PR 植入恶意 server，clone 即自动连接）；只审 config 层，runtime tool description 注入（Tool Poisoning）不在能力内，全局 hook |
 | **init-suggest** | 会话开始 | advisory：检测到未启用 forge 的 git 项目时，首次提示 agent 询问是否启用（用户拒绝→`forge suggest decline` 永久静默；设 `FORGE_AUTO_INIT=1` 处处自动 init——v1.22 起 init 零项目写入，不再对项目产生任何文件变更），全局 hook，补"每项目手动 init"缺口，实现一次安装后项目自动登记 |
 | **task-resume** | 会话开始 | advisory：自动注入活跃任务的接续上下文（目标/计划/决策/阻塞/门禁进度/git 已改未提交）+ 锚定当前 session——接手方冷启动即知任务在哪一步，无需手动 forge task resume；无活跃任务静默；项目级 hook |
@@ -315,7 +315,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 |------|------|
 | `forge skills install` | 分发 skill 到全局/项目目标目录（link/copy） |
 | `forge skills list` | 列出 canonical skill 库中的 skill |
-| `forge skills audit` | 19 条安全规则审查（prompt 注入/数据外发/危险代码） |
+| `forge skills audit` | 22 条安全规则审查（prompt 注入/数据外发/危险代码/供应链执行向量；任一 CRITICAL finding 即阻断 install/--gate） |
 | `forge skills drift-check` | 检测分发分叉（dry-run，不写） |
 | `forge skills validate` | R1-R9 规范校验 |
 | `forge skills adapters` | 部署 skill-routing adapter（pi/claude/cursor/routes.json） |

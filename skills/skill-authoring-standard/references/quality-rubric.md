@@ -73,7 +73,7 @@
 | 机制 | 管什么 | 谁来执行 |
 |------|--------|----------|
 | R1-R17（`forge skills validate`） | 格式与结构硬约束：frontmatter 字段、行数、description 必含 Use when/SKIP、references 层级、evals schema | 机器，每次改动后必跑 |
-| 19 条安全规则（`forge skills audit`） | 安全问题（curl\|sh、凭证明文等） | 机器，每次改动后必跑 |
+| 22 条安全规则（`forge skills audit`） | 安全问题（curl\|sh、凭证明文等） | 机器，每次改动后必跑 |
 | 本 rubric | 机器判不了的质量：是否精炼、是否可执行、流程是否闭环、分层是否合理 | 人工 / LLM 评审，新建或大改 skill 时打分 |
 
 机器校验通过是**必要条件**，rubric 达标是**充分条件**——两者都过才可合并。
