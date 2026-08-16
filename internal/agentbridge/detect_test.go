@@ -118,7 +118,7 @@ func TestDetectAgents_Codex(t *testing.T) {
 
 // TestParseAgentFlag_CoversAllTranslators guards ParseAgentFlag's switch against missing
 // an agent. Real bug caught by E2E: the switch listed only 5 agents
-// (claude/cursor/copilot/windsurf/codex), missing opencode/pi, so
+// (claude/cursor/copilot/windsurf/codex), missing opencode, so
 // `forge init --agents opencode` was silently dropped — opencode.json was not generated
 // and users got no forge CLI quality-flow integration. Unit tests (calling Translate
 // directly, bypassing flag parsing) masked this bug. This test derives the full set from
@@ -128,7 +128,7 @@ func TestDetectAgents_Codex(t *testing.T) {
 //
 // TestParseAgentFlag_CoversAllTranslators 守卫 ParseAgentFlag 的 switch 漏 agent。
 // E2E 抓到的真实 Bug：switch 只列了 5 个 agent（claude/cursor/copilot/windsurf/codex），
-// 漏 opencode/pi，导致 `forge init --agents opencode` 被静默丢弃——opencode.json 不生成，
+// 漏 opencode，导致 `forge init --agents opencode` 被静默丢弃——opencode.json 不生成，
 // 用户拿不到 forge CLI 质量流程集成。单元测试（单独调 Translate，不经 flag 解析）绕过了
 // flag 解析，掩盖了此 Bug。本测试从 AllTranslators()（单一真相源）派生全集，确保任何
 // 新增 translator 的 AgentType 都自动被 ParseAgentFlag 认识——加 agent 忘加 case 的 drift

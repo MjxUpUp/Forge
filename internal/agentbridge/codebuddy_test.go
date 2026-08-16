@@ -43,17 +43,15 @@ func TestCodeBuddyHooksPayload_MirrorsSpec(t *testing.T) {
 }
 
 // TestCodeBuddyPluginPack_HooksMirrorSettings: the generated hooks.json must equal the hooks
-// GenerateSettings writes to settings.local.json — single-source-of-truth guard (same shape
+// the ForgeHookSpec fixture writes to settings.local.json — single-source-of-truth guard (same shape
 // as TestPluginPack_HooksMirrorSettings), end-to-end across two real files.
 //
-// TestCodeBuddyPluginPack_HooksMirrorSettings：生成的 hooks.json 必须等于 GenerateSettings
+// TestCodeBuddyPluginPack_HooksMirrorSettings：生成的 hooks.json 必须等于 ForgeHookSpec fixture
 // 写到 settings.local.json 的 hooks——单一真相源守卫（与 TestPluginPack_HooksMirrorSettings
 // 同形），跨两个真实文件端到端比对。
 func TestCodeBuddyPluginPack_HooksMirrorSettings(t *testing.T) {
 	sdir := t.TempDir()
-	if err := hooks.GenerateSettings(sdir); err != nil {
-		t.Fatalf("GenerateSettings: %v", err)
-	}
+	writeClaudeSettingsFixture(t, sdir)
 	var settings map[string]any
 	loadJSON(t, filepath.Join(sdir, ".claude", "settings.local.json"), &settings)
 

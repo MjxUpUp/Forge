@@ -21,7 +21,7 @@ import (
 // — the SAME schema as hooks.ForgeHookSpec(). Hook scripts read `.tool_input.file_path`
 // from stdin and block via `exit 2` + stderr (verified in CodeBuddy's own all-hooks
 // marketplace: file-protection.md). So CodeBuddy needs NO --agent flag and NO stdin
-// normalizer — it runs the Claude Code protocol verbatim, like opencode/pi.
+// normalizer — it runs the Claude Code protocol verbatim, like opencode.
 //
 // Wiring model (unlike the 8 file-writing translators): CodeBuddy's settings.json has NO
 // hooks field — hooks load ONLY through an installed plugin. So Translate generates a
@@ -48,7 +48,7 @@ import (
 // ——与 hooks.ForgeHookSpec() 同 schema。hook 脚本从 stdin 读 `.tool_input.file_path`、
 // 用 `exit 2` + stderr 阻断（已在 CodeBuddy 自家 all-hooks marketplace 的 file-protection.md
 // 验证）。故 CodeBuddy 不需 --agent flag、不需 stdin normalizer——它原样跑 Claude Code
-// 协议，与 opencode/pi 同类。
+// 协议，与 opencode 同类。
 //
 // 接线模型（与 8 个写文件的 translator 不同）：CodeBuddy 的 settings.json 无 hooks
 // 字段——hook 只能经已安装的 plugin 加载。故 Translate 在 forge 全局 home 下生成自包含

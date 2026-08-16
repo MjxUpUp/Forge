@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/MjxUpUp/Forge/internal/hooks"
 )
 
 // TestReasonixTranslator_Translate: a reasonix home that exists (reasonix installed) gets the
@@ -370,7 +368,7 @@ func TestStripReasonixHooksUserLevel(t *testing.T) {
 }
 
 // TestReasonixWiringMirrorsClaudeSettings guards the sync between reasonix.go
-// (buildReasonixHooks) and hooks/settings.go (GenerateSettings). reasonix uses Claude
+// (buildReasonixHooks) and hooks/settings.go (ForgeHookSpec). reasonix uses Claude
 // Code's PascalCase event names verbatim (identity mapping — see reasonixEventName),
 // so for every event reasonix wires, Claude Code must wire the SAME command set under
 // the same event name; drift silently disables a gate on reasonix. The reasonix
@@ -381,7 +379,7 @@ func TestStripReasonixHooksUserLevel(t *testing.T) {
 // TestCursorWiringMirrorsClaudeSettings.
 //
 // TestReasonixWiringMirrorsClaudeSettings 守卫 reasonix.go（buildReasonixHooks）与
-// hooks/settings.go（GenerateSettings）的同步。reasonix 原样使用 Claude Code 的
+// hooks/settings.go（ForgeHookSpec）的同步。reasonix 原样使用 Claude Code 的
 // PascalCase event 名（恒等映射——见 reasonixEventName），故 reasonix 接的每个
 // event，Claude Code 必须在同 event 名下接同一命令集；drift 会静默废掉 reasonix
 // 上的某个门禁。reasonix 白名单刻意只覆盖 6 个 spec event 中的 4 个
@@ -397,9 +395,7 @@ func TestReasonixWiringMirrorsClaudeSettings(t *testing.T) {
 		t.Fatalf("mkdir reasonix home: %v", err)
 	}
 	claudeDir := t.TempDir()
-	if err := hooks.GenerateSettings(claudeDir); err != nil {
-		t.Fatalf("GenerateSettings: %v", err)
-	}
+	writeClaudeSettingsFixture(t, claudeDir)
 	if err := (&ReasonixTranslator{}).Translate(t.TempDir(), testInput()); err != nil {
 		t.Fatalf("reasonix Translate: %v", err)
 	}
@@ -454,7 +450,7 @@ func TestReasonixWiringMirrorsClaudeSettings(t *testing.T) {
 			stripped[strings.TrimSuffix(cmd, " --agent reasonix")] = true
 		}
 		if !stringSetEqual(claudeCmds, stripped) {
-			t.Errorf("hook commands for reasonix %q / claude %q drifted — keep settings.go GenerateSettings and reasonix.go buildReasonixHooks in sync:\n  claude:  %s\n  reasonix: %s",
+			t.Errorf("hook commands for reasonix %q / claude %q drifted — keep ForgeHookSpec (settings.go) and reasonix.go buildReasonixHooks in sync:\n  claude:  %s\n  reasonix: %s",
 				rEvt, claudeEvt, sortedSet(claudeCmds), sortedSet(stripped))
 		}
 	}
