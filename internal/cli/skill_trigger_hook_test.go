@@ -96,7 +96,7 @@ func TestRunSkillTriggerCore_NoTriggers(t *testing.T) {
 	os.MkdirAll(filepath.Join(dir, "no-meta"), 0755)
 	os.WriteFile(filepath.Join(dir, "no-meta", "SKILL.md"), []byte("---\nname: no-meta\n---\n"), 0644)
 
-	rendered, err := runSkillTriggerCore(HookInput{HookEventName: "Stop"}, "", "v", true)
+	rendered, err := runSkillTriggerCore(HookInput{HookEventName: "Stop"}, "", "v", "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestRunSkillTriggerCore_EventMismatch(t *testing.T) {
 	dir := withCanonicalEnv(t)
 	writeSkill(t, dir, "td", `[{"event":"Stop"}]`)
 
-	rendered, err := runSkillTriggerCore(HookInput{HookEventName: "PostToolUse"}, "", "v", true)
+	rendered, err := runSkillTriggerCore(HookInput{HookEventName: "PostToolUse"}, "", "v", "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestRunSkillTriggerCore_HitCodingIntent(t *testing.T) {
 
 	rendered, err := runSkillTriggerCore(
 		HookInput{HookEventName: "UserPromptSubmit", Prompt: "帮我实现一个排序算法", SessionID: "s1"},
-		"", "v", true)
+		"", "v", "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +146,7 @@ func TestRunSkillTriggerCore_HitTestCommandFailed(t *testing.T) {
 		ToolInput:     json.RawMessage(`{"command":"go test ./..."}`),
 		ToolOutput:    json.RawMessage(`{"exit_code":1}`),
 		SessionID:     "s1",
-	}, "", "v", true)
+	}, "", "v", "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +164,7 @@ func TestRunSkillTriggerCore_TestCommandPassed_NoHit(t *testing.T) {
 		ToolName:      "Bash",
 		ToolInput:     json.RawMessage(`{"command":"go test ./..."}`),
 		ToolOutput:    json.RawMessage(`{"exit_code":0}`),
-	}, "", "v", true)
+	}, "", "v", "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func TestRunSkillTriggerCore_DryRunStderr(t *testing.T) {
 	os.Stderr = w
 	_, err := runSkillTriggerCore(
 		HookInput{HookEventName: "UserPromptSubmit", Prompt: "实现", SessionID: "s1"},
-		"", "v", true)
+		"", "v", "", true)
 	w.Close()
 	os.Stderr = old
 	if err != nil {
@@ -267,7 +267,7 @@ func TestRunSkillTriggerCore_EmbedFallback(t *testing.T) {
 
 	rendered, err := runSkillTriggerCore(
 		HookInput{HookEventName: "UserPromptSubmit", Prompt: "帮我实现一个排序算法", SessionID: "embed-fb-test"},
-		"", "v", true) // dryRun=true 用 InMemory noise，不落盘 marker
+		"", "v", "", true) // dryRun=true 用 InMemory noise，不落盘 marker
 	if err != nil {
 		t.Fatalf("runSkillTriggerCore: %v", err)
 	}

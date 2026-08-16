@@ -274,4 +274,36 @@ type Entry struct {
 	// 按 SourceForCheck 兜底推断，故历史记录点无需逐个改造也能进证据链分桶。
 	Source     EvidenceSource `json:"source,omitempty"`
 	RecordedAt time.Time      `json:"recorded_at"`
+	// Delivered reports whether an advisory injection actually reached the model's context on
+	// that host's channel (skill-trigger L1 delivery observability). nil = unknown (legacy entries
+	// written before this field existed, or record sites that do not stamp it) — readers must treat
+	// nil as "delivery unknown", NOT as delivered: hosts with dead advisory channels (kimi non-
+	// UserPromptSubmit, codex Stop, cursor/copilot non-PostToolUse, windsurf always) would otherwise
+	// keep inflating delivery counts from entries the model never saw — the false-prosperity
+	// observability bug the kimi 2026-08-15 fix addressed for one host; this field generalizes it.
+	// A pointer so false is serialized (omitempty only skips nil).
+	//
+	// Delivered 报告一条 advisory 注入是否真到达该宿主通道的模型上下文（skill-trigger L1 送达
+	// 可观测）。nil = 未知（字段引入前的旧条目，或不落章的记录点）——读取方必须把 nil 当
+	// 「送达未知」而非「已送达」：死 advisory 通道的宿主（kimi 非 UserPromptSubmit、codex Stop、
+	// cursor/copilot 非 PostToolUse、windsurf 恒死）否则会继续用模型从未见过的条目虚增送达计数
+	// ——即 kimi 2026-08-15 修掉的虚假繁荣观测 bug；本字段把它泛化到所有宿主。用指针使 false
+	// 也能被序列化（omitempty 只跳过 nil）。
+	Delivered *bool `json:"delivered,omitempty"`
+	// Channel labels the host channel used for the injection (e.g. "claude/additionalContext",
+	// "kimi/stdout-UserPromptSubmit", "codex/no-channel"). Written alongside Delivered by the
+	// skill-trigger record site; one glance answers "which channel carried it" without re-deriving
+	// the per-host routing table at analysis time.
+	//
+	// Channel 标注注入所走的宿主通道（如 "claude/additionalContext"、
+	// "kimi/stdout-UserPromptSubmit"、"codex/no-channel"）。由 skill-trigger 记录点与 Delivered
+	// 同时落章；分析时一眼可答「走的哪条通道」，无需重推每宿主路由表。
+	Channel string `json:"channel,omitempty"`
+	// ForgeVersion is the forge binary version that produced this entry (skill-trigger funnel
+	// groups analyses by version; production-staleness questions — "which trigger set was live
+	// when these hits happened" — become a join instead of archaeology).
+	//
+	// ForgeVersion 是产出本条目的 forge 二进制版本（skill-trigger 漏斗按版本分组分析；
+	// 「这些命中发生时生产判定集是哪版」这类生产滞后问题从考古变成 join）。
+	ForgeVersion string `json:"forge_version,omitempty"`
 }
