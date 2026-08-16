@@ -18,15 +18,16 @@ import (
 )
 
 var (
-	skDecSkill     string
-	skDecDiagnosis string
-	skDecRevision  string
-	skDecEvidence  string
-	skDecOutcome   string
-	skDecRationale string
-	skDecCommit    string
-	skDecProbeRun  string
-	skDecBy        string
+	skDecSkill      string
+	skDecDiagnosis  string
+	skDecRevision   string
+	skDecEvidence   string
+	skDecOutcome    string
+	skDecRationale  string
+	skDecCommit     string
+	skDecProbeRun   string
+	skDecBy         string
+	skDecPrediction string
 )
 
 var skillsDecideCmd = &cobra.Command{
@@ -45,7 +46,12 @@ agent 理解 skill「为什么这么改」，避免重复探索已失败方向�
   --commit     修订关联的 git commit（scoped revert 锚点）
   --probe-run  关联的 eval/probe run ID
   --rationale  为什么这个 outcome（结合背景）
-  --by         来源（claude-code/codex/...）`,
+  --by         来源（claude-code/codex/...）
+
+预测闭环（AHE 决策可观测，推荐）：
+  --prediction 修改时刻声明的可检验预测——修订若有效，哪个可观测信号应改善
+               （如「skill X 触发率应从 15% 升到 30%」）。在结果已知前声明，
+               事后用 forge skills verify 回填对账，让修改成为可证伪契约`,
 	RunE: runSkillsDecide,
 }
 
@@ -77,6 +83,7 @@ func runSkillsDecide(cmd *cobra.Command, args []string) error {
 		CommitHash: skDecCommit,
 		ProbeRunID: skDecProbeRun,
 		By:         skDecBy,
+		Prediction: skDecPrediction,
 	}
 	if err := skillsdecisions.AppendDecision(canonical, skDecSkill, d); err != nil {
 		return err
@@ -95,5 +102,6 @@ func init() {
 	skillsDecideCmd.Flags().StringVar(&skDecCommit, "commit", "", "修订关联的 git commit（scoped revert 锚点）")
 	skillsDecideCmd.Flags().StringVar(&skDecProbeRun, "probe-run", "", "关联的 eval run ID")
 	skillsDecideCmd.Flags().StringVar(&skDecBy, "by", "", "来源（claude-code/codex/...）")
+	skillsDecideCmd.Flags().StringVar(&skDecPrediction, "prediction", "", "可检验预测（修改时刻声明：哪个可观测信号应改善；事后 forge skills verify 回填）")
 	skillsCmd.AddCommand(skillsDecideCmd)
 }
