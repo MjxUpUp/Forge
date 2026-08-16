@@ -746,12 +746,20 @@ func TestHookToolTrackRecordsSkillInput(t *testing.T) {
 	}
 }
 
-// TestHookToolTrackReadOmitsToolInput contrast: Read still omits tool_input (keep toollog lean,
-// gate only needs tool_name+timestamp). Scheme C only fills tool_input for Skill/Agent; Read is unchanged.
+// TestHookToolTrackRecordsReadFilePath pins the production shape of Read tool_input
+// (2026-08-16 review HIGH-1): tool-track records a minimal {"file_path":...} so the funnel
+// join (skillseval.BuildTriggerFunnel → readFilePath) can attribute "loaded the skill after
+// the trigger hit". Before the fix Read omitted tool_input entirely, making that join
+// structurally dead on production data while funnel unit tests stayed green on hand-marshaled
+// inputs. This test is the production-side half of the shape contract; funnel_test.go's mkRead
+// is the join-side half — they must not diverge again.
 //
-// TestHookToolTrackReadOmitsToolInput 对照：Read 仍省略 tool_input（保持 toollog lean，
-// gate 只需 tool_name+timestamp）。方案 C 只对 Skill/Agent 填 tool_input，Read 不变。
-func TestHookToolTrackReadOmitsToolInput(t *testing.T) {
+// TestHookToolTrackRecordsReadFilePath 钉死 Read tool_input 的生产形状（2026-08-16 审查
+// HIGH-1）：tool-track 记最小 {"file_path":...}，让漏斗 join（skillseval.BuildTriggerFunnel
+// → readFilePath）能归因「命中后加载了该 skill」。修复前 Read 完全省略 tool_input，该
+// join 在生产数据上结构性死亡，而漏斗单测用手工 marshal 的输入照样全绿。本测试是形状
+// 契约的生产侧一半；funnel_test.go 的 mkRead 是 join 侧一半——两者不得再分叉。
+func TestHookToolTrackRecordsReadFilePath(t *testing.T) {
 	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	tmpDir := t.TempDir()
 	os.MkdirAll(filepath.Join(tmpDir, ".forge", "hooks"), 0755)
@@ -791,8 +799,14 @@ func TestHookToolTrackReadOmitsToolInput(t *testing.T) {
 	if !strings.Contains(body, `"tool_name":"Read"`) {
 		t.Errorf("toollog 应含 tool_name=Read 条目, got: %s", body)
 	}
-	if strings.Contains(body, "src/main.go") {
-		t.Errorf("Read 的 tool_input 不应被记录（保持 lean）, got: %s", body)
+	// tool_input 在 JSONL 里是转义过的内嵌 JSON（\"file_path\":\"...\"），断言按裸 token
+	// 查——字段名与路径值都在即覆盖最小形状语义。
+	//
+	// tool_input is an escaped embedded JSON inside JSONL (\"file_path\":\"...\"), so assert
+	// on bare tokens — both the field name and the path value present covers the minimal-shape
+	// semantics.
+	if !strings.Contains(body, "file_path") || !strings.Contains(body, "src/main.go") {
+		t.Errorf("Read 的 tool_input 须记最小 {\"file_path\":...}（漏斗 join 依赖，审查 HIGH-1）, got: %s", body)
 	}
 }
 

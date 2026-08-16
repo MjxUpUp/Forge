@@ -850,8 +850,10 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// with an edit (644b142 deleted the original Read recorder).
 	// tool_input population: auto-compile (Edit/Write) records file_path/content; tool-track's Skill/Agent
 	// records the skill name/subagent_type (scheme C: lets toollog audits see which quality skill the agent loaded and what kind of
-	// subagent it dispatched — root cause of zero quality-skill fires in advisory context is traceable). Read still omits tool_input
-	// (frequent; gate only needs tool_name+timestamp, keep toollog lean).
+	// subagent it dispatched — root cause of zero quality-skill fires in advisory context is traceable). Read records a minimal
+	// {"file_path":...} (2026-08-16 review HIGH-1: the funnel join — skillseval.BuildTriggerFunnel — matches Read tool_input
+	// suffixes to attribute "loaded the skill after the trigger hit"; omitting it made that join structurally dead on production
+	// data while unit tests stayed green on hand-marshaled inputs. The lean-toollog tradeoff lost to the observability signal).
 	//
 	// 6b. 记录 tool usage 用于 activity-ratio 检测。auto-compile 记 Write/Edit；
 	// tool-track 记 Read|Skill|Agent（matcher 在 ForgeHookSpec 中），让
@@ -859,8 +861,10 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// edit 的 task 上恒失败（644b142 删过原来的 Read recorder）。
 	// tool_input 填充：auto-compile（Edit/Write）记 file_path/content；tool-track 的 Skill/Agent
 	// 记 skill 名/subagent_type（方案 C：让 toollog 审计能看到 agent 加载了哪个质量 skill、派了
-	// 哪类子 agent——advisory 语境下质量 skill 0 触发的根因可追溯）。Read 仍省略 tool_input
-	// （频繁，gate 只需 tool_name+timestamp，保持 toollog lean）。
+	// 哪类子 agent——advisory 语境下质量 skill 0 触发的根因可追溯）。Read 记最小 {"file_path":...}
+	// （2026-08-16 审查 HIGH-1：漏斗 join——skillseval.BuildTriggerFunnel——靠 Read tool_input 的
+	// 后缀匹配归因「命中后加载了该 skill」；省略它使该 join 在生产数据上结构性死亡，而单测用手工
+	// marshal 的输入照样全绿。lean 权衡让位于可观测信号）。
 	if name == "auto-compile" || name == "tool-track" {
 		call := &toolusage.ToolCall{
 			ToolName:  hookInput.ToolName,
@@ -872,21 +876,39 @@ func runHook(cmd *cobra.Command, args []string) error {
 			call.ToolInput = toolusage.TruncateInput(raw)
 			call.InputLen = len(raw)
 			call.EstTokens = toolusage.EstimateTokens(raw)
+		} else if name == "tool-track" && hookInput.ToolName == "Read" && fields.FilePath != "" {
+			// Minimal shape: ONLY file_path (not the full tool input) — the funnel join
+			// (skillseval.BuildTriggerFunnel → readFilePath) suffix-matches this field; every other
+			// Read field stays unrecorded. Pinned by TestHookToolTrackRecordsReadFilePath; the two
+			// must not silently diverge again (that divergence was review HIGH-1).
+			//
+			// 最小形状：只记 file_path（非完整 tool input）——漏斗 join
+			// （skillseval.BuildTriggerFunnel → readFilePath）按本字段做后缀匹配；Read 的其余
+			// 字段照旧不记。由 TestHookToolTrackRecordsReadFilePath 钉死；两者不得再静默分叉
+			// （该分叉即审查 HIGH-1）。
+			minimal, _ := json.Marshal(map[string]string{"file_path": fields.FilePath})
+			call.ToolInput = toolusage.TruncateInput(string(minimal))
+			raw := string(hookInput.ToolInput)
+			call.InputLen = len(raw)
+			call.EstTokens = toolusage.EstimateTokens(raw)
 		}
 		if err := toolusage.Record(root, call); err != nil {
 			fmt.Fprintf(os.Stderr, "[forge] warning: toollog record failed: %v\n", err)
 		}
 		// Scheme 2 shift-left: append this Read's file_path to the per-session reads log,
 		// so the PreToolUse read-before-edit hook can intercept Edit-without-Read at Edit time.
-		// toollog does not record Read's file_path (kept lean); this is a dedicated side channel.
-		// PostToolUse fires after the Read completes, so this round's Read is recorded before the subsequent Edit —
+		// toollog now also records Read's file_path (funnel join, see 6b above), but this side
+		// channel stays: it stores the PROJECT-RELATIVE path (gate matching is project-anchored)
+		// and is read at Edit time without parsing toollog JSON. PostToolUse fires after the Read
+		// completes, so this round's Read is recorded before the subsequent Edit —
 		// the Edit's PreToolUse hook can then see the path. Only tool-track
 		// (Read) records paths; auto-compile (Edit/Write) does not.
 		//
 		// 方案2 shift-left：把本次 Read 的 file_path 追加到 per-session reads log，
 		// 让 PreToolUse read-before-edit hook 能在 Edit 时拦截 Edit-without-Read。
-		// toollog 不记 Read 的 file_path（保持 lean）；这是一条专用 side-channel。
-		// PostToolUse 在 Read 完成之后触发，所以本回合的 Read 会先于随后的 Edit
+		// toollog 现在也记 Read 的 file_path（漏斗 join，见上 6b），但本 side-channel 保留：
+		// 它存项目相对路径（gate 匹配锚定项目根），且 Edit 时直接读取、无需解析 toollog
+		// JSON。PostToolUse 在 Read 完成之后触发，所以本回合的 Read 会先于随后的 Edit
 		// 被记录——Edit 的 PreToolUse hook 就能看到该路径。只有 tool-track
 		// （Read）记路径；auto-compile（Edit/Write）不记。
 		if name == "tool-track" && hookInput.ToolName == "Read" && fields.FilePath != "" {

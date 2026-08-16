@@ -234,7 +234,12 @@ func engagedAfter(calls []toolusage.ToolCall, session, skill string, at time.Tim
 		}
 		switch c.ToolName {
 		case "Skill":
-			if ExtractSkillName(c.ToolInput) == skill {
+			// EqualFold matches the Read branch's case normalization below — a Skill call
+			// differing only in case (Windows paths make this common) must not undercount.
+			//
+			// EqualFold 与下面 Read 分支的大小写归一对齐——仅大小写差异的 Skill 调用
+			// （Windows 路径下常见）不得被漏计。
+			if strings.EqualFold(ExtractSkillName(c.ToolInput), skill) {
 				return true
 			}
 		case "Read":

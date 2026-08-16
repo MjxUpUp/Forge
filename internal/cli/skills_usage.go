@@ -54,17 +54,18 @@ func runSkillsUsage(cmd *cobra.Command, args []string) error {
 	}
 	// 判定集漂移：生产 canonical vs 仓库源 skills/。在 forge 仓库内运行时（dogfood/CI）
 	// 自动对比——2026-08-16 的 15/33 stale cache（build 早于 triggers 提交 8h46m）靠人工
-	// 翻目录五步确认，此处一行暴露。源目录不存在 → RepoCompared=false（非仓库内运行）。
+	// 翻目录五步确认，此处一行暴露。源目录不存在 → RepoCompared=false（非仓库内运行）；
+	// 目录存在但零个带 triggers 的 skill 同样不可比较——那多半是恰好有 skills/ 目录的
+	// 非 Forge 项目，置成可比会渲染出假的「与仓库源一致」（审查 LOW-1）。
 	//
 	// Trigger-set drift: production canonical vs repo-source skills/. Compared automatically
 	// when running inside a forge repo (dogfood/CI) — the 2026-08-16 15/33 stale cache (build
 	// predating the trigger commit by 8h46m) took five manual directory steps to confirm;
-	// one line exposes it here. Missing source dir → RepoCompared=false (outside a repo).
-	repoDir := filepath.Join(proj.GitRoot, "skills")
-	var repoSet map[string]bool
-	if st, statErr := os.Stat(repoDir); statErr == nil && st.IsDir() {
-		repoSet = triggerDeclaredSkills(repoDir)
-	}
+	// one line exposes it here. Missing source dir → RepoCompared=false (outside a repo); a
+	// present-but-zero-triggers dir is ALSO not comparable — that's usually a non-Forge project
+	// that happens to carry a skills/ directory, and comparing would render a fake "consistent
+	// with repo source" (review LOW-1).
+	repoSet := repoTriggerSet(proj.GitRoot)
 	drift := skillseval.CompareTriggerSets(triggerDeclaredSkills(canonical), repoSet)
 	rep.Drift = &drift
 
@@ -145,6 +146,28 @@ func runSkillsUsage(cmd *cobra.Command, args []string) error {
 			break
 		}
 		fmt.Printf("  %s\n", s)
+	}
+	return nil
+}
+
+// repoTriggerSet 返回仓库源 skills/ 下带 triggers 声明的 skill 名集；nil = 不可比较。
+// 两种不可比较：目录不存在（非 forge 仓库内运行），或目录存在但零个带 triggers 的 skill
+// （多半是恰好有 skills/ 目录的非 Forge 项目——置成可比会渲染出假的「与仓库源一致」，
+// 审查 LOW-1）。
+//
+// repoTriggerSet returns the set of skills under repo-source skills/ carrying trigger
+// declarations; nil = not comparable. Two not-comparable cases: the dir is missing (running
+// outside a forge repo), or the dir exists with zero trigger-declared skills (usually a
+// non-Forge project that happens to carry skills/ — comparing would render a fake
+// "consistent with repo source", review LOW-1).
+func repoTriggerSet(gitRoot string) map[string]bool {
+	repoDir := filepath.Join(gitRoot, "skills")
+	st, err := os.Stat(repoDir)
+	if err != nil || !st.IsDir() {
+		return nil
+	}
+	if rs := triggerDeclaredSkills(repoDir); len(rs) > 0 {
+		return rs
 	}
 	return nil
 }
