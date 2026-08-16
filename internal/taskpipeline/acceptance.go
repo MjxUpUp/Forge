@@ -236,7 +236,8 @@ func VerifyAcceptance(root string, state *TaskState) {
 }
 
 // MergeAcceptanceResults merges freshly-run acceptance results (the run-side copy carrying
-// Passed/Output/AcceptedHeadCommit) into the AUTHORITATIVE on-disk state, matching by Run string.
+// Passed/Output/AcceptedHeadCommit) into the AUTHORITATIVE on-disk state, matching by the
+// (Run, Expected) pair.
 // It exists for the §13 lost-update fix: verify-acceptance loads the TaskState, runs the (possibly
 // long) commands, and must not then bare-save that pre-run snapshot — a concurrent resume/decide
 // write in between would be clobbered, losing exactly the continuity data import exists to
@@ -246,7 +247,7 @@ func VerifyAcceptance(root string, state *TaskState) {
 // concurrently is left untouched rather than stamped with another command's outcome.
 //
 // MergeAcceptanceResults 把实跑出的验收结果（携带 Passed/Output/AcceptedHeadCommit 的跑侧副本）
-// 按 Run 字符串匹配合并进「权威」盘上状态。为 §13 丢更新修复而生：verify-acceptance 加载
+// 按 (Run, Expected) 二元组匹配合并进「权威」盘上状态。为 §13 丢更新修复而生：verify-acceptance 加载
 // TaskState、（可能长时间）执行命令后，绝不能裸回写实跑前快照——期间并发 resume/decide 的写入
 // 会被覆盖，丢的恰是 import 要保的接续数据。调用方在 per-task 锁内重载后经本函数合并：只有
 // 验收「结果」字段（及可选的外来标记）落到最新状态上，spec/交接字段以最新状态为准；并发改过
