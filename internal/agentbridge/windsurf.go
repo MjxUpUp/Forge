@@ -301,7 +301,7 @@ type windsurfHookEntry struct {
 	ShowOutput bool   `json:"show_output"`
 }
 
-// buildWindsurfHooks corresponds to GenerateSettings in hooks/settings.go, generating the
+// buildWindsurfHooks corresponds to hooks.ForgeHookSpec in hooks/settings.go, generating the
 // native Cascade hook format for Windsurf. Windsurf's hooks.json is a flat structure —
 // hooks.<event>[].{command,show_output} — with snake_case event names, in contrast to
 // Claude Code's PascalCase. The official Cascade hook roster is
@@ -315,7 +315,7 @@ type windsurfHookEntry struct {
 // pre-event exit 2 = deny. Kept in sync with settings.go manually — TestWindsurfWiringMirrorsClaudeSettings
 // guards against drift.
 //
-// buildWindsurfHooks 对应 hooks/settings.go 的 GenerateSettings，针对 Windsurf 原生
+// buildWindsurfHooks 对应 hooks/settings.go 的 ForgeHookSpec，针对 Windsurf 原生
 // Cascade hook 格式生成。Windsurf 的 hooks.json 是扁平结构——
 // hooks.<event>[].{command,show_output}——event 名为 snake_case，与 Claude Code 的
 // PascalCase 相对。官方 Cascade hook 名册为 pre/post_read_code、pre/post_write_code、
@@ -327,6 +327,16 @@ type windsurfHookEntry struct {
 // 同 event 多 hook（pre_write_code 上的 task-guard + assertion-check）按顺序执行；
 // pre-event exit 2 = deny。与 settings.go 手动保持同步——TestWindsurfWiringMirrorsClaudeSettings
 // 守卫 drift。
+// UserPromptSubmit 组（resume-reinject/skill-trigger）刻意未挂：windsurf 无
+// PostCompact 事件 → compact-resume 永不置重注入标志 → resume-reinject 挂上也
+// 恒静默；skill-trigger 在 windsurf 的分发已被 Stop 等事件覆盖。若未来宿主
+// 补压缩事件，需同步接 UserPromptSubmit 组。
+//
+// The UserPromptSubmit group (resume-reinject/skill-trigger) is deliberately NOT
+// wired: Windsurf has no PostCompact event → compact-resume never sets the reinject
+// flag → resume-reinject would be permanently silent; skill-trigger distribution on
+// Windsurf is already covered by Stop events. If the host adds a compact event later,
+// UserPromptSubmit group must be connected accordingly.
 func buildWindsurfHooks() map[string]any {
 	// Both task-guard and assertion-check gate write operations; Windsurf runs all entries
 	// under the same event in order, so putting both in a single pre_write_code list is correct

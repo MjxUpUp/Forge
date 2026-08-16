@@ -378,12 +378,12 @@ func TestStatusWithoutInit(t *testing.T) {
 
 // --------------- Test: Init idempotent (run twice) ---------------
 
-// TestInitSkipsGenerateSettingsWhenPluginInstalled: when forge plugin is
+// TestInitSkipsProjectSettingsWriteWhenPluginInstalled: when forge plugin is
 // installed at user level, forge init must NOT write ForgeHookSpec hooks to
 // project-level settings.local.json — user-level plugin.json already registers
 // them machine-wide. It must still create the file with user content intact
 // (or not create it if none existed).
-func TestInitSkipsGenerateSettingsWhenPluginInstalled(t *testing.T) {
+func TestInitSkipsProjectSettingsWriteWhenPluginInstalled(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("CLAUDE_CONFIG_DIR", home)
 	writeForgePluginFixture(t, home)
@@ -425,7 +425,7 @@ func TestInitSkipsGenerateSettingsWhenPluginInstalled(t *testing.T) {
 	if _, hasHooks := parsed["hooks"]; hasHooks {
 		t.Error("plugin installed: forge init must not write hooks to settings.local.json")
 	}
-	// User fields must be preserved (or merged if GenerateSettings was skipped).
+	// User fields must be preserved (or merged if the settings write was skipped).
 	if v, ok := parsed["model"]; ok && string(v) != `"gpt-4"` {
 		t.Errorf("user model field modified: got %s", string(v))
 	}

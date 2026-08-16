@@ -64,12 +64,12 @@ func TestMandatoryRules(t *testing.T) {
 	}
 }
 
-func TestSaveAndLoad(t *testing.T) {
+func TestSaveProjectLevelAndLoad(t *testing.T) {
 	dir := t.TempDir()
 	original := DefaultProtocol()
 
-	if err := Save(dir, original); err != nil {
-		t.Fatalf("Save failed: %v", err)
+	if err := SaveProjectLevel(dir, original); err != nil {
+		t.Fatalf("SaveProjectLevel failed: %v", err)
 	}
 
 	loaded, err := Load(dir)
@@ -124,12 +124,12 @@ func TestLoadMissing(t *testing.T) {
 	}
 }
 
-// TestSaveCreatesDataDir: Save with no project-level override creates the user-level
+// TestSaveDataDir_ZeroProjectWrite: SaveDataDir creates the user-level
 // DataDir copy (via util.AtomicWrite) — and must NOT create a project-level .forge/.
 //
-// TestSaveCreatesDataDir：无项目级覆盖时 Save 创建用户级 DataDir 副本
+// TestSaveDataDir_ZeroProjectWrite：SaveDataDir 创建用户级 DataDir 副本
 // （经 util.AtomicWrite）——且不得创建项目级 .forge/。
-func TestSaveCreatesDataDir(t *testing.T) {
+func TestSaveDataDir_ZeroProjectWrite(t *testing.T) {
 	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
 	dir := t.TempDir()
 	// .forge/ doesn't exist yet
@@ -139,12 +139,12 @@ func TestSaveCreatesDataDir(t *testing.T) {
 	}
 
 	p := DefaultProtocol()
-	if err := Save(dir, p); err != nil {
-		t.Fatalf("Save failed: %v", err)
+	if err := SaveDataDir(dir, p); err != nil {
+		t.Fatalf("SaveDataDir failed: %v", err)
 	}
 
 	if _, err := os.Stat(forgeDir); !os.IsNotExist(err) {
-		t.Fatal("Save must not create project-level .forge/ (zero-project-write)")
+		t.Fatal("SaveDataDir must not create project-level .forge/ (zero-project-write)")
 	}
 	if _, err := os.Stat(filepath.Join(forgedata.DataDirFor(dir), "protocol.yml")); err != nil {
 		t.Fatalf("protocol.yml not created in DataDir: %v", err)

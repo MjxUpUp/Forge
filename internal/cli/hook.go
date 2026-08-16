@@ -213,7 +213,7 @@ var hookCmd = &cobra.Command{
 // the cross-platform `--agent` flag; it selects BOTH the stdin dialect to normalize
 // (windsurf/kimi/reasonix/cline differ from the Claude shape) AND the output protocol
 // to emit (see emitAgentOutput — codex/cursor/copilot share Claude-shape stdin but
-// parse different stdout/exit-code contracts). opencode/pi/codebuddy construct
+// parse different stdout/exit-code contracts). opencode/codebuddy construct
 // Claude-shape stdin in-process and speak the Claude protocol, so they carry no flag.
 // FORGE_HOOK_AGENT is the fallback for translators already wired via env (and for
 // TS code that sets the env).
@@ -222,7 +222,7 @@ var hookCmd = &cobra.Command{
 // `--agent` flag 设置；它同时选择要 normalize 的 stdin 方言（windsurf/kimi/
 // reasonix/cline 与 Claude 形状不同）**和**要输出的协议（见 emitAgentOutput——
 // codex/cursor/copilot 的 stdin 与 Claude 同形，但 stdout/退出码契约不同）。
-// opencode/pi/codebuddy 在进程内构造 Claude-shape stdin 且说 Claude 协议，
+// opencode/codebuddy 在进程内构造 Claude-shape stdin 且说 Claude 协议，
 // 故不带 flag。FORGE_HOOK_AGENT 是已通过 env 接线的 translator（以及设 env 的
 // TS 代码）的兜底。
 var hookAgent string
@@ -238,7 +238,7 @@ func init() {
 // spawning forge). The value drives BOTH the stdin normalizer (empty = Claude-Code-shape stdin,
 // no normalization needed) and the output emitter (emitAgentOutput) — codex/cursor/copilot share
 // Claude-shape stdin but speak different stdout/exit-code protocols, so they carry the flag for
-// the output side. An empty string (claude-code, and opencode/pi/codebuddy which construct
+// the output side. An empty string (claude-code, and opencode/codebuddy which construct
 // Claude stdin in-process) means Claude on both sides.
 //
 // resolveHookAgent 决定说话的宿主 agent。--agent flag（由 translator 设置，跨平台
@@ -247,7 +247,7 @@ func init() {
 // normalizer（空 = Claude-Code-shape stdin、无需 normalize）与输出 emitter
 // （emitAgentOutput）——codex/cursor/copilot 的 stdin 与 Claude 同形，但 stdout/
 // 退出码协议不同，故为输出侧携带 flag。空串（claude-code，以及在进程内构造
-// Claude stdin 的 opencode/pi/codebuddy）表示两侧都按 Claude 处理。
+// Claude stdin 的 opencode/codebuddy）表示两侧都按 Claude 处理。
 func resolveHookAgent(flagVal, envVal string) string {
 	if flagVal != "" {
 		return flagVal
@@ -331,7 +331,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// every project-scoped hook silently allowed — the exact fail-open class
 	// adoptPayloadCwd was built to close for kimi. The `--agent` flag (cross-platform,
 	// set by the translator) selects the dialect; FORGE_HOOK_AGENT is the fallback.
-	// opencode/pi are code-based and directly construct Claude stdin in TS, so no
+	// opencode are code-based and directly construct Claude stdin in TS, so no
 	// normalizer runs for them. kimi already normalized at parse time (see above); the
 	// other dialects normalize here.
 	//
@@ -346,7 +346,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// findProjectRoot 按进程 cwd 解析，当 cline 在 workspace 之外拉起 wrapper 时
 	// 所有项目级 hook 静默放行——正是 adoptPayloadCwd 为 kimi 堵上的那类 fail-open。
 	// `--agent` flag（跨平台，由 translator 设置）选择方言；FORGE_HOOK_AGENT 是
-	// 兜底。opencode/pi 是 code-based，直接在 TS 里构造 Claude stdin，无需
+	// 兜底。opencode 是 code-based，直接在 TS 里构造 Claude stdin，无需
 	// normalizer。kimi 已在 stdin 解析阶段完成 normalize（见上文）；其余方言在此
 	// 归一化。
 	if agent != "" && agent != "kimi" {
@@ -405,7 +405,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// — for marker-absent projects those fire hooks with the true agent even
 	// though detectAgentType at session creation only sees project markers, so the session
 	// is created with an empty agent_type and would otherwise misattribute to claude-code
-	// (the leaked CLAUDE_CODE_SESSION_ID default). codebuddy/opencode/pi carry no --agent,
+	// (the leaked CLAUDE_CODE_SESSION_ID default). codebuddy/opencode carry no --agent,
 	// so agent=="" here and the stamp is a no-op for them — they rely on Part 1's project
 	// markers (opencode has markers; codebuddy has none and is a known attribution gap).
 	// StampSessionAgent fills ONLY an
@@ -416,7 +416,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// 携带 --agent 的翻译器（kimi/reasonix/windsurf/cline 为 stdin 方言；codex/cursor/
 	// copilot 为输出协议）——对无标记项目，它们即便创建时的 detectAgentType 只看项目
 	// 标记，也会带真实 agent 触发 hook，故 session 以空 agent_type 创建，否则会误归
-	// claude-code（泄漏的 CLAUDE_CODE_SESSION_ID 默认值）。codebuddy/opencode/pi
+	// claude-code（泄漏的 CLAUDE_CODE_SESSION_ID 默认值）。codebuddy/opencode
 	// 不携带 --agent，故此处 agent==""，盖戳对它们是 no-op——它们依赖 Part 1 的项目
 	// 标记（opencode 有标记；codebuddy 无标记，是已知归因缺口）。StampSessionAgent
 	// 只填空值、同步反映到 sessions.jsonl、不创建不轮换，故每次事件都触发是安全且
@@ -1140,7 +1140,7 @@ func extractDetail(stdout, prefix string) string {
 
 // emitAgentOutput dispatches the hook verdict to the host's output protocol. agent==""
 // (claude-code and every Claude-JSON-compatible host that carries no --agent flag:
-// codebuddy/opencode/pi) takes the claude default. The load-bearing invariants:
+// codebuddy/opencode) takes the claude default. The load-bearing invariants:
 //   - allow NEVER emits decision:"approve" — on Claude PreToolUse it bypasses the
 //     permission system (an allow hook must not grant permissions), and codex parses
 //     it but marks the hook as FAILED.
@@ -1151,7 +1151,7 @@ func extractDetail(stdout, prefix string) string {
 //     non-blocking on all of them.
 //
 // emitAgentOutput 把 hook 结论分发到宿主的输出协议。agent==""（claude-code 及所有
-// 不带 --agent flag 的 Claude-JSON 兼容宿主：codebuddy/opencode/pi）走 claude 默认。
+// 不带 --agent flag 的 Claude-JSON 兼容宿主：codebuddy/opencode）走 claude 默认。
 // 关键不变式：
 //   - allow 绝不发 decision:"approve"——Claude PreToolUse 上它会绕过权限系统
 //     （allow hook 不得授予权限），codex 则解析它但把 hook 判为 FAILED。
@@ -1264,14 +1264,14 @@ func contextChannelDelivered(agent, eventName string) (bool, string) {
 	}
 }
 
-// emitClaudeOutput renders the claude-code default (also codebuddy/opencode/pi — every
+// emitClaudeOutput renders the claude-code default (also codebuddy/opencode — every
 // host that parses Claude's stdout JSON but carries no --agent flag): allow = silent
 // (exit 0, default flow untouched; with detail, a bare hookSpecificOutput whose
 // additionalContext Claude injects — no decision field); block = decision:block JSON +
 // reason on stderr + HookBlockError (Execute maps it to exit 2, Claude's blocking
 // error code, with stderr shown to the model).
 //
-// emitClaudeOutput 渲染 claude-code 默认形态（也覆盖 codebuddy/opencode/pi——所有
+// emitClaudeOutput 渲染 claude-code 默认形态（也覆盖 codebuddy/opencode——所有
 // 解析 Claude stdout JSON 但不带 --agent flag 的宿主）：allow = 静默（exit 0，默认
 // 流程不动；有 detail 时发裸 hookSpecificOutput，Claude 会注入其 additionalContext
 // ——无 decision 字段）；block = decision:block JSON + 原因写 stderr +

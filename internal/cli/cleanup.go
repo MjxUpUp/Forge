@@ -185,14 +185,14 @@ func migrateProjectProtocol(dir string) {
 		return // 用户改过——保留为团队覆盖层
 	}
 	// No user edits: ensure the DataDir copy exists, then drop the project-level
-	// file. The copy is written explicitly to the DataDir path (SaveDataDir) —
-	// protocol.Save would route to the still-existing project-level file here.
+	// file. The copy is written explicitly to the DataDir path (SaveDataDir).
+
 	// The project file is removed ONLY after the copy is verified on disk: a
 	// non-IsNotExist stat error (permission/IO) means "unverified", not "absent",
 	// and deleting then would strand the project with no protocol at all.
 	//
 	// 无用户改动：确保 DataDir 副本存在，然后删项目级文件。副本显式写到 DataDir
-	// 路径（SaveDataDir）——此处 protocol.Save 会路由到仍存在的项目级文件。
+	// 路径（SaveDataDir）——旧路由 protocol.Save 已删除，副本不再经项目级文件中转。
 	// 项目文件仅在副本确认落盘后才删：非 IsNotExist 的 stat 错误（权限/IO）是
 	// 「未验证」而非「不存在」，此时删除会让项目没有任何 protocol 可用。
 	ddPath, err := protocol.DataDirPath(dir)
