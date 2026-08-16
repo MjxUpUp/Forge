@@ -69,3 +69,20 @@ description 审计合格未改动 + 新建 evals.json 10 条
 ### Evidence
 
 docs/skills-value-audit-2026-08-02.md
+
+## [d-18cc4be84149b204-fbf51f38] accept
+
+- **Skill**: database-design
+- **DecidedAt**: 2026-08-16T13:23:33Z
+
+### Diagnosis
+
+同UI族:建表/schema设计请求无触发
+
+### Revision
+
+metadata.triggers新增UserPromptSubmit关键词(建表/表结构/schema 设计/写 migration/加索引/慢查询/ORM 选型/选 ORM/数据库设计),cooldown 600
+
+### Evidence
+
+2026-08-16扫描:DB设计请求多项目出现,触发覆盖缺口

@@ -5,6 +5,7 @@ metadata:
   pattern: inversion + pipeline
   domain: frontend
   composes: [design-system-workflow, frontend-feature-development, frontend-code-review]
+  triggers: [{"event":"UserPromptSubmit","keywords":["做好看","美化","风格迁移","高级感","太丑","审美","micro-interaction","动效"],"cooldown":600}]
 ---
 
 # 前端审美执行：做好看与风格迁移

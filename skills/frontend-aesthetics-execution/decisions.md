@@ -87,3 +87,20 @@ description 审计合格未改动 + evals.json 建立
 ### Evidence
 
 docs/skills-value-audit-2026-08-02.md
+
+## [d-18cc4bec07616178-366a080e] accept
+
+- **Skill**: frontend-aesthetics-execution
+- **DecidedAt**: 2026-08-16T13:23:49Z
+
+### Diagnosis
+
+同UI族:前端美化/审美执行请求无触发
+
+### Revision
+
+metadata.triggers新增UserPromptSubmit关键词(做好看/美化/风格迁移/高级感/太丑/审美/micro-interaction/动效),cooldown 600
+
+### Evidence
+
+美化类请求高频,触发覆盖缺口

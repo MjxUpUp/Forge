@@ -88,3 +88,20 @@ description 审计合格未改动 + evals.json 建立
 ### Evidence
 
 docs/skills-value-audit-2026-08-02.md
+
+## [d-18cc4bebfbbe176c-a3f3a6a9] accept
+
+- **Skill**: design-system-workflow
+- **DecidedAt**: 2026-08-16T13:23:49Z
+
+### Diagnosis
+
+同UI族:design token/设计系统请求无触发
+
+### Revision
+
+metadata.triggers新增UserPromptSubmit关键词(design token/Design Token/设计系统/token 同步/OKLCH/shadcn registry/Style Dictionary),cooldown 600
+
+### Evidence
+
+设计系统类请求在UI项目高频,触发覆盖缺口

@@ -6,6 +6,7 @@ metadata:
   domain: frontend
   severity-levels: block,fix,suggest
   composes: [frontend-stack-selection]
+  triggers: [{"event":"UserPromptSubmit","keywords":["前端 code review","前端 review","审查前端","前端审查","a11y","无障碍检查"],"cooldown":600}]
 ---
 
 # 前端代码审查门控

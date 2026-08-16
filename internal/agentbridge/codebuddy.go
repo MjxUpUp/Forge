@@ -351,6 +351,17 @@ func codebuddyWorkBuddyHome() (string, error) {
 	return filepath.Join(home, `.workbuddy`), nil
 }
 
+// CodeBuddyWorkBuddyHome exports codebuddyWorkBuddyHome for cross-agent environment
+// auditing (forge doctor): the config home the WorkBuddy desktop app actually reads
+// plugins from. Same single-source rationale as ClaudeConfigHomeDir.
+//
+// CodeBuddyWorkBuddyHome 导出 codebuddyWorkBuddyHome 供跨 agent 环境审计（forge doctor）
+// 使用：WorkBuddy 桌面 app 实际读取 plugin 的 config home。与 ClaudeConfigHomeDir 同一
+// 单一真相源理由。
+func CodeBuddyWorkBuddyHome() (string, error) {
+	return codebuddyWorkBuddyHome()
+}
+
 // withCodeBuddyConfigDir returns env with CODEBUDDY_CONFIG_DIR set to dir, replacing any
 // existing value. Duplicate env keys' last-one-wins behavior is platform-dependent, so the
 // existing entry is stripped first to make the override deterministic.

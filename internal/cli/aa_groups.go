@@ -84,6 +84,10 @@ func init() {
 	hookCmd.GroupID = "integrate"
 	cloneCmd.GroupID = "integrate"
 	pluginCmd.GroupID = "integrate"
+	// Cross-agent environment consistency audit (read-only; multi-host wiring + version drift).
+	//
+	// 跨 agent 环境一致性审计（只读；多 host 接线 + 版本漂移）
+	doctorCmd.GroupID = "integrate"
 	// hook bash computes the DataDir (Hidden, not in the help list).
 	//
 	dataDirCmd.GroupID = "integrate" // hook bash 算 DataDir 用（Hidden，不进 help 列表）
