@@ -1157,6 +1157,91 @@ func emitAgentOutput(agent, eventName, hookName string, passed bool, detail stri
 	}
 }
 
+// contextChannelDelivered reports whether an ALLOW-path detail emission on (agent, event)
+// actually reaches the model's context on that host, plus a short channel label. It encodes
+// the same per-host channel knowledge as the emitXxxOutput family above (each case cites its
+// emitter) — kept in one function so the record site (recordSkillTriggerHits) can stamp
+// Delivered/Channel into checklog without re-deriving the routing table, and so analysis
+// (usage funnel) has a truthful delivery denominator instead of counting entries the model
+// never saw. This generalizes the kimi 2026-08-15 false-prosperity fix (bail before recording
+// on invisible channels) to every host: recording may stay (audit trail), but "delivered"
+// must say the truth.
+//
+// contextChannelDelivered 报告 (agent, event) 上 allow 路径的 detail 输出是否真到达该宿主
+// 的模型上下文，并给出简短通道标签。它编码与上面 emitXxxOutput 家族相同的每宿主通道知识
+// （每个 case 注明出处 emitter）——集中在单个函数，记录点（recordSkillTriggerHits）就能把
+// Delivered/Channel 落章进 checklog 而无需重推路由表，分析侧（usage 漏斗）也拿到真实的
+// 送达分母，而不是把模型从未见过的条目也计成送达。这是 kimi 2026-08-15 虚假繁荣修复
+// （不可见通道先 bail 再记录）的泛化：记录可以留（审计轨迹），但 delivered 必须说真话。
+func contextChannelDelivered(agent, eventName string) (bool, string) {
+	switch agent {
+	case "kimi":
+		// emitKimiOutput prints detail to stdout; kimi only carries stdout into model context
+		// on UserPromptSubmit (wire.jsonl-verified, see internal/agentbridge/kimi-hook-routing.md).
+		// runSkillTriggerHook bails earlier for other events — this row is defense in depth.
+		//
+		// emitKimiOutput 把 detail 打 stdout；kimi 仅在 UserPromptSubmit 把 stdout 送进模型
+		// 上下文（wire.jsonl 实证，见 internal/agentbridge/kimi-hook-routing.md）。
+		// runSkillTriggerHook 对其余事件更早 bail——本行是纵深防御。
+		if eventName == "UserPromptSubmit" {
+			return true, "kimi/stdout-UserPromptSubmit"
+		}
+		return false, "kimi/no-channel"
+	case "codex":
+		// emitCodexOutput: hookSpecificOutput.additionalContext honored on SessionStart/
+		// PreToolUse/PostToolUse/UserPromptSubmit; Stop/PostCompact have no context channel.
+		//
+		// emitCodexOutput：hookSpecificOutput.additionalContext 仅在 SessionStart/
+		// PreToolUse/PostToolUse/UserPromptSubmit 被采纳；Stop/PostCompact 无上下文通道。
+		switch eventName {
+		case "SessionStart", "PreToolUse", "PostToolUse", "UserPromptSubmit":
+			return true, "codex/hookSpecificOutput"
+		}
+		return false, "codex/no-channel"
+	case "cursor":
+		// emitCursorOutput: top-level additional_context read only on PostToolUse/SessionStart.
+		//
+		// emitCursorOutput：顶层 additional_context 仅 PostToolUse/SessionStart 被读。
+		switch eventName {
+		case "PostToolUse", "SessionStart":
+			return true, "cursor/additional_context"
+		}
+		return false, "cursor/no-channel"
+	case "copilot":
+		// emitCopilotOutput: camelCase additionalContext on sessionStart/postToolUse;
+		// userPromptSubmitted stdout is DROPPED for command hooks.
+		//
+		// emitCopilotOutput：camelCase additionalContext 仅 sessionStart/postToolUse；
+		// userPromptSubmitted 的 stdout 对 command hook 会被丢弃。
+		switch eventName {
+		case "PostToolUse", "SessionStart":
+			return true, "copilot/additionalContext"
+		}
+		return false, "copilot/no-channel"
+	case "windsurf":
+		// emitWindsurfOutput: no stdout JSON protocol at all — allow is silent (show_output:false).
+		//
+		// emitWindsurfOutput：完全没有 stdout JSON 协议——allow 静默（show_output:false）。
+		return false, "windsurf/no-context-channel"
+	case "cline":
+		// emitClineOutput: contextModification injects into the task on the allow path
+		// (wrapper forwards it for every fanned-out event).
+		//
+		// emitClineOutput：allow 路径的 contextModification 注入任务（wrapper 对每个
+		// 扇出事件都转发）。
+		return true, "cline/contextModification"
+	default:
+		// emitClaudeOutput (claude-code and every Claude-JSON host without --agent: codebuddy/
+		// opencode/pi): allow-with-detail emits a bare hookSpecificOutput whose
+		// additionalContext Claude injects on every event.
+		//
+		// emitClaudeOutput（claude-code 及所有无 --agent 的 Claude-JSON 宿主：codebuddy/
+		// opencode/pi）：allow-with-detail 发裸 hookSpecificOutput，其 additionalContext
+		// 在每个事件上都被 Claude 注入。
+		return true, "claude/additionalContext"
+	}
+}
+
 // emitClaudeOutput renders the claude-code default (also codebuddy/opencode/pi — every
 // host that parses Claude's stdout JSON but carries no --agent flag): allow = silent
 // (exit 0, default flow untouched; with detail, a bare hookSpecificOutput whose
