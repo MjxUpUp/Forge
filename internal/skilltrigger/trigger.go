@@ -238,13 +238,23 @@ func matchToolName(match, toolName string) bool {
 
 // matchKeywords 子串大小写不敏感，haystack 拼接 prompt + command + output 文本，任一关键词命中即可。
 // 覆盖 UserPromptSubmit（prompt）、PostToolUse Bash（command + stdout/stderr，如 compile-fix-loop
-// 的 "compile error" 命中编译输出）等场景。
+// 的 "compile error" 命中编译输出）等场景。command 侧先经 sanitizeCommand 剥离 heredoc body——
+// 脚本文本里出现 "npm publish" 等字样不该误触发布守卫（详见 command_noise.go）；prompt 与
+// stdout/stderr 是用户原话/真实输出，保持原文匹配。
+//
+// matchKeywords does case-insensitive substring matching over the concatenated prompt +
+// command + output text; any keyword hit wins. Covers UserPromptSubmit (prompt) and
+// PostToolUse Bash (command + stdout/stderr, e.g. compile-fix-loop matching "compile
+// error" in build output). The command side is first passed through sanitizeCommand to
+// strip heredoc bodies — script text merely mentioning "npm publish" must not
+// false-positive release guards (see command_noise.go); prompt and stdout/stderr are
+// the user's own words / real output and stay raw.
 func matchKeywords(keywords []string, ctx Context) bool {
 	var hay strings.Builder
 	hay.WriteString(ctx.Prompt)
 	if cmd, ok := ctx.ToolInput["command"].(string); ok {
 		hay.WriteString(" ")
-		hay.WriteString(cmd)
+		hay.WriteString(sanitizeCommand(cmd))
 	}
 	for _, k := range []string{"stdout", "stderr", "output"} {
 		if s, ok := ctx.ToolOutput[k].(string); ok {

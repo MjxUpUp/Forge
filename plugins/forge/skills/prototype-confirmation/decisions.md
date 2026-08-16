@@ -52,3 +52,20 @@ composes 移除 implementation-discipline（保留调用方 implementation-disci
 ### Evidence
 
 task-complete 审查子 agent 发现（旧账）；全库 composes 机检
+
+## [d-18cc4bedd168b4c0-c5d66551] accept
+
+- **Skill**: prototype-confirmation
+- **DecidedAt**: 2026-08-16T13:23:56Z
+
+### Diagnosis
+
+同UI族:原型确认流程请求无触发
+
+### Revision
+
+metadata.triggers新增UserPromptSubmit关键词(出原型/原型给我看/让我先看/先看效果/确认形态/做个原型/原型确认),cooldown 600
+
+### Evidence
+
+原型先行请求高频,触发覆盖缺口

@@ -4,6 +4,7 @@ description: "设计产物编写期的质量标准入口，按产物类型路由
 metadata:
   pattern: routing
   domain: design
+  triggers: [{"event":"UserPromptSubmit","keywords":["写 PRD","需求文档","API 契约","OpenAPI","proto 定义","测试方案","user story","设计文档"],"cooldown":600}]
 requires: code-review-gate
 ---
 

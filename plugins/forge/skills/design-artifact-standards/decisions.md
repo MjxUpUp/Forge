@@ -69,3 +69,20 @@ docs/skills-value-audit-2026-08-02.md
 ### Evidence
 
 forge skills validate 51/51 + TestSkills_NoDanglingSkillRefs 守卫
+
+## [d-18cc4be84736b450-a70e2910] accept
+
+- **Skill**: design-artifact-standards
+- **DecidedAt**: 2026-08-16T13:23:33Z
+
+### Diagnosis
+
+同UI族:设计文档请求无触发;该skill是编写期路由入口,漏触发=6个phase文档全不走标准
+
+### Revision
+
+metadata.triggers新增UserPromptSubmit关键词(写 PRD/需求文档/API 契约/OpenAPI/proto 定义/测试方案/user story/设计文档),cooldown 600
+
+### Evidence
+
+PRD/API设计请求高频;路由入口漏触发放大下游全族失守
