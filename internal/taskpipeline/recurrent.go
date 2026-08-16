@@ -99,17 +99,40 @@ const (
 	recurrentThresholdEnv = "FORGE_RECURRENT_THRESHOLD"
 )
 
-// lowDimCounts tallies how often each low-score dimension (<70) appears across a project's completed
-// conclusions. Pure function over the conclusion slice (mirrors health.Summarize's lowCounts but is
-// independently testable without building a full Summary). Used by executor's BLOCKED message,
-// which surfaces the exact recurrence count so the agent sees why this task hardened.
+// lowDimClearThreshold is the "clearly low" cut for recurrence hardening: 65, not the 70
+// display cut. AutoDesign margin calibration shows 0-3pt gaps around a cut line are a coin
+// flip — a dimension flapping 67↔70 would trip the binary LowDimensions on and off, and
+// recurrence hardening keyed on that flap would harden on noise. 65 leaves a 5-point noise
+// band under the 70 cut: only unambiguous lows accumulate toward the threshold.
 //
-// lowDimCounts 统计各低分维度（<70）在项目已完成结论里出现的次数。基于结论切片的纯函数
-// （镜像 health.Summarize 的 lowCounts，但无需构造完整 Summary 即可独立单测）。供 executor 的
+// lowDimClearThreshold 是复发升硬的「明确低」切线：65，非 70 的展示切线。AutoDesign
+// margin 校准表明切线附近 0-3 分差距 ≈ 抛硬币——维度在 67↔70 抖动会让二值 LowDimensions
+// 反复进出，按这个抖动升硬就是把噪声当复发。65 在 70 切线下留出 5 分噪声带：只有
+// 无争议的低分才向阈值累计。
+const lowDimClearThreshold = 65.0
+
+// lowDimCounts tallies how often each low-score dimension appears across a project's completed
+// conclusions. When a conclusion carries DimScores (raw per-dimension numbers) only CLEAR lows
+// (score <= lowDimClearThreshold) count; legacy conclusions predate DimScores and fall back to
+// the binary <70 LowDimensions (their 67s count — acceptable, the number is simply lost).
+// Pure function over the conclusion slice. Used by executor's BLOCKED message, which surfaces
+// the exact recurrence count so the agent sees why this task hardened.
+//
+// lowDimCounts 统计各低分维度在项目已完成结论里出现的次数。结论带 DimScores（每维度原始分）
+// 时只计明确低（score <= lowDimClearThreshold）；早于 DimScores 的存量结论回落到二值 <70 的
+// LowDimensions（其 67 也计入——可接受，数字只是丢了）。基于结论切片的纯函数。供 executor 的
 // BLOCKED 消息使用——消息里带出确切复发计数，让 agent 看清本次为何升硬。
 func lowDimCounts(cs []act.Conclusion) map[string]int {
 	counts := map[string]int{}
 	for _, c := range cs {
+		if len(c.DimScores) > 0 {
+			for _, d := range c.DimScores {
+				if d.Score <= lowDimClearThreshold {
+					counts[d.Dimension]++
+				}
+			}
+			continue
+		}
 		for _, d := range c.LowDimensions {
 			counts[d]++
 		}
@@ -117,12 +140,14 @@ func lowDimCounts(cs []act.Conclusion) map[string]int {
 	return counts
 }
 
-// dimRecurrent reports whether dimension dim has gone low (<70) at least threshold times across the
-// given conclusions — the recurrence axis. Returns false on empty input or threshold<=0 (fail-open).
-// Callers feed loadConclusions(root) (which itself fails open on read errors).
+// dimRecurrent reports whether dimension dim has gone clearly low (<= lowDimClearThreshold; legacy
+// conclusions: binary <70) at least threshold times across the given conclusions — the recurrence
+// axis. Returns false on empty input or threshold<=0 (fail-open). Callers feed
+// loadConclusions(root) (which itself fails open on read errors).
 //
-// dimRecurrent 报告维度 dim 是否在给定结论里低分（<70）≥ threshold 次——复发轴。空输入或
-// threshold<=0 返回 false（fail-open）。调用方传入 loadConclusions(root)（其自身对读取错误 fail-open）。
+// dimRecurrent 报告维度 dim 是否在给定结论里明确低分（<= lowDimClearThreshold；存量结论：二值
+// <70）≥ threshold 次——复发轴。空输入或 threshold<=0 返回 false（fail-open）。调用方传入
+// loadConclusions(root)（其自身对读取错误 fail-open）。
 func dimRecurrent(cs []act.Conclusion, dim string, threshold int) bool {
 	if threshold <= 0 || len(cs) == 0 {
 		return false
