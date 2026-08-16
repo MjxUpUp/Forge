@@ -17,13 +17,27 @@ var (
 	skAudGate  bool
 )
 
-// exit code contract (with --gate): 0=no HIGH/CRITICAL, 4=HIGH/CRITICAL present.
+// exit code contract (with --gate): 0=clean, 4=HIGH/CRITICAL severity band OR any single
+// CRITICAL finding (regardless of aggregate score — #4 fix).
 //
-// exit code 契约（--gate 时）：0=无 HIGH/CRITICAL，4=存在 HIGH/CRITICAL。
+// exit code 契约（--gate 时）：0=干净，4=HIGH/CRITICAL 严重度带或任一单条 CRITICAL finding
+// （无视聚合分——#4 修复）。
 var skillsAuditCmd = &cobra.Command{
 	Use:   "audit",
-	Short: "19 条安全规则审查（prompt 注入/数据外发/危险代码）",
+	Short: "22 条安全规则审查（prompt 注入/数据外发/危险代码/供应链执行向量）",
 	RunE:  runSkillsAudit,
+}
+
+// auditGateBlocked decides the --gate block: severity band HIGH/CRITICAL (aggregate) OR any single
+// CRITICAL finding. Extracted from the loop so the decision is unit-testable without the
+// os.Exit(4) process exit, and so the any-CRITICAL half (#4 score-math fix) reads as one named
+// predicate next to skillsqa.HasCritical instead of an inline condition.
+//
+// auditGateBlocked 判定 --gate 阻断：严重度带 HIGH/CRITICAL（聚合）或任一单条 CRITICAL finding。
+// 从循环抽出以便绕开 os.Exit(4) 进程退出做单测，也让 #4 分数数学修复的 any-CRITICAL 半边
+// 成为与 skillsqa.HasCritical 并列的具名谓词，而非内联条件。
+func auditGateBlocked(sev string, fs []skillsqa.Finding) bool {
+	return sev == "HIGH" || sev == "CRITICAL" || skillsqa.HasCritical(fs)
 }
 
 func runSkillsAudit(cmd *cobra.Command, args []string) error {
@@ -75,7 +89,13 @@ func runSkillsAudit(cmd *cobra.Command, args []string) error {
 		}
 		score, sev, rec := skillsqa.ScoreFindings(fs)
 		results = append(results, res{n, fs, score, sev, rec})
-		if skAudGate && (sev == "HIGH" || sev == "CRITICAL") {
+		// #4 fix: band-only gating let a single CRITICAL finding (aggregate ≤23.75 → MEDIUM band)
+		// pass as exit 0 — the same score-math hole as the install gate. auditGateBlocked adds
+		// any-CRITICAL on top of the band judgment.
+		//
+		// #4 修复：只看带的门禁会让单条 CRITICAL（聚合 ≤23.75 → MEDIUM 带）以 exit 0 放过——
+		// 与 install 门禁同一分数数学洞。auditGateBlocked 在带判定之上加 any-CRITICAL。
+		if skAudGate && auditGateBlocked(sev, fs) {
 			hasBlock = true
 		}
 	}
@@ -116,6 +136,6 @@ func runSkillsAudit(cmd *cobra.Command, args []string) error {
 func init() {
 	skillsAuditCmd.Flags().StringSliceVar(&skAudSkill, "skill", nil, "只审查指定 skill（可重复）")
 	skillsAuditCmd.Flags().BoolVar(&skAudJSON, "json", false, "JSON 输出")
-	skillsAuditCmd.Flags().BoolVar(&skAudGate, "gate", false, "门禁模式：HIGH/CRITICAL 时 exit 4")
+	skillsAuditCmd.Flags().BoolVar(&skAudGate, "gate", false, "门禁模式：HIGH/CRITICAL 带或任一 CRITICAL finding 时 exit 4")
 	skillsCmd.AddCommand(skillsAuditCmd)
 }
