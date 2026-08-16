@@ -99,8 +99,8 @@ type BatteryReport struct {
 // that silently skipped unreadable data would report a false all-green (fail-closed).
 //
 // BuildBattery 把每个已锚定 baseline vs 其最新 run 聚合成一份报告。dir 为 eval 数据目录
-//（EvalDir()）。baselines/runs 读取错误上抛——静默跳过不可读数据的电池会报假全绿
-//（fail-closed）。
+// （EvalDir()）。baselines/runs 读取错误上抛——静默跳过不可读数据的电池会报假全绿
+// （fail-closed）。
 func BuildBattery(dir string) (*BatteryReport, error) {
 	baselines, err := LoadBaselines(dir)
 	if err != nil {
@@ -200,7 +200,7 @@ func sortedBaselineSkills(baselines map[string]Baseline) []string {
 // the battery's blind spot made visible (advisory). A runs dir read error propagates.
 //
 // skillsWithRunsNoBaseline 列出有 runs 文件但未锚定 baseline 的 skill——把电池盲区显性化
-//（advisory）。runs 目录读取错误上抛。
+// （advisory）。runs 目录读取错误上抛。
 func skillsWithRunsNoBaseline(dir string, baselines map[string]Baseline) ([]string, error) {
 	entries, err := os.ReadDir(filepath.Join(dir, "runs"))
 	if err != nil {

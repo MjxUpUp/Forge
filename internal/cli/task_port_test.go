@@ -670,7 +670,7 @@ func TestTaskImport_StripsForeignGateSignals(t *testing.T) {
 //
 // TestTaskImport_MergeDoesNotIntroduceForeignSignals 钉住 --merge 路径（2026-08-15 复审）：
 // mergeTaskState 并集协作记录，但外来信任/控制流信号绝不能渗进本机任务——不得引入验收条目
-//（mergeTaskState 未来若加一行合并 Acceptance，会静默打开无标记的外来命令路径）、不得经
+// （mergeTaskState 未来若加一行合并 Acceptance，会静默打开无标记的外来命令路径）、不得经
 // unionGateHistory 引入外来 Passed 门禁条目（strip 在 merge 之前跑在 bundle.Task 上，传入
 // History 已无 Passed 条目）。
 func TestTaskImport_MergeDoesNotIntroduceForeignSignals(t *testing.T) {

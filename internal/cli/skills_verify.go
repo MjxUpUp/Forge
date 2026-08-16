@@ -22,11 +22,11 @@ import (
 )
 
 var (
-	skVerSkill     string
-	skVerDecision  string
-	skVerResult    string
-	skVerAt        string
-	skVerHistory   bool
+	skVerSkill       string
+	skVerDecision    string
+	skVerResult      string
+	skVerAt          string
+	skVerHistory     bool
 	skVerHistoryJSON bool
 )
 
