@@ -61,8 +61,20 @@ type Conclusion struct {
 	// Total number of acceptance criteria.
 	AcceptanceTotal int `json:"acceptance_total"` // 验收标准总数
 	// Scoring dimensions below 70.
-	LowDimensions []string  `json:"low_dimensions,omitempty"` // <70 的评分维度
-	CompletedAt   time.Time `json:"completed_at"`
+	LowDimensions []string `json:"low_dimensions,omitempty"` // <70 的评分维度
+	// DimScores carries EVERY dimension's raw score (not just the <70 binary). Noise-band
+	// consumers (recurrence hardening) need the number: a 67 and a 40 are both "low" to
+	// LowDimensions, but only the 40 is clearly low once the 0-3pt boundary flap around the
+	// 70 cut is discounted (AutoDesign margin calibration). Filled by BuildConclusion when
+	// score != nil; legacy conclusions (written before this field) unmarshal to nil —
+	// consumers must fall back to LowDimensions.
+	//
+	// DimScores 携带每个维度的原始分（而非只有 <70 二值）。噪声带消费方（复发升硬）
+	// 需要数字：67 和 40 在 LowDimensions 里都是「低」，但按 AutoDesign margin 校准，
+	// 70 切线附近 0-3 分的边界抖动折价后只有 40 是明确低。BuildConclusion 在 score != nil
+	// 时填充；存量结论（早于该字段）反序列化为 nil——消费方须回落 LowDimensions。
+	DimScores []DimScore `json:"dim_scores,omitempty"`
+	CompletedAt time.Time `json:"completed_at"`
 	// RetrospectiveNudge: weak evidence (Unverified/Weak) or low score (<70) → true.
 	// Drives session-retrospective to review this completion claim at session end —
 	// especially the "high-score but weak-evidence" blind spot (score cannot tell whether
@@ -78,6 +90,16 @@ type Conclusion struct {
 	// DesignPhases 是 inferDesignPhases 推断出的设计阶段（如 requirement/api/backend）。
 	// 用于 phase-aware 健康报告（phase_pass_rate）和回路接入。
 	DesignPhases []string `json:"design_phases,omitempty"`
+}
+
+// DimScore is one scoring dimension's raw score — the number behind the <70 binary, so
+// noise-band consumers can tell a 40 (clearly low) from a 67 (boundary flap).
+//
+// DimScore 是单个评分维度的原始分——<70 二值背后的数字，让噪声带消费方能区分
+// 40（明确低）与 67（边界抖动）。
+type DimScore struct {
+	Dimension string  `json:"dimension"`
+	Score     float64 `json:"score"`
 }
 
 // BuildConclusion is a pure function: it aggregates score + evidence chain + acceptance
@@ -110,7 +132,9 @@ func BuildConclusion(
 	if score != nil {
 		c.Score = score.Overall
 		c.Grade = score.Grade
+		c.DimScores = make([]DimScore, 0, len(score.Dimensions))
 		for _, d := range score.Dimensions {
+			c.DimScores = append(c.DimScores, DimScore{Dimension: string(d.Dimension), Score: float64(d.Score)})
 			if d.Score < 70 {
 				c.LowDimensions = append(c.LowDimensions, string(d.Dimension))
 			}
