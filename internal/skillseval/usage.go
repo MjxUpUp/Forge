@@ -105,6 +105,42 @@ type UsageReport struct {
 	UsedSkills     int          `json:"used_skills"`
 	NeverTriggered []string     `json:"never_triggered"`
 	HotSkills      []SkillCount `json:"hot_skills"`
+	// Funnel is the passive-trigger funnel (hit → delivered → engaged). Filled only by
+	// AnalyzeUsageWithFunnel (the CLI usage view); AnalyzeUsage leaves it nil — consumers like
+	// weakness analysis only need reach counts, and the join (checklog × toollog) is wasted
+	// work there.
+	//
+	// Funnel 是被动触发漏斗（命中 → 送达 → 加载）。仅 AnalyzeUsageWithFunnel（CLI usage
+	// 视图）填充；AnalyzeUsage 留 nil——weakness 等消费方只要触达计数，join
+	// （checklog × toollog）在那里是白做的工作。
+	Funnel *FunnelReport `json:"funnel,omitempty"`
+	// Drift is the production-vs-repo trigger-set comparison. Same fill rule as Funnel.
+	//
+	// Drift 是生产 vs 仓库源的判定集对比。填充规则同 Funnel。
+	Drift *TriggerSetDrift `json:"drift,omitempty"`
+}
+
+// AnalyzeUsageWithFunnel = AnalyzeUsage + 被动触发漏斗。`forge skills usage` 的入口：
+// 触达计数之外，回答「注入是否送达、命中后是否被加载」。判定集漂移（Drift）由 cli 层
+// 用 skilltrigger.LoadAll 扫两侧目录后经 CompareTriggerSets 赋值——本包 import
+// skilltrigger 会成环（见 drift.go 包注释）。
+//
+// AnalyzeUsageWithFunnel = AnalyzeUsage + the passive-trigger funnel. The `forge skills
+// usage` entry: beyond reach counts, it answers "was the injection delivered, was the skill
+// loaded after the hit". Trigger-set drift (Drift) is assigned by the cli layer after
+// scanning both dirs with skilltrigger.LoadAll via CompareTriggerSets — importing
+// skilltrigger here would cycle (see the drift.go package comment).
+func AnalyzeUsageWithFunnel(root, canonical string) (*UsageReport, error) {
+	rep, err := AnalyzeUsage(root, canonical)
+	if err != nil {
+		return nil, err
+	}
+	funnel, err := AnalyzeTriggerFunnel(root)
+	if err != nil {
+		return nil, err
+	}
+	rep.Funnel = funnel
+	return rep, nil
 }
 
 // AnalyzeUsage merges two reach signals and crosses them with the canonical skill set to produce an
