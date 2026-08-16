@@ -9,6 +9,7 @@ metadata:
   pattern: pipeline + gate
   domain: frontend
   composes: [frontend-feature-development, test-discipline, verification-driver]
+  triggers: [{"event":"UserPromptSubmit","keywords":["迁移设计系统","旧设计系统","换色板","改主题色","token 迁移","design system migration","migrate tokens","rebrand","全套重做","重做主题","新建组件库","换设计系统","AI 味 UI 升级","风格统一"],"cooldown":300}]
 ---
 
 # 设计系统迁移与组件库升级方法论

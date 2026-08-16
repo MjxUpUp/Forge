@@ -87,3 +87,21 @@ description 审计合格未改动 + evals.json 建立
 ### Evidence
 
 docs/skills-value-audit-2026-08-02.md
+
+## [d-18d1f4e8a0b6c318-1a2b3c4d] accept
+
+- **Skill**: design-system-migration
+- **DecidedAt**: 2026-08-16T12:00:00Z
+- **By**: claude-code
+
+### Diagnosis
+
+接续审计发现全网唯一入边是 design-system-workflow description 的 SKIP 括号一句，无 triggers 无 routes 无 hook，最弱触达节点
+
+### Revision
+
+frontmatter metadata.triggers 新增 UserPromptSubmit 关键词触发器（设计系统迁移/换色板域）
+
+### Evidence
+
+2026-08-16 功能点接续审计：14 个弱触达 skill 中入边数最少（1）且唯一入边非正向分发

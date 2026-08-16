@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,17 +41,15 @@ func writeForgePluginFixture(t *testing.T, home string) {
 }
 
 // writeProjectLevelForgeDupes preseeds project-level duplicate assets in dir (pure forge origin):
-// .claude/settings.local.json (ForgeHookSpec hooks written by GenerateSettings) + .mcp.json
+// .claude/settings.local.json (ForgeHookSpec hooks, legacy residue) + .mcp.json
 // (pure forge MCP server). Simulates the state right after init/sync wrote them and before dedupe cleans up.
 //
 // writeProjectLevelForgeDupes 在 dir 预置 project-level 重复资产（纯 forge 来源）:
-// .claude/settings.local.json（GenerateSettings 写的 ForgeHookSpec hooks）+ .mcp.json
+// .claude/settings.local.json（ForgeHookSpec hooks，历史残留）+ .mcp.json
 // （纯 forge MCP server）。模拟 init/sync 刚写入、dedupe 尚未清理的状态。
 func writeProjectLevelForgeDupes(t *testing.T, dir string) {
 	t.Helper()
-	if err := hooks.GenerateSettings(dir); err != nil {
-		t.Fatalf("GenerateSettings: %v", err)
-	}
+	writeClaudeSettingsFixture(t, dir)
 	mcp := `{"mcpServers":{"forge":{"command":"forge","args":["mcp","serve"]}}}`
 	if err := os.WriteFile(filepath.Join(dir, ".mcp.json"), []byte(mcp), 0644); err != nil {
 		t.Fatalf("write .mcp.json: %v", err)
@@ -406,5 +405,28 @@ func TestPluginPackCmd_SkillsHelpAndGeneration(t *testing.T) {
 	}
 	if shipped == 0 {
 		t.Errorf("plugins/forge/skills/ has 0 dirs with SKILL.md — skills distribution regressed to hooks-only")
+	}
+}
+
+// writeClaudeSettingsFixture writes a project-level .claude/settings.local.json whose
+// hooks section is exactly hooks.ForgeHookSpec — the test-side stand-in for the removed
+// hooks.GenerateSettings writer. Dedupe tests use it to simulate legacy project-level
+// residue; parity-style tests read the file as the Claude Code wiring ground truth.
+//
+// writeClaudeSettingsFixture 写项目级 .claude/settings.local.json，hooks 段恰为
+// hooks.ForgeHookSpec——已删除的 hooks.GenerateSettings writer 的测试侧替身。
+// dedupe 测试用它模拟历史项目级残留；parity 类测试把它读作 Claude Code 接线基准。
+func writeClaudeSettingsFixture(t *testing.T, dir string) {
+	t.Helper()
+	data, err := json.Marshal(map[string]any{"hooks": hooks.ForgeHookSpec()})
+	if err != nil {
+		t.Fatalf("marshal ForgeHookSpec: %v", err)
+	}
+	path := filepath.Join(dir, ".claude", "settings.local.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatalf("mkdir .claude: %v", err)
+	}
+	if err := os.WriteFile(path, append(data, '\n'), 0644); err != nil {
+		t.Fatalf("write settings.local.json: %v", err)
 	}
 }

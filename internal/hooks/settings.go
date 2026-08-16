@@ -190,17 +190,31 @@ func ForgeHookSpec() map[string][]HookMatcher {
 		// against official docs 2026-08, see buildCodexHooks/cursorEventName):
 		// claude-code and codex take both events; cursor takes UserPromptSubmit
 		// (as beforeSubmitPrompt) but has NO post-compaction event (preCompact is
-		// observe-only and cannot carry the re-injection contract), and opencode's
-		// TS plugin does not read ForgeHookSpec — cursor falls back to the
-		// SessionStart tl;dr tier for the compact case.
+		// observe-only and cannot carry the re-injection contract) — cursor falls back to the
+		// SessionStart tl;dr tier for the compact case. windsurf has no PostCompact in
+		// Cascade's registry either, and its UserPromptSubmit group (resume-reinject/
+		// skill-trigger) is deliberately unwired: without PostCompact, compact-resume
+		// never sets the reinject flag, so resume-reinject would be permanently silent —
+		// its pre_user_prompt channel carries the SessionStart group instead (pinned by
+		// TestWindsurfWiringMirrorsClaudeSettings's negative assertion). opencode's TS
+		// plugin wires only tool-hook entries and does not read ForgeHookSpec, so the
+		// SessionStart/Stop/UserPromptSubmit/PostCompact groups never fire there (known
+		// gap, registered in opencode.go's header; compact-scenario continuity leans on
+		// the SessionStart tier where available).
 		//
 		// PostCompact + UserPromptSubmit 构成 gap#2 的根治层（压缩后自动重注入
 		// 完整接续上下文，不靠 agent 主动 forge task resume）。宿主覆盖（2026-08
 		// 按官方文档核实，见 buildCodexHooks/cursorEventName）：claude-code 与
 		// codex 两个 event 都接；cursor 接 UserPromptSubmit（映射
 		// beforeSubmitPrompt）但没有 post-compaction 事件（preCompact 仅观察型，
-		// 承载不了重注入契约）；opencode 的 TS plugin 不读 ForgeHookSpec——
-		// cursor 在压缩场景靠 SessionStart 的 tl;dr tier 缓解。
+		// 承载不了重注入契约）——cursor 在压缩场景靠 SessionStart 的 tl;dr tier 缓解。
+		// windsurf 的 Cascade 名册同样没有 PostCompact，其 UserPromptSubmit 组
+		// （resume-reinject/skill-trigger）刻意未接：没有 PostCompact 则 compact-resume
+		// 永不置重注入标志，resume-reinject 挂上也恒静默——pre_user_prompt 通道改载
+		// SessionStart 组（由 TestWindsurfWiringMirrorsClaudeSettings 的负向断言钉住）。
+		// opencode 的 TS plugin 只接 tool-hook 入口、不读 ForgeHookSpec，故
+		// SessionStart/Stop/UserPromptSubmit/PostCompact 四组在其上永不触发（已知缺口，
+		// 登记于 opencode.go 头注释；压缩场景接续在可用处依赖 SessionStart tier）。
 		"PostCompact": []HookMatcher{
 			{
 				Hooks: []HookEntry{
@@ -219,47 +233,23 @@ func ForgeHookSpec() map[string][]HookMatcher {
 	}
 }
 
-// GenerateSettings creates/updates .claude/settings.local.json, writing the hook
-// integration.
-// Merge-style: reads the existing file and preserves user-defined top-level fields
-// (env/model/enabledPlugins etc.), only updating the hooks section to ForgeHookSpec.
-// Overwriting the whole file would lose user configuration — fatal especially in the
-// plugin-dedupe scenario: init writes hooks → dedupe deletes forge hooks → if non-hooks
-// fields are not preserved, the file is deleted and the user's env/model is lost
-// (1.2.0 regression, fixed in 1.2.1).
-//
-// GenerateSettings 创建/更新 .claude/settings.local.json，写入 hook 集成。
-// 合并式:读现有文件,保留用户自定义顶层字段(env/model/enabledPlugins 等),
-// 只把 hooks 段更新为 ForgeHookSpec。覆盖整个文件会丢失用户配置——plugin-dedupe
-// 场景下尤其致命:init 写 hooks → dedupe 删 forge hooks → 若非 hooks 字段没保留,
-// 文件被删、用户 env/model 丢失(1.2.0 回归,1.2.1 修)。
-func GenerateSettings(projectDir string) error {
-	claudeDir := filepath.Join(projectDir, ".claude")
-	if err := os.MkdirAll(claudeDir, 0755); err != nil {
-		return fmt.Errorf("create .claude dir: %w", err)
-	}
-	return mergeForgeHooksIntoSettings(filepath.Join(claudeDir, "settings.local.json"))
-}
-
 // GenerateUserSettings merges ForgeHookSpec into the user-level Claude settings
 // (~/.claude/settings.json, respecting CLAUDE_CONFIG_DIR via ClaudeHome()). Merge
-// semantics are identical to GenerateSettings (json.RawMessage preserves the user's
-// other top-level fields, and within the hooks section user-defined entries are
-// kept — only forge-sourced entries are replaced) — both are thin path wrappers
-// over mergeForgeHooksIntoSettings. The user-level file is settings.json
-// (not settings.local.json): it is the machine-wide settings file Claude Code reads
-// for every project. The file is backed up via userassets.BackupOriginal BEFORE
-// the first write (first backup wins as the rollback anchor; rollback via
-// `forge uninstall --restore`).
+// semantics: json.RawMessage preserves the user's other top-level fields, and within
+// the hooks section user-defined entries are kept — only forge-sourced entries are
+// replaced — it is a thin path wrapper over mergeForgeHooksIntoSettings. The
+// user-level file is settings.json (not settings.local.json): it is the machine-wide
+// settings file Claude Code reads for every project. The file is backed up via
+// userassets.BackupOriginal BEFORE the first write (first backup wins as the
+// rollback anchor; rollback via `forge uninstall --restore`).
 //
 // GenerateUserSettings 把 ForgeHookSpec 合并进 user-level Claude settings
-// （~/.claude/settings.json，经 ClaudeHome() 尊重 CLAUDE_CONFIG_DIR）。merge 语义与
-// GenerateSettings 完全一致（json.RawMessage 保留用户其他顶层字段，hooks 段内用户
-// 自定义条目保留——只替换 forge 来源条目）——两者都是 mergeForgeHooksIntoSettings
-// 的薄路径封装。user-level 文件是 settings.json（非 settings.local.json）：
-// Claude Code 对每个项目都读这份全机器配置。首次写入前经
-// userassets.BackupOriginal 备份（首次备份为回滚锚点；`forge uninstall --restore`
-// 回滚）。
+// （~/.claude/settings.json，经 ClaudeHome() 尊重 CLAUDE_CONFIG_DIR）。merge 语义：
+// json.RawMessage 保留用户其他顶层字段，hooks 段内用户自定义条目保留——只替换
+// forge 来源条目——是 mergeForgeHooksIntoSettings 的薄路径封装。user-level 文件是
+// settings.json（非 settings.local.json）：Claude Code 对每个项目都读这份全机器配置。
+// 首次写入前经 userassets.BackupOriginal 备份（首次备份为回滚锚点；
+// `forge uninstall --restore` 回滚）。
 func GenerateUserSettings() error {
 	home := ClaudeHome()
 	if home == "" {
@@ -299,7 +289,7 @@ func GenerateUserSettings() error {
 // event (user entries first, forge entries after). Stripping before appending makes
 // regeneration idempotent. Replacing the whole hooks section would silently destroy
 // the user's own hooks; overwriting the whole file would lose user configuration
-// (the 1.2.0 regression, fixed in 1.2.1 — see GenerateSettings).
+// (the 1.2.0 regression, fixed in 1.2.1).
 // A missing file is created; a non-NotExist read/parse error is returned (never
 // silently overwrite unreadable user config).
 //
@@ -309,7 +299,7 @@ func GenerateUserSettings() error {
 // 原样保留（未知字段不丢——类型化往返会静默剥掉它们），再把当前 ForgeHookSpec
 // 条目按事件追加（同事件下用户条目在前、forge 在后）。先剥后追加使重生成幂等。
 // 整段替换 hooks 会静默销毁用户自己的 hooks；整文件覆盖会丢失用户配置
-// （1.2.0 回归，1.2.1 修——见 GenerateSettings）。文件不存在则新建；
+// （1.2.0 回归，1.2.1 修）。文件不存在则新建；
 // 非 NotExist 的读/解析错误原样返回（绝不静默覆盖读不出的用户配置）。
 func mergeForgeHooksIntoSettings(path string) error {
 	cfg := map[string]json.RawMessage{}
@@ -461,7 +451,7 @@ func StripForgeHooks(projectDir string, keepEmpty bool) (changed bool, err error
 // Idempotent: no settings.local.json / no hooks field / no forge hooks all result in a no-op
 // (changed=false). The returned changed flag indicates whether the file was actually modified
 // (used by forge plugin dedupe to decide whether to print a notice).
-// GenerateSettings stays a pure function (always writes hooks). When the plugin is already
+// GenerateUserSettings stays a pure function (always writes hooks). When the plugin is already
 // installed, the duplication is cleaned by the command layer
 // (init/sync's dedupeProjectLevelIfPlugin + plugin dedupe's runPluginDedupe, called uniformly
 // after all writes, covering project-level + user-level) — so unit tests do not depend on
@@ -487,7 +477,7 @@ func StripForgeHooks(projectDir string, keepEmpty bool) (changed bool, err error
 //
 // 幂等：无 settings.local.json / 无 hooks 字段 / 无 forge hooks 时均 no-op（changed=false）。
 // 返回 changed 表示是否实际改动了文件（供 forge plugin dedupe 决定是否输出提示）。
-// GenerateSettings 保持纯函数（永远写 hooks）。plugin 已装时,重复由命令层
+// GenerateUserSettings 保持纯函数（永远写 hooks）。plugin 已装时,重复由命令层
 // （init/sync 的 dedupeProjectLevelIfPlugin + plugin dedupe 的 runPluginDedupe,所有写入后
 // 统一调用,覆盖 project-level + user-level）清理——避免单元测试依赖全局 IsClaudePluginInstalled 状态。
 func StripForgeHooksAt(path string, keepEmpty bool) (changed bool, err error) {

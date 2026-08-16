@@ -1806,3 +1806,22 @@ func TestForgeHookSpec_Gap2ReinjectChain(t *testing.T) {
 		}
 	}
 }
+
+// GenerateSettings is the test-local stand-in for the removed production writer (the
+// project-level settings path was superseded by the plugin-pack takeover; production
+// writes user-level via GenerateUserSettings). It preserves the exact old semantics —
+// create .claude/, merge forge hooks into settings.local.json — so the merge-behavior
+// tests above keep guarding mergeForgeHooksIntoSettings, which stays alive in
+// production via GenerateUserSettings.
+//
+// GenerateSettings 是已删除的生产 writer（项目级 settings 路径已被 plugin-pack 接管
+// 取代；生产经 GenerateUserSettings 写用户级）的测试本地替身。保持与旧实现完全相同
+// 的语义——创建 .claude/、把 forge hooks 合并进 settings.local.json——让上面的
+// merge 行为测试继续守护 mergeForgeHooksIntoSettings（该逻辑在生产中经
+// GenerateUserSettings 存活）。
+func GenerateSettings(projectDir string) error {
+	if err := os.MkdirAll(filepath.Join(projectDir, ".claude"), 0755); err != nil {
+		return err
+	}
+	return mergeForgeHooksIntoSettings(filepath.Join(projectDir, ".claude", "settings.local.json"))
+}

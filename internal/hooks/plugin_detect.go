@@ -11,34 +11,37 @@ import (
 //
 // Background: the plugin (user-level, ~/.claude/plugins/cache/forge/forge/<sha>/)
 // .claude-plugin/plugin.json registers ForgeHookSpec (hooks). This fully duplicates
-// the project-level settings.local.json hooks written by forge init (GenerateSettings)
-// — Claude Code merges both registrations → the same hook runs twice (perf ×2 +
-// advisory noise ×2; idempotent so no errors, but redundant).
+// the user-level settings.json hooks written by GenerateUserSettings — Claude Code
+// merges both registrations → the same hook runs twice (perf ×2 + advisory noise ×2;
+// idempotent so no errors, but redundant). (Historical note: pre-plugin, init also
+// wrote project-level settings.local.json via the since-removed GenerateSettings;
+// project-level forge hooks now only exist as residue that StripForgeHooksAt cleans.)
 //
-// Resolution: GenerateSettings stays a pure function (always writes); plugin
+// Resolution: GenerateUserSettings stays a pure function (always writes); plugin
 // detection lives only at the command layer (init.go / sync.go's
 // dedupeProjectLevelIfPlugin) — after all writes complete, StripForgeHooks is called
-// uniformly to clean project-level duplicate hooks so the user-level plugin takes
-// over. StripForgeMCPServer additionally cleans leftover .mcp.json in old projects
+// uniformly to clean duplicate hooks so the user-level plugin takes over.
+// StripForgeMCPServer additionally cleans leftover .mcp.json in old projects
 // where historical init/sync wrote the forge MCP server (the MCP layer has been
 // fully removed; the plugin no longer ships .mcp.json, this only cleans old residue).
-// Detection is deliberately kept out of Translate / GenerateSettings so unit tests
+// Detection is deliberately kept out of Translate / GenerateUserSettings so unit tests
 // do not depend on the global IsClaudePluginInstalled state.
 //
 // plugin_detect.go — 检测 forge 是否作为 Claude Code user-level plugin 已装。
 //
 // 背景：plugin（user-level，~/.claude/plugins/cache/forge/forge/<sha>/）的
-// .claude-plugin/plugin.json 注册了 ForgeHookSpec（hooks）。这与 forge init 写的
-// project-level settings.local.json 的 hooks（GenerateSettings 写）完全重复——
-// Claude Code 合并两份注册 → 同一 hook 跑两遍（性能 ×2 + advisory 噪音 ×2，
-// 幂等所以不出错，但冗余）。
+// .claude-plugin/plugin.json 注册了 ForgeHookSpec（hooks）。这与 GenerateUserSettings
+// 写的 user-level settings.json 的 hooks 完全重复——Claude Code 合并两份注册 →
+// 同一 hook 跑两遍（性能 ×2 + advisory 噪音 ×2，幂等所以不出错，但冗余）。
+// （史注：plugin 之前 init 还经已删除的 GenerateSettings 写过 project-level
+// settings.local.json；project 级 forge hooks 现仅作为残留存在，由 StripForgeHooksAt 清理。）
 //
-// 解法：GenerateSettings 保持纯函数（永远写），plugin 检测只在命令层
+// 解法：GenerateUserSettings 保持纯函数（永远写），plugin 检测只在命令层
 // （init.go / sync.go 的 dedupeProjectLevelIfPlugin）——所有写入完成后统一调
-// StripForgeHooks 清理 project-level 重复 hooks，让 plugin user-level 接管。
+// StripForgeHooks 清理重复 hooks，让 plugin user-level 接管。
 // StripForgeMCPServer 另清历史 init/sync 写过 forge MCP server 的旧项目 .mcp.json 残留
 // （MCP 层已全拆，plugin 不再带 .mcp.json，仅清旧残留）。
-// 检测不放 Translate / GenerateSettings 内，避免单元测试依赖全局 IsClaudePluginInstalled 状态。
+// 检测不放 Translate / GenerateUserSettings 内，避免单元测试依赖全局 IsClaudePluginInstalled 状态。
 
 // ClaudeHome returns the Claude Code configuration home directory. It prefers the
 // CLAUDE_CONFIG_DIR env var (a custom config directory supported by Claude Code),

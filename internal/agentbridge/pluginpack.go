@@ -48,7 +48,7 @@ package agentbridge
 // is empty, and DefaultPluginPack pre-fills forge's owner (MjxUpUp).
 //
 // Coverage: marketplace-model tools (claude/cursor; codex/copilot reuse claude marketplace).
-// opencode/pi go through their own project-level/package-level generators (opencode.go's
+// opencode goes through their own project-level/package-level generators (opencode.go's
 // forge.ts, pi's pi install), outside the marketplace model.
 //
 // Plugin pack 生成：让 forge 通过各 agent 的 plugin marketplace 一键分发。采用多 host
@@ -96,7 +96,7 @@ package agentbridge
 // 报错，DefaultPluginPack 预填 forge 的 owner（MjxUpUp）。
 //
 // 覆盖范围：marketplace 模型的工具（claude/cursor；codex/copilot 复用 claude marketplace）。
-// opencode/pi 走各自项目级/包级生成器（opencode.go 的 forge.ts、pi 的 pi install），
+// opencode 走各自项目级/包级生成器（opencode.go 的 forge.ts、pi 的 pi install），
 // 不在 marketplace 模型内。
 
 import (
@@ -258,15 +258,15 @@ func writeMarketplace(spec PluginPackSpec, dir string) error {
 }
 
 // writeClaudePluginManifest writes plugins/<name>/.claude-plugin/plugin.json. The hooks
-// field is the same object returned by hooks.ForgeHookSpec() (also the one GenerateSettings
-// writes under the `hooks` key of settings.local.json), so `claude plugin install <name>`
+// field is the same object returned by hooks.ForgeHookSpec() (also the one GenerateUserSettings
+// writes under the `hooks` key of the user-level settings.json), so `claude plugin install <name>`
 // yields gate wiring byte-identical to `forge init` — single source of truth.
 // TestPluginPack_HooksMirrorSettings guards this equality.
 //
 // writeClaudePluginManifest 写 plugins/<name>/.claude-plugin/plugin.json。hooks 字段是
-// hooks.ForgeHookSpec() 返回的同一个对象（也是 GenerateSettings 写到 settings.local.json
-// "hooks" key 下的那个），故 `claude plugin install <name>` 得到的 gate 接线与 `forge init`
-// 字节一致——单一真相源。TestPluginPack_HooksMirrorSettings 守卫此相等性。
+// hooks.ForgeHookSpec() 返回的同一个对象（也是 GenerateUserSettings 写到 user-level
+// settings.json "hooks" key 下的那个），故 `claude plugin install <name>` 得到的 gate 接线
+// 与 `forge init` 字节一致——单一真相源。TestPluginPack_HooksMirrorSettings 守卫此相等性。
 func writeClaudePluginManifest(spec PluginPackSpec, pluginDir string) error {
 	manifest := map[string]any{
 		"name":        spec.PluginName,
