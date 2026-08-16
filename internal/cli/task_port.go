@@ -214,26 +214,33 @@ func runTaskImport(cmd *cobra.Command, args []string) error {
 	ref := bundle.Task.TaskRef
 
 	// All incoming session links become ghosts on THIS machine: they record who participated on the
-	// source machine, never a local anchor. Done once, up front, so every strategy sees ghosted links.
+	// source machine, never a local anchor. The ghosting itself lives inside
+	// StripForeignGateSignals (single source, right below) so the migrate path gets it too — every
+	// strategy below sees ghosted links.
 	//
-	// 所有传入的 session 链接在本机都成为幽灵：记录源机器谁参与过，永非本机锚点。一次性前置完成，
-	// 使每种策略都看到已幽灵化的链接。
-	for i := range bundle.Task.SessionLinks {
-		bundle.Task.SessionLinks[i].Imported = true
-	}
+	// 所有传入的 session 链接在本机都成为幽灵：记录源机器谁参与过，永非本机锚点。幽灵化本身在
+	// StripForeignGateSignals 内完成（单一真相源，紧随其后），migrate 路径同样拿到——下方每种
+	// 策略看到的都是已幽灵化的链接。
 
 	// Imported review/acceptance/score signals are FOREIGN evidence — never trusted locally. Without
 	// stripping, a hand-edited or buggy bundle carrying ReviewPassed=true + Acceptance Passed/
 	// AcceptedHeadCommit=current-HEAD would satisfy the task-complete gate's hard prerequisites
-	// without the review sub-agent / verify-acceptance ever running on THIS machine. History (gate
-	// progression) is kept: it never satisfies task-complete (the complete gate itself isn't in
-	// History until it passes here), and re-running an earlier gate is cheap + idempotent.
+	// without the review sub-agent / verify-acceptance ever running on THIS machine. Control-flow
+	// fields are stripped too (2026-08-15 review): CompletedAt (disables every
+	// CompletedAt==nil-guarded hard check), Overrides (silently disables four hard gates), and the
+	// acceptance Run commands get the foreign marker (verify-acceptance demands --trust-foreign
+	// before first execution). Single source of truth: taskpipeline.StripForeignGateSignals —
+	// shared with the .forge migrate path so a repo-committed task file cannot take the other road
+	// into the trusted DataDir.
 	//
 	// 导入的 review/验收/评分信号是外来证据——本机绝不信任。不剥离则手改/有 bug 的 bundle 带上
 	// ReviewPassed=true + 验收 Passed/AcceptedHeadCommit=当前 HEAD，就能满足 task-complete 门禁的硬
-	// 前置，而本机从未跑过 review 子 agent / verify-acceptance。History（门禁进度）保留：它永不满足
-	// task-complete（complete 门禁自身在通过前不在 History），且重跑早先门禁廉价且幂等。
-	stripForeignGateSignals(bundle.Task)
+	// 前置，而本机从未跑过 review 子 agent / verify-acceptance。控制流字段同样剥离（2026-08-15
+	// 审查）：CompletedAt（会关掉所有 CompletedAt==nil 守卫的硬检查）、Overrides（静默关四个硬门禁）、
+	// 验收 Run 命令打外来标记（verify-acceptance 首次执行前须 --trust-foreign）。单一真相源：
+	// taskpipeline.StripForeignGateSignals——与 .forge migrate 路径共用，使 repo 提交的 task 文件
+	// 无法从另一条路进入受信 DataDir。
+	taskpipeline.StripForeignGateSignals(bundle.Task)
 
 	// All state transitions take the per-task lock and reload INSIDE it (design §13): without the lock,
 	// a concurrent resume auto-attach / task decide could save between our load and save, and this
@@ -309,46 +316,17 @@ func runTaskImport(cmd *cobra.Command, args []string) error {
 			}
 		}
 	}
-	fmt.Fprintf(cmd.ErrOrStderr(), `提示：导入不继承源机器的 review/验收/评分；完成前请在本机重跑门禁。接续用 forge task resume --ref %s`, ref)
+	fmt.Fprintf(cmd.ErrOrStderr(), `提示：导入不继承源机器的 review/验收/评分/完成状态/逃生舱；完成前请在本机重跑门禁。验收命令保留但标记为外来——首次 verify-acceptance 需人工审阅后加 --trust-foreign。接续用 forge task resume --ref %s`, ref)
 	fmt.Fprintln(cmd.ErrOrStderr())
 	return nil
 }
 
-// stripForeignGateSignals clears imported review/acceptance/score signals so the local machine must
-// re-run the gates to establish its own evidence (see runTaskImport). History is intentionally kept
-// as provenance — it never satisfies the task-complete hard prerequisite.
+// stripForeignGateSignals moved to taskpipeline.StripForeignGateSignals (trust.go) as the single
+// source of truth shared with the .forge migrate path. See that function's godoc for the full
+// field list and the 2026-08-15 control-flow bypass background.
 //
-// stripForeignGateSignals 清除导入的 review/验收/评分信号，使本机须重跑门禁建立自己的证据（见
-// runTaskImport）。History 保留 task-implement/task-verify 作溯源，但 task-complete 条目被剔除——
-// 否则手改/有 bug 的 bundle 在 History 塞 task-complete 会让本机 IsComplete() 为真（展示/编排提示
-// 面），而本机从未真跑过 complete。硬门禁（review/验收）由上方剥离兜底，此处收紧展示面与注释一致性。
-func stripForeignGateSignals(s *taskpipeline.TaskState) {
-	s.ReviewPassed = false
-	s.ReviewedHeadCommit = ``
-	s.ReviewedChangeHash = ``
-	s.Score = nil
-	for i := range s.Acceptance {
-		s.Acceptance[i].Passed = false
-		s.Acceptance[i].AcceptedHeadCommit = ``
-		s.Acceptance[i].Output = ``
-	}
-	// A forged bundle can put task-complete in History, which IsComplete() reads as "complete" on
-	// the importer (display / orchestration-hint surfaces — the hard gates are the review/
-	// acceptance strips above). Drop the task-complete entry so an imported task is never shown as
-	// complete without a local complete run; task-implement/task-verify stay as legitimate provenance.
-	//
-	// 手改的 bundle 可在 History 塞 task-complete，使本机 IsComplete() 读为「完成」（展示/编排提示
-	// 面——硬门禁是上方的 review/验收剥离）。剔除 task-complete 条目，使导入任务未经本机 complete
-	// 跑过就绝不显示为完成；task-implement/task-verify 作为合法溯源保留。
-	kept := make([]taskpipeline.TaskGateResult, 0, len(s.History))
-	for _, h := range s.History {
-		if h.Gate == `task-complete` {
-			continue
-		}
-		kept = append(kept, h)
-	}
-	s.History = kept
-}
+// stripForeignGateSignals 已迁至 taskpipeline.StripForeignGateSignals（trust.go）作为与 .forge
+// migrate 路径共用的单一真相源。完整字段清单与 2026-08-15 控制流绕过背景见该函数 godoc。
 
 // filterImportedChecklog drops entries already present locally so a repeated --merge import does not
 // duplicate evidence lines in `forge trace`. checklog lines carry no ID, so identity is the composite
