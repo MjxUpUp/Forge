@@ -1288,14 +1288,15 @@ func runTaskVerifyAcceptanceAt(root string, trustForeign bool) error {
 	// Merge acceptance RESULTS onto the freshest on-disk state under the per-task lock (design
 	// §13): a bare SaveTaskState of the pre-run snapshot would clobber concurrent resume/decide
 	// continuity writes — a lost-update on exactly the data import exists to preserve. MutateTaskState
-	// reloads inside the lock; results are matched onto the fresh acceptance spec by Run string so a
-	// concurrently edited spec is never stamped with another command's outcome, and the foreign
-	// marker (trusted branch) flips here too — after the run, fail-closed (see NOTE above).
+	// reloads inside the lock; results are matched onto the fresh acceptance spec by the
+	// (Run, Expected) pair so a concurrently edited spec is never stamped with another command's
+	// outcome, and the foreign marker (trusted branch) flips here too — after the run,
+	// fail-closed (see NOTE above).
 	//
 	// 在 per-task 锁内把验收「结果」合并到最新盘上状态（设计§13）：裸 SaveTaskState 回写实跑前
 	// 快照会覆盖并发 resume/decide 的接续写入——丢的恰是 import 要保的数据。MutateTaskState
-	// 锁内重载；结果按 Run 字符串匹配到最新 acceptance spec 上，并发改过的 spec 不会被盖上
-	// 另一条命令的结果；外来标记（受信分支）也在此翻——实跑之后、fail-closed（见上 NOTE）。
+	// 锁内重载；结果按 (Run, Expected) 二元组匹配到最新 acceptance spec 上，并发改过的 spec
+	// 不会被盖上另一条命令的结果；外来标记（受信分支）也在此翻——实跑之后、fail-closed（见上 NOTE）。
 	if err := taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
 		taskpipeline.MergeAcceptanceResults(s, state.Acceptance, trusted)
 		return nil
