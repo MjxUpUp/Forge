@@ -64,7 +64,13 @@ func runSkillTriggerCmd(cmd *cobra.Command, args []string) error {
 		hookInput.HookEventName = skillTriggerEvent
 	}
 	root, _ := findProjectRoot()
-	rendered, err := runSkillTriggerCore(hookInput, root, cmd.Root().Version, skillTriggerDryRun)
+	// agent 传 ""（→ contextChannelDelivered 走 claude 默认行）：此子命令是调试入口，无
+	// --agent 上下文；生产落章走 runSkillTriggerHook（带真实 agent）。
+	//
+	// agent passes "" (→ contextChannelDelivered takes the claude default row): this
+	// subcommand is a debug entry with no --agent context; production stamping goes through
+	// runSkillTriggerHook (with the real agent).
+	rendered, err := runSkillTriggerCore(hookInput, root, cmd.Root().Version, "", skillTriggerDryRun)
 	if err != nil {
 		return err
 	}
@@ -93,7 +99,7 @@ func runSkillTriggerHook(hookInput HookInput, root, version, agent string) error
 	if agent == "kimi" && hookInput.HookEventName != "UserPromptSubmit" {
 		return nil
 	}
-	rendered, err := runSkillTriggerCore(hookInput, root, version, false)
+	rendered, err := runSkillTriggerCore(hookInput, root, version, agent, false)
 	if agent == "kimi" {
 		if err == nil && rendered != "" {
 			fmt.Print(rendered)
@@ -118,7 +124,8 @@ func runSkillTriggerHook(hookInput HookInput, root, version, agent string) error
 
 // runSkillTriggerCore 是判定 + 渲染核心（hook 链 / 子命令 / dry-run 共用）。
 // 返回渲染文本（无命中返 ""，调用方按需 wrap）。无 canonical 源 / 无 triggers 声明 → 静默 ""。
-func runSkillTriggerCore(hookInput HookInput, root, version string, dryRun bool) (string, error) {
+// agent 用于落章送达判定（contextChannelDelivered）；"" 走 claude 默认行（调试子命令路径）。
+func runSkillTriggerCore(hookInput HookInput, root, version, agent string, dryRun bool) (string, error) {
 	// 全局禁用早返——避免仍跑 Resolve+LoadAll（扫所有 SKILL.md 解析 frontmatter）增加 hook 链延迟。
 	if os.Getenv("FORGE_SKILL_TRIGGER") == "0" {
 		return "", nil
@@ -173,7 +180,7 @@ func runSkillTriggerCore(hookInput HookInput, root, version string, dryRun bool)
 		// 记录触发的 canonical skill 到 checklog——让 skill 触达在下游可观测（usage/effectiveness）。
 		// 否则 skill-trigger 静默注入 AdditionalContext、零持久轨迹，Forge 无法回答"哪些 skill 真触发过"
 		// （dogfood 0 触发盲区）。CheckSkillTrigger 不计入 evidence strength（观测非验证）——见 BuildEvidenceChain。
-		recordSkillTriggerHits(root, ctx, hits)
+		recordSkillTriggerHits(root, ctx, hits, agent, version)
 	}
 	return skilltrigger.Render(hits, ctx), nil
 }
@@ -210,11 +217,21 @@ func buildTriggerContext(hookInput HookInput, root string) skilltrigger.Context 
 // Forge 无法回答"哪些 canonical skill 真触发过"（dogfood 0 触发盲区）。CheckSkillTrigger 是 deterministic
 // （引擎实算声明式触发，agent 无法伪造）且不计入 evidence strength（观测非验证）——见 checklog.BuildEvidenceChain。
 // task_ref 仅当本 session 绑定了活跃（未完成）任务时附加，避免 complete 之后的 Stop 触发被错挂到已完成任务。
-func recordSkillTriggerHits(root string, ctx skilltrigger.Context, hits []skilltrigger.Hit) {
+func recordSkillTriggerHits(root string, ctx skilltrigger.Context, hits []skilltrigger.Hit, agent, version string) {
 	taskRef := ""
 	if active, err := taskpipeline.ActiveTaskState(root, ctx.SessionID); err == nil && active != nil {
 		taskRef = active.TaskRef
 	}
+	// L1 送达章：一次 hook 调用里所有 hit 走同一 (agent, event) 通道，判定一次、逐条落章。
+	// Delivered/Channel/ForgeVersion 让 checklog 成为「真到达模型上下文」的真相源——usage 漏斗的
+	// 送达分母从此可靠，死通道宿主的命中不再虚计成送达（kimi 2026-08-15 修复的全宿主泛化）。
+	//
+	// L1 delivery stamp: all hits in one hook invocation ride the same (agent, event) channel —
+	// verdict computed once, stamped per entry. Delivered/Channel/ForgeVersion make checklog the
+	// ground truth of "actually reached model context" — the usage funnel's delivery denominator
+	// becomes trustworthy, and dead-channel host hits stop counting as delivered (the all-host
+	// generalization of the kimi 2026-08-15 fix).
+	delivered, channel := contextChannelDelivered(agent, ctx.Event)
 	for _, h := range hits {
 		// Detail 经 checklog.DetailForSkillTrigger 单一真相源构造，与读取方
 		// (skillseval.SkillCountsFromChecklog → checklog.SkillFromTriggerDetail) 共契约，杜绝
@@ -234,6 +251,9 @@ func recordSkillTriggerHits(root string, ctx skilltrigger.Context, hits []skillt
 			Detail:    detail,
 			Source:    checklog.EvidenceDeterministic,
 			Level:     checklog.LevelAdvisory,
+			Delivered: &delivered,
+			Channel:   channel,
+			ForgeVersion: version,
 		}); err != nil {
 			fmt.Fprintf(os.Stderr, "[skill-trigger] warning: checklog record failed: %v\n", err)
 		}
