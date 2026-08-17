@@ -847,11 +847,12 @@ func TestSentinelScripts_CfgSidecarRaceSkipsComparison(t *testing.T) {
 	}
 	if _, statErr := os.Stat(fired); statErr != nil {
 		// Diagnose on failure (Windows CI is the only repro environment): does the
-		// PATH shim resolve at all, does the snapshot glob match under this TMPDIR,
-		// and what did the shim see? The probe writes a fresh pattern-matching file
-		// because file-sentinel's cleanup has consumed the real snapshot by now.
+		// cat function override resolve, does the snapshot glob match under this
+		// TMPDIR, and what did the shim see? The probe writes a fresh
+		// pattern-matching file because file-sentinel's cleanup has consumed the
+		// real snapshot by now.
 		//
-		// 失败时诊断（Windows CI 是唯一复现环境）：PATH shim 是否解析得到、
+		// 失败时诊断（Windows CI 是唯一复现环境）：cat 函数覆盖是否生效、
 		// 快照 glob 在该 TMPDIR 下是否匹配、shim 看到了什么。探针另写一个
 		// 匹配模式的新文件——真快照已被 file-sentinel cleanup 消费。
 		probe := filepath.Join(tmp, "forge-snapshot-"+sid+"-probe")
