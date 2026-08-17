@@ -19,6 +19,7 @@ import (
 )
 
 var skCasesSkill string
+var skCasesBlind bool
 
 var skillsEvalCasesCmd = &cobra.Command{
 	Use:   "eval-cases",
@@ -26,6 +27,11 @@ var skillsEvalCasesCmd = &cobra.Command{
 	Long: `输出 case 集 JSON，供 agent dispatch subagent 跑 prompt 时拿 case_id + prompt。
 
 trigger/not-trigger case：agent 跑 Prompt，回填 actual_triggered（是否触发本 skill）。
+
+--blind：盲测模式——每条 prompt 前置全库 skill 的 name+description 清单
+（渐进披露 L1 模拟，description 截断 200 rune），问题从「是否触发 X」升级为
+「该触发哪个」。ground truth（target）不进 prompt；actual ≠ target 的行即误路由
+混淆数据（record 通路无需改动，actual_triggered 本就承载 <skill名|none>）。
 
 格式：
   [{"id","kind","prompt","target"(trigger)}]`,
@@ -77,6 +83,19 @@ func runSkillsEvalCases(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("skill %q 无 case 集——先 eval-gen --skill %s --save", skCasesSkill, skCasesSkill)
 	}
 	out := caseViews(cases)
+	if skCasesBlind {
+		canonical, _, err := resolveCanonical()
+		if err != nil {
+			return err
+		}
+		preamble, err := skillseval.BlindPreamble(canonical)
+		if err != nil {
+			return fmt.Errorf("构造盲测前置: %w", err)
+		}
+		for i := range out {
+			out[i].Prompt = skillseval.BlindPrompt(preamble, out[i].Prompt)
+		}
+	}
 	data, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {
 		return err
@@ -87,5 +106,6 @@ func runSkillsEvalCases(cmd *cobra.Command, args []string) error {
 
 func init() {
 	skillsEvalCasesCmd.Flags().StringVar(&skCasesSkill, "skill", "", "输出哪个 skill 的 case 集")
+	skillsEvalCasesCmd.Flags().BoolVar(&skCasesBlind, "blind", false, "盲测模式：prompt 前置全库 name+description 清单，问「该触发哪个」")
 	skillsCmd.AddCommand(skillsEvalCasesCmd)
 }

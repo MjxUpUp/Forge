@@ -99,8 +99,8 @@ func casesFile(dir, skill string) string { return filepath.Join(dir, "cases", sk
 // goldenFile 定位人工策展黄金集：<dir>/golden/<skill>/cases.json。黄金集在仓库里
 // （evals/golden/）进 VCS；派生集在 cases/ 下、机器生成。
 func goldenFile(dir, skill string) string { return filepath.Join(dir, "golden", skill, "cases.json") }
-func runsFile(dir, skill string) string  { return filepath.Join(dir, "runs", skill+".jsonl") }
-func baselinesFile(dir string) string    { return filepath.Join(dir, "baselines.json") }
+func runsFile(dir, skill string) string   { return filepath.Join(dir, "runs", skill+".jsonl") }
+func baselinesFile(dir string) string     { return filepath.Join(dir, "baselines.json") }
 
 // RunsFile / BaselinesFile export the storage paths so read-side consumers (dashboard
 // cache) can fingerprint the files for mtime-based invalidation without duplicating the
