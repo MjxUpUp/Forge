@@ -5,10 +5,34 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 )
+
+// hookEnvPath converts a test-generated path into the form the embedded bash
+// hook scripts can actually use on Windows. t.TempDir() yields backslash paths
+// (C:\Users\...), and backslashes in a bash GLOB pattern are escape characters —
+// file-sentinel's snapshot discovery (`for f in "${TMPDIR}/forge-snapshot-..."-*`)
+// matched nothing, silently degrading every Windows run to no-baseline (fail-open),
+// and the cfg-sidecar race shim never fired (TestSentinelScripts_CfgSidecarRaceSkipsComparison
+// "shim 未触发" on windows-latest). Forward-slash C:/... works in cygwin for both
+// glob and open/stat, and stays valid for the Go-side os.Stat calls.
+//
+// hookEnvPath 把测试生成的路径转成内嵌 bash hook 脚本在 Windows 上真正可用的形态。
+// t.TempDir() 产出反斜杠路径（C:\Users\...），而反斜杠在 bash GLOB 模式里是转义符——
+// file-sentinel 的快照发现（`for f in "${TMPDIR}/forge-snapshot-..."-*`）因此匹配不到
+// 任何文件，Windows 上所有 run 静默退化为无基线（fail-open），cfg sidecar 竞态 shim
+// 也因此从不触发（windows-latest 上 TestSentinelScripts_CfgSidecarRaceSkipsComparison
+// 报「shim 未触发」）。正斜杠 C:/... 在 cygwin 下 glob 与 open/stat 都可用，
+// 且对 Go 侧 os.Stat 同样合法。
+func hookEnvPath(p string) string {
+	if runtime.GOOS == "windows" {
+		return strings.ReplaceAll(p, `\`, `/`)
+	}
+	return p
+}
 
 // Script-level tests for the bash-guard → file-sentinel pair: the embedded
 // scripts are written to temp files and executed with real bash against a real
@@ -31,8 +55,8 @@ func sentinelEnv(t *testing.T, sid, tmpdir, qdir string) []string {
 	over := map[string]string{
 		"FORGE_SESSION_ID":     sid,
 		"FORGE_TASK_REF":       "",
-		"TMPDIR":               tmpdir,
-		"FORGE_QUARANTINE_DIR": qdir,
+		"TMPDIR":               hookEnvPath(tmpdir),
+		"FORGE_QUARANTINE_DIR": hookEnvPath(qdir),
 	}
 	out := []string{}
 	for _, kv := range os.Environ() {
@@ -785,14 +809,14 @@ func TestSentinelScripts_CfgSidecarRaceSkipsComparison(t *testing.T) {
 		"    *forge-snapshot-*.cfg) rm -f \"$a\"; : > \"$FORGE_SHIM_FIRED\" ;;\n" +
 		"  esac\n" +
 		"done\n" +
-		"exec '" + realCat + "' \"$@\"\n"
+		"exec '" + hookEnvPath(realCat) + "' \"$@\"\n"
 	if err := os.WriteFile(filepath.Join(shimDir, "cat"), []byte(shim), 0755); err != nil {
 		t.Fatal(err)
 	}
 	fired := filepath.Join(t.TempDir(), "shim-fired")
 	raceEnv := append(append([]string{}, env...),
 		"PATH="+shimDir+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"FORGE_SHIM_FIRED="+fired)
+		"FORGE_SHIM_FIRED="+hookEnvPath(fired))
 
 	// NO real drift: hooksFile is untouched. Only the race-injected sidecar
 	// vanish must not fabricate config drift.
