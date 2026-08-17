@@ -102,7 +102,7 @@ func buildQualitySkillContent(projectDir string, proto *protocol.Protocol) strin
 	sb.WriteString("| 测试验证 | `forge task gate task-verify --ref <ref>` | 测试通过后 |\n")
 	sb.WriteString("| 完成确认 | `forge task gate task-complete --ref <ref>` | E2E 验证通过后 |\n\n")
 	sb.WriteString("所有门禁通过后运行 `forge task complete --ref <ref>` 触发评分。\n\n")
-	sb.WriteString("> **提交时机（重要）**：`git commit` 必须在 `forge task complete` **之前**——`complete` 会清空 active task ref，之后提交源码会被 file-sentinel quarantine。正确顺序：三门禁通过 → `git commit` → `forge task complete`。若已 complete 才发现要提交，开一个 `chore/*-commit` 任务放行。\n\n")
+	sb.WriteString("> **提交时机（重要）**：`git commit` 必须在 `forge task complete` **之前**——`complete` 会清空 active task ref，之后提交源码会被 file-sentinel quarantine。正确顺序：三门禁通过 → `git commit` → `forge task complete`。若已 complete 才发现要提交，开一个 `chore/*-commit` 任务放行。task-complete 门禁检测到工作区未提交变更时会发 `ADVISORY` 提醒——见到即先 commit 再 complete。\n\n")
 
 	sb.WriteString("### 门禁要求\n\n")
 	sb.WriteString("每个门禁代表一个独立的工作阶段，不是形式主义检查：\n\n")
