@@ -60,7 +60,7 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go build -o /tmp/forge ./cmd/forge/
-      # R1-R9 规范校验（exit 2 = 规范失败）。--canonical 指向仓库内 skills/，不走 embed。
+      # R1-R17 规范校验（exit 2 = 规范失败）。--canonical 指向仓库内 skills/，不走 embed。
       - run: /tmp/forge skills validate --canonical ./skills
       # 22 条安全规则审查；--gate：HIGH/CRITICAL 即 exit 4。
       - run: /tmp/forge skills audit --canonical ./skills --gate
