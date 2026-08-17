@@ -145,6 +145,25 @@ func TestReleaseWorkflow_NeedsChain(t *testing.T) {
 	if got := needsList(npm.Needs); len(got) != 1 || got[0] != "goreleaser" {
 		t.Fatalf("npm 必须 needs: [goreleaser]（npm 平台子包的二进制来自 goreleaser 构建并上传的 GitHub Release 产物），got %v", got)
 	}
+
+	// npm-verify：发布后从 npmjs 装回并断言 forge --version == tag——
+	// 「发布后装机无人验证」缺口的收口。必须在 npm 之后（装的是 npm 刚发的版本）。
+	npmVerify, ok := wf.Jobs["npm-verify"]
+	if !ok {
+		t.Fatal("release.yml 缺 npm-verify job（发布后装机验证——npm 发出去不代表用户装得回、版本对得上）")
+	}
+	if got := needsList(npmVerify.Needs); len(got) != 1 || got[0] != "npm" {
+		t.Fatalf("npm-verify 必须 needs: [npm]（验证的是 npm 刚发布的版本），got %v", got)
+	}
+	hasInstallAssert := false
+	for _, s := range npmVerify.Steps {
+		if strings.Contains(s.Run, "npm i -g") && strings.Contains(s.Run, "--version") {
+			hasInstallAssert = true
+		}
+	}
+	if !hasInstallAssert {
+		t.Fatal("npm-verify 必须 npm i -g 装回并断言 forge --version（缺断言则装机验证名存实亡）")
+	}
 }
 
 // TestReleaseWorkflow_TestJobIsGateSource: the test job is the source of the needs chain —

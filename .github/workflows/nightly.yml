@@ -1,0 +1,32 @@
+name: Nightly
+
+on:
+  schedule:
+    # off-minute：避开整点/半点的 Actions + registry 洪峰（队列延迟最小）。
+    - cron: "37 3 * * *"
+  workflow_dispatch:
+
+# 最小权限：只读代码。
+permissions:
+  contents: read
+
+jobs:
+  # E2E 回归 + 装机一致性 smoke：每日在 fresh runner 上验证「用户真实装机路径」
+  # （PR CI 只跑单元测试，不覆盖 init/doctor/分发漂移这条链）。
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+      - run: go build -o /tmp/forge ./cmd/forge/
+      # E2E 回归场景（fresh-install / upgrade 等）。
+      - run: /tmp/forge verify --regression
+      # 先装机（用户级零项目写入），后续 doctor/drift-check 才有检查对象。
+      - run: /tmp/forge init
+      # 装机后环境一致性 smoke。
+      - run: /tmp/forge doctor
+      # 分发分叉检测（canonical vs 已分发）。
+      - run: /tmp/forge skills drift-check

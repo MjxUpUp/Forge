@@ -162,3 +162,25 @@ jobs:
             npm publish --access public --provenance
           fi
         working-directory: npm
+
+  # 发布后装机验证：补「发布后装机无人验证」缺口——npm job 只保证包发出去，
+  # 不保证用户 npm i -g 装回来的二进制能跑、版本对得上 tag（货不对板要发版后
+  # 才发现就晚了）。needs 链尾端：test→goreleaser→npm→npm-verify。
+  npm-verify:
+    needs: npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "22"
+      - name: Install from npmjs and assert version == tag
+        run: |
+          WANT="${GITHUB_REF_NAME#v}"
+          npm i -g "@agent_forge/forge@$WANT"
+          GOT=$(forge --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+          if [ "$GOT" != "$WANT" ]; then
+            echo "::error::npm 装回的 forge 版本 $GOT != tag $WANT——发布产物货不对板"
+            exit 1
+          fi
+          echo "npm-verify passed: forge $GOT == tag v$WANT"
