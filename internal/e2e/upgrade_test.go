@@ -221,7 +221,20 @@ func freshProject(t *testing.T) string {
 	// 把用户级 data home 重定向到 per-test temp dir：forge 子进程（init/hazard/hooks）
 	// 与本测试进程的 store 读取都按 FORGE_DATA_HOME 解析 DataDir，二者一致且不污染真实 ~/.forge。
 	t.Setenv("FORGE_DATA_HOME", t.TempDir())
-	git(t, dir, "init")
+	// Pin the initial branch name: a bare `git init` inherits the machine's
+	// init.defaultBranch (the macOS system gitconfig at
+	// /Library/Developer/CommandLineTools sets main), but tests built on this
+	// fixture — TestMasterBranchReminder — later run `git checkout master`; on a
+	// main-default machine that checkout fails for environment reasons, not code
+	// reasons. -b needs git >= 2.28 (2020); all CI runners and dev machines are
+	// far past it.
+	//
+	// 钉死初始分支名：裸 `git init` 继承机器的 init.defaultBranch（macOS 系统
+	// gitconfig 在 /Library/Developer/CommandLineTools 里设了 main），而建在这套
+	// 夹具上的测试——TestMasterBranchReminder——之后要 `git checkout master`；在
+	// main 默认的机器上该 checkout 因环境原因必挂，非代码原因。-b 需
+	// git >= 2.28（2020 年）；所有 CI runner 与开发机都远高于此。
+	git(t, dir, "init", "-b", "master")
 	git(t, dir, "config", "user.email", "test@example.com")
 	git(t, dir, "config", "user.name", "Test")
 	initGoProject(t, dir)

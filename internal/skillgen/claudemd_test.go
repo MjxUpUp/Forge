@@ -98,6 +98,16 @@ func TestClaudeMDDocumentsCommitTiming(t *testing.T) {
 	if !strings.Contains(section, "chore/*-commit") {
 		t.Error("CLAUDE.md missing chore/*-commit recovery path for post-complete commits")
 	}
+	// The task-complete gate now emits an ADVISORY on uncommitted changes
+	// (CheckNameUncommittedAtComplete) — the doc must tell agents what seeing
+	// that advisory means: commit first, then complete.
+	//
+	// task-complete 门禁现在会对未提交变更发 ADVISORY
+	// （CheckNameUncommittedAtComplete）——文档必须告诉 agent 见到该 advisory
+	// 的含义：先 commit 再 complete。
+	if !strings.Contains(section, "未提交变更") {
+		t.Error("CLAUDE.md missing the uncommitted-changes ADVISORY note (commit before complete, gate now surfaces the inverted order)")
+	}
 }
 
 // TestClaudeMDMatchesActualGuardBehavior guards against documenting fabricated
