@@ -65,6 +65,22 @@ const CheckNameBranchUnmerged checklog.CheckName = "branch-unmerged"
 // 名：任务标题与实改文件零关键词交集——交付内容可能有误的信号。仅 advisory，永不阻塞。
 const CheckNameGoalOutputMismatch checklog.CheckName = "goal-output-mismatch"
 
+// CheckNameUncommittedAtComplete is the checklog name for the task-complete
+// commit-ordering advisory: the working tree still has uncommitted changes at
+// complete time — the documented protocol order is gates → git commit →
+// forge task complete (complete clears the active task ref, so post-complete
+// source writes lose task tracking/protection). Observed 2026-08-17: a session
+// passed all three gates, ran complete, and only committed 32 minutes later —
+// zero material damage by luck (no writes in between), but the window is real.
+// Advisory only, never blocks.
+//
+// CheckNameUncommittedAtComplete 是 task-complete 提交顺序 advisory 的 checklog
+// 名：complete 时工作区仍有未提交变更——协议规定的顺序是三门禁 → git commit →
+// forge task complete（complete 会清空 active task ref，之后的源码写入脱离任务
+// 追踪/保护）。2026-08-17 实证：某会话三门禁全过后先 complete、32 分钟后才
+// commit——侥幸零实质损害（其间无写入），但窗口真实存在。仅 advisory，永不阻塞。
+const CheckNameUncommittedAtComplete checklog.CheckName = "uncommitted-at-complete"
+
 // CheckNameDependencyGate is the checklog name recorded when task-verify/task-complete BLOCKS on an
 // undelivered upstream dependency. Matches the established "BLOCKED 必落盘" pattern (skill-decisions /
 // test-coverage also record before blocking) so score / dashboard / forge trace can see a task
@@ -369,6 +385,32 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 				Detail:  "behavior surface: " + strings.Join(surface, ", "),
 			})
 			fmt.Fprintf(os.Stderr, "%s行为面变更（%s）——文档守卫只覆盖命令引用不覆盖行为描述，提交前请确认 README/homepage/插件文档与新行为一致\n", GateAdvisory("[task-complete] "), strings.Join(surface, ", "))
+		}
+
+		// Commit-ordering advisory: uncommitted changes at complete time mean the
+		// documented order (gates → git commit → forge task complete) was inverted.
+		// Advisory only — complete still succeeds; the point is to surface the
+		// ordering slip at the exact moment it can still be repaired (before the
+		// active task ref is cleared), not to punish. Fail-open when the git probe
+		// is not judgeable (non-repo, probe failure).
+		//
+		// 提交顺序 advisory：complete 时工作区还有未提交变更 = 文档规定的顺序
+		// （三门禁 → git commit → forge task complete）被倒置。仅 advisory——
+		// complete 照常成功；意义在把顺序滑落在还能补救的精确时刻（active task
+		// ref 清空之前）照出来，而非惩罚。git 探测不可判定时 fail-open（非仓库/
+		// 探测失败）。
+		if IsGitRepo(root) {
+			if n, determinable := uncommittedChanges(root); determinable && n > 0 {
+				recordAudit(root, &checklog.Entry{
+					Check:   CheckNameUncommittedAtComplete,
+					Passed:  true,
+					Checked: true,
+					Level:   checklog.LevelAdvisory,
+					TaskRef: state.TaskRef,
+					Detail:  fmt.Sprintf("%d uncommitted changes in working tree at task complete", n),
+				})
+				fmt.Fprintf(os.Stderr, "%s\n", GateAdvisory("[task-complete] 工作区有 %d 处未提交变更——协议顺序：三门禁通过 → git commit → forge task complete（complete 会清空 active task ref，之后的源码写入脱离任务追踪）", n))
+			}
 		}
 
 		// Branch-merged advisory: completing a task whose feature branch has not been

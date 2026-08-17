@@ -1185,16 +1185,29 @@ IS_WRITE_CMD=0
 # missing manifest means a planted or truncated snapshot — skip the comparison.
 CFG_FROM_MANIFEST=""
 if [ -f "$SNAPSHOT_CFG" ]; then
-  CFG_NOW=$(forge_cfg_manifest)
-  # Symmetric difference of "hash  path" lines, reduced to paths: a changed
-  # hash surfaces both the old and the new line (same path, deduped by sort -u);
-  # an added/removed file surfaces its single line.
-  CFG_FROM_MANIFEST=$(
-    {
-      printf '%s\n' "$CFG_NOW"
-      cat "$SNAPSHOT_CFG"
-    } | sort | uniq -u | awk '{$1=""; sub(/^ +/,""); print}' | sort -u || true
-  )
+  # Read the manifest ONCE, then re-check existence: a concurrent file-sentinel
+  # (parallel Bash tool calls in one session both glob the newest snapshot) can
+  # run its cleanup rm between the -f test above and this read. Observed
+  # 2026-08-17: the cat then printed "No such file or directory" to stderr AND
+  # fed the diff an EMPTY manifest — whose symmetric difference flags every
+  # current config file as drift (the false-quarantine direction). A sidecar
+  # that vanished mid-read means the pairing is no longer ours to judge: honor
+  # the "missing manifest = skip comparison" contract and skip. ($SNAPSHOT_FILE
+  # and $SNAPSHOT_OK are not re-checked: their consumers already fail open on a
+  # vanished file — empty BEFORE_ALL without .ok takes the WARN branch below.)
+  CFG_MANIFEST_DATA=$(cat "$SNAPSHOT_CFG" 2>/dev/null || true)
+  if [ -f "$SNAPSHOT_CFG" ]; then
+    CFG_NOW=$(forge_cfg_manifest)
+    # Symmetric difference of "hash  path" lines, reduced to paths: a changed
+    # hash surfaces both the old and the new line (same path, deduped by sort -u);
+    # an added/removed file surfaces its single line.
+    CFG_FROM_MANIFEST=$(
+      {
+        printf '%s\n' "$CFG_NOW"
+        printf '%s\n' "$CFG_MANIFEST_DATA"
+      } | sort | uniq -u | awk '{$1=""; sub(/^ +/,""); print}' | sort -u || true
+    )
+  fi
 fi
 
 # Clean up

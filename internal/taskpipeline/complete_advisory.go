@@ -35,6 +35,26 @@ func resolveMainlineRef(root string) string {
 	return ""
 }
 
+// uncommittedChanges reports how many working-tree changes (staged, unstaged,
+// untracked) exist: determinable=false means the git probe itself failed and the
+// caller must fail open — a probe failure must never fabricate an advisory.
+//
+// uncommittedChanges 返回工作区变更数（已暂存 + 未暂存 + 未跟踪）：
+// determinable=false 表示 git 探测本身失败，调用方必须 fail-open——探测失败
+// 绝不能编造出一条 advisory。
+func uncommittedChanges(root string) (count int, determinable bool) {
+	out, err := exec.Command("git", "-C", root, "status", "--porcelain").Output()
+	if err != nil {
+		return 0, false
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.TrimSpace(line) != "" {
+			count++
+		}
+	}
+	return count, true
+}
+
 // branchMergedInto reports (merged, determinable): determinable=false means the git
 // probe itself failed (not a repo state we can judge) and the caller must fail open —
 // only a clean exit-1 from merge-base --is-ancestor means 'definitely not merged'.

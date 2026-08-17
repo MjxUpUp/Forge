@@ -724,3 +724,102 @@ func TestSentinelScripts_HooksDeployTagMismatchQuarantines(t *testing.T) {
 		t.Fatalf("file-sentinel must PASS on tag-matched fresh deploy marker, got FAIL:\n%s", out)
 	}
 }
+
+// TestSentinelScripts_CfgSidecarRaceSkipsComparison pins the .cfg sidecar race fix:
+// a concurrent file-sentinel (parallel Bash tool calls in one session both glob the
+// newest snapshot) can run its cleanup rm between file-sentinel's -f test and the
+// manifest read. Observed 2026-08-17 (checklog 11:59:32): the cat printed
+// "No such file or directory" to stderr AND fed the diff an EMPTY manifest — whose
+// symmetric difference then flags every current config file as drift (the
+// false-quarantine direction). A `cat` shim deletes the sidecar at the exact read
+// moment, deterministically reproducing the interleaving; the fixed script must
+// skip the comparison (PASS, no stderr noise, nothing quarantined).
+//
+// TestSentinelScripts_CfgSidecarRaceSkipsComparison 钉住 .cfg sidecar 竞态修复：
+// 并发的 file-sentinel（同会话并行 Bash 调用同时 glob 最新快照）可能在
+// file-sentinel 的 -f 测试与 manifest 读取之间执行 cleanup rm。2026-08-17 实证
+// （checklog 11:59:32）：cat 向 stderr 打出 "No such file or directory"，且喂给
+// diff 的 manifest 为空——其对称差会把全部当前 config 文件判为 drift（假隔离
+// 方向）。用 `cat` shim 在读取的精确时刻删掉 sidecar，确定性复现该交错；修复后
+// 的脚本必须跳过比较（PASS、无 stderr 噪音、零隔离）。
+func TestSentinelScripts_CfgSidecarRaceSkipsComparison(t *testing.T) {
+	dir, hooksFile := setupHooksDeployRepo(t)
+	const sid = "sess-cfg-race"
+	tmp := t.TempDir()
+	qdir := t.TempDir()
+	env := sentinelEnv(t, sid, tmp, qdir)
+
+	// Read-only command: bash-guard writes the snapshot trio. The repo carries a
+	// gitignored .forge/hooks file, so the manifest has real content — without it
+	// a half-read manifest would be empty-vs-empty and the test could not tell
+	// drift from no-drift.
+	//
+	// 只读命令：bash-guard 写下快照三件套。仓库带一个 gitignored 的
+	// .forge/hooks 文件，manifest 才有真实内容——否则半读的 manifest 是
+	// 空 vs 空，测不出 drift 与 no-drift 的区别。
+	if out, err := runSentinelScript(t, BashGuardHook, dir, append(env, "FORGE_COMMAND=ls")); err != nil {
+		t.Fatalf("bash-guard failed: %v\n%s", err, out)
+	}
+	cfgs, err := filepath.Glob(filepath.Join(tmp, "forge-snapshot-"+sid+"-*.cfg"))
+	if err != nil || len(cfgs) == 0 {
+		t.Fatalf("bash-guard must write the .cfg sidecar (glob: %v, err: %v)", cfgs, err)
+	}
+
+	// PATH shim: a `cat` that removes the .cfg sidecar at the exact moment
+	// file-sentinel goes to read it (the concurrent-cleanup interleaving), drops
+	// a marker so the test fails loudly if the shim never fired, and execs the
+	// real cat for every invocation (the BEFORE_ALL read of the snapshot itself
+	// must be unaffected).
+	//
+	// PATH shim：一个 `cat`，在 file-sentinel 正要读 .cfg 的精确时刻删掉它
+	// （并发 cleanup 交错），留 marker 让 shim 未触发时测试响亮失败，其余调用
+	// exec 真 cat（BEFORE_ALL 读快照本尊不受影响）。
+	shimDir := t.TempDir()
+	realCat, err := exec.LookPath("cat")
+	if err != nil {
+		t.Skipf("cat not on PATH: %v", err)
+	}
+	shim := "#!/bin/bash\n" +
+		"for a in \"$@\"; do\n" +
+		"  case \"$a\" in\n" +
+		"    *forge-snapshot-*.cfg) rm -f \"$a\"; : > \"$FORGE_SHIM_FIRED\" ;;\n" +
+		"  esac\n" +
+		"done\n" +
+		"exec '" + realCat + "' \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(shimDir, "cat"), []byte(shim), 0755); err != nil {
+		t.Fatal(err)
+	}
+	fired := filepath.Join(t.TempDir(), "shim-fired")
+	raceEnv := append(append([]string{}, env...),
+		"PATH="+shimDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"FORGE_SHIM_FIRED="+fired)
+
+	// NO real drift: hooksFile is untouched. Only the race-injected sidecar
+	// vanish must not fabricate config drift.
+	//
+	// 无真实 drift：hooksFile 未动。只有竞态注入的 sidecar 消失，不得伪造出
+	// config drift。
+	out, err := runSentinelScript(t, FileSentinelHook, dir, raceEnv)
+	if err != nil {
+		t.Fatalf("sidecar 竞态下 file-sentinel 应 PASS（跳过比较），got FAIL:\n%s", out)
+	}
+	if strings.Contains(out, "No such file or directory") {
+		t.Errorf("sidecar 消失不应产生 cat 报错噪音:\n%s", out)
+	}
+	if _, statErr := os.Stat(fired); statErr != nil {
+		t.Fatalf("shim 未触发——竞态路径未被覆盖（vacuous pass）: %v", statErr)
+	}
+	if _, statErr := os.Stat(hooksFile); statErr != nil {
+		t.Errorf("无真实 drift 时 hooksFile 不应被隔离: %v\noutput:\n%s", statErr, out)
+	}
+	// quarantine_files preserves the relative path (mv "$f" "${qdir}/${f}") —
+	// assert the NESTED location so this check has teeth: a drift detection
+	// would land at qdir/<sid>/.forge/hooks/task-guard.sh, not qdir/<sid>/.
+	//
+	// quarantine_files 保留相对路径（mv "$f" "${qdir}/${f}"）——断言嵌套位置
+	// 才有检出力：drift 检测会落在 qdir/<sid>/.forge/hooks/task-guard.sh，
+	// 而非 qdir/<sid>/。
+	if _, statErr := os.Stat(filepath.Join(qdir, sid, ".forge", "hooks", "task-guard.sh")); statErr == nil {
+		t.Errorf("quarantine 不应出现 .forge/hooks/task-guard.sh（假隔离方向）:\n%s", out)
+	}
+}

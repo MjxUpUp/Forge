@@ -106,6 +106,57 @@ func TestTaskComplete_BranchUnmergedAdvisory(t *testing.T) {
 	}
 }
 
+// TestTaskComplete_UncommittedAtCompleteAdvisory pins the commit-ordering advisory:
+// uncommitted working-tree changes at the task-complete gate must emit a stderr
+// advisory + audit entry — the documented protocol order is gates → git commit →
+// forge task complete (complete clears the active task ref; post-complete source
+// writes lose task tracking). After committing, the advisory must disappear.
+// Root cause: a real session (2026-08-17) passed all three gates, ran complete, and
+// only committed 32 minutes later — the window is real, the advisory surfaces it at
+// the exact moment it is still repairable.
+//
+// TestTaskComplete_UncommittedAtCompleteAdvisory 钉住提交顺序 advisory：task-complete
+// 门禁时工作区有未提交变更必须发 stderr advisory + 审计条目——协议顺序是
+// 三门禁 → git commit → forge task complete（complete 会清空 active task ref，
+// 之后的源码写入脱离任务追踪）。提交之后 advisory 必须消失。根因：2026-08-17
+// 真实会话三门禁全过后先 complete、32 分钟后才 commit——窗口真实存在，advisory
+// 在还能补救的精确时刻把它照出来。
+func TestTaskComplete_UncommittedAtCompleteAdvisory(t *testing.T) {
+	dir, state := setupCompletableTask(t, "commit-order")
+	runGit(t, dir, "checkout", "-b", "feat/order")
+	state.Branch = "feat/order"
+
+	// Untracked new source file → uncommitted at complete → advisory + audit entry.
+	//
+	// 未跟踪的新源文件 → complete 时未提交 → advisory + 审计条目
+	os.WriteFile(filepath.Join(dir, "uncommitted.go"), []byte("package main\n"), 0644)
+	stderr := captureStderr(t, func() {
+		if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
+			t.Fatalf("task-complete 应通过（advisory 不阻断）: %v", err)
+		}
+	})
+	if !strings.Contains(stderr, "未提交变更") {
+		t.Errorf("未提交变更应触发提交顺序 advisory，stderr: %q", stderr)
+	}
+	if !findCheckEntry(t, dir, "commit-order", CheckNameUncommittedAtComplete) {
+		t.Error("checklog 应有 CheckNameUncommittedAtComplete 审计条目")
+	}
+
+	// Commit → advisory gone.
+	//
+	// 提交 → advisory 消失
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "work")
+	stderr = captureStderr(t, func() {
+		if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
+			t.Fatalf("提交后 task-complete 应通过: %v", err)
+		}
+	})
+	if strings.Contains(stderr, "未提交变更") {
+		t.Errorf("已提交后不应再触发提交顺序 advisory，stderr: %q", stderr)
+	}
+}
+
 // TestTaskComplete_GoalOutputMismatchAdvisory pins the goal↔output coarse-match
 // advisory: a title sharing NO keyword with the changed files must trigger the
 // advisory + audit entry; a title sharing a keyword must stay silent. Empty title or
