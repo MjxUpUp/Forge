@@ -321,6 +321,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge skills adapters` | 部署 skill-routing adapter（pi/claude/cursor/routes.json） |
 | `forge skills usage` | 使用度量分析（热门 skill + undertrigger 候选） |
 | `forge skills effectiveness` | 技能命中×任务成效关联（命中数/task数/avg分/弱占比，agent-neutral） |
+| `forge skills --dir <path>` | eval 命令族公共 flag：指定 eval 数据目录（默认 `~/.forge/evals`，`FORGE_EVAL_DIR` 可覆盖；首次默认解析自动从旧 `~/.pi/research/skill-eval` 一次性迁移。仓库内 `evals/` 或 CI 用） |
 | `forge skills eval-gen [--save] [--cases-only]` | 生成 eval 清单；`--save`/`--cases-only` 额外落结构化 case 集（回归闭环基准） |
 | `forge skills eval-record --skill X --from <file/->` | 回填一次 eval run（agent dispatch 跑完每个 prompt 后整批提交，归一化+判定+算 health） |
 | `forge skills eval-report --skill X` | latest run vs baseline 回归报告（regression 三态 + pass-rate delta + 可比性） |
