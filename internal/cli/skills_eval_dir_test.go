@@ -37,6 +37,12 @@ func TestEvalGen_DirFlag_WritesToExplicitDir(t *testing.T) {
 }
 
 func TestSaveEval_WritesUnderResolvedRoot(t *testing.T) {
+	// HOME 必须隔离：真实机器上存在 ~/.pi/research（正是迁移目标人群）会让
+	// 「旧位置不得被创建」断言假红——CI 新 runner 绿、开发机红的经典形状。
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
 	root := t.TempDir()
 	if err := saveEval(root, "demo", "# checklist"); err != nil {
 		t.Fatal(err)
@@ -46,7 +52,6 @@ func TestSaveEval_WritesUnderResolvedRoot(t *testing.T) {
 		t.Fatalf("清单应落 <root>/checklists/eval-<name>.md: %v", err)
 	}
 	// 旧硬编码位置（~/.pi/research）不得再被创建。
-	home, _ := os.UserHomeDir()
 	if _, err := os.Stat(filepath.Join(home, ".pi", "research")); !os.IsNotExist(err) {
 		t.Fatalf("saveEval 不应再写 ~/.pi/research（got err=%v）", err)
 	}
