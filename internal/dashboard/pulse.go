@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/act"
-	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/health"
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 	"github.com/MjxUpUp/Forge/internal/skillscanonical"
@@ -56,7 +55,7 @@ func registerPulseRoutes(mux *http.ServeMux, opts Options) {
 				q.Limit = n
 			}
 		}
-		events, err := AggregateFeed(opts, time.Now(), q)
+		res, err := AggregateFeed(opts, time.Now(), q)
 		if err != nil {
 			log.Printf(`dashboard pulse feed %s: %v`, opts.Root, err)
 			http.Error(w, `归并事件流失败`, http.StatusInternalServerError)
@@ -65,7 +64,10 @@ func registerPulseRoutes(mux *http.ServeMux, opts Options) {
 		writeRendered(w, opts.Root, `application/json`, `序列化事件流失败`, func(out io.Writer) error {
 			return json.NewEncoder(out).Encode(map[string]any{
 				"generatedAt": time.Now(),
-				"events":      events,
+				"events":      res.Events,
+				// truncated 让客户端识别「事件被 limit 截掉」：增量轮询截断 = 有事件
+				// 永久丢失，客户端须全量重拉；初始加载截断 = 更早事件不可达，如实标注。
+				"truncated": res.Truncated,
 			})
 		})
 	})
@@ -140,6 +142,26 @@ func registerPulseRoutes(mux *http.ServeMux, opts Options) {
 		}
 		writeRendered(w, opts.Root, `application/json`, `序列化 skill 详情失败`, func(out io.Writer) error {
 			return json.NewEncoder(out).Encode(view)
+		})
+	})
+
+	// quality.json: the 触发质量 tab's single endpoint. The tab used to fetch skills.json
+	// plus one skill.json per skill (N+1 requests, permanently cached client-side); this
+	// endpoint aggregates the per-skill triggerQuality + compare server-side in one call
+	// (cheap — LoadSkillDetail reads through the fingerprint-gated cache).
+	//
+	// quality.json：触发质量 tab 的单一端点。该 tab 此前要拉 skills.json 再逐 skill 拉
+	// skill.json（N+1 请求，且客户端永久缓存不过期）；本端点在服务端一次聚合各 skill
+	// 的 triggerQuality + compare（便宜——LoadSkillDetail 走指纹门控缓存）。
+	mux.HandleFunc(`/api/pulse/quality.json`, func(w http.ResponseWriter, r *http.Request) {
+		views, err := AggregateQuality(opts, pulseCanonicalDir(), pulseEvalDir())
+		if err != nil {
+			log.Printf(`dashboard pulse quality %s: %v`, opts.Root, err)
+			http.Error(w, `聚合触发质量数据失败`, http.StatusInternalServerError)
+			return
+		}
+		writeRendered(w, opts.Root, `application/json`, `序列化触发质量失败`, func(out io.Writer) error {
+			return json.NewEncoder(out).Encode(views)
 		})
 	})
 }
@@ -283,54 +305,53 @@ func buildPulseTask(opts Options, pr pulseRoot, state *taskpipeline.TaskState, n
 		},
 	}
 
-	events, err := AggregateFeed(opts, now, FeedQuery{Project: firstNonEmpty(pr.key, pr.name), TaskRef: state.TaskRef})
+	res, err := AggregateFeed(opts, now, FeedQuery{Project: firstNonEmpty(pr.key, pr.name), TaskRef: state.TaskRef})
 	if err != nil {
 		return pulseTaskResponse{}, err
 	}
-	resp.Events = events
+	resp.Events = res.Events
 
 	if state.Score != nil {
 		resp.Score = toPulseScore(state.Score)
 	}
 
 	// Acceptance + evidence strength: prefer the latest act conclusion (it has both);
-	// fall back to the live Acceptance slice when no conclusion exists yet.
+	// fall back to the live Acceptance slice when no conclusion exists yet. Conclusions
+	// come from the fingerprint-gated cache, not a fresh act.LoadAll.
 	//
 	// 验收 + 证据强度：优先最新 act 结论（两者都有）；尚无结论时退化用现活的
-	// Acceptance 切片。
-	if proj, err := forgedata.ProjectFor(pr.root); err == nil {
-		if cs, err := act.LoadAll(proj); err == nil {
-			for i := len(cs) - 1; i >= 0; i-- {
-				if cs[i].TaskRef != state.TaskRef {
-					continue
-				}
-				resp.Acceptance = pulseAcceptance{Pass: cs[i].AcceptancePass, Total: cs[i].AcceptanceTotal}
-				// Legacy tasks: the conclusion exists but TaskState.Score was never persisted
-				// (Score sank into TaskState later; cli/act_rebuild.go handles the same shape).
-				// Backfill a degraded score block so the detail page does not contradict its
-				// own conclusion event.
-				//
-				// 存量任务：结论在但 TaskState.Score 从未落盘（Score 字段后下沉；
-				// cli/act_rebuild.go 处理同一形态）。回填降级评分块，避免详情页与自己的
-				// conclusion 事件自相矛盾。
-				if resp.Score == nil && cs[i].Score > 0 {
-					resp.Score = &pulseScore{
-						Overall:    cs[i].Score,
-						Grade:      cs[i].Grade,
-						Dimensions: []pulseDimension{},
-						Evidence: &pulseEvidence{
-							Deterministic: cs[i].Deterministic,
-							AgentClaim:    cs[i].AgentClaim,
-							Ratio:         cs[i].Ratio,
-							Strength:      cs[i].Strength,
-						},
-						FromConclusion: true,
-					}
-				} else if resp.Score != nil && resp.Score.Evidence != nil && resp.Score.Evidence.Strength == "" {
-					resp.Score.Evidence.Strength = cs[i].Strength
-				}
-				break
+	// Acceptance 切片。结论取自指纹门控缓存，不再现读 act.LoadAll。
+	if d, err := sharedPulseCache.projectData(pr); err == nil {
+		for i := len(d.conclusions) - 1; i >= 0; i-- {
+			if d.conclusions[i].TaskRef != state.TaskRef {
+				continue
 			}
+			resp.Acceptance = pulseAcceptance{Pass: d.conclusions[i].AcceptancePass, Total: d.conclusions[i].AcceptanceTotal}
+			// Legacy tasks: the conclusion exists but TaskState.Score was never persisted
+			// (Score sank into TaskState later; cli/act_rebuild.go handles the same shape).
+			// Backfill a degraded score block so the detail page does not contradict its
+			// own conclusion event.
+			//
+			// 存量任务：结论在但 TaskState.Score 从未落盘（Score 字段后下沉；
+			// cli/act_rebuild.go 处理同一形态）。回填降级评分块，避免详情页与自己的
+			// conclusion 事件自相矛盾。
+			if resp.Score == nil && d.conclusions[i].Score > 0 {
+				resp.Score = &pulseScore{
+					Overall:    d.conclusions[i].Score,
+					Grade:      d.conclusions[i].Grade,
+					Dimensions: []pulseDimension{},
+					Evidence: &pulseEvidence{
+						Deterministic: d.conclusions[i].Deterministic,
+						AgentClaim:    d.conclusions[i].AgentClaim,
+						Ratio:         d.conclusions[i].Ratio,
+						Strength:      d.conclusions[i].Strength,
+					},
+					FromConclusion: true,
+				}
+			} else if resp.Score != nil && resp.Score.Evidence != nil && resp.Score.Evidence.Strength == "" {
+				resp.Score.Evidence.Strength = d.conclusions[i].Strength
+			}
+			break
 		}
 	}
 	if resp.Acceptance.Total == 0 && len(state.Acceptance) > 0 {
@@ -398,16 +419,19 @@ type pulseProject struct {
 
 // aggregatePulseProjects lists every project in scope with its active/zombie counts and
 // latest conclusion. Per-project read failures degrade to zero rows for that project
-// (non-fatal skip — one broken project must not blank the panel).
+// (non-fatal skip — one broken project must not blank the panel). Source data comes from
+// the fingerprint-gated cache.
 //
 // aggregatePulseProjects 列出范围内每个项目的活跃/僵尸计数与最新结论。单项目读失败
-// 降级为该项目的零值行（不致命跳过——一个坏项目不应让整面板空白）。
+// 降级为该项目的零值行（不致命跳过——一个坏项目不应让整面板空白）。源数据取自
+// 指纹门控缓存。
 func aggregatePulseProjects(opts Options, now time.Time) []pulseProject {
 	rows := []pulseProject{}
 	for _, pr := range resolvePulseRoots(opts) {
 		row := pulseProject{Key: pr.key, Name: pr.name}
-		if states, err := taskpipeline.ListTaskStates(pr.root); err == nil {
-			for _, s := range states {
+		d, err := sharedPulseCache.projectData(pr)
+		if err == nil {
+			for _, s := range d.states {
 				if !s.IsComplete() {
 					row.ActiveTasks++
 					if zombie, _ := taskpipeline.IsZombie(pr.root, s, now); zombie {
@@ -415,9 +439,7 @@ func aggregatePulseProjects(opts Options, now time.Time) []pulseProject {
 					}
 				}
 			}
-		}
-		if proj, err := forgedata.ProjectFor(pr.root); err == nil {
-			if latest, err := act.Latest(proj); err == nil && latest != nil {
+			if latest := latestConclusion(d.conclusions); latest != nil {
 				row.LastGrade = latest.Grade
 				score := latest.Score
 				row.LastScore = &score
@@ -426,6 +448,17 @@ func aggregatePulseProjects(opts Options, now time.Time) []pulseProject {
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+// latestConclusion returns the most recent conclusion, or nil (conclusions are
+// time-ordered from act.LoadAll).
+//
+// latestConclusion 返回最近一条结论，无则 nil（结论自 act.LoadAll 起即按时间序）。
+func latestConclusion(cs []act.Conclusion) *act.Conclusion {
+	if len(cs) == 0 {
+		return nil
+	}
+	return &cs[len(cs)-1]
 }
 
 // pulseStats is the /api/pulse/stats.json payload. Numeric aggregates are pointers so
@@ -441,36 +474,36 @@ type pulseStats struct {
 	MedianScore       *float64 `json:"medianScore"`
 	Trend             string   `json:"trend"`
 	Alerts            int      `json:"alerts"`
+	Nudges            int      `json:"nudges"` // 需回顾结论数（alerts = zombies + nudges 的拆解，前端分开展示）
 	EvidenceBlindRate *float64 `json:"evidenceBlindRate"`
 }
 
 // aggregatePulseStats merges conclusions across the scope and reuses health.Summarize for
 // avg/median/trend/blind-rate (single truth with the quality dashboard); alerts = zombie
-// tasks + retrospective-nudged conclusions.
+// tasks + retrospective-nudged conclusions. Source data comes from the fingerprint-gated
+// cache.
 //
 // aggregatePulseStats 跨范围合并结论，复用 health.Summarize 算均分/中位/趋势/盲区率
-// （与质量看板单一真相）；alerts = 僵尸任务数 + 需回顾结论数。
+// （与质量看板单一真相）；alerts = 僵尸任务数 + 需回顾结论数。源数据取自指纹门控缓存。
 func aggregatePulseStats(opts Options, now time.Time) pulseStats {
 	stats := pulseStats{Trend: "insufficient"}
 	var cs []act.Conclusion
 	for _, pr := range resolvePulseRoots(opts) {
 		stats.Projects++
-		if states, err := taskpipeline.ListTaskStates(pr.root); err == nil {
-			for _, s := range states {
-				if s.IsComplete() {
-					continue
-				}
-				stats.ActiveTasks++
-				if zombie, _ := taskpipeline.IsZombie(pr.root, s, now); zombie {
-					stats.Zombies++
-				}
+		d, err := sharedPulseCache.projectData(pr)
+		if err != nil {
+			continue
+		}
+		for _, s := range d.states {
+			if s.IsComplete() {
+				continue
+			}
+			stats.ActiveTasks++
+			if zombie, _ := taskpipeline.IsZombie(pr.root, s, now); zombie {
+				stats.Zombies++
 			}
 		}
-		if proj, err := forgedata.ProjectFor(pr.root); err == nil {
-			if loaded, err := act.LoadAll(proj); err == nil {
-				cs = append(cs, loaded...)
-			}
-		}
+		cs = append(cs, d.conclusions...)
 	}
 	stats.Alerts = stats.Zombies
 	if len(cs) == 0 {
@@ -486,6 +519,7 @@ func aggregatePulseStats(opts Options, now time.Time) pulseStats {
 	if summary.Trend != "" {
 		stats.Trend = summary.Trend
 	}
+	stats.Nudges = summary.NudgeCount
 	stats.Alerts += summary.NudgeCount
 	return stats
 }
