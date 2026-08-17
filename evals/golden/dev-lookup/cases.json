@@ -1,0 +1,57 @@
+{
+  "skill": "dev-lookup",
+  "cases": [
+    {
+      "id": "g-dev-lookup-t1",
+      "skill": "dev-lookup",
+      "kind": "trigger",
+      "prompt": "http.Client 超时到底怎么设才对，给个官方写法",
+      "target": "dev-lookup",
+      "origin": "curated",
+      "created_at": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "g-dev-lookup-t2",
+      "skill": "dev-lookup",
+      "kind": "trigger",
+      "prompt": "这个报错 dial tcp: connection refused 一般是什么情况",
+      "target": "dev-lookup",
+      "origin": "curated",
+      "created_at": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "g-dev-lookup-t3",
+      "skill": "dev-lookup",
+      "kind": "trigger",
+      "prompt": "react 18 和 react-router 5 搭着用有没有兼容问题",
+      "target": "dev-lookup",
+      "origin": "curated",
+      "created_at": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "g-dev-lookup-n1",
+      "skill": "dev-lookup",
+      "kind": "not-trigger",
+      "prompt": "帮我深度调研下向量数据库选型，输出对比报告",
+      "origin": "curated",
+      "created_at": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "g-dev-lookup-n2",
+      "skill": "dev-lookup",
+      "kind": "not-trigger",
+      "prompt": "把这个调研结论整理成飞书文档发出去",
+      "origin": "curated",
+      "created_at": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "g-dev-lookup-b1",
+      "skill": "dev-lookup",
+      "kind": "trigger",
+      "prompt": "我想在提交前加个静态检查，golangci-lint 的配置文件字段在哪查",
+      "target": "dev-lookup",
+      "origin": "curated",
+      "created_at": "2026-08-17T00:00:00Z"
+    }
+  ]
+}
