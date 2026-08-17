@@ -31,6 +31,7 @@
     --text-tertiary: rgba(236,234,230,0.42);
     --accent: #e07a3f;                 /* 熔橙，forge 主题色 */
     --accent-muted: rgba(224,122,63,0.12);
+    --accent-glow: rgba(224,122,63,0.35); /* pulse 动画光晕（token 化，随主题切换） */
     --accent-on: #14100c;              /* accent 底色上的文字 */
     --grade-a: #4ade80; --grade-b: #a3e635; --grade-c: #facc15;
     --grade-d: #fb923c; --grade-f: #f87171;
@@ -58,6 +59,7 @@
     --text-tertiary: rgba(24,22,18,0.52);
     --accent: #b04a10;                 /* 熔橙压暗，白底对比度 ≈ 5.4:1 */
     --accent-muted: rgba(176,74,16,0.10);
+    --accent-glow: rgba(176,74,16,0.30);
     --accent-on: #ffffff;
     --grade-a: #15803d; --grade-b: #4d7c0f; --grade-c: #a16207;
     --grade-d: #c2410c; --grade-f: #b91c1c;
@@ -198,7 +200,7 @@
   .evt-dot.info { border-color: var(--info); }
   .evt-dot.accent { border-color: var(--accent); }
   .evt-dot.pulse { border-color: var(--accent); animation: pulse 1.6s ease-in-out infinite; }
-  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(224,122,63,0.35);} 50% { box-shadow: 0 0 0 6px rgba(224,122,63,0);} }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 var(--accent-glow);} 50% { box-shadow: 0 0 0 6px transparent;} }
   .evt-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .evt-kind { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; padding: 1px 7px; border-radius: 4px; }
   .kind-gate { background: var(--info-bg); color: var(--info); }
@@ -390,7 +392,8 @@ var state = {
   skills: null,             // skills.json 载荷
   quality: null,            // 触发质量卡片数据（skill.json 汇总）
   selectedTask: null,       // {project, ref}
-  selectedSkill: null
+  selectedSkill: null,
+  feedTruncated: false      // 初始加载被 limit 截断（更早事件不可达，流尾部标注）
 };
 
 /* ---------- 主题（D2）---------- */
@@ -415,7 +418,7 @@ function renderStats() {
     stat('项目', fmtNum(s.projects), 'registry') +
     stat('进行中', fmtNum(s.activeTasks), (s.zombies ? s.zombies + ' 僵尸' : '无僵尸')) +
     stat('全局均分', fmtNum(s.avgScore), '中位 ' + fmtNum(s.medianScore) + ' · <span style="color:' + trendColor + '">' + esc(trend) + '</span>', true) +
-    stat('告警', fmtNum(alerts), (s.zombies || 0) + ' zombie · 含回顾提醒', false, alerts !== null && alerts > 3) +
+    stat('告警', fmtNum(alerts), (s.zombies || 0) + ' 僵尸 + ' + (s.nudges || 0) + ' 回顾提醒', false, alerts !== null && alerts > 3) +
     stat('证据盲区', s.evidenceBlindRate === null || s.evidenceBlindRate === undefined ? '—' : fmtPct(s.evidenceBlindRate), 'NoData 占比');
   function stat(k, v, sub, html, alarm) {
     return '<div class="stat"><div class="k">' + k + '</div>' +
@@ -447,7 +450,7 @@ function renderProjects() {
 }
 function selectProject(key) {
   state.projectFilter = key;
-  state.events = []; state.pending = []; state.lastEventTime = '';
+  state.events = []; state.pending = []; state.lastEventTime = ''; state.feedTruncated = false;
   renderProjects(); updatePill();
   loadFeed(true);
 }
@@ -590,19 +593,40 @@ function groupedFeedHTML(events) {
     if (dk !== lastDay) { html += '<div class="feed-day">' + esc(fmtDate(it.time)) + '</div>'; lastDay = dk; }
     html += it.task ? taskCardHTML(it.task) : evtHTML(it.evt);
   });
-  return html + '</div>';
+  html += '</div>';
+  if (state.feedTruncated) {
+    html += '<div class="empty" style="padding:16px">更早的事件已省略（超出单页上限）<br>' +
+      '<span class="mono">按项目过滤可缩小范围</span></div>';
+  }
+  return html;
 }
 function bindTaskClicks(container) {
   Array.prototype.forEach.call(container.querySelectorAll('.evt[data-ref]'), function (el) {
     if (!el.getAttribute('data-ref')) return;
-    el.addEventListener('click', function () {
-      openTask(el.getAttribute('data-project'), el.getAttribute('data-ref'));
+    /* 键盘可达：任务卡可聚焦、Enter/Space 打开（与鼠标点击同路径） */
+    el.setAttribute('tabindex', '0');
+    el.setAttribute('role', 'button');
+    function open() { openTask(el.getAttribute('data-project'), el.getAttribute('data-ref')); }
+    el.addEventListener('click', open);
+    el.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(); }
     });
   });
 }
 function renderFeed() {
+  /* 全量 innerHTML 重建前记住交互状态：折叠卡展开态 + 滚动位置（轮询合入/pill
+   * 点击都会重渲染，不该把用户展开的内容收起来或把滚动甩走；pill 点击后再显式
+   * scrollTop=0 回到顶部）。 */
+  var main = $('#main');
+  var scroll = main.scrollTop;
+  var foldWasOpen = !!document.querySelector('#view-feed .skill-fold[open]');
   $('#view-feed').innerHTML = groupedFeedHTML(state.events);
+  if (foldWasOpen) {
+    var f = document.querySelector('#view-feed .skill-fold');
+    if (f) f.open = true;
+  }
   bindTaskClicks($('#view-feed'));
+  main.scrollTop = scroll;
 }
 function updatePill() {
   var pill = $('#newPill');
@@ -619,7 +643,15 @@ function openTask(project, ref) {
   $('#detail').innerHTML = '<div class="empty">加载任务线程…</div>';
   openDetailDrawer();
   var q = '?ref=' + encodeURIComponent(ref) + (project ? '&project=' + encodeURIComponent(project) : '');
-  api('/api/pulse/task.json' + q).then(renderTask).catch(function (err) {
+  function stale() { // 竞态防护：响应回来时用户已另选任务/skill
+    var sel = state.selectedTask;
+    return !sel || sel.ref !== ref || sel.project !== project;
+  }
+  api('/api/pulse/task.json' + q).then(function (t) {
+    if (stale()) return;
+    renderTask(t);
+  }).catch(function (err) {
+    if (stale()) return;
     $('#detail').innerHTML = '<div class="empty">任务加载失败<br><span class="mono">' + esc(err.message) + '</span></div>';
   });
 }
@@ -721,7 +753,14 @@ function renderSkills() {
 }
 function bindSkillClicks(container) {
   Array.prototype.forEach.call(container.querySelectorAll('[data-skill]'), function (el) {
-    el.addEventListener('click', function () { openSkill(el.getAttribute('data-skill')); });
+    /* 键盘可达：与任务卡同一交互范式（可聚焦 + Enter/Space） */
+    el.setAttribute('tabindex', '0');
+    el.setAttribute('role', 'button');
+    function open() { openSkill(el.getAttribute('data-skill')); }
+    el.addEventListener('click', open);
+    el.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(); }
+    });
   });
 }
 
@@ -731,7 +770,12 @@ function openSkill(name) {
   state.selectedSkill = name; state.selectedTask = null;
   $('#detail').innerHTML = '<div class="empty">加载 skill 详情…</div>';
   openDetailDrawer();
-  api('/api/pulse/skill.json?name=' + encodeURIComponent(name)).then(renderSkill).catch(function (err) {
+  function stale() { return state.selectedSkill !== name; } // 竞态防护：已另选则丢弃
+  api('/api/pulse/skill.json?name=' + encodeURIComponent(name)).then(function (d) {
+    if (stale()) return;
+    renderSkill(d);
+  }).catch(function (err) {
+    if (stale()) return;
     $('#detail').innerHTML = '<div class="empty">skill 加载失败<br><span class="mono">' + esc(err.message) + '</span></div>';
   });
 }
@@ -843,19 +887,17 @@ function renderQuality() {
   bindSkillClicks($('#view-quality'));
 }
 function loadQuality() {
-  if (state.quality) { renderQuality(); return; }
+  /* 单端点聚合（/api/pulse/quality.json，替代此前 skills.json + 逐 skill skill.json
+   * 的 N+1 扇出）；每次切 tab 都重拉——旧缓存先渲染避免闪烁，新数据回来即更新，
+   * 不再永久缓存（此前跑完新 eval 必须刷新页面才能看到）。 */
   renderQuality();
-  api('/api/pulse/skills.json').then(function (ov) {
-    var names = (ov.skills || []).map(function (s) { return s.name; });
-    return Promise.all(names.map(function (n) {
-      return api('/api/pulse/skill.json?name=' + encodeURIComponent(n)).catch(function () { return null; });
-    })).then(function (details) {
-      state.quality = details.filter(Boolean);
-      renderQuality();
-    });
+  api('/api/pulse/quality.json').then(function (list) {
+    state.quality = list || [];
+    renderQuality();
   }).catch(function () {
-    $('#view-quality').innerHTML = '<div class="empty">触发质量数据加载失败<br><span class="mono">下个周期自动重试</span></div>';
-    state.quality = null;
+    if (!state.quality) {
+      $('#view-quality').innerHTML = '<div class="empty">触发质量数据加载失败<br><span class="mono">下次切换 tab 自动重试</span></div>';
+    }
   });
 }
 
@@ -872,13 +914,23 @@ function renderDetailHint() {
 /* ---------- 数据加载 / 轮询（D3）---------- */
 function setOffline(on) { $('#offlineBar').hidden = !on; }
 function loadFeed(initial) {
+  var filterAtReq = state.projectFilter; // 竞态防护：响应回来时若已切项目则丢弃
   var q = '';
   var params = [];
   if (!initial && state.lastEventTime) params.push('since=' + encodeURIComponent(state.lastEventTime));
   if (state.projectFilter) params.push('project=' + encodeURIComponent(state.projectFilter));
   if (params.length) q = '?' + params.join('&');
   return api('/api/pulse/feed.json' + q).then(function (data) {
+    if (filterAtReq !== state.projectFilter) return; // 过期响应：请求在途时用户已切换项目
+    if (!initial && data.truncated) {
+      /* 增量被 limit 截断 = 两轮询间的事件已永久丢失——全量重拉一次补齐，
+       * 否则 lastEventTime 已前进、中间事件再也拉不回来。 */
+      return loadFeed(true);
+    }
     var evs = data.events || [];
+    /* feedTruncated 只在初始加载（含截断后全量重拉）时更新——增量轮询通常不截断，
+     * 若每次都刷新会把初始截断的标注提前清掉，而 state.events 里仍缺那些更早事件。 */
+    if (initial) state.feedTruncated = !!data.truncated;
     if (evs.length) state.lastEventTime = evs[0].time; // time 降序，首条最新
     if (initial) {
       state.events = evs; state.pending = [];
@@ -900,6 +952,7 @@ function loadSkills() {
   });
 }
 function poll() {
+  if (document.hidden) return; // 页面隐藏时暂停轮询（回前台由 visibilitychange 立即补一轮）
   loadFeed(false);
   loadStatsProjects();
 }
@@ -949,6 +1002,9 @@ function init() {
   loadFeed(true);
   loadStatsProjects();
   setInterval(poll, POLL_MS);
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) poll(); // 隐藏期间跳过的轮询，回前台立即补齐
+  });
 }
 init();
 </script>
