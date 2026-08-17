@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -458,11 +459,13 @@ func TestServe_PulseSkills(t *testing.T) {
 func TestServe_PulseSkill(t *testing.T) {
 	_, canonical, _ := skillsFixture(t)
 	t.Setenv(skillscanonical.EnvName, canonical)
-	// evalDir 走 ~/.pi/research/skill-eval——测试把 home 指到临时目录，直接在该处建 runs
-	// fixture，让 handler 内的 skillseval.EvalDir() 解析到它。
+	// eval 根走 GlobalHome 解析（FORGE_DATA_HOME 优先于 HOME）——而 RealProject 在夹具
+	// 写入之后才 t.Setenv FORGE_DATA_HOME，若只设 HOME 会让夹具目录与 handler 目录分叉。
+	// 用 FORGE_EVAL_DIR 钉死，两端解析恒一致（顺带覆盖 env override 路径）。
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
+	t.Setenv(skillseval.EnvDirName, filepath.Join(home, "evals"))
 	evalDir, err := skillseval.EvalDir()
 	if err != nil {
 		t.Fatal(err)
@@ -526,6 +529,9 @@ func TestServe_PulseQuality(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
+	// 同 TestServe_PulseSkill：FORGE_DATA_HOME 由 RealProject 后置设置，必须用
+	// FORGE_EVAL_DIR 钉死 eval 根，夹具与 handler 才解析到同一目录。
+	t.Setenv(skillseval.EnvDirName, filepath.Join(home, "evals"))
 	evalDir, err := skillseval.EvalDir()
 	if err != nil {
 		t.Fatal(err)

@@ -31,7 +31,7 @@ func runSkillsEvalBaseline(cmd *cobra.Command, args []string) error {
 	if err := requireValidSkillName(skBaseSkill); err != nil {
 		return err
 	}
-	dir, err := skillseval.EvalDir()
+	dir, err := evalDataDir()
 	if err != nil {
 		return err
 	}

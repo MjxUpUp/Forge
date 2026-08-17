@@ -120,7 +120,12 @@ func skillNamesFromChanged(changed []string, casesDir string) []string {
 func formatSkillEvalAdvisory(skills []string) string {
 	cmds := make([]string, len(skills))
 	for i, s := range skills {
-		cmds[i] = "eval-report --skill " + s
+		// 仓库级 evals/（进 VCS 的基准）须带 --dir——否则命令读的是用户级目录，
+		// 仓库基准的回归在本地 advisory 处不可见、漏到 CI 才炸。
+		//
+		// A repo-level evals/ (VCS'd baselines) needs --dir — otherwise the command
+		// reads the user-level dir and repo-baseline regressions are invisible locally.
+		cmds[i] = "eval-report --skill " + s + " [--dir <仓库 evals/>]"
 	}
 	return fmt.Sprintf(
 		"变更涉及 skill %s（已有 eval case 集）——建议跑回归：forge skills %s。"+
