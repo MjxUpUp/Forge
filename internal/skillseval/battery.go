@@ -5,9 +5,10 @@ package skillseval
 // (JudgeSkillAccept — single source of truth; the battery must not grow a second judgment
 // that can drift from the per-skill one).
 //
-// Scope honesty (review F3): the battery reads the USER-LEVEL eval dir (EvalDir(),
-// ~/.pi/research/skill-eval) shared by the whole eval command family — it covers every
-// anchored skill ON THIS MACHINE, not an isolated per-repo subset. A regressed baseline from
+// Scope honesty (review F3): the battery reads the resolved eval dir (EvalDir()/--dir,
+// default ~/.forge/evals — resolution chain in dir.go) shared by the whole eval command
+// family — it covers every anchored skill in that dir, not an isolated per-repo subset
+// (point --dir at a repo evals/ directory for repo-scoped runs, e.g. in CI). A regressed baseline from
 // any project trips the gate (conservative direction: false positive, not false negative);
 // per-project scoping would cut across all five eval commands and is a deliberate non-goal
 // here. Corollary: on a machine/CI runner with ZERO anchored baselines the battery is EMPTY
@@ -30,8 +31,9 @@ package skillseval
 // 判据与 eval-report 完全同源（JudgeSkillAccept——单一真相源；电池不得长出第二套可与之
 // 漂移的判定）。
 //
-// 范围诚实性（审查 F3）：电池读的是用户级 eval 目录（EvalDir()，~/.pi/research/
-// skill-eval），整个 eval 命令族共享——覆盖本机所有已锚定 skill，而非按仓库隔离的子集。
+// 范围诚实性（审查 F3）：电池读的是解析出的 eval 目录（EvalDir()/--dir，默认
+// ~/.forge/evals——解析链见 dir.go），整个 eval 命令族共享——覆盖该目录下所有已锚定
+// skill，而非按仓库隔离的子集（CI 里把 --dir 指向仓库 evals/ 即按仓库跑）。
 // 任何项目的 baseline 回归都会触发门禁（保守方向：假阳性而非假阴性）；按项目隔离要横切
 // 全部五个 eval 命令，是本处的刻意非目标。推论：零锚定 baseline 的机器/CI runner 上电池
 // 为空——Total==0、GateBlocked=false、exit 0。该 exit 0 意为「没检查任何东西」，不是
