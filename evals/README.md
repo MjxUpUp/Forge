@@ -18,3 +18,11 @@
 - **不带 desc_hash**：策展 case 锚定真实话语而非 description——description 变更不会让 golden 集过期（submit 的 stale 校验只对派生 case 生效）。
 - **加载合并**：`LoadCases`/`LoadCaseSet` 加载时 golden 优先、派生补充；同 ID golden 胜出。
 - **策展要求**（区别于派生 case）：真实话语改写（不是 description 原词）；每 skill ≥3 正例 + ≥2 负例 + 1 边界例（近让渡边的 prompt，ID 用 `-b1`）。
+
+## 盲测迭代纪律（--blind dispatch）
+
+用 `forge skills eval-cases --skill X --blind` 跑全库路由盲测时，三条纪律：
+
+1. **改 description 后必须全量重跑**——盲测是全库竞争，改一个 skill 的 description 会让相邻 skill 的路由结果回归，只重跑被改的 skill 会漏掉邻域退化。
+2. **歧义时改 eval 不改 skill**——case 本身有歧义时修 case（防过拟合：为通过一个歧义 case 而把 description 写得越来越长，是在训练路由器背答案）。
+3. **borderline 误触发记录但不调掉**——边界例的误路由是路由器的真实能力边界，记录下来供趋势观察；把边界例从集里删掉会让指标虚高。
