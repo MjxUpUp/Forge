@@ -804,6 +804,7 @@ func TestSentinelScripts_CfgSidecarRaceSkipsComparison(t *testing.T) {
 		t.Skipf("cat not on PATH: %v", err)
 	}
 	shim := "#!/bin/bash\n" +
+		"echo \"SHIM CALLED: $*\" >> \"$FORGE_SHIM_LOG\" 2>&1 || true\n" +
 		"for a in \"$@\"; do\n" +
 		"  case \"$a\" in\n" +
 		"    *forge-snapshot-*.cfg) rm -f \"$a\"; : > \"$FORGE_SHIM_FIRED\" ;;\n" +
@@ -814,9 +815,11 @@ func TestSentinelScripts_CfgSidecarRaceSkipsComparison(t *testing.T) {
 		t.Fatal(err)
 	}
 	fired := filepath.Join(t.TempDir(), "shim-fired")
+	shimLog := filepath.Join(t.TempDir(), "shim.log")
 	raceEnv := append(append([]string{}, env...),
 		"PATH="+shimDir+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"FORGE_SHIM_FIRED="+hookEnvPath(fired))
+		"FORGE_SHIM_FIRED="+hookEnvPath(fired),
+		"FORGE_SHIM_LOG="+hookEnvPath(shimLog))
 
 	// NO real drift: hooksFile is untouched. Only the race-injected sidecar
 	// vanish must not fabricate config drift.
@@ -831,7 +834,30 @@ func TestSentinelScripts_CfgSidecarRaceSkipsComparison(t *testing.T) {
 		t.Errorf("sidecar 消失不应产生 cat 报错噪音:\n%s", out)
 	}
 	if _, statErr := os.Stat(fired); statErr != nil {
-		t.Fatalf("shim 未触发——竞态路径未被覆盖（vacuous pass）: %v", statErr)
+		// Diagnose on failure (Windows CI is the only repro environment): does the
+		// PATH shim resolve at all, does the snapshot glob match under this TMPDIR,
+		// and what did the shim see? The probe writes a fresh pattern-matching file
+		// because file-sentinel's cleanup has consumed the real snapshot by now.
+		//
+		// 失败时诊断（Windows CI 是唯一复现环境）：PATH shim 是否解析得到、
+		// 快照 glob 在该 TMPDIR 下是否匹配、shim 看到了什么。探针另写一个
+		// 匹配模式的新文件——真快照已被 file-sentinel cleanup 消费。
+		probe := filepath.Join(tmp, "forge-snapshot-"+sid+"-probe")
+		if werr := os.WriteFile(probe, []byte("x"), 0644); werr != nil {
+			t.Fatal(werr)
+		}
+		probeScript := `echo "WHICH_CAT=$(command -v cat)"
+echo "TMPDIR=$TMPDIR"
+for f in "${TMPDIR}/forge-snapshot-${FORGE_SESSION_ID}"-*; do echo "GLOB_MATCH=$f"; done
+cat "${TMPDIR}/forge-snapshot-${FORGE_SESSION_ID}-probe" >/dev/null 2>&1
+echo "PROBE_CAT_RC=$?"
+echo "FIRED_PATH=$FORGE_SHIM_FIRED"`
+		pcmd := exec.Command("bash", "-c", probeScript)
+		pcmd.Dir = dir
+		pcmd.Env = raceEnv
+		probeOut, _ := pcmd.CombinedOutput()
+		logData, _ := os.ReadFile(shimLog)
+		t.Fatalf("shim 未触发——竞态路径未被覆盖（vacuous pass）: %v\n--- probe ---\n%s--- shim log ---\n%s--- hook output ---\n%s", statErr, probeOut, logData, out)
 	}
 	if _, statErr := os.Stat(hooksFile); statErr != nil {
 		t.Errorf("无真实 drift 时 hooksFile 不应被隔离: %v\noutput:\n%s", statErr, out)
