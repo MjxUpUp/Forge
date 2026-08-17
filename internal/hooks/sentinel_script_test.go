@@ -789,35 +789,47 @@ func TestSentinelScripts_CfgSidecarRaceSkipsComparison(t *testing.T) {
 		t.Fatalf("bash-guard must write the .cfg sidecar (glob: %v, err: %v)", cfgs, err)
 	}
 
-	// PATH shim: a `cat` that removes the .cfg sidecar at the exact moment
-	// file-sentinel goes to read it (the concurrent-cleanup interleaving), drops
-	// a marker so the test fails loudly if the shim never fired, and execs the
-	// real cat for every invocation (the BEFORE_ALL read of the snapshot itself
-	// must be unaffected).
+	// cat shim: removes the .cfg sidecar at the exact moment file-sentinel goes
+	// to read it (the concurrent-cleanup interleaving), drops a marker so the
+	// test fails loudly if the shim never fired, and passes every invocation
+	// through to the real cat (the BEFORE_ALL read of the snapshot itself must
+	// be unaffected).
 	//
-	// PATH shim：一个 `cat`，在 file-sentinel 正要读 .cfg 的精确时刻删掉它
-	// （并发 cleanup 交错），留 marker 让 shim 未触发时测试响亮失败，其余调用
-	// exec 真 cat（BEFORE_ALL 读快照本尊不受影响）。
-	shimDir := t.TempDir()
-	realCat, err := exec.LookPath("cat")
-	if err != nil {
-		t.Skipf("cat not on PATH: %v", err)
-	}
-	shim := "#!/bin/bash\n" +
-		"echo \"SHIM CALLED: $*\" >> \"$FORGE_SHIM_LOG\" 2>&1 || true\n" +
-		"for a in \"$@\"; do\n" +
-		"  case \"$a\" in\n" +
-		"    *forge-snapshot-*.cfg) rm -f \"$a\"; : > \"$FORGE_SHIM_FIRED\" ;;\n" +
-		"  esac\n" +
-		"done\n" +
-		"exec '" + hookEnvPath(realCat) + "' \"$@\"\n"
-	if err := os.WriteFile(filepath.Join(shimDir, "cat"), []byte(shim), 0755); err != nil {
-		t.Fatal(err)
-	}
+	// cat shim：在 file-sentinel 正要读 .cfg 的精确时刻删掉它（并发 cleanup
+	// 交错），留 marker 让 shim 未触发时测试响亮失败，所有调用透传真 cat
+	// （BEFORE_ALL 读快照本尊不受影响）。
+	// BASH_ENV function override, not a PATH shim: the MSYS2 runtime reorders the
+	// Windows PATH on process startup (its own /usr/bin ends up first), so a
+	// prepended shim dir loses — 2026-08-17 Windows CI probe showed
+	// `command -v cat` = /usr/bin/cat despite the prepend. BASH_ENV is sourced by
+	// every non-interactive bash (the hook AND its command substitutions), and a
+	// shell function shadows PATH lookup unconditionally. `command cat` inside the
+	// function bypasses the override for the real read.
+	//
+	// BASH_ENV 函数覆盖，不是 PATH shim：MSYS2 runtime 在进程启动时会重排
+	// Windows PATH（自己的 /usr/bin 排最前），prepend 的 shim 目录会输——
+	// 2026-08-17 Windows CI 探针实证 command -v cat = /usr/bin/cat。BASH_ENV
+	// 被每个非交互 bash（hook 本体及其命令替换子 shell）source，shell 函数
+	// 无条件优先于 PATH 查找。函数体内 `command cat` 绕过覆盖读真 cat。
 	fired := filepath.Join(t.TempDir(), "shim-fired")
 	shimLog := filepath.Join(t.TempDir(), "shim.log")
+	bashEnv := filepath.Join(t.TempDir(), "bashenv.sh")
+	shim := "# shim: intercept cat to delete the .cfg sidecar at the exact read moment\n" +
+		"cat() {\n" +
+		"  echo \"SHIM CALLED: $*\" >> \"$FORGE_SHIM_LOG\" 2>&1 || true\n" +
+		"  local a\n" +
+		"  for a in \"$@\"; do\n" +
+		"    case \"$a\" in\n" +
+		"      *forge-snapshot-*.cfg) rm -f \"$a\"; : > \"$FORGE_SHIM_FIRED\" ;;\n" +
+		"    esac\n" +
+		"  done\n" +
+		"  command cat \"$@\"\n" +
+		"}\n"
+	if err := os.WriteFile(bashEnv, []byte(shim), 0644); err != nil {
+		t.Fatal(err)
+	}
 	raceEnv := append(append([]string{}, env...),
-		"PATH="+shimDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"BASH_ENV="+hookEnvPath(bashEnv),
 		"FORGE_SHIM_FIRED="+hookEnvPath(fired),
 		"FORGE_SHIM_LOG="+hookEnvPath(shimLog))
 
