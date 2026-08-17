@@ -313,6 +313,8 @@ var skillRefAllowlist = map[string]bool{
 	`dell-1996`: true, `nintendo-2001`: true, `bmw-m`: true, `snapshot-2026-06-21-pre-redesign`: true,
 	// API key 占位符示例（非 skill）
 	`sk-xxx`: true,
+	// eval 黄金集策展 case 的 ID 前缀约定（g-<skill>-t1，非 skill）
+	`g-`: true,
 }
 
 // TestSkills_NoDanglingSkillRefs guard C: every backtick-wrapped multi-segment kebab

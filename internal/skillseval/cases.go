@@ -12,6 +12,11 @@ package skillseval
 // evolutions of GenerateEvalPrompts's rendering rules (e.g. user-says → empty) do not cause case-ID drift en
 // masse, which would otherwise be misreported as a full case-set turnover and destroy the regression signal.
 //
+// Two sources merge into one view at load time: hand-curated golden cases
+// (<dir>/golden/<skill>/cases.json, committed to VCS, real-utterance rewrites rather than
+// description self-derivation, IDs prefixed "g-", Origin=curated) take priority, and
+// derived cases (cases/<skill>.json) supplement IDs the golden set does not cover.
+//
 // cases.go 是 skill eval 闭环的数据层之一：结构化 case 集的派生与存读。
 //
 // eval-gen 原本只产出 markdown 清单（EvalSkill，人工跑、不落盘）。闭环需要
@@ -23,6 +28,10 @@ package skillseval
 // case ID 锚定在「未替换的原始 trigger/skip 片段」上，而非渲染后的 prompt——
 // 这样 GenerateEvalPrompts 的渲染规则演进（用户说→空 等替换）不会让 case ID
 // 集体漂移，否则会被误报成全量 case 换血、毁掉回归信号。
+//
+// 加载时两个来源合并成一个视图：人工策展黄金 case（<dir>/golden/<skill>/cases.json，
+// 进 VCS，真实话语改写而非 description 自我派生，ID 带 "g-" 前缀，Origin=curated）
+// 优先，派生 case（cases/<skill>.json）补充 golden 未覆盖的 ID。
 
 import (
 	"crypto/sha1"
@@ -44,6 +53,16 @@ const (
 	KindNotTrigger = "not-trigger" // 该 prompt 不应触发本 skill（误触发检测）
 )
 
+// OriginCurated marks hand-curated golden cases (evals/golden/<skill>/cases.json,
+// committed to VCS). Derived cases (EvalCases, from the SKILL.md description) leave
+// Origin empty. Curated IDs carry a "g-" prefix so the two sources can never collide
+// with the derived sha1[:12] ID domain.
+//
+// OriginCurated 标记人工策展的黄金 case（evals/golden/<skill>/cases.json，进 VCS）。
+// 派生 case（EvalCases 从 SKILL.md description 生成）Origin 留空。策展 ID 统一
+// "g-" 前缀，与派生的 sha1[:12] ID 域不冲突。
+const OriginCurated = "curated"
+
 // EvalCase is a single eval test case.
 //
 // EvalCase 是单个 eval 测试用例。
@@ -55,6 +74,7 @@ type EvalCase struct {
 	SourceFragment string    `json:"source_fragment,omitempty"` // 生成此 case 的原始 trigger/skip 片段
 	Target         string    `json:"target,omitempty"`          // trigger 类 = Skill；not-trigger 类 = ""（MVP）
 	DescHash       string    `json:"desc_hash,omitempty"`       // 生成时 description 的 sha1[:12]
+	Origin         string    `json:"origin,omitempty"`          // "curated" = 人工策展黄金 case；空 = 派生
 	CreatedAt      time.Time `json:"created_at"`
 }
 
@@ -71,6 +91,14 @@ type CaseSet struct {
 // see that file for the resolution chain and the ~/.pi/research/skill-eval history).
 
 func casesFile(dir, skill string) string { return filepath.Join(dir, "cases", skill+".json") }
+
+// goldenFile locates the hand-curated golden case set: <dir>/golden/<skill>/cases.json.
+// Golden sets live in the repo (evals/golden/) and are committed to VCS; derived sets
+// live under cases/ and are machine-generated.
+//
+// goldenFile 定位人工策展黄金集：<dir>/golden/<skill>/cases.json。黄金集在仓库里
+// （evals/golden/）进 VCS；派生集在 cases/ 下、机器生成。
+func goldenFile(dir, skill string) string { return filepath.Join(dir, "golden", skill, "cases.json") }
 func runsFile(dir, skill string) string  { return filepath.Join(dir, "runs", skill+".jsonl") }
 func baselinesFile(dir string) string    { return filepath.Join(dir, "baselines.json") }
 
@@ -200,29 +228,73 @@ func firstDescHash(cases []EvalCase) string {
 	return ""
 }
 
-// LoadCases reads the case set. A missing file returns nil,nil (the skill has never had cases generated).
+// LoadCases reads the merged case set: golden (curated) first, derived cases supplementing
+// any IDs the golden set does not cover (golden wins on ID conflict). Both files missing
+// returns nil,nil (the skill has never had cases generated).
 //
-// LoadCases 读 case 集。文件不存在返回 nil,nil（skill 未生成过 case）。
+// LoadCases 读合并后的 case 集：golden（策展）优先，派生 case 补充 golden 未覆盖的 ID
+// （同 ID golden 胜出）。两个文件都不存在返回 nil,nil（skill 未生成过 case）。
 func LoadCases(dir, skill string) ([]EvalCase, error) {
-	data, err := os.ReadFile(casesFile(dir, skill))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	var set CaseSet
-	if err := json.Unmarshal(data, &set); err != nil {
+	set, err := LoadCaseSet(dir, skill)
+	if err != nil || set == nil {
 		return nil, err
 	}
 	return set.Cases, nil
 }
 
-// LoadCaseSet reads the full CaseSet (including DescHash), for use by submit-time validation.
+// LoadCaseSet reads the full merged CaseSet (including DescHash), for use by submit-time
+// validation. The merged DescHash comes from the derived cases (firstDescHash): curated
+// cases are anchored on real utterances rather than the description, so they carry no
+// DescHash and a golden-only set never goes stale on description edits.
 //
-// LoadCaseSet 读完整 CaseSet（含 DescHash），供 submit 校验用。
+// LoadCaseSet 读完整合并 CaseSet（含 DescHash），供 submit 校验用。合并后的 DescHash
+// 来自派生 case（firstDescHash）：策展 case 锚定真实话语而非 description，不带
+// DescHash，纯 golden 集不会因 description 变更而过期。
 func LoadCaseSet(dir, skill string) (*CaseSet, error) {
-	data, err := os.ReadFile(casesFile(dir, skill))
+	golden, err := readCaseSet(goldenFile(dir, skill))
+	if err != nil {
+		return nil, err
+	}
+	derived, err := readCaseSet(casesFile(dir, skill))
+	if err != nil {
+		return nil, err
+	}
+	if golden == nil && derived == nil {
+		return nil, nil
+	}
+	merged := &CaseSet{Skill: skill}
+	seen := make(map[string]bool)
+	for _, c := range goldenCases(golden) {
+		merged.Cases = append(merged.Cases, c)
+		seen[c.ID] = true
+	}
+	if derived != nil {
+		for _, c := range derived.Cases {
+			if seen[c.ID] {
+				continue
+			}
+			merged.Cases = append(merged.Cases, c)
+		}
+	}
+	merged.DescHash = firstDescHash(merged.Cases)
+	return merged, nil
+}
+
+// goldenCases flattens a possibly-nil golden set for the merge loop.
+//
+// goldenCases 把可能为 nil 的 golden 集压平，供合并循环用。
+func goldenCases(set *CaseSet) []EvalCase {
+	if set == nil {
+		return nil
+	}
+	return set.Cases
+}
+
+// readCaseSet reads one CaseSet file. A missing file returns nil,nil.
+//
+// readCaseSet 读单个 CaseSet 文件。文件不存在返回 nil,nil。
+func readCaseSet(path string) (*CaseSet, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil

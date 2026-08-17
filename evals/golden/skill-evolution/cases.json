@@ -1,0 +1,56 @@
+{
+  "skill": "skill-evolution",
+  "cases": [
+    {
+      "id": "g-skill-evolution-t1",
+      "skill": "skill-evolution",
+      "kind": "trigger",
+      "prompt": "这个 skill 上周明明该触发的场景没触发，想系统地修一下",
+      "target": "skill-evolution",
+      "origin": "curated",
+      "created_at": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "g-skill-evolution-t2",
+      "skill": "skill-evolution",
+      "kind": "trigger",
+      "prompt": "eval-report 显示这个 skill 最近回归了，帮我诊断下",
+      "target": "skill-evolution",
+      "origin": "curated",
+      "created_at": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "g-skill-evolution-t3",
+      "skill": "skill-evolution",
+      "kind": "trigger",
+      "prompt": "我想改这个 skill 的 description，改完怎么验证不会退化",
+      "target": "skill-evolution",
+      "origin": "curated",
+      "created_at": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "g-skill-evolution-n1",
+      "skill": "skill-evolution",
+      "kind": "not-trigger",
+      "prompt": "这个 SKILL.md 里有个错别字，顺手改下",
+      "origin": "curated",
+      "created_at": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "g-skill-evolution-n2",
+      "skill": "skill-evolution",
+      "kind": "not-trigger",
+      "prompt": "帮我从零写一个新的 skill 来管数据库迁移",
+      "origin": "curated",
+      "created_at": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "g-skill-evolution-b1",
+      "skill": "skill-evolution",
+      "kind": "not-trigger",
+      "prompt": "这次会话踩了不少坑，结束前把经验沉淀一下",
+      "origin": "curated",
+      "created_at": "2026-08-17T00:00:00Z"
+    }
+  ]
+}
