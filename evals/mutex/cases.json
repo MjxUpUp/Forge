@@ -1,0 +1,1745 @@
+[
+  {
+    "id": "f682f567c961",
+    "positive": "code-review-gate",
+    "negative": "adversarial-verification",
+    "prompt": "开发任务完成准备 git commit / push / 提 PR 前",
+    "source": "开发任务完成准备 git commit / push / 提 PR 前"
+  },
+  {
+    "id": "837616fa9a37",
+    "positive": "code-review-gate",
+    "negative": "adversarial-verification",
+    "prompt": "说\\\"审查代码 / code review / 检查代码质量 / 看看能不能提交 / 代码写得怎么样 / 帮我 review\\\"时",
+    "source": "说\\\"审查代码 / code review / 检查代码质量 / 看看能不能提交 / 代码写得怎么样 / 帮我 review\\\"时"
+  },
+  {
+    "id": "1a220b993607",
+    "positive": "project-acceptance",
+    "negative": "adversarial-verification",
+    "prompt": "对整个项目进行验收时",
+    "source": "对整个项目进行验收时"
+  },
+  {
+    "id": "c431743b4e87",
+    "positive": "project-acceptance",
+    "negative": "adversarial-verification",
+    "prompt": "比对设计方案和实施计划时",
+    "source": "比对设计方案和实施计划时"
+  },
+  {
+    "id": "f74ca0237f8f",
+    "positive": "release-readiness",
+    "negative": "adversarial-verification",
+    "prompt": "准备发布/上线/打 tag/发版/灰度时",
+    "source": "准备发布/上线/打 tag/发版/灰度时"
+  },
+  {
+    "id": "aa36d267aa27",
+    "positive": "release-readiness",
+    "negative": "adversarial-verification",
+    "prompt": "用户问'能上线了吗'/'可以发布了吗'/'发布前检查'/'上线前 check 一遍'时",
+    "source": "用户问'能上线了吗'/'可以发布了吗'/'发布前检查'/'上线前 check 一遍'时"
+  },
+  {
+    "id": "1179b234494c",
+    "positive": "research-workflow",
+    "negative": "adversarial-verification",
+    "prompt": "查市场份额/融资金额/产品对比（A vs B 怎么选）/技术最新进展/某事实核实（需多源交叉但不出报告）",
+    "source": "查市场份额/融资金额/产品对比（A vs B 怎么选）/技术最新进展/某事实核实（需多源交叉但不出报告）"
+  },
+  {
+    "id": "5348a08b4111",
+    "positive": "research-workflow",
+    "negative": "adversarial-verification",
+    "prompt": "\\\"调研XXX/深度调研/补充调研/调研并发布\\",
+    "source": "用户说\\\"调研XXX/深度调研/补充调研/调研并发布\\"
+  },
+  {
+    "id": "a601ee703151",
+    "positive": "frontend-code-review",
+    "negative": "ai-generated-ui-review",
+    "prompt": "审查前端代码",
+    "source": "审查前端代码"
+  },
+  {
+    "id": "fa86a2283af3",
+    "positive": "frontend-code-review",
+    "negative": "ai-generated-ui-review",
+    "prompt": "前端 code review",
+    "source": "前端 code review"
+  },
+  {
+    "id": "03d2086310b4",
+    "positive": "research-workflow",
+    "negative": "ai-generated-ui-review",
+    "prompt": "查市场份额/融资金额/产品对比（A vs B 怎么选）/技术最新进展/某事实核实（需多源交叉但不出报告）",
+    "source": "查市场份额/融资金额/产品对比（A vs B 怎么选）/技术最新进展/某事实核实（需多源交叉但不出报告）"
+  },
+  {
+    "id": "e2e6000f6abb",
+    "positive": "research-workflow",
+    "negative": "ai-generated-ui-review",
+    "prompt": "\\\"调研XXX/深度调研/补充调研/调研并发布\\",
+    "source": "用户说\\\"调研XXX/深度调研/补充调研/调研并发布\\"
+  },
+  {
+    "id": "68172ef66437",
+    "positive": "rust-code-review",
+    "negative": "ai-generated-ui-review",
+    "prompt": "审查 Rust 代码 PR 时",
+    "source": "审查 Rust 代码 PR 时"
+  },
+  {
+    "id": "9cd1873f7fb1",
+    "positive": "rust-code-review",
+    "negative": "ai-generated-ui-review",
+    "prompt": "检查 Rust 代码变更时",
+    "source": "检查 Rust 代码变更时"
+  },
+  {
+    "id": "bdf2ebd165d6",
+    "positive": "ai-generated-ui-review",
+    "negative": "ai-ui-generation-workflow",
+    "prompt": "审查 AI 生成的代码",
+    "source": "审查 AI 生成的代码"
+  },
+  {
+    "id": "6f9c3dbae3a7",
+    "positive": "ai-generated-ui-review",
+    "negative": "ai-ui-generation-workflow",
+    "prompt": "v0 生成的能不能用",
+    "source": "v0 生成的能不能用"
+  },
+  {
+    "id": "c57377febf3b",
+    "positive": "frontend-feature-development",
+    "negative": "ai-ui-generation-workflow",
+    "prompt": "写 React/Vue/Svelte 组件",
+    "source": "写 React/Vue/Svelte 组件"
+  },
+  {
+    "id": "7507bdc2f75f",
+    "positive": "frontend-feature-development",
+    "negative": "ai-ui-generation-workflow",
+    "prompt": "实现前端功能",
+    "source": "实现前端功能"
+  },
+  {
+    "id": "26efc44fb182",
+    "positive": "frontend-stack-selection",
+    "negative": "ai-ui-generation-workflow",
+    "prompt": "新前端项目选型",
+    "source": "新前端项目选型"
+  },
+  {
+    "id": "beb289251238",
+    "positive": "frontend-stack-selection",
+    "negative": "ai-ui-generation-workflow",
+    "prompt": "选组件库",
+    "source": "选组件库"
+  },
+  {
+    "id": "55f39fb7408d",
+    "positive": "research-workflow",
+    "negative": "ai-ui-generation-workflow",
+    "prompt": "查市场份额/融资金额/产品对比（A vs B 怎么选）/技术最新进展/某事实核实（需多源交叉但不出报告）",
+    "source": "查市场份额/融资金额/产品对比（A vs B 怎么选）/技术最新进展/某事实核实（需多源交叉但不出报告）"
+  },
+  {
+    "id": "28ad731ab8b2",
+    "positive": "research-workflow",
+    "negative": "ai-ui-generation-workflow",
+    "prompt": "\\\"调研XXX/深度调研/补充调研/调研并发布\\",
+    "source": "用户说\\\"调研XXX/深度调研/补充调研/调研并发布\\"
+  },
+  {
+    "id": "a49b585ee2da",
+    "positive": "evidence-based-proposal",
+    "negative": "architecture-decision-record",
+    "prompt": "提出技术方案时",
+    "source": "提出技术方案时"
+  },
+  {
+    "id": "b7622cd42a26",
+    "positive": "evidence-based-proposal",
+    "negative": "architecture-decision-record",
+    "prompt": "建议架构选型时",
+    "source": "建议架构选型时"
+  },
+  {
+    "id": "44708abd3737",
+    "positive": "database-design",
+    "negative": "backend-development",
+    "prompt": "设计新 schema",
+    "source": "设计新 schema"
+  },
+  {
+    "id": "a5a98b50f9f0",
+    "positive": "database-design",
+    "negative": "backend-development",
+    "prompt": "写 migration",
+    "source": "写 migration"
+  },
+  {
+    "id": "6328505033d6",
+    "positive": "compile-fix-loop",
+    "negative": "code-review-gate",
+    "prompt": "用户粘贴编译报错时",
+    "source": "用户粘贴编译报错时"
+  },
+  {
+    "id": "f9efc830ef97",
+    "positive": "compile-fix-loop",
+    "negative": "code-review-gate",
+    "prompt": "修复编译错误后又出现新错误时",
+    "source": "修复编译错误后又出现新错误时"
+  },
+  {
+    "id": "9c06bf0e7d85",
+    "positive": "dev-lookup",
+    "negative": "code-review-gate",
+    "prompt": "开发或调试时需要确认某个具体技术点——\\\"这个 API 怎么调\\\"\\\"这个错误什么意思\\\"\\\"这个库怎么用\\\"\\\"这两个版本兼容吗\\\"\\\"这个语法对不对\\",
+    "source": "开发或调试时需要确认某个具体技术点——\\\"这个 API 怎么调\\\"\\\"这个错误什么意思\\\"\\\"这个库怎么用\\\"\\\"这两个版本兼容吗\\\"\\\"这个语法对不对\\\"。"
+  },
+  {
+    "id": "6be3ae7ace1d",
+    "positive": "project-acceptance",
+    "negative": "code-review-gate",
+    "prompt": "对整个项目进行验收时",
+    "source": "对整个项目进行验收时"
+  },
+  {
+    "id": "94adeb16d4c3",
+    "positive": "project-acceptance",
+    "negative": "code-review-gate",
+    "prompt": "比对设计方案和实施计划时",
+    "source": "比对设计方案和实施计划时"
+  },
+  {
+    "id": "3b7876e4e1f3",
+    "positive": "rust-code-review",
+    "negative": "code-review-gate",
+    "prompt": "审查 Rust 代码 PR 时",
+    "source": "审查 Rust 代码 PR 时"
+  },
+  {
+    "id": "aad7c06958d2",
+    "positive": "rust-code-review",
+    "negative": "code-review-gate",
+    "prompt": "检查 Rust 代码变更时",
+    "source": "检查 Rust 代码变更时"
+  },
+  {
+    "id": "c7a1baf5c463",
+    "positive": "systematic-debugging",
+    "negative": "code-review-gate",
+    "prompt": "遇到任何 bug/测试失败/意外行为/性能问题时",
+    "source": "遇到任何 bug/测试失败/意外行为/性能问题时"
+  },
+  {
+    "id": "fef25ca1204a",
+    "positive": "systematic-debugging",
+    "negative": "code-review-gate",
+    "prompt": "准备提修复方案前",
+    "source": "准备提修复方案前"
+  },
+  {
+    "id": "ac7aaa7301aa",
+    "positive": "test-discipline",
+    "negative": "code-review-gate",
+    "prompt": "审查提交 diff 时",
+    "source": "审查提交 diff 时"
+  },
+  {
+    "id": "c6ad2038f6c6",
+    "positive": "test-discipline",
+    "negative": "code-review-gate",
+    "prompt": "准备 git commit/push 前",
+    "source": "准备 git commit/push 前"
+  },
+  {
+    "id": "b3ccd56b9011",
+    "positive": "systematic-debugging",
+    "negative": "compile-fix-loop",
+    "prompt": "遇到任何 bug/测试失败/意外行为/性能问题时",
+    "source": "遇到任何 bug/测试失败/意外行为/性能问题时"
+  },
+  {
+    "id": "0510428e7a79",
+    "positive": "systematic-debugging",
+    "negative": "compile-fix-loop",
+    "prompt": "准备提修复方案前",
+    "source": "准备提修复方案前"
+  },
+  {
+    "id": "4e906552471b",
+    "positive": "session-continuity",
+    "negative": "cross-tool-context",
+    "prompt": "恢复项目工作时",
+    "source": "恢复项目工作时"
+  },
+  {
+    "id": "af9fee8cc137",
+    "positive": "session-continuity",
+    "negative": "cross-tool-context",
+    "prompt": "从上次会话中断处继续时",
+    "source": "从上次会话中断处继续时"
+  },
+  {
+    "id": "46f62a3ce57e",
+    "positive": "backend-development",
+    "negative": "database-design",
+    "prompt": "写 API endpoint/service 层",
+    "source": "写 API endpoint/service 层"
+  },
+  {
+    "id": "3f5c6f897a8d",
+    "positive": "backend-development",
+    "negative": "database-design",
+    "prompt": "设计 schema 业务层",
+    "source": "设计 schema 业务层"
+  },
+  {
+    "id": "63554ced38df",
+    "positive": "doc-generator",
+    "negative": "design-artifact-standards",
+    "prompt": "我要生成或起草 PRD",
+    "source": "用户要生成或起草 PRD"
+  },
+  {
+    "id": "7dd805346bd5",
+    "positive": "doc-generator",
+    "negative": "design-artifact-standards",
+    "prompt": "需求文档",
+    "source": "需求文档"
+  },
+  {
+    "id": "229ad1505728",
+    "positive": "code-review-gate",
+    "negative": "design-audit",
+    "prompt": "开发任务完成准备 git commit / push / 提 PR 前",
+    "source": "开发任务完成准备 git commit / push / 提 PR 前"
+  },
+  {
+    "id": "3cd348429837",
+    "positive": "code-review-gate",
+    "negative": "design-audit",
+    "prompt": "说\\\"审查代码 / code review / 检查代码质量 / 看看能不能提交 / 代码写得怎么样 / 帮我 review\\\"时",
+    "source": "说\\\"审查代码 / code review / 检查代码质量 / 看看能不能提交 / 代码写得怎么样 / 帮我 review\\\"时"
+  },
+  {
+    "id": "d790d53b9037",
+    "positive": "design-review-snapshot",
+    "negative": "design-audit",
+    "prompt": "我要把现有前端代码/项目导成设计图审核",
+    "source": "用户要把现有前端代码/项目导成设计图审核"
+  },
+  {
+    "id": "8c138e9b06de",
+    "positive": "design-review-snapshot",
+    "negative": "design-audit",
+    "prompt": "把 SPA 反向导入 Pixso",
+    "source": "把 SPA 反向导入 Pixso"
+  },
+  {
+    "id": "a8919ac154d4",
+    "positive": "frontend-feature-development",
+    "negative": "design-audit",
+    "prompt": "写 React/Vue/Svelte 组件",
+    "source": "写 React/Vue/Svelte 组件"
+  },
+  {
+    "id": "d50e834f1327",
+    "positive": "frontend-feature-development",
+    "negative": "design-audit",
+    "prompt": "实现前端功能",
+    "source": "实现前端功能"
+  },
+  {
+    "id": "ba03ef1f67c0",
+    "positive": "project-acceptance",
+    "negative": "design-audit",
+    "prompt": "对整个项目进行验收时",
+    "source": "对整个项目进行验收时"
+  },
+  {
+    "id": "c35392025aca",
+    "positive": "project-acceptance",
+    "negative": "design-audit",
+    "prompt": "比对设计方案和实施计划时",
+    "source": "比对设计方案和实施计划时"
+  },
+  {
+    "id": "37a540a81771",
+    "positive": "research-workflow",
+    "negative": "design-audit",
+    "prompt": "查市场份额/融资金额/产品对比（A vs B 怎么选）/技术最新进展/某事实核实（需多源交叉但不出报告）",
+    "source": "查市场份额/融资金额/产品对比（A vs B 怎么选）/技术最新进展/某事实核实（需多源交叉但不出报告）"
+  },
+  {
+    "id": "991a03283656",
+    "positive": "research-workflow",
+    "negative": "design-audit",
+    "prompt": "\\\"调研XXX/深度调研/补充调研/调研并发布\\",
+    "source": "用户说\\\"调研XXX/深度调研/补充调研/调研并发布\\"
+  },
+  {
+    "id": "9ee46fc18378",
+    "positive": "review-batch",
+    "negative": "design-audit",
+    "prompt": "审查整个项目/大范围代码时",
+    "source": "审查整个项目/大范围代码时"
+  },
+  {
+    "id": "87472c6fcf4f",
+    "positive": "review-batch",
+    "negative": "design-audit",
+    "prompt": "重构后做全量验收时",
+    "source": "重构后做全量验收时"
+  },
+  {
+    "id": "4804600a5ded",
+    "positive": "ai-generated-ui-review",
+    "negative": "design-review-snapshot",
+    "prompt": "审查 AI 生成的代码",
+    "source": "审查 AI 生成的代码"
+  },
+  {
+    "id": "2660e681388c",
+    "positive": "ai-generated-ui-review",
+    "negative": "design-review-snapshot",
+    "prompt": "v0 生成的能不能用",
+    "source": "v0 生成的能不能用"
+  },
+  {
+    "id": "1b1ab5bb8cde",
+    "positive": "ai-ui-generation-workflow",
+    "negative": "design-review-snapshot",
+    "prompt": "我要用 v0/Bolt/Lovable/Replit 生成页面或应用",
+    "source": "用户要用 v0/Bolt/Lovable/Replit 生成页面或应用"
+  },
+  {
+    "id": "5dd8e2bcb6f3",
+    "positive": "ai-ui-generation-workflow",
+    "negative": "design-review-snapshot",
+    "prompt": "prompt-to-UI",
+    "source": "prompt-to-UI"
+  },
+  {
+    "id": "7de858c6ede4",
+    "positive": "design-system-workflow",
+    "negative": "design-review-snapshot",
+    "prompt": "建/管 design token",
+    "source": "建/管 design token"
+  },
+  {
+    "id": "4ccbf743b9dd",
+    "positive": "design-system-workflow",
+    "negative": "design-review-snapshot",
+    "prompt": "设计工具到代码 token 同步",
+    "source": "设计工具到代码 token 同步"
+  },
+  {
+    "id": "b047198ae92d",
+    "positive": "frontend-stack-selection",
+    "negative": "design-review-snapshot",
+    "prompt": "新前端项目选型",
+    "source": "新前端项目选型"
+  },
+  {
+    "id": "134d2c33ec58",
+    "positive": "frontend-stack-selection",
+    "negative": "design-review-snapshot",
+    "prompt": "选组件库",
+    "source": "选组件库"
+  },
+  {
+    "id": "4cef694cee76",
+    "positive": "design-system-workflow",
+    "negative": "design-system-migration",
+    "prompt": "建/管 design token",
+    "source": "建/管 design token"
+  },
+  {
+    "id": "f1415f057966",
+    "positive": "design-system-workflow",
+    "negative": "design-system-migration",
+    "prompt": "设计工具到代码 token 同步",
+    "source": "设计工具到代码 token 同步"
+  },
+  {
+    "id": "762cdc54bdd2",
+    "positive": "evidence-based-proposal",
+    "negative": "dev-lookup",
+    "prompt": "提出技术方案时",
+    "source": "提出技术方案时"
+  },
+  {
+    "id": "f5d041e294e9",
+    "positive": "evidence-based-proposal",
+    "negative": "dev-lookup",
+    "prompt": "建议架构选型时",
+    "source": "建议架构选型时"
+  },
+  {
+    "id": "5f9fd97a58b7",
+    "positive": "research-workflow",
+    "negative": "dev-lookup",
+    "prompt": "查市场份额/融资金额/产品对比（A vs B 怎么选）/技术最新进展/某事实核实（需多源交叉但不出报告）",
+    "source": "查市场份额/融资金额/产品对比（A vs B 怎么选）/技术最新进展/某事实核实（需多源交叉但不出报告）"
+  },
+  {
+    "id": "32b08414e9f6",
+    "positive": "research-workflow",
+    "negative": "dev-lookup",
+    "prompt": "\\\"调研XXX/深度调研/补充调研/调研并发布\\",
+    "source": "用户说\\\"调研XXX/深度调研/补充调研/调研并发布\\"
+  },
+  {
+    "id": "28da9950ac12",
+    "positive": "agent-delegation",
+    "negative": "dev-workflow",
+    "prompt": "用 subagent 工具分派任务时",
+    "source": "用 subagent 工具分派任务时"
+  },
+  {
+    "id": "2827f637fb09",
+    "positive": "agent-delegation",
+    "negative": "dev-workflow",
+    "prompt": "写子代理 prompt 时",
+    "source": "写子代理 prompt 时"
+  },
+  {
+    "id": "d8e1c3dd9f57",
+    "positive": "evidence-based-proposal",
+    "negative": "dev-workflow",
+    "prompt": "提出技术方案时",
+    "source": "提出技术方案时"
+  },
+  {
+    "id": "387706024372",
+    "positive": "evidence-based-proposal",
+    "negative": "dev-workflow",
+    "prompt": "建议架构选型时",
+    "source": "建议架构选型时"
+  },
+  {
+    "id": "f93c56d84fee",
+    "positive": "implementation-discipline",
+    "negative": "dev-workflow",
+    "prompt": "接到编码任务准备动手时",
+    "source": "接到编码任务准备动手时"
+  },
+  {
+    "id": "f7bdb69b2b91",
+    "positive": "implementation-discipline",
+    "negative": "dev-workflow",
+    "prompt": "写实现代码前",
+    "source": "写实现代码前"
+  },
+  {
+    "id": "a51bfce1f736",
+    "positive": "systematic-debugging",
+    "negative": "dev-workflow",
+    "prompt": "遇到任何 bug/测试失败/意外行为/性能问题时",
+    "source": "遇到任何 bug/测试失败/意外行为/性能问题时"
+  },
+  {
+    "id": "ce0e597b9e91",
+    "positive": "systematic-debugging",
+    "negative": "dev-workflow",
+    "prompt": "准备提修复方案前",
+    "source": "准备提修复方案前"
+  },
+  {
+    "id": "bd285df8b067",
+    "positive": "architecture-decision-record",
+    "negative": "doc-generator",
+    "prompt": "做架构选择时",
+    "source": "做架构选择时"
+  },
+  {
+    "id": "dfd417be79c4",
+    "positive": "architecture-decision-record",
+    "negative": "doc-generator",
+    "prompt": "评估方案权衡时",
+    "source": "评估方案权衡时"
+  },
+  {
+    "id": "fe46e6051629",
+    "positive": "design-artifact-standards",
+    "negative": "doc-generator",
+    "prompt": "写设计产物——PRD/需求文档/user story（requirement）｜API 契约/OpenAPI/proto/接口定义（api）｜建表/migration/schema（database）｜页面/组件/路由设计（frontend）｜service/domain/业务逻辑设计（backend）｜测试方案/用例/计划（test-design）——按对应清单搭骨架并自查",
+    "source": "写设计产物——PRD/需求文档/user story（requirement）｜API 契约/OpenAPI/proto/接口定义（api）｜建表/migration/schema（database）｜页面/组件/路由设计（frontend）｜service/domain/业务逻辑设计（backend）｜测试方案/用例/计划（test-design）——按对应清单搭骨架并自查。"
+  },
+  {
+    "id": "f2ab9dfb81b3",
+    "positive": "evidence-based-proposal",
+    "negative": "doc-generator",
+    "prompt": "提出技术方案时",
+    "source": "提出技术方案时"
+  },
+  {
+    "id": "788a68979511",
+    "positive": "evidence-based-proposal",
+    "negative": "doc-generator",
+    "prompt": "建议架构选型时",
+    "source": "建议架构选型时"
+  },
+  {
+    "id": "686b2fbff322",
+    "positive": "research-workflow",
+    "negative": "doc-generator",
+    "prompt": "查市场份额/融资金额/产品对比（A vs B 怎么选）/技术最新进展/某事实核实（需多源交叉但不出报告）",
+    "source": "查市场份额/融资金额/产品对比（A vs B 怎么选）/技术最新进展/某事实核实（需多源交叉但不出报告）"
+  },
+  {
+    "id": "c45e30d50804",
+    "positive": "research-workflow",
+    "negative": "doc-generator",
+    "prompt": "\\\"调研XXX/深度调研/补充调研/调研并发布\\",
+    "source": "用户说\\\"调研XXX/深度调研/补充调研/调研并发布\\"
+  },
+  {
+    "id": "cb30b7cc5f70",
+    "positive": "code-review-gate",
+    "negative": "docs-consistency-guard",
+    "prompt": "开发任务完成准备 git commit / push / 提 PR 前",
+    "source": "开发任务完成准备 git commit / push / 提 PR 前"
+  },
+  {
+    "id": "3135ef5a670a",
+    "positive": "code-review-gate",
+    "negative": "docs-consistency-guard",
+    "prompt": "说\\\"审查代码 / code review / 检查代码质量 / 看看能不能提交 / 代码写得怎么样 / 帮我 review\\\"时",
+    "source": "说\\\"审查代码 / code review / 检查代码质量 / 看看能不能提交 / 代码写得怎么样 / 帮我 review\\\"时"
+  },
+  {
+    "id": "32e70529a0f4",
+    "positive": "dev-lookup",
+    "negative": "docs-consistency-guard",
+    "prompt": "开发或调试时需要确认某个具体技术点——\\\"这个 API 怎么调\\\"\\\"这个错误什么意思\\\"\\\"这个库怎么用\\\"\\\"这两个版本兼容吗\\\"\\\"这个语法对不对\\",
+    "source": "开发或调试时需要确认某个具体技术点——\\\"这个 API 怎么调\\\"\\\"这个错误什么意思\\\"\\\"这个库怎么用\\\"\\\"这两个版本兼容吗\\\"\\\"这个语法对不对\\\"。"
+  },
+  {
+    "id": "ebba636aff68",
+    "positive": "architecture-decision-record",
+    "negative": "domain-modeling",
+    "prompt": "做架构选择时",
+    "source": "做架构选择时"
+  },
+  {
+    "id": "26d116f9ddf9",
+    "positive": "architecture-decision-record",
+    "negative": "domain-modeling",
+    "prompt": "评估方案权衡时",
+    "source": "评估方案权衡时"
+  },
+  {
+    "id": "abdef197bdac",
+    "positive": "cross-tool-context",
+    "negative": "domain-modeling",
+    "prompt": "同时用多个 AI 工具开发同一项目时",
+    "source": "同时用多个 AI 工具开发同一项目时"
+  },
+  {
+    "id": "18103532df38",
+    "positive": "cross-tool-context",
+    "negative": "domain-modeling",
+    "prompt": "把 A 工具的分析结果搬给 B 工具时",
+    "source": "把 A 工具的分析结果搬给 B 工具时"
+  },
+  {
+    "id": "1f8bfa3dabea",
+    "positive": "requirement-clarification",
+    "negative": "domain-modeling",
+    "prompt": "\\\"帮我做个X\\\"但只给一句话时",
+    "source": "用户说\\\"帮我做个X\\\"但只给一句话时"
+  },
+  {
+    "id": "1afb689947a2",
+    "positive": "requirement-clarification",
+    "negative": "domain-modeling",
+    "prompt": "需求模糊或存在歧义时",
+    "source": "需求模糊或存在歧义时"
+  },
+  {
+    "id": "783f52950935",
+    "positive": "architecture-decision-record",
+    "negative": "evidence-based-proposal",
+    "prompt": "做架构选择时",
+    "source": "做架构选择时"
+  },
+  {
+    "id": "97e0dbeb1485",
+    "positive": "architecture-decision-record",
+    "negative": "evidence-based-proposal",
+    "prompt": "评估方案权衡时",
+    "source": "评估方案权衡时"
+  },
+  {
+    "id": "3493cd597a6b",
+    "positive": "dev-lookup",
+    "negative": "evidence-based-proposal",
+    "prompt": "开发或调试时需要确认某个具体技术点——\\\"这个 API 怎么调\\\"\\\"这个错误什么意思\\\"\\\"这个库怎么用\\\"\\\"这两个版本兼容吗\\\"\\\"这个语法对不对\\",
+    "source": "开发或调试时需要确认某个具体技术点——\\\"这个 API 怎么调\\\"\\\"这个错误什么意思\\\"\\\"这个库怎么用\\\"\\\"这两个版本兼容吗\\\"\\\"这个语法对不对\\\"。"
+  },
+  {
+    "id": "2d255c7a01fb",
+    "positive": "doc-generator",
+    "negative": "evidence-based-proposal",
+    "prompt": "我要生成或起草 PRD",
+    "source": "用户要生成或起草 PRD"
+  },
+  {
+    "id": "9b42dbc6268d",
+    "positive": "doc-generator",
+    "negative": "evidence-based-proposal",
+    "prompt": "需求文档",
+    "source": "需求文档"
+  },
+  {
+    "id": "045c6b8e0eec",
+    "positive": "research-workflow",
+    "negative": "evidence-based-proposal",
+    "prompt": "查市场份额/融资金额/产品对比（A vs B 怎么选）/技术最新进展/某事实核实（需多源交叉但不出报告）",
+    "source": "查市场份额/融资金额/产品对比（A vs B 怎么选）/技术最新进展/某事实核实（需多源交叉但不出报告）"
+  },
+  {
+    "id": "93cddf741cf7",
+    "positive": "research-workflow",
+    "negative": "evidence-based-proposal",
+    "prompt": "\\\"调研XXX/深度调研/补充调研/调研并发布\\",
+    "source": "用户说\\\"调研XXX/深度调研/补充调研/调研并发布\\"
+  },
+  {
+    "id": "f25e2e91c5e8",
+    "positive": "design-system-workflow",
+    "negative": "frontend-aesthetics-execution",
+    "prompt": "建/管 design token",
+    "source": "建/管 design token"
+  },
+  {
+    "id": "ee71fc72b8a5",
+    "positive": "design-system-workflow",
+    "negative": "frontend-aesthetics-execution",
+    "prompt": "设计工具到代码 token 同步",
+    "source": "设计工具到代码 token 同步"
+  },
+  {
+    "id": "a51bfd697571",
+    "positive": "frontend-code-review",
+    "negative": "frontend-aesthetics-execution",
+    "prompt": "审查前端代码",
+    "source": "审查前端代码"
+  },
+  {
+    "id": "cee62e9b25ed",
+    "positive": "frontend-code-review",
+    "negative": "frontend-aesthetics-execution",
+    "prompt": "前端 code review",
+    "source": "前端 code review"
+  },
+  {
+    "id": "b37c5bed1091",
+    "positive": "frontend-feature-development",
+    "negative": "frontend-aesthetics-execution",
+    "prompt": "写 React/Vue/Svelte 组件",
+    "source": "写 React/Vue/Svelte 组件"
+  },
+  {
+    "id": "6d3fcec55e1b",
+    "positive": "frontend-feature-development",
+    "negative": "frontend-aesthetics-execution",
+    "prompt": "实现前端功能",
+    "source": "实现前端功能"
+  },
+  {
+    "id": "0d358d3f3459",
+    "positive": "frontend-stack-selection",
+    "negative": "frontend-aesthetics-execution",
+    "prompt": "新前端项目选型",
+    "source": "新前端项目选型"
+  },
+  {
+    "id": "a36bd7968447",
+    "positive": "frontend-stack-selection",
+    "negative": "frontend-aesthetics-execution",
+    "prompt": "选组件库",
+    "source": "选组件库"
+  },
+  {
+    "id": "8f7acdce5047",
+    "positive": "ai-generated-ui-review",
+    "negative": "frontend-code-review",
+    "prompt": "审查 AI 生成的代码",
+    "source": "审查 AI 生成的代码"
+  },
+  {
+    "id": "2ca7efafa045",
+    "positive": "ai-generated-ui-review",
+    "negative": "frontend-code-review",
+    "prompt": "v0 生成的能不能用",
+    "source": "v0 生成的能不能用"
+  },
+  {
+    "id": "8753390a7234",
+    "positive": "code-review-gate",
+    "negative": "frontend-code-review",
+    "prompt": "开发任务完成准备 git commit / push / 提 PR 前",
+    "source": "开发任务完成准备 git commit / push / 提 PR 前"
+  },
+  {
+    "id": "a34bebb90daa",
+    "positive": "code-review-gate",
+    "negative": "frontend-code-review",
+    "prompt": "说\\\"审查代码 / code review / 检查代码质量 / 看看能不能提交 / 代码写得怎么样 / 帮我 review\\\"时",
+    "source": "说\\\"审查代码 / code review / 检查代码质量 / 看看能不能提交 / 代码写得怎么样 / 帮我 review\\\"时"
+  },
+  {
+    "id": "721c2e00448a",
+    "positive": "compile-fix-loop",
+    "negative": "frontend-code-review",
+    "prompt": "用户粘贴编译报错时",
+    "source": "用户粘贴编译报错时"
+  },
+  {
+    "id": "3d4649d3efca",
+    "positive": "compile-fix-loop",
+    "negative": "frontend-code-review",
+    "prompt": "修复编译错误后又出现新错误时",
+    "source": "修复编译错误后又出现新错误时"
+  },
+  {
+    "id": "aa83c44a2c9f",
+    "positive": "rust-code-review",
+    "negative": "frontend-code-review",
+    "prompt": "审查 Rust 代码 PR 时",
+    "source": "审查 Rust 代码 PR 时"
+  },
+  {
+    "id": "58840343d88c",
+    "positive": "rust-code-review",
+    "negative": "frontend-code-review",
+    "prompt": "检查 Rust 代码变更时",
+    "source": "检查 Rust 代码变更时"
+  },
+  {
+    "id": "11a08a5d9c16",
+    "positive": "test-discipline",
+    "negative": "frontend-code-review",
+    "prompt": "审查提交 diff 时",
+    "source": "审查提交 diff 时"
+  },
+  {
+    "id": "a248c079e163",
+    "positive": "test-discipline",
+    "negative": "frontend-code-review",
+    "prompt": "准备 git commit/push 前",
+    "source": "准备 git commit/push 前"
+  },
+  {
+    "id": "ca3560576cd0",
+    "positive": "ai-ui-generation-workflow",
+    "negative": "frontend-feature-development",
+    "prompt": "我要用 v0/Bolt/Lovable/Replit 生成页面或应用",
+    "source": "用户要用 v0/Bolt/Lovable/Replit 生成页面或应用"
+  },
+  {
+    "id": "a14b6f55a108",
+    "positive": "ai-ui-generation-workflow",
+    "negative": "frontend-feature-development",
+    "prompt": "prompt-to-UI",
+    "source": "prompt-to-UI"
+  },
+  {
+    "id": "7a70d955a9ad",
+    "positive": "dev-workflow",
+    "negative": "frontend-feature-development",
+    "prompt": "开始新功能",
+    "source": "开始新功能"
+  },
+  {
+    "id": "03bc57eb8972",
+    "positive": "dev-workflow",
+    "negative": "frontend-feature-development",
+    "prompt": "规划开发阶段",
+    "source": "规划开发阶段"
+  },
+  {
+    "id": "d66d78179cd0",
+    "positive": "frontend-code-review",
+    "negative": "frontend-feature-development",
+    "prompt": "审查前端代码",
+    "source": "审查前端代码"
+  },
+  {
+    "id": "e32fcf1f36ef",
+    "positive": "frontend-code-review",
+    "negative": "frontend-feature-development",
+    "prompt": "前端 code review",
+    "source": "前端 code review"
+  },
+  {
+    "id": "61088040a68f",
+    "positive": "frontend-stack-selection",
+    "negative": "frontend-feature-development",
+    "prompt": "新前端项目选型",
+    "source": "新前端项目选型"
+  },
+  {
+    "id": "05b464c966a3",
+    "positive": "frontend-stack-selection",
+    "negative": "frontend-feature-development",
+    "prompt": "选组件库",
+    "source": "选组件库"
+  },
+  {
+    "id": "a73edc3ab069",
+    "positive": "dev-lookup",
+    "negative": "frontend-stack-selection",
+    "prompt": "开发或调试时需要确认某个具体技术点——\\\"这个 API 怎么调\\\"\\\"这个错误什么意思\\\"\\\"这个库怎么用\\\"\\\"这两个版本兼容吗\\\"\\\"这个语法对不对\\",
+    "source": "开发或调试时需要确认某个具体技术点——\\\"这个 API 怎么调\\\"\\\"这个错误什么意思\\\"\\\"这个库怎么用\\\"\\\"这两个版本兼容吗\\\"\\\"这个语法对不对\\\"。"
+  },
+  {
+    "id": "232d778108da",
+    "positive": "evidence-based-proposal",
+    "negative": "frontend-stack-selection",
+    "prompt": "提出技术方案时",
+    "source": "提出技术方案时"
+  },
+  {
+    "id": "aa0bc0f6157e",
+    "positive": "evidence-based-proposal",
+    "negative": "frontend-stack-selection",
+    "prompt": "建议架构选型时",
+    "source": "建议架构选型时"
+  },
+  {
+    "id": "7b55eb1cabb3",
+    "positive": "frontend-code-review",
+    "negative": "frontend-stack-selection",
+    "prompt": "审查前端代码",
+    "source": "审查前端代码"
+  },
+  {
+    "id": "3e767739ecf2",
+    "positive": "frontend-code-review",
+    "negative": "frontend-stack-selection",
+    "prompt": "前端 code review",
+    "source": "前端 code review"
+  },
+  {
+    "id": "ba7d81141d81",
+    "positive": "frontend-feature-development",
+    "negative": "frontend-stack-selection",
+    "prompt": "写 React/Vue/Svelte 组件",
+    "source": "写 React/Vue/Svelte 组件"
+  },
+  {
+    "id": "72551c67ff3a",
+    "positive": "frontend-feature-development",
+    "negative": "frontend-stack-selection",
+    "prompt": "实现前端功能",
+    "source": "实现前端功能"
+  },
+  {
+    "id": "8e31c9458339",
+    "positive": "tdd-cycle",
+    "negative": "integration-test-architecture",
+    "prompt": "实现任何功能或修 bug 前",
+    "source": "实现任何功能或修 bug 前"
+  },
+  {
+    "id": "48e2cc2e16af",
+    "positive": "tdd-cycle",
+    "negative": "integration-test-architecture",
+    "prompt": "在写实现代码之前",
+    "source": "在写实现代码之前"
+  },
+  {
+    "id": "304918234ff7",
+    "positive": "code-review-gate",
+    "negative": "merge-release-choreography",
+    "prompt": "开发任务完成准备 git commit / push / 提 PR 前",
+    "source": "开发任务完成准备 git commit / push / 提 PR 前"
+  },
+  {
+    "id": "9892d170e4f6",
+    "positive": "code-review-gate",
+    "negative": "merge-release-choreography",
+    "prompt": "说\\\"审查代码 / code review / 检查代码质量 / 看看能不能提交 / 代码写得怎么样 / 帮我 review\\\"时",
+    "source": "说\\\"审查代码 / code review / 检查代码质量 / 看看能不能提交 / 代码写得怎么样 / 帮我 review\\\"时"
+  },
+  {
+    "id": "f79d834fa29f",
+    "positive": "implementation-discipline",
+    "negative": "merge-release-choreography",
+    "prompt": "接到编码任务准备动手时",
+    "source": "接到编码任务准备动手时"
+  },
+  {
+    "id": "2d4356d80793",
+    "positive": "implementation-discipline",
+    "negative": "merge-release-choreography",
+    "prompt": "写实现代码前",
+    "source": "写实现代码前"
+  },
+  {
+    "id": "dffe8a2a027c",
+    "positive": "release-readiness",
+    "negative": "merge-release-choreography",
+    "prompt": "准备发布/上线/打 tag/发版/灰度时",
+    "source": "准备发布/上线/打 tag/发版/灰度时"
+  },
+  {
+    "id": "8f795dc06dc9",
+    "positive": "release-readiness",
+    "negative": "merge-release-choreography",
+    "prompt": "用户问'能上线了吗'/'可以发布了吗'/'发布前检查'/'上线前 check 一遍'时",
+    "source": "用户问'能上线了吗'/'可以发布了吗'/'发布前检查'/'上线前 check 一遍'时"
+  },
+  {
+    "id": "bdd9c572fe61",
+    "positive": "systematic-debugging",
+    "negative": "merge-release-choreography",
+    "prompt": "遇到任何 bug/测试失败/意外行为/性能问题时",
+    "source": "遇到任何 bug/测试失败/意外行为/性能问题时"
+  },
+  {
+    "id": "0683e267c7cb",
+    "positive": "systematic-debugging",
+    "negative": "merge-release-choreography",
+    "prompt": "准备提修复方案前",
+    "source": "准备提修复方案前"
+  },
+  {
+    "id": "f00fa9bf31c6",
+    "positive": "code-review-gate",
+    "negative": "project-acceptance",
+    "prompt": "开发任务完成准备 git commit / push / 提 PR 前",
+    "source": "开发任务完成准备 git commit / push / 提 PR 前"
+  },
+  {
+    "id": "0dd535dfd2c3",
+    "positive": "code-review-gate",
+    "negative": "project-acceptance",
+    "prompt": "说\\\"审查代码 / code review / 检查代码质量 / 看看能不能提交 / 代码写得怎么样 / 帮我 review\\\"时",
+    "source": "说\\\"审查代码 / code review / 检查代码质量 / 看看能不能提交 / 代码写得怎么样 / 帮我 review\\\"时"
+  },
+  {
+    "id": "048f6e0c5818",
+    "positive": "compile-fix-loop",
+    "negative": "project-acceptance",
+    "prompt": "用户粘贴编译报错时",
+    "source": "用户粘贴编译报错时"
+  },
+  {
+    "id": "798964d3dba2",
+    "positive": "compile-fix-loop",
+    "negative": "project-acceptance",
+    "prompt": "修复编译错误后又出现新错误时",
+    "source": "修复编译错误后又出现新错误时"
+  },
+  {
+    "id": "959f877c97d7",
+    "positive": "design-audit",
+    "negative": "project-acceptance",
+    "prompt": "给设计文档（飞书链接/本地文件/粘贴文本）要对比代码实现程度时",
+    "source": "给设计文档（飞书链接/本地文件/粘贴文本）要对比代码实现程度时"
+  },
+  {
+    "id": "6959e4e49ce8",
+    "positive": "design-audit",
+    "negative": "project-acceptance",
+    "prompt": "判断功能 landing 状态时",
+    "source": "判断功能 landing 状态时"
+  },
+  {
+    "id": "d095b3a08ae8",
+    "positive": "review-batch",
+    "negative": "project-acceptance",
+    "prompt": "审查整个项目/大范围代码时",
+    "source": "审查整个项目/大范围代码时"
+  },
+  {
+    "id": "48406d8b9afe",
+    "positive": "review-batch",
+    "negative": "project-acceptance",
+    "prompt": "重构后做全量验收时",
+    "source": "重构后做全量验收时"
+  },
+  {
+    "id": "929ec9f62913",
+    "positive": "code-review-gate",
+    "negative": "release-readiness",
+    "prompt": "开发任务完成准备 git commit / push / 提 PR 前",
+    "source": "开发任务完成准备 git commit / push / 提 PR 前"
+  },
+  {
+    "id": "bdc2d76222e2",
+    "positive": "code-review-gate",
+    "negative": "release-readiness",
+    "prompt": "说\\\"审查代码 / code review / 检查代码质量 / 看看能不能提交 / 代码写得怎么样 / 帮我 review\\\"时",
+    "source": "说\\\"审查代码 / code review / 检查代码质量 / 看看能不能提交 / 代码写得怎么样 / 帮我 review\\\"时"
+  },
+  {
+    "id": "c410a0deb366",
+    "positive": "docs-consistency-guard",
+    "negative": "release-readiness",
+    "prompt": "文档里有会随代码变化的列表或计数",
+    "source": "文档里有会随代码变化的列表或计数"
+  },
+  {
+    "id": "73844c8d5d3b",
+    "positive": "docs-consistency-guard",
+    "negative": "release-readiness",
+    "prompt": "发布前审计文档与代码是否一致",
+    "source": "发布前审计文档与代码是否一致"
+  },
+  {
+    "id": "5b247046b994",
+    "positive": "implementation-discipline",
+    "negative": "release-readiness",
+    "prompt": "接到编码任务准备动手时",
+    "source": "接到编码任务准备动手时"
+  },
+  {
+    "id": "cd2789b950cb",
+    "positive": "implementation-discipline",
+    "negative": "release-readiness",
+    "prompt": "写实现代码前",
+    "source": "写实现代码前"
+  },
+  {
+    "id": "6140eb062303",
+    "positive": "project-acceptance",
+    "negative": "release-readiness",
+    "prompt": "对整个项目进行验收时",
+    "source": "对整个项目进行验收时"
+  },
+  {
+    "id": "9ad29aaea22c",
+    "positive": "project-acceptance",
+    "negative": "release-readiness",
+    "prompt": "比对设计方案和实施计划时",
+    "source": "比对设计方案和实施计划时"
+  },
+  {
+    "id": "6c7bce206eee",
+    "positive": "systematic-debugging",
+    "negative": "release-readiness",
+    "prompt": "遇到任何 bug/测试失败/意外行为/性能问题时",
+    "source": "遇到任何 bug/测试失败/意外行为/性能问题时"
+  },
+  {
+    "id": "72d68f9b558b",
+    "positive": "systematic-debugging",
+    "negative": "release-readiness",
+    "prompt": "准备提修复方案前",
+    "source": "准备提修复方案前"
+  },
+  {
+    "id": "2f29e0eda01a",
+    "positive": "dev-workflow",
+    "negative": "requirement-clarification",
+    "prompt": "开始新功能",
+    "source": "开始新功能"
+  },
+  {
+    "id": "3c820e0dd871",
+    "positive": "dev-workflow",
+    "negative": "requirement-clarification",
+    "prompt": "规划开发阶段",
+    "source": "规划开发阶段"
+  },
+  {
+    "id": "99c72040072e",
+    "positive": "doc-generator",
+    "negative": "requirement-clarification",
+    "prompt": "我要生成或起草 PRD",
+    "source": "用户要生成或起草 PRD"
+  },
+  {
+    "id": "d2d0e000fbf3",
+    "positive": "doc-generator",
+    "negative": "requirement-clarification",
+    "prompt": "需求文档",
+    "source": "需求文档"
+  },
+  {
+    "id": "1f1a2f3c4978",
+    "positive": "evidence-based-proposal",
+    "negative": "requirement-clarification",
+    "prompt": "提出技术方案时",
+    "source": "提出技术方案时"
+  },
+  {
+    "id": "74f8590207ab",
+    "positive": "evidence-based-proposal",
+    "negative": "requirement-clarification",
+    "prompt": "建议架构选型时",
+    "source": "建议架构选型时"
+  },
+  {
+    "id": "de1376403681",
+    "positive": "implementation-discipline",
+    "negative": "requirement-clarification",
+    "prompt": "接到编码任务准备动手时",
+    "source": "接到编码任务准备动手时"
+  },
+  {
+    "id": "260ac68c9dc1",
+    "positive": "implementation-discipline",
+    "negative": "requirement-clarification",
+    "prompt": "写实现代码前",
+    "source": "写实现代码前"
+  },
+  {
+    "id": "9e053de755ae",
+    "positive": "doc-generator",
+    "negative": "research-workflow",
+    "prompt": "我要生成或起草 PRD",
+    "source": "用户要生成或起草 PRD"
+  },
+  {
+    "id": "82b4c0c9751b",
+    "positive": "doc-generator",
+    "negative": "research-workflow",
+    "prompt": "需求文档",
+    "source": "需求文档"
+  },
+  {
+    "id": "d11f5fa59f88",
+    "positive": "evidence-based-proposal",
+    "negative": "research-workflow",
+    "prompt": "提出技术方案时",
+    "source": "提出技术方案时"
+  },
+  {
+    "id": "eac220a61eff",
+    "positive": "evidence-based-proposal",
+    "negative": "research-workflow",
+    "prompt": "建议架构选型时",
+    "source": "建议架构选型时"
+  },
+  {
+    "id": "6cf92bb57933",
+    "positive": "backend-development",
+    "negative": "resilience-and-observability",
+    "prompt": "写 API endpoint/service 层",
+    "source": "写 API endpoint/service 层"
+  },
+  {
+    "id": "16a766d1c4dd",
+    "positive": "backend-development",
+    "negative": "resilience-and-observability",
+    "prompt": "设计 schema 业务层",
+    "source": "设计 schema 业务层"
+  },
+  {
+    "id": "b12f20bdcbfd",
+    "positive": "code-review-gate",
+    "negative": "review-batch",
+    "prompt": "开发任务完成准备 git commit / push / 提 PR 前",
+    "source": "开发任务完成准备 git commit / push / 提 PR 前"
+  },
+  {
+    "id": "4e2af8b1a09f",
+    "positive": "code-review-gate",
+    "negative": "review-batch",
+    "prompt": "说\\\"审查代码 / code review / 检查代码质量 / 看看能不能提交 / 代码写得怎么样 / 帮我 review\\\"时",
+    "source": "说\\\"审查代码 / code review / 检查代码质量 / 看看能不能提交 / 代码写得怎么样 / 帮我 review\\\"时"
+  },
+  {
+    "id": "98079e88d63c",
+    "positive": "project-acceptance",
+    "negative": "review-batch",
+    "prompt": "对整个项目进行验收时",
+    "source": "对整个项目进行验收时"
+  },
+  {
+    "id": "16a1b23c3422",
+    "positive": "project-acceptance",
+    "negative": "review-batch",
+    "prompt": "比对设计方案和实施计划时",
+    "source": "比对设计方案和实施计划时"
+  },
+  {
+    "id": "224c3c1cfa89",
+    "positive": "release-readiness",
+    "negative": "review-batch",
+    "prompt": "准备发布/上线/打 tag/发版/灰度时",
+    "source": "准备发布/上线/打 tag/发版/灰度时"
+  },
+  {
+    "id": "0ed219c403f1",
+    "positive": "release-readiness",
+    "negative": "review-batch",
+    "prompt": "用户问'能上线了吗'/'可以发布了吗'/'发布前检查'/'上线前 check 一遍'时",
+    "source": "用户问'能上线了吗'/'可以发布了吗'/'发布前检查'/'上线前 check 一遍'时"
+  },
+  {
+    "id": "8a51eba32812",
+    "positive": "code-review-gate",
+    "negative": "rust-code-review",
+    "prompt": "开发任务完成准备 git commit / push / 提 PR 前",
+    "source": "开发任务完成准备 git commit / push / 提 PR 前"
+  },
+  {
+    "id": "62cce3e1ef51",
+    "positive": "code-review-gate",
+    "negative": "rust-code-review",
+    "prompt": "说\\\"审查代码 / code review / 检查代码质量 / 看看能不能提交 / 代码写得怎么样 / 帮我 review\\\"时",
+    "source": "说\\\"审查代码 / code review / 检查代码质量 / 看看能不能提交 / 代码写得怎么样 / 帮我 review\\\"时"
+  },
+  {
+    "id": "5d62c11d79b7",
+    "positive": "release-readiness",
+    "negative": "secure-coding",
+    "prompt": "准备发布/上线/打 tag/发版/灰度时",
+    "source": "准备发布/上线/打 tag/发版/灰度时"
+  },
+  {
+    "id": "8f260b6a29fc",
+    "positive": "release-readiness",
+    "negative": "secure-coding",
+    "prompt": "用户问'能上线了吗'/'可以发布了吗'/'发布前检查'/'上线前 check 一遍'时",
+    "source": "用户问'能上线了吗'/'可以发布了吗'/'发布前检查'/'上线前 check 一遍'时"
+  },
+  {
+    "id": "4a4a92f4d7d3",
+    "positive": "cross-tool-context",
+    "negative": "session-continuity",
+    "prompt": "同时用多个 AI 工具开发同一项目时",
+    "source": "同时用多个 AI 工具开发同一项目时"
+  },
+  {
+    "id": "1f6a99623967",
+    "positive": "cross-tool-context",
+    "negative": "session-continuity",
+    "prompt": "把 A 工具的分析结果搬给 B 工具时",
+    "source": "把 A 工具的分析结果搬给 B 工具时"
+  },
+  {
+    "id": "53c17940796f",
+    "positive": "skill-authoring-standard",
+    "negative": "session-retrospective",
+    "prompt": "创建新 skill 时",
+    "source": "创建新 skill 时"
+  },
+  {
+    "id": "afdc28aa363f",
+    "positive": "skill-authoring-standard",
+    "negative": "session-retrospective",
+    "prompt": "修改现有 skill 时",
+    "source": "修改现有 skill 时"
+  },
+  {
+    "id": "7653de24fb14",
+    "positive": "skill-evolution",
+    "negative": "session-retrospective",
+    "prompt": "skill 在实际任务里漏检或误触发想系统性改进时",
+    "source": "skill 在实际任务里漏检或误触发想系统性改进时"
+  },
+  {
+    "id": "21a0e4851186",
+    "positive": "skill-evolution",
+    "negative": "session-retrospective",
+    "prompt": "跑 forge skills eval-report 发现回归时",
+    "source": "跑 forge skills eval-report 发现回归时"
+  },
+  {
+    "id": "e6cac34a8d25",
+    "positive": "session-retrospective",
+    "negative": "skill-authoring-standard",
+    "prompt": "一个主线任务或会话结束时",
+    "source": "一个主线任务或会话结束时"
+  },
+  {
+    "id": "1d98d973224d",
+    "positive": "session-retrospective",
+    "negative": "skill-authoring-standard",
+    "prompt": "'回顾下这次/沉淀经验/总结教训/这个教训记下来/更新CLAUDE.md/避免下次再犯'",
+    "source": "用户说'回顾下这次/沉淀经验/总结教训/这个教训记下来/更新CLAUDE.md/避免下次再犯'"
+  },
+  {
+    "id": "7297db308fd6",
+    "positive": "skill-evolution",
+    "negative": "skill-authoring-standard",
+    "prompt": "skill 在实际任务里漏检或误触发想系统性改进时",
+    "source": "skill 在实际任务里漏检或误触发想系统性改进时"
+  },
+  {
+    "id": "a031ab7733d2",
+    "positive": "skill-evolution",
+    "negative": "skill-authoring-standard",
+    "prompt": "跑 forge skills eval-report 发现回归时",
+    "source": "跑 forge skills eval-report 发现回归时"
+  },
+  {
+    "id": "3f9d39184f03",
+    "positive": "skill-routing",
+    "negative": "skill-authoring-standard",
+    "prompt": "配置/排查/理解各 agent(claude/cursor/codex) 的 skill 路由机制时",
+    "source": "配置/排查/理解各 agent(claude/cursor/codex) 的 skill 路由机制时"
+  },
+  {
+    "id": "eb048533dc36",
+    "positive": "skill-routing",
+    "negative": "skill-authoring-standard",
+    "prompt": "改路由表时",
+    "source": "改路由表时"
+  },
+  {
+    "id": "d47eb2537ffe",
+    "positive": "session-retrospective",
+    "negative": "skill-evolution",
+    "prompt": "一个主线任务或会话结束时",
+    "source": "一个主线任务或会话结束时"
+  },
+  {
+    "id": "9521a3beb299",
+    "positive": "session-retrospective",
+    "negative": "skill-evolution",
+    "prompt": "'回顾下这次/沉淀经验/总结教训/这个教训记下来/更新CLAUDE.md/避免下次再犯'",
+    "source": "用户说'回顾下这次/沉淀经验/总结教训/这个教训记下来/更新CLAUDE.md/避免下次再犯'"
+  },
+  {
+    "id": "3e58d8e78a0c",
+    "positive": "skill-authoring-standard",
+    "negative": "skill-evolution",
+    "prompt": "创建新 skill 时",
+    "source": "创建新 skill 时"
+  },
+  {
+    "id": "fd7f33cc8d8a",
+    "positive": "skill-authoring-standard",
+    "negative": "skill-evolution",
+    "prompt": "修改现有 skill 时",
+    "source": "修改现有 skill 时"
+  },
+  {
+    "id": "6440200d6c79",
+    "positive": "session-continuity",
+    "negative": "skill-routing",
+    "prompt": "恢复项目工作时",
+    "source": "恢复项目工作时"
+  },
+  {
+    "id": "c7e065a9e11b",
+    "positive": "session-continuity",
+    "negative": "skill-routing",
+    "prompt": "从上次会话中断处继续时",
+    "source": "从上次会话中断处继续时"
+  },
+  {
+    "id": "43c20febf22c",
+    "positive": "skill-authoring-standard",
+    "negative": "skill-routing",
+    "prompt": "创建新 skill 时",
+    "source": "创建新 skill 时"
+  },
+  {
+    "id": "c8b328100db2",
+    "positive": "skill-authoring-standard",
+    "negative": "skill-routing",
+    "prompt": "修改现有 skill 时",
+    "source": "修改现有 skill 时"
+  },
+  {
+    "id": "959fe0630473",
+    "positive": "agent-delegation",
+    "negative": "subagent-orchestration",
+    "prompt": "用 subagent 工具分派任务时",
+    "source": "用 subagent 工具分派任务时"
+  },
+  {
+    "id": "366affc3e0e3",
+    "positive": "agent-delegation",
+    "negative": "subagent-orchestration",
+    "prompt": "写子代理 prompt 时",
+    "source": "写子代理 prompt 时"
+  },
+  {
+    "id": "5263bdb42da9",
+    "positive": "transcript-forensics",
+    "negative": "subagent-orchestration",
+    "prompt": "用户给出会话/协作记录路径要求检查问题时",
+    "source": "用户给出会话/协作记录路径要求检查问题时"
+  },
+  {
+    "id": "747e5930516c",
+    "positive": "transcript-forensics",
+    "negative": "subagent-orchestration",
+    "prompt": "说'检查这个会话为什么不断工具调用''token 消耗过快''复盘会话记录''审计 session jsonl'时",
+    "source": "说'检查这个会话为什么不断工具调用''token 消耗过快''复盘会话记录''审计 session jsonl'时"
+  },
+  {
+    "id": "0ae173731787",
+    "positive": "backend-development",
+    "negative": "system-architecture",
+    "prompt": "写 API endpoint/service 层",
+    "source": "写 API endpoint/service 层"
+  },
+  {
+    "id": "3364136b494b",
+    "positive": "backend-development",
+    "negative": "system-architecture",
+    "prompt": "设计 schema 业务层",
+    "source": "设计 schema 业务层"
+  },
+  {
+    "id": "fd13c7f1f7de",
+    "positive": "release-readiness",
+    "negative": "system-architecture",
+    "prompt": "准备发布/上线/打 tag/发版/灰度时",
+    "source": "准备发布/上线/打 tag/发版/灰度时"
+  },
+  {
+    "id": "0113d39ab653",
+    "positive": "release-readiness",
+    "negative": "system-architecture",
+    "prompt": "用户问'能上线了吗'/'可以发布了吗'/'发布前检查'/'上线前 check 一遍'时",
+    "source": "用户问'能上线了吗'/'可以发布了吗'/'发布前检查'/'上线前 check 一遍'时"
+  },
+  {
+    "id": "1793644599fd",
+    "positive": "compile-fix-loop",
+    "negative": "systematic-debugging",
+    "prompt": "用户粘贴编译报错时",
+    "source": "用户粘贴编译报错时"
+  },
+  {
+    "id": "f3bdfa10ea97",
+    "positive": "compile-fix-loop",
+    "negative": "systematic-debugging",
+    "prompt": "修复编译错误后又出现新错误时",
+    "source": "修复编译错误后又出现新错误时"
+  },
+  {
+    "id": "a83520a04730",
+    "positive": "evidence-based-proposal",
+    "negative": "systematic-debugging",
+    "prompt": "提出技术方案时",
+    "source": "提出技术方案时"
+  },
+  {
+    "id": "8644dce0d126",
+    "positive": "evidence-based-proposal",
+    "negative": "systematic-debugging",
+    "prompt": "建议架构选型时",
+    "source": "建议架构选型时"
+  },
+  {
+    "id": "82b2c16d4dfc",
+    "positive": "test-discipline",
+    "negative": "systematic-debugging",
+    "prompt": "审查提交 diff 时",
+    "source": "审查提交 diff 时"
+  },
+  {
+    "id": "dc24091cfd15",
+    "positive": "test-discipline",
+    "negative": "systematic-debugging",
+    "prompt": "准备 git commit/push 前",
+    "source": "准备 git commit/push 前"
+  },
+  {
+    "id": "f45553c0e18b",
+    "positive": "test-discipline",
+    "negative": "tdd-cycle",
+    "prompt": "审查提交 diff 时",
+    "source": "审查提交 diff 时"
+  },
+  {
+    "id": "44b6db088404",
+    "positive": "test-discipline",
+    "negative": "tdd-cycle",
+    "prompt": "准备 git commit/push 前",
+    "source": "准备 git commit/push 前"
+  },
+  {
+    "id": "c5f4669201a6",
+    "positive": "systematic-debugging",
+    "negative": "test-discipline",
+    "prompt": "遇到任何 bug/测试失败/意外行为/性能问题时",
+    "source": "遇到任何 bug/测试失败/意外行为/性能问题时"
+  },
+  {
+    "id": "523ac8f355d3",
+    "positive": "systematic-debugging",
+    "negative": "test-discipline",
+    "prompt": "准备提修复方案前",
+    "source": "准备提修复方案前"
+  },
+  {
+    "id": "b6f8615db26d",
+    "positive": "tdd-cycle",
+    "negative": "test-discipline",
+    "prompt": "实现任何功能或修 bug 前",
+    "source": "实现任何功能或修 bug 前"
+  },
+  {
+    "id": "1bec419e3d0e",
+    "positive": "tdd-cycle",
+    "negative": "test-discipline",
+    "prompt": "在写实现代码之前",
+    "source": "在写实现代码之前"
+  },
+  {
+    "id": "7683dbb83eea",
+    "positive": "session-continuity",
+    "negative": "transcript-forensics",
+    "prompt": "恢复项目工作时",
+    "source": "恢复项目工作时"
+  },
+  {
+    "id": "0d75148cdd23",
+    "positive": "session-continuity",
+    "negative": "transcript-forensics",
+    "prompt": "从上次会话中断处继续时",
+    "source": "从上次会话中断处继续时"
+  },
+  {
+    "id": "59225fb9cc5a",
+    "positive": "session-retrospective",
+    "negative": "transcript-forensics",
+    "prompt": "一个主线任务或会话结束时",
+    "source": "一个主线任务或会话结束时"
+  },
+  {
+    "id": "095c9f256bc7",
+    "positive": "session-retrospective",
+    "negative": "transcript-forensics",
+    "prompt": "'回顾下这次/沉淀经验/总结教训/这个教训记下来/更新CLAUDE.md/避免下次再犯'",
+    "source": "用户说'回顾下这次/沉淀经验/总结教训/这个教训记下来/更新CLAUDE.md/避免下次再犯'"
+  },
+  {
+    "id": "9e75e747d8fe",
+    "positive": "systematic-debugging",
+    "negative": "transcript-forensics",
+    "prompt": "遇到任何 bug/测试失败/意外行为/性能问题时",
+    "source": "遇到任何 bug/测试失败/意外行为/性能问题时"
+  },
+  {
+    "id": "4384363bf360",
+    "positive": "systematic-debugging",
+    "negative": "transcript-forensics",
+    "prompt": "准备提修复方案前",
+    "source": "准备提修复方案前"
+  },
+  {
+    "id": "a56c38cd07ff",
+    "positive": "frontend-aesthetics-execution",
+    "negative": "ui-iteration-feedback-loop",
+    "prompt": "把 UI 做好看",
+    "source": "把 UI 做好看"
+  },
+  {
+    "id": "43ab5cdf1226",
+    "positive": "frontend-aesthetics-execution",
+    "negative": "ui-iteration-feedback-loop",
+    "prompt": "改前端风格",
+    "source": "改前端风格"
+  },
+  {
+    "id": "8f6d6e38e92d",
+    "positive": "frontend-feature-development",
+    "negative": "ui-iteration-feedback-loop",
+    "prompt": "写 React/Vue/Svelte 组件",
+    "source": "写 React/Vue/Svelte 组件"
+  },
+  {
+    "id": "b14d898050b9",
+    "positive": "frontend-feature-development",
+    "negative": "ui-iteration-feedback-loop",
+    "prompt": "实现前端功能",
+    "source": "实现前端功能"
+  },
+  {
+    "id": "16305626bd56",
+    "positive": "frontend-stack-selection",
+    "negative": "ui-iteration-feedback-loop",
+    "prompt": "新前端项目选型",
+    "source": "新前端项目选型"
+  },
+  {
+    "id": "e05e4ac9ac9a",
+    "positive": "frontend-stack-selection",
+    "negative": "ui-iteration-feedback-loop",
+    "prompt": "选组件库",
+    "source": "选组件库"
+  },
+  {
+    "id": "fe5995193fa0",
+    "positive": "prototype-confirmation",
+    "negative": "ui-iteration-feedback-loop",
+    "prompt": "起底重构/重新设计前端交互/范式级或多功能点方案",
+    "source": "起底重构/重新设计前端交互/范式级或多功能点方案"
+  },
+  {
+    "id": "6ea366d2827d",
+    "positive": "prototype-confirmation",
+    "negative": "ui-iteration-feedback-loop",
+    "prompt": "'出原型/让我看/让我确认/先看效果/原型给我看/确认形态'",
+    "source": "用户说'出原型/让我看/让我确认/先看效果/原型给我看/确认形态'"
+  },
+  {
+    "id": "f9a03bd80f97",
+    "positive": "compile-fix-loop",
+    "negative": "verification-driver",
+    "prompt": "用户粘贴编译报错时",
+    "source": "用户粘贴编译报错时"
+  },
+  {
+    "id": "2a2040c16798",
+    "positive": "compile-fix-loop",
+    "negative": "verification-driver",
+    "prompt": "修复编译错误后又出现新错误时",
+    "source": "修复编译错误后又出现新错误时"
+  },
+  {
+    "id": "7ddcd4286107",
+    "positive": "systematic-debugging",
+    "negative": "verification-driver",
+    "prompt": "遇到任何 bug/测试失败/意外行为/性能问题时",
+    "source": "遇到任何 bug/测试失败/意外行为/性能问题时"
+  },
+  {
+    "id": "e8e8a2fe6d11",
+    "positive": "systematic-debugging",
+    "negative": "verification-driver",
+    "prompt": "准备提修复方案前",
+    "source": "准备提修复方案前"
+  },
+  {
+    "id": "bad9176b3bc3",
+    "positive": "tdd-cycle",
+    "negative": "verification-driver",
+    "prompt": "实现任何功能或修 bug 前",
+    "source": "实现任何功能或修 bug 前"
+  },
+  {
+    "id": "4a5756eb0849",
+    "positive": "tdd-cycle",
+    "negative": "verification-driver",
+    "prompt": "在写实现代码之前",
+    "source": "在写实现代码之前"
+  },
+  {
+    "id": "83063432b50e",
+    "positive": "test-discipline",
+    "negative": "verification-driver",
+    "prompt": "审查提交 diff 时",
+    "source": "审查提交 diff 时"
+  },
+  {
+    "id": "f2302ae80377",
+    "positive": "test-discipline",
+    "negative": "verification-driver",
+    "prompt": "准备 git commit/push 前",
+    "source": "准备 git commit/push 前"
+  }
+]
