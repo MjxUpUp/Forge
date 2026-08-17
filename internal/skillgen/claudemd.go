@@ -158,9 +158,11 @@ func buildForgeSectionWithLevel(forClaude bool, userLevel bool) string {
 	//
 	// 提交时机——若无此说明 agent 自然会在 complete 之后才 commit，
 	// 而 complete 会清空 active task ref，导致 commit 被 file-sentinel
-	// quarantine（此 trap 来自一次真实 DevWorkbench 会话）。
+	// quarantine（此 trap 来自一次真实 DevWorkbench 会话）。task-complete
+	// 门禁对未提交变更发 ADVISORY（CheckNameUncommittedAtComplete），
+	// 把顺序滑落在 active task ref 清空前照出来。
 	sb.WriteString("### 提交时机（重要，避免被 file-sentinel 拦）\n\n")
-	sb.WriteString("`git commit` 必须在 `forge task complete` **之前**：`complete` 会清空 active task ref，之后提交源码会被 file-sentinel quarantine。正确顺序：三门禁通过 → `git commit` → `forge task complete`。若已 complete 才发现要提交，开一个 `chore/*-commit` 任务放行。\n\n")
+	sb.WriteString("`git commit` 必须在 `forge task complete` **之前**：`complete` 会清空 active task ref，之后提交源码会被 file-sentinel quarantine。正确顺序：三门禁通过 → `git commit` → `forge task complete`。若已 complete 才发现要提交，开一个 `chore/*-commit` 任务放行。task-complete 门禁检测到工作区未提交变更时会发 `ADVISORY` 提醒——见到即先 commit 再 complete。\n\n")
 
 	sb.WriteString("### 安全机制\n\n")
 	sb.WriteString("- **task-guard**（PreToolUse Write|Edit）：无任务时 Write/Edit 源码只 WARN 不拦截（`.forge/*`/`.claude/settings*` 自保护 FAIL——此类项目级文件只在团队模式/老项目存在）；feature 分支无任务时自动建任务\n")
