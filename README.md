@@ -327,6 +327,9 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge skills eval-report --skill X` | latest run vs baseline 回归报告（regression 三态 + pass-rate delta + 可比性） |
 | `forge skills eval-baseline --skill X` | 标记 baseline run（回归基准，显式人工决策） |
 | `forge skills battery [--gate]` | 全库回归电池：逐 skill latest vs baseline 判回归（JudgeSkillAccept 单一判源），`--gate` 任一回归即阻断（exit 4）；无 baseline/陈旧锚点降级 advisory |
+| `forge skills mutex-gen` | 生成跨 skill 互斥 case 集（从 description SKIP 段的（用 X）让渡边派生：B 域 prompt 必须路由到 B、不得路由回声明让渡的 A；落盘 mutex/cases.json） |
+| `forge skills mutex-record --from <file/->` | 回填一次互斥集 run（actual==Positive 才 pass；`--agent-model`/`--forge-version` 盖章防跨模型/版本假回归） |
+| `forge skills mutex-report [--gate] [--json]` | 互斥集混淆矩阵（actual==Negative 为头号混淆行；`--gate` 任一混淆即 BLOCKED(stderr)+exit 4） |
 | `forge skills analyze [--json]` | 弱点挖掘报告（只读）：低分维度聚簇/验证盲区率/从未触发 skill/低成效 skill + 数据 caveat，供人选题 |
 | `forge skills decide --prediction <p>` | 记录 skill 决策四元组；`--prediction` 声明可检验预测（哪个可观测信号应改善），供验证闭环回扣 |
 | `forge skills verify --skill X --decision <id> --result <r>` | 回填决策验证结果（预测→验证闭环第二步；`--at` 指定时间、`--history`/`--history-json` 查全量可证伪台账） |
