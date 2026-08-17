@@ -4,7 +4,9 @@ package skillseval
 //
 // eval-gen originally produced only markdown checklists (EvalSkill, run manually, not persisted). The loop requires
 // machine-readable, comparable case sets as regression baselines: EvalCases derives []EvalCase from the SKILL.md
-// description and persists them to ~/.pi/research/skill-eval/cases/<skill>.json (atomic write).
+// description and persists them to <evals-root>/cases/<skill>.json (atomic write). The root is resolved by
+// ResolveDir (dir.go): --dir > FORGE_EVAL_DIR > ~/.forge/evals, with one-time migration from the historical
+// ~/.pi/research/skill-eval location.
 //
 // Case IDs are anchored on the unsubstituted raw trigger/skip fragment, not on the rendered prompt — so that
 // evolutions of GenerateEvalPrompts's rendering rules (e.g. user-says → empty) do not cause case-ID drift en
@@ -14,7 +16,9 @@ package skillseval
 //
 // eval-gen 原本只产出 markdown 清单（EvalSkill，人工跑、不落盘）。闭环需要
 // 可机读、可比对的 case 集作为回归基准：EvalCases 从 SKILL.md description
-// 派生 []EvalCase，落盘到 ~/.pi/research/skill-eval/cases/<skill>.json（原子写）。
+// 派生 []EvalCase，落盘到 <evals-root>/cases/<skill>.json（原子写）。根目录由
+// ResolveDir（dir.go）解析：--dir > FORGE_EVAL_DIR > ~/.forge/evals，并从历史
+// ~/.pi/research/skill-eval 一次性迁移。
 //
 // case ID 锚定在「未替换的原始 trigger/skip 片段」上，而非渲染后的 prompt——
 // 这样 GenerateEvalPrompts 的渲染规则演进（用户说→空 等替换）不会让 case ID
@@ -63,25 +67,8 @@ type CaseSet struct {
 	Cases    []EvalCase `json:"cases"`
 }
 
-// EvalDir returns the root directory of the eval-cases loop data: ~/.pi/research/skill-eval.
-//
-// This is the independent storage path of the eval-cases system (used by skillhone),
-// retaining the historical directory convention. It is a separate data line from the usage source (toollog,
-// agent-neutral) — usage has switched to toollog, and migrating the eval-cases path into the forge namespace
-// involves existing data migration, handled in a separate task.
-//
-// EvalDir 返回 eval-cases 闭环数据根目录 ~/.pi/research/skill-eval。
-//
-// 这是 eval-cases 体系（skillhone 用）的独立存储路径，沿用历史目录
-// 约定。与 usage 数据源（toollog，agent-neutral）是不同数据线——usage 已切到 toollog，
-// eval-cases 路径迁移至 forge 命名空间涉及存量数据迁移，另开 task 处理。
-func EvalDir() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".pi", "research", "skill-eval"), nil
-}
+// EvalDir / ResolveDir have moved to dir.go (namespace governance + legacy migration;
+// see that file for the resolution chain and the ~/.pi/research/skill-eval history).
 
 func casesFile(dir, skill string) string { return filepath.Join(dir, "cases", skill+".json") }
 func runsFile(dir, skill string) string  { return filepath.Join(dir, "runs", skill+".jsonl") }
@@ -93,8 +80,8 @@ func baselinesFile(dir string) string    { return filepath.Join(dir, "baselines.
 //
 // RunsFile / BaselinesFile 导出存储路径，让读侧消费者（dashboard 缓存）能对文件做
 // mtime 指纹失效判断，而不必复制路径布局——单一真相仍在本包。
-func RunsFile(dir, skill string) string  { return runsFile(dir, skill) }
-func BaselinesFile(dir string) string    { return baselinesFile(dir) }
+func RunsFile(dir, skill string) string { return runsFile(dir, skill) }
+func BaselinesFile(dir string) string   { return baselinesFile(dir) }
 
 // DescHash returns the sha1[:12] of the description. Used as the consistency fingerprint between the case set
 // and runs — when the description changes, the old case set must be regenerated, otherwise submit will reject it.

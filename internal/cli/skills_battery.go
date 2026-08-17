@@ -1,18 +1,19 @@
 package cli
 
 // skills_battery.go — battery subcommand: held-out regression battery over all anchored
-// skill baselines in the USER-LEVEL eval dir (machine scope — see battery.go's scope-honesty
-// note). Aggregates "any anchored skill regressed vs baseline?" into one command; --gate
-// gives it teeth (exit 4 on any reject) for release/CI use.
+// skill baselines in the resolved eval dir (user-level by default, --dir/FORGE_EVAL_DIR
+// for repo-level scope — see battery.go's scope-honesty note). Aggregates "any anchored
+// skill regressed vs baseline?" into one command; --gate gives it teeth (exit 4 on any
+// reject) for release/CI use.
 //
 // Field consensus (AutoDesign Eq 6 / held-out acceptance gating): accept only if no
 // regression vs baseline. Per-skill eval-report answers this per skill; the battery answers
 // it for every anchored skill at once, at the moment it matters (before release/merge).
 //
-// skills_battery.go — battery 子命令：held-out 回归电池，覆盖用户级 eval 目录里所有已锚定
-// baseline 的 skill（机器级范围——见 battery.go 的范围诚实性注释）。把「有没有任何已锚定
-// skill 相对 baseline 回归」聚合成一条命令；--gate 给它牙齿（任一 reject 则 exit 4），供
-// 发版/CI 使用。
+// skills_battery.go — battery 子命令：held-out 回归电池，覆盖解析出的 eval 目录（默认
+// 用户级，--dir/FORGE_EVAL_DIR 可切仓库级——见 battery.go 的范围诚实性注释）里所有已锚定
+// baseline 的 skill。把「有没有任何已锚定 skill 相对 baseline 回归」聚合成一条命令；
+// --gate 给它牙齿（任一 reject 则 exit 4），供发版/CI 使用。
 //
 // 领域共识（AutoDesign Eq 6 / held-out 验收门禁）：不回归才接受。单 skill 的
 // eval-report 逐个回答；电池在要紧时刻（发版/合并前）对所有已锚定 skill 一次答完。
@@ -40,9 +41,10 @@ eval-report 同源（JudgeSkillAccept 单一真相源）：
   forge skills battery --json     # 机器可读 BatteryReport
   forge skills battery --gate     # 门禁模式：任一 skill reject → BLOCKED(stderr) + exit 4
 
-范围：读用户级 eval 目录（~/.pi/research/skill-eval，与整个 eval 命令族共享）——
-覆盖本机所有已锚定 skill，非按仓库隔离。零锚定机器上电池为空：--gate 的 exit 0
-意为「没检查任何东西」而非「已验证无回归」（该情形会打印显式 vacuous 提示）。
+范围：读默认 eval 目录（~/.forge/evals，FORGE_EVAL_DIR/--dir 可覆盖——仓库内
+evals/ 目录让 CI 按仓库隔离跑电池）——默认覆盖本机所有已锚定 skill，非按仓库
+隔离。零锚定机器上电池为空：--gate 的 exit 0 意为「没检查任何东西」而非
+「已验证无回归」（该情形会打印显式 vacuous 提示）。
 
 覆盖缺口显性化：有 run 但未锚定 baseline 的 skill 列为 unanchored（advisory，
 不阻断）——用 eval-baseline 锚定后纳入电池保护。`,
@@ -50,7 +52,7 @@ eval-report 同源（JudgeSkillAccept 单一真相源）：
 }
 
 func runSkillsBattery(cmd *cobra.Command, args []string) error {
-	dir, err := skillseval.EvalDir()
+	dir, err := evalDataDir()
 	if err != nil {
 		return err
 	}

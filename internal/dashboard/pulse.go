@@ -551,12 +551,12 @@ func pulseCanonicalDir() string {
 	return ""
 }
 
-// pulseEvalDir resolves the skillseval eval dir (~/.pi/research/skill-eval, the historical
-// path). EvalDir only joins paths (no disk touch); a resolution error degrades to "" =
-// no eval data.
+// pulseEvalDir resolves the skillseval eval dir (default ~/.forge/evals — see
+// skillseval/dir.go for the resolution chain and one-time legacy migration). A resolution
+// error degrades to "" = no eval data.
 //
-// pulseEvalDir 解析 skillseval eval 目录（~/.pi/research/skill-eval，历史遗留路径）。
-// EvalDir 只拼路径（不碰盘）；解析失败降级为 "" = 无 eval 数据。
+// pulseEvalDir 解析 skillseval eval 目录（默认 ~/.forge/evals——解析链与一次性旧路径
+// 迁移见 skillseval/dir.go）。解析失败降级为 "" = 无 eval 数据。
 func pulseEvalDir() string {
 	dir, err := skillseval.EvalDir()
 	if err != nil {

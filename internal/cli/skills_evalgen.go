@@ -28,7 +28,7 @@ func runSkillsEvalGen(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	dir, err := skillseval.EvalDir()
+	dir, err := evalDataDir()
 	if err != nil {
 		return err
 	}
@@ -66,7 +66,7 @@ func runSkillsEvalGen(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		if skEvalSave {
-			if err := saveEval(name, md); err != nil {
+			if err := saveEval(dir, name, md); err != nil {
 				return err
 			}
 			// Additionally persist the structured case set (for the eval-record regression
@@ -80,7 +80,7 @@ func runSkillsEvalGen(cmd *cobra.Command, args []string) error {
 			if err := skillseval.SaveCases(dir, name, cases); err != nil {
 				return err
 			}
-			fmt.Printf("✅ eval-%s.md + %d cases → ~/.pi/research/\n", name, len(cases))
+			fmt.Printf("✅ checklists/eval-%s.md + %d cases → %s\n", name, len(cases), dir)
 			return nil
 		}
 		fmt.Print(md)
@@ -120,12 +120,17 @@ func runSkillsEvalGen(cmd *cobra.Command, args []string) error {
 	return genOne(skEvalSkill)
 }
 
-func saveEval(name, md string) error {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
-	dir := filepath.Join(home, ".pi", "research")
+// saveEval persists the markdown checklist to <evals-root>/checklists/eval-<name>.md.
+// It used to hardcode ~/.pi/research/ (a second, independent legacy join) — now it follows
+// the resolved eval root so a repo-level --dir keeps generated checklists next to the case
+// sets they accompany. First default resolution migrates legacy checklists in (dir.go).
+//
+// saveEval 把 markdown 清单落 <evals-root>/checklists/eval-<name>.md。
+// 曾硬编码 ~/.pi/research/（第二处独立的遗留 join）——现在跟随解析出的 eval 根，
+// 仓库级 --dir 下生成的清单与其配套的 case 集落在一起。首次默认解析会把旧清单
+// 迁入（dir.go）。
+func saveEval(root, name, md string) error {
+	dir := filepath.Join(root, "checklists")
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
@@ -135,7 +140,7 @@ func saveEval(name, md string) error {
 func init() {
 	skillsEvalGenCmd.Flags().StringVar(&skEvalSkill, "skill", "", "为指定 skill 生成 eval 清单")
 	skillsEvalGenCmd.Flags().BoolVar(&skEvalAll, "all", false, "为所有 skill 生成（批量）")
-	skillsEvalGenCmd.Flags().BoolVar(&skEvalSave, "save", false, "保存清单到 ~/.pi/research/eval-<name>.md 并落结构化 case 集")
+	skillsEvalGenCmd.Flags().BoolVar(&skEvalSave, "save", false, "保存清单到 <eval-dir>/checklists/eval-<name>.md 并落结构化 case 集")
 	skillsEvalGenCmd.Flags().BoolVar(&skEvalCasesOnly, "cases-only", false, "只生成并落结构化 case 集（eval-record 闭环用），不输出 markdown")
 	skillsCmd.AddCommand(skillsEvalGenCmd)
 }
