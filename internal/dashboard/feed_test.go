@@ -91,9 +91,13 @@ func feedKinds(events []FeedEvent) []string {
 // 每条带 kind/project/taskRef/severity。
 func TestAggregateFeed_MergeSortsDesc(t *testing.T) {
 	root, _, base := feedFixture(t)
-	events, err := AggregateFeed(Options{Root: root}, base.Add(5*time.Hour), FeedQuery{})
+	res, err := AggregateFeed(Options{Root: root}, base.Add(5*time.Hour), FeedQuery{})
 	if err != nil {
 		t.Fatal(err)
+	}
+	events := res.Events
+	if res.Truncated {
+		t.Error("5 条事件不应触发截断")
 	}
 	want := []string{"conclusion", "skill-trigger", "gate", "gate", "task-start"}
 	if len(events) != len(want) {
@@ -126,10 +130,11 @@ func TestAggregateFeed_MergeSortsDesc(t *testing.T) {
 // task-start 标题带 origin tool 与 gate 进度。
 func TestAggregateFeed_EventFields(t *testing.T) {
 	root, _, base := feedFixture(t)
-	events, err := AggregateFeed(Options{Root: root}, base.Add(5*time.Hour), FeedQuery{})
+	res, err := AggregateFeed(Options{Root: root}, base.Add(5*time.Hour), FeedQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	events := res.Events
 	find := func(kind string, passed *bool) FeedEvent {
 		t.Helper()
 		for _, e := range events {
@@ -192,8 +197,8 @@ func TestAggregateFeed_SinceFilter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(events) != 2 || events[0].Kind != "conclusion" || events[1].Kind != "skill-trigger" {
-		t.Fatalf("since 过滤结果异常: %v", feedKinds(events))
+	if len(events.Events) != 2 || events.Events[0].Kind != "conclusion" || events.Events[1].Kind != "skill-trigger" {
+		t.Fatalf("since 过滤结果异常: %v", feedKinds(events.Events))
 	}
 }
 
@@ -218,24 +223,24 @@ func TestAggregateFeed_ProjectFilter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(all) != 2 {
-		t.Fatalf("不过滤应 2 条（两项目各一 task-start），got %d", len(all))
+	if len(all.Events) != 2 {
+		t.Fatalf("不过滤应 2 条（两项目各一 task-start），got %d", len(all.Events))
 	}
 
 	byName, err := AggregateFeed(opts, now, FeedQuery{Project: projectName(rootA)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(byName) != 1 || byName[0].Project != projectName(rootA) {
-		t.Errorf("按名过滤异常: %+v", byName)
+	if len(byName.Events) != 1 || byName.Events[0].Project != projectName(rootA) {
+		t.Errorf("按名过滤异常: %+v", byName.Events)
 	}
 
 	byKey, err := AggregateFeed(opts, now, FeedQuery{Project: pA.Key})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(byKey) != 1 || byKey[0].Project != projectName(rootA) {
-		t.Errorf("按 key 过滤应命中项目 A: %+v", byKey)
+	if len(byKey.Events) != 1 || byKey.Events[0].Project != projectName(rootA) {
+		t.Errorf("按 key 过滤应命中项目 A: %+v", byKey.Events)
 	}
 	_ = pB
 }
@@ -258,11 +263,11 @@ func TestAggregateFeed_GlobalMergesProjects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(events) != 2 {
-		t.Fatalf("跨项目归并应 2 条，got %d", len(events))
+	if len(events.Events) != 2 {
+		t.Fatalf("跨项目归并应 2 条，got %d", len(events.Events))
 	}
 	projects := map[string]bool{}
-	for _, e := range events {
+	for _, e := range events.Events {
 		projects[e.Project] = true
 	}
 	if !projects[projectName(rootA)] || !projects[projectName(rootB)] {
@@ -291,10 +296,10 @@ func TestAggregateFeed_ZombieSeverity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(events) != 1 {
-		t.Fatalf("应 1 条 task-start，got %v", feedKinds(events))
+	if len(events.Events) != 1 {
+		t.Fatalf("应 1 条 task-start，got %v", feedKinds(events.Events))
 	}
-	e := events[0]
+	e := events.Events[0]
 	if e.Severity != "warn" {
 		t.Errorf("僵尸任务 severity = %q, want warn", e.Severity)
 	}
@@ -330,7 +335,7 @@ func TestAggregateFeed_ConclusionSeverityMap(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := map[string]string{}
-	for _, e := range events {
+	for _, e := range events.Events {
 		if e.Kind == "conclusion" {
 			got[e.Grade] = e.Severity
 		}
@@ -364,13 +369,13 @@ func TestAggregateFeed_GateRetryDetail(t *testing.T) {
 		t.Fatal(err)
 	}
 	var retried *FeedEvent
-	for i := range events {
-		if events[i].Kind == "gate" && events[i].Passed != nil && *events[i].Passed {
-			retried = &events[i]
+	for i := range events.Events {
+		if events.Events[i].Kind == "gate" && events.Events[i].Passed != nil && *events.Events[i].Passed {
+			retried = &events.Events[i]
 		}
 	}
 	if retried == nil {
-		t.Fatalf("应有 verify 通过的 gate 事件: %v", feedKinds(events))
+		t.Fatalf("应有 verify 通过的 gate 事件: %v", feedKinds(events.Events))
 	}
 	if !strings.Contains(retried.Detail, "2") {
 		t.Errorf("重试通过的 gate Detail 应含第 2 次尝试信息: %q", retried.Detail)
@@ -394,14 +399,17 @@ func TestAggregateFeed_TaskRefFilter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(events) != 1 || events[0].TaskRef != "feat/one" {
-		t.Fatalf("TaskRef 过滤异常: %+v", events)
+	if len(events.Events) != 1 || events.Events[0].TaskRef != "feat/one" {
+		t.Fatalf("TaskRef 过滤异常: %+v", events.Events)
 	}
 }
 
-// TestAggregateFeed_Limit caps the stream (default 200) so polling never ships a huge body.
+// TestAggregateFeed_Limit caps the stream (default 200) so polling never ships a huge body,
+// and Truncated reports the cut so the client can react (full refetch on a truncated
+// incremental poll).
 //
-// TestAggregateFeed_Limit 截断流（默认 200），轮询不会发出大包。
+// TestAggregateFeed_Limit 截断流（默认 200），轮询不会发出大包；Truncated 如实报告
+// 截断，客户端可据此反应（增量轮询被截断时全量重拉）。
 func TestAggregateFeed_Limit(t *testing.T) {
 	root, p := forgedatatest.RealProject(t)
 	base := time.Unix(1700000000, 0).UTC()
@@ -413,16 +421,28 @@ func TestAggregateFeed_Limit(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	events, err := AggregateFeed(Options{Root: root}, base.Add(6*time.Hour), FeedQuery{Limit: 3})
+	res, err := AggregateFeed(Options{Root: root}, base.Add(6*time.Hour), FeedQuery{Limit: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(events) != 3 {
-		t.Fatalf("limit=3 应截到 3 条，got %d", len(events))
+	if len(res.Events) != 3 {
+		t.Fatalf("limit=3 应截到 3 条，got %d", len(res.Events))
+	}
+	if !res.Truncated {
+		t.Error("5 条事件 limit=3 应标记 Truncated")
 	}
 	// Newest kept: the limit must keep the most recent events (desc order head).
-	if events[0].TaskRef != "feat/ce" {
-		t.Errorf("limit 应保留最新事件（降序头部），首条 = %q", events[0].TaskRef)
+	if res.Events[0].TaskRef != "feat/ce" {
+		t.Errorf("limit 应保留最新事件（降序头部），首条 = %q", res.Events[0].TaskRef)
+	}
+
+	// Exactly at the limit: no truncation (Truncated 只在真的丢了事件时才为真).
+	res, err = AggregateFeed(Options{Root: root}, base.Add(6*time.Hour), FeedQuery{Limit: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Truncated {
+		t.Error("事件数恰等于 limit 不应标记 Truncated")
 	}
 }
 
@@ -430,15 +450,18 @@ func TestAggregateFeed_Limit(t *testing.T) {
 //
 // TestAggregateFeed_Empty：完全无数据 → 空（非 nil）切片，不报错不 panic。
 func TestAggregateFeed_Empty(t *testing.T) {
-	events, err := AggregateFeed(Options{Root: t.TempDir()}, time.Now(), FeedQuery{})
+	res, err := AggregateFeed(Options{Root: t.TempDir()}, time.Now(), FeedQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if events == nil {
+	if res.Events == nil {
 		t.Fatal("空数据应返回非 nil 空切片（JSON 序列化为 [] 而非 null）")
 	}
-	if len(events) != 0 {
-		t.Errorf("空数据应 0 事件，got %d", len(events))
+	if len(res.Events) != 0 {
+		t.Errorf("空数据应 0 事件，got %d", len(res.Events))
+	}
+	if res.Truncated {
+		t.Error("空数据不应标记 Truncated")
 	}
 	// Roots explicitly empty + Root empty: still no panic.
 	if _, err := AggregateFeed(Options{}, time.Now(), FeedQuery{}); err != nil {

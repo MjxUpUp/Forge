@@ -117,27 +117,44 @@ func (pr pulseRoot) matches(filter string) bool {
 	return filter == "" || filter == pr.key || filter == pr.name
 }
 
+// FeedResult is the outcome of AggregateFeed: the merged, filtered, capped events plus
+// whether the cap cut anything off. Truncated lets the client distinguish "no more
+// events" from "older events were dropped" — a truncated incremental (since) poll means
+// events were lost permanently unless the client refetches in full.
+//
+// FeedResult 是 AggregateFeed 的结果：归并、过滤、截断后的事件流 + 是否发生了截断。
+// Truncated 让客户端区分「没有更多事件」与「更早事件被丢弃」——增量（since）轮询
+// 若被截断意味着事件已永久丢失，客户端须全量重拉。
+type FeedResult struct {
+	Events    []FeedEvent
+	Truncated bool
+}
+
 // AggregateFeed merges all event sources across the projects in scope into one
 // time-descending stream, then applies the query filters (project / taskRef / since /
-// limit). Per-source read failures (checklog / act) are skipped non-fatally — one broken
-// source must not blank the whole panel; ListTaskStates errors propagate (→ HTTP 500).
-// Empty data returns an empty non-nil slice so JSON serializes [] rather than null.
+// limit). Source data comes from sharedPulseCache (fingerprint-gated — unchanged files
+// are not re-parsed); projections still run fresh each call because zombie/severity are
+// time-dependent. Per-source read failures (checklog / act) are skipped non-fatally —
+// one broken source must not blank the whole panel; ListTaskStates errors propagate
+// (→ HTTP 500). Empty data returns an empty non-nil slice so JSON serializes [] rather
+// than null.
 //
 // AggregateFeed 把范围内各项目的全部事件源归并成一条时间降序流，再应用查询过滤
-// （project / taskRef / since / limit）。单源读失败（checklog / act）跳过不致命——
-// 一个坏源不应让整面板空白；ListTaskStates 错误上抛（→ HTTP 500）。空数据返回
-// 非 nil 空切片，JSON 序列化为 [] 而非 null。
-func AggregateFeed(opts Options, now time.Time, q FeedQuery) ([]FeedEvent, error) {
+// （project / taskRef / since / limit）。源数据来自 sharedPulseCache（指纹门控——
+// 文件未变不重解析）；投影仍每次现算，因僵尸/severity 是时间相关的。单源读失败
+// （checklog / act）跳过不致命——一个坏源不应让整面板空白；ListTaskStates 错误上抛
+// （→ HTTP 500）。空数据返回非 nil 空切片，JSON 序列化为 [] 而非 null。
+func AggregateFeed(opts Options, now time.Time, q FeedQuery) (FeedResult, error) {
 	events := []FeedEvent{}
 	for _, pr := range resolvePulseRoots(opts) {
 		if !pr.matches(q.Project) {
 			continue
 		}
-		evs, err := feedForProject(pr, now)
+		d, err := sharedPulseCache.projectData(pr)
 		if err != nil {
-			return nil, err
+			return FeedResult{}, err
 		}
-		events = append(events, evs...)
+		events = append(events, feedForProject(pr, d, now)...)
 	}
 	if q.TaskRef != "" {
 		events = slices.DeleteFunc(events, func(e FeedEvent) bool { return e.TaskRef != q.TaskRef })
@@ -156,56 +173,44 @@ func AggregateFeed(opts Options, now time.Time, q FeedQuery) ([]FeedEvent, error
 	if limit <= 0 {
 		limit = defaultFeedLimit
 	}
-	if len(events) > limit {
+	truncated := len(events) > limit
+	if truncated {
 		events = events[:limit]
 	}
-	return events, nil
+	return FeedResult{Events: events, Truncated: truncated}, nil
 }
 
-// feedForProject loads the three sources of one project and projects them into events.
+// feedForProject projects the cached sources of one project into events.
 //
-// feedForProject 加载单项目的三类源并投影成事件。
-func feedForProject(pr pulseRoot, now time.Time) ([]FeedEvent, error) {
+// feedForProject 把单项目的缓存源投影成事件。
+func feedForProject(pr pulseRoot, d *projectData, now time.Time) []FeedEvent {
 	var events []FeedEvent
 
-	states, err := taskpipeline.ListTaskStates(pr.root)
-	if err != nil {
-		return nil, err
-	}
-	for _, s := range states {
+	for _, s := range d.states {
 		events = append(events, taskStartEvent(pr, s, now))
 		events = append(events, gateEvents(pr, s)...)
 	}
 
-	// checklog / act failures are non-fatal — one broken source must not blank the panel.
-	//
-	// checklog / act 失败不致命——一个坏源不应让整面板空白。
-	if entries, err := checklog.LoadAllAll(pr.root); err == nil {
-		for _, e := range entries {
-			if e.Check != checklog.CheckSkillTrigger {
-				continue
-			}
-			name := checklog.SkillFromTriggerDetail(e.Detail)
-			title := "skill 触发"
-			if name != "" {
-				title = "skill 触发: " + name
-			}
-			events = append(events, FeedEvent{
-				Time: e.RecordedAt, Kind: FeedKindSkillTrigger, Project: pr.name,
-				TaskRef: e.TaskRef, Severity: FeedSeverityInfo,
-				Title: title, Detail: e.Detail,
-			})
+	for _, e := range d.checkEntries {
+		if e.Check != checklog.CheckSkillTrigger {
+			continue
 		}
+		name := checklog.SkillFromTriggerDetail(e.Detail)
+		title := "skill 触发"
+		if name != "" {
+			title = "skill 触发: " + name
+		}
+		events = append(events, FeedEvent{
+			Time: e.RecordedAt, Kind: FeedKindSkillTrigger, Project: pr.name,
+			TaskRef: e.TaskRef, Severity: FeedSeverityInfo,
+			Title: title, Detail: e.Detail,
+		})
 	}
 
-	if proj, err := forgedata.ProjectFor(pr.root); err == nil {
-		if cs, err := act.LoadAll(proj); err == nil {
-			for _, c := range cs {
-				events = append(events, conclusionEvent(pr, c))
-			}
-		}
+	for _, c := range d.conclusions {
+		events = append(events, conclusionEvent(pr, c))
 	}
-	return events, nil
+	return events
 }
 
 // taskStartEvent projects TaskState.StartedAt into a task-start event: in-progress tasks

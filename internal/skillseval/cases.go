@@ -87,6 +87,15 @@ func casesFile(dir, skill string) string { return filepath.Join(dir, "cases", sk
 func runsFile(dir, skill string) string  { return filepath.Join(dir, "runs", skill+".jsonl") }
 func baselinesFile(dir string) string    { return filepath.Join(dir, "baselines.json") }
 
+// RunsFile / BaselinesFile export the storage paths so read-side consumers (dashboard
+// cache) can fingerprint the files for mtime-based invalidation without duplicating the
+// path layout — single truth stays here.
+//
+// RunsFile / BaselinesFile 导出存储路径，让读侧消费者（dashboard 缓存）能对文件做
+// mtime 指纹失效判断，而不必复制路径布局——单一真相仍在本包。
+func RunsFile(dir, skill string) string  { return runsFile(dir, skill) }
+func BaselinesFile(dir string) string    { return baselinesFile(dir) }
+
 // DescHash returns the sha1[:12] of the description. Used as the consistency fingerprint between the case set
 // and runs — when the description changes, the old case set must be regenerated, otherwise submit will reject it.
 //

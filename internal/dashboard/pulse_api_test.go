@@ -46,10 +46,12 @@ func pulseGet(t *testing.T, url string) (int, []byte) {
 }
 
 // TestServe_PulseFeed: /api/pulse/feed.json returns 200 + generatedAt + merged events;
-// a malformed since is a 400 (client error, not a 500).
+// a malformed since is a 400 (client error, not a 500). A limit below the event count
+// truncates and marks truncated:true (the client full-refetches on a truncated poll).
 //
 // TestServe_PulseFeed：/api/pulse/feed.json 返回 200 + generatedAt + 归并事件；
-// 畸形 since 是 400（客户端错误，非 500）。
+// 畸形 since 是 400（客户端错误，非 500）。limit 低于事件数时截断并标记
+// truncated:true（客户端在截断的轮询后全量重拉）。
 func TestServe_PulseFeed(t *testing.T) {
 	root, _, _ := feedFixture(t)
 	srv := pulseServer(t, Options{Root: root})
@@ -61,6 +63,7 @@ func TestServe_PulseFeed(t *testing.T) {
 	var payload struct {
 		GeneratedAt time.Time   `json:"generatedAt"`
 		Events      []FeedEvent `json:"events"`
+		Truncated   bool        `json:"truncated"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
 		t.Fatalf("decode: %v\n%s", err, body)
@@ -70,6 +73,21 @@ func TestServe_PulseFeed(t *testing.T) {
 	}
 	if len(payload.Events) != 5 {
 		t.Errorf("events len = %d, want 5", len(payload.Events))
+	}
+	if payload.Truncated {
+		t.Error("5 条事件默认 limit 不应截断")
+	}
+
+	// limit 低于事件数：截断 + truncated 标记。
+	code, body = pulseGet(t, srv.URL+"/api/pulse/feed.json?limit=2")
+	if code != 200 {
+		t.Fatalf("limit 请求 status = %d", code)
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Events) != 2 || !payload.Truncated {
+		t.Errorf("limit=2 应返回 2 条且 truncated=true，got %d 条 truncated=%v", len(payload.Events), payload.Truncated)
 	}
 
 	code, _ = pulseGet(t, srv.URL+"/api/pulse/feed.json?since=not-a-time")
@@ -376,6 +394,7 @@ func TestServe_PulseStats(t *testing.T) {
 		MedianScore       *float64 `json:"medianScore"`
 		Trend             string   `json:"trend"`
 		Alerts            int      `json:"alerts"`
+		Nudges            int      `json:"nudges"`
 		EvidenceBlindRate *float64 `json:"evidenceBlindRate"`
 	}
 	if err := json.Unmarshal(body, &stats); err != nil {
@@ -392,6 +411,9 @@ func TestServe_PulseStats(t *testing.T) {
 	}
 	if stats.Alerts != 1 { // 1 条 RetrospectiveNudge
 		t.Errorf("alerts = %d, want 1", stats.Alerts)
+	}
+	if stats.Nudges != 1 { // alerts = zombies + nudges 的拆解分量
+		t.Errorf("nudges = %d, want 1", stats.Nudges)
 	}
 	if stats.EvidenceBlindRate == nil || *stats.EvidenceBlindRate != 0.5 {
 		t.Errorf("evidenceBlindRate = %v, want 0.5（Weak 1/2）", stats.EvidenceBlindRate)
@@ -487,6 +509,81 @@ func TestServe_PulseSkill(t *testing.T) {
 	code, _ = pulseGet(t, srv.URL+"/api/pulse/skill.json?name=..")
 	if code != 400 {
 		t.Errorf("路径遍历名应 400，got %d", code)
+	}
+}
+
+// TestServe_PulseQuality: /api/pulse/quality.json aggregates every overview skill's
+// triggerQuality + compare in one response (replacing the frontend's former N+1 fan-out);
+// a skill without runs degrades to null sections.
+//
+// TestServe_PulseQuality：/api/pulse/quality.json 一次聚合总览中每个 skill 的
+// triggerQuality + compare（替代前端此前的 N+1 扇出）；无 run 的 skill 降级为 null 段。
+func TestServe_PulseQuality(t *testing.T) {
+	canonical := t.TempDir()
+	writeCanonicalSkill(t, canonical, "alpha")
+	writeCanonicalSkill(t, canonical, "beta")
+	t.Setenv(skillscanonical.EnvName, canonical)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	evalDir, err := skillseval.EvalDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := time.Unix(1700000000, 0).UTC()
+	writeEvalRuns(t, evalDir, "alpha", []skillseval.EvalRun{
+		{
+			RunID: "run-1", Skill: "alpha", Timestamp: base,
+			ForgeVersion: "v1", AgentModel: "m1", DescHash: "dh1",
+			Results: []skillseval.CaseResult{
+				{CaseID: "t1", Kind: skillseval.KindTrigger, Pass: true},
+			},
+			HealthScore: 100,
+		},
+		{
+			RunID: "run-2", Skill: "alpha", Timestamp: base.Add(time.Hour),
+			ForgeVersion: "v1", AgentModel: "m1", DescHash: "dh1", BaselineRunID: "run-1",
+			Results: []skillseval.CaseResult{
+				{CaseID: "t1", Kind: skillseval.KindTrigger, Pass: false}, // 退化
+			},
+			HealthScore: 50,
+		},
+	})
+	if err := skillseval.SetBaseline(evalDir, "alpha", "run-1", "test"); err != nil {
+		t.Fatal(err)
+	}
+
+	root, _ := forgedatatest.RealProject(t)
+	srv := pulseServer(t, Options{Root: root})
+
+	code, body := pulseGet(t, srv.URL+"/api/pulse/quality.json")
+	if code != 200 {
+		t.Fatalf("status = %d: %s", code, body)
+	}
+	var views []SkillQualityView
+	if err := json.Unmarshal(body, &views); err != nil {
+		t.Fatalf("decode: %v\n%s", err, body)
+	}
+	byName := map[string]SkillQualityView{}
+	for _, v := range views {
+		byName[v.Name] = v
+	}
+	alpha, ok := byName["alpha"]
+	if !ok {
+		t.Fatalf("quality 载荷缺 alpha: %+v", views)
+	}
+	if alpha.TriggerQuality == nil || alpha.TriggerQuality.FromRun != "run-2" {
+		t.Errorf("alpha triggerQuality 异常: %+v", alpha.TriggerQuality)
+	}
+	if alpha.Compare == nil || !alpha.Compare.Comparable || alpha.Compare.NetRegressions != 1 {
+		t.Errorf("alpha compare 应为 1 例净回归: %+v", alpha.Compare)
+	}
+	beta, ok := byName["beta"]
+	if !ok {
+		t.Fatalf("quality 载荷缺 beta（无 run 也应在列）: %+v", views)
+	}
+	if beta.TriggerQuality != nil || beta.Compare != nil {
+		t.Errorf("无 run 的 beta 应降级为 null 段: %+v", beta)
 	}
 }
 
