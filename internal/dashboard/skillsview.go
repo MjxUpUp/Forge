@@ -22,8 +22,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MjxUpUp/Forge/internal/forgedata"
-	"github.com/MjxUpUp/Forge/internal/skillsdecisions"
 	"github.com/MjxUpUp/Forge/internal/skillsdist"
 	"github.com/MjxUpUp/Forge/internal/skillseval"
 	"github.com/MjxUpUp/Forge/internal/skillsfm"
@@ -123,12 +121,13 @@ type SkillDetailView struct {
 // AggregateSkills builds the skills overview across the projects in scope. canonical is the
 // resolved canonical skill dir ("" = unavailable → observed-only skill set, neverTriggered
 // unknowable); evalDir is the skillseval eval dir ("" = no eval data → all health null).
-// Per-source failures degrade non-fatally, consistent with AggregateFeed.
+// Per-source failures degrade non-fatally, consistent with AggregateFeed. All counting
+// reads through sharedPulseCache — unchanged files are not re-parsed on each poll.
 //
 // AggregateSkills 跨范围内项目构建 skills 总览。canonical 是解析出的 canonical skill
 // 目录（"" = 不可用 → 仅按观测到的 skill 集，neverTriggered 不可知）；evalDir 是
 // skillseval eval 目录（"" = 无 eval 数据 → health 全 null）。单源失败降级不致命，
-// 与 AggregateFeed 一致。
+// 与 AggregateFeed 一致。所有计数读取都走 sharedPulseCache——文件未变时轮询不重解析。
 func AggregateSkills(opts Options, canonical, evalDir string) (SkillsOverview, error) {
 	hits := map[string]int{}
 	effTasks := map[string]int{}        // skill → 关联 task 数（跨项目求和）
@@ -136,25 +135,18 @@ func AggregateSkills(opts Options, canonical, evalDir string) (SkillsOverview, e
 	effScoreN := map[string]int{}       // skill → ΣtaskCount（上面加权的分母）
 
 	for _, pr := range resolvePulseRoots(opts) {
-		if passive, _, err := skillseval.SkillCountsFromChecklog(pr.root); err == nil {
-			for name, n := range passive {
-				hits[name] += n
-			}
-		}
-		if active, _, err := skillseval.SkillCountsFromToollog(pr.root); err == nil {
-			for name, n := range active {
-				hits[name] += n
-			}
-		}
-		proj, err := forgedata.ProjectFor(pr.root)
+		d, err := sharedPulseCache.projectData(pr)
 		if err != nil {
 			continue
 		}
-		effs, err := skillseval.AnalyzeEffectiveness(proj)
-		if err != nil {
-			continue
+		d.derived(pr.root)
+		for name, n := range d.passive {
+			hits[name] += n
 		}
-		for _, e := range effs {
+		for name, n := range d.active {
+			hits[name] += n
+		}
+		for _, e := range d.effs {
 			effTasks[e.Skill] += e.TaskCount
 			// Cross-project merge weights each project's AvgScore by its task count —
 			// exact for a single project (the common case); a multi-project merge is a
@@ -210,8 +202,8 @@ func AggregateSkills(opts Options, canonical, evalDir string) (SkillsOverview, e
 			sum.AvgScore = &avg
 		}
 		if evalDir != "" {
-			if latest, err := skillseval.LatestRun(evalDir, name); err == nil && latest != nil {
-				h := latest.HealthScore
+			if runs := sharedPulseCache.skillEval(canonical, evalDir, name).runs; len(runs) > 0 {
+				h := runs[len(runs)-1].HealthScore
 				sum.Health = &h
 			}
 		}
@@ -230,14 +222,57 @@ func AggregateSkills(opts Options, canonical, evalDir string) (SkillsOverview, e
 	return SkillsOverview{Skills: skills, NeverTriggered: never, Coverage: skillsCoverageNote}, nil
 }
 
+// SkillQualityView is one row of /api/pulse/quality.json: just what the 触发质量 cards
+// render (trigger accuracies of the latest run + baseline compare), without the full
+// detail payload.
+//
+// SkillQualityView 是 /api/pulse/quality.json 的一行：触发质量卡片渲染所需的最小集
+// （最新 run 的触发准确率 + baseline 比对），不带完整详情载荷。
+type SkillQualityView struct {
+	Name           string              `json:"name"`
+	TriggerQuality *TriggerQualityView `json:"triggerQuality"` // 无 run 时 null
+	Compare        *SkillCompareView   `json:"compare"`        // 无 baseline/run 时 null
+}
+
+// AggregateQuality builds the 触发质量 tab payload in one shot: every skill from the
+// overview with its triggerQuality + compare. Per-skill detail failures are skipped
+// non-fatally (consistent with the overview's degradation). Replaces the frontend's
+// former N+1 fan-out (skills.json + one skill.json per skill).
+//
+// AggregateQuality 一次构建触发质量 tab 载荷：总览中的每个 skill 带其
+// triggerQuality + compare。单 skill 详情失败跳过不致命（与总览降级一致）。替代
+// 前端此前的 N+1 扇出（skills.json + 逐 skill 的 skill.json）。
+func AggregateQuality(opts Options, canonical, evalDir string) ([]SkillQualityView, error) {
+	ov, err := AggregateSkills(opts, canonical, evalDir)
+	if err != nil {
+		return nil, err
+	}
+	views := []SkillQualityView{}
+	for _, s := range ov.Skills {
+		d, err := LoadSkillDetail(canonical, evalDir, s.Name)
+		if err != nil {
+			continue
+		}
+		views = append(views, SkillQualityView{
+			Name:           d.Name,
+			TriggerQuality: d.TriggerQuality,
+			Compare:        d.Compare,
+		})
+	}
+	return views, nil
+}
+
 // LoadSkillDetail builds the single-skill detail view. The name is validated against
 // skillsfm.IsValidSkillName before touching any path (it arrives as an HTTP query param —
-// an unvalidated name would be a path traversal). Missing runs/baselines/decisions degrade
-// to null/empty sections, never to an error.
+// an unvalidated name would be a path traversal). Raw reads (runs/baseline/decisions) go
+// through the fingerprint-gated cache; runPassRates / CompareRuns are pure and run fresh
+// each call. Missing runs/baselines/decisions degrade to null/empty sections, never to
+// an error.
 //
 // LoadSkillDetail 构建单 skill 详情视图。name 先过 skillsfm.IsValidSkillName 再碰任何
-// 路径（它来自 HTTP query 参数——不校验就是路径遍历）。runs/baselines/decisions 缺失
-// 降级为 null/空段，绝不报错。
+// 路径（它来自 HTTP query 参数——不校验就是路径遍历）。原始读取（runs/baseline/
+// decisions）走指纹门控缓存；runPassRates / CompareRuns 是纯函数每次现算。
+// runs/baselines/decisions 缺失降级为 null/空段，绝不报错。
 func LoadSkillDetail(canonical, evalDir, name string) (SkillDetailView, error) {
 	if !skillsfm.IsValidSkillName(name) {
 		return SkillDetailView{}, errInvalidSkillName(name)
@@ -248,12 +283,8 @@ func LoadSkillDetail(canonical, evalDir, name string) (SkillDetailView, error) {
 		Decisions: []SkillDecisionView{},
 	}
 
-	var runs []skillseval.EvalRun
-	if evalDir != "" {
-		if loaded, err := skillseval.LoadRuns(evalDir, name); err == nil {
-			runs = loaded
-		}
-	}
+	ev := sharedPulseCache.skillEval(canonical, evalDir, name)
+	runs := ev.runs
 	for _, r := range runs {
 		trig, notTrig := runPassRates(r)
 		view.Runs = append(view.Runs, SkillRunView{
@@ -262,12 +293,7 @@ func LoadSkillDetail(canonical, evalDir, name string) (SkillDetailView, error) {
 		})
 	}
 
-	var baselineID string
-	if evalDir != "" {
-		if bl, err := skillseval.GetBaseline(evalDir, name); err == nil {
-			baselineID = bl.RunID
-		}
-	}
+	baselineID := ev.baseline.RunID
 	view.BaselineRunID = baselineID
 
 	if len(runs) > 0 {
@@ -277,28 +303,30 @@ func LoadSkillDetail(canonical, evalDir, name string) (SkillDetailView, error) {
 			TriggerAcc: trig, NotTriggerAcc: notTrig,
 			FromRun: latest.RunID, Cases: len(latest.Results),
 		}
-		if baselineID != "" && evalDir != "" {
-			if baselineRun, err := skillseval.LoadRunByID(evalDir, name, baselineID); err == nil && baselineRun != nil {
-				rep := skillseval.CompareRuns(&latest, baselineRun)
+		if baselineID != "" {
+			// CompareRuns 需要完整的 baseline run——从缓存的 runs 里按 ID 找（纯内存，
+			// 替代此前的 LoadRunByID 磁盘重读）。参数序保持 CompareRuns(latest, baseline)。
+			for i := range runs {
+				if runs[i].RunID != baselineID {
+					continue
+				}
+				rep := skillseval.CompareRuns(&latest, &runs[i])
 				view.Compare = &SkillCompareView{
 					NetRegressions: rep.NetRegressions,
 					Regressions:    len(rep.Regressions),
 					Improvements:   len(rep.Improvements),
 					Comparable:     rep.Comparable,
 				}
+				break
 			}
 		}
 	}
 
-	if canonical != "" {
-		if decisions, err := skillsdecisions.LoadDecisions(canonical, name); err == nil {
-			for _, d := range decisions {
-				view.Decisions = append(view.Decisions, SkillDecisionView{
-					ID: d.ID, Ts: d.DecidedAt, Outcome: d.Outcome,
-					Diagnosis: d.Diagnosis, Rationale: d.Rationale, Commit: d.CommitHash,
-				})
-			}
-		}
+	for _, d := range ev.decisions {
+		view.Decisions = append(view.Decisions, SkillDecisionView{
+			ID: d.ID, Ts: d.DecidedAt, Outcome: d.Outcome,
+			Diagnosis: d.Diagnosis, Rationale: d.Rationale, Commit: d.CommitHash,
+		})
 	}
 	return view, nil
 }

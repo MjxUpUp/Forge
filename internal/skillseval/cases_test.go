@@ -119,3 +119,27 @@ func TestLoadCases_MissingFile(t *testing.T) {
 		t.Fatalf("want nil cases, got %v", loaded)
 	}
 }
+
+// TestExportedStoragePaths pins the exported RunsFile / BaselinesFile wrappers: they must
+// resolve to the same layout the internal writers use (runs/<skill>.jsonl, baselines.json)
+// — external consumers (dashboard cache) fingerprint these paths for mtime invalidation,
+// so a layout drift here would silently break their cache correctness.
+//
+// TestExportedStoragePaths 钉住导出的 RunsFile / BaselinesFile 包装：它们必须解析到
+// 内部写入方使用的同一布局（runs/<skill>.jsonl、baselines.json）——外部消费者
+// （dashboard 缓存）按这些路径做 mtime 指纹失效判断，此处布局漂移会静默破坏其缓存正确性。
+func TestExportedStoragePaths(t *testing.T) {
+	dir := t.TempDir()
+	if got, want := RunsFile(dir, "alpha"), runsFile(dir, "alpha"); got != want {
+		t.Errorf("RunsFile = %q, want %q", got, want)
+	}
+	if got, want := BaselinesFile(dir), baselinesFile(dir); got != want {
+		t.Errorf("BaselinesFile = %q, want %q", got, want)
+	}
+	if got, want := RunsFile(dir, "alpha"), filepath.Join(dir, "runs", "alpha.jsonl"); got != want {
+		t.Errorf("RunsFile 布局 = %q, want %q", got, want)
+	}
+	if got, want := BaselinesFile(dir), filepath.Join(dir, "baselines.json"); got != want {
+		t.Errorf("BaselinesFile 布局 = %q, want %q", got, want)
+	}
+}
