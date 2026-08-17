@@ -1,6 +1,7 @@
 package skillseval
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -117,6 +118,92 @@ func TestLoadCases_MissingFile(t *testing.T) {
 	}
 	if loaded != nil {
 		t.Fatalf("want nil cases, got %v", loaded)
+	}
+}
+
+// writeGoldenSet writes a curated golden case set at <dir>/golden/<skill>/cases.json.
+//
+// writeGoldenSet 在 <dir>/golden/<skill>/cases.json 写一份策展黄金集。
+func writeGoldenSet(t *testing.T, dir, skill string, cases []EvalCase) {
+	t.Helper()
+	gd := filepath.Join(dir, "golden", skill)
+	mustWrite(t, os.MkdirAll(gd, 0755))
+	set := CaseSet{Skill: skill, Cases: cases}
+	data, err := json.MarshalIndent(set, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, os.WriteFile(filepath.Join(gd, "cases.json"), data, 0644))
+}
+
+// TestLoadCases_GoldenPriorityMerge pins the merge contract: golden cases come first,
+// derived cases supplement uncovered IDs, and on ID conflict the golden case wins.
+//
+// TestLoadCases_GoldenPriorityMerge 钉住合并契约：golden 在前、派生补充未覆盖 ID、
+// 同 ID golden 胜出。
+func TestLoadCases_GoldenPriorityMerge(t *testing.T) {
+	canonical := t.TempDir()
+	dir := t.TempDir()
+	writeSkill(t, canonical, "my-skill", testDesc)
+	derived, _ := EvalCases(canonical, "my-skill")
+	mustWrite(t, SaveCases(dir, "my-skill", derived))
+
+	curated := []EvalCase{
+		{ID: "g-my-skill-t1", Skill: "my-skill", Kind: KindTrigger, Prompt: "人工改写正例", Target: "my-skill", Origin: OriginCurated},
+		// Same ID as a derived case — the golden one must win.
+		{ID: derived[0].ID, Skill: "my-skill", Kind: KindTrigger, Prompt: "golden 覆盖派生", Target: "my-skill", Origin: OriginCurated},
+	}
+	writeGoldenSet(t, dir, "my-skill", curated)
+
+	loaded, err := LoadCases(dir, "my-skill")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 2 curated (one shadowing a derived ID) + remaining derived.
+	wantLen := 2 + len(derived) - 1
+	if len(loaded) != wantLen {
+		t.Fatalf("merged len=%d want %d", len(loaded), wantLen)
+	}
+	if loaded[0].ID != "g-my-skill-t1" || loaded[0].Origin != OriginCurated {
+		t.Fatalf("golden case must lead: %+v", loaded[0])
+	}
+	byID := map[string]EvalCase{}
+	for _, c := range loaded {
+		byID[c.ID] = c
+	}
+	if byID[derived[0].ID].Prompt != "golden 覆盖派生" {
+		t.Fatalf("ID conflict: golden must win, got prompt %q", byID[derived[0].ID].Prompt)
+	}
+	// Derived DescHash still surfaces on the merged set (submit stale-check relies on it).
+	set, err := LoadCaseSet(dir, "my-skill")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if set.DescHash != DescHash(testDesc) {
+		t.Fatalf("merged DescHash=%s want derived %s", set.DescHash, DescHash(testDesc))
+	}
+}
+
+// TestLoadCases_GoldenOnly pins that a golden-only skill loads with an empty DescHash —
+// curated cases anchor on real utterances, not the description, so they never go stale
+// on description edits.
+//
+// TestLoadCases_GoldenOnly 钉住纯 golden 集可加载且 DescHash 为空——策展 case 锚定
+// 真实话语而非 description，不会因 description 变更过期。
+func TestLoadCases_GoldenOnly(t *testing.T) {
+	dir := t.TempDir()
+	writeGoldenSet(t, dir, "solo", []EvalCase{
+		{ID: "g-solo-t1", Skill: "solo", Kind: KindTrigger, Prompt: "正例", Target: "solo", Origin: OriginCurated},
+	})
+	set, err := LoadCaseSet(dir, "solo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if set == nil || len(set.Cases) != 1 {
+		t.Fatalf("golden-only set: %+v", set)
+	}
+	if set.DescHash != "" {
+		t.Fatalf("golden-only DescHash=%q want empty", set.DescHash)
 	}
 }
 

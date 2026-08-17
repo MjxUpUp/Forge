@@ -326,6 +326,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge skills eval-record --skill X --from <file/->` | 回填一次 eval run（agent dispatch 跑完每个 prompt 后整批提交，归一化+判定+算 health） |
 | `forge skills eval-report --skill X` | latest run vs baseline 回归报告（regression 三态 + pass-rate delta + 可比性） |
 | `forge skills eval-baseline --skill X` | 标记 baseline run（回归基准，显式人工决策） |
+| `evals/golden/<skill>/cases.json`（数据约定，非命令） | 人工策展黄金 case 集（真实话语改写，非 description 派生；进 VCS 可评审）。eval-cases/eval-record 加载时 golden 优先、派生补充，同 ID golden 胜出；策展 ID 前缀 `g-`，`origin: "curated"`，不带 desc_hash（description 变更不过期） |
 | `forge skills battery [--gate]` | 全库回归电池：逐 skill latest vs baseline 判回归（JudgeSkillAccept 单一判源），`--gate` 任一回归即阻断（exit 4）；无 baseline/陈旧锚点降级 advisory |
 | `forge skills mutex-gen` | 生成跨 skill 互斥 case 集（从 description SKIP 段的（用 X）让渡边派生：B 域 prompt 必须路由到 B、不得路由回声明让渡的 A；落盘 mutex/cases.json） |
 | `forge skills mutex-record --from <file/->` | 回填一次互斥集 run（actual==Positive 才 pass；`--agent-model`/`--forge-version` 盖章防跨模型/版本假回归） |
