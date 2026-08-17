@@ -18,6 +18,11 @@ func TestBlindPreamble_ListingContract(t *testing.T) {
 	longDesc := "Use when: " + strings.Repeat("长", 300)
 	writeSkill(t, canonical, "alpha-skill", "Use when: 短描述")
 	writeSkill(t, canonical, "beta-skill", longDesc)
+	// Exactly 200 runes: must NOT be truncated (no ellipsis) — pins the > boundary.
+	//
+	// 恰好 200 rune：不得截断（无省略号）——钉住 > 边界。
+	exactDesc := strings.Repeat("恰", blindDescRunes)
+	writeSkill(t, canonical, "gamma-skill", exactDesc)
 
 	pre, err := BlindPreamble(canonical)
 	if err != nil {
@@ -44,6 +49,9 @@ func TestBlindPreamble_ListingContract(t *testing.T) {
 	}
 	if !strings.Contains(pre, strings.Repeat("长", blindDescRunes-len("Use when: "))+"...") {
 		t.Fatal("超 200 rune 的 description 须截断并带省略号")
+	}
+	if !strings.Contains(pre, "- gamma-skill: "+exactDesc+"\n") {
+		t.Fatal("恰好 200 rune 的 description 不得截断（不应带省略号）")
 	}
 }
 
