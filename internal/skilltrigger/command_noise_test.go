@@ -107,13 +107,13 @@ func TestMatchKeywords_HeredocNoise(t *testing.T) {
 	ctx := func(cmd string) Context {
 		return Context{Event: "PreToolUse", ToolName: "Bash", ToolInput: map[string]any{"command": cmd}}
 	}
-	if matchKeywords(kw, ctx("python - <<'EOF'\ns='npm publish'\nprint(s)\nEOF")) {
+	if _, ok := matchKeywords(kw, ctx("python - <<'EOF'\ns='npm publish'\nprint(s)\nEOF")); ok {
 		t.Fatal("heredoc body 内的 'npm publish' 字样不应命中")
 	}
-	if !matchKeywords(kw, ctx("cd pkg && npm publish --access public")) {
+	if _, ok := matchKeywords(kw, ctx("cd pkg && npm publish --access public")); !ok {
 		t.Fatal("真实 npm publish 命令应命中")
 	}
-	if !matchKeywords([]string{"goreleaser"}, ctx("goreleaser release --config <<EOF\nnoop body\nEOF")) {
+	if _, ok := matchKeywords([]string{"goreleaser"}, ctx("goreleaser release --config <<EOF\nnoop body\nEOF")); !ok {
 		t.Fatal("marker 行关键词应命中（'goreleaser' 类关键词在命令位）")
 	}
 	post := Context{
@@ -122,7 +122,7 @@ func TestMatchKeywords_HeredocNoise(t *testing.T) {
 		ToolInput:  map[string]any{"command": "python - <<'EOF'\nprint('npm publish')\nEOF"},
 		ToolOutput: map[string]any{"stdout": "npm publish ok"},
 	}
-	if !matchKeywords(kw, post) {
+	if _, ok := matchKeywords(kw, post); !ok {
 		t.Fatal("stdout 内关键词应命中（stdout 不剥离）")
 	}
 }
@@ -135,7 +135,7 @@ func TestMatchKeywords_HeredocNoise(t *testing.T) {
 // trigger.
 func TestSanitizeCommand_PromptUntouched(t *testing.T) {
 	ctx := Context{Event: "UserPromptSubmit", Prompt: "帮我 npm publish 发版"}
-	if !matchKeywords([]string{"npm publish"}, ctx) {
+	if _, ok := matchKeywords([]string{"npm publish"}, ctx); !ok {
 		t.Fatal("prompt 内关键词应命中")
 	}
 	if strings.Contains(sanitizeCommand("python - <<'EOF'\nEOF"), "body") {
