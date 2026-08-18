@@ -82,14 +82,20 @@ func lastChecklogActivity(root, taskRef string) time.Time {
 
 // assignmentInFlight reports whether a task's delegation is still actively pending on an agent —
 // offered (waiting claim), claimed (being worked), or input-required (waiting answer). Terminal
-// states (delivered/failed/canceled) and non-delegated tasks are NOT in flight, so no zombie
-// signal applies to them. This is the common gate for every zombie check.
+// states (delivered/failed/canceled), non-delegated tasks, and COMPLETED tasks are NOT in flight,
+// so no zombie signal applies to them. This is the common gate for every zombie check. The
+// IsComplete precondition honors the semantic IsZombie's doc comment already declared (a completed
+// task is never a zombie): before the 2026-08-18 脱节修复 the pipeline and the assignment state
+// machine did not talk, so a completed task could keep a suspended offered/claimed assignment —
+// without this check it would be misreported as a zombie 7 days later.
 //
 // assignmentInFlight 报告任务的分派是否仍在某 agent 上活跃待办——offered（待认领）、claimed
-// （进行中）或 input-required（待答复）。终态（delivered/failed/canceled）与非分派任务都不
-// 在途，故不适用任何僵尸信号。这是所有僵尸检查的公共前置。
+// （进行中）或 input-required（待答复）。终态（delivered/failed/canceled）、非分派任务与已完成
+// 任务都不在途，故不适用任何僵尸信号。这是所有僵尸检查的公共前置。IsComplete 前置兑现 IsZombie
+// 注释早已声明的语义（已完成的任务永不是僵尸）：2026-08-18 脱节修复之前管线与分派状态机互不知
+// 情，已完成任务可能悬置 offered/claimed 分派——没有此检查，它 7 天后会被误报僵尸。
 func assignmentInFlight(s *TaskState) bool {
-	if s == nil || s.Assignment == nil {
+	if s == nil || s.Assignment == nil || s.IsComplete() {
 		return false
 	}
 	switch s.Assignment.Status {
