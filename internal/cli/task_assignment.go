@@ -679,9 +679,10 @@ func scanDelegations(root, agent, role string, blocked bool, now time.Time) ([]d
 		// 渲染状态与任务管线 reconcile（2026-08-18 脱节修复）：门禁全过但分派从未 claim/deliver
 		// 的任务（如 MarkComplete 自动回收之前的存量状态）不得渲染为待认领——那会把已完成任务
 		// 永久显示成待办。改渲染 `complete`（JSON status 字段同值，看板等消费者读到一致信号）；
-		// 行保留不过滤，以可见方式呈现已完成事实。分派终态原样透传。
+		// 行保留不过滤，以可见方式呈现已完成事实。分派终态原样透传；被 Reopen 打回返工的任务
+		// （IsReopened）也透传真实协作状态——卡住的返工不得伪装成 complete。
 		status := s.Assignment.Status
-		if s.IsComplete() {
+		if s.IsComplete() && !s.IsReopened() {
 			switch s.Assignment.Status {
 			case taskpipeline.AssignOffered, taskpipeline.AssignClaimed, taskpipeline.AssignInputRequired:
 				status = `complete`

@@ -402,6 +402,12 @@ func (s *TaskState) MarkComplete() {
 			s.Assignment.Status = AssignDelivered
 			s.Assignment.DeliveredAt = &now
 			s.Assignment.AutoDelivered = true
+			// Reclaiming from input-required bypasses Answer() — clear the pending question
+			// text so no reader surfaces a stale "current question" (mirrors Answer's cleanup).
+			//
+			// 从 input-required 回收绕过 Answer()——清掉待答问题文本，避免读者看到陈旧的
+			// 「当前问题」（镜像 Answer 的清理）。
+			s.Assignment.LastQuestion = ``
 		}
 	}
 }
@@ -1044,6 +1050,39 @@ func (s *TaskState) Reopen(reason string) error {
 	s.Assignment.AutoDelivered = false
 	s.Assignment.FailReason = reason
 	return nil
+}
+
+// IsReopened reports whether a delivered task was sent back for rework via Reopen. Reopen
+// lands on claimed (or later input-required via Question) with FailReason set — and FailReason
+// on a NON-failed status has no other writer (Fail() sets it only together with the failed
+// terminal; import strips it), so (offered|claimed|input-required)+FailReason uniquely
+// identifies the reopened shape. offered is included because Abandon() does not clear
+// FailReason: reopen→claimed→(owner gone)→reclaim→offered leaves the residue, and without
+// this branch the reclaimed rework would fall back under the completion immunity and turn
+// invisible (review M1 复审). The distinction matters because IsComplete() deliberately stays
+// true across a reopen (gate history is retained): completion-based consumers — the zombie
+// immunity in assignmentInFlight and mine's `complete` render — must NOT treat a reopened
+// task as finished, or a stuck rework would be silently hidden (review M1 of the 2026-08-18
+// 脱节修复).
+//
+// IsReopened 报告一个已交付任务是否被 Reopen 打回返工。Reopen 落在 claimed（或再经
+// Question 到 input-required）且置 FailReason——而非 failed 状态上的 FailReason 没有其他
+// 写入方（Fail() 只在进入 failed 终态时设置；import 会清空），故 (offered|claimed|
+// input-required)+FailReason 唯一标识 reopen 形态。offered 纳入是因为 Abandon() 不清
+// FailReason：reopen→claimed→（认领方失联）→reclaim→offered 会留下残留，少了这个分支，
+// 被回收的返工会重新落入完成免疫而彻底隐形（review M1 复审）。区分的意义：IsComplete()
+// 跨 reopen 刻意保持 true（gate 历史保留）——基于完成态的消费者（assignmentInFlight 的
+// 僵尸免疫与 mine 的 complete 渲染）不得把 reopen 的任务当成已完成，否则卡住的返工会被
+// 静默隐藏（2026-08-18 脱节修复的 review M1）。
+func (s *TaskState) IsReopened() bool {
+	if s == nil || s.Assignment == nil {
+		return false
+	}
+	switch s.Assignment.Status {
+	case AssignOffered, AssignClaimed, AssignInputRequired:
+		return s.Assignment.FailReason != ``
+	}
+	return false
 }
 
 // Abandon transitions claimed→offered (TTL recovery for a claimed task whose owner went away).

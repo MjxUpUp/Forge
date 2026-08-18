@@ -87,15 +87,22 @@ func lastChecklogActivity(root, taskRef string) time.Time {
 // IsComplete precondition honors the semantic IsZombie's doc comment already declared (a completed
 // task is never a zombie): before the 2026-08-18 脱节修复 the pipeline and the assignment state
 // machine did not talk, so a completed task could keep a suspended offered/claimed assignment —
-// without this check it would be misreported as a zombie 7 days later.
+// without this check it would be misreported as a zombie 7 days later. Two carve-outs:
+// a REOPENED task (IsReopened: delivered→claimed rework, IsComplete stays true by design) is
+// in flight again — a stuck rework must surface, not hide behind the completion immunity; and
+// a task whose gates all passed but `forge task complete` never ran (CompletedAt still nil)
+// is likewise immune — the work IS done, only the scoring ritual is pending.
 //
 // assignmentInFlight 报告任务的分派是否仍在某 agent 上活跃待办——offered（待认领）、claimed
 // （进行中）或 input-required（待答复）。终态（delivered/failed/canceled）、非分派任务与已完成
 // 任务都不在途，故不适用任何僵尸信号。这是所有僵尸检查的公共前置。IsComplete 前置兑现 IsZombie
 // 注释早已声明的语义（已完成的任务永不是僵尸）：2026-08-18 脱节修复之前管线与分派状态机互不知
-// 情，已完成任务可能悬置 offered/claimed 分派——没有此检查，它 7 天后会被误报僵尸。
+// 情，已完成任务可能悬置 offered/claimed 分派——没有此检查，它 7 天后会被误报僵尸。两个例外：
+// 被 REOPEN 的任务（IsReopened：delivered→claimed 返工，IsComplete 按设计仍为 true）重新在途
+// ——卡住的返工必须上浮，不能躲在完成免疫后面；门禁全过但从未跑 forge task complete 的任务
+// （CompletedAt 仍为 nil）同样免疫——活已干完，只差评分动作。
 func assignmentInFlight(s *TaskState) bool {
-	if s == nil || s.Assignment == nil || s.IsComplete() {
+	if s == nil || s.Assignment == nil || (s.IsComplete() && !s.IsReopened()) {
 		return false
 	}
 	switch s.Assignment.Status {
