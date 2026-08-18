@@ -44,7 +44,176 @@ var (
 	//
 	// ErrInvalidGitFile: `.git` file 损坏（empty / missing 'gitdir:' / NUL / looped / beyond fs root）
 	ErrInvalidGitFile = errors.New(`forgedata: invalid .git file (worktree/submodule)`)
+
+	// ErrInvalidProjectID: `.forge-project-id` present but malformed (must be
+	// fpid_ + 32 lowercase hex). Key() treats this as "no ID" and falls back to the
+	// path hash (fail-open) — the error surfaces via ReadProjectID for the report
+	// layer (doctor / adopt) where strictness matters.
+	//
+	// ErrInvalidProjectID：`.forge-project-id` 存在但畸形（须为 fpid_ + 32 位小写
+	// hex）。Key() 将其视同无 ID 回落路径 hash（fail-open）——错误经 ReadProjectID
+	// 暴露给报告层（doctor / adopt）供严格校验。
+	ErrInvalidProjectID = errors.New(`forgedata: invalid .forge-project-id (want fpid_<32 lowercase hex>)`)
 )
+
+// ProjectIDFileName is the repo-born identity file (project-sync design §A): committed
+// at the MAIN worktree root so it travels with the repo (clone/fork/other machines),
+// making the derived key machine-independent. Deliberately NOT under `.forge/` — the
+// presence of a project-level `.forge/` dir flips ConfigDir into team/legacy mode
+// (see paths.go), a side effect an identity file must never trigger.
+//
+// ProjectIDFileName 是 repo-born 身份文件（project-sync 设计 §A）：committed 在主
+// worktree 根，随仓库旅行（clone/fork/其他机器），使推导 key 与机器无关。刻意不放
+// `.forge/` 下——项目级 `.forge/` 目录的存在会把 ConfigDir 翻进 team/legacy 模式
+// （见 paths.go），身份文件绝不能触发该副作用。
+const ProjectIDFileName = `.forge-project-id`
+
+// idPrefix / idHexLen pin the ID format: `fpid_` + 32 lowercase hex chars (16 bytes
+// from crypto/rand at generation time). Validation is a tight allowlist — the ID is
+// attacker-controllable input (any cloned repo may carry one), so a loose format would
+// let odd content flow into the identity hash.
+//
+// idPrefix / idHexLen 钉死 ID 格式：`fpid_` + 32 位小写 hex（生成时 crypto/rand 的
+// 16 字节）。校验是紧 allowlist——ID 是攻击者可控输入（任意 clone 的仓库都可能带
+// 一个），宽松格式会让奇异内容流进身份 hash。
+const (
+	idPrefix = `fpid_`
+	idHexLen = 32
+)
+
+// ReadProjectID reads and strictly validates the project ID file under repoRoot.
+// Returns the full token (fpid_<32hex>). Missing file, unreadable file, or malformed
+// content all return ErrInvalidProjectID (or the os error for missing) — callers that
+// only need the fallback path treat ANY error as "no ID".
+//
+// ReadProjectID 读取并严格校验 repoRoot 下的项目 ID 文件。返回完整 token
+// （fpid_<32hex>）。文件缺失、不可读、内容畸形都返回错误（缺失为 os 错误，畸形为
+// ErrInvalidProjectID）——只需要回落路径的调用方把任何错误都当「无 ID」。
+func ReadProjectID(repoRoot string) (string, error) {
+	data, err := os.ReadFile(filepath.Join(repoRoot, ProjectIDFileName))
+	if err != nil {
+		return ``, err
+	}
+	id := strings.TrimSpace(string(data))
+	if len(id) != len(idPrefix)+idHexLen || !strings.HasPrefix(id, idPrefix) {
+		return ``, fmt.Errorf(`%w: %q`, ErrInvalidProjectID, truncateRunesForErr(id))
+	}
+	for _, c := range id[len(idPrefix):] {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return ``, fmt.Errorf(`%w: non-hex char %q`, ErrInvalidProjectID, truncateRunesForErr(id))
+		}
+	}
+	return id, nil
+}
+
+// truncateRunesForErr keeps error messages bounded (the file could be arbitrarily
+// large garbage); 24 runes is enough to identify the problem.
+//
+// truncateRunesForErr 限制错误信息长度（文件可能是任意大的垃圾内容）；24 rune
+// 足以定位问题。
+func truncateRunesForErr(s string) string {
+	r := []rune(s)
+	if len(r) <= 24 {
+		return s
+	}
+	return string(r[:24]) + `...`
+}
+
+// IDKey derives the identity key from a validated project ID: hash12 of
+// FNV-64a("fpid:" + id). The "fpid:" domain prefix keeps the hash input disjoint from
+// any filesystem path (path keys hash an absolute path string), so an ID can never
+// collide with a legacy path identity by construction. Pure content hash → same key
+// on every OS/filesystem (no path, no case folding in the input).
+//
+// IDKey 从已校验的项目 ID 推导身份 key：FNV-64a("fpid:"+id) 的 hash12。"fpid:" 域
+// 前缀使 hash 输入与任何文件系统路径不相交（路径 key hash 的是绝对路径串），
+// 按构造 ID 永不与遗留路径身份相撞。纯内容 hash → 任意 OS/文件系统同 key
+// （输入无路径、无大小写折叠）。
+func IDKey(id string) string {
+	h := fnv.New64a()
+	h.Write([]byte(idPrefix + `:` + id))
+	return hash12(h.Sum64())
+}
+
+// keyFromCommonDir is the pre-ID identity derivation: hash12 of the resolved `.git`
+// common dir path. Kept as a named function because adopt needs the OLD key (path
+// regime) alongside the NEW one (ID regime) to migrate data between them.
+//
+// keyFromCommonDir 是 ID 前的身份推导：解析后 `.git` common dir 路径的 hash12。
+// 留作具名函数是因为 adopt 需要同时拿到旧 key（路径体系）与新 key（ID 体系）
+// 在两者之间迁移数据。
+func keyFromCommonDir(resolvedGitDir string) string {
+	h := fnv.New64a()
+	h.Write([]byte(filepath.Clean(resolvedGitDir)))
+	return hash12(h.Sum64())
+}
+
+// ResolvedGitDir returns cwd's fully-resolved `.git` common dir — the same resolution
+// Key() performs (worktree/submodule .git file → main repo .git, EvalSymlinks,
+// CanonicalCase). Exported for `forge project adopt`, which needs the MAIN worktree
+// root (its parent dir) to write the ID file, independent of which worktree cwd sits
+// in. Same error contract as Key (ErrNotInGitRepo / ErrInvalidGitFile).
+//
+// ResolvedGitDir 返回 cwd 完全解析后的 `.git` common dir——与 Key() 同一解析
+// （worktree/submodule 的 .git file → 主 repo .git、EvalSymlinks、CanonicalCase）。
+// 导出给 `forge project adopt`：它需要主 worktree 根（该目录的父目录）来写 ID
+// 文件，与 cwd 落在哪个 worktree 无关。错误契约与 Key 相同
+// （ErrNotInGitRepo / ErrInvalidGitFile）。
+func ResolvedGitDir(cwd string) (string, error) {
+	return resolveGitDir(cwd)
+}
+
+// KeyFromPath is the path-regime derivation: the key this repo had BEFORE any
+// project ID existed (and would still have if the ID file were removed). adopt uses
+// it as the migration source key. Same error contract as Key.
+//
+// KeyFromPath 是路径体系推导：本项目在任何 project ID 存在之前的 key（也是 ID
+// 文件被删后将回到的 key）。adopt 用它作迁移源 key。错误契约与 Key 相同。
+func KeyFromPath(cwd string) (string, error) {
+	gitDir, err := resolveGitDir(cwd)
+	if err != nil {
+		return ``, err
+	}
+	return keyFromCommonDir(gitDir), nil
+}
+
+// resolveGitDir is the shared resolution spine of Key/ResolvedGitDir/KeyFromPath:
+// FindGitRoot → .git dir-or-file resolution → EvalSymlinks → CanonicalCase.
+//
+// resolveGitDir 是 Key/ResolvedGitDir/KeyFromPath 共享的解析主干：
+// FindGitRoot → .git 目录或文件解析 → EvalSymlinks → CanonicalCase。
+func resolveGitDir(cwd string) (string, error) {
+	gitRoot := FindGitRoot(cwd)
+	if gitRoot == `` {
+		return ``, ErrNotInGitRepo
+	}
+	absGit := filepath.Clean(filepath.Join(gitRoot, ".git"))
+
+	info, err := os.Stat(absGit)
+	if err != nil {
+		return ``, ErrNotInGitRepo // .git 不存在（与"非 git"等效）
+	}
+
+	var resolvedGitDir string
+	if info.IsDir() {
+		// Main worktree — .git itself is already stable.
+		//
+		// 主 worktree —— .git 自身已稳定
+		resolvedGitDir = absGit
+	} else {
+		// .git is a file (worktree / submodule)
+		//
+		// .git 是 file（worktree / submodule）
+		resolvedGitDir, err = resolveGitFile(absGit, gitRoot)
+		if err != nil {
+			return ``, err
+		}
+	}
+	if eval, evalErr := filepath.EvalSymlinks(resolvedGitDir); evalErr == nil {
+		resolvedGitDir = eval
+	}
+	return CanonicalCase(resolvedGitDir), nil
+}
 
 // FindGitRoot walks up from dir to the nearest ancestor containing `.git` (dir or file). Returns empty string if not found.
 // Does not depend on forge project existence — just git repo detection.
@@ -79,7 +248,11 @@ func FindGitRoot(dir string) string {
 //  2. .git is a dir (main worktree) → use directly
 //     .git is a file (worktree/submodule) → read gitdir: line → walk parent chain to find .git ancestor
 //  3. EvalSymlinks post-normalization (symlinked repo gets same key)
-//  4. fnv-64a(... )[:12]
+//  4. repo-born ID precedence: a valid `.forge-project-id` at the MAIN worktree root
+//     (Dir of the resolved common .git dir) overrides the path hash → IDKey.
+//     Missing/malformed ID silently falls back to the path hash (fail-open: existing
+//     projects keep their identity; a corrupt file never bricks the hook hot path).
+//  5. fnv-64a(... )[:12]
 //
 // ErrInvalidGitFile is returned when the .git file is corrupted (empty / missing 'gitdir:' / contains NUL / looped / beyond fs root).
 //
@@ -91,42 +264,16 @@ func FindGitRoot(dir string) string {
 //  2. .git 是 dir（主 worktree）→ 直接用
 //     .git 是 file（worktree/submodule）→ 读 gitdir: 行 → 沿 parent 链找 .git 祖先
 //  3. EvalSymlinks 后置归一（symlinked repo 同 key）
-//  4. fnv-64a(... )[:12]
+//  4. repo-born ID 优先：主 worktree 根（解析后 common .git 目录的父目录）存在合法
+//     `.forge-project-id` 时覆盖路径 hash → IDKey。缺失/畸形 ID 静默回落路径 hash
+//     （fail-open：存量项目身份不变；坏文件绝不 brick hook 热路径）。
+//  5. fnv-64a(... )[:12]
 //
 // ErrInvalidGitFile 在 .git file 损坏时返（empty / 缺 'gitdir:' / 含 NUL / 循环 / 越过 fs 根）。
 func Key(cwd string) (string, error) {
-	gitRoot := FindGitRoot(cwd)
-	if gitRoot == "" {
-		return "", ErrNotInGitRepo
-	}
-	absGit := filepath.Clean(filepath.Join(gitRoot, ".git"))
-
-	info, err := os.Stat(absGit)
+	resolvedGitDir, err := resolveGitDir(cwd)
 	if err != nil {
-		return "", ErrNotInGitRepo // .git 不存在（与"非 git"等效）
-	}
-
-	var resolvedGitDir string
-	if info.IsDir() {
-		// Main worktree — .git itself is already stable
-		//
-		// 主 worktree —— .git 自身已稳定
-		resolvedGitDir = absGit
-	} else {
-		// .git is a file (worktree / submodule)
-		//
-		// .git 是 file（worktree / submodule）
-		resolvedGitDir, err = resolveGitFile(absGit, gitRoot)
-		if err != nil {
-			return "", err
-		}
-	}
-
-	// EvalSymlinks normalizes to physical path — symlinked repo gets same key (avoids multiple keys for same inode)
-	//
-	// EvalSymlinks 归物理路径—— symlinked repo 同 key（避免同 inode 多 key）
-	if eval, err := filepath.EvalSymlinks(resolvedGitDir); err == nil {
-		resolvedGitDir = eval
+		return ``, err
 	}
 
 	// CanonicalCase rewrites to the on-disk spelling: on case-insensitive APFS any
@@ -144,9 +291,26 @@ func Key(cwd string) (string, error) {
 	// 形态就是磁盘拼写，只有变体拼写向它收敛——存量数据零迁移。
 	resolvedGitDir = CanonicalCase(resolvedGitDir)
 
-	h := fnv.New64a()
-	h.Write([]byte(filepath.Clean(resolvedGitDir)))
-	return hash12(h.Sum64()), nil
+	// Repo-born ID precedence (project-sync §A): read the ID from the MAIN worktree
+	// root — Dir of the resolved common .git dir (for a linked worktree the resolved
+	// dir is the main repo's .git, so all worktrees see the SAME ID file, preserving
+	// the one-repo-one-key contract; an uncommitted ID in the main worktree already
+	// applies). Any read/validation failure = no ID → path hash fallback. The extra
+	// cost is one stat+read on the hook hot path (~µs); no memoization — a cache would
+	// go stale the moment adopt writes or removes the file.
+	//
+	// repo-born ID 优先（project-sync §A）：从主 worktree 根读 ID——解析后 common
+	// .git 目录的父目录（linked worktree 解析到主 repo 的 .git，故所有 worktree
+	// 看到同一个 ID 文件，维持一 repo 一 key 契约；主 worktree 未 commit 的 ID
+	// 也已生效）。任何读取/校验失败 = 无 ID → 路径 hash 回落。额外成本是 hook
+	// 热路径上一次 stat+read（µs 级）；不做 memoize——缓存会在 adopt 写入/删除
+	// 文件的瞬间失真。
+	idRoot := filepath.Dir(resolvedGitDir)
+	if id, ierr := ReadProjectID(idRoot); ierr == nil {
+		return IDKey(id), nil
+	}
+
+	return keyFromCommonDir(resolvedGitDir), nil
 }
 
 // hash12 returns the first 12 hex chars of sum, zero-padded. strconv.FormatUint does not
