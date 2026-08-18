@@ -1,6 +1,6 @@
 ---
 name: merge-release-choreography
-description: "合并发版收尾全流程编排：预检→卫生清扫→commit→merge→tag/构建→push→registry 核查→清分支→装机验证。Use when: 用户说'准备合并''合并发版''提交合并推送''准备push''发版清理分支''准备发版''ok准备合并发版'等收尾指令时、一个功能分支要走完合并到发布的最后一段时、发版后要验证安装是否生效时。SKIP: 发布前 go/no-go 门禁清单（用 release-readiness，本 skill 消费其结论不重审）、单次 diff 代码审查（用 code-review-gate）、运行时 bug 排查（用 systematic-debugging）、只写代码不发布（用 implementation-discipline）。"
+description: "合并发版收尾编排：预检→卫生清扫→commit→merge→tag/构建→push→registry 核查→清分支→装机验证。Use when: 用户说'准备合并''合并发版''提交合并推送''准备push''发版清理分支''准备发版''ok准备合并发版'等收尾指令时、一个功能分支要走完合并到发布的最后一段时、发版后要验证安装是否生效时。SKIP: 发布前 go/no-go 门禁清单（用 release-readiness，本 skill 消费其结论不重审）、单次 diff 代码审查（用 code-review-gate）、运行时 bug 排查（用 systematic-debugging）、只写代码不发布（用 implementation-discipline）。"
 metadata:
   pattern: pipeline
   domain: operations
@@ -24,6 +24,7 @@ metadata:
 ### S1. 预检（diamond gate：不过则停）
 
 - 测试全绿（真实跑测试命令，不是"上次跑过"）。
+- **契约变更型重构后，e2e/回归场景的期望本身要同步审计**：改变资产布局/行为契约的重构，单元测试全绿 ≠ e2e 在断言新契约——场景可能还在钉旧行为而全红（Forge 自身事故：user-level-assets 重构后 Nightly 4 场景仍断言重构前的项目级布局，全红一轮才被发现）。重构收尾时把「e2e 期望审计」列入完成标准。
 - review 快照绑定：若有 forge 任务，确认 review pass 绑定当前 HEAD（审查后改码须重跑，否则 task-complete 拒绝）。
 - release-readiness 结论：已有 GO / GO-WITH-RISK 结论才继续；没有 → 先跑它，本 skill 不替代。
 - **未过 → 停在修复，不进 S2。**

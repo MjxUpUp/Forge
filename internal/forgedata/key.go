@@ -129,6 +129,21 @@ func Key(cwd string) (string, error) {
 		resolvedGitDir = eval
 	}
 
+	// CanonicalCase rewrites to the on-disk spelling: on case-insensitive APFS any
+	// case variant of the same repo stats successfully, and EvalSymlinks does not
+	// normalize case — without this, a variant-spelled cwd derives a second identity
+	// for the same project (Forge/forge key split). On case-sensitive filesystems
+	// this is the identity function (exact-match-first rule). Existing canonical-case
+	// registrations keep their key unchanged: the canonical form IS the on-disk
+	// spelling, so only variant spellings converge — zero migration for live data.
+	//
+	// CanonicalCase 回写磁盘真实拼写：大小写不敏感 APFS 上同一 repo 的任意拼写
+	// 都能 stat 成功，而 EvalSymlinks 不归一大小写——没有这步，拼写变体的 cwd
+	// 会给同一项目衍生第二个身份（Forge/forge key 分裂）。大小写敏感文件系统上
+	// 恒等（精确匹配优先规则）。既有 canonical-case 登记 key 不变：canonical
+	// 形态就是磁盘拼写，只有变体拼写向它收敛——存量数据零迁移。
+	resolvedGitDir = CanonicalCase(resolvedGitDir)
+
 	h := fnv.New64a()
 	h.Write([]byte(filepath.Clean(resolvedGitDir)))
 	return hash12(h.Sum64()), nil
@@ -172,6 +187,13 @@ func PathKey(root string) string {
 	}
 	if runtime.GOOS == "windows" {
 		abs = strings.ToLower(abs)
+	} else {
+		// Same canonical-case convergence as Key(): variant spellings of one dir
+		// must share one PathKey on case-insensitive filesystems.
+		//
+		// 与 Key() 相同的 canonical-case 收敛：大小写不敏感文件系统上同一目录
+		// 的拼写变体必须共享同一 PathKey。
+		abs = CanonicalCase(abs)
 	}
 	h := fnv.New64a()
 	h.Write([]byte(abs))

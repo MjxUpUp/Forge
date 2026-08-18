@@ -46,7 +46,8 @@ var registryCmd = &cobra.Command{
 聚合全局 Pulse 面板。它会累积死路径（项目移走/删除/测试残留），子命令提供清理入口。
 
 子命令：
-  prune  精简注册表——移除 .forge/ 不存在的死路径与重复条目，原子写回`,
+  prune  精简注册表——移除项目路径已不存在的死路径与重复条目，原子写回
+  rekey  把 from key 的项目数据目录并入 to key（修复大小写身份分裂的存量数据，--dry-run 可预览）`,
 }
 
 var registryPruneCmd = &cobra.Command{

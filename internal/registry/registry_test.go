@@ -795,3 +795,95 @@ func TestIsMember_GitKeyDriftFromPathKey(t *testing.T) {
 		t.Errorf("子目录 root = %q, want %q", root2, d)
 	}
 }
+
+// TestCaseVariantDedupe pins the registry-side convergence for case-insensitive
+// filesystems (macOS default APFS): adding the same project under two case spellings
+// must collapse to ONE entry, and IsMember with either spelling resolves the same
+// root. The old pathKey assumed "case matters off-Windows" — factually wrong for
+// case-insensitive APFS, which let the Forge/forge duplicate-registration bug
+// through (two entries for one directory, dashboard double-listing). On a
+// case-sensitive filesystem the probe short-circuits and we assert the opposite:
+// distinct spellings stay distinct (no folding).
+//
+// TestCaseVariantDedupe 钉死大小写不敏感文件系统（macOS 默认 APFS）上的注册表
+// 收敛：同一项目按两种拼写 Add 必须坍缩成一条，IsMember 用任一拼写都解析到同一
+// root。旧 pathKey 假设「Windows 之外大小写有区分」——对大小写不敏感 APFS 是
+// 事实性错误，放过了 Forge/forge 重复登记 bug（同一目录两条目、看板重复展示）。
+// 大小写敏感文件系统上探针短路并断言反面：不同拼写保持不同（不折叠）。
+func TestCaseVariantDedupe(t *testing.T) {
+	useTempHome(t)
+	base := t.TempDir()
+	canonical := filepath.Join(base, `CaseReg`)
+	if err := os.MkdirAll(canonical, 0755); err != nil {
+		t.Fatal(err)
+	}
+	variant := filepath.Join(base, `cASErEG`)
+
+	// Probe the real filesystem, not GOOS (case-sensitive APFS volumes exist).
+	//
+	// 探测真实文件系统而非 GOOS（大小写敏感 APFS 卷存在）。
+	probe := filepath.Join(base, `PrObE`)
+	if err := os.WriteFile(probe, []byte(`x`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(base, `pRoBe`)); err != nil {
+		// Case-sensitive FS: spellings are genuinely different paths — pathKey must
+		// NOT fold them.
+		//
+		// 大小写敏感 FS：两种拼写是真不同的路径——pathKey 不得折叠它们。
+		if pathKey(canonical) == pathKey(variant) {
+			t.Errorf(`敏感 FS 上 pathKey 折叠了两个不同路径：%q`, pathKey(canonical))
+		}
+		return
+	}
+
+	if err := Add(canonical); err != nil {
+		t.Fatal(err)
+	}
+	if err := Add(variant); err != nil {
+		t.Fatal(err)
+	}
+	f, ok := readFile()
+	if !ok {
+		t.Fatal(`读注册表失败`)
+	}
+	if len(f.Projects) != 1 {
+		t.Fatalf(`变体拼写 Add 两次应仅一条，实际 %d 条: %+v`, len(f.Projects), f.Projects)
+	}
+
+	// List must also collapse pre-existing duplicates (entries written before the
+	// fix): seed both spellings directly, then List.
+	//
+	// List 也须坍缩修复前写入的重复条目：直接种两种拼写，再 List。
+	if err := writeEntries([]Entry{{Path: canonical}, {Path: variant}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := List(); len(got) != 1 {
+		t.Fatalf(`List 应去重为 1 条，实际 %d 条: %v`, len(got), got)
+	}
+
+	// IsMember with EITHER spelling resolves the same root.
+	//
+	// IsMember 用任一拼写都解析到同一 root。
+	if err := writeEntries([]Entry{{Path: canonical}}); err != nil {
+		t.Fatal(err)
+	}
+	rootC, okC := IsMember(canonical)
+	rootV, okV := IsMember(variant)
+	if !okC || !okV {
+		t.Fatalf(`两种拼写都应命中成员：canonical=(%q,%v) variant=(%q,%v)`, rootC, okC, rootV, okV)
+	}
+	if filepath.Clean(rootC) != filepath.Clean(rootV) {
+		t.Errorf(`变体拼写应命中同一 root：canonical=%q variant=%q`, rootC, rootV)
+	}
+	// A subdirectory reached via the variant spelling must prefix-match too.
+	//
+	// 经变体拼写进入的子目录也须前缀命中。
+	sub := filepath.Join(variant, `sub`)
+	if err := os.MkdirAll(filepath.Join(canonical, `sub`), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if root, ok := IsMember(sub); !ok || filepath.Clean(root) != filepath.Clean(rootC) {
+		t.Errorf(`变体子目录 IsMember=(%q,%v)，期望 root=%q`, root, ok, rootC)
+	}
+}

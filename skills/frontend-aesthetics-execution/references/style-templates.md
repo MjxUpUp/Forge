@@ -2,6 +2,15 @@
 
 SKILL.md 阶段 1 各风格的完整 token 模板。**token 值来自 2026 调研实测，非编造。** 定位/适用/陷阱等决策信息见主文件阶段 1，此处不重复。
 
+## 目录
+
+- [风格 A — 暗色精致 SaaS（Linear/Vercel/Raycast 风）](#风格-a--暗色精致-saaslinearvercelraycast-风)
+- [风格 B — Apple Liquid Glass（WWDC 2025/2026）](#风格-b--apple-liquid-glasswwdc-20252026)
+- [风格 C — Neo-brutalism](#风格-c--neo-brutalism)
+- [风格 D — Bento Grid](#风格-d--bento-grid)
+- [风格 E — Dopamine / 高饱和](#风格-e--dopamine--高饱和)
+- [风格 F — Human Touch / Anti-AI Crafting（2026 元叙事）](#风格-f--human-touch--anti-ai-crafting2026-元叙事)
+
 ## 风格 A — 暗色精致 SaaS（Linear/Vercel/Raycast 风）
 
 ```css

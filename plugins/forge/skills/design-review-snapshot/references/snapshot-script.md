@@ -2,6 +2,14 @@
 
 本文件是 `design-review-snapshot` 阶段 1B/1C 的脚本骨架。直接 copy 改路由配置即可用。
 
+## 目录
+
+- [依赖](#依赖)
+- [完整脚本（snapshot-script.ts）](#完整脚本snapshot-scriptts)
+- [使用](#使用)
+- [进阶处理（按需加）](#进阶处理按需加)
+- [质量自检（导入 Pixso 前必过）](#质量自检导入-pixso-前必过)
+
 ## 依赖
 
 ```bash

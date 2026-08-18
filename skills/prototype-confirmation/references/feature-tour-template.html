@@ -219,12 +219,37 @@
     color: var(--text-primary);
   }
   .confirm-note:focus { outline: 2px solid var(--accent); }
+
+  /* === 模板结构导览（浮动 <details> 导航，对应上方 <!-- ## 目录 -->；
+         实例化为真实原型时可整段删除，不影响导览本体）=== */
+  .template-toc { position: fixed; top: 60px; right: var(--space-4); z-index: 50; font-size: 12px; }
+  .template-toc details {
+    background: var(--surface-1); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md); padding: var(--space-2) var(--space-3);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  }
+  .template-toc summary { cursor: pointer; color: var(--text-secondary); font-family: var(--font-mono); }
+  .template-toc a { display: block; padding: var(--space-1) 0; color: var(--accent); text-decoration: none; }
+  .template-toc a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
+<!-- ## 目录（模板结构导览）
+     源文件结构：设计令牌（<style> :root）→ 导览布局样式 → 确认框样式 →
+     顶栏（header#topbar）→ 左导航/右内容容器（#sidebar / #content）→
+     GROUPS/DEMOS 数据（<script>）→ 渲染+状态管理 → 导出确认 → 初始化/主题切换。
+     下方 <nav> 是同一目录的可用导航；实例化为真实原型时两者可一并删除。 -->
+<nav class="template-toc" aria-label="模板结构导览">
+  <details>
+    <summary>🧭 模板结构</summary>
+    <a href="#topbar">顶栏（进度 + 导出 + 主题切换）</a>
+    <a href="#sidebar">左导航（分组功能点列表）</a>
+    <a href="#content">内容区（原型演示 + 确认框）</a>
+  </details>
+</nav>
 <div class="tour">
   <!-- 顶栏 -->
-  <header class="topbar">
+  <header class="topbar" id="topbar">
     <h1>功能点原型导览</h1>
     <span class="sub">逐项确认</span>
     <span class="spacer"></span>
