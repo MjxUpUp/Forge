@@ -8,6 +8,7 @@ package skillseval
 // staying out, honest reporting when excerpts are absent.
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -67,6 +68,9 @@ func TestMineGoldenDrafts_Basic(t *testing.T) {
 	byHash := map[string]MinedCase{}
 	for _, d := range drafts {
 		byHash[d.PromptHash] = d
+		if d.PromptHash == "h3" {
+			t.Fatal("无摘录条目（h3）不得成为草稿")
+		}
 	}
 	if byHash["h1"].Kind != KindTrigger {
 		t.Fatalf("h1 应为 trigger 正例（engaged=true）, got %q", byHash["h1"].Kind)
@@ -74,8 +78,23 @@ func TestMineGoldenDrafts_Basic(t *testing.T) {
 	if byHash["h2"].Kind != KindNotTrigger {
 		t.Fatalf("h2 应为 not-trigger 负例（engaged=false）, got %q", byHash["h2"].Kind)
 	}
-	if byHash["h3"].Kind != "" {
-		t.Fatal("无摘录条目不得成为草稿")
+}
+
+// TestMineGoldenDrafts_DedupedCountsPostCap 钉死 review n2：Deduped 按截断后实际
+// 落盘的草稿计数——漏斗数字不得大于产物数。
+//
+// TestMineGoldenDrafts_DedupedCountsPostCap pins review n2: Deduped counts the
+// drafts that actually survive the per-skill cap — the funnel number must not
+// exceed the artifact count.
+func TestMineGoldenDrafts_DedupedCountsPostCap(t *testing.T) {
+	t0 := time.Now()
+	var entries []checklog.Entry
+	for i := 0; i < MaxMinedPerSkill+5; i++ {
+		entries = append(entries, mineEntry("foo", fmt.Sprintf("h%03d", i), "excerpt", "s", t0.Add(time.Duration(i)*time.Minute)))
+	}
+	rep := MineGoldenDrafts(entries, nil, "")
+	if rep.Deduped != MaxMinedPerSkill || len(rep.Skills["foo"]) != MaxMinedPerSkill {
+		t.Fatalf("Deduped=%d drafts=%d, want both = cap %d", rep.Deduped, len(rep.Skills["foo"]), MaxMinedPerSkill)
 	}
 }
 

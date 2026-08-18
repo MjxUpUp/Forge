@@ -53,6 +53,14 @@ func (c *FileSuppressedCounter) path(sessionID, skill string) string {
 }
 
 // Incr 抑制计数 +1。失败静默（best-effort：计数是观测辅助，绝不能阻塞 hook 链）。
+// 已知竞态（review m3，文档化接受）：跨进程 read-modify-write——同 session 并行 hook
+// 并发 Incr 会丢更新（两读 0 两写 1）。观测计数的轻量损失，不值得引入文件锁复杂度。
+//
+// Incr suppression count +1. Failures are silent (best-effort: the count is an
+// observability aid and must never block the hook chain). Known race (review m3,
+// documented and accepted): cross-process read-modify-write — two concurrent Incrs
+// from parallel hooks in one session can lose an update (both read 0, both write 1).
+// A tolerably small loss for an observability counter; not worth file-lock machinery.
 func (c *FileSuppressedCounter) Incr(sessionID, skill string) error {
 	p := c.path(sessionID, skill)
 	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
@@ -65,19 +73,31 @@ func (c *FileSuppressedCounter) Incr(sessionID, skill string) error {
 	return util.AtomicWrite(p, []byte(strconv.Itoa(cnt+1)), 0644)
 }
 
-// Take 读取并清零抑制计数（下次真实触发时调用）。无文件/读失败 = 0。读后清零而非
-// 单独 Reset：回填与清零必须原子成对，否则一次失败会让同一批抑制被下次重复计入。
+// Take 读取并清零抑制计数（下次真实触发时调用）。无文件/读失败 = 0。先用原子 rename
+// 把文件挪走再读（review m3：Read→Remove 窗口内落进的 Incr 会随 Remove 整条丢失；
+// rename 语义把窗口收窄到「本 Take 已看到的快照」，窗口后新落的 Incr 落在新文件、
+// 由下次 Take 回收）。回填与清零成对发生，失败不重复计入。
 //
-// Take reads and resets the suppression count (called at the next actual fire). Absent
-// file / read failure = 0. Read-then-reset rather than a separate Reset: backfill and
-// reset must be an atomic pair, or one failure double-counts the same batch next time.
+// Take reads and resets the suppression count (called at the next actual fire).
+// Absent file / read failure = 0. The file is atomically renamed away BEFORE reading
+// (review m3: with a Read→Remove pair, an Incr landing inside the window dies with
+// the Remove; rename semantics narrow the window to "the snapshot this Take saw" —
+// Incrs landing after it go to the new file and are collected by the next Take).
+// Backfill and reset stay paired; a failure does not double-count.
 func (c *FileSuppressedCounter) Take(sessionID, skill string) int {
 	p := c.path(sessionID, skill)
-	data, err := os.ReadFile(p)
+	taken := p + ".taken"
+	// rename 失败 = 文件不存在（或瞬时故障）→ 无计数可取。
+	//
+	// rename failure = file absent (or transient) → nothing to take.
+	if err := os.Rename(p, taken); err != nil {
+		return 0
+	}
+	data, err := os.ReadFile(taken)
+	_ = os.Remove(taken)
 	if err != nil {
 		return 0
 	}
 	n, _ := strconv.Atoi(strings.TrimSpace(string(data)))
-	_ = os.Remove(p)
 	return n
 }

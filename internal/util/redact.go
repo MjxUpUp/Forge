@@ -32,7 +32,18 @@ var redactPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`AKIA[0-9A-Z]{16}`),
 	regexp.MustCompile(`eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}`),
 	regexp.MustCompile(`xox[baprs]-[A-Za-z0-9-]{10,}`),
+	// shell/env 赋值形式：API_KEY=xxx / token: xxx（允许可选引号）。
+	// shell/env assignment form: API_KEY=xxx / token: xxx (optional quotes).
 	regexp.MustCompile(`(?i)(api[_-]?key|apikey|token|secret|password|passwd|pwd)\s*[=:]\s*["']?[^\s"',;&]{6,}`),
+	// JSON 键值形式（review M3）："api_key": "hunter2secret"——摘录来源（stdout/prompt）
+	// 里用户粘贴的配置最常见形态，键名后的引号会挡掉上面的赋值正则。
+	// JSON key-value form (review M3): "api_key": "hunter2secret" — the most common
+	// pasted-config shape in excerpts (stdout/prompt); the quote after the key would
+	// block the assignment pattern above.
+	regexp.MustCompile(`(?i)"(api[_-]?key|apikey|token|secret|password|passwd|pwd)"\s*:\s*"[^"]{6,}"`),
+	// XML/YAML 键值形式（review M3）：<password>hunter2</password>。
+	// XML/YAML tag form (review M3): <password>hunter2</password>.
+	regexp.MustCompile(`(?i)<(api[_-]?key|apikey|token|secret|password|passwd|pwd)[^>]*>[^<]{6,}</(api[_-]?key|apikey|token|secret|password|passwd|pwd)>`),
 }
 
 // redactedToken 替换占位符。保持可读（说明被脱敏的类别）而不泄漏长度信息。
