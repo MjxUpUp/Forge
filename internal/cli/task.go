@@ -1117,6 +1117,14 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "⚠️ [breaker] %s\n", w)
 	}
 
+	// Assignment advisory (P2 of the 2026-08-18 脱节修复): gating a task that is offered to
+	// ANOTHER agent and never claimed is the pipeline/assignment drift precursor — warn but
+	// never block (orchestrator proxying is legitimate).
+	//
+	// 分派 advisory（2026-08-18 脱节修复的 P2）：给「分派给另一个 agent 且从未认领」的任务
+	// 过门禁正是管线/分派脱节的前兆——提醒但绝不阻断（编排器代跑合法）。
+	adviseUnclaimedAssignment(root, gateID, result.Passed, state)
+
 	// 刻意不在此处 MarkComplete（dogfood 2026-08-18 死锁修复）：曾经「最后一道 gate 通过
 	// 即 MarkComplete」，而 ActiveTaskState 对 CompletedAt!=nil 返回 nil —— 紧随其后的
 	// `forge task complete` acceptance pre-flight 恰要求快照新鲜（AcceptedHeadCommit==HEAD），

@@ -1094,3 +1094,160 @@ func TestCompleteGenericTask_OrchestrationWarn(t *testing.T) {
 		t.Errorf(`全交付时不应告警, stderr=%q`, stderr2)
 	}
 }
+
+// saveCompletedOffered writes a task whose gates ALL passed (IsComplete) but whose assignment
+// is still suspended at offered — the exact 脱节 shape dogfooded on 2026-08-17~18 (the worker
+// finished the pipeline without ever running claim/deliver, and pre-fix MarkComplete did not
+// reconcile the assignment). Used to pin mine's render-reconcile.
+//
+// saveCompletedOffered 写一个门禁全过（IsComplete）但分派仍悬置在 offered 的任务——正是
+// 2026-08-17~18 dogfood 的脱节形态（执行方走完管线却从未 claim/deliver，修复前的
+// MarkComplete 也不回收分派）。用于钉住 mine 的渲染 reconcile。
+func saveCompletedOffered(t *testing.T, dir, ref, agent string) {
+	t.Helper()
+	s := &taskpipeline.TaskState{TaskRef: ref, Summary: ref + ` 任务`}
+	if err := s.AssignTo(agent, `backend`, `claude-code`); err != nil {
+		t.Fatalf(`AssignTo %s: %v`, ref, err)
+	}
+	for _, g := range taskpipeline.DefaultGates() {
+		s.RecordGateResult(g.ID, true, ``)
+	}
+	if err := taskpipeline.SaveTaskState(dir, s); err != nil {
+		t.Fatalf(`SaveTaskState %s: %v`, ref, err)
+	}
+}
+
+// TestMineRendersCompletedNotOffered pins the P1 render-reconcile: a completed task whose
+// assignment is suspended at offered must render as `complete` in mine (both JSON and text),
+// NOT as 待认领 — a finished task shown as pending forever is the exact 2026-08-18 dogfood
+// symptom. The row is kept (not filtered) to preserve visibility. A genuinely in-flight
+// offered task still renders `offered` (control).
+//
+// TestMineRendersCompletedNotOffered 钉住 P1 渲染 reconcile：已完成但分派悬置 offered 的
+// 任务在 mine 中（JSON 与 text 两形态）必须渲染为 `complete` 而非待认领——已完成任务永久
+// 显示成待办正是 2026-08-18 dogfood 的症状。行保留（不过滤）以保留可见性。真正在途的
+// offered 任务仍渲染 `offered`（对照）。
+func TestMineRendersCompletedNotOffered(t *testing.T) {
+	dir := setupDelegateProject(t)
+	saveCompletedOffered(t, dir, `feat/done-suspended`, `kimi`)
+	saveOfferedAgo(t, dir, `feat/still-pending`, `kimi`, time.Now())
+
+	t.Run(`json status is complete`, func(t *testing.T) {
+		out, _, code := runForge(t, dir, `task`, `mine`, `--agent`, `kimi`, `--json`)
+		if code != 0 {
+			t.Fatalf(`mine --json exit %d: %s`, code, out)
+		}
+		var rows []delegatedEntry
+		if err := json.Unmarshal([]byte(out), &rows); err != nil {
+			t.Fatalf(`解析 mine JSON 失败: %v\n输出: %s`, err, out)
+		}
+		byRef := map[string]delegatedEntry{}
+		for _, r := range rows {
+			byRef[r.Ref] = r
+		}
+		done, ok := byRef[`feat/done-suspended`]
+		if !ok {
+			t.Fatalf(`已完成任务应保留在 mine 结果中（不静默过滤）, got %+v`, byRef)
+		}
+		if done.Status != `complete` {
+			t.Errorf(`已完成且分派悬置的任务 status 应渲染 complete, got %q`, done.Status)
+		}
+		if done.IsZombie {
+			t.Errorf(`已完成任务不应带僵尸标注, got %+v`, done)
+		}
+		if pending, ok := byRef[`feat/still-pending`]; !ok || pending.Status != `offered` {
+			t.Errorf(`在途对照任务应仍渲染 offered, got %+v`, pending)
+		}
+	})
+
+	t.Run(`text renders complete not offered`, func(t *testing.T) {
+		out, _, code := runForge(t, dir, `task`, `mine`, `--agent`, `kimi`)
+		if code != 0 {
+			t.Fatalf(`mine exit %d: %s`, code, out)
+		}
+		idx := strings.Index(out, `[feat/done-suspended]`)
+		if idx < 0 {
+			t.Fatalf(`应含 feat/done-suspended 行, got:\n%s`, out)
+		}
+		// Extend back to the line start so the status prefix (`complete  [`) is in view.
+		//
+		// 向前扩到行首，使状态前缀（`complete  [`）进入视野。
+		start := strings.LastIndexByte(out[:idx], '\n') + 1
+		line := out[start:]
+		if nl := strings.IndexByte(line, '\n'); nl >= 0 {
+			line = line[:nl]
+		}
+		if !strings.Contains(line, `complete  [feat/done-suspended]`) {
+			t.Errorf(`已完成任务行应渲染 complete, got 行: %q`, line)
+		}
+		if strings.Contains(line, `offered`) {
+			t.Errorf(`已完成任务行不得再出现 offered（待认领）, got 行: %q`, line)
+		}
+	})
+}
+
+// TestAdviseUnclaimedAssignment pins the P2 task-implement advisory: gating a task offered to
+// ANOTHER agent that was never claimed emits an ADVISORY checklog trail (never blocks); the
+// assignee gating their own task, a claimed task, an undetectable current agent, and a failed
+// gate all stay silent.
+//
+// TestAdviseUnclaimedAssignment 钉住 P2 task-implement advisory：给「分派给另一个 agent 且
+// 从未认领」的任务过门禁会留下 ADVISORY checklog 痕迹（绝不阻断）；受派方本人过门禁、已
+// claimed、探测不到当前 agent、门禁未过均静默。
+func TestAdviseUnclaimedAssignment(t *testing.T) {
+	setup := func(t *testing.T) (string, *taskpipeline.TaskState) {
+		t.Helper()
+		t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
+		root := t.TempDir()
+		s := &taskpipeline.TaskState{TaskRef: `feat/delegated`, Summary: `分派任务`}
+		if err := s.AssignTo(`kimi`, `backend`, `claude-code`); err != nil {
+			t.Fatalf(`AssignTo: %v`, err)
+		}
+		return root, s
+	}
+	count := func(t *testing.T, root, ref string) int {
+		t.Helper()
+		entries, err := checklog.LoadForTask(root, ref)
+		if err != nil {
+			t.Fatalf(`LoadForTask: %v`, err)
+		}
+		return len(entries)
+	}
+
+	t.Run(`other agent gating unclaimed offered emits advisory`, func(t *testing.T) {
+		root, s := setup(t)
+		t.Setenv(`FORGE_AGENT`, `claude-code`)
+		adviseUnclaimedAssignment(root, `task-implement`, true, s)
+		if n := count(t, root, s.TaskRef); n != 1 {
+			t.Fatalf(`应落 1 条 advisory 痕迹, got %d`, n)
+		}
+	})
+	t.Run(`assignee gating own task stays silent`, func(t *testing.T) {
+		root, s := setup(t)
+		t.Setenv(`FORGE_AGENT`, `kimi`)
+		adviseUnclaimedAssignment(root, `task-implement`, true, s)
+		if n := count(t, root, s.TaskRef); n != 0 {
+			t.Fatalf(`受派方本人过门禁不应 advisory, got %d 条`, n)
+		}
+	})
+	t.Run(`claimed task stays silent`, func(t *testing.T) {
+		root, s := setup(t)
+		t.Setenv(`FORGE_AGENT`, `claude-code`)
+		if err := s.Claim(`kimi`); err != nil {
+			t.Fatalf(`Claim: %v`, err)
+		}
+		adviseUnclaimedAssignment(root, `task-implement`, true, s)
+		if n := count(t, root, s.TaskRef); n != 0 {
+			t.Fatalf(`已 claimed 不应 advisory, got %d 条`, n)
+		}
+	})
+	t.Run(`other gates and failed gates stay silent`, func(t *testing.T) {
+		root, s := setup(t)
+		t.Setenv(`FORGE_AGENT`, `claude-code`)
+		adviseUnclaimedAssignment(root, `task-verify`, true, s)
+		adviseUnclaimedAssignment(root, `task-implement`, false, s)
+		if n := count(t, root, s.TaskRef); n != 0 {
+			t.Fatalf(`非 task-implement / 未过门禁不应 advisory, got %d 条`, n)
+		}
+	})
+}
