@@ -170,13 +170,14 @@ func TestDirs_TaskSkip(t *testing.T) {
 	seedDir(t, to, map[string]string{
 		`act/conclusions.jsonl`: `{"task_ref":"feat/old","completed_at":"2026-08-17T00:00:00Z","grade":"B"}` + "\n",
 	})
-	if _, err := Dirs(from, to, Options{TaskPolicy: TaskSkip, NoFromBackup: true}); err != nil {
+	// 与 project import 的实际调用同参（MergeConclusions 开——import 侧专属）。
+	if _, err := Dirs(from, to, Options{TaskPolicy: TaskSkip, MergeConclusions: true, NoFromBackup: true}); err != nil {
 		t.Fatal(err)
 	}
 	if _, serr := os.Stat(filepath.Join(to, `tasks`, `feat-x.json`)); !os.IsNotExist(serr) {
 		t.Error(`TaskSkip 不应搬移任务文件`)
 	}
-	// conclusions.jsonl 仍按时间戳合并（act 进入 mergeable 集）
+	// conclusions.jsonl 按时间戳合并（import 路径经 MergeConclusions 进合并集）
 	data, err := os.ReadFile(filepath.Join(to, `act`, `conclusions.jsonl`))
 	if err != nil {
 		t.Fatal(err)
@@ -187,6 +188,44 @@ func TestDirs_TaskSkip(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
 	if !strings.Contains(lines[0], `feat/old`) {
 		t.Errorf(`按时间戳有序：旧行应在前，got %s`, lines[0])
+	}
+}
+
+// TestDirs_ConclusionsGatedByOption: legacy rekey (zero-value Options) treats
+// act/conclusions.jsonl as a PLAIN file (conflict keeps the to-side — the exact
+// pre-extraction behavior); only MergeConclusions admits it into the timestamp
+// merge. Guards the "rekey semantics zero-change" contract.
+//
+// TestDirs_ConclusionsGatedByOption：legacy rekey（零值 Options）把
+// act/conclusions.jsonl 当普通文件（冲突保 to 侧——抽包前的精确行为）；
+// 仅 MergeConclusions 才让它进时间戳合并。守住「rekey 语义零变化」契约。
+func TestDirs_ConclusionsGatedByOption(t *testing.T) {
+	from := t.TempDir()
+	to := t.TempDir()
+	seedDir(t, from, map[string]string{`act/conclusions.jsonl`: `{"task_ref":"a","completed_at":"2026-08-18T12:00:00Z","grade":"A"}` + "\n"})
+	seedDir(t, to, map[string]string{`act/conclusions.jsonl`: `{"task_ref":"b","completed_at":"2026-08-17T00:00:00Z","grade":"B"}` + "\n"})
+
+	// 零值 Options（rekey 路径）：冲突保 to 侧，from 的 A 结论不进
+	if _, err := Dirs(from, to, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(filepath.Join(to, `act`, `conclusions.jsonl`))
+	if strings.Contains(string(data), `"task_ref":"a"`) {
+		t.Errorf(`零值 Options 下 conclusions 冲突应保 to 侧（rekey 零变化），got %s`, data)
+	}
+
+	// MergeConclusions（import 路径）：时间戳有序合并，两条都在
+	from2 := t.TempDir()
+	seedDir(t, from2, map[string]string{`act/conclusions.jsonl`: `{"task_ref":"a","completed_at":"2026-08-18T12:00:00Z","grade":"A"}` + "\n"})
+	if _, err := Dirs(from2, to, Options{MergeConclusions: true, DedupExactLines: true, NoFromBackup: true}); err != nil {
+		t.Fatal(err)
+	}
+	data2, _ := os.ReadFile(filepath.Join(to, `act`, `conclusions.jsonl`))
+	if !strings.Contains(string(data2), `"task_ref":"a"`) || !strings.Contains(string(data2), `"task_ref":"b"`) {
+		t.Errorf(`MergeConclusions 下两条结论都应在且有序，got %s`, data2)
+	}
+	if strings.Count(string(data2), "\n") != 2 {
+		t.Errorf(`合并后应恰 2 行，got %s`, data2)
 	}
 }
 

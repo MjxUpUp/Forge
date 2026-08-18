@@ -1,10 +1,10 @@
 package cli
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,7 +13,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/datamerge"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/projectsync"
-	"github.com/MjxUpUp/Forge/internal/registry"
+	"github.com/MjxUpUp/Forge/internal/taskcontext"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
 )
@@ -89,16 +89,24 @@ func runProjectImport(cmd *cobra.Command, args []string) error {
 	adoptID, _ := cmd.Flags().GetBool(`adopt-id`)
 	out := cmd.OutOrStdout()
 
+	if untrusted && trustForeign {
+		return fmt.Errorf(`--untrusted 与 --trust-foreign 互斥（强制剥离 vs 显式放行，二选一）`)
+	}
+
 	root, err := findProjectRoot()
 	if err != nil {
 		return fmt.Errorf(`%w（导入前先在本机 forge init）`, err)
 	}
 
-	raw, err := os.ReadFile(args[0])
+	// 流式读：--include quarantine 的 bundle 可达数百 MB，不整体驻内存（导出侧
+	// Pack 本就是流式，导入侧对齐）。bundle 整体 sha256 边读边算。
+	f, err := os.Open(args[0])
 	if err != nil {
 		return fmt.Errorf(`读取 bundle 失败: %w`, err)
 	}
-	bundleSHA := fmt.Sprintf(`%x`, sha256.Sum256(raw))
+	defer f.Close()
+	h := sha256.New()
+	tee := io.TeeReader(f, h)
 
 	// staging 必须在 FORGE_DATA_HOME 之外（系统 temp）——绝不让半成品被 DataDir
 	// 扫描器（dashboard/feed/doctor）发现。
@@ -108,13 +116,26 @@ func runProjectImport(cmd *cobra.Command, args []string) error {
 	}
 	defer os.RemoveAll(staging)
 
-	manifest, uerr := projectsync.Unpack(bytes.NewReader(raw), staging)
+	manifest, uerr := projectsync.Unpack(tee, staging)
 	if uerr != nil {
 		return fmt.Errorf(`bundle 校验失败: %w`, uerr)
 	}
+	bundleSHA := fmt.Sprintf(`%x`, h.Sum(nil))
 	fmt.Fprintf(out, `bundle：%s\n  来源：%s@%s %s（key=%s mode=%s）\n  文件：%d 个，导出于 %s\n`,
 		manifest.BundleID, manifest.Origin.User, manifest.Origin.Hostname, manifest.Origin.Root,
 		manifest.Origin.Key, manifest.Origin.KeyMode, len(manifest.Files), manifest.ExportedAt.Format(`2006-01-02 15:04`))
+
+	// 导入侧 allowlist 强制：manifest 本身不可信（无签名），Unpack 只保证
+	// manifest↔tar 一致——清单里伪造的 imports.jsonl / 锚文件 / hooks / 敏感 store
+	// 在此剥除，绝不进活 DataDir。
+	stripped, serr := projectsync.StripNonAllowlisted(filepath.Join(staging, `data`))
+	if serr != nil {
+		return fmt.Errorf(`staging 剥离失败: %w`, serr)
+	}
+	if len(stripped) > 0 {
+		fmt.Fprintf(out, `⚠ 已剥除 %d 个 allowlist 外条目（manifest 不可信，导入侧默认拒绝）：%s\n`,
+			len(stripped), strings.Join(stripped, `, `))
+	}
 
 	localKey, err := forgedata.Key(root)
 	if err != nil {
@@ -134,10 +155,12 @@ func runProjectImport(cmd *cobra.Command, args []string) error {
 	// 直接采纳（先迁本机数据再翻身份，复用 adopt 的落地序列）。
 	if manifest.Origin.Key != localKey && manifest.Origin.KeyMode == `id` {
 		gitDir, gerr := forgedata.ResolvedGitDir(root)
+		if gerr != nil {
+			return fmt.Errorf(`解析 git 根失败: %w`, gerr)
+		}
 		localHasID := false
-		if gerr == nil {
-			_, ierr := forgedata.ReadProjectID(filepath.Dir(gitDir))
-			localHasID = ierr == nil
+		if _, ierr := forgedata.ReadProjectID(filepath.Dir(gitDir)); ierr == nil {
+			localHasID = true
 		}
 		if !localHasID {
 			if !adoptID && !trustForeign {
@@ -190,11 +213,12 @@ func runProjectImport(cmd *cobra.Command, args []string) error {
 		fmt.Fprintln(out, a)
 	}
 	actions, derr := datamerge.Dirs(stagingData, localDataDir, datamerge.Options{
-		DryRun:          dryRun,
-		DedupExactLines: true,
-		TaskPolicy:      datamerge.TaskSkip, // 任务已由上方锁合并处理
-		TrustResults:    trusted,
-		NoFromBackup:    true, // staging 一次性；回滚保障 = bundle 原件
+		DryRun:           dryRun,
+		DedupExactLines:  true,
+		TaskPolicy:       datamerge.TaskSkip, // 任务已由上方锁合并处理
+		TrustResults:     trusted,
+		MergeConclusions: true, // act 结论参与时间戳合并+去重（rekey 不参与——legacy 零变化）
+		NoFromBackup:     true, // staging 一次性；回滚保障 = bundle 原件
 	})
 	if derr != nil {
 		return fmt.Errorf(`合并失败: %w`, derr)
@@ -202,12 +226,17 @@ func runProjectImport(cmd *cobra.Command, args []string) error {
 	for _, a := range actions {
 		fmt.Fprintln(out, a)
 	}
-	if !dryRun && manifest.Origin.Key != localKey {
-		// 跨身份合并后同步注册表（bundle key 通常无本机条目——Rekey 早退 no-op）。
-		if _, rerr := registry.Rekey(manifest.Origin.Key, localKey); rerr != nil {
-			fmt.Fprintf(out, `warn: 注册表同步跳过（%v）\n`, rerr)
-		}
-	}
+	// 跨 key 合并刻意【不】同步注册表：bundle 自声明的 Origin.Key 是不可信输入，
+	// registry.Rekey 会移除/改写本机以该 key 登记的任意条目——伪造 manifest 即可
+	// 篡改机器本地注册表。bundle key 在本机本就不该有条目（同 key 路径才是常态），
+	// 残留漂移由 forge registry audit 检出。
+	//
+	// Cross-key merge deliberately does NOT sync the registry: the bundle's
+	// self-declared Origin.Key is untrusted input, and registry.Rekey would
+	// remove/re-key any local entry carrying it — a forged manifest could rewrite
+	// machine-local registry state. A bundle key should have no local entry in
+	// the first place (same-key is the canonical path); residual drift is caught
+	// by forge registry audit.
 
 	if dryRun {
 		fmt.Fprintln(out, `（dry-run：以上动作未落盘，账本未记）`)
@@ -221,7 +250,7 @@ func runProjectImport(cmd *cobra.Command, args []string) error {
 		ImportedAt: time.Now(),
 		FromKey:    manifest.Origin.Key,
 		ToKey:      localKey,
-		Counts:     fmt.Sprintf(`%d tasks, %d files`, len(taskActions), len(manifest.Files)),
+		Counts:     fmt.Sprintf(`%d 个任务动作, %d 个清单文件（剥除 %d）`, len(taskActions), len(manifest.Files), len(stripped)),
 	}
 	if lerr := projectsync.AppendImportRecord(localDataDir, rec); lerr != nil {
 		fmt.Fprintf(out, `warn: 账本记录失败（不影响数据）：%v\n`, lerr)
@@ -276,6 +305,20 @@ func mergeStagingTasks(root, stagingData string, trusted, dryRun bool) ([]string
 		ref := incoming.TaskRef
 
 		taskpipeline.GhostForeignSessions(incoming)
+		// 受信路径也标记外来验收：Run 是外来可执行字符串——verify-acceptance 的
+		// 执行闸（AcceptanceForeign && !--trust-foreign 拒绝）只由 Strip 武装，
+		// 若受信路径跳过它，同 key 导入会把 2026-08-15 审查定性的「任意命令执行」
+		// 向量从 sync 路径重新引入。--trust-foreign 是既有逃生口，成本为零。
+		//
+		// The trusted path ALSO marks acceptance foreign: Run is a foreign
+		// executable string — verify-acceptance's execution gate (refuse when
+		// AcceptanceForeign && !--trust-foreign) is armed only by Strip; skipping
+		// it on the sync path would reintroduce the arbitrary-command-execution
+		// vector through the same-key route. --trust-foreign is the existing
+		// escape hatch at zero cost.
+		if len(incoming.Acceptance) > 0 {
+			incoming.AcceptanceForeign = true
+		}
 		if !trusted {
 			taskpipeline.StripForeignGateSignals(incoming)
 		}
@@ -291,14 +334,30 @@ func mergeStagingTasks(root, stagingData string, trusted, dryRun bool) ([]string
 			continue
 		}
 		local, loadErr := taskpipeline.LoadTaskState(root, ref)
+		// 新增判定用文件存在性而非 LoadTaskState 的错误：LoadTaskState 在文件存在
+		// 但内部 TaskRef 与请求 ref 不一致时也报错（SanitizeRef 折叠碰撞：feat/x 与
+		// feat:x 共享 feat-x.json）——那种「碰撞串号」错误若被当成「本机无此任务」，
+		// 下面的 SaveTaskState 会把本地碰撞任务整文件覆盖（静默丢数据）。
+		//
+		// Freshness is decided by FILE EXISTENCE, not by LoadTaskState's error:
+		// LoadTaskState also errors when the file exists but its internal TaskRef
+		// mismatches the requested ref (SanitizeRef folding collisions: feat/x and
+		// feat:x share feat-x.json) — treating that as "no local task" would let
+		// SaveTaskState clobber the colliding local task wholesale (silent data
+		// loss).
+		localPath := filepath.Join(forgedata.DataDirFor(root), `tasks`, taskcontext.SanitizeRef(ref)+`.json`)
+		_, statErr := os.Stat(localPath)
 		switch {
-		case loadErr != nil:
-			// 本机无此任务：整任务落地（已幽灵化/按需剥离）。
+		case statErr != nil && loadErr != nil:
+			// 文件确实不存在：整任务落地（已幽灵化/按需剥离/验收已标记）。
 			if serr := taskpipeline.SaveTaskState(root, incoming); serr != nil {
 				unlock()
 				return actions, fmt.Errorf(`写入任务 %s 失败: %w`, ref, serr)
 			}
 			actions = append(actions, fmt.Sprintf(`move   tasks/%s（新增，%s）`, name, trustTag(trusted)))
+		case loadErr != nil:
+			// 文件存在但加载失败（ref 折叠碰撞 / 本地文件损坏）——绝不覆盖，跳过警告。
+			actions = append(actions, fmt.Sprintf(`skip   tasks/%s（本地任务文件存在但不可加载（ref 碰撞或损坏），拒绝覆盖: %v）`, name, loadErr))
 		default:
 			if trusted {
 				taskpipeline.MergeTaskStateSync(local, incoming)

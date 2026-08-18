@@ -437,3 +437,161 @@ func TestProjectImport_IDBundleRefusesThenAdopts(t *testing.T) {
 		}
 	})
 }
+
+// TestProjectImport_RefCollisionNeverClobbers: a bundle task whose TaskRef
+// folds onto an EXISTING local task file with a different ref (SanitizeRef
+// collision: feat:x vs feat/x share feat-x.json) must be SKIPPED, never written
+// over the local file — the LoadTaskState cross-ref error must not read as "no
+// local task" (review blocker #1).
+//
+// TestProjectImport_RefCollisionNeverClobbers：bundle 任务的 TaskRef 折叠命中一个
+// 已存在但 ref 不同的本地任务文件（SanitizeRef 碰撞：feat:x 与 feat/x 共享
+// feat-x.json）时必须跳过、绝不覆盖本地文件——LoadTaskState 的串号错误不得被
+// 误读成「本机无此任务」（审查 blocker #1）。
+func TestProjectImport_RefCollisionNeverClobbers(t *testing.T) {
+	resetProjectCmdFlags(t)
+	home := t.TempDir()
+	machineA := newSyncMachine(t)
+	machineB := newSyncMachine(t)
+	id := `fpid_0123456789abcdef0123456789abcdef`
+	for _, m := range []string{machineA, machineB} {
+		if err := os.WriteFile(filepath.Join(m, forgedata.ProjectIDFileName), []byte(id+"\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var bundlePath string
+	withMachine(t, machineA, home, func() {
+		// A 机任务 ref = feat:x（SanitizeRef 折叠为 feat-x.json，与 feat/x 同文件名）
+		seedTaskState(t, machineA, `feat:collision-x`, nil)
+		bundlePath = filepath.Join(t.TempDir(), `c.tar.gz`)
+		if out, err := runExport(t, map[string]string{`out`: bundlePath}); err != nil {
+			t.Fatalf(`export: %v\n%s`, err, out)
+		}
+	})
+	withMachine(t, machineB, home, func() {
+		// B 机已有 ref = feat/collision-x（同折叠文件名 feat-x.json）
+		seedTaskState(t, machineB, `feat/collision-x`, func(s *taskpipeline.TaskState) {
+			s.Goal = `LOCAL MUST SURVIVE`
+		})
+		out, err := runImport(t, map[string]string{}, bundlePath)
+		if err != nil {
+			t.Fatalf(`import: %v\n%s`, err, out)
+		}
+		got, lerr := taskpipeline.LoadTaskState(machineB, `feat/collision-x`)
+		if lerr != nil {
+			t.Fatalf(`本地任务应原样可读: %v`, lerr)
+		}
+		if got.Goal != `LOCAL MUST SURVIVE` {
+			t.Fatalf(`ref 碰撞时本地任务被覆盖（Goal=%q）——blocker 回归`, got.Goal)
+		}
+		if !strings.Contains(out, `拒绝覆盖`) {
+			t.Errorf(`碰撞应产生 skip 警告: %s`, out)
+		}
+	})
+}
+
+// TestProjectImport_UntrustedStripsSameKey: --untrusted forces the full strip on
+// the SAME-key (lineage-trusted) path — CompletedAt/Passed history/Score go.
+//
+// TestProjectImport_UntrustedStripsSameKey：--untrusted 对同 key（lineage 受信）
+// 路径也强制完整剥离——CompletedAt/Passed 历史/Score 清空。
+func TestProjectImport_UntrustedStripsSameKey(t *testing.T) {
+	resetProjectCmdFlags(t)
+	// 真双机隔离（两个 home）：同 key 但各自 DataDir——否则 A 的 seed 对 B 直接
+	// 可见，import 走 merge 分支（local 权威），「新增任务被 strip」无从测起。
+	homeA, homeB := t.TempDir(), t.TempDir()
+	machineA := newSyncMachine(t)
+	machineB := newSyncMachine(t)
+	id := `fpid_0123456789abcdef0123456789abcdee`
+	for _, m := range []string{machineA, machineB} {
+		if err := os.WriteFile(filepath.Join(m, forgedata.ProjectIDFileName), []byte(id+"\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var bundlePath string
+	withMachine(t, machineA, homeA, func() {
+		done := time.Now()
+		seedTaskState(t, machineA, `feat/untrusted`, func(s *taskpipeline.TaskState) {
+			s.CompletedAt = &done
+			s.History = []taskpipeline.TaskGateResult{{Gate: `task-implement`, Passed: true}}
+		})
+		bundlePath = filepath.Join(t.TempDir(), `u.tar.gz`)
+		if out, err := runExport(t, map[string]string{`out`: bundlePath}); err != nil {
+			t.Fatalf(`export: %v\n%s`, err, out)
+		}
+	})
+	withMachine(t, machineB, homeB, func() {
+		out, err := runImport(t, map[string]string{`untrusted`: `true`}, bundlePath)
+		if err != nil {
+			t.Fatalf(`import: %v\n%s`, err, out)
+		}
+		if !strings.Contains(out, `不可信`) {
+			t.Errorf(`--untrusted 应判不可信: %s`, out)
+		}
+		got, lerr := taskpipeline.LoadTaskState(machineB, `feat/untrusted`)
+		if lerr != nil {
+			t.Fatal(lerr)
+		}
+		if got.CompletedAt != nil {
+			t.Errorf(`--untrusted 同 key 也应剥 CompletedAt, got %v\nimport-out=%s`, got.CompletedAt, out)
+		}
+		for _, h := range got.History {
+			if h.Passed {
+				t.Errorf(`--untrusted 应剔除 Passed 历史: %+v`, got.History)
+			}
+		}
+	})
+}
+
+// TestProjectImport_TrustedMarksAcceptanceForeign: the trusted same-key path
+// PRESERVES result fields but STILL marks foreign acceptance Run commands —
+// verify-acceptance's execution gate must stay armed for foreign executable
+// strings (review major #3: the 2026-08-15 command-execution vector must not
+// re-enter via the sync path).
+//
+// TestProjectImport_TrustedMarksAcceptanceForeign：受信同 key 路径保留结果字段，
+// 但外来验收 Run 命令仍打标记——verify-acceptance 的执行闸对外来可执行字符串必须
+// 保持武装（审查 major #3：2026-08-15 的命令执行向量不得从 sync 路径回潮）。
+func TestProjectImport_TrustedMarksAcceptanceForeign(t *testing.T) {
+	resetProjectCmdFlags(t)
+	homeA, homeB := t.TempDir(), t.TempDir() // 真双机隔离，理由同上
+	machineA := newSyncMachine(t)
+	machineB := newSyncMachine(t)
+	id := `fpid_0123456789abcdef0123456789abcdfd`
+	for _, m := range []string{machineA, machineB} {
+		if err := os.WriteFile(filepath.Join(m, forgedata.ProjectIDFileName), []byte(id+"\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var bundlePath string
+	withMachine(t, machineA, homeA, func() {
+		done := time.Now()
+		seedTaskState(t, machineA, `feat/acc-foreign`, func(s *taskpipeline.TaskState) {
+			s.CompletedAt = &done
+			s.Acceptance = []taskpipeline.AcceptanceCriterion{{Run: `go test ./...`, Expected: `pass`}}
+		})
+		bundlePath = filepath.Join(t.TempDir(), `af.tar.gz`)
+		if out, err := runExport(t, map[string]string{`out`: bundlePath}); err != nil {
+			t.Fatalf(`export: %v\n%s`, err, out)
+		}
+	})
+	withMachine(t, machineB, homeB, func() {
+		if out, err := runImport(t, map[string]string{}, bundlePath); err != nil {
+			t.Fatalf(`import: %v\n%s`, err, out)
+		}
+		got, lerr := taskpipeline.LoadTaskState(machineB, `feat/acc-foreign`)
+		if lerr != nil {
+			t.Fatal(lerr)
+		}
+		if got.CompletedAt == nil {
+			t.Error(`受信路径应保留 CompletedAt`)
+		}
+		if len(got.Acceptance) != 1 {
+			t.Fatalf(`验收 spec 应保留, got %+v`, got.Acceptance)
+		}
+		if !got.AcceptanceForeign {
+			t.Error(`受信路径也必须置 AcceptanceForeign——外来 Run 命令的执行闸不得解除（--trust-foreign 是逃生口）`)
+		}
+	})
+}

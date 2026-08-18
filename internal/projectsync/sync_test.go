@@ -157,6 +157,46 @@ func TestExportAllowlist_ExplicitIncludes(t *testing.T) {
 	}
 }
 
+// TestStripNonAllowlisted_ForgedManifestPayloads: import-side default-deny —
+// everything outside the portable set is removed from staging, INCLUDING the
+// opt-in stores (import has no --include gate to satisfy) and the machine-local
+// files a forged manifest could list.
+//
+// TestStripNonAllowlisted_ForgedManifestPayloads：导入侧默认拒绝——可移植集之外
+// 的一切从 staging 剥除，含选入型 store（import 没有 --include 门槛可满足）与
+// 伪造 manifest 可能列出的机器本地文件。
+func TestStripNonAllowlisted_ForgedManifestPayloads(t *testing.T) {
+	dir := seedDataDir(t)
+	removed, err := StripNonAllowlisted(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, r := range removed {
+		got[r] = true
+	}
+	for _, banned := range []string{
+		`imports.jsonl`, `active-task-ref-sess42`, `active-task-ref`, `session.json`,
+		`.sync-version`, `hooks/pre-tool.sh`, `freeze/state.json`, `tasks/feat-x.lock`,
+		`stamps/hook-deploy`, `.task-complete-grace-sess42`,
+		`quarantine/sess1/src.go`, `hazards/events.jsonl`, `hazards/fp1.json`,
+	} {
+		if !got[banned] {
+			t.Errorf(`%s 应被剥除（未在 removed 清单）: %v`, banned, removed)
+		}
+		if _, serr := os.Stat(filepath.Join(dir, filepath.FromSlash(banned))); !os.IsNotExist(serr) {
+			t.Errorf(`%s 剥除后仍存在于 staging`, banned)
+		}
+	}
+	// 可移植集不动
+	if _, serr := os.Stat(filepath.Join(dir, `tasks`, `feat-x.json`)); serr != nil {
+		t.Errorf(`可移植任务文件不应被剥除: %v`, serr)
+	}
+	if _, serr := os.Stat(filepath.Join(dir, `protocol.yml`)); serr != nil {
+		t.Errorf(`protocol.yml 不应被剥除: %v`, serr)
+	}
+}
+
 // packFixture packs seedDataDir into memory and returns the bytes + manifest.
 //
 // packFixture 把 seedDataDir 打进内存，返回字节与 manifest。
