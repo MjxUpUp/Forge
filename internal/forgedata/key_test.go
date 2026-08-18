@@ -499,3 +499,86 @@ func init() {
 		// 当前测试在 Windows 上也应跑；路径相关用 filepath.Join 跨平台
 	}
 }
+
+// fsCaseInsensitive probes the ACTUAL filesystem (not GOOS): create a probe file
+// under one spelling and stat a case-swapped spelling — success means the FS folds
+// case (macOS default APFS, Windows NTFS). Plan requirement: detect the filesystem
+// rather than trusting GOOS, so the test also does the right thing on case-sensitive
+// APFS volumes or Linux CI.
+//
+// fsCaseInsensitive 探测真实文件系统（而非 GOOS）：按一种拼写建探针文件，再 stat
+// 大小写变体拼写——成功说明 FS 折叠大小写（macOS 默认 APFS、Windows NTFS）。
+// 计划要求探测文件系统而非信任 GOOS，让测试在大小写敏感 APFS 卷或 Linux CI 上
+// 也做对的断言。
+func fsCaseInsensitive(t *testing.T, dir string) bool {
+	t.Helper()
+	probe := filepath.Join(dir, `CaSePrObE`)
+	if err := os.WriteFile(probe, []byte(`x`), 0644); err != nil {
+		t.Fatalf(`写探针文件: %v`, err)
+	}
+	_, err := os.Stat(filepath.Join(dir, `cAsEpRoBe`))
+	return err == nil
+}
+
+// TestKeyCaseConvergence pins the canonical-case normalization: on a case-insensitive
+// filesystem, a variant-spelled cwd must derive the SAME Key/PathKey as the on-disk
+// spelling (the Forge/forge identity-split bug: FNV of the literal path string split
+// one project into two identities, 8+2 task data split). On a case-sensitive
+// filesystem the exact-match-first rule makes CanonicalCase the identity function —
+// asserted explicitly so two genuinely different dirs are never folded.
+//
+// TestKeyCaseConvergence 钉死 canonical-case 归一：大小写不敏感文件系统上，变体
+// 拼写的 cwd 必须推导出与磁盘拼写相同的 Key/PathKey（Forge/forge 身份分裂 bug：
+// 按字面路径 FNV 把同一项目裂成两个身份，8+2 任务数据分裂）。大小写敏感文件系统
+// 上精确匹配优先规则让 CanonicalCase 恒等——显式断言，绝不折叠两个真不同的目录。
+func TestKeyCaseConvergence(t *testing.T) {
+	base := t.TempDir()
+	proj := filepath.Join(base, `CaseProj`)
+	if err := os.MkdirAll(filepath.Join(proj, `.git`), 0755); err != nil {
+		t.Fatalf(`mkdir .git: %v`, err)
+	}
+	variant := filepath.Join(base, `cASEpROJ`)
+
+	onDiskKey, err := Key(proj)
+	if err != nil {
+		t.Fatalf(`Key(磁盘拼写): %v`, err)
+	}
+	onDiskPathKey := PathKey(proj)
+
+	if !fsCaseInsensitive(t, base) {
+		// Case-sensitive FS: normalization must be the identity for existing paths —
+		// the exact-match branch resolves every component to itself.
+		//
+		// 大小写敏感 FS：对存在的路径归一必须恒等——精确匹配分支把每个组件
+		// 解析为它自己。
+		if got := CanonicalCase(proj); got != proj {
+			t.Errorf(`敏感 FS 上 CanonicalCase 应恒等：got=%q want=%q`, got, proj)
+		}
+		return
+	}
+
+	// Case-insensitive FS: the variant spelling resolves to the same directory, and
+	// must converge to the same identity.
+	//
+	// 大小写不敏感 FS：变体拼写解析到同一目录，必须收敛到同一身份。
+	variantKey, err := Key(variant)
+	if err != nil {
+		t.Fatalf(`Key(变体拼写): %v`, err)
+	}
+	if variantKey != onDiskKey {
+		t.Errorf(`Key 未收敛：磁盘拼写=%s 变体拼写=%s`, onDiskKey, variantKey)
+	}
+	if got := PathKey(variant); got != onDiskPathKey {
+		t.Errorf(`PathKey 未收敛：磁盘拼写=%s 变体拼写=%s`, onDiskPathKey, got)
+	}
+	// The canonical form itself is stable (normalization is idempotent on the
+	// on-disk spelling) — existing canonical registrations keep their key.
+	//
+	// canonical 形态自身稳定（归一对磁盘拼写幂等）——既有 canonical 登记 key 不变。
+	if got := CanonicalCase(variant); got != proj {
+		t.Errorf(`CanonicalCase(变体)=%q，期望磁盘拼写 %q`, got, proj)
+	}
+	if got := CanonicalCase(proj); got != proj {
+		t.Errorf(`CanonicalCase(磁盘拼写) 应恒等：got=%q want=%q`, got, proj)
+	}
+}

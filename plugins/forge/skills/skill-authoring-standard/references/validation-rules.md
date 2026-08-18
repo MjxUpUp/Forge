@@ -28,10 +28,18 @@
 | R4（上限部分） | description >500 字符：偏长 advisory |
 | R10（CSO） | description 不应总结 body 工作流——命中工作流总结词（`完整工作流` / `完整流程` / `全流程` / `完整协议` / `完整编排` / `全链路` / `全工序`）报 advisory。否则模型照 description 行动、跳过 SKILL.md 正文 |
 | R11（软部分） | >100 行的 markdown reference 建议带 ToC（认 `## 目录` / `## Contents` / `## Table of Contents`） |
-| R12 | `metadata.triggers` 声明校验（实验字段，不写合法；写了则校验）：合法 JSON；`event` ∈ `UserPromptSubmit` / `PreToolUse` / `PostToolUse` / `Stop` / `SessionStart`；`keywords` 或 `when` 至少一；`when` ∈ `source_changed_uncommitted` / `test_command_failed` / `coding_intent` / `task_active_no_review`；`match` 仅对 PreToolUse/PostToolUse 有意义 |
+| R12 | `metadata.triggers` 声明校验（实验字段，不写合法；写了则校验）：合法 JSON；`event` ∈ `UserPromptSubmit` / `PreToolUse` / `PostToolUse` / `Stop` / `SessionStart`；`keywords` 或 `when` 至少一；`when` ∈ `source_changed_uncommitted` / `test_command_failed` / `coding_intent` / `task_active_no_review` / `skill_file_touched`；`match` 仅对 PreToolUse/PostToolUse 有意义 |
 | R15 | 正文 ALL-CAPS 命令式词（`ALWAYS`/`NEVER`/`MUST`，整词、仅全大写计）合计 >5 次：提醒改「指令+原因」写法（2026-08 新增） |
 | R16 | `references/` 下 >300 行文件需 ToC（2026-08 新增；markdown 由 R11 以 >100 行更低门槛先行覆盖，不重复报，实际增量是非 markdown 参考文件） |
 | R17 | `evals/evals.json` 存在时校验 schema：对象含 `trigger_cases` 数组，每项 `{query: string, should_trigger: boolean}`（2026-08 新增；文件不存在则跳过） |
+
+### triggers 匹配语义陷阱（R12 查不出，写 keywords 前必读）
+
+R12 只校验「keywords 或 when 至少需一」，**查不出「配了 keywords 却永远不会触发」**。keywords 的匹配源只有：prompt、`ToolInput["command"]`（经 sanitizeCommand 剥离 heredoc body——守卫类关键词写在 heredoc 内容里不会命中）、`ToolOutput` 的 stdout/stderr/output（`internal/skilltrigger` sourceText，命中优先级同此序）。推论：
+
+- **工具门禁类 trigger（`PreToolUse match Agent|Task` 等）不要配 keywords**：Agent/Task 这类工具的 ToolInput 没有 `command` 键，PreToolUse 时刻还没有 ToolOutput，多数宿主的 PreToolUse 载荷也不带 prompt——keywords 三个匹配源全空 = 静默禁用。这类 trigger 用合法 `when`（如 `source_changed_uncommitted`）表达触发条件。
+- keywords 适合「用户输入/ shell 命令文本里会出现的词」（UserPromptSubmit、Bash 类 PreToolUse）；when 适合「环境状态条件」（工作区有未提交源码、测试失败等）。
+- ToC 锚点按 GitHub slugger 规则：标点（含 em-dash「—」）删除、空格转连字符——「A — B」的锚点是 `--` 双连字符，写 ToC 链接时逐条核对。
 
 ## 配套
 

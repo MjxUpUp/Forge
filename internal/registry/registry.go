@@ -35,16 +35,26 @@ import (
 
 // pathKey normalizes a cleaned absolute path for dedupe/equality. Windows filesystems are
 // case-insensitive, so C:\Proj and c:\proj are the same project — plain string comparison
-// would register them as two entries. Other platforms keep exact comparison (case matters there).
+// would register them as two entries. macOS's default case-insensitive APFS has the same
+// problem with an extra twist: the filesystem PRESERVES spelling, so variant spellings
+// (Forge vs forge) are two different strings for one directory. Comparison therefore goes
+// through forgedata.CanonicalCase (single source of truth, shared with Key derivation —
+// the old comment's assumption "case matters elsewhere" was factually wrong for APFS).
+// Linux/case-sensitive filesystems: CanonicalCase is the identity function, exact
+// comparison semantics unchanged.
 //
 // pathKey 归一化一个已 Clean 的绝对路径用于去重/相等判断。Windows 文件系统大小写
 // 不敏感，C:\Proj 与 c:\proj 是同一个项目——纯字符串比较会把它们登记成两条。
-// 其他平台保持精确比较（那里大小写有区分）。
+// macOS 默认大小写不敏感 APFS 有同样问题且更绕：文件系统保留拼写，变体拼写
+// （Forge vs forge）是同一目录的两个不同字符串。比较因此走
+// forgedata.CanonicalCase（与 Key 推导共享的单一真相源——旧注释「其他平台大小写
+// 有区分」的假设对 APFS 是事实性错误）。Linux/大小写敏感文件系统：CanonicalCase
+// 恒等，精确比较语义不变。
 func pathKey(cleanedAbs string) string {
 	if runtime.GOOS == "windows" {
 		return strings.ToLower(cleanedAbs)
 	}
-	return cleanedAbs
+	return forgedata.CanonicalCase(cleanedAbs)
 }
 
 // Entry is one registered project. Key is the forge project key (git common-dir hash,
@@ -470,7 +480,17 @@ func IsMember(cwd string) (root string, ok bool) {
 					}
 					continue
 				}
-				if strings.HasPrefix(af, prefix) {
+				// Case-variant prefix match: both sides go through pathKey
+				// (CanonicalCase) so a variant-spelled cwd under a registered root
+				// still matches on case-insensitive filesystems. The separator is
+				// appended AFTER normalization — CanonicalCase strips trailing
+				// separators, so folding it into the key would break the boundary.
+				//
+				// 大小写变体前缀匹配：两侧都过 pathKey（CanonicalCase），大小写
+				// 不敏感文件系统上变体拼写的 cwd 仍能命中已登记根。分隔符在归一
+				// 之后追加——CanonicalCase 会剥掉尾部分隔符，折进 key 里会破坏
+				// 边界判定。
+				if strings.HasPrefix(pathKey(af), pathKey(ep)+string(filepath.Separator)) {
 					matched = true
 					break
 				}

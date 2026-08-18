@@ -25,7 +25,10 @@ func TestAppendConclusion_WritesAndDirectives(t *testing.T) {
 	//
 	// 裸 state：无验收、无评分、无证据 → NoData 强度 → 不 nudge → Directive 空。结论仍应落盘。
 	state := &taskpipeline.TaskState{TaskRef: `feat/wire`, SessionID: `sess-wire`}
-	d := appendConclusion(root, state)
+	d, ok := appendConclusion(root, state)
+	if !ok {
+		t.Fatal(`appendConclusion 应成功落盘`)
+	}
 	if d != `` {
 		t.Errorf(`bare state Directive=%q want 空（NoData 不 nudge）`, d)
 	}
@@ -63,6 +66,31 @@ func TestAppendConclusion_AcceptanceCounted(t *testing.T) {
 	}
 	if c.AcceptancePass != 1 || c.AcceptanceTotal != 2 {
 		t.Errorf(`Acceptance=%d/%d want 1/2（接线漏传 pass/total）`, c.AcceptancePass, c.AcceptanceTotal)
+	}
+}
+
+// TestSedimentReminder pins the deterministic sediment line at task complete: an
+// Act directive (Nudge path) passes through verbatim — it already carries the
+// sediment action entry; an empty directive (clean completion, no Nudge) gets the
+// soft reminder pointing at session-retrospective. Before this, the sediment
+// evaluation of CLEAN tasks depended entirely on the user remembering to ask
+// (the 2026-08-18 case-split/CI-sweep sessions: A-scored yet multi-lesson).
+//
+// TestSedimentReminder 钉住 task complete 的确定性沉淀提醒：Act directive
+// （Nudge 路径）原样透传——它已带沉淀行动入口；空 directive（干净完成、无
+// Nudge）得到指向 session-retrospective 的轻提醒。此前干净任务的沉淀评估
+// 全靠用户记得问（2026-08-18 case-split/CI 清扫：A 分但多条教训）。
+func TestSedimentReminder(t *testing.T) {
+	directive := `→ session-retrospective: 任务评分 65 (D)。回顾根因并按载体决策树沉淀（防再犯）。`
+	if got := sedimentReminder(directive); got != directive {
+		t.Errorf(`有 directive 应原样透传：got=%q want=%q`, got, directive)
+	}
+	got := sedimentReminder(``)
+	if !strings.Contains(got, `session-retrospective`) {
+		t.Errorf(`空 directive 的提醒应指向 session-retrospective：got=%q`, got)
+	}
+	if !strings.Contains(got, `不沉淀`) {
+		t.Errorf(`提醒应带噪声边界（不沉淀清单）：got=%q`, got)
 	}
 }
 

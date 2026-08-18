@@ -74,3 +74,25 @@ forge skills validate R1-R17 全 49 通过；trigger 覆盖 5→15（31%）；dr
 ### Rationale
 
 扩展 trigger 覆盖是 2026-08 审计 P1 优化项；声明式触发是把 skill 从被动文档转主动注入的唯一可靠手段（见 dogfood 发现）
+
+## [d-18ccd74545641f08-2ac579e4] accept
+
+- **Skill**: dev-workflow
+- **DecidedAt**: 2026-08-18T07:57:24Z
+- **By**: kimi
+
+### Diagnosis
+
+验收 Run 写成 shell 形式（PWD=... go run）必败：verify-acceptance 的 RunTestCommand 按空白切分直接 exec 不经 shell，输出对也判负，排查链长（2026-08-18 case-split 验收 2/7 因此挂）
+
+### Revision
+
+SKILL.md 验收标准格式节补「Run 命令必须 shell-free」：前缀赋值/管道/重定向/&& 不可写，环境变量用 env VAR=... 形式，组合命令拆多条
+
+### Evidence
+
+taskpipeline/testrun.go:46 strings.Fields+exec.Command 源码实证；修正为 env 形式后 verify-acceptance 7/7 全绿
+
+### Rationale
+
+每个走 dev-workflow 写 Run/Expected 的任务都会撞，属高频坑
