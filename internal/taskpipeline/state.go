@@ -617,6 +617,33 @@ func PruneOldTasks(root string, cutoff time.Time) (removed int, err error) {
 	}
 	var errs []string
 	for _, s := range states {
+		// 2026-08-18 死锁修复引入的新滞留类（review m2）：门禁全过（IsComplete）但
+		// 从未 `forge task complete`（CompletedAt==nil——完成标记已归还 complete 命令）。
+		// session 在 finalize 窗口死亡即产生此类；不回收会成为永久僵尸（SessionStart
+		// 反复点名、单任务扫描歧义）。老化锚是**最后一道门的通过时间**而非 StartedAt
+		// ——长命任务的门禁昨天刚过不该因启动早被误杀。真未完成的任务
+		//（IsComplete==false）仍始终保留。
+		//
+		// New straggler class from the 2026-08-18 deadlock fix (review m2): all gates
+		// passed (IsComplete) but never `forge task complete`d (CompletedAt==nil —
+		// completion now belongs to the complete command). A session dying inside the
+		// finalize window creates one; without pruning it becomes a permanent zombie
+		// (SessionStart nags forever, single-task scan turns ambiguous). The aging
+		// anchor is the LAST GATE's pass time, not StartedAt — a long-lived task whose
+		// gates passed yesterday must not be culled for having started early.
+		// Genuinely incomplete tasks (IsComplete==false) stay kept.
+		if s.IsComplete() && s.CompletedAt == nil {
+			if lastGateAt(s).Before(cutoff) {
+				if delErr := DeleteTaskState(root, s.TaskRef); delErr != nil {
+					if !os.IsNotExist(delErr) {
+						errs = append(errs, delErr.Error())
+					}
+					continue
+				}
+				removed++
+			}
+			continue
+		}
 		if !s.IsComplete() || s.CompletedAt == nil {
 			continue
 		}
@@ -635,4 +662,20 @@ func PruneOldTasks(root string, cutoff time.Time) (removed int, err error) {
 		return removed, fmt.Errorf("prune old tasks: %s", strings.Join(errs, "; "))
 	}
 	return removed, nil
+}
+
+// lastGateAt 返回最后一道 gate 的通过时间（History 末条 CompletedAt）。History 空
+// （理论不可达——IsComplete 要求全部 gate 有记录）时回落 StartedAt，保底不早于任务
+// 启动。PruneOldTasks 用它作 gates-done-never-completed 僵尸类的老化锚。
+//
+// lastGateAt returns the last gate's pass time (the final History entry's
+// CompletedAt). Empty History (theoretically unreachable — IsComplete requires all
+// gates recorded) falls back to StartedAt so the anchor is never before the task
+// started. PruneOldTasks uses it as the aging anchor for the
+// gates-done-never-completed zombie class.
+func lastGateAt(s *TaskState) time.Time {
+	if n := len(s.History); n > 0 {
+		return s.History[n-1].CompletedAt
+	}
+	return s.StartedAt
 }
