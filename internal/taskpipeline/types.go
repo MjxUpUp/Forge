@@ -163,6 +163,15 @@ type Assignment struct {
 	NotifiedAt     *time.Time `json:"notified_at,omitempty"`     // 上次 hook 推送时间（去重防轰炸）
 	AbandonedCount int        `json:"abandoned_count,omitempty"` // claimed 超 TTL 回收次数（僵尸信号）
 	AbandonedAt    *time.Time `json:"abandoned_at,omitempty"`    // 最近一次回收时间
+	// AutoDelivered marks that the delivered terminal was set by MarkComplete's auto-reconcile,
+	// not by a human `forge task deliver` — the audit trail distinguishing "task pipeline finished,
+	// assignment reclaimed by the state machine" from a deliberate hand-deliver. Cleared by Reopen
+	// (mirrors DeliveredAt being cleared) so a reopened→redelivered cycle re-records truthfully.
+	//
+	// AutoDelivered 标记 delivered 终态由 MarkComplete 的自动回收设置，而非人工 forge task
+	// deliver——区分「管线完成、状态机回收分派」与「刻意手动交付」的审计痕迹。Reopen 时清零
+	// （镜像 DeliveredAt 的清零），使重开→再交付的循环如实重记。
+	AutoDelivered bool `json:"auto_delivered,omitempty"`
 }
 
 // Assignment state-transition errors. Sentinel values (not fmt.Errorf inline) so callers can match
@@ -366,13 +375,41 @@ func (s *TaskState) NextGate() string {
 	return ""
 }
 
-// MarkComplete records the task completion time.
+// MarkComplete records the task completion time. It also reconciles the assignment state
+// machine with the task pipeline (dogfood 2026-08-18 脱节修复): a task can finish its gates
+// without anyone running claim/deliver, leaving the assignment suspended at offered — mine
+// then renders a COMPLETED task as 待认领 forever and the zombie scan flags it after 7d. So
+// completion auto-reclaims an in-flight assignment (offered/claimed/input-required) to
+// delivered, stamping DeliveredAt and AutoDelivered (the audit trail for "not a human
+// deliver"). Terminal states (delivered/failed/canceled) and unassigned tasks are no-ops.
+// Placing the reconcile HERE (not in the CLI) covers both complete paths — runTaskCompleteAt
+// and completeGenericTask — plus any future caller, keeping the CLI a thin shell.
 //
-// MarkComplete 记录 task 完成时间。
+// MarkComplete 记录 task 完成时间。同时把分派状态机与任务管线 reconcile（dogfood 2026-08-18
+// 脱节修复）：任务可能走完门禁却无人执行 claim/deliver，分派悬置在 offered——mine 会把已完成
+// 任务永久渲染成待认领，僵尸扫描 7 天后误报。故完成时把在途分派（offered/claimed/
+// input-required）自动回收为 delivered，记 DeliveredAt 与 AutoDelivered（「非人工 deliver」的
+// 审计痕迹）。终态（delivered/failed/canceled）与无分派任务为 no-op。reconcile 放在此处
+// （而非 CLI）使两条完成路径——runTaskCompleteAt 与 completeGenericTask——及任何未来调用方
+// 都被覆盖，CLI 保持薄表层。
 func (s *TaskState) MarkComplete() {
 	now := time.Now()
 	s.CompletedAt = &now
 	s.CurrentGate = ""
+	if s.Assignment != nil {
+		switch s.Assignment.Status {
+		case AssignOffered, AssignClaimed, AssignInputRequired:
+			s.Assignment.Status = AssignDelivered
+			s.Assignment.DeliveredAt = &now
+			s.Assignment.AutoDelivered = true
+			// Reclaiming from input-required bypasses Answer() — clear the pending question
+			// text so no reader surfaces a stale "current question" (mirrors Answer's cleanup).
+			//
+			// 从 input-required 回收绕过 Answer()——清掉待答问题文本，避免读者看到陈旧的
+			// 「当前问题」（镜像 Answer 的清理）。
+			s.Assignment.LastQuestion = ``
+		}
+	}
 }
 
 // IsDelivered reports whether this task's output is available to dependents — the unblock signal
@@ -1010,8 +1047,42 @@ func (s *TaskState) Reopen(reason string) error {
 	}
 	s.Assignment.Status = AssignClaimed
 	s.Assignment.DeliveredAt = nil
+	s.Assignment.AutoDelivered = false
 	s.Assignment.FailReason = reason
 	return nil
+}
+
+// IsReopened reports whether a delivered task was sent back for rework via Reopen. Reopen
+// lands on claimed (or later input-required via Question) with FailReason set — and FailReason
+// on a NON-failed status has no other writer (Fail() sets it only together with the failed
+// terminal; import strips it), so (offered|claimed|input-required)+FailReason uniquely
+// identifies the reopened shape. offered is included because Abandon() does not clear
+// FailReason: reopen→claimed→(owner gone)→reclaim→offered leaves the residue, and without
+// this branch the reclaimed rework would fall back under the completion immunity and turn
+// invisible (review M1 复审). The distinction matters because IsComplete() deliberately stays
+// true across a reopen (gate history is retained): completion-based consumers — the zombie
+// immunity in assignmentInFlight and mine's `complete` render — must NOT treat a reopened
+// task as finished, or a stuck rework would be silently hidden (review M1 of the 2026-08-18
+// 脱节修复).
+//
+// IsReopened 报告一个已交付任务是否被 Reopen 打回返工。Reopen 落在 claimed（或再经
+// Question 到 input-required）且置 FailReason——而非 failed 状态上的 FailReason 没有其他
+// 写入方（Fail() 只在进入 failed 终态时设置；import 会清空），故 (offered|claimed|
+// input-required)+FailReason 唯一标识 reopen 形态。offered 纳入是因为 Abandon() 不清
+// FailReason：reopen→claimed→（认领方失联）→reclaim→offered 会留下残留，少了这个分支，
+// 被回收的返工会重新落入完成免疫而彻底隐形（review M1 复审）。区分的意义：IsComplete()
+// 跨 reopen 刻意保持 true（gate 历史保留）——基于完成态的消费者（assignmentInFlight 的
+// 僵尸免疫与 mine 的 complete 渲染）不得把 reopen 的任务当成已完成，否则卡住的返工会被
+// 静默隐藏（2026-08-18 脱节修复的 review M1）。
+func (s *TaskState) IsReopened() bool {
+	if s == nil || s.Assignment == nil {
+		return false
+	}
+	switch s.Assignment.Status {
+	case AssignOffered, AssignClaimed, AssignInputRequired:
+		return s.Assignment.FailReason != ``
+	}
+	return false
 }
 
 // Abandon transitions claimed→offered (TTL recovery for a claimed task whose owner went away).
