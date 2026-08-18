@@ -60,6 +60,32 @@ package taskpipeline
 // 真实历史。Assignment 同样剥离——IsDelivered() 把 Assignment.Status==delivered 当 DependsOn
 // 的放行信号，外来「已交付」声明不得在没有本机交付的情况下放行下游本机任务。CurrentGate 从
 // 幸存的 History 重推，使状态展示与现实一致。
+// GhostForeignSessions marks every session link as imported (a "ghost"): it records
+// who participated on the SOURCE machine, never a local anchor — HasSession/AddSession
+// ignore ghost links, so a foreign session id must not anchor this machine's session
+// to the task.
+//
+// Split out of StripForeignGateSignals (project-sync) because ghosting is not a trust
+// downgrade but a FACT: after a cross-machine sync the source machine's sessions do
+// not exist locally, whatever the trust posture. Every import path applies it —
+// including the lineage-trusted `forge project import` that deliberately PRESERVES
+// result fields (scores/completion) yet still must not treat foreign session ids as
+// local anchors.
+//
+// GhostForeignSessions 把每条 session 链接标为已导入（「幽灵」）：它记录的是源机器
+// 上谁参与过，永非本机锚点——HasSession/AddSession 忽略幽灵链接，外来 session id
+// 不得把本机 session 锚到任务上。
+//
+// 从 StripForeignGateSignals 拆出（project-sync）的原因：幽灵化不是信任降级而是
+// 事实——跨机器同步后，源机器的 session 在本机不存在，与信任姿态无关。所有导入
+// 路径都要应用它——包括刻意保留结果字段（评分/完成）的 lineage 受信
+// `forge project import`，它同样绝不能把外来 session id 当本机锚点。
+func GhostForeignSessions(s *TaskState) {
+	for i := range s.SessionLinks {
+		s.SessionLinks[i].Imported = true
+	}
+}
+
 func StripForeignGateSignals(s *TaskState) {
 	// Result-flavored signals (original strip).
 	//
@@ -141,16 +167,14 @@ func StripForeignGateSignals(s *TaskState) {
 	// Every session link from a foreign source becomes a GHOST (Imported=true): it records who
 	// participated on the source machine, never a local anchor — HasSession/AddSession ignore
 	// ghost links, so a foreign session id must not anchor this machine's session to the task.
-	// Ghosting lives here (single source) so both the import path and the migrate path get it —
-	// the migrate path previously forgot it (review 2026-08-16).
+	// Ghosting lives in GhostForeignSessions (single source) so both the import path and the
+	// migrate path get it — the migrate path previously forgot it (review 2026-08-16).
 	//
 	// 外来源的每条 session 链接都成为幽灵（Imported=true）：它记录源机器谁参与过，永非本机
 	// 锚点——HasSession/AddSession 忽略幽灵链接，外来 session id 不得把本机 session 锚到任务上。
-	// 幽灵化放在这里（单一真相源），import 与 migrate 两条路都拿到——migrate 路径此前漏了
-	// （2026-08-16 复审）。
-	for i := range s.SessionLinks {
-		s.SessionLinks[i].Imported = true
-	}
+	// 幽灵化在 GhostForeignSessions（单一真相源）完成，import 与 migrate 两条路都拿到——
+	// migrate 路径此前漏了（2026-08-16 复审）。
+	GhostForeignSessions(s)
 	// The Run commands survive as spec (the handoff carries what to verify), but they are
 	// foreign-authored executable strings — mark them so verify-acceptance demands explicit
 	// review-based trust (--trust-foreign) before the first local execution.

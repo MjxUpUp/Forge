@@ -722,34 +722,13 @@ func TestTaskImport_MergeDoesNotIntroduceForeignSignals(t *testing.T) {
 	}
 }
 
-// TestUnionDecisions_EmptyIDNotCollapsed: a malformed bundle whose decisions carry empty IDs must NOT
-// have them collapsed into one by the ID-keyed union (silent data loss). Empty-ID entries are appended
-// as-is; non-empty duplicates are still deduped.
+// TestUnionDecisions_EmptyIDNotCollapsed 已随 unionDecisions 系列迁至
+// taskpipeline（merge_test.go 的 TestUnionDecisions_EmptyIDNotCollapsed）——合并语义
+// 的单一真相源在 taskpipeline，测试随实现走。
 //
-// TestUnionDecisions_EmptyIDNotCollapsed：决策带空 ID 的畸形 bundle 不能被按 ID 的并集压成一条（静默
-// 丢数据）。空 ID 条目原样追加；非空重复仍去重。
-func TestUnionDecisions_EmptyIDNotCollapsed(t *testing.T) {
-	local := []taskpipeline.Decision{{ID: `d-1`, Content: `local`}}
-	incoming := []taskpipeline.Decision{
-		{ID: ``, Content: `malformed-A`},
-		{ID: ``, Content: `malformed-B`},
-		{ID: `d-1`, Content: `dup-of-local`},
-	}
-	got := unionDecisions(local, incoming)
-	if len(got) != 3 {
-		t.Fatalf(`空 ID 不应折叠：期望 3 条（local + 2 空 ID），got %d: %+v`, len(got), got)
-	}
-	contents := map[string]bool{}
-	for _, d := range got {
-		contents[d.Content] = true
-	}
-	if !contents[`malformed-A`] || !contents[`malformed-B`] || !contents[`local`] {
-		t.Errorf(`空 ID 条目应都保留 + local 保留, got %v`, contents)
-	}
-	if contents[`dup-of-local`] {
-		t.Error(`非空重复 ID（d-1）应去重掉`)
-	}
-}
+// TestUnionDecisions_EmptyIDNotCollapsed moved to taskpipeline together with the
+// unionDecisions family (taskpipeline/merge_test.go) — the merge semantics' single
+// source of truth lives in taskpipeline; tests follow the implementation.
 
 // TestFilterImportedChecklog_DropsDuplicates: a repeated --merge import of the same bundle must not
 // duplicate checklog evidence lines in `forge trace`. filterImportedChecklog drops entries already on
