@@ -1547,14 +1547,22 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 	// does not depend on the score); on Nudge, prints a one-line retrospective directive
 	// (stderr, so --json stdout stays clean). Only on firstComplete (review m1) — a
 	// scoring-failure retry must not append a second conclusion for the same task.
+	// When no Nudge fires (strong evidence + high score), sedimentReminder still prints
+	// one soft line: clean tasks also produce reusable lessons (the 2026-08-18
+	// case-split/CI-sweep sessions scored A yet yielded several), and before this the
+	// sediment evaluation depended entirely on the user remembering to ask.
 	//
 	// Act 反馈臂（PDCA Act）：构建证据驱动结论落盘，喂给 session-retrospective。
 	// 即使评分失败也建（证据强度不依赖分数）；Nudge 时打印一行回顾指令（stderr，
 	// stdout --json 保持干净）。仅 firstComplete（review m1）——评分失败重试不得为
-	// 同一任务追加第二条结论。
+	// 同一任务追加第二条结论。无 Nudge（证据强+高分）时 sedimentReminder 仍打印
+	// 一句轻提醒：干净任务同样产出可复用教训（2026-08-18 case-split/CI 清扫
+	// 都是 A 但都沉淀了多条），此前沉淀评估全靠用户记得问。结论落盘失败时
+	// （ok=false）跳过提醒——刚警告完「结论落盘失败」又提醒「评估沉淀载体」
+	// 不协调（沉淀的事实源正是落盘失败的结论，code-review 发现）。
 	if firstComplete {
-		if d := appendConclusion(root, state); d != "" {
-			fmt.Fprintln(os.Stderr, d)
+		if d, ok := appendConclusion(root, state); ok {
+			fmt.Fprintln(os.Stderr, sedimentReminder(d))
 		}
 	}
 
@@ -1961,12 +1969,35 @@ func scoreTask(root string, state *taskpipeline.TaskState) error {
 // appendConclusion thin-wrapper：Act 结论构建+落盘下沉到 taskpipeline.AppendConclusion
 // （单一真相源）。cli 与 MCP forge_task_complete 共用同一 Act 反馈臂。stderr 警告由本 wrapper
 // 保留（CLI 交互语义），taskpipeline 层只返结构化结果。
-func appendConclusion(root string, state *taskpipeline.TaskState) string {
+func appendConclusion(root string, state *taskpipeline.TaskState) (string, bool) {
 	_, directive, err := taskpipeline.AppendConclusion(root, state)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, `Warning:`, err)
+		return ``, false
 	}
-	return directive
+	return directive, true
+}
+
+// sedimentReminder decides the single line printed at task complete: the Act
+// directive when a RetrospectiveNudge fired (it already ends with the sediment
+// action entry), otherwise one soft reminder that clean completions can still
+// yield reusable lessons. Deterministic and host-independent — unlike a
+// model-side trigger, it cannot be lost to a dead Stop channel or a forgotten
+// prompt. The judgement of WHAT deserves sediment is delegated to
+// session-retrospective's own no-sediment list (common knowledge / one-off
+// details / anything the code already records), so the line stays noise-bounded.
+//
+// sedimentReminder 决定 task complete 打印的一行：有 RetrospectiveNudge 时原样
+// 返回 Act directive（其结尾已带沉淀行动入口）；否则返回一句轻提醒——干净的
+// 完成同样可能产出可复用教训。确定性、宿主无关——不同于模型侧 trigger，不会
+// 被死 Stop 通道或遗忘的 prompt 丢掉。「什么值得沉淀」的判断委托给
+// session-retrospective 自己的不沉淀清单（常识/一次性细节/代码已记录的），
+// 让这行提醒保持噪声有界。
+func sedimentReminder(directive string) string {
+	if directive != "" {
+		return directive
+	}
+	return `ADVISORY: 若本次任务产出过非显然教训（排查链长的坑、会重复踩的模式、差点进主干的缺陷），评估沉淀载体（→ session-retrospective）；常识/一次性细节/代码已记录的不沉淀。`
 }
 
 func runTaskList(cmd *cobra.Command, args []string) error {
