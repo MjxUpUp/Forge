@@ -4,7 +4,7 @@ description: "会话或主线任务结束时（或任务中发现值得记的教
 metadata:
   pattern: pipeline + gate
   domain: workflow
-  triggers: [{"event":"UserPromptSubmit","keywords":["回流审查","周度复盘","近一周","协作效果","协作记录","使用情况审查","沉淀经验"],"cooldown":7200}]
+  triggers: [{"event":"UserPromptSubmit","keywords":["回流审查","周度复盘","近一周","协作效果","协作记录","使用情况审查","沉淀经验","沉淀成skill","沉淀成 skill","可复用","总结教训","经验回流"],"cooldown":7200}]
 ---
 
 # 会话经验沉淀
