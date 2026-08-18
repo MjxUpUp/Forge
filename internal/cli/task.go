@@ -1117,10 +1117,23 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "⚠️ [breaker] %s\n", w)
 	}
 
-	if state.IsComplete() && result.Passed {
-		state.MarkComplete()
-	}
-
+	// 刻意不在此处 MarkComplete（dogfood 2026-08-18 死锁修复）：曾经「最后一道 gate 通过
+	// 即 MarkComplete」，而 ActiveTaskState 对 CompletedAt!=nil 返回 nil —— 紧随其后的
+	// `forge task complete` acceptance pre-flight 恰要求快照新鲜（AcceptedHeadCommit==HEAD），
+	// 刷新只能由 verify-acceptance（只认 active task）完成。门一过任务即失活 → 验收刷新
+	// 死锁（本次 v2 任务实测踩中：review 修复 commit 移动 HEAD 后 complete 永久 BLOCKED，
+	// 且无任何 CLI 路径可复活）。完成 = `forge task complete` 的整个动作（pre-flight →
+	// MarkComplete → 评分 → 反馈 → 清 ref）；门禁全过只是它的前置条件，不是完成本身。
+	//
+	// Deliberately NO MarkComplete here (dogfood 2026-08-18 deadlock fix): the last gate
+	// used to mark the task complete on pass, but ActiveTaskState returns nil once
+	// CompletedAt is set — and the immediately following `forge task complete` acceptance
+	// pre-flight demands snapshot freshness (AcceptedHeadCommit==HEAD), refreshable ONLY by
+	// verify-acceptance (active tasks only). Gate pass deactivated the task → acceptance
+	// refresh deadlocked (hit in production by the v2 task: a review-fix commit moved HEAD,
+	// complete BLOCKED forever, no CLI path could revive it). Completion is `forge task
+	// complete`'s whole action (pre-flight → MarkComplete → scoring → feedback → clear
+	// ref); all gates passed is its prerequisite, not completion itself.
 	if err := taskpipeline.SaveTaskState(root, state); err != nil {
 		return fmt.Errorf("failed to save task state: %w", err)
 	}
@@ -1372,11 +1385,12 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to load task state: %w", err)
 		}
-		// Fallback: the task finished all gates but already called MarkComplete, so
-		// ActiveTaskState returns nil. Load via branch context.
+		// Fallback: legacy states completed by the OLD gate behavior (the last gate used
+		// to MarkComplete before the 2026-08-18 deadlock fix, deactivating the task for
+		// ActiveTaskState). Load via branch context so those tasks can still finalize.
 		//
-		// 兜底：task 完成全部 gate 但已调 MarkComplete，
-		// 故 ActiveTaskState 返 nil。经 branch context load。
+		// 兜底：旧 gate 行为（2026-08-18 死锁修复前，最后一道 gate 即 MarkComplete，任务对
+		// ActiveTaskState 失活）留下的存量状态。经 branch context load，让它们仍能 finalize。
 		if state == nil {
 			ctx := taskcontext.Detect(root)
 			if ctx.IsSet() {
@@ -1386,6 +1400,37 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 	}
 	if state == nil {
 		return fmt.Errorf("no active task. Run forge task start first")
+	}
+	return runTaskCompleteAt(root, state)
+}
+
+// runTaskCompleteAt is the root-injected core of runTaskComplete (split out for
+// unit-testability, same pattern as runTaskVerifyAcceptanceAt). Everything after task
+// resolution lives here. Ordering contract (dogfood 2026-08-18 deadlock fix):
+// double-complete guard → generic path → IsComplete → acceptance pre-flight →
+// MarkComplete → scoring → feedback → clear ref. MarkComplete happens ONLY after the
+// pre-flight passes — a failing pre-flight must leave the task active so
+// verify-acceptance (active-only) can refresh the stale snapshots and complete can be
+// retried. (Before the fix, the LAST GATE marked completion, so a post-gate commit
+// moved HEAD → pre-flight failed forever with no revival path.)
+//
+// runTaskCompleteAt 是 runTaskComplete 的 root 注入核心（独立可测，与
+// runTaskVerifyAcceptanceAt 同款范式）。task 解析之后的一切都在这里。顺序契约
+// （dogfood 2026-08-18 死锁修复）：重复完成守卫 → generic 路径 → IsComplete →
+// acceptance pre-flight → MarkComplete → 评分 → 反馈 → 清 ref。MarkComplete 只在
+// pre-flight 通过之后发生——pre-flight 失败必须保持任务 active，verify-acceptance
+// （只认 active）才能刷新过期快照、complete 才能重试。（修复前最后一道 gate 就标记
+// 完成，gate 后的 commit 一移动 HEAD → pre-flight 永久失败且无复活路径。）
+func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
+	// Idempotent double-complete guard: a task already finalized (completed + scored,
+	// or a completed generic task which never scores) must not re-run the completion
+	// side effects (re-scoring, duplicate-HEAD warnings, a second Act conclusion).
+	//
+	// 幂等重复完成守卫：已 finalize 的任务（完成且已评分；或从不评分的已完成 generic
+	// 任务）不得重跑完成副作用（重复评分、重复 HEAD 告警、第二条 Act 结论）。
+	if state.CompletedAt != nil && (state.Score != nil || state.IsGeneric()) {
+		fmt.Printf("Task %s already completed（已完成，幂等跳过）。\n", state.TaskRef)
+		return nil
 	}
 
 	// generic kind (research/design/pure-handoff tasks): skip the gate IsComplete check
@@ -1423,6 +1468,30 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 	if ok, reasons := taskpipeline.CheckAcceptanceFresh(root, state); !ok {
 		return fmt.Errorf(`acceptance pre-flight 未通过（验收未实跑/快照过期/未通过）: %s；逃生（落 checklog 审计，降 evidence 强度到 Weak）: forge task override --acceptance-gate disable 或 FORGE_ACCEPTANCE_GATE=disable`,
 			strings.Join(reasons, `; `))
+	}
+
+	// MarkComplete 恰在此处（pre-flight 之后）：完成标记属于 `forge task complete` 的整个
+	// 动作而非某道 gate（dogfood 2026-08-18 死锁修复的另一面——见 runTaskGate 的对应注释）。
+	// firstComplete 门控（review m1）：仅首次完成时标记——评分失败留下的 CompletedAt!=nil、
+	// Score==nil 中间态重试时，再评分是预期恢复，但 CompletedAt 不得被重置（污染
+	// duration 度量）、Act 结论不得二次追加（act.Append 无 TaskRef 去重）。
+	// 先落盘再评分，评分失败也不丢完成状态。
+	//
+	// MarkComplete exactly here (after the pre-flight): completion belongs to `forge
+	// task complete`'s whole action, not to any single gate (the other face of the
+	// dogfood 2026-08-18 deadlock fix — see the matching comment in runTaskGate).
+	// The firstComplete gate (review m1): mark ONLY on the first completion — retrying
+	// the CompletedAt!=nil/Score==nil intermediate state a scoring failure leaves
+	// behind SHOULD re-score (expected recovery), but must not reset CompletedAt
+	// (pollutes duration metrics) nor append a second Act conclusion (act.Append has
+	// no TaskRef dedup). Persist before scoring so a scoring failure cannot lose the
+	// completed state.
+	firstComplete := state.CompletedAt == nil
+	if firstComplete {
+		state.MarkComplete()
+	}
+	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+		return fmt.Errorf("failed to save task state: %w", err)
 	}
 
 	// Auto-score the task.
@@ -1476,13 +1545,17 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 	// Act feedback arm (PDCA Act): build the evidence-driven conclusion, persist it, and
 	// feed it to session-retrospective. Built even when scoring fails (evidence strength
 	// does not depend on the score); on Nudge, prints a one-line retrospective directive
-	// (stderr, so --json stdout stays clean).
+	// (stderr, so --json stdout stays clean). Only on firstComplete (review m1) — a
+	// scoring-failure retry must not append a second conclusion for the same task.
 	//
 	// Act 反馈臂（PDCA Act）：构建证据驱动结论落盘，喂给 session-retrospective。
 	// 即使评分失败也建（证据强度不依赖分数）；Nudge 时打印一行回顾指令（stderr，
-	// stdout --json 保持干净）。
-	if d := appendConclusion(root, state); d != "" {
-		fmt.Fprintln(os.Stderr, d)
+	// stdout --json 保持干净）。仅 firstComplete（review m1）——评分失败重试不得为
+	// 同一任务追加第二条结论。
+	if firstComplete {
+		if d := appendConclusion(root, state); d != "" {
+			fmt.Fprintln(os.Stderr, d)
+		}
 	}
 
 	// Clear the active task ref — task is complete (session-scoped).

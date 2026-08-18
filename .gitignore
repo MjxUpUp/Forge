@@ -53,3 +53,4 @@ vendor/
 # Local MCP server config (project-level, may contain local paths; plugin
 # marketplace ships its own .mcp.json inside the plugin package)
 .mcp.json
+.codex/
