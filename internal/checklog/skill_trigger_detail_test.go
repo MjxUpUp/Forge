@@ -58,17 +58,17 @@ func TestSkillFromTriggerDetail_RejectsNonContract(t *testing.T) {
 // RoundTrip 守 Detail 缝的同样方式守 v2 结构化证据缝。
 func TestMetaKeyContract(t *testing.T) {
 	keys := map[string]string{
-		"matched_keyword":        MetaKeyMatchedKeyword,
-		"match_source":           MetaKeyMatchSource,
-		"when":                   MetaKeyWhen,
-		"trigger_index":          MetaKeyTriggerIndex,
-		"trigger_sig":            MetaKeyTriggerSig,
-		"prompt_hash":            MetaKeyPromptHash,
-		"prompt_len":             MetaKeyPromptLen,
-		"excerpt":                MetaKeyExcerpt,
-		"suppressed_since_last":  MetaKeySuppressedSinceLast,
-		"cause":                  MetaKeyCause,
-		"skills":                 MetaKeySkills,
+		"matched_keyword":       MetaKeyMatchedKeyword,
+		"match_source":          MetaKeyMatchSource,
+		"when":                  MetaKeyWhen,
+		"trigger_index":         MetaKeyTriggerIndex,
+		"trigger_sig":           MetaKeyTriggerSig,
+		"prompt_hash":           MetaKeyPromptHash,
+		"prompt_len":            MetaKeyPromptLen,
+		"excerpt":               MetaKeyExcerpt,
+		"suppressed_since_last": MetaKeySuppressedSinceLast,
+		"cause":                 MetaKeyCause,
+		"skills":                MetaKeySkills,
 	}
 	seen := map[string]bool{}
 	for want, got := range keys {
