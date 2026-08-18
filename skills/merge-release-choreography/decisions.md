@@ -40,3 +40,25 @@ forge skills validate --canonical ./skills 复跑 52 通过 0 失败、该 advis
 ### Rationale
 
 唯一命中的 CSOWorkflowMarkers 词，最小删除即合规；不改动路由语义
+
+## [d-18ccd749b15436b8-5f53c00f] accept
+
+- **Skill**: merge-release-choreography
+- **DecidedAt**: 2026-08-18T07:57:43Z
+- **By**: kimi
+
+### Diagnosis
+
+契约变更型重构后单元测试全绿但 e2e 场景仍断言旧契约：user-level-assets 重构后 Nightly verify --regression 4/4 全红（场景钉的是重构前的项目级布局），重构完成标准缺「e2e 期望审计」一环
+
+### Revision
+
+SKILL.md S1 预检加一条：契约变更型重构后 e2e/回归场景的期望本身要同步审计，列入重构收尾完成标准
+
+### Evidence
+
+2026-08-18 Nightly run 32098614969 四场景失败根因分析 + 场景重写后本地 4/4 PASS
+
+### Rationale
+
+代码全绿≠场景在断言新契约，该类事故每次命中就是一整轮 CI 红
