@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/agentsignals"
+	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/registry"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
@@ -565,6 +566,53 @@ func annotateDep(ref string, byRef map[string]*taskpipeline.TaskState) (status s
 	return `incomplete`, passed, total
 }
 
+// checkNameAssignmentUnclaimed is the checklog name for the task-implement assignment
+// advisory: the gated task is assigned to a DIFFERENT agent and still unclaimed — the worker
+// is advancing gates on a delegation that was never claimed (the 2026-08-18 脱节 precursor:
+// the pipeline moves while the assignment state machine does not). Advisory only, never
+// blocks (an orchestrator running gates on behalf of the assignee is legitimate).
+//
+// checkNameAssignmentUnclaimed 是 task-implement 分派 advisory 的 checklog 名：过门禁的
+// 任务分派给了另一个 agent 且尚未 claimed——执行方在从未认领的分派上推进门禁（2026-08-18
+// 脱节的前兆：管线在走而分派状态机不动）。仅 advisory，永不阻断（编排器代跑是合法场景）。
+const checkNameAssignmentUnclaimed checklog.CheckName = "assignment-unclaimed"
+
+// adviseUnclaimedAssignment emits the assignment advisory at the task-implement gate (P2 of
+// the 2026-08-18 脱节修复): when the gated task is offered to an agent other than the current
+// one and has not been claimed, warn on stderr and record a checklog trail. Skipped silently
+// when the current agent cannot be detected (a false positive is worse than a missed hint) or
+// when the assignee themselves is gating. Advisory only — never changes the gate outcome.
+//
+// adviseUnclaimedAssignment 在 task-implement 门禁发出分派 advisory（2026-08-18 脱节修复
+// 的 P2）：过门禁的任务 offered 给非当前 agent 且尚未 claimed 时，stderr 提醒并落 checklog
+// 痕迹。当前 agent 探测不到（误报比漏报更糟）或受派方本人过门禁时静默跳过。仅
+// advisory——绝不改变门禁结果。
+func adviseUnclaimedAssignment(root, gateID string, passed bool, state *taskpipeline.TaskState) {
+	if gateID != `task-implement` || !passed || state == nil || state.Assignment == nil {
+		return
+	}
+	if state.Assignment.Status != taskpipeline.AssignOffered {
+		return
+	}
+	current := detectOriginTool(``)
+	if current == `` || current == state.Assignment.Agent {
+		return // 探测不到当前 agent，或正是受派方本人——不打扰
+	}
+	detail := fmt.Sprintf(`ADVISORY: 任务 %s 分派给 %s 且尚未 claimed，当前由 %s 推进 task-implement（编排器代跑合法；若是执行方接手，请先 forge task claim）`,
+		state.TaskRef, state.Assignment.Agent, current)
+	fmt.Fprintf(os.Stderr, "⚠️ [assignment] %s\n", detail)
+	if err := checklog.Record(root, &checklog.Entry{
+		Check:   checkNameAssignmentUnclaimed,
+		Passed:  true,
+		Checked: true,
+		Level:   checklog.LevelAdvisory,
+		TaskRef: state.TaskRef,
+		Detail:  detail,
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to record assignment advisory: %v\n", err)
+	}
+}
+
 // scanDelegations collects the delegated tasks matching agent (and optional role/blocked filters)
 // under one project root. It builds a ref→state index so each pending dep can be annotated with its
 // status + gate progress. Returns (nil, err) only when ListTaskStates fails; an empty slice means
@@ -621,11 +669,30 @@ func scanDelegations(root, agent, role string, blocked bool, now time.Time) ([]d
 			details = append(details, pendingDep{Ref: d, Status: st, GatePassed: passed, GateTotal: tot})
 		}
 		isZombie, zombieReasons := taskpipeline.IsZombie(root, s, now)
+		// Reconcile the rendered status with the task pipeline (2026-08-18 脱节修复): a task whose
+		// gates all passed but whose assignment was never claimed/delivered (e.g. legacy states
+		// pre-dating MarkComplete's auto-reclaim) must NOT render as 待认领 — that would present a
+		// finished task as pending forever. Render `complete` instead (JSON status field carries the
+		// same value, so dashboards get one consistent signal); the row is kept, not filtered, to
+		// preserve visibility of the completed fact. Terminal assignment states pass through as-is.
+		//
+		// 渲染状态与任务管线 reconcile（2026-08-18 脱节修复）：门禁全过但分派从未 claim/deliver
+		// 的任务（如 MarkComplete 自动回收之前的存量状态）不得渲染为待认领——那会把已完成任务
+		// 永久显示成待办。改渲染 `complete`（JSON status 字段同值，看板等消费者读到一致信号）；
+		// 行保留不过滤，以可见方式呈现已完成事实。分派终态原样透传；被 Reopen 打回返工的任务
+		// （IsReopened）也透传真实协作状态——卡住的返工不得伪装成 complete。
+		status := s.Assignment.Status
+		if s.IsComplete() && !s.IsReopened() {
+			switch s.Assignment.Status {
+			case taskpipeline.AssignOffered, taskpipeline.AssignClaimed, taskpipeline.AssignInputRequired:
+				status = `complete`
+			}
+		}
 		entries = append(entries, delegatedEntry{
 			Ref:              s.TaskRef,
 			Title:            s.Summary,
 			Role:             s.Assignment.Role,
-			Status:           s.Assignment.Status,
+			Status:           status,
 			OfferedBy:        s.Assignment.OfferedBy,
 			PendingDeps:      pend,
 			PendingDepDetail: details,
