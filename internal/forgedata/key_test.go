@@ -526,11 +526,16 @@ func fsCaseInsensitive(t *testing.T, dir string) bool {
 // one project into two identities, 8+2 task data split). On a case-sensitive
 // filesystem the exact-match-first rule makes CanonicalCase the identity function —
 // asserted explicitly so two genuinely different dirs are never folded.
+// The CanonicalCase spelling assertions are darwin-only by design (Windows convergence
+// lives in PathKey/registry.pathKey's ToLower branches; off-darwin CanonicalCase is a
+// no-op and pins the identity contract instead).
 //
 // TestKeyCaseConvergence 钉死 canonical-case 归一：大小写不敏感文件系统上，变体
 // 拼写的 cwd 必须推导出与磁盘拼写相同的 Key/PathKey（Forge/forge 身份分裂 bug：
 // 按字面路径 FNV 把同一项目裂成两个身份，8+2 任务数据分裂）。大小写敏感文件系统
 // 上精确匹配优先规则让 CanonicalCase 恒等——显式断言，绝不折叠两个真不同的目录。
+// CanonicalCase 拼写断言按设计仅 darwin（Windows 收敛走 PathKey/registry.pathKey
+// 的 ToLower 分支；非 darwin CanonicalCase 为 no-op，改钉恒等契约）。
 func TestKeyCaseConvergence(t *testing.T) {
 	base := t.TempDir()
 	proj := filepath.Join(base, `CaseProj`)
@@ -573,12 +578,31 @@ func TestKeyCaseConvergence(t *testing.T) {
 	}
 	// The canonical form itself is stable (normalization is idempotent on the
 	// on-disk spelling) — existing canonical registrations keep their key.
+	// DARWIN-ONLY by design (confirmed decision): Windows case convergence lives
+	// in the PathKey/registry.pathKey ToLower branches (asserted above via
+	// PathKey), and CanonicalCase is a GOOS-guarded no-op off-darwin — asserting
+	// variant→on-disk spelling unconditionally broke windows-latest CI
+	// (2026-08-18 run 32115959961). Off-darwin we pin the identity contract instead.
 	//
 	// canonical 形态自身稳定（归一对磁盘拼写幂等）——既有 canonical 登记 key 不变。
-	if got := CanonicalCase(variant); got != proj {
-		t.Errorf(`CanonicalCase(变体)=%q，期望磁盘拼写 %q`, got, proj)
-	}
-	if got := CanonicalCase(proj); got != proj {
-		t.Errorf(`CanonicalCase(磁盘拼写) 应恒等：got=%q want=%q`, got, proj)
+	// 按设计仅 darwin（已确认决策）：Windows 的大小写收敛在
+	// PathKey/registry.pathKey 的 ToLower 分支（上面已经由 PathKey 断言），
+	// CanonicalCase 在非 darwin 是 GOOS 守卫的 no-op——无条件断言
+	// 变体→磁盘拼写打红了 windows-latest CI（2026-08-18 run 32115959961）。
+	// 非 darwin 改钉恒等契约。
+	if runtime.GOOS == `darwin` {
+		if got := CanonicalCase(variant); got != proj {
+			t.Errorf(`CanonicalCase(变体)=%q，期望磁盘拼写 %q`, got, proj)
+		}
+		if got := CanonicalCase(proj); got != proj {
+			t.Errorf(`CanonicalCase(磁盘拼写) 应恒等：got=%q want=%q`, got, proj)
+		}
+	} else {
+		if got := CanonicalCase(variant); got != variant {
+			t.Errorf(`非 darwin CanonicalCase 应恒等（no-op 设计）：got=%q want=%q`, got, variant)
+		}
+		if got := CanonicalCase(proj); got != proj {
+			t.Errorf(`非 darwin CanonicalCase(磁盘拼写) 应恒等：got=%q want=%q`, got, proj)
+		}
 	}
 }
