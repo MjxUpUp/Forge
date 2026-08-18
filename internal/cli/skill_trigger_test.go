@@ -28,7 +28,7 @@ func TestRecordSkillTriggerHits(t *testing.T) {
 		{Skill: "implementation-discipline", Reason: "coding_intent"},
 		{Skill: "tdd-cycle", Reason: "test_keyword"},
 	}
-	recordSkillTriggerHits(dir, ctx, hits, "", "1.99.0-test")
+	recordSkillTriggerHits(dir, ctx, hits, t.TempDir(), "", "1.99.0-test")
 
 	entries, err := checklog.LoadAll(dir)
 	if err != nil {
@@ -82,5 +82,119 @@ func TestRecordSkillTriggerHits(t *testing.T) {
 		if !found {
 			t.Fatalf("skill %q 未在任何 detail 中出现（被动触发应可观测）", h.Skill)
 		}
+	}
+}
+
+// TestRecordSkillTriggerHits_Meta 钉住 v2 结构化证据载荷：matched_keyword/match_source/
+// when/trigger_index/trigger_sig/prompt_hash/prompt_len 逐键落盘；cooldown 抑制计数在下次
+// 真实触发时回填 Meta 并清零；摘录默认关（FORGE_TRIGGER_EXCERPT 未设时不落 excerpt 键）。
+//
+// TestRecordSkillTriggerHits_Meta pins the v2 structured evidence payload:
+// matched_keyword/match_source/when/trigger_index/trigger_sig/prompt_hash/prompt_len all
+// land; the cooldown suppression count backfills Meta at the next actual fire and resets;
+// excerpts stay off by default (no excerpt key without FORGE_TRIGGER_EXCERPT).
+func TestRecordSkillTriggerHits_Meta(t *testing.T) {
+	dir := t.TempDir()
+	counterDir := t.TempDir()
+	ctx := skilltrigger.Context{
+		Event:       "UserPromptSubmit",
+		SessionID:   "sess-meta",
+		ProjectRoot: "/proj/a",
+		Prompt:      "编译报错了",
+	}
+	hits := []skilltrigger.Hit{{
+		Skill:          "compile-fix-loop",
+		Reason:         "r",
+		MatchedKeyword: "编译报错",
+		MatchSource:    skilltrigger.MatchSourcePrompt,
+		TriggerIndex:   1,
+		TriggerSig:     "ab12cd34",
+		PromptHash:     "hash0000aaaa",
+		PromptLen:      5,
+		Trigger:        skilltrigger.Trigger{Event: "UserPromptSubmit", When: "", Keywords: []string{"编译报错"}},
+	}}
+	// 预置 3 次 cooldown 抑制：下次触发应回填 suppressed_since_last=3 且计数清零。
+	counter := skilltrigger.NewFileSuppressedCounter(counterDir)
+	for i := 0; i < 3; i++ {
+		if err := counter.Incr("sess-meta", "compile-fix-loop"); err != nil {
+			t.Fatalf("Incr: %v", err)
+		}
+	}
+	recordSkillTriggerHits(dir, ctx, hits, counterDir, "", "1.99.0-test")
+
+	entries, err := checklog.LoadAll(dir)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("LoadAll err=%v entries=%d", err, len(entries))
+	}
+	meta := entries[0].Meta
+	if meta == nil {
+		t.Fatal("Meta 不应为 nil（v2 结构化证据缺失）")
+	}
+	wantKeys := map[string]string{
+		checklog.MetaKeyMatchedKeyword:      "编译报错",
+		checklog.MetaKeyMatchSource:         skilltrigger.MatchSourcePrompt,
+		checklog.MetaKeyTriggerIndex:        "1",
+		checklog.MetaKeyTriggerSig:          "ab12cd34",
+		checklog.MetaKeyPromptHash:          "hash0000aaaa",
+		checklog.MetaKeyPromptLen:           "5",
+		checklog.MetaKeySuppressedSinceLast: "3",
+	}
+	for k, want := range wantKeys {
+		if meta[k] != want {
+			t.Errorf("Meta[%s]=%q, want %q", k, meta[k], want)
+		}
+	}
+	if _, ok := meta[checklog.MetaKeyExcerpt]; ok {
+		t.Error("摘录默认应关（无 FORGE_TRIGGER_EXCERPT 时不得落 excerpt 键）")
+	}
+	if _, ok := meta[checklog.MetaKeyWhen]; ok {
+		t.Error("keyword-only 触发（When 空）不应落 when 键——缺键=不适用语义")
+	}
+	// 回填后计数清零：再次触发（同 session）不得再带上旧计数。
+	recordSkillTriggerHits(dir, ctx, hits, counterDir, "", "1.99.0-test")
+	entries2, _ := checklog.LoadAll(dir)
+	last := entries2[len(entries2)-1]
+	if v, ok := last.Meta[checklog.MetaKeySuppressedSinceLast]; ok && v != "0" {
+		t.Fatalf("回填后计数应清零, got suppressed_since_last=%q", v)
+	}
+}
+
+// TestRecordSuppressed_StopCapWarn 钉住 stop-max-rounds 抑制的 warn advisory：单条、
+// Level=warn、Detail 无 " hit (" 标记（SkillFromTriggerDetail 返回 "" → usage/funnel
+// 计数零污染）、Meta 带 cause/skills。
+//
+// TestRecordSuppressed_StopCapWarn pins the stop-max-rounds warn advisory: ONE entry,
+// Level=warn, Detail without the " hit (" marker (SkillFromTriggerDetail returns "" →
+// zero pollution of usage/funnel counts), Meta carrying cause/skills.
+func TestRecordSuppressed_StopCapWarn(t *testing.T) {
+	dir := t.TempDir()
+	ctx := skilltrigger.Context{Event: "Stop", SessionID: "sess-cap"}
+	suppressed := []skilltrigger.Suppressed{
+		{Skill: "a", Cause: skilltrigger.SuppressStopCap},
+		{Skill: "b", Cause: skilltrigger.SuppressStopCap},
+	}
+	recordSuppressed(dir, ctx, suppressed, t.TempDir(), "", "1.99.0-test")
+	entries, err := checklog.LoadAll(dir)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("stop-cap 应记 1 条 advisory, err=%v entries=%d", err, len(entries))
+	}
+	e := entries[0]
+	if e.Level != checklog.LevelWarn {
+		t.Fatalf("Level=%q, want warn", e.Level)
+	}
+	if checklog.SkillFromTriggerDetail(e.Detail) != "" {
+		t.Fatalf("advisory Detail 不含 hit 标记（防计数污染）, got %q", e.Detail)
+	}
+	if e.Meta[checklog.MetaKeyCause] != skilltrigger.SuppressStopCap {
+		t.Fatalf("Meta cause=%q", e.Meta[checklog.MetaKeyCause])
+	}
+	if e.Meta[checklog.MetaKeySkills] != "a,b" {
+		t.Fatalf("Meta skills=%q, want a,b", e.Meta[checklog.MetaKeySkills])
+	}
+	// cooldown 抑制不落 log 条目（只进计数器）。
+	recordSuppressed(dir, ctx, []skilltrigger.Suppressed{{Skill: "c", Cause: skilltrigger.SuppressCooldown}}, t.TempDir(), "", "1.99.0-test")
+	entries2, _ := checklog.LoadAll(dir)
+	if len(entries2) != 1 {
+		t.Fatalf("cooldown 抑制不应另落条目（只计数回填）, got %d", len(entries2))
 	}
 }

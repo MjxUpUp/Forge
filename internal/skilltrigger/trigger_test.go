@@ -39,10 +39,10 @@ func withCond(t *testing.T, name string, fn func(Context) bool) {
 func TestEval_FilterByEvent(t *testing.T) {
 	withCond(t, "c1", func(Context) bool { return true })
 	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{{Event: "Stop", When: "c1"}}}}
-	if hits := Eval(Context{Event: "UserPromptSubmit"}, all, nil); len(hits) != 0 {
+	if hits, _ := Eval(Context{Event: "UserPromptSubmit"}, all, nil); len(hits) != 0 {
 		t.Fatalf("event 不匹配应 0 命中，got %d", len(hits))
 	}
-	hits := Eval(Context{Event: "Stop"}, all, nil)
+	hits, _ := Eval(Context{Event: "Stop"}, all, nil)
 	if len(hits) != 1 || hits[0].Skill != "foo" {
 		t.Fatalf("应命中 foo，got %+v", hits)
 	}
@@ -52,14 +52,14 @@ func TestEval_KeywordsMatch(t *testing.T) {
 	all := []SkillTriggers{{Skill: "bar", Triggers: []Trigger{
 		{Event: "UserPromptSubmit", Keywords: []string{"飞书", "feishu"}},
 	}}}
-	if hits := Eval(Context{Event: "UserPromptSubmit", Prompt: "帮我查飞书日程"}, all, nil); len(hits) != 1 {
+	if hits, _ := Eval(Context{Event: "UserPromptSubmit", Prompt: "帮我查飞书日程"}, all, nil); len(hits) != 1 {
 		t.Fatalf("关键词命中应 1，got %d", len(hits))
 	}
-	if hits := Eval(Context{Event: "UserPromptSubmit", Prompt: "今天天气"}, all, nil); len(hits) != 0 {
+	if hits, _ := Eval(Context{Event: "UserPromptSubmit", Prompt: "今天天气"}, all, nil); len(hits) != 0 {
 		t.Fatalf("无关键词命中应 0，got %d", len(hits))
 	}
 	// 大小写不敏感
-	if hits := Eval(Context{Event: "UserPromptSubmit", Prompt: "FEISHU login"}, all, nil); len(hits) != 1 {
+	if hits, _ := Eval(Context{Event: "UserPromptSubmit", Prompt: "FEISHU login"}, all, nil); len(hits) != 1 {
 		t.Fatalf("大小写不敏感应命中，got %d", len(hits))
 	}
 }
@@ -70,14 +70,14 @@ func TestEval_KeywordsAndCondition(t *testing.T) {
 	all := []SkillTriggers{{Skill: "baz", Triggers: []Trigger{
 		{Event: "UserPromptSubmit", When: "kwand", Keywords: []string{"x"}},
 	}}}
-	if hits := Eval(Context{Event: "UserPromptSubmit", Prompt: "x"}, all, nil); len(hits) != 1 {
+	if hits, _ := Eval(Context{Event: "UserPromptSubmit", Prompt: "x"}, all, nil); len(hits) != 1 {
 		t.Fatalf("AND 都满足应命中，got %d", len(hits))
 	}
-	if hits := Eval(Context{Event: "UserPromptSubmit", Prompt: "y"}, all, nil); len(hits) != 0 {
+	if hits, _ := Eval(Context{Event: "UserPromptSubmit", Prompt: "y"}, all, nil); len(hits) != 0 {
 		t.Fatalf("关键词不满足 AND 应 0，got %d", len(hits))
 	}
 	Conditions["kwand"] = func(Context) bool { return false } // 覆盖测 false 分支
-	if hits := Eval(Context{Event: "UserPromptSubmit", Prompt: "x"}, all, nil); len(hits) != 0 {
+	if hits, _ := Eval(Context{Event: "UserPromptSubmit", Prompt: "x"}, all, nil); len(hits) != 0 {
 		t.Fatalf("condition false AND 应 0，got %d", len(hits))
 	}
 }
@@ -89,7 +89,7 @@ func TestEval_DeniedSkills(t *testing.T) {
 		{Skill: "skill-routing", Triggers: []Trigger{{Event: "Stop", When: "d"}}},
 		{Skill: "normal", Triggers: []Trigger{{Event: "Stop", When: "d"}}},
 	}
-	hits := Eval(Context{Event: "Stop"}, all, nil)
+	hits, _ := Eval(Context{Event: "Stop"}, all, nil)
 	if len(hits) != 1 || hits[0].Skill != "normal" {
 		t.Fatalf("应只命中 normal（denied 跳过），got %+v", hits)
 	}
@@ -101,13 +101,13 @@ func TestEval_StopMaxRounds(t *testing.T) {
 	noise := NewInMemoryNoiseController()
 	now := time.Now()
 	for i := 0; i < MaxStopRounds; i++ {
-		hits := Eval(Context{Event: "Stop", SessionID: "s1", Now: now}, all, noise)
+		hits, _ := Eval(Context{Event: "Stop", SessionID: "s1", Now: now}, all, noise)
 		if len(hits) != 1 {
 			t.Fatalf("第 %d 轮应命中，got %d", i+1, len(hits))
 		}
 		noise.IncrStopRound("s1") // 模拟 CLI 层落盘
 	}
-	if hits := Eval(Context{Event: "Stop", SessionID: "s1", Now: now}, all, noise); len(hits) != 0 {
+	if hits, _ := Eval(Context{Event: "Stop", SessionID: "s1", Now: now}, all, noise); len(hits) != 0 {
 		t.Fatalf("第 %d 轮应被 max-rounds 抑制，got %d", MaxStopRounds+1, len(hits))
 	}
 }
@@ -117,12 +117,12 @@ func TestEval_Cooldown(t *testing.T) {
 	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{{Event: "Stop", When: "c"}}}}
 	noise := NewInMemoryNoiseController()
 	t0 := time.Now()
-	hits := Eval(Context{Event: "Stop", SessionID: "s1", Now: t0}, all, noise)
+	hits, _ := Eval(Context{Event: "Stop", SessionID: "s1", Now: t0}, all, noise)
 	if len(hits) != 1 {
 		t.Fatal("首次应命中")
 	}
 	noise.Mark("s1", "foo", t0)
-	if hits := Eval(Context{Event: "Stop", SessionID: "s1", Now: t0.Add(10 * time.Second)}, all, noise); len(hits) != 0 {
+	if hits, _ := Eval(Context{Event: "Stop", SessionID: "s1", Now: t0.Add(10 * time.Second)}, all, noise); len(hits) != 0 {
 		t.Fatalf("cooldown 内应不命中，got %d", len(hits))
 	}
 }
@@ -138,17 +138,17 @@ func TestEval_MultiTriggerCooldownMax(t *testing.T) {
 	noise := NewInMemoryNoiseController()
 	t0 := time.Now()
 	// 两 trigger 都命中 → cooldown = max(60, 120) = 120
-	hits := Eval(Context{Event: "Stop", SessionID: "s1", Now: t0}, all, noise)
+	hits, _ := Eval(Context{Event: "Stop", SessionID: "s1", Now: t0}, all, noise)
 	if len(hits) != 1 {
 		t.Fatalf("首次应命中（两 trigger 都满足），got %d", len(hits))
 	}
 	noise.Mark("s1", "foo", t0)
 	// 90s：在首条 60 cooldown 外，但在 max(120) cooldown 内 → 不应命中（验证取 max）
-	if hits := Eval(Context{Event: "Stop", SessionID: "s1", Now: t0.Add(90 * time.Second)}, all, noise); len(hits) != 0 {
+	if hits, _ := Eval(Context{Event: "Stop", SessionID: "s1", Now: t0.Add(90 * time.Second)}, all, noise); len(hits) != 0 {
 		t.Fatalf("90s 在 max(120) cooldown 内应不命中（验证 cooldown 取 max 而非首条 60），got %d", len(hits))
 	}
 	// 121s：超 max(120) cooldown → 命中
-	if hits := Eval(Context{Event: "Stop", SessionID: "s1", Now: t0.Add(121 * time.Second)}, all, noise); len(hits) != 1 {
+	if hits, _ := Eval(Context{Event: "Stop", SessionID: "s1", Now: t0.Add(121 * time.Second)}, all, noise); len(hits) != 1 {
 		t.Fatalf("121s 超 max(120) cooldown 应命中，got %d", len(hits))
 	}
 }
@@ -158,10 +158,10 @@ func TestEval_MatchToolName(t *testing.T) {
 	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{
 		{Event: "PostToolUse", Match: "Bash", When: "c"},
 	}}}
-	if hits := Eval(Context{Event: "PostToolUse", ToolName: "Bash"}, all, nil); len(hits) != 1 {
+	if hits, _ := Eval(Context{Event: "PostToolUse", ToolName: "Bash"}, all, nil); len(hits) != 1 {
 		t.Fatal("Bash 应命中")
 	}
-	if hits := Eval(Context{Event: "PostToolUse", ToolName: "Write"}, all, nil); len(hits) != 0 {
+	if hits, _ := Eval(Context{Event: "PostToolUse", ToolName: "Write"}, all, nil); len(hits) != 0 {
 		t.Fatal("Write 不应命中 Bash matcher")
 	}
 }
