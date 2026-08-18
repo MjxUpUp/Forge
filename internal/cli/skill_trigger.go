@@ -20,6 +20,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
@@ -158,15 +161,18 @@ func runSkillTriggerCore(hookInput HookInput, root, version, agent string, dryRu
 	} else {
 		noise = skilltrigger.NewFileNoiseController(filepath.Join(baseDir, "skill-trigger"))
 	}
-	hits := skilltrigger.Eval(ctx, all, noise)
+	hits, suppressed := skilltrigger.Eval(ctx, all, noise)
 	if dryRun {
-		fmt.Fprintf(os.Stderr, "[skill-trigger] canonical=%s event=%s tool=%s prompt_len=%d 命中=%d\n",
-			canonicalDir, ctx.Event, ctx.ToolName, len(ctx.Prompt), len(hits))
+		fmt.Fprintf(os.Stderr, "[skill-trigger] canonical=%s event=%s tool=%s prompt_len=%d 命中=%d 抑制=%d\n",
+			canonicalDir, ctx.Event, ctx.ToolName, len(ctx.Prompt), len(hits), len(suppressed))
 		for _, h := range hits {
 			fmt.Fprintf(os.Stderr, "  命中 %s（%s）\n", h.Skill, h.Reason)
 		}
+		for _, s := range suppressed {
+			fmt.Fprintf(os.Stderr, "  抑制 %s（cause=%s）\n", s.Skill, s.Cause)
+		}
 	}
-	if len(hits) == 0 {
+	if len(hits) == 0 && len(suppressed) == 0 {
 		return "", nil
 	}
 	// 落盘副作用：Eval 只读判定（ShouldFire/StopRoundAllowed），确认注入后才 Mark/IncrStopRound。
@@ -177,12 +183,80 @@ func runSkillTriggerCore(hookInput HookInput, root, version, agent string, dryRu
 		if ctx.Event == "Stop" {
 			_ = noise.IncrStopRound(ctx.SessionID)
 		}
+		recordSuppressed(root, ctx, suppressed, filepath.Join(baseDir, "skill-trigger"), agent, version)
 		// 记录触发的 canonical skill 到 checklog——让 skill 触达在下游可观测（usage/effectiveness）。
 		// 否则 skill-trigger 静默注入 AdditionalContext、零持久轨迹，Forge 无法回答"哪些 skill 真触发过"
 		// （dogfood 0 触发盲区）。CheckSkillTrigger 不计入 evidence strength（观测非验证）——见 BuildEvidenceChain。
-		recordSkillTriggerHits(root, ctx, hits, agent, version)
+		recordSkillTriggerHits(root, ctx, hits, filepath.Join(baseDir, "skill-trigger"), agent, version)
+	}
+	if len(hits) == 0 {
+		// 只有抑制（如 stop-cap 触顶 / 全员 cooldown）：渲染无内容，但抑制记录已落。
+		return "", nil
 	}
 	return skilltrigger.Render(hits, ctx), nil
+}
+
+// recordSuppressed 处理 Eval 返回的抑制事件（辩论 P1）：
+//   - cooldown：计数器 +1，等该 skill 下次真实触发时回填 Meta（SuppressedCounter.Take）；
+//   - stop-max-rounds：每次触顶记一条 warn advisory（CheckKimiPluginStale 同款模式：Passed=true
+//     保持中性，warn 信号走 Level；Detail 刻意不含 " hit (" 标记，SkillFromTriggerDetail
+//     返回 ""，usage/funnel 计数零污染）。
+//
+// recordSuppressed handles suppressed events returned by Eval (debate P1):
+//   - cooldown: counter +1, backfilled into Meta at the skill's next actual fire
+//     (SuppressedCounter.Take);
+//   - stop-max-rounds: ONE warn advisory per cap trip (the CheckKimiPluginStale pattern:
+//     Passed=true stays neutral, the warn signal rides Level; the Detail deliberately
+//     lacks the " hit (" marker so SkillFromTriggerDetail returns "" — zero pollution of
+//     usage/funnel counts).
+func recordSuppressed(root string, ctx skilltrigger.Context, suppressed []skilltrigger.Suppressed, counterDir, agent, version string) {
+	if len(suppressed) == 0 {
+		return
+	}
+	counter := skilltrigger.NewFileSuppressedCounter(counterDir)
+	var stopCapped []string
+	for _, s := range suppressed {
+		switch s.Cause {
+		case skilltrigger.SuppressCooldown:
+			_ = counter.Incr(ctx.SessionID, s.Skill)
+		case skilltrigger.SuppressStopCap:
+			stopCapped = append(stopCapped, s.Skill)
+		}
+	}
+	if len(stopCapped) == 0 {
+		return
+	}
+	delivered, channel := contextChannelDelivered(agent, ctx.Event)
+	sort.Strings(stopCapped)
+	_ = checklog.Record(root, &checklog.Entry{
+		Check:        checklog.CheckSkillTrigger,
+		Passed:       true,
+		Checked:      true,
+		TaskRef:      taskRefForSession(root, ctx.SessionID),
+		SessionID:    ctx.SessionID,
+		Detail:       fmt.Sprintf("skill-trigger: stop-round-cap 达到上限，抑制 %d 个潜在注入（%s）", len(stopCapped), strings.Join(stopCapped, ",")),
+		Source:       checklog.EvidenceDeterministic,
+		Level:        checklog.LevelWarn,
+		Delivered:    &delivered,
+		Channel:      channel,
+		ForgeVersion: version,
+		Meta: map[string]string{
+			checklog.MetaKeyCause:  skilltrigger.SuppressStopCap,
+			checklog.MetaKeySkills: strings.Join(stopCapped, ","),
+		},
+	})
+}
+
+// taskRefForSession 提取 session 绑定的活跃 task ref（与 recordSkillTriggerHits 的判定一致，
+// 抽出为单一实现防两处漂移）。
+//
+// taskRefForSession extracts the active task ref bound to the session (same rule as
+// recordSkillTriggerHits, extracted to a single implementation so the two cannot drift).
+func taskRefForSession(root, sessionID string) string {
+	if active, err := taskpipeline.ActiveTaskState(root, sessionID); err == nil && active != nil {
+		return active.TaskRef
+	}
+	return ""
 }
 
 // buildTriggerContext 把 HookInput 转成引擎 Context（agent-neutral）。
@@ -217,11 +291,24 @@ func buildTriggerContext(hookInput HookInput, root string) skilltrigger.Context 
 // Forge 无法回答"哪些 canonical skill 真触发过"（dogfood 0 触发盲区）。CheckSkillTrigger 是 deterministic
 // （引擎实算声明式触发，agent 无法伪造）且不计入 evidence strength（观测非验证）——见 checklog.BuildEvidenceChain。
 // task_ref 仅当本 session 绑定了活跃（未完成）任务时附加，避免 complete 之后的 Stop 触发被错挂到已完成任务。
-func recordSkillTriggerHits(root string, ctx skilltrigger.Context, hits []skilltrigger.Hit, agent, version string) {
-	taskRef := ""
-	if active, err := taskpipeline.ActiveTaskState(root, ctx.SessionID); err == nil && active != nil {
-		taskRef = active.TaskRef
-	}
+//
+// v2（辩论 P0）：每条命中落 Entry.Meta 结构化证据（键契约 checklog.MetaKey*，单一真相源）——
+// matched_keyword/match_source（per-keyword 分析主键）、when、trigger_index/trigger_sig（规则
+// 身份，sig 抗数组重排）、prompt_hash/prompt_len（项目盐哈希，聚类不存原文）、
+// suppressed_since_last（cooldown 抑制回填）、excerpt（opt-in FORGE_TRIGGER_EXCERPT=1，脱敏
+// ±96 rune 窗口）。缺键语义 = 「未知/不适用」，读方不得当零值。
+//
+// v2 (debate P0): each hit lands a structured evidence payload in Entry.Meta (key contract
+// checklog.MetaKey*, single source of truth) — matched_keyword/match_source (primary key
+// for per-keyword analysis), when, trigger_index/trigger_sig (rule identity, sig survives
+// array reordering), prompt_hash/prompt_len (project-salted hash — clustering without
+// storing raw text), suppressed_since_last (cooldown backfill), excerpt (opt-in
+// FORGE_TRIGGER_EXCERPT=1, redacted ±96-rune window). Absent-key semantics =
+// "unknown/n-a", never zero-value.
+func recordSkillTriggerHits(root string, ctx skilltrigger.Context, hits []skilltrigger.Hit, counterDir, agent, version string) {
+	taskRef := taskRefForSession(root, ctx.SessionID)
+	counter := skilltrigger.NewFileSuppressedCounter(counterDir)
+	excerptOn := os.Getenv("FORGE_TRIGGER_EXCERPT") == "1"
 	// L1 送达章：一次 hook 调用里所有 hit 走同一 (agent, event) 通道，判定一次、逐条落章。
 	// Delivered/Channel/ForgeVersion 让 checklog 成为「真到达模型上下文」的真相源——usage 漏斗的
 	// 送达分母从此可靠，死通道宿主的命中不再虚计成送达（kimi 2026-08-15 修复的全宿主泛化）。
@@ -233,6 +320,39 @@ func recordSkillTriggerHits(root string, ctx skilltrigger.Context, hits []skillt
 	// generalization of the kimi 2026-08-15 fix).
 	delivered, channel := contextChannelDelivered(agent, ctx.Event)
 	for _, h := range hits {
+		meta := map[string]string{
+			checklog.MetaKeyMatchSource:  h.MatchSource,
+			checklog.MetaKeyTriggerIndex: strconv.Itoa(h.TriggerIndex),
+			checklog.MetaKeyTriggerSig:   h.TriggerSig,
+			checklog.MetaKeyPromptLen:    strconv.Itoa(h.PromptLen),
+		}
+		if h.MatchedKeyword != "" {
+			meta[checklog.MetaKeyMatchedKeyword] = h.MatchedKeyword
+		}
+		if h.Trigger.When != "" {
+			meta[checklog.MetaKeyWhen] = h.Trigger.When
+		}
+		if h.PromptHash != "" {
+			meta[checklog.MetaKeyPromptHash] = h.PromptHash
+		}
+		// 抑制回填：读取并清零该 skill 本 session 累计的 cooldown 抑制（>0 才落键，条目保持精瘦）。
+		//
+		// Suppression backfill: take-and-reset this skill's accumulated cooldown suppressions
+		// in this session (key written only when >0, keeping entries lean).
+		if n := counter.Take(ctx.SessionID, h.Skill); n > 0 {
+			meta[checklog.MetaKeySuppressedSinceLast] = strconv.Itoa(n)
+		}
+		if excerptOn {
+			// 摘录只记命中来源的那段文本，±96 rune，先过 secret 脱敏再落（默认关——R4/R7
+			// 隐私折中：hash 恒记已足聚类，摘录 opt-in 只服务 triage/挖矿）。
+			//
+			// The excerpt captures only the matched source text, ±96 runes, redacted before
+			// landing (off by default — the R4/R7 privacy compromise: the always-recorded
+			// hash already suffices for clustering; the opt-in excerpt serves triage/mining).
+			if ex := skilltrigger.Excerpt(ctx, h.MatchSource, h.MatchedKeyword, 96); ex != "" {
+				meta[checklog.MetaKeyExcerpt] = util.RedactSecrets(ex)
+			}
+		}
 		// Detail 经 checklog.DetailForSkillTrigger 单一真相源构造，与读取方
 		// (skillseval.SkillCountsFromChecklog → checklog.SkillFromTriggerDetail) 共契约，杜绝
 		// 两侧手工镜像格式串漂移致被动触发信号静默丢失（minor-1：跨包 stringly-typed 契约）。
@@ -254,6 +374,7 @@ func recordSkillTriggerHits(root string, ctx skilltrigger.Context, hits []skillt
 			Delivered:    &delivered,
 			Channel:      channel,
 			ForgeVersion: version,
+			Meta:         meta,
 		}); err != nil {
 			fmt.Fprintf(os.Stderr, "[skill-trigger] warning: checklog record failed: %v\n", err)
 		}

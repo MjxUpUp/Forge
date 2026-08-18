@@ -306,4 +306,20 @@ type Entry struct {
 	// ForgeVersion 是产出本条目的 forge 二进制版本（skill-trigger 漏斗按版本分组分析；
 	// 「这些命中发生时生产判定集是哪版」这类生产滞后问题从考古变成 join）。
 	ForgeVersion string `json:"forge_version,omitempty"`
+	// Meta carries check-specific structured key/values. Detail stays the human-readable
+	// summary; Meta is the machine payload for analysis surfaces (per-keyword trigger stats,
+	// suppression backfill, mining). Keys are namespaced per Check at the single source of
+	// truth — skill-trigger keys live in skill_trigger_detail.go (MetaKey*) — so writers and
+	// readers cannot drift apart, the same contract-seam discipline as DetailForSkillTrigger.
+	// Values must be short strings (human-scale, not document-scale); anything larger belongs
+	// in a sidecar store. omitempty: legacy entries (pre-Meta) decode with nil — readers treat
+	// absent key as "unknown", never as zero-value semantics.
+	//
+	// Meta 携带 check 专属的结构化键值。Detail 保持人类可读摘要；Meta 是分析面的机器
+	// 载荷（per-keyword 触发统计、抑制回填、挖矿）。键按 Check 在单一真相源处命名空间
+	// 化——skill-trigger 的键在 skill_trigger_detail.go（MetaKey*）——写读两侧不可能漂移，
+	// 与 DetailForSkillTrigger 同款契约缝纪律。值必须是短字符串（人类尺度，非文档尺度）；
+	// 更大的载荷属旁路存储。omitempty：旧条目（Meta 前）解码为 nil——读方把缺键当
+	// 「未知」，绝不当零值语义。
+	Meta map[string]string `json:"meta,omitempty"`
 }
