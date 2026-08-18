@@ -147,14 +147,81 @@ func TestEval_EvidenceFields(t *testing.T) {
 	if hits3[0].PromptHash != h.PromptHash {
 		t.Fatal("同项目同 prompt hash 不稳定（破坏跨 session 聚类）")
 	}
-	// 无 prompt（tool 事件）→ hash 为空、len 为 0。
+	// tool 事件（无 prompt）：hash 回退到命中来源文本（review m4——stdout 命中同样
+	// 可挖矿去重），PromptLen 仍为 0（记录的是 prompt 长度）。
+	//
+	// Tool event (no prompt): the hash falls back to the matched source text (review
+	// m4 — stdout hits stay minable/dedupable); PromptLen stays 0 (it counts the prompt).
 	toolAll := []SkillTriggers{{Skill: "bar", Triggers: []Trigger{{Event: "PostToolUse", Match: "Bash", Keywords: []string{"fail"}}}}}
-	th, _ := Eval(Context{Event: "PostToolUse", ToolName: "Bash", ToolOutput: map[string]any{"stdout": "build fail"}, SessionID: "s"}, toolAll, nil)
-	if len(th) != 1 || th[0].PromptHash != "" || th[0].PromptLen != 0 {
-		t.Fatalf("tool 事件 prompt 证据应为空: %+v", th)
+	th, _ := Eval(Context{Event: "PostToolUse", ToolName: "Bash", ProjectRoot: "/proj/a", ToolOutput: map[string]any{"stdout": "build fail"}, SessionID: "s"}, toolAll, nil)
+	if len(th) != 1 || th[0].PromptHash == "" || th[0].PromptLen != 0 {
+		t.Fatalf("tool 事件应有来源回退 hash 且 PromptLen=0: %+v", th)
 	}
 	if th[0].MatchSource != MatchSourceStdout {
 		t.Fatalf("tool 事件应归因 stdout: %q", th[0].MatchSource)
+	}
+}
+
+// TestEval_TriggerSigMatchesDeclared 钉死 review M1：Eval 落盘的 sig 必须等于对「声明态」
+// 规则重算的 sig——含多 trigger 取 maxCD 场景（覆写 Cooldown 后计算会让缺省 cooldown 的
+// 规则带上归一化 60，同一声明规则劈裂出多个 sig，纵向统计 join 不回 SKILL.md）。
+//
+// TestEval_TriggerSigMatchesDeclared pins review M1: the sig Eval produces must equal
+// the sig recomputed over the rule AS DECLARED — including the multi-trigger maxCD
+// scenario (computing after the Cooldown overwrite bakes the normalized 60 into
+// default-cooldown rules, splitting one declared rule into several sigs that can
+// never join back to SKILL.md).
+func TestEval_TriggerSigMatchesDeclared(t *testing.T) {
+	declared := Trigger{Event: "UserPromptSubmit", Keywords: []string{"编译报错"}} // Cooldown 缺省（0）
+	// 后一条 trigger 声明更大 cooldown：两 trigger 同 event 同 keywords 都命中 → maxCD=120。
+	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{
+		declared,
+		{Event: "UserPromptSubmit", Keywords: []string{"编译报错"}, Cooldown: 120},
+	}}}
+	hits, _ := Eval(Context{Event: "UserPromptSubmit", Prompt: "编译报错", ProjectRoot: "/p", SessionID: "s"}, all, nil)
+	if len(hits) != 1 {
+		t.Fatalf("应命中 1 条, got %d", len(hits))
+	}
+	h := hits[0]
+	if h.Trigger.Cooldown != 120 {
+		t.Fatalf("Hit.Trigger.Cooldown 应为应用值 120, got %d", h.Trigger.Cooldown)
+	}
+	wantSig := triggerSig(declared)
+	if h.TriggerSig != wantSig {
+		t.Fatalf("sig 必须对声明态计算（maxCD 覆写会劈裂规则身份）: got %q, want %q", h.TriggerSig, wantSig)
+	}
+}
+
+// TestEval_NoRootNoHash 钉死 review m2：非 forge 目录（ProjectRoot 空）不落 hash——空盐
+// 会让全部非 forge session 坍缩进同一全局桶，跨项目关联恰在盐缺位处成立。
+//
+// TestEval_NoRootNoHash pins review m2: non-forge dirs (empty ProjectRoot) carry no
+// hash — an empty salt would collapse every non-forge session into one global bucket,
+// making cross-project correlation hold exactly where the salt is missing.
+func TestEval_NoRootNoHash(t *testing.T) {
+	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{{Event: "UserPromptSubmit", Keywords: []string{"x"}}}}}
+	hits, _ := Eval(Context{Event: "UserPromptSubmit", Prompt: "x here", SessionID: "s"}, all, nil)
+	if len(hits) != 1 || hits[0].PromptHash != "" {
+		t.Fatalf("无 ProjectRoot 不得落 hash（宁缺哈希不做全局桶）: %+v", hits)
+	}
+}
+
+// TestEval_StopCapSkipsDisabled 钉死 review m1：显式禁用的 skill 在 stop-cap 触顶时
+// 不得被记成"被抑制的潜在注入"。
+//
+// TestEval_StopCapSkipsDisabled pins review m1: explicitly disabled skills must not
+// be recorded as "suppressed would-be injections" when the Stop cap trips.
+func TestEval_StopCapSkipsDisabled(t *testing.T) {
+	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{{Event: "Stop"}}}}
+	noise := NewInMemoryNoiseController()
+	now := time.Now()
+	for i := 0; i < MaxStopRounds; i++ {
+		noise.IncrStopRound("s1")
+	}
+	t.Setenv("FORGE_SKILL_TRIGGER_DISABLE", "foo")
+	hits, sup := Eval(Context{Event: "Stop", SessionID: "s1", Now: now}, all, noise)
+	if len(hits) != 0 || len(sup) != 0 {
+		t.Fatalf("禁用 skill 即便 stop-cap 触顶也不算抑制: hits=%d sup=%+v", len(hits), sup)
 	}
 }
 

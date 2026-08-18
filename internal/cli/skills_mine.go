@@ -38,12 +38,12 @@ var skillsMineCmd = &cobra.Command{
 	Long: "把 checklog 里的 CheckSkillTrigger 记录（带 opt-in 摘录）× toollog engaged 判定挖成 golden case 草稿：\n" +
 		"  - engaged=true 的命中 → trigger 正例候选；engaged=false → not-trigger（near-miss）负例候选\n" +
 		"  - 按 prompt_hash 跨 session 去重，每 skill 至多 " + strconv.Itoa(skillseval.MaxMinedPerSkill) + " 条，草稿写 <eval-dir>/mined/<skill>.draft.json\n" +
-		"  - 草稿不自动进 golden：人工改写（--sanitize 已做机械脱敏，改写仍在环上）后走 evals/golden/ 策展\n" +
+		"  - 草稿不自动进 golden：人工改写（草稿已过机械脱敏，改写仍在环上）后走 evals/golden/ 策展\n" +
 		"  - recall 侧（该触发没触发）不在命中日志里，本命令明示不解决\n\n" +
 		"Mine CheckSkillTrigger records (with opt-in excerpts) × toollog engagement into golden-case drafts:\n" +
 		"  - engaged=true hits → trigger positives; engaged=false → not-trigger (near-miss) negatives\n" +
 		"  - deduped by prompt_hash across sessions, at most " + strconv.Itoa(skillseval.MaxMinedPerSkill) + " per skill; drafts land in <eval-dir>/mined/<skill>.draft.json\n" +
-		"  - drafts NEVER auto-enter golden: rewrite by hand (--sanitize did the mechanical redaction) then curate into evals/golden/\n" +
+		"  - drafts NEVER auto-enter golden: rewrite by hand (drafts already passed mechanical redaction) then curate into evals/golden/\n" +
 		"  - the recall side (should-have-fired) is not in a hit log — explicitly not solved here",
 	RunE: runSkillsMine,
 }
