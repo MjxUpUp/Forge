@@ -5,7 +5,7 @@ metadata:
   pattern: pipeline + gate
   domain: workflow
   composes: [agent-delegation]
-  triggers: [{"event":"PreToolUse","match":"Agent|Task","reason":"派生子 agent 前过四问 gate（输入体积/独立性/输出契约/兜底），防失控与上下文爆掉","cooldown":300},{"event":"UserPromptSubmit","keywords":["派子agent","派生子","子 agent","后台agent","fan-out","并行agent","多agent","agent team","收拢"],"cooldown":600}]
+  triggers: [{"event":"PreToolUse","match":"Agent|Task","when":"source_changed_uncommitted","reason":"派生子 agent 前过四问 gate（输入体积/独立性/输出契约/兜底），防失控与上下文爆掉","cooldown":300},{"event":"UserPromptSubmit","keywords":["派子agent","派生子","子 agent","后台agent","fan-out","并行agent","多agent","agent team","收拢"],"cooldown":600}]
 ---
 
 # 子 agent 派生与收拢纪律

@@ -2,6 +2,15 @@
 
 一次真实迁移的完整记录（Tauri 桌面应用，React + CSS Modules）。**这是案例不是规范**——可迁移的方法论在主 SKILL.md，此处细节供落地时对照参考，色板/组件名/范式选择换成你自己项目的。
 
+## 目录
+
+- [Phase 0 实录 — 地基（token 改造）](#phase-0-实录--地基token-改造)
+- [Phase 1 实录 — 原子组件库（签名原子）](#phase-1-实录--原子组件库签名原子)
+- [Phase 2 实录 — 布局外壳（自动继承）](#phase-2-实录--布局外壳自动继承)
+- [Phase 3 实录 — 逐页重构](#phase-3-实录--逐页重构)
+- [Phase N 实录 — 多套正交主题（tide/ink/moss × light/dark）](#phase-n-实录--多套正交主题tideinkmoss--lightdark)
+- [实录中的陷阱现场](#实录中的陷阱现场)
+
 ## Phase 0 实录 — 地基（token 改造）
 
 ### 0.1 变量重映射

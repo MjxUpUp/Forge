@@ -1,6 +1,6 @@
 ---
 name: merge-release-choreography
-description: "合并发版收尾全流程编排：预检→卫生清扫→commit→merge→tag/构建→push→registry 核查→清分支→装机验证。Use when: 用户说'准备合并''合并发版''提交合并推送''准备push''发版清理分支''准备发版''ok准备合并发版'等收尾指令时、一个功能分支要走完合并到发布的最后一段时、发版后要验证安装是否生效时。SKIP: 发布前 go/no-go 门禁清单（用 release-readiness，本 skill 消费其结论不重审）、单次 diff 代码审查（用 code-review-gate）、运行时 bug 排查（用 systematic-debugging）、只写代码不发布（用 implementation-discipline）。"
+description: "合并发版收尾编排：预检→卫生清扫→commit→merge→tag/构建→push→registry 核查→清分支→装机验证。Use when: 用户说'准备合并''合并发版''提交合并推送''准备push''发版清理分支''准备发版''ok准备合并发版'等收尾指令时、一个功能分支要走完合并到发布的最后一段时、发版后要验证安装是否生效时。SKIP: 发布前 go/no-go 门禁清单（用 release-readiness，本 skill 消费其结论不重审）、单次 diff 代码审查（用 code-review-gate）、运行时 bug 排查（用 systematic-debugging）、只写代码不发布（用 implementation-discipline）。"
 metadata:
   pattern: pipeline
   domain: operations
