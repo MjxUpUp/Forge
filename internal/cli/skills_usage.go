@@ -7,8 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/skillseval"
 	"github.com/MjxUpUp/Forge/internal/skilltrigger"
+	"github.com/MjxUpUp/Forge/internal/toolusage"
 	"github.com/spf13/cobra"
 )
 
@@ -16,6 +18,7 @@ var (
 	skUseTop          int
 	skUseUndertrigger bool
 	skUseJSON         bool
+	skUseByKeyword    bool
 )
 
 var skillsUsageCmd = &cobra.Command{
@@ -47,6 +50,18 @@ func runSkillsUsage(cmd *cobra.Command, args []string) error {
 	canonical, _, err := resolveCanonical()
 	if err != nil {
 		return err
+	}
+	// --by-keyword 分支在最前（review m3/m4）：不需要 usage/funnel 报告——放后面会被
+	// --json/--undertrigger 静默吞掉，且 AnalyzeUsageWithFunnel 的双份 LoadAllAll 白跑、
+	// 其失败还会连带 by-keyword 不可用。--json 同样支持（KeywordReport 序列化出口）。
+	//
+	// The --by-keyword branch comes first (review m3/m4): it needs no usage/funnel
+	// report — later placement let --json/--undertrigger silently swallow it, and
+	// AnalyzeUsageWithFunnel's duplicate LoadAllAll runs were wasted whose failure
+	// would also break by-keyword. --json supported here too (KeywordReport's
+	// serialization outlet).
+	if skUseByKeyword {
+		return runSkillsUsageByKeyword(proj.GitRoot, canonical)
 	}
 	rep, err := skillseval.AnalyzeUsageWithFunnel(proj.GitRoot, canonical)
 	if err != nil {
@@ -150,6 +165,108 @@ func runSkillsUsage(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// runSkillsUsageByKeyword 渲染 per-keyword 触发分析（P0.5）：命中/engaged/抑制切片 +
+// 死关键词。宿主偏差标注强制随行（G3）——engaged 信号只在产生工具事件的宿主可见，
+// codex/cursor 等注入型宿主天然零信号，裸报"低遵循率"会把宿主能力差误读为关键词噪声。
+//
+// runSkillsUsageByKeyword renders the per-keyword trigger analysis (P0.5):
+// hits/engaged/suppressed slices + dead keywords. The host-bias caveat is mandatory
+// (G3) — the engagement signal only exists on hosts that emit tool events; injection
+// hosts (codex/cursor etc.) naturally produce none, and a bare "low compliance rate"
+// would misread a host capability gap as keyword noise.
+func runSkillsUsageByKeyword(root, canonical string) error {
+	entries, err := checklog.LoadAllAll(root)
+	if err != nil {
+		return fmt.Errorf("checklog 读取失败: %w", err)
+	}
+	calls, err := toolusage.LoadAllAll(root)
+	if err != nil {
+		return fmt.Errorf("toollog 读取失败: %w", err)
+	}
+	// 声明关键词集：skill → 该 skill 全部 triggers 声明的关键词并集（review n2：seen
+	// 预建到 skill 层）。
+	//
+	// Declared keyword sets: skill → union of keywords across all its triggers
+	// (review n2: seen pre-built at the skill level).
+	declared := map[string][]string{}
+	seen := map[string]map[string]bool{}
+	for _, st := range skilltrigger.LoadAll(canonical) {
+		if seen[st.Skill] == nil {
+			seen[st.Skill] = map[string]bool{}
+		}
+		for _, tr := range st.Triggers {
+			for _, kw := range tr.Keywords {
+				kw = strings.TrimSpace(kw)
+				if kw == "" || seen[st.Skill][kw] {
+					continue
+				}
+				seen[st.Skill][kw] = true
+				declared[st.Skill] = append(declared[st.Skill], kw)
+			}
+		}
+	}
+	rep := skillseval.AnalyzeKeywords(entries, calls, declared)
+
+	if skUseJSON {
+		b, _ := json.MarshalIndent(rep, "", "  ")
+		fmt.Println(string(b))
+		return nil
+	}
+
+	fmt.Printf("Per-keyword 触发分析  (源: checklog CheckSkillTrigger × toollog engaged · v2 Meta)\n")
+	fmt.Printf("窗口内命中总数: %d（其中 v2 证据条目 %d）", rep.TotalHits, rep.V2Hits)
+	if rep.TotalHits == 0 {
+		fmt.Println("\n（无命中记录——窗口内零命中）")
+		return nil
+	}
+	fmt.Println()
+	if len(rep.Stats) > 0 {
+		fmt.Printf("\n=== 关键词切片（命中降序）===\n")
+		fmt.Printf("  %-28s %-20s %4s %4s %4s\n", "skill", "keyword", "命中", "加载", "抑制")
+		for _, st := range rep.Stats {
+			fmt.Printf("  %-28s %-20s %4d %4d %4d\n", st.Skill, st.Keyword, st.Hits, st.Engaged, st.Suppressed)
+		}
+	}
+	if total := condTotal(rep.ConditionOnly); total > 0 {
+		fmt.Printf("\n  condition/legacy 触发: %d 次（无 matched_keyword——命名 condition 或 v2 前旧条目，按 skill: %s）\n",
+			total, condSkills(rep.ConditionOnly))
+	}
+	if len(rep.DeadKeywords) > 0 {
+		limit := 20
+		fmt.Printf("\n=== 死关键词（声明 %d 个从未命中——关键词表删除候选）===\n", len(rep.DeadKeywords))
+		for i, d := range rep.DeadKeywords {
+			if i >= limit {
+				fmt.Printf("  ... 还有 %d 个\n", len(rep.DeadKeywords)-limit)
+				break
+			}
+			fmt.Printf("  %-28s %s\n", d.Skill, d.Keyword)
+		}
+	} else if rep.V2Hits < rep.TotalHits {
+		fmt.Printf("\n（死关键词检测停用：窗口混有 %d 条 v1 条目——归因上线前的\"零命中\"不构成删除依据，需全窗口 v2 证据）\n", rep.TotalHits-rep.V2Hits)
+	}
+	fmt.Printf("\n注: 加载=命中后 10min 内同 session Read/Skill 调用（per-hit 归因，无漏斗去重）。宿主偏差: 该信号仅在产生工具事件的宿主（如 Claude Code）可见，codex/cursor 等注入型宿主天然零信号——低加载率可能反映宿主形态而非关键词噪声。抑制列按 skill 累计、挂在触发行（跨词比较会错挂，按 skill 汇总读）。\n")
+	return nil
+}
+
+// condTotal/condSkills 汇总 condition-only 行（per-skill）。
+//
+// condTotal/condSkills summarize the per-skill condition-only rows.
+func condTotal(rows []skillseval.KeywordStat) int {
+	n := 0
+	for _, r := range rows {
+		n += r.Hits
+	}
+	return n
+}
+
+func condSkills(rows []skillseval.KeywordStat) string {
+	names := make([]string, 0, len(rows))
+	for _, r := range rows {
+		names = append(names, fmt.Sprintf("%s×%d", r.Skill, r.Hits))
+	}
+	return strings.Join(names, ", ")
+}
+
 // repoTriggerSet 返回仓库源 skills/ 下带 triggers 声明的 skill 名集；nil = 不可比较。
 // 两种不可比较：目录不存在（非 forge 仓库内运行），或目录存在但零个带 triggers 的 skill
 // （多半是恰好有 skills/ 目录的非 Forge 项目——置成可比会渲染出假的「与仓库源一致」，
@@ -186,6 +303,7 @@ func ellipsisIf(more bool) string {
 func init() {
 	skillsUsageCmd.Flags().IntVar(&skUseTop, "top", 10, "热门 skill 显示数量")
 	skillsUsageCmd.Flags().BoolVar(&skUseUndertrigger, "undertrigger", false, "只看从未触发的 skill")
+	skillsUsageCmd.Flags().BoolVar(&skUseByKeyword, "by-keyword", false, "per-keyword 触发分析（命中/engaged/抑制切片 + 死关键词）")
 	skillsUsageCmd.Flags().BoolVar(&skUseJSON, "json", false, "JSON 输出")
 	skillsCmd.AddCommand(skillsUsageCmd)
 }

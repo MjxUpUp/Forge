@@ -125,3 +125,60 @@ func TestPruneOldTasks(t *testing.T) {
 		t.Error("in-progress task should be kept")
 	}
 }
+
+// TestPruneOldTasks_GatesDoneNeverCompletedZombie 钉住 2026-08-18 死锁修复引入的新滞留类
+// 回收（review m2）：门禁全过但从未 `forge task complete`（CompletedAt==nil）。老化锚是
+// 最后一道 gate 的通过时间——启动早但门禁刚过的长命任务不得被误杀。
+//
+// TestPruneOldTasks_GatesDoneNeverCompletedZombie pins pruning of the new straggler
+// class from the 2026-08-18 deadlock fix (review m2): all gates passed but never
+// `forge task complete`d (CompletedAt==nil). The aging anchor is the LAST gate's pass
+// time — a long-lived task whose gates passed recently must not be culled for having
+// started early.
+func TestPruneOldTasks_GatesDoneNeverCompletedZombie(t *testing.T) {
+	dir := t.TempDir()
+	// 僵尸类：三门全过、无 CompletedAt、最后一道门在 2020 年通过 → 回收。
+	//
+	// Zombie class: all gates passed, no CompletedAt, last gate back in 2020 → pruned.
+	oldGate := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	zombie := &TaskState{TaskRef: "feat/zombie", Branch: "feat/zombie", StartedAt: oldGate}
+	for _, g := range DefaultGates() {
+		zombie.RecordGateResult(g.ID, true, "")
+	}
+	// RecordGateResult 打的是当前时间——把 History 末条时间戳改老，模拟门禁早过。
+	//
+	// RecordGateResult stamps now — age the final History entry to simulate gates
+	// passed long ago.
+	h := zombie.History[len(zombie.History)-1]
+	h.CompletedAt = oldGate
+	zombie.History[len(zombie.History)-1] = h
+	if err := SaveTaskState(dir, zombie); err != nil {
+		t.Fatalf("SaveTaskState zombie: %v", err)
+	}
+	// 长命任务：启动于 2020、但最后一道门刚通过（now）→ 保留（StartedAt 锚会误杀）。
+	//
+	// Long-lived task: started in 2020 but last gate passed just now → kept (a
+	// StartedAt anchor would cull it wrongly).
+	freshGate := &TaskState{TaskRef: "feat/fresh-gate", Branch: "feat/fresh-gate", StartedAt: oldGate}
+	for _, g := range DefaultGates() {
+		freshGate.RecordGateResult(g.ID, true, "")
+	}
+	if err := SaveTaskState(dir, freshGate); err != nil {
+		t.Fatalf("SaveTaskState fresh-gate: %v", err)
+	}
+
+	cutoff := time.Now().AddDate(0, 0, -30)
+	removed, err := PruneOldTasks(dir, cutoff)
+	if err != nil {
+		t.Fatalf("PruneOldTasks: %v", err)
+	}
+	if removed != 1 {
+		t.Fatalf("removed = %d, want 1 (only the aged zombie)", removed)
+	}
+	if _, err := LoadTaskState(dir, "feat/zombie"); err == nil {
+		t.Error("aged gates-done-never-completed zombie should be pruned")
+	}
+	if _, err := LoadTaskState(dir, "feat/fresh-gate"); err != nil {
+		t.Error("recently-gated long-lived task must be kept（老化锚=最后门禁时间，非 StartedAt）")
+	}
+}
