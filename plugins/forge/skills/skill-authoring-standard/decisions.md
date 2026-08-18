@@ -103,3 +103,25 @@ metadata补triggers(keywords/cooldown;skill-authoring-standard用新condition sk
 ### Evidence
 
 skills-hitrate-review-2026-08-15:四源425会话挖掘语料+trigger覆盖10%缺口
+
+## [d-18ccd74544cc7ea0-7299f220] accept
+
+- **Skill**: skill-authoring-standard
+- **DecidedAt**: 2026-08-18T07:57:24Z
+- **By**: kimi
+
+### Diagnosis
+
+triggers 的 keywords/when 语义陷阱非显然且 R12 查不出：PreToolUse match Agent|Task 配 keywords = 三匹配源（prompt/command/stdout）全空，永不触发；validation-rules.md 的 when 词表还漏了 skill_file_touched（与 rules.go drift）
+
+### Revision
+
+references/validation-rules.md：R12 行补 skill_file_touched；新增「triggers 匹配语义陷阱」小节（keywords 匹配源、工具门禁类用 when、GitHub slugger 双连字符锚点）
+
+### Evidence
+
+2026-08-18 subagent-orchestration trigger 修复时的引擎源码核实（skilltrigger sourceText）；forge skills validate 复跑 52/0
+
+### Rationale
+
+每个写 triggers 的人都会踩，论证过一次不该再论证第二次
