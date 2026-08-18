@@ -54,6 +54,11 @@ func init() {
 	// Global project registry cleanup (cleanup counterpart to init's self-registration; backticks guard against Windows quote corruption).
 	//
 	registryCmd.GroupID = `lifecycle` // 全局项目注册表清理（init 自登记的对应清理入口；反引号防 Windows 引号腐蚀）
+	// 项目数据跨机器导出/导入/身份对齐（project-sync：与 init/migrate/registry 同族的项目级数据管理）。
+	//
+	// Cross-machine project-data export/import/identity alignment (project-sync:
+	// project-level data management, same family as init/migrate/registry).
+	projectCmd.GroupID = `lifecycle`
 
 	// Project pipeline: project-level state (status is the main entry).
 	//
