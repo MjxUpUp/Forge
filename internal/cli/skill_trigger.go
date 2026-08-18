@@ -198,17 +198,27 @@ func runSkillTriggerCore(hookInput HookInput, root, version, agent string, dryRu
 
 // recordSuppressed 处理 Eval 返回的抑制事件（辩论 P1）：
 //   - cooldown：计数器 +1，等该 skill 下次真实触发时回填 Meta（SuppressedCounter.Take）；
-//   - stop-max-rounds：每次触顶记一条 warn advisory（CheckKimiPluginStale 同款模式：Passed=true
-//     保持中性，warn 信号走 Level；Detail 刻意不含 " hit (" 标记，SkillFromTriggerDetail
-//     返回 ""，usage/funnel 计数零污染）。
+//   - stop-max-rounds：**每 session 至多一条** warn advisory（review M2：无节流会在长
+//     session 里逐 Stop 刷条目——source_changed_uncommitted 类 condition 编码中恒真，
+//     MaxStopRounds 触顶后每个 Stop 回合都落一条，恰是 suppressed.go 声称要避免的日志
+//     淹没。CheckKimiPluginStale 的 daily 节流同款思想，session 粒度足够——cap 一旦
+//     触顶信息量就不再增长）。Passed=true 保持中性，warn 信号走 Level；Detail 刻意不含
+//     " hit (" 标记，SkillFromTriggerDetail 返回 ""，usage/funnel 计数零污染。不带
+//     Delivered/Channel 章（review n5——该事件从未向模型注入任何内容，送达语义不适用）。
 //
 // recordSuppressed handles suppressed events returned by Eval (debate P1):
 //   - cooldown: counter +1, backfilled into Meta at the skill's next actual fire
 //     (SuppressedCounter.Take);
-//   - stop-max-rounds: ONE warn advisory per cap trip (the CheckKimiPluginStale pattern:
-//     Passed=true stays neutral, the warn signal rides Level; the Detail deliberately
-//     lacks the " hit (" marker so SkillFromTriggerDetail returns "" — zero pollution of
-//     usage/funnel counts).
+//   - stop-max-rounds: at most ONE warn advisory per session (review M2: without
+//     throttling, long sessions log an entry per Stop round — conditions like
+//     source_changed_uncommitted are near-always true while coding, so every Stop
+//     past the cap would write one, exactly the log-flooding suppressed.go says it
+//     avoids. Same idea as CheckKimiPluginStale's daily throttle; session granularity
+//     suffices — once the cap trips, the information stops growing). Passed=true
+//     stays neutral, the warn signal rides Level; the Detail deliberately lacks the
+//     " hit (" marker so SkillFromTriggerDetail returns "" — zero pollution of
+//     usage/funnel counts. No Delivered/Channel stamp (review n5 — nothing was ever
+//     injected to the model on this event; delivery semantics do not apply).
 func recordSuppressed(root string, ctx skilltrigger.Context, suppressed []skilltrigger.Suppressed, counterDir, agent, version string) {
 	if len(suppressed) == 0 {
 		return
@@ -226,9 +236,15 @@ func recordSuppressed(root string, ctx skilltrigger.Context, suppressed []skillt
 	if len(stopCapped) == 0 {
 		return
 	}
-	delivered, channel := contextChannelDelivered(agent, ctx.Event)
+	// session 级节流 marker：已记过即静默（counter 目录同寿命）。
+	//
+	// Session-level throttle marker: silent once recorded (same lifespan as the counter dir).
+	marker := filepath.Join(counterDir, util.SanitizeSessionID(ctx.SessionID), "stopcap-advisory.marker")
+	if _, err := os.Stat(marker); err == nil {
+		return
+	}
 	sort.Strings(stopCapped)
-	_ = checklog.Record(root, &checklog.Entry{
+	if err := checklog.Record(root, &checklog.Entry{
 		Check:        checklog.CheckSkillTrigger,
 		Passed:       true,
 		Checked:      true,
@@ -237,14 +253,15 @@ func recordSuppressed(root string, ctx skilltrigger.Context, suppressed []skillt
 		Detail:       fmt.Sprintf("skill-trigger: stop-round-cap 达到上限，抑制 %d 个潜在注入（%s）", len(stopCapped), strings.Join(stopCapped, ",")),
 		Source:       checklog.EvidenceDeterministic,
 		Level:        checklog.LevelWarn,
-		Delivered:    &delivered,
-		Channel:      channel,
 		ForgeVersion: version,
 		Meta: map[string]string{
 			checklog.MetaKeyCause:  skilltrigger.SuppressStopCap,
 			checklog.MetaKeySkills: strings.Join(stopCapped, ","),
 		},
-	})
+	}); err == nil {
+		_ = os.MkdirAll(filepath.Dir(marker), 0755)
+		_ = util.AtomicWrite(marker, []byte("1"), 0644)
+	}
 }
 
 // taskRefForSession 提取 session 绑定的活跃 task ref（与 recordSkillTriggerHits 的判定一致，
@@ -320,11 +337,21 @@ func recordSkillTriggerHits(root string, ctx skilltrigger.Context, hits []skillt
 	// generalization of the kimi 2026-08-15 fix).
 	delivered, channel := contextChannelDelivered(agent, ctx.Event)
 	for _, h := range hits {
+		// 缺键 = 「未知/不适用」契约（review m5）：仅写已知项——condition-only 触发不落
+		// match_source（值恒 "" 与缺键不可分）；prompt_len 只在哈希真的来自 prompt 时落
+		//（tool 事件的回退哈希来自来源文本，prompt_len=0 与之 pairing 是语义错位）。
+		//
+		// Absent-key = "unknown/n-a" contract (review m5): write only what is known —
+		// condition-only triggers carry no match_source (a "" value would be
+		// indistinguishable from an absent key); prompt_len only when the hash truly
+		// came from the prompt (a tool event's fallback hash comes from the source
+		// text — pairing it with prompt_len=0 would be a semantic mismatch).
 		meta := map[string]string{
-			checklog.MetaKeyMatchSource:  h.MatchSource,
 			checklog.MetaKeyTriggerIndex: strconv.Itoa(h.TriggerIndex),
 			checklog.MetaKeyTriggerSig:   h.TriggerSig,
-			checklog.MetaKeyPromptLen:    strconv.Itoa(h.PromptLen),
+		}
+		if h.MatchSource != "" {
+			meta[checklog.MetaKeyMatchSource] = h.MatchSource
 		}
 		if h.MatchedKeyword != "" {
 			meta[checklog.MetaKeyMatchedKeyword] = h.MatchedKeyword
@@ -334,6 +361,9 @@ func recordSkillTriggerHits(root string, ctx skilltrigger.Context, hits []skillt
 		}
 		if h.PromptHash != "" {
 			meta[checklog.MetaKeyPromptHash] = h.PromptHash
+			if ctx.Prompt != "" {
+				meta[checklog.MetaKeyPromptLen] = strconv.Itoa(h.PromptLen)
+			}
 		}
 		// 抑制回填：读取并清零该 skill 本 session 累计的 cooldown 抑制（>0 才落键，条目保持精瘦）。
 		//

@@ -7,10 +7,11 @@ package skillseval
 //     的 not-trigger（near-miss）负例候选；"触发且 engaged=true" 是正例候选。recall 侧
 //     （该触发没触发）在命中日志中结构性不存在（没发生的事件没有日志，信息论约束），
 //     明示不解决——那条线走 transcript 取证与人工构造（与官方 skill-creator 同路）。
-//   - 挖矿原料 = Entry.Meta 的 prompt_hash（去重键）+ excerpt（opt-in 采集的真实输入
+//   - 挖矿原料 = Entry.Meta 的 prompt_hash（去重键，prompt 或 tool 事件命中来源文本的
+//     项目盐哈希——stdout 命中同样可挖，review m4）+ excerpt（opt-in 采集的真实输入
 //     脱敏摘录，FORGE_TRIGGER_EXCERPT=1）。无摘录数据时挖矿如实报告零可用——不降级、
 //     不假装。
-//   - 草稿永不自动进 golden：--sanitize 改写+脱敏是把「真实话语改写」从注释约定升为
+//   - 草稿永不自动进 golden：机械改写+脱敏（SanitizeDraft，无条件执行）是把「真实话语改写」从注释约定升为
 //     机械步骤（R4），但人工策展仍在环上（half-automatic，与 skillseval 定位一致）。
 //   - golden 集退出机制（辩论 G2，防 AWM 式 ever-growing）：GoldenCap 告警——策展合并
 //     时超上限必须先淘汰旧 case；本命令对超限 golden 集发 advisory，淘汰本身由策展
@@ -30,7 +31,7 @@ package skillseval
 //   - Raw material = Entry.Meta prompt_hash (dedup key) + excerpt (opt-in redacted
 //     capture, FORGE_TRIGGER_EXCERPT=1). With no excerpt data mining honestly reports
 //     zero usable — no degradation, no pretending.
-//   - Drafts NEVER auto-enter golden: --sanitize promotes "rewrite real utterances"
+//   -  Drafts NEVER auto-enter golden: the mechanical sanitize (SanitizeDraft, always applied) promotes "rewrite real utterances"
 //     from a comment convention to a mechanical step (R4), but human curation stays in
 //     the loop (half-automatic, consistent with skillseval's stance).
 //   - Golden exit mechanism (debate G2, against AWM-style ever-growing): the GoldenCap
@@ -145,7 +146,6 @@ func MineGoldenDrafts(entries []checklog.Entry, calls []toolusage.ToolCall, skil
 	}
 	for _, mc := range dedup {
 		rep.Skills[mc.Skill] = append(rep.Skills[mc.Skill], mc)
-		rep.Deduped++
 	}
 	for name := range rep.Skills {
 		cases := rep.Skills[name]
@@ -159,18 +159,25 @@ func MineGoldenDrafts(entries []checklog.Entry, calls []toolusage.ToolCall, skil
 			cases = cases[:MaxMinedPerSkill]
 		}
 		rep.Skills[name] = cases
+		// Deduped 在截断**后**按落盘草稿计数（review n2：截断前计数会让漏斗数字
+		// 大于实际产物，统计与产物不一致）。
+		//
+		// Deduped counts post-cap surviving drafts only (review n2: counting before
+		// the cap makes the funnel number exceed the actual output — stats and
+		// artifacts disagree).
+		rep.Deduped += len(cases)
 	}
 	return rep
 }
 
 // SanitizeDraft 对挖出的草稿文本做二次防御：secret 脱敏（采集时已脱敏过一次——defense
 // in depth，防 pattern 演进错位）+ 绝对 home 路径折叠为 ~（用户名不进草稿）。
-// 返回改写后的草稿（--sanitize 的机械实现；人工改写仍在环上）。
+// 返回改写后的草稿（机械 sanitize 的实现；人工改写仍在环上）。
 //
 // SanitizeDraft applies second-layer defense to mined draft text: secret redaction
 // (already redacted once at capture — defense in depth against pattern drift) and
 // absolute home-path folding to ~ (no usernames in drafts). Returns the sanitized draft
-// (the mechanical half of --sanitize; human rewriting stays in the loop).
+// (the mechanical half of sanitization; human rewriting stays in the loop).
 func SanitizeDraft(excerpt, homeDir string) string {
 	out := util.RedactSecrets(excerpt)
 	if homeDir != "" {

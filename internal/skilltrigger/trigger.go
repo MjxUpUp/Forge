@@ -103,12 +103,16 @@ type Hit struct {
 	// TriggerSig 是声明规则 JSON 的 sha1[:8]——在数组重排下存活的规则身份（纵向
 	// per-rule 统计以此为主键，而非下标）。
 	TriggerSig string
-	// PromptHash is sha1[:12] of (project salt + prompt). Project-scoped salt (NOT session:
-	// debate G4 — session salt would break the cross-session dedup mining relies on).
-	// "" when no prompt (tool events).
+	// PromptHash is the project-salted sha1[:12] of the firing input — the prompt when
+	// present, else the matched source text (tool events; review m4 so stdout hits stay
+	// minable). Project-scoped salt, NOT session (debate G4 — session salt would break
+	// the cross-session dedup mining relies on); "" when ProjectRoot is empty (review m2 —
+	// no global unsalted bucket) or when no input text exists.
 	//
-	// PromptHash 是（项目盐 + prompt）的 sha1[:12]。项目级盐（不用 session 盐：辩论
-	// G4——session 盐会破坏挖矿依赖的跨 session 去重）。无 prompt（tool 事件）为 ""。
+	// PromptHash 是「触发输入」的项目盐 sha1[:12]——有 prompt 用 prompt，否则用命中来源
+	// 文本（tool 事件；review m4 使 stdout 命中仍可挖矿）。项目级盐、不用 session 盐
+	//（辩论 G4——session 盐会破坏挖矿依赖的跨 session 去重）；ProjectRoot 为空
+	//（review m2——宁缺哈希不做全局无盐桶）或无输入文本时为 ""。
 	PromptHash string
 	// PromptLen is the rune length of the prompt at hit time.
 	//
@@ -138,10 +142,11 @@ const (
 	//（正常去重——预期行为，计数供 cooldown 调参，不告警）。
 	SuppressCooldown = "cooldown"
 	// SuppressStopCap: Stop event hit the per-session MaxStopRounds ceiling (loop-guard —
-	// recorded as ONE warn advisory per occurrence by the cli layer, not per skill).
+	// the cli layer records ONE warn advisory per session, not per skill and not per
+	// occurrence; review M2).
 	//
 	// SuppressStopCap：Stop 事件触到 per-session MaxStopRounds 上限（防死循环兜底——
-	// cli 层每次触顶记一条 warn advisory，不逐 skill 记）。
+	// cli 层每 session 记一条 warn advisory，不逐 skill、不逐次；review M2）。
 	SuppressStopCap = "stop-max-rounds"
 )
 
@@ -291,15 +296,22 @@ func Eval(ctx Context, all []SkillTriggers, noise NoiseController) (hits []Hit, 
 		if matched.Event == "" {
 			continue
 		}
-		// stop-cap 拦截整事件：全部命中降级为 suppressed（cause 归因 stop-max-rounds 主导，
-		// 不再叠加 cooldown 判定——ShouldFire 的 marker 检查在 stop-cap 语境下无意义）。
+		// 有意禁用（env）≠ 抑制：静默跳过，不进 suppressed（辩论 P1 边界；review m1——
+		// 判定须在 stop-cap 分支之前，否则显式禁用的 skill 会被记成"被抑制的潜在注入"）。
+		//
+		// Intentional disable (env) ≠ suppression: silent skip, never suppressed
+		// (debate P1 boundary; review m1 — the check must precede the stop-cap
+		// branch, or explicitly-disabled skills would show up as "suppressed
+		// would-be injections").
+		if isSkillDisabled(st.Skill) {
+			continue
+		}
+		// stop-cap 拦截整事件：全部命中降级为 suppressed（cause 归因 stop-max-rounds——
+		// cap 是当时的实际拦截者，cooldown 判定在 cap 之后无意义；副作用是 Stop 事件的
+		// cooldown 调参数据与 cap 混淆，文档化的归因取舍）。
 		if stopCapped {
 			suppressed = append(suppressed, Suppressed{Skill: st.Skill, Trigger: matched, Cause: SuppressStopCap})
 			seen[st.Skill] = true
-			continue
-		}
-		// 有意禁用（env）≠ 抑制：静默跳过，不进 suppressed（辩论 P1 边界）。
-		if isSkillDisabled(st.Skill) {
 			continue
 		}
 		if noise != nil && !noise.ShouldFire(ctx.SessionID, st.Skill, time.Duration(maxCD)*time.Second, ctx.Now) {
@@ -307,6 +319,16 @@ func Eval(ctx Context, all []SkillTriggers, noise NoiseController) (hits []Hit, 
 			seen[st.Skill] = true
 			continue
 		}
+		// sig 必须在 Cooldown 覆写**之前**对声明内容计算（review M1：覆写后计算会让缺省
+		// cooldown 的规则带上 60/120 等归一化值，同一声明规则劈裂出多个 sig，纵向 per-rule
+		// 统计与 SKILL.md 声明永远 join 不上）。
+		//
+		// The sig MUST be computed over the DECLARED content BEFORE the Cooldown
+		// overwrite (review M1: computing after bakes the normalized 60/120 into
+		// rules with a default cooldown — one declared rule splits into several
+		// sigs and longitudinal per-rule stats can never join back to SKILL.md).
+		sig := triggerSig(matched)
+		inputHash := firingInputHash(ctx, kw.Source)
 		// matched 是循环内拷贝，设其 Cooldown 反映实际应用的 maxCD（首条命中 trigger 的 Cooldown
 		// 可能是 0，应用时 normalize 为 DefaultCooldown；maxCD 可能来自后续命中的更大 trigger）。
 		// 不污染原 st.Triggers，且让 Hit.Trigger.Cooldown 这一隐性不变量保持一致（N2）。
@@ -323,8 +345,8 @@ func Eval(ctx Context, all []SkillTriggers, noise NoiseController) (hits []Hit, 
 			MatchedKeyword: kw.Keyword,
 			MatchSource:    kw.Source,
 			TriggerIndex:   matchedIdx,
-			TriggerSig:     triggerSig(matched),
-			PromptHash:     promptHash(ctx),
+			TriggerSig:     sig,
+			PromptHash:     inputHash,
 			PromptLen:      utf8.RuneCountInString(ctx.Prompt),
 		})
 		seen[st.Skill] = true
@@ -401,26 +423,14 @@ type keywordMatch struct {
 // matches, whose disappearance is the INTENDED semantic change (not additive) — the battery
 // is expected to show the corresponding hit shift.
 func matchKeywords(keywords []string, ctx Context) (keywordMatch, bool) {
-	cmd, _ := ctx.ToolInput["command"].(string)
-	out := func(k string) string { s, _ := ctx.ToolOutput[k].(string); return s }
-	sources := []struct {
-		name string
-		text string
-	}{
-		{MatchSourcePrompt, ctx.Prompt},
-		{MatchSourceCommand, sanitizeCommand(cmd)},
-		{MatchSourceStdout, out("stdout")},
-		{MatchSourceStderr, out("stderr")},
-		{MatchSourceOutput, out("output")},
-	}
-	for _, src := range sources {
-		h := strings.ToLower(src.text)
+	for _, src := range []string{MatchSourcePrompt, MatchSourceCommand, MatchSourceStdout, MatchSourceStderr, MatchSourceOutput} {
+		h := strings.ToLower(sourceText(ctx, src))
 		if strings.TrimSpace(h) == "" {
 			continue
 		}
 		for _, kw := range keywords {
 			if kw = strings.TrimSpace(kw); kw != "" && strings.Contains(h, strings.ToLower(kw)) {
-				return keywordMatch{Keyword: kw, Source: src.name}, true
+				return keywordMatch{Keyword: kw, Source: src}, true
 			}
 		}
 	}
@@ -439,21 +449,8 @@ func Excerpt(ctx Context, source, keyword string, radius int) string {
 	if keyword == "" || radius <= 0 {
 		return ""
 	}
-	cmd, _ := ctx.ToolInput["command"].(string)
-	out := func(k string) string { s, _ := ctx.ToolOutput[k].(string); return s }
-	var text string
-	switch source {
-	case MatchSourcePrompt:
-		text = ctx.Prompt
-	case MatchSourceCommand:
-		text = sanitizeCommand(cmd)
-	case MatchSourceStdout:
-		text = out("stdout")
-	case MatchSourceStderr:
-		text = out("stderr")
-	case MatchSourceOutput:
-		text = out("output")
-	default:
+	text := sourceText(ctx, source)
+	if text == "" {
 		return ""
 	}
 	runes := []rune(text)
@@ -474,30 +471,76 @@ func Excerpt(ctx Context, source, keyword string, radius int) string {
 	return string(runes[lo:hi])
 }
 
-// promptHash 计算 sha1(projectSalt + prompt)[:12]。盐 = ProjectRoot（项目级）：项目内
-// 可聚类、跨项目不可关联；刻意不含 sessionID——辩论 G4：session 盐会破坏挖矿（P2）依赖
-// 的跨 session prompt 去重。空 prompt 返回 ""。
+// sourceText 返回指定来源的匹配文本（matchKeywords/Excerpt/firingInputHash 共用的单一
+// 来源真相源——三处对"哪段文本算 command/stdout"必须同口径）。
 //
-// promptHash computes sha1(projectSalt + prompt)[:12]. Salt = ProjectRoot (project scope):
-// clusterable within a project, uncorrelatable across projects; deliberately WITHOUT
-// sessionID — debate G4: a session salt would break the cross-session prompt dedup that
-// mining (P2) relies on. Empty prompt returns "".
-func promptHash(ctx Context) string {
-	if strings.TrimSpace(ctx.Prompt) == "" {
+// sourceText returns the matched text of the named source (the single source-of-truth
+// shared by matchKeywords/Excerpt/firingInputHash — all three must agree on what
+// counts as the command/stdout text).
+func sourceText(ctx Context, source string) string {
+	cmd, _ := ctx.ToolInput["command"].(string)
+	out := func(k string) string { s, _ := ctx.ToolOutput[k].(string); return s }
+	switch source {
+	case MatchSourcePrompt:
+		return ctx.Prompt
+	case MatchSourceCommand:
+		return sanitizeCommand(cmd)
+	case MatchSourceStdout:
+		return out("stdout")
+	case MatchSourceStderr:
+		return out("stderr")
+	case MatchSourceOutput:
+		return out("output")
+	default:
 		return ""
 	}
-	sum := sha1.Sum([]byte(ctx.ProjectRoot + "\x00" + ctx.Prompt))
+}
+
+// firingInputHash 计算「触发输入」的项目盐哈希 sha1[:12]：有 prompt 用 prompt，否则用
+// 命中来源文本（tool 事件——stdout 命中也要可挖矿去重，review m4）。盐 = ProjectRoot
+// （项目级）：项目内可聚类、跨项目不可关联；刻意不含 sessionID——辩论 G4：session 盐会
+// 破坏挖矿（P2）依赖的跨 session 去重。**ProjectRoot 为空（非 forge 目录）时返回 ""**：
+// 空盐会让全部非 forge session 坍缩进同一个全局桶，跨项目关联恰在盐缺位处全局成立
+// （review m2）——宁缺哈希不做全局桶。
+//
+// firingInputHash computes the project-salted sha1[:12] of the "firing input": the
+// prompt when present, else the matched source text (tool events — stdout hits must
+// be minable/dedupable too, review m4). Salt = ProjectRoot (project scope):
+// clusterable within a project, uncorrelatable across projects; deliberately WITHOUT
+// sessionID — debate G4: a session salt would break the cross-session dedup mining
+// (P2) relies on. **Empty ProjectRoot (non-forge dir) returns ""**: an empty salt
+// would collapse every non-forge session into one global bucket — cross-project
+// correlation would hold exactly where the salt is missing (review m2); better no
+// hash than a global bucket.
+func firingInputHash(ctx Context, source string) string {
+	if ctx.ProjectRoot == "" {
+		return ""
+	}
+	text := ctx.Prompt
+	if strings.TrimSpace(text) == "" {
+		text = sourceText(ctx, source)
+	}
+	if strings.TrimSpace(text) == "" {
+		return ""
+	}
+	sum := sha1.Sum([]byte(ctx.ProjectRoot + "\x00" + text))
 	return hex.EncodeToString(sum[:])[:12]
 }
 
 // triggerSig 计算声明规则的 sha1[:8]——不依赖数组顺序的规则身份。sig 对「声明内容」
-// （含声明 Cooldown）计算，不受运行时 maxCD 归一化影响（matched.Cooldown 覆写发生在
-// sig 计算之后——Eval 中 sig 在覆写前的拷贝上算）。
+// （含声明 Cooldown）计算，不受运行时 maxCD 归一化影响。**调用契约（review M1）：必须
+// 传入声明态的 Trigger**——Eval 在 `matched.Cooldown = maxCD` 覆写之前先算 sig；若在
+// 覆写后调用，缺省 cooldown 的规则会带上归一化 60/120，同一声明规则劈裂出多个 sig，
+// 纵向 per-rule 统计与 SKILL.md 声明永远 join 不上（曾有此 bug，由
+// TestEval_TriggerSigMatchesDeclared 钉死）。
 //
 // triggerSig computes sha1[:8] of the declared rule — order-independent rule identity.
-// Signed over the DECLARED content (incl. declared Cooldown), unaffected by runtime maxCD
-// normalization (matched.Cooldown overwrite happens after — Eval signs the pre-overwrite
-// copy).
+// Signed over the DECLARED content (incl. declared Cooldown), unaffected by runtime
+// maxCD normalization. **Calling contract (review M1): pass the trigger AS DECLARED** —
+// Eval computes the sig BEFORE the `matched.Cooldown = maxCD` overwrite; calling after
+// bakes the normalized 60/120 into rules with a default cooldown, splitting one
+// declared rule into several sigs so longitudinal per-rule stats can never join back
+// to SKILL.md (this bug existed and is pinned by TestEval_TriggerSigMatchesDeclared).
 func triggerSig(t Trigger) string {
 	b, err := json.Marshal(t)
 	if err != nil {

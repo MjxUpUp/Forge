@@ -198,3 +198,32 @@ func TestRecordSuppressed_StopCapWarn(t *testing.T) {
 		t.Fatalf("cooldown 抑制不应另落条目（只计数回填）, got %d", len(entries2))
 	}
 }
+
+// TestRecordSuppressed_StopCapOncePerSession 钉死 review M2：stop-cap advisory 每
+// session 至多一条——长 session 里 source_changed_uncommitted 类 condition 近恒真，
+// MaxStopRounds 触顶后每个 Stop 回合都调 recordSuppressed，无节流会逐条刷 warn。
+//
+// TestRecordSuppressed_StopCapOncePerSession pins review M2: at most ONE stop-cap
+// advisory per session — in long sessions, near-always-true conditions like
+// source_changed_uncommitted mean recordSuppressed runs on every Stop round past the
+// cap; without throttling each one writes a warn entry.
+func TestRecordSuppressed_StopCapOncePerSession(t *testing.T) {
+	dir := t.TempDir()
+	counterDir := t.TempDir()
+	ctx := skilltrigger.Context{Event: "Stop", SessionID: "sess-throttle"}
+	sup := []skilltrigger.Suppressed{{Skill: "a", Cause: skilltrigger.SuppressStopCap}}
+	recordSuppressed(dir, ctx, sup, counterDir, "", "1.99.0-test")
+	recordSuppressed(dir, ctx, sup, counterDir, "", "1.99.0-test")
+	recordSuppressed(dir, ctx, sup, counterDir, "", "1.99.0-test")
+	entries, _ := checklog.LoadAll(dir)
+	if len(entries) != 1 {
+		t.Fatalf("stop-cap advisory 应每 session 至多一条（3 次触顶只记 1）, got %d", len(entries))
+	}
+	// 新 session（新 marker 目录）不受旧 marker 影响。
+	ctx2 := skilltrigger.Context{Event: "Stop", SessionID: "sess-other"}
+	recordSuppressed(dir, ctx2, sup, counterDir, "", "1.99.0-test")
+	entries2, _ := checklog.LoadAll(dir)
+	if len(entries2) != 2 {
+		t.Fatalf("新 session 应可再记一条, got %d", len(entries2))
+	}
+}
