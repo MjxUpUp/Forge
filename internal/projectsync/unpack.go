@@ -13,6 +13,16 @@ import (
 	"strings"
 )
 
+// MaxBundleBytes is the total-payload ceiling Unpack enforces (2 GiB): the
+// per-entry size is bounded by the manifest, but a forged manifest could declare
+// a huge total and stream gigabytes to disk (a filler DoS against /tmp). Cheap
+// bound; legitimate project bundles are orders of magnitude below it.
+//
+// MaxBundleBytes 是 Unpack 强制的总载荷上限（2 GiB）：单条目尺寸被 manifest 约束，
+// 但伪造的 manifest 可声明巨大总量向磁盘流数据（对 /tmp 的填充 DoS）。廉价上限；
+// 合法项目 bundle 低于它若干数量级。
+const MaxBundleBytes = 2 << 30
+
 // Unpack reads a bundle stream, validates it against its own manifest, and writes
 // the payloads under <destDir>/data/. Security posture (mirrors cli/update.go
 // extractBinary): regular files only (symlink/hardlink headers rejected), no
@@ -62,9 +72,17 @@ func Unpack(r io.Reader, destDir string) (*Manifest, error) {
 		return nil, fmt.Errorf(`manifest 缺 bundle_id（文件损坏或非 Forge bundle）`)
 	}
 	listed := make(map[string]FileEntry, len(m.Files))
+	var total int64
 	for _, fe := range m.Files {
 		if fe.Path == `` || fe.SHA256 == `` {
 			return nil, fmt.Errorf(`manifest 文件条目不完整（path/sha256 缺失）`)
+		}
+		if fe.Size < 0 {
+			return nil, fmt.Errorf(`manifest 条目 %s 尺寸非法（%d）`, fe.Path, fe.Size)
+		}
+		total += fe.Size
+		if total > MaxBundleBytes {
+			return nil, fmt.Errorf(`bundle 声明总量 %d 超上限 %d（拒绝落地）`, total, MaxBundleBytes)
 		}
 		listed[fe.Path] = fe
 	}

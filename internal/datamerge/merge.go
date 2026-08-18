@@ -103,6 +103,15 @@ type Options struct {
 	// TrustResults 修饰 TaskUnion：true 用 MergeTaskStateSync（单调，保留外来结果/
 	// 完成字段——同身份同步）；false 用 MergeTaskState（本地权威不被降级——不可信源）。
 	TrustResults bool
+	// MergeConclusions admits act/conclusions.jsonl into the timestamp-merge set.
+	// OFF by default: legacy `registry rekey` treated conclusions.jsonl as a plain
+	// file (conflict keeps the to-side) — keeping that ZERO-semantic-change
+	// contract for rekey while project import (DedupExactLines on) merges it.
+	//
+	// MergeConclusions 把 act/conclusions.jsonl 纳入时间戳合并集。默认关：
+	// legacy `registry rekey` 把 conclusions.jsonl 当普通文件（冲突保 to 侧）——
+	// 为 rekey 保持零语义变化，而 project import（开 DedupExactLines）合并它。
+	MergeConclusions bool
 	// NoFromBackup replaces the final whole-dir backup move with a REMOVAL of the
 	// from-dir. Use ONLY when from is disposable (import staging / a copy of the
 	// bundle dir): the rollback guarantee is then the bundle file in the user's
@@ -175,7 +184,7 @@ func Dirs(fromDir, toDir string, opts Options) ([]string, error) {
 			} else {
 				actions = append(actions, action)
 			}
-		case dstExists == nil && IsMergeableJSONL(base):
+		case dstExists == nil && isMergeable(base, opts):
 			// Both sides have the log: stable timestamp-ordered merge (+ dedup).
 			//
 			// 两侧都有该日志：按时间戳稳定有序合并（+ 去重）。
@@ -327,7 +336,7 @@ func adoptTaskFile(dstPath, srcPath string, _ Options) (string, error) {
 	if err := os.Remove(srcPath); err != nil {
 		return ``, err
 	}
-	return fmt.Sprintf(`move   %s（已校验 TaskState）`, strings.TrimPrefix(filepath.ToSlash(srcPath), ``)), nil
+	return fmt.Sprintf(`move   tasks/%s（已校验 TaskState）`, filepath.Base(srcPath)), nil
 }
 
 // loadTaskFile / writeTaskFile mirror taskpipeline.Save/LoadTaskState's plain JSON
@@ -361,21 +370,38 @@ func writeTaskFile(path string, s *taskpipeline.TaskState) error {
 }
 
 // IsMergeableJSONL reports whether a file name is an event log that should be
-// timestamp-merged rather than moved: checklog*.jsonl / toollog*.jsonl (rotated
-// suffixes included), sessions.jsonl, and act conclusions.jsonl (its completed_at
-// falls inside the timestamp probe fields).
+// timestamp-merged rather than moved — the LEGACY rekey set: checklog*.jsonl /
+// toollog*.jsonl (rotated suffixes included) and sessions.jsonl. conclusions.jsonl
+// joins only via Options.MergeConclusions (project import); it stays a plain
+// move/skip file for rekey, exactly as before the extraction.
 //
-// IsMergeableJSONL 判定文件名是否是应按时间戳合并（而非搬移）的事件日志：
-// checklog*.jsonl / toollog*.jsonl（含 rotated 后缀）、sessions.jsonl 与 act 的
-// conclusions.jsonl（其 completed_at 落在时间戳探测字段内）。
+// IsMergeableJSONL 判定文件名是否是应按时间戳合并（而非搬移）的事件日志——
+// legacy rekey 集合：checklog*.jsonl / toollog*.jsonl（含 rotated 后缀）与
+// sessions.jsonl。conclusions.jsonl 仅经 Options.MergeConclusions（project
+// import）加入；对 rekey 它保持抽包前的普通搬移/跳过文件行为。
 func IsMergeableJSONL(base string) bool {
-	if base == `sessions.jsonl` || base == `conclusions.jsonl` {
+	if base == `sessions.jsonl` {
 		return true
 	}
 	if !strings.HasSuffix(base, `.jsonl`) {
 		return false
 	}
 	return strings.HasPrefix(base, `checklog`) || strings.HasPrefix(base, `toollog`)
+}
+
+// isMergeable is the options-aware mergeability probe: the legacy set (what
+// `registry rekey` has always merged) plus conclusions.jsonl ONLY when the caller
+// opted in via MergeConclusions (project import). Rekey's zero-value Options thus
+// keep its exact pre-extraction behavior.
+//
+// isMergeable 是 options 感知的可合并探测：legacy 集合（`registry rekey` 一直
+// 合并的）+ 仅当调用方经 MergeConclusions 选入的 conclusions.jsonl（project
+// import）。rekey 的零值 Options 因此保持抽包前的精确行为。
+func isMergeable(base string, opts Options) bool {
+	if opts.MergeConclusions && base == `conclusions.jsonl` {
+		return true
+	}
+	return IsMergeableJSONL(base)
 }
 
 // timestampFields are the JSONL line fields probed for the merge-order timestamp,

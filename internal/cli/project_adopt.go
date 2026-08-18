@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/datamerge"
@@ -216,6 +217,15 @@ func dirHasContent(dir string) bool {
 	filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil // 单个条目读失败不影响其余判断（best-effort 探测）
+		}
+		// 备份壳不算活数据：只剩 .rekey-backup-* 的旧目录不做无意义迁移
+		// （与 registry.Audit 的 dataDirHasPayload 同语义）。
+		//
+		// Backup shells are not live data: an old dir holding only
+		// .rekey-backup-* must not trigger a pointless migration (same
+		// semantics as registry.Audit's dataDirHasPayload).
+		if d.IsDir() && d.Name() != filepath.Base(dir) && strings.HasPrefix(d.Name(), `.rekey-backup-`) {
+			return filepath.SkipDir
 		}
 		if !found && d.Type().IsRegular() {
 			found = true

@@ -3,6 +3,7 @@ package projectsync
 import (
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -96,6 +97,51 @@ func ExportFiles(dataDir string, extra []string) ([]string, error) {
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+// StripNonAllowlisted removes every file under dataDir that the allowlist does
+// not admit, returning the removed rel paths. THE IMPORT-SIDE ENFORCEMENT of
+// default-deny: Unpack validates manifest↔tar consistency, but the manifest
+// itself is untrusted (no signature) — a forged bundle can list
+// imports.jsonl / active-task-ref-* / hooks/* / quarantine/** / hazards/** and
+// datamerge would faithfully move them into the live DataDir (polluting the
+// ledger, hijacking session anchors, bypassing the --include gate for sensitive
+// stores). Opt-in stores are stripped unconditionally here: import has no
+// --include flag in v1, so even a bundle honestly declaring Includes loses those
+// payloads rather than gaining an unrequested sensitive store.
+//
+// StripNonAllowlisted 删除 dataDir 下 allowlist 不放行的每个文件，返回被删的 rel
+// 路径。这是 allowlist 默认拒绝在导入侧的执行：Unpack 只校验 manifest↔tar 一致，
+// 而 manifest 本身不可信（无签名）——伪造 bundle 可在清单里列
+// imports.jsonl / active-task-ref-* / hooks/* / quarantine/** / hazards/**，
+// datamerge 会忠实地把它们搬进活 DataDir（污染账本、劫持会话锚、绕过敏感 store
+// 的 --include 门槛）。选入型 store 在此无条件剥除：v1 的 import 没有 --include
+// flag，即使 bundle 诚实声明了 Includes，也是丢掉这些载荷而非换来一个未经请求
+// 的敏感 store。
+func StripNonAllowlisted(dataDir string) ([]string, error) {
+	var removed []string
+	err := filepath.WalkDir(dataDir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		rel, rerr := filepath.Rel(dataDir, p)
+		if rerr != nil {
+			return rerr
+		}
+		rel = filepath.ToSlash(rel)
+		// 空目录残留无害（Dirs 的 move 分支会建目标目录），只剥文件。
+		if included, _ := allowlistFile(rel); !included {
+			if rmErr := os.Remove(p); rmErr != nil {
+				return rmErr
+			}
+			removed = append(removed, rel)
+		}
+		return nil
+	})
+	return removed, err
 }
 
 // allowlistFile classifies one DataDir-relative path: (included, optInStore).
