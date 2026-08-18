@@ -1131,6 +1131,34 @@ func TestMineRendersCompletedNotOffered(t *testing.T) {
 	dir := setupDelegateProject(t)
 	saveCompletedOffered(t, dir, `feat/done-suspended`, `kimi`)
 	saveOfferedAgo(t, dir, `feat/still-pending`, `kimi`, time.Now())
+	// Reopened control (review M1): gates passed + delivered + Reopen → claimed with a rework
+	// reason. IsComplete() stays true across the reopen by design, but mine must render the REAL
+	// collaboration status (claimed), not `complete` — a stuck rework must not masquerade as done.
+	//
+	// Reopen 对照（review M1）：门禁全过 + delivered + Reopen → 带返工理由的 claimed。
+	// IsComplete() 跨 reopen 按设计仍为 true，但 mine 必须渲染真实协作状态（claimed）而非
+	// `complete`——卡住的返工不得伪装成已完成。
+	{
+		s := &taskpipeline.TaskState{TaskRef: `feat/reopened`, Summary: `reopened 任务`}
+		if err := s.AssignTo(`kimi`, `backend`, `claude-code`); err != nil {
+			t.Fatalf(`AssignTo feat/reopened: %v`, err)
+		}
+		if err := s.Claim(`kimi`); err != nil {
+			t.Fatalf(`Claim feat/reopened: %v`, err)
+		}
+		if err := s.Deliver(); err != nil {
+			t.Fatalf(`Deliver feat/reopened: %v`, err)
+		}
+		for _, g := range taskpipeline.DefaultGates() {
+			s.RecordGateResult(g.ID, true, ``)
+		}
+		if err := s.Reopen(`交付后发现 bug`); err != nil {
+			t.Fatalf(`Reopen feat/reopened: %v`, err)
+		}
+		if err := taskpipeline.SaveTaskState(dir, s); err != nil {
+			t.Fatalf(`SaveTaskState feat/reopened: %v`, err)
+		}
+	}
 
 	t.Run(`json status is complete`, func(t *testing.T) {
 		out, _, code := runForge(t, dir, `task`, `mine`, `--agent`, `kimi`, `--json`)
@@ -1157,6 +1185,9 @@ func TestMineRendersCompletedNotOffered(t *testing.T) {
 		}
 		if pending, ok := byRef[`feat/still-pending`]; !ok || pending.Status != `offered` {
 			t.Errorf(`在途对照任务应仍渲染 offered, got %+v`, pending)
+		}
+		if reopened, ok := byRef[`feat/reopened`]; !ok || reopened.Status != `claimed` {
+			t.Errorf(`reopen 返工中的任务应渲染真实状态 claimed 而非 complete, got %+v`, reopened)
 		}
 	})
 
@@ -1248,6 +1279,15 @@ func TestAdviseUnclaimedAssignment(t *testing.T) {
 		adviseUnclaimedAssignment(root, `task-implement`, false, s)
 		if n := count(t, root, s.TaskRef); n != 0 {
 			t.Fatalf(`非 task-implement / 未过门禁不应 advisory, got %d 条`, n)
+		}
+	})
+	t.Run(`undetectable current agent stays silent`, func(t *testing.T) {
+		root, s := setup(t)
+		t.Setenv(`FORGE_AGENT`, ``)
+		t.Setenv(`CLAUDE_CODE_SESSION_ID`, ``)
+		adviseUnclaimedAssignment(root, `task-implement`, true, s)
+		if n := count(t, root, s.TaskRef); n != 0 {
+			t.Fatalf(`探测不到当前 agent 应静默（误报比漏报更糟）, got %d 条`, n)
 		}
 	})
 }

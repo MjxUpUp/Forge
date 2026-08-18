@@ -122,6 +122,69 @@ func TestCompleteReconcilesAssignment(t *testing.T) {
 			t.Fatal(`Reopen 应清 AutoDelivered 与 DeliveredAt（镜像既有 DeliveredAt 清零）`)
 		}
 	})
+
+	t.Run(`reclaim from input-required clears the pending question`, func(t *testing.T) {
+		// Review m2: the auto-reclaim bypasses Answer() (the only other LastQuestion cleaner),
+		// so without explicit cleanup a stale "current question" would linger on the delivered
+		// assignment.
+		//
+		// Review m2：自动回收绕过 Answer()（LastQuestion 唯一的其他清理方），不显式清理会在
+		// delivered 分派上残留陈旧问题文本。
+		s := offeredTask(`kimi`)
+		_ = s.Claim(`kimi`)
+		_ = s.Question(`卡住了`)
+		s.MarkComplete()
+		if s.Assignment.Status != AssignDelivered {
+			t.Fatal(`input-required 应回收为 delivered`)
+		}
+		if s.Assignment.LastQuestion != `` {
+			t.Fatal(`回收时应清掉 LastQuestion（绕过 Answer 的残留）`)
+		}
+	})
+
+	t.Run(`reopened task is detected by IsReopened`, func(t *testing.T) {
+		s := offeredTask(`kimi`)
+		if s.IsReopened() {
+			t.Fatal(`offered 任务不是 reopen 形态`)
+		}
+		s.MarkComplete()
+		if s.IsReopened() {
+			t.Fatal(`delivered 终态不是 reopen 形态`)
+		}
+		if err := s.Reopen(`返工`); err != nil {
+			t.Fatalf(`Reopen: %v`, err)
+		}
+		if !s.IsReopened() {
+			t.Fatal(`claimed + FailReason 应判为 reopen 形态`)
+		}
+		// input-required after a reopen is still the reopened shape.
+		//
+		// reopen 后再回抛仍是 reopen 形态。
+		if err := s.Question(`澄清一下`); err != nil {
+			t.Fatalf(`Question: %v`, err)
+		}
+		if !s.IsReopened() {
+			t.Fatal(`input-required + FailReason 仍是 reopen 形态`)
+		}
+		// Reopen→answer→abandon leaves offered+FailReason residue (Abandon does not clear it) —
+		// still the reopened shape, or the reclaimed rework would fall back under the completion
+		// immunity and turn invisible (review M1 复审).
+		//
+		// Reopen→answer→abandon 留下 offered+FailReason 残留（Abandon 不清它）——仍是 reopen
+		// 形态，否则被回收的返工会重新落入完成免疫而隐形（review M1 复审）。
+		if err := s.Answer(`按原方案做`); err != nil {
+			t.Fatalf(`Answer: %v`, err)
+		}
+		if err := s.Abandon(); err != nil {
+			t.Fatalf(`Abandon: %v`, err)
+		}
+		if s.Assignment.Status != AssignOffered {
+			t.Fatal(`Abandon 后应为 offered`)
+		}
+		if !s.IsReopened() {
+			t.Fatal(`offered + FailReason（reopen 被 reclaim 回收）仍是 reopen 形态`)
+		}
+	})
 }
 
 func TestZombieSkipsCompleted(t *testing.T) {
@@ -170,6 +233,66 @@ func TestZombieSkipsCompleted(t *testing.T) {
 		ok, reasons := IsZombie(root, s, fixedNow)
 		if !ok || len(reasons) != 1 || reasons[0] != `offered>7d` {
 			t.Fatalf(`未完成的对照任务应仍是 offered>7d 僵尸, got ok=%v reasons=%v`, ok, reasons)
+		}
+	})
+
+	t.Run(`reopened task is zombie again (review M1)`, func(t *testing.T) {
+		// Review M1: IsComplete() deliberately stays true across a Reopen (gate history is
+		// retained), so the completion immunity must NOT cover a task sent back for rework —
+		// otherwise a stuck rework would hide behind it forever.
+		//
+		// Review M1：IsComplete() 跨 Reopen 刻意保持 true（gate 历史保留），故完成免疫不得
+		// 覆盖被打回返工的任务——否则卡住的返工会永远躲在免疫后面。
+		s := offeredTask(`kimi`)
+		_ = s.Claim(`kimi`)
+		_ = s.Deliver()
+		passAllGates(s)
+		if err := s.Reopen(`交付后发现 bug`); err != nil {
+			t.Fatalf(`Reopen: %v`, err)
+		}
+		s.Assignment.ClaimedAt = ptrTime(eightDaysAgo)
+		ok, reasons := IsZombie(root, s, fixedNow)
+		if !ok {
+			t.Fatal(`reopen 后返工卡住 8 天应重新上浮僵尸`)
+		}
+		found := false
+		for _, r := range reasons {
+			if r == `claimed>TTL` {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf(`reopen 卡住应报 claimed>TTL, got %v`, reasons)
+		}
+	})
+
+	t.Run(`reopened-then-reclaimed offered is not immune (review M1 recheck)`, func(t *testing.T) {
+		// Review M1 复审：reopen→claimed→owner 失联→reclaim→offered 留下 FailReason 残留——
+		// 未交付的返工不得因完成免疫隐形，回收后久置仍应上浮 offered>7d。
+		//
+		// Review M1 recheck: reopen→claimed→owner gone→reclaim→offered leaves FailReason
+		// residue — the undelivered rework must not hide under the completion immunity; left
+		// idle after the reclaim it must still surface as offered>7d.
+		s := offeredTask(`kimi`)
+		_ = s.Claim(`kimi`)
+		_ = s.Deliver()
+		passAllGates(s)
+		if err := s.Reopen(`交付后发现 bug`); err != nil {
+			t.Fatalf(`Reopen: %v`, err)
+		}
+		if err := s.Abandon(); err != nil {
+			t.Fatalf(`Abandon: %v`, err)
+		}
+		s.Assignment.AbandonedAt = ptrTime(eightDaysAgo)
+		// OfferedAt was stamped with the real wall clock by AssignTo (2026, well AFTER the
+		// fixedNow anchor) — pin it too so the max(OfferedAt, AbandonedAt) baseline is aged.
+		//
+		// OfferedAt 被 AssignTo 盖成真实墙上时钟（2026，远晚于 fixedNow 锚点）——一并钉住，
+		// 使 max(OfferedAt, AbandonedAt) 基线足够老。
+		s.Assignment.OfferedAt = ptrTime(eightDaysAgo)
+		ok, reasons := IsZombie(root, s, fixedNow)
+		if !ok || len(reasons) != 1 || reasons[0] != `offered>7d` {
+			t.Fatalf(`reopen 被回收后久置应仍报 offered>7d, got ok=%v reasons=%v`, ok, reasons)
 		}
 	})
 }
