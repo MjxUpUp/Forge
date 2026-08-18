@@ -153,7 +153,8 @@ forge task gate task-implement    # ✅ 代码实现（advisory：编译/断言�
 forge task verify-acceptance      # ✅ 实跑验收标准，记 deterministic 证据（spec-as-gate）
 forge task gate task-verify       # ✅ 测试验证
 forge task scope show             # 查看声明白名单 + 实时 scope-drift（advisory，不阻塞）
-forge task gate task-complete     # ✅ 完成确认
+forge task gate task-complete     # ✅ 完成确认（第三道门禁；门禁全过 ≠ 任务完结）
+forge task complete               # 🏁 任务完结：MarkComplete + 自动评分 + Act 结论 + 清 active ref（2026-08-18 死锁修复后完成标记归属本命令——门禁只过不 complete 会留僵尸任务）
 forge task score                  # 查看质量评分
 ```
 
@@ -320,6 +321,8 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge skills validate` | R1-R9 规范校验 |
 | `forge skills adapters` | 部署 skill-routing adapter（pi/claude/cursor/routes.json） |
 | `forge skills usage` | 使用度量分析（热门 skill + undertrigger 候选） |
+| `forge skills usage --by-keyword` | per-keyword 触发分析：命中/加载/抑制切片（v2 Meta 的 matched_keyword）+ 死关键词检测（声明未命中；窗口无 v2 证据条目时自动停用并说明）。加载列带宿主偏差标注（注入型宿主无工具事件信号） |
+| `forge skills mine [--skill X]` | 生产触发记录 → golden case 草稿挖矿（precision 侧）：engaged=true 正例 / engaged=false near-miss 负例候选，prompt_hash 跨 session 去重；需 opt-in 摘录（`FORGE_TRIGGER_EXCERPT=1`）；草稿永不自动进 golden（人工改写后策展） |
 | `forge skills effectiveness` | 技能命中×任务成效关联（命中数/task数/avg分/弱占比，agent-neutral） |
 | `forge skills --dir <path>` | eval 命令族公共 flag：指定 eval 数据目录（默认 `~/.forge/evals`，`FORGE_EVAL_DIR` 可覆盖；首次默认解析自动从旧 `~/.pi/research/skill-eval` 一次性迁移。仓库内 `evals/` 或 CI 用） |
 | `forge skills eval-gen [--save] [--cases-only]` | 生成 eval 清单；`--save`/`--cases-only` 额外落结构化 case 集（回归闭环基准） |
