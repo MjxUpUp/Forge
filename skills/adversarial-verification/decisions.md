@@ -35,3 +35,29 @@ mine-claude 10次+2纠正;mine-pi验收驳斥实录;与review-pass-requires-real
 ### Evidence
 
 forge skills validate 51/51 + TestSkills_NoDanglingSkillRefs 守卫
+
+## [d-18ccc6cfc3468568-bc455661] accept
+
+- **Skill**: adversarial-verification
+- **DecidedAt**: 2026-08-18T02:55:47Z
+- **By**: claude-code
+
+### Diagnosis
+
+meta-review 发现协议 A 在触发观测 v2 辩论中暴露 4 个结构性缺口：(1) 翻转裁决的三条论点全部来自子代理转述源，未标记二手未抽查（转述自辩驳，单源奉承变体）；(2) 复检轮只查单点辩护过度，不查修复间矛盾——隐私修复 sessionID 入盐破坏同轮挖矿的跨 session 去重，漏网到 meta-review 才被抓；(3) 没人质询决策相关性（126 条总量下 per-keyword 分析层值不值得建）与统计功效；(4) 优先攻击最弱引用的排序有偏——本次最有效两击打的恰是看似最硬的假代码断言
+
+### Revision
+
+SKILL.md：判据增至 4 条（新增二手转述标记+抽查，翻转裁决先抽查后定）；流程增至 6 步（攻击排序改为先打强措辞且可机械复核的假硬断言；新增决策相关性+统计功效两问；新增第 6 步修复间一致性检查——新修复两两对照下游机制）；自查清单+3 项；Gotchas 表+4 行（转述自辩驳/假硬断言/决策相关性盲区/修复间矛盾），全部带 2026-08-18 会话真实反例锚点
+
+### Prediction
+
+下次红蓝对抗辩论的 meta-review 中：二手源标记覆盖率应为 100%（0 条未标记）；修复间矛盾应为 0 条漏网
+
+### Evidence
+
+基线失败（TDD RED）= 本会话辩论实录：D7×P2 盐矛盾在旧版 skill 的单点复检下漏网、由事后 meta-review 抓出；二手源 3 条零标记、事后抽查 2 过 1 不可复核。修订后规则逐条对应该失败集。forge skills validate+audit 通过；skill-anti-degradation-check.sh 干净
+
+### Rationale
+
+四条修订各自对应一个已发生的最小反例（不是预防性 speculation）；skill-evolution 边界内的行为契约补强，未引入新流程依赖；下轮使用本 skill 的辩论即回归验证场
