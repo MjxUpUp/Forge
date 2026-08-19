@@ -9,6 +9,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/agentbridge"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/hostcap"
 )
 
 // kimiStaleMarker is the once-daily throttle marker under the forge data home. Its
@@ -36,7 +37,16 @@ const kimiStaleMarker = ".kimi-plugin-stale"
 // session 里 SessionStart 先于首个 UserPromptSubmit，两处都保留会让不可见追加先消耗
 // 按日 marker、可见通道反而永不触发。见 internal/agentbridge/kimi-hook-routing.md。
 func kimiStaleRidesHook(agent, hookName string) bool {
-	return agent == "kimi" && hookName == "resume-reinject"
+	// The ride is registry-derived: a host that drops SessionStart stdout
+	// (hostcap DroppedStdoutEvents) has no working SessionStart channel, so the
+	// advisory must ride the UserPromptSubmit hook (resume-reinject) instead.
+	// Today only kimi qualifies.
+	//
+	// 搭载判断由注册表派生：丢弃 SessionStart stdout 的宿主（hostcap
+	// DroppedStdoutEvents）没有可用的 SessionStart 通道，故 advisory 必须改搭
+	// UserPromptSubmit 的 hook（resume-reinject）。目前仅 kimi 符合。
+	h := hostcap.Lookup(agent)
+	return h != nil && h.DropsStdoutEvent("SessionStart") && hookName == "resume-reinject"
 }
 
 // prependKimiStaleAdvisory detects whether the kimi-installed forge plugin lags behind the

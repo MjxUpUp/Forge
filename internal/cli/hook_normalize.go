@@ -12,27 +12,39 @@ import (
 // Without this step, agent stdin would parse to empty file_path/command, and blocking hooks (task-guard,
 // bash-guard) would fail open.
 //
+// The dispatch is a package-level map (not a switch) keyed by host name; the keys must
+// match the hostcap registry's StdinDialect values (windsurf/kimi/reasonix/cline).
+// The normalizer BODIES stay here in cli — they fill cli's HookInput type, and hostcap
+// is a data-only leaf that cannot import cli (see the hostcap package doc). Unknown
+// agents are silent no-ops (the pre-map switch semantics).
+//
 // normalizeAgentStdin 把非 Claude Code agent 的 hook stdin 翻译成 forge 抽取
 // 所用的 HookInput 形状。FORGE_HOOK_AGENT 由各 agent 的 hook 命令设置（例如
 // `FORGE_HOOK_AGENT=windsurf forge hook task-guard`），用以选择方言。不做这步，
 // agent stdin 会解析出空的 file_path/command，拦截类 hook（task-guard、
 // bash-guard）会 fail open。
 //
+// 分发用包级 map（非 switch），以宿主名为键；键必须与 hostcap 注册表的
+// StdinDialect 值一致（windsurf/kimi/reasonix/cline）。normalizer **函数本体**
+// 留在 cli——它们填充 cli 的 HookInput 类型，而 hostcap 是纯数据叶子包、不能
+// import cli（见 hostcap 包文档）。未知 agent 静默不处理（map 化之前的 switch
+// 语义）。
+//
 // opencode is code-based: their TS extensions directly construct Claude-shape stdin before spawning forge,
 // so no normalizer is needed here.
 //
 // opencode 是 code-based：它们的 TS 扩展在 spawn forge 前就直接构造
 // Claude-shape stdin，故此处无需 normalizer。
+var stdinNormalizers = map[string]func([]byte, *HookInput){
+	"windsurf": windsurfNormalize,
+	"kimi":     kimiNormalize,
+	"reasonix": reasonixNormalize,
+	"cline":    clineNormalize,
+}
+
 func normalizeAgentStdin(agent string, stdinData []byte, hookInput *HookInput) {
-	switch agent {
-	case "windsurf":
-		windsurfNormalize(stdinData, hookInput)
-	case "kimi":
-		kimiNormalize(stdinData, hookInput)
-	case "reasonix":
-		reasonixNormalize(stdinData, hookInput)
-	case "cline":
-		clineNormalize(stdinData, hookInput)
+	if normalize, ok := stdinNormalizers[agent]; ok {
+		normalize(stdinData, hookInput)
 	}
 }
 

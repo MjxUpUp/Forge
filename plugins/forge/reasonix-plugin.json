@@ -64,30 +64,30 @@
     ],
     "SessionStart": [
       {
-        "command": "forge hook skill-scan"
+        "command": "forge hook skill-scan --agent reasonix"
       },
       {
-        "command": "forge hook mcp-scan"
+        "command": "forge hook mcp-scan --agent reasonix"
       },
       {
-        "command": "forge hook init-suggest"
+        "command": "forge hook init-suggest --agent reasonix"
       },
       {
-        "command": "forge hook task-resume"
+        "command": "forge hook task-resume --agent reasonix"
       },
       {
-        "command": "forge hook skill-trigger"
+        "command": "forge hook skill-trigger --agent reasonix"
       }
     ],
     "Stop": [
       {
-        "command": "forge hook task-verify"
+        "command": "forge hook task-verify --agent reasonix"
       },
       {
-        "command": "forge hook review-stop"
+        "command": "forge hook review-stop --agent reasonix"
       },
       {
-        "command": "forge hook skill-trigger"
+        "command": "forge hook skill-trigger --agent reasonix"
       }
     ]
   },

@@ -24,8 +24,10 @@ import (
 // no longer written (loading docs live in the forge docs now that the plugin is global).
 //
 // opencode's hook callback builds a Claude-Code-shape stdin (session_id,
-// hook_event_name, tool_name, tool_input), spawns `forge hook <name>`, and throws when forge
+// hook_event_name, tool_name, tool_input, forge_agent), spawns `forge hook <name>`, and throws when forge
 // blocks. No `--agent` normalizer is needed: the plugin emits the dialect forge parses natively.
+// Attribution rides the payload's forge_agent field (HookInput.ForgeAgent) instead of an
+// --agent suffix, keeping the command roster byte-stable for TestOpencodePluginWiring.
 //
 // Field mapping (opencode tool args → Claude tool_input):
 //   - write/edit/applypatch  args.filePath  → tool_input.file_path
@@ -62,8 +64,10 @@ import (
 // （plugin 已全局化，加载说明归 forge 文档）。
 //
 // opencode 的 hook callback 构造 Claude-Code-shape stdin（session_id、
-// hook_event_name、tool_name、tool_input），spawn `forge hook <name>`，并在 forge
+// hook_event_name、tool_name、tool_input、forge_agent），spawn `forge hook <name>`，并在 forge
 // block 时 throw。无需 `--agent` 归一化器：plugin 直接发 forge 原生解析的方言。
+// 归因走 payload 的 forge_agent 字段（HookInput.ForgeAgent）而非 --agent 后缀，
+// 使命令名册对 TestOpencodePluginWiring 保持字节稳定。
 //
 // 字段映射（opencode tool args → Claude tool_input）：
 //   - write/edit/applypatch  args.filePath  → tool_input.file_path
@@ -243,6 +247,16 @@ function buildPayload(input: any, claudeTool: string, event: string, args: any) 
     hook_event_name: event,
     tool_name: claudeTool,
     tool_input,
+    // Attribution identity: forge reads forge_agent from the payload when no
+    // --agent flag / FORGE_HOOK_AGENT env is present (HookInput.ForgeAgent).
+    // A payload field (not an --agent suffix on the PRE_HOOKS/POST_HOOKS
+    // command strings) keeps TestOpencodePluginWiring's command roster intact.
+    //
+    // 归因身份：无 --agent flag / FORGE_HOOK_AGENT env 时 forge 从 payload 读
+    // forge_agent（HookInput.ForgeAgent）。用 payload 字段（而非给
+    // PRE_HOOKS/POST_HOOKS 命令串加 --agent 后缀）保持
+    // TestOpencodePluginWiring 的命令名册不变。
+    forge_agent: "opencode",
   };
 }
 

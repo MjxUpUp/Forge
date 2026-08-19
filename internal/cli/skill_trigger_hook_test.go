@@ -298,22 +298,21 @@ func TestRunSkillTriggerHook_DeniedSkillSkipped(t *testing.T) {
 	}
 }
 
-// TestRunSkillTriggerHook_KimiSuppressedOffUserPromptSubmit is the P1 core guard: on kimi,
-// skill-trigger MUST bail before runSkillTriggerCore on every event except UserPromptSubmit.
-// kimi 0.35.0 drops allow-path stdout from the model context for all other events (verified via
-// wire.jsonl: advisories reached the model 0 times across a 42-edit session), so running the
-// engine there would (a) never reach the model and (b) write a false checklog "delivered"
-// entry (recordSkillTriggerHits) — the false-prosperity observability bug where
-// `forge skills usage` reports triggers the model never saw. Each subtest sets up a skill that
-// WOULD trigger on the event, then asserts the guard short-circuits: NO stdout AND ZERO
-// skill-trigger checklog entries.
+// TestRunSkillTriggerHook_KimiSuppressedOffUserPromptSubmit is the kimi delivery guard: on
+// every event except UserPromptSubmit, kimi drops allow-path stdout from the model context
+// (verified via wire.jsonl), so skill-trigger must NOT print there — but it DOES still run
+// the engine and record each hit to checklog with Delivered=false + Channel=kimi/no-channel
+// (honest observability: the dashboard feed and usage funnel see the full trigger picture;
+// the funnel counts Delivered=true only, so these records cannot recreate the
+// false-prosperity bug). Each subtest sets up a skill that WOULD trigger on the event, then
+// asserts: NO stdout AND every recorded entry is stamped not-delivered.
 //
-// TestRunSkillTriggerHook_KimiSuppressedOffUserPromptSubmit 是 P1 核心守卫：kimi 下
-// skill-trigger 必须在除 UserPromptSubmit 外的每个事件上，于 runSkillTriggerCore 之前 bail。
-// kimi 0.35.0 对其他事件丢弃 allow-path stdout（wire.jsonl 实测：42 次编辑会话里 advisory
-// 0 次到达模型），故此时跑引擎既到不了模型，又写一条假的"已送达"checklog（假繁荣可观测
-// bug——`forge skills usage` 报告模型从未见过的触发）。每个子测试建一个本会在该事件触发的
-// skill，然后断言守卫短路：无 stdout 且零 skill-trigger checklog 条目。
+// TestRunSkillTriggerHook_KimiSuppressedOffUserPromptSubmit 是 kimi 投递守卫：除
+// UserPromptSubmit 外的每个事件，kimi 丢弃 allow-path stdout（wire.jsonl 实测），故
+// skill-trigger 不得在这些事件打印——但引擎仍运行并把每条命中以 Delivered=false +
+// Channel=kimi/no-channel 落 checklog（诚实可观测：看板事件流与 usage 漏斗看到完整
+// 触发图景；漏斗只计 Delivered=true，故这些记录不可能复活虚假繁荣 bug）。每个子测试
+// 建一个本会在该事件触发的 skill，然后断言：无 stdout 且每条记录都落了未送达章。
 func TestRunSkillTriggerHook_KimiSuppressedOffUserPromptSubmit(t *testing.T) {
 	events := []string{"PreToolUse", "PostToolUse", "Stop", "SessionStart"}
 	for _, ev := range events {
@@ -321,13 +320,13 @@ func TestRunSkillTriggerHook_KimiSuppressedOffUserPromptSubmit(t *testing.T) {
 			dir := withCanonicalEnv(t)
 			isolateSkillTriggerTmp(t)
 			root := t.TempDir()
-			// A skill that WOULD trigger on this event — the guard must suppress it regardless.
+			// A skill that WOULD trigger on this event — the delivery guard applies regardless.
 			writeSkill(t, dir, "probe-skill", fmt.Sprintf(`[{"event":%q,"when":"coding_intent"}]`, ev))
 
 			out := captureStdout(t, func() {
 				if err := runSkillTriggerHook(HookInput{
 					HookEventName: ev,
-					Prompt:        "帮我实现功能", // coding_intent true → would trigger absent the guard
+					Prompt:        "帮我实现功能", // coding_intent true → would trigger
 					SessionID:     "kimi-suppress-" + ev,
 				}, root, "v", "kimi"); err != nil {
 					t.Errorf("runSkillTriggerHook kimi %s: %v", ev, err)
@@ -335,17 +334,32 @@ func TestRunSkillTriggerHook_KimiSuppressedOffUserPromptSubmit(t *testing.T) {
 			})
 
 			if out != "" {
-				t.Errorf("kimi %s: guard must emit NO stdout (kimi drops it for this event + it'd record a false trigger), got %q", ev, out)
+				t.Errorf("kimi %s: must emit NO stdout (kimi drops it for this event), got %q", ev, out)
 			}
-			// The false-prosperity bug core assertion: recordSkillTriggerHits must NOT have run.
+			// Honest-record assertion: the hit IS recorded (no kimi blind spot in the feed)
+			// but MUST be stamped Delivered=false so the usage funnel never counts it.
+			//
+			// 诚实记录断言：命中被记录（事件流不再有 kimi 盲区）但必须落
+			// Delivered=false 章，usage 漏斗永不计为送达。
 			entries, err := checklog.LoadAll(root)
 			if err != nil {
 				t.Fatalf("LoadAll checklog: %v", err)
 			}
+			var hits int
 			for _, e := range entries {
-				if e.Check == checklog.CheckSkillTrigger {
-					t.Errorf("kimi %s: guard must write NO skill-trigger checklog entry (false-prosperity bug), got %+v", ev, e)
+				if e.Check != checklog.CheckSkillTrigger {
+					continue
 				}
+				hits++
+				if e.Delivered == nil || *e.Delivered {
+					t.Errorf("kimi %s: recorded hit must be stamped Delivered=false (false-prosperity guard), got %+v", ev, e)
+				}
+				if e.Channel != "kimi/no-channel" {
+					t.Errorf("kimi %s: Channel must be kimi/no-channel, got %q", ev, e.Channel)
+				}
+			}
+			if hits == 0 {
+				t.Errorf("kimi %s: hit must be RECORDED with Delivered=false (observability), got zero skill-trigger entries", ev)
 			}
 		})
 	}

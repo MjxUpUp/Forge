@@ -25,30 +25,48 @@ func generateCodeBuddyPack(t *testing.T) string {
 }
 
 // TestCodeBuddyHooksPayload_MirrorsSpec: BuildCodeBuddyHooksPayload must equal ForgeHookSpec
-// (under one "hooks" key) — CodeBuddy's hook protocol is byte-identical to Claude Code's, so
-// the spec migrates verbatim. Marshalling both to JSON and comparing catches any drift if
-// someone hand-maintains a parallel roster. (encoding/json sorts map keys → stable compare.)
+// (under one "hooks" key) with exactly ONE rewrite — every command gains the
+// `--agent codebuddy` suffix (attribution identity; see BuildCodeBuddyHooksPayload).
+// Marshalling both to JSON and comparing catches any drift if someone hand-maintains a
+// parallel roster. (encoding/json sorts map keys → stable compare.)
 //
-// TestCodeBuddyHooksPayload_MirrorsSpec：BuildCodeBuddyHooksPayload 必须等于 ForgeHookSpec
-// （包在一层 "hooks" key 下）——CodeBuddy 的 hook 协议与 Claude Code 字节一致，故 spec 原样
-// 迁移。两者 marshal 成 JSON 比对，抓住任何人手维护并行名册的 drift。（encoding/json 对 map
-// 按 sorted key 序列化 → 稳定比对。）
+// TestCodeBuddyHooksPayload_MirrorsSpec：BuildCodeBuddyHooksPayload 必须等于
+// ForgeHookSpec（包在一层 "hooks" key 下）且只做一处改写——每条命令加 `--agent
+// codebuddy` 后缀（归因身份；见 BuildCodeBuddyHooksPayload）。两者 marshal 成 JSON
+// 比对，抓住任何人手维护并行名册的 drift。（encoding/json 对 map 按 sorted key
+// 序列化 → 稳定比对。）
 func TestCodeBuddyHooksPayload_MirrorsSpec(t *testing.T) {
 	payload := BuildCodeBuddyHooksPayload()
 	a, _ := json.Marshal(payload.Hooks)
-	b, _ := json.Marshal(hooks.ForgeHookSpec())
+	spec := hooks.ForgeHookSpec()
+	withAgent := make(map[string][]hooks.HookMatcher, len(spec))
+	for event, matchers := range spec {
+		ms := make([]hooks.HookMatcher, len(matchers))
+		for i, m := range matchers {
+			entries := make([]hooks.HookEntry, len(m.Hooks))
+			for j, h := range m.Hooks {
+				entries[j] = hooks.HookEntry{Type: h.Type, Command: h.Command + " --agent codebuddy"}
+			}
+			ms[i] = hooks.HookMatcher{Matcher: m.Matcher, Hooks: entries}
+		}
+		withAgent[event] = ms
+	}
+	b, _ := json.Marshal(withAgent)
 	if string(a) != string(b) {
-		t.Fatalf("codebuddy hooks payload drifted from ForgeHookSpec:\n payload: %s\n spec:    %s", a, b)
+		t.Fatalf("codebuddy hooks payload drifted from ForgeHookSpec (+ --agent codebuddy):\n payload: %s\n spec:    %s", a, b)
 	}
 }
 
 // TestCodeBuddyPluginPack_HooksMirrorSettings: the generated hooks.json must equal the hooks
 // the ForgeHookSpec fixture writes to settings.local.json — single-source-of-truth guard (same shape
-// as TestPluginPack_HooksMirrorSettings), end-to-end across two real files.
+// as TestPluginPack_HooksMirrorSettings), end-to-end across two real files. CodeBuddy commands
+// carry the `--agent codebuddy` attribution suffix (BuildCodeBuddyHooksPayload), so the compare
+// strips that one suffix from the codebuddy side before marshalling.
 //
 // TestCodeBuddyPluginPack_HooksMirrorSettings：生成的 hooks.json 必须等于 ForgeHookSpec fixture
 // 写到 settings.local.json 的 hooks——单一真相源守卫（与 TestPluginPack_HooksMirrorSettings
-// 同形），跨两个真实文件端到端比对。
+// 同形），跨两个真实文件端到端比对。CodeBuddy 命令带 `--agent codebuddy` 归因后缀
+// （BuildCodeBuddyHooksPayload），故比对前从 codebuddy 侧剥掉该唯一后缀再 marshal。
 func TestCodeBuddyPluginPack_HooksMirrorSettings(t *testing.T) {
 	sdir := t.TempDir()
 	writeClaudeSettingsFixture(t, sdir)
@@ -58,6 +76,24 @@ func TestCodeBuddyPluginPack_HooksMirrorSettings(t *testing.T) {
 	pdir := generateCodeBuddyPack(t)
 	var hj map[string]any
 	loadJSON(t, filepath.Join(pdir, "plugins", "forge", "hooks", "hooks.json"), &hj)
+
+	// Strip the attribution suffix so the comparison keys on the wiring roster
+	// itself (which hook on which event/matcher), not on the one known rewrite.
+	//
+	// 剥掉归因后缀，使比对聚焦接线名册本身（哪个 hook 接在哪个 event/matcher），
+	// 而非那一处已知改写。
+	if hooksMap, ok := hj["hooks"].(map[string]any); ok {
+		for _, matchers := range hooksMap {
+			for _, m := range matchers.([]any) {
+				for _, h := range m.(map[string]any)["hooks"].([]any) {
+					entry := h.(map[string]any)
+					if cmd, ok := entry["command"].(string); ok {
+						entry["command"] = strings.TrimSuffix(cmd, " --agent codebuddy")
+					}
+				}
+			}
+		}
+	}
 
 	a, _ := json.Marshal(settings["hooks"])
 	b, _ := json.Marshal(hj["hooks"])
