@@ -228,3 +228,23 @@ func TestReleasePleaseWorkflow_PinnedAndDispatchesRelease(t *testing.T) {
 		t.Fatal("dispatch 步必须以 release_created 输出为前提——否则每次普通 PR 刷新也调度构建层")
 	}
 }
+
+// TestReleasePleaseWorkflow_NoSecretsInIf: GitHub statically rejects any `if:` expression that
+// references the secrets context — secrets is not in the steps.if/job.if context allowlist, and
+// the whole workflow file fails validation: run records die at 0s with zero jobs and no logs,
+// while pushes to non-matching branches still spawn failure records (2026-08-19 first-run
+// incident, bisected via scratch-branch pushes). The dual-token path must keep its PAT check
+// inside the run script: env may reference secrets, if: may not.
+//
+// TestReleasePleaseWorkflow_NoSecretsInIf：GitHub 静态拒绝任何引用 secrets 上下文的
+// if: 表达式——secrets 不在 steps.if/job.if 的上下文白名单，整个 workflow 文件校验
+// 失败：run 记录 0s 死、0 jobs、无日志，且不匹配分支的推送也产生 failure 记录
+// （2026-08-19 首跑事故，scratch 分支推送二分定位）。双 token 路径的 PAT 检测必须
+// 留在 run 脚本内：env 可引用 secrets，if: 不行。
+func TestReleasePleaseWorkflow_NoSecretsInIf(t *testing.T) {
+	raw := string(readRepoFile(t, ".github", "workflows", "release-please.yml"))
+	if regexp.MustCompile(`(?m)^\s*if:.*secrets\.`).MatchString(raw) {
+		t.Fatal("release-please.yml 的 if: 表达式引用了 secrets. 上下文——GitHub 静态校验会拒绝整个" +
+			" workflow 文件（run 0s 失败、0 jobs、无日志）。PAT 检测须放 run 脚本读 env（env 可引用 secrets）")
+	}
+}

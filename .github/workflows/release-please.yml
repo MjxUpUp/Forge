@@ -42,12 +42,21 @@ jobs:
         # GITHUB_TOKEN 路径的串联步骤：release-please 合并 Release PR 后自动打了 v* tag
         # 并建 GitHub Release，但该事件由 GITHUB_TOKEN 产生、不触发 release.yml——用
         # workflow_dispatch 显式调度（GITHUB_TOKEN 可触发 dispatch 的文档化例外）。
-        # 配置 RELEASE_PLEASE_TOKEN（PAT）后 tag push 已直接触发 release.yml，本步骤
-        # 自动停用（防双跑）。
-        if: ${{ steps.release.outputs.release_created == 'true' && secrets.RELEASE_PLEASE_TOKEN == '' }}
+        #
+        # 坑（2026-08-19 首跑事故，scratch 分支二分定位）：PAT 双跑防护不能写进 if:
+        # 表达式——secrets 上下文不在 steps.if 白名单，GitHub 静态校验直接拒绝整个
+        # workflow 文件（run 记录 0s 失败、0 jobs、无日志）。检测必须下沉到 run 脚本
+        # 读 env（env 里引用 secrets 合法）。
+        if: ${{ steps.release.outputs.release_created == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.release.outputs.tag_name }}
+          # PAT 路径下 tag push 事件由 PAT 产生、会直接触发 release.yml，此步让位防双跑。
+          PAT: ${{ secrets.RELEASE_PLEASE_TOKEN }}
         run: |
+          if [ -n "$PAT" ]; then
+            echo "RELEASE_PLEASE_TOKEN configured - tag push triggers release.yml directly, skipping dispatch"
+            exit 0
+          fi
           echo "release-please created $TAG; dispatching Release workflow on it"
           gh workflow run release.yml --ref "$TAG"
