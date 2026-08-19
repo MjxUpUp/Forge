@@ -470,3 +470,37 @@ func TestDetectPhantomImport(t *testing.T) {
 		}
 	}
 }
+
+// TestDetectPathAssumption pins the separator-as-matcher fingerprint (the 2026-08-19 Windows CI
+// incident): using the OS separator inside prefix/suffix/contains matching is flagged; using it
+// for path CONSTRUCTION (TrimRight/Join) is not.
+//
+// TestDetectPathAssumption 钉住「分隔符当匹配器」指纹（2026-08-19 Windows CI 事故）：
+// 在前/后缀/包含匹配里用 OS 分隔符 → 上报；用于路径构造（TrimRight/Join）→ 不报。
+func TestDetectPathAssumption(t *testing.T) {
+	hit := []string{
+		`if strings.HasPrefix(line, string(filepath.Separator)) {`,
+		`strings.Contains(p, string(filepath.Separator))`,
+		`ok := strings.HasSuffix(name, string(filepath.Separator))`,
+		// 首参嵌套构造调用（真实高发形态：HasPrefix(filepath.Base(p), ...)）。
+		`strings.HasPrefix(filepath.Base(p), string(filepath.Separator))`,
+		`strings.LastIndex(name, string(filepath.Separator))`,
+	}
+	for _, src := range hit {
+		got := detectPathAssumption([]addedLine{al("x.go", 1, src)})
+		if len(got) != 1 || got[0].Pattern != CheatPathAssumption || got[0].Severity != "high" {
+			t.Errorf(`应命中 path-assumption: %q → %+v`, src, got)
+		}
+	}
+	miss := []string{
+		`return filepath.Base(strings.TrimRight(line, string(filepath.Separator)))`, // 构造用途合法
+		`dst := filepath.Join(toDir, rel)`,
+		`if strings.HasPrefix(line, "/") {`, // 硬编码斜杠不在本模式范围（太吵）
+		`sep := string(filepath.Separator)`, // 单独取分隔符不是匹配行为
+	}
+	for _, src := range miss {
+		if got := detectPathAssumption([]addedLine{al("x.go", 1, src)}); len(got) != 0 {
+			t.Errorf(`不应命中 path-assumption: %q → %+v`, src, got)
+		}
+	}
+}

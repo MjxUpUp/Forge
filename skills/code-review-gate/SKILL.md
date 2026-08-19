@@ -174,7 +174,7 @@ git diff --cached                  # 看已暂存的变更
 
 来自 327 个真实 AI PR 的挖掘（27 个被维护者明确确认为作弊，工具召回率 93%）。**命中任一即必须解决（不得跳过）：**
 
-> Forge 项目：`task-verify` 的 cheat-scan 已机械扫任务新增行的 6 类模式（type-suppression / error-swallow / dead-branch / comment-only-fix / comment-as-debt / phantom-import）并记 `checklog:cheat-scan`——审查前先查 `forge trace`，这 6 类已被 deterministic 判过，子 agent **跳过它们**，把精力放到下表其余需语义判断的模式和轨道 B 上（机制详见 [references/forge-integration.md](references/forge-integration.md)「cheat-scan 预扫」节）。
+> Forge 项目：`task-verify` 的 cheat-scan 已机械扫任务新增行的 7 类模式（type-suppression / error-swallow / dead-branch / comment-only-fix / comment-as-debt / phantom-import / path-assumption）并记 `checklog:cheat-scan`——审查前先查 `forge trace`，这 7 类已被 deterministic 判过，子 agent **跳过它们**，把精力放到下表其余需语义判断的模式和轨道 B 上（机制详见 [references/forge-integration.md](references/forge-integration.md)「cheat-scan 预扫」节）。
 
 | 作弊类型 | 指纹 | 为什么是问题 |
 |---|---|---|
