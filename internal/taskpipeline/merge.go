@@ -82,6 +82,15 @@ func MergeTaskStateSync(local, incoming *TaskState) {
 		local.ReviewPassed = incoming.ReviewPassed
 		local.ReviewedHeadCommit = incoming.ReviewedHeadCommit
 		local.ReviewedChangeHash = incoming.ReviewedChangeHash
+		// ReviewRounds travels with the completion block: the adopted Score may be
+		// recomputed locally later, and the review-pass history is the raw material of
+		// the rework metric — adopting the score but dropping the rounds would
+		// undercount on a local rescore.
+		//
+		// ReviewRounds 随完成块一起走：采纳的 Score 之后可能在本地重算，而
+		// review-pass 历史是返工度量的原料——采纳了分数却丢轮次会让本地重算
+		// 少计。
+		local.ReviewRounds = incoming.ReviewRounds
 		local.Score = incoming.Score
 		local.Assignment = incoming.Assignment
 		local.Acceptance = incoming.Acceptance
