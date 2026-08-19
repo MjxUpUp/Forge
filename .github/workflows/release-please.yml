@@ -59,4 +59,6 @@ jobs:
             exit 0
           fi
           echo "release-please created $TAG; dispatching Release workflow on it"
-          gh workflow run release.yml --ref "$TAG"
+          # --repo 必须显式给：本 workflow 不 checkout（无 .git），gh 无 --repo 时会
+          # 尝试从当前 git 仓库推断而 fatal: not a git repository（v1.38.0 首发事故）。
+          gh workflow run release.yml --ref "$TAG" --repo "$GITHUB_REPOSITORY"

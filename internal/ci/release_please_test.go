@@ -224,6 +224,13 @@ func TestReleasePleaseWorkflow_PinnedAndDispatchesRelease(t *testing.T) {
 		t.Fatal("release-please.yml 必须 gh workflow run release.yml --ref <tag> 串联构建层——" +
 			"GITHUB_TOKEN 产生的 tag push 不触发 workflow，缺这步则发版止步于 GitHub Release，无二进制无 npm 包")
 	}
+	// dispatch 命令必须显式 --repo：release-please workflow 不 checkout（workspace 无 .git），
+	// gh 无 --repo 时从当前 git 仓库推断会 fatal: not a git repository（v1.38.0 首发事故，
+	// tag/Release 已建、构建层没被调度）。锚定行首防注释满足。
+	if !regexp.MustCompile(`(?m)^\s*gh workflow run release\.yml\b[^\n]*--repo\b`).MatchString(raw) {
+		t.Fatal("dispatch 命令必须显式 --repo \"$GITHUB_REPOSITORY\"——本 workflow 不 checkout（无 .git），" +
+			"gh 缺 --repo 时从 git 上下文推断仓库直接 fatal（v1.38.0 首发：tag 建了、构建层没跑）")
+	}
 	if !strings.Contains(raw, "release_created") {
 		t.Fatal("dispatch 步必须以 release_created 输出为前提——否则每次普通 PR 刷新也调度构建层")
 	}
