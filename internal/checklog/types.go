@@ -30,19 +30,21 @@ const (
 	// 但永远 Checked=true 且绝不阻断工具调用（advisory）。变更影响分析召回率仅 ~44%，
 	// scope 是 prediction 非 contract，偏差是常态信号；本记录供 review/看板度量，不作门禁。
 	CheckScopeDrift CheckName = "scope-drift"
-	// CheckCheatScan records advisory AI cheat-pattern scan results: at task-verify, mechanically detects new-line hits across 6 categories
-	// (type-suppression/error-swallow/dead-branch/comment-only-fix/comment-as-debt/phantom-import).
+	// CheckCheatScan records advisory AI cheat-pattern scan results: at task-verify, mechanically detects new-line hits across 7 categories
+	// (type-suppression/error-swallow/dead-branch/comment-only-fix/comment-as-debt/phantom-import/path-assumption).
 	// comment-as-debt catches comments that flag an issue without fixing it (ladder-of-laziness level 0, the root of code rot);
-	// phantom-import catches relative imports that resolve to no file on disk (the mechanical subset of mock-of-hallucination).
+	// phantom-import catches relative imports that resolve to no file on disk (the mechanical subset of mock-of-hallucination);
+	// path-assumption catches the OS path separator used as a content matcher (the cross-platform breakage fingerprint).
 	// deterministic (the gate computes ScanCheatPatterns, agent cannot forge). Passed semantics: no hit
 	// =true, hit=false—but always Checked=true and never blocks (advisory; heuristics may false-positive,
 	// the trail is left for review inspection). This record lifts mechanically-detectable cheats from per-round LLM-review resampling
 	// into a one-shot deterministic verdict—countering the root cause of each review round surfacing new issues.
 	//
-	// CheckCheatScan 记录 advisory AI 作弊模式扫描结果：task-verify 时机械检测 6 类
-	// （type-suppression/error-swallow/dead-branch/comment-only-fix/comment-as-debt/phantom-import）的新增行命中。
+	// CheckCheatScan 记录 advisory AI 作弊模式扫描结果：task-verify 时机械检测 7 类
+	// （type-suppression/error-swallow/dead-branch/comment-only-fix/comment-as-debt/phantom-import/path-assumption）的新增行命中。
 	// comment-as-debt 抓"注释标识问题但不解决"（懒惰阶梯反第 0 级，屎山根源）；
-	// phantom-import 抓解析不到磁盘文件的相对 import（mock-of-hallucination 的机械子集）。
+	// phantom-import 抓解析不到磁盘文件的相对 import（mock-of-hallucination 的机械子集）；
+	// path-assumption 抓把 OS 路径分隔符当内容匹配器的写法（跨平台崩溃指纹）。
 	// deterministic（gate 实算 ScanCheatPatterns，agent 无法伪造）。Passed 语义：无命中
 	// =true，有命中=false——但永远 Checked=true 且绝不阻断（advisory；启发式有假阳性
 	// 可能，留痕供 review 核查）。本记录把"机械可检的作弊"从 LLM-review 每轮重采样

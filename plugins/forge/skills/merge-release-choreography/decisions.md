@@ -62,3 +62,20 @@ SKILL.md S1 预检加一条：契约变更型重构后 e2e/回归场景的期望
 ### Rationale
 
 代码全绿≠场景在断言新契约，该类事故每次命中就是一整轮 CI 红
+
+## [d-18cd18075d188e38-b02a6f89] accept
+
+- **Skill**: merge-release-choreography
+- **DecidedAt**: 2026-08-19T03:44:07Z
+
+### Diagnosis
+
+跨平台失败反复在合并推 main 后才被 CI 发现——本机平台原理上跑不出他平台行为差异（路径分隔符类），缺'合并前三平台 CI 绿'的预检环节
+
+### Revision
+
+S1 预检新增：分支 CI 绿硬预检（ci.yml 对所有分支 push 触发）+ 本地验证命令退出码纪律（pipefail 假绿事故）+ make premerge 兜底
+
+### Evidence
+
+2026-08-19 datamerge/e2e 4 个 Windows-only 失败经 main 推送才发现；ci.yml 已扩触发；Makefile premerge 已落地
