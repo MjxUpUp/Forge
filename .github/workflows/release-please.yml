@@ -1,0 +1,46 @@
+name: Release Please
+
+# release-please 层：接管「何时发版、发什么版本」——扫 Conventional Commits、维护
+# Release PR（版本 bump + changelog）、合并后自动打 v* tag 并建 GitHub Release；
+# 构建发布层 release.yml（test→goreleaser→npm）零改动，由下方 dispatch 步串联。
+# 两层分工与发版纪律见仓库根 RELEASE.md。
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write # Release PR 分支提交 + tag + GitHub Release
+  pull-requests: write # 创建/维护 Release PR（autorelease 标签）
+  actions: write # GITHUB_TOKEN 路径下 dispatch release.yml（在新 tag 上跑构建层）
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # SHA pin v5.0.0——浮动 major tag 可被上游重指向，与 release.yml 的 action pin
+      # 同一供应链姿势。
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        with:
+          # manifest 模式为默认：自动读 release-please-config.json +
+          # .release-please-manifest.json，无需 release-type/command 输入。
+          #
+          # token 双路径：默认 GITHUB_TOKEN（零配置即可用）；配置 secret
+          # RELEASE_PLEASE_TOKEN（PAT）后升级——Release PR 上能跑 CI 检查、tag push
+          # 事件直接触发 release.yml。GITHUB_TOKEN 产生的 tag push/PR 事件不会触发
+          # 新 workflow run（GitHub 防递归的文档化行为），故默认路径须靠下方 dispatch。
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+      - name: Dispatch Release workflow on the new tag
+        # GITHUB_TOKEN 路径的串联步骤：release-please 合并 Release PR 后自动打了 v* tag
+        # 并建 GitHub Release，但该事件由 GITHUB_TOKEN 产生、不触发 release.yml——用
+        # workflow_dispatch 显式调度（GITHUB_TOKEN 可触发 dispatch 的文档化例外）。
+        # 配置 RELEASE_PLEASE_TOKEN（PAT）后 tag push 已直接触发 release.yml，本步骤
+        # 自动停用（防双跑）。
+        if: ${{ steps.release.outputs.release_created == 'true' && secrets.RELEASE_PLEASE_TOKEN == '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag_name }}
+        run: |
+          echo "release-please created $TAG; dispatching Release workflow on it"
+          gh workflow run release.yml --ref "$TAG"

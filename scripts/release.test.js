@@ -12,11 +12,12 @@ const path = require('path');
 const os = require('os');
 const { execSync } = require('child_process');
 
-const { inferBump, bumpVersion, readCommitMessages, replaceVersionField } = require('./release.js');
+const { inferBump, bumpVersion, readCommitMessages, replaceVersionField, replaceManifestVersion } = require('./release.js');
 
 const SCRIPT = path.join(__dirname, 'release.js');
 const PKG = path.join(__dirname, '..', 'npm', 'package.json');
 const KIMI_PLUGIN = path.join(__dirname, '..', '.kimi-plugin', 'plugin.json');
+const MANIFEST = path.join(__dirname, '..', '.release-please-manifest.json');
 
 // --- bumpVersion:纯函数,版本号计算正确性(发版事故高价值点) ---
 
@@ -168,14 +169,43 @@ test('replaceVersionField 保留周围格式（缩进/引号风格）', () => {
   assert.ok(content.includes('"name":  "forge"'), 'unrelated formatting preserved');
 });
 
+// --- replaceManifestVersion:.release-please-manifest.json 根包 "." 的 bump ---
+// manifest 形状是 {".": "1.34.0"}（无 "version" 字段）。release.js 作为逃生舱发版时
+// 必须同步它——不同步则 release-please 从旧版本起算下一版、撞已存在 tag。
+
+test('replaceManifestVersion 替换根包 "." 版本', () => {
+  const src = '{\n  ".": "1.34.0"\n}';
+  const { content, ok } = replaceManifestVersion(src, '1.35.0');
+  assert.strictEqual(ok, true);
+  assert.strictEqual(content, '{\n  ".": "1.35.0"\n}');
+});
+
+test('replaceManifestVersion 多包 key 只动 "."，其它路径 key 原样', () => {
+  // monorepo 形状的 manifest（多包路径 key）：只根包 "." 被 bump。
+  const src = '{\n  ".": "1.34.0",\n  "sub": "0.9.0"\n}';
+  const { content, ok } = replaceManifestVersion(src, '1.35.0');
+  assert.strictEqual(ok, true);
+  assert.ok(content.includes('".": "1.35.0"'));
+  assert.ok(content.includes('"sub": "0.9.0"'), 'other package keys untouched');
+});
+
+test('replaceManifestVersion 缺 "." 键返回 ok=false', () => {
+  const src = '{\n  "sub": "0.9.0"\n}';
+  const { content, ok } = replaceManifestVersion(src, '1.35.0');
+  assert.strictEqual(ok, false);
+  assert.strictEqual(content, src, 'content unchanged on miss');
+});
+
 // --- 端到端:dry-run 不改 package.json ---
 
-test('dry-run auto 打印版本信息且不修改 package.json / plugin.json', () => {
+test('dry-run auto 打印版本信息且不修改 package.json / plugin.json / manifest', () => {
   const before = fs.readFileSync(PKG, 'utf8');
   const beforeKimi = fs.readFileSync(KIMI_PLUGIN, 'utf8');
+  const beforeManifest = fs.readFileSync(MANIFEST, 'utf8');
   const out = execSync(`node ${SCRIPT} --dry-run`, { encoding: 'utf8' });
   const after = fs.readFileSync(PKG, 'utf8');
   const afterKimi = fs.readFileSync(KIMI_PLUGIN, 'utf8');
+  const afterManifest = fs.readFileSync(MANIFEST, 'utf8');
 
   assert.match(out, /current:/);
   assert.match(out, /bump:/);
@@ -184,6 +214,7 @@ test('dry-run auto 打印版本信息且不修改 package.json / plugin.json', (
   assert.match(out, /dry-run, no changes/);
   assert.strictEqual(before, after, 'dry-run must not modify npm/package.json');
   assert.strictEqual(beforeKimi, afterKimi, 'dry-run must not modify .kimi-plugin/plugin.json');
+  assert.strictEqual(beforeManifest, afterManifest, 'dry-run must not modify .release-please-manifest.json');
 });
 
 test('dry-run minor 覆盖 auto 推断', () => {
