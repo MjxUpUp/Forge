@@ -3,7 +3,6 @@
   "release-type": "go",
   "include-component-in-tag": false,
   "include-v-in-tag": true,
-  "always-update": true,
   "bootstrap-sha": "ef0982d1a48a721b4ff9d8241409a625b2d64e8f",
   "packages": {
     ".": {
