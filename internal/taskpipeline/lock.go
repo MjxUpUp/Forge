@@ -1,9 +1,12 @@
 package taskpipeline
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"syscall"
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/taskcontext"
@@ -96,7 +99,32 @@ func LockTask(root, ref string) (unlock func(), err error) {
 			}, nil
 		}
 		if !os.IsExist(err) {
-			return nil, fmt.Errorf("failed to acquire task lock: %w", err)
+			// Windows transient contention: opening a lock file that was JUST created
+			// (the holder is between OpenFile and Close) or is being scanned by an AV
+			// indexer yields access-denied / sharing-violation instead of EEXIST. This
+			// is the same contention shape as the timeout path, not corruption — retry
+			// within the same deadline rather than hard-failing (real flake:
+			// TestMutateTaskState_SequentialLostUpdate on windows-latest, 2026-08-19).
+			//
+			// Windows 瞬态竞争：打开刚被创建（持锁者尚在 OpenFile 与 Close 之间）或正被
+			// AV 索引器扫描的锁文件，返回的是 access-denied / sharing-violation 而非
+			// EEXIST。这与超时路径是同一种竞争形态、不是损坏——在同一 deadline 内重试
+			// 而非硬失败（真实 flake：windows-latest 的
+			// TestMutateTaskState_SequentialLostUpdate，2026-08-19）。
+			if !isLockContentionErr(err) {
+				return nil, fmt.Errorf("failed to acquire task lock: %w", err)
+			}
+			if time.Now().After(deadline) {
+				// Keep the underlying error in the message: a persistent permission denial
+				// (read-only DataDir) wears the same timeout costume as real contention —
+				// the last error is what tells them apart.
+				//
+				// 消息里带上底层错误：持续权限拒绝（只读 DataDir）与真竞争穿同一件
+				// 超时外衣——区分两者靠 last error。
+				return nil, fmt.Errorf("task %q lock held by another forge process for >%s (last error: %v); retry later", ref, taskLockWait, err)
+			}
+			time.Sleep(taskLockRetry)
+			continue
 		}
 		// Break the stale lock: a holder that crashed mid-mutation would otherwise block
 		// every future writer of this task forever. Known rare race (two breakers at the
@@ -138,4 +166,24 @@ func MutateTaskState(root, ref string, fn func(*TaskState) error) error {
 		return err
 	}
 	return SaveTaskState(root, state)
+}
+
+// isLockContentionErr reports whether an O_EXCL lock-open failure is Windows transient
+// contention (sharing-violation / access-denied while the holder is between OpenFile and
+// Close, or an AV indexer is scanning the just-created file) rather than a real failure.
+// Windows-only by construction: on unix the same numeric errnos mean unrelated things
+// (32=EPIPE), and genuine EACCES there must keep failing fast instead of retrying until
+// the deadline.
+//
+// isLockContentionErr 判断 O_EXCL 开锁失败是否为 Windows 瞬态竞争（持锁者尚在
+// OpenFile 与 Close 之间、或 AV 索引器正在扫描刚创建的文件时的 sharing-violation /
+// access-denied），而非真实失败。按构造仅 Windows 生效：同数值 errno 在 unix 上是
+// 无关语义（32=EPIPE），且 unix 上真实的 EACCES 必须保持快速失败，不能重试到超时。
+func isLockContentionErr(err error) bool {
+	if runtime.GOOS != "windows" {
+		return false
+	}
+	return os.IsPermission(err) || // ERROR_ACCESS_DENIED
+		errors.Is(err, syscall.Errno(32)) || // ERROR_SHARING_VIOLATION
+		errors.Is(err, syscall.Errno(33)) // ERROR_LOCK_VIOLATION
 }
