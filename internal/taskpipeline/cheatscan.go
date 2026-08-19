@@ -14,8 +14,8 @@ import (
 //
 // Motivation (root cause in the forge-review-deterministic-shift memory): among the 11
 // AI-cheat categories in code-review-gate, the mechanically detectable ones (type-suppression,
-// error-swallow / dead-branch / comment-only-fix / comment-as-debt) were previously all
-// judged by LLM sub-agents.
+// error-swallow / dead-branch / comment-only-fix / comment-as-debt / phantom-import) were
+// previously all judged by LLM sub-agents.
 // LLMs re-sample the same diff every round, catching different subsets → the source of the
 // perception that every review surfaces new problems.
 //
@@ -33,7 +33,7 @@ import (
 //
 // 动机（根因见 forge-review-deterministic-shift memory）：code-review-gate 的
 // 11 类 AI 作弊模式里，机械可检的那几类（type-suppression / error-swallow /
-// dead-branch / comment-only-fix / comment-as-debt）此前全靠 LLM 子 agent 判断。LLM 每轮对同一 diff
+// dead-branch / comment-only-fix / comment-as-debt / phantom-import）此前全靠 LLM 子 agent 判断。LLM 每轮对同一 diff
 // 重新采样、抓不同子集 → "每轮 review 都冒新问题"的体感来源。
 //
 // 本扫描器把这些机械模式抽到 task-verify 时的 deterministic 检测：扫任务范围的
@@ -87,6 +87,17 @@ const (
 	// （转 forge task 跟踪 或 当场修）而非定罪。detectCommentDebt 只扫注释行；标记词用
 	// debtMarkerWords 拼接，避免扫描器扫自身源码时把模式定义/注释里的词误判为债务。
 	CheatCommentDebt CheatPattern = "comment-as-debt"
+	// CheatPhantomImport: new relative imports pointing to files that do not exist on disk —
+	// the mechanically checkable subset of mock-of-hallucination (an import that cannot resolve
+	// fails at runtime for sure). TS/JS relative specifiers and Python relative from-imports only;
+	// external packages (npm registry / go.mod) need manifest or network checks and stay with the
+	// LLM reviewer. severity=high.
+	//
+	// CheatPhantomImport：新增相对 import 指向磁盘上不存在的文件——mock-of-hallucination
+	// 的机械可检子集（解析不到的 import 运行时必炸）。只覆盖 TS/JS 相对路径与 Python
+	// 相对 from-import；外部包（npm registry / go.mod）需 manifest 或联网校验，仍归
+	// LLM reviewer。severity=high。
+	CheatPhantomImport CheatPattern = "phantom-import"
 )
 
 // CheatFinding is a single mechanically detected suspected cheat. Advisory — detection may
@@ -113,14 +124,14 @@ type addedLine struct {
 	text   string
 }
 
-// ScanCheatPatterns scans task-scoped added lines and mechanically detects 5 AI-cheat patterns.
+// ScanCheatPatterns scans task-scoped added lines and mechanically detects 6 AI-cheat patterns.
 // Purely deterministic (computed by the gate, agent cannot forge). Returns findings (empty = clean).
 // Failure-tolerant: on git/file-read errors it skips that source (returning what was collected),
 // never panics — the reliability of advisory detection comes from what-it-catches-is-accurate,
 // not from must-scan-everything.
 //
-// ScanCheatPatterns 扫描任务范围内的新增行，机械检测 5 类 AI 作弊模式（type-suppression /
-// error-swallow / dead-branch / comment-only-fix / comment-as-debt）。
+// ScanCheatPatterns 扫描任务范围内的新增行，机械检测 6 类 AI 作弊模式（type-suppression /
+// error-swallow / dead-branch / comment-only-fix / comment-as-debt / phantom-import）。
 // 纯 deterministic（gate 实算，agent 无法伪造）。返回 findings（空=干净）。
 // 失败容忍：git/读文件出错时跳过该源（返回已收集的），绝不 panic——advisory 检测
 // 的可靠性来自"扫到了就准"，不来自"必须扫全"。
@@ -183,6 +194,7 @@ func ScanCheatPatterns(root string, state *TaskState) []CheatFinding {
 	findings = append(findings, detectDeadBranch(code)...)
 	findings = append(findings, detectCommentOnly(prod)...)
 	findings = append(findings, detectCommentDebt(prod)...)
+	findings = append(findings, detectPhantomImport(root, code)...)
 	return findings
 }
 
@@ -478,6 +490,172 @@ var commentDebtRe = regexp.MustCompile(
 		`|(?i)implement\s+later`,
 )
 
+// tsRelImportRe captures relative module specifiers in TS/JS import / export-from / require /
+// dynamic-import statements. Only dot-led specifiers are captured — bare specifiers (packages
+// from node_modules) and aliases (e.g. at-sign-prefixed) are not resolvable from the filesystem
+// alone and stay with the LLM reviewer. The backslash-escaped fragments in this definition can
+// never match the definition line itself, and Go sources never enter the TS/JS branch anyway.
+//
+// tsRelImportRe 捕获 TS/JS import / export-from / require / 动态 import 里的相对模块
+// 路径。只捕获点开头的路径——裸包名（node_modules）与别名（如 @ 前缀）无法仅靠文件
+// 系统解析，留给 LLM reviewer。定义里的反斜杠转义片段永远不会匹配定义行自身，且 Go
+// 源码本就不进 TS/JS 分支。
+var tsRelImportRe = regexp.MustCompile(`(?:from\s+|import\s*\(?\s*|export\s+from\s+|require\s*\(\s*)['"](\.{1,2}/[^'"]+)['"]`)
+
+// pyRelImportRe captures Python relative from-imports: group 1 is the leading dots (1 dot =
+// the importing file's own package, each extra dot = one package level up), group 2 is the
+// dotted module path (may be empty for the from-dot-import-names form).
+//
+// pyRelImportRe 捕获 Python 相对 from-import：分组 1 是前导点（1 个点 = 本文件所在包，
+// 每多一个点 = 再上一层），分组 2 是点分模块路径（from-点-import-名字 形式下可为空）。
+var pyRelImportRe = regexp.MustCompile(`^\s*from\s+(\.+)([\w.]*)\s+import\b`)
+
+// Resolve candidate extensions per language family (relative import targets may omit them).
+//
+// 各语言族的解析候选扩展名（相对 import 目标可省略扩展名）。
+var (
+	tsResolveExts = []string{".ts", ".tsx", ".js", ".jsx", ".d.ts"}
+	pyResolveExts = []string{".py"}
+)
+
+// detectPhantomImport: new relative imports that do not resolve to any file on disk — the
+// mechanically checkable subset of mock-of-hallucination. Line-based: multi-line import lists
+// still carry the from-clause (with the specifier) on one line, so per-line scanning suffices.
+// One finding per line even when several specifiers on it fail.
+//
+// detectPhantomImport：新增的相对 import 在磁盘上解析不到任何文件——mock-of-hallucination
+// 的机械可检子集。按行扫描：多行 import 列表的 from 子句（含路径）仍在单独一行上，
+// 逐行扫足够。一行多个失败路径只记一条 finding。
+func detectPhantomImport(root string, added []addedLine) []CheatFinding {
+	var out []CheatFinding
+	for _, a := range added {
+		switch strings.ToLower(filepath.Ext(a.file)) {
+		case ".ts", ".tsx", ".js", ".jsx":
+			for _, m := range tsRelImportRe.FindAllStringSubmatch(a.text, -1) {
+				spec := m[1]
+				// Strip resource-query/hash suffixes (loader syntax like ?inline/?raw/#frag) —
+				// they are bundler directives, not part of the file path.
+				//
+				// 剥掉资源查询/hash 后缀（loader 语法如 ?inline/?raw/#frag）——它们是
+				// bundler 指令，不是文件路径的一部分。
+				if i := strings.IndexAny(spec, "?#"); i >= 0 {
+					spec = spec[:i]
+				}
+				if !relImportExists(root, a.file, spec, tsResolveExts) {
+					out = append(out, CheatFinding{
+						Pattern:  CheatPhantomImport,
+						File:     a.file,
+						Line:     a.lineNo,
+						Snippet:  clip(a.text),
+						Severity: "high",
+					})
+					break
+				}
+			}
+		case ".py":
+			m := pyRelImportRe.FindStringSubmatch(a.text)
+			if m == nil || m[2] == "" {
+				// from-dot-import-names form imports members from the current package's
+				// __init__ — the package dir itself always exists; members are not
+				// line-checkable.
+				//
+				// from-点-import-名字 形式是从本包 __init__ 引入成员——包目录自身
+				// 必然存在，成员名无法按行校验。
+				continue
+			}
+			// 1 dot = the importing file's own package dir; each extra dot goes one level up.
+			//
+			// 1 个点 = 本文件所在包目录；每多一个点再上一层。
+			base := filepath.Dir(a.file)
+			for i := 0; i < len(m[1])-1; i++ {
+				base = filepath.Dir(base)
+			}
+			spec := strings.ReplaceAll(m[2], ".", "/")
+			rel := filepath.ToSlash(filepath.Join(base, filepath.FromSlash(spec)))
+			// PEP 420 namespace packages: a directory without __init__.py is still a valid
+			// import target — accept an existing directory as resolved.
+			//
+			// PEP 420 namespace 包：无 __init__.py 的目录仍是合法 import 目标——目录
+			// 存在即算解析成功。
+			if !resolveTargetExists(root, rel, pyResolveExts) && !dirExists(root, rel) {
+				out = append(out, CheatFinding{
+					Pattern:  CheatPhantomImport,
+					File:     a.file,
+					Line:     a.lineNo,
+					Snippet:  clip(a.text),
+					Severity: "high",
+				})
+			}
+		}
+	}
+	return out
+}
+
+// relImportExists reports whether a relative import specifier resolves to any real file under
+// root. fromFile is the importing file's repo-relative slash path; spec is the dot-led
+// specifier. Candidates, in order: the exact path (explicit extension, e.g. assets), path +
+// each extension, path/index + each extension (TS/JS directory imports), path/__init__.py
+// (Python package imports). A hit on any candidate clears the line.
+//
+// relImportExists 报告相对 import 路径在 root 下是否解析到真实文件。fromFile 是引入
+// 方文件的仓库相对 slash 路径；spec 是点开头路径。候选按序：精确路径（带显式扩展名
+// 的情形）、路径+各扩展名、路径/index+各扩展名（TS/JS 目录引入）、路径/__init__.py
+// （Python 包引入）。任一候选命中即放行。
+func relImportExists(root, fromFile, spec string, exts []string) bool {
+	target := filepath.ToSlash(filepath.Join(filepath.Dir(fromFile), filepath.FromSlash(spec)))
+	if resolveTargetExists(root, target, exts) {
+		return true
+	}
+	// NodeNext/ESM convention: TS source files are imported with the EMITTED extension
+	// (./util.js naming the on-disk util.ts). When the specifier ends in a JS-family
+	// extension, also try the target with that extension stripped (the +ext candidates
+	// then cover util.ts / util.tsx / util.d.ts). Without this every compliant NodeNext
+	// import would false-fire (cry-wolf).
+	//
+	// NodeNext/ESM 惯例：TS 源码用「产物扩展名」互引（./util.js 指磁盘上的 util.ts）。
+	// 路径以 JS 族扩展名结尾时，额外尝试剥掉该扩展名的目标（+扩展名候选随之覆盖
+	// util.ts / util.tsx / util.d.ts）。缺这个分支，每个合规 NodeNext import 都误报
+	// （狼来了）。
+	for _, jsExt := range []string{".js", ".jsx", ".mjs", ".cjs"} {
+		if strings.HasSuffix(spec, jsExt) {
+			swapped := strings.TrimSuffix(target, jsExt)
+			return resolveTargetExists(root, swapped, exts)
+		}
+	}
+	return false
+}
+
+// dirExists reports whether the repo-relative slash path exists and is a directory.
+//
+// dirExists 报告仓库相对 slash 路径是否存在且为目录。
+func dirExists(root, rel string) bool {
+	st, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel)))
+	return err == nil && st.IsDir()
+}
+
+// resolveTargetExists checks a repo-relative slash target path against the resolution
+// candidate list (exact / +ext / index+ext / __init__.py).
+//
+// resolveTargetExists 用解析候选列表（精确 / +扩展名 / index+扩展名 / __init__.py）
+// 检查一个仓库相对 slash 目标路径。
+func resolveTargetExists(root, targetRel string, exts []string) bool {
+	base := filepath.Join(root, filepath.FromSlash(targetRel))
+	candidates := []string{base}
+	for _, e := range exts {
+		candidates = append(candidates, base+e)
+	}
+	for _, e := range exts {
+		candidates = append(candidates, filepath.Join(base, "index"+e))
+	}
+	candidates = append(candidates, filepath.Join(base, "__init__.py"))
+	for _, c := range candidates {
+		if st, err := os.Stat(c); err == nil && !st.IsDir() {
+			return true
+		}
+	}
+	return false
+}
+
 // --- Added-line collectors ---
 //
 // --- 新增行收集器 ---
@@ -697,7 +875,7 @@ func cheatScanDetail(findings []CheatFinding) string {
 		byPat[f.Pattern]++
 	}
 	var parts []string
-	for _, p := range []CheatPattern{CheatTypeSuppression, CheatErrorSwallow, CheatDeadBranch, CheatCommentOnly, CheatCommentDebt} {
+	for _, p := range []CheatPattern{CheatTypeSuppression, CheatErrorSwallow, CheatDeadBranch, CheatCommentOnly, CheatCommentDebt, CheatPhantomImport} {
 		if n := byPat[p]; n > 0 {
 			parts = append(parts, string(p)+"="+strconv.Itoa(n))
 		}

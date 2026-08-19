@@ -291,6 +291,12 @@ func TestTaskExport_Redacts(t *testing.T) {
 	seeded.SessionLinks = []taskpipeline.SessionLink{
 		{SessionID: `link-session-secret`, Tool: `claude-code`, Imported: true},
 	}
+	// ReviewRounds 带每轮审查快照 SHA——与 ReviewedHeadCommit 同类泄露，须逐条清空
+	// （轮次数作为形状保留）。
+	seeded.ReviewRounds = []taskpipeline.ReviewRound{
+		{HeadCommit: `deadbeef`, ChangeHash: `hash-secret-1`},
+		{HeadCommit: `deadbeef2`, ChangeHash: `hash-secret-2`},
+	}
 	if err := taskpipeline.SaveTaskState(dirA, seeded); err != nil {
 		t.Fatalf(`seed save: %v`, err)
 	}
@@ -312,6 +318,15 @@ func TestTaskExport_Redacts(t *testing.T) {
 	// Commit SHAs cleared (only meaningful if start set one; cleared either way is the contract).
 	if bundle.Task.HeadCommit != `` {
 		t.Errorf(`HeadCommit 应脱敏为空, got %q`, bundle.Task.HeadCommit)
+	}
+	// ReviewRounds：轮次形状保留、每轮 SHA/ChangeHash 清空。
+	if len(bundle.Task.ReviewRounds) != 2 {
+		t.Errorf(`ReviewRounds 轮次形状应保留（2 轮）, got %+v`, bundle.Task.ReviewRounds)
+	}
+	for i, r := range bundle.Task.ReviewRounds {
+		if r.HeadCommit != `` || r.ChangeHash != `` {
+			t.Errorf(`ReviewRounds[%d] 的 SHA/ChangeHash 应脱敏为空, got %+v`, i, r)
+		}
 	}
 	// Assignment identity redacted (kept non-empty so the shape "has an assignee" survives).
 	if bundle.Task.Assignment == nil || bundle.Task.Assignment.Agent != `[redacted]` {
