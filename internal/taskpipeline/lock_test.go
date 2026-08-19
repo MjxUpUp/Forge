@@ -2,8 +2,10 @@ package taskpipeline
 
 import (
 	"os"
+	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -307,5 +309,35 @@ func TestCurrentSessionID_FallbackChain(t *testing.T) {
 	t.Setenv("FORGE_SESSION_ID", "kimi-sess-1")
 	if got := CurrentSessionID(); got != "cc-sess" {
 		t.Errorf("CLAUDE_CODE_SESSION_ID 应优先: %q", got)
+	}
+}
+
+// TestIsLockContentionErr_PlatformContract pins the classification contract: Windows transient
+// shapes (permission / sharing-violation / lock-violation errnos) are contention ONLY on
+// windows; elsewhere everything is false so real permission errors keep failing fast.
+//
+// TestIsLockContentionErr_PlatformContract 钉住分类契约：Windows 瞬态形态
+// （permission / sharing-violation / lock-violation errno）只在 windows 上算竞争；
+// 其他平台恒 false，真实权限错误保持快速失败。
+func TestIsLockContentionErr_PlatformContract(t *testing.T) {
+	shapes := map[string]error{
+		"access-denied":     &os.PathError{Op: "open", Path: "x.lock", Err: os.ErrPermission},
+		"sharing-violation": &os.PathError{Op: "open", Path: "x.lock", Err: syscall.Errno(32)},
+		"lock-violation":    &os.PathError{Op: "open", Path: "x.lock", Err: syscall.Errno(33)},
+	}
+	for name, err := range shapes {
+		got := isLockContentionErr(err)
+		if runtime.GOOS == "windows" {
+			if !got {
+				t.Errorf("windows 上 %s 应判为瞬态竞争", name)
+			}
+		} else if got {
+			// 非 windows 上恒 false——同数值 errno 在 unix 是无关语义（32=EPIPE），
+			// 且真实 EACCES 必须保持快速失败。
+			t.Errorf("非 windows 上 %s 不得判为竞争", name)
+		}
+	}
+	if isLockContentionErr(os.ErrNotExist) {
+		t.Error("ErrNotExist 不是竞争形态")
 	}
 }
