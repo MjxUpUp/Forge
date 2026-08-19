@@ -14,8 +14,8 @@ import (
 //
 // Motivation (root cause in the forge-review-deterministic-shift memory): among the 11
 // AI-cheat categories in code-review-gate, the mechanically detectable ones (type-suppression,
-// error-swallow / dead-branch / comment-only-fix / comment-as-debt / phantom-import) were
-// previously all judged by LLM sub-agents.
+// error-swallow / dead-branch / comment-only-fix / comment-as-debt / phantom-import /
+// path-assumption) were previously all judged by LLM sub-agents.
 // LLMs re-sample the same diff every round, catching different subsets → the source of the
 // perception that every review surfaces new problems.
 //
@@ -33,7 +33,7 @@ import (
 //
 // 动机（根因见 forge-review-deterministic-shift memory）：code-review-gate 的
 // 11 类 AI 作弊模式里，机械可检的那几类（type-suppression / error-swallow /
-// dead-branch / comment-only-fix / comment-as-debt / phantom-import）此前全靠 LLM 子 agent 判断。LLM 每轮对同一 diff
+// dead-branch / comment-only-fix / comment-as-debt / phantom-import / path-assumption）此前全靠 LLM 子 agent 判断。LLM 每轮对同一 diff
 // 重新采样、抓不同子集 → "每轮 review 都冒新问题"的体感来源。
 //
 // 本扫描器把这些机械模式抽到 task-verify 时的 deterministic 检测：扫任务范围的
@@ -98,6 +98,17 @@ const (
 	// 相对 from-import；外部包（npm registry / go.mod）需 manifest 或联网校验，仍归
 	// LLM reviewer。severity=high。
 	CheatPhantomImport CheatPattern = "phantom-import"
+	// CheatPathAssumption: using the OS path separator as a CONTENT matcher (prefix/suffix/contains)
+	// rather than for path construction — the fingerprint of cross-platform breakage that only CI
+	// on another OS can catch (real incident 2026-08-19: e2e matched output lines with the separator
+	// prefix, which never matches a drive-letter path on Windows). Path separators belong in
+	// filepath.Join/Split; matching text by separator is a hidden OS assumption. severity=high.
+	//
+	// CheatPathAssumption：把 OS 路径分隔符当「内容匹配器」用（前/后缀/包含匹配）而非用于
+	// 路径构造——跨平台崩溃的指纹，只有另一平台的 CI 才能抓到（真实事故 2026-08-19：e2e
+	// 用分隔符前缀匹配输出行，Windows 盘符路径永不匹配）。分隔符该待在 filepath.Join/Split
+	// 里；拿分隔符匹配文本是隐藏的 OS 假设。severity=high。
+	CheatPathAssumption CheatPattern = "path-assumption"
 )
 
 // CheatFinding is a single mechanically detected suspected cheat. Advisory — detection may
@@ -124,14 +135,15 @@ type addedLine struct {
 	text   string
 }
 
-// ScanCheatPatterns scans task-scoped added lines and mechanically detects 6 AI-cheat patterns.
+// ScanCheatPatterns scans task-scoped added lines and mechanically detects 7 AI-cheat patterns.
 // Purely deterministic (computed by the gate, agent cannot forge). Returns findings (empty = clean).
 // Failure-tolerant: on git/file-read errors it skips that source (returning what was collected),
 // never panics — the reliability of advisory detection comes from what-it-catches-is-accurate,
 // not from must-scan-everything.
 //
-// ScanCheatPatterns 扫描任务范围内的新增行，机械检测 6 类 AI 作弊模式（type-suppression /
-// error-swallow / dead-branch / comment-only-fix / comment-as-debt / phantom-import）。
+// ScanCheatPatterns 扫描任务范围内的新增行，机械检测 7 类 AI 作弊模式（type-suppression /
+// error-swallow / dead-branch / comment-only-fix / comment-as-debt / phantom-import /
+// path-assumption）。
 // 纯 deterministic（gate 实算，agent 无法伪造）。返回 findings（空=干净）。
 // 失败容忍：git/读文件出错时跳过该源（返回已收集的），绝不 panic——advisory 检测
 // 的可靠性来自"扫到了就准"，不来自"必须扫全"。
@@ -195,6 +207,7 @@ func ScanCheatPatterns(root string, state *TaskState) []CheatFinding {
 	findings = append(findings, detectCommentOnly(prod)...)
 	findings = append(findings, detectCommentDebt(prod)...)
 	findings = append(findings, detectPhantomImport(root, code)...)
+	findings = append(findings, detectPathAssumption(code)...)
 	return findings
 }
 
@@ -656,6 +669,44 @@ func resolveTargetExists(root, targetRel string, exts []string) bool {
 	return false
 }
 
+// pathAssumptionRe matches the OS separator used as a content matcher. One level of nested
+// parens is tolerated before the separator argument (the common real-world shape is
+// HasPrefix(filepath.Base(p), ...) — a nested construction call as the first arg).
+// The escaped fragments in this definition can never match the definition line itself.
+// Known recall limits (accepted, advisory): indirect variables (sep := ...; HasPrefix(x, sep)),
+// string(os.PathSeparator), IndexAny/ContainsAny with a string charset, and IndexRune with the
+// bare rune are not matched — the high-signal `string(filepath.Separator)`-inside-a-matcher
+// shape is the target; the rest stays with the reviewer.
+//
+// pathAssumptionRe 匹配「OS 分隔符被当内容匹配器」的写法。分隔符实参之前容忍一层嵌套
+// 括号（真实高发形态是 HasPrefix(filepath.Base(p), ...)——首参带嵌套构造调用）。
+// 定义里的转义片段让本行自身永不命中。已知召回边界（接受，advisory）：间接变量
+// （sep := …; HasPrefix(x, sep)）、string(os.PathSeparator)、IndexAny/ContainsAny
+// 字符集形式、IndexRune 裸 rune 均不匹配——目标是高信号的「匹配器内
+// string(filepath.Separator)」形态，其余留给 reviewer。
+var pathAssumptionRe = regexp.MustCompile(`(?:HasPrefix|HasSuffix|LastIndex|Index|ContainsAny|Contains)\((?:[^()]|\([^()]*\))*string\(filepath\.Separator\)`)
+
+// detectPathAssumption: separator-as-matcher on added code lines. Only the matcher-call form is
+// flagged — TrimRight(path, separator) and similar CONSTRUCTION uses are legitimate.
+//
+// detectPathAssumption：新增代码行里的「分隔符当匹配器」。只标匹配器调用形态——
+// TrimRight(路径, 分隔符) 这类「构造」用途是合法的。
+func detectPathAssumption(added []addedLine) []CheatFinding {
+	var out []CheatFinding
+	for _, a := range added {
+		if pathAssumptionRe.MatchString(a.text) {
+			out = append(out, CheatFinding{
+				Pattern:  CheatPathAssumption,
+				File:     a.file,
+				Line:     a.lineNo,
+				Snippet:  clip(a.text),
+				Severity: "high",
+			})
+		}
+	}
+	return out
+}
+
 // --- Added-line collectors ---
 //
 // --- 新增行收集器 ---
@@ -875,7 +926,7 @@ func cheatScanDetail(findings []CheatFinding) string {
 		byPat[f.Pattern]++
 	}
 	var parts []string
-	for _, p := range []CheatPattern{CheatTypeSuppression, CheatErrorSwallow, CheatDeadBranch, CheatCommentOnly, CheatCommentDebt, CheatPhantomImport} {
+	for _, p := range []CheatPattern{CheatTypeSuppression, CheatErrorSwallow, CheatDeadBranch, CheatCommentOnly, CheatCommentDebt, CheatPhantomImport, CheatPathAssumption} {
 		if n := byPat[p]; n > 0 {
 			parts = append(parts, string(p)+"="+strconv.Itoa(n))
 		}

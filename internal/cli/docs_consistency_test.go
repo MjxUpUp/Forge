@@ -268,7 +268,7 @@ var skillRefAllowlist = map[string]bool{
 	// review 模式名（cheat-scan deterministic 分类标签，非 skill）
 	`assertion-strip`: true, `comment-only-fix`: true, `complexity-report`: true,
 	`dead-branch`: true, `error-swallow`: true, `type-suppression`: true, `test-run`: true,
-	`comment-as-debt`: true, `phantom-import`: true,
+	`comment-as-debt`: true, `phantom-import`: true, `path-assumption`: true,
 	// code-review-gate 子 agent 预设契约名（轨道 A/B，非 skill）
 	`cheat-detector`: true, `eng-reviewer`: true,
 	// release-readiness 子角色（审计维度 M1-M7/R1，非独立 skill）
