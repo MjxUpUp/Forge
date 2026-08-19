@@ -13,6 +13,13 @@ permissions:
   pull-requests: write # 创建/维护 Release PR（autorelease 标签）
   actions: write # GITHUB_TOKEN 路径下 dispatch release.yml（在新 tag 上跑构建层）
 
+# 串行化：快速连续合 PR 时，两个 run 并发 force-push 同一
+# release-please--branches--main 分支会互相踩（瞬时红 run / 分支更新丢失）。
+# 排队不取消——cancel 会截断进行中的发版动作。
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release-please:
     runs-on: ubuntu-latest
