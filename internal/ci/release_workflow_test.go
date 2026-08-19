@@ -21,6 +21,7 @@ package ci
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -276,8 +277,11 @@ func TestGoreleaserSigns_CosignV3Bundle(t *testing.T) {
 // 发版都会静默止步。
 func TestReleaseWorkflow_DispatchTrigger(t *testing.T) {
 	raw := string(readReleaseYAML(t))
-	if !strings.Contains(raw, "workflow_dispatch") {
-		t.Fatal("release.yml 缺 workflow_dispatch 触发器——release-please.yml 的 GITHUB_TOKEN 路径" +
+	// 必须锚定触发器键本身（缩进 + workflow_dispatch: 至行尾），不能裸 Contains：
+	// release.yml 的注释里就写着 workflow_dispatch——删掉真触发器、只留注释时
+	// 裸 Contains 依然绿（审查发现的守卫注水）。
+	if !regexp.MustCompile(`(?m)^\s*workflow_dispatch:\s*$`).MatchString(raw) {
+		t.Fatal("release.yml 缺 workflow_dispatch 触发器（on: 下的键，非注释）——release-please.yml 的 GITHUB_TOKEN 路径" +
 			"靠 dispatch 在新 tag 上调度本 workflow，删掉则合并 Release PR 后不再发版")
 	}
 }

@@ -158,13 +158,14 @@ function main() {
     return;
   }
 
-  // --- edit npm/package.json (string replace → minimal diff, preserves formatting) ---
+  // --- compute all three bumps first; write only after every pattern matched ---
+  // 先算后写：任一文件模式不匹配时直接退出，不留「改了一半」的工作区（逃生舱场景
+  // 高压，半 bump 工作区容易被手滑 commit，制造 npm↔manifest 失同步）。
   const pkgNext = replaceVersionField(content, next);
   if (!pkgNext.ok) {
     console.error(`failed to replace version field in ${REL_PKG} (pattern not matched)`);
     process.exit(1);
   }
-  fs.writeFileSync(PKG, pkgNext.content);
 
   // --- sync .kimi-plugin/plugin.json version to release ---
   // kimi 的 committed manifest version 字段跟 forge release 走（非刻意独立）：每次
@@ -174,13 +175,11 @@ function main() {
   // committed 展示元数据不再滞后撒谎。
   const KIMI_PLUGIN = path.join(ROOT, '.kimi-plugin', 'plugin.json');
   const REL_KIMI = path.relative(ROOT, KIMI_PLUGIN);
-  const kimiContent = fs.readFileSync(KIMI_PLUGIN, 'utf8');
-  const kimiNext = replaceVersionField(kimiContent, next);
+  const kimiNext = replaceVersionField(fs.readFileSync(KIMI_PLUGIN, 'utf8'), next);
   if (!kimiNext.ok) {
     console.error(`failed to replace version field in ${REL_KIMI} (pattern not matched)`);
     process.exit(1);
   }
-  fs.writeFileSync(KIMI_PLUGIN, kimiNext.content);
 
   // --- sync .release-please-manifest.json (release-please 的版本账本) ---
   // release-please 按 manifest 的 "." 起算下一版本；逃生舱发版不同步它，下个 Release
@@ -193,6 +192,10 @@ function main() {
     console.error(`failed to replace "." version in ${REL_MANIFEST} (pattern not matched)`);
     process.exit(1);
   }
+
+  // --- all three patterns matched: write them all ---
+  fs.writeFileSync(PKG, pkgNext.content);
+  fs.writeFileSync(KIMI_PLUGIN, kimiNext.content);
   fs.writeFileSync(MANIFEST, manifestNext.content);
 
   // --- verify round-trip (all three files must read back exactly next) ---
