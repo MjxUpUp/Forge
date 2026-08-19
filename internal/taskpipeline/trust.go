@@ -93,6 +93,13 @@ func StripForeignGateSignals(s *TaskState) {
 	s.ReviewPassed = false
 	s.ReviewedHeadCommit = ``
 	s.ReviewedChangeHash = ``
+	// ReviewRounds is the review-pass history — same trust class as the snapshot fields:
+	// foreign review stamps must not inflate the local rework metric (ScoreTask folds
+	// len(ReviewRounds) into Evidence.ReviewPasses).
+	//
+	// ReviewRounds 是 review-pass 历史——与快照字段同信任类：外来 review 打戳不得
+	// 虚增本机返工度量（ScoreTask 会把 len(ReviewRounds) 折进 Evidence.ReviewPasses）。
+	s.ReviewRounds = nil
 	s.Score = nil
 	for i := range s.Acceptance {
 		s.Acceptance[i].Passed = false

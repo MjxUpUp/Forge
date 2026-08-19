@@ -208,6 +208,21 @@ func ScoreTask(root string, state *TaskState) error {
 	result := scoring.Evaluate(input, config)
 	result.TaskRef = state.TaskRef
 
+	// Attach the review-rework loop metric (observability only, not a scoring dimension) —
+	// filled here rather than in scoring.Evaluate because the raw material (ReviewRounds +
+	// gate History) lives on TaskState, and both CLI and MCP complete share this path.
+	//
+	// 挂上审查-返工循环度量（仅可观测，非评分维度）——在 ScoreTask 而非
+	// scoring.Evaluate 填充，因为原料（ReviewRounds + gate History）在 TaskState
+	// 上，且 CLI 与 MCP complete 共用本路径。
+	if passes, rejections := state.ReworkRounds(); passes > 0 || rejections > 0 {
+		if result.Evidence == nil {
+			result.Evidence = &scoringtypes.EvidenceSummary{}
+		}
+		result.Evidence.ReviewPasses = passes
+		result.Evidence.CompleteRejections = rejections
+	}
+
 	// Escape-hatch cost: a task that used any escape hatch gets its total capped at
 	// escapeCapMaxScore, with the grade recomputed from the capped value — Weak evidence
 	// must not still take home 96-99/A. Two complementary signals (code-review 2026-08):

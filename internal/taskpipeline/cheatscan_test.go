@@ -1,6 +1,8 @@
 package taskpipeline
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -387,5 +389,84 @@ func TestCollectAddedLines_CommittedAndUntracked(t *testing.T) {
 	}
 	if !foundU {
 		t.Error(`未跟踪文件的 "func U()" 行未在收集结果中`)
+	}
+}
+
+// TestDetectPhantomImport pins the phantom-import detector: relative imports that resolve to a
+// real file on disk pass (incl. extension-omitted, directory index, package __init__), ones that
+// resolve to nothing are flagged (severity=high). Bare package names and aliases are out of scope
+// (not filesystem-resolvable). Real files are needed → t.TempDir fixture.
+//
+// TestDetectPhantomImport 钉 phantom-import 检测器：能解析到磁盘真实文件的相对 import
+// 放行（含省略扩展名、目录 index、包 __init__），解析不到的上报（severity=high）。裸
+// 包名与别名不在范围（无法靠文件系统解析）。需要真实文件 → t.TempDir 搭 fixture。
+func TestDetectPhantomImport(t *testing.T) {
+	dir := t.TempDir()
+	mk := func(rel string) {
+		full := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// On-disk fixture: resolvable targets.
+	//
+	// 磁盘 fixture：可解析的目标。
+	mk("src/util.ts")
+	mk("src/components/index.tsx")
+	mk("src/style.css")
+	mk("pkg/sibling.py")
+	mk("pkg/sib/__init__.py")
+	// PEP 420 namespace package: a directory with NO __init__.py.
+	//
+	// PEP 420 namespace 包：无 __init__.py 的目录。
+	if err := os.MkdirAll(filepath.Join(dir, "pkg", "nspkg"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		name string
+		line addedLine
+		want int
+	}{
+		// --- hits (resolve to nothing) ---
+		//
+		// --- 命中（解析不到）---
+		{`TS import 幽灵文件`, al("src/a.ts", 1, `import { x } from './ghost'`), 1},
+		{`TS require 幽灵文件`, al("src/b.ts", 2, `const y = require('./missing')`), 1},
+		{`TS export-from 幽灵文件`, al("src/c.ts", 3, `export * from './nope'`), 1},
+		{`TS 上层目录幽灵`, al("src/deep/d.ts", 4, `import z from '../void'`), 1},
+		{`Python 相对幽灵模块`, al("pkg/mod.py", 5, `from .ghost import thing`), 1},
+		{`Python 上溯幽灵`, al("pkg/sub/m.py", 6, `from ..other.mod import thing`), 1},
+		// --- misses (resolvable or out of scope) ---
+		//
+		// --- 不命中（可解析或超范围）---
+		{`TS 省略扩展名可解析`, al("src/e.ts", 7, `import { u } from './util'`), 0},
+		{`TS 目录 index 可解析`, al("src/f.ts", 8, `import C from './components'`), 0},
+		{`TS 显式扩展名精确命中`, al("src/g.ts", 9, `import './style.css'`), 0},
+		{`TS 裸包名不在范围`, al("src/h.ts", 10, `import _ from 'lodash'`), 0},
+		{`TS 别名不在范围`, al("src/i.ts", 11, `import x from '@/lib/x'`), 0},
+		{`Python 同包兄弟可解析`, al("pkg/mod.py", 12, `from .sibling import helper`), 0},
+		{`Python 包目录 __init__ 可解析`, al("pkg/mod.py", 13, `from .sib import helper`), 0},
+		{`Python from-dot-import 形式跳过`, al("pkg/mod.py", 14, `from . import helper`), 0},
+		{`Python 绝对 import 不在范围`, al("pkg/mod.py", 15, `from os import path`), 0},
+		{`TS NodeNext .js 后缀映射到 .ts`, al("src/k.ts", 17, `import { u } from './util.js'`), 0},
+		{`TS NodeNext .js 后缀但真不存在`, al("src/m.ts", 18, `import z from './ghost2.js'`), 1},
+		{`TS 资源查询后缀剥离`, al("src/l.ts", 19, `import s from './style.css?inline'`), 0},
+		{`Python namespace 包目录（无 __init__）`, al("pkg/mod.py", 20, `from .nspkg import thing`), 0},
+		{`Go 文件不进 TS/Py 分支`, al("src/j.go", 16, `// import x from './ghost'`), 0},
+	}
+	for _, c := range cases {
+		got := detectPhantomImport(dir, []addedLine{c.line})
+		if len(got) != c.want {
+			t.Errorf(`%s: got %d findings, want %d (%+v)`, c.name, len(got), c.want, got)
+		}
+		for _, f := range got {
+			if f.Severity != "high" || f.Pattern != CheatPhantomImport || f.File != c.line.file {
+				t.Errorf(`%s: bad finding %+v`, c.name, f)
+			}
+		}
 	}
 }
