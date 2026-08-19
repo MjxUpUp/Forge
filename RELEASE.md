@@ -4,26 +4,61 @@
 v0.27.0 手动 `gh release` + `npm publish` 绕过了 failure 的 release.yml 当作完成，
 cmd/forge 漏提交的雷拖到 v0.27.1 才爆。
 
+## 标准发版：合并 Release PR（唯一推荐路径）
+
+版本号 bump / changelog / 打 tag 由 [release-please](https://github.com/googleapis/release-please)
+接管（`.github/workflows/release-please.yml` + `release-please-config.json` +
+`.release-please-manifest.json`）：
+
+1. `feat:`/`fix:` 合入 main → release-please 自动开（或更新）**Release PR**
+   （`chore(main): release X.Y.Z`），内容是纯机械变更：`npm/package.json`、
+   `.kimi-plugin/plugin.json`、`.release-please-manifest.json` 的版本 bump +
+   `CHANGELOG.md` 新章节
+2. 确认后**合并 Release PR** → release-please 自动打 `vX.Y.Z` tag、建带 changelog
+   正文的 GitHub Release
+3. 同一 workflow 用 `workflow_dispatch` 在新 tag 上调度 `release.yml`（构建层零改动）
+
+版本规则（Conventional Commits）：
+
+- `feat:` → minor，`fix:` → patch，`!`/`BREAKING CHANGE:` → major
+- `chore:`/`docs:`/`test:`/`ci:` 不触发 Release PR（与旧 release.js 的差异：perf/refactor
+  也不再独立触发发版，攒到下次 feat/fix 一起发）
+- 强制指定版本：给任意 commit 加 `Release-As: x.y.z` footer
+
+**Token 双路径**：默认 `GITHUB_TOKEN`（零配置即可用）——它产生的事件不触发新
+workflow run（GitHub 防递归），所以靠 workflow_dispatch 显式调度构建层。配置 secret
+`RELEASE_PLEASE_TOKEN`（PAT）后自动升级：Release PR 上能跑 CI 检查、tag push 直接
+触发 release.yml（dispatch 步自停，防双跑），无需改任何文件。
+
+发版形状由 `internal/ci/release_please_test.go` 守卫：tag 形状必须 `v<semver>`（构建层
+触发条件与 npm 资产 URL 都依赖）、extra-files 必须持续 bump 两个 manifest、
+`.release-please-manifest.json` 必须与 `npm/package.json` 同版本（手动发版不同步会被
+测试拦下）。
+
 ## 发版必须走 release.yml（不手动绕过）
 
-打 tag → `.github/workflows/release.yml` 自动跑 **test → goreleaser → npm** 三段强依赖链：
+Release PR 合并 → dispatch → `.github/workflows/release.yml` 跑 **test → goreleaser →
+npm → npm-verify** 四段强依赖链：
 
 | job | 作用 | needs |
 |-----|------|-------|
-| **test** | `go test ./... -race` + `go vet` | （源头） |
-| **goreleaser** | 跨平台二进制 + SBOM + cosign 签名 → GitHub Release | `test` |
+| **test** | `go test ./... -race` + `go vet` + tag↔版本对账 | （源头） |
+| **goreleaser** | 跨平台二进制 + SBOM + cosign 签名 → GitHub Release 资产 | `test` |
 | **npm** | 发 `@agent_forge/forge` + 5 平台子包到 npmjs.org（带 provenance） | `goreleaser` |
+| **npm-verify** | npm 装回并断言 `forge --version` == tag | `npm` |
 
-- **test** 失败 → goreleaser/npm 都不跑（needs 链由 `internal/ci/release_workflow_test.go` 沙盒守护）
-- **goreleaser** 失败 → npm 不跑（npm 平台子包二进制来自 goreleaser 上传的 GitHub Release 产物，没产物则子包无二进制）
-- **npm** 最后发：先发 5 平台子包（主包 optionalDependencies 依赖它们），再发主包；`NODE_AUTH_TOKEN` 走 `registry.npmjs.org`（华为云镜像缺新包会 404）
-- **版本对账门禁**：npm job 先校验 tag == `npm/package.json` 的 version，不一致直接 fail——手动打 tag 时防"二进制是 tag 的、包版本号是 package.json 的"货不对板
+- needs 链由 `internal/ci/release_workflow_test.go` 沙盒守护
+- goreleaser `release.mode: keep-existing`：保留 release-please 的 changelog 正文，
+  只往 Release 上挂二进制/SBOM/签名资产
+- **版本对账门禁**（test job）：tag 必须等于 `npm/package.json` 的 version——Release PR
+  已保证一致，此门禁防手动打 tag 路径"二进制是 tag 的、包版本号是 package.json 的"
+  货不对板
+- **npm** 先发 5 平台子包（主包 optionalDependencies 依赖它们）再发主包；
+  `NODE_AUTH_TOKEN` 走 `registry.npmjs.org`（华为云镜像缺新包会 404）
 
 ```bash
-# 标准发版（唯一推荐路径）
-git tag vX.Y.Z
-git push origin vX.Y.Z
-# 等 release.yml 三 job 全绿 + GitHub Release 资产就绪 + npm 包发布
+# 标准发版就是：在 GitHub 上合并 Release PR（chore(main): release X.Y.Z）
+# 之后无需任何手动步骤——tag、GitHub Release、二进制、npm 包全部自动就绪
 ```
 
 ## 发布前自检（本地复现 CI 最小环境）
@@ -38,10 +73,22 @@ go build ./... && go test ./... -count=1 -race
 git ls-files | grep -E 'cmd/forge|main\.go'   # 确认入口目录进库
 ```
 
-## 紧急绕过（CI 暂坏需紧急发版）——必须留待办
+## 紧急手动路径（release.js，已退役为逃生舱）
 
-手动 `gh release create` + `npm publish` 绕过 release.yml 时，绕过的是 **整个 workflow**，
-`needs` 链根本没机会生效（沙盒验证无法覆盖手动行为）。此时：
+`scripts/release.js` 不再是标准路径，仅当 release-please 层本身故障时应急：
+
+```bash
+node scripts/release.js          # 照旧 bump + tag + commit
+git push origin main && git push origin vX.Y.Z   # 手动 push 触发 release.yml
+```
+
+脚本会同步 bump `.release-please-manifest.json`（release-please 的版本账本），保持
+逃生舱路径自洽——`internal/ci/release_please_test.go` 的
+`TestReleasePleaseManifest_MatchesNpmVersion` 守卫 `npm/package.json` == manifest。
+只有绕过脚本手动打 tag 时才需要手动同步 manifest。
+
+CI 暂坏需绕过 workflow 手动 `gh release` + `npm publish` 时，绕过的是 **整个 needs 链**
+（沙盒验证无法覆盖手动行为）。此时：
 
 1. **必须当场登记"CI 待修"待办**——v0.27.0 绕过 failure CI 当完成，是这次教训的根因
 2. 绕过后第一时间修 CI，并补跑（重打 patch tag 走完整 release.yml 验证链路）
@@ -49,7 +96,7 @@ git ls-files | grep -E 'cmd/forge|main\.go'   # 确认入口目录进库
 
 ## 版本号规则
 
-- 正常发版：patch/minor/major bump + 打 tag
+- 正常发版：Release PR 按 Conventional Commits 推断 patch/minor/major
 - 发版后发现 bug：**升 patch 重发**，不 force-push 覆盖已发 tag
   - hazard-guard 会拦 force-push；且覆盖已发布 npm 包不可逆（registry 会缓存）
   - v0.27.1→v0.27.2 即此规则实例
