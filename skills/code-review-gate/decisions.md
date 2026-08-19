@@ -107,3 +107,20 @@ description 三段式合格未改动;新建 evals/evals.json(5正+4负)
 ### Evidence
 
 docs/skills-value-audit-2026-08-02.md
+
+## [d-18cd113414153e18-c97623dd] accept
+
+- **Skill**: code-review-gate
+- **DecidedAt**: 2026-08-19T01:39:02Z
+
+### Diagnosis
+
+cheat-scan 从 4 类扩到 6 类（comment-as-debt 早已是第 5 类，文档滞后；phantom-import 本次新增）——skill 文档的预扫清单与实现漂移，子 agent 会重复判断已被机械判过的模式
+
+### Revision
+
+SKILL.md 与 references/forge-integration.md 的 cheat-scan 预扫节更新为 6 类枚举，注明 phantom-import 只覆盖相对路径、外部包仍归语义审查；plugins/forge 镜像同步
+
+### Evidence
+
+internal/taskpipeline/cheatscan.go ScanCheatPatterns 实跑 6 个检测器；TestDetectPhantomImport + TestExecuteTaskGate_CheatScan_PhantomImport 通过

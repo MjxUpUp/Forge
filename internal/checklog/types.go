@@ -30,17 +30,19 @@ const (
 	// 但永远 Checked=true 且绝不阻断工具调用（advisory）。变更影响分析召回率仅 ~44%，
 	// scope 是 prediction 非 contract，偏差是常态信号；本记录供 review/看板度量，不作门禁。
 	CheckScopeDrift CheckName = "scope-drift"
-	// CheckCheatScan records advisory AI cheat-pattern scan results: at task-verify, mechanically detects new-line hits across 5 categories
-	// (type-suppression/error-swallow/dead-branch/comment-only-fix/comment-as-debt).
-	// comment-as-debt catches comments that flag an issue without fixing it (ladder-of-laziness level 0, the root of code rot).
+	// CheckCheatScan records advisory AI cheat-pattern scan results: at task-verify, mechanically detects new-line hits across 6 categories
+	// (type-suppression/error-swallow/dead-branch/comment-only-fix/comment-as-debt/phantom-import).
+	// comment-as-debt catches comments that flag an issue without fixing it (ladder-of-laziness level 0, the root of code rot);
+	// phantom-import catches relative imports that resolve to no file on disk (the mechanical subset of mock-of-hallucination).
 	// deterministic (the gate computes ScanCheatPatterns, agent cannot forge). Passed semantics: no hit
 	// =true, hit=false—but always Checked=true and never blocks (advisory; heuristics may false-positive,
 	// the trail is left for review inspection). This record lifts mechanically-detectable cheats from per-round LLM-review resampling
 	// into a one-shot deterministic verdict—countering the root cause of each review round surfacing new issues.
 	//
-	// CheckCheatScan 记录 advisory AI 作弊模式扫描结果：task-verify 时机械检测 5 类
-	// （type-suppression/error-swallow/dead-branch/comment-only-fix/comment-as-debt）的新增行命中。
-	// comment-as-debt 抓"注释标识问题但不解决"（懒惰阶梯反第 0 级，屎山根源）。
+	// CheckCheatScan 记录 advisory AI 作弊模式扫描结果：task-verify 时机械检测 6 类
+	// （type-suppression/error-swallow/dead-branch/comment-only-fix/comment-as-debt/phantom-import）的新增行命中。
+	// comment-as-debt 抓"注释标识问题但不解决"（懒惰阶梯反第 0 级，屎山根源）；
+	// phantom-import 抓解析不到磁盘文件的相对 import（mock-of-hallucination 的机械子集）。
 	// deterministic（gate 实算 ScanCheatPatterns，agent 无法伪造）。Passed 语义：无命中
 	// =true，有命中=false——但永远 Checked=true 且绝不阻断（advisory；启发式有假阳性
 	// 可能，留痕供 review 核查）。本记录把"机械可检的作弊"从 LLM-review 每轮重采样
@@ -111,6 +113,32 @@ const (
 	// 丢该 hook 的 PASS、plugin 落后两个 release 期间模型/用户/日志全静默。无此条目，
 	// `forge trace`/看板看不到 plugin 漂移。
 	CheckKimiPluginStale CheckName = "kimi-plugin-stale"
+	// CheckReviewPass records one `forge review pass` event (task mode): the reviewed snapshot
+	// (HEAD + change hash) plus the round number. deterministic by default (SourceForCheck:
+	// recorded by the CLI command with a gate-computed hash, agent cannot forge the hash).
+	// It is an OBSERVATION (a marker that review was claimed-and-stamped), not verification
+	// evidence — excluded from evidence-strength bucketing like cheat-scan (see BuildEvidenceChain).
+	// Its value is making the review-rework loop measurable (round count per task).
+	//
+	// CheckReviewPass 记录一次 `forge review pass` 事件（task 模式）：审过的快照
+	// （HEAD + 变更 hash）与第几轮。默认 deterministic（SourceForCheck：由 CLI 命令
+	// 以 gate 实算的 hash 落盘，agent 无法伪造 hash）。它是 OBSERVATION（"审查已被
+	// 声明并打戳"的标记），不是验证证据——与 cheat-scan 同类的排除出证据强度分桶
+	// （见 BuildEvidenceChain）。价值在于让审查-返工循环可度量（每任务轮次数）。
+	CheckReviewPass CheckName = "review-pass"
+	// CheckPlanFirst records the advisory that a code task reached task-implement with neither
+	// Plan nor Goal recorded (no --plan-file/--goal at task start). Plan-first lowers review
+	// rework (shift-left: catching direction errors at proposal stage is cheaper than at diff
+	// stage), so the gate leaves a soft trail. Passed semantics: plan/goal present=true,
+	// absent=false — always Checked=true, never blocks (advisory). Observation class, excluded
+	// from evidence-strength bucketing (see BuildEvidenceChain).
+	//
+	// CheckPlanFirst 记录 advisory：代码任务到达 task-implement 时 Plan/Goal 均未记录
+	// （task start 时没带 --plan-file/--goal）。方案先行能降低审查返工（shift-left：
+	// 方向错误在方案阶段拦比 diff 阶段拦便宜），故门禁留软痕。Passed 语义：有
+	// 方案/目标=true，无=false——永远 Checked=true 且绝不阻断（advisory）。属
+	// observation 类，排除出证据强度分桶（见 BuildEvidenceChain）。
+	CheckPlanFirst CheckName = "plan-first"
 )
 
 // EvidenceSource marks the source of a checklog evidence entry, distinguishing deterministic (hook/external

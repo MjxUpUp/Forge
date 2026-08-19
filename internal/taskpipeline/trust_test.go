@@ -26,7 +26,10 @@ func TestStripForeignGateSignals_ControlFlow(t *testing.T) {
 		},
 		ReviewedHeadCommit: `aaa111`,
 		ReviewedChangeHash: `hash-aaa`,
-		CompletedAt:        &now,
+		ReviewRounds: []ReviewRound{
+			{HeadCommit: `aaa111`, ChangeHash: `hash-aaa`, ReviewedAt: now},
+		},
+		CompletedAt: &now,
 		Overrides:          TaskOverrides{WorkActivity: `disable`, TestCoverage: `disable`},
 		Assignment: &Assignment{
 			Agent:  `kimi`,
@@ -45,6 +48,9 @@ func TestStripForeignGateSignals_ControlFlow(t *testing.T) {
 
 	if s.ReviewPassed || s.ReviewedHeadCommit != `` || s.ReviewedChangeHash != `` {
 		t.Errorf(`result signals should be cleared: ReviewPassed=%v HeadCommit=%q ChangeHash=%q`, s.ReviewPassed, s.ReviewedHeadCommit, s.ReviewedChangeHash)
+	}
+	if len(s.ReviewRounds) != 0 {
+		t.Errorf(`ReviewRounds should be dropped (foreign review stamps must not inflate the local rework metric), got %+v`, s.ReviewRounds)
 	}
 	if s.CompletedAt != nil {
 		t.Error(`CompletedAt should be nil (master switch of the CompletedAt==nil hard-check guards)`)

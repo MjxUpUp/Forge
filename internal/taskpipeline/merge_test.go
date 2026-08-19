@@ -194,6 +194,7 @@ func TestMergeTaskStateSync_CompletionMonotonic(t *testing.T) {
 		TaskRef:      `feat/sync-done`,
 		CompletedAt:  &done,
 		ReviewPassed: true,
+		ReviewRounds: []ReviewRound{{HeadCommit: `h1`, ChangeHash: `c1`, ReviewedAt: done}},
 		Score:        score,
 		Assignment:   assignment,
 		History:      []TaskGateResult{gateResult(`task-implement`, true), gateResult(`task-verify`, true), gateResult(`task-complete`, true)},
@@ -204,6 +205,9 @@ func TestMergeTaskStateSync_CompletionMonotonic(t *testing.T) {
 	}
 	if !local.ReviewPassed || local.Score != score || local.Assignment != assignment {
 		t.Error(`完成块（ReviewPassed/Score/Assignment）应随完成一并采纳`)
+	}
+	if len(local.ReviewRounds) != 1 || local.ReviewRounds[0].HeadCommit != `h1` {
+		t.Errorf(`ReviewRounds 应随完成块一并采纳（返工度量原料）, got %+v`, local.ReviewRounds)
 	}
 	if local.CurrentGate != `` {
 		t.Errorf(`已完成任务 CurrentGate 应为空（无下一门禁），got %q`, local.CurrentGate)

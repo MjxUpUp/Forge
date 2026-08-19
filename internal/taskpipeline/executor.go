@@ -1390,6 +1390,35 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 		}, nil
 	}
 
+	// 4. Plan-first record (shift-left): a code task that produced real changes with neither
+	// Plan nor Goal recorded skipped the proposal stage — direction errors then surface at
+	// review time, the expensive end of the implement→review→rework loop. Runs AFTER the
+	// code-changes check so failed/empty implement attempts don't spam the log on every
+	// retry. Always recorded once implementation is real (plan present = Passed:true);
+	// absence is advisory, never blocks (small fixes legitimately skip a written plan).
+	//
+	// 4. 方案前置记录（shift-left）：产出了真实改动但 Plan/Goal 皆空的代码任务 = 跳过
+	// 方案阶段——方向错误会拖到审查环节才暴露，那是 实现→审查→返工 循环最贵的一端。
+	// 放在代码改动校验之后：失败/空改的 implement 重试不会每轮刷日志。实现坐实后总是
+	// 记录（有方案=Passed:true）；无方案仅 advisory，绝不阻塞（小修复合法地不写方案）。
+	if state != nil {
+		hasPlan := state.Plan != "" || state.Goal != ""
+		entry := &checklog.Entry{
+			Check:   checklog.CheckPlanFirst,
+			Passed:  hasPlan,
+			Checked: true,
+			TaskRef: taskRef,
+			Level:   checklog.LevelAdvisory,
+		}
+		if hasPlan {
+			entry.Detail = "plan/goal recorded before implementation"
+		} else {
+			entry.Detail = GateAdvisory("[task-implement] 无方案记录（task start 未带 --plan-file/--goal）——方案先行能在方案阶段拦下方向错误，降低审查-返工轮次；小修复可忽略本提示")
+			fmt.Fprintf(os.Stderr, "%s\n", entry.Detail)
+		}
+		recordAudit(root, entry)
+	}
+
 	return &ExecuteResult{
 		GateID:  "task-implement",
 		Passed:  true,

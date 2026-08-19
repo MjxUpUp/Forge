@@ -50,9 +50,9 @@ forge trace <task-ref>     # 证据链分桶行 + Weak/Unverified 警告（同�
 
 **跨模型 critic（证据弱时升级）**：Weak/Unverified 时，独立子 agent 审查之外再升一级——若所在 host 支持多模型，派一个**不同模型**的只读子 agent 做对抗式 critic：assume-bug 立场（假定声称的验证都没真跑过），逐条要 deterministic 证据才放行。跨模型独立性能打破单模型同源盲区（Self-Correction Illusion：同模型自我复核倾向确认自己已对）。host 仅单模型时退化为同模型的显式对抗 prompt——底线是「对抗式核验」这一动作，跨模型是增强项非硬前置。`forge review pass` 在 Weak/Unverified 时会发 `ADVISORY:` 提醒本次 stamp 盖在盲区证据上，见到即回退执行本升级。
 
-## cheat-scan 预扫（4 类已 deterministic 判定，子 agent 不重复判断）
+## cheat-scan 预扫（6 类已 deterministic 判定，子 agent 不重复判断）
 
-`task-verify` 的 cheat-scan 已机械扫任务新增行（`+` 行）的 `type-suppression`（`@ts-ignore`/`eslint-disable`/`#[allow]`/`type: ignore`）、`error-swallow`（空 `catch{}`/`except:pass`）、`dead-branch`（`if(false)`/`if(1===2)`）、`comment-only-fix`（某文件新增行全注释零逻辑），命中记 `checklog:cheat-scan`（`forge trace` 可见）并 stderr 列出。审查前先看 `forge trace` 的 cheat-scan 条目——这 4 类已被 deterministic 判过，子 agent **跳过它们**，把精力放到其余模式（断言弱化/假重构/幻觉 mock/测试松绑等需语义判断的）和轨道 B 的设计/架构上。这正是"每轮 review 冒新问题"的根因对策：机械模式一次判准，不靠 LLM 每轮重采样。
+`task-verify` 的 cheat-scan 已机械扫任务新增行（`+` 行）的 `type-suppression`（`@ts-ignore`/`eslint-disable`/`#[allow]`/`type: ignore`）、`error-swallow`（空 `catch{}`/`except:pass`）、`dead-branch`（`if(false)`/`if(1===2)`）、`comment-only-fix`（某文件新增行全注释零逻辑）、`comment-as-debt`（新增债务注释标记不解决）、`phantom-import`（相对 import 解析不到磁盘文件——幻觉 mock 的机械子集；外部包存在性仍需语义判断），命中记 `checklog:cheat-scan`（`forge trace` 可见）并 stderr 列出。审查前先看 `forge trace` 的 cheat-scan 条目——这 6 类已被 deterministic 判过，子 agent **跳过它们**，把精力放到其余模式（断言弱化/假重构/跨层语义幻觉/测试松绑等需语义判断的）和轨道 B 的设计/架构上。这正是"每轮 review 冒新问题"的根因对策：机械模式一次判准，不靠 LLM 每轮重采样。
 
 ## 自动触发：Stop hook 与 task-complete 门禁
 
