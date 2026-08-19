@@ -265,23 +265,22 @@ func buildReasonixHooks() map[string]any {
 		// dialect, so their commands carry `--agent reasonix` to route through reasonixNormalize
 		// (without it, tool_name/file_path parse empty and every path/command hook — task-guard,
 		// read-before-edit, bash-guard, file-sentinel — fails open). Session events
-		// (SessionStart/Stop) carry no tool_input — Cwd arrives via the process working directory
-		// — so they stay bare, mirroring windsurf's pre_user_prompt / post_cascade_response
-		// commands (session events have no tool_input, so no agent flag).
+		// (SessionStart/Stop) ALSO carry `--agent reasonix` now: without it they parsed as
+		// Claude-shape stdin, so the camelCase sessionId never mapped to SessionID — every
+		// SessionStart/Stop event landed on the legacy global key, and the session was never
+		// registered/stamped as reasonix (2026-08 attribution audit). reasonixNormalize is
+		// fill-empty and safe on tool-less payloads (it only maps what is present).
 		//
 		// 工具事件（PreToolUse/PostToolUse）在 reasonix 的 camelCase 方言里携带 toolName/toolArgs，
 		// 故其命令带 `--agent reasonix` 走 reasonixNormalize（否则 tool_name/file_path 解析为空，
 		// 每个基于路径/命令的 hook——task-guard、read-before-edit、bash-guard、file-sentinel——
-		// fail open）。会话事件（SessionStart/Stop）不携带 tool_input——Cwd 经进程工作目录到达——
-		// 故保持裸命令，镜像 windsurf 的 pre_user_prompt / post_cascade_response 命令
-		// （会话事件无 tool_input，故不带 agent 标志）。
-		needsAgent := event == "PreToolUse" || event == "PostToolUse"
+		// fail open）。会话事件（SessionStart/Stop）现在同样带 `--agent reasonix`：不带时它们按
+		// Claude 形 stdin 解析，camelCase sessionId 永不映射到 SessionID——每个 SessionStart/Stop
+		// 事件都落到 legacy 全局键，会话也从不被登记/盖戳为 reasonix（2026-08 归因审计）。
+		// reasonixNormalize 是填空语义，对无工具的 payload 安全（只映射存在的字段）。
 		for _, m := range matchers {
 			for _, h := range m.Hooks {
-				cmd := h.Command
-				if needsAgent {
-					cmd += " --agent reasonix"
-				}
+				cmd := h.Command + " --agent reasonix"
 				hooksMap[re] = append(hooksMap[re], reasonixHookEntry{
 					Match:   reasonixMatcher(m.Matcher),
 					Command: cmd,

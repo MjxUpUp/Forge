@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/hostcap"
 	"github.com/MjxUpUp/Forge/internal/skillscanonical"
 	"github.com/MjxUpUp/Forge/internal/skilltrigger"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
@@ -85,26 +86,52 @@ func runSkillTriggerCmd(cmd *cobra.Command, args []string) error {
 
 // runSkillTriggerHook 是 runHook 的 skill-trigger 特例入口：复用 runHook 已 normalize 的
 // hookInput，Go 内判定 + 渲染 + 输出 HookOutput JSON（不经 bash embed）。
-// kimi 下按 kimi 协议输出：skill-trigger 永不阻断（advisory），渲染文本直接打 stdout
-// （仅 UserPromptSubmit 时模型可见，其余事件 stdout 被 kimi 丢弃——见 internal/agentbridge/kimi-hook-routing.md），无渲染则静默。
+// kimi 下按 kimi 协议输出：skill-trigger 永不阻断（advisory），渲染文本仅 UserPromptSubmit
+// 打 stdout（其余事件 stdout 被 kimi 丢弃——见 internal/agentbridge/kimi-hook-routing.md），
+// 无渲染则静默。
 func runSkillTriggerHook(hookInput HookInput, root, version, agent string) error {
 	// kimi 0.35.0 drops allow-path stdout from the model context for every event except
-	// UserPromptSubmit (verified via wire.jsonl: advisories reached the model 0 times across a
-	// 42-edit session). Running the engine here on PreToolUse/PostToolUse/Stop/SessionStart would
-	// (a) never reach the model and (b) record checklog entries (recordSkillTriggerHits, inside
-	// runSkillTriggerCore) that mislead `forge skills usage` into reporting delivered triggers the
-	// model never saw — the false-prosperity observability bug. Bail BEFORE runSkillTriggerCore so
-	// neither the render nor the marker/checklog side-effects happen. This also neutralizes stale
-	// installed manifests still binding skill-trigger to other events. UserPromptSubmit is the only
-	// kimi-reachable inject channel. BuildKimiPluginHooks now emits skill-trigger only there; this
-	// guard is defense in depth (and the single point that kills the false checklog regardless of
-	// which manifest a stale install carries).
-	if agent == "kimi" && hookInput.HookEventName != "UserPromptSubmit" {
-		return nil
-	}
+	// UserPromptSubmit (verified via wire.jsonl). The engine still RUNS on the other events —
+	// recording each hit to checklog with Delivered=false (stamped by
+	// contextChannelDelivered's kimi row) — so the dashboard feed and the usage funnel see
+	// the full trigger picture instead of a kimi blind spot (2026-08: kimi tasks showed 1
+	// skill-trigger event vs claude's 59, a pure observability artifact). The funnel counts
+	// Delivered=true only (skillseval.SkillFunnel), so these records cannot recreate the
+	// false-prosperity bug the old pre-core bail guarded against — "record honestly, never
+	// deliver silently" replaced "bail before recording". Only the stdout PRINT stays gated
+	// to UserPromptSubmit (the one channel kimi carries into model context); on other events
+	// printing would be bytes dropped by the host anyway.
+	//
+	// kimi 0.35.0 对除 UserPromptSubmit 外的所有事件丢弃 allow 路径 stdout（wire.jsonl
+	// 实证）。引擎在其余事件上仍运行——每条命中以 Delivered=false 落 checklog（由
+	// contextChannelDelivered 的 kimi 行落章）——让看板事件流与 usage 漏斗看到完整的
+	// 触发图景，而非 kimi 盲区（2026-08：kimi 任务仅 1 条 skill-trigger 事件 vs claude
+	// 59 条，纯观测伪影）。漏斗只计 Delivered=true（skillseval.SkillFunnel），故这些
+	// 记录不可能复活旧的 pre-core bail 所防的虚假繁荣 bug——「诚实记录、绝不静默投递」
+	// 取代了「记录前 bail」。只有 stdout 打印仍门控在 UserPromptSubmit（kimi 唯一送进
+	// 模型上下文的通道）；其余事件打印只会被宿主丢弃。
+	//
+	// 有意为之的副作用（review M3）：引擎全事件运行意味着不可见事件上的命中也会推进
+	// cooldown（noise.Mark）与 Stop 回合计数（IncrStopRound）——某 skill 在不可见事件
+	// 命中后，其在 UserPromptSubmit（唯一可见通道）的重注入可能被 cooldown 抑制，模型
+	// 实际看到的注入比 bail 时代更少。这与既有宿主行为一致（windsurf 全事件无通道、
+	// codex Stop 无通道，其命中本就消耗 cooldown）：cooldown 记的是「触发发生了」而非
+	// 「送达了」，kimi 只是回到同一语义。若未来要按送达计 cooldown，应对全宿主统一改，
+	// 而非给 kimi 特判。
 	rendered, err := runSkillTriggerCore(hookInput, root, version, agent, false)
-	if agent == "kimi" {
-		if err == nil && rendered != "" {
+	// Hosts that drop allow-path stdout on some events (hostcap DroppedStdoutEvents;
+	// today kimi): the engine still RUNS and records on those events (Delivered=false
+	// keeps the record honest), but the raw stdout print stays gated to the events
+	// whose channel actually delivers (contextChannelDelivered, sourced from the
+	// hostcap ContextChannels rows) — printing anywhere else would be bytes dropped
+	// by the host anyway.
+	//
+	// 在部分事件上丢弃 allow 路径 stdout 的宿主（hostcap DroppedStdoutEvents；目前
+	// 仅 kimi）：引擎在这些事件上仍运行并记录（Delivered=false 保持记录诚实），但
+	// stdout 裸打印仍门控在通道真正送达的事件上（contextChannelDelivered，数据源自
+	// hostcap ContextChannels 行）——其余事件打印只会被宿主丢弃。
+	if h := hostcap.Lookup(agent); h != nil && len(h.DroppedStdoutEvents) > 0 {
+		if delivered, _ := contextChannelDelivered(agent, hookInput.HookEventName); delivered && err == nil && rendered != "" {
 			fmt.Print(rendered)
 		}
 		return nil
