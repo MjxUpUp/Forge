@@ -2,10 +2,10 @@ package agentbridge
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/agentsignals"
+	"github.com/MjxUpUp/Forge/internal/hostcap"
 )
 
 // DetectAgents scans for known agent config indicators — both project-level markers
@@ -50,45 +50,26 @@ func DetectAgents(projectDir string) []AgentType {
 	// User-level install indicators: the agent's config home exists iff the tool is
 	// installed. User-level wiring is idempotent + machine-wide — wiring a detected
 	// agent once covers every project, which is exactly the post-refactor model.
+	// The indicator data (env override / home-relative path per host) lives in the
+	// hostcap registry (InstallIndicators column); the explicit iteration order
+	// below preserves the pre-registry detection precedence so DetectAgents'
+	// output order is unchanged.
 	//
 	// 用户级安装指示：agent 的 config home 存在 = 该工具已安装。用户级接线幂等 +
 	// 全机器生效——给检测到的 agent 接线一次即覆盖所有项目，正是重构后的模型。
-	if dirExists(claudeConfigHome()) {
-		add(AgentClaudeCode)
-	}
-	if dirExists(codexConfigHome()) {
-		add(AgentCodex)
-	}
-	if home, err := os.UserHomeDir(); err == nil {
-		if dirExists(filepath.Join(home, ".cursor")) {
-			add(AgentCursor)
+	// 指示数据（各宿主的 env 覆盖 / home 相对路径）住在 hostcap 注册表
+	// （InstallIndicators 列）；下面显式的迭代顺序保持注册表之前的检测优先级，
+	// 使 DetectAgents 的输出顺序不变。
+	for _, name := range []string{"claude-code", "codex", "cursor", "windsurf", "opencode"} {
+		h := hostcap.Lookup(name)
+		if h == nil {
+			continue
 		}
-		// windsurf's user-level config root (~/.codeium — holds windsurf/hooks.json
-		// and windsurf/memories/global_rules.md, the paths WindsurfTranslator writes).
-		//
-		// windsurf 的用户级配置根（~/.codeium——下有 windsurf/hooks.json 与
-		// windsurf/memories/global_rules.md，即 WindsurfTranslator 写入的路径）。
-		if dirExists(filepath.Join(home, ".codeium")) {
-			add(AgentWindsurf)
-		}
-	}
-	// opencode resolves its global config dir via the XDG convention
-	// ($XDG_CONFIG_HOME/opencode, else ~/.config/opencode) — detection must use the
-	// same resolution as OpenCodeConfigDir's write path, or XDG_CONFIG_HOME users
-	// get wired into a directory opencode never reads while detection looks at the
-	// wrong one.
-	//
-	// opencode 按 XDG 约定解析全局配置目录（$XDG_CONFIG_HOME/opencode，否则
-	// ~/.config/opencode）——检测必须与 OpenCodeConfigDir 的写入路径同解析，
-	// 否则 XDG_CONFIG_HOME 用户被接进 opencode 从不读的目录，而检测看的又是
-	// 另一个错误位置。
-	if base := os.Getenv("XDG_CONFIG_HOME"); base != "" {
-		if dirExists(filepath.Join(base, "opencode")) {
-			add(AgentOpencode)
-		}
-	} else if home, err := os.UserHomeDir(); err == nil {
-		if dirExists(filepath.Join(home, ".config", "opencode")) {
-			add(AgentOpencode)
+		for _, ind := range h.InstallIndicators {
+			if dir := ind.Resolve(); dir != "" && dirExists(dir) {
+				add(AgentType(name))
+				break
+			}
 		}
 	}
 
@@ -96,21 +77,17 @@ func DetectAgents(projectDir string) []AgentType {
 }
 
 // claudeConfigHome resolves Claude Code's config home: CLAUDE_CONFIG_DIR first,
-// else ~/.claude. Local copy of the same convention in hooks/plugin_detect.go
-// (kept local to avoid an agentbridge→hooks import just for detection).
+// else ~/.claude. The convention's single source is the hostcap registry row
+// (InstallIndicators); this wrapper keeps the local call sites (and the
+// ClaudeConfigHomeDir export below) on one resolver. Same convention as
+// hooks/plugin_detect.go.
 //
 // claudeConfigHome 解析 Claude Code 的 config home：CLAUDE_CONFIG_DIR 优先，
-// 否则 ~/.claude。与 hooks/plugin_detect.go 同约定的本地副本（为避免仅为检测
-// 引入 agentbridge→hooks 依赖而本地持有）。
+// 否则 ~/.claude。该约定的单一真相源是 hostcap 注册表行（InstallIndicators）；
+// 本 wrapper 让本地调用点（及下面的 ClaudeConfigHomeDir 导出）共用一个解析器。
+// 与 hooks/plugin_detect.go 同约定。
 func claudeConfigHome() string {
-	if d := os.Getenv("CLAUDE_CONFIG_DIR"); d != "" {
-		return d
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(home, ".claude")
+	return hostcap.InstallDir("claude-code")
 }
 
 // ClaudeConfigHomeDir exports claudeConfigHome for cross-agent environment auditing
@@ -126,17 +103,12 @@ func ClaudeConfigHomeDir() string {
 }
 
 // codexConfigHome resolves codex's config home: CODEX_HOME first, else ~/.codex.
+// Single source: the hostcap registry row (InstallIndicators).
 //
 // codexConfigHome 解析 codex 的 config home：CODEX_HOME 优先，否则 ~/.codex。
+// 单一真相源：hostcap 注册表行（InstallIndicators）。
 func codexConfigHome() string {
-	if d := os.Getenv("CODEX_HOME"); d != "" {
-		return d
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(home, ".codex")
+	return hostcap.InstallDir("codex")
 }
 
 // ParseAgentFlag parses a comma-separated agent flag value.
