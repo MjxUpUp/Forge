@@ -1,8 +1,11 @@
 name: CI
 
 on:
+  # 所有分支推送都跑三平台 CI——跨平台失败（路径分隔符等）必须在合并前暴露，
+  # 而不是合并推 main 后才报警。concurrency 组按 ref 去重，同一分支反复 push
+  # 自动取消旧 run，不会堆积。
   push:
-    branches: [main, master]
+    branches: ["**"]
   pull_request:
     branches: [main, master]
 

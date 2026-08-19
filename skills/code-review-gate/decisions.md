@@ -124,3 +124,20 @@ SKILL.md 与 references/forge-integration.md 的 cheat-scan 预扫节更新为 6
 ### Evidence
 
 internal/taskpipeline/cheatscan.go ScanCheatPatterns 实跑 6 个检测器；TestDetectPhantomImport + TestExecuteTaskGate_CheatScan_PhantomImport 通过
+
+## [d-18cd18075a8b76d0-63946ae4] accept
+
+- **Skill**: code-review-gate
+- **DecidedAt**: 2026-08-19T03:44:06Z
+
+### Diagnosis
+
+cheat-scan 扩到 7 类（新增 path-assumption：OS 分隔符当内容匹配器——2026-08-19 Windows CI 事故的指纹），文档预扫清单需同步
+
+### Revision
+
+SKILL.md + forge-integration.md 预扫节更新为 7 类枚举
+
+### Evidence
+
+internal/taskpipeline/cheatscan.go detectPathAssumption + TestDetectPathAssumption 通过

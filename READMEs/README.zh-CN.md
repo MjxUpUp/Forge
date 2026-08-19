@@ -81,7 +81,7 @@ Forge 已为 Claude Code / Codex / Cursor / Copilot / Kimi Code / Reasonix 落�
 
 - **装完 plugin 后项目一直在 task-guard WARN 报"allowed but not tracked"** → 项目未启用 forge（未登记注册表）。跑 `forge init`（零项目写入）或 `forge suggest decline` 静默。
 - **`forge` 命令 not found** → npm 全局安装目录不在 PATH。`npm bin -g` 看路径，加入 shell rc。
-- **二审 reviewer 反复冒新问题** → `forge task gate task-verify` 含 cheat-scan deterministic 扫描（type-suppression / error-swallow / dead-branch / comment-only-fix / comment-as-debt / phantom-import），机械模式一次判准，LLM-reviewer 退到只做语义判断。
+- **二审 reviewer 反复冒新问题** → `forge task gate task-verify` 含 cheat-scan deterministic 扫描（type-suppression / error-swallow / dead-branch / comment-only-fix / comment-as-debt / phantom-import / path-assumption），机械模式一次判准，LLM-reviewer 退到只做语义判断。
 
 ## 与英文版的差异
 
