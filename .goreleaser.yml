@@ -83,4 +83,8 @@ changelog:
 release:
   draft: false
   prerelease: auto
-  mode: replace
+  # keep-existing：release-please 先建好带整理 changelog 正文（分组 + PR 链接）的
+  # GitHub Release，goreleaser 只往上面挂二进制/SBOM/签名资产，保留正文；replace
+  # 会把正文覆盖成裸 commit 列表。手动打 tag 路径无预置 Release，goreleaser 照常
+  # 自建（与旧行为一致）。
+  mode: keep-existing

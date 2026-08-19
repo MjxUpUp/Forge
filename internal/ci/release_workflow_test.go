@@ -264,3 +264,45 @@ func TestGoreleaserSigns_CosignV3Bundle(t *testing.T) {
 		}
 	}
 }
+
+// TestReleaseWorkflow_DispatchTrigger: release.yml must keep the workflow_dispatch trigger —
+// it is the entry point of the release-please chain on the GITHUB_TOKEN path (tag pushes created
+// by GITHUB_TOKEN do not trigger workflows; dispatch is the documented exception). Removing it
+// silently stops every release that comes through a merged Release PR while no PAT is configured.
+//
+// TestReleaseWorkflow_DispatchTrigger：release.yml 必须保留 workflow_dispatch 触发器——
+// 它是 release-please 链在 GITHUB_TOKEN 路径上的入口（GITHUB_TOKEN 产生的 tag push 不
+// 触发 workflow，dispatch 是文档化例外）。删掉它，未配 PAT 期间所有经 Release PR 的
+// 发版都会静默止步。
+func TestReleaseWorkflow_DispatchTrigger(t *testing.T) {
+	raw := string(readReleaseYAML(t))
+	if !strings.Contains(raw, "workflow_dispatch") {
+		t.Fatal("release.yml 缺 workflow_dispatch 触发器——release-please.yml 的 GITHUB_TOKEN 路径" +
+			"靠 dispatch 在新 tag 上调度本 workflow，删掉则合并 Release PR 后不再发版")
+	}
+}
+
+// TestGoreleaserReleaseMode_KeepsExisting: goreleaser must not replace the release body —
+// release-please pre-creates the GitHub Release with the curated changelog (grouped sections +
+// PR links); mode: replace would clobber it with a bare commit list. keep-existing uploads
+// artifacts onto the existing release and keeps the body. On the manual-tag path (no
+// pre-existing release) goreleaser creates the release itself, unchanged.
+//
+// TestGoreleaserReleaseMode_KeepsExisting：goreleaser 不得 replace release 正文——
+// release-please 先建好带整理 changelog（分组 + PR 链接）的 GitHub Release；
+// mode: replace 会把它覆盖成裸 commit 列表。keep-existing 往现存 release 上挂资产、
+// 保留正文。手动打 tag 路径无预置 Release，goreleaser 照常自建（行为不变）。
+func TestGoreleaserReleaseMode_KeepsExisting(t *testing.T) {
+	var cfg struct {
+		Release struct {
+			Mode string `yaml:"mode"`
+		} `yaml:"release"`
+	}
+	if err := yaml.Unmarshal(readGoreleaserYAML(t), &cfg); err != nil {
+		t.Fatalf("unmarshal .goreleaser.yml release: %v", err)
+	}
+	if cfg.Release.Mode != "keep-existing" {
+		t.Fatalf("release.mode 必须为 keep-existing（保留 release-please 的 changelog 正文，只挂资产），got %q——"+
+			"replace 会把正文覆盖成裸 commit 列表", cfg.Release.Mode)
+	}
+}

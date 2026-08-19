@@ -1,0 +1,230 @@
+package ci
+
+// Guards for the release-please layer: release-please-config.json /
+// .release-please-manifest.json / .github/workflows/release-please.yml.
+//
+// Two-layer release pipeline: release-please governs "when to release and at what version"
+// (changelog, version bump, tag, GitHub Release body); release.yml governs "how to build and
+// publish" (goreleaser + npm). The layers are chained via workflow_dispatch. These guards pin
+// the handoff shape so that silent config drift cannot break the chain:
+//   - tag shape must stay v<semver>: release.yml fires on on.push.tags "v*" and the npm job
+//     hardcodes asset URLs releases/download/v<ver>/...;
+//   - extra-files must keep bumping npm/package.json and .kimi-plugin/plugin.json — the exact
+//     files the tag-consistency gate and TestKimiPluginManifestVersionTracksRelease read;
+//   - the manifest version must equal npm/package.json version: manual releases that bypass
+//     release-please desync it and turn this red (the designed nudge back to the release-please
+//     path; release-please computing the next version from a stale one would collide with an
+//     existing tag);
+//   - the action must stay SHA-pinned (same supply-chain posture as release.yml) and the
+//     dispatch step must target release.yml.
+//
+// release-please 层守卫：release-please-config.json / .release-please-manifest.json /
+// .github/workflows/release-please.yml。
+//
+// 发版两层管道：release-please 管「何时发版、发什么版本」（changelog、版本 bump、tag、
+// GitHub Release 正文）；release.yml 管「怎么构建发布」（goreleaser + npm）。两层经
+// workflow_dispatch 串联。本组守卫钉住交接形状，防配置漂移悄悄断链：
+//   - tag 形状必须保持 v<semver>：release.yml 由 on.push.tags "v*" 触发，npm job 硬编码
+//     资产 URL releases/download/v<ver>/...；
+//   - extra-files 必须持续 bump npm/package.json 与 .kimi-plugin/plugin.json——正是 tag
+//     对账门禁与 TestKimiPluginManifestVersionTracksRelease 读的两个文件；
+//   - manifest 版本必须等于 npm/package.json 版本：绕过 release-please 的手动发版会让
+//     它失同步而变红（刻意的设计——把人推回 release-please 路径；release-please 从旧
+//     版本起算下一版会撞已存在 tag）；
+//   - action 必须 SHA pin（与 release.yml 同一供应链姿势），dispatch 步必须指向 release.yml。
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"testing"
+)
+
+// readRepoFile reads a repo-root-relative file (go test cwd = internal/ci/).
+//
+// readRepoFile 读仓库根相对路径的文件（go test cwd = internal/ci/）。
+func readRepoFile(t *testing.T, elem ...string) []byte {
+	t.Helper()
+	paths := append([]string{"..", ".."}, elem...)
+	data, err := os.ReadFile(filepath.Join(paths...))
+	if err != nil {
+		t.Fatalf("读 %s 失败: %v（cwd 是否在 internal/ci/?）", filepath.Join(elem...), err)
+	}
+	return data
+}
+
+// releasePleaseExtraFile mirrors one extra-files entry of release-please-config.json.
+//
+// releasePleaseExtraFile 对应 release-please-config.json 的一条 extra-files 配置。
+type releasePleaseExtraFile struct {
+	Type     string `json:"type"`
+	Path     string `json:"path"`
+	JSONPath string `json:"jsonpath"`
+}
+
+// releasePleasePackage is the per-package config; only the fields this guard inspects.
+//
+// releasePleasePackage 是单包配置；只取本守卫检查的字段。
+type releasePleasePackage struct {
+	ExtraFiles []releasePleaseExtraFile `json:"extra-files"`
+}
+
+// releasePleaseConfig holds the root config flags. Booleans are pointers: a missing key and an
+// explicit false must be distinguishable — the guards below assert the flag is PRESENT and set
+// to the required value, not merely falsy (release-please defaults must not silently hold the
+// chain together).
+//
+// releasePleaseConfig 持根配置 flag。布尔用指针：缺 key 与显式 false 必须可区分——
+// 下方守卫断言 flag 存在且取要求值，而非恰好为假（不能靠 release-please 的默认值
+// 撑住发版链）。
+type releasePleaseConfig struct {
+	ReleaseType           string                          `json:"release-type"`
+	IncludeComponentInTag *bool                           `json:"include-component-in-tag"`
+	IncludeVInTag         *bool                           `json:"include-v-in-tag"`
+	BootstrapSHA          string                          `json:"bootstrap-sha"`
+	Packages              map[string]releasePleasePackage `json:"packages"`
+}
+
+func loadReleasePleaseConfig(t *testing.T) *releasePleaseConfig {
+	t.Helper()
+	var cfg releasePleaseConfig
+	if err := json.Unmarshal(readRepoFile(t, "release-please-config.json"), &cfg); err != nil {
+		t.Fatalf("unmarshal release-please-config.json: %v", err)
+	}
+	return &cfg
+}
+
+// TestReleasePleaseConfig_TagShape: pin the tag format to bare v<semver>.
+// release.yml fires on on.push.tags "v*" and the npm job hardcodes asset URLs
+// releases/download/v${VER}/forge_${VER}_*.tar.gz — a component-prefixed tag (forge-v1.2.3)
+// or a v-less tag (1.2.3) detaches the whole build layer from release-please.
+//
+// TestReleasePleaseConfig_TagShape：钉死 tag 格式为裸 v<semver>。
+// release.yml 由 on.push.tags "v*" 触发，npm job 硬编码资产 URL
+// releases/download/v${VER}/forge_${VER}_*.tar.gz——组件前缀 tag（forge-v1.2.3）或
+// 无 v tag（1.2.3）都会让整个构建层与 release-please 失联。
+func TestReleasePleaseConfig_TagShape(t *testing.T) {
+	cfg := loadReleasePleaseConfig(t)
+
+	if cfg.IncludeComponentInTag == nil || *cfg.IncludeComponentInTag {
+		t.Fatal("include-component-in-tag 必须存在且为 false——" +
+			"组件前缀 tag（如 forge-v1.2.3）不匹配 release.yml 的 on.push.tags \"v*\"，" +
+			"npm 资产 URL 也对不上，整条构建链失联")
+	}
+	if cfg.IncludeVInTag == nil || !*cfg.IncludeVInTag {
+		t.Fatal("include-v-in-tag 必须存在且为 true——" +
+			"无 v 前缀 tag（如 1.2.3）不匹配 release.yml 的 on.push.tags \"v*\"" +
+			"（显式钉住，防 go 策略默认值漂移）")
+	}
+}
+
+// TestReleasePleaseConfig_StrategyAndBootstrap: the go strategy needs no in-tree version file
+// (the release version lives in the tag + manifest); node/simple strategies would look for
+// package.json / version.txt at the root and fail the run. bootstrap-sha bounds the commit
+// range of the FIRST release PR (ignored afterwards) — it must be a full 40-char SHA.
+//
+// TestReleasePleaseConfig_StrategyAndBootstrap：go 策略无需树内版本文件（发版版本来自
+// tag + manifest）；node/simple 策略会在根目录找 package.json / version.txt 而失败。
+// bootstrap-sha 限定首个 Release PR 的 commit 收集范围（之后被忽略）——须为完整
+// 40 位 SHA。
+func TestReleasePleaseConfig_StrategyAndBootstrap(t *testing.T) {
+	cfg := loadReleasePleaseConfig(t)
+	if cfg.ReleaseType != "go" {
+		t.Fatalf("release-type 须为 go（版本来自 tag+manifest，无需树内版本文件；"+
+			"node/simple 会在根目录找 package.json/version.txt 而失败），got %q", cfg.ReleaseType)
+	}
+	if !regexp.MustCompile(`^[0-9a-f]{40}$`).MatchString(cfg.BootstrapSHA) {
+		t.Fatalf("bootstrap-sha 须为 40 位完整 commit SHA（限定首个 Release PR 的收集范围），got %q", cfg.BootstrapSHA)
+	}
+}
+
+// TestReleasePleaseConfig_ExtraFilesBumpBothManifests: the Release PR must bump the same files
+// the downstream gates read. Dropping npm/package.json breaks the tag-consistency gate in
+// release.yml; dropping .kimi-plugin/plugin.json breaks TestKimiPluginManifestVersionTracksRelease.
+// Guarding both here names the cause at the config layer before the downstream noise.
+//
+// TestReleasePleaseConfig_ExtraFilesBumpBothManifests：Release PR 必须 bump 下游门禁读的
+// 同一批文件。丢 npm/package.json 会破 release.yml 的 tag 对账门禁；丢
+// .kimi-plugin/plugin.json 会破 TestKimiPluginManifestVersionTracksRelease。在此同时守卫，
+// 让失败在配置层就点名根因，而不是下游报噪声。
+func TestReleasePleaseConfig_ExtraFilesBumpBothManifests(t *testing.T) {
+	cfg := loadReleasePleaseConfig(t)
+	pkg, ok := cfg.Packages["."]
+	if !ok {
+		t.Fatal(`release-please-config.json 缺根包 packages["."]（本仓单包发版，版本 bump 挂在根包）`)
+	}
+	bumped := map[string]string{}
+	for _, f := range pkg.ExtraFiles {
+		if f.Type == "json" {
+			bumped[f.Path] = f.JSONPath
+		}
+	}
+	for path, wantJSONPath := range map[string]string{
+		"npm/package.json":         "$.version",
+		".kimi-plugin/plugin.json": "$.version",
+	} {
+		if bumped[path] != wantJSONPath {
+			t.Fatalf("extra-files 缺 {type:json, path:%s, jsonpath:%s}——Release PR 不再 bump 此文件，"+
+				"下游 tag 对账门禁/TestKimiPluginManifestVersionTracksRelease 会红; got extra-files %+v",
+				path, wantJSONPath, pkg.ExtraFiles)
+		}
+	}
+}
+
+// TestReleasePleaseManifest_MatchesNpmVersion: .release-please-manifest.json is release-please's
+// "last released version" ledger. Every Release PR updates it together with npm/package.json,
+// so a mismatch means a manual release bypassed release-please (old release.js path — sync the
+// manifest to the released version) or the files were hand-edited apart.
+//
+// TestReleasePleaseManifest_MatchesNpmVersion：.release-please-manifest.json 是 release-please
+// 的「上次已发布版本」账本。每个 Release PR 都会把它与 npm/package.json 一起更新，
+// 失同步只可能来自绕过 release-please 的手动发版（旧 release.js 路径——把 manifest
+// 同步到实际发布版本）或手改文件。
+func TestReleasePleaseManifest_MatchesNpmVersion(t *testing.T) {
+	var manifest map[string]string
+	if err := json.Unmarshal(readRepoFile(t, ".release-please-manifest.json"), &manifest); err != nil {
+		t.Fatalf("unmarshal .release-please-manifest.json: %v", err)
+	}
+	var pkg struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(readRepoFile(t, "npm", "package.json"), &pkg); err != nil {
+		t.Fatalf("unmarshal npm/package.json: %v", err)
+	}
+	got, ok := manifest["."]
+	if !ok {
+		t.Fatal(`.release-please-manifest.json 缺根包 "." 条目——release-please 拿不到「上次发布版本」，无法起算下一版本`)
+	}
+	if got != pkg.Version {
+		t.Fatalf("manifest 版本 %q != npm/package.json 版本 %q——绕过 release-please 的手动发版/手改文件造成失同步；"+
+			"release-please 会从旧版本起算下一版并撞已存在 tag。请把 manifest 同步到实际发布版本", got, pkg.Version)
+	}
+}
+
+// TestReleasePleaseWorkflow_PinnedAndDispatchesRelease: the workflow must (a) pin the action
+// by full SHA — a floating @v5 tag can be repointed upstream (same supply-chain posture as the
+// SHA-pinned actions in release.yml); (b) dispatch release.yml by file name on the freshly
+// created tag — the only link from the release-please layer to the build layer on the
+// GITHUB_TOKEN path; (c) gate the dispatch on release_created so ordinary PR-refresh runs
+// don't dispatch.
+//
+// TestReleasePleaseWorkflow_PinnedAndDispatchesRelease：workflow 必须 (a) pin 完整 SHA——
+// 浮动 @v5 tag 可被上游重指向（与 release.yml 的 action pin 同一供应链姿势）；
+// (b) 按文件名 dispatch release.yml 到新 tag——GITHUB_TOKEN 路径上 release-please 层到
+// 构建层的唯一连接；(c) dispatch 以 release_created 为前提，普通 PR 刷新不调度构建层。
+func TestReleasePleaseWorkflow_PinnedAndDispatchesRelease(t *testing.T) {
+	raw := string(readRepoFile(t, ".github", "workflows", "release-please.yml"))
+	if !regexp.MustCompile(`googleapis/release-please-action@[0-9a-f]{40}`).MatchString(raw) {
+		t.Fatal("release-please-action 必须 pin 完整 40 位 commit SHA" +
+			"（浮动 @v5 可被上游重指向；与 release.yml 的 SHA pin 同姿势）")
+	}
+	if !strings.Contains(raw, "gh workflow run release.yml") {
+		t.Fatal("release-please.yml 必须 gh workflow run release.yml --ref <tag> 串联构建层——" +
+			"GITHUB_TOKEN 产生的 tag push 不触发 workflow，缺这步则发版止步于 GitHub Release，无二进制无 npm 包")
+	}
+	if !strings.Contains(raw, "release_created") {
+		t.Fatal("dispatch 步必须以 release_created 输出为前提——否则每次普通 PR 刷新也调度构建层")
+	}
+}

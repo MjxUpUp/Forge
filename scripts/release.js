@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 //
-// scripts/release.js — Forge 版本发布助手
+// scripts/release.js — Forge 版本发布助手【已退役为应急逃生舱】
+//
+// 2026-08 起标准发版走 release-please：feat/fix 合入 main 自动开 Release PR，合并
+// Release PR 即自动 bump + 打 tag + 串 release.yml（见 RELEASE.md「标准发版」与
+// .github/workflows/release-please.yml）。本脚本仅当 release-please 层本身故障时应急；
+// 它会同步 bump .release-please-manifest.json（release-please 的版本账本）——不同步
+// 的话 release-please 从旧版本起算下一版会撞已存在 tag（internal/ci 守卫也会拦）。
 //
 // 把发版流程里纯机械、每次重复的三步(决定版本号、改 npm/package.json、建 tag)
 // 固化成一条命令。规则用 Conventional Commits 语义化版本,与项目现有 commit
@@ -19,7 +25,8 @@
 //   node scripts/release.js major       # 强制 major
 //   node scripts/release.js --dry-run   # 只打印将要做什么,不改文件不建 tag
 //
-// 脚本只负责:读当前版本 → 算下一版本 → 改 npm/package.json → commit → tag。
+// 脚本只负责:读当前版本 → 算下一版本 → 同步 bump 三个版本文件(npm/package.json、
+// .kimi-plugin/plugin.json、.release-please-manifest.json) → commit → tag。
 // 不 push。push 触发 .github/workflows/release.yml(goreleaser + npm),是对外
 // 发布,留给你确认后手动执行。
 
@@ -79,6 +86,17 @@ function replaceVersionField(content, next) {
   return { content: content.replace(re, `"version": "${next}"`), ok: true };
 }
 
+// replaceManifestVersion 把 .release-please-manifest.json 的根包 "." 版本替换为 next。
+// manifest 形状是 {".": "1.34.0"}（release-please 的「上次已发布版本」账本），没有
+// "version" 字段，故与 replaceVersionField 分开。返回 {content, ok}：ok=false 表示缺
+// "." 键（事故级——release-please 拿不到起算版本，internal/ci 的
+// TestReleasePleaseManifest_MatchesNpmVersion 也会拦）。
+function replaceManifestVersion(content, next) {
+  const re = /("\."\s*:\s*)"[^"]+"/;
+  if (!re.test(content)) return { content, ok: false };
+  return { content: content.replace(re, `$1"${next}"`), ok: true };
+}
+
 // readCommitMessages 取 range 内所有 commit 的完整 message。可选 cwdRoot 供测试
 // 注入临时仓库(默认用 release.js 所在的项目根),让 readCommitMessages 能端到端测。
 function readCommitMessages(range, cwdRoot = ROOT) {
@@ -136,7 +154,7 @@ function main() {
   console.log(`tag:     v${next}`);
 
   if (dryRun) {
-    console.log('(dry-run, no changes — would bump npm/package.json + .kimi-plugin/plugin.json)');
+    console.log('(dry-run, no changes — would bump npm/package.json + .kimi-plugin/plugin.json + .release-please-manifest.json)');
     return;
   }
 
@@ -164,7 +182,20 @@ function main() {
   }
   fs.writeFileSync(KIMI_PLUGIN, kimiNext.content);
 
-  // --- verify round-trip (both files must read back exactly next) ---
+  // --- sync .release-please-manifest.json (release-please 的版本账本) ---
+  // release-please 按 manifest 的 "." 起算下一版本；逃生舱发版不同步它，下个 Release
+  // PR 会从旧版本起算、撞已存在 tag（internal/ci 的
+  // TestReleasePleaseManifest_MatchesNpmVersion 守卫 npm/package.json == manifest）。
+  const MANIFEST = path.join(ROOT, '.release-please-manifest.json');
+  const REL_MANIFEST = path.relative(ROOT, MANIFEST);
+  const manifestNext = replaceManifestVersion(fs.readFileSync(MANIFEST, 'utf8'), next);
+  if (!manifestNext.ok) {
+    console.error(`failed to replace "." version in ${REL_MANIFEST} (pattern not matched)`);
+    process.exit(1);
+  }
+  fs.writeFileSync(MANIFEST, manifestNext.content);
+
+  // --- verify round-trip (all three files must read back exactly next) ---
   for (const [file, rel] of [[PKG, REL_PKG], [KIMI_PLUGIN, REL_KIMI]]) {
     const actual = (fs.readFileSync(file, 'utf8').match(/"version":\s*"([^"]+)"/) || [])[1];
     if (actual !== next) {
@@ -172,9 +203,14 @@ function main() {
       process.exit(1);
     }
   }
+  const manifestActual = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'))['.'];
+  if (manifestActual !== next) {
+    console.error(`version mismatch in ${REL_MANIFEST}: expected ${next}, got ${manifestActual}`);
+    process.exit(1);
+  }
 
   // --- commit + tag ---
-  git(`add ${REL_PKG} ${REL_KIMI}`);
+  git(`add ${REL_PKG} ${REL_KIMI} ${REL_MANIFEST}`);
   git(`commit -m "chore(release): bump npm version to ${next}" -m "Co-Authored-By: Claude <noreply@anthropic.com>"`);
   git(`tag v${next}`);
 
@@ -184,7 +220,7 @@ function main() {
   console.log(`  git push origin v${next}`);
 }
 
-module.exports = { inferBump, bumpVersion, readCommitMessages, replaceVersionField };
+module.exports = { inferBump, bumpVersion, readCommitMessages, replaceVersionField, replaceManifestVersion };
 
 if (require.main === module) {
   main();

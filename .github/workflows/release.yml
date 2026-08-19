@@ -4,6 +4,10 @@ on:
   push:
     tags:
       - "v*"
+  # release-please.yml 的 GITHUB_TOKEN 路径经 workflow_dispatch 调度本 workflow：
+  # GITHUB_TOKEN 产生的 tag push 事件不触发新 workflow run（GitHub 防递归），dispatch
+  # 是文档化例外。仍只在 tag ref 上被调度（--ref v*），无 tag 发不出版。
+  workflow_dispatch:
 
 # 顶层最小权限；各 job 按需提权（最小授权原则——id-token 只有签名/溯源两个 job 拿得到）。
 permissions:
@@ -22,7 +26,8 @@ jobs:
       - run: go vet ./...
       # 版本对账门禁放在 needs 链源头：tag 必须等于 npm/package.json 的 version，
       # 不一致 1 分钟内终止整条链（放在 npm job 则 goreleaser 白跑 30min 才拦）。
-      # release.js 保证两者一致，此门禁防 RELEASE.md 允许的手动打 tag 路径出错——
+      # release-please 的 Release PR 保证两者一致（npm/package.json 在 extra-files 里被
+      # 同步 bump），此门禁防 RELEASE.md 允许的手动打 tag 路径出错——
       # 没有对账时打错 tag 会发出货不对板的包（二进制是 tag 的，包版本号是 package.json 的）。
       - name: Tag/version consistency gate
         run: |
