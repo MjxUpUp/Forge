@@ -675,19 +675,36 @@ func EnsureHookSession(root, sessionID, agent string) {
 // identity env on any host except claude-code, so the CLI side adopts the most
 // recent hook-observed session — but only within this window. The residual
 // misattribution risk (a human running forge in a bare terminal minutes after
-// agent activity) is accepted: it mislabels OriginTool only, never correctness.
+// agent activity) is accepted and scoped: the adopted sid binds the new task to
+// the AGENT session's scoped key (SetActiveTaskRef/EnsureSession), so the
+// agent's hooks would treat the human's task as their active one, and
+// OriginTool is mislabeled — an attribution error, never a gate/integrity one
+// (review M2: the blast radius is wider than a label, and that is deliberate —
+// the dominant case IS an agent's Bash tool; the window caps the exposure).
 //
 // lastSessionFreshWindow 限定 last-session 指针可被采纳的时长：除 claude-code
 // 外任何宿主的 Bash 工具里跑 `forge task start` 都不带身份 env，故 CLI 侧采纳
 // 最近一次 hook 观察到的会话——但仅限此窗口内。残留的误归属风险（agent 活动
-// 后几分钟内人在裸终端跑 forge）被接受：只错标 OriginTool，不影响正确性。
+// 后几分钟内人在裸终端跑 forge）被接受且范围明确：采纳的 sid 会把新任务绑进
+// agent 会话的 scoped 键（SetActiveTaskRef/EnsureSession），agent 侧 hook 会把
+// 人类的任务当作自己的活动任务，OriginTool 也会被错标——是归因错误，绝非门
+// 禁/完整性错误（review M2：爆炸半径大于一个标签，这是有意设计——主场景正
+// 是 agent 的 Bash 工具；窗口限制了暴露面）。
 const lastSessionFreshWindow = 15 * time.Minute
 
 // lastSessionWriteThrottle caps pointer rewrites: hooks fire per tool call, and
-// the pointer's consumers only need minute-scale freshness.
+// the pointer's consumers only need minute-scale freshness. The throttle is
+// session-AGNOSTIC: with two non-claude hosts interleaving (kimi + codex), a
+// host switch can take up to one throttle window to show up in the pointer —
+// during it, the new host's `forge task start` adopts the previous host's
+// session (review M1; accepted — single-host use dominates and the error is
+// attribution-only).
 //
 // lastSessionWriteThrottle 限制指针重写频率：hook 每次工具调用都触发，而指针
-// 的消费方只需要分钟级新鲜度。
+// 的消费方只需要分钟级新鲜度。节流是会话无关的：两个非 claude 宿主交错
+// （kimi + codex）时，宿主切换最长需要一个节流窗口才反映到指针——期间新宿
+// 主的 `forge task start` 会采纳前一个宿主的会话（review M1；接受——单宿主
+// 使用是主流，且错误仅限归因）。
 const lastSessionWriteThrottle = 30 * time.Second
 
 // LastSessionPointer records the most recent hook-observed session for a

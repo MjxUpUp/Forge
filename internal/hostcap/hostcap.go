@@ -164,17 +164,19 @@ type Host struct {
 	// neither on those events → every cursor checklog/toollog entry landed on the
 	// legacy global key); windsurf sends trajectory_id; cline sends taskId;
 	// reasonix sends camelCase sessionId. The non-Claude-shape dialects are
-	// mapped by their normalizers (cli/hook_normalize.go); this column documents
-	// the source field per host and drives the conversation_id fallback for
-	// Claude-shape hosts.
+	// mapped by their normalizers (cli/hook_normalize.go); this column is the
+	// documented source field per host (the conversation_id fallback itself is
+	// host-agnostic — cli/hook.go fills an empty SessionID from it for ANY
+	// Claude-shape payload, no per-host branch needed).
 	//
 	// StdinSessionFields 按优先级列出 hook stdin 中携带 session id 的 JSON 字段。
 	// 多数宿主发 Claude 形 session_id；cursor 的工具/Stop/prompt 事件只带
 	// conversation_id（forge 此前在这些事件上两者都不读 → 每条 cursor 的
 	// checklog/toollog 都落到 legacy 全局键）；windsurf 发 trajectory_id；
 	// cline 发 taskId；reasonix 发 camelCase sessionId。非 Claude 形方言由各自
-	// normalizer（cli/hook_normalize.go）映射；本列记录各宿主的来源字段，并驱
-	// 动 Claude 形宿主的 conversation_id 回落。
+	// normalizer（cli/hook_normalize.go）映射；本列是各宿主来源字段的文档
+	// （conversation_id 回落本身是宿主无关的——cli/hook.go 对任何 Claude 形
+	// payload 都用它填空的 SessionID，无需按宿主分支）。
 	StdinSessionFields []string
 
 	// StdinDialect names the hook-stdin dialect: "" = Claude-shape (the default

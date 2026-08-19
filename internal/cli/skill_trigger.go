@@ -110,6 +110,14 @@ func runSkillTriggerHook(hookInput HookInput, root, version, agent string) error
 	// 记录不可能复活旧的 pre-core bail 所防的虚假繁荣 bug——「诚实记录、绝不静默投递」
 	// 取代了「记录前 bail」。只有 stdout 打印仍门控在 UserPromptSubmit（kimi 唯一送进
 	// 模型上下文的通道）；其余事件打印只会被宿主丢弃。
+	//
+	// 有意为之的副作用（review M3）：引擎全事件运行意味着不可见事件上的命中也会推进
+	// cooldown（noise.Mark）与 Stop 回合计数（IncrStopRound）——某 skill 在不可见事件
+	// 命中后，其在 UserPromptSubmit（唯一可见通道）的重注入可能被 cooldown 抑制，模型
+	// 实际看到的注入比 bail 时代更少。这与既有宿主行为一致（windsurf 全事件无通道、
+	// codex Stop 无通道，其命中本就消耗 cooldown）：cooldown 记的是「触发发生了」而非
+	// 「送达了」，kimi 只是回到同一语义。若未来要按送达计 cooldown，应对全宿主统一改，
+	// 而非给 kimi 特判。
 	rendered, err := runSkillTriggerCore(hookInput, root, version, agent, false)
 	// Hosts that drop allow-path stdout on some events (hostcap DroppedStdoutEvents;
 	// today kimi): the engine still RUNS and records on those events (Delivered=false
