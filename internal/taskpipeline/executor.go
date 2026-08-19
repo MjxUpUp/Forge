@@ -802,12 +802,14 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 			}
 		}
 
-		// cheat-scan (advisory): mechanically detect 5 AI-cheating patterns (type-suppression /
-		// error-swallow / dead-branch / comment-only-fix / comment-as-debt). The first 4 were
+		// cheat-scan (advisory): mechanically detect the AI-cheat patterns enumerated in
+		// ScanCheatPatterns (cheatscan.go — the single source of truth for the count and list;
+		// currently 7: type-suppression / error-swallow / dead-branch / comment-only-fix /
+		// comment-as-debt / phantom-import / path-assumption). The first 4 were
 		// previously judged by an LLM sub-agent at code-review time — the LLM re-samples the same
 		// diff each round and catches different subsets, which is the source of the 'every review
 		// round raises new issues' perception; this scan pulls them into deterministic detection.
-		// The 5th, comment-as-debt, catches 'the comment flags a problem but does not solve it'
+		// comment-as-debt catches 'the comment flags a problem but does not solve it'
 		// (the anti-pattern at level 0 of the laziness ladder, the root of code rot) — the nudge
 		// below spells out the handling path (convert to a forge task or fix it inline) for the
 		// agent. Scans task-added lines (+ lines); hits go to checklog:cheat-scan. Purely
@@ -817,11 +819,12 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		// 'verification evidence'; counting it would inflate Strength. The LLM-reviewer accordingly
 		// retreats to semantic judgments only (design / architecture / whether mocks are illusory).
 		//
-		// cheat-scan (advisory)：机械检测 5 类 AI 作弊模式（type-suppression /
-		// error-swallow / dead-branch / comment-only-fix / comment-as-debt）。前 4 类
-		// 此前全靠 LLM 子 agent 在 code-review 时判断——LLM 每轮对同一 diff 重新采样
+		// cheat-scan (advisory)：机械检测 ScanCheatPatterns 枚举的 AI 作弊模式（数量与清单
+		// 以 cheatscan.go 为唯一真相源，当前 7 类：type-suppression / error-swallow /
+		// dead-branch / comment-only-fix / comment-as-debt / phantom-import / path-assumption）。
+		// 前 4 类此前全靠 LLM 子 agent 在 code-review 时判断——LLM 每轮对同一 diff 重新采样
 		// 抓不同子集，是「每轮 review 冒新问题」的体感来源；本扫描把它们抽到
-		// deterministic。第 5 类 comment-as-debt 抓「注释标识问题但不解决」（懒惰阶梯
+		// deterministic。comment-as-debt 抓「注释标识问题但不解决」（懒惰阶梯
 		// 反第 0 级，屎山根源）——下方 nudge 把处置路径（转 forge task 或当场修）明确
 		// 告诉 agent。扫任务新增行（+ 行），命中记 checklog:cheat-scan。纯 advisory
 		// （启发式有假阳性可能——comment-only 尤甚）绝不阻塞，留痕供 review 核查。
