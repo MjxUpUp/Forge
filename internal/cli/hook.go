@@ -17,6 +17,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/hooks"
+	"github.com/MjxUpUp/Forge/internal/hostcap"
 	"github.com/MjxUpUp/Forge/internal/shellexec"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
@@ -134,6 +135,32 @@ type HookInput struct {
 	ToolInput     json.RawMessage `json:"tool_input"`
 	ToolOutput    json.RawMessage `json:"tool_response,omitempty"` // Claude Code PostToolUse 实际字段名是 tool_response（非 tool_output）；skill-trigger 是首个消费其内容的 hook
 	Prompt        string          `json:"prompt,omitempty"`        // UserPromptSubmit 顶层 prompt（skill-trigger coding_intent condition 用）
+	// ConversationID is cursor's session identity on tool/Stop/prompt events —
+	// cursor's common hook schema carries session_id ONLY on sessionStart/
+	// sessionEnd, everything else has conversation_id. Read as a fill-empty
+	// fallback for SessionID (below), so cursor events get session-scoped keys
+	// instead of collapsing onto the legacy global file. Host-agnostic: any
+	// Claude-shape host sending conversation_id benefits.
+	//
+	// ConversationID 是 cursor 在工具/Stop/prompt 事件上的会话身份——cursor 的
+	// 通用 hook schema 仅在 sessionStart/sessionEnd 携带 session_id，其余事件
+	// 只有 conversation_id。作为 SessionID 的填空回落读取（见下），使 cursor
+	// 事件获得 session-scoped 键而非全挤到 legacy 全局文件。宿主无关：任何发
+	// conversation_id 的 Claude 形宿主都受益。
+	ConversationID string `json:"conversation_id,omitempty"`
+	// ForgeAgent lets a host that constructs Claude-shape stdin in-process
+	// declare its identity WITHOUT touching the hook command string — opencode's
+	// TS plugin sets forge_agent:"opencode" in buildPayload (its wiring test
+	// pins the `forge hook <name>` command roster, so an --agent suffix there
+	// would be churn; a payload field is invisible to it). Lowest precedence in
+	// resolveHookAgent's chain (after --agent and FORGE_HOOK_AGENT).
+	//
+	// ForgeAgent 让在进程内构造 Claude 形 stdin 的宿主无需改动 hook 命令串即可
+	// 声明身份——opencode 的 TS plugin 在 buildPayload 里设
+	// forge_agent:"opencode"（其 wiring 测试钉死 `forge hook <name>` 命令名册，
+	// 在那里加 --agent 后缀是无谓 churn；payload 字段对它不可见）。在
+	// resolveHookAgent 链中优先级最低（位于 --agent 与 FORGE_HOOK_AGENT 之后）。
+	ForgeAgent string `json:"forge_agent,omitempty"`
 }
 
 // toolInputFields holds the fields extracted from the tool_input JSON.
@@ -287,14 +314,18 @@ func runHook(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("unknown hook: %s", name)
 	}
 
-	// Resolve the stdin dialect before parsing: kimi replaces the default Claude unmarshal
-	// entirely (its prompt field is a content-block array that would type-error a plain
-	// unmarshal into HookInput and warn on every call), so the agent must be known first.
+	// Resolve the stdin dialect before parsing: a host whose StdinReplacesParse is
+	// set (hostcap registry; today kimi — its prompt field is a content-block
+	// array that would type-error a plain unmarshal into HookInput and warn on
+	// every call) replaces the default Claude unmarshal entirely, so the agent
+	// must be known first.
 	//
-	// 先解析 stdin 方言：kimi 完全替代默认的 Claude unmarshal（它的 prompt 字段是
-	// content-block 数组，直接 unmarshal 进 HookInput 会类型错误并在每次调用时告警），
-	// 所以必须先知道 agent。
+	// 先解析 stdin 方言：StdinReplacesParse 置位的宿主（hostcap 注册表；目前仅
+	// kimi——它的 prompt 字段是 content-block 数组，直接 unmarshal 进
+	// HookInput 会类型错误并在每次调用时告警）完全替代默认的 Claude
+	// unmarshal，所以必须先知道 agent。
 	agent := resolveHookAgent(hookAgent, os.Getenv("FORGE_HOOK_AGENT"))
+	host := hostcap.Lookup(agent)
 
 	// 1. Read the host's stdin JSON.
 	//
@@ -305,7 +336,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 	}
 
 	var hookInput HookInput
-	if agent == "kimi" {
+	if host != nil && host.StdinReplacesParse {
 		normalizeAgentStdin(agent, stdinData, &hookInput)
 	} else {
 		if len(stdinData) > 0 {
@@ -332,8 +363,9 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// adoptPayloadCwd was built to close for kimi. The `--agent` flag (cross-platform,
 	// set by the translator) selects the dialect; FORGE_HOOK_AGENT is the fallback.
 	// opencode are code-based and directly construct Claude stdin in TS, so no
-	// normalizer runs for them. kimi already normalized at parse time (see above); the
-	// other dialects normalize here.
+	// normalizer runs for them. StdinReplacesParse dialects (kimi) already
+	// normalized at parse time (see above); the other dialects (StdinDialect set
+	// in the hostcap registry) normalize here.
 	//
 	// 1b. 在采用 payload cwd、解析项目根**之前**归一化非 Claude Code agent 的 stdin。
 	// Windsurf/cline/reasonix 使用不同的 hook stdin schema（Windsurf:
@@ -347,10 +379,30 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// 所有项目级 hook 静默放行——正是 adoptPayloadCwd 为 kimi 堵上的那类 fail-open。
 	// `--agent` flag（跨平台，由 translator 设置）选择方言；FORGE_HOOK_AGENT 是
 	// 兜底。opencode 是 code-based，直接在 TS 里构造 Claude stdin，无需
-	// normalizer。kimi 已在 stdin 解析阶段完成 normalize（见上文）；其余方言在此
-	// 归一化。
-	if agent != "" && agent != "kimi" {
+	// normalizer。StdinReplacesParse 方言（kimi）已在 stdin 解析阶段完成
+	// normalize（见上文）；其余方言（hostcap 注册表中 StdinDialect 非空的宿主）
+	// 在此归一化。
+	if host != nil && host.StdinDialect != "" && !host.StdinReplacesParse {
 		normalizeAgentStdin(agent, stdinData, &hookInput)
+	}
+
+	// Payload-borne identity fallbacks (need the parsed stdin, so they run after
+	// normalize): cursor's conversation_id fills an empty SessionID (its tool/
+	// Stop/prompt events carry no session_id); opencode's forge_agent fills an
+	// empty agent (its TS plugin declares identity in the payload — see
+	// HookInput.ForgeAgent). Both are fill-empty: an explicit --agent or a real
+	// session_id always wins.
+	//
+	// 由 payload 携带的身份回落（需要已解析的 stdin，故在 normalize 之后运行）：
+	// cursor 的 conversation_id 填空的 SessionID（其工具/Stop/prompt 事件不带
+	// session_id）；opencode 的 forge_agent 填空的 agent（其 TS plugin 在
+	// payload 里声明身份——见 HookInput.ForgeAgent）。两者都是填空：显式
+	// --agent 或真实 session_id 恒优先。
+	if hookInput.SessionID == "" {
+		hookInput.SessionID = hookInput.ConversationID
+	}
+	if agent == "" {
+		agent = hookInput.ForgeAgent
 	}
 
 	// Adopt the payload's cwd before resolving the project root. kimi plugin hooks are
@@ -399,30 +451,45 @@ func runHook(cmd *cobra.Command, args []string) error {
 		root = "" // global hook：无需 project root；shCmd.Dir="" 回退到 cwd
 	}
 
-	// Stamp the resolved agent onto the authoritative session record, best-effort. This
-	// reaches every translator that rewrites hook commands to carry --agent (kimi/reasonix/
-	// windsurf/cline for the stdin dialect; codex/cursor/copilot for the output protocol)
-	// — for marker-absent projects those fire hooks with the true agent even
-	// though detectAgentType at session creation only sees project markers, so the session
-	// is created with an empty agent_type and would otherwise misattribute to claude-code
-	// (the leaked CLAUDE_CODE_SESSION_ID default). codebuddy/opencode carry no --agent,
-	// so agent=="" here and the stamp is a no-op for them — they rely on Part 1's project
-	// markers (opencode has markers; codebuddy has none and is a known attribution gap).
-	// StampSessionAgent fills ONLY an
-	// empty value, also reflects it in sessions.jsonl, and creates/rotates nothing, so firing
-	// on every event is safe and idempotent.
+	// Register the hook-observed session and stamp the resolved agent onto it,
+	// best-effort. Previously this was stamp-ONLY (fill an empty AgentType on a
+	// record created elsewhere) — but the only registration point was the CLI
+	// path (`forge task start` → EnsureSession), and hosts whose agent drives
+	// forge through a Bash tool without identity env (kimi/codex/cursor/...)
+	// never reach it with a real session id, so their sessions were NEVER
+	// registered (sessions.jsonl carried agent_type=claude-code only, fleet-wide,
+	// 2026-08 attribution audit). EnsureHookSession closes that: any hook event
+	// with a session id registers the session, with the declarative --agent as
+	// AgentType (falling back to the project marker when agent==""). The legacy
+	// global path (no session id) keeps the old stamp-only behavior — a hook
+	// without a session id must not rotate legacy state.
 	//
-	// 把解析出的 agent 盖到权威 session 记录上，尽力而为。这能触及所有把 hook 命令改写为
-	// 携带 --agent 的翻译器（kimi/reasonix/windsurf/cline 为 stdin 方言；codex/cursor/
-	// copilot 为输出协议）——对无标记项目，它们即便创建时的 detectAgentType 只看项目
-	// 标记，也会带真实 agent 触发 hook，故 session 以空 agent_type 创建，否则会误归
-	// claude-code（泄漏的 CLAUDE_CODE_SESSION_ID 默认值）。codebuddy/opencode
-	// 不携带 --agent，故此处 agent==""，盖戳对它们是 no-op——它们依赖 Part 1 的项目
-	// 标记（opencode 有标记；codebuddy 无标记，是已知归因缺口）。StampSessionAgent
-	// 只填空值、同步反映到 sessions.jsonl、不创建不轮换，故每次事件都触发是安全且
-	// 幂等的。
-	if agent != "" && root != "" {
-		taskpipeline.StampSessionAgent(root, hookInput.SessionID, agent)
+	// 登记 hook 观察到的会话并把解析出的 agent 盖上去，尽力而为。此前这里只做
+	// 盖戳（在别处创建的记录上填空的 AgentType）——但唯一登记点是 CLI 路径
+	// （`forge task start` → EnsureSession），而 agent 经无身份 env 的 Bash
+	// 工具驱动 forge 的宿主（kimi/codex/cursor/...）从不以真实 session id 走到
+	// 它，故其会话从未被登记（sessions.jsonl 全机只有 agent_type=claude-code，
+	// 2026-08 归因审计）。EnsureHookSession 堵上此缺口：任何带 session id 的
+	// hook 事件都会登记会话，AgentType 用声明式 --agent（agent=="" 时回落项目
+	// 标记）。legacy 全局路径（无 session id）保持旧的只盖戳行为——无 session
+	// id 的 hook 不得触发 legacy 轮换。
+	if root != "" {
+		if hookInput.SessionID != "" {
+			taskpipeline.EnsureHookSession(root, hookInput.SessionID, agent)
+			// Refresh the last-session pointer so the CLI path (task start,
+			// continuity anchors) can attribute forge invocations made inside a
+			// host's Bash tool — which carries no identity env on any host except
+			// claude-code — back to this session (throttled; see
+			// taskpipeline.TouchLastSession).
+			//
+			// 刷新 last-session 指针，使 CLI 路径（task start、接续锚定）能把
+			// 在宿主 Bash 工具里发起的 forge 调用归回本会话——除 claude-code 外
+			// 任何宿主的 Bash 工具都不带身份 env（已节流，见
+			// taskpipeline.TouchLastSession）。
+			taskpipeline.TouchLastSession(root, hookInput.SessionID, agent, hookInput.HookEventName)
+		} else if agent != "" {
+			taskpipeline.StampSessionAgent(root, hookInput.SessionID, agent)
+		}
 	}
 
 	// skill-trigger 特例：Go 内直接判定 + 渲染（不经 bash embed）。
@@ -438,21 +505,27 @@ func runHook(cmd *cobra.Command, args []string) error {
 		return runSkillTriggerHook(hookInput, root, cmd.Root().Version, agent)
 	}
 
-	// 1c. codex apply_patch exemption for read-before-edit. codex reports file edits as
-	// tool_name "apply_patch" (single tool, patch text in tool_input.command), and the
+	// 1c. Patch-tool exemption for read-before-edit (codex reports file edits as
+	// tool_name "apply_patch" — hostcap PatchToolName column — single tool, patch
+	// text in tool_input.command), and the
 	// per-session reads log only records ToolName=="Read" — codex's file reads go through
 	// its own read tools, never named "Read", so the log is structurally empty on codex
 	// and read-before-edit would false-block EVERY apply_patch. The patch itself carries
 	// the old/new context. Silent allow (exit 0, no stdout) — see the non-forge branch
-	// for why allow never emits an approve JSON.
+	// for why allow never emits an approve JSON. The check keys on the TOOL name (not
+	// the agent) because the hook stdin is Claude-shape and agent may be empty;
+	// hostcap.IsPatchTool scans the registry's PatchToolName column.
 	//
-	// 1c. codex apply_patch 对 read-before-edit 的豁免。codex 的文件编辑以 tool_name
-	// "apply_patch" 上报（单工具，patch 文本在 tool_input.command），而 per-session
+	// 1c. patch 工具对 read-before-edit 的豁免（codex 的文件编辑以 tool_name
+	// "apply_patch" 上报——hostcap PatchToolName 列——单工具，patch 文本在
+	// tool_input.command），而 per-session
 	// reads log 只记录 ToolName=="Read"——codex 的文件读走它自己的 read 工具，从不叫
 	// "Read"，故该 log 在 codex 上结构性为空，read-before-edit 会假阻断每一次
 	// apply_patch。patch 本身携带 old/new 上下文。静默放行（exit 0、无 stdout）——
-	// 为何 allow 不发 approve JSON 见非 forge 分支注释。
-	if name == "read-before-edit" && hookInput.ToolName == "apply_patch" {
+	// 为何 allow 不发 approve JSON 见非 forge 分支注释。检查按**工具名**（而非
+	// agent）触发，因为 hook stdin 是 Claude 形、agent 可能为空；
+	// hostcap.IsPatchTool 扫描注册表的 PatchToolName 列。
+	if name == "read-before-edit" && hostcap.IsPatchTool(hookInput.ToolName) {
 		return nil
 	}
 
@@ -466,19 +539,21 @@ func runHook(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// 2a. codex apply_patch file_path synthesis. codex's apply_patch tool_input carries
+	// 2a. Patch-tool file_path synthesis. codex's apply_patch tool_input (hostcap
+	// PatchToolName column) carries
 	// ONLY {command: <patch text>} — no file_path — so without this synthesis every
 	// path-based gate (task-guard's .forge/* self-protection, freeze-guard) sees an
 	// empty FORGE_FILE_PATH on codex file edits and fails open. Extract the FIRST
 	// *** Add/Update/Delete File: header's path; multi-file patches get the first
 	// target only (documented limitation — the common case is single-file).
 	//
-	// 2a. codex apply_patch 的 file_path 合成。codex 的 apply_patch tool_input 只带
+	// 2a. patch 工具的 file_path 合成。codex 的 apply_patch tool_input（hostcap
+	// PatchToolName 列）只带
 	// {command: <patch 文本>}——没有 file_path——不合成的话每个基于路径的门禁
 	// （task-guard 的 .forge/* 自保护、freeze-guard）在 codex 文件编辑上都看到空的
 	// FORGE_FILE_PATH 并 fail open。取第一个 *** Add/Update/Delete File: 头的路径；
 	// 多文件 patch 只取第一个目标（已文档化的限制——常见情形是单文件）。
-	if hookInput.ToolName == "apply_patch" && fields.FilePath == "" {
+	if hostcap.IsPatchTool(hookInput.ToolName) && fields.FilePath == "" {
 		fields.FilePath = applyPatchFilePath(fields.Command)
 	}
 
@@ -724,24 +799,28 @@ func runHook(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// 5b. kimi advisory promotion. kimi 0.35.0 drops allow-path (exit 0) stdout from the
+	// 5b. Host advisory promotion (hostcap PromoteAdvisory column; today kimi only).
+	// kimi 0.35.0 drops allow-path (exit 0) stdout from the
 	// model context, so forge's core advisories (task-guard/bash-guard/assertion-check)
 	// silently evaporate and the agent runs untracked. Promote the REAL advisory to a block
 	// (passed true→false) here — BEFORE step 6's checklog record — so the promoted value flows
 	// into both the audit trail (Passed=false / LevelBlocked) and emitKimiOutput (exit 2, stderr
 	// shown to the model). Placing this at step 7 instead would desync checklog (recorded as
-	// PASS) from the actually-emitted block. promoteKimiAdvisory's predicate isolates real
-	// advisories from each hook's success/clean branch; skill-trigger returned before step 5 and
+	// PASS) from the actually-emitted block. promoteAdvisory consults the hostcap registry
+	// rules, which isolate real advisories from each hook's success/clean branch;
+	// skill-trigger returned before step 5 and
 	// is unaffected. Escape hatch: FORGE_KIMI_ADVISORY=soft.
 	//
-	// 5b. kimi advisory 提升。kimi 0.35.0 丢弃放行路径（exit 0）的 stdout，forge 核心
+	// 5b. 宿主 advisory 提升（hostcap PromoteAdvisory 列；目前仅 kimi）。kimi 0.35.0
+	// 丢弃放行路径（exit 0）的 stdout，forge 核心
 	// advisory（task-guard/bash-guard/assertion-check）静默蒸发，agent 无任务裸奔。在此把
 	// 真 advisory 提升为阻断（passed true→false）——在 step 6 的 checklog 记录之前——让提升
 	// 后的值同时流入审计轨迹（Passed=false / LevelBlocked）与 emitKimiOutput（exit 2，stderr
 	// 展示给模型）。若放在 step 7，checklog（记 PASS）与实际发出的 block 会脱节。
-	// promoteKimiAdvisory 的谓词把真 advisory 与各 hook 的成功/干净分支隔开；skill-trigger 在
+	// promoteAdvisory 查 hostcap 注册表规则，规则把真 advisory 与各 hook 的成功/干净
+	// 分支隔开；skill-trigger 在
 	// step 5 之前已返回，不受影响。逃生舱：FORGE_KIMI_ADVISORY=soft。
-	if agent == "kimi" && promoteKimiAdvisory(name, passed, detail) {
+	if promoteAdvisory(agent, name, passed, detail) {
 		passed = false
 	}
 
@@ -1138,6 +1217,33 @@ func extractDetail(stdout, prefix string) string {
 	return stdout
 }
 
+// outputEmitters maps the host name to its output-protocol emitter. The emitter
+// BODIES stay in cli (they write os.Stdout directly and return cli's
+// *HookBlockError); the registry cannot hold them because hostcap is a
+// data-only leaf that must not import cli (see the hostcap package doc). Unknown
+// agents — claude-code and every Claude-JSON-compatible host without --agent
+// (codebuddy/opencode) — take the emitClaudeOutput default in emitAgentOutput.
+//
+// outputEmitters 把宿主名映射到其输出协议 emitter。emitter **函数本体**留在
+// cli（它们直接写 os.Stdout 并返回 cli 的 *HookBlockError）；注册表无法持有
+// 它们——hostcap 是纯数据叶子包，不能 import cli（见 hostcap 包文档）。未知
+// agent——claude-code 及所有不带 --agent 的 Claude-JSON 兼容宿主
+// （codebuddy/opencode）——在 emitAgentOutput 里走 emitClaudeOutput 默认。
+var outputEmitters = map[string]func(eventName, hookName string, passed bool, detail string) error{
+	"kimi": func(_, _ string, passed bool, detail string) error { return emitKimiOutput(passed, detail) },
+	"codex": func(eventName, _ string, passed bool, detail string) error {
+		return emitCodexOutput(eventName, passed, detail)
+	},
+	"cursor": func(eventName, _ string, passed bool, detail string) error {
+		return emitCursorOutput(eventName, passed, detail)
+	},
+	"copilot": emitCopilotOutput,
+	"windsurf": func(_, hookName string, passed bool, detail string) error {
+		return emitWindsurfOutput(hookName, passed, detail)
+	},
+	"cline": func(_, _ string, passed bool, detail string) error { return emitClineOutput(passed, detail) },
+}
+
 // emitAgentOutput dispatches the hook verdict to the host's output protocol. agent==""
 // (claude-code and every Claude-JSON-compatible host that carries no --agent flag:
 // codebuddy/opencode) takes the claude default. The load-bearing invariants:
@@ -1161,107 +1267,31 @@ func extractDetail(stdout, prefix string) string {
 //     的阻断码；旧 generic error（exit 1）在它们上面都不构成阻断。
 func emitAgentOutput(agent, eventName, hookName string, passed bool, detail string) error {
 	detail = truncate(detail, maxAdditionalContextLen)
-	switch agent {
-	case "kimi":
-		return emitKimiOutput(passed, detail)
-	case "codex":
-		return emitCodexOutput(eventName, passed, detail)
-	case "cursor":
-		return emitCursorOutput(eventName, passed, detail)
-	case "copilot":
-		return emitCopilotOutput(eventName, hookName, passed, detail)
-	case "windsurf":
-		return emitWindsurfOutput(hookName, passed, detail)
-	case "cline":
-		return emitClineOutput(passed, detail)
-	default:
-		return emitClaudeOutput(eventName, passed, detail)
+	if emit, ok := outputEmitters[agent]; ok {
+		return emit(eventName, hookName, passed, detail)
 	}
+	return emitClaudeOutput(eventName, passed, detail)
 }
 
 // contextChannelDelivered reports whether an ALLOW-path detail emission on (agent, event)
-// actually reaches the model's context on that host, plus a short channel label. It encodes
-// the same per-host channel knowledge as the emitXxxOutput family above (each case cites its
-// emitter) — kept in one function so the record site (recordSkillTriggerHits) can stamp
-// Delivered/Channel into checklog without re-deriving the routing table, and so analysis
-// (usage funnel) has a truthful delivery denominator instead of counting entries the model
-// never saw. This generalizes the kimi 2026-08-15 false-prosperity fix (bail before recording
-// on invisible channels) to every host: recording may stay (audit trail), but "delivered"
-// must say the truth.
+// actually reaches the model's context on that host, plus a short channel label. The
+// per-host channel data lives in the hostcap registry (ContextChannels/DefaultChannel
+// columns, each row citing its source emitter); this thin wrapper exists so the record
+// site (recordSkillTriggerHits) can stamp Delivered/Channel into checklog without
+// re-deriving the routing table, and so analysis (usage funnel) has a truthful delivery
+// denominator instead of counting entries the model never saw. This generalizes the
+// kimi 2026-08-15 false-prosperity fix (bail before recording on invisible channels) to
+// every host: recording may stay (audit trail), but "delivered" must say the truth.
 //
-// contextChannelDelivered 报告 (agent, event) 上 allow 路径的 detail 输出是否真到达该宿主
-// 的模型上下文，并给出简短通道标签。它编码与上面 emitXxxOutput 家族相同的每宿主通道知识
-// （每个 case 注明出处 emitter）——集中在单个函数，记录点（recordSkillTriggerHits）就能把
-// Delivered/Channel 落章进 checklog 而无需重推路由表，分析侧（usage 漏斗）也拿到真实的
-// 送达分母，而不是把模型从未见过的条目也计成送达。这是 kimi 2026-08-15 虚假繁荣修复
-// （不可见通道先 bail 再记录）的泛化：记录可以留（审计轨迹），但 delivered 必须说真话。
+// contextChannelDelivered 报告 (agent, event) 上 allow 路径的 detail 输出是否真到达该
+// 宿主的模型上下文，并给出简短通道标签。每宿主通道数据住在 hostcap 注册表
+// （ContextChannels/DefaultChannel 列，各行注明出处 emitter）；保留这个薄包装，记录点
+// （recordSkillTriggerHits）就能把 Delivered/Channel 落章进 checklog 而无需重推路由
+// 表，分析侧（usage 漏斗）也拿到真实的送达分母，而不是把模型从未见过的条目也计成
+// 送达。这是 kimi 2026-08-15 虚假繁荣修复（不可见通道先 bail 再记录）的泛化：记录
+// 可以留（审计轨迹），但 delivered 必须说真话。
 func contextChannelDelivered(agent, eventName string) (bool, string) {
-	switch agent {
-	case "kimi":
-		// emitKimiOutput prints detail to stdout; kimi only carries stdout into model context
-		// on UserPromptSubmit (wire.jsonl-verified, see internal/agentbridge/kimi-hook-routing.md).
-		// runSkillTriggerHook bails earlier for other events — this row is defense in depth.
-		//
-		// emitKimiOutput 把 detail 打 stdout；kimi 仅在 UserPromptSubmit 把 stdout 送进模型
-		// 上下文（wire.jsonl 实证，见 internal/agentbridge/kimi-hook-routing.md）。
-		// runSkillTriggerHook 对其余事件更早 bail——本行是纵深防御。
-		if eventName == "UserPromptSubmit" {
-			return true, "kimi/stdout-UserPromptSubmit"
-		}
-		return false, "kimi/no-channel"
-	case "codex":
-		// emitCodexOutput: hookSpecificOutput.additionalContext honored on SessionStart/
-		// PreToolUse/PostToolUse/UserPromptSubmit; Stop/PostCompact have no context channel.
-		//
-		// emitCodexOutput：hookSpecificOutput.additionalContext 仅在 SessionStart/
-		// PreToolUse/PostToolUse/UserPromptSubmit 被采纳；Stop/PostCompact 无上下文通道。
-		switch eventName {
-		case "SessionStart", "PreToolUse", "PostToolUse", "UserPromptSubmit":
-			return true, "codex/hookSpecificOutput"
-		}
-		return false, "codex/no-channel"
-	case "cursor":
-		// emitCursorOutput: top-level additional_context read only on PostToolUse/SessionStart.
-		//
-		// emitCursorOutput：顶层 additional_context 仅 PostToolUse/SessionStart 被读。
-		switch eventName {
-		case "PostToolUse", "SessionStart":
-			return true, "cursor/additional_context"
-		}
-		return false, "cursor/no-channel"
-	case "copilot":
-		// emitCopilotOutput: camelCase additionalContext on sessionStart/postToolUse;
-		// userPromptSubmitted stdout is DROPPED for command hooks.
-		//
-		// emitCopilotOutput：camelCase additionalContext 仅 sessionStart/postToolUse；
-		// userPromptSubmitted 的 stdout 对 command hook 会被丢弃。
-		switch eventName {
-		case "PostToolUse", "SessionStart":
-			return true, "copilot/additionalContext"
-		}
-		return false, "copilot/no-channel"
-	case "windsurf":
-		// emitWindsurfOutput: no stdout JSON protocol at all — allow is silent (show_output:false).
-		//
-		// emitWindsurfOutput：完全没有 stdout JSON 协议——allow 静默（show_output:false）。
-		return false, "windsurf/no-context-channel"
-	case "cline":
-		// emitClineOutput: contextModification injects into the task on the allow path
-		// (wrapper forwards it for every fanned-out event).
-		//
-		// emitClineOutput：allow 路径的 contextModification 注入任务（wrapper 对每个
-		// 扇出事件都转发）。
-		return true, "cline/contextModification"
-	default:
-		// emitClaudeOutput (claude-code and every Claude-JSON host without --agent: codebuddy/
-		// opencode/pi): allow-with-detail emits a bare hookSpecificOutput whose
-		// additionalContext Claude injects on every event.
-		//
-		// emitClaudeOutput（claude-code 及所有无 --agent 的 Claude-JSON 宿主：codebuddy/
-		// opencode/pi）：allow-with-detail 发裸 hookSpecificOutput，其 additionalContext
-		// 在每个事件上都被 Claude 注入。
-		return true, "claude/additionalContext"
-	}
+	return hostcap.ContextChannel(agent, eventName)
 }
 
 // emitClaudeOutput renders the claude-code default (also codebuddy/opencode — every
@@ -1541,80 +1571,57 @@ type HookBlockError struct {
 
 func (e *HookBlockError) Error() string { return e.Reason }
 
-// kimiPromoteAdvisory maps an advisory hook name to a predicate that decides whether a given
-// detail qualifies as a "must-reach-the-model" advisory on kimi. Background: kimi 0.35.0 drops
-// allow-path (exit 0) stdout from the model context, so the task-guard/bash-guard/assertion-check
-// advisories silently evaporate and the agent runs untracked on master (verified: a real session
-// made 42 untracked master edits with zero WARN reaching the model). Promoting the REAL advisory
-// to a block (passed true→false) repoints it through the one PreToolUse channel kimi honors:
-// exit 2 (stderr shown to the model). These are forge's quality invariants (source changes need a
-// task; assertions must not be weakened) — block is the correct compensation for a missing advisory
-// channel, not a UX downgrade.
+// promoteAdvisory reports whether an advisory (passed=true, non-empty detail) result for the
+// given hook should be promoted to a block on the given host. The per-hook rules live in the
+// hostcap registry (PromoteAdvisory column — today only kimi has one: kimi 0.35.0 drops
+// allow-path stdout from the model context, so the task-guard/bash-guard/assertion-check
+// advisories silently evaporate there). The rules are declarative Contains/Excludes pairs
+// (not a bare name allowlist) because each hook emits BOTH an advisory branch and a
+// success/clean branch under the same hook name — a name allowlist would over-block
+// (task-guard's "Auto-created task" is a SUCCESS path; assertion-check's clean branch is
+// advisory-free). Promoting the REAL advisory to a block repoints it through the one
+// PreToolUse channel kimi honors: exit 2 (stderr shown to the model).
 //
-// The predicate (not a bare name allowlist) is load-bearing: each hook emits BOTH an advisory
-// branch and a success/clean branch that share the hook name. A name allowlist would over-block:
-//   - task-guard's "Auto-created task" is a SUCCESS path (it just started a task for the agent) —
-//     blocking it would hard-stop the very edit task-guard enabled.
-//   - assertion-check's "no weakening detected (advisory)" is the CLEAN branch — blocking it would
-//     hard-stop every clean Edit on kimi.
+// Returns false for: the FORGE_KIMI_ADVISORY=soft escape hatch (an env knob, kept here in
+// cli rather than the registry because it is operator config, not a host capability),
+// already-blocked results (no double-flip), empty/whitespace detail (clean/silent PASS),
+// and hosts without promotion rules.
 //
-// The predicate reads the detail text to isolate the real-advisory cases. extractDetail handles
-// both PASS and WARN prefixes, so task-guard's "WARN [task-guard] ..." stdout reaches here.
+// promoteAdvisory 报告给定 hook 的 advisory（passed=true、detail 非空）结果在给定宿主上
+// 是否应提升为阻断。各 hook 的规则住在 hostcap 注册表（PromoteAdvisory 列——目前仅
+// kimi 有：kimi 0.35.0 丢弃 allow 路径 stdout，task-guard/bash-guard/assertion-check
+// 的 advisory 在那里静默蒸发）。规则是声明式 Contains/Excludes 对（非裸名字白名单），
+// 因为每个 hook 在同一 hook 名下同时发 advisory 分支与成功/干净分支——名字白名单会
+// 过度阻断（task-guard 的 "Auto-created task" 是成功路径；assertion-check 的干净分支
+// 无 advisory）。把真 advisory 提升为阻断让它改走 kimi 唯一认的 PreToolUse 通道：
+// exit 2（stderr 展示给模型）。
 //
-// Escape hatch: FORGE_KIMI_ADVISORY=soft reverts to pure advisory (no promotion) for ad-hoc
-// no-task edits. The block is the desired default — kimi has no advisory channel, so blocking the
-// FIRST untracked edit (the one that compounds into a 42-edit bareback session) is the fix.
-//
-// kimiPromoteAdvisory 把 advisory hook 名映射到谓词，判定给定 detail 是否属于"必须送达
-// 模型"的 advisory。背景：kimi 0.35.0 丢弃放行路径（exit 0）的 stdout，故
-// task-guard/bash-guard/assertion-check 的 advisory 静默蒸发，agent 在 master 上无任务裸奔
-// （实测：某会话 42 次未追踪 master 编辑，WARN 抵达模型 0 次）。把真 advisory 提升为阻断
-// （passed true→false）让它改走 kimi 唯一认的 PreToolUse 通道：exit 2（stderr 展示给模型）。
-// 这些是 forge 质量铁律（改源码须有任务、断言不可弱化）——阻断是对缺失 advisory 通道的
-// 正确补偿，非体验降级。
-//
-// 用谓词（非裸名字白名单）是承重设计：每个 hook 同时发 advisory 分支与成功/干净分支，共享
-// 同一 hook 名。名字白名单会过度阻断：
-//   - task-guard 的 "Auto-created task" 是成功路径（刚为 agent 建了任务）——阻断它会硬停
-//     task-guard 刚放行的那次编辑。
-//   - assertion-check 的 "no weakening detected (advisory)" 是干净分支——阻断它会硬停 kimi
-//     上每次干净的 Edit。
-//
-// 谓词读 detail 文本隔离真 advisory。extractDetail 同时处理 PASS 和 WARN 前缀，故 task-guard
-// 的 "WARN [task-guard] ..." stdout 能到达此处。
-//
-// 逃生舱：FORGE_KIMI_ADVISORY=soft 回退纯 advisory（不提升），供临时无任务快改。阻断是预期
-// 默认——kimi 无 advisory 通道，故阻断第一次未追踪编辑（它会滚成 42 次裸奔）才是修复。
-var kimiPromoteAdvisory = map[string]func(detail string) bool{
-	"task-guard": func(d string) bool {
-		return strings.Contains(d, "[task-guard]") && !strings.Contains(d, "Auto-created")
-	},
-	"bash-guard":      func(d string) bool { return strings.Contains(d, "[bash-guard]") },
-	"assertion-check": func(d string) bool { return strings.Contains(d, "Advisory:") },
-}
-
-// promoteKimiAdvisory reports whether an advisory (passed=true, non-empty detail) result for the
-// given hook should be promoted to a block on kimi. Returns false for: the FORGE_KIMI_ADVISORY=soft
-// escape hatch, already-blocked results (no double-flip), empty/whitespace detail (clean/silent
-// PASS), and unknown hooks. The caller gates on agent=="kimi"; this helper is agent-agnostic so it
-// is unit-testable without spinning up a full kimi runHook.
-//
-// promoteKimiAdvisory 报告给定 hook 的 advisory（passed=true、detail 非空）结果在 kimi 下是否
-// 应提升为阻断。以下返回 false：FORGE_KIMI_ADVISORY=soft 逃生舱、已阻断结果（不二次翻转）、
-// 空/纯空白 detail（干净/静默 PASS）、未知 hook。调用处已判 agent=="kimi"；本函数不依赖 agent，
-// 便于不经完整 kimi runHook 即可单测。
-func promoteKimiAdvisory(name string, passed bool, detail string) bool {
+// 以下返回 false：FORGE_KIMI_ADVISORY=soft 逃生舱（env 开关，留在 cli 而非注册表——
+// 它是运维配置而非宿主能力）、已阻断结果（不二次翻转）、空/纯空白 detail（干净/静默
+// PASS）、无提升规则的宿主。
+func promoteAdvisory(agent, name string, passed bool, detail string) bool {
 	if os.Getenv("FORGE_KIMI_ADVISORY") == "soft" {
 		return false
 	}
 	if !passed || strings.TrimSpace(detail) == "" {
 		return false
 	}
-	pred, ok := kimiPromoteAdvisory[name]
-	if !ok {
+	h := hostcap.Lookup(agent)
+	if h == nil {
 		return false
 	}
-	return pred(detail)
+	return h.ShouldPromoteAdvisory(name, detail)
+}
+
+// promoteKimiAdvisory is the kimi-specialized wrapper of promoteAdvisory, kept so the
+// existing unit tests (hook_kimi_test.go) exercise the registry rules without spinning up
+// a full kimi runHook. Production call sites use promoteAdvisory directly.
+//
+// promoteKimiAdvisory 是 promoteAdvisory 的 kimi 特化包装，保留给既有单测
+// （hook_kimi_test.go）不经完整 kimi runHook 即可检验注册表规则。生产调用处直接用
+// promoteAdvisory。
+func promoteKimiAdvisory(name string, passed bool, detail string) bool {
+	return promoteAdvisory("kimi", name, passed, detail)
 }
 
 // emitKimiOutput renders the hook result in kimi's hook protocol: allow = exit 0 with
