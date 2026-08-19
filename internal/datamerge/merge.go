@@ -148,6 +148,15 @@ func Dirs(fromDir, toDir string, opts Options) ([]string, error) {
 		if rerr != nil {
 			return rerr
 		}
+		// filepath.Rel returns OS separators — \ on Windows — while the merge-map
+		// classification (isTaskFile) and the action messages are slash-path based.
+		// Normalize once here so both platforms agree (filepath.Join below tolerates
+		// slash components on Windows).
+		//
+		// filepath.Rel 返回 OS 分隔符——Windows 上是 \——而合并映射的分类
+		// （isTaskFile）与动作消息都基于斜杠路径。在此归一一次，让两平台一致
+		// （下面的 filepath.Join 在 Windows 上容忍斜杠分量）。
+		rel = filepath.ToSlash(rel)
 		dst := filepath.Join(toDir, rel)
 		base := filepath.Base(src)
 		_, dstExists := os.Stat(dst)

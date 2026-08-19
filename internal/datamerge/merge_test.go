@@ -50,6 +50,33 @@ func taskJSON(ref string, decisions []taskpipeline.Decision) string {
 	return string(data)
 }
 
+// TestIsTaskFile_SlashContract: rel paths inside Dirs are normalized to slash
+// form (filepath.ToSlash) before classification — isTaskFile's contract. On
+// Windows filepath.Rel yields backslashes; without the normalization every
+// tasks/*.json fell through to the plain move/skip path. This pins the
+// classifier contract the caller now guarantees.
+//
+// TestIsTaskFile_SlashContract：Dirs 内的 rel 路径在分类前归一为斜杠形态
+// （filepath.ToSlash）——isTaskFile 的契约。Windows 上 filepath.Rel 产出反斜杠；
+// 不做归一所有 tasks/*.json 都会跌进普通搬移/跳过路径。此测试钉住调用方现在
+// 保证的分类器契约。
+func TestIsTaskFile_SlashContract(t *testing.T) {
+	cases := map[string]bool{
+		`tasks/feat-x.json`:     true,
+		`tasks/sub/feat-x.json`: true,
+		`tasks/feat-x.lock`:     false, // per-task 锁残留不是状态
+		`tasks/feat-x.jsonl`:    false,
+		`act/conclusions.jsonl`: false,
+		`tasksx/feat-x.json`:    false, // 前缀必须含斜杠边界
+		`tasks\feat-x.json`:     false, // 反斜杠输入必须拒——调用方（Dirs）负责先 ToSlash 归一，本契约显式钉住
+	}
+	for rel, want := range cases {
+		if got := isTaskFile(rel); got != want {
+			t.Errorf(`isTaskFile(%q) = %v, want %v`, rel, got, want)
+		}
+	}
+}
+
 // TestDirs_DedupExactLinesIdempotent: merging the same source JSONL twice with
 // DedupExactLines leaves the destination byte-identical after the first merge (the
 // second merge dedups every re-offered line away). This is the A→B→A→B re-import
