@@ -1,6 +1,9 @@
 package hostcap
 
-import "testing"
+import (
+	"path/filepath"
+	"testing"
+)
 
 // TestLookup_CoversAllSupportedHosts pins the registry against the ten
 // agentbridge.AgentType names — a host missing here falls back to the
@@ -295,20 +298,27 @@ func TestInstallIndicators(t *testing.T) {
 	}
 
 	// Resolve semantics: home fallback, full-dir env override, base-dir env
-	// override — and NO fallback to Path when the env is set.
+	// override — and NO fallback to Path when the env is set. All expectations go
+	// through filepath.Join (never hand-written "/" literals): Resolve joins with
+	// the OS separator, which is a backslash on Windows (CI caught the
+	// forward-slash form — a mac-only green is not proof).
 	//
 	// Resolve 语义：home 回落、整目录 env 覆盖、基目录 env 覆盖——且 env 已设
-	// 时**不**回落 Path。
-	if got := InstallDir("cursor"); got != home+"/.cursor" {
-		t.Errorf("InstallDir(cursor) = %q, want %q", got, home+"/.cursor")
+	// 时**不**回落 Path。所有期望值经 filepath.Join 构造（绝不手写 "/" 字面
+	// 量）：Resolve 按 OS 分隔符拼接，Windows 上是反斜杠（CI 抓到过正斜杠写
+	// 法——仅在 mac 上跑绿不算数）。
+	if got := InstallDir("cursor"); got != filepath.Join(home, ".cursor") {
+		t.Errorf("InstallDir(cursor) = %q, want %q", got, filepath.Join(home, ".cursor"))
 	}
-	t.Setenv("CODEX_HOME", "/tmp/codex-env")
-	if got := InstallDir("codex"); got != "/tmp/codex-env" {
-		t.Errorf("InstallDir(codex) with CODEX_HOME = %q, want /tmp/codex-env", got)
+	codexEnv := filepath.Join(string(filepath.Separator), "tmp", "codex-env")
+	t.Setenv("CODEX_HOME", codexEnv)
+	if got := InstallDir("codex"); got != codexEnv {
+		t.Errorf("InstallDir(codex) with CODEX_HOME = %q, want %q", got, codexEnv)
 	}
-	t.Setenv("XDG_CONFIG_HOME", "/tmp/xdg")
-	if got := InstallDir("opencode"); got != "/tmp/xdg/opencode" {
-		t.Errorf("InstallDir(opencode) with XDG_CONFIG_HOME = %q, want /tmp/xdg/opencode", got)
+	xdgEnv := filepath.Join(string(filepath.Separator), "tmp", "xdg")
+	t.Setenv("XDG_CONFIG_HOME", xdgEnv)
+	if got := InstallDir("opencode"); got != filepath.Join(xdgEnv, "opencode") {
+		t.Errorf("InstallDir(opencode) with XDG_CONFIG_HOME = %q, want %q", got, filepath.Join(xdgEnv, "opencode"))
 	}
 	if got := InstallDir("no-such-host"); got != "" {
 		t.Errorf("InstallDir(unknown) = %q, want empty", got)
