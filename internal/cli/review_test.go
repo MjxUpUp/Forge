@@ -115,6 +115,54 @@ func TestRunReviewPassAt_ExplicitRef(t *testing.T) {
 	}
 }
 
+// TestRunReviewPassAt_RecordsRounds pins the rework-metric raw material: each `forge review
+// pass` appends one ReviewRound to the task state AND records one checklog review-pass entry
+// (detail carries the round number) — so the review-rework loop is reconstructible after the
+// fact, not just the latest snapshot.
+//
+// TestRunReviewPassAt_RecordsRounds 钉住返工度量原料：每次 `forge review pass` 既向
+// task state 追加一条 ReviewRound，也落一条 checklog review-pass 条目（detail 带轮次
+// 号）——审查-返工循环事后可完整重建，而非只剩最后一次快照。
+func TestRunReviewPassAt_RecordsRounds(t *testing.T) {
+	dir := t.TempDir()
+	const ref = `feat/rework-rounds`
+	state := &taskpipeline.TaskState{TaskRef: ref, Branch: `feat/rework-rounds`}
+	if err := taskpipeline.SaveTaskState(dir, state); err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < 2; i++ {
+		if err := runReviewPassAt(dir, ref); err != nil {
+			t.Fatalf("runReviewPassAt 第 %d 次: %v", i+1, err)
+		}
+	}
+
+	reloaded, err := taskpipeline.LoadTaskState(dir, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reloaded.ReviewRounds) != 2 {
+		t.Fatalf(`两次 pass 应落 2 条 ReviewRound, got %d`, len(reloaded.ReviewRounds))
+	}
+
+	entries, err := checklog.LoadAll(dir)
+	if err != nil {
+		t.Fatalf("LoadAll: %v", err)
+	}
+	rounds := 0
+	for _, e := range entries {
+		if e.Check == checklog.CheckReviewPass && e.TaskRef == ref {
+			rounds++
+			if !strings.Contains(e.Detail, "review round") {
+				t.Errorf(`review-pass detail 应带轮次号: %q`, e.Detail)
+			}
+		}
+	}
+	if rounds != 2 {
+		t.Errorf(`checklog 应有 2 条 review-pass 条目, got %d`, rounds)
+	}
+}
+
 // TestReviewRefFlagsRegistered pins the --ref flag registration on all three review
 // subcommands (pass is the primary; gate/status share the same active-task detection
 // limitation and get the flag for consistency).

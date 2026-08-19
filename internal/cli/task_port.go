@@ -442,6 +442,15 @@ func redactTask(s *taskpipeline.TaskState) {
 	for i := range s.History {
 		s.History[i].HeadCommit = ``
 	}
+	// ReviewRounds carry the same per-round snapshot SHAs — same leak class as
+	// ReviewedHeadCommit; keep the round COUNT (shape) but clear the hashes.
+	//
+	// ReviewRounds 带每轮快照 SHA——与 ReviewedHeadCommit 同类泄露；保留轮次数
+	// （形状）但清掉哈希。
+	for i := range s.ReviewRounds {
+		s.ReviewRounds[i].HeadCommit = ``
+		s.ReviewRounds[i].ChangeHash = ``
+	}
 	for i := range s.Acceptance {
 		s.Acceptance[i].AcceptedHeadCommit = ``
 		s.Acceptance[i].Output = ``

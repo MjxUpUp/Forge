@@ -101,6 +101,16 @@ func runReviewPass(cmd *cobra.Command, args []string) error {
 	return runReviewPassAt(root, explicitRef)
 }
 
+// shortHash truncates a commit hash for one-line detail output (empty stays empty).
+//
+// shortHash 截断 commit hash 用于单行 detail 输出（空保持空）。
+func shortHash(h string) string {
+	if len(h) > 8 {
+		return h[:8]
+	}
+	return h
+}
+
 // runReviewPassAt is the root/ref-injected core of `forge review pass` (mirroring
 // runTaskComplete's --ref pattern): an explicit ref loads that task directly and a
 // missing ref errors out — it must NOT fall through to the branch-stamp branch, which
@@ -136,6 +146,21 @@ func runReviewPassAt(root, explicitRef string) error {
 		state.MarkReviewPassed(head, hash)
 		if err := taskpipeline.SaveTaskState(root, state); err != nil {
 			return fmt.Errorf("failed to save task state: %w", err)
+		}
+		// Record the review-pass event (round N + reviewed snapshot) — the raw material for the
+		// rework-round metric. Observation class (excluded from evidence-strength bucketing).
+		// Failure to record does not block the pass (fail-open, consistent with the stamp itself).
+		//
+		// 记录 review-pass 事件（第 N 轮 + 审过的快照）——返工轮次度量的原料。observation
+		// 类（排除出证据强度分桶）。记录失败不阻塞 pass（fail-open，与打戳本身一致）。
+		if recErr := checklog.Record(root, &checklog.Entry{
+			Check:   checklog.CheckReviewPass,
+			Passed:  true,
+			Checked: true,
+			TaskRef: state.TaskRef,
+			Detail:  fmt.Sprintf("review round %d passed (head=%s)", len(state.ReviewRounds), shortHash(head)),
+		}); recErr != nil {
+			fmt.Fprintf(os.Stderr, "⚠ checklog 记录失败（review-pass 未落盘）: %v\n", recErr)
 		}
 		fmt.Printf("✅ task %s: code-review-gate 已通过（task-complete 门禁前置满足，基线 HEAD=%s）\n", state.TaskRef, head)
 		// Plan 3 (blind_spot trigger · review.go critic role): marking review-passed is a decisive action. Calibrate evidence

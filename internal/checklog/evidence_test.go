@@ -138,6 +138,29 @@ func TestBuildEvidenceChain_CheatScanExcluded(t *testing.T) {
 	}
 }
 
+// TestBuildEvidenceChain_ReviewPassPlanFirstExcluded pins that CheckReviewPass / CheckPlanFirst
+// are excluded from evidence-strength bucketing: both are observation-class markers (a review
+// stamp was placed / a task had no plan recorded) — neither says any verification actually ran,
+// so counting them as deterministic would inflate Strength. Entries are still kept for trace.
+//
+// TestBuildEvidenceChain_ReviewPassPlanFirstExcluded 钉住 CheckReviewPass / CheckPlanFirst
+// 不计入证据强度：两者都是 observation 类标记（审查打戳 / 无方案记录）——都不代表任何
+// 验证实跑，计入 deterministic 会虚高 Strength。条目仍保留供 trace。
+func TestBuildEvidenceChain_ReviewPassPlanFirstExcluded(t *testing.T) {
+	entries := []Entry{
+		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckReviewPass, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckPlanFirst, Source: EvidenceDeterministic, TaskRef: "t"},
+	}
+	ec := BuildEvidenceChain(entries, "t")
+	if ec.Deterministic != 1 {
+		t.Fatalf(`review-pass/plan-first 不应计入 deterministic: got %d, want 1`, ec.Deterministic)
+	}
+	if len(ec.Entries) != 3 {
+		t.Fatalf(`条目仍应保留在 Entries 供 trace: got %d, want 3`, len(ec.Entries))
+	}
+}
+
 // TestBuildEvidenceChain_UnusedScanExcluded pins that CheckUnusedScan is likewise excluded from evidence
 // strength: it is an advisory observation (a newly-added exported symbol with zero production references —
 // suspected wiring miss), not "verification evidence". Counting it would inflate Strength in the wrong direction

@@ -252,6 +252,19 @@ type TaskState struct {
 	ReviewedHeadCommit string `json:"reviewed_head_commit,omitempty"`
 	ReviewedChangeHash string `json:"reviewed_change_hash,omitempty"`
 
+	// ReviewRounds is the append-only history of every review pass (one entry per `forge review pass`),
+	// making the review-rework loop measurable: len(ReviewRounds) = review pass count, and together with
+	// the failed task-complete entries in History it reconstructs how many rework rounds a task went
+	// through. The latest entry duplicates ReviewedHeadCommit/ReviewedChangeHash (those two fields stay
+	// the snapshot-check source of truth; this list only adds history, zero behavior change to the gate).
+	//
+	// ReviewRounds 是每次 review pass 的只追加历史（每次 `forge review pass` 一条），
+	// 让审查-返工循环可度量：len(ReviewRounds) = review pass 次数，配合 History 里
+	// task-complete 失败条目可还原任务经历了几轮返工。最后一条与
+	// ReviewedHeadCommit/ReviewedChangeHash 重复（那两字段仍是快照校验的真相源；
+	// 本列表只加历史，对门禁零行为变化）。
+	ReviewRounds []ReviewRound `json:"review_rounds,omitempty"`
+
 	// DesignPhases is the design phase inferred by inferDesignPhases at the task-verify gate.
 	// Filled by the task-verify gate (executor.go ExecuteTaskGate) calling inferDesignPhases(taskChangedFiles)
 	// and persisted via SaveTaskState, with zero friction: no user declaration required. The review sub-agent loads the corresponding
@@ -344,6 +357,15 @@ type TaskGateResult struct {
 	Passed      bool      `json:"passed"`
 	CompletedAt time.Time `json:"completed_at"`
 	HeadCommit  string    `json:"head_commit,omitempty"` // gate 通过时的 git HEAD
+}
+
+// ReviewRound records one `forge review pass` event (the reviewed snapshot + when).
+//
+// ReviewRound 记录一次 `forge review pass` 事件（审过的快照 + 时间）。
+type ReviewRound struct {
+	HeadCommit string    `json:"head_commit,omitempty"`
+	ChangeHash string    `json:"change_hash,omitempty"`
+	ReviewedAt time.Time `json:"reviewed_at"`
 }
 
 // IsComplete returns true when all task gates have passed.
@@ -527,6 +549,29 @@ func (s *TaskState) MarkReviewPassed(headCommit, changeHash string) {
 	s.ReviewPassed = true
 	s.ReviewedHeadCommit = headCommit
 	s.ReviewedChangeHash = changeHash
+	s.ReviewRounds = append(s.ReviewRounds, ReviewRound{
+		HeadCommit: headCommit,
+		ChangeHash: changeHash,
+		ReviewedAt: time.Now(),
+	})
+}
+
+// ReworkRounds derives the review-rework loop counts from recorded history:
+// reviewPasses = number of `forge review pass` events, completeRejections = failed task-complete
+// gate attempts (each forced re-review / blocked complete is one rework round). Pure derivation,
+// no new state.
+//
+// ReworkRounds 从已记录的历史推导审查-返工循环计数：reviewPasses = `forge review pass`
+// 次数，completeRejections = task-complete 失败次数（每次强制复审/被拒 complete 算一轮
+// 返工）。纯推导，不新增状态。
+func (s *TaskState) ReworkRounds() (reviewPasses, completeRejections int) {
+	reviewPasses = len(s.ReviewRounds)
+	for _, h := range s.History {
+		if h.Gate == "task-complete" && !h.Passed {
+			completeRejections++
+		}
+	}
+	return reviewPasses, completeRejections
 }
 
 // RecordGateResult appends a gate result and advances CurrentGate.
