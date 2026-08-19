@@ -121,3 +121,34 @@ func TestExecuteTaskGate_CheatScan_NonSourceNotScanned(t *testing.T) {
 		t.Errorf(`无源码变更应 Passed=true, Detail=%q`, rec.Detail)
 	}
 }
+
+// TestExecuteTaskGate_CheatScan_PhantomImport end-to-end: a committed TS file importing a
+// relative path that does not exist on disk → CheckCheatScan Passed=false with a phantom-import
+// count in Detail; the gate still passes (advisory). Pins that the new detector is wired into
+// the gate path, not just unit-tested.
+//
+// TestExecuteTaskGate_CheatScan_PhantomImport 端到端：committed 的 TS 文件 import 一个
+// 磁盘上不存在的相对路径 → CheckCheatScan Passed=false 且 Detail 含 phantom-import
+// 计数；gate 照常通过（advisory）。钉住新检测器确实接进了 gate 路径，而非只有单测。
+func TestExecuteTaskGate_CheatScan_PhantomImport(t *testing.T) {
+	dir := t.TempDir()
+	initRepoWithMaster(t, dir)
+	writeCommitSource(t, dir, map[string]string{
+		"app.ts": "import { ghost } from './ghost'\n\nexport const x = ghost\n",
+	}, "add phantom import")
+
+	state := newVerifyState(t, dir, "phantom-gate")
+	if _, err := ExecuteTaskGate(dir, "task-verify", state); err != nil {
+		t.Fatalf(`task-verify 应 PASS（advisory 不阻塞）: %v`, err)
+	}
+	rec := findCheatScanEntry(t, dir)
+	if rec == nil {
+		t.Fatal(`CheckCheatScan 条目未记录`)
+	}
+	if rec.Passed {
+		t.Errorf(`含幽灵相对 import，CheckCheatScan 应 Passed=false, Detail=%q`, rec.Detail)
+	}
+	if !strings.Contains(rec.Detail, "phantom-import=1") {
+		t.Errorf(`Detail 应含 phantom-import=1: %q`, rec.Detail)
+	}
+}

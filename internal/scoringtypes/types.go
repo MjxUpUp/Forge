@@ -76,6 +76,18 @@ type EvidenceSummary struct {
 	AgentClaim    int     `json:"agent_claim"`
 	Total         int     `json:"total"`
 	Ratio         float64 `json:"ratio"` // 0-1；total=0 时为 0
+	// ReviewPasses / CompleteRejections are the review-rework loop metric (技控 result
+	// indicator): how many `forge review pass` events and how many task-complete rejections
+	// the task went through. Observability only — deliberately NOT a scoring dimension
+	// (folding it into weights would invite Goodhart gaming). Filled by taskpipeline.ScoreTask
+	// from TaskState history; zero values mean no review/rework recorded.
+	//
+	// ReviewPasses / CompleteRejections 是审查-返工循环度量（技控结果指标）：本任务经历
+	// 的 `forge review pass` 次数与 task-complete 被拒次数。仅可观测——刻意不进评分
+	// 维度（进权重会引来 Goodhart 博弈）。由 taskpipeline.ScoreTask 从 TaskState 历史
+	// 填充；零值 = 无审查/返工记录。
+	ReviewPasses       int `json:"review_passes,omitempty"`
+	CompleteRejections int `json:"complete_rejections,omitempty"`
 }
 
 // ScoringConfig controls dimension weights and grade thresholds.

@@ -1953,6 +1953,13 @@ func runTaskScore(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println(strings.Repeat("─", 60))
 	fmt.Printf("  Overall: %.0f (%s)\n", state.Score.Overall, state.Score.Grade)
+	// Review-rework loop metric (result indicator for whether the review process is converging).
+	// Informational only — not part of the weighted score.
+	//
+	// 审查-返工循环度量（检验审查流程是否收敛的结果指标）。仅信息展示——不进加权总分。
+	if ev := state.Score.Evidence; ev != nil && (ev.ReviewPasses > 0 || ev.CompleteRejections > 0) {
+		fmt.Printf("  返工轮次: review pass %d 次 / task-complete 被拒 %d 次\n", ev.ReviewPasses, ev.CompleteRejections)
+	}
 	return nil
 }
 
