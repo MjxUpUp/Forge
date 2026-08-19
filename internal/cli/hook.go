@@ -1230,12 +1230,18 @@ func extractDetail(stdout, prefix string) string {
 // agent——claude-code 及所有不带 --agent 的 Claude-JSON 兼容宿主
 // （codebuddy/opencode）——在 emitAgentOutput 里走 emitClaudeOutput 默认。
 var outputEmitters = map[string]func(eventName, hookName string, passed bool, detail string) error{
-	"kimi":     func(_, _ string, passed bool, detail string) error { return emitKimiOutput(passed, detail) },
-	"codex":    func(eventName, _ string, passed bool, detail string) error { return emitCodexOutput(eventName, passed, detail) },
-	"cursor":   func(eventName, _ string, passed bool, detail string) error { return emitCursorOutput(eventName, passed, detail) },
-	"copilot":  emitCopilotOutput,
-	"windsurf": func(_, hookName string, passed bool, detail string) error { return emitWindsurfOutput(hookName, passed, detail) },
-	"cline":    func(_, _ string, passed bool, detail string) error { return emitClineOutput(passed, detail) },
+	"kimi": func(_, _ string, passed bool, detail string) error { return emitKimiOutput(passed, detail) },
+	"codex": func(eventName, _ string, passed bool, detail string) error {
+		return emitCodexOutput(eventName, passed, detail)
+	},
+	"cursor": func(eventName, _ string, passed bool, detail string) error {
+		return emitCursorOutput(eventName, passed, detail)
+	},
+	"copilot": emitCopilotOutput,
+	"windsurf": func(_, hookName string, passed bool, detail string) error {
+		return emitWindsurfOutput(hookName, passed, detail)
+	},
+	"cline": func(_, _ string, passed bool, detail string) error { return emitClineOutput(passed, detail) },
 }
 
 // emitAgentOutput dispatches the hook verdict to the host's output protocol. agent==""
