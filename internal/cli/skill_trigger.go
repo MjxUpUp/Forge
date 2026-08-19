@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/hostcap"
 	"github.com/MjxUpUp/Forge/internal/skillscanonical"
 	"github.com/MjxUpUp/Forge/internal/skilltrigger"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
@@ -110,8 +111,19 @@ func runSkillTriggerHook(hookInput HookInput, root, version, agent string) error
 	// 取代了「记录前 bail」。只有 stdout 打印仍门控在 UserPromptSubmit（kimi 唯一送进
 	// 模型上下文的通道）；其余事件打印只会被宿主丢弃。
 	rendered, err := runSkillTriggerCore(hookInput, root, version, agent, false)
-	if agent == "kimi" {
-		if hookInput.HookEventName == "UserPromptSubmit" && err == nil && rendered != "" {
+	// Hosts that drop allow-path stdout on some events (hostcap DroppedStdoutEvents;
+	// today kimi): the engine still RUNS and records on those events (Delivered=false
+	// keeps the record honest), but the raw stdout print stays gated to the events
+	// whose channel actually delivers (contextChannelDelivered, sourced from the
+	// hostcap ContextChannels rows) — printing anywhere else would be bytes dropped
+	// by the host anyway.
+	//
+	// 在部分事件上丢弃 allow 路径 stdout 的宿主（hostcap DroppedStdoutEvents；目前
+	// 仅 kimi）：引擎在这些事件上仍运行并记录（Delivered=false 保持记录诚实），但
+	// stdout 裸打印仍门控在通道真正送达的事件上（contextChannelDelivered，数据源自
+	// hostcap ContextChannels 行）——其余事件打印只会被宿主丢弃。
+	if h := hostcap.Lookup(agent); h != nil && len(h.DroppedStdoutEvents) > 0 {
+		if delivered, _ := contextChannelDelivered(agent, hookInput.HookEventName); delivered && err == nil && rendered != "" {
 			fmt.Print(rendered)
 		}
 		return nil

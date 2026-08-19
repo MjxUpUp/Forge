@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/hostcap"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
 )
@@ -948,7 +949,14 @@ func renderHookReinject(root string) (string, error) {
 // reasonix 注入 SessionStart 输出，不需回填，须保持排除——回填会与 SessionStart 已交付的 handoff
 // 重复。
 func sessionStartOutputDropped(agent string) bool {
-	return agent == "kimi"
+	// Registry-derived (hostcap DroppedStdoutEvents): any host that drops
+	// SessionStart stdout needs the handoff backfilled onto UserPromptSubmit.
+	// Today only kimi qualifies.
+	//
+	// 由注册表派生（hostcap DroppedStdoutEvents）：任何丢弃 SessionStart
+	// stdout 的宿主都需要把 handoff 回填到 UserPromptSubmit。目前仅 kimi 符合。
+	h := hostcap.Lookup(agent)
+	return h != nil && h.DropsStdoutEvent("SessionStart")
 }
 
 func runTaskContext(cmd *cobra.Command, args []string) error {
