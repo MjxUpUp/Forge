@@ -30,7 +30,7 @@ func TestStripForeignGateSignals_ControlFlow(t *testing.T) {
 			{HeadCommit: `aaa111`, ChangeHash: `hash-aaa`, ReviewedAt: now},
 		},
 		CompletedAt: &now,
-		Overrides:          TaskOverrides{WorkActivity: `disable`, TestCoverage: `disable`},
+		Overrides:   TaskOverrides{WorkActivity: `disable`, TestCoverage: `disable`},
 		Assignment: &Assignment{
 			Agent:  `kimi`,
 			Role:   `frontend`,
