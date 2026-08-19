@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/hostcap"
 	"github.com/MjxUpUp/Forge/internal/taskcontext"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
@@ -259,8 +260,37 @@ func detectOriginTool(explicit string) string {
 	if agent := os.Getenv("FORGE_AGENT"); agent != "" {
 		return agent
 	}
-	if os.Getenv("CLAUDE_CODE_SESSION_ID") != "" {
-		return "claude-code"
+	// Host-injected shell env (today only claude-code's CLAUDE_CODE_SESSION_ID) —
+	// registry-driven, see hostcap.Host.ShellSessionEnv.
+	//
+	// 宿主注入的 shell env（目前仅 claude-code 的 CLAUDE_CODE_SESSION_ID）——
+	// 注册表驱动，见 hostcap.Host.ShellSessionEnv。
+	if host, _ := hostcap.ProbeShellIdentity(); host != "" {
+		return host
+	}
+	return ""
+}
+
+// resolveOriginTool is detectOriginTool plus the LAST attribution fallback: the
+// last-session pointer written by the hook dispatcher. A forge command run
+// inside a kimi/codex/cursor/... Bash tool carries no identity env (their
+// shells are bare), so without this every such task/session anchor was
+// unattributed — 9 of 20 tasks in this repo had an empty OriginTool (2026-08
+// audit). The pointer is freshness-gated (taskpipeline.RecentHookSession), so
+// stale agent activity never mislabels a human's manual terminal run.
+//
+// resolveOriginTool 是 detectOriginTool 加最终归因回落：hook 分发器写入的
+// last-session 指针。在 kimi/codex/cursor/... 的 Bash 工具里跑的 forge 命令
+// 不带任何身份 env（它们的 shell 是裸的），故没有本函数这些任务/会话锚定全部
+// 无归属——本仓 20 个任务里 9 个 OriginTool 为空（2026-08 审计）。指针有新鲜
+// 度门控（taskpipeline.RecentHookSession），过期活动不会错标人类的手动终端
+// 操作。
+func resolveOriginTool(root, explicit string) string {
+	if tool := detectOriginTool(explicit); tool != "" {
+		return tool
+	}
+	if _, agent, ok := taskpipeline.RecentHookSession(root); ok {
+		return agent
 	}
 	return ""
 }
@@ -476,7 +506,7 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		state.ParentTaskRef = parent
 	}
 	originTool, _ := cmd.Flags().GetString("origin-tool")
-	state.OriginTool = detectOriginTool(originTool)
+	state.OriginTool = resolveOriginTool(root, originTool)
 
 	// External issue origin: extends the task's source from branch to external issue
 	// (linear/github), bridging spawn-style orchestrators (Symphony-like) — when the
@@ -526,12 +556,29 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Take a Claude Code session id once — used to scope active-task-ref and session
-	// records so concurrent sessions on a shared checkout stay isolated.
+	// Take the session id once — used to scope active-task-ref and session
+	// records so concurrent sessions on a shared checkout stay isolated. Env
+	// probes cover claude-code (shell env) and hook-spawned wrappers
+	// (FORGE_SESSION_ID); a forge invocation inside any OTHER host's Bash tool
+	// has neither, so fall back to the freshness-gated last-session pointer —
+	// this binds the task to the real host session's scoped record and makes
+	// the active-task-ref write/read keys match the hook side (which reads
+	// scoped by the stdin session id), instead of collapsing onto the legacy
+	// global file where concurrent sessions clobber each other.
 	//
-	// 取一次 Claude Code session id——用于 scope active-task-ref 与 session record，
-	// 让共享 checkout 上的并发 session 保持隔离。
+	// 取一次 session id——用于 scope active-task-ref 与 session record，让共享
+	// checkout 上的并发 session 保持隔离。env 探测覆盖 claude-code（shell
+	// env）与 hook 派生的 wrapper（FORGE_SESSION_ID）；在任何其他宿主的 Bash
+	// 工具里发起的 forge 调用两者皆无，故回落到有新鲜度门控的 last-session
+	// 指针——这把任务绑到真实宿主会话的 scoped 记录上，并使 active-task-ref
+	// 的写读键与 hook 侧（按 stdin session id 读 scoped）一致，而非挤到并发
+	// session 互相覆盖的 legacy 全局文件。
 	sid := taskpipeline.CurrentSessionID()
+	if sid == "" {
+		if pointerSID, _, ok := taskpipeline.RecentHookSession(root); ok {
+			sid = pointerSID
+		}
+	}
 
 	// Ensure the session exists and link the task to it.
 	//

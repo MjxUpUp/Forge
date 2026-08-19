@@ -413,22 +413,22 @@ func TestReasonixWiringMirrorsClaudeSettings(t *testing.T) {
 	if len(reasonix) == 0 {
 		t.Fatal("reasonix wiring has no events — generator or parser broken")
 	}
-	// Every tool-event command (Pre/PostToolUse) must carry --agent reasonix: reasonix's stdin
-	// is camelCase ({toolName, toolArgs}, not {tool_name, tool_input}), so without the flag
-	// reasonixNormalize never runs and tool_name/file_path parse empty — hooks fire but fail
-	// open. Session events (SessionStart/Stop) carry no tool_input, so they stay bare (mirrors
-	// windsurf's pre_user_prompt / post_cascade_response).
-	for _, evt := range []string{"PreToolUse", "PostToolUse"} {
+	// Every command must carry --agent reasonix: tool events (Pre/PostToolUse) need it so
+	// reasonixNormalize maps the camelCase stdin ({toolName, toolArgs} → tool_name/file_path,
+	// else hooks fail open); session events (SessionStart/Stop) need it for ATTRIBUTION —
+	// without the flag they parsed as Claude-shape stdin, the camelCase sessionId never
+	// mapped to SessionID, and every session event landed on the legacy global key with the
+	// session never registered as reasonix (2026-08 attribution audit).
+	//
+	// 每条命令都必须带 --agent reasonix：工具事件（Pre/PostToolUse）靠它走
+	// reasonixNormalize 映射 camelCase stdin（{toolName, toolArgs} → tool_name/file_path，
+	// 否则 hook fail open）；会话事件（SessionStart/Stop）靠它归因——不带时按 Claude 形
+	// stdin 解析，camelCase sessionId 永不映射到 SessionID，每个会话事件落 legacy 全局
+	// 键且会话从不被登记为 reasonix（2026-08 归因审计）。
+	for _, evt := range []string{"PreToolUse", "PostToolUse", "SessionStart", "Stop"} {
 		for cmd := range reasonix[evt] {
 			if !strings.Contains(cmd, "--agent reasonix") {
-				t.Errorf("reasonix tool-event command missing --agent reasonix (stdin would fail to normalize): %s", cmd)
-			}
-		}
-	}
-	for _, evt := range []string{"SessionStart", "Stop"} {
-		for cmd := range reasonix[evt] {
-			if strings.Contains(cmd, "--agent reasonix") {
-				t.Errorf("reasonix session command must not carry --agent reasonix (no tool_input to normalize): %s", cmd)
+				t.Errorf("reasonix %s command missing --agent reasonix (normalize/attribution): %s", evt, cmd)
 			}
 		}
 	}

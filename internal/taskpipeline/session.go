@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/agentsignals"
+	"github.com/MjxUpUp/Forge/internal/hostcap"
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
@@ -587,11 +588,184 @@ func newSessionID() string {
 // session-scoped 状态（active-task-ref-<sid>、resume-stale sentinel），而非全挤到
 // legacy 全局文件。"default" 是脚本侧的空占位符——按空处理。
 func CurrentSessionID() string {
-	if sid := os.Getenv("CLAUDE_CODE_SESSION_ID"); sid != "" {
+	// Host-injected shell env (today only claude-code's CLAUDE_CODE_SESSION_ID;
+	// the registry loop keeps this host-agnostic — see hostcap.Host.ShellSessionEnv).
+	//
+	// 宿主注入的 shell env（目前仅 claude-code 的 CLAUDE_CODE_SESSION_ID；注册表
+	// 循环使此处保持宿主无关——见 hostcap.Host.ShellSessionEnv）。
+	if _, sid := hostcap.ProbeShellIdentity(); sid != "" {
 		return sid
 	}
 	if sid := os.Getenv("FORGE_SESSION_ID"); sid != "" && sid != "default" {
 		return sid
 	}
 	return ""
+}
+
+// EnsureHookSession registers a session observed on the hook path, best-effort.
+// The hook dispatcher holds the AUTHORITATIVE double identity — the session id
+// normalized from the host's stdin plus the resolved --agent — while the CLI path
+// (EnsureSession via `forge task start`) is the only other registration point.
+// Hosts whose agent drives forge through a Bash tool without any identity env
+// (kimi/codex/cursor/...) never hit the CLI path with a real session id, so
+// without this their sessions were NEVER registered: sessions.jsonl carried
+// agent_type=claude-code only, fleet-wide (2026-08 attribution audit).
+//
+// Semantics:
+//   - sessionID empty → no-op (the legacy global session.json keeps its
+//     stamp-only path; a hook without a session id must not rotate legacy state).
+//   - Record absent → create it with AgentType = agent (declarative truth from
+//     --agent). agent empty → fall back to the project-marker weak signal
+//     (detectAgentType), same as ensureScopedSession.
+//   - Record present → reuse StampSessionAgent's fill-empty-only contract
+//     (never overwrite, jsonl synced at most once per session).
+//   - All errors swallowed: bookkeeping must never break a hook.
+//
+// EnsureHookSession 登记 hook 路径上观察到的会话，尽力而为。hook 分发器手持权威
+// 双重身份——从宿主 stdin 归一化的 session id 加解析出的 --agent——而 CLI 路径
+// （`forge task start` 的 EnsureSession）是此前唯一的登记点。agent 经无身份 env
+// 的 Bash 工具驱动 forge 的宿主（kimi/codex/cursor/...）从不以真实 session id
+// 走到 CLI 路径，故没有本函数它们的会话永远不被登记：sessions.jsonl 全机只有
+// agent_type=claude-code（2026-08 归因审计）。
+//
+// 语义：
+//   - sessionID 为空 → no-op（legacy 全局 session.json 保持 stamp-only 路径；
+//     无 session id 的 hook 不得触发 legacy 轮换）。
+//   - 记录不存在 → 以 AgentType = agent 建档（来自 --agent 的声明式真相）。
+//     agent 为空 → 回落项目标记弱信号（detectAgentType），同 ensureScopedSession。
+//   - 记录已存在 → 沿用 StampSessionAgent 的只填空契约（绝不覆盖，jsonl 每会话
+//     至多同步一次）。
+//   - 吞掉所有错误：簿记绝不能打断 hook。
+func EnsureHookSession(root, sessionID, agent string) {
+	if root == "" || sessionID == "" {
+		return
+	}
+	if _, err := os.Stat(sessionScopedFilePath(root, sessionID)); err == nil {
+		// Already registered — fill an empty AgentType only (idempotent).
+		//
+		// 已登记——仅填空的 AgentType（幂等）。
+		StampSessionAgent(root, sessionID, agent)
+		return
+	}
+	agentType := agent
+	if agentType == "" {
+		agentType = detectAgentType(root)
+	}
+	now := time.Now()
+	s := &SessionRecord{
+		SessionID:    sessionID,
+		StartedAt:    now,
+		StartedEpoch: now.Unix(),
+		AgentType:    agentType,
+	}
+	if err := saveScopedSession(root, s); err != nil {
+		return
+	}
+	// Duplicate jsonl lines for the same SessionID are tolerated (LoadSessions
+	// keeps every parseable line; upsertSessionAgentInLog updates them all) —
+	// two hooks racing the first registration may both append.
+	//
+	// 同一 SessionID 的重复 jsonl 行可容忍（LoadSessions 保留每个可解析行；
+	// upsertSessionAgentInLog 全部更新）——两个 hook 竞争首次登记时可能都追加。
+	_ = appendSessionLog(root, s)
+}
+
+// lastSessionFreshWindow bounds how long a last-session pointer stays
+// adoptable: a `forge task start` run inside a host's Bash tool carries no
+// identity env on any host except claude-code, so the CLI side adopts the most
+// recent hook-observed session — but only within this window. The residual
+// misattribution risk (a human running forge in a bare terminal minutes after
+// agent activity) is accepted: it mislabels OriginTool only, never correctness.
+//
+// lastSessionFreshWindow 限定 last-session 指针可被采纳的时长：除 claude-code
+// 外任何宿主的 Bash 工具里跑 `forge task start` 都不带身份 env，故 CLI 侧采纳
+// 最近一次 hook 观察到的会话——但仅限此窗口内。残留的误归属风险（agent 活动
+// 后几分钟内人在裸终端跑 forge）被接受：只错标 OriginTool，不影响正确性。
+const lastSessionFreshWindow = 15 * time.Minute
+
+// lastSessionWriteThrottle caps pointer rewrites: hooks fire per tool call, and
+// the pointer's consumers only need minute-scale freshness.
+//
+// lastSessionWriteThrottle 限制指针重写频率：hook 每次工具调用都触发，而指针
+// 的消费方只需要分钟级新鲜度。
+const lastSessionWriteThrottle = 30 * time.Second
+
+// LastSessionPointer records the most recent hook-observed session for a
+// project, bridging the identity gap between the hook path (which knows
+// sid+agent from stdin/--agent) and the CLI path (which on non-Claude hosts has
+// neither).
+//
+// LastSessionPointer 记录项目最近一次 hook 观察到的会话，桥接 hook 路径（从
+// stdin/--agent 得知 sid+agent）与 CLI 路径（非 Claude 宿主上两者皆无）之间
+// 的身份缺口。
+type LastSessionPointer struct {
+	SessionID string `json:"session_id"`
+	Agent     string `json:"agent,omitempty"`
+	Epoch     int64  `json:"epoch"`
+	Event     string `json:"event,omitempty"`
+}
+
+// lastSessionPath returns the pointer file path inside the project's DataDir.
+//
+// lastSessionPath 返回项目 DataDir 内指针文件的路径。
+func lastSessionPath(root string) string {
+	return filepath.Join(dataHome(root), "last-session.json")
+}
+
+// TouchLastSession refreshes the last-session pointer, throttled to one write
+// per lastSessionWriteThrottle. Called by the hook dispatcher on every event
+// where the host supplied a session id. Best-effort: all errors swallowed.
+//
+// TouchLastSession 刷新 last-session 指针，按 lastSessionWriteThrottle 节流。
+// 由 hook 分发器在宿主提供了 session id 的每次事件上调用。尽力而为：吞掉所有
+// 错误。
+func TouchLastSession(root, sessionID, agent, event string) {
+	if root == "" || sessionID == "" {
+		return
+	}
+	path := lastSessionPath(root)
+	if data, err := os.ReadFile(path); err == nil {
+		var p LastSessionPointer
+		if json.Unmarshal(data, &p) == nil && time.Since(time.Unix(p.Epoch, 0)) < lastSessionWriteThrottle {
+			return
+		}
+	}
+	out, err := json.Marshal(LastSessionPointer{
+		SessionID: sessionID,
+		Agent:     agent,
+		Epoch:     time.Now().Unix(),
+		Event:     event,
+	})
+	if err != nil {
+		return
+	}
+	_ = util.AtomicWrite(path, out, 0644)
+}
+
+// RecentHookSession returns the pointer's session id and agent when the pointer
+// exists and is younger than lastSessionFreshWindow; otherwise ok=false. CLI
+// commands (task start, continuity anchors) use this as the LAST attribution
+// fallback, after every env probe — adopting a stale pointer would mislabel a
+// human's manual terminal work, so the freshness check is load-bearing.
+//
+// RecentHookSession 在指针存在且新于 lastSessionFreshWindow 时返回其 session id
+// 与 agent；否则 ok=false。CLI 命令（task start、接续锚定）把它作为一切 env
+// 探测之后的最终归因回落——采纳过期指针会错标人类的手动终端操作，故新鲜度
+// 检查是承重的。
+func RecentHookSession(root string) (sessionID, agent string, ok bool) {
+	if root == "" {
+		return "", "", false
+	}
+	data, err := os.ReadFile(lastSessionPath(root))
+	if err != nil {
+		return "", "", false
+	}
+	var p LastSessionPointer
+	if err := json.Unmarshal(data, &p); err != nil || p.SessionID == "" {
+		return "", "", false
+	}
+	if time.Since(time.Unix(p.Epoch, 0)) >= lastSessionFreshWindow {
+		return "", "", false
+	}
+	return p.SessionID, p.Agent, true
 }

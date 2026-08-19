@@ -20,8 +20,11 @@ import (
 // {hooks:{PreToolUse/PostToolUse/SessionStart/Stop:[{matcher,hooks:[{type:command,command}]}]}}
 // — the SAME schema as hooks.ForgeHookSpec(). Hook scripts read `.tool_input.file_path`
 // from stdin and block via `exit 2` + stderr (verified in CodeBuddy's own all-hooks
-// marketplace: file-protection.md). So CodeBuddy needs NO --agent flag and NO stdin
-// normalizer — it runs the Claude Code protocol verbatim, like opencode.
+// marketplace: file-protection.md). So CodeBuddy needs NO stdin normalizer and NO output
+// rewriting — it runs the Claude Code protocol verbatim, like opencode. Its commands DO
+// carry `--agent codebuddy` (see BuildCodeBuddyHooksPayload): not for protocol reasons
+// but for attribution — codebuddy has no project marker and no identity env, so the flag
+// is its only way to register/stamp sessions as codebuddy.
 //
 // Wiring model (unlike the 8 file-writing translators): CodeBuddy's settings.json has NO
 // hooks field — hooks load ONLY through an installed plugin. So Translate generates a
@@ -47,8 +50,10 @@ import (
 // {hooks:{PreToolUse/PostToolUse/SessionStart/Stop:[{matcher,hooks:[{type:command,command}]}]}}
 // ——与 hooks.ForgeHookSpec() 同 schema。hook 脚本从 stdin 读 `.tool_input.file_path`、
 // 用 `exit 2` + stderr 阻断（已在 CodeBuddy 自家 all-hooks marketplace 的 file-protection.md
-// 验证）。故 CodeBuddy 不需 --agent flag、不需 stdin normalizer——它原样跑 Claude Code
-// 协议，与 opencode 同类。
+// 验证）。故 CodeBuddy 不需 stdin normalizer、不改输出协议——它原样跑 Claude Code
+// 协议，与 opencode 同类。其命令携带 `--agent codebuddy`（见
+// BuildCodeBuddyHooksPayload）：不是协议需要，而是归因需要——codebuddy 无项目标记、
+// 无身份 env，该 flag 是它把会话登记/盖戳为 codebuddy 的唯一途径。
 //
 // 接线模型（与 8 个写文件的 translator 不同）：CodeBuddy 的 settings.json 无 hooks
 // 字段——hook 只能经已安装的 plugin 加载。故 Translate 在 forge 全局 home 下生成自包含
@@ -110,16 +115,38 @@ type CodeBuddyHooksPayload struct {
 // the single source of truth shared with settings.local.json, the plugin pack, and every
 // other translator. CodeBuddy's hook protocol is byte-identical to Claude Code's (same
 // events, same matchers, same tool names Read/Write/Edit/Bash/Skill, same exit-2 block),
-// so the spec migrates verbatim with NO command rewriting (no --agent flag) and NO
-// normalization layer. TestCodeBuddyHooksMirrorSpec guards the parity.
+// so the spec migrates with ONE rewrite: every command gains `--agent codebuddy`.
+// The flag changes nothing about stdin parsing (Claude-shape needs no normalizer) or
+// output (default Claude emitter) — it exists purely for ATTRIBUTION: without it,
+// codebuddy fired hooks with agent=="" and its sessions were never registered or
+// stamped (the fleet-wide gap found in the 2026-08 attribution audit; codebuddy also
+// has no project marker, so --agent is its ONLY identity signal).
+// TestCodeBuddyHooksPayload_MirrorsSpec guards the parity (spec + the one suffix).
 //
 // BuildCodeBuddyHooksPayload 从 hooks.ForgeHookSpec() 派生 hooks.json payload——与
 // settings.local.json、plugin pack 及其他 translator 共享的单一真相源。CodeBuddy 的
 // hook 协议与 Claude Code 字节一致（同 event、同 matcher、同工具名 Read/Write/Edit/
-// Bash/Skill、同 exit-2 阻断），故 spec 原样迁移，不改写 command（无 --agent flag）、
-// 不加 normalizer 层。TestCodeBuddyHooksMirrorSpec 守卫此对等。
+// Bash/Skill、同 exit-2 阻断），故 spec 迁移只做一处改写：每条命令加 `--agent
+// codebuddy`。该 flag 对 stdin 解析（Claude 形无需 normalizer）与输出（默认 Claude
+// emitter）都无影响——它纯为归因存在：没有它，codebuddy 以 agent=="" 触发 hook，
+// 其会话从不被登记或盖戳（2026-08 归因审计发现的全宿主缺口；codebuddy 也没有项目
+// 标记，故 --agent 是它唯一的身份信号）。
+// TestCodeBuddyHooksPayload_MirrorsSpec 守卫此对等（spec + 唯一后缀）。
 func BuildCodeBuddyHooksPayload() CodeBuddyHooksPayload {
-	return CodeBuddyHooksPayload{Hooks: hooks.ForgeHookSpec()}
+	spec := hooks.ForgeHookSpec()
+	out := make(map[string][]hooks.HookMatcher, len(spec))
+	for event, matchers := range spec {
+		ms := make([]hooks.HookMatcher, len(matchers))
+		for i, m := range matchers {
+			entries := make([]hooks.HookEntry, len(m.Hooks))
+			for j, h := range m.Hooks {
+				entries[j] = hooks.HookEntry{Type: h.Type, Command: h.Command + " --agent codebuddy"}
+			}
+			ms[i] = hooks.HookMatcher{Matcher: m.Matcher, Hooks: entries}
+		}
+		out[event] = ms
+	}
+	return CodeBuddyHooksPayload{Hooks: out}
 }
 
 // codebuddyPluginManifest is plugins/forge/.codebuddy-plugin/plugin.json. The hooks field

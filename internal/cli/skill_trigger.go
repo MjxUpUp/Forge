@@ -85,26 +85,33 @@ func runSkillTriggerCmd(cmd *cobra.Command, args []string) error {
 
 // runSkillTriggerHook 是 runHook 的 skill-trigger 特例入口：复用 runHook 已 normalize 的
 // hookInput，Go 内判定 + 渲染 + 输出 HookOutput JSON（不经 bash embed）。
-// kimi 下按 kimi 协议输出：skill-trigger 永不阻断（advisory），渲染文本直接打 stdout
-// （仅 UserPromptSubmit 时模型可见，其余事件 stdout 被 kimi 丢弃——见 internal/agentbridge/kimi-hook-routing.md），无渲染则静默。
+// kimi 下按 kimi 协议输出：skill-trigger 永不阻断（advisory），渲染文本仅 UserPromptSubmit
+// 打 stdout（其余事件 stdout 被 kimi 丢弃——见 internal/agentbridge/kimi-hook-routing.md），
+// 无渲染则静默。
 func runSkillTriggerHook(hookInput HookInput, root, version, agent string) error {
 	// kimi 0.35.0 drops allow-path stdout from the model context for every event except
-	// UserPromptSubmit (verified via wire.jsonl: advisories reached the model 0 times across a
-	// 42-edit session). Running the engine here on PreToolUse/PostToolUse/Stop/SessionStart would
-	// (a) never reach the model and (b) record checklog entries (recordSkillTriggerHits, inside
-	// runSkillTriggerCore) that mislead `forge skills usage` into reporting delivered triggers the
-	// model never saw — the false-prosperity observability bug. Bail BEFORE runSkillTriggerCore so
-	// neither the render nor the marker/checklog side-effects happen. This also neutralizes stale
-	// installed manifests still binding skill-trigger to other events. UserPromptSubmit is the only
-	// kimi-reachable inject channel. BuildKimiPluginHooks now emits skill-trigger only there; this
-	// guard is defense in depth (and the single point that kills the false checklog regardless of
-	// which manifest a stale install carries).
-	if agent == "kimi" && hookInput.HookEventName != "UserPromptSubmit" {
-		return nil
-	}
+	// UserPromptSubmit (verified via wire.jsonl). The engine still RUNS on the other events —
+	// recording each hit to checklog with Delivered=false (stamped by
+	// contextChannelDelivered's kimi row) — so the dashboard feed and the usage funnel see
+	// the full trigger picture instead of a kimi blind spot (2026-08: kimi tasks showed 1
+	// skill-trigger event vs claude's 59, a pure observability artifact). The funnel counts
+	// Delivered=true only (skillseval.SkillFunnel), so these records cannot recreate the
+	// false-prosperity bug the old pre-core bail guarded against — "record honestly, never
+	// deliver silently" replaced "bail before recording". Only the stdout PRINT stays gated
+	// to UserPromptSubmit (the one channel kimi carries into model context); on other events
+	// printing would be bytes dropped by the host anyway.
+	//
+	// kimi 0.35.0 对除 UserPromptSubmit 外的所有事件丢弃 allow 路径 stdout（wire.jsonl
+	// 实证）。引擎在其余事件上仍运行——每条命中以 Delivered=false 落 checklog（由
+	// contextChannelDelivered 的 kimi 行落章）——让看板事件流与 usage 漏斗看到完整的
+	// 触发图景，而非 kimi 盲区（2026-08：kimi 任务仅 1 条 skill-trigger 事件 vs claude
+	// 59 条，纯观测伪影）。漏斗只计 Delivered=true（skillseval.SkillFunnel），故这些
+	// 记录不可能复活旧的 pre-core bail 所防的虚假繁荣 bug——「诚实记录、绝不静默投递」
+	// 取代了「记录前 bail」。只有 stdout 打印仍门控在 UserPromptSubmit（kimi 唯一送进
+	// 模型上下文的通道）；其余事件打印只会被宿主丢弃。
 	rendered, err := runSkillTriggerCore(hookInput, root, version, agent, false)
 	if agent == "kimi" {
-		if err == nil && rendered != "" {
+		if hookInput.HookEventName == "UserPromptSubmit" && err == nil && rendered != "" {
 			fmt.Print(rendered)
 		}
 		return nil

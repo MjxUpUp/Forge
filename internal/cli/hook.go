@@ -134,6 +134,32 @@ type HookInput struct {
 	ToolInput     json.RawMessage `json:"tool_input"`
 	ToolOutput    json.RawMessage `json:"tool_response,omitempty"` // Claude Code PostToolUse 实际字段名是 tool_response（非 tool_output）；skill-trigger 是首个消费其内容的 hook
 	Prompt        string          `json:"prompt,omitempty"`        // UserPromptSubmit 顶层 prompt（skill-trigger coding_intent condition 用）
+	// ConversationID is cursor's session identity on tool/Stop/prompt events —
+	// cursor's common hook schema carries session_id ONLY on sessionStart/
+	// sessionEnd, everything else has conversation_id. Read as a fill-empty
+	// fallback for SessionID (below), so cursor events get session-scoped keys
+	// instead of collapsing onto the legacy global file. Host-agnostic: any
+	// Claude-shape host sending conversation_id benefits.
+	//
+	// ConversationID 是 cursor 在工具/Stop/prompt 事件上的会话身份——cursor 的
+	// 通用 hook schema 仅在 sessionStart/sessionEnd 携带 session_id，其余事件
+	// 只有 conversation_id。作为 SessionID 的填空回落读取（见下），使 cursor
+	// 事件获得 session-scoped 键而非全挤到 legacy 全局文件。宿主无关：任何发
+	// conversation_id 的 Claude 形宿主都受益。
+	ConversationID string `json:"conversation_id,omitempty"`
+	// ForgeAgent lets a host that constructs Claude-shape stdin in-process
+	// declare its identity WITHOUT touching the hook command string — opencode's
+	// TS plugin sets forge_agent:"opencode" in buildPayload (its wiring test
+	// pins the `forge hook <name>` command roster, so an --agent suffix there
+	// would be churn; a payload field is invisible to it). Lowest precedence in
+	// resolveHookAgent's chain (after --agent and FORGE_HOOK_AGENT).
+	//
+	// ForgeAgent 让在进程内构造 Claude 形 stdin 的宿主无需改动 hook 命令串即可
+	// 声明身份——opencode 的 TS plugin 在 buildPayload 里设
+	// forge_agent:"opencode"（其 wiring 测试钉死 `forge hook <name>` 命令名册，
+	// 在那里加 --agent 后缀是无谓 churn；payload 字段对它不可见）。在
+	// resolveHookAgent 链中优先级最低（位于 --agent 与 FORGE_HOOK_AGENT 之后）。
+	ForgeAgent string `json:"forge_agent,omitempty"`
 }
 
 // toolInputFields holds the fields extracted from the tool_input JSON.
@@ -353,6 +379,25 @@ func runHook(cmd *cobra.Command, args []string) error {
 		normalizeAgentStdin(agent, stdinData, &hookInput)
 	}
 
+	// Payload-borne identity fallbacks (need the parsed stdin, so they run after
+	// normalize): cursor's conversation_id fills an empty SessionID (its tool/
+	// Stop/prompt events carry no session_id); opencode's forge_agent fills an
+	// empty agent (its TS plugin declares identity in the payload — see
+	// HookInput.ForgeAgent). Both are fill-empty: an explicit --agent or a real
+	// session_id always wins.
+	//
+	// 由 payload 携带的身份回落（需要已解析的 stdin，故在 normalize 之后运行）：
+	// cursor 的 conversation_id 填空的 SessionID（其工具/Stop/prompt 事件不带
+	// session_id）；opencode 的 forge_agent 填空的 agent（其 TS plugin 在
+	// payload 里声明身份——见 HookInput.ForgeAgent）。两者都是填空：显式
+	// --agent 或真实 session_id 恒优先。
+	if hookInput.SessionID == "" {
+		hookInput.SessionID = hookInput.ConversationID
+	}
+	if agent == "" {
+		agent = hookInput.ForgeAgent
+	}
+
 	// Adopt the payload's cwd before resolving the project root. kimi plugin hooks are
 	// spawned with the process cwd set to the plugin root (~/.kimi-code/plugins/managed/<id>)
 	// — never the session project (verified on kimi 0.31.0; matches kimi docs "each hook
@@ -399,30 +444,45 @@ func runHook(cmd *cobra.Command, args []string) error {
 		root = "" // global hook：无需 project root；shCmd.Dir="" 回退到 cwd
 	}
 
-	// Stamp the resolved agent onto the authoritative session record, best-effort. This
-	// reaches every translator that rewrites hook commands to carry --agent (kimi/reasonix/
-	// windsurf/cline for the stdin dialect; codex/cursor/copilot for the output protocol)
-	// — for marker-absent projects those fire hooks with the true agent even
-	// though detectAgentType at session creation only sees project markers, so the session
-	// is created with an empty agent_type and would otherwise misattribute to claude-code
-	// (the leaked CLAUDE_CODE_SESSION_ID default). codebuddy/opencode carry no --agent,
-	// so agent=="" here and the stamp is a no-op for them — they rely on Part 1's project
-	// markers (opencode has markers; codebuddy has none and is a known attribution gap).
-	// StampSessionAgent fills ONLY an
-	// empty value, also reflects it in sessions.jsonl, and creates/rotates nothing, so firing
-	// on every event is safe and idempotent.
+	// Register the hook-observed session and stamp the resolved agent onto it,
+	// best-effort. Previously this was stamp-ONLY (fill an empty AgentType on a
+	// record created elsewhere) — but the only registration point was the CLI
+	// path (`forge task start` → EnsureSession), and hosts whose agent drives
+	// forge through a Bash tool without identity env (kimi/codex/cursor/...)
+	// never reach it with a real session id, so their sessions were NEVER
+	// registered (sessions.jsonl carried agent_type=claude-code only, fleet-wide,
+	// 2026-08 attribution audit). EnsureHookSession closes that: any hook event
+	// with a session id registers the session, with the declarative --agent as
+	// AgentType (falling back to the project marker when agent==""). The legacy
+	// global path (no session id) keeps the old stamp-only behavior — a hook
+	// without a session id must not rotate legacy state.
 	//
-	// 把解析出的 agent 盖到权威 session 记录上，尽力而为。这能触及所有把 hook 命令改写为
-	// 携带 --agent 的翻译器（kimi/reasonix/windsurf/cline 为 stdin 方言；codex/cursor/
-	// copilot 为输出协议）——对无标记项目，它们即便创建时的 detectAgentType 只看项目
-	// 标记，也会带真实 agent 触发 hook，故 session 以空 agent_type 创建，否则会误归
-	// claude-code（泄漏的 CLAUDE_CODE_SESSION_ID 默认值）。codebuddy/opencode
-	// 不携带 --agent，故此处 agent==""，盖戳对它们是 no-op——它们依赖 Part 1 的项目
-	// 标记（opencode 有标记；codebuddy 无标记，是已知归因缺口）。StampSessionAgent
-	// 只填空值、同步反映到 sessions.jsonl、不创建不轮换，故每次事件都触发是安全且
-	// 幂等的。
-	if agent != "" && root != "" {
-		taskpipeline.StampSessionAgent(root, hookInput.SessionID, agent)
+	// 登记 hook 观察到的会话并把解析出的 agent 盖上去，尽力而为。此前这里只做
+	// 盖戳（在别处创建的记录上填空的 AgentType）——但唯一登记点是 CLI 路径
+	// （`forge task start` → EnsureSession），而 agent 经无身份 env 的 Bash
+	// 工具驱动 forge 的宿主（kimi/codex/cursor/...）从不以真实 session id 走到
+	// 它，故其会话从未被登记（sessions.jsonl 全机只有 agent_type=claude-code，
+	// 2026-08 归因审计）。EnsureHookSession 堵上此缺口：任何带 session id 的
+	// hook 事件都会登记会话，AgentType 用声明式 --agent（agent=="" 时回落项目
+	// 标记）。legacy 全局路径（无 session id）保持旧的只盖戳行为——无 session
+	// id 的 hook 不得触发 legacy 轮换。
+	if root != "" {
+		if hookInput.SessionID != "" {
+			taskpipeline.EnsureHookSession(root, hookInput.SessionID, agent)
+			// Refresh the last-session pointer so the CLI path (task start,
+			// continuity anchors) can attribute forge invocations made inside a
+			// host's Bash tool — which carries no identity env on any host except
+			// claude-code — back to this session (throttled; see
+			// taskpipeline.TouchLastSession).
+			//
+			// 刷新 last-session 指针，使 CLI 路径（task start、接续锚定）能把
+			// 在宿主 Bash 工具里发起的 forge 调用归回本会话——除 claude-code 外
+			// 任何宿主的 Bash 工具都不带身份 env（已节流，见
+			// taskpipeline.TouchLastSession）。
+			taskpipeline.TouchLastSession(root, hookInput.SessionID, agent, hookInput.HookEventName)
+		} else if agent != "" {
+			taskpipeline.StampSessionAgent(root, hookInput.SessionID, agent)
+		}
 	}
 
 	// skill-trigger 特例：Go 内直接判定 + 渲染（不经 bash embed）。
@@ -1200,11 +1260,13 @@ func contextChannelDelivered(agent, eventName string) (bool, string) {
 	case "kimi":
 		// emitKimiOutput prints detail to stdout; kimi only carries stdout into model context
 		// on UserPromptSubmit (wire.jsonl-verified, see internal/agentbridge/kimi-hook-routing.md).
-		// runSkillTriggerHook bails earlier for other events — this row is defense in depth.
+		// runSkillTriggerHook still evaluates+records on the other events (Delivered=false
+		// from here keeps the record honest) — only the stdout print is gated there.
 		//
 		// emitKimiOutput 把 detail 打 stdout；kimi 仅在 UserPromptSubmit 把 stdout 送进模型
 		// 上下文（wire.jsonl 实证，见 internal/agentbridge/kimi-hook-routing.md）。
-		// runSkillTriggerHook 对其余事件更早 bail——本行是纵深防御。
+		// runSkillTriggerHook 在其余事件上仍评估+记录（由此处的 Delivered=false 保持记录
+		// 诚实）——只有 stdout 打印在那里被门控。
 		if eventName == "UserPromptSubmit" {
 			return true, "kimi/stdout-UserPromptSubmit"
 		}

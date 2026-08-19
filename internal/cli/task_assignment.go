@@ -183,7 +183,7 @@ func runTaskAssign(cmd *cobra.Command, args []string) error {
 	role, _ := cmd.Flags().GetString(`role`)
 	by, _ := cmd.Flags().GetString(`by`)
 	if by == `` {
-		by = detectOriginTool(``)
+		by = resolveOriginTool(root, ``)
 	}
 	var status string
 	err = taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
@@ -213,7 +213,7 @@ func runTaskClaim(cmd *cobra.Command, args []string) error {
 	}
 	as, _ := cmd.Flags().GetString(`as`)
 	if as == `` {
-		as = detectOriginTool(``)
+		as = resolveOriginTool(root, ``)
 	}
 	if as == `` {
 		return fmt.Errorf(`无法探测当前 agent（无 agent env）。跨工具认领请显式传 --as <agent>（如 kimi/reasonix/cursor）`)
@@ -594,7 +594,7 @@ func adviseUnclaimedAssignment(root, gateID string, passed bool, state *taskpipe
 	if state.Assignment.Status != taskpipeline.AssignOffered {
 		return
 	}
-	current := detectOriginTool(``)
+	current := resolveOriginTool(root, ``)
 	if current == `` || current == state.Assignment.Agent {
 		return // 探测不到当前 agent，或正是受派方本人——不打扰
 	}
@@ -738,15 +738,27 @@ func formatEntry(e delegatedEntry) string {
 
 func runTaskMine(cmd *cobra.Command, args []string) error {
 	agent, _ := cmd.Flags().GetString(`agent`)
+	allProjects, _ := cmd.Flags().GetBool(`all-projects`)
 	if agent == `` {
 		agent = detectOriginTool(``)
+		// Pointer fallback (single-project mode only): a worker driving forge from
+		// a kimi/codex/... Bash tool has no identity env — the last-session pointer
+		// attributes it. all-projects mode spans roots, so no single pointer applies.
+		//
+		// 指针回落（仅单项目模式）：从 kimi/codex/... 的 Bash 工具驱动 forge 的
+		// worker 没有身份 env——last-session 指针补上归属。all-projects 模式跨
+		// root，无单一指针可用。
+		if agent == `` && !allProjects {
+			if root, err := findProjectRoot(); err == nil {
+				agent = resolveOriginTool(root, ``)
+			}
+		}
 	}
 	if agent == `` {
 		return fmt.Errorf(`无法探测当前 agent（无 agent env）。显式传 --agent <agent>（如 kimi/reasonix/cursor）查看分派给该 agent 的任务`)
 	}
 	role, _ := cmd.Flags().GetString(`role`)
 	blocked, _ := cmd.Flags().GetBool(`blocked`)
-	allProjects, _ := cmd.Flags().GetBool(`all-projects`)
 	asJSON, _ := cmd.Flags().GetBool(`json`)
 	// now is captured once for the zombie scan (offered>7d / claimed>TTL / input-required>7d all
 	// age against the same instant). Reuses taskpipeline.IsZombie so mine, the dashboard, and

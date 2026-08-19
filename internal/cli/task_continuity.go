@@ -261,7 +261,7 @@ func runTaskResume(cmd *cobra.Command, args []string) error {
 	// TOCTOU 竞态（resolve 与 mutate 之间被别的 session 认领）只 stderr 提示并按未认领渲染；resume
 	// 绝不因自动认领竞态失败。--json 下不输出提示（JSON 消费方保持干净）。IsOfferedTo 已守
 	// Assignment!=nil + Status==offered + Agent==agent，故 state 可认领当且仅当它为 true。
-	agent := detectOriginTool(``)
+	agent := resolveOriginTool(root, ``)
 	if agent != `` && state.IsOfferedTo(agent) {
 		if claimed, claimErr := tryAutoClaim(root, state.TaskRef, agent); claimed {
 			if reloaded, e := taskpipeline.LoadTaskState(root, state.TaskRef); e == nil && reloaded != nil {
@@ -335,7 +335,7 @@ func attachCurrentSession(state *taskpipeline.TaskState, root string, silent boo
 	if state.HasSession(sid) {
 		return false, nil // 已锚定，无操作
 	}
-	tool := detectOriginTool("")
+	tool := resolveOriginTool(root, "")
 	if tool == "" {
 		if !silent {
 			fmt.Fprintf(os.Stderr, "[forge] 探测当前工具失败（无 agent env），已跳过锚定 session %s；跨工具接续请 forge task attach --ref %s --tool <tool>\n", sid, state.TaskRef)
@@ -496,7 +496,7 @@ func tryAutoClaim(root, ref, agent string) (bool, error) {
 // NotifiedAt 仅在实际推送时（非空 fresh 集 + 非空 block）经 MutateTaskState 设为 now；锁内
 // Status==AssignOffered 守卫防覆盖并发的 claim/abandon。
 func appendOfferedBlock(root string, active *taskpipeline.TaskState, out string) string {
-	agent := detectOriginTool(``)
+	agent := resolveOriginTool(root, ``)
 	if agent == `` {
 		return out
 	}
@@ -866,7 +866,7 @@ func renderHookReinject(root string) (string, error) {
 		// 且用 per-session sentinel 去重——一个 session 恰需一次冷启动 handoff。对 Claude Code/
 		// codex/... 静默（它们注入 SessionStart 输出，已拿到 handoff，回填会重复），对 kimi 首个
 		// prompt 之后也静默（sentinel 已设）。
-		agent := detectOriginTool("")
+		agent := resolveOriginTool(root, "")
 		if sid != "" && sessionStartOutputDropped(agent) && !taskpipeline.IsColdStartInjected(root, sid) {
 			// Render FIRST, mark the sentinel only on success: renderHookResume's only error
 			// source is attachCurrentSession→MutateTaskState under per-task lock timeout / disk
@@ -981,7 +981,7 @@ func runTaskDecide(cmd *cobra.Command, args []string) error {
 	}
 	by, _ := cmd.Flags().GetString("by")
 	if by == "" {
-		by = detectOriginTool("")
+		by = resolveOriginTool(root, "")
 	}
 	affects, _ := cmd.Flags().GetStringArray("affects")
 	rationale, _ := cmd.Flags().GetString("rationale")
@@ -1083,7 +1083,7 @@ func runTaskFinding(cmd *cobra.Command, args []string) error {
 	}
 	source, _ := cmd.Flags().GetString("source")
 	if source == "" {
-		source = detectOriginTool("")
+		source = resolveOriginTool(root, "")
 	}
 	evidence, _ := cmd.Flags().GetString("evidence")
 	var f taskpipeline.Finding
@@ -1128,7 +1128,7 @@ func runTaskAttach(cmd *cobra.Command, args []string) error {
 	}
 	tool, _ := cmd.Flags().GetString("tool")
 	if tool == "" {
-		tool = detectOriginTool("")
+		tool = resolveOriginTool(root, "")
 	}
 	if tool == "" {
 		return fmt.Errorf(`无法探测当前工具（无 agent env）。跨工具 attach 请显式传 --tool <tool>（如 pi/claude-code/opencode），避免把接手方 session 错误归属到创建方工具`)
