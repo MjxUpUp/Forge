@@ -324,3 +324,29 @@ func TestInstallIndicators(t *testing.T) {
 		t.Errorf("InstallDir(unknown) = %q, want empty", got)
 	}
 }
+
+// TestLookup_DshRow pins the dsh registry row: every wired event has an honest
+// delivered context channel (the plugins/forge-dsh wrapper folds or injects
+// allow-path context on all of them — recording Delivered=false would be a
+// false-attribution gap of the kind this registry exists to prevent), and the
+// install indicator follows the DSH_HOME ?? ~/.dsh convention.
+//
+// TestLookup_DshRow 钉住 dsh 注册表行：每个已接事件都有诚实的 delivered 上下文
+// 通道（plugins/forge-dsh 包装层在全部事件上折叠或注入 allow 路径上下文——记
+// Delivered=false 正是本注册表要防的虚假归因缺口），安装指示遵循
+// DSH_HOME ?? ~/.dsh 约定。
+func TestLookup_DshRow(t *testing.T) {
+	h := Lookup("dsh")
+	if h == nil {
+		t.Fatal("dsh row missing — detect/attribution falls back to claude defaults")
+	}
+	for _, event := range []string{"PreToolUse", "PostToolUse", "UserPromptSubmit", "SessionStart", "Stop", "PostCompact"} {
+		ch, ok := h.ContextChannels[event]
+		if !ok || !ch.Delivered {
+			t.Errorf("dsh ContextChannels[%s] = (%+v, %v) — the wrapper delivers context on this event; record it honestly", event, ch, ok)
+		}
+	}
+	if len(h.InstallIndicators) != 1 || h.InstallIndicators[0].Env != "DSH_HOME" || h.InstallIndicators[0].Path != "~/.dsh" {
+		t.Errorf("dsh InstallIndicators = %+v, want [{Env: DSH_HOME, Path: ~/.dsh}]", h.InstallIndicators)
+	}
+}

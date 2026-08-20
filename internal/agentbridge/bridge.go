@@ -15,6 +15,7 @@ func AllTranslators() []Translator {
 		&KimiTranslator{},
 		&CodeBuddyTranslator{},
 		&ReasonixTranslator{},
+		&DshTranslator{},
 	}
 }
 

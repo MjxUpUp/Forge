@@ -168,6 +168,29 @@ jobs:
           fi
         working-directory: npm
 
+      # 发布 @agent_forge/forge-dsh（DSH 插件，plugins/forge-dsh）：随主版本发布火车
+      # 一并上架，免去独立手动发版（本地 npm login 不可脚本化）。版本独立演进——
+      # 读 plugins/forge-dsh/package.json 自身 version，不跟随主包（插件 API 兼容节奏
+      # 与 dsh preview 绑定，与 forge 主版本解耦）；已发布版本幂等跳过，与主包同姿势。
+      - name: Publish @agent_forge/forge-dsh (idempotent)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -e
+          VER=$(node -p "require('./plugins/forge-dsh/package.json').version")
+          if npm view "@agent_forge/forge-dsh@$VER" version >/dev/null 2>&1; then
+            echo "already published @agent_forge/forge-dsh@$VER, skipping"
+          else
+            echo "Publishing @agent_forge/forge-dsh@$VER"
+            # dry-run 门禁先行（与主包同姿势）：npa/结构类错误在真实 publish 前暴露。
+            out=$(cd plugins/forge-dsh && npm publish --dry-run --access public 2>&1) \
+              || echo "$out" | grep -q "cannot publish over the previously published" \
+              || { echo "$out"; exit 1; }
+            # cd 进包目录再 publish（裸路径会被 npa 当 GitHub shorthand，见上方主包注释）；
+            # --provenance 需要 package.json 的 repository.directory 字段指向本目录（已配）。
+            (cd plugins/forge-dsh && npm publish --access public --provenance)
+          fi
+
   # 发布后装机验证：补「发布后装机无人验证」缺口——npm job 只保证包发出去，
   # 不保证用户 npm i -g 装回来的二进制能跑、版本对得上 tag（货不对板要发版后
   # 才发现就晚了）。needs 链尾端：test→goreleaser→npm→npm-verify。
