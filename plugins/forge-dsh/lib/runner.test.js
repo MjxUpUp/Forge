@@ -1,8 +1,39 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { runForgeHook } from "./runner.js";
+import { fileURLToPath } from "node:url";
+import { planSpawn, runForgeHook } from "./runner.js";
+import { FAKE_BIN as FAKE } from "../test/doubles/forge-bin.mjs";
 
-const FAKE = new URL("../test/doubles/fake-forge.mjs", import.meta.url).pathname;
+test("planSpawn: win32 routes through the shell — npm's forge.cmd shim is not directly spawnable", () => {
+  const p = planSpawn("forge", ["hook", "task-guard"], "win32");
+  assert.equal(p.shell, true);
+  assert.equal(p.file, "forge");
+  assert.deepEqual(p.args, ["hook", "task-guard"]);
+});
+
+test("planSpawn: win32 pre-quotes a binary path containing spaces", () => {
+  const p = planSpawn("C:\\Program Files\\forge\\forge.exe", ["hook", "x"], "win32");
+  assert.equal(p.file, '"C:\\Program Files\\forge\\forge.exe"');
+});
+
+test("planSpawn: win32 pre-quotes metacharacters even without spaces (cmd token splitters)", () => {
+  // & | ( ) < > ^ , ; = each split or redirect an unquoted cmd.exe token —
+  // "C:\A&B\forge.cmd" unquoted would execute a stray "B\forge.cmd".
+  for (const ch of ["&", "|", "(", ")", "<", ">", "^", ",", ";", "="]) {
+    const p = planSpawn(`C:\\A${ch}B\\forge.cmd`, ["hook", "x"], "win32");
+    assert.equal(p.file, `"C:\\A${ch}B\\forge.cmd"`, `metachar ${ch} must be quoted`);
+  }
+  // A plain name (the default "forge") stays unquoted.
+  assert.equal(planSpawn("forge", ["hook", "x"], "win32").file, "forge");
+});
+
+test("planSpawn: POSIX spawns the binary directly (no shell)", () => {
+  for (const platform of ["linux", "darwin", "freebsd"]) {
+    const p = planSpawn("/usr/local/bin/forge", ["hook", "x"], platform);
+    assert.equal(p.shell, false);
+    assert.equal(p.file, "/usr/local/bin/forge");
+  }
+});
 
 test("block verdict: read from the decision field, reason preferred", async () => {
   const v = await runForgeHook("forge hook block-it", { hook_event_name: "PreToolUse" }, { forgeBin: FAKE });
@@ -51,7 +82,7 @@ test("a forge that exits without reading stdin does NOT crash the host (EPIPE re
 });
 
 test("stdin payload arrives as one JSON document", async () => {
-  const log = new URL("../test/doubles/.payload-log", import.meta.url).pathname;
+  const log = fileURLToPath(new URL("../test/doubles/.payload-log", import.meta.url));
   process.env.FAKE_FORGE_LOG = log; // children inherit process.env
   try {
     await runForgeHook(

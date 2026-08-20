@@ -2,15 +2,19 @@ package agentbridge
 
 import _ "embed"
 
-// tsSharedForgeSpawn is the TypeScript `runForge` function shared by the opencode and pi translators.
-// Both generated TS files spawn `forge hook <name>` with Claude-Code-shape stdin and must read
-// forge's block verdict from the JSON decision field in the same way — centralizing it here means
-// a change to the spawn protocol (or block-detection contract) lands in one place.
+// tsSharedForgeSpawn is the TypeScript `runForge` function embedded into the opencode
+// plugin (opencode.go; the pi translator went through its own native integration, so
+// this is currently single-consumer — kept a shared file because any second TS host
+// must read forge's block verdict from the JSON decision field in exactly this way).
+// The generated TS spawns `forge hook <name>` with Claude-Code-shape stdin;
+// centralizing it here means a change to the spawn protocol (or block-detection
+// contract) lands in one place.
 //
-// tsSharedForgeSpawn 是 opencode 与 pi translator 共享的 TypeScript `runForge` 函数。
-// 两个生成的 TS 文件都用 Claude-Code-shape stdin spawn `forge hook <name>`，并须以同样
-// 方式从 JSON decision 字段读 forge 的 block verdict——在此集中维护意味着 spawn 协议
-// （或 block 检测契约）的变更只改一处。
+// tsSharedForgeSpawn 是嵌入 opencode 插件的 TypeScript `runForge` 函数
+// （opencode.go；pi translator 已走自己的原生集成，当前单一消费方——保留共享文件
+// 是因为任何第二个 TS host 都必须以完全相同的方式从 JSON decision 字段读 forge
+// 的 block verdict）。生成的 TS 用 Claude-Code-shape stdin spawn `forge hook <name>`；
+// 在此集中维护意味着 spawn 协议（或 block 检测契约）的变更只改一处。
 //
 // Embedded from forge_spawn.ts (a real .ts file) rather than a Go raw string, so the shared
 // snippet is itself valid TypeScript and is type-checked by the generator test
