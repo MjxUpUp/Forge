@@ -20,13 +20,11 @@ CI（`.github/workflows/ci.yml`）在 PR 上跑同样内容，三平台矩阵。
 ## Commit 规范
 
 Conventional Commits：`feat:` / `fix:` / `perf:` / `refactor:` / `docs:` / `chore:` / `test:` / `ci:`。
-前缀决定发版 bump 类型（`scripts/release.js` 的 auto 推断依据），BREAKING CHANGE → major。
+前缀决定 release-please 的 bump 类型：`feat:` → minor、`fix:` → patch、`!` / `BREAKING CHANGE:` → major；
+`chore:` / `docs:` / `test:` / `ci:`（以及单独的 `perf:` / `refactor:`）不触发 Release PR。
 
 ## 发版
 
-只有维护者执行。流程与纪律见 [RELEASE.md](RELEASE.md)；标准路径：
-
-```bash
-node scripts/release.js          # auto 推断 bump，改版本 + 打 tag
-git push origin main && git push origin v<版本>
-```
+只有维护者执行。流程与纪律见 [RELEASE.md](RELEASE.md)；标准路径是合并 release-please 自动开出的
+Release PR（`chore(main): release X.Y.Z`）——tag、GitHub Release、跨平台二进制、npm 包全部自动就绪，
+无需本地手动步骤。`scripts/release.js` 已退役为 release-please 故障时的逃生舱（见 RELEASE.md「紧急手动路径」）。

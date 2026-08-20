@@ -17,7 +17,7 @@ Stop trusting AI-generated code. Start gating it.
 </div>
 
 <div align="center">
-  <img src="dashboard-render.png" alt="Forge Pulse 全局质量面板" width="860"/>
+  <img src="docs/assets/dashboard-pulse.png" alt="Forge Pulse 全局质量面板" width="860"/>
   <p><sub>Forge Pulse —— 全局任务质量面板（跨项目事件流 / 任务评分与证据链 / Skills 聚合）</sub></p>
 </div>
 
@@ -51,7 +51,7 @@ Forge 在 AI 编码过程中自动插入结构化质量门禁——从任务创�
 <table>
   <tr>
     <td width="50%" valign="top"><strong>🚦 任务级门禁</strong><br/>每个开发任务走 3 道门禁：实现 → 验证 → 完成，门禁之间有活动检查防止跳阶段。</td>
-    <td width="50%" valign="top"><strong>🪝 实时 Hook 拦截</strong><br/>多个内置 Hook，在 AI 写代码的同时自动检查质量、防止绕过（读改前置 / 文件监控 / 高危拦截）。</td>
+    <td width="50%" valign="top"><strong>🪝 实时 Hook 拦截</strong><br/>19 个内置 Hook，在 AI 写代码的同时自动检查质量、防止绕过（读改前置 / 文件监控 / 高危拦截）。</td>
   </tr>
   <tr>
     <td valign="top"><strong>🛡️ 安全纵深防御</strong><br/>三层防御架构：工具拦截 → 文件监控 → 自身保护。Agent 无法经 bash 绕道篡改。</td>
@@ -144,7 +144,7 @@ Forge 退出码三态（`BLOCKED` 硬阻断 / `ADVISORY` 软信号）即这一�
 每个开发任务自动走 3 道门禁：
 
 ```bash
-forge task start --ref feat/add-login --branch --accept "go test ./... :: PASS"   # 创建任务+分支+登记验收标准（--accept 可重复）
+forge task start --ref feat/add-login --branch --accept "go test -v ./... :: PASS"   # 创建任务+分支+登记验收标准（--accept 可重复；Expected 是输出子串匹配，go test 需 -v 才含 PASS 字样）
 forge task start --ref feat/add-login --scope "internal/auth/*.go"                # 声明计划改动白名单（规划前置→可度量契约，advisory 检测 scope-drift）
 forge task start --ref feat/frontend --assignee kimi --role frontend --depends-on feat/api   # 创建即分派给 kimi（offered），声明上游依赖 feat/api（DAG 环检测；task-verify/task-complete 在 feat/api 交付前阻断）
 forge task start --ref feat/hotfix --assignee kimi --ttl 24h   # per-task TTL 覆盖全局 7d 僵尸窗口：短时效分派 24h 无活动即标僵尸（offered/claimed/input-required 通用；0=用全局默认）
@@ -190,7 +190,7 @@ Layer 3: 会话结束验证
 Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 task JSON 等方式绕过——bash-guard 拦截工具层，file-sentinel 监控文件层，task-guard 保护配置层。
 
 <details>
-<summary><b>📖 内置 Hook 完整清单（18 个）</b></summary>
+<summary><b>📖 内置 Hook 完整清单（19 个）</b></summary>
 
 | Hook | 触发时机 | 功能 |
 |------|----------|------|
@@ -206,12 +206,13 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | **tool-track** | Read 后 | 静默记录 Read 调用到 toollog，供 task-verify 的 read-before-edit 门禁判断（agent 是否先读代码再改） |
 | **task-verify** | 会话结束 | advisory：任务门禁/主分支保护到 stderr+checklog（不阻塞会话结束） |
 | **review-stop** | 会话结束 | code-review-gate 自动挡：未审源码变更 block 会话结束。task 模式不重复拦（task-complete 门禁 ReviewPassed 硬前置已强制），非 task 模式按 diff stamp 决策；并发会话检测——其他 session 有活跃任务时放行（调研 session 不被拦） |
-| **skill-scan** | 会话开始 | advisory：扫描 ~/.claude/skills 安全性（forge audit 22 规则），补 install 门控缺口（手动 clone/junction/git pull 进入的 skill），全局 hook 不依赖 forge project |
+| **skill-scan** | 会话开始 | advisory：扫描 ~/.claude/skills 安全性（`forge skills audit`，21 条安全规则），补 install 门控缺口（手动 clone/junction/git pull 进入的 skill），全局 hook 不依赖 forge project |
 | **mcp-scan** | 会话开始 | advisory：扫描项目级 `.mcp.json` 的 server 配置（管道执行/任意包执行 npx·uvx·dlx·bunx/内联代码/非 https URL/env 明文凭证），补 skill-scan 盲区（攻击者可经 PR 植入恶意 server，clone 即自动连接）；只审 config 层，runtime tool description 注入（Tool Poisoning）不在能力内，全局 hook |
 | **init-suggest** | 会话开始 | advisory：检测到未启用 forge 的 git 项目时，首次提示 agent 询问是否启用（用户拒绝→`forge suggest decline` 永久静默；设 `FORGE_AUTO_INIT=1` 处处自动 init——v1.22 起 init 零项目写入，不再对项目产生任何文件变更），全局 hook，补"每项目手动 init"缺口，实现一次安装后项目自动登记 |
 | **task-resume** | 会话开始 | advisory：自动注入活跃任务的接续上下文（目标/计划/决策/阻塞/门禁进度/git 已改未提交）+ 锚定当前 session——接手方冷启动即知任务在哪一步，无需手动 forge task resume；无活跃任务静默；项目级 hook |
 | **compact-resume** | 压缩后（claude-code only） | PostCompact 时设 `ResumeStale=true` 标志（PostCompact 不在 additionalContext 注入点，只设标志等下个 prompt 重注入），context-rot 抗机制根治层·设标志半边 |
 | **resume-reinject** | 用户提交时（claude-code only） | 检测 `ResumeStale=true`（刚压缩过）→ 输出完整接续上下文并清标志。补 task-resume 缺口（SessionStart 只注入一次，会话中途压缩不补），context-rot 抗机制根治层·重注入半边 |
+| **skill-trigger** | 多事件（Pre/PostToolUse、SessionStart、Stop、UserPromptSubmit，按宿主能力接线） | 通用声明式 skill 触发判定：按各 skill `metadata.triggers` 的 event/when 条件（coding_intent / source_changed_uncommitted / test_command_failed / task_active_no_review / skill_file_touched）匹配上下文，advisory 注入 skill 加载指引；Go 原生实现（其余 18 个为内嵌 bash 脚本） |
 
 </details>
 
@@ -223,14 +224,15 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | 命令 | 说明 |
 |------|------|
 | `forge init` | 初始化项目（默认**零项目写入**：登记全局注册表 `~/.forge/projects.json`，hooks/指令/skill 全在用户级，protocol.yml + runtime state 在 `~/.forge/projects/<key>/`；`--project` 团队模式把指令资产写项目目录供 git 共享；旧的 `--mode` 标志已废弃为 no-op） |
-| `forge status [--json]` | 查看项目状态（任务管道 + 质量信号） |
+| `forge status [--json] [--system]` | 查看项目状态（任务管道 + 质量信号）；`--system` 跑系统级健康检查（~/.forge、PATH、孤儿 hook、skills manifest） |
 | `forge verify` | 项目完整性检查 + 回归测试 |
 | `forge update [--plugin]` | 自更新到最新版本；加 `--plugin` 在 binary 更新后打印 plugin marketplace 重装指引（marketplace 镜像同步 hook 时建议重装） |
 | `forge suggest decline/status/reset` | 管理 init-suggest hook 的项目 init 提示状态（decline 永久静默当前项目 / status 查看 / reset 清除重新提示） |
-| `forge uninstall [--restore]` | 一键反装：剥除全部用户级 hooks（claude/codex/cursor/windsurf/opencode/kimi/reasonix）+ 用户级指令段（CLAUDE.md/AGENTS.md/global_rules.md）+ forge-quality skill + 清 npm global `@agent_forge/forge` + 删 init-suggest 标记（默认 `~/.forge/.init-suggested/`，设 `FORGE_DATA_HOME` 时落该根下）；`--restore` 把用户级文件回滚到 forge 修改前字节（备份在 `~/.forge/backups/`）；plugin 卸载须在 agent CLI 内交互运行（不可脚本化） |
+| `forge uninstall [--restore]` | 一键反装：剥除全部用户级 hooks（claude/codex/cursor/windsurf/opencode/kimi/reasonix/cline）+ 用户级指令段（CLAUDE.md/AGENTS.md/global_rules.md）+ forge-quality skill + 清 npm global `@agent_forge/forge` + 删 init-suggest 标记（默认 `~/.forge/.init-suggested/`，设 `FORGE_DATA_HOME` 时落该根下）；`--restore` 把用户级文件回滚到 forge 修改前字节（备份在 `~/.forge/backups/`）；plugin 卸载须在 agent CLI 内交互运行（不可脚本化） |
 | `forge migrate [--dry-run] [--force]` | 把旧 `.forge/` runtime state（tasks/gates/checklog/toollog/act/sessions/quarantine/active-task-ref 等）迁到用户级 DataDir（`~/.forge/projects/<key>/`）——升级到 runtime state 外迁版本后的迁移路径；未改过的 `.forge/protocol.yml` 由 autoSync 自动迁 DataDir，用户改过的保留为团队共享覆盖层；迁移的 task 文件落地即剥离外来门禁信号（review/验收/评分/完成/逃生舱/generic 须本机重挣，验收命令带外来标记）；幂等，`--dry-run` 预览，`--force` 覆盖 DataDir 已有同名 |
 | `forge registry prune` | 精简全局注册表 `~/.forge/projects.json`——移除项目目录已不存在的死路径与重复条目（项目移走/删除/测试残留），原子写回。registry.List 读时惰性精简但只在 `forge dashboard` 启动时触发（启 web 阻塞），本命令给不启 web 的主动清理入口 |
 | `forge registry audit [--json]` | 只读一致性审计：key-drift（注册表 key ≠ 当前派生 key 且旧数据目录有载荷，提示 `forge project adopt` 迁移）/ orphan-datadir（数据目录有载荷但注册表无条目，备份壳除外）/ id-collision（两个路径派生同一 key——复制粘贴共享 `.forge-project-id` 的检出器）/ invalid-id（ID 文件格式非法，Key() fail-open 回落的唯一暴露面） |
+| `forge registry rekey --from <key> --to <key> [--dry-run]` | 把 from key 的项目数据目录并入 to key（修复身份分裂的存量数据；合并语义与 project import 共享 datamerge） |
 | `forge project adopt [--dry-run] [--regenerate]` | 采纳 repo-born 项目 ID：在主 worktree 根生成 `.forge-project-id`（`fpid_<32hex>`，建议 commit 进 git），并把本机数据从路径 key 迁到 ID key（先迁数据再翻身份，复用 rekey 合并语义）+ 注册表同步。另一台机器 `git pull` 拿到 ID 后跑一次 adopt 即对齐——两台机器对同一 clone 推导同一 key，跨机器同步免重映射；`--regenerate` 给共享/污染 ID 换新（其他机器需重跑 adopt 处理 key 不匹配） |
 | `forge project export [--out <file>] [--include quarantine,hazards]` | 把项目记录打包为跨机器 bundle（tar.gz + 逐文件 sha256 的 manifest）：allowlist 默认拒绝——只带 tasks/checklog/toollog/sessions/act/stamps(除 hook-deploy)/protocol.yml，quarantine 源码全文与 hazards 命令行等敏感 store 须 `--include` 显式选入，会话锚/sentinel/freeze 等机器本地文件一律排除；manifest 记录来源身份（key/key_mode/project_id）供导入侧 lineage 判定 |
 | `forge project import <bundle> [--dry-run] [--untrusted] [--trust-foreign] [--force] [--adopt-id]` | 校验（sha256+版本守卫+路径安全）并合并 bundle 到本机：同 key = 同身份 lineage 默认保留结果字段（评分/完成/门禁历史经单调合并收敛），session 链接恒幽灵化；key 不匹配默认剥离外来门禁信号（`--trust-foreign` 显式放行）；bundle 来自 ID 身份而本机是路径身份时默认拒绝给指引，`--adopt-id` 直接采纳其 ID（本机数据先迁移）；账本 `imports.jsonl` 保证同 bundle 重复导入跳过，jsonl 精确行去重保证重叠导出不重复——双向同步收敛 |
@@ -250,6 +252,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge task verify-acceptance [--trust-foreign]` | 实跑验收标准（task start --accept 登记），记 deterministic 证据；验收命令来自 task import / .forge migrate（外来标记）时首跑须 `--trust-foreign`（人工审阅命令清单后显式受信，防外来命令串直接执行） |
 | `forge task scope add <glob>` | 追加计划改动文件到白名单（支持中途迭代） |
 | `forge task scope show` | 查看声明的白名单 + 实时 scope-drift（advisory，不阻塞） |
+| `forge task override [--work-activity\|--test-coverage\|--acceptance-gate\|--skill-decisions] disable` | per-task 逃生舱：关闭指定门禁检查（如批量重构时关 read-before-edit）；使用落 checklog 审计，evidence 强度降为 Weak |
 | `forge task complete` | 标记任务完成（自动评分） |
 | `forge task abort [--ref <ref>] [--cascade\|--detach-deps]` | 中止并删除任务（清理 ghost/卡住任务，不评分；存在反向依赖时默认仅提示，`--cascade` 递归中止所有依赖它的任务，`--detach-deps` 从依赖它的任务移除该依赖边） |
 | `forge task score` | 查看任务质量评分 |
@@ -308,6 +311,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge act show [--ref <ref>]` | 查看最新（或指定）任务结论（含 skill 触达画像——该 task 期间触发了哪些 skill） |
 | `forge act list [--json]` | 列出所有任务结论 |
 | `forge act nudge` | 最新结论有回顾 nudge 时输出一行（否则静默）——供 task-verify 会话结束 hook 消费 |
+| `forge act rebuild` | 从 tasks/*.json 重建 conclusions.jsonl（迁移 act 上线前的旧任务） |
 
 </details>
 
@@ -320,9 +324,9 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 |------|------|
 | `forge skills install` | 分发 skill 到全局/项目目标目录（link/copy） |
 | `forge skills list` | 列出 canonical skill 库中的 skill |
-| `forge skills audit` | 22 条安全规则审查（prompt 注入/数据外发/危险代码/供应链执行向量；任一 CRITICAL finding 即阻断 install/--gate） |
+| `forge skills audit` | 21 条安全规则审查（prompt 注入/数据外发/危险代码/供应链执行向量；任一 CRITICAL finding 即阻断 install/--gate） |
 | `forge skills drift-check` | 检测分发分叉（dry-run，不写） |
-| `forge skills validate` | R1-R9 规范校验 |
+| `forge skills validate` | R1-R17 规范校验 |
 | `forge skills adapters` | 部署 skill-routing adapter（pi/claude/cursor/routes.json） |
 | `forge skills usage` | 使用度量分析（热门 skill + undertrigger 候选） |
 | `forge skills usage --by-keyword` | per-keyword 触发分析：命中/加载/抑制切片（v2 Meta 的 matched_keyword）+ 死关键词检测（声明未命中；窗口无 v2 证据条目时自动停用并说明）。加载列带宿主偏差标注（注入型宿主无工具事件信号） |
@@ -342,6 +346,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge skills analyze [--json]` | 弱点挖掘报告（只读）：低分维度聚簇/验证盲区率/从未触发 skill/低成效 skill + 数据 caveat，供人选题 |
 | `forge skills decide --prediction <p>` | 记录 skill 决策四元组；`--prediction` 声明可检验预测（哪个可观测信号应改善），供验证闭环回扣 |
 | `forge skills verify --skill X --decision <id> --result <r>` | 回填决策验证结果（预测→验证闭环第二步；`--at` 指定时间、`--history`/`--history-json` 查全量可证伪台账） |
+| `forge skills revert --skill X --decision <id> [--edit] [--dry-run]` | Scoped revert：按 decisions.md 的 CommitHash 撤销某条决策关联的 commit（决策闭环的撤销臂） |
 
 </details>
 
@@ -397,7 +402,7 @@ npm install -g @agent_forge/forge
 3. **审查闭环** —— 提交前派独立只读子 agent 跑 code-review-gate 双轨（AI 作弊 + 工程规范），`forge review pass` 标记后才能过 task-complete 门禁。
 4. **提交纪律** —— 只提交源码变更；排除 `docs/`、设计文档、`.claude/`、`.forge/` 工作目录。
 
-详见 [质量协议](.claude/CLAUDE.md)。
+详见质量协议（由 `forge init` 生成到用户级 `~/.claude/CLAUDE.md` / `~/.codex/AGENTS.md`；生成器源码在 `internal/skillgen/`）。
 
 ## 📚 更多文档
 
@@ -406,7 +411,7 @@ npm install -g @agent_forge/forge
 | [中文使用指南](READMEs/README.zh-CN.md) | 面向国内用户的安装 / 日常 / 多宿主精简指南 |
 | [Plugin 安装详解](plugins/forge/README.md) | 多 host plugin marketplace 三步接线与各 host 差异 |
 | [项目主页](homepage/index.md) | 一分钟简介 + 核心能力速览 |
-| [质量协议](.claude/CLAUDE.md) | Forge 质量协议全文（任务工作流 / 门禁 / 安全机制） |
+| [评估数据约定](evals/README.md) | skill eval 黄金 case 集与盲测迭代纪律 |
 
 ## License
 
