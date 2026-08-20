@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MjxUpUp/Forge/internal/agentbridge"
 	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 	"github.com/MjxUpUp/Forge/internal/protocol"
 )
@@ -151,6 +152,53 @@ func TestInitCmd_HelpDemotesManualInit(t *testing.T) {
 	} {
 		if !strings.Contains(initCmd.Long, sub) {
 			t.Errorf("initCmd.Long 应含 %q（plugin 用户免手动 init 的降级文案），实得:\n%s", sub, initCmd.Long)
+		}
+	}
+}
+
+// TestAgentSummaryLine pins the init summary's per-agent wiring lines. The
+// regression this guards: a dropped switch case is a SILENT loss of install
+// guidance (nothing fails — the user simply never sees how to wire that
+// agent). dsh in particular exists only as this line (its translator is a
+// deliberate no-op).
+//
+// TestAgentSummaryLine 钉住 init 摘要的 per-agent 接线行。防的回归：switch
+// 掉一个 case 是**静默**丢失安装指引（没有任何东西报错——用户只是再看不到
+// 该 agent 的接线方式）。dsh 尤其只有这一行（其 translator 是刻意的 no-op）。
+func TestAgentSummaryLine(t *testing.T) {
+	wired := []agentbridge.AgentType{
+		agentbridge.AgentCodex,
+		agentbridge.AgentCursor,
+		agentbridge.AgentOpencode,
+		agentbridge.AgentKimi,
+		agentbridge.AgentDsh,
+	}
+	for _, a := range wired {
+		line, ok := agentSummaryLine(a)
+		if !ok || line == "" {
+			t.Errorf("agentSummaryLine(%s) = (%q, %v) — wiring guidance silently missing", a, line, ok)
+		}
+	}
+
+	// The dsh line is the ONLY install channel for the plugin (no-op
+	// translator) — it must carry the actual install command.
+	//
+	// dsh 行是 plugin 的唯一安装通道（no-op translator）——必须携带真实安装命令。
+	line, ok := agentSummaryLine(agentbridge.AgentDsh)
+	if !ok {
+		t.Fatal("dsh summary line missing")
+	}
+	if !strings.Contains(line, "dsh plugin --profile web add") {
+		t.Errorf("dsh summary line lacks the install command: %q", line)
+	}
+
+	// Agents with their own summary channel (or wired unconditionally above)
+	// must stay out of this loop.
+	//
+	// 自有摘要通道（或在上面无条件接线）的 agent 必须保持在本循环之外。
+	for _, a := range []agentbridge.AgentType{agentbridge.AgentClaudeCode, agentbridge.AgentCopilot, agentbridge.AgentWindsurf, agentbridge.AgentCline, agentbridge.AgentCodeBuddy, agentbridge.AgentReasonix} {
+		if line, ok := agentSummaryLine(a); ok {
+			t.Errorf("agentSummaryLine(%s) = (%q, true) — unexpected line; keep the summary switch minimal", a, line)
 		}
 	}
 }
