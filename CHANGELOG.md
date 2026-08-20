@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.38.2](https://github.com/MjxUpUp/Forge/compare/v1.38.1...v1.38.2) (2026-08-20)
+
+
+### Bug Fixes
+
+* **agentbridge:** kimi plugin manifest 恢复 skill-trigger 全事件绑定——看板 kimi 任务仅 5 事件 ([b4a0a27](https://github.com/MjxUpUp/Forge/commit/b4a0a27b429b366da030aba08e7ce2da26d39a7b))
+
 ## [1.38.1](https://github.com/MjxUpUp/Forge/compare/v1.38.0...v1.38.1) (2026-08-20)
 
 
