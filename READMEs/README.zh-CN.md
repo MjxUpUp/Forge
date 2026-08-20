@@ -8,7 +8,7 @@ Stop trusting AI-generated code. Start gating it.
 </div>
 
 <div align="center">
-  <img src="../dashboard-render.png" alt="Forge Pulse 全局质量面板" width="860"/>
+  <img src="../docs/assets/dashboard-pulse.png" alt="Forge Pulse 全局质量面板" width="860"/>
 </div>
 
 > 完整英文文档见根 [README.md](../README.md)。本中文版为国内用户精简说明，覆盖安装 / 日常使用 / 命令参考，命令以代码块为准。
@@ -55,11 +55,11 @@ forge init
 
 ```bash
 forge task start --ref feat/xxx --branch --title "描述"   # 建任务 + 分支
-# AI 工作（8 个 hook 自动守：task-guard / assertion-check / bash-guard / file-sentinel ...）
+# AI 工作（19 个 hook 自动守：task-guard / read-before-edit / bash-guard / file-sentinel ...）
 forge task gate task-implement    # 门禁1：实现（编译 / 断言 advisory 自检）
 forge task gate task-verify       # 门禁2：验证（测试伴随变更）
-# git commit 必须在 task-complete 之前
-forge task gate task-complete     # 门禁3：完成
+forge task gate task-complete     # 门禁3：完成确认
+forge task complete               # 🏁 任务完结（自动评分 + 清 active ref；git commit 必须在此之前）
 forge task score                  # 质量评分
 ```
 
@@ -75,7 +75,7 @@ forge uninstall --restore  # 加 --restore 把用户级文件回滚到 forge 修
 
 ## 多宿主支持
 
-Forge 已为 Claude Code / Codex / Cursor / Copilot / Kimi Code / Reasonix 落地分发（`.claude-plugin/`（claude+codex+copilot 共享）、`.cursor-plugin/`（cursor）、`.kimi-plugin/`（kimi）、`plugins/forge/reasonix-plugin.json`（reasonix native）多宿主元数据；Windsurf 走 `forge init --agents windsurf`）。其他 agent（OpenCode / Pi / Kiro / Cline / Gemini CLI / Mistral Vibe 等）由 `plugins/forge/install.sh` 一站式安装脚本支持（per-skill / folder 双 style symlink 机制）。
+Forge 为 10 个宿主落地接线：Claude Code / Codex / Cursor / Copilot / Kimi Code / Reasonix 走 plugin manifest 分发（`.claude-plugin/`、`.cursor-plugin/`、`.kimi-plugin/`、`plugins/forge/reasonix-plugin.json`）；Windsurf / OpenCode / Cline / CodeBuddy 走 `forge init --agents <host>` 用户级接线（CodeBuddy 为 init 生成 Claude 兼容的 plugin pack——其 settings.json 无 hooks 字段）。`plugins/forge/install.sh`（Windows 为 install.ps1）只是 forge 二进制的备用安装器（npm 的 curl-pipe 包装），不做 agent 接线。各宿主差异详见 [plugins/forge/README.md](../plugins/forge/README.md)。
 
 ## 常见问题
 
