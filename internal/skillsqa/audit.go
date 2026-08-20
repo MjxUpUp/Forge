@@ -58,12 +58,12 @@ var skipDirs = map[string]bool{
 	"node_modules": true, ".git": true, "__pycache__": true, ".venv": true,
 }
 
-// auditRules is the set of 22 rules (19 aligned with audit.py + forge-local DC-8/DC-9/DC-10 for the
+// auditRules is the set of 21 rules (18 aligned with audit.py + forge-local DC-8/DC-9/DC-10 for the
 // markdown supply-chain blind spot). Regexes have been converted from Python syntax to Go RE2:
 //   - PI-5 zero-width characters → \x{200b} (Go does not support \u)
 //   - Each rule has a (?i) prefix to align with Python re.IGNORECASE
 //
-// auditRules 是 22 条规则（19 条对齐 audit.py + forge 本地 DC-8/DC-9/DC-10 补 markdown 供应链
+// auditRules 是 21 条规则（18 条对齐 audit.py + forge 本地 DC-8/DC-9/DC-10 补 markdown 供应链
 // 盲区）。正则已从 Python 语法转为 Go RE2：
 //   - PI-5 零宽字符 → \x{200b}（Go 不支持 \u）
 //   - 每条加 (?i) 前缀对齐 Python re.IGNORECASE

@@ -24,7 +24,7 @@ var (
 // （无视聚合分——#4 修复）。
 var skillsAuditCmd = &cobra.Command{
 	Use:   "audit",
-	Short: "22 条安全规则审查（prompt 注入/数据外发/危险代码/供应链执行向量）",
+	Short: "21 条安全规则审查（prompt 注入/数据外发/危险代码/供应链执行向量）",
 	RunE:  runSkillsAudit,
 }
 

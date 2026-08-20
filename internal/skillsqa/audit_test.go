@@ -3,6 +3,7 @@ package skillsqa
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -545,5 +546,32 @@ func TestHasCritical(t *testing.T) {
 		{RuleID: "PI-2", Severity: "CRITICAL"},
 	}) {
 		t.Fatal("HasCritical(mixed with one CRITICAL) = false, want true")
+	}
+}
+
+// TestAuditRules_Count pins the audit-rule inventory: 21 rules total
+// (PI-1..5 + DE-1..4 + SL-1..2 + DC-1..10), of which DC-8/DC-9/DC-10 are
+// forge-local (18 aligned with audit.py). The count is quoted by user-facing
+// surfaces (CLI help, skill-scan hook output, generated CLAUDE.md, README,
+// skill-authoring-standard) — it drifted once already (claimed 22 while the
+// slice held 21). Add/remove a rule → update those strings with this test.
+//
+// TestAuditRules_Count 钉住审查规则清单：共 21 条（PI-1..5 + DE-1..4 + SL-1..2
+// + DC-1..10），其中 DC-8/DC-9/DC-10 为 forge 本地（18 条对齐 audit.py）。
+// 该计数被用户可见面引用（CLI help、skill-scan hook 输出、生成的 CLAUDE.md、
+// README、skill-authoring-standard）——此前已漂移过一次（自称 22、实际 21）。
+// 增删规则时随本测试一起更新那些文案。
+func TestAuditRules_Count(t *testing.T) {
+	if len(auditRules) != 21 {
+		t.Fatalf("len(auditRules) = %d, want 21 (update user-facing count strings too)", len(auditRules))
+	}
+	families := map[string]int{}
+	for _, r := range auditRules {
+		families[strings.SplitN(r.ID, "-", 2)[0]]++
+	}
+	for fam, want := range map[string]int{"PI": 5, "DE": 4, "SL": 2, "DC": 10} {
+		if got := families[fam]; got != want {
+			t.Errorf("rule family %s has %d rules, want %d", fam, got, want)
+		}
 	}
 }

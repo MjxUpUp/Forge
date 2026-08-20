@@ -65,7 +65,7 @@ jobs:
       - run: go build -o /tmp/forge ./cmd/forge/
       # R1-R17 规范校验（exit 2 = 规范失败）。--canonical 指向仓库内 skills/，不走 embed。
       - run: /tmp/forge skills validate --canonical ./skills
-      # 22 条安全规则审查；--gate：HIGH/CRITICAL 即 exit 4。
+      # 21 条安全规则审查；--gate：HIGH/CRITICAL 即 exit 4。
       - run: /tmp/forge skills audit --canonical ./skills --gate
       # 生成物漂移门禁：pack 默认写 cwd（重新生成 .claude-plugin/.cursor-plugin），
       # 再 git diff 比对——有人改了生成物源头却没重跑 pack，这里立刻红。

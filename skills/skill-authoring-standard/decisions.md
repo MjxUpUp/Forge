@@ -125,3 +125,20 @@ references/validation-rules.md：R12 行补 skill_file_touched；新增「trigge
 ### Rationale
 
 每个写 triggers 的人都会踩，论证过一次不该再论证第二次
+
+## [d-18cd6590d6016e88-d37050c9] accept
+
+- **Skill**: skill-authoring-standard
+- **DecidedAt**: 2026-08-20T03:24:59Z
+
+### Diagnosis
+
+SKILL.md 清单自述「22 条安全规则」与实现不符（audit.go auditRules 实为 21 条）
+
+### Revision
+
+22 条安全规则 → 21 条安全规则（纯计数修正，行为规范不变；references 两处同步）
+
+### Evidence
+
+grep -o 'ID: "[^"]*"' internal/skillsqa/audit.go | wc -l = 21（PI5+DE4+SL2+DC10）

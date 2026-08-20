@@ -1441,7 +1441,7 @@ echo "PASS"
 
 const SkillScanHook = `#!/bin/bash
 # skill-scan.sh — SessionStart hook (advisory, non-blocking).
-# 会话开始扫描 skill 目录安全性（forge audit 22 规则：prompt 注入/数据外发/危险
+# 会话开始扫描 skill 目录安全性（forge audit 21 规则：prompt 注入/数据外发/危险
 # 代码/系统提示泄露/供应链执行向量）。补 install 门控的缺口：skill 经 install 之外的路径进入 agent
 # 环境（手动 cp/clone、git pull 更新、external junction 如 lark-*）时 install 门控
 # 扫不到，SessionStart 是天然检查点，覆盖所有来源。advisory：stdout PASS detail
@@ -1490,7 +1490,7 @@ if [ -n "$RISKS" ]; then
   RISKS_SUMMARY=$(printf '%s' "$RISKS" | head -10 | tr '\n' ' ' | cut -c1-600)
   echo "PASS [skill-scan] Advisory: 发现风险 skill——${RISKS_SUMMARY}请核查（forge 不阻塞，由 agent/用户自检是否使用）。"
 else
-  echo "PASS [skill-scan] all skills SAFE (advisory, 22 rules)"
+  echo "PASS [skill-scan] all skills SAFE (advisory, 21 rules)"
 fi
 `
 

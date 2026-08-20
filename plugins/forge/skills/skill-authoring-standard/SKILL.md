@@ -155,7 +155,7 @@ Gotchas 比最佳实践更有价值，因为它来自实际失败。每个 gotch
 - [ ] 有易错点（Gotchas）部分
 - [ ] 纪律型 skill 有 Red Flags + Rationalization 表
 - [ ] 超长详细内容拆到了 references/
-- [ ] 跑过 `forge skills validate` + `forge skills audit` 校验（R1-R17 规范 + 22 条安全规则，forge 自带，无需外部脚本）。R1-R17 每条规则的文本定义：见 [references/validation-rules.md](references/validation-rules.md)
+- [ ] 跑过 `forge skills validate` + `forge skills audit` 校验（R1-R17 规范 + 21 条安全规则，forge 自带，无需外部脚本）。R1-R17 每条规则的文本定义：见 [references/validation-rules.md](references/validation-rules.md)
 - [ ] **TDD：跑过基线测试**（无 skill 时子代理怎么失败），针对失败写的 skill
 - [ ] **防注水：跑过 `skill-anti-degradation-check.sh`**（扫描弱措辞/弱门控/无命令 checklist）
 - [ ] **rubric ≥75 分**：机器校验过后，按四维质量 rubric（简洁性/可操作性/工作流清晰度/渐进披露，各 0-25 分）人工或 LLM 评审打分，总分 <75 不予合并。锚点判据与裁决表：见 [references/quality-rubric.md](references/quality-rubric.md)
