@@ -69,37 +69,54 @@ var updateKimiPlugin = flag.Bool("update-kimi-plugin", false, "rewrite .kimi-plu
 func TestKimiPluginManifestMirrorsSpec(t *testing.T) {
 	path := filepath.Join("..", "..", ".kimi-plugin", "plugin.json")
 
-	// Spec total and the count of skill-trigger entries the filter drops (those bound to non-
-	// UserPromptSubmit events). The manifest must contain exactly total-dropped. This count
-	// assertion restores the dropped-hook guard the old count-parity check (manifest == spec
-	// total) provided before the filter existed: a bug that silently drops a NON-skill-trigger
-	// hook from BuildKimiPluginHooks would pass the skill-trigger invariant below AND the byte
-	// compare further down (if -update-kimi-plugin regenerated both sides), so only an explicit
-	// expected-count check catches it. Asserted before the byte compare so a roster regression
-	// surfaces with a precise count rather than a diffuse diff.
-	total, dropped := 0, 0
+	// Full spec parity: since the 2026-08-20 unfilter (hostcap honest recording made the old
+	// false-prosperity filter obsolete — non-UserPromptSubmit hits now record Delivered=false
+	// via hostcap.ContextChannel, and the usage funnel counts Delivered=true only), the
+	// manifest must contain EVERY spec hook, skill-trigger included. The explicit count check
+	// catches a hook silently dropped from BuildKimiPluginHooks; asserted before the byte
+	// compare so a roster regression surfaces with a precise count rather than a diffuse diff.
+	//
+	// 全 spec 对齐：2026-08-20 解除过滤起（hostcap 诚实记录使旧的虚假繁荣过滤失去意义——
+	// 非 UserPromptSubmit 命中经 hostcap.ContextChannel 记 Delivered=false，usage 漏斗只计
+	// Delivered=true），manifest 必须包含每一条 spec hook，skill-trigger 也不例外。显式
+	// 计数检查抓住 BuildKimiPluginHooks 静默丢 hook 的回归；置于字节比对之前，让名册回归
+	// 以精确计数而非弥散 diff 的形式暴露。
+	total := 0
+	specSkillTrigger := map[string]int{}
 	for ev, matchers := range hooks.ForgeHookSpec() {
 		for _, m := range matchers {
 			for _, entry := range m.Hooks {
 				total++
-				if ev != "UserPromptSubmit" && isSkillTriggerCommand(entry.Command) {
-					dropped++
+				if isSkillTriggerCommand(entry.Command) {
+					specSkillTrigger[ev]++
 				}
 			}
 		}
 	}
 	manifestHooks := BuildKimiPluginHooks()
-	if len(manifestHooks) != total-dropped {
-		t.Errorf("manifest has %d hooks, want %d (spec %d minus %d filtered skill-trigger); a non-skill-trigger hook may have been silently dropped from BuildKimiPluginHooks", len(manifestHooks), total-dropped, total, dropped)
+	if len(manifestHooks) != total {
+		t.Errorf("manifest has %d hooks, want %d (full ForgeHookSpec parity — the kimi skill-trigger filter is gone); a hook may have been silently dropped from BuildKimiPluginHooks", len(manifestHooks), total)
 	}
+	// Positive invariant: every spec skill-trigger binding reaches the kimi manifest, on every
+	// event the spec binds it to — this is the wiring the dashboard's honest-observability
+	// feed depends on (kimi tasks showed only the 5 pipeline skeleton events while the filter
+	// stood). isSkillTriggerCommand matches the translated --agent form here.
+	//
+	// 正向前置不变量：spec 的每一条 skill-trigger 绑定都进入 kimi manifest，且落在 spec
+	// 指定的每个事件上——这正是看板诚实观测事件流所依赖的接线（过滤存在期间 kimi 任务
+	// 只能看到 5 条管道骨架事件）。isSkillTriggerCommand 在此匹配翻译后的 --agent 形式。
+	manifestSkillTrigger := map[string]int{}
 	for _, h := range manifestHooks {
-		// Positive invariant: skill-trigger, when present, must sit only under UserPromptSubmit
-		// (the filter's purpose). isSkillTriggerCommand matches the translated --agent form here.
-		if isSkillTriggerCommand(h.Command) && h.Event != "UserPromptSubmit" {
-			t.Errorf("skill-trigger must appear only under UserPromptSubmit on kimi; got event=%s command=%s", h.Event, h.Command)
+		if isSkillTriggerCommand(h.Command) {
+			manifestSkillTrigger[h.Event]++
 		}
 		if h.Timeout <= 0 || h.Timeout > 600 {
 			t.Errorf("hook %s/%s timeout %d outside kimi's 1-600 range", h.Event, h.Command, h.Timeout)
+		}
+	}
+	for ev, want := range specSkillTrigger {
+		if manifestSkillTrigger[ev] != want {
+			t.Errorf("skill-trigger bindings on %s = %d, want %d (spec parity — kimi must record triggers on every event, printing stays gated to UserPromptSubmit)", ev, manifestSkillTrigger[ev], want)
 		}
 	}
 

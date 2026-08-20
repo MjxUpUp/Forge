@@ -87,3 +87,21 @@ docs/skills-value-audit-2026-08-02.md
 ### Evidence
 
 skills-hitrate-review-2026-08-15 P2去重项;同构先例:已对code-review-gate做唯一真相源指针
+
+## [d-195a3e4405ee-8b45f228] accept
+
+- **Skill**: implementation-discipline
+- **DecidedAt**: 2026-08-20T06:37:11Z
+- **By**: kimi
+
+### Diagnosis
+
+kimi 看板盲区半修（2026-08-19 hostcap e2db347）：策略"kimi skill-trigger 仅 UserPromptSubmit"散在 wiring（agentbridge manifest 过滤器）与 runtime（cli bail）两层，修复只改 runtime 层；被重写的旧注释明写过滤器存在却未核查；验证停在引擎单测（机制表面），从未在看板/manifest（目标表面）验证，钉旧策略的守卫测试全绿掩盖半修——用户连遇两天"5 条事件"，体验割裂
+
+### Revision
+
+阶段1 确认清单 4→5 件：新增"改语义/策略先列领域全链、逐环 grep 旧策略拷贝；重写注释必核查其中组件引用；策略单一来源各层派生（防御纵深仅限永真不变量）"；阶段3 门控新增"验证表面=目标表面"（修复声明的表面必须亲眼端到端验证，机制层绿灯≠目标达成）+红线；Rationalizations/Red Flags/Gotchas 各补一条本次实例
+
+### Evidence
+
+fix/kimi-skilltrigger-manifest-wiring（b4a0a27, 98/A Strong）：实跑 dashboard API 复现 5 事件；已装 v1.38.0 插件 manifest 仅 1 条 skill-trigger 绑定；守卫测试改全 spec 对齐+per-event 存在性断言
