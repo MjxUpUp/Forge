@@ -51,6 +51,11 @@ jobs:
         with:
           node-version: "22"
       - run: node --test scripts/release.test.js
+      # plugins/forge-dsh 的 node:test 套件（真实 cordis 运行时接线测试）——同一标准：CI 不跑 = 没测试。
+      - run: npm ci --no-audit --no-fund
+        working-directory: plugins/forge-dsh
+      - run: node --test lib/*.test.js
+        working-directory: plugins/forge-dsh
 
   # skills 质量门禁：canonical 库规范校验 + 安全审查 + plugin pack 生成物漂移 + eval 电池/互斥集。
   # 单 job 串行跑（共享一次 build），任一失败即红。
