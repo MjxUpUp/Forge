@@ -428,6 +428,39 @@ var Hosts = []Host{
 	},
 	{Name: "codebuddy", StdinSessionFields: []string{"session_id"}},
 	{Name: "reasonix", StdinSessionFields: []string{"sessionId"}, StdinDialect: "reasonix"},
+	{
+		Name: "dsh", StdinSessionFields: []string{"session_id"},
+		// The plugins/forge-dsh Cordis wrapper constructs Claude-shape stdin
+		// in-process (forge_agent:"dsh"), so no StdinDialect is needed — same
+		// code-based shape as opencode. Allow-path context reaches the model on
+		// every wired event: the wrapper folds additionalContext into DSH
+		// decisions (post-execute additionalContexts, pre-step enter messages)
+		// or queues it via agent.inject (pre-execute / session-start /
+		// turn-stopping); PostCompact fires via session-start source=compact.
+		//
+		// plugins/forge-dsh 的 Cordis 包装层在进程内构造 Claude 形 stdin
+		// （forge_agent:"dsh"），无需 StdinDialect——与 opencode 同为 code-based
+		// 形态。allow 路径上下文在每个已接事件上都能到达模型：包装层把
+		// additionalContext 折进 DSH decision（post-execute 的
+		// additionalContexts、pre-step 的 enter messages）或经 agent.inject
+		// 排队（pre-execute / session-start / turn-stopping）；PostCompact 经
+		// session-start 的 source=compact 触发。
+		ContextChannels: map[string]Channel{
+			"PreToolUse":       {Delivered: true, Label: "dsh/agent.inject"},
+			"PostToolUse":      {Delivered: true, Label: "dsh/additionalContexts"},
+			"UserPromptSubmit": {Delivered: true, Label: "dsh/enter-messages"},
+			"SessionStart":     {Delivered: true, Label: "dsh/agent.inject"},
+			"Stop":             {Delivered: true, Label: "dsh/agent.inject"},
+			"PostCompact":      {Delivered: true, Label: "dsh/agent.inject"},
+		},
+		DefaultChannel: Channel{Delivered: false, Label: "dsh/unwired-event"},
+		// DSH_HOME overrides the whole home (the community resolveDshHome
+		// convention: env ?? ~/.dsh); fallback ~/.dsh.
+		//
+		// DSH_HOME 覆盖整个 home（社区 resolveDshHome 约定：env ?? ~/.dsh）；
+		// 回落 ~/.dsh。
+		InstallIndicators: []InstallIndicator{{Env: "DSH_HOME", Path: "~/.dsh"}},
+	},
 }
 
 // Lookup returns the registry row for name, or nil when the host is unknown

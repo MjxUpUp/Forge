@@ -210,15 +210,8 @@ func runInitUserLevel(dir string, agents []agentbridge.AgentType, proto *protoco
 	fmt.Printf("  ~/.codex/AGENTS.md               — 跨 agent 质量协议（条件激活）\n")
 	fmt.Printf("  ~/.claude/skills/forge-quality/  — 质量协议 Skill\n")
 	for _, a := range agents {
-		switch a {
-		case agentbridge.AgentCodex:
-			fmt.Printf("  ~/.codex/hooks.json              — Codex hooks（user-level）\n")
-		case agentbridge.AgentCursor:
-			fmt.Printf("  ~/.cursor/hooks.json             — Cursor hooks（user-level）\n")
-		case agentbridge.AgentOpencode:
-			fmt.Printf("  ~/.config/opencode/plugins/      — OpenCode plugin（user-level）\n")
-		case agentbridge.AgentKimi:
-			fmt.Printf("  ~/.kimi-code/config.toml         — Kimi Code hooks（user-level）\n")
+		if line, ok := agentSummaryLine(a); ok {
+			fmt.Print(line)
 		}
 	}
 	fmt.Println()
@@ -228,6 +221,35 @@ func runInitUserLevel(dir string, agents []agentbridge.AgentType, proto *protoco
 	fmt.Println("  forge status      — 查看项目状态")
 	fmt.Println("  forge init --project — 团队模式（资产写项目目录，可 git 共享）")
 	return nil
+}
+
+// agentSummaryLine renders the per-agent wiring line of the init summary. ok=false
+// for agents with nothing machine-wide to report (claude-code's wiring is printed
+// unconditionally above; copilot/cline/codebuddy/reasonix/windsurf have their own
+// summary channels). The dsh line is install GUIDANCE, not a written file — the
+// DshTranslator is a deliberate no-op (no user-level config file exists to merge
+// into), so the summary is the only place `forge init` tells the user how to wire
+// DeepSeek Harness.
+//
+// agentSummaryLine 渲染 init 摘要的 per-agent 接线行。无需报告全机器接线的 agent
+// 返回 ok=false（claude-code 的接线在上面无条件打印；copilot/cline/codebuddy/
+// reasonix/windsurf 各有摘要通道）。dsh 行是安装**指引**而非已写文件——
+// DshTranslator 是刻意的 no-op（没有可合并的用户级配置文件），故摘要是
+// `forge init` 告知用户如何接线 DeepSeek Harness 的唯一位置。
+func agentSummaryLine(a agentbridge.AgentType) (line string, ok bool) {
+	switch a {
+	case agentbridge.AgentCodex:
+		return "  ~/.codex/hooks.json              — Codex hooks（user-level）\n", true
+	case agentbridge.AgentCursor:
+		return "  ~/.cursor/hooks.json             — Cursor hooks（user-level）\n", true
+	case agentbridge.AgentOpencode:
+		return "  ~/.config/opencode/plugins/      — OpenCode plugin（user-level）\n", true
+	case agentbridge.AgentKimi:
+		return "  ~/.kimi-code/config.toml         — Kimi Code hooks（user-level）\n", true
+	case agentbridge.AgentDsh:
+		return "  DeepSeek Harness                 — plugin 接线：dsh plugin --profile web add \"github:MjxUpUp/Forge#main&path:/plugins/forge-dsh\"（见 plugins/forge-dsh/README.md）\n", true
+	}
+	return "", false
 }
 
 // runInitTeamMode is the legacy project-level path (`forge init --project`): assets

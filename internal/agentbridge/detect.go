@@ -60,7 +60,7 @@ func DetectAgents(projectDir string) []AgentType {
 	// 指示数据（各宿主的 env 覆盖 / home 相对路径）住在 hostcap 注册表
 	// （InstallIndicators 列）；下面显式的迭代顺序保持注册表之前的检测优先级，
 	// 使 DetectAgents 的输出顺序不变。
-	for _, name := range []string{"claude-code", "codex", "cursor", "windsurf", "opencode"} {
+	for _, name := range []string{"claude-code", "codex", "cursor", "windsurf", "opencode", "dsh"} {
 		h := hostcap.Lookup(name)
 		if h == nil {
 			continue
@@ -128,7 +128,7 @@ func ParseAgentFlag(projectDir string, flag string) []AgentType {
 			continue
 		}
 		switch AgentType(name) {
-		case AgentClaudeCode, AgentCursor, AgentCopilot, AgentWindsurf, AgentCodex, AgentOpencode, AgentCline, AgentKimi, AgentCodeBuddy, AgentReasonix:
+		case AgentClaudeCode, AgentCursor, AgentCopilot, AgentWindsurf, AgentCodex, AgentOpencode, AgentCline, AgentKimi, AgentCodeBuddy, AgentReasonix, AgentDsh:
 			agents = append(agents, AgentType(name))
 		}
 	}
