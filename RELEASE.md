@@ -61,6 +61,14 @@ npm → npm-verify** 四段强依赖链：
 # 之后无需任何手动步骤——tag、GitHub Release、二进制、npm 包全部自动就绪
 ```
 
+## 宿主插件是第二分发通道（发版 ≠ 生效）
+
+kimi 等宿主插件 manifest（`.kimi-plugin/plugin.json`）随 tag 进 GitHub，但**用户机器上
+的已装副本不自动更新**——含 hook 接线 / manifest 变更的发版，binary 升级 ≠ 行为生效，
+用户须在宿主里更新插件（kimi 侧有 staleness advisory 在下个 prompt 提醒）。此类发版
+在 commit body 写明"需更新宿主插件"，避免"发了版用户还报旧症状"（2026-08 kimi
+skill-trigger manifest 接线修复实例：引擎修复已发版，插件 manifest 未更新，症状照旧）。
+
 ## 发布前自检（本地复现 CI 最小环境）
 
 CI 是干净 clone，**本地工作区有文件 ≠ 仓库有文件**（cmd/forge 漏提交就是这么漏的：
