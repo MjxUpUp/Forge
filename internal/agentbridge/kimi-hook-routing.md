@@ -16,6 +16,20 @@
 对 kimi+非 UserPromptSubmit 的 skill-trigger 做防御性 noop（覆盖未重装的旧 plugin）。
 故「P1 抑制/移除」既含 manifest 删除也含运行时兜底。P0/P1/P3 是本表(P2)的兄弟 PR，
 各自独立分支、独立合入；在某条兄弟 PR 未合入时，对应行描述的是目标态而非当前态。
+
+> 🔄 **2026-08-20 反转（hostcap 后续）**：P1 的移除理由（记录不可见命中会虚报 usage 漏斗）
+> 已被 hostcap 的「诚实记录」取代——引擎在非 UserPromptSubmit 事件上运行、命中记
+> `Delivered=false`（`hostcap.ContextChannel`），漏斗只计 `Delivered=true`。故 manifest
+> 重新绑回全部 6 条 skill-trigger（19→25 hook），运行时 noop 也已移除；打印仍只发生在
+> UserPromptSubmit。上文 P1 段的「物理删除」描述的是历史决策，当前态以本注为准。
+>
+> 🔄 **2026-08-20 reversal (hostcap follow-up)**: P1's rationale (recording invisible hits
+> would misreport the usage funnel) was superseded by hostcap's "honest recording" — the
+> engine now RUNS on non-UserPromptSubmit events, stamping hits `Delivered=false`
+> (`hostcap.ContextChannel`), and the funnel counts `Delivered=true` only. The manifest
+> therefore re-binds all 6 skill-trigger entries (19→25 hooks) and the runtime noop is
+> gone; printing still happens only on UserPromptSubmit. The P1 paragraph above describes
+> a historical decision — this note is the current state.
 >
 > The table below shows the **25-hook baseline** (the full `.kimi-plugin/plugin.json` set
 > before P0–P3). The `PR` column names the PR that delivers each row. **P1 PHYSICALLY REMOVES
@@ -91,7 +105,7 @@ pre_tool_use    0    # 本会话无 PreToolUse 阻断发生（非通道失效，
 | read-before-edit | 强制 enforce | exit-2 阻断（原生效） | — |
 | **bash-guard** | advisory→强制 | **advisory 升级为 exit-2** | **P0** |
 | hazard-guard | 强制 enforce | exit-2 阻断（原生效） | — |
-| skill-trigger（Write\|Edit + Bash，共 2 条） | advisory | **P1 移除 manifest + 运行时 noop** | **P1** |
+| skill-trigger（Write\|Edit + Bash，共 2 条） | advisory | **已恢复绑定**（2026-08-20）：记录 `Delivered=false`，不打印（stdout 不可达模型） | ~~P1~~ 已反转 |
 
 > P0 升级用的是**内容谓词 map**（读 detail 文本区分「真 advisory」与「成功/干净分支」），
 > 不是名字白名单——否则会把 task-guard 刚 auto-create 的那次编辑也阻断。逃生舱
@@ -103,14 +117,14 @@ pre_tool_use    0    # 本会话无 PreToolUse 阻断发生（非通道失效，
 |---|---|---|---|
 | task-verify | 强制 | exit-2 阻断（原生效） | — |
 | review-stop | 强制 | exit-2 阻断（wire 实证） | — |
-| skill-trigger | advisory | **P1 移除 manifest + 运行时 noop** | **P1** |
+| skill-trigger | advisory | **已恢复绑定**（2026-08-20）：记录 `Delivered=false`，不打印 | ~~P1~~ 已反转 |
 
 ### UserPromptSubmit（2 hook = 1 命名 + skill-trigger×1）— 唯一的 stdout 注入通道（滞后到下一 prompt）
 
 | Hook | 类别 | kimi 路由 | PR |
 |---|---|---|---|
 | resume-reinject | 注入 | stdout 注入（原生效）+ **P3 承载冷启动 handoff** + **2026-08-15 承载 plugin staleness advisory**（原 init-suggest/SessionStart 通道三重不可见，见下。注意覆盖范围：resume-reinject 是项目级 hook，非 forge 项目目录在 step 5 之前即退出——staleness advisory 只在 forge 项目内提示，非全局） | **P3** + staleness 迁移 |
-| skill-trigger | 注入 | stdout 注入（skill 框架在 kimi 下唯一生效事件） | **P1** 收敛点 |
+| skill-trigger | 注入 | stdout 注入——引擎在全部事件运行并记录（可看板观测），UserPromptSubmit 是唯一**打印/送达**事件 | **P1** 收敛点（2026-08-20 起仅"唯一打印"义） |
 
 ### SessionStart（5 hook = 4 命名 + skill-trigger×1）— stdout observation-only，主价值经 P3 迁移到 UserPromptSubmit
 
@@ -120,7 +134,7 @@ pre_tool_use    0    # 本会话无 PreToolUse 阻断发生（非通道失效，
 | mcp-scan | advisory 安全 | **失效**（stdout 丢）→ 依赖 `.mcp.json` 审查兜底 | 文档 |
 | init-suggest | advisory | **失效**（stdout 丢；plugin staleness advisory 已于 2026-08-15 迁至 resume-reinject/UserPromptSubmit，因本通道三重不可见：kimi 丢 stdout、noise gate 丢 init-suggest PASS、checklog 也无痕。注：代码中本就不存在单独的 kimi-drift 检测——init-suggest 的建议文本随项目快照生成，无独立漂移提醒可迁） | staleness 迁移 |
 | **task-resume** | 接续 | **P3 经 resume-reinject 冷启动回填**（首 prompt 注入，sentinel 去重） | **P3** |
-| skill-trigger | advisory | **P1 移除 manifest + 运行时 noop** | **P1** |
+| skill-trigger | advisory | **已恢复绑定**（2026-08-20）：记录 `Delivered=false`，不打印 | ~~P1~~ 已反转 |
 
 ### PostToolUse（6 hook = 4 命名 + skill-trigger×2）— stdout observation-only；副作用类不受影响
 
@@ -130,7 +144,7 @@ pre_tool_use    0    # 本会话无 PreToolUse 阻断发生（非通道失效，
 | workflow-test-guard | 强制(block) | **stderr 不达模型**（2026-08-15 生产观测·单会话，见 U1；forge 仓专属守护）→ 是否阻后续轮次未受控验证，依赖 CI 兜底 | 文档 |
 | file-sentinel | 副作用 | **不受影响**（写 quarantine 快照，靠文件副作用；wire 实证快照存在，且 8/8 生产实测 exit-2 隔离 3 次成功——只是隔离原因模型看不见） | — |
 | tool-track | 副作用 | **不受影响**（写 toollog + reads-log，靠文件副作用） | — |
-| skill-trigger（Write\|Edit + Bash，共 2 条） | advisory | **P1 移除 manifest + 运行时 noop** | **P1** |
+| skill-trigger（Write\|Edit + Bash，共 2 条） | advisory | **已恢复绑定**（2026-08-20）：记录 `Delivered=false`，不打印（stdout 不可达模型） | ~~P1~~ 已反转 |
 
 ### PostCompact（1 hook）— 观察通道，部分失效
 

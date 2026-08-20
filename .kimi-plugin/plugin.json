@@ -22,8 +22,20 @@
     },
     {
       "event": "PostToolUse",
+      "matcher": "Write|Edit",
+      "command": "forge hook skill-trigger --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "PostToolUse",
       "matcher": "Bash",
       "command": "forge hook file-sentinel --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "PostToolUse",
+      "matcher": "Bash",
+      "command": "forge hook skill-trigger --agent kimi",
       "timeout": 30
     },
     {
@@ -58,6 +70,12 @@
     },
     {
       "event": "PreToolUse",
+      "matcher": "Write|Edit",
+      "command": "forge hook skill-trigger --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "PreToolUse",
       "matcher": "Bash",
       "command": "forge hook bash-guard --agent kimi",
       "timeout": 30
@@ -66,6 +84,12 @@
       "event": "PreToolUse",
       "matcher": "Bash",
       "command": "forge hook hazard-guard --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "command": "forge hook skill-trigger --agent kimi",
       "timeout": 30
     },
     {
@@ -89,6 +113,11 @@
       "timeout": 30
     },
     {
+      "event": "SessionStart",
+      "command": "forge hook skill-trigger --agent kimi",
+      "timeout": 30
+    },
+    {
       "event": "Stop",
       "command": "forge hook task-verify --agent kimi",
       "timeout": 30
@@ -96,6 +125,11 @@
     {
       "event": "Stop",
       "command": "forge hook review-stop --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "Stop",
+      "command": "forge hook skill-trigger --agent kimi",
       "timeout": 30
     },
     {
