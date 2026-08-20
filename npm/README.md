@@ -7,7 +7,7 @@ Forge 在 AI 编码过程中自动插入结构化质量门禁——从任务创�
 ## 核心功能
 
 - **任务级门禁** — 每个开发任务走 3 道门禁：实现 → 验证 → 完成
-- **实时 Hook 拦截** — 多个内置 Hook，在 AI 写代码的同时自动检查质量、防止绕过
+- **实时 Hook 拦截** — 19 个内置 Hook，在 AI 写代码的同时自动检查质量、防止绕过
 - **安全纵深防御** — 三层防御架构：工具拦截 → 文件监控 → 自身保护
 - **质量评分** — 每个任务完成后自动评分，量化 AI 编码质量
 
@@ -45,17 +45,18 @@ forge init
 ```bash
 forge task start --ref feat/add-login --branch   # 创建任务 + 分支
 # AI 自动完成工作...
-forge task gate task-implement    # ✅ 代码实现（自动检查编译 + 断言）
+forge task gate task-implement    # ✅ 代码实现（advisory：编译/断言自检提醒）
 forge task gate task-verify       # ✅ 测试验证
 forge task gate task-complete     # ✅ 完成确认
+forge task complete               # 🏁 任务完结（自动评分 + 清 active ref；git commit 在此之前）
 forge task score                  # 查看质量评分
 ```
 
-门禁之间有时间和活动检查，防止 AI 跳过阶段直接提交。`task-implement` 是自动门禁，会检查编译通过和断言未被弱化。
+门禁之间有时间和活动检查，防止 AI 跳过阶段直接提交。`task-implement` 的编译/断言检查为 advisory 提醒（agent 自检，不阻塞）——forge 技术栈无关，适配 loop engineering。
 
 ## Hook 系统
 
-Forge 通过 Claude Code 的 Hook 机制实现实时质量检查：
+Forge 通过 Claude Code 的 Hook 机制实现实时质量检查（主要 Hook 如下，完整 19 个清单见 [GitHub README](https://github.com/MjxUpUp/Forge#-hook-系统)）：
 
 | Hook | 触发时机 | 功能 |
 |------|----------|------|
@@ -66,7 +67,7 @@ Forge 通过 Claude Code 的 Hook 机制实现实时质量检查：
 | **file-sentinel** | Bash 后 | 监控文件变更，未授权修改隔离到 DataDir/quarantine/（`forge data-dir` 查看路径，可恢复，不删除） |
 | **tool-track** | Read 后 | 静默记录 Read 调用到 toollog，供 task-verify 的 read-before-edit 门禁判断（agent 是否先读代码再改） |
 | **task-verify** | 会话结束 | advisory：任务门禁/主分支保护到 stderr+checklog（不阻塞会话结束） |
-| **skill-scan** | 会话开始 | advisory：扫描 ~/.claude/skills 安全性（forge audit 22 规则），补 install 门控缺口（手动 clone/junction/git pull 进入的 skill），全局 hook 不依赖 forge project |
+| **skill-scan** | 会话开始 | advisory：扫描 ~/.claude/skills 安全性（`forge skills audit`，21 条安全规则），补 install 门控缺口（手动 clone/junction/git pull 进入的 skill），全局 hook 不依赖 forge project |
 | **task-resume** | 会话开始 | advisory：自动注入活跃任务的接续上下文（目标/计划/决策/阻塞/门禁进度/git 已改未提交）+ 锚定当前 session——接手方冷启动即知任务在哪一步；无活跃任务静默；项目级 hook |
 
 ### 安全架构
