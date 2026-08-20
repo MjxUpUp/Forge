@@ -365,7 +365,10 @@ var syncCmd = &cobra.Command{
   - 升级后强制刷新全部资产
   - 遗留项目级配置被旧版本污染（如 task-verify 误绑 PostToolUse）时手动修复
 
---force 跳过版本检查，无条件重生成。`,
+--force 跳过版本检查，无条件重生成。
+
+注意：本命令同步的是 forge 自身资产（版本升级），不迁移项目数据——跨机器
+导出/导入用 forge project export/import（见 forge project --help）。`,
 	RunE: runSync,
 }
 

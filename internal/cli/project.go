@@ -44,5 +44,8 @@ var projectCmd = &cobra.Command{
   import  校验并合并 bundle 到本机项目；同 key（同身份 lineage，默认保留结果
           字段）或跨 key（默认剥离外来门禁信号）自动路由；账本保证重复导入幂等
   adopt   生成/采纳 .forge-project-id（committed 身份文件），让同一仓库在任意
-          机器/路径推导同一 key —— 双机同步的推荐前置`,
+          机器/路径推导同一 key —— 双机同步的推荐前置
+
+命令族其余入口：单任务跨机器交接用 forge task export/import；注册表 key
+分裂（身份漂移）修复用 forge registry rekey。`,
 }

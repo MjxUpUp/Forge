@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -103,6 +104,35 @@ func TestCommandGroups_AllTopLevelGrouped(t *testing.T) {
 		}
 		if !valid {
 			t.Errorf("命令 %s 的 GroupID %q 未在 rootCmd.AddGroup 注册，AddCommand 会 panic", name, c.GroupID)
+		}
+	}
+}
+
+// TestCrossMachineHelpCrossRef pins the discoverability cross-references added after a
+// real miss: a user looking for cross-machine migration in forge --help landed on
+// `sync` (asset version sync) / `migrate` (.forge/ → DataDir upgrade relocation) and
+// concluded the feature did not exist. sync/migrate must point at
+// `forge project export/import`; project must tie the whole family together
+// (task export/import + registry rekey).
+//
+// TestCrossMachineHelpCrossRef 钉住可发现性交叉指引（源自一次真实误入）：找跨机器
+// 迁移的用户会在 forge --help 撞上 sync（资产版本同步）/ migrate（.forge/ → DataDir
+// 升级搬迁）而误判功能不存在。sync/migrate 必须指向 forge project export/import；
+// project 必须把命令族串起来（task export/import + registry rekey）。
+func TestCrossMachineHelpCrossRef(t *testing.T) {
+	cases := []struct {
+		name string
+		long string
+		want string
+	}{
+		{"sync", syncCmd.Long, "forge project export/import"},
+		{"migrate", migrateCmd.Long, "forge project export/import"},
+		{"project", projectCmd.Long, "forge task export/import"},
+		{"project", projectCmd.Long, "forge registry rekey"},
+	}
+	for _, c := range cases {
+		if !strings.Contains(c.long, c.want) {
+			t.Errorf("forge %s 的 Long 缺少交叉指引 %q——名字撞车命令必须指路跨机器迁移入口", c.name, c.want)
 		}
 	}
 }

@@ -56,7 +56,10 @@ AGENTS.md/.sync-version（同步戳）。老版本残留的 pipeline.yml/state.j
 （死文件无害，无需手动处理）。
 
 安全：白名单迁移（不盲目搬整个 .forge/），幂等（重复跑无害）。
---dry-run 预览，--force 覆盖 DataDir 已有同名（默认跳过）。`,
+--dry-run 预览，--force 覆盖 DataDir 已有同名（默认跳过）。
+
+注意：本命令只做版本升级后的本地搬迁（项目级 .forge/ → 用户级 DataDir）；
+跨机器迁移用 forge project export/import。`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		p, err := findProject()
 		if err != nil {
