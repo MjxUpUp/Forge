@@ -5,8 +5,8 @@
 
 ### Bug Fixes
 
-* **dsh/opencode:** win32 spawn 走 cmd.exe 解析 npm .cmd shim——修掉全门禁静默失效 ([51e8749](https://github.com/MjxUpUp/Forge/commit/51e87491195a542854766612791d03aed6791ace))
 * **dsh/opencode:** win32 spawn 走 cmd.exe 解析 npm .cmd shim——修掉全门禁静默失效 ([1a0c1a4](https://github.com/MjxUpUp/Forge/commit/1a0c1a48cfb3fac0dc132b0ca9a8fd8e799967c8))
+* **dsh:** @agent_forge/forge-dsh 0.1.1 随发版火车发布——Windows spawn 修复到达插件用户（release.yml 幂等发布，读插件自身 version）
 
 ## [1.39.0](https://github.com/MjxUpUp/Forge/compare/v1.38.2...v1.39.0) (2026-08-20)
 
