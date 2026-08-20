@@ -4,7 +4,7 @@
   "description": "Forge quality gates for DeepSeek Harness (dsh): task gates, read-before-edit, bash hazard interception and quality scoring, driven by the forge CLI through DSH's typed interception points.",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/MjxUpUp/Forge.git",
+    "url": "https://github.com/MjxUpUp/Forge",
     "directory": "plugins/forge-dsh"
   },
   "type": "module",
@@ -33,7 +33,7 @@
     "hooks",
     "ai-code-quality"
   ],
-  "license": "MIT",
+  "license": "Apache-2.0",
   "engines": {
     "node": ">=18"
   },
