@@ -10,8 +10,10 @@ import { readFileSync, rmSync } from "node:fs";
 import { Context } from "@deepseek-ai/cordis";
 import * as forgePlugin from "./index.js";
 
-const FAKE = new URL("../test/doubles/fake-forge.mjs", import.meta.url).pathname;
-const LOG = new URL("../test/doubles/.wiring-log", import.meta.url).pathname;
+import { fileURLToPath } from "node:url";
+import { FAKE_BIN as FAKE } from "../test/doubles/forge-bin.mjs";
+
+const LOG = fileURLToPath(new URL("../test/doubles/.wiring-log", import.meta.url));
 
 function makeAgent(cwd = process.cwd()) {
   const calls = { injected: [], steered: [] };
