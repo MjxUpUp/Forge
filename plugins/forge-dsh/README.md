@@ -35,6 +35,9 @@ task-verify, review-stop, skill-trigger, and the session-start group.
 - The `forge` CLI on `PATH` (`npm install -g @agent_forge/forge`), with the project
   initialized (`forge init`) for task gates to have state to enforce.
 - DeepSeek Harness `0.1.0-rc.x` (verified against `0.1.0-rc.7`), Node.js ≥ 18.
+- Windows works out of the box: npm lays out `forge` as a `forge.cmd` shim, which
+  the plugin spawns through `cmd.exe` (a bare spawn cannot execute it); timeout
+  kills tear down the whole child tree via `taskkill /T`.
 
 ## Install
 
@@ -93,7 +96,7 @@ Raise `timeoutMs` on big projects.
 
 ```sh
 npm install   # dev-only: @deepseek-ai/cordis for the wiring tests
-npm test      # 33 tests: mapping, runner, decision folding, real-cordis wiring
+npm test      # mapping, runner (incl. cross-OS planSpawn units), decision folding, real-cordis wiring
 ```
 
 `test/doubles/fake-forge.mjs` stands in for the forge binary; the wiring suite
