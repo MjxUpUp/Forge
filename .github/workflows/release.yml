@@ -182,6 +182,10 @@ jobs:
             echo "already published @agent_forge/forge-dsh@$VER, skipping"
           else
             echo "Publishing @agent_forge/forge-dsh@$VER"
+            # dry-run 门禁先行（与主包同姿势）：npa/结构类错误在真实 publish 前暴露。
+            out=$(cd plugins/forge-dsh && npm publish --dry-run --access public 2>&1) \
+              || echo "$out" | grep -q "cannot publish over the previously published" \
+              || { echo "$out"; exit 1; }
             # cd 进包目录再 publish（裸路径会被 npa 当 GitHub shorthand，见上方主包注释）；
             # --provenance 需要 package.json 的 repository.directory 字段指向本目录（已配）。
             (cd plugins/forge-dsh && npm publish --access public --provenance)
