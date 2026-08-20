@@ -93,19 +93,23 @@ func BuildKimiPluginHooks() []KimiPluginHook {
 	for _, ev := range events {
 		for _, m := range spec[ev] {
 			for _, entry := range m.Hooks {
-				// kimi 0.35.0 drops allow-path stdout from the model context for every event
-				// except UserPromptSubmit (verified via wire.jsonl). skill-trigger is advisory —
-				// running it on PreToolUse/PostToolUse/Stop/SessionStart would (a) never reach the
-				// model and (b) record a checklog entry (recordSkillTriggerHits) that misleads
-				// `forge skills usage` into reporting a delivered trigger the model never saw. So
-				// the kimi manifest binds skill-trigger ONLY to UserPromptSubmit. The config.toml
-				// path (BuildKimiHooksTOML) is deliberately NOT filtered — it serves the
-				// no-plugin-installed case and keeps full spec parity (guarded by
-				// TestKimiWiringMirrorsClaudeSettings); runSkillTriggerHook's defensive guard
-				// neutralizes stale installed manifests either way.
-				if ev != "UserPromptSubmit" && isSkillTriggerCommand(entry.Command) {
-					continue
-				}
+				// skill-trigger is wired on EVERY event, same as the config.toml path
+				// (BuildKimiHooksTOML): kimi 0.35.0 still drops allow-path stdout outside
+				// UserPromptSubmit (wire.jsonl-verified), but since the 2026-08 hostcap fix
+				// the engine RECORDS those hits with Delivered=false (hostcap.ContextChannel)
+				// and only PRINTS on UserPromptSubmit (runSkillTriggerHook) — the dashboard
+				// feed and usage funnel see the full trigger picture (kimi tasks previously
+				// showed only the 5 pipeline skeleton events) while the funnel counts
+				// Delivered=true only, so the old false-prosperity concern that motivated
+				// filtering here cannot recur.
+				//
+				// skill-trigger 在每个事件上都接线，与 config.toml 路径（BuildKimiHooksTOML）
+				// 一致：kimi 0.35.0 仍然丢弃 UserPromptSubmit 以外事件的 allow 路径 stdout
+				// （wire.jsonl 实证），但自 2026-08 hostcap 修复起，引擎把这些命中以
+				// Delivered=false 记录（hostcap.ContextChannel），且只在 UserPromptSubmit
+				// 打印（runSkillTriggerHook）——看板事件流与 usage 漏斗看到完整触发图景
+				// （此前 kimi 任务只显示 5 条管道骨架事件），而漏斗只计 Delivered=true，
+				// 当年促成此处过滤的虚假繁荣顾虑不会复活。
 				out = append(out, KimiPluginHook{
 					Event:   ev,
 					Matcher: m.Matcher,
@@ -118,18 +122,18 @@ func BuildKimiPluginHooks() []KimiPluginHook {
 	return out
 }
 
-// isSkillTriggerCommand reports whether a hook command is the skill-trigger hook. It is
-// dual-purpose: BuildKimiPluginHooks calls it on the RAW spec command ("forge hook
-// skill-trigger", bare) and the manifest guard test calls it on the agent-TRANSLATED manifest
-// command ("forge hook skill-trigger --agent kimi"). A word boundary after the token (end of
-// string or a space) accepts both forms while rejecting a hypothetical future
-// "forge hook skill-trigger-v2" that a plain Contains would false-match.
+// isSkillTriggerCommand reports whether a hook command is the skill-trigger hook. The
+// manifest guard test calls it on the agent-TRANSLATED manifest command ("forge hook
+// skill-trigger --agent kimi") and the RAW spec command ("forge hook skill-trigger",
+// bare). A word boundary after the token (end of string or a space) accepts both forms
+// while rejecting a hypothetical future "forge hook skill-trigger-v2" that a plain
+// Contains would false-match.
 //
-// isSkillTriggerCommand 报告某 hook command 是否为 skill-trigger hook。它是双用途：
-// BuildKimiPluginHooks 对 RAW spec 命令（裸 "forge hook skill-trigger"）调用，manifest 守卫
-// 测试对 agent 翻译后的 manifest 命令（"forge hook skill-trigger --agent kimi"）调用。token
-// 后的字边界（字符串尾或空格）两种形式都接受，同时拒绝纯 Contains 会误匹配的假设性未来
-// "forge hook skill-trigger-v2"。
+// isSkillTriggerCommand 报告某 hook command 是否为 skill-trigger hook。manifest 守卫
+// 测试对 agent 翻译后的 manifest 命令（"forge hook skill-trigger --agent kimi"）与裸
+// spec 命令（"forge hook skill-trigger"）调用。token 后的字边界（字符串尾或空格）
+// 两种形式都接受，同时拒绝纯 Contains 会误匹配的假设性未来 "forge hook
+// skill-trigger-v2"。
 func isSkillTriggerCommand(cmd string) bool {
 	const token = "forge hook skill-trigger"
 	i := strings.Index(cmd, token)
