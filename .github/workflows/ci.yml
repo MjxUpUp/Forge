@@ -42,9 +42,15 @@ jobs:
         run: "! gofmt -l cmd internal skills | grep ."
 
   # 发版脚本（scripts/release.js）的 node:test 测试。原来只存在于本地，CI 不跑 = 没测试。
+  # forge-dsh 套件必须加 windows：win32 走 cmd.exe spawn 路径（npm 只装 forge.cmd
+  # shim，裸 spawn 是 ENOENT → 全 fail-open），只跑 ubuntu = Windows 路径 CI 不跑
+  # = 没测试（2026-08-20 本机实测全静默失效而 CI 全绿）。
   scripts-test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 5
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6

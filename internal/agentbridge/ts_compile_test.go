@@ -41,7 +41,16 @@ func TestGeneratedTSCompiles(t *testing.T) {
 	stub := `declare module "@opencode-ai/plugin" {}
 declare module "node:child_process" {
   export function spawn(cmd: string, args: string[], opts?: any): any;
+  // Single-command form (shell:true routes the whole line through cmd.exe).
+  export function spawn(cmd: string, opts?: any): any;
 }
+// Node process global — forge_spawn.ts's win32 routing reads process.platform
+// (same self-contained rationale as Buffer below).
+declare const process: { platform: string };
+// Node console global — the exit-code-aware close handler mirrors infrastructure
+// failures to console.error (the opencode caller drops the error field, so
+// stderr is the only channel an operator sees).
+declare const console: { error(...args: unknown[]): void };
 // Node global Buffer — the generated TS annotates (d: Buffer). Declared here so
 // the type-check resolves WITHOUT @types/node (CI test job installs none; a
 // local machine with global @types/node hides the gap — exactly the v0.26.0
@@ -136,5 +145,61 @@ func TestForgeSpawnTimeoutContract(t *testing.T) {
 	// `await runForge(...)` (no .catch) for its never-abort contract.
 	if strings.Contains(tsSharedForgeSpawn, "reject(") {
 		t.Error("forge_spawn.ts must not reject (fail-open resolve-only contract; opencode post-hook awaits without .catch)")
+	}
+}
+
+// TestForgeSpawnWindowsContract pins the win32 npm-shim fix: npm lays out
+// forge as forge + forge.cmd (no forge.exe), and CreateProcess cannot execute
+// a .cmd shim — a bare spawn("forge") is ENOENT on Windows and every gate
+// silently fails open (2026-08-20 reproduced live: PATH held only the npm
+// shims while the dsh plugin's gates were all fail-open). The shared snippet
+// must route win32 spawns through cmd.exe (shell) as ONE pre-built command
+// string, and its timeout must tree-kill via taskkill /T — killing only the
+// cmd.exe wrapper orphans the forge grandchild, which keeps the inherited
+// stdio pipes open and pins the host's event loop forever (same fix as
+// plugins/forge-dsh/lib/runner.js planSpawn).
+func TestForgeSpawnWindowsContract(t *testing.T) {
+	for _, want := range []string{
+		`process.platform === "win32"`,       // the routing exists
+		"shell: true",                        // …through cmd.exe
+		`[bin, ...parts.slice(1)].join(" ")`, // one pre-built command string (args+shell is DEP0190)
+		`/[&|()<>^,;=\s]/`,                   // …binary quoted on cmd metacharacters, not just spaces
+		"taskkill",                           // timeout tree-kills shell + descendants
+		`"/T", "/F"`,                         // …atomically, not just the wrapper
+	} {
+		if !strings.Contains(tsSharedForgeSpawn, want) {
+			t.Errorf("forge_spawn.ts missing %q (win32 npm-shim contract)", want)
+		}
+	}
+}
+
+// TestForgeSpawnExitCodeContract pins the fix-asymmetry repair (2026-08-20
+// review MEDIUM-1): the dsh runner got exit-code-aware empty-stdout handling
+// but the embedded snippet still parsed unconditionally. On the win32 cmd.exe
+// route a missing binary exits nonzero with its error on stderr and nothing
+// on stdout — no spawn "error" event fires (cmd.exe itself started fine), so
+// JSON.parse("") used to collapse it into an anonymous allow: every gate
+// silently inert, zero diagnostics, the exact incident signature this whole
+// fix addresses. The snippet must now split empty stdout by exit code AND
+// mirror the failure to console.error (the opencode caller drops the error
+// field — stderr is the only channel an operator sees). Also pins the taskkill
+// fallback widening (review LOW-1): killer.on("close") must fall back to
+// kill() when taskkill itself exits nonzero (access denied), not only when it
+// fails to spawn.
+func TestForgeSpawnExitCodeContract(t *testing.T) {
+	for _, want := range []string{
+		`if (out.trim() === "")`,              // empty stdout is classified before parsing
+		"if (code !== 0) {",                   // …by exit code: nonzero ≠ clean silent allow
+		"console.error(`[forge]",              // …and the failure reaches a visible channel
+		`error?: string`,                      // the verdict carries the failure note
+		`killer.on("close", (c: number) => {`, // taskkill nonzero-exit fallback (LOW-1)
+		"if (c !== 0) fallback();",            // …so an access-denied taskkill still kills
+		"forge spawn error:",                  // spawn-error path is diagnosed too (review follow-up LOW)
+		"unparseable forge stdout",            // …as is the parse-failure path
+		"timed out after 30000ms",             // …and the timeout path — no anonymous allows left
+	} {
+		if !strings.Contains(tsSharedForgeSpawn, want) {
+			t.Errorf("forge_spawn.ts missing %q (exit-code/fallback contract)", want)
+		}
 	}
 }
