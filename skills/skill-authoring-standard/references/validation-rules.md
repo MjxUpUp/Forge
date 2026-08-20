@@ -43,5 +43,5 @@ R12 只校验「keywords 或 when 至少需一」，**查不出「配了 keyword
 
 ## 配套
 
-- 安全审查（22 条规则 + 加权评分）：`forge skills audit`，实现同包（audit.py 语义对齐 + forge 本地 DC-8/DC-9/DC-10 供应链执行向量），不属于 R1-R11 规范契约。
+- 安全审查（21 条规则 + 加权评分）：`forge skills audit`，实现同包（audit.py 语义对齐 + forge 本地 DC-8/DC-9/DC-10 供应链执行向量），不属于 R1-R11 规范契约。
 - 防注水扫描：`references/skill-anti-degradation-check.sh`（见 SKILL.md「防注水自检」节指针的拆分文件 references/anti-degradation.md）。
