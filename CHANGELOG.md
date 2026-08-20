@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.39.0](https://github.com/MjxUpUp/Forge/compare/v1.38.2...v1.39.0) (2026-08-20)
+
+
+### Features
+
+* **agentbridge:** 接入 DeepSeek Harness 插件生态（plugins/forge-dsh） ([0a4b7f3](https://github.com/MjxUpUp/Forge/commit/0a4b7f38938fbc70d339359d71513e0c7c8d077f))
+
+
+### Bug Fixes
+
+* **release:** 首发前审查跟进——license 对齐 Apache-2.0 + forge-dsh dry-run 门禁 ([0e22f66](https://github.com/MjxUpUp/Forge/commit/0e22f66da5d3df9fdb3d82d7ace1d1357bcf6b85))
+
 ## [1.38.2](https://github.com/MjxUpUp/Forge/compare/v1.38.1...v1.38.2) (2026-08-20)
 
 
