@@ -156,12 +156,12 @@ func TestCodexHooks_OnlyLegalCodexEvents(t *testing.T) {
 			t.Errorf("illegal codex hook event %q (not in the official roster — never fires)", event)
 		}
 	}
-	for _, required := range []string{`PreToolUse`, `PostToolUse`, `Stop`, `SessionStart`, `UserPromptSubmit`, `PostCompact`} {
+	for _, required := range []string{`PreToolUse`, `PostToolUse`, `Stop`, `SessionStart`, `UserPromptSubmit`, `PostCompact`, `SubagentStop`} {
 		if _, present := hooksMap[required]; !present {
 			t.Errorf(`codex must wire %s (has a ForgeHookSpec analogue): missing`, required)
 		}
 	}
-	for _, banned := range []string{`SessionEnd`, `PermissionRequest`, `PreCompact`, `SubagentStart`, `SubagentStop`} {
+	for _, banned := range []string{`SessionEnd`, `PermissionRequest`, `PreCompact`, `SubagentStart`} {
 		if _, present := hooksMap[banned]; present {
 			t.Errorf(`codex must not wire %s (no ForgeHookSpec analogue)`, banned)
 		}

@@ -797,3 +797,51 @@ func TestIsSourceFile_VendorExcluded(t *testing.T) {
 		}
 	}
 }
+
+// TestClassifyChangedPath pins the exported single-source classifier the test-nudge
+// hook (cli) shares with this gate: same verdict for "owes a paired test" (source
+// extension, non-whitelisted, not itself a test) and "is itself a test". A nudge
+// counting whitelist files or missing test files would teach agents a different
+// rule than the one that enforces at task-verify.
+//
+// TestClassifyChangedPath 钉住导出的单一真相源分类器——test-nudge hook（cli）
+// 与本门禁共用：「欠配对测试」（源码后缀、非白名单、自身非测试）与「自身是
+// 测试」同规判定。nudge 若计白名单文件或漏认测试文件，教给 agent 的规则就
+// 和执法的规则分叉了。
+func TestClassifyChangedPath(t *testing.T) {
+	cases := []struct {
+		path       string
+		wantSource bool
+		wantTest   bool
+	}{
+		// Real source: owes a paired test.
+		//
+		// 真源码：欠配对测试。
+		{"internal/foo/bar.go", true, false},
+		{"pkg/x.py", true, false},
+		{"src/x.rs", true, false},
+		// Test files: is-test, owes nothing.
+		//
+		// 测试文件：是测试，不欠。
+		{"internal/foo/bar_test.go", false, true},
+		{"pkg/x.spec.ts", false, true},
+		// Whitelisted source (entry points / generated / pure types): neither.
+		//
+		// 白名单源码（入口/生成物/纯类型）：两者皆非。
+		{"cmd/forge/main.go", false, false},
+		{"pkg/x.gen.go", false, false},
+		{"pkg/types.go", false, false},
+		{"src/lib.rs", false, false},
+		// Non-source and vendor baselines: neither.
+		//
+		// 非源码与 vendor 基线：两者皆非。
+		{"README.md", false, false},
+		{"vendor/github.com/x/y.go", false, false},
+	}
+	for _, c := range cases {
+		source, test := ClassifyChangedPath(c.path)
+		if source != c.wantSource || test != c.wantTest {
+			t.Errorf("ClassifyChangedPath(%q) = (%v, %v), want (%v, %v)", c.path, source, test, c.wantSource, c.wantTest)
+		}
+	}
+}

@@ -363,6 +363,13 @@ func buildWindsurfHooks() map[string]any {
 				{Command: "forge hook auto-compile --agent windsurf", ShowOutput: false},
 				{Command: "forge hook workflow-test-guard --agent windsurf", ShowOutput: false},
 				{Command: "forge hook skill-trigger --agent windsurf", ShowOutput: false},
+				// Mid-task test reminder (#4-E). Advisory like its siblings; the
+				// normalized stdin (windsurf dialect → file_path) reaches the
+				// in-process hook the same way auto-compile gets it.
+				//
+				// 事中测试提醒（#4-E）。与同组 hook 一样 advisory；归一化的 stdin
+				// （windsurf 方言 → file_path）以 auto-compile 同款方式到达进程内 hook。
+				{Command: "forge hook test-nudge --agent windsurf", ShowOutput: false},
 			},
 			"post_run_command": {
 				{Command: "forge hook file-sentinel --agent windsurf", ShowOutput: false},

@@ -161,6 +161,29 @@ type HookInput struct {
 	// 在那里加 --agent 后缀是无谓 churn；payload 字段对它不可见）。在
 	// resolveHookAgent 链中优先级最低（位于 --agent 与 FORGE_HOOK_AGENT 之后）。
 	ForgeAgent string `json:"forge_agent,omitempty"`
+	// Error is the top-level error text the host sends on PostToolUseFailure (Bash
+	// failures carry "Exit code N" + stderr there) — consumed by the failure-track
+	// hook for the compile/test failure heuristic and the checklog observation.
+	//
+	// Error 是宿主在 PostToolUseFailure 上发的顶层错误文本（Bash 失败携带
+	// "Exit code N" + stderr）——供 failure-track hook 的编译/测试失败启发式与
+	// checklog 观察记录消费。
+	Error string `json:"error,omitempty"`
+	// AgentID/AgentTypeHook/LastAssistantMessage are SubagentStop fields (official
+	// Claude Code hooks schema): the finishing sub-agent's identity and final message.
+	// Consumed by subagent-track for attribution — sessions.jsonl missed agent_type
+	// for ~53% of sessions before sub-agent activity had any forge-side record.
+	// AgentTypeHook (not AgentType) to avoid colliding with the CLI's existing
+	// agent-resolution vocabulary in this file.
+	//
+	// AgentID/AgentTypeHook/LastAssistantMessage 是 SubagentStop 字段（官方
+	// Claude Code hooks schema）：结束中子 agent 的身份与最终消息。供
+	// subagent-track 做归因——在子 agent 活动有 forge 侧记录之前，sessions.jsonl
+	// 约 53% 会话缺 agent_type。命名 AgentTypeHook（非 AgentType）以避免与本
+	// 文件既有的 agent 解析词汇冲突。
+	AgentID              string `json:"agent_id,omitempty"`
+	AgentTypeHook        string `json:"agent_type,omitempty"`
+	LastAssistantMessage string `json:"last_assistant_message,omitempty"`
 }
 
 // toolInputFields holds the fields extracted from the tool_input JSON.
@@ -193,10 +216,29 @@ type HookOutput struct {
 
 // HookSpecificOutput holds fields that steer Claude Code behavior.
 //
+// PermissionDecision/PermissionDecisionReason are the CURRENT PreToolUse schema
+// (2026-08-22 #4-B migration, additive): official docs put the deny/ask/defer/allow
+// verdict at hookSpecificOutput.permissionDecision — the legacy TOP-LEVEL
+// decision:"block" on PreToolUse is no longer adopted there (community-verified
+// breakage). exit 2 remains a first-class block channel that "routes the same way
+// as deny", so existing blocks never depended on the legacy field; filling the
+// current field makes the deny explicit under the live schema. Kept omitempty so
+// non-PreToolUse events and allow paths serialize exactly as before.
+//
 // HookSpecificOutput 含控制 Claude Code 行为的字段。
+//
+// PermissionDecision/PermissionDecisionReason 是 PreToolUse 的现行 schema
+// （2026-08-22 #4-B 迁移，additive）：官方文档把 deny/ask/defer/allow 判决放在
+// hookSpecificOutput.permissionDecision——PreToolUse 上遗留的顶层
+// decision:"block" 已不被采纳（社区实证旧 hook 因此静默失效）。exit 2 仍是
+// 一等阻断通道（"routes the same way as deny"），既有阻断从不依赖遗留字段；
+// 填现行字段让 deny 在活 schema 下显式化。保持 omitempty：非 PreToolUse 事件
+// 与 allow 路径的序列化与之前逐字节一致。
 type HookSpecificOutput struct {
-	HookEventName     string `json:"hookEventName"`
-	AdditionalContext string `json:"additionalContext,omitempty"`
+	HookEventName            string `json:"hookEventName"`
+	AdditionalContext        string `json:"additionalContext,omitempty"`
+	PermissionDecision       string `json:"permissionDecision,omitempty"`
+	PermissionDecisionReason string `json:"permissionDecisionReason,omitempty"`
 }
 
 // maxAdditionalContextLen is the upper bound of Claude Code additionalContext (10,000 chars).
@@ -305,12 +347,29 @@ func isGlobalHook(name string) bool {
 	return name == "skill-scan" || name == "init-suggest" || name == "mcp-scan" || name == "skill-trigger"
 }
 
+// isInProcessHook names the hooks handled entirely in Go inside runHook (no bash
+// embed script): they need live HookInput fields from stdin (skill-trigger: event/
+// prompt/tool_output; failure-track: error text; subagent-track: agent_id/agent_type;
+// test-nudge: file_path), which the thin-wrapper bash can never reach — runHook already
+// consumed the stdin. Each has its dispatch point right after the skill-trigger
+// special case in runHook.
+//
+// isInProcessHook 列出完全在 runHook 内用 Go 处理的 hook（无 bash embed 脚本）：
+// 它们需要 stdin 的实时 HookInput 字段（skill-trigger：event/prompt/tool_output；
+// failure-track：error 文本；subagent-track：agent_id/agent_type；test-nudge：
+// file_path），thin-wrapper bash 永远拿不到——runHook 已把 stdin 消费掉。各自的
+// 分发点在 runHook 里 skill-trigger 特例之后。
+func isInProcessHook(name string) bool {
+	return name == "skill-trigger" || name == "failure-track" || name == "subagent-track" || name == "test-nudge"
+}
+
 func runHook(cmd *cobra.Command, args []string) error {
 	name := args[0]
 	content, ok := hooks.EmbeddedContent(name)
-	// skill-trigger 走 runHook 特例（Go 内判定，不经 bash embed），无 embed script——
-	// 放行其 name，特例在 hookInput 解析 + agent normalize 之后拦截 return。
-	if !ok && name != "skill-trigger" {
+	// skill-trigger / failure-track / subagent-track / test-nudge 走 runHook 特例
+	// （Go 内判定，不经 bash embed），无 embed script——放行其 name，特例在
+	// hookInput 解析 + agent normalize 之后拦截 return（见 isInProcessHook）。
+	if !ok && !isInProcessHook(name) {
 		return fmt.Errorf("unknown hook: %s", name)
 	}
 
@@ -503,6 +562,26 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// stdin). Handling in Go reuses the already-normalized hookInput + agent stdin normalize.
 	if name == "skill-trigger" {
 		return runSkillTriggerHook(hookInput, root, cmd.Root().Version, agent)
+	}
+	// failure-track / subagent-track / test-nudge：与 skill-trigger 同类的 Go 内特例
+	// （见 isInProcessHook）。都复用 runHook 已 normalize 的 hookInput 与已解析的
+	// root/agent；全部 advisory（永不阻断——PostToolUseFailure/SubagentStop 上的
+	// 阻断收益为负：失败循环需要的是提示不是拦截，子 agent 空交付阻断假阳性过高）。
+	//
+	// failure-track / subagent-track / test-nudge: Go-internal special cases of the
+	// same class as skill-trigger (see isInProcessHook). All reuse runHook's
+	// already-normalized hookInput and resolved root/agent; all advisory (never
+	// block — blocking on PostToolUseFailure/SubagentStop has negative value: a
+	// failure loop needs a nudge, not an interception, and empty-delivery
+	// subagent blocks have too many false positives).
+	if name == "failure-track" {
+		return runFailureTrackHook(hookInput, root, cmd.Root().Version, agent)
+	}
+	if name == "subagent-track" {
+		return runSubagentTrackHook(hookInput, root, cmd.Root().Version, agent)
+	}
+	if name == "test-nudge" {
+		return runTestNudgeHook(hookInput, root, cmd.Root().Version, agent)
 	}
 
 	// 1c. Patch-tool exemption for read-before-edit (codex reports file edits as
@@ -924,23 +1003,29 @@ func runHook(cmd *cobra.Command, args []string) error {
 	}
 
 	// 6b. Record tool usage for activity-ratio detection. auto-compile records Write/Edit;
-	// tool-track records Read|Skill|Agent (matcher lives in ForgeHookSpec), giving the
+	// tool-track records Read|Skill|Agent|Bash (matcher lives in ForgeHookSpec), giving the
 	// read-before-edit gate (task-verify) Read data — otherwise that gate would always fail on any task
 	// with an edit (644b142 deleted the original Read recorder).
 	// tool_input population: auto-compile (Edit/Write) records file_path/content; tool-track's Skill/Agent
 	// records the skill name/subagent_type (scheme C: lets toollog audits see which quality skill the agent loaded and what kind of
-	// subagent it dispatched — root cause of zero quality-skill fires in advisory context is traceable). Read records a minimal
+	// subagent it dispatched — root cause of zero quality-skill fires in advisory context is traceable). Bash records the
+	// command (truncated) — the 2026-08-22 adherence audit found 27.7k Bash invocations with ZERO toollog rows because the
+	// Bash matcher carried no tool-track; the audit (and any future hazard/behavior analysis) needs the command text,
+	// same truncated treatment as Skill/Agent. Read records a minimal
 	// {"file_path":...} (2026-08-16 review HIGH-1: the funnel join — skillseval.BuildTriggerFunnel — matches Read tool_input
 	// suffixes to attribute "loaded the skill after the trigger hit"; omitting it made that join structurally dead on production
 	// data while unit tests stayed green on hand-marshaled inputs. The lean-toollog tradeoff lost to the observability signal).
 	//
 	// 6b. 记录 tool usage 用于 activity-ratio 检测。auto-compile 记 Write/Edit；
-	// tool-track 记 Read|Skill|Agent（matcher 在 ForgeHookSpec 中），让
+	// tool-track 记 Read|Skill|Agent|Bash（matcher 在 ForgeHookSpec 中），让
 	// read-before-edit gate（task-verify）有 Read 数据——否则该 gate 在任何带
 	// edit 的 task 上恒失败（644b142 删过原来的 Read recorder）。
 	// tool_input 填充：auto-compile（Edit/Write）记 file_path/content；tool-track 的 Skill/Agent
 	// 记 skill 名/subagent_type（方案 C：让 toollog 审计能看到 agent 加载了哪个质量 skill、派了
-	// 哪类子 agent——advisory 语境下质量 skill 0 触发的根因可追溯）。Read 记最小 {"file_path":...}
+	// 哪类子 agent——advisory 语境下质量 skill 0 触发的根因可追溯）。Bash 记命令（截断）——
+	// 2026-08-22 遵循度审计发现 27.7k 次 Bash 调用在 toollog 零行（Bash matcher 没挂
+	// tool-track）；审计（及未来的 hazard/行为分析）需要命令文本，与 Skill/Agent 同截断待遇。
+	// Read 记最小 {"file_path":...}
 	// （2026-08-16 审查 HIGH-1：漏斗 join——skillseval.BuildTriggerFunnel——靠 Read tool_input 的
 	// 后缀匹配归因「命中后加载了该 skill」；省略它使该 join 在生产数据上结构性死亡，而单测用手工
 	// marshal 的输入照样全绿。lean 权衡让位于可观测信号）。
@@ -950,7 +1035,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 			TaskRef:   taskRef,
 			SessionID: util.SanitizeSessionID(hookInput.SessionID),
 		}
-		if name == "auto-compile" || (name == "tool-track" && (hookInput.ToolName == "Skill" || hookInput.ToolName == "Agent")) {
+		if name == "auto-compile" || (name == "tool-track" && (hookInput.ToolName == "Skill" || hookInput.ToolName == "Agent" || hookInput.ToolName == "Bash")) {
 			raw := string(hookInput.ToolInput)
 			call.ToolInput = toolusage.TruncateInput(raw)
 			call.InputLen = len(raw)
@@ -1322,13 +1407,29 @@ func emitClaudeOutput(eventName string, passed bool, detail string) error {
 	if detail == "" {
 		detail = "forge hook blocked the action"
 	}
+	// #4-B: on PreToolUse the deny ALSO rides the current hookSpecificOutput.
+	// permissionDecision field — the legacy top-level decision:"block" is no longer
+	// adopted there (still emitted for the hosts/events that read it; Stop keeps
+	// using top-level decision). exit 2 below remains the load-bearing block channel
+	// ("routes the same way as deny"), so this is additive schema alignment, not a
+	// behavior change.
+	//
+	// #4-B：PreToolUse 上 deny 同时走现行 hookSpecificOutput.permissionDecision
+	// 字段——遗留顶层 decision:"block" 在该事件上已不被采纳（仍为读它的宿主/事件
+	// 发出；Stop 继续用顶层 decision）。下方 exit 2 仍是承重阻断通道
+	// （"routes the same way as deny"），本改动是 additive 的 schema 对齐，非行为变更。
+	hso := &HookSpecificOutput{
+		HookEventName:     eventName,
+		AdditionalContext: detail,
+	}
+	if eventName == "PreToolUse" {
+		hso.PermissionDecision = "deny"
+		hso.PermissionDecisionReason = detail
+	}
 	out := HookOutput{
-		Decision: "block",
-		Reason:   detail,
-		HookSpecificOutput: &HookSpecificOutput{
-			HookEventName:     eventName,
-			AdditionalContext: detail,
-		},
+		Decision:           "block",
+		Reason:             detail,
+		HookSpecificOutput: hso,
 	}
 	data, _ := json.Marshal(out)
 	fmt.Println(string(data))

@@ -5,13 +5,15 @@
       "hooks": [
         { "type": "command", "command": "forge hook auto-compile" },
         { "type": "command", "command": "forge hook workflow-test-guard" },
-        { "type": "command", "command": "forge hook skill-trigger" }
+        { "type": "command", "command": "forge hook skill-trigger" },
+        { "type": "command", "command": "forge hook test-nudge" }
       ]
     },
     {
       "matcher": "Bash",
       "hooks": [
         { "type": "command", "command": "forge hook file-sentinel" },
+        { "type": "command", "command": "forge hook tool-track" },
         { "type": "command", "command": "forge hook skill-trigger" }
       ]
     },
@@ -48,6 +50,21 @@
         { "type": "command", "command": "forge hook task-verify" },
         { "type": "command", "command": "forge hook review-stop" },
         { "type": "command", "command": "forge hook skill-trigger" }
+      ]
+    }
+  ],
+  "PostToolUseFailure": [
+    {
+      "matcher": "Bash|PowerShell",
+      "hooks": [
+        { "type": "command", "command": "forge hook failure-track" }
+      ]
+    }
+  ],
+  "SubagentStop": [
+    {
+      "hooks": [
+        { "type": "command", "command": "forge hook subagent-track" }
       ]
     }
   ],

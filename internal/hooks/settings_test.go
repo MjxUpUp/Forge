@@ -1825,3 +1825,44 @@ func GenerateSettings(projectDir string) error {
 	}
 	return mergeForgeHooksIntoSettings(filepath.Join(projectDir, ".claude", "settings.local.json"))
 }
+
+// TestForgeHookSpecObservationHooks pins the #4-A wiring (2026-08-22): the three
+// observation hooks ride the canonical spec — test-nudge on PostToolUse Write|Edit,
+// tool-track additionally on PostToolUse Bash, failure-track on PostToolUseFailure
+// (Bash|PowerShell), subagent-track on SubagentStop. Every host derives its roster
+// from this spec (plugin pack / kimi / dsh mirroring) — a dropped line here silently
+// unwires all hosts at once.
+//
+// TestForgeHookSpecObservationHooks 钉住 #4-A 接线（2026-08-22）：三个观察 hook
+// 挂在规范名册上——test-nudge 在 PostToolUse Write|Edit、tool-track 追加到
+// PostToolUse Bash、failure-track 在 PostToolUseFailure（Bash|PowerShell）、
+// subagent-track 在 SubagentStop。各宿主名册都从这份 spec 派生（plugin pack /
+// kimi / dsh 镜像）——这里掉一行，所有宿主同时静默失线。
+func TestForgeHookSpecObservationHooks(t *testing.T) {
+	spec := ForgeHookSpec()
+	has := func(event, matcher, name string) bool {
+		for _, m := range spec[event] {
+			if matcher != "" && m.Matcher != matcher {
+				continue
+			}
+			for _, h := range m.Hooks {
+				if strings.Contains(h.Command, "forge hook "+name) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	if !has("PostToolUse", "Write|Edit", "test-nudge") {
+		t.Error("PostToolUse Write|Edit group missing `forge hook test-nudge` (#4-E mid-task test reminder)")
+	}
+	if !has("PostToolUse", "Bash", "tool-track") {
+		t.Error("PostToolUse Bash group missing `forge hook tool-track` (27.7k Bash calls had zero toollog rows)")
+	}
+	if !has("PostToolUseFailure", "Bash|PowerShell", "failure-track") {
+		t.Error("PostToolUseFailure Bash|PowerShell group missing `forge hook failure-track`")
+	}
+	if !has("SubagentStop", "", "subagent-track") {
+		t.Error("SubagentStop group missing `forge hook subagent-track`")
+	}
+}

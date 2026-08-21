@@ -11,14 +11,19 @@ import (
 )
 
 // TestKimiWiringMirrorsClaudeSettings guards that the kimi [[hooks]] block is derived
-// from hooks.ForgeHookSpec (single source of truth): every spec entry appears exactly
-// once, under the same event and matcher, with the command rewritten to carry
-// `--agent kimi`. Mirrors TestCodexWiringMirrorsClaudeSettings.
+// from hooks.ForgeHookSpec (single source of truth): every spec entry on a
+// kimi-supported event appears exactly once, under the same event and matcher, with
+// the command rewritten to carry `--agent kimi`. Events outside kimiSupportedEvents
+// are deliberately ABSENT from the TOML (unverified events can fail kimi's config
+// validation and kill every hook — see BuildKimiHooksTOML), so parity is scoped the
+// same way as the plugin-manifest test. Mirrors TestCodexWiringMirrorsClaudeSettings.
 //
 // TestKimiWiringMirrorsClaudeSettings 守卫 kimi 的 [[hooks]] 块派生自
-// hooks.ForgeHookSpec（单一真相源）：每条 spec 条目恰好出现一次，event 与
-// matcher 不变，command 改写为带 `--agent kimi`。对齐
-// TestCodexWiringMirrorsClaudeSettings。
+// hooks.ForgeHookSpec（单一真相源）：kimi 支持事件上的每条 spec 条目恰好出现
+// 一次，event 与 matcher 不变，command 改写为带 `--agent kimi`。
+// kimiSupportedEvents 之外的事件刻意不进 TOML（未验证事件可能让 kimi config
+// 校验失败、杀掉全部 hook——见 BuildKimiHooksTOML），故对等范围与 plugin
+// manifest 测试同样收窄。对齐 TestCodexWiringMirrorsClaudeSettings。
 func TestKimiWiringMirrorsClaudeSettings(t *testing.T) {
 	toml := BuildKimiHooksTOML()
 	spec := hooks.ForgeHookSpec()
@@ -30,8 +35,20 @@ func TestKimiWiringMirrorsClaudeSettings(t *testing.T) {
 	// 查找会错配。
 	blocks := strings.Split(toml, "[[hooks]]\n")
 
+	// Unsupported events must be absent entirely, not just uncounted.
+	//
+	// 不支持的事件必须整体缺席，而非仅不计数。
+	for _, banned := range []string{"PostToolUseFailure", "SubagentStop"} {
+		if strings.Contains(toml, "event = "+tomlBasicString(banned)) {
+			t.Errorf("kimi config.toml must not carry unverified event %s (validation risk kills all hooks)", banned)
+		}
+	}
+
 	total := 0
 	for event, matchers := range spec {
+		if !kimiSupportedEvents[event] {
+			continue
+		}
 		for _, m := range matchers {
 			for _, entry := range m.Hooks {
 				total++
