@@ -475,8 +475,12 @@ function evtHTML(e, opts) {
     '<span class="evt-title">' + esc(e.title) + '</span>';
   if (e.grade) head += '<span class="grade-chip ' + gradeClass(e.grade) + '">' + esc(e.grade) + '</span>';
   if (!opts.hideProject && e.project) head += '<span class="proj-chip">' + esc(e.project) + '</span>';
-  // 多机器归因（Phase 3）：事件来源机器的 node 短标签（fnode_ 后 8 位）。
-  if (e.node) head += '<span class="node-chip" title="' + esc(e.node) + '">' + esc(e.node.replace(/^fnode_/, '').slice(0, 8)) + '</span>';
+  // 多机器归因（Phase 3）：node 短标签（fnode_ 后 8 位）。task-start 的 chip 是
+  // 「当前持有」（租约持有者），其余是「来源机器」（打戳者）——title 区分语义。
+  if (e.node) {
+    var nodeTitle = (e.kind === 'task-start' ? '当前持有: ' : '来源机器: ') + e.node;
+    head += '<span class="node-chip" title="' + esc(nodeTitle) + '">' + esc(e.node.replace(/^fnode_/, '').slice(0, 8)) + '</span>';
+  }
   head += '<span class="evt-time">' + esc(fmtDateTime(e.time)) + (e.commit ? ' · ' + esc(e.commit) : '') + '</span>';
   var body = e.detail ? '<div class="evt-body mono">' + esc(e.detail) + '</div>' : '';
   var attrs = ' data-project="' + esc(e.project || '') + '" data-ref="' + esc(e.taskRef || '') + '"';
