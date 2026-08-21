@@ -157,7 +157,38 @@ func TestBuildEvidenceChain_ReviewPassPlanFirstExcluded(t *testing.T) {
 		t.Fatalf(`review-pass/plan-first 不应计入 deterministic: got %d, want 1`, ec.Deterministic)
 	}
 	if len(ec.Entries) != 3 {
-		t.Fatalf(`条目仍应保留在 Entries 供 trace: got %d, want 3`, len(ec.Entries))
+		t.Fatalf(`review-pass/plan-first 条目仍应保留在 Entries 供 trace: got %d, want 3`, len(ec.Entries))
+	}
+}
+
+// TestBuildEvidenceChain_ObservationHooksExcluded pins that the #4-A observation-hook
+// checks (CheckToolFailure / CheckSubagentStop / CheckTestNudge) are excluded from
+// evidence-strength bucketing: all three record OBSERVATIONS of process (a tool failed /
+// a sub-agent finished / a nudge fired), never any verification the task's gates ran —
+// counting them as deterministic would inflate Strength off process noise. This is the
+// unknown-check-name trap: BuildEvidenceChain only excludes explicitly listed names, so
+// a new observation check added without touching the list silently lands in the
+// deterministic bucket. Entries are still kept for trace.
+//
+// TestBuildEvidenceChain_ObservationHooksExcluded 钉住 #4-A 观察 hook 的三个 check
+// （CheckToolFailure / CheckSubagentStop / CheckTestNudge）不计入证据强度：三者记录的
+// 都是过程 OBSERVATION（工具失败 / 子 agent 结束 / 提醒发出），绝非任务门禁实跑的
+// 验证——计入 deterministic 会拿过程噪声虚高 Strength。这也是未知 check 名陷阱：
+// BuildEvidenceChain 只排除显式列名，新增观察 check 不同步清单就会静默落进
+// deterministic 桶。条目仍保留供 trace。
+func TestBuildEvidenceChain_ObservationHooksExcluded(t *testing.T) {
+	entries := []Entry{
+		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckToolFailure, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckSubagentStop, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckTestNudge, Source: EvidenceDeterministic, TaskRef: "t"},
+	}
+	ec := BuildEvidenceChain(entries, "t")
+	if ec.Deterministic != 1 {
+		t.Fatalf(`观察 hook 不应计入 deterministic: got %d, want 1（仅 auto-compile）`, ec.Deterministic)
+	}
+	if len(ec.Entries) != 4 {
+		t.Fatalf(`观察条目仍应保留在 Entries 供 trace: got %d, want 4`, len(ec.Entries))
 	}
 }
 

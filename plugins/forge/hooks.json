@@ -21,7 +21,19 @@
       },
       {
         "type": "command",
+        "command": "forge hook test-nudge --agent copilot",
+        "matcher": "Write|Edit",
+        "timeoutSec": 60
+      },
+      {
+        "type": "command",
         "command": "forge hook file-sentinel --agent copilot",
+        "matcher": "Bash",
+        "timeoutSec": 60
+      },
+      {
+        "type": "command",
+        "command": "forge hook tool-track --agent copilot",
         "matcher": "Bash",
         "timeoutSec": 60
       },

@@ -28,7 +28,10 @@ DSH tool names map onto the Claude Code names forge dispatches on
 forge's canonical spec (`lib/spec.json`, drift-guarded by a Go test in the Forge
 repo) — freeze-guard, task-guard, assertion-check, read-before-edit, bash-guard,
 hazard-guard, auto-compile, workflow-test-guard, file-sentinel, tool-track,
+test-nudge, failure-track (PostToolUseFailure), subagent-track (SubagentStop),
 task-verify, review-stop, skill-trigger, and the session-start group.
+failure-track/subagent-track are mirrored in the spec but inert until DSH
+exposes the corresponding event points (rc.7 has neither).
 
 ## Requirements
 

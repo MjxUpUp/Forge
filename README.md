@@ -190,7 +190,7 @@ Layer 3: 会话结束验证
 Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 task JSON 等方式绕过——bash-guard 拦截工具层，file-sentinel 监控文件层，task-guard 保护配置层。
 
 <details>
-<summary><b>📖 内置 Hook 完整清单（19 个）</b></summary>
+<summary><b>📖 内置 Hook 完整清单（22 个）</b></summary>
 
 | Hook | 触发时机 | 功能 |
 |------|----------|------|
@@ -203,7 +203,10 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | **auto-compile** | Write/Edit 后 | advisory 提醒用对应技术栈编译命令自检（go build / cargo check / mvn / tsc 等），不强制编译 |
 | **workflow-test-guard** | Write/Edit 后 | 改 `.github/workflows/*.yml` 后自动跑 `internal/ci` 守护测试，把"沙盒异常"即时反馈给 agent（不依赖 CI 兜底），是 release.yml test→goreleaser→npm needs 链的实时守护层 |
 | **file-sentinel** | Bash 后 | 监控文件变更，未授权修改隔离到 DataDir/quarantine/（`forge data-dir` 查看路径，可恢复，不删除） |
-| **tool-track** | Read 后 | 静默记录 Read 调用到 toollog，供 task-verify 的 read-before-edit 门禁判断（agent 是否先读代码再改） |
+| **tool-track** | Read/Skill/Agent/Bash 后 | 静默记录工具调用到 toollog（Read/Skill/Agent 记名称、Bash 记截断命令），供 read-before-edit 门禁与 efficiency 维度评分判断（agent 是否先读代码再改、质量 skill 是否被驱动） |
+| **failure-track** | 命令失败后（PostToolUseFailure） | 记录 CheckToolFailure 观察；失败文本命中编译/测试类指纹（`undefined:`/`error TS`/`error[E`/`--- FAIL` 等）时注入 compile-fix-loop skill 事实性指针（advisory 不阻断——失败已发生） |
+| **subagent-track** | 子 agent 结束（SubagentStop） | 记录 agent_id/agent_type/交付长度+首行摘要到 checklog（归因数据——此前子 agent 活动 forge 侧零记录）；纯观察，无输出无阻断 |
+| **test-nudge** | Write/Edit 后（活跃任务内） | 事中测试提醒：连写 ≥3 个源码文件且无配对测试写入时注入一次 test-discipline skill 事实性提示（advisory，每连写只提示一次）；测试写入重置计数；无任务静默；执法仍在 task-verify 门禁 |
 | **task-verify** | 会话结束 | advisory：任务门禁/主分支保护到 stderr+checklog（不阻塞会话结束） |
 | **review-stop** | 会话结束 | code-review-gate 自动挡：未审源码变更 block 会话结束。task 模式不重复拦（task-complete 门禁 ReviewPassed 硬前置已强制），非 task 模式按 diff stamp 决策；并发会话检测——其他 session 有活跃任务时放行（调研 session 不被拦） |
 | **skill-scan** | 会话开始 | advisory：扫描 ~/.claude/skills 安全性（`forge skills audit`，21 条安全规则），补 install 门控缺口（手动 clone/junction/git pull 进入的 skill），全局 hook 不依赖 forge project |
@@ -212,7 +215,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | **task-resume** | 会话开始 | advisory：自动注入活跃任务的接续上下文（目标/计划/决策/阻塞/门禁进度/git 已改未提交）+ 锚定当前 session——接手方冷启动即知任务在哪一步，无需手动 forge task resume；无活跃任务静默；项目级 hook |
 | **compact-resume** | 压缩后（claude-code only） | PostCompact 时设 `ResumeStale=true` 标志（PostCompact 不在 additionalContext 注入点，只设标志等下个 prompt 重注入），context-rot 抗机制根治层·设标志半边 |
 | **resume-reinject** | 用户提交时（claude-code only） | 检测 `ResumeStale=true`（刚压缩过）→ 输出完整接续上下文并清标志。补 task-resume 缺口（SessionStart 只注入一次，会话中途压缩不补），context-rot 抗机制根治层·重注入半边 |
-| **skill-trigger** | 多事件（Pre/PostToolUse、SessionStart、Stop、UserPromptSubmit，按宿主能力接线） | 通用声明式 skill 触发判定：按各 skill `metadata.triggers` 的 event/when 条件（coding_intent / source_changed_uncommitted / test_command_failed / task_active_no_review / skill_file_touched）匹配上下文，advisory 注入 skill 加载指引；Go 原生实现（其余 18 个为内嵌 bash 脚本） |
+| **skill-trigger** | 多事件（Pre/PostToolUse、SessionStart、Stop、UserPromptSubmit，按宿主能力接线） | 通用声明式 skill 触发判定：按各 skill `metadata.triggers` 的 event/when 条件（coding_intent / source_changed_uncommitted / test_command_failed / task_active_no_review / skill_file_touched）匹配上下文，advisory 注入 skill 加载指引；Go 原生实现（failure-track/subagent-track/test-nudge 亦然，其余 18 个为内嵌 bash 脚本） |
 
 </details>
 

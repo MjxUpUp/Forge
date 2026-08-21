@@ -86,19 +86,60 @@ const kimiPluginName = "forge"
 // 再生成。
 const KimiPluginDescription = "Forge loop-engineering quality gates: task-tracked source changes, assertion guards, file-sentinel quarantine, and review-gated completion for AI coding agents."
 
+// kimiSupportedEvents is the whitelist of hook events kimi's plugin schema is
+// KNOWN to accept. BuildKimiPluginHooks passes spec events through verbatim, so
+// any event added to ForgeHookSpec without kimi-side verification would flow into
+// the manifest; kimi validates the manifest against its own schema and an unknown
+// event can fail validation for the WHOLE plugin — silently killing every hook
+// (the dsh-win32 failure class: schema mismatch → all gates silently no-op).
+// Locking the roster here makes new spec events additive elsewhere and a no-op on
+// kimi until explicitly verified and added to this list.
+//
+// kimiSupportedEvents 是已知 kimi plugin schema 接受的 hook 事件白名单。
+// BuildKimiPluginHooks 原样透传 spec 事件，故任何未经 kimi 侧验证就加进
+// ForgeHookSpec 的事件都会流进 manifest；kimi 按自身 schema 校验 manifest，
+// 未知事件可能让**整个插件**校验失败——静默杀掉全部 hook（dsh-win32 失败类：
+// schema 不匹配 → 全门禁静默失效）。在此锁死名册，让新 spec 事件在别处是
+// 增量、在 kimi 是 no-op，直到显式验证并加进本清单。
+//
+// Review 2026-08-22 (feat/hook-event-gap): the config.toml path
+// (BuildKimiHooksTOML) filters through this SAME list — previously it iterated
+// the spec verbatim, so the whitelist guarded the manifest but not the TOML,
+// and an unverified event could still reach config.toml-based kimi installs
+// (the whitelist's own threat model, on its other half).
+//
+// 复审 2026-08-22（feat/hook-event-gap）：config.toml 路径
+// （BuildKimiHooksTOML）经同一清单过滤——此前它原样迭代 spec，白名单守住了
+// manifest 却漏了 TOML，未验证事件仍能到达 config.toml 形态的 kimi 安装
+// （白名单自己的威胁模型，漏守了另一半）。
+var kimiSupportedEvents = map[string]bool{
+	"PreToolUse":       true,
+	"PostToolUse":      true,
+	"Stop":             true,
+	"SessionStart":     true,
+	"PostCompact":      true,
+	"UserPromptSubmit": true,
+}
+
 // BuildKimiPluginHooks derives the manifest's hooks array from hooks.ForgeHookSpec —
 // the same single source of truth as BuildKimiHooksTOML (config.toml path). Entries are
 // sorted by event for deterministic output; commands carry `--agent kimi` for the same
-// reason as the config.toml path (stdin dialect + exit-2 output protocol).
+// reason as the config.toml path (stdin dialect + exit-2 output protocol). Events are
+// filtered to kimiSupportedEvents (see its doc: an unknown event in the manifest can
+// fail kimi's schema validation and silently kill ALL hooks).
 //
 // BuildKimiPluginHooks 从 hooks.ForgeHookSpec 派生 manifest 的 hooks 数组——与
 // BuildKimiHooksTOML（config.toml 路径）共享同一单一真相源。条目按 event 排序保证
 // 输出确定；command 带 `--agent kimi`，理由与 config.toml 路径相同（stdin 方言 +
-// exit-2 输出协议）。
+// exit-2 输出协议）。事件过滤到 kimiSupportedEvents（见其文档：manifest 里的未知
+// 事件可能让 kimi schema 校验失败、静默杀掉全部 hook）。
 func BuildKimiPluginHooks() []KimiPluginHook {
 	spec := hooks.ForgeHookSpec()
 	events := make([]string, 0, len(spec))
 	for ev := range spec {
+		if !kimiSupportedEvents[ev] {
+			continue
+		}
 		events = append(events, ev)
 	}
 	sort.Strings(events)
