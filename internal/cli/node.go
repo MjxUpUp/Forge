@@ -11,6 +11,7 @@ import (
 func init() {
 	rootCmd.AddCommand(nodeCmd)
 	nodeCmd.AddCommand(nodeShowCmd)
+	nodeShowCmd.Flags().BoolVar(&nodeJSON, "json", false, "JSON 输出")
 }
 
 var nodeJSON bool
@@ -55,11 +56,7 @@ var nodeShowCmd = &cobra.Command{
 		}
 		fmt.Fprintf(out, "node_id:     %s\n", id.NodeID)
 		fmt.Fprintf(out, "public_key:  %s\n", id.PublicKey)
-		fmt.Fprintf(out, "created_at:  %s\n", id.CreatedAt.Format(`2006-01-02 15:04:05 UTC`))
+		fmt.Fprintf(out, "created_at:  %s\n", id.CreatedAt.Format(`2006-01-02T15:04:05Z07:00`))
 		return nil
 	},
-}
-
-func init() {
-	nodeShowCmd.Flags().BoolVar(&nodeJSON, "json", false, "JSON 输出")
 }

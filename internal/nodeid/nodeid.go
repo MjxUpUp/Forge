@@ -30,19 +30,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
+	"strings"
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
-
-// nodeIDPattern mirrors the fpid strictness rule: attacker-controlled inputs that
-// carry a node id must be shape-checked before use (clone-delivered identity files
-// precedent in forgedata/projectid).
-//
-// nodeIDPattern 镜像 fpid 的严格校验：携带 node id 的攻击者可控输入必须先过形态
-// 检查再使用。
-var nodeIDPattern = regexp.MustCompile(`^fnode_[0-9a-f]{32}$`)
 
 // Identity is one machine's node identity as persisted at ~/.forge/node.json.
 //
@@ -67,10 +59,26 @@ type RotationLink struct {
 	RotatedAt time.Time `json:"rotated_at"`
 }
 
-// ValidNodeID reports whether s matches ^fnode_[0-9a-f]{32}$.
+// ValidNodeID reports whether s matches fnode_<32 lowercase hex>. Hand-rolled
+// prefix+length+hex loop (no regexp), matching the tight-allowlist style of
+// forgedata.ReadProjectID — attacker-controlled node ids must be shape-checked
+// before use.
 //
-// ValidNodeID 报告 s 是否符合 ^fnode_[0-9a-f]{32}$。
-func ValidNodeID(s string) bool { return nodeIDPattern.MatchString(s) }
+// ValidNodeID 报告 s 是否符合 fnode_<32 小写 hex>。手写 prefix+长度+hex 循环
+// （不用 regexp），与 forgedata.ReadProjectID 的紧 allowlist 风格一致——攻击者
+// 可控的 node id 必须先过形态检查再使用。
+func ValidNodeID(s string) bool {
+	const prefix = `fnode_`
+	if len(s) != len(prefix)+32 || !strings.HasPrefix(s, prefix) {
+		return false
+	}
+	for _, c := range s[len(prefix):] {
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return false
+		}
+	}
+	return true
+}
 
 // DeriveNodeID derives the fingerprint node id from a public key:
 // "fnode_" + hex(sha256(pub)[:16]).
@@ -130,6 +138,14 @@ func Load() (*Identity, error) {
 	if err := id.CheckConsistent(); err != nil {
 		return nil, err
 	}
+	// Defense in depth: a node.json copied in with loose perms (0644 from a naive cp)
+	// stays loose forever if Load never rewrites — tighten on read.
+	//
+	// 防御纵深：宽松权限拷入的 node.json（naive cp 带来 0644）若 Load 永不重写
+	// 就一直松着——读时收紧。
+	if fi, statErr := os.Stat(p); statErr == nil && fi.Mode().Perm() != 0600 {
+		_ = os.Chmod(p, 0600)
+	}
 	return &id, nil
 }
 
@@ -172,11 +188,33 @@ func (id *Identity) Save() error {
 	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
 		return err
 	}
-	tmp := p + `.tmp`
-	if err := os.WriteFile(tmp, raw, 0600); err != nil {
+	tmp, err := os.CreateTemp(filepath.Dir(p), `node-*.json.tmp`)
+	if err != nil {
+		return fmt.Errorf(`mktemp node identity: %w`, err)
+	}
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }() // no-op after successful rename
+	if err := tmp.Chmod(0600); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf(`chmod node identity: %w`, err)
+	}
+	if _, err := tmp.Write(raw); err != nil {
+		_ = tmp.Close()
 		return fmt.Errorf(`write node identity: %w`, err)
 	}
-	if err := os.Rename(tmp, p); err != nil {
+	// fsync before rename: a crash window must never surface a truncated node.json
+	// (identity loss → node_id change → machine attribution silently forks).
+	//
+	// rename 前 fsync：崩溃窗口绝不露出半截 node.json（身份丢失 → node_id 变更 →
+	// 机器归因静默分叉）。
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf(`fsync node identity: %w`, err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf(`close node identity: %w`, err)
+	}
+	if err := os.Rename(tmpName, p); err != nil {
 		return fmt.Errorf(`rename node identity: %w`, err)
 	}
 	return nil
@@ -205,6 +243,14 @@ func (id *Identity) CheckConsistent() error {
 	}
 	if !priv.Public().(ed25519.PublicKey).Equal(pub) {
 		return errors.New(`private key does not match public key`)
+	}
+	// v1 contract: rotation_chain always serializes as [] — a foreign/buggy writer
+	// persisting null must fail loud here, not leak null into `node show` output.
+	//
+	// v1 契约：rotation_chain 恒序列化为 []——外来/缺陷写者落盘 null 必须在此响亮
+	// 失败，不让 null 漏进 `node show` 输出。
+	if id.RotationChain == nil {
+		return errors.New(`rotation_chain must be [] (never null)`)
 	}
 	return nil
 }
