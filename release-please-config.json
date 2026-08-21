@@ -16,6 +16,11 @@
           "type": "json",
           "path": ".kimi-plugin/plugin.json",
           "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/forge-dsh/package.json",
+          "jsonpath": "$.version"
         }
       ]
     }
