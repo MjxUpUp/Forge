@@ -1,6 +1,8 @@
 package agentbridge
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -547,4 +549,144 @@ func codebuddyCLIInstallCandidates() []string {
 		)
 	}
 	return cands
+}
+
+// StripCodeBuddyHooks reverses the CodeBuddy/WorkBuddy wiring end-to-end (the
+// uninstall counterpart of CodeBuddyTranslator.Translate). Three seams, all
+// surgical — everything else in the two config files is user-owned and preserved:
+//
+//  1. <workbuddy home>/plugins/known_marketplaces.json — drop the "forge-local"
+//     entry (the directory pointer WorkBuddy holds to forge's marketplace).
+//  2. <workbuddy home>/settings.json — drop enabledPlugins["forge@forge-local"]
+//     (an emptied enabledPlugins object is kept as a shell — same contract as the
+//     claude settings dedupe).
+//  3. <GlobalHome>/agents/codebuddy/forge-local/ — delete the forge-owned assets.
+//
+// changed reports whether ANY seam had something to remove. Missing files/keys are
+// clean no-ops (idempotent re-run). A config file that exists but will not parse
+// returns an error WITHOUT touching it — overwriting a corrupt-but-user-owned file
+// on uninstall would be destruction, not cleanup. Seam errors are collected and
+// joined, never early-returned: seam 3 (forge-OWNED assets) must still run even when
+// a user-owned config file fails to parse — otherwise a corrupt user file shields
+// forge's own directory from removal forever (re-runs hit the same error first).
+//
+// "Preserved" is VALUE-level, not byte-level (review L-3): when a seam fires, the file
+// is re-marshaled (keys alphabetized, 2-space indent, <>& escaped as \uXXXX inside
+// untouched values, duplicate keys merged). Every user VALUE survives; the formatting
+// does not. Same contract as every other forge JSON rewrite.
+//
+// StripCodeBuddyHooks 端到端反转 CodeBuddy/WorkBuddy 接线
+// （CodeBuddyTranslator.Translate 的 uninstall 对应面）。三处，全部外科式——
+// 两个配置文件里的其余内容归用户所有，一律保留：
+//
+//  1. <workbuddy home>/plugins/known_marketplaces.json——删 "forge-local" 条目
+//     （WorkBuddy 持有的指向 forge marketplace 的目录指针）。
+//  2. <workbuddy home>/settings.json——删 enabledPlugins["forge@forge-local"]
+//     （删空的 enabledPlugins 保留空壳——与 claude settings dedupe 同契约）。
+//  3. <GlobalHome>/agents/codebuddy/forge-local/——删除 forge 自有资产。
+//
+// changed 报告任一处是否有东西可删。文件/键缺失为干净 no-op（幂等重跑）。
+// 配置文件存在但解析失败时报错且不碰它——卸载时覆盖一个损坏但归用户所有的
+// 文件是破坏不是清理。各处错误收集后 Join 返回、绝不提前 return：seam 3
+// （forge 自有资产）即使用户配置文件解析失败也必须执行——否则损坏的用户文件
+// 会永远挡住 forge 自有目录的删除（重跑永远先撞同一错误）。
+//
+// 「保留」是值级而非字节级（评审 L-3）：某处触发清理时文件会被重新序列化
+// （key 按字母序、2 空格缩进、未触碰值里的 <>& 转义为 \uXXXX、重复 key 合并）。
+// 用户的每个值都存活；格式不保证。与 forge 其他 JSON 改写同契约。
+func StripCodeBuddyHooks() (bool, error) {
+	wbHome, err := codebuddyWorkBuddyHome()
+	if err != nil {
+		return false, fmt.Errorf("codebuddy: resolve WorkBuddy home: %w", err)
+	}
+	changed := false
+	// seamErrs collects per-seam failures so every seam still runs (review finding,
+	// 2026-08-22): seam1/2 guard USER-owned files (error without touching them),
+	// seam3 removes FORGE-owned assets — a seam-1/2 error must not shield seam 3.
+	//
+	// seamErrs 收集各处失败让每一处都执行（复审发现，2026-08-22）：seam1/2 守卫
+	// 用户文件（报错不碰），seam3 删 forge 自有资产——seam1/2 的错误不能挡住 seam3。
+	var seamErrs []error
+
+	// Seam 1: known_marketplaces.json — map keyed by marketplace name.
+	kmPath := filepath.Join(wbHome, "plugins", "known_marketplaces.json")
+	if data, err := os.ReadFile(kmPath); err == nil {
+		var km map[string]json.RawMessage
+		if err := json.Unmarshal(data, &km); err != nil {
+			seamErrs = append(seamErrs, fmt.Errorf("codebuddy: parse %s: %w", kmPath, err))
+		} else if _, exists := km[codebuddyMarketplaceName]; exists {
+			delete(km, codebuddyMarketplaceName)
+			out, err := json.MarshalIndent(km, "", "  ")
+			if err != nil {
+				seamErrs = append(seamErrs, fmt.Errorf("codebuddy: marshal known_marketplaces: %w", err))
+			} else {
+				out = append(out, '\n')
+				if err := os.WriteFile(kmPath, out, 0o644); err != nil {
+					seamErrs = append(seamErrs, fmt.Errorf("codebuddy: write %s: %w", kmPath, err))
+				} else {
+					changed = true
+				}
+			}
+		}
+	} else if !os.IsNotExist(err) {
+		seamErrs = append(seamErrs, fmt.Errorf("codebuddy: read %s: %w", kmPath, err))
+	}
+
+	// Seam 2: settings.json — enabledPlugins is a flat map keyed "name@marketplace".
+	setPath := filepath.Join(wbHome, "settings.json")
+	if data, err := os.ReadFile(setPath); err == nil {
+		var settings map[string]json.RawMessage
+		if err := json.Unmarshal(data, &settings); err != nil {
+			seamErrs = append(seamErrs, fmt.Errorf("codebuddy: parse %s: %w", setPath, err))
+		} else if raw, ok := settings["enabledPlugins"]; ok {
+			var ep map[string]json.RawMessage
+			if err := json.Unmarshal(raw, &ep); err != nil {
+				seamErrs = append(seamErrs, fmt.Errorf("codebuddy: parse enabledPlugins: %w", err))
+			} else {
+				key := codebuddyPluginName + "@" + codebuddyMarketplaceName
+				if _, wired := ep[key]; wired {
+					delete(ep, key)
+					epOut, err := json.Marshal(ep)
+					if err != nil {
+						seamErrs = append(seamErrs, fmt.Errorf("codebuddy: marshal enabledPlugins: %w", err))
+					} else {
+						settings["enabledPlugins"] = epOut
+						out, err := json.MarshalIndent(settings, "", "  ")
+						if err != nil {
+							seamErrs = append(seamErrs, fmt.Errorf("codebuddy: marshal settings: %w", err))
+						} else {
+							out = append(out, '\n')
+							if err := os.WriteFile(setPath, out, 0o644); err != nil {
+								seamErrs = append(seamErrs, fmt.Errorf("codebuddy: write %s: %w", setPath, err))
+							} else {
+								changed = true
+							}
+						}
+					}
+				}
+			}
+		}
+	} else if !os.IsNotExist(err) {
+		seamErrs = append(seamErrs, fmt.Errorf("codebuddy: read %s: %w", setPath, err))
+	}
+
+	// Seam 3: forge-owned marketplace assets under the forge global home. A dir
+	// resolution error is REPORTED (same error style as seam 1/2), not silently
+	// swallowed — a vanished asset dir is a clean no-op, an unresolvable one is a
+	// real failure the operator should see.
+	//
+	// seam 3：forge 全局 home 下的自有 marketplace 资产。目录解析错误同样上报
+	// （与 seam 1/2 同错误风格）而非静默吞掉——资产目录缺席是干净 no-op，
+	// 解析不了是真失败，操作员应该看见。
+	dir, dirErr := CodeBuddyMarketplaceDir()
+	if dirErr != nil {
+		seamErrs = append(seamErrs, fmt.Errorf("codebuddy: resolve marketplace dir: %w", dirErr))
+	} else if _, statErr := os.Stat(dir); statErr == nil {
+		if err := os.RemoveAll(dir); err != nil {
+			seamErrs = append(seamErrs, fmt.Errorf("codebuddy: remove %s: %w", dir, err))
+		} else {
+			changed = true
+		}
+	}
+	return changed, errors.Join(seamErrs...)
 }

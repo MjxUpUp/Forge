@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,8 +17,10 @@ func init() {
 	pluginCmd.AddCommand(pluginPackCmd)
 	pluginCmd.AddCommand(pluginStatusCmd)
 	pluginCmd.AddCommand(pluginDedupeCmd)
+	pluginCmd.AddCommand(pluginKimiManifestCmd)
 	pluginDedupeCmd.Flags().Bool("keep-empty", false, "保留 settings.local.json 文件壳（清 forge hooks 后写 {} 而非删）——自动调用（init-suggest SessionStart）传 true,手动 dedupe 不传,删空文件")
 	pluginPackCmd.Flags().String("out", "", "输出目录（默认当前目录，即仓库根）")
+	pluginKimiManifestCmd.Flags().Bool("write", false, "重写已提交的 .kimi-plugin/plugin.json（默认只打印+报告漂移）")
 }
 
 var pluginCmd = &cobra.Command{
@@ -208,4 +211,167 @@ func runPluginDedupe(cmd *cobra.Command, args []string) error {
 		fmt.Fprintln(out, `plugin 已 user-level 接管，移除 user-level 重复 hooks（`+hooks.ClaudeHome()+`）`)
 	}
 	return nil
+}
+
+// pluginKimiManifestCmd is the CLI regen outlet for the committed kimi plugin manifest —
+// the 2026-08-16 audit noted the Build trio had no production caller (regen lived only in
+// the test's -update-kimi-plugin flag), so a ForgeHookSpec change meant hand-syncing
+// .kimi-plugin/plugin.json. Wrapping the same trio (BuildKimiPluginManifest +
+// MarshalKimiPluginManifest, description from the shared KimiPluginDescription constant)
+// gives maintainers a first-class command; the guard test remains the enforcement, the
+// CLI is the convenience.
+//
+// pluginKimiManifestCmd 是已提交 kimi plugin manifest 的 CLI 再生成出口——2026-08-16
+// 审计注记指出 Build 三件套没有生产调用方（再生成只存在于测试的 -update-kimi-plugin
+// flag），ForgeHookSpec 变更意味着手工对齐 .kimi-plugin/plugin.json。包装同一三件套
+// （BuildKimiPluginManifest + MarshalKimiPluginManifest，description 取共享的
+// KimiPluginDescription 常量）给维护者一个一等命令；守卫测试仍是执法者，CLI 是便利。
+var pluginKimiManifestCmd = &cobra.Command{
+	Use:   "kimi-manifest [--write]",
+	Short: "渲染/再生成 kimi plugin manifest（version 读 npm/package.json）",
+	Long: `渲染 forge 的 kimi plugin manifest（.kimi-plugin/plugin.json），version 从仓库的
+npm/package.json 读（单一真相源，与 release.js / 守卫测试同源），hooks 从 ForgeHookSpec
+派生，description 取共享常量——与守卫测试 TestKimiPluginManifestMirrorsSpec 完全同源。
+
+默认：manifest JSON 打到 stdout，并向 stderr 报一行 version 与已提交文件是否 in sync
+（只报告，退出码恒 0——执法者是守卫测试，不是本命令）。
+--write：与已提交文件逐字节比对，一致则报 in sync 不改写；不一致则重写。
+
+仓库根发现：从 cwd 向上找含 npm/package.json 的目录（forge 仓库自身的维护命令，
+在仓库内任意子目录跑均可）。`,
+	RunE: runPluginKimiManifest,
+}
+
+func runPluginKimiManifest(cmd *cobra.Command, args []string) error {
+	out := cmd.OutOrStdout()
+	root, err := findKimiManifestRoot()
+	if err != nil {
+		return err
+	}
+	version, err := readNpmPackageVersion(root)
+	if err != nil {
+		return err
+	}
+	want, err := agentbridge.MarshalKimiPluginManifest(agentbridge.BuildKimiPluginManifest(version, agentbridge.KimiPluginDescription))
+	if err != nil {
+		return fmt.Errorf("plugin kimi-manifest: marshal: %w", err)
+	}
+
+	manifestPath := filepath.Join(root, ".kimi-plugin", "plugin.json")
+	committed, readErr := os.ReadFile(manifestPath)
+	// A non-NotExist read failure (AV/editor file lock on Windows — review L-2) must NOT
+	// be conflated with drift: report-only would mislabel it 已提交文件漂移, and --write
+	// would overwrite bytes it never compared. Only a truly absent file is "not in sync".
+	//
+	// 非 NotExist 的读取失败（Windows 上杀软/编辑器文件锁——评审 L-2）绝不能与漂移
+	// 混同：report-only 会误标「已提交文件漂移」，--write 会改写从未比对过的字节。
+	// 只有文件真正缺席才算「不同步」。
+	if readErr != nil && !os.IsNotExist(readErr) {
+		return fmt.Errorf("plugin kimi-manifest: read committed manifest: %w", readErr)
+	}
+	inSync := readErr == nil && string(committed) == string(want)
+
+	write, _ := cmd.Flags().GetBool("write")
+	// --write guard (review L-1): root discovery accepts ANY ancestor holding npm/package.json;
+	// writing into a user monorepo that happens to have an npm/ subdir needs a second forge-repo
+	// marker — go.mod at the root, or an already-committed .kimi-plugin/plugin.json. Report-only
+	// stays permissive (printing to stdout harms nothing).
+	//
+	// --write 守卫（评审 L-1）：仓库根发现接受任何持有 npm/package.json 的祖先；要写进
+	// 一个恰好有 npm/ 子目录的用户 monorepo 需要第二个 forge 仓库标记——根上有 go.mod、
+	// 或已有提交的 .kimi-plugin/plugin.json。report-only 保持宽容（打印 stdout 无害）。
+	if write {
+		// Distinguish NotExist from other stat failures (review follow-up to L-1,
+		// 2026-08-22): an AV/editor lock on go.mod is exactly the Windows scenario L-2
+		// guards on the manifest read — treating it as "no go.mod" both mis-rejects
+		// --write and mislabels the cause in the error text.
+		//
+		// 区分 NotExist 与其他 stat 失败（L-1 复审后续，2026-08-22）：杀软/编辑器
+		// 锁住 go.mod 正是 L-2 在 manifest 读取上守卫的 Windows 场景——把它当
+		// 「无 go.mod」既误拒 --write 又在错误文案里误报原因。
+		if _, goModErr := os.Stat(filepath.Join(root, "go.mod")); goModErr != nil {
+			if !os.IsNotExist(goModErr) {
+				return fmt.Errorf("plugin kimi-manifest: stat go.mod: %w", goModErr)
+			}
+			if _, manifestErr := os.Stat(manifestPath); manifestErr != nil {
+				if !os.IsNotExist(manifestErr) {
+					return fmt.Errorf("plugin kimi-manifest: stat %s: %w", manifestPath, manifestErr)
+				}
+				return fmt.Errorf("plugin kimi-manifest: %s 无 go.mod 且无既有 .kimi-plugin/plugin.json——拒绝 --write（防误写非 forge 仓库），去掉 --write 只打印", root)
+			}
+		}
+	}
+	if !write {
+		// Report-only: print the rendered manifest, one stderr line for version+drift.
+		// Exit 0 either way — enforcement is TestKimiPluginManifestMirrorsSpec's job.
+		//
+		// 只报告：打印渲染的 manifest，stderr 一行 version+漂移。两种情况都退出 0
+		// ——执法是 TestKimiPluginManifestMirrorsSpec 的职责。
+		fmt.Fprint(out, string(want))
+		if inSync {
+			fmt.Fprintf(os.Stderr, "kimi manifest: in sync（version=%s, %s）\n", version, manifestPath)
+		} else {
+			fmt.Fprintf(os.Stderr, "kimi manifest: 已提交文件漂移（version=%s, %s）——forge plugin kimi-manifest --write 再生成\n", version, manifestPath)
+		}
+		return nil
+	}
+
+	if inSync {
+		fmt.Fprintf(out, "kimi manifest: in sync，未改写（version=%s, %s）\n", version, manifestPath)
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(manifestPath), 0o755); err != nil {
+		return fmt.Errorf("plugin kimi-manifest: mkdir: %w", err)
+	}
+	if err := os.WriteFile(manifestPath, want, 0o644); err != nil {
+		return fmt.Errorf("plugin kimi-manifest: write: %w", err)
+	}
+	fmt.Fprintf(out, "kimi manifest: 已重写 %s（version=%s）\n", manifestPath, version)
+	return nil
+}
+
+// findKimiManifestRoot walks up from cwd looking for the forge repo root (a directory
+// holding npm/package.json — the version source). Fails with guidance when run outside
+// the repo: this is a forge-repo maintenance command, not something to run on user repos.
+//
+// findKimiManifestRoot 从 cwd 向上找 forge 仓库根（持有 npm/package.json 的目录——
+// version 来源）。在仓库外跑时报错并给指引：这是 forge 仓库自身的维护命令，不是
+// 跑在用户仓库上的东西。
+func findKimiManifestRoot() (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("plugin kimi-manifest: getwd: %w", err)
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "npm", "package.json")); err == nil {
+			return dir, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", fmt.Errorf("plugin kimi-manifest: 向上未找到 npm/package.json——请在 forge 仓库内运行（维护命令，非用户仓库命令）")
+		}
+		dir = parent
+	}
+}
+
+// readNpmPackageVersion reads the version field from <root>/npm/package.json — the same
+// single source of truth scripts/release.js bumps and the guard test reads.
+//
+// readNpmPackageVersion 从 <root>/npm/package.json 读 version 字段——scripts/release.js
+// bump、守卫测试读取的同一单一真相源。
+func readNpmPackageVersion(root string) (string, error) {
+	data, err := os.ReadFile(filepath.Join(root, "npm", "package.json"))
+	if err != nil {
+		return "", fmt.Errorf("plugin kimi-manifest: read npm/package.json: %w", err)
+	}
+	var pkg struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(data, &pkg); err != nil {
+		return "", fmt.Errorf("plugin kimi-manifest: unmarshal npm/package.json: %w", err)
+	}
+	if pkg.Version == "" {
+		return "", fmt.Errorf("plugin kimi-manifest: npm/package.json version 为空")
+	}
+	return pkg.Version, nil
 }

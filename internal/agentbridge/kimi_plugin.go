@@ -72,6 +72,20 @@ type KimiPluginManifest struct {
 // 斜杠命令的命名空间。
 const kimiPluginName = "forge"
 
+// KimiPluginDescription is the committed manifest's description field. Promoted from the
+// test file to production when `forge plugin kimi-manifest` became a CLI outlet
+// (2026-08-21): the CLI and the guard test must render the manifest from the SAME
+// description or the command would rewrite what the test pins. Any edit here changes the
+// committed .kimi-plugin/plugin.json — regenerate with the CLI (or the test's
+// -update-kimi-plugin flag) in the same change.
+//
+// KimiPluginDescription 是已提交 manifest 的 description 字段。当 `forge plugin
+// kimi-manifest` 成为 CLI 出口时（2026-08-21）从测试文件升到生产：CLI 与守卫测试必须
+// 用同一 description 渲染 manifest，否则命令会改写测试钉住的内容。改这里即改已提交
+// 的 .kimi-plugin/plugin.json——同一变更里用 CLI（或测试的 -update-kimi-plugin flag）
+// 再生成。
+const KimiPluginDescription = "Forge loop-engineering quality gates: task-tracked source changes, assertion guards, file-sentinel quarantine, and review-gated completion for AI coding agents."
+
 // BuildKimiPluginHooks derives the manifest's hooks array from hooks.ForgeHookSpec —
 // the same single source of truth as BuildKimiHooksTOML (config.toml path). Entries are
 // sorted by event for deterministic output; commands carry `--agent kimi` for the same
@@ -149,24 +163,23 @@ func isSkillTriggerCommand(cmd string) bool {
 // TestKimiPluginManifestVersionTracksRelease). The caller supplies it — tests read it
 // from npm/package.json, the single source of truth.
 //
-// Maintenance path (2026-08-16 audit note): this builder trio has no CLI regen outlet —
-// production never calls it; the committed .kimi-plugin/plugin.json is the artifact kimi
-// installs. When ForgeHookSpec changes, hand-sync the committed manifest against
-// BuildKimiPluginHooks output (TestKimiPluginManifestMirrorsSpec goes red on drift, so a
-// spec change cannot land silently); version bumps are text-replaced by
-// scripts/release.js. If hand-syncing gets tedious, a `forge plugin kimi-manifest --write`
-// subcommand wrapping MarshalKimiPluginManifest is the natural follow-up.
+// Maintenance path (2026-08-16 audit note, resolved 2026-08-21): this builder trio now
+// has a CLI regen outlet — `forge plugin kimi-manifest --write` (internal/cli/plugin.go)
+// reads the version from npm/package.json, renders via MarshalKimiPluginManifest, and
+// rewrites the committed .kimi-plugin/plugin.json. The committed file remains the
+// artifact kimi installs; TestKimiPluginManifestMirrorsSpec still goes red on drift, so a
+// spec change cannot land silently (the CLI is the convenience, the test is the guard).
 //
 // BuildKimiPluginManifest 渲染完整 manifest。version 是 plugin 的展示版本，现跟随
 // forge release（scripts/release.js 同步；由 TestKimiPluginManifestVersionTracksRelease
 // 钉住）。由调用方传入——测试从单一真相源 npm/package.json 读。
 //
-// 维护路径（2026-08-16 审计注记）：本 Build 三件套没有 CLI 再生成出口——生产不调用
-// 它；committed .kimi-plugin/plugin.json 才是 kimi 安装的产物。ForgeHookSpec 变更时，
-// 手工把 committed manifest 与 BuildKimiPluginHooks 输出对齐（漂移会让
-// TestKimiPluginManifestMirrorsSpec 变红，故 spec 变更不可能静默落地）；version 由
-// scripts/release.js 发版时文本替换。若手工对齐变繁琐，包一层
-// `forge plugin kimi-manifest --write` 子命令是自然的后续。
+// 维护路径（2026-08-16 审计注记，2026-08-21 已解）：本 Build 三件套现有 CLI 再生成
+// 出口——`forge plugin kimi-manifest --write`（internal/cli/plugin.go）从
+// npm/package.json 读版本、经 MarshalKimiPluginManifest 渲染、重写已提交的
+// .kimi-plugin/plugin.json。已提交文件仍是 kimi 安装的产物；
+// TestKimiPluginManifestMirrorsSpec 漂移仍变红，故 spec 变更不可能静默落地（CLI 是
+// 便利，测试是守卫）。
 func BuildKimiPluginManifest(version, description string) KimiPluginManifest {
 	return KimiPluginManifest{
 		Name:        kimiPluginName,

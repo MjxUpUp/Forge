@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -195,5 +197,150 @@ func TestPrintDoctorSkillsSection(t *testing.T) {
 	printDoctor(doctorCmd, doctor.Report{})
 	if strings.Contains(buf.String(), "skills distribution:") {
 		t.Errorf("Skills 为 nil 时不应输出 skills 节，实得 %q", buf.String())
+	}
+}
+
+// TestSkillsDriftProbe_GatesUninstalledTargets pins the M-3 fix: doctor audits only
+// targets whose agent home exists. In an isolated env with ONLY ~/.claude present, the
+// probe must record cursor/codex/copilot/agents as Skipped (uninstalled — not walls of
+// missing) while still auditing claude (an installed agent's real gaps stay visible).
+//
+// TestSkillsDriftProbe_GatesUninstalledTargets 钉死 M-3 修复：doctor 只审计 agent home
+// 存在的目标。隔离环境里只有 ~/.claude 时，探针必须把 cursor/codex/copilot/agents
+// 记入 Skipped（未安装——不是成墙的 missing），同时仍审计 claude（已安装 agent 的
+// 真实缺口保持可见）。
+func TestSkillsDriftProbe_GatesUninstalledTargets(t *testing.T) {
+	root := isolateDoctorEnv(t)
+	// Only claude's agent home exists; the other four targets are uninstalled.
+	if err := os.MkdirAll(filepath.Join(root, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	s := skillsDriftProbe()
+	if s == nil {
+		t.Fatal("probe 返回 nil")
+	}
+	if s.Error != "" {
+		t.Fatalf("探针不应报错: %s", s.Error)
+	}
+	wantSkipped := []string{"agents", "codex", "copilot", "cursor"}
+	if !reflect.DeepEqual(s.Skipped, wantSkipped) {
+		t.Errorf("Skipped = %v, want %v（claude 已装不得跳过）", s.Skipped, wantSkipped)
+	}
+	// claude audited: real gap visible (canonical skills vs ~/.claude without a skills
+	// dir → missing > 0). Not asserting an exact count — canonical size varies.
+	if s.Missing == 0 {
+		t.Errorf("已安装的 claude 目标仍应被审计（~/.claude 无 skills 目录 → missing>0），实得 missing=%d", s.Missing)
+	}
+	for _, it := range s.Items {
+		if it.Target != "claude" {
+			t.Errorf("未安装目标 %s 不应产生条目（噪声门控被破坏）: %+v", it.Target, it)
+		}
+	}
+}
+
+// TestSkillsDriftProbe_DamagedHomeSurfaces pins the L-5 follow-up: an agent home that
+// is a regular FILE (damage, not uninstalled) must surface in TargetErrors (⚠ line)
+// — never silently folded into Skipped where the renderer would call it 未安装.
+// Auditing it would produce a drift wall off a broken state, so it is skipped from
+// the audit too — but as a visible warning, not a masquerading skip.
+//
+// TestSkillsDriftProbe_DamagedHomeSurfaces 钉死 L-5 后续：agent home 是普通文件
+// （损坏态、非未安装）必须浮出到 TargetErrors（⚠ 行）——绝不静默折进 Skipped
+// 被渲染器称作未安装。审计它会在破坏态上产出成墙 drift，所以同样不审计——
+// 但作为可见警告而非伪装跳过。
+func TestSkillsDriftProbe_DamagedHomeSurfaces(t *testing.T) {
+	root := isolateDoctorEnv(t)
+	// Only ~/.claude exists as a real dir; ~/.cursor is a regular FILE (damaged).
+	if err := os.MkdirAll(filepath.Join(root, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".cursor"), []byte("not a dir"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	s := skillsDriftProbe()
+	if s == nil {
+		t.Fatal("probe 返回 nil")
+	}
+	if s.Error != "" {
+		t.Fatalf("探针不应报错: %s", s.Error)
+	}
+	// Damaged cursor must NOT be in Skipped (it is not 未安装)…
+	for _, name := range s.Skipped {
+		if name == "cursor" {
+			t.Errorf("损坏态 cursor 不得进 Skipped（未安装语义），Skipped=%v", s.Skipped)
+		}
+	}
+	// …it must surface as a TargetError naming the damage.
+	found := false
+	for _, e := range s.TargetErrors {
+		if strings.Contains(e, "cursor") && strings.Contains(e, "损坏态") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("损坏态 cursor 应产出指名损坏的 TargetError，实得 %v", s.TargetErrors)
+	}
+	// And it must produce no audit items (no drift wall off a broken state).
+	for _, it := range s.Items {
+		if it.Target == "cursor" {
+			t.Errorf("损坏态目标不应被审计（不得产出条目）: %+v", it)
+		}
+	}
+}
+
+// TestPrintDoctorSkillsSection_SkippedStates pins the renderer for M-3: all-skipped is
+// its own state (zero coverage must never render as a green in-sync — the H-1
+// masquerade), and partial-skip shows the advisory line alongside the normal verdict.
+//
+// TestPrintDoctorSkillsSection_SkippedStates 钉死 M-3 的渲染：全跳过是独立状态（零
+// 覆盖绝不能渲染成绿色 in-sync——H-1 伪装模式）；部分跳过在正常判定旁展示 advisory 行。
+func TestPrintDoctorSkillsSection_SkippedStates(t *testing.T) {
+	// 全跳过：独立状态行，绝不渲染 in sync。
+	var buf bytes.Buffer
+	doctorCmd.SetOut(&buf)
+	printDoctor(doctorCmd, doctor.Report{Skills: &doctor.SkillsDriftSummary{
+		Skipped: []string{"agents", "codex", "copilot", "cursor"},
+	}})
+	out := buf.String()
+	if !strings.Contains(out, "无已安装目标可审计") {
+		t.Errorf("全跳过应渲染独立状态行，实得 %q", out)
+	}
+	if strings.Contains(out, "in sync") {
+		t.Errorf("全跳过（零覆盖）绝不能渲染 in sync，实得 %q", out)
+	}
+
+	// 部分跳过：正常判定照常 + 跳过行可见。
+	buf.Reset()
+	doctorCmd.SetOut(&buf)
+	printDoctor(doctorCmd, doctor.Report{Skills: &doctor.SkillsDriftSummary{
+		Linked:  40,
+		Skipped: []string{"codex", "cursor"},
+	}})
+	out = buf.String()
+	if !strings.Contains(out, "in sync") {
+		t.Errorf("部分跳过时已审计目标判定照常输出，实得 %q", out)
+	}
+	if !strings.Contains(out, "跳过未安装目标") || !strings.Contains(out, "codex, cursor") {
+		t.Errorf("部分跳过应有跳过 advisory 行（含目标名），实得 %q", out)
+	}
+
+	// 全损坏（Skipped 空、TargetErrors 有损坏条目）：同样是「无可审计」独立态，
+	// 绝不渲染绿色 in sync（H-1 伪装的 damaged-only 变体）。
+	buf.Reset()
+	doctorCmd.SetOut(&buf)
+	printDoctor(doctorCmd, doctor.Report{Skills: &doctor.SkillsDriftSummary{
+		TargetErrors: []string{"cursor 的 home 路径是普通文件而非目录（损坏态）——跳过审计，请检查该 agent 安装"},
+	}})
+	out = buf.String()
+	if !strings.Contains(out, "无已安装目标可审计") {
+		t.Errorf("全损坏应渲染独立状态行，实得 %q", out)
+	}
+	if strings.Contains(out, "in sync") {
+		t.Errorf("全损坏（零覆盖）绝不能渲染 in sync，实得 %q", out)
+	}
+	if !strings.Contains(out, "⚠") || !strings.Contains(out, "cursor") {
+		t.Errorf("全损坏应渲染 ⚠ 损坏行（含目标名），实得 %q", out)
 	}
 }

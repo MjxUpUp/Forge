@@ -41,6 +41,7 @@ Forge = Loop Engineering 的 **验证 + 状态层**。AI 编码是一个循环�
 | **GitHub Copilot (CLI)** | plugin marketplace | plugin 自带 copilot 格式 `hooks.json`，marketplace 装完即接线（PreToolUse/PostToolUse/Stop/SessionStart/UserPromptSubmit）；VS Code 侧未验证；`forge init --agents copilot` 仍是 no-op |
 | **Kimi Code** | 仓库根 `.kimi-plugin/plugin.json`（`/plugins install https://github.com/MjxUpUp/Forge`） | 全事件集（含 PostCompact/UserPromptSubmit），exit-2 block 协议；fallback `forge init --agents kimi` |
 | **Reasonix** | `plugins/forge/reasonix-plugin.json`（`reasonix plugin install https://github.com/MjxUpUp/Forge/tree/main/plugins/forge`） | native manifest 接线（PreToolUse/PostToolUse/Stop/SessionStart）；fallback `forge init --agents reasonix` |
+| **DeepSeek Harness (dsh)** | `dsh plugin --profile web add "github:MjxUpUp/Forge#main&path:/plugins/forge-dsh"`（npm 通道 `@agent_forge/forge-dsh`；装完重启 `dsh web`） | 类型化拦截点接线（tools/pre-execute、tools/post-execute、agent/pre-step、agent/session-start、agent/turn-stopping），名册镜像 ForgeHookSpec（spec 守卫测试钉死）；会话内 `/forge-status` 查状态 |
 
 v1.22 起 `forge init` 默认**零项目写入**：hooks/协议/skill 全部落在上述用户级位置，项目目录不产生任何文件；团队要 git 共享协议用 `forge init --project`。
 

@@ -39,7 +39,14 @@ func readReleaseVersion(t *testing.T) string {
 	return pkg.Version
 }
 
-const kimiPluginDescription = "Forge loop-engineering quality gates: task-tracked source changes, assertion guards, file-sentinel quarantine, and review-gated completion for AI coding agents."
+// kimiPluginDescription aliases the production constant: the guard test and the
+// `forge plugin kimi-manifest` CLI must render from the SAME description (the CLI rewrites
+// what this test pins — two sources would let the command rewrite the pinned bytes).
+//
+// kimiPluginDescription 取生产常量的别名：守卫测试与 `forge plugin kimi-manifest` CLI
+// 必须用同一 description 渲染（CLI 重写的正是本测试钉住的字节——两个来源会让命令
+// 改写钉住内容）。
+const kimiPluginDescription = KimiPluginDescription
 
 // updateKimiPlugin rewrites the committed manifest instead of comparing it
 // (`go test ./internal/agentbridge -run TestKimiPluginManifestMirrorsSpec -update-kimi-plugin`).
