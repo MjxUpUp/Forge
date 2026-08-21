@@ -131,8 +131,19 @@ func (c *Clock) Now() Timestamp {
 // one strictly greater than it: the classic HLC recv rule. This is what makes
 // "received a future event" never poison local monotonicity.
 //
+// STATUS (v1, fix/dsh-review-followup): UNWIRED — no production caller yet. Today's
+// decisive keys are fencing + canonical bytes (see the sync-convergence §3 实现校正);
+// stamps/leases carry ts_hlc as a display + reserved field. Wire this when the first
+// cross-machine ts_hlc consumer lands (A-class G-Set / LWW), together with clock
+// persistence — a per-process clock alone cannot deliver cross-process monotonicity.
+//
 // Observe 合并远端时间戳（经同步收到）并返回严格大于它的本地新时间戳——经典 HLC
 // recv 规则。「收到未来事件」因此永不毒害本地单调性。
+//
+// 状态（v1，fix/dsh-review-followup）：未接线——暂无生产调用方。今日决胜键是
+// fencing + 规范字节（见 sync-convergence §3 实现校正）；戳/租约里的 ts_hlc 是展示
+// 与预留字段。待首个跨机 ts_hlc 消费方（A 类 G-Set / LWW）落地时接线，并配套时钟
+// 持久化——仅进程内时钟给不出跨进程单调性。
 func (c *Clock) Observe(remote Timestamp) Timestamp {
 	c.mu.Lock()
 	defer c.mu.Unlock()

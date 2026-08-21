@@ -94,10 +94,10 @@ func runRegistryRekey(cmd *cobra.Command, args []string) error {
 	}
 	removed, rerr := registry.Rekey(fromKey, toKey)
 	if rerr != nil {
-		fmt.Fprintf(out, `warn: 注册表同步失败（数据已合并）：%v\n`, rerr)
+		fmt.Fprintf(out, `warn: 注册表同步失败（数据已合并）：%v`+"\n", rerr)
 	} else if removed > 0 {
-		fmt.Fprintf(out, `注册表：移除 %d 条 from key 条目\n`, removed)
+		fmt.Fprintf(out, `注册表：移除 %d 条 from key 条目`+"\n", removed)
 	}
-	fmt.Fprintf(out, `✅ rekey 完成：%s → %s（from 目录已移入备份，未删除）\n`, fromKey, toKey)
+	fmt.Fprintf(out, `✅ rekey 完成：%s → %s（from 目录已移入备份，未删除）`+"\n", fromKey, toKey)
 	return nil
 }

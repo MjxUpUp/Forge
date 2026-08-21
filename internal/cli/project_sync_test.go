@@ -169,7 +169,7 @@ func TestProjectAdopt_MigratesDataAndFlipsID(t *testing.T) {
 
 		out, aerr := runAdopt(t, map[string]string{`dry-run`: `false`})
 		if aerr != nil {
-			t.Fatalf(`adopt: %v\n%s`, aerr, out)
+			t.Fatalf(`adopt: %v`+"\n"+`%s`, aerr, out)
 		}
 
 		id, rerr := forgedata.ReadProjectID(root)
@@ -268,7 +268,7 @@ func TestProjectExportImport_SameKeyRoundTrip(t *testing.T) {
 		bundlePath = filepath.Join(t.TempDir(), `a.tar.gz`)
 		out, err := runExport(t, map[string]string{`out`: bundlePath})
 		if err != nil {
-			t.Fatalf(`export: %v\n%s`, err, out)
+			t.Fatalf(`export: %v`+"\n"+`%s`, err, out)
 		}
 	})
 
@@ -277,7 +277,7 @@ func TestProjectExportImport_SameKeyRoundTrip(t *testing.T) {
 		dataDir := forgedata.RootDir(key)
 		out, err := runImport(t, map[string]string{}, bundlePath)
 		if err != nil {
-			t.Fatalf(`import: %v\n%s`, err, out)
+			t.Fatalf(`import: %v`+"\n"+`%s`, err, out)
 		}
 		if !strings.Contains(out, `受信`) {
 			t.Errorf(`同 key 应判定受信: %s`, out)
@@ -302,18 +302,18 @@ func TestProjectExportImport_SameKeyRoundTrip(t *testing.T) {
 		var bundle2 = filepath.Join(t.TempDir(), `a2.tar.gz`)
 		out3, err3 := runExport(t, map[string]string{`out`: bundle2})
 		if err3 != nil {
-			t.Fatalf(`二次 export: %v\n%s`, err3, out3)
+			t.Fatalf(`二次 export: %v`+"\n"+`%s`, err3, out3)
 		}
 		out4, err4 := runImport(t, map[string]string{`force`: `true`}, bundle2)
 		if err4 != nil {
-			t.Fatalf(`force import: %v\n%s`, err4, out4)
+			t.Fatalf(`force import: %v`+"\n"+`%s`, err4, out4)
 		}
 		data, rerr := os.ReadFile(filepath.Join(dataDir, `checklog.jsonl`))
 		if rerr != nil {
 			t.Fatal(rerr)
 		}
 		if n := strings.Count(string(data), `"detail":"e1"`); n != 1 {
-			t.Errorf(`重叠导出重导入不得产生重复行（e1 出现 %d 次）:\n%s`, n, data)
+			t.Errorf(`重叠导出重导入不得产生重复行（e1 出现 %d 次）:`+"\n"+`%s`, n, data)
 		}
 	})
 }
@@ -339,14 +339,14 @@ func TestProjectImport_KeyMismatchStripsByDefault(t *testing.T) {
 		})
 		bundlePath = filepath.Join(t.TempDir(), `x.tar.gz`)
 		if out, err := runExport(t, map[string]string{`out`: bundlePath}); err != nil {
-			t.Fatalf(`export: %v\n%s`, err, out)
+			t.Fatalf(`export: %v`+"\n"+`%s`, err, out)
 		}
 	})
 
 	withMachine(t, machineB, home, func() {
 		out, err := runImport(t, map[string]string{}, bundlePath)
 		if err != nil {
-			t.Fatalf(`import: %v\n%s`, err, out)
+			t.Fatalf(`import: %v`+"\n"+`%s`, err, out)
 		}
 		if !strings.Contains(out, `不可信`) {
 			t.Errorf(`key 不匹配应判定不可信: %s`, out)
@@ -368,12 +368,12 @@ func TestProjectImport_KeyMismatchStripsByDefault(t *testing.T) {
 		bundle2 := filepath.Join(t.TempDir(), `x2.tar.gz`)
 		withMachine(t, machineA, home, func() {
 			if out, err := runExport(t, map[string]string{`out`: bundle2}); err != nil {
-				t.Fatalf(`export2: %v\n%s`, err, out)
+				t.Fatalf(`export2: %v`+"\n"+`%s`, err, out)
 			}
 		})
 		out2, err2 := runImport(t, map[string]string{`trust-foreign`: `true`}, bundle2)
 		if err2 != nil {
-			t.Fatalf(`trust-foreign import: %v\n%s`, err2, out2)
+			t.Fatalf(`trust-foreign import: %v`+"\n"+`%s`, err2, out2)
 		}
 		got2, _ := taskpipeline.LoadTaskState(machineB, `feat/x`)
 		if got2.CompletedAt == nil {
@@ -407,7 +407,7 @@ func TestProjectImport_IDBundleRefusesThenAdopts(t *testing.T) {
 		})
 		bundlePath = filepath.Join(t.TempDir(), `id.tar.gz`)
 		if out, err := runExport(t, map[string]string{`out`: bundlePath}); err != nil {
-			t.Fatalf(`export: %v\n%s`, err, out)
+			t.Fatalf(`export: %v`+"\n"+`%s`, err, out)
 		}
 	})
 
@@ -422,7 +422,7 @@ func TestProjectImport_IDBundleRefusesThenAdopts(t *testing.T) {
 
 		out, err := runImport(t, map[string]string{`adopt-id`: `true`}, bundlePath)
 		if err != nil {
-			t.Fatalf(`--adopt-id import: %v\n%s`, err, out)
+			t.Fatalf(`--adopt-id import: %v`+"\n"+`%s`, err, out)
 		}
 		if got, _ := forgedata.Key(machineB); got != idKey {
 			t.Errorf(`adopt-id 后本机 key 应为 ID key，got %s`, got)
@@ -466,7 +466,7 @@ func TestProjectImport_RefCollisionNeverClobbers(t *testing.T) {
 		seedTaskState(t, machineA, `feat:collision-x`, nil)
 		bundlePath = filepath.Join(t.TempDir(), `c.tar.gz`)
 		if out, err := runExport(t, map[string]string{`out`: bundlePath}); err != nil {
-			t.Fatalf(`export: %v\n%s`, err, out)
+			t.Fatalf(`export: %v`+"\n"+`%s`, err, out)
 		}
 	})
 	withMachine(t, machineB, home, func() {
@@ -476,7 +476,7 @@ func TestProjectImport_RefCollisionNeverClobbers(t *testing.T) {
 		})
 		out, err := runImport(t, map[string]string{}, bundlePath)
 		if err != nil {
-			t.Fatalf(`import: %v\n%s`, err, out)
+			t.Fatalf(`import: %v`+"\n"+`%s`, err, out)
 		}
 		got, lerr := taskpipeline.LoadTaskState(machineB, `feat/collision-x`)
 		if lerr != nil {
@@ -518,13 +518,13 @@ func TestProjectImport_UntrustedStripsSameKey(t *testing.T) {
 		})
 		bundlePath = filepath.Join(t.TempDir(), `u.tar.gz`)
 		if out, err := runExport(t, map[string]string{`out`: bundlePath}); err != nil {
-			t.Fatalf(`export: %v\n%s`, err, out)
+			t.Fatalf(`export: %v`+"\n"+`%s`, err, out)
 		}
 	})
 	withMachine(t, machineB, homeB, func() {
 		out, err := runImport(t, map[string]string{`untrusted`: `true`}, bundlePath)
 		if err != nil {
-			t.Fatalf(`import: %v\n%s`, err, out)
+			t.Fatalf(`import: %v`+"\n"+`%s`, err, out)
 		}
 		if !strings.Contains(out, `不可信`) {
 			t.Errorf(`--untrusted 应判不可信: %s`, out)
@@ -534,7 +534,7 @@ func TestProjectImport_UntrustedStripsSameKey(t *testing.T) {
 			t.Fatal(lerr)
 		}
 		if got.CompletedAt != nil {
-			t.Errorf(`--untrusted 同 key 也应剥 CompletedAt, got %v\nimport-out=%s`, got.CompletedAt, out)
+			t.Errorf(`--untrusted 同 key 也应剥 CompletedAt, got %v`+"\n"+`import-out=%s`, got.CompletedAt, out)
 		}
 		for _, h := range got.History {
 			if h.Passed {
@@ -573,12 +573,12 @@ func TestProjectImport_TrustedMarksAcceptanceForeign(t *testing.T) {
 		})
 		bundlePath = filepath.Join(t.TempDir(), `af.tar.gz`)
 		if out, err := runExport(t, map[string]string{`out`: bundlePath}); err != nil {
-			t.Fatalf(`export: %v\n%s`, err, out)
+			t.Fatalf(`export: %v`+"\n"+`%s`, err, out)
 		}
 	})
 	withMachine(t, machineB, homeB, func() {
 		if out, err := runImport(t, map[string]string{}, bundlePath); err != nil {
-			t.Fatalf(`import: %v\n%s`, err, out)
+			t.Fatalf(`import: %v`+"\n"+`%s`, err, out)
 		}
 		got, lerr := taskpipeline.LoadTaskState(machineB, `feat/acc-foreign`)
 		if lerr != nil {
