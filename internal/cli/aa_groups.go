@@ -59,6 +59,11 @@ func init() {
 	// Cross-machine project-data export/import/identity alignment (project-sync:
 	// project-level data management, same family as init/migrate/registry).
 	projectCmd.GroupID = `lifecycle`
+	// Machine node identity (node_id = pubkey fingerprint; node-identity: machine-level,
+	// same cross-machine family as project sync).
+	//
+	// 机器节点身份（node_id = 公钥指纹；node-identity：机器级，与 project 跨机族同族）。
+	nodeCmd.GroupID = `lifecycle`
 
 	// Project pipeline: project-level state (status is the main entry).
 	//
