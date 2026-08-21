@@ -109,6 +109,12 @@ func resolveScalarTiebreaksSync(local, incoming *TaskState) {
 	if local.TTL == 0 || (incoming.TTL != 0 && incoming.TTL < local.TTL) {
 		local.TTL = incoming.TTL
 	}
+	// Lease: higher fencing wins (the fencing token's whole purpose); applies in ALL
+	// completion states (a lease is orthogonal to the completion block).
+	//
+	// Lease：fencing 高者胜（fencing token 的全部意义）；全完成态适用（租约与
+	// 完成块正交）。
+	mergeLeaseSync(local, incoming)
 	// Block-structured fields: NON-EMPTY wins first (empty must never displace real
 	// data — "null"/"{}"/"[]" sort before any filled value, so a raw canonical
 	// comparison would systematically delete data in exactly the pathological
