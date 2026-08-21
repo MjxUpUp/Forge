@@ -73,6 +73,25 @@ func TestLeaseStatus_Expiry(t *testing.T) {
 	}
 }
 
+// TestLease_ActiveAt pins the single "expiry means free" rule that both LeaseStatus
+// and the dashboard feed derive from (feed must not show stale holders).
+//
+// TestLease_ActiveAt 钉死 LeaseStatus 与 dashboard feed 共同派生的「过期即自由」
+// 唯一规则（feed 不得显示过期持有者）。
+func TestLease_ActiveAt(t *testing.T) {
+	var nilLease *Lease
+	if nilLease.ActiveAt(time.Now()) {
+		t.Fatal("nil lease must read inactive")
+	}
+	l := &Lease{ClaimedAt: 1000, TTLSec: 300} // active window: t=1s … t=301s
+	if !l.ActiveAt(time.UnixMilli(1000).Add(time.Second)) {
+		t.Fatal("lease inside TTL reads inactive")
+	}
+	if l.ActiveAt(time.UnixMilli(1000).Add(301 * time.Second)) {
+		t.Fatal("lease past TTL reads active")
+	}
+}
+
 func TestLease_MergeHigherFencingWins(t *testing.T) {
 	mk := func(holder string, fencing int64) *TaskState {
 		s := &TaskState{TaskRef: `feat/l`}
