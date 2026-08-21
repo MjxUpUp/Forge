@@ -63,6 +63,18 @@ type LeaseState struct {
 	Message       string // 人类可读 advisory（门禁输出用）
 }
 
+// ActiveAt reports whether the lease is unexpired at now (the single "expiry means
+// free" rule — LeaseStatus and the dashboard feed both derive from it, no second copy).
+//
+// ActiveAt 报告租约在 now 时刻是否未过期（「过期即自由」规则的唯一出处——
+// LeaseStatus 与 dashboard feed 都从它派生，不留第二份拷贝）。
+func (l *Lease) ActiveAt(now time.Time) bool {
+	if l == nil {
+		return false
+	}
+	return now.Before(time.UnixMilli(l.ClaimedAt).Add(time.Duration(l.TTLSec) * time.Second))
+}
+
 // LeaseStatus evaluates the task's lease from nodeID's perspective at now.
 //
 // LeaseStatus 以 nodeID 视角在 now 时刻评估任务租约。
@@ -70,10 +82,10 @@ func LeaseStatus(s *TaskState, nodeID string, now time.Time) LeaseState {
 	if s.Lease == nil || s.Lease.HolderNode == `` || s.Lease.HolderNode == nodeID {
 		return LeaseState{}
 	}
-	expires := time.UnixMilli(s.Lease.ClaimedAt).Add(time.Duration(s.Lease.TTLSec) * time.Second)
-	if !now.Before(expires) {
+	if !s.Lease.ActiveAt(now) {
 		return LeaseState{} // 过期即自由（TTL 租约不做正确性承诺）
 	}
+	expires := time.UnixMilli(s.Lease.ClaimedAt).Add(time.Duration(s.Lease.TTLSec) * time.Second)
 	return LeaseState{
 		ForeignActive: true,
 		Message: fmt.Sprintf(`任务 %s 当前由节点 %s 持有租约（fencing %d，%s 前有效）——若是你的另一台机器可忽略；若非，先 forge project sync pull 对齐状态再动手`,
