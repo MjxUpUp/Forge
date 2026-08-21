@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/hlc"
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 )
 
@@ -61,7 +62,7 @@ func randomTaskOps(r *rand.Rand, s *TaskState, n int, tag string) {
 	gates := []string{`task-implement`, `task-verify`, `task-complete`}
 	for i := 0; i < n; i++ {
 		ts := base.Add(time.Duration(r.Intn(10000)) * time.Minute)
-		switch r.Intn(14) {
+		switch r.Intn(15) {
 		case 0:
 			s.Decisions = append(s.Decisions, Decision{ID: fmt.Sprintf(`d-%d`, r.Intn(6)), Content: tag, DecidedAt: ts})
 		case 1:
@@ -102,6 +103,9 @@ func randomTaskOps(r *rand.Rand, s *TaskState, n int, tag string) {
 					s.Findings[j].Status = `fixed`
 				}
 			}
+		case 14: // node lease claim (fencing monotonic per machine clock)
+			wall := base.UnixMilli() + int64(r.Intn(10000))
+			ClaimLease(s, fmt.Sprintf(`fnode_%032x`, r.Intn(3)), hlc.NewClock(func() time.Time { return time.UnixMilli(wall) }), 300)
 		}
 	}
 }
