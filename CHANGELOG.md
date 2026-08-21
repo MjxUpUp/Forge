@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.40.1](https://github.com/MjxUpUp/Forge/compare/v1.40.0...v1.40.1) (2026-08-21)
+
+
+### Bug Fixes
+
+* **update:** forge update 感知 npm 安装通道——npm 用户改查 npm registry 并重定向到对应包管理器 ([#18](https://github.com/MjxUpUp/Forge/issues/18)) ([7c66a1a](https://github.com/MjxUpUp/Forge/commit/7c66a1ab62da2a3890d03e67343573853b587586))
+
 ## [1.40.0](https://github.com/MjxUpUp/Forge/compare/v1.39.1...v1.40.0) (2026-08-21)
 
 
