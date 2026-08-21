@@ -46,7 +46,7 @@ type SkillSummary struct {
 	Name      string   `json:"name"`
 	Health    *float64 `json:"health"`    // 最新 EvalRun.HealthScore；无 run 为 null
 	Hits      int      `json:"hits"`      // 被动 skill-trigger + 主动 Skill 调用合并
-	TaskCount int      `json:"taskCount"` // 主动调用涉及的不同 task 数
+	TaskCount int      `json:"taskCount"` // 涉及的不同 task 数（被动触发+主动调用合并，per-task 去重）
 	AvgScore  *float64 `json:"avgScore"`  // 关联任务均分（Score>0 才计）；无为 null
 }
 
