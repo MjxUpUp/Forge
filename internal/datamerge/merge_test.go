@@ -117,7 +117,7 @@ func TestDirs_DedupExactLinesIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	if string(after1) != string(after2) {
-		t.Errorf(`重复导入应字节不变：\n一轮=%s\n二轮=%s`, after1, after2)
+		t.Errorf(`重复导入应字节不变：`+"\n"+`一轮=%s`+"\n"+`二轮=%s`, after1, after2)
 	}
 }
 
@@ -155,7 +155,7 @@ func TestDirs_TaskUnionMergesStates(t *testing.T) {
 	}
 	var s taskpipeline.TaskState
 	if err := json.Unmarshal(data, &s); err != nil {
-		t.Fatalf(`合并产物应是合法 TaskState: %v\n%s`, err, data)
+		t.Fatalf(`合并产物应是合法 TaskState: %v`+"\n"+`%s`, err, data)
 	}
 	if len(s.Decisions) != 2 {
 		t.Errorf(`决策应并集为 2 条（local+remote），got %+v`, s.Decisions)

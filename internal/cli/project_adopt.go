@@ -77,7 +77,7 @@ func runProjectAdopt(cmd *cobra.Command, args []string) error {
 	// 幂等退出：已有合法 ID 且不强制换新。
 	if hasValidID && !regenerate {
 		key, _ := forgedata.Key(cwd)
-		fmt.Fprintf(out, `已启用项目 ID：%s\nkey=%s（key_mode=id）\n数据目录：%s\n`, existingID, key, forgedata.RootDir(key))
+		fmt.Fprintf(out, `已启用项目 ID：%s`+"\n"+`key=%s（key_mode=id）`+"\n"+`数据目录：%s`+"\n", existingID, key, forgedata.RootDir(key))
 		fmt.Fprintln(out, `无需动作（换新 ID 用 --regenerate）`)
 		return nil
 	}
@@ -99,7 +99,7 @@ func runProjectAdopt(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	fmt.Fprintf(out, `项目：%s\n新 ID：%s\n%s → %s\n`, mainRoot, newID, oldKey, newKey)
+	fmt.Fprintf(out, `项目：%s`+"\n"+`新 ID：%s`+"\n"+`%s → %s`+"\n", mainRoot, newID, oldKey, newKey)
 
 	migrated, aerr := applyAdoption(mainRoot, newID, oldKey, newKey, dryRun, out)
 	if aerr != nil {
@@ -118,7 +118,7 @@ func runProjectAdopt(cmd *cobra.Command, args []string) error {
 	if ignored, _ := gitIgnored(mainRoot, forgedata.ProjectIDFileName); ignored {
 		commitHint = `git add -f .forge-project-id && git commit（该文件当前被 .gitignore 命中，需 -f）`
 	}
-	fmt.Fprintf(out, `✅ adopt 完成%s；另一台机器 git pull 后运行 forge project adopt 即对齐\n下一步：%s\n`, migratedNote(migrated), commitHint)
+	fmt.Fprintf(out, `✅ adopt 完成%s；另一台机器 git pull 后运行 forge project adopt 即对齐`+"\n"+`下一步：%s`+"\n", migratedNote(migrated), commitHint)
 	if regenerate && hasValidID {
 		fmt.Fprintln(out, `⚠ 已强制换新 ID：其他机器下一次 export/import 会遇到 key 不匹配——在其上重跑 forge project adopt --regenerate（拿新 ID 需先 pull）或按 import 提示处理`)
 	}
@@ -144,14 +144,14 @@ func applyAdoption(mainRoot, newID, oldKey, newKey string, dryRun bool, out io.W
 	// 活会话预检：新鲜锚文件说明有 agent 正在写 DataDir——合并是并集语义丢更新
 	// 窗口极小，但用户应知情。
 	if warn := liveSessionWarning(forgedata.RootDir(oldKey)); warn != `` {
-		fmt.Fprintf(out, `⚠ %s\n`, warn)
+		fmt.Fprintf(out, `⚠ %s`+"\n", warn)
 	}
 
 	oldDir := forgedata.RootDir(oldKey)
 	newDir := forgedata.RootDir(newKey)
 	migrated := false
 	if dirHasContent(oldDir) && oldKey != newKey {
-		fmt.Fprintf(out, `迁移数据：%s → %s\n`, oldDir, newDir)
+		fmt.Fprintf(out, `迁移数据：%s → %s`+"\n", oldDir, newDir)
 		// adopt 阶段没有「对端快照」，用 legacy to-wins（新目录通常为空 ⇒ 实际是
 		// 全量搬入）；jsonl 仍走时间戳有序合并。
 		actions, aerr := datamerge.Dirs(oldDir, newDir, datamerge.Options{DryRun: dryRun})
@@ -178,9 +178,9 @@ func applyAdoption(mainRoot, newID, oldKey, newKey string, dryRun bool, out io.W
 	// 注册表同步（失败仅警告：路径回退匹配兜底，forge doctor 可检出残留）。
 	if oldKey != newKey {
 		if removed, rerr := registry.Rekey(oldKey, newKey); rerr != nil {
-			fmt.Fprintf(out, `warn: 注册表同步失败（数据已迁移）：%v\n`, rerr)
+			fmt.Fprintf(out, `warn: 注册表同步失败（数据已迁移）：%v`+"\n", rerr)
 		} else if removed > 0 {
-			fmt.Fprintf(out, `注册表：同步 %d 条条目 → 新 key\n`, removed)
+			fmt.Fprintf(out, `注册表：同步 %d 条条目 → 新 key`+"\n", removed)
 		}
 	}
 	return migrated, nil

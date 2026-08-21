@@ -121,7 +121,7 @@ func TestE2E_TaskComplete_BlockedWhenAcceptanceNotRun(t *testing.T) {
 		t.Fatalf(`forge task complete 应被 acceptance pre-flight 拦截（验收未实跑），却成功。output: %s`, out)
 	}
 	if !strings.Contains(out, "acceptance pre-flight") {
-		t.Errorf(`BLOCKED 输出应含 "acceptance pre-flight" 提示，got:\n%s`, out)
+		t.Errorf(`BLOCKED 输出应含 "acceptance pre-flight" 提示，got:`+"\n"+`%s`, out)
 	}
 
 	// Escape hatch (env): FORGE_ACCEPTANCE_GATE=disable logs to checklog for audit then allows — proves the escape hatch is wired.

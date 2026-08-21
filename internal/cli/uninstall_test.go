@@ -107,13 +107,13 @@ func TestUninstall_StripsKimiHooks(t *testing.T) {
 
 	data, _ := os.ReadFile(cfg)
 	if string(data) != userConfig {
-		t.Errorf(`kimi config.toml 未还原为用户原内容，实得：\n%q`, string(data))
+		t.Errorf(`kimi config.toml 未还原为用户原内容，实得：`+"\n"+`%q`, string(data))
 	}
 	if !strings.Contains(stdout, `已清除 kimi-code config.toml 中的 forge hooks`) {
-		t.Errorf(`缺少 kimi hooks 清除提示，stdout：\n%s`, stdout)
+		t.Errorf(`缺少 kimi hooks 清除提示，stdout：`+"\n"+`%s`, stdout)
 	}
 	if !strings.Contains(stdout, `Kimi Code:`) {
-		t.Errorf(`缺少 kimi plugin 卸载指引，stdout：\n%s`, stdout)
+		t.Errorf(`缺少 kimi plugin 卸载指引，stdout：`+"\n"+`%s`, stdout)
 	}
 }
 
@@ -165,13 +165,13 @@ func TestUninstall_StripsReasonixHooks(t *testing.T) {
 	data, _ := os.ReadFile(settingsPath)
 	body := string(data)
 	if strings.Contains(body, `forge hook`) {
-		t.Errorf(`reasonix settings.json 中应无 forge hooks 残留，实得：\n%s`, body)
+		t.Errorf(`reasonix settings.json 中应无 forge hooks 残留，实得：`+"\n"+`%s`, body)
 	}
 	if !strings.Contains(body, `keep-me`) || !strings.Contains(body, `echo user-hook`) {
-		t.Errorf(`reasonix 用户内容未原样保留，实得：\n%s`, body)
+		t.Errorf(`reasonix 用户内容未原样保留，实得：`+"\n"+`%s`, body)
 	}
 	if !strings.Contains(stdout, `已清除 reasonix 用户级配置中的 forge hooks`) {
-		t.Errorf(`缺少 reasonix hooks 清除提示，stdout：\n%s`, stdout)
+		t.Errorf(`缺少 reasonix hooks 清除提示，stdout：`+"\n"+`%s`, stdout)
 	}
 }
 
@@ -213,7 +213,7 @@ func TestUninstall_RemovesUserLevelQualitySkill(t *testing.T) {
 		t.Errorf(`用户级 forge-quality skill 应被删除，实得 stat err=%v`, err)
 	}
 	if !strings.Contains(stdout, `已删除用户级 forge-quality skill`) {
-		t.Errorf(`缺少 skill 删除提示，stdout：\n%s`, stdout)
+		t.Errorf(`缺少 skill 删除提示，stdout：`+"\n"+`%s`, stdout)
 	}
 }
 
@@ -256,7 +256,7 @@ func TestUninstall_RemovesReasonixQualitySkill(t *testing.T) {
 		t.Errorf(`reasonix 用户级 forge-quality skill 应被删除，实得 stat err=%v`, err)
 	}
 	if !strings.Contains(stdout, `已删除 reasonix 用户级 forge-quality skill`) {
-		t.Errorf(`缺少 reasonix skill 删除提示，stdout：\n%s`, stdout)
+		t.Errorf(`缺少 reasonix skill 删除提示，stdout：`+"\n"+`%s`, stdout)
 	}
 }
 

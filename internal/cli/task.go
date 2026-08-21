@@ -425,6 +425,13 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 
 	state := taskpipeline.NewTaskState(ctx)
 
+	// Node lease (sync-convergence.md §4): starting work claims the task for this
+	// machine — advisory-only in v1, fail-open (identity problems never block start).
+	//
+	// 节点租约（sync-convergence.md §4）：开工即为本机认领任务——v1 仅 advisory，
+	// fail-open（身份问题绝不阻塞开工）。
+	taskpipeline.ClaimLeaseForCurrentNode(state)
+
 	// Record current HEAD for duplicate detection.
 	//
 	// 记录当前 HEAD 用于重复检测。
@@ -1171,6 +1178,16 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 	// 分派 advisory（2026-08-18 脱节修复的 P2）：给「分派给另一个 agent 且从未认领」的任务
 	// 过门禁正是管线/分派脱节的前兆——提醒但绝不阻断（编排器代跑合法）。
 	adviseUnclaimedAssignment(root, gateID, result.Passed, state)
+
+	// Node-lease advisory (sync-convergence.md §4): gating a task another machine
+	// holds an active lease on is the dual-machine collision precursor — warn, never
+	// block (TTL leases are UX, not correctness).
+	//
+	// 节点租约 advisory（sync-convergence.md §4）：给他机持有活跃租约的任务过门禁
+	// 是双机互踩的前兆——提醒但绝不阻断（TTL 租约管 UX 不管正确性）。
+	if ls := taskpipeline.LeaseStatusForCurrentNode(state); ls.ForeignActive {
+		fmt.Fprintf(os.Stderr, "⚠️ [lease] %s\n", ls.Message)
+	}
 
 	// 刻意不在此处 MarkComplete（dogfood 2026-08-18 死锁修复）：曾经「最后一道 gate 通过
 	// 即 MarkComplete」，而 ActiveTaskState 对 CompletedAt!=nil 返回 nil —— 紧随其后的

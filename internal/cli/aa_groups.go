@@ -59,6 +59,11 @@ func init() {
 	// Cross-machine project-data export/import/identity alignment (project-sync:
 	// project-level data management, same family as init/migrate/registry).
 	projectCmd.GroupID = `lifecycle`
+	// Machine node identity (node_id = pubkey fingerprint; node-identity: machine-level,
+	// same cross-machine family as project sync).
+	//
+	// 机器节点身份（node_id = 公钥指纹；node-identity：机器级，与 project 跨机族同族）。
+	nodeCmd.GroupID = `lifecycle`
 
 	// Project pipeline: project-level state (status is the main entry).
 	//
@@ -93,7 +98,12 @@ func init() {
 	//
 	// 跨 agent 环境一致性审计（只读；多 host 接线 + 版本漂移）
 	doctorCmd.GroupID = "integrate"
+	// Node trust store (TOFU + team-profile signature enforcement; node-identity §3).
+	//
+	// 节点信任 store（TOFU + 团队档验签强制；node-identity §3）。
+	trustCmd.GroupID = "integrate"
 	// hook bash computes the DataDir (Hidden, not in the help list).
 	//
-	dataDirCmd.GroupID = "integrate" // hook bash 算 DataDir 用（Hidden，不进 help 列表）
+	// hook bash 算 DataDir 用（Hidden，不进 help 列表）
+	dataDirCmd.GroupID = "integrate"
 }

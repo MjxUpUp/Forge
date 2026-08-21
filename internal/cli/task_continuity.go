@@ -354,6 +354,13 @@ func attachCurrentSession(state *taskpipeline.TaskState, root string, silent boo
 			return nil
 		}
 		s.AddSession(sid, tool)
+		// A fresh attach = THIS machine picking up the work — claim the node lease so
+		// the advisory tracks who is ACTUALLY working, not who created the task
+		// (fail-open, advisory-only; sync-convergence.md §4).
+		//
+		// 新锚定 = 本机接手工作——认领节点租约，让 advisory 追踪真正在干活的机器
+		// 而非任务创建者（fail-open、仅 advisory；sync-convergence.md §4）。
+		taskpipeline.ClaimLeaseForCurrentNode(s)
 		attached = true
 		return nil
 	})

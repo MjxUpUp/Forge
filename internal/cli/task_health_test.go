@@ -88,7 +88,7 @@ func TestTaskHealth_ReportsZombiesAndDeadlocks(t *testing.T) {
 		}
 		var rows []healthRow
 		if err := json.Unmarshal([]byte(out), &rows); err != nil {
-			t.Fatalf(`解析 health JSON 失败: %v\n输出: %s`, err, out)
+			t.Fatalf(`解析 health JSON 失败: %v`+"\n"+`输出: %s`, err, out)
 		}
 		if len(rows) != 2 {
 			t.Fatalf(`应仅列出 2 个被标记任务（僵尸+死锁），得到 %d: %+v`, len(rows), rows)
@@ -123,11 +123,11 @@ func TestTaskHealth_ReportsZombiesAndDeadlocks(t *testing.T) {
 		}
 		for _, want := range []string{`发现 2 个需关注任务`, `feat/zombie`, `⚠僵尸`, `offered>7d`, `feat/deadlocked`, `🔒死锁`} {
 			if !strings.Contains(out, want) {
-				t.Errorf(`health 文本输出应含 %q\n输出:\n%s`, want, out)
+				t.Errorf(`health 文本输出应含 %q`+"\n"+`输出:`+"\n"+`%s`, want, out)
 			}
 		}
 		if strings.Contains(out, `feat/healthy`) {
-			t.Errorf(`健康任务不应出现:\n%s`, out)
+			t.Errorf(`健康任务不应出现:`+"\n"+`%s`, out)
 		}
 	})
 }
@@ -144,7 +144,7 @@ func TestTaskHealth_CleanProjectReportsNothing(t *testing.T) {
 		t.Fatalf(`task health exit %d: %s`, code, out)
 	}
 	if !strings.Contains(out, `未发现`) {
-		t.Errorf(`无问题时应输出「未发现」, got:\n%s`, out)
+		t.Errorf(`无问题时应输出「未发现」, got:`+"\n"+`%s`, out)
 	}
 }
 
@@ -196,14 +196,14 @@ func TestTaskHealth_ReadyOrchestration(t *testing.T) {
 	}
 	for _, want := range []string{`可 complete 的编排任务`, `feat/orch`} {
 		if !strings.Contains(out, want) {
-			t.Errorf(`health 输出应含 %q, got:\n%s`, want, out)
+			t.Errorf(`health 输出应含 %q, got:`+"\n"+`%s`, want, out)
 		}
 	}
 	// No problems → the "未发现" line must NOT print (ready section replaces it).
 	//
 	// 无问题 → 不应输出「未发现」（就绪段取代它）。
 	if strings.Contains(out, `未发现`) {
-		t.Errorf(`有就绪编排任务时不应输出「未发现」, got:\n%s`, out)
+		t.Errorf(`有就绪编排任务时不应输出「未发现」, got:`+"\n"+`%s`, out)
 	}
 
 	t.Run(`generic parent with pending child is NOT ready`, func(t *testing.T) {
@@ -230,7 +230,7 @@ func TestTaskHealth_ReadyOrchestration(t *testing.T) {
 			t.Fatalf(`task health exit %d: %s`, code, out)
 		}
 		if strings.Contains(out, `可 complete 的编排任务`) {
-			t.Errorf(`子任务未全交付的编排器不应标「可 complete」, got:\n%s`, out)
+			t.Errorf(`子任务未全交付的编排器不应标「可 complete」, got:`+"\n"+`%s`, out)
 		}
 	})
 
@@ -266,7 +266,7 @@ func TestTaskHealth_ReadyOrchestration(t *testing.T) {
 			t.Fatalf(`task health exit %d: %s`, code, out)
 		}
 		if strings.Contains(out, `可 complete 的编排任务`) {
-			t.Errorf(`已完成的编排器不应再被标「可 complete」, got:\n%s`, out)
+			t.Errorf(`已完成的编排器不应再被标「可 complete」, got:`+"\n"+`%s`, out)
 		}
 	})
 }
