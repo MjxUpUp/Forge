@@ -291,6 +291,8 @@ var skillRefAllowlist = map[string]bool{
 	`template-`: true, `test-design`: true, `api-design`: true,
 	// 工具 / 技术指令（非 skill）
 	`eslint-disable`: true, `force-push`: true, `git-secrets`: true, `v-html`: true, `yt-dlp`: true,
+	// git 分支名（project sync 同步通道固定分支，非 skill）
+	`forge-sync`: true,
 	// 命名示例（正例 / 反例 / 演示，非 skill）
 	`async-test-helpers`: true, `condition-based-waiting`: true, `debug-techniques`: true,
 	`my-skill-name`: true, `smic-fa`: true, `text-color-primary`: true, `user-avatar-card`: true,
