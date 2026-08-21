@@ -63,7 +63,7 @@ forge task complete               # 🏁 任务完结（自动评分 + 清 activ
 forge task score                  # 质量评分
 ```
 
-`forge update` 自更新 binary。`forge suggest decline | status | reset` 管理 init-suggest 标记。详见根 README 命令参考表。
+`forge update` 检查并更新（npm 安装打印对应包管理器的更新命令而非代下载；GitHub 安装下载自替换）。`forge suggest decline | status | reset` 管理 init-suggest 标记。详见根 README 命令参考表。
 
 ## 卸载
 

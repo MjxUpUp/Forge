@@ -97,7 +97,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge init` | 初始化项目（默认零项目写入：登记全局注册表，hooks/指令/skill 全在用户级；`--project` 团队模式把指令资产写项目目录供 git 共享；旧的 `--mode` 标志已废弃为 no-op） |
 | `forge status [--json]` | 查看项目状态（任务管道 + 质量信号） |
 | `forge verify` | 项目完整性检查 + 回归测试 |
-| `forge update` | 自更新到最新版本 |
+| `forge update` | 检查并更新到最新版本（按安装通道分流：npm 安装查 npm registry 并打印对应包管理器的更新命令——npm 包不可变，不做原地替换；GitHub Release 安装则从 GitHub 下载自替换） |
 
 ### 任务管理
 

@@ -46,7 +46,7 @@ func TestUpdateCacheRoundTrip(t *testing.T) {
 	setTestHome(t, tmpDir)
 
 	version := "1.2.3"
-	if err := saveUpdateCache(version); err != nil {
+	if err := saveUpdateCache(version, channelGitHub); err != nil {
 		t.Fatalf("saveUpdateCache failed: %v", err)
 	}
 
@@ -312,7 +312,7 @@ func TestUpdateCacheFileLocation(t *testing.T) {
 	tmpDir := t.TempDir()
 	setTestHome(t, tmpDir)
 
-	if err := saveUpdateCache("test-version"); err != nil {
+	if err := saveUpdateCache("test-version", channelNPM); err != nil {
 		t.Fatal(err)
 	}
 
