@@ -91,6 +91,13 @@ type SkillsDriftItem struct {
 // TargetErrors carries per-target partial failures (unreadable dirs etc.) from
 // DriftCheck: the counts are still meaningful, but coverage was not complete.
 //
+// Skipped lists targets NOT audited because the target's agent home does not
+// exist (agent not installed on this machine — M-3, 2026-08-21). Without this
+// gate, `forge doctor` on a single-agent machine reported every canonical skill
+// as missing from every uninstalled target: a wall of unactionable noise that
+// drowned the real gaps. Doctor audits the environment as-installed;
+// `forge skills drift-check` keeps full all-target coverage for the explicit ask.
+//
 // SkillsDriftSummary 是 doctor 报告的 skills 分发节。Items 只收可处置态
 // （missing/drift）；linked/copy-in-sync 健康态仅以总数出现。target-only 孤儿排除
 // ——通常是用户自己的非 forge skill，收进来会淹没信号。
@@ -98,6 +105,12 @@ type SkillsDriftItem struct {
 // Error 在审计本身跑不起来（canonical 解析 / DriftCheck 报错）时设置——零计数
 // 加绿色对勾会把死探针误报成健康，恰是本节要消灭的静默。TargetErrors 承载
 // DriftCheck 的 per-target 部分失败（目录不可读等）：计数仍有意义，但覆盖不全。
+//
+// Skipped 列出未审计的目标——目标 agent home 不存在（本机未装该 agent——M-3，
+// 2026-08-21）。没有这道门，单 agent 机器上的 `forge doctor` 会把每个 canonical
+// skill 报成在每个未安装目标上 missing：一墙不可处置的噪声，淹没真实缺口。
+// doctor 审计"按已安装现状"的环境；`forge skills drift-check` 在显式全量问询下
+// 保留全目标覆盖。
 type SkillsDriftSummary struct {
 	Canonical    string            `json:"canonical"`
 	Error        string            `json:"error,omitempty"`
@@ -107,6 +120,7 @@ type SkillsDriftSummary struct {
 	Missing      int               `json:"missing"`
 	Drifted      int               `json:"drift"`
 	Items        []SkillsDriftItem `json:"items,omitempty"`
+	Skipped      []string          `json:"skipped,omitempty"`
 }
 
 // Report is the full doctor output.

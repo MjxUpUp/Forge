@@ -1,8 +1,11 @@
 package cli
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -89,6 +92,14 @@ func TestUninstall_StripsKimiHooks(t *testing.T) {
 	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
 	kimiHome := t.TempDir()
 	t.Setenv(`KIMI_CODE_HOME`, kimiHome)
+	// codebuddy strip 上线后 RunE 会碰 WorkBuddy 配置——本测试未重定向 HOME，
+	// 必须显式隔离 WORKBUDDY_CONFIG_DIR，否则在装有 WorkBuddy 的机器上跑测试
+	// 会删真实接线（forge-local 条目 + enabledPlugins 键）。
+	t.Setenv(`WORKBUDDY_CONFIG_DIR`, t.TempDir())
+	// REASONIX_HOME 同理（复审 M，2026-08-22）：ReasonixConfigHome 回落
+	// os.UserConfigDir()=%AppData%，HOME/USERPROFILE 重定向不覆盖——不隔离则
+	// 2c 会清真实 reasonix settings.json、2e' 删其 forge-quality skill。
+	t.Setenv(`REASONIX_HOME`, t.TempDir())
 
 	// Seed a kimi config.toml with a forge marker section (as `forge init --agents kimi` wrote).
 	userConfig := "default_model = \"kimi-code/k3\"\n"
@@ -134,6 +145,9 @@ func TestUninstall_StripsReasonixHooks(t *testing.T) {
 	t.Setenv(`CODEX_HOME`, t.TempDir())
 	t.Setenv(`XDG_CONFIG_HOME`, t.TempDir())
 	t.Setenv(`CLAUDE_CONFIG_DIR`, t.TempDir())
+	// WORKBUDDY_CONFIG_DIR 显式隔离：codebuddy strip 上线后，HOME 重定向不足以
+	// 覆盖 WORKBUDDY_CONFIG_DIR 指向真实 WorkBuddy 安装的机器。
+	t.Setenv(`WORKBUDDY_CONFIG_DIR`, t.TempDir())
 	home := t.TempDir()
 	t.Setenv(`HOME`, home)
 	t.Setenv(`USERPROFILE`, home)
@@ -188,6 +202,10 @@ func TestUninstall_RemovesUserLevelQualitySkill(t *testing.T) {
 	t.Setenv(`KIMI_CODE_HOME`, t.TempDir())
 	t.Setenv(`CODEX_HOME`, t.TempDir())
 	t.Setenv(`XDG_CONFIG_HOME`, t.TempDir())
+	t.Setenv(`WORKBUDDY_CONFIG_DIR`, t.TempDir())
+	// REASONIX_HOME 隔离（复审 M，2026-08-22）：本测试也跑全量 RunE，2c 的
+	// reasonix strip 与 2e' 的 reasonix skill 删除同样会碰真机 %AppData%\reasonix。
+	t.Setenv(`REASONIX_HOME`, t.TempDir())
 	home := t.TempDir()
 	t.Setenv(`HOME`, home)
 	t.Setenv(`USERPROFILE`, home)
@@ -231,6 +249,7 @@ func TestUninstall_RemovesReasonixQualitySkill(t *testing.T) {
 	t.Setenv(`CODEX_HOME`, t.TempDir())
 	t.Setenv(`XDG_CONFIG_HOME`, t.TempDir())
 	t.Setenv(`CLAUDE_CONFIG_DIR`, t.TempDir())
+	t.Setenv(`WORKBUDDY_CONFIG_DIR`, t.TempDir())
 	home := t.TempDir()
 	t.Setenv(`HOME`, home)
 	t.Setenv(`USERPROFILE`, home)
@@ -257,6 +276,155 @@ func TestUninstall_RemovesReasonixQualitySkill(t *testing.T) {
 	}
 	if !strings.Contains(stdout, `已删除 reasonix 用户级 forge-quality skill`) {
 		t.Errorf(`缺少 reasonix skill 删除提示，stdout：`+"\n"+`%s`, stdout)
+	}
+}
+
+// TestUninstall_StripsCodeBuddyHooks pins the codebuddy wiring in the 2c strip roster:
+// uninstall must reverse all three seams of the CodeBuddy/WorkBuddy plugin wiring
+// (known_marketplaces.json 的 forge-local 条目、settings.json 的 enabledPlugins 键、
+// forge 自有资产目录) while preserving user content, and print the removal line.
+// Mirrors TestUninstall_StripsReasonixHooks; WORKBUDDY_CONFIG_DIR + FORGE_DATA_HOME
+// isolation keeps RunE off the real WorkBuddy install.
+//
+// TestUninstall_StripsCodeBuddyHooks 钉死 codebuddy 进 2c strip 名册：uninstall 必须
+// 反转 CodeBuddy/WorkBuddy plugin 接线的全部三处（known_marketplaces.json 的
+// forge-local 条目、settings.json 的 enabledPlugins 键、forge 自有资产目录）同时
+// 保留用户内容，并打印清除提示。镜像 TestUninstall_StripsReasonixHooks；
+// WORKBUDDY_CONFIG_DIR + FORGE_DATA_HOME 隔离确保 RunE 不碰真实 WorkBuddy 安装。
+func TestUninstall_StripsCodeBuddyHooks(t *testing.T) {
+	t.Setenv(`FORGE_UNINSTALL_SKIP_NPM`, `1`)
+	fh := t.TempDir()
+	t.Setenv(`FORGE_DATA_HOME`, fh)
+	t.Setenv(`KIMI_CODE_HOME`, t.TempDir())
+	t.Setenv(`CODEX_HOME`, t.TempDir())
+	t.Setenv(`XDG_CONFIG_HOME`, t.TempDir())
+	t.Setenv(`CLAUDE_CONFIG_DIR`, t.TempDir())
+	wbHome := t.TempDir()
+	t.Setenv(`WORKBUDDY_CONFIG_DIR`, wbHome)
+	home := t.TempDir()
+	t.Setenv(`HOME`, home)
+	t.Setenv(`USERPROFILE`, home)
+	t.Setenv(`REASONIX_HOME`, t.TempDir())
+
+	// Seed both WorkBuddy configs with user content + forge wiring, plus the asset dir.
+	kmPath := filepath.Join(wbHome, `plugins`, `known_marketplaces.json`)
+	if err := os.MkdirAll(filepath.Dir(kmPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(kmPath, []byte(`{
+  "user-market": {"source": "github"},
+  "forge-local": {"source": "directory", "path": "somewhere"}
+}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	setPath := filepath.Join(wbHome, `settings.json`)
+	if err := os.WriteFile(setPath, []byte(`{
+  "theme": "dark",
+  "enabledPlugins": {"other@market": true, "forge@forge-local": true}
+}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	assets := filepath.Join(fh, `agents`, `codebuddy`, `forge-local`)
+	if err := os.MkdirAll(assets, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, _, err := captureOutput(t, func() error {
+		return uninstallCmd.RunE(uninstallCmd, nil)
+	})
+	if err != nil {
+		t.Fatalf(`uninstall RunE: %v`, err)
+	}
+
+	data, _ := os.ReadFile(kmPath)
+	if strings.Contains(string(data), `forge-local`) {
+		t.Errorf(`known_marketplaces.json 应无 forge-local 残留，实得：`+"\n"+`%s`, data)
+	}
+	if !strings.Contains(string(data), `user-market`) {
+		t.Errorf(`用户 marketplace 条目必须保留，实得：`+"\n"+`%s`, data)
+	}
+	data, _ = os.ReadFile(setPath)
+	if strings.Contains(string(data), `forge@forge-local`) {
+		t.Errorf(`settings.json 应无 forge@forge-local 残留，实得：`+"\n"+`%s`, data)
+	}
+	if !strings.Contains(string(data), `other@market`) || !strings.Contains(string(data), `dark`) {
+		t.Errorf(`用户 settings 内容必须保留，实得：`+"\n"+`%s`, data)
+	}
+	if _, err := os.Stat(assets); !os.IsNotExist(err) {
+		t.Errorf(`forge 资产目录应被删除，实得 stat err=%v`, err)
+	}
+	if !strings.Contains(stdout, `已清除 codebuddy 用户级配置中的 forge hooks`) {
+		t.Errorf(`缺少 codebuddy hooks 清除提示，stdout：`+"\n"+`%s`, stdout)
+	}
+}
+
+// TestUninstall_StripRosterPinned pins the 2c roster's key set (review M-1): every host
+// wired with a user-level Strip function must appear in userLevelStripRoster. Each host
+// is only guarded by its own TestUninstall_StripsXxxHooks — a host missing from the
+// roster (the codebuddy gap, 2026-08-21) silently survived uninstall. Adding a host:
+// update the expected set alongside the roster entry; forgetting both remains possible
+// but now requires ignoring this test's name in the diff.
+//
+// TestUninstall_StripRosterPinned 钉死 2c 名册的 key 集合（评审 M-1）：每个有用户级
+// Strip 函数的 host 都必须出现在 userLevelStripRoster。各 host 只被自己的
+// TestUninstall_StripsXxxHooks 守卫——名册缺席的 host（codebuddy 缺口，2026-08-21）
+// 会静默躲过卸载。新增 host：随名册条目同步更新期望集合；两处都忘仍可能，但现在
+// 必须在 diff 里无视本测试的名字。
+func TestUninstall_StripRosterPinned(t *testing.T) {
+	want := []string{"cline", "codebuddy", "codex", "cursor", "opencode", "reasonix", "windsurf"}
+	got := make([]string, 0, len(userLevelStripRoster))
+	for name := range userLevelStripRoster {
+		got = append(got, name)
+	}
+	sort.Strings(got)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("userLevelStripRoster keys = %v, want %v — 新 host 的 Strip 函数进名册了吗？（评审 M-1）", got, want)
+	}
+}
+
+// TestRunUserLevelStrips_PartiaFailureReporting pins the L-4 contract through the
+// hoisted 2c loop: a strip returning (true, err) reports BOTH the durable progress
+// line (已部分清除) and the failure warning; (true, nil) reports full success;
+// (false, nil) stays silent; a failing agent never aborts the remaining roster.
+// Before the hoist this branch was a zero-execution dead path inside RunE (review
+// finding, 2026-08-22) — only cline and codebuddy strips can produce (true, err)
+// in production.
+//
+// TestRunUserLevelStrips_PartiaFailureReporting 经提升后的 2c 循环钉死 L-4 契约：
+// strip 返回 (true, err) 时既报持久进展行（已部分清除）又报失败警告；(true, nil)
+// 报完全成功；(false, nil) 静默；单个 agent 失败不中止名册其余部分。提升前该分支
+// 是 RunE 内零执行的死路径（复审发现，2026-08-22）——生产里只有 cline 和
+// codebuddy 的 strip 能产生 (true, err)。
+func TestRunUserLevelStrips_PartiaFailureReporting(t *testing.T) {
+	boom := errors.New(`seam2 write failed`)
+	calls := 0
+	roster := map[string]func() (bool, error){
+		`agent-partial`: func() (bool, error) { calls++; return true, boom },
+		`agent-full`:    func() (bool, error) { calls++; return true, nil },
+		`agent-clean`:   func() (bool, error) { calls++; return false, nil },
+	}
+
+	stdout, stderr, err := captureOutput(t, func() error {
+		runUserLevelStrips(roster)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf(`runUserLevelStrips 不应返回错误（best-effort 契约）: %v`, err)
+	}
+	if calls != 3 {
+		t.Fatalf(`全部 3 个 agent 都须被执行（失败不中止）, calls=%d`, calls)
+	}
+	if !strings.Contains(stdout, `已部分清除 agent-partial 用户级配置中的 forge hooks`) {
+		t.Errorf(`(true, err) 须报「已部分清除」进展行, stdout=%q`, stdout)
+	}
+	if !strings.Contains(stderr, `警告：清理 agent-partial 用户级 hooks 失败：seam2 write failed`) {
+		t.Errorf(`(true, err) 须同时报失败警告, stderr=%q`, stderr)
+	}
+	if !strings.Contains(stdout, `已清除 agent-full 用户级配置中的 forge hooks`) {
+		t.Errorf(`(true, nil) 须报完全成功行, stdout=%q`, stdout)
+	}
+	if strings.Contains(stdout, `agent-clean`) {
+		t.Errorf(`(false, nil) 无可报进展应静默, stdout=%q`, stdout)
 	}
 }
 

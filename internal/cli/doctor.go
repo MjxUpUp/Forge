@@ -3,6 +3,11 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/doctor"
 	"github.com/MjxUpUp/Forge/internal/skillsdist"
@@ -70,20 +75,33 @@ func init() {
 }
 
 // skillsDriftProbe backs the doctor skills-distribution section: canonical vs every
-// global target, surfaced as missing/drift counts with actionable items. Root cause
-// it guards (2026-08 audit): a skill added to canonical after the last
+// INSTALLED global target, surfaced as missing/drift counts with actionable items.
+// Root cause it guards (2026-08 audit): a skill added to canonical after the last
 // `forge skills install` (subagent-orchestration, 8-16) silently missed 5 host
 // targets — nothing scanned that seam (doctor only checked host binary versions,
 // drift-check existed but nothing ran it). Probe errors go into the summary's Error
 // field (never abort the audit, never masquerade as a healthy zero-count state);
 // per-target partial failures from DriftCheck surface via TargetErrors.
 //
-// skillsDriftProbe 支撑 doctor 的 skills 分发节：canonical vs 全部全局目标，以
-// missing/drift 计数 + 可处置条目呈现。守护的根因（2026-08 审计）：上次
+// Installed-target gating (M-3, 2026-08-21): a target whose agent home does not
+// exist (no ~/.claude, ~/.cursor, ...) is recorded in Skipped and NOT audited —
+// auditing it would report every canonical skill as missing from an agent this
+// machine never installed, a wall of unactionable noise that drowns the real gaps.
+// An installed agent with a missing skills dir is still audited (a real gap).
+// `forge skills drift-check` keeps ungated all-target coverage for the explicit ask.
+//
+// skillsDriftProbe 支撑 doctor 的 skills 分发节：canonical vs 全部已安装全局目标，
+// 以 missing/drift 计数 + 可处置条目呈现。守护的根因（2026-08 审计）：上次
 // `forge skills install` 之后新增进 canonical 的 skill（subagent-orchestration，
 // 8-16）静默缺 5 个 host 目标——没有东西扫这条缝（doctor 只查 host 二进制版本，
 // drift-check 存在但没人跑）。探针错误进摘要 Error 字段（绝不中止审计、也绝不
 // 伪装成零计数健康态）；DriftCheck 的 per-target 部分失败经 TargetErrors 呈现。
+//
+// 已安装目标门控（M-3，2026-08-21）：agent home 不存在的目标（无 ~/.claude、
+// ~/.cursor……）记入 Skipped、不审计——审计它只会把每个 canonical skill 报成
+// missing 于一台从未装过的 agent，一墙不可处置的噪声淹没真实缺口。已安装 agent
+// 但缺 skills 目录的仍被审计（真缺口）。`forge skills drift-check` 在显式全量
+// 问询下保留不门控的全目标覆盖。
 func skillsDriftProbe() *doctor.SkillsDriftSummary {
 	canonical, _, err := resolveCanonical()
 	if err != nil {
@@ -93,7 +111,40 @@ func skillsDriftProbe() *doctor.SkillsDriftSummary {
 	if err != nil {
 		return &doctor.SkillsDriftSummary{Error: err.Error()}
 	}
-	rep, err := skillsdist.DriftCheck(canonical, skillsdist.InstallOpts{Targets: targets, Global: true})
+	// Resolve dirs first, then gate: a target is audited iff its agent home (the
+	// parent of its skills dir) exists. Sorted for a deterministic Skipped order.
+	//
+	// 先解析目录再门控：目标的 agent home（skills 目录的父目录）存在才审计。
+	// 排序保证 Skipped 顺序确定。
+	dirs, err := skillsdist.TargetDirs(targets, true, "")
+	if err != nil {
+		return &doctor.SkillsDriftSummary{Error: err.Error()}
+	}
+	var audited []skillsdist.Target
+	var skipped []string
+	var damaged []string
+	for _, name := range slices.Sorted(maps.Keys(dirs)) {
+		// Three states, three signals (review L-5 + follow-up, 2026-08-22): home dir
+		// exists → audit; home path absent → Skipped (uninstalled, advisory line);
+		// home path is a regular FILE → damage, NOT uninstalled — doctor is the tool
+		// that should surface it, so it goes to TargetErrors (⚠ line) instead of
+		// masquerading as "跳过未安装目标".
+		//
+		// 三态三信号（评审 L-5 + 后续，2026-08-22）：home 目录存在→审计；home
+		// 路径缺席→Skipped（未安装，advisory 行）；home 路径是普通文件→损坏态
+		// 而非未安装——doctor 正是应当发现它的工具，进 TargetErrors（⚠ 行）
+		// 而不是冒充「跳过未安装目标」。
+		info, statErr := os.Stat(filepath.Dir(dirs[name]))
+		switch {
+		case statErr == nil && info.IsDir():
+			audited = append(audited, skillsdist.Target(name))
+		case statErr == nil:
+			damaged = append(damaged, name)
+		default:
+			skipped = append(skipped, name)
+		}
+	}
+	rep, err := skillsdist.DriftCheck(canonical, skillsdist.InstallOpts{Targets: audited, Global: true})
 	if err != nil {
 		return &doctor.SkillsDriftSummary{Error: err.Error()}
 	}
@@ -105,6 +156,18 @@ func skillsDriftProbe() *doctor.SkillsDriftSummary {
 		Missing:      rep.Stats.Missing,
 		Drifted:      rep.Stats.Drift,
 		Items:        []doctor.SkillsDriftItem{},
+		Skipped:      skipped,
+	}
+	// Damaged homes ride TargetErrors: rendered as ⚠ lines in every state where the
+	// audit produced output, and they flip the all-skipped renderer to "nothing
+	// audited" instead of a green in-sync line (a machine with ONLY damaged homes
+	// has Skipped empty — zero counts there must not read as healthy).
+	//
+	// 损坏态 home 走 TargetErrors：在审计产出输出的每个状态下渲染为 ⚠ 行，且让
+	// 渲染器把「全跳过」判定翻成「无可审计目标」而非绿色 in-sync（只有损坏态
+	// home 的机器 Skipped 为空——此处零计数绝不能读作健康）。
+	for _, name := range damaged {
+		s.TargetErrors = append(s.TargetErrors, fmt.Sprintf("%s 的 home 路径是普通文件而非目录（损坏态）——跳过审计，请检查该 agent 安装", name))
 	}
 	for _, it := range rep.Items {
 		if it.State != skillsdist.StateMissing && it.State != skillsdist.StateDrift {
@@ -187,6 +250,26 @@ func printDoctor(cmd *cobra.Command, rep doctor.Report) {
 			//
 			// 死探针绝不能渲染成零计数健康态——审计没跑，就没有可打勾的东西。
 			fmt.Fprintf(w, "  ✗ 审计失败: %s\n", s.Error)
+		} else if s.Linked == 0 && s.CopySync == 0 && s.Missing == 0 && s.Drifted == 0 && (len(s.Skipped) > 0 || len(s.TargetErrors) > 0) {
+			// Every target skipped or damaged (no agent homes on this machine): zero
+			// counts here mean "nothing audited", not "everything healthy" — render the
+			// skip as its own state instead of a green in-sync line (the H-1 masquerade
+			// pattern). TargetErrors joins the condition because a machine whose homes
+			// are ALL damaged files has Skipped empty — its zero counts must not read
+			// as healthy either.
+			//
+			// 全部目标被跳过或损坏（本机无任何可用 agent home）：此处零计数=「没审计到
+			// 东西」而非「全部健康」——渲染为独立的跳过态而非绿色 in-sync 行（H-1 伪装
+			// 模式）。TargetErrors 纳入判定是因为 home 全是损坏文件的机器 Skipped 为
+			// 空——它的零计数同样不能读作健康。
+			if len(s.Skipped) > 0 {
+				fmt.Fprintf(w, "  · 无已安装目标可审计（跳过: %s）\n", strings.Join(s.Skipped, ", "))
+			} else {
+				fmt.Fprintln(w, "  · 无已安装目标可审计（全部 home 处于损坏态）")
+			}
+			for _, e := range s.TargetErrors {
+				fmt.Fprintf(w, "  ⚠ %s\n", e)
+			}
 		} else {
 			if s.Missing == 0 && s.Drifted == 0 {
 				fmt.Fprintf(w, "  ✓ in sync  (linked=%d copy-in-sync=%d)\n", s.Linked, s.CopySync)
@@ -206,6 +289,15 @@ func printDoctor(cmd *cobra.Command, rep doctor.Report) {
 			}
 			for _, e := range s.TargetErrors {
 				fmt.Fprintf(w, "  ⚠ %s\n", e)
+			}
+			// Skipped targets (agent home absent — M-3): one advisory line, never
+			// missing-noise. Shown in every non-error state so machine readers of the
+			// human output always see the audit's coverage boundary.
+			//
+			// 跳过的目标（agent home 不存在——M-3）：一行 advisory，绝不制造 missing
+			// 噪声。非错误态都展示，让人读输出时始终看到审计的覆盖边界。
+			if len(s.Skipped) > 0 {
+				fmt.Fprintf(w, "  · 跳过未安装目标（无 home 目录）: %s\n", strings.Join(s.Skipped, ", "))
 			}
 		}
 	}
