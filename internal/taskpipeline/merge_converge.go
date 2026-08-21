@@ -135,7 +135,13 @@ func resolveScalarTiebreaksSync(local, incoming *TaskState) {
 		local.ReviewPassed = local.ReviewPassed || incoming.ReviewPassed
 		local.ReviewedHeadCommit = tiebreakScalar(local.ReviewedHeadCommit, incoming.ReviewedHeadCommit)
 		local.ReviewedChangeHash = tiebreakScalar(local.ReviewedChangeHash, incoming.ReviewedChangeHash)
-		if canonBlockLess(incoming.Acceptance, local.Acceptance) {
+		// The trust flag rides the tiebreak key: same commands + different flag are
+		// different blocks — comparing Acceptance alone keeps EACH side's own flag,
+		// which leaks direction into bytes on identical-content conflicts.
+		//
+		// 信任标志进决胜键：同命令不同标志是不同块——只比 Acceptance 会让两侧各保
+		// 各的标志，同内容冲突时把方向渗进字节。
+		if canonBlockLess([]any{incoming.Acceptance, incoming.AcceptanceForeign}, []any{local.Acceptance, local.AcceptanceForeign}) {
 			local.Acceptance = incoming.Acceptance
 			local.AcceptanceForeign = incoming.AcceptanceForeign
 		}
@@ -200,10 +206,16 @@ func isEmptyCanon(c string) bool {
 }
 
 // completionCanon is the canonical byte form of the completion block (tiebreak key).
+// ReviewRounds is deliberately EXCLUDED: it unions (direction-independent) rather
+// than replaces, so it must not destabilize block identity. AcceptanceForeign is
+// INCLUDED — same commands with different trust flags are different blocks (the flag
+// is the execution gate; leaking it per direction breaks commutativity).
 //
-// completionCanon 是完成块的规范字节形（决胜键）。
+// completionCanon 是完成块的规范字节形（决胜键）。刻意不含 ReviewRounds：它走
+// 并集（方向无关）而非替换，不应动摇块身份。含 AcceptanceForeign——同命令不同
+// 信任标志是不同块（标志即执行闸；按方向渗漏破坏交换律）。
 func completionCanon(s *TaskState) string {
-	return canonicalJSON([]any{s.CompletedAt, s.ReviewPassed, s.ReviewedHeadCommit, s.ReviewedChangeHash, s.ReviewRounds, s.Score, s.Assignment, s.Acceptance})
+	return canonicalJSON([]any{s.CompletedAt, s.ReviewPassed, s.ReviewedHeadCommit, s.ReviewedChangeHash, s.Score, s.Assignment, s.Acceptance, s.AcceptanceForeign})
 }
 
 // adoptCompletionBlock wholesale-adopts the incoming completion block — EXCEPT
@@ -297,6 +309,16 @@ func canonicalizeSync(s *TaskState) {
 // dedupByKey 折叠共享身份键的条目，保留 pick 选出的确定性胜者。首次出现占位；
 // 胜者原位替换（顺序无关——调用方随后排序）。
 func dedupByKey[T any](xs []T, key func(T) string, pick func(cur, cand T) T) []T {
+	// Preserve the nil/empty representation: make([]T,0,…) would turn a nil slice
+	// into a non-nil empty one, and canonicalJSON distinguishes them ("null" vs "[]")
+	// — a representation flip that can flip tiebreak keys across sync rounds.
+	//
+	// 保持 nil/空表示：make([]T,0,…) 会把 nil 切片变非 nil 空切片，而
+	// canonicalJSON 区分两者（"null" vs "[]"）——这种表示翻转会让决胜键跨同步
+	// 轮次翻转。
+	if len(xs) == 0 {
+		return xs
+	}
 	idx := map[string]int{}
 	out := make([]T, 0, len(xs))
 	for _, x := range xs {
