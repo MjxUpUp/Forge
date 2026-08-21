@@ -58,6 +58,15 @@ type FeedEvent struct {
 	Commit   string    `json:"commit,omitempty"` // gate 事件 HeadCommit 短哈希
 	Grade    string    `json:"grade,omitempty"`  // conclusion 事件
 	Score    int       `json:"score,omitempty"`  // conclusion 事件
+	// Node is the originating machine's node_id (multi-machine Phase 3): conclusion
+	// and skill-trigger events carry the record's nodestamp; task-start carries the
+	// current lease holder (who's working it). Empty on legacy unstamped records —
+	// omitempty keeps the pre-multi-machine wire shape unchanged.
+	//
+	// Node 是来源机器的 node_id（多机器 Phase 3）：conclusion 与 skill-trigger 事件
+	// 携带记录的 nodestamp；task-start 携带当前租约持有者（谁在干活）。存量无戳
+	// 记录为空——omitempty 保持多机器前的线上结构不变。
+	Node string `json:"node,omitempty"`
 }
 
 // FeedQuery filters AggregateFeed. Since is exclusive (Time > since) for polling
@@ -204,6 +213,7 @@ func feedForProject(pr pulseRoot, d *projectData, now time.Time) []FeedEvent {
 			Time: e.RecordedAt, Kind: FeedKindSkillTrigger, Project: pr.name,
 			TaskRef: e.TaskRef, Severity: FeedSeverityInfo,
 			Title: title, Detail: e.Detail,
+			Node: e.NodeID, // 事件打戳（nodestamp）的机器归因
 		})
 	}
 
@@ -222,6 +232,9 @@ func feedForProject(pr pulseRoot, d *projectData, now time.Time) []FeedEvent {
 func taskStartEvent(pr pulseRoot, s *taskpipeline.TaskState, now time.Time) FeedEvent {
 	ev := FeedEvent{
 		Time: s.StartedAt, Kind: FeedKindTaskStart, Project: pr.name, TaskRef: s.TaskRef,
+	}
+	if s.Lease.ActiveAt(now) {
+		ev.Node = s.Lease.HolderNode // 当前有效租约的持有者（谁在干活；过期即不显示，与 LeaseStatus 同一条「过期即自由」规则）
 	}
 	if s.IsComplete() {
 		ev.Severity = FeedSeverityOK
@@ -345,6 +358,7 @@ func conclusionEvent(pr pulseRoot, c act.Conclusion) FeedEvent {
 			c.Strength, c.Deterministic, c.AgentClaim, c.AcceptancePass, c.AcceptanceTotal),
 		Grade: c.Grade,
 		Score: score,
+		Node:  c.NodeID, // 结论落章机器
 	}
 }
 
