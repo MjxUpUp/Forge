@@ -190,7 +190,7 @@ func gitInit(t *testing.T, dir string) {
 		cmd := exec.Command(`git`, args...)
 		cmd.Dir = dir
 		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf(`git %s: %v\n%s`, strings.Join(args, ` `), err, out)
+			t.Fatalf(`git %s: %v`+"\n"+`%s`, strings.Join(args, ` `), err, out)
 		}
 	}
 	run(`init`, `-q`)

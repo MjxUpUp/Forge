@@ -70,7 +70,7 @@ func TestRenderResume_ExternalOrigin(t *testing.T) {
 	out := renderResume(state, nil)
 	for _, want := range []string{`外部来源`, `linear`, `ABC-123`, `https://linear.app/forge/issue/ABC-123`} {
 		if !strings.Contains(out, want) {
-			t.Errorf(`resume 输出应含 %q\n---OUTPUT---\n%s`, want, out)
+			t.Errorf(`resume 输出应含 %q`+"\n"+`---OUTPUT---`+"\n"+`%s`, want, out)
 		}
 	}
 }

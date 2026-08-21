@@ -34,6 +34,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // Identity is one machine's node identity as persisted at ~/.forge/node.json.
@@ -150,8 +151,15 @@ func Load() (*Identity, error) {
 }
 
 // LoadOrCreate loads the identity, generating and persisting one (0600) if absent.
+// First creation is EXCLUSIVE (link onto the final path): concurrent first-runners
+// converge on one identity — the losers reload and adopt the winner's key instead of
+// continuing with a node_id that no longer exists on disk (the attribution fork
+// pinned by TestLoadOrCreate_ConcurrentFirstRun_ConvergesToOneIdentity).
 //
-// LoadOrCreate 加载身份；缺失时生成并以 0600 落盘。
+// LoadOrCreate 加载身份；缺失时生成并以 0600 落盘。初建是独占的（link 到最终
+// 路径）：并发首跑收敛到一个身份——败者重新加载并采纳胜者的密钥，而不是继续用
+// 磁盘上已不存在的 node_id（TestLoadOrCreate_ConcurrentFirstRun 收敛测试钉住的
+// 归因分叉）。
 func LoadOrCreate() (*Identity, error) {
 	id, err := Load()
 	if err == nil {
@@ -164,15 +172,87 @@ func LoadOrCreate() (*Identity, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := id.Save(); err != nil {
+	if err := id.CheckConsistent(); err != nil {
 		return nil, err
 	}
+	raw, err := json.MarshalIndent(id, ``, `  `)
+	if err != nil {
+		return nil, fmt.Errorf(`marshal node identity: %w`, err)
+	}
+	p, err := Path()
+	if err != nil {
+		return nil, err
+	}
+	tmpName, err := writeIdentityTemp(raw, p)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = os.Remove(tmpName) }() // no-op after successful link/rename
+	// link(2) creates only if absent — the atomic no-clobber. A concurrent winner's
+	// node.json survives; ours is discarded and we adopt theirs.
+	//
+	// link(2) 只在目标不存在时创建——原子不覆盖。并发胜者的 node.json 保得住，
+	// 我们的被丢弃、改用他们的。
+	if err := os.Link(tmpName, p); err != nil {
+		if os.IsExist(err) {
+			winner, lerr := Load()
+			if lerr != nil {
+				return nil, fmt.Errorf(`lost first-create race but cannot load winner identity: %w`, lerr)
+			}
+			return winner, nil
+		}
+		// FS without hard links (exotic): fall back to atomic rename — no worse than
+		// the pre-fix behavior on that filesystem.
+		//
+		// 不支持硬链接的文件系统（罕见）：退回原子 rename——不差于修复前行为。
+		if err := os.Rename(tmpName, p); err != nil {
+			return nil, fmt.Errorf(`create node identity: %w`, err)
+		}
+		seedNodeSeqCounter(filepath.Dir(p))
+		return id, nil
+	}
+	seedNodeSeqCounter(filepath.Dir(p))
 	return id, nil
 }
 
-// Save persists the identity atomically with 0600 perms.
+// seedNodeSeqCounter plants node-seq=0 beside a JUST-CREATED identity (no-clobber
+// link, best-effort). The counter file is owned by internal/nodestamp (format:
+// one decimal int + newline, 0600) — nodestamp sits ABOVE nodeid in the import
+// graph and cannot be imported here, so the birth-seed lives at the identity
+// layer with this contract note. Why here at all: five non-stamping creators
+// (task-start lease claim, node show, bundle signing, sync) also materialize
+// identities; without the seed, "identity exists but counter missing" is the
+// NORMAL state of a fresh machine and nodestamp could not tell an accident (rm)
+// from a machine that simply never stamped.
 //
-// Save 原子落盘身份，权限 0600。
+// seedNodeSeqCounter 在刚创建的身份旁播种 node-seq=0（no-clobber link，尽力而为）。
+// 计数器文件属于 internal/nodestamp（格式：一个十进制整数 + 换行，0600）——
+// nodestamp 在导入图上位于 nodeid 之上、不能被这里导入，诞生播种因此落在身份层
+// 并附本契约注。为何必须在此播种：有五个非打戳创建方（task start 租约认领、
+// node show、bundle 签名、sync）也会物化身份；不播种的话，「身份存在而计数器
+// 缺失」就是新机器的常态，nodestamp 将无从区分意外（rm）与从未打过戳的机器。
+func seedNodeSeqCounter(homeDir string) {
+	p := filepath.Join(homeDir, `node-seq`)
+	tmp, err := os.CreateTemp(homeDir, `node-seq-*.seed`)
+	if err != nil {
+		return // best-effort：播种失败维持修复前状态（nodestamp 会给出 notice）
+	}
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }()
+	if _, err := tmp.WriteString("0\n"); err != nil {
+		_ = tmp.Close()
+		return
+	}
+	if err := tmp.Close(); err != nil {
+		return
+	}
+	_ = os.Chmod(tmpName, 0600)
+	_ = os.Link(tmpName, p) // EEXIST = already seeded/owned：保留现有
+}
+
+// Save persists the identity atomically with 0600 perms (util.AtomicWrite).
+//
+// Save 原子落盘身份，权限 0600（util.AtomicWrite）。
 func (id *Identity) Save() error {
 	p, err := Path()
 	if err != nil {
@@ -185,22 +265,35 @@ func (id *Identity) Save() error {
 	if err != nil {
 		return fmt.Errorf(`marshal node identity: %w`, err)
 	}
+	return util.AtomicWrite(p, raw, 0600)
+}
+
+// writeIdentityTemp writes marshaled identity bytes to a fsynced, 0600, closed temp
+// file beside the final path — for LoadOrCreate's EXCLUSIVE create, which links
+// (not renames) onto the final path. This is the only remaining hand-rolled temp
+// writer: util.AtomicWrite always ends in rename and cannot serve a no-clobber
+// link; everything else that just overwrites uses AtomicWrite.
+//
+// writeIdentityTemp 把身份字节写进最终路径旁的一个 fsync 过、0600、已关闭的临时
+// 文件——供 LoadOrCreate 的独占初建 link（而非 rename）到最终路径。这是仅存的手写
+// temp 写者：util.AtomicWrite 恒以 rename 收尾、服务不了不覆盖的 link；其余纯覆
+// 盖场景一律 AtomicWrite。
+func writeIdentityTemp(raw []byte, p string) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
-		return err
+		return ``, err
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(p), `node-*.json.tmp`)
 	if err != nil {
-		return fmt.Errorf(`mktemp node identity: %w`, err)
+		return ``, fmt.Errorf(`mktemp node identity: %w`, err)
 	}
 	tmpName := tmp.Name()
-	defer func() { _ = os.Remove(tmpName) }() // no-op after successful rename
 	if err := tmp.Chmod(0600); err != nil {
 		_ = tmp.Close()
-		return fmt.Errorf(`chmod node identity: %w`, err)
+		return ``, fmt.Errorf(`chmod node identity: %w`, err)
 	}
 	if _, err := tmp.Write(raw); err != nil {
 		_ = tmp.Close()
-		return fmt.Errorf(`write node identity: %w`, err)
+		return ``, fmt.Errorf(`write node identity: %w`, err)
 	}
 	// fsync before rename: a crash window must never surface a truncated node.json
 	// (identity loss → node_id change → machine attribution silently forks).
@@ -209,15 +302,12 @@ func (id *Identity) Save() error {
 	// 机器归因静默分叉）。
 	if err := tmp.Sync(); err != nil {
 		_ = tmp.Close()
-		return fmt.Errorf(`fsync node identity: %w`, err)
+		return ``, fmt.Errorf(`fsync node identity: %w`, err)
 	}
 	if err := tmp.Close(); err != nil {
-		return fmt.Errorf(`close node identity: %w`, err)
+		return ``, fmt.Errorf(`close node identity: %w`, err)
 	}
-	if err := os.Rename(tmpName, p); err != nil {
-		return fmt.Errorf(`rename node identity: %w`, err)
-	}
-	return nil
+	return tmpName, nil
 }
 
 // CheckConsistent verifies node_id derives from the stored public key and the key
