@@ -236,6 +236,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge project adopt [--dry-run] [--regenerate]` | 采纳 repo-born 项目 ID：在主 worktree 根生成 `.forge-project-id`（`fpid_<32hex>`，建议 commit 进 git），并把本机数据从路径 key 迁到 ID key（先迁数据再翻身份，复用 rekey 合并语义）+ 注册表同步。另一台机器 `git pull` 拿到 ID 后跑一次 adopt 即对齐——两台机器对同一 clone 推导同一 key，跨机器同步免重映射；`--regenerate` 给共享/污染 ID 换新（其他机器需重跑 adopt 处理 key 不匹配） |
 | `forge project export [--out <file>] [--include quarantine,hazards]` | 把项目记录打包为跨机器 bundle（tar.gz + 逐文件 sha256 的 manifest）：allowlist 默认拒绝——只带 tasks/checklog/toollog/sessions/act/stamps(除 hook-deploy)/protocol.yml，quarantine 源码全文与 hazards 命令行等敏感 store 须 `--include` 显式选入，会话锚/sentinel/freeze 等机器本地文件一律排除；manifest 记录来源身份（key/key_mode/project_id）供导入侧 lineage 判定 |
 | `forge project import <bundle> [--dry-run] [--untrusted] [--trust-foreign] [--force] [--adopt-id]` | 校验（sha256+版本守卫+路径安全）并合并 bundle 到本机：同 key = 同身份 lineage 默认保留结果字段（评分/完成/门禁历史经单调合并收敛），session 链接恒幽灵化；key 不匹配默认剥离外来门禁信号（`--trust-foreign` 显式放行）；bundle 来自 ID 身份而本机是路径身份时默认拒绝给指引，`--adopt-id` 直接采纳其 ID（本机数据先迁移）；账本 `imports.jsonl` 保证同 bundle 重复导入跳过，jsonl 精确行去重保证重叠导出不重复——双向同步收敛 |
+| `forge node show [--json]` | 显示本机节点身份（node-identity：多机器同步的机器归因地基）：`node_id` = ed25519 公钥指纹（`fnode_<32hex>`，身份即公钥——验签即身份证明），密钥对存于用户级 `~/.forge/node.json`（私钥 0600，永不外泄也不进 bundle），`rotation_chain` 轮换证书链格式预留（v1 恒空）；输出只含 node_id + 公钥，绝不打印私钥 |
 
 </details>
 
