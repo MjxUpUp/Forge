@@ -71,32 +71,34 @@ func MergeTaskState(local, incoming *TaskState) {
 // 按契约仅用于受信路径（调用方仅在同身份 lineage 时传 TrustResults）：保留外来
 // 完成/Assignment 恰是不可信路径经 StripForeignGateSignals 剥掉的权力。
 func MergeTaskStateSync(local, incoming *TaskState) {
-	// Rule 2 first: adoption must happen before the unions so the adopted completion
-	// block is the base the unions grow onto (and an incoming incomplete snapshot
-	// never touches a local completion).
+	// Convergence layer (merge_converge.go). ORDER MATTERS: completion resolution
+	// (both-complete + adoption) settles the completion block FIRST; only then do
+	// scalar tiebreaks union ReviewRounds onto the SETTLED winner — unioning before
+	// adoption would let the adoption overwrite the union differently per direction.
 	//
-	// 规则 2 先行：采纳必须发生在并集之前，使采纳的完成块成为并集生长的基座
-	// （且传入的未完成快照永不触碰本地完成态）。
+	// 收敛层（merge_converge.go）。顺序关键：完成裁决（双完成 + 采纳）先定局完成
+	// 块；之后标量决胜才把 ReviewRounds 并到已定局的胜者上——先并集再采纳会让
+	// 采纳按方向不同地覆盖并集结果。
+	resolveBothCompleteSync(local, incoming)
+	// Rule 2: an incoming COMPLETED snapshot completes the local incomplete copy
+	// wholesale (an incoming incomplete snapshot never touches a local completion).
+	//
+	// 规则 2：传入「已完成」快照整块完成本地未完成副本（传入未完成快照永不触碰
+	// 本地完成态）。
 	if incoming.CompletedAt != nil && local.CompletedAt == nil {
-		local.CompletedAt = incoming.CompletedAt
-		local.ReviewPassed = incoming.ReviewPassed
-		local.ReviewedHeadCommit = incoming.ReviewedHeadCommit
-		local.ReviewedChangeHash = incoming.ReviewedChangeHash
-		// ReviewRounds travels with the completion block: the adopted Score may be
-		// recomputed locally later, and the review-pass history is the raw material of
-		// the rework metric — adopting the score but dropping the rounds would
-		// undercount on a local rescore.
-		//
-		// ReviewRounds 随完成块一起走：采纳的 Score 之后可能在本地重算，而
-		// review-pass 历史是返工度量的原料——采纳了分数却丢轮次会让本地重算
-		// 少计。
-		local.ReviewRounds = incoming.ReviewRounds
-		local.Score = incoming.Score
-		local.Assignment = incoming.Assignment
-		local.Acceptance = incoming.Acceptance
+		adoptCompletionBlock(local, incoming)
 	}
+	resolveScalarTiebreaksSync(local, incoming)
 	unionCollaborative(local, incoming)
+	// Deterministic same-ID conflict winners (convergence layer; trusted path only).
+	//
+	// 确定性同 ID 冲突决胜（收敛层；仅受信路径）。
+	resolveRecordConflictsSync(local, incoming)
 	local.History = unionGateHistoryPreferPassed(local.History, incoming.History)
+	// Canonical ordering: the commutativity finisher (arrival order must not leak).
+	//
+	// 规范排序：交换律收尾（到达顺序不得渗入字节）。
+	canonicalizeSync(local)
 	// Re-derive the current gate from the merged history: after a healed gate or an
 	// adopted completion the stored CurrentGate would otherwise show a stale position
 	// (display-only field; NextGate is the canonical derivation — same mechanism
@@ -115,14 +117,33 @@ func MergeTaskStateSync(local, incoming *TaskState) {
 // unionCollaborative 并集共享协作记录集（除门禁 History 与完成块外的一切——两者
 // 由两个合并变体分别裁决）。
 func unionCollaborative(local, incoming *TaskState) {
-	// SessionLinks: append incoming ghost links whose sid isn't already present (any
-	// link, local or ghost — a re-import of the same ghost must not duplicate).
+	// SessionLinks: keyed by SessionID — one link per session. Conflict winner is
+	// deterministic (not arrival order): prefer the NON-Imported (locally anchored)
+	// link over a ghost; then earlier JoinedAt (first join is the fact). Without this,
+	// merge(A,B) and merge(B,A) keep different duplicates of the same session and the
+	// bytes never converge.
 	//
-	// SessionLinks：追加本机不存在的传入幽灵链接（本地或幽灵皆算——同一幽灵
-	// 重复导入不得翻倍）。
+	// SessionLinks：按 SessionID 键——每 session 一链。冲突胜者确定性（非到达
+	// 顺序）：优先非 Imported（本机锚定）链，其次更早 JoinedAt（首次锚定是事实）。
+	// 否则 merge(A,B) 与 merge(B,A) 会保留同一 session 的不同副本，字节永不收敛。
 	for _, in := range incoming.SessionLinks {
-		if !local.HasAnySession(in.SessionID) {
+		idx := -1
+		for i, l := range local.SessionLinks {
+			if l.SessionID == in.SessionID {
+				idx = i
+				break
+			}
+		}
+		if idx == -1 {
 			local.SessionLinks = append(local.SessionLinks, in)
+			continue
+		}
+		l := local.SessionLinks[idx]
+		switch {
+		case l.Imported && !in.Imported:
+			local.SessionLinks[idx] = in // 本机锚定链优先于幽灵链
+		case l.Imported == in.Imported && in.JoinedAt.UnixNano() < l.JoinedAt.UnixNano():
+			local.SessionLinks[idx] = in
 		}
 	}
 	local.Decisions = UnionDecisions(local.Decisions, incoming.Decisions)
@@ -153,11 +174,21 @@ func unionGateHistoryPreferPassed(local, incoming []TaskGateResult) []TaskGateRe
 			merged = append(merged, h)
 			continue
 		}
-		// Disagreement resolves to Passed (peer healed it); agreement keeps local
-		// (stable across re-merge).
+		// Disagreement resolves to Passed (peer healed it); agreement resolves
+		// deterministically: earlier CompletedAt wins (first attainment is the fact),
+		// HeadCommit breaks exact ties — side-independent, so merge(A,B)==merge(B,A)
+		// in bytes (merge_converge.go).
 		//
-		// 结论不一致取 Passed（对端已修复）；一致保本地（重复合并稳定）。
+		// 结论不一致取 Passed（对端已修复）；结论一致确定性裁决：更早 CompletedAt
+		// 胜（首次达成是事实），完全并列比 HeadCommit——方向无关，merge(A,B) 与
+		// merge(B,A) 字节一致（merge_converge.go）。
 		if h.Passed && !merged[i].Passed {
+			merged[i] = h
+			continue
+		}
+		if h.Passed == merged[i].Passed &&
+			(h.CompletedAt.UnixNano() < merged[i].CompletedAt.UnixNano() ||
+				(h.CompletedAt.UnixNano() == merged[i].CompletedAt.UnixNano() && h.HeadCommit < merged[i].HeadCommit)) {
 			merged[i] = h
 		}
 	}

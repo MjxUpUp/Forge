@@ -15,7 +15,9 @@
 | 类 | 数据 | 收敛规则 | 依据 |
 |---|---|---|---|
 | **A. append-only 事件流** | `checklog*.jsonl`、`toollog*.jsonl`、`sessions*.jsonl`、`act/conclusions.jsonl` | **G-Set**：按 `(node_id, seq)` 去重取并集；缺 node_id 的存量行按内容 hash 去重（向后兼容） | CRDT G-Set，天然收敛，现有行去重已是其退化形 |
-| **B. 结构化文档** | `tasks/*.json` | **字段级分流**：decisions/next_steps/session_links 等人类语义字段 → append-only 子集（谁写的归谁，按 `ts_hlc` 排序合并，拒覆盖）；status/gates/score 等单值字段 → **LWW**（HLC 决胜，平手比 node_id 字典序） | Figma multiplayer per-property LWW；Automerge per-key LWW |
+| **B. 结构化文档** | `tasks/*.json` | **字段级分流**：decisions/findings/blockers/next_steps/artifacts/session_links 等记录集 → 并集（G-Set 语义，按 ID/内容键）+ **规范排序**（到达顺序不得渗入字节）；同 ID 双侧编辑 → 确定性胜者（主时间戳早者，规范 JSON 字节序破平）；status/完成块 → 单调采纳 + 双完成时**先完成者胜**；门禁 history prefer-Passed + 同结论取更早 CompletedAt | Figma per-property LWW 的精神；实现落点 `internal/taskpipeline/merge_converge.go` |
+
+> **实现校正（feat/task-convergence）**：TaskState 字段无逐字段时间戳，HLC 无处可落——B 类收敛改用「规范排序 + 确定性决胜」达成同等交换律/幂等性质，无 schema 变更。HLC 保留在事件流（A 类 ts_hlc）与租约（§4）。收敛性质由双层测试锚定：merge 层 40 种子随机交错 property test + datamerge 层双 DataDir 双向合并字节一致。
 | **C. 机器本地态** | `freeze/state.json`、session 锚、`hooks/`、`imports.jsonl` 等 | **不同步**（沿用 allowlist 默认拒绝） | 已论证见 project-sync.md §3 |
 
 ### 为什么 decisions 必须 append-only（不能 LWW）
