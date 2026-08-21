@@ -9,8 +9,9 @@ package ci
 // the handoff shape so that silent config drift cannot break the chain:
 //   - tag shape must stay v<semver>: release.yml fires on on.push.tags "v*" and the npm job
 //     hardcodes asset URLs releases/download/v<ver>/...;
-//   - extra-files must keep bumping npm/package.json and .kimi-plugin/plugin.json — the exact
-//     files the tag-consistency gate and TestKimiPluginManifestVersionTracksRelease read;
+//   - extra-files must keep bumping npm/package.json, .kimi-plugin/plugin.json and
+//     plugins/forge-dsh/package.json — the exact files the tag-consistency gate,
+//     TestKimiPluginManifestVersionTracksRelease and the dsh publish step read;
 //   - the manifest version must equal npm/package.json version: manual releases that bypass
 //     release-please desync it and turn this red (the designed nudge back to the release-please
 //     path; release-please computing the next version from a stale one would collide with an
@@ -26,8 +27,9 @@ package ci
 // workflow_dispatch 串联。本组守卫钉住交接形状，防配置漂移悄悄断链：
 //   - tag 形状必须保持 v<semver>：release.yml 由 on.push.tags "v*" 触发，npm job 硬编码
 //     资产 URL releases/download/v<ver>/...；
-//   - extra-files 必须持续 bump npm/package.json 与 .kimi-plugin/plugin.json——正是 tag
-//     对账门禁与 TestKimiPluginManifestVersionTracksRelease 读的两个文件；
+//   - extra-files 必须持续 bump npm/package.json、.kimi-plugin/plugin.json 与
+//     plugins/forge-dsh/package.json——正是 tag 对账门禁、
+//     TestKimiPluginManifestVersionTracksRelease 与 dsh 发布步读的三个文件；
 //   - manifest 版本必须等于 npm/package.json 版本：绕过 release-please 的手动发版会让
 //     它失同步而变红（刻意的设计——把人推回 release-please 路径；release-please 从旧
 //     版本起算下一版会撞已存在 tag）；
@@ -140,16 +142,19 @@ func TestReleasePleaseConfig_StrategyAndBootstrap(t *testing.T) {
 	}
 }
 
-// TestReleasePleaseConfig_ExtraFilesBumpBothManifests: the Release PR must bump the same files
+// TestReleasePleaseConfig_ExtraFilesBumpAllManifests: the Release PR must bump the same files
 // the downstream gates read. Dropping npm/package.json breaks the tag-consistency gate in
-// release.yml; dropping .kimi-plugin/plugin.json breaks TestKimiPluginManifestVersionTracksRelease.
-// Guarding both here names the cause at the config layer before the downstream noise.
+// release.yml; dropping .kimi-plugin/plugin.json breaks TestKimiPluginManifestVersionTracksRelease;
+// dropping plugins/forge-dsh/package.json stops the dsh publish step from ever seeing a new
+// version (silent skip — the plugin drifts out of the release train again).
+// Guarding all of them here names the cause at the config layer before the downstream noise.
 //
-// TestReleasePleaseConfig_ExtraFilesBumpBothManifests：Release PR 必须 bump 下游门禁读的
+// TestReleasePleaseConfig_ExtraFilesBumpAllManifests：Release PR 必须 bump 下游门禁读的
 // 同一批文件。丢 npm/package.json 会破 release.yml 的 tag 对账门禁；丢
-// .kimi-plugin/plugin.json 会破 TestKimiPluginManifestVersionTracksRelease。在此同时守卫，
-// 让失败在配置层就点名根因，而不是下游报噪声。
-func TestReleasePleaseConfig_ExtraFilesBumpBothManifests(t *testing.T) {
+// .kimi-plugin/plugin.json 会破 TestKimiPluginManifestVersionTracksRelease；丢
+// plugins/forge-dsh/package.json 则 dsh 发布步永远看不到新版本（静默 skip——插件重新
+// 游离出发版火车）。在此同时守卫，让失败在配置层就点名根因，而不是下游报噪声。
+func TestReleasePleaseConfig_ExtraFilesBumpAllManifests(t *testing.T) {
 	cfg := loadReleasePleaseConfig(t)
 	pkg, ok := cfg.Packages["."]
 	if !ok {
@@ -162,12 +167,13 @@ func TestReleasePleaseConfig_ExtraFilesBumpBothManifests(t *testing.T) {
 		}
 	}
 	for path, wantJSONPath := range map[string]string{
-		"npm/package.json":         "$.version",
-		".kimi-plugin/plugin.json": "$.version",
+		"npm/package.json":               "$.version",
+		".kimi-plugin/plugin.json":       "$.version",
+		"plugins/forge-dsh/package.json": "$.version",
 	} {
 		if bumped[path] != wantJSONPath {
 			t.Fatalf("extra-files 缺 {type:json, path:%s, jsonpath:%s}——Release PR 不再 bump 此文件，"+
-				"下游 tag 对账门禁/TestKimiPluginManifestVersionTracksRelease 会红; got extra-files %+v",
+				"下游 tag 对账门禁/TestKimiPluginManifestVersionTracksRelease/dsh 发布步会红; got extra-files %+v",
 				path, wantJSONPath, pkg.ExtraFiles)
 		}
 	}
@@ -200,6 +206,37 @@ func TestReleasePleaseManifest_MatchesNpmVersion(t *testing.T) {
 	if got != pkg.Version {
 		t.Fatalf("manifest 版本 %q != npm/package.json 版本 %q——绕过 release-please 的手动发版/手改文件造成失同步；"+
 			"release-please 会从旧版本起算下一版并撞已存在 tag。请把 manifest 同步到实际发布版本", got, pkg.Version)
+	}
+}
+
+// TestReleasePleaseManifest_DshPluginTracksTrain: @agent_forge/forge-dsh rides the main release
+// train — its package.json is in extra-files, so every Release PR bumps it in lockstep with the
+// root version. A drift here means someone hand-edited the plugin version (the old manual-bump
+// path that left the plugin outside automated releases) or dropped the extra-files entry; the
+// dsh publish step in release.yml would then publish a version that disagrees with the tag.
+//
+// TestReleasePleaseManifest_DshPluginTracksTrain：@agent_forge/forge-dsh 随主发布火车——
+// 它的 package.json 在 extra-files 里，每个 Release PR 都会把它与根版本 lockstep bump。
+// 此处失同步只可能来自手改插件版本号（插件游离于自动发版之外的旧手动 bump 路径）或
+// extra-files 条目被丢；release.yml 的 dsh 发布步随后会发出与 tag 对不上的版本。
+func TestReleasePleaseManifest_DshPluginTracksTrain(t *testing.T) {
+	var manifest map[string]string
+	if err := json.Unmarshal(readRepoFile(t, ".release-please-manifest.json"), &manifest); err != nil {
+		t.Fatalf("unmarshal .release-please-manifest.json: %v", err)
+	}
+	var pkg struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(readRepoFile(t, "plugins", "forge-dsh", "package.json"), &pkg); err != nil {
+		t.Fatalf("unmarshal plugins/forge-dsh/package.json: %v", err)
+	}
+	got, ok := manifest["."]
+	if !ok {
+		t.Fatal(`.release-please-manifest.json 缺根包 "." 条目——release-please 拿不到「上次发布版本」，无法起算下一版本`)
+	}
+	if got != pkg.Version {
+		t.Fatalf("plugins/forge-dsh/package.json 版本 %q != manifest 版本 %q——dsh 插件随主火车 lockstep 发版，"+
+			"版本号由 Release PR 经 extra-files 统一 bump，不要手改；请把它同步回根版本", pkg.Version, got)
 	}
 }
 

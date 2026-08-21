@@ -17,6 +17,7 @@ const { inferBump, bumpVersion, readCommitMessages, replaceVersionField, replace
 const SCRIPT = path.join(__dirname, 'release.js');
 const PKG = path.join(__dirname, '..', 'npm', 'package.json');
 const KIMI_PLUGIN = path.join(__dirname, '..', '.kimi-plugin', 'plugin.json');
+const DSH_PKG = path.join(__dirname, '..', 'plugins', 'forge-dsh', 'package.json');
 const MANIFEST = path.join(__dirname, '..', '.release-please-manifest.json');
 
 // --- bumpVersion:纯函数,版本号计算正确性(发版事故高价值点) ---
@@ -135,7 +136,8 @@ test('readCommitMessages 端到端：trim 前导换行 + feat 推断为 minor', 
 });
 
 // --- replaceVersionField:纯函数,version 字段替换正确性(发版高价值点) ---
-// npm/package.json 与 .kimi-plugin/plugin.json 的 version bump 共用此函数。
+// npm/package.json、.kimi-plugin/plugin.json 与 plugins/forge-dsh/package.json
+// 的 version bump 共用此函数。
 
 test('replaceVersionField 替换 version 字段', () => {
   const src = '{\n  "name": "forge",\n  "version": "1.2.3"\n}';
@@ -198,13 +200,15 @@ test('replaceManifestVersion 缺 "." 键返回 ok=false', () => {
 
 // --- 端到端:dry-run 不改 package.json ---
 
-test('dry-run auto 打印版本信息且不修改 package.json / plugin.json / manifest', () => {
+test('dry-run auto 打印版本信息且不修改 package.json / plugin.json / dsh / manifest', () => {
   const before = fs.readFileSync(PKG, 'utf8');
   const beforeKimi = fs.readFileSync(KIMI_PLUGIN, 'utf8');
+  const beforeDsh = fs.readFileSync(DSH_PKG, 'utf8');
   const beforeManifest = fs.readFileSync(MANIFEST, 'utf8');
   const out = execSync(`node ${SCRIPT} --dry-run`, { encoding: 'utf8' });
   const after = fs.readFileSync(PKG, 'utf8');
   const afterKimi = fs.readFileSync(KIMI_PLUGIN, 'utf8');
+  const afterDsh = fs.readFileSync(DSH_PKG, 'utf8');
   const afterManifest = fs.readFileSync(MANIFEST, 'utf8');
 
   assert.match(out, /current:/);
@@ -214,6 +218,7 @@ test('dry-run auto 打印版本信息且不修改 package.json / plugin.json / m
   assert.match(out, /dry-run, no changes/);
   assert.strictEqual(before, after, 'dry-run must not modify npm/package.json');
   assert.strictEqual(beforeKimi, afterKimi, 'dry-run must not modify .kimi-plugin/plugin.json');
+  assert.strictEqual(beforeDsh, afterDsh, 'dry-run must not modify plugins/forge-dsh/package.json');
   assert.strictEqual(beforeManifest, afterManifest, 'dry-run must not modify .release-please-manifest.json');
 });
 
