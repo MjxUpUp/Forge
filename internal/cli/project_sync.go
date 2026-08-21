@@ -303,12 +303,13 @@ func runProjectSync(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		// The .sig sidecar travels with the bundle inside the node prefix (peers
-		// verify against their trust stores on pull).
+		// verify against their trust stores on pull). Team profile: signing failure
+		// is a hard error (an unsigned push would be rejected by every peer anyway).
 		//
 		// .sig sidecar 随 bundle 一起进节点前缀（对端 pull 时对照各自 trust store
-		// 验真）。
-		if _, err := writeBundleSig(filepath.Join(dest, `bundle.tar.gz`)); err != nil {
-			fmt.Fprintf(out, `⚠ bundle 签名失败（bundle 本身完整）: %v\n`, err)
+		// 验真）。团队档：签名失败是硬错误（未签名的推送反正会被每个对端拒收）。
+		if _, _, serr := writeBundleSigRespectingPolicy(filepath.Join(dest, `bundle.tar.gz`)); serr != nil {
+			return serr
 		}
 		committed, err := syncCommitAll(dir, filepath.Join(`nodes`, id.NodeID, key),
 			fmt.Sprintf(`sync: %s %s (%d files)`, id.NodeID, key, len(manifest.Files)))
@@ -334,8 +335,8 @@ func runProjectSync(cmd *cobra.Command, args []string) error {
 						return err
 					}
 					// 新 bundle 字节 = 新摘要——sidecar 必须重签。
-					if _, err := writeBundleSig(filepath.Join(dest, `bundle.tar.gz`)); err != nil {
-						fmt.Fprintf(out, `⚠ bundle 重签失败: %v\n`, err)
+					if _, _, serr := writeBundleSigRespectingPolicy(filepath.Join(dest, `bundle.tar.gz`)); serr != nil {
+						return serr
 					}
 				}
 				if _, err := syncCommitAll(dir, filepath.Join(`nodes`, id.NodeID, key),
@@ -375,6 +376,7 @@ func runProjectSync(cmd *cobra.Command, args []string) error {
 		nodesDir := filepath.Join(dir, `nodes`)
 		entries, _ := os.ReadDir(nodesDir) // 无 nodes/ = 远端还没有任何推送
 		imported := 0
+		var failed []string
 		for _, e := range entries {
 			if !e.IsDir() || e.Name() == id.NodeID {
 				continue // 自己的前缀不导入
@@ -394,13 +396,17 @@ func runProjectSync(cmd *cobra.Command, args []string) error {
 				continue
 			}
 			fmt.Fprintf(out, `导入节点 %s 的 bundle…\n`, e.Name())
-			// Per-node fault isolation: one corrupt/old-version/identity-mismatched
-			// bundle must not brick the whole pull for every other node.
+			// Per-node fault ISOLATION (one corrupt bundle must not brick the pull) —
+			// but failures are COLLECTED and reported as a pull-level error at the
+			// end: a policy rejection (team-mode unsigned / invalid signature) is a
+			// silent-nothing sync failure if it only prints a warning and exits 0.
 			//
-			// 逐节点容错：一个损坏/旧版/身份不匹配的 bundle 不得 brick 其他所有节点
-			// 的整个 pull。
+			// 逐节点容错隔离（一个坏 bundle 不得 brick 整个 pull）——但失败被收集
+			// 并在结尾作为 pull 级错误报告：策略性拒收（团队档未签/签名无效）若只
+			// 打一行警告就 exit 0，等于静默的同步失败。
 			if err := runProjectImport(projectImportCmd, []string{bundle}); err != nil {
-				fmt.Fprintf(out, `⚠ 节点 %s 导入失败（跳过，不影响其他节点）: %v\n`, e.Name(), err)
+				fmt.Fprintf(out, `⚠ 节点 %s 导入失败: %v\n`, e.Name(), err)
+				failed = append(failed, e.Name())
 				continue
 			}
 			imported++
@@ -408,6 +414,9 @@ func runProjectSync(cmd *cobra.Command, args []string) error {
 		st.LastPullAt = time.Now().UTC().Format(time.RFC3339)
 		if err := saveSyncStatus(dataDir, st); err != nil {
 			return err
+		}
+		if len(failed) > 0 {
+			return fmt.Errorf(`pull 部分失败：%d 个节点导入被拒/失败 %v（已导入 %d 个；修复后对端重推或本机调整信任配置后再 pull）`, len(failed), failed, imported)
 		}
 		fmt.Fprintf(out, `✅ pull 完成：处理 %d 个他机 bundle（账本幂等，已导入的自动跳过）\n`, imported)
 		return nil
