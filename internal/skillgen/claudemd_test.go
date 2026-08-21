@@ -6,8 +6,59 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/protocol"
 )
+
+// TestClaudeMDCoversAllWiredHooks is the docs-consistency guard for the security
+// section: every hook name wired in ForgeHookSpec (the single source of truth for
+// the hook roster, including the Go-native skill-trigger) must appear somewhere in
+// the generated CLAUDE.md / AGENTS.md forge section. Root cause this guards: the
+// 2026-08 audit found 9 wired hooks (incl. two HARD blockers hazard-guard /
+// freeze-guard and the review-stop exit-2 block) absent from the docs — agents hit
+// their BLOCKED messages cold with no resolution path. Adding a hook without
+// documenting it now fails this test instead of shipping silently.
+//
+// TestClaudeMDCoversAllWiredHooks 是安全机制段的一致性守卫：ForgeHookSpec（hook
+// 名册单一真相源，含 Go 原生 skill-trigger）里接线的每个 hook 名都必须出现在生成的
+// CLAUDE.md / AGENTS.md forge 段中。守护的根因：2026-08 审计发现 9 个已接线 hook
+// （含 hazard-guard / freeze-guard 两个硬阻断与 review-stop exit-2 阻断）文档缺席
+// ——agent 冷撞 BLOCKED 无解法。此后加 hook 不写文档会在这里红，不再静默出仓。
+func TestClaudeMDCoversAllWiredHooks(t *testing.T) {
+	wired := map[string]bool{}
+	for _, groups := range hooks.ForgeHookSpec() {
+		for _, g := range groups {
+			for _, h := range g.Hooks {
+				name := strings.TrimPrefix(h.Command, "forge hook ")
+				if name == "" || name == h.Command {
+					t.Fatalf("ForgeHookSpec command not in `forge hook <name>` form: %q", h.Command)
+				}
+				wired[name] = true
+			}
+		}
+	}
+	if len(wired) < 15 {
+		t.Fatalf("wired hook roster unexpectedly small (%d) — ForgeHookSpec shape changed?", len(wired))
+	}
+	for _, section := range []struct{ label, body string }{
+		{"CLAUDE.md", buildForgeSection(true)},
+		{"AGENTS.md", buildForgeSection(false)},
+	} {
+		for name := range wired {
+			// Anchored match: the name must appear in markup form — a bold bullet
+			// (`- **name**`) or inline code (`` `name` ``). Bare substring matching
+			// would let a future hook named e.g. "review" pass on the strength of
+			// "review-stop" already being documented (review 2026-08-21, L-1).
+			//
+			// 锚定匹配：名字必须以标记形态出现——粗体条目（`- **name**`）或行内
+			// 代码（`` `name` ``）。裸子串匹配会让未来名为 "review" 的 hook 借
+			// 已文档化的 "review-stop" 假通过（2026-08-21 复审 L-1）。
+			if !strings.Contains(section.body, "**"+name+"**") && !strings.Contains(section.body, "`"+name+"`") {
+				t.Errorf("%s forge section does not mention wired hook %q in anchored form (**%s** or `%s`) — every wired hook (esp. blocking ones) needs a doc line + a common-errors row when it can BLOCK", section.label, name, name, name)
+			}
+		}
+	}
+}
 
 // TestClaudeMDCommonErrorsIncludesTestCoverage guards the common-errors table
 // documents the task-verify test-coverage gate. Since v0.22 the verify gate
@@ -208,11 +259,15 @@ func TestClaudeMDTaskVerifyIsAdvisory(t *testing.T) {
 func TestClaudeMDCompileAssertionRulesAdvisory(t *testing.T) {
 	section := buildForgeSection(true)
 
-	// New advisory wording: hooks only remind, the agent self-checks.
-	if !strings.Contains(section, "auto-compile hook 仅 advisory 提醒") {
+	// New advisory wording: hooks only remind, the agent self-checks. Hook names
+	// are backtick-anchored (covers-all-wired-hooks guard requires markup form).
+	//
+	// 新 advisory 措辞：hook 只提醒，agent 自检。hook 名带反引号锚定
+	// （covers-all-wired-hooks 守卫要求标记形态）。
+	if !strings.Contains(section, "`auto-compile` hook 仅 advisory 提醒") {
 		t.Error("CLAUDE.md compile rule must document auto-compile as advisory (v0.25)")
 	}
-	if !strings.Contains(section, "assertion-check hook 检测到弱化仅 advisory 提醒") {
+	if !strings.Contains(section, "`assertion-check` hook 检测到弱化仅 advisory 提醒") {
 		t.Error("CLAUDE.md assertion rule must document assertion-check as advisory (v0.25)")
 	}
 	// The obsolete wording that referenced hook auto-checks implied blocking enforcement — must be gone.

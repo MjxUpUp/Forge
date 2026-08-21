@@ -359,7 +359,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | 命令 | 说明 |
 |------|------|
 | `forge health [--json]` | 项目级质量趋势——聚合所有任务结论（分数走势/证据盲区率/复发低分维度，task→project 粒度联动） |
-| `forge doctor [--json]` | 跨 agent 环境一致性审计（只读）——扫 9 个 agent host 的 forge hook 接线、解析各 host hook 实际调用的 forge 二进制并对照版本（ok/drift/nover/missing 四态），并列出 PATH 上全部 forge 可执行文件（多个并存 = 游离 exe/shim 抢路，PATHEXT 事故形状）；copilot 无稳定配置路径约定，刻意不在列 |
+| `forge doctor [--json]` | 跨 agent 环境一致性审计（只读）——扫 9 个 agent host 的 forge hook 接线、解析各 host hook 实际调用的 forge 二进制并对照版本（ok/drift/nover/missing 四态），并列出 PATH 上全部 forge 可执行文件（多个并存 = 游离 exe/shim 抢路，PATHEXT 事故形状）；并审计 skills 分发态（canonical vs 全局各目标，missing/drift 附修复命令——canonical 新增 skill 后未重装的目标缺失即在此暴露）；copilot 无稳定配置路径约定，刻意不在列 |
 | `forge trace <task-ref>` | 查看任务的完整质量事件时间线（checklog + toollog + token） |
 | `forge dashboard [--port <n>] [--no-open]` | 本地全局质量看板（Pulse 面板）——在任意目录运行都聚合 `~/.forge/projects.json` 登记的全部项目（`forge init` 自登记），渲染事件流（任务/gate/skill 触发/结论）、任务评分与证据链、skills 聚合（localhost 只读，自动开浏览器，Ctrl+C 退出，面板内按项目过滤）；项目目录被移走/删除后注册表条目自动淡出（读时惰性精简），不留幽灵路径 |
 | `forge sync [--force]` | 同步 forge 资产到当前二进制版本（用户级 hooks/指令/skill 重生成 + 存量项目级残留收敛；注意：名字易误读——跨机器迁移项目数据用 `forge project export/import`，与本命令无关） |
