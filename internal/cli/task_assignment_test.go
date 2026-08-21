@@ -804,7 +804,7 @@ func TestTaskMine_AnnotatesZombie(t *testing.T) {
 		}
 		var rows []delegatedEntry
 		if err := json.Unmarshal([]byte(out), &rows); err != nil {
-			t.Fatalf(`解析 mine JSON 失败: %v\n输出: %s`, err, out)
+			t.Fatalf(`解析 mine JSON 失败: %v`+"\n"+`输出: %s`, err, out)
 		}
 		byRef := map[string]delegatedEntry{}
 		for _, r := range rows {
@@ -830,7 +830,7 @@ func TestTaskMine_AnnotatesZombie(t *testing.T) {
 		// Both rows appear; the stalled one carries the ⚠僵尸(offered>7d) marker.
 		idxStalled := strings.Index(out, `feat/stalled`)
 		if idxStalled < 0 {
-			t.Fatalf(`应含 feat/stalled 行, got:\n%s`, out)
+			t.Fatalf(`应含 feat/stalled 行, got:`+"\n"+`%s`, out)
 		}
 		// The marker must be on the stalled row — find the next newline after feat/stalled and check
 		// the marker is within that line (not on the fresh row).
@@ -910,7 +910,7 @@ func TestTaskReclaim(t *testing.T) {
 	}
 	var dry reclaimResult
 	if err := json.Unmarshal([]byte(dryOut), &dry); err != nil {
-		t.Fatalf(`解析 reclaim dry-run JSON 失败: %v\n输出: %s`, err, dryOut)
+		t.Fatalf(`解析 reclaim dry-run JSON 失败: %v`+"\n"+`输出: %s`, err, dryOut)
 	}
 	if !dry.DryRun || dry.Count != 1 || len(dry.Reclaimed) != 1 || dry.Reclaimed[0] != `feat/stale` {
 		t.Fatalf(`dry-run 应 dry_run=true/count=1/仅 feat/stale, got %+v`, dry)
@@ -931,7 +931,7 @@ func TestTaskReclaim(t *testing.T) {
 		t.Fatalf(`reclaim exit %d: %s`, code, out)
 	}
 	if !strings.Contains(out, `已回收`) || !strings.Contains(out, `feat/stale`) {
-		t.Errorf(`reclaim 输出应含「已回收」+ feat/stale, got:\n%s`, out)
+		t.Errorf(`reclaim 输出应含「已回收」+ feat/stale, got:`+"\n"+`%s`, out)
 	}
 	st, err := taskpipeline.LoadTaskState(dir, `feat/stale`)
 	if err != nil {
@@ -968,7 +968,7 @@ func TestTaskReclaim(t *testing.T) {
 		t.Fatalf(`second reclaim exit %d: %s`, code2, out2)
 	}
 	if !strings.Contains(out2, `无 claimed 僵尸`) {
-		t.Errorf(`第二次 reclaim 应报告无候选, got:\n%s`, out2)
+		t.Errorf(`第二次 reclaim 应报告无候选, got:`+"\n"+`%s`, out2)
 	}
 }
 
@@ -991,14 +991,14 @@ func TestTaskReclaim_EmptyJSON(t *testing.T) {
 		t.Fatalf(`reclaim --json exit %d: %s`, code, out)
 	}
 	if !strings.Contains(out, `"reclaimed": []`) {
-		t.Errorf(`空结果应序列化为 "reclaimed": [] 而非 null, got:\n%s`, out)
+		t.Errorf(`空结果应序列化为 "reclaimed": [] 而非 null, got:`+"\n"+`%s`, out)
 	}
 	if strings.Contains(out, `null`) {
-		t.Errorf(`空结果不应含 null, got:\n%s`, out)
+		t.Errorf(`空结果不应含 null, got:`+"\n"+`%s`, out)
 	}
 	var res reclaimResult
 	if err := json.Unmarshal([]byte(out), &res); err != nil {
-		t.Fatalf(`解析失败: %v\n输出: %s`, err, out)
+		t.Fatalf(`解析失败: %v`+"\n"+`输出: %s`, err, out)
 	}
 	if res.Count != 0 || len(res.Reclaimed) != 0 {
 		t.Errorf(`应 count=0/reclaimed 空, got %+v`, res)
@@ -1167,7 +1167,7 @@ func TestMineRendersCompletedNotOffered(t *testing.T) {
 		}
 		var rows []delegatedEntry
 		if err := json.Unmarshal([]byte(out), &rows); err != nil {
-			t.Fatalf(`解析 mine JSON 失败: %v\n输出: %s`, err, out)
+			t.Fatalf(`解析 mine JSON 失败: %v`+"\n"+`输出: %s`, err, out)
 		}
 		byRef := map[string]delegatedEntry{}
 		for _, r := range rows {
@@ -1198,7 +1198,7 @@ func TestMineRendersCompletedNotOffered(t *testing.T) {
 		}
 		idx := strings.Index(out, `[feat/done-suspended]`)
 		if idx < 0 {
-			t.Fatalf(`应含 feat/done-suspended 行, got:\n%s`, out)
+			t.Fatalf(`应含 feat/done-suspended 行, got:`+"\n"+`%s`, out)
 		}
 		// Extend back to the line start so the status prefix (`complete  [`) is in view.
 		//

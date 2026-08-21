@@ -234,6 +234,6 @@ func TestMergeTaskStateSync_CompletionMonotonic(t *testing.T) {
 	MergeTaskStateSync(local, incoming)
 	after, _ := json.Marshal(local)
 	if string(before) != string(after) {
-		t.Errorf(`重复合并应幂等：\nbefore=%s\nafter=%s`, before, after)
+		t.Errorf(`重复合并应幂等：`+"\n"+`before=%s`+"\n"+`after=%s`, before, after)
 	}
 }
