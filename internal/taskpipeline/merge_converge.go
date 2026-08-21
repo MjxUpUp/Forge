@@ -105,27 +105,50 @@ func resolveScalarTiebreaksSync(local, incoming *TaskState) {
 	local.SessionID = tiebreakScalar(local.SessionID, incoming.SessionID)
 	local.ParentTaskRef = tiebreakScalar(local.ParentTaskRef, incoming.ParentTaskRef)
 	local.StartedAt = tiebreakTime(local.StartedAt, incoming.StartedAt)
-	// Block-structured fields: smaller canonical JSON wins (arbitrary but convergent).
+	local.ResumeStale = local.ResumeStale || incoming.ResumeStale
+	if local.TTL == 0 || (incoming.TTL != 0 && incoming.TTL < local.TTL) {
+		local.TTL = incoming.TTL
+	}
+	// Block-structured fields: NON-EMPTY wins first (empty must never displace real
+	// data — "null"/"{}"/"[]" sort before any filled value, so a raw canonical
+	// comparison would systematically delete data in exactly the pathological
+	// dual-create case these rules exist for); canonical JSON breaks non-empty ties.
 	//
-	// 块结构字段：规范 JSON 小者胜（任意但收敛）。
-	if canonicalJSON(incoming.ExternalOrigin) < canonicalJSON(local.ExternalOrigin) {
+	// 块结构字段：非空优先（空绝不顶替真实数据——"null"/"{}"/"[]" 字典序恒小于
+	// 填充值，裸字节比较会在这些规则为之存在的病理双创建情形里系统性删数据）；
+	// 非空间并列按规范 JSON 字节序。
+	if canonBlockLess(incoming.ExternalOrigin, local.ExternalOrigin) {
 		local.ExternalOrigin = incoming.ExternalOrigin
 	}
 	if local.CompletedAt == nil && incoming.CompletedAt == nil {
-		if canonicalJSON(incoming.Acceptance) < canonicalJSON(local.Acceptance) {
+		// Review anchors set BEFORE completion (review-pass lands between task-verify
+		// and task-complete). Both-incomplete is the ONLY case they get scalar rules:
+		// once a completion is involved they belong to the completion BLOCK (adopted
+		// coherently by resolveBothCompleteSync / rule 2) — a scalar tiebreak there
+		// would mix one side's hash into the other side's adopted block, incoherent
+		// AND direction-dependent.
+		//
+		// 完成前即落的 review 锚（review-pass 在 task-verify 与 task-complete 之间）。
+		// 只有双未完成才走标量规则：一旦有完成参与，它们属于完成块（由
+		// resolveBothCompleteSync / 规则 2 一致采纳）——彼处走标量决胜会把一侧的
+		// hash 混进另一侧的采纳块，既不连贯又方向相关。
+		local.ReviewPassed = local.ReviewPassed || incoming.ReviewPassed
+		local.ReviewedHeadCommit = tiebreakScalar(local.ReviewedHeadCommit, incoming.ReviewedHeadCommit)
+		local.ReviewedChangeHash = tiebreakScalar(local.ReviewedChangeHash, incoming.ReviewedChangeHash)
+		if canonBlockLess(incoming.Acceptance, local.Acceptance) {
 			local.Acceptance = incoming.Acceptance
 			local.AcceptanceForeign = incoming.AcceptanceForeign
 		}
-		if canonicalJSON(incoming.Assignment) < canonicalJSON(local.Assignment) {
+		if canonBlockLess(incoming.Assignment, local.Assignment) {
 			local.Assignment = incoming.Assignment
 		}
-		if canonicalJSON(incoming.Score) < canonicalJSON(local.Score) {
+		if canonBlockLess(incoming.Score, local.Score) {
 			local.Score = incoming.Score
 		}
-		if canonicalJSON(incoming.PlanScope) < canonicalJSON(local.PlanScope) {
+		if canonBlockLess(incoming.PlanScope, local.PlanScope) {
 			local.PlanScope = incoming.PlanScope
 		}
-		if canonicalJSON(incoming.Overrides) < canonicalJSON(local.Overrides) {
+		if canonBlockLess(incoming.Overrides, local.Overrides) {
 			local.Overrides = incoming.Overrides
 		}
 	}
@@ -157,6 +180,25 @@ func resolveBothCompleteSync(local, incoming *TaskState) {
 	}
 }
 
+// canonBlockLess reports whether incoming should displace local in a block tiebreak:
+// empty ("null"/"{}"/"[]"/`""`) always loses; two non-empty blocks compare by
+// canonical JSON bytes.
+//
+// canonBlockLess 报告块决胜中传入是否应顶替本地：空（"null"/"{}"/"[]"/`""`）恒
+// 败；两个非空块按规范 JSON 字节序。
+func canonBlockLess(incoming, local any) bool {
+	ci, cl := canonicalJSON(incoming), canonicalJSON(local)
+	ei, el := isEmptyCanon(ci), isEmptyCanon(cl)
+	if ei != el {
+		return ei == false // incoming 非空、本地空 → 传入胜
+	}
+	return ci < cl
+}
+
+func isEmptyCanon(c string) bool {
+	return c == `` || c == `null` || c == `{}` || c == `[]` || c == `""`
+}
+
 // completionCanon is the canonical byte form of the completion block (tiebreak key).
 //
 // completionCanon 是完成块的规范字节形（决胜键）。
@@ -182,6 +224,13 @@ func adoptCompletionBlock(local, incoming *TaskState) {
 	local.Score = incoming.Score
 	local.Assignment = incoming.Assignment
 	local.Acceptance = incoming.Acceptance
+	// AcceptanceForeign travels WITH the acceptance block (the execution gate against
+	// foreign-authored Run commands — project_import sets it on the trusted path);
+	// adopting the commands without the flag would silently disarm that gate.
+	//
+	// AcceptanceForeign 随验收块一起走（防外来 Run 命令任意执行的执行闸——
+	// project_import 在受信路径设置它）；只采纳命令不采纳标志会静默解除该闸。
+	local.AcceptanceForeign = incoming.AcceptanceForeign
 }
 
 // canonicalizeSync sorts every record set by its content key — the final step that
@@ -194,12 +243,27 @@ func adoptCompletionBlock(local, incoming *TaskState) {
 // 每个集合先按身份键去重并取确定性胜者：合并时的并集只过滤传入对本地，单侧既有
 // 的重复否则会幸存并把方向渗进字节。
 func canonicalizeSync(s *TaskState) {
-	s.History = normalizeHistory(s.History)
+	s.History = dedupByKey(s.History, gateContentKey, func(a, b TaskGateResult) TaskGateResult { return a })
+	// Chronological order: the LAST entry must be the latest gate activity —
+	// lastGateAt (zombie pruning anchor, state.go) reads History's tail, and feed
+	// re-sorts by time anyway. Passed sorts after Failed on exact ties so "healed"
+	// reads stay stable for last-match consumers.
+	//
+	// 时间序：末条必须是最新门禁活动——lastGateAt（僵尸剪枝锚，state.go）读
+	// History 尾部，feed 也按时间重排。完全并列时 Passed 排在 Failed 后，让
+	// 取末条的「愈合」判读稳定。
 	sort.SliceStable(s.History, func(i, j int) bool {
-		if s.History[i].Gate != s.History[j].Gate {
-			return s.History[i].Gate < s.History[j].Gate
+		a, b := s.History[i], s.History[j]
+		if a.CompletedAt.UnixNano() != b.CompletedAt.UnixNano() {
+			return a.CompletedAt.UnixNano() < b.CompletedAt.UnixNano()
 		}
-		return s.History[i].CompletedAt.UnixNano() < s.History[j].CompletedAt.UnixNano()
+		if a.Gate != b.Gate {
+			return a.Gate < b.Gate
+		}
+		if a.HeadCommit != b.HeadCommit {
+			return a.HeadCommit < b.HeadCommit
+		}
+		return !a.Passed && b.Passed
 	})
 	s.Decisions = dedupByKey(s.Decisions, decisionKey, func(a, b Decision) Decision { return earlierTime(a, b, a.DecidedAt, b.DecidedAt) })
 	sort.SliceStable(s.Decisions, func(i, j int) bool { return decisionKey(s.Decisions[i]) < decisionKey(s.Decisions[j]) })
@@ -277,33 +341,6 @@ func dedupStrings(xs []string) []string {
 		}
 	}
 	return out
-}
-
-// normalizeHistory collapses duplicate Gate entries within one state: Passed beats
-// Failed (same prefer-Passed rule as the merge), then earlier CompletedAt, then
-// smaller HeadCommit.
-//
-// normalizeHistory 折叠单状态内的重复 Gate 条目：Passed 胜 Failed（与合并同款
-// prefer-Passed 规则），其次更早 CompletedAt，再更小 HeadCommit。
-func normalizeHistory(h []TaskGateResult) []TaskGateResult {
-	return dedupByKey(h, func(g TaskGateResult) string { return g.Gate }, func(cur, cand TaskGateResult) TaskGateResult {
-		if cand.Passed != cur.Passed {
-			if cand.Passed {
-				return cand
-			}
-			return cur
-		}
-		if cand.CompletedAt.UnixNano() != cur.CompletedAt.UnixNano() {
-			if cand.CompletedAt.UnixNano() < cur.CompletedAt.UnixNano() {
-				return cand
-			}
-			return cur
-		}
-		if cand.HeadCommit < cur.HeadCommit {
-			return cand
-		}
-		return cur
-	})
 }
 
 // Content keys: ID-bearing records key by ID; the empty-ID degenerate case (legacy
@@ -405,6 +442,27 @@ func resolveRecordConflictsSync(local, incoming *TaskState) {
 		for i, l := range local.Artifacts {
 			if artifactKey(l) == artifactKey(in) && canonicalJSON(in) < canonicalJSON(l) {
 				local.Artifacts[i] = in
+			}
+		}
+	}
+	// SessionLinks: same-session different-content conflict. unionCollaborative keeps
+	// LOCAL on sid collision (untrusted-authoritative), which is direction-dependent —
+	// resolve here with the same deterministic rule normalizeSessionLinks uses:
+	// non-Imported (locally anchored) beats ghost, then earlier JoinedAt.
+	//
+	// SessionLinks：同 session 不同内容冲突。unionCollaborative 在 sid 冲突时保本地
+	// （不可信权威），方向相关——此处用与 normalizeSessionLinks 相同的确定性规则
+	// 裁决：非 Imported（本机锚定）胜幽灵链，其次更早 JoinedAt。
+	for _, in := range incoming.SessionLinks {
+		for i, l := range local.SessionLinks {
+			if l.SessionID != in.SessionID {
+				continue
+			}
+			switch {
+			case l.Imported && !in.Imported:
+				local.SessionLinks[i] = in
+			case l.Imported == in.Imported && in.JoinedAt.UnixNano() < l.JoinedAt.UnixNano():
+				local.SessionLinks[i] = in
 			}
 		}
 	}

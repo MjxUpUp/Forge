@@ -1,5 +1,7 @@
 package taskpipeline
 
+import "fmt"
+
 // merge.go — task-state merge semantics shared by every cross-machine path:
 // `forge task import --merge` (cli/task_port.go) and `forge project import`
 // (project-sync, datamerge TaskUnion policy). Exported from taskpipeline so the
@@ -94,7 +96,17 @@ func MergeTaskStateSync(local, incoming *TaskState) {
 	//
 	// 确定性同 ID 冲突决胜（收敛层；仅受信路径）。
 	resolveRecordConflictsSync(local, incoming)
-	local.History = unionGateHistoryPreferPassed(local.History, incoming.History)
+	// Gate history unions by FULL CONTENT key (not by gate): retry provenance
+	// (Failed then re-run Passed) is load-bearing for ReworkRounds/scoring/feed —
+	// collapsing by gate would silently delete it. gatePassed still sees the Passed
+	// entry, so the heal-deadlock protection the old prefer-Passed rule provided is
+	// preserved (the peer's Passed enters the union).
+	//
+	// 门禁 history 按全内容键并集（不按 gate 折叠）：重试 provenance（Failed 后重跑
+	// Passed）是 ReworkRounds/评分/feed 的承重数据——按 gate 折叠会静默删除它。
+	// gatePassed 仍能看到 Passed 条目，旧 prefer-Passed 规则的愈合防死锁保障保留
+	// （对端的 Passed 进入并集）。
+	local.History = unionGateHistoryByContent(local.History, incoming.History)
 	// Canonical ordering: the commutativity finisher (arrival order must not leak).
 	//
 	// 规范排序：交换律收尾（到达顺序不得渗入字节）。
@@ -117,33 +129,20 @@ func MergeTaskStateSync(local, incoming *TaskState) {
 // unionCollaborative 并集共享协作记录集（除门禁 History 与完成块外的一切——两者
 // 由两个合并变体分别裁决）。
 func unionCollaborative(local, incoming *TaskState) {
-	// SessionLinks: keyed by SessionID — one link per session. Conflict winner is
-	// deterministic (not arrival order): prefer the NON-Imported (locally anchored)
-	// link over a ghost; then earlier JoinedAt (first join is the fact). Without this,
-	// merge(A,B) and merge(B,A) keep different duplicates of the same session and the
-	// bytes never converge.
+	// SessionLinks: append incoming links whose sid isn't already present (any link,
+	// local or ghost — a re-import of the same ghost must not duplicate). LOCAL WINS
+	// on sid collision here: this is the shared (also-untrusted) union, so local
+	// anchoring stays authoritative; the SYNC path's canonicalizeSync afterwards
+	// resolves winners deterministically (normalizeSessionLinks), restoring
+	// commutativity without weakening the untrusted contract.
 	//
-	// SessionLinks：按 SessionID 键——每 session 一链。冲突胜者确定性（非到达
-	// 顺序）：优先非 Imported（本机锚定）链，其次更早 JoinedAt（首次锚定是事实）。
-	// 否则 merge(A,B) 与 merge(B,A) 会保留同一 session 的不同副本，字节永不收敛。
+	// SessionLinks：追加本机不存在的传入链接（本地或幽灵皆算——同一幽灵重复导入
+	// 不得翻倍）。sid 冲突本地胜：本并集是共享（含不可信）路径，本地锚定保持权威；
+	// SYNC 路径随后的 canonicalizeSync 用确定性胜者（normalizeSessionLinks）裁决，
+	// 在不削弱不可信契约的前提下恢复交换律。
 	for _, in := range incoming.SessionLinks {
-		idx := -1
-		for i, l := range local.SessionLinks {
-			if l.SessionID == in.SessionID {
-				idx = i
-				break
-			}
-		}
-		if idx == -1 {
+		if !local.HasAnySession(in.SessionID) {
 			local.SessionLinks = append(local.SessionLinks, in)
-			continue
-		}
-		l := local.SessionLinks[idx]
-		switch {
-		case l.Imported && !in.Imported:
-			local.SessionLinks[idx] = in // 本机锚定链优先于幽灵链
-		case l.Imported == in.Imported && in.JoinedAt.UnixNano() < l.JoinedAt.UnixNano():
-			local.SessionLinks[idx] = in
 		}
 	}
 	local.Decisions = UnionDecisions(local.Decisions, incoming.Decisions)
@@ -153,46 +152,34 @@ func unionCollaborative(local, incoming *TaskState) {
 	local.Artifacts = UnionArtifacts(local.Artifacts, incoming.Artifacts)
 }
 
-// unionGateHistoryPreferPassed merges gate results keyed by Gate with the
-// prefer-Passed conflict rule (see MergeTaskStateSync rule 1). Local entries seed the
-// order; an incoming Passed replaces a local Failed for the same gate.
+// unionGateHistoryByContent unions gate results by FULL content key
+// (Gate+CompletedAt+HeadCommit+Passed): both a Failed and its later Passed retry
+// survive (rework provenance), exact duplicates collapse, and the result is
+// side-independent. Canonical ORDER is applied later by canonicalizeSync.
 //
-// unionGateHistoryPreferPassed 按 Gate 键合并门禁结果，冲突采用 prefer-Passed 规则
-// （见 MergeTaskStateSync 规则 1）。本地条目定序；同 Gate 的传入 Passed 替换本地
-// Failed。
-func unionGateHistoryPreferPassed(local, incoming []TaskGateResult) []TaskGateResult {
-	merged := make([]TaskGateResult, 0, len(local)+len(incoming))
-	index := make(map[string]int, len(local)+len(incoming))
-	for _, h := range local {
-		index[h.Gate] = len(merged)
-		merged = append(merged, h)
-	}
-	for _, h := range incoming {
-		i, ok := index[h.Gate]
-		if !ok {
-			index[h.Gate] = len(merged)
-			merged = append(merged, h)
-			continue
-		}
-		// Disagreement resolves to Passed (peer healed it); agreement resolves
-		// deterministically: earlier CompletedAt wins (first attainment is the fact),
-		// HeadCommit breaks exact ties — side-independent, so merge(A,B)==merge(B,A)
-		// in bytes (merge_converge.go).
-		//
-		// 结论不一致取 Passed（对端已修复）；结论一致确定性裁决：更早 CompletedAt
-		// 胜（首次达成是事实），完全并列比 HeadCommit——方向无关，merge(A,B) 与
-		// merge(B,A) 字节一致（merge_converge.go）。
-		if h.Passed && !merged[i].Passed {
-			merged[i] = h
-			continue
-		}
-		if h.Passed == merged[i].Passed &&
-			(h.CompletedAt.UnixNano() < merged[i].CompletedAt.UnixNano() ||
-				(h.CompletedAt.UnixNano() == merged[i].CompletedAt.UnixNano() && h.HeadCommit < merged[i].HeadCommit)) {
-			merged[i] = h
+// unionGateHistoryByContent 按全内容键（Gate+CompletedAt+HeadCommit+Passed）并集
+// 门禁结果：Failed 与其后的 Passed 重跑都存活（返工 provenance），完全重复折叠，
+// 结果方向无关。规范序由 canonicalizeSync 随后施加。
+func unionGateHistoryByContent(local, incoming []TaskGateResult) []TaskGateResult {
+	seen := map[string]bool{}
+	out := make([]TaskGateResult, 0, len(local)+len(incoming))
+	for _, h := range append(append([]TaskGateResult{}, local...), incoming...) {
+		k := gateContentKey(h)
+		if !seen[k] {
+			seen[k] = true
+			out = append(out, h)
 		}
 	}
-	return merged
+	return out
+}
+
+// gateContentKey is the full-identity key of a gate result (every field, so retries
+// and re-runs stay distinct; zero-padded time keeps lexical == numeric order).
+//
+// gateContentKey 是门禁结果的全身份键（全字段，重试/重跑保持区分；时间零填充
+// 保持字典序 == 数值序）。
+func gateContentKey(h TaskGateResult) string {
+	return h.Gate + "\x00" + pad20(h.CompletedAt.UnixNano()) + "\x00" + h.HeadCommit + "\x00" + fmt.Sprint(h.Passed)
 }
 
 func UnionDecisions(local, incoming []Decision) []Decision {

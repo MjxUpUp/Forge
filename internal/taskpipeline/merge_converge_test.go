@@ -48,25 +48,30 @@ func taskJSON(t *testing.T, s *TaskState) string {
 }
 
 // randomTaskOps applies n seeded random mutations to s, simulating one machine's
-// local work between sync rounds.
+// local work between sync rounds. The ID pool is SHARED across machines (no
+// per-machine tag) so cross-machine same-ID conflicts actually occur — an earlier
+// revision tagged IDs per machine and the conflict layer (resolveRecordConflictsSync)
+// got ZERO property coverage as a result.
 //
-// randomTaskOps 对 s 施加 n 个种子化随机变更，模拟一台机器两轮同步之间的本地工作。
+// randomTaskOps 对 s 施加 n 个种子化随机变更，模拟一台机器两轮同步之间的本地
+// 工作。ID 池跨机共享（不带机位 tag），跨机同 ID 冲突才真会发生——早期版本给
+// ID 带机位 tag，冲突层（resolveRecordConflictsSync）因此零 property 覆盖。
 func randomTaskOps(r *rand.Rand, s *TaskState, n int, tag string) {
 	base := time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)
 	gates := []string{`task-implement`, `task-verify`, `task-complete`}
 	for i := 0; i < n; i++ {
 		ts := base.Add(time.Duration(r.Intn(10000)) * time.Minute)
-		switch r.Intn(9) {
+		switch r.Intn(14) {
 		case 0:
-			s.Decisions = append(s.Decisions, Decision{ID: fmt.Sprintf(`d-%s-%d`, tag, r.Intn(6)), Content: `c`, DecidedAt: ts})
+			s.Decisions = append(s.Decisions, Decision{ID: fmt.Sprintf(`d-%d`, r.Intn(6)), Content: tag, DecidedAt: ts})
 		case 1:
-			s.Findings = append(s.Findings, Finding{ID: fmt.Sprintf(`f-%s-%d`, tag, r.Intn(6)), Content: `c`, Source: `t`, Status: `open`, RaisedAt: ts})
+			s.Findings = append(s.Findings, Finding{ID: fmt.Sprintf(`f-%d`, r.Intn(6)), Content: tag, Source: `t`, Status: `open`, RaisedAt: ts})
 		case 2:
-			s.Blockers = append(s.Blockers, Blocker{ID: fmt.Sprintf(`b-%s-%d`, tag, r.Intn(6)), Content: `c`, Status: `open`, RaisedAt: ts})
+			s.Blockers = append(s.Blockers, Blocker{ID: fmt.Sprintf(`b-%d`, r.Intn(6)), Content: tag, Status: `open`, RaisedAt: ts})
 		case 3:
-			s.NextSteps = append(s.NextSteps, fmt.Sprintf(`step-%s-%d`, tag, r.Intn(6)))
+			s.NextSteps = append(s.NextSteps, fmt.Sprintf(`step-%d`, r.Intn(6)))
 		case 4:
-			s.Artifacts = append(s.Artifacts, Artifact{Path: fmt.Sprintf(`p-%s-%d`, tag, r.Intn(6)), Kind: `file`})
+			s.Artifacts = append(s.Artifacts, Artifact{Path: fmt.Sprintf(`p-%d`, r.Intn(6)), Kind: `file`, Note: tag})
 		case 5:
 			g := gates[r.Intn(len(gates))]
 			s.History = append(s.History, TaskGateResult{Gate: g, Passed: r.Intn(4) != 0, CompletedAt: ts, HeadCommit: fmt.Sprintf(`h%d`, r.Intn(3))})
@@ -77,7 +82,26 @@ func randomTaskOps(r *rand.Rand, s *TaskState, n int, tag string) {
 			s.CompletedAt = &done
 			s.Score = &scoringtypes.ScoreResult{Grade: `A`, Overall: float64(80 + r.Intn(20))}
 		case 8:
-			s.SessionLinks = append(s.SessionLinks, SessionLink{SessionID: fmt.Sprintf(`s-%s-%d`, tag, r.Intn(4)), JoinedAt: ts, Imported: true})
+			s.SessionLinks = append(s.SessionLinks, SessionLink{SessionID: fmt.Sprintf(`s-%d`, r.Intn(4)), JoinedAt: ts, Imported: r.Intn(2) == 0})
+		case 9: // review anchors set between task-verify and task-complete
+			s.ReviewPassed = r.Intn(2) == 0
+			s.ReviewedHeadCommit = fmt.Sprintf(`h%d`, r.Intn(3))
+			s.ReviewedChangeHash = fmt.Sprintf(`c%d`, r.Intn(3))
+		case 10: // identity scalars (pathological dual-create edits)
+			s.Summary = fmt.Sprintf(`summary-%d`, r.Intn(3))
+			s.Goal = fmt.Sprintf(`goal-%d`, r.Intn(3))
+		case 11: // assignment lifecycle
+			s.Assignment = &Assignment{Agent: fmt.Sprintf(`agent-%d`, r.Intn(2)), Status: []string{`offered`, `claimed`}[r.Intn(2)]}
+		case 12: // external origin / misc scalars
+			s.ExternalOrigin = ExternalOrigin{Tracker: `github`, Identifier: fmt.Sprintf(`org/repo#%d`, r.Intn(3))}
+			s.ResumeStale = r.Intn(2) == 0
+		case 13: // same-ID status UPDATE (finding open → fixed, RaisedAt kept)
+			id := fmt.Sprintf(`f-%d`, r.Intn(6))
+			for j := range s.Findings {
+				if s.Findings[j].ID == id {
+					s.Findings[j].Status = `fixed`
+				}
+			}
 		}
 	}
 }
@@ -145,27 +169,42 @@ func TestMergeTaskStateSync_CanonicalOrdering(t *testing.T) {
 	}
 }
 
-// TestMergeTaskStateSync_DeterministicGateConflict: same gate + same result on both
-// sides (differing timestamps) must resolve to ONE winner regardless of direction —
-// earlier CompletedAt (first attainment is the fact; later ones are re-runs).
+// TestMergeTaskStateSync_GateHistoryContentUnion: gate history unions by FULL
+// CONTENT — a Failed entry and its later Passed retry BOTH survive (rework
+// provenance for ReworkRounds/scoring/feed), order is chronological, and the result
+// is byte-identical in both merge directions.
 //
-// TestMergeTaskStateSync_DeterministicGateConflict：两侧同门禁同结论（时间戳不同）
-// 必须不分方向收敛到同一胜者——更早的 CompletedAt（首次达成是事实，后者是重跑）。
-func TestMergeTaskStateSync_DeterministicGateConflict(t *testing.T) {
-	early := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
-	late := time.Date(2026, 8, 20, 11, 0, 0, 0, time.UTC)
-	mk := func(at time.Time, head string) *TaskState {
-		return &TaskState{TaskRef: `feat/g`, History: []TaskGateResult{{Gate: `task-verify`, Passed: true, CompletedAt: at, HeadCommit: head}}}
+// TestMergeTaskStateSync_GateHistoryContentUnion：门禁 history 按全内容并集——
+// Failed 条目与其后的 Passed 重跑都存活（ReworkRounds/评分/feed 的返工
+// provenance），按时间排序，两个合并方向字节一致。
+func TestMergeTaskStateSync_GateHistoryContentUnion(t *testing.T) {
+	fail := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
+	pass := time.Date(2026, 8, 20, 11, 0, 0, 0, time.UTC)
+	mk := func(entries ...TaskGateResult) *TaskState {
+		return &TaskState{TaskRef: `feat/g`, History: entries}
 	}
-	ab := mk(early, `h-early`)
-	MergeTaskStateSync(ab, mk(late, `h-late`))
-	ba := mk(late, `h-late`)
-	MergeTaskStateSync(ba, mk(early, `h-early`))
-	if len(ab.History) != 1 || !ab.History[0].CompletedAt.Equal(early) {
-		t.Fatalf("gate conflict winner = %+v, want earlier CompletedAt", ab.History)
+	failed := TaskGateResult{Gate: `task-verify`, Passed: false, CompletedAt: fail, HeadCommit: `h1`}
+	passed := TaskGateResult{Gate: `task-verify`, Passed: true, CompletedAt: pass, HeadCommit: `h2`}
+
+	ab := mk(failed)
+	MergeTaskStateSync(ab, mk(passed))
+	ba := mk(passed)
+	MergeTaskStateSync(ba, mk(failed))
+
+	if len(ab.History) != 2 {
+		t.Fatalf("retry provenance must survive: got %+v", ab.History)
+	}
+	if !ab.History[0].Passed && ab.History[1].Passed {
+		// chronological: Failed@10:00 then Passed@11:00
+	} else {
+		t.Fatalf("history not chronological: %+v", ab.History)
 	}
 	if taskJSON(t, ab) != taskJSON(t, ba) {
-		t.Fatalf("gate conflict not direction-independent:\nab=%s\nba=%s", taskJSON(t, ab), taskJSON(t, ba))
+		t.Fatalf("gate union not direction-independent:\nab=%s\nba=%s", taskJSON(t, ab), taskJSON(t, ba))
+	}
+	// gatePassed semantics: the Passed entry heals the gate (NextGate advances).
+	if ab.NextGate() == `task-verify` {
+		t.Fatalf("peer Passed did not heal task-verify: %+v", ab.History)
 	}
 }
 
