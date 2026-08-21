@@ -2,7 +2,6 @@ package cli
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,12 +15,12 @@ const updateCacheFile = "update-cache.json"
 const updateCheckInterval = 24 * time.Hour
 
 // checkForUpdate reports whether a newer version is available. It uses a 24h
-// cache to avoid hitting the GitHub API on every command. Results are printed
-// to stderr as a notification. Errors are silently ignored—this is a
+// cache to avoid hitting the version source on every command. Results are
+// printed to stderr as a notification. Errors are silently ignored—this is a
 // best-effort check.
 //
 // checkForUpdate 检查是否有更新版本可用。
-// 用 24h 缓存避免每次命令都打 GitHub API。
+// 用 24h 缓存避免每次命令都打版本源。
 // 结果作为通知打印到 stderr。
 // 错误静默忽略——这是 best-effort 检查。
 func checkForUpdate(fullVersion string, cmd *cobra.Command) {
@@ -34,43 +33,66 @@ func checkForUpdate(fullVersion string, cmd *cobra.Command) {
 		return
 	}
 
+	// The version source and the update command in the notice both follow the
+	// install channel (npm registry for npm installs, GitHub API otherwise).
+	//
+	// 版本源与通知里的更新命令都随安装通道走（npm 安装查 npm registry，
+	// 其余查 GitHub API）。
+	channel := detectInstallChannelFn()
+
 	// Check the cache
 	//
 	// 检查缓存
 	cache, err := loadUpdateCache()
-	if err == nil && !cache.isExpired() {
+	if err == nil && !cache.isExpired() && cache.matchesChannel(channel.kind) {
 		// Cache hit—notify only when a newer version exists
 		//
 		// 缓存命中——仅在存在更新版本时通知
 		if cache.LatestVersion != "" && compareVersions(cache.LatestVersion, current) > 0 {
-			fmt.Fprintf(os.Stderr, "\n💡 Forge %s 可用（当前 %s）。运行 `forge update` 更新。\n\n", cache.LatestVersion, current)
+			printUpdateNotice(os.Stderr, cache.LatestVersion, current, channel)
 		}
 		return
 	}
 
-	// Cache expired or missing—query the GitHub API
+	// Cache expired, missing, or written by the other channel (the GitHub tag
+	// lands before the npm publish in the two-stage release; a cross-channel
+	// hit would notify about a version npm cannot serve yet)—query the
+	// channel-appropriate version source.
 	//
-	// 缓存过期或缺失——查询 GitHub API
-	release, err := getLatestRelease()
-	if err != nil {
-		// Network failure—skip silently, do not update the cache
-		//
-		// 网络失败——静默跳过，不更新缓存
-		return
+	// 缓存过期、缺失、或由另一通道写入（两段式发版里 GitHub tag 先于
+	// npm publish 落地；跨通道命中会通知一个 npm 还拿不到的版本）——
+	// 按通道查询版本源。
+	var latest string
+	if channel.kind == channelNPM {
+		v, err := getLatestVersionFromNPM()
+		if err != nil {
+			// Network failure—skip silently, do not update the cache
+			//
+			// 网络失败——静默跳过，不更新缓存
+			return
+		}
+		latest = v
+	} else {
+		release, err := getLatestRelease()
+		if err != nil {
+			// Network failure—skip silently, do not update the cache
+			//
+			// 网络失败——静默跳过，不更新缓存
+			return
+		}
+		latest = strings.TrimPrefix(release.TagName, "v")
 	}
-
-	latest := strings.TrimPrefix(release.TagName, "v")
 
 	// Save to cache regardless of whether an update is available
 	//
 	// 无论是否更新都保存到缓存
-	_ = saveUpdateCache(latest)
+	_ = saveUpdateCache(latest, channel.kind)
 
 	// Notify when an update is available
 	//
 	// 更新则通知
 	if compareVersions(latest, current) > 0 {
-		fmt.Fprintf(os.Stderr, "\n💡 Forge %s 可用（当前 %s）。运行 `forge update` 更新。\n\n", latest, current)
+		printUpdateNotice(os.Stderr, latest, current, channel)
 	}
 }
 
@@ -148,7 +170,16 @@ func (c *updateCache) isExpired() bool {
 	return time.Since(checked) > updateCheckInterval
 }
 
-func saveUpdateCache(version string) error {
+// matchesChannel reports whether a cache entry is usable by the given
+// channel. Legacy entries (empty Channel) predate the field and stay usable.
+//
+// matchesChannel 判断缓存条目对给定通道是否可用。旧条目（Channel 为空）
+// 早于该字段存在，保持可用。
+func (c *updateCache) matchesChannel(kind channelKind) bool {
+	return c.Channel == "" || c.Channel == string(kind)
+}
+
+func saveUpdateCache(version string, kind channelKind) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return err
@@ -162,6 +193,7 @@ func saveUpdateCache(version string) error {
 	cache := updateCache{
 		LatestVersion: version,
 		CheckedAt:     time.Now().UTC().Format(time.RFC3339),
+		Channel:       string(kind),
 	}
 
 	data, err := json.MarshalIndent(cache, "", "  ")

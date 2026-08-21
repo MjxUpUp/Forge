@@ -53,9 +53,14 @@ func printPluginReinstallGuidance(w io.Writer) {
 var updateCmd = &cobra.Command{
 	Use:   "update",
 	Short: "自更新 Forge 到最新版本",
-	Long: `从 GitHub Releases 下载最新版本的 Forge 二进制文件并原地替换。
+	Long: `检查并更新 Forge 到最新版本（安装通道自动检测）。
 
-支持 SHA-256 校验和验证、Windows 崩溃恢复（.old 安全模式）。
+- npm 安装（二进制位于 node_modules/@agent_forge 下）：查 npm registry 最新版本，
+  打印对应包管理器（npm/pnpm/yarn/bun 自动检测）的更新命令。npm 包不可变，
+  原地替换会被下次 npm install 还原，故不代下载（可用 FORGE_NPM_REGISTRY 覆盖
+  registry）。
+- 其他（GitHub Release / 手动放置）：从 GitHub Releases 下载并原地替换，
+  支持 SHA-256 校验和验证、Windows 崩溃恢复（.old 安全模式）。
 
 可加 --plugin 触发后打印 plugin marketplace 重装指引（marketplace 含的 plugin.json
 镜像 Go 变更时建议重装以同步）。`,
@@ -76,27 +81,50 @@ type githubAsset struct {
 type updateCache struct {
 	LatestVersion string `json:"latest_version"`
 	CheckedAt     string `json:"checked_at"`
+	// Channel records which install channel wrote this entry ("github" |
+	// "npm"; "" = legacy entry written before the field existed). The two
+	// channels can disagree during the two-stage release window (GitHub tag
+	// before npm publish), so a fresh entry from the other channel is
+	// re-queried rather than trusted.
+	//
+	// Channel 记录写入本条目的安装通道（"github" | "npm"；"" = 字段存在前
+	// 的旧条目）。两段式发版窗口内两通道可能不一致（GitHub tag 先于
+	// npm publish），另一通道的新鲜条目须重查而非信任。
+	Channel string `json:"channel,omitempty"`
 }
 
 func runUpdate(cmd *cobra.Command, args []string) error {
 	current := getCurrentVersion(cmd.Root().Version)
 	fmt.Fprintf(os.Stderr, "当前版本: %s\n", current)
 
-	// 1. Fetch the latest release.
-	//
-	// 1. 取 latest release
-	fmt.Fprintf(os.Stderr, "正在检查更新...\n")
-	release, err := getLatestRelease()
-	if err != nil {
-		return fmt.Errorf("检查更新失败: %w", err)
-	}
+	channel := detectInstallChannelFn()
 
-	latest := strings.TrimPrefix(release.TagName, "v")
+	// 1. Fetch the latest version from the channel-appropriate source
+	//    (npm registry for npm installs, GitHub API otherwise).
+	//
+	// 1. 按安装通道取最新版本（npm 安装查 npm registry，其余查 GitHub API）
+	fmt.Fprintf(os.Stderr, "正在检查更新...\n")
+	var latest string
+	var release *githubRelease
+	if channel.kind == channelNPM {
+		v, err := getLatestVersionFromNPM()
+		if err != nil {
+			return fmt.Errorf("检查更新失败（npm registry）: %w", err)
+		}
+		latest = v
+	} else {
+		r, err := getLatestRelease()
+		if err != nil {
+			return fmt.Errorf("检查更新失败: %w", err)
+		}
+		release = r
+		latest = strings.TrimPrefix(release.TagName, "v")
+	}
 	fmt.Fprintf(os.Stderr, "最新版本: %s\n", latest)
 
 	if latest == current {
 		fmt.Fprintf(os.Stderr, "已是最新版本\n")
-		_ = saveUpdateCache(latest)
+		_ = saveUpdateCache(latest, channel.kind)
 		return nil
 	}
 
@@ -105,7 +133,26 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	// 拒绝降级——只更新到更新版本
 	if compareVersions(latest, current) <= 0 {
 		fmt.Fprintf(os.Stderr, "当前 %s 已是最新或更新版本（远端: %s）\n", current, latest)
-		_ = saveUpdateCache(current)
+		_ = saveUpdateCache(current, channel.kind)
+		return nil
+	}
+
+	// npm channel: redirect to the package manager instead of downloading.
+	// See update_channel.go for why an in-place replace is wrong under npm.
+	//
+	// npm 通道：重定向到包管理器而非下载。为何 npm 下原地替换是错的
+	// 见 update_channel.go。
+	if channel.kind == channelNPM {
+		printNpmUpdateGuidance(os.Stderr, latest, channel.pm)
+		// Same --plugin contract as the GitHub path: the marketplace mirror
+		// needs a reinstall after the (user-run) update either way.
+		//
+		// 与 GitHub 路径同 --plugin 契约：无论哪条路更新后 marketplace
+		// 镜像都可能需要重装。
+		if updatePluginFlag {
+			printPluginReinstallGuidance(os.Stderr)
+		}
+		_ = saveUpdateCache(latest, channel.kind)
 		return nil
 	}
 
@@ -185,7 +232,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	// Update the cache.
 	//
 	// 更新缓存
-	_ = saveUpdateCache(latest)
+	_ = saveUpdateCache(latest, channel.kind)
 
 	// --plugin flag: prompt plugin reinstallation (marketplace mirror).
 	//

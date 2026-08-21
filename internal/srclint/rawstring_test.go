@@ -43,6 +43,8 @@ var intentionalRawNL = []string{
 	`{"hook_event_name":"PostToolUse"`,                                  // JSON fixture (escaped \n inside)
 	`(?s)^---\s*\n(.*?)\n---\s*\n?`,                                     // regex
 	`\bexcept\b[^\n]*:\s*pass`,                                          // regex
+	`C:\Users\u`,                                                        // windows path fixture (update_channel_test.go: \npm / \node_modules 序列是路径本身)
+	`C:\npm-global`,                                                     // windows path fixture (update_channel_test.go 混合分隔符行)
 }
 
 func whitelisted(lit string) bool {
