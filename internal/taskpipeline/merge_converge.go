@@ -1,0 +1,466 @@
+package taskpipeline
+
+// merge_converge.go — convergence layer for MergeTaskStateSync
+// (docs/design/sync-convergence.md §2 class B: tasks/*.json field-level split).
+//
+// The base merge (union + prefer-Passed + completion adoption) guarantees no data
+// loss and monotonic progress, but NOT commutativity: record sets keep ARRIVAL order
+// and same-result conflicts keep LOCAL, so merge(A,B) and merge(B,A) produce the same
+// SET in different BYTES — a two-machine sync loop flip-flops forever. This file adds
+// the deterministic layer that makes the trusted same-identity merge a commutative,
+// idempotent function:
+//
+//  1. canonical ordering — every record set is sorted by a content key after union,
+//     so arrival order cannot leak into bytes;
+//  2. deterministic winners — every conflict resolves by a side-independent rule:
+//     earlier timestamp (first attainment is the fact, later ones are re-runs),
+//     then canonical-JSON lexicographic order as the final tiebreak (determinism
+//     over correctness: both machines must converge to the SAME bytes);
+//  3. scalar tiebreaks — identity fields (Summary/Branch/Goal/…) are equal in
+//     practice for same-identity tasks; when they pathologically differ, the
+//     lexicographically smaller value wins (documented as arbitrary-but-convergent).
+//
+// Field-level HLC does not apply here: TaskState fields carry no per-field
+// timestamps, so there is nothing for an HLC to compare — canonical ordering +
+// deterministic winners achieve the same convergence property without schema change.
+//
+// Trusted-path only: these rules run in MergeTaskStateSync (same-identity lineage).
+// The untrusted path (MergeTaskState) keeps local-authoritative semantics untouched.
+//
+// merge_converge.go —— MergeTaskStateSync 的收敛层
+// （docs/design/sync-convergence.md §2 B 类：tasks/*.json 字段级分流）。
+//
+// 基础合并（并集 + prefer-Passed + 完成块采纳）保证不丢数据与单调前进，但不保证
+// 交换律：记录集合保留到达顺序、同结论冲突保留本地——merge(A,B) 与 merge(B,A)
+// 得到同集合不同字节，双机同步循环会永远来回翻转。本文件补上确定性层，让受信
+// 同身份合并成为可交换、幂等的函数（规则见上三条英文注释）。
+
+import (
+	"encoding/json"
+	"fmt"
+	"sort"
+	"time"
+)
+
+// canonicalJSON renders v for deterministic byte comparison (encoding/json field
+// order is struct-declaration order — stable across processes and platforms).
+//
+// canonicalJSON 渲染 v 供确定性字节比较（encoding/json 的字段序是 struct 声明
+// 序——跨进程跨平台稳定）。
+func canonicalJSON(v any) string {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return ``
+	}
+	return string(raw)
+}
+
+// tiebreakScalar returns the deterministic winner of two differing scalar values:
+// empty loses to non-empty; otherwise the lexicographically smaller wins.
+//
+// tiebreakScalar 返回两个不同标量值的确定性胜者：空输给非空；否则字典序小者胜。
+func tiebreakScalar(local, incoming string) string {
+	if local == `` {
+		return incoming
+	}
+	if incoming == `` || incoming >= local {
+		return local
+	}
+	return incoming
+}
+
+// tiebreakTime returns the deterministic winner of two timestamps: earlier wins
+// (first attainment). Compared via UnixNano so representation (location/monotonic)
+// cannot leak.
+//
+// tiebreakTime 返回两个时间戳的确定性胜者：早者胜（首次达成）。经 UnixNano 比较，
+// 表示差异（时区/单调位）无法渗入。
+func tiebreakTime(local, incoming time.Time) time.Time {
+	if local.IsZero() {
+		return incoming
+	}
+	if incoming.IsZero() || incoming.UnixNano() >= local.UnixNano() {
+		return local
+	}
+	return incoming
+}
+
+// resolveScalarTiebreaksSync applies deterministic side-independent winners to the
+// identity/definition scalars MergeTaskStateSync otherwise leaves local-authoritative.
+// Equal in practice for same-identity tasks; the rule exists for the pathological
+// "same task_ref created independently on two machines" case.
+//
+// resolveScalarTiebreaksSync 对 MergeTaskStateSync 原本本地权威的身份/定义标量施加
+// 确定性、方向无关的决胜。同身份任务实践中恒等；本规则为「同一 task_ref 在两台
+// 机器独立创建」的病理情形兜底。
+func resolveScalarTiebreaksSync(local, incoming *TaskState) {
+	local.Branch = tiebreakScalar(local.Branch, incoming.Branch)
+	local.Source = tiebreakScalar(local.Source, incoming.Source)
+	local.Summary = tiebreakScalar(local.Summary, incoming.Summary)
+	local.Kind = tiebreakScalar(local.Kind, incoming.Kind)
+	local.OriginTool = tiebreakScalar(local.OriginTool, incoming.OriginTool)
+	local.Goal = tiebreakScalar(local.Goal, incoming.Goal)
+	local.Plan = tiebreakScalar(local.Plan, incoming.Plan)
+	local.HeadCommit = tiebreakScalar(local.HeadCommit, incoming.HeadCommit)
+	local.SessionID = tiebreakScalar(local.SessionID, incoming.SessionID)
+	local.ParentTaskRef = tiebreakScalar(local.ParentTaskRef, incoming.ParentTaskRef)
+	local.StartedAt = tiebreakTime(local.StartedAt, incoming.StartedAt)
+	// Block-structured fields: smaller canonical JSON wins (arbitrary but convergent).
+	//
+	// 块结构字段：规范 JSON 小者胜（任意但收敛）。
+	if canonicalJSON(incoming.ExternalOrigin) < canonicalJSON(local.ExternalOrigin) {
+		local.ExternalOrigin = incoming.ExternalOrigin
+	}
+	if local.CompletedAt == nil && incoming.CompletedAt == nil {
+		if canonicalJSON(incoming.Acceptance) < canonicalJSON(local.Acceptance) {
+			local.Acceptance = incoming.Acceptance
+			local.AcceptanceForeign = incoming.AcceptanceForeign
+		}
+		if canonicalJSON(incoming.Assignment) < canonicalJSON(local.Assignment) {
+			local.Assignment = incoming.Assignment
+		}
+		if canonicalJSON(incoming.Score) < canonicalJSON(local.Score) {
+			local.Score = incoming.Score
+		}
+		if canonicalJSON(incoming.PlanScope) < canonicalJSON(local.PlanScope) {
+			local.PlanScope = incoming.PlanScope
+		}
+		if canonicalJSON(incoming.Overrides) < canonicalJSON(local.Overrides) {
+			local.Overrides = incoming.Overrides
+		}
+	}
+	// Set-structured fields: union now, canonical order in canonicalizeSync.
+	//
+	// 集合结构字段：先并集，规范序由 canonicalizeSync 收尾。
+	local.DependsOn = UnionStrings(local.DependsOn, incoming.DependsOn)
+	local.DesignPhases = unionDesignPhases(local.DesignPhases, incoming.DesignPhases)
+	local.ReviewRounds = unionReviewRounds(local.ReviewRounds, incoming.ReviewRounds)
+}
+
+// resolveBothCompleteSync resolves the both-sides-completed conflict deterministically:
+// the EARLIER completion wins the whole completion block (first finisher is the real
+// one); equal timestamps fall to canonical-JSON order of the block.
+//
+// resolveBothCompleteSync 确定性解决双完成冲突：更早的完成赢整个完成块（先完成者
+// 是真实完成）；时间戳相等时按完成块规范 JSON 序。
+func resolveBothCompleteSync(local, incoming *TaskState) {
+	if local.CompletedAt == nil || incoming.CompletedAt == nil {
+		return
+	}
+	switch {
+	case incoming.CompletedAt.UnixNano() < local.CompletedAt.UnixNano():
+		adoptCompletionBlock(local, incoming)
+	case incoming.CompletedAt.UnixNano() == local.CompletedAt.UnixNano():
+		if completionCanon(incoming) < completionCanon(local) {
+			adoptCompletionBlock(local, incoming)
+		}
+	}
+}
+
+// completionCanon is the canonical byte form of the completion block (tiebreak key).
+//
+// completionCanon 是完成块的规范字节形（决胜键）。
+func completionCanon(s *TaskState) string {
+	return canonicalJSON([]any{s.CompletedAt, s.ReviewPassed, s.ReviewedHeadCommit, s.ReviewedChangeHash, s.ReviewRounds, s.Score, s.Assignment, s.Acceptance})
+}
+
+// adoptCompletionBlock wholesale-adopts the incoming completion block — EXCEPT
+// ReviewRounds, which is append-only history: the displaced side's accrued review
+// passes union into the winner's instead of being overwritten (overwriting would
+// lose local review history AND diverge per direction, since only one direction
+// adopts).
+//
+// adoptCompletionBlock 整块采纳传入完成块——ReviewRounds 除外：它是只追加历史，
+// 被取代侧累积的 review pass 并集进胜者而非被覆盖（覆盖会丢本地 review 历史，
+// 且因只有一个方向发生采纳而按方向分叉）。
+func adoptCompletionBlock(local, incoming *TaskState) {
+	local.CompletedAt = incoming.CompletedAt
+	local.ReviewPassed = incoming.ReviewPassed
+	local.ReviewedHeadCommit = incoming.ReviewedHeadCommit
+	local.ReviewedChangeHash = incoming.ReviewedChangeHash
+	local.ReviewRounds = unionReviewRounds(local.ReviewRounds, incoming.ReviewRounds)
+	local.Score = incoming.Score
+	local.Assignment = incoming.Assignment
+	local.Acceptance = incoming.Acceptance
+}
+
+// canonicalizeSync sorts every record set by its content key — the final step that
+// makes merge output independent of arrival order. Each set is first DEDUPED by its
+// identity key with a deterministic winner: the merge-time unions only filter
+// incoming against local, so duplicates pre-existing WITHIN one side would otherwise
+// survive and leak direction into the bytes.
+//
+// canonicalizeSync 按内容键排序每个记录集合——让合并输出与到达顺序无关的收尾步。
+// 每个集合先按身份键去重并取确定性胜者：合并时的并集只过滤传入对本地，单侧既有
+// 的重复否则会幸存并把方向渗进字节。
+func canonicalizeSync(s *TaskState) {
+	s.History = normalizeHistory(s.History)
+	sort.SliceStable(s.History, func(i, j int) bool {
+		if s.History[i].Gate != s.History[j].Gate {
+			return s.History[i].Gate < s.History[j].Gate
+		}
+		return s.History[i].CompletedAt.UnixNano() < s.History[j].CompletedAt.UnixNano()
+	})
+	s.Decisions = dedupByKey(s.Decisions, decisionKey, func(a, b Decision) Decision { return earlierTime(a, b, a.DecidedAt, b.DecidedAt) })
+	sort.SliceStable(s.Decisions, func(i, j int) bool { return decisionKey(s.Decisions[i]) < decisionKey(s.Decisions[j]) })
+	s.Findings = dedupByKey(s.Findings, findingKey, func(a, b Finding) Finding { return earlierTime(a, b, a.RaisedAt, b.RaisedAt) })
+	sort.SliceStable(s.Findings, func(i, j int) bool { return findingKey(s.Findings[i]) < findingKey(s.Findings[j]) })
+	s.Blockers = dedupByKey(s.Blockers, blockerKey, func(a, b Blocker) Blocker { return earlierTime(a, b, a.RaisedAt, b.RaisedAt) })
+	sort.SliceStable(s.Blockers, func(i, j int) bool { return blockerKey(s.Blockers[i]) < blockerKey(s.Blockers[j]) })
+	s.Artifacts = dedupByKey(s.Artifacts, artifactKey, func(a, b Artifact) Artifact {
+		if canonicalJSON(a) <= canonicalJSON(b) {
+			return a
+		}
+		return b
+	})
+	sort.SliceStable(s.Artifacts, func(i, j int) bool { return artifactKey(s.Artifacts[i]) < artifactKey(s.Artifacts[j]) })
+	s.NextSteps = dedupStrings(s.NextSteps)
+	sort.Strings(s.NextSteps)
+	s.DependsOn = dedupStrings(s.DependsOn)
+	sort.Strings(s.DependsOn)
+	s.SessionLinks = normalizeSessionLinks(s.SessionLinks)
+	sort.SliceStable(s.SessionLinks, func(i, j int) bool { return sessionLinkKey(s.SessionLinks[i]) < sessionLinkKey(s.SessionLinks[j]) })
+	s.ReviewRounds = dedupByKey(s.ReviewRounds, reviewRoundKey, func(a, b ReviewRound) ReviewRound { return a })
+	sort.SliceStable(s.ReviewRounds, func(i, j int) bool { return reviewRoundKey(s.ReviewRounds[i]) < reviewRoundKey(s.ReviewRounds[j]) })
+	s.DesignPhases = dedupByKey(s.DesignPhases, func(p DesignPhase) string { return canonicalJSON(p) }, func(a, b DesignPhase) DesignPhase { return a })
+	sort.SliceStable(s.DesignPhases, func(i, j int) bool { return canonicalJSON(s.DesignPhases[i]) < canonicalJSON(s.DesignPhases[j]) })
+}
+
+// dedupByKey collapses entries sharing an identity key, keeping the deterministic
+// winner chosen by pick. First occurrence seeds; winner replaces in place (order
+// irrelevant — callers sort afterwards).
+//
+// dedupByKey 折叠共享身份键的条目，保留 pick 选出的确定性胜者。首次出现占位；
+// 胜者原位替换（顺序无关——调用方随后排序）。
+func dedupByKey[T any](xs []T, key func(T) string, pick func(cur, cand T) T) []T {
+	idx := map[string]int{}
+	out := make([]T, 0, len(xs))
+	for _, x := range xs {
+		k := key(x)
+		if i, ok := idx[k]; ok {
+			out[i] = pick(out[i], x)
+			continue
+		}
+		idx[k] = len(out)
+		out = append(out, x)
+	}
+	return out
+}
+
+// earlierTime returns the entry with the earlier timestamp; exact ties fall to the
+// smaller canonical JSON (full determinism).
+//
+// earlierTime 返回时间戳更早的条目；完全并列回落到规范 JSON 小者（完全确定性）。
+func earlierTime[T any](a, b T, ta, tb time.Time) T {
+	if ta.UnixNano() != tb.UnixNano() {
+		if ta.UnixNano() < tb.UnixNano() {
+			return a
+		}
+		return b
+	}
+	if canonicalJSON(a) <= canonicalJSON(b) {
+		return a
+	}
+	return b
+}
+
+// dedupStrings collapses duplicate strings.
+//
+// dedupStrings 折叠重复字符串。
+func dedupStrings(xs []string) []string {
+	seen := map[string]bool{}
+	out := xs[:0]
+	for _, x := range xs {
+		if !seen[x] {
+			seen[x] = true
+			out = append(out, x)
+		}
+	}
+	return out
+}
+
+// normalizeHistory collapses duplicate Gate entries within one state: Passed beats
+// Failed (same prefer-Passed rule as the merge), then earlier CompletedAt, then
+// smaller HeadCommit.
+//
+// normalizeHistory 折叠单状态内的重复 Gate 条目：Passed 胜 Failed（与合并同款
+// prefer-Passed 规则），其次更早 CompletedAt，再更小 HeadCommit。
+func normalizeHistory(h []TaskGateResult) []TaskGateResult {
+	return dedupByKey(h, func(g TaskGateResult) string { return g.Gate }, func(cur, cand TaskGateResult) TaskGateResult {
+		if cand.Passed != cur.Passed {
+			if cand.Passed {
+				return cand
+			}
+			return cur
+		}
+		if cand.CompletedAt.UnixNano() != cur.CompletedAt.UnixNano() {
+			if cand.CompletedAt.UnixNano() < cur.CompletedAt.UnixNano() {
+				return cand
+			}
+			return cur
+		}
+		if cand.HeadCommit < cur.HeadCommit {
+			return cand
+		}
+		return cur
+	})
+}
+
+// Content keys: ID-bearing records key by ID; the empty-ID degenerate case (legacy
+// or malformed) keys by "\xff"+content so distinct empty-ID entries still order
+// deterministically and identical ones stay interchangeable.
+//
+// 内容键：带 ID 记录按 ID 键；空 ID 退化情形（存量/畸形）按 "\xff"+内容键，
+// 不同的空 ID 条目仍确定性排序，相同条目保持可互换。
+func decisionKey(d Decision) string {
+	if d.ID != `` {
+		return d.ID
+	}
+	return "\xff" + d.Content
+}
+
+func findingKey(f Finding) string {
+	if f.ID != `` {
+		return f.ID
+	}
+	return "\xff" + f.Content
+}
+
+func blockerKey(b Blocker) string {
+	if b.ID != `` {
+		return b.ID
+	}
+	return "\xff" + b.Content
+}
+
+func artifactKey(a Artifact) string {
+	if a.Path != `` {
+		return a.Path + "\x00" + a.Kind
+	}
+	return "\xff" + a.Kind + "\x00" + a.Note
+}
+
+func sessionLinkKey(l SessionLink) string {
+	return l.SessionID + "\x00" + pad20(l.JoinedAt.UnixNano()) + "\x00" + l.Tool
+}
+
+func reviewRoundKey(r ReviewRound) string {
+	return pad20(r.ReviewedAt.UnixNano()) + "\x00" + r.HeadCommit + "\x00" + r.ChangeHash
+}
+
+// pad20 zero-pads an int64 to fixed width so lexicographic key order == numeric order
+// (raw decimal strings misorder across widths: "10" < "9").
+//
+// pad20 把 int64 零填充到定宽，使键的字典序 == 数值序（裸十进制串跨位宽会错序：
+// "10" < "9"）。
+func pad20(n int64) string {
+	return fmt.Sprintf(`%020d`, n)
+}
+
+// normalizeSessionLinks collapses duplicate SessionID entries WITHIN one state
+// (the merge dedup only filters incoming against local — pre-existing local
+// duplicates survive it). Winner rule matches the merge rule: non-Imported first,
+// then earliest JoinedAt.
+//
+// normalizeSessionLinks 折叠单个状态内的重复 SessionID（合并去重只过滤传入对
+// 本地——本地既有重复会幸存）。胜者规则与合并规则一致：非 Imported 优先，其次
+// 最早 JoinedAt。
+func normalizeSessionLinks(links []SessionLink) []SessionLink {
+	byID := map[string]int{}
+	out := make([]SessionLink, 0, len(links))
+	for _, l := range links {
+		idx, ok := byID[l.SessionID]
+		if !ok {
+			byID[l.SessionID] = len(out)
+			out = append(out, l)
+			continue
+		}
+		cur := out[idx]
+		switch {
+		case cur.Imported && !l.Imported:
+			out[idx] = l
+		case cur.Imported == l.Imported && l.JoinedAt.UnixNano() < cur.JoinedAt.UnixNano():
+			out[idx] = l
+		}
+	}
+	return out
+}
+
+// resolveRecordConflictsSync resolves same-ID-different-content conflicts between the
+// two sides with a deterministic winner (earlier primary timestamp, canonical JSON
+// tiebreak). The unions only filter incoming against local (local keeps its copy), so
+// without this pass the winner of a two-sided edit is whichever side happened to be
+// local — direction leaks into bytes. Trusted path only: the untrusted merge keeps
+// local-authoritative semantics deliberately (foreign content must not displace local).
+//
+// resolveRecordConflictsSync 用确定性胜者（主时间戳早者，规范 JSON 破平）裁决两侧
+// 同 ID 不同内容的冲突。并集只拿传入过滤本地（本地保留自己的副本），不做本步则
+// 双侧编辑的胜者是碰巧为本地的那侧——方向渗进字节。仅受信路径：不可信合并刻意
+// 保持本地权威（外来内容不得顶替本地）。
+func resolveRecordConflictsSync(local, incoming *TaskState) {
+	local.Decisions = resolveByID(local.Decisions, incoming.Decisions, func(d Decision) string { return d.ID }, func(d Decision) time.Time { return d.DecidedAt })
+	local.Findings = resolveByID(local.Findings, incoming.Findings, func(f Finding) string { return f.ID }, func(f Finding) time.Time { return f.RaisedAt })
+	local.Blockers = resolveByID(local.Blockers, incoming.Blockers, func(b Blocker) string { return b.ID }, func(b Blocker) time.Time { return b.RaisedAt })
+	for _, in := range incoming.Artifacts {
+		for i, l := range local.Artifacts {
+			if artifactKey(l) == artifactKey(in) && canonicalJSON(in) < canonicalJSON(l) {
+				local.Artifacts[i] = in
+			}
+		}
+	}
+}
+
+// resolveByID replaces local entries with the deterministic winner when the incoming
+// side carries the same non-empty ID with different content.
+//
+// resolveByID 当传入侧携带同非空 ID 但内容不同的条目时，用确定性胜者替换本地条目。
+func resolveByID[T any](local, incoming []T, id func(T) string, at func(T) time.Time) []T {
+	for _, in := range incoming {
+		if id(in) == `` {
+			continue
+		}
+		for i, l := range local {
+			if id(l) != id(in) || canonicalJSON(l) == canonicalJSON(in) {
+				continue
+			}
+			local[i] = earlierTime(l, in, at(l), at(in))
+		}
+	}
+	return local
+}
+
+// unionReviewRounds unions review rounds by content key (both-incomplete sides each
+// accrue local review passes; adoption covers the completed case).
+//
+// unionReviewRounds 按内容键并集 review rounds（双未完成侧各自累积本地 review
+// pass；完成情形由完成块采纳覆盖）。
+func unionReviewRounds(local, incoming []ReviewRound) []ReviewRound {
+	seen := map[string]bool{}
+	for _, r := range local {
+		seen[reviewRoundKey(r)] = true
+	}
+	for _, r := range incoming {
+		if !seen[reviewRoundKey(r)] {
+			seen[reviewRoundKey(r)] = true
+			local = append(local, r)
+		}
+	}
+	return local
+}
+
+// unionDesignPhases unions design phases by canonical JSON key.
+//
+// unionDesignPhases 按规范 JSON 键并集设计阶段。
+func unionDesignPhases(local, incoming []DesignPhase) []DesignPhase {
+	seen := map[string]bool{}
+	for _, p := range local {
+		seen[canonicalJSON(p)] = true
+	}
+	for _, p := range incoming {
+		if !seen[canonicalJSON(p)] {
+			seen[canonicalJSON(p)] = true
+			local = append(local, p)
+		}
+	}
+	return local
+}
