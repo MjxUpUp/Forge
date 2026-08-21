@@ -367,6 +367,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge plugin pack [--out <dir>]` | 生成多 host plugin pack（.claude-plugin/.cursor-plugin marketplace + plugins/\<name\>/ 树：claude manifest + reasonix native manifest + 每 host 安装 README），让各 agent 一键 `plugin install forge` 跨工具接线（薄 manifest + 共享内容，单仓即 marketplace） |
 | `forge plugin status` | 报告 forge plugin 是否在 user-level 已装（exit 0=已装，非零=未装；供 init-suggest hook / 脚本检测） |
 | `forge plugin dedupe [dir] [--keep-empty]` | plugin 已装时清理 project-level 重复 hooks + 旧项目 .mcp.json forge server 残留，并清理 user-level `settings.local.json` 的重复 forge hooks；幂等 no-op；init-suggest SessionStart 自动调用（传 `--keep-empty` 保留项目 `settings.local.json` 为 `{}`）；user-level 始终保留文件壳（绝不删用户全局配置）；手动不传则项目级清完删空文件 |
+| `forge plugin kimi-manifest [--write]` | 渲染/再生成已提交的 kimi plugin manifest（`.kimi-plugin/plugin.json`）——version 读 `npm/package.json`（单一真相源）、hooks 从 ForgeHookSpec 派生、description 与守卫测试共享常量；默认打印 + 报漂移（退出码恒 0，执法归 `TestKimiPluginManifestMirrorsSpec`），`--write` 逐字节比对后重写（in sync 不改写）；forge 仓库维护命令（从 cwd 向上找 `npm/package.json`） |
 
 </details>
 
