@@ -1,7 +1,9 @@
 package dashboard
 
 import (
+	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,10 +27,14 @@ func TestAggregateFeed_NodeAttribution(t *testing.T) {
 	stampA := nodestamp.Stamp{NodeID: `fnode_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`, Seq: 7, TsHLC: `0000001700000000000.0000000001`}
 	stampB := nodestamp.Stamp{NodeID: `fnode_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb`, Seq: 3, TsHLC: `0000001700000001000.0000000001`}
 
-	// task-start ← the task's current lease holder (who's working it).
+	// task-start ← the task's ACTIVE lease holder (who's working it). ClaimedAt is set
+	// so the lease is unexpired at query time (the feed must not show stale holders).
+	//
+	// task-start ← 任务有效租约的持有者（谁在干活）。ClaimedAt 落值使租约在查询时点
+	// 未过期（feed 不得显示过期持有者）。
 	if err := taskpipeline.SaveTaskState(root, &taskpipeline.TaskState{
 		TaskRef: `feat/n`, Branch: `feat/n`, StartedAt: base,
-		Lease: &taskpipeline.Lease{HolderNode: `fnode_cccccccccccccccccccccccccccccccc`, Fencing: 2, TTLSec: 300},
+		Lease: &taskpipeline.Lease{HolderNode: `fnode_cccccccccccccccccccccccccccccccc`, Fencing: 2, TTLSec: 4 * 3600, ClaimedAt: base.Add(2 * time.Hour).UnixMilli()},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -47,38 +53,62 @@ func TestAggregateFeed_NodeAttribution(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Expired lease → no node chip (a crashed machine's stale claim must not linger).
+	//
+	// 过期租约 → 无 node chip（崩溃机器的 stale 认领不得滞留）。
+	if err := taskpipeline.SaveTaskState(root, &taskpipeline.TaskState{
+		TaskRef: `feat/expired`, Branch: `feat/expired`, StartedAt: base,
+		Lease: &taskpipeline.Lease{HolderNode: `fnode_dddddddddddddddddddddddddddddddd`, Fencing: 1, TTLSec: 60, ClaimedAt: base.UnixMilli()},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
 	res, err := AggregateFeed(Options{Root: root}, base.Add(5*time.Hour), FeedQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	nodeOf := func(kind string) string {
+	nodeOf := func(kind, ref string) string {
 		t.Helper()
 		for _, e := range res.Events {
-			if e.Kind == kind {
+			if e.Kind == kind && e.TaskRef == ref {
 				return e.Node
 			}
 		}
-		t.Fatalf("no %s event", kind)
+		t.Fatalf("no %s event for %s", kind, ref)
 		return ``
 	}
-	if got := nodeOf(FeedKindTaskStart); got != `fnode_cccccccccccccccccccccccccccccccc` {
-		t.Errorf("task-start node = %q, want lease holder", got)
+	if got := nodeOf(FeedKindTaskStart, `feat/n`); got != `fnode_cccccccccccccccccccccccccccccccc` {
+		t.Errorf("task-start node = %q, want active lease holder", got)
 	}
-	if got := nodeOf(FeedKindSkillTrigger); got != stampA.NodeID {
+	if got := nodeOf(FeedKindTaskStart, `feat/expired`); got != `` {
+		t.Errorf("expired lease must not render a node, got %q", got)
+	}
+	if got := nodeOf(FeedKindSkillTrigger, `feat/n`); got != stampA.NodeID {
 		t.Errorf("skill-trigger node = %q, want entry stamp", got)
 	}
-	if got := nodeOf(FeedKindConclusion); got != stampB.NodeID {
+	if got := nodeOf(FeedKindConclusion, `feat/n`); got != stampB.NodeID {
 		t.Errorf("conclusion node = %q, want conclusion stamp", got)
 	}
-	// Legacy unstamped records → empty node, omitempty keeps the wire shape unchanged.
+	// Legacy unstamped records → empty node, and the WIRE shape is unchanged (no
+	// "node" key after marshal — a Go-level empty string alone would not catch a
+	// dropped omitempty).
 	//
-	// 存量无戳记录 → node 为空，omitempty 保持线上结构不变。
+	// 存量无戳记录 → node 为空，且线上结构不变（marshal 后无 "node" 键——只断言
+	// Go 层空串逮不到 omitempty 被删的情形）。
 	res2, err := AggregateFeed(Options{Root: root2Fixture(t)}, base.Add(5*time.Hour), FeedQuery{})
-	if err == nil {
-		for _, e := range res2.Events {
-			if e.Node != `` {
-				t.Errorf("unstamped fixture produced node %q", e.Node)
-			}
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range res2.Events {
+		if e.Node != `` {
+			t.Errorf("unstamped fixture produced node %q", e.Node)
+		}
+		raw, merr := json.Marshal(e)
+		if merr != nil {
+			t.Fatal(merr)
+		}
+		if strings.Contains(string(raw), `"node"`) {
+			t.Errorf("unstamped event wire shape changed: %s", raw)
 		}
 	}
 }

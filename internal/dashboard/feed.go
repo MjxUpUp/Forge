@@ -233,8 +233,8 @@ func taskStartEvent(pr pulseRoot, s *taskpipeline.TaskState, now time.Time) Feed
 	ev := FeedEvent{
 		Time: s.StartedAt, Kind: FeedKindTaskStart, Project: pr.name, TaskRef: s.TaskRef,
 	}
-	if s.Lease != nil {
-		ev.Node = s.Lease.HolderNode // 当前持有租约的机器（谁在干活）
+	if s.Lease.ActiveAt(now) {
+		ev.Node = s.Lease.HolderNode // 当前有效租约的持有者（谁在干活；过期即不显示，与 LeaseStatus 同一条「过期即自由」规则）
 	}
 	if s.IsComplete() {
 		ev.Severity = FeedSeverityOK
