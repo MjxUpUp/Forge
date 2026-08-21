@@ -549,3 +549,40 @@ func TestRun_RegistryMetadataNotWiring(t *testing.T) {
 		t.Fatalf("纯注册表元数据不构成接线，应为 missing，got %q (cmds=%d)", h.Status, h.ForgeCmds)
 	}
 }
+
+// TestRun_SkillsDriftProbeOptionalAndSurfaced 守卫 skills 分发节的注入契约：
+// probe 为 nil 时 Report.Skills 缺席（密封测试与旧行为兼容）；probe 非 nil 时
+// 摘要原样上报告。探针错误也应呈现为摘要（Canonical 前缀 error:），绝不中止
+// host 审计——这是 doctor.go Options.SkillsDriftProbe 注释承诺的行为。
+//
+// TestRun_SkillsDriftProbeOptionalAndSurfaced guards the skills-distribution
+// injection contract: nil probe → Report.Skills absent (hermetic tests keep the
+// old shape); non-nil probe → the summary surfaces verbatim. Probe errors must
+// surface as a summary (Canonical "error:" prefix), never abort host auditing —
+// the behavior the Options.SkillsDriftProbe comment promises.
+func TestRun_SkillsDriftProbeOptionalAndSurfaced(t *testing.T) {
+	isolate(t)
+	rep := Run("1.30.0", fakeEnv(nil))
+	if rep.Skills != nil {
+		t.Fatalf("nil probe 下 Skills 应缺席（omitempty 契约），got %+v", rep.Skills)
+	}
+	want := &SkillsDriftSummary{
+		Canonical: `C:\canon`,
+		Linked:    10,
+		Missing:   2,
+		Drifted:   1,
+		Items:     []SkillsDriftItem{{Skill: "subagent-orchestration", Target: "claude", State: "missing"}},
+	}
+	rep = Run("1.30.0", Options{
+		LookPath:         fakeEnv(nil).LookPath,
+		VersionRunner:    fakeEnv(nil).VersionRunner,
+		SkillsDriftProbe: func() *SkillsDriftSummary { return want },
+	})
+	if rep.Skills != want {
+		t.Fatalf("非 nil probe 的摘要应原样上报，got %+v want %+v", rep.Skills, want)
+	}
+	// host 审计照常完成（probe 不拖垮主流程）。
+	if len(rep.Hosts) == 0 {
+		t.Fatal("probe 存在时 host 审计仍应完成")
+	}
+}
