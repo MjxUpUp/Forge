@@ -302,6 +302,14 @@ func runProjectSync(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
+		// The .sig sidecar travels with the bundle inside the node prefix (peers
+		// verify against their trust stores on pull).
+		//
+		// .sig sidecar 随 bundle 一起进节点前缀（对端 pull 时对照各自 trust store
+		// 验真）。
+		if _, err := writeBundleSig(filepath.Join(dest, `bundle.tar.gz`)); err != nil {
+			fmt.Fprintf(out, `⚠ bundle 签名失败（bundle 本身完整）: %v\n`, err)
+		}
 		committed, err := syncCommitAll(dir, filepath.Join(`nodes`, id.NodeID, key),
 			fmt.Sprintf(`sync: %s %s (%d files)`, id.NodeID, key, len(manifest.Files)))
 		if err != nil {
@@ -324,6 +332,10 @@ func runProjectSync(cmd *cobra.Command, args []string) error {
 					// 缓存 reset 丢了我们未推送的提交——重新落一份 bundle 再提交。
 					if _, err := rePackBundle(cmd, root, dataDir, dest); err != nil {
 						return err
+					}
+					// 新 bundle 字节 = 新摘要——sidecar 必须重签。
+					if _, err := writeBundleSig(filepath.Join(dest, `bundle.tar.gz`)); err != nil {
+						fmt.Fprintf(out, `⚠ bundle 重签失败: %v\n`, err)
 					}
 				}
 				if _, err := syncCommitAll(dir, filepath.Join(`nodes`, id.NodeID, key),
