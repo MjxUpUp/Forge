@@ -12,8 +12,8 @@ cmd/forge 漏提交的雷拖到 v0.27.1 才爆。
 
 1. `feat:`/`fix:` 合入 main → release-please 自动开（或更新）**Release PR**
    （`chore(main): release X.Y.Z`），内容是纯机械变更：`npm/package.json`、
-   `.kimi-plugin/plugin.json`、`.release-please-manifest.json` 的版本 bump +
-   `CHANGELOG.md` 新章节
+   `.kimi-plugin/plugin.json`、`plugins/forge-dsh/package.json`、
+   `.release-please-manifest.json` 的版本 bump + `CHANGELOG.md` 新章节
 2. 确认后**合并 Release PR** → release-please 自动打 `vX.Y.Z` tag、建带 changelog
    正文的 GitHub Release
 3. 同一 workflow 用 `workflow_dispatch` 在新 tag 上调度 `release.yml`（构建层零改动）
@@ -31,9 +31,20 @@ workflow run（GitHub 防递归），所以靠 workflow_dispatch 显式调度构
 触发 release.yml（dispatch 步自停，防双跑），无需改任何文件。
 
 发版形状由 `internal/ci/release_please_test.go` 守卫：tag 形状必须 `v<semver>`（构建层
-触发条件与 npm 资产 URL 都依赖）、extra-files 必须持续 bump 两个 manifest、
+触发条件与 npm 资产 URL 都依赖）、extra-files 必须持续 bump 三个版本文件
+（`npm/package.json`、`.kimi-plugin/plugin.json`、`plugins/forge-dsh/package.json`）、
 `.release-please-manifest.json` 必须与 `npm/package.json` 同版本（手动发版不同步会被
 测试拦下）。
+
+`@agent_forge/forge-dsh`（DSH 插件）随主发布火车 lockstep 发版：版本号由 Release PR
+经 extra-files 与根版本统一 bump（不手改，`TestReleasePleaseManifest_DshPluginTracksTrain`
+守卫），release.yml 的 npm job 幂等发布到 npmjs.org。曾刻意独立演进，结果版本 bump
+全靠手动 chore commit、漏 bump 时发布步静默 skip——2026-08 收回火车。
+
+注：`plugins/forge-dsh/package-lock.json` 的根 version 字段**不做机制性同步**——
+`npm ci` 只校验依赖树不校验根 version，npm publish 也不把 lockfile 打进 tarball，
+该字段是纯本地开发元数据（下次 `npm install` 自然追上）。把它塞进 extra-files 需要
+未验证的 jsonpath 写法（`packages[""]` 空字符串 key），不值得为化妆性字段冒险。
 
 ## 发版必须走 release.yml（不手动绕过）
 
@@ -44,15 +55,15 @@ npm → npm-verify** 四段强依赖链：
 |-----|------|-------|
 | **test** | `go test ./... -race` + `go vet` + tag↔版本对账 | （源头） |
 | **goreleaser** | 跨平台二进制 + SBOM + cosign 签名 → GitHub Release 资产 | `test` |
-| **npm** | 发 `@agent_forge/forge` + 5 平台子包到 npmjs.org（带 provenance） | `goreleaser` |
+| **npm** | 发 `@agent_forge/forge` + 5 平台子包 + `@agent_forge/forge-dsh` 到 npmjs.org（带 provenance） | `goreleaser` |
 | **npm-verify** | npm 装回并断言 `forge --version` == tag | `npm` |
 
 - needs 链由 `internal/ci/release_workflow_test.go` 沙盒守护
 - goreleaser `release.mode: keep-existing`：保留 release-please 的 changelog 正文，
   只往 Release 上挂二进制/SBOM/签名资产
-- **版本对账门禁**（test job）：tag 必须等于 `npm/package.json` 的 version——Release PR
-  已保证一致，此门禁防手动打 tag 路径"二进制是 tag 的、包版本号是 package.json 的"
-  货不对板
+- **版本对账门禁**（test job）：tag 必须等于 `npm/package.json` 与
+  `plugins/forge-dsh/package.json` 的 version——Release PR 已保证一致，此门禁防手动
+  打 tag 路径"二进制是 tag 的、包版本号是 package.json 的"货不对板
 - **npm** 先发 5 平台子包（主包 optionalDependencies 依赖它们）再发主包；
   `NODE_AUTH_TOKEN` 走 `registry.npmjs.org`（华为云镜像缺新包会 404）
 
@@ -90,10 +101,11 @@ node scripts/release.js          # 照旧 bump + tag + commit
 git push origin main && git push origin vX.Y.Z   # 手动 push 触发 release.yml
 ```
 
-脚本会同步 bump `.release-please-manifest.json`（release-please 的版本账本），保持
-逃生舱路径自洽——`internal/ci/release_please_test.go` 的
-`TestReleasePleaseManifest_MatchesNpmVersion` 守卫 `npm/package.json` == manifest。
-只有绕过脚本手动打 tag 时才需要手动同步 manifest。
+脚本会同步 bump `.release-please-manifest.json`（release-please 的版本账本）与
+`plugins/forge-dsh/package.json`（随火车的 dsh 插件版本），保持逃生舱路径自洽——
+`internal/ci/release_please_test.go` 的 `TestReleasePleaseManifest_MatchesNpmVersion`
+守卫 `npm/package.json` == manifest、`TestReleasePleaseManifest_DshPluginTracksTrain`
+守卫 dsh == manifest。只有绕过脚本手动打 tag 时才需要手动同步这些文件。
 
 CI 暂坏需绕过 workflow 手动 `gh release` + `npm publish` 时，绕过的是 **整个 needs 链**
 （沙盒验证无法覆盖手动行为）。此时：
