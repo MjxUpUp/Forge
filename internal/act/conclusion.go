@@ -29,6 +29,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/nodestamp"
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 )
 
@@ -90,6 +91,12 @@ type Conclusion struct {
 	// DesignPhases 是 inferDesignPhases 推断出的设计阶段（如 requirement/api/backend）。
 	// 用于 phase-aware 健康报告（phase_pass_rate）和回路接入。
 	DesignPhases []string `json:"design_phases,omitempty"`
+	// Stamp carries machine attribution (node_id/seq/ts_hlc/sig), filled by Append via
+	// nodestamp.Next — zero on legacy lines and on fail-open. Flattened into this object.
+	//
+	// Stamp 携带机器归因（node_id/seq/ts_hlc/sig），由 Append 经 nodestamp.Next 落章——
+	// 存量行与 fail-open 时为零值。拍平进本对象。
+	nodestamp.Stamp
 }
 
 // DimScore is one scoring dimension's raw score — the number behind the <70 binary, so
@@ -163,6 +170,13 @@ func Append(p *forgedata.Project, c *Conclusion) error {
 
 	if c.CompletedAt.IsZero() {
 		c.CompletedAt = time.Now()
+	}
+	// Machine-attribution stamp (node-identity.md §4): zero-caller-stamp only —
+	// import/merge keeps the ORIGIN node's stamp.
+	//
+	// 机器归因戳（node-identity.md §4）：仅当调用方留零值——import/merge 保留源节点戳。
+	if c.Stamp == (nodestamp.Stamp{}) {
+		c.Stamp = nodestamp.Next()
 	}
 	if err := os.MkdirAll(p.ActDir(), 0755); err != nil {
 		return err

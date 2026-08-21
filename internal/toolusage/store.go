@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/nodestamp"
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
@@ -40,6 +41,14 @@ func Record(root string, call *ToolCall) error {
 	}
 	if call.ID == "" {
 		call.ID = computeID(*call)
+	}
+	// Machine-attribution stamp AFTER computeID: the stable ID hashes identity fields
+	// and must not drift with stamp values; zero-caller-stamp only (import keeps origin).
+	//
+	// 机器归因戳在 computeID 之后落章：稳定 ID hash 的是身份字段，不得随戳值漂移；
+	// 仅当调用方留零值（import 保留源节点戳）。
+	if call.Stamp == (nodestamp.Stamp{}) {
+		call.Stamp = nodestamp.Next()
 	}
 
 	forgeDir := dataDir(root)

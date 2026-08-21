@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/nodestamp"
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
@@ -48,6 +49,14 @@ func Record(root string, entry *Entry) error {
 	defer mu.Unlock()
 
 	entry.RecordedAt = time.Now()
+	// Machine-attribution stamp (node-identity.md §4): only when the caller left it
+	// zero — import/merge paths carry the ORIGIN node's stamp and must keep it.
+	//
+	// 机器归因戳（node-identity.md §4）：仅当调用方留零值时落章——import/merge
+	// 路径携带的是源节点戳，必须保留。
+	if entry.Stamp == (nodestamp.Stamp{}) {
+		entry.Stamp = nodestamp.Next()
+	}
 	// Fallback inference for evidence source: when the caller does not explicitly set Source, assign a default by CheckName.
 	// This lets legacy recording points (unchanged) also carry Source automatically, leaving no gaps in evidence-chain bucketing.
 	//
