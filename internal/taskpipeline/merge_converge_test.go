@@ -135,6 +135,21 @@ func TestMergeTaskStateSync_ConvergenceProperty(t *testing.T) {
 		if taskJSON(t, ab) != before {
 			t.Fatalf("seed %d: re-merge not idempotent:\nbefore=%s\nafter=%s", seed, before, taskJSON(t, ab))
 		}
+
+		// stepwise convergence (the real sync-loop shape): merging the CONVERGED
+		// product into the other side must equal the converged product —
+		// merge(b, merge(a,b)) == merge(a,b). cpTask round-trips through JSON so the
+		// converged product arrives in wire shape (nil/empty slice normalization
+		// included) — this is the case a representation-sensitive tiebreak breaks.
+		//
+		// 轮次收敛（真实同步循环形态）：把收敛产物合进另一侧必须等于收敛产物——
+		// merge(b, merge(a,b)) == merge(a,b)。cpTask 经 JSON 往返，收敛产物以
+		// 线上形态到达（含 nil/空切片归一）——表示敏感的决胜键正是在此破功。
+		step := cpTask(t, b)
+		MergeTaskStateSync(step, cpTask(t, ab))
+		if taskJSON(t, step) != taskJSON(t, ab) {
+			t.Fatalf("seed %d: stepwise merge diverged:\nab=%s\nstep=%s", seed, taskJSON(t, ab), taskJSON(t, step))
+		}
 	}
 }
 
