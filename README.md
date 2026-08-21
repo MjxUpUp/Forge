@@ -226,7 +226,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge init` | 初始化项目（默认**零项目写入**：登记全局注册表 `~/.forge/projects.json`，hooks/指令/skill 全在用户级，protocol.yml + runtime state 在 `~/.forge/projects/<key>/`；`--project` 团队模式把指令资产写项目目录供 git 共享；旧的 `--mode` 标志已废弃为 no-op） |
 | `forge status [--json] [--system]` | 查看项目状态（任务管道 + 质量信号）；`--system` 跑系统级健康检查（~/.forge、PATH、孤儿 hook、skills manifest） |
 | `forge verify` | 项目完整性检查 + 回归测试 |
-| `forge update [--plugin]` | 自更新到最新版本；加 `--plugin` 在 binary 更新后打印 plugin marketplace 重装指引（marketplace 镜像同步 hook 时建议重装） |
+| `forge update [--plugin]` | 检查并更新到最新版本（按安装通道分流：npm 安装自动检测包管理器 npm/pnpm/yarn，查 npm registry 并打印对应更新命令——npm 包不可变，原地替换会被下次 install 还原，故不代下载，可用 `FORGE_NPM_REGISTRY` 覆盖 registry；GitHub Release/手动安装从 GitHub 下载自替换）；加 `--plugin` 在更新后打印 plugin marketplace 重装指引（marketplace 镜像同步 hook 时建议重装） |
 | `forge suggest decline/status/reset` | 管理 init-suggest hook 的项目 init 提示状态（decline 永久静默当前项目 / status 查看 / reset 清除重新提示） |
 | `forge uninstall [--restore]` | 一键反装：剥除全部用户级 hooks（claude/codex/cursor/windsurf/opencode/kimi/reasonix/cline）+ 用户级指令段（CLAUDE.md/AGENTS.md/global_rules.md）+ forge-quality skill + 清 npm global `@agent_forge/forge` + 删 init-suggest 标记（默认 `~/.forge/.init-suggested/`，设 `FORGE_DATA_HOME` 时落该根下）；`--restore` 把用户级文件回滚到 forge 修改前字节（备份在 `~/.forge/backups/`）；plugin 卸载须在 agent CLI 内交互运行（不可脚本化） |
 | `forge migrate [--dry-run] [--force]` | 把旧 `.forge/` runtime state（tasks/gates/checklog/toollog/act/sessions/quarantine/active-task-ref 等）迁到用户级 DataDir（`~/.forge/projects/<key>/`）——升级到 runtime state 外迁版本后的迁移路径；未改过的 `.forge/protocol.yml` 由 autoSync 自动迁 DataDir，用户改过的保留为团队共享覆盖层；迁移的 task 文件落地即剥离外来门禁信号（review/验收/评分/完成/逃生舱/generic 须本机重挣，验收命令带外来标记）；幂等，`--dry-run` 预览，`--force` 覆盖 DataDir 已有同名 |
