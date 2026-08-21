@@ -25,8 +25,9 @@
 //   node scripts/release.js major       # 强制 major
 //   node scripts/release.js --dry-run   # 只打印将要做什么,不改文件不建 tag
 //
-// 脚本只负责:读当前版本 → 算下一版本 → 同步 bump 三个版本文件(npm/package.json、
-// .kimi-plugin/plugin.json、.release-please-manifest.json) → commit → tag。
+// 脚本只负责:读当前版本 → 算下一版本 → 同步 bump 四个版本文件(npm/package.json、
+// .kimi-plugin/plugin.json、plugins/forge-dsh/package.json、
+// .release-please-manifest.json) → commit → tag。
 // 不 push。push 触发 .github/workflows/release.yml(goreleaser + npm),是对外
 // 发布,留给你确认后手动执行。
 
@@ -78,8 +79,9 @@ function bumpVersion(cur, bump) {
 
 // replaceVersionField 把 JSON 文本里第一个 "version": "..." 替换为 next。返回
 // {content, ok}：ok=false 表示模式未匹配（文件缺 version 字段，发版事故级）。抽成
-// 纯函数：npm/package.json 与 .kimi-plugin/plugin.json 的 version bump 共用同一段
-// 替换逻辑，且可被 release.test.js 单测（version 替换是发版高价值点）。
+// 纯函数：npm/package.json、.kimi-plugin/plugin.json 与 plugins/forge-dsh/package.json
+// 的 version bump 共用同一段替换逻辑，且可被 release.test.js 单测（version 替换是
+// 发版高价值点）。
 function replaceVersionField(content, next) {
   const re = /"version":\s*"[^"]+"/;
   if (!re.test(content)) return { content, ok: false };
@@ -154,11 +156,11 @@ function main() {
   console.log(`tag:     v${next}`);
 
   if (dryRun) {
-    console.log('(dry-run, no changes — would bump npm/package.json + .kimi-plugin/plugin.json + .release-please-manifest.json)');
+    console.log('(dry-run, no changes — would bump npm/package.json + .kimi-plugin/plugin.json + plugins/forge-dsh/package.json + .release-please-manifest.json)');
     return;
   }
 
-  // --- compute all three bumps first; write only after every pattern matched ---
+  // --- compute all four bumps first; write only after every pattern matched ---
   // 先算后写：任一文件模式不匹配时直接退出，不留「改了一半」的工作区（逃生舱场景
   // 高压，半 bump 工作区容易被手滑 commit，制造 npm↔manifest 失同步）。
   const pkgNext = replaceVersionField(content, next);
@@ -181,6 +183,18 @@ function main() {
     process.exit(1);
   }
 
+  // --- sync plugins/forge-dsh/package.json version to release ---
+  // dsh 插件随主发布火车 lockstep 发版（release-please extra-files 统一 bump，
+  // TestReleasePleaseManifest_DshPluginTracksTrain 钉住 dsh==manifest）。逃生舱
+  // 发版必须同样 bump 它，否则该守卫变红、release.yml 的 tag 对账门禁也会拦。
+  const DSH_PKG = path.join(ROOT, 'plugins', 'forge-dsh', 'package.json');
+  const REL_DSH = path.relative(ROOT, DSH_PKG);
+  const dshNext = replaceVersionField(fs.readFileSync(DSH_PKG, 'utf8'), next);
+  if (!dshNext.ok) {
+    console.error(`failed to replace version field in ${REL_DSH} (pattern not matched)`);
+    process.exit(1);
+  }
+
   // --- sync .release-please-manifest.json (release-please 的版本账本) ---
   // release-please 按 manifest 的 "." 起算下一版本；逃生舱发版不同步它，下个 Release
   // PR 会从旧版本起算、撞已存在 tag（internal/ci 的
@@ -193,13 +207,14 @@ function main() {
     process.exit(1);
   }
 
-  // --- all three patterns matched: write them all ---
+  // --- all four patterns matched: write them all ---
   fs.writeFileSync(PKG, pkgNext.content);
   fs.writeFileSync(KIMI_PLUGIN, kimiNext.content);
+  fs.writeFileSync(DSH_PKG, dshNext.content);
   fs.writeFileSync(MANIFEST, manifestNext.content);
 
-  // --- verify round-trip (all three files must read back exactly next) ---
-  for (const [file, rel] of [[PKG, REL_PKG], [KIMI_PLUGIN, REL_KIMI]]) {
+  // --- verify round-trip (all four files must read back exactly next) ---
+  for (const [file, rel] of [[PKG, REL_PKG], [KIMI_PLUGIN, REL_KIMI], [DSH_PKG, REL_DSH]]) {
     const actual = (fs.readFileSync(file, 'utf8').match(/"version":\s*"([^"]+)"/) || [])[1];
     if (actual !== next) {
       console.error(`version mismatch in ${rel}: expected ${next}, got ${actual}`);
@@ -213,7 +228,7 @@ function main() {
   }
 
   // --- commit + tag ---
-  git(`add ${REL_PKG} ${REL_KIMI} ${REL_MANIFEST}`);
+  git(`add ${REL_PKG} ${REL_KIMI} ${REL_DSH} ${REL_MANIFEST}`);
   git(`commit -m "chore(release): bump npm version to ${next}" -m "Co-Authored-By: Claude <noreply@anthropic.com>"`);
   git(`tag v${next}`);
 

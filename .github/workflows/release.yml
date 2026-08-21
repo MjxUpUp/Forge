@@ -29,14 +29,18 @@ jobs:
       # release-please 的 Release PR 保证两者一致（npm/package.json 在 extra-files 里被
       # 同步 bump），此门禁防 RELEASE.md 允许的手动打 tag 路径出错——
       # 没有对账时打错 tag 会发出货不对板的包（二进制是 tag 的，包版本号是 package.json 的）。
+      # plugins/forge-dsh 同查：dsh 插件随主火车 lockstep 发版（extra-files 统一 bump），
+      # 手动打 tag 路径漏 bump 它会让 dsh 发布步发出与 tag 对不上的版本。
       - name: Tag/version consistency gate
         run: |
           TAG_VER="${GITHUB_REF_NAME#v}"
-          PKG_VER=$(jq -r .version npm/package.json)
-          if [ "$TAG_VER" != "$PKG_VER" ]; then
-            echo "::error::tag v$TAG_VER != npm/package.json version $PKG_VER — 先对齐版本号再发版"
-            exit 1
-          fi
+          for pkgjson in npm/package.json plugins/forge-dsh/package.json; do
+            PKG_VER=$(jq -r .version "$pkgjson")
+            if [ "$TAG_VER" != "$PKG_VER" ]; then
+              echo "::error::tag v$TAG_VER != $pkgjson version $PKG_VER — 先对齐版本号再发版"
+              exit 1
+            fi
+          done
 
   goreleaser:
     needs: test
@@ -169,9 +173,11 @@ jobs:
         working-directory: npm
 
       # 发布 @agent_forge/forge-dsh（DSH 插件，plugins/forge-dsh）：随主版本发布火车
-      # 一并上架，免去独立手动发版（本地 npm login 不可脚本化）。版本独立演进——
-      # 读 plugins/forge-dsh/package.json 自身 version，不跟随主包（插件 API 兼容节奏
-      # 与 dsh preview 绑定，与 forge 主版本解耦）；已发布版本幂等跳过，与主包同姿势。
+      # 一并上架，免去独立手动发版（本地 npm login 不可脚本化）。版本号随主火车
+      # lockstep——plugins/forge-dsh/package.json 在 release-please extra-files 里，
+      # 每个 Release PR 与根版本统一 bump（曾刻意独立演进，结果 bump 全靠手动 chore
+      # commit、漏 bump 时本步静默 skip，插件游离于自动发版之外，2026-08 收回火车）。
+      # 已发布版本幂等跳过，与主包同姿势。
       - name: Publish @agent_forge/forge-dsh (idempotent)
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
