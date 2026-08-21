@@ -96,3 +96,30 @@ func TestLease_MergeHigherFencingWins(t *testing.T) {
 		t.Fatalf("reverse merge fencing = %d", b2.Lease.Fencing)
 	}
 }
+
+// TestLease_MergeEqualFencingDeterministic pins the equal-fencing tiebreak WITH an
+// oracle: the canonical-JSON-smaller lease wins (holder_node is the first JSON field,
+// so fnode_aaa… beats fnode_bbb… when everything else is equal), in BOTH directions.
+// This is the dual-machine simultaneous-claim case — it must converge, not flip.
+//
+// TestLease_MergeEqualFencingDeterministic 带 oracle 钉死同值 fencing 破平：规范
+// JSON 小者胜（holder_node 是 JSON 首字段，其余全等时 fnode_aaa… 胜 fnode_bbb…），
+// 两个方向一致。这是双机同时认领的情形——必须收敛，不得来回翻。
+func TestLease_MergeEqualFencingDeterministic(t *testing.T) {
+	mk := func(holder string) *TaskState {
+		s := &TaskState{TaskRef: `feat/l`}
+		ClaimLease(s, holder, leaseClock(1000), 300) // both fencing=1, same wall clock
+		return s
+	}
+	const winner = `fnode_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`
+	ab := mk(winner)
+	MergeTaskStateSync(ab, mk(`fnode_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb`))
+	ba := mk(`fnode_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb`)
+	MergeTaskStateSync(ba, mk(winner))
+	if ab.Lease.HolderNode != winner {
+		t.Fatalf("equal-fencing ab winner = %q, want %q (canonical order)", ab.Lease.HolderNode, winner)
+	}
+	if ba.Lease.HolderNode != winner {
+		t.Fatalf("equal-fencing ba winner = %q, want %q (direction-independent)", ba.Lease.HolderNode, winner)
+	}
+}
