@@ -174,6 +174,80 @@ func remoteFiles(t *testing.T, remote, prefix string) []string {
 	return strings.Split(trimmed, "\n")
 }
 
+// TestProjectSync_InitUnreachableRemoteFails pins the fail-fast contract: an
+// unreachable remote must error at init (not at first push) AND leave no binding.
+//
+// TestProjectSync_InitUnreachableRemoteFails 钉死 fail-fast 契约：不可达 remote
+// 必须在 init 报错（而非首次 push）且不留下绑定。
+func TestProjectSync_InitUnreachableRemoteFails(t *testing.T) {
+	fpid := `fpid_aaaaaaaabbbbbbbbccccccccdddddddd`
+	projA, homeA := gitSyncMachine(t, fpid)
+	t.Setenv("FORGE_DATA_HOME", homeA)
+	chdirAndRestore(t, projA)
+	err := projectSyncCmd.RunE(projectSyncCmd, []string{`init`, filepath.Join(t.TempDir(), `nonexistent-remote`)})
+	if err == nil {
+		t.Fatal("init with unreachable remote must fail")
+	}
+	if _, serr := loadSyncStatus(forgedata.DataDirFor(projA)); serr == nil {
+		t.Fatal("failed init left a sync-remote.json binding behind")
+	}
+}
+
+// TestProjectSync_PullSkipsBadNodes: one corrupt bundle from a well-formed peer dir
+// and one illegally-named dir must both be skipped with the pull itself succeeding.
+//
+// TestProjectSync_PullSkipsBadNodes：形态合法对端目录里的损坏 bundle 与非法目录名
+// 都必须被跳过且 pull 本身成功。
+func TestProjectSync_PullSkipsBadNodes(t *testing.T) {
+	fpid := `fpid_eeeeeeeeffffffff0000000011111111`
+	projA, homeA := gitSyncMachine(t, fpid)
+	projB, homeB := gitSyncMachine(t, fpid)
+	remote := t.TempDir()
+	runGit(t, remote, `init`, `--bare`)
+
+	writeTaskInto(t, projA, homeA, `feat/ok`, `good`)
+	runProjectSyncForTest(t, projA, homeA, `init`, remote)
+	runProjectSyncForTest(t, projA, homeA, `push`)
+
+	// Plant a corrupt bundle under a VALID node name and a dir with an ILLEGAL name,
+	// via a direct checkout of the sync branch.
+	co := filepath.Join(t.TempDir(), `co`)
+	runGit(t, t.TempDir(), `clone`, `-b`, syncBranch, remote, co)
+	badNode := `fnode_99999999999999999999999999999999`
+	projKey := ``
+	for _, f := range remoteFiles(t, remote, `nodes/`) {
+		parts := strings.Split(f, `/`)
+		if len(parts) >= 3 && parts[0] == `nodes` {
+			projKey = parts[2]
+		}
+	}
+	if projKey == `` {
+		t.Fatal("no project key on remote")
+	}
+	if err := os.MkdirAll(filepath.Join(co, `nodes`, badNode, projKey), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(co, `nodes`, badNode, projKey, `bundle.tar.gz`), []byte(`corrupt-not-gzip`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(co, `nodes`, `notanode`, projKey), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(co, `nodes`, `notanode`, projKey, `bundle.tar.gz`), []byte(`x`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, co, `-c`, `user.name=t`, `-c`, `user.email=t@t`, `add`, `-A`)
+	runGit(t, co, `-c`, `user.name=t`, `-c`, `user.email=t@t`, `commit`, `-m`, `plant bad nodes`)
+	runGit(t, co, `push`, `origin`, `HEAD:`+syncBranch)
+
+	// Pull must succeed and still import A's good bundle.
+	runProjectSyncForTest(t, projB, homeB, `init`, remote)
+	runProjectSyncForTest(t, projB, homeB, `pull`)
+	if got := readTaskSummary(t, projB, homeB, `feat/ok`); got != `good` {
+		t.Fatalf("good peer bundle not imported: %q", got)
+	}
+}
+
 // TestProjectSync_StatusReportsNodes covers the observability surface: after a push,
 // the persisted sync status records the remote, this machine's node prefix and the
 // last push time.

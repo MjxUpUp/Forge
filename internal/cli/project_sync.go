@@ -148,9 +148,16 @@ func ensureSyncCache(remote string) (string, error) {
 			return ``, fmt.Errorf(`git remote add: %w`, err)
 		}
 	}
-	// Fetch the sync branch into a local ref; absence on the remote is fine (first push).
+	// Distinguish "branch absent on remote" (fine — first push) from "remote
+	// unreachable/auth failed" (must fail loud): bare `git fetch` returns exit 128 for
+	// BOTH, so probing with ls-remote first is what keeps `init`'s fail-fast promise.
 	//
-	// 拉同步分支到本地 ref；远端没有不视为错误（首次 push）。
+	// 区分「远端无分支」（正常——首次 push）与「remote 不可达/认证失败」（必须响亮
+	// 失败）：裸 git fetch 对两者都返回 exit 128，先用 ls-remote 探测才能保住
+	// init 的 fail-fast 承诺。
+	if _, err := gitOut(dir, `ls-remote`, `--heads`, `origin`, syncBranch); err != nil {
+		return ``, fmt.Errorf(`remote 不可达或认证失败（ls-remote 探测）: %w`, err)
+	}
 	if _, err := gitOut(dir, `fetch`, `origin`, `+refs/heads/`+syncBranch+`:refs/remotes/origin/`+syncBranch); err != nil {
 		if _, err2 := gitOut(dir, `checkout`, `-B`, syncBranch); err2 != nil {
 			return ``, fmt.Errorf(`checkout fresh sync branch: %w`, err2)
@@ -163,24 +170,74 @@ func ensureSyncCache(remote string) (string, error) {
 	return dir, nil
 }
 
-// syncCommitAll commits any staged/unstaged changes; returns false when clean.
+// syncCommitAll stages ONLY the given prefix (a crashed earlier push can leave
+// .bundle-*.tmp debris — a tree-wide add would commit and push it) and commits with
+// signing/hooks disabled (user-global commit.gpgsign or hooksPath must not break or
+// hang the sync channel). Returns false when clean.
 //
-// syncCommitAll 提交全部变更；干净时返回 false。
-func syncCommitAll(dir, msg string) (bool, error) {
-	out, err := gitOut(dir, `status`, `--porcelain`)
+// syncCommitAll 只暂存给定前缀（此前崩溃的 push 可能留下 .bundle-*.tmp 残骸——
+// 整树 add 会把它提交并推上远端）；提交时关签名与 hooks（用户全局
+// commit.gpgsign 或 hooksPath 不得卡死同步通道）。干净时返回 false。
+func syncCommitAll(dir, prefix, msg string) (bool, error) {
+	out, err := gitOut(dir, `status`, `--porcelain`, `--`, prefix)
 	if err != nil {
 		return false, err
 	}
 	if out == `` {
 		return false, nil
 	}
-	if _, err := gitOut(dir, `add`, `-A`); err != nil {
+	if _, err := gitOut(dir, `add`, `--`, prefix); err != nil {
 		return false, err
 	}
-	if _, err := gitOut(dir, `-c`, `user.name=forge-sync`, `-c`, `user.email=forge-sync@local`, `commit`, `-m`, msg); err != nil {
+	if _, err := gitOut(dir, `-c`, `user.name=forge-sync`, `-c`, `user.email=forge-sync@local`,
+		`-c`, `commit.gpgsign=false`, `-c`, `core.hooksPath=/dev/null`,
+		`commit`, `-m`, msg); err != nil {
 		return false, err
 	}
 	return true, nil
+}
+
+// rePackBundle packs the project bundle into dest/bundle.tar.gz (temp + rename), and
+// first sweeps any .bundle-*.tmp debris from a crashed earlier run.
+//
+// rePackBundle 把项目 bundle 打包进 dest/bundle.tar.gz（temp + rename），并先清扫
+// 此前崩溃残留的 .bundle-*.tmp。
+func rePackBundle(cmd *cobra.Command, root, dataDir, dest string) (*projectsync.Manifest, error) {
+	if err := os.MkdirAll(dest, 0755); err != nil {
+		return nil, err
+	}
+	if debris, _ := filepath.Glob(filepath.Join(dest, `.bundle-*.tmp`)); len(debris) > 0 {
+		for _, d := range debris {
+			_ = os.Remove(d)
+		}
+	}
+	tmp, err := os.CreateTemp(dest, `.bundle-*.tmp`)
+	if err != nil {
+		return nil, err
+	}
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }()
+	origin, err := exportOrigin(root)
+	if err != nil {
+		_ = tmp.Close()
+		return nil, err
+	}
+	manifest, perr := projectsync.Pack(projectsync.PackInput{
+		DataDir:      dataDir,
+		Origin:       origin,
+		ForgeVersion: cleanVersion(cmd.Root().Version),
+		Now:          time.Now(),
+	}, tmp)
+	if cerr := tmp.Close(); cerr != nil {
+		return nil, cerr
+	}
+	if perr != nil {
+		return nil, fmt.Errorf(`打包失败: %w`, perr)
+	}
+	if err := os.Rename(tmpName, filepath.Join(dest, `bundle.tar.gz`)); err != nil {
+		return nil, err
+	}
+	return manifest, nil
 }
 
 func runProjectSync(cmd *cobra.Command, args []string) error {
@@ -206,13 +263,16 @@ func runProjectSync(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
+		// Validate the remote BEFORE persisting the binding — a failed probe must not
+		// leave a half-written sync-remote.json behind.
+		//
+		// 先校验 remote 再持久化绑定——探测失败不得留下半成品 sync-remote.json。
+		if _, err := ensureSyncCache(args[1]); err != nil {
+			return fmt.Errorf(`remote 不可达: %w`, err)
+		}
 		st := &syncStatus{Remote: args[1], NodeID: id.NodeID}
 		if err := saveSyncStatus(dataDir, st); err != nil {
 			return err
-		}
-		// Fail fast on a bad remote instead of at first push.
-		if _, err := ensureSyncCache(st.Remote); err != nil {
-			return fmt.Errorf(`remote 不可达: %w`, err)
 		}
 		fmt.Fprintf(out, `✅ 已绑定同步 remote：%s（node=%s，分支 %s）\n`, st.Remote, st.NodeID, syncBranch)
 		return nil
@@ -238,43 +298,42 @@ func runProjectSync(cmd *cobra.Command, args []string) error {
 		//
 		// 直接导出进缓存仓库（同目录 temp + rename）。
 		dest := filepath.Join(dir, `nodes`, id.NodeID, key)
-		if err := os.MkdirAll(dest, 0755); err != nil {
-			return err
-		}
-		tmp, err := os.CreateTemp(dest, `.bundle-*.tmp`)
+		manifest, err := rePackBundle(cmd, root, dataDir, dest)
 		if err != nil {
 			return err
 		}
-		tmpName := tmp.Name()
-		defer func() { _ = os.Remove(tmpName) }()
-		origin, err := exportOrigin(root)
-		if err != nil {
-			_ = tmp.Close()
-			return err
-		}
-		manifest, perr := projectsync.Pack(projectsync.PackInput{
-			DataDir:      dataDir,
-			Origin:       origin,
-			ForgeVersion: cleanVersion(cmd.Root().Version),
-			Now:          time.Now(),
-		}, tmp)
-		if cerr := tmp.Close(); cerr != nil {
-			return cerr
-		}
-		if perr != nil {
-			return fmt.Errorf(`打包失败: %w`, perr)
-		}
-		if err := os.Rename(tmpName, filepath.Join(dest, `bundle.tar.gz`)); err != nil {
-			return err
-		}
-		committed, err := syncCommitAll(dir, fmt.Sprintf(`sync: %s %s (%d files)`, id.NodeID, key, len(manifest.Files)))
+		committed, err := syncCommitAll(dir, filepath.Join(`nodes`, id.NodeID, key),
+			fmt.Sprintf(`sync: %s %s (%d files)`, id.NodeID, key, len(manifest.Files)))
 		if err != nil {
 			return err
 		}
 		if !committed {
 			fmt.Fprintln(out, `bundle 无变化——跳过 commit/push`)
-		} else if _, err := gitOut(dir, `push`, `origin`, `HEAD:`+syncBranch); err != nil {
-			return fmt.Errorf(`git push: %w`, err)
+		} else {
+			// Push with ONE re-fetch+retry: two machines pushing concurrently make the
+			// loser's push non-fast-forward; re-syncing the cache and re-committing
+			// converges without losing either side (each node writes its own prefix).
+			//
+			// push 带一次重拉重试：双机同时 push 时败者非快进；重同步缓存并重新提交
+			// 即可收敛且不丢任何一侧（各节点只写自己前缀）。
+			if _, err := gitOut(dir, `push`, `origin`, `HEAD:`+syncBranch); err != nil {
+				if _, rerr := ensureSyncCache(st.Remote); rerr != nil {
+					return fmt.Errorf(`git push: %w（重拉缓存也失败: %v）`, err, rerr)
+				}
+				if _, rerr := os.Stat(filepath.Join(dest, `bundle.tar.gz`)); rerr != nil {
+					// 缓存 reset 丢了我们未推送的提交——重新落一份 bundle 再提交。
+					if _, err := rePackBundle(cmd, root, dataDir, dest); err != nil {
+						return err
+					}
+				}
+				if _, err := syncCommitAll(dir, filepath.Join(`nodes`, id.NodeID, key),
+					fmt.Sprintf(`sync: %s %s (%d files, retry)`, id.NodeID, key, len(manifest.Files))); err != nil {
+					return err
+				}
+				if _, err := gitOut(dir, `push`, `origin`, `HEAD:`+syncBranch); err != nil {
+					return fmt.Errorf(`git push（含一次重试）: %w`, err)
+				}
+			}
 		}
 		st.NodeID = id.NodeID
 		st.LastPushAt = time.Now().UTC().Format(time.RFC3339)
@@ -308,13 +367,29 @@ func runProjectSync(cmd *cobra.Command, args []string) error {
 			if !e.IsDir() || e.Name() == id.NodeID {
 				continue // 自己的前缀不导入
 			}
+			// Remote directory names are attacker-influenceable input — shape-check
+			// before treating one as a node (attribution spoofing / terminal escape
+			// injection via a crafted dir name).
+			//
+			// 远端目录名是攻击者可影响输入——当作节点前先过形态检查（伪造归因 /
+			// 精心构造目录名的终端转义注入）。
+			if !nodeid.ValidNodeID(e.Name()) {
+				fmt.Fprintf(out, `⚠ 跳过非法节点目录名 %q\n`, e.Name())
+				continue
+			}
 			bundle := filepath.Join(nodesDir, e.Name(), key, `bundle.tar.gz`)
 			if _, err := os.Stat(bundle); err != nil {
 				continue
 			}
 			fmt.Fprintf(out, `导入节点 %s 的 bundle…\n`, e.Name())
+			// Per-node fault isolation: one corrupt/old-version/identity-mismatched
+			// bundle must not brick the whole pull for every other node.
+			//
+			// 逐节点容错：一个损坏/旧版/身份不匹配的 bundle 不得 brick 其他所有节点
+			// 的整个 pull。
 			if err := runProjectImport(projectImportCmd, []string{bundle}); err != nil {
-				return fmt.Errorf(`导入节点 %s 失败: %w`, e.Name(), err)
+				fmt.Fprintf(out, `⚠ 节点 %s 导入失败（跳过，不影响其他节点）: %v\n`, e.Name(), err)
+				continue
 			}
 			imported++
 		}
