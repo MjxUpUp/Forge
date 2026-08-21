@@ -3,6 +3,8 @@ package checklog
 import (
 	"strings"
 	"time"
+
+	"github.com/MjxUpUp/Forge/internal/nodestamp"
 )
 
 // CheckName identifies a specific hook check.
@@ -352,4 +354,12 @@ type Entry struct {
 	// 更大的载荷属旁路存储。omitempty：旧条目（Meta 前）解码为 nil——读方把缺键当
 	// 「未知」，绝不当零值语义。
 	Meta map[string]string `json:"meta,omitempty"`
+	// Stamp carries the machine-attribution fields (node_id/seq/ts_hlc/sig), filled by
+	// Record via nodestamp.Next — zero on legacy lines and on fail-open (stamping must
+	// never block the event it rides on). Flattened into this JSON object.
+	//
+	// Stamp 携带机器归因字段（node_id/seq/ts_hlc/sig），由 Record 经 nodestamp.Next
+	// 落章——存量行与 fail-open 时为零值（打戳绝不阻塞它依附的事件）。拍平进本
+	// JSON 对象。
+	nodestamp.Stamp
 }
