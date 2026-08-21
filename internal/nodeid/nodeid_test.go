@@ -1,6 +1,8 @@
 package nodeid
 
 import (
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -64,6 +66,9 @@ func TestLoad_MissingReturnsErrNotCreate(t *testing.T) {
 	withHome(t)
 	if _, err := Load(); err == nil {
 		t.Fatal("Load without existing identity must error (only LoadOrCreate generates)")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		// LoadOrCreate's create-branch keys on this — pin the wrap chain explicitly.
+		t.Fatalf("Load error must wrap os.ErrNotExist, got %v", err)
 	}
 }
 
@@ -141,5 +146,106 @@ func TestValidNodeID(t *testing.T) {
 		if ValidNodeID(bad) {
 			t.Fatalf("ValidNodeID(%q) = true", bad)
 		}
+	}
+}
+
+// rewriteIdentity tampers node.json via fn and returns the mutated raw bytes.
+//
+// rewriteIdentity 经 fn 篡改 node.json 并返回改后字节。
+func rewriteIdentity(t *testing.T, home string, fn func(map[string]any)) {
+	t.Helper()
+	p := filepath.Join(home, "node.json")
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	fn(m)
+	out, err := json.Marshal(m)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if err := os.WriteFile(p, out, 0600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+}
+
+func TestLoad_RejectsTamperedPublicKey(t *testing.T) {
+	home := withHome(t)
+	if _, err := LoadOrCreate(); err != nil {
+		t.Fatalf("LoadOrCreate: %v", err)
+	}
+	other, err := Generate()
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	rewriteIdentity(t, home, func(m map[string]any) { m["public_key"] = other.PublicKey })
+	if _, err := Load(); err == nil {
+		t.Fatal("Load accepted public key inconsistent with node_id")
+	}
+}
+
+func TestLoad_RejectsMismatchedPrivateKey(t *testing.T) {
+	home := withHome(t)
+	if _, err := LoadOrCreate(); err != nil {
+		t.Fatalf("LoadOrCreate: %v", err)
+	}
+	other, err := Generate()
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	rewriteIdentity(t, home, func(m map[string]any) { m["private_key"] = other.PrivateKey })
+	if _, err := Load(); err == nil {
+		t.Fatal("Load accepted private key not matching public key")
+	}
+}
+
+func TestLoad_RejectsCorruptJSON(t *testing.T) {
+	home := withHome(t)
+	if _, err := LoadOrCreate(); err != nil {
+		t.Fatalf("LoadOrCreate: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "node.json"), []byte(`{not json`), 0600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if _, err := Load(); err == nil {
+		t.Fatal("Load accepted corrupt JSON")
+	}
+}
+
+func TestLoad_RejectsNullRotationChain(t *testing.T) {
+	home := withHome(t)
+	if _, err := LoadOrCreate(); err != nil {
+		t.Fatalf("LoadOrCreate: %v", err)
+	}
+	// v1 contract: rotation_chain serializes as [], never null — a foreign/buggy writer
+	// persisting null must fail loud at Load, not silently leak null into show output.
+	rewriteIdentity(t, home, func(m map[string]any) { m["rotation_chain"] = nil })
+	if _, err := Load(); err == nil {
+		t.Fatal("Load accepted null rotation_chain (v1 contract: always [])")
+	}
+}
+
+func TestLoad_TightensLoosePerms(t *testing.T) {
+	home := withHome(t)
+	if _, err := LoadOrCreate(); err != nil {
+		t.Fatalf("LoadOrCreate: %v", err)
+	}
+	p := filepath.Join(home, "node.json")
+	if err := os.Chmod(p, 0644); err != nil {
+		t.Fatalf("chmod 0644: %v", err)
+	}
+	if _, err := Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	fi, err := os.Stat(p)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if perm := fi.Mode().Perm(); perm != 0600 {
+		t.Fatalf("Load left perms %o, want tightened 0600", perm)
 	}
 }

@@ -44,16 +44,21 @@ func TestNodeShowCmd_Roundtrip(t *testing.T) {
 	if strings.Contains(out, `private_key`) {
 		t.Fatal("node show output contains private_key — display surface leaked secret material")
 	}
-	if parsed.RotationChain == nil {
-		t.Fatal("rotation_chain must serialize as [] (reserved format)")
-	}
-
-	// persisted identity matches the printed one.
+	// Value-level check: the label check above passes even if the key VALUE leaks under
+	// another field name.
 	id, err := nodeid.Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if id.NodeID != parsed.NodeID {
-		t.Fatalf("printed %q, persisted %q", parsed.NodeID, id.NodeID)
+	if strings.Contains(out, id.PrivateKey) {
+		t.Fatal("node show output contains the private key VALUE under another field")
+	}
+	if parsed.RotationChain == nil {
+		t.Fatal("rotation_chain must serialize as [] (reserved format)")
+	}
+
+	// persisted identity matches the printed one (id already loaded above).
+	if id.NodeID != parsed.NodeID || id.PublicKey != parsed.PublicKey {
+		t.Fatalf("printed (%q/%q) != persisted (%q/%q)", parsed.NodeID, parsed.PublicKey, id.NodeID, id.PublicKey)
 	}
 }
