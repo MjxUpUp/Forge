@@ -17,6 +17,7 @@ package hlc
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"sync"
@@ -51,35 +52,44 @@ func Compare(a, b Timestamp) int {
 	}
 }
 
-// String renders "<wall>.<logical 6-digit zero-padded>" — fixed-width logical keeps
-// string order consistent with Compare for same-width wall values.
+// String renders the canonical fixed-width form "<wall 19-digit>.<logical 10-digit>".
+// Both components zero-padded to their type widths, so string order == Compare order
+// for ALL non-negative values — this is what makes ts_hlc strings safe as sort keys
+// in the merge path (sync-convergence §2) without a custom comparator.
 //
-// String 渲染为 "<wall>.<6 位零填充 logical>"——定宽 logical 让同位宽 wall 的
-// 字符串序与 Compare 序一致。
+// String 渲染为规范定宽形 "<wall 19 位>.<logical 10 位>"。两分量按类型位宽零填充，
+// 故所有非负值上字符串序 == Compare 序——ts_hlc 字符串因此可直接当合并路径的
+// 排序键（sync-convergence §2），无需自定义比较器。
 func (t Timestamp) String() string {
-	return strconv.FormatInt(t.Wall, 10) + `.` + fmt.Sprintf(`%06d`, t.Logical)
+	return fmt.Sprintf(`%019d.%010d`, t.Wall, t.Logical)
 }
 
-// Parse parses a String-produced timestamp. Malformed input is an error — HLC strings
-// arrive over sync boundaries and must fail loud, not silently become zero.
+// Parse parses a timestamp string. Digits-only per component (no '+', no signs) so
+// non-canonical encodings of the same value cannot split dedup keys across sync
+// boundaries; overflow and malformed input fail loud, never silently become zero.
 //
-// Parse 解析 String 产出的时间戳。畸形输入是错误——HLC 字符串跨越同步边界到来，
-// 必须响亮失败，不能静默变零值。
+// Parse 解析时间戳字符串。每分量仅数字（无 '+'、无符号），同值的非规范编码无法
+// 在同步边界上拆裂去重键；溢出与畸形输入响亮失败，绝不静默变零值。
 func Parse(s string) (Timestamp, error) {
 	dot := strings.IndexByte(s, '.')
 	if dot <= 0 || dot == len(s)-1 || strings.IndexByte(s[dot+1:], '.') >= 0 {
 		return Timestamp{}, fmt.Errorf(`malformed hlc %q`, s)
 	}
-	wall, err := strconv.ParseInt(s[:dot], 10, 64)
+	wallPart, logicalPart := s[:dot], s[dot+1:]
+	for _, part := range []string{wallPart, logicalPart} {
+		for _, c := range part {
+			if c < '0' || c > '9' {
+				return Timestamp{}, fmt.Errorf(`malformed hlc %q: non-digit component`, s)
+			}
+		}
+	}
+	wall, err := strconv.ParseInt(wallPart, 10, 64)
 	if err != nil {
 		return Timestamp{}, fmt.Errorf(`malformed hlc wall %q: %w`, s, err)
 	}
-	logical, err := strconv.ParseInt(s[dot+1:], 10, 32)
+	logical, err := strconv.ParseInt(logicalPart, 10, 32)
 	if err != nil {
 		return Timestamp{}, fmt.Errorf(`malformed hlc logical %q: %w`, s, err)
-	}
-	if wall < 0 || logical < 0 {
-		return Timestamp{}, fmt.Errorf(`malformed hlc %q: negative component`, s)
 	}
 	return Timestamp{Wall: wall, Logical: int32(logical)}, nil
 }
@@ -131,11 +141,11 @@ func (c *Clock) Observe(remote Timestamp) Timestamp {
 	case wall > c.last.Wall && wall > remote.Wall:
 		c.last = Timestamp{Wall: wall, Logical: 0}
 	case c.last.Wall > remote.Wall:
-		c.last = Timestamp{Wall: c.last.Wall, Logical: c.last.Logical + 1}
+		c.last = advanceLocked(c.last.Wall, c.last.Logical)
 	case remote.Wall > c.last.Wall:
-		c.last = Timestamp{Wall: remote.Wall, Logical: remote.Logical + 1}
-	default: // all three walls equal
-		c.last = Timestamp{Wall: c.last.Wall, Logical: max(c.last.Logical, remote.Logical) + 1}
+		c.last = advanceLocked(remote.Wall, remote.Logical)
+	default: // remote.Wall == c.last.Wall (local wall may lag behind both)
+		c.last = advanceLocked(c.last.Wall, max(c.last.Logical, remote.Logical))
 	}
 	return c.last
 }
@@ -147,7 +157,23 @@ func (c *Clock) tickLocked(wallMillis int64) Timestamp {
 	if wallMillis > c.last.Wall {
 		c.last = Timestamp{Wall: wallMillis, Logical: 0}
 	} else {
-		c.last = Timestamp{Wall: c.last.Wall, Logical: c.last.Logical + 1}
+		c.last = advanceLocked(c.last.Wall, c.last.Logical)
 	}
 	return c.last
+}
+
+// advanceLocked increments the logical counter, saturating to {wall+1, 0} at
+// math.MaxInt32 instead of wrapping negative — a wrap would silently break
+// monotonicity AND produce strings Parse rejects (negative component), poisoning
+// every downstream merge. Frozen-wall + MaxInt32 ticks is far outside any real
+// workload, but the failure must be loud-safe, not silent.
+//
+// advanceLocked 递增逻辑计数器，到 math.MaxInt32 时饱和为 {wall+1, 0} 而非回绕
+// 为负——回绕会静默破坏单调性且产出 Parse 拒收的字符串（负分量），毒害下游一切
+// 合并。冻结墙钟 + MaxInt32 次递增远超真实负载，但失败必须响亮安全，不能静默。
+func advanceLocked(wall int64, logical int32) Timestamp {
+	if logical == math.MaxInt32 {
+		return Timestamp{Wall: wall + 1, Logical: 0}
+	}
+	return Timestamp{Wall: wall, Logical: logical + 1}
 }
