@@ -1,7 +1,6 @@
 package nodeid
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -34,13 +33,7 @@ func TestTrustStore_AddLoadRemove(t *testing.T) {
 		t.Fatalf("Save: %v", err)
 	}
 	// perms 0600 — the trust root deserves the same hygiene as the identity file.
-	fi, err := os.Stat(filepath.Join(home, `trust.json`))
-	if err != nil {
-		t.Fatalf("stat: %v", err)
-	}
-	if perm := fi.Mode().Perm(); perm != 0600 {
-		t.Fatalf("trust.json perms = %o, want 0600", perm)
-	}
+	assertPrivatePerms(t, filepath.Join(home, `trust.json`), "trust.json")
 
 	loaded, err := LoadTrustStore()
 	if err != nil {

@@ -401,7 +401,16 @@ func TestProjectSync_StatusQuotesIllegalNodeDirs(t *testing.T) {
 	runProjectSyncForTest(t, projA, homeA, `init`, remote)
 	runProjectSyncForTest(t, projA, homeA, `push`)
 
+	// Control characters are illegal in windows filenames — pick an illegal-per-
+	// ValidNodeID name each filesystem accepts, and assert the raw-escape property
+	// only where the escape variant exists.
+	//
+	// 控制字符在 windows 文件名里非法——选各文件系统都接受、但 ValidNodeID 拒收
+	// 的名字；裸转义断言只在存在转义变体的平台上做。
 	evil := `bad` + "\x1b" + `[31mnode`
+	if runtime.GOOS == "windows" {
+		evil = `not a node!`
+	}
 	cacheNodes := filepath.Join(homeA, `sync-cache`, fmt.Sprintf(`%x`, forgedata.PathKey(remote)), `nodes`)
 	if err := os.MkdirAll(filepath.Join(cacheNodes, evil), 0755); err != nil {
 		t.Fatal(err)
@@ -416,7 +425,7 @@ func TestProjectSync_StatusQuotesIllegalNodeDirs(t *testing.T) {
 		t.Fatalf("status: %v", err)
 	}
 	out := buf.String()
-	if strings.Contains(out, "\x1b[31m") {
+	if runtime.GOOS != "windows" && strings.Contains(out, "\x1b[31m") {
 		t.Fatalf("raw ANSI escape must not reach the terminal output, got: %q", out)
 	}
 	if !strings.Contains(out, `（非法节点名）`) {

@@ -70,7 +70,10 @@ func TestNoLiteralBackslashNInSingleLineRawStrings(t *testing.T) {
 			}
 			return nil
 		}
-		if err != nil || !strings.HasSuffix(path, ".go") || path == thisFile {
+		// self-exclusion by BASENAME: runtime.Caller reports forward-slash paths on
+		// windows while filepath.Walk yields backslash ones — a full-path compare
+		// silently fails to exclude the guard itself there (first windows CI run).
+		if err != nil || !strings.HasSuffix(path, ".go") || filepath.Base(path) == filepath.Base(thisFile) {
 			return nil
 		}
 		fset := token.NewFileSet()
