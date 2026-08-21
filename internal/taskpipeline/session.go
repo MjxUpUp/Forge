@@ -13,6 +13,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/agentsignals"
 	"github.com/MjxUpUp/Forge/internal/hostcap"
+	"github.com/MjxUpUp/Forge/internal/nodestamp"
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
@@ -45,6 +46,12 @@ type SessionRecord struct {
 	// 契约是一个显式整数字段，而非一个 bash 必须反向解析的格式。
 	StartedEpoch int64  `json:"started_epoch,omitempty"`
 	AgentType    string `json:"agent_type,omitempty"`
+	// Stamp carries machine attribution (node_id/seq/ts_hlc/sig), filled by
+	// appendSessionLog via nodestamp.Next — zero on legacy lines and on fail-open.
+	//
+	// Stamp 携带机器归因（node_id/seq/ts_hlc/sig），由 appendSessionLog 经
+	// nodestamp.Next 落章——存量行与 fail-open 时为零值。
+	nodestamp.Stamp
 }
 
 // sessionFilePath returns the path of the current session tracking file.
@@ -250,6 +257,9 @@ func saveSession(root string, s *SessionRecord) error {
 //
 // appendSessionLog 追加一条 session 记录到 DataDir/sessions.jsonl。
 func appendSessionLog(root string, s *SessionRecord) error {
+	if s.Stamp == (nodestamp.Stamp{}) {
+		s.Stamp = nodestamp.Next()
+	}
 	dir := filepath.Dir(sessionsLogPath(root))
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
