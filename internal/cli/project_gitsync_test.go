@@ -133,8 +133,15 @@ func TestProjectSync_TwoMachineGitRoundtrip(t *testing.T) {
 	}
 	for _, node := range nodes {
 		matches := remoteFiles(t, remote, `nodes/`+node+`/`)
-		if len(matches) != 1 || !strings.HasSuffix(matches[0], `/bundle.tar.gz`) {
-			t.Fatalf("node %s files = %v, want exactly one bundle.tar.gz", node, matches)
+		// bundle.tar.gz + its signature sidecar (trust profile, node-identity §3).
+		//
+		// bundle.tar.gz + 其签名 sidecar（信任层，node-identity §3）。
+		seen := map[string]bool{}
+		for _, m := range matches {
+			seen[filepath.Base(m)] = true
+		}
+		if len(matches) != 2 || !seen[`bundle.tar.gz`] || !seen[`bundle.tar.gz.sig`] {
+			t.Fatalf("node %s files = %v, want bundle.tar.gz + bundle.tar.gz.sig", node, matches)
 		}
 	}
 }

@@ -103,6 +103,18 @@ func runProjectExport(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf(`落盘 %s 失败: %w`, absOut, rerr)
 	}
 
+	// Sign the bundle (node-identity.md §3): the .sig sidecar lets the importing
+	// machine verify provenance against its trust store. Signing is unconditional —
+	// cheap, and verification stays the importer's policy decision.
+	//
+	// 签名 bundle（node-identity.md §3）：.sig sidecar 让导入侧能对照 trust store
+	// 验证来源。签名无条件做——便宜；验不验是导入侧的策略决定。
+	if sigPath, serr := writeBundleSig(absOut); serr != nil {
+		fmt.Fprintf(out, `⚠ bundle 签名失败（bundle 本身完整）: %v\n`, serr)
+	} else {
+		fmt.Fprintf(out, `签名 sidecar：%s\n`, sigPath)
+	}
+
 	fmt.Fprintf(out, `✅ 已导出 %d 个文件到 %s\n`, len(manifest.Files), absOut)
 	fmt.Fprintf(out, `bundle_id=%s  key=%s（key_mode=%s）\n`, manifest.BundleID, origin.Key, origin.KeyMode)
 	if len(include) > 0 {
