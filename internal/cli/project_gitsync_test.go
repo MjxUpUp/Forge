@@ -133,8 +133,15 @@ func TestProjectSync_TwoMachineGitRoundtrip(t *testing.T) {
 	}
 	for _, node := range nodes {
 		matches := remoteFiles(t, remote, `nodes/`+node+`/`)
-		if len(matches) != 1 || !strings.HasSuffix(matches[0], `/bundle.tar.gz`) {
-			t.Fatalf("node %s files = %v, want exactly one bundle.tar.gz", node, matches)
+		// bundle.tar.gz + its signature sidecar (trust profile, node-identity §3).
+		//
+		// bundle.tar.gz + 其签名 sidecar（信任层，node-identity §3）。
+		seen := map[string]bool{}
+		for _, m := range matches {
+			seen[filepath.Base(m)] = true
+		}
+		if len(matches) != 2 || !seen[`bundle.tar.gz`] || !seen[`bundle.tar.gz.sig`] {
+			t.Fatalf("node %s files = %v, want bundle.tar.gz + bundle.tar.gz.sig", node, matches)
 		}
 	}
 }
@@ -240,9 +247,18 @@ func TestProjectSync_PullSkipsBadNodes(t *testing.T) {
 	runGit(t, co, `-c`, `user.name=t`, `-c`, `user.email=t@t`, `commit`, `-m`, `plant bad nodes`)
 	runGit(t, co, `push`, `origin`, `HEAD:`+syncBranch)
 
-	// Pull must succeed and still import A's good bundle.
+	// Pull reports the bad node as a pull-level error (policy-visible) while still
+	// importing the good peer's bundle (fault isolation).
+	//
+	// pull 把坏节点作为 pull 级错误报告（策略可见），同时仍导入好对端的 bundle
+	// （容错隔离）。
 	runProjectSyncForTest(t, projB, homeB, `init`, remote)
-	runProjectSyncForTest(t, projB, homeB, `pull`)
+	t.Setenv("FORGE_DATA_HOME", homeB)
+	chdirAndRestore(t, projB)
+	pullErr := projectSyncCmd.RunE(projectSyncCmd, []string{`pull`})
+	if pullErr == nil || !strings.Contains(pullErr.Error(), `pull 部分失败`) {
+		t.Fatalf("pull must report the failed node: %v", pullErr)
+	}
 	if got := readTaskSummary(t, projB, homeB, `feat/ok`); got != `good` {
 		t.Fatalf("good peer bundle not imported: %q", got)
 	}
