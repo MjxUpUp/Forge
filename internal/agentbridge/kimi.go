@@ -152,24 +152,30 @@ func KimiConfigPath() (string, error) {
 
 // BuildKimiHooksTOML derives the [[hooks]] TOML block from hooks.ForgeHookSpec — the
 // single source of truth shared with settings.local.json, the plugin pack, and every
-// other translator (codex/cursor/...). kimi supports the full event set forge uses
-// (PreToolUse/PostToolUse/Stop/SessionStart/PostCompact/UserPromptSubmit) and its matcher
-// is a regex against the tool name, with tool names identical to Claude Code's
-// (Read/Write/Edit/Bash/Skill/Agent) — so matchers migrate verbatim. Events are sorted
-// for deterministic output (map iteration order would otherwise break idempotency and
-// golden tests). TestKimiWiringMirrorsClaudeSettings guards command-set parity.
+// other translator (codex/cursor/...). Its matcher is a regex against the tool name,
+// with tool names identical to Claude Code's (Read/Write/Edit/Bash/Skill/Agent) — so
+// matchers migrate verbatim. Events are filtered through kimiSupportedEvents (same
+// whitelist as the plugin-manifest path, kimi_plugin.go: an unverified event flowing
+// into config.toml can fail kimi's validation and silently kill EVERY hook — the
+// dsh-win32 failure class) and sorted for deterministic output (map iteration order
+// would otherwise break idempotency and golden tests).
+// TestKimiWiringMirrorsClaudeSettings guards command-set parity on supported events.
 //
 // BuildKimiHooksTOML 从 hooks.ForgeHookSpec 派生 [[hooks]] TOML 块——该 spec 是与
 // settings.local.json、plugin pack 及其他 translator（codex/cursor/...）共享的
-// 单一真相源。kimi 支持 forge 用到的全部事件（PreToolUse/PostToolUse/Stop/
-// SessionStart/PostCompact/UserPromptSubmit），其 matcher 是针对工具名的正则，
-// 且工具名与 Claude Code 一致（Read/Write/Edit/Bash/Skill/Agent）——故 matcher
-// 原样迁移。事件排序保证输出确定（否则 map 迭代顺序会破坏幂等与 golden 测试）。
-// TestKimiWiringMirrorsClaudeSettings 守卫命令集对等。
+// 单一真相源。其 matcher 是针对工具名的正则，且工具名与 Claude Code 一致
+// （Read/Write/Edit/Bash/Skill/Agent）——故 matcher 原样迁移。事件经
+// kimiSupportedEvents 过滤（与 plugin manifest 路径同一白名单，见 kimi_plugin.go：
+// 未验证事件流进 config.toml 可能让 kimi 校验失败、静默杀掉全部 hook——dsh-win32
+// 失败类）并排序保证输出确定（否则 map 迭代顺序会破坏幂等与 golden 测试）。
+// TestKimiWiringMirrorsClaudeSettings 守卫受支持事件上的命令集对等。
 func BuildKimiHooksTOML() string {
 	spec := hooks.ForgeHookSpec()
 	events := make([]string, 0, len(spec))
 	for ev := range spec {
+		if !kimiSupportedEvents[ev] {
+			continue
+		}
 		events = append(events, ev)
 	}
 	sort.Strings(events)

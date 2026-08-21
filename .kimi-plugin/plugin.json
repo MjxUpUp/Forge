@@ -28,8 +28,20 @@
     },
     {
       "event": "PostToolUse",
+      "matcher": "Write|Edit",
+      "command": "forge hook test-nudge --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "PostToolUse",
       "matcher": "Bash",
       "command": "forge hook file-sentinel --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "PostToolUse",
+      "matcher": "Bash",
+      "command": "forge hook tool-track --agent kimi",
       "timeout": 30
     },
     {

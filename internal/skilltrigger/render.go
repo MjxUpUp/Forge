@@ -18,7 +18,17 @@ func Render(hits []Hit, ctx Context) string {
 	w := func(s string) { b.WriteString(s + "\n") }
 	bar := strings.Repeat("─", 60)
 	w(bar)
-	w(fmt.Sprintf("Skill 触发（%d）：本次事件命中以下 skill，请按需加载并按其流程处理", len(hits)))
+	// #5 (2026-08-22 adherence audit): factual statement, not imperative. The official
+	// additionalContext guidance says context works best as facts the model can use;
+	// imperative phrasing（请加载/必须处理）reads as an injected instruction and can trip
+	// prompt-injection defenses — and the audit showed imperatives did not lift conversion
+	// anyway (kimi 0, claude 22%). Same change on the loading-method footer.
+	//
+	// #5（2026-08-22 遵循度审计）：事实陈述，非祈使。官方 additionalContext 指南指出
+	// 上下文以「模型可用的事实」形态最有效；祈使措辞（请加载/必须处理）会被读成
+	// 注入指令、可能触发 prompt-injection 防御——且审计显示祈使并未抬高转化率
+	// （kimi 0、claude 22%）。加载方式脚注同步改。
+	w(fmt.Sprintf("Skill 触发（%d）：本次事件与以下 skill 的触发条件匹配，供参考", len(hits)))
 	w(bar)
 	for _, h := range hits {
 		cond := h.Trigger.When
@@ -35,7 +45,7 @@ func Render(hits []Hit, ctx Context) string {
 		w("")
 	}
 	w(bar)
-	w("加载方式：read 上述 SKILL.md 全文后再继续。跳过此提示：设环境变量 FORGE_SKILL_TRIGGER=0。")
+	w("说明：以上 SKILL.md 全文可 read。此提示由 forge 生成，FORGE_SKILL_TRIGGER=0 可关闭。")
 	return b.String()
 }
 

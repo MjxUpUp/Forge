@@ -489,3 +489,32 @@ func TestGenerateUserQualitySkillTo(t *testing.T) {
 		t.Errorf("缺失的 agent home 不得被创建（自毒防护），stat err=%v", err)
 	}
 }
+
+// TestClaudeMDDocumentsObservationHooks extends the wired-hooks coverage guard with
+// per-hook event accuracy: the generic anchored-name check cannot tell a doc line
+// that names the right event from one that swaps them. The three #4-A observation
+// hooks (2026-08-22) must document their actual trigger events and advisory nature.
+//
+// TestClaudeMDDocumentsObservationHooks 在通用接线守卫之上钉事件准确性：锚定
+// 名字守卫分辨不出「写对了事件」与「事件张冠李戴」。三个 #4-A 观察 hook
+// （2026-08-22）必须写明实际触发事件与 advisory 属性。
+func TestClaudeMDDocumentsObservationHooks(t *testing.T) {
+	section := buildForgeSection(true)
+	for _, want := range []string{
+		"**failure-track**（PostToolUseFailure",
+		"**subagent-track**（SubagentStop",
+		"**test-nudge**（PostToolUse Write|Edit",
+	} {
+		if !strings.Contains(section, want) {
+			t.Errorf("forge section missing observation-hook doc prefix %q", want)
+		}
+	}
+	// Advisory semantics must be stated — these hooks never block, and the doc is
+	// where an agent learns that instead of hunting for a bypass.
+	//
+	// 必须写明 advisory 语义——这三个 hook 永不阻断，agent 应从文档直接得知
+	// 而非去找绕法。
+	if !strings.Contains(section, "advisory 不阻断") {
+		t.Error("failure-track doc line must state advisory (never blocks)")
+	}
+}
