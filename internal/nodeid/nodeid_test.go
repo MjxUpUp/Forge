@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -38,12 +39,32 @@ func TestLoadOrCreate_GeneratesValidIdentity(t *testing.T) {
 		t.Fatalf("v1 rotation chain must be empty, got %d links", len(id.RotationChain))
 	}
 	// private key file perms 0600 — the private key never leaves this machine.
-	fi, err := os.Stat(filepath.Join(home, "node.json"))
+	assertPrivatePerms(t, filepath.Join(home, "node.json"), "node.json")
+}
+
+// assertPrivatePerms pins 0600 on POSIX only: Windows ACLs are not POSIX mode
+// bits — os.Chmod there just toggles the read-only flag and Mode().Perm() always
+// reports 0666, so the assertion can never hold on windows (surfaced by this
+// batch's first Windows CI run, 2026-08-21). The 0600 write hygiene itself is
+// enforced on every platform by writeIdentityTemp / util.AtomicWrite; this
+// helper only asserts what the platform can represent.
+//
+// assertPrivatePerms 只在 POSIX 上钉 0600：Windows ACL 不是 POSIX mode 位——
+// os.Chmod 在其上只翻转只读标志，Mode().Perm() 恒报 0666，断言在 windows 上
+// 永不可能成立（本批次首个 Windows CI run 暴露）。0600 写入卫生本身由
+// writeIdentityTemp / util.AtomicWrite 在所有平台执行；本 helper 只断言平台
+// 能表达的部分。
+func assertPrivatePerms(t *testing.T, p, what string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		return
+	}
+	fi, err := os.Stat(p)
 	if err != nil {
-		t.Fatalf("stat node.json: %v", err)
+		t.Fatalf("stat %s: %v", what, err)
 	}
 	if perm := fi.Mode().Perm(); perm != 0600 {
-		t.Fatalf("node.json perms = %o, want 0600", perm)
+		t.Fatalf("%s perms = %o, want 0600", what, perm)
 	}
 }
 
@@ -241,11 +262,5 @@ func TestLoad_TightensLoosePerms(t *testing.T) {
 	if _, err := Load(); err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	fi, err := os.Stat(p)
-	if err != nil {
-		t.Fatalf("stat: %v", err)
-	}
-	if perm := fi.Mode().Perm(); perm != 0600 {
-		t.Fatalf("Load left perms %o, want tightened 0600", perm)
-	}
+	assertPrivatePerms(t, p, "node.json (tightened on load)")
 }
