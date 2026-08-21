@@ -39,9 +39,11 @@
 
 | | 个人档 personal | 团队档 team |
 |---|---|---|
-| 验签 | 生成签名但**验签关闭**（零摩擦） | 验签强制，未信任节点的事件拒收 |
+| 验签 | 签名无条件生成；**SigInvalid（篡改/公钥不符）恒拒**；未签/未知签名者放行+提示 | `require-signed on`：未签或签名者未登记一律硬拒 |
 | 信任建立 | 隐式：lineage 判定（同 fpid = 同开发者，沿用 `internal/projectsync` 现有语义） | 显式：`forge trust add <node-pubkey>`（TOFU，SSH known_hosts / Syncthing introduction 先例） |
 | 任务租约 | advisory：提示不阻断 | enforced：认领才可变更 + fencing 序号（见 sync-convergence.md §4） |
+
+> **实现校正（feat/trust-profile）**：① 团队档总开关是 trust.json 的全局 `require_signed`（peer 上的 `profile` 字段 v1 为展示语义）。② 「验签关闭」收窄为「放行未签名」——签名无效任何档位恒拒。③ 开启 require-signed 前须让所有节点升级并重新 push（存量无签 bundle 会立即被拒）。④ enforced 租约的命令面（claim 门禁拦截）留待团队档实操时落地，advisory 面已全量实现。
 
 ### 为什么 TOFU 而不是 PKI / 中心化签发
 

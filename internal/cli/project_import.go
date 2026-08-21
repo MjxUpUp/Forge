@@ -121,6 +121,14 @@ func runProjectImport(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf(`bundle 校验失败: %w`, uerr)
 	}
 	bundleSHA := fmt.Sprintf(`%x`, h.Sum(nil))
+	// Trust verdict (node-identity.md §3): signed bundles verify against the trust
+	// store; invalid signatures and team-mode unsigned bundles are hard-rejected here.
+	//
+	// 信任判定（node-identity.md §3）：签名 bundle 对照 trust store 验真；签名无效
+	// 与团队档未签名在此硬拒。
+	if verr := verifyBundleForImport(args[0], bundleSHA, out); verr != nil {
+		return verr
+	}
 	fmt.Fprintf(out, `bundle：%s\n  来源：%s@%s %s（key=%s mode=%s）\n  文件：%d 个，导出于 %s\n`,
 		manifest.BundleID, manifest.Origin.User, manifest.Origin.Hostname, manifest.Origin.Root,
 		manifest.Origin.Key, manifest.Origin.KeyMode, len(manifest.Files), manifest.ExportedAt.Format(`2006-01-02 15:04`))
