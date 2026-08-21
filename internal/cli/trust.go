@@ -36,7 +36,7 @@ var trustListCmd = &cobra.Command{
 			return err
 		}
 		out := cmd.OutOrStdout()
-		fmt.Fprintf(out, `require_signed: %v\n`, ts.RequireSigned)
+		fmt.Fprintf(out, `require_signed: %v`+"\n", ts.RequireSigned)
 		if len(ts.Peers) == 0 {
 			fmt.Fprintln(out, `（无已登记节点）`)
 			return nil
@@ -46,7 +46,7 @@ var trustListCmd = &cobra.Command{
 			if label == `` {
 				label = `—`
 			}
-			fmt.Fprintf(out, `%s  profile=%s  label=%s  added=%s\n`, id, p.Profile, label, p.AddedAt.Format(`2006-01-02`))
+			fmt.Fprintf(out, `%s  profile=%s  label=%s  added=%s`+"\n", id, p.Profile, label, p.AddedAt.Format(`2006-01-02`))
 		}
 		return nil
 	},
@@ -60,7 +60,7 @@ var trustAddCmd = &cobra.Command{
 		label, _ := cmd.Flags().GetString(`label`)
 		profile, _ := cmd.Flags().GetString(`profile`)
 		out := cmd.OutOrStdout()
-		fmt.Fprintf(out, `即将登记节点：\n  node_id:    %s\n  public_key: %s\n请确认该指纹来自对端 forge node show 的输出（带外核对）。\n`, args[0], args[1])
+		fmt.Fprintf(out, `即将登记节点：`+"\n"+`  node_id:    %s`+"\n"+`  public_key: %s`+"\n"+`请确认该指纹来自对端 forge node show 的输出（带外核对）。`+"\n", args[0], args[1])
 		ts, err := nodeid.LoadTrustStore()
 		if err != nil {
 			return err
@@ -71,7 +71,7 @@ var trustAddCmd = &cobra.Command{
 		if err := nodeid.SaveTrustStore(ts); err != nil {
 			return err
 		}
-		fmt.Fprintf(out, `✅ 已登记 %s（profile=%s）\n`, args[0], profile)
+		fmt.Fprintf(out, `✅ 已登记 %s（profile=%s）`+"\n", args[0], profile)
 		return nil
 	},
 }
@@ -91,7 +91,7 @@ var trustRemoveCmd = &cobra.Command{
 		if err := nodeid.SaveTrustStore(ts); err != nil {
 			return err
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), `✅ 已注销 %s\n`, args[0])
+		fmt.Fprintf(cmd.OutOrStdout(), `✅ 已注销 %s`+"\n", args[0])
 		return nil
 	},
 }
@@ -116,7 +116,7 @@ var trustRequireSignedCmd = &cobra.Command{
 		if err := nodeid.SaveTrustStore(ts); err != nil {
 			return err
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), `✅ require_signed = %v\n`, ts.RequireSigned)
+		fmt.Fprintf(cmd.OutOrStdout(), `✅ require_signed = %v`+"\n", ts.RequireSigned)
 		return nil
 	},
 }

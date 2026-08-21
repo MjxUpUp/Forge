@@ -36,7 +36,7 @@ func exportOnMachine(t *testing.T, machine, home, key string) string {
 		})
 		bundlePath = filepath.Join(t.TempDir(), `signed.tar.gz`)
 		if out, err := runExport(t, map[string]string{`out`: bundlePath}); err != nil {
-			t.Fatalf(`export: %v\n%s`, err, out)
+			t.Fatalf(`export: %v`+"\n"+`%s`, err, out)
 		}
 	})
 	return bundlePath
@@ -73,7 +73,7 @@ func TestTrust_SignVerifyFlow(t *testing.T) {
 	withMachine(t, machineB, homeB, func() {
 		out, err := runImport(t, map[string]string{}, bundle)
 		if err != nil {
-			t.Fatalf(`import: %v\n%s`, err, out)
+			t.Fatalf(`import: %v`+"\n"+`%s`, err, out)
 		}
 		if !strings.Contains(out, `不在 trust store`) {
 			t.Errorf("unknown signer should warn: %s", out)
@@ -106,7 +106,7 @@ func TestTrust_SignVerifyFlow(t *testing.T) {
 		}
 		out, err := runImport(t, map[string]string{`force`: `true`}, bundle2)
 		if err != nil {
-			t.Fatalf(`import after trust add: %v\n%s`, err, out)
+			t.Fatalf(`import after trust add: %v`+"\n"+`%s`, err, out)
 		}
 		if !strings.Contains(out, `签名验证通过`) {
 			t.Errorf("registered signer should verify: %s", out)
@@ -115,17 +115,22 @@ func TestTrust_SignVerifyFlow(t *testing.T) {
 }
 
 // TestTrust_TamperedBundleRejected: two rejection layers, both pinned:
-//  1. naive byte-flip → the bundle fails Unpack's per-file sha256 (integrity layer);
+//  1. naive byte-flip (sidecar carried): the digest no longer matches the
+//     signature → SigInvalid rejects BEFORE unpacking (the signature layer fires
+//     first since the verify-before-unpack reorder; without a sidecar the flip is
+//     still caught by Unpack's per-file sha256 — the integrity layer);
 //  2. a REPACKED bundle (valid manifest, passes Unpack) carrying ANOTHER bundle's
-//     sidecar → the digest no longer matches the signature → SigInvalid hard-rejects
-//     (the signature layer). The earlier revision only tested layer 1 while claiming
-//     layer 2 — a classic fake test (green for the wrong reason).
+//     sidecar → same digest mismatch → SigInvalid hard-rejects. The earlier
+//     revision only tested layer 1 while claiming layer 2 — a classic fake test
+//     (green for the wrong reason).
 //
 // TestTrust_TamperedBundleRejected：钉死两条拒收防线：
-//  1. 朴素翻字节 → Unpack 逐文件 sha256 拒（完整性层）；
-//  2. 重打包 bundle（manifest 合法、过 Unpack）挂别的 bundle 的 sidecar → 摘要
-//     与签名不再匹配 → SigInvalid 硬拒（签名层）。早期版本只测了防线 1 却声称
-//     在测防线 2——经典假测试（绿得名不副实）。
+//  1. 朴素翻字节（携带 sidecar）：摘要与签名不再匹配 → SigInvalid 在解包前拒
+//     （验签前置重排后签名层先触发；无 sidecar 时翻字节仍由 Unpack 逐文件
+//     sha256 兜住——完整性层）；
+//  2. 重打包 bundle（manifest 合法、过 Unpack）挂别的 bundle 的 sidecar → 同样
+//     的摘要失配 → SigInvalid 硬拒。早期版本只测了防线 1 却声称在测防线 2——
+//     经典假测试（绿得名不副实）。
 func TestTrust_TamperedBundleRejected(t *testing.T) {
 	resetProjectCmdFlags(t)
 	id := `fpid_11112222333344445555666677778888`

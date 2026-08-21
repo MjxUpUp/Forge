@@ -53,7 +53,7 @@ var registryAuditCmd = &cobra.Command{
 			if f.Path != `` {
 				loc = f.Path
 			}
-			fmt.Fprintf(out, `⚠ [%s] %s\n    %s\n`, f.Kind, loc, f.Detail)
+			fmt.Fprintf(out, `⚠ [%s] %s`+"\n"+`    %s`+"\n", f.Kind, loc, f.Detail)
 		}
 		return nil
 	},

@@ -83,6 +83,39 @@ func HasImportedBundle(dataDir, bundleID string) (bool, error) {
 	return false, nil
 }
 
+// HasImportedSHA reports whether this machine already imported a bundle with this
+// whole-file sha256 (same corrupt-line tolerance as HasImportedBundle). The digest
+// is computable from the file ALONE, so the import flow can skip on it BEFORE
+// unpacking — bundle ids live inside the tar, but a repeated pull should not pay
+// the full tar parse to learn it already imported these bytes.
+//
+// HasImportedSHA 报告本机是否已导入过带此整文件 sha256 的 bundle（坏行容忍与
+// HasImportedBundle 一致）。摘要仅凭文件本身即可计算，导入流程可在解包之前据其
+// 跳过——bundle id 在 tar 内部，而重复 pull 不该为「已导入过这些字节」付整趟
+// tar 解析。
+func HasImportedSHA(dataDir, sha string) (bool, error) {
+	if sha == `` {
+		return false, nil // legacy records may lack it; never match empty
+	}
+	data, err := os.ReadFile(ledgerPath(dataDir))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	for _, line := range splitLines(data) {
+		var rec ImportRecord
+		if json.Unmarshal(line, &rec) != nil {
+			continue // 坏行跳过
+		}
+		if rec.SHA256 == sha {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // splitLines splits JSONL bytes into non-empty lines (CRLF tolerant).
 //
 // splitLines 把 JSONL 字节切成非空行（容忍 CRLF）。

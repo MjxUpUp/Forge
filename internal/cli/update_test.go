@@ -648,7 +648,7 @@ func TestPrintPluginReinstallGuidance(t *testing.T) {
 	}
 	for _, w := range wantSubstr {
 		if !strings.Contains(out, w) {
-			t.Errorf(`指引输出缺 %q：\n%s`, w, out)
+			t.Errorf(`指引输出缺 %q：`+"\n"+`%s`, w, out)
 		}
 	}
 }

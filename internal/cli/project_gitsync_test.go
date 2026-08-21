@@ -1,9 +1,12 @@
 package cli
 
 import (
+	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -261,6 +264,172 @@ func TestProjectSync_PullSkipsBadNodes(t *testing.T) {
 	}
 	if got := readTaskSummary(t, projB, homeB, `feat/ok`); got != `good` {
 		t.Fatalf("good peer bundle not imported: %q", got)
+	}
+}
+
+// TestProjectSync_PushRetryAfterRemoteMoves pins THE convergence property the push
+// retry exists for: when the remote advances between this machine's fetch and its
+// push (the two-machine race), the losing push must converge — a peer pulling
+// afterwards sees the loser's NEW work, not the stale bundle already on the remote.
+// The race is injected deterministically: a pre-push hook in A's cache repo pushes
+// a third-party commit during A's FIRST push, making it non-fast-forward so the
+// retry path runs.
+//
+// Regression shape (fixed in fix/dsh-review-followup): the retry probed
+// os.Stat(bundle) to decide whether to re-pack — but the retry's own
+// `checkout -B origin/forge-sync` had already reverted the worktree copy to the
+// OLD bundle from the remote tree, so Stat succeeded, no re-pack happened, the
+// re-commit saw a clean tree, and the second push was an empty success: the new
+// bundle was silently dropped while "✅ 已推送" printed.
+//
+// TestProjectSync_PushRetryAfterRemoteMoves 钉死 push 重试存在的收敛性质：remote
+// 在本机 fetch 与 push 之间前进（双机竞态）时，失败的 push 必须收敛——之后 pull
+// 的对端要看到败者的新工作，而不是远端上已有的旧 bundle。竞态用确定性注入：A
+// 缓存仓里的 pre-push hook 在 A 首次 push 期间推入第三方提交，使该 push 非快进、
+// 走进重试路径。
+func TestProjectSync_PushRetryAfterRemoteMoves(t *testing.T) {
+	if runtime.GOOS == `windows` {
+		t.Skip(`shell pre-push hook not portable to windows`)
+	}
+	fpid := `fpid_7777777788888888aaaaaaaabbbbbbbb`
+	projA, homeA := gitSyncMachine(t, fpid)
+	projB, homeB := gitSyncMachine(t, fpid)
+	remote := t.TempDir()
+	runGit(t, remote, `init`, `--bare`)
+
+	// A pushes once — the remote tree now carries A's prefix with the v1 bundle.
+	writeTaskInto(t, projA, homeA, `feat/v1`, `v1 work`)
+	runProjectSyncForTest(t, projA, homeA, `init`, remote)
+	runProjectSyncForTest(t, projA, homeA, `push`)
+
+	// Prepare a third-party commit in a scratch clone (parented on the current
+	// tip). The pre-push hook will push it during A's first push — that is the
+	// injected "the other machine won the race".
+	co := filepath.Join(t.TempDir(), `co`)
+	runGit(t, t.TempDir(), `clone`, `-b`, syncBranch, remote, co)
+	if err := os.WriteFile(filepath.Join(co, `race-marker`), []byte(`race`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, co, `-c`, `user.name=t`, `-c`, `user.email=t@t`, `add`, `-A`)
+	runGit(t, co, `-c`, `user.name=t`, `-c`, `user.email=t@t`, `commit`, `-m`, `remote moves`)
+
+	// Install the hook in A's cache repo (the same repo gitOut pushes from; push
+	// does not disable hooks). One-shot via flag file so the retry's second push
+	// passes through untouched.
+	flag := filepath.Join(t.TempDir(), `race.done`)
+	t.Setenv(`FORGE_RACE_CO`, co)
+	t.Setenv(`FORGE_RACE_FLAG`, flag)
+	hooks := filepath.Join(homeA, `sync-cache`, fmt.Sprintf(`%x`, forgedata.PathKey(remote)), `.git`, `hooks`)
+	if err := os.MkdirAll(hooks, 0755); err != nil {
+		t.Fatal(err)
+	}
+	script := "#!/bin/sh\n" +
+		"[ -f \"$FORGE_RACE_FLAG\" ] && exit 0\n" +
+		": > \"$FORGE_RACE_FLAG\"\n" +
+		"git -C \"$FORGE_RACE_CO\" push origin HEAD:" + syncBranch + "\n" +
+		"exit 0\n"
+	if err := os.WriteFile(filepath.Join(hooks, `pre-push`), []byte(script), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// A records NEW work and pushes: fetch (old tip) → pack v2 → commit → first
+	// push fires the hook → remote moves → push rejected → retry path runs.
+	writeTaskInto(t, projA, homeA, `feat/v2`, `v2 work`)
+	runProjectSyncForTest(t, projA, homeA, `push`)
+
+	// The property: a peer pulling afterwards MUST see the v2 work.
+	runProjectSyncForTest(t, projB, homeB, `init`, remote)
+	runProjectSyncForTest(t, projB, homeB, `pull`)
+	if got := readTaskSummary(t, projB, homeB, `feat/v2`); got != `v2 work` {
+		t.Fatalf("race loser's push did not converge: feat/v2 missing on peer after pull (got %q)", got)
+	}
+}
+
+// TestProjectSync_PullWarnsOnKeyMismatch: a path-identity machine pulling an
+// ID-identity peer's prefix must be TOLD the two keys do not line up — without the
+// hint the misalignment is unobservable (pull succeeds with 0 bundles, exit 0) and
+// the recovery (forge project adopt) is never suggested.
+//
+// TestProjectSync_PullWarnsOnKeyMismatch：路径身份机器 pull 到 ID 身份对端的前缀
+// 时必须被告知两机 key 不对齐——没有这条提示错位完全不可观测（pull 以 0 bundle
+// 成功、exit 0），恢复手段（forge project adopt）永远不会被提出。
+func TestProjectSync_PullWarnsOnKeyMismatch(t *testing.T) {
+	projA, homeA := gitSyncMachine(t, `fpid_a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6`)
+	// B: path identity — no .forge-project-id, its key derives from its own path.
+	projB, homeB := t.TempDir(), t.TempDir()
+	runGit(t, projB, `init`)
+	runGit(t, projB, `-c`, `user.name=forge-test`, `-c`, `user.email=forge@test`, `commit`, `--allow-empty`, `-m`, `init`)
+	if err := os.MkdirAll(filepath.Join(projB, `.forge`), 0755); err != nil {
+		t.Fatal(err)
+	}
+	remote := t.TempDir()
+	runGit(t, remote, `init`, `--bare`)
+
+	writeTaskInto(t, projA, homeA, `feat/k`, `x`)
+	runProjectSyncForTest(t, projA, homeA, `init`, remote)
+	runProjectSyncForTest(t, projA, homeA, `push`)
+
+	var buf bytes.Buffer
+	projectSyncCmd.SetOut(&buf)
+	t.Cleanup(func() { projectSyncCmd.SetOut(nil) })
+	t.Setenv("FORGE_DATA_HOME", homeB)
+	chdirAndRestore(t, projB)
+	if err := projectSyncCmd.RunE(projectSyncCmd, []string{`init`, remote}); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	buf.Reset()
+	if err := projectSyncCmd.RunE(projectSyncCmd, []string{`pull`}); err != nil {
+		t.Fatalf("pull: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, `不一致`) || !strings.Contains(out, `forge project adopt`) {
+		t.Fatalf("key misalignment must be named with the adopt recovery hint, got: %s", out)
+	}
+}
+
+// TestProjectSync_StatusQuotesIllegalNodeDirs: `nodes seen` must not echo crafted
+// directory names raw (ANSI escapes / newlines straight to the terminal) — the same
+// attacker-influenceable input the pull path shape-checks.
+//
+// TestProjectSync_StatusQuotesIllegalNodeDirs：`nodes seen` 不得原文回显精心构造的
+// 目录名（ANSI 转义/换行直达终端）——与 pull 路径形态检查的同一攻击者可影响输入。
+func TestProjectSync_StatusQuotesIllegalNodeDirs(t *testing.T) {
+	projA, homeA := gitSyncMachine(t, `fpid_b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6`)
+	remote := t.TempDir()
+	runGit(t, remote, `init`, `--bare`)
+	writeTaskInto(t, projA, homeA, `feat/s2`, `x`)
+	runProjectSyncForTest(t, projA, homeA, `init`, remote)
+	runProjectSyncForTest(t, projA, homeA, `push`)
+
+	// Control characters are illegal in windows filenames — pick an illegal-per-
+	// ValidNodeID name each filesystem accepts, and assert the raw-escape property
+	// only where the escape variant exists.
+	//
+	// 控制字符在 windows 文件名里非法——选各文件系统都接受、但 ValidNodeID 拒收
+	// 的名字；裸转义断言只在存在转义变体的平台上做。
+	evil := `bad` + "\x1b" + `[31mnode`
+	if runtime.GOOS == "windows" {
+		evil = `not a node!`
+	}
+	cacheNodes := filepath.Join(homeA, `sync-cache`, fmt.Sprintf(`%x`, forgedata.PathKey(remote)), `nodes`)
+	if err := os.MkdirAll(filepath.Join(cacheNodes, evil), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	projectSyncCmd.SetOut(&buf)
+	t.Cleanup(func() { projectSyncCmd.SetOut(nil) })
+	t.Setenv("FORGE_DATA_HOME", homeA)
+	chdirAndRestore(t, projA)
+	if err := projectSyncCmd.RunE(projectSyncCmd, []string{`status`}); err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	out := buf.String()
+	if runtime.GOOS != "windows" && strings.Contains(out, "\x1b[31m") {
+		t.Fatalf("raw ANSI escape must not reach the terminal output, got: %q", out)
+	}
+	if !strings.Contains(out, `（非法节点名）`) {
+		t.Fatalf("illegal dir must be shown quoted and marked, got: %s", out)
 	}
 }
 
