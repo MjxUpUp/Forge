@@ -109,8 +109,12 @@ func runProjectExport(cmd *cobra.Command, args []string) error {
 	//
 	// 签名 bundle（node-identity.md §3）：.sig sidecar 让导入侧能对照 trust store
 	// 验证来源。签名无条件做——便宜；验不验是导入侧的策略决定。
-	if sigPath, serr := writeBundleSig(absOut); serr != nil {
-		fmt.Fprintf(out, `⚠ bundle 签名失败（bundle 本身完整）: %v\n`, serr)
+	sigPath, signed, serr := writeBundleSigRespectingPolicy(absOut)
+	if serr != nil {
+		return serr
+	}
+	if !signed {
+		fmt.Fprintf(out, `⚠ bundle 签名失败（bundle 本身完整，个人档放行）\n`)
 	} else {
 		fmt.Fprintf(out, `签名 sidecar：%s\n`, sigPath)
 	}

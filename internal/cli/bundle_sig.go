@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/MjxUpUp/Forge/internal/nodeid"
 )
@@ -48,10 +49,51 @@ func writeBundleSig(bundlePath string) (string, error) {
 		return ``, err
 	}
 	sigPath := bundlePath + `.sig`
-	if err := os.WriteFile(sigPath, raw, 0644); err != nil {
+	// Atomic write: a crash between the bundle rename and a naive WriteFile could
+	// leave "new bundle + stale/truncated .sig", which the import side hard-rejects
+	// (SigInvalid) in EVERY profile.
+	//
+	// 原子写：bundle rename 与朴素 WriteFile 之间崩溃会留下「新 bundle + 旧/截断
+	// .sig」组合，导入侧在任何档位都硬拒（SigInvalid）。
+	tmp, err := os.CreateTemp(filepath.Dir(sigPath), `.sig-*.tmp`)
+	if err != nil {
+		return ``, err
+	}
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }()
+	if _, err := tmp.Write(raw); err != nil {
+		_ = tmp.Close()
+		return ``, err
+	}
+	if err := tmp.Close(); err != nil {
+		return ``, err
+	}
+	if err := os.Rename(tmpName, sigPath); err != nil {
 		return ``, err
 	}
 	return sigPath, nil
+}
+
+// writeBundleSigRespectingPolicy signs like writeBundleSig. err is non-nil ONLY for
+// the hard case — team profile (RequireSigned) with a signing failure: pushing an
+// unsigned bundle in team mode means your own peers (and your next pull) will reject
+// it, so warn-and-continue is a silent sync break there. In personal profile a
+// signing failure is soft (signed=false, err=nil) and callers warn.
+//
+// writeBundleSigRespectingPolicy 同 writeBundleSig 签名。err 非空仅对应硬情形——
+// 团队档（RequireSigned）下签名失败：团队档推未签名的包等于推一个对端（和自己
+// 下次 pull）都会拒的包，此时告警并继续就是静默破坏同步。个人档签名失败是软
+// 性（signed=false, err=nil），调用方告警即可。
+func writeBundleSigRespectingPolicy(bundlePath string) (sigPath string, signed bool, err error) {
+	sigPath, err = writeBundleSig(bundlePath)
+	if err == nil {
+		return sigPath, true, nil
+	}
+	ts, tsErr := nodeid.LoadTrustStore()
+	if tsErr == nil && ts.RequireSigned {
+		return ``, false, fmt.Errorf(`团队档（require-signed）下 bundle 签名失败是硬错误: %w`, err)
+	}
+	return ``, false, nil
 }
 
 // readBundleSig loads the sidecar if present (nil, nil when absent).
