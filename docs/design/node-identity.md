@@ -30,6 +30,8 @@
 
 ## 3. 信任层：两套 profile，一套引擎
 
+> 阶段边界：本节 trust store / profile 属 Phase 1-2（团队档开启时实现）；Phase 0 只落地 §2 身份层与 §4 字段格式预留。
+
 ### 决策
 
 - **同步引擎单一，信任是可插拔 profile**。个人档与团队档共享 100% 的收敛/传输机制，差异只在验签与权限策略。
@@ -52,6 +54,8 @@
 - **事件里的 node_id 是攻击者可控输入**（同 fpid 文件的信任模型）：个人档信任上限 = 本地数据混流；团队档由验签把关。任何依赖 node_id 的判定必须先过验签关再信其内容。
 
 ## 4. 事件签名格式（预留，v1 恒空）
+
+> 阶段边界：本节事件字段（node_id/seq/ts_hlc/sig）属 Phase 0 后续任务（事件打戳），本阶段只落地身份 store 本身。
 
 - 事件行（checklog/toollog/sessions/conclusions）新增字段：`node_id`（string）、`seq`（int64，节点本地单调）、`ts_hlc`（HLC 时间戳，见 sync-convergence.md §3）、`sig`（base64 ed25519 签名，v1 恒空字符串）。
 - **老版本兼容**：未知字段按 JSON 惯例忽略；新字段对老版本不可见 → 单向兼容（新读旧全兼容，旧读新静默忽略 sig/node_id）。manifest 的 format_version 守卫不变（bundle 级版本与事件级版本正交）。
