@@ -335,6 +335,13 @@ type TaskState struct {
 	ParentTaskRef string        `json:"parent_task_ref,omitempty"` // 子任务指向父 task ref（subtask 拆解）
 	DependsOn     []string      `json:"depends_on,omitempty"`      // 依赖的前序 task ref（任务间依赖）
 	Assignment    *Assignment   `json:"assignment,omitempty"`      // 任务分派（owner agent + 协作生命周期状态）；nil = 普通未分派任务，零行为变化
+	// Lease is the cross-machine node claim (sync-convergence.md §4): advisory in v1
+	// (personal profile), fencing-monotonic so merges always pick the newest claim.
+	// nil on pre-multi-machine tasks — zero behavior change.
+	//
+	// Lease 是跨机器节点认领（sync-convergence.md §4）：v1 为 advisory（个人档），
+	// fencing 单调使合并恒取最新认领。多机器前的任务为 nil——零行为变化。
+	Lease *Lease `json:"lease,omitempty"`
 
 	// TTL is the per-task zombie-window override (design §3/§9 --ttl). When > 0 it overrides the
 	// global Offered/Claimed/InputReq zombie constants for THIS task only, so a short-fuse delegation
