@@ -39,6 +39,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/hlc"
 	"github.com/MjxUpUp/Forge/internal/nodeid"
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // Stamp is the machine-attribution block embedded (flattened) into every event
@@ -55,11 +56,46 @@ type Stamp struct {
 }
 
 var (
-	mu       sync.Mutex
-	clock    *hlc.Clock
-	identity *nodeid.Identity
-	idTried  bool
+	mu              sync.Mutex
+	clock           *hlc.Clock
+	identity        *nodeid.Identity
+	idTried         bool
+	identityFresh   bool // identity was CREATED in this process (true first run)
+	cachedHome      string
+	degradeNoted    bool
+	seqRestartNoted bool
 )
+
+// warnDegrade surfaces a stamping-disable ONCE per process: fail-open without a
+// trace is indistinguishable from "no attribution because nothing was stamped" —
+// a machine with a broken node.json / node-seq silently loses machine attribution
+// on every event (node show prints identity only, sync status never looks here),
+// which is the one outcome this package must make discoverable.
+//
+// warnDegrade 每进程一次地暴露打戳禁用：无痕迹的 fail-open 与「没有打戳」无法
+// 区分——node.json / node-seq 损坏的机器会在每条事件上静默丢失机器归因
+// （node show 只打印身份，sync status 从不看这里），这是本包必须让人能发现的
+// 唯一后果。
+func warnDegrade(reason string) {
+	if degradeNoted {
+		return
+	}
+	degradeNoted = true
+	fmt.Fprintf(os.Stderr, `⚠ forge: 事件打戳已禁用（fail-open——事件照常记录，但无机器归因）：%s`+"\n", reason)
+}
+
+// warnSeqRestart announces a counter restart-from-1 ONCE per process (see the
+// guard in Next). Announced, not blocking: stamping must never block the event.
+//
+// warnSeqRestart 每进程一次告示计数器从 1 重启（见 Next 内守卫）。告示而不阻断：
+// 打戳绝不阻塞事件。
+func warnSeqRestart() {
+	if seqRestartNoted {
+		return
+	}
+	seqRestartNoted = true
+	fmt.Fprintf(os.Stderr, `⚠ forge: node-seq 缺失而节点身份已存在——计数器将从 1 重新起算；若本机此前打过戳且 (node_id, seq) 已有跨机消费，存在复用风险（A 类 G-Set 启用前本告示将升级为硬禁用）`+"\n")
+}
 
 // resetForTest drops the process singletons (tests simulate process restart).
 //
@@ -70,6 +106,10 @@ func resetForTest() {
 	clock = nil
 	identity = nil
 	idTried = false
+	identityFresh = false
+	cachedHome = ``
+	degradeNoted = false
+	seqRestartNoted = false
 }
 
 // Next returns the next stamp, or a zero Stamp on any failure (fail-open).
@@ -78,12 +118,50 @@ func resetForTest() {
 func Next() Stamp {
 	mu.Lock()
 	defer mu.Unlock()
+	// The singletons are resolved against ONE home. FORGE_DATA_HOME can switch
+	// mid-process (tests do this constantly; production does not): keeping a cached
+	// identity from the OLD home while the counter reads/writes the NEW home would
+	// mix homes — an identity stamped with another home's seq counter. Drop the
+	// cached identity on a home switch and re-resolve (freshness is re-derived for
+	// the new home, so a fresh temp home is a fresh machine, not a "deleted counter").
+	//
+	// 单例针对同一个 home 解析。FORGE_DATA_HOME 可能进程中途切换（测试常态、生产
+	// 不会）：若保留旧 home 的缓存身份而计数器读写新 home，就是跨 home 混用——
+	// 身份配上了别人 home 的 seq 计数器。home 切换即丢弃缓存身份并重解析（新 home
+	// 重新推导 fresh——全新的临时 home 是新机器，不是「计数器被删」）。
+	if home, herr := forgedata.GlobalHome(); herr == nil && home != cachedHome {
+		identity, idTried, identityFresh, cachedHome = nil, false, false, home
+	}
 	id, err := loadIdentity()
 	if err != nil {
+		warnDegrade(err.Error())
 		return Stamp{}
+	}
+	// Identity exists but the counter is GONE. Since identities are born WITH a
+	// seeded counter (nodeid.seedNodeSeqCounter), this is either a pre-seed machine
+	// that never stamped (safe to start at 1) or a genuine counter loss (rm / partial
+	// restore) on a machine that DID stamp — restarting at 1 reuses (node_id, seq)
+	// pairs. We CANNOT tell the two apart here, so the prime directive decides:
+	// stamping never blocks events. Announce the restart ONCE (the notice is the
+	// observable surface; a hard disable is deferred until a (node_id, seq) consumer
+	// actually exists — see the node-identity §4 实现校正) and continue from 1.
+	//
+	// 身份已存在而计数器没了。身份诞生即带播种的计数器
+	//（nodeid.seedNodeSeqCounter），所以这要么是从未打过戳的 pre-seed 机器（从 1
+	// 起安全），要么是打过戳机器的计数器真丢了（rm / 部分恢复）——从 1 重启会复用
+	// (node_id, seq)。两者在此无法区分，按第一原则裁决：打戳绝不阻塞事件。每进程
+	// 一次告示重启（告示即可观测面；硬禁用推迟到 (node_id, seq) 消费方真实出现时
+	//——见 node-identity §4 实现校正），从 1 继续。
+	if !identityFresh {
+		if p, perr := seqPath(); perr == nil {
+			if _, serr := os.Stat(p); os.IsNotExist(serr) {
+				warnSeqRestart()
+			}
+		}
 	}
 	seq, err := bumpSeq()
 	if err != nil {
+		warnDegrade(err.Error())
 		return Stamp{}
 	}
 	if clock == nil {
@@ -109,11 +187,23 @@ func loadIdentity() (*nodeid.Identity, error) {
 		return nil, fmt.Errorf(`node identity previously failed`)
 	}
 	idTried = true
+	// Distinguish "identity already on disk" (this node stamped before — a missing
+	// node-seq later means REUSE risk) from "created just now" (fresh machine — a
+	// missing node-seq is simply the counter not existing yet).
+	//
+	// 区分「身份已在磁盘上」（本节点以前打过戳——之后 node-seq 缺失意味着复用
+	// 风险）与「刚刚创建」（新机器——node-seq 缺失只是计数器尚未存在）。
+	if id, err := nodeid.Load(); err == nil {
+		identity = id
+		identityFresh = false
+		return id, nil
+	}
 	id, err := nodeid.LoadOrCreate()
 	if err != nil {
 		return nil, err
 	}
 	identity = id
+	identityFresh = true
 	return id, nil
 }
 
@@ -176,7 +266,7 @@ func bumpSeq() (int64, error) {
 		return 0, err
 	}
 	next := cur + 1
-	if err := writeFile0600(p, []byte(strconv.FormatInt(next, 10)+"\n")); err != nil {
+	if err := util.AtomicWrite(p, []byte(strconv.FormatInt(next, 10)+"\n"), 0600); err != nil {
 		return 0, err
 	}
 	return next, nil
@@ -263,36 +353,6 @@ func isLockContentionErr(err error) bool {
 	return os.IsPermission(err) || // ERROR_ACCESS_DENIED
 		errors.Is(err, syscall.Errno(32)) || // ERROR_SHARING_VIOLATION
 		errors.Is(err, syscall.Errno(33)) // ERROR_LOCK_VIOLATION
-}
-
-// writeFile0600 persists the counter atomically (tmp + fsync + rename): a crash
-// mid-write must never leave a torn counter that the next read would misparse.
-//
-// writeFile0600 原子落盘计数器（tmp + fsync + rename）：写中途崩溃绝不留下下次
-// 读取会误解的半截计数器。
-func writeFile0600(p string, data []byte) error {
-	tmp, err := os.CreateTemp(filepath.Dir(p), `node-seq-*.tmp`)
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	defer func() { _ = os.Remove(tmpName) }()
-	if err := tmp.Chmod(0600); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmpName, p)
 }
 
 // StringJSON is a test/debug helper: the JSON a Stamp contributes when flattened

@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 
 	"github.com/MjxUpUp/Forge/internal/nodeid"
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // bundle_sig.go — bundle signature sidecars (docs/design/node-identity.md §3/§4).
@@ -49,26 +49,15 @@ func writeBundleSig(bundlePath string) (string, error) {
 		return ``, err
 	}
 	sigPath := bundlePath + `.sig`
-	// Atomic write: a crash between the bundle rename and a naive WriteFile could
-	// leave "new bundle + stale/truncated .sig", which the import side hard-rejects
-	// (SigInvalid) in EVERY profile.
+	// Atomic write WITH fsync (util.AtomicWrite): a crash between the bundle rename
+	// and a naive WriteFile could leave "new bundle + stale/truncated .sig", which
+	// the import side hard-rejects (SigInvalid) in EVERY profile — and the earlier
+	// hand-rolled version skipped the fsync its own comment promised.
 	//
-	// 原子写：bundle rename 与朴素 WriteFile 之间崩溃会留下「新 bundle + 旧/截断
-	// .sig」组合，导入侧在任何档位都硬拒（SigInvalid）。
-	tmp, err := os.CreateTemp(filepath.Dir(sigPath), `.sig-*.tmp`)
-	if err != nil {
-		return ``, err
-	}
-	tmpName := tmp.Name()
-	defer func() { _ = os.Remove(tmpName) }()
-	if _, err := tmp.Write(raw); err != nil {
-		_ = tmp.Close()
-		return ``, err
-	}
-	if err := tmp.Close(); err != nil {
-		return ``, err
-	}
-	if err := os.Rename(tmpName, sigPath); err != nil {
+	// 带 fsync 的原子写（util.AtomicWrite）：bundle rename 与朴素 WriteFile 之间
+	// 崩溃会留下「新 bundle + 旧/截断 .sig」组合，导入侧在任何档位都硬拒
+	// （SigInvalid）——而此前手写版本恰恰漏了它注释里承诺的 fsync。
+	if err := util.AtomicWrite(sigPath, raw, 0600); err != nil {
 		return ``, err
 	}
 	return sigPath, nil
@@ -93,6 +82,20 @@ func writeBundleSigRespectingPolicy(bundlePath string) (sigPath string, signed b
 	if tsErr == nil && ts.RequireSigned {
 		return ``, false, fmt.Errorf(`团队档（require-signed）下 bundle 签名失败是硬错误: %w`, err)
 	}
+	// Soft path (personal profile, or an unreadable trust store where team mode
+	// cannot be proven): the bundle travels unsigned, but the ROOT CAUSE must land
+	// on stderr — the callers' generic warning cannot answer "why is it unsigned",
+	// and silently treating an unreadable store as personal profile hides a
+	// possible team-mode misconfiguration.
+	//
+	// 软路径（个人档，或 trust store 不可读、无法证明团队档）：bundle 无签名上路，
+	// 但根因必须落到 stderr——调用方的通用告警回答不了「为什么没签名」，且把
+	// 不可读的 store 无声按个人档处理会藏住团队档配置错误。
+	profile := `个人档`
+	if tsErr != nil {
+		profile = `trust store 不可读，按个人档处理`
+	}
+	fmt.Fprintf(os.Stderr, `⚠ bundle 签名失败（%s）：%v`+"\n", profile, err)
 	return ``, false, nil
 }
 
@@ -130,11 +133,11 @@ func verifyBundleForImport(bundlePath, digestHex string, out io.Writer) error {
 	}
 	switch ts.VerifyBundleSig(digestHex, sig) {
 	case nodeid.SigVerified:
-		fmt.Fprintf(out, `签名验证通过（节点 %s）\n`, sig.NodeID)
+		fmt.Fprintf(out, `签名验证通过（节点 %s）`+"\n", sig.NodeID)
 	case nodeid.SigMissing:
 		fmt.Fprintln(out, `提示：bundle 无签名 sidecar（个人档默认放行；forge trust require-signed on 后必须签名）`)
 	case nodeid.SigUnknownSigner:
-		fmt.Fprintf(out, `⚠ 签名者 %s 不在 trust store——按未签名处理（forge trust add 登记后可验真）\n`, sig.NodeID)
+		fmt.Fprintf(out, `⚠ 签名者 %s 不在 trust store——按未签名处理（forge trust add 登记后可验真）`+"\n", sig.NodeID)
 	case nodeid.SigInvalid:
 		return fmt.Errorf(`bundle 签名验证失败（内容被篡改或签名者与 trust store 公钥不符）——拒绝导入`)
 	case nodeid.SigRejected:

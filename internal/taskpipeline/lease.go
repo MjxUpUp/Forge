@@ -18,6 +18,7 @@ package taskpipeline
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/hlc"
@@ -100,6 +101,30 @@ func LeaseStatus(s *TaskState, nodeID string, now time.Time) LeaseState {
 // 当天释放任务。
 const defaultLeaseTTLSec = 4 * 3600
 
+// leaseDegradeNoted keeps the fail-open announce to one line per process (both entry
+// points below run in short-lived CLI processes; the mutex-free bool is fine — a
+// duplicate warning is harmless, a missing one is not).
+//
+// leaseDegradeNoted 让 fail-open 告警每进程只打一行（下面两个入口都跑在短命 CLI
+// 进程里；无锁 bool 即可——重复告警无害，漏告警才有害）。
+var leaseDegradeNoted bool
+
+// warnLeaseDegrade surfaces the identity failure behind a fail-open: without it a
+// broken node.json reads as "no foreign lease" at gate time and "no lease" after
+// task start — the cross-machine advisory silently stops working with no way to
+// tell it apart from "nothing to report".
+//
+// warnLeaseDegrade 暴露 fail-open 背后的身份失败：否则损坏的 node.json 在门禁时
+// 读作「无他机租约」、task start 后读作「无租约」——跨机 advisory 静默失效，且与
+// 「没什么可报」无法区分。
+func warnLeaseDegrade(op string, err error) {
+	if leaseDegradeNoted {
+		return
+	}
+	leaseDegradeNoted = true
+	fmt.Fprintf(os.Stderr, `⚠ forge: %s 跳过租约（fail-open——身份加载失败：%v）`+"\n", op, err)
+}
+
 // ClaimLeaseForCurrentNode claims the task lease for THIS machine, failing open
 // (identity load problems never block task work — a lease is advisory metadata).
 //
@@ -108,6 +133,7 @@ const defaultLeaseTTLSec = 4 * 3600
 func ClaimLeaseForCurrentNode(s *TaskState) {
 	id, err := nodeid.LoadOrCreate()
 	if err != nil {
+		warnLeaseDegrade(`task start/attach`, err)
 		return
 	}
 	ClaimLease(s, id.NodeID, hlc.NewClock(nil), defaultLeaseTTLSec)
@@ -121,6 +147,7 @@ func ClaimLeaseForCurrentNode(s *TaskState) {
 func LeaseStatusForCurrentNode(s *TaskState) LeaseState {
 	id, err := nodeid.LoadOrCreate()
 	if err != nil {
+		warnLeaseDegrade(`gate 租约检查`, err)
 		return LeaseState{}
 	}
 	return LeaseStatus(s, id.NodeID, time.Now())

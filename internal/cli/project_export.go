@@ -114,19 +114,19 @@ func runProjectExport(cmd *cobra.Command, args []string) error {
 		return serr
 	}
 	if !signed {
-		fmt.Fprintf(out, `⚠ bundle 签名失败（bundle 本身完整，个人档放行）\n`)
+		fmt.Fprintf(out, `⚠ bundle 签名失败（bundle 本身完整，个人档放行）`+"\n")
 	} else {
-		fmt.Fprintf(out, `签名 sidecar：%s\n`, sigPath)
+		fmt.Fprintf(out, `签名 sidecar：%s`+"\n", sigPath)
 	}
 
-	fmt.Fprintf(out, `✅ 已导出 %d 个文件到 %s\n`, len(manifest.Files), absOut)
-	fmt.Fprintf(out, `bundle_id=%s  key=%s（key_mode=%s）\n`, manifest.BundleID, origin.Key, origin.KeyMode)
+	fmt.Fprintf(out, `✅ 已导出 %d 个文件到 %s`+"\n", len(manifest.Files), absOut)
+	fmt.Fprintf(out, `bundle_id=%s  key=%s（key_mode=%s）`+"\n", manifest.BundleID, origin.Key, origin.KeyMode)
 	if len(include) > 0 {
-		fmt.Fprintf(out, `⚠ 已包含敏感 store：%s\n`, strings.Join(include, `,`))
+		fmt.Fprintf(out, `⚠ 已包含敏感 store：%s`+"\n", strings.Join(include, `,`))
 	}
-	fmt.Fprintf(out, `对端导入：forge project import %s\n`, absOut)
+	fmt.Fprintf(out, `对端导入：forge project import %s`+"\n", absOut)
 	if origin.KeyMode == `path` {
-		fmt.Fprintf(out, `提示：本机仍是路径身份（key 随机器路径变化）——两台机器各跑一次 forge project adopt 后同步免 key 重映射\n`)
+		fmt.Fprintf(out, `提示：本机仍是路径身份（key 随机器路径变化）——两台机器各跑一次 forge project adopt 后同步免 key 重映射`+"\n")
 	}
 	return nil
 }

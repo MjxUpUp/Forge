@@ -103,7 +103,7 @@ func TestTaskComplete_PreflightFailureKeepsTaskActive(t *testing.T) {
 	commit := exec.Command(`git`, `commit`, `--allow-empty`, `-m`, `review-fix`)
 	commit.Dir = dir
 	if out, err := commit.CombinedOutput(); err != nil {
-		t.Fatalf(`commit: %v\n%s`, err, out)
+		t.Fatalf(`commit: %v`+"\n"+`%s`, err, out)
 	}
 
 	// 3. complete 被 pre-flight 拒绝——但任务必须保持 active（死锁修复的断言核心：

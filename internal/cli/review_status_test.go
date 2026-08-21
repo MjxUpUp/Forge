@@ -55,13 +55,13 @@ func renderStatusWithEvidence(t *testing.T, det, claim int) string {
 func TestRenderReviewStatus_WeakDirective(t *testing.T) {
 	got := renderStatusWithEvidence(t, 1, 3)
 	if !strings.Contains(got, `证据强度`) {
-		t.Errorf(`expected "证据强度" line; output:\n%s`, got)
+		t.Errorf(`expected "证据强度" line; output:`+"\n"+`%s`, got)
 	}
 	if !strings.Contains(got, `Weak`) {
-		t.Errorf(`expected Weak band (ratio 0.25); output:\n%s`, got)
+		t.Errorf(`expected Weak band (ratio 0.25); output:`+"\n"+`%s`, got)
 	}
 	if !strings.Contains(got, `核验声称的验证是否真跑过`) {
-		t.Errorf(`expected Weak directive "核验声称的验证是否真跑过" — ratio must drive review; output:\n%s`, got)
+		t.Errorf(`expected Weak directive "核验声称的验证是否真跑过" — ratio must drive review; output:`+"\n"+`%s`, got)
 	}
 	// Weak-specific phrase (Unverified uses no-deterministic-evidence): it catches Weak→Unverified
 	// banding regressions without being masked by the shared verify-whether-claims-actually-ran
@@ -70,7 +70,7 @@ func TestRenderReviewStatus_WeakDirective(t *testing.T) {
 	// Weak 专属短语（Unverified 用的是「无 deterministic 证据」）：用它能抓 Weak→Unverified
 	// 这类分档回归，而不会被两条指令共有的「核验声称的验证是否真跑过」掩盖。
 	if !strings.Contains(got, `deterministic 占比低`) {
-		t.Errorf(`expected Weak-specific phrase "deterministic 占比低"; output:\n%s`, got)
+		t.Errorf(`expected Weak-specific phrase "deterministic 占比低"; output:`+"\n"+`%s`, got)
 	}
 }
 
@@ -85,10 +85,10 @@ func TestRenderReviewStatus_WeakDirective(t *testing.T) {
 func TestRenderReviewStatus_UnverifiedDirective(t *testing.T) {
 	got := renderStatusWithEvidence(t, 0, 3)
 	if !strings.Contains(got, `Unverified`) {
-		t.Errorf(`expected Unverified band (zero deterministic); output:\n%s`, got)
+		t.Errorf(`expected Unverified band (zero deterministic); output:`+"\n"+`%s`, got)
 	}
 	if !strings.Contains(got, `无 deterministic 证据`) {
-		t.Errorf(`expected Unverified directive "无 deterministic 证据"; output:\n%s`, got)
+		t.Errorf(`expected Unverified directive "无 deterministic 证据"; output:`+"\n"+`%s`, got)
 	}
 }
 
@@ -101,10 +101,10 @@ func TestRenderReviewStatus_UnverifiedDirective(t *testing.T) {
 func TestRenderReviewStatus_NoDataSilent(t *testing.T) {
 	got := renderStatusWithEvidence(t, 0, 0) // 无任何证据条目 → Total()==0
 	if strings.Contains(got, `证据强度`) {
-		t.Errorf(`NoData must not print 证据强度 line; output:\n%s`, got)
+		t.Errorf(`NoData must not print 证据强度 line; output:`+"\n"+`%s`, got)
 	}
 	if strings.Contains(got, `核验`) {
-		t.Errorf(`NoData must not emit any directive; output:\n%s`, got)
+		t.Errorf(`NoData must not emit any directive; output:`+"\n"+`%s`, got)
 	}
 }
 
@@ -117,9 +117,9 @@ func TestRenderReviewStatus_NoDataSilent(t *testing.T) {
 func TestRenderReviewStatus_StrongSilent(t *testing.T) {
 	got := renderStatusWithEvidence(t, 4, 1)
 	if !strings.Contains(got, `Strong`) {
-		t.Errorf(`expected Strong band (ratio 0.8); output:\n%s`, got)
+		t.Errorf(`expected Strong band (ratio 0.8); output:`+"\n"+`%s`, got)
 	}
 	if strings.Contains(got, `核验声称的验证是否真跑过`) {
-		t.Errorf(`Strong must NOT emit the Weak directive; output:\n%s`, got)
+		t.Errorf(`Strong must NOT emit the Weak directive; output:`+"\n"+`%s`, got)
 	}
 }

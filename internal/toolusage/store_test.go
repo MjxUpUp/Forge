@@ -368,7 +368,9 @@ func TestRecordAndClear_ConcurrentNoDeadlock(t *testing.T) {
 	go func() { wg.Wait(); close(done) }()
 	select {
 	case <-done:
-	case <-time.After(5 * time.Second):
+	// 30s：Windows FS + race 下并发 Record/Clear 的 IO 风暴合法地远超 5s（首个
+	// Windows CI run 误报死锁）；真死锁永不完成，30s 仍必然拦截。
+	case <-time.After(30 * time.Second):
 		t.Fatal("Record/Clear deadlocked (Clear→Archive mutex re-entry?)")
 	}
 	if _, err := LoadAll(dir); err != nil {
