@@ -60,9 +60,18 @@ func taskJSON(t *testing.T, s *TaskState) string {
 func randomTaskOps(r *rand.Rand, s *TaskState, n int, tag string) {
 	base := time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)
 	gates := []string{`task-implement`, `task-verify`, `task-complete`}
+	// Acceptance Run pool deliberately contains SAME-COMMAND-DIFFERENT-FLAGS pairs
+	// (`go test ./...` vs `go test ./... -run x`): the scalar tiebreak compares
+	// acceptance blocks as decisive keys, and an earlier revision leaked direction
+	// through them (7f91a4f) — random ops must keep hitting that exact shape.
+	//
+	// Acceptance Run 池刻意含「同命令异标志」对（`go test ./...` vs
+	// `go test ./... -run x`）：标量决胜把 acceptance 块当决胜键比较，早期版本曾
+	// 经它们渗漏方向（7f91a4f）——随机 op 必须持续命中这一形态。
+	runs := []string{`go test ./...`, `go test ./... -run x`, `go build ./...`, `go build ./... -tags foo`}
 	for i := 0; i < n; i++ {
 		ts := base.Add(time.Duration(r.Intn(10000)) * time.Minute)
-		switch r.Intn(15) {
+		switch r.Intn(17) {
 		case 0:
 			s.Decisions = append(s.Decisions, Decision{ID: fmt.Sprintf(`d-%d`, r.Intn(6)), Content: tag, DecidedAt: ts})
 		case 1:
@@ -106,6 +115,22 @@ func randomTaskOps(r *rand.Rand, s *TaskState, n int, tag string) {
 		case 14: // node lease claim (fencing monotonic per machine clock)
 			wall := base.UnixMilli() + int64(r.Intn(10000))
 			ClaimLease(s, fmt.Sprintf(`fnode_%032x`, r.Intn(3)), hlc.NewClock(func() time.Time { return time.UnixMilli(wall) }), 300)
+		case 15: // acceptance criteria (incl. same-command-different-flags pairs —
+			// the decisive-key comparison that once leaked direction, see runs pool)
+			s.Acceptance = append(s.Acceptance, AcceptanceCriterion{
+				Run:                runs[r.Intn(len(runs))],
+				Expected:           []string{``, `ok`, `0 failures`}[r.Intn(3)],
+				Passed:             r.Intn(2) == 0,
+				AcceptedHeadCommit: fmt.Sprintf(`h%d`, r.Intn(3)),
+			})
+			if r.Intn(2) == 0 {
+				s.AcceptanceForeign = true
+			}
+		case 16: // dependency edges + design phases (union semantics)
+			s.DependsOn = append(s.DependsOn, fmt.Sprintf(`feat/dep-%d`, r.Intn(3)))
+			if r.Intn(2) == 0 {
+				s.DesignPhases = append(s.DesignPhases, DesignPhase([]string{`requirement`, `api`, `backend`, `test-design`}[r.Intn(4)]))
+			}
 		}
 	}
 }

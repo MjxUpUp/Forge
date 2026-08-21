@@ -62,6 +62,7 @@
 - 事件行（checklog/toollog/sessions/conclusions）新增字段：`node_id`（string）、`seq`（int64，节点本地单调）、`ts_hlc`（HLC 时间戳，见 sync-convergence.md §3）、`sig`（base64 ed25519 签名，v1 恒空字符串）。
 - **老版本兼容**：未知字段按 JSON 惯例忽略；新字段对老版本不可见 → 单向兼容（新读旧全兼容，旧读新静默忽略 sig/node_id）。manifest 的 format_version 守卫不变（bundle 级版本与事件级版本正交）。
 - `seq` 由节点本地计数器持久化（`~/.forge/node-seq`），崩溃恢复取 max(持久值, 扫描本地事件最大 seq)+1——单调即可，不追求无洞。
+  > **实现校正（fix/dsh-review-followup，2026-08-21）**：扫描恢复未实现——nodestamp 位于项目 DataDir 之下，无从枚举各项目事件，逐项目扫描也不该发生在 hook 热路径。实际防线分两层：① **身份诞生即播种计数器**（nodeid.LoadOrCreate 独占初建路径 no-clobber 写 node-seq=0，契约注在 seedNodeSeqCounter）——身份有五个非打戳创建方（task start 租约认领 / node show / bundle 签名 / sync），不播种则「身份存在而计数器缺失」是新机器常态而非事故信号；② 计数器缺失（播种前的存量机器或真丢失）**告示后从 1 继续**（fail-open 首要原则：打戳绝不阻塞事件），一次性 stderr 告知 (node_id, seq) 复用风险；损坏仍恒禁用。A 类 G-Set 以 (node_id, seq) 为键启用前，须把「缺失」升级为硬禁用或补跨项目 seq 观测点。
 
 ## 5. 机器归因的展示面（Phase 3 预埋）
 

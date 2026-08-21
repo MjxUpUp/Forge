@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // TrustedPeer is one known node.
@@ -123,9 +124,12 @@ func LoadTrustStore() (*TrustStore, error) {
 	return &ts, nil
 }
 
-// SaveTrustStore persists atomically with 0600 perms.
+// SaveTrustStore persists atomically with 0600 perms (util.AtomicWrite: temp +
+// fsync + chmod + rename-with-Windows-retry — one shared implementation, not a
+// per-file hand roll).
 //
-// SaveTrustStore 原子落盘，权限 0600。
+// SaveTrustStore 原子落盘，权限 0600（util.AtomicWrite：temp + fsync + chmod +
+// Windows rename 重试——共享实现，不再逐文件手写）。
 func SaveTrustStore(ts *TrustStore) error {
 	p, err := trustPath()
 	if err != nil {
@@ -135,31 +139,7 @@ func SaveTrustStore(ts *TrustStore) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
-		return err
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(p), `trust-*.json.tmp`)
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	defer func() { _ = os.Remove(tmpName) }()
-	if err := tmp.Chmod(0600); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if _, err := tmp.Write(raw); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmpName, p)
+	return util.AtomicWrite(p, raw, 0600)
 }
 
 // Add registers a peer (TOFU). NodeID must be shape-valid and consistent with the

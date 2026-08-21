@@ -99,14 +99,54 @@ func runProjectImport(cmd *cobra.Command, args []string) error {
 	}
 
 	// 流式读：--include quarantine 的 bundle 可达数百 MB，不整体驻内存（导出侧
-	// Pack 本就是流式，导入侧对齐）。bundle 整体 sha256 边读边算。
+	// Pack 本就是流式，导入侧对齐）。
 	f, err := os.Open(args[0])
 	if err != nil {
 		return fmt.Errorf(`读取 bundle 失败: %w`, err)
 	}
 	defer f.Close()
+
+	// Pass 1 — whole-file digest ONLY. Both the ledger dedup and the trust verdict
+	// key on bytes, so both run BEFORE the attacker-controlled tar.gz is ever
+	// parsed: a team-profile hard-reject must not have already gone through Unpack's
+	// tar path (path traversal / oversized headers / symlink races live there), and
+	// a re-imported bundle must not pay the tar parse at all.
+	//
+	// 第一遍只算整文件摘要。账本查重与信任判定都以字节为键，都在解析攻击者可控
+	// 的 tar.gz 之前执行：团队档硬拒不该已经过 Unpack 的 tar 路径（路径逃逸/超大
+	// 头/symlink 竞争都在那），重复导入的 bundle 更不该付 tar 解析成本。
 	h := sha256.New()
-	tee := io.TeeReader(f, h)
+	if _, err := io.Copy(h, f); err != nil {
+		return fmt.Errorf(`读取 bundle 失败: %w`, err)
+	}
+	bundleSHA := fmt.Sprintf(`%x`, h.Sum(nil))
+	if _, err := f.Seek(0, 0); err != nil {
+		return fmt.Errorf(`重读 bundle 失败: %w`, err)
+	}
+
+	localKey, err := forgedata.Key(root)
+	if err != nil {
+		return err
+	}
+	localDataDir := forgedata.RootDir(localKey)
+
+	// 账本 digest 查重（幂等第一道，先于解包）：同字节 bundle 直接免费跳过。
+	if !force {
+		if imported, lerr := projectsync.HasImportedSHA(localDataDir, bundleSHA); lerr == nil && imported {
+			fmt.Fprintln(out, `该 bundle 已导入过（账本 digest 命中）——跳过；强制重导入用 --force`)
+			return nil
+		}
+	}
+
+	// Trust verdict (node-identity.md §3): signed bundles verify against the trust
+	// store; invalid signatures and team-mode unsigned bundles are hard-rejected
+	// here — BEFORE unpacking (see pass-1 comment).
+	//
+	// 信任判定（node-identity.md §3）：签名 bundle 对照 trust store 验真；签名无效
+	// 与团队档未签名在此硬拒——先于解包（见第一遍注释）。
+	if verr := verifyBundleForImport(args[0], bundleSHA, out); verr != nil {
+		return verr
+	}
 
 	// staging 必须在 FORGE_DATA_HOME 之外（系统 temp）——绝不让半成品被 DataDir
 	// 扫描器（dashboard/feed/doctor）发现。
@@ -116,20 +156,23 @@ func runProjectImport(cmd *cobra.Command, args []string) error {
 	}
 	defer os.RemoveAll(staging)
 
-	manifest, uerr := projectsync.Unpack(tee, staging)
+	// Pass 2 — unpack through a TeeReader into a SECOND hash: the verdict above ran
+	// on the pass-1 digest; this re-hash proves the bytes that reach Unpack are the
+	// SAME bytes (a local swap between the two passes would otherwise feed unverified
+	// content into the merge while the ledger records the old digest).
+	//
+	// 第二遍——经 TeeReader 进第二个 hash 解包：上面的判定基于第一遍摘要；此重
+	// 哈希证明到达 Unpack 的字节与验签字节相同（否则两遍之间本地换文件会把未验
+	// 签内容送进合并、而账本记的仍是旧摘要）。
+	h2 := sha256.New()
+	manifest, uerr := projectsync.Unpack(io.TeeReader(f, h2), staging)
 	if uerr != nil {
 		return fmt.Errorf(`bundle 校验失败: %w`, uerr)
 	}
-	bundleSHA := fmt.Sprintf(`%x`, h.Sum(nil))
-	// Trust verdict (node-identity.md §3): signed bundles verify against the trust
-	// store; invalid signatures and team-mode unsigned bundles are hard-rejected here.
-	//
-	// 信任判定（node-identity.md §3）：签名 bundle 对照 trust store 验真；签名无效
-	// 与团队档未签名在此硬拒。
-	if verr := verifyBundleForImport(args[0], bundleSHA, out); verr != nil {
-		return verr
+	if rebind := fmt.Sprintf(`%x`, h2.Sum(nil)); rebind != bundleSHA {
+		return fmt.Errorf(`bundle 在验签后被修改（两遍读取摘要不一致）——拒绝导入`)
 	}
-	fmt.Fprintf(out, `bundle：%s\n  来源：%s@%s %s（key=%s mode=%s）\n  文件：%d 个，导出于 %s\n`,
+	fmt.Fprintf(out, `bundle：%s`+"\n"+`  来源：%s@%s %s（key=%s mode=%s）`+"\n"+`  文件：%d 个，导出于 %s`+"\n",
 		manifest.BundleID, manifest.Origin.User, manifest.Origin.Hostname, manifest.Origin.Root,
 		manifest.Origin.Key, manifest.Origin.KeyMode, len(manifest.Files), manifest.ExportedAt.Format(`2006-01-02 15:04`))
 
@@ -141,17 +184,12 @@ func runProjectImport(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf(`staging 剥离失败: %w`, serr)
 	}
 	if len(stripped) > 0 {
-		fmt.Fprintf(out, `⚠ 已剥除 %d 个 allowlist 外条目（manifest 不可信，导入侧默认拒绝）：%s\n`,
+		fmt.Fprintf(out, `⚠ 已剥除 %d 个 allowlist 外条目（manifest 不可信，导入侧默认拒绝）：%s`+"\n",
 			len(stripped), strings.Join(stripped, `, `))
 	}
 
-	localKey, err := forgedata.Key(root)
-	if err != nil {
-		return err
-	}
-	localDataDir := forgedata.RootDir(localKey)
-
-	// 账本查重（幂等第一道）：同一 bundle 已导入过即跳过——合并虽幂等，跳过免费。
+	// 账本 bundle_id 查重（幂等第二道，digest 未命中时兜底——bundle_id 语义上的
+	// 重复而字节有差异的罕见情形）。
 	if !force {
 		if imported, lerr := projectsync.HasImportedBundle(localDataDir, manifest.BundleID); lerr == nil && imported {
 			fmt.Fprintln(out, `该 bundle 已导入过（账本命中）——跳过；强制重导入用 --force`)
@@ -172,7 +210,7 @@ func runProjectImport(cmd *cobra.Command, args []string) error {
 		}
 		if !localHasID {
 			if !adoptID && !trustForeign {
-				return fmt.Errorf(`bundle 来自 ID 身份项目（key=%s），本机仍是路径身份（key=%s）\n先对齐身份再导入：\n  1) git pull 拿到 .forge-project-id 后运行 forge project adopt\n  2) 或加 --adopt-id 直接采纳 bundle 的项目 ID（本机既有数据自动迁移）\n  3) 或加 --trust-foreign 按跨身份合并（默认剥离外来门禁信号）`, manifest.Origin.Key, localKey)
+				return fmt.Errorf(`bundle 来自 ID 身份项目（key=%s），本机仍是路径身份（key=%s）`+"\n"+`先对齐身份再导入：`+"\n"+`  1) git pull 拿到 .forge-project-id 后运行 forge project adopt`+"\n"+`  2) 或加 --adopt-id 直接采纳 bundle 的项目 ID（本机既有数据自动迁移）`+"\n"+`  3) 或加 --trust-foreign 按跨身份合并（默认剥离外来门禁信号）`, manifest.Origin.Key, localKey)
 			}
 			if adoptID {
 				if manifest.Origin.ProjectID == `` {
@@ -209,7 +247,7 @@ func runProjectImport(cmd *cobra.Command, args []string) error {
 	} else if !trusted {
 		trustNote = `不可信（key 不匹配：剥离外来门禁/评分/完成信号；--trust-foreign 放行）`
 	}
-	fmt.Fprintf(out, `信任：%s\n`, trustNote)
+	fmt.Fprintf(out, `信任：%s`+"\n", trustNote)
 
 	// 任务合并（命令层，逐任务锁防丢更新）+ 其余文件合并（datamerge）。
 	stagingData := filepath.Join(staging, `data`)
@@ -261,11 +299,11 @@ func runProjectImport(cmd *cobra.Command, args []string) error {
 		Counts:     fmt.Sprintf(`%d 个任务动作, %d 个清单文件（剥除 %d）`, len(taskActions), len(manifest.Files), len(stripped)),
 	}
 	if lerr := projectsync.AppendImportRecord(localDataDir, rec); lerr != nil {
-		fmt.Fprintf(out, `warn: 账本记录失败（不影响数据）：%v\n`, lerr)
+		fmt.Fprintf(out, `warn: 账本记录失败（不影响数据）：%v`+"\n", lerr)
 	}
-	fmt.Fprintf(out, `✅ 导入完成（%s）\n`, rec.Counts)
+	fmt.Fprintf(out, `✅ 导入完成（%s）`+"\n", rec.Counts)
 	if manifest.Origin.Key != localKey {
-		fmt.Fprintf(out, `提示：两台机器各跑一次 forge project adopt 后，后续同步免 key 重映射\n`)
+		fmt.Fprintf(out, `提示：两台机器各跑一次 forge project adopt 后，后续同步免 key 重映射`+"\n")
 	}
 	return nil
 }
