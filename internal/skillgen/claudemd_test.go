@@ -6,8 +6,59 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/protocol"
 )
+
+// TestClaudeMDCoversAllWiredHooks is the docs-consistency guard for the security
+// section: every hook name wired in ForgeHookSpec (the single source of truth for
+// the hook roster, including the Go-native skill-trigger) must appear somewhere in
+// the generated CLAUDE.md / AGENTS.md forge section. Root cause this guards: the
+// 2026-08 audit found 9 wired hooks (incl. two HARD blockers hazard-guard /
+// freeze-guard and the review-stop exit-2 block) absent from the docs — agents hit
+// their BLOCKED messages cold with no resolution path. Adding a hook without
+// documenting it now fails this test instead of shipping silently.
+//
+// TestClaudeMDCoversAllWiredHooks 是安全机制段的一致性守卫：ForgeHookSpec（hook
+// 名册单一真相源，含 Go 原生 skill-trigger）里接线的每个 hook 名都必须出现在生成的
+// CLAUDE.md / AGENTS.md forge 段中。守护的根因：2026-08 审计发现 9 个已接线 hook
+// （含 hazard-guard / freeze-guard 两个硬阻断与 review-stop exit-2 阻断）文档缺席
+// ——agent 冷撞 BLOCKED 无解法。此后加 hook 不写文档会在这里红，不再静默出仓。
+func TestClaudeMDCoversAllWiredHooks(t *testing.T) {
+	wired := map[string]bool{}
+	for _, groups := range hooks.ForgeHookSpec() {
+		for _, g := range groups {
+			for _, h := range g.Hooks {
+				name := strings.TrimPrefix(h.Command, "forge hook ")
+				if name == "" || name == h.Command {
+					t.Fatalf("ForgeHookSpec command not in `forge hook <name>` form: %q", h.Command)
+				}
+				wired[name] = true
+			}
+		}
+	}
+	if len(wired) < 15 {
+		t.Fatalf("wired hook roster unexpectedly small (%d) — ForgeHookSpec shape changed?", len(wired))
+	}
+	for _, section := range []struct{ label, body string }{
+		{"CLAUDE.md", buildForgeSection(true)},
+		{"AGENTS.md", buildForgeSection(false)},
+	} {
+		for name := range wired {
+			// Anchored match: the name must appear in markup form — a bold bullet
+			// (`- **name**`) or inline code (`` `name` ``). Bare substring matching
+			// would let a future hook named e.g. "review" pass on the strength of
+			// "review-stop" already being documented (review 2026-08-21, L-1).
+			//
+			// 锚定匹配：名字必须以标记形态出现——粗体条目（`- **name**`）或行内
+			// 代码（`` `name` ``）。裸子串匹配会让未来名为 "review" 的 hook 借
+			// 已文档化的 "review-stop" 假通过（2026-08-21 复审 L-1）。
+			if !strings.Contains(section.body, "**"+name+"**") && !strings.Contains(section.body, "`"+name+"`") {
+				t.Errorf("%s forge section does not mention wired hook %q in anchored form (**%s** or `%s`) — every wired hook (esp. blocking ones) needs a doc line + a common-errors row when it can BLOCK", section.label, name, name, name)
+			}
+		}
+	}
+}
 
 // TestClaudeMDCommonErrorsIncludesTestCoverage guards the common-errors table
 // documents the task-verify test-coverage gate. Since v0.22 the verify gate
@@ -22,6 +73,45 @@ func TestClaudeMDCommonErrorsIncludesTestCoverage(t *testing.T) {
 	}
 	if !strings.Contains(section, "FORGE_TEST_COVERAGE=disable") {
 		t.Error("CLAUDE.md test-coverage row must surface the escape hatch")
+	}
+}
+
+// TestClaudeMDFailureTrackMatcherTracksSpec is the docs-consistency guard for the
+// failure-track line's matcher text: the generated docs must quote the LIVE
+// ForgeHookSpec matcher, not a hardcoded string. Root cause this guards: NIT-4
+// (2026-08-22 review) — the spec narrowed Bash|PowerShell→Bash and the docs line
+// hardcodes the matcher, a shape that silently rots on every future spec change.
+// Reading the matcher from the spec makes that drift a test failure instead.
+//
+// TestClaudeMDFailureTrackMatcherTracksSpec 是 failure-track 行 matcher 文案的一
+// 致性守卫：生成的文档必须引用**活的** ForgeHookSpec matcher，而非钉死的字符串。
+// 守护的根因：NIT-4（2026-08-22 复审）——spec 把 Bash|PowerShell 收窄为 Bash，而
+// 文档行硬编码 matcher，这种形态在每次未来 spec 变更时都会静默腐烂。从 spec 读
+// matcher 让该 drift 变成测试失败而非静默出仓。
+func TestClaudeMDFailureTrackMatcherTracksSpec(t *testing.T) {
+	var matcher string
+	for _, g := range hooks.ForgeHookSpec()["PostToolUseFailure"] {
+		if g.Matcher != "" {
+			matcher = g.Matcher
+			break
+		}
+	}
+	if matcher == "" {
+		t.Fatal("ForgeHookSpec PostToolUseFailure matcher unexpectedly empty — spec shape changed?")
+	}
+	for _, section := range []struct{ label, body string }{
+		{"CLAUDE.md", buildForgeSection(true)},
+		{"AGENTS.md", buildForgeSection(false)},
+	} {
+		// Anchored on the full-width paren form the docs line uses
+		// （PostToolUseFailure <matcher>）— a bare substring would pass on stale
+		// prefixes (e.g. "Bash" inside "Bash|PowerShell").
+		//
+		// 锚定文档行使用的全角括号形态（PostToolUseFailure <matcher>）——裸子串
+		// 会让过期前缀假通过（如 "Bash|PowerShell" 里的 "Bash"）。
+		if want := "（PostToolUseFailure " + matcher + "）"; !strings.Contains(section.body, want) {
+			t.Errorf("%s failure-track line must quote the live spec matcher (want %q in section) — docs-vs-spec drift", section.label, want)
+		}
 	}
 }
 
@@ -208,11 +298,15 @@ func TestClaudeMDTaskVerifyIsAdvisory(t *testing.T) {
 func TestClaudeMDCompileAssertionRulesAdvisory(t *testing.T) {
 	section := buildForgeSection(true)
 
-	// New advisory wording: hooks only remind, the agent self-checks.
-	if !strings.Contains(section, "auto-compile hook 仅 advisory 提醒") {
+	// New advisory wording: hooks only remind, the agent self-checks. Hook names
+	// are backtick-anchored (covers-all-wired-hooks guard requires markup form).
+	//
+	// 新 advisory 措辞：hook 只提醒，agent 自检。hook 名带反引号锚定
+	// （covers-all-wired-hooks 守卫要求标记形态）。
+	if !strings.Contains(section, "`auto-compile` hook 仅 advisory 提醒") {
 		t.Error("CLAUDE.md compile rule must document auto-compile as advisory (v0.25)")
 	}
-	if !strings.Contains(section, "assertion-check hook 检测到弱化仅 advisory 提醒") {
+	if !strings.Contains(section, "`assertion-check` hook 检测到弱化仅 advisory 提醒") {
 		t.Error("CLAUDE.md assertion rule must document assertion-check as advisory (v0.25)")
 	}
 	// The obsolete wording that referenced hook auto-checks implied blocking enforcement — must be gone.
@@ -432,5 +526,34 @@ func TestGenerateUserQualitySkillTo(t *testing.T) {
 	}
 	if _, err := os.Stat(missing); !os.IsNotExist(err) {
 		t.Errorf("缺失的 agent home 不得被创建（自毒防护），stat err=%v", err)
+	}
+}
+
+// TestClaudeMDDocumentsObservationHooks extends the wired-hooks coverage guard with
+// per-hook event accuracy: the generic anchored-name check cannot tell a doc line
+// that names the right event from one that swaps them. The three #4-A observation
+// hooks (2026-08-22) must document their actual trigger events and advisory nature.
+//
+// TestClaudeMDDocumentsObservationHooks 在通用接线守卫之上钉事件准确性：锚定
+// 名字守卫分辨不出「写对了事件」与「事件张冠李戴」。三个 #4-A 观察 hook
+// （2026-08-22）必须写明实际触发事件与 advisory 属性。
+func TestClaudeMDDocumentsObservationHooks(t *testing.T) {
+	section := buildForgeSection(true)
+	for _, want := range []string{
+		"**failure-track**（PostToolUseFailure",
+		"**subagent-track**（SubagentStop",
+		"**test-nudge**（PostToolUse Write|Edit",
+	} {
+		if !strings.Contains(section, want) {
+			t.Errorf("forge section missing observation-hook doc prefix %q", want)
+		}
+	}
+	// Advisory semantics must be stated — these hooks never block, and the doc is
+	// where an agent learns that instead of hunting for a bypass.
+	//
+	// 必须写明 advisory 语义——这三个 hook 永不阻断，agent 应从文档直接得知
+	// 而非去找绕法。
+	if !strings.Contains(section, "advisory 不阻断") {
+		t.Error("failure-track doc line must state advisory (never blocks)")
 	}
 }

@@ -69,14 +69,69 @@ type PathEntry struct {
 	Version string `json:"version,omitempty"`
 }
 
+// SkillsDriftItem is one actionable skills-distribution gap: a canonical skill that
+// is missing or content-drifted in a target directory.
+//
+// SkillsDriftItem 是单条可处置的 skills 分发缺口：canonical 有而目标缺失或内容分叉
+// 的 skill。
+type SkillsDriftItem struct {
+	Skill  string `json:"skill"`
+	Target string `json:"target"`
+	State  string `json:"state"` // missing | drift
+}
+
+// SkillsDriftSummary is the skills-distribution section of the doctor report.
+// Counts only actionable states (missing/drift) in Items; linked/copy-in-sync
+// are healthy and only surface as totals. Target-only orphans are excluded —
+// they are usually the user's own non-forge skills and would drown the signal.
+//
+// Error is set when the audit itself could not run (canonical resolve /
+// DriftCheck failure) — zero counts plus a green check would misreport a dead
+// probe as a healthy fleet, the exact silence this section exists to kill.
+// TargetErrors carries per-target partial failures (unreadable dirs etc.) from
+// DriftCheck: the counts are still meaningful, but coverage was not complete.
+//
+// Skipped lists targets NOT audited because the target's agent home does not
+// exist (agent not installed on this machine — M-3, 2026-08-21). Without this
+// gate, `forge doctor` on a single-agent machine reported every canonical skill
+// as missing from every uninstalled target: a wall of unactionable noise that
+// drowned the real gaps. Doctor audits the environment as-installed;
+// `forge skills drift-check` keeps full all-target coverage for the explicit ask.
+//
+// SkillsDriftSummary 是 doctor 报告的 skills 分发节。Items 只收可处置态
+// （missing/drift）；linked/copy-in-sync 健康态仅以总数出现。target-only 孤儿排除
+// ——通常是用户自己的非 forge skill，收进来会淹没信号。
+//
+// Error 在审计本身跑不起来（canonical 解析 / DriftCheck 报错）时设置——零计数
+// 加绿色对勾会把死探针误报成健康，恰是本节要消灭的静默。TargetErrors 承载
+// DriftCheck 的 per-target 部分失败（目录不可读等）：计数仍有意义，但覆盖不全。
+//
+// Skipped 列出未审计的目标——目标 agent home 不存在（本机未装该 agent——M-3，
+// 2026-08-21）。没有这道门，单 agent 机器上的 `forge doctor` 会把每个 canonical
+// skill 报成在每个未安装目标上 missing：一墙不可处置的噪声，淹没真实缺口。
+// doctor 审计"按已安装现状"的环境；`forge skills drift-check` 在显式全量问询下
+// 保留全目标覆盖。
+type SkillsDriftSummary struct {
+	Canonical    string            `json:"canonical"`
+	Error        string            `json:"error,omitempty"`
+	TargetErrors []string          `json:"target_errors,omitempty"`
+	Linked       int               `json:"linked"`
+	CopySync     int               `json:"copy_in_sync"`
+	Missing      int               `json:"missing"`
+	Drifted      int               `json:"drift"`
+	Items        []SkillsDriftItem `json:"items,omitempty"`
+	Skipped      []string          `json:"skipped,omitempty"`
+}
+
 // Report is the full doctor output.
 //
 // Report 是 doctor 的完整输出。
 type Report struct {
-	SelfVersion string       `json:"self_version"`
-	Resolved    string       `json:"resolved_on_path"` // exec.LookPath("forge") 结果
-	PathForge   []PathEntry  `json:"path_forge"`       // PATH 上全部 forge 可执行文件（按 PATH 顺序）
-	Hosts       []HostReport `json:"hosts"`
+	SelfVersion string              `json:"self_version"`
+	Resolved    string              `json:"resolved_on_path"` // exec.LookPath("forge") 结果
+	PathForge   []PathEntry         `json:"path_forge"`       // PATH 上全部 forge 可执行文件（按 PATH 顺序）
+	Hosts       []HostReport        `json:"hosts"`
+	Skills      *SkillsDriftSummary `json:"skills,omitempty"`
 }
 
 // Options carries injectable dependencies for hermetic tests.
@@ -89,6 +144,17 @@ type Options struct {
 	LookPath func(name string) (string, error)
 	// ScanPATH lists PATH directories in order. Default: os.Getenv("PATH") split.
 	ScanPATH func() []string
+	// SkillsDriftProbe collects the skills-distribution drift summary. Default: nil
+	// (section skipped) — the CLI layer injects the real probe (doctor stays free of
+	// skillsdist/skillscanonical imports, matching the LookPath injection style).
+	// Errors are reported inside the summary's Canonical field prefix, never abort
+	// the whole audit — skills drift must not take down host version auditing.
+	//
+	// SkillsDriftProbe 收集 skills 分发 drift 摘要。默认 nil（跳过该节）——CLI 层
+	// 注入真实探针（doctor 保持不依赖 skillsdist/skillscanonical，与 LookPath 注入
+	// 风格一致）。错误以摘要 Canonical 字段前缀上报，绝不中止整个审计——skills
+	// drift 不得拖垮 host 版本审计。
+	SkillsDriftProbe func() *SkillsDriftSummary
 }
 
 // semver extracts a bare version token (1.30.0, 1.30.0-beta.1) from a version string.
@@ -336,6 +402,17 @@ func Run(selfVersion string, opts Options) Report {
 	rep.PathForge = scanPATH(opts)
 	for _, spec := range hostSpecs() {
 		rep.Hosts = append(rep.Hosts, auditHost(spec, self, opts))
+	}
+	// Skills distribution is an optional section: probe injected by the CLI layer,
+	// absent under hermetic tests. A failing probe reports inside the summary —
+	// host auditing must survive skillsdist errors.
+	//
+	// skills 分发是可选节：探针由 CLI 层注入，密封测试下缺席。探针失败在摘要内
+	// 上报——host 审计必须能扛住 skillsdist 错误。
+	if opts.SkillsDriftProbe != nil {
+		if s := opts.SkillsDriftProbe(); s != nil {
+			rep.Skills = s
+		}
 	}
 	return rep
 }

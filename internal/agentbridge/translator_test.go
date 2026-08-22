@@ -156,12 +156,12 @@ func TestCodexHooks_OnlyLegalCodexEvents(t *testing.T) {
 			t.Errorf("illegal codex hook event %q (not in the official roster — never fires)", event)
 		}
 	}
-	for _, required := range []string{`PreToolUse`, `PostToolUse`, `Stop`, `SessionStart`, `UserPromptSubmit`, `PostCompact`} {
+	for _, required := range []string{`PreToolUse`, `PostToolUse`, `Stop`, `SessionStart`, `UserPromptSubmit`, `PostCompact`, `SubagentStop`} {
 		if _, present := hooksMap[required]; !present {
 			t.Errorf(`codex must wire %s (has a ForgeHookSpec analogue): missing`, required)
 		}
 	}
-	for _, banned := range []string{`SessionEnd`, `PermissionRequest`, `PreCompact`, `SubagentStart`, `SubagentStop`} {
+	for _, banned := range []string{`SessionEnd`, `PermissionRequest`, `PreCompact`, `SubagentStart`} {
 		if _, present := hooksMap[banned]; present {
 			t.Errorf(`codex must not wire %s (no ForgeHookSpec analogue)`, banned)
 		}
@@ -188,13 +188,16 @@ func TestCursorWiringMirrorsClaudeSettings(t *testing.T) {
 
 	// Cursor camelCase → Claude PascalCase event mapping (verified against
 	// https://cursor.com/docs/agent/hooks). PostCompact has no Cursor analogue
-	// (only the observe-only preCompact) and is intentionally not wired.
+	// (only the observe-only preCompact) and is intentionally not wired;
+	// postToolUseFailure/subagentStop joined 2026-08-22 (#4-A follow-up).
 	eventMap := map[string]string{
 		"preToolUse":         "PreToolUse",
 		"postToolUse":        "PostToolUse",
 		"stop":               "Stop",
 		"sessionStart":       "SessionStart",
 		"beforeSubmitPrompt": "UserPromptSubmit",
+		"postToolUseFailure": "PostToolUseFailure",
+		"subagentStop":       "SubagentStop",
 	}
 	if len(cursor) == 0 {
 		t.Fatal("cursor wiring has no events — generator or parser broken")
@@ -239,15 +242,17 @@ func TestCursorWiringMirrorsClaudeSettings(t *testing.T) {
 // TestCursorHooks_OnlyLegalCursorEvents pins the cursor event whitelist against
 // the official Cursor Agent roster (https://cursor.com/docs/agent/hooks). Wiring
 // an event outside that roster would never fire (silent no-op), so any generated
-// event not in the roster fails. The five ForgeHookSpec events with a Cursor
-// analogue must all be present; PostCompact must stay absent (Cursor ships only
+// event not in the roster fails. The seven ForgeHookSpec events with a Cursor
+// analogue must all be present (postToolUseFailure/subagentStop joined 2026-08-22,
+// #4-A follow-up); PostCompact must stay absent (Cursor ships only
 // the observe-only preCompact — it cannot carry compact-resume's re-injection
 // contract). Modeled on TestWindsurfHooks_OnlyLegalCascadeEvents.
 //
 // TestCursorHooks_OnlyLegalCursorEvents 把 cursor event 白名单钉在官方 Cursor
 // Agent 名册上（https://cursor.com/docs/agent/hooks）。接名册外的 event 永不
 // 触发（静默 no-op），故生成接线出现名册外 event 即失败。有 Cursor 对应物的
-// 五个 ForgeHookSpec event 必须全部在位；PostCompact 必须保持缺席（Cursor 只有
+// 七个 ForgeHookSpec event 必须全部在位（postToolUseFailure/subagentStop 于
+// 2026-08-22 加入，#4-A 后续）；PostCompact 必须保持缺席（Cursor 只有
 // observe-only 的 preCompact——承载不了 compact-resume 的重注入契约）。仿
 // TestWindsurfHooks_OnlyLegalCascadeEvents。
 func TestCursorHooks_OnlyLegalCursorEvents(t *testing.T) {
@@ -272,7 +277,7 @@ func TestCursorHooks_OnlyLegalCursorEvents(t *testing.T) {
 			t.Errorf("illegal cursor hook event %q (not in the official roster — never fires)", event)
 		}
 	}
-	for _, required := range []string{`preToolUse`, `postToolUse`, `stop`, `sessionStart`, `beforeSubmitPrompt`} {
+	for _, required := range []string{`preToolUse`, `postToolUse`, `stop`, `sessionStart`, `beforeSubmitPrompt`, `postToolUseFailure`, `subagentStop`} {
 		if _, present := hooksMap[required]; !present {
 			t.Errorf(`cursor must wire %s (has a ForgeHookSpec analogue): missing`, required)
 		}

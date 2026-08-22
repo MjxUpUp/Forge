@@ -1,6 +1,7 @@
 package doctor
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -547,5 +548,86 @@ func TestRun_RegistryMetadataNotWiring(t *testing.T) {
 	h := hostOf(t, rep, "kimi")
 	if h.Status != StatusMissing {
 		t.Fatalf("纯注册表元数据不构成接线，应为 missing，got %q (cmds=%d)", h.Status, h.ForgeCmds)
+	}
+}
+
+// TestRun_SkillsDriftProbeOptionalAndSurfaced 守卫 skills 分发节的注入契约：
+// probe 为 nil 时 Report.Skills 缺席（密封测试与旧行为兼容）；probe 非 nil 时
+// 摘要原样上报告。探针错误也应呈现为摘要（Canonical 前缀 error:），绝不中止
+// host 审计——这是 doctor.go Options.SkillsDriftProbe 注释承诺的行为。
+//
+// TestRun_SkillsDriftProbeOptionalAndSurfaced guards the skills-distribution
+// injection contract: nil probe → Report.Skills absent (hermetic tests keep the
+// old shape); non-nil probe → the summary surfaces verbatim. Probe errors must
+// surface as a summary (Canonical "error:" prefix), never abort host auditing —
+// the behavior the Options.SkillsDriftProbe comment promises.
+func TestRun_SkillsDriftProbeOptionalAndSurfaced(t *testing.T) {
+	isolate(t)
+	rep := Run("1.30.0", fakeEnv(nil))
+	if rep.Skills != nil {
+		t.Fatalf("nil probe 下 Skills 应缺席（omitempty 契约），got %+v", rep.Skills)
+	}
+	want := &SkillsDriftSummary{
+		Canonical: `C:\canon`,
+		Linked:    10,
+		Missing:   2,
+		Drifted:   1,
+		Items:     []SkillsDriftItem{{Skill: "subagent-orchestration", Target: "claude", State: "missing"}},
+	}
+	rep = Run("1.30.0", Options{
+		LookPath:         fakeEnv(nil).LookPath,
+		VersionRunner:    fakeEnv(nil).VersionRunner,
+		SkillsDriftProbe: func() *SkillsDriftSummary { return want },
+	})
+	if rep.Skills != want {
+		t.Fatalf("非 nil probe 的摘要应原样上报，got %+v want %+v", rep.Skills, want)
+	}
+	// host 审计照常完成（probe 不拖垮主流程）。
+	if len(rep.Hosts) == 0 {
+		t.Fatal("probe 存在时 host 审计仍应完成")
+	}
+}
+
+// TestSkillsDriftSummarySkippedJSON pins the Skipped field's JSON contract (M-3): wire
+// name "skipped", omitempty — absent when nil (old consumers unchanged), present as an
+// array when targets were skipped. The field is what `forge doctor --json` emits and the
+// dashboard/CI consumers parse; a rename or dropped omitempty would silently break them.
+//
+// TestSkillsDriftSummarySkippedJSON 钉死 Skipped 字段的 JSON 契约（M-3）：线名
+// "skipped"、omitempty——nil 时缺席（旧消费方不受影响）、有跳过目标时以数组出现。
+// 该字段是 `forge doctor --json` 输出、dashboard/CI 消费方解析的东西；改名或丢了
+// omitempty 会静默破坏它们。
+func TestSkillsDriftSummarySkippedJSON(t *testing.T) {
+	// nil Skipped → 字段缺席（omitempty）。
+	data, err := json.Marshal(&SkillsDriftSummary{Linked: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "skipped") {
+		t.Errorf("Skipped 为 nil 时 JSON 应缺席（omitempty）: %s", data)
+	}
+	// 有跳过目标 → 数组出现，线名为 skipped。
+	data, err = json.Marshal(&SkillsDriftSummary{Skipped: []string{"codex", "cursor"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := m["skipped"].([]any)
+	if !ok {
+		t.Fatalf("JSON 应含 skipped 数组: %s", data)
+	}
+	if len(got) != 2 || got[0] != "codex" || got[1] != "cursor" {
+		t.Errorf("skipped = %v, want [codex cursor]", got)
+	}
+	// 往返：解析侧同名字段还原。
+	var back SkillsDriftSummary
+	if err := json.Unmarshal(data, &back); err != nil {
+		t.Fatal(err)
+	}
+	if len(back.Skipped) != 2 || back.Skipped[0] != "codex" {
+		t.Errorf("round-trip Skipped = %v", back.Skipped)
 	}
 }

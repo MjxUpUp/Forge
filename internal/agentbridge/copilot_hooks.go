@@ -108,15 +108,35 @@ type copilotHookEntry struct {
 // — shipping an unknown event key risks item-level drops at load. Anything else in
 // the spec without a copilot analogue is filtered the same way.
 //
+// PostToolUseFailure/SubagentStop added 2026-08-22: both are in copilot's official
+// hooks reference (14-event roster, spec-research4), carrying failure-track/
+// subagent-track (#4-A follow-up). Payloads stay Claude-shape snake_case (the
+// PascalCase compat mode documented for the wired events), so the stdin side needs
+// no normalizer. subagentStop can block via stdout {"decision":"block"} + exit 0 —
+// irrelevant for the observe-only subagent-track. postToolUseFailure's documented
+// exit-2-stdout→additionalContext channel is NOT used: failure-track stays
+// allow-path, and that channel requires live verification before wiring (same
+// discipline as the kimi whitelist — unverified channels stay unwired).
+//
 // copilotEventName 白名单化 copilot hook 系统接受的 Claude-Code PascalCase event
 // （PascalCase 键是 copilot camelCase 名册——preToolUse/postToolUse/agentStop/
 // sessionStart/userPromptSubmitted——文档化的 Claude 兼容形态）。PostCompact 无
 // copilot 对应物（名册只有 observe-only 的 preCompact，其输出不被处理），返回
 // ok=false——发未知 event 键有载入期条目级丢弃风险。spec 里其他无 copilot 对应物
 // 的 event 同样被过滤。
+//
+// PostToolUseFailure/SubagentStop 于 2026-08-22 加入：两者都在 copilot 官方
+// hooks reference（14 事件名册，spec-research4），承载 failure-track/
+// subagent-track（#4-A 后续）。payload 保持 Claude 形 snake_case（已接线事件
+// 文档化的 PascalCase 兼容模式），stdin 侧无需 normalizer。subagentStop 可经
+// stdout {"decision":"block"} + exit 0 阻断——对 observe-only 的 subagent-track
+// 无关。postToolUseFailure 文档化的 exit-2-stdout→additionalContext 通道**不
+// 使用**：failure-track 保持 allow 路径，该通道需先活体验证再接（与 kimi 白名单
+// 同纪律——未验证通道不接线）。
 func copilotEventName(event string) (string, bool) {
 	switch event {
-	case "PreToolUse", "PostToolUse", "Stop", "SessionStart", "UserPromptSubmit":
+	case "PreToolUse", "PostToolUse", "Stop", "SessionStart", "UserPromptSubmit",
+		"PostToolUseFailure", "SubagentStop":
 		return event, true
 	default:
 		return "", false

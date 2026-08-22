@@ -56,7 +56,7 @@ forge task score                  # 查看质量评分
 
 ## Hook 系统
 
-Forge 通过 Claude Code 的 Hook 机制实现实时质量检查（主要 Hook 如下，完整 19 个清单见 [GitHub README](https://github.com/MjxUpUp/Forge#-hook-系统)）：
+Forge 通过 Claude Code 的 Hook 机制实现实时质量检查（主要 Hook 如下，完整 22 个清单见 [GitHub README](https://github.com/MjxUpUp/Forge#-hook-系统)）：
 
 | Hook | 触发时机 | 功能 |
 |------|----------|------|

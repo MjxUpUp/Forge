@@ -534,6 +534,23 @@ func hasMatchingTest(src string, changed map[string]bool) bool {
 	}
 }
 
+// ClassifyChangedPath reports whether a path is source that owes a paired test
+// (non-whitelisted, non-test, source extension) and whether it is itself a test
+// file. Shared by the test-nudge in-process hook (cli) so the mid-task nudge and
+// the task-verify gate judge "source"/"test" by identical rules — a nudge that
+// counted whitelist files or missed test files would diverge from the gate it
+// previews, teaching the agent a different rule than the one that enforces
+// (same rationale as checklog.DetailForSkillTrigger's single-source contract).
+//
+// ClassifyChangedPath 报告一个路径是否是欠配对测试的源码（非白名单、非测试、
+// 源码后缀），以及它自身是否测试文件。供 test-nudge 进程内 hook（cli）共用——
+// 事中 nudge 与 task-verify 门禁按同一规则判「源码/测试」：若 nudge 计白名单
+// 文件或漏认测试文件，就会与它所预演的门禁分叉，教给 agent 的规则与实际执行
+// 的规则不同（与 checklog.DetailForSkillTrigger 的单一真相源契约同理）。
+func ClassifyChangedPath(path string) (source, test bool) {
+	return isSourceFile(path) && !isWhitelisted(path) && !isTestFile(path), isTestFile(path)
+}
+
 // testCoverageDetail returns a short checklog detail string for the gate verdict
 // (intentionally short — checklog Detail is a single line, not the user-facing
 // failure message produced by formatMissing).
