@@ -26,6 +26,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/util"
+	"github.com/spf13/cobra"
 )
 
 // trackTestProject isolates FORGE_DATA_HOME and returns a temp project root. The
@@ -335,6 +336,197 @@ func TestRunTestNudgeHook_ThresholdNudgeAndReset(t *testing.T) {
 	}
 	if entries[0].TaskRef != "feat/nudge-test" {
 		t.Errorf("nudge entry must carry the active task ref, got %q", entries[0].TaskRef)
+	}
+}
+
+// TestHook_FailureTrackCursorPayloadAdapted pins the #4-A follow-up's payload
+// adaptation for cursor: cursor's postToolUseFailure classifies via failure_type
+// instead of an error string and carries conversation_id instead of session_id.
+// Through the FULL runHook path: (1) a classification-only payload gets Error
+// filled from failure_type (recorded in Meta for class aggregation) and stays
+// silent — the enum matches no compile marker, so no false nudge; (2) when a real
+// error string IS present it wins (fill-empty), the marker fires, and the
+// compile-fix-loop pointer is emitted with a Delivered stamp; (3) cursor's
+// documented dual-field shape (error_message text + failure_type enum) fills
+// Error with the TEXT — enum only rides in Meta; (4) the observation
+// lands session-attributed via conversation_id.
+//
+// TestHook_FailureTrackCursorPayloadAdapted 钉住 #4-A 后续的 cursor payload 适配：
+// cursor 的 postToolUseFailure 用 failure_type 分类而非 error 字符串、带
+// conversation_id 而非 session_id。走完整 runHook 路径：(1) 仅分类的 payload 由
+// failure_type 填空 Error（Meta 记录供按类聚合）且保持静默——枚举值不命中任何
+// 编译 marker，无误发提示；(2) 真实 error 字符串在场时优先（填空语义），marker
+// 命中、发出 compile-fix-loop 指引并盖 Delivered 章；(3) cursor 文档的双字段
+// 形态（error_message 文本 + failure_type 枚举）用**文本**填 Error——枚举只随
+// Meta 记录；(4) 观察经 conversation_id 完成会话归因。
+func TestHook_FailureTrackCursorPayloadAdapted(t *testing.T) {
+	// Phase 1: classification-only payload (cursor's documented shape) — silent
+	// observation, Error filled from failure_type, session via conversation_id.
+	//
+	// 阶段 1：仅分类的 payload（cursor 文档形态）——静默观察，Error 由
+	// failure_type 填空，会话取 conversation_id。
+	root1 := runHookWithStdin(t, "failure-track",
+		`{"hook_event_name":"PostToolUseFailure","tool_name":"Shell","conversation_id":"conv-cursor-fail-1","failure_type":"timeout"}`)
+	entries := findTrackEntries(t, root1, checklog.CheckToolFailure)
+	if len(entries) != 1 {
+		t.Fatalf("CheckToolFailure entries = %d, want 1", len(entries))
+	}
+	e := entries[0]
+	if e.SessionID != "conv-cursor-fail-1" {
+		t.Errorf("session = %q, want conversation_id adopted", e.SessionID)
+	}
+	if e.Meta["failure_type"] != "timeout" {
+		t.Errorf("meta failure_type = %q, want timeout (class aggregation)", e.Meta["failure_type"])
+	}
+	if !strings.Contains(e.Detail, "timeout") {
+		t.Errorf("detail should carry the filled Error text, got: %q", e.Detail)
+	}
+	if e.Delivered != nil {
+		t.Errorf("enum-only failure must not emit → Delivered nil, got %v", *e.Delivered)
+	}
+
+	// Phase 2: real error text present — it wins over failure_type (fill-empty),
+	// the compile marker fires, and the pointer is emitted with a Delivered stamp.
+	//
+	// 阶段 2：真实错误文本在场——优先于 failure_type（填空语义），编译 marker
+	// 命中，指引连同 Delivered 章一起发出。
+	root2 := runHookWithStdin(t, "failure-track",
+		`{"hook_event_name":"PostToolUseFailure","tool_name":"Shell","conversation_id":"conv-cursor-fail-2","failure_type":"error","error":"go build ./... failed: undefined: util.Foo"}`)
+	entries2 := findTrackEntries(t, root2, checklog.CheckToolFailure)
+	if len(entries2) != 1 {
+		t.Fatalf("phase-2 CheckToolFailure entries = %d, want 1", len(entries2))
+	}
+	if !strings.Contains(entries2[0].Detail, "undefined: util.Foo") {
+		t.Errorf("real error text must win over the enum, got detail: %q", entries2[0].Detail)
+	}
+	if entries2[0].Delivered == nil {
+		t.Error("compile-marker path emits, so Delivered must be stamped (non-nil)")
+	}
+
+	// Phase 3: cursor's documented dual-field shape — error_message text WITH the
+	// failure_type enum. The text fills Error (beats the enum), the compile marker
+	// fires on the real text, and Meta still records the class.
+	//
+	// 阶段 3：cursor 文档的双字段形态——error_message 文本与 failure_type 枚举
+	// 同发。文本填 Error（胜过枚举），编译 marker 在真实文本上命中，Meta 仍记录
+	// 分类。
+	root3 := runHookWithStdin(t, "failure-track",
+		`{"hook_event_name":"PostToolUseFailure","tool_name":"Shell","conversation_id":"conv-cursor-fail-3","failure_type":"error","error_message":"go build ./... failed: undefined: util.Foo"}`)
+	entries3 := findTrackEntries(t, root3, checklog.CheckToolFailure)
+	if len(entries3) != 1 {
+		t.Fatalf("phase-3 CheckToolFailure entries = %d, want 1", len(entries3))
+	}
+	if !strings.Contains(entries3[0].Detail, "undefined: util.Foo") {
+		t.Errorf("error_message text must fill Error and beat the enum, got detail: %q", entries3[0].Detail)
+	}
+	if entries3[0].Meta["failure_type"] != "error" {
+		t.Errorf("meta failure_type = %q, want error (class still recorded)", entries3[0].Meta["failure_type"])
+	}
+	if entries3[0].Delivered == nil {
+		t.Error("real compile-failure text in error_message must fire the nudge → Delivered stamped")
+	}
+}
+
+// TestHook_CursorWorkspaceRootsResolvesProject pins the MAJOR-1 fix: cursor's
+// user-level hooks run from ~/.cursor and its payload has NO cwd — the project
+// only enters via workspace_roots. With the process cwd OUTSIDE the project, a
+// failure-track event carrying workspace_roots must still resolve the project
+// and land the observation (before the fix: findProjectRoot failed → silent
+// allow → nothing ever recorded).
+//
+// TestHook_CursorWorkspaceRootsResolvesProject 钉住 MAJOR-1 修复：cursor 用户级
+// hook 从 ~/.cursor 运行、payload 无 cwd——项目只能经 workspace_roots 进入。
+// 进程 cwd 在项目之外时，带 workspace_roots 的 failure-track 事件仍须解析出
+// 项目并落观察（修复前：findProjectRoot 失败→静默放行→永不记录）。
+func TestHook_CursorWorkspaceRootsResolvesProject(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	t.Setenv("FORGE_HOOK_AGENT", "cursor")
+	t.Setenv("FORGE_AGENT", "")
+
+	projRoot := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(projRoot, ".forge", "hooks"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projRoot, ".forge", "state.json"), []byte(`{"pipeline_version":"2.0","mode":"small"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	outer := t.TempDir() // process cwd: deliberately NOT a forge project
+	originalWd, _ := os.Getwd()
+	if err := os.Chdir(outer); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(originalWd) })
+
+	// Payload marshaled via json.Marshal so Windows path backslashes escape
+	// correctly in the JSON stdin.
+	//
+	// payload 用 json.Marshal 构造——Windows 路径反斜杠在 JSON stdin 里的转义
+	// 才稳。
+	payload, err := json.Marshal(map[string]any{
+		"hook_event_name": "PostToolUseFailure",
+		"tool_name":       "Shell",
+		"conversation_id": "conv-cursor-wsr-1",
+		"failure_type":    "timeout",
+		"workspace_roots": []string{projRoot},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldStdin := os.Stdin
+	tmpStdin, err := os.CreateTemp("", "hook-stdin-*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tmpStdin.Write(payload); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tmpStdin.Seek(0, 0); err != nil {
+		t.Fatal(err)
+	}
+	os.Stdin = tmpStdin
+	t.Cleanup(func() { os.Stdin = oldStdin; tmpStdin.Close(); os.Remove(tmpStdin.Name()) })
+
+	captureStdout(t, func() { _ = runHook(&cobra.Command{}, []string{"failure-track"}) })
+
+	entries := findTrackEntries(t, projRoot, checklog.CheckToolFailure)
+	if len(entries) != 1 {
+		t.Fatalf("workspace_roots must resolve the project from an outside cwd, CheckToolFailure entries = %d, want 1", len(entries))
+	}
+	if entries[0].SessionID != "conv-cursor-wsr-1" {
+		t.Errorf("session = %q, want conversation_id adopted", entries[0].SessionID)
+	}
+	if entries[0].Meta["failure_type"] != "timeout" {
+		t.Errorf("meta failure_type = %q, want timeout", entries[0].Meta["failure_type"])
+	}
+}
+
+// TestHook_SubagentTrackCursorFieldsAdapted pins cursor's subagentStop dialect:
+// subagent_type/status/result (cursor's spellings) must reach the attribution
+// the CC-schema fields drive — before the fill they were dropped and every
+// cursor entry recorded agent_type=unknown with 0 chars forever.
+//
+// TestHook_SubagentTrackCursorFieldsAdapted 钉住 cursor 的 subagentStop 方言：
+// subagent_type/status/result（cursor 拼法）必须抵达 CC schema 字段驱动的归因
+// ——填空之前它们被丢弃，每个 cursor 条目永远记 agent_type=unknown、0 字符。
+func TestHook_SubagentTrackCursorFieldsAdapted(t *testing.T) {
+	root := runHookWithStdin(t, "subagent-track",
+		`{"hook_event_name":"SubagentStop","conversation_id":"conv-cursor-sas-1","subagent_type":"code-reviewer","status":"completed","result":"Reviewed 3 files."}`)
+	entries := findTrackEntries(t, root, checklog.CheckSubagentStop)
+	if len(entries) != 1 {
+		t.Fatalf("CheckSubagentStop entries = %d, want 1", len(entries))
+	}
+	e := entries[0]
+	if e.Meta["agent_type"] != "code-reviewer" {
+		t.Errorf("meta agent_type = %q, want code-reviewer (from subagent_type)", e.Meta["agent_type"])
+	}
+	if e.Meta["status"] != "completed" {
+		t.Errorf("meta status = %q, want completed", e.Meta["status"])
+	}
+	if want := fmt.Sprintf("%d", len("Reviewed 3 files.")); e.Meta["message_len"] != want {
+		t.Errorf("message_len = %q, want %q (from result)", e.Meta["message_len"], want)
+	}
+	if !strings.Contains(e.Detail, "code-reviewer") || !strings.Contains(e.Detail, "Reviewed 3 files.") {
+		t.Errorf("detail should carry cursor attribution, got: %q", e.Detail)
 	}
 }
 
