@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.41.0](https://github.com/MjxUpUp/Forge/compare/v1.40.1...v1.41.0) (2026-08-22)
+
+
+### Features
+
+* **agentbridge:** 扩接 failure-track/subagent-track 到 cursor+copilot，补 cursor payload 方言适配 ([e54971e](https://github.com/MjxUpUp/Forge/commit/e54971e974d2130ef8e2bebf275186b556c12ffe))
+* **hooks:** 接线三观察hook补事件缺口+PreToolUse permissionDecision+Bash tool-track ([a8fd3c6](https://github.com/MjxUpUp/Forge/commit/a8fd3c692dadfecaef7b3ad27bf50038dbea43d5))
+
+
+### Bug Fixes
+
+* **deferred-batch1:** 延后项批量落地——uninstall codebuddy/kimi-manifest 出口/doctor 未装目标门控/dsh 文档补齐 ([a098b45](https://github.com/MjxUpUp/Forge/commit/a098b454a2d67eafe82244f6590fc9865310bd21))
+* **docs,doctor:** 补齐协议文档9个接线hook + doctor新增skills分发审计节 ([c701f6d](https://github.com/MjxUpUp/Forge/commit/c701f6d9dbd37ec874dd6ac75386fac50fc184e6))
+* **skillseval:** effectiveness 被动 join 修复非 git 数据目录解析+测试判别力（评审 M 级两项） ([4b53b85](https://github.com/MjxUpUp/Forge/commit/4b53b85093578dc276f6d9049625b7b0bf688b23))
+
 ## [1.40.1](https://github.com/MjxUpUp/Forge/compare/v1.40.0...v1.40.1) (2026-08-21)
 
 
