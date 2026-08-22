@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
+	"github.com/spf13/cobra"
 )
 
 // runHookWithStdin chdirs into a fresh forge project (temp dir + .forge/state.json,
@@ -58,10 +59,13 @@ func runHookWithStdin(t *testing.T, hookName, stdinJSON string) string {
 	captureStdout(t, func() {
 		// auto-compile/tool-track may error inside the embedded script in a bare
 		// temp project — the attribution side effects under test run before that.
+		// A minimal cobra root (not nil): the Go-internal hooks' dispatch reads
+		// cmd.Root().Version and would nil-panic on nil.
 		//
 		// auto-compile/tool-track 在裸 temp 项目里嵌脚本可能报错——被测的归因副
-		// 作用在那之前已发生。
-		_ = runHook(nil, []string{hookName})
+		// 作用在那之前已发生。传最小 cobra root（非 nil）：Go 内 hook 的分派读
+		// cmd.Root().Version，nil 会空指针。
+		_ = runHook(&cobra.Command{}, []string{hookName})
 	})
 	return root
 }

@@ -26,6 +26,10 @@
           {
             "type": "command",
             "command": "forge hook skill-trigger"
+          },
+          {
+            "type": "command",
+            "command": "forge hook test-nudge"
           }
         ]
       },
@@ -35,6 +39,10 @@
           {
             "type": "command",
             "command": "forge hook file-sentinel"
+          },
+          {
+            "type": "command",
+            "command": "forge hook tool-track"
           },
           {
             "type": "command",
@@ -48,6 +56,17 @@
           {
             "type": "command",
             "command": "forge hook tool-track"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "forge hook failure-track"
           }
         ]
       }
@@ -136,6 +155,16 @@
           {
             "type": "command",
             "command": "forge hook skill-trigger"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "forge hook subagent-track"
           }
         ]
       }

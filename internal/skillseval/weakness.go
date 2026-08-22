@@ -140,17 +140,18 @@ func AnalyzeWeaknesses(p *forgedata.Project, canonical string) (*WeaknessReport,
 		rep.DataCaveats = append(rep.DataCaveats,
 			"无 skill-任务成效关联数据——LowEffectiveness 为空不代表无低效 skill")
 	}
-	// Non-git projects (review F6): conclusions resolve via the project's DataDir while
-	// usage/effectiveness resolve via GitRoot ("" for non-git → PathKey of the CWD at runtime).
-	// Run analyze from a different subdirectory and the two halves may read different data
-	// dirs — an intra-report inconsistency this caveat must name rather than hide.
+	// Non-git projects (review F6): conclusions and effectiveness resolve via the
+	// project DataDir / Root, while usage still resolves via GitRoot ("" for non-git →
+	// PathKey of the CWD at runtime). Run analyze from a different subdirectory and the
+	// usage half may read a different data dir — an intra-report inconsistency this
+	// caveat must name rather than hide.
 	//
-	// 非 git 项目（审查 F6）：结论走项目 DataDir，usage/effectiveness 走 GitRoot（非 git
-	// 为空 → 运行时 CWD 的 PathKey）。从别的子目录运行 analyze 时两半可能读到不同数据
-	// 目录——报告内部的不一致，用 caveat 点名而非掩盖。
+	// 非 git 项目（审查 F6）：结论与 effectiveness 走项目 DataDir/Root，usage 仍走
+	// GitRoot（非 git 为空 → 运行时 CWD 的 PathKey）。从别的子目录运行 analyze 时
+	// usage 半边可能读到不同数据目录——报告内部的不一致，用 caveat 点名而非掩盖。
 	if p.GitRoot == "" {
 		rep.DataCaveats = append(rep.DataCaveats,
-			"非 git 项目：usage/effectiveness 按运行时 CWD 解析数据目录，与结论目录可能不一致（换目录运行 analyze 时 NeverTriggered/LowEffectiveness 可能指向另一数据源）")
+			"非 git 项目：usage 按运行时 CWD 解析数据目录，与结论/成效目录可能不一致（换目录运行 analyze 时 NeverTriggered 可能指向另一数据源）")
 	}
 	if len(rep.DataCaveats) == 0 {
 		rep.DataCaveats = nil

@@ -399,7 +399,17 @@ func cursorMatcherTokens(matcher string) (string, bool) {
 //     observe-only preCompact, which cannot deliver compact-resume's re-injection
 //     contract, so the mapping is deliberately not made.
 //   - Any future spec event without a Cursor analogue (Cursor's sessionEnd/
-//     subagent*/preCompact etc. have no ForgeHookSpec counterpart either).
+//     subagentStart/preCompact etc. have no ForgeHookSpec counterpart — subagentStop
+//     DOES and is wired below).
+//
+// PostToolUseFailure/SubagentStop added 2026-08-22: both are on Cursor's official
+// roster (see the buildCursorHooks header), carrying failure-track/subagent-track
+// (#4-A follow-up — cross-host event matrix, spec-research4). Payload dialects are
+// adapted cli-side by the runHook fill-empty block (hook.go): postToolUseFailure
+// carries error_message text WITH the failure_type enum (text fills Error first,
+// enum last); subagentStop spells the CC fields as subagent_type/status/result —
+// normalized onto AgentTypeHook/LastAssistantMessage, with status riding in
+// subagent-track's Meta.
 //
 // cursorEventName 把 Claude Code 的 PascalCase event 名映射到 Cursor 的 camelCase
 // hooks.json event 名（已对 https://cursor.com/docs/agent/hooks 核实）。Cursor 不
@@ -407,7 +417,16 @@ func cursorMatcherTokens(matcher string) (string, bool) {
 //   - PostCompact——Cursor 无 post-compaction event；仅有 observe-only 的
 //     preCompact，无法承载 compact-resume 的重注入契约，故刻意不映射。
 //   - 未来 spec 新增且无 Cursor 对应物的 event（Cursor 侧的 sessionEnd/
-//     subagent*/preCompact 等同样无 ForgeHookSpec 对应物）。
+//     subagentStart/preCompact 等同样无 ForgeHookSpec 对应物——subagentStop 有，
+//     已在下方接线）。
+//
+// PostToolUseFailure/SubagentStop 于 2026-08-22 加入：两者都在 Cursor 官方名册
+// （见 buildCursorHooks 头注），承载 failure-track/subagent-track（#4-A 后续——
+// 跨宿主事件矩阵，spec-research4）。payload 方言由 cli 侧 runHook 填空块适配
+// （hook.go）：postToolUseFailure 的 error_message 文本与 failure_type 枚举同发
+// （文本优先填 Error，枚举兜底）；subagentStop 把 CC 字段拼作 subagent_type/
+// status/result——归一到 AgentTypeHook/LastAssistantMessage，status 随
+// subagent-track 记进 Meta。
 func cursorEventName(event string) (string, bool) {
 	switch event {
 	case `PreToolUse`:
@@ -420,6 +439,10 @@ func cursorEventName(event string) (string, bool) {
 		return `sessionStart`, true
 	case `UserPromptSubmit`:
 		return `beforeSubmitPrompt`, true
+	case `PostToolUseFailure`:
+		return `postToolUseFailure`, true
+	case `SubagentStop`:
+		return `subagentStop`, true
 	default:
 		return ``, false
 	}

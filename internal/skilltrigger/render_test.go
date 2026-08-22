@@ -58,3 +58,27 @@ func TestRender_TruncatesLongReason(t *testing.T) {
 		t.Error("长 reason 应被截断")
 	}
 }
+
+// TestRender_FactualPhrasingNotImperative pins the #5 (2026-08-22) phrasing
+// contract: banner/footer state facts (matched conditions, readable paths, opt-out)
+// instead of issuing instructions (请加载/必须处理). Imperatives read as injected
+// commands, can trip prompt-injection defenses, and the adherence audit showed they
+// did not lift conversion anyway (kimi 0%, claude 22%).
+//
+// TestRender_FactualPhrasingNotImperative 钉住 #5（2026-08-22）措辞契约：
+// banner/footer 陈述事实（命中条件、可读路径、关闭方式）而非下达指令
+// （请加载/必须处理）。祈使句会被读成注入指令、可能触发 prompt-injection
+// 防御，且遵循度审计显示祈使并未抬高转化率（kimi 0%、claude 22%）。
+func TestRender_FactualPhrasingNotImperative(t *testing.T) {
+	out := Render([]Hit{{Skill: "foo", SkillDir: "/x/foo", Reason: "r"}}, Context{Event: "PostToolUse"})
+	for _, want := range []string{"供参考", "可 read", "FORGE_SKILL_TRIGGER=0"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("factual banner/footer must contain %q, got:\n%s", want, out)
+		}
+	}
+	for _, banned := range []string{"请按需加载", "请加载", "必须处理"} {
+		if strings.Contains(out, banned) {
+			t.Errorf("imperative phrasing %q must not appear (facts, not instructions):\n%s", banned, out)
+		}
+	}
+}

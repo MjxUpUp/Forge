@@ -448,3 +448,170 @@ func TestCodeBuddyRun_Command_EmptyArgv(t *testing.T) {
 		t.Errorf(`empty argv: expected Start to fail, got nil`)
 	}
 }
+
+// TestStripCodeBuddyHooks guards the uninstall counterpart of the CodeBuddy wiring:
+// three seams removed surgically (marketplace entry, enabledPlugins key, forge asset
+// dir), user content preserved, emptied enabledPlugins kept as a shell, idempotent
+// re-run, and malformed config fails WITHOUT touching the file. Fills the 2026-08
+// uninstall audit gap: codebuddy was absent from the 2c strip roster, so after
+// `forge uninstall` WorkBuddy kept holding a directory pointer to a deleted binary.
+//
+// TestStripCodeBuddyHooks 守卫 CodeBuddy 接线的 uninstall 对应面：三处外科式移除
+// （marketplace 条目、enabledPlugins 键、forge 资产目录），用户内容保留，删空的
+// enabledPlugins 保留空壳，幂等重跑，malformed 配置报错且不碰文件。补 2026-08
+// 卸载审计缺口：codebuddy 此前不在 2c strip 名册，`forge uninstall` 后 WorkBuddy
+// 仍持有指向已删二进制的目录指针。
+func TestStripCodeBuddyHooks(t *testing.T) {
+	writeFile := func(t *testing.T, path, content string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("full wiring", func(t *testing.T) {
+		wb := t.TempDir()
+		t.Setenv("WORKBUDDY_CONFIG_DIR", wb)
+		t.Setenv("FORGE_DATA_HOME", t.TempDir())
+
+		kmPath := filepath.Join(wb, "plugins", "known_marketplaces.json")
+		writeFile(t, kmPath, `{
+  "user-market": {"source": "github", "repo": "someone/else"},
+  "forge-local": {"source": "directory", "path": "somewhere"}
+}`)
+		setPath := filepath.Join(wb, "settings.json")
+		writeFile(t, setPath, `{
+  "theme": "dark",
+  "enabledPlugins": {"other@market": true, "forge@forge-local": true}
+}`)
+		fh := os.Getenv("FORGE_DATA_HOME")
+		assets := filepath.Join(fh, "agents", "codebuddy", codebuddyMarketplaceName)
+		writeFile(t, filepath.Join(assets, "marketplace.json"), `{}`)
+
+		changed, err := StripCodeBuddyHooks()
+		if err != nil || !changed {
+			t.Fatalf("首次 strip = (%v, %v)，want (true, nil)", changed, err)
+		}
+
+		var km map[string]json.RawMessage
+		data, _ := os.ReadFile(kmPath)
+		if err := json.Unmarshal(data, &km); err != nil {
+			t.Fatalf("strip 后 known_marketplaces.json 须仍是合法 JSON: %v", err)
+		}
+		if _, ok := km[codebuddyMarketplaceName]; ok {
+			t.Errorf("forge-local 条目应被删除: %s", data)
+		}
+		if _, ok := km["user-market"]; !ok {
+			t.Errorf("用户 marketplace 条目必须保留: %s", data)
+		}
+
+		var settings struct {
+			Theme          string                     `json:"theme"`
+			EnabledPlugins map[string]json.RawMessage `json:"enabledPlugins"`
+		}
+		data, _ = os.ReadFile(setPath)
+		if err := json.Unmarshal(data, &settings); err != nil {
+			t.Fatalf("strip 后 settings.json 须仍是合法 JSON: %v", err)
+		}
+		key := codebuddyPluginName + "@" + codebuddyMarketplaceName
+		if _, ok := settings.EnabledPlugins[key]; ok {
+			t.Errorf("enabledPlugins[%s] 应被删除: %s", key, data)
+		}
+		if _, ok := settings.EnabledPlugins["other@market"]; !ok {
+			t.Errorf("用户插件条目必须保留: %s", data)
+		}
+		if settings.Theme != "dark" {
+			t.Errorf("无关 settings 字段必须保留: %s", data)
+		}
+		if _, err := os.Stat(assets); !os.IsNotExist(err) {
+			t.Errorf("forge 资产目录应被删除，stat err = %v", err)
+		}
+
+		// 幂等：重跑为干净 no-op，用户内容不动。
+		changed, err = StripCodeBuddyHooks()
+		if err != nil || changed {
+			t.Fatalf("二次 strip = (%v, %v)，want (false, nil)", changed, err)
+		}
+	})
+
+	t.Run("empty enabledPlugins shell", func(t *testing.T) {
+		wb := t.TempDir()
+		t.Setenv("WORKBUDDY_CONFIG_DIR", wb)
+		t.Setenv("FORGE_DATA_HOME", t.TempDir())
+		setPath := filepath.Join(wb, "settings.json")
+		writeFile(t, setPath, `{"enabledPlugins": {"forge@forge-local": true}}`)
+
+		if _, err := StripCodeBuddyHooks(); err != nil {
+			t.Fatal(err)
+		}
+		var raw map[string]json.RawMessage
+		data, _ := os.ReadFile(setPath)
+		if err := json.Unmarshal(data, &raw); err != nil {
+			t.Fatal(err)
+		}
+		shell, ok := raw["enabledPlugins"]
+		if !ok || strings.TrimSpace(string(shell)) != "{}" {
+			t.Errorf("删空的 enabledPlugins 应保留空壳 {}，got %s", shell)
+		}
+	})
+
+	t.Run("malformed config untouched", func(t *testing.T) {
+		wb := t.TempDir()
+		t.Setenv("WORKBUDDY_CONFIG_DIR", wb)
+		t.Setenv("FORGE_DATA_HOME", t.TempDir())
+		kmPath := filepath.Join(wb, "plugins", "known_marketplaces.json")
+		garbage := "{ not json"
+		writeFile(t, kmPath, garbage)
+
+		if _, err := StripCodeBuddyHooks(); err == nil {
+			t.Fatal("malformed known_marketplaces.json 应报错而非静默吞掉")
+		}
+		data, _ := os.ReadFile(kmPath)
+		if string(data) != garbage {
+			t.Errorf("报错时不得改写用户文件，got %q", data)
+		}
+	})
+
+	// malformed user config must NOT shield seam 3 (review finding, 2026-08-22):
+	// the forge-owned asset dir is removed even when known_marketplaces.json fails
+	// to parse — the early-return variant left the asset dir surviving uninstall
+	// until the user hand-fixed their own corrupt file.
+	//
+	// malformed 用户配置不得挡住 seam 3（复审发现，2026-08-22）：即使
+	// known_marketplaces.json 解析失败，forge 自有资产目录也要被删——提前 return
+	// 的旧实现会让资产目录活过卸载，直到用户手修自己损坏的文件。
+	t.Run("malformed config still removes forge assets", func(t *testing.T) {
+		wb := t.TempDir()
+		t.Setenv("WORKBUDDY_CONFIG_DIR", wb)
+		fh := t.TempDir()
+		t.Setenv("FORGE_DATA_HOME", fh)
+		kmPath := filepath.Join(wb, "plugins", "known_marketplaces.json")
+		writeFile(t, kmPath, "{ not json")
+		assets := filepath.Join(fh, "agents", "codebuddy", codebuddyMarketplaceName)
+		writeFile(t, filepath.Join(assets, "marketplace.json"), `{}`)
+
+		changed, err := StripCodeBuddyHooks()
+		if err == nil {
+			t.Fatal("seam1 解析失败必须上报（Join 后仍非 nil）")
+		}
+		if !changed {
+			t.Fatal("seam3 删除了资产目录，changed 须为 true（部分进展须可见）")
+		}
+		if _, statErr := os.Stat(assets); !os.IsNotExist(statErr) {
+			t.Errorf("seam1 失败时 forge 自有资产目录仍须被删除，stat err = %v", statErr)
+		}
+	})
+
+	t.Run("clean env no-op", func(t *testing.T) {
+		wb := t.TempDir()
+		t.Setenv("WORKBUDDY_CONFIG_DIR", wb)
+		t.Setenv("FORGE_DATA_HOME", t.TempDir())
+		changed, err := StripCodeBuddyHooks()
+		if err != nil || changed {
+			t.Fatalf("clean strip = (%v, %v)，want (false, nil)", changed, err)
+		}
+	})
+}

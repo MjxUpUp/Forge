@@ -39,7 +39,14 @@ func readReleaseVersion(t *testing.T) string {
 	return pkg.Version
 }
 
-const kimiPluginDescription = "Forge loop-engineering quality gates: task-tracked source changes, assertion guards, file-sentinel quarantine, and review-gated completion for AI coding agents."
+// kimiPluginDescription aliases the production constant: the guard test and the
+// `forge plugin kimi-manifest` CLI must render from the SAME description (the CLI rewrites
+// what this test pins — two sources would let the command rewrite the pinned bytes).
+//
+// kimiPluginDescription 取生产常量的别名：守卫测试与 `forge plugin kimi-manifest` CLI
+// 必须用同一 description 渲染（CLI 重写的正是本测试钉住的字节——两个来源会让命令
+// 改写钉住内容）。
+const kimiPluginDescription = KimiPluginDescription
 
 // updateKimiPlugin rewrites the committed manifest instead of comparing it
 // (`go test ./internal/agentbridge -run TestKimiPluginManifestMirrorsSpec -update-kimi-plugin`).
@@ -69,21 +76,31 @@ var updateKimiPlugin = flag.Bool("update-kimi-plugin", false, "rewrite .kimi-plu
 func TestKimiPluginManifestMirrorsSpec(t *testing.T) {
 	path := filepath.Join("..", "..", ".kimi-plugin", "plugin.json")
 
-	// Full spec parity: since the 2026-08-20 unfilter (hostcap honest recording made the old
-	// false-prosperity filter obsolete — non-UserPromptSubmit hits now record Delivered=false
-	// via hostcap.ContextChannel, and the usage funnel counts Delivered=true only), the
-	// manifest must contain EVERY spec hook, skill-trigger included. The explicit count check
-	// catches a hook silently dropped from BuildKimiPluginHooks; asserted before the byte
-	// compare so a roster regression surfaces with a precise count rather than a diffuse diff.
+	// Parity within kimi's supported events: since the 2026-08-20 unfilter (hostcap honest
+	// recording made the old false-prosperity filter obsolete), the manifest must contain
+	// EVERY spec hook on every event kimi supports — skill-trigger included. The 2026-08-22
+	// event whitelist (kimiSupportedEvents) additionally EXCLUDES spec events kimi's plugin
+	// schema has not been verified to accept: an unknown event flowing into the manifest can
+	// fail kimi's schema validation and silently kill ALL hooks (dsh-win32 failure class).
+	// So parity is now scoped: count only spec entries whose event passes the whitelist; the
+	// explicit count check still catches a hook silently dropped from BuildKimiPluginHooks
+	// on a SUPPORTED event; asserted before the byte compare so a roster regression surfaces
+	// with a precise count rather than a diffuse diff.
 	//
-	// 全 spec 对齐：2026-08-20 解除过滤起（hostcap 诚实记录使旧的虚假繁荣过滤失去意义——
-	// 非 UserPromptSubmit 命中经 hostcap.ContextChannel 记 Delivered=false，usage 漏斗只计
-	// Delivered=true），manifest 必须包含每一条 spec hook，skill-trigger 也不例外。显式
-	// 计数检查抓住 BuildKimiPluginHooks 静默丢 hook 的回归；置于字节比对之前，让名册回归
-	// 以精确计数而非弥散 diff 的形式暴露。
+	// kimi 支持事件内的对等：2026-08-20 解除过滤起（hostcap 诚实记录使旧的虚假繁荣
+	// 过滤失去意义），manifest 必须包含 kimi 支持的每个事件上的每一条 spec hook——
+	// skill-trigger 也不例外。2026-08-22 的事件白名单（kimiSupportedEvents）额外**排除**
+	// 未经 kimi plugin schema 验证接受的 spec 事件：未知事件流进 manifest 可能让 kimi
+	// schema 校验失败、静默杀掉全部 hook（dsh-win32 失败类）。故对等改为 scoped：只计
+	// 事件过白名单的 spec 条目；显式计数检查仍能抓住 SUPPORTED 事件上
+	// BuildKimiPluginHooks 静默丢 hook 的回归；置于字节比对之前，让名册回归以精确
+	// 计数而非弥散 diff 的形式暴露。
 	total := 0
 	specSkillTrigger := map[string]int{}
 	for ev, matchers := range hooks.ForgeHookSpec() {
+		if !kimiSupportedEvents[ev] {
+			continue
+		}
 		for _, m := range matchers {
 			for _, entry := range m.Hooks {
 				total++
@@ -95,7 +112,7 @@ func TestKimiPluginManifestMirrorsSpec(t *testing.T) {
 	}
 	manifestHooks := BuildKimiPluginHooks()
 	if len(manifestHooks) != total {
-		t.Errorf("manifest has %d hooks, want %d (full ForgeHookSpec parity — the kimi skill-trigger filter is gone); a hook may have been silently dropped from BuildKimiPluginHooks", len(manifestHooks), total)
+		t.Errorf("manifest has %d hooks, want %d (ForgeHookSpec parity on kimi-supported events — events outside kimiSupportedEvents are deliberately excluded, see its doc); a hook may have been silently dropped from BuildKimiPluginHooks", len(manifestHooks), total)
 	}
 	// Positive invariant: every spec skill-trigger binding reaches the kimi manifest, on every
 	// event the spec binds it to — this is the wiring the dashboard's honest-observability

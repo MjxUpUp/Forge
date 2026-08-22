@@ -102,12 +102,36 @@ func ForgeHookSpec() map[string][]HookMatcher {
 					{Type: "command", Command: "forge hook auto-compile"},
 					{Type: "command", Command: "forge hook workflow-test-guard"},
 					{Type: "command", Command: "forge hook skill-trigger"},
+					// #4-E mid-task test reminder: counts non-test source writes per
+					// session; at >=3 with zero test writes injects ONE factual
+					// test-discipline pointer (reset by any test write). Advisory —
+					// the task-verify test-coverage gate enforces; this only moves
+					// the fix earlier while the code is fresh.
+					//
+					// #4-E 事中测试提醒：按会话计数非测试源码写入；>=3 且 0 测试
+					// 写入时注入一次事实性 test-discipline 指引（任何测试写入即
+					// 重置）。advisory——执法在 task-verify test-coverage 门禁；
+					// 本 hook 只把修复提前到代码还热的时机。
+					{Type: "command", Command: "forge hook test-nudge"},
 				},
 			},
 			{
+				// #5 audit blind-spot fix: Bash carried no tool-track, so 27.7k Bash
+				// invocations left zero toollog rows (the adherence audit's largest
+				// data hole — behavior/hazard analysis was structurally blind on the
+				// most-used tool). tool-track records the command truncated, same as
+				// Skill/Agent treatment; file-sentinel (already on this matcher) is
+				// unaffected — hooks under one matcher run independently.
+				//
+				// #5 审计盲区修复：Bash 未挂 tool-track，27.7k 次 Bash 调用在
+				// toollog 零行（遵循度审计最大的数据窟窿——行为/hazard 分析对
+				// 使用最多的工具结构性失明）。tool-track 记截断命令，与
+				// Skill/Agent 同待遇；同 matcher 的 file-sentinel 不受影响——
+				// 一个 matcher 下的 hook 各自独立运行。
 				Matcher: "Bash",
 				Hooks: []HookEntry{
 					{Type: "command", Command: "forge hook file-sentinel"},
+					{Type: "command", Command: "forge hook tool-track"},
 					{Type: "command", Command: "forge hook skill-trigger"},
 				},
 			},
@@ -165,6 +189,57 @@ func ForgeHookSpec() map[string][]HookMatcher {
 					{Type: "command", Command: "forge hook task-verify"},
 					{Type: "command", Command: "forge hook review-stop"},
 					{Type: "command", Command: "forge hook skill-trigger"},
+				},
+			},
+		},
+		// #4-A new events (2026-08-22). Of the official 31-event roster these two
+		// close the highest-value gaps; the other un-wired events are deliberately
+		// skipped (blueprint internal/…/cc-hooks-31events-wiring-plan.md).
+		// Host coverage notes (updated 2026-08-22 #4-A follow-up, spec-research4
+		// cross-host matrix): PostToolUseFailure/SubagentStop exist on claude-code,
+		// cursor and copilot (both officially rostered — wired 2026-08-22);
+		// codex takes SubagentStop only (its roster folds tool failure into
+		// PostToolUse, no failure event); kimi/windsurf/cline translators drop
+		// unknown events by whitelist (kimi's BuildKimiPluginHooks is explicitly
+		// locked to the 6 legacy events — an unknown event flowing into its
+		// manifest would fail schema validation and silently kill ALL hooks, the
+		// dsh-win32 failure class), so wiring here is additive for capable hosts
+		// and a no-op elsewhere.
+		//
+		// #4-A 新事件（2026-08-22）。官方 31 事件名册里这两个补的是价值最高的
+		// 缺口；其余未接事件刻意跳过（蓝图 cc-hooks-31events-wiring-plan.md）。
+		// 宿主覆盖注（2026-08-22 #4-A 后续更新，spec-research4 跨宿主矩阵）：
+		// PostToolUseFailure/SubagentStop 在 claude-code、cursor、copilot 存在
+		// （后两家官方名册在列——2026-08-22 已接线）；codex 只接 SubagentStop
+		// （其名册把工具失败折叠进 PostToolUse，无失败事件）；kimi/windsurf/
+		// cline 的 translator 按白名单丢弃未知事件（kimi 的
+		// BuildKimiPluginHooks 显式锁死 6 个既有事件——未知事件流进其 manifest
+		// 会 schema 校验失败、静默杀掉全部 hook，即 dsh-win32 失败类），故此处
+		// 接线对有能力的宿主是增量、对其余宿主是 no-op。
+		"PostToolUseFailure": []HookMatcher{
+			{
+				// Bash: command failures carry the error text the
+				// compile/test heuristic needs. Write/Edit failures (rare,
+				// permission-class) carry little signal. No PowerShell token:
+				// copilot maps powershell→Bash before matching and cursor's roster
+				// has no such tool — the token was dead on every host (review
+				// NIT-4, 2026-08-22).
+				//
+				// Bash：命令失败携带编译/测试启发式所需的错误文本。不加
+				// PowerShell token：copilot 匹配前把 powershell 运行时工具映射为
+				// Bash、cursor 名册无 PowerShell 工具——该 token 全宿主死码（复审
+				// NIT-4，2026-08-22）。
+				// Write/Edit 失败（罕见、权限类）信号太少。
+				Matcher: "Bash",
+				Hooks: []HookEntry{
+					{Type: "command", Command: "forge hook failure-track"},
+				},
+			},
+		},
+		"SubagentStop": []HookMatcher{
+			{
+				Hooks: []HookEntry{
+					{Type: "command", Command: "forge hook subagent-track"},
 				},
 			},
 		},

@@ -143,6 +143,53 @@ const (
 	// 方案/目标=true，无=false——永远 Checked=true 且绝不阻断（advisory）。属
 	// observation 类，排除出证据强度分桶（见 BuildEvidenceChain）。
 	CheckPlanFirst CheckName = "plan-first"
+	// CheckToolFailure records one PostToolUseFailure observation (2026-08-22 failure-track
+	// hook, #4-A): a Bash/PowerShell command failed and the host reported the error text.
+	// deterministic (host-stdin-sourced, agent cannot forge) but an OBSERVATION, not
+	// verification — a tool failing says nothing about whether the task's own gates ran,
+	// so it must not feed evidence strength (excluded in BuildEvidenceChain). Its value is
+	// making the compile/test failure loop observable: before this, a failed `go build`
+	// inside a Bash tool left zero forge-side trace, and compile-fix-loop skill reach
+	// could not be correlated with actual failures.
+	//
+	// CheckToolFailure 记录一次 PostToolUseFailure 观察（2026-08-22 failure-track
+	// hook，#4-A）：Bash/PowerShell 命令失败、宿主上报了错误文本。deterministic
+	// （宿主 stdin 来源，agent 无法伪造）但是 OBSERVATION 而非验证——工具失败
+	// 不代表任务自身的门禁跑没跑，故不得喂给 evidence strength（BuildEvidenceChain
+	// 排除）。价值在于让编译/测试失败循环可观测：此前 Bash 工具里失败的 `go build`
+	// 在 forge 侧零痕迹，compile-fix-loop skill 的触达无法与真实失败关联。
+	CheckToolFailure CheckName = "tool-failure"
+	// CheckSubagentStop records one SubagentStop observation (2026-08-22 subagent-track
+	// hook, #4-A): a sub-agent finished, carrying agent_id/agent_type and a delivery
+	// summary. v1 is observe-only (no blocking — an empty-delivery block has more false
+	// positives than value). deterministic (host-stdin-sourced) but an OBSERVATION —
+	// excluded from evidence strength like the others. Its value is closing the
+	// attribution gap: sessions.jsonl missed agent_type for ~53% of sessions (2026-08
+	// attribution audit) because sub-agent activity had no forge-side record at all.
+	//
+	// CheckSubagentStop 记录一次 SubagentStop 观察（2026-08-22 subagent-track
+	// hook，#4-A）：子 agent 结束，携带 agent_id/agent_type 与交付摘要。v1 仅观察
+	// 不阻断（空交付阻断的假阳性大于收益）。deterministic（宿主 stdin 来源）但属
+	// OBSERVATION——与其他条目一样排除出 evidence strength。价值在补归因缺口：
+	// 子 agent 活动此前在 forge 侧零记录，sessions.jsonl 约 53% 会话缺 agent_type
+	// （2026-08 归因审计）。
+	CheckSubagentStop CheckName = "subagent-stop"
+	// CheckTestNudge records one mid-task test reminder fired by the test-nudge hook
+	// (2026-08-22, #4-E): the session counter saw >=3 non-test source writes with zero
+	// paired test writes since the last reset. It is the in-flight companion of the
+	// task-verify test-coverage gate (which fires only at verify time, often hours
+	// after the code was written); the nudge catches the drift while the agent can
+	// still fix it cheaply. deterministic (counter is hook-side, agent cannot forge)
+	// but an OBSERVATION of process drift, not any verification — excluded from
+	// evidence strength like the others.
+	//
+	// CheckTestNudge 记录 test-nudge hook 发出的一次事中测试提醒（2026-08-22，
+	// #4-E）：会话计数器看到自上次重置以来 >=3 次非测试源码写入且 0 次配对测试
+	// 写入。它是 task-verify test-coverage 门禁的事中伴随（门禁只在 verify 时刻
+	// 触发，往往在代码写完数小时后）；nudge 在 agent 还能便宜修复的时机抓住漂移。
+	// deterministic（计数器在 hook 侧，agent 无法伪造）但属过程漂移的 OBSERVATION
+	// 而非任何验证——与其他条目一样排除出 evidence strength。
+	CheckTestNudge CheckName = "test-nudge"
 )
 
 // EvidenceSource marks the source of a checklog evidence entry, distinguishing deterministic (hook/external

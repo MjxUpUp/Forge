@@ -1,12 +1,14 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/MjxUpUp/Forge/internal/agentbridge"
 	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/spf13/cobra"
 )
@@ -428,5 +430,163 @@ func writeClaudeSettingsFixture(t *testing.T, dir string) {
 	}
 	if err := os.WriteFile(path, append(data, '\n'), 0644); err != nil {
 		t.Fatalf("write settings.local.json: %v", err)
+	}
+}
+
+// TestPluginKimiManifestCmd pins the CLI regen outlet for the committed kimi manifest
+// (2026-08 audit follow-up: the Build trio had no production caller). Three contracts:
+// (a) --write rewrites a drifted/absent .kimi-plugin/plugin.json from npm/package.json's
+// version + ForgeHookSpec + the shared description; (b) a second --write run is an in-sync
+// no-op (byte-stable, no rewrite churn); (c) default run is report-only — prints the
+// manifest, never touches the file, exit 0 on drift too (enforcement belongs to the guard
+// test). Runs in a temp forge repo (npm/package.json + cwd) so the real repo is untouched.
+//
+// TestPluginKimiManifestCmd 钉死已提交 kimi manifest 的 CLI 再生成出口（2026-08 审计
+// 后续项：Build 三件套此前没有生产调用方）。三份契约：(a) --write 把漂移/缺失的
+// .kimi-plugin/plugin.json 从 npm/package.json 版本 + ForgeHookSpec + 共享 description
+// 重写；(b) 二次 --write 是 in-sync no-op（字节稳定，不反复改写）；(c) 默认运行只
+// 报告——打印 manifest、不碰文件、漂移也退出 0（执法归守卫测试）。在临时 forge 仓库
+// （npm/package.json + cwd）里跑，真实仓库零接触。
+func TestPluginKimiManifestCmd(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "npm"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "npm", "package.json"), []byte(`{"name":"@agent_forge/forge","version":"9.9.9"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Seed go.mod: the --write guard (review L-1) requires a second forge-repo marker
+	// beyond npm/package.json — the real forge repo root always has go.mod. Without it
+	// contract (a) would trip the guard instead of exercising the write path.
+	//
+	// 补种 go.mod：--write 守卫（评审 L-1）要求 npm/package.json 之外的第二 forge
+	// 仓库标记——真实 forge 仓库根必有 go.mod。没有它，契约 (a) 会撞守卫而非走到写路径。
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module github.com/MjxUpUp/Forge\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+
+	manifestPath := filepath.Join(root, ".kimi-plugin", "plugin.json")
+
+	// (a) --write on absent file: creates it, version from npm/package.json.
+	pluginKimiManifestCmd.SetOut(os.Stderr)
+	if err := pluginKimiManifestCmd.Flags().Set("write", "true"); err != nil {
+		t.Fatal(err)
+	}
+	if err := pluginKimiManifestCmd.RunE(pluginKimiManifestCmd, nil); err != nil {
+		t.Fatalf(`--write RunE: %v`, err)
+	}
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf(`manifest 应被创建: %v`, err)
+	}
+	var manifest struct {
+		Name        string                       `json:"name"`
+		Version     string                       `json:"version"`
+		Description string                       `json:"description"`
+		Hooks       []agentbridge.KimiPluginHook `json:"hooks"`
+	}
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		t.Fatalf(`manifest 应为合法 JSON: %v`, err)
+	}
+	if manifest.Version != "9.9.9" {
+		t.Errorf(`version = %q, want 9.9.9（npm/package.json 单一真相源）`, manifest.Version)
+	}
+	if manifest.Name != "forge" || manifest.Description != agentbridge.KimiPluginDescription {
+		t.Errorf(`name/description 须与共享常量渲染一致, got %q / %q`, manifest.Name, manifest.Description)
+	}
+	specHooks := agentbridge.BuildKimiPluginHooks()
+	if len(manifest.Hooks) != len(specHooks) {
+		t.Errorf(`hooks 数 = %d, want %d（ForgeHookSpec 派生）`, len(manifest.Hooks), len(specHooks))
+	}
+
+	// (b) second --write on the just-written file: in-sync no-op, bytes unchanged.
+	before := string(data)
+	if err := pluginKimiManifestCmd.RunE(pluginKimiManifestCmd, nil); err != nil {
+		t.Fatalf(`二次 --write RunE: %v`, err)
+	}
+	after, _ := os.ReadFile(manifestPath)
+	if string(after) != before {
+		t.Errorf(`in-sync 时不得改写字节（幂等契约被破坏）`)
+	}
+
+	// (c) default (report-only): file untouched on drift, exit 0.
+	if err := os.WriteFile(manifestPath, []byte(`{"version":"0.0.1"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := pluginKimiManifestCmd.Flags().Set("write", "false"); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	pluginKimiManifestCmd.SetOut(&buf)
+	if err := pluginKimiManifestCmd.RunE(pluginKimiManifestCmd, nil); err != nil {
+		t.Fatalf(`report-only RunE（漂移也应退出 0）: %v`, err)
+	}
+	if !strings.Contains(buf.String(), `"version": "9.9.9"`) {
+		t.Errorf(`默认运行应打印渲染的 manifest, got: %s`, buf.String())
+	}
+	drifted, _ := os.ReadFile(manifestPath)
+	if string(drifted) != `{"version":"0.0.1"}` {
+		t.Errorf(`report-only 不得改写文件, got: %s`, drifted)
+	}
+}
+
+// TestPluginKimiManifestCmd_WriteGuard pins the L-1 --write rejection and the L-2
+// non-NotExist read failure — both error paths were added with zero coverage (review
+// finding, 2026-08-22): (a) a root with npm/package.json but NO go.mod and NO existing
+// .kimi-plugin/plugin.json must be refused (the monorepo miswrite guard); (b) a
+// manifest path that fails to read for a non-NotExist reason (a DIRECTORY at the
+// manifest path — Windows read of a dir is ERROR_ACCESS_DENIED) must surface as an
+// explicit error, never be conflated with drift. Report-only on such a root stays
+// permissive (contract c of the main test).
+//
+// TestPluginKimiManifestCmd_WriteGuard 钉 L-1 的 --write 拒绝与 L-2 的非 NotExist
+// 读取失败——两条错误路径落地时零覆盖（复审发现，2026-08-22）：(a) 有
+// npm/package.json 但无 go.mod 且无既有 .kimi-plugin/plugin.json 的根必须被拒
+// （monorepo 误写守卫）；(b) manifest 路径因非 NotExist 原因读失败（把 manifest
+// 路径做成目录——Windows 读目录报 ERROR_ACCESS_DENIED）必须显式报错，绝不与
+// 漂移混同。这种根上的 report-only 保持宽容（主测试的契约 c）。
+func TestPluginKimiManifestCmd_WriteGuard(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "npm"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "npm", "package.json"), []byte(`{"version":"9.9.9"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Deliberately NO go.mod — this is the "user monorepo with an npm/ subdir" shape.
+	t.Chdir(root)
+	pluginKimiManifestCmd.SetOut(os.Stderr)
+
+	// (a) --write with no forge-repo markers: refused with guidance, nothing written.
+	if err := pluginKimiManifestCmd.Flags().Set("write", "true"); err != nil {
+		t.Fatal(err)
+	}
+	err := pluginKimiManifestCmd.RunE(pluginKimiManifestCmd, nil)
+	if err == nil {
+		t.Fatal(`无 go.mod 且无既有 manifest 的根必须拒绝 --write（防误写非 forge 仓库）`)
+	}
+	if !strings.Contains(err.Error(), `拒绝 --write`) {
+		t.Errorf(`拒绝文案须指明是 --write 守卫，got: %v`, err)
+	}
+	if _, statErr := os.Stat(filepath.Join(root, ".kimi-plugin")); !os.IsNotExist(statErr) {
+		t.Errorf(`被拒时不得创建 .kimi-plugin 目录，stat err = %v`, statErr)
+	}
+
+	// (b) manifest path unreadable for a non-NotExist reason: explicit error naming
+	// the read, never "已提交文件漂移". A directory at the path yields
+	// ERROR_ACCESS_DENIED on Windows / EISDIR-adjacent on Unix — both non-NotExist.
+	if err := os.MkdirAll(filepath.Join(root, ".kimi-plugin", "plugin.json"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := pluginKimiManifestCmd.Flags().Set("write", "false"); err != nil {
+		t.Fatal(err)
+	}
+	runErr := pluginKimiManifestCmd.RunE(pluginKimiManifestCmd, nil)
+	if runErr == nil {
+		t.Fatal(`非 NotExist 读取失败必须显式报错（不得伪装成漂移/健康）`)
+	}
+	if !strings.Contains(runErr.Error(), `read committed manifest`) {
+		t.Errorf(`报错须指明是已提交 manifest 的读取失败，got: %v`, runErr)
 	}
 }

@@ -37,6 +37,62 @@ import (
 //
 // 中文字符串 raw string（反引号）规避 Windows 输入引号腐蚀。
 
+// userLevelStripRoster is the 2c roster: agent name → user-level hook strip function.
+// Hoisted to a package-level var (review M-1) so TestUninstall_StripRosterPinned can pin
+// its key set — each host is only guarded by its own TestUninstall_StripsXxxHooks, so a
+// host missing from THIS map (the codebuddy gap, 2026-08-21) would silently survive
+// uninstall. Adding a host with a Strip function: add it here AND to the pin test —
+// the test forces the second touch.
+//
+// userLevelStripRoster 是 2c 名册：agent 名 → 用户级 hook 剥除函数。提升为包级变量
+// （评审 M-1）让 TestUninstall_StripRosterPinned 钉住 key 集合——每个 host 只被自己
+// 的 TestUninstall_StripsXxxHooks 守卫，若 host 在本名册缺席（codebuddy 缺口，
+// 2026-08-21）会静默躲过卸载。新增带 Strip 函数的 host：加这里 AND 加进钉扎测试
+// ——测试逼你完成第二处。
+var userLevelStripRoster = map[string]func() (bool, error){
+	`codex`:    agentbridge.StripCodexHooksUserLevel,
+	`cursor`:   agentbridge.StripCursorHooksUserLevel,
+	`opencode`: agentbridge.StripOpenCodeUserPlugin,
+	`windsurf`: agentbridge.StripWindsurfHooksUserLevel,
+	`reasonix`: agentbridge.StripReasonixHooksUserLevel,
+	`cline`:    agentbridge.StripClineHooks,
+	// codebuddy 接线是三件套（marketplace 条目 + enabledPlugins 键 + forge 自有
+	// 资产目录），StripCodeBuddyHooks 一次反转全部——此前缺席，卸载后 WorkBuddy
+	// 仍持有指向已删二进制的目录指针。
+	`codebuddy`: agentbridge.StripCodeBuddyHooks,
+}
+
+// runUserLevelStrips executes the 2c roster (agent name → user-level strip function),
+// printing one line per agent: full success (已清除), partial failure (已部分清除 +
+// warning — review L-4: changed=true is durable on-disk progress, report it even on
+// error), or a failed strip with nothing removed (warning only). Best-effort: a failing
+// agent never aborts the loop — the remaining hosts still get cleaned. Hoisted out of
+// RunE so the L-4 partial-failure branch is testable with an injected fake roster.
+//
+// runUserLevelStrips 执行 2c 名册（agent 名 → 用户级剥除函数），每个 agent 打一行：
+// 完全成功（已清除）、部分失败（已部分清除 + 警告——评审 L-4：changed=true 是已落盘
+// 的持久进展，报错时也报它）、或零进展的失败（仅警告）。best-effort：单个 agent 失败
+// 绝不中止循环——其余 host 仍被清理。从 RunE 提出使 L-4 部分失败分支可用注入的
+// fake 名册测试。
+func runUserLevelStrips(roster map[string]func() (bool, error)) {
+	for name, strip := range roster {
+		if stripped, err := strip(); err != nil {
+			// Partial-failure honesty (review L-4): a strip may remove seam 1 and then fail
+			// on seam 2 — changed=true is durable on-disk progress, so report it even on
+			// error, then the warning. Re-running is idempotent and finishes the rest.
+			//
+			// 部分失败诚实性（评审 L-4）：strip 可能删完第 1 处后在第 2 处失败——
+			// changed=true 是已落盘的持久进展，报错时也先报它再给警告。重跑幂等，补完其余。
+			if stripped {
+				fmt.Printf(`已部分清除 %s 用户级配置中的 forge hooks`+"\n", name)
+			}
+			fmt.Fprintf(os.Stderr, `警告：清理 %s 用户级 hooks 失败：%v`+"\n", name, err)
+		} else if stripped {
+			fmt.Printf(`已清除 %s 用户级配置中的 forge hooks`+"\n", name)
+		}
+	}
+}
+
 // uninstallClearMarkers removes the init-suggest marker directory (<GlobalHome>/.init-suggested/).
 // It uses forgedata.GlobalHome() (FORGE_DATA_HOME first, otherwise ~/.forge) — refactor-data-home
 // commit E is the single source of truth, sharing the same marker store as the suggest command +
@@ -117,20 +173,7 @@ var uninstallCmd = &cobra.Command{
 		} else if stripped {
 			fmt.Println(`已清除 claude 用户级 settings 中的 forge hooks`)
 		}
-		for name, strip := range map[string]func() (bool, error){
-			`codex`:    agentbridge.StripCodexHooksUserLevel,
-			`cursor`:   agentbridge.StripCursorHooksUserLevel,
-			`opencode`: agentbridge.StripOpenCodeUserPlugin,
-			`windsurf`: agentbridge.StripWindsurfHooksUserLevel,
-			`reasonix`: agentbridge.StripReasonixHooksUserLevel,
-			`cline`:    agentbridge.StripClineHooks,
-		} {
-			if stripped, err := strip(); err != nil {
-				fmt.Fprintf(os.Stderr, `警告：清理 %s 用户级 hooks 失败：%v`+"\n", name, err)
-			} else if stripped {
-				fmt.Printf(`已清除 %s 用户级配置中的 forge hooks`+"\n", name)
-			}
-		}
+		runUserLevelStrips(userLevelStripRoster)
 
 		// 2d. strip the forge instruction sections from user-level CLAUDE.md / AGENTS.md /
 		//     windsurf global_rules.md (preserving all user content outside the markers).
