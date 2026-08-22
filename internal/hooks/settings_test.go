@@ -1829,13 +1829,13 @@ func GenerateSettings(projectDir string) error {
 // TestForgeHookSpecObservationHooks pins the #4-A wiring (2026-08-22): the three
 // observation hooks ride the canonical spec — test-nudge on PostToolUse Write|Edit,
 // tool-track additionally on PostToolUse Bash, failure-track on PostToolUseFailure
-// (Bash|PowerShell), subagent-track on SubagentStop. Every host derives its roster
+// (Bash), subagent-track on SubagentStop. Every host derives its roster
 // from this spec (plugin pack / kimi / dsh mirroring) — a dropped line here silently
 // unwires all hosts at once.
 //
 // TestForgeHookSpecObservationHooks 钉住 #4-A 接线（2026-08-22）：三个观察 hook
 // 挂在规范名册上——test-nudge 在 PostToolUse Write|Edit、tool-track 追加到
-// PostToolUse Bash、failure-track 在 PostToolUseFailure（Bash|PowerShell）、
+// PostToolUse Bash、failure-track 在 PostToolUseFailure（Bash）、
 // subagent-track 在 SubagentStop。各宿主名册都从这份 spec 派生（plugin pack /
 // kimi / dsh 镜像）——这里掉一行，所有宿主同时静默失线。
 func TestForgeHookSpecObservationHooks(t *testing.T) {
@@ -1859,10 +1859,36 @@ func TestForgeHookSpecObservationHooks(t *testing.T) {
 	if !has("PostToolUse", "Bash", "tool-track") {
 		t.Error("PostToolUse Bash group missing `forge hook tool-track` (27.7k Bash calls had zero toollog rows)")
 	}
-	if !has("PostToolUseFailure", "Bash|PowerShell", "failure-track") {
-		t.Error("PostToolUseFailure Bash|PowerShell group missing `forge hook failure-track`")
+	if !has("PostToolUseFailure", "Bash", "failure-track") {
+		t.Error("PostToolUseFailure Bash group missing `forge hook failure-track`")
 	}
 	if !has("SubagentStop", "", "subagent-track") {
 		t.Error("SubagentStop group missing `forge hook subagent-track`")
+	}
+	// Observation-only invariant (#4-A follow-up 2026-08-22): the two observation
+	// events carry ONLY observation hooks — no gate/enforcement hook may piggyback
+	// on them. PostToolUseFailure cannot un-fail a command and SubagentStop blocks
+	// have unworkable false positives (hook_track.go design note), so a blocking
+	// hook landing here would be protocol noise on every wired host. The updated
+	// host-coverage comment in ForgeHookSpec relies on this staying true.
+	//
+	// 仅观察不变量（#4-A 后续 2026-08-22）：两个观察事件只挂观察 hook——任何
+	// 门禁/执法 hook 不得搭车。PostToolUseFailure 救不回已失败的命令、
+	// SubagentStop 阻断假阳性不可行（hook_track.go 设计注），执法 hook 落在这里
+	// 对每个接线宿主都是协议噪声。ForgeHookSpec 更新后的宿主覆盖注释依赖本
+	// 不变量成立。
+	observationOnly := map[string]map[string]bool{
+		"PostToolUseFailure": {"failure-track": true},
+		"SubagentStop":       {"subagent-track": true},
+	}
+	for event, allowed := range observationOnly {
+		for _, m := range spec[event] {
+			for _, h := range m.Hooks {
+				hook := strings.TrimPrefix(h.Command, "forge hook ")
+				if !allowed[hook] {
+					t.Errorf("%s must stay observation-only: found enforcement hook %q (allowed: observation hooks only)", event, h.Command)
+				}
+			}
+		}
 	}
 }

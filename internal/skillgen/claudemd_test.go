@@ -76,6 +76,45 @@ func TestClaudeMDCommonErrorsIncludesTestCoverage(t *testing.T) {
 	}
 }
 
+// TestClaudeMDFailureTrackMatcherTracksSpec is the docs-consistency guard for the
+// failure-track line's matcher text: the generated docs must quote the LIVE
+// ForgeHookSpec matcher, not a hardcoded string. Root cause this guards: NIT-4
+// (2026-08-22 review) — the spec narrowed Bash|PowerShell→Bash and the docs line
+// hardcodes the matcher, a shape that silently rots on every future spec change.
+// Reading the matcher from the spec makes that drift a test failure instead.
+//
+// TestClaudeMDFailureTrackMatcherTracksSpec 是 failure-track 行 matcher 文案的一
+// 致性守卫：生成的文档必须引用**活的** ForgeHookSpec matcher，而非钉死的字符串。
+// 守护的根因：NIT-4（2026-08-22 复审）——spec 把 Bash|PowerShell 收窄为 Bash，而
+// 文档行硬编码 matcher，这种形态在每次未来 spec 变更时都会静默腐烂。从 spec 读
+// matcher 让该 drift 变成测试失败而非静默出仓。
+func TestClaudeMDFailureTrackMatcherTracksSpec(t *testing.T) {
+	var matcher string
+	for _, g := range hooks.ForgeHookSpec()["PostToolUseFailure"] {
+		if g.Matcher != "" {
+			matcher = g.Matcher
+			break
+		}
+	}
+	if matcher == "" {
+		t.Fatal("ForgeHookSpec PostToolUseFailure matcher unexpectedly empty — spec shape changed?")
+	}
+	for _, section := range []struct{ label, body string }{
+		{"CLAUDE.md", buildForgeSection(true)},
+		{"AGENTS.md", buildForgeSection(false)},
+	} {
+		// Anchored on the full-width paren form the docs line uses
+		// （PostToolUseFailure <matcher>）— a bare substring would pass on stale
+		// prefixes (e.g. "Bash" inside "Bash|PowerShell").
+		//
+		// 锚定文档行使用的全角括号形态（PostToolUseFailure <matcher>）——裸子串
+		// 会让过期前缀假通过（如 "Bash|PowerShell" 里的 "Bash"）。
+		if want := "（PostToolUseFailure " + matcher + "）"; !strings.Contains(section.body, want) {
+			t.Errorf("%s failure-track line must quote the live spec matcher (want %q in section) — docs-vs-spec drift", section.label, want)
+		}
+	}
+}
+
 // TestClaudeMDCommonErrorsIncludesRetention guards the common-errors table
 // documents log retention. task start auto-prunes over-age checklog/toollog
 // archives + completed task files per FORGE_LOG_RETENTION_DAYS; agents/users

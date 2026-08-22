@@ -148,6 +148,22 @@ type HookInput struct {
 	// 事件获得 session-scoped 键而非全挤到 legacy 全局文件。宿主无关：任何发
 	// conversation_id 的 Claude 形宿主都受益。
 	ConversationID string `json:"conversation_id,omitempty"`
+	// WorkspaceRoots is cursor's common-schema project locator (docs: array of
+	// workspace folders, always present). Cursor's payload has NO cwd field and
+	// its user-level hooks run from ~/.cursor — without this fill, findProjectRoot
+	// resolves against ~/.cursor, fails, and every project-scoped hook silently
+	// no-ops (review MAJOR-1, 2026-08-22). Read as a fill-empty for Cwd (first
+	// root) in the payload-fallback block, BEFORE adoptPayloadCwd — same pattern
+	// as cline (whose normalizer maps workspaceRoots[0], the camelCase variant,
+	// for exactly this reason).
+	//
+	// WorkspaceRoots 是 cursor 通用 schema 的项目定位字段（文档：workspace 文件夹
+	// 数组，恒在场）。cursor 的 payload **没有** cwd 字段、用户级 hook 从
+	// ~/.cursor 运行——不填这一笔，findProjectRoot 按 ~/.cursor 解析必败、所有
+	// 项目级 hook 静默空转（复审 MAJOR-1，2026-08-22）。在 payload 回落块里作为
+	// Cwd 的填空（取首个 root）、位于 adoptPayloadCwd **之前**——与 cline 同模式
+	// （其 normalizer 因同理映射 workspaceRoots[0]，camelCase 变体）。
+	WorkspaceRoots []string `json:"workspace_roots,omitempty"`
 	// ForgeAgent lets a host that constructs Claude-shape stdin in-process
 	// declare its identity WITHOUT touching the hook command string — opencode's
 	// TS plugin sets forge_agent:"opencode" in buildPayload (its wiring test
@@ -169,6 +185,26 @@ type HookInput struct {
 	// "Exit code N" + stderr）——供 failure-track hook 的编译/测试失败启发式与
 	// checklog 观察记录消费。
 	Error string `json:"error,omitempty"`
+	// ErrorMessage is cursor's postToolUseFailure failure text (official docs:
+	// "Description of the failure", sent ALONGSIDE the failure_type enum —
+	// Claude/copilot carry the text as the top-level error instead). First in
+	// Error's fill-empty chain below: real text always beats the enum class.
+	//
+	// ErrorMessage 是 cursor postToolUseFailure 的失败文本（官方文档："Description
+	// of the failure"，与 failure_type 枚举**同发**——Claude/copilot 则把文本放在
+	// 顶层 error）。是下方 Error 填空链的第一优先：真实文本恒胜过枚举分类。
+	ErrorMessage string `json:"error_message,omitempty"`
+	// FailureType is cursor's postToolUseFailure classification enum (official
+	// docs: error/timeout/permission_denied; spec-research4 cross-host matrix).
+	// Last in Error's fill-empty chain — a defensive fallback for payloads that
+	// ship only the class. Enum values match no compile marker, so a class-only
+	// payload records the class without firing a false nudge.
+	//
+	// FailureType 是 cursor postToolUseFailure 的分类枚举（官方文档：error/
+	// timeout/permission_denied；spec-research4 跨宿主矩阵）。Error 填空链的最后
+	// 兜底——对只带分类的 payload 的防御性回落。枚举值不命中任何编译 marker，
+	// 仅分类的 payload 记录分类而不会误发提示。
+	FailureType string `json:"failure_type,omitempty"`
 	// AgentID/AgentTypeHook/LastAssistantMessage are SubagentStop fields (official
 	// Claude Code hooks schema): the finishing sub-agent's identity and final message.
 	// Consumed by subagent-track for attribution — sessions.jsonl missed agent_type
@@ -184,6 +220,21 @@ type HookInput struct {
 	AgentID              string `json:"agent_id,omitempty"`
 	AgentTypeHook        string `json:"agent_type,omitempty"`
 	LastAssistantMessage string `json:"last_assistant_message,omitempty"`
+	// SubagentType/SubagentStatus/SubagentResult are cursor's subagentStop field
+	// names (official docs: subagent_type, status "completed"/"error", result) —
+	// cursor spells what CC/copilot call agent_type/last_assistant_message
+	// differently. Fill-empty in the payload-fallback block, so cursor entries get
+	// real attribution instead of a permanent agent_type=unknown; status rides in
+	// subagent-track's Meta (completed vs error is funnel signal).
+	//
+	// SubagentType/SubagentStatus/SubagentResult 是 cursor subagentStop 的字段名
+	// （官方文档：subagent_type、status "completed"/"error"、result）——cursor 对
+	// CC/copilot 的 agent_type/last_assistant_message 换了拼法。在 payload 回落块
+	// 填空，让 cursor 条目拿到真实归因而非永久 agent_type=unknown；status 随
+	// subagent-track 记进 Meta（completed 与 error 之分是漏斗信号）。
+	SubagentType   string `json:"subagent_type,omitempty"`
+	SubagentStatus string `json:"status,omitempty"`
+	SubagentResult string `json:"result,omitempty"`
 }
 
 // toolInputFields holds the fields extracted from the tool_input JSON.
@@ -445,23 +496,49 @@ func runHook(cmd *cobra.Command, args []string) error {
 		normalizeAgentStdin(agent, stdinData, &hookInput)
 	}
 
-	// Payload-borne identity fallbacks (need the parsed stdin, so they run after
-	// normalize): cursor's conversation_id fills an empty SessionID (its tool/
-	// Stop/prompt events carry no session_id); opencode's forge_agent fills an
-	// empty agent (its TS plugin declares identity in the payload — see
-	// HookInput.ForgeAgent). Both are fill-empty: an explicit --agent or a real
-	// session_id always wins.
+	// Payload-borne identity/dialect fallbacks (need the parsed stdin, so they run
+	// after normalize): cursor's conversation_id fills an empty SessionID (its
+	// tool/Stop/prompt events carry no session_id); opencode's forge_agent fills
+	// an empty agent (its TS plugin declares identity in the payload — see
+	// HookInput.ForgeAgent). All fill-empty: an explicit --agent, a real
+	// session_id, or a real error string always wins. cursor's schema gaps fill
+	// the same way (review 2026-08-22): workspace_roots[0] fills an empty Cwd
+	// (cursor's payload has no cwd and its user-level hooks run from ~/.cursor —
+	// without the fill, findProjectRoot fails and every project-scoped hook
+	// silently no-ops); error_message then failure_type fill an empty Error (text
+	// first, enum last); subagent_type/subagent_result fill empty SubagentStop
+	// attribution fields (cursor's spellings of agent_type/last_assistant_message).
 	//
-	// 由 payload 携带的身份回落（需要已解析的 stdin，故在 normalize 之后运行）：
-	// cursor 的 conversation_id 填空的 SessionID（其工具/Stop/prompt 事件不带
-	// session_id）；opencode 的 forge_agent 填空的 agent（其 TS plugin 在
-	// payload 里声明身份——见 HookInput.ForgeAgent）。两者都是填空：显式
-	// --agent 或真实 session_id 恒优先。
+	// 由 payload 携带的身份/方言回落（需要已解析的 stdin，故在 normalize 之后
+	// 运行）：cursor 的 conversation_id 填空的 SessionID（其工具/Stop/prompt 事件
+	// 不带 session_id）；opencode 的 forge_agent 填空的 agent（其 TS plugin 在
+	// payload 里声明身份——见 HookInput.ForgeAgent）。全部填空：显式 --agent、
+	// 真实 session_id、真实 error 文本恒优先。cursor 的 schema 缺口以同模式补
+	// （复审 2026-08-22）：workspace_roots[0] 填空的 Cwd（cursor payload 无
+	// cwd、用户级 hook 从 ~/.cursor 运行——不填则 findProjectRoot 失败、所有
+	// 项目级 hook 静默空转）；error_message 再 failure_type 填空的 Error（文本
+	// 优先，枚举兜底）；subagent_type/subagent_result 填空的 SubagentStop 归因
+	// 字段（cursor 对 agent_type/last_assistant_message 的拼法）。
 	if hookInput.SessionID == "" {
 		hookInput.SessionID = hookInput.ConversationID
 	}
 	if agent == "" {
 		agent = hookInput.ForgeAgent
+	}
+	if hookInput.Cwd == "" && len(hookInput.WorkspaceRoots) > 0 {
+		hookInput.Cwd = hookInput.WorkspaceRoots[0]
+	}
+	if hookInput.Error == "" && hookInput.ErrorMessage != "" {
+		hookInput.Error = hookInput.ErrorMessage
+	}
+	if hookInput.Error == "" {
+		hookInput.Error = hookInput.FailureType
+	}
+	if hookInput.AgentTypeHook == "" {
+		hookInput.AgentTypeHook = hookInput.SubagentType
+	}
+	if hookInput.LastAssistantMessage == "" {
+		hookInput.LastAssistantMessage = hookInput.SubagentResult
 	}
 
 	// Adopt the payload's cwd before resolving the project root. kimi plugin hooks are
