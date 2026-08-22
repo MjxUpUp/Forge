@@ -16,8 +16,16 @@
         "command": "forge hook skill-trigger --agent reasonix"
       },
       {
+        "match": "write_file|edit_file|multi_edit|move_file",
+        "command": "forge hook test-nudge --agent reasonix"
+      },
+      {
         "match": "bash",
         "command": "forge hook file-sentinel --agent reasonix"
+      },
+      {
+        "match": "bash",
+        "command": "forge hook tool-track --agent reasonix"
       },
       {
         "match": "bash",

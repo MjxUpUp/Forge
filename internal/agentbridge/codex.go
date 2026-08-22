@@ -291,8 +291,9 @@ func StripCodexHooksUserLevel() (bool, error) {
 // PreToolUse、PermissionRequest、PostToolUse、PreCompact、PostCompact、UserPromptSubmit、
 // SubagentStart、SubagentStop、Stop。只接有 ForgeHookSpec 对应物的 event——
 // PreToolUse/PostToolUse/Stop，外加 SessionStart 组（skill-scan/mcp-scan/init-suggest/
-// task-resume）、UserPromptSubmit 组（resume-reinject）与 PostCompact（compact-resume）；
-// SessionEnd/PermissionRequest/PreCompact/SubagentStart/SubagentStop 无 spec 对应物，不接。
+// task-resume）、UserPromptSubmit 组（resume-reinject）、PostCompact（compact-resume）
+// 与 SubagentStop（subagent-track，2026-08-22 #4-A）；
+// SessionEnd/PermissionRequest/PreCompact/SubagentStart 无 spec 对应物，不接。
 // 无手工副本 → 无 drift。TestCodexWiringMirrorsClaudeSettings 守卫命令集对等；
 // TestCodexHooks_OnlyLegalCodexEvents 钉死 event 名白名单。
 func buildCodexHooks() map[string]any {
@@ -311,7 +312,16 @@ func buildCodexHooks() map[string]any {
 		// PermissionRequest/PreCompact/Subagent* 对应物，故这些 codex 侧 event 永不
 		// 出现；未来 spec 新增的不在此表的 event 一律跳过，不静默接进不支持的 event。
 		switch event {
-		case "PreToolUse", "PostToolUse", "Stop", "SessionStart", "UserPromptSubmit", "PostCompact":
+		// SubagentStop added 2026-08-22 (#4-A): codex's official roster carries it
+		// and forge now wires subagent-track on it (claude-side SubagentStop spec
+		// entry). PostToolUseFailure is NOT here — no verified codex analogue;
+		// skipped by the whitelist rather than wired into an unsupported event.
+		//
+		// SubagentStop 于 2026-08-22 加入（#4-A）：codex 官方名册有它，且 forge
+		// 已在其上接线 subagent-track（claude 侧 SubagentStop spec 条目）。
+		// PostToolUseFailure 不在此——无已验证的 codex 对应物；白名单跳过，
+		// 不接进不支持的 event。
+		case "PreToolUse", "PostToolUse", "Stop", "SessionStart", "UserPromptSubmit", "PostCompact", "SubagentStop":
 			codex[event] = codexMatchers(matchers)
 		}
 	}

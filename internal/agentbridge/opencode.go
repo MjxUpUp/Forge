@@ -201,9 +201,11 @@ const PRE_HOOKS: Record<string, string[]> = {
   Bash: ["forge hook bash-guard", "forge hook hazard-guard"],
 };
 const POST_HOOKS: Record<string, string[]> = {
-  Write: ["forge hook auto-compile", "forge hook workflow-test-guard"],
-  Edit: ["forge hook auto-compile", "forge hook workflow-test-guard"],
-  Bash: ["forge hook file-sentinel"],
+  // test-nudge: mid-task test reminder (#4-E, advisory); tool-track on Bash: the
+  // adherence audit's largest toollog hole (27.7k Bash calls, zero rows).
+  Write: ["forge hook auto-compile", "forge hook workflow-test-guard", "forge hook test-nudge"],
+  Edit: ["forge hook auto-compile", "forge hook workflow-test-guard", "forge hook test-nudge"],
+  Bash: ["forge hook file-sentinel", "forge hook tool-track"],
   Read: ["forge hook tool-track"],
 };
 
