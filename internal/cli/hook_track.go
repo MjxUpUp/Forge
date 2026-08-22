@@ -1,7 +1,7 @@
 // Package cli hook_track.go — three Go-internal observation hooks wired to
 // previously-uncovered Claude Code hook events (#4-A, 2026-08-22):
 //
-//	failure-track  → PostToolUseFailure (matcher Bash|PowerShell)
+//	failure-track  → PostToolUseFailure (matcher Bash)
 //	subagent-track → SubagentStop
 //	test-nudge     → PostToolUse Write|Edit (mid-task test reminder, #4-E)
 //
@@ -57,7 +57,7 @@ var compileFailureMarkers = []string{
 	"--- fail", "fail\t", "failed tests", "test failed", "tests failed",
 }
 
-// runFailureTrackHook handles PostToolUseFailure (matcher Bash|PowerShell): a
+// runFailureTrackHook handles PostToolUseFailure (matcher Bash): a
 // command failed and the host reported the error text (HookInput.Error). Records
 // a CheckToolFailure observation and, when the error matches the compile/test
 // heuristic, injects a FACTUAL pointer to the compile-fix-loop skill via the
@@ -67,7 +67,7 @@ var compileFailureMarkers = []string{
 // imperatives read as injected instructions and can trip prompt-injection
 // defenses (#5 banner fix, same class).
 //
-// runFailureTrackHook 处理 PostToolUseFailure（matcher Bash|PowerShell）：命令
+// runFailureTrackHook 处理 PostToolUseFailure（matcher Bash）：命令
 // 失败、宿主上报了错误文本（HookInput.Error）。记录 CheckToolFailure 观察，
 // 且当错误命中编译/测试启发式时，经 allow-with-detail 通道注入指向
 // compile-fix-loop skill 的**事实性**提示（永不阻断——失败已发生，事后事件上
@@ -99,6 +99,17 @@ func runFailureTrackHook(hookInput HookInput, root, version, agent string) error
 	}
 	if hookInput.AgentID != "" {
 		meta["agent_id"] = hookInput.AgentID
+	}
+	// cursor's postToolUseFailure classification (error/timeout/permission_denied)
+	// rides along when present — lets failure funnels aggregate by class even when
+	// no error text arrived. Recorded from FailureType (not the filled Error) so a
+	// bare-string host never mislabels its text as a class.
+	//
+	// cursor postToolUseFailure 的分类（error/timeout/permission_denied）在场时
+	// 随行记录——即便没有错误文本，失败漏斗也能按类聚合。取 FailureType（非已
+	// 填空的 Error）记录，裸字符串宿主不会把自己的文本误标成分类。
+	if hookInput.FailureType != "" {
+		meta["failure_type"] = hookInput.FailureType
 	}
 	// Delivered stamped ONLY when the marker branch below actually emits (review
 	// 2026-08-22: stamping unconditionally marked generic-failure entries delivered
@@ -152,7 +163,9 @@ func runFailureTrackHook(hookInput HookInput, root, version, agent string) error
 }
 
 // runSubagentTrackHook handles SubagentStop: a sub-agent finished, carrying
-// agent_id/agent_type/last_assistant_message (official schema fields). Records a
+// agent_id/agent_type/last_assistant_message (official schema fields; cursor's
+// subagent_type/status/result spellings are normalized onto them by the runHook
+// fill-empty block — see HookInput). Records a
 // CheckSubagentStop observation for attribution — before this, sub-agent activity
 // had zero forge-side record and sessions.jsonl missed agent_type for ~53% of
 // sessions (2026-08 attribution audit). v1 is observe-only: no output, no block —
@@ -160,7 +173,8 @@ func runFailureTrackHook(hookInput HookInput, root, version, agent string) error
 // emission would be dropped bytes. The delivery summary stores only length +
 // redacted first line, never the full message (checklog is not a message archive).
 //
-// runSubagentTrackHook 处理 SubagentStop：子 agent 结束，携带
+// runSubagentTrackHook 处理 SubagentStop：子 agent 结束（cursor 的 subagent_type/
+// status/result 拼法经 runHook 填空块归一到上述字段——见 HookInput），携带
 // agent_id/agent_type/last_assistant_message（官方 schema 字段）。记录
 // CheckSubagentStop 观察供归因——此前子 agent 活动在 forge 侧零记录，sessions.jsonl
 // 约 53% 会话缺 agent_type（2026-08 归因审计）。v1 仅观察：无输出、无阻断——
@@ -180,6 +194,16 @@ func runSubagentTrackHook(hookInput HookInput, root, version, agent string) erro
 	}
 	if hookInput.AgentID != "" {
 		meta["agent_id"] = hookInput.AgentID
+	}
+	// cursor's subagentStop completion status ("completed"/"error", official
+	// docs) rides along when present — completed-vs-error is funnel signal, same
+	// class-aggregation role as failure_type above.
+	//
+	// cursor subagentStop 的完成状态（"completed"/"error"，官方文档）在场时随行
+	// 记录——completed 与 error 之分是漏斗信号，与上面 failure_type 的按类聚合
+	// 同角色。
+	if hookInput.SubagentStatus != "" {
+		meta["status"] = hookInput.SubagentStatus
 	}
 	agentType := hookInput.AgentTypeHook
 	if agentType == "" {

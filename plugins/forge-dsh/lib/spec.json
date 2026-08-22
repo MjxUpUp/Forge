@@ -55,7 +55,7 @@
   ],
   "PostToolUseFailure": [
     {
-      "matcher": "Bash|PowerShell",
+      "matcher": "Bash",
       "hooks": [
         { "type": "command", "command": "forge hook failure-track" }
       ]
