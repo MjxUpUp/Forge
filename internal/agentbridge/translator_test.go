@@ -21,16 +21,16 @@ func testInput() *TranslationInput {
 }
 
 // isolateHome points the user-home-derived config locations (os.UserHomeDir,
-// XDG_CONFIG_HOME, CLAUDE_CONFIG_DIR, CODEX_HOME) at a temp dir so the user-level
-// translators and DetectAgents' user-level install detection never touch the real
-// home. Sets both HOME (unix) and USERPROFILE (windows) — os.UserHomeDir keys on one
+// XDG_CONFIG_HOME, CLAUDE_CONFIG_DIR, CODEX_HOME, DSH_HOME) at a temp dir so the
+// user-level translators and DetectAgents' user-level install detection never
+// touch the real home. Sets both HOME (unix) and USERPROFILE (windows) — os.UserHomeDir keys on one
 // or the other depending on platform. CLAUDE_CONFIG_DIR/CODEX_HOME are pointed at
 // nonexistent subdirs (a set-but-empty env redirects detection/resolution away from
 // the real home just like an unset one falling back to the isolated home); tests
 // needing a real codex home set CODEX_HOME again afterwards.
 //
 // isolateHome 把 user-home 派生的配置位置（os.UserHomeDir、XDG_CONFIG_HOME、
-// CLAUDE_CONFIG_DIR、CODEX_HOME）指向临时目录，user-level translator 与
+// CLAUDE_CONFIG_DIR、CODEX_HOME、DSH_HOME）指向临时目录，user-level translator 与
 // DetectAgents 的用户级安装检测绝不触碰真实 home。HOME（unix）与 USERPROFILE
 // （windows）都设——os.UserHomeDir 按平台取其一。CLAUDE_CONFIG_DIR/CODEX_HOME
 // 指向不存在的子目录（设为空的 env 与未设后回落隔离 home 一样能把检测/解析引离
@@ -43,6 +43,20 @@ func isolateHome(t *testing.T) string {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
 	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
+	// DSH_HOME overrides the whole home for dsh's user-level install indicator
+	// (hostcap row Env: "DSH_HOME", Path: "~/.dsh"). dsh injects DSH_HOME into every
+	// subprocess environment (this test runner is itself being driven by a dsh
+	// session), so a real "~/.dsh" leaks in as [dsh] unless we isolate it here —
+	// the same redirect-to-nonexistent-subdir pattern used for CLAUDE_CONFIG_DIR
+	// and CODEX_HOME above. Without this, TestDetectAgents_* see [x dsh] instead of
+	// [x] solely because this machine happens to run dsh.
+	//
+	// DSH_HOME 对 dsh 的用户级安装指示（hostcap 行 Env:"DSH_HOME", Path:"~/.dsh"）
+	// 覆盖整个 home。dsh 会向每个子进程环境注入 DSH_HOME（本测试 runner 本身就
+	// 由一个 dsh 会话驱动），故若不在此隔离，真实 "~/.dsh" 会以 [dsh] 漏进来——
+	// 与上面 CLAUDE_CONFIG_DIR/CODEX_HOME 用"重定向到不存在子目录"同一模式。
+	// 否则 TestDetectAgents_* 得到的会是 [x dsh] 而非 [x]，只因本机恰好装了 dsh。
+	t.Setenv("DSH_HOME", filepath.Join(home, ".dsh"))
 	return home
 }
 
@@ -446,6 +460,7 @@ func TestCopilotTranslator_Translate(t *testing.T) {
 }
 
 func TestCopilotTranslator_Detect(t *testing.T) {
+	isolateHome(t) // DetectAgents also scans user-level install dirs — keep the real home out
 	dir := t.TempDir()
 	if slices.Contains(DetectAgents(dir), AgentCopilot) {
 		t.Error("should not detect without .github/instructions/")
