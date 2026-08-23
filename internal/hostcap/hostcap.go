@@ -240,18 +240,29 @@ type Host struct {
 	// 通道的 hook（kimiStaleRidesHook）、以及 skill-trigger 的 stdout 打印门控。
 	DroppedStdoutEvents []string
 
-	// PromoteAdvisory maps advisory hook name → rule for hosts whose allow-path
-	// stdout never reaches the model: on such hosts the REAL advisory (isolated
-	// from the hook's success/clean branch by the rule) is promoted to a block
-	// (passed true→false → exit 2, stderr shown to the model). Nil for hosts
-	// with a working advisory channel. cli keeps the FORGE_KIMI_ADVISORY=soft
-	// escape hatch (an env knob, not a host capability).
+	// PromoteAdvisory maps advisory hook name → rule for hosts where an advisory
+	// does not constrain behavior, so the REAL advisory (isolated from the hook's
+	// success/clean branch by the rule) is promoted to a block (passed true→false
+	// → exit 2, stderr shown to the model). Two admission paths: (a) the advisory
+	// channel is physically broken — kimi drops allow-path stdout from the model
+	// context; (b) the channel delivers but the advisory is empirically ignored —
+	// dsh 2026-08-22: the task-guard WARN reached the model's inbox via
+	// agent.inject, yet its text self-describes as "allowed" (a status notice,
+	// not an instruction), the next action was another edit, and every downstream
+	// gate is task-scoped (no task ⇒ silently passes). Nil for hosts where the
+	// advisory channel both delivers and suffices. cli keeps the
+	// FORGE_KIMI_ADVISORY / FORGE_ADVISORY_PROMOTION escape hatches (env knobs,
+	// not host capabilities).
 	//
-	// PromoteAdvisory 把 advisory hook 名映射到规则，面向 allow 路径 stdout 永远
-	// 到不了模型的宿主：这类宿主上**真** advisory（由规则从该 hook 的成功/干净
-	// 分支隔出）被提升为阻断（passed true→false → exit 2，stderr 展示给模型）。
-	// 有可用 advisory 通道的宿主为 nil。FORGE_KIMI_ADVISORY=soft 逃生舱留在
-	// cli（env 开关，非宿主能力）。
+	// PromoteAdvisory 把 advisory hook 名映射到规则，面向 advisory 不构成行为
+	// 约束的宿主：**真** advisory（由规则从该 hook 的成功/干净分支隔出）被提升
+	// 为阻断（passed true→false → exit 2，stderr 展示给模型）。准入路径有二：
+	// (a) advisory 通道物理性失效——kimi 把 allow 路径 stdout 丢出模型上下文；
+	// (b) 通道送达但 advisory 被实证无视——dsh 2026-08-22：task-guard 的 WARN 经
+	// agent.inject 到达了模型 inbox，但其文案自述「allowed」（状态通知而非指令），
+	// 下一个动作就是继续 edit，且所有下游门禁都 task-scoped（无任务 ⇒ 静默通过）。
+	// 通道送达且 advisory 足够的宿主为 nil。逃生舱 FORGE_KIMI_ADVISORY /
+	// FORGE_ADVISORY_PROMOTION 留在 cli（env 开关，非宿主能力）。
 	PromoteAdvisory map[string]AdvisoryRule
 
 	// PatchToolName names the host's patch-style edit tool whose tool_input
@@ -454,6 +465,27 @@ var Hosts = []Host{
 			"PostCompact":      {Delivered: true, Label: "dsh/agent.inject"},
 		},
 		DefaultChannel: Channel{Delivered: false, Label: "dsh/unwired-event"},
+		// dsh's advisory channel DELIVERS (agent.inject — the WARN reached the
+		// model's inbox in the 2026-08-22 incident), yet was empirically ignored:
+		// the WARN text self-describes as "allowed", the very next action was
+		// another edit, and all downstream gates are task-scoped (no task ⇒ they
+		// silently pass). Admission path (b) of the PromoteAdvisory field doc —
+		// enforcement hardness, not channel physics. Scope: task-guard only; the
+		// incident class is "no-task source edits on main". bash-guard's
+		// consequence chain still works on dsh (file-sentinel quarantines
+		// Bash-written files without a task), and assertion-check advisories have
+		// not shown the same ignore pattern.
+		//
+		// dsh 的 advisory 通道**送达**（agent.inject——2026-08-22 事件里 WARN 到达了
+		// 模型 inbox），却被实证无视：WARN 文案自述「allowed」，下一个动作就是继续
+		// edit，且所有下游门禁都 task-scoped（无任务 ⇒ 静默通过）。属 PromoteAdvisory
+		// 字段文档的准入路径 (b)——为执法硬度而非通道物理。范围：仅 task-guard；事件
+		// 类别是「main 上无任务改源码」。bash-guard 的后果链在 dsh 上仍然有效
+		// （file-sentinel 会 quarantine 无任务的 Bash 写文件），assertion-check 的
+		// advisory 未显现同样的无视模式。
+		PromoteAdvisory: map[string]AdvisoryRule{
+			"task-guard": {Contains: "[task-guard]", Excludes: "Auto-created"},
+		},
 		// DSH_HOME overrides the whole home (the community resolveDshHome
 		// convention: env ?? ~/.dsh); fallback ~/.dsh.
 		//
@@ -517,6 +549,24 @@ func (h *Host) ShouldPromoteAdvisory(hookName, detail string) bool {
 		return false
 	}
 	return true
+}
+
+// PromotesHook reports whether this host carries ANY promotion rule for hookName
+// (rule existence, detail-independent). Callers that must configure hook behavior
+// BEFORE a concrete detail exists use this instead of ShouldPromoteAdvisory — cli
+// sets FORGE_TASKGUARD_PROMOTED from it so the task-guard script drops its
+// once-per-session de-noise on promoted hosts (a deny the model can blind-retry
+// past — the NOWARN marker silences the second identical edit — is no
+// enforcement).
+//
+// PromotesHook 报告本宿主是否为 hookName 携带**任一**提升规则（规则存在性，
+// 与 detail 无关）。须在具体 detail 尚不存在前配置 hook 行为的调用方用它而非
+// ShouldPromoteAdvisory——cli 据此设置 FORGE_TASKGUARD_PROMOTED，让 task-guard
+// 脚本在提升宿主上放弃每会话一次的去噪（模型盲重试即可绕过的 deny——NOWARN
+// 标记让第二次相同 edit 静默放行——算不上执法）。
+func (h *Host) PromotesHook(hookName string) bool {
+	_, ok := h.PromoteAdvisory[hookName]
+	return ok
 }
 
 // DropsStdoutEvent reports whether this host drops the given event's allow-path

@@ -289,6 +289,22 @@ func TestTaskGuardHookContainsKeyChecks(t *testing.T) {
 	if !strings.Contains(TaskGuardHook, "WARN") {
 		t.Error("TaskGuardHook missing WARN for pre-design state")
 	}
+	// Promotion pre-configuration: on hosts that promote the task-guard advisory
+	// (hostcap PromoteAdvisory — kimi/dsh), the Go layer sets
+	// FORGE_TASKGUARD_PROMOTED and the script must drop its once-per-session
+	// NOWARN de-noise (a deny the model can blind-retry past is no enforcement)
+	// and emit a directive reason instead of the "allowed" advisory wording.
+	//
+	// 提升预配置：在把 task-guard advisory 提升为阻断的宿主上（hostcap
+	// PromoteAdvisory——kimi/dsh），Go 层设置 FORGE_TASKGUARD_PROMOTED，脚本必须
+	// 放弃每会话一次的 NOWARN 去噪（模型盲重试即可绕过的 deny 算不上执法），
+	// 并输出指令式 reason 而非「allowed」的 advisory 文案。
+	if !strings.Contains(TaskGuardHook, "FORGE_TASKGUARD_PROMOTED") {
+		t.Error("TaskGuardHook missing FORGE_TASKGUARD_PROMOTED branch (promoted hosts must block every no-task edit, not once per session)")
+	}
+	if !strings.Contains(TaskGuardHook, "DENIED until one exists") {
+		t.Error("TaskGuardHook missing directive block reason for promoted hosts")
+	}
 }
 
 func TestTaskGuardHookPassesNonCodeFiles(t *testing.T) {

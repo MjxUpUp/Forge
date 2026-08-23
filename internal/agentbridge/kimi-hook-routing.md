@@ -100,7 +100,7 @@ pre_tool_use    0    # 本会话无 PreToolUse 阻断发生（非通道失效，
 | Hook | 类别 Class | kimi 路由 | PR |
 |---|---|---|---|
 | freeze-guard | 强制 enforce | exit-2 阻断（原生效） | — |
-| **task-guard** | advisory→强制 | **advisory 升级为 exit-2**（排除 `Auto-created` 成功路径） | **P0** |
+| **task-guard** | advisory→强制 | **advisory 升级为 exit-2**（排除 `Auto-created` 成功路径）；2026-08-23 起提升宿主**每次**无任务编辑都阻断（指令式 reason），不再每会话一次 | **P0** |
 | **assertion-check** | advisory→强制 | **advisory 升级为 exit-2**（只认 `Advisory:`，排除干净分支） | **P0** |
 | read-before-edit | 强制 enforce | exit-2 阻断（原生效） | — |
 | **bash-guard** | advisory→强制 | **advisory 升级为 exit-2** | **P0** |
@@ -109,7 +109,14 @@ pre_tool_use    0    # 本会话无 PreToolUse 阻断发生（非通道失效，
 
 > P0 升级用的是**内容谓词 map**（读 detail 文本区分「真 advisory」与「成功/干净分支」），
 > 不是名字白名单——否则会把 task-guard 刚 auto-create 的那次编辑也阻断。逃生舱
-> `FORGE_KIMI_ADVISORY=soft` 回退纯 advisory。
+> `FORGE_ADVISORY_PROMOTION=soft`（全宿主）与 `FORGE_KIMI_ADVISORY=soft`（仅 kimi，
+> 向后兼容）回退纯 advisory。
+>
+> 2026-08-23 起 task-guard 的提升宿主（kimi + dsh）每次无任务源码编辑都输出指令式
+> block reason：Go 层按 hostcap 规则注入 `FORGE_TASKGUARD_PROMOTED=1`，脚本跳过
+> 每会话一次的 NOWARN 去噪——提升语义下标记是旁路（盲重试同一编辑静默放行）。
+> 注册表同时向 dsh 开放（准入路径 (b)：通道送达但 advisory 被实证无视，见
+> hostcap.go dsh 行）。
 
 ### Stop（3 hook = 2 命名 + skill-trigger×1）— exit-2 阻断通道，原生效
 
