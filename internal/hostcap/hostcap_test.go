@@ -183,12 +183,83 @@ func TestKimiPromoteAdvisory(t *testing.T) {
 			t.Errorf("kimi.ShouldPromoteAdvisory(%q, %q) = %v, want %v", c.hook, c.detail, got, c.want)
 		}
 	}
-	// Hosts with a working advisory channel must carry no promotion rules.
+	// Hosts whose advisory channel both delivers and suffices must carry no
+	// promotion rules. dsh is the documented exception (channel delivers, advisory
+	// empirically ignored — pinned by TestDshTaskGuardPromotion below), so it is
+	// deliberately absent from this list.
 	//
-	// 有可用 advisory 通道的宿主不得带提升规则。
+	// advisory 通道送达且足够的宿主不得带提升规则。dsh 是已文档化的例外（通道
+	// 送达、advisory 被实证无视——由下方 TestDshTaskGuardPromotion 钉死），故刻意
+	// 不在本清单内。
 	for _, name := range []string{"claude-code", "codex", "cursor"} {
 		if h := Lookup(name); h != nil && len(h.PromoteAdvisory) > 0 {
 			t.Errorf("%s PromoteAdvisory = %v, want empty", name, h.PromoteAdvisory)
+		}
+	}
+}
+
+// TestDshTaskGuardPromotion pins dsh's registry row: task-guard ONLY (admission
+// path (b) — the channel delivers via agent.inject but the advisory was
+// empirically ignored in the 2026-08-22 incident), with the same load-bearing
+// exclusion as kimi (the Auto-created success path must not promote). The scope
+// pins matter: dsh must NOT inherit kimi's bash-guard/assertion-check rules —
+// their consequence chains still work on dsh (file-sentinel quarantines Bash
+// writes; assertion-check advisory delivers).
+//
+// TestDshTaskGuardPromotion 钉住 dsh 的注册表行：仅 task-guard（准入路径 (b)——
+// 通道经 agent.inject 送达但 advisory 在 2026-08-22 事件中被实证无视），带与 kimi
+// 相同的承重排除项（Auto-created 成功路径不得提升）。范围钉死很重要：dsh 不得
+// 继承 kimi 的 bash-guard/assertion-check 规则——它们的后果链在 dsh 上仍有效
+// （file-sentinel 会 quarantine Bash 写文件；assertion-check 的 advisory 送达）。
+func TestDshTaskGuardPromotion(t *testing.T) {
+	h := Lookup("dsh")
+	if h == nil {
+		t.Fatal("dsh row missing")
+	}
+	cases := []struct {
+		hook, detail string
+		want         bool
+	}{
+		// Both wordings promote: the legacy advisory text (already shipped) and the
+		// directive block reason the promoted script path emits.
+		//
+		// 两种文案都提升：已发布的 advisory 旧文案与提升脚本路径输出的指令式
+		// block reason。
+		{"task-guard", "[task-guard] No active task. Source changes are allowed but not tracked by a Forge task.", true},
+		{"task-guard", "[task-guard] No active task. Source edit DENIED until one exists — run: forge task start ...", true},
+		{"task-guard", "[task-guard] Auto-created task 'feat/x' from branch. Source changes tracked.", false}, // success path
+		{"task-guard", "", false}, // bare PASS
+		{"bash-guard", "[bash-guard] Bash write without active task.", false},     // out of scope on dsh
+		{"assertion-check", "Advisory: assertion weakened in foo_test.go", false}, // out of scope on dsh
+	}
+	for _, c := range cases {
+		if got := h.ShouldPromoteAdvisory(c.hook, c.detail); got != c.want {
+			t.Errorf("dsh.ShouldPromoteAdvisory(%q, %q) = %v, want %v", c.hook, c.detail, got, c.want)
+		}
+	}
+	// PromotesHook (detail-independent existence) drives cli's FORGE_TASKGUARD_PROMOTED
+	// env: true exactly for the two hosts with a task-guard rule.
+	//
+	// PromotesHook（与 detail 无关的存在性）驱动 cli 的 FORGE_TASKGUARD_PROMOTED
+	// env：恰对持 task-guard 规则的两个宿主为真。
+	for _, name := range []string{"dsh", "kimi"} {
+		if hh := Lookup(name); hh == nil || !hh.PromotesHook("task-guard") {
+			t.Errorf("%s PromotesHook(task-guard) = false, want true", name)
+		}
+	}
+	for _, name := range []string{"claude-code", "codex", "cursor", "copilot", "windsurf", "opencode", "cline", "codebuddy", "reasonix"} {
+		if hh := Lookup(name); hh != nil && hh.PromotesHook("task-guard") {
+			t.Errorf("%s PromotesHook(task-guard) = true, want false", name)
+		}
+	}
+	// kimi keeps its full trio: dsh's narrower scope must not narrow kimi.
+	//
+	// kimi 保留完整三件套：dsh 的更窄范围不得收窄 kimi。
+	if kk := Lookup("kimi"); kk != nil {
+		for _, hook := range []string{"task-guard", "bash-guard", "assertion-check"} {
+			if !kk.PromotesHook(hook) {
+				t.Errorf("kimi PromotesHook(%q) = false, want true (dsh scope must not narrow kimi)", hook)
+			}
 		}
 	}
 }
