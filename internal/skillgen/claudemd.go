@@ -172,7 +172,7 @@ func buildForgeSectionWithLevel(forClaude bool, userLevel bool) string {
 	sb.WriteString("- **hazard-guard**（PreToolUse Bash）：高危命令（`rm -rf` 深目录/盘根/引号包裹逃逸等指纹）硬阻断，须 human-in-the-loop 确认——先向用户说明风险并获确认，再 `forge hazard confirm --fingerprint <指纹>` 放行一次（位置参数是命令串不是指纹，必须带 `--fingerprint`）；误报可 `forge hazard status` 查看\n")
 	sb.WriteString("- **file-sentinel**（PostToolUse Bash）：对比 Bash 前后文件状态，未授权源码变更 quarantine 到用户级 DataDir/quarantine/（`forge data-dir` 查看路径）\n")
 	sb.WriteString("- **workflow-test-guard**（PostToolUse Write|Edit）：改 `.github/workflows/*.yml` 后自动跑 internal/ci 守护测试——CI workflow 沙盒异常的实时反馈层（fail 输出提示修复方向，不阻断写入）\n")
-	sb.WriteString("- **tool-track**（PostToolUse Read|Skill|Agent|Bash）：记录工具使用到 toollog（评分 efficiency/维度数据源），永不阻断；Skill/Agent 调用也被记录——质量 skill 是否被驱动可追溯；Bash 记截断命令（27.7k 调用零记录缺口，2026-08-22 补）\n")
+	sb.WriteString("- **tool-track**（PostToolUse Read|Skill|Agent|Grep|Glob|Bash）：记录工具使用到 toollog（评分 efficiency/维度数据源），永不阻断；Skill/Agent 调用也被记录——质量 skill 是否被驱动可追溯；Bash 记截断命令（27.7k 调用零记录缺口，2026-08-22 补）；Grep/Glob 记截断 input——探索调用计入 work-activity 探索轴（2026-08-23 补，此前错误表「用 Read/Grep/Glob 探索」是空头支票）\n")
 	sb.WriteString("- **failure-track**（PostToolUseFailure Bash）：命令失败后记录 CheckToolFailure 观察；失败文本命中编译/测试类指纹（undefined:/error TS/error[E/FAIL 等）时注入 compile-fix-loop skill 事实性指针（advisory 不阻断——失败已发生，阻断无意义）\n")
 	sb.WriteString("- **subagent-track**（SubagentStop）：子 agent 结束时记录 agent_id/agent_type/交付长度+首行摘要到 checklog（归因数据——此前子 agent 活动 forge 侧零记录）；纯观察，无输出无阻断\n")
 	sb.WriteString("- **test-nudge**（PostToolUse Write|Edit，活跃任务内）：事中测试提醒——连写 ≥3 个源码文件且无配对测试写入时注入一次 test-discipline skill 事实性提示（advisory，每连写只提示一次）；任何测试文件写入重置计数；无活跃任务静默；执法仍在 task-verify 门禁\n")

@@ -331,12 +331,18 @@ func reasonixMatcher(matcher string) string {
 // tokens. Verified against reasonix's [sandbox] tool roster (config.toml): write_file is the
 // creator, edit_file/multi_edit/move_file are the editors (all map to CC Edit — the path hooks
 // care about file_path, not the create/edit distinction), bash is the shell, read_file is the
-// reader. Skill/Agent have no reasonix equivalent and map to nothing.
+// reader. Skill/Agent/Grep/Glob have no reasonix equivalent and map to nothing (Grep/Glob joined
+// the tool-track matcher on 2026-08-23; dropping them here — instead of the default
+// passthrough — keeps PascalCase tokens out of reasonix's snake_case tool face, where they
+// would never match AND trip the mixed-casing leak check).
 //
 // reasonixMatcherTokens 把单个 Claude-Code matcher token 映射为零或多个 reasonix 工具名 token。
 // 已对 reasonix 的 [sandbox] 工具名册（config.toml）核实：write_file 是创建器，
 // edit_file/multi_edit/move_file 是编辑器（都映射到 CC Edit——基于路径的 hook 关心 file_path
-// 而非创建/编辑之别），bash 是 shell，read_file 是读取器。Skill/Agent 在 reasonix 无等价物，映射为空。
+// 而非创建/编辑之别），bash 是 shell，read_file 是读取器。Skill/Agent/Grep/Glob 在 reasonix
+// 无等价物，映射为空（Grep/Glob 于 2026-08-23 进入 tool-track matcher；在此显式丢弃——而非
+// 走默认透传——免得 PascalCase token 漏进 reasonix 的 snake_case 工具面：既永不匹配，
+// 又触发混合命名法泄漏检查）。
 func reasonixMatcherTokens(tok string) []string {
 	switch tok {
 	case "Write":
@@ -347,7 +353,7 @@ func reasonixMatcherTokens(tok string) []string {
 		return []string{"bash"}
 	case "Read":
 		return []string{"read_file"}
-	case "Skill", "Agent":
+	case "Skill", "Agent", "Grep", "Glob":
 		return nil
 	}
 	return []string{tok}

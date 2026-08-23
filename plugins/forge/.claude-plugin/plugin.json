@@ -51,7 +51,7 @@
         ]
       },
       {
-        "matcher": "Read|Skill|Agent",
+        "matcher": "Read|Skill|Agent|Grep|Glob",
         "hooks": [
           {
             "type": "command",
