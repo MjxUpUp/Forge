@@ -242,7 +242,7 @@ func ScoreTask(root string, state *TaskState) error {
 	// carve-out of checklog.EscapeDowngradedStrength — deliberately. Two orthogonal
 	// costs: the score cap is the escape PRICE (score layer, flat by design), the
 	// Strength cap is evidence FIDELITY (signal layer, scaled by evidence weight since
-	// 202-08). A heavily-evidenced marginal escape keeps Strength=Strong (its run
+	// 2026-08). A heavily-evidenced marginal escape keeps Strength=Strong (its run
 	// evidence is real) while still scoring ≤89 (the bypass still happened). Neither
 	// signal lies: the evidence was strong AND a gate was skipped.
 	//

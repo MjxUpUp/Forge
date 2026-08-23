@@ -193,7 +193,7 @@ var taskScopeShowCmd = &cobra.Command{
 }
 var taskOverrideCmd = &cobra.Command{
 	Use:   `override [--work-activity disable] [--test-coverage disable] [--acceptance-gate disable] [--skill-decisions disable]`,
-	Short: "设置 per-task 逃生舱（优先全局 env，不污染他任务；用了降强度到 Weak）",
+	Short: "设置 per-task 逃生舱（优先全局 env，不污染他任务；验证类降 evidence 强度到 Weak（重证据按证据缩放豁免），work-activity 是节奏门禁不降强度）",
 	RunE:  runTaskOverride,
 }
 

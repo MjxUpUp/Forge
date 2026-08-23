@@ -170,6 +170,17 @@ func TestTaskVerify_SkillDecisionsGuardrail_EscapeHatchBypasses(t *testing.T) {
 	if !found {
 		t.Fatalf(`skill-decisions escape-hatch 应落 CheckEscapeHatch 留痕（detail 含 skill-decisions），实际无——score/dashboard 照不出"靠逃生舱绕过 guardrail"`)
 	}
+	// Wording guard (re-review round 2, 2026-08): the bypass ADVISORY must mention the
+	// evidence-scaled carve-out — the Strength cap is scaled since 2026-08, and an
+	// advisory omitting it understates heavy-evidence tasks' standing. Anchors on the
+	// package-level format constant (single source the executor prints).
+	//
+	// 文案守卫（复审第二轮 2026-08）：绕过 ADVISORY 必须提及证据缩放豁免——Strength
+	// cap 自 2026-08 起按证据缩放，遗漏它的提示会低估重证据任务的状态。锚定包级
+	// 格式常量（executor 打印的单一来源）。
+	if !strings.Contains(skillDecisionsEscapeAdvisoryFmt, "重证据任务按证据缩放豁免") {
+		t.Error(`skill-decisions 绕过 ADVISORY 文案须含"重证据任务按证据缩放豁免"（与 EscapeDowngradedStrength 行为一致）`)
+	}
 }
 
 // TestTaskVerify_SkillDecisionsGuardrail_FailOpenDetailHonest base commit unreachable

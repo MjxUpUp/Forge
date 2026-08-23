@@ -156,6 +156,21 @@ func TestClaudeMDWorkActivityEscapeWording(t *testing.T) {
 	if !strings.Contains(section, "重证据任务按证据缩放豁免") {
 		t.Error("CLAUDE.md 验证类逃生文案必须提及证据缩放豁免（2026-08 校准）")
 	}
+	// 豁免说明须覆盖全部验证类逃生行（复审第二轮 2026-08：曾只补 test-coverage 行，
+	// skill-decisions/acceptance 及 FORGE_TEST_COVERAGE=disable 行漏补）——逐行断言。
+	//
+	// The carve-out note must cover EVERY verification-class hatch row (re-review
+	// round 2, 2026-08: only the test-coverage row had it; skill-decisions/acceptance
+	// and the FORGE_TEST_COVERAGE=disable row were missed) — assert per row.
+	for _, row := range []string{
+		"FORGE_TEST_COVERAGE=disable`（降 Weak；重证据任务按证据缩放豁免）",
+		"--skill-decisions disable`（per-task，优先于 `FORGE_SKILL_DECISIONS=disable` env，降 evidence 到 Weak；重证据任务按证据缩放豁免）",
+		"--acceptance-gate disable`（per-task，优先于 `FORGE_ACCEPTANCE_GATE=disable` env，降 evidence 到 Weak；重证据任务按证据缩放豁免）",
+	} {
+		if !strings.Contains(section, row) {
+			t.Errorf("CLAUDE.md 验证类逃生行缺证据缩放豁免说明: %q", row)
+		}
+	}
 }
 
 // TestClaudeMDCommonErrorsIncludesSkillDecisions guards the common-errors table

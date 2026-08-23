@@ -45,3 +45,25 @@ func TestDescribeOverrides_Empty(t *testing.T) {
 		t.Errorf(`空状态应显示 "（无）"，got: %q`, got)
 	}
 }
+
+// TestTaskOverrideCmdShortNoWorkActivityLie guards the override command's Short help
+// against the work-activity strength lie (re-review round 2, 2026-08): the command
+// accepts --work-activity among verification-class hatches, so a blanket "降强度到
+// Weak" claim would lie for work-activity users (it is a rhythm gate —
+// checklog.isRhythmEscapeHatch never caps Strength). The Short must distinguish the
+// two classes, mirroring task.go runTaskOverride's detailed output.
+//
+// TestTaskOverrideCmdShortNoWorkActivityLie 守卫 override 命令的 Short 帮助不得再对
+// work-activity 谎报强度（复审第二轮，2026-08）：该命令在验证类逃生舱之外还接受
+// --work-activity，笼统声称"降强度到 Weak"对 work-activity 用户是谎言（它是节奏
+// 门禁——checklog.isRhythmEscapeHatch 从不 cap Strength）。Short 必须区分两类，
+// 与 task.go runTaskOverride 的详细输出一致。
+func TestTaskOverrideCmdShortNoWorkActivityLie(t *testing.T) {
+	short := taskOverrideCmd.Short
+	if !strings.Contains(short, "work-activity 是节奏门禁不降强度") {
+		t.Errorf(`override Short 必须声明 work-activity 是节奏门禁不降强度（防谎报回归），got: %q`, short)
+	}
+	if !strings.Contains(short, "重证据按证据缩放豁免") {
+		t.Errorf(`override Short 必须提及验证类逃生的证据缩放豁免，got: %q`, short)
+	}
+}
