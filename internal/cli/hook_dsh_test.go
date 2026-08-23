@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/spf13/cobra"
 )
 
@@ -170,13 +171,15 @@ func runTaskGuardHookOnce(t *testing.T, agentDecl, sessionID string) (stdout, st
 	})
 }
 
-// newTaskGuardProject builds the isolated fixture both E2E tests below share:
-// fresh forge project + isolated DataHome + cleared agent envs (attribution then
-// rides only the payload under test).
+// newTaskGuardProject builds the isolated fixture the E2E tests in this file
+// share: fresh forge project + isolated DataHome + cleared agent envs (attribution
+// then rides only the payload under test). Returns the project root (the cwd for
+// the test's duration) so callers can derive FORGE_DATA_DIR-resolved paths.
 //
-// newTaskGuardProject 构建下面两个 E2E 共用的隔离 fixture：全新 forge 项目 +
-// 隔离 DataHome + 清空的 agent env（归因只受被测 payload 驱动）。
-func newTaskGuardProject(t *testing.T) {
+// newTaskGuardProject 构建本文件 E2E 共用的隔离 fixture：全新 forge 项目 +
+// 隔离 DataHome + 清空的 agent env（归因只受被测 payload 驱动）。返回项目根
+// （测试期间的 cwd），供调用方推导 FORGE_DATA_DIR 解析出的路径。
+func newTaskGuardProject(t *testing.T) string {
 	t.Helper()
 	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	t.Setenv("FORGE_HOOK_AGENT", "")
@@ -193,6 +196,65 @@ func newTaskGuardProject(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chdir(originalWd) })
+	return root
+}
+
+// TestHook_TaskGuardNowarnMarkerLivesInDataDir pins the marker-root migration
+// (2026-08-23): the NOWARN marker must land under FORGE_DATA_DIR (injected by the
+// Go layer — forge's own writable data home), not ${TMPDIR:-/tmp}. On machines
+// where MSYS /tmp is read-only (Git for Windows default install into Program
+// Files), `touch ... 2>/dev/null || true` silently swallowed the write error, the
+// marker never landed, and the once-per-session de-noise degraded to WARN-on-
+// every-edit — the exact spam dogfood 3.1 exists to kill. TestHook_TaskGuard_
+// AdvisoryOncePerSessionOnClaude is red on such machines (and green on CI, whose
+// /tmp is writable); this test pins the ROOT CAUSE fix independently of machine
+// tmpdir permissions.
+//
+// TestHook_TaskGuardNowarnMarkerLivesInDataDir 钉住 marker 根目录迁移
+// （2026-08-23）：NOWARN 标记必须落在 FORGE_DATA_DIR（Go 层注入——forge 自己
+// 的可写 data home）下，而非 ${TMPDIR:-/tmp}。在 MSYS /tmp 只读的机器上
+// （Git for Windows 默认装进 Program Files 即如此），`touch ... 2>/dev/null
+// || true` 静默吞掉写错误，标记永不落盘，每会话一次的去噪退化成每次编辑都
+// WARN——恰是 dogfood 3.1 要消灭的刷屏。AdvisoryOncePerSessionOnClaude 在这
+// 类机器上红（CI 的 /tmp 可写故绿）；本测试不依赖机器 tmpdir 权限，独立钉住
+// 根因修复。
+func TestHook_TaskGuardNowarnMarkerLivesInDataDir(t *testing.T) {
+	root := newTaskGuardProject(t)
+	sess := fmt.Sprintf("claude-datadir-%d", time.Now().UnixNano())
+
+	stdout, _, err := runTaskGuardHookOnce(t, ``, sess)
+	if err != nil {
+		var blockErr *HookBlockError
+		if errors.As(err, &blockErr) {
+			t.Fatalf("claude-compatible host must not block, got block reason %q", blockErr.Reason)
+		}
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout, "[task-guard]") {
+		t.Fatalf("first edit should surface the WARN advisory, got stdout %q", stdout)
+	}
+
+	// The marker must exist under the DataDir the Go layer resolved (FORGE_DATA_DIR),
+	// in the markers/ subdir, keyed by the sanitized session id — find it by
+	// prefix, not exact name, since sanitizeForShell may rewrite the id.
+	//
+	// 标记必须存在于 Go 层解析的 DataDir（经 FORGE_DATA_DIR 传入）的 markers/
+	// 子目录下，按 sanitize 后的 session id 键控——用前缀查找而非精确名
+	// （sanitizeForShell 可能改写 id）。
+	markersDir := filepath.Join(forgedata.DataDirFor(root), "markers")
+	entries, derr := os.ReadDir(markersDir)
+	if derr != nil {
+		t.Fatalf("read markers dir %s: %v", markersDir, derr)
+	}
+	found := false
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "forge-taskguard-nowarn-") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("NOWARN marker must live under FORGE_DATA_DIR/markers (%s) — on read-only-MSYS-/tmp machines the old TMPDIR root silently lost it and de-noise degraded to per-edit WARN spam", markersDir)
+	}
 }
 
 // TestHook_DshTaskGuardNoTaskBlocks is the incident regression test (2026-08-22:
@@ -212,18 +274,17 @@ func newTaskGuardProject(t *testing.T) {
 // 静默放行），故 Go 层设置 FORGE_TASKGUARD_PROMOTED、脚本每次输出 WARN。
 func TestHook_DshTaskGuardNoTaskBlocks(t *testing.T) {
 	newTaskGuardProject(t)
-	// Unique session id per run: the NOWARN/source-touched markers survive in the
-	// real temp dir across test runs — a reused id would make the control test
-	// flaky. Each run leaves 3 zero-byte marker files behind: acceptable (CI temp
-	// dirs are ephemeral); redirecting TMPDIR would feed Windows-style paths into
-	// the MSYS bash script (os.TempDir vs $TMPDIR divergence this repo works
-	// around elsewhere) — riskier than the litter is large.
+	// Unique session id per run: the NOWARN/source-touched markers survive across
+	// test runs — a reused id would make the control test flaky. Since the
+	// 2026-08-23 marker-root migration they land in the fixture's isolated
+	// FORGE_DATA_HOME (t.TempDir, auto-cleaned), so per-run litter is gone; the
+	// unique id stays for run-to-run isolation and because the de-noise semantics
+	// under test are per-session.
 	//
-	// 每次运行用唯一 session id：NOWARN/source-touched 标记在真实 temp 目录跨测
-	// 试运行存活——复用 id 会让对照测试抖动。每次运行遗留 3 个 0 字节标记文件：
-	// 可接受（CI 临时目录一次性）；改道 TMPDIR 会把 Windows 形式路径喂进 MSYS
-	// bash 脚本（os.TempDir 与 $TMPDIR 分叉，本仓其他地方为此绕行）——风险大于
-	// 遗留量。
+	// 每次运行用唯一 session id：NOWARN/source-touched 标记跨测试运行存活——复用
+	// id 会让对照测试抖动。2026-08-23 marker 根迁移后它们落在 fixture 隔离的
+	// FORGE_DATA_HOME（t.TempDir，自动清理）里，每运行的遗留不复存在；唯一 id
+	// 保留用于运行间隔离，且被测的去噪语义本就是按会话的。
 	sess := fmt.Sprintf("dsh-e2e-%d", time.Now().UnixNano())
 
 	for i := 1; i <= 2; i++ {
