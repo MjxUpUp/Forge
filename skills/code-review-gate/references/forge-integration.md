@@ -58,7 +58,7 @@ forge trace <task-ref>     # 证据链分桶行 + Weak/Unverified 警告（同�
 
 本 skill 不再只靠手动唤起——forge 两条自动挡（2026-06-27 落地），让审查成为提交/结束的硬前置：
 
-- **task 流程**：task-complete 门禁有 ReviewPassed 硬前置。派子 agent 审查通过后须运行 `forge review pass` 标记，否则过不了 task-complete 门禁、无法 complete。
+- **task 流程**：task-complete 门禁有 ReviewPassed 硬前置。派子 agent 审查通过后须运行 `forge review pass` 标记，否则过不了 task-complete 门禁、无法 complete。**多轮盖章**：`forge review pass` 检测到代码快照自上一枚盖章轮以来已变（返工后重新盖章）时发 `ADVISORY:` 提醒复审义务——本枚章只在已重新派只读子 agent 复审过修复时合法（修复者不能自证，见 SKILL.md「审查-修复-复审闭环」节）；同状态重复盖章（瞬态重试/重建基线）静默。
 - **非 task 流程**：会话结束前 Stop hook 自动检测未审的源码变更，未审则拦截会话结束，additionalContext 指引加载 code-review-gate + 派子 agent + `forge review pass`。同一 diff 反复未审最多拦截 3 次后 advisory 放行（防 Stop 死循环）。
 
 手动查状态：`forge review status`。
