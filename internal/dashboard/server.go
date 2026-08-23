@@ -232,12 +232,12 @@ func writeRendered(w http.ResponseWriter, root, contentType, neutralMsg string, 
 // newMux 构建看板路由。抽出便于 httptest 直接挂载（Serve 负责 listen+开浏览器）。
 func newMux(opts Options) *http.ServeMux {
 	mux := http.NewServeMux()
-	// Pulse panel page at /: static HTML consuming the six /api/pulse/*.json endpoints
+	// Pulse panel page at /: static HTML consuming the seven /api/pulse/*.json endpoints
 	// below. The single-file zero-dependency red line requires inline <script>, so this
 	// route overrides the middleware's CSP (script-src 'none') with script-src
 	// 'unsafe-inline'; no external origins are added, all other directives stay identical.
 	//
-	// Pulse 面板页挂 /：静态 HTML，消费下方六个 /api/pulse/*.json 端点。单文件零依赖红线
+	// Pulse 面板页挂 /：静态 HTML，消费下方七个 /api/pulse/*.json 端点。单文件零依赖红线
 	// 要求内联 <script>，故本路由覆盖 middleware 的 CSP（script-src 'none'）放行
 	// script-src 'unsafe-inline'；不放行任何外部源，其余指令原样。
 	mux.HandleFunc(`/`, func(w http.ResponseWriter, r *http.Request) {

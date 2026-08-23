@@ -273,6 +273,230 @@ func TestServe_PulseTask_ScoredTask(t *testing.T) {
 	}
 }
 
+// TestServe_PulseTask_Truncated: a task whose event stream exceeds the feed limit gets
+// its transcript capped AND the payload marks truncated:true — parity with feed.json,
+// so the detail page can label the transcript as partial instead of silently posing as
+// complete (regression guard: buildPulseTask used to drop FeedResult.Truncated).
+//
+// TestServe_PulseTask_Truncated：事件流超出 feed 上限的任务，transcript 被截断且载荷
+// 标 truncated:true——与 feed.json 对齐，详情页得以如实标注「不完整」而不是静默冒充
+// 完整序列（回归守卫：buildPulseTask 曾丢弃 FeedResult.Truncated）。
+func TestServe_PulseTask_Truncated(t *testing.T) {
+	root, _ := forgedatatest.RealProject(t)
+	base := time.Unix(1700000000, 0).UTC()
+	st := &taskpipeline.TaskState{
+		TaskRef: "feat/long", Branch: "feat/long", StartedAt: base,
+	}
+	// 1 条 task-start + defaultFeedLimit+10 条 gate 事件 = 超 defaultFeedLimit → 必截断。
+	for i := 0; i < defaultFeedLimit+10; i++ {
+		st.History = append(st.History, taskpipeline.TaskGateResult{
+			Gate: "task-verify", Passed: true, CompletedAt: base.Add(time.Duration(i+1) * time.Minute),
+		})
+	}
+	if err := taskpipeline.SaveTaskState(root, st); err != nil {
+		t.Fatal(err)
+	}
+	// 恰好等于上限的对照任务：1 条 task-start + defaultFeedLimit-1 条 gate = defaultFeedLimit
+	// 条整 → 不截断（钉死 `len > limit` 而非 `>=` 的边界）。
+	exact := &taskpipeline.TaskState{
+		TaskRef: "feat/exact", Branch: "feat/exact", StartedAt: base,
+	}
+	for i := 0; i < defaultFeedLimit-1; i++ {
+		exact.History = append(exact.History, taskpipeline.TaskGateResult{
+			Gate: "task-verify", Passed: true, CompletedAt: base.Add(time.Duration(i+1) * time.Minute),
+		})
+	}
+	if err := taskpipeline.SaveTaskState(root, exact); err != nil {
+		t.Fatal(err)
+	}
+	srv := pulseServer(t, Options{Root: root})
+
+	code, body := pulseGet(t, srv.URL+"/api/pulse/task.json?ref=feat/long")
+	if code != 200 {
+		t.Fatalf("status = %d: %s", code, body)
+	}
+	var payload struct {
+		Events    []FeedEvent `json:"events"`
+		Truncated bool        `json:"truncated"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode: %v\n%s", err, body)
+	}
+	if len(payload.Events) != defaultFeedLimit {
+		t.Errorf("events len = %d, want %d（默认上限截断）", len(payload.Events), defaultFeedLimit)
+	}
+	if !payload.Truncated {
+		t.Error("truncated = false, want true——截断必须暴露给前端")
+	}
+	// 钉死截断保留哪一端：降序取最新 defaultFeedLimit 条（对 transcript 是升序渲染的
+	// 前提，截错方向 = 灾难性语义反转，仅断言 len+truncated 抓不住）。
+	if len(payload.Events) > 0 && !payload.Events[0].Time.Equal(base.Add(time.Duration(defaultFeedLimit+10)*time.Minute)) {
+		t.Errorf("events[0].time = %v, want 最新端 +%dmin（截断必须保留最新事件）",
+			payload.Events[0].Time, defaultFeedLimit+10)
+	}
+	if len(payload.Events) >= defaultFeedLimit && !payload.Events[defaultFeedLimit-1].Time.Equal(base.Add(11*time.Minute)) {
+		t.Errorf("events[%d].time = %v, want 窗口边界 +11min（+1..+10min 与 task-start 被截掉）",
+			defaultFeedLimit-1, payload.Events[defaultFeedLimit-1].Time)
+	}
+	for i, e := range payload.Events {
+		if e.TaskRef != "feat/long" {
+			t.Fatalf("events[%d].taskRef = %q, want feat/long（taskRef 过滤失效）", i, e.TaskRef)
+		}
+	}
+
+	code, body = pulseGet(t, srv.URL+"/api/pulse/task.json?ref=feat/exact")
+	if code != 200 {
+		t.Fatalf("status = %d: %s", code, body)
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode: %v\n%s", err, body)
+	}
+	if len(payload.Events) != defaultFeedLimit {
+		t.Errorf("恰好等于上限: events len = %d, want %d", len(payload.Events), defaultFeedLimit)
+	}
+	if payload.Truncated {
+		t.Error("恰好等于上限: truncated = true, want false（len > limit 而非 >=）")
+	}
+}
+
+// TestServe_PulseTask_EvidenceBackfill: a scored task whose ScoreResult.Evidence is nil
+// (buildEvidenceSummary returns nil when det+claim=0 — legitimate for tasks scored
+// before evidence collection) still gets the evidence block backfilled from its act
+// conclusion; otherwise the detail page shows no 证据链 while its own conclusion event
+// in the transcript below carries det/claim counts — self-contradiction, the same bug
+// class the FromConclusion score backfill fixed. FromConclusion must stay false: the
+// score itself is real, only the evidence block is degraded.
+//
+// TestServe_PulseTask_EvidenceBackfill：ScoreResult.Evidence 为 nil 的已评分任务
+// （det+claim=0 时 buildEvidenceSummary 合法地返回 nil——证据采集上线前评分的存量
+// 任务）仍须从 act 结论回填证据块；否则详情页评分块无证据链，而下方 transcript 里
+// 自己的 conclusion 事件却带着 det/claim 计数——自相矛盾，与 FromConclusion 评分
+// 回填修的是同一类 bug。FromConclusion 须保持 false：评分本身是真的，仅证据块降级。
+func TestServe_PulseTask_EvidenceBackfill(t *testing.T) {
+	root, p := forgedatatest.RealProject(t)
+	base := time.Unix(1700000000, 0).UTC()
+	st := &taskpipeline.TaskState{
+		TaskRef: "feat/noevi", Branch: "feat/noevi", StartedAt: base,
+		Score: &scoringtypes.ScoreResult{
+			TaskRef: "feat/noevi", Overall: 72, Grade: "C", ScoredAt: base,
+			Dimensions: []scoringtypes.DimensionScore{
+				{Dimension: scoringtypes.DimensionProcess, Score: 70, Detail: "部分门禁"},
+			},
+			Evidence: nil, // 评分时无证据输入——合法 nil
+		},
+	}
+	if err := taskpipeline.SaveTaskState(root, st); err != nil {
+		t.Fatal(err)
+	}
+	if err := act.Append(p, &act.Conclusion{
+		TaskRef: "feat/noevi", Score: 72, Grade: "C", Strength: "Weak",
+		Deterministic: 5, AgentClaim: 3, Ratio: 0.625,
+		CompletedAt: base.Add(time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	srv := pulseServer(t, Options{Root: root})
+
+	code, body := pulseGet(t, srv.URL+"/api/pulse/task.json?ref=feat/noevi")
+	if code != 200 {
+		t.Fatalf("status = %d: %s", code, body)
+	}
+	var payload struct {
+		Score *struct {
+			FromConclusion bool `json:"fromConclusion"`
+			Evidence       *struct {
+				Deterministic int     `json:"deterministic"`
+				AgentClaim    int     `json:"agentClaim"`
+				Ratio         float64 `json:"ratio"`
+				Strength      string  `json:"strength"`
+			} `json:"evidence"`
+		} `json:"score"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode: %v\n%s", err, body)
+	}
+	if payload.Score == nil {
+		t.Fatal("score 不得为 null")
+	}
+	if payload.Score.FromConclusion {
+		t.Error("fromConclusion 须为 false——评分真实存在，仅证据块回填")
+	}
+	if payload.Score.Evidence == nil {
+		t.Fatal("evidence 须从结论回填，不得为 null（详情页否则自相矛盾）")
+	}
+	ev := payload.Score.Evidence
+	if ev.Deterministic != 5 || ev.AgentClaim != 3 || ev.Strength != "Weak" || ev.Ratio != 0.625 {
+		t.Errorf("回填 evidence 异常: %+v", ev)
+	}
+}
+
+// TestServe_PulseTask_NoEvidenceNoFabrication: the anti-fabrication guard — a scored
+// task whose conclusion carries zero evidence (det=0, claim=0, Strength="NoData"; the
+// only shape BuildConclusion emits for zero evidence — Strength is never empty in
+// production) must NOT get a fabricated all-zero evidence block: score.evidence stays
+// null and the frontend shows「无证据记录」honestly. Regression guard for the former
+// always-true `Strength != ""` disjunct that made this skip path unreachable in
+// production, and against "simplifying" the backfill into an unconditional one.
+//
+// TestServe_PulseTask_NoEvidenceNoFabrication：反编造守卫——结论零证据（det=0、
+// claim=0、Strength="NoData"；BuildConclusion 对零证据的唯一生产形态——生产里
+// Strength 永非空）的已评分任务不得被编造全零证据块：score.evidence 保持 null，
+// 前端如实显示「无证据记录」。回归守卫：曾有的 `Strength != ""` 恒真析取项让本
+// skip 路径生产不可达；也防回填分支被「简化」成无条件回填。
+func TestServe_PulseTask_NoEvidenceNoFabrication(t *testing.T) {
+	root, p := forgedatatest.RealProject(t)
+	base := time.Unix(1700000000, 0).UTC()
+	st := &taskpipeline.TaskState{
+		TaskRef: "feat/noevi-guard", Branch: "feat/noevi-guard", StartedAt: base,
+		Score: &scoringtypes.ScoreResult{
+			TaskRef: "feat/noevi-guard", Overall: 72, Grade: "C", ScoredAt: base,
+			Dimensions: []scoringtypes.DimensionScore{
+				{Dimension: scoringtypes.DimensionProcess, Score: 70, Detail: "部分门禁"},
+			},
+			Evidence: nil, // 评分时无证据输入——合法 nil
+		},
+	}
+	if err := taskpipeline.SaveTaskState(root, st); err != nil {
+		t.Fatal(err)
+	}
+	if err := act.Append(p, &act.Conclusion{
+		TaskRef: "feat/noevi-guard", Score: 72, Grade: "C", Strength: "NoData",
+		Deterministic: 0, AgentClaim: 0, Ratio: 0,
+		CompletedAt: base.Add(time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	srv := pulseServer(t, Options{Root: root})
+
+	code, body := pulseGet(t, srv.URL+"/api/pulse/task.json?ref=feat/noevi-guard")
+	if code != 200 {
+		t.Fatalf("status = %d: %s", code, body)
+	}
+	var payload struct {
+		Score *struct {
+			FromConclusion bool `json:"fromConclusion"`
+			Evidence       *struct {
+				Deterministic int     `json:"deterministic"`
+				AgentClaim    int     `json:"agentClaim"`
+				Ratio         float64 `json:"ratio"`
+				Strength      string  `json:"strength"`
+			} `json:"evidence"`
+		} `json:"score"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode: %v\n%s", err, body)
+	}
+	if payload.Score == nil {
+		t.Fatal("score 不得为 null——评分真实存在")
+	}
+	if payload.Score.Evidence != nil {
+		t.Errorf("evidence 须保持 null（零证据结论不得回填编造的全零块），实际: %+v", payload.Score.Evidence)
+	}
+	if payload.Score.FromConclusion {
+		t.Error("fromConclusion 须为 false——评分真实存在，不走结论降级回填")
+	}
+}
+
 // TestServe_PulseTask_Errors: missing ref → 400; unknown ref → 404.
 //
 // TestServe_PulseTask_Errors：缺 ref → 400；未知 ref → 404。
