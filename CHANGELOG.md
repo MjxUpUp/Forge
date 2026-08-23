@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.42.1](https://github.com/MjxUpUp/Forge/compare/v1.42.0...v1.42.1) (2026-08-23)
+
+
+### Bug Fixes
+
+* **act:** 逃生舱cap证据缩放+nudge 14天窗口+历史结论就地迁移 ([62c02eb](https://github.com/MjxUpUp/Forge/commit/62c02ebadc7aa14f194afca1361e0d9413ded8ef))
+* **protocol:** 审查-修复-复审闭环补复审规定——多轮盖章 ADVISORY+SKILL.md+生成文案 ([6c54c68](https://github.com/MjxUpUp/Forge/commit/6c54c682c50a84d1e981e215da46ebc1cdee6c11))
+* **review-r2:** 复审五项修复——窗口沿内联注释/override Short 谎报/笔误/豁免措辞统一+守卫测试 ([5d62720](https://github.com/MjxUpUp/Forge/commit/5d627205446fe7e28123512f554802f445539faf))
+* **review-r3:** 窗口内侧边界注释 1ns→1 秒，与代码 time.Second 一致（第三轮验证 INFO） ([848ca89](https://github.com/MjxUpUp/Forge/commit/848ca89171463144dfc533c62c7b32d8b6ed2dcb))
+* **review:** code-review 六项修复——README第6处谎报文案/评分封顶独立性注释/豁免说明补齐/窗口沿契约/权限保留/过时注释 ([7bb65a8](https://github.com/MjxUpUp/Forge/commit/7bb65a8e7382ac8373e6aa99d93f632ce7336fb4))
+* **review:** 复审跟进四项——快照增量触发/决策ID回归生成器/死断言/文档同步 ([0059111](https://github.com/MjxUpUp/Forge/commit/0059111c97ee86e0f9c145e577ccaa121c072a7a))
+
 ## [1.42.0](https://github.com/MjxUpUp/Forge/compare/v1.41.0...v1.42.0) (2026-08-23)
 
 
