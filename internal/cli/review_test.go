@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -93,27 +95,44 @@ func TestRenderReviewPassBlindSpot(t *testing.T) {
 }
 
 // TestRunReviewPassAt_ReworkRoundRequiresRecheck pins the re-review requirement surfaced
-// at re-stamp time (2026-08 protocol gap fix): when `forge review pass` stamps round N>1
-// (a re-stamp whose baseline change came from fixing previous review findings), the output
-// must carry an explicit ADVISORY that this stamp is only legitimate if a fresh read-only
-// re-review agent already verified the fixes — the fixer cannot self-certify. Round 1
-// stays silent (nothing was fixed yet). Rationale: the snapshot loop (review-fix-recheck,
-// executor.go task-complete HARD block) enforces only the SHAPE of the loop (re-stamp after
-// code changes); without this cue, a fixer can stamp without re-reviewing and the protocol
-// shows zero difference from an honest round (2026-08 real case: round-1 fixes were stamped
-// without re-review and passed task-complete; the gap was only caught by a human asking
-// "did you re-review?").
+// at re-stamp time (2026-08 protocol gap fix): when `forge review pass` stamps a round whose
+// code snapshot CHANGED since the previous stamped round (head OR workdir-change hash — the
+// baseline delta that comes from fixing previous review findings), the output must carry an
+// explicit ADVISORY that this stamp is only legitimate if a fresh read-only re-review agent
+// already verified the fixes — the fixer cannot self-certify. Two silence contracts: round 1
+// (no previous round) and a same-state repeat stamp (transient-failure retry / baseline
+// rebuild — no code change, no re-review owed). Rationale: the snapshot loop
+// (review-fix-recheck, executor.go task-complete HARD block) enforces only the SHAPE of the
+// loop (re-stamp after code changes); without this cue, a fixer can stamp without
+// re-reviewing and the protocol shows zero difference from an honest round (2026-08 real
+// case: round-1 fixes were stamped without re-review and passed task-complete; the gap was
+// only caught by a human asking "did you re-review?"). Trigger is the snapshot delta, not
+// the bare round count — bare counts misfire on no-change re-stamps.
 //
 // TestRunReviewPassAt_ReworkRoundRequiresRecheck 钉住重新盖章时的复审要求提示
-//（2026-08 协议缺口修复）：`forge review pass` 盖第 N>1 轮章（基线变更源于修复上一轮
-// review 发现的重新盖章）时，输出必须带明确 ADVISORY——本枚章只在「已重新派只读
-// 复审 agent 验证过修复」时合法，修复者不能自证。第 1 轮保持静默（尚无修复发生）。
-// 动机：快照闭环（review-fix-recheck，executor.go task-complete 硬阻断）只强制循环的
-//「形状」（改码后重新盖章）；没有本提示时，修复者可以不复审直接盖章，协议输出与
-// 诚实轮次零差别（2026-08 真实案例：第一轮修复未经复审直接盖章过了 task-complete，
-// 缺口靠人工追问「复审了吗」才暴露）。
+//（2026-08 协议缺口修复）：`forge review pass` 盖的轮次若代码快照自上一枚盖章轮以来
+//「变了」（head 或工作区变更 hash——源于修复上一轮 review 发现的基线增量），输出必须
+// 带明确 ADVISORY——本枚章只在「已重新派只读复审 agent 验证过修复」时合法，修复者
+// 不能自证。两份静默契约：第 1 轮（无上一轮可比）与同状态重复盖章（瞬态失败重试/
+// 重建基线——无代码变更即不欠复审）。动机：快照闭环（review-fix-recheck，
+// executor.go task-complete 硬阻断）只强制循环的「形状」（改码后重新盖章）；没有本
+// 提示，修复者可以不复审直接盖章，协议输出与诚实轮零差别（2026-08 真实案例：第一轮
+// 修复未经复审直接盖章过了 task-complete，缺口靠人工追问「复审了吗」才暴露）。触发
+// 条件是快照增量而非裸轮次计数——裸计数会在无变更重盖上误响。
 func TestRunReviewPassAt_ReworkRoundRequiresRecheck(t *testing.T) {
 	dir := t.TempDir()
+	// Real git fixture: the trigger is the snapshot delta (head/hash), which needs a
+	// moving HEAD — a bare temp dir has empty head/hash forever and can never fire.
+	//
+	// 真实 git 夹具：触发条件是快照增量（head/hash），需要会动的 HEAD——裸临时目录
+	// 的 head/hash 恒空，永远不触发。
+	runGit(t, dir, `init`)
+	runGit(t, dir, `config`, `user.email`, `test@test.com`)
+	runGit(t, dir, `config`, `user.name`, `Test`)
+	os.WriteFile(filepath.Join(dir, `main.go`), []byte("package main\n\nfunc main() {}\n"), 0644)
+	runGit(t, dir, `add`, `.`)
+	runGit(t, dir, `commit`, `-m`, `initial`)
+
 	const ref = `feat/recheck-req`
 	state := &taskpipeline.TaskState{TaskRef: ref, Branch: `feat/recheck-req`}
 	if err := taskpipeline.SaveTaskState(dir, state); err != nil {
@@ -132,19 +151,37 @@ func TestRunReviewPassAt_ReworkRoundRequiresRecheck(t *testing.T) {
 		t.Errorf(`第 1 轮盖章不应出现复审提示（尚无修复发生），got: %q`, first)
 	}
 
-	// Round 2: re-stamp after fixes — must carry the re-review requirement.
+	// Round 2 with NO code change (same-state repeat stamp: transient retry / baseline
+	// rebuild) — still silent: no snapshot delta, no re-review owed.
 	//
-	// 第 2 轮：修复后的重新盖章——必须带复审要求。
-	second := captureStdout(t, func() {
+	// 第 2 轮且无代码变更（同状态重复盖章：瞬态重试/重建基线）——依旧静默：
+	// 无快照增量，不欠复审。
+	repeat := captureStdout(t, func() {
 		if err := runReviewPassAt(dir, ref); err != nil {
-			t.Fatalf("runReviewPassAt 第 2 次: %v", err)
+			t.Fatalf("runReviewPassAt 无变更重盖: %v", err)
 		}
 	})
-	if !strings.Contains(second, "复审") || !strings.Contains(second, "自证") {
-		t.Errorf(`第 2 轮盖章（返工后重新盖章）应提示复审要求（复审+自证），got: %q`, second)
+	if strings.Contains(repeat, "复审") {
+		t.Errorf(`同状态重复盖章不欠复审、应静默（触发条件是快照增量非轮次计数），got: %q`, repeat)
 	}
-	if !strings.HasPrefix(strings.TrimSpace(second), "ADVISORY") && !strings.Contains(second, "ADVISORY") {
-		t.Errorf(`复审要求应以 ADVISORY 前缀可见（对齐 renderReviewPassBlindSpot 风格），got: %q`, second)
+
+	// Fix + commit → snapshot delta (HEAD moved). Round 3 stamp must carry the
+	// re-review requirement.
+	//
+	// 修复 + 提交 → 快照增量（HEAD 移动）。第 3 轮盖章必须带复审要求。
+	os.WriteFile(filepath.Join(dir, `main.go`), []byte("package main\n\nfunc main() { println(1) }\n"), 0644)
+	runGit(t, dir, `add`, `.`)
+	runGit(t, dir, `commit`, `-m`, `fix: apply review findings`)
+	third := captureStdout(t, func() {
+		if err := runReviewPassAt(dir, ref); err != nil {
+			t.Fatalf("runReviewPassAt 修复后重盖: %v", err)
+		}
+	})
+	if !strings.Contains(third, "复审") || !strings.Contains(third, "自证") {
+		t.Errorf(`快照变更后的重新盖章应提示复审要求（复审+自证），got: %q`, third)
+	}
+	if !strings.Contains(third, "ADVISORY") {
+		t.Errorf(`复审要求应以 ADVISORY 前缀可见（对齐 renderReviewPassBlindSpot 风格），got: %q`, third)
 	}
 }
 

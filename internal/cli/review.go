@@ -163,24 +163,32 @@ func runReviewPassAt(root, explicitRef string) error {
 			fmt.Fprintf(os.Stderr, "⚠ checklog 记录失败（review-pass 未落盘）: %v\n", recErr)
 		}
 		fmt.Printf("✅ task %s: code-review-gate 已通过（task-complete 门禁前置满足，基线 HEAD=%s）\n", state.TaskRef, head)
-		// Re-review requirement at re-stamp time (2026-08 protocol gap fix): a round N>1
-		// stamp means the baseline change since the last round came from FIXING previous
-		// review findings — this stamp is only legitimate if a fresh read-only re-review
-		// agent already verified those fixes. The snapshot loop (task-complete HARD block)
+		// Re-review requirement at re-stamp time (2026-08 protocol gap fix): when the code
+		// snapshot CHANGED since the last stamped round (a re-stamp whose baseline change came
+		// from fixing previous review findings), this stamp is only legitimate if a fresh
+		// read-only re-review agent already verified those fixes. Trigger is the snapshot delta
+		// (head OR workdir-change hash differs from the previous ReviewRound), NOT the bare
+		// round count — a same-state repeat stamp (transient-failure retry, baseline rebuild)
+		// owes no re-review and must stay silent. The snapshot loop (task-complete HARD block)
 		// enforces only the loop's SHAPE (re-stamp after code changes); without this cue a
 		// fixer can stamp without re-reviewing and the output is indistinguishable from an
 		// honest round. ADVISORY (not HARD): "was a re-review run" is not mechanically
 		// decidable — the cue makes the obligation visible at the exact moment it is owed.
-		// Round 1 stays silent (nothing fixed yet).
+		// Round 1 has no previous round → silent.
 		//
-		// 返工轮重新盖章时的复审要求（2026-08 协议缺口修复）：第 N>1 轮章意味着上一轮
-		// 以来的基线变更来自「修复上一轮 review 发现」——本枚章只在已重新派只读复审
-		// agent 验证过修复时合法。快照闭环（task-complete 硬阻断）只强制循环的「形状」
-		//（改码后重新盖章）；没有本提示，修复者可以不复审直接盖章，输出与诚实轮零差别。
-		// ADVISORY（非 HARD）：「复审是否真跑过」不可机械判定——提示让义务在欠下的确切
-		// 时刻可见。第 1 轮静默（尚无修复）。
+		// 返工轮重新盖章时的复审要求（2026-08 协议缺口修复）：当代码快照自上一枚盖章轮以来
+		// 「变了」（基线变更源于修复上一轮 review 发现），本枚章只在已重新派只读复审 agent
+		// 验证过修复时合法。触发条件是快照增量（head 或工作区变更 hash 与上一轮 ReviewRound
+		// 不同），不是裸轮次计数——同状态重复盖章（瞬态失败重试、重建基线）不欠复审、保持
+		// 静默。快照闭环（task-complete 硬阻断）只强制循环的「形状」（改码后重新盖章）；没有
+		// 本提示，修复者可以不复审直接盖章，输出与诚实轮零差别。ADVISORY（非 HARD）：
+		// 「复审是否真跑过」不可机械判定——提示让义务在欠下的确切时刻可见。第 1 轮无上一轮
+		// 可比 → 静默。
 		if n := len(state.ReviewRounds); n > 1 {
-			fmt.Println(taskpipeline.GateAdvisory("[review] 第 %d 轮盖章（返工后重新盖章）——本枚章只在已重新派只读子 agent 复审过修复时合法：修复者不能自证修复合格。若尚未复审，先派复审再回到这里；直接盖章=自证", n))
+			prev := state.ReviewRounds[n-2]
+			if prev.HeadCommit != head || prev.ChangeHash != hash {
+				fmt.Println(taskpipeline.GateAdvisory("[review] 第 %d 轮盖章（代码快照已变——返工后重新盖章）——本枚章只在已重新派只读子 agent 复审过修复时合法：修复者不能自证修复合格。若尚未复审，先派复审再回到这里；直接盖章=自证", n))
+			}
 		}
 		// Plan 3 (blind_spot trigger · review.go critic role): marking review-passed is a decisive action. Calibrate evidence
 		// strength at this moment—if the "done" claim mainly relies on agent self-report (Weak/Unverified), emit an ADVISORY reminding that this review
