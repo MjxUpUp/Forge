@@ -1424,14 +1424,21 @@ func TestIsForgeHookCommand(t *testing.T) {
 }
 
 // TestPostToolUseToolTrackMatchesReadSkillAgent pins solution C: the tool-track hook's PostToolUse
-// matcher must cover Read|Skill|Agent, so the toollog audit records the quality skills loaded by the agent and the spawned sub-agent
-// types (the root cause of quality skill 0-triggering under advisory context is traceable). A Read-only matcher would leave Skill/Agent calls
-// unrecorded — whether quality skills are driven cannot be audited.
+// matcher must cover Read|Skill|Agent|Grep|Glob, so the toollog audit records the quality skills
+// loaded by the agent, the spawned sub-agent types (the root cause of quality skill 0-triggering
+// under advisory context is traceable), AND the exploration calls (Grep/Glob). A Read-only matcher
+// would leave Skill/Agent calls unrecorded — whether quality skills are driven cannot be audited;
+// a matcher without Grep/Glob leaves exploration invisible to toollog (and thus to work-activity's
+// explore axis via ExploreCounts) — the 2026-08-23 doc-implementation drift: CLAUDE.md advises
+// "explore with Read/Grep/Glob" between gates, but unrecorded Grep/Glob counted as zero work.
 //
 // TestPostToolUseToolTrackMatchesReadSkillAgent 钉死方案 C：tool-track hook 的 PostToolUse
-// matcher 必须覆盖 Read|Skill|Agent，让 toollog 审计记录 agent 加载的质量技能与派生的子 agent
-// 类型（advisory 语境下质量 skill 0 触发的根因可追溯）。仅 Read matcher 会让 Skill/Agent 调用
-// 不被记录——质量 skill 是否被驱动无从审计。
+// matcher 必须覆盖 Read|Skill|Agent|Grep|Glob，让 toollog 审计记录 agent 加载的质量技能、
+// 派生的子 agent 类型（advisory 语境下质量 skill 0 触发的根因可追溯），以及探索调用
+// （Grep/Glob）。仅 Read matcher 会让 Skill/Agent 调用不被记录——质量 skill 是否被驱动
+// 无从审计；缺 Grep/Glob 则探索对 toollog 不可见（进而 work-activity 的探索轴
+// ExploreCounts 数不到）——2026-08-23 文档-实现漂移：CLAUDE.md 建议门禁间
+// 「用 Read/Grep/Glob 探索」，但未记录的 Grep/Glob 被计为零工作。
 func TestPostToolUseToolTrackMatchesReadSkillAgent(t *testing.T) {
 	dir := t.TempDir()
 	if err := GenerateSettings(dir); err != nil {
@@ -1454,7 +1461,7 @@ func TestPostToolUseToolTrackMatchesReadSkillAgent(t *testing.T) {
 	}
 	found := false
 	for _, matcher := range parsed.Hooks["PostToolUse"] {
-		if matcher.Matcher == "Read|Skill|Agent" {
+		if matcher.Matcher == "Read|Skill|Agent|Grep|Glob" {
 			for _, h := range matcher.Hooks {
 				if h.Command == "forge hook tool-track" {
 					found = true
@@ -1463,7 +1470,7 @@ func TestPostToolUseToolTrackMatchesReadSkillAgent(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Error("PostToolUse 缺 Read|Skill|Agent matcher 的 forge hook tool-track（方案 C：Skill/Agent 调用不被审计）")
+		t.Error("PostToolUse 缺 Read|Skill|Agent|Grep|Glob matcher 的 forge hook tool-track（方案 C：Skill/Agent 调用不被审计；Grep/Glob 缺席 = 探索零记录）")
 	}
 }
 
@@ -1471,7 +1478,7 @@ func TestPostToolUseToolTrackMatchesReadSkillAgent(t *testing.T) {
 // skill-trigger 必须挂在 5 个事件（UserPromptSubmit / PreToolUse / PostToolUse / Stop / SessionStart）
 // 的 7 个 matcher 末尾（PreToolUse/PostToolUse 各 2 个 + Stop/UserPromptSubmit/SessionStart 各 1 个），
 // 且不得挂在 PostCompact（plan 边界：PostCompact 不支持 additionalContext 注入）与 PostToolUse
-// Read|Skill|Agent matcher（无质量 skill 场景，徒增噪声）。直接断言 ForgeHookSpec() 结构，防回归
+// Read|Skill|Agent|Grep|Glob matcher（无质量 skill 场景，徒增噪声）。直接断言 ForgeHookSpec() 结构，防回归
 // （mirror 守卫 TestPluginPack_HooksMirrorSettings 发现不了单边删除：删 ForgeHookSpec 的同时
 // plugin.json 同步消失，mirror 仍过）。
 func TestForgeHookSpec_SkillTriggerMounted(t *testing.T) {
@@ -1511,8 +1518,8 @@ func TestForgeHookSpec_SkillTriggerMounted(t *testing.T) {
 				if event == "PostCompact" {
 					t.Errorf("skill-trigger 不应挂 PostCompact（不支持 additionalContext 注入）")
 				}
-				if event == "PostToolUse" && m.Matcher == "Read|Skill|Agent" {
-					t.Errorf("skill-trigger 不应挂 PostToolUse Read|Skill|Agent（无质量 skill 场景）")
+				if event == "PostToolUse" && m.Matcher == "Read|Skill|Agent|Grep|Glob" {
+					t.Errorf("skill-trigger 不应挂 PostToolUse Read|Skill|Agent|Grep|Glob（无质量 skill 场景）")
 				}
 			}
 		}

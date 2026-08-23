@@ -549,7 +549,8 @@ func TestReasonixMatchersTranslated(t *testing.T) {
 	if !got["PreToolUse"]["bash"] {
 		t.Errorf("PreToolUse missing translated Bash matcher, got: %v", got["PreToolUse"])
 	}
-	// PostToolUse adds Read|Skill|Agent → read_file (Skill/Agent dropped).
+	// PostToolUse adds Read|Skill|Agent|Grep|Glob → read_file (Skill/Agent/Grep/Glob dropped:
+	// no reasonix equivalents — Grep/Glob joined the spec matcher 2026-08-23).
 	if !got["PostToolUse"][writers] {
 		t.Errorf("PostToolUse missing translated Write|Edit matcher %q, got: %v", writers, got["PostToolUse"])
 	}
@@ -557,7 +558,7 @@ func TestReasonixMatchersTranslated(t *testing.T) {
 		t.Errorf("PostToolUse missing translated Bash matcher, got: %v", got["PostToolUse"])
 	}
 	if !got["PostToolUse"]["read_file"] {
-		t.Errorf("PostToolUse missing translated Read matcher (Read→read_file, Skill/Agent dropped), got: %v", got["PostToolUse"])
+		t.Errorf("PostToolUse missing translated Read matcher (Read→read_file, Skill/Agent/Grep/Glob dropped), got: %v", got["PostToolUse"])
 	}
 	// SessionStart / Stop carry no matcher in the spec → empty match (omitempty drops the key).
 	for _, evt := range []string{"SessionStart", "Stop"} {
@@ -572,7 +573,7 @@ func TestReasonixMatchersTranslated(t *testing.T) {
 	// snake_case names (write_file/bash/read_file) contain none of the PascalCase tokens.
 	for event, entries := range hooksMap {
 		for _, e := range entries {
-			for _, leak := range []string{"Write", "Edit", "Bash", "Read", "Skill", "Agent"} {
+			for _, leak := range []string{"Write", "Edit", "Bash", "Read", "Skill", "Agent", "Grep", "Glob"} {
 				if strings.Contains(e.Match, leak) {
 					t.Errorf("%s matcher %q still carries untranslated CC token %q (reasonixMatcher not applied)", event, e.Match, leak)
 				}

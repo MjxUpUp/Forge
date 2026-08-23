@@ -687,12 +687,12 @@ func TestAppendSessionRead_RecordsAndMatches(t *testing.T) {
 	}
 }
 
-// TestHookToolTrackRecordsSkillInput pins scheme C: the tool-track hook (matcher Read|Skill|Agent)
+// TestHookToolTrackRecordsSkillInput pins scheme C: the tool-track hook (matcher Read|Skill|Agent|Grep|Glob)
 // records tool_input (skill name) for Skill calls, so toollog audits can see which quality skill the agent loaded.
 // Read still omits tool_input (frequent; gate only needs tool_name+timestamp); Skill/Agent fill tool_input
 // so whether quality skills were driven becomes traceable (root cause of zero quality-skill fires in advisory context is traceable).
 //
-// TestHookToolTrackRecordsSkillInput 钉死方案 C：tool-track hook（matcher Read|Skill|Agent）
+// TestHookToolTrackRecordsSkillInput 钉死方案 C：tool-track hook（matcher Read|Skill|Agent|Grep|Glob）
 // 对 Skill 调用记录 tool_input（skill 名），让 toollog 审计能看到 agent 加载了哪个质量技能。
 // Read 仍省略 tool_input（频繁，gate 只需 tool_name+timestamp）；Skill/Agent 填 tool_input
 // 让"质量 skill 是否被驱动"可追溯（advisory 语境下质量 skill 0 触发的根因可追溯）。
@@ -847,6 +847,66 @@ func TestHookToolTrackRecordsReadFilePath(t *testing.T) {
 			}
 			tc.assert(t, string(data))
 		})
+	}
+}
+
+// TestHookToolTrackRecordsGrepInput pins the production shape of Grep/Glob
+// tool_input (2026-08-23 drift fix): like Bash/Skill/Agent, exploration calls
+// record the full tool input truncated — the pattern and path are the audit
+// payload (which regex, which tree). Read stays minimal-shape (funnel join);
+// Grep/Glob do not join any funnel, so the lean contract does not apply. The
+// row itself is what ExploreCounts counts — no input would still count, but an
+// input-less exploration log is worthless for behavior/hazard audits.
+//
+// TestHookToolTrackRecordsGrepInput 钉死 Grep/Glob tool_input 的生产形状
+// （2026-08-23 漂移修复）：与 Bash/Skill/Agent 同待遇记完整 input 截断——
+// pattern 与 path 就是审计载荷（查了什么正则、扫了哪棵树）。Read 保持最小
+// 形状（漏斗 join）；Grep/Glob 不进任何漏斗，lean 契约不适用。条目本身即
+// ExploreCounts 所数——没有 input 也照样计数，但无 input 的探索日志对
+// 行为/风险审计毫无价值。
+func TestHookToolTrackRecordsGrepInput(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	tmpDir := t.TempDir()
+	os.MkdirAll(filepath.Join(tmpDir, ".forge", "hooks"), 0755)
+	os.WriteFile(filepath.Join(tmpDir, ".forge", "state.json"), []byte(`{"pipeline_version":"2.0","mode":"small"}`), 0644)
+
+	originalWd, _ := os.Getwd()
+	os.Chdir(tmpDir)
+	defer os.Chdir(originalWd)
+
+	stdin := `{"hook_event_name":"PostToolUse","tool_name":"Grep","tool_input":{"pattern":"DSH_HOME","path":"internal/"}}`
+	oldStdin := os.Stdin
+	tmpStdin, _ := os.CreateTemp("", "hook-stdin-*.json")
+	tmpStdin.WriteString(stdin)
+	tmpStdin.Seek(0, 0)
+	os.Stdin = tmpStdin
+	defer func() {
+		os.Stdin = oldStdin
+		tmpStdin.Close()
+		os.Remove(tmpStdin.Name())
+	}()
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	runHook(nil, []string{"tool-track"})
+
+	w.Close()
+	os.Stdout = oldStdout
+	r.Read(make([]byte, 8192))
+
+	toollogPath := filepath.Join(forgedata.DataDirFor(tmpDir), "toollog.jsonl")
+	data, err := os.ReadFile(toollogPath)
+	if err != nil {
+		t.Fatalf("toollog.jsonl 未生成: %v", err)
+	}
+	body := string(data)
+	if !strings.Contains(body, `"tool_name":"Grep"`) {
+		t.Fatalf("toollog 应含 tool_name=Grep 条目（matcher 补 Grep/Glob 的记录面）, got: %s", body)
+	}
+	if !strings.Contains(body, "DSH_HOME") || !strings.Contains(body, "internal/") {
+		t.Errorf("Grep 的 tool_input 须记 pattern+path（审计载荷，与 Bash/Skill/Agent 同待遇）, got: %s", body)
 	}
 }
 
