@@ -155,7 +155,14 @@ func ForgeHookSpec() map[string][]HookMatcher {
 				// 让「质量 skill 是否被驱动」可追溯（与方案 A 的 blocking 驱动互补：A 强制触发，C 留痕审计）。
 				// tool-track.sh 永远 PASS（非 scoring check），不阻塞；readsFilePath 副通道严格限定
 				// Read，Skill/Agent 不污染 read-before-edit 日志。
-				Matcher: "Read|Skill|Agent",
+				//
+				// Grep|Glob（2026-08-23 文档-实现漂移修复）：CLAUDE.md 错误表建议门禁间
+				// 「用 Read/Grep/Glob 探索」，但 Grep/Glob 此前不在任何 matcher、进不了
+				// toollog——纯探索段落被 work-activity 计为零工作照样拦截（本日实测：Grep
+				// 探索两次 BLOCKED，靠 Read 才放行）。补 matcher 后 toollog 记 Grep/Glob，
+				// toolusage.ExploreCounts 才有数据可数；readsFilePath 副通道仍严格限定
+				// Read——read-before-edit 的「改前必读」不因探索计数稀释。
+				Matcher: "Read|Skill|Agent|Grep|Glob",
 				Hooks: []HookEntry{
 					{Type: "command", Command: "forge hook tool-track"},
 				},

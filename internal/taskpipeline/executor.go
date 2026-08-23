@@ -522,20 +522,44 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 			reads, edits, rerr := toolusage.ReadEditCounts(root, state.TaskRef, since)
 			if rerr != nil {
 				fmt.Fprintf(os.Stderr, "[forge] warning: activity check failed: %v\n", rerr)
-			} else if reads+edits > 0 {
-				// toollog has data — require at least one Read: the agent must understand code
-				// before editing it. 'Edit without read' is exactly the failure mode to catch.
-				// Edit-heavy work is allowed; the read/edit ratio is reflected by scoring
-				// (scope / activity) and is not gated on — a strict ratio would reject normal
-				// edit-heavy tasks. The old read-check WARN has been demoted to the Red Flags
-				// text in forge-quality as a layered noise-reduction measure.
+			}
+			// Exploration axis (2026-08-23 doc-implementation drift fix): Grep/Glob
+			// count toward "was there real work between gates" (CLAUDE.md's error
+			// table advises exploring with Read/Grep/Glob; before this, a
+			// pure-exploration stretch counted as zero work). Strictly separate
+			// from read-before-edit below: browsing matches never substitutes for
+			// reading the file you edit — that check stays Read-only.
+			//
+			// 探索轴（2026-08-23 文档-实现漂移修复）：Grep/Glob 计入「门禁间有无
+			// 真实工作」（CLAUDE.md 错误表建议用 Read/Grep/Glob 探索；此前纯探索
+			// 段落被计为零工作）。与下方 read-before-edit 严格分离：浏览匹配绝不
+			// 替代「读过要改的文件」——那个检查保持 Read-only。
+			explores, eerr := 0, error(nil)
+			if rerr == nil { // rerr!=nil already decided the pass — skip the second toollog load (m4)
+				explores, eerr = toolusage.ExploreCounts(root, state.TaskRef, since)
+				if eerr != nil {
+					fmt.Fprintf(os.Stderr, "[forge] warning: explore count failed: %v\n", eerr)
+				}
+			}
+			if rerr == nil && reads+edits+explores > 0 {
+				// toollog has data — when anything was EDITED, require at least one Read:
+				// the agent must understand code before editing it. 'Edit without read' is
+				// exactly the failure mode to catch. A pure-exploration stretch (edits==0,
+				// explores>0) passes without a Read — there is nothing edited that needed
+				// reading first. Edit-heavy work is allowed; the read/edit ratio is
+				// reflected by scoring (scope / activity) and is not gated on — a strict
+				// ratio would reject normal edit-heavy tasks. The old read-check WARN has
+				// been demoted to the Red Flags text in forge-quality as a layered
+				// noise-reduction measure.
 				//
-				// toollog 有数据——至少要求一次 Read：agent 改代码前必须先理解它。
-				// 「只改不读」就是要拦的失败模式。允许 edit-heavy 工作；read/edit
-				// ratio 由评分（scope / activity）反映，不当 gate——严格的 ratio
-				// 会拦掉正常的 edit-heavy 任务。旧的 read-check WARN 按分层降噪
-				// 处理已下沉到 forge-quality 的 Red Flags 文本。
-				if reads == 0 {
+				// toollog 有数据——发生过任何编辑时，至少要求一次 Read：agent 改
+				// 代码前必须先理解它。「只改不读」就是要拦的失败模式。纯探索段落
+				// （edits==0、explores>0）无需 Read 即放行——没有编辑过需要先读的
+				// 东西。允许 edit-heavy 工作；read/edit ratio 由评分（scope /
+				// activity）反映，不当 gate——严格的 ratio 会拦掉正常的 edit-heavy
+				// 任务。旧的 read-check WARN 按分层降噪处理已下沉到 forge-quality
+				// 的 Red Flags 文本。
+				if edits > 0 && reads == 0 {
 					// race recovery: Reads sent concurrently with `forge task start` may be
 					// logged under the previous task's ref (the active ref switches only after
 					// task start commits) and/or carry timestamps earlier than StartedAt — both
@@ -564,7 +588,16 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 						)
 					}
 				}
-			} else {
+			} else if rerr == nil {
+				// (rerr != nil falls through as a pass — the historical error behavior:
+				// a broken toollog must not hard-block the gate on a read error.
+				// Explore-count errors (eerr) degrade the explore axis to zero but do
+				// not reroute the branch: reads/edits still decide.)
+				//
+				// （rerr != nil 时落空放行——历史错误行为：toollog 读取故障不得因
+				// 读错误硬拦门禁。探索计数错误（eerr）仅把探索轴降为零，不改道：
+				// 仍由 reads/edits 决定。）
+				//
 				// toollog has no entries for this task. Before enforcing, distinguish two
 				// cases that both surface as zero counts:
 				//  (a) telemetry channel missing: the host's PostToolUse dispatch is not
