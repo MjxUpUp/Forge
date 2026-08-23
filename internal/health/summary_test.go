@@ -165,6 +165,18 @@ func TestSummarizeAt_NudgeRecentWindow(t *testing.T) {
 	if s.NudgeRecent != 2 {
 		t.Errorf(`NudgeRecent=%d want 2（仅窗口内：recent-nudge/edge-nudge；stale 的不计）`, s.NudgeRecent)
 	}
+	// Window-edge contract (review 2026-08): the window is (now-Window, now] — a nudge
+	// completed EXACTLY at now-14d falls outside (After is strict). Pinned explicitly so
+	// the half-open semantics are a tested contract, not an accident.
+	//
+	// 窗口沿契约（review 2026-08）：窗口是 (now-Window, now]——恰好完成于 now-14d 的
+	// nudge 落在窗外（After 为严格比较）。显式钉住半开语义，使其成为被测契约而非偶然。
+	exact := SummarizeAt([]act.Conclusion{
+		{TaskRef: `exact-edge`, Strength: `Weak`, Score: 60, RetrospectiveNudge: true, CompletedAt: now.Add(-14 * 24 * time.Hour)},
+	}, now)
+	if exact.NudgeCount != 1 || exact.NudgeRecent != 0 {
+		t.Errorf(`窗口沿：恰 14 天前的 nudge 应计全量不计窗口（半开区间 (now-14d, now]），got count=%d recent=%d`, exact.NudgeCount, exact.NudgeRecent)
+	}
 }
 
 // TestSummarizeAt_MatchesSummarizeOnNonWindowedFields pins the equivalence contract:

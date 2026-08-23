@@ -49,6 +49,20 @@ func RewriteAll(p *forgedata.Project, cs []Conclusion) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
+	// Preserve the original file mode across the temp+rename swap: CreateTemp defaults
+	// to 0600, which would silently change permissions of the conclusions file on Unix.
+	// Windows relies on ACL inheritance and ignores Chmod — no-op there. If the target
+	// is held open by another process (watcher/indexer), Windows rename fails loudly —
+	// the caller (act remigrate) has already written .migrate-bak, so data is
+	// recoverable; we surface the error rather than corrupt anything.
+	//
+	// temp+rename 换位时保留原文件权限：CreateTemp 默认 0600，会在 Unix 上静默改变
+	// conclusions 文件的权限。Windows 依赖 ACL 继承、忽略 Chmod——在该平台是 no-op。
+	// 若目标被其他进程占用（watcher/索引器），Windows rename 会响亮地失败——调用方
+	//（act remigrate）已先写 .migrate-bak，数据可恢复；此处上抛错误而非损坏任何东西。
+	if info, err := os.Stat(p.ActConclusionsPath()); err == nil {
+		_ = os.Chmod(tmpName, info.Mode().Perm())
+	}
 	if err := os.Rename(tmpName, p.ActConclusionsPath()); err != nil {
 		return err
 	}
