@@ -211,6 +211,7 @@ func TestKimiTranslator_Translate_ReplacesStaleSection(t *testing.T) {
 }
 
 func TestKimiTranslator_Detect(t *testing.T) {
+	isolateHome(t) // DetectAgents also scans user-level install dirs — keep the real home out
 	// Project-level signal only: .kimi-code/ dir. The user-level auto-detect
 	// (~/.kimi-code / $KIMI_CODE_HOME) went away with Translator.Detect —
 	// DetectAgents deliberately ignores it (see detect.go: a user-level install
