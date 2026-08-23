@@ -193,7 +193,7 @@ func buildForgeSectionWithLevel(forClaude bool, userLevel bool) string {
 	sb.WriteString("| WARN [bash-guard] ... Bash write without active task | 无任务时 Bash 写文件（仅警告，但源码会被 file-sentinel quarantine） | 先启动任务 |\n")
 	sb.WriteString("| FAIL [hazard-guard] 高危操作已拦截（需 human-in-the-loop 确认） | Bash 命令命中高危指纹（`rm -rf` 深目录/盘根/引号逃逸等） | 确需执行：先向用户说明风险获确认（Claude Code→AskUserQuestion），再按提示 `forge hazard confirm --fingerprint <指纹>` 放行一次；非误报勿绕过 |\n")
 	sb.WriteString("| FAIL [freeze-guard] ... 路径不在冻结允许清单 | `forge freeze` 激活期间写了清单外路径 | `forge freeze --status` 看允许范围；确实要写：与用户确认后 `forge freeze --off` 解除 |\n")
-	sb.WriteString("| BLOCKED: task-complete requires code-review-gate | complete 前置门禁：diff 未经真实代码审查 | 派只读子 agent 审查当前 diff → 修复发现 → `forge review pass` → 再过 task-complete |\n")
+	sb.WriteString("| BLOCKED: task-complete requires code-review-gate | complete 前置门禁：diff 未经真实代码审查 | 派只读子 agent 审查当前 diff → 修复发现 → **重新派只读子 agent 复审修复**（修复者不能自证）→ `forge review pass` → 再过 task-complete |\n")
 	sb.WriteString("| insufficient work activity | 门禁间工具调用 <1 次 | 用 Read/Grep/Glob 探索代码 |\n")
 	sb.WriteString("| task-verify advisory: ... source files changed without a corresponding test | 改了源码没加对应测试文件（铁律4：测试伴随变更，advisory 仅提醒不阻塞） | 为变更的源码加 `_test.go`/`.test.ts`/`test_*.py` 等；入口(main.go/cmd)/生成物(.gen./_generated/.pb.)/纯类型文件(types/dto/models)白名单免测；不可测时用 `forge task override --test-coverage disable`（per-task，优先于 `FORGE_TEST_COVERAGE=disable` env，不污染他任务；验证类逃生降 evidence 强度到 Weak，重证据任务按证据缩放豁免） |\n")
 	sb.WriteString("| task-verify 拒绝（复发升 HARD stop）：项目 testing/scope 维度反复低分 | 项目已完成任务历史里该维度低分≥阈值次（advisory 靠自律已被证明失效），且本次严重（缺配对测试 / 超 scope 多文件 drift） | 补测试或 `forge task scope add <glob>` 收编后重跑；或 `FORGE_TEST_COVERAGE=disable`（降 Weak；重证据任务按证据缩放豁免）；或 `FORGE_RECURRENT_HARDEN=disable` 回退纯 advisory |\n")

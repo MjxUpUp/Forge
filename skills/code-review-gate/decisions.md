@@ -141,3 +141,20 @@ SKILL.md + forge-integration.md 预扫节更新为 7 类枚举
 ### Evidence
 
 internal/taskpipeline/cheatscan.go detectPathAssumption + TestDetectPathAssumption 通过
+
+## [d-18d18a3f00000000-protocol-recheck] accept
+
+- **Skill**: code-review-gate
+- **DecidedAt**: 2026-08-23T18:00:00Z
+
+### Diagnosis
+
+协议缺口：快照闭环（d-1778921400123456789 引入的 review-fix-recheck 循环）只强制循环的**形状**——审查后改码必须重新盖章，但不检验复审**实质**。修复者可以不派复审直接 `forge review pass`，第二轮盖章输出与诚实轮零差别，task-complete 照样放行。真实案例（2026-08 本仓库）：主修复 commit 经第一轮 review 报 6 项发现，修复 commit 后仅盖章未复审即过门禁；用户质询后补的第二轮复审实际抓到 1 项 PARTIAL + 1 处漏网谎报——证明「修复者自证」的漏洞真实可走。
+
+### Revision
+
+三层修复：① `forge review pass` 盖第 N>1 轮章时打 ADVISORY（`[review] 第 N 轮盖章…修复者不能自证`，runReviewPassAt，Round 1 静默）；② SKILL.md 子 agent 化节新增「审查-修复-复审闭环」小节（复审义务、范围三件套、三项禁止：自证盖章/测试当复审/同 agent 续看）；③ claudemd 生成的 common-errors 表 code-review-gate 行解决路径补「复审修复」步骤（旧文案「修复发现 → forge review pass」暗示修完直接盖章）。ADVISORY 而非 HARD：复审是否真跑过不可机械判定，提示让义务在欠下的确切时刻可见。
+
+### Evidence
+
+TestRunReviewPassAt_ReworkRoundRequiresRecheck（RED→GREEN）：第 1 轮静默、第 2 轮必含「复审+自证」ADVISORY 实测通过；TestClaudeMDReviewFixLoopIncludesRecheck 钉生成文案含复审步骤。复盘依据：本仓库 2026-08-23 会话三轮审查实录（第一轮 NEEDS-FIX 6 项 → 未复审盖章 → 用户质询 → 第二轮抓到 PARTIAL+残留）。
