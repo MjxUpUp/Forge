@@ -138,7 +138,7 @@ func TestClaudeMDCommonErrorsIncludesRetention(t *testing.T) {
 // behavior). Verification-class hatches keep the Weak wording (evidence-scaled).
 //
 // TestClaudeMDWorkActivityEscapeWording 钉住 work-activity 逃生文案的文档一致性
-//（2026-08）：work-activity 是节奏门禁——checklog.isRhythmEscapeHatch 把它排除在
+// （2026-08）：work-activity 是节奏门禁——checklog.isRhythmEscapeHatch 把它排除在
 // Strength cap 外，生成文档绝不能声称它把 evidence 降到 Weak（该文案曾是 cap 规则的
 // 陈旧第二来源、与行为不符）。验证类逃生保留 Weak 措辞（证据缩放）。
 func TestClaudeMDWorkActivityEscapeWording(t *testing.T) {

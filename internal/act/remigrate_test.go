@@ -94,7 +94,7 @@ func TestRemigrateConclusion(t *testing.T) {
 // no-op on the second pass (Strength no longer carries the escape-cap fingerprint).
 //
 // TestRemigrateConclusion_Idempotent 钉住重复运行安全：迁移过的结论第二次是 no-op
-//（Strength 不再带 escape-cap 指纹）。
+// （Strength 不再带 escape-cap 指纹）。
 func TestRemigrateConclusion_Idempotent(t *testing.T) {
 	c := Conclusion{TaskRef: `a`, Score: 99.5, Grade: `A`, Strength: `Weak`, Ratio: 0.98, Deterministic: 125, AgentClaim: 2, RetrospectiveNudge: true, CompletedAt: remAt}
 	once := RemigrateConclusion(c)

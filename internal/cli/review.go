@@ -236,7 +236,7 @@ func runReviewPassAt(root, explicitRef string) error {
 // Weak/Unverified 返 ADVISORY: 前缀行，提醒本次 review stamp 盖在盲区证据上——reviewer 须已
 // critic 级核验（核声称的验证真跑过），而非只读 diff。纯函数便于单测（不依赖 findProjectRoot/
 // cwd）；runReviewPass 调它，非空则打印。方案5 联动：逃生舱 cap 把本该 Strong 的降为 Weak
-//（单一真相源：checklog.EvidenceChain.EscapeDowngradedStrength——本 ADVISORY 从该谓词派生，
+// （单一真相源：checklog.EvidenceChain.EscapeDowngradedStrength——本 ADVISORY 从该谓词派生，
 // 绝不重复编码规则），故用逃生舱过的任务此处自动触发——逃生不再免费。
 func renderReviewPassBlindSpot(ec checklog.EvidenceChain) string {
 	if ec.Total() == 0 {

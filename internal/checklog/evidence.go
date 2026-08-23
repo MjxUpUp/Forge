@@ -156,7 +156,7 @@ const (
 // calibration basis.
 //
 // EscapeDowngradedStrength 报告本任务的 Strength 是否被验证类逃生舱 cap 降档
-//（本该 Strong → Weak）。cap 规则的单一真相源——review.go 的盲区 ADVISORY 从本谓词
+// （本该 Strong → Weak）。cap 规则的单一真相源——review.go 的盲区 ADVISORY 从本谓词
 // 派生，不重复编码（策略单一来源、各层派生）。
 //
 // 边际逃生豁免：deterministic 证据压倒性占优（Ratio >= escapeCapRatioFloor 且

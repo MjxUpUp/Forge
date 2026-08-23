@@ -100,7 +100,7 @@ const CheckNameDependencyGate checklog.CheckName = "dependency-gate"
 //
 // skillDecisionsEscapeAdvisoryFmt 是经逃生舱（per-task override 或 env）绕过
 // skill-decisions guardrail 时打印的 ADVISORY。包级单一来源，供文案守卫测试断言
-//（TestTaskVerify_SkillDecisionsGuardrail_EscapeHatchBypasses 断言它提及 2026-08
+// （TestTaskVerify_SkillDecisionsGuardrail_EscapeHatchBypasses 断言它提及 2026-08
 // 证据缩放豁免——遗漏它的提示会低估重证据任务的 Strength 状态）。
 const skillDecisionsEscapeAdvisoryFmt = `skill %s 的 SKILL.md 改动已用 --skill-decisions disable 逃生舱绕过 guardrail——evidence 强度降级到 Weak（重证据任务按证据缩放豁免）。仍建议跑 'forge skills decide --skill <name> --outcome <accept|reject> --diagnosis <为何改> --revision <改了啥> --evidence <依据>' 记决策，避免下一轮 agent 重复探索已失败方向`
 
