@@ -53,9 +53,17 @@ func sentinelEnv(t *testing.T, sid, tmpdir, qdir string) []string {
 	// Base env minus the keys we override, then the overrides (so bash/git keep
 	// working while FORGE_*/TMPDIR are pinned).
 	over := map[string]string{
-		"FORGE_SESSION_ID":     sid,
-		"FORGE_TASK_REF":       "",
-		"TMPDIR":               hookEnvPath(tmpdir),
+		"FORGE_SESSION_ID": sid,
+		"FORGE_TASK_REF":   "",
+		"TMPDIR":           hookEnvPath(tmpdir),
+		// Pin the DataDir env OFF (empty string falls back to TMPDIR in the
+		// scripts' marker root) — a leaked host FORGE_DATA_DIR would divert the
+		// forge-cmd marker and fake-red the "must plant under tmpdir" assertion.
+		//
+		// 把 DataDir env 钉为关（空串在脚本 marker 根里回落 TMPDIR）——宿主
+		// 泄漏的 FORGE_DATA_DIR 会改道 forge-cmd 标记，让「必落 tmpdir」断言
+		// 假红。
+		"FORGE_DATA_DIR":       "",
 		"FORGE_QUARANTINE_DIR": hookEnvPath(qdir),
 	}
 	out := []string{}
@@ -337,7 +345,7 @@ func TestSentinelScripts_ConfigForgeSubstringBypassBlocked(t *testing.T) {
 		t.Fatalf("bash-guard failed: %v\n%s", err, out)
 	}
 	// The old substring match would have planted the forge-cmd marker here.
-	if _, err := os.Stat(filepath.Join(tmp, "forge-cmd-"+sid)); err == nil {
+	if _, err := os.Stat(filepath.Join(tmp, "markers", "forge-cmd-"+sid)); err == nil {
 		t.Fatal("forge-cmd marker must NOT be planted for a compound command merely containing ' forge '")
 	}
 
@@ -360,7 +368,7 @@ func TestSentinelScripts_ConfigForgeSubstringBypassBlocked(t *testing.T) {
 	if out, err := runSentinelScript(t, BashGuardHook, dir, append(env2, "FORGE_COMMAND=forge task status")); err != nil {
 		t.Fatalf("bash-guard failed: %v\n%s", err, out)
 	}
-	if _, err := os.Stat(filepath.Join(tmp2, "forge-cmd-"+sid2)); err != nil {
+	if _, err := os.Stat(filepath.Join(tmp2, "markers", "forge-cmd-"+sid2)); err != nil {
 		t.Errorf("whole-command 'forge task status' must plant the forge-cmd marker: %v", err)
 	}
 }
