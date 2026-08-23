@@ -858,6 +858,44 @@ func runHook(cmd *cobra.Command, args []string) error {
 	if workActivityOverride == "disable" {
 		shCmd.Env = append(shCmd.Env, "FORGE_WORK_ACTIVITY=disable")
 	}
+	// task-guard promotion pre-configuration: on hosts whose task-guard advisory
+	// promotes to a block (hostcap PromoteAdvisory — kimi, dsh), the script must
+	// drop its once-per-session NOWARN de-noise and emit the directive block
+	// reason on EVERY no-task source edit — under promotion, the NOWARN marker is
+	// a bypass (the model blind-retries the identical edit and passes silently
+	// because the marker is already set). taskGuardPromotionActive shares the
+	// escape-hatch check with promoteAdvisory so this env can never claim
+	// promotion while the hatch is open (that would resurrect the 139-WARN spam
+	// with no enforcement behind it).
+	//
+	// task-guard 提升预配置：在把 task-guard advisory 提升为阻断的宿主上
+	// （hostcap PromoteAdvisory——kimi、dsh），脚本必须放弃每会话一次的 NOWARN
+	// 去噪，在**每次**无任务源码编辑上输出指令式 block reason——提升语义下
+	// NOWARN 标记就是旁路（模型盲重试同一编辑，因标记已置而静默放行）。
+	// taskGuardPromotionActive 与 promoteAdvisory 共享逃生舱检查，使本 env 绝不
+	// 可能在逃生舱开着时声称已提升（否则 139 次 WARN 刷屏复活且背后无执法）。
+	if name == "task-guard" {
+		if taskGuardPromotionActive(agent) {
+			shCmd.Env = append(shCmd.Env, "FORGE_TASKGUARD_PROMOTED=1")
+		} else {
+			// Scrub any inherited FORGE_TASKGUARD_PROMOTED (os/exec dedups env keys,
+			// keeping the LAST occurrence, so the empty value wins over os.Environ).
+			// This is a Go→script internal channel, NOT operator config — unlike
+			// FORGE_WORK_ACTIVITY above, inheriting it from the operator shell is a
+			// bug: on a non-promoted host a stray value makes the script emit the
+			// DENIED directive text while the edit is actually allowed (and that
+			// text rides additionalContext to the model) — the exact
+			// claim-without-enforcement shape this change exists to remove.
+			//
+			// 清掉环境里可能继承的 FORGE_TASKGUARD_PROMOTED（os/exec 对 env 键去重
+			// 保留**最后**出现，空值压过 os.Environ 的继承值）。这是 Go→脚本的内部
+			// 通道，**不是**运维配置——与上面的 FORGE_WORK_ACTIVITY 不同：在非提升
+			// 宿主上残留值会让脚本输出 DENIED 指令文案而编辑实际放行（且该文案经
+			// additionalContext 注入模型）——正是本次变更要消灭的「有文案无执法」
+			// 形状。
+			shCmd.Env = append(shCmd.Env, "FORGE_TASKGUARD_PROMOTED=")
+		}
+	}
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 	shCmd.Stdout = &stdoutBuf
@@ -955,27 +993,29 @@ func runHook(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// 5b. Host advisory promotion (hostcap PromoteAdvisory column; today kimi only).
+	// 5b. Host advisory promotion (hostcap PromoteAdvisory column; kimi and dsh today).
 	// kimi 0.35.0 drops allow-path (exit 0) stdout from the
 	// model context, so forge's core advisories (task-guard/bash-guard/assertion-check)
-	// silently evaporate and the agent runs untracked. Promote the REAL advisory to a block
+	// silently evaporate and the agent runs untracked; dsh's channel delivers but the
+	// no-task WARN was empirically ignored (2026-08-22). Promote the REAL advisory to a block
 	// (passed true→false) here — BEFORE step 6's checklog record — so the promoted value flows
-	// into both the audit trail (Passed=false / LevelBlocked) and emitKimiOutput (exit 2, stderr
-	// shown to the model). Placing this at step 7 instead would desync checklog (recorded as
-	// PASS) from the actually-emitted block. promoteAdvisory consults the hostcap registry
-	// rules, which isolate real advisories from each hook's success/clean branch;
+	// into both the audit trail (Passed=false / LevelBlocked) and the host's block emitter
+	// (exit 2, stderr shown to the model). Placing this at step 7 instead would desync checklog
+	// (recorded as PASS) from the actually-emitted block. promoteAdvisory consults the hostcap
+	// registry rules, which isolate real advisories from each hook's success/clean branch;
 	// skill-trigger returned before step 5 and
-	// is unaffected. Escape hatch: FORGE_KIMI_ADVISORY=soft.
+	// is unaffected. Escape hatches: FORGE_ADVISORY_PROMOTION / FORGE_KIMI_ADVISORY =soft.
 	//
-	// 5b. 宿主 advisory 提升（hostcap PromoteAdvisory 列；目前仅 kimi）。kimi 0.35.0
-	// 丢弃放行路径（exit 0）的 stdout，forge 核心
-	// advisory（task-guard/bash-guard/assertion-check）静默蒸发，agent 无任务裸奔。在此把
+	// 5b. 宿主 advisory 提升（hostcap PromoteAdvisory 列；目前 kimi 与 dsh）。kimi
+	// 0.35.0 丢弃放行路径（exit 0）的 stdout，forge 核心
+	// advisory（task-guard/bash-guard/assertion-check）静默蒸发，agent 无任务裸奔；dsh
+	// 通道送达但无任务 WARN 被实证无视（2026-08-22）。在此把
 	// 真 advisory 提升为阻断（passed true→false）——在 step 6 的 checklog 记录之前——让提升
-	// 后的值同时流入审计轨迹（Passed=false / LevelBlocked）与 emitKimiOutput（exit 2，stderr
-	// 展示给模型）。若放在 step 7，checklog（记 PASS）与实际发出的 block 会脱节。
-	// promoteAdvisory 查 hostcap 注册表规则，规则把真 advisory 与各 hook 的成功/干净
-	// 分支隔开；skill-trigger 在
-	// step 5 之前已返回，不受影响。逃生舱：FORGE_KIMI_ADVISORY=soft。
+	// 后的值同时流入审计轨迹（Passed=false / LevelBlocked）与宿主阻断 emitter
+	// （exit 2，stderr 展示给模型）。若放在 step 7，checklog（记 PASS）与实际发出的
+	// block 会脱节。promoteAdvisory 查 hostcap 注册表规则，规则把真 advisory 与各 hook
+	// 的成功/干净分支隔开；skill-trigger 在
+	// step 5 之前已返回，不受影响。逃生舱：FORGE_ADVISORY_PROMOTION / FORGE_KIMI_ADVISORY =soft。
 	if promoteAdvisory(agent, name, passed, detail) {
 		passed = false
 	}
@@ -1751,34 +1791,39 @@ func (e *HookBlockError) Error() string { return e.Reason }
 
 // promoteAdvisory reports whether an advisory (passed=true, non-empty detail) result for the
 // given hook should be promoted to a block on the given host. The per-hook rules live in the
-// hostcap registry (PromoteAdvisory column — today only kimi has one: kimi 0.35.0 drops
-// allow-path stdout from the model context, so the task-guard/bash-guard/assertion-check
-// advisories silently evaporate there). The rules are declarative Contains/Excludes pairs
+// hostcap registry (PromoteAdvisory column — kimi and dsh today: kimi 0.35.0 drops
+// allow-path stdout from the model context, so its advisories silently evaporate; dsh's
+// channel delivers but the task-guard advisory was empirically ignored — 2026-08-22, see
+// the dsh registry row). The rules are declarative Contains/Excludes pairs
 // (not a bare name allowlist) because each hook emits BOTH an advisory branch and a
 // success/clean branch under the same hook name — a name allowlist would over-block
 // (task-guard's "Auto-created task" is a SUCCESS path; assertion-check's clean branch is
 // advisory-free). Promoting the REAL advisory to a block repoints it through the one
-// PreToolUse channel kimi honors: exit 2 (stderr shown to the model).
+// PreToolUse channel every host honors: exit 2 (stderr shown to the model).
 //
-// Returns false for: the FORGE_KIMI_ADVISORY=soft escape hatch (an env knob, kept here in
-// cli rather than the registry because it is operator config, not a host capability),
+// Returns false for: the escape hatches (FORGE_ADVISORY_PROMOTION=soft covers every
+// promoted host; FORGE_KIMI_ADVISORY=soft kept for back-compat, kimi-scoped — env knobs,
+// kept here in
+// cli rather than the registry because they are operator config, not host capabilities),
 // already-blocked results (no double-flip), empty/whitespace detail (clean/silent PASS),
 // and hosts without promotion rules.
 //
 // promoteAdvisory 报告给定 hook 的 advisory（passed=true、detail 非空）结果在给定宿主上
-// 是否应提升为阻断。各 hook 的规则住在 hostcap 注册表（PromoteAdvisory 列——目前仅
-// kimi 有：kimi 0.35.0 丢弃 allow 路径 stdout，task-guard/bash-guard/assertion-check
-// 的 advisory 在那里静默蒸发）。规则是声明式 Contains/Excludes 对（非裸名字白名单），
-// 因为每个 hook 在同一 hook 名下同时发 advisory 分支与成功/干净分支——名字白名单会
-// 过度阻断（task-guard 的 "Auto-created task" 是成功路径；assertion-check 的干净分支
-// 无 advisory）。把真 advisory 提升为阻断让它改走 kimi 唯一认的 PreToolUse 通道：
-// exit 2（stderr 展示给模型）。
+// 是否应提升为阻断。各 hook 的规则住在 hostcap 注册表（PromoteAdvisory 列——目前
+// kimi 与 dsh：kimi 0.35.0 丢弃 allow 路径 stdout，advisory 在那里静默蒸发；dsh 通道
+// 送达但 task-guard advisory 被实证无视——2026-08-22，见 dsh 注册表行）。规则是声明式
+// Contains/Excludes 对（非裸名字白名单），因为每个 hook 在同一 hook 名下同时发
+// advisory 分支与成功/干净分支——名字白名单会过度阻断（task-guard 的
+// "Auto-created task" 是成功路径；assertion-check 的干净分支无 advisory）。把真
+// advisory 提升为阻断让它改走所有宿主都认的 PreToolUse 通道：exit 2（stderr 展示给
+// 模型）。
 //
-// 以下返回 false：FORGE_KIMI_ADVISORY=soft 逃生舱（env 开关，留在 cli 而非注册表——
-// 它是运维配置而非宿主能力）、已阻断结果（不二次翻转）、空/纯空白 detail（干净/静默
+// 以下返回 false：逃生舱（FORGE_ADVISORY_PROMOTION=soft 覆盖所有提升宿主；
+// FORGE_KIMI_ADVISORY=soft 保留向后兼容——env 开关，留在 cli 而非注册表——它们是
+// 运维配置而非宿主能力）、已阻断结果（不二次翻转）、空/纯空白 detail（干净/静默
 // PASS）、无提升规则的宿主。
 func promoteAdvisory(agent, name string, passed bool, detail string) bool {
-	if os.Getenv("FORGE_KIMI_ADVISORY") == "soft" {
+	if advisoryPromotionDisabled(agent) {
 		return false
 	}
 	if !passed || strings.TrimSpace(detail) == "" {
@@ -1789,6 +1834,48 @@ func promoteAdvisory(agent, name string, passed bool, detail string) bool {
 		return false
 	}
 	return h.ShouldPromoteAdvisory(name, detail)
+}
+
+// advisoryPromotionDisabled is the single escape-hatch check shared by every
+// advisory-promotion consumer (promoteAdvisory, taskGuardPromotionActive), so the
+// hatch can never be open in one place and closed in another — e.g.
+// FORGE_TASKGUARD_PROMOTED set (script drops its de-noise, WARN on every edit)
+// while promotion itself is suppressed would resurrect the 139-WARN spam with no
+// enforcement behind it (dogfood 3.1). Host-scoped: FORGE_ADVISORY_PROMOTION=soft
+// covers every promoted host; the shipped FORGE_KIMI_ADVISORY=soft stays
+// kimi-scoped — an operator softening kimi must not silently soften dsh (and a
+// new host's promotion must not ride a hatch named for another host).
+//
+// advisoryPromotionDisabled 是所有 advisory 提升消费方（promoteAdvisory、
+// taskGuardPromotionActive）共享的唯一逃生舱检查，使逃生舱不可能在一处开着
+// 另一处关着——例如 FORGE_TASKGUARD_PROMOTED 已设（脚本放弃去噪、每次 edit 都
+// WARN）而提升本身被抑制，会复活 139 次 WARN 刷屏（dogfood 3.1）且背后无执法。
+// 按 host 划定：FORGE_ADVISORY_PROMOTION=soft 覆盖所有提升宿主；已发布的
+// FORGE_KIMI_ADVISORY=soft 保持仅 kimi——软化 kimi 的运维意图不得静默波及 dsh
+// （新宿主的提升也不得搭一个以别的宿主命名的逃生舱）。
+func advisoryPromotionDisabled(host string) bool {
+	if os.Getenv("FORGE_ADVISORY_PROMOTION") == "soft" {
+		return true
+	}
+	return host == "kimi" && os.Getenv("FORGE_KIMI_ADVISORY") == "soft"
+}
+
+// taskGuardPromotionActive reports whether task-guard advisories on this host are
+// currently promoted (a task-guard rule exists in hostcap AND the escape hatch is
+// closed) — detail-independent, so runHook can set FORGE_TASKGUARD_PROMOTED for the
+// script BEFORE any script output exists. See the runHook call site for why the
+// script must know.
+//
+// taskGuardPromotionActive 报告该宿主的 task-guard advisory 当前是否被提升
+// （hostcap 存在 task-guard 规则且逃生舱关闭）——与 detail 无关，让 runHook 能在
+// 任何脚本输出产生前为脚本设置 FORGE_TASKGUARD_PROMOTED。脚本为何需要知道，见
+// runHook 调用处注释。
+func taskGuardPromotionActive(agent string) bool {
+	if advisoryPromotionDisabled(agent) {
+		return false
+	}
+	h := hostcap.Lookup(agent)
+	return h != nil && h.PromotesHook("task-guard")
 }
 
 // promoteKimiAdvisory is the kimi-specialized wrapper of promoteAdvisory, kept so the

@@ -396,7 +396,26 @@ if [ -z "$TASK_REF" ]; then
   # On master/main or auto-creation failed: warn but allow.
   # dogfood 3.1：每源文件 Edit 注入 WARN 刷屏（AgentWorld 139 次）。会话级标记文件，
   # 每会话首条 WARN 提示改动不被任务追踪，之后静默。标记键控 FORGE_SESSION_ID 隔离并发会话。
+  #
+  # FORGE_TASKGUARD_PROMOTED=1（Go 侧注入：本宿主把 task-guard advisory 提升为阻断
+  # ——kimi/dsh，hostcap PromoteAdvisory 列）时，本输出不再是 advisory 而是每次都发
+  # 的 block reason：一次性 NOWARN 标记在阻断语义下是新洞——模型重试同一编辑即静默
+  # 放行（标记已置）；且「allowed」文案作 deny reason 自相矛盾。故提升路径每次输出
+  # 指令式文案（含 Contains 谓词 [task-guard]、不含 Auto-created，仍照常提升）。
+  #
+  # FORGE_TASKGUARD_PROMOTED=1 (injected by the Go layer: this host promotes the
+  # task-guard advisory to a block — kimi/dsh, hostcap PromoteAdvisory). Under
+  # promotion this output is not an advisory but the block reason, emitted EVERY
+  # time: the once-per-session NOWARN marker becomes a hole under block semantics
+  # — a blind retry of the same edit passes silently (marker already set) — and
+  # the "allowed" wording contradicts a deny. So the promoted path emits a
+  # directive text every time (carries the [task-guard] Contains predicate, no
+  # Auto-created, so it still promotes).
   NOWARN_FILE="${TMPDIR:-/tmp}/forge-taskguard-nowarn-${FORGE_SESSION_ID:-default}"
+  if [ -n "${FORGE_TASKGUARD_PROMOTED:-}" ]; then
+    echo "WARN [task-guard] No active task. Source edit DENIED until one exists — run: forge task start --ref <ref> --branch --title <title> (creates branch + task on main/master), then retry the edit. 无任务不得改源码：先 forge task start 建任务再重试。"
+    exit 0
+  fi
   if [ ! -f "$NOWARN_FILE" ]; then
     touch "$NOWARN_FILE" 2>/dev/null || true
     echo "WARN [task-guard] No active task. Source changes are allowed but not tracked by a Forge task.（本会话仅提示一次）"
