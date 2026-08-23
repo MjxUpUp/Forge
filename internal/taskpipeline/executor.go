@@ -92,6 +92,18 @@ const CheckNameUncommittedAtComplete checklog.CheckName = "uncommitted-at-comple
 // dashboard / forge trace 能照出任务反复卡在门禁等上游——否则该反复停滞信号不可见，与「从未尝试」无法区分。
 const CheckNameDependencyGate checklog.CheckName = "dependency-gate"
 
+// skillDecisionsEscapeAdvisoryFmt is the ADVISORY printed when the skill-decisions
+// guardrail is bypassed via the escape hatch (per-task override or env). Package-level
+// single source so the wording can be guard-tested (TestTaskVerify_SkillDecisionsGuardrail_
+// EscapeHatchBypasses asserts it mentions the 2026-08 evidence-scaled carve-out — an
+// advisory omitting it understates heavy-evidence tasks' Strength standing).
+//
+// skillDecisionsEscapeAdvisoryFmt 是经逃生舱（per-task override 或 env）绕过
+// skill-decisions guardrail 时打印的 ADVISORY。包级单一来源，供文案守卫测试断言
+//（TestTaskVerify_SkillDecisionsGuardrail_EscapeHatchBypasses 断言它提及 2026-08
+// 证据缩放豁免——遗漏它的提示会低估重证据任务的 Strength 状态）。
+const skillDecisionsEscapeAdvisoryFmt = `skill %s 的 SKILL.md 改动已用 --skill-decisions disable 逃生舱绕过 guardrail——evidence 强度降级到 Weak（重证据任务按证据缩放豁免）。仍建议跑 'forge skills decide --skill <name> --outcome <accept|reject> --diagnosis <为何改> --revision <改了啥> --evidence <依据>' 记决策，避免下一轮 agent 重复探索已失败方向`
+
 // recordAudit persists a checklog entry and makes a persistence failure audible:
 // checklog.Record's error is otherwise easy to drop (the call reads like a pure
 // side effect), but the persisted evidence is indispensable — score/dashboard/trace
@@ -1006,7 +1018,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 				//
 				// escape 文案专用：blocking 集是改了 SKILL.md（行为契约）的 skill，非辅助资源——
 				// 不能复用 formatSkillDecisionsAdvisory（那是辅助资源/trivial 场景文案，语义错位）。
-				fmt.Fprintf(os.Stderr, "%s%s\n", GateAdvisory("[task-verify] "), fmt.Sprintf(`skill %s 的 SKILL.md 改动已用 --skill-decisions disable 逃生舱绕过 guardrail——evidence 强度降级到 Weak。仍建议跑 'forge skills decide --skill <name> --outcome <accept|reject> --diagnosis <为何改> --revision <改了啥> --evidence <依据>' 记决策，避免下一轮 agent 重复探索已失败方向`, strings.Join(blocking, ", ")))
+				fmt.Fprintf(os.Stderr, "%s%s\n", GateAdvisory("[task-verify] "), fmt.Sprintf(skillDecisionsEscapeAdvisoryFmt, strings.Join(blocking, ", ")))
 			} else {
 				// Three buckets: recorded (verified, decision recorded) / unrecorded (not recorded
 				// → BLOCKED) / failopen (base unreachable, check skipped). The pass-path checklog

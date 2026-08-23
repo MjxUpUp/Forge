@@ -177,6 +177,16 @@ func TestSummarizeAt_NudgeRecentWindow(t *testing.T) {
 	if exact.NudgeCount != 1 || exact.NudgeRecent != 0 {
 		t.Errorf(`窗口沿：恰 14 天前的 nudge 应计全量不计窗口（半开区间 (now-14d, now]），got count=%d recent=%d`, exact.NudgeCount, exact.NudgeRecent)
 	}
+	// Window-interior boundary: 1ns inside the left edge MUST count — guards against
+	// an accidental off-by-one in the other direction (whole-day truncation etc.).
+	//
+	// 窗口内侧边界：左沿内侧 1ns 必须计入——防反方向的差一错误（整天截断等）。
+	inside := SummarizeAt([]act.Conclusion{
+		{TaskRef: `inside-edge`, Strength: `Weak`, Score: 60, RetrospectiveNudge: true, CompletedAt: now.Add(-14*24*time.Hour + time.Second)},
+	}, now)
+	if inside.NudgeRecent != 1 {
+		t.Errorf(`窗口内侧 1 秒的 nudge 必须计入 recent，got %d`, inside.NudgeRecent)
+	}
 }
 
 // TestSummarizeAt_MatchesSummarizeOnNonWindowedFields pins the equivalence contract:
