@@ -134,6 +134,68 @@ func TestSummarize_NudgeCount(t *testing.T) {
 	}
 }
 
+// TestSummarizeAt_NudgeRecentWindow pins the dashboard-facing windowed nudge count:
+// NudgeRecent counts only nudged conclusions completed within the 14-day window ending
+// at `now`; NudgeCount keeps the all-history total (single truth, no information loss).
+// This is what stops the "alerts only grow" alarm fatigue — a stale nudge from weeks
+// ago no longer lights the panel red, while history stays queryable.
+//
+// TestSummarizeAt_NudgeRecentWindow 钉住面向 dashboard 的窗口化 nudge 计数：
+// NudgeRecent 只数 `now` 前 14 天窗口内完成的 nudge 结论；NudgeCount 保留全量真相
+//（不丢信息）。这就是对"告警只增不减"疲劳的止血——数周前的陈旧 nudge 不再点亮面板，
+// 历史仍可查。
+func TestSummarizeAt_NudgeRecentWindow(t *testing.T) {
+	now := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
+	cs := []act.Conclusion{
+		// 窗口内 3 天前：计 recent
+		{TaskRef: `recent-nudge`, Strength: `Weak`, Score: 60, RetrospectiveNudge: true, CompletedAt: now.Add(-3 * 24 * time.Hour)},
+		// 窗口内 13 天前：计 recent（边界内侧）
+		{TaskRef: `edge-nudge`, Strength: `Unverified`, Score: 95, RetrospectiveNudge: true, CompletedAt: now.Add(-13 * 24 * time.Hour)},
+		// 窗口外 15 天前：只计全量，不计 recent
+		{TaskRef: `stale-nudge`, Strength: `Weak`, Score: 60, RetrospectiveNudge: true, CompletedAt: now.Add(-15 * 24 * time.Hour)},
+		// 窗口外 60 天前且未 nudge：两边都不计
+		{TaskRef: `stale-clean`, Strength: `Strong`, Score: 95, RetrospectiveNudge: false, CompletedAt: now.Add(-60 * 24 * time.Hour)},
+		// 窗口内未 nudge：两边都不计
+		{TaskRef: `recent-clean`, Strength: `Strong`, Score: 95, RetrospectiveNudge: false, CompletedAt: now.Add(-1 * 24 * time.Hour)},
+	}
+	s := SummarizeAt(cs, now)
+	if s.NudgeCount != 3 {
+		t.Errorf(`NudgeCount=%d want 3（全量：recent-nudge/edge-nudge/stale-nudge）`, s.NudgeCount)
+	}
+	if s.NudgeRecent != 2 {
+		t.Errorf(`NudgeRecent=%d want 2（仅窗口内：recent-nudge/edge-nudge；stale 的不计）`, s.NudgeRecent)
+	}
+}
+
+// TestSummarizeAt_MatchesSummarizeOnNonWindowedFields pins the equivalence contract:
+// apart from NudgeRecent (window-scoped), SummarizeAt(cs, anyTime) must produce the
+// same aggregates as the legacy Summarize — the window ONLY adds a field, never
+// silently redefines existing ones (health CLI keeps consuming the same values).
+//
+// TestSummarizeAt_MatchesSummarizeOnNonWindowedFields 钉住等价契约：除 NudgeRecent
+//（窗口域）外，SummarizeAt 与旧 Summarize 的聚合值必须一致——窗口只增字段，绝不
+// 静默重定义既有字段（health CLI 继续消费同样的值）。
+func TestSummarizeAt_MatchesSummarizeOnNonWindowedFields(t *testing.T) {
+	cs := []act.Conclusion{
+		conc(`a`, `A`, `Strong`, 95, nil, at(1)),
+		{TaskRef: `b`, Grade: `A`, Strength: `Unverified`, Score: 95, RetrospectiveNudge: true, CompletedAt: at(2)},
+		conc(`c`, `D`, `Weak`, 60, []string{`scope`}, at(3)),
+	}
+	legacy := Summarize(cs)
+	windowed := SummarizeAt(cs, time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC))
+	if legacy.TotalTasks != windowed.TotalTasks || legacy.NudgeCount != windowed.NudgeCount ||
+		legacy.BlindSpotCount != windowed.BlindSpotCount || legacy.AvgScore != windowed.AvgScore ||
+		legacy.MedianScore != windowed.MedianScore {
+		t.Errorf(`SummarizeAt 与 Summarize 非窗口字段不一致: legacy=%+v windowed=%+v`, legacy, windowed)
+	}
+	// 窗口在结论之后 7 天（全部结论落进窗口）→ NudgeRecent == NudgeCount
+	future := at(1).Add(7 * 24 * time.Hour)
+	windowedAll := SummarizeAt(cs, future)
+	if windowedAll.NudgeRecent != windowedAll.NudgeCount {
+		t.Errorf(`全窗口时 NudgeRecent(%d) 应 == NudgeCount(%d)`, windowedAll.NudgeRecent, windowedAll.NudgeCount)
+	}
+}
+
 func TestSummarize_SpanFromEarliestToLatest(t *testing.T) {
 	cs := []act.Conclusion{
 		conc(`c`, `A`, `Strong`, 95, nil, at(9)), // 乱序传入

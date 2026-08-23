@@ -62,6 +62,21 @@ func TestRenderReviewPassBlindSpot(t *testing.T) {
 		t.Errorf("UsedEscapeHatch 致 Strong→Weak 应触发逃生舱 ADVISORY（非占比低），得 %q", adv)
 	}
 
+	// 2026-08 evidence-scaled cap: heavy evidence (ratio>=0.85 && det>=20) + escape →
+	// marginal escape does NOT downgrade → Strength stays Strong → silent. The advisory
+	// derives from checklog.EscapeDowngradedStrength (single source), so this pins the
+	// derivation at the advisory surface — the escape ADVISORY must not fire on
+	// well-evidenced tasks (that was the flat-tax noise).
+	//
+	// 2026-08 证据缩放 cap：重证据（ratio>=0.85 且 det>=20）+逃生 → 边际逃生不降档 →
+	// Strength 保持 Strong → 静默。ADVISORY 从 checklog.EscapeDowngradedStrength 派生
+	//（单一真相源），此处钉住派生在 ADVISORY 面的行为——逃生 ADVISORY 不得在证据充分
+	// 的任务上触发（那正是平价税噪声）。
+	adv = renderReviewPassBlindSpot(checklog.EvidenceChain{Deterministic: 100, AgentClaim: 2, UsedEscapeHatch: true})
+	if adv != "" {
+		t.Errorf("重证据边际逃生应 Strong 静默（无 ADVISORY），得 %q", adv)
+	}
+
 	// Anti-false-claim regression: ratio is already low (0.25) and the escape hatch was used →
 	// Weak. Here claiming not-weak is a false claim (0.25 is genuinely low), so the wording
 	// must fall back to low-ratio — it cannot uniformly report escape-hatch just because

@@ -308,7 +308,8 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 	// （与 testCoverageHardGateThreshold 文档一致），而非全部改动源文件数——否则改 3
 	// 文件只缺 1 个测试也会被硬阻断，且 BLOCKED 文案说谎。
 	// escape（per-task override / FORGE_TEST_COVERAGE）由 CheckTestCoverage 内部返回 ok=true
-	// 处理，此处天然放行（降 evidence Weak 留痕）。
+	// 处理，此处天然放行（验证类逃生，降 evidence Weak 留痕；重证据任务按 2026-08 证据
+	// 缩放豁免，见 checklog.EscapeDowngradedStrength）。
 	// 方案 B：BLOCKED 消息复用 formatMissing 的 skill 路由——advisory 语境失效（0 触发），
 	// blocking 语境下 agent 必须处理才能过（skill 驱动靠 advisory→blocking 转变，非新机制）。
 	// 断言信号复用 scoring.CollectAssertionDensity（已注入 EvaluateInput；taskpipeline→scoring
@@ -747,7 +748,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 			// （FORGE_RECURRENT_HARDEN=disable，无 Strength 惩罚）。
 			if recurrentHardenEnabled() {
 				if cs := loadConclusions(root); dimRecurrent(cs, dimTesting, recurrentThreshold()) && len(missing) > 0 {
-					return nil, GateBlocked(`task-verify 拒绝（复发升 HARD stop）：项目 testing 维度已 %d 次低分（达到阈值 %d）——advisory 靠自律在此项目已被证明失效，本次 %d 个源文件仍无配对测试。%s出路：补测试后重跑；或 FORGE_TEST_COVERAGE=disable（降 evidence Weak）；或 FORGE_RECURRENT_HARDEN=disable 回退纯 advisory`, lowDimCounts(cs)[dimTesting], recurrentThreshold(), len(missing), formatMissing(missing))
+					return nil, GateBlocked(`task-verify 拒绝（复发升 HARD stop）：项目 testing 维度已 %d 次低分（达到阈值 %d）——advisory 靠自律在此项目已被证明失效，本次 %d 个源文件仍无配对测试。%s出路：补测试后重跑；或 FORGE_TEST_COVERAGE=disable（降 evidence Weak；重证据任务按证据缩放豁免）；或 FORGE_RECURRENT_HARDEN=disable 回退纯 advisory`, lowDimCounts(cs)[dimTesting], recurrentThreshold(), len(missing), formatMissing(missing))
 				}
 			}
 			fmt.Fprintf(os.Stderr, "%s%s\n", GateAdvisory("[task-verify] "), formatMissing(missing))
@@ -1062,7 +1063,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 						TaskRef: state.TaskRef,
 						Detail:  blockedDetail,
 					})
-					return nil, GateBlocked(`task-verify 拒绝（HARD stop）：改了 skill %s 的 SKILL.md（行为变更）但本任务未在 decisions.md 新增决策——跑 'forge skills decide --skill <name> --outcome <accept|reject> --diagnosis <为何改> --revision <改了啥> --evidence <依据>' 记录四元组（让下一轮 agent 理解 why）；trivial 改动用 'forge task override --skill-decisions disable' 逃生舱（降 evidence 到 Weak）`, strings.Join(unrecorded, ", "))
+					return nil, GateBlocked(`task-verify 拒绝（HARD stop）：改了 skill %s 的 SKILL.md（行为变更）但本任务未在 decisions.md 新增决策——跑 'forge skills decide --skill <name> --outcome <accept|reject> --diagnosis <为何改> --revision <改了啥> --evidence <依据>' 记录四元组（让下一轮 agent 理解 why）；trivial 改动用 'forge task override --skill-decisions disable' 逃生舱（降 evidence 到 Weak；重证据任务按证据缩放豁免）`, strings.Join(unrecorded, ", "))
 				}
 				// Pass path: Detail honestly distinguishes recorded (truly recorded) vs failopen
 				// (base unreachable, not verified).
