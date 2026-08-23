@@ -28,7 +28,7 @@ import (
 //
 // RemigrateConclusion 就地按当前逃生舱 cap 规则重推导已落盘结论的
 // Strength/RetrospectiveNudge（不碰磁盘）。随 2026-08 证据缩放 cap
-//（checklog.EscapeDowngradedStrength）一同发布：旧平价规则下写入的结论带着过时的
+// （checklog.EscapeDowngradedStrength）一同发布：旧平价规则下写入的结论带着过时的
 // "escape-cap" Strength，本函数从已存字段精确恢复新规则值。
 //
 // 指纹：Strength==Weak && Ratio>=0.5 是旧规则下 escape-cap 的唯一签名——其余到 Weak

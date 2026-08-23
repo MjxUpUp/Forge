@@ -142,7 +142,7 @@ func TestSummarize_NudgeCount(t *testing.T) {
 //
 // TestSummarizeAt_NudgeRecentWindow 钉住面向 dashboard 的窗口化 nudge 计数：
 // NudgeRecent 只数 `now` 前 14 天窗口内完成的 nudge 结论；NudgeCount 保留全量真相
-//（不丢信息）。这就是对"告警只增不减"疲劳的止血——数周前的陈旧 nudge 不再点亮面板，
+// （不丢信息）。这就是对"告警只增不减"疲劳的止血——数周前的陈旧 nudge 不再点亮面板，
 // 历史仍可查。
 func TestSummarizeAt_NudgeRecentWindow(t *testing.T) {
 	now := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
@@ -195,7 +195,7 @@ func TestSummarizeAt_NudgeRecentWindow(t *testing.T) {
 // silently redefines existing ones (health CLI keeps consuming the same values).
 //
 // TestSummarizeAt_MatchesSummarizeOnNonWindowedFields 钉住等价契约：除 NudgeRecent
-//（窗口域）外，SummarizeAt 与旧 Summarize 的聚合值必须一致——窗口只增字段，绝不
+// （窗口域）外，SummarizeAt 与旧 Summarize 的聚合值必须一致——窗口只增字段，绝不
 // 静默重定义既有字段（health CLI 继续消费同样的值）。
 func TestSummarizeAt_MatchesSummarizeOnNonWindowedFields(t *testing.T) {
 	cs := []act.Conclusion{

@@ -79,12 +79,12 @@ type Summary struct {
 	// RetrospectiveNudge=true 的结论——喂给 dashboard 的面向告警计数，让陈旧 nudge
 	// 不再把面板红灯永远挂着（告警疲劳校准见 NudgeRecentWindow）。旧 Summarize
 	//（无 `now`）填 NudgeRecent = NudgeCount，无窗口调用方字段语义仍完整。
-	NudgeRecent    int            `json:"nudge_recent"`
-	LowDims        []DimFreq      `json:"low_dims,omitempty"`
-	Span           Span           `json:"span"`
-	EarlierAvg     float64        `json:"earlier_avg"` // 前半段均分
-	RecentAvg      float64        `json:"recent_avg"`  // 后半段均分
-	Trend          string         `json:"trend"`       // improving/regressing/stable/insufficient
+	NudgeRecent int       `json:"nudge_recent"`
+	LowDims     []DimFreq `json:"low_dims,omitempty"`
+	Span        Span      `json:"span"`
+	EarlierAvg  float64   `json:"earlier_avg"` // 前半段均分
+	RecentAvg   float64   `json:"recent_avg"`  // 后半段均分
+	Trend       string    `json:"trend"`       // improving/regressing/stable/insufficient
 
 	// PhasePassRate is the phase-aware quality report (Phase 2 loop integrated).
 	// key = design phase (requirement/api/backend...), value = task pass rate for that phase (0-1).
@@ -102,7 +102,7 @@ type Summary struct {
 // prefer SummarizeAt.
 //
 // Summarize 是旧的无窗口入口：等价于 SummarizeAt，只是 NudgeRecent 填全量 NudgeCount
-//（没有 `now` 可开窗）。为既有调用方（cli/health.go、pulse 项目卡）保留；面向告警的新
+// （没有 `now` 可开窗）。为既有调用方（cli/health.go、pulse 项目卡）保留；面向告警的新
 // 消费方应优先 SummarizeAt。
 func Summarize(cs []act.Conclusion) Summary {
 	s := SummarizeAt(cs, time.Time{})
@@ -119,7 +119,7 @@ func Summarize(cs []act.Conclusion) Summary {
 //
 // SummarizeAt 在 Summarize 聚合之上增加时间窗口化的 NudgeRecent：只数完成于半开
 // 窗口 (now-NudgeRecentWindow, now] 内的 nudge 结论——恰好落在 now-Window 的不计
-//（After 严格比较；由 TestSummarizeAt_NudgeRecentWindow 钉住）。`now` 为零值时
+// （After 严格比较；由 TestSummarizeAt_NudgeRecentWindow 钉住）。`now` 为零值时
 // NudgeRecent 保持 0——只有事后覆写 NudgeRecent=NudgeCount 的 Summarize 包装可以
 // 传零；直接调用方必须传真实 now。纯函数、不碰磁盘。
 func SummarizeAt(cs []act.Conclusion, now time.Time) Summary {
