@@ -893,8 +893,8 @@ var opencodeExemptions = map[string]string{
 
 // opencodeToolUniverse is the set of Claude tool names the opencode plugin can
 // route (values of CLAUDE_TOOL in the generated TS). Spec matchers that name
-// tools outside this universe (Skill/Agent in the PostToolUse tool-track
-// matcher) have no opencode analogue and are excluded from parity.
+// tools outside this universe (Skill/Agent/Grep/Glob in the PostToolUse
+// tool-track matcher) have no opencode analogue and are excluded from parity.
 var opencodeToolUniverse = map[string]bool{
 	"Write": true, "Edit": true, "Bash": true, "Read": true,
 }

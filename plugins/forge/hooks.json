@@ -46,7 +46,7 @@
       {
         "type": "command",
         "command": "forge hook tool-track --agent copilot",
-        "matcher": "Read|Skill|Agent",
+        "matcher": "Read|Skill|Agent|Grep|Glob",
         "timeoutSec": 60
       }
     ],
