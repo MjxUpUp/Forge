@@ -690,6 +690,27 @@ func TestTestCoveragePerTaskOverride(t *testing.T) {
 	if !found.Passed {
 		t.Errorf("escape-hatch entry Passed=false, want true (hatch succeeded)")
 	}
+
+	// Layer 3 (2026-08 evidence-scaled cap): the recorded audit trail must aggregate to
+	// the NEW-rule Strength. BuildEvidenceChain sees CheckEscapeHatch (verification
+	// class) and sets UsedEscapeHatch — but CheckEscapeHatch itself is an OBSERVATION
+	// (excluded from bucketing), so with no other entries the chain is NoData: the
+	// escape flag alone must never inflate Strength to Strong. This pins the full
+	// chain gate→checklog→evidence at the audit surface: observation entries never
+	// count as verification evidence.
+	//
+	// 层3（2026-08 证据缩放 cap）：落盘的审计 trail 按新规则聚合。BuildEvidenceChain
+	// 看到 CheckEscapeHatch（验证类）置 UsedEscapeHatch——但 CheckEscapeHatch 本身是
+	// OBSERVATION（分桶排除），无其他条目时链条是 NoData：逃生标志本身绝不能把
+	// Strength 抬成 Strong。在审计面钉住 gate→checklog→evidence 全链：观察类条目
+	// 永不算验证证据。
+	ec := checklog.BuildEvidenceChain(entries, "per-task-cov")
+	if !ec.UsedEscapeHatch {
+		t.Fatalf("BuildEvidenceChain 应从 CheckEscapeHatch 置 UsedEscapeHatch（got false）")
+	}
+	if got := ec.Strength(); got != checklog.NoData {
+		t.Errorf("仅逃生审计无实跑条目：Strength=%s want NoData（观察类条目不得计入验证证据）", got)
+	}
 }
 
 // TestTestCoverageShouldBlock pins the tiered decision of the task-complete
