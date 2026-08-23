@@ -509,13 +509,14 @@ type pulseStats struct {
 	EvidenceBlindRate *float64 `json:"evidenceBlindRate"`
 }
 
-// aggregatePulseStats merges conclusions across the scope and reuses health.Summarize for
-// avg/median/trend/blind-rate (single truth with the quality dashboard); alerts = zombie
-// tasks + retrospective-nudged conclusions. Source data comes from the fingerprint-gated
-// cache.
+// aggregatePulseStats merges conclusions across the scope and reuses health.SummarizeAt
+// for avg/median/trend/blind-rate (single truth with the quality dashboard); alerts =
+// zombie tasks + windowed retrospective nudges (NudgeRecent, 14d — see
+// health.NudgeRecentWindow). Source data comes from the fingerprint-gated cache.
 //
-// aggregatePulseStats 跨范围合并结论，复用 health.Summarize 算均分/中位/趋势/盲区率
-// （与质量看板单一真相）；alerts = 僵尸任务数 + 需回顾结论数。源数据取自指纹门控缓存。
+// aggregatePulseStats 跨范围合并结论，复用 health.SummarizeAt 算均分/中位/趋势/盲区率
+//（与质量看板单一真相）；alerts = 僵尸任务数 + 窗口化回顾结论数（NudgeRecent，14 天
+//——见 health.NudgeRecentWindow）。源数据取自指纹门控缓存。
 func aggregatePulseStats(opts Options, now time.Time) pulseStats {
 	stats := pulseStats{Trend: "insufficient"}
 	var cs []act.Conclusion

@@ -111,15 +111,17 @@ func Summarize(cs []act.Conclusion) Summary {
 }
 
 // SummarizeAt aggregates like Summarize plus the time-windowed NudgeRecent: nudged
-// conclusions completed within [now-NudgeRecentWindow, now] are counted. A zero `now`
-// disables the window in the direction of "everything counts" EXCEPT that Summarize
-// overrides NudgeRecent anyway — SummarizeAt callers must pass a real now. Pure
-// function, disk-free; the window predicate is CompletedAt.After(now-Window) && !After(now).
+// conclusions completed within the HALF-OPEN window (now-NudgeRecentWindow, now] are
+// counted — a completion exactly at now-Window falls outside (After is strict; pinned
+// by TestSummarizeAt_NudgeRecentWindow). A zero `now` leaves NudgeRecent at 0 — only
+// the Summarize wrapper (which overrides NudgeRecent=NudgeCount) may pass zero;
+// direct callers must pass a real now. Pure function, disk-free.
 //
-// SummarizeAt 在 Summarize 聚合之上增加时间窗口化的 NudgeRecent：只数
-// [now-NudgeRecentWindow, now] 窗口内完成的 nudge 结论。`now` 为零值时窗口判定的
-// 方向是"全部计入"，但 Summarize 反正会覆写 NudgeRecent——SummarizeAt 的调用方必须
-// 传真实 now。纯函数、不碰磁盘；窗口判定为 CompletedAt.After(now-Window) && !After(now)。
+// SummarizeAt 在 Summarize 聚合之上增加时间窗口化的 NudgeRecent：只数完成于半开
+// 窗口 (now-NudgeRecentWindow, now] 内的 nudge 结论——恰好落在 now-Window 的不计
+//（After 严格比较；由 TestSummarizeAt_NudgeRecentWindow 钉住）。`now` 为零值时
+// NudgeRecent 保持 0——只有事后覆写 NudgeRecent=NudgeCount 的 Summarize 包装可以
+// 传零；直接调用方必须传真实 now。纯函数、不碰磁盘。
 func SummarizeAt(cs []act.Conclusion, now time.Time) Summary {
 	var s Summary
 	s.TotalTasks = len(cs)

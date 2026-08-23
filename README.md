@@ -258,7 +258,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge task verify-acceptance [--trust-foreign]` | 实跑验收标准（task start --accept 登记），记 deterministic 证据；验收命令来自 task import / .forge migrate（外来标记）时首跑须 `--trust-foreign`（人工审阅命令清单后显式受信，防外来命令串直接执行） |
 | `forge task scope add <glob>` | 追加计划改动文件到白名单（支持中途迭代） |
 | `forge task scope show` | 查看声明的白名单 + 实时 scope-drift（advisory，不阻塞） |
-| `forge task override [--work-activity\|--test-coverage\|--acceptance-gate\|--skill-decisions] disable` | per-task 逃生舱：关闭指定门禁检查（如批量重构时关 read-before-edit）；使用落 checklog 审计，evidence 强度降为 Weak |
+| `forge task override [--work-activity\|--test-coverage\|--acceptance-gate\|--skill-decisions] disable` | per-task 逃生舱：关闭指定门禁检查（如批量重构时关 read-before-edit）；使用落 checklog 审计。验证类（test-coverage/acceptance-gate/skill-decisions）evidence 强度 cap 到 Weak（重证据任务按证据缩放豁免）；work-activity 是节奏门禁，只审计不降强度 |
 | `forge task complete` | 标记任务完成（自动评分） |
 | `forge task abort [--ref <ref>] [--cascade\|--detach-deps]` | 中止并删除任务（清理 ghost/卡住任务，不评分；存在反向依赖时默认仅提示，`--cascade` 递归中止所有依赖它的任务，`--detach-deps` 从依赖它的任务移除该依赖边） |
 | `forge task score` | 查看任务质量评分 |
