@@ -269,6 +269,70 @@ func TestStrength_EscapeHatchCapsToWeak(t *testing.T) {
 	}
 }
 
+// TestStrength_EscapeCapEvidenceAware pins the evidence-scaled escape cap: the plan-5
+// downgrade stays, but only when the escape materially props the claim. When deterministic
+// evidence overwhelmingly dominates (ratio>=0.85 AND det>=20), one bypassed gate is a
+// marginal fraction of the evidence — capping Strength to Weak there produced a flat
+// "escape tax" that fired on virtually every task (2026-08 calibration: 55/55 capped
+// conclusions had ratio>=0.5, i.e. ALL of them were Strong-before-cap; none were true
+// weak-evidence claims), inflating NudgeCount/盲区率 with noise and burying real signals.
+//
+// TestStrength_EscapeCapEvidenceAware 钉住证据缩放的逃生舱 cap：方案5 的降档保留，但只在
+// 逃生确实撑住声明时生效。deterministic 证据压倒性占优（ratio>=0.85 且 det>=20）时，一次
+// 绕过的 gate 只占证据的边际份额——此时仍 cap 到 Weak 会造成人人中招的"平价逃生税"
+//（2026-08 校准：55/55 被 cap 的结论 ratio>=0.5，全部是本该 Strong 的；没有一条是真弱证据），
+// 让 NudgeCount/盲区率虚高、淹没真信号。
+func TestStrength_EscapeCapEvidenceAware(t *testing.T) {
+	cases := []struct {
+		name string
+		det  int
+		claim int
+		want EvidenceStrength
+	}{
+		// 100/2: ratio≈0.98, det 100 ≥20 → 边际逃生，不 cap
+		{`重证据+逃生（ratio 0.98, det 100）→ Strong（cap 不触发）`, 100, 2, Strong},
+		// 20/3: ratio≈0.87 ≥0.85, det 20 ≥20 → 恰过双阈值的边界 → 不 cap
+		{`边界（ratio 0.87, det 20）→ Strong（双阈值恰好满足）`, 20, 3, Strong},
+		// 18/2: ratio 0.9 ≥0.85 但 det 18 <20 → 证据质量不够压倒性 → cap 维持
+		{`ratio 够但 det 不足（ratio 0.9, det 18）→ Weak（cap 维持）`, 18, 2, Weak},
+		// 30/10: ratio 0.75 <0.85 → 占比不够压倒性 → cap 维持
+		{`det 够但 ratio 不足（ratio 0.75, det 30）→ Weak（cap 维持）`, 30, 10, Weak},
+		// 17/3: ratio 恰好 0.85 但 det 17 <20 → cap 维持（双条件必须同时满足）
+		{`ratio 恰 0.85 但 det 17 → Weak（须双条件同时满足）`, 17, 3, Weak},
+	}
+	for _, c := range cases {
+		ec := EvidenceChain{Deterministic: c.det, AgentClaim: c.claim, UsedEscapeHatch: true}
+		if got := ec.Strength(); got != c.want {
+			t.Errorf(`%s: Strength=%s, want %s（证据缩放 cap 判定回归？）`, c.name, got, c.want)
+		}
+	}
+}
+
+// TestEscapeDowngradedStrength pins the exported predicate consumed by review.go's
+// blind-spot advisory: it must stay in lockstep with Strength()'s cap (single source —
+// review.go derives from it rather than re-encoding the rule).
+//
+// TestEscapeDowngradedStrength 钉住导出谓词（review.go 盲区 ADVISORY 消费）：必须与
+// Strength() 的 cap 完全同步（单一真相源——review.go 派生消费，不重复编码规则）。
+func TestEscapeDowngradedStrength(t *testing.T) {
+	// escape + would-be-Strong + 非边际 → cap 生效（true）
+	if !(EvidenceChain{Deterministic: 4, AgentClaim: 1, UsedEscapeHatch: true}).EscapeDowngradedStrength() {
+		t.Error(`det=4/claim=1+escape：cap 应生效（want true）`)
+	}
+	// escape + would-be-Strong + 边际（重证据）→ cap 不生效（false）
+	if (EvidenceChain{Deterministic: 100, AgentClaim: 2, UsedEscapeHatch: true}).EscapeDowngradedStrength() {
+		t.Error(`det=100/claim=2+escape：边际逃生 cap 不应生效（want false）`)
+	}
+	// 无逃生 → 恒 false
+	if (EvidenceChain{Deterministic: 100, AgentClaim: 2}).EscapeDowngradedStrength() {
+		t.Error(`无逃生：谓词应恒 false`)
+	}
+	// escape 但 ratio<0.5（本就 Weak，无 Strong 可降）→ false
+	if (EvidenceChain{Deterministic: 1, AgentClaim: 3, UsedEscapeHatch: true}).EscapeDowngradedStrength() {
+		t.Error(`ratio<0.5+escape：本就 Weak，谓词应 false（无 Strong 可降）`)
+	}
+}
+
 // TestForTask_LoadsAndBuckets is end-to-end: Record writes → ForTask loads and aggregates.
 //
 // TestForTask_LoadsAndBuckets 端到端：Record 写入 → ForTask 加载聚合。

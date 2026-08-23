@@ -1538,7 +1538,7 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 	// 补消费方——MCP 拆除后该字段只写不读成孤儿，本检查把它从声明层变 affordance gate。
 	// 对应 Emergence World Proof of Work：声称「验收过」必须有可验证 consumer。
 	if ok, reasons := taskpipeline.CheckAcceptanceFresh(root, state); !ok {
-		return fmt.Errorf(`acceptance pre-flight 未通过（验收未实跑/快照过期/未通过）: %s；逃生（落 checklog 审计，降 evidence 强度到 Weak）: forge task override --acceptance-gate disable 或 FORGE_ACCEPTANCE_GATE=disable`,
+		return fmt.Errorf(`acceptance pre-flight 未通过（验收未实跑/快照过期/未通过）: %s；逃生（落 checklog 审计，降 evidence 强度到 Weak；重证据任务按证据缩放豁免）: forge task override --acceptance-gate disable 或 FORGE_ACCEPTANCE_GATE=disable`,
 			strings.Join(reasons, `; `))
 	}
 
@@ -1842,14 +1842,14 @@ func runTaskOverride(cmd *cobra.Command, args []string) error {
 	}
 	if !changed {
 		fmt.Printf("当前 per-task 逃生舱：%s\n", describeOverrides(state.Overrides))
-		fmt.Println(`设置：--work-activity disable / --test-coverage disable / --acceptance-gate disable / --skill-decisions disable（用了降评分强度到 Weak）`)
+		fmt.Println(`设置：--work-activity disable / --test-coverage disable / --acceptance-gate disable / --skill-decisions disable（验证类逃生降评分强度到 Weak，重证据任务按证据缩放豁免；work-activity 不降）`)
 		return nil
 	}
 	if err := taskpipeline.SaveTaskState(root, state); err != nil {
 		return fmt.Errorf("failed to save task state: %w", err)
 	}
 	fmt.Printf("已设置 per-task 逃生舱：%s\n", describeOverrides(state.Overrides))
-	fmt.Println("注意：用了逃生舱会记 checklog 并把任务 evidence 强度 cap 到 Weak（让逃生有代价）。")
+	fmt.Println("注意：验证类逃生舱（test-coverage/acceptance-gate/skill-decisions）会记 checklog 并把任务 evidence 强度 cap 到 Weak（重证据任务按 2026-08 证据缩放豁免）；work-activity 是节奏门禁，只审计不降强度。")
 	return nil
 }
 

@@ -592,17 +592,25 @@ func TestServe_PulseStats(t *testing.T) {
 		}
 	}
 
-	// 有数据：真实聚合。
+	// 有数据：真实聚合。时间用 now 相对偏移：nudges 是 14 天窗口计数（2026-08 校准，
+	// 防"告警只增不减"），2023 固定戳会被窗口过滤——用近期时间让样本落进窗口。
 	root, p := forgedatatest.RealProject(t)
-	base := time.Unix(1700000000, 0).UTC()
+	now := time.Now()
 	if err := act.Append(p, &act.Conclusion{
-		TaskRef: "feat/a", Score: 80, Grade: "B", Strength: "Strong", CompletedAt: base,
+		TaskRef: "feat/a", Score: 80, Grade: "B", Strength: "Strong", CompletedAt: now.Add(-2 * time.Hour),
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := act.Append(p, &act.Conclusion{
 		TaskRef: "feat/b", Score: 60, Grade: "D", Strength: "Weak", RetrospectiveNudge: true,
-		CompletedAt: base.Add(time.Hour),
+		CompletedAt: now.Add(-1 * time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// 窗口外（15 天前）的 nudge：计 alerts 不应计入——钉住窗口在 API 面生效。
+	if err := act.Append(p, &act.Conclusion{
+		TaskRef: "feat/stale", Score: 60, Grade: "D", Strength: "Weak", RetrospectiveNudge: true,
+		CompletedAt: now.Add(-15 * 24 * time.Hour),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -625,23 +633,23 @@ func TestServe_PulseStats(t *testing.T) {
 	if err := json.Unmarshal(body, &stats); err != nil {
 		t.Fatalf("decode: %v\n%s", err, body)
 	}
-	if stats.AvgScore == nil || *stats.AvgScore != 70 {
-		t.Errorf("avgScore = %v, want 70", stats.AvgScore)
+	if stats.AvgScore == nil || *stats.AvgScore < 66.6 || *stats.AvgScore > 66.7 {
+		t.Errorf("avgScore = %v, want ≈66.67（(80+60+60)/3）", stats.AvgScore)
 	}
-	if stats.MedianScore == nil {
-		t.Error("medianScore 不得为 null（有数据）")
+	if stats.MedianScore == nil || *stats.MedianScore != 60 {
+		t.Errorf("medianScore = %v, want 60", stats.MedianScore)
 	}
 	if stats.Trend == "" {
 		t.Error("trend 不得为空串")
 	}
-	if stats.Alerts != 1 { // 1 条 RetrospectiveNudge
+	if stats.Alerts != 1 { // 1 条窗口内 RetrospectiveNudge（stale 的被窗口滤除）
 		t.Errorf("alerts = %d, want 1", stats.Alerts)
 	}
-	if stats.Nudges != 1 { // alerts = zombies + nudges 的拆解分量
+	if stats.Nudges != 1 { // alerts = zombies + nudges 的拆解分量（窗口内）
 		t.Errorf("nudges = %d, want 1", stats.Nudges)
 	}
-	if stats.EvidenceBlindRate == nil || *stats.EvidenceBlindRate != 0.5 {
-		t.Errorf("evidenceBlindRate = %v, want 0.5（Weak 1/2）", stats.EvidenceBlindRate)
+	if stats.EvidenceBlindRate == nil || *stats.EvidenceBlindRate < 0.65 || *stats.EvidenceBlindRate > 0.67 {
+		t.Errorf("evidenceBlindRate = %v, want ≈0.66（Weak 2/3，stale 也计入全量盲区率）", stats.EvidenceBlindRate)
 	}
 }
 

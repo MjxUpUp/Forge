@@ -423,7 +423,7 @@ function renderStats() {
     stat('项目', fmtNum(s.projects), 'registry') +
     stat('进行中', fmtNum(s.activeTasks), (s.zombies ? s.zombies + ' 僵尸' : '无僵尸')) +
     stat('全局均分', fmtNum(s.avgScore), '中位 ' + fmtNum(s.medianScore) + ' · <span style="color:' + trendColor + '">' + esc(trend) + '</span>', true) +
-    stat('告警', fmtNum(alerts), (s.zombies || 0) + ' 僵尸 + ' + (s.nudges || 0) + ' 回顾提醒', false, alerts !== null && alerts > 3) +
+    stat('告警', fmtNum(alerts), (s.zombies || 0) + ' 僵尸 + ' + (s.nudges || 0) + ' 回顾提醒（近14天）', false, alerts !== null && alerts > 3) +
     stat('证据盲区', s.evidenceBlindRate === null || s.evidenceBlindRate === undefined ? '—' : fmtPct(s.evidenceBlindRate), 'NoData 占比');
   function stat(k, v, sub, html, alarm) {
     return '<div class="stat"><div class="k">' + k + '</div>' +

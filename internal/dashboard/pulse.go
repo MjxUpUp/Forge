@@ -505,17 +505,18 @@ type pulseStats struct {
 	MedianScore       *float64 `json:"medianScore"`
 	Trend             string   `json:"trend"`
 	Alerts            int      `json:"alerts"`
-	Nudges            int      `json:"nudges"` // 需回顾结论数（alerts = zombies + nudges 的拆解，前端分开展示）
+	Nudges            int      `json:"nudges"` // 需回顾结论数·14天窗口（alerts = zombies + nudges 的拆解，前端分开展示；全量见 health.nudge_count）
 	EvidenceBlindRate *float64 `json:"evidenceBlindRate"`
 }
 
-// aggregatePulseStats merges conclusions across the scope and reuses health.Summarize for
-// avg/median/trend/blind-rate (single truth with the quality dashboard); alerts = zombie
-// tasks + retrospective-nudged conclusions. Source data comes from the fingerprint-gated
-// cache.
+// aggregatePulseStats merges conclusions across the scope and reuses health.SummarizeAt
+// for avg/median/trend/blind-rate (single truth with the quality dashboard); alerts =
+// zombie tasks + windowed retrospective nudges (NudgeRecent, 14d — see
+// health.NudgeRecentWindow). Source data comes from the fingerprint-gated cache.
 //
-// aggregatePulseStats 跨范围合并结论，复用 health.Summarize 算均分/中位/趋势/盲区率
-// （与质量看板单一真相）；alerts = 僵尸任务数 + 需回顾结论数。源数据取自指纹门控缓存。
+// aggregatePulseStats 跨范围合并结论，复用 health.SummarizeAt 算均分/中位/趋势/盲区率
+//（与质量看板单一真相）；alerts = 僵尸任务数 + 窗口化回顾结论数（NudgeRecent，14 天
+//——见 health.NudgeRecentWindow）。源数据取自指纹门控缓存。
 func aggregatePulseStats(opts Options, now time.Time) pulseStats {
 	stats := pulseStats{Trend: "insufficient"}
 	var cs []act.Conclusion
@@ -540,7 +541,15 @@ func aggregatePulseStats(opts Options, now time.Time) pulseStats {
 	if len(cs) == 0 {
 		return stats
 	}
-	summary := health.Summarize(cs)
+	// Windowed summary (2026-08 alarm-fatigue calibration): the alert-facing Nudges uses
+	// NudgeRecent (14-day window) instead of the all-history NudgeCount — stale nudges
+	// (session long closed, no ack mechanism existed) must stop lighting the panel red
+	// forever. The full count stays in health/query surfaces for trend analysis.
+	//
+	// 窗口化 summary（2026-08 告警疲劳校准）：面向告警的 Nudges 用 NudgeRecent
+	//（14 天窗口）而非全量 NudgeCount——陈旧 nudge（session 早已关闭、历史上无 ack
+	// 机制）不得把面板红灯永远挂着。全量计数仍留在 health/查询面供趋势分析。
+	summary := health.SummarizeAt(cs, now)
 	avg := summary.AvgScore
 	median := summary.MedianScore
 	blind := summary.BlindSpotRate
@@ -550,8 +559,8 @@ func aggregatePulseStats(opts Options, now time.Time) pulseStats {
 	if summary.Trend != "" {
 		stats.Trend = summary.Trend
 	}
-	stats.Nudges = summary.NudgeCount
-	stats.Alerts += summary.NudgeCount
+	stats.Nudges = summary.NudgeRecent
+	stats.Alerts += summary.NudgeRecent
 	return stats
 }
 

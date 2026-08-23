@@ -301,11 +301,15 @@ type TaskState struct {
 
 	// Overrides holds the per-task escape-hatch settings (plan-5 anti-leak): they take precedence over the global env
 	// FORGE_WORK_ACTIVITY/FORGE_TEST_COVERAGE. One task escaping does not pollute other tasks in the same shell.
-	// Using any escape hatch → CheckEscapeHatch → Strength capped at Weak. Set via `forge task override`.
+	// Using a VERIFICATION-class escape hatch → CheckEscapeHatch → Strength capped at Weak (evidence-scaled since
+	// 2026-08: ratio>=0.85 && det>=20 exempt — see checklog.EscapeDowngradedStrength); work-activity (rhythm gate)
+	// never caps. Set via `forge task override`.
 	//
 	// Overrides 承载 per-task 逃生舱设置（方案5 防泄漏）：优先于全局 env
 	// FORGE_WORK_ACTIVITY/FORGE_TEST_COVERAGE。一个任务逃生不污染同 shell 的其他任务。
-	// 用了任一逃生舱 → CheckEscapeHatch → Strength cap Weak。由 `forge task override` 设置。
+	// 用了验证类逃生舱 → CheckEscapeHatch → Strength cap Weak（2026-08 起证据缩放：
+	// ratio>=0.85 且 det>=20 豁免——见 checklog.EscapeDowngradedStrength）；work-activity
+	//（节奏门禁）永不 cap。由 `forge task override` 设置。
 	Overrides TaskOverrides `json:"overrides,omitempty"`
 
 	// Continuity source of truth: promotes plan/decisions/next-steps/blockers/cross-tool-findings/artifacts from in-session

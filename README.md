@@ -196,7 +196,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 |------|----------|------|
 | **task-guard** | Write/Edit 前 | 无活跃任务时 WARN（仅 `.forge/*`/`.claude/settings*` 自保护 FAIL——此类项目级文件只在团队模式/老项目存在），保护 Forge 配置不被篡改 |
 | **freeze-guard** | Write/Edit 前 | `forge freeze <路径>...` 激活后硬阻断冻结路径之外的 Write/Edit——「只改这里别动其他」的 session 级硬护栏（on-demand-guards /freeze 的 forge 侧落地）；多路径、相对路径归一化、Windows 大小写不敏感；排在 task-guard 之前优先判定；`forge freeze --off` 解除 |
-| **read-before-edit** | Write/Edit 前（活跃任务内） | 编辑本会话未 Read 过的现存源文件 → 硬阻断（`BLOCKED`）。Edit 需精确匹配旧文本，未读即凭记忆盲改——old_string 撞中即错改入库，先 Read 再 Edit。豁免新建文件/测试文件/非源码；批量重构逃生 `forge task override --work-activity disable`（降 evidence 强度到 Weak）。reads-log 落盘随会话存活，压缩后仍累计 |
+| **read-before-edit** | Write/Edit 前（活跃任务内） | 编辑本会话未 Read 过的现存源文件 → 硬阻断（`BLOCKED`）。Edit 需精确匹配旧文本，未读即凭记忆盲改——old_string 撞中即错改入库，先 Read 再 Edit。豁免新建文件/测试文件/非源码；批量重构逃生 `forge task override --work-activity disable`（记 checklog 审计；work-activity 是节奏门禁，不降 evidence 强度）。reads-log 落盘随会话存活，压缩后仍累计 |
 | **assertion-check** | Write/Edit 前 | 检测断言弱化（t.Fatal → t.Log、assert! 被删除等），advisory 提醒不阻塞（agent 自检） |
 | **bash-guard** | Bash 前 | 检测命令中的写文件模式（writeFile、cat >、sed -i 等），无任务时 WARN（源码随后被 file-sentinel 隔离） |
 | **hazard-guard** | Bash 前 | 高危命令（`rm -rf`、`git push --force`、`DROP TABLE/SCHEMA`、`TRUNCATE`、`GRANT ALL`、`kubectl delete`、`docker system prune`、无 WHERE 的 `DELETE/UPDATE`、解释器内联删除如 `python -c "os.remove(...)"` 等）human-in-the-loop 拦截：block + 指引用户确认 → `forge hazard confirm` 登记 5min 限时标记 → 重试放行（confirm 链是唯一放行路径，`FORGE_ALLOW_HAZARD` 已移除） |
@@ -258,7 +258,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge task verify-acceptance [--trust-foreign]` | 实跑验收标准（task start --accept 登记），记 deterministic 证据；验收命令来自 task import / .forge migrate（外来标记）时首跑须 `--trust-foreign`（人工审阅命令清单后显式受信，防外来命令串直接执行） |
 | `forge task scope add <glob>` | 追加计划改动文件到白名单（支持中途迭代） |
 | `forge task scope show` | 查看声明的白名单 + 实时 scope-drift（advisory，不阻塞） |
-| `forge task override [--work-activity\|--test-coverage\|--acceptance-gate\|--skill-decisions] disable` | per-task 逃生舱：关闭指定门禁检查（如批量重构时关 read-before-edit）；使用落 checklog 审计，evidence 强度降为 Weak |
+| `forge task override [--work-activity\|--test-coverage\|--acceptance-gate\|--skill-decisions] disable` | per-task 逃生舱：关闭指定门禁检查（如批量重构时关 read-before-edit）；使用落 checklog 审计。验证类（test-coverage/acceptance-gate/skill-decisions）evidence 强度 cap 到 Weak（重证据任务按证据缩放豁免）；work-activity 是节奏门禁，只审计不降强度 |
 | `forge task complete` | 标记任务完成（自动评分） |
 | `forge task abort [--ref <ref>] [--cascade\|--detach-deps]` | 中止并删除任务（清理 ghost/卡住任务，不评分；存在反向依赖时默认仅提示，`--cascade` 递归中止所有依赖它的任务，`--detach-deps` 从依赖它的任务移除该依赖边） |
 | `forge task score` | 查看任务质量评分 |

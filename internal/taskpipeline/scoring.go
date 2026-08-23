@@ -237,6 +237,15 @@ func ScoreTask(root string, state *TaskState) error {
 	// Trust boundary (accepted): TaskState JSON in DataDir is agent-writable — deleting
 	// Overrides by hand dodges signal 1, same level as the existing snapshot baseline.
 	//
+	// Independence from the evidence-Strength cap (2026-08): this score cap applies to
+	// ANY escape use (verification-class OR rhythm), WITHOUT the evidence-scaled
+	// carve-out of checklog.EscapeDowngradedStrength — deliberately. Two orthogonal
+	// costs: the score cap is the escape PRICE (score layer, flat by design), the
+	// Strength cap is evidence FIDELITY (signal layer, scaled by evidence weight since
+	// 202-08). A heavily-evidenced marginal escape keeps Strength=Strong (its run
+	// evidence is real) while still scoring ≤89 (the bypass still happened). Neither
+	// signal lies: the evidence was strong AND a gate was skipped.
+	//
 	// 逃生舱代价：用过任一逃生舱的任务总分封顶 escapeCapMaxScore，并按封顶值重算
 	// grade——Weak 证据不能照拿 96-99/A。两个互补信号（code-review 2026-08）：
 	//  - state.Overrides：设了 per-task override 但没走 bypass 分支的任务 checklog
@@ -248,6 +257,13 @@ func ScoreTask(root string, state *TaskState) error {
 	// Conclusion.Score/Grade 抄这些值（act.BuildConclusion）自动一致。
 	// 信任边界（接受）：DataDir 的 TaskState JSON 是 agent 可写的——手删 Overrides
 	// 可躲信号 1，与现有快照基线同级。
+	//
+	// 与 evidence Strength cap 的独立性（2026-08）：本分数封顶对任一逃生（验证类
+	// 或节奏类）生效，不携带 checklog.EscapeDowngradedStrength 的证据缩放豁免——
+	// 有意为之。两道正交代价：分数封顶是逃生「价格」（分数层，设计上平价），
+	// Strength cap 是证据「保真」（信号层，2026-08 起按证据份量缩放）。重证据的
+	// 边际逃生保持 Strength=Strong（其实跑证据是真的），但分数仍 ≤89（绕过确实
+	// 发生了）。两个信号都不说谎：证据确实强、gate 确实被跳过。
 	escaped := usedAnyOverride(state.Overrides)
 	if !escaped {
 		if recorded, err := taskEscapeHatchRecorded(root, state.TaskRef); err == nil {
