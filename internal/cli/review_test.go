@@ -110,8 +110,8 @@ func TestRenderReviewPassBlindSpot(t *testing.T) {
 // the bare round count — bare counts misfire on no-change re-stamps.
 //
 // TestRunReviewPassAt_ReworkRoundRequiresRecheck 钉住重新盖章时的复审要求提示
-//（2026-08 协议缺口修复）：`forge review pass` 盖的轮次若代码快照自上一枚盖章轮以来
-//「变了」（head 或工作区变更 hash——源于修复上一轮 review 发现的基线增量），输出必须
+// （2026-08 协议缺口修复）：`forge review pass` 盖的轮次若代码快照自上一枚盖章轮以来
+// 「变了」（head 或工作区变更 hash——源于修复上一轮 review 发现的基线增量），输出必须
 // 带明确 ADVISORY——本枚章只在「已重新派只读复审 agent 验证过修复」时合法，修复者
 // 不能自证。两份静默契约：第 1 轮（无上一轮可比）与同状态重复盖章（瞬态失败重试/
 // 重建基线——无代码变更即不欠复审）。动机：快照闭环（review-fix-recheck，

@@ -280,14 +280,14 @@ func TestStrength_EscapeHatchCapsToWeak(t *testing.T) {
 // TestStrength_EscapeCapEvidenceAware 钉住证据缩放的逃生舱 cap：方案5 的降档保留，但只在
 // 逃生确实撑住声明时生效。deterministic 证据压倒性占优（ratio>=0.85 且 det>=20）时，一次
 // 绕过的 gate 只占证据的边际份额——此时仍 cap 到 Weak 会造成人人中招的"平价逃生税"
-//（2026-08 校准：55/55 被 cap 的结论 ratio>=0.5，全部是本该 Strong 的；没有一条是真弱证据），
+// （2026-08 校准：55/55 被 cap 的结论 ratio>=0.5，全部是本该 Strong 的；没有一条是真弱证据），
 // 让 NudgeCount/盲区率虚高、淹没真信号。
 func TestStrength_EscapeCapEvidenceAware(t *testing.T) {
 	cases := []struct {
-		name string
-		det  int
+		name  string
+		det   int
 		claim int
-		want EvidenceStrength
+		want  EvidenceStrength
 	}{
 		// 100/2: ratio≈0.98, det 100 ≥20 → 边际逃生，不 cap
 		{`重证据+逃生（ratio 0.98, det 100）→ Strong（cap 不触发）`, 100, 2, Strong},
