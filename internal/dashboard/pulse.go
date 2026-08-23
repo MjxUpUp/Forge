@@ -1,9 +1,9 @@
-// pulse.go — HTTP layer of the pulse panel: six read-only JSON endpoints mounted on the
+// pulse.go — HTTP layer of the pulse panel: seven read-only JSON endpoints mounted on the
 // existing mux (same Host-check / security-header middleware as the rest of the dashboard).
 // All aggregation lives in feed.go / skillsview.go; this file only parses query params,
 // shapes payloads, and reuses the existing error style (log full error, reply neutral).
 //
-// pulse.go —— pulse 面板的 HTTP 层：六个只读 JSON 端点挂在现有 mux 上（与看板其余路由
+// pulse.go —— pulse 面板的 HTTP 层：七个只读 JSON 端点挂在现有 mux 上（与看板其余路由
 // 共用 Host 校验 / 安全头中间件）。聚合全在 feed.go / skillsview.go；本文件只解析
 // query 参数、组装载荷、沿用现有错误风格（记完整日志、回中性文案）。
 package dashboard
@@ -34,10 +34,10 @@ func errInvalidSkillName(name string) error {
 	return fmt.Errorf("invalid skill name %q", name)
 }
 
-// registerPulseRoutes mounts the six pulse JSON endpoints on mux. Extracted from newMux
+// registerPulseRoutes mounts the seven pulse JSON endpoints on mux. Extracted from newMux
 // for the same reason newMux exists (httptest mounts it directly).
 //
-// registerPulseRoutes 把六个 pulse JSON 端点挂到 mux。从 newMux 抽出，理由同 newMux
+// registerPulseRoutes 把七个 pulse JSON 端点挂到 mux。从 newMux 抽出，理由同 newMux
 // 本身（httptest 直接挂载）。
 func registerPulseRoutes(mux *http.ServeMux, opts Options) {
 	mux.HandleFunc(`/api/pulse/feed.json`, func(w http.ResponseWriter, r *http.Request) {
@@ -255,14 +255,19 @@ type pulseAcceptance struct {
 	Total int `json:"total"`
 }
 
-// pulseTaskResponse is the /api/pulse/task.json payload.
+// pulseTaskResponse is the /api/pulse/task.json payload. Truncated mirrors feed.json's
+// contract: the task event stream shares AggregateFeed's default limit, so a long task's
+// transcript is capped — without the flag the detail page would silently pose as complete.
 //
-// pulseTaskResponse 是 /api/pulse/task.json 载荷。
+// pulseTaskResponse 是 /api/pulse/task.json 载荷。Truncated 对齐 feed.json 契约：
+// 任务事件流共用 AggregateFeed 的默认上限，长任务的 transcript 会被截断——不带该
+// 标记详情页会静默冒充完整序列。
 type pulseTaskResponse struct {
 	TaskRef    string          `json:"taskRef"`
 	Project    string          `json:"project"`
 	State      pulseTaskState  `json:"state"`
 	Events     []FeedEvent     `json:"events"`
+	Truncated  bool            `json:"truncated"` // events 被默认上限截断（最早事件不可达）
 	Score      *pulseScore     `json:"score"`
 	Acceptance pulseAcceptance `json:"acceptance"`
 }
@@ -310,6 +315,7 @@ func buildPulseTask(opts Options, pr pulseRoot, state *taskpipeline.TaskState, n
 		return pulseTaskResponse{}, err
 	}
 	resp.Events = res.Events
+	resp.Truncated = res.Truncated
 
 	if state.Score != nil {
 		resp.Score = toPulseScore(state.Score)
@@ -347,6 +353,31 @@ func buildPulseTask(opts Options, pr pulseRoot, state *taskpipeline.TaskState, n
 						Strength:      d.conclusions[i].Strength,
 					},
 					FromConclusion: true,
+				}
+			} else if resp.Score != nil && resp.Score.Evidence == nil &&
+				d.conclusions[i].Deterministic+d.conclusions[i].AgentClaim > 0 {
+				// Score 真实存在但 Evidence 为 nil（评分时零证据输入，buildEvidenceSummary
+				// 合法返回 nil）：整块从结论回填，否则详情页评分块无证据链、下方
+				// transcript 的 conclusion 事件却带 det/claim——自相矛盾。结论本身无证据
+				// 数据时不回填（全零块是编造，保持 null 由前端如实显示"无证据"）。
+				// 守卫只看 det+claim：Strength 不能当信号——BuildConclusion 永写
+				// ec.Strength().String()，零证据结论的 Strength 是非空 "NoData"，
+				// 判空恒假（曾有的 `Strength != ""` 析取项让本 skip 路径生产不可达）。
+				//
+				// Score exists but Evidence is nil (scored with zero evidence input —
+				// buildEvidenceSummary legitimately returns nil): backfill the whole block
+				// from the conclusion, or the detail page contradicts its own conclusion
+				// event. Skip when the conclusion carries no evidence either (a zero block
+				// would be fabricated; null lets the frontend say "no evidence" honestly).
+				// Guard on det+claim only: Strength is never a signal — BuildConclusion
+				// always writes ec.Strength().String(), so a zero-evidence conclusion
+				// carries the NON-empty "NoData" and an emptiness test is always false
+				// (a former `Strength != ""` disjunct made this skip path unreachable).
+				resp.Score.Evidence = &pulseEvidence{
+					Deterministic: d.conclusions[i].Deterministic,
+					AgentClaim:    d.conclusions[i].AgentClaim,
+					Ratio:         d.conclusions[i].Ratio,
+					Strength:      d.conclusions[i].Strength,
 				}
 			} else if resp.Score != nil && resp.Score.Evidence != nil && resp.Score.Evidence.Strength == "" {
 				resp.Score.Evidence.Strength = d.conclusions[i].Strength
