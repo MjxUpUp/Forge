@@ -141,3 +141,26 @@ SKILL.md + forge-integration.md 预扫节更新为 7 类枚举
 ### Evidence
 
 internal/taskpipeline/cheatscan.go detectPathAssumption + TestDetectPathAssumption 通过
+
+## [d-18ce6886e095c020-d776841e] accept
+
+- **Skill**: code-review-gate
+- **DecidedAt**: 2026-08-23T10:30:30Z
+- **By**: dsh-glm
+- **Commit**: 6c54c68
+
+### Diagnosis
+
+协议缺口：快照闭环（d-1778921400123456789 引入的 review-fix-recheck）只强制循环形状（改码后必须重新盖章），不检验复审实质——修复者可不派复审直接 forge review pass，重盖输出与诚实轮零差别，task-complete 照样放行。真实案例（2026-08 本仓库）：主修复 commit 经第一轮 review 报 6 项发现，修复 commit 后仅盖章未复审即过门禁；用户质询后补的第二轮复审实际抓到 1 项 PARTIAL + 1 处漏网谎报
+
+### Revision
+
+三层：① review pass 在「代码快照自上一轮已变」的重盖上打 ADVISORY（快照增量触发非裸轮次计数，同状态重盖静默）；② SKILL.md 新增「审查-修复-复审闭环」节（复审义务/范围三件套/三项禁止：自证盖章、测试当复审、同 agent 续看）；③ claudemd common-errors 表 code-review-gate 行补「复审修复」步骤
+
+### Evidence
+
+TestRunReviewPassAt_ReworkRoundRequiresRecheck（git 夹具三轮：首章静默/同状态重盖静默/快照变更后重盖必含复审 ADVISORY）；TestClaudeMDReviewFixLoopIncludesRecheck；本仓库 2026-08-23 会话三轮审查实录
+
+### Rationale
+
+复审实质不可机械判定（HARD 会引入可伪造凭据字段），ADVISORY 让义务在欠下的确切时刻可见；快照增量触发消除了无变更重盖的误报
