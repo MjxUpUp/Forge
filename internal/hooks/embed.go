@@ -498,8 +498,9 @@ READS_FILE="${FORGE_READS_FILE:-}"
 
 # Escape hatch: work-activity disabled (per-task override OR global env). The
 # dispatcher surfaces a per-task override as FORGE_WORK_ACTIVITY so this single
-# check honors both. Escape is downscored (UsedEscapeHatch → Strength Weak at
-# the work-activity gate) so it isn't free.
+# check honors both. work-activity is a rhythm gate, not verification — escaping
+# it never caps evidence Strength (see checklog.isRhythmEscapeHatch); the escape
+# is still audit-logged via CheckEscapeHatch.
 [ "$FORGE_WORK_ACTIVITY" = "disable" ] && exit 0
 
 # Not source code — allow (mirrors task-guard source extension set).
@@ -514,7 +515,7 @@ printf '%s' "$FILE_PATH" | grep -qE '(_test\.|_spec\.|\.test\.|\.spec\.|test/|te
 # No reads log recorded this session → any Edit of an existing source file is
 # editing blind → block (this IS the signal we want, not a false positive).
 if [ -z "$READS_FILE" ] || [ ! -f "$READS_FILE" ]; then
-  echo "FAIL [read-before-edit] $FILE_PATH 未在本会话 Read 过——Edit 需精确匹配旧文本，未读即凭记忆盲改——Edit 的 old_string 撞中即错改入库。先 Read 该文件再 Edit。批量/重构逃生：forge task override --work-activity disable（降 evidence 强度到 Weak）。"
+  echo "FAIL [read-before-edit] $FILE_PATH 未在本会话 Read 过——Edit 需精确匹配旧文本，未读即凭记忆盲改——Edit 的 old_string 撞中即错改入库。先 Read 该文件再 Edit。批量/重构逃生：forge task override --work-activity disable（记 checklog 审计；work-activity 是节奏门禁，不降 evidence 强度）。"
   exit 1
 fi
 
@@ -525,7 +526,7 @@ if grep -qxF "$FILE_PATH" "$READS_FILE"; then
   exit 0
 fi
 
-echo "FAIL [read-before-edit] $FILE_PATH 未在本会话 Read 过——Edit 需精确匹配旧文本，未读即凭记忆盲改——Edit 的 old_string 撞中即错改入库。先 Read 该文件再 Edit。批量/重构逃生：forge task override --work-activity disable（降 evidence 强度到 Weak）。"
+echo "FAIL [read-before-edit] $FILE_PATH 未在本会话 Read 过——Edit 需精确匹配旧文本，未读即凭记忆盲改——Edit 的 old_string 撞中即错改入库。先 Read 该文件再 Edit。批量/重构逃生：forge task override --work-activity disable（记 checklog 审计；work-activity 是节奏门禁，不降 evidence 强度）。"
 exit 1
 `
 

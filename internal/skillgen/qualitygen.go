@@ -123,7 +123,7 @@ func buildQualitySkillContent(projectDir string, proto *protocol.Protocol) strin
 	sb.WriteString("2. **bash-guard**（PreToolUse Bash）：无任务时 Bash 写文件模式（writeFile、cat >、sed -i 等）只 WARN\n")
 	sb.WriteString("3. **file-sentinel**（PostToolUse Bash）：对比 Bash 执行前后的文件状态，未授权源码变更 quarantine 到用户级 DataDir/quarantine/（`forge data-dir` 查看路径）\n\n")
 	sb.WriteString("此外，**自保护机制**阻止直接修改项目级 `.forge/*` 和 `.claude/settings*`（仅团队模式/老项目存在）——这些文件与用户级资产（`~/.claude/settings.json`、`~/.claude/CLAUDE.md`、`~/.codex/AGENTS.md` 等）一样只能通过 `forge` 命令操作。\n\n")
-	sb.WriteString("**read-before-edit**（PreToolUse Write|Edit，活跃任务内）是 read-before-modify 的 shift-left 硬门禁：编辑本会话未 Read 过的现存源文件 → `BLOCKED`。Edit 需精确匹配旧文本，未读即凭记忆盲改——old_string 易撞中错位、错改入库。豁免新建文件/测试文件/非源码；批量重构逃生 `forge task override --work-activity disable`（降 evidence 强度到 Weak）。reads-log 落盘随会话存活，压缩后仍累计——压缩前 Read 过的文件仍算数。\n\n")
+	sb.WriteString("**read-before-edit**（PreToolUse Write|Edit，活跃任务内）是 read-before-modify 的 shift-left 硬门禁：编辑本会话未 Read 过的现存源文件 → `BLOCKED`。Edit 需精确匹配旧文本，未读即凭记忆盲改——old_string 易撞中错位、错改入库。豁免新建文件/测试文件/非源码；批量重构逃生 `forge task override --work-activity disable`（记 checklog 审计；work-activity 是节奏门禁，不降 evidence 强度）。reads-log 落盘随会话存活，压缩后仍累计——压缩前 Read 过的文件仍算数。\n\n")
 	sb.WriteString("### 辅助质量检查（仅 WARN 不阻塞）\n\n")
 	sb.WriteString("- **assertion-check/auto-compile**：检测断言弱化、提醒编译自检（advisory，仅记录不阻塞，由 agent 自律）\n\n")
 

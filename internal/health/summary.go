@@ -24,6 +24,21 @@ import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
 )
 
+// NudgeRecentWindow is the look-back window for Summary.NudgeRecent (windowed nudge count).
+// Rationale (2026-08 alarm-fatigue calibration): NudgeCount is an all-history cumulative with
+// no ack mechanism, so a dashboard fed on it only grows — 56 stale nudges (0 real blind spots)
+// lit the panel red for weeks and would bury any future real signal. NudgeRecent scopes the
+// alert-facing count to conclusions completed within the last 14 days: a nudge older than that
+// has passed its actionable window (session long closed, context gone), while the full count
+// stays available for trend analysis. 14d matches the sprint-ish review cadence.
+//
+// NudgeRecentWindow 是 Summary.NudgeRecent（窗口化 nudge 计数）的回看窗口。
+// 动机（2026-08 告警疲劳校准）：NudgeCount 是无 ack 机制的全量累计，喂给 dashboard 只会
+// 只增不减——56 条陈旧 nudge（0 条真盲区）把面板红灯挂了数周，未来真信号必被淹没。
+// NudgeRecent 把面向告警的计数限定在最近 14 天内完成的结论：超过该窗的 nudge 已过可行动
+// 窗口（session 早已关闭、上下文消失），而全量计数仍可用于趋势分析。14 天贴合迭代回顾节奏。
+const NudgeRecentWindow = 14 * 24 * time.Hour
+
 // DimFreq is a low-score dimension (<70) and its cross-task occurrence count.
 //
 // DimFreq 是一个低分维度（<70）及其跨任务出现次数。
@@ -53,7 +68,18 @@ type Summary struct {
 	StrengthDist   map[string]int `json:"strength_dist"` // Strong/Weak/Unverified/NoData → count
 	BlindSpotCount int            `json:"blind_spot_count"`
 	BlindSpotRate  float64        `json:"blind_spot_rate"` // 0-1
-	NudgeCount     int            `json:"nudge_count"`     // RetrospectiveNudge=true 任务数
+	NudgeCount     int            `json:"nudge_count"`     // RetrospectiveNudge=true 任务数（全量真相）
+	// NudgeRecent counts RetrospectiveNudge=true conclusions completed within
+	// NudgeRecentWindow of the SummarizeAt `now` — the alert-facing count that feeds
+	// the dashboard, so stale nudges stop lighting the panel red forever (see
+	// NudgeRecentWindow for the alarm-fatigue calibration). Legacy Summarize (no
+	// `now`) fills NudgeRecent = NudgeCount so no-window callers keep a meaningful value.
+	//
+	// NudgeRecent 数 SummarizeAt 的 `now` 前 NudgeRecentWindow 窗口内完成且
+	// RetrospectiveNudge=true 的结论——喂给 dashboard 的面向告警计数，让陈旧 nudge
+	// 不再把面板红灯永远挂着（告警疲劳校准见 NudgeRecentWindow）。旧 Summarize
+	//（无 `now`）填 NudgeRecent = NudgeCount，无窗口调用方字段语义仍完整。
+	NudgeRecent    int            `json:"nudge_recent"`
 	LowDims        []DimFreq      `json:"low_dims,omitempty"`
 	Span           Span           `json:"span"`
 	EarlierAvg     float64        `json:"earlier_avg"` // 前半段均分
@@ -70,12 +96,31 @@ type Summary struct {
 	PhasePassRate map[string]float64 `json:"phase_pass_rate,omitempty"`
 }
 
-// Summarize is a pure function: aggregates the conclusion slice into a project Summary. Does not touch disk, easy to unit test. LoadAll
-// is already sorted by time, but a copy is re-sorted here to defend against callers passing unsorted slices. Empty slice → zero value (TotalTasks=0).
+// Summarize is the legacy no-window entry: equivalent to SummarizeAt with NudgeRecent
+// filled as the all-history NudgeCount (no `now` to window against). Kept for existing
+// callers (cli/health.go, pulse project cards); new alert-facing consumers should
+// prefer SummarizeAt.
 //
-// Summarize 是纯函数：从结论切片聚合出 project Summary。不碰磁盘，便于单测。LoadAll
-// 已按时间排序，但此处对副本再排一次防外部调用方传入乱序切片。空切片 → 零值（TotalTasks=0）。
+// Summarize 是旧的无窗口入口：等价于 SummarizeAt，只是 NudgeRecent 填全量 NudgeCount
+//（没有 `now` 可开窗）。为既有调用方（cli/health.go、pulse 项目卡）保留；面向告警的新
+// 消费方应优先 SummarizeAt。
 func Summarize(cs []act.Conclusion) Summary {
+	s := SummarizeAt(cs, time.Time{})
+	s.NudgeRecent = s.NudgeCount
+	return s
+}
+
+// SummarizeAt aggregates like Summarize plus the time-windowed NudgeRecent: nudged
+// conclusions completed within [now-NudgeRecentWindow, now] are counted. A zero `now`
+// disables the window in the direction of "everything counts" EXCEPT that Summarize
+// overrides NudgeRecent anyway — SummarizeAt callers must pass a real now. Pure
+// function, disk-free; the window predicate is CompletedAt.After(now-Window) && !After(now).
+//
+// SummarizeAt 在 Summarize 聚合之上增加时间窗口化的 NudgeRecent：只数
+// [now-NudgeRecentWindow, now] 窗口内完成的 nudge 结论。`now` 为零值时窗口判定的
+// 方向是"全部计入"，但 Summarize 反正会覆写 NudgeRecent——SummarizeAt 的调用方必须
+// 传真实 now。纯函数、不碰磁盘；窗口判定为 CompletedAt.After(now-Window) && !After(now)。
+func SummarizeAt(cs []act.Conclusion, now time.Time) Summary {
 	var s Summary
 	s.TotalTasks = len(cs)
 	if len(cs) == 0 {
@@ -121,6 +166,14 @@ func Summarize(cs []act.Conclusion) Summary {
 		}
 		if c.RetrospectiveNudge {
 			s.NudgeCount++
+			// Windowed count: completed within [now-Window, now]. Guarded on non-zero now —
+			// the legacy Summarize wrapper passes zero and overrides NudgeRecent afterwards.
+			//
+			// 窗口计数：完成于 [now-Window, now] 内。now 非零才判定——旧 Summarize
+			// 包装传零值，事后会覆写 NudgeRecent。
+			if !now.IsZero() && c.CompletedAt.After(now.Add(-NudgeRecentWindow)) && !c.CompletedAt.After(now) {
+				s.NudgeRecent++
+			}
 		}
 		for _, d := range c.LowDimensions {
 			lowCounts[d]++

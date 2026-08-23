@@ -131,6 +131,33 @@ func TestClaudeMDCommonErrorsIncludesRetention(t *testing.T) {
 	}
 }
 
+// TestClaudeMDWorkActivityEscapeWording pins the docs-consistency of the work-activity
+// escape wording (2026-08): work-activity is a RHYTHM gate — checklog.isRhythmEscapeHatch
+// excludes it from the Strength cap, so generated docs must NOT claim it downgrades
+// evidence to Weak (that copy was a stale second source of the cap rule and lied about
+// behavior). Verification-class hatches keep the Weak wording (evidence-scaled).
+//
+// TestClaudeMDWorkActivityEscapeWording 钉住 work-activity 逃生文案的文档一致性
+//（2026-08）：work-activity 是节奏门禁——checklog.isRhythmEscapeHatch 把它排除在
+// Strength cap 外，生成文档绝不能声称它把 evidence 降到 Weak（该文案曾是 cap 规则的
+// 陈旧第二来源、与行为不符）。验证类逃生保留 Weak 措辞（证据缩放）。
+func TestClaudeMDWorkActivityEscapeWording(t *testing.T) {
+	section := buildForgeSection(true)
+
+	// work-activity 行必须写明「节奏门禁、不降 evidence 强度」
+	if !strings.Contains(section, "work-activity 是节奏门禁，不降 evidence 强度") {
+		t.Error("CLAUDE.md work-activity 逃生文案必须声明节奏门禁不降 evidence 强度（与 isRhythmEscapeHatch 行为一致）")
+	}
+	// 撒谎文案不得回归：work-activity 紧邻的「降 evidence 强度到 Weak」是行为错误的第二拷贝
+	if strings.Contains(section, "work-activity disable`（降 evidence 强度到 Weak）") {
+		t.Error("CLAUDE.md work-activity 逃生文案不得声称降 evidence 到 Weak（节奏门禁不触发 cap——防陈旧拷贝回归）")
+	}
+	// 验证类逃生保留降档语义 + 证据缩放豁免说明
+	if !strings.Contains(section, "重证据任务按证据缩放豁免") {
+		t.Error("CLAUDE.md 验证类逃生文案必须提及证据缩放豁免（2026-08 校准）")
+	}
+}
+
 // TestClaudeMDCommonErrorsIncludesSkillDecisions guards the common-errors table
 // documents the task-verify skill-decisions guardrail (B 组件). 改 SKILL.md 未记
 // 决策 → BLOCKED——agents 遇到需在 CLAUDE.md 看到 forge skills decide 记决策路径 +

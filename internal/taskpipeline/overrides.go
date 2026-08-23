@@ -11,16 +11,20 @@ import (
 // same shell — the global env FORGE_WORK_ACTIVITY / FORGE_TEST_COVERAGE / FORGE_SKILL_DECISIONS still serves as a
 // CI/test fallback, but per-task override is the recommended path. The value disable = disable the corresponding gate.
 //
-// Using any escape hatch → checklog CheckEscapeHatch → evidence Strength capped at Weak (giving escape a cost, to
-// counter the hard-gate-plus-global-escape-hatch-equals-fake-hard-gate backlash).
+// Using a VERIFICATION-class escape hatch → checklog CheckEscapeHatch → evidence Strength capped at Weak (giving
+// escape a cost, to counter the hard-gate-plus-global-escape-hatch-equals-fake-hard-gate backlash; evidence-scaled
+// since 2026-08 — heavily-evidenced tasks ratio>=0.85 && det>=20 are exempt, see checklog.EscapeDowngradedStrength).
+// work-activity (rhythm gate) never caps Strength.
 //
 // TaskOverrides 承载 per-task 逃生舱设置。优先于全局 env，是方案5 的「防泄漏」机制：
 // 一个任务逃生（经 `forge task override`）不污染同 shell 的其他任务——全局 env
 // FORGE_WORK_ACTIVITY / FORGE_TEST_COVERAGE / FORGE_SKILL_DECISIONS 仍作 CI/测试
 // fallback，但 per-task override 是推荐路径。值"disable"= 禁用对应门禁。
 //
-// 用了任一逃生舱 → checklog CheckEscapeHatch → evidence Strength cap Weak（让逃生
-// 有代价，对冲「硬门禁 + 全局逃生舱 = 假硬门禁」反噬）。
+// 用了验证类逃生舱 → checklog CheckEscapeHatch → evidence Strength cap Weak（让逃生
+// 有代价，对冲「硬门禁 + 全局逃生舱 = 假硬门禁」反噬；2026-08 起证据缩放——
+// ratio>=0.85 且 det>=20 的重证据任务豁免，见 checklog.EscapeDowngradedStrength）。
+// work-activity（节奏门禁）永不 cap Strength。
 type TaskOverrides struct {
 	WorkActivity   string `json:"work_activity,omitempty"`   // "disable" 跳过 read-before-edit / work-activity 门禁
 	TestCoverage   string `json:"test_coverage,omitempty"`   // "disable" 跳过 test-coverage 门禁
