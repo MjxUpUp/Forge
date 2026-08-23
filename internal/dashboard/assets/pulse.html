@@ -335,7 +335,7 @@
 <script>
 'use strict';
 /* ============================================================
- * Forge Pulse 前端：消费 6 个 /api/pulse/*.json 端点。
+ * Forge Pulse 前端：消费 7 个 /api/pulse/*.json 端点。
  * 纯静态渲染 + 30s 轮询增量（since 排他），零依赖。
  * ============================================================ */
 var POLL_MS = 30000;
@@ -395,7 +395,7 @@ var state = {
   pending: [],              // 轮询到但未并入的新事件
   lastEventTime: '',        // 最新已知事件时间（since 排他，故不重复拉取）
   skills: null,             // skills.json 载荷
-  quality: null,            // 触发质量卡片数据（skill.json 汇总）
+  quality: null,            // 触发质量卡片数据（quality.json 单端点聚合载荷）
   selectedTask: null,       // {project, ref}
   selectedSkill: null,
   feedTruncated: false      // 初始加载被 limit 截断（更早事件不可达，流尾部标注）
@@ -712,6 +712,11 @@ function renderTask(t) {
       if (total > 0 && (ev.agentClaim || 0) > (ev.deterministic || 0)) {
         html += '<div style="margin-top:8px"><span class="caveat bad">⚠ claim 占比过半 · 大部分是 agent 自称</span></div>';
       }
+    } else {
+      /* evidence 为 null（评分时零证据、结论也无证据数据）：如实显示，不静默消失——
+       * 与 NoData 分支（evidence 在但零证据）展示对齐，用户可区分「确无证据」与「渲染缺失」。 */
+      html += '<div class="panel-title" style="margin-top:14px">证据链</div>' +
+        '<div style="margin-top:6px"><span class="caveat">⚠ 无证据记录</span></div>';
     }
     html += '</div>';
   } else {
@@ -726,9 +731,12 @@ function renderTask(t) {
       '<span class="' + (ac.pass === ac.total ? 'caveat good' : 'caveat bad') + '">' + ac.pass + ' / ' + ac.total + ' 通过</span></div>';
   }
 
-  /* 完整事件序列（B1）：API 降序 → transcript 按时间升序渲染 */
+  /* 事件序列（B1）：API 降序 → transcript 按时间升序渲染。t.truncated 时最早的
+   * 事件已被默认上限截掉（不可达），如实标注在序列顶部，不冒充完整序列。 */
   var evs = (t.events || []).slice().reverse();
-  html += '<div class="panel-title" style="margin:16px 0 8px">事件序列</div>' + feedHTML(evs, { hideProject: true });
+  html += '<div class="panel-title" style="margin:16px 0 8px">事件序列</div>' +
+    (t.truncated ? '<div style="margin-bottom:8px"><span class="caveat">⚠ 更早的事件已省略（超出单任务上限）</span></div>' : '') +
+    feedHTML(evs, { hideProject: true });
   $('#detail').innerHTML = html;
   bindDetailClose();
 }
