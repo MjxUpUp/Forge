@@ -49,6 +49,16 @@ is_source() {
 FILE_PATH="${FORGE_FILE_PATH:-}"
 SESSION_ID="${FORGE_SESSION_ID:-default}"
 : "${TMPDIR:=/tmp}"
+# Session-marker root — must match task-guard's writer (see TaskGuardHook): the
+# source-touched marker is written by task-guard under FORGE_DATA_DIR (fallback
+# TMPDIR), in the markers/ subdir; reading it from any other root splits the
+# pair and every session looks research-mode-forever (2026-08-23 migration).
+#
+# 会话 marker 根目录——必须与 task-guard 的写端一致（见 TaskGuardHook）：
+# source-touched 标记由 task-guard 写在 FORGE_DATA_DIR（兜底 TMPDIR）的
+# markers/ 子目录下；从其他根读取会读写分家，每个会话都永远像
+# research-mode（2026-08-23 迁移）。
+_MARKER_DIR="${FORGE_DATA_DIR:-${TMPDIR:-/tmp}}/markers"
 
 # 是否触及源码：PostToolUse 模式看 FORGE_FILE_PATH；gate 模式（无 FILE_PATH）
 # 看 git 工作区有无源码变更。两者都不依赖具体构建系统——技术栈无关。
@@ -72,7 +82,7 @@ fi
 # 调研/审查场景，task-guard 不会进 'no task' 分支因此不会设置 marker），抑制 advisory
 # 输出——研究场景"自己用编译命令自检"完全无关，PASS detail 只占 AdditionalContext 字符
 # 配额。一旦 task-guard 看到源 Edit/Write 即设 marker，本会话后续 advisory 正常输出。
-_TOUCHED="${TMPDIR}/forge-source-touched-${SESSION_ID}"
+_TOUCHED="${_MARKER_DIR}/forge-source-touched-${SESSION_ID}"
 if [ ! -f "$_TOUCHED" ]; then
   echo "PASS [auto-compile] research-mode session, advisory suppressed (set by Edit|Write of source)"
 else
@@ -380,7 +390,35 @@ printf '%s' "$FILE_PATH" | grep -qE '(_test\.|_spec\.|\.test\.|\.spec\.|test/|te
 # downstream hooks in the same invocation also see it as set.
 : "${TMPDIR:=/tmp}"
 _SESSION_ID="${FORGE_SESSION_ID:-default}"
-_TOUCHED_MARKER="${TMPDIR}/forge-source-touched-${_SESSION_ID}"
+# Session-marker root: FORGE_DATA_DIR first (injected by the Go layer — forge's
+# own writable data home), ${TMPDIR:-/tmp} as fallback (script-level runs without
+# the Go env). The old TMPDIR root silently lost markers on read-only-MSYS-/tmp
+# machines (Git for Windows default install): "touch ... || true" swallowed the
+# write error and the de-noise degraded to per-edit WARN spam (2026-08-23).
+# mkdir -p closes the narrower window: DataDirFor is pure derivation — without
+# it, a marker-writing event on a project whose DataDir doesn't exist yet (no
+# prior hook created it) loses the marker the same silent way. Markers live in a
+# dedicated markers/ subdir (not loose in the DataDir root next to managed
+# state) and stale ones are pruned below — the DataDir is a permanent runtime
+# home, unlike TMPDIR there is no implicit OS cleanup.
+#
+# 会话 marker 根目录：FORGE_DATA_DIR 优先（Go 层注入——forge 自己的可写 data
+# home），${TMPDIR:-/tmp} 兜底（不经 Go 层 env 的脚本级运行）。旧 TMPDIR 根在
+# MSYS /tmp 只读的机器上（Git for Windows 默认装法）静默丢标记："touch ...
+# || true" 吞掉写错误，去噪退化成每次编辑 WARN 刷屏（2026-08-23）。mkdir -p
+# 关闭更窄的窗口：DataDirFor 是纯推导不建目录——没有它，DataDir 尚不存在的
+# 项目上写 marker 的事件会以同样方式静默丢标记。marker 收进专用 markers/
+# 子目录（不散落在 DataDir 根与受管状态混放），并在下方清扫超龄——DataDir
+# 是永久运行态 home，不像 TMPDIR 有系统隐式清理。
+_MARKER_DIR="${FORGE_DATA_DIR:-${TMPDIR:-/tmp}}/markers"
+mkdir -p "$_MARKER_DIR" 2>/dev/null || true
+# Prune session markers older than 7 days: a session that old is long over, and
+# its markers (3 per session per project) would otherwise accumulate forever.
+#
+# 清扫超过 7 天的会话 marker：那么老的会话早已结束，其标记（每会话每项目
+# 3 个）否则会永久累积。
+find "$_MARKER_DIR" -maxdepth 1 -type f -name 'forge-*' -mtime +7 -delete 2>/dev/null || true
+_TOUCHED_MARKER="${_MARKER_DIR}/forge-source-touched-${_SESSION_ID}"
 touch "$_TOUCHED_MARKER" 2>/dev/null || true
 
 # No active task — try auto-create on feature branch
@@ -411,7 +449,7 @@ if [ -z "$TASK_REF" ]; then
   # the "allowed" wording contradicts a deny. So the promoted path emits a
   # directive text every time (carries the [task-guard] Contains predicate, no
   # Auto-created, so it still promotes).
-  NOWARN_FILE="${TMPDIR:-/tmp}/forge-taskguard-nowarn-${FORGE_SESSION_ID:-default}"
+  NOWARN_FILE="${_MARKER_DIR}/forge-taskguard-nowarn-${FORGE_SESSION_ID:-default}"
   if [ -n "${FORGE_TASKGUARD_PROMOTED:-}" ]; then
     echo "WARN [task-guard] No active task. Source edit DENIED until one exists — run: forge task start --ref <ref> --branch --title <title> (creates branch + task on main/master), then retry the edit. 无任务不得改源码：先 forge task start 建任务再重试。"
     exit 0
@@ -540,6 +578,21 @@ set -eo pipefail
 COMMAND="${FORGE_COMMAND:-}"
 TASK_REF="${FORGE_TASK_REF:-}"
 SESSION_ID="${FORGE_SESSION_ID:-default}"
+# Session-marker root — same migration as task-guard (2026-08-23): the touched/
+# nowarn/cmd markers live under FORGE_DATA_DIR (fallback TMPDIR), in the markers/
+# subdir, pruned after 7 days (the DataDir is permanent — no implicit OS
+# cleanup). The SNAPSHOT/WRITE_FLAG per-invocation pairing below deliberately
+# STAYS in TMPDIR — it is bound to the file-sentinel trust-boundary design (see
+# FileSentinelHook's comment) and its failure mode differs from marker loss.
+#
+# 会话 marker 根目录——与 task-guard 同一迁移（2026-08-23）：touched/nowarn/cmd
+# 标记落在 FORGE_DATA_DIR（兜底 TMPDIR）的 markers/ 子目录下。下方
+# SNAPSHOT/WRITE_FLAG 的 per-invocation 配对通道**刻意留在 TMPDIR**——它绑定
+# file-sentinel 的信任边界设计（见 FileSentinelHook 注释），失效模式也与
+# marker 丢失不同。
+_MARKER_DIR="${FORGE_DATA_DIR:-${TMPDIR:-/tmp}}/markers"
+mkdir -p "$_MARKER_DIR" 2>/dev/null || true
+find "$_MARKER_DIR" -maxdepth 1 -type f -name 'forge-*' -mtime +7 -delete 2>/dev/null || true
 SNAPSHOT_FILE="${TMPDIR:-/tmp}/forge-snapshot-${SESSION_ID}"
 # Defensive: never let SNAPSHOT_FILE be empty — an empty value would make a
 # redirect write to a literal/misdirected filename.
@@ -741,12 +794,12 @@ fi
 # （task-guard 不会进 no-task 分支因此不会设置 marker），此 Bash 写入发生在
 # 纯调研/审查场景，直接静默——避免 AgentFare 模式每会话首条 WARN 噪音。
 # 一旦看到 task-guard 设的 marker，下面的 NOWARN_FILE 抑制 + 首条 WARN 流程恢复。
-_TOUCHED_MARKER="${TMPDIR:-/tmp}/forge-source-touched-${SESSION_ID}"
+_TOUCHED_MARKER="${_MARKER_DIR}/forge-source-touched-${SESSION_ID}"
 if [ $IS_WRITE_CMD -eq 1 ] && [ -z "$TASK_REF" ]; then
   if [ ! -f "$_TOUCHED_MARKER" ]; then
     exit 0
   fi
-  NOWARN_FILE="${TMPDIR:-/tmp}/forge-bashguard-nowarn-${SESSION_ID}"
+  NOWARN_FILE="${_MARKER_DIR}/forge-bashguard-nowarn-${SESSION_ID}"
   if [ ! -f "$NOWARN_FILE" ]; then
     touch "$NOWARN_FILE" 2>/dev/null || true
     echo "WARN [bash-guard] Bash write without active task. Changes are allowed but not tracked.（本会话仅提示一次）"
@@ -756,7 +809,7 @@ fi
 
 # Mark as forge command for file-sentinel
 if [ $IS_FORGE_CMD -eq 1 ]; then
-  touch "${TMPDIR:-/tmp}/forge-cmd-${SESSION_ID}" 2>/dev/null || true
+  touch "${_MARKER_DIR}/forge-cmd-${SESSION_ID}" 2>/dev/null || true
 fi
 
 echo "PASS"`
@@ -1066,13 +1119,21 @@ const FileSentinelHook = `#!/bin/bash
 # TMPDIR, so an audited command could rewrite or plant the baseline between
 # PreToolUse and PostToolUse. This defense assumes TMPDIR integrity — it stops
 # accidental and runaway writes, NOT adversarial tampering by the command
-# itself.
+# itself. (The forge-cmd marker below moved to FORGE_DATA_DIR on 2026-08-23 —
+# same agent-writable trust posture as TMPDIR, matching bash-guard's writer;
+# the per-invocation snapshot baseline stays in TMPDIR by design.)
+#
+# 信任边界：snapshot/.ok/.cfg 基线在 agent 可写的 TMPDIR 里，被审计的命令可能
+# 在 PreToolUse 与 PostToolUse 之间改写/伪造基线。本防御假设 TMPDIR 完整——
+# 它拦意外与失控写入，不拦命令自身的对抗性篡改。（下方 forge-cmd 标记于
+# 2026-08-23 迁至 FORGE_DATA_DIR——与 TMPDIR 同为 agent 可写的信任姿态，与
+# bash-guard 写端一致；per-invocation snapshot 基线按设计留在 TMPDIR。）
 set -eo pipefail
 
 TASK_REF="${FORGE_TASK_REF:-}"
 SESSION_ID="${FORGE_SESSION_ID:-default}"
 : "${TMPDIR:=/tmp}"
-FORGE_CMD_FILE="${TMPDIR}/forge-cmd-${SESSION_ID}"
+FORGE_CMD_FILE="${FORGE_DATA_DIR:-${TMPDIR:-/tmp}}/markers/forge-cmd-${SESSION_ID}"
 
 # Per-invocation pairing: bash-guard keys its snapshot with its own PID
 # (forge-snapshot-<session>-<pid>, plus .ok/.cfg sidecars), so parallel Bash
