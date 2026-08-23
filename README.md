@@ -203,7 +203,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | **auto-compile** | Write/Edit 后 | advisory 提醒用对应技术栈编译命令自检（go build / cargo check / mvn / tsc 等），不强制编译 |
 | **workflow-test-guard** | Write/Edit 后 | 改 `.github/workflows/*.yml` 后自动跑 `internal/ci` 守护测试，把"沙盒异常"即时反馈给 agent（不依赖 CI 兜底），是 release.yml test→goreleaser→npm needs 链的实时守护层 |
 | **file-sentinel** | Bash 后 | 监控文件变更，未授权修改隔离到 DataDir/quarantine/（`forge data-dir` 查看路径，可恢复，不删除） |
-| **tool-track** | Read/Skill/Agent/Bash 后 | 静默记录工具调用到 toollog（Read/Skill/Agent 记名称、Bash 记截断命令），供 read-before-edit 门禁与 efficiency 维度评分判断（agent 是否先读代码再改、质量 skill 是否被驱动） |
+| **tool-track** | Read/Skill/Agent/Grep/Glob/Bash 后 | 静默记录工具调用到 toollog（Read/Skill/Agent 记名称、Bash 记截断命令、Grep/Glob 记截断 input——探索调用也计入 work-activity），供 read-before-edit 门禁与 efficiency 维度评分判断（agent 是否先读代码再改、质量 skill 是否被驱动） |
 | **failure-track** | 命令失败后（PostToolUseFailure） | 记录 CheckToolFailure 观察；失败文本命中编译/测试类指纹（`undefined:`/`error TS`/`error[E`/`--- FAIL` 等）时注入 compile-fix-loop skill 事实性指针（advisory 不阻断——失败已发生） |
 | **subagent-track** | 子 agent 结束（SubagentStop） | 记录 agent_id/agent_type/交付长度+首行摘要到 checklog（归因数据——此前子 agent 活动 forge 侧零记录）；纯观察，无输出无阻断 |
 | **test-nudge** | Write/Edit 后（活跃任务内） | 事中测试提醒：连写 ≥3 个源码文件且无配对测试写入时注入一次 test-discipline skill 事实性提示（advisory，每连写只提示一次）；测试写入重置计数；无任务静默；执法仍在 task-verify 门禁 |

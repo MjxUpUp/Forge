@@ -726,6 +726,99 @@ func TestWorkActivityStillEnforcedAfterAutoGate(t *testing.T) {
 	}
 }
 
+// TestWorkActivityExplorationCounts pins the 2026-08-23 doc-implementation drift
+// fix at the executor surface (the surface CLAUDE.md's error table talks about):
+// a pure-exploration stretch (Grep/Glob, zero Read, zero Edit) is real work and
+// must PASS the work-activity gate. Before the fix, Grep/Glob never reached
+// toollog (matcher gap), so the documented advice "explore with Read/Grep/Glob"
+// between gates was a dead promise — the gate stayed blocked until a Read landed.
+//
+// TestWorkActivityExplorationCounts 在 executor 表面（即 CLAUDE.md 错误表所说的
+// 那个表面）钉死 2026-08-23 文档-实现漂移修复：纯探索段落（Grep/Glob、零
+// Read、零 Edit）是真实工作，必须通过 work-activity 门禁。修复前 Grep/Glob
+// 进不了 toollog（matcher 缺口），错误表「用 Read/Grep/Glob 探索」的建议是
+// 空头支票——门禁一直拦到出现 Read 为止。
+func TestWorkActivityExplorationCounts(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "initial")
+
+	t.Setenv("FORGE_WORK_ACTIVITY", "")
+
+	state := &TaskState{
+		TaskRef: "test-explore-activity",
+		Branch:  "feat/test",
+	}
+
+	// Pure exploration: two Grep calls and one Glob, no Read, no Edit. Recorded
+	// the way the real tool-track hook records them (toollog rows with the
+	// task's ref). Timestamps are Record-time; the task started just before.
+	//
+	// 纯探索：两次 Grep、一次 Glob，零 Read、零 Edit。按真实 tool-track
+	// hook 的记录方式落 toollog（带任务 ref）。时间戳为 Record 时刻；任务
+	// 刚在之前启动。
+	state.StartedAt = time.Now().Add(-1 * time.Second)
+	for _, tool := range []string{"Grep", "Glob", "Grep"} {
+		call := &toolusage.ToolCall{ToolName: tool, TaskRef: "test-explore-activity"}
+		if err := toolusage.Record(dir, call); err != nil {
+			t.Fatalf("toolusage.Record(%s): %v", tool, err)
+		}
+	}
+
+	state.RecordGateResult("task-implement", true, "")
+
+	if _, err := ExecuteTaskGate(dir, "task-verify", state); err != nil {
+		t.Fatalf("pure exploration (Grep/Glob, no edits) must satisfy work-activity, got: %v", err)
+	}
+}
+
+// TestWorkActivityExplorationDoesNotSatisfyReadBeforeEdit pins the strictness
+// boundary of the same fix: exploration counts toward "was there work", but
+// NEVER toward "did you read before edit". A stretch with an Edit and Grep
+// calls but zero Read must still be BLOCKED — browsing matches is not reading
+// the file you edit.
+//
+// TestWorkActivityExplorationDoesNotSatisfyReadBeforeEdit 钉死同一修复的严格
+// 性边界：探索计入「有无工作」，绝不计入「改前是否读过」。有 Edit、有
+// Grep、零 Read 的段落仍必须 BLOCK——浏览匹配不等于读过要改的文件。
+func TestWorkActivityExplorationDoesNotSatisfyReadBeforeEdit(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "initial")
+
+	t.Setenv("FORGE_WORK_ACTIVITY", "")
+
+	state := &TaskState{
+		TaskRef: "test-explore-not-read",
+		Branch:  "feat/test",
+	}
+	state.StartedAt = time.Now().Add(-1 * time.Second)
+	for _, tool := range []string{"Grep", "Glob", "Edit"} {
+		call := &toolusage.ToolCall{ToolName: tool, TaskRef: "test-explore-not-read"}
+		if err := toolusage.Record(dir, call); err != nil {
+			t.Fatalf("toolusage.Record(%s): %v", tool, err)
+		}
+	}
+
+	state.RecordGateResult("task-implement", true, "")
+
+	_, err := ExecuteTaskGate(dir, "task-verify", state)
+	if err == nil {
+		t.Fatal("edit-without-read must stay BLOCKED even with Grep/Glob activity — exploration never substitutes for reading the edited file")
+	}
+	if !strings.HasPrefix(err.Error(), blockedPrefix) {
+		t.Fatalf("应是 GateBlocked（HARD stop），got: %v", err)
+	}
+}
+
 // TestWorkActivitySessionAlivePreventsDegrade pins the session-scoped cross-check
 // (code-review 2026-08): toollog.jsonl lives in the agent-writable DataDir, so
 // "toollog empty" alone cannot prove telemetry loss — an agent could delete it to
