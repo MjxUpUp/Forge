@@ -168,11 +168,14 @@ func SummarizeAt(cs []act.Conclusion, now time.Time) Summary {
 		}
 		if c.RetrospectiveNudge {
 			s.NudgeCount++
-			// Windowed count: completed within [now-Window, now]. Guarded on non-zero now —
+			// Windowed count: completed within the HALF-OPEN (now-Window, now] — exactly
+			// at now-Window falls outside (After is strict; pinned by the window-edge
+			// assertion in TestSummarizeAt_NudgeRecentWindow). Guarded on non-zero now —
 			// the legacy Summarize wrapper passes zero and overrides NudgeRecent afterwards.
 			//
-			// 窗口计数：完成于 [now-Window, now] 内。now 非零才判定——旧 Summarize
-			// 包装传零值，事后会覆写 NudgeRecent。
+			// 窗口计数：完成于半开区间 (now-Window, now] 内——恰好落在 now-Window 的不计
+			//（After 严格比较；由 TestSummarizeAt_NudgeRecentWindow 的窗口沿断言钉住）。
+			// now 非零才判定——旧 Summarize 包装传零值，事后会覆写 NudgeRecent。
 			if !now.IsZero() && c.CompletedAt.After(now.Add(-NudgeRecentWindow)) && !c.CompletedAt.After(now) {
 				s.NudgeRecent++
 			}
