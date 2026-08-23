@@ -200,15 +200,17 @@ func runReviewPassAt(root, explicitRef string) error {
 // (Plan 3 blind_spot trigger). Strong/NoData returns an empty string (evidence trusted/no evidence to calibrate → no noise);
 // Weak/Unverified returns a line prefixed with ADVISORY:, reminding that this review stamp is placed on blind-spot evidence—the reviewer must have done
 // critic-level verification (verify the claimed validations actually ran), not just read the diff. Pure function for easy unit testing (no dependency on findProjectRoot/
-// cwd); runReviewPass calls it and prints if non-empty. Plan 5 linkage: UsedEscapeHatch caps Strong to Weak,
-// so tasks that used the escape-hatch automatically trigger here—escape is no longer free.
+// cwd); runReviewPass calls it and prints if non-empty. Plan 5 linkage: the escape-hatch cap downgrades would-be-Strong to Weak
+// (single source: checklog.EvidenceChain.EscapeDowngradedStrength — this advisory derives from that predicate, never re-encodes
+// the rule), so tasks that used the escape-hatch automatically trigger here—escape is no longer free.
 //
 // renderReviewPassBlindSpot 产出 `forge review pass` task 模式下、证据弱时的 ADVISORY
 // （方案3 blind_spot 触发）。Strong/NoData 返空串（证据可信/无证据可校准 → 不噪声）；
 // Weak/Unverified 返 ADVISORY: 前缀行，提醒本次 review stamp 盖在盲区证据上——reviewer 须已
 // critic 级核验（核声称的验证真跑过），而非只读 diff。纯函数便于单测（不依赖 findProjectRoot/
-// cwd）；runReviewPass 调它，非空则打印。方案5 联动：UsedEscapeHatch 把 Strong cap 到 Weak，
-// 故用逃生舱过的任务此处自动触发——逃生不再免费。
+// cwd）；runReviewPass 调它，非空则打印。方案5 联动：逃生舱 cap 把本该 Strong 的降为 Weak
+//（单一真相源：checklog.EvidenceChain.EscapeDowngradedStrength——本 ADVISORY 从该谓词派生，
+// 绝不重复编码规则），故用逃生舱过的任务此处自动触发——逃生不再免费。
 func renderReviewPassBlindSpot(ec checklog.EvidenceChain) string {
 	if ec.Total() == 0 {
 		return ""
@@ -217,10 +219,12 @@ func renderReviewPassBlindSpot(ec checklog.EvidenceChain) string {
 	case checklog.Unverified:
 		return taskpipeline.GateAdvisory("[review] 审查通过，但本任务零 deterministic 验证证据（agent-claim=%d）——rubber-stamp 高风险。reviewer 须已按 code-review-gate 步骤2前置「必核」做 critic 级核验（逐条确认声称的 test-run/gate 实跑过），否则撤回 pass 补审", ec.AgentClaim)
 	case checklog.Weak:
-		if ec.UsedEscapeHatch && ec.Ratio() >= 0.5 {
+		if ec.EscapeDowngradedStrength() {
 			// Plan 5 linkage: Strength is capped from Strong to Weak by escape-hatch—ratio is actually not low
 			// (>=0.5), at this point "low ratio" is a false claim (ratio is clearly above half). Only this true-cap sub-case uses escape wording,
 			// pointing out the real cause: "done" is propped up by skipping the gate, critic-level verification is mandatory. exit 0 (escape is legitimate).
+			// The predicate carries the evidence-scaled carve-out (marginal escapes don't downgrade), so this branch
+			// only fires when the cap actually fired — no copy of the cap rule lives here.
 			//
 			// 方案5 联动：Strength 被 escape-hatch 从 Strong cap 到 Weak——ratio 实际不低
 			//（>=0.5），此时"占比低"是假声明（ratio 明明过半）。仅此真 cap 子情形用逃生措辞，

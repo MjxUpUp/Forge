@@ -80,6 +80,26 @@ func TestBuildConclusion_NudgeByEvidenceStrength(t *testing.T) {
 			wantNudge: true,
 			strength:  `Strong`,
 		},
+		{
+			// ★ 2026-08 校准：重证据任务的一次逃生舱是边际信号，不 cap、不 nudge——
+			// 否则 Nudge 只增不减、面板长期红灯（56 条里 0 条真盲区的实证）。
+			name: `逃生舱+压倒性证据→Strong不nudge（边际逃生不cap）`,
+			ec: checklog.EvidenceChain{
+				Deterministic: 100, AgentClaim: 2, UsedEscapeHatch: true, // ratio≈0.98
+			},
+			score:     score(99, `A`),
+			wantNudge: false,
+			strength:  `Strong`,
+		},
+		{
+			name: `逃生舱+非压倒性证据→Weak且nudge（逃生仍有代价）`,
+			ec: checklog.EvidenceChain{
+				Deterministic: 4, AgentClaim: 1, UsedEscapeHatch: true, // ratio 0.8, det<20
+			},
+			score:     score(90, `A`),
+			wantNudge: true,
+			strength:  `Weak`,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

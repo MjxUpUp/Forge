@@ -119,6 +119,59 @@ func (s EvidenceStrength) String() string {
 	return "Unknown"
 }
 
+// escapeCapRatioFloor and escapeCapEvidenceFloor are the double threshold of the
+// evidence-scaled escape cap: when Deterministic >= 20 AND Ratio >= 0.85, one bypassed
+// gate is a marginal fraction of the evidence and no longer caps Strength.
+//
+// Calibration basis (2026-08): 55/55 escape-capped conclusions across all projects had
+// ratio>=0.5 — every single cap landed on a would-be-Strong task; none were true
+// weak-evidence claims. A flat cap taxed every escape regardless of evidence weight,
+// inflating NudgeCount/盲区率 with noise and burying real signals (56 dashboard nudges,
+// 0 real blind spots). The double threshold keeps escape costly in the general case
+// (either thin evidence ratio<0.85 or shallow evidence det<20 → still capped) while
+// recognizing that a heavily-evidenced task's single hatch use is marginal.
+//
+// escapeCapRatioFloor 与 escapeCapEvidenceFloor 是证据缩放逃生舱 cap 的双阈值：当
+// Deterministic >= 20 且 Ratio >= 0.85 时，一次绕过的 gate 只占证据的边际份额，
+// 不再 cap Strength。
+//
+// 校准依据（2026-08）：全部项目 55/55 被 escape-cap 的结论 ratio>=0.5——每一次 cap
+// 都落在本该 Strong 的任务上，没有一条是真弱证据声明。无差别 cap 对每次逃生平价收税、
+// 不看证据份量，让 NudgeCount/盲区率虚高、淹没真信号（面板 56 条 nudge、0 条真盲区）。
+// 双阈值让逃生在一般情形仍有代价（证据占比不高 ratio<0.85 或证据不深 det<20 → 仍 cap），
+// 同时承认重证据任务的一次逃生是边际信号。
+const (
+	escapeCapRatioFloor    = 0.85
+	escapeCapEvidenceFloor = 20
+)
+
+// EscapeDowngradedStrength reports whether this task's Strength was downgraded by the
+// verification-class escape-hatch cap (would-be Strong → Weak). Single source of the
+// cap rule — review.go's blind-spot advisory derives from this predicate instead of
+// re-encoding it (strategy has one home; every layer derives).
+//
+// Marginal-escape carve-out: when deterministic evidence overwhelmingly dominates
+// (Ratio >= escapeCapRatioFloor AND Deterministic >= escapeCapEvidenceFloor), the hatch
+// use is marginal and does NOT downgrade — see escapeCapRatioFloor for the
+// calibration basis.
+//
+// EscapeDowngradedStrength 报告本任务的 Strength 是否被验证类逃生舱 cap 降档
+//（本该 Strong → Weak）。cap 规则的单一真相源——review.go 的盲区 ADVISORY 从本谓词
+// 派生，不重复编码（策略单一来源、各层派生）。
+//
+// 边际逃生豁免：deterministic 证据压倒性占优（Ratio >= escapeCapRatioFloor 且
+// Deterministic >= escapeCapEvidenceFloor）时，逃生是边际信号、不降档——校准依据
+// 见 escapeCapRatioFloor。
+func (ec EvidenceChain) EscapeDowngradedStrength() bool {
+	if !ec.UsedEscapeHatch {
+		return false
+	}
+	if ec.Ratio() >= escapeCapRatioFloor && ec.Deterministic >= escapeCapEvidenceFloor {
+		return false
+	}
+	return ec.Ratio() >= 0.5
+}
+
 // Strength buckets the evidence chain into review-actionable tiers. Semantics and thresholds: see EvidenceStrength doc.
 //
 // Strength 把证据链分到 review 可行动的档位。语义与阈值见 EvidenceStrength 文档。
@@ -139,11 +192,18 @@ func (ec EvidenceChain) Strength() EvidenceStrength {
 	// (doc-only, generated code, etc.) while making it no longer free. work-activity (rhythm gate) does NOT set
 	// UsedEscapeHatch, so it never triggers this cap — see isRhythmEscapeHatch.
 	//
+	// Evidence-scaled (2026-08 calibration, see escapeCapRatioFloor): the cap is
+	// suspended only when the evidence overwhelmingly dominates — otherwise it stays.
+	// Escape keeps a cost in every thin/shallow-evidence case.
+	//
 	// 方案5：用了验证类逃生舱 = "完成"声明靠跳过验证 gate 撑住，不可评 Strong。cap 到 Weak——
 	// 让逃生有代价而非仅记 log，对冲"硬门禁 + 全局逃生舱 = 假硬门禁"的反噬。用降档
 	// 而非阻断：既保逃生合法（doc-only/生成码等正当场景），又让它不再免费。work-activity
 	// （节奏门禁）不置 UsedEscapeHatch，故永不触发本 cap——见 isRhythmEscapeHatch。
-	if ec.UsedEscapeHatch && s == Strong {
+	//
+	// 证据缩放（2026-08 校准，见 escapeCapRatioFloor）：仅当证据压倒性占优时暂停 cap——
+	// 其余情形维持。逃生在一切证据薄/浅的情形仍有代价。
+	if s == Strong && ec.EscapeDowngradedStrength() {
 		s = Weak
 	}
 	return s
