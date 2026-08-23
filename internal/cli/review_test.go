@@ -92,6 +92,62 @@ func TestRenderReviewPassBlindSpot(t *testing.T) {
 	}
 }
 
+// TestRunReviewPassAt_ReworkRoundRequiresRecheck pins the re-review requirement surfaced
+// at re-stamp time (2026-08 protocol gap fix): when `forge review pass` stamps round N>1
+// (a re-stamp whose baseline change came from fixing previous review findings), the output
+// must carry an explicit ADVISORY that this stamp is only legitimate if a fresh read-only
+// re-review agent already verified the fixes — the fixer cannot self-certify. Round 1
+// stays silent (nothing was fixed yet). Rationale: the snapshot loop (review-fix-recheck,
+// executor.go task-complete HARD block) enforces only the SHAPE of the loop (re-stamp after
+// code changes); without this cue, a fixer can stamp without re-reviewing and the protocol
+// shows zero difference from an honest round (2026-08 real case: round-1 fixes were stamped
+// without re-review and passed task-complete; the gap was only caught by a human asking
+// "did you re-review?").
+//
+// TestRunReviewPassAt_ReworkRoundRequiresRecheck 钉住重新盖章时的复审要求提示
+//（2026-08 协议缺口修复）：`forge review pass` 盖第 N>1 轮章（基线变更源于修复上一轮
+// review 发现的重新盖章）时，输出必须带明确 ADVISORY——本枚章只在「已重新派只读
+// 复审 agent 验证过修复」时合法，修复者不能自证。第 1 轮保持静默（尚无修复发生）。
+// 动机：快照闭环（review-fix-recheck，executor.go task-complete 硬阻断）只强制循环的
+//「形状」（改码后重新盖章）；没有本提示时，修复者可以不复审直接盖章，协议输出与
+// 诚实轮次零差别（2026-08 真实案例：第一轮修复未经复审直接盖章过了 task-complete，
+// 缺口靠人工追问「复审了吗」才暴露）。
+func TestRunReviewPassAt_ReworkRoundRequiresRecheck(t *testing.T) {
+	dir := t.TempDir()
+	const ref = `feat/recheck-req`
+	state := &taskpipeline.TaskState{TaskRef: ref, Branch: `feat/recheck-req`}
+	if err := taskpipeline.SaveTaskState(dir, state); err != nil {
+		t.Fatal(err)
+	}
+
+	// Round 1: first stamp — silent (nothing fixed yet, no re-review owed).
+	//
+	// 第 1 轮：首次盖章——静默（尚无修复，不欠复审）。
+	first := captureStdout(t, func() {
+		if err := runReviewPassAt(dir, ref); err != nil {
+			t.Fatalf("runReviewPassAt 第 1 次: %v", err)
+		}
+	})
+	if strings.Contains(first, "复审") {
+		t.Errorf(`第 1 轮盖章不应出现复审提示（尚无修复发生），got: %q`, first)
+	}
+
+	// Round 2: re-stamp after fixes — must carry the re-review requirement.
+	//
+	// 第 2 轮：修复后的重新盖章——必须带复审要求。
+	second := captureStdout(t, func() {
+		if err := runReviewPassAt(dir, ref); err != nil {
+			t.Fatalf("runReviewPassAt 第 2 次: %v", err)
+		}
+	})
+	if !strings.Contains(second, "复审") || !strings.Contains(second, "自证") {
+		t.Errorf(`第 2 轮盖章（返工后重新盖章）应提示复审要求（复审+自证），got: %q`, second)
+	}
+	if !strings.HasPrefix(strings.TrimSpace(second), "ADVISORY") && !strings.Contains(second, "ADVISORY") {
+		t.Errorf(`复审要求应以 ADVISORY 前缀可见（对齐 renderReviewPassBlindSpot 风格），got: %q`, second)
+	}
+}
+
 // TestRunReviewPassAt_ExplicitRef pins the `forge review pass --ref` path: an explicit
 // ref loads THAT task directly (bypassing active-task detection — the common case is
 // marking review for a task started in another session) and persists ReviewPassed.
