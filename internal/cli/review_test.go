@@ -183,6 +183,24 @@ func TestRunReviewPassAt_ReworkRoundRequiresRecheck(t *testing.T) {
 	if !strings.Contains(third, "ADVISORY") {
 		t.Errorf(`复审要求应以 ADVISORY 前缀可见（对齐 renderReviewPassBlindSpot 风格），got: %q`, third)
 	}
+
+	// Workdir-only delta (pins the OTHER OR-branch): modify source WITHOUT committing —
+	// HEAD unchanged, but the workdir change-hash differs from round 3's. Round 4 must
+	// still fire (uncommitted fixes are fixes too). Without this segment, deleting the
+	// prev.ChangeHash != hash OR-term would leave this test green.
+	//
+	// 仅工作区增量（钉住 OR 的另一半）：不 commit 只改源码——HEAD 不变，但工作区
+	// 变更 hash 与第 3 轮不同。第 4 轮仍必须提示（未提交的修复也是修复）。没有这段，
+	// 误删 prev.ChangeHash != hash 这个 OR 项时本测试仍会绿。
+	os.WriteFile(filepath.Join(dir, `main.go`), []byte("package main\n\nfunc main() { println(2) }\n"), 0644)
+	fourth := captureStdout(t, func() {
+		if err := runReviewPassAt(dir, ref); err != nil {
+			t.Fatalf("runReviewPassAt 工作区增量重盖: %v", err)
+		}
+	})
+	if !strings.Contains(fourth, "复审") {
+		t.Errorf(`工作区增量（HEAD 未动、hash 变）的重新盖章同样欠复审、必须提示，got: %q`, fourth)
+	}
 }
 
 // TestRunReviewPassAt_ExplicitRef pins the `forge review pass --ref` path: an explicit
