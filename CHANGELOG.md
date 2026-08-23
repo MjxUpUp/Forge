@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.42.0](https://github.com/MjxUpUp/Forge/compare/v1.41.0...v1.42.0) (2026-08-23)
+
+
+### Features
+
+* **hostcap:** dsh task-guard advisory 升级为 exit-2 硬阻断（PromoteAdvisory 路径 (b)） ([17fc107](https://github.com/MjxUpUp/Forge/commit/17fc107a1b0afbc2e87813cfc79daedec18c0b7f))
+
+
+### Bug Fixes
+
+* **pulse-task:** task.json Truncated 透传+证据反编造守卫+前端无证据如实展示 ([c5d0eb7](https://github.com/MjxUpUp/Forge/commit/c5d0eb7809268424e96674d723eae558c4ef4717))
+
 ## [1.41.0](https://github.com/MjxUpUp/Forge/compare/v1.40.1...v1.41.0) (2026-08-22)
 
 
