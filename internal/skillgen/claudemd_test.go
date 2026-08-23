@@ -173,6 +173,26 @@ func TestClaudeMDWorkActivityEscapeWording(t *testing.T) {
 	}
 }
 
+// TestClaudeMDReviewFixLoopIncludesRecheck guards the review-fix-recheck protocol copy
+// in the generated common-errors table (2026-08 protocol gap fix): the resolution path
+// for "task-complete requires code-review-gate" must include the RE-REVIEW step between
+// fixing findings and stamping — the old copy read "修复发现 → forge review pass",
+// implying stamp-right-after-fix, which let a fixer self-certify (real case 2026-08:
+// round-1 fixes stamped without re-review passed task-complete; the snapshot loop only
+// enforces the loop's shape, and the copy documented the shape without the obligation).
+//
+// TestClaudeMDReviewFixLoopIncludesRecheck 守卫生成协议 common-errors 表里的
+// review-fix-recheck 文案（2026-08 协议缺口修复）：task-complete 前置的解决路径必须
+// 在「修复发现」与「盖章」之间包含复审步骤——旧文案是「修复发现 → forge review
+// pass」，暗示修完直接盖章，等于教修复者自证（真实案例 2026-08：第一轮修复未经
+// 复审直接盖章过了 task-complete；快照闭环只强制循环形状，文案只记了形状没记义务）。
+func TestClaudeMDReviewFixLoopIncludesRecheck(t *testing.T) {
+	section := buildForgeSection(true)
+	if !strings.Contains(section, "复审修复") || !strings.Contains(section, "修复者不能自证") {
+		t.Error("CLAUDE.md code-review-gate 解决路径必须含「复审修复（修复者不能自证）」步骤（2026-08 协议缺口修复）")
+	}
+}
+
 // TestClaudeMDCommonErrorsIncludesSkillDecisions guards the common-errors table
 // documents the task-verify skill-decisions guardrail (B 组件). 改 SKILL.md 未记
 // 决策 → BLOCKED——agents 遇到需在 CLAUDE.md 看到 forge skills decide 记决策路径 +
