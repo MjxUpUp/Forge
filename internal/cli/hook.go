@@ -1120,7 +1120,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 	}
 
 	// 6b. Record tool usage for activity-ratio detection. auto-compile records Write/Edit;
-	// tool-track records Read|Skill|Agent|Bash (matcher lives in ForgeHookSpec), giving the
+	// tool-track records Read|Skill|Agent|Grep|Glob|Bash (matcher lives in ForgeHookSpec), giving the
 	// read-before-edit gate (task-verify) Read data — otherwise that gate would always fail on any task
 	// with an edit (644b142 deleted the original Read recorder).
 	// tool_input population: auto-compile (Edit/Write) records file_path/content; tool-track's Skill/Agent
@@ -1134,7 +1134,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// data while unit tests stayed green on hand-marshaled inputs. The lean-toollog tradeoff lost to the observability signal).
 	//
 	// 6b. 记录 tool usage 用于 activity-ratio 检测。auto-compile 记 Write/Edit；
-	// tool-track 记 Read|Skill|Agent|Bash（matcher 在 ForgeHookSpec 中），让
+	// tool-track 记 Read|Skill|Agent|Grep|Glob|Bash（matcher 在 ForgeHookSpec 中），让
 	// read-before-edit gate（task-verify）有 Read 数据——否则该 gate 在任何带
 	// edit 的 task 上恒失败（644b142 删过原来的 Read recorder）。
 	// tool_input 填充：auto-compile（Edit/Write）记 file_path/content；tool-track 的 Skill/Agent
@@ -1152,7 +1152,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 			TaskRef:   taskRef,
 			SessionID: util.SanitizeSessionID(hookInput.SessionID),
 		}
-		if name == "auto-compile" || (name == "tool-track" && (hookInput.ToolName == "Skill" || hookInput.ToolName == "Agent" || hookInput.ToolName == "Bash")) {
+		if name == "auto-compile" || (name == "tool-track" && (hookInput.ToolName == "Skill" || hookInput.ToolName == "Agent" || hookInput.ToolName == "Bash" || hookInput.ToolName == "Grep" || hookInput.ToolName == "Glob")) {
 			raw := string(hookInput.ToolInput)
 			call.ToolInput = toolusage.TruncateInput(raw)
 			call.InputLen = len(raw)

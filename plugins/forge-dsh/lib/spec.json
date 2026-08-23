@@ -18,7 +18,7 @@
       ]
     },
     {
-      "matcher": "Read|Skill|Agent",
+      "matcher": "Read|Skill|Agent|Grep|Glob",
       "hooks": [
         { "type": "command", "command": "forge hook tool-track" }
       ]

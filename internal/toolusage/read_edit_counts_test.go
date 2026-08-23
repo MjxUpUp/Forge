@@ -51,6 +51,71 @@ func TestReadEditCounts(t *testing.T) {
 	}
 }
 
+// TestExploreCounts verifies the exploration signal sourced from toollog: Grep
+// and Glob calls since `since`, scoped to the task. ExploreCounts feeds ONLY the
+// work-activity "was there real work" check — it must never feed read-before-edit
+// (browsing matches is not reading the file you edit; see ReadEditCounts' doc for
+// that signal's strictness). This pins the 2026-08-23 doc-implementation drift
+// fix: CLAUDE.md's error table advises "explore with Read/Grep/Glob" between
+// gates, but Grep/Glob previously never reached toollog at all (the tool-track
+// matcher carried neither), so a pure-exploration stretch counted as zero work.
+//
+// TestExploreCounts 验证取自 toollog 的探索信号：自 since 起、按 task 限定的
+// Grep/Glob 调用数。ExploreCounts 只供 work-activity 的「有无真实工作」判定——
+// 绝不供 read-before-edit（浏览匹配不等于读过要改的文件；该信号的严格性见
+// ReadEditCounts 文档）。钉住 2026-08-23 文档-实现漂移修复：CLAUDE.md 错误表
+// 建议门禁间「用 Read/Grep/Glob 探索」，但 Grep/Glob 此前根本进不了 toollog
+// （tool-track matcher 不含它们），纯探索段落被计为零工作。
+func TestExploreCounts(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	taskRef := "fix/explore"
+
+	records := []ToolCall{
+		{ToolName: "Grep", TaskRef: taskRef, Timestamp: now.Add(-8 * time.Second)},
+		{ToolName: "Glob", TaskRef: taskRef, Timestamp: now.Add(-7 * time.Second)},
+		{ToolName: "Grep", TaskRef: taskRef, Timestamp: now.Add(-4 * time.Second)},
+		// Exploration-adjacent but NOT exploration signals:
+		{ToolName: "Read", TaskRef: taskRef, Timestamp: now.Add(-3 * time.Second)},      // read-before-edit's signal, not activity's explore axis
+		{ToolName: "Bash", TaskRef: taskRef, Timestamp: now.Add(-2 * time.Second)},      // always excluded (gate commands ride Bash)
+		{ToolName: "Grep", TaskRef: "other-task", Timestamp: now.Add(-1 * time.Second)}, // other task
+		{ToolName: "Glob", TaskRef: taskRef, Timestamp: now.Add(-20 * time.Second)},     // before `since` below
+	}
+	for i, r := range records {
+		rr := r
+		if err := Record(dir, &rr); err != nil {
+			t.Fatalf("record %d: %v", i, err)
+		}
+	}
+
+	// since=-10s: Grep(-8s), Glob(-7s), Grep(-4s) — the Glob(-20s) predates since.
+	explores, err := ExploreCounts(dir, taskRef, now.Add(-10*time.Second))
+	if err != nil {
+		t.Fatalf("ExploreCounts: %v", err)
+	}
+	if explores != 3 {
+		t.Fatalf("got explores=%d, want 3 (2 Grep + 1 Glob; Read/Bash/other-task/old excluded)", explores)
+	}
+
+	// Future since captures nothing.
+	explores, _ = ExploreCounts(dir, taskRef, now.Add(1*time.Hour))
+	if explores != 0 {
+		t.Fatalf("got explores=%d, want 0 (future since)", explores)
+	}
+}
+
+// TestExploreCountsEmptyDir ensures graceful behavior when toollog is absent.
+func TestExploreCountsEmptyDir(t *testing.T) {
+	dir := t.TempDir()
+	explores, err := ExploreCounts(dir, "any", time.Time{})
+	if err != nil {
+		t.Fatalf("expected nil error on missing toollog, got %v", err)
+	}
+	if explores != 0 {
+		t.Fatalf("got explores=%d, want 0 on empty", explores)
+	}
+}
+
 // TestReadEditCountsEmptyDir ensures graceful behavior when toollog is absent.
 func TestReadEditCountsEmptyDir(t *testing.T) {
 	dir := t.TempDir()

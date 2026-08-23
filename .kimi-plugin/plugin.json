@@ -52,7 +52,7 @@
     },
     {
       "event": "PostToolUse",
-      "matcher": "Read|Skill|Agent",
+      "matcher": "Read|Skill|Agent|Grep|Glob",
       "command": "forge hook tool-track --agent kimi",
       "timeout": 30
     },

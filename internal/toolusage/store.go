@@ -217,6 +217,47 @@ func ReadEditCounts(root, taskRef string, since time.Time) (reads, edits int, er
 	return reads, edits, nil
 }
 
+// ExploreCounts returns Grep+Glob tool call counts from toollog.jsonl since the
+// given time, scoped to a task. It feeds ONLY the work-activity "was there real
+// work between gates" check — never read-before-edit: browsing matches is not
+// reading the file you edit, and that stricter signal stays Read-only (see
+// ReadEditCounts). Exists because CLAUDE.md's error table advises exploring
+// with Read/Grep/Glob between gates; before the tool-track matcher carried
+// Grep/Glob (2026-08-23), those calls never reached toollog, so a
+// pure-exploration stretch counted as zero work and tripped the gate anyway.
+//   - explores = number of Grep + Glob calls
+//
+// Bash stays excluded (gate commands ride Bash; same exclusion rationale as
+// ReadEditCounts and checklog.WorkActivity).
+//
+// ExploreCounts 自给定时间起、按 task 从 toollog.jsonl 返回 Grep+Glob 的
+// tool 调用数。只供 work-activity 的「门禁间有无真实工作」判定——绝不供
+// read-before-edit：浏览匹配不等于读过要改的文件，那个更严格的信号保持
+// Read-only（见 ReadEditCounts）。存在缘由：CLAUDE.md 错误表建议门禁间
+// 「用 Read/Grep/Glob 探索」；在 tool-track matcher 纳入 Grep/Glob 之前
+// （2026-08-23），这些调用进不了 toollog，纯探索段落被计为零工作、照样
+// 触发门禁拦截。
+//   - explores = Grep + Glob 调用数
+//
+// Bash 保持排除（gate 命令本身走 Bash；与 ReadEditCounts 及
+// checklog.WorkActivity 的排除同理）。
+func ExploreCounts(root, taskRef string, since time.Time) (explores int, err error) {
+	calls, err := LoadForTask(root, taskRef)
+	if err != nil {
+		return 0, err
+	}
+	for _, c := range calls {
+		if !c.Timestamp.After(since) {
+			continue
+		}
+		switch c.ToolName {
+		case "Grep", "Glob":
+			explores++
+		}
+	}
+	return explores, nil
+}
+
 // ReadEditCountsGraceWindow counts Read calls whose timestamp falls in
 // [since-window, ∞), regardless of TaskRef. It fixes the task-start/Read race:
 // when an agent triggers a Read concurrently with forge task start, that Read is
