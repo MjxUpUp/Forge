@@ -706,14 +706,14 @@ func TestBridge_TranslateForAgents_Empty(t *testing.T) {
 
 func TestAllTranslators(t *testing.T) {
 	translators := AllTranslators()
-	if len(translators) != 11 {
-		t.Fatalf("expected 11 translators, got %d", len(translators))
+	if len(translators) != 12 {
+		t.Fatalf("expected 12 translators, got %d", len(translators))
 	}
 	types := make(map[AgentType]bool)
 	for _, tr := range translators {
 		types[tr.AgentType()] = true
 	}
-	for _, expected := range []AgentType{AgentClaudeCode, AgentCursor, AgentCopilot, AgentWindsurf, AgentCodex, AgentOpencode, AgentCline, AgentKimi, AgentCodeBuddy, AgentReasonix, AgentDsh} {
+	for _, expected := range []AgentType{AgentClaudeCode, AgentCursor, AgentCopilot, AgentWindsurf, AgentCodex, AgentOpencode, AgentCline, AgentKimi, AgentCodeBuddy, AgentReasonix, AgentDsh, AgentZcode} {
 		if !types[expected] {
 			t.Errorf("missing translator for %s", expected)
 		}

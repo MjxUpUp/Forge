@@ -60,6 +60,7 @@ var userLevelStripRoster = map[string]func() (bool, error){
 	// 资产目录），StripCodeBuddyHooks 一次反转全部——此前缺席，卸载后 WorkBuddy
 	// 仍持有指向已删二进制的目录指针。
 	`codebuddy`: agentbridge.StripCodeBuddyHooks,
+	`zcode`:     agentbridge.StripZcodeHooks,
 }
 
 // runUserLevelStrips executes the 2c roster (agent name → user-level strip function),
