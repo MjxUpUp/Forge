@@ -358,6 +358,36 @@ type TaskState struct {
 	// 所有其他任务共享的窗口。零值——不带 --ttl 启动的默认——回落全局常量：完全向后兼容，无需迁移。
 	// health.effectiveTTL 是读取侧。
 	TTL time.Duration `json:"ttl,omitempty"`
+
+	// PlanFirstAdvisoryFired marks that the plan-first advisory (task-implement, "无方案记录")
+	// already fired once for this task. 2026-08 usage evidence: the identical advisory re-fired
+	// up to 3 times per task (30 identical entries across 8 tasks) — one nudge per task is
+	// enough; repeats are pure noise. Persisted in task state so the once-per-task guarantee
+	// survives across `forge task implement` invocations (each reloads state from disk).
+	//
+	// PlanFirstAdvisoryFired 标记 plan-first advisory（task-implement，「无方案记录」）已为
+	// 本任务发过一次。2026-08 usage 证据：同一 advisory 在单任务上最多重复 3 次（8 个任务
+	// 30 条全同文案）——每任务提示一次足够，重复纯噪音。持久化在 task state 里，使
+	// 每任务一次的保证跨 `forge task implement` 调用存活（每次都从磁盘重载 state）。
+	PlanFirstAdvisoryFired bool `json:"plan_first_advisory_fired,omitempty"`
+
+	// ReportedFindings is the set of advisory finding fingerprints already shown to the
+	// agent by this task's verify scans (see advisory_dedup.go): cheat-scan fingerprints
+	// are two-part (ruleID|file:line); unused-scan fingerprints are THREE-part
+	// (ruleID|file:line|symbol) — the symbol is the finding's identity, so a rename or a
+	// different definition on the same line is not mis-suppressed. Verify retries after a
+	// fix re-scan the same diff and would otherwise re-emit the identical findings
+	// verbatim (2026-08 evidence: Translate(method) 8 times, comment-only-fix=2 five
+	// times on one task). A finding that disappears and a genuinely new finding
+	// (different fingerprint) still report normally.
+	//
+	// ReportedFindings 是本任务 verify 扫描已向 agent 报告过的 advisory finding 指纹集
+	//（见 advisory_dedup.go）：cheat-scan 指纹两段（规则ID|文件：行）；unused-scan
+	// 指纹三段（规则ID|文件：行|符号）——符号是 finding 的身份本体，同行重命名/换
+	// 定义不应被旧指纹误抑制。修复后 verify 重试会重扫同一 diff，否则会逐字重发
+	// 相同 finding（2026-08 证据：Translate(method) 8 次、comment-only-fix=2 同任务
+	// 5 次）。消失的 finding 与真正的新 finding（指纹不同）仍正常报告。
+	ReportedFindings []string `json:"reported_findings,omitempty"`
 }
 
 // TaskGateResult records the result of a single task gate.

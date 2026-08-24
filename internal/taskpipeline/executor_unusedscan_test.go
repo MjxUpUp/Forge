@@ -123,3 +123,73 @@ func TestExecuteTaskGate_UnusedScan_NonSourceNotScanned(t *testing.T) {
 		t.Errorf(`无源码变更应 Passed=true, Detail=%q`, rec.Detail)
 	}
 }
+
+// TestExecuteTaskGate_UnusedScan_SameFindingSuppressedOnRetry 钉住同 finding 抑制
+// （2026-08 噪音审计：Translate(method) 同任务重发 8 次）：同一 finding 在 verify
+// 重试中不再逐条重发（stderr 只剩「均已报告」一行）；checklog 审计条目保持全量。
+// finding 修复消失后出现的新 finding 仍照常报告。
+//
+// TestExecuteTaskGate_UnusedScan_SameFindingSuppressedOnRetry pins same-finding
+// suppression (2026-08 noise audit: Translate(method) re-emitted 8 times on one task):
+// the same finding is not re-emitted line by line on a verify retry (stderr keeps only
+// the "all already reported" line); the checklog audit entry stays complete. A new
+// finding appearing after the old one was fixed still reports normally.
+func TestExecuteTaskGate_UnusedScan_SameFindingSuppressedOnRetry(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir()) // 隔离 SaveTaskState 的全局 home
+	dir := t.TempDir()
+	initRepoWithMaster(t, dir)
+	writeCommitSource(t, dir, map[string]string{
+		"prod.go": "package main\n\n" +
+			"func main() { Used() }\n" +
+			"func Used() int { return 1 }\n" +
+			"func Lonely() int { return 2 }\n",
+	}, "add unused")
+
+	state := newVerifyState(t, dir, "unused-dedup")
+	stderr1 := captureStderr(t, func() {
+		if _, err := ExecuteTaskGate(dir, "task-verify", state); err != nil {
+			t.Fatalf(`首次 task-verify 应 PASS: %v`, err)
+		}
+	})
+	if !strings.Contains(stderr1, "unused-scan 发现 1 个") || !strings.Contains(stderr1, "Lonely") {
+		t.Fatalf(`首次应逐条报告 Lonely: %q`, stderr1)
+	}
+
+	// 重试（从磁盘重载 state，模拟新一轮 forge 调用）：同一 finding 不再逐条重发。
+	reloaded, err := LoadTaskState(dir, "unused-dedup")
+	if err != nil {
+		t.Fatalf(`LoadTaskState: %v`, err)
+	}
+	stderr2 := captureStderr(t, func() {
+		if _, err := ExecuteTaskGate(dir, "task-verify", reloaded); err != nil {
+			t.Fatalf(`重试 task-verify 应 PASS: %v`, err)
+		}
+	})
+	if strings.Contains(stderr2, "  ⚠ [") {
+		t.Errorf(`重试不应逐条重发已报告 finding: %q`, stderr2)
+	}
+	if !strings.Contains(stderr2, "均已在本任务此前 verify 报告过") {
+		t.Errorf(`重试应留「均已报告」说明行: %q`, stderr2)
+	}
+
+	// 修复 Lonely（接线）+ 引入新未接线符号 Lonely2：新 finding 照常报，旧指纹不再出现。
+	writeCommitSource(t, dir, map[string]string{
+		"prod.go": "package main\n\n" +
+			"func main() { Used(); Lonely() }\n" +
+			"func Used() int { return 1 }\n" +
+			"func Lonely() int { return 2 }\n" +
+			"func Lonely2() int { return 3 }\n",
+	}, "wire Lonely, add Lonely2")
+	reloaded2, err := LoadTaskState(dir, "unused-dedup")
+	if err != nil {
+		t.Fatalf(`LoadTaskState: %v`, err)
+	}
+	stderr3 := captureStderr(t, func() {
+		if _, err := ExecuteTaskGate(dir, "task-verify", reloaded2); err != nil {
+			t.Fatalf(`第三次 task-verify 应 PASS: %v`, err)
+		}
+	})
+	if !strings.Contains(stderr3, "Lonely2") {
+		t.Errorf(`新 finding Lonely2 应照常报告: %q`, stderr3)
+	}
+}

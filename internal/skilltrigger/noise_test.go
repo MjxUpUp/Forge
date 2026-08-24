@@ -127,3 +127,40 @@ func TestInMemoryNoise_ClockRollback(t *testing.T) {
 		t.Fatal("时钟回退（marker mtime 在未来）应允许 fire，不应因负 duration 永久阻塞")
 	}
 }
+
+// TestFileNoise_FireCount 钉住 session 硬封顶的计数面：Mark 累计 FireCount，跨 skill /
+// session 隔离，无文件 = 0。
+//
+// TestFileNoise_FireCount pins the counting side of the session hard cap: Mark
+// accumulates FireCount, isolated per skill/session, absent file = 0.
+func TestFileNoise_FireCount(t *testing.T) {
+	n := NewFileNoiseController(t.TempDir())
+	now := time.Now()
+	if n.FireCount("s1", "foo") != 0 {
+		t.Fatal("未注入应计 0")
+	}
+	for i := 1; i <= 3; i++ {
+		if err := n.Mark("s1", "foo", now); err != nil {
+			t.Fatalf("Mark: %v", err)
+		}
+		if got := n.FireCount("s1", "foo"); got != i {
+			t.Fatalf("第 %d 次 Mark 后 FireCount=%d", i, got)
+		}
+	}
+	if n.FireCount("s1", "bar") != 0 || n.FireCount("s2", "foo") != 0 {
+		t.Fatal("计数应按 skill/session 隔离")
+	}
+}
+
+func TestInMemoryNoise_FireCount(t *testing.T) {
+	m := NewInMemoryNoiseController()
+	now := time.Now()
+	m.Mark("s1", "foo", now)
+	m.Mark("s1", "foo", now)
+	if got := m.FireCount("s1", "foo"); got != 2 {
+		t.Fatalf("FireCount=%d, want 2", got)
+	}
+	if m.FireCount("s1", "bar") != 0 {
+		t.Fatal("不同 skill 应计 0")
+	}
+}

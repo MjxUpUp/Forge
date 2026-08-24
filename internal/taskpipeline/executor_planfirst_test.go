@@ -83,3 +83,73 @@ func TestExecuteTaskGate_PlanFirstAdvisory(t *testing.T) {
 		t.Errorf(`有方案任务不应打印方案前置 advisory: %q`, stderr2)
 	}
 }
+
+// countPlanFirstEntries 数 checklog 里 CheckPlanFirst 条目数。
+//
+// countPlanFirstEntries counts CheckPlanFirst entries in the checklog.
+func countPlanFirstEntries(t *testing.T, dir string) int {
+	t.Helper()
+	entries, err := checklog.LoadAll(dir)
+	if err != nil {
+		t.Fatalf(`LoadAll: %v`, err)
+	}
+	n := 0
+	for _, e := range entries {
+		if e.Check == checklog.CheckPlanFirst {
+			n++
+		}
+	}
+	return n
+}
+
+// TestExecuteTaskGate_PlanFirstOncePerTask 钉住每任务一次契约（2026-08 噪音审计：同一
+// advisory 单任务最多重复 3 次）：首次 implement 落条目 + stderr 提示并置
+// PlanFirstAdvisoryFired；从磁盘重载 state 后的重试（模拟新一轮 forge 调用）条目与
+// stderr 都静默，checklog 始终只有 1 条。
+//
+// TestExecuteTaskGate_PlanFirstOncePerTask pins the once-per-task contract (2026-08 noise
+// audit: the identical advisory re-fired up to 3 times per task): the first implement
+// records the entry + stderr nudge and sets PlanFirstAdvisoryFired; a retry on state
+// reloaded from disk (simulating a new forge invocation) stays silent on both, and the
+// checklog holds exactly 1 entry.
+func TestExecuteTaskGate_PlanFirstOncePerTask(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir()) // 隔离 SaveTaskState 的全局 home
+	dir := t.TempDir()
+	initRepoWithMaster(t, dir)
+	writeCommitSource(t, dir, map[string]string{
+		"foo.go": "package main\n\nfunc Foo() int { return 1 }\n",
+	}, "add foo")
+
+	state := &TaskState{TaskRef: "plan-first-once", Branch: "feat/testcov"}
+	stderr1 := captureStderr(t, func() {
+		if _, err := ExecuteTaskGate(dir, "task-implement", state); err != nil {
+			t.Fatalf(`首次 task-implement 应 PASS: %v`, err)
+		}
+	})
+	if !strings.Contains(stderr1, "--plan-file") {
+		t.Fatalf(`首次应打印方案前置 advisory: %q`, stderr1)
+	}
+	if !state.PlanFirstAdvisoryFired {
+		t.Fatal(`首次后 PlanFirstAdvisoryFired 应置位`)
+	}
+
+	// 从磁盘重载（跨进程语义）——标记必须持久化。
+	reloaded, err := LoadTaskState(dir, "plan-first-once")
+	if err != nil {
+		t.Fatalf(`LoadTaskState: %v`, err)
+	}
+	if !reloaded.PlanFirstAdvisoryFired {
+		t.Fatal(`PlanFirstAdvisoryFired 应持久化到 task state`)
+	}
+	stderr2 := captureStderr(t, func() {
+		if _, err := ExecuteTaskGate(dir, "task-implement", reloaded); err != nil {
+			t.Fatalf(`重试 task-implement 应 PASS: %v`, err)
+		}
+	})
+	if strings.Contains(stderr2, "--plan-file") {
+		t.Errorf(`重试不应重发方案前置 advisory: %q`, stderr2)
+	}
+	if n := countPlanFirstEntries(t, dir); n != 1 {
+		t.Fatalf(`CheckPlanFirst 条目应只有 1 条, got %d`, n)
+	}
+}
