@@ -185,7 +185,7 @@ Tauri 没有 URL，要先确认能独立 Web 构建：
 ```bash
 # 如果 vite.config 独立可用
 npm run build  # 产出 dist/
-npm run preview -- --port 4173  # 起静态 server（项目本地 vite，lockfile 锁定）
+npm exec -- vite preview --port 4173  # 起静态 server（项目本地 vite；不依赖预置 preview script）
 # 然后改 BASE_URL = 'http://localhost:4173'，正常跑脚本
 ```
 如果 Tauri 深度依赖 Rust IPC（文件系统/通知/系统调用），Web 构建会缺功能——抓出来的快照只能反映"静态 UI 壳"，需告知审核者这点限制。
