@@ -171,6 +171,16 @@ func CountSince(p *forgedata.Project, eventType string, since time.Time) (int, e
 // simply renews the window (same as Confirm). Does not check whether the block was
 // already released — renewal is harmless and keeps the flow single-step.
 //
+// Known race (accepted, disclosed): events.jsonl is shared per project DataDir. If,
+// between the agent's block on command A and its `--last` call, another session/tool
+// in the same project triggers block B, `--last` confirms B — registering a 5min
+// release for a command the user never saw, while A stays blocked. The failure mode
+// self-heals (A re-blocks → HITL again; B's confirmation likely expires unused), and
+// no confirmation is ever created WITHOUT a real block event, so the audit trail stays
+// truthful — the tradeoff for zero-transcription. Single-session flows (the common
+// case) have no window: the hook logs the block event before printing the block
+// message the agent is confirming against.
+//
 // ConfirmLastBlock 为事件日志中最新一条 block 事件登记确认，返回其指纹与命令。
 // 这是免复制的 HITL 路径（`forge hazard confirm --last`）：agent 确认"刚被拦的那条
 // 命令"，无需转写 64 字符 hex 指纹、也无需重新引用命令串——两种转写形态都已被证实
@@ -181,6 +191,13 @@ func CountSince(p *forgedata.Project, eventType string, since time.Time) (int, e
 // 语义：最新的带非空 Fingerprint 的 EventBlock 胜出（无指纹的 block 事件本就不可确
 // 认）；对已确认过的 block 重复 confirm 只是续期（与 Confirm 同）。不检查该 block 是
 // 否已被放行——续期无害，且保持流程单步。
+//
+// 已知竞态（接受并披露）：events.jsonl 按项目 DataDir 共享。若 agent 被拦命令 A 与
+// 其 `--last` 调用之间，同项目另一会话/工具触发了 block B，`--last` 确认的是 B——为
+// 一条用户从未见过的命令登记了 5min 放行，而 A 仍被拦。失败模式自愈（A 重拦 → 重走
+// HITL；B 的确认大概率空过期），且任何确认的创建都以真实 block 事件为前提、审计链
+// 保持如实——这是零转写的代价。单会话流程（常态）无此窗口：hook 在打印 agent 所确认
+// 的拦截消息之前就落了 block 事件。
 func ConfirmLastBlock(p *forgedata.Project) (fp, cmd string, err error) {
 	events, err := LoadEvents(p)
 	if err != nil {
