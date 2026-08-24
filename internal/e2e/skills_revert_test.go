@@ -88,13 +88,13 @@ func TestSkillsRevert_AutoAppendsRejectDecision(t *testing.T) {
 func TestSkillsRevert_EmbedCache_ActionableError(t *testing.T) {
 	// home isolation (C1): resolveCanonical goes through os.UserHomeDir() (not FORGE_DATA_HOME set by freshProject).
 	// forge init's EnsureEmbeddedCache extracts the embed cache to ~/.forge/skills-cache/embedded (RemoveAll+rebuild on
-	// version mismatch); decide writes decisions.md to this cache — must redirect USERPROFILE (Windows)/HOME
+	// version mismatch); the fixture below seeds decisions.md into this cache — must redirect USERPROFILE (Windows)/HOME
 	// (Unix) to temp, otherwise the real ~/.forge is polluted. temp home is auto-cleaned by t.TempDir, no manual cleanup needed.
 	//
 	// home 隔离（C1）：resolveCanonical 走 os.UserHomeDir()（不走 freshProject 设的 FORGE_DATA_HOME）。
 	// forge init 的 EnsureEmbeddedCache 解压 embed 缓存到 ~/.forge/skills-cache/embedded（版本不匹配
-	// 时 RemoveAll+重建），decide 写 decisions.md 到该缓存——必须重定向 USERPROFILE（Windows）/HOME
-	// （Unix）到 temp，否则污染真实 ~/.forge。temp home 整个由 t.TempDir 自动清理，无需手动 cleanup。
+	// 时 RemoveAll+重建），下方 fixture 把 decisions.md 播种进该缓存——必须重定向 USERPROFILE
+	// （Windows）/HOME（Unix）到 temp，否则污染真实 ~/.forge。temp home 整个由 t.TempDir 自动清理，无需手动 cleanup。
 	home := t.TempDir()
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("HOME", home)
@@ -103,12 +103,33 @@ func TestSkillsRevert_EmbedCache_ActionableError(t *testing.T) {
 	embedCache := filepath.Join(home, ".forge", "skills-cache", "embedded")
 	const skill = "test-revert-embed-probe"
 
-	// first run decide to write a decision with commit, otherwise revert returns 'no decisions.md' at the loadDecisions stage.
+	// Materialize the embed cache FIRST: extraction is lazy — `forge init` does not
+	// extract; the first skills command does (Resolve → EnsureEmbeddedCache). Seeding
+	// before materialization would be wiped by that first extraction in the revert
+	// subprocess. `skills list` is the cheapest cache-materializing read.
 	//
-	// 先 decide 写一条带 commit 的决策，否则 revert 在 loadDecisions 阶段返「无 decisions.md」
-	forge(t, dir, "skills", "decide", "--skill", skill,
-		"--outcome", "accept", "--diagnosis", "init", "--revision", "v1",
-		"--evidence", "probe ok", "--commit", "fake123")
+	// 先物化 embed 缓存：解压是惰性的——`forge init` 不解压，首个 skills 命令才解压
+	// （Resolve → EnsureEmbeddedCache）。物化前播种会被 revert 子进程的首次解压抹掉。
+	// `skills list` 是最便宜的缓存物化读。
+	forge(t, dir, "skills", "list")
+
+	// Seed the decision fixture by writing decisions.md DIRECTLY (skillsdecisions.AppendDecision),
+	// not via the `skills decide` CLI: decide now refuses embed-cache canonical (the snapshot is
+	// version-rebuild-wiped — writing decisions there reported ✅ then silently lost them; see the
+	// guard in runSkillsDecide). The CLI refusal is the correct behavior this test must not depend
+	// on bypassing; the fixture represents "a cache that somehow holds a decision" for the REVERT
+	// behavior under test.
+	//
+	// 直接写 decisions.md 播种 fixture（skillsdecisions.AppendDecision），不走 `skills decide`
+	// CLI：decide 现在拒绝 embed 缓存 canonical（快照会被版本重建抹掉——写进去的决策报过 ✅
+	// 后静默丢失；见 runSkillsDecide 守卫）。CLI 的拒绝是正确行为，本测试不得依赖绕过它；
+	// fixture 模拟的是"缓存里恰有一条决策"，被测对象是 REVERT 的行为。
+	if err := skillsdecisions.AppendDecision(embedCache, skill, skillsdecisions.SkillDecision{
+		Skill: skill, Diagnosis: "init", Revision: "v1", Evidence: "probe ok",
+		Outcome: "accept", CommitHash: "fake123",
+	}); err != nil {
+		t.Fatalf("seed decision into embed cache: %v", err)
+	}
 	decs, err := skillsdecisions.LoadDecisions(embedCache, skill)
 	if err != nil || len(decs) != 1 {
 		t.Fatalf("LoadDecisions: err=%v len=%d", err, len(decs))

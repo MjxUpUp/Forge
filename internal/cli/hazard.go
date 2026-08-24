@@ -51,6 +51,17 @@ func init() {
 	// 与 hook 原始命令指纹不一致、确认后仍被拦。见 hazard.ConfirmByFingerprint。
 	hazardConfirmCmd.Flags().StringVar(&hazardConfirmFingerprint, "fingerprint", "",
 		"直接按 hook 输出的 hex 指纹登记确认（避免命令串复制失真）")
+	// --last copy-free path: confirm the newest blocked command straight from the events
+	// audit log. Transcription of EITHER the 64-char hex fingerprint or the command
+	// string is a proven distortion source (hand-copy typos; bare-command confirm
+	// mismatching the hook's full-line fingerprint). The block event was written by the
+	// hook itself — its fingerprint needs no copying at all. See hazard.ConfirmLastBlock.
+	//
+	// --last 免复制路径：直接从事件审计日志确认最新被拦命令。64 字符 hex 指纹或命令串
+	// 的转写都已被证实是失真源（手抄错字；裸命令 confirm 与 hook 全行指纹失配）。
+	// block 事件由 hook 自己写入——其指纹根本无需复制。见 hazard.ConfirmLastBlock。
+	hazardConfirmCmd.Flags().BoolVar(&hazardConfirmLast, "last", false,
+		"确认最近一条被拦命令（从事件日志取指纹，免复制转写）")
 }
 
 var hazardCmd = &cobra.Command{
@@ -64,9 +75,11 @@ DELETE 无 WHERE 等）后，用你的确认工具向用户说明风险获明确
 弹各工具的确认框，靠 block + 指引 + 限时标记闭环。
 
 子命令：
-  confirm <命令> [--fingerprint <hex>]
+  confirm <命令> [--fingerprint <hex>] [--last]
                      登记一次确认（5min 内同命令重试放行）；--fingerprint 直接按
-                     hook 输出的 hex 指纹登记（推荐，避免命令串复制失真）
+                     hook 输出的 hex 指纹登记（避免命令串复制失真）；--last 确认最近
+                     一条被拦命令（从事件日志取指纹，免任何复制转写，推荐）。
+                     --last 与 --fingerprint 同给时 --last 优先（后者被忽略）
   fingerprint <命令> 算命令指纹（hook 内部用）
   confirmed <指纹>   查指纹是否已确认（hook 内部用，exit 0=是/1=否）
   status             列出当前有效确认
@@ -79,14 +92,17 @@ var hazardConfirmCmd = &cobra.Command{
 	Use:   "confirm <命令>",
 	Short: "登记一次高危命令确认（5min 内同命令重试放行）",
 	Args: func(cmd *cobra.Command, args []string) error {
-		// The --fingerprint path does not need a command argument (the fingerprint already carries the info); otherwise a command argument is required to compute the fingerprint.
+		// The --fingerprint path does not need a command argument (the fingerprint already carries the info);
+		// neither does --last (the newest block event carries everything); otherwise a command argument is
+		// required to compute the fingerprint.
 		//
-		// --fingerprint 路径不需要命令参数（指纹已含信息）；否则需命令参数算指纹。
-		if cmd.Flags().Changed("fingerprint") {
+		// --fingerprint 路径不需要命令参数（指纹已含信息）；--last 也不需要（最新
+		// block 事件已含全部信息）；否则需命令参数算指纹。
+		if cmd.Flags().Changed("fingerprint") || cmd.Flags().Changed("last") {
 			return nil
 		}
 		if len(args) < 1 {
-			return fmt.Errorf("需要命令参数，或用 --fingerprint 按指纹登记")
+			return fmt.Errorf("需要命令参数，或用 --fingerprint 按指纹登记，或用 --last 确认最近被拦命令")
 		}
 		return nil
 	},
@@ -99,6 +115,13 @@ var hazardConfirmCmd = &cobra.Command{
 // hazardConfirmFingerprint 由 --fingerprint flag 注入。非空时走 ConfirmByFingerprint
 // 路径（hook 已算好指纹，绕过命令串复制失真）。
 var hazardConfirmFingerprint string
+
+// hazardConfirmLast is injected by the --last flag: confirm the newest block event from
+// the audit log (copy-free HITL path, see hazard.ConfirmLastBlock).
+//
+// hazardConfirmLast 由 --last flag 注入：确认审计日志中最新一条 block 事件
+// （免复制 HITL 路径，见 hazard.ConfirmLastBlock）。
+var hazardConfirmLast bool
 
 var hazardFingerprintCmd = &cobra.Command{
 	Use:    "fingerprint <命令>",
@@ -141,6 +164,28 @@ var hazardLogCmd = &cobra.Command{
 // runHazardConfirm 登记确认。MinimumNArgs(1) + Join：agent 可引号传整串，也可不引号
 // （多 arg 被空格 join 还原）——空白归一在 hazard.Fingerprint 内做，两种传法同指纹。
 func runHazardConfirm(cmd *cobra.Command, args []string) error {
+	// --last copy-free path: confirm the newest blocked command straight from the event
+	// log (its fingerprint was written by the hook at block time — authoritative by
+	// construction, zero transcription). Checked first: --last names the intent
+	// ("the thing just blocked") and needs no other input.
+	//
+	// --last 免复制路径：直接从事件流确认最新被拦命令（指纹是 hook 拦截时写入的，
+	// 天然权威、零转写）。最先判定：--last 表达的意图就是"刚被拦的那条"，不需要
+	// 其他输入。
+	if hazardConfirmLast {
+		p, err := findProject()
+		if err != nil {
+			return err
+		}
+		fp, command, err := hazard.ConfirmLastBlock(p)
+		if err != nil {
+			return fmt.Errorf("failed to confirm last block: %w", err)
+		}
+		ttlMin := int(hazard.ConfirmTTL / time.Minute)
+		fmt.Printf("✅ 已确认最近被拦命令（指纹 %s，%d 分钟内同命令重试放行）：\n  %s\n重试原命令即可。\n",
+			shortFingerprint(fp), ttlMin, command)
+		return nil
+	}
 	// --fingerprint format validation is moved earlier (before findProjectRoot): format validation is pure input validation and does not need
 	// project context. In environments without .forge/ such as CI, this avoids not-in-a-forge-project masking a fingerprint validation failure —
 	// an agent that mis-copies the fingerprint should be explicitly rejected. Same-source validation as ConfirmByFingerprint.
