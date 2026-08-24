@@ -184,13 +184,14 @@ func TestRun_NonForgeFile(t *testing.T) {
 	}
 }
 
-// TestRun_NineHosts 报告覆盖 9 个 host（copilot 刻意不在列——其 VS Code 扩展配置
-// 无稳定文件路径约定，见 CLI 注释）。
-func TestRun_NineHosts(t *testing.T) {
+// TestRun_TenHosts 报告覆盖 10 个 host（copilot 刻意不在列——其 VS Code 扩展配置
+// 无稳定文件路径约定，见 CLI 注释；dsh 同样不在列——DshTranslator 是刻意 no-op，
+// 无可扫描的用户级配置文件）。
+func TestRun_TenHosts(t *testing.T) {
 	isolate(t)
 	rep := Run("1.30.0", fakeEnv(nil))
-	if len(rep.Hosts) != 9 {
-		t.Fatalf("应有 9 个 host，got %d: %v", len(rep.Hosts), rep.Hosts)
+	if len(rep.Hosts) != 10 {
+		t.Fatalf("应有 10 个 host，got %d: %v", len(rep.Hosts), rep.Hosts)
 	}
 }
 

@@ -378,6 +378,30 @@ func TestPluginPack_CommittedManifestMatchesGenerator(t *testing.T) {
 	}
 }
 
+// TestPluginPack_CommittedReadmeMatchesGenerator: the committed plugins/forge/README.md
+// must equal the current generator output byte-for-byte. The manifest guard above cannot
+// catch README drift (it compares only the hooks field) — hand-editing the rendered README
+// without editing assets/plugin_readme.md silently reverts on the next `forge plugin
+// pack` run (zcode row added 2026-08-24 was almost lost this way; code-review finding).
+//
+// TestPluginPack_CommittedReadmeMatchesGenerator：已提交的 plugins/forge/README.md 必须
+// 与生成器当前输出逐字节相等。上面的 manifest 守卫抓不住 README 漂移（它只比 hooks
+// 字段）——只手改渲染产物、不改 assets/plugin_readme.md 模板，下次任何人跑
+// `forge plugin pack` 都会静默回滚该改动（2026-08-24 的 zcode 行差点因此丢失；
+// code-review 发现）。
+func TestPluginPack_CommittedReadmeMatchesGenerator(t *testing.T) {
+	committed := filepath.Join("..", "..", "plugins", "forge", "README.md")
+	if _, err := os.Stat(committed); err != nil {
+		t.Skipf("committed plugin README not found at %s (non-forge repo layout — nothing to regenerate against): %v", committed, err)
+	}
+	generated := generatePack(t)
+	want := readOrFail(t, filepath.Join(generated, "plugins", "forge", "README.md"))
+	got := readOrFail(t, committed)
+	if got != want {
+		t.Errorf("committed plugins/forge/README.md drifted from the generator (edit internal/agentbridge/assets/plugin_readme.md, then run `forge plugin pack` and commit the result)")
+	}
+}
+
 // TestPluginPack_Readme_UserLevelContract pins the v1.22 user-level wording in the
 // plugin README: zero project writes since v1.22, and the uninstall --restore
 // rollback path (guards the plugin_readme.go capability-boundary comment contract).

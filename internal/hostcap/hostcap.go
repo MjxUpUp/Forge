@@ -493,6 +493,41 @@ var Hosts = []Host{
 		// 回落 ~/.dsh。
 		InstallIndicators: []InstallIndicator{{Env: "DSH_HOME", Path: "~/.dsh"}},
 	},
+	{
+		Name: "zcode", StdinSessionFields: []string{"session_id"},
+		// ZCode (z.ai's agentic IDE) is Claude-compatible at the hook layer BY
+		// DESIGN (zcode.z.ai/en/docs/hooks, 2026-08): stdin carries Claude
+		// snake_case aliases (session_id/tool_name/tool_input) next to its
+		// camelCase fields, stdout reads hookSpecificOutput.additionalContext on
+		// every wired event, and exit 2 is the block shortcut — so NO
+		// StdinDialect, no outputEmitters entry, and no ContextChannels rows:
+		// the Claude-compatible default (delivered everywhere,
+		// "claude/additionalContext") is the honest routing per the docs.
+		// Docs-derived, NOT wire-verified — the kimi-hook-routing.md discipline
+		// (docs ≠ wire reality) applies; re-check the channels on a real ZCode
+		// install before trusting advisory-only delivery. ZCode-specific
+		// enforcement deltas live with the wiring (agentbridge/zcode.go): no
+		// PostCompact/SubagentStop events, and Stop blocks force-end after 3
+		// consecutive rounds.
+		//
+		// ZCode（z.ai 的 agentic IDE）在 hook 层**刻意**与 Claude 兼容
+		// （zcode.z.ai/en/docs/hooks，2026-08）：stdin 在 camelCase 字段旁携带
+		// Claude 蛇形别名（session_id/tool_name/tool_input），stdout 在每个已接
+		// 事件上读 hookSpecificOutput.additionalContext，exit 2 是阻断捷径——
+		// 故不要 StdinDialect、不进 outputEmitters、不设 ContextChannels 行：
+		// Claude 兼容默认（全事件送达，"claude/additionalContext"）是按文档
+		// 诚实的路由。文档结论、未经 wire 验证——kimi-hook-routing.md 的教训
+		// （文档 ≠ 线上行为）适用：信任 advisory 送达前应在真实 ZCode 安装上
+		// 复查通道。ZCode 独有的执法差异随接线侧记录（agentbridge/zcode.go）：
+		// 无 PostCompact/SubagentStop 事件，Stop 阻断连续 3 轮后强制结束。
+		//
+		// ~/.zcode exists iff the desktop app has run; ZCode documents no env
+		// override for its config home.
+		//
+		// ~/.zcode 当且仅当桌面端跑过才存在；ZCode 未文档化 config home 的
+		// env 覆盖。
+		InstallIndicators: []InstallIndicator{{Path: "~/.zcode"}},
+	},
 }
 
 // Lookup returns the registry row for name, or nil when the host is unknown

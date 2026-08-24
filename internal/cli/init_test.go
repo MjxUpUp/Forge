@@ -172,6 +172,7 @@ func TestAgentSummaryLine(t *testing.T) {
 		agentbridge.AgentOpencode,
 		agentbridge.AgentKimi,
 		agentbridge.AgentDsh,
+		agentbridge.AgentZcode,
 	}
 	for _, a := range wired {
 		line, ok := agentSummaryLine(a)
