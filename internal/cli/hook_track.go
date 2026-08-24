@@ -122,7 +122,10 @@ func runFailureTrackHook(hookInput HookInput, root, version, agent string) error
 	var delivered *bool
 	var channel string
 	if kind != "" {
-		d, ch := contextChannelDelivered(agent, hookInput.HookEventName)
+		// advisoryEmissionChannel（非 contextChannelDelivered）：kimi 上本 nudge
+		// 经 emitAdvisoryRouted 入队，章须标 kimi/advisory-queue 而非
+		// kimi/no-channel，让漏斗区分「入队待投」与「永久丢失」。
+		d, ch := advisoryEmissionChannel(agent, hookInput.HookEventName)
 		delivered = &d
 		channel = ch
 	}
@@ -159,7 +162,14 @@ func runFailureTrackHook(hookInput HookInput, root, version, agent string) error
 		"[forge] a compile/test failure was just observed (markers matched in %s tool output). "+
 			"The compile-fix-loop skill (skills/compile-fix-loop/SKILL.md) contains the failure-class-specific debugging methodology (root-cause first, not error-message whack-a-mole).",
 		hookInput.ToolName)
-	return emitAgentOutput(agent, hookInput.HookEventName, "failure-track", true, nudge)
+	// emitAdvisoryRouted: kimi queues this nudge for the UserPromptSubmit drain
+	// (fired on PostToolUse/PostToolUseFailure, whose stdout kimi drops); every
+	// other host keeps its per-host emission unchanged.
+	//
+	// emitAdvisoryRouted：kimi 把本提示入队、留待 UserPromptSubmit 攒发（本 hook
+	// 在 PostToolUse/PostToolUseFailure 上触发，其 stdout 被 kimi 丢弃）；其余
+	// 宿主的输出路径不变。
+	return emitAdvisoryRouted(agent, hookInput.HookEventName, "failure-track", root, hookInput.SessionID, true, nudge)
 }
 
 // runSubagentTrackHook handles SubagentStop: a sub-agent finished, carrying
@@ -348,11 +358,15 @@ func runTestNudgeHook(hookInput HookInput, root, version, agent string) error {
 		state.SourceWrites)
 	// Record the observation (Delivered stamped by the same channel verdict the
 	// emission uses — on PostToolUse every wired host carries allow-detail into
-	// context, but stay honest per-host rather than assuming).
+	// context, but stay honest per-host rather than assuming; on kimi the nudge
+	// rides the advisory queue, stamped kimi/advisory-queue so the funnel can
+	// tell "queued, deferred" from "lost forever").
 	//
 	// 记录观察（Delivered 用与输出同一通道判定盖章——PostToolUse 上已接线的宿主
-	// 都把 allow-detail 送进上下文，但按宿主诚实判定而非假设）。
-	delivered, channel := contextChannelDelivered(agent, hookInput.HookEventName)
+	// 都把 allow-detail 送进上下文，但按宿主诚实判定而非假设；kimi 上本 nudge
+	// 走 advisory 队列，章标 kimi/advisory-queue，让漏斗区分「入队待投」与
+	// 「永久丢失」）。
+	delivered, channel := advisoryEmissionChannel(agent, hookInput.HookEventName)
 	if err := checklog.Record(root, &checklog.Entry{
 		Check:        checklog.CheckTestNudge,
 		Passed:       true,
@@ -370,7 +384,15 @@ func runTestNudgeHook(hookInput HookInput, root, version, agent string) error {
 	}); err != nil {
 		fmt.Fprintf(os.Stderr, "[test-nudge] warning: checklog record failed: %v\n", err)
 	}
-	return emitAgentOutput(agent, hookInput.HookEventName, "test-nudge", true, nudge)
+	// emitAdvisoryRouted: kimi queues the nudge for the UserPromptSubmit drain
+	// (test-nudge fires on PostToolUse, whose stdout kimi drops — the 2026-08
+	// usage-log audit found these records 100% undelivered); every other host
+	// keeps its per-host emission unchanged.
+	//
+	// emitAdvisoryRouted：kimi 把提示入队、留待 UserPromptSubmit 攒发
+	// （test-nudge 在 PostToolUse 上触发，其 stdout 被 kimi 丢弃——2026-08
+	// usage 日志审计发现这些记录 100% 未送达）；其余宿主的输出路径不变。
+	return emitAdvisoryRouted(agent, hookInput.HookEventName, "test-nudge", root, hookInput.SessionID, true, nudge)
 }
 
 // mustJSONState marshals v, falling back to "{}" — for state files a failed marshal

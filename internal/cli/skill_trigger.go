@@ -121,20 +121,26 @@ func runSkillTriggerHook(hookInput HookInput, root, version, agent string) error
 	rendered, err := runSkillTriggerCore(hookInput, root, version, agent, false)
 	// Hosts that drop allow-path stdout on some events (hostcap DroppedStdoutEvents;
 	// today kimi): the engine still RUNS and records on those events (Delivered=false
-	// keeps the record honest), but the raw stdout print stays gated to the events
-	// whose channel actually delivers (contextChannelDelivered, sourced from the
-	// hostcap ContextChannels rows) — printing anywhere else would be bytes dropped
-	// by the host anyway.
+	// keeps the record honest). The rendered injection itself no longer dies with the
+	// dropped stdout: emitAdvisoryRouted queues it on non-delivered events (kimi
+	// reads PreToolUse stdout as a DENY and drops PostToolUse/Stop/SessionStart
+	// stdout — printing would be bytes dropped or, worse, a phantom block) and
+	// drains the backlog as one batched injection on UserPromptSubmit, ahead of
+	// this hook's own render. Core errors stay swallowed (advisory layer fail-open),
+	// matching the pre-queue behavior.
 	//
 	// 在部分事件上丢弃 allow 路径 stdout 的宿主（hostcap DroppedStdoutEvents；目前
-	// 仅 kimi）：引擎在这些事件上仍运行并记录（Delivered=false 保持记录诚实），但
-	// stdout 裸打印仍门控在通道真正送达的事件上（contextChannelDelivered，数据源自
-	// hostcap ContextChannels 行）——其余事件打印只会被宿主丢弃。
+	// 仅 kimi）：引擎在这些事件上仍运行并记录（Delivered=false 保持记录诚实）。
+	// 渲染出的注入本身不再随被丢的 stdout 湮灭：emitAdvisoryRouted 在不可送达
+	// 事件上把它入队（kimi 把 PreToolUse stdout 当 **deny**，且丢弃
+	// PostToolUse/Stop/SessionStart 的 stdout——打印只会是被丢的字节，甚至更糟的
+	// 幻影阻断），并在 UserPromptSubmit 上把积压攒成一条注入、排在本 hook 自己的
+	// 渲染之前。core 错误保持吞掉（advisory 层 fail-open），与引入队列前一致。
 	if h := hostcap.Lookup(agent); h != nil && len(h.DroppedStdoutEvents) > 0 {
-		if delivered, _ := contextChannelDelivered(agent, hookInput.HookEventName); delivered && err == nil && rendered != "" {
-			fmt.Print(rendered)
+		if err != nil {
+			return nil
 		}
-		return nil
+		return emitAdvisoryRouted(agent, hookInput.HookEventName, "skill-trigger", root, hookInput.SessionID, true, rendered)
 	}
 	// skill-trigger never blocks (advisory injection) — the allow-with-detail path of
 	// the per-agent emitter picks each host's context channel. The old fixed
@@ -356,13 +362,19 @@ func recordSkillTriggerHits(root string, ctx skilltrigger.Context, hits []skillt
 	// L1 送达章：一次 hook 调用里所有 hit 走同一 (agent, event) 通道，判定一次、逐条落章。
 	// Delivered/Channel/ForgeVersion 让 checklog 成为「真到达模型上下文」的真相源——usage 漏斗的
 	// 送达分母从此可靠，死通道宿主的命中不再虚计成送达（kimi 2026-08-15 修复的全宿主泛化）。
+	// 经 advisoryEmissionChannel 盖章（非裸 contextChannelDelivered）：kimi 不可送达事件上的
+	// 命中现经 emitAdvisoryRouted 入队（UserPromptSubmit 攒发），章标 kimi/advisory-queue，
+	// 漏斗据此区分「入队待投」与「永久丢失」。
 	//
 	// L1 delivery stamp: all hits in one hook invocation ride the same (agent, event) channel —
 	// verdict computed once, stamped per entry. Delivered/Channel/ForgeVersion make checklog the
 	// ground truth of "actually reached model context" — the usage funnel's delivery denominator
 	// becomes trustworthy, and dead-channel host hits stop counting as delivered (the all-host
-	// generalization of the kimi 2026-08-15 fix).
-	delivered, channel := contextChannelDelivered(agent, ctx.Event)
+	// generalization of the kimi 2026-08-15 fix). Stamped via advisoryEmissionChannel (not bare
+	// contextChannelDelivered): hits on kimi's non-delivered events now queue via
+	// emitAdvisoryRouted (UserPromptSubmit drain), stamped kimi/advisory-queue so the funnel
+	// distinguishes "queued, deferred" from "lost forever".
+	delivered, channel := advisoryEmissionChannel(agent, ctx.Event)
 	for _, h := range hits {
 		// 缺键 = 「未知/不适用」契约（review m5）：仅写已知项——condition-only 触发不落
 		// match_source（值恒 "" 与缺键不可分）；prompt_len 只在哈希真的来自 prompt 时落

@@ -1,5 +1,37 @@
 # kimi-code hook 路由表 / kimi-code Hook Routing Table
 
+> 🔄 **2026-08-24 更新（advisory 队列取代 P0 提升）**：两周生产 checklog 证实
+> P0 路线两头落空——(a) kimi/no-channel 的 allow 路径 advisory（41 条
+> skill-trigger + 1 条 test-nudge）100% 产生但从未到达模型；(b) 被提升为 exit-2
+> 的 WARN 文案（"allowed but not tracked" / "Advisory:"）以 isError=true 送达且
+> Write/Edit 被实际拦截——文案自述「allowed」的 deny 自相矛盾；且 kimi 把
+> PreToolUse 上**任何** stdout 都当 deny，诚实文案也无安全通路。故 kimi 的
+> PromoteAdvisory 规则**全部退役**（hostcap 注册表已清空，dsh 保留）：kimi 的
+> 非阻断提示改为写入 per-project pending 队列
+> （~/.forge/projects/<key>/advisories-pending.jsonl），由 UserPromptSubmit
+> hook 在每次触发时 drain——去重、每会话每文本只投一次、最多最近 5 条、攒成
+> **一条**注入（`internal/cli/hook_kimi_advisory.go` 的 emitAdvisoryRouted）。
+> 设计内阻断（read-before-edit/hazard-guard/freeze-guard 的 FAIL）不受影响，
+> 仍走 exit-2。下文 P0 段的「advisory 升级为 exit-2」描述的是历史决策，当前态
+> 以本注为准。
+>
+> 🔄 **2026-08-24 update (advisory queue replaces the P0 promotion)**: two weeks of
+> production checklog proved the P0 route lost on both ends — (a) 100% of
+> kimi/no-channel allow-path advisories (41 skill-trigger + 1 test-nudge) were
+> produced but never reached the model; (b) the promoted exit-2 WARNs ("allowed but
+> not tracked" / "Advisory:") arrived as isError=true denies that actually blocked
+> Write/Edit — a deny whose reason says "allowed" is self-contradictory, and kimi
+> reads ANY PreToolUse stdout as a deny, so the honest wording had no safe ride
+> either. kimi's PromoteAdvisory rules are therefore RETIRED (the hostcap row is
+> cleared; dsh keeps its rule): kimi's non-blocking advisories now write to a
+> per-project pending queue (~/.forge/projects/<key>/advisories-pending.jsonl),
+> drained by the UserPromptSubmit hooks on every fire — deduped, once per session
+> per text, capped at the newest 5, injected as ONE batched message
+> (emitAdvisoryRouted in internal/cli/hook_kimi_advisory.go). Designed denies
+> (read-before-edit / hazard-guard / freeze-guard FAILs) are unaffected and still
+> ride exit-2. The P0 paragraphs below describe a historical decision; this note
+> is the current state.
+
 > 真相源：对真实会话 `session_060d5b3a`（960 行 wire.jsonl，76 次工具调用）的交叉验证，
 > 结合 forge `emitKimiOutput` 的 exit-code 契约。本文档随 `fix/kimi-advisory-p0/p1/p2/p3`
 > 四个 PR 落地。
@@ -95,17 +127,17 @@ pre_tool_use    0    # 本会话无 PreToolUse 阻断发生（非通道失效，
 
 ## 25-hook 路由表 / The 25-hook routing table
 
-### PreToolUse（8 hook = 6 命名 + skill-trigger×2）— 阻断通道可用，advisory 经 P0 升级为 exit-2
+### PreToolUse（8 hook = 6 命名 + skill-trigger×2）— 阻断通道可用；advisory 曾经 P0 升级为 exit-2，2026-08-24 起改为入队攒发（见顶部注）
 
 | Hook | 类别 Class | kimi 路由 | PR |
 |---|---|---|---|
 | freeze-guard | 强制 enforce | exit-2 阻断（原生效） | — |
-| **task-guard** | advisory→强制 | **advisory 升级为 exit-2**（排除 `Auto-created` 成功路径）；2026-08-23 起提升宿主**每次**无任务编辑都阻断（指令式 reason），不再每会话一次 | **P0** |
-| **assertion-check** | advisory→强制 | **advisory 升级为 exit-2**（只认 `Advisory:`，排除干净分支） | **P0** |
+| **task-guard** | advisory | **入队 + UserPromptSubmit 攒发**（2026-08-24；P0 提升已退役——"allowed"文案的 deny 自相矛盾）；恢复每会话一次 NOWARN 去噪 | ~~P0~~ 已退役 |
+| **assertion-check** | advisory | **入队 + UserPromptSubmit 攒发**（2026-08-24；P0 提升已退役） | ~~P0~~ 已退役 |
 | read-before-edit | 强制 enforce | exit-2 阻断（原生效） | — |
-| **bash-guard** | advisory→强制 | **advisory 升级为 exit-2** | **P0** |
+| **bash-guard** | advisory | **入队 + UserPromptSubmit 攒发**（2026-08-24；P0 提升已退役） | ~~P0~~ 已退役 |
 | hazard-guard | 强制 enforce | exit-2 阻断（原生效） | — |
-| skill-trigger（Write\|Edit + Bash，共 2 条） | advisory | **已恢复绑定**（2026-08-20）：记录 `Delivered=false`，不打印（stdout 不可达模型） | ~~P1~~ 已反转 |
+| skill-trigger（Write\|Edit + Bash，共 2 条） | advisory | 记录 `Delivered=false` 后**入队**（2026-08-24），不再静默湮灭；UserPromptSubmit 攒发 | ~~P1~~ 已反转 → 队列 |
 
 > P0 升级用的是**内容谓词 map**（读 detail 文本区分「真 advisory」与「成功/干净分支」），
 > 不是名字白名单——否则会把 task-guard 刚 auto-create 的那次编辑也阻断。逃生舱
