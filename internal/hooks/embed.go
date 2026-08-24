@@ -251,7 +251,7 @@ MESSAGES=""
 # dogfood 4.2 + 2.1: test-coverage advisory carries test-discipline guidance
 # and must surface here for parity with the act-nudge channel below.
 GATE_OUT=$(forge task gate task-verify --silent 2>&1) || {
-  MESSAGES="${MESSAGES}[task-gate] Task verify gate not yet passed. "
+  MESSAGES="${MESSAGES}[task-gate] Task verify gate not yet passed — run 'forge task gate task-verify' for details. "
 }
 # 方案1 契约：gate 的 advisory stderr 现统一带 "ADVISORY: " 前缀（GateAdvisory）。
 # 旧 grep '[task-verify] Advisory' 在 test-coverage 迁移到 ADVISORY: 前缀后失配，吞了
@@ -286,17 +286,34 @@ if [ -n "${NUDGE}" ]; then
 fi
 
 # Advisory: always PASS, never block. Surface issues to stderr (user-visible)
-# and checklog (trace-queryable). Detail is a fixed string — MESSAGES may carry
-# quotes/paths that would break the JSON line, so it goes to stderr only.
+# and checklog (trace-queryable).
 # level 显式写 "advisory"（checklog Level 字段）：Detail 无 ADVISORY: 前缀，
 # 读取侧 derive 只会给 pass——本条目实为 advisory 语义，必须显式标注。
+# checklog 行携带真实上下文（2026-08-24 死记录修复：此前 detail 是固定串
+# "advisory: non-blocking issues surfaced to stderr"、checked=false、无
+# task_ref/session_id——占 task-verify 记录约 45% 且零诊断价值）。detail 取
+# MESSAGES 摘要：去引号/反斜杠（JSON 安全）、换行压空格、去其余控制字符
+#（tab 等——手写 JSONL 不转义，控制字符会产出非法 JSON）、截 200 字符。
+# task_ref/session_id 来自 Go 层注入的 env（runHook 已 sanitize），但本行是
+# 手写 JSON——嵌入前仍套同一净化（去引号/反斜杠/控制字符），不信任上游契约。
 if [ -n "$MESSAGES" ]; then
-  echo "[task-verify] ${MESSAGES}" >&2
+  _DETAIL=$(printf '%s' "$MESSAGES" | tr -d '"\\' | tr '\n' ' ' | tr -d '[:cntrl:]' | cut -c1-200)
+  _TASK_REF_J=$(printf '%s' "${FORGE_TASK_REF:-}" | tr -d '"\\' | tr -d '[:cntrl:]')
+  _SESSION_ID_J=$(printf '%s' "${FORGE_SESSION_ID:-}" | tr -d '"\\' | tr -d '[:cntrl:]')
   _NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)
   if [ -n "$_NOW" ]; then
-    printf '{"check":"task-verify","passed":true,"checked":false,"detail":"advisory: non-blocking issues surfaced to stderr","level":"advisory","recorded_at":"%s"}\n' \
-      "$_NOW" >> "$_DATA_DIR/checklog.jsonl" 2>/dev/null || true
+    printf '{"check":"task-verify","passed":true,"checked":true,"detail":"%s","level":"advisory","task_ref":"%s","session_id":"%s","recorded_at":"%s"}\n' \
+      "$_DETAIL" "$_TASK_REF_J" "$_SESSION_ID_J" "$_NOW" >> "$_DATA_DIR/checklog.jsonl" 2>/dev/null || true
   fi
+  # kimi 的 Stop stdout/stderr 都到不了模型（见 agentbridge/kimi-hook-routing.md），
+  # 但 Go 层会把本 hook 的 advisory stdout 入队、下次 UserPromptSubmit 攒发
+  # （hook_kimi_advisory.go）——故 kimi 下把消息打到 stdout（WARN 前缀供
+  # extractDetail 剥离）。其余宿主维持 stderr（user-visible）不动。
+  if [ "${FORGE_AGENT:-}" = "kimi" ]; then
+    echo "WARN [task-verify] ${MESSAGES}"
+    exit 0
+  fi
+  echo "[task-verify] ${MESSAGES}" >&2
 fi
 
 echo "PASS"
@@ -436,13 +453,16 @@ if [ -z "$TASK_REF" ]; then
   # 每会话首条 WARN 提示改动不被任务追踪，之后静默。标记键控 FORGE_SESSION_ID 隔离并发会话。
   #
   # FORGE_TASKGUARD_PROMOTED=1（Go 侧注入：本宿主把 task-guard advisory 提升为阻断
-  # ——kimi/dsh，hostcap PromoteAdvisory 列）时，本输出不再是 advisory 而是每次都发
+  # ——仅 dsh，hostcap PromoteAdvisory 列；kimi 的规则已于 2026-08-24 退役，改为
+  # advisory 入队 + UserPromptSubmit 攒发）时，本输出不再是 advisory 而是每次都发
   # 的 block reason：一次性 NOWARN 标记在阻断语义下是新洞——模型重试同一编辑即静默
   # 放行（标记已置）；且「allowed」文案作 deny reason 自相矛盾。故提升路径每次输出
   # 指令式文案（含 Contains 谓词 [task-guard]、不含 Auto-created，仍照常提升）。
   #
   # FORGE_TASKGUARD_PROMOTED=1 (injected by the Go layer: this host promotes the
-  # task-guard advisory to a block — kimi/dsh, hostcap PromoteAdvisory). Under
+  # task-guard advisory to a block — dsh only, hostcap PromoteAdvisory; kimi's
+  # rules were retired 2026-08-24 in favor of the advisory queue +
+  # UserPromptSubmit drain). Under
   # promotion this output is not an advisory but the block reason, emitted EVERY
   # time: the once-per-session NOWARN marker becomes a hole under block semantics
   # — a blind retry of the same edit passes silently (marker already set) — and

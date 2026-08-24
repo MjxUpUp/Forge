@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"os"
 	"os/exec"
 	"runtime"
 	"strconv"
@@ -54,23 +55,50 @@ func TestIsHookInfraFailure(t *testing.T) {
 	}
 }
 
-// TestEmitInfraAllow pins the fail-open output contract: kimi gets plain stdout text +
-// nil error (exit 0); claude gets a BARE hookSpecificOutput (no decision — an allow
+// TestEmitInfraAllow pins the fail-open output contract: on kimi the warning
+// rides the advisory queue — PreToolUse stays SILENT (any stdout there is read
+// as a deny: the hook would fail open AND block the edit) and lands in
+// advisories-pending.jsonl for the UserPromptSubmit drain; claude gets a BARE
+// hookSpecificOutput (no decision — an allow
 // hook must not grant permissions) whose hookEventName is present — without it Claude
 // drops additionalContext and the warning would be silently lost.
 func TestEmitInfraAllow(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	root := t.TempDir()
+	t.Setenv("TMPDIR", t.TempDir())
+
+	// kimi PreToolUse: silent (stdout there = deny), warning queued.
+	//
+	// kimi PreToolUse：静默（该事件的 stdout = deny），警告入队。
 	stdout, _, err := captureOutput(t, func() error {
-		return emitInfraAllow("kimi", "PreToolUse", "[forge] hook x 基础设施失败，fail-open 放行")
+		return emitInfraAllow("kimi", "PreToolUse", "infra-hook", root, "sess-infra", "[forge] hook x 基础设施失败，fail-open 放行")
 	})
 	if err != nil {
 		t.Fatalf("kimi infra allow must return nil (exit 0), got %v", err)
 	}
+	if stdout != "" {
+		t.Errorf("kimi PreToolUse infra warning must NOT print stdout (read as deny), got %q", stdout)
+	}
+	queued, qerr := os.ReadFile(kimiAdvisoryQueuePath(root))
+	if qerr != nil || !strings.Contains(string(queued), "基础设施失败") {
+		t.Errorf("kimi infra warning must be queued for the UserPromptSubmit drain, got %q err=%v", queued, qerr)
+	}
+
+	// kimi UserPromptSubmit: the warning prints AND the queued backlog drains.
+	//
+	// kimi UserPromptSubmit：警告照常打印，且积压队列随之一并 drain。
+	stdout, _, err = captureOutput(t, func() error {
+		return emitInfraAllow("kimi", "UserPromptSubmit", "infra-hook", root, "sess-infra", "[forge] hook y 基础设施失败")
+	})
+	if err != nil {
+		t.Fatalf("kimi UserPromptSubmit infra allow must return nil, got %v", err)
+	}
 	if !strings.Contains(stdout, "基础设施失败") {
-		t.Errorf("kimi warning must go to stdout, got %q", stdout)
+		t.Errorf("kimi UserPromptSubmit must surface the warning + drained backlog, got %q", stdout)
 	}
 
 	stdout, _, err = captureOutput(t, func() error {
-		return emitInfraAllow("", "PreToolUse", "warn")
+		return emitInfraAllow("", "PreToolUse", "infra-hook", root, "sess-infra", "warn")
 	})
 	if err != nil {
 		t.Fatalf("claude infra allow must return nil, got %v", err)

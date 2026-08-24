@@ -213,64 +213,33 @@ func TestEmitKimiOutput_BlockEmptyReason(t *testing.T) {
 	}
 }
 
-// TestPromoteKimiAdvisory covers the pure helper that decides whether an advisory hook result is
-// promoted to a kimi block. The table is built around the TWO over-blocking traps (verified against
-// embed.go): every advisory hook emits both a real-advisory branch and a success/clean branch that
-// share the hook name — a name allowlist would block the success/clean branches too. The detail text
-// here mirrors what extractDetail produces from the real bash stdout (PASS/WARN prefix stripped).
-// The caller's agent=="kimi" gate lives at the call site (runHook step 5b); this helper is
-// agent-agnostic by design so it can be exercised directly.
+// TestKimiAdvisoryNeverPromotes pins the 2026-08-24 retirement of kimi's
+// advisory promotion: EVERY advisory-class result (task-guard WARN, bash-guard,
+// assertion-check) must stay an allow on kimi — the promoted exit-2 deny was
+// self-contradictory (its reason self-described as "allowed") and kimi reads
+// ANY PreToolUse stdout as a deny, so advisories now queue per-project and
+// drain on UserPromptSubmit (hook_kimi_advisory.go). If this goes red, someone
+// re-registered a kimi PromoteAdvisory rule — see TestKimiNoPromoteAdvisory in
+// hostcap.
 //
-// TestPromoteKimiAdvisory 覆盖决定 advisory hook 结果是否在 kimi 下提升为阻断的纯函数。
-// 表围绕两个"过阻断陷阱"构建（对照 embed.go 核实过）：每个 advisory hook 都同时发真
-// advisory 分支和成功/干净分支，共享 hook 名——名字白名单会连成功/干净分支一起阻断。
-// 此处 detail 文本镜像 extractDetail 从真实 bash stdout 产出的样子（已去 PASS/WARN 前缀）。
-// 调用处的 agent=="kimi" 判定在 runHook step 5b；本函数刻意不依赖 agent，故可直接测。
-func TestPromoteKimiAdvisory(t *testing.T) {
-	tests := []struct {
-		name   string
+// TestKimiAdvisoryNeverPromotes 钉住 kimi advisory 提升的 2026-08-24 退役：
+// 所有 advisory 类结果（task-guard WARN、bash-guard、assertion-check）在 kimi
+// 上必须保持放行——被提升的 exit-2 deny 自相矛盾（reason 自述「allowed」），
+// 且 kimi 把 PreToolUse 上**任何** stdout 当 deny，故 advisory 改为按项目入队、
+// UserPromptSubmit 攒发（hook_kimi_advisory.go）。此测试变红 = 有人重新注册了
+// kimi 的 PromoteAdvisory 规则——另见 hostcap 的 TestKimiNoPromoteAdvisory。
+func TestKimiAdvisoryNeverPromotes(t *testing.T) {
+	cases := []struct {
 		hook   string
-		passed bool
 		detail string
-		want   bool
 	}{
-		// task-guard: real advisory promotes; the Auto-created SUCCESS path must NOT (it just
-		// started a task for the agent — blocking would hard-stop the edit it enabled).
-		{"task-guard no-task (promote)", "task-guard", true, "[task-guard] No active task. Source changes are allowed but not tracked by a Forge task.", true},
-		{"task-guard auto-create (success path, must NOT promote)", "task-guard", true, "[task-guard] Auto-created task 'feat/x' from branch. Source changes tracked.", false},
-		{"task-guard has-task bare PASS (empty detail)", "task-guard", true, "", false},
-
-		// assertion-check: real Advisory promotes; the clean "no weakening detected" branch must
-		// NOT (lowercase "(advisory)" lacks the capital "Advisory:" the predicate keys on).
-		{"assertion-check weakening (promote)", "assertion-check", true, "[assertion-check] Advisory: 疑似断言弱化——[Go] t.Fatal net removed. 请核查。", true},
-		{"assertion-check clean (must NOT promote)", "assertion-check", true, "[assertion-check] no weakening detected (advisory)", false},
-
-		// bash-guard: write-without-task promotes; read-only / has-task emit nothing (empty detail).
-		{"bash-guard write-no-task (promote)", "bash-guard", true, "[bash-guard] Bash write without active task. Changes are allowed but not tracked.", true},
-		{"bash-guard read-only (empty detail)", "bash-guard", true, "", false},
-
-		// Guards: non-allowlisted hooks, already-blocked, whitespace detail.
-		{"non-allowlist hook (file-sentinel)", "file-sentinel", true, "[file-sentinel] snapshot taken", false},
-		{"non-allowlist hook (auto-compile)", "auto-compile", true, "[auto-compile] Advisory: 已修改源码", false},
-		{"already blocked (no double-flip)", "task-guard", false, "[task-guard] No active task.", false},
-		{"whitespace-only detail", "task-guard", true, "   \t\n  ", false},
+		{"task-guard", "[task-guard] No active task. Source changes are allowed but not tracked by a Forge task."},
+		{"bash-guard", "[bash-guard] Bash write without active task. Changes are allowed but not tracked."},
+		{"assertion-check", "[assertion-check] Advisory: 疑似断言弱化——[Go] t.Fatal net removed. 请核查。"},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := promoteKimiAdvisory(tt.hook, tt.passed, tt.detail)
-			if got != tt.want {
-				t.Errorf("promoteKimiAdvisory(%q, passed=%v, detail=%q) = %v, want %v", tt.hook, tt.passed, tt.detail, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestPromoteKimiAdvisory_EscapeHatch(t *testing.T) {
-	// FORGE_KIMI_ADVISORY=soft reverts to pure advisory: even a real-advisory predicate match is
-	// suppressed. t.Setenv auto-restores at test end so it cannot leak into other tests.
-	t.Setenv("FORGE_KIMI_ADVISORY", "soft")
-	got := promoteKimiAdvisory("task-guard", true, "[task-guard] No active task. Source changes are allowed but not tracked.")
-	if got {
-		t.Errorf("FORGE_KIMI_ADVISORY=soft must suppress promotion, got %v", got)
+	for _, c := range cases {
+		if got := promoteAdvisory("kimi", c.hook, true, c.detail); got {
+			t.Errorf("promoteAdvisory(kimi, %q, true, %q) = %v, want false (kimi advisories queue, never block)", c.hook, c.detail, got)
+		}
 	}
 }
