@@ -3,6 +3,7 @@ package hazard
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -153,4 +154,47 @@ func CountSince(p *forgedata.Project, eventType string, since time.Time) (int, e
 		}
 	}
 	return n, nil
+}
+
+// ConfirmLastBlock registers a confirmation for the NEWEST block event in the event log
+// and returns its fingerprint and command. This is the copy-free HITL path
+// (`forge hazard confirm --last`): the agent confirms "the command that was just
+// blocked" without transcribing a 64-char hex fingerprint or re-quoting the command
+// string — both transcription forms are proven distortion sources (2026-07 AgentWorld:
+// three hand-copied fingerprints, two corrupt; 2026-08-24 Forge session: confirm of the
+// bare command mismatched the hook's fingerprint over the full command line with pipe
+// suffix). The event log is written by the hook itself at block time, so its
+// fingerprint is authoritative by construction.
+//
+// Semantics: newest EventBlock with a non-empty Fingerprint wins (block events without
+// a fingerprint are unconfirmable anyway); re-confirming an already-confirmed block
+// simply renews the window (same as Confirm). Does not check whether the block was
+// already released — renewal is harmless and keeps the flow single-step.
+//
+// ConfirmLastBlock 为事件日志中最新一条 block 事件登记确认，返回其指纹与命令。
+// 这是免复制的 HITL 路径（`forge hazard confirm --last`）：agent 确认"刚被拦的那条
+// 命令"，无需转写 64 字符 hex 指纹、也无需重新引用命令串——两种转写形态都已被证实
+// 是失真源（2026-07 AgentWorld：三次手抄指纹两次损坏；2026-08-24 Forge 会话：裸命令
+// confirm 与 hook 对含管道后缀完整命令行的指纹失配）。事件日志由 hook 在拦截时自己
+// 写入，其指纹天然权威。
+//
+// 语义：最新的带非空 Fingerprint 的 EventBlock 胜出（无指纹的 block 事件本就不可确
+// 认）；对已确认过的 block 重复 confirm 只是续期（与 Confirm 同）。不检查该 block 是
+// 否已被放行——续期无害，且保持流程单步。
+func ConfirmLastBlock(p *forgedata.Project) (fp, cmd string, err error) {
+	events, err := LoadEvents(p)
+	if err != nil {
+		return "", "", fmt.Errorf("load hazard events: %w", err)
+	}
+	for i := len(events) - 1; i >= 0; i-- {
+		e := events[i]
+		if e.Type != EventBlock || e.Fingerprint == "" {
+			continue
+		}
+		if err := ConfirmByFingerprint(p, e.Fingerprint, e.Command); err != nil {
+			return "", "", fmt.Errorf("confirm last block: %w", err)
+		}
+		return e.Fingerprint, e.Command, nil
+	}
+	return "", "", fmt.Errorf("事件流中没有带指纹的 block 事件——先触发一次拦截（hazard-guard block），或用 --fingerprint/<命令> 显式确认")
 }
