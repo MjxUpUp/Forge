@@ -270,6 +270,59 @@ func auditorsForExt(ext string) []Rule {
 	return out
 }
 
+// decisionsMdFile is the persistent decision-history filename exempted from MdAlso
+// dangerous_code rules (DC-8/DC-9/DC-10) during ScanSkill.
+//
+// decisions.md is an append-only audit record whose FUNCTION is to quote past
+// dangerous commands — a Diagnosis line references the exact `npx <pkg>` /
+// `curl | sh` form that was removed (that is the record's evidentiary value).
+// Scanning it with MdAlso rules creates a self-referential trap: any honest
+// decision documenting a supply-chain fix re-introduces the pattern it fixed,
+// and the "audit clean" evidence measured before appending the decision is
+// silently stale after (2026-08-24 fix/dc10 incident: evidence said 9→0, the
+// committed tree held 9→3 because three Diagnosis lines quoted the removed
+// forms; caught only by independent review). Agents then resort to distorted
+// spelling (npx-pkg hyphenation) to dodge the scanner — writing contorts to
+// satisfy the tool, the FP-boundary smell.
+//
+// Exemption is NARROW by design: only the dangerous_code MdAlso trio is dropped
+// for this one filename. Injection/exfil/leak rules still scan decisions.md —
+// those patterns are never part of a legitimate decision record, so a hit there
+// stays a real finding. SKILL.md and references/*.md remain fully scanned (they
+// ARE verbatim agent instructions).
+//
+// decisionsMdFile 是 ScanSkill 中豁免 MdAlso 危险代码规则（DC-8/DC-9/DC-10）的
+// 持久决策历史文件名。
+//
+// decisions.md 是 append-only 审计记录，其功能就是引用过去的危险命令——Diagnosis
+// 行会逐字引用被移除的 `npx <包>` / `curl | sh` 形态（这正是记录的证据价值）。对它
+// 跑 MdAlso 规则制造了自指陷阱：任何如实记录供应链修复的决策都会重新引入它修掉的
+// 模式，且追加决策前测得的"audit 干净"证据在追加后静默过期（2026-08-24
+// fix/dc10 事故：证据写 9→0，提交树实际 9→3——三条 Diagnosis 引用了被移除形态；
+// 仅靠独立审查拦下）。agent 于是被迫用扭曲拼写（npx-包名 连字符化）躲扫描器——
+// 写作迁就工具，正是 FP 边界错了的味道。
+//
+// 豁免刻意收窄：仅对该文件名丢弃 dangerous_code 的 MdAlso 三条。injection/
+// exfil/leak 规则继续扫 decisions.md——那些模式绝不属于合法决策记录，命中仍是真
+// finding。SKILL.md 与 references/*.md 维持全量扫描（它们才是逐字 agent 指令）。
+const decisionsMdFile = "decisions.md"
+
+// dropMdAlsoRules filters MdAlso-routed rules (DC-8/DC-9/DC-10) out of a rule set.
+// Used by ScanSkill for decisions.md (see decisionsMdFile).
+//
+// dropMdAlsoRules 从规则集中滤掉 MdAlso 路由的规则（DC-8/DC-9/DC-10）。
+// ScanSkill 对 decisions.md 使用（见 decisionsMdFile）。
+func dropMdAlsoRules(rules []Rule) []Rule {
+	out := rules[:0:0]
+	for _, r := range rules {
+		if r.MdAlso {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
 // ScanSkill runs all applicable auditors on a skill directory and returns deduplicated findings (aligned with audit.py scan_skill).
 //
 // ScanSkill 对 skill 目录跑全部适用审查器，返回去重后的 findings（对齐 audit.py scan_skill）。
@@ -298,6 +351,17 @@ func ScanSkill(skillDir string) ([]Finding, error) {
 			return nil
 		}
 		rules := auditorsForExt(strings.ToLower(filepath.Ext(path)))
+		// decisions.md exemption: see decisionsMdFile — the decision history quotes past
+		// dangerous commands by function; MdAlso rules on it are a self-referential FP
+		// generator (evidence goes stale the moment the decision documenting the fix is
+		// appended). Narrow: injection/exfil/leak still scan it.
+		//
+		// decisions.md 豁免：见 decisionsMdFile——决策历史按功能引用过去的危险命令，
+		// MdAlso 规则在它上面是自指 FP 生成器（记录修复的决策一追加、证据即过期）。
+		// 收窄：injection/exfil/leak 仍扫它。
+		if filepath.Base(path) == decisionsMdFile {
+			rules = dropMdAlsoRules(rules)
+		}
 		if len(rules) == 0 {
 			return nil
 		}
