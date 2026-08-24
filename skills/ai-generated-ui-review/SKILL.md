@@ -66,7 +66,7 @@ metadata:
 
 若 AI 生成代码引入第三方 registry 组件：
 - 非可信 registry 来源 → **block**（RCE 注入攻击面，DEV.to "Risk of Registry Injection Attacks with shadcn"）
-- 未审查的 `npx shadcn add` 来源 → block
+- 未审查来源的 shadcn add（经 `npx` 即时拉取注册表执行，版本未锁）→ block
 - 只用官方/可信 registry，企业自建
 
 #### 块 3：可维护性税量化（纵向指标）
