@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.42.2](https://github.com/MjxUpUp/Forge/compare/v1.42.1...v1.42.2) (2026-08-24)
+
+
+### Bug Fixes
+
+* **hooks:** session marker 迁 FORGE_DATA_DIR/markers——MSYS /tmp 只读机器上 NOWARN 去噪静默失效 ([836c897](https://github.com/MjxUpUp/Forge/commit/836c897fddd73c5ff7b07e3b973ec18c361d1aad))
+* **qa:** 回顾发现三问题的结构修复——audit 自指豁免/decide 拒写 embed 缓存/hazard confirm --last ([238c282](https://github.com/MjxUpUp/Forge/commit/238c28241ae05827736a1610e22431556b5d51dd))
+* **qa:** 复审跟进五项——decisions.md 豁免收窄为根级+仅 DC-10/decide 测试哨兵化/--last Args 测试+优先级说明/竞态披露 ([1a86925](https://github.com/MjxUpUp/Forge/commit/1a869259b1ec62a98076514c99555dfef6436ec5))
+* **skills:** DC-10 跟进——3 skill 的 npx 调用改 lockfile 锁定的本地依赖运行形态 ([6fe8c6b](https://github.com/MjxUpUp/Forge/commit/6fe8c6b473b5442b9e875fc9fbb6c736fe33b4b1))
+* **skills:** 复审跟进四项——decisions 自回引改连字符形态/preview 改 npm exec 不依赖预置 script/审查污染还原提示/tsc 注释精确化（audit 复扫 0 finding） ([ad137cd](https://github.com/MjxUpUp/Forge/commit/ad137cd82af69b3300a5000d0f734345812b27cf))
+
 ## [1.42.1](https://github.com/MjxUpUp/Forge/compare/v1.42.0...v1.42.1) (2026-08-23)
 
 
