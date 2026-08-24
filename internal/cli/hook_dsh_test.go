@@ -114,7 +114,7 @@ func TestTaskGuardPromotionActive(t *testing.T) {
 		want  bool
 	}{
 		{"dsh", true},
-		{"kimi", true},
+		{"kimi", false}, // kimi's rules retired 2026-08-24 — advisories queue, never block
 		{"claude-code", false},
 		{"", false},
 		{"unknown-host", false},

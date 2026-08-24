@@ -157,32 +157,27 @@ func TestKimiDroppedStdoutEvents(t *testing.T) {
 	}
 }
 
-// TestKimiPromoteAdvisory pins kimi's advisory-promotion rules against the
-// pre-registry cli predicates, including the load-bearing exclusions: the
-// success/clean branches must NOT promote.
+// TestKimiNoPromoteAdvisory pins the 2026-08-24 retirement of kimi's
+// advisory-promotion rules: a promoted exit-2 deny whose reason self-described
+// as "allowed" was self-contradictory (and kimi reads ANY PreToolUse stdout as
+// a deny, so the honest advisory text had no safe ride either). kimi advisories
+// now queue per-project and drain on UserPromptSubmit (cli
+// hook_kimi_advisory.go) — the registry row must stay rule-free so no future
+// edit silently revives the block path.
 //
-// TestKimiPromoteAdvisory 把 kimi 的 advisory 提升规则钉在注册表迁移前的 cli
-// 谓词上，含承重的排除项：成功/干净分支**不得**提升。
-func TestKimiPromoteAdvisory(t *testing.T) {
+// TestKimiNoPromoteAdvisory 钉住 kimi advisory 提升规则的 2026-08-24 退役：
+// 被提升的 exit-2 deny 的 reason 自述「allowed」，自相矛盾（且 kimi 把
+// PreToolUse 上**任何** stdout 都当 deny，诚实的 advisory 文案也没有安全的
+// 通路）。kimi 的 advisory 现按项目入队、UserPromptSubmit 攒发（cli
+// hook_kimi_advisory.go）——注册表行必须保持无规则，防止未来改动静默复活
+// 阻断路径。
+func TestKimiNoPromoteAdvisory(t *testing.T) {
 	h := Lookup("kimi")
 	if h == nil {
 		t.Fatal("kimi row missing")
 	}
-	cases := []struct {
-		hook, detail string
-		want         bool
-	}{
-		{"task-guard", "[task-guard] No active task. Source changes are allowed but not tracked.", true},
-		{"task-guard", "[task-guard] Auto-created task fix/foo — tracking this work.", false}, // success path
-		{"bash-guard", "[bash-guard] risky command, consider ...", true},
-		{"assertion-check", "Advisory: assertion weakened in foo_test.go", true},
-		{"assertion-check", "no weakening detected (advisory)", false}, // clean branch
-		{"unknown-hook", "[task-guard] anything", false},
-	}
-	for _, c := range cases {
-		if got := h.ShouldPromoteAdvisory(c.hook, c.detail); got != c.want {
-			t.Errorf("kimi.ShouldPromoteAdvisory(%q, %q) = %v, want %v", c.hook, c.detail, got, c.want)
-		}
+	if len(h.PromoteAdvisory) > 0 {
+		t.Errorf("kimi PromoteAdvisory = %v, want empty (advisories queue + drain on UserPromptSubmit, never block)", h.PromoteAdvisory)
 	}
 	// Hosts whose advisory channel both delivers and suffices must carry no
 	// promotion rules. dsh is the documented exception (channel delivers, advisory
@@ -239,27 +234,29 @@ func TestDshTaskGuardPromotion(t *testing.T) {
 		}
 	}
 	// PromotesHook (detail-independent existence) drives cli's FORGE_TASKGUARD_PROMOTED
-	// env: true exactly for the two hosts with a task-guard rule.
+	// env: true exactly for the host with a task-guard rule (dsh only — kimi's
+	// promotion was retired 2026-08-24 in favor of the advisory queue).
 	//
 	// PromotesHook（与 detail 无关的存在性）驱动 cli 的 FORGE_TASKGUARD_PROMOTED
-	// env：恰对持 task-guard 规则的两个宿主为真。
-	for _, name := range []string{"dsh", "kimi"} {
-		if hh := Lookup(name); hh == nil || !hh.PromotesHook("task-guard") {
-			t.Errorf("%s PromotesHook(task-guard) = false, want true", name)
-		}
+	// env：恰对持 task-guard 规则的宿主为真（仅 dsh——kimi 的提升已于
+	// 2026-08-24 退役，改为 advisory 队列）。
+	if hh := Lookup("dsh"); hh == nil || !hh.PromotesHook("task-guard") {
+		t.Error("dsh PromotesHook(task-guard) = false, want true")
 	}
-	for _, name := range []string{"claude-code", "codex", "cursor", "copilot", "windsurf", "opencode", "cline", "codebuddy", "reasonix", "zcode"} {
+	for _, name := range []string{"claude-code", "codex", "cursor", "copilot", "windsurf", "opencode", "cline", "codebuddy", "reasonix", "zcode", "kimi"} {
 		if hh := Lookup(name); hh != nil && hh.PromotesHook("task-guard") {
 			t.Errorf("%s PromotesHook(task-guard) = true, want false", name)
 		}
 	}
-	// kimi keeps its full trio: dsh's narrower scope must not narrow kimi.
+	// kimi must stay rule-free: its advisories ride the pending queue, not exit-2
+	// denies (see TestKimiNoPromoteAdvisory).
 	//
-	// kimi 保留完整三件套：dsh 的更窄范围不得收窄 kimi。
+	// kimi 必须保持无规则：其 advisory 走 pending 队列而非 exit-2 deny（见
+	// TestKimiNoPromoteAdvisory）。
 	if kk := Lookup("kimi"); kk != nil {
 		for _, hook := range []string{"task-guard", "bash-guard", "assertion-check"} {
-			if !kk.PromotesHook(hook) {
-				t.Errorf("kimi PromotesHook(%q) = false, want true (dsh scope must not narrow kimi)", hook)
+			if kk.PromotesHook(hook) {
+				t.Errorf("kimi PromotesHook(%q) = true, want false (kimi advisories queue, never block)", hook)
 			}
 		}
 	}
