@@ -56,9 +56,30 @@ agent 理解 skill「为什么这么改」，避免重复探索已失败方向�
 }
 
 func runSkillsDecide(cmd *cobra.Command, args []string) error {
-	canonical, _, err := resolveCanonical()
+	canonical, isExternal, err := resolveCanonical()
 	if err != nil {
 		return err
+	}
+	// decide MUTATES canonical (appends to <skill>/decisions.md). The embed cache is a
+	// regenerated distribution snapshot, not a writable source: EnsureEmbeddedCache
+	// RemoveAll-rebuilds it whenever the version marker mismatches the running binary —
+	// with two forge versions alternating on one machine (e.g. the globally installed
+	// release driving the hook chain + a locally built dev binary), the cache is
+	// version-ping-pong wiped on every foreign-version invocation. A decide that resolved
+	// to the cache reported ✅ success and the entry was silently destroyed by the next
+	// hook call (2026-08-24 incident: three decisions vanished between the ✅ and the
+	// follow-up grep). Fail loudly instead: the agent must point at a real source via
+	// $FORGE_SKILLS_CANONICAL / --canonical (in this repo: the skills/ directory).
+	//
+	// decide 会变更 canonical（追加 <skill>/decisions.md）。embed 缓存是可再生成的分发
+	// 快照、不是可写源：EnsureEmbeddedCache 在版本标记与运行二进制不一致时会
+	// RemoveAll 整目录重建——同一台机器上两个 forge 版本交替运行时（如全局安装的正式
+	// 版驱动 hook 链 + 本地构建的 dev 二进制），缓存每次异版调用都会被 ping-pong 抹掉。
+	// 解析到缓存的 decide 报了 ✅ 成功，条目却被下一次 hook 调用静默销毁（2026-08-24
+	// 事故：三条决策在 ✅ 与随后的 grep 之间消失）。改为响亮失败：agent 必须经
+	// $FORGE_SKILLS_CANONICAL / --canonical 指向真实源（本仓库即 skills/ 目录）。
+	if !isExternal {
+		return fmt.Errorf("decide 不能写入内置 embed 缓存（%s）——它是随时被版本重建的分发快照，写入必丢（异版二进制交替运行时每次 hook 调用都会抹掉它）。用 $FORGE_SKILLS_CANONICAL 或 --canonical 指向真实 skill 源（本仓库为 skills/ 目录）后重试", canonical)
 	}
 	if skDecSkill == "" {
 		return fmt.Errorf("需要 --skill NAME")

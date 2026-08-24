@@ -105,3 +105,21 @@ kimi 看板盲区半修（2026-08-19 hostcap e2db347）：策略"kimi skill-trig
 ### Evidence
 
 fix/kimi-skilltrigger-manifest-wiring（b4a0a27, 98/A Strong）：实跑 dashboard API 复现 5 事件；已装 v1.38.0 插件 manifest 仅 1 条 skill-trigger 绑定；守卫测试改全 spec 对齐+per-event 存在性断言
+
+## [d-18ce9f4e41bf6024-76d42016] accept
+
+- **Skill**: implementation-discipline
+- **DecidedAt**: 2026-08-24T03:14:20Z
+- **By**: zcode
+
+### Diagnosis
+
+自指性证据失效：audit 在追加 decisions.md 前测得 9 到 0，随后追加的 Diagnosis 逐字引用被移除命令形态，提交树实际 9 到 3——证据写下的那一刻就过期，被独立只读审查拦下而非流程自觉
+
+### Revision
+
+Gotchas 增补：证据的测量时刻必须与声称时刻同态——先改资产再写证据的流程，写完证据必须复测一次才允许声称；独立上下文审查是这类自指失真的最后防线。配套结构修复：skillsqa ScanSkill 对 decisions.md 豁免 MdAlso 三规则（本任务另一提交）
+
+### Evidence
+
+fix/dc10 会话回顾 + 只读审查 I-1 项（ad137cd 修复）；ScanSkill 豁免测试 TestScanSkill_DecisionsMdExemptFromMdOnly 四向钉死
