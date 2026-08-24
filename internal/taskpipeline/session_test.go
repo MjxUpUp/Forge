@@ -241,19 +241,19 @@ func TestNewTaskState_HasSessionID(t *testing.T) {
 	}
 }
 
-// TestDetectAgentType_RecognizesAllNineAgents pins the marker-table delegation at the
+// TestDetectAgentType_RecognizesAllSupportedAgents pins the marker-table delegation at the
 // taskpipeline layer: every supported agent resolves via detectAgentType. Before the
 // agentsignals refactor only claude/cursor/copilot/windsurf did; reasonix/kimi/codex/
 // opencode/cline were invisible to session attribution — the "53% agent_type missing"
 // root cause. This validates the full path runHook→EnsureSession→detectAgentType→
 // agentsignals.ProjectAgentMarker end to end.
 //
-// TestDetectAgentType_RecognizesAllNineAgents 在 taskpipeline 层钉死标记表委托：每个
+// TestDetectAgentType_RecognizesAllSupportedAgents 在 taskpipeline 层钉死标记表委托：每个
 // 支持的 agent 都能经 detectAgentType 解析。agentsignals 重构前只有 claude/cursor/
 // copilot/windsurf 行；reasonix/kimi/codex/opencode/cline 对会话归因不可见——"53%
 // agent_type 缺失"根因。本测试端到端验证 runHook→EnsureSession→detectAgentType→
 // agentsignals.ProjectAgentMarker 全链路。
-func TestDetectAgentType_RecognizesAllNineAgents(t *testing.T) {
+func TestDetectAgentType_RecognizesAllSupportedAgents(t *testing.T) {
 	cases := []struct {
 		name  string
 		setup func(dir string)
@@ -269,6 +269,7 @@ func TestDetectAgentType_RecognizesAllNineAgents(t *testing.T) {
 		{`clinerules`, func(d string) { os.MkdirAll(filepath.Join(d, `.clinerules`), 0755) }, `cline`},
 		{`kimi`, func(d string) { os.MkdirAll(filepath.Join(d, `.kimi-code`), 0755) }, `kimi`},
 		{`reasonix`, func(d string) { os.MkdirAll(filepath.Join(d, `.reasonix`), 0755) }, `reasonix`},
+		{`zcode`, func(d string) { os.MkdirAll(filepath.Join(d, `.zcode`), 0755) }, `zcode`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
