@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -118,6 +119,15 @@ type Hit struct {
 	//
 	// PromptLen 是命中时 prompt 的 rune 长度。
 	PromptLen int
+	// Reminder marks a repeat injection within the session budget (FireCount ≥ 1 but below
+	// MaxSessionSkillFires) — the render layer shortens it to a one-line reminder instead
+	// of the full block (the agent already has the skill in context; 2026-08 wire evidence:
+	// repeat injections are never re-read).
+	//
+	// Reminder 标记 session 预算内的重复注入（FireCount ≥ 1 且未达 MaxSessionSkillFires）
+	// ——渲染层把它压成一行短提醒而非完整块（agent 上下文中已有该 skill；2026-08 wire
+	// 证据：重复注入从不被重读）。
+	Reminder bool
 }
 
 // MatchSource* name the source text a keyword hit (priority order for attribution).
@@ -148,7 +158,33 @@ const (
 	// SuppressStopCap：Stop 事件触到 per-session MaxStopRounds 上限（防死循环兜底——
 	// cli 层每 session 记一条 warn advisory，不逐 skill、不逐次；review M2）。
 	SuppressStopCap = "stop-max-rounds"
+	// SuppressSessionCap: the skill already fired MaxSessionSkillFires times in this
+	// session — hard ceiling, no cooldown expiry will let it through again. Counted into
+	// the same suppression counter as cooldown (never backfilled — there is no next fire;
+	// the documented G5 end-of-session gap applies by design).
+	//
+	// SuppressSessionCap：该 skill 本 session 已注入 MaxSessionSkillFires 次——硬封顶，
+	// cooldown 过期也不再放行。与 cooldown 共用同一抑制计数器（永不回填——没有下次
+	// 触发；文档化的 G5 session 末段缺口在此天然适用）。
+	SuppressSessionCap = "session-cap"
+	// SuppressEventCap: the skill matched this event but lost the per-event MaxHitsPerEvent
+	// ranking — NOT marked (no cooldown burned), so it stays eligible on the next event.
+	// Counted into the suppression counter for observability.
+	//
+	// SuppressEventCap：该 skill 本次事件命中但在 MaxHitsPerEvent 单次上限排序中落选
+	// ——不 Mark（不消耗 cooldown），下个事件仍可命中。计入抑制计数器供观测。
+	SuppressEventCap = "event-cap"
 )
+
+// MaxHitsPerEvent 单次事件最多注入的 skill 数（2026-08-18 证据：一条 UserPromptSubmit
+// 6ms 内命中 6 个 skill 全部注入——单次注入要与用户 prompt 争夺注意力，超上限的按
+// RankHits 排序落选、文案尾部一句带过）。
+//
+// MaxHitsPerEvent caps how many skills one event injects (2026-08-18 evidence: one
+// UserPromptSubmit fired 6 skills within 6ms, all injected — an injection competes with
+// the user's own prompt for attention; overflow loses the RankHits ordering and gets a
+// one-line tail note).
+const MaxHitsPerEvent = 3
 
 // Suppressed is a would-have-fired hit blocked by noise control. Returned (not recorded)
 // by Eval — the cli layer owns the side effects: cooldown counts backfill into the next
@@ -319,6 +355,24 @@ func Eval(ctx Context, all []SkillTriggers, noise NoiseController) (hits []Hit, 
 			seen[st.Skill] = true
 			continue
 		}
+		// session 硬封顶（MaxSessionSkillFires）：cooldown 只限频不限量，总量顶在 cooldown
+		// 判定之后（cooldown 内的命中归因 cooldown，语义不变）。预算内的重复注入标
+		// Reminder，由渲染层压成短提醒。
+		//
+		// Session hard cap (MaxSessionSkillFires): cooldown rate-limits but does not
+		// volume-limit, so the total cap sits AFTER the cooldown verdict (hits inside the
+		// cooldown window keep the cooldown attribution). In-budget repeats are flagged
+		// Reminder for the render layer to shorten.
+		reminder := false
+		if noise != nil {
+			if cnt := noise.FireCount(ctx.SessionID, st.Skill); cnt >= MaxSessionSkillFires {
+				suppressed = append(suppressed, Suppressed{Skill: st.Skill, Trigger: matched, Cause: SuppressSessionCap})
+				seen[st.Skill] = true
+				continue
+			} else if cnt > 0 {
+				reminder = true
+			}
+		}
 		// sig 必须在 Cooldown 覆写**之前**对声明内容计算（review M1：覆写后计算会让缺省
 		// cooldown 的规则带上 60/120 等归一化值，同一声明规则劈裂出多个 sig，纵向 per-rule
 		// 统计与 SKILL.md 声明永远 join 不上）。
@@ -348,10 +402,67 @@ func Eval(ctx Context, all []SkillTriggers, noise NoiseController) (hits []Hit, 
 			TriggerSig:     sig,
 			PromptHash:     inputHash,
 			PromptLen:      utf8.RuneCountInString(ctx.Prompt),
+			Reminder:       reminder,
 		})
 		seen[st.Skill] = true
 	}
+	// 单次事件注入上限：超 MaxHitsPerEvent 的按 RankHits 排序落选，降级为 SuppressEventCap
+	//（不 Mark——落选不消耗 cooldown/封顶预算，下个事件仍可命中）。排序在截取前就地完成，
+	// 故返回的 hits 顺序即注入顺序。有意的两态语义：命中数 ≤ 上限时不排序、保持声明序
+	//（LoadAll 目录序），排序只在超上限需要裁决落选者时才生效——小命中集下声明序稳定
+	// 可预期，避免排序给常见路径引入无谓的顺序扰动。
+	//
+	// Per-event injection cap: beyond MaxHitsPerEvent the RankHits ordering decides; losers
+	// degrade to SuppressEventCap (NOT marked — losing burns no cooldown/cap budget, the
+	// skill stays eligible on the next event). The sort runs in place before truncation,
+	// so the returned hits are in injection order. Deliberate two-state semantics: at or
+	// below the cap hits keep declaration order (LoadAll directory order) unsorted — the
+	// ranking only kicks in when the cap forces a loser verdict, keeping the common small
+	// hit set stable and predictable instead of needlessly reshuffling it.
+	if len(hits) > MaxHitsPerEvent {
+		RankHits(hits)
+		for _, h := range hits[MaxHitsPerEvent:] {
+			suppressed = append(suppressed, Suppressed{Skill: h.Skill, Trigger: h.Trigger, Cause: SuppressEventCap})
+		}
+		hits = hits[:MaxHitsPerEvent]
+	}
 	return hits, suppressed
+}
+
+// RankHits 就地把 hits 按注入优先序稳定排序：关键词命中优先于 condition-only（前者
+// 自带「命中了哪个词」的具体证据）；同类内按来源优先序 prompt > command > stdout >
+// stderr > output（用户刚说的话最切题）。其余保持声明顺序（stable）。
+//
+// RankHits stably sorts hits in place by injection priority: keyword hits before
+// condition-only (the former carry concrete "which word fired" evidence); within a class,
+// by source priority prompt > command > stdout > stderr > output (what the user just
+// said is the most topical). Everything else keeps declaration order (stable).
+func RankHits(hits []Hit) {
+	sort.SliceStable(hits, func(i, j int) bool {
+		return hitRank(hits[i]) < hitRank(hits[j])
+	})
+}
+
+// hitRank 越小越优先（condition-only 统一排在所有关键词命中之后）。
+//
+// hitRank: smaller wins (condition-only uniformly ranks behind every keyword hit).
+func hitRank(h Hit) int {
+	if h.MatchedKeyword == "" {
+		return 100
+	}
+	switch h.MatchSource {
+	case MatchSourcePrompt:
+		return 0
+	case MatchSourceCommand:
+		return 1
+	case MatchSourceStdout:
+		return 2
+	case MatchSourceStderr:
+		return 3
+	case MatchSourceOutput:
+		return 4
+	}
+	return 50
 }
 
 // triggerMatches 判定单条 trigger 是否命中当前 context（event + match + when + keywords），

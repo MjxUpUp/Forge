@@ -884,34 +884,65 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 			TaskRef: state.TaskRef,
 			Detail:  cheatScanDetail(cheats),
 		})
+		// findingsDirty 汇总 cheat/unused 两段是否有新指纹入集合，两段之后统一持久化一次。
+		//
+		// findingsDirty accumulates whether either scan section added new fingerprints;
+		// the state is persisted once after both sections.
+		findingsDirty := false
 		if len(cheats) > 0 {
-			fmt.Fprintf(os.Stderr, "%scheat-scan 命中 %d 处疑似 AI 作弊模式（advisory 不阻塞；机械检测供 review 核查）\n", GateAdvisory("[task-verify] "), len(cheats))
-			for _, c := range cheats {
-				loc := c.File
-				if c.Line > 0 {
-					loc = c.File + ":" + strconv.Itoa(c.Line)
-				}
-				fmt.Fprintf(os.Stderr, "  ⚠ [%s|%s] %s — %s\n", c.Severity, c.Pattern, loc, c.Snippet)
-			}
-			// comment-as-debt specific nudge (plan B): commenting a problem ≠ solving it (the
-			// anti-pattern at level 0 of the laziness ladder). Spell out the handling path for the
-			// agent — convert to a forge task for tracking (intent preserved, gated) or fix it
-			// inline. Without this, the agent easily dismisses low-severity comment-as-debt as
-			// noise, 'marking it counts as doing it'. Raw string avoids Windows input double-quote
-			// corrosion.
+			// 同 finding 抑制（2026-08 噪音审计）：指纹（规则|文件：行）已报告过的 finding 不
+			// 再逐条重发——修复后 verify 重试重扫同一 diff，否则会逐字重发（Translate(method)
+			// 8 次）。checklog 条目保持全量（审计真相），抑制的只是 agent 面向的重复提醒。
 			//
-			// comment-as-debt 专属 nudge（B 方案）：注释标识问题 ≠ 解决（懒惰阶梯反第 0
-			// 级）。把处置路径明确告诉 agent——转 forge task 跟踪（保留意图、被门禁
-			// 追踪）或当场修。不加则 agent 易把低 severity 的 comment-as-debt 当噪音
-			// 忽略，「标注了就当做了」。raw string 规避 Windows 输入双引号腐蚀。
-			debtCount := 0
+			// Same-finding suppression (2026-08 noise audit): findings whose fingerprint
+			// (rule|file:line) was already reported are not re-emitted line by line — a
+			// post-fix verify retry re-scans the same diff and would otherwise re-emit
+			// them verbatim (Translate(method) 8 times). The checklog entry stays full
+			// (audit truth); only the agent-facing repeat nudge is suppressed.
+			cheatKeys := make([]string, len(cheats))
+			for i, c := range cheats {
+				cheatKeys[i] = cheatFindingKey(c)
+			}
+			fresh, dirty := filterUnreported(state, cheatKeys)
+			findingsDirty = findingsDirty || dirty
+			freshSet := keySet(fresh)
+			var freshCheats []CheatFinding
 			for _, c := range cheats {
-				if c.Pattern == CheatCommentDebt {
-					debtCount++
+				if freshSet[cheatFindingKey(c)] {
+					freshCheats = append(freshCheats, c)
 				}
 			}
-			if debtCount > 0 {
-				fmt.Fprintf(os.Stderr, "%s"+`%d 处 comment-as-debt——注释标识问题 ≠ 解决（懒惰阶梯反第 0 级）。处置：当场修掉；或转 forge task start --ref <ref> --title <描述> 跟踪（本任务完结后开）。加载 implementation-discipline skill（/implementation-discipline）按懒惰阶梯归位。advisory 不阻塞。`+"\n", GateAdvisory("[task-verify] "), debtCount)
+			if len(freshCheats) == 0 {
+				fmt.Fprintf(os.Stderr, "%scheat-scan 命中 %d 处疑似 AI 作弊模式%s（advisory 不阻塞）\n", GateAdvisory("[task-verify] "), len(cheats), allReportedNote())
+			} else {
+				fmt.Fprintf(os.Stderr, "%scheat-scan 命中 %d 处疑似 AI 作弊模式%s（advisory 不阻塞；机械检测供 review 核查）\n", GateAdvisory("[task-verify] "), len(freshCheats), suppressNote(len(cheats)-len(freshCheats)))
+				for _, c := range freshCheats {
+					loc := c.File
+					if c.Line > 0 {
+						loc = c.File + ":" + strconv.Itoa(c.Line)
+					}
+					fmt.Fprintf(os.Stderr, "  ⚠ [%s|%s] %s — %s\n", c.Severity, c.Pattern, loc, c.Snippet)
+				}
+				// comment-as-debt specific nudge (plan B): commenting a problem ≠ solving it (the
+				// anti-pattern at level 0 of the laziness ladder). Spell out the handling path for the
+				// agent — convert to a forge task for tracking (intent preserved, gated) or fix it
+				// inline. Without this, the agent easily dismisses low-severity comment-as-debt as
+				// noise, 'marking it counts as doing it'. Raw string avoids Windows input double-quote
+				// corrosion.
+				//
+				// comment-as-debt 专属 nudge（B 方案）：注释标识问题 ≠ 解决（懒惰阶梯反第 0
+				// 级）。把处置路径明确告诉 agent——转 forge task 跟踪（保留意图、被门禁
+				// 追踪）或当场修。不加则 agent 易把低 severity 的 comment-as-debt 当噪音
+				// 忽略，「标注了就当做了」。raw string 规避 Windows 输入双引号腐蚀。
+				debtCount := 0
+				for _, c := range freshCheats {
+					if c.Pattern == CheatCommentDebt {
+						debtCount++
+					}
+				}
+				if debtCount > 0 {
+					fmt.Fprintf(os.Stderr, "%s"+`%d 处 comment-as-debt——注释标识问题 ≠ 解决（懒惰阶梯反第 0 级）。处置：当场修掉；或转 forge task start --ref <ref> --title <描述> 跟踪（本任务完结后开）。加载 implementation-discipline skill（/implementation-discipline）按懒惰阶梯归位。advisory 不阻塞。`+"\n", GateAdvisory("[task-verify] "), debtCount)
+				}
 			}
 		}
 
@@ -942,13 +973,45 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 			Detail:  unusedScanDetail(unused),
 		})
 		if len(unused) > 0 {
-			fmt.Fprintf(os.Stderr, "%s"+`unused-scan 发现 %d 个疑似未接线的导出符号（advisory 不阻塞；层1机械检测：确认已挂入调用链/registry/路由，或属外部消费者则忽略）`+"\n", GateAdvisory("[task-verify] "), len(unused))
+			// 同 finding 抑制（同 cheat-scan 段注释）：指纹 规则|文件：行|符号。
+			//
+			// Same-finding suppression (see the cheat-scan section's comment):
+			// fingerprint = rule|file:line|symbol.
+			unusedKeys := make([]string, len(unused))
+			for i, u := range unused {
+				unusedKeys[i] = unusedFindingKey(u)
+			}
+			fresh, dirty := filterUnreported(state, unusedKeys)
+			findingsDirty = findingsDirty || dirty
+			freshSet := keySet(fresh)
+			var freshUnused []UnusedFinding
 			for _, u := range unused {
-				loc := u.File
-				if u.Line > 0 {
-					loc = u.File + ":" + strconv.Itoa(u.Line)
+				if freshSet[unusedFindingKey(u)] {
+					freshUnused = append(freshUnused, u)
 				}
-				fmt.Fprintf(os.Stderr, "  ⚠ [%s] %s — %s\n", u.Kind, loc, u.Symbol)
+			}
+			if len(freshUnused) == 0 {
+				fmt.Fprintf(os.Stderr, "%s"+`unused-scan 发现 %d 个疑似未接线的导出符号%s（advisory 不阻塞）`+"\n", GateAdvisory("[task-verify] "), len(unused), allReportedNote())
+			} else {
+				fmt.Fprintf(os.Stderr, "%s"+`unused-scan 发现 %d 个疑似未接线的导出符号%s（advisory 不阻塞；层1机械检测：确认已挂入调用链/registry/路由，或属外部消费者则忽略）`+"\n", GateAdvisory("[task-verify] "), len(freshUnused), suppressNote(len(unused)-len(freshUnused)))
+				for _, u := range freshUnused {
+					loc := u.File
+					if u.Line > 0 {
+						loc = u.File + ":" + strconv.Itoa(u.Line)
+					}
+					fmt.Fprintf(os.Stderr, "  ⚠ [%s] %s — %s\n", u.Kind, loc, u.Symbol)
+				}
+			}
+		}
+		// 两段扫描若有新指纹入集合，持久化一次（best-effort；失败最坏下次重报一遍，
+		// 优于阻塞 gate）。与 DesignPhases 持久化同款模式。
+		//
+		// Persist once if either scan added new fingerprints (best-effort; a failure at
+		// worst re-reports once next run — better than blocking the gate). Same pattern
+		// as the DesignPhases persistence.
+		if findingsDirty {
+			if err := SaveTaskState(root, state); err != nil {
+				fmt.Fprintln(os.Stderr, "[task-verify] reported-findings persist failed:", err)
 			}
 		}
 
@@ -1443,14 +1506,26 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 	// Plan nor Goal recorded skipped the proposal stage — direction errors then surface at
 	// review time, the expensive end of the implement→review→rework loop. Runs AFTER the
 	// code-changes check so failed/empty implement attempts don't spam the log on every
-	// retry. Always recorded once implementation is real (plan present = Passed:true);
-	// absence is advisory, never blocks (small fixes legitimately skip a written plan).
+	// retry. Absence is advisory, never blocks (small fixes legitimately skip a written plan).
+	//
+	// Recorded ONCE PER TASK: the first real implementation records the entry (plan present
+	// = Passed:true) and fires the nudge; later implement retries skip both. Once-per-task
+	// (2026-08 noise audit): the identical advisory re-fired up to 3 times on one task
+	// (30 identical entries across 8 tasks) — after the first firing the message adds
+	// nothing. PlanFirstAdvisoryFired persists the firing in task state, so retries
+	// (each reloading state from disk) skip both the entry and the stderr nudge.
 	//
 	// 4. 方案前置记录（shift-left）：产出了真实改动但 Plan/Goal 皆空的代码任务 = 跳过
 	// 方案阶段——方向错误会拖到审查环节才暴露，那是 实现→审查→返工 循环最贵的一端。
-	// 放在代码改动校验之后：失败/空改的 implement 重试不会每轮刷日志。实现坐实后总是
-	// 记录（有方案=Passed:true）；无方案仅 advisory，绝不阻塞（小修复合法地不写方案）。
-	if state != nil {
+	// 放在代码改动校验之后：失败/空改的 implement 重试不会每轮刷日志。无方案仅
+	// advisory，绝不阻塞（小修复合法地不写方案）。
+	//
+	// 每任务记录一次：实现首次坐实时落条目（有方案=Passed:true）并发提示，之后的
+	// implement 重试两者都跳过。每任务一次（2026-08 噪音审计）：同一 advisory 在单
+	// 任务上最多重复 3 次（8 个任务 30 条全同文案）——首次之后信息量不再增长。
+	// PlanFirstAdvisoryFired 把已发标记持久化进 task state，重试（每次从磁盘重载
+	// state）跳过条目与 stderr 提示。
+	if state != nil && !state.PlanFirstAdvisoryFired {
 		hasPlan := state.Plan != "" || state.Goal != ""
 		entry := &checklog.Entry{
 			Check:   checklog.CheckPlanFirst,
@@ -1466,6 +1541,18 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 			fmt.Fprintf(os.Stderr, "%s\n", entry.Detail)
 		}
 		recordAudit(root, entry)
+		// 先置标记再持久化（best-effort）：即便落盘失败，本进程内的重试也不会重发；
+		// 跨进程重试最坏重发一次，优于静默丢失「已记录」的语义。与 DesignPhases 持久化
+		// 同款模式（executor.go task-verify 段）。
+		//
+		// Flag first, persist second (best-effort): even if the write fails, retries
+		// within this process stay silent; a cross-process retry re-fires at most once —
+		// better than silently losing the "already recorded" semantics. Same pattern as
+		// the DesignPhases persistence (executor.go task-verify section).
+		state.PlanFirstAdvisoryFired = true
+		if err := SaveTaskState(root, state); err != nil {
+			fmt.Fprintln(os.Stderr, "[task-implement] plan-first marker persist failed:", err)
+		}
 	}
 
 	return &ExecuteResult{
