@@ -70,3 +70,21 @@ description 审计合格未改动 + 新建 evals.json 10 条
 ### Evidence
 
 docs/skills-value-audit-2026-08-02.md
+
+## [d-18ce9b939ec6c708-4188f90e] accept
+
+- **Skill**: compile-fix-loop
+- **DecidedAt**: 2026-08-24T02:06:00Z
+- **By**: zcode
+
+### Diagnosis
+
+audit DC-10：TypeScript 编译命令 `npx tsc --noEmit -p .` 1 处 MEDIUM——npx 运行时可能即时拉注册表 tsc 而非项目锁定的 TypeScript 版本，检查结果与项目实际版本脱钩，且 SKILL.md 行是逐字 agent 指令（供应链执行面）
+
+### Revision
+
+改 `npm exec -- tsc --noEmit -p .`（项目本地依赖、lockfile 锁定版本，不经注册表即时拉取）
+
+### Evidence
+
+forge skills audit 全库 finding 9→0；validate 52/52；eval-report vs baseline（run-1787537020-c7b56032）：trigger 100%→100%、not-trigger 100%→100%、净回归 0（机器判据 accept）

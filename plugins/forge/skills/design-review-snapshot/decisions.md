@@ -87,3 +87,21 @@ metadata.triggers新增UserPromptSubmit关键词(导成设计图/导出设计图
 ### Evidence
 
 给设计看/导设计图类请求多次出现,触发覆盖缺口
+
+## [d-18ce9b9cb60064e8-8d95ff36] accept
+
+- **Skill**: design-review-snapshot
+- **DecidedAt**: 2026-08-24T02:06:39Z
+- **By**: zcode
+
+### Diagnosis
+
+audit DC-10 共 4 处 MEDIUM：SKILL.md 前置依赖段 + snapshot-script.md 的 npx playwright install/npx tsx/npx vite preview——运行时经注册表即时拉包执行
+
+### Revision
+
+依赖统一 npm i -D（playwright+tsx，lockfile 锁定）+ npm exec 运行；vite preview 改 npm run preview 走项目本地 vite
+
+### Evidence
+
+forge skills audit 全库 finding 9 到 0；validate 52/52；镜像守卫 TestPluginPack_CommittedSkillsMatchGenerator 重生成后绿

@@ -104,3 +104,21 @@ metadata.triggers新增UserPromptSubmit关键词(AI 生成的/AI生成的/AI 写
 ### Evidence
 
 2026-08-16扫描:UI设计类请求为跨项目第三高频簇;触发覆盖47/51,本族全在缺失名单
+
+## [d-18ce9b9cb24de884-4c3623cd] accept
+
+- **Skill**: ai-generated-ui-review
+- **DecidedAt**: 2026-08-24T02:06:39Z
+- **By**: zcode
+
+### Diagnosis
+
+audit DC-10 共 4 处 MEDIUM：SKILL.md/references 的 npx shadcn add 警示文本 + npx jscpd/complexity-report 检测命令——SKILL.md 行是逐字 agent 指令，未锁版本的注册表即时拉取是供应链执行面
+
+### Revision
+
+警示文本改写为不含可复制执行的 npx-包名字面序列；检测命令改为 npm i -D 装 devDependency（lockfile 锁定）后 npm exec 本地运行
+
+### Evidence
+
+forge skills audit 全库 finding 9 到 0；validate 52/52

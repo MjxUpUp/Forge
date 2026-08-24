@@ -67,7 +67,7 @@ grep -r 'NEXT_PUBLIC_' src/ | grep -v '\.d\.ts'
 
 ### Block
 - **非可信 registry 来源**：RCE 注入攻击面（DEV.to "Risk of Registry Injection Attacks with shadcn"）
-- **未审查的 `npx shadcn add <url>`**：执行前未审计 registry.json 内容
+- **未审查来源的 shadcn add `<url>`**（经 `npx` 即时拉取注册表执行、版本未锁）：执行前未审计 registry.json 内容
 - **registry 组件含 postinstall 脚本**：潜在恶意执行
 
 ### 审查步骤
@@ -94,10 +94,12 @@ grep -r 'NEXT_PUBLIC_' src/ | grep -v '\.d\.ts'
 
 ### 检测命令
 ```bash
-# 重复代码
-npx jscpd src/ --threshold 15
+# 先装为 devDependency——版本进 lockfile，可审查可复现（不经注册表即时拉代码执行）
+npm i -D jscpd complexity-report
+# 重复代码（经本地依赖运行）
+npm exec -- jscpd src/ --threshold 15
 # 圈复杂度
-npx complexity-report src/ --maxcc 10
+npm exec -- complexity-report src/ --maxcc 10
 # bundle 分析
 ANALYZE=true npm run build
 ```
