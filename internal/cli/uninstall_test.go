@@ -371,7 +371,7 @@ func TestUninstall_StripsCodeBuddyHooks(t *testing.T) {
 // 会静默躲过卸载。新增 host：随名册条目同步更新期望集合；两处都忘仍可能，但现在
 // 必须在 diff 里无视本测试的名字。
 func TestUninstall_StripRosterPinned(t *testing.T) {
-	want := []string{"cline", "codebuddy", "codex", "cursor", "opencode", "reasonix", "windsurf"}
+	want := []string{"cline", "codebuddy", "codex", "cursor", "opencode", "reasonix", "windsurf", "zcode"}
 	got := make([]string, 0, len(userLevelStripRoster))
 	for name := range userLevelStripRoster {
 		got = append(got, name)

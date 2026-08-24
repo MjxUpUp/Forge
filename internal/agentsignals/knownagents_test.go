@@ -22,7 +22,7 @@ func TestKnownAgents_ContainsCanonicalSet(t *testing.T) {
 		t.Fatal("KnownAgents 不应为空（assign 校验依赖此集）")
 	}
 	// Every marker-bearing agent must be present.
-	want := []string{`claude-code`, `cursor`, `copilot`, `windsurf`, `codex`, `opencode`, `cline`, `kimi`, `reasonix`}
+	want := []string{`claude-code`, `cursor`, `copilot`, `windsurf`, `codex`, `opencode`, `cline`, `kimi`, `reasonix`, `zcode`}
 	in := map[string]bool{}
 	for _, a := range got {
 		if in[a] {

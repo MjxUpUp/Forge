@@ -34,6 +34,7 @@ func TestProjectAgentMarker_AllSupportedAgents(t *testing.T) {
 		{`clinerules`, func(d string) { os.MkdirAll(filepath.Join(d, `.clinerules`), 0755) }, `cline`},
 		{`kimi`, func(d string) { os.MkdirAll(filepath.Join(d, `.kimi-code`), 0755) }, `kimi`},
 		{`reasonix`, func(d string) { os.MkdirAll(filepath.Join(d, `.reasonix`), 0755) }, `reasonix`},
+		{`zcode`, func(d string) { os.MkdirAll(filepath.Join(d, `.zcode`), 0755) }, `zcode`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

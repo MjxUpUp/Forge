@@ -14,10 +14,10 @@ import (
 )
 
 // isolateDoctorEnv redirects every agent-bridge path helper + PATH into a temp root so
-// `forge doctor` runs hermetically: all 9 hosts report missing, no real binary is probed.
+// `forge doctor` runs hermetically: all 10 hosts report missing, no real binary is probed.
 //
 // isolateDoctorEnv 把所有 agent-bridge 路径 helper + PATH 重定向进临时根，让
-// `forge doctor` 密封运行：9 个 host 全部 missing，不探测任何真实二进制。
+// `forge doctor` 密封运行：10 个 host 全部 missing，不探测任何真实二进制。
 func isolateDoctorEnv(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
@@ -34,10 +34,10 @@ func isolateDoctorEnv(t *testing.T) string {
 	return root
 }
 
-// TestDoctorCmd_Text human 输出：隔离环境下 9 host 全 missing、标题含版本、无 PATH 段
+// TestDoctorCmd_Text human 输出：隔离环境下 10 host 全 missing、标题含版本、无 PATH 段
 // （PATH 无 forge 可执行文件时不打印多副本警告）。
 //
-// TestDoctorCmd_Text human output: isolated env → 9 hosts all missing, header carries
+// TestDoctorCmd_Text human output: isolated env → 10 hosts all missing, header carries
 // the version, no PATH section (no multi-copy warning when PATH holds no forge binary).
 func TestDoctorCmd_Text(t *testing.T) {
 	isolateDoctorEnv(t)
@@ -51,7 +51,7 @@ func TestDoctorCmd_Text(t *testing.T) {
 	if !strings.Contains(out, "hosts:") {
 		t.Errorf("输出应含 hosts: 段，实得 %q", out)
 	}
-	for _, h := range []string{"claude-code", "codex", "cursor", "windsurf", "kimi", "reasonix", "codebuddy", "cline", "opencode"} {
+	for _, h := range []string{"claude-code", "codex", "cursor", "windsurf", "kimi", "reasonix", "codebuddy", "cline", "opencode", "zcode"} {
 		if !strings.Contains(out, h) {
 			t.Errorf("输出应含 host %s，实得 %q", h, out)
 		}
@@ -61,10 +61,10 @@ func TestDoctorCmd_Text(t *testing.T) {
 	}
 }
 
-// TestDoctorCmd_JSON --json 输出合法 JSON 且 Report 形状正确（self_version + 9 hosts）。
+// TestDoctorCmd_JSON --json 输出合法 JSON 且 Report 形状正确（self_version + 10 hosts）。
 //
 // TestDoctorCmd_JSON --json emits valid JSON with the right Report shape
-// (self_version + 9 hosts).
+// (self_version + 10 hosts).
 func TestDoctorCmd_JSON(t *testing.T) {
 	isolateDoctorEnv(t)
 	var buf bytes.Buffer
@@ -85,8 +85,8 @@ func TestDoctorCmd_JSON(t *testing.T) {
 	if err := json.Unmarshal(buf.Bytes(), &rep); err != nil {
 		t.Fatalf("--json 输出应为合法 Report JSON: %v\n%s", err, buf.String())
 	}
-	if len(rep.Hosts) != 9 {
-		t.Fatalf("应含 9 个 host，got %d", len(rep.Hosts))
+	if len(rep.Hosts) != 10 {
+		t.Fatalf("应含 10 个 host，got %d", len(rep.Hosts))
 	}
 	for _, h := range rep.Hosts {
 		if h.Status != doctor.StatusMissing {
