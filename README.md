@@ -299,7 +299,8 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 
 | 命令 | 说明 |
 |------|------|
-| `forge hazard confirm <命令>` | 登记一次高危命令确认（5min 内同命令重试放行） |
+| `forge hazard confirm --last` | 确认最近一条被拦命令（从事件日志取指纹，零复制转写，推荐） |
+| `forge hazard confirm <命令> [--fingerprint <hex>]` | 登记一次高危命令确认（5min 内同命令重试放行；`--fingerprint` 回传 hook 输出的 hex 指纹） |
 | `forge hazard status` | 列出当前有效确认及剩余时间 |
 
 **写入范围冻结**：`forge freeze` 把 on-demand-guards 的 /freeze 目录锁定从「agent 每回合自检」的 prompt 型护栏落地为真 hook——激活后 freeze-guard hook（PreToolUse Write|Edit，排在 task-guard 之前优先判定）硬阻断所有冻结路径之外的写入，长会话/压缩后不漂移。支持多路径、相对路径（相对当前目录归一化）、Windows 大小写不敏感比较。

@@ -206,3 +206,93 @@ func TestAppendEvent_ConcurrentSafe(t *testing.T) {
 		t.Fatalf("concurrent append lost events: expected %d, got %d", N, len(events))
 	}
 }
+
+// TestConfirmLastBlock verifies the copy-free HITL path: the newest block event's
+// fingerprint (written by the hook at block time — authoritative by construction) gets
+// confirmed without any transcription. Covers: newest-wins ordering, skipping
+// fingerprint-less block events, IsConfirmed flips true, and the no-events error.
+//
+// TestConfirmLastBlock 验证免复制 HITL 路径：最新 block 事件的指纹（hook 拦截时写入，
+// 天然权威）被确认且零转写。覆盖：最新者胜、跳过无指纹 block 事件、IsConfirmed 翻真、
+// 无事件时报错。
+func TestConfirmLastBlock(t *testing.T) {
+	p := forgedatatest.ForDataDir(t.TempDir())
+
+	// No events yet → explicit error.
+	//
+	// 尚无事件 → 明确报错。
+	if _, _, err := ConfirmLastBlock(p); err == nil {
+		t.Fatal("ConfirmLastBlock with empty event log must error")
+	}
+
+	// Older block (fingerprinted) + a fingerprint-less block + the newest block.
+	// Newest WITH fingerprint must win — not merely the last line.
+	//
+	// 旧 block（带指纹）+ 一条无指纹 block + 最新 block。带指纹的最新者胜——而非
+	// 单纯最后一行。
+	oldCmd := "git push --force origin old"
+	newCmd := "git push --delete some-branch"
+	if err := AppendEvent(p, Event{Type: EventBlock, Fingerprint: Fingerprint(oldCmd), Command: oldCmd}); err != nil {
+		t.Fatal(err)
+	}
+	if err := AppendEvent(p, Event{Type: EventBlock, Fingerprint: "", Command: "unrecoverable"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := AppendEvent(p, Event{Type: EventRelease, Fingerprint: Fingerprint(oldCmd), Command: oldCmd}); err != nil {
+		t.Fatal(err)
+	}
+	if err := AppendEvent(p, Event{Type: EventBlock, Fingerprint: Fingerprint(newCmd), Command: newCmd}); err != nil {
+		t.Fatal(err)
+	}
+
+	fp, cmd, err := ConfirmLastBlock(p)
+	if err != nil {
+		t.Fatalf("ConfirmLastBlock: %v", err)
+	}
+	if cmd != newCmd || fp != Fingerprint(newCmd) {
+		t.Fatalf("newest fingerprinted block must win, got cmd=%q fp=%s", cmd, fp)
+	}
+
+	ok, err := IsConfirmed(p, fp)
+	if err != nil || !ok {
+		t.Fatalf("after ConfirmLastBlock, IsConfirmed(newest) must be true (err=%v)", err)
+	}
+	// Only the newest is confirmed; the older block stays unconfirmed (per-action, not carte blanche).
+	//
+	// 仅最新者被确认；旧 block 保持未确认（按次确认，不是空白授权）。
+	okOld, _ := IsConfirmed(p, Fingerprint(oldCmd))
+	if okOld {
+		t.Fatal("ConfirmLastBlock must not confirm older blocks")
+	}
+	// The confirm registration must itself leave an audit event (writeConfirmation funnel).
+	//
+	// 确认登记自身必须留下审计事件（writeConfirmation 漏斗）。
+	events, err := LoadEvents(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sawConfirm := false
+	for _, e := range events {
+		if e.Type == EventConfirm && e.Fingerprint == fp {
+			sawConfirm = true
+		}
+	}
+	if !sawConfirm {
+		t.Fatal("ConfirmLastBlock must append a confirm event for audit")
+	}
+}
+
+// TestConfirmLastBlock_OnlyFingerprintlessBlocks errors out instead of confirming
+// something arbitrary: fingerprint-less block events are unconfirmable.
+//
+// TestConfirmLastBlock_OnlyFingerprintlessBlocks 报错而非随意确认：无指纹的
+// block 事件本就不可确认。
+func TestConfirmLastBlock_OnlyFingerprintlessBlocks(t *testing.T) {
+	p := forgedatatest.ForDataDir(t.TempDir())
+	if err := AppendEvent(p, Event{Type: EventBlock, Fingerprint: "", Command: "x"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ConfirmLastBlock(p); err == nil {
+		t.Fatal("ConfirmLastBlock with only fingerprint-less blocks must error")
+	}
+}

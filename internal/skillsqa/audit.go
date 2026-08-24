@@ -270,6 +270,59 @@ func auditorsForExt(ext string) []Rule {
 	return out
 }
 
+// decisionsMdFile is the skill-root decision-history filename with a NARROW
+// exemption: DC-10 (MEDIUM advisory) only, and only at the skill root.
+//
+// Boundary decisions (review round 1 tightened the initial draft):
+//   - DC-10 only: the 2026-08-24 fix/dc10 incident that motivated this exemption was
+//     entirely DC-10 (MEDIUM, non-blocking advisory) — an honest Diagnosis quoting the
+//     removed `npx`+pkg form re-introduced the pattern and silently staled the
+//     pre-append "audit clean" evidence (9→0 claimed, 9→3 real; caught by independent
+//     review). DC-8/DC-9 stay ACTIVE on decisions.md despite the same self-reference
+//     argument: they are CRITICAL and installation-blocking (any-CRITICAL → block), so
+//     their FN cost (a supply-chain payload hidden in a bundled decisions.md installs
+//     clean) dwarfs their FP cost (a rare loud block on a decision quoting a removed
+//     curl|sh form — visible, appealable, fixable by hyphen-avoidance). DC-10's FN cost
+//     is bounded by it being advisory-only in scoring.
+//   - Skill root only (rel == "decisions.md"): a decisions.md anywhere deeper
+//     (references/decisions.md) is NOT the canonical decision history — content there
+//     is teaching/reference material and stays fully scanned.
+//
+// Injection/exfil/leak rules scan decisions.md unconditionally (never exempted): those
+// patterns are not part of a legitimate decision record, so a hit stays a real finding.
+//
+// decisionsMdFile 是 skill 根级决策历史文件名，带收窄豁免：仅 DC-10（MEDIUM
+// advisory）、仅 skill 根级。
+//
+// 边界决策（审查第 1 轮收紧了初稿）：
+//   - 仅 DC-10：催生本豁免的 2026-08-24 fix/dc10 事故全部是 DC-10（MEDIUM、非阻断
+//     advisory）——如实的 Diagnosis 引用被移除的 npx+包名 形态，重新引入该模式并让
+//     追加前测得的"audit 干净"证据静默过期（声称 9→0、实际 9→3；独立审查拦下）。
+//     DC-8/DC-9 尽管有同样的自指论证，仍对 decisions.md 生效：它们是 CRITICAL 且
+//     阻断安装（any-CRITICAL → block），FN 代价（捆绑 decisions.md 里藏供应链载荷
+//     干净装进主机）远大于 FP 代价（罕见的响亮拦截——可见、可申诉、可用连字符规避
+//     修复）。DC-10 的 FN 代价被其 advisory-only 评分语义兜底。
+//   - 仅 skill 根级（rel == "decisions.md"）：更深层（references/decisions.md）不是
+//     canonical 决策历史——那里的内容是教学/参考材料，维持全量扫描。
+//
+// injection/exfil/leak 规则无条件扫 decisions.md（从不豁免）：那些模式不属于合法
+// 决策记录，命中仍是真 finding。
+const decisionsMdFile = "decisions.md"
+
+// dropRuleID removes the single rule with the given ID from a rule set (no-op if absent).
+//
+// dropRuleID 从规则集中移除指定 ID 的单条规则（不存在则 no-op）。
+func dropRuleID(rules []Rule, id string) []Rule {
+	out := rules[:0:0]
+	for _, r := range rules {
+		if r.ID == id {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
 // ScanSkill runs all applicable auditors on a skill directory and returns deduplicated findings (aligned with audit.py scan_skill).
 //
 // ScanSkill 对 skill 目录跑全部适用审查器，返回去重后的 findings（对齐 audit.py scan_skill）。
@@ -297,7 +350,23 @@ func ScanSkill(skillDir string) ([]Finding, error) {
 			}
 			return nil
 		}
+		rel, _ := filepath.Rel(skillDir, path)
+		rel = filepath.ToSlash(rel)
 		rules := auditorsForExt(strings.ToLower(filepath.Ext(path)))
+		// decisions.md exemption, narrow per review round 1 (see decisionsMdFile):
+		// root-level only (rel == decisionsMdFile — deeper files are reference
+		// material, fully scanned) and DC-10 only (the MEDIUM advisory that produced
+		// the fix/dc10 self-reference incident; CRITICAL DC-8/9 keep scanning — their
+		// install-blocking FN cost dwarfs the FP cost). Injection/exfil/leak never
+		// exempted.
+		//
+		// decisions.md 豁免，按审查第 1 轮收窄（见 decisionsMdFile）：仅根级
+		// （rel == decisionsMdFile——更深层是参考材料，全量扫描）、仅 DC-10（产生
+		// fix/dc10 自指事故的 MEDIUM advisory；CRITICAL 的 DC-8/9 继续扫——其阻断
+		// 安装的 FN 代价远大于 FP 代价）。injection/exfil/leak 从不豁免。
+		if rel == decisionsMdFile {
+			rules = dropRuleID(rules, "DC-10")
+		}
 		if len(rules) == 0 {
 			return nil
 		}
@@ -305,8 +374,6 @@ func ScanSkill(skillDir string) ([]Finding, error) {
 		if rerr != nil {
 			return nil
 		}
-		rel, _ := filepath.Rel(skillDir, path)
-		rel = filepath.ToSlash(rel)
 		s := string(content)
 		lines := strings.Split(s, "\n")
 		for _, r := range rules {
