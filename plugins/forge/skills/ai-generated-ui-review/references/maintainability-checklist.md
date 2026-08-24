@@ -95,6 +95,7 @@ grep -r 'NEXT_PUBLIC_' src/ | grep -v '\.d\.ts'
 ### 检测命令
 ```bash
 # 先装为 devDependency——版本进 lockfile，可审查可复现（不经注册表即时拉代码执行）
+# 审查的是他人项目时：跑完还原 package.json/lockfile（npm i 会写入被审项目，污染审查 diff）
 npm i -D jscpd complexity-report
 # 重复代码（经本地依赖运行）
 npm exec -- jscpd src/ --threshold 15

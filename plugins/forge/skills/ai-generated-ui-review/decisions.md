@@ -113,12 +113,12 @@ metadata.triggers新增UserPromptSubmit关键词(AI 生成的/AI生成的/AI 写
 
 ### Diagnosis
 
-audit DC-10 共 4 处 MEDIUM：SKILL.md/references 的 npx shadcn add 警示文本 + npx jscpd/complexity-report 检测命令——SKILL.md 行是逐字 agent 指令，未锁版本的注册表即时拉取是供应链执行面
+audit DC-10 共 4 处 MEDIUM：SKILL.md/references 的 npx+shadcn-add 警示文本 + npx+jscpd/complexity-report 检测命令——SKILL.md 行是逐字 agent 指令，未锁版本的注册表即时拉取是供应链执行面
 
 ### Revision
 
-警示文本改写为不含可复制执行的 npx-包名字面序列；检测命令改为 npm i -D 装 devDependency（lockfile 锁定）后 npm exec 本地运行
+警示文本改写为不含可复制执行的 npx-包名字面序列；检测命令改为 npm i -D 装 devDependency（lockfile 锁定）后 npm exec 本地运行；审查他库时安装痕迹跑完还原（npm i 会写被审项目的 package.json/lockfile）
 
 ### Evidence
 
-forge skills audit 全库 finding 9 到 0；validate 52/52
+forge skills audit 全库 finding 9→0（含本条决策文本规避自回引后复扫）；validate 52/52

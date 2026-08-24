@@ -96,12 +96,12 @@ metadata.triggers新增UserPromptSubmit关键词(导成设计图/导出设计图
 
 ### Diagnosis
 
-audit DC-10 共 4 处 MEDIUM：SKILL.md 前置依赖段 + snapshot-script.md 的 npx playwright install/npx tsx/npx vite preview——运行时经注册表即时拉包执行
+audit DC-10 共 4 处 MEDIUM：SKILL.md 前置依赖段 + snapshot-script.md 的 npx+playwright-install / npx+tsx / npx+vite-preview——运行时经注册表即时拉包执行
 
 ### Revision
 
-依赖统一 npm i -D（playwright+tsx，lockfile 锁定）+ npm exec 运行；vite preview 改 npm run preview 走项目本地 vite
+依赖统一 npm i -D（playwright+tsx，lockfile 锁定）+ npm exec 运行；vite preview 改 npm exec -- vite preview（不依赖项目预置 preview script，比 npm run preview 稳健）
 
 ### Evidence
 
-forge skills audit 全库 finding 9 到 0；validate 52/52；镜像守卫 TestPluginPack_CommittedSkillsMatchGenerator 重生成后绿
+forge skills audit 全库 finding 9→0（含本条决策文本规避自回引后复扫）；validate 52/52；镜像守卫 TestPluginPack_CommittedSkillsMatchGenerator 重生成后绿
