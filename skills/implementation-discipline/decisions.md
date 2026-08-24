@@ -123,3 +123,21 @@ Gotchas 增补：证据的测量时刻必须与声称时刻同态——先改资
 ### Evidence
 
 fix/dc10 会话回顾 + 只读审查 I-1 项（ad137cd 修复）；ScanSkill 豁免测试 TestScanSkill_DecisionsMdExemptFromMdOnly 四向钉死
+
+## [d-18cea1966210af14-58d62967] accept
+
+- **Skill**: implementation-discipline
+- **DecidedAt**: 2026-08-24T03:56:09Z
+- **By**: zcode
+
+### Diagnosis
+
+复审 I-1：decisions.md 豁免初稿按 basename 匹配任意深度且连 CRITICAL DC-8/9 一起豁免——与自述刻意收窄矛盾，且给安装门禁的阻断性供应链规则开了文件名后门
+
+### Revision
+
+边界收紧：仅 skill 根级（rel 等于 decisions.md）豁免、仅 DC-10（MEDIUM advisory——事故 FP 全部源于它）；DC-8/9 对 decisions.md 继续扫（阻断安装的 FN 代价远大于 FP 代价）；references 下同名文件全量扫描
+
+### Evidence
+
+测试升级为六向钉死（根级豁免 + SKILL.md/references 星号/references 同名文件/DC-8 照扫/注入照扫）；audit 复扫 0 finding；全量 43 包绿

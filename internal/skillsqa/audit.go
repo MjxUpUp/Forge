@@ -270,52 +270,52 @@ func auditorsForExt(ext string) []Rule {
 	return out
 }
 
-// decisionsMdFile is the persistent decision-history filename exempted from MdAlso
-// dangerous_code rules (DC-8/DC-9/DC-10) during ScanSkill.
+// decisionsMdFile is the skill-root decision-history filename with a NARROW
+// exemption: DC-10 (MEDIUM advisory) only, and only at the skill root.
 //
-// decisions.md is an append-only audit record whose FUNCTION is to quote past
-// dangerous commands — a Diagnosis line references the exact `npx <pkg>` /
-// `curl | sh` form that was removed (that is the record's evidentiary value).
-// Scanning it with MdAlso rules creates a self-referential trap: any honest
-// decision documenting a supply-chain fix re-introduces the pattern it fixed,
-// and the "audit clean" evidence measured before appending the decision is
-// silently stale after (2026-08-24 fix/dc10 incident: evidence said 9→0, the
-// committed tree held 9→3 because three Diagnosis lines quoted the removed
-// forms; caught only by independent review). Agents then resort to distorted
-// spelling (npx-pkg hyphenation) to dodge the scanner — writing contorts to
-// satisfy the tool, the FP-boundary smell.
+// Boundary decisions (review round 1 tightened the initial draft):
+//   - DC-10 only: the 2026-08-24 fix/dc10 incident that motivated this exemption was
+//     entirely DC-10 (MEDIUM, non-blocking advisory) — an honest Diagnosis quoting the
+//     removed `npx`+pkg form re-introduced the pattern and silently staled the
+//     pre-append "audit clean" evidence (9→0 claimed, 9→3 real; caught by independent
+//     review). DC-8/DC-9 stay ACTIVE on decisions.md despite the same self-reference
+//     argument: they are CRITICAL and installation-blocking (any-CRITICAL → block), so
+//     their FN cost (a supply-chain payload hidden in a bundled decisions.md installs
+//     clean) dwarfs their FP cost (a rare loud block on a decision quoting a removed
+//     curl|sh form — visible, appealable, fixable by hyphen-avoidance). DC-10's FN cost
+//     is bounded by it being advisory-only in scoring.
+//   - Skill root only (rel == "decisions.md"): a decisions.md anywhere deeper
+//     (references/decisions.md) is NOT the canonical decision history — content there
+//     is teaching/reference material and stays fully scanned.
 //
-// Exemption is NARROW by design: only the dangerous_code MdAlso trio is dropped
-// for this one filename. Injection/exfil/leak rules still scan decisions.md —
-// those patterns are never part of a legitimate decision record, so a hit there
-// stays a real finding. SKILL.md and references/*.md remain fully scanned (they
-// ARE verbatim agent instructions).
+// Injection/exfil/leak rules scan decisions.md unconditionally (never exempted): those
+// patterns are not part of a legitimate decision record, so a hit stays a real finding.
 //
-// decisionsMdFile 是 ScanSkill 中豁免 MdAlso 危险代码规则（DC-8/DC-9/DC-10）的
-// 持久决策历史文件名。
+// decisionsMdFile 是 skill 根级决策历史文件名，带收窄豁免：仅 DC-10（MEDIUM
+// advisory）、仅 skill 根级。
 //
-// decisions.md 是 append-only 审计记录，其功能就是引用过去的危险命令——Diagnosis
-// 行会逐字引用被移除的 `npx <包>` / `curl | sh` 形态（这正是记录的证据价值）。对它
-// 跑 MdAlso 规则制造了自指陷阱：任何如实记录供应链修复的决策都会重新引入它修掉的
-// 模式，且追加决策前测得的"audit 干净"证据在追加后静默过期（2026-08-24
-// fix/dc10 事故：证据写 9→0，提交树实际 9→3——三条 Diagnosis 引用了被移除形态；
-// 仅靠独立审查拦下）。agent 于是被迫用扭曲拼写（npx-包名 连字符化）躲扫描器——
-// 写作迁就工具，正是 FP 边界错了的味道。
+// 边界决策（审查第 1 轮收紧了初稿）：
+//   - 仅 DC-10：催生本豁免的 2026-08-24 fix/dc10 事故全部是 DC-10（MEDIUM、非阻断
+//     advisory）——如实的 Diagnosis 引用被移除的 npx+包名 形态，重新引入该模式并让
+//     追加前测得的"audit 干净"证据静默过期（声称 9→0、实际 9→3；独立审查拦下）。
+//     DC-8/DC-9 尽管有同样的自指论证，仍对 decisions.md 生效：它们是 CRITICAL 且
+//     阻断安装（any-CRITICAL → block），FN 代价（捆绑 decisions.md 里藏供应链载荷
+//     干净装进主机）远大于 FP 代价（罕见的响亮拦截——可见、可申诉、可用连字符规避
+//     修复）。DC-10 的 FN 代价被其 advisory-only 评分语义兜底。
+//   - 仅 skill 根级（rel == "decisions.md"）：更深层（references/decisions.md）不是
+//     canonical 决策历史——那里的内容是教学/参考材料，维持全量扫描。
 //
-// 豁免刻意收窄：仅对该文件名丢弃 dangerous_code 的 MdAlso 三条。injection/
-// exfil/leak 规则继续扫 decisions.md——那些模式绝不属于合法决策记录，命中仍是真
-// finding。SKILL.md 与 references/*.md 维持全量扫描（它们才是逐字 agent 指令）。
+// injection/exfil/leak 规则无条件扫 decisions.md（从不豁免）：那些模式不属于合法
+// 决策记录，命中仍是真 finding。
 const decisionsMdFile = "decisions.md"
 
-// dropMdAlsoRules filters MdAlso-routed rules (DC-8/DC-9/DC-10) out of a rule set.
-// Used by ScanSkill for decisions.md (see decisionsMdFile).
+// dropRuleID removes the single rule with the given ID from a rule set (no-op if absent).
 //
-// dropMdAlsoRules 从规则集中滤掉 MdAlso 路由的规则（DC-8/DC-9/DC-10）。
-// ScanSkill 对 decisions.md 使用（见 decisionsMdFile）。
-func dropMdAlsoRules(rules []Rule) []Rule {
+// dropRuleID 从规则集中移除指定 ID 的单条规则（不存在则 no-op）。
+func dropRuleID(rules []Rule, id string) []Rule {
 	out := rules[:0:0]
 	for _, r := range rules {
-		if r.MdAlso {
+		if r.ID == id {
 			continue
 		}
 		out = append(out, r)
@@ -350,17 +350,22 @@ func ScanSkill(skillDir string) ([]Finding, error) {
 			}
 			return nil
 		}
+		rel, _ := filepath.Rel(skillDir, path)
+		rel = filepath.ToSlash(rel)
 		rules := auditorsForExt(strings.ToLower(filepath.Ext(path)))
-		// decisions.md exemption: see decisionsMdFile — the decision history quotes past
-		// dangerous commands by function; MdAlso rules on it are a self-referential FP
-		// generator (evidence goes stale the moment the decision documenting the fix is
-		// appended). Narrow: injection/exfil/leak still scan it.
+		// decisions.md exemption, narrow per review round 1 (see decisionsMdFile):
+		// root-level only (rel == decisionsMdFile — deeper files are reference
+		// material, fully scanned) and DC-10 only (the MEDIUM advisory that produced
+		// the fix/dc10 self-reference incident; CRITICAL DC-8/9 keep scanning — their
+		// install-blocking FN cost dwarfs the FP cost). Injection/exfil/leak never
+		// exempted.
 		//
-		// decisions.md 豁免：见 decisionsMdFile——决策历史按功能引用过去的危险命令，
-		// MdAlso 规则在它上面是自指 FP 生成器（记录修复的决策一追加、证据即过期）。
-		// 收窄：injection/exfil/leak 仍扫它。
-		if filepath.Base(path) == decisionsMdFile {
-			rules = dropMdAlsoRules(rules)
+		// decisions.md 豁免，按审查第 1 轮收窄（见 decisionsMdFile）：仅根级
+		// （rel == decisionsMdFile——更深层是参考材料，全量扫描）、仅 DC-10（产生
+		// fix/dc10 自指事故的 MEDIUM advisory；CRITICAL 的 DC-8/9 继续扫——其阻断
+		// 安装的 FN 代价远大于 FP 代价）。injection/exfil/leak 从不豁免。
+		if rel == decisionsMdFile {
+			rules = dropRuleID(rules, "DC-10")
 		}
 		if len(rules) == 0 {
 			return nil
@@ -369,8 +374,6 @@ func ScanSkill(skillDir string) ([]Finding, error) {
 		if rerr != nil {
 			return nil
 		}
-		rel, _ := filepath.Rel(skillDir, path)
-		rel = filepath.ToSlash(rel)
 		s := string(content)
 		lines := strings.Split(s, "\n")
 		for _, r := range rules {

@@ -78,7 +78,8 @@ DELETE 无 WHERE 等）后，用你的确认工具向用户说明风险获明确
   confirm <命令> [--fingerprint <hex>] [--last]
                      登记一次确认（5min 内同命令重试放行）；--fingerprint 直接按
                      hook 输出的 hex 指纹登记（避免命令串复制失真）；--last 确认最近
-                     一条被拦命令（从事件日志取指纹，免任何复制转写，推荐）
+                     一条被拦命令（从事件日志取指纹，免任何复制转写，推荐）。
+                     --last 与 --fingerprint 同给时 --last 优先（后者被忽略）
   fingerprint <命令> 算命令指纹（hook 内部用）
   confirmed <指纹>   查指纹是否已确认（hook 内部用，exit 0=是/1=否）
   status             列出当前有效确认

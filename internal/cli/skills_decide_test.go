@@ -31,8 +31,17 @@ func TestRunSkillsDecide_RejectsEmbedCache(t *testing.T) {
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("FORGE_SKILLS_CANONICAL", "")
 
+	// Unique sentinel: the guard must fire BEFORE any append, so this string must not
+	// appear in ANY file under the isolated home (the embed extraction itself contains
+	// real decisions.md files with generic headers — a sentinel avoids colliding with
+	// extracted content, the flaw of the earlier header-based check).
+	//
+	// 唯一哨兵：守卫必须在任何追加之前触发，故该字符串不得出现在隔离 home 下的任何
+	// 文件里（embed 解压本身就带含通用头部的真实 decisions.md——哨兵避免与解压内容
+	// 碰撞，这正是早先基于头部断言的缺陷）。
+	const sentinel = "zz-embed-cache-guard-probe-diagnosis"
 	skDecSkill = "demo"
-	skDecDiagnosis = "d"
+	skDecDiagnosis = sentinel
 	skDecRevision = "r"
 	skDecEvidence = "e"
 	skDecOutcome = "accept"
@@ -58,18 +67,20 @@ func TestRunSkillsDecide_RejectsEmbedCache(t *testing.T) {
 	//
 	// 隔离 home 下不得有任何决策被追加——守卫在任何变更之前触发（Resolve 可能已解压
 	// 快照；那是读侧缓存填充，不是决策写入）。
+	var leaked []string
 	filepath.WalkDir(home, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return nil
 		}
-		if d.Name() == "decisions.md" {
-			data, rerr := os.ReadFile(path)
-			if rerr == nil && strings.Contains(string(data), "### Diagnosis") && strings.Contains(string(data), "\"d\"") {
-				t.Errorf("no decision may be appended under embed cache; found one at %s", path)
-			}
+		data, rerr := os.ReadFile(path)
+		if rerr == nil && strings.Contains(string(data), sentinel) {
+			leaked = append(leaked, path)
 		}
 		return nil
 	})
+	if len(leaked) > 0 {
+		t.Fatalf("guard must fire before append; sentinel leaked into: %v", leaked)
+	}
 }
 
 // TestRunSkillsDecide_AcceptsExternalCanonical is the pass-through control: with an
