@@ -349,7 +349,7 @@ func LoadSessions(root string) ([]SessionRecord, error) {
 // first match in a FIXED priority order (first hit wins). Delegated to the shared
 // agentsignals table — the SAME source agentbridge.DetectAgents uses for wiring — so
 // session attribution and agent wiring can never disagree on which project markers
-// count, and coverage is the full nine-agent set (not just the four legacy markers).
+// count, and coverage is the full supported-agent set (not just the four legacy markers).
 // First-match precedence is deterministic (an ordered slice, not a map): an earlier
 // map-ranging version made OriginTool nondeterministic across process starts when a
 // project has several agent dirs (e.g. .claude + .cursor) — wrong attribution is
@@ -357,7 +357,7 @@ func LoadSessions(root string) ([]SessionRecord, error) {
 //
 // detectAgentType 检查已知的 agent 配置目录，按固定优先级顺序返回首个命中。委托给共享
 // agentsignals 表——与 agentbridge.DetectAgents 接线同源——使会话归因与 agent 接线对
-// "哪些项目标记算数"永不分歧，且覆盖全部九个 agent（不再只是四个遗留标记）。首次匹配
+// "哪些项目标记算数"永不分歧，且覆盖全部受支持 agent（不再只是四个遗留标记）。首次匹配
 // 优先级确定（有序切片，非 map）：早期遍历 map 的版本在项目含多个 agent 目录（如
 // .claude + .cursor）时使 OriginTool 跨进程启动不确定——归属错误正是 types.go
 // OriginTool 注释论证过的危害。
