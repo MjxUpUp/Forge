@@ -37,7 +37,7 @@ metadata:
 直接抓：每个页面 `curl -sL URL > page.html`，或 `wget --mirror`。
 
 ### 1B. Web SPA（React/Vue/Next 等）
-用 **Playwright 抓渲染后的 DOM + computed style 内联化**（脚本骨架见 [references/snapshot-script.md](references/snapshot-script.md)）。**前置依赖**：需 Node 环境，首次运行 `npx playwright install chromium` 自动装无头浏览器（需联网下载）；整个 skill 还需 Pixso 桌面端跑本地 MCP（见铁律段），二者缺失则无法反向导入。
+用 **Playwright 抓渲染后的 DOM + computed style 内联化**（脚本骨架见 [references/snapshot-script.md](references/snapshot-script.md)）。**前置依赖**：需 Node 环境，`npm i -D playwright` 后跑 `npm exec -- playwright install chromium` 下载无头浏览器（需联网；playwright 版本经 lockfile 锁定，不经注册表即时拉代码执行）；整个 skill 还需 Pixso 桌面端跑本地 MCP（见铁律段），二者缺失则无法反向导入。
 - 启动无头浏览器 → 导航到路由 → 等待网络空闲 + 关键元素渲染
 - 抓 `document.documentElement.outerHTML`
 - **遍历每个元素，把 `getComputedStyle` 的关键属性内联到 `style` 属性**（这一步是质量关键，见阶段 2）
