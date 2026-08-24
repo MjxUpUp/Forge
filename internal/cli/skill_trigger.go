@@ -226,7 +226,19 @@ func runSkillTriggerCore(hookInput HookInput, root, version, agent string, dryRu
 		// 只有抑制（如 stop-cap 触顶 / 全员 cooldown）：渲染无内容，但抑制记录已落。
 		return "", nil
 	}
-	return skilltrigger.Render(hits, ctx), nil
+	// 单次上限（MaxHitsPerEvent）落选的 skill 尾部一句带过——控噪作用于渲染（也即 kimi
+	// advisory 入队）之前，队列不会被重复命中塞满。
+	//
+	// Skills that lost the per-event cap (MaxHitsPerEvent) get a one-line tail mention —
+	// noise control applies BEFORE rendering (and thus before kimi advisory enqueueing),
+	// so the queue cannot be flooded by repeat hits.
+	var overflow []string
+	for _, s := range suppressed {
+		if s.Cause == skilltrigger.SuppressEventCap {
+			overflow = append(overflow, s.Skill)
+		}
+	}
+	return skilltrigger.Render(hits, ctx, overflow), nil
 }
 
 // recordSuppressed 处理 Eval 返回的抑制事件（辩论 P1）：
@@ -260,7 +272,16 @@ func recordSuppressed(root string, ctx skilltrigger.Context, suppressed []skillt
 	var stopCapped []string
 	for _, s := range suppressed {
 		switch s.Cause {
-		case skilltrigger.SuppressCooldown:
+		case skilltrigger.SuppressCooldown, skilltrigger.SuppressSessionCap, skilltrigger.SuppressEventCap:
+			// 三类都进同一抑制计数器（「本会注入但没注」的统一语义）：cooldown 会在下次
+			// 触发回填；session-cap 永无下次触发（G5 缺口天然适用）；event-cap 落选不
+			// Mark、下事件即可命中，回填随之发生。
+			//
+			// All three ride the same suppression counter (the shared "would have
+			// injected but didn't" semantics): cooldown backfills at the next fire;
+			// session-cap never has a next fire (the G5 gap applies by design);
+			// event-cap losers are not Marked and may fire on the very next event,
+			// where the backfill lands.
 			_ = counter.Incr(ctx.SessionID, s.Skill)
 		case skilltrigger.SuppressStopCap:
 			stopCapped = append(stopCapped, s.Skill)

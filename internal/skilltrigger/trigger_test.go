@@ -217,3 +217,101 @@ func TestMatchToolName(t *testing.T) {
 		}
 	}
 }
+
+// TestEval_SessionCap 钉住 session 级每 skill 硬封顶（2026-08 噪音审计：单 skill 单
+// session 注入 79 次）：第 1 次完整注入（Reminder=false）、第 2 次短提醒
+// （Reminder=true）、第 3 次起一律 SuppressSessionCap——cooldown 过期也不再放行。
+//
+// TestEval_SessionCap pins the per-session per-skill hard cap (2026-08 noise audit: one
+// skill injected 79 times in a session): 1st full injection (Reminder=false), 2nd short
+// reminder (Reminder=true), 3rd onward SuppressSessionCap — no cooldown expiry lets it
+// through again.
+func TestEval_SessionCap(t *testing.T) {
+	withCond(t, "scap", func(Context) bool { return true })
+	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{{Event: "Stop", When: "scap"}}}}
+	noise := NewInMemoryNoiseController()
+	t0 := time.Now()
+
+	hits, _ := Eval(Context{Event: "Stop", SessionID: "s1", Now: t0}, all, noise)
+	if len(hits) != 1 || hits[0].Reminder {
+		t.Fatalf("第 1 次应完整注入（Reminder=false），got %+v", hits)
+	}
+	noise.Mark("s1", "foo", t0)
+
+	// cooldown（默认 60s）后第 2 次：放行但标 Reminder。
+	t1 := t0.Add(61 * time.Second)
+	hits, _ = Eval(Context{Event: "Stop", SessionID: "s1", Now: t1}, all, noise)
+	if len(hits) != 1 || !hits[0].Reminder {
+		t.Fatalf("第 2 次应放行且 Reminder=true，got %+v", hits)
+	}
+	noise.Mark("s1", "foo", t1)
+
+	// 第 3 次：硬封顶抑制（cooldown 已过也不行），归因 SuppressSessionCap。
+	t2 := t1.Add(61 * time.Second)
+	hits, suppressed := Eval(Context{Event: "Stop", SessionID: "s1", Now: t2}, all, noise)
+	if len(hits) != 0 {
+		t.Fatalf("第 3 次应被 session 硬封顶抑制，got hits=%+v", hits)
+	}
+	if len(suppressed) != 1 || suppressed[0].Cause != SuppressSessionCap {
+		t.Fatalf("抑制归因应为 SuppressSessionCap，got %+v", suppressed)
+	}
+
+	// 不同 session 不受影响。
+	hits, _ = Eval(Context{Event: "Stop", SessionID: "s2", Now: t2}, all, noise)
+	if len(hits) != 1 {
+		t.Fatalf("新 session 应可注入，got %+v", hits)
+	}
+}
+
+// TestEval_EventCap 钉住单次事件注入上限（2026-08-18 证据：一条 UserPromptSubmit 6ms
+// 内 6 个 skill 全注入）：超 MaxHitsPerEvent 的按 RankHits 落选（prompt 命中优先于
+// stdout 命中，同类保持声明顺序），归因 SuppressEventCap。
+//
+// TestEval_EventCap pins the per-event injection cap (2026-08-18 evidence: one
+// UserPromptSubmit fired 6 skills within 6ms): beyond MaxHitsPerEvent the RankHits
+// ordering decides (prompt hits before stdout hits, declaration order within a class),
+// losers attributed SuppressEventCap.
+func TestEval_EventCap(t *testing.T) {
+	mk := func(skill string) SkillTriggers {
+		return SkillTriggers{Skill: skill, Triggers: []Trigger{
+			{Event: "PostToolUse", Keywords: []string{"kw-" + skill}},
+		}}
+	}
+	all := []SkillTriggers{mk("s1"), mk("s2"), mk("s3"), mk("s4")}
+	// s2/s4 命中 prompt，s1/s3 命中 stdout → 注入序应为 s2, s4, s1（prompt 优先），s3 落选。
+	ctx := Context{
+		Event:      "PostToolUse",
+		SessionID:  "s1",
+		Prompt:     "kw-s2 kw-s4",
+		ToolOutput: map[string]any{"stdout": "kw-s1 kw-s3"},
+	}
+	hits, suppressed := Eval(ctx, all, NewInMemoryNoiseController())
+	if len(hits) != MaxHitsPerEvent {
+		t.Fatalf("应只注入 %d 个，got %d", MaxHitsPerEvent, len(hits))
+	}
+	gotOrder := []string{hits[0].Skill, hits[1].Skill, hits[2].Skill}
+	wantOrder := []string{"s2", "s4", "s1"}
+	for i := range wantOrder {
+		if gotOrder[i] != wantOrder[i] {
+			t.Fatalf("注入序 %v, want %v（prompt 命中优先、同类声明序）", gotOrder, wantOrder)
+		}
+	}
+	if len(suppressed) != 1 || suppressed[0].Skill != "s3" || suppressed[0].Cause != SuppressEventCap {
+		t.Fatalf("落选应为 s3 + SuppressEventCap，got %+v", suppressed)
+	}
+	// 落选者不 Mark：不消耗 cooldown/封顶预算，下个事件仍可命中（SuppressEventCap
+	// 与 SuppressSessionCap 的关键区别）。
+	//
+	// Losers are NOT marked: no cooldown/cap budget burned, still eligible on the next
+	// event (the key difference from SuppressSessionCap).
+	noise := NewInMemoryNoiseController()
+	if _, sup2 := Eval(ctx, all, noise); len(sup2) != 1 {
+		t.Fatalf("复跑应仍落选 s3，got %+v", sup2)
+	}
+	if got := noise.FireCount("s1", "s3"); got != 0 {
+		t.Fatalf("落选者 FireCount 应为 0（未 Mark），got %d", got)
+	}
+	if !noise.ShouldFire("s1", "s3", DefaultCooldown*time.Second, time.Now()) {
+		t.Fatal("落选者 ShouldFire 应仍为 true（cooldown 未被消耗）")
+	}
+}

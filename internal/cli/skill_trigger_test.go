@@ -227,3 +227,34 @@ func TestRecordSuppressed_StopCapOncePerSession(t *testing.T) {
 		t.Fatalf("新 session 应可再记一条, got %d", len(entries2))
 	}
 }
+
+// TestRecordSuppressed_SessionAndEventCapCounted 钉住新抑制原因的处理：session-cap /
+// event-cap 与 cooldown 一样只进抑制计数器（不落 log 条目），供下次真实触发回填
+// Meta——不新增 warn advisory（那只有 stop-cap）。
+//
+// TestRecordSuppressed_SessionAndEventCapCounted pins the handling of the new suppression
+// causes: session-cap / event-cap ride the suppression counter like cooldown (no log
+// entry) for the next-fire Meta backfill — no warn advisory (that stays stop-cap only).
+func TestRecordSuppressed_SessionAndEventCapCounted(t *testing.T) {
+	dir := t.TempDir()
+	counterDir := t.TempDir()
+	ctx := skilltrigger.Context{Event: "PreToolUse", SessionID: "sess-caps"}
+	recordSuppressed(dir, ctx, []skilltrigger.Suppressed{
+		{Skill: "a", Cause: skilltrigger.SuppressSessionCap},
+		{Skill: "b", Cause: skilltrigger.SuppressEventCap},
+	}, counterDir, "", "1.99.0-test")
+	entries, err := checklog.LoadAll(dir)
+	if err != nil {
+		t.Fatalf("LoadAll: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("session/event-cap 不应落 log 条目（只计数），got %d", len(entries))
+	}
+	counter := skilltrigger.NewFileSuppressedCounter(counterDir)
+	if got := counter.Take("sess-caps", "a"); got != 1 {
+		t.Fatalf("a 的抑制计数应为 1，got %d", got)
+	}
+	if got := counter.Take("sess-caps", "b"); got != 1 {
+		t.Fatalf("b 的抑制计数应为 1，got %d", got)
+	}
+}
