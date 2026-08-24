@@ -301,18 +301,22 @@ func TestRunSkillTriggerHook_DeniedSkillSkipped(t *testing.T) {
 // TestRunSkillTriggerHook_KimiSuppressedOffUserPromptSubmit is the kimi delivery guard: on
 // every event except UserPromptSubmit, kimi drops allow-path stdout from the model context
 // (verified via wire.jsonl), so skill-trigger must NOT print there — but it DOES still run
-// the engine and record each hit to checklog with Delivered=false + Channel=kimi/no-channel
+// the engine, queue the rendered injection for the UserPromptSubmit drain, and record each
+// hit to checklog with Delivered=false + Channel=kimi/advisory-queue
 // (honest observability: the dashboard feed and usage funnel see the full trigger picture;
 // the funnel counts Delivered=true only, so these records cannot recreate the
-// false-prosperity bug). Each subtest sets up a skill that WOULD trigger on the event, then
-// asserts: NO stdout AND every recorded entry is stamped not-delivered.
+// false-prosperity bug, and the queue channel label keeps "queued, deferred"
+// distinguishable from "lost forever"). Each subtest sets up a skill that WOULD trigger
+// on the event, then asserts: NO stdout AND every recorded entry is stamped not-delivered.
 //
 // TestRunSkillTriggerHook_KimiSuppressedOffUserPromptSubmit 是 kimi 投递守卫：除
 // UserPromptSubmit 外的每个事件，kimi 丢弃 allow-path stdout（wire.jsonl 实测），故
-// skill-trigger 不得在这些事件打印——但引擎仍运行并把每条命中以 Delivered=false +
-// Channel=kimi/no-channel 落 checklog（诚实可观测：看板事件流与 usage 漏斗看到完整
-// 触发图景；漏斗只计 Delivered=true，故这些记录不可能复活虚假繁荣 bug）。每个子测试
-// 建一个本会在该事件触发的 skill，然后断言：无 stdout 且每条记录都落了未送达章。
+// skill-trigger 不得在这些事件打印——但引擎仍运行、渲染出的注入入队待
+// UserPromptSubmit 攒发，并把每条命中以 Delivered=false +
+// Channel=kimi/advisory-queue 落 checklog（诚实可观测：看板事件流与 usage 漏斗看到
+// 完整触发图景；漏斗只计 Delivered=true，故这些记录不可能复活虚假繁荣 bug，且队列
+// 通道标签让「入队待投」与「永久丢失」可区分）。每个子测试建一个本会在该事件触发的
+// skill，然后断言：无 stdout 且每条记录都落了未送达章。
 func TestRunSkillTriggerHook_KimiSuppressedOffUserPromptSubmit(t *testing.T) {
 	events := []string{"PreToolUse", "PostToolUse", "Stop", "SessionStart"}
 	for _, ev := range events {
@@ -354,8 +358,8 @@ func TestRunSkillTriggerHook_KimiSuppressedOffUserPromptSubmit(t *testing.T) {
 				if e.Delivered == nil || *e.Delivered {
 					t.Errorf("kimi %s: recorded hit must be stamped Delivered=false (false-prosperity guard), got %+v", ev, e)
 				}
-				if e.Channel != "kimi/no-channel" {
-					t.Errorf("kimi %s: Channel must be kimi/no-channel, got %q", ev, e.Channel)
+				if e.Channel != "kimi/advisory-queue" {
+					t.Errorf("kimi %s: Channel must be kimi/advisory-queue (queued for the UserPromptSubmit drain, not lost), got %q", ev, e.Channel)
 				}
 			}
 			if hits == 0 {
