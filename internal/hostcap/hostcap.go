@@ -244,25 +244,32 @@ type Host struct {
 	// does not constrain behavior, so the REAL advisory (isolated from the hook's
 	// success/clean branch by the rule) is promoted to a block (passed true→false
 	// → exit 2, stderr shown to the model). Two admission paths: (a) the advisory
-	// channel is physically broken — kimi drops allow-path stdout from the model
-	// context; (b) the channel delivers but the advisory is empirically ignored —
-	// dsh 2026-08-22: the task-guard WARN reached the model's inbox via
-	// agent.inject, yet its text self-describes as "allowed" (a status notice,
-	// not an instruction), the next action was another edit, and every downstream
-	// gate is task-scoped (no task ⇒ silently passes). Nil for hosts where the
-	// advisory channel both delivers and suffices. cli keeps the
+	// channel is physically broken; (b) the channel delivers but the advisory is
+	// empirically ignored — dsh 2026-08-22: the task-guard WARN reached the
+	// model's inbox via agent.inject, yet its text self-describes as "allowed" (a
+	// status notice, not an instruction), the next action was another edit, and
+	// every downstream gate is task-scoped (no task ⇒ silently passes). Nil for
+	// hosts where the advisory channel both delivers and suffices — and for kimi,
+	// whose path-(a) promotion was RETIRED 2026-08-24: a promoted deny whose
+	// reason self-describes as "allowed" is self-contradictory (and kimi reads
+	// ANY PreToolUse stdout as a deny, so the honest advisory text could not ride
+	// the allow path either). kimi advisories now queue per-project and drain on
+	// UserPromptSubmit (cli hook_kimi_advisory.go). cli keeps the
 	// FORGE_KIMI_ADVISORY / FORGE_ADVISORY_PROMOTION escape hatches (env knobs,
 	// not host capabilities).
 	//
 	// PromoteAdvisory 把 advisory hook 名映射到规则，面向 advisory 不构成行为
 	// 约束的宿主：**真** advisory（由规则从该 hook 的成功/干净分支隔出）被提升
 	// 为阻断（passed true→false → exit 2，stderr 展示给模型）。准入路径有二：
-	// (a) advisory 通道物理性失效——kimi 把 allow 路径 stdout 丢出模型上下文；
-	// (b) 通道送达但 advisory 被实证无视——dsh 2026-08-22：task-guard 的 WARN 经
-	// agent.inject 到达了模型 inbox，但其文案自述「allowed」（状态通知而非指令），
-	// 下一个动作就是继续 edit，且所有下游门禁都 task-scoped（无任务 ⇒ 静默通过）。
-	// 通道送达且 advisory 足够的宿主为 nil。逃生舱 FORGE_KIMI_ADVISORY /
-	// FORGE_ADVISORY_PROMOTION 留在 cli（env 开关，非宿主能力）。
+	// (a) advisory 通道物理性失效；(b) 通道送达但 advisory 被实证无视——dsh
+	// 2026-08-22：task-guard 的 WARN 经 agent.inject 到达了模型 inbox，但其文案
+	// 自述「allowed」（状态通知而非指令），下一个动作就是继续 edit，且所有下游
+	// 门禁都 task-scoped（无任务 ⇒ 静默通过）。通道送达且 advisory 足够的宿主
+	// 为 nil——kimi 也是 nil：其路径 (a) 提升已于 2026-08-24 **退役**——reason
+	// 自述「allowed」的 deny 自相矛盾（且 kimi 把 PreToolUse 上**任何** stdout
+	// 都当 deny，诚实的 advisory 文案也走不了 allow 路径）。kimi 的 advisory 改为
+	// 按项目入队、UserPromptSubmit 时攒发（cli hook_kimi_advisory.go）。逃生舱
+	// FORGE_KIMI_ADVISORY / FORGE_ADVISORY_PROMOTION 留在 cli（env 开关，非宿主能力）。
 	PromoteAdvisory map[string]AdvisoryRule
 
 	// PatchToolName names the host's patch-style edit tool whose tool_input
@@ -419,23 +426,23 @@ var Hosts = []Host{
 		//
 		// kimi 0.35.0 在这些事件上丢弃 allow 路径 stdout（observation-only）。
 		DroppedStdoutEvents: []string{"PostToolUse", "SessionStart", "PostCompact"},
-		// kimi drops allow-path stdout from the model context, so these hooks'
-		// real advisories promote to block (exit 2). The rules isolate the
-		// advisory branch from each hook's success/clean branch: task-guard's
-		// "Auto-created task" is a SUCCESS path (blocking it would hard-stop the
-		// edit task-guard just enabled); assertion-check's clean branch carries
-		// no "Advisory:" marker.
+		// NO PromoteAdvisory rules (retired 2026-08-24): the P0 promotion turned
+		// task-guard/bash-guard/assertion-check advisories into exit-2 denies
+		// whose reasons self-described as "allowed" — self-contradictory, and the
+		// edit was actually blocked with no visible cause until a blind retry.
+		// Production checklog showed 100% of kimi/no-channel advisories lost.
+		// Advisories now queue per-project and drain as ONE batched injection on
+		// UserPromptSubmit (the one channel above that delivers) — see cli
+		// hook_kimi_advisory.go. Blocking hooks (read-before-edit, hazard-guard,
+		// freeze-guard) still deny via exit 2; those are designed denies.
 		//
-		// kimi 丢弃 allow 路径 stdout，故这些 hook 的真 advisory 提升为阻断
-		// （exit 2）。规则把 advisory 分支与各 hook 的成功/干净分支隔开：
-		// task-guard 的 "Auto-created task" 是成功路径（阻断它会硬停
-		// task-guard 刚放行的编辑）；assertion-check 的干净分支不带
-		// "Advisory:" 标记。
-		PromoteAdvisory: map[string]AdvisoryRule{
-			"task-guard":      {Contains: "[task-guard]", Excludes: "Auto-created"},
-			"bash-guard":      {Contains: "[bash-guard]"},
-			"assertion-check": {Contains: "Advisory:"},
-		},
+		// 不设 PromoteAdvisory 规则（2026-08-24 退役）：P0 提升把
+		// task-guard/bash-guard/assertion-check 的 advisory 变成 exit-2 deny，
+		// 而 reason 自述「allowed」——自相矛盾，且编辑被实际拦截、直到盲重试才发现。
+		// 生产 checklog 显示 kimi/no-channel 的 advisory 100% 丢失。advisory 现改为
+		// 按项目入队、在 UserPromptSubmit（上方唯一送达通道）攒成**一条**注入——见
+		// cli hook_kimi_advisory.go。阻断类 hook（read-before-edit、hazard-guard、
+		// freeze-guard）仍走 exit 2 deny——那是设计内的阻断。
 	},
 	{Name: "codebuddy", StdinSessionFields: []string{"session_id"}},
 	{Name: "reasonix", StdinSessionFields: []string{"sessionId"}, StdinDialect: "reasonix"},

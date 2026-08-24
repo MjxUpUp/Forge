@@ -859,7 +859,9 @@ func runHook(cmd *cobra.Command, args []string) error {
 		shCmd.Env = append(shCmd.Env, "FORGE_WORK_ACTIVITY=disable")
 	}
 	// task-guard promotion pre-configuration: on hosts whose task-guard advisory
-	// promotes to a block (hostcap PromoteAdvisory — kimi, dsh), the script must
+	// promotes to a block (hostcap PromoteAdvisory — dsh only; kimi's rules were
+	// retired 2026-08-24 in favor of the advisory queue, see
+	// hook_kimi_advisory.go), the script must
 	// drop its once-per-session NOWARN de-noise and emit the directive block
 	// reason on EVERY no-task source edit — under promotion, the NOWARN marker is
 	// a bypass (the model blind-retries the identical edit and passes silently
@@ -869,7 +871,8 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// with no enforcement behind it).
 	//
 	// task-guard 提升预配置：在把 task-guard advisory 提升为阻断的宿主上
-	// （hostcap PromoteAdvisory——kimi、dsh），脚本必须放弃每会话一次的 NOWARN
+	// （hostcap PromoteAdvisory——仅 dsh；kimi 的规则已于 2026-08-24 退役，改为
+	// advisory 队列，见 hook_kimi_advisory.go），脚本必须放弃每会话一次的 NOWARN
 	// 去噪，在**每次**无任务源码编辑上输出指令式 block reason——提升语义下
 	// NOWARN 标记就是旁路（模型盲重试同一编辑，因标记已置而静默放行）。
 	// taskGuardPromotionActive 与 promoteAdvisory 共享逃生舱检查，使本 env 绝不
@@ -918,7 +921,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// 并非质量失败。改为 fail-open 放行并给出可见警告。
 	if isHookInfraFailure(exitErr) {
 		warning := fmt.Sprintf("[forge] hook %s 基础设施失败（%v: %s），fail-open 放行", name, exitErr, firstNonEmpty(stderr, "no output"))
-		return emitInfraAllow(agent, hookInput.HookEventName, warning)
+		return emitInfraAllow(agent, hookInput.HookEventName, name, root, hookInput.SessionID, warning)
 	}
 
 	passed := exitErr == nil
@@ -993,10 +996,12 @@ func runHook(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// 5b. Host advisory promotion (hostcap PromoteAdvisory column; kimi and dsh today).
-	// kimi 0.35.0 drops allow-path (exit 0) stdout from the
-	// model context, so forge's core advisories (task-guard/bash-guard/assertion-check)
-	// silently evaporate and the agent runs untracked; dsh's channel delivers but the
+	// 5b. Host advisory promotion (hostcap PromoteAdvisory column; dsh only —
+	// kimi's rules were retired 2026-08-24: a promoted exit-2 deny whose reason
+	// self-described as "allowed" was self-contradictory, and kimi reads ANY
+	// PreToolUse stdout as a deny, so kimi advisories now queue per-project and
+	// drain on UserPromptSubmit instead — emitAdvisoryRouted in
+	// hook_kimi_advisory.go). dsh's channel delivers but the
 	// no-task WARN was empirically ignored (2026-08-22). Promote the REAL advisory to a block
 	// (passed true→false) here — BEFORE step 6's checklog record — so the promoted value flows
 	// into both the audit trail (Passed=false / LevelBlocked) and the host's block emitter
@@ -1006,9 +1011,11 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// skill-trigger returned before step 5 and
 	// is unaffected. Escape hatches: FORGE_ADVISORY_PROMOTION / FORGE_KIMI_ADVISORY =soft.
 	//
-	// 5b. 宿主 advisory 提升（hostcap PromoteAdvisory 列；目前 kimi 与 dsh）。kimi
-	// 0.35.0 丢弃放行路径（exit 0）的 stdout，forge 核心
-	// advisory（task-guard/bash-guard/assertion-check）静默蒸发，agent 无任务裸奔；dsh
+	// 5b. 宿主 advisory 提升（hostcap PromoteAdvisory 列；现仅 dsh——kimi 的规则已于
+	// 2026-08-24 退役：被提升的 exit-2 deny 的 reason 自述「allowed」，自相矛盾，
+	// 且 kimi 把 PreToolUse 上**任何** stdout 当 deny，故 kimi 的 advisory 改为按
+	// 项目入队、UserPromptSubmit 攒发——hook_kimi_advisory.go 的
+	// emitAdvisoryRouted）。dsh
 	// 通道送达但无任务 WARN 被实证无视（2026-08-22）。在此把
 	// 真 advisory 提升为阻断（passed true→false）——在 step 6 的 checklog 记录之前——让提升
 	// 后的值同时流入审计轨迹（Passed=false / LevelBlocked）与宿主阻断 emitter
@@ -1222,7 +1229,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// hookSpecificOutput.additionalContext；cursor：顶层 snake_case
 	// additional_context；copilot：顶层 camelCase additionalContext；kimi：见
 	// internal/agentbridge/kimi-hook-routing.md）。
-	return emitAgentOutput(agent, eventName, name, passed, detail)
+	return emitAdvisoryRouted(agent, eventName, name, root, hookInput.SessionID, passed, detail)
 }
 
 // readsFilePath returns the absolute path of this session's reads log — the PreToolUse
@@ -1791,10 +1798,10 @@ func (e *HookBlockError) Error() string { return e.Reason }
 
 // promoteAdvisory reports whether an advisory (passed=true, non-empty detail) result for the
 // given hook should be promoted to a block on the given host. The per-hook rules live in the
-// hostcap registry (PromoteAdvisory column — kimi and dsh today: kimi 0.35.0 drops
-// allow-path stdout from the model context, so its advisories silently evaporate; dsh's
-// channel delivers but the task-guard advisory was empirically ignored — 2026-08-22, see
-// the dsh registry row). The rules are declarative Contains/Excludes pairs
+// hostcap registry (PromoteAdvisory column — dsh only: its channel delivers via
+// agent.inject but the task-guard advisory was empirically ignored — 2026-08-22, see
+// the dsh registry row; kimi's rules were retired 2026-08-24 in favor of the
+// pending-queue + UserPromptSubmit drain, see hook_kimi_advisory.go). The rules are declarative Contains/Excludes pairs
 // (not a bare name allowlist) because each hook emits BOTH an advisory branch and a
 // success/clean branch under the same hook name — a name allowlist would over-block
 // (task-guard's "Auto-created task" is a SUCCESS path; assertion-check's clean branch is
@@ -1802,16 +1809,18 @@ func (e *HookBlockError) Error() string { return e.Reason }
 // PreToolUse channel every host honors: exit 2 (stderr shown to the model).
 //
 // Returns false for: the escape hatches (FORGE_ADVISORY_PROMOTION=soft covers every
-// promoted host; FORGE_KIMI_ADVISORY=soft kept for back-compat, kimi-scoped — env knobs,
+// promoted host; FORGE_KIMI_ADVISORY=soft kept for back-compat, kimi-scoped — inert
+// today since kimi carries no rules, but honored should a future kimi rule land — env knobs,
 // kept here in
 // cli rather than the registry because they are operator config, not host capabilities),
 // already-blocked results (no double-flip), empty/whitespace detail (clean/silent PASS),
 // and hosts without promotion rules.
 //
 // promoteAdvisory 报告给定 hook 的 advisory（passed=true、detail 非空）结果在给定宿主上
-// 是否应提升为阻断。各 hook 的规则住在 hostcap 注册表（PromoteAdvisory 列——目前
-// kimi 与 dsh：kimi 0.35.0 丢弃 allow 路径 stdout，advisory 在那里静默蒸发；dsh 通道
-// 送达但 task-guard advisory 被实证无视——2026-08-22，见 dsh 注册表行）。规则是声明式
+// 是否应提升为阻断。各 hook 的规则住在 hostcap 注册表（PromoteAdvisory 列——现仅
+// dsh：其通道经 agent.inject 送达但 task-guard advisory 被实证无视——2026-08-22，见
+// dsh 注册表行；kimi 的规则已于 2026-08-24 退役，改为 pending 队列 +
+// UserPromptSubmit 攒发，见 hook_kimi_advisory.go）。规则是声明式
 // Contains/Excludes 对（非裸名字白名单），因为每个 hook 在同一 hook 名下同时发
 // advisory 分支与成功/干净分支——名字白名单会过度阻断（task-guard 的
 // "Auto-created task" 是成功路径；assertion-check 的干净分支无 advisory）。把真
@@ -1819,7 +1828,8 @@ func (e *HookBlockError) Error() string { return e.Reason }
 // 模型）。
 //
 // 以下返回 false：逃生舱（FORGE_ADVISORY_PROMOTION=soft 覆盖所有提升宿主；
-// FORGE_KIMI_ADVISORY=soft 保留向后兼容——env 开关，留在 cli 而非注册表——它们是
+// FORGE_KIMI_ADVISORY=soft 保留向后兼容——目前因 kimi 无规则而惰性，但若未来
+// kimi 规则落地仍会被遵守——env 开关，留在 cli 而非注册表——它们是
 // 运维配置而非宿主能力）、已阻断结果（不二次翻转）、空/纯空白 detail（干净/静默
 // PASS）、无提升规则的宿主。
 func promoteAdvisory(agent, name string, passed bool, detail string) bool {
@@ -1878,17 +1888,6 @@ func taskGuardPromotionActive(agent string) bool {
 	return h != nil && h.PromotesHook("task-guard")
 }
 
-// promoteKimiAdvisory is the kimi-specialized wrapper of promoteAdvisory, kept so the
-// existing unit tests (hook_kimi_test.go) exercise the registry rules without spinning up
-// a full kimi runHook. Production call sites use promoteAdvisory directly.
-//
-// promoteKimiAdvisory 是 promoteAdvisory 的 kimi 特化包装，保留给既有单测
-// （hook_kimi_test.go）不经完整 kimi runHook 即可检验注册表规则。生产调用处直接用
-// promoteAdvisory。
-func promoteKimiAdvisory(name string, passed bool, detail string) bool {
-	return promoteAdvisory("kimi", name, passed, detail)
-}
-
 // emitKimiOutput renders the hook result in kimi's hook protocol: allow = exit 0 with
 // the detail as plain stdout text; block = reason on stderr + HookBlockError (→ exit 2).
 // Returning HookBlockError instead of calling os.Exit here keeps runHook's defers (temp
@@ -1896,10 +1895,13 @@ func promoteKimiAdvisory(name string, passed bool, detail string) bool {
 //
 // CAVEAT — kimi 0.35.0 does NOT append allow-path stdout to the model context the way
 // Claude Code treats additionalContext. Only UserPromptSubmit stdout reaches the model
-// (delivered on the NEXT prompt); PreToolUse/Stop reach it via exit-2 BLOCK. PostToolUse/
-// SessionStart allow-path stdout is observation-only (dropped). So the detail printed on
-// the allow path here is model-visible ONLY on UserPromptSubmit; advisory hooks are
-// rerouted per internal/agentbridge/kimi-hook-routing.md.
+// (delivered on the NEXT prompt); PreToolUse stdout is read as a DENY (it blocks the
+// tool call), and PostToolUse/SessionStart allow-path stdout is observation-only
+// (dropped). Advisory (allow-path) output therefore never reaches this function on
+// non-delivered events — emitAdvisoryRouted (hook_kimi_advisory.go) queues it for the
+// UserPromptSubmit drain first. What still arrives here on the allow path is
+// UserPromptSubmit detail (injected) and silent allows; the block path is unchanged
+// (designed denies: read-before-edit, hazard-guard, freeze-guard).
 //
 // emitKimiOutput 按 kimi 的 hook 协议渲染结果：放行 = exit 0，detail 以纯文本打
 // stdout；阻断 = 原因写 stderr + HookBlockError（→ exit 2）。返回 HookBlockError 而非
@@ -1907,9 +1909,12 @@ func promoteKimiAdvisory(name string, passed bool, detail string) bool {
 //
 // 注意——kimi 0.35.0 并不像 Claude Code 那样把 allow 路径 stdout 注入模型上下文
 // （additionalContext）。只有 UserPromptSubmit 的 stdout 能到模型（下一 prompt 送达）；
-// PreToolUse/Stop 经 exit-2 阻断到模型。PostToolUse/SessionStart 的 allow 路径 stdout
-// 是 observation-only（丢弃）。故此处 allow 路径打印的 detail 仅在 UserPromptSubmit 时
-// 模型可见；advisory hook 按 internal/agentbridge/kimi-hook-routing.md 重路由。
+// PreToolUse 的 stdout 会被当 **deny**（阻断工具调用），PostToolUse/SessionStart 的
+// allow 路径 stdout 是 observation-only（丢弃）。故 advisory（allow 路径）输出在不可
+// 送达事件上根本不会到达本函数——emitAdvisoryRouted（hook_kimi_advisory.go）会先把它
+// 入队、留待 UserPromptSubmit 攒发。仍到达本函数的 allow 路径只有 UserPromptSubmit
+// detail（注入）与静默放行；阻断路径不变（设计内 deny：read-before-edit、
+// hazard-guard、freeze-guard）。
 func emitKimiOutput(passed bool, detail string) error {
 	if passed {
 		if detail != "" {
@@ -1952,9 +1957,11 @@ func isHookInfraFailure(err error) bool {
 
 // emitInfraAllow fails open for an infrastructure failure: the warning must be VISIBLE
 // (a silently broken gate set is worse than a noisy one) without blocking the turn.
-// Routed through emitAgentOutput's allow-with-detail path so every host gets its own
-// context channel: kimi plain stdout (model-visible only on UserPromptSubmit — see
-// internal/agentbridge/kimi-hook-routing.md); claude default a bare hookSpecificOutput
+// Routed through emitAdvisoryRouted so every host gets its own context channel:
+// kimi queues the warning for the UserPromptSubmit drain on non-delivered events
+// (a raw stdout print on PreToolUse would be read as a DENY — the hook would
+// fail open AND block the edit, the worst of both; see hook_kimi_advisory.go);
+// claude default a bare hookSpecificOutput
 // (hookEventName present — Claude's schema requires it or additionalContext is
 // dropped); codex the same bare shape on the four context-carrying events; cursor
 // top-level additional_context; copilot top-level additionalContext; cline
@@ -1962,16 +1969,16 @@ func isHookInfraFailure(err error) bool {
 // No host receives decision:"approve" (see emitAgentOutput).
 //
 // emitInfraAllow 对基础设施失败 fail-open：警告必须可见（静默失效的门禁比吵闹的
-// 更糟）但不阻断当轮。经 emitAgentOutput 的 allow-with-detail 路径分发，让每个
-// 宿主走自己的上下文通道：kimi 纯文本 stdout（仅 UserPromptSubmit 时模型可见——
-// 见 internal/agentbridge/kimi-hook-routing.md）；claude 默认裸 hookSpecificOutput
-// （hookEventName 必在——Claude schema 要求它，否则 additionalContext 被丢弃）；
-// codex 在四个可带上下文的事件上发同样的裸形态；cursor 顶层 additional_context；
-// copilot 顶层 additionalContext；cline contextModification；windsurf 静默（无
-// stdout 通道——可见性与之前一致）。任何宿主都不会收到 decision:"approve"
-// （见 emitAgentOutput）。
-func emitInfraAllow(agent, eventName, warning string) error {
-	return emitAgentOutput(agent, eventName, "", true, warning)
+// 更糟）但不阻断当轮。经 emitAdvisoryRouted 分发，让每个宿主走自己的上下文通道：
+// kimi 在不可送达事件上把警告入队、留待 UserPromptSubmit 攒发（PreToolUse 上直接
+// 打印 stdout 会被当 **deny**——hook fail-open 了却把编辑拦下，两头最坏；见
+// hook_kimi_advisory.go）；claude 默认裸 hookSpecificOutput（hookEventName 必在——
+// Claude schema 要求它，否则 additionalContext 被丢弃）；codex 在四个可带上下文的
+// 事件上发同样的裸形态；cursor 顶层 additional_context；copilot 顶层
+// additionalContext；cline contextModification；windsurf 静默（无 stdout 通道——
+// 可见性与之前一致）。任何宿主都不会收到 decision:"approve"（见 emitAgentOutput）。
+func emitInfraAllow(agent, eventName, hookName, root, sessionID, warning string) error {
+	return emitAdvisoryRouted(agent, eventName, hookName, root, sessionID, true, warning)
 }
 
 // shouldRecordCheck decides whether a hook result is worth writing a checklog entry. It is the
