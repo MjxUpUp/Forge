@@ -248,6 +248,8 @@ func agentSummaryLine(a agentbridge.AgentType) (line string, ok bool) {
 		return "  ~/.kimi-code/config.toml         — Kimi Code hooks（user-level）\n", true
 	case agentbridge.AgentDsh:
 		return "  DeepSeek Harness                 — plugin 接线：dsh plugin --profile web add \"github:MjxUpUp/Forge#main&path:/plugins/forge-dsh\"（见 plugins/forge-dsh/README.md）\n", true
+	case agentbridge.AgentZcode:
+		return "  ~/.zcode/cli/config.json         — ZCode hooks（user-level）\n", true
 	}
 	return "", false
 }
