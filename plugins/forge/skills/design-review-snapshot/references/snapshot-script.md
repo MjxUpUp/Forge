@@ -13,8 +13,8 @@
 ## 依赖
 
 ```bash
-npm i -D playwright
-npx playwright install chromium
+npm i -D playwright tsx   # 版本进 lockfile，可审查可复现（不经注册表即时拉代码执行）
+npm exec -- playwright install chromium
 ```
 
 ## 完整脚本（snapshot-script.ts）
@@ -138,8 +138,8 @@ npm run dev  # 确认 BASE_URL 对应端口对
 
 # 2. 改脚本顶部的 ROUTES 配置（你要抓的路由）
 
-# 3. 跑
-npx tsx snapshot-script.ts
+# 3. 跑（tsx 已随依赖装为 devDependency，经本地运行）
+npm exec -- tsx snapshot-script.ts
 
 # 4. 检查输出
 # - 每个文件 < 95KB（超了的标 ⚠️，进分块流程）
@@ -185,7 +185,7 @@ Tauri 没有 URL，要先确认能独立 Web 构建：
 ```bash
 # 如果 vite.config 独立可用
 npm run build  # 产出 dist/
-npx vite preview --port 4173  # 起静态 server
+npm run preview -- --port 4173  # 起静态 server（项目本地 vite，lockfile 锁定）
 # 然后改 BASE_URL = 'http://localhost:4173'，正常跑脚本
 ```
 如果 Tauri 深度依赖 Rust IPC（文件系统/通知/系统调用），Web 构建会缺功能——抓出来的快照只能反映"静态 UI 壳"，需告知审核者这点限制。

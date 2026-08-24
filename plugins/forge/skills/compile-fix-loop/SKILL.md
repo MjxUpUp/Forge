@@ -25,7 +25,7 @@ metadata:
 |---|---|---|
 | Rust | `cargo check --workspace --all-targets` | 比 build 快，只检查不生成产物 |
 | Go | `go build ./...` + `go vet ./...` | build 报编译错，vet 报静态可疑 |
-| TypeScript | `tsc --noEmit` 或 `npx tsc --noEmit -p .` | noEmit 只类型检查不产出 |
+| TypeScript | `tsc --noEmit` 或 `npm exec -- tsc --noEmit -p .` | noEmit 只类型检查不产出；npm exec 用项目本地依赖（版本经 lockfile 锁定），不经注册表即时拉取 |
 | ArkTS | DevEco `hvigorw assembleHap` 或 IDE 构建 | 鸿蒙专用 |
 
 **关键**：`go build`/`cargo check` 一次只报少量错（编译器在第一个致命错处停下）。修复后必须**重跑**直到零错误——不要修一个就以为完了。这是"修一个错引下一个错"循环的根因。
