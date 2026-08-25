@@ -88,7 +88,7 @@ if [ ! -f "$_TOUCHED" ]; then
   echo "PASS [auto-compile] research-mode session, advisory suppressed (set by Edit|Write of source)"
 else
   if [ "$TOUCHED_SOURCE" = "1" ]; then
-    echo "PASS [auto-compile] Advisory: 已修改源码——请用你技术栈的编译命令确认编译通过（go build ./... / cargo check / mvn -o compile / tsc --noEmit 等）。编译报错时加载 compile-fix-loop skill（/compile-fix-loop）：编译错误修复闭环方法论，按语言分类定位根因。forge 不再强制编译，适配 loop engineering，由 agent 自检。"
+    echo "PASS [auto-compile] Advisory: 已修改源码——请用你技术栈的编译命令确认编译通过（go build ./... / cargo check / mvn -o compile / tsc --noEmit 等）。编译报错时加载 compile-fix-loop skill：编译错误修复闭环方法论，按语言分类定位根因。forge 不再强制编译，适配 loop engineering，由 agent 自检。"
   else
     echo "PASS [auto-compile] no source touched (compile self-check delegated to agent)"
   fi
@@ -564,7 +564,7 @@ if [ -z "$TASK_REF" ]; then
   # Auto-created, so it still promotes).
   NOWARN_FILE="${_MARKER_DIR}/forge-taskguard-nowarn-${FORGE_SESSION_ID:-default}"
   if [ -n "${FORGE_TASKGUARD_PROMOTED:-}" ]; then
-    echo "WARN [task-guard] No active task. Source edit DENIED until one exists — run: forge task start --ref <ref> --branch --title <title> (creates branch + task on main/master), then retry the edit. 无任务不得改源码：先 forge task start 建任务再重试。"
+    echo "WARN [task-guard] No active task. Source edit DENIED until one exists — run: forge task start --ref <ref> --branch --title <title> (creates branch + task on main/master), then retry the edit."
     exit 0
   fi
   if [ ! -f "$NOWARN_FILE" ]; then

@@ -11,11 +11,13 @@ import (
 )
 
 // setupUserHomes isolates the user-level homes (CLAUDE_CONFIG_DIR /
-// CODEX_HOME / FORGE_DATA_HOME) into temp dirs — user-level generators must
-// never touch the real home in tests.
+// CODEX_HOME / FORGE_DATA_HOME, plus HOME/USERPROFILE for the ~/.agents
+// skills target) into temp dirs — user-level generators must never touch the
+// real home in tests.
 //
 // setupUserHomes 把用户级 home（CLAUDE_CONFIG_DIR / CODEX_HOME /
-// FORGE_DATA_HOME）隔离进 temp dir——用户级生成器在测试中绝不碰真实 home。
+// FORGE_DATA_HOME，外加 ~/.agents skill 目标解析所经的 HOME/USERPROFILE）
+// 隔离进 temp dir——用户级生成器在测试中绝不碰真实 home。
 func setupUserHomes(t *testing.T) (claudeHome, codexHome string) {
 	t.Helper()
 	claudeHome = t.TempDir()
@@ -23,6 +25,9 @@ func setupUserHomes(t *testing.T) (claudeHome, codexHome string) {
 	t.Setenv(`CLAUDE_CONFIG_DIR`, claudeHome)
 	t.Setenv(`CODEX_HOME`, codexHome)
 	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
+	userHome := t.TempDir()
+	t.Setenv(`HOME`, userHome)
+	t.Setenv(`USERPROFILE`, userHome) // Windows 的 os.UserHomeDir 源
 	return claudeHome, codexHome
 }
 
@@ -290,6 +295,60 @@ func TestGenerateUserQualitySkill(t *testing.T) {
 	}
 }
 
+// TestGenerateUserQualitySkill_Targets pins the user-level skill target list:
+// besides ~/.claude/skills, the skill is also written to the cross-agent
+// shared ~/.agents/skills (kimi and other agent-neutral hosts read it there —
+// the 2026-08 orphan at that path proved kimi loads it while no generator
+// refreshed it). An existing ~/.agents gets the copy (identical bytes to the
+// claude one); a missing ~/.agents is NOT created (same self-poison guard —
+// Forge never creates an agent's config home itself).
+//
+// TestGenerateUserQualitySkill_Targets 钉住用户级 skill 的生成目标列表：除
+// ~/.claude/skills 外还写跨 agent 共享的 ~/.agents/skills（kimi 等
+// agent-neutral 宿主在此读它——2026-08 该路径的孤儿文件证明 kimi 会加载而
+// 无生成器刷新）。~/.agents 存在时写入（与 claude 副本字节一致）；不存在时
+// 不得创建（同款自毒防护——Forge 绝不自行创建 agent 的配置 home）。
+func TestGenerateUserQualitySkill_Targets(t *testing.T) {
+	claudeHome, _ := setupUserHomes(t)
+	userHome := os.Getenv(`HOME`)
+
+	// ~/.agents missing → not created (self-poison guard).
+	//
+	// ~/.agents 缺失 → 不得创建（自毒防护）。
+	if err := GenerateUserQualitySkill(protocol.DefaultProtocol()); err != nil {
+		t.Fatalf(`GenerateUserQualitySkill: %v`, err)
+	}
+	if _, err := os.Stat(filepath.Join(userHome, `.agents`)); !os.IsNotExist(err) {
+		t.Fatalf(`GenerateUserQualitySkill created ~/.agents out of nothing — self-poison guard broken`)
+	}
+
+	// ~/.agents exists (agent-neutral host installed) → copy lands, byte-identical
+	// to the claude one.
+	//
+	// ~/.agents 存在（已装 agent-neutral 宿主）→ 副本落盘，与 claude 副本字节一致。
+	if err := os.MkdirAll(filepath.Join(userHome, `.agents`), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := GenerateUserQualitySkill(protocol.DefaultProtocol()); err != nil {
+		t.Fatalf(`GenerateUserQualitySkill: %v`, err)
+	}
+	agentsSkill := filepath.Join(userHome, `.agents`, `skills`, `forge-quality`, `SKILL.md`)
+	agentsBytes, err := os.ReadFile(agentsSkill)
+	if err != nil {
+		t.Fatalf(`~/.agents/skills/forge-quality/SKILL.md not written: %v`, err)
+	}
+	claudeBytes, err := os.ReadFile(filepath.Join(claudeHome, `skills`, `forge-quality`, `SKILL.md`))
+	if err != nil {
+		t.Fatalf(`claude copy not written: %v`, err)
+	}
+	if string(agentsBytes) != string(claudeBytes) {
+		t.Error(`~/.agents copy must be byte-identical to the ~/.claude copy (same generator, same conditional wording)`)
+	}
+	if !strings.Contains(string(agentsBytes), "仅当当前项目已执行过 `forge init`") {
+		t.Error(`~/.agents copy missing the conditional-activation wording`)
+	}
+}
+
 // ---- detection self-poison guard (user-level-assets fix) ----
 
 // TestGenerateUserClaudeMD_SkipsWhenClaudeNotInstalled pins the self-poison fix:
@@ -343,6 +402,13 @@ func TestGenerateUserQualitySkill_SkipsWhenClaudeNotInstalled(t *testing.T) {
 	t.Setenv(`CLAUDE_CONFIG_DIR`, missing)
 	t.Setenv(`CODEX_HOME`, t.TempDir())
 	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
+	// The generator also targets ~/.agents/skills (resolved via UserHomeDir) —
+	// isolate HOME so the test never touches the real cross-agent dir.
+	//
+	// 生成器还会写 ~/.agents/skills（经 UserHomeDir 解析）——隔离 HOME，
+	// 测试绝不碰真实的跨 agent 目录。
+	t.Setenv(`HOME`, t.TempDir())
+	t.Setenv(`USERPROFILE`, os.Getenv(`HOME`))
 
 	if err := GenerateUserQualitySkill(protocol.DefaultProtocol()); err != nil {
 		t.Fatalf("GenerateUserQualitySkill should no-op (nil), got: %v", err)

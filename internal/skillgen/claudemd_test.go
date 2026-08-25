@@ -646,3 +646,96 @@ func TestClaudeMDDocumentsObservationHooks(t *testing.T) {
 		t.Error("failure-track doc line must state advisory (never blocks)")
 	}
 }
+
+// TestClaudeMDStopChainFacts pins the corrected review-stop / task-verify Stop
+// semantics (prompt-review 2026-08-25): review-stop is the ONLY hard gate on the
+// Stop chain — it blocks (exit-2) only in NON-task mode (unreviewed source
+// changes); in task mode it passes through because the task-complete gate
+// enforces the review prerequisite (internal/cli/review.go runReviewGate).
+// task-verify is also a Stop hook but has been pure advisory since the
+// stop-retry-loop incident (embed.go TaskVerifyHook: never blocks session end).
+// The old copy claimed both were hard Stop gates and that review-stop blocked on
+// "task-complete 前置未过" — both wrong.
+//
+// TestClaudeMDStopChainFacts 钉住修正后的 review-stop / task-verify Stop 语义
+// （提示词评审 2026-08-25）：review-stop 是 Stop 链上唯一硬门禁——仅非 task
+// 模式下 block（exit-2，有未审查源码变更）；task 模式直接放行（审查由
+// task-complete 门禁强制，见 internal/cli/review.go runReviewGate）。
+// task-verify 同为 Stop hook，但自 stop-retry-loop 事故后纯 advisory 永不
+// 阻塞（embed.go TaskVerifyHook）。旧文案声称两者同为 Stop 链硬门禁、且
+// review-stop 因「task-complete 前置未过」拦截——两处皆错。
+func TestClaudeMDStopChainFacts(t *testing.T) {
+	section := buildForgeSection(true)
+
+	if strings.Contains(section, "与 task-verify 同为 Stop 链硬门禁") {
+		t.Error("review-stop 行不得声称 task-verify 是 Stop 链硬门禁（task-verify Stop 纯 advisory 不阻塞）")
+	}
+	for _, want := range []string{
+		"task 模式下直接放行",       // review-stop 只在非 task 模式 block
+		"task-complete 门禁强制", // task 模式的审查强制点在 task-complete
+		"只 advisory 不阻塞",     // task-verify Stop 的真实语义
+	} {
+		if !strings.Contains(section, want) {
+			t.Errorf("forge section missing corrected Stop-chain fact %q", want)
+		}
+	}
+}
+
+// TestClaudeMDAuxChecksExcludeReadBeforeEdit pins the 辅助检查 line fix: 「先读再改」
+// must not be listed among the WARN-only sunk rules — inside an active task it is
+// the read-before-edit HARD gate (the line above), only outside tasks is it
+// forge-quality Red Flags self-discipline text. The old wording contradicted the
+// read-before-edit bullet in the same list.
+//
+// TestClaudeMDAuxChecksExcludeReadBeforeEdit 钉住辅助检查行修正：「先读再改」不得
+// 列入仅 WARN 的下沉规则——活跃任务内它是 read-before-edit 硬门禁（同清单上一条），
+// 仅任务外才是 forge-quality Red Flags 自律文本。旧措辞与同清单的 read-before-edit
+// 条目自相矛盾。
+func TestClaudeMDAuxChecksExcludeReadBeforeEdit(t *testing.T) {
+	section := buildForgeSection(true)
+
+	if strings.Contains(section, "先读再改/聚焦变更") {
+		t.Error("辅助检查（仅 WARN）行不得把「先读再改」列为软规则——任务内它是硬门禁")
+	}
+	if !strings.Contains(section, "聚焦变更/避免重复") {
+		t.Error("辅助检查行应保留真正纯 WARN 的下沉规则（聚焦变更/避免重复）")
+	}
+}
+
+// TestClaudeMDTaskGuardPerHostTruth pins the per-host task-guard wording
+// (fix/kimi-advisory-channel): the doc must not claim a flat "WARN 不拦截" —
+// dsh promotes the advisory to a block (hostcap PromoteAdvisory), kimi retired
+// its promote rules in favor of the advisory queue.
+//
+// TestClaudeMDTaskGuardPerHostTruth 钉住 task-guard 的按宿主措辞
+// （fix/kimi-advisory-channel）：文档不得笼统声称「WARN 不拦截」——dsh 把该
+// advisory 提升为阻断（hostcap PromoteAdvisory），kimi 已退役 promote 改走
+// advisory 队列。
+func TestClaudeMDTaskGuardPerHostTruth(t *testing.T) {
+	section := buildForgeSection(true)
+
+	if !strings.Contains(section, "dsh") || !strings.Contains(section, "提升为阻断") {
+		t.Error("task-guard 文案必须写明 dsh 提升为阻断的宿主差异")
+	}
+	if strings.Contains(section, "只触发 task-guard 警告（WARN，不拦截）") {
+		t.Error("task-guard 文案不得笼统声称 WARN 不拦截（dsh 提升为阻断）")
+	}
+}
+
+// TestClaudeMDNoArchaeologyNotes pins the maintainer-changelog cleanup: the
+// security-mechanism list is read by agents every session, so per-entry
+// archaeology (dates, call counts, "补齐" notes) is noise — each entry keeps
+// name + event + hard/soft + recovery, nothing else.
+//
+// TestClaudeMDNoArchaeologyNotes 钉住维护者 changelog 清理：安全机制清单每个
+// 会话都被 agent 阅读，条目里的考古注记（日期、调用量、「补齐」沿革）是噪声
+// ——每条只留名称+事件+硬/软+恢复方式。
+func TestClaudeMDNoArchaeologyNotes(t *testing.T) {
+	section := buildForgeSection(true)
+
+	for _, gone := range []string{"27.7k", "零记录缺口", "空头支票"} {
+		if strings.Contains(section, gone) {
+			t.Errorf("安全机制清单不得含考古注记 %q（对每会话都读的 agent 是噪声）", gone)
+		}
+	}
+}
