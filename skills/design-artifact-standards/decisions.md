@@ -86,3 +86,39 @@ metadata.triggers新增UserPromptSubmit关键词(写 PRD/需求文档/API 契约
 ### Evidence
 
 PRD/API设计请求高频;路由入口漏触发放大下游全族失守
+
+## [d-18cf01f4af43e698-7a2bc5aa] accept
+
+- **Skill**: design-artifact-standards
+- **DecidedAt**: 2026-08-25T09:22:07Z
+- **By**: kimi-code
+
+### Diagnosis
+
+description 484 字符超 350 软上限：六种产物类型的路由表（含 phase 名括注）整个塞进 description，与正文路由表重复
+
+### Revision
+
+压缩至 331 字符（-32%）：Use when 只留产物类型举例（写 PRD/需求文档、API 契约/OpenAPI、建表/schema、页面/组件设计、测试方案等设计产物时），删 phase 括注与 SKIP 冗述；正文路由表不动
+
+### Evidence
+
+评审实测其为第二长；触发关键词由 metadata.triggers 兜底（写 PRD/需求文档/API 契约/OpenAPI/proto 定义/测试方案/user story/设计文档均在）；validate 52/52 通过
+
+## [d-18cf032af733bca8-f85a9715] accept
+
+- **Skill**: design-artifact-standards
+- **DecidedAt**: 2026-08-25T09:44:20Z
+- **By**: kimi-code
+
+### Diagnosis
+
+上轮 description 压缩删去的触发词中，migration/接口定义/路由设计/测试用例/测试计划在 metadata.triggers 无兜底（proto/建表/schema/OpenAPI 等已有关键词覆盖，不补）
+
+### Revision
+
+triggers keywords 增补 5 个高价值词：migration、接口定义、路由设计、测试用例、测试计划
+
+### Evidence
+
+审查 minor 修复：对比被删词表与现有 keywords 逐词核对；forge skills validate 通过

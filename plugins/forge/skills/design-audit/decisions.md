@@ -105,3 +105,21 @@ metadata补triggers(keywords/cooldown;skill-authoring-standard用新condition sk
 ### Evidence
 
 skills-hitrate-review-2026-08-15:四源425会话挖掘语料+trigger覆盖10%缺口
+
+## [d-18cf01f4eb2a9648-46b967fa] accept
+
+- **Skill**: design-audit
+- **DecidedAt**: 2026-08-25T09:22:08Z
+- **By**: kimi-code
+
+### Diagnosis
+
+description 477 字符超 350 软上限："设计文档来源不限"整句与正文第 12 行重复，SKIP 六条均带"用"前缀冗长
+
+### Revision
+
+压缩至 333 字符（-30%）：来源说明并入 Use when 括注（飞书/本地/粘贴文本），删重复句，SKIP 去"用"前缀、条目名收紧
+
+### Evidence
+
+评审实测其为第三长；正文保留完整来源说明与分工节；validate 52/52 通过
