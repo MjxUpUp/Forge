@@ -262,6 +262,33 @@ func TestClaudeMDDocumentsCommitTiming(t *testing.T) {
 	}
 }
 
+// TestClaudeMDHazardGuardCopyTracksProtocol guards the docs-consistency of the
+// hazard-guard resolution copy (2026-08 HITL protocol revision): the generated
+// security bullet AND the common-errors row must teach the pre-authorization
+// path (user already instructed/confirmed this turn → forge hazard confirm
+// --last directly, no second ask) and must not carry the stale per-tool
+// enumeration (Claude Code→AskUserQuestion missed kimi/copilot/zcode) — same
+// copy contract as the hazard-guard block message and `forge hazard` Long help.
+//
+// TestClaudeMDHazardGuardCopyTracksProtocol 守卫 hazard-guard 解决路径文案的
+// 文档一致性（2026-08 HITL 协议修订）：生成的安全机制条目与常见错误表行都必须
+// 给出授权路径（用户本回合已明确指令/确认过 → 直接 forge hazard confirm --last
+// 免二次确认），且不得再带逐工具枚举（Claude Code→AskUserQuestion 漏
+// kimi/copilot/zcode）——与 hazard-guard block 文案、`forge hazard` Long 同源。
+func TestClaudeMDHazardGuardCopyTracksProtocol(t *testing.T) {
+	section := buildForgeSection(true)
+	for _, anchor := range []string{"无需二次确认", "forge hazard confirm --last", "所在工具的提问确认机制"} {
+		if !strings.Contains(section, anchor) {
+			t.Errorf("CLAUDE.md hazard-guard copy missing %q (2026-08 HITL protocol revision)", anchor)
+		}
+	}
+	for _, gone := range []string{"AskUserQuestion", "FORGE_ALLOW_HAZARD"} {
+		if strings.Contains(section, gone) {
+			t.Errorf("CLAUDE.md hazard-guard copy must not contain %q anymore (stale per-tool enumeration / migration note)", gone)
+		}
+	}
+}
+
 // TestClaudeMDMatchesActualGuardBehavior guards against documenting fabricated
 // thresholds or the wrong verb (deny vs warn). The task-guard and bash-guard
 // hooks only WARN on source changes without an active task — they never deny

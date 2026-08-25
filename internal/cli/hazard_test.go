@@ -72,3 +72,29 @@ func TestShortFingerprint(t *testing.T) {
 		}
 	}
 }
+
+// TestHazardCmd_LongGuidanceCopy pins the 2026-08 help-text revision (the same
+// copy fix as the hazard-guard block message): the Long help must carry the
+// pre-authorization path (user already instructed/confirmed this turn → confirm
+// --last directly, no second ask), must reference the host tool's confirmation
+// mechanism generically (the AskUserQuestion enumeration missed
+// kimi/copilot/zcode), and must not carry the FORGE_ALLOW_HAZARD migration note
+// (changelog, not action guidance).
+//
+// TestHazardCmd_LongGuidanceCopy 钉死 2026-08 帮助文案修订（与 hazard-guard
+// block 文案同批修复）：Long 必须含授权路径（用户本回合已明确指令/确认过 →
+// 直接 confirm --last 无需二次确认）、工具指代须泛化（AskUserQuestion 枚举漏了
+// kimi/copilot/zcode）、不得再带 FORGE_ALLOW_HAZARD 迁移说明（changelog 不是
+// 行动指引）。
+func TestHazardCmd_LongGuidanceCopy(t *testing.T) {
+	for _, anchor := range []string{"无需二次确认", "confirm --last", "你所在工具的提问确认机制"} {
+		if !strings.Contains(hazardCmd.Long, anchor) {
+			t.Errorf("hazard Long help missing %q:\n%s", anchor, hazardCmd.Long)
+		}
+	}
+	for _, gone := range []string{"FORGE_ALLOW_HAZARD", "AskUserQuestion"} {
+		if strings.Contains(hazardCmd.Long, gone) {
+			t.Errorf("hazard Long help must not contain %q anymore:\n%s", gone, hazardCmd.Long)
+		}
+	}
+}
