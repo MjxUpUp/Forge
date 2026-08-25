@@ -121,7 +121,7 @@ func buildForgeSectionWithLevel(forClaude bool, userLevel bool) string {
 	// task workflow——最关键的操作指引，防止 agent 不知所措地撞上
 	// task-guard/bash-guard 拦截。
 	sb.WriteString("## Task 工作流（必读）\n\n")
-	sb.WriteString("**源码变更前必须启动 Forge 任务**——无任务时 Write/Edit 源码只触发 task-guard 警告（WARN，不拦截），但 Bash 写源码（sed/cat > 等）会被 file-sentinel quarantine。更关键：脱离任务的变更不被门禁追踪和质量评分。纯文档、单行 typo 修复、版本号 bump 除外。\n\n")
+	sb.WriteString("**源码变更前必须启动 Forge 任务**——无任务时 Write/Edit 源码触发 task-guard 警告（多数宿主 WARN 不拦截；dsh 宿主提升为阻断，kimi 已退役 promote 改走 advisory 队列攒发），但 Bash 写源码（sed/cat > 等）会被 file-sentinel quarantine。更关键：脱离任务的变更不被门禁追踪和质量评分。纯文档、单行 typo 修复、版本号 bump 除外。\n\n")
 	sb.WriteString("### 启动任务\n\n")
 	sb.WriteString("```bash\n")
 	sb.WriteString("# 在 master/main 上：创建新分支 + 启动任务\n")
@@ -166,13 +166,13 @@ func buildForgeSectionWithLevel(forClaude bool, userLevel bool) string {
 
 	sb.WriteString("### 安全机制\n\n")
 	sb.WriteString("- **freeze-guard**（PreToolUse Write|Edit）：`forge freeze` 激活期间只允许写指定路径内文件，越界即硬阻断（`FAIL`）；`forge freeze --status` 看冻结范围，`--off` 解除。排在 task-guard 之前判定（freeze 优先契约）\n")
-	sb.WriteString("- **task-guard**（PreToolUse Write|Edit）：无任务时 Write/Edit 源码只 WARN 不拦截（`.forge/*`/`.claude/settings*` 自保护 FAIL——此类项目级文件只在团队模式/老项目存在）；feature 分支无任务时自动建任务\n")
+	sb.WriteString("- **task-guard**（PreToolUse Write|Edit）：无任务时 Write/Edit 源码 WARN（dsh 宿主提升为阻断，kimi 经 advisory 队列送达；`.forge/*`/`.claude/settings*` 自保护 FAIL——此类项目级文件只在团队模式/老项目存在）；feature 分支无任务时自动建任务\n")
 	sb.WriteString("- **read-before-edit**（PreToolUse Write|Edit，活跃任务内）：编辑本会话未 Read 过的现存源文件 → 硬阻断（`BLOCKED`）。Edit 需精确匹配旧文本，未读即凭记忆盲改——old_string 撞中即错改入库。先 Read 再 Edit。豁免：新建文件/测试文件/非源码；批量重构逃生 `forge task override --work-activity disable`（记 checklog 审计；work-activity 是节奏门禁，不降 evidence 强度）。reads-log 落盘随会话存活，压缩后仍累计\n")
 	sb.WriteString("- **bash-guard**（PreToolUse Bash）：无任务时 Bash 写文件只 WARN（源码随后可能被 file-sentinel quarantine）\n")
 	sb.WriteString("- **hazard-guard**（PreToolUse Bash）：高危命令（`rm -rf` 深目录/盘根/引号包裹逃逸等指纹）硬阻断，须 human-in-the-loop 确认——授权判定：用户本回合已明确指令/确认过该操作则直接 `forge hazard confirm --last` 放行一次（无需二次确认），否则先用所在工具的提问确认机制向用户说明风险获确认再 confirm；误报可 `forge hazard status` 查看\n")
 	sb.WriteString("- **file-sentinel**（PostToolUse Bash）：对比 Bash 前后文件状态，未授权源码变更 quarantine 到用户级 DataDir/quarantine/（`forge data-dir` 查看路径）\n")
 	sb.WriteString("- **workflow-test-guard**（PostToolUse Write|Edit）：改 `.github/workflows/*.yml` 后自动跑 internal/ci 守护测试——CI workflow 沙盒异常的实时反馈层（fail 输出提示修复方向，不阻断写入）\n")
-	sb.WriteString("- **tool-track**（PostToolUse Read|Skill|Agent|Grep|Glob|Bash）：记录工具使用到 toollog（评分 efficiency/维度数据源），永不阻断；Skill/Agent 调用也被记录——质量 skill 是否被驱动可追溯；Bash 记截断命令（27.7k 调用零记录缺口，2026-08-22 补）；Grep/Glob 记截断 input——探索调用计入 work-activity 探索轴（2026-08-23 补，此前错误表「用 Read/Grep/Glob 探索」是空头支票）\n")
+	sb.WriteString("- **tool-track**（PostToolUse Read|Skill|Agent|Grep|Glob|Bash）：记录工具使用到 toollog（评分 efficiency/维度数据源），永不阻断；Skill/Agent 调用也记录（质量 skill 是否被驱动可追溯）；Bash/Grep/Glob 记截断命令/input——探索调用计入 work-activity 探索轴\n")
 	sb.WriteString("- **failure-track**（PostToolUseFailure Bash）：命令失败后记录 CheckToolFailure 观察；失败文本命中编译/测试类指纹（undefined:/error TS/error[E/FAIL 等）时注入 compile-fix-loop skill 事实性指针（advisory 不阻断——失败已发生，阻断无意义）\n")
 	sb.WriteString("- **subagent-track**（SubagentStop）：子 agent 结束时记录 agent_id/agent_type/交付长度+首行摘要到 checklog（归因数据——此前子 agent 活动 forge 侧零记录）；纯观察，无输出无阻断\n")
 	sb.WriteString("- **test-nudge**（PostToolUse Write|Edit，活跃任务内）：事中测试提醒——连写 ≥3 个源码文件且无配对测试写入时注入一次 test-discipline skill 事实性提示（advisory，每连写只提示一次）；任何测试文件写入重置计数；无活跃任务静默；执法仍在 task-verify 门禁\n")
@@ -183,8 +183,8 @@ func buildForgeSectionWithLevel(forClaude bool, userLevel bool) string {
 	sb.WriteString("- **task-resume**（SessionStart）：会话启动自动注入活跃任务的接续上下文（`forge task resume --hook`：目标/计划/决策/阻塞/门禁进度/git 已改未提交）+ 把当前 session 锚定到任务——接手方冷启动即知任务在哪一步，无需手动 `forge task resume`；无活跃任务静默；项目级 hook（advisory，不阻塞）\n")
 	sb.WriteString("- **init-suggest**（SessionStart，全局）：非 forge 的 git 项目首次会话检测为 forge 候选时自动 `forge init`（v1.22 起零项目写入）；`forge suggest decline` 按项目退出，`forge suggest status/reset` 管理标记\n")
 	sb.WriteString("- **compact-resume** + **resume-reinject**（PostCompact + UserPromptSubmit）：上下文压缩后自动重注入完整任务接续上下文（compact-resume 置标志 → 下一条用户消息 resume-reinject 注入），不靠 agent 主动 `forge task resume`；部分宿主无 PostCompact 事件，压缩场景回落 SessionStart tl;dr 档\n")
-	sb.WriteString("- **review-stop**（Stop）：task-complete 前置 code-review-gate 未过时拦截会话停止（exit-2 block）——提示「派只读子 agent 审查当前 diff 后运行 `forge review pass`」；与 task-verify 同为 Stop 链硬门禁\n")
-	sb.WriteString("- **辅助检查（仅 WARN 不阻塞）**：先读再改/聚焦变更/避免重复等判断性规则已下沉为 forge-quality 的 Red Flags 文本。\n\n")
+	sb.WriteString("- **review-stop**（Stop）：Stop 链上的硬门禁——非 task 模式下存在未审查源码变更时拦截会话停止（exit-2 block），提示「派只读子 agent 审查当前 diff 后运行 `forge review pass`」；task 模式下直接放行（审查由 task-complete 门禁强制）。task-verify 同为 Stop hook 但只 advisory 不阻塞\n")
+	sb.WriteString("- **辅助检查（仅 WARN 不阻塞）**：聚焦变更/避免重复等判断性规则已下沉为 forge-quality 的 Red Flags 文本；「先读再改」不在此列——活跃任务内它是 read-before-edit 硬门禁（见上），仅任务外场景（非任务编辑、跨会话接手）是 Red Flags 自律文本。\n\n")
 
 	sb.WriteString("### 常见错误\n\n")
 	sb.WriteString("| 错误信息 | 原因 | 解决方法 |\n")
@@ -422,42 +422,68 @@ func stripMarkedSection(content, startMarker, endMarker string) string {
 }
 
 // GenerateUserQualitySkill writes the forge-quality skill to the user-level
-// ~/.claude/skills/forge-quality/SKILL.md from the given protocol — same content
-// as the project-level GenerateQualitySkill, different target dir. Because the
-// user-level skill is loaded in every project, the unconditional "本项目"
-// wording is adjusted to the conditional form (minimal change).
+// skill roots from the given protocol — same content as the project-level
+// GenerateQualitySkill, different target dirs. Targets:
+//   - ~/.claude/skills (Claude Code, claudeConfigHome resolution)
+//   - ~/.agents/skills (the cross-agent shared convention dir — kimi and other
+//     agent-neutral hosts read forge-quality from there; same convention as
+//     skillsdist.TargetAgents, no env override)
 //
-// No-op when the Claude config home does not exist — same detection-self-poison
-// guard as GenerateUserClaudeMD (the directory's existence is DetectAgents'
-// "claude is installed" signal).
+// Because the user-level skill is loaded in every project, the unconditional
+// "本项目" wording is adjusted to the conditional form (minimal change).
 //
-// GenerateUserQualitySkill 从给定 protocol 生成用户级
-// ~/.claude/skills/forge-quality/SKILL.md——内容与项目级 GenerateQualitySkill
-// 相同，仅目标目录不同。因用户级 skill 在所有项目中加载，无条件的"本项目"
-// 措辞微调为条件式（最小改动）。
+// No-op per target when its home does not exist — same detection-self-poison
+// guard as GenerateUserClaudeMD (a config home's existence is the "installed"
+// signal). This also refreshes the orphaned ~/.agents copy left behind by the
+// retired generator (no code path rewrote it since, so its content had rotted).
 //
-// Claude config home 不存在时 no-op——与 GenerateUserClaudeMD 同款检测自毒
-// 防护（目录存在性是 DetectAgents 判断"claude 已安装"的信号）。
+// GenerateUserQualitySkill 从给定 protocol 生成用户级 forge-quality skill——
+// 内容与项目级 GenerateQualitySkill 相同，仅目标目录不同。目标：
+//   - ~/.claude/skills（Claude Code，claudeConfigHome 解析）
+//   - ~/.agents/skills（跨 agent 共享约定目录——kimi 等 agent-neutral 宿主从
+//     这里读 forge-quality；与 skillsdist.TargetAgents 同约定，无 env 覆盖）
+//
+// 因用户级 skill 在所有项目中加载，无条件的"本项目"措辞微调为条件式（最小改动）。
+//
+// 每个目标的 home 不存在时各自 no-op——与 GenerateUserClaudeMD 同款检测自毒
+// 防护（config home 存在 = 已安装信号）。这同时刷新已退役生成器留下的
+// ~/.agents 孤儿副本（此后无任何代码路径重写它，内容早已腐烂）。
 func GenerateUserQualitySkill(proto *protocol.Protocol) error {
 	home := claudeConfigHome()
 	if home == "" {
 		return fmt.Errorf("cannot resolve Claude config home (CLAUDE_CONFIG_DIR unset, user home unavailable)")
 	}
-	return GenerateUserQualitySkillTo(filepath.Join(home, "skills"), proto)
+	if err := GenerateUserQualitySkillTo(filepath.Join(home, "skills"), proto); err != nil {
+		return err
+	}
+	// Best-effort secondary replica: the ~/.agents copy mirrors the canonical
+	// ~/.claude one, so a write failure here (permissions, read-only dir) must
+	// not fail the whole call when the primary target already landed — warn to
+	// stderr instead of returning the error.
+	//
+	// 次要副本尽力而为：~/.agents 副本是 ~/.claude 正本的镜像，此处写失败
+	// （权限、只读目录）不得在主目标已落盘时拖垮整个调用——告警到 stderr，
+	// 不返回 error。
+	if userHome, err := os.UserHomeDir(); err == nil {
+		if err := GenerateUserQualitySkillTo(filepath.Join(userHome, ".agents", "skills"), proto); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: ~/.agents forge-quality skill refresh failed (primary ~/.claude copy written): %v\n", err)
+		}
+	}
+	return nil
 }
 
 // GenerateUserQualitySkillTo writes the forge-quality skill under the given
-// skills root (e.g. ~/.claude/skills or ~/.reasonix/skills) — the shared
-// user-level skill writer used by GenerateUserQualitySkill and the reasonix
-// translator. Same conditional-activation content, same self-poison guard: a
-// missing agent home (the parent of skillsRoot) is a no-op, so Forge never
-// creates an agent's config home itself.
+// skills root (e.g. ~/.claude/skills, ~/.agents/skills or ~/.reasonix/skills) —
+// the shared user-level skill writer used by GenerateUserQualitySkill and the
+// reasonix translator. Same conditional-activation content, same self-poison
+// guard: a missing agent home (the parent of skillsRoot) is a no-op, so Forge
+// never creates an agent's config home itself.
 //
 // GenerateUserQualitySkillTo 把 forge-quality skill 写到给定 skills root
-// （如 ~/.claude/skills 或 ~/.reasonix/skills）——GenerateUserQualitySkill 与
-// reasonix translator 共享的用户级 skill 写入器。同样的条件激活内容与自毒
-// 防护：agent home（skillsRoot 的父目录）不存在时 no-op，Forge 绝不自行创建
-// agent 的配置 home。
+// （如 ~/.claude/skills、~/.agents/skills 或 ~/.reasonix/skills）——
+// GenerateUserQualitySkill 与 reasonix translator 共享的用户级 skill 写入器。
+// 同样的条件激活内容与自毒防护：agent home（skillsRoot 的父目录）不存在时
+// no-op，Forge 绝不自行创建 agent 的配置 home。
 func GenerateUserQualitySkillTo(skillsRoot string, proto *protocol.Protocol) error {
 	home := filepath.Dir(skillsRoot)
 	if home == "" || home == "." {
