@@ -5,16 +5,16 @@ import (
 	"testing"
 )
 
-// TestLookup_CoversAllSupportedHosts pins the registry against the ten
+// TestLookup_CoversAllSupportedHosts pins the registry against the
 // agentbridge.AgentType names — a host missing here falls back to the
 // Claude-compatible default everywhere, silently losing its identity signals.
 //
-// TestLookup_CoversAllSupportedHosts 把注册表钉在十个 agentbridge.AgentType 名上——
+// TestLookup_CoversAllSupportedHosts 把注册表钉在 agentbridge.AgentType 名上——
 // 缺失的宿主在所有查表处静默回落 Claude 兼容默认，丢失其身份信号。
 func TestLookup_CoversAllSupportedHosts(t *testing.T) {
 	for _, name := range []string{
 		"claude-code", "cursor", "copilot", "windsurf", "codex",
-		"opencode", "cline", "kimi", "codebuddy", "reasonix",
+		"opencode", "cline", "kimi", "codebuddy", "reasonix", "dsh", "zcode",
 	} {
 		if h := Lookup(name); h == nil {
 			t.Errorf("Lookup(%q) = nil, want registry row", name)
@@ -107,11 +107,12 @@ func TestContextChannel_RowsMatchPreRegistrySwitch(t *testing.T) {
 		{"cline", "PostToolUse", true, "cline/contextModification"},
 		{"cline", "Stop", true, "cline/contextModification"},
 		// Claude-compatible default: claude-code, hosts without channel rows
-		// (codebuddy/opencode/reasonix), and unknown agents all deliver everywhere.
+		// (codebuddy/opencode/reasonix/zcode), and unknown agents all deliver everywhere.
 		{"claude-code", "PostToolUse", true, "claude/additionalContext"},
 		{"codebuddy", "PreToolUse", true, "claude/additionalContext"},
 		{"opencode", "Stop", true, "claude/additionalContext"},
 		{"reasonix", "SessionStart", true, "claude/additionalContext"},
+		{"zcode", "PostToolUse", true, "claude/additionalContext"},
 		{"", "UserPromptSubmit", true, "claude/additionalContext"},
 		{"no-such-host", "Stop", true, "claude/additionalContext"},
 	}
@@ -149,7 +150,7 @@ func TestKimiDroppedStdoutEvents(t *testing.T) {
 	// No other host drops stdout today: the cli derivations must stay kimi-only.
 	//
 	// 目前没有其他宿主丢 stdout：cli 的派生判断必须保持仅 kimi 命中。
-	for _, name := range []string{"claude-code", "cursor", "copilot", "windsurf", "codex", "opencode", "cline", "codebuddy", "reasonix"} {
+	for _, name := range []string{"claude-code", "cursor", "copilot", "windsurf", "codex", "opencode", "cline", "codebuddy", "reasonix", "dsh", "zcode"} {
 		if h := Lookup(name); h != nil && h.DropsStdoutEvent("SessionStart") {
 			t.Errorf("%s DropsStdoutEvent(SessionStart) = true, want false (backfill would double-inject)", name)
 		}
@@ -191,7 +192,7 @@ func TestKimiPromoteAdvisory(t *testing.T) {
 	// advisory 通道送达且足够的宿主不得带提升规则。dsh 是已文档化的例外（通道
 	// 送达、advisory 被实证无视——由下方 TestDshTaskGuardPromotion 钉死），故刻意
 	// 不在本清单内。
-	for _, name := range []string{"claude-code", "codex", "cursor"} {
+	for _, name := range []string{"claude-code", "codex", "cursor", "zcode"} {
 		if h := Lookup(name); h != nil && len(h.PromoteAdvisory) > 0 {
 			t.Errorf("%s PromoteAdvisory = %v, want empty", name, h.PromoteAdvisory)
 		}
@@ -247,7 +248,7 @@ func TestDshTaskGuardPromotion(t *testing.T) {
 			t.Errorf("%s PromotesHook(task-guard) = false, want true", name)
 		}
 	}
-	for _, name := range []string{"claude-code", "codex", "cursor", "copilot", "windsurf", "opencode", "cline", "codebuddy", "reasonix"} {
+	for _, name := range []string{"claude-code", "codex", "cursor", "copilot", "windsurf", "opencode", "cline", "codebuddy", "reasonix", "zcode"} {
 		if hh := Lookup(name); hh != nil && hh.PromotesHook("task-guard") {
 			t.Errorf("%s PromotesHook(task-guard) = true, want false", name)
 		}
@@ -319,7 +320,7 @@ func TestStdinDialects(t *testing.T) {
 	// Every other host must stay Claude-shape (empty dialect).
 	//
 	// 其余宿主必须保持 Claude 形（方言为空）。
-	for _, name := range []string{"claude-code", "cursor", "copilot", "codex", "opencode", "codebuddy"} {
+	for _, name := range []string{"claude-code", "cursor", "copilot", "codex", "opencode", "codebuddy", "zcode"} {
 		if h := Lookup(name); h != nil && (h.StdinDialect != "" || h.StdinReplacesParse) {
 			t.Errorf("%s StdinDialect=%q StdinReplacesParse=%v, want Claude-shape", name, h.StdinDialect, h.StdinReplacesParse)
 		}
@@ -348,6 +349,7 @@ func TestInstallIndicators(t *testing.T) {
 		"cursor":      {Path: "~/.cursor"},
 		"windsurf":    {Path: "~/.codeium"},
 		"opencode":    {Env: "XDG_CONFIG_HOME", EnvSuffix: "opencode", Path: "~/.config/opencode"},
+		"zcode":       {Path: "~/.zcode"},
 	}
 	for name, want := range wantRows {
 		h := Lookup(name)
