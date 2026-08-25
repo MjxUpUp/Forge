@@ -1,6 +1,6 @@
 # 输出可读性门禁（output-readability-gates）
 
-> 状态：已实施（v1.43）。来源设计：飞书《AI 产物可读性差调研设计》（2026-08）。
+> 状态：已实施（随 v1.43 发布；main 最新 release 为 1.42.2）。来源设计：飞书《AI 产物可读性差调研设计》（2026-08）。
 > 本文档是该设计在 Forge 仓库内的落地版与现状证据索引——回答「项目里有没有相关设计」时以本文档为准。
 
 ## 问题
@@ -56,7 +56,7 @@ AI 产物可读性差，两个维度：
 
 - 任务评分六维 → 七维：`scoringtypes` 加 `expression`（权重 0.10，从 process/testing/code-quality/assertions 按比例匀出，合计仍 1.0）；`scoring/evaluator.go` `scoreExpression`——无文档产物中性 100（纯代码任务不受影响），有产物时 lintPart+rubricPart 各半，逃生封顶 60。
 - 输入与 doc gate 同源（同 doclint + changedMarkdownDocs 实算），维度与门禁结论不会不一致。
-- golden fixtures 已随权重再再生（`internal/scoring/testdata/golden*`）。
+- golden fixtures 已随权重再生成（`internal/scoring/testdata/golden*`）。
 
 ### 长期回路 — 约束进化
 

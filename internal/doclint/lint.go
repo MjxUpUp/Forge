@@ -111,6 +111,11 @@ func LintText(filename, text string) []Issue {
 	// nonFenced 只收集散文行：D4 证据标记与 D7 篇幅上限不得被围栏代码满足/
 	// 撑大（围栏里的命令块是示例，不是「断言被实跑过」的证据）。
 	var nonFenced strings.Builder
+	// firstClaimLine is the original line no. of the first prose pass-claim
+	// (D4 trigger; 0 = none).
+	//
+	// firstClaimLine 是散文中首个通过性断言的原文件行号（D4 触发；0=无）。
+	firstClaimLine := 0
 	// fenceRunLen is the opening fence's marker length (3+ backticks/tildes).
 	// CommonMark closes only with a run of >= that length — a 4-backtick outer
 	// fence containing 3-backtick examples must not be closed early by the
@@ -141,6 +146,10 @@ func LintText(filename, text string) []Issue {
 		}
 		nonFenced.WriteString(raw)
 		nonFenced.WriteByte('\n')
+
+		if firstClaimLine == 0 && passClaimRe.MatchString(raw) {
+			firstClaimLine = lineNo
+		}
 
 		if strings.HasPrefix(trimmed, "#") {
 			headings = append(headings, strings.ToLower(trimmed))
@@ -191,21 +200,22 @@ func LintText(filename, text string) []Issue {
 	}
 
 	// D4: pass-claims must co-occur with at least one evidence marker in the
-	// document's PROSE (fenced blocks excluded — an example command in a fence
-	// is not evidence the claims were run; the old full-text scan let any code
-	// block acquit every claim, making D4 near-inert).
+	// document's PROSE. BOTH the claim trigger and the evidence scan are
+	// prose-only: a claim that exists only inside a fence is an example (a
+	// question like 测试通过了？ or a criteria description), not the document
+	// asserting its own verification — flagging it points the reader at a fence
+	// line (review round 2 finding N1/N2). firstClaimLine keeps the ORIGINAL
+	// file line (nonFenced's own numbering diverges once fences are dropped).
 	//
-	// D4：通过性断言须与文档散文中至少一个证据标记共存（排除围栏块——围栏里
-	// 的示例命令不是「断言被实跑过」的证据；旧版全文扫描让任意代码块赦免全部
-	// 断言，D4 形同虚设）。
-	if m := passClaimRe.FindStringIndex(text); m != nil {
-		if !hasEvidenceMarker(nonFenced.String()) {
-			claimLine := 1 + strings.Count(text[:m[0]], "\n")
-			issues = append(issues, Issue{
-				Line: claimLine, Rule: "D4", Severity: Advisory,
-				Message: "通过性断言无证据标记——正文（非代码块）须含命令/输出引用（反引号）、file:line、URL 或百分比之一",
-			})
-		}
+	// D4：通过性断言须与文档散文中至少一个证据标记共存。触发与证据扫描都只在
+	// 散文：仅存在于围栏内的「断言」是示例（如「测试通过了？」设问、判据描述），
+	// 不是文档自证实跑——命中它会指向围栏行（复审二轮 N1/N2）。firstClaimLine
+	// 保留原文件行号（剔除围栏后 nonFenced 自身行号会偏离）。
+	if firstClaimLine > 0 && !hasEvidenceMarker(nonFenced.String()) {
+		issues = append(issues, Issue{
+			Line: firstClaimLine, Rule: "D4", Severity: Advisory,
+			Message: "通过性断言无证据标记——正文（非代码块）须含命令/输出引用（反引号）、file:line、URL 或百分比之一",
+		})
 	}
 
 	// D5-D7: type-scoped rules. Template files (doc-generator's references/
