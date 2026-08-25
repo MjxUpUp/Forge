@@ -52,7 +52,7 @@ const SkipScanLines = 10
 // guardrail 机器消费——是治理记录不是给人即时阅读的交付物）。
 var exemptPathFrags = []string{
 	"vendor/", "node_modules/", "dist/", ".git/", ".zcode/", "testdata/",
-	"docs/skillhub-archive/", "CHANGELOG.md", "decisions.md",
+	"docs/skillhub-archive/", "changelog.md", "decisions.md",
 }
 
 // PathExempt reports whether a slash-normalized relative path is exempt.
@@ -104,30 +104,43 @@ func LintText(filename, text string) []Issue {
 	headings := []string{}
 	diffFingerprintsOutsideFence := 0
 	firstDiffLine := 0
+	// nonFenced collects prose lines only: D4 evidence markers and D7 line caps
+	// must not be satisfied/inflated by fenced code (a fenced command block is
+	// an example, not evidence the doc's claims were actually run).
+	//
+	// nonFenced 只收集散文行：D4 证据标记与 D7 篇幅上限不得被围栏代码满足/
+	// 撑大（围栏里的命令块是示例，不是「断言被实跑过」的证据）。
+	var nonFenced strings.Builder
+	// fenceRunLen is the opening fence's marker length (3+ backticks/tildes).
+	// CommonMark closes only with a run of >= that length — a 4-backtick outer
+	// fence containing 3-backtick examples must not be closed early by the
+	// inner marker (which would lint example prose as real prose).
+	//
+	// fenceRunLen 是开栏围栏的标记长度（≥3 个反引号/波浪号）。CommonMark 仅以
+	// ≥该长度的 run 闭栏——4 反引号外栏内嵌 3 反引号示例时不得被内层提前
+	// 闭栏（否则示例散文被当真实散文 lint）。
+	fenceRunLen := 0
 
 	for idx, raw := range lines {
 		lineNo := idx + 1
 		trimmed := strings.TrimSpace(raw)
-
-		// Fence tracking: a ```/~~~ toggle only at line start (indented fences
-		// inside lists are still fences; list content is not).
-		//
-		// 围栏跟踪：行首的 ```/~~~ 才切换围栏状态（列表内缩进围栏也是围栏，
-		// 列表内容不是）。
-		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
-			marker := trimmed[:3]
+		if n := fenceMarkerLen(trimmed); n > 0 {
 			if !fenceOpen {
 				fenceOpen = true
-				fenceMarker = marker
-			} else if marker == fenceMarker {
+				fenceMarker = string(trimmed[0])
+				fenceRunLen = n
+			} else if string(trimmed[0]) == fenceMarker && n >= fenceRunLen {
 				fenceOpen = false
 				fenceMarker = ""
+				fenceRunLen = 0
 			}
 			continue
 		}
 		if fenceOpen {
 			continue
 		}
+		nonFenced.WriteString(raw)
+		nonFenced.WriteByte('\n')
 
 		if strings.HasPrefix(trimmed, "#") {
 			headings = append(headings, strings.ToLower(trimmed))
@@ -178,15 +191,19 @@ func LintText(filename, text string) []Issue {
 	}
 
 	// D4: pass-claims must co-occur with at least one evidence marker in the
-	// whole document (file-level judgment — the claim itself may be anywhere).
+	// document's PROSE (fenced blocks excluded — an example command in a fence
+	// is not evidence the claims were run; the old full-text scan let any code
+	// block acquit every claim, making D4 near-inert).
 	//
-	// D4：通过性断言须与全文至少一个证据标记共存（文件级判定——断言可在任意位置）。
+	// D4：通过性断言须与文档散文中至少一个证据标记共存（排除围栏块——围栏里
+	// 的示例命令不是「断言被实跑过」的证据；旧版全文扫描让任意代码块赦免全部
+	// 断言，D4 形同虚设）。
 	if m := passClaimRe.FindStringIndex(text); m != nil {
-		if !hasEvidenceMarker(text) {
+		if !hasEvidenceMarker(nonFenced.String()) {
 			claimLine := 1 + strings.Count(text[:m[0]], "\n")
 			issues = append(issues, Issue{
 				Line: claimLine, Rule: "D4", Severity: Advisory,
-				Message: "通过性断言无证据标记——正文须含命令/输出引用（反引号）、file:line、URL 或百分比之一",
+				Message: "通过性断言无证据标记——正文（非代码块）须含命令/输出引用（反引号）、file:line、URL 或百分比之一",
 			})
 		}
 	}
@@ -195,15 +212,43 @@ func LintText(filename, text string) []Issue {
 	// template-*.md) define structure rather than being filled instances —
 	// their骨架 lives inside code fences — so instance rules skip them;
 	// universal D1-D4 still apply (a template must not use the phrases it bans).
+	// D7 counts non-fenced lines only: the cap targets prose bloat, a report
+	// embedding long fenced output is a structure choice, not verbosity.
 	//
 	// D5-D7：类型作用域规则。模板文件（doc-generator 的 references/
 	// template-*.md）是结构定义不是填写实例——骨架在代码围栏内——
 	// 实例规则跳过；通用 D1-D4 仍生效（模板不得裸用自己禁掉的短语）。
+	// D7 只数非围栏行：上限管的是散文膨胀，嵌长输出围栏的报告是结构选择
+	// 不是冗长。
 	if dt := matchDocType(filename); dt != nil && !isTemplateFile(filename) {
-		issues = append(issues, lintDocType(*dt, headings, text, len(lines))...)
+		nonFencedLines := strings.Count(nonFenced.String(), "\n")
+		issues = append(issues, lintDocType(*dt, headings, text, nonFencedLines)...)
 	}
 
 	return issues
+}
+
+// fenceMarkerLen returns the length of a leading ```/~~~ run (0 if the line is
+// not a fence marker). Info-string suffixes (```bash) do not extend the run.
+//
+// fenceMarkerLen 返回行首 ```/~~~ run 的长度（非围栏标记行返回 0）。
+// 语言后缀（```bash）不计入 run 长度。
+func fenceMarkerLen(trimmed string) int {
+	if len(trimmed) < 3 {
+		return 0
+	}
+	c := trimmed[0]
+	if c != '`' && c != '~' {
+		return 0
+	}
+	n := 0
+	for n < len(trimmed) && trimmed[n] == c {
+		n++
+	}
+	if n < 3 {
+		return 0
+	}
+	return n
 }
 
 // isTemplateFile reports whether the base filename is a doc-generator template
@@ -277,16 +322,15 @@ func hasEvidenceMarker(text string) bool {
 }
 
 // stripInlineCode removes `...` spans so quoted-as-data phrases are not
-// flagged. Odd/unbalanced backticks fall back to the raw line (conservative:
-// better one false negative than flagging a quoted example).
+// flagged. An odd backtick count means the line ends inside an unterminated
+// span — the trailing segment is dropped (the conservative direction: less
+// text to match, i.e. prefer a miss over flagging a quoted example).
 //
 // stripInlineCode 移除 `...` 片段，使「作为数据引用」的短语不被命中。
-// 反引号不配对时回退原始行（保守——宁可漏报也不误伤引用示例）。
+// 反引号数量为奇数说明行尾落在未闭合 span 内——丢弃尾部片段（保守方向：
+// 匹配面更小，即宁可漏报也不误伤引用示例）。
 func stripInlineCode(line string) string {
 	parts := strings.Split(line, "`")
-	if len(parts)%2 == 0 {
-		return line
-	}
 	var sb strings.Builder
 	for i, p := range parts {
 		if i%2 == 0 {

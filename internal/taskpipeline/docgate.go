@@ -1,7 +1,9 @@
 package taskpipeline
 
 import (
+	"crypto/sha256"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -78,6 +80,15 @@ type DocReview struct {
 	Reviewer    string    `json:"reviewer,omitempty"`
 	ReviewedAt  time.Time `json:"reviewed_at,omitempty"`
 	HeadCommit  string    `json:"head_commit,omitempty"`
+	// DocsFingerprint pins the reviewed content (sha256 over changed-doc paths
+	// + contents, see DocContentFingerprint). HEAD alone misses uncommitted
+	// edits between review and complete; the fingerprint closes that blind
+	// spot. Empty on v1.43.0 reviews → treated as unset (HEAD check only).
+	//
+	// DocsFingerprint 钉住被评审的内容（变更文档路径+内容的 sha256，见
+	// DocContentFingerprint）。只绑 HEAD 会漏掉评审后 complete 前的未提交
+	// 修改；指纹补上该盲区。v1.43.0 之前的评审为空 → 视为未设置（仅查 HEAD）。
+	DocsFingerprint string `json:"docs_fingerprint,omitempty"`
 }
 
 // changedMarkdownDocs lists the markdown deliverables of the task: .md files
@@ -94,12 +105,41 @@ func changedMarkdownDocs(root string, state *TaskState) []string {
 	if state == nil || state.HeadCommit == "" {
 		return nil
 	}
-	out, err := exec.Command("git", "-C", root, "diff", "--name-only", state.HeadCommit).Output()
-	if err != nil {
-		// git missing / not a repo: degrade to no candidates (gate passes).
+	docs, gitErr := ChangedMarkdownSince(root, state.HeadCommit)
+	if gitErr != nil {
+		// HeadCommit was set at task start, so this repo WAS a git repo — a diff
+		// failure now (bad revision after rebase, short-hash ambiguity) is not
+		// the legitimate non-git degradation. Fail-open like the hooks, but
+		// leave an audit trace so the silent pass is at least observable.
 		//
-		// git 缺失/非仓库：退化为无候选（门禁放行）。
-		return nil
+		// HeadCommit 在任务启动时写入，说明当时确是 git 仓库——此刻 diff 失败
+		// （rebase 后 bad revision、短哈希歧义）不是合法的非 git 退化。与 hook
+		// 一致 fail-open，但落审计痕迹，让无声放行至少可观测。
+		recordAudit(root, &checklog.Entry{
+			Check:   CheckNameDocGate,
+			Passed:  true,
+			Checked: false,
+			Level:   checklog.LevelWarn,
+			TaskRef: state.TaskRef,
+			Detail:  fmt.Sprintf("doc gate: git diff vs %s failed (%v) — degraded to no candidates, gate passed unverified", shortCommit(state.HeadCommit), gitErr),
+		})
+	}
+	return docs
+}
+
+// ChangedMarkdownSince lists .md files changed since the given base rev
+// (committed + working tree) plus untracked .md, minus doclint-exempt paths
+// and files that no longer exist. Shared by the doc gate and
+// `forge docs lint --base` — the BLOCKED text promises the CLI reproduces the
+// gate's sweep, so both must enumerate the identical set.
+//
+// ChangedMarkdownSince 列出给定基线以来变更（已提交 + 工作区）与新增未跟踪的
+// .md，减去 doclint 豁免路径与已删除文件。doc gate 与 `forge docs lint --base`
+// 共用——BLOCKED 文案承诺 CLI 可复现门禁扫描，两者必须枚举同一集合。
+func ChangedMarkdownSince(root, base string) ([]string, error) {
+	out, err := exec.Command("git", "-C", root, "diff", "--name-only", base).Output()
+	if err != nil {
+		return nil, fmt.Errorf("git diff --name-only %s: %w", base, err)
 	}
 	untracked, err := exec.Command("git", "-C", root, "ls-files", "--others", "--exclude-standard").Output()
 	if err != nil {
@@ -131,7 +171,37 @@ func changedMarkdownDocs(root string, state *TaskState) []string {
 	for _, line := range strings.Split(string(untracked), "\n") {
 		add(line)
 	}
-	return docs
+	return docs, nil
+}
+
+// DocContentFingerprint hashes the changed markdown deliverables' paths and
+// contents. DocReview binds BOTH the HEAD commit and this fingerprint at record
+// time: HEAD alone has a working-tree blind spot — editing docs without
+// committing after a passing review leaves HEAD unchanged and the stale review
+// "fresh". Content is the ground truth being reviewed, so it is what the
+// snapshot must pin.
+//
+// DocContentFingerprint 对变更 markdown 产物的路径与内容做哈希。DocReview 记录时
+// 同时绑定 HEAD 与本指纹：只绑 HEAD 有工作区盲区——评审通过后不提交地改文档，
+// HEAD 不动、过期评审仍被判 fresh。被评审的 ground truth 是内容，快照钉的就
+// 该是内容。
+func DocContentFingerprint(root string, state *TaskState) string {
+	docs := changedMarkdownDocs(root, state)
+	if len(docs) == 0 {
+		return ""
+	}
+	h := sha256.New()
+	for _, d := range docs {
+		io.WriteString(h, d)
+		h.Write([]byte{0})
+		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(d)))
+		if err != nil {
+			continue
+		}
+		h.Write(data)
+		h.Write([]byte{0})
+	}
+	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
 // CheckDocGate is task-complete's doc pre-flight — the process node of the
@@ -204,14 +274,21 @@ func CheckDocGate(root string, state *TaskState) (ok bool, reasons []string) {
 	}
 
 	// L2 — recorded rubric review evidence (freshness + score + passed).
+	// Freshness is two-keyed: HEAD commit AND (when recorded) the docs content
+	// fingerprint — uncommitted edits between review and complete move neither
+	// HEAD's gate-relevant state nor the old check.
 	//
 	// L2——已记录的 rubric 评审证据（freshness + 得分 + 通过）。
+	// freshness 双键：HEAD commit 与（已记录时的）文档内容指纹——评审后
+	// complete 前的未提交修改会命中指纹键。
 	head := GetHeadCommit(root)
 	switch {
 	case state.DocReview == nil || state.DocReview.ReviewedAt.IsZero():
 		reasons = append(reasons, `L2 文档回检未记录——先按 code-review-gate/references/rubric-docs.md 评审（产出者不能自检），再 forge task doc-review --passed/--failed --score <N>`)
 	case state.DocReview.HeadCommit != "" && head != "" && state.DocReview.HeadCommit != head:
 		reasons = append(reasons, fmt.Sprintf(`L2 文档回检基于旧代码（快照 %s ≠ HEAD %s）——回检后改了产物，重新评审后 forge task doc-review`, shortCommit(state.DocReview.HeadCommit), shortCommit(head)))
+	case state.DocReview.DocsFingerprint != "" && state.DocReview.DocsFingerprint != DocContentFingerprint(root, state):
+		reasons = append(reasons, `L2 文档回检基于旧内容（文档指纹不匹配——评审后产物被改且未重新评审）——重新评审后 forge task doc-review`)
 	case !state.DocReview.Passed:
 		if state.DocReview.Round >= DocReviewMaxRounds {
 			reasons = append(reasons, fmt.Sprintf(`L2 文档回检已 %d 轮未过（轮次上限 %d）——升级人工确认：请用户裁定放行（确认后 forge task override --doc-gate disable，落 checklog 审计）或指出下一轮修复方向`, state.DocReview.Round, DocReviewMaxRounds))
@@ -232,15 +309,25 @@ func CheckDocGate(root string, state *TaskState) (ok bool, reasons []string) {
 		}
 	}
 
-	recordAudit(root, &checklog.Entry{
+	// Level is set only on the blocked branch — an unconditional LevelBlocked
+	// would make trace/dashboard count passing runs as hard blocks (they bucket
+	// LevelBlocked with LevelFail). Passing entries let DeriveLevel derive.
+	//
+	// 仅阻断分支显式置 Level——无条件 LevelBlocked 会让 trace/dashboard 把
+	// 通过的运行也计成硬阻断（两者同桶）。通过的条目交给 DeriveLevel 推导。
+	passed := len(reasons) == 0
+	entry := &checklog.Entry{
 		Check:   CheckNameDocGate,
-		Passed:  len(reasons) == 0,
+		Passed:  passed,
 		Checked: true,
 		TaskRef: state.TaskRef,
-		Level:   checklog.LevelBlocked,
 		Detail:  fmt.Sprintf("doc gate over %d changed docs: %d reasons", len(docs), len(reasons)),
-	})
-	return len(reasons) == 0, reasons
+	}
+	if !passed {
+		entry.Level = checklog.LevelBlocked
+	}
+	recordAudit(root, entry)
+	return passed, reasons
 }
 
 // shortCommit renders a commit hash for BLOCKED prose (12 chars).
