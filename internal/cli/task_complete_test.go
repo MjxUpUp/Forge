@@ -4,19 +4,21 @@ package cli
 //
 // 死锁实录（feat/trigger-audit-v2 任务）：最后一道 gate（task-complete）通过即
 // MarkComplete → ActiveTaskState 对 CompletedAt!=nil 返 nil → 紧随其后的 `forge task
-// complete` acceptance pre-flight 要求 AcceptedHeadCommit==HEAD，而刷新只能由
-// verify-acceptance（只认 active task）完成 → review 修复 commit 移动 HEAD 后 complete
+// complete` acceptance pre-flight 要求验收快照新鲜（当时为 AcceptedHeadCommit==HEAD，
+// 2026-08-25 起为源码内容指纹——见 acceptance.go CheckAcceptanceFresh），而刷新只能由
+// verify-acceptance（只认 active task）完成 → review 修复 commit 改动源码后 complete
 // 永久 BLOCKED，且 start/claim/attach/resume 无一能复活。修复：完成标记归还
 // `forge task complete`（pre-flight 之后、评分之前），gate 不再 MarkComplete。
 //
 // task_complete_test.go — pins for complete's ordering contract (dogfood 2026-08-18
 // deadlock fix). The deadlock (feat/trigger-audit-v2 task): the LAST gate marked
 // completion on pass → ActiveTaskState returns nil for CompletedAt!=nil → the following
-// `forge task complete` acceptance pre-flight demands AcceptedHeadCommit==HEAD while the
-// only refresher (verify-acceptance) accepts ACTIVE tasks only → after a review-fix
-// commit moved HEAD, complete was BLOCKED forever with no revival path. Fix: completion
-// moved back into `forge task complete` (after pre-flight, before scoring); gates no
-// longer MarkComplete.
+// `forge task complete` acceptance pre-flight demands a fresh acceptance snapshot (then
+// AcceptedHeadCommit==HEAD; since 2026-08-25 a source-content fingerprint — see
+// CheckAcceptanceFresh in acceptance.go) while the only refresher (verify-acceptance)
+// accepts ACTIVE tasks only → after a review-fix commit changed the source, complete was
+// BLOCKED forever with no revival path. Fix: completion moved back into `forge task
+// complete` (after pre-flight, before scoring); gates no longer MarkComplete.
 
 import (
 	"os"
@@ -99,8 +101,23 @@ func TestTaskComplete_PreflightFailureKeepsTaskActive(t *testing.T) {
 		t.Fatalf(`初次验收应通过: %v`, runErr)
 	}
 
-	// 2. HEAD 移动（模拟 review 修复 commit）→ 快照过期。
-	commit := exec.Command(`git`, `commit`, `--allow-empty`, `-m`, `review-fix`)
+	// 2. 源码变更 + commit（模拟 review 修复改动代码）→ 内容快照过期。
+	//    注意：2026-08-25 起快照绑源码内容指纹而非 HEAD——空 commit 不再使快照
+	//    过期，故此处必须是真实源码改动才能触发 pre-flight 拒绝。
+	//
+	// 2. Source change + commit (a review fix that actually touches code) → the
+	//    content snapshot goes stale. Note: since 2026-08-25 the snapshot binds
+	//    the source-content fingerprint, not HEAD — an empty commit no longer
+	//    stales it, so a REAL source edit is required to trip the pre-flight.
+	if err := os.WriteFile(filepath.Join(dir, `fix.go`), []byte("package main\n\nfunc fix() {}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	add := exec.Command(`git`, `add`, `.`)
+	add.Dir = dir
+	if out, err := add.CombinedOutput(); err != nil {
+		t.Fatalf(`git add: %v`+"\n"+`%s`, err, out)
+	}
+	commit := exec.Command(`git`, `commit`, `-m`, `review-fix`)
 	commit.Dir = dir
 	if out, err := commit.CombinedOutput(); err != nil {
 		t.Fatalf(`commit: %v`+"\n"+`%s`, err, out)

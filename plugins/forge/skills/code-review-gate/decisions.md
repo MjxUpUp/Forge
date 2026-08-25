@@ -164,3 +164,25 @@ TestRunReviewPassAt_ReworkRoundRequiresRecheck（git 夹具三轮：首章静默
 ### Rationale
 
 复审实质不可机械判定（HARD 会引入可伪造凭据字段），ADVISORY 让义务在欠下的确切时刻可见；快照增量触发消除了无变更重盖的误报
+
+## [d-18cf07cf792bf970-865de5e8] accept
+
+- **Skill**: code-review-gate
+- **DecidedAt**: 2026-08-25T11:09:24Z
+- **By**: kimi
+
+### Diagnosis
+
+usage 日志实证：task-complete 因「审查通过后检测到源码变更」HARD 拦截后，agent 不重派只读子 agent 复审、直接自己再跑 forge review pass 即静默刷新基线放行（防君子不防小人）；修复后未复审直接盖章的行为也发生过。旧的盖章后 ADVISORY 只提示不拦截，输出与诚实轮零差别
+
+### Revision
+
+SKILL.md 审查-修复-复审闭环节：复审义务的机制描述从「盖章后 ADVISORY 提示」改为「裸盖章被拒」——距上次基线有源码内容变更时 forge review pass 须 --note 记复审结论或 --acknowledge-changes 自我承担（WARN 级 self-refresh 审计）；非源码变更（amend message 等）指纹不变无需确认
+
+### Evidence
+
+internal/cli/review.go self-refresh 守卫 + TestRunReviewPassAt_ReworkRoundRequiresRecheck 改写：裸盖章被拒且不落章、--note 放行、--acknowledge-changes 放行且记 WARN self-refresh、amend-only 静默
+
+### Rationale
+
+守卫让自助刷新从隐性行为变成显式可审计动作：--note 对应诚实复审流（结论留痕），--acknowledge-changes 对应自我承担（WARN 审计），平衡可用性（不硬堵 amend 类非源码变更）
