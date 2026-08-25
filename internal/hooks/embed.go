@@ -969,9 +969,13 @@ const HazardGuardHook = `#!/bin/bash
 # human-in-the-loop 拦截。
 #
 # 检测高危命令（rm -rf / git push --force / DROP TABLE / TRUNCATE / kubectl delete /
-# DELETE 无 WHERE 等）→ block + 指引 agent 用所在 AI 工具的提问确认工具获用户确认 →
-# agent 获确认后 forge hazard confirm 登记限时（5min）标记 → 重试原命令 → 本 hook 见
-# 标记放行。
+# DELETE 无 WHERE 等）→ block + 指引 agent 做授权判定（用户本回合已明确指令/确认过则
+# 直接 confirm，无需二次确认；否则用所在工具的提问确认机制获用户确认）→
+# forge hazard confirm 登记限时（5min）标记 → 重试原命令 → 本 hook 见标记放行。
+#
+# 免 HITL 的自动豁免（2026-08 两周 usage 复盘，详注在各判定函数上）：rm 目标全在
+# 一次性临时区（/tmp、/var/folders、/private/tmp、$TMPDIR 子路径、本命令串可验证的
+# mktemp 变量）；危险串仅在引号/注释/多行字符串内（数据上下文，exec 包裹除外）。
 #
 # 为什么是 HITL 而非硬 block 或静默放行：硬 block 误伤合法高危操作（删 build 目录），
 # 静默放行失守；HITL 要求用户明确知情确认。Forge hook 模型只有 approve/block、调不起
@@ -1001,9 +1005,99 @@ case "$COMMAND" in
   "forge hazard "*|"forge hazard") echo "PASS"; exit 0 ;;
 esac
 
+# --- rm 临时目录白名单 helpers（2026-08 两周 usage 复盘：mktemp/自建临时目录清理约占
+# 1/3 误拦——agent 不走 confirm 而是悄悄删掉 rm 只跑后半截，留下 /tmp 垃圾，guard 赢了
+# 命令输了意图；故把"可静态验证来源"的临时目录清理纳入白名单） ---
+# safe_mktemp_vars 列出命令串中"安全的 mktemp 变量"（换行分隔）。提取在 strip_quotes
+# 后的文本上做（杀引号内伪造赋值：echo 'd=$(mktemp -d)' 不是赋值）；含 << 时整体不豁免
+# （heredoc 体内的赋值行不执行，静态分离不可靠——保守=不豁免）。候选还要求 X=$(mktemp
+# 出现在可执行赋值位置（文本起点或 空格/;/&/| 之后）——x=d=$(mktemp -d) 里 = 后接的
+# 伪赋值实际赋给 x。最后防线：剥掉全部 mktemp 赋值（不限于本变量——其他变量赋值的
+# mktemp -d flag 含裸词 d，不剥会被词边界检查误判）与所有 $v/${v} 引用后，变量名以词
+# 边界（两侧皆非标识符字符）出现在残余文本任何位置即作废——覆盖 for d in / 循环重绑、
+# d[0]= 数组赋值（$d==${d[0]}）、d+= 累加、printf -v d / read d 无 = 重绑。
+# 动态执行/重绑词面（eval / source / . / sh -c）→ 白名单整体作废（review C2）：
+# eval 'd=/' / source f 都能在词法检查之后改写 d 的值，静态不可判定。词边界=两侧
+# 空格/文本起点；误伤（文本里恰好提及 eval/source 字样）可接受——fail-closed 方向
+# 安全，confirm 链兜底。sh -c 子串同时覆盖 bash -c（bash -c 含 "sh -c"）。
+# BSD 安全：grep -oE 无 ERE 交替（bash-guard 同款教训）；边界检查三条独立 BRE grep；
+# sed 用 BRE，( ) 在 BRE 里是字面。
+safe_mktemp_vars() {
+  local text v rest
+  text=$(strip_quotes "$1" | tr '[:upper:]' '[:lower:]' | tr '\n\r' ';;' | tr -s '[:space:]' ' ')
+  case "$text" in *'<<'*) return 0 ;; esac
+  case "$text" in
+    eval\ *|*\ eval\ *|source\ *|*\ source\ *|.\ *|*\ .\ *|sh\ -c*|*\ sh\ -c*) return 0 ;;
+  esac
+  {
+    printf '%s' "$text" | grep -oE '^[a-z_][a-z0-9_]*=\$\(mktemp' 2>/dev/null
+    printf '%s' "$text" | grep -oE '[ ;&|][a-z_][a-z0-9_]*=\$\(mktemp' 2>/dev/null
+  } | sed 's/^[ ;&|]//; s/=\$(mktemp$//' | sort -u | while IFS= read -r v; do
+    [ -z "$v" ] && continue
+    rest=$(printf '%s' "$text" | sed "s/[a-z_][a-z0-9_]*=\$(mktemp[^)]*)//g")
+    rest=$(printf '%s' "$rest" | sed "s/\$$v//g; s/\${$v}//g")
+    printf '%s' "$rest" | grep -q "^$v[^a-z0-9_]" && continue
+    printf '%s' "$rest" | grep -q "[^a-z0-9_]$v[^a-z0-9_]" && continue
+    printf '%s' "$rest" | grep -q "[^a-z0-9_]$v$" && continue
+    printf '%s\n' "$v"
+  done
+}
+
+# is_tmp_rm_target 判定 rm 的一个目标 word 是否落在一次性临时区（白名单）：
+#   1. 字面前缀 /tmp/、/var/folders/、/private/tmp/（原有，e2e/CI probe 清理形态）；
+#   2. $TMPDIR 子路径——macOS 上 mktemp -d 默认落在 $TMPDIR，重建自建目录形态
+#      rm -rf "$TMPDIR/pack" && mkdir "$TMPDIR/pack"。裸 $TMPDIR（无子路径）不豁免
+#      ——那是清整个用户临时目录；
+#   3. 本命令串内 mktemp 变量的**裸**引用（$d、${d}，含引号形态——分类前已剥双引号，
+#      d 须过 safe_mktemp_vars 校验）——d=$(mktemp -d); ...; rm -rf "$d" 的建后即删
+#      闭环。$d/sub 形态不豁免（review C1 闭合）：d 为空时 rm -rf $d 是缺操作数
+#      无害，$d/x 才是 /x 危险形态——短路不执行（false && d=$(mktemp -d)）、函数体
+#      （f(){ d=...; }）、env 前缀（d=$(mktemp -d) cmd）、管道子 shell、赋值在用后
+#      等"赋值不生效"形态全因 d 空而在 $d/x 上显形，只认裸引用则全灭；原 $d/sub
+#      自清理改走 confirm 链。
+# 子路径共性规则（review M2）：前缀后的 sub 必须至少含一个非 / 非 . 字符——
+# /tmp//、/tmp/./、$TMPDIR// 经内核折叠双斜杠/圆点后等于临时目录本身（清整个
+# 临时区）。任何形态含 .. 穿越一律不豁免；$TMPDIR 子路径不得再含 $/反引号
+# （未展开变量/命令替换可藏穿越，词面 .. 检查看不到展开值——bash-guard
+# 2026-08-25 重定向目标同款教训）。rm -rf $(mktemp -d) 等直接 $() 目标仍拦。
+# 调用方只传 is_hazardous 小写归一后的段文本（$lower），故 $TMPDIR 匹配小写形态。
+# 残余已知限制（启发式边界，如实披露不逐一追堵——confirm 链是真门禁）：
+# /tmp/$x 字面前缀+未展开变量后缀的穿越（x 展开可为 ../..）；双引号内 $(rm ...)
+# 命令替换；eval/source 词面门控可被反斜杠转义（\eval）、引号化（'eval'）、
+# 变量/命令替换间接调用绕过——属静态分析不可判定层。
+is_tmp_rm_target() {
+  local w="${1//\"/}"
+  [[ $w == *..* ]] && return 1
+  local v sub bt
+  # 反引号字面量进不了 Go raw string（本脚本内嵌在 embed.go），用 printf 构造
+  bt=$(printf '\140')
+  if [[ $w == /tmp/* || $w == /var/folders/* || $w == /private/tmp/* ]]; then
+    sub="${w#/tmp/}"
+    sub="${sub#/var/folders/}"
+    sub="${sub#/private/tmp/}"
+    [[ $sub == *[!/.]* ]] && return 0
+    return 1
+  fi
+  if [[ $w == \$tmpdir/?* || $w == \$\{tmpdir\}/?* ]]; then
+    sub="${w#\$tmpdir/}"
+    sub="${sub#\$\{tmpdir\}/}"
+    [[ $sub == *'$'* || $sub == *"$bt"* || $sub != *[!/.]* ]] && return 1
+    return 0
+  fi
+  for v in $mktemp_vars; do
+    [[ $w == "\$$v" || $w == "\${$v}" ]] && return 0
+  done
+  return 1
+}
+
 # --- 高危命令检测 ---
+# 第 2 参数 nowl（no-whitelist）：跳过 rm 临时目录白名单——data-context 判定时对
+# STRIPPED 文本使用。STRIPPED 里引号内容已被剥走，rm -rf "$HOME" 剥成 rm -rf 零目标，
+# 若套白名单的"零目标放行"会被当"危险串在引号内"误放——但危险的是 rm 本身，目标只是
+# 恰好被引号包住（2026-08 复盘：rm -rf "$TMPDIR/../etc" 经 data-context 漏放）。
 is_hazardous() {
   local cmd="$1"
+  local nowl="${2:-}"
   local lower
   # 大小写归一 + 换行/CR 先映射成 ;（与 &&/||/|/; 同为段分隔符），再压缩连续空白为单空格
   # （tab→空格保留参数分隔语义，不让 tab 变段分隔符破坏 rm<TAB>-rf 的 flag 匹配）。
@@ -1014,7 +1108,8 @@ is_hazardous() {
   case "$lower" in
     *shred\ *|*mkfs\ *|*mkfs.*) return 0 ;;
   esac
-  # rm 临时目录白名单（/tmp、/var/folders、/private/tmp）下沉到 rm_hit 循环内按段隔离：
+  # rm 临时目录白名单（/tmp、/var/folders、/private/tmp、$TMPDIR 子路径、可验证 mktemp
+  # 变量——见 is_tmp_rm_target）下沉到 rm_hit 循环内按段隔离：
   # rm -rf /tmp/x 段放行，但 rm -rf /tmp/x && rm -rf /important 的第二段仍 block。
   # 原全串 case 的 return 1 会吞整条命令（连非白名单 rm -rf 段也放行）——task3 补审发现。
   # rm 递归强删：rm 命令的 flag 簇里同时出现 r 与 f 才算（递归 + 强制）。
@@ -1031,6 +1126,11 @@ is_hazardous() {
   # -confirm/-formatter/-prefix 等跨命令 hyphen-token）。tr 把 &|;换行 统一换行切段，while read 逐段判。
   # BSD 安全：tr char 集合替换；rm-token 与 flag 全独立 grep -qi（BRE），|| / && 是 shell 短路，非 grep -E 交替。
   # printf '%s\n' 补尾部换行：while read 遇 EOF（输入无换行尾）返回非零会丢最后一段，单行 rm -rf x 会被漏检。
+  # rm 白名单用的 mktemp 变量清单（is_tmp_rm_target 查用）：在段隔离循环前算好，
+  # while read 子 shell 经动态作用域可见 $lower 同级的 local 变量。safe_mktemp_vars
+  # 内部自行 strip_quotes + 小写归一（与段文本同口径），故传原始 $cmd。
+  local mktemp_vars
+  mktemp_vars=$(safe_mktemp_vars "$cmd")
   local rm_hit
   rm_hit=$(printf '%s\n' "$lower" | tr '&|;\n' '\n\n\n\n' | while IFS= read -r seg; do
     [ -z "$seg" ] && continue
@@ -1040,8 +1140,9 @@ is_hazardous() {
          { printf '%s' "$seg" | grep -qi -- ' -r' && printf '%s' "$seg" | grep -qi -- ' -f'; } || \
          { printf '%s' "$seg" | grep -qi -- '--recursive' && printf '%s' "$seg" | grep -qi -- '--force'; }; then
         # 白名单 arg-aware：rm -rf /tmp/x /important 会删 /important，不能因含 /tmp 子串整体放行。
-        # 逐 word 查 rm 的目标参数，全部指向一次性临时区（/tmp、/var/folders、/private/tmp）且无 ..
-        # 路径穿越才 continue；任一参数非白名单→不 continue，落 echo H block。只看目标路径不依赖
+        # 逐 word 查 rm 的目标参数，全部落在一次性临时区（is_tmp_rm_target：/tmp、/var/folders、
+        # /private/tmp、$TMPDIR 子路径、本命令串可验证的 mktemp 变量）且无 .. 路径穿越才
+        # continue；任一参数非白名单→不 continue，落 echo H block。只看目标路径不依赖
         # flag 写法，覆盖 rm --recursive --force /tmp/x 长选项形式（reviewer MINOR-2/NIT-2）。
         # -- 终止符（POSIX）：rm -rf -- -sensitive 里 -- 后的 -sensitive 是字面文件名（rm 真删），
         # 不能当 flag 跳过（reviewer MINOR-B）。遇 -- 置 past_dd=1，后续 word 一律按目标查白名单。
@@ -1054,16 +1155,12 @@ is_hazardous() {
         # 嵌套 case 报 syntax error near ')' 字符、单行 [[ ]] && cmd ;; 报 syntax error near ';;'
         # ——根因是 pattern 里的 glob '*' 与 action list 里的 glob（*..*）互相干扰，parser
         # 状态错乱。Git Bash 5.x 容忍，本地测试不报，macOS CI 才炸（已踩两次：a6199a4/bab0f6e）。
-        # 全改 if [[ ]] + glob（bash 2.0+ 标准；glob 在 [[ ]] 内不进 case parser，绕开 bug）。
-        # 语义与原 case 等价：白名单前缀且无 .. → 保持；含 .. 或非白名单 → all_tmp=0。
+        # 全改 if [[ ]] + glob（bash 2.0+ 标准；glob 在 [[ ]] 内不进 case parser，绕开 bug）——
+        # is_tmp_rm_target 内部同款，纯 [[ ]] 无 case。
         # -- 终止符置 past_dd=1（其后 word 按字面目标查，不跳过 - 开头文件名）；rm/sudo/flag 跳过。
         for word in $seg; do
           if [[ $past_dd = 1 ]]; then
-            if [[ $word == /tmp/* || $word == /var/folders/* || $word == /private/tmp/* ]]; then
-              [[ $word == *..* ]] && all_tmp=0
-            else
-              all_tmp=0
-            fi
+            is_tmp_rm_target "$word" || all_tmp=0
             continue
           fi
           if [[ $word == -- ]]; then
@@ -1073,13 +1170,10 @@ is_hazardous() {
           if [[ $word == rm || $word == sudo || $word == -* ]]; then
             continue
           fi
-          if [[ $word == /tmp/* || $word == /var/folders/* || $word == /private/tmp/* ]]; then
-            [[ $word == *..* ]] && all_tmp=0
-          else
-            all_tmp=0
-          fi
+          is_tmp_rm_target "$word" || all_tmp=0
         done
-        [[ $all_tmp = 1 ]] && continue
+        # nowl 模式跳过白名单 continue：零目标 rm -rf（目标被引号剥走）也落 echo H。
+        [[ $all_tmp = 1 ]] && [ -z "$nowl" ] && continue
         echo H
       fi
     fi
@@ -1126,22 +1220,96 @@ is_hazardous() {
 # 判断危险串是数据（引号内）还是执行。awk 状态机逐字符跟踪单/双引号开合，引号内字符
 # 丢弃。BSD/GNU awk 均支持；用 \x27 表示单引号（awk 体内避免直接写 '）。不完美但够用：
 # bash -c "rm" 内层引号也会被剥离，由下方 is_exec_wrapped 单独兜底。
+# 2026-08 两周 usage 复盘改进（只读分析脚本——python3 heredoc——因文本含 rm -rf 被
+# 误拦 2 次；根因是字面 substring 规则无法区分"执行 rm"与"文本提到 rm"），review 复
+# 审补强（critical：跨行持久若无转义/heredoc 感知，真危险可被当引号数据吞掉）：
+#   - 引号状态跨行持久（sq/dq 在 BEGIN 初始化，不逐行重置）——多行引号字符串
+#     （python heredoc 里的三引号字符串/docstring、多行 git commit -m 的 message 体）
+#     里的危险串是数据不是执行，旧版逐行重置把跨行字符串的中间行当未引号文本误拦；
+#   - 嵌套感知开合（对齐 bash 语义）：双引号内的单引号是字面量不切换 sq，反之亦然——
+#     echo "don't"<换行>rm -rf /x 的撇号不得把 sq 状态泄漏到下一行（漏拦）；
+#   - 反斜杠转义感知（esc 标志，跨行持久）：引号外 \" 是字面引号字符不开引号
+#     （echo \"<换行>rm -rf /x 里 rm 真执行，误判开引号会吞掉它）；引号内 \" 不闭合
+#     （echo "a\"b"）；sq 内 \ 是字面量（bash 语义）。转义字符原样输出（\" 两个字符
+#     都保留）——STRIPPED 会被 safe_mktemp_vars 二次 strip，保持幂等；
+#   - heredoc 感知：识别 <<[-]['"]?TAG['"]? opener（引号外、单 opener），体内行用独立
+#     引号态（bsq/bdq）跟踪——python heredoc 的多行字符串仍按数据剥离；delimiter 行
+#     （允许前导 tab，对齐 <<-）结束 heredoc 并重置体内状态——体内杂散引号
+#     （He said "hi）绝不可泄漏到 delimiter 之后吞掉真危险命令。<<<（herestring，无
+#     body）不触发 opener；数字开头 tag（cat <<2 与 $((1<<2)) 算术位移静态不可分）、
+#     同行多 opener、<< 后无可解析 tag → fail-closed：后续行逐字透传（危险串保持
+#     可见=维持拦截）。
+# 保守方向不变：引号不平衡（未闭合）时其后文本全被剥掉——bash 对未闭合引号同样不
+# 执行（语法错误/等待续行），方向安全；heredoc 体内未引号包裹的裸露危险串仍拦
+# （可能是 cat > script.sh 在写可执行脚本，静态不可判定，维持拦截走 confirm 链）。
 strip_quotes() {
   printf '%s' "$1" | awk '
+    BEGIN{sq=0; dq=0; bsq=0; bdq=0; esc=0; hd=""; broken=0}
     {
-      sq=0; dq=0; out=""; prev=""
-      for(i=1;i<=length($0);i++){
-        c=substr($0,i,1)
-        if(c=="\x27"){sq=!sq; prev=c; continue}
-        if(c=="\""){dq=!dq; prev=c; continue}
+      if(broken){print; next}
+      line=$0
+      # heredoc 体内：独立引号态处理；delimiter 行结束 heredoc 并重置体内状态
+      if(hd!=""){
+        rest=line
+        sub(/^\t+/,"",rest)
+        if(rest==hd){hd=""; bsq=0; bdq=0; print; next}
+        out=""; prev=""
+        for(i=1;i<=length(line);i++){
+          c=substr(line,i,1)
+          if(esc){esc=0; prev=c; if(!bsq && !bdq) out=out c; continue}
+          if(!bsq && c=="\\"){esc=1; prev=c; if(!bdq) out=out c; continue}
+          if(!bdq && c=="\x27"){bsq=!bsq; prev=c; continue}
+          if(!bsq && c=="\""){bdq=!bdq; prev=c; continue}
+          if(!bsq && !bdq && c=="#" && (prev==" "||prev==""||prev=="\t"||prev==";"||prev=="|"||prev=="&"||prev=="(")) break
+          if(!bsq && !bdq) out=out c
+          prev=c
+        }
+        print out
+        next
+      }
+      # shell 层
+      out=""; prev=""; lt=0; multi=0
+      for(i=1;i<=length(line);i++){
+        c=substr(line,i,1)
+        if(esc){esc=0; prev=c; if(!sq && !dq) out=out c; continue}
+        if(!sq && c=="\\"){esc=1; prev=c; if(!dq) out=out c; continue}
+        if(!dq && c=="\x27"){sq=!sq; prev=c; continue}
+        if(!sq && c=="\""){dq=!dq; prev=c; continue}
         # dogfood 3.2：# 注释行（非引号内、词边界处）剥到行尾。electron-builder "# Clean up"
         # 含危险串的注释被当执行误拦。prev 判定词边界（空格/行首/tab/;/|/&/( ）——# 紧跟
         # 非空白（如 foo#bar）是字面 #，非注释，不剥（其后的危险串仍被 is_hazardous 命中）。
         if(!sq && !dq && c=="#" && (prev==" "||prev==""||prev=="\t"||prev==";"||prev=="|"||prev=="&"||prev=="(")) break
-        if(!sq && !dq) out=out c
+        if(!sq && !dq){
+          out=out c
+          # heredoc opener 探测：引号外（且非转义）的 <<；同行第二个 << 置 multi
+          if(c=="<" && substr(line,i+1,1)=="<"){
+            if(lt>0){multi=1}else{lt=i}
+          }
+        }
         prev=c
       }
       print out
+      if(multi){broken=1; next}
+      if(lt>0){
+        rest=substr(line,lt+2)
+        # <<< herestring 无 body，不是 heredoc opener，不跟踪
+        if(substr(rest,1,1)=="<"){next}
+        sub(/^[ \t]+/,"",rest)
+        sub(/^-/,"",rest)
+        sub(/^[ \t]+/,"",rest)
+        q=substr(rest,1,1)
+        if(q=="\x27" || q=="\""){rest=substr(rest,2)}
+        if(match(rest,/^[A-Za-z0-9_.-]+/)){
+          tag=substr(rest,RSTART,RLENGTH)
+          # 数字开头 tag（cat <<2）无法与 $((1<<2)) 算术位移静态区分——fail-closed
+          # （review M1）：后续行逐字透传，危险串保持可见=维持拦截；算术位移命令
+          # 本身无引号可剥，fail-closed 不改变其判定
+          if(tag ~ /^[0-9]/){broken=1}else{hd=tag; bsq=0; bdq=0}
+        } else {
+          # << 后无可解析 tag——不完整/语法错误，fail-closed：后续行逐字透传
+          broken=1
+        }
+      }
     }'
 }
 
@@ -1205,9 +1373,13 @@ fi
 # --- context classification：危险串是数据（引号内 / 注释行）还是执行 ---
 # is_hazardous 命中后，剥离引号与注释再判一次：剥离后不再命中 → 危险串都在引号里或注释里
 # （数据上下文），且命令非执行包裹（bash -c/eval/pipe-shell）→ 放行。根治 grep "rm -rf" /
-# git commit -m "fix rm -rf bug" / make build 注释含 rm -rf 类误判。
+# git commit -m "fix rm -rf bug" / make build 注释含 rm -rf 类误判。strip_quotes 跨行
+# 持久后，多行字符串（python heredoc 三引号串、多行 commit message）里的危险串同理放行。
+# STRIPPED 用 nowl 复检（关 rm 白名单）：引号剥走目标后剩零目标的 rm -rf（原命令是
+# rm -rf "$HOME" 这类"目标在引号里的执行"，不是"危险串在引号内"）必须维持拦截——
+# 否则 rm -rf "$TMPDIR/../etc" / rm -rf "$HOME" 经此路径漏放。
 STRIPPED=$(strip_quotes "$COMMAND")
-if [ "$STRIPPED" != "$COMMAND" ] && ! is_hazardous "$STRIPPED" && ! is_exec_wrapped "$COMMAND"; then
+if [ "$STRIPPED" != "$COMMAND" ] && ! is_hazardous "$STRIPPED" nowl && ! is_exec_wrapped "$COMMAND"; then
   forge hazard log data "$COMMAND" >/dev/null 2>&1 || true
   echo "PASS [hazard-guard] 危险串仅在引号内或注释行（数据上下文），放行: $COMMAND"
   exit 0
@@ -1238,9 +1410,10 @@ echo "命令: $COMMAND"
 echo "指纹: ${FP:-<unknown>}"
 echo ""
 echo "如确需执行："
-echo "  1. 用你的确认工具（Claude Code→AskUserQuestion；codex/cursor/windsurf→各自提问机制）"
-echo "     向用户说明该操作的风险，并获得用户的明确确认"
-echo "  2. 获确认后运行: forge hazard confirm --last"
+echo "  1. 授权判定：若用户在本回合已明确指令/确认过该操作（用户直接要求执行，或你"
+echo "     此前已通过提问获得确认），无需二次确认——直接跳到第 2 步；否则先用你所在"
+echo "     工具的提问确认机制向用户说明该操作的风险，获得用户的明确确认"
+echo "  2. 运行: forge hazard confirm --last"
 echo "     （确认最近一条被拦命令——从事件日志取指纹，零复制转写，不会抄错；"
 echo "      也可用 forge hazard confirm --fingerprint \"$FP\" 回传上方 hex 指纹，"
 echo "      勿传命令串——shell 会吃掉其中的引号致指纹失真）"
@@ -1254,9 +1427,6 @@ if [ -n "$_CONFIRM_DIAG" ]; then
   echo "  可运行 forge hazard status 查看确认链状态；若反复异常请检查 forge 环境"
   echo "  （kimi 30s 超时内串行 fork 多次 forge，autoSync 拖慢启动是主要嫌疑）。"
 fi
-echo ""
-echo "FORGE_ALLOW_HAZARD env 豁免已移除（可被 agent 自我放行滥用）——confirm 链"
-echo "（events.jsonl 审计 + 5min TTL）是唯一放行路径，测试/CI 同样走 forge hazard confirm。"
 exit 1
 `
 
