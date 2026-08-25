@@ -739,3 +739,30 @@ func TestClaudeMDNoArchaeologyNotes(t *testing.T) {
 		}
 	}
 }
+
+// TestClaudeMDBasicRule7ReplyConcision guards basic rule 7: conclusion-first
+// plus the banned-phrase pointer. The examples stay inside backticks so the
+// generated file survives its own doclint (inline-code exemption).
+//
+// TestClaudeMDBasicRule7ReplyConcision 守卫基本规则 7：结论先行 + 禁令短语
+// 指针。示例保持在反引号内，使生成文件能过自身的 doclint（行内代码豁免）。
+func TestClaudeMDBasicRule7ReplyConcision(t *testing.T) {
+	section := buildForgeSection(true)
+
+	if !strings.Contains(section, "结论先行，禁空转措辞") {
+		t.Error("forge section missing basic rule 7 (conclusion-first)")
+	}
+	if !strings.Contains(section, "forge docs lint") {
+		t.Error("forge section rule 7 missing forge docs lint pointer")
+	}
+	// The quoted phrases must be backtick-wrapped, never bare — a bare
+	// mention in prose would fail D1 once this generated file is linted.
+	//
+	// 引用的短语必须反引号包裹，不能裸露——生成文件一旦被 lint，
+	// 散文里的裸短语会触发 D1。
+	for _, phrase := range []string{"综上所述", "基本可以", "问题不大"} {
+		if !strings.Contains(section, "`"+phrase+"`") {
+			t.Errorf("规则 7 中短语 %q 须反引号包裹（否则生成文件触发自身 D1）", phrase)
+		}
+	}
+}
