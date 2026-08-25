@@ -72,7 +72,7 @@ func TestRunTaskVerifyAcceptanceAt_RecordsDeterministic(t *testing.T) {
 	dir, taskRef := setupAcceptanceTask(t, []string{`go version :: go version`})
 
 	var runErr error
-	out := captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir, false) })
+	out := captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir, "", false) })
 	if runErr != nil {
 		t.Fatalf(`green acceptance should not error: %v`, runErr)
 	}
@@ -119,7 +119,7 @@ func TestRunTaskVerifyAcceptanceAt_RecordsFailure(t *testing.T) {
 	dir, taskRef := setupAcceptanceTask(t, []string{`go version :: NONEXISTENT_SUBSTRING`})
 
 	var runErr error
-	_ = captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir, false) })
+	_ = captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir, "", false) })
 	if runErr == nil {
 		t.Fatal(`failing acceptance should return a non-nil error`)
 	}
@@ -160,7 +160,7 @@ func TestRunTaskVerifyAcceptanceAt_NoAcceptanceSilent(t *testing.T) {
 	dir, _ := setupAcceptanceTask(t, nil) // 无验收标准
 
 	var runErr error
-	out := captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir, false) })
+	out := captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir, "", false) })
 	if runErr != nil {
 		t.Fatalf(`no-acceptance path should not error: %v`, runErr)
 	}
@@ -170,6 +170,120 @@ func TestRunTaskVerifyAcceptanceAt_NoAcceptanceSilent(t *testing.T) {
 	entries, _ := checklog.LoadAll(dir)
 	if len(entries) != 0 {
 		t.Errorf(`无验收标准 → 不应写 checklog 条目，got %d`, len(entries))
+	}
+}
+
+// TestTaskStart_AcceptGoTestAutoVerbose pins the CLI wiring of the go-test -v
+// auto-fill: `task start --accept "go test ./... :: PASS"` must persist the criterion
+// ALREADY rewritten to `go test -v ./...` (verify-acceptance later runs exactly what
+// start persisted) and must announce the rewrite in the start output (never a silent
+// rewrite). A bare exit-code-only criterion must pass through untouched.
+//
+// TestTaskStart_AcceptGoTestAutoVerbose 钉住 go test 自动补 -v 的 CLI 接线：
+// `task start --accept "go test ./... :: PASS"` 落盘的必须是已改写的
+// `go test -v ./...`（verify-acceptance 之后实跑的正是 start 落盘的命令），且
+// start 输出必须明示改写（绝不静默）。只看退出码的裸命令原样不动。
+func TestTaskStart_AcceptGoTestAutoVerbose(t *testing.T) {
+	t.Setenv(`CLAUDE_CODE_SESSION_ID`, `e2e-accept-gov`)
+	dir := t.TempDir()
+	if stdout, _, code := runForge(t, dir, `init`, `--mode`, `medium`); code != 0 {
+		t.Fatalf(`forge init failed: %s`, stdout)
+	}
+	out, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/gov`,
+		`--accept`, `go test ./... :: PASS`,
+		`--accept`, `go build ./...`)
+	if code != 0 {
+		t.Fatalf(`task start failed: %s`, out)
+	}
+	if !strings.Contains(out, `自动补 -v`) || !strings.Contains(out, `go test ./...`) {
+		t.Errorf(`start 输出应明示 go test 自动补 -v 及原命令: %s`, out)
+	}
+	loaded, err := taskpipeline.LoadTaskState(dir, `feat/gov`)
+	if err != nil {
+		t.Fatalf(`LoadTaskState: %v`, err)
+	}
+	if len(loaded.Acceptance) != 2 {
+		t.Fatalf(`应落盘 2 条验收标准, got %d`, len(loaded.Acceptance))
+	}
+	if got := loaded.Acceptance[0].Run; got != `go test -v ./...` {
+		t.Errorf(`go test + Expected 应自动补 -v, got %q`, got)
+	}
+	if got := loaded.Acceptance[1].Run; got != `go build ./...` {
+		t.Errorf(`非 go test 命令不应改写, got %q`, got)
+	}
+}
+
+// TestRunTaskVerifyAcceptanceAt_ExplicitRef pins `task verify-acceptance --ref`
+// (gate-family --ref parity; usage-log fix: every gate command took --ref except
+// verify-acceptance, which errored "unknown flag"). A task that is NOT the session's
+// active task must still verify when pinned by ref; a nonexistent ref must error
+// instead of falling back to active detection.
+//
+// TestRunTaskVerifyAcceptanceAt_ExplicitRef 钉住 `task verify-acceptance --ref`
+// （门禁族 --ref 一致性；usage 日志修复：gate 族命令都认 --ref 唯独它报 unknown
+// flag）。非本 session 活跃任务的 task 经 --ref 指定也必须能验收；不存在的 ref
+// 必须报错而非回落活跃检测。
+func TestRunTaskVerifyAcceptanceAt_ExplicitRef(t *testing.T) {
+	// Task with acceptance criteria but NOT active (no SetActiveTaskRef). A second
+	// incomplete task makes active-task detection ambiguous (the priority-3 fallback
+	// needs exactly one), so the bare call must error and only --ref can route.
+	//
+	// 带验收标准但不活跃的任务（不 SetActiveTaskRef）。第二个未完成任务让活跃检测
+	// 无歧义兜底可吃（优先级 3 兜底要求恰好一个），故裸调用必须报错、只有 --ref 能路由。
+	dir := t.TempDir()
+	t.Setenv(`CLAUDE_CODE_SESSION_ID`, `test-session-accept-ref`)
+	const taskRef = `feat/accept-ref`
+	state := &taskpipeline.TaskState{
+		TaskRef:    taskRef,
+		Branch:     `feat/accept-ref`,
+		StartedAt:  time.Now(),
+		Acceptance: taskpipeline.ParseAcceptance([]string{`go version :: go version`}),
+	}
+	if err := taskpipeline.SaveTaskState(dir, state); err != nil {
+		t.Fatal(err)
+	}
+	if err := taskpipeline.SaveTaskState(dir, &taskpipeline.TaskState{
+		TaskRef: `feat/accept-other`, Branch: `feat/accept-other`, StartedAt: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Without --ref and no unambiguous active task: must error (legacy behavior
+	// unchanged).
+	//
+	// 不带 --ref 且无明确活跃任务：必须报错（旧行为不变）。
+	var noRefErr error
+	_ = captureStdout(t, func() { noRefErr = runTaskVerifyAcceptanceAt(dir, "", false) })
+	if noRefErr == nil {
+		t.Fatal(`无明确活跃任务且不带 --ref 应报错`)
+	}
+
+	// --ref pins the task explicitly: runs, passes, backfills.
+	//
+	// --ref 显式指定任务：实跑、通过、回填。
+	var runErr error
+	out := captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir, taskRef, false) })
+	if runErr != nil {
+		t.Fatalf(`verify-acceptance --ref should not error: %v`, runErr)
+	}
+	if !strings.Contains(out, `全部通过`) {
+		t.Errorf(`输出缺"全部通过"摘要: %s`, out)
+	}
+	loaded, err := taskpipeline.LoadTaskState(dir, taskRef)
+	if err != nil {
+		t.Fatalf(`LoadTaskState: %v`, err)
+	}
+	if !loaded.Acceptance[0].Passed {
+		t.Errorf(`--ref 任务的 criterion Passed 未回填为 true`)
+	}
+
+	// Nonexistent ref → hard error, no silent fallback.
+	//
+	// 不存在的 ref → 硬报错，不静默回落。
+	var ghostErr error
+	_ = captureStdout(t, func() { ghostErr = runTaskVerifyAcceptanceAt(dir, `feat/ghost`, false) })
+	if ghostErr == nil {
+		t.Fatal(`--ref 指向不存在任务应报错`)
 	}
 }
 
@@ -202,7 +316,7 @@ func TestRunTaskVerifyAcceptanceAt_ForeignRequiresTrust(t *testing.T) {
 	// 1. 无 --trust-foreign：在任何执行前拒绝——criterion 不被跑、返回 error、打印命令清单
 	//    供审阅，且外来标记保留（落盘侧甩不掉）。
 	var runErr error
-	out := captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir, false) })
+	out := captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir, "", false) })
 	if runErr == nil {
 		t.Fatal(`foreign acceptance without --trust-foreign must error（未审阅的外来命令不得执行）`)
 	}
@@ -240,7 +354,7 @@ func TestRunTaskVerifyAcceptanceAt_ForeignRequiresTrust(t *testing.T) {
 	origTTY := stdinIsHumanTerminal
 	stdinIsHumanTerminal = func() bool { return true }
 	t.Cleanup(func() { stdinIsHumanTerminal = origTTY })
-	out2 := captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir, true) })
+	out2 := captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir, "", true) })
 	if runErr != nil {
 		t.Fatalf(`trusted foreign acceptance should run normally: %v`, runErr)
 	}
@@ -261,7 +375,7 @@ func TestRunTaskVerifyAcceptanceAt_ForeignRequiresTrust(t *testing.T) {
 	// 3. Post-trust re-run (no flag): plain local evidence path — no refusal, marker stays cleared.
 	//
 	// 3. 受信后重跑（无 flag）：普通本机证据路径——不再拒绝，标记保持清除。
-	out3 := captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir, false) })
+	out3 := captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir, "", false) })
 	if runErr != nil {
 		t.Fatalf(`post-trust re-run should not hit the trust gate: %v`, runErr)
 	}
@@ -298,7 +412,7 @@ func TestRunTaskVerifyAcceptanceAt_TrustForeignRequiresHumanTTY(t *testing.T) {
 	t.Cleanup(func() { stdinIsHumanTerminal = origTTY })
 
 	var runErr error
-	_ = captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir, true) })
+	_ = captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir, "", true) })
 	if runErr == nil {
 		t.Fatal(`agent 环境（stdin 非终端）带 --trust-foreign 也必须拒绝——人工审阅决策不得由 agent 自我完成`)
 	}
@@ -341,7 +455,7 @@ func TestRunTaskVerifyAcceptanceAt_MinttyGuidance(t *testing.T) {
 	t.Setenv(`TERM_PROGRAM`, `mintty`)
 
 	var runErr error
-	_ = captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir, true) })
+	_ = captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir, "", true) })
 	if runErr == nil {
 		t.Fatal(`mintty 管道 stdin 下即便带 --trust-foreign 也必须拒绝（判别器无法区分真人与 agent）`)
 	}

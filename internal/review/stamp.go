@@ -68,6 +68,12 @@ type Stamp struct {
 	BlockCount int       `json:"block_count"`           // 该 diff_hash 被 Stop hook block 的次数
 	ReviewedAt time.Time `json:"reviewed_at,omitempty"` // 最近一次 forge review pass 时间
 	Branch     string    `json:"branch,omitempty"`
+	// Note is the optional reviewer conclusion from `forge review pass --note`
+	// (non-task mode audit trail counterpart of ReviewRound.Note).
+	//
+	// Note 是 `forge review pass --note` 的可选审查结论文本（非 task 模式的审计留痕，
+	// 对应 task 模式的 ReviewRound.Note）。
+	Note string `json:"note,omitempty"`
 }
 
 // Evaluate is the atomic decision entry for the Stop hook (non-task mode): compute the current
@@ -145,6 +151,15 @@ func Evaluate(root string) (Decision, string, error) {
 // MarkPassed 标记当前 diff 已通过审查（forge review pass 调用）。
 // 算当前 hash 写 reviewed stamp，重置 block_count。
 func MarkPassed(root string) error {
+	return MarkPassedWithNote(root, "")
+}
+
+// MarkPassedWithNote is MarkPassed plus the optional reviewer conclusion text
+// (`forge review pass --note`) persisted on the stamp.
+//
+// MarkPassedWithNote 在 MarkPassed 之上把可选审查结论文本
+// （`forge review pass --note`）持久化进 stamp。
+func MarkPassedWithNote(root, note string) error {
 	hash, _, err := computeDiffHash(root)
 	if err != nil {
 		return err
@@ -155,6 +170,7 @@ func MarkPassed(root string) error {
 		BlockCount: 0,
 		ReviewedAt: time.Now(),
 		Branch:     currentBranch(root),
+		Note:       note,
 	}
 	return saveStamp(root, stamp)
 }
