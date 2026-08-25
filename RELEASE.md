@@ -120,3 +120,16 @@ CI 暂坏需绕过 workflow 手动 `gh release` + `npm publish` 时，绕过的�
 - 发版后发现 bug：**升 patch 重发**，不 force-push 覆盖已发 tag
   - hazard-guard 会拦 force-push；且覆盖已发布 npm 包不可逆（registry 会缓存）
   - v0.27.1→v0.27.2 即此规则实例
+
+## 坏版本处置（npm deprecate RUNBOOK）
+
+发出去的版本不可变、不可覆盖——坏版本两步走：**标记降级 + 升 patch 重发**，不赌 unpublish：
+
+1. **deprecate 坏版本**（安装时给警告，用户可自行 `-g @agent_forge/forge@<坏版本>` 装回旧版）：
+   ```bash
+   npm deprecate @agent_forge/forge@<ver> "broken: <原因一句话>, use <新版本>"
+   # 5 个平台子包与 forge-dsh 同步 deprecate（版本由 release.yml 的 npm job 统一注入，同号同步）
+   npm deprecate @agent_forge/forge-darwin-arm64@<ver> "..."   # 其余子包同理
+   ```
+2. **升 patch 重发**：修 bug → `fix:` 前缀合 main → release-please 自动开下一个 Release PR
+3. **不要 unpublish**：发布 >72h 后 npm 禁止 unpublish；且 unpublish 后 24h 内同版本号不可复用（cache 层用户仍可能装到），deprecate 是唯一可靠降级通道
