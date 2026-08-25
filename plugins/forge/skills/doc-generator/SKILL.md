@@ -28,6 +28,8 @@ Generator + Inversion 组合：**先采访缺失变量，再按模板填空**。
 | 技术方案 | "技术方案""设计文档""实现方案"（注意：架构决策用 ADR） |
 | 发布说明/CHANGELOG | "发布说明""changelog""release notes" |
 | 复盘报告 | "复盘""retrospective""postmortem" |
+| PR 描述 | "PR描述""pull request body""写个PR""commit+PR说明" |
+| 测试报告 | "测试报告""test report""用例结果汇总" |
 
 ## 流程（Inversion → Generator）
 
@@ -102,6 +104,13 @@ Generator + Inversion 组合：**先采访缺失变量，再按模板填空**。
 - `references/template-weekly-report.md` — 周报
 - `references/template-acceptance-report.md` — 验收报告
 - `references/template-meeting-notes.md` — 会议纪要
+- `references/template-pr.md` — PR 描述（动机/方案/验证三段）
+- `references/template-test-report.md` — 测试报告（结论先行 + 用例表格化）
+- `references/template-retrospective.md` — 复盘报告（blameless + 行动项表格）
+- `references/template-tech-plan.md` — 技术方案（推荐先行 + 备选对比表）
+- `references/template-release-notes.md` — 发布说明（价值先行 ≤3 条）
+
+写完后用 `forge docs lint` 过一遍落盘产物（禁令短语/必填章节/结论枚举机器可查）；PR 描述与 commit message 不落盘，由模板 + `code-review-gate/references/rubric-docs.md` 的 L2 档位判据约束。
 
 **模板从哪来**：每次用户提供了好的文档范例，提炼成模板存库（知识积累）。没有的模板先用 Inversion 现场和用户定结构。
 
@@ -109,7 +118,7 @@ Generator + Inversion 组合：**先采访缺失变量，再按模板填空**。
 
 - **research-workflow**：调研报告（需多 agent 检索 + 互证）走它，**不走本 skill**——本 skill 是已知结构的填空，调研是探索未知
 - **architecture-decision-record**：架构决策记录（特定 Generator 子类，有专用模板和权衡分析）走它
-- **生成后发送前自查**：不加总结尾巴（"综上所述""In summary"）、用户没要求就不排 P0/P1/P2、不为格式堆标题表格——这几条沟通纪律由各 agent 自身全局约束覆盖，不单列 skill
+- **生成后发送前自查**：不加总结尾巴（`综上所述`、"In summary"）、用户没要求就不排 P0/P1/P2、不为格式堆标题表格——这几条沟通纪律由各 agent 自身全局约束覆盖，不单列 skill
 - 若要发飞书：参考 research-workflow 的 lark-publish reference（`@file` 语法、编码处理）
 
 ## Gotchas（高信号）
