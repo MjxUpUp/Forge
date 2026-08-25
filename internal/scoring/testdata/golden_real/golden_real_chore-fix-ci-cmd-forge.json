@@ -21,15 +21,20 @@
     "CompileChecked": true,
     "AssertionChecked": false,
     "EvidenceDeterministic": 6,
-    "EvidenceAgentClaim": 0
+    "EvidenceAgentClaim": 0,
+    "HasDocDeliverables": false,
+    "DocLintHardIssues": 0,
+    "DocRubricScore": null,
+    "DocGateEscaped": false
   },
   "expected": {
-    "overall": 88,
+    "overall": 89.02,
     "grade": "B",
     "dimensions": {
       "assertions": 70,
       "code-quality": 100,
       "efficiency": 100,
+      "expression": 100,
       "process": 100,
       "scope": 40,
       "testing": 94

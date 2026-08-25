@@ -74,3 +74,20 @@ skillsqa/rules.go 合法 when 词表核查（5 个均不匹配 Stop 时刻语义
 ### Rationale
 
 按本 skill 自己的原则『沉淀的目标是未来不靠人记』：deterministic 机器提醒优于概率性模型触发
+
+## [d-18cf05aaa7ce26e4-3b7b5696] accept
+
+- **Skill**: session-retrospective
+- **DecidedAt**: 2026-08-25T10:30:07Z
+
+### Diagnosis
+
+输出→回检循环缺长期半边：回检发现的高频模式没有回流为约束的既定入口，同类文档问题反复打回
+
+### Revision
+
+流程新增第 6 步「文档回检模式提炼」：从 doc-review findings 与 DocReviewHistory 轮次趋势提炼，同类打回 ≥3 次升级为 doclint 规则/模板章节
+
+### Evidence
+
+docs/design/output-readability-gates.md 长期回路章节

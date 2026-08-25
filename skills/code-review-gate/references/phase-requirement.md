@@ -43,6 +43,7 @@
 | PRD 无 Out of Scope 节 | `file_not_contains` 关键词 "Out of Scope" | IEEE 830 |
 | 模糊词存在 | 正则扫描 "快速\|良好\|适当\|合理\|大量\|少量" 后跟单位缺失 | 经验积累 |
 | 需求无验收条件 | 扫描需求列表后无 "Given/When/Then" 或 "验收条件" 标记 | 用户故事标准 |
+| 空转措辞 / 无证据结论 / 复述 diff | `forge docs lint`（D1-D7，机器可查） | output-readability-gates 设计 |
 
 ## 与大厂规范的映射（方向，非条文）
 

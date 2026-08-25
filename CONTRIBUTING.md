@@ -23,6 +23,14 @@ Conventional Commits：`feat:` / `fix:` / `perf:` / `refactor:` / `docs:` / `cho
 前缀决定 release-please 的 bump 类型：`feat:` → minor、`fix:` → patch、`!` / `BREAKING CHANGE:` → major；
 `chore:` / `docs:` / `test:` / `ci:`（以及单独的 `perf:` / `refactor:`）不触发 Release PR。
 
+### 长度与 body 结构
+
+- 标题 ≤50 字符（中文 ≤25 字），小写开头、结尾不加句号——一行扫读能定位这个 commit 干了什么
+- body 超过 3 行时用三段结构：**动机**（为什么改）→ **方案**（关键取舍）→ **验证**（实跑的命令与结果）
+- **禁复述 diff**：body 写 diff 看不出来的信息（为什么、权衡、坑），diff 本体能看到的逐行描述不写
+- 模板与档位判据见 `skills/doc-generator/references/template-pr.md` 与
+  `skills/code-review-gate/references/rubric-docs.md`（PR 描述与 commit 共用三段结构）
+
 ## 发版
 
 只有维护者执行。流程与纪律见 [RELEASE.md](RELEASE.md)；标准路径是合并 release-please 自动开出的

@@ -30,6 +30,7 @@ type TaskOverrides struct {
 	TestCoverage   string `json:"test_coverage,omitempty"`   // "disable" 跳过 test-coverage 门禁
 	AcceptanceGate string `json:"acceptance_gate,omitempty"` // "disable" 跳过 task-complete acceptance pre-flight 门禁
 	SkillDecisions string `json:"skill_decisions,omitempty"` // "disable" 跳过 skill-decisions guardrail（改 SKILL.md 必须记决策）
+	DocGate        string `json:"doc_gate,omitempty"`        // "disable" 跳过 task-complete doc pre-flight（输出→回检门禁；轮次上限后的放行须人工确认后走这里）
 }
 
 // escapeDisabled reports whether the escape hatch named by which (work-activity / test-coverage / skill-decisions) is
@@ -60,6 +61,10 @@ func escapeDisabled(state *TaskState, which, envVar string) bool {
 			if state.Overrides.SkillDecisions == "disable" {
 				return true
 			}
+		case "doc-gate":
+			if state.Overrides.DocGate == "disable" {
+				return true
+			}
 		}
 	}
 	return os.Getenv(envVar) == "disable"
@@ -78,7 +83,8 @@ func escapeDisabled(state *TaskState, which, envVar string) bool {
 // taskEscapeHatchRecorded——覆盖不动 state.Overrides 的 env 形式逃生。
 func usedAnyOverride(o TaskOverrides) bool {
 	return o.WorkActivity == "disable" || o.TestCoverage == "disable" ||
-		o.AcceptanceGate == "disable" || o.SkillDecisions == "disable"
+		o.AcceptanceGate == "disable" || o.SkillDecisions == "disable" ||
+		o.DocGate == "disable"
 }
 
 // taskEscapeHatchRecorded reports whether the task's checklog contains any
@@ -109,6 +115,7 @@ const (
 	escapeTestCoverage   = "test-coverage"
 	escapeAcceptanceGate = "acceptance-gate"
 	escapeSkillDecisions = "skill-decisions"
+	escapeDocGate        = "doc-gate"
 	// envWorkActivity: the global env for the work-activity escape hatch (executor getDisableWorkActivity).
 	// envWorkActivity: work-activity 逃生舱对应的全局 env（executor getDisableWorkActivity）。
 	envWorkActivity = "FORGE_WORK_ACTIVITY"

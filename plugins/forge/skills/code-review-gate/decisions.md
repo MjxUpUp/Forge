@@ -164,3 +164,20 @@ TestRunReviewPassAt_ReworkRoundRequiresRecheck（git 夹具三轮：首章静默
 ### Rationale
 
 复审实质不可机械判定（HARD 会引入可伪造凭据字段），ADVISORY 让义务在欠下的确切时刻可见；快照增量触发消除了无变更重盖的误报
+
+## [d-18cf05d41d876778-9c6ef3ab] accept
+
+- **Skill**: code-review-gate
+- **DecidedAt**: 2026-08-25T10:33:05Z
+
+### Diagnosis
+
+输出可读性设计需要 L2 rubric 的单一真相源落在 code-review-gate/references/（与 phase-*.md 同址，编写期 design-artifact-standards 路由、审查期本 skill 消费）
+
+### Revision
+
+新增 references/rubric-docs.md（四维 0-25 档位判据 + 评分纪律五条 + 类型特化 Critical 表）；6 个 phase-*.md 确定性规则表各追加一行指向 forge docs lint
+
+### Evidence
+
+docs/design/output-readability-gates.md；task-verify 的 unused-scan/doc advisory 实测链路
