@@ -863,6 +863,112 @@ func TestHook_ReadBeforeEdit_AllowsNewFile(t *testing.T) {
 	assertAllowOutput(t, stdout)
 }
 
+// TestHook_ReadBeforeEdit_AllowsEditAfterWrite pins the 2026-08-24 fix: a Write
+// lands in the per-session reads-log (via the auto-compile PostToolUse dispatch),
+// so the Edit right after a file-creating Write passes — the agent plainly knows
+// the content it just authored. Four production sessions replayed the old script:
+// Write creates file → immediate Edit → FAIL "未在本会话 Read 过" → forced
+// ceremonial Read.
+//
+// TestHook_ReadBeforeEdit_AllowsEditAfterWrite 钉住 2026-08-24 修复：Write 会
+// 计入 per-session reads-log（经 auto-compile 的 PostToolUse 分发），故文件
+// 创建后的紧随 Edit 放行——agent 当然知道自己刚写的内容。4 个生产 session
+// 复发过旧剧本：Write 建文件 → 紧接着 Edit → FAIL「未在本会话 Read 过」→
+// 被迫补一次纯形式 Read。
+func TestHook_ReadBeforeEdit_AllowsEditAfterWrite(t *testing.T) {
+	dir := freshProject(t)
+	const sid = "sess-rbe-write"
+	tmp := t.TempDir()
+	forge(t, dir, "task", "start", "--ref", "feat/rbe-write", "--title", "write then edit")
+
+	// 1. Write creates the file (new-file exemption lets the PreToolUse through).
+	//
+	// 1. Write 建文件（新建豁免放行 PreToolUse）。
+	writeIn := hookStdin(t, sid, "PreToolUse", "Write", map[string]any{
+		"file_path": filepath.Join(dir, "created.go"),
+		"content":   "package main\n\nfunc made() {}\n",
+	})
+	if stdout, _, err := forgeHookShared(t, dir, tmp, "read-before-edit", writeIn); err != nil {
+		t.Fatalf("Write of a new file must pass read-before-edit, got block. stdout:\n%s", stdout)
+	}
+	// The Write lands (PostToolUse fires after the tool completes).
+	//
+	// 写入落盘（PostToolUse 在工具完成后触发）。
+	writeFile(t, dir, "created.go", "package main\n\nfunc made() {}\n")
+
+	// 2. PostToolUse auto-compile fires after the Write — the dispatcher records
+	// the path into the session reads-log.
+	//
+	// 2. Write 完成后 PostToolUse auto-compile 触发——dispatcher 把该路径计入
+	// 会话 reads-log。
+	postIn := hookStdin(t, sid, "PostToolUse", "Write", map[string]any{
+		"file_path": filepath.Join(dir, "created.go"),
+		"content":   "package main\n\nfunc made() {}\n",
+	})
+	if _, _, err := forgeHookShared(t, dir, tmp, "auto-compile", postIn); err != nil {
+		t.Fatalf("auto-compile PostToolUse Write step failed: %v", err)
+	}
+
+	// 3. The immediate next Edit must pass (reads-log hit from the Write).
+	//
+	// 3. 紧随的 Edit 必须放行（Write 已计入 reads-log）。
+	editIn := hookStdin(t, sid, "PreToolUse", "Edit", map[string]any{
+		"file_path":  filepath.Join(dir, "created.go"),
+		"old_string": "func made() {}",
+		"new_string": "func made() { println(1) }",
+	})
+	stdout, _, err := forgeHookShared(t, dir, tmp, "read-before-edit", editIn)
+	if err != nil {
+		t.Fatalf("read-before-edit must ALLOW an Edit right after this session Wrote the file, got block. stdout:\n%s", stdout)
+	}
+	assertAllowOutput(t, stdout)
+}
+
+// TestHook_ReadBeforeEdit_DedupesDoubleFire pins the 2026-08-24 record dedupe:
+// the host double-firing ONE Edit event (observed: kimi PreToolUse invoking
+// read-before-edit twice 98ms apart for a single Edit — consecutive checklog
+// seq; two-week logs showed 6 same-(session,file) pairs 0.5~1.9s apart) must
+// still block BOTH deliveries, but record exactly ONE checklog entry.
+//
+// TestHook_ReadBeforeEdit_DedupesDoubleFire 钉住 2026-08-24 的记录去重：宿主
+// 把同一个 Edit 事件双发（实证：kimi PreToolUse 对单个 Edit 在 98ms 内两次
+// 调用 read-before-edit——checklog seq 连号；两周日志 6 组同 (session,file)
+// 记录间隔 0.5~1.9s）时两次投递都必须仍阻断，但 checklog 只记一条。
+func TestHook_ReadBeforeEdit_DedupesDoubleFire(t *testing.T) {
+	dir := freshProject(t)
+	const sid = "sess-rbe-dup"
+	tmp := t.TempDir()
+	forge(t, dir, "task", "start", "--ref", "feat/rbe-dup", "--title", "double fire dedupe")
+
+	// Existing source file, never Read this session → both deliveries block.
+	//
+	// 现存源文件、本会话未 Read → 两次投递都阻断。
+	writeFile(t, dir, "target.go", "package main\n\nfunc old() {}\n")
+	editIn := hookStdin(t, sid, "PreToolUse", "Edit", map[string]any{
+		"file_path":  filepath.Join(dir, "target.go"),
+		"old_string": "func old() {}",
+		"new_string": "func new() {}",
+	})
+	for i := 1; i <= 2; i++ {
+		stdout, _, err := forgeHookShared(t, dir, tmp, "read-before-edit", editIn)
+		if err == nil {
+			t.Fatalf("delivery #%d must block (unread source edit), got exit 0. stdout:\n%s", i, stdout)
+		}
+	}
+
+	// But the audit trail carries exactly one entry for the double-fired event.
+	//
+	// 但审计轨迹对这个被双发的事件只记一条。
+	data, err := os.ReadFile(filepath.Join(forgedata.DataDirFor(dir), "checklog.jsonl"))
+	if err != nil {
+		t.Fatalf("read checklog: %v", err)
+	}
+	count := strings.Count(string(data), `"check":"read-before-edit"`)
+	if count != 1 {
+		t.Errorf("double-fired single Edit event must produce exactly ONE checklog entry, got %d:\n%s", count, data)
+	}
+}
+
 // TestHook_ReadBeforeEdit_PerTaskOverrideEscape (plan 5 leak-prevention path, e2e):
 // 'forge task override --work-activity disable' writes into the active task's Overrides → the Go
 // dispatcher (hook.go) injects FORGE_WORK_ACTIVITY=disable → the read-before-edit hook passes edits
