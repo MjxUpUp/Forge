@@ -217,3 +217,22 @@ func TestLintTextTemplateFilesSkipInstanceRules(t *testing.T) {
 		t.Fatalf("模板裸用禁令短语应命中 D1，got %v", ids)
 	}
 }
+
+func TestMatchDocTypeBaseNameOnly(t *testing.T) {
+	// Regression: path-based matching made skills/session-retrospective/SKILL.md
+	// a "retrospective report" (D5 demanded 行动 from a skill doc living in a
+	// directory named retrospective). Type hints match the BASE name only.
+	//
+	// 回归：按全路径匹配曾把 skills/session-retrospective/SKILL.md 判成
+	// 「复盘报告」（D5 向住在 retrospective 目录里的 skill 文档索要「行动」
+	// 章节）。类型提示只匹配 BASE 名。
+	if dt := matchDocType("skills/session-retrospective/SKILL.md"); dt != nil {
+		t.Fatalf("目录名含 retrospective 的 skill 文档不应命中类型规则, got %s", dt.ID)
+	}
+	if dt := matchDocType("docs/sprint-retrospective.md"); dt == nil || dt.ID != "retrospective" {
+		t.Fatalf("文件名命中的复盘报告应匹配, got %+v", dt)
+	}
+	if !PathExempt("skills/doc-generator/decisions.md") {
+		t.Error("decisions.md 是 append-only 治理日志，应豁免（逐字引用诊断散文）")
+	}
+}
