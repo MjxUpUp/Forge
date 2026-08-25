@@ -71,7 +71,7 @@ func TestRender_TruncatesLongReason(t *testing.T) {
 // 防御，且遵循度审计显示祈使并未抬高转化率（kimi 0%、claude 22%）。
 func TestRender_FactualPhrasingNotImperative(t *testing.T) {
 	out := Render([]Hit{{Skill: "foo", SkillDir: "/x/foo", Reason: "r"}}, Context{Event: "PostToolUse"}, nil)
-	for _, want := range []string{"供参考", "可 read", "FORGE_SKILL_TRIGGER=0"} {
+	for _, want := range []string{"供参考", "绝对路径", "完整方法论", "FORGE_SKILL_TRIGGER=0"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("factual banner/footer must contain %q, got:\n%s", want, out)
 		}

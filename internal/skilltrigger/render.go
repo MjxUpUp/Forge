@@ -74,7 +74,7 @@ func Render(hits []Hit, ctx Context, overflow []string) string {
 		w("")
 	}
 	w(bar)
-	w("说明：以上 SKILL.md 全文可 read。此提示由 forge 生成，FORGE_SKILL_TRIGGER=0 可关闭。")
+	w("说明：以上为命中 skill 的绝对路径，读取对应 SKILL.md 可获得完整方法论。此提示由 forge 生成，FORGE_SKILL_TRIGGER=0 可关闭。")
 	return b.String()
 }
 

@@ -941,7 +941,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 					}
 				}
 				if debtCount > 0 {
-					fmt.Fprintf(os.Stderr, "%s"+`%d 处 comment-as-debt——注释标识问题 ≠ 解决（懒惰阶梯反第 0 级）。处置：当场修掉；或转 forge task start --ref <ref> --title <描述> 跟踪（本任务完结后开）。加载 implementation-discipline skill（/implementation-discipline）按懒惰阶梯归位。advisory 不阻塞。`+"\n", GateAdvisory("[task-verify] "), debtCount)
+					fmt.Fprintf(os.Stderr, "%s"+`%d 处 comment-as-debt——注释标识问题 ≠ 解决（懒惰阶梯反第 0 级）。处置：当场修掉；或转 forge task start --ref <ref> --title <描述> 跟踪（本任务完结后开）。加载 implementation-discipline skill 按懒惰阶梯归位。advisory 不阻塞。`+"\n", GateAdvisory("[task-verify] "), debtCount)
 				}
 			}
 		}

@@ -120,6 +120,18 @@ func TestRunFailureTrackHook_RecordsAndNudgesOnCompileFailure(t *testing.T) {
 	if !strings.Contains(out, "compile-fix-loop") {
 		t.Errorf("compile-marker failure must emit the compile-fix-loop pointer, got stdout: %q", out)
 	}
+	// Name-only pointer contract (2026-08-25 prompt-copy fix): the nudge names the
+	// skill in natural language; a repo-relative skills/... path is a 404 outside
+	// the Forge repo, so it must never appear.
+	//
+	// 只给 skill 名的契约（2026-08-25 文案修复）：nudge 用自然语言点名 skill；
+	// 仓库相对 skills/... 路径在 Forge 仓库外是 404，绝不得出现。
+	if !strings.Contains(out, "Load the compile-fix-loop skill") {
+		t.Errorf("nudge must use the natural-language loading form, got stdout: %q", out)
+	}
+	if strings.Contains(out, "skills/compile-fix-loop") {
+		t.Errorf("nudge must not carry the repo-relative skills/ path (dead outside the Forge repo), got stdout: %q", out)
+	}
 	if strings.Contains(out, `"decision":"block"`) {
 		t.Errorf("failure-track must never block, got block JSON: %q", out)
 	}
@@ -303,6 +315,17 @@ func TestRunTestNudgeHook_ThresholdNudgeAndReset(t *testing.T) {
 	out3 := writeSourceForNudge(t, root, sid, filepath.Join(root, "c.go"))
 	if !strings.Contains(out3, "test-discipline") {
 		t.Errorf("write #3 (threshold) must fire the test-discipline reminder, got: %q", out3)
+	}
+	// Same name-only pointer contract as failure-track (2026-08-25 prompt-copy fix):
+	// natural-language skill reference, no repo-relative skills/ path.
+	//
+	// 与 failure-track 同款只给 skill 名的契约（2026-08-25 文案修复）：自然语言
+	// 引用 skill，不含仓库相对 skills/ 路径。
+	if !strings.Contains(out3, "Load the test-discipline skill") {
+		t.Errorf("nudge must use the natural-language loading form, got: %q", out3)
+	}
+	if strings.Contains(out3, "skills/test-discipline") {
+		t.Errorf("nudge must not carry the repo-relative skills/ path (dead outside the Forge repo), got: %q", out3)
 	}
 	if strings.Contains(out3, `"decision":"block"`) {
 		t.Errorf("test-nudge must never block, got block JSON: %q", out3)
