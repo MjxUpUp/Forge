@@ -48,4 +48,3 @@
 > - `go test ./internal/taskpipeline/ -run TestAcceptance` 通过（12 cases）
 > - 手工：声明 2 条验收 → complete 被拒 → 实跑后放行
 
-动机一段讲清、方案不复述 diff、验证给实跑命令与结果——三段之外不加"总结"章节。
