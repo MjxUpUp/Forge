@@ -213,3 +213,93 @@ func TestChangedMarkdownDocsExemptions(t *testing.T) {
 		t.Fatalf("豁免路径应被排除，只留 real.md, got %v", docs)
 	}
 }
+
+func TestCheckDocGateFingerprintStaleness(t *testing.T) {
+	// I5: HEAD alone has a working-tree blind spot — editing a doc WITHOUT
+	// committing after a passing review must invalidate the review via the
+	// content fingerprint.
+	//
+	// I5：只绑 HEAD 有工作区盲区——评审通过后不提交地改文档，必须经内容
+	// 指纹判评审过期。
+	root, base := newDocGateRepo(t)
+	if err := os.WriteFile(root+"/notes.md", []byte("# 笔记\n干净内容。\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	state := &TaskState{TaskRef: "feat/x", HeadCommit: base}
+	state.DocReview = &DocReview{
+		Passed: true, RubricScore: 90, Round: 1, ReviewedAt: time.Now(),
+		HeadCommit:      GetHeadCommit(root),
+		DocsFingerprint: DocContentFingerprint(root, state),
+	}
+	if ok, reasons := CheckDocGate(root, state); !ok {
+		t.Fatalf("前置：内容未变应放行, got %v", reasons)
+	}
+	// Uncommitted edit: HEAD unchanged, fingerprint changes → stale.
+	//
+	// 未提交修改：HEAD 不变、指纹变 → 过期。
+	if err := os.WriteFile(root+"/notes.md", []byte("# 笔记\n改过的内容。\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	ok, reasons := CheckDocGate(root, state)
+	if ok || !strings.Contains(strings.Join(reasons, "; "), "旧内容") {
+		t.Fatalf("未提交修改应经指纹判过期, got ok=%v reasons=%v", ok, reasons)
+	}
+	// Legacy review without fingerprint (v1.43.0): HEAD check only, still passes.
+	//
+	// 无指纹的旧版评审：仅查 HEAD，照常放行。
+	legacy := &TaskState{TaskRef: "feat/y", HeadCommit: base}
+	legacy.DocReview = &DocReview{Passed: true, RubricScore: 90, Round: 1, ReviewedAt: time.Now(), HeadCommit: GetHeadCommit(root)}
+	if ok, _ := CheckDocGate(root, legacy); !ok {
+		t.Fatal("空指纹的旧版评审不应触发指纹过期")
+	}
+}
+
+func TestChangedMarkdownSinceIncludesUntrackedAndSkipsDeleted(t *testing.T) {
+	root, base := newDocGateRepo(t)
+	if err := os.WriteFile(root+"/new-untracked.md", []byte("新文件\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	docs, err := ChangedMarkdownSince(root, base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, d := range docs {
+		if d == "new-untracked.md" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("未跟踪新文件应进入集合（与门禁一致），got %v", docs)
+	}
+
+	// Deleted-after-base files drop out instead of surfacing as IO errors
+	// (regression I1a: the old CLI --base read them as hard IO failures).
+	//
+	// 基线后删除的文件应被剔除而不是报 IO 错误（回归 I1a：旧 CLI --base 把
+	// 它们读成硬 IO 失败）。
+	del := root + "/gone.md"
+	if err := os.WriteFile(del, []byte("x\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	git := func(args ...string) {
+		t.Helper()
+		if out, gerr := exec.Command("git", append([]string{"-C", root, "-c", "user.email=t@t", "-c", "user.name=t"}, args...)...).CombinedOutput(); gerr != nil {
+			t.Fatalf("git %v: %v\n%s", args, gerr, out)
+		}
+	}
+	git("add", "gone.md")
+	git("commit", "-q", "-m", "add gone")
+	if err := os.Remove(del); err != nil {
+		t.Fatal(err)
+	}
+	docs, err = ChangedMarkdownSince(root, base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range docs {
+		if d == "gone.md" {
+			t.Fatalf("已删除文件不应出现在集合中, got %v", docs)
+		}
+	}
+}

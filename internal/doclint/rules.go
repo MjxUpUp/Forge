@@ -43,7 +43,8 @@ var RuleDescriptions = map[string]string{
 	"D4": "含通过性断言（测试通过/已验证等）但全文无任何证据标记（反引号命令、file:line、URL、百分比）判为无引用断言（advisory，报首个断言行）",
 	"D5": "类型化必填章节缺失（按 DocType 的文件名匹配，hard）",
 	"D6": "类型化结论枚举缺失（如发布 checklist 须含 GO/NO-GO 之一，hard）",
-	"D7": "类型化篇幅上限超出（advisory；骨架管结构不管膨胀，上限兜底）",
+	"D7": "类型化篇幅上限超出（advisory；只数非围栏行——骨架管结构不管膨胀，上限兜底散文）",
+	"IO": "文件读取失败（hard；路径不可读——CLI 层的 IO 兜底，非内容规则）",
 }
 
 // bannedPhrase is one D1/D2 entry: a regex plus the reason it is banned.
@@ -144,7 +145,7 @@ var DocTypes = []DocType{
 	},
 	{
 		ID:               "checklist",
-		FilenameContains: []string{"checklist"},
+		FilenameContains: []string{"release-checklist"},
 		ConclusionEnum:   []string{"GO", "NO-GO"},
 	},
 }
@@ -172,17 +173,20 @@ func matchDocType(filename string) *DocType {
 
 // RenderBannedPhrasesForSkill renders the D1/D2 tables into skill/protocol
 // text (skillgen calls this — the banned list must not be hand-copied into a
-// second location).
+// second location). Phrases are backtick-wrapped: the generated skill text
+// must survive its own doclint (inline-code exemption), same as claudemd's
+// rule 7.
 //
 // RenderBannedPhrasesForSkill 把 D1/D2 表渲染为 skill/协议文本（skillgen 调用
-// 本函数——禁令清单不允许手抄到第二处）。
+// 本函数——禁令清单不允许手抄到第二处）。短语反引号包裹：生成的 skill 文本
+// 须能过自身的 doclint（行内代码豁免），与 claudemd 规则 7 同构。
 func RenderBannedPhrasesForSkill() string {
 	var sb strings.Builder
 	for _, p := range BannedPhrases {
-		fmt.Fprintf(&sb, "- 「%s」—%s\n", p.Pattern.String(), p.Reason)
+		fmt.Fprintf(&sb, "- `%s` —%s\n", p.Pattern.String(), p.Reason)
 	}
 	for _, p := range EvidenceFreeConclusions {
-		fmt.Fprintf(&sb, "- 「%s」—%s\n", p.Pattern.String(), p.Reason)
+		fmt.Fprintf(&sb, "- `%s` —%s\n", p.Pattern.String(), p.Reason)
 	}
 	return sb.String()
 }
