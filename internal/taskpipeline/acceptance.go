@@ -190,6 +190,64 @@ func MergeAcceptance(base, addition []AcceptanceCriterion) []AcceptanceCriterion
 	return base
 }
 
+// EnsureGoTestVerbose rewrites, in place, acceptance criteria whose Run is a bare
+// `go test ...` invocation lacking -v, inserting -v right after `test` — without it
+// go test prints no PASS lines, so a non-empty Expected substring (the only case
+// where output matters) can never match (real usage-log failure mode: the agent
+// registered `go test ./... :: PASS`, verify-acceptance judged it red, and the only
+// recourse was abort + restart the task). Criteria with empty Expected (exit-code
+// only) and commands that are not literally `go test` (e.g. `gotestsum`, shell
+// compositions) are left untouched. Inserting -v keeps the plain-output lines
+// (ok/FAIL) present, so previously matching substrings keep matching. Returns the
+// original Run strings that were adjusted so the caller can announce the rewrite —
+// registered commands are never silently rewritten.
+//
+// EnsureGoTestVerbose 原地改写 Run 为裸 `go test ...` 且缺 -v 的验收标准，在 test 后
+// 插入 -v——没有它 go test 不输出 PASS 行，非空 Expected 子串（唯一关心输出的情形）
+// 永不匹配（真实 usage 日志失败模式：agent 登记 `go test ./... :: PASS`，
+// verify-acceptance 判负，只能 abort 重开任务）。Expected 为空（只看退出码）与非
+// 字面 `go test` 的命令（gotestsum、shell 组合）不动。-v 输出保留 plain 输出的
+// ok/FAIL 行，故原本匹配的子串仍匹配。返回被改写的原始 Run 串供调用方明示——
+// 登记的命令绝不静默改写。
+func EnsureGoTestVerbose(cs []AcceptanceCriterion) []string {
+	var adjusted []string
+	for i := range cs {
+		if cs[i].Expected == "" {
+			continue // 退出码判定不需要 verbose 输出
+		}
+		if rewritten, ok := ensureGoTestVerboseRun(cs[i].Run); ok {
+			adjusted = append(adjusted, cs[i].Run)
+			cs[i].Run = rewritten
+		}
+	}
+	return adjusted
+}
+
+// ensureGoTestVerboseRun is the single-command core of EnsureGoTestVerbose: ok=true and
+// the rewritten command when run is `go test ...` without any -v variant; otherwise
+// (run, false) untouched.
+//
+// ensureGoTestVerboseRun 是 EnsureGoTestVerbose 的单命令核心：run 是不带任何 -v 变体
+// 的 `go test ...` 时返回 ok=true 与改写后命令；否则原样返回 (run, false)。
+func ensureGoTestVerboseRun(run string) (string, bool) {
+	fields := strings.Fields(run)
+	if len(fields) < 2 || fields[0] != "go" || fields[1] != "test" {
+		return run, false
+	}
+	for _, f := range fields[2:] {
+		if f == "-v" || f == "--v" || strings.HasPrefix(f, "-v=") || strings.HasPrefix(f, "--v=") {
+			return run, false
+		}
+	}
+	// Insert right after "test": `go test -v <rest>` is valid with any following
+	// flags/packages (go test accepts flags before package args).
+	//
+	// 插在 "test" 之后：`go test -v <rest>` 对任何后续 flag/包路径都合法（go test
+	// 接受 flag 位于包参数之前）。
+	fields = append(fields[:2:2], append([]string{"-v"}, fields[2:]...)...)
+	return strings.Join(fields, " "), true
+}
+
 // judgeAcceptance is the single source of truth for acceptance three-state judgement: RunTestCommand's passed (exit 0)
 // AND Expected substring match. Its only consumer is VerifyAcceptance (verify-acceptance actually runs and fills state).
 //

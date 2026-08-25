@@ -40,7 +40,7 @@ func init() {
 	//
 	// StringArray（非 StringSlice）：cobra/pflag 的 StringSlice 默认按逗号切分，会把
 	// 含逗号的命令拆坏；StringArray 每个 --accept 整条不切。验收标准是完整"run :: expected"串。
-	taskStartCmd.Flags().StringArray("accept", nil, `验收标准（可重复 --accept）：格式 "run :: expected"（expected=输出子串）或裸 "run"（只看退出码 0）。forge task verify-acceptance 实跑回扣`)
+	taskStartCmd.Flags().StringArray("accept", nil, `验收标准（可重复 --accept）：格式 "run :: expected"（expected=输出子串）或裸 "run"（只看退出码 0）。forge task verify-acceptance 实跑回扣。run 为 go test 且带 expected 而未加 -v 时自动补 -v（否则无 PASS 行永不匹配）`)
 	// PlanScope: declare the whitelist of files planned to change before starting work
 	// (planning up-front -> measurable contract). Supports exact paths/globs/directory
 	// prefixes. Advisory: changes beyond the declaration are recorded as scope-drift
@@ -84,6 +84,7 @@ func init() {
 	taskStatusCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
 	taskGateCmd.Flags().Bool("silent", false, "静默模式（仅返回退出码）")
 	taskVerifyAcceptanceCmd.Flags().Bool(`trust-foreign`, false, `受信外来验收命令（task import/.forge migrate 带入）：确认已人工审阅命令清单后执行，首次受信运行清除外来标记`)
+	taskVerifyAcceptanceCmd.Flags().String("ref", "", "指定任务引用（不依赖活跃任务检测）")
 	taskGateCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
 	taskCompleteCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
 	taskAbortCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
@@ -100,6 +101,7 @@ func init() {
 	taskOverrideCmd.Flags().String("test-coverage", "", "设为 disable 跳过 test-coverage 门禁")
 	taskOverrideCmd.Flags().String("acceptance-gate", "", `设为 disable 跳过 task-complete 的 acceptance pre-flight 门禁`)
 	taskOverrideCmd.Flags().String("skill-decisions", "", `设为 disable 跳过 skill-decisions guardrail（改 SKILL.md 必须记决策）`)
+	taskScopeAddCmd.Flags().String("ref", "", "指定任务引用（不依赖活跃任务检测）")
 }
 
 var taskCmd = &cobra.Command{
@@ -131,7 +133,7 @@ var taskGateCmd = &cobra.Command{
 }
 
 var taskVerifyAcceptanceCmd = &cobra.Command{
-	Use:   "verify-acceptance [--trust-foreign]",
+	Use:   "verify-acceptance [--ref <ref>] [--trust-foreign]",
 	Short: "实跑验收标准并记 deterministic 证据（spec-as-gate）",
 	Long: `forge task verify-acceptance 实跑 task start --accept 登记的每条验收标准（Run 命令），
 按"退出码 0 + Expected 子串"判定，回填 Passed/Output，并记 checklog:acceptance（deterministic）。
@@ -181,8 +183,8 @@ var taskScopeCmd = &cobra.Command{
 	Short: "管理计划改动白名单（PlanScope，advisory scope-drift）",
 }
 var taskScopeAddCmd = &cobra.Command{
-	Use:   "add <glob> [<glob>...]",
-	Short: "追加计划改动文件到白名单（支持中途迭代）",
+	Use:   "add <glob> [<glob>...] [--ref <ref>]",
+	Short: "追加计划改动文件到白名单（支持中途迭代；--ref 指定任务）",
 	Args:  cobra.MinimumNArgs(1),
 	RunE:  runTaskScopeAdd,
 }
@@ -508,6 +510,20 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 			state.Acceptance = taskpipeline.MergeAcceptance(state.Acceptance, extracted)
 			planAcceptanceAdded = len(state.Acceptance) - baseBefore
 		}
+	}
+	// go test ergonomics (usage-log fix): a `go test` Run without -v prints no PASS lines,
+	// so an Expected like "PASS" can never match and the agent only finds out at
+	// verify-acceptance time — the recorded failure mode was abort + restart the task.
+	// Auto-insert -v (output-only; exit-code semantics unchanged) and announce it — never
+	// silently rewrite a registered command. Runs with empty Expected (exit-code-only)
+	// are left untouched: they don't need verbose output.
+	//
+	// go test 人体工学（usage 日志修复）：`go test` 不带 -v 时输出没有 PASS 行，Expected
+	// 写 "PASS" 永不匹配，agent 到 verify-acceptance 才发现——真实失败模式是 abort 重开
+	// 任务。自动补 -v（只影响输出、退出码语义不变）并明示——绝不静默改写登记的命令。
+	// Expected 为空（只看退出码）的命令不动：它们不需要 verbose 输出。
+	if adjusted := taskpipeline.EnsureGoTestVerbose(state.Acceptance); len(adjusted) > 0 {
+		fmt.Printf("ℹ️ 验收命令自动补 -v（go test 无 -v 时输出无 PASS 行，Expected 子串永不匹配）：%s\n", strings.Join(adjusted, ", "))
 	}
 	if parent, _ := cmd.Flags().GetString("parent"); parent != "" {
 		state.ParentTaskRef = parent
@@ -1192,20 +1208,22 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 	// 刻意不在此处 MarkComplete（dogfood 2026-08-18 死锁修复）：曾经「最后一道 gate 通过
 	// 即 MarkComplete」，而 ActiveTaskState 对 CompletedAt!=nil 返回 nil —— 紧随其后的
 	// `forge task complete` acceptance pre-flight 恰要求快照新鲜（AcceptedHeadCommit==HEAD），
-	// 刷新只能由 verify-acceptance（只认 active task）完成。门一过任务即失活 → 验收刷新
-	// 死锁（本次 v2 任务实测踩中：review 修复 commit 移动 HEAD 后 complete 永久 BLOCKED，
-	// 且无任何 CLI 路径可复活）。完成 = `forge task complete` 的整个动作（pre-flight →
-	// MarkComplete → 评分 → 反馈 → 清 ref）；门禁全过只是它的前置条件，不是完成本身。
+	// 刷新只能由 verify-acceptance（默认认 active task，可用 --ref 显式指定）完成。门一过
+	// 任务即失活 → 验收刷新死锁（本次 v2 任务实测踩中：review 修复 commit 移动 HEAD 后
+	// complete 永久 BLOCKED，且无任何 CLI 路径可复活）。完成 = `forge task complete` 的
+	// 整个动作（pre-flight → MarkComplete → 评分 → 反馈 → 清 ref）；门禁全过只是它的
+	// 前置条件，不是完成本身。
 	//
 	// Deliberately NO MarkComplete here (dogfood 2026-08-18 deadlock fix): the last gate
 	// used to mark the task complete on pass, but ActiveTaskState returns nil once
 	// CompletedAt is set — and the immediately following `forge task complete` acceptance
 	// pre-flight demands snapshot freshness (AcceptedHeadCommit==HEAD), refreshable ONLY by
-	// verify-acceptance (active tasks only). Gate pass deactivated the task → acceptance
-	// refresh deadlocked (hit in production by the v2 task: a review-fix commit moved HEAD,
-	// complete BLOCKED forever, no CLI path could revive it). Completion is `forge task
-	// complete`'s whole action (pre-flight → MarkComplete → scoring → feedback → clear
-	// ref); all gates passed is its prerequisite, not completion itself.
+	// verify-acceptance (active task by default; --ref pins explicitly). Gate pass
+	// deactivated the task → acceptance refresh deadlocked (hit in production by the v2
+	// task: a review-fix commit moved HEAD, complete BLOCKED forever, no CLI path could
+	// revive it). Completion is `forge task complete`'s whole action (pre-flight →
+	// MarkComplete → scoring → feedback → clear ref); all gates passed is its
+	// prerequisite, not completion itself.
 	if err := taskpipeline.SaveTaskState(root, state); err != nil {
 		return fmt.Errorf("failed to save task state: %w", err)
 	}
@@ -1247,7 +1265,8 @@ func runTaskVerifyAcceptance(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	trustForeign, _ := cmd.Flags().GetBool(`trust-foreign`)
-	return runTaskVerifyAcceptanceAt(root, trustForeign)
+	explicitRef, _ := cmd.Flags().GetString("ref")
+	return runTaskVerifyAcceptanceAt(root, explicitRef, trustForeign)
 }
 
 // stdinIsHumanTerminal reports whether stdin is attached to a human terminal (char device) —
@@ -1281,20 +1300,32 @@ var stdinIsHumanTerminal = func() bool {
 // deterministic checklog:acceptance recording as runTaskVerifyAcceptance — see that
 // godoc for the spec-as-gate rationale (forge runs each command itself, so the
 // evidence cannot be faked; agents cannot merely assert 'satisfies acceptance').
+// explicitRef pins the task directly (gate-family --ref parity); empty keeps the
+// legacy active-task detection.
 //
 // runTaskVerifyAcceptanceAt 是 runTaskVerifyAcceptance 的 root 注入核心，独立出来便于
 // 在临时项目上单测（不经 findProjectRoot / cobra）。实跑任务登记的每条验收标准
 // （task start --accept），按「退出码 0 + Expected 子串」判定，回填 Passed/Output 到
 // TaskState 并记一条 checklog:acceptance（deterministic——forge 自己跑命令看结果，不可伪造）。
 // 这是把 dev-workflow Plan 的"Run: <cmd>, Expected: <out>"变成不可伪造实跑证据的入口，
-// 对冲 agent 自述「满足验收」却没真跑的盲区（spec-as-gate）。
-func runTaskVerifyAcceptanceAt(root string, trustForeign bool) error {
-	state, err := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
-	if err != nil {
-		return fmt.Errorf("failed to load task state: %w", err)
+// 对冲 agent 自述「满足验收」却没真跑的盲区（spec-as-gate）。explicitRef 直接指定任务
+// （门禁族 --ref 一致性）；空串保持旧的活跃任务检测。
+func runTaskVerifyAcceptanceAt(root, explicitRef string, trustForeign bool) error {
+	var state *taskpipeline.TaskState
+	var err error
+	if explicitRef != "" {
+		state, err = taskpipeline.LoadTaskState(root, explicitRef)
+		if err != nil {
+			return fmt.Errorf("加载任务 %q 失败: %w", explicitRef, err)
+		}
+	} else {
+		state, err = taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
+		if err != nil {
+			return fmt.Errorf("failed to load task state: %w", err)
+		}
 	}
 	if state == nil {
-		return fmt.Errorf("no active task. Run 'forge task start' first")
+		return fmt.Errorf("no active task. Run 'forge task start' first（或用 --ref 指定任务）")
 	}
 	if !state.HasAcceptance() {
 		fmt.Println("本任务未登记验收标准（forge task start --accept \"run :: expected\"）。")
@@ -1491,8 +1522,9 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 // （dogfood 2026-08-18 死锁修复）：重复完成守卫 → generic 路径 → IsComplete →
 // acceptance pre-flight → MarkComplete → 评分 → 反馈 → 清 ref。MarkComplete 只在
 // pre-flight 通过之后发生——pre-flight 失败必须保持任务 active，verify-acceptance
-// （只认 active）才能刷新过期快照、complete 才能重试。（修复前最后一道 gate 就标记
-// 完成，gate 后的 commit 一移动 HEAD → pre-flight 永久失败且无复活路径。）
+// （默认认 active；--ref 可显式指定）才能刷新过期快照、complete 才能重试。（修复前
+// 最后一道 gate 就标记完成，gate 后的 commit 一移动 HEAD → pre-flight 永久失败且
+// 无复活路径。）
 func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 	// Idempotent double-complete guard: a task already finalized (completed + scored,
 	// or a completed generic task which never scores) must not re-run the completion
@@ -1742,12 +1774,23 @@ func runTaskScopeAdd(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	state, err := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
-	if err != nil {
-		return fmt.Errorf("failed to load task state: %w", err)
+	// --ref pins the task explicitly (task 子命令族一致性：scope-drift 拦截后 agent 按惯性
+	// 带 --ref 追加，旧版 unknown flag 白跑一轮）。空则保持旧的活跃任务检测。
+	explicitRef, _ := cmd.Flags().GetString("ref")
+	var state *taskpipeline.TaskState
+	if explicitRef != "" {
+		state, err = taskpipeline.LoadTaskState(root, explicitRef)
+		if err != nil {
+			return fmt.Errorf("加载任务 %q 失败: %w", explicitRef, err)
+		}
+	} else {
+		state, err = taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
+		if err != nil {
+			return fmt.Errorf("failed to load task state: %w", err)
+		}
 	}
 	if state == nil {
-		return fmt.Errorf("no active task. Run 'forge task start' first")
+		return fmt.Errorf("no active task. Run 'forge task start' first（或用 --ref 指定任务）")
 	}
 	existing := make(map[string]bool, len(state.PlanScope))
 	for _, s := range state.PlanScope {

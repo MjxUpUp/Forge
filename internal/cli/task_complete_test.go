@@ -94,7 +94,7 @@ func TestTaskComplete_PreflightFailureKeepsTaskActive(t *testing.T) {
 
 	// 1. 验收实跑 @HEAD1（快照新鲜）。
 	var runErr error
-	_ = captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir, false) })
+	_ = captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir, "", false) })
 	if runErr != nil {
 		t.Fatalf(`初次验收应通过: %v`, runErr)
 	}
@@ -125,7 +125,7 @@ func TestTaskComplete_PreflightFailureKeepsTaskActive(t *testing.T) {
 	}
 
 	// 4. 刷新路径活着：verify-acceptance（active-only）重跑 → 快照对齐 HEAD2。
-	_ = captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir, false) })
+	_ = captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir, "", false) })
 	if runErr != nil {
 		t.Fatalf(`死锁修复后 verify-acceptance 必须仍可刷新: %v`, runErr)
 	}

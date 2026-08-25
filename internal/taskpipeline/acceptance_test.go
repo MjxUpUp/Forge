@@ -7,6 +7,51 @@ import (
 	"unicode/utf8"
 )
 
+// TestEnsureGoTestVerbose pins the go-test -v auto-fill (usage-log fix: agents
+// registered `go test ./... :: PASS`, but plain go test prints no PASS lines, so the
+// Expected substring could never match and the only recourse was abort + restart the
+// task). The rewrite triggers ONLY on a bare `go test` Run with a non-empty Expected
+// and no -v variant; everything else (empty Expected, already-verbose, non-go-test
+// commands) must pass through untouched.
+//
+// TestEnsureGoTestVerbose 钉住 go test 自动补 -v（usage 日志修复：agent 登记
+// `go test ./... :: PASS`，但无 -v 的 go test 不输出 PASS 行，Expected 子串永不
+// 匹配，只能 abort 重开任务）。改写只对「裸 go test + 非空 Expected + 无 -v 变体」
+// 触发；其余（空 Expected、已带 -v、非 go test 命令）一律原样不动。
+func TestEnsureGoTestVerbose(t *testing.T) {
+	cases := []struct {
+		name        string
+		run, exp    string
+		wantRun     string
+		wantTouched bool
+	}{
+		{`补 -v`, `go test ./...`, `PASS`, `go test -v ./...`, true},
+		{`带其他 flag 时插在最前`, `go test -run TestX ./pkg/...`, `ok`, `go test -v -run TestX ./pkg/...`, true},
+		{`已带 -v 不动`, `go test -v ./...`, `PASS`, `go test -v ./...`, false},
+		{`已带 -v=true 不动`, `go test -v=true ./...`, `PASS`, `go test -v=true ./...`, false},
+		{`空 Expected 不动（只看退出码）`, `go test ./...`, ``, `go test ./...`, false},
+		{`非 go test 不动`, `go vet ./...`, ``, `go vet ./...`, false},
+		{`非 go 命令不动`, `cargo test`, `PASS`, `cargo test`, false},
+		{`gotestsum 不动（非字面 go test）`, `gotestsum ./...`, `PASS`, `gotestsum ./...`, false},
+		{`shell 组合不动`, `go build ./... && go test ./...`, `PASS`, `go build ./... && go test ./...`, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			cs := []AcceptanceCriterion{{Run: c.run, Expected: c.exp}}
+			adjusted := EnsureGoTestVerbose(cs)
+			if cs[0].Run != c.wantRun {
+				t.Errorf(`Run = %q, want %q`, cs[0].Run, c.wantRun)
+			}
+			if touched := len(adjusted) > 0; touched != c.wantTouched {
+				t.Errorf(`adjusted 非空 = %v, want %v（adjusted=%v）`, touched, c.wantTouched, adjusted)
+			}
+			if c.wantTouched && adjusted[0] != c.run {
+				t.Errorf(`adjusted 应带回原始 Run %q, got %q`, c.run, adjusted[0])
+			}
+		})
+	}
+}
+
 // TestParseAcceptance locks down --accept string parsing: the ` :: ` separator splits Run/Expected, no separator →
 // Expected empty (only exit code 0 matters), both sides trimmed. Entry parsing for #3; if broken, acceptance criteria never reach TaskState.
 //
