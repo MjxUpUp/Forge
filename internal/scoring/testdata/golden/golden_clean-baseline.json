@@ -21,7 +21,11 @@
     "CompileChecked": true,
     "AssertionChecked": true,
     "EvidenceDeterministic": 0,
-    "EvidenceAgentClaim": 0
+    "EvidenceAgentClaim": 0,
+    "HasDocDeliverables": false,
+    "DocLintHardIssues": 0,
+    "DocRubricScore": null,
+    "DocGateEscaped": false
   },
   "expected": {
     "overall": 100,
@@ -30,6 +34,7 @@
       "assertions": 100,
       "code-quality": 100,
       "efficiency": 100,
+      "expression": 100,
       "process": 100,
       "scope": 100,
       "testing": 100

@@ -20,6 +20,7 @@ const (
 	DimensionAssertions  Dimension = "assertions"   // Assertion hook result
 	DimensionScope       Dimension = "scope"        // Change size (lines)
 	DimensionEfficiency  Dimension = "efficiency"   // Time to complete
+	DimensionExpression  Dimension = "expression"   // Doc-artifact readability (doclint L1 + rubric L2 evidence)
 )
 
 // DimensionScore holds the score and explanation for a single dimension.
@@ -102,13 +103,20 @@ type ScoringConfig struct {
 //
 // DefaultWeights 返回标准维度权重。
 func DefaultWeights() map[string]float64 {
+	// v1.43: expression (0.10) added — taken from process/testing/code-quality/assertions
+	// proportionally; still sums to 1.0. Tasks without doc deliverables score the dimension
+	// neutral 100, so pure-code tasks are unaffected.
+	//
+	// v1.43：新增 expression（0.10）——从 process/testing/code-quality/assertions 按比例
+	// 匀出；合计仍为 1.0。无文档产物的任务该维度打中性 100 分，纯代码任务不受影响。
 	return map[string]float64{
-		string(DimensionProcess):     0.25,
-		string(DimensionTesting):     0.25,
-		string(DimensionCodeQuality): 0.20,
-		string(DimensionAssertions):  0.15,
+		string(DimensionProcess):     0.22,
+		string(DimensionTesting):     0.23,
+		string(DimensionCodeQuality): 0.18,
+		string(DimensionAssertions):  0.12,
 		string(DimensionScope):       0.10,
 		string(DimensionEfficiency):  0.05,
+		string(DimensionExpression):  0.10,
 	}
 }
 

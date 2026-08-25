@@ -113,7 +113,14 @@ func buildForgeSectionWithLevel(forClaude bool, userLevel bool) string {
 	sb.WriteString("3. **不弱化断言** — 不删除 t.Fatal、assert! 等断言（`assertion-check` hook 检测到弱化仅 advisory 提醒，由 agent 自检）\n")
 	sb.WriteString("4. **测试伴随变更** — 新代码有对应测试\n")
 	sb.WriteString("5. **提交前确认** — commit 信息描述变更内容和原因\n")
-	sb.WriteString("6. **结束前验证** — 会话结束前运行测试确认无破坏\n\n")
+	sb.WriteString("6. **结束前验证** — 会话结束前运行测试确认无破坏\n")
+	// Rule 7 — reply concision (conclusion-first + banned-phrase pointer). The
+	// phrase examples stay inside backticks: doclint exempts inline-code quoting,
+	// and this generated file must survive its own lint.
+	//
+	// 规则 7——回复详略（结论先行 + 禁令短语指针）。短语示例保持在反引号内：
+	// doclint 豁免行内代码引用，且本生成文件须过它自己的 lint。
+	sb.WriteString("7. **结论先行，禁空转措辞** — 回复第一句给答案/判定/推荐；`综上所述`/`基本可以`/`问题不大` 等禁令短语与档位判据见 forge-quality skill「回复详略规则」，落盘文档用 `forge docs lint` 机器校验\n\n")
 
 	// task workflow — the most critical operating instructions, preventing agents from blindly running into
 	// task-guard/bash-guard interception.
@@ -199,6 +206,7 @@ func buildForgeSectionWithLevel(forClaude bool, userLevel bool) string {
 	sb.WriteString("| task-verify 拒绝（复发升 HARD stop）：项目 testing/scope 维度反复低分 | 项目已完成任务历史里该维度低分≥阈值次（advisory 靠自律已被证明失效），且本次严重（缺配对测试 / 超 scope 多文件 drift） | 补测试或 `forge task scope add <glob>` 收编后重跑；或 `FORGE_TEST_COVERAGE=disable`（降 Weak；重证据任务按证据缩放豁免）；或 `FORGE_RECURRENT_HARDEN=disable` 回退纯 advisory |\n")
 	sb.WriteString("| task-verify 拒绝（HARD stop）：改了 skill ... 的 SKILL.md 未记决策 | 改 `skills/<name>/SKILL.md`（行为契约）未在 `decisions.md` 新增 `## [d-` 决策条目（guardrail） | `forge skills decide --skill <name> --outcome <accept/reject> --diagnosis <为何改> --revision <改了啥> --evidence <依据>` 记四元组；trivial 改动用 `forge task override --skill-decisions disable`（per-task，优先于 `FORGE_SKILL_DECISIONS=disable` env，降 evidence 到 Weak；重证据任务按证据缩放豁免） |\n")
 	sb.WriteString("| task-complete 拒绝：验收 #N 未实跑/基于旧代码/未通过 | task 声明了 acceptance（`task start --accept`），complete 时校验每条须快照新鲜且 `Passed`（deterministic pre-flight；快照绑任务 HeadCommit 锚定的源码内容指纹——verify 后 commit 不再使快照过期，验收后改源码才会） | `forge task verify-acceptance` 实跑回扣（验收后改码须重跑使快照刷新）；验收不可机器执行用 `forge task override --acceptance-gate disable`（per-task，优先于 `FORGE_ACCEPTANCE_GATE=disable` env，降 evidence 到 Weak；重证据任务按证据缩放豁免） |\n")
+	sb.WriteString("| doc gate 拒绝：L1 lint 硬失败 / L2 回检未记录·过期·低分 / Critical 未决 | 任务变更了 markdown 产物，complete 前须过文档回检（输出→回检循环） | `forge docs lint <paths>` 修 L1 → 按 `code-review-gate/references/rubric-docs.md` 评审（产出者不能自检）→ `forge task doc-review --passed pass --score <N>`；逃生 `forge task override --doc-gate disable`（3 轮未过后须人工确认；降 evidence 到 Weak） |\n")
 	sb.WriteString("| --branch on non-main | `--branch` 只在 master/main 可用 | 已在 feature 分支时去掉 `--branch` |\n")
 	sb.WriteString("| task already exists | 任务已启动 | 用 `forge task status --ref <ref>` 查看 |\n")
 	sb.WriteString("| Quarantined by file-sentinel | Bash 写了源码但无任务 | 文件在用户级 DataDir/quarantine/（`forge data-dir` 查看路径），可恢复。先启动任务 |\n")

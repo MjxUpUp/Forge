@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/MjxUpUp/Forge/internal/doclint"
 	"github.com/MjxUpUp/Forge/internal/protocol"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/util"
@@ -102,6 +103,7 @@ func buildQualitySkillContent(projectDir string, proto *protocol.Protocol) strin
 	sb.WriteString("| 测试验证 | `forge task gate task-verify --ref <ref>` | 测试通过后 |\n")
 	sb.WriteString("| 完成确认 | `forge task gate task-complete --ref <ref>` | E2E 验证通过后 |\n\n")
 	sb.WriteString("所有门禁通过后运行 `forge task complete --ref <ref>` 触发评分。\n\n")
+	sb.WriteString("> **文档回检门禁（doc gate）**：任务变更了 markdown 产物时，complete 前须过输出→回检循环——`forge docs lint` 修 L1（禁令短语/结构/篇幅）→ 按 `code-review-gate/references/rubric-docs.md` 四维评审（产出者不能自检，派独立子代理）→ `forge task doc-review --passed pass --score <N>` 记录证据。未记录/过期/得分 <75/未决 Critical 均拒绝 complete。task-verify 会提前提醒。逃生：`forge task override --doc-gate disable`（轮次上限后须人工确认）。\n\n")
 	sb.WriteString("> **提交时机（重要）**：`git commit` 必须在 `forge task complete` **之前**——`complete` 会清空 active task ref，之后提交源码会被 file-sentinel quarantine。正确顺序：三门禁通过 → `git commit` → `forge task complete`。若已 complete 才发现要提交，开一个 `chore/*-commit` 任务放行。task-complete 门禁检测到工作区未提交变更时会发 `ADVISORY` 提醒——见到即先 commit 再 complete。\n\n")
 
 	sb.WriteString("### 门禁要求\n\n")
@@ -165,6 +167,24 @@ func buildQualitySkillContent(projectDir string, proto *protocol.Protocol) strin
 	sb.WriteString("- **聚焦变更**：单次任务累计变更 >400 行需自检是否聚焦；>2000 行考虑拆分提交以便 review。\n")
 	sb.WriteString("- **避免重复**：文件重复行占比高（unique 行 <30%）时主动去重；精确检测用 `forge clone check`。\n\n")
 
+	// Reply concision rules — the L1 banned list is rendered from internal/doclint
+	// (single source of truth; hand-copying the phrase table here would drift).
+	// Verbosity is an alignment-training length bias, not a per-prompt problem —
+	// it cannot be solved by "being mindful", only by external constraints
+	// (docs/design/output-readability-gates.md).
+	//
+	// 回复详略规则——L1 禁令清单从 internal/doclint 渲染（单一真相源；
+	// 此处手抄短语表会漂移）。啰嗦是对齐训练的长度偏差而非单次 prompt
+	// 问题——靠「让模型自觉」不可解，只能外部约束
+	// （docs/design/output-readability-gates.md）。
+	sb.WriteString("## 回复详略规则（结论先行，禁空转措辞）\n\n")
+	sb.WriteString("AI 啰嗦是对齐训练的系统偏差（RLHF/DPO 长度偏差），不是个别 prompt 问题——靠自觉不可解，须遵守以下外部约束。适用于所有给人即时阅读的产物（对话回复、PR 描述、issue、分析结论）：\n\n")
+	sb.WriteString("- **结论先行**：第一句给答案/判定/推荐，过程与理由随后——读者最关心的放最前\n")
+	sb.WriteString("- **枚举化结论**：判定用可枚举值（通过/不通过、GO/NO-GO、推荐 A/B/C），不用形容词\n")
+	sb.WriteString("- **禁令清单**（`forge docs lint` 机器可查，命中即打回；引用短语用反引号包裹可豁免）：\n\n")
+	sb.WriteString(doclint.RenderBannedPhrasesForSkill())
+	sb.WriteString("\n")
+
 	// Task-pipeline section.
 	//
 	// task pipeline 章节
@@ -193,15 +213,16 @@ func buildQualitySkillContent(projectDir string, proto *protocol.Protocol) strin
 	//
 	// 评分章节
 	sb.WriteString("## 任务质量评分\n\n")
-	sb.WriteString("任务完成时自动评分（6 个维度，0-100 分，A-F 等级）：\n\n")
+	sb.WriteString("任务完成时自动评分（7 个维度，0-100 分，A-F 等级）：\n\n")
 	sb.WriteString("| 维度 | 权重 | 说明 |\n")
 	sb.WriteString("|------|------|------|\n")
-	sb.WriteString("| 流程合规 | 25% | 门禁通过率、重试次数 |\n")
-	sb.WriteString("| 测试充分性 | 25% | 测试文件变更比例 |\n")
-	sb.WriteString("| 代码质量 | 20% | 编译门禁结果 |\n")
-	sb.WriteString("| 断言保护 | 15% | 断言检查结果 |\n")
+	sb.WriteString("| 流程合规 | 22% | 门禁通过率、重试次数 |\n")
+	sb.WriteString("| 测试充分性 | 23% | 测试文件变更比例 |\n")
+	sb.WriteString("| 代码质量 | 18% | 编译门禁结果 |\n")
+	sb.WriteString("| 断言保护 | 12% | 断言检查结果 |\n")
 	sb.WriteString("| 变更范围 | 10% | 变更行数（小变更得分高） |\n")
-	sb.WriteString("| 开发效率 | 5% | 完成耗时 |\n\n")
+	sb.WriteString("| 开发效率 | 5% | 完成耗时 |\n")
+	sb.WriteString("| 表达质量 | 10% | 文档产物可读性（L1 lint 硬失败数 + L2 rubric 得分；无文档产物的任务该维度中性不扣分） |\n\n")
 	sb.WriteString("**阈值**：A ≥ 90 / B ≥ 80 / C ≥ 70 / D ≥ 60 / F < 60。低分仅记录评分与证据链结论不再阻塞 complete。\n\n")
 	sb.WriteString("使用 `forge task score` 查看评分详情，`forge task score --history` 查看历史。\n\n")
 
