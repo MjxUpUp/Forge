@@ -181,7 +181,6 @@ func TestLintFileSkipMarkerAndPathExempt(t *testing.T) {
 	}
 }
 
-
 func TestRenderBannedPhrasesForSkill(t *testing.T) {
 	out := RenderBannedPhrasesForSkill()
 	for _, want := range []string{"综上所述", "基本可以", "问题不大", "整体良好"} {
@@ -234,5 +233,81 @@ func TestMatchDocTypeBaseNameOnly(t *testing.T) {
 	}
 	if !PathExempt("skills/doc-generator/decisions.md") {
 		t.Error("decisions.md 是 append-only 治理日志，应豁免（逐字引用诊断散文）")
+	}
+}
+
+func TestLintTextFenceRunLength(t *testing.T) {
+	// A 4-backtick outer fence containing a 3-backtick example must not be
+	// closed by the inner marker — the example's prose stays fenced.
+	//
+	// 4 反引号外栏内嵌 3 反引号示例不得被内层提前闭栏——示例散文保持围栏内。
+	text := "正文。\n\n````\n示例：\n```diff\n+++ b/x.go\n@@ -1 +1 @@\n```\n综上所述（示例内，不应命中）。\n````\n"
+	ids := ruleIDs(LintText("doc.md", text))
+	if ids["D1"] || ids["D3"] {
+		t.Fatalf("外层长围栏内的示例不应被 lint，got %v", ids)
+	}
+}
+
+func TestLintTextD4FencedEvidenceDoesNotAcquit(t *testing.T) {
+	// Evidence markers inside fences are examples, not proof of a real run —
+	// D4 must look at prose only.
+	//
+	// 围栏内的证据标记是示例不是实跑证明——D4 只看散文。
+	fencedOnly := "本功能测试通过。\n\n```bash\ngo test ./...\n```\n"
+	if ids := ruleIDs(LintText("summary.md", fencedOnly)); !ids["D4"] {
+		t.Fatalf("仅围栏内证据不应赦免 D4，got %v", ids)
+	}
+	proseEvidence := "本功能测试通过：`go test ./...` 全绿。\n"
+	if ids := ruleIDs(LintText("summary.md", proseEvidence)); ids["D4"] {
+		t.Fatalf("散文行内代码证据应赦免 D4，got %v", ids)
+	}
+}
+
+func TestLintTextD7CountsNonFencedOnly(t *testing.T) {
+	// A retrospective with 160 raw lines but most of them fenced output is a
+	// structure choice, not prose bloat.
+	//
+	// 160 原始行但大部分是围栏输出的复盘是结构选择，不是散文膨胀。
+	text := "# 复盘\n## 行动项\n- x\n\n```\n" + strings.Repeat("输出行\n", 155) + "```\n"
+	if ids := ruleIDs(LintText("sprint-retrospective.md", text)); ids["D7"] {
+		t.Fatalf("非围栏行未超限不应报 D7，got %v", ids)
+	}
+}
+
+func TestStripInlineCodeUnpairedDropsTail(t *testing.T) {
+	// Odd backtick count: the trailing (unterminated) segment is dropped —
+	// conservative direction is fewer matches, not more.
+	//
+	// 奇数反引号：尾部未闭合片段丢弃——保守方向是匹配面更小不是更大。
+	got := stripInlineCode("代码`未闭合的尾部 综上所述")
+	if strings.Contains(got, "综上所述") {
+		t.Fatalf("未闭合尾部应被丢弃, got %q", got)
+	}
+}
+
+func TestPathExemptChangeLogCaseInsensitive(t *testing.T) {
+	// Regression C1: the fragment table must be lowercase — PathExempt
+	// lowercases the path before Contains, a mixed-case fragment never matched.
+	//
+	// 回归 C1：片段表必须小写——PathExempt 比较前把路径转小写，
+	// 混合大小写片段永不匹配。
+	if !PathExempt("CHANGELOG.md") || !PathExempt("docs/Changelog.md") {
+		t.Error("CHANGELOG 大小写变体应豁免（生成文件非人写交付物）")
+	}
+}
+
+func TestChecklistTypeNarrowedToRelease(t *testing.T) {
+	// Regression C2: plain *-checklist.md reference files (review-checklist,
+	// maintainability-checklist) are working checklists, not release gates —
+	// the GO/NO-GO enum belongs to release checklists only.
+	//
+	// 回归 C2：普通 *-checklist.md 参考清单（review-checklist、
+	// maintainability-checklist）是工作清单不是发布门——GO/NO-GO 枚举只属于
+	// 发布 checklist。
+	if ids := ruleIDs(LintText("review-checklist.md", "- [ ] 检查 X\n")); ids["D6"] {
+		t.Fatalf("普通工作清单不应要求 GO/NO-GO，got %v", ids)
+	}
+	if ids := ruleIDs(LintText("release-checklist.md", "- [ ] 全部完成\n")); !ids["D6"] {
+		t.Fatalf("发布清单应要求结论枚举，got %v", ids)
 	}
 }

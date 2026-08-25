@@ -1995,12 +1995,13 @@ func runTaskDocReview(cmd *cobra.Command, args []string) error {
 	}
 
 	state.DocReview = &taskpipeline.DocReview{
-		Passed:      passedFlag == "pass",
-		RubricScore: score,
-		Round:       round,
-		Reviewer:    reviewer,
-		ReviewedAt:  time.Now(),
-		HeadCommit:  taskpipeline.GetHeadCommit(root),
+		Passed:          passedFlag == "pass",
+		RubricScore:     score,
+		Round:           round,
+		Reviewer:        reviewer,
+		ReviewedAt:      time.Now(),
+		HeadCommit:      taskpipeline.GetHeadCommit(root),
+		DocsFingerprint: taskpipeline.DocContentFingerprint(root, state),
 	}
 	if err := taskpipeline.SaveTaskState(root, state); err != nil {
 		return fmt.Errorf("failed to save task state: %w", err)
