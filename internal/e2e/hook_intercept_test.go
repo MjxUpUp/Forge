@@ -1114,3 +1114,193 @@ func TestHook_HazardGuard_EnvBypassRemoved(t *testing.T) {
 		t.Fatalf("hazard-guard should pass post-confirm (env set or not), got error. stdout:\n%s", stdout)
 	}
 }
+
+// TestHook_HazardGuard_MktempSelfCleanupAllowed pins the 2026-08 usage-log fix:
+// mktemp/self-created temp-dir cleanup was ~1/3 of all real blocks — the agent
+// responded by silently dropping the rm half and leaking /tmp garbage (guard won
+// the command, lost the intent). d=$(mktemp -d); ...; rm -rf "$d" and $TMPDIR
+// subpath targets are one-shot temp zones and must pass without HITL. Controls
+// pin the conservative edge: unverifiable sources (unassigned var, non-mktemp
+// assignment, reassignment attack, direct $() target, mixed targets, traversal)
+// must still block.
+//
+// TestHook_HazardGuard_MktempSelfCleanupAllowed 钉死 2026-08 usage 日志修复：
+// mktemp/自建临时目录清理约占真实拦截的 1/3——agent 的应对是悄悄删掉 rm 半截、
+// 留下 /tmp 垃圾（guard 赢了命令输了意图）。d=$(mktemp -d); ...; rm -rf "$d" 与
+// $TMPDIR 子路径目标是一次性临时区，必须免 HITL 放行。对照组钉住保守边界：
+// 来源不可验证的形态（未赋值变量、非 mktemp 赋值、再赋值攻击、直接 $() 目标、
+// 混合目标、.. 穿越）必须仍拦。
+func TestHook_HazardGuard_MktempSelfCleanupAllowed(t *testing.T) {
+	dir := freshProject(t)
+
+	pass := []string{
+		`d=$(mktemp -d); cd "$d"; echo hi > f.txt; cd -; rm -rf "$d"`,
+		`tmp=$(mktemp -d) && tar xzf a.tgz -C "$tmp" && rm -rf $tmp`,
+		`rm -rf "$TMPDIR/packsmoke" && mkdir -p "$TMPDIR/packsmoke"`,
+		`rm -rf ${TMPDIR}/probe`,
+	}
+	for _, cmd := range pass {
+		in := hookStdin(t, "sess-hazard-mktemp", "PreToolUse", "Bash", map[string]any{
+			"command": cmd,
+		})
+		stdout, _, err := forgeHook(t, dir, "hazard-guard", in)
+		if err != nil {
+			t.Fatalf("hazard-guard must pass temp self-cleanup %q, got block. stdout:\n%s", cmd, stdout)
+		}
+		assertAllowOutput(t, stdout)
+	}
+
+	block := []string{
+		`rm -rf $d`,                            // unassigned var — unverifiable source
+		`d=$(mktemp -d); d=/; rm -rf $d`,       // reassignment attack: whitelist must not extend to /
+		`d=$(echo /tmp/x); rm -rf $d`,          // non-mktemp assignment
+		`rm -rf $(mktemp -d)`,                  // direct command substitution target — unparsable, conservative
+		`d=$(mktemp -d); rm -rf $d /important`, // mixed targets
+		`rm -rf "$TMPDIR/../etc"`,              // traversal
+		`rm -rf "$HOME"`,                       // quoted-target execution is not a data context
+		// round-3 closure pins (script-level battery covers the full family):
+		// $d/sub is not exempt (d empty → /x); dynamic-rebind vocab voids the
+		// whitelist; slash/dot-only subpaths fold to the temp dir itself (M2).
+		//
+		// 第三轮闭合钉（完整家族见脚本级 battery）：$d/sub 不豁免（d 空即 /x）；
+		// 动态重绑词面作废白名单；纯斜杠/圆点子路径折叠为临时目录本身（M2）。
+		`d=$(mktemp -d); mkdir "$d"/sub; rm -rf "$d"/sub`,
+		`false && d=$(mktemp -d); rm -rf $d/x`,
+		`d=$(mktemp -d); eval 'd=/'; rm -rf "$d"`,
+		`rm -rf /tmp//`,
+		`rm -rf $TMPDIR//`,
+	}
+	for _, cmd := range block {
+		in := hookStdin(t, "sess-hazard-mktemp-block", "PreToolUse", "Bash", map[string]any{
+			"command": cmd,
+		})
+		stdout, _, err := forgeHook(t, dir, "hazard-guard", in)
+		if err == nil {
+			t.Fatalf("hazard-guard must block %q (unverifiable/hazardous rm target), got exit 0. stdout:\n%s", cmd, stdout)
+		}
+		if !strings.Contains(stdout, `"decision":"block"`) {
+			t.Errorf("expected decision=block for %q, got:\n%s", cmd, stdout)
+		}
+	}
+}
+
+// TestHook_HazardGuard_HeredocMultilineDangerIsData pins the substring false
+// positive fix: read-only python3 heredoc analysis scripts were blocked twice in
+// the usage logs because the text contained rm -rf — a literal-substring rule
+// cannot tell "executing rm" from "mentioning rm". A danger string inside a
+// multi-line quoted string (triple-quoted python docstring) is data and passes
+// now that quote state persists across lines. Controls: a bare unquoted danger
+// line in a heredoc body still blocks (could be cat > script.sh authoring an
+// executable), and an apostrophe inside double quotes must not leak quote state
+// onto a following real hazard (nesting-aware toggling).
+//
+// TestHook_HazardGuard_HeredocMultilineDangerIsData 钉死 substring 误报修复：
+// 只读 python3 heredoc 分析脚本因文本含 rm -rf 在 usage 日志里被拦 2 次——
+// 字面 substring 规则无法区分"执行 rm"与"文本提到 rm"。多行引号字符串
+// （python 三引号 docstring）里的危险串是数据，引号状态跨行持久后放行。
+// 对照：heredoc 体内裸露未引号的危险行仍拦（可能是 cat > script.sh 在写可执行
+// 脚本）；双引号内的撇号不得把引号状态泄漏到后续的真危险命令（嵌套感知开合）。
+func TestHook_HazardGuard_HeredocMultilineDangerIsData(t *testing.T) {
+	dir := freshProject(t)
+
+	// The real blocked FP shape: rm -rf <target> inside a triple-quoted python string.
+	//
+	// 真实被拦的误报形态：python 三引号字符串里的 rm -rf <目标>。
+	docstring := "python3 <<'EOF'\npattern = \"\"\"\nrm -rf ./build\n\"\"\"\nprint(len(pattern))\nEOF"
+	in := hookStdin(t, "sess-hazard-heredoc", "PreToolUse", "Bash", map[string]any{
+		"command": docstring,
+	})
+	stdout, _, err := forgeHook(t, dir, "hazard-guard", in)
+	if err != nil {
+		t.Fatalf("hazard-guard must pass python heredoc with danger text in a multi-line string, got block. stdout:\n%s", stdout)
+	}
+	assertAllowOutput(t, stdout)
+
+	block := []string{
+		"cat <<'EOF' > /tmp/x.sh\nrm -rf /important\nEOF", // bare danger line in heredoc body
+		"echo \"don't\"\nrm -rf /important",               // apostrophe must not swallow the next line
+	}
+	for _, cmd := range block {
+		in := hookStdin(t, "sess-hazard-heredoc-block", "PreToolUse", "Bash", map[string]any{
+			"command": cmd,
+		})
+		stdout, _, err := forgeHook(t, dir, "hazard-guard", in)
+		if err == nil {
+			t.Fatalf("hazard-guard must block %q, got exit 0. stdout:\n%s", cmd, stdout)
+		}
+		if !strings.Contains(stdout, `"decision":"block"`) {
+			t.Errorf("expected decision=block for %q, got:\n%s", cmd, stdout)
+		}
+	}
+}
+
+// TestHook_HazardGuard_GitBranchDPushDelete pins the merge-cleanup granularity
+// decision (9 blocks in the usage logs — the fixed tail of the
+// merge-release-choreography flow): git branch -d (lowercase) refuses unmerged
+// branches and passes on its own; git push origin --delete is remote-irreversible
+// and keeps blocking even in the compound cleanup command — the designated
+// friction reducer there is the pre-authorization copy path (user already
+// instructed the cleanup this turn → confirm --last without re-asking).
+//
+// TestHook_HazardGuard_GitBranchDPushDelete 钉死合并后清分支的豁免粒度决策
+// （usage 日志 9 次拦截——merge-release-choreography 流程的固定收尾）：git
+// branch -d（小写）对未合并分支会拒绝，单独使用放行；git push origin --delete
+// 远程不可逆，复合清理命令里仍拦——该场景的降摩擦走授权路径文案（用户本回合
+// 已指令清理 → confirm --last 免二次确认）。
+func TestHook_HazardGuard_GitBranchDPushDelete(t *testing.T) {
+	dir := freshProject(t)
+
+	in := hookStdin(t, "sess-hazard-branchd", "PreToolUse", "Bash", map[string]any{
+		"command": "git branch -d fix/foo",
+	})
+	stdout, _, err := forgeHook(t, dir, "hazard-guard", in)
+	if err != nil {
+		t.Fatalf("hazard-guard must pass 'git branch -d' (safe local delete), got block. stdout:\n%s", stdout)
+	}
+	assertAllowOutput(t, stdout)
+
+	compound := hookStdin(t, "sess-hazard-branchd-compound", "PreToolUse", "Bash", map[string]any{
+		"command": "git branch -d fix/foo && git push origin --delete fix/foo",
+	})
+	stdout, _, err = forgeHook(t, dir, "hazard-guard", compound)
+	if err == nil {
+		t.Fatalf("hazard-guard must still block the compound with push --delete (remote irreversible), got exit 0. stdout:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, `"decision":"block"`) {
+		t.Errorf("expected decision=block for push --delete compound, got:\n%s", stdout)
+	}
+}
+
+// TestHook_HazardGuard_BlockGuidanceAuthorizationPath pins the 2026-08 block
+// copy fix: the guidance must state the pre-authorization path (user already
+// instructed/confirmed this turn → confirm --last directly, no second ask — 5 of
+// 7 confirms in the logs were agents self-releasing because the original
+// instruction WAS the authorization), generalize the tool reference (the
+// AskUserQuestion enumeration missed kimi/copilot/zcode), and drop the trailing
+// FORGE_ALLOW_HAZARD migration note (changelog, not action guidance).
+//
+// TestHook_HazardGuard_BlockGuidanceAuthorizationPath 钉死 2026-08 block 文案
+// 修复：指引必须给出授权路径（用户本回合已明确指令/确认过 → 直接 confirm
+// --last 无需二次确认——日志里 7 次确认有 5 次是 agent 自我放行，因为用户原始
+// 指令本就是授权）、泛化工具指代（AskUserQuestion 枚举漏了 kimi/copilot/
+// zcode）、删掉尾部 FORGE_ALLOW_HAZARD 迁移说明（changelog 不是行动指引）。
+func TestHook_HazardGuard_BlockGuidanceAuthorizationPath(t *testing.T) {
+	dir := freshProject(t)
+	in := hookStdin(t, "sess-hazard-copy", "PreToolUse", "Bash", map[string]any{
+		"command": "rm -rf ./important-data",
+	})
+	stdout, _, err := forgeHook(t, dir, "hazard-guard", in)
+	if err == nil {
+		t.Fatalf("hazard-guard should block 'rm -rf', got exit 0. stdout:\n%s", stdout)
+	}
+	for _, anchor := range []string{"授权判定", "无需二次确认", "forge hazard confirm --last"} {
+		if !strings.Contains(stdout, anchor) {
+			t.Errorf("block guidance missing %q:\n%s", anchor, stdout)
+		}
+	}
+	for _, gone := range []string{"FORGE_ALLOW_HAZARD", "AskUserQuestion"} {
+		if strings.Contains(stdout, gone) {
+			t.Errorf("block guidance must not contain %q anymore:\n%s", gone, stdout)
+		}
+	}
+}
