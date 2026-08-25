@@ -42,6 +42,7 @@ Forge = Loop Engineering 的 **验证 + 状态层**。AI 编码是一个循环�
 | **Kimi Code** | 仓库根 `.kimi-plugin/plugin.json`（`/plugins install https://github.com/MjxUpUp/Forge`） | 全事件集（含 PostCompact/UserPromptSubmit），exit-2 block 协议；fallback `forge init --agents kimi` |
 | **Reasonix** | `plugins/forge/reasonix-plugin.json`（`reasonix plugin install https://github.com/MjxUpUp/Forge/tree/main/plugins/forge`） | native manifest 接线（PreToolUse/PostToolUse/Stop/SessionStart）；fallback `forge init --agents reasonix` |
 | **DeepSeek Harness (dsh)** | `dsh plugin --profile web add "github:MjxUpUp/Forge#main&path:/plugins/forge-dsh"`（npm 通道 `@agent_forge/forge-dsh`；装完重启 `dsh web`） | 类型化拦截点接线（tools/pre-execute、tools/post-execute、agent/pre-step、agent/session-start、agent/turn-stopping），名册镜像 ForgeHookSpec（spec 守卫测试钉死）；会话内 `/forge-status` 查状态 |
+| **ZCode (Z.ai)** | `forge init --agents zcode`（plugin 渠道回落读 `.claude-plugin/plugin.json`，未端到端验证） | 用户级 hooks（`~/.zcode/cli/config.json` 合并写入，`hooks.enabled` 强制 true）；协议层刻意 Claude 兼容（蛇形 stdin 别名 + `hookSpecificOutput.additionalContext` + exit-2 阻断）；无 PostCompact/SubagentStop 事件（压缩走 SessionStart `source=compact`）；Stop 连续阻断 3 轮后强制结束；项目级 hooks 不执行（团队共享走 plugin）；协议为文档结论，wire 验证待补 |
 
 v1.22 起 `forge init` 默认**零项目写入**：hooks/协议/skill 全部落在上述用户级位置，项目目录不产生任何文件；团队要 git 共享协议用 `forge init --project`。
 

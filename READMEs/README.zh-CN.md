@@ -75,7 +75,7 @@ forge uninstall --restore  # 加 --restore 把用户级文件回滚到 forge 修
 
 ## 多宿主支持
 
-Forge 为 11 个宿主落地接线：Claude Code / Codex / Cursor / Copilot / Kimi Code / Reasonix 走 plugin manifest 分发（`.claude-plugin/`、`.cursor-plugin/`、`.kimi-plugin/`、`plugins/forge/reasonix-plugin.json`）；Windsurf / OpenCode / Cline / CodeBuddy 走 `forge init --agents <host>` 用户级接线（CodeBuddy 为 init 生成 Claude 兼容的 plugin pack——其 settings.json 无 hooks 字段）；DeepSeek Harness (dsh) 走 `dsh plugin --profile web add "github:MjxUpUp/Forge#main&path:/plugins/forge-dsh"`（npm registry 通道为 `@agent_forge/forge-dsh`，装完重启 `dsh web`）。`plugins/forge/install.sh`（Windows 为 install.ps1）只是 forge 二进制的备用安装器（npm 的 curl-pipe 包装），不做 agent 接线。各宿主差异详见 [plugins/forge/README.md](../plugins/forge/README.md)。
+Forge 为 12 个宿主落地接线：Claude Code / Codex / Cursor / Copilot / Kimi Code / Reasonix 走 plugin manifest 分发（`.claude-plugin/`、`.cursor-plugin/`、`.kimi-plugin/`、`plugins/forge/reasonix-plugin.json`）；Windsurf / OpenCode / Cline / CodeBuddy / ZCode 走 `forge init --agents <host>` 用户级接线（CodeBuddy 为 init 生成 Claude 兼容的 plugin pack——其 settings.json 无 hooks 字段；ZCode 写入 `~/.zcode/cli/config.json`，协议层与 Claude Code 兼容，其 plugin 渠道也可回落读 `.claude-plugin/plugin.json`）；DeepSeek Harness (dsh) 走 `dsh plugin --profile web add "github:MjxUpUp/Forge#main&path:/plugins/forge-dsh"`（npm registry 通道为 `@agent_forge/forge-dsh`，装完重启 `dsh web`）。`plugins/forge/install.sh`（Windows 为 install.ps1）只是 forge 二进制的备用安装器（npm 的 curl-pipe 包装），不做 agent 接线。各宿主差异详见 [plugins/forge/README.md](../plugins/forge/README.md)。
 
 ## 常见问题
 

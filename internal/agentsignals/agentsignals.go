@@ -88,6 +88,21 @@ var projectMarkers = []projectMarker{
 	// reasonix：与 kimi 同一哲学——~/.reasonix 装上即存在，故仅项目级 .reasonix/
 	// （reasonix 在此项目跑过一次即创建）算数。新项目用户显式 --agents reasonix。
 	{[]string{`.reasonix`}, false, `reasonix`},
+	// zcode: .zcode/ is the workspace config dir ZCode creates in a project it has
+	// opened. Unlike kimi/reasonix, zcode ALSO carries a user-level install
+	// indicator (~/.zcode, hostcap registry) for wiring — this marker exists for
+	// the other consumer: taskpipeline's session attribution in the pre-first-hook
+	// window (a `forge task start` run from zcode's shell before any hook fired).
+	// .zcode-plugin/ is NOT a marker: it means the project IS a zcode plugin,
+	// not that it is developed with zcode (same reason .claude-plugin is not a
+	// claude-code marker).
+	// zcode：.zcode/ 是 ZCode 在它打开过的项目里创建的 workspace 配置目录。与
+	// kimi/reasonix 不同，zcode 另有用户级安装指示（~/.zcode，hostcap 注册表）
+	// 负责接线——本标记服务另一个消费方：taskpipeline 在首个 hook 触发前的会话
+	// 归因窗口（从 zcode shell 里跑 `forge task start` 时）。.zcode-plugin/ 不作
+	// 标记：它表示项目**是**一个 zcode 插件，而非「用 zcode 开发」（与
+	// .claude-plugin 不作 claude-code 标记同理）。
+	{[]string{`.zcode`}, false, `zcode`},
 }
 
 // markerExists reports whether the marker path exists in projectDir with the correct

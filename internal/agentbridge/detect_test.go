@@ -212,6 +212,26 @@ func TestDetectAgents_WindsurfUserLevel(t *testing.T) {
 	}
 }
 
+// TestDetectAgents_ZcodeUserLevel pins the zcode user-level detection:
+// ~/.zcode (the config root ZcodeTranslator writes into) exists iff the ZCode
+// desktop app has run, so it is a detection signal alongside the project-level
+// .zcode marker.
+//
+// TestDetectAgents_ZcodeUserLevel 钉死 zcode 用户级检测：~/.zcode
+// （ZcodeTranslator 写入的配置根）存在 = ZCode 桌面端跑过，与项目级 .zcode
+// 标记并列为检测信号。
+func TestDetectAgents_ZcodeUserLevel(t *testing.T) {
+	home := isolateHome(t)
+	if err := os.MkdirAll(filepath.Join(home, ".zcode", "cli"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	agents := DetectAgents(t.TempDir())
+	if len(agents) != 1 || agents[0] != AgentZcode {
+		t.Fatalf("expected [zcode] from user-level ~/.zcode, got %v", agents)
+	}
+}
+
 // TestDetectAgents_ProjectMarkersForAllAgents pins that DetectAgents detects the
 // project-level markers for the agents whose detection was NOT previously covered at
 // this layer (opencode/cline/clinerules/kimi/reasonix). These are now routed through
@@ -236,6 +256,7 @@ func TestDetectAgents_ProjectMarkersForAllAgents(t *testing.T) {
 		{`clinerules`, func(d string) { os.MkdirAll(filepath.Join(d, `.clinerules`), 0755) }, AgentCline},
 		{`kimi`, func(d string) { os.MkdirAll(filepath.Join(d, `.kimi-code`), 0755) }, AgentKimi},
 		{`reasonix`, func(d string) { os.MkdirAll(filepath.Join(d, `.reasonix`), 0755) }, AgentReasonix},
+		{`zcode`, func(d string) { os.MkdirAll(filepath.Join(d, `.zcode`), 0755) }, AgentZcode},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
