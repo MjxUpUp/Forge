@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.43.0](https://github.com/MjxUpUp/Forge/compare/v1.42.2...v1.43.0) (2026-08-25)
+
+
+### Features
+
+* **agentbridge:** 新增 ZCode (z.ai) 宿主适配——translator 合并写 ~/.zcode/cli/config.json + ~/.zcode 用户级检测与 .zcode 项目标记归因 + hostcap 行 + 卸载/doctor/init 摘要集成 ([7d9861f](https://github.com/MjxUpUp/Forge/commit/7d9861f6ebfa494627aa35bb0c9fa51662f640f2))
+* **readability:** AI 产物可读性三层约束与输出→回检门禁落地——L1 `forge docs lint`（D1-D7 确定性规则）+ L2 rubric 评审（`forge task doc-review`）+ task-complete doc gate + 5 个文档模板 + 评分新增表达质量维度（[设计](docs/design/output-readability-gates.md)） ([b36fa13](https://github.com/MjxUpUp/Forge/commit/b36fa13bd99ec6855888b8ed9275db1d9d8fb39e))
+
+
+### ⚠ 行为变更（非 BREAKING，需知悉）
+
+* 任务评分六维 → 七维：新增「表达质量」维度（权重 0.10，其余维度权重相应重平衡）——同一任务跨版本分数不可直接比较；纯代码任务（无文档产物变更）该维度打中性 100 不受影响
+* task-complete 新增 doc gate 门禁：任务变更 markdown 产物时，complete 前须过 L1 lint + L2 回检证据（`forge task doc-review`，rubric ≥75 且零未决 Critical）；逃生舱 `forge task override --doc-gate disable` / `FORGE_DOC_GATE=disable`（落 checklog 审计，评分封顶 89/维度封顶 60）
+
+
+### Bug Fixes
+
+* CLI 一致性与人体工学 ([7aeae6c](https://github.com/MjxUpUp/Forge/commit/7aeae6cd9184163451006472c0d845137ed0d7a9))
+* **doclint:** 类型匹配改用 BASE 名（修 session-retrospective 目录误判）+ decisions.md 豁免（append-only 治理日志非即时阅读产物） ([f0b8f58](https://github.com/MjxUpUp/Forge/commit/f0b8f58e5c5210fb6c8f224dffaee7689fbacca7))
+* guard 准确性三修（assertion-check / read-before-edit / bash-guard） ([63ad68f](https://github.com/MjxUpUp/Forge/commit/63ad68fd4465082cb7ca686f0e5759736c8935e6))
+* hazard-guard 误报治理与授权路径协议 ([ec4e30b](https://github.com/MjxUpUp/Forge/commit/ec4e30b7b640c90e275f38ccadef4a3fa047a3a0))
+* hook 文案死引用清理与 AGENTS.md 模板事实修正 ([66340fa](https://github.com/MjxUpUp/Forge/commit/66340fa223bd467acace6fb63ab3b1e65f3c6871))
+* kimi 宿主 advisory 改走 pending 队列 + UserPromptSubmit 攒发 ([9be4c40](https://github.com/MjxUpUp/Forge/commit/9be4c4042c06b100fd52030bad4405df1ee877b4))
+* **readability:** L2 文档评审跟进——rubric 补类型覆盖范围声明/PR 模板段数契约修正/设计文档签名与豁免清单同步/模板删复述收尾句/rubric 独立性条款收紧/路由行去硬列举（评审 93 分零 Critical，逐条 delete-list 执行） ([2af8d77](https://github.com/MjxUpUp/Forge/commit/2af8d77778a2a0b3805188b0e88b0918bfc46a2e))
+* **readability:** 代码审查跟进——C1 CHANGELOG 豁免大小写死码/C2 存量文档过自身门禁（SKILL.md 反引号+checklist 收窄 release-）/C3 设计文档强制入库（全局 gitignore 吞未跟踪 docs）/I1 CLI --base 与门禁同集合（含未跟踪剔已删除）/I3 checklog Level 仅阻断分支/I4 git diff 失败落审计/I5 DocReview 增内容指纹（未提交修改判过期）/I6 skill 渲染反引号/M1-M9（围栏 run 长度/D4 散文限定/D7 非围栏计数/IO 规则登记/帮助文本同步/chore golden 案例恢复/CLI 单测/盲区声明） ([0b823e8](https://github.com/MjxUpUp/Forge/commit/0b823e8403ba71f31e8df00d0fc8f07ca91d11a9))
+* **readability:** 双复审跟进——D4 触发词限定散文（修围栏内设问误报+行号保原始）/session-retrospective 验证指针改为 lint+test 双查（单测扫不出存量误伤）/设计文档笔误与版本口径/--base flag 帮助同步 ([d7d0aa5](https://github.com/MjxUpUp/Forge/commit/d7d0aa5b9b503828f2472d9e0998cdcfec00b44d))
+* **readability:** 复审跟进——删未接线 HasHard/doclint 豁免 .zcode 会话目录/code-review-gate 补决策 ([8a2d759](https://github.com/MjxUpUp/Forge/commit/8a2d759115892ba95ffd84249242696c1c8d8205))
+* skill-trigger 控噪与 advisory 去重 ([ca529e7](https://github.com/MjxUpUp/Forge/commit/ca529e7de187abd986debfdf9a5377e01e435c83))
+* skills frontmatter 治理 ([d852444](https://github.com/MjxUpUp/Forge/commit/d852444fdc0acdc6beeb801de77e21af375462ce))
+* 门禁漏洞四修 ([2eb3e31](https://github.com/MjxUpUp/Forge/commit/2eb3e31debf2918f0a2765e769fd8e26b8fd13d0))
+
 ## [1.42.2](https://github.com/MjxUpUp/Forge/compare/v1.42.1...v1.42.2) (2026-08-24)
 
 
