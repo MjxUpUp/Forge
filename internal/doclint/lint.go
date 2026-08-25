@@ -40,14 +40,19 @@ const SkipMarker = "forge-doc-lint: skip"
 const SkipScanLines = 10
 
 // exemptPathFrags are path fragments that are never linted: dependencies,
-// build output, agent-session state, archives, generated changelog, and test
-// fixtures (fixtures deliberately contain banned phrases to exercise the linter).
+// build output, agent-session state, archives, generated changelog, test
+// fixtures (fixtures deliberately contain banned phrases to exercise the
+// linter), and append-only decision logs (decisions.md quotes diagnostic prose
+// verbatim and is machine-consumed by the skill-decisions guardrail — it is a
+// governance record, not a reader-facing deliverable).
 //
 // exemptPathFrags 是永不 lint 的路径片段：依赖、构建产物、agent 会话状态、
-// 归档、生成的 changelog、测试夹具（夹具为测 linter 刻意包含禁令短语）。
+// 归档、生成的 changelog、测试夹具（夹具为测 linter 刻意包含禁令短语）、
+// append-only 决策日志（decisions.md 逐字引用诊断散文，由 skill-decisions
+// guardrail 机器消费——是治理记录不是给人即时阅读的交付物）。
 var exemptPathFrags = []string{
 	"vendor/", "node_modules/", "dist/", ".git/", ".zcode/", "testdata/",
-	"docs/skillhub-archive/", "CHANGELOG.md",
+	"docs/skillhub-archive/", "CHANGELOG.md", "decisions.md",
 }
 
 // PathExempt reports whether a slash-normalized relative path is exempt.
