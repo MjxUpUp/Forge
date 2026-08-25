@@ -178,7 +178,7 @@ var docsCmd = &cobra.Command{
 }
 
 func init() {
-	docsLintCmd.Flags().StringVar(&docsLintBase, "base", "", "lint 该基线以来变更的 .md（含未提交），如 --base main")
+	docsLintCmd.Flags().StringVar(&docsLintBase, "base", "", "lint 该基线以来变更的 .md（已提交+工作区+未跟踪，与 doc gate 同集合），如 --base main")
 	docsLintCmd.Flags().BoolVar(&docsLintJSON, "json", false, "JSON 输出")
 	docsCmd.AddCommand(docsLintCmd)
 	rootCmd.AddCommand(docsCmd)

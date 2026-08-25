@@ -311,3 +311,33 @@ func TestChecklistTypeNarrowedToRelease(t *testing.T) {
 		t.Fatalf("发布清单应要求结论枚举，got %v", ids)
 	}
 }
+
+func TestLintTextD4ClaimInFenceOnlyNotTriggered(t *testing.T) {
+	// Review round-2 N1/N2: a pass-claim that exists only inside a fence
+	// (rhetorical question / criteria description) must not trigger D4 —
+	// prose-only on BOTH trigger and evidence.
+	//
+	// 复审二轮 N1/N2：仅存在于围栏内的「断言」（设问/判据描述）不应触发
+	// D4——触发与证据都限定散文。
+	fenced := "正文干净。\n\n```md\n测试通过了？\n```\n"
+	if ids := ruleIDs(LintText("guide.md", fenced)); ids["D4"] {
+		t.Fatalf("围栏内设问不应触发 D4，got %v", ids)
+	}
+	// Prose claim keeps its ORIGINAL line number even after fences precede it.
+	//
+	// 散文断言保留原文件行号（即便前面有围栏）。
+	prose := "```\n示例块\n```\n第三行是断言：测试通过。\n"
+	issues := LintText("summary.md", prose)
+	found := false
+	for _, i := range issues {
+		if i.Rule == "D4" {
+			found = true
+			if i.Line != 4 {
+				t.Errorf("D4 行号应为原文件第 4 行, got %d", i.Line)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("散文断言无证据应触发 D4, got %v", ruleIDs(issues))
+	}
+}
