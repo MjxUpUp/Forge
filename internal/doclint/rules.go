@@ -12,6 +12,7 @@ package doclint
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -148,11 +149,17 @@ var DocTypes = []DocType{
 	},
 }
 
-// matchDocType returns the first DocType whose filename hint matches, or nil.
+// matchDocType returns the first DocType whose filename hint matches the BASE
+// name, or nil. Base-name only (not the full path): matching on the path made
+// skills/session-retrospective/SKILL.md a "retrospective report" — the type
+// names a deliverable file, not the directory a skill happens to live in.
 //
-// matchDocType 返回首个文件名命中的 DocType，未命中返回 nil。
+// matchDocType 返回首个文件名命中（仅 BASE 名）的 DocType，未命中返回 nil。
+// 只匹配文件名不匹配全路径：按路径匹配会把
+// skills/session-retrospective/SKILL.md 误判成「复盘报告」——类型命名的是
+// 交付物文件，不是 skill 恰好所在的目录。
 func matchDocType(filename string) *DocType {
-	lower := strings.ToLower(filename)
+	lower := strings.ToLower(filepath.Base(filename))
 	for i := range DocTypes {
 		for _, hint := range DocTypes[i].FilenameContains {
 			if strings.Contains(lower, strings.ToLower(hint)) {
