@@ -11,7 +11,8 @@ package hooks
 // The Go side wraps the result into structured JSON for Claude Code.
 //
 // The Go side extracts the tool_input fields into env vars (FORGE_FILE_PATH, FORGE_CONTENT,
-// FORGE_TOOL_NAME), so bash scripts do not need to parse JSON themselves.
+// FORGE_COMMAND, FORGE_OLD_STRING, FORGE_NEW_STRING, FORGE_TOOL_NAME), so bash scripts do not
+// need to parse JSON themselves.
 //
 // forge init 嵌入的 hook 脚本。
 // 在项目初始化时写入 .forge/hooks/。
@@ -24,7 +25,7 @@ package hooks
 // Go 侧把结果包装成结构化 JSON 给 Claude Code。
 //
 // Go 侧把 tool_input 字段提取到 env var（FORGE_FILE_PATH、FORGE_CONTENT、
-// FORGE_TOOL_NAME），bash 脚本无需自己解析 JSON。
+// FORGE_COMMAND、FORGE_OLD_STRING、FORGE_NEW_STRING、FORGE_TOOL_NAME），bash 脚本无需自己解析 JSON。
 
 const AutoCompileHook = `#!/bin/bash
 # auto-compile.sh — PostToolUse hook for Write|Edit (advisory, non-blocking).
@@ -99,7 +100,17 @@ const AssertionCheckHook = `#!/bin/bash
 # v0.25: 降级为纯提醒——检测到疑似断言弱化在 stdout PASS detail 提醒（forge hook 把 stdout 作 AdditionalContext 显示给 agent；stderr 不透传），不再 FAIL 阻塞
 # Write|Edit（适配 loop engineering，断言强度由 agent + test-discipline /
 # code-review-gate 自检）。保留全部检测逻辑以产出有内容的提醒。
-# Two modes: per-file (FORGE_FILE_PATH set) or batch (checks all git diffs).
+# Two modes: per-edit (FORGE_FILE_PATH set) or batch (checks all git diffs —
+# the task-implement gate path via executor's runEmbeddedHook).
+#
+# 2026-08-24 per-edit 分析（修三连发/四连发重复 advisory）：per-edit 模式只分析
+# 本次调用引入的变化——Write 用 新 content vs 盘上旧内容、Edit 用 old_string→
+# new_string——不再扫整个 staged+unstaged diff。旧实现里一处陈旧/无关改动（如
+# init_test.go 9 删 1 加）会让之后**每次** Edit 重复同一 advisory（真实日志
+# 三连发、四连发，agent 被逼读 hook 源码自调试、一次 git checkout -- 丢弃改动
+# 止噪）。PreToolUse 时本次编辑尚未落盘，git diff 里根本没有它——旧实现只能
+# 分析陈旧 diff 正是结构性根因。Batch 模式（无 FILE_PATH）仍扫全量 diff——
+# 那是 task-implement 门禁评判任务整体变更的职责，与 per-edit 互不干扰。
 set -eo pipefail
 
 ROOT="${1:-.}"
@@ -107,9 +118,24 @@ cd "$ROOT" 2>/dev/null || exit 0
 
 FILE_PATH="${FORGE_FILE_PATH:-}"
 CONTENT="${FORGE_CONTENT:-}"
+TOOL_NAME="${FORGE_TOOL_NAME:-}"
+SESSION_ID="${FORGE_SESSION_ID:-default}"
+# session id 消毒成 filename-safe 再拼进 marker 文件名（2026-08-25 review minor：
+# 含 / 等文件系统特殊字符的 session id 裸拼会让 marker 写入失败）——与 Go 侧
+# readsFileKey 同规则：[A-Za-z0-9._-] 之外一律折叠为 _。
+_SID_SAFE=$(printf '%s' "$SESSION_ID" | tr -c 'A-Za-z0-9._-' '_' 2>/dev/null || true)
+[ -z "$_SID_SAFE" ] && _SID_SAFE="default"
 VIOLATIONS=""
 
-# --- Per-file mode (hook-triggered by Claude Code) ---
+# t.Skip rationale 启发式（2026-08-24 放宽）：带理由的 skip 是合法跳过（fixture
+# 生成器、bootstrap、env 守卫都会在消息里写明为什么跳）。旧版只认
+# regenerate|bootstrap|intentional|first run|update flag 关键词——把理由写在格式串里
+# 的 t.Skipf（如 "…(non-forge repo layout — nothing to regenerate against): %v"）
+# 全部误报。新规：引号消息内含空格（多词说明）或含既有关键词 = 有 rationale；
+# 裸 t.Skip() / 单词消息（"flaky"）才是弱化。
+SKIP_RATIONALE_PAT='t\.Skip(f)?\([[:space:]]*"[^"]*([ ]|(regenerate|bootstrap|intentional|first run|update flag))[^"]*"'
+
+# --- Per-edit mode (hook-triggered by the host: FILE_PATH set) ---
 if [ -n "$FILE_PATH" ]; then
 # Only check source code files
 printf '%s' "$FILE_PATH" | grep -qE '\.(go|rs|ts|tsx|js|jsx|py|java|rb|zig|nim)$' || exit 0
@@ -117,32 +143,71 @@ printf '%s' "$FILE_PATH" | grep -qE '\.(go|rs|ts|tsx|js|jsx|py|java|rb|zig|nim)$
 # Only check test files
 printf '%s' "$FILE_PATH" | grep -qE '(_test\.|_spec\.|\.test\.|\.spec\.|test/|tests/|__tests__/)' || exit 0
 
-# Go: t.Skip added — flag only if the skip carries no rationale keyword.
-# Legitimate skips (fixture generators, bootstraps, env guards) state why
-# they skip in the message; bare t.Skip()/t.Skip("flaky") is the weakening.
-if printf '%s' "$CONTENT" | grep -qE 't\.Skip(f)?\(' 2>/dev/null; then
-  printf '%s' "$CONTENT" | grep -qE 't\.Skip(f)?\([^)]*(regenerate|bootstrap|intentional|first run|update flag)' 2>/dev/null || \
-    VIOLATIONS="${VIOLATIONS}[Go] t.Skip without rationale keyword. "
+# 本次调用引入的旧/新文本。Write：新=content，旧=盘上现内容（PreToolUse 时写入
+# 尚未落盘，盘上即 before）；Edit：新=new_string，旧=old_string。其他 file 工具
+# （MultiEdit 等）tool_input 无可分析的新旧文本，跳过（fail-open，不占 diff 扫描
+# ——扫了只会带回陈旧 diff 的噪音）。
+NEW_TEXT=""
+OLD_TEXT=""
+case "$TOOL_NAME" in
+  Write)
+    NEW_TEXT="$CONTENT"
+    if [ -f "$FILE_PATH" ]; then
+      OLD_TEXT=$(cat "$FILE_PATH" 2>/dev/null || true)
+    fi
+    ;;
+  Edit)
+    NEW_TEXT="${FORGE_NEW_STRING:-}"
+    OLD_TEXT="${FORGE_OLD_STRING:-}"
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+
+# Go: t.Skip added — flag only if the skip carries no rationale (see the
+# heuristic note at SKIP_RATIONALE_PAT).
+if printf '%s' "$NEW_TEXT" | grep -qE 't\.Skip(f)?\(' 2>/dev/null; then
+  skip_total=$(printf '%s' "$NEW_TEXT" | grep -cE 't\.Skip(f)?\(' 2>/dev/null || true)
+  skip_ok=$(printf '%s' "$NEW_TEXT" | grep -cE "$SKIP_RATIONALE_PAT" 2>/dev/null || true)
+  if [ "${skip_total:-0}" -gt "${skip_ok:-0}" ]; then
+    VIOLATIONS="${VIOLATIONS}[Go] t.Skip added without rationale. "
+  fi
 fi
 
 # Rust: #[ignore] added
-printf '%s' "$CONTENT" | grep -qE '#\[ignore\]' 2>/dev/null && \
+printf '%s' "$NEW_TEXT" | grep -qE '#\[ignore\]' 2>/dev/null && \
   VIOLATIONS="${VIOLATIONS}[Rust] #[ignore] found. "
 
 # TypeScript/JavaScript: test.skip / it.skip / describe.skip
-printf '%s' "$CONTENT" | grep -qE '(test|it|describe)\.skip\(' 2>/dev/null && \
+printf '%s' "$NEW_TEXT" | grep -qE '(test|it|describe)\.skip\(' 2>/dev/null && \
   VIOLATIONS="${VIOLATIONS}[TS/JS] test/it/describe.skip found. "
 
-printf '%s' "$CONTENT" | grep -qE '\bx(it|describe)\(' 2>/dev/null && \
+printf '%s' "$NEW_TEXT" | grep -qE '\bx(it|describe)\(' 2>/dev/null && \
   VIOLATIONS="${VIOLATIONS}[TS/JS] xit/xdescribe found. "
 
 # Python: unittest.skip / pytest.mark.skip
-printf '%s' "$CONTENT" | grep -qE '@(unittest\.skip|pytest\.mark\.skip)' 2>/dev/null && \
+printf '%s' "$NEW_TEXT" | grep -qE '@(unittest\.skip|pytest\.mark\.skip)' 2>/dev/null && \
   VIOLATIONS="${VIOLATIONS}[Python] skip decorator found. "
+
+# 净删除检查（OLD_TEXT vs NEW_TEXT）：t.Fatal / assert! 只报**净减少**——
+# 改一行断言（如 expected 4 -> 5）删添等量，net zero 不是弱化（旧 false-positive
+# 根源）。Edit 的比较域是 old_string/new_string（精确到本次改动）；Write 是
+# 整文件 旧内容→新内容。
+fatal_old=$(printf '%s' "$OLD_TEXT" | grep -cE 't\.Fatal(f)?\(' 2>/dev/null || true)
+fatal_new=$(printf '%s' "$NEW_TEXT" | grep -cE 't\.Fatal(f)?\(' 2>/dev/null || true)
+if [ "${fatal_old:-0}" -gt "${fatal_new:-0}" ]; then
+  VIOLATIONS="${VIOLATIONS}[Go] t.Fatal net removed by this edit (${fatal_old} -> ${fatal_new}). "
+fi
+asrt_old=$(printf '%s' "$OLD_TEXT" | grep -cE 'assert(_eq|_ne)?!\(' 2>/dev/null || true)
+asrt_new=$(printf '%s' "$NEW_TEXT" | grep -cE 'assert(_eq|_ne)?!\(' 2>/dev/null || true)
+if [ "${asrt_old:-0}" -gt "${asrt_new:-0}" ]; then
+  VIOLATIONS="${VIOLATIONS}[Rust] assert! net removed by this edit. "
+fi
 fi
 
-# --- Diff mode (batch gate check + per-file fallback) ---
-if git rev-parse --git-dir >/dev/null 2>&1; then
+# --- Batch mode (task-implement gate: no FILE_PATH) — full-diff scan ---
+if [ -z "$FILE_PATH" ] && git rev-parse --git-dir >/dev/null 2>&1; then
   check_diff() {
     local diff="$1"
     local label="$2"
@@ -164,11 +229,11 @@ if git rev-parse --git-dir >/dev/null 2>&1; then
     if [ "${asrt_del:-0}" -gt "${asrt_add:-0}" ]; then
       VIOLATIONS="${VIOLATIONS}[Rust] assert! net removed in ${label}. "
     fi
-    # t.Skip added: flag only if the new skip has no rationale keyword. Legit
-    # skips (generators/bootstraps/env guards) annotate why in the message.
+    # t.Skip added: flag only if the new skip has no rationale (see the
+    # heuristic note at SKIP_RATIONALE_PAT).
     local skip_total skip_rationale
     skip_total=$(printf '%s' "$diff" | grep -cE '^\+.*\bt\.Skip(f)?\(' 2>/dev/null || true)
-    skip_rationale=$(printf '%s' "$diff" | grep -cE '^\+.*\bt\.Skip(f)?\([^)]*(regenerate|bootstrap|intentional|first run|update flag)' 2>/dev/null || true)
+    skip_rationale=$(printf '%s' "$diff" | grep -cE "^\\+.*\\b${SKIP_RATIONALE_PAT}" 2>/dev/null || true)
     if [ "${skip_total:-0}" -gt "${skip_rationale:-0}" ]; then
       VIOLATIONS="${VIOLATIONS}[Go] t.Skip added without rationale in ${label}. "
     fi
@@ -192,7 +257,35 @@ fi
 # stdout 作为 AdditionalContext 显示给 agent；stderr 不透传只进 checklog，agent
 # 看不到）。stdout 永远 PASS（不阻塞），检测逻辑保留以产出有内容的提醒。
 if [ -n "$VIOLATIONS" ]; then
-  echo "PASS [assertion-check] Advisory: 疑似断言弱化——${VIOLATIONS}请核查（修代码不修测试）。forge 不再阻塞，由 agent 自检。"
+  MSG_AC="PASS [assertion-check] Advisory: 疑似断言弱化——${VIOLATIONS}${FILE_PATH:+（文件: $FILE_PATH）}请核查（修代码不修测试）。forge 不再阻塞，由 agent 自检。"
+  # 同一 finding 本会话只报一次（2026-08-24，marker 机制——与 skilltrigger 的
+  # session marker / task-guard 的 NOWARN 同类）：同一断言弱化 finding 重复触发时
+  # 抑制。指纹=FILE_PATH+VIOLATIONS 全文的 cksum（per-edit 文案按类归纳，必须
+  # 显式纳入文件名——否则同类的不同文件 finding 互相误抑制）；finding 变了照常
+  # 提示。marker 与 task-guard 同根（FORGE_DATA_DIR 兜底 TMPDIR 的 markers/ 子目录，
+  # 由 task-guard/bash-guard 的 7 天清扫顺带回收）；写失败降级为重复提示，可接受。
+  # 去重仅限 per-edit 模式：batch（task-implement 门禁，SESSION_ID 恒 default、无
+  # FORGE_DATA_DIR）重试要如实反映当次扫描，且 marker 落共享 TMPDIR 会跨项目串扰。
+  _SUPPRESSED=0
+  if [ -n "$FILE_PATH" ]; then
+    : "${TMPDIR:=/tmp}"
+    _MARKER_DIR="${FORGE_DATA_DIR:-${TMPDIR:-/tmp}}/markers"
+    mkdir -p "$_MARKER_DIR" 2>/dev/null || true
+    _FP=$(printf '%s' "${FILE_PATH}|${VIOLATIONS}" | cksum | awk '{print $1}')
+    _SEEN="${_MARKER_DIR}/forge-assertion-seen-${_SID_SAFE}"
+    if [ -n "$_FP" ] && [ -f "$_SEEN" ] && grep -qxF "$_FP" "$_SEEN" 2>/dev/null; then
+      _SUPPRESSED=1
+    else
+      [ -n "$_FP" ] && printf '%s\n' "$_FP" >> "$_SEEN" 2>/dev/null
+    fi
+  fi
+  if [ "$_SUPPRESSED" = "1" ]; then
+    # 裸 PASS（无 detail）：kimi 的 advisory 队列按 detail 非空入队
+    # （emitAdvisoryRouted）——被抑制的重复若带文案会占攒发名额。
+    echo "PASS"
+  else
+    echo "$MSG_AC"
+  fi
 else
   echo "PASS [assertion-check] no weakening detected (advisory)"
 fi
@@ -570,10 +663,14 @@ printf '%s' "$FILE_PATH" | grep -qE '(_test\.|_spec\.|\.test\.|\.spec\.|test/|te
 # Read, and the agent authors fresh content rather than editing blind.
 [ -f "$FILE_PATH" ] || exit 0
 
+# FAIL 文案单点维护（2026-08-24：此前无 reads-log 分支与文件不在 log 分支逐字
+# 重复同一文案，双份维护必漂移）。
+MSG_RBE="FAIL [read-before-edit] $FILE_PATH 未在本会话 Read 过——Edit 需精确匹配旧文本，未读即凭记忆盲改——Edit 的 old_string 撞中即错改入库。先 Read 该文件再 Edit。批量/重构逃生：forge task override --work-activity disable（记 checklog 审计；work-activity 是节奏门禁，不降 evidence 强度）。"
+
 # No reads log recorded this session → any Edit of an existing source file is
 # editing blind → block (this IS the signal we want, not a false positive).
 if [ -z "$READS_FILE" ] || [ ! -f "$READS_FILE" ]; then
-  echo "FAIL [read-before-edit] $FILE_PATH 未在本会话 Read 过——Edit 需精确匹配旧文本，未读即凭记忆盲改——Edit 的 old_string 撞中即错改入库。先 Read 该文件再 Edit。批量/重构逃生：forge task override --work-activity disable（记 checklog 审计；work-activity 是节奏门禁，不降 evidence 强度）。"
+  echo "$MSG_RBE"
   exit 1
 fi
 
@@ -584,7 +681,7 @@ if grep -qxF "$FILE_PATH" "$READS_FILE"; then
   exit 0
 fi
 
-echo "FAIL [read-before-edit] $FILE_PATH 未在本会话 Read 过——Edit 需精确匹配旧文本，未读即凭记忆盲改——Edit 的 old_string 撞中即错改入库。先 Read 该文件再 Edit。批量/重构逃生：forge task override --work-activity disable（记 checklog 审计；work-activity 是节奏门禁，不降 evidence 强度）。"
+echo "$MSG_RBE"
 exit 1
 `
 
@@ -694,22 +791,55 @@ has_write_pattern() {
   esac
   # Shell redirect to a real file. Neutralize stderr (2>) and JS arrows (=>)
   # so neither masquerades as an output redirect, then require a path-like
-  # target (contains "." or "/"), excluding /dev/null. A bare comparison like
+  # target (contains "." or "/"). A bare comparison like
   # "x > 0" is rejected because "0" carries no path character. Single BRE,
   # no ERE — portable across GNU/BSD grep.
   local s="${cmd//2>/··}"
   s="${s//=>/··}"
-  case "$s" in
-    *"> /dev/null"*) : ;;
-    *) printf '%s' "$s" | grep -q '>[[:space:]]*[^[:space:]&][^[:space:]]*[./][^[:space:]]*' && return 0 ;;
-  esac
-  # Known gaps — contract: 识别不到 ⇒ 放行. This gate is a heuristic first line
-  # (drives the no-task WARN + file-sentinel's secondary gate); file-sentinel's
-  # snapshot diff is the backstop. Not detected by design: interpreter inline
-  # writes (python -c / node -e / ruby -e writing files), pipes through another
-  # process (curl | sh), base64 -d / xxd -r decoders, git checkout/restore of
-  # tracked paths, and redirect targets carrying no dot or slash.
-  return 1
+  if ! printf '%s' "$s" | grep -q '>[[:space:]]*[^[:space:]&][^[:space:]]*[./][^[:space:]]*'; then
+    # Known gaps — contract: 识别不到 ⇒ 放行. This gate is a heuristic first line
+    # (drives the no-task WARN + file-sentinel's secondary gate); file-sentinel's
+    # snapshot diff is the backstop. Not detected by design: interpreter inline
+    # writes (python -c / node -e / ruby -e writing files), pipes through another
+    # process (curl | sh), base64 -d / xxd -r decoders, git checkout/restore of
+    # tracked paths, and redirect targets carrying no dot or slash.
+    return 1
+  fi
+  # 仓库外重定向豁免（2026-08-24）：go test ./... > /tmp/final.txt 2>&1 /
+  # gh run watch ... > /tmp/ci.log 2>&1 触发 "[bash-guard] Bash write without
+  # active task" 误报。本 gate 的意图是拦无任务时的源码变更——重定向到 /tmp、
+  # $TMPDIR、~/.forge、/dev/null 等明确非源码路径不是源码变更。逐条提取
+  # path-like 重定向目标（与探测器同口径：含 . 或 /），全部命中豁免前缀且不含
+  # .. 穿越才判非 write；任一目标在仓库内、或引号内伪目标混入（如
+  # 'echo "a > b.txt" > /tmp/x'）时保持 write 判定（保守方向=原行为）。
+  # "> /dev/null" 旧特例由 /dev/null 豁免项吸收，顺带修掉其假阴性
+  # （'cmd > /dev/null; cmd2 > real.txt' 旧版整体放行）。
+  # 仅字面路径豁免（2026-08-25 review Major）：目标含 $ 或反引号（未展开的变量/
+  # 命令替换）时静态不可判定真实落点——'cmd > /tmp/$(echo ../../repo)/x' 的提取
+  # 目标在空白处截断成 '/tmp/$(echo'，.. 残留被丢弃会误判 not-write——一律保守判
+  # write。副作用：'> $TMPDIR/x.log' 这类未展开形式也判 write（安全方向，可接受）。
+  # （反引号字面量进不了 Go raw string，与下方 forge 命令检测同款 printf 构造。）
+  local _rt _all_exempt=1 _t _BT
+  _BT=$(printf '\140')
+  _rt=$(printf '%s\n' "$s" | grep -oE '>>?[[:space:]]*[^[:space:]&|;]*[./][^[:space:]|;&]*' 2>/dev/null || true)
+  if [ -n "$_rt" ]; then
+    while IFS= read -r _t; do
+      _t="${_t#>}"
+      _t="${_t#>}"
+      # 前导空白剥离（"> /tmp/x" 形态）
+      _t="${_t#"${_t%%[![:space:]]*}"}"
+      case "$_t" in
+        *'$'*|*"${_BT}"*) _all_exempt=0; break ;;
+        *..*) _all_exempt=0; break ;;
+        /tmp/*|/private/tmp/*|/var/folders/*|/dev/null) ;;
+        "${TMPDIR:-/tmp}"/*) ;;
+        "$HOME/.forge"/*) ;;
+        *) _all_exempt=0; break ;;
+      esac
+    done <<< "$_rt"
+    [ "$_all_exempt" = "1" ] && return 1
+  fi
+  return 0
 }
 
 # --- Forge command detection (for file-sentinel exemption) ---
