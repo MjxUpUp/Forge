@@ -5,8 +5,14 @@
 
 ### Features
 
-* **readability:** AI 产物可读性三层约束与输出→回检门禁落地 ([e93c048](https://github.com/MjxUpUp/Forge/commit/e93c0486dcf89a9e9d52fe30954a6ae099ea3133))
-* **readability:** AI 产物可读性三层约束与输出→回检门禁落地 ([b36fa13](https://github.com/MjxUpUp/Forge/commit/b36fa13bd99ec6855888b8ed9275db1d9d8fb39e))
+* **agentbridge:** 新增 ZCode (z.ai) 宿主适配——translator 合并写 ~/.zcode/cli/config.json + ~/.zcode 用户级检测与 .zcode 项目标记归因 + hostcap 行 + 卸载/doctor/init 摘要集成 ([7d9861f](https://github.com/MjxUpUp/Forge/commit/7d9861f6ebfa494627aa35bb0c9fa51662f640f2))
+* **readability:** AI 产物可读性三层约束与输出→回检门禁落地——L1 `forge docs lint`（D1-D7 确定性规则）+ L2 rubric 评审（`forge task doc-review`）+ task-complete doc gate + 5 个文档模板 + 评分新增表达质量维度（[设计](docs/design/output-readability-gates.md)） ([b36fa13](https://github.com/MjxUpUp/Forge/commit/b36fa13bd99ec6855888b8ed9275db1d9d8fb39e))
+
+
+### ⚠ 行为变更（非 BREAKING，需知悉）
+
+* 任务评分六维 → 七维：新增「表达质量」维度（权重 0.10，其余维度权重相应重平衡）——同一任务跨版本分数不可直接比较；纯代码任务（无文档产物变更）该维度打中性 100 不受影响
+* task-complete 新增 doc gate 门禁：任务变更 markdown 产物时，complete 前须过 L1 lint + L2 回检证据（`forge task doc-review`，rubric ≥75 且零未决 Critical）；逃生舱 `forge task override --doc-gate disable` / `FORGE_DOC_GATE=disable`（落 checklog 审计，评分封顶 89/维度封顶 60）
 
 
 ### Bug Fixes
