@@ -142,3 +142,21 @@ SKILL.md 清单自述「22 条安全规则」与实现不符（audit.go auditRul
 ### Evidence
 
 grep -o 'ID: "[^"]*"' internal/skillsqa/audit.go | wc -l = 21（PI5+DE4+SL2+DC10）
+
+## [d-18cf01f526945d68-9d85a5cb] accept
+
+- **Skill**: skill-authoring-standard
+- **DecidedAt**: 2026-08-25T09:22:09Z
+- **By**: kimi-code
+
+### Diagnosis
+
+description 规范只有 ≥80 字符下限无上限约定，全库 52 个 skill 有 3 个超 450 字符（均值 317）
+
+### Revision
+
+「其他内容原则」补 ≤350 字符软上限条款（R4 硬上限 1024/>500 advisory 之下的自律线）及超限时自查指引（枚举下沉正文/不重复正文清单/不堆近义词）
+
+### Evidence
+
+CONVENTIONS §5 同步写入同一软上限；validate 52/52 通过

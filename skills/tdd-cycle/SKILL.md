@@ -1,6 +1,6 @@
 ---
 name: tdd-cycle
-description: "测试驱动开发强制循环（RED-GREEN-Refactor）。Use when: 实现任何功能或修 bug 前、在写实现代码之前、重构行为变更时、想\"这次跳过 TDD 吧\"时、听到\"先写代码后补测试\"\"后补测目的一样\"\"这次跳过\"时、给存量代码补测试时。SKIP: 测试质量守卫/断言防注水（用 test-discipline）、一次性原型/配置文件/生成代码（与人确认后可跳过）。"
+description: "测试驱动开发强制循环（RED-GREEN-Refactor）。Use when: 采用 TDD 方式实现功能或修 bug 时、在写实现代码之前、重构行为变更时、想\"这次跳过 TDD 吧\"时、听到\"先写代码后补测试\"\"后补测目的一样\"\"这次跳过\"时、给存量代码补测试时。SKIP: 测试质量守卫/断言防注水（用 test-discipline）、一次性原型/配置文件/生成代码（与人确认后可跳过）。"
 metadata:
   pattern: pipeline + gate
   domain: testing
