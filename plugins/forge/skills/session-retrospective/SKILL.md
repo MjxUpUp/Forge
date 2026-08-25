@@ -87,7 +87,7 @@ metadata:
 
 ### 6. 文档回检模式提炼（输出→回检回路的长期半边）
 
-回检数据是现成的高信号素材：`forge task finding` 里 Source=doc-review 的未决项、DocReviewHistory 的轮次得分趋势（两轮之间 Critical/rubric 不收敛即异常）。复盘时对反复栽跟头的文档问题问一句：**该升级为 L1 机器规则吗？** 某类文档每次都因同一问题被打回（如「结论不前置」「某个新口头禅」），就把它固化——禁令短语/结构/篇幅规则进 `internal/doclint`（D1-D7 表），模板缺章节进 doc-generator 对应模板——让下一轮循环更便宜。判据：同类打回 ≥3 次才升级（一次是噪声，三次是模式）；升级后两查都绿才算不误伤——`forge docs lint skills docs plugins` 扫存量文档 + `go test ./internal/doclint/` 验规则行为（单测只测合成夹具，扫不出对存量文档的误伤）。
+回检数据是现成的高信号素材：`forge task finding` 里 Source=doc-review 的未决项、DocReviewHistory 的轮次得分趋势（两轮之间 Critical/rubric 不收敛即异常）。复盘时对反复栽跟头的文档问题问一句：**该升级为 L1 机器规则吗？** 某类文档每次都因同一问题被打回（如「结论不前置」「某个新口头禅」），就把它固化——禁令短语/结构/篇幅规则进 `internal/doclint`（D1-D7 表），模板缺章节进 doc-generator 对应模板——让下一轮循环更便宜。判据：同类打回 ≥3 次才升级（一次是噪声，三次是模式）；升级后两查都绿才算不误伤——`forge docs lint` 对 skills/ docs/ plugins/ 目录扫一遍存量文档 + `go test ./internal/doclint/` 验规则行为（单测只测合成夹具，扫不出对存量文档的误伤）。
 
 ## 载体决策树（核心）
 
