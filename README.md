@@ -144,7 +144,7 @@ Forge 退出码三态（`BLOCKED` 硬阻断 / `ADVISORY` 软信号）即这一�
 每个开发任务自动走 3 道门禁：
 
 ```bash
-forge task start --ref feat/add-login --branch --accept "go test -v ./... :: PASS"   # 创建任务+分支+登记验收标准（--accept 可重复；Expected 是输出子串匹配，go test 需 -v 才含 PASS 字样）
+forge task start --ref feat/add-login --branch --accept "go test -v ./... :: PASS"   # 创建任务+分支+登记验收标准（--accept 可重复；Expected 是输出子串匹配；go test 带 Expected 忘加 -v 时 start 自动补——无 -v 无 PASS 行永不匹配）
 forge task start --ref feat/add-login --scope "internal/auth/*.go"                # 声明计划改动白名单（规划前置→可度量契约，advisory 检测 scope-drift）
 forge task start --ref feat/frontend --assignee kimi --role frontend --depends-on feat/api   # 创建即分派给 kimi（offered），声明上游依赖 feat/api（DAG 环检测；task-verify/task-complete 在 feat/api 交付前阻断）
 forge task start --ref feat/hotfix --assignee kimi --ttl 24h   # per-task TTL 覆盖全局 7d 僵尸窗口：短时效分派 24h 无活动即标僵尸（offered/claimed/input-required 通用；0=用全局默认）
@@ -255,8 +255,8 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge task list` | 列出所有任务 |
 | `forge task mine [--agent <agent>] [--role <role>] [--all-projects] [--blocked] [--json]` | 列出分派给当前/指定 agent 的任务（`--all-projects` 全仓扫描按项目分组；`--blocked` 仅被依赖阻塞的，标注卡在哪环 [status, gate 进度 passed/total]） |
 | `forge task gate <gate-id>` | 验证单道任务门禁 |
-| `forge task verify-acceptance [--trust-foreign]` | 实跑验收标准（task start --accept 登记），记 deterministic 证据；验收命令来自 task import / .forge migrate（外来标记）时首跑须 `--trust-foreign`（人工审阅命令清单后显式受信，防外来命令串直接执行） |
-| `forge task scope add <glob>` | 追加计划改动文件到白名单（支持中途迭代） |
+| `forge task verify-acceptance [--ref <ref>] [--trust-foreign]` | 实跑验收标准（task start --accept 登记），记 deterministic 证据；验收命令来自 task import / .forge migrate（外来标记）时首跑须 `--trust-foreign`（人工审阅命令清单后显式受信，防外来命令串直接执行） |
+| `forge task scope add <glob> [--ref <ref>]` | 追加计划改动文件到白名单（支持中途迭代；--ref 指定任务，不依赖活跃任务检测） |
 | `forge task scope show` | 查看声明的白名单 + 实时 scope-drift（advisory，不阻塞） |
 | `forge task override [--work-activity\|--test-coverage\|--acceptance-gate\|--skill-decisions] disable` | per-task 逃生舱：关闭指定门禁检查（如批量重构时关 read-before-edit）；使用落 checklog 审计。验证类（test-coverage/acceptance-gate/skill-decisions）evidence 强度 cap 到 Weak（重证据任务按证据缩放豁免）；work-activity 是节奏门禁，只审计不降强度 |
 | `forge task complete` | 标记任务完成（自动评分） |
@@ -271,7 +271,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge task attach --ref --tool` | 锚定 session+工具到 task（跨工具多向锚定：pi 起、claude-code 接） |
 | `forge task assign --ref <ref> --to <agent> [--role] [--by]` | 把任务分派给指定 agent（offered 起步，编排器侧；未知 agent 警告但接受） |
 | `forge task claim --ref <ref> [--as <agent>]` | 工作方认领分派给自己的任务（offered→claimed，自动锚定 session） |
-| `forge task deliver --ref <ref>` | 工作方交付任务（claimed→delivered，交回编排器） |
+| `forge task deliver --ref <ref> [--as <agent>]` | 工作方交付任务（claimed→delivered，交回编排器；--as 与 claim 对齐，与分派 agent 不符仅提醒不阻断） |
 | `forge task question --ref <ref> --content <text>` | 工作方回抛问题（claimed→input-required，暂停等编排器/人答复） |
 | `forge task answer --ref <ref> [--content <text>]` | 编排器答复回抛（input-required→claimed，答复记入 Decisions；空答复仅恢复 claimed） |
 | `forge task fail --ref <ref> --reason <text>` | 工作方标记任务失败（claimed→failed，记录原因） |
@@ -291,7 +291,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 
 | 命令 | 说明 |
 |------|------|
-| `forge review pass` | 标记当前变更已通过 code-review-gate（task 模式写任务状态，否则写分支 stamp） |
+| `forge review pass [--ref <ref>] [--note <文本>]` | 标记当前变更已通过 code-review-gate（task 模式写任务状态，否则写分支 stamp）；--note 审查结论文本记入 ReviewRound/stamp 与 checklog 审计留痕 |
 | `forge review gate` | 判定当前是否需要审查（Stop hook 调用；exit 0=放行，1=需审 block） |
 | `forge review status` | 显示当前审查状态 |
 
@@ -351,7 +351,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge skills mutex-record --from <file/->` | 回填一次互斥集 run（actual==Positive 才 pass；`--agent-model`/`--forge-version` 盖章防跨模型/版本假回归） |
 | `forge skills mutex-report [--gate] [--json]` | 互斥集混淆矩阵（actual==Negative 为头号混淆行；`--gate` 任一混淆即 BLOCKED(stderr)+exit 4） |
 | `forge skills analyze [--json]` | 弱点挖掘报告（只读）：低分维度聚簇/验证盲区率/从未触发 skill/低成效 skill + 数据 caveat，供人选题 |
-| `forge skills decide --prediction <p>` | 记录 skill 决策四元组；`--prediction` 声明可检验预测（哪个可观测信号应改善），供验证闭环回扣 |
+| `forge skills decide [<skill>] --diagnosis ... --prediction <p>` | 记录 skill 决策四元组（skill 名可用位置参数或 --skill；在带 skills/ 树的仓库内默认写仓库 canonical 而非 embed 缓存）；`--prediction` 声明可检验预测（哪个可观测信号应改善），供验证闭环回扣 |
 | `forge skills verify --skill X --decision <id> --result <r>` | 回填决策验证结果（预测→验证闭环第二步；`--at` 指定时间、`--history`/`--history-json` 查全量可证伪台账） |
 | `forge skills revert --skill X --decision <id> [--edit] [--dry-run]` | Scoped revert：按 decisions.md 的 CommitHash 撤销某条决策关联的 commit（决策闭环的撤销臂） |
 

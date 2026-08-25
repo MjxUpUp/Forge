@@ -46,7 +46,7 @@ var taskClaimCmd = &cobra.Command{
 }
 
 var taskDeliverCmd = &cobra.Command{
-	Use:   `deliver --ref <ref>`,
+	Use:   `deliver --ref <ref> [--as <agent>]`,
 	Short: `工作方交付任务（claimed→delivered，交回编排器）`,
 	RunE:  runTaskDeliver,
 }
@@ -127,6 +127,7 @@ func init() {
 	taskClaimCmd.Flags().String(`as`, ``, `以哪个 agent 身份认领（默认探测当前工具）`)
 
 	taskDeliverCmd.Flags().String(`ref`, ``, `任务引用（不依赖分支检测）`)
+	taskDeliverCmd.Flags().String(`as`, ``, `以哪个 agent 身份交付（与 claim --as 对齐；与分派 agent 不符时仅提醒不阻断）`)
 
 	taskMineCmd.Flags().String(`agent`, ``, `查询哪个 agent 的分派（默认探测当前工具）`)
 	taskMineCmd.Flags().String(`role`, ``, `只看指定角色的分派`)
@@ -248,11 +249,24 @@ func runTaskDeliver(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	// --as parity with claim (usage-log fix: `claim --as kimi` succeeded but
+	// `deliver --as kimi` errored "unknown flag", wasting a turn). Deliver needs no
+	// identity for the state machine, so the flag is interface consistency only —
+	// soft-checked against the assigned agent, advisory, never blocks the delivery.
+	//
+	// --as 与 claim 对齐（usage 日志修复：`claim --as kimi` 成功后 `deliver --as kimi`
+	// 报 unknown flag 白跑一轮）。状态机的 Deliver 不需要身份，故该 flag 只是接口
+	// 一致性——与分派 agent 不符时仅提醒，绝不阻断交付。
+	as, _ := cmd.Flags().GetString(`as`)
 	err = taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
 		return s.Deliver()
 	})
 	if err != nil {
 		return fmt.Errorf(`交付失败: %w`, err)
+	}
+	if as != `` && state.Assignment != nil && state.Assignment.Agent != as {
+		fmt.Fprintf(cmd.ErrOrStderr(), `⚠ 交付身份 %q 与分派 agent %q 不符（已交付；若非预期请核对认领身份）`, as, state.Assignment.Agent)
+		fmt.Fprintln(cmd.ErrOrStderr())
 	}
 	fmt.Printf(`✓ 任务 %s 已交付（delivered）。编排器可用 forge task resume --ref %s 验收`, state.TaskRef, state.TaskRef)
 	fmt.Println()

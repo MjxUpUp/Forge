@@ -28,6 +28,7 @@
 package docsconsistency
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -64,6 +65,7 @@ var (
 
 	mu        sync.RWMutex
 	cmdTreeFn func() *cobra.Command
+	versionFn func() string
 )
 
 // RegisterCommandTree registers the callback that returns the rootCmd command tree.
@@ -88,6 +90,48 @@ func commandTree() *cobra.Command {
 		return nil
 	}
 	return cmdTreeFn()
+}
+
+// RegisterVersion registers the callback returning the running binary's version —
+// same cycle-breaking pattern as RegisterCommandTree (cli init injects
+// func(){ return rootCmd.Version }). StaleBinaryHint consumes it; when nothing is
+// registered the hint degrades to a version-less generic line (never empty, so
+// advisories always carry the stale-binary possibility).
+//
+// RegisterVersion 注册「返回运行中二进制版本」的回调——与 RegisterCommandTree 同款
+// 破循环模式（cli init 注入 func(){ return rootCmd.Version }）。StaleBinaryHint
+// 消费它；未注册时提示降级为无版本号的通用句（永不为空，advisory 始终带版本嫌疑提示）。
+func RegisterVersion(fn func() string) {
+	mu.Lock()
+	defer mu.Unlock()
+	versionFn = fn
+}
+
+// StaleBinaryHint returns the standard suffix for "command does not exist" drift
+// advisories. The drift check compares docs against the RUNNING binary's command
+// tree, so a doc reference to a command added in a newer forge reads as drift when
+// the local binary is stale — the observed 2026-08 case: a README referencing
+// `skills mine` (present at HEAD) triggered the advisory under the PATH-global
+// v1.34.0 binary that predates the command. Telling the agent to check its forge
+// version first saves a pointless doc "fix" for a command that actually exists.
+//
+// StaleBinaryHint 返回「命令不存在」类 drift advisory 的统一后缀。drift 检查拿文档
+// 与【运行中二进制】的命令树比对，故文档引用新版 forge 才有的命令时，本地旧二进制
+// 会误报 drift——2026-08 实证：README 引用 `skills mine`（HEAD 存在）在 PATH 全局
+// v1.34.0 旧二进制下触发 advisory。先提示查 forge 版本，省得为真实存在的命令做无谓
+// 的文档「修复」。
+func StaleBinaryHint() string {
+	mu.RLock()
+	fn := versionFn
+	mu.RUnlock()
+	v := ""
+	if fn != nil {
+		v = fn()
+	}
+	if v == "" {
+		return "；若这些命令在新版 forge 已存在，可能是本地 forge 二进制过旧，先 forge update 再排查"
+	}
+	return fmt.Sprintf("；若这些命令在新版 forge 已存在，可能是本地 forge 版本过旧（当前 %s），先 forge update 再排查", v)
 }
 
 // findSub looks up a direct subcommand of parent by Name. cobra Commands() does not

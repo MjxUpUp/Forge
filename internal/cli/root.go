@@ -81,6 +81,13 @@ func init() {
 	// 能反查 cobra 树检测文档里的 forge 命令 drift。回调打破 cli ↔ taskpipeline 循环：
 	// docsconsistency 不 import cli，taskpipeline import docsconsistency 调 DriftedInProject。
 	docsconsistency.RegisterCommandTree(func() *cobra.Command { return rootCmd })
+	// Version source for the stale-binary hint on drift advisories (docsconsistency
+	// cannot import cli; the callback keeps the version read lazy so SetVersion
+	// ldflags injection order does not matter).
+	//
+	// drift advisory 版本提示的版本来源（docsconsistency 不能 import cli；回调惰性
+	// 读取，SetVersion 的 ldflags 注入顺序不影响）。
+	docsconsistency.RegisterVersion(func() string { return rootCmd.Version })
 }
 
 // SetVersion sets version info injected at build time via -ldflags.

@@ -1,6 +1,7 @@
 package docsconsistency
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -203,5 +204,44 @@ func TestAllFlags(t *testing.T) {
 	got := AllFlags(root)
 	if len(got) != 1 || got[0] != "init --project" {
 		t.Fatalf("AllFlags = %v, want [init --project]", got)
+	}
+}
+
+// TestStaleBinaryHint pins the stale-binary suffix appended to "command does not
+// exist" drift advisories (usage-log fix: a README referencing `skills mine` —
+// present at HEAD — tripped the advisory under the PATH-global v1.34.0 binary that
+// predates the command, sending agents to "fix" a doc that was never wrong). With a
+// registered version the hint must name it and point at `forge update`; with none it
+// must still carry the generic stale-binary possibility.
+//
+// TestStaleBinaryHint 钉住追加在「命令不存在」drift advisory 尾部的版本提示（usage
+// 日志修复：README 引用 `skills mine`——HEAD 存在——在 PATH 全局 v1.34.0 旧二进制
+// 下触发 advisory，把 agent 引去「修」一份没错的文档）。注册了版本时提示必须带版本
+// 号并指向 `forge update`；未注册时也必须带通用的版本过旧嫌疑。
+func TestStaleBinaryHint(t *testing.T) {
+	mu.Lock()
+	prev := versionFn
+	mu.Unlock()
+	defer func() {
+		mu.Lock()
+		versionFn = prev
+		mu.Unlock()
+	}()
+
+	RegisterVersion(func() string { return "v1.34.0" })
+	hint := StaleBinaryHint()
+	if !strings.Contains(hint, "v1.34.0") || !strings.Contains(hint, "forge update") {
+		t.Errorf("注册版本后 hint 应带版本号并指向 forge update, got %q", hint)
+	}
+
+	RegisterVersion(nil)
+	hint = StaleBinaryHint()
+	if !strings.Contains(hint, "forge update") {
+		t.Errorf("未注册版本时 hint 也应带 forge update 指引, got %q", hint)
+	}
+
+	RegisterVersion(func() string { return "" })
+	if hint := StaleBinaryHint(); !strings.Contains(hint, "forge update") {
+		t.Errorf("空版本串时 hint 应降级为通用句, got %q", hint)
 	}
 }

@@ -365,7 +365,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 				TaskRef: state.TaskRef,
 				Detail:  "docs drift: " + strings.Join(drifted, ", "),
 			})
-			fmt.Fprintf(os.Stderr, "%s文档一致性 drift——README 反引号引用了不存在的 forge 命令：%s（提交前修复，详见 skills/docs-consistency-guard）\n", GateAdvisory("[task-complete] "), strings.Join(drifted, ", "))
+			fmt.Fprintf(os.Stderr, "%s文档一致性 drift——README 反引号引用了不存在的 forge 命令：%s（提交前修复，详见 skills/docs-consistency-guard%s）\n", GateAdvisory("[task-complete] "), strings.Join(drifted, ", "), docsconsistency.StaleBinaryHint())
 		}
 
 		// Behavior-surface advisory: the doc guards only cover command/flag

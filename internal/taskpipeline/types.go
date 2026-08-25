@@ -407,6 +407,12 @@ type ReviewRound struct {
 	HeadCommit string    `json:"head_commit,omitempty"`
 	ChangeHash string    `json:"change_hash,omitempty"`
 	ReviewedAt time.Time `json:"reviewed_at"`
+	// Note is the optional reviewer conclusion text from `forge review pass --note`
+	// (audit trail: what the reviewer concluded, not just that they stamped).
+	//
+	// Note 是 `forge review pass --note` 的可选审查结论文本（审计留痕：不只记「盖过
+	// 章」，还记 reviewer 的结论）。
+	Note string `json:"note,omitempty"`
 }
 
 // IsComplete returns true when all task gates have passed.
@@ -587,6 +593,17 @@ func createsCycle(self, start string, lookup func(string) *TaskState) bool {
 // (see executor.go)——确保提交前子 agent 审查真的跑过；快照让 task-complete 能强制「审查后改码必复审」。
 // headCommit 为空 → 跳过快照检查（老 state 兼容 / 测试用），仅保留 ReviewPassed 硬前置语义。
 func (s *TaskState) MarkReviewPassed(headCommit, changeHash string) {
+	s.MarkReviewPassedWithNote(headCommit, changeHash, "")
+}
+
+// MarkReviewPassedWithNote is MarkReviewPassed plus the optional reviewer conclusion
+// text (`forge review pass --note`) recorded on the appended ReviewRound — the audit
+// trail carries what the reviewer concluded, not just that a stamp happened.
+//
+// MarkReviewPassedWithNote 在 MarkReviewPassed 之上把可选审查结论文本
+// （`forge review pass --note`）记到追加的 ReviewRound 上——审计留痕不只记「盖过
+// 章」，还记 reviewer 的结论。
+func (s *TaskState) MarkReviewPassedWithNote(headCommit, changeHash, note string) {
 	s.ReviewPassed = true
 	s.ReviewedHeadCommit = headCommit
 	s.ReviewedChangeHash = changeHash
@@ -594,6 +611,7 @@ func (s *TaskState) MarkReviewPassed(headCommit, changeHash string) {
 		HeadCommit: headCommit,
 		ChangeHash: changeHash,
 		ReviewedAt: time.Now(),
+		Note:       note,
 	})
 }
 
