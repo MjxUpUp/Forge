@@ -73,7 +73,7 @@ Anthropic 官方在 skill-creator 中明确指出：**Claude 倾向于 undertrig
 
 ### 其他内容原则
 
-- ≥ 80 字符
+- ≥ 80 字符；≤ 350 字符（软上限，自律线——R4 硬上限 1024、>500 advisory）。超出先自查：枚举清单是否可下沉正文、是否重复正文已有的路由表/清单、触发词是否堆叠近义词
 - 关键词覆盖：错误信息（"E0432"、"race condition"）、症状（"flaky"、"hanging"）、工具名——模型会搜这些词
 - 第三人称（注入 system prompt）
 - 用描述问题的词，不用技术 jargon（除非 skill 本身技术特定）

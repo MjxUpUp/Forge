@@ -69,3 +69,21 @@ metadata补triggers(keywords/cooldown;skill-authoring-standard用新condition sk
 ### Evidence
 
 skills-hitrate-review-2026-08-15:四源425会话挖掘语料+trigger覆盖10%缺口
+
+## [d-18cf01feb204a0e8-18ca2d64] accept
+
+- **Skill**: review-batch
+- **DecidedAt**: 2026-08-25T09:22:50Z
+- **By**: kimi-code
+
+### Diagnosis
+
+与 project-acceptance/adversarial-verification 的"验收"路由互斥不清；首句未锚定互斥关键词
+
+### Revision
+
+首句锚定"重构后全量深查"；Use when "重构后做全量验收时"改"重构后做全量深查时"（"重构完验收"保留为用户原话引语）；SKIP 补 adversarial-verification 互指、project-acceptance 条目改"PRD/功能完整度验收"口径
+
+### Evidence
+
+triggers 保留"重构完验收"限定词，裸"验收"归 project-acceptance；validate 52/52 通过

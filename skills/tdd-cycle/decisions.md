@@ -53,3 +53,21 @@ description 审计合格未改动 + 新建 evals.json 10 条
 ### Evidence
 
 docs/skills-value-audit-2026-08-02.md
+
+## [d-18cf01feed84e9c0-afc88290] accept
+
+- **Skill**: tdd-cycle
+- **DecidedAt**: 2026-08-25T09:22:51Z
+- **By**: kimi-code
+
+### Diagnosis
+
+description 首句"实现任何功能或修 bug 前"过宽：与 implementation-discipline 在每个编码任务双命中，路由噪音
+
+### Revision
+
+首句收窄为"采用 TDD 方式实现功能或修 bug 时"，其余触发词与正文 Iron Law（总是先写测试）不动——收窄仅作用于路由层，不软化 skill 内纪律
+
+### Evidence
+
+validate 52/52 通过；triggers 关键词（TDD/先写测试/测试驱动等）本就不含宽泛编码词，description 与之一致化

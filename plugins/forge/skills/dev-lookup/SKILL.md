@@ -1,6 +1,6 @@
 ---
 name: dev-lookup
-description: "开发期单点快速检索：查 API 签名、查报错含义、查库用法、查版本兼容、查语法、查官方示例。Use when: 开发或调试时需要确认某个具体技术点——\"这个 API 怎么调\"\"这个错误什么意思\"\"这个库怎么用\"\"这两个版本兼容吗\"\"这个语法对不对\"。SKIP: 深度调研/多源对比/产出调研报告（用 research-workflow）；非技术事实核查/数据对比需多源交叉（用 research-workflow 轻量档 Phase L）；提方案前的环境验证（用 evidence-based-proposal）；飞书/云文档操作（用 lark-*）。"
+description: "开发期单点快速检索：查 API 签名、查报错含义、查库用法、查版本兼容、查语法、查官方示例。Use when: 开发或调试时需要确认某个具体技术点——\"这个 API 怎么调\"\"这个错误什么意思\"\"这个库怎么用\"\"这两个版本兼容吗\"\"这个语法对不对\"。SKIP: 深度调研/多源对比/产出调研报告（用 research-workflow）；非技术事实核查/数据对比需多源交叉（用 research-workflow 轻量档 Phase L）；提方案前的环境验证（用 evidence-based-proposal）；飞书/云文档操作（如有 lark-* skill）。"
 metadata:
   pattern: routing + fallback
   domain: development
