@@ -143,7 +143,7 @@ func TestRunReviewPassAt_ReworkRoundRequiresRecheck(t *testing.T) {
 	//
 	// 第 1 轮：首次盖章——静默（尚无修复，不欠复审）。
 	first := captureStdout(t, func() {
-		if err := runReviewPassAt(dir, ref); err != nil {
+		if err := runReviewPassAt(dir, ref, ""); err != nil {
 			t.Fatalf("runReviewPassAt 第 1 次: %v", err)
 		}
 	})
@@ -157,7 +157,7 @@ func TestRunReviewPassAt_ReworkRoundRequiresRecheck(t *testing.T) {
 	// 第 2 轮且无代码变更（同状态重复盖章：瞬态重试/重建基线）——依旧静默：
 	// 无快照增量，不欠复审。
 	repeat := captureStdout(t, func() {
-		if err := runReviewPassAt(dir, ref); err != nil {
+		if err := runReviewPassAt(dir, ref, ""); err != nil {
 			t.Fatalf("runReviewPassAt 无变更重盖: %v", err)
 		}
 	})
@@ -173,7 +173,7 @@ func TestRunReviewPassAt_ReworkRoundRequiresRecheck(t *testing.T) {
 	runGit(t, dir, `add`, `.`)
 	runGit(t, dir, `commit`, `-m`, `fix: apply review findings`)
 	third := captureStdout(t, func() {
-		if err := runReviewPassAt(dir, ref); err != nil {
+		if err := runReviewPassAt(dir, ref, ""); err != nil {
 			t.Fatalf("runReviewPassAt 修复后重盖: %v", err)
 		}
 	})
@@ -194,7 +194,7 @@ func TestRunReviewPassAt_ReworkRoundRequiresRecheck(t *testing.T) {
 	// 误删 prev.ChangeHash != hash 这个 OR 项时本测试仍会绿。
 	os.WriteFile(filepath.Join(dir, `main.go`), []byte("package main\n\nfunc main() { println(2) }\n"), 0644)
 	fourth := captureStdout(t, func() {
-		if err := runReviewPassAt(dir, ref); err != nil {
+		if err := runReviewPassAt(dir, ref, ""); err != nil {
 			t.Fatalf("runReviewPassAt 工作区增量重盖: %v", err)
 		}
 	})
@@ -222,7 +222,7 @@ func TestRunReviewPassAt_ExplicitRef(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := runReviewPassAt(dir, ref); err != nil {
+	if err := runReviewPassAt(dir, ref, ""); err != nil {
 		t.Fatalf("runReviewPassAt(--ref): %v", err)
 	}
 	reloaded, err := taskpipeline.LoadTaskState(dir, ref)
@@ -236,7 +236,7 @@ func TestRunReviewPassAt_ExplicitRef(t *testing.T) {
 	// Nonexistent ref → hard error, no stamp fallback.
 	//
 	// 不存在的 ref → 硬报错，不回落 stamp
-	if err := runReviewPassAt(dir, `feat/nonexistent`); err == nil {
+	if err := runReviewPassAt(dir, `feat/nonexistent`, ""); err == nil {
 		t.Fatal("ref 不存在应报错返回（不回落分支 stamp 分支）")
 	}
 }
@@ -258,7 +258,7 @@ func TestRunReviewPassAt_RecordsRounds(t *testing.T) {
 	}
 
 	for i := 0; i < 2; i++ {
-		if err := runReviewPassAt(dir, ref); err != nil {
+		if err := runReviewPassAt(dir, ref, ""); err != nil {
 			t.Fatalf("runReviewPassAt 第 %d 次: %v", i+1, err)
 		}
 	}
@@ -304,6 +304,90 @@ func TestReviewRefFlagsRegistered(t *testing.T) {
 		if cmd.Flags().Lookup("ref") == nil {
 			t.Errorf("review %s 应注册 --ref flag", name)
 		}
+	}
+}
+
+// TestRunReviewPassAt_Note pins `forge review pass --note` (usage-log gap: agents
+// wanted to leave the review conclusion text at pass time and hit "unknown flag").
+// The note must land on BOTH audit surfaces: the appended ReviewRound (task state)
+// and the checklog review-pass entry detail. Empty note keeps the legacy shapes.
+//
+// TestRunReviewPassAt_Note 钉住 `forge review pass --note`（usage 日志缺口：agent 想
+// 在 pass 时留审查结论文本却撞 unknown flag）。note 须落到两个审计面：追加的
+// ReviewRound（task state）与 checklog review-pass 条目 detail。空 note 保持旧形状。
+func TestRunReviewPassAt_Note(t *testing.T) {
+	dir := t.TempDir()
+	const ref = `feat/review-note`
+	state := &taskpipeline.TaskState{TaskRef: ref, Branch: `feat/review-note`}
+	if err := taskpipeline.SaveTaskState(dir, state); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runReviewPassAt(dir, ref, "审查结论：双轨无发现，快照一致"); err != nil {
+		t.Fatalf("runReviewPassAt --note: %v", err)
+	}
+
+	reloaded, err := taskpipeline.LoadTaskState(dir, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reloaded.ReviewRounds) != 1 {
+		t.Fatalf(`一次 pass 应落 1 条 ReviewRound, got %d`, len(reloaded.ReviewRounds))
+	}
+	if reloaded.ReviewRounds[0].Note != "审查结论：双轨无发现，快照一致" {
+		t.Errorf(`ReviewRound.Note 未持久化, got %q`, reloaded.ReviewRounds[0].Note)
+	}
+
+	entries, err := checklog.LoadAll(dir)
+	if err != nil {
+		t.Fatalf("LoadAll: %v", err)
+	}
+	found := false
+	for _, e := range entries {
+		if e.Check == checklog.CheckReviewPass && e.TaskRef == ref {
+			found = true
+			if !strings.Contains(e.Detail, "note: 审查结论：双轨无发现") {
+				t.Errorf(`checklog review-pass detail 应带 note: %q`, e.Detail)
+			}
+		}
+	}
+	if !found {
+		t.Fatal(`checklog 缺 review-pass 条目`)
+	}
+
+	// Empty note: ReviewRound.Note stays empty and the detail keeps the legacy shape
+	// (no "note:" suffix) — no noise for the overwhelmingly common flagless pass.
+	//
+	// 空 note：ReviewRound.Note 保持空、detail 保持旧形状（无 "note:" 后缀）——
+	// 绝大多数不带 flag 的 pass 不留噪声。
+	if err := runReviewPassAt(dir, ref, ""); err != nil {
+		t.Fatalf("runReviewPassAt 空 note: %v", err)
+	}
+	reloaded, err = taskpipeline.LoadTaskState(dir, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.ReviewRounds[1].Note != "" {
+		t.Errorf(`空 note 的 ReviewRound.Note 应为空, got %q`, reloaded.ReviewRounds[1].Note)
+	}
+	entries, _ = checklog.LoadAll(dir)
+	var last *checklog.Entry
+	for i := range entries {
+		if entries[i].Check == checklog.CheckReviewPass && entries[i].TaskRef == ref {
+			last = &entries[i]
+		}
+	}
+	if last == nil || strings.Contains(last.Detail, "note:") {
+		t.Errorf(`空 note 的 detail 不应带 note 后缀, got %+v`, last)
+	}
+}
+
+// TestReviewPassNoteFlagRegistered pins the --note flag registration on review pass.
+//
+// TestReviewPassNoteFlagRegistered 钉住 review pass 的 --note flag 注册。
+func TestReviewPassNoteFlagRegistered(t *testing.T) {
+	if reviewPassCmd.Flags().Lookup("note") == nil {
+		t.Error("review pass 应注册 --note flag")
 	}
 }
 

@@ -12,6 +12,8 @@ package cli
 
 import (
 	"fmt"
+	"io"
+	"os"
 
 	"github.com/MjxUpUp/Forge/internal/skillsdecisions"
 	"github.com/spf13/cobra"
@@ -31,10 +33,14 @@ var (
 )
 
 var skillsDecideCmd = &cobra.Command{
-	Use:   "decide",
-	Short: "记录一条 skill 决策到 decisions.md（诊断/修订/证据/结果四元组）",
+	Use:   "decide [<skill>]",
+	Short: "记录一条 skill 决策到 decisions.md（诊断/修订/证据/结果四元组；skill 名可用位置参数或 --skill）",
 	Long: `把一条决策追加到 <skill>/decisions.md 的 persistent decision history：让下一轮
 agent 理解 skill「为什么这么改」，避免重复探索已失败方向。
+
+skill 名两种给法等价：forge skills decide my-skill ...（位置参数）或 --skill my-skill。
+在含 skills/ 规范树的仓库内运行（如 Forge 本仓）时默认写入仓库 canonical（./skills/），
+不写 embed 缓存；仓库外经 $FORGE_SKILLS_CANONICAL / --canonical 指向真实源。
 
 四元组对应 decision record h_t = (q_t, r_t, e_t, o_t)：
   --diagnosis  q_t：诊断（什么失败模式/问题）
@@ -52,32 +58,65 @@ agent 理解 skill「为什么这么改」，避免重复探索已失败方向�
   --prediction 修改时刻声明的可检验预测——修订若有效，哪个可观测信号应改善
                （如「skill X 触发率应从 15% 升到 30%」）。在结果已知前声明，
                事后用 forge skills verify 回填对账，让修改成为可证伪契约`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: runSkillsDecide,
 }
 
 func runSkillsDecide(cmd *cobra.Command, args []string) error {
+	// Positional shorthand for --skill (usage-log fix: `skills decide <name> --diagnosis ...`
+	// errored "需要 --skill NAME" although the intent was unambiguous — flag-parity with the
+	// rest of the CLI's noun-verb ergonomics).
+	//
+	// 位置参数作 --skill 简写（usage 日志修复：`skills decide <name> --diagnosis ...`
+	// 报「需要 --skill NAME」，但意图本无歧义）。
+	if len(args) > 0 {
+		if skDecSkill != "" && skDecSkill != args[0] {
+			return fmt.Errorf("位置参数 %q 与 --skill %q 冲突，二选一", args[0], skDecSkill)
+		}
+		skDecSkill = args[0]
+	}
 	canonical, isExternal, err := resolveCanonical()
 	if err != nil {
 		return err
 	}
-	// decide MUTATES canonical (appends to <skill>/decisions.md). The embed cache is a
-	// regenerated distribution snapshot, not a writable source: EnsureEmbeddedCache
+	// In-repo default (usage-log fix): when forge runs inside a checkout whose project
+	// root carries a real skills/ tree (CONVENTIONS.md marker — e.g. the Forge repo
+	// itself), decide must write THAT canonical tree, not the embed cache. The cache is
+	// a regenerated distribution snapshot, not a writable source: EnsureEmbeddedCache
 	// RemoveAll-rebuilds it whenever the version marker mismatches the running binary —
 	// with two forge versions alternating on one machine (e.g. the globally installed
 	// release driving the hook chain + a locally built dev binary), the cache is
 	// version-ping-pong wiped on every foreign-version invocation. A decide that resolved
 	// to the cache reported ✅ success and the entry was silently destroyed by the next
 	// hook call (2026-08-24 incident: three decisions vanished between the ✅ and the
-	// follow-up grep). Fail loudly instead: the agent must point at a real source via
-	// $FORGE_SKILLS_CANONICAL / --canonical (in this repo: the skills/ directory).
+	// follow-up grep; a later agent then wrote to the cache AGAIN because the repo was
+	// not auto-detected). Inside a skills-bearing repo default to ./skills; elsewhere
+	// fail loudly: the agent must point at a real source via $FORGE_SKILLS_CANONICAL /
+	// --canonical.
 	//
-	// decide 会变更 canonical（追加 <skill>/decisions.md）。embed 缓存是可再生成的分发
-	// 快照、不是可写源：EnsureEmbeddedCache 在版本标记与运行二进制不一致时会
-	// RemoveAll 整目录重建——同一台机器上两个 forge 版本交替运行时（如全局安装的正式
-	// 版驱动 hook 链 + 本地构建的 dev 二进制），缓存每次异版调用都会被 ping-pong 抹掉。
+	// 仓库内默认（usage 日志修复）：forge 在项目根带真实 skills/ 树（CONVENTIONS.md
+	// 标记——如 Forge 本仓）的 checkout 里运行时，decide 必须写该 canonical 树而非
+	// embed 缓存。缓存是可再生成的分发快照、不是可写源：EnsureEmbeddedCache 在版本标记
+	// 与运行二进制不一致时 RemoveAll 整目录重建——同机两个 forge 版本交替运行时（如
+	// 全局正式版驱动 hook 链 + 本地 dev 二进制），缓存每次异版调用都被 ping-pong 抹掉。
 	// 解析到缓存的 decide 报了 ✅ 成功，条目却被下一次 hook 调用静默销毁（2026-08-24
-	// 事故：三条决策在 ✅ 与随后的 grep 之间消失）。改为响亮失败：agent 必须经
-	// $FORGE_SKILLS_CANONICAL / --canonical 指向真实源（本仓库即 skills/ 目录）。
+	// 事故：三条决策在 ✅ 与随后的 grep 之间消失；之后又有 agent 因仓库未自动识别再次
+	// 写进缓存）。在带 skills 树的仓库内默认写 ./skills；仓库外响亮失败：agent 必须经
+	// $FORGE_SKILLS_CANONICAL / --canonical 指向真实源。
+	if !isExternal {
+		if repoSkills := detectRepoSkillsDir(); repoSkills != "" {
+			canonical = repoSkills
+			isExternal = true
+			// cmd is nil in unit tests that call runSkillsDecide directly.
+			//
+			// 单测直接调 runSkillsDecide 时 cmd 为 nil。
+			w := io.Writer(os.Stderr)
+			if cmd != nil {
+				w = cmd.ErrOrStderr()
+			}
+			fmt.Fprintf(w, "ℹ️ 检测到仓库内 canonical skill 树，decide 写入 %s（非 embed 缓存）\n", repoSkills)
+		}
+	}
 	if !isExternal {
 		return fmt.Errorf("decide 不能写入内置 embed 缓存（%s）——它是随时被版本重建的分发快照，写入必丢（异版二进制交替运行时每次 hook 调用都会抹掉它）。用 $FORGE_SKILLS_CANONICAL 或 --canonical 指向真实 skill 源（本仓库为 skills/ 目录）后重试", canonical)
 	}

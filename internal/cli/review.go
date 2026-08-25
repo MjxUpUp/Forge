@@ -36,6 +36,7 @@ func init() {
 	reviewCmd.AddCommand(reviewGateCmd)
 	reviewCmd.AddCommand(reviewStatusCmd)
 	reviewPassCmd.Flags().String("ref", "", "指定任务引用（不依赖活跃任务检测；ref 不存在直接报错，不回落分支 stamp）")
+	reviewPassCmd.Flags().String("note", "", "审查结论文本（记入 ReviewRound/stamp 与 checklog 审计留痕）")
 	reviewGateCmd.Flags().String("ref", "", "指定任务引用（不依赖活跃任务检测）")
 	reviewStatusCmd.Flags().String("ref", "", "指定任务引用（不依赖活跃任务检测）")
 }
@@ -56,8 +57,8 @@ var reviewCmd = &cobra.Command{
 }
 
 var reviewPassCmd = &cobra.Command{
-	Use:   "pass",
-	Short: "标记当前变更已通过 code-review-gate",
+	Use:   "pass [--ref <ref>] [--note <text>]",
+	Short: "标记当前变更已通过 code-review-gate（--note 记审查结论到审计留痕）",
 	RunE:  runReviewPass,
 }
 
@@ -98,7 +99,8 @@ func runReviewPass(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	explicitRef, _ := cmd.Flags().GetString("ref")
-	return runReviewPassAt(root, explicitRef)
+	note, _ := cmd.Flags().GetString("note")
+	return runReviewPassAt(root, explicitRef, note)
 }
 
 // shortHash truncates a commit hash for one-line detail output (empty stays empty).
@@ -115,11 +117,16 @@ func shortHash(h string) string {
 // runTaskComplete's --ref pattern): an explicit ref loads that task directly and a
 // missing ref errors out — it must NOT fall through to the branch-stamp branch, which
 // would silently mark the wrong thing. No ref keeps the legacy active-task detection.
+// note (from --note) is the optional reviewer conclusion text, persisted onto the
+// appended ReviewRound (task mode) / stamp (non-task mode) and the checklog review-pass
+// entry — the audit trail carries the conclusion, not just the stamp.
 //
 // runReviewPassAt 是 `forge review pass` 的 root/ref 注入核心（对齐 runTaskComplete
 // 的 --ref 模式）：显式 ref 直接加载该任务，ref 不存在直接报错——绝不回落分支
-// stamp 分支（那会静默标错对象）。不给 ref 保持旧的活跃任务检测。
-func runReviewPassAt(root, explicitRef string) error {
+// stamp 分支（那会静默标错对象）。不给 ref 保持旧的活跃任务检测。note（--note）
+// 是可选审查结论文本，持久化到追加的 ReviewRound（task 模式）/ stamp（非 task
+// 模式）与 checklog review-pass 条目——审计留痕记结论而非只记盖章。
+func runReviewPassAt(root, explicitRef, note string) error {
 	// task mode: write task state fields, consumed by the task-complete gate
 	//
 	// task 模式：写任务状态字段，由 task-complete 门禁消费
@@ -143,7 +150,7 @@ func runReviewPassAt(root, explicitRef string) error {
 		// pass 是 agent 主导动作故 fail-open。hash 出错同样取空（不阻塞 pass）。
 		head := taskpipeline.GetHeadCommit(root)
 		hash, _, _ := review.SourceChangesSince(root, head)
-		state.MarkReviewPassed(head, hash)
+		state.MarkReviewPassedWithNote(head, hash, note)
 		if err := taskpipeline.SaveTaskState(root, state); err != nil {
 			return fmt.Errorf("failed to save task state: %w", err)
 		}
@@ -153,12 +160,16 @@ func runReviewPassAt(root, explicitRef string) error {
 		//
 		// 记录 review-pass 事件（第 N 轮 + 审过的快照）——返工轮次度量的原料。observation
 		// 类（排除出证据强度分桶）。记录失败不阻塞 pass（fail-open，与打戳本身一致）。
+		detail := fmt.Sprintf("review round %d passed (head=%s)", len(state.ReviewRounds), shortHash(head))
+		if note != "" {
+			detail += "; note: " + note
+		}
 		if recErr := checklog.Record(root, &checklog.Entry{
 			Check:   checklog.CheckReviewPass,
 			Passed:  true,
 			Checked: true,
 			TaskRef: state.TaskRef,
-			Detail:  fmt.Sprintf("review round %d passed (head=%s)", len(state.ReviewRounds), shortHash(head)),
+			Detail:  detail,
 		}); recErr != nil {
 			fmt.Fprintf(os.Stderr, "⚠ checklog 记录失败（review-pass 未落盘）: %v\n", recErr)
 		}
@@ -216,7 +227,7 @@ func runReviewPassAt(root, explicitRef string) error {
 	// non-task mode: write branch stamp
 	//
 	// 非 task 模式：写分支 stamp
-	if err := review.MarkPassed(root); err != nil {
+	if err := review.MarkPassedWithNote(root, note); err != nil {
 		return fmt.Errorf("failed to mark review passed: %w", err)
 	}
 	fmt.Println("✅ 当前 diff: code-review-gate 已通过")
