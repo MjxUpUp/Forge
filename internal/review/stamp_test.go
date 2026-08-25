@@ -205,6 +205,35 @@ func TestEvaluate_PassThenSameDiffPasses(t *testing.T) {
 	}
 }
 
+// TestMarkPassedWithNote pins the non-task-mode half of `forge review pass --note`:
+// the reviewer conclusion is persisted on the branch stamp (the task-mode counterpart
+// is ReviewRound.Note); plain MarkPassed leaves it empty (backward compatible).
+//
+// TestMarkPassedWithNote 钉住 `forge review pass --note` 的非 task 模式半边：审查结论
+// 持久化进分支 stamp（task 模式对应物是 ReviewRound.Note）；裸 MarkPassed 保持为空
+// （向后兼容）。
+func TestMarkPassedWithNote(t *testing.T) {
+	dir := initGitRepo(t)
+	write(t, dir, "a.go", "package a\n")
+
+	if err := MarkPassedWithNote(dir, "审查结论：无发现"); err != nil {
+		t.Fatalf("MarkPassedWithNote: %v", err)
+	}
+	if got := loadStamp(dir).Note; got != "审查结论：无发现" {
+		t.Errorf("stamp.Note 未持久化, got %q", got)
+	}
+
+	// Plain MarkPassed keeps the note empty (legacy shape).
+	//
+	// 裸 MarkPassed 保持 note 为空（旧形状）。
+	if err := MarkPassed(dir); err != nil {
+		t.Fatalf("MarkPassed: %v", err)
+	}
+	if got := loadStamp(dir).Note; got != "" {
+		t.Errorf("裸 MarkPassed 后 stamp.Note 应为空, got %q", got)
+	}
+}
+
 // TestEvaluate_NewDiffReTriggers a new source diff (hash changed) re-triggers review — prevents 'review once then keep changing without re-review'.
 //
 // TestEvaluate_NewDiffReTriggers 新的源码 diff（hash 变）重新触发审查——防「审完继续改不重审」。

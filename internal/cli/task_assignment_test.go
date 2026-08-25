@@ -115,6 +115,77 @@ func TestTaskAssignClaimDeliver_Lifecycle(t *testing.T) {
 	}
 }
 
+// TestTaskDeliver_AsFlag pins the claim/deliver flag parity (usage-log fix: on hosts
+// where agent identity is undetectable, `claim --as kimi` succeeded but
+// `deliver --as kimi` errored "unknown flag: --as", forcing a bare deliver retry).
+// --as on deliver is interface consistency only: a matching identity delivers quietly,
+// a mismatched one still delivers but emits a stderr advisory — never blocks.
+//
+// TestTaskDeliver_AsFlag 钉住 claim/deliver 的 flag 一致性（usage 日志修复：探测不到
+// agent 身份的宿主上 `claim --as kimi` 成功而 `deliver --as kimi` 报 unknown flag，
+// 只能裸 deliver 重试）。deliver 的 --as 只是接口一致：身份相符静默交付，不符仍交付
+// 但打 stderr advisory——绝不阻断。
+func TestTaskDeliver_AsFlag(t *testing.T) {
+	dir := setupDelegateProject(t)
+
+	// Matching --as: delivers quietly, no mismatch advisory.
+	//
+	// 相符的 --as：静默交付，无不符 advisory。
+	if stdout, _, code := runForge(t, dir, "task", "start", "--ref", "feat/delegate", "--title", "as-flag"); code != 0 {
+		t.Fatalf("task start failed: %s", stdout)
+	}
+	if stdout, _, code := runForge(t, dir, "task", "assign", "--ref", "feat/delegate", "--to", "kimi", "--by", "claude-code"); code != 0 {
+		t.Fatalf("task assign failed: %s", stdout)
+	}
+	if stdout, _, code := runForge(t, dir, "task", "claim", "--ref", "feat/delegate", "--as", "kimi"); code != 0 {
+		t.Fatalf("task claim failed: %s", stdout)
+	}
+	stdout, _, code := runForge(t, dir, "task", "deliver", "--ref", "feat/delegate", "--as", "kimi")
+	if code != 0 {
+		t.Fatalf("deliver --as kimi exit %d: %s", code, stdout)
+	}
+	if !strings.Contains(stdout, `已交付`) {
+		t.Errorf("deliver --as 输出应含「已交付」, got: %s", stdout)
+	}
+	if strings.Contains(stdout, `不符`) {
+		t.Errorf("身份相符不应打不符 advisory, got: %s", stdout)
+	}
+	state, err := taskpipeline.LoadTaskState(dir, "feat/delegate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Assignment == nil || state.Assignment.Status != taskpipeline.AssignDelivered {
+		t.Errorf("deliver --as 后状态应为 delivered, got %+v", state.Assignment)
+	}
+
+	// Mismatched --as: still delivers (advisory only), warning names both identities.
+	//
+	// 不符的 --as：仍交付（仅 advisory），警告须点明两个身份。
+	if stdout, _, code := runForge(t, dir, "task", "start", "--ref", "feat/delegate-2", "--title", "as-flag-2"); code != 0 {
+		t.Fatalf("task start 2 failed: %s", stdout)
+	}
+	if stdout, _, code := runForge(t, dir, "task", "assign", "--ref", "feat/delegate-2", "--to", "kimi", "--by", "claude-code"); code != 0 {
+		t.Fatalf("task assign 2 failed: %s", stdout)
+	}
+	if stdout, _, code := runForge(t, dir, "task", "claim", "--ref", "feat/delegate-2", "--as", "kimi"); code != 0 {
+		t.Fatalf("task claim 2 failed: %s", stdout)
+	}
+	stdout, _, code = runForge(t, dir, "task", "deliver", "--ref", "feat/delegate-2", "--as", "cursor")
+	if code != 0 {
+		t.Fatalf("deliver --as 不符也应交付成功（advisory 不阻断）, exit %d: %s", code, stdout)
+	}
+	if !strings.Contains(stdout, `不符`) || !strings.Contains(stdout, `cursor`) || !strings.Contains(stdout, `kimi`) {
+		t.Errorf("不符 advisory 应点明两个身份, got: %s", stdout)
+	}
+	state2, err := taskpipeline.LoadTaskState(dir, "feat/delegate-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state2.Assignment == nil || state2.Assignment.Status != taskpipeline.AssignDelivered {
+		t.Errorf("不符 --as 交付后状态仍应为 delivered, got %+v", state2.Assignment)
+	}
+}
+
 // TestTaskAssign_UnknownAgentWarnAccepted: an agent absent from the known set (codebuddy,
 // which has no project marker) is warned about but still accepted — the soft-validation
 // contract. The task is created offered so a worker using --as can still claim it explicitly.
