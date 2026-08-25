@@ -49,6 +49,19 @@ func TestRenderResumeSections(t *testing.T) {
 			t.Errorf("resume 输出应含 %q\n---OUTPUT---\n%s", want, out)
 		}
 	}
+	// Host-agnostic loading form (2026-08-25 prompt-copy fix): the footer names the
+	// session-continuity skill in natural language; the slash-command form
+	// (/session-continuity) is Claude Code-only dead text on other hosts.
+	//
+	// 宿主无关的加载形态（2026-08-25 文案修复）：尾部用自然语言点名
+	// session-continuity skill；slash command 形态（/session-continuity）在
+	// 其他宿主是死文本。
+	if !strings.Contains(out, "接续纪律用 session-continuity skill：") {
+		t.Errorf("resume 尾部应使用自然语言 skill 引用\n---OUTPUT---\n%s", out)
+	}
+	if strings.Contains(out, "/session-continuity") {
+		t.Errorf("resume 尾部不得含 Claude-only slash command 形态（/session-continuity）\n---OUTPUT---\n%s", out)
+	}
 }
 
 // TestRenderResume_ExternalOrigin pins the origin visibility of the proof-of-work loop: when the task carries an external issue
