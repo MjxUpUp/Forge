@@ -84,6 +84,24 @@ type EvaluateInput struct {
 	// ScoreResult.Evidence，供 review/评分消费者判断"完成声明可信度"。
 	EvidenceDeterministic int
 	EvidenceAgentClaim    int
+
+	// Expression (doc-artifact readability) dimension inputs — the measurement
+	// anchor of the output→re-check loop (docs/design/output-readability-gates.md).
+	// All deterministic: L1 issue counts come from doclint at score time, L2 from
+	// the recorded DocReview evidence. HasDocDeliverables=false (pure-code task)
+	// scores the dimension neutral 100.
+	//
+	// 表达（文档产物可读性）维度输入——输出→回检循环的度量锚点
+	// （docs/design/output-readability-gates.md）。全部确定性：L1 问题数来自
+	// 评分时的 doclint 实算，L2 来自已记录的 DocReview 证据。
+	// HasDocDeliverables=false（纯代码任务）该维度打中性 100。
+	HasDocDeliverables bool
+	// DocLintHardIssues: hard-rule hits across the task's changed .md deliverables.
+	DocLintHardIssues int // 变更 .md 产物的 L1 硬规则命中数
+	// DocRubricScore: recorded L2 rubric total (0-100); nil = no review recorded.
+	DocRubricScore *int // 已记录的 L2 rubric 总分；nil=未回检
+	// DocGateEscaped: the task bypassed the doc gate via escape hatch.
+	DocGateEscaped bool // 任务经逃生舱绕过了 doc gate
 }
 
 // GateHistory abstracts gate result data to avoid importing taskpipeline.
