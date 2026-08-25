@@ -104,3 +104,39 @@ metadata.triggers新增UserPromptSubmit关键词(做好看/美化/风格迁移/�
 ### Evidence
 
 美化类请求高频,触发覆盖缺口
+
+## [d-18cf01ed99b80478-377bfa21] accept
+
+- **Skill**: frontend-aesthetics-execution
+- **DecidedAt**: 2026-08-25T09:21:37Z
+- **By**: kimi-code
+
+### Diagnosis
+
+description 490 字符超新定 350 软上限：6 种风格全列名+十余个触发词堆叠，与正文阶段 1 风格清单重复
+
+### Revision
+
+压缩至 336 字符（-31%）：风格枚举下沉正文，触发词保留核心路由词（做好看/Linear·Apple·Vercel 风/品牌 DESIGN.md 还原/高级感动效/反 AI 同质化/Rive·Spline·Framer Motion/micro-interaction/页面太丑），SKIP 去"用"前缀
+
+### Evidence
+
+提示词评审实测 52 个 description 合计 16,486 字符（均值 ~317），本 skill 为最长；改后 forge skills validate 52/52 通过
+
+## [d-18cf032b32fbf778-5294e9be] accept
+
+- **Skill**: frontend-aesthetics-execution
+- **DecidedAt**: 2026-08-25T09:44:21Z
+- **By**: kimi-code
+
+### Diagnosis
+
+上轮 description 压缩删去的风格/品牌词中，Bento/Neo-brutalism/Stripe 有独立触发价值且 triggers 无兜底（Linear/Apple/Vercel 风等仍在 description 保留，不补）
+
+### Revision
+
+triggers keywords 增补 3 个：Bento、Neo-brutalism、Stripe
+
+### Evidence
+
+审查 minor 修复；forge skills validate 通过

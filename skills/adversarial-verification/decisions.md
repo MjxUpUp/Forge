@@ -61,3 +61,21 @@ SKILL.md：判据增至 4 条（新增二手转述标记+抽查，翻转裁决�
 ### Rationale
 
 四条修订各自对应一个已发生的最小反例（不是预防性 speculation）；skill-evolution 边界内的行为契约补强，未引入新流程依赖；下轮使用本 skill 的辩论即回归验证场
+
+## [d-18cf01fe768cace0-67a19c7e] accept
+
+- **Skill**: adversarial-verification
+- **DecidedAt**: 2026-08-25T09:22:49Z
+- **By**: kimi-code
+
+### Diagnosis
+
+与 project-acceptance/review-batch 的"验收"路由互斥不清；首句未锚定本 skill 的互斥关键词
+
+### Revision
+
+首句锚定"红蓝对抗 × 防假绿"；SKIP 补 review-batch（重构后全量深查编排）互指，project-acceptance 条目去"默认档"表述；Use when 删'深度扫描严格比对'引语（关键词仍在 metadata.triggers 兜底）
+
+### Evidence
+
+triggers 保留"严格验收"限定词，裸"验收"归 project-acceptance；validate 52/52 通过
