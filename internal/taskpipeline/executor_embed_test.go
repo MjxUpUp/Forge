@@ -2,6 +2,7 @@ package taskpipeline
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -96,6 +97,69 @@ func TestRunEmbeddedHook_UnknownHookFailsClosed(t *testing.T) {
 	}
 	if !strings.Contains(output, "not found") {
 		t.Fatalf("expected not-found detail for unknown hook, got: %q", output)
+	}
+}
+
+// TestRunEmbeddedHook_AssertionCheck_ScrubsInheritedToolEnv pins the 2026-08-25
+// review-minor fix: runEmbeddedHook must scrub the tool-input env vars inherited
+// from the parent process. assertion-check picks batch mode (the gate's
+// full-diff scan) by an EMPTY FORGE_FILE_PATH — an exported FORGE_FILE_PATH in
+// the parent shell would silently drop the gate into per-edit analysis and the
+// full scan would never run. Test data strings are assembled via concatenation
+// so this file's own diff does not trip assertion-check on itself.
+//
+// TestRunEmbeddedHook_AssertionCheck_ScrubsInheritedToolEnv 钉住 2026-08-25
+// review minor 修复：runEmbeddedHook 必须剔除从父进程继承的 tool-input env。
+// assertion-check 以 FORGE_FILE_PATH 为空判别 batch 模式（门禁全量扫描）——
+// 父 shell 里 export 的 FORGE_FILE_PATH 会把门禁静默降级成 per-edit 分析，全量
+// 扫描永远不跑。测试数据字符串用拼接构造，避免本文件自身 diff 触发
+// assertion-check。
+func TestRunEmbeddedHook_AssertionCheck_ScrubsInheritedToolEnv(t *testing.T) {
+	dir := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	git("init", "-b", "master")
+	git("config", "user.email", "test@example.com")
+	git("config", "user.name", "Test")
+
+	// Baseline with a real assertion, then a STAGED weakening (gate timing:
+	// changes have landed) — batch mode must detect it.
+	fatalCall := "t" + ".Fatalf"
+	logCall := "t" + ".Log"
+	old := "package x\nfunc TestFoo(t *testing.T) {\n\t" + fatalCall + "(\"expected 4\")\n}\n"
+	if err := os.WriteFile(filepath.Join(dir, "foo_test.go"), []byte(old), 0644); err != nil {
+		t.Fatal(err)
+	}
+	git("add", ".")
+	git("commit", "-m", "baseline")
+	weakened := "package x\nfunc TestFoo(t *testing.T) {\n\t" + logCall + "(\"expected 4\")\n}\n"
+	if err := os.WriteFile(filepath.Join(dir, "foo_test.go"), []byte(weakened), 0644); err != nil {
+		t.Fatal(err)
+	}
+	git("add", "foo_test.go")
+
+	// Polluted parent env: an exported FORGE_FILE_PATH must NOT reach the gate
+	// script (it would flip batch mode into per-edit and skip the full scan).
+	t.Setenv("FORGE_FILE_PATH", "foo_test.go")
+	t.Setenv("FORGE_TOOL_NAME", "Edit")
+	t.Setenv("FORGE_OLD_STRING", "x")
+	t.Setenv("FORGE_NEW_STRING", "y")
+
+	passed, infra, output := runEmbeddedHook(dir, "assertion-check")
+	if infra {
+		t.Fatalf("infrastructure failure must not occur in a normal repo: %q", output)
+	}
+	if !passed {
+		t.Fatalf("assertion-check is advisory (always passes); got fail: %q", output)
+	}
+	if !strings.Contains(output, "疑似断言弱化") {
+		t.Fatalf("batch mode must scan the staged diff despite inherited FORGE_FILE_PATH; got: %q", output)
 	}
 }
 
