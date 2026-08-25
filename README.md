@@ -291,7 +291,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 
 | 命令 | 说明 |
 |------|------|
-| `forge review pass [--ref <ref>] [--note <文本>]` | 标记当前变更已通过 code-review-gate（task 模式写任务状态，否则写分支 stamp）；--note 审查结论文本记入 ReviewRound/stamp 与 checklog 审计留痕 |
+| `forge review pass [--ref <ref>] [--note <文本>] [--acknowledge-changes]` | 标记当前变更已通过 code-review-gate（task 模式写任务状态，否则写分支 stamp）；--note 审查结论文本记入 ReviewRound/stamp 与 checklog 审计留痕；距上次基线有源码变更时裸 pass 会被拒——须 --note 记复审结论，或 --acknowledge-changes 显式自我承担（记 WARN 级 self-refresh 审计） |
 | `forge review gate` | 判定当前是否需要审查（Stop hook 调用；exit 0=放行，1=需审 block） |
 | `forge review status` | 显示当前审查状态 |
 

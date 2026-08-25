@@ -216,9 +216,9 @@ func TestClaudeMDCommonErrorsIncludesSkillDecisions(t *testing.T) {
 
 // TestClaudeMDCommonErrorsIncludesAcceptancePreflight guards the common-errors
 // table documents the task-complete acceptance pre-flight (A 组件). task 声明
-// acceptance 时 complete 校验 AcceptedHeadCommit==HEAD + Passed → BLOCKED——agents
-// 遇到需在 CLAUDE.md 看到 verify-acceptance 回扣路径 + --acceptance-gate disable
-// 逃生舱。对齐 test-coverage 守卫模式。
+// acceptance 时 complete 校验验收快照新鲜（源码内容指纹，2026-08-25 起）+ Passed →
+// BLOCKED——agents 遇到需在 CLAUDE.md 看到 verify-acceptance 回扣路径 +
+// --acceptance-gate disable 逃生舱。对齐 test-coverage 守卫模式。
 func TestClaudeMDCommonErrorsIncludesAcceptancePreflight(t *testing.T) {
 	section := buildForgeSection(true)
 
