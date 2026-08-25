@@ -1,6 +1,6 @@
 ---
 name: adversarial-verification
-description: "对抗性验证双协议：红蓝对抗辩论（论点必须锚外部独立证据，禁止模型权重自辩驳）+ 对抗性验收（逐功能点实跑严格比对，防文档比对式假绿）。Use when: 用户要求'红蓝对抗''对抗辩论''adversarial review''严格验收''深度扫描严格比对''防假绿'时、调研结论听起来全是自我肯定需要红队检验时、agent 验收放行但用户怀疑功能断裂时。SKIP: 普通代码 diff 审查（用 code-review-gate）、发布 go/no-go（用 release-readiness）、单点事实核查（用 research-workflow 轻量档 Phase L）、无对抗需求的常规验收（用 project-acceptance 默认档）。"
+description: "对抗性验证双协议（红蓝对抗 × 防假绿）：红蓝对抗辩论（论点锚外部独立证据，禁止权重自辩驳）+ 对抗性验收（逐功能点实跑严格比对，防文档比对式假绿）。Use when: 用户要求'红蓝对抗''对抗辩论''adversarial review''严格验收''防假绿'时、调研结论全是自我肯定需红队检验时、agent 验收放行但用户怀疑功能断裂时。SKIP: 普通代码 diff 审查（用 code-review-gate）、发布 go/no-go（用 release-readiness）、单点事实核查（用 research-workflow 轻量档 Phase L）、无对抗需求的常规验收（用 project-acceptance）、重构后全量深查编排（用 review-batch）。"
 metadata:
   pattern: reviewer
   domain: quality

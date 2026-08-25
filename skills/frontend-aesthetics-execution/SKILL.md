@@ -1,11 +1,11 @@
 ---
 name: frontend-aesthetics-execution
-description: "把 UI 做好看、做风格迁移、做高级感动效的可执行审美工程——给 6 种主流风格（暗色精致 SaaS/Apple Liquid Glass/Neo-brutalism/Bento/Dopamine/Human Touch）的 token 模板，动效曲线与工具选型决策，反 AI 同质化的系统化手法。Use when: 把 UI 做好看、改前端风格、做成 Linear/Apple/Vercel/Stripe 风、用 DESIGN.md / awesome-design-md 还原某具体品牌风格、做高级感动效、UI 重塑/美化、审美调优、反 AI 同质化、选 Rive/Spline/Framer Motion、做 micro-interaction、页面太丑怎么调时。SKIP: 选技术栈（用 frontend-stack-selection）、写组件不出错的规范（用 frontend-feature-development）、提交前审查（用 frontend-code-review）、建 design token 体系（用 design-system-workflow）。"
+description: "UI 美化/风格迁移/高级感动效的审美工程——6 种主流风格 token 模板、动效与工具选型、反 AI 同质化手法。Use when: 做好看/美化 UI、做成 Linear/Apple/Vercel 风、用品牌 DESIGN.md 还原风格、做高级感动效、反 AI 同质化、选 Rive/Spline/Framer Motion、做 micro-interaction、页面太丑时。SKIP: 选技术栈（frontend-stack-selection）、写组件规范（frontend-feature-development）、提交前审查（frontend-code-review）、建 design token 体系（design-system-workflow）。"
 metadata:
   pattern: inversion + pipeline
   domain: frontend
   composes: [design-system-workflow, frontend-feature-development, frontend-code-review]
-  triggers: [{"event":"UserPromptSubmit","keywords":["做好看","美化","风格迁移","高级感","太丑","审美","micro-interaction","动效"],"cooldown":600}]
+  triggers: [{"event":"UserPromptSubmit","keywords":["做好看","美化","风格迁移","高级感","太丑","审美","micro-interaction","动效","Bento","Neo-brutalism","Stripe"],"cooldown":600}]
 ---
 
 # 前端审美执行：做好看与风格迁移

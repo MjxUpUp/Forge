@@ -1,6 +1,6 @@
 ---
 name: review-batch
-description: "整项目级批量代码审查编排：拆模块并行 dispatch subagent 审查，输出去重分级的 punch-list。Use when: 审查整个项目/大范围代码时、重构后做全量验收时、说\"审查整个项目\"\"全项目 review\"\"大规模审查\"\"重构完验收\"\"分模块审查\"时。SKIP: 提交前单次 diff 审查（用 code-review-gate）、项目功能验收/PRD 覆盖度对比（用 project-acceptance）、发布 go/no-go 门禁（用 release-readiness）。"
+description: "整项目级批量代码审查编排（重构后全量深查）：拆模块并行 dispatch subagent 审查，输出去重分级的 punch-list。Use when: 审查整个项目/大范围代码时、重构后做全量深查时、说\"审查整个项目\"\"全项目 review\"\"大规模审查\"\"重构完验收\"\"分模块审查\"时。SKIP: 提交前单次 diff 审查（用 code-review-gate）、PRD/功能完整度验收（用 project-acceptance）、防假绿/红蓝对抗严格验证（用 adversarial-verification）、发布 go/no-go 门禁（用 release-readiness）。"
 metadata:
   pattern: pipeline + reviewer
   domain: code-review

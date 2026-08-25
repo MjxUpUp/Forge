@@ -29,6 +29,8 @@ skill-name/                # 目录名 = skill id = frontmatter.name
                           # 让下一轮 agent 理解 why，避免重复探索已失败方向。审计/可复现，非泛化学习。
 ```
 
+> **退役 skill 存档**：目录中仅有 `decisions.md` 而无 `SKILL.md` 的（如 `fact-research/`、`web-search-bridge/`）是退役 skill 的决策存档——append-only 决策历史保留供审计。过滤发生在 plugin pack / install 层：两者只认带 `SKILL.md` 的目录（无 `SKILL.md` 的孤儿目录跳过，`internal/agentbridge/pluginpack.go` / `internal/skillsdist` ListSkills）；`skills/embed.go` 的 `//go:embed *` 是全量嵌入——退役目录的 `decisions.md` 字节虽随二进制分发，但不被任何消费方加载。退役一个 skill 时删除其 `SKILL.md`/`references/` 等分发内容，但保留 `decisions.md`。
+
 ## 4. Frontmatter 规范（机器校验项）
 
 ```yaml
@@ -57,6 +59,10 @@ metadata:
 - 必须出现 `Use when`（大小写不敏感）
 - 必须出现 `SKIP`
 - 宁可多触发（"pushy"），不要少触发
+
+**软上限**（约定自律线，非 validate 硬校验；R4 硬上限 1024 字符、>500 走 advisory）：
+- description ≤ 350 字符。超出时先自查：枚举清单是否可下沉正文（正文已有的路由表/风格列表不在 description 重复）、SKIP 条目是否可合并、触发词是否堆叠近义词。
+- 计数口径：字符数按 YAML 解析后的 logical runes 计（validator 即 R4 口径），与 raw source 计数可能差转义符（如 `\"` 在源文件占 2 字符、解析后算 1 个 rune）。
 
 **差**：`帮助管理 Rust trait`
 **好**：`Rust trait 适配器模式。Use when: 为已有类型实现外部 trait 时、创建 newtype wrapper 时、遇到孤儿规则冲突时。SKIP: 定义新 trait（直接定义即可）、纯数据结构设计。`
