@@ -581,7 +581,7 @@ func testCoverageDetail(ok bool, missing []string) string {
 // 末尾审计脚注，不再当头条教学。
 func formatMissing(missing []string) string {
 	primary := "Add tests for changed source (CLAUDE.md rule 4: 测试伴随变更). " +
-		"→ 加载 test-discipline skill（/test-discipline 或 skills/test-discipline/SKILL.md）：" +
+		"→ 加载 test-discipline skill：" +
 		"测试质量守卫，区分单元测试与端到端、防断言弱化与假测试。" +
 		"入口(main.go/cmd)/生成物(.gen./_generated/.pb.)/纯类型文件(types/dto/models)白名单免测。"
 	footnote := " 确不可测时设 FORGE_TEST_COVERAGE=disable（落 checklog 审计，可 forge trace 追溯）。"

@@ -25,4 +25,16 @@ func TestGateGuidance_RoutesToSkills(t *testing.T) {
 			t.Errorf("gateGuidance 应含问题类型路由 skill %q，got:\n%s", want, gateGuidance)
 		}
 	}
+	// Host-agnostic loading form (2026-08-25 prompt-copy fix): the slash-command
+	// form (/code-review-gate) only exists in Claude Code, and a repo-relative
+	// skills/... path is a 404 in user projects — both must stay out.
+	//
+	// 宿主无关的加载形态（2026-08-25 文案修复）：slash command 形态
+	// （/code-review-gate）只在 Claude Code 存在，仓库相对 skills/... 路径在
+	// 用户项目是 404——两者都不得出现。
+	for _, banned := range []string{"/code-review-gate", "skills/code-review-gate/SKILL.md"} {
+		if strings.Contains(gateGuidance, banned) {
+			t.Errorf("gateGuidance 不得含 Claude-only slash command 或仓库相对路径 %q，got:\n%s", banned, gateGuidance)
+		}
+	}
 }
