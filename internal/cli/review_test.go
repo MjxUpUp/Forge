@@ -94,37 +94,35 @@ func TestRenderReviewPassBlindSpot(t *testing.T) {
 	}
 }
 
-// TestRunReviewPassAt_ReworkRoundRequiresRecheck pins the re-review requirement surfaced
-// at re-stamp time (2026-08 protocol gap fix): when `forge review pass` stamps a round whose
-// code snapshot CHANGED since the previous stamped round (head OR workdir-change hash — the
-// baseline delta that comes from fixing previous review findings), the output must carry an
-// explicit ADVISORY that this stamp is only legitimate if a fresh read-only re-review agent
-// already verified the fixes — the fixer cannot self-certify. Two silence contracts: round 1
-// (no previous round) and a same-state repeat stamp (transient-failure retry / baseline
-// rebuild — no code change, no re-review owed). Rationale: the snapshot loop
-// (review-fix-recheck, executor.go task-complete HARD block) enforces only the SHAPE of the
-// loop (re-stamp after code changes); without this cue, a fixer can stamp without
-// re-reviewing and the protocol shows zero difference from an honest round (2026-08 real
-// case: round-1 fixes were stamped without re-review and passed task-complete; the gap was
-// only caught by a human asking "did you re-review?"). Trigger is the snapshot delta, not
-// the bare round count — bare counts misfire on no-change re-stamps.
+// TestRunReviewPassAt_ReworkRoundRequiresRecheck pins the self-refresh guard
+// (2026-08-25 gate-loopholes, replacing the 2026-08 post-stamp advisory): when
+// `forge review pass` re-stamps a baseline whose SOURCE CONTENT changed since
+// the last stamp — the fix-then-recommit loop shape — a bare pass is REFUSED;
+// the agent must either record the re-review conclusion (--note, the honest
+// flow) or explicitly self-certify (--acknowledge-changes, recorded as a WARN
+// self-refresh audit). Non-source deltas (commit-message amend with identical
+// content) need no acknowledgment, and a same-state repeat stamp (transient
+// retry) stays silent. Rationale: the snapshot loop (task-complete HARD block)
+// enforces only the loop's SHAPE; the old advisory let a fixer self-refresh the
+// baseline with zero re-review and zero audit trail (real usage-log case: the
+// agent answered the HARD block by simply re-running `forge review pass`).
 //
-// TestRunReviewPassAt_ReworkRoundRequiresRecheck 钉住重新盖章时的复审要求提示
-// （2026-08 协议缺口修复）：`forge review pass` 盖的轮次若代码快照自上一枚盖章轮以来
-// 「变了」（head 或工作区变更 hash——源于修复上一轮 review 发现的基线增量），输出必须
-// 带明确 ADVISORY——本枚章只在「已重新派只读复审 agent 验证过修复」时合法，修复者
-// 不能自证。两份静默契约：第 1 轮（无上一轮可比）与同状态重复盖章（瞬态失败重试/
-// 重建基线——无代码变更即不欠复审）。动机：快照闭环（review-fix-recheck，
-// executor.go task-complete 硬阻断）只强制循环的「形状」（改码后重新盖章）；没有本
-// 提示，修复者可以不复审直接盖章，协议输出与诚实轮零差别（2026-08 真实案例：第一轮
-// 修复未经复审直接盖章过了 task-complete，缺口靠人工追问「复审了吗」才暴露）。触发
-// 条件是快照增量而非裸轮次计数——裸计数会在无变更重盖上误响。
+// TestRunReviewPassAt_ReworkRoundRequiresRecheck 钉住自助刷新守卫
+// （2026-08-25 gate-loopholes，取代 2026-08 的盖章后 advisory）：当
+// `forge review pass` 重盖的基线自上次盖章以来【源码内容】已变——修复再提交的
+// 循环形状——裸 pass 一律【拒绝】；agent 须记录复审结论（--note，诚实流）或显式
+// 自我承担（--acknowledge-changes，记 WARN self-refresh 审计）。非源码增量
+// （amend commit message、内容不变）无需确认；同状态重复盖章（瞬态重试）保持
+// 静默。动机：快照闭环（task-complete 硬阻断）只强制循环的「形状」；旧
+// advisory 让修复者零复审零审计地自助刷新基线（真实 usage 日志案例：agent 被
+// HARD 拦后直接自己重跑 `forge review pass` 放行）。
 func TestRunReviewPassAt_ReworkRoundRequiresRecheck(t *testing.T) {
 	dir := t.TempDir()
-	// Real git fixture: the trigger is the snapshot delta (head/hash), which needs a
-	// moving HEAD — a bare temp dir has empty head/hash forever and can never fire.
+	// Real git fixture: the guard trigger is the content-fingerprint delta,
+	// which needs a moving HEAD — a bare temp dir has empty head/hash forever
+	// and can never fire.
 	//
-	// 真实 git 夹具：触发条件是快照增量（head/hash），需要会动的 HEAD——裸临时目录
+	// 真实 git 夹具：守卫触发条件是内容指纹增量，需要会动的 HEAD——裸临时目录
 	// 的 head/hash 恒空，永远不触发。
 	runGit(t, dir, `init`)
 	runGit(t, dir, `config`, `user.email`, `test@test.com`)
@@ -139,11 +137,11 @@ func TestRunReviewPassAt_ReworkRoundRequiresRecheck(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Round 1: first stamp — silent (nothing fixed yet, no re-review owed).
+	// Round 1: first stamp — silent (no previous baseline, no acknowledgment owed).
 	//
-	// 第 1 轮：首次盖章——静默（尚无修复，不欠复审）。
+	// 第 1 轮：首次盖章——静默（无既有基线，不欠确认）。
 	first := captureStdout(t, func() {
-		if err := runReviewPassAt(dir, ref, ""); err != nil {
+		if err := runReviewPassAt(dir, ref, "", false); err != nil {
 			t.Fatalf("runReviewPassAt 第 1 次: %v", err)
 		}
 	})
@@ -151,55 +149,92 @@ func TestRunReviewPassAt_ReworkRoundRequiresRecheck(t *testing.T) {
 		t.Errorf(`第 1 轮盖章不应出现复审提示（尚无修复发生），got: %q`, first)
 	}
 
-	// Round 2 with NO code change (same-state repeat stamp: transient retry / baseline
-	// rebuild) — still silent: no snapshot delta, no re-review owed.
+	// Round 2 with NO code change (same-state repeat stamp: transient retry /
+	// baseline rebuild) — still silent: no content delta, nothing to confirm.
 	//
 	// 第 2 轮且无代码变更（同状态重复盖章：瞬态重试/重建基线）——依旧静默：
-	// 无快照增量，不欠复审。
+	// 无内容增量，无需确认。
 	repeat := captureStdout(t, func() {
-		if err := runReviewPassAt(dir, ref, ""); err != nil {
+		if err := runReviewPassAt(dir, ref, "", false); err != nil {
 			t.Fatalf("runReviewPassAt 无变更重盖: %v", err)
 		}
 	})
 	if strings.Contains(repeat, "复审") {
-		t.Errorf(`同状态重复盖章不欠复审、应静默（触发条件是快照增量非轮次计数），got: %q`, repeat)
+		t.Errorf(`同状态重复盖章无需确认、应静默（触发条件是内容增量非轮次计数），got: %q`, repeat)
 	}
 
-	// Fix + commit → snapshot delta (HEAD moved). Round 3 stamp must carry the
-	// re-review requirement.
+	// Fix + commit → content delta. A BARE re-stamp must now be REFUSED (the
+	// loophole closed), and the refusal must point at the re-review protocol.
 	//
-	// 修复 + 提交 → 快照增量（HEAD 移动）。第 3 轮盖章必须带复审要求。
+	// 修复 + 提交 → 内容增量。裸盖章现在必须被【拒绝】（漏洞关闭），且拒绝
+	// 文案须指明复审协议。
 	os.WriteFile(filepath.Join(dir, `main.go`), []byte("package main\n\nfunc main() { println(1) }\n"), 0644)
 	runGit(t, dir, `add`, `.`)
 	runGit(t, dir, `commit`, `-m`, `fix: apply review findings`)
-	third := captureStdout(t, func() {
-		if err := runReviewPassAt(dir, ref, ""); err != nil {
-			t.Fatalf("runReviewPassAt 修复后重盖: %v", err)
-		}
-	})
-	if !strings.Contains(third, "复审") || !strings.Contains(third, "自证") {
-		t.Errorf(`快照变更后的重新盖章应提示复审要求（复审+自证），got: %q`, third)
+	if err := runReviewPassAt(dir, ref, "", false); err == nil {
+		t.Fatal("快照变更后的裸盖章必须被拒绝（self-refresh 漏洞）")
+	} else if !strings.Contains(err.Error(), "复审") || !strings.Contains(err.Error(), "acknowledge-changes") {
+		t.Errorf("拒绝文案须指明复审协议与确认途径，got: %v", err)
 	}
-	if !strings.Contains(third, "ADVISORY") {
-		t.Errorf(`复审要求应以 ADVISORY 前缀可见（对齐 renderReviewPassBlindSpot 风格），got: %q`, third)
+	// The refusal must not have stamped: still exactly 2 rounds.
+	//
+	// 拒绝不得落章：仍恰为 2 轮。
+	if st, err := taskpipeline.LoadTaskState(dir, ref); err != nil || len(st.ReviewRounds) != 2 {
+		t.Fatalf("被拒绝的盖章不得追加 ReviewRound, err=%v rounds=%v", err, st)
 	}
 
-	// Workdir-only delta (pins the OTHER OR-branch): modify source WITHOUT committing —
-	// HEAD unchanged, but the workdir change-hash differs from round 3's. Round 4 must
-	// still fire (uncommitted fixes are fixes too). Without this segment, deleting the
-	// prev.ChangeHash != hash OR-term would leave this test green.
+	// Honest flow: re-review done, conclusion recorded via --note → stamp
+	// succeeds; the entry is an ordinary pass (note IS the acknowledgment), no
+	// self-refresh marker.
 	//
-	// 仅工作区增量（钉住 OR 的另一半）：不 commit 只改源码——HEAD 不变，但工作区
-	// 变更 hash 与第 3 轮不同。第 4 轮仍必须提示（未提交的修复也是修复）。没有这段，
-	// 误删 prev.ChangeHash != hash 这个 OR 项时本测试仍会绿。
+	// 诚实流：复审已做、结论经 --note 记录 → 盖章成功；条目为普通 pass
+	// （note 即确认），无 self-refresh 标记。
+	if err := runReviewPassAt(dir, ref, "复审结论：修复正确，无新发现", false); err != nil {
+		t.Fatalf("--note 记复审结论的盖章应放行: %v", err)
+	}
+
+	// Workdir-only delta (uncommitted fix) → bare pass refused again;
+	// --acknowledge-changes stamps AND records a WARN self-refresh audit.
+	//
+	// 仅工作区增量（未提交修复）→ 裸盖章再次被拒；--acknowledge-changes
+	// 放行并记 WARN self-refresh 审计。
 	os.WriteFile(filepath.Join(dir, `main.go`), []byte("package main\n\nfunc main() { println(2) }\n"), 0644)
-	fourth := captureStdout(t, func() {
-		if err := runReviewPassAt(dir, ref, ""); err != nil {
-			t.Fatalf("runReviewPassAt 工作区增量重盖: %v", err)
+	if err := runReviewPassAt(dir, ref, "", false); err == nil {
+		t.Fatal("工作区增量的裸盖章同样必须被拒绝")
+	}
+	if err := runReviewPassAt(dir, ref, "", true); err != nil {
+		t.Fatalf("--acknowledge-changes 显式确认应放行: %v", err)
+	}
+	entries, err := checklog.LoadAll(dir)
+	if err != nil {
+		t.Fatalf("LoadAll: %v", err)
+	}
+	var last *checklog.Entry
+	for i := range entries {
+		if entries[i].Check == checklog.CheckReviewPass && entries[i].TaskRef == ref {
+			last = &entries[i]
+		}
+	}
+	if last == nil || last.Level != checklog.LevelWarn || !strings.Contains(last.Detail, "self-refresh") {
+		t.Errorf("--acknowledge-changes 的盖章须记 WARN self-refresh 审计, got %+v", last)
+	}
+
+	// Non-source delta: amend ONLY the commit message (content identical) →
+	// bare pass stays allowed and silent — the guard distinguishes source
+	// content changes from non-source ones (no false positive on amends).
+	//
+	// 非源码增量：只 amend commit message（内容不变）→ 裸盖章照常放行且静默
+	// ——守卫区分源码内容变更与非源码变更（amend 不误伤）。
+	runGit(t, dir, `add`, `.`)
+	runGit(t, dir, `commit`, `-m`, `fix: workdir fix`)
+	runGit(t, dir, `commit`, `--amend`, `-m`, `fix: workdir fix (message only)`)
+	silent := captureStdout(t, func() {
+		if err := runReviewPassAt(dir, ref, "", false); err != nil {
+			t.Fatalf("仅 commit message 变更（内容不变）不应要求确认: %v", err)
 		}
 	})
-	if !strings.Contains(fourth, "复审") {
-		t.Errorf(`工作区增量（HEAD 未动、hash 变）的重新盖章同样欠复审、必须提示，got: %q`, fourth)
+	if strings.Contains(silent, "复审") || strings.Contains(silent, "self-refresh") {
+		t.Errorf("非源码变更（amend message）应静默放行，got: %q", silent)
 	}
 }
 
@@ -222,7 +257,7 @@ func TestRunReviewPassAt_ExplicitRef(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := runReviewPassAt(dir, ref, ""); err != nil {
+	if err := runReviewPassAt(dir, ref, "", false); err != nil {
 		t.Fatalf("runReviewPassAt(--ref): %v", err)
 	}
 	reloaded, err := taskpipeline.LoadTaskState(dir, ref)
@@ -236,7 +271,7 @@ func TestRunReviewPassAt_ExplicitRef(t *testing.T) {
 	// Nonexistent ref → hard error, no stamp fallback.
 	//
 	// 不存在的 ref → 硬报错，不回落 stamp
-	if err := runReviewPassAt(dir, `feat/nonexistent`, ""); err == nil {
+	if err := runReviewPassAt(dir, `feat/nonexistent`, "", false); err == nil {
 		t.Fatal("ref 不存在应报错返回（不回落分支 stamp 分支）")
 	}
 }
@@ -258,7 +293,7 @@ func TestRunReviewPassAt_RecordsRounds(t *testing.T) {
 	}
 
 	for i := 0; i < 2; i++ {
-		if err := runReviewPassAt(dir, ref, ""); err != nil {
+		if err := runReviewPassAt(dir, ref, "", false); err != nil {
 			t.Fatalf("runReviewPassAt 第 %d 次: %v", i+1, err)
 		}
 	}
@@ -323,7 +358,7 @@ func TestRunReviewPassAt_Note(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := runReviewPassAt(dir, ref, "审查结论：双轨无发现，快照一致"); err != nil {
+	if err := runReviewPassAt(dir, ref, "审查结论：双轨无发现，快照一致", false); err != nil {
 		t.Fatalf("runReviewPassAt --note: %v", err)
 	}
 
@@ -360,7 +395,7 @@ func TestRunReviewPassAt_Note(t *testing.T) {
 	//
 	// 空 note：ReviewRound.Note 保持空、detail 保持旧形状（无 "note:" 后缀）——
 	// 绝大多数不带 flag 的 pass 不留噪声。
-	if err := runReviewPassAt(dir, ref, ""); err != nil {
+	if err := runReviewPassAt(dir, ref, "", false); err != nil {
 		t.Fatalf("runReviewPassAt 空 note: %v", err)
 	}
 	reloaded, err = taskpipeline.LoadTaskState(dir, ref)
@@ -415,5 +450,80 @@ func TestRenderReviewStatus_ExplicitRef(t *testing.T) {
 
 	if err := renderReviewStatus(dir, `feat/nonexistent`); err == nil {
 		t.Fatal("status 的 ref 不存在应报错返回")
+	}
+}
+
+// TestRunReviewPassAt_BaselineUnreachableAudited pins the fail-open audit trail
+// (review minor #2): when the previous review baseline commit is unreachable
+// (history rewritten by amend/rebase), a bare `forge review pass` re-stamps
+// fail-open — but that fail-open must NOT be silent: the checklog review-pass
+// entry upgrades to WARN with a baseline-unreachable marker, aligning with the
+// executor's fail-open which also persists a checklog entry.
+//
+// TestRunReviewPassAt_BaselineUnreachableAudited 钉住 fail-open 的审计留痕
+// （review minor #2）：上次审查基线 commit 不可达（amend/rebase 改写历史）时，
+// 裸 `forge review pass` 按 fail-open 重盖章——但 fail-open 不得静默：
+// checklog review-pass 条目升级为 WARN 并打 baseline-unreachable 标记，与
+// executor fail-open 同样落 checklog 的做法对齐。
+func TestRunReviewPassAt_BaselineUnreachableAudited(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, `init`)
+	runGit(t, dir, `config`, `user.email`, `test@test.com`)
+	runGit(t, dir, `config`, `user.name`, `Test`)
+	os.WriteFile(filepath.Join(dir, `main.go`), []byte("package main\n\nfunc main() {}\n"), 0644)
+	runGit(t, dir, `add`, `.`)
+	runGit(t, dir, `commit`, `-m`, `initial`)
+
+	const ref = `feat/unreachable-base`
+	state := &taskpipeline.TaskState{TaskRef: ref, Branch: ref}
+	if err := taskpipeline.SaveTaskState(dir, state); err != nil {
+		t.Fatal(err)
+	}
+
+	// First stamp establishes a real baseline.
+	//
+	// 首次盖章建立真实基线。
+	if err := runReviewPassAt(dir, ref, "", false); err != nil {
+		t.Fatalf("首次盖章: %v", err)
+	}
+
+	// Rewrite the state's baseline to a commit that never existed — simulating
+	// a baseline whose object was rewritten away (cheaper and more
+	// deterministic than reflog-expire + gc to make a real commit unreachable).
+	//
+	// 把 state 里的基线改写成一个从不存在的 commit——模拟对象被改写掉的基线
+	// （比 reflog expire + gc 让真实 commit 不可达更省事、更确定）。
+	st, err := taskpipeline.LoadTaskState(dir, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.ReviewedHeadCommit = `deadbeefdeadbeefdeadbeefdeadbeefdeadbeef`
+	if err := taskpipeline.SaveTaskState(dir, st); err != nil {
+		t.Fatal(err)
+	}
+
+	// Bare re-stamp: fail-open (no refusal), but a WARN baseline-unreachable
+	// audit entry must be recorded.
+	//
+	// 裸重盖章：fail-open（不拒绝），但必须记 WARN 级 baseline-unreachable
+	// 审计条目。
+	if err := runReviewPassAt(dir, ref, "", false); err != nil {
+		t.Fatalf("基线不可达应 fail-open 放行: %v", err)
+	}
+	entries, err := checklog.LoadAll(dir)
+	if err != nil {
+		t.Fatalf("LoadAll: %v", err)
+	}
+	var last *checklog.Entry
+	for i := range entries {
+		if entries[i].Check == checklog.CheckReviewPass && entries[i].TaskRef == ref {
+			last = &entries[i]
+		}
+	}
+	if last == nil {
+		t.Fatal("缺 review-pass 条目")
+	}
+	if last.Level != checklog.LevelWarn || !strings.Contains(last.Detail, "baseline-unreachable") {
+		t.Errorf("fail-open 重盖章须记 WARN 级 baseline-unreachable 审计, got level=%s detail=%q", last.Level, last.Detail)
 	}
 }

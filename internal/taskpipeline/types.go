@@ -44,6 +44,27 @@ type AcceptanceCriterion struct {
 	// forge_task_proof 比对 == 当前 HEAD 判定 Passed 是否 fresh——避免 agent 读基于旧代码的过时
 	// Passed 声明 done。空 = 未跑过 verify（老 state 兼容），proof 走 v1 重跑兜底。
 	AcceptedHeadCommit string `json:"accepted_head_commit,omitempty"`
+	// AcceptedBaseCommit + AcceptedChangeHash are the content-based freshness snapshot
+	// (2026-08-25 gate-loophole fix): the freshness consumer (CheckAcceptanceFresh) used to
+	// compare AcceptedHeadCommit == HEAD, but the protocol order is verify-acceptance → commit
+	// → complete, and committing moves HEAD without changing source content — every --accept
+	// task was penalized with a mandatory re-run ("基于旧代码（快照 a ≠ HEAD b）"). The new
+	// snapshot binds the SOURCE CONTENT fingerprint (review.SourceChangesSince) anchored at the
+	// task's HeadCommit: a content-preserving commit keeps the fingerprint (no stale
+	// re-run), while any post-verify source edit flips it (still caught). Empty
+	// AcceptedBaseCommit = legacy state (or HeadCommit unset/unresolvable at verify time) →
+	// the consumer falls back to the old HEAD-equality check.
+	//
+	// AcceptedBaseCommit + AcceptedChangeHash 是基于内容的 freshness 快照（2026-08-25 门禁
+	// 漏洞修复）：freshness 消费方（CheckAcceptanceFresh）原比对 AcceptedHeadCommit==HEAD，
+	// 但协议顺序是 verify-acceptance → commit → complete，commit 移动 HEAD 却不改源码内容
+	// ——每个带 --accept 的任务都被罚重跑一次（「基于旧代码（快照 a ≠ HEAD b）」）。新快照
+	// 绑锚定在任务 HeadCommit 的源码内容指纹（review.SourceChangesSince）：不改内容的
+	// commit 保持指纹不变（不再罚重跑），验收后的任何源码改动翻转指纹（照样检出）。
+	// AcceptedBaseCommit 空 = 老 state（或 verify 时 HeadCommit 未设/不可达）→ 消费方回落
+	// 旧的 HEAD 相等检查。
+	AcceptedBaseCommit string `json:"accepted_base_commit,omitempty"`
+	AcceptedChangeHash string `json:"accepted_change_hash,omitempty"`
 }
 
 // ExternalOrigin is the external work source of a task (an issue-tracker issue). forge_task_start --from_issue

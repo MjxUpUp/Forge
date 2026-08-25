@@ -1207,7 +1207,8 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 
 	// 刻意不在此处 MarkComplete（dogfood 2026-08-18 死锁修复）：曾经「最后一道 gate 通过
 	// 即 MarkComplete」，而 ActiveTaskState 对 CompletedAt!=nil 返回 nil —— 紧随其后的
-	// `forge task complete` acceptance pre-flight 恰要求快照新鲜（AcceptedHeadCommit==HEAD），
+	// `forge task complete` acceptance pre-flight 恰要求快照新鲜（时为 AcceptedHeadCommit==HEAD；
+	// 2026-08-25 起为任务 HeadCommit 锚定的源码内容指纹，见 acceptance.go），
 	// 刷新只能由 verify-acceptance（默认认 active task，可用 --ref 显式指定）完成。门一过
 	// 任务即失活 → 验收刷新死锁（本次 v2 任务实测踩中：review 修复 commit 移动 HEAD 后
 	// complete 永久 BLOCKED，且无任何 CLI 路径可复活）。完成 = `forge task complete` 的
@@ -1217,7 +1218,9 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 	// Deliberately NO MarkComplete here (dogfood 2026-08-18 deadlock fix): the last gate
 	// used to mark the task complete on pass, but ActiveTaskState returns nil once
 	// CompletedAt is set — and the immediately following `forge task complete` acceptance
-	// pre-flight demands snapshot freshness (AcceptedHeadCommit==HEAD), refreshable ONLY by
+	// pre-flight demands snapshot freshness (then AcceptedHeadCommit==HEAD; since
+	// 2026-08-25 a source-content fingerprint anchored at the task's HeadCommit, see
+	// acceptance.go), refreshable ONLY by
 	// verify-acceptance (active task by default; --ref pins explicitly). Gate pass
 	// deactivated the task → acceptance refresh deadlocked (hit in production by the v2
 	// task: a review-fix commit moved HEAD, complete BLOCKED forever, no CLI path could

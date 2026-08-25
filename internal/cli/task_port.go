@@ -453,6 +453,8 @@ func redactTask(s *taskpipeline.TaskState) {
 	}
 	for i := range s.Acceptance {
 		s.Acceptance[i].AcceptedHeadCommit = ``
+		s.Acceptance[i].AcceptedBaseCommit = ``
+		s.Acceptance[i].AcceptedChangeHash = ``
 		s.Acceptance[i].Output = ``
 		s.Acceptance[i].Run = redactedPlaceholder // 命令含包路径
 		s.Acceptance[i].Expected = redactedPlaceholder

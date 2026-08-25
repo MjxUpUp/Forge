@@ -273,12 +273,23 @@ func testCoverageShouldBlock(missingN, assertN int) bool {
 // is missing (legacy state). Empty when the tree is clean and there is no task-specific
 // commit.
 //
+// The committed slice is further filtered by cross-task attribution
+// (taskattribution.go): files whose every touching commit in HeadCommit..HEAD belongs
+// to a COMPLETED sibling task's span are excluded — they were already accounted at
+// that task's completion, so counting them here double-charges scope/test-coverage
+// and pushes agents to `scope add` files they never touched (2026-08 usage evidence).
+//
 // taskChangedFiles 返回 task 期间改动的文件集合。
 // 含 task 的 HeadCommit（task start 时记录）之后的已提交改动加工作树——
 // 使 covered/total 只计本 task 文件，与 scoring.resolveDiffBase 对齐。否则共享
 // 同一 feature 分支的 task 会把前序 task 的 commit 累积进 main...HEAD
 // （feat/evidence-chain 回归：fully-tested change 上 testing=20）。HeadCommit 缺失
 // （legacy state）时才回落 main...HEAD。clean tree 且无 task 专属 commit 时为空。
+//
+// 已提交部分再经跨任务归属过滤（taskattribution.go）：在 HeadCommit..HEAD 内全部
+// 触及 commit 都属于某个【已完成】兄弟任务跨度的文件被排除——它们在该任务
+// complete 时已记过账，此处再计会让 scope/test-coverage 双重收费，并逼 agent 把
+// 没碰过的文件 `scope add` 进声明（2026-08 usage 实证）。
 func taskChangedFiles(root string, state *TaskState) []string {
 	var files []string
 	seen := make(map[string]bool)
@@ -312,7 +323,27 @@ func taskChangedFiles(root string, state *TaskState) []string {
 		if state.HeadCommit != "" {
 			out, err := exec.Command("git", "-C", root, "diff", "--name-only", state.HeadCommit+"..HEAD").Output()
 			if err == nil {
-				add(out)
+				// Cross-task attribution (2026-08-25, fix/gate-loopholes): drop files
+				// fully accounted to COMPLETED sibling tasks (see taskattribution.go) —
+				// their commits landed after this task's HeadCommit but are not this
+				// task's work. Working-tree/untracked sources below stay unfiltered.
+				//
+				// 跨任务归属（2026-08-25，fix/gate-loopholes）：丢弃已被【已完成】
+				// 兄弟任务记账的文件（见 taskattribution.go）——它们的 commit 落在
+				// 本任务 HeadCommit 之后但不是本任务的工作。下方工作树/untracked
+				// 来源保持不过滤。
+				var committed []string
+				for _, line := range strings.Split(string(out), "\n") {
+					if line = strings.TrimSpace(line); line != "" {
+						committed = append(committed, line)
+					}
+				}
+				for _, f := range excludeForeignCommitted(root, state, committed) {
+					if !seen[f] {
+						seen[f] = true
+						files = append(files, f)
+					}
+				}
 			}
 		} else if state.Branch != "" && state.Branch != "main" && state.Branch != "master" {
 			for _, base := range []string{"main", "origin/main", "master", "origin/master"} {
