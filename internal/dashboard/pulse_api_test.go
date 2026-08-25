@@ -262,7 +262,13 @@ func TestServe_PulseTask_ScoredTask(t *testing.T) {
 	if payload.Score.Overall != 90 || payload.Score.Grade != "A" {
 		t.Errorf("score overall/grade 异常: %+v", payload.Score)
 	}
-	if len(payload.Score.Dimensions) != 2 || payload.Score.Dimensions[0].Name != "process" || payload.Score.Dimensions[0].Weight != 0.25 {
+	// Weight comes from scoringtypes.DefaultWeights() (the pulse API re-derives it
+	// by dimension name), so assert against the same source — a hard-coded 0.25
+	// broke when expression was added (weights rebalanced).
+	//
+	// 权重来自 scoringtypes.DefaultWeights()（pulse API 按维度名重新推导），
+	// 断言用同一真相源——写死 0.25 在新增 expression 维度（权重重平衡）时断裂。
+	if len(payload.Score.Dimensions) != 2 || payload.Score.Dimensions[0].Name != "process" || payload.Score.Dimensions[0].Weight != scoringtypes.DefaultWeights()[string(scoringtypes.DimensionProcess)] {
 		t.Errorf("dimensions 异常: %+v", payload.Score.Dimensions)
 	}
 	if payload.Score.Evidence.Deterministic != 3 || payload.Score.Evidence.AgentClaim != 1 {

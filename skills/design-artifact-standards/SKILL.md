@@ -38,6 +38,7 @@ phase-*.md 是「好设计产物该有什么」的标准清单（IEEE 830 / Goog
 | 前端设计 / 页面 / 组件 / 路由 / 状态 | frontend | [phase-frontend.md](../code-review-gate/references/phase-frontend.md) |
 | 后端设计 / service / domain / 业务逻辑 | backend | [phase-backend.md](../code-review-gate/references/phase-backend.md) |
 | 测试方案 / 测试用例 / 测试计划 | test-design | [phase-test-design.md](../code-review-gate/references/phase-test-design.md) |
+| PR 描述 / commit body / 测试报告 / 复盘报告 | 文档产物（不在 6 环节枚举内，不参与 task-verify 路径推断） | [rubric-docs.md](../code-review-gate/references/rubric-docs.md)——写前先拿 doc-generator 对应模板（`template-pr/test-report/retrospective`）；落盘产物过 `forge docs lint`（L1），再按 rubric 评分（L2） |
 
 > 6 个环节枚举与 `taskpipeline` 的 `allDesignPhases`（`internal/taskpipeline/phase_detect.go`）一致。编写期你按意图选环节；审查期 task-verify 的 `inferDesignPhases` 按**文件路径模式**推断环节（如 PRD 需放 `docs/prd/`、API 需路径含 `openapi/api/proto`）——产物按约定路径落盘时两期环节集合一致，路径不匹配时审查期会回退通用清单（编写期自查的有效性不受影响）。
 

@@ -85,6 +85,10 @@ metadata:
 - skill：`forge skills validate` 过 R1-R11、`audit` 过安全、触发描述是否会命中
 - 代码/hook/CI：本地或 CI 实跑一次确认拦截/通过
 
+### 6. 文档回检模式提炼（输出→回检回路的长期半边）
+
+回检数据是现成的高信号素材：`forge task finding` 里 Source=doc-review 的未决项、DocReviewHistory 的轮次得分趋势（两轮之间 Critical/rubric 不收敛即异常）。复盘时对反复栽跟头的文档问题问一句：**该升级为 L1 机器规则吗？** 某类文档每次都因同一问题被打回（如「结论不前置」「某个新口头禅」），就把它固化——禁令短语/结构/篇幅规则进 `internal/doclint`（D1-D7 表），模板缺章节进 doc-generator 对应模板——让下一轮循环更便宜。判据：同类打回 ≥3 次才升级（一次是噪声，三次是模式）；升级后跑 `go test ./internal/doclint/` 确认新规则不误伤既有文档。
+
 ## 载体决策树（核心）
 
 按顺序问，命中即停：

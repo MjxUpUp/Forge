@@ -915,6 +915,27 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 			}
 		}
 
+		// doc-gate advisory (output→re-check loop, docs/design/output-readability-gates.md):
+		// when the task changed markdown deliverables but no fresh L2 review is
+		// recorded, remind at task-verify — BEFORE complete hard-blocks on it.
+		// Enforcement stays at CheckDocGate (task-complete pre-flight); this is
+		// the early nudge so the agent fixes L1 and runs the rubric review while
+		// still in verify, not after hitting the BLOCKED. Pure advisory.
+		//
+		// doc-gate advisory（输出→回检循环，docs/design/output-readability-gates.md）：
+		// 任务变更了 markdown 产物但无 fresh 的 L2 回检记录时，在 task-verify 提醒——
+		// 抢在 complete 硬拦截之前。执法仍在 CheckDocGate（task-complete pre-flight）；
+		// 这是提前量 nudge，让 agent 还在 verify 阶段就修 L1、跑 rubric 评审，而不是
+		// 撞上 BLOCKED 才回头。纯 advisory。
+		if docs := changedMarkdownDocs(root, state); len(docs) > 0 {
+			head := GetHeadCommit(root)
+			stale := state.DocReview == nil || state.DocReview.ReviewedAt.IsZero() ||
+				(state.DocReview.HeadCommit != "" && head != "" && state.DocReview.HeadCommit != head)
+			if stale {
+				fmt.Fprintf(os.Stderr, "%s"+`文档产物 %d 个（%s）尚无 fresh 的 L2 回检——complete 前须：forge docs lint 修 L1 → 按 code-review-gate/references/rubric-docs.md 评审（产出者不能自检）→ forge task doc-review 记录。advisory 不阻塞，complete 的 doc gate 会拦。`+"\n", GateAdvisory("[task-verify] "), len(docs), strings.Join(docs, ", "))
+			}
+		}
+
 		// unused-scan (advisory): layer-1 wiring detection — newly-added exported symbols (Go
 		// func/type/method, TS export, Rust pub) that no production line in this task references.
 		// Catches "implemented but never wired" (Forge's own BUG-1: inferDesignPhases had zero

@@ -11,9 +11,9 @@ import (
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 )
 
-// Evaluate scores a completed task across 6 dimensions and returns a ScoreResult.
+// Evaluate scores a completed task across 7 dimensions and returns a ScoreResult.
 //
-// Evaluate 对一个完成任务跨 6 个维度打分，返回 ScoreResult。
+// Evaluate 对一个完成任务跨 7 个维度打分，返回 ScoreResult。
 func Evaluate(input *EvaluateInput, config *scoringtypes.ScoringConfig) *scoringtypes.ScoreResult {
 	dimensions := []scoringtypes.DimensionScore{
 		scoreProcess(input.GateHistory),
@@ -22,6 +22,7 @@ func Evaluate(input *EvaluateInput, config *scoringtypes.ScoringConfig) *scoring
 		scoreAssertions(input.AssertionPassed, input.AssertionChecked),
 		scoreScope(input.GitDiffStat),
 		scoreEfficiency(input.StartedAt, input.CompletedAt),
+		scoreExpression(input),
 	}
 
 	overall := weightedOverall(dimensions, config.Weights)
@@ -290,6 +291,59 @@ func scoreEfficiency(startedAt, completedAt time.Time) scoringtypes.DimensionSco
 		Dimension: scoringtypes.DimensionEfficiency,
 		Score:     score,
 		Detail:    fmt.Sprintf(`Completed in %.0f minutes`, minutes),
+	}
+}
+
+// scoreExpression scores the expression (doc-artifact readability) dimension —
+// the measurement anchor of the output→re-check loop. Verbosity is an
+// alignment-training length bias that self-discipline cannot fix, so the loop
+// needs a score that makes it visible (docs/design/output-readability-gates.md).
+// Deterministic inputs only: L1 hard-issue count from doclint and the recorded
+// L2 rubric evidence. No doc deliverables → neutral 100 (pure-code tasks are
+// unaffected — the dimension judges expression, not its absence). doc-gate
+// escape caps the dimension at 60 (escape must have a visible cost here too,
+// mirroring the overall Weak-capping philosophy).
+//
+// scoreExpression 给表达（文档产物可读性）维度打分——输出→回检循环的度量锚点。
+// 啰嗦是对齐训练的长度偏差，靠自律不可解，循环需要让它可见的分数
+// （docs/design/output-readability-gates.md）。只用确定性输入：doclint 的 L1
+// 硬失败数与已记录的 L2 rubric 证据。无文档产物 → 中性 100（纯代码任务不受
+// 影响——该维度审判表达，不审判表达的缺席）。doc gate 逃生把维度封顶 60
+// （逃生在这里同样要有可见代价，镜像整体 Weak 封顶哲学）。
+func scoreExpression(input *EvaluateInput) scoringtypes.DimensionScore {
+	if !input.HasDocDeliverables {
+		return scoringtypes.DimensionScore{
+			Dimension: scoringtypes.DimensionExpression,
+			Score:     100,
+			Detail:    `No doc deliverables changed (dimension not applicable, neutral)`,
+		}
+	}
+
+	lintPart := 100
+	if input.DocLintHardIssues > 0 {
+		lintPart = max(0, 100-15*input.DocLintHardIssues)
+	}
+	rubricPart := 0
+	switch {
+	case input.DocRubricScore != nil:
+		rubricPart = *input.DocRubricScore
+	case input.DocGateEscaped:
+		rubricPart = 60
+	default:
+		rubricPart = 0 // docs changed but no review recorded
+	}
+	score := (lintPart + rubricPart) / 2
+	detail := fmt.Sprintf(`L1 lint: %d hard issues (score %d); L2 rubric: %s (score %d)`,
+		input.DocLintHardIssues, lintPart,
+		map[bool]string{true: "recorded", false: "missing"}[input.DocRubricScore != nil], rubricPart)
+	if input.DocGateEscaped {
+		score = min(score, 60)
+		detail += `; doc gate escaped (dimension capped at 60)`
+	}
+	return scoringtypes.DimensionScore{
+		Dimension: scoringtypes.DimensionExpression,
+		Score:     score,
+		Detail:    detail,
 	}
 }
 
