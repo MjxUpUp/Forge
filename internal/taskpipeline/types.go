@@ -100,6 +100,7 @@ type Finding struct {
 	Content  string    `json:"content"`
 	Source   string    `json:"source"`             // 来源工具 [pi]/[claude-code]/[opencode]…
 	Evidence string    `json:"evidence,omitempty"` // 证据（文件:行 / 命令输出）
+	Severity string    `json:"severity,omitempty"` // "" | critical | important | minor——doc-review 的 critical 未决会阻断 doc gate；空（旧 findings）永不阻断
 	Status   string    `json:"status"`             // open | fixed | wontfix
 	RaisedAt time.Time `json:"raised_at"`
 }
@@ -339,6 +340,19 @@ type TaskState struct {
 	ParentTaskRef string        `json:"parent_task_ref,omitempty"` // 子任务指向父 task ref（subtask 拆解）
 	DependsOn     []string      `json:"depends_on,omitempty"`      // 依赖的前序 task ref（任务间依赖）
 	Assignment    *Assignment   `json:"assignment,omitempty"`      // 任务分派（owner agent + 协作生命周期状态）；nil = 普通未分派任务，零行为变化
+	// DocReview is the L2 re-check evidence of the output→re-check loop
+	// (docgate.go). nil on pre-doc-gate tasks — zero behavior change; the gate
+	// treats nil as "not reviewed" only when the task actually changed markdown
+	// deliverables. DocReviewHistory retains prior rounds (convergence is the
+	// observable value of the loop: two rounds without Criticals dropping is an
+	// anomaly signal) — capped by the CLI writer.
+	//
+	// DocReview 是输出→回检循环的 L2 回检证据（docgate.go）。doc gate 之前的
+	// 任务为 nil——零行为变化；仅当任务确实变更了 markdown 产物时，门禁才把
+	// nil 视为「未回检」。DocReviewHistory 保留历史轮次（循环的可观测价值在于
+	// 收敛趋势：两轮之间 Critical 不降即异常信号）——由 CLI 写入方截断。
+	DocReview        *DocReview  `json:"doc_review,omitempty"`
+	DocReviewHistory []DocReview `json:"doc_review_history,omitempty"`
 	// Lease is the cross-machine node claim (sync-convergence.md §4): advisory in v1
 	// (personal profile), fencing-monotonic so merges always pick the newest claim.
 	// nil on pre-multi-machine tasks — zero behavior change.
