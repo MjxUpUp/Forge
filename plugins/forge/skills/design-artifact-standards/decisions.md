@@ -86,3 +86,20 @@ metadata.triggers新增UserPromptSubmit关键词(写 PRD/需求文档/API 契约
 ### Evidence
 
 PRD/API设计请求高频;路由入口漏触发放大下游全族失守
+
+## [d-18cf05aaa48690e8-ff578b33] accept
+
+- **Skill**: design-artifact-standards
+- **DecidedAt**: 2026-08-25T10:30:07Z
+
+### Diagnosis
+
+路由表只覆盖 6 个设计环节，PR 描述/commit/测试报告/复盘四类文档产物无编写期入口（审强写弱：rubric 只在审查侧存在）
+
+### Revision
+
+路由表加文档产物行指向 code-review-gate/references/rubric-docs.md（轻路径：不动 phase_detect.go，不参与 task-verify 路径推断）；写前模板拿 doc-generator、落盘后过 forge docs lint 再按 rubric 评分
+
+### Evidence
+
+docs/design/output-readability-gates.md L2 章节；6 个 phase-*.md 确定性规则表同步追加 L1 lint 规则行

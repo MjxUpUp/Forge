@@ -74,3 +74,20 @@ metadata补triggers(keywords/cooldown;skill-authoring-standard用新condition sk
 ### Evidence
 
 skills-hitrate-review-2026-08-15:四源425会话挖掘语料+trigger覆盖10%缺口
+
+## [d-18cf05aaa0adc9c8-376a96f7] accept
+
+- **Skill**: doc-generator
+- **DecidedAt**: 2026-08-25T10:30:07Z
+
+### Diagnosis
+
+触发表宣称 7 类文档但模板库只有 4 个——复盘报告/技术方案/发布说明三处空挂（触发后无模板可用）；PR 描述与测试报告两个高频文档场景无模板
+
+### Revision
+
+新增 5 个模板（template-pr/test-report/retrospective/tech-plan/release-notes，三段式与现有 4 模板同构）；触发表加 PR 描述/测试报告行；模板清单与 references/README 状态表双更新（修过时状态）；SKILL.md 顺手把裸引号的综上所述改为反引号（过自身 doclint D1）；evals 加 6 条触发用例
+
+### Evidence
+
+飞书《AI 产物可读性差调研设计》发现三 + docs/design/output-readability-gates.md；forge docs lint 29 文件全过

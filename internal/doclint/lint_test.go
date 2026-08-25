@@ -181,17 +181,6 @@ func TestLintFileSkipMarkerAndPathExempt(t *testing.T) {
 	}
 }
 
-func TestHasHard(t *testing.T) {
-	if HasHard(nil) {
-		t.Error("空 issues 不应 hard")
-	}
-	if !HasHard([]Issue{{Rule: "D1", Severity: Hard}}) {
-		t.Error("含 hard issue 应为 true")
-	}
-	if HasHard([]Issue{{Rule: "D3", Severity: Advisory}}) {
-		t.Error("仅 advisory 不应 hard")
-	}
-}
 
 func TestRenderBannedPhrasesForSkill(t *testing.T) {
 	out := RenderBannedPhrasesForSkill()

@@ -40,13 +40,13 @@ const SkipMarker = "forge-doc-lint: skip"
 const SkipScanLines = 10
 
 // exemptPathFrags are path fragments that are never linted: dependencies,
-// build output, archives, generated changelog, and test fixtures (fixtures
-// deliberately contain banned phrases to exercise the linter).
+// build output, agent-session state, archives, generated changelog, and test
+// fixtures (fixtures deliberately contain banned phrases to exercise the linter).
 //
-// exemptPathFrags 是永不 lint 的路径片段：依赖、构建产物、归档、生成的
-// changelog、测试夹具（夹具为测 linter 刻意包含禁令短语）。
+// exemptPathFrags 是永不 lint 的路径片段：依赖、构建产物、agent 会话状态、
+// 归档、生成的 changelog、测试夹具（夹具为测 linter 刻意包含禁令短语）。
 var exemptPathFrags = []string{
-	"vendor/", "node_modules/", "dist/", ".git/", "testdata/",
+	"vendor/", "node_modules/", "dist/", ".git/", ".zcode/", "testdata/",
 	"docs/skillhub-archive/", "CHANGELOG.md",
 }
 
@@ -289,16 +289,4 @@ func stripInlineCode(line string) string {
 		}
 	}
 	return sb.String()
-}
-
-// HasHard reports whether any issue blocks.
-//
-// HasHard 判断是否存在阻断性问题。
-func HasHard(issues []Issue) bool {
-	for _, i := range issues {
-		if i.Hard() {
-			return true
-		}
-	}
-	return false
 }
