@@ -69,3 +69,21 @@ skills-hitrate-review-2026-08-15:四源425会话挖掘语料+trigger覆盖10%缺
 ### Evidence
 
 forge skills validate 51/51 + TestSkills_NoDanglingSkillRefs 守卫
+
+## [d-18cf01ff296dd3c0-c9247aec] accept
+
+- **Skill**: dev-lookup
+- **DecidedAt**: 2026-08-25T09:22:52Z
+- **By**: kimi-code
+
+### Diagnosis
+
+SKIP 引"用 lark-*"：lark-* 是作者本机个人 skill，不在分发库，用户环境为死引用
+
+### Revision
+
+改为条件式"（如有 lark-* skill）"
+
+### Evidence
+
+分发库 52 个 canonical skill 无 lark-*；正文无其他 lark 引用（design-audit 对 lark-doc 的引用已自标"非 canonical 需单独安装"，不属本 skill）；validate 52/52 通过
