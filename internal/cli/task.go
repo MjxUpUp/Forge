@@ -30,6 +30,7 @@ func init() {
 	taskCmd.AddCommand(taskListCmd)
 	taskCmd.AddCommand(taskScopeCmd)
 	taskCmd.AddCommand(taskOverrideCmd)
+	taskCmd.AddCommand(taskDocReviewCmd)
 	taskScopeCmd.AddCommand(taskScopeAddCmd)
 	taskScopeCmd.AddCommand(taskScopeShowCmd)
 
@@ -101,7 +102,14 @@ func init() {
 	taskOverrideCmd.Flags().String("test-coverage", "", "设为 disable 跳过 test-coverage 门禁")
 	taskOverrideCmd.Flags().String("acceptance-gate", "", `设为 disable 跳过 task-complete 的 acceptance pre-flight 门禁`)
 	taskOverrideCmd.Flags().String("skill-decisions", "", `设为 disable 跳过 skill-decisions guardrail（改 SKILL.md 必须记决策）`)
+	taskOverrideCmd.Flags().String("doc-gate", "", `设为 disable 跳过 task-complete 的 doc pre-flight（输出→回检门禁；轮次上限后的放行须人工确认后走这里）`)
 	taskScopeAddCmd.Flags().String("ref", "", "指定任务引用（不依赖活跃任务检测）")
+	taskDocReviewCmd.Flags().String("ref", "", "任务 ref（默认当前活跃任务）")
+	taskDocReviewCmd.Flags().String("passed", "", "评审结论：pass | fail（必填）")
+	taskDocReviewCmd.Flags().Int("score", 0, "rubric 四维总分 0-100（rubric-docs.md）")
+	taskDocReviewCmd.Flags().Int("round", 0, "本轮次编号（从 1 递增；≥3 轮未过升级人工确认）")
+	taskDocReviewCmd.Flags().String("reviewer", "", "评审者标识（子代理/session id——产出者不能当回检者）")
+	taskDocReviewCmd.Flags().StringSlice("critical", nil, "Critical 发现内容（可重复；未决将阻断 doc gate，须 forge task finding resolve 解决）")
 }
 
 var taskCmd = &cobra.Command{
@@ -194,9 +202,15 @@ var taskScopeShowCmd = &cobra.Command{
 	RunE:  runTaskScopeShow,
 }
 var taskOverrideCmd = &cobra.Command{
-	Use:   `override [--work-activity disable] [--test-coverage disable] [--acceptance-gate disable] [--skill-decisions disable]`,
+	Use:   `override [--work-activity disable] [--test-coverage disable] [--acceptance-gate disable] [--skill-decisions disable] [--doc-gate disable]`,
 	Short: "设置 per-task 逃生舱（优先全局 env，不污染他任务；验证类降 evidence 强度到 Weak（重证据按证据缩放豁免），work-activity 是节奏门禁不降强度）",
 	RunE:  runTaskOverride,
+}
+
+var taskDocReviewCmd = &cobra.Command{
+	Use:   "doc-review --passed <pass|fail> --score <N> [--round <R>] [--reviewer <id>] [--critical <发现>]",
+	Short: "记录 L2 文档回检证据（rubric-docs.md 评审后落档；doc gate 消费）",
+	RunE:  runTaskDocReview,
 }
 
 // phaseExplosionWarning returns a non-empty warning when the given session already
@@ -1577,6 +1591,22 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 			strings.Join(reasons, `; `))
 	}
 
+	// doc pre-flight（输出→回检循环的流程节点）：任务变更了 markdown 产物时，
+	// complete 前 L1 确定性 lint 全过 + L2 回检证据（DocReview fresh/Passed/
+	// ≥75 分）+ 零未决 Critical。无文档产物放行；逃生舱与 acceptance 对称。
+	// 设计：docs/design/output-readability-gates.md（飞书《AI 产物可读性差调研
+	// 设计》落地方案二）。
+	//
+	// doc pre-flight (the process node of the output→re-check loop): when the
+	// task changed markdown deliverables, before complete every changed doc
+	// passes L1 deterministic lint + L2 re-check evidence (DocReview fresh/
+	// Passed/score ≥75) + zero unresolved Criticals. No doc deliverables →
+	// pass; escape hatch symmetric to acceptance.
+	if ok, reasons := taskpipeline.CheckDocGate(root, state); !ok {
+		return fmt.Errorf(`doc gate 未通过（文档产物未过 L1 lint / L2 回检）: %s；流程：forge docs lint <paths> 修 L1 → 按 code-review-gate/references/rubric-docs.md 评审（产出者不能自检）→ forge task doc-review 记录证据。逃生（落 checklog 审计，降 evidence 强度到 Weak）: forge task override --doc-gate disable 或 FORGE_DOC_GATE=disable`,
+			strings.Join(reasons, `; `))
+	}
+
 	// MarkComplete 恰在此处（pre-flight 之后）：完成标记属于 `forge task complete` 的整个
 	// 动作而非某道 gate（dogfood 2026-08-18 死锁修复的另一面——见 runTaskGate 的对应注释）。
 	// firstComplete 门控（review m1）：仅首次完成时标记——评分失败留下的 CompletedAt!=nil、
@@ -1886,6 +1916,14 @@ func runTaskOverride(cmd *cobra.Command, args []string) error {
 		state.Overrides.SkillDecisions = "disable"
 		changed = true
 	}
+	dg, _ := cmd.Flags().GetString("doc-gate")
+	if dg != "" {
+		if dg != "disable" {
+			return fmt.Errorf(`--doc-gate 只接受 disable，got %q`, dg)
+		}
+		state.Overrides.DocGate = "disable"
+		changed = true
+	}
 	if !changed {
 		fmt.Printf("当前 per-task 逃生舱：%s\n", describeOverrides(state.Overrides))
 		fmt.Println(`设置：--work-activity disable / --test-coverage disable / --acceptance-gate disable / --skill-decisions disable（验证类逃生降评分强度到 Weak，重证据任务按证据缩放豁免；work-activity 不降）`)
@@ -1913,10 +1951,116 @@ func describeOverrides(o taskpipeline.TaskOverrides) string {
 	if o.SkillDecisions == "disable" {
 		parts = append(parts, "skill-decisions=disable")
 	}
+	if o.DocGate == "disable" {
+		parts = append(parts, "doc-gate=disable")
+	}
 	if len(parts) == 0 {
 		return "（无）"
 	}
 	return strings.Join(parts, ", ")
+}
+
+// runTaskDocReview records the L2 doc re-check evidence after a rubric review
+// (code-review-gate/references/rubric-docs.md). The gate (CheckDocGate) is the
+// consumer: complete is refused until the review is recorded, fresh, Passed and
+// score ≥ threshold. Recording alone never fakes a pass — --passed fail keeps
+// the task blocked and counts a round toward the escalation cap. Critical
+// findings land as Findings (Source=doc-review, Severity=critical) and block
+// until resolved via forge task finding resolve.
+//
+// runTaskDocReview 在 rubric 评审（code-review-gate/references/rubric-docs.md）
+// 后记录 L2 文档回检证据。门禁（CheckDocGate）是消费方：评审未记录、过期、
+// 未通过或得分低于阈值时 complete 被拒。仅记录不会伪造通过——--passed fail
+// 保持阻断并累加轮次（升级上限的计数）。Critical 发现落 Findings
+// （Source=doc-review、Severity=critical），经 forge task finding resolve 解决。
+func runTaskDocReview(cmd *cobra.Command, args []string) error {
+	root, err := findProjectRoot()
+	if err != nil {
+		return err
+	}
+	explicitRef, _ := cmd.Flags().GetString("ref")
+	passedFlag, _ := cmd.Flags().GetString("passed")
+	score, _ := cmd.Flags().GetInt("score")
+	round, _ := cmd.Flags().GetInt("round")
+	reviewer, _ := cmd.Flags().GetString("reviewer")
+	criticals, _ := cmd.Flags().GetStringSlice("critical")
+
+	if passedFlag != "pass" && passedFlag != "fail" {
+		return fmt.Errorf(`--passed 必填且只接受 pass | fail，got %q（先按 code-review-gate/references/rubric-docs.md 评审——产出者不能当回检者）`, passedFlag)
+	}
+	if score < 0 || score > 100 {
+		return fmt.Errorf("--score 取值 0-100（rubric 四维各 0-25），got %d", score)
+	}
+
+	var state *taskpipeline.TaskState
+	if explicitRef != "" {
+		state, err = taskpipeline.LoadTaskState(root, explicitRef)
+	} else {
+		state, err = taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
+		if err == nil && state == nil {
+			err = fmt.Errorf("no active task. Run 'forge task start' first")
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("failed to load task state: %w", err)
+	}
+
+	if round <= 0 {
+		// Auto-increment from the previous recorded round: review round 2 must
+		// not silently restart at 1 (the escalation cap counts real rounds).
+		//
+		// 从上一轮自动递增：第 2 轮评审不得静默重置为 1（升级上限数真实轮次）。
+		round = 1
+		if state.DocReview != nil && state.DocReview.Round >= round {
+			round = state.DocReview.Round + 1
+		}
+	}
+
+	for _, c := range criticals {
+		state.AddFinding(taskpipeline.Finding{
+			Content:  c,
+			Source:   taskpipeline.DocReviewSource,
+			Severity: taskpipeline.FindingSeverityCritical,
+			Evidence: fmt.Sprintf("round %d rubric=%d", round, score),
+		})
+	}
+
+	// Round history retention (the loop's observable convergence): prior rounds
+	// stay in DocReviewHistory so the score trend is queryable from task state —
+	// "two rounds without Criticals dropping" is an anomaly signal, not prose.
+	// Capped at the last 10 rounds (memory hygiene).
+	//
+	// 轮次历史保留（循环的可观测收敛）：历史轮次留在 DocReviewHistory，得分
+	// 趋势可从任务状态查询——「两轮之间 Critical 不降」是异常信号而非散文。
+	// 截断保留最近 10 轮（内存卫生）。
+	if state.DocReview != nil && !state.DocReview.ReviewedAt.IsZero() {
+		state.DocReviewHistory = append(state.DocReviewHistory, *state.DocReview)
+		if len(state.DocReviewHistory) > 10 {
+			state.DocReviewHistory = state.DocReviewHistory[len(state.DocReviewHistory)-10:]
+		}
+	}
+
+	state.DocReview = &taskpipeline.DocReview{
+		Passed:          passedFlag == "pass",
+		RubricScore:     score,
+		Round:           round,
+		Reviewer:        reviewer,
+		ReviewedAt:      time.Now(),
+		HeadCommit:      taskpipeline.GetHeadCommit(root),
+		DocsFingerprint: taskpipeline.DocContentFingerprint(root, state),
+	}
+	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+		return fmt.Errorf("failed to save task state: %w", err)
+	}
+
+	fmt.Printf("doc-review 已记录（round %d，score %d，verdict %s，critical +%d）。\n", round, score, passedFlag, len(criticals))
+	if state.DocReview.Passed && score < taskpipeline.DocRubricThreshold {
+		fmt.Printf("注意：verdict=pass 但 score %d < 阈值 %d——doc gate 仍会拦截（得分与结论矛盾，复评）。\n", score, taskpipeline.DocRubricThreshold)
+	}
+	if !state.DocReview.Passed && round >= taskpipeline.DocReviewMaxRounds {
+		fmt.Printf("已 %d 轮未过（上限 %d）——升级人工确认：用户裁定放行（forge task override --doc-gate disable）或给出下一轮修复方向。\n", round, taskpipeline.DocReviewMaxRounds)
+	}
+	return nil
 }
 
 // runTaskScopeShow prints the declared PlanScope + live scope-drift (the diff between

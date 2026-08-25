@@ -281,8 +281,8 @@ func TestEvaluate_Full(t *testing.T) {
 	if result.Grade != "A" {
 		t.Fatalf("expected grade A, got %s (overall: %.1f)", result.Grade, result.Overall)
 	}
-	if len(result.Dimensions) != 6 {
-		t.Fatalf("expected 6 dimensions, got %d", len(result.Dimensions))
+	if len(result.Dimensions) != 7 {
+		t.Fatalf("expected 7 dimensions, got %d", len(result.Dimensions))
 	}
 	if result.Overall < 90 {
 		t.Fatalf("expected overall >= 90, got %.1f", result.Overall)
@@ -414,4 +414,53 @@ func TestEvaluate_EvidenceSummary(t *testing.T) {
 				result.Evidence.Deterministic, result.Evidence.AgentClaim, result.Evidence.Total)
 		}
 	})
+}
+
+// TestScoreExpression covers the expression (doc-artifact readability) dimension:
+// neutral when no doc deliverables, lint+rubric blend when present, escape cap,
+// and the missing-review floor.
+//
+// TestScoreExpression 覆盖表达（文档产物可读性）维度：无文档产物时中性、
+// 有产物时 lint+rubric 混合、逃生封顶、未回检地板。
+func TestScoreExpression(t *testing.T) {
+	cfg := &scoringtypes.ScoringConfig{Weights: scoringtypes.DefaultWeights(), Thresholds: scoringtypes.DefaultThresholds()}
+	find := func(in *EvaluateInput) scoringtypes.DimensionScore {
+		for _, d := range Evaluate(in, cfg).Dimensions {
+			if d.Dimension == scoringtypes.DimensionExpression {
+				return d
+			}
+		}
+		t.Fatal("expression dimension missing from Evaluate")
+		return scoringtypes.DimensionScore{}
+	}
+
+	if got := find(&EvaluateInput{}); got.Score != 100 {
+		t.Errorf("no doc deliverables → neutral 100, got %d (%s)", got.Score, got.Detail)
+	}
+
+	score80 := 80
+	cases := []struct {
+		name string
+		in   EvaluateInput
+		want int
+	}{
+		{"clean lint + rubric 80", EvaluateInput{HasDocDeliverables: true, DocRubricScore: &score80}, 90},
+		{"missing review", EvaluateInput{HasDocDeliverables: true}, 50},
+		{"3 hard issues no review", EvaluateInput{HasDocDeliverables: true, DocLintHardIssues: 3}, 27},
+		{"escaped", EvaluateInput{HasDocDeliverables: true, DocGateEscaped: true}, 60},
+	}
+	for _, c := range cases {
+		in := c.in
+		if got := find(&in); got.Score != c.want {
+			t.Errorf("%s: want %d, got %d (%s)", c.name, c.want, got.Score, got.Detail)
+		}
+	}
+
+	// Escape cap: even a clean lint + high rubric cannot exceed 60 when escaped.
+	//
+	// 逃生封顶：即便 lint 全净 + rubric 高分，逃生后也不超过 60。
+	in := EvaluateInput{HasDocDeliverables: true, DocRubricScore: &score80, DocGateEscaped: true}
+	if got := find(&in); got.Score > 60 {
+		t.Errorf("escape cap 60 violated: got %d", got.Score)
+	}
 }

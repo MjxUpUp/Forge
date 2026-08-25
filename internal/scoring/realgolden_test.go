@@ -79,7 +79,45 @@ func realCases() []GoldenCase {
 	// review-snapshot 是人工从真实 Score.Dimensions 反推的精确基线（GitDiffStat 用等价
 	// totalLines 模拟，非事后采集），全维度可信——标 hand-curated，无 drift_known。
 	gc.Meta = GoldenMeta{Source: `hand-curated`}
-	return []GoldenCase{*gc}
+
+	// chore-fix-ci-cmd-forge: restored from the v1.42-era fixture's stored
+	// input (realCases and the on-disk fixture had drifted apart on main —
+	// the case was dropped from realCases while its fixture stayed, so a
+	// delete+rebuild silently lost it; keeping it here re-pins the
+	// realCases↔fixture invariant). A huge multi-area chore: 80/88 covered,
+	// 1689 assertions, huge diff, assertion-check never ran.
+	//
+	// chore-fix-ci-cmd-forge：从 v1.42 期 fixture 存档的 input 恢复（realCases
+	// 与盘上 fixture 在 main 上已脱节——案例被从 realCases 删掉而 fixture 留存，
+	// delete+rebuild 会静默丢它；在此恢复钉死 realCases↔fixture 不变量）。
+	// 大型多区域杂务任务：80/88 覆盖、1689 断言、超大 diff、断言检查未跑。
+	choreStart, _ := time.Parse(time.RFC3339Nano, "2026-06-27T19:42:52.7648551+08:00")
+	choreDone, _ := time.Parse(time.RFC3339Nano, "2026-06-27T19:47:01.8634427+08:00")
+	chore := EvaluateInput{
+		GateHistory:           GateHistory{TotalGates: 3, Passed: 3, Retries: 0},
+		StartedAt:             choreStart,
+		CompletedAt:           choreDone,
+		GitDiffStat:           gitDiffStatChoreFixture,
+		TestCoveragePassed:    false,
+		TestCoverageChecked:   true,
+		TestCoverageCovered:   80,
+		TestCoverageTotal:     88,
+		TestAssertionCount:    1689,
+		TestFileCount:         62,
+		CompilePassed:         true,
+		CompileChecked:        true,
+		AssertionPassed:       false,
+		AssertionChecked:      false,
+		EvidenceDeterministic: 6,
+	}
+	choreGc := GoldenCaseFromInput(
+		`chore-fix-ci-cmd-forge`,
+		`真实 dogfood 任务 chore-fix-ci-cmd-forge 的评分形状（采集自 TaskState+checklog+git）。钉真实组合不漂移——scoring 算法改动若让此任务评分漂移即 CI 挂。`,
+		&chore,
+		cfg,
+	)
+	choreGc.Meta = GoldenMeta{Source: `auto-collected`, DriftKnown: []string{`scope`}}
+	return []GoldenCase{*gc, *choreGc}
 }
 
 // writeRealFixtures regenerates testdata/golden_real/ from realCases(). Only called when fixture is missing

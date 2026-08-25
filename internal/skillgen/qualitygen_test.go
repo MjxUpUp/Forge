@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MjxUpUp/Forge/internal/doclint"
 	"github.com/MjxUpUp/Forge/internal/protocol"
 )
 
@@ -257,5 +258,44 @@ func TestQualitySkillRenderedViaSharedHelper(t *testing.T) {
 	}
 	if !strings.Contains(content, "[必须] 修改前先说意图") {
 		t.Error("generated skill session rules section does not match shared-helper 必须/建议 rendering")
+	}
+}
+
+// TestQualitySkillReplyConcisionRules guards the 回复详略规则 section: the
+// conclusion-first principle plus the L1 banned list rendered from
+// internal/doclint (single source of truth — the phrase table must not be
+// hand-copied here or in the linter's own docs).
+//
+// TestQualitySkillReplyConcisionRules 守卫「回复详略规则」章节：结论先行原则
+// 加从 internal/doclint 渲染的 L1 禁令清单（单一真相源——短语表不允许在这里
+// 或 linter 自身文档之外手抄）。
+func TestQualitySkillReplyConcisionRules(t *testing.T) {
+	proto := &protocol.Protocol{Version: "1"}
+
+	content := buildQualitySkillContent(t.TempDir(), proto)
+
+	if !strings.Contains(content, "回复详略规则") {
+		t.Error("quality SKILL.md missing 回复详略规则 section")
+	}
+	if !strings.Contains(content, "结论先行") {
+		t.Error("quality SKILL.md missing conclusion-first principle")
+	}
+	if !strings.Contains(content, "forge docs lint") {
+		t.Error("quality SKILL.md missing forge docs lint pointer")
+	}
+	// Every doclint banned phrase must surface in the rendered skill text —
+	// catches a new table entry silently missing from the renderer.
+	//
+	// 每条 doclint 禁令短语都须出现在渲染出的 skill 文本——防止新增表项
+	// 静默漏渲染。
+	for _, p := range doclint.BannedPhrases {
+		if !strings.Contains(content, p.Pattern.String()) {
+			t.Errorf("quality SKILL.md 缺禁令短语 %q（渲染漂移）", p.Pattern.String())
+		}
+	}
+	for _, p := range doclint.EvidenceFreeConclusions {
+		if !strings.Contains(content, p.Pattern.String()) {
+			t.Errorf("quality SKILL.md 缺无证据结论短语 %q（渲染漂移）", p.Pattern.String())
+		}
 	}
 }

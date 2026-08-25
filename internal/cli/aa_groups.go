@@ -80,6 +80,11 @@ func init() {
 	reviewCmd.GroupID = "quality"
 	healthCmd.GroupID = "quality"
 	dashboardCmd.GroupID = "quality"
+	// 文档产物可读性约束（L1 lint；doc gate 的执法在 task complete pre-flight）。
+	//
+	// Doc-artifact readability constraints (L1 lint; the doc gate itself
+	// enforces at task-complete pre-flight).
+	docsCmd.GroupID = "quality"
 
 	// Skill governance (the experience/knowledge loop has been removed).
 	//

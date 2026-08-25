@@ -8,8 +8,13 @@
 |---|---|---|
 | `template-prd.md` | PRD/需求文档 | ✅ |
 | `template-weekly-report.md` | 周报 | ✅ |
-| `template-acceptance-report.md` | 验收报告 | ⏳ 待补（可参考 project-acceptance skill 的 5 维度） |
-| `template-meeting-notes.md` | 会议纪要 | ⏳ 待补（可参考 lark-workflow-meeting-summary） |
+| `template-acceptance-report.md` | 验收报告 | ✅（已参考 project-acceptance 的 5 维度框架） |
+| `template-meeting-notes.md` | 会议纪要 | ✅ |
+| `template-pr.md` | PR 描述 | ✅ |
+| `template-test-report.md` | 测试报告 | ✅ |
+| `template-retrospective.md` | 复盘报告 | ✅ |
+| `template-tech-plan.md` | 技术方案 | ✅ |
+| `template-release-notes.md` | 发布说明 | ✅ |
 
 ## 模板补充规则
 
