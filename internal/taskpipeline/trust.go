@@ -104,6 +104,8 @@ func StripForeignGateSignals(s *TaskState) {
 	for i := range s.Acceptance {
 		s.Acceptance[i].Passed = false
 		s.Acceptance[i].AcceptedHeadCommit = ``
+		s.Acceptance[i].AcceptedBaseCommit = ``
+		s.Acceptance[i].AcceptedChangeHash = ``
 		s.Acceptance[i].Output = ``
 	}
 	// Control-flow signals (2026-08-15 fix). CompletedAt is the master switch that disables every

@@ -37,6 +37,7 @@ func init() {
 	reviewCmd.AddCommand(reviewStatusCmd)
 	reviewPassCmd.Flags().String("ref", "", "指定任务引用（不依赖活跃任务检测；ref 不存在直接报错，不回落分支 stamp）")
 	reviewPassCmd.Flags().String("note", "", "审查结论文本（记入 ReviewRound/stamp 与 checklog 审计留痕）")
+	reviewPassCmd.Flags().Bool("acknowledge-changes", false, "距上次审查基线有源码变更时显式确认重盖章（自我承担，checklog 记 self-refresh WARN 审计；正规路径是重派只读子 agent 复审后用 --note 记复审结论）")
 	reviewGateCmd.Flags().String("ref", "", "指定任务引用（不依赖活跃任务检测）")
 	reviewStatusCmd.Flags().String("ref", "", "指定任务引用（不依赖活跃任务检测）")
 }
@@ -57,8 +58,8 @@ var reviewCmd = &cobra.Command{
 }
 
 var reviewPassCmd = &cobra.Command{
-	Use:   "pass [--ref <ref>] [--note <text>]",
-	Short: "标记当前变更已通过 code-review-gate（--note 记审查结论到审计留痕）",
+	Use:   "pass [--ref <ref>] [--note <text>] [--acknowledge-changes]",
+	Short: "标记当前变更已通过 code-review-gate（--note 记审查结论到审计留痕；距上次基线有源码变更时需 --note 或 --acknowledge-changes 显式确认）",
 	RunE:  runReviewPass,
 }
 
@@ -100,7 +101,8 @@ func runReviewPass(cmd *cobra.Command, args []string) error {
 	}
 	explicitRef, _ := cmd.Flags().GetString("ref")
 	note, _ := cmd.Flags().GetString("note")
-	return runReviewPassAt(root, explicitRef, note)
+	acknowledgeChanges, _ := cmd.Flags().GetBool("acknowledge-changes")
+	return runReviewPassAt(root, explicitRef, note, acknowledgeChanges)
 }
 
 // shortHash truncates a commit hash for one-line detail output (empty stays empty).
@@ -120,13 +122,18 @@ func shortHash(h string) string {
 // note (from --note) is the optional reviewer conclusion text, persisted onto the
 // appended ReviewRound (task mode) / stamp (non-task mode) and the checklog review-pass
 // entry — the audit trail carries the conclusion, not just the stamp.
+// acknowledgeChanges (from --acknowledge-changes) explicitly confirms a re-stamp over
+// changed source content (see the self-refresh guard below); a content delta re-stamp
+// with neither note nor acknowledgment is refused.
 //
 // runReviewPassAt 是 `forge review pass` 的 root/ref 注入核心（对齐 runTaskComplete
 // 的 --ref 模式）：显式 ref 直接加载该任务，ref 不存在直接报错——绝不回落分支
 // stamp 分支（那会静默标错对象）。不给 ref 保持旧的活跃任务检测。note（--note）
 // 是可选审查结论文本，持久化到追加的 ReviewRound（task 模式）/ stamp（非 task
 // 模式）与 checklog review-pass 条目——审计留痕记结论而非只记盖章。
-func runReviewPassAt(root, explicitRef, note string) error {
+// acknowledgeChanges（--acknowledge-changes）显式确认对变更源码的重盖章（见下方
+// 自助刷新守卫）；有内容增量而 note 与确认皆无的重盖章被拒绝。
+func runReviewPassAt(root, explicitRef, note string, acknowledgeChanges bool) error {
 	// task mode: write task state fields, consumed by the task-complete gate
 	//
 	// task 模式：写任务状态字段，由 task-complete 门禁消费
@@ -150,6 +157,49 @@ func runReviewPassAt(root, explicitRef, note string) error {
 		// pass 是 agent 主导动作故 fail-open。hash 出错同样取空（不阻塞 pass）。
 		head := taskpipeline.GetHeadCommit(root)
 		hash, _, _ := review.SourceChangesSince(root, head)
+
+		// Self-refresh guard (2026-08-25 gate-loopholes): re-stamping when the SOURCE
+		// CONTENT has changed since the last stamped baseline used to silently refresh
+		// the baseline — the agent could answer task-complete's "审查通过后检测到源码
+		// 变更" HARD block by simply re-running `forge review pass` itself, no
+		// re-review (防君子不防小人). Now a content delta since the last stamp
+		// (recomputed exactly like the task-complete gate: SourceChangesSince(
+		// ReviewedHeadCommit) vs ReviewedChangeHash) requires an explicit
+		// acknowledgment: --note "<复审结论>" (the honest re-review flow records its
+		// conclusion) or --acknowledge-changes (self-certification, recorded as a WARN
+		// self-refresh audit). A bare re-stamp over changed content is REFUSED.
+		// Non-source changes (commit-message amend, content-preserving rebase) keep
+		// the fingerprint and need no acknowledgment; the same-state repeat stamp
+		// (transient retry) stays silent. Base unreachable (history rewritten) →
+		// fail-open, aligned with the executor's snapshot check.
+		//
+		// 自助刷新基线守卫（2026-08-25 gate-loopholes）：过去距上次盖章基线源码内容
+		// 已变时重新盖章会静默刷新基线——agent 被 task-complete「审查通过后检测到
+		// 源码变更」HARD 拦下后，自己再跑一遍 `forge review pass` 即可放行，全程无
+		// 复审（防君子不防小人）。现在距上次盖章的内容增量（与 task-complete 门禁同
+		// 算法：SourceChangesSince(ReviewedHeadCommit) 比对 ReviewedChangeHash）
+		// 必须显式确认：--note "<复审结论>"（诚实复审流记结论）或
+		// --acknowledge-changes（自我承担，记 WARN self-refresh 审计）。对变更内容
+		// 裸盖章一律【拒绝】。非源码变更（amend commit message、保内容 rebase）
+		// 指纹不变、无需确认；同状态重复盖章（瞬态重试）保持静默。基线不可达
+		// （历史改写）→ fail-open，与 executor 的快照检查一致——但 fail-open
+		// 的裸重盖章记 WARN 级 baseline-unreachable 审计（review minor #2：
+		// fail-open 不能零留痕，对齐 executor fail-open 落 checklog 的做法）。
+		selfRefresh := false
+		baselineUnreachable := ""
+		if state.ReviewedHeadCommit != "" {
+			cur, _, err := review.SourceChangesSince(root, state.ReviewedHeadCommit)
+			switch {
+			case err != nil:
+				baselineUnreachable = state.ReviewedHeadCommit
+			case cur != state.ReviewedChangeHash:
+				if !acknowledgeChanges && note == "" {
+					return fmt.Errorf("review pass 拒绝：距上次审查基线（HEAD=%s）源码已变更——按协议先重派【只读】子 agent 复审当前代码，再 `forge review pass --note \"<复审结论>\"` 盖章；确认变更无需复审（自我承担，记 self-refresh WARN 审计）用 `forge review pass --acknowledge-changes`", state.ReviewedHeadCommit)
+				}
+				selfRefresh = acknowledgeChanges
+			}
+		}
+
 		state.MarkReviewPassedWithNote(head, hash, note)
 		if err := taskpipeline.SaveTaskState(root, state); err != nil {
 			return fmt.Errorf("failed to save task state: %w", err)
@@ -157,50 +207,53 @@ func runReviewPassAt(root, explicitRef, note string) error {
 		// Record the review-pass event (round N + reviewed snapshot) — the raw material for the
 		// rework-round metric. Observation class (excluded from evidence-strength bucketing).
 		// Failure to record does not block the pass (fail-open, consistent with the stamp itself).
+		// A self-refresh (acknowledged re-stamp over changed source) upgrades to WARN so the
+		// audit trail separates self-certified baseline refreshes from ordinary rounds.
 		//
 		// 记录 review-pass 事件（第 N 轮 + 审过的快照）——返工轮次度量的原料。observation
 		// 类（排除出证据强度分桶）。记录失败不阻塞 pass（fail-open，与打戳本身一致）。
+		// 自助刷新（对变更源码确认重盖章）升级为 WARN——审计留痕把自我承担的基线刷新与
+		// 普通轮次分开。
 		detail := fmt.Sprintf("review round %d passed (head=%s)", len(state.ReviewRounds), shortHash(head))
+		if selfRefresh {
+			detail = "self-refresh: baseline re-stamped over changed source via --acknowledge-changes; " + detail
+		}
+		if baselineUnreachable != "" {
+			detail = fmt.Sprintf("baseline-unreachable: prior review baseline %s not reachable (history rewritten) — re-stamped fail-open; ", shortHash(baselineUnreachable)) + detail
+		}
 		if note != "" {
 			detail += "; note: " + note
 		}
-		if recErr := checklog.Record(root, &checklog.Entry{
+		entry := &checklog.Entry{
 			Check:   checklog.CheckReviewPass,
 			Passed:  true,
 			Checked: true,
 			TaskRef: state.TaskRef,
 			Detail:  detail,
-		}); recErr != nil {
+		}
+		if selfRefresh || baselineUnreachable != "" {
+			entry.Level = checklog.LevelWarn
+		}
+		if recErr := checklog.Record(root, entry); recErr != nil {
 			fmt.Fprintf(os.Stderr, "⚠ checklog 记录失败（review-pass 未落盘）: %v\n", recErr)
 		}
 		fmt.Printf("✅ task %s: code-review-gate 已通过（task-complete 门禁前置满足，基线 HEAD=%s）\n", state.TaskRef, head)
-		// Re-review requirement at re-stamp time (2026-08 protocol gap fix): when the code
-		// snapshot CHANGED since the last stamped round (a re-stamp whose baseline change came
-		// from fixing previous review findings), this stamp is only legitimate if a fresh
-		// read-only re-review agent already verified those fixes. Trigger is the snapshot delta
-		// (head OR workdir-change hash differs from the previous ReviewRound), NOT the bare
-		// round count — a same-state repeat stamp (transient-failure retry, baseline rebuild)
-		// owes no re-review and must stay silent. The snapshot loop (task-complete HARD block)
-		// enforces only the loop's SHAPE (re-stamp after code changes); without this cue a
-		// fixer can stamp without re-reviewing and the output is indistinguishable from an
-		// honest round. ADVISORY (not HARD): "was a re-review run" is not mechanically
-		// decidable — the cue makes the obligation visible at the exact moment it is owed.
-		// Round 1 has no previous round → silent.
-		//
-		// 返工轮重新盖章时的复审要求（2026-08 协议缺口修复）：当代码快照自上一枚盖章轮以来
-		// 「变了」（基线变更源于修复上一轮 review 发现），本枚章只在已重新派只读复审 agent
-		// 验证过修复时合法。触发条件是快照增量（head 或工作区变更 hash 与上一轮 ReviewRound
-		// 不同），不是裸轮次计数——同状态重复盖章（瞬态失败重试、重建基线）不欠复审、保持
-		// 静默。快照闭环（task-complete 硬阻断）只强制循环的「形状」（改码后重新盖章）；没有
-		// 本提示，修复者可以不复审直接盖章，输出与诚实轮零差别。ADVISORY（非 HARD）：
-		// 「复审是否真跑过」不可机械判定——提示让义务在欠下的确切时刻可见。第 1 轮无上一轮
-		// 可比 → 静默。
-		if n := len(state.ReviewRounds); n > 1 {
-			prev := state.ReviewRounds[n-2]
-			if prev.HeadCommit != head || prev.ChangeHash != hash {
-				fmt.Println(taskpipeline.GateAdvisory("[review] 第 %d 轮盖章（代码快照已变——返工后重新盖章）——本枚章只在已重新派只读子 agent 复审过修复时合法：修复者不能自证修复合格。若尚未复审，先派复审再回到这里；直接盖章=自证", n))
-			}
+		if selfRefresh {
+			fmt.Println("⚠ 本次为自我承担的基线刷新（--acknowledge-changes）：已记 self-refresh WARN 审计。协议要求修复后重派只读子 agent 复审——下次用 --note 记录复审结论。")
 		}
+		if baselineUnreachable != "" {
+			fmt.Printf("⚠ 上次审查基线 %s 不可达（历史可能被 amend/rebase 改写）——本次按 fail-open 重盖章，已记 WARN 级 baseline-unreachable 审计；建议确认当前代码已经过审查\n", shortHash(baselineUnreachable))
+		}
+		// The pre-stamp self-refresh guard above replaced the old post-stamp
+		// re-review ADVISORY (2026-08 protocol gap fix, superseded 2026-08-25): a
+		// bare re-stamp over changed content is now REFUSED outright instead of
+		// stamped-then-nagged, and a non-source delta (amend, same-content commit)
+		// stays silent instead of firing on head movement alone.
+		//
+		// 上方盖章前自助刷新守卫取代了旧的盖章后复审 ADVISORY（2026-08 协议缺口
+		// 修复，2026-08-25 被取代）：对变更内容裸盖章现在直接【拒绝】而非盖完再
+		// 念叨；非源码增量（amend、同内容 commit）保持静默，不再只因 head 移动
+		// 就发提示。
 		// Plan 3 (blind_spot trigger · review.go critic role): marking review-passed is a decisive action. Calibrate evidence
 		// strength at this moment—if the "done" claim mainly relies on agent self-report (Weak/Unverified), emit an ADVISORY reminding that this review
 		// is a stamp placed on blind-spot evidence. review status only shows when actively viewed; the agent may skip it and pass directly,
@@ -417,7 +470,7 @@ func renderReviewStatus(root, explicitRef string) error {
 				case cur == state.ReviewedChangeHash:
 					fmt.Println("→ task-complete 门禁的 review 前置已满足，且审查后源码未变更（✅ 一致）")
 				default:
-					fmt.Println("→ ⚠ 审查通过后检测到源码变更：task-complete 会拒绝，请重新派只读子 agent 审查后 forge review pass 刷新基线")
+					fmt.Println("→ ⚠ 审查通过后检测到源码变更：task-complete 会拒绝，请重新派只读子 agent 审查后用 `forge review pass --note \"<复审结论>\"` 刷新基线（裸 pass 会被拒；--acknowledge-changes 自我承担并留 self-refresh 审计）")
 				}
 			} else {
 				fmt.Println("→ task-complete 门禁的 review 前置已满足（无审查基线，commit-then-review 流或老 state）")

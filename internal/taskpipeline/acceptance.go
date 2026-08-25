@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/review"
 )
 
 // CheckNameAcceptance is the checklog entry recorded after verify-acceptance actually runs the acceptance criteria
@@ -274,10 +275,26 @@ func judgeAcceptance(passed bool, output, expected string) bool {
 // Expected non-empty → Passed = output contains the substring; Expected empty → Passed = exit code 0.
 // Does not write checklog — the caller (CLI) decides when to record; this function stays pure logic for unit-testing.
 //
+// Freshness snapshot: besides AcceptedHeadCommit (HEAD at run time, kept for provenance), each
+// criterion records a CONTENT snapshot (AcceptedBaseCommit = the task's HeadCommit,
+// AcceptedChangeHash = review.SourceChangesSince(base)). CheckAcceptanceFresh compares the
+// recomputed content fingerprint, so a commit between verify-acceptance and task-complete (the
+// sanctioned protocol order) no longer stales the snapshot — only a real post-verify source
+// edit does. When the task has no usable HeadCommit (legacy state, or the recorded commit was
+// rewritten away) the content fields stay empty and the consumer falls back to the old
+// HEAD-equality check.
+//
 // VerifyAcceptance 实跑 state 里每条验收标准的 Run 命令，比对 Expected 子串，回填
 // Passed/Output。复用 RunTestCommand（与 forge verify --run-tests 同一执行路径）。
 // Expected 非空→Passed = 输出含该子串；Expected 空→Passed = 退出码 0。
 // 不写 checklog——调用方（CLI）决定记录时机，本函数保持纯逻辑可单测。
+//
+// freshness 快照：除 AcceptedHeadCommit（实跑时 HEAD，保留作溯源）外，每条还记内容快照
+// （AcceptedBaseCommit = 任务的 HeadCommit，AcceptedChangeHash =
+// review.SourceChangesSince(base)）。CheckAcceptanceFresh 比对重算的内容指纹，故
+// verify-acceptance 与 task-complete 之间的一次 commit（协议规定顺序）不再使快照过期
+// ——只有验收后的真实源码改动才会。任务无可用 HeadCommit 时（老 state，或记录的 commit
+// 被改写掉）内容字段留空，消费方回落旧的 HEAD 相等检查。
 func VerifyAcceptance(root string, state *TaskState) {
 	for i := range state.Acceptance {
 		c := &state.Acceptance[i]
@@ -290,6 +307,20 @@ func VerifyAcceptance(root string, state *TaskState) {
 		// 记实跑时的 HEAD 快照：forge_task_proof 据此判定 Passed 是否 fresh（== 当前 HEAD）。
 		// 老无快照（空）→ proof v1 重跑兜底；有快照但 != HEAD → acceptance 基于旧代码，须重跑。
 		c.AcceptedHeadCommit = GetHeadCommit(root)
+		// Content-based freshness snapshot (see the doc comment above). Fail-safe direction:
+		// any error (non-git dir, unresolvable base) leaves the content fields empty → the
+		// consumer uses the HEAD-equality fallback, never a fabricated hash.
+		//
+		// 基于内容的 freshness 快照（见上方文档注释）。fail-safe 方向：任何错误（非 git
+		// 目录、base 不可达）都让内容字段留空 → 消费方走 HEAD 相等兜底，绝不伪造指纹。
+		c.AcceptedBaseCommit = ""
+		c.AcceptedChangeHash = ""
+		if state.HeadCommit != "" {
+			if hash, _, err := review.SourceChangesSince(root, state.HeadCommit); err == nil {
+				c.AcceptedBaseCommit = state.HeadCommit
+				c.AcceptedChangeHash = hash
+			}
+		}
 	}
 }
 
@@ -330,6 +361,8 @@ func MergeAcceptanceResults(s *TaskState, results []AcceptanceCriterion, clearFo
 			s.Acceptance[i].Passed = results[j].Passed
 			s.Acceptance[i].Output = results[j].Output
 			s.Acceptance[i].AcceptedHeadCommit = results[j].AcceptedHeadCommit
+			s.Acceptance[i].AcceptedBaseCommit = results[j].AcceptedBaseCommit
+			s.Acceptance[i].AcceptedChangeHash = results[j].AcceptedChangeHash
 			break
 		}
 	}
@@ -393,7 +426,12 @@ const acceptanceGateDisableEnv = "FORGE_ACCEPTANCE_GATE"
 // deterministic consumer (after MCP teardown this field is written by VerifyAcceptance but has no consumer, orphaned).
 // When a task declares acceptance, each criterion must simultaneously satisfy:
 //   - AcceptedHeadCommit non-empty (has run forge task verify-acceptance, has an actual-run snapshot)
-//   - AcceptedHeadCommit == current HEAD (acceptance based on current code; if code changed after acceptance the snapshot is stale, must re-run)
+//   - the snapshot is FRESH: with a content snapshot (AcceptedBaseCommit non-empty, written by
+//     VerifyAcceptance since 2026-08-25) freshness = the recomputed source-content fingerprint
+//     (review.SourceChangesSince(AcceptedBaseCommit)) equals AcceptedChangeHash — committing
+//     between verify and complete (the sanctioned protocol order) does NOT stale the snapshot,
+//     only a real post-verify source edit does. Legacy states (empty AcceptedBaseCommit) keep
+//     the old AcceptedHeadCommit == HEAD equality check.
 //   - Passed == true (acceptance actually-run passed)
 //
 // Any failure → ok=false + reasons (for the BLOCKED text). No acceptance → pass. Non-git directory:
@@ -407,7 +445,11 @@ const acceptanceGateDisableEnv = "FORGE_ACCEPTANCE_GATE"
 // deterministic consumer（MCP 拆除后该字段在 VerifyAcceptance 写入但无消费方，成孤儿）。
 // task 声明了 acceptance 时，每条必须同时满足：
 //   - AcceptedHeadCommit 非空（跑过 forge task verify-acceptance，有实跑快照）
-//   - AcceptedHeadCommit == 当前 HEAD（验收基于当前代码；验收后改码则快照过期，须重跑）
+//   - 快照 FRESH：有内容快照（AcceptedBaseCommit 非空，2026-08-25 起由 VerifyAcceptance
+//     写入）时 freshness = 重算的源码内容指纹
+//     （review.SourceChangesSince(AcceptedBaseCommit)）等于 AcceptedChangeHash——verify 与
+//     complete 之间的 commit（协议规定顺序）不再使快照过期，只有验收后的真实源码改动
+//     才会。老 state（AcceptedBaseCommit 空）保持旧的 AcceptedHeadCommit==HEAD 相等检查。
 //   - Passed == true（验收实跑通过）
 //
 // 任一不满足 → ok=false + reasons（给 BLOCKED 文案）。无 acceptance → 放行。非 git 目录：
@@ -447,6 +489,29 @@ func CheckAcceptanceFresh(root string, state *TaskState) (ok bool, reasons []str
 		switch {
 		case c.AcceptedHeadCommit == "":
 			reasons = append(reasons, fmt.Sprintf(`验收 #%d（%s）未实跑（AcceptedHeadCommit 空）——先 forge task verify-acceptance`, i+1, c.Run))
+		case c.AcceptedBaseCommit != "":
+			// Content-snapshot freshness (commit-invariant): recompute the source
+			// fingerprint at the same base and compare. Base unreachable (history
+			// rewritten) blocks with a re-anchor instruction — re-running
+			// verify-acceptance rewrites the snapshot fields (content fields fall
+			// back to empty when the base stays dead, recovering via the legacy
+			// HEAD check on the new AcceptedHeadCommit), so this can never
+			// permanently wedge a task the way a bare HEAD compare did.
+			//
+			// 内容快照 freshness（commit 不变式）：按同一 base 重算源码指纹比对。
+			// base 不可达（历史被改写）时阻断并指引重锚——重跑 verify-acceptance
+			// 会重写快照字段（base 仍死则内容字段回落为空，经新的
+			// AcceptedHeadCommit 走 legacy HEAD 检查恢复），故不会像裸 HEAD 比较
+			// 那样把任务永久卡死。
+			cur, _, err := review.SourceChangesSince(root, c.AcceptedBaseCommit)
+			switch {
+			case err != nil:
+				reasons = append(reasons, fmt.Sprintf(`验收 #%d（%s）基线 %s 不可达（历史改写）——重跑 forge task verify-acceptance 重锚快照`, i+1, c.Run, c.AcceptedBaseCommit))
+			case cur != c.AcceptedChangeHash:
+				reasons = append(reasons, fmt.Sprintf(`验收 #%d（%s）基于旧代码（验收后源码已变更）——重跑 forge task verify-acceptance`, i+1, c.Run))
+			case !c.Passed:
+				reasons = append(reasons, fmt.Sprintf(`验收 #%d（%s）未通过——修码使验收通过或调整验收标准`, i+1, c.Run))
+			}
 		// head is guaranteed non-empty here (empty HEAD already returned above —
 		// the non-git short-circuit).
 		//
