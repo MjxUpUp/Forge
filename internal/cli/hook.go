@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
@@ -244,6 +245,16 @@ type toolInputFields struct {
 	FilePath string `json:"file_path"`
 	Content  string `json:"content"`
 	Command  string `json:"command"` // Bash 的 tool_input.command
+	// OldString/NewString are Edit's tool_input fields — assertion-check's
+	// per-edit mode analyzes exactly the change this call introduces
+	// (old→new), instead of scanning the whole stale worktree diff (the
+	// triple/quadruple-repeat advisory root cause, 2026-08-24).
+	//
+	// OldString/NewString 是 Edit 的 tool_input 字段——assertion-check 的
+	// per-edit 模式只分析本次调用引入的变化（old→new），不再扫整个陈旧
+	// 工作区 diff（三连发/四连发重复 advisory 的根因，2026-08-24）。
+	OldString string `json:"old_string"`
+	NewString string `json:"new_string"`
 }
 
 // HookOutput represents the structured JSON that Claude Code expects to receive on stdout.
@@ -794,6 +805,13 @@ func runHook(cmd *cobra.Command, args []string) error {
 		"FORGE_FILE_PATH="+sanitizeForShell(toRelPath(root, fields.FilePath)),
 		"FORGE_CONTENT="+sanitizeForShell(fields.Content),
 		"FORGE_COMMAND="+sanitizeForShell(fields.Command),
+		// Edit 的 old_string/new_string（assertion-check per-edit 模式用，
+		// 见 toolInputFields 注释）。
+		//
+		// Edit's old_string/new_string (consumed by assertion-check's per-edit
+		// mode — see the toolInputFields comment).
+		"FORGE_OLD_STRING="+sanitizeForShell(fields.OldString),
+		"FORGE_NEW_STRING="+sanitizeForShell(fields.NewString),
 		"FORGE_TOOL_NAME="+sanitizeForShell(hookInput.ToolName),
 		"FORGE_TASK_REF="+sanitizeForShell(activeTaskRef),
 		"FORGE_TASK_GATE="+sanitizeForShell(activeTaskGate),
@@ -925,6 +943,10 @@ func runHook(cmd *cobra.Command, args []string) error {
 	}
 
 	passed := exitErr == nil
+	// scriptPassed 钉住脚本自身结论（5b 的 promoteAdvisory 可能把 passed 翻转为
+	// false——那只改变 emitted 结论）。step 6 的 checklog 记录以脚本结论为准：
+	// advisory 被提升成阻断时不得记成 blocked/fail（见 step 6 注释）。
+	scriptPassed := passed
 
 	// 5. Parse the script output into the per-host verdict. The script outputs plain
 	// text: PASS [detail] or FAIL [reason]; the protocol shaping (JSON shape, exit
@@ -1003,10 +1025,12 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// drain on UserPromptSubmit instead — emitAdvisoryRouted in
 	// hook_kimi_advisory.go). dsh's channel delivers but the
 	// no-task WARN was empirically ignored (2026-08-22). Promote the REAL advisory to a block
-	// (passed true→false) here — BEFORE step 6's checklog record — so the promoted value flows
-	// into both the audit trail (Passed=false / LevelBlocked) and the host's block emitter
-	// (exit 2, stderr shown to the model). Placing this at step 7 instead would desync checklog
-	// (recorded as PASS) from the actually-emitted block. promoteAdvisory consults the hostcap
+	// (passed true→false) here — BEFORE step 7's emitter — so the host's block emitter
+	// (exit 2, stderr shown to the model) sees the promoted value. The checklog record
+	// (step 6) deliberately does NOT inherit the flip: it records the script's own
+	// verdict (Passed=true + LevelAdvisory for a promoted PASS-script) because scoring
+	// consumes Passed as a quality verdict — see step 6's comment for the 2026-08
+	// mislabeled-records incident. promoteAdvisory consults the hostcap
 	// registry rules, which isolate real advisories from each hook's success/clean branch;
 	// skill-trigger returned before step 5 and
 	// is unaffected. Escape hatches: FORGE_ADVISORY_PROMOTION / FORGE_KIMI_ADVISORY =soft.
@@ -1017,11 +1041,12 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// 项目入队、UserPromptSubmit 攒发——hook_kimi_advisory.go 的
 	// emitAdvisoryRouted）。dsh
 	// 通道送达但无任务 WARN 被实证无视（2026-08-22）。在此把
-	// 真 advisory 提升为阻断（passed true→false）——在 step 6 的 checklog 记录之前——让提升
-	// 后的值同时流入审计轨迹（Passed=false / LevelBlocked）与宿主阻断 emitter
-	// （exit 2，stderr 展示给模型）。若放在 step 7，checklog（记 PASS）与实际发出的
-	// block 会脱节。promoteAdvisory 查 hostcap 注册表规则，规则把真 advisory 与各 hook
-	// 的成功/干净分支隔开；skill-trigger 在
+	// 真 advisory 提升为阻断（passed true→false）——在 step 7 的 emitter 之前——让
+	// 宿主阻断 emitter（exit 2，stderr 展示给模型）拿到提升后的值。step 6 的
+	// checklog 记录刻意**不**继承该翻转：它记脚本自身结论（被提升的 PASS 脚本记
+	// Passed=true + LevelAdvisory），因为 scoring 把 Passed 当质量结论消费——
+	// 2026-08 误标记录事件见 step 6 注释。promoteAdvisory 查 hostcap 注册表规则，
+	// 规则把真 advisory 与各 hook 的成功/干净分支隔开；skill-trigger 在
 	// step 5 之前已返回，不受影响。逃生舱：FORGE_ADVISORY_PROMOTION / FORGE_KIMI_ADVISORY =soft。
 	if promoteAdvisory(agent, name, passed, detail) {
 		passed = false
@@ -1105,16 +1130,35 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// scoringPassUnchanged。
 	if shouldRecordCheck(checkName, passed) &&
 		!(passed && scoringPassUnchanged(root, util.SanitizeSessionID(hookInput.SessionID), checkName)) {
-		// Level 显式设置：hook 的 FAIL 是真 block（decision:block 拦下工具调用），
-		// 不是普通 fail——derive 只能从 Detail 前缀区分 gate 的 BLOCKED:/ADVISORY:，
-		// 对 hook 输出会退化成 fail，语义不够精确。
+		// Passed/Level 记录脚本自身结论，不被 5b promoteAdvisory 的翻转污染：提升
+		// 只改变 emitted 结论（step 7 发出阻断），checklog 记的是 hook 检查本身的
+		// verdict——脚本 PASS（exit 0）被提升为阻断时记 Passed=true + Level=advisory；
+		// 只有脚本 FAIL（exit≠0）才记 Passed=false + Level=blocked（hook 的 FAIL 是
+		// 真 block：decision:block 拦下工具调用，derive 只能从 Detail 前缀区分 gate 的
+		// BLOCKED:/ADVISORY:，对 hook 输出会退化成 fail，故 Level 显式设置）。
+		// scoring 的 LatestByCheck 直接消费 Passed（taskpipeline/scoring.go）——
+		// advisory 记成 blocked/fail 会把 AssertionPassed 等维度打翻（2026-08 kimi
+		// P0 提升期 7 条 assertion-check 记录：detail 自述 "PASS …Advisory…forge
+		// 不再阻塞"，却 level=blocked/passed=false）。
+		recordedPassed := passed
 		level := checklog.LevelPass
 		if !passed {
 			level = checklog.LevelBlocked
+			if scriptPassed {
+				recordedPassed = true
+				level = checklog.LevelAdvisory
+			}
 		}
-		if err := checklog.Record(root, &checklog.Entry{
+		// 宿主把同一工具事件双发时的阻断记录去重（2026-08-24 实证：kimi
+		// PreToolUse 对同一 Edit 在 98ms 内两次调用 read-before-edit，checklog seq
+		// 连号双记；两周日志 6 组同 (session,file) 在 0.5~1.9s 内连发）。去重只
+		// 抑制重复审计行——阻断发射（step 7）与脚本执行都不受影响。打戳在 Record
+		// 成功之后（Record 失败不留戳，窗口内重试照常记录，不丢审计行）。
+		if !passed && duplicateBlockRecord(root, hookInput.SessionID, string(checkName), logDetail) {
+			// 窗口内同指纹重复：跳过记录
+		} else if err := checklog.Record(root, &checklog.Entry{
 			Check:     checkName,
-			Passed:    passed,
+			Passed:    recordedPassed,
 			Checked:   true,
 			Level:     level,
 			ToolName:  recordedToolName,
@@ -1123,6 +1167,8 @@ func runHook(cmd *cobra.Command, args []string) error {
 			Detail:    truncate(logDetail, maxChecklogDetail),
 		}); err != nil {
 			fmt.Fprintf(os.Stderr, "[forge] warning: checklog record failed: %v\n", err)
+		} else if !passed {
+			stampBlockRecord(root, hookInput.SessionID, string(checkName), logDetail)
 		}
 	}
 
@@ -1189,17 +1235,38 @@ func runHook(cmd *cobra.Command, args []string) error {
 		// channel stays: it stores the PROJECT-RELATIVE path (gate matching is project-anchored)
 		// and is read at Edit time without parsing toollog JSON. PostToolUse fires after the Read
 		// completes, so this round's Read is recorded before the subsequent Edit —
-		// the Edit's PreToolUse hook can then see the path. Only tool-track
-		// (Read) records paths; auto-compile (Edit/Write) does not.
+		// the Edit's PreToolUse hook can then see the path.
 		//
 		// 方案2 shift-left：把本次 Read 的 file_path 追加到 per-session reads log，
 		// 让 PreToolUse read-before-edit hook 能在 Edit 时拦截 Edit-without-Read。
 		// toollog 现在也记 Read 的 file_path（漏斗 join，见上 6b），但本 side-channel 保留：
 		// 它存项目相对路径（gate 匹配锚定项目根），且 Edit 时直接读取、无需解析 toollog
 		// JSON。PostToolUse 在 Read 完成之后触发，所以本回合的 Read 会先于随后的 Edit
-		// 被记录——Edit 的 PreToolUse hook 就能看到该路径。只有 tool-track
-		// （Read）记路径；auto-compile（Edit/Write）不记。
+		// 被记录——Edit 的 PreToolUse hook 就能看到该路径。
 		if name == "tool-track" && hookInput.ToolName == "Read" && fields.FilePath != "" {
+			rel := toRelPath(root, fields.FilePath)
+			if rel != "" && rel != "." {
+				appendSessionRead(readsFilePath(root, hookInput.SessionID), rel)
+			}
+		}
+		// reads-log 对称补全（2026-08-24）：Write 落盘后 agent 当然知道文件内容
+		// （刚写的），把该路径也计入 reads-log——否则 Write 创建文件后紧接着的 Edit
+		// 必被 read-before-edit 拦（4 个 session 复发同一剧本：Write→Edit→FAIL→被迫
+		// 补一次纯形式 Read）。Write 覆盖已存在文件同理：盲覆盖本身仍由
+		// read-before-edit 在 PreToolUse 拦（那时 reads-log 无此路径），但 Write 落盘
+		// 后的后续 Edit 不应再拦。auto-compile 挂在 PostToolUse Write|Edit 上，此处
+		// 只收 Write（Edit 要落到这步本就已过 PreToolUse 的读门槛，无需再记）。
+		//
+		// Symmetric reads-log completion (2026-08-24): after a Write lands the agent
+		// plainly knows the file's content (it just authored it), so record the path
+		// too — otherwise the Edit right after a file-creating Write is always blocked
+		// by read-before-edit (4 sessions replayed the same script: Write→Edit→FAIL→
+		// forced ceremonial Read). Same for overwriting an existing file: the blind
+		// overwrite itself is still blocked at PreToolUse (the path is not in the log
+		// yet), but post-Write edits must not be. auto-compile rides PostToolUse
+		// Write|Edit; only Write is recorded here (an Edit reaching this point already
+		// passed the PreToolUse read gate, so recording it adds nothing).
+		if name == "auto-compile" && hookInput.ToolName == "Write" && fields.FilePath != "" {
 			rel := toRelPath(root, fields.FilePath)
 			if rel != "" && rel != "." {
 				appendSessionRead(readsFilePath(root, hookInput.SessionID), rel)
@@ -2051,6 +2118,88 @@ func isScoringCheck(name checklog.CheckName) bool {
 		return true
 	}
 	return false
+}
+
+// blockRecordDedupWindow bounds the same-event double-fire suppression: an
+// identical blocked record (same check, session, detail fingerprint) inside the
+// window is a host-side duplicate delivery of ONE tool event, not a new block.
+// Sized from the 2026-08-24 production evidence: kimi PreToolUse double-fired
+// read-before-edit for a single Edit 98ms apart (checklog seq consecutive); the
+// two-week logs show 6 same-(session,file) pairs 0.5~1.9s apart.
+//
+// blockRecordDedupWindow 限定同一事件双发抑制的窗口：窗口内完全相同的阻断记录
+// （同 check、session、detail 指纹）是宿主对**同一个**工具事件的重复投递，
+// 不是新的阻断。窗口按 2026-08-24 生产证据定：kimi PreToolUse 对单个 Edit
+// 98ms 内双发 read-before-edit（checklog seq 连号）；两周日志有 6 组同
+// (session,file) 记录间隔 0.5~1.9s。
+const blockRecordDedupWindow = 3 * time.Second
+
+// blockRecordMarker resolves the dedupe marker path and the detail fingerprint
+// for one (check, session, detail) triple. "" path when root is empty.
+//
+// blockRecordMarker 解析某 (check, session, detail) 三元组的去重 marker 路径与
+// detail 指纹。root 为空时路径返回 ""。
+func blockRecordMarker(root, sessionID, checkName, detail string) (path, fp string) {
+	if root == "" {
+		return "", ""
+	}
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(detail))
+	fp = strconv.FormatUint(h.Sum64(), 16)
+	path = filepath.Join(forgedata.DataDirFor(root), "markers", "forge-block-dedup-"+readsFileKey(sessionID)+"-"+checkName)
+	return path, fp
+}
+
+// duplicateBlockRecord reports whether an identical blocked entry (same check,
+// session, detail fingerprint) was already recorded within
+// blockRecordDedupWindow. Check-only: it never writes the marker — the caller
+// stamps via stampBlockRecord AFTER checklog.Record succeeds (2026-08-25 review
+// minor: stamping first meant a failed Record left the stamp behind, and a
+// retry inside the window was then suppressed — the audit line was lost).
+// Best-effort, fail toward recording: any I/O error returns false — an audit
+// line must never be silently dropped on a marker failure.
+//
+// duplicateBlockRecord 报告完全相同的阻断条目（同 check、session、detail 指纹）
+// 是否已在 blockRecordDedupWindow 内被记录过。只查不写——调用方在
+// checklog.Record 成功后才经 stampBlockRecord 打戳（2026-08-25 review minor：
+// 先打戳的话 Record 失败会留下戳，窗口内的重试随后被抑制——审计行丢失）。
+// 尽力而为、宁多记：任何 I/O 错误返回 false——审计行绝不可因 marker 故障被
+// 静默丢弃。
+func duplicateBlockRecord(root, sessionID, checkName, detail string) bool {
+	path, fp := blockRecordMarker(root, sessionID, checkName, detail)
+	if path == "" {
+		return false
+	}
+	if data, err := os.ReadFile(path); err == nil {
+		parts := strings.Fields(string(data))
+		if len(parts) == 2 && parts[1] == fp {
+			if ts, perr := strconv.ParseInt(parts[0], 10, 64); perr == nil {
+				if since := time.Since(time.Unix(ts, 0)); since >= 0 && since < blockRecordDedupWindow {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// stampBlockRecord writes the dedupe marker for one blocked record. Called only
+// after the corresponding checklog.Record succeeded (see duplicateBlockRecord).
+// Best-effort: a stamp failure only means the next identical delivery is
+// recorded again — the safe direction.
+//
+// stampBlockRecord 为一条阻断记录写去重 marker。仅在对应 checklog.Record 成功
+// 后调用（见 duplicateBlockRecord）。尽力而为：打戳失败仅意味着下一次相同投递
+// 会再记一条——安全方向。
+func stampBlockRecord(root, sessionID, checkName, detail string) {
+	path, fp := blockRecordMarker(root, sessionID, checkName, detail)
+	if path == "" {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return
+	}
+	_ = os.WriteFile(path, []byte(strconv.FormatInt(time.Now().Unix(), 10)+" "+fp+"\n"), 0644)
 }
 
 func firstNonEmpty(ss ...string) string {

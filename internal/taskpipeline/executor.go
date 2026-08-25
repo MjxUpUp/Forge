@@ -1638,6 +1638,26 @@ func runEmbeddedHook(root, name string) (passed bool, infra bool, output string)
 	// Windows 启动 bash 子进程要原生路径做 cwd，bash 自身能处理 Windows cwd。
 	cmd := exec.Command(bashPath, filepath.ToSlash(tmpPath), filepath.ToSlash(root))
 	cmd.Dir = root
+	// 剔除继承自父进程的 tool-input env（2026-08-25 review minor）：cmd.Env 未设时
+	// 子进程继承 os.Environ()——父 shell 恰好 export 了 FORGE_FILE_PATH 会把
+	// assertion-check 从 batch（门禁全量扫描，以 FILE_PATH 为空判别）静默降级成
+	// per-edit 分析，门禁职责落空。正常注入路径（cli.runHook）是显式设置这些 env
+	// 的，不经本函数，不受影响。FORGE_CONTENT/FORGE_COMMAND 同样会被继承但无消费
+	// 者：前者只在 FILE_PATH 非空时读取，后者只被不经本路径的 bash-guard/
+	// hazard-guard 读取。
+	env := make([]string, 0, len(os.Environ()))
+	for _, kv := range os.Environ() {
+		k := kv
+		if i := strings.IndexByte(kv, '='); i >= 0 {
+			k = kv[:i]
+		}
+		switch k {
+		case "FORGE_FILE_PATH", "FORGE_TOOL_NAME", "FORGE_OLD_STRING", "FORGE_NEW_STRING":
+			continue
+		}
+		env = append(env, kv)
+	}
+	cmd.Env = env
 	out, err := cmd.CombinedOutput()
 	if shellexec.IsHookInfraFailure(err) {
 		return false, true, strings.TrimSpace(fmt.Sprintf("%v: %s", err, string(out)))
