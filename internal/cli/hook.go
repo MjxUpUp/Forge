@@ -348,7 +348,7 @@ var hookCmd = &cobra.Command{
 var hookAgent string
 
 func init() {
-	hookCmd.Flags().StringVar(&hookAgent, "agent", "", "host agent: selects the stdin dialect AND the output protocol (windsurf|kimi|reasonix|codex|cursor|copilot|cline)")
+	hookCmd.Flags().StringVar(&hookAgent, "agent", "", "host agent: selects the stdin dialect AND the output protocol (windsurf|kimi|reasonix|codex|cursor|copilot|cline|zcode)")
 	rootCmd.AddCommand(hookCmd)
 }
 

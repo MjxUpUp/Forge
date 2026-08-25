@@ -326,6 +326,10 @@ func hostSpecs() []hostSpec {
 			p, err := agentbridge.OpencodePluginPath()
 			return []scanTarget{{path: p}}, err
 		}},
+		{"zcode", func() ([]scanTarget, error) {
+			p, err := agentbridge.ZcodeConfigPath()
+			return []scanTarget{{path: p}}, err
+		}},
 	}
 }
 
@@ -642,12 +646,12 @@ type binCandidate struct {
 }
 
 // scanFile counts lines referencing forge and collects the forge binary tokens they
-// invoke. Line-oriented scanning is format-agnostic across the nine hosts' hook
-// schemas (nested JSON / flat TOML / shell wrappers) — precision is not needed, the
+// invoke. Line-oriented scanning is format-agnostic across every host's hook
+// schema (nested JSON / flat TOML / shell wrappers) — precision is not needed, the
 // report only has to be right about "wired or not" and "which binary". lookPath is
 // injected (Options.LookPath) so tests control bare-name resolution.
 //
-// scanFile 统计引用 forge 的行数并收集其调用的 forge 二进制 token。按行扫描对九个
+// scanFile 统计引用 forge 的行数并收集其调用的 forge 二进制 token。按行扫描对各
 // host 的 hook schema（嵌套 JSON/扁平 TOML/shell wrapper）格式无关——不需要精确解析，
 // 报告只需在"接没接"与"哪个二进制"上正确。lookPath 注入（Options.LookPath）让测试
 // 可控裸名解析。
@@ -665,7 +669,7 @@ func scanFile(path string, lookPath func(string) (string, error)) (int, []binCan
 		}
 		// 含 forge 的行未必是接线命令：注册表/文档行（kimi installed.json 的
 		// "id": "forge"、URL、codebuddy known_marketplaces.json 里 "Forge loop-engineering
-		// quality gates: …" 这类 description）只是元数据/文案。九个 host 的 forge 接线
+		// quality gates: …" 这类 description）只是元数据/文案。各 host 的 forge 接线
 		// 命令一律是 `forge hook <event>` 的调用形态（含 --agent 变体；`forge gate <id>`
 		// 是 settings 层认可的等价前缀，见 internal/hooks/settings.go isForgeHookCommand 的合法命令判定），
 		// 故只认"紧跟在 forge token 后的子命令词位上是 hook/gate"的行——词在任何位置
@@ -675,7 +679,7 @@ func scanFile(path string, lookPath func(string) (string, error)) (int, []binCan
 		// A forge-carrying line is not necessarily wiring: registry/doc lines (kimi
 		// installed.json's "id": "forge", URLs, and descriptions like "Forge
 		// loop-engineering quality gates: …" in codebuddy's known_marketplaces.json) are
-		// metadata/prose. All nine hosts' forge wiring is an invocation of the shape
+		// metadata/prose. Every host's forge wiring is an invocation of the shape
 		// `forge hook <event>` (--agent variants included; `forge gate <id>` is the
 		// settings layer's accepted equivalent prefix — see the legal-command check in
 		// internal/hooks/settings.go), so only lines with hook/gate in the subcommand
