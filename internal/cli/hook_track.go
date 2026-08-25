@@ -158,9 +158,16 @@ func runFailureTrackHook(hookInput HookInput, root, version, agent string) error
 	// methodology lives; the model decides.
 	//
 	// 事实性提示（非祈使）：陈述发生了什么、方法论在哪；模型自行决定。
+	// Name-only pointer: a repo-relative skills/... path is dead outside the Forge
+	// repo itself, and the hook has no absolute skill dir at hand — the host's skill
+	// mechanism resolves the name (cf. skilltrigger's absolute-path render).
+	//
+	// 只给 skill 名：仓库相对 skills/... 路径在 Forge 仓库之外是死链，hook 手里
+	// 也没有绝对 skill 目录——由宿主 skill 机制解析名字（参 skilltrigger 的绝对
+	// 路径渲染）。
 	nudge := fmt.Sprintf(
 		"[forge] a compile/test failure was just observed (markers matched in %s tool output). "+
-			"The compile-fix-loop skill (skills/compile-fix-loop/SKILL.md) contains the failure-class-specific debugging methodology (root-cause first, not error-message whack-a-mole).",
+			"Load the compile-fix-loop skill for the failure-class-specific debugging methodology (root-cause first, not error-message whack-a-mole).",
 		hookInput.ToolName)
 	// emitAdvisoryRouted: kimi queues this nudge for the UserPromptSubmit drain
 	// (fired on PostToolUse/PostToolUseFailure, whose stdout kimi drops); every
@@ -354,7 +361,7 @@ func runTestNudgeHook(hookInput HookInput, root, version, agent string) error {
 	nudge := fmt.Sprintf(
 		"[forge] %d source writes (Write/Edit) have landed in this session with no test file written yet "+
 			"(task gate task-verify checks this pairing; whitelist: entry points/generated/pure types). "+
-			"The test-discipline skill (skills/test-discipline/SKILL.md) covers test quality guards: unit vs e2e split, assertion preservation, fake-test detection.",
+			"Load the test-discipline skill for test quality guards: unit vs e2e split, assertion preservation, fake-test detection.",
 		state.SourceWrites)
 	// Record the observation (Delivered stamped by the same channel verdict the
 	// emission uses — on PostToolUse every wired host carries allow-detail into

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
@@ -75,6 +76,49 @@ func TestAutoSyncResyncsWhenVersionDiffers(t *testing.T) {
 
 	if !hookWritten(t, dir) {
 		t.Fatal("version mismatch should trigger resync, but hook was not written")
+	}
+}
+
+// TestAutoSyncRefreshesAgentsQualitySkill pins the sync path that heals the
+// ~/.agents/skills/forge-quality orphan (2026-08-25): autoSync reaches
+// skillgen.GenerateUserQualitySkill, which — since the ~/.agents target was
+// restored — rewrites the cross-agent copy whenever ~/.agents exists (kimi and
+// other agent-neutral hosts read it there). The skillgen-side target list is
+// pinned by TestGenerateUserQualitySkill_Targets; this test guards the wiring
+// from autoSync to that generator. HOME/USERPROFILE are overridden per-test so
+// the shared TestMain home stays untouched.
+//
+// TestAutoSyncRefreshesAgentsQualitySkill 钉住修复 ~/.agents/skills/forge-quality
+// 孤儿副本的 sync 路径（2026-08-25）：autoSync 触达
+// skillgen.GenerateUserQualitySkill——~/.agents 目标恢复后，只要 ~/.agents
+// 存在就重写跨 agent 副本（kimi 等 agent-neutral 宿主在此读它）。skillgen 侧
+// 的目标列表由 TestGenerateUserQualitySkill_Targets 钉住；本测试守的是
+// autoSync 到该生成器的接线。HOME/USERPROFILE 逐测试覆盖，不碰 TestMain 的
+// 共享 home。
+func TestAutoSyncRefreshesAgentsQualitySkill(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // Windows 的 os.UserHomeDir 源
+	if err := os.MkdirAll(filepath.Join(home, ".agents"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	writeSyncStamp(t, dir, "v0.16.0") // 版本差 → 走完整 sync
+
+	// Ignore error: later sync steps (agent bridge etc.) may fail in a bare temp
+	// dir; the skill regeneration (step 4) runs before them and is warning-only.
+	//
+	// 忽略 error：后续 sync 步骤（agent bridge 等）在裸 temp dir 里可能失败；
+	// skill 重生成（第 4 步）在它们之前且失败仅告警。
+	_ = autoSync(dir, "v0.17.0", false)
+
+	data, err := os.ReadFile(filepath.Join(home, ".agents", "skills", "forge-quality", "SKILL.md"))
+	if err != nil {
+		t.Fatalf("autoSync must regenerate ~/.agents/skills/forge-quality/SKILL.md: %v", err)
+	}
+	if !strings.Contains(string(data), "仅当当前项目已执行过 `forge init`") {
+		t.Error("~/.agents copy must carry the conditional-activation wording (fresh generator output, not the rotted orphan)")
 	}
 }
 

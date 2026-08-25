@@ -22,8 +22,14 @@ func TestFormatMissing_InjectsTestDiscipline(t *testing.T) {
 	if !strings.Contains(single, "test-discipline") {
 		t.Errorf("formatMissing 应注入 test-discipline skill 指引，got:\n%s", single)
 	}
-	if !strings.Contains(single, "/test-discipline") {
-		t.Errorf("formatMissing 应给出 skill 加载入口（/test-discipline），got:\n%s", single)
+	// Natural-language loading form only: the slash-command form (/test-discipline)
+	// is Claude Code-only dead text on other hosts, and a repo-relative
+	// skills/test-discipline/SKILL.md path is a 404 outside the Forge repo.
+	//
+	// 只用自然语言加载形态：slash command 形态（/test-discipline）在其他宿主是
+	// 死文本，仓库相对路径 skills/test-discipline/SKILL.md 在 Forge 仓库外是 404。
+	if strings.Contains(single, "/test-discipline") || strings.Contains(single, "skills/test-discipline/SKILL.md") {
+		t.Errorf("formatMissing 不得含 Claude-only slash command 或仓库相对路径，got:\n%s", single)
 	}
 	// escape no longer the headline taught instruction.
 	//

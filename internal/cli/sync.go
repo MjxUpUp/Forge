@@ -21,6 +21,7 @@ import (
 //   - DataDir/hooks/*.sh        → reference copies, always overwritten from embed
 //   - ~/.claude/settings.json   → user-level hooks, regenerated (plugin not installed)
 //   - ~/.claude/skills/forge-quality/SKILL.md → regenerated from protocol.yml
+//     (+ ~/.agents/skills copy for kimi/agent-neutral hosts, when ~/.agents exists)
 //   - ~/.claude/CLAUDE.md + ~/.codex/AGENTS.md → forge sections updated (backup+append)
 //   - agent bridge files        → user-level (~/.codex/hooks.json, ~/.cursor/...)
 //   - protocol.yml              → created from defaults if missing, never overwritten
