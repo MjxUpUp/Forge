@@ -37,7 +37,9 @@ metadata:
 - SQL 破坏性 DDL / 权限：`DROP DATABASE|TABLE|SCHEMA` / `TRUNCATE` / `GRANT ALL` / `GRANT … TO PUBLIC` / 无 WHERE 的 `DELETE|UPDATE`
 - 基础设施破坏：`kubectl delete` / `docker system prune` / `docker volume rm` / `docker rm -f`
 
-**拦截后（HITL 闭环，不是硬 block）**：hook 给出指纹和指引 → agent 用所在 AI 工具的提问确认工具（Claude Code→AskUserQuestion；codex/cursor/windsurf→各自机制）向用户说明风险获明确确认 → 运行 `forge hazard confirm "<命令>"` 登记 5min 限时标记 → 重试原命令自动放行。`FORGE_ALLOW_HAZARD` env 豁免已移除（可被 agent 自我放行滥用）——confirm 链（events.jsonl 审计 + 5min TTL）是唯一放行路径，测试/CI 同样走 `forge hazard confirm`。
+**拦截后（HITL 闭环，不是硬 block）**：hook 给出指纹和指引 → 授权判定：**用户本回合已明确指令/确认过该操作时**（如用户直接要求执行，或 agent 前置已问过），无需二次确认，直接 `forge hazard confirm --last` 登记放行；否则先用所在 AI 工具的提问确认机制向用户说明风险、获明确确认再 confirm → 重试原命令自动放行（5min 限时标记，events.jsonl 审计）。confirm 链是唯一放行路径，测试/CI 同样走 `forge hazard confirm`。
+
+**自动豁免**（不拦截，无需 confirm）：`rm -rf` 目标全部落在一次性临时区时——字面 `/tmp/*`、`/var/folders/*`、`/private/tmp/*`、`$TMPDIR` 子路径，或同一命令串内 `X=$(mktemp -d)` 赋值变量的引用（`rm -rf "$X"`；变量有其他赋值则作废保守拦截）。危险串仅在引号/注释/多行字符串内（grep 模式、commit message、python heredoc 字符串等数据上下文）也不拦；`bash -c`/`eval`/管道进 shell 等执行包裹仍拦。
 
 ## /careful — hazard-guard 之外的补充护栏
 

@@ -14,8 +14,9 @@ import (
 //
 // Form (the Forge hook model only has approve/block, and cannot invoke each AI tool private confirmation popup):
 //   - PreToolUse Bash hook hazard-guard detects high-risk commands -> block + additionalContext guidance;
-//     the agent uses the questioning/confirmation tool of its host tool (Claude Code -> AskUserQuestion; codex/cursor/
-//     windsurf -> their own mechanisms) to explain the risk to the user and obtain explicit confirmation.
+//     if the user already instructed/confirmed the operation this turn, the agent confirms directly;
+//     otherwise it uses the questioning/confirmation mechanism of its host tool to explain the risk
+//     to the user and obtain explicit confirmation first.
 //   - After obtaining confirmation, the agent runs `forge hazard confirm <command>` to register a time-limited (5min) mark, then retries the original command ->
 //     the hook sees the mark and lets it pass.
 //
@@ -24,9 +25,9 @@ import (
 // forge hazard 让 on-demand-guards 的高危命令拦截成为自动挡，并落地 human-in-the-loop。
 //
 // 形态（Forge hook 模型只有 approve/block，调不起各 AI 工具私有的确认弹窗）：
-//   - PreToolUse Bash hook hazard-guard 检测高危命令 → block + additionalContext 指引
-//     agent 用所在工具的提问确认工具（Claude Code→AskUserQuestion；codex/cursor/
-//     windsurf→各自机制）向用户说明风险获明确确认。
+//   - PreToolUse Bash hook hazard-guard 检测高危命令 → block + additionalContext 指引：
+//     用户本回合已明确指令/确认过该操作时 agent 直接 confirm 登记，无需二次确认；
+//     否则先用所在工具的提问确认机制向用户说明风险获明确确认。
 //   - agent 获确认后 `forge hazard confirm "<命令>"` 登记限时（5min）标记 → 重试原命令 →
 //     hook 见标记放行。
 //
@@ -70,9 +71,10 @@ var hazardCmd = &cobra.Command{
 	Long: `forge hazard 管理 on-demand-guards 自动挡的"高危命令已确认"标记，支撑 human-in-the-loop。
 
 hazard-guard hook 拦截高危命令（rm -rf / git push --force / DROP TABLE / kubectl delete /
-DELETE 无 WHERE 等）后，用你的确认工具向用户说明风险获明确确认，再 confirm 登记限时
-标记（5min 内同命令重试放行）。这是 Forge hook 模型下 HITL 的落地形态——Forge 不直接
-弹各工具的确认框，靠 block + 指引 + 限时标记闭环。
+DELETE 无 WHERE 等）后：若用户在本回合已明确指令/确认过该操作，可直接 confirm --last
+登记放行，无需二次确认；否则先用你所在工具的提问确认机制向用户说明风险、获明确确认，
+再 confirm 登记限时标记（5min 内同命令重试放行）。这是 Forge hook 模型下 HITL 的落地
+形态——Forge 不直接弹各工具的确认框，靠 block + 指引 + 限时标记闭环。
 
 子命令：
   confirm <命令> [--fingerprint <hex>] [--last]
@@ -82,10 +84,7 @@ DELETE 无 WHERE 等）后，用你的确认工具向用户说明风险获明确
                      --last 与 --fingerprint 同给时 --last 优先（后者被忽略）
   fingerprint <命令> 算命令指纹（hook 内部用）
   confirmed <指纹>   查指纹是否已确认（hook 内部用，exit 0=是/1=否）
-  status             列出当前有效确认
-
-FORGE_ALLOW_HAZARD env 豁免已移除（可被 agent 自我放行滥用）——confirm 链
-（events.jsonl 审计 + 5min TTL）是唯一放行路径，测试/CI 同样走 forge hazard confirm。`,
+  status             列出当前有效确认`,
 }
 
 var hazardConfirmCmd = &cobra.Command{
