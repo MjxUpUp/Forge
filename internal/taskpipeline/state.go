@@ -43,8 +43,23 @@ func dataHome(root string) string { return forgedata.DataDirFor(root) }
 // History/ReviewPassed/Acceptance，review 硬前置被串号绕过。SanitizeRef 本身不动
 // （与既有文件名兼容）。
 func LoadTaskState(root, taskRef string) (*TaskState, error) {
+	return LoadTaskStateInDir(filepath.Join(dataHome(root), "tasks"), taskRef)
+}
+
+// LoadTaskStateInDir is LoadTaskState's read core over an explicit tasks dir
+// — exported for cross-repo DependsOn resolution (LoadDepState), which
+// addresses a member repo by KEY (forgedata.RootDir(key)/tasks) rather than by
+// a live project root (the member's path may have drifted since it joined the
+// workspace; the key never does). Same contract as LoadTaskState, including
+// the ref-collision guard below.
+//
+// LoadTaskStateInDir 是 LoadTaskState 针对显式 tasks 目录的读取核心——导出给
+// 跨仓 DependsOn 解析（LoadDepState）：成员仓按 KEY 寻址
+// （forgedata.RootDir(key)/tasks）而非按存活项目根（成员路径入组后可能漂移，
+// key 不会）。契约与 LoadTaskState 一致，含下方 ref 串号防护。
+func LoadTaskStateInDir(tasksDir, taskRef string) (*TaskState, error) {
 	filename := taskcontext.SanitizeRef(taskRef) + ".json"
-	path := filepath.Join(dataHome(root), "tasks", filename)
+	path := filepath.Join(tasksDir, filename)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -564,7 +579,20 @@ func DeleteTaskState(root, taskRef string) error {
 //
 // ListTaskStates 返回 DataDir/tasks/ 下所有 task state 文件。
 func ListTaskStates(root string) ([]*TaskState, error) {
-	tasksDir := filepath.Join(dataHome(root), "tasks")
+	return ListTaskStatesInDir(filepath.Join(dataHome(root), "tasks"))
+}
+
+// ListTaskStatesInDir is ListTaskStates' scan core over an explicit tasks dir
+// — exported for the multi-repo workspace status aggregation, which addresses
+// member repos by KEY (forgedata.RootDir(key)/tasks) rather than by a live
+// project root (the member's path may have drifted since it joined; the key
+// never does). Read-only, best-effort per file, same as ListTaskStates.
+//
+// ListTaskStatesInDir 是 ListTaskStates 针对显式 tasks 目录的扫描核心——
+// 导出给多仓 workspace 的 status 聚合：成员仓按 KEY 寻址
+// （forgedata.RootDir(key)/tasks）而非按存活项目根（成员路径入组后可能
+// 漂移，key 不会）。只读、单文件级 best-effort，语义同 ListTaskStates。
+func ListTaskStatesInDir(tasksDir string) ([]*TaskState, error) {
 	entries, err := os.ReadDir(tasksDir)
 	if err != nil {
 		if os.IsNotExist(err) {

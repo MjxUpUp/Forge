@@ -309,7 +309,7 @@ func runTaskResume(cmd *cobra.Command, args []string) error {
 		fmt.Println(string(out))
 		return nil
 	}
-	fmt.Print(renderResume(state, gitPorcelain(root)))
+	fmt.Print(renderResume(state, gitPorcelain(root), workspaceContextLine(root, state.CrossRepoImpact)))
 	return nil
 }
 
@@ -406,7 +406,7 @@ func renderHookResume(root string) (string, error) {
 	if _, err := attachCurrentSession(state, root, true); err != nil {
 		return "", err
 	}
-	handoff := renderResume(state, gitPorcelain(root))
+	handoff := renderResume(state, gitPorcelain(root), workspaceContextLine(root, state.CrossRepoImpact))
 	// The current task resumes automatically, but the handoff party should still know
 	// the full in-flight set — one line naming the other incomplete tasks. The list is
 	// capped (zombie accumulation would otherwise produce a giant line and push the
@@ -899,7 +899,7 @@ func renderHookReinject(root string) (string, error) {
 		}
 		return "", nil
 	}
-	handoff := renderResume(state, gitPorcelain(root))
+	handoff := renderResume(state, gitPorcelain(root), workspaceContextLine(root, state.CrossRepoImpact))
 	// Plan 4 (mid-way checkpoint explicit persist · active driving): right after a
 	// compaction, if the task has not persisted any "mid-way thread" (decision/next
 	// step), the handoff can only restore the goal/plan set at task start — and that
@@ -981,7 +981,7 @@ func runTaskContext(cmd *cobra.Command, args []string) error {
 		fmt.Println(string(out))
 		return nil
 	}
-	fmt.Print(renderResume(state, gitPorcelain(root)))
+	fmt.Print(renderResume(state, gitPorcelain(root), workspaceContextLine(root, state.CrossRepoImpact)))
 	return nil
 }
 
@@ -1189,10 +1189,15 @@ func gitPorcelain(root string) []string {
 // gitChanged is passed in by the caller (decoupling git so this function can be pure-unit
 // tested). When the continuity content is empty, it emits a minimal status card without
 // erroring — resume always succeeds, only the amount of content varies.
+// extraHeader carries optional one-liners (today only the multi-repo workspace
+// context line, workspaceContextLine) injected after the DependsOn line; empty
+// entries are skipped so fail-open callers can pass the line unconditionally.
 //
 // renderResume 把 task 接续字段渲染成 HANDOFF 风格视图。gitChanged 由 caller 传入（解耦 git，
 // 使本函数可纯单测）。空接续内容时给最小状态卡，不报错——resume 永远成功，只是内容多寡。
-func renderResume(state *taskpipeline.TaskState, gitChanged []string) string {
+// extraHeader 携带可选单行（当前仅多仓 workspace 上下文行 workspaceContextLine），
+// 注入在依赖行之后；空条目跳过，fail-open 调用方可无条件传。
+func renderResume(state *taskpipeline.TaskState, gitChanged []string, extraHeader ...string) string {
 	var b strings.Builder
 	w := func(s string) { b.WriteString(s + "\n") }
 
@@ -1222,6 +1227,11 @@ func renderResume(state *taskpipeline.TaskState, gitChanged []string) string {
 	}
 	if len(state.DependsOn) > 0 {
 		w("依赖: " + strings.Join(state.DependsOn, ", "))
+	}
+	for _, line := range extraHeader {
+		if line != "" {
+			w(line)
+		}
 	}
 	if state.HasContinuity() {
 		w(renderTldr(state))

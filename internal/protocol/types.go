@@ -14,6 +14,16 @@ type Protocol struct {
 	Standards    []Standard                  `yaml:"standards"    json:"standards"`
 	SessionRules []SessionRule               `yaml:"session_rules" json:"session_rules"`
 	Scoring      *scoringtypes.ScoringConfig `yaml:"scoring,omitempty" json:"scoring,omitempty"`
+	// CrossRepoImpact tunes the task-verify cross-repo-impact gate
+	// (docs/design/multi-repo-workspace.md): "" or "advisory" (default) only
+	// reminds when a multi-repo-workspace task never declared its impact;
+	// "required" hard-blocks the gate until `forge task impact` records one.
+	//
+	// CrossRepoImpact 调节 task-verify 的 cross-repo-impact 门禁
+	// （docs/design/multi-repo-workspace.md）："" 或 "advisory"（默认）只在
+	// 多仓 workspace 任务未声明影响时提醒；"required" 则硬阻断，直到
+	// `forge task impact` 记录声明。
+	CrossRepoImpact string `yaml:"cross_repo_impact,omitempty" json:"cross_repo_impact,omitempty"`
 }
 
 // Standard is a named quality standard with enforcement configuration.

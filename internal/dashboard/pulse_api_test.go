@@ -1086,3 +1086,32 @@ func TestServe_PulseProjects_Sync(t *testing.T) {
 		t.Errorf("未绑定项目的线上结构被改变（sync 键应缺席）: %s", body2)
 	}
 }
+
+// TestPulseDocReview_ReviewedAtOmitEmpty pins the JSON contract declared on
+// pulseDocReview.ReviewedAt: time.Time's omitempty is a no-op on the zero value
+// (it still serializes 0001-01-01), so the field is a *time.Time — a zero review
+// moment must serialize as ABSENT, not a fake date; a set moment must appear.
+//
+// TestPulseDocReview_ReviewedAtOmitEmpty 钉住 pulseDocReview.ReviewedAt 的 JSON
+// 契约：time.Time 的 omitempty 对零值无效（仍序列化 0001-01-01），故字段用
+// *time.Time——零值评审时刻须序列化为缺席而非假日期；有值时刻须出现。
+func TestPulseDocReview_ReviewedAtOmitEmpty(t *testing.T) {
+	zero := pulseDocReview{Passed: true, RubricScore: 80, Round: 1, RoundsTotal: 1}
+	data, err := json.Marshal(zero)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), `reviewedAt`) {
+		t.Fatalf(`零值 ReviewedAt 须缺席而非假日期: %s`, data)
+	}
+	ts := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
+	withTs := zero
+	withTs.ReviewedAt = &ts
+	data, err = json.Marshal(withTs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `reviewedAt`) {
+		t.Fatalf(`有值 ReviewedAt 须出现在序列化结果: %s`, data)
+	}
+}
