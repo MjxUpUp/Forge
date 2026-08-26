@@ -203,3 +203,20 @@ internal/cli/review.go self-refresh 守卫 + TestRunReviewPassAt_ReworkRoundRequ
 ### Rationale
 
 守卫让自助刷新从隐性行为变成显式可审计动作：--note 对应诚实复审流（结论留痕），--acknowledge-changes 对应自我承担（WARN 审计），平衡可用性（不硬堵 amend 类非源码变更）
+
+## [d-18cf554374aa2630-297a6d15] accept
+
+- **Skill**: code-review-gate
+- **DecidedAt**: 2026-08-26T10:48:45Z
+
+### Diagnosis
+
+AI CR 不稳定的本地形态不是误报（一周 25+ 次审查 0 误报）而是发现集不可复现：7 起后轮报前轮未见新发现、2 起双轨分歧、40 次 review-pass 仅 1 次带 note（rubber-stamp 不可辨）
+
+### Revision
+
+复审轮新发现三选一并归因（抽样未覆盖/修复引入/范围外）写进报告与 --note；双轨大分歧判读为欠采样信号加派不同视角 pass（明确非多数投票过滤，守住不分级原则）；--note 必须记覆盖范围与验证动作；发现用 forge task finding 录入承接 Round/ChangeHash 可度量性
+
+### Evidence
+
+kimi 转录一周 17 个审查 episode 取证 + forge 执行记录 6 项度量盲区分析；业界 Bugbot 多 pass 共识与 Snap Verifier 经验按本地数据裁剪（防漏检优先于防噪声）
