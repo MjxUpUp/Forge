@@ -901,13 +901,13 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		// the state is persisted once after both sections.
 		findingsDirty := false
 		// Same-finding suppression (2026-08 noise audit) — run BEFORE the checklog record so
-		// the audit entry carries the fresh/previously-reported breakdown (dedupSuffix): the
+		// the audit entry carries the fresh/suppressed breakdown (dedupSuffix): the
 		// entry stays full-truth (Passed/Detail reflect the actual scan) while repeat FAILs on
 		// an unchanged diff become distinguishable from genuinely new hits. The agent-facing
 		// advisory below still only renders fresh findings.
 		//
 		// 同 finding 抑制（2026-08 噪音审计）——先于 checklog 记录执行，使审计条目带上
-		// 新发现/已报告拆分（dedupSuffix）：条目保持全量真相（Passed/Detail 反映当次
+		// 新发现/被抑制拆分（dedupSuffix）：条目保持全量真相（Passed/Detail 反映当次
 		// 真实扫描），同时让重扫同一 diff 的重复 FAIL 与真正的新命中可区分。下方
 		// agent 面向的 advisory 仍只渲染新 finding。
 		var freshCheats []CheatFinding
@@ -1017,10 +1017,10 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		// 机械不可判 → 仍归 LLM reviewer / code-review-gate。
 		unused := ScanUnusedSymbols(root, state)
 		// 同 finding 抑制先于 checklog 记录执行（与 cheat-scan 段同一模式）：审计条目带上
-		// 新发现/已报告拆分（dedupSuffix），重扫同一 diff 的重复 FAIL 与真新命中可区分。
+		// 新发现/被抑制拆分（dedupSuffix），重扫同一 diff 的重复 FAIL 与真新命中可区分。
 		//
 		// Same-finding suppression runs BEFORE the checklog record (same pattern as the
-		// cheat-scan section): the audit entry carries the fresh/previously-reported
+		// cheat-scan section): the audit entry carries the fresh/suppressed
 		// breakdown (dedupSuffix), so repeat FAILs on an unchanged diff are
 		// distinguishable from genuinely new hits.
 		var freshUnused []UnusedFinding
