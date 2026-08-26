@@ -265,15 +265,8 @@ func TestLoadSkillDetail_RunsSeriesAndCompare(t *testing.T) {
 	if len(d.Runs) != 2 {
 		t.Fatalf("runs len = %d, want 2", len(d.Runs))
 	}
-	if d.Runs[0].RunID != "run-1" || d.Runs[0].Health != 100 || d.Runs[0].Cases != 3 {
+	if d.Runs[0].RunID != "run-1" || d.Runs[0].Health != 100 {
 		t.Errorf("runs[0] 异常: %+v", d.Runs[0])
-	}
-	latest := d.Runs[1]
-	if latest.TriggerAcc == nil || *latest.TriggerAcc != 0.5 {
-		t.Errorf("latest triggerAcc = %v, want 0.5", latest.TriggerAcc)
-	}
-	if latest.NotTriggerAcc == nil || *latest.NotTriggerAcc != 1.0 {
-		t.Errorf("latest notTriggerAcc = %v, want 1.0", latest.NotTriggerAcc)
 	}
 	if d.BaselineRunID != "run-1" {
 		t.Errorf("baselineRunId = %q, want run-1", d.BaselineRunID)
@@ -281,7 +274,7 @@ func TestLoadSkillDetail_RunsSeriesAndCompare(t *testing.T) {
 	if d.Compare == nil {
 		t.Fatal("有 baseline 时 compare 不得为 null")
 	}
-	if d.Compare.NetRegressions != 1 || d.Compare.Regressions != 1 || d.Compare.Improvements != 0 || !d.Compare.Comparable {
+	if d.Compare.NetRegressions != 1 || d.Compare.Improvements != 0 || !d.Compare.Comparable {
 		t.Errorf("compare 异常: %+v", d.Compare)
 	}
 }
@@ -315,11 +308,14 @@ func TestLoadSkillDetail_Decisions(t *testing.T) {
 	}
 }
 
-// TestLoadSkillDetail_TriggerQualityAndBlindSpot: triggerQuality mirrors the latest run;
-// liveFalsePositiveRate stays null (no data source — never fabricated).
+// TestLoadSkillDetail_TriggerQualityAndBlindSpot: triggerQuality mirrors the latest
+// run. The live false-positive rate blind spot is NOT a payload field (a placeholder
+// that could never be non-null was dropped from the wire shape) — it is documented by
+// the coverage note and the frontend's honest "N/A" text instead.
 //
-// TestLoadSkillDetail_TriggerQualityAndBlindSpot：triggerQuality 镜像最新 run；
-// liveFalsePositiveRate 保持 null（无数据源——不编造）。
+// TestLoadSkillDetail_TriggerQualityAndBlindSpot：triggerQuality 镜像最新 run。
+// 线上误触发率盲区不是载荷字段（永不可非空的占位字段已从线上形状移除）——由
+// coverage 说明与前端如实「N/A」文案承载。
 func TestLoadSkillDetail_TriggerQualityAndBlindSpot(t *testing.T) {
 	_, canonical, evalDir := skillsFixture(t)
 	d, err := LoadSkillDetail(canonical, evalDir, "alpha")
@@ -334,21 +330,6 @@ func TestLoadSkillDetail_TriggerQualityAndBlindSpot(t *testing.T) {
 	}
 	if d.TriggerQuality.TriggerAcc == nil || *d.TriggerQuality.TriggerAcc != 0.5 {
 		t.Errorf("triggerQuality.triggerAcc = %v, want 0.5", d.TriggerQuality.TriggerAcc)
-	}
-	if d.LiveFalsePositiveRate != nil {
-		t.Errorf("liveFalsePositiveRate 必须保持 null（线上误触发率无数据源），got %v", *d.LiveFalsePositiveRate)
-	}
-	// JSON 层同样序列化为 null。
-	data, err := json.Marshal(d)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(data, &m); err != nil {
-		t.Fatal(err)
-	}
-	if string(m["liveFalsePositiveRate"]) != "null" {
-		t.Errorf("JSON liveFalsePositiveRate 应为 null，got %s", m["liveFalsePositiveRate"])
 	}
 }
 

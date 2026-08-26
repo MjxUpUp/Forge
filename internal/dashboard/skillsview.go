@@ -7,8 +7,8 @@
 // Reuse principle: all counting/joining goes through skillseval (AnalyzeEffectiveness /
 // SkillCountsFromChecklog / SkillCountsFromToollog / LoadRuns / CompareRuns /
 // BuildTriggerFunnel) and skillsdecisions — nothing re-parses jsonl here. Known blind
-// spots are carried in the data (coverage note, null liveFalsePositiveRate) instead of
-// being papered over.
+// spots are stated honestly (coverage note, the panel's "N/A" text) instead of being
+// papered over — and instead of placeholder fields that could never be non-null.
 //
 // skillsview.go —— pulse 面板的 skill 聚合：总览（健康分取最新 eval run、命中数合并
 // 被动 checklog 触发 + 主动 toollog Skill 调用、成效 join act 结论、advisory 送达章
@@ -17,8 +17,8 @@
 //
 // 复用原则：所有计数/关联都走 skillseval（AnalyzeEffectiveness / SkillCountsFromChecklog /
 // SkillCountsFromToollog / LoadRuns / CompareRuns / BuildTriggerFunnel）与
-// skillsdecisions——此处不重解析 jsonl。已知盲区体现在数据里（coverage 说明、
-// liveFalsePositiveRate 为 null），不粉饰。
+// skillsdecisions——此处不重解析 jsonl。已知盲区如实标注（coverage 说明、面板的
+// 「N/A」文案），不粉饰——也不养永不可非空的占位字段。
 package dashboard
 
 import (
@@ -34,12 +34,12 @@ import (
 // skillsCoverageNote surfaces the known measurement blind spots in the payload itself:
 // active Skill calls are only recorded for Claude Code (other hosts inject skills without
 // tool-call events); passive reach comes from the skill-trigger hook; the live false-positive
-// rate has no data source at all.
+// rate has no data source at all (the panel shows an honest "N/A").
 //
 // skillsCoverageNote 把已知度量盲区显式写进载荷：主动 Skill 调用仅 Claude Code 有记录
 // （其他 host 注入 skill 无工具调用事件）；被动触达来自 skill-trigger hook；线上误触发率
-// 完全没有数据源。
-const skillsCoverageNote = "主动 Skill 调用仅 Claude Code 有 toollog 记录（cursor/codex 等经 mdc/AGENTS.md 注入无工具事件）；被动触达来自 skill-trigger hook；线上误触发率无数据源，恒为 null"
+// 完全没有数据源（面板如实显示「N/A」）。
+const skillsCoverageNote = "主动 Skill 调用仅 Claude Code 有 toollog 记录（cursor/codex 等经 mdc/AGENTS.md 注入无工具事件）；被动触达来自 skill-trigger hook；线上误触发率无数据源（面板显示 N/A）"
 
 // SkillSummary is one row of the skills overview. Health/AvgScore are pointers so "no
 // data" serializes as null instead of a fabricated 0.
@@ -75,26 +75,30 @@ type SkillsOverview struct {
 	Coverage       string         `json:"coverage"`
 }
 
-// SkillRunView is one eval run in the detail time series.
+// SkillRunView is one eval run in the detail time series — health/runId/ts only, all
+// the sparkline consumes. Per-run trigger accuracies live exclusively on
+// TriggerQualityView (latest run): the series never rendered them, and the wire shape
+// does not keep fields no one reads.
 //
-// SkillRunView 是详情时间序列里的一条 eval run。
+// SkillRunView 是详情时间序列里的一条 eval run——仅 health/runId/ts（sparkline 的
+// 全部消费）。per-run 触发准确率只在 TriggerQualityView（最新 run）上：序列从未
+// 渲染它们，线上形状不养无人读的字段。
 type SkillRunView struct {
-	RunID         string    `json:"runId"`
-	Ts            time.Time `json:"ts"`
-	Health        float64   `json:"health"`
-	TriggerAcc    *float64  `json:"triggerAcc"`    // 无 trigger 类 case 时 null
-	NotTriggerAcc *float64  `json:"notTriggerAcc"` // 无 not-trigger 类 case 时 null
-	Cases         int       `json:"cases"`
+	RunID  string    `json:"runId"`
+	Ts     time.Time `json:"ts"`
+	Health float64   `json:"health"`
 }
 
 // SkillCompareView is the latest-vs-baseline regression summary (counts, not full case
 // lists — the panel shows numbers; drill-down stays in forge skills eval-report).
+// Regressions is derivable (netRegressions + improvements) and the panel never read
+// it — dropped from the wire shape.
 //
 // SkillCompareView 是 latest-vs-baseline 回归摘要（计数而非完整 case 列表——面板看数字，
-// 下钻留给 forge skills eval-report）。
+// 下钻留给 forge skills eval-report）。Regressions 可推导（netRegressions +
+// improvements）且前端从未读它——从线上形状移除。
 type SkillCompareView struct {
 	NetRegressions int  `json:"netRegressions"`
-	Regressions    int  `json:"regressions"`
 	Improvements   int  `json:"improvements"`
 	Comparable     bool `json:"comparable"`
 }
@@ -121,17 +125,20 @@ type TriggerQualityView struct {
 	Cases         int      `json:"cases"`
 }
 
-// SkillDetailView is the /api/pulse/skill.json payload.
+// SkillDetailView is the /api/pulse/skill.json payload. The live false-positive rate
+// has no data source at all — that blind spot is carried by the coverage note and the
+// frontend's honest "N/A" text, not by a placeholder field that could never be
+// non-null.
 //
-// SkillDetailView 是 /api/pulse/skill.json 载荷。
+// SkillDetailView 是 /api/pulse/skill.json 载荷。线上误触发率完全没有数据源——该
+// 盲区由 coverage 说明与前端如实「N/A」文案承载，不养一个永不可非空的占位字段。
 type SkillDetailView struct {
-	Name                  string              `json:"name"`
-	Runs                  []SkillRunView      `json:"runs"`
-	BaselineRunID         string              `json:"baselineRunId,omitempty"`
-	Compare               *SkillCompareView   `json:"compare"` // 无 baseline/run 时 null
-	Decisions             []SkillDecisionView `json:"decisions"`
-	TriggerQuality        *TriggerQualityView `json:"triggerQuality"`        // 无 run 时 null
-	LiveFalsePositiveRate *float64            `json:"liveFalsePositiveRate"` // 无数据源，恒 null
+	Name           string              `json:"name"`
+	Runs           []SkillRunView      `json:"runs"`
+	BaselineRunID  string              `json:"baselineRunId,omitempty"`
+	Compare        *SkillCompareView   `json:"compare"` // 无 baseline/run 时 null
+	Decisions      []SkillDecisionView `json:"decisions"`
+	TriggerQuality *TriggerQualityView `json:"triggerQuality"` // 无 run 时 null
 }
 
 // AggregateSkills builds the skills overview across the projects in scope. canonical is the
@@ -313,10 +320,8 @@ func LoadSkillDetail(canonical, evalDir, name string) (SkillDetailView, error) {
 	ev := sharedPulseCache.skillEval(canonical, evalDir, name)
 	runs := ev.runs
 	for _, r := range runs {
-		trig, notTrig := runPassRates(r)
 		view.Runs = append(view.Runs, SkillRunView{
 			RunID: r.RunID, Ts: r.Timestamp, Health: r.HealthScore,
-			TriggerAcc: trig, NotTriggerAcc: notTrig, Cases: len(r.Results),
 		})
 	}
 
@@ -340,7 +345,6 @@ func LoadSkillDetail(canonical, evalDir, name string) (SkillDetailView, error) {
 				rep := skillseval.CompareRuns(&latest, &runs[i])
 				view.Compare = &SkillCompareView{
 					NetRegressions: rep.NetRegressions,
-					Regressions:    len(rep.Regressions),
 					Improvements:   len(rep.Improvements),
 					Comparable:     rep.Comparable,
 				}

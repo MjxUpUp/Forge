@@ -56,8 +56,7 @@ type FeedEvent struct {
 	Gate     string    `json:"gate,omitempty"`   // gate 事件: implement/verify/complete
 	Passed   *bool     `json:"passed,omitempty"` // gate 事件
 	Commit   string    `json:"commit,omitempty"` // gate 事件 HeadCommit 短哈希
-	Grade    string    `json:"grade,omitempty"`  // conclusion 事件
-	Score    int       `json:"score,omitempty"`  // conclusion 事件
+	Grade    string    `json:"grade,omitempty"`  // conclusion 事件（分数内联在 Title）
 	// Node is the originating machine's node_id (multi-machine Phase 3): conclusion
 	// and skill-trigger events carry the record's nodestamp; task-start carries the
 	// current lease holder (who's working it). Empty on legacy unstamped records —
@@ -359,7 +358,7 @@ func shortCommit(h string) string {
 // conclusionEvent 投影 act 结论：severity 按 grade 映射（A/B→ok、C→info、D→warn、
 // F→fail），Detail 带证据强度 + det/claim 数 + 验收 x/y。
 func conclusionEvent(pr pulseRoot, c act.Conclusion) FeedEvent {
-	score := int(c.Score + 0.5) // 四舍五入到 int（线上契约为 int 分）
+	score := int(c.Score + 0.5) // 四舍五入到 int，内联进标题（前端不另读分数字段）
 	return FeedEvent{
 		Time: c.CompletedAt, Kind: FeedKindConclusion, Project: pr.name, TaskRef: c.TaskRef,
 		Severity: gradeSeverity(c.Grade),
@@ -367,7 +366,6 @@ func conclusionEvent(pr pulseRoot, c act.Conclusion) FeedEvent {
 		Detail: fmt.Sprintf("证据 %s · det=%d claim=%d · 验收 %d/%d",
 			c.Strength, c.Deterministic, c.AgentClaim, c.AcceptancePass, c.AcceptanceTotal),
 		Grade: c.Grade,
-		Score: score,
 		Node:  c.NodeID, // 结论落章机器
 	}
 }

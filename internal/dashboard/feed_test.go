@@ -122,12 +122,12 @@ func TestAggregateFeed_MergeSortsDesc(t *testing.T) {
 }
 
 // TestAggregateFeed_EventFields pins the per-kind field contract the frontend consumes:
-// gate carries gate/passed/commit (+retry detail), conclusion carries grade/score + evidence
-// detail, task-start carries origin tool + gate progress in the title.
+// gate carries gate/passed/commit (+retry detail), conclusion carries grade (score inlined
+// in the title) + evidence detail, task-start carries origin tool + gate progress in the title.
 //
 // TestAggregateFeed_EventFields 钉住前端消费的 per-kind 字段契约：gate 带
-// gate/passed/commit（+retry detail），conclusion 带 grade/score + 证据 detail，
-// task-start 标题带 origin tool 与 gate 进度。
+// gate/passed/commit（+retry detail），conclusion 带 grade（分数内联标题）+ 证据
+// detail，task-start 标题带 origin tool 与 gate 进度。
 func TestAggregateFeed_EventFields(t *testing.T) {
 	root, _, base := feedFixture(t)
 	res, err := AggregateFeed(Options{Root: root}, base.Add(5*time.Hour), FeedQuery{})
@@ -180,8 +180,8 @@ func TestAggregateFeed_EventFields(t *testing.T) {
 	}
 
 	con := find("conclusion", nil)
-	if con.Grade != "A" || con.Score != 92 || con.Severity != "ok" {
-		t.Errorf("conclusion 事件异常: %+v", con)
+	if con.Grade != "A" || con.Severity != "ok" || !strings.Contains(con.Title, "92 分") {
+		t.Errorf("conclusion 事件异常（分数内联在 Title）: %+v", con)
 	}
 	if !strings.Contains(con.Detail, "Strong") || !strings.Contains(con.Detail, "2/3") {
 		t.Errorf("conclusion Detail 应带证据强度与验收 x/y: %q", con.Detail)
