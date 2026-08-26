@@ -144,7 +144,7 @@ func runProjectImport(cmd *cobra.Command, args []string) error {
 	//
 	// 信任判定（node-identity.md §3）：签名 bundle 对照 trust store 验真；签名无效
 	// 与团队档未签名在此硬拒——先于解包（见第一遍注释）。
-	if verr := verifyBundleForImport(args[0], bundleSHA, out); verr != nil {
+	if verr := verifyBundleForImport(root, args[0], bundleSHA, out, dryRun); verr != nil {
 		return verr
 	}
 

@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/nodeid"
 	"github.com/MjxUpUp/Forge/internal/util"
 )
@@ -119,10 +120,16 @@ func readBundleSig(bundlePath string) (*nodeid.BundleSig, error) {
 
 // verifyBundleForImport applies the trust verdict to the import flow. SigInvalid
 // and (team-mode) SigRejected are hard errors; unknown signer warns; verified notes.
+// Every verdict is also checklog-recorded (bundle-verify, best-effort — a logging
+// failure must never break an import, and a broken log must never fake a pass): the
+// trust decision previously reached only the importing terminal, leaving the
+// dashboard blind to multi-machine trust activity (unknown signers, rejections).
 //
 // verifyBundleForImport 把信任判定应用到导入流程。SigInvalid 与（团队档）
-// SigRejected 硬错误；未知签名者告警；verified 记录。
-func verifyBundleForImport(bundlePath, digestHex string, out io.Writer) error {
+// SigRejected 硬错误；未知签名者告警；verified 记录。每个判定同时落 checklog
+// （bundle-verify，尽力而为——落章失败绝不得打断导入，坏日志也绝不得伪造通过）：
+// 信任决策此前只在导入终端可见，看板对多机信任活动（未知签名者、拒收）全盲。
+func verifyBundleForImport(root, bundlePath, digestHex string, out io.Writer, dryRun bool) error {
 	sig, err := readBundleSig(bundlePath)
 	if err != nil {
 		return err
@@ -131,7 +138,13 @@ func verifyBundleForImport(bundlePath, digestHex string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	switch ts.VerifyBundleSig(digestHex, sig) {
+	verdict := ts.VerifyBundleSig(digestHex, sig)
+	// dry-run 契约是「不落盘」（--dry-run flag 文档）：验签判定本身照跑（校验正是
+	// dry-run 的本职），但 checklog 落章是写侧效应，跳过。
+	if !dryRun {
+		recordBundleVerify(root, verdict, sig)
+	}
+	switch verdict {
 	case nodeid.SigVerified:
 		fmt.Fprintf(out, `签名验证通过（节点 %s）`+"\n", sig.NodeID)
 	case nodeid.SigMissing:
@@ -144,4 +157,50 @@ func verifyBundleForImport(bundlePath, digestHex string, out io.Writer) error {
 		return fmt.Errorf(`团队档（require-signed）拒绝：bundle 缺失有效签名或签名者未登记`)
 	}
 	return nil
+}
+
+// recordBundleVerify best-effort-logs one verdict (observation class — see
+// CheckBundleVerify). Level carries the panel severity: verified=pass,
+// missing=advisory, unknown-signer=warn, invalid/rejected=blocked (both hard-reject
+// the import). An unclassifiable verdict is NOT recorded — honesty over completeness:
+// nothing unclassifiable gets squeezed into the stream.
+//
+// recordBundleVerify 尽力落章一次判定（observation 类——见 CheckBundleVerify）。
+// Level 承载面板 severity：verified=pass、missing=advisory、unknown-signer=warn、
+// invalid/rejected=blocked（两者都硬拒导入）。不可分类的 verdict 不落章——诚实
+// 优先于齐全：不可分类的判定不塞进流。
+func recordBundleVerify(root string, verdict nodeid.SigVerdict, sig *nodeid.BundleSig) {
+	e := &checklog.Entry{
+		Check:   checklog.CheckBundleVerify,
+		Checked: true,
+		Meta:    map[string]string{checklog.MetaKeyVerdict: verdict.String()},
+	}
+	if sig != nil {
+		e.Meta[checklog.MetaKeySigner] = sig.NodeID
+	}
+	// 防御：Verified/UnknownSigner 分支解引用 sig.NodeID——当前唯一调用点的不变量
+	// （VerifyBundleSig 仅在 sig 非 nil 时返回这两值）编译器管不着，未来调用点不得踩空。
+	if sig == nil && (verdict == nodeid.SigVerified || verdict == nodeid.SigUnknownSigner) {
+		return
+	}
+	switch verdict {
+	case nodeid.SigVerified:
+		e.Passed, e.Level = true, checklog.LevelPass
+		e.Detail = fmt.Sprintf(`验签通过（签名节点 %s）`, sig.NodeID)
+	case nodeid.SigMissing:
+		e.Passed, e.Level = true, checklog.LevelAdvisory
+		e.Detail = `bundle 无签名 sidecar（个人档放行）`
+	case nodeid.SigUnknownSigner:
+		e.Passed, e.Level = true, checklog.LevelWarn
+		e.Detail = fmt.Sprintf(`签名者 %s 不在 trust store——按未签名处理`, sig.NodeID)
+	case nodeid.SigInvalid:
+		e.Passed, e.Level = false, checklog.LevelBlocked
+		e.Detail = `验签失败（内容被篡改或签名者与 trust store 公钥不符）——拒绝导入`
+	case nodeid.SigRejected:
+		e.Passed, e.Level = false, checklog.LevelBlocked
+		e.Detail = `团队档（require-signed）拒绝：缺失有效签名或签名者未登记`
+	default:
+		return
+	}
+	_ = checklog.Record(root, e) // best-effort：落章失败不阻断导入
 }

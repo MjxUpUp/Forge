@@ -532,3 +532,26 @@ func TestBuildEvidenceChain_KimiPluginStaleExcluded(t *testing.T) {
 		t.Fatalf(`kimi-plugin-stale 条目仍应保留在 Entries 供 trace: got %d, want 2`, len(ec.Entries))
 	}
 }
+
+// TestBuildEvidenceChain_BundleVerifyExcluded pins that CheckBundleVerify is excluded
+// from evidence strength: it records an import-time trust verdict about the
+// MULTI-MACHINE surface (who signed, was it accepted) — an observation that says
+// nothing about whether THIS task's verification ran. Entries stay in Entries for
+// trace; only bucketing skips them.
+//
+// TestBuildEvidenceChain_BundleVerifyExcluded 钉住 CheckBundleVerify 不计入证据强度：
+// 它记录的是导入侧对多机信任面的判定（谁签的名、是否被接受）——这类观察与本任务
+// 验证是否实跑无关。条目仍保留在 Entries 供 trace，仅分桶跳过。
+func TestBuildEvidenceChain_BundleVerifyExcluded(t *testing.T) {
+	entries := []Entry{
+		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckBundleVerify, Source: EvidenceDeterministic, TaskRef: "t", Meta: map[string]string{MetaKeyVerdict: "verified"}},
+	}
+	ec := BuildEvidenceChain(entries, "t")
+	if ec.Deterministic != 1 {
+		t.Fatalf(`CheckBundleVerify 不应计入 deterministic: got %d, want 1（仅 auto-compile）`, ec.Deterministic)
+	}
+	if len(ec.Entries) != 2 {
+		t.Fatalf(`bundle-verify 条目仍应保留在 Entries 供 trace: got %d, want 2`, len(ec.Entries))
+	}
+}

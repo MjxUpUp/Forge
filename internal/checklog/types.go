@@ -190,6 +190,35 @@ const (
 	// deterministic（计数器在 hook 侧，agent 无法伪造）但属过程漂移的 OBSERVATION
 	// 而非任何验证——与其他条目一样排除出 evidence strength。
 	CheckTestNudge CheckName = "test-nudge"
+	// CheckBundleVerify records one bundle-signature verification verdict at import
+	// time (node-identity.md §3) — the trust decision that previously reached only the
+	// importing terminal's stdout/stderr. deterministic (the verdict is computed by CLI
+	// code against the trust store; the agent cannot forge it) but an OBSERVATION of
+	// the trust surface, excluded from evidence-strength bucketing like the other
+	// observation-class checks. The verdict string rides Meta[MetaKeyVerdict] and the
+	// signer's node_id Meta[MetaKeySigner], so readers never parse Detail prose.
+	//
+	// CheckBundleVerify 记录导入时的一次 bundle 验签判定（node-identity.md §3）——
+	// 此前只到达导入终端 stdout/stderr 的信任决策。deterministic（判定由 CLI 代码
+	// 对照 trust store 实算，agent 无法伪造）但属信任面的 OBSERVATION——与其他
+	// observation 类 check 一样排除出证据强度分桶。verdict 字符串走
+	// Meta[MetaKeyVerdict]、签名者 node_id 走 Meta[MetaKeySigner]——读方永不解析
+	// Detail 散文。
+	CheckBundleVerify CheckName = "bundle-verify"
+)
+
+const (
+	// MetaKeyVerdict / MetaKeySigner namespace bundle-verify's machine payload
+	// (Entry.Meta) at the single source of truth — writer (cli/bundle_sig.go) and
+	// reader (dashboard feed) cannot drift apart, the same contract-seam discipline
+	// as skill-trigger's MetaKey* (skill_trigger_detail.go).
+	//
+	// MetaKeyVerdict / MetaKeySigner 在单一真相源处给 bundle-verify 的机器载荷
+	// （Entry.Meta）命名空间——写方（cli/bundle_sig.go）与读方（dashboard feed）
+	// 不可能漂移，与 skill-trigger 的 MetaKey*（skill_trigger_detail.go）同款
+	// 契约缝纪律。
+	MetaKeyVerdict = "verdict"
+	MetaKeySigner  = "signer"
 )
 
 // EvidenceSource marks the source of a checklog evidence entry, distinguishing deterministic (hook/external
