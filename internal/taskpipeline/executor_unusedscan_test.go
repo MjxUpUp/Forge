@@ -193,3 +193,61 @@ func TestExecuteTaskGate_UnusedScan_SameFindingSuppressedOnRetry(t *testing.T) {
 		t.Errorf(`新 finding Lonely2 应照常报告: %q`, stderr3)
 	}
 }
+
+// TestExecuteTaskGate_UnusedScan_DedupSuffix pins the same audit-side dedup
+// annotation the cheat-scan section got (2026-08 review-observability, symmetric
+// fix after review nit #2): re-running task-verify over an unchanged diff
+// re-records the full unused-scan result but the Detail carries
+// "new=0, suppressed=N", so repeat FAILs are distinguishable from genuinely new
+// unwired symbols.
+//
+// TestExecuteTaskGate_UnusedScan_DedupSuffix 钉住与 cheat-scan 段同款的审计侧
+// 去重标注（2026-08 评审可观测性，审查 nit #2 的对称修复）：对同一 diff 重跑
+// task-verify 仍记录全量 unused-scan 结果，但 Detail 带
+// 「new=0, suppressed=N」，重复 FAIL 与真正的新未接线符号可区分。
+func TestExecuteTaskGate_UnusedScan_DedupSuffix(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir()) // 隔离 SaveTaskState 的全局 home
+	dir := t.TempDir()
+	initRepoWithMaster(t, dir)
+	writeCommitSource(t, dir, map[string]string{
+		"prod.go": "package main\n\n" +
+			"func main() { Used() }\n" +
+			"func Used() int { return 1 }\n" +
+			"func Lonely() int { return 2 }\n",
+	}, "add unused")
+
+	state := newVerifyState(t, dir, "unused-suffix")
+	captureStderr(t, func() {
+		if _, err := ExecuteTaskGate(dir, "task-verify", state); err != nil {
+			t.Fatalf(`第 1 次 task-verify 应 PASS: %v`, err)
+		}
+	})
+	captureStderr(t, func() {
+		if _, err := ExecuteTaskGate(dir, "task-verify", state); err != nil {
+			t.Fatalf(`第 2 次 task-verify 应 PASS: %v`, err)
+		}
+	})
+
+	entries, err := checklog.LoadAll(dir)
+	if err != nil {
+		t.Fatalf(`LoadAll: %v`, err)
+	}
+	var scans []checklog.Entry
+	for _, e := range entries {
+		if e.Check == checklog.CheckUnusedScan {
+			scans = append(scans, e)
+		}
+	}
+	if len(scans) != 2 {
+		t.Fatalf(`两次 verify 应记 2 条 CheckUnusedScan, got %d`, len(scans))
+	}
+	if scans[0].Passed || scans[1].Passed {
+		t.Errorf(`两条条目仍应 Passed=false（全量审计真相）: %+v`, scans)
+	}
+	if strings.Contains(scans[0].Detail, "new=") {
+		t.Errorf(`首次扫描全部为新，Detail 不应带去重后缀: %q`, scans[0].Detail)
+	}
+	if !strings.Contains(scans[1].Detail, "; new=0, suppressed=1") {
+		t.Errorf(`重扫同一 diff，Detail 应含「new=0, suppressed=1」: %q`, scans[1].Detail)
+	}
+}

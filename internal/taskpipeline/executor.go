@@ -1016,18 +1016,15 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		// 观测非验证证据（同 cheat-scan）。层 2（引用了但语义没接通——注册了但从未实例化）
 		// 机械不可判 → 仍归 LLM reviewer / code-review-gate。
 		unused := ScanUnusedSymbols(root, state)
-		recordAudit(root, &checklog.Entry{
-			Check:   checklog.CheckUnusedScan,
-			Passed:  len(unused) == 0,
-			Checked: true,
-			TaskRef: state.TaskRef,
-			Detail:  unusedScanDetail(unused),
-		})
+		// 同 finding 抑制先于 checklog 记录执行（与 cheat-scan 段同一模式）：审计条目带上
+		// 新发现/已报告拆分（dedupSuffix），重扫同一 diff 的重复 FAIL 与真新命中可区分。
+		//
+		// Same-finding suppression runs BEFORE the checklog record (same pattern as the
+		// cheat-scan section): the audit entry carries the fresh/previously-reported
+		// breakdown (dedupSuffix), so repeat FAILs on an unchanged diff are
+		// distinguishable from genuinely new hits.
+		var freshUnused []UnusedFinding
 		if len(unused) > 0 {
-			// 同 finding 抑制（同 cheat-scan 段注释）：指纹 规则|文件：行|符号。
-			//
-			// Same-finding suppression (see the cheat-scan section's comment):
-			// fingerprint = rule|file:line|symbol.
 			unusedKeys := make([]string, len(unused))
 			for i, u := range unused {
 				unusedKeys[i] = unusedFindingKey(u)
@@ -1035,12 +1032,24 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 			fresh, dirty := filterUnreported(state, unusedKeys)
 			findingsDirty = findingsDirty || dirty
 			freshSet := keySet(fresh)
-			var freshUnused []UnusedFinding
 			for _, u := range unused {
 				if freshSet[unusedFindingKey(u)] {
 					freshUnused = append(freshUnused, u)
 				}
 			}
+		}
+		recordAudit(root, &checklog.Entry{
+			Check:   checklog.CheckUnusedScan,
+			Passed:  len(unused) == 0,
+			Checked: true,
+			TaskRef: state.TaskRef,
+			Detail:  unusedScanDetail(unused) + dedupSuffix(len(unused), len(freshUnused)),
+		})
+		if len(unused) > 0 {
+			// 同 finding 抑制（同 cheat-scan 段注释）：指纹 规则|文件：行|符号。
+			//
+			// Same-finding suppression (see the cheat-scan section's comment):
+			// fingerprint = rule|file:line|symbol.
 			if len(freshUnused) == 0 {
 				fmt.Fprintf(os.Stderr, "%s"+`unused-scan 发现 %d 个疑似未接线的导出符号%s（advisory 不阻塞）`+"\n", GateAdvisory("[task-verify] "), len(unused), allReportedNote())
 			} else {
