@@ -245,6 +245,10 @@ func BuildEvidenceChain(entries []Entry, taskRef string) EvidenceChain {
 		// task's verification ran, so it must not feed this task's evidence strength.
 		// CheckProjectSync is the same: a git-transport op outcome (sync succeeded/failed) —
 		// infrastructure health, not task verification.
+		// CheckCrossRepoImpact is the same observation class: it records whether a
+		// multi-repo-workspace task declared its cross-repo impact (a process signal),
+		// not whether any verification ran — counting it as deterministic would inflate
+		// Strength exactly like scope-drift.
 		//
 		// Advisory/meta check 记录的是 OBSERVATIONS（观察）而非 verification 结果——
 		// 绝不可计入 evidence strength。scope-drift 是 advisory 信号（agent 改了未声明的
@@ -268,7 +272,10 @@ func BuildEvidenceChain(entries []Entry, taskRef string) EvidenceChain {
 		// CheckBundleVerify 同属 observation 类：它是导入侧对多机信任面的判定（谁签的名、
 		// 是否被接受），与本任务验证是否实跑无关，不得喂本任务的证据强度。
 		// CheckProjectSync 同属：git 通道同步操作的成败——基建健康度，非任务验证。
-		if e.Check == CheckScopeDrift || e.Check == CheckCheatScan || e.Check == CheckUnusedScan || e.Check == CheckEscapeHatch || e.Check == CheckSkillTrigger || e.Check == CheckKimiPluginStale || e.Check == CheckReviewPass || e.Check == CheckPlanFirst || e.Check == CheckToolFailure || e.Check == CheckSubagentStop || e.Check == CheckTestNudge || e.Check == CheckBundleVerify || e.Check == CheckProjectSync {
+		// CheckCrossRepoImpact 同属 observation 类：它记录多仓 workspace 任务是否声明了
+		// 跨仓影响（流程信号），与验证是否实跑无关——计入 deterministic 会像
+		// scope-drift 一样虚增 Strength。
+		if e.Check == CheckScopeDrift || e.Check == CheckCheatScan || e.Check == CheckUnusedScan || e.Check == CheckEscapeHatch || e.Check == CheckSkillTrigger || e.Check == CheckKimiPluginStale || e.Check == CheckReviewPass || e.Check == CheckPlanFirst || e.Check == CheckToolFailure || e.Check == CheckSubagentStop || e.Check == CheckTestNudge || e.Check == CheckBundleVerify || e.Check == CheckProjectSync || e.Check == CheckCrossRepoImpact {
 			// Only VERIFICATION-class escape hatches (test-coverage/acceptance/skill-decisions) set the cap flag.
 			// work-activity is a rhythm gate (tool calls between gates), not verification — using it does not prop the
 			// "done" claim on skipped verification, so it must not cap Strength (else refactor-heavy weeks inflate the
