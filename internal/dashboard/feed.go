@@ -67,6 +67,15 @@ type FeedEvent struct {
 	// 携带记录的 nodestamp；task-start 携带当前租约持有者（谁在干活）。存量无戳
 	// 记录为空——omitempty 保持多机器前的线上结构不变。
 	Node string `json:"node,omitempty"`
+	// Skill is the structured skill name on skill-trigger events. The frontend's
+	// fold-card aggregation reads this field — it must not regex-parse the name
+	// back out of the display Title (title wording is free to change; this is the
+	// contract). Empty when the checklog detail carries no parseable name.
+	//
+	// Skill 是 skill-trigger 事件上的结构化 skill 名。前端折叠卡聚合读此字段——
+	// 不得从展示文案 Title 正则反解（标题措辞可改，此字段才是契约）。checklog
+	// detail 无可解析名时为空。
+	Skill string `json:"skill,omitempty"`
 }
 
 // FeedQuery filters AggregateFeed. Since is exclusive (Time > since) for polling
@@ -213,7 +222,8 @@ func feedForProject(pr pulseRoot, d *projectData, now time.Time) []FeedEvent {
 			Time: e.RecordedAt, Kind: FeedKindSkillTrigger, Project: pr.name,
 			TaskRef: e.TaskRef, Severity: FeedSeverityInfo,
 			Title: title, Detail: e.Detail,
-			Node: e.NodeID, // 事件打戳（nodestamp）的机器归因
+			Node:  e.NodeID, // 事件打戳（nodestamp）的机器归因
+			Skill: name,     // 结构化 skill 名：前端折叠卡聚合约契，反解 title 文案会随措辞静默失效
 		})
 	}
 
