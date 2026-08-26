@@ -28,6 +28,7 @@ const (
 	FeedKindSkillTrigger = "skill-trigger"
 	FeedKindConclusion   = "conclusion"
 	FeedKindSigVerify    = "sig-verify" // bundle 验签判定（bundle-verify checklog 条目）
+	FeedKindSync         = "sync"       // git 通道同步操作结果（project-sync checklog 条目）
 
 	FeedSeverityOK   = "ok"
 	FeedSeverityWarn = "warn"
@@ -226,6 +227,8 @@ func feedForProject(pr pulseRoot, d *projectData, now time.Time) []FeedEvent {
 			})
 		case checklog.CheckBundleVerify:
 			events = append(events, sigVerifyEvent(pr, e))
+		case checklog.CheckProjectSync:
+			events = append(events, syncOutcomeEvent(pr, e))
 		}
 	}
 
@@ -290,6 +293,31 @@ func levelSeverity(l checklog.Level) string {
 		return FeedSeverityFail
 	default:
 		return FeedSeverityInfo
+	}
+}
+
+// syncOutcomeEvent projects a project-sync checklog entry (git-transport op outcome)
+// into the stream: title from the STRUCTURED Meta op + pass/fail, severity from
+// EffectiveLevel — the same contract discipline as sigVerifyEvent (Meta keys are the
+// contract, Detail prose is display-only).
+//
+// syncOutcomeEvent 把 project-sync checklog 条目（git 通道同步操作结果）投影进流：
+// 标题由结构化 Meta 操作名 + 成败构造，severity 取 EffectiveLevel——与
+// sigVerifyEvent 同款契约纪律（Meta 键是契约，Detail 散文仅供展示）。
+func syncOutcomeEvent(pr pulseRoot, e checklog.Entry) FeedEvent {
+	op := e.Meta[checklog.MetaKeySyncOp]
+	if op == `` {
+		op = `?` // Meta 缺失（手写行）——原样透出未知，不编造操作名
+	}
+	outcome := `成功`
+	if !e.Passed {
+		outcome = `失败`
+	}
+	return FeedEvent{
+		Time: e.RecordedAt, Kind: FeedKindSync, Project: pr.name,
+		TaskRef: e.TaskRef, Severity: levelSeverity(e.EffectiveLevel()),
+		Title: `sync ` + op + ` ` + outcome, Detail: e.Detail,
+		Node: e.NodeID, // 操作发生的机器
 	}
 }
 
