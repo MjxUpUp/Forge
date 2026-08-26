@@ -242,6 +242,12 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge node show [--json]` | 显示本机节点身份（node-identity：多机器同步的机器归因地基）：`node_id` = ed25519 公钥指纹（`fnode_<32hex>`，身份即公钥——验签即身份证明），密钥对存于用户级 `~/.forge/node.json`（私钥 0600，永不外泄也不进 bundle），`rotation_chain` 轮换证书链格式预留（v1 恒空）；输出只含 node_id + 公钥，绝不打印私钥 |
 | `forge project sync <init\|push\|pull\|status>` | 多机器持续同步（git 传输通道）：`init <remote>` 绑定任意 git remote（固定 `forge-sync` 分支，免疫各机默认分支漂移）；`push` 导出 bundle 到 `nodes/<node_id>/<key>/bundle.tar.gz` 并推送（每节点只写自己前缀，git 写权限即权限层；同时写 `.sig` 签名 sidecar）；`pull` 拉取后经标准 `project import` 导入全部他机 bundle（账本幂等，重复 pull 免费；lineage 裁决信任；逐节点容错 + 节点目录形态校验）；`status` 显示绑定与最近操作时间。机器本地绑定存 `DataDir/sync-remote.json`（allowlist 默认拒绝，不随 bundle 旅行），缓存仓库在 `~/.forge/sync-cache/` |
 | `forge trust <list\|add\|remove\|require-signed>` | 节点信任 store（TOFU，node-identity §3）：`add <node_id> <pubkey> [--label <备注>] [--profile personal\|team]` 带外核对指纹后登记对端（node_id 与公钥一致性强制校验）；`require-signed on` 切团队档——bundle 必须带有效签名且签名者已登记，否则导入硬拒；签名无效（篡改/公钥不符）任何档位都硬拒。store 存 `~/.forge/trust.json`（0600，永不随 bundle 旅行） |
+| `forge workspace create <name>` | 创建空多仓 workspace（用户级清单 `~/.forge/workspaces.json`，与 projects.json 平级；一组共同交付的 forge 项目 key 的逻辑分组，机器本地配置、不进 project sync bundle） |
+| `forge workspace add <name> [--path <dir>]` | 把 repo 加入 workspace（默认当前项目，`--path` 指定他仓）；成员按项目 key 引用（path 仅是展示缓存，漂移由 doctor 检出），同一 repo 允许属于多个 workspace |
+| `forge workspace remove <name> [--path <dir>]` 或 `forge workspace remove <name> --key <key>` | 从 workspace 移除成员（默认当前项目）；`--key` 逃生口：repo 已删/搬移无法按路径推导 key 时按存储 key 移除 |
+| `forge workspace list [--json]` | 列出全部 workspace 及成员（key + 缓存路径） |
+| `forge workspace status <name>` | 读侧聚合：按 key 扫描各成员仓活跃任务（ref/gate 进度/branch）；单个成员坏了告警跳过，绝不让整视图空白 |
+| `forge workspace doctor [--json]` | 检出清单 drift（全部 advisory 不阻断）：成员 key 未注册 / 缓存路径缺失或与 registry 现路径分叉 / 一 key 属多个 workspace / 空 workspace / 跨仓任务依赖环（dep-cycle，点名完整 key:ref 环序列供人工摘边） |
 
 </details>
 
@@ -250,11 +256,12 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 
 | 命令 | 说明 |
 |------|------|
-| `forge task start --ref <type/desc> --branch` | 创建任务（自动创建分支） |
+| `forge task start --ref <type/desc> --branch` | 创建任务（自动创建分支）；`--depends-on <ref>` 声明上游依赖（task-verify/task-complete 在上游交付前阻断），支持 `<key>:<ref>` 跨仓依赖——key 须为本 repo 所属 workspace 的成员（`forge workspace add`），缺失目标按保守 pending 处理 |
 | `forge task status` | 查看当前任务门禁状态 |
 | `forge task list` | 列出所有任务 |
 | `forge task mine [--agent <agent>] [--role <role>] [--all-projects] [--blocked] [--json]` | 列出分派给当前/指定 agent 的任务（`--all-projects` 全仓扫描按项目分组；`--blocked` 仅被依赖阻塞的，标注卡在哪环 [status, gate 进度 passed/total]） |
 | `forge task gate <gate-id>` | 验证单道任务门禁 |
+| `forge task impact --level none\|multi [--repo <key>]... [--note <说明>] [--ref <ref>]` | 声明当前任务的跨仓影响（多仓 workspace 成员的 verify 前置，单仓改动也须显式声明）：`--level none` 改动限定本仓；`--level multi --repo <key>` 波及指定成员 repo（`--repo` 可重复）。默认 advisory（未声明只提醒），protocol.yml 配 `cross_repo_impact: required` 升级为 HARD stop（四段式 WHAT/WHY/HOW/REF 报错），详见 docs/design/multi-repo-workspace.md |
 | `forge task verify-acceptance [--ref <ref>] [--trust-foreign]` | 实跑验收标准（task start --accept 登记），记 deterministic 证据；验收命令来自 task import / .forge migrate（外来标记）时首跑须 `--trust-foreign`（人工审阅命令清单后显式受信，防外来命令串直接执行） |
 | `forge task doc-review --passed <pass\|fail> --score <N> [--round <R>] [--reviewer <id>] [--critical <发现>]` | 记录 L2 文档回检证据（输出→回检循环）：按 `code-review-gate/references/rubric-docs.md` 四维评审后落档（产出者不能自检）；`--score` 为 0-100 总分、`--round` 轮次（≥3 轮未过升级人工确认）、`--critical` 落 Critical findings（未决阻断 complete）。task-complete 的 doc gate 消费该证据 |
 | `forge docs lint [paths...] [--base <rev>]` | 文档产物 L1 确定性 lint（D1-D7：禁令短语/无证据结论/复述 diff/通过断言无证据/必填章节/结论枚举/篇幅）；`--base` 改扫该基线以来变更的 .md。exit code：0=通过 2=硬失败。禁令清单单一真相源在 `internal/doclint`，同步渲染进 forge-quality skill |
