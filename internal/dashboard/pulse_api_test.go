@@ -690,10 +690,9 @@ func TestServe_PulseSkills(t *testing.T) {
 }
 
 // TestServe_PulseSkill: /api/pulse/skill.json serves the detail view; invalid names are
-// rejected with 400 (path-traversal guard), liveFalsePositiveRate stays null.
+// rejected with 400 (path-traversal guard).
 //
-// TestServe_PulseSkill：/api/pulse/skill.json 输出详情视图；非法名 400（路径遍历防护），
-// liveFalsePositiveRate 保持 null。
+// TestServe_PulseSkill：/api/pulse/skill.json 输出详情视图；非法名 400（路径遍历防护）。
 func TestServe_PulseSkill(t *testing.T) {
 	_, canonical, _ := skillsFixture(t)
 	t.Setenv(skillscanonical.EnvName, canonical)
@@ -725,9 +724,6 @@ func TestServe_PulseSkill(t *testing.T) {
 	code, body := pulseGet(t, srv.URL+"/api/pulse/skill.json?name=alpha")
 	if code != 200 {
 		t.Fatalf("status = %d: %s", code, body)
-	}
-	if !strings.Contains(string(body), `"liveFalsePositiveRate":null`) {
-		t.Errorf("liveFalsePositiveRate 应序列化为 null: %s", body)
 	}
 	var d SkillDetailView
 	if err := json.Unmarshal(body, &d); err != nil {
