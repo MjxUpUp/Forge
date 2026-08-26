@@ -91,6 +91,17 @@ func LoadDepState(root, ref string) (*TaskState, error) {
 	if dir == `` {
 		return nil, fmt.Errorf("dep %q: 项目 key %q 无数据目录（GlobalHome 不可解析）", ref, key)
 	}
+	// The key is attacker-controllable (DependsOn travels inside tasks/*.json
+	// bundles): reject anything outside the two legitimate key shapes before it
+	// is joined into a filesystem path, so a crafted key cannot steer the
+	// read-only scan outside the data home.
+	//
+	// key 是攻击者可控输入（DependsOn 随 tasks/*.json bundle 旅行）：拼进文件
+	// 系统路径前先拒绝两种合法形态之外的 key，防构造 key 把只读扫描引出数据
+	// home。
+	if !forgedata.ValidKeyFormat(key) {
+		return nil, fmt.Errorf("dep %q: 项目 key %q 格式非法（合法形态 hash12 或 p+hash12）", ref, key)
+	}
 	st, err := LoadTaskStateInDir(filepath.Join(dir, `tasks`), taskRef)
 	if err != nil {
 		return nil, fmt.Errorf("dep %q: %w", ref, err)

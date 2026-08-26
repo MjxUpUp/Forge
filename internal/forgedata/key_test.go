@@ -606,3 +606,37 @@ func TestKeyCaseConvergence(t *testing.T) {
 		}
 	}
 }
+
+// TestValidKeyFormat pins the tight-allowlist shapes a key joined into a
+// filesystem path may have (hash12 / PathKey): anything else — traversal,
+// separators, wrong length, uppercase — is rejected, never sanitized.
+//
+// TestValidKeyFormat 钉住允许拼进文件系统路径的 key 的收紧 allowlist 形态
+// （hash12 / PathKey）：其余——穿越、分隔符、长度错、大写——一律拒绝，绝不
+// 清洗成合法。
+func TestValidKeyFormat(t *testing.T) {
+	cases := []struct {
+		key  string
+		want bool
+	}{
+		{`0123456789ab`, true},  // hash12（git common dir / IDKey）
+		{`p0123456789ab`, true}, // PathKey
+		{`ff00aa11bb22`, true},
+		{``, false},               // 空
+		{`..`, false},             // 穿越
+		{`../etc`, false},         // 穿越
+		{`0123456789a`, false},    // 长度不足
+		{`0123456789abc`, false},  // 超长
+		{`p0123456789a`, false},   // p 前缀长度不足
+		{`pp0123456789ab`, false}, // 双 p
+		{`ABCDEF012345`, false},   // 大写非 hex 小写
+		{`0123456789g1`, false},   // 非 hex 字符
+		{`0123/56789ab`, false},   // 分隔符
+		{`0123\56789ab`, false},   // Windows 分隔符
+	}
+	for _, c := range cases {
+		if got := ValidKeyFormat(c.key); got != c.want {
+			t.Errorf("ValidKeyFormat(%q) = %v, want %v", c.key, got, c.want)
+		}
+	}
+}
