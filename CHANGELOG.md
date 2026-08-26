@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.44.0](https://github.com/MjxUpUp/Forge/compare/v1.43.0...v1.44.0) (2026-08-26)
+
+
+### Features
+
+* **dashboard:** sync可观测——操作结果落checklog(project-sync,init/push/pull成败皆录,status只读不落;具名返回defer单点捕获)经feed上板为新kind sync;projects.json行带绑定与最近push/pull(sync-remote.json直读不走指纹缓存,omitempty未绑定零结构变化);observation类排除出证据分桶;复审minor全修(用法错误不落章/失败Detail带remote截断300rune) ([e95a0ad](https://github.com/MjxUpUp/Forge/commit/e95a0ada33a2811a16dec8e41396bf5767aef613))
+* **dashboard:** 三契约上板——state.lease投影租约(持有者/有效/过期时刻/fencing,ExpiresAt抽单一公式)/docReview块(L2回检判定+rubric分+轮次,roundsTotal钳制防--round跳号自相矛盾)/skills总览送达列(复用BuildTriggerFunnel送达章,nil存量诚实单列);复审minor全修:ExpiresAt补nil对称防护/ReviewedAt改指针免零值假日期 ([85f84a7](https://github.com/MjxUpUp/Forge/commit/85f84a7c675a2f7a6ee861bde402d7f9efcdbc93))
+* **dashboard:** 验签事件流——bundle验签verdict落checklog(bundle-verify,五档Level映射,Meta携verdict+signer结构化契约)并经feed上板为新kind sig-verify(severity取EffectiveLevel,标题读Meta不解析散文);observation类排除出证据分桶;dry-run不落章保--dry-run无侧效应契约;复审minor全修(nil防御/ZH注释补齐) ([ce23dd9](https://github.com/MjxUpUp/Forge/commit/ce23dd98f90132dde53aec466301702d4b4e2f42))
+* **workspace:** 多 repo workspace——workspaces.json 清单+跨仓影响门禁+跨仓任务依赖 ([25acdfa](https://github.com/MjxUpUp/Forge/commit/25acdfab988133f800dc44f0c1403b4b4f970678))
+
+
+### Bug Fixes
+
+* **dashboard:** 枚举兼容三修——Weak证据染红(原落绿色分支误导)/未知grade·kind中性兜底(原染红F·冒用task样式)/skill名改结构化字段FeedEvent.Skill(折叠卡原正则反解中文标题随措辞静默失效) ([2245c99](https://github.com/MjxUpUp/Forge/commit/2245c994e07d34e97721554f3ce50a2b6f41a782))
+* **workspace:** 复审加固——key 格式 allowlist + status 守卫 + 仓根缓存 ([0c881e8](https://github.com/MjxUpUp/Forge/commit/0c881e8d3c78f9f2e57fb1ca841eeff2e64d36c1))
+
 ## [1.43.0](https://github.com/MjxUpUp/Forge/compare/v1.42.2...v1.43.0) (2026-08-25)
 
 
