@@ -36,12 +36,12 @@ func TestUnknownDepKeys(t *testing.T) {
 	}{
 		{`无 workspace 含本仓 → 所有 key 前缀越界`, &workspace.File{Workspaces: []workspace.Workspace{ws(`fleet`, `a`, `b`)}}, `me`,
 			[]string{`a:t1`}, []string{`a`}},
-		{`成员 key 合法 + 裸 ref 忽略`, &workspace.File{Workspaces: []workspace.Workspace{ws(`fleet`, `me`, `other`)}}, `me`,
-			[]string{`local`, `other:t1`, `me:t2`}, nil},
+		{`成员 key 合法 + 裸 ref 忽略`, &workspace.File{Workspaces: []workspace.Workspace{ws(`fleet`, `me`, `ee0000000005`)}}, `me`,
+			[]string{`local`, `ee0000000005:t1`, `me:t2`}, nil},
 		{`重叠 workspace 并集`, &workspace.File{Workspaces: []workspace.Workspace{ws(`x`, `me`, `k1`), ws(`y`, `me`, `k2`)}}, `me`,
 			[]string{`k1:a`, `k2:b`}, nil},
-		{`越界 key 去重`, &workspace.File{Workspaces: []workspace.Workspace{ws(`fleet`, `me`, `other`)}}, `me`,
-			[]string{`bad:1`, `bad:2`, `other:ok`}, []string{`bad`}},
+		{`越界 key 去重`, &workspace.File{Workspaces: []workspace.Workspace{ws(`fleet`, `me`, `ee0000000005`)}}, `me`,
+			[]string{`bad:1`, `bad:2`, `ee0000000005:ok`}, []string{`bad`}},
 	}
 	for _, c := range cases {
 		got := unknownDepKeys(c.file, c.ownKey, c.deps)
@@ -127,7 +127,7 @@ func TestValidateDependsOnRefs(t *testing.T) {
 	})
 	t.Run(`越界 key 前缀拒绝`, func(t *testing.T) {
 		root, ownKey, _ := depRefFixture(t)
-		writeDepRefWorkspace(t, ownKey, `other`)
+		writeDepRefWorkspace(t, ownKey, `ee0000000005`)
 		var stderr bytes.Buffer
 		err := validateDependsOnRefs(root, `self`, []string{`stranger:t1`}, &stderr)
 		if err == nil || !strings.Contains(err.Error(), `forge workspace add`) {
@@ -149,9 +149,9 @@ func TestValidateDependsOnRefs(t *testing.T) {
 	})
 	t.Run(`跨仓目标缺失：容忍 + advisory`, func(t *testing.T) {
 		root, ownKey, _ := depRefFixture(t)
-		writeDepRefWorkspace(t, ownKey, `other`)
+		writeDepRefWorkspace(t, ownKey, `ee0000000005`)
 		var stderr bytes.Buffer
-		if err := validateDependsOnRefs(root, `self`, []string{`other:ghost`}, &stderr); err != nil {
+		if err := validateDependsOnRefs(root, `self`, []string{`ee0000000005:ghost`}, &stderr); err != nil {
 			t.Fatalf(`缺失目标应容忍（前向引用合法）, got %v`, err)
 		}
 		if !strings.Contains(stderr.String(), `pending`) {
@@ -160,10 +160,10 @@ func TestValidateDependsOnRefs(t *testing.T) {
 	})
 	t.Run(`跨仓目标存在：静默`, func(t *testing.T) {
 		root, ownKey, home := depRefFixture(t)
-		writeDepRefWorkspace(t, ownKey, `other`)
-		writeForeignTask(t, home, `other`, `b-done`, true)
+		writeDepRefWorkspace(t, ownKey, `ee0000000005`)
+		writeForeignTask(t, home, `ee0000000005`, `b-done`, true)
 		var stderr bytes.Buffer
-		if err := validateDependsOnRefs(root, `self`, []string{`other:b-done`}, &stderr); err != nil {
+		if err := validateDependsOnRefs(root, `self`, []string{`ee0000000005:b-done`}, &stderr); err != nil {
 			t.Fatalf(`已交付目标应放行, got %v`, err)
 		}
 		if stderr.Len() != 0 {
@@ -172,7 +172,7 @@ func TestValidateDependsOnRefs(t *testing.T) {
 	})
 	t.Run(`本仓 key 自引用拒绝`, func(t *testing.T) {
 		root, ownKey, _ := depRefFixture(t)
-		writeDepRefWorkspace(t, ownKey, `other`)
+		writeDepRefWorkspace(t, ownKey, `ee0000000005`)
 		var stderr bytes.Buffer
 		err := validateDependsOnRefs(root, `self`, []string{ownKey + `:self`}, &stderr)
 		if err == nil || !strings.Contains(err.Error(), `不能依赖自身`) {

@@ -429,6 +429,39 @@ func resolveGitFile(absGitFile, gitRoot string) (string, error) {
 // `FORGE_DATA_HOME` env 覆盖全局 home（test 隔离 + 高级用户覆盖）。
 //
 // 空 key 返 ""（caller 决定 fallback，不强默认）。
+// ValidKeyFormat reports whether key has one of the two legitimate key shapes —
+// hash12 (`[0-9a-f]{12}`, git common-dir hash or IDKey) or PathKey
+// (`p` + hash12). Callers that join a key into a filesystem path (RootDir
+// consumers addressing a project by key: workspace status, cross-repo
+// DependsOn resolution) must check this first — the key can be attacker
+// controlled (a DependsOn entry travels inside tasks/*.json bundles), and an
+// unchecked `..`/`/` in it would steer the read-only scan outside the data
+// home. Tight-allowlist, same tradition as the `.forge-project-id` format
+// check: anything not matching is rejected, never sanitized into validity.
+//
+// ValidKeyFormat 报告 key 是否为两种合法形态之一——hash12（`[0-9a-f]{12}`，
+// git common dir hash 或 IDKey）或 PathKey（`p` + hash12）。凡把 key 拼进
+// 文件系统路径的调用方（按 key 寻址项目的 RootDir 消费方：workspace status、
+// 跨仓 DependsOn 解析）必须先过本检查——key 可以是攻击者可控输入（DependsOn
+// 条目随 tasks/*.json bundle 旅行），未校验的 `..`/`/` 会把只读扫描引到数据
+// home 之外。收紧 allowlist，与 `.forge-project-id` 格式校验同一传统：不匹配
+// 即拒绝，绝不清洗成合法。
+func ValidKeyFormat(key string) bool {
+	hex := key
+	if strings.HasPrefix(key, `p`) {
+		hex = key[1:]
+	}
+	if len(hex) != 12 {
+		return false
+	}
+	for _, c := range hex {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
 func RootDir(key string) string {
 	if key == "" {
 		return ""
