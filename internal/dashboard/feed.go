@@ -27,6 +27,7 @@ const (
 	FeedKindGate         = "gate"
 	FeedKindSkillTrigger = "skill-trigger"
 	FeedKindConclusion   = "conclusion"
+	FeedKindSigVerify    = "sig-verify" // bundle 验签判定（bundle-verify checklog 条目）
 
 	FeedSeverityOK   = "ok"
 	FeedSeverityWarn = "warn"
@@ -47,7 +48,7 @@ const defaultFeedLimit = 200
 // localhost + Host 校验，但绝不序列化 session 标识。
 type FeedEvent struct {
 	Time     time.Time `json:"time"`
-	Kind     string    `json:"kind"`    // "task-start" | "gate" | "skill-trigger" | "conclusion"
+	Kind     string    `json:"kind"`    // "task-start" | "gate" | "skill-trigger" | "conclusion" | "sig-verify"
 	Project  string    `json:"project"` // 项目名（projectName 末两段）
 	TaskRef  string    `json:"taskRef"`
 	Severity string    `json:"severity"` // "ok" | "warn" | "fail" | "info"
@@ -209,27 +210,87 @@ func feedForProject(pr pulseRoot, d *projectData, now time.Time) []FeedEvent {
 	}
 
 	for _, e := range d.checkEntries {
-		if e.Check != checklog.CheckSkillTrigger {
-			continue
+		switch e.Check {
+		case checklog.CheckSkillTrigger:
+			name := checklog.SkillFromTriggerDetail(e.Detail)
+			title := "skill 触发"
+			if name != "" {
+				title = "skill 触发: " + name
+			}
+			events = append(events, FeedEvent{
+				Time: e.RecordedAt, Kind: FeedKindSkillTrigger, Project: pr.name,
+				TaskRef: e.TaskRef, Severity: FeedSeverityInfo,
+				Title: title, Detail: e.Detail,
+				Node:  e.NodeID, // 事件打戳（nodestamp）的机器归因
+				Skill: name,     // 结构化 skill 名：前端折叠卡聚合约契，反解 title 文案会随措辞静默失效
+			})
+		case checklog.CheckBundleVerify:
+			events = append(events, sigVerifyEvent(pr, e))
 		}
-		name := checklog.SkillFromTriggerDetail(e.Detail)
-		title := "skill 触发"
-		if name != "" {
-			title = "skill 触发: " + name
-		}
-		events = append(events, FeedEvent{
-			Time: e.RecordedAt, Kind: FeedKindSkillTrigger, Project: pr.name,
-			TaskRef: e.TaskRef, Severity: FeedSeverityInfo,
-			Title: title, Detail: e.Detail,
-			Node:  e.NodeID, // 事件打戳（nodestamp）的机器归因
-			Skill: name,     // 结构化 skill 名：前端折叠卡聚合约契，反解 title 文案会随措辞静默失效
-		})
 	}
 
 	for _, c := range d.conclusions {
 		events = append(events, conclusionEvent(pr, c))
 	}
 	return events
+}
+
+// sigVerifyEvent projects a bundle-verify checklog entry (import-side trust verdict,
+// node-identity §3) into the stream: severity derives from the entry's EffectiveLevel
+// (never re-judged here), and the title is built from the STRUCTURED Meta keys
+// (verdict + signer) — never regex-parsed from Detail prose (the skill-fold lesson:
+// prose wording is free to change, Meta keys are the contract).
+//
+// sigVerifyEvent 把 bundle-verify checklog 条目（导入侧信任判定，node-identity §3）
+// 投影进流：severity 取自条目 EffectiveLevel（此处不二次裁断），标题由结构化
+// Meta 键（verdict + signer）构造——绝不从 Detail 散文正则反解（skill 折叠卡的
+// 教训：散文措辞可改，Meta 键才是契约）。
+func sigVerifyEvent(pr pulseRoot, e checklog.Entry) FeedEvent {
+	verdict := e.Meta[checklog.MetaKeyVerdict]
+	short := strings.TrimPrefix(e.Meta[checklog.MetaKeySigner], `fnode_`)
+	if len(short) > 8 {
+		short = short[:8]
+	}
+	var title string
+	switch verdict {
+	case `verified`:
+		title = `验签通过 · 签名者 ` + short
+	case `missing`:
+		title = `bundle 无签名（个人档放行）`
+	case `unknown-signer`:
+		title = `签名者未登记 ` + short + `——按未签名处理`
+	case `invalid`:
+		title = `验签失败——已拒绝导入`
+	case `rejected`:
+		title = `团队档拒收（未签名/未登记）`
+	default:
+		title = `bundle 验签 · ` + verdict // 未知 verdict 原样透出，不编造措辞
+	}
+	return FeedEvent{
+		Time: e.RecordedAt, Kind: FeedKindSigVerify, Project: pr.name,
+		TaskRef: e.TaskRef, Severity: levelSeverity(e.EffectiveLevel()),
+		Title: title, Detail: e.Detail,
+		Node: e.NodeID, // 验签发生的机器（判定在导入侧做出）
+	}
+}
+
+// levelSeverity maps a checklog Level onto a feed severity (pass→ok, warn→warn,
+// fail/blocked→fail, advisory→info); unknown/empty stays info — severity never
+// escalates by default.
+//
+// levelSeverity 把 checklog Level 映射成 feed severity（pass→ok、warn→warn、
+// fail/blocked→fail、advisory→info）；未知/空保持 info——默认绝不升级。
+func levelSeverity(l checklog.Level) string {
+	switch l {
+	case checklog.LevelPass:
+		return FeedSeverityOK
+	case checklog.LevelWarn:
+		return FeedSeverityWarn
+	case checklog.LevelFail, checklog.LevelBlocked:
+		return FeedSeverityFail
+	default:
+		return FeedSeverityInfo
+	}
 }
 
 // taskStartEvent projects TaskState.StartedAt into a task-start event: in-progress tasks
