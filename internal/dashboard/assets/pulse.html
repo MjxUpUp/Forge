@@ -208,6 +208,7 @@
   .kind-conclusion { background: var(--surface-3); color: var(--text-secondary); }
   .kind-task { background: var(--surface-3); color: var(--text-primary); }
   .kind-decision { background: var(--surface-3); color: var(--text-secondary); }
+  .kind-other { background: var(--surface-3); color: var(--text-tertiary); } /* 未知/新增 kind 的中性兜底 */
   .evt-title { font-size: 13.5px; font-weight: 550; }
   .evt-time { font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); margin-left: auto; }
   .proj-chip {
@@ -256,6 +257,7 @@
   .g-C { background: var(--grade-c-bg); color: var(--grade-c); }
   .g-D { background: var(--grade-d-bg); color: var(--grade-d); }
   .g-F { background: var(--grade-f-bg); color: var(--grade-f); }
+  .g-X { background: var(--surface-3); color: var(--text-tertiary); } /* 未知/新增 grade 的中性兜底——此前一律染红 F 属误着色 */
 
   /* === 评分块（B2）/ 维度条 / 触发质量条（C3）=== */
   .panel-block { background: var(--surface-2); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 14px; margin-bottom: 14px; }
@@ -356,7 +358,8 @@ function scoreVar(s) { // 分数段着色：≥90 a / ≥75 b / ≥60 c / ≥40 
   if (s === null || s === undefined) return 'var(--text-tertiary)';
   return s >= 90 ? 'var(--grade-a)' : s >= 75 ? 'var(--grade-b)' : s >= 60 ? 'var(--grade-c)' : s >= 40 ? 'var(--grade-d)' : 'var(--grade-f)';
 }
-function gradeClass(g) { return 'g-' + (['A','B','C','D','F'].indexOf(g) >= 0 ? g : 'F'); }
+/* 未知 grade（后端扩列或异常数据）落中性 X——此前一律染红 F 属误着色。 */
+function gradeClass(g) { return 'g-' + (['A','B','C','D','F'].indexOf(g) >= 0 ? g : 'X'); }
 function fmtTime(iso) {
   var d = new Date(iso);
   return isNaN(d) ? '' : ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
@@ -470,7 +473,7 @@ var KIND_LABEL = { 'task-start': 'task', 'gate': 'gate', 'skill-trigger': 'skill
 var KIND_CLASS = { 'task-start': 'kind-task', 'gate': 'kind-gate', 'skill-trigger': 'kind-skill', 'conclusion': 'kind-conclusion' };
 function evtHTML(e, opts) {
   opts = opts || {};
-  var head = '<span class="evt-kind ' + (KIND_CLASS[e.kind] || 'kind-task') + '">' +
+  var head = '<span class="evt-kind ' + (KIND_CLASS[e.kind] || 'kind-other') + '">' +
     esc(KIND_LABEL[e.kind] || e.kind) + (e.gate ? ' · ' + esc(e.gate) : '') + '</span>' +
     '<span class="evt-title">' + esc(e.title) + '</span>';
   if (e.grade) head += '<span class="grade-chip ' + gradeClass(e.grade) + '">' + esc(e.grade) + '</span>';
@@ -563,8 +566,9 @@ var SKILL_FOLD_MIN = 3;
 function skillFoldHTML(items) {
   var latest = items[0], names = {}, projects = {}, oneProject = '';
   items.forEach(function (it) {
-    var m = /^skill 触发: /.exec(it.evt.title || '');
-    if (m && it.evt.title.length > m[0].length) names[it.evt.title.slice(m[0].length)] = 1;
+    /* skill 名走结构化字段 evt.skill（FeedEvent.skill）——不从中文展示文案正则反解：
+     * title 措辞后端可改，反解会静默失效（只是少角标、无告警、难发现）。 */
+    if (it.evt.skill) names[it.evt.skill] = 1;
     if (it.evt.project) projects[it.evt.project] = 1;
   });
   var nameKeys = Object.keys(names), projKeys = Object.keys(projects);
@@ -705,10 +709,15 @@ function renderTask(t) {
         '<span style="color:var(--warn)">■ agent-claim ' + (ev.agentClaim || 0) + '</span>' +
         '<span>ratio ' + (ev.ratio !== undefined ? Number(ev.ratio).toFixed(2) : '—') + '</span></div>' +
         '<div class="evi-track"><div class="evi-det" style="width:' + detW + '%"></div><div class="evi-claim" style="width:' + (100 - detW) + '%"></div></div>';
+      /* 强度四值（act.Conclusion.Strength：Strong/Weak/Unverified/NoData）：Strong 绿、
+       * Weak 红（弱证据此前落进下方绿色通用分支，与「claim 过半」警告自相矛盾）、
+       * Unverified/NoData 黄、未知新值中性——枚举扩列不再被默许染色。 */
       var strength = ev.strength || '';
       if (strength === 'NoData') html += '<div style="margin-top:10px"><span class="caveat">⚠ NoData · 无证据记录</span></div>';
       else if (strength === 'Unverified') html += '<div style="margin-top:10px"><span class="caveat">⚠ Unverified · 证据未经确定性验证</span></div>';
-      else if (strength) html += '<div style="margin-top:10px"><span class="caveat good">证据强度 ' + esc(strength) + '</span></div>';
+      else if (strength === 'Weak') html += '<div style="margin-top:10px"><span class="caveat bad">⚠ 证据强度 Weak · 弱证据</span></div>';
+      else if (strength === 'Strong') html += '<div style="margin-top:10px"><span class="caveat good">证据强度 Strong</span></div>';
+      else if (strength) html += '<div style="margin-top:10px"><span class="caveat neutral">证据强度 ' + esc(strength) + '</span></div>';
       if (total > 0 && (ev.agentClaim || 0) > (ev.deterministic || 0)) {
         html += '<div style="margin-top:8px"><span class="caveat bad">⚠ claim 占比过半 · 大部分是 agent 自称</span></div>';
       }

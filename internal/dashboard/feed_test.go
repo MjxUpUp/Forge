@@ -175,6 +175,9 @@ func TestAggregateFeed_EventFields(t *testing.T) {
 	if st.Severity != "info" || !strings.Contains(st.Detail, "code-review-gate") {
 		t.Errorf("skill-trigger 事件异常: %+v", st)
 	}
+	if st.Skill != "code-review-gate" {
+		t.Errorf("skill-trigger Skill = %q, want code-review-gate（结构化字段——前端聚合不得反解 title）", st.Skill)
+	}
 
 	con := find("conclusion", nil)
 	if con.Grade != "A" || con.Score != 92 || con.Severity != "ok" {
@@ -466,5 +469,28 @@ func TestAggregateFeed_Empty(t *testing.T) {
 	// Roots explicitly empty + Root empty: still no panic.
 	if _, err := AggregateFeed(Options{}, time.Now(), FeedQuery{}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestFeedEvent_SkillWireShape: the structured skill field rides the wire only when
+// set (omitempty) — the same compat discipline as node (feed_node_test.go): a Go-level
+// empty string alone would not catch a dropped omitempty.
+//
+// TestFeedEvent_SkillWireShape：结构化 skill 字段仅在有值时上线（omitempty）——与
+// node 同一条兼容纪律（feed_node_test.go）：只断言 Go 层空串逮不到 omitempty 被删。
+func TestFeedEvent_SkillWireShape(t *testing.T) {
+	withSkill, err := json.Marshal(FeedEvent{Kind: FeedKindSkillTrigger, Skill: "code-review-gate"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(withSkill), `"skill":"code-review-gate"`) {
+		t.Errorf("skill 字段未上线: %s", withSkill)
+	}
+	without, err := json.Marshal(FeedEvent{Kind: FeedKindTaskStart})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(without), `"skill"`) {
+		t.Errorf("空 skill 改变了线上结构: %s", without)
 	}
 }
