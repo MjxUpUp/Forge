@@ -142,3 +142,25 @@ func TestLease_MergeEqualFencingDeterministic(t *testing.T) {
 		t.Fatalf("equal-fencing ba winner = %q, want %q (direction-independent)", ba.Lease.HolderNode, winner)
 	}
 }
+
+// TestLease_ExpiresAt pins the single expiry formula (claimed + TTL) that ActiveAt,
+// LeaseStatus's advisory message, and the dashboard's state-block projection all
+// derive from — the refactor extracted it precisely so the formula cannot drift
+// between call sites.
+//
+// TestLease_ExpiresAt 钉死过期公式（认领 + TTL）的唯一出处——ActiveAt、LeaseStatus
+// 的 advisory 文案、看板 state 块投影都从它派生；抽这个方法正是为了让公式无法在
+// 各调用点间漂移。
+func TestLease_ExpiresAt(t *testing.T) {
+	l := &Lease{ClaimedAt: 1000, TTLSec: 300}
+	if want := time.UnixMilli(1000).Add(300 * time.Second); !l.ExpiresAt().Equal(want) {
+		t.Fatalf("ExpiresAt = %s, want %s", l.ExpiresAt(), want)
+	}
+	// ActiveAt 的边界语义经 ExpiresAt 派生：恰在过期时刻不活跃（Before 严格小于）。
+	if l.ActiveAt(l.ExpiresAt()) {
+		t.Fatal("lease at exact expiry must read inactive")
+	}
+	if !l.ActiveAt(l.ExpiresAt().Add(-time.Nanosecond)) {
+		t.Fatal("lease one tick before expiry must read active")
+	}
+}

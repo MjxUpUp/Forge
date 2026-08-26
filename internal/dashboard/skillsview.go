@@ -1,20 +1,24 @@
 // skillsview.go — skill aggregation for the pulse panel: a per-skill overview (health from
 // the latest eval run, hits merged from passive checklog firings + active toollog Skill
-// calls, effectiveness joined to act conclusions, never-triggered list) and a single-skill
-// detail view (run series, baseline compare, decision history, trigger accuracy).
+// calls, effectiveness joined to act conclusions, advisory delivery stamps from the trigger
+// funnel, never-triggered list) and a single-skill detail view (run series, baseline
+// compare, decision history, trigger accuracy).
 //
 // Reuse principle: all counting/joining goes through skillseval (AnalyzeEffectiveness /
-// SkillCountsFromChecklog / SkillCountsFromToollog / LoadRuns / CompareRuns) and
-// skillsdecisions — nothing re-parses jsonl here. Known blind spots are carried in the
-// data (coverage note, null liveFalsePositiveRate) instead of being papered over.
+// SkillCountsFromChecklog / SkillCountsFromToollog / LoadRuns / CompareRuns /
+// BuildTriggerFunnel) and skillsdecisions — nothing re-parses jsonl here. Known blind
+// spots are carried in the data (coverage note, null liveFalsePositiveRate) instead of
+// being papered over.
 //
 // skillsview.go —— pulse 面板的 skill 聚合：总览（健康分取最新 eval run、命中数合并
-// 被动 checklog 触发 + 主动 toollog Skill 调用、成效 join act 结论、从未触发名单）与
-// 单 skill 详情（run 序列、baseline 比对、决策史、触发准确率）。
+// 被动 checklog 触发 + 主动 toollog Skill 调用、成效 join act 结论、advisory 送达章
+// 来自触发漏斗、从未触发名单）与单 skill 详情（run 序列、baseline 比对、决策史、
+// 触发准确率）。
 //
 // 复用原则：所有计数/关联都走 skillseval（AnalyzeEffectiveness / SkillCountsFromChecklog /
-// SkillCountsFromToollog / LoadRuns / CompareRuns）与 skillsdecisions——此处不重解析
-// jsonl。已知盲区体现在数据里（coverage 说明、liveFalsePositiveRate 为 null），不粉饰。
+// SkillCountsFromToollog / LoadRuns / CompareRuns / BuildTriggerFunnel）与
+// skillsdecisions——此处不重解析 jsonl。已知盲区体现在数据里（coverage 说明、
+// liveFalsePositiveRate 为 null），不粉饰。
 package dashboard
 
 import (
@@ -48,6 +52,18 @@ type SkillSummary struct {
 	Hits      int      `json:"hits"`      // 被动 skill-trigger + 主动 Skill 调用合并
 	TaskCount int      `json:"taskCount"` // 涉及的不同 task 数（被动触发+主动调用合并，per-task 去重）
 	AvgScore  *float64 `json:"avgScore"`  // 关联任务均分（Score>0 才计）；无为 null
+	// Delivered / DeliveryUnknown come from the trigger funnel's delivery stamps
+	// (checklog Delivered, e.g. kimi advisory-queue drain): confirmed deliveries vs
+	// legacy pre-stamp hits (nil — honestly separate, never assumed delivered).
+	// Engagement stays CLI-side (forge skills funnel): it needs raw toollog joins the
+	// panel cache deliberately does not hold.
+	//
+	// Delivered / DeliveryUnknown 来自触发漏斗的送达章（checklog Delivered，如 kimi
+	// advisory 队列攒发）：确认送达数 vs 送达章引入前的存量命中（nil——诚实单列，
+	// 不假装已送达）。加载转化留在 CLI 侧（forge skills funnel）：它需要 panel 缓存
+	// 刻意不持有的原始 toollog join。
+	Delivered       int `json:"delivered"`
+	DeliveryUnknown int `json:"deliveryUnknown"`
 }
 
 // SkillsOverview is the /api/pulse/skills.json payload.
@@ -130,6 +146,8 @@ type SkillDetailView struct {
 // 与 AggregateFeed 一致。所有计数读取都走 sharedPulseCache——文件未变时轮询不重解析。
 func AggregateSkills(opts Options, canonical, evalDir string) (SkillsOverview, error) {
 	hits := map[string]int{}
+	delivered := map[string]int{}       // skill → 漏斗确认送达数（checklog Delivered=true 章）
+	deliveryUnknown := map[string]int{} // skill → 送达章引入前的存量命中（nil 章，诚实单列）
 	effTasks := map[string]int{}        // skill → 关联 task 数（跨项目求和）
 	effScoreSum := map[string]float64{} // skill → Σ(avgScore×taskCount)，跨项目加权合并
 	effScoreN := map[string]int{}       // skill → ΣtaskCount（上面加权的分母）
@@ -145,6 +163,13 @@ func AggregateSkills(opts Options, canonical, evalDir string) (SkillsOverview, e
 		}
 		for name, n := range d.active {
 			hits[name] += n
+		}
+		// 送达章经漏斗的去重/成团逻辑（同 prompt 双机制命中算一次）——不从原始条目
+		// 直数，否则 panel 与 forge skills funnel 口径分叉。toollog 传 nil：Engaged
+		// 在此路径恒 0 且不上板（加载转化下钻留在 CLI）。
+		for _, sf := range skillseval.BuildTriggerFunnel(d.checkEntries, nil).Skills {
+			delivered[sf.Name] += sf.Delivered
+			deliveryUnknown[sf.Name] += sf.DeliveryUnknown
 		}
 		for _, e := range d.effs {
 			effTasks[e.Skill] += e.TaskCount
@@ -193,9 +218,11 @@ func AggregateSkills(opts Options, canonical, evalDir string) (SkillsOverview, e
 	never := []string{}
 	for _, name := range names {
 		sum := SkillSummary{
-			Name:      name,
-			Hits:      hits[name],
-			TaskCount: effTasks[name],
+			Name:            name,
+			Hits:            hits[name],
+			TaskCount:       effTasks[name],
+			Delivered:       delivered[name],
+			DeliveryUnknown: deliveryUnknown[name],
 		}
 		if effScoreN[name] > 0 {
 			avg := effScoreSum[name] / float64(effScoreN[name])
