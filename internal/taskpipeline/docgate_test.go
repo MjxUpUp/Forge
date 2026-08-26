@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/MjxUpUp/Forge/internal/checklog"
 )
 
 // docgate_test.go: covers the doc pre-flight (output→re-check loop,
@@ -301,5 +303,76 @@ func TestChangedMarkdownSinceIncludesUntrackedAndSkipsDeleted(t *testing.T) {
 		if d == "gone.md" {
 			t.Fatalf("已删除文件不应出现在集合中, got %v", docs)
 		}
+	}
+}
+
+// TestCheckDocGateBlockedDetailRecordsReasons pins the audit-side fix (2026-08
+// review-observability): a BLOCKED doc-gate checklog entry must carry the reason
+// TEXTS in Detail, not just the count — a bare "N reasons" forces postmortems to
+// reverse-engineer the cause from source. Passing entries keep the count-only
+// detail (no noise).
+//
+// TestCheckDocGateBlockedDetailRecordsReasons 钉住审计侧修复（2026-08 评审
+// 可观测性）：BLOCKED 的 doc-gate checklog 条目 Detail 必须带原因【文本】而非
+// 只有数量——光记「N reasons」会让复盘不得不对源码反推。通过条目保持只记数量
+//（不添噪声）。
+func TestCheckDocGateBlockedDetailRecordsReasons(t *testing.T) {
+	root, base := newDocGateRepo(t)
+	if err := os.WriteFile(root+"/notes.md", []byte("# 笔记\n干净内容。\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// No DocReview evidence at all → blocked with the "L2 文档回检未记录" reason.
+	//
+	// 完全没有 DocReview 证据 → 以「L2 文档回检未记录」原因阻断。
+	state := &TaskState{TaskRef: "feat/x", HeadCommit: base}
+	ok, reasons := CheckDocGate(root, state)
+	if ok {
+		t.Fatal("无 DocReview 证据应阻断")
+	}
+	if len(reasons) == 0 {
+		t.Fatal("阻断应给出原因")
+	}
+
+	entries, err := checklog.LoadAll(root)
+	if err != nil {
+		t.Fatalf("LoadAll: %v", err)
+	}
+	var gate *checklog.Entry
+	for i := range entries {
+		if entries[i].Check == CheckNameDocGate {
+			gate = &entries[i]
+		}
+	}
+	if gate == nil {
+		t.Fatal("doc-gate 条目未记录")
+	}
+	if gate.Passed {
+		t.Fatal("阻断场景条目应 Passed=false")
+	}
+	if !strings.Contains(gate.Detail, "L2 文档回检未记录") {
+		t.Errorf("BLOCKED 条目 Detail 应含原因文本而非仅数量, got %q", gate.Detail)
+	}
+
+	// Passing run → count-only detail (no reason dump).
+	//
+	// 通过的运行 → 只记数量（不倾倒原因）。
+	head := GetHeadCommit(root)
+	state2 := &TaskState{TaskRef: "feat/y", HeadCommit: base}
+	state2.DocReview = &DocReview{Passed: true, RubricScore: 90, Round: 1, ReviewedAt: time.Now(), HeadCommit: head}
+	if ok, _ := CheckDocGate(root, state2); !ok {
+		t.Fatal("fresh 通过应放行")
+	}
+	entries2, _ := checklog.LoadAll(root)
+	var passGate *checklog.Entry
+	for i := range entries2 {
+		if entries2[i].Check == CheckNameDocGate && entries2[i].TaskRef == "feat/y" {
+			passGate = &entries2[i]
+		}
+	}
+	if passGate == nil || !passGate.Passed {
+		t.Fatal("通过场景应有 Passed=true 条目")
+	}
+	if strings.Contains(passGate.Detail, "回检") {
+		t.Errorf("通过条目 Detail 不应含原因文本, got %q", passGate.Detail)
 	}
 }

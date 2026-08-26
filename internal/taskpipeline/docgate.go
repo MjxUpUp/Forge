@@ -316,12 +316,24 @@ func CheckDocGate(root string, state *TaskState) (ok bool, reasons []string) {
 	// 仅阻断分支显式置 Level——无条件 LevelBlocked 会让 trace/dashboard 把
 	// 通过的运行也计成硬阻断（两者同桶）。通过的条目交给 DeriveLevel 推导。
 	passed := len(reasons) == 0
+	// On block, persist the reason texts, not just their count — a bare "N reasons"
+	// forces postmortems to reverse-engineer the cause from source (2026-08 evidence:
+	// a fingerprint-stale FAIL could only be identified by matching docgate.go's
+	// reason branches by hand). Reasons are already complete sentences; join them.
+	//
+	// 阻断时把原因文本一并落盘，而非只记数量——光记「N reasons」会让复盘不得不
+	// 对着源码反推原因（2026-08 证据：一次指纹过期 FAIL 只能靠手工比对
+	// docgate.go 的 reason 分支才认出）。reasons 本身已是完整句子，直接拼接。
+	detail := fmt.Sprintf("doc gate over %d changed docs: %d reasons", len(docs), len(reasons))
+	if !passed {
+		detail += ": " + strings.Join(reasons, " | ")
+	}
 	entry := &checklog.Entry{
 		Check:   CheckNameDocGate,
 		Passed:  passed,
 		Checked: true,
 		TaskRef: state.TaskRef,
-		Detail:  fmt.Sprintf("doc gate over %d changed docs: %d reasons", len(docs), len(reasons)),
+		Detail:  detail,
 	}
 	if !passed {
 		entry.Level = checklog.LevelBlocked

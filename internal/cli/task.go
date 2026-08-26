@@ -2068,12 +2068,14 @@ func runTaskDocReview(cmd *cobra.Command, args []string) error {
 	}
 
 	for _, c := range criticals {
-		state.AddFinding(taskpipeline.Finding{
+		nf := taskpipeline.Finding{
 			Content:  c,
 			Source:   taskpipeline.DocReviewSource,
 			Severity: taskpipeline.FindingSeverityCritical,
 			Evidence: fmt.Sprintf("round %d rubric=%d", round, score),
-		})
+		}
+		taskpipeline.EnrichFinding(root, state, &nf)
+		state.AddFinding(nf)
 	}
 
 	// Round history retention (the loop's observable convergence): prior rounds

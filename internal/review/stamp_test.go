@@ -658,3 +658,24 @@ func TestLoadStamp(t *testing.T) {
 		}
 	})
 }
+
+// TestCurrentBranch pins the exported branch accessor used by the non-task
+// review-pass checklog detail (2026-08 review-observability): inside a git repo it
+// returns the checked-out branch name; outside a git repo it degrades to "".
+//
+// TestCurrentBranch 钉住导出的分支访问器（非 task 模式 review-pass 的 checklog
+// detail 所用，2026-08 评审可观测性）：git 仓库内返回当前分支名；非 git 目录
+// 降级为 ""。
+func TestCurrentBranch(t *testing.T) {
+	dir := initGitRepo(t)
+	want := currentBranch(dir)
+	if want == "" {
+		t.Fatal("fixture 分支名不能为空（currentBranch 前置失效）")
+	}
+	if got := CurrentBranch(dir); got != want {
+		t.Errorf("CurrentBranch = %q, want %q（应与内部实现一致）", got, want)
+	}
+	if got := CurrentBranch(t.TempDir()); got != "" {
+		t.Errorf("非 git 目录应降级为空串, got %q", got)
+	}
+}
