@@ -154,6 +154,15 @@ func resolveRepoKeyPath(cmd *cobra.Command) (key, absPath string, err error) {
 	if kerr != nil {
 		key = forgedata.PathKey(p)
 	}
+	// Cache the REPO ROOT as the display path, not a possibly-deeper --path:
+	// Key() walks up to the repo, and the registry stores the root — caching the
+	// subdir would make doctor flag an instant path-mismatch on a fresh add.
+	//
+	// 展示缓存存仓根而非可能更深的 --path：Key() 向上归仓、registry 存的也是
+	// 仓根——缓存子目录会让 doctor 对刚 add 的成员立刻报 path-mismatch。
+	if gitRoot := forgedata.FindGitRoot(p); gitRoot != `` {
+		p = gitRoot
+	}
 	return key, p, nil
 }
 
@@ -269,7 +278,23 @@ func runWorkspaceStatus(cmd *cobra.Command, args []string) error {
 	total := 0
 	for _, r := range w.Repos {
 		fmt.Fprintf(out, "▶ %s  %s\n", r.Key, r.Path)
-		states, err := taskpipeline.ListTaskStatesInDir(filepath.Join(forgedata.RootDir(r.Key), `tasks`))
+		// Guard before joining the key into a path: RootDir returns "" when the
+		// global home is unresolvable (Join("","tasks") would scan the process
+		// cwd!), and a malformed key must never steer the scan outside the data
+		// home.
+		//
+		// 拼路径前先守卫：GlobalHome 不可解析时 RootDir 返回 ""（Join("","tasks")
+		// 会扫进程 cwd！），畸形 key 绝不许把扫描引出数据 home。
+		if !forgedata.ValidKeyFormat(r.Key) {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: 成员 key %s 格式非法（跳过）\n", r.Key)
+			continue
+		}
+		dir := forgedata.RootDir(r.Key)
+		if dir == `` {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: 解析 %s 的数据目录失败（跳过）\n", r.Key)
+			continue
+		}
+		states, err := taskpipeline.ListTaskStatesInDir(filepath.Join(dir, `tasks`))
 		if err != nil {
 			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: 扫描 %s 的任务失败（跳过）: %v\n", r.Key, err)
 			continue

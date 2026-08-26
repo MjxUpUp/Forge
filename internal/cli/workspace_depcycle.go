@@ -203,6 +203,9 @@ func collectWorkspaceTasks(f *workspace.File, stderr io.Writer) map[string][]*ta
 			if _, ok := tasksByKey[r.Key]; ok {
 				continue
 			}
+			if !forgedata.ValidKeyFormat(r.Key) {
+				continue // 畸形 key 绝不拼进文件系统路径（同 LoadDepState/status 的守卫）
+			}
 			dir := forgedata.RootDir(r.Key)
 			if dir == `` {
 				continue // GlobalHome 故障——fail-open 跳过

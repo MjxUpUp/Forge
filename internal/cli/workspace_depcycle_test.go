@@ -137,12 +137,12 @@ func TestDepCycleFindings(t *testing.T) {
 // drift finding——此处是未注册成员——并存，全部 advisory）。
 func TestRunWorkspaceDoctor_DepCycle(t *testing.T) {
 	_, _, home := depRefFixture(t)
-	writeDepRefWorkspace(t, `ka-self`, `kb-peer`)
-	// A waits on kb-peer:B, B waits on ka-self:A — a cross-repo ring.
+	writeDepRefWorkspace(t, `aa0000000001`, `bb0000000002`)
+	// A waits on bb0000000002:B, B waits on aa0000000001:A — a cross-repo ring.
 	//
-	// A 等 kb-peer:B，B 等 ka-self:A——一个跨仓环。
-	writeForeignTaskWithDeps(t, home, `ka-self`, `A`, []string{`kb-peer:B`})
-	writeForeignTaskWithDeps(t, home, `kb-peer`, `B`, []string{`ka-self:A`})
+	// A 等 bb0000000002:B，B 等 aa0000000001:A——一个跨仓环。
+	writeForeignTaskWithDeps(t, home, `aa0000000001`, `A`, []string{`bb0000000002:B`})
+	writeForeignTaskWithDeps(t, home, `bb0000000002`, `B`, []string{`aa0000000001:A`})
 
 	run := func(jsonFlag bool) string {
 		cmd := &cobra.Command{}
@@ -161,7 +161,7 @@ func TestRunWorkspaceDoctor_DepCycle(t *testing.T) {
 		return out.String()
 	}
 
-	if text := run(false); !strings.Contains(text, `dep-cycle`) || !strings.Contains(text, `ka-self:A → kb-peer:B → ka-self:A`) {
+	if text := run(false); !strings.Contains(text, `dep-cycle`) || !strings.Contains(text, `aa0000000001:A → bb0000000002:B → aa0000000001:A`) {
 		t.Errorf(`文本输出应含 dep-cycle 与环序列, got %q`, text)
 	}
 	if js := run(true); !strings.Contains(js, `"dep-cycle"`) {

@@ -82,30 +82,30 @@ func TestPendingDependencies_CrossRepo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Cross-repo member keyB: delivered / in-flight / collision shapes.
+	// Cross-repo member bb0000000002: delivered / in-flight / collision shapes.
 	//
-	// 跨仓成员 keyB：已交付 / 未完成 / 串号 三种形态。
-	writeDepState(t, home, `keyB`, &TaskState{TaskRef: `b-done`, Assignment: &Assignment{Status: AssignDelivered}})
-	writeDepState(t, home, `keyB`, &TaskState{TaskRef: `b-wip`})
+	// 跨仓成员 bb0000000002：已交付 / 未完成 / 串号 三种形态。
+	writeDepState(t, home, `bb0000000002`, &TaskState{TaskRef: `b-done`, Assignment: &Assignment{Status: AssignDelivered}})
+	writeDepState(t, home, `bb0000000002`, &TaskState{TaskRef: `b-wip`})
 	// Sanitize collision: the FILE name for "b:other" is b-other.json, but the
 	// stored TaskRef differs from the requested one — the load guard must reject
 	// it (pending), never leak the other task's delivered state.
 	//
 	// sanitize 串号："b:other" 的文件名是 b-other.json，但文件内 TaskRef 与请求
 	// 不同——加载防护必须拒绝（计 pending），绝不把另一个任务的已交付状态漏过来。
-	writeDepState(t, home, `keyB`, &TaskState{TaskRef: `b/other`, Assignment: &Assignment{Status: AssignDelivered}})
+	writeDepState(t, home, `bb0000000002`, &TaskState{TaskRef: `b/other`, Assignment: &Assignment{Status: AssignDelivered}})
 
 	pending := PendingDependencies(root, []string{
-		`local-done`,    // 本仓已交付 → 放行
-		`local-ghost`,   // 本仓缺失 → pending（回归）
-		`keyB:b-done`,   // 跨仓已交付 → 放行
-		`keyB:b-wip`,    // 跨仓未完成 → pending
-		`keyB:b-ghost`,  // 跨仓目标缺失 → pending
-		`keyC:anything`, // key 无数据目录 → pending
-		`keyB:b:other`,  // 串号防护：请求 ref 与文件内 TaskRef 不符 → pending
-		``,              // 空条目跳过
+		`local-done`,            // 本仓已交付 → 放行
+		`local-ghost`,           // 本仓缺失 → pending（回归）
+		`bb0000000002:b-done`,   // 跨仓已交付 → 放行
+		`bb0000000002:b-wip`,    // 跨仓未完成 → pending
+		`bb0000000002:b-ghost`,  // 跨仓目标缺失 → pending
+		`cc0000000003:anything`, // key 无数据目录 → pending
+		`bb0000000002:b:other`,  // 串号防护：请求 ref 与文件内 TaskRef 不符 → pending
+		``,                      // 空条目跳过
 	})
-	want := []string{`local-ghost`, `keyB:b-wip`, `keyB:b-ghost`, `keyC:anything`, `keyB:b:other`}
+	want := []string{`local-ghost`, `bb0000000002:b-wip`, `bb0000000002:b-ghost`, `cc0000000003:anything`, `bb0000000002:b:other`}
 	if strings.Join(pending, `,`) != strings.Join(want, `,`) {
 		t.Errorf("pending = %v, want %v（ref 须原样返回，跨仓失败一律保守计 pending）", pending, want)
 	}
@@ -132,15 +132,15 @@ func TestAddDependency_CrossRepoRef(t *testing.T) {
 			}
 			return states[ref]
 		}
-		if err := a.AddDependency([]string{`keyB:b-1`, `keyB:b-1`, `local`}, lookup); err != nil {
+		if err := a.AddDependency([]string{`bb0000000002:b-1`, `bb0000000002:b-1`, `local`}, lookup); err != nil {
 			t.Fatalf(`跨仓 ref 应接受, got %v`, err)
 		}
-		if len(a.DependsOn) != 2 || a.DependsOn[0] != `keyB:b-1` || a.DependsOn[1] != `local` {
-			t.Fatalf(`应原样存储并去重为 [keyB:b-1 local], got %v`, a.DependsOn)
+		if len(a.DependsOn) != 2 || a.DependsOn[0] != `bb0000000002:b-1` || a.DependsOn[1] != `local` {
+			t.Fatalf(`应原样存储并去重为 [bb0000000002:b-1 local], got %v`, a.DependsOn)
 		}
 	})
 	t.Run(`same-repo cycle still refused alongside cross-repo refs`, func(t *testing.T) {
-		// 本仓 B→A 已存在；A 同时加 keyB:x（跨仓，不参与 DFS）与 B（本仓，闭环）——须拒绝且 all-or-nothing。
+		// 本仓 B→A 已存在；A 同时加 bb0000000002:x（跨仓，不参与 DFS）与 B（本仓，闭环）——须拒绝且 all-or-nothing。
 		a := &TaskState{TaskRef: `A`}
 		b := &TaskState{TaskRef: `B`, DependsOn: []string{`A`}}
 		states := map[string]*TaskState{`A`: a, `B`: b}
@@ -150,7 +150,7 @@ func TestAddDependency_CrossRepoRef(t *testing.T) {
 			}
 			return states[ref]
 		}
-		if err := a.AddDependency([]string{`keyB:x`, `B`}, lookup); err == nil {
+		if err := a.AddDependency([]string{`bb0000000002:x`, `B`}, lookup); err == nil {
 			t.Fatal(`混入的本仓环 A→B→A 应被拒绝`)
 		}
 		if len(a.DependsOn) != 0 {
@@ -167,4 +167,23 @@ func TestAddDependency_CrossRepoRef(t *testing.T) {
 			t.Fatalf(`本方法不拦截 own-key 自引用（CLI 校验的职责）, got %v`, err)
 		}
 	})
+}
+
+// TestLoadDepState_RejectsMalformedKey pins that a DependsOn key outside the two
+// legitimate key shapes (traversal / separator / wrong length) is refused BEFORE
+// being joined into a filesystem path — the key is bundle-traveling input, and an
+// unchecked `..` would steer the read-only scan outside the data home. The refusal
+// surfaces as an error → the gate counts the dep as pending (conservative, never
+// silently delivered).
+//
+// TestLoadDepState_RejectsMalformedKey 钉住两种合法形态之外的 DependsOn key
+// （穿越/分隔符/长度错）在拼进文件系统路径之前被拒——key 是随 bundle 旅行的
+// 输入，未校验的 `..` 会把只读扫描引出数据 home。拒绝以 error 呈现 → 门禁计
+// pending（保守，绝不静默放行）。
+func TestLoadDepState_RejectsMalformedKey(t *testing.T) {
+	for _, key := range []string{`..`, `../x`, `a/b`, `nothexkey!!!`, `0123456789a`} {
+		if _, err := LoadDepState(t.TempDir(), key+`:some/ref`); err == nil {
+			t.Errorf("LoadDepState(key=%q) 应拒绝畸形 key", key)
+		}
+	}
 }
