@@ -109,21 +109,25 @@ func allReportedNote() string {
 }
 
 // dedupSuffix renders the checklog Detail suffix breaking a scan total down into
-// fresh vs previously-reported findings ("" on a clean scan or when everything is
-// fresh — first scans need no annotation). Without it, repeated FAIL entries from
+// fresh vs suppressed findings ("" on a clean scan or when everything is
+// fresh — first scans need no annotation). "suppressed" covers both findings
+// reported by an earlier verify AND same-batch duplicate fingerprints
+// (filterUnreported collapses both). Without it, repeated FAIL entries from
 // re-scanning an unchanged diff are indistinguishable from genuinely new hits in the
 // audit trail (2026-08 evidence: 30 cheat-scan FAILs in one week were re-scans of ~9
 // distinct findings). The agent-facing advisory was already deduped; this annotates
 // the audit side with the same breakdown — the entry still records the full truth.
 //
-// dedupSuffix 渲染 checklog Detail 后缀，把扫描总数拆成新发现 vs 此前已报告
-//（干净扫描或全部为新时返回 ""——首次扫描无需标注）。没有它，审计留痕里
-// 重扫同一 diff 产生的重复 FAIL 条目与真正的新命中无从区分（2026-08 证据：
-// 一周 30 条 cheat-scan FAIL 实为 ~9 个不同 finding 的重扫）。agent 面向的
-// advisory 已去重，此后缀把同样的拆分标注到审计侧——条目仍记录完整真相。
+// dedupSuffix 渲染 checklog Detail 后缀，把扫描总数拆成新发现 vs 被抑制
+//（干净扫描或全部为新时返回 ""——首次扫描无需标注）。「suppressed」兼指
+// 此前 verify 已报告的 finding 与同批次内的重复指纹（filterUnreported 对两者
+// 都折叠）。没有它，审计留痕里重扫同一 diff 产生的重复 FAIL 条目与真正的新
+// 命中无从区分（2026-08 证据：一周 30 条 cheat-scan FAIL 实为 ~9 个不同
+// finding 的重扫）。agent 面向的 advisory 已去重，此后缀把同样的拆分标注到
+// 审计侧——条目仍记录完整真相。
 func dedupSuffix(total, fresh int) string {
 	if total == 0 || fresh == total {
 		return ""
 	}
-	return "; new=" + strconv.Itoa(fresh) + ", previously-reported=" + strconv.Itoa(total-fresh)
+	return "; new=" + strconv.Itoa(fresh) + ", suppressed=" + strconv.Itoa(total-fresh)
 }

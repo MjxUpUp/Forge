@@ -117,15 +117,20 @@ const (
 	// 丢该 hook 的 PASS、plugin 落后两个 release 期间模型/用户/日志全静默。无此条目，
 	// `forge trace`/看板看不到 plugin 漂移。
 	CheckKimiPluginStale CheckName = "kimi-plugin-stale"
-	// CheckReviewPass records one `forge review pass` event (task mode): the reviewed snapshot
-	// (HEAD + change hash) plus the round number. deterministic by default (SourceForCheck:
+	// CheckReviewPass records one `forge review pass` event. Task mode: the reviewed snapshot
+	// (HEAD + change hash) plus the round number, carrying TaskRef. Non-task mode (2026-08
+	// review-observability): branch + diff-hash context without TaskRef/round — the stamp file
+	// is atomically overwritten per branch, so this entry is the only recoverable history of
+	// non-task passes. deterministic by default (SourceForCheck:
 	// recorded by the CLI command with a gate-computed hash, agent cannot forge the hash).
 	// It is an OBSERVATION (a marker that review was claimed-and-stamped), not verification
 	// evidence — excluded from evidence-strength bucketing like cheat-scan (see BuildEvidenceChain).
 	// Its value is making the review-rework loop measurable (round count per task).
 	//
-	// CheckReviewPass 记录一次 `forge review pass` 事件（task 模式）：审过的快照
-	// （HEAD + 变更 hash）与第几轮。默认 deterministic（SourceForCheck：由 CLI 命令
+	// CheckReviewPass 记录一次 `forge review pass` 事件。task 模式：审过的快照
+	// （HEAD + 变更 hash）与第几轮，带 TaskRef。非 task 模式（2026-08 评审可观测性）：
+	// branch + diff 指纹上下文，无 TaskRef/轮次——stamp 文件按分支原子覆写，本条目是
+	// 非 task 盖章唯一可回溯的历史。默认 deterministic（SourceForCheck：由 CLI 命令
 	// 以 gate 实算的 hash 落盘，agent 无法伪造 hash）。它是 OBSERVATION（"审查已被
 	// 声明并打戳"的标记），不是验证证据——与 cheat-scan 同类的排除出证据强度分桶
 	// （见 BuildEvidenceChain）。价值在于让审查-返工循环可度量（每任务轮次数）。

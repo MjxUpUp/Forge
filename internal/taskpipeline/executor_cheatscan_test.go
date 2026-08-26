@@ -156,14 +156,14 @@ func TestExecuteTaskGate_CheatScan_PhantomImport(t *testing.T) {
 // TestExecuteTaskGate_CheatScan_DedupSuffix pins the audit-side dedup annotation
 // (2026-08 review-observability): re-running task-verify over an unchanged diff
 // re-records the full scan result (audit truth, Passed=false) but the Detail now
-// carries the fresh/previously-reported breakdown — "new=0, previously-reported=N"
+// carries the fresh/suppressed breakdown — "new=0, suppressed=N"
 // on the rescan — so repeated FAIL entries are distinguishable from genuinely new
 // hits. The first scan (everything fresh) carries no suffix.
 //
 // TestExecuteTaskGate_CheatScan_DedupSuffix 钉住审计侧的去重标注（2026-08 评审
 // 可观测性）：对同一 diff 重跑 task-verify 仍记录全量扫描结果（审计真相，
-// Passed=false），但 Detail 带上新发现/已报告拆分——重扫时为
-// 「new=0, previously-reported=N」——使重复 FAIL 条目与真正的新命中可区分。
+// Passed=false），但 Detail 带上新发现/被抑制拆分——重扫时为
+// 「new=0, suppressed=N」——使重复 FAIL 条目与真正的新命中可区分。
 // 首次扫描（全部为新）不带后缀。
 func TestExecuteTaskGate_CheatScan_DedupSuffix(t *testing.T) {
 	dir := t.TempDir()
@@ -204,7 +204,7 @@ func TestExecuteTaskGate_CheatScan_DedupSuffix(t *testing.T) {
 	if strings.Contains(scans[0].Detail, "new=") {
 		t.Errorf(`首次扫描全部为新，Detail 不应带去重后缀: %q`, scans[0].Detail)
 	}
-	if !strings.Contains(scans[1].Detail, "; new=0, previously-reported=") {
-		t.Errorf(`重扫同一 diff，Detail 应含「new=0, previously-reported=N」拆分: %q`, scans[1].Detail)
+	if !strings.Contains(scans[1].Detail, "; new=0, suppressed=") {
+		t.Errorf(`重扫同一 diff，Detail 应含「new=0, suppressed=N」拆分: %q`, scans[1].Detail)
 	}
 }
