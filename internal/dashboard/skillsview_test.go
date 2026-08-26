@@ -367,3 +367,46 @@ func TestLoadSkillDetail_NoRuns(t *testing.T) {
 		t.Errorf("无 run 的 skill 应为空视图: %+v", d)
 	}
 }
+
+// TestAggregateSkills_DeliveryStamps: the overview rows surface the trigger funnel's
+// delivery stamps (checklog Delivered) — confirmed deliveries vs legacy pre-stamp hits
+// (nil, honestly separate) vs explicit not-delivered (false — flips nothing, counts
+// nowhere). Distinct sessions keep the funnel's same-prompt dedupe from collapsing
+// the fixture groups.
+//
+// TestAggregateSkills_DeliveryStamps：总览行上板触发漏斗的送达章（checklog
+// Delivered）——确认送达 vs 存量 nil 章（诚实单列）vs 显式未送达（false——不翻转
+// 状态、不计入任何计数）。不同 session 避免漏斗的同 prompt 去重把夹具折成一团。
+func TestAggregateSkills_DeliveryStamps(t *testing.T) {
+	root, p := forgedatatest.RealProject(t)
+	now := time.Now()
+	tru, fal := true, false
+	writeChecklogEntries(t, p.DataDir, []checklog.Entry{
+		{Check: checklog.CheckSkillTrigger, Passed: true, Checked: true, SessionID: "s1",
+			Detail: checklog.DetailForSkillTrigger("alpha", "UserPromptSubmit", "kw"), RecordedAt: now, Delivered: &tru},
+		{Check: checklog.CheckSkillTrigger, Passed: true, Checked: true, SessionID: "s2",
+			Detail: checklog.DetailForSkillTrigger("alpha", "UserPromptSubmit", "kw"), RecordedAt: now}, // nil = 存量章
+		{Check: checklog.CheckSkillTrigger, Passed: true, Checked: true, SessionID: "s3",
+			Detail: checklog.DetailForSkillTrigger("alpha", "UserPromptSubmit", "kw"), RecordedAt: now, Delivered: &fal},
+	})
+
+	ov, err := AggregateSkills(Options{Root: root}, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var alpha *SkillSummary
+	for i := range ov.Skills {
+		if ov.Skills[i].Name == "alpha" {
+			alpha = &ov.Skills[i]
+		}
+	}
+	if alpha == nil {
+		t.Fatalf("alpha 未出现在总览: %+v", ov.Skills)
+	}
+	if alpha.Delivered != 1 {
+		t.Errorf("Delivered = %d, want 1（仅 true 章计入）", alpha.Delivered)
+	}
+	if alpha.DeliveryUnknown != 1 {
+		t.Errorf("DeliveryUnknown = %d, want 1（存量 nil 章诚实单列；false 章不落此列）", alpha.DeliveryUnknown)
+	}
+}

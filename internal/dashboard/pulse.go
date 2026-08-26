@@ -208,6 +208,28 @@ type pulseTaskState struct {
 	OriginTool   string            `json:"originTool,omitempty"`
 	Zombie       bool              `json:"zombie"`
 	GateProgress pulseGateProgress `json:"gateProgress"`
+	// Lease is the cross-machine claim projection (task-lease, sync-convergence §4):
+	// who holds it, whether the hold is live at request time, when it lapses. nil on
+	// pre-multi-machine tasks (never claimed) — same omitempty discipline as
+	// FeedEvent.Node.
+	//
+	// Lease 是跨机器认领的投影（task-lease，sync-convergence §4）：谁持有、请求时点
+	// 是否仍有效、何时过期。多机器前的任务为 nil（从未认领）——与 FeedEvent.Node
+	// 同一条 omitempty 纪律。
+	Lease *pulseLease `json:"lease,omitempty"`
+}
+
+// pulseLease is the state-block projection of taskpipeline.Lease. Active derives from
+// the single "expiry means free" rule (Lease.ActiveAt) — never re-derived here.
+//
+// pulseLease 是 taskpipeline.Lease 的 state 块投影。Active 派生自「过期即自由」的
+// 唯一规则（Lease.ActiveAt）——此处不另造判定。
+type pulseLease struct {
+	HolderNode string    `json:"holderNode"`
+	Active     bool      `json:"active"`
+	ExpiresAt  time.Time `json:"expiresAt"`
+	Fencing    int64     `json:"fencing"`
+	TTLSec     int64     `json:"ttlSec"`
 }
 
 // pulseDimension is one scoring dimension with its configured weight.
@@ -270,6 +292,29 @@ type pulseTaskResponse struct {
 	Truncated  bool            `json:"truncated"` // events 被默认上限截断（最早事件不可达）
 	Score      *pulseScore     `json:"score"`
 	Acceptance pulseAcceptance `json:"acceptance"`
+	// DocReview is the L2 re-check evidence of the output→re-check loop (doc gate).
+	// nil when the task has no recorded doc review — the frontend renders the block
+	// only on presence, so "not reviewed" never poses as a fake zero-score block.
+	//
+	// DocReview 是输出→回检循环的 L2 回检证据（doc gate）。任务无回检记录时为
+	// nil——前端仅在存在时渲染该块，「未回检」绝不伪装成全零评分块。
+	DocReview *pulseDocReview `json:"docReview,omitempty"`
+}
+
+// pulseDocReview is the panel projection of taskpipeline.DocReview: latest verdict +
+// rubric score + round, plus the retained round count (convergence across rounds is
+// the observable signal of the loop).
+//
+// pulseDocReview 是 taskpipeline.DocReview 的面板投影：最新判定 + rubric 分 + 轮次，
+// 外加累计轮数（跨轮收敛趋势是回检循环的可观测信号）。
+type pulseDocReview struct {
+	Passed      bool       `json:"passed"`
+	RubricScore int        `json:"rubricScore"`
+	Round       int        `json:"round"`
+	RoundsTotal int        `json:"roundsTotal"` // 含历史轮次的累计轮数（≥ Round，钳制见填充处）
+	// ReviewedAt 用指针：time.Time 的 omitempty 对零值无效（仍序列化 0001-01-01），
+	// 零值评审时刻须序列化为缺席而非假日期。
+	ReviewedAt  *time.Time `json:"reviewedAt,omitempty"`
 }
 
 // buildPulseTask assembles the task.json payload: the state projection (zombie computed
@@ -308,6 +353,15 @@ func buildPulseTask(opts Options, pr pulseRoot, state *taskpipeline.TaskState, n
 			Passed: len(state.CompletedGates()),
 			Total:  gateTotal,
 		},
+	}
+	if state.Lease != nil {
+		resp.State.Lease = &pulseLease{
+			HolderNode: state.Lease.HolderNode,
+			Active:     state.Lease.ActiveAt(now),
+			ExpiresAt:  state.Lease.ExpiresAt(),
+			Fencing:    state.Lease.Fencing,
+			TTLSec:     state.Lease.TTLSec,
+		}
 	}
 
 	res, err := AggregateFeed(opts, now, FeedQuery{Project: firstNonEmpty(pr.key, pr.name), TaskRef: state.TaskRef})
@@ -393,6 +447,33 @@ func buildPulseTask(opts Options, pr pulseRoot, state *taskpipeline.TaskState, n
 			}
 		}
 		resp.Acceptance = pulseAcceptance{Pass: pass, Total: len(state.Acceptance)}
+	}
+
+	// Doc gate evidence: latest verdict + the retained round count (history rounds +
+	// the current one). nil DocReview → block absent, never a fabricated zero.
+	// RoundsTotal is clamped to ≥ Round: an explicit --round skip (legal override) or
+	// history truncation would otherwise let the panel contradict itself
+	// ("第 5 轮 · 累计 2 轮").
+	//
+	// Doc gate 证据：最新判定 + 累计轮数（历史轮 + 当前轮）。DocReview 为 nil →
+	// 块缺席，绝不编造全零块。RoundsTotal 钳制到 ≥ Round：显式 --round 跳号（合法
+	// 覆盖）或历史截断否则会让面板自相矛盾（「第 5 轮 · 累计 2 轮」）。
+	if state.DocReview != nil {
+		roundsTotal := len(state.DocReviewHistory) + 1
+		if state.DocReview.Round > roundsTotal {
+			roundsTotal = state.DocReview.Round
+		}
+		dr := &pulseDocReview{
+			Passed:      state.DocReview.Passed,
+			RubricScore: state.DocReview.RubricScore,
+			Round:       state.DocReview.Round,
+			RoundsTotal: roundsTotal,
+		}
+		if !state.DocReview.ReviewedAt.IsZero() {
+			at := state.DocReview.ReviewedAt
+			dr.ReviewedAt = &at
+		}
+		resp.DocReview = dr
 	}
 	return resp, nil
 }

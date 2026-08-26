@@ -283,7 +283,7 @@
   .caveat.neutral { color: var(--text-tertiary); background: var(--surface-2); border-color: var(--border); }
 
   /* === Skills 表格（C1）=== */
-  .skill-grid { display: grid; grid-template-columns: 1fr 70px 60px 76px 80px; gap: 8px; align-items: center; padding: 9px 4px; border-bottom: 1px solid var(--border-subtle); }
+  .skill-grid { display: grid; grid-template-columns: 1fr 70px 60px 76px 90px 80px; gap: 8px; align-items: center; padding: 9px 4px; border-bottom: 1px solid var(--border-subtle); }
   .skill-grid.head { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
   .skill-grid:not(.head) { cursor: pointer; border-radius: var(--radius-sm); }
   .skill-grid:not(.head):hover { background: var(--surface-2); }
@@ -680,7 +680,12 @@ function renderTask(t) {
     (st.originTool ? ' · via ' + esc(st.originTool) : '') +
     (gp.total ? ' · gate ' + gp.passed + '/' + gp.total : '') +
     (st.zombie ? ' · <span style="color:var(--warn)">僵尸 ⚠</span>' : '') +
-    (st.currentGate ? ' · 当前 gate: ' + esc(st.currentGate) : ' · 已完成') + '</div>';
+    (st.currentGate ? ' · 当前 gate: ' + esc(st.currentGate) : ' · 已完成') +
+    /* 租约（task-lease 上板）：holder 短码 + 有效/已过期；过期即自由与后端同一规则。 */
+    (st.lease ? ' · <span title="fencing ' + st.lease.fencing + ' · TTL ' + Math.round(st.lease.ttlSec / 3600) + 'h">租约 <span class="mono">' +
+      esc(String(st.lease.holderNode || '').replace(/^fnode_/, '').slice(0, 8)) + '</span>' +
+      (st.lease.active ? ' <span style="color:var(--ok)">有效至 ' + esc(fmtTime(st.lease.expiresAt)) + '</span>'
+                       : ' <span style="color:var(--text-tertiary)">已过期</span>') + '</span>' : '') + '</div>';
 
   /* 评分块（B2） */
   if (t.score) {
@@ -740,6 +745,15 @@ function renderTask(t) {
       '<span class="' + (ac.pass === ac.total ? 'caveat good' : 'caveat bad') + '">' + ac.pass + ' / ' + ac.total + ' 通过</span></div>';
   }
 
+  /* 文档回检（输出→回检循环的 L2 证据）：无记录时整块不出现——「未回检」不伪装成零分块。 */
+  var dr = t.docReview;
+  if (dr) {
+    html += '<div class="panel-block"><div class="panel-title">文档回检</div>' +
+      '<span class="' + (dr.passed ? 'caveat good' : 'caveat bad') + '">' + (dr.passed ? '✓ pass' : '✗ 未通过') + ' · rubric ' + fmtNum(dr.rubricScore) + '</span>' +
+      '<div class="mono" style="font-size:11px;color:var(--text-tertiary);margin-top:6px">第 ' + dr.round + ' 轮 · 累计 ' + dr.roundsTotal + ' 轮' +
+      (dr.reviewedAt ? ' · ' + esc(fmtDateTime(dr.reviewedAt)) : '') + '</div></div>';
+  }
+
   /* 事件序列（B1）：API 降序 → transcript 按时间升序渲染。t.truncated 时最早的
    * 事件已被默认上限截掉（不可达），如实标注在序列顶部，不冒充完整序列。 */
   var evs = (t.events || []).slice().reverse();
@@ -766,13 +780,18 @@ function renderSkills() {
     html += '<div class="empty">尚未有 skill 被触发<br><span class="mono">skill 命中与 eval 数据会出现在这里</span></div>';
   } else {
     html += '<div class="skill-grid head"><span>skill</span><span style="text-align:right">健康分</span>' +
-      '<span style="text-align:right">命中</span><span style="text-align:right">任务数</span><span style="text-align:right">任务均分</span></div>';
+      '<span style="text-align:right">命中</span><span style="text-align:right">任务数</span>' +
+      '<span style="text-align:right" title="checklog 送达章确认的 advisory 送达数；+N? 为送达章引入前的存量命中">送达</span>' +
+      '<span style="text-align:right">任务均分</span></div>';
     d.skills.forEach(function (s) {
+      /* 送达列：确认送达数；存量 nil 章（送达字段引入前）以 +N? 诚实单列，不计入已送达。 */
+      var deliv = String(s.delivered || 0) + (s.deliveryUnknown ? '<span style="color:var(--text-tertiary)">+' + s.deliveryUnknown + '?</span>' : '');
       html += '<div class="skill-grid" data-skill="' + esc(s.name) + '">' +
         '<span style="font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(s.name) + '</span>' +
         '<span class="num" style="color:' + scoreVar(s.health) + '">' + fmtNum(s.health) + '</span>' +
         '<span class="num">' + s.hits + '</span>' +
         '<span class="num">' + (s.taskCount || 0) + '</span>' +
+        '<span class="num">' + deliv + '</span>' +
         '<span class="num" style="color:' + scoreVar(s.avgScore) + '">' + fmtNum(s.avgScore) + '</span></div>';
     });
   }
