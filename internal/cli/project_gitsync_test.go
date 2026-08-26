@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
@@ -459,5 +460,77 @@ func TestProjectSync_StatusReportsNodes(t *testing.T) {
 	}
 	if st.NodeID == `` || st.LastPushAt == `` {
 		t.Fatalf("status missing node/push stamp: %+v", st)
+	}
+}
+
+// TestProjectSync_OutcomeRecorded: every sync init/push/pull outcome (success AND
+// failure) lands in checklog as a project-sync entry with the op in Meta — the
+// failure-visible record the panel needs (sync-remote.json stamps successes only, so
+// a failed push used to leave the old timestamp standing and tell no one).
+//
+// TestProjectSync_OutcomeRecorded：每次 sync init/push/pull 的成败都落 checklog 的
+// project-sync 条目、操作名在 Meta——面板需要的「失败可见」记录（sync-remote.json
+// 只给成功打戳，失败的 push 此前留着旧时间戳、谁也不告诉）。
+func TestProjectSync_OutcomeRecorded(t *testing.T) {
+	fpid := `fpid_aabbccddeeff00112233445566778899`
+	projA, homeA := gitSyncMachine(t, fpid)
+	remote := t.TempDir()
+	runGit(t, remote, `init`, `--bare`)
+
+	writeTaskInto(t, projA, homeA, `feat/sync-obs`, `观测同步`)
+	runProjectSyncForTest(t, projA, homeA, `init`, remote)
+	runProjectSyncForTest(t, projA, homeA, `push`)
+
+	// 失败操作也落章：向不可达 remote init（探测失败在绑定前返回错误）。
+	badErr := func() error {
+		t.Setenv("FORGE_DATA_HOME", homeA)
+		chdirAndRestore(t, projA)
+		return projectSyncCmd.RunE(projectSyncCmd, []string{`init`, filepath.Join(t.TempDir(), `no-such-remote`)})
+	}()
+	if badErr == nil {
+		t.Fatal("不可达 remote 的 init 必须失败")
+	}
+
+	t.Setenv("FORGE_DATA_HOME", homeA)
+	entries, err := checklog.LoadAllAll(projA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ops []checklog.Entry
+	for _, e := range entries {
+		if e.Check == checklog.CheckProjectSync {
+			ops = append(ops, e)
+		}
+	}
+	if len(ops) != 3 {
+		t.Fatalf("project-sync 条目数 = %d, want 3（init+push+失败init）: %+v", len(ops), ops)
+	}
+	// 时间序：init → push → 失败 init。
+	if ops[0].Meta[checklog.MetaKeySyncOp] != `init` || !ops[0].Passed || ops[0].Level != checklog.LevelPass {
+		t.Errorf("init 落章异常: %+v", ops[0])
+	}
+	if ops[1].Meta[checklog.MetaKeySyncOp] != `push` || !ops[1].Passed || !strings.Contains(ops[1].Detail, `文件`) {
+		t.Errorf("push 落章异常（成功应带文件数 note）: %+v", ops[1])
+	}
+	if ops[2].Meta[checklog.MetaKeySyncOp] != `init` || ops[2].Passed || ops[2].Level != checklog.LevelFail {
+		t.Errorf("失败 init 落章异常（失败必须 LevelFail 可见）: %+v", ops[2])
+	}
+	if !strings.Contains(ops[2].Detail, `sync init 失败`) {
+		t.Errorf("失败 Detail 应带操作名与原因: %q", ops[2].Detail)
+	}
+	// status 是只读操作——不得落章（每次轮询都落章会刷屏）。
+	runProjectSyncForTest(t, projA, homeA, `status`)
+	entries, err = checklog.LoadAllAll(projA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, e := range entries {
+		if e.Check == checklog.CheckProjectSync {
+			n++
+		}
+	}
+	if n != 3 {
+		t.Errorf("status 后 project-sync 条目数 = %d, want 3（status 不落章）", n)
 	}
 }

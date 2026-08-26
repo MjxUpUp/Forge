@@ -494,3 +494,46 @@ func TestFeedEvent_SkillWireShape(t *testing.T) {
 		t.Errorf("空 skill 改变了线上结构: %s", without)
 	}
 }
+
+// TestAggregateFeed_SyncEvents: project-sync checklog entries (git-transport op
+// outcomes) project into the feed as sync events — severity from Level (pass/fail →
+// ok/fail), title from the STRUCTURED Meta op + pass/fail. Meta-less lines (hand-written
+// legacy) show "?" — the unknown is surfaced, not papered over.
+//
+// TestAggregateFeed_SyncEvents：project-sync checklog 条目（git 通道操作成败）投影
+// 成 sync 事件进流——severity 取自 Level（pass/fail → ok/fail），标题由结构化
+// Meta 操作名 + 成败构造。无 Meta 的行（手写存量）显示「?」——未知被透出而非
+// 粉饰。
+func TestAggregateFeed_SyncEvents(t *testing.T) {
+	root, p := forgedatatest.RealProject(t)
+	base := time.Unix(1700000000, 0).UTC()
+	writeChecklogEntries(t, p.DataDir, []checklog.Entry{
+		{Check: checklog.CheckProjectSync, Passed: true, Checked: true, Level: checklog.LevelPass,
+			Detail: `sync pull 成功 导入 2 个他机 bundle，失败 0`, RecordedAt: base,
+			Meta: map[string]string{checklog.MetaKeySyncOp: `pull`}},
+		{Check: checklog.CheckProjectSync, Passed: false, Checked: true, Level: checklog.LevelFail,
+			Detail: `sync push 失败: git push: ...`, RecordedAt: base.Add(time.Minute),
+			Meta: map[string]string{checklog.MetaKeySyncOp: `push`}},
+	})
+
+	res, err := AggregateFeed(Options{Root: root}, base.Add(time.Hour), FeedQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var syncs []FeedEvent
+	for _, e := range res.Events {
+		if e.Kind == FeedKindSync {
+			syncs = append(syncs, e)
+		}
+	}
+	if len(syncs) != 2 {
+		t.Fatalf("sync 事件数 = %d, want 2（feed 事件: %v）", len(syncs), feedKinds(res.Events))
+	}
+	// 降序流：最新（失败 push）在前。
+	if syncs[0].Severity != FeedSeverityFail || syncs[0].Title != `sync push 失败` {
+		t.Errorf("失败 push 事件异常: %+v", syncs[0])
+	}
+	if syncs[1].Severity != FeedSeverityOK || syncs[1].Title != `sync pull 成功` {
+		t.Errorf("成功 pull 事件异常: %+v", syncs[1])
+	}
+}

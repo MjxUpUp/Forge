@@ -15,10 +15,12 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/act"
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/health"
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 	"github.com/MjxUpUp/Forge/internal/skillscanonical"
@@ -527,6 +529,54 @@ type pulseProject struct {
 	Zombies     int      `json:"zombies"`
 	LastGrade   string   `json:"lastGrade,omitempty"`
 	LastScore   *float64 `json:"lastScore"` // 无结论时 null
+	// Sync is the machine-local git-sync binding + last-op stamps (sync Phase 1).
+	// nil when sync is not initialized (or the file is unreadable) — omitempty keeps
+	// the unbound wire shape unchanged.
+	//
+	// Sync 是机器本地的 git 同步绑定 + 最近操作戳（sync Phase 1）。未初始化（或
+	// 文件不可读）时为 nil——omitempty 保持未绑定项目的线上结构不变。
+	Sync *pulseSync `json:"sync,omitempty"`
+}
+
+// pulseSync is the panel projection of DataDir/sync-remote.json (machine-local,
+// never travels in bundles).
+//
+// pulseSync 是 DataDir/sync-remote.json 的面板投影（机器本地，永不随 bundle 旅行）。
+type pulseSync struct {
+	Remote     string `json:"remote"`
+	NodeID     string `json:"nodeId"`
+	LastPushAt string `json:"lastPushAt,omitempty"`
+	LastPullAt string `json:"lastPullAt,omitempty"`
+}
+
+// loadPulseSync reads sync-remote.json FRESH per request rather than through the
+// fingerprint cache: the file is tiny, polls are 30s apart, and it is deliberately
+// outside the cache fingerprint set — adding it would entangle cache invalidation
+// for near-zero gain. Unbound or unreadable → nil (the CLI's `sync status` surfaces
+// corruption loudly; the panel omits the block rather than fabricating one).
+//
+// loadPulseSync 每请求直读 sync-remote.json，不走指纹缓存：文件极小、轮询 30 秒
+// 一次，且它刻意不在缓存指纹集里——把它加进去是用缓存失效复杂度换近乎零收益。
+// 未绑定或不可读 → nil（CLI 的 `sync status` 会响亮暴露损坏；面板省略该块而非
+// 编造一块）。
+func loadPulseSync(root string) *pulseSync {
+	var file struct {
+		Remote     string `json:"remote"`
+		NodeID     string `json:"node_id"`
+		LastPushAt string `json:"last_push_at"`
+		LastPullAt string `json:"last_pull_at"`
+	}
+	raw, err := os.ReadFile(filepath.Join(forgedata.DataDirFor(root), `sync-remote.json`))
+	if err != nil {
+		return nil
+	}
+	if err := json.Unmarshal(raw, &file); err != nil || file.Remote == `` {
+		return nil
+	}
+	return &pulseSync{
+		Remote: file.Remote, NodeID: file.NodeID,
+		LastPushAt: file.LastPushAt, LastPullAt: file.LastPullAt,
+	}
 }
 
 // aggregatePulseProjects lists every project in scope with its active/zombie counts and
@@ -557,6 +607,8 @@ func aggregatePulseProjects(opts Options, now time.Time) []pulseProject {
 				row.LastScore = &score
 			}
 		}
+		// 同步绑定独立于缓存错误分支——缓存读失败不该藏起绑定信息（反之亦然）。
+		row.Sync = loadPulseSync(pr.root)
 		rows = append(rows, row)
 	}
 	return rows

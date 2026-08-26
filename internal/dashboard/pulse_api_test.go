@@ -1029,3 +1029,60 @@ func TestServe_PulseTask_LeaseAndDocReview(t *testing.T) {
 		t.Errorf("roundsTotal 钳制异常: %+v（--round 跳号时须 ≥ Round）", skipPayload.DocReview)
 	}
 }
+
+// TestServe_PulseProjects_Sync: projects.json rows carry the machine-local sync binding
+// (remote/nodeId/lastPushAt/lastPullAt, camelCase projection of DataDir/sync-remote.json)
+// when bound — and NO "sync" key at all when unbound (omitempty; the wire-shape pin lives
+// at raw-body level so a dropped omitempty goes red).
+//
+// TestServe_PulseProjects_Sync：projects.json 行在已绑定时携带机器本地同步块
+// （remote/nodeId/lastPushAt/lastPullAt——DataDir/sync-remote.json 的 camelCase
+// 投影），未绑定时完全没有 "sync" 键（omitempty；线上结构钉在原始 body 层，
+// omitempty 被删则测试红）。
+func TestServe_PulseProjects_Sync(t *testing.T) {
+	root, p := forgedatatest.RealProject(t)
+	if err := os.MkdirAll(p.DataDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(p.DataDir, `sync-remote.json`), []byte(
+		`{"remote":"git@example.com:org/sync.git","node_id":"fnode_abc123abc123abc123abc123abc12345","last_push_at":"2026-08-26T03:00:00Z","last_pull_at":"2026-08-26T04:00:00Z"}`,
+	), 0600); err != nil {
+		t.Fatal(err)
+	}
+	srv := pulseServer(t, Options{Root: root})
+	code, body := pulseGet(t, srv.URL+"/api/pulse/projects.json")
+	if code != 200 {
+		t.Fatalf("status = %d: %s", code, body)
+	}
+	var rows []struct {
+		Key  string `json:"key"`
+		Sync *struct {
+			Remote     string `json:"remote"`
+			NodeID     string `json:"nodeId"`
+			LastPushAt string `json:"lastPushAt"`
+			LastPullAt string `json:"lastPullAt"`
+		} `json:"sync"`
+	}
+	if err := json.Unmarshal(body, &rows); err != nil {
+		t.Fatalf("decode: %v\n%s", err, body)
+	}
+	if len(rows) != 1 || rows[0].Sync == nil {
+		t.Fatalf("sync 块缺失: %s", body)
+	}
+	s := rows[0].Sync
+	if s.Remote != "git@example.com:org/sync.git" || s.NodeID != "fnode_abc123abc123abc123abc123abc12345" ||
+		s.LastPushAt != "2026-08-26T03:00:00Z" || s.LastPullAt != "2026-08-26T04:00:00Z" {
+		t.Errorf("sync 投影异常: %+v", s)
+	}
+
+	// 未绑定项目：sync-remote.json 缺席 → 线上结构无 "sync" 键。
+	root2, _ := forgedatatest.RealProject(t)
+	srv2 := pulseServer(t, Options{Root: root2})
+	code, body2 := pulseGet(t, srv2.URL+"/api/pulse/projects.json")
+	if code != 200 {
+		t.Fatalf("unbound status = %d: %s", code, body2)
+	}
+	if strings.Contains(string(body2), `"sync"`) {
+		t.Errorf("未绑定项目的线上结构被改变（sync 键应缺席）: %s", body2)
+	}
+}
