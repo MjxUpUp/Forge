@@ -212,7 +212,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 				Level:  checklog.LevelBlocked,
 				Detail: fmt.Sprintf(`%s 拒绝：上游依赖未交付或不存在（%s）`, gateID, strings.Join(pending, `, `)),
 			})
-			return nil, GateBlocked(`%s 拒绝（HARD stop）：上游 task 未交付或不存在（%s，可能是未创建/已 abort/拼错）；forge task mine --blocked 查看详情，或先推进上游交付`, gateID, strings.Join(pending, `, `))
+			return nil, GateBlocked(`%s 拒绝（HARD stop）：上游 task 未交付或不存在（%s，可能是未创建/已 abort/拼错；key:ref 跨仓依赖还会因目标仓未交付或数据不可读而阻塞）；forge task mine --blocked 查看详情，或先推进上游交付`, gateID, strings.Join(pending, `, `))
 		}
 	}
 
@@ -799,6 +799,24 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 			fmt.Fprintf(os.Stderr, "%s%s\n", GateAdvisory("[task-verify] "), formatMissing(missing))
 		}
 
+		// cross-repo-impact declaration (multi-repo workspace, crossrepo.go): when this
+		// repo belongs to a multi-repo workspace, the task must carry an explicit impact
+		// declaration — "none" included (declaration forces explicit thought). Advisory by
+		// default (fail-open philosophy); protocol cross_repo_impact: required promotes the
+		// undeclared case to a hard block. Repos with no multi-repo membership are skipped
+		// silently (no log). CheckCrossRepoImpact is excluded from BuildEvidenceChain — an
+		// observation of declaration state, not verification evidence.
+		//
+		// cross-repo-impact 声明（多仓 workspace，crossrepo.go）：本 repo 属于多仓
+		// workspace 时，任务必须带显式影响声明——包括 "none"（声明强迫显式思考）。
+		// 默认 advisory（fail-open 哲学）；protocol cross_repo_impact: required 把
+		// 未声明升级为硬阻断。无多仓成员资格的 repo 静默跳过（不记日志）。
+		// CheckCrossRepoImpact 在 BuildEvidenceChain 中排除——它是声明状态的观测，
+		// 非验证证据。
+		if err := checkCrossRepoImpact(root, state); err != nil {
+			return nil, err
+		}
+
 		// scope-drift advisory (PlanScope whitelist): when a task declares a planned-change
 		// whitelist, detect whether actually-changed source exceeds the declaration. drift =
 		// taskChangedFiles (actual state) vs PlanScope (declared state) set difference —
@@ -1292,15 +1310,26 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 // PendingDependencies returns the subset of refs not yet delivered — the DependsOn gate's block
 // list. A ref that fails to load counts as pending: a dependency that was never created, was
 // aborted, or is typo'd is not "delivered", and treating it as such would let a task verify past
-// a broken edge. The returned strings are bare refs (joined in the BLOCKED message); mine --blocked
-// is where status detail is expanded for the human.
+// a broken edge. The returned strings are the refs VERBATIM (joined in the BLOCKED message); mine
+// --blocked is where status detail is expanded for the human.
+//
+// Cross-repo semantics (multi-repo workspace Option B, depref.go): a `<key>:<ref>` entry resolves
+// to forgedata.RootDir(key)/tasks via LoadDepState — read-only, no locking. The conservative rule
+// extends across repos: target task missing/unreadable, or the key having no data dir at all, all
+// count as PENDING (never a silent release); the verbatim key:ref is what lands in the block list
+// so the user can see which repo the gate is waiting on.
 //
 // PendingDependencies 返回尚未交付的 ref 子集——DependsOn 门禁的阻断清单。加载失败的 ref 计为
 // pending：从未创建、已 abort、或拼错的依赖都非「已交付」，若放过会让 task 校验过一个断裂的依赖边。
-// 返回的是裸 ref（在 BLOCKED 信息里拼接）；状态细节在 mine --blocked 处为人展开。
+// 返回的字符串原样保留入参 ref（在 BLOCKED 信息里拼接）；状态细节在 mine --blocked 处为人展开。
+//
+// 跨仓语义（多仓 workspace Option B，见 depref.go）：`<key>:<ref>` 条目经 LoadDepState 解析到
+// forgedata.RootDir(key)/tasks——只读、无锁。保守规则延伸到跨仓：目标 task 缺失/不可读、或
+// key 根本没有数据目录，一律计 PENDING（绝不静默放行）；阻断清单里落的是原样 key:ref，让用户
+// 看清门禁在等哪个仓。
 //
 // API 分工（与 health.DeadlockedDependency 的双形态是有意为之，非 DRY 违反）：本函数接收 root + refs，
-// 内部对每个 ref 跑 LoadTaskState（per-ref 磁盘读、无缓存），返回裸 ref 列表——契合门禁侧的调用点
+// 内部对每个 ref 跑 LoadDepState（per-ref 磁盘读、无缓存），返回裸 ref 列表——契合门禁侧的调用点
 // （门禁已有 root，只需知道「卡住没」+阻断清单）。DeadlockedDependency 接收单个 TaskState + lookup 回调，
 // 返回 (ref, bool)——契合 health 扫描侧（调用方可缓存/限定 scope/复用 state map）。门禁侧无须 state map
 // （它只判本任务），故采 root 形态更直接；若未来门禁也需 deadlock 判定，可在调用点自建 lookup 复用，
@@ -1311,7 +1340,7 @@ func PendingDependencies(root string, refs []string) []string {
 		if ref == `` {
 			continue
 		}
-		st, err := LoadTaskState(root, ref)
+		st, err := LoadDepState(root, ref)
 		if err != nil || st == nil {
 			pending = append(pending, ref)
 			continue

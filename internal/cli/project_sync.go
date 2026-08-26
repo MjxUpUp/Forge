@@ -267,7 +267,7 @@ func runProjectSync(cmd *cobra.Command, args []string) (err error) {
 		if len(args) != 2 {
 			return fmt.Errorf(`用法：forge project sync init <remote>`)
 		}
-		syncOp = `init` // 参数校验通过才落章——CLI 笔误（漏 remote）不上面板
+		syncOp = `init`    // 参数校验通过才落章——CLI 笔误（漏 remote）不上面板
 		syncNote = args[1] // remote——成败都带进落章（失败时回答「绑的哪个 remote」）
 		if err := os.MkdirAll(dataDir, 0755); err != nil {
 			return err

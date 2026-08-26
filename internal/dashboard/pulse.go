@@ -310,13 +310,13 @@ type pulseTaskResponse struct {
 // pulseDocReview 是 taskpipeline.DocReview 的面板投影：最新判定 + rubric 分 + 轮次，
 // 外加累计轮数（跨轮收敛趋势是回检循环的可观测信号）。
 type pulseDocReview struct {
-	Passed      bool       `json:"passed"`
-	RubricScore int        `json:"rubricScore"`
-	Round       int        `json:"round"`
-	RoundsTotal int        `json:"roundsTotal"` // 含历史轮次的累计轮数（≥ Round，钳制见填充处）
+	Passed      bool `json:"passed"`
+	RubricScore int  `json:"rubricScore"`
+	Round       int  `json:"round"`
+	RoundsTotal int  `json:"roundsTotal"` // 含历史轮次的累计轮数（≥ Round，钳制见填充处）
 	// ReviewedAt 用指针：time.Time 的 omitempty 对零值无效（仍序列化 0001-01-01），
 	// 零值评审时刻须序列化为缺席而非假日期。
-	ReviewedAt  *time.Time `json:"reviewedAt,omitempty"`
+	ReviewedAt *time.Time `json:"reviewedAt,omitempty"`
 }
 
 // buildPulseTask assembles the task.json payload: the state projection (zombie computed
