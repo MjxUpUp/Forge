@@ -527,3 +527,66 @@ func TestRunReviewPassAt_BaselineUnreachableAudited(t *testing.T) {
 		t.Errorf("fail-open 重盖章须记 WARN 级 baseline-unreachable 审计, got level=%s detail=%q", last.Level, last.Detail)
 	}
 }
+
+// TestRunReviewPassAt_NonTaskRecordsChecklog pins the non-task audit fix (2026-08
+// review-observability): `forge review pass` outside task flow previously wrote
+// only the branch stamp — and stamps are atomically overwritten per branch, so the
+// pass history was unrecoverable (a 1-minute rubber-stamp was indistinguishable
+// from a normal 9-11 min review). Now a CheckReviewPass entry lands in checklog
+// with branch + diff-hash context and the --note text, same observation class as
+// the task-mode entry.
+//
+// TestRunReviewPassAt_NonTaskRecordsChecklog 钉住非 task 审计修复（2026-08 评审
+// 可观测性）：此前非 task 流程的 `forge review pass` 只写分支戳——而戳按分支
+// 原子覆写，盖章历史不可回溯（1 分钟的 rubber-stamp 与正常 9-11 分钟的审查无从
+// 区分）。现在 checklog 落一条 CheckReviewPass 条目，带分支 + diff 指纹上下文
+// 与 --note 文本，与 task 模式条目同属 observation 类。
+func TestRunReviewPassAt_NonTaskRecordsChecklog(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	dir := t.TempDir()
+	runGit(t, dir, `init`)
+	runGit(t, dir, `config`, `user.email`, `test@test.com`)
+	runGit(t, dir, `config`, `user.name`, `Test`)
+	os.WriteFile(filepath.Join(dir, `main.go`), []byte("package main\n\nfunc main() {}\n"), 0644)
+	runGit(t, dir, `add`, `.`)
+	runGit(t, dir, `commit`, `-m`, `initial`)
+	// Uncommitted source change → the pass binds a non-empty diff fingerprint.
+	//
+	// 未提交源码变更 → 本次盖章绑定非空 diff 指纹。
+	os.WriteFile(filepath.Join(dir, `main.go`), []byte("package main\n\nfunc main() { println(1) }\n"), 0644)
+
+	captureStdout(t, func() {
+		if err := runReviewPassAt(dir, "", "复审结论：非 task 审查，双轨无发现", false); err != nil {
+			t.Fatalf("runReviewPassAt 非 task 模式: %v", err)
+		}
+	})
+
+	entries, err := checklog.LoadAll(dir)
+	if err != nil {
+		t.Fatalf("LoadAll: %v", err)
+	}
+	var rec *checklog.Entry
+	for i := range entries {
+		if entries[i].Check == checklog.CheckReviewPass {
+			rec = &entries[i]
+		}
+	}
+	if rec == nil {
+		t.Fatal("非 task 模式 review-pass 应落 checklog（此前只有 task 分支记录）")
+	}
+	if !rec.Passed || !rec.Checked {
+		t.Errorf("条目应 Passed=true Checked=true: %+v", rec)
+	}
+	if rec.TaskRef != "" {
+		t.Errorf("非 task 模式不应带 TaskRef, got %q", rec.TaskRef)
+	}
+	if !strings.Contains(rec.Detail, "non-task review passed") {
+		t.Errorf("Detail 应标识非 task 盖章: %q", rec.Detail)
+	}
+	if !strings.Contains(rec.Detail, "branch=") || !strings.Contains(rec.Detail, "diff=") {
+		t.Errorf("Detail 应带 branch 与 diff 指纹上下文: %q", rec.Detail)
+	}
+	if !strings.Contains(rec.Detail, "note: 复审结论：非 task 审查，双轨无发现") {
+		t.Errorf("Detail 应含 --note 文本: %q", rec.Detail)
+	}
+}

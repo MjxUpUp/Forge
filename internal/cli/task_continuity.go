@@ -1103,11 +1103,13 @@ func runTaskFinding(cmd *cobra.Command, args []string) error {
 	evidence, _ := cmd.Flags().GetString("evidence")
 	var f taskpipeline.Finding
 	err = taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
-		s.AddFinding(taskpipeline.Finding{
+		nf := taskpipeline.Finding{
 			Content:  content,
 			Source:   source,
 			Evidence: evidence,
-		})
+		}
+		taskpipeline.EnrichFinding(root, s, &nf)
+		s.AddFinding(nf)
 		f = s.Findings[len(s.Findings)-1]
 		return nil
 	})

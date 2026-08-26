@@ -214,7 +214,7 @@ func runReviewPassAt(root, explicitRef, note string, acknowledgeChanges bool) er
 		// 类（排除出证据强度分桶）。记录失败不阻塞 pass（fail-open，与打戳本身一致）。
 		// 自助刷新（对变更源码确认重盖章）升级为 WARN——审计留痕把自我承担的基线刷新与
 		// 普通轮次分开。
-		detail := fmt.Sprintf("review round %d passed (head=%s)", len(state.ReviewRounds), shortHash(head))
+		detail := fmt.Sprintf("review round %d passed (head=%s, change=%s)", len(state.ReviewRounds), shortHash(head), shortHash(hash))
 		if selfRefresh {
 			detail = "self-refresh: baseline re-stamped over changed source via --acknowledge-changes; " + detail
 		}
@@ -283,8 +283,46 @@ func runReviewPassAt(root, explicitRef, note string, acknowledgeChanges bool) er
 	if err := review.MarkPassedWithNote(root, note); err != nil {
 		return fmt.Errorf("failed to mark review passed: %w", err)
 	}
+	// Record the non-task review-pass event — the stamp file keeps only the latest
+	// state per branch (atomic overwrite), so without a checklog entry the non-task
+	// pass history is unrecoverable (2026-08 evidence: a 1-minute pass was
+	// indistinguishable from the normal 9-11 min review depth). Same observation
+	// class as the task-mode entry (excluded from evidence-strength bucketing);
+	// fail-open like the stamp itself.
+	//
+	// 记录非 task 模式的 review-pass 事件——stamp 文件每分支只存最新态（原子覆写），
+	// 不落 checklog 则非 task 盖章历史完全不可回溯（2026-08 证据：一次 1 分钟完成的
+	// 盖章与正常 9-11 分钟的审查深度无从区分）。与 task 模式条目同属 observation
+	// 类（排除出证据强度分桶）；与打戳本身一致 fail-open。
+	detail := fmt.Sprintf("non-task review passed (branch=%s, diff=%s)", review.CurrentBranch(root), shortHash(currentDiffHash(root)))
+	if note != "" {
+		detail += "; note: " + note
+	}
+	if recErr := checklog.Record(root, &checklog.Entry{
+		Check:   checklog.CheckReviewPass,
+		Passed:  true,
+		Checked: true,
+		Detail:  detail,
+	}); recErr != nil {
+		fmt.Fprintf(os.Stderr, "⚠ checklog 记录失败（review-pass 未落盘）: %v\n", recErr)
+	}
 	fmt.Println("✅ 当前 diff: code-review-gate 已通过")
 	return nil
+}
+
+// currentDiffHash returns the worktree-vs-HEAD source fingerprint for audit detail
+// (review.SourceChangesSince(root, "") — the same computation as computeDiffHash
+// behind the stamp). Best-effort: an error yields "" (detail degrades, never blocks).
+//
+// currentDiffHash 返回工作区相对 HEAD 的源码指纹，供审计 detail 使用
+//（review.SourceChangesSince(root, "")——与打戳背后的 computeDiffHash 同一计算）。
+// best-effort：出错返回 ""（detail 降级，绝不阻断）。
+func currentDiffHash(root string) string {
+	h, _, err := review.SourceChangesSince(root, "")
+	if err != nil {
+		return ""
+	}
+	return h
 }
 
 // renderReviewPassBlindSpot produces the ADVISORY for `forge review pass` in task mode when evidence is weak

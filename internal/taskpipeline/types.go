@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/review"
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 )
 
@@ -124,6 +125,26 @@ type Finding struct {
 	Severity string    `json:"severity,omitempty"` // "" | critical | important | minor——doc-review 的 critical 未决会阻断 doc gate；空（旧 findings）永不阻断
 	Status   string    `json:"status"`             // open | fixed | wontfix
 	RaisedAt time.Time `json:"raised_at"`
+	// Round is the review cycle the finding was raised in (len(ReviewRounds)+1 at raise
+	// time — 1 before the first review pass, 2 after it, …). ChangeHash is the source
+	// content fingerprint at raise time (review.SourceChangesSince(HEAD), same
+	// computation as the review-pass binding). Together they make the core
+	// review-stability metric computable from task state: "findings first seen in
+	// round N on an unchanged ChangeHash" = issues earlier rounds sampled past —
+	// 2026-08 evidence: 7 confirmed later-round-new-finding episodes in one week of
+	// session transcripts, none visible in forge records because findings carried no
+	// round/snapshot context. Zero values = pre-field findings or non-git context
+	// (fail-open, never blocks recording).
+	//
+	// Round 是发现提出时所在的审查轮次（提出时的 len(ReviewRounds)+1——首次 review
+	// pass 前为 1，其后为 2……）。ChangeHash 是提出时的源码内容指纹
+	//（review.SourceChangesSince(HEAD)，与 review-pass 绑定同一算法）。两者使
+	// 评审稳定性核心指标可从任务状态计算：「ChangeHash 未变却在第 N 轮首次出现的
+	// finding」= 前轮抽样漏过的问题——2026-08 证据：一周会话转录里 7 起确证的
+	// 后轮新发现 episode，forge 记录里全不可见，正因 finding 不带轮次/快照上下文。
+	// 零值 = 字段引入前的旧 finding 或非 git 环境（fail-open，不阻断记录）。
+	Round      int    `json:"round,omitempty"`
+	ChangeHash string `json:"change_hash,omitempty"`
 }
 
 // Artifact is a reference to a task-related artifact (file / command output / url / doc). Indexed but not gated —
@@ -1016,6 +1037,27 @@ func (s *TaskState) AddFinding(f Finding) {
 		f.Status = "open"
 	}
 	s.Findings = append(s.Findings, f)
+}
+
+// EnrichFinding stamps the review context (Round + ChangeHash — see Finding) onto a
+// finding about to be recorded. Best-effort and fail-open: a non-git root or a hash
+// error leaves ChangeHash empty and never blocks the record. Callers pass explicit
+// Round/ChangeHash only when the finding belongs to a different cycle than the current
+// one (import/backfill); the zero-value fields are otherwise derived here.
+//
+// EnrichFinding 把审查上下文（Round + ChangeHash——见 Finding）打到即将记录的
+// finding 上。best-effort 且 fail-open：非 git 目录或 hash 出错时 ChangeHash 留空，
+// 绝不阻断记录。仅当 finding 属于非当前周期（导入/回填）时调用方才显式传
+// Round/ChangeHash；零值字段一律在此推导。
+func EnrichFinding(root string, s *TaskState, f *Finding) {
+	if f.Round == 0 {
+		f.Round = len(s.ReviewRounds) + 1
+	}
+	if f.ChangeHash == "" {
+		if h, _, err := review.SourceChangesSince(root, GetHeadCommit(root)); err == nil {
+			f.ChangeHash = h
+		}
+	}
 }
 
 // ResolveFinding marks the finding with the given ID as fixed. Returns false if not found.

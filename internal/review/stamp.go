@@ -487,6 +487,15 @@ func currentBranch(root string) string {
 	return strings.TrimSpace(out)
 }
 
+// CurrentBranch exports currentBranch for callers that need the branch context of a
+// non-task stamp (e.g. checklog audit detail in cmd `forge review pass`).
+//
+// CurrentBranch 导出 currentBranch，供需要非 task 戳分支上下文的调用方使用
+//（如 `forge review pass` 命令的 checklog 审计 detail）。
+func CurrentBranch(root string) string {
+	return currentBranch(root)
+}
+
 func gitOut(root string, args ...string) (string, error) {
 	cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
 	out, err := cmd.Output()

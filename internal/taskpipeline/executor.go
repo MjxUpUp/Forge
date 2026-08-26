@@ -895,18 +895,43 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		// CheckCheatScan 在 BuildEvidenceChain 中被排除——它是观测非「验证证据」，计入
 		// 会虚高 Strength。LLM-reviewer 据此退到只做语义判断（设计/架构/mock 是否幻觉）。
 		cheats := ScanCheatPatterns(root, state)
-		recordAudit(root, &checklog.Entry{
-			Check:   checklog.CheckCheatScan,
-			Passed:  len(cheats) == 0,
-			Checked: true,
-			TaskRef: state.TaskRef,
-			Detail:  cheatScanDetail(cheats),
-		})
 		// findingsDirty 汇总 cheat/unused 两段是否有新指纹入集合，两段之后统一持久化一次。
 		//
 		// findingsDirty accumulates whether either scan section added new fingerprints;
 		// the state is persisted once after both sections.
 		findingsDirty := false
+		// Same-finding suppression (2026-08 noise audit) — run BEFORE the checklog record so
+		// the audit entry carries the fresh/previously-reported breakdown (dedupSuffix): the
+		// entry stays full-truth (Passed/Detail reflect the actual scan) while repeat FAILs on
+		// an unchanged diff become distinguishable from genuinely new hits. The agent-facing
+		// advisory below still only renders fresh findings.
+		//
+		// 同 finding 抑制（2026-08 噪音审计）——先于 checklog 记录执行，使审计条目带上
+		// 新发现/已报告拆分（dedupSuffix）：条目保持全量真相（Passed/Detail 反映当次
+		// 真实扫描），同时让重扫同一 diff 的重复 FAIL 与真正的新命中可区分。下方
+		// agent 面向的 advisory 仍只渲染新 finding。
+		var freshCheats []CheatFinding
+		if len(cheats) > 0 {
+			cheatKeys := make([]string, len(cheats))
+			for i, c := range cheats {
+				cheatKeys[i] = cheatFindingKey(c)
+			}
+			fresh, dirty := filterUnreported(state, cheatKeys)
+			findingsDirty = findingsDirty || dirty
+			freshSet := keySet(fresh)
+			for _, c := range cheats {
+				if freshSet[cheatFindingKey(c)] {
+					freshCheats = append(freshCheats, c)
+				}
+			}
+		}
+		recordAudit(root, &checklog.Entry{
+			Check:   checklog.CheckCheatScan,
+			Passed:  len(cheats) == 0,
+			Checked: true,
+			TaskRef: state.TaskRef,
+			Detail:  cheatScanDetail(cheats) + dedupSuffix(len(cheats), len(freshCheats)),
+		})
 		if len(cheats) > 0 {
 			// 同 finding 抑制（2026-08 噪音审计）：指纹（规则|文件：行）已报告过的 finding 不
 			// 再逐条重发——修复后 verify 重试重扫同一 diff，否则会逐字重发（Translate(method)
@@ -917,19 +942,6 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 			// post-fix verify retry re-scans the same diff and would otherwise re-emit
 			// them verbatim (Translate(method) 8 times). The checklog entry stays full
 			// (audit truth); only the agent-facing repeat nudge is suppressed.
-			cheatKeys := make([]string, len(cheats))
-			for i, c := range cheats {
-				cheatKeys[i] = cheatFindingKey(c)
-			}
-			fresh, dirty := filterUnreported(state, cheatKeys)
-			findingsDirty = findingsDirty || dirty
-			freshSet := keySet(fresh)
-			var freshCheats []CheatFinding
-			for _, c := range cheats {
-				if freshSet[cheatFindingKey(c)] {
-					freshCheats = append(freshCheats, c)
-				}
-			}
 			if len(freshCheats) == 0 {
 				fmt.Fprintf(os.Stderr, "%scheat-scan 命中 %d 处疑似 AI 作弊模式%s（advisory 不阻塞）\n", GateAdvisory("[task-verify] "), len(cheats), allReportedNote())
 			} else {
