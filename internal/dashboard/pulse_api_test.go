@@ -920,3 +920,116 @@ func TestPulseCanonicalDir_EmbedFallback(t *testing.T) {
 		t.Errorf("缓存存在时 = %q, want %q", got, cache)
 	}
 }
+
+// TestServe_PulseTask_LeaseAndDocReview: the state block projects the cross-machine
+// lease (holder/active/expiry/fencing — the "expiry means free" rule is not re-derived
+// panel-side) and the payload carries the doc-gate L2 evidence. Tasks WITHOUT either
+// record emit NO lease/docReview keys at all (omitempty — same wire-compat discipline
+// as FeedEvent.Node, asserted at the raw-body level so a dropped omitempty goes red).
+//
+// TestServe_PulseTask_LeaseAndDocReview：state 块投影跨机租约（持有者/有效/过期时刻/
+// fencing——「过期即自由」规则不在面板侧另造），载荷带 doc gate 的 L2 回检证据。
+// 两者皆无的任务在线上结构中完全没有 lease/docReview 键（omitempty——与
+// FeedEvent.Node 同一条兼容纪律，在原始 body 层断言，omitempty 被删则测试红）。
+func TestServe_PulseTask_LeaseAndDocReview(t *testing.T) {
+	root, _ := forgedatatest.RealProject(t)
+	base := time.Now().UTC() // 租约须在请求时点未过期（TTL 4h 足够覆盖测试运行）
+	if err := taskpipeline.SaveTaskState(root, &taskpipeline.TaskState{
+		TaskRef: "feat/lease", Branch: "feat/lease", StartedAt: base, CurrentGate: "task-implement",
+		Lease: &taskpipeline.Lease{
+			HolderNode: "fnode_abc123abc123abc123abc123abc12345", TTLSec: 4 * 3600,
+			Fencing: 3, ClaimedAt: base.UnixMilli(),
+		},
+		DocReview: &taskpipeline.DocReview{
+			Passed: true, RubricScore: 92, Round: 2, ReviewedAt: base,
+		},
+		DocReviewHistory: []taskpipeline.DocReview{
+			{Passed: false, RubricScore: 61, Round: 1, ReviewedAt: base.Add(-time.Hour)},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// 对照组：无租约、无回检的存量形态任务。
+	if err := taskpipeline.SaveTaskState(root, &taskpipeline.TaskState{
+		TaskRef: "feat/plain", Branch: "feat/plain", StartedAt: base,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	srv := pulseServer(t, Options{Root: root})
+
+	code, body := pulseGet(t, srv.URL+"/api/pulse/task.json?ref=feat/lease")
+	if code != 200 {
+		t.Fatalf("status = %d, want 200: %s", code, body)
+	}
+	var payload struct {
+		State struct {
+			Lease *struct {
+				HolderNode string    `json:"holderNode"`
+				Active     bool      `json:"active"`
+				ExpiresAt  time.Time `json:"expiresAt"`
+				Fencing    int64     `json:"fencing"`
+				TTLSec     int64     `json:"ttlSec"`
+			} `json:"lease"`
+		} `json:"state"`
+		DocReview *struct {
+			Passed      bool `json:"passed"`
+			RubricScore int  `json:"rubricScore"`
+			Round       int  `json:"round"`
+			RoundsTotal int  `json:"roundsTotal"`
+		} `json:"docReview"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode: %v\n%s", err, body)
+	}
+	l := payload.State.Lease
+	if l == nil {
+		t.Fatalf("lease 块缺失: %s", body)
+	}
+	if l.HolderNode != "fnode_abc123abc123abc123abc123abc12345" || !l.Active || l.Fencing != 3 || l.TTLSec != 4*3600 {
+		t.Errorf("lease 投影异常: %+v", l)
+	}
+	if want := base.Add(4 * time.Hour); l.ExpiresAt.Sub(want) > time.Second || want.Sub(l.ExpiresAt) > time.Second {
+		t.Errorf("expiresAt = %s, want ≈%s（claimed+TTL 单一公式）", l.ExpiresAt, want)
+	}
+	dr := payload.DocReview
+	if dr == nil {
+		t.Fatalf("docReview 块缺失: %s", body)
+	}
+	if !dr.Passed || dr.RubricScore != 92 || dr.Round != 2 || dr.RoundsTotal != 2 {
+		t.Errorf("docReview 投影异常: %+v（roundsTotal 应含历史轮次 1+1）", dr)
+	}
+
+	code, body = pulseGet(t, srv.URL+"/api/pulse/task.json?ref=feat/plain")
+	if code != 200 {
+		t.Fatalf("plain status = %d, want 200: %s", code, body)
+	}
+	if strings.Contains(string(body), `"lease"`) || strings.Contains(string(body), `"docReview"`) {
+		t.Errorf("存量任务的线上结构被改变（lease/docReview 键应缺席）: %s", body)
+	}
+
+	// --round 跳号（合法手动覆盖）：Round=5 而历史仅 1 轮时，roundsTotal 钳制到
+	// ≥ Round——否则面板自相矛盾（「第 5 轮 · 累计 2 轮」）。
+	if err := taskpipeline.SaveTaskState(root, &taskpipeline.TaskState{
+		TaskRef: "feat/skip", Branch: "feat/skip", StartedAt: base,
+		DocReview:        &taskpipeline.DocReview{Passed: true, RubricScore: 88, Round: 5, ReviewedAt: base},
+		DocReviewHistory: []taskpipeline.DocReview{{Passed: false, RubricScore: 70, Round: 1, ReviewedAt: base.Add(-time.Hour)}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	code, body = pulseGet(t, srv.URL+"/api/pulse/task.json?ref=feat/skip")
+	if code != 200 {
+		t.Fatalf("skip status = %d, want 200: %s", code, body)
+	}
+	var skipPayload struct {
+		DocReview *struct {
+			Round       int `json:"round"`
+			RoundsTotal int `json:"roundsTotal"`
+		} `json:"docReview"`
+	}
+	if err := json.Unmarshal(body, &skipPayload); err != nil {
+		t.Fatalf("decode skip: %v\n%s", err, body)
+	}
+	if skipPayload.DocReview == nil || skipPayload.DocReview.RoundsTotal != 5 || skipPayload.DocReview.Round != 5 {
+		t.Errorf("roundsTotal 钳制异常: %+v（--round 跳号时须 ≥ Round）", skipPayload.DocReview)
+	}
+}
