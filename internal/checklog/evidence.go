@@ -243,6 +243,8 @@ func BuildEvidenceChain(entries []Entry, taskRef string) EvidenceChain {
 		// CheckBundleVerify is the same observation class: an import-time trust verdict about the
 		// MULTI-MACHINE surface (who signed, was it accepted) — it says nothing about whether THIS
 		// task's verification ran, so it must not feed this task's evidence strength.
+		// CheckProjectSync is the same: a git-transport op outcome (sync succeeded/failed) —
+		// infrastructure health, not task verification.
 		//
 		// Advisory/meta check 记录的是 OBSERVATIONS（观察）而非 verification 结果——
 		// 绝不可计入 evidence strength。scope-drift 是 advisory 信号（agent 改了未声明的
@@ -265,7 +267,8 @@ func BuildEvidenceChain(entries []Entry, taskRef string) EvidenceChain {
 		// 代表任何验证实跑，故都不得喂给 evidence strength。
 		// CheckBundleVerify 同属 observation 类：它是导入侧对多机信任面的判定（谁签的名、
 		// 是否被接受），与本任务验证是否实跑无关，不得喂本任务的证据强度。
-		if e.Check == CheckScopeDrift || e.Check == CheckCheatScan || e.Check == CheckUnusedScan || e.Check == CheckEscapeHatch || e.Check == CheckSkillTrigger || e.Check == CheckKimiPluginStale || e.Check == CheckReviewPass || e.Check == CheckPlanFirst || e.Check == CheckToolFailure || e.Check == CheckSubagentStop || e.Check == CheckTestNudge || e.Check == CheckBundleVerify {
+		// CheckProjectSync 同属：git 通道同步操作的成败——基建健康度，非任务验证。
+		if e.Check == CheckScopeDrift || e.Check == CheckCheatScan || e.Check == CheckUnusedScan || e.Check == CheckEscapeHatch || e.Check == CheckSkillTrigger || e.Check == CheckKimiPluginStale || e.Check == CheckReviewPass || e.Check == CheckPlanFirst || e.Check == CheckToolFailure || e.Check == CheckSubagentStop || e.Check == CheckTestNudge || e.Check == CheckBundleVerify || e.Check == CheckProjectSync {
 			// Only VERIFICATION-class escape hatches (test-coverage/acceptance/skill-decisions) set the cap flag.
 			// work-activity is a rhythm gate (tool calls between gates), not verification — using it does not prop the
 			// "done" claim on skipped verification, so it must not cap Strength (else refactor-heavy weeks inflate the

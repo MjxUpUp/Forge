@@ -555,3 +555,25 @@ func TestBuildEvidenceChain_BundleVerifyExcluded(t *testing.T) {
 		t.Fatalf(`bundle-verify 条目仍应保留在 Entries 供 trace: got %d, want 2`, len(ec.Entries))
 	}
 }
+
+// TestBuildEvidenceChain_ProjectSyncExcluded pins that CheckProjectSync is excluded
+// from evidence strength: a git-transport sync op outcome is infrastructure health
+// (did the bundle move), not verification that THIS task's gates ran — bucketing it
+// as deterministic would inflate Strength off routine pushes.
+//
+// TestBuildEvidenceChain_ProjectSyncExcluded 钉住 CheckProjectSync 不计入证据强度：
+// git 通道同步操作的成败是基建健康度（bundle 有没有走通），不是本任务门禁实跑的
+// 验证——分桶成 deterministic 会让例行 push 虚增 Strength。
+func TestBuildEvidenceChain_ProjectSyncExcluded(t *testing.T) {
+	entries := []Entry{
+		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckProjectSync, Source: EvidenceDeterministic, TaskRef: "t", Meta: map[string]string{MetaKeySyncOp: "push"}},
+	}
+	ec := BuildEvidenceChain(entries, "t")
+	if ec.Deterministic != 1 {
+		t.Fatalf(`CheckProjectSync 不应计入 deterministic: got %d, want 1（仅 auto-compile）`, ec.Deterministic)
+	}
+	if len(ec.Entries) != 2 {
+		t.Fatalf(`project-sync 条目仍应保留在 Entries 供 trace: got %d, want 2`, len(ec.Entries))
+	}
+}

@@ -205,6 +205,19 @@ const (
 	// Meta[MetaKeyVerdict]、签名者 node_id 走 Meta[MetaKeySigner]——读方永不解析
 	// Detail 散文。
 	CheckBundleVerify CheckName = "bundle-verify"
+	// CheckProjectSync records one git-transport sync op outcome (init/push/pull —
+	// sync-convergence Phase 1). The machine-local sync-remote.json stamps SUCCESSFUL
+	// ops only, so a failed push left the old timestamp standing and was invisible
+	// anywhere but the terminal; this entry is the failure-visible record. Observation
+	// class (says nothing about any task's verification) — excluded from
+	// evidence-strength bucketing. The op rides Meta[MetaKeySyncOp].
+	//
+	// CheckProjectSync 记录一次 git 通道同步操作的结果（init/push/pull——
+	// sync-convergence Phase 1）。机器本地的 sync-remote.json 只给成功操作打戳，
+	// 失败的 push 留着旧时间戳、终端之外完全不可见；本条目是让失败可见的记录。
+	// observation 类（与任何任务的验证是否实跑无关）——排除出证据强度分桶。操作
+	// 名走 Meta[MetaKeySyncOp]。
+	CheckProjectSync CheckName = "project-sync"
 )
 
 const (
@@ -219,6 +232,13 @@ const (
 	// 契约缝纪律。
 	MetaKeyVerdict = "verdict"
 	MetaKeySigner  = "signer"
+	// MetaKeySyncOp namespaces project-sync's op name (init/push/pull) — same
+	// contract-seam discipline as above: writer cli/project_sync.go, reader the
+	// dashboard feed.
+	//
+	// MetaKeySyncOp 给 project-sync 的操作名（init/push/pull）命名空间——同款契约
+	// 缝纪律：写方 cli/project_sync.go，读方 dashboard feed。
+	MetaKeySyncOp = "sync_op"
 )
 
 // EvidenceSource marks the source of a checklog evidence entry, distinguishing deterministic (hook/external

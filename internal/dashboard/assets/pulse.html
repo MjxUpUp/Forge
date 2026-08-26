@@ -448,6 +448,12 @@ function renderProjects() {
     var meta = esc(p.activeTasks + ' 进行中');
     if (p.zombies > 0) meta += '<br><span class="z">' + p.zombies + ' 僵尸 ⚠</span>';
     if (p.lastGrade) meta += '<br>' + esc(p.lastGrade) + (p.lastScore !== null && p.lastScore !== undefined ? ' · ' + Math.round(p.lastScore) : '');
+    /* 同步块（sync Phase 1 上板）：绑定 remote 的最近 push/pull 时刻；未绑定不出现。 */
+    if (p.sync) {
+      var syncTip = 'remote: ' + (p.sync.remote || '') + ' · node: ' + String(p.sync.nodeId || '').replace(/^fnode_/, '').slice(0, 8);
+      meta += '<br><span class="mono" style="color:var(--text-tertiary)" title="' + esc(syncTip) + '">⇅ 推 ' +
+        esc(fmtDateTime(p.sync.lastPushAt) || '—') + ' · 拉 ' + esc(fmtDateTime(p.sync.lastPullAt) || '—') + '</span>';
+    }
     html += '<div class="proj-item' + (state.projectFilter === p.key ? ' sel' : '') + '" data-key="' + esc(p.key) + '">' +
       '<span class="proj-name">' + esc(p.name) + '</span><span class="proj-meta">' + meta + '</span></div>';
   });
@@ -469,8 +475,8 @@ function dotClass(e) {
   if (e.kind === 'skill-trigger') return 'accent';
   return { ok: 'ok', warn: 'warn', fail: 'fail', info: 'info' }[e.severity] || 'info';
 }
-var KIND_LABEL = { 'task-start': 'task', 'gate': 'gate', 'skill-trigger': 'skill-trigger', 'conclusion': 'conclusion', 'sig-verify': 'sig-verify' };
-var KIND_CLASS = { 'task-start': 'kind-task', 'gate': 'kind-gate', 'skill-trigger': 'kind-skill', 'conclusion': 'kind-conclusion', 'sig-verify': 'kind-gate' };
+var KIND_LABEL = { 'task-start': 'task', 'gate': 'gate', 'skill-trigger': 'skill-trigger', 'conclusion': 'conclusion', 'sig-verify': 'sig-verify', 'sync': 'sync' };
+var KIND_CLASS = { 'task-start': 'kind-task', 'gate': 'kind-gate', 'skill-trigger': 'kind-skill', 'conclusion': 'kind-conclusion', 'sig-verify': 'kind-gate', 'sync': 'kind-other' };
 function evtHTML(e, opts) {
   opts = opts || {};
   var head = '<span class="evt-kind ' + (KIND_CLASS[e.kind] || 'kind-other') + '">' +

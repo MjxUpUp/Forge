@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/nodeid"
 	"github.com/MjxUpUp/Forge/internal/projectsync"
@@ -231,7 +232,7 @@ func rePackBundle(cmd *cobra.Command, root, dataDir, dest string) (*projectsync.
 	return manifest, nil
 }
 
-func runProjectSync(cmd *cobra.Command, args []string) error {
+func runProjectSync(cmd *cobra.Command, args []string) (err error) {
 	if len(args) < 1 {
 		return fmt.Errorf(`需要子命令：init <remote> | push | pull | status`)
 	}
@@ -242,11 +243,32 @@ func runProjectSync(cmd *cobra.Command, args []string) error {
 	dataDir := forgedata.DataDirFor(root)
 	out := cmd.OutOrStdout()
 
+	// Outcome recording (project-sync, observation class — see CheckProjectSync):
+	// sync-remote.json stamps SUCCESSFUL push/pull only, so a failed op left the old
+	// timestamp standing, invisible off-terminal. One deferred recorder over the
+	// named return: every case's `return <expr>` assigns it before deferred funcs
+	// run. status is read-only — recording each poll would spam the log, so it never
+	// sets syncOp.
+	//
+	// 操作结果落章（project-sync，observation 类——见 CheckProjectSync）：
+	// sync-remote.json 只给成功的 push/pull 打戳，失败操作留着旧时间戳、终端之外
+	// 不可见。在具名返回值上 defer 一个记录器：各 case 的 `return <expr>` 在
+	// deferred 函数运行前完成赋值。status 是只读操作——每次轮询都落章会刷屏，
+	// 故它永不设置 syncOp。
+	var syncOp, syncNote string
+	defer func() {
+		if syncOp != `` {
+			recordSyncOutcome(root, syncOp, syncNote, err)
+		}
+	}()
+
 	switch args[0] {
 	case `init`:
 		if len(args) != 2 {
 			return fmt.Errorf(`用法：forge project sync init <remote>`)
 		}
+		syncOp = `init` // 参数校验通过才落章——CLI 笔误（漏 remote）不上面板
+		syncNote = args[1] // remote——成败都带进落章（失败时回答「绑的哪个 remote」）
 		if err := os.MkdirAll(dataDir, 0755); err != nil {
 			return err
 		}
@@ -269,6 +291,7 @@ func runProjectSync(cmd *cobra.Command, args []string) error {
 		return nil
 
 	case `push`:
+		syncOp = `push`
 		st, err := loadSyncStatus(dataDir)
 		if err != nil {
 			return err
@@ -309,6 +332,7 @@ func runProjectSync(cmd *cobra.Command, args []string) error {
 		}
 		if !committed {
 			fmt.Fprintln(out, `bundle 无变化——跳过 commit/push`)
+			syncNote = `bundle 无变化`
 		} else {
 			// Push with ONE re-fetch+retry: two machines pushing concurrently make the
 			// loser's push non-fast-forward; re-syncing the cache and re-committing
@@ -357,10 +381,14 @@ func runProjectSync(cmd *cobra.Command, args []string) error {
 		if err := saveSyncStatus(dataDir, st); err != nil {
 			return err
 		}
+		if syncNote == `` {
+			syncNote = fmt.Sprintf(`%d 文件 → nodes/%s/%s/`, len(manifest.Files), id.NodeID, key)
+		}
 		fmt.Fprintf(out, `✅ 已推送 bundle %s（%d 文件）→ nodes/%s/%s/`+"\n", manifest.BundleID, len(manifest.Files), id.NodeID, key)
 		return nil
 
 	case `pull`:
+		syncOp = `pull`
 		st, err := loadSyncStatus(dataDir)
 		if err != nil {
 			return err
@@ -429,6 +457,7 @@ func runProjectSync(cmd *cobra.Command, args []string) error {
 		if err := saveSyncStatus(dataDir, st); err != nil {
 			return err
 		}
+		syncNote = fmt.Sprintf(`导入 %d 个他机 bundle，失败 %d`, imported, len(failed))
 		if len(failed) > 0 {
 			return fmt.Errorf(`pull 部分失败：%d 个节点导入被拒/失败 %v（已导入 %d 个；修复后对端重推或本机调整信任配置后再 pull）`, len(failed), failed, imported)
 		}
@@ -511,4 +540,41 @@ func orDashSync(s string) string {
 		return `—`
 	}
 	return s
+}
+
+// recordSyncOutcome best-effort-logs one sync op outcome (observation class — see
+// CheckProjectSync). The panel's pre-existing sync signal (sync-remote.json) stamps
+// SUCCESSFUL ops only — a failed push left the old timestamp standing and the failure
+// was invisible anywhere but the terminal; this is the failure-visible record.
+// Level: pass on success, fail on error. Best-effort: a logging failure must never
+// break the sync op itself.
+//
+// recordSyncOutcome 尽力落章一次同步操作结果（observation 类——见
+// CheckProjectSync）。面板此前唯一的 sync 信号（sync-remote.json）只给成功操作
+// 打戳——失败的 push 留着旧时间戳，失败在终端之外完全不可见；本函数是让失败
+// 可见的记录。Level：成功 pass，失败 fail。尽力而为：落章失败绝不得打断同步
+// 操作本身。
+func recordSyncOutcome(root, op, note string, opErr error) {
+	e := &checklog.Entry{
+		Check:   checklog.CheckProjectSync,
+		Checked: true,
+		Meta:    map[string]string{checklog.MetaKeySyncOp: op},
+	}
+	if opErr != nil {
+		e.Passed, e.Level = false, checklog.LevelFail
+		if note != `` {
+			e.Detail = fmt.Sprintf(`sync %s 失败（%s）: %v`, op, note, opErr)
+		} else {
+			e.Detail = fmt.Sprintf(`sync %s 失败: %v`, op, opErr)
+		}
+		// git 报错文本可含多行完整输出（gitOut 嵌入 %s）——Detail 是人类可读摘要，
+		// 截断到 300 rune 防超长行进 jsonl/feed（渲染侧另有 esc）。
+		if r := []rune(e.Detail); len(r) > 300 {
+			e.Detail = string(r[:300]) + `…`
+		}
+	} else {
+		e.Passed, e.Level = true, checklog.LevelPass
+		e.Detail = strings.TrimSpace(`sync ` + op + ` 成功 ` + note)
+	}
+	_ = checklog.Record(root, e)
 }
