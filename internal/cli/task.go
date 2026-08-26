@@ -31,6 +31,7 @@ func init() {
 	taskCmd.AddCommand(taskScopeCmd)
 	taskCmd.AddCommand(taskOverrideCmd)
 	taskCmd.AddCommand(taskDocReviewCmd)
+	taskCmd.AddCommand(taskImpactCmd)
 	taskScopeCmd.AddCommand(taskScopeAddCmd)
 	taskScopeCmd.AddCommand(taskScopeShowCmd)
 
@@ -68,7 +69,7 @@ func init() {
 	// claim/deliver 推进 offered→claimed→delivered 生命周期。
 	taskStartCmd.Flags().String(`assignee`, ``, `分派给指定 agent（如 kimi/reasonix/cursor），任务创建即 offered；建议配合 --role 说明角色`)
 	taskStartCmd.Flags().String(`role`, ``, `分派角色（如 frontend/backend/testing），随 --assignee 记入 Assignment.Role`)
-	taskStartCmd.Flags().StringArray(`depends-on`, nil, `依赖的上游 task ref（可重复 --depends-on）：本任务等待它们 delivered 后再开工`)
+	taskStartCmd.Flags().StringArray(`depends-on`, nil, `依赖的上游 task ref（可重复 --depends-on）：本任务等待它们 delivered 后再开工；支持 key:ref 跨仓依赖（key 须为本 repo 所属 workspace 的成员）`)
 	// Per-task zombie TTL override (design §3/§9 --ttl): a delegation that should expire on its own
 	// clock — faster than the global 7d default (short-fuse), or slower (long runner) — sets this.
 	// Zero (no flag) keeps the global constant, fully backward compatible. health.effectiveTTL reads it.
@@ -104,6 +105,10 @@ func init() {
 	taskOverrideCmd.Flags().String("skill-decisions", "", `设为 disable 跳过 skill-decisions guardrail（改 SKILL.md 必须记决策）`)
 	taskOverrideCmd.Flags().String("doc-gate", "", `设为 disable 跳过 task-complete 的 doc pre-flight（输出→回检门禁；轮次上限后的放行须人工确认后走这里）`)
 	taskScopeAddCmd.Flags().String("ref", "", "指定任务引用（不依赖活跃任务检测）")
+	taskImpactCmd.Flags().String(`level`, ``, `跨仓影响级别：none（纯本仓）| multi（波及其他 repo）——必填`)
+	taskImpactCmd.Flags().StringArray(`repo`, nil, `受影响的项目 key（可重复 --repo；仅 level=multi 携带，none 下忽略）`)
+	taskImpactCmd.Flags().String(`note`, ``, `影响说明（自由文本，供 review 阅读）`)
+	taskImpactCmd.Flags().String(`ref`, ``, `任务 ref（默认当前活跃任务）`)
 	taskDocReviewCmd.Flags().String("ref", "", "任务 ref（默认当前活跃任务）")
 	taskDocReviewCmd.Flags().String("passed", "", "评审结论：pass | fail（必填）")
 	taskDocReviewCmd.Flags().Int("score", 0, "rubric 四维总分 0-100（rubric-docs.md）")
@@ -578,10 +583,26 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		// a missing ref is tolerated here (the edge is recorded; the gate later treats missing as
 		// not-delivered), so a forward reference to a task created moments later is allowed.
 		//
+		// Cross-repo (key:ref, depref.go): membership/existence is validated first
+		// (fail-open — manifest trouble only warns). The lookup deliberately returns nil for
+		// key:ref so the cycle DFS never crosses into another repo's graph (a real-time
+		// cross-repo DFS would need a global graph lock across DataDirs; cross-repo cycles are
+		// doctor-detected instead). Same-repo refs keep the exact pre-workspace DFS behavior.
+		//
 		// AddDependency 拒绝自引用及任何传递依赖指回本 task 的 ref（环会死锁环上 task）。lookup 为
 		// DFS 载入各 ref 的 state；缺失 ref 此处容忍（边已记；门禁后把缺失当未交付），故对稍后创建
 		// 的 task 的前向引用是允许的。
+		//
+		// 跨仓（key:ref，见 depref.go）：先做成员资格/存在性校验（fail-open——清单故障只警告）。
+		// lookup 刻意对 key:ref 返回 nil，使环 DFS 绝不跨入他仓图（实时跨仓 DFS 需要跨 DataDir
+		// 的全局图锁；跨仓环改由 doctor 检出）。本仓 ref 保持 workspace 之前的 DFS 行为不变。
+		if err := validateDependsOnRefs(root, state.TaskRef, deps, cmd.ErrOrStderr()); err != nil {
+			return err
+		}
 		lookup := func(ref string) *taskpipeline.TaskState {
+			if key, _ := taskpipeline.SplitDepRef(ref); key != `` {
+				return nil // 跨仓 ref 不做实时 DFS（见上注释）
+			}
 			st, err := taskpipeline.LoadTaskState(root, ref)
 			if err != nil || st == nil {
 				return nil
@@ -828,9 +849,23 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 	// whole transitive closure; --detach-deps removes just the edge. Computed before delete so the
 	// just-aborted state is still scannable.
 	//
+	// KNOWN LIMITATION (multi-repo workspace Option B): the scan reads only THIS repo's tasks —
+	// a dependent living in ANOTHER member repo (its DependsOn pointing here via key:ref) is
+	// invisible to abort: not warned, not cascaded, not detached; its gate reports the aborted
+	// key:ref pending forever until someone removes the edge in that repo. Cross-repo cleanup is
+	// deliberately out of scope (the reverse index would need a cross-DataDir scan + remote
+	// mutation); a one-line note below surfaces the blind spot when this repo is a multi-repo
+	// workspace member.
+	//
 	// 反向依赖扫描（设计阶段3 + §4 三选一）：abort 一个被其他 task DependsOn 的 task，会让依赖方永远阻塞
 	// （门禁报该 ref 缺失/未交付且永不放行）。默认不级联 abort——依赖方在上游重指后可能仍有价值——但暴露
 	// 悬空边。--cascade abort 整个传递闭包；--detach-deps 仅摘边。delete 前算，使刚 abort 的 state 仍可扫。
+	//
+	// 已知限制（多仓 workspace Option B）：扫描只读本仓 task——位于另一个成员仓的依赖方（其
+	// DependsOn 经 key:ref 指向本仓）对 abort 不可见：不警告、不级联、不摘边；其门禁会把被
+	// abort 的 key:ref 永久计 pending，直到有人到那个仓摘掉该边。跨仓清理刻意不做（反向索引
+	// 需要跨 DataDir 扫描 + 远端改写）；下方在本 repo 属于多仓 workspace 时打一行提示暴露该
+	// 盲区。
 	dependentsMap := map[string][]string{}
 	allStates, listErr := taskpipeline.ListTaskStates(root)
 	if listErr == nil {
@@ -1015,6 +1050,14 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 	if len(dependents) > 0 && !cascade && !detachDeps {
 		fmt.Fprintf(os.Stderr, `Warning: %d task(s) depend on this one (%s); their gate will now block on a missing upstream. Re-run with --cascade to abort them too, or --detach-deps to unlink them.`+"\n", len(dependents), strings.Join(dependents, `, `))
 	}
+	// Cross-repo blind spot (see the scan's KNOWN LIMITATION comment above): only surfaced as a
+	// note when this repo is a multi-repo workspace member — the scan itself stays same-repo.
+	//
+	// 跨仓盲区（见上方扫描处的 KNOWN LIMITATION 注释）：仅当本 repo 属于多仓 workspace 时
+	// 提示一句——扫描本身仍只覆盖本仓。
+	if multiRepoMembership(root) {
+		fmt.Fprintf(os.Stderr, "Note: 跨仓依赖方（他仓 task 以 key:ref 依赖 %s）不在本次扫描内；若存在，其门禁会把本 ref 永久计 pending——需到对应 repo 摘掉依赖边（forge workspace doctor 可检跨仓环）\n", taskRef)
+	}
 	fmt.Println("Code changes are untouched. Re-start with: forge task start --ref " + taskRef)
 	return nil
 }
@@ -1056,6 +1099,14 @@ func runTaskStatus(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Branch: %s\n", state.Branch)
 	if state.Summary != "" {
 		fmt.Printf("Summary: %s\n", state.Summary)
+	}
+	// Multi-repo workspace context (Step 4): one fail-open line — the workspace
+	// manifest is a global store, so any trouble silently omits the line.
+	//
+	// 多仓 workspace 上下文（Step 4）：单行 fail-open——清单是全局 store，
+	// 任何故障静默省略该行。
+	if line := workspaceContextLine(root, state.CrossRepoImpact); line != "" {
+		fmt.Println(line)
 	}
 	fmt.Printf("Started: %s\n", state.StartedAt.Format("2006-01-02 15:04"))
 	fmt.Println(strings.Repeat("─", 40))

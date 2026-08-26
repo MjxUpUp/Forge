@@ -423,6 +423,52 @@ type TaskState struct {
 	// 相同 finding（2026-08 证据：Translate(method) 8 次、comment-only-fix=2 同任务
 	// 5 次）。消失的 finding 与真正的新 finding（指纹不同）仍正常报告。
 	ReportedFindings []string `json:"reported_findings,omitempty"`
+
+	// CrossRepoImpact is the task's cross-repo impact declaration (multi-repo workspace,
+	// docs/design/multi-repo-workspace.md): when the task's repo belongs to a multi-repo
+	// workspace, task-verify requires an explicit declaration — even a single-repo change
+	// must declare "none" (the declaration forces explicit thought — the
+	// rule-as-code pattern). nil = never declared (all pre-workspace tasks) —
+	// zero behavior change outside multi-repo workspaces; the gate skips repos with no
+	// multi-repo membership entirely. Written by `forge task impact`.
+	//
+	// CrossRepoImpact 是任务的跨仓影响声明（多仓 workspace，见
+	// docs/design/multi-repo-workspace.md）：任务所属 repo 属于多仓 workspace 时，
+	// task-verify 要求显式声明——单仓改动也必须声明 "none"（声明强迫显式思考，
+	// 规则即代码模式）。nil = 从未声明（workspace 前的存量任务
+	// 一律如此）——非多仓 workspace 成员零行为变化（门禁整体跳过）。由
+	// `forge task impact` 写入。
+	CrossRepoImpact *CrossRepoImpact `json:"cross_repo_impact,omitempty"`
+}
+
+// CrossRepoImpactLevel values for CrossRepoImpact.Level.
+//
+// CrossRepoImpact.Level 的合法取值。
+const (
+	// CrossRepoNone: the change is confined to this repo (explicit "no impact").
+	//
+	// CrossRepoNone：改动限定在本仓（显式「无影响」）。
+	CrossRepoNone = `none`
+	// CrossRepoMulti: the change affects other repos of the workspace (Repos lists
+	// the affected project keys).
+	//
+	// CrossRepoMulti：改动波及 workspace 内其他仓（Repos 列受影响的项目 key）。
+	CrossRepoMulti = `multi`
+)
+
+// CrossRepoImpact records the task's cross-repo impact declaration. Level is
+// none|multi; Repos carries the affected project keys (multi only; ignored
+// under none); Note is free-form context for review; DeclaredAt timestamps the
+// declaration (staleness is judged by readers, not the gate).
+//
+// CrossRepoImpact 记录任务的跨仓影响声明。Level 取 none|multi；Repos 携带受
+// 影响的项目 key（仅 multi；none 下忽略）；Note 是供 review 的自由文本；
+// DeclaredAt 是声明时刻（新旧由读取方判断，门禁不管）。
+type CrossRepoImpact struct {
+	Level      string    `json:"level"` // none | multi（见 CrossRepoNone/CrossRepoMulti）
+	Repos      []string  `json:"repos,omitempty"`
+	Note       string    `json:"note,omitempty"`
+	DeclaredAt time.Time `json:"declared_at"`
 }
 
 // TaskGateResult records the result of a single task gate.
@@ -545,11 +591,30 @@ func (s *TaskState) IsDelivered() bool {
 // every task in the ring. A self-reference (ref == this task) is likewise rejected. Dedup checks
 // both the existing DependsOn and the current batch (so --depends-on A --depends-on A collapses).
 //
+// Cross-repo refs (key:ref, depref.go): this method stores them verbatim and treats them
+// generically — dedup is exact-string, and the cycle DFS expands only whatever lookup returns.
+// The production CLI lookup (cli/task.go task start) deliberately returns nil for key:ref, so
+// cycle detection stays WITHIN this repo (same-repo cycles still refuse) and never walks other
+// repos' graphs — a real-time cross-repo DFS would need a global graph lock across DataDirs,
+// complexity the design explicitly defers: cross-repo cycles are detected periodically by
+// `forge workspace doctor` (dep-cycle finding) instead. The membership/existence validation of a
+// key:ref also lives at that CLI call site (fail-open), not here — AddDependency stays storage-
+// agnostic. Note the raw-string self-check cannot see `<ownkey>:<thisref>` (the strings differ);
+// the CLI validation refuses that shape.
+//
 // AddDependency 把 refs 追加进 DependsOn，去重 + 环检测，all-or-nothing：校验通过的 ref 先攒在局部
 // slice，全部通过后才提交到 s.DependsOn，故批次中途的环错误不碰 s.DependsOn（调用方无需操心部分写入）。
 // lookup 把 ref 解析成 TaskState，使环检测能遍历依赖链而 types.go 不反向依赖存储层（调用方注入
 // LoadTaskState）。若某 ref 的传递依赖最终指回本 task 则拒绝——环会让环上每个 task 死锁。自引用
 // （ref == 本 task）同样拒绝。去重同时查既有 DependsOn 与本批次（故 --depends-on A --depends-on A 折叠）。
+//
+// 跨仓 ref（key:ref，见 depref.go）：本方法原样存储、按通用规则处理——去重是精确串匹配，环 DFS
+// 只展开 lookup 返回的节点。生产 CLI 的 lookup（cli/task.go 的 task start）刻意对 key:ref 返回
+// nil，使环检测保持在本仓内（本仓环照旧拒绝）、绝不跨仓遍历——实时跨仓 DFS 需要跨 DataDir 的
+// 全局图锁，设计明确推迟这份复杂度：跨仓环改由 `forge workspace doctor` 周期检出（dep-cycle
+// finding）。key:ref 的成员资格/存在性校验同样在那个 CLI 调用点（fail-open），不在此处——
+// AddDependency 保持存储无关。注意裸串自引用检查看不到 `<本仓key>:<本ref>`（两串不等）；该形态由
+// CLI 校验拒绝。
 //
 // 并发契约：环检测的 lookup 遍历「其他」task 的 DependsOn，而 MutateTaskState 只串行化「单个」task 的
 // load→mutate→save——故本方法不自行加跨任务锁。当前唯一生产调用方（cli/task.go 的 task start）作用于一
