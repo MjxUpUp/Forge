@@ -96,8 +96,21 @@ func runTaskHealth(cmd *cobra.Command, args []string) error {
 		if s, ok := byRef[ref]; ok {
 			return s, nil
 		}
+		// Cross-repo dep (key:ref, multi-repo workspace Option B): it can never be in this
+		// same-repo index, so missing-from-index must NOT be read as a dead chain — resolve
+		// the foreign target instead (a genuinely missing/aborted foreign task still errors
+		// and correctly reports deadlocked; an in-flight one no longer false-positives).
+		//
+		// 跨仓依赖（key:ref，多仓 workspace Option B）：它本就不可能进本仓索引，故「不在索引」
+		// 绝不能读作死链——改为解析跨仓目标（真缺失/已 abort 的他仓 task 仍报错、正确判
+		// 死锁；在途的不再误报）。
+		if key, _ := taskpipeline.SplitDepRef(ref); key != `` {
+			return taskpipeline.LoadDepState(root, ref)
+		}
 		return nil, fmt.Errorf(`task %q not found`, ref)
 	}
+	// lookupCycle 保持本仓索引：跨仓环检出归 forge workspace doctor（key:ref 在此天然
+	// 不命中索引，视作叶子，不展开）。
 	lookupCycle := func(ref string) *taskpipeline.TaskState { return byRef[ref] }
 
 	// childCount[parent] = number of tasks whose ParentTaskRef == parent. Precomputed once so the

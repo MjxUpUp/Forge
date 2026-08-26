@@ -577,3 +577,27 @@ func TestBuildEvidenceChain_ProjectSyncExcluded(t *testing.T) {
 		t.Fatalf(`project-sync 条目仍应保留在 Entries 供 trace: got %d, want 2`, len(ec.Entries))
 	}
 }
+
+// TestBuildEvidenceChain_CrossRepoImpactExcluded pins that CheckCrossRepoImpact is
+// excluded from evidence strength: it records whether a multi-repo-workspace task
+// declared its cross-repo impact — a process-discipline observation, not verification
+// that THIS task's gates ran; bucketing it as deterministic would inflate Strength
+// exactly like scope-drift. Entries stay in Entries for trace.
+//
+// TestBuildEvidenceChain_CrossRepoImpactExcluded 钉住 CheckCrossRepoImpact 不计入
+// 证据强度：它记录多仓 workspace 任务是否声明了跨仓影响——流程纪律观测，非本任务
+// 门禁实跑的验证；分桶成 deterministic 会像 scope-drift 一样虚增 Strength。条目
+// 仍保留在 Entries 供 trace。
+func TestBuildEvidenceChain_CrossRepoImpactExcluded(t *testing.T) {
+	entries := []Entry{
+		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckCrossRepoImpact, Source: EvidenceDeterministic, TaskRef: "t"},
+	}
+	ec := BuildEvidenceChain(entries, "t")
+	if ec.Deterministic != 1 {
+		t.Fatalf(`CheckCrossRepoImpact 不应计入 deterministic: got %d, want 1（仅 auto-compile）`, ec.Deterministic)
+	}
+	if len(ec.Entries) != 2 {
+		t.Fatalf(`cross-repo-impact 条目仍应保留在 Entries 供 trace: got %d, want 2`, len(ec.Entries))
+	}
+}

@@ -278,3 +278,44 @@ func TestSaveDataDir_AtomicNoTempLeftover(t *testing.T) {
 		}
 	}
 }
+
+// TestLoad_CrossRepoImpactField pins the new cross_repo_impact knob: it
+// round-trips through YAML, and an absent key decodes to "" (the advisory
+// default — zero behavior change for existing protocol.yml files).
+//
+// TestLoad_CrossRepoImpactField 钉住新 cross_repo_impact 配置项：YAML 往返
+// 无损；缺省键解码为 ""（advisory 默认——存量 protocol.yml 零行为变化）。
+func TestLoad_CrossRepoImpactField(t *testing.T) {
+	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
+	dir := t.TempDir()
+
+	// Absent → "" (advisory default).
+	//
+	// 缺省 → ""（advisory 默认）。
+	if err := SaveDataDir(dir, DefaultProtocol()); err != nil {
+		t.Fatalf("SaveDataDir: %v", err)
+	}
+	p, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if p.CrossRepoImpact != `` {
+		t.Errorf("缺省 cross_repo_impact 应为空（advisory 默认）, got %q", p.CrossRepoImpact)
+	}
+
+	// Explicit "required" round-trips.
+	//
+	// 显式 "required" 往返。
+	custom := DefaultProtocol()
+	custom.CrossRepoImpact = `required`
+	if err := SaveDataDir(dir, custom); err != nil {
+		t.Fatalf("SaveDataDir required: %v", err)
+	}
+	p, err = Load(dir)
+	if err != nil {
+		t.Fatalf("Load required: %v", err)
+	}
+	if p.CrossRepoImpact != `required` {
+		t.Errorf("CrossRepoImpact = %q, want required", p.CrossRepoImpact)
+	}
+}

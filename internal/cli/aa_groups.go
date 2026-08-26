@@ -64,6 +64,12 @@ func init() {
 	//
 	// 机器节点身份（node_id = 公钥指纹；node-identity：机器级，与 project 跨机族同族）。
 	nodeCmd.GroupID = `lifecycle`
+	// Multi-repo workspace manifest (~/.forge/workspaces.json; project-level
+	// low-frequency management, same family as registry/project).
+	//
+	// 多仓 workspace 清单（~/.forge/workspaces.json；项目级低频管理，与
+	// registry/project 同族）。
+	workspaceCmd.GroupID = `lifecycle`
 
 	// Project pipeline: project-level state (status is the main entry).
 	//

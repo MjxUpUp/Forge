@@ -218,6 +218,24 @@ const (
 	// observation 类（与任何任务的验证是否实跑无关）——排除出证据强度分桶。操作
 	// 名走 Meta[MetaKeySyncOp]。
 	CheckProjectSync CheckName = "project-sync"
+	// CheckCrossRepoImpact records the task-verify cross-repo-impact declaration check
+	// (multi-repo workspace, docs/design/multi-repo-workspace.md): whether a task whose
+	// repo belongs to a multi-repo workspace declared its impact (none|multi) via
+	// `forge task impact`. deterministic (the gate reads the TaskState declaration +
+	// the workspace manifest, the agent cannot forge the verdict). Observation class —
+	// an undeclared/malformed declaration is a process signal about cross-repo
+	// discipline, not verification evidence of THIS task — excluded from
+	// evidence-strength bucketing like scope-drift. Advisory by default; protocol
+	// cross_repo_impact: required promotes the undeclared case to a gate block.
+	//
+	// CheckCrossRepoImpact 记录 task-verify 的跨仓影响声明检查（多仓 workspace，
+	// 见 docs/design/multi-repo-workspace.md）：所属 repo 属于多仓 workspace 的
+	// 任务是否经 `forge task impact` 声明了影响（none|multi）。deterministic
+	//（门禁实读 TaskState 声明 + workspace 清单，agent 无法伪造判定）。
+	// observation 类——未声明/声明畸形是跨仓纪律的流程信号，非本任务的验证证据——
+	// 与 scope-drift 一样排除出证据强度分桶。默认 advisory；protocol
+	// cross_repo_impact: required 把未声明升级为门禁阻断。
+	CheckCrossRepoImpact CheckName = "cross-repo-impact"
 )
 
 const (
