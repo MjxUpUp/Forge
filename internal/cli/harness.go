@@ -5,12 +5,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/spf13/cobra"
-	"runtime"
 )
 
 // harness.go implements the harness repo (multi-task-concurrency design §3 物理承载 +
@@ -205,6 +206,7 @@ func runHarnessInit(cmd *cobra.Command, args []string) error {
 	if out, err := harnessGit(home, "commit", "-m", msg); err != nil {
 		return fmt.Errorf("基线提交失败: %v\n%s", err, out)
 	}
+	MarkHarnessInitialized(remote != "")
 	fmt.Printf("harness repo 已建立: %s\n", home)
 	return nil
 }
@@ -217,7 +219,7 @@ func runHarnessInit(cmd *cobra.Command, args []string) error {
 // stores).
 //
 // HarnessCommitBestEffort 把受管过程状态批量提交进 harness repo
-//（multi-task-concurrency §13 提交策略）。在任务边界（start/complete）调用——绝不逐
+// （multi-task-concurrency §13 提交策略）。在任务边界（start/complete）调用——绝不逐
 // hook 提交（延迟）。一切失败静默：版本化是可观测性增益，其缺席不得打断任务流。
 // 进程内串行化；跨进程竞态降级为 git 自身的 index 锁重试窗口（对 append 为主的
 // store 可接受）。
@@ -309,4 +311,116 @@ func init() {
 	harnessInitCmd.Flags().Bool("from-existing", false, "存量 DataDir 做一次基线提交（史前史入库，不重写数据）")
 	harnessInitCmd.Flags().String("remote", "", "私有远端 URL（仅记录；首次 push 需人工另行确认）")
 	harnessInitCmd.Flags().Bool("yes", false, "跳过交互确认（仅脚本化 CI；agent 纪律禁止自行使用）")
+}
+
+// ── T7 引导层（multi-task-concurrency §13）：onboarding 状态机 + 触发点 + 防 nag ──
+
+// harnessState 状态机：uninitialized → offered（含提示计数与 cooldown）→
+// initialized(local) → linked(remote)。offered 的 mtime 即 cooldown 基准，同日第二
+// 次触点静默；超过 maxHarnessOffers 次后停止提示（尊重不感兴趣的用户）。
+const (
+	harnessStateUninitialized = "uninitialized"
+	harnessStateOffered       = "offered"
+	harnessStateInitialized   = "initialized"
+	harnessStateLinked        = "linked"
+)
+
+const (
+	harnessOfferCooldown = 24 * time.Hour
+	maxHarnessOffers     = 3
+)
+
+func harnessStatePath(home string) string {
+	return filepath.Join(home, "harness-state")
+}
+
+// readHarnessState derives the onboarding state: the state file when present, else
+// linked/initialized if the repo already exists (pre-T7 machines that git-init'd by hand),
+// else uninitialized.
+//
+// readHarnessState 推导 onboarding 状态：优先状态文件；repo 已存在时推导
+// initialized/linked（手工 git init 过的存量机器）；否则 uninitialized。
+func readHarnessState(home string) string {
+	if data, err := os.ReadFile(harnessStatePath(home)); err == nil {
+		s := strings.TrimSpace(string(data))
+		switch {
+		case s == harnessStateInitialized, s == harnessStateLinked:
+			return s
+		case strings.HasPrefix(s, harnessStateOffered): // "offered N"（带提示计数）
+			return harnessStateOffered
+		}
+	}
+	if HarnessInitialized() {
+		if _, err := harnessGit(home, "remote", "get-url", "origin"); err == nil {
+			return harnessStateLinked
+		}
+		return harnessStateInitialized
+	}
+	return harnessStateUninitialized
+}
+
+// MaybeOfferHarness is the advisory trigger point (multi-task-concurrency §13): called
+// from natural adoption moments (forge init / forge status). Never blocking, cooldown'd
+// (same-day second touch silent), offer-count-capped. Old-version upgraders and new users
+// both land here; the HITL confirmation itself lives in harness init (T6's TTY gate).
+//
+// MaybeOfferHarness 是 advisory 触发点（multi-task-concurrency §13）：挂在天然的引导
+// 时机（forge init / forge status）。绝不阻断、有 cooldown（同日第二次触点静默）、有
+// 提示次数上限。老版本升级用户与新用户都会到达这里；HITL 确认本体在 harness init
+// （T6 的 TTY 门）。
+func MaybeOfferHarness(trigger string) {
+	home, err := harnessHome()
+	if err != nil {
+		return
+	}
+	switch readHarnessState(home) {
+	case harnessStateInitialized, harnessStateLinked:
+		return // 已建立，无事可引导
+	}
+	statePath := harnessStatePath(home)
+	info, statErr := os.Stat(statePath)
+	if statErr == nil && time.Since(info.ModTime()) < harnessOfferCooldown {
+		return // cooldown 窗口内：静默
+	}
+	offers := 0
+	if data, err := os.ReadFile(statePath); err == nil {
+		fmt.Sscanf(strings.TrimSpace(string(data)), "offered %d", &offers)
+	}
+	offers++
+	if offers > maxHarnessOffers {
+		return // 上限后永久静默（尊重不感兴趣的用户）
+	}
+	_ = os.MkdirAll(home, 0o755)
+	_ = os.WriteFile(statePath, []byte(fmt.Sprintf("offered %d", offers)), 0o644)
+	fmt.Fprintf(os.Stderr, "[forge] 建议：forge harness init 建立私有研发台账仓库（过程状态获得 git 史；触发点 %s；agent 不得代批，需人在终端确认）\n", trigger)
+}
+
+// MarkHarnessInitialized records the state-machine transition on a successful init
+// （initialized，配 --remote 时 linked）。
+func MarkHarnessInitialized(linked bool) {
+	home, err := harnessHome()
+	if err != nil {
+		return
+	}
+	s := harnessStateInitialized
+	if linked {
+		s = harnessStateLinked
+	}
+	_ = os.WriteFile(harnessStatePath(home), []byte(s), 0o644)
+}
+
+// harnessStateLabel renders the status line label for the onboarding state.
+//
+// harnessStateLabel 渲染 onboarding 状态行的展示标签。
+func harnessStateLabel(state string) string {
+	switch state {
+	case harnessStateLinked:
+		return "已连远端（harness repo）"
+	case harnessStateInitialized:
+		return "本地（harness repo）"
+	case harnessStateOffered:
+		return "未建立（已提示过）"
+	default:
+		return "未建立（forge harness init 引导建立）"
+	}
 }
