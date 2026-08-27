@@ -278,7 +278,9 @@ func BuildEvidenceChain(entries []Entry, taskRef string) EvidenceChain {
 		// CheckTaskStarted 同属 observation 类：它是任务启动的时间线边界标记（L2 事件化
 		// 废 Clear 的替代物），与验证是否实跑无关——边界绝不可当证据计数，否则每开一个
 		// 任务就白得一条 deterministic 证据。
-		if e.Check == CheckScopeDrift || e.Check == CheckCheatScan || e.Check == CheckUnusedScan || e.Check == CheckEscapeHatch || e.Check == CheckSkillTrigger || e.Check == CheckKimiPluginStale || e.Check == CheckReviewPass || e.Check == CheckPlanFirst || e.Check == CheckToolFailure || e.Check == CheckSubagentStop || e.Check == CheckTestNudge || e.Check == CheckBundleVerify || e.Check == CheckProjectSync || e.Check == CheckCrossRepoImpact || e.Check == CheckTaskStarted {
+		// CheckAttribution 同属：归属台账的覆盖率度量（基建健康度）——不是任何验证实跑，
+		// 计入会把「台账解释了多少变更」错当「任务验证了多少」。
+		if e.Check == CheckScopeDrift || e.Check == CheckCheatScan || e.Check == CheckUnusedScan || e.Check == CheckEscapeHatch || e.Check == CheckSkillTrigger || e.Check == CheckKimiPluginStale || e.Check == CheckReviewPass || e.Check == CheckPlanFirst || e.Check == CheckToolFailure || e.Check == CheckSubagentStop || e.Check == CheckTestNudge || e.Check == CheckBundleVerify || e.Check == CheckProjectSync || e.Check == CheckCrossRepoImpact || e.Check == CheckTaskStarted || e.Check == CheckAttribution {
 			// Only VERIFICATION-class escape hatches (test-coverage/acceptance/skill-decisions) set the cap flag.
 			// work-activity is a rhythm gate (tool calls between gates), not verification — using it does not prop the
 			// "done" claim on skipped verification, so it must not cap Strength (else refactor-heavy weeks inflate the

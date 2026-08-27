@@ -15,6 +15,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/MjxUpUp/Forge/internal/attribution"
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/hooks"
@@ -636,6 +637,26 @@ func runHook(cmd *cobra.Command, args []string) error {
 			taskpipeline.TouchLastSession(root, hookInput.SessionID, agent, hookInput.HookEventName)
 		} else if agent != "" {
 			taskpipeline.StampSessionAgent(root, hookInput.SessionID, agent)
+		}
+	}
+
+	// Attribution ledger + Stop coverage metric (multi-task-concurrency §6, L3). Placed
+	// BEFORE the early-returning in-process hooks: skill-trigger fires on
+	// PostToolUse(Write|Edit|Bash) and returns before step 2's field extraction, so this
+	// seam must be self-sufficient (RecordHookEvent does its own tool_input parse + patch
+	// synthesis). Recording is silent-failure by contract and skips no-identity sessions
+	// (empty sid = degraded mode). The Stop metric is throttled per workspace and is a
+	// project-level observation (infrastructure health, not task verification).
+	//
+	// 归属台账 + Stop 覆盖率度量（multi-task-concurrency §6，L3）。放在早退的 Go 内
+	// 特例 hook 之前：skill-trigger 挂在 PostToolUse(Write|Edit|Bash) 上且在步骤 2 的
+	// 字段抽取前就返回，本挂点必须自给自足（RecordHookEvent 自行解析 tool_input 并
+	// 合成 patch 路径）。记账按契约静默失败，空 sid（无身份宿主）跳过——降级模式。
+	// Stop 度量按 workspace 节流，是项目级观察条目（基建健康度，非任务验证）。
+	if root != "" {
+		attribution.RecordHookEvent(root, hookInput.HookEventName, hookInput.SessionID, hookInput.ToolName, hookInput.ToolInput)
+		if hookInput.HookEventName == "Stop" {
+			attribution.RecordStopMetric(root, "")
 		}
 	}
 
