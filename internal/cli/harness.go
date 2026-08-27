@@ -186,8 +186,12 @@ func runHarnessInit(cmd *cobra.Command, args []string) error {
 	if err := os.WriteFile(filepath.Join(home, ".gitignore"), []byte(harnessGitignore), 0o644); err != nil {
 		return err
 	}
-	if out, err := harnessGit(home, "init"); err != nil {
-		return fmt.Errorf("git init 失败: %v\n%s", err, out)
+	// Deterministic branch name（-b main，git<2.28 回落裸 init——默认名随环境漂移
+	// 会造成 push/pull 的 upstream 错配，实测踩坑）。
+	if _, err := harnessGit(home, "init", "-b", "main"); err != nil {
+		if out, err2 := harnessGit(home, "init"); err2 != nil {
+			return fmt.Errorf("git init 失败: %v\n%s", err2, out)
+		}
 	}
 	if remote != "" {
 		if out, err := harnessGit(home, "remote", "add", "origin", remote); err != nil {
@@ -306,6 +310,18 @@ func init() {
 	harnessCmd.AddCommand(harnessInitCmd)
 	harnessCmd.AddCommand(harnessStatusCmd)
 	harnessCmd.AddCommand(harnessCommitCmd)
+	harnessPushCmd := &cobra.Command{
+		Use:   "push [--yes]",
+		Short: "推送 harness repo 到私有远端（首推需人工确认数据出境清单）",
+		RunE:  runHarnessPush,
+	}
+	harnessPushCmd.Flags().Bool("yes", false, "跳过首推确认（仅脚本化 CI；agent 纪律禁止自行使用）")
+	harnessCmd.AddCommand(harnessPushCmd)
+	harnessCmd.AddCommand(&cobra.Command{
+		Use:   "pull",
+		Short: "从远端拉取 harness repo（冲突上浮人工解决，不自动裁决）",
+		RunE:  runHarnessPull,
+	})
 	rootCmd.AddCommand(harnessCmd)
 
 	harnessInitCmd.Flags().Bool("from-existing", false, "存量 DataDir 做一次基线提交（史前史入库，不重写数据）")
@@ -423,4 +439,83 @@ func harnessStateLabel(state string) string {
 	default:
 		return "未建立（forge harness init 引导建立）"
 	}
+}
+
+// ── T9 传输换代（multi-task-concurrency §11.3/§13）：bundle → git remote ──
+
+// runHarnessPush is the outbound half of the transport (multi-task-concurrency §13 外发
+// 动作独立确认)：the FIRST push to a new remote is a second HITL with the data-export
+// manifest (什么会同步、什么永不外发) — separate from init's confirmation; later pushes
+// are ordinary. Non-TTY first push is REFUSED (agent 不得代批外发). Trust anchors are
+// structurally absent (gitignored since init) — the manifest says so truthfully.
+//
+// runHarnessPush 是传输的出站半边（multi-task-concurrency §13 外发动作独立确认）：
+// 到新远端的【首次】push 是第二次 HITL，附数据出境清单（什么会同步、什么永不外
+// 发）——与 init 的确认相互独立；后续 push 是常规操作。非 TTY 的首推被拒绝（agent
+// 不得代批外发）。信任锚自 init 起就被 gitignore，结构上不存在——出境清单如此陈述
+// 是真话。
+func runHarnessPush(cmd *cobra.Command, args []string) error {
+	home, err := harnessHome()
+	if err != nil {
+		return err
+	}
+	if !HarnessInitialized() {
+		return fmt.Errorf("harness repo 未建立——先 forge harness init")
+	}
+	if out, err := harnessGit(home, "remote", "get-url", "origin"); err != nil {
+		return fmt.Errorf("未配置远端——forge harness init --remote <私有仓库> 或 git -C %s remote add origin <url>", home)
+	} else {
+		fmt.Printf("远端: %s", out)
+	}
+	yes, _ := cmd.Flags().GetBool("yes")
+
+	// 首推判定：无 upstream 跟踪分支。
+	firstPush := true
+	if out, err := harnessGit(home, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"); err == nil && strings.TrimSpace(out) != "" {
+		firstPush = false
+	}
+	if firstPush {
+		if !stdinIsTTY() && !yes {
+			return fmt.Errorf("首次 push 属外发动作，需人在终端确认数据出境清单（multi-task-concurrency §13；agent 不得代批）")
+		}
+		if stdinIsTTY() && !yes {
+			fmt.Println("数据出境清单（首次 push）：")
+			fmt.Println("  将同步（git tracked）：projects/<key>/tasks、specs、checklog、archive——过程状态与证据")
+			fmt.Println("  永不外发（gitignored）：stamps/hazards（信任锚）、workspaces/attribution（机器本地）、会话簿记/哨兵")
+			fmt.Println("  远端必须是【私有】仓库；凭据走你自己的 git credential helper，forge 不持有凭据")
+			fmt.Printf("输入 yes 确认首推: ")
+			var answer string
+			if _, err := fmt.Scanln(&answer); err != nil || !strings.EqualFold(answer, "yes") {
+				return fmt.Errorf("未确认，放弃 push")
+			}
+		}
+	}
+	HarnessCommitBestEffort("pre-push 批量提交")
+	if out, err := harnessGit(home, "push", "-u", "origin", "HEAD"); err != nil {
+		return fmt.Errorf("push 失败: %v\n%s", err, out)
+	}
+	fmt.Println("已推送")
+	return nil
+}
+
+// runHarnessPull is the inbound half: plain `git pull --no-edit` in the harness repo.
+// Conflicts surface as errors with manual-resolution guidance — never auto-resolved
+//（过程状态是 append 为主，冲突面小；机器裁决优先人可见）。
+//
+// runHarnessPull 是入站半边：harness repo 里裸的 git pull --no-edit。冲突以错误上浮
+// 并给手工解决指引——绝不自动裁决（过程状态 append 为主冲突面小；机器裁决不如人
+// 可见）。
+func runHarnessPull(cmd *cobra.Command, args []string) error {
+	home, err := harnessHome()
+	if err != nil {
+		return err
+	}
+	if !HarnessInitialized() {
+		return fmt.Errorf("harness repo 未建立——先 forge harness init")
+	}
+	if out, err := harnessGit(home, "pull", "--no-edit"); err != nil {
+		return fmt.Errorf("pull 失败（冲突请到 %s 手工解决后 commit；机器不自动裁决）: %v\n%s", home, err, out)
+	}
+	fmt.Println("已拉取")
+	return nil
 }
