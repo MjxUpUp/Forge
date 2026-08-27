@@ -82,6 +82,9 @@ func init() {
 	taskStartCmd.Flags().String(`ref`, ``, `任务引用（如 feat/add-auto-branch），默认从分支名推断`)
 	taskStartCmd.Flags().String("from-issue", "", "外部 issue URL（linear/github），解析为 task.ExternalOrigin 锚定外部 issue（衔接 spawn 式编排器）")
 	taskStartCmd.Flags().Bool("branch", false, "从 main/master 创建新分支并切换（ref 作为分支名）")
+	taskStartCmd.Flags().Bool("worktree", false, "在 repo 树外为此任务创建独立 worktree+分支+绑定（multi-task-concurrency L4；需 --ref）")
+	taskStartCmd.Flags().String("base", "", "--worktree 的基线 ref（默认主线 main/master）")
+	taskStartCmd.Flags().String("wt-dir", "", "--worktree 的父目录（默认 <repo 父目录>/<repo 名>-wt/）")
 	taskStartCmd.Flags().Bool("json", false, "JSON 格式输出")
 	taskStatusCmd.Flags().Bool("json", false, "JSON 格式输出")
 	taskStatusCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
@@ -400,6 +403,29 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	explicitRef, _ := cmd.Flags().GetString("ref")
 	title, _ := cmd.Flags().GetString("title")
 	createBranch, _ := cmd.Flags().GetBool("branch")
+	useWorktree, _ := cmd.Flags().GetBool("worktree")
+
+	// --worktree (multi-task-concurrency §7, L4): create the isolated workspace FIRST,
+	// then run the whole start flow rooted there — task state lands in the shared DataDir
+	// (worktrees share the project key by design), the binding anchors the NEW path, and
+	// the session pointer is unchanged. The created worktree is deliberately kept on any
+	// later failure (宁留勿删): the guidance line tells the user how to clean up.
+	//
+	// --worktree（multi-task-concurrency §7，L4）：先建隔离 workspace，再以它为根跑
+	// 整个 start 流程——任务状态落共享 DataDir（worktree 按设计共享 project key），
+	// 绑定锚定【新】路径，会话指针不变。后续步骤失败时刻意保留 worktree（宁留勿
+	// 删）：指引行告知用户如何清理。
+	if useWorktree {
+		base, _ := cmd.Flags().GetString("base")
+		wtDir, _ := cmd.Flags().GetString("wt-dir")
+		wtRoot, werr := createTaskWorktree(root, explicitRef, base, wtDir)
+		if werr != nil {
+			return werr
+		}
+		root = wtRoot
+		fmt.Printf("worktree 已创建: %s（如本次启动失败可 git worktree remove 清理）\n", wtRoot)
+		fmt.Printf("下一步：cd %s 并重开窗口，或直接 forge task resume 接续\n", wtRoot)
+	}
 
 	// --branch: create a new branch from main/master and switch to it.
 	//
