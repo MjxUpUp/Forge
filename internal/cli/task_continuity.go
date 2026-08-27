@@ -1104,6 +1104,7 @@ func runTaskFinding(cmd *cobra.Command, args []string) error {
 	}
 	evidence, _ := cmd.Flags().GetString("evidence")
 	var f taskpipeline.Finding
+	var open []string
 	err = taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
 		nf := taskpipeline.Finding{
 			Content:  content,
@@ -1113,6 +1114,13 @@ func runTaskFinding(cmd *cobra.Command, args []string) error {
 		taskpipeline.EnrichFinding(root, s, &nf)
 		s.AddFinding(nf)
 		f = s.Findings[len(s.Findings)-1]
+		// dogfood 修订（2026-08-27）：归档快照必须在 mutation 内取——外层 state 是
+		// 变更前的陈旧副本，触发归档的这条 finding 会漏掉自己的归档。
+		for _, fd := range s.Findings {
+			if fd.Status == "open" {
+				open = append(open, fmt.Sprintf("[%s] %s（%s）", fd.ID, fd.Content, fd.Source))
+			}
+		}
 		return nil
 	})
 	if err != nil {
@@ -1123,12 +1131,6 @@ func runTaskFinding(cmd *cobra.Command, args []string) error {
 	// 绝不触碰 TaskState——持久锚豁免）。轮内多条 finding 归并进同一轮归档；归档
 	// 已存在（同轮已归档）按一次写入契约静默保留首份。best-effort。
 	round := len(state.ReviewRounds) + 1
-	var open []string
-	for _, fd := range state.Findings {
-		if fd.Status == "open" {
-			open = append(open, fmt.Sprintf("[%s] %s（%s）", fd.ID, fd.Content, fd.Source))
-		}
-	}
 	_ = taskpipeline.ArchiveAttempt(root, state.TaskRef, round, open)
 	fmt.Printf("✓ 发现已记 [%s] (%s): %s\n", f.ID, source, content)
 	return nil
