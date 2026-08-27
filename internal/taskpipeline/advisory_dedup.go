@@ -119,7 +119,7 @@ func allReportedNote() string {
 // the audit side with the same breakdown — the entry still records the full truth.
 //
 // dedupSuffix 渲染 checklog Detail 后缀，把扫描总数拆成新发现 vs 被抑制
-//（干净扫描或全部为新时返回 ""——首次扫描无需标注）。「suppressed」兼指
+// （干净扫描或全部为新时返回 ""——首次扫描无需标注）。「suppressed」兼指
 // 此前 verify 已报告的 finding 与同批次内的重复指纹（filterUnreported 对两者
 // 都折叠）。没有它，审计留痕里重扫同一 diff 产生的重复 FAIL 条目与真正的新
 // 命中无从区分（2026-08 证据：一周 30 条 cheat-scan FAIL 实为 ~9 个不同

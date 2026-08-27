@@ -60,7 +60,7 @@ func TestHarness_InitTrustBoundary(t *testing.T) {
 // silent when the harness is absent (pre-init degradation).
 //
 // TestHarness_CommitBestEffort：任务边界批量提交新的受管状态；harness 缺席时静默
-//（init 前降级）。
+// （init 前降级）。
 func TestHarness_CommitBestEffort(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("FORGE_DATA_HOME", home)

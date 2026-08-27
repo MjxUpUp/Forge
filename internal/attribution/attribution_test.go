@@ -54,7 +54,7 @@ func write(t *testing.T, dir, rel, content string) {
 //
 // TestReconcile_AttributionMatrix 是 T3 的正确性核心：本会话编辑、他会话编辑、无归属
 // 文件必须精确三分——B 的窗口绝不继承 A 的 WIP，A 的 WIP 在 B 的视图里以无主暴露
-//（诚实暴露），绝不记成 B 的归属。
+// （诚实暴露），绝不记成 B 的归属。
 func TestReconcile_AttributionMatrix(t *testing.T) {
 	dir := initGitRepo(t)
 	write(t, dir, "a.go", "package a\n")
@@ -91,7 +91,7 @@ func TestReconcile_AttributionMatrix(t *testing.T) {
 	// Last-writer-wins: sess-b later rewrites a.go → a.go moves to sess-b.
 	//
 	// 最后写入者胜：sess-b 随后重写 a.go → a.go 归 sess-b。
-	Record(dir, Event{Ts: base.Add(2*time.Minute), Sid: "sess-b", Kind: KindWrite, Path: "a.go"})
+	Record(dir, Event{Ts: base.Add(2 * time.Minute), Sid: "sess-b", Kind: KindWrite, Path: "a.go"})
 	v = Reconcile(dir)
 	if got := v.BySession["sess-a"]; len(got) != 0 {
 		t.Errorf("被重写后 sess-a 不应再持有 a.go, got %v", got)

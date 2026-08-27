@@ -700,7 +700,7 @@ func TestCurrentBranch(t *testing.T) {
 //
 // TestMarkPassed_ContentAddressed 钉住 multi-task-concurrency §5 的 stamp 键控变更：
 // MarkPassed 写内容寻址的 stamps/dh-<diffhash>.stamp，且不再创建旧 <branch>.stamp
-//（按分支键控的 stamp 在同分支多 worktree 下碰撞——里面的 hash 是最后保存的那个
+// （按分支键控的 stamp 在同分支多 worktree 下碰撞——里面的 hash 是最后保存的那个
 // worktree 的）。
 func TestMarkPassed_ContentAddressed(t *testing.T) {
 	dir := initGitRepo(t)

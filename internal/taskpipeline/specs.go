@@ -44,7 +44,7 @@ import (
 // file was hand-edited after the reference was taken — surface as drift, never silent.
 //
 // ArtifactRef 是 TaskState 指向 spec 文件的可验证指针（I5）：Path 相对 DataDir
-//（跨机可移植——project key 在不同机器映射到不同绝对 DataDir），Hash 是内容 sha256
+// （跨机可移植——project key 在不同机器映射到不同绝对 DataDir），Hash 是内容 sha256
 // 前 16 hex。失配 = 引用建立后文件被手改——按漂移上浮，绝不静默。
 type ArtifactRef struct {
 	Path      string    `json:"path"`
@@ -114,21 +114,21 @@ func VerifyArtifact(root string, ref ArtifactRef) bool {
 //
 // attemptVerdict 是归档尝试轮次的机器可读半边。
 type attemptVerdict struct {
-	Round     int       `json:"round"`
-	TaskRef   string    `json:"task_ref"`
-	Verdict   string    `json:"verdict"` // "fail"——归档只发生在失败轮
+	Round      int       `json:"round"`
+	TaskRef    string    `json:"task_ref"`
+	Verdict    string    `json:"verdict"` // "fail"——归档只发生在失败轮
 	ArchivedAt time.Time `json:"archived_at"`
-	Findings  int       `json:"findings"`
+	Findings   int       `json:"findings"`
 }
 
 // ArchiveAttempt preserves one failed review round under specs/<ref>/attempts/round-NNN/
-//（findings.md 人类可读 + verdict.json 机器可读）。Write-once by construction — the
+// （findings.md 人类可读 + verdict.json 机器可读）。Write-once by construction — the
 // round number is derived from the caller's round, and re-archiving the same round
 // REFUSES rather than overwrites（失败上下文永不覆盖，LoopSpec "move, never delete"）。
 // Never touches TaskState（回滚闭包的持久锚豁免）。
 //
 // ArchiveAttempt 把一个失败的审查轮次保存在 specs/<ref>/attempts/round-NNN/
-//（findings.md 人类可读 + verdict.json 机器可读）。构造上一次写入——轮号由调用方
+// （findings.md 人类可读 + verdict.json 机器可读）。构造上一次写入——轮号由调用方
 // 的 round 推导，重复归档同轮【拒绝】而非覆盖（失败上下文永不覆盖，LoopSpec
 // "move, never delete"）。绝不触碰 TaskState（回滚闭包的持久锚豁免）。
 func ArchiveAttempt(root, taskRef string, round int, findings []string) error {
@@ -167,7 +167,7 @@ func ArchiveAttempt(root, taskRef string, round int, findings []string) error {
 // 长度有界）。
 //
 // PriorAttemptsSummary 渲染最近 N 个归档轮次的 findings，作为下一次尝试的有界输入
-//（LoopSpec priorAttempts：带着「为什么被拒」重做，不重复踩坑）。无尝试时为空串。
+// （LoopSpec priorAttempts：带着「为什么被拒」重做，不重复踩坑）。无尝试时为空串。
 // 字符封顶（注入面纪律：回灌内容按数据渲染，长度有界）。
 func PriorAttemptsSummary(root, taskRef string, lastN int, charCap int) string {
 	base := filepath.Join(SpecsDir(root, taskRef), "attempts")
