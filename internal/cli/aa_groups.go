@@ -77,6 +77,9 @@ func init() {
 	// worktree-per-task 生命周期管理（multi-task-concurrency L4：start --worktree /
 	// finish / janitor；workspace 级低频管理，与 workspace/registry 同族）。
 	worktreeCmd.GroupID = `lifecycle`
+	// Harness repo（multi-task-concurrency T6：git 化用户级台账；项目级低频管理，
+	// 与 migrate/project 同族）。
+	harnessCmd.GroupID = `lifecycle`
 
 	// Project pipeline: project-level state (status is the main entry).
 	//
