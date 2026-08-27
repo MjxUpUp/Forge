@@ -258,6 +258,32 @@ const (
 	// 标记而非任何验证结果——排除出证据强度分桶。该标记也是后续日志滚动（janitor
 	// 按 task_started 边界归档）与跨机 ts 归并的分段锚点。
 	CheckTaskStarted CheckName = "task-started"
+	// CheckAttribution records the Stop-time attribution reconciliation coverage
+	// (multi-task-concurrency design §6, L3): how much of the working tree's changed set
+	// the session→file ledger explains (attributed vs orphan). This is the T2 spike's
+	// measuring stick — bash-infer's fate is decided by this measured coverage, not by
+	// assumption. Observation class: coverage is infrastructure health, not task
+	// verification — excluded from evidence-strength bucketing. Counts ride
+	// Meta[MetaKeyAttribution*].
+	//
+	// CheckAttribution 记录 Stop 时归属对账的覆盖率（multi-task-concurrency 设计 §6，
+	// L3）：会话→文件台账解释了工作树变更集的多少（attributed vs orphan）。这是 T2
+	// spike 的那把尺子——bash-infer 的去留由实测覆盖率决定，不靠拍脑袋。观察类：
+	// 覆盖率是基建健康度，非任务验证——排除出证据强度分桶。计数走
+	// Meta[MetaKeyAttribution*]。
+	CheckAttribution CheckName = "attribution"
+)
+
+// MetaKeyAttribution* namespace attribution-coverage entries' machine payload (single
+// source of truth for writer attribution/metric.go and future readers — same contract-seam
+// discipline as MetaKeyVerdict/MetaKeySyncOp).
+//
+// MetaKeyAttribution* 归属覆盖率条目的机器载荷命名空间（写入方 attribution/metric.go
+// 与未来读方的单一真相源——与 MetaKeyVerdict/MetaKeySyncOp 同样的接缝契约纪律）。
+const (
+	MetaKeyAttributionAttributed = "attribution.attributed"
+	MetaKeyAttributionOrphans    = "attribution.orphans"
+	MetaKeyAttributionRate       = "attribution.rate"
 )
 
 const (
