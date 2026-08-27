@@ -55,6 +55,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		if home, herr := forgedata.GlobalHome(); herr == nil {
 			fmt.Printf("Harness:       %s\n", harnessStateLabel(readHarnessState(home)))
 		}
+		fmt.Printf("归属覆盖:      %s\n", attributionCoverageLine(root))
 		MaybeOfferHarness("forge status")
 	}
 
