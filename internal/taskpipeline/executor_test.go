@@ -16,8 +16,8 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskcontext"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
 
-	"github.com/spf13/cobra"
 	"github.com/MjxUpUp/Forge/internal/worktree"
+	"github.com/spf13/cobra"
 )
 
 func TestDefaultGates(t *testing.T) {
@@ -2099,7 +2099,7 @@ func TestTaskComplete_ReviewSnapshotCommitReviewedContentPasses(t *testing.T) {
 // guard — crashed sessions must not orphan their tasks.
 //
 // TestActiveTaskState_BranchGuardOtherActiveSession 钉住 P5 守卫
-//（multi-task-concurrency §4）：分支映射的任务被【其他】会话的活跃指针持有时跳过
+// （multi-task-concurrency §4）：分支映射的任务被【其他】会话的活跃指针持有时跳过
 // ——两个窗口共享分支名不再把任务误挂给后问的那个。过期指针（超 TTL）不守卫
 // ——崩溃的会话不得连累任务变孤儿。
 func TestActiveTaskState_BranchGuardOtherActiveSession(t *testing.T) {

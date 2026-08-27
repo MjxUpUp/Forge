@@ -315,7 +315,7 @@ func runReviewPassAt(root, explicitRef, note string, acknowledgeChanges bool) er
 // behind the stamp). Best-effort: an error yields "" (detail degrades, never blocks).
 //
 // currentDiffHash 返回工作区相对 HEAD 的源码指纹，供审计 detail 使用
-//（review.SourceChangesSince(root, "")——与打戳背后的 computeDiffHash 同一计算）。
+// （review.SourceChangesSince(root, "")——与打戳背后的 computeDiffHash 同一计算）。
 // best-effort：出错返回 ""（detail 降级，绝不阻断）。
 func currentDiffHash(root string) string {
 	h, _, err := review.SourceChangesSince(root, "")

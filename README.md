@@ -145,6 +145,7 @@ Forge 退出码三态（`BLOCKED` 硬阻断 / `ADVISORY` 软信号）即这一�
 
 ```bash
 forge task start --ref feat/add-login --branch --accept "go test -v ./... :: PASS"   # 创建任务+分支+登记验收标准（--accept 可重复；Expected 是输出子串匹配；go test 带 Expected 忘加 -v 时 start 自动补——无 -v 无 PASS 行永不匹配）
+forge task start --ref feat/login --worktree [--base main] [--wt-dir <父目录>]   # 在 repo 树外为此任务创建独立 worktree+分支+绑定（多任务并发隔离形态，multi-task-concurrency L4；<repo 父目录>/<repo 名>-wt/<分支> 默认）
 forge task start --ref feat/add-login --scope "internal/auth/*.go"                # 声明计划改动白名单（规划前置→可度量契约，advisory 检测 scope-drift）
 forge task start --ref feat/frontend --assignee kimi --role frontend --depends-on feat/api   # 创建即分派给 kimi（offered），声明上游依赖 feat/api（DAG 环检测；task-verify/task-complete 在 feat/api 交付前阻断）
 forge task start --ref feat/hotfix --assignee kimi --ttl 24h   # per-task TTL 覆盖全局 7d 僵尸窗口：短时效分派 24h 无活动即标僵尸（offered/claimed/input-required 通用；0=用全局默认）
@@ -248,6 +249,12 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge workspace list [--json]` | 列出全部 workspace 及成员（key + 缓存路径） |
 | `forge workspace status <name>` | 读侧聚合：按 key 扫描各成员仓活跃任务（ref/gate 进度/branch）；单个成员坏了告警跳过，绝不让整视图空白 |
 | `forge workspace doctor [--json]` | 检出清单 drift（全部 advisory 不阻断）：成员 key 未注册 / 缓存路径缺失或与 registry 现路径分叉 / 一 key 属多个 workspace / 空 workspace / 跨仓任务依赖环（dep-cycle，点名完整 key:ref 环序列供人工摘边） |
+| `forge worktree janitor` | worktree 生命周期清理（multi-task-concurrency L4）：只清理【任务已完成或超期 14d 且工作树干净】的 workspace（脏的只报告——免删除条款，绝不自动删有未提交工作的 worktree）；路径已消失的死锚绑定无条件清除。多任务并发的磁盘上界管理 |
+| `forge harness init [--from-existing] [--remote <url>] [--yes]` | 建立研发控制面仓库（multi-task-concurrency T6）：把用户级 `~/.forge` 变成私有 git 仓库——tasks/checklog/archive 入库获 git 史，stamps/hazards（信任锚）/workspaces/attribution（机器本地）/会话簿记 gitignore 永不外发。HITL：交互确认仅在终端（TTY）进行——agent 经 Bash 调用无 TTY 被拒（agent 不得代批）；`--yes` 仅脚本化 CI 逃生口；`--from-existing` 给存量 DataDir 做一次基线提交（不重写数据） |
+| `forge harness status` | harness repo 状态：未建立 / 本地 / 已连远端 + 近期提交 + 未提交计数 |
+| `forge harness push [--yes]` | 推送 harness repo 到私有远端（首推是独立外发 HITL——数据出境清单：tracked 类别 / 永不外发类别 / 远端必须私有；凭据走你自己的 git credential helper，forge 不持有凭据）；后续 push 常规。`--yes` 仅脚本化 CI |
+| `forge harness pull` | 从远端拉取（冲突上浮人工解决，机器绝不自动裁决） |
+| `forge task finish [--merge-to <branch>] [--keep]` | worktree 任务收尾：验证门禁完成后在主检出合并分支（合并前校验主检出 HEAD 在目标分支上，错配拒绝）→ 清理 worktree → 解绑；`--keep` 合并后保留 worktree。脏工作树拒绝（免删除条款） |
 
 </details>
 

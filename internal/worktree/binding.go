@@ -24,12 +24,12 @@ import (
 // 因为目录稳定，不是因为任何会话还活着。绑定按构造即机器本地（wtid 是路径哈希），
 // 不带新鲜度门：存在即锚。
 type Binding struct {
-	ID         string    `json:"id"`          // wtid
-	Path       string    `json:"path"`        // EvalSymlinks 后的绝对路径
-	Branch     string    `json:"branch"`      // 绑定时分支（展示用；解析以 TaskRef 为准）
-	TaskRef    string    `json:"task_ref"`    // 绑定的任务
-	CreatedBy  string    `json:"created_by"`  // 建绑会话
-	Node       string    `json:"node"`        // 机器身份（跨机诊断；绑定本身本机性）
+	ID         string    `json:"id"`         // wtid
+	Path       string    `json:"path"`       // EvalSymlinks 后的绝对路径
+	Branch     string    `json:"branch"`     // 绑定时分支（展示用；解析以 TaskRef 为准）
+	TaskRef    string    `json:"task_ref"`   // 绑定的任务
+	CreatedBy  string    `json:"created_by"` // 建绑会话
+	Node       string    `json:"node"`       // 机器身份（跨机诊断；绑定本身本机性）
 	CreatedAt  time.Time `json:"created_at"`
 	LastSeenAt time.Time `json:"last_seen_at"` // heartbeat（hook dispatcher 顺带刷新；只影响展示不影响解析）
 }

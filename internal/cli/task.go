@@ -15,8 +15,8 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
 	"github.com/MjxUpUp/Forge/internal/util"
-	"github.com/spf13/cobra"
 	"github.com/MjxUpUp/Forge/internal/worktree"
+	"github.com/spf13/cobra"
 )
 
 func init() {

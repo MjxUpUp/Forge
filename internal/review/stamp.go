@@ -365,10 +365,10 @@ func SourceChangesSince(root, baseCommit string) (hash string, hasChanges bool, 
 // whole tree (pre-L3 behavior; non-task mode passes nil).
 //
 // SourceChangesSinceExcluded 是带归属排除集的 SourceChangesSince
-//（multi-task-concurrency §6，T3）：调用方已证明外来（其他未完成任务的会话，经
+// （multi-task-concurrency §6，T3）：调用方已证明外来（其他未完成任务的会话，经
 // taskpipeline.ForeignAttributedPaths）的路径离开指纹——review 的范围是本任务的变更，
 // 不是共享整树的噪音。按契约无主路径不可在此排除：解释不了的变更必须被审
-//（fail-safe）。nil map = 全树（L3 之前的行为；非 task 模式传 nil）。
+// （fail-safe）。nil map = 全树（L3 之前的行为；非 task 模式传 nil）。
 func SourceChangesSinceExcluded(root, baseCommit string, exclude map[string]bool) (hash string, hasChanges bool, err error) {
 	if !isGitRepo(root) {
 		return "", false, nil
@@ -523,7 +523,7 @@ func currentBranch(root string) string {
 // non-task stamp (e.g. checklog audit detail in cmd `forge review pass`).
 //
 // CurrentBranch 导出 currentBranch，供需要非 task 戳分支上下文的调用方使用
-//（如 `forge review pass` 命令的 checklog 审计 detail）。
+// （如 `forge review pass` 命令的 checklog 审计 detail）。
 func CurrentBranch(root string) string {
 	return currentBranch(root)
 }

@@ -5,7 +5,7 @@
 // keyed by wtid: everything path-shaped is machine-local by construction.
 //
 // 包 worktree 承载 Task/Session/Workspace 三元组中的 Workspace 身份
-//（multi-task-concurrency 设计 §4，L1）。一个 Workspace = 一个工作树——主检出或某个
+// （multi-task-concurrency 设计 §4，L1）。一个 Workspace = 一个工作树——主检出或某个
 // linked git worktree——其 ID（wtid）是 EvalSymlinks 解析后绝对路径的 hash12。
 // 绑定存储与归属台账都按 wtid 键控：一切路径形状的东西按构造即机器本地。
 package worktree

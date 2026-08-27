@@ -16,7 +16,7 @@ import (
 // task 模式指纹位点——记录侧（review pass、验收快照）与重算侧（task-complete 门禁、
 // freshness 检查）——必须同走本函数：带排除记录的 hash 用不带排除重算必然失配，
 // 而重算侧失配 = 假「审查后变更」硬阻断。非 task 模式保持 review.SourceChangesSince
-//（全树——那边 review 是 fail-safe 方向）。
+// （全树——那边 review 是 fail-safe 方向）。
 func TaskFingerprint(root string, state *TaskState, baseCommit string) (hash string, hasChanges bool, err error) {
 	ref := ""
 	if state != nil {
