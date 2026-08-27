@@ -212,8 +212,8 @@ func runTaskFinish(cmd *cobra.Command, args []string) error {
 		fmt.Printf("已合并；--keep 保留 worktree %s\n", wtPath)
 		return nil
 	}
-	if out, err := exec.Command("git", "-C", mainRoot, "worktree", "remove", wtPath).CombinedOutput(); err != nil {
-		return fmt.Errorf("worktree 清理失败（合并已完成，可手动 git worktree remove）: %v\n%s", err, out)
+	if err := removeWorktree(mainRoot, wtPath); err != nil {
+		return fmt.Errorf("worktree 清理失败（合并已完成，可手动 git worktree remove）: %w", err)
 	}
 	_ = worktree.Clear(wtPath, state.TaskRef)
 	fmt.Printf("任务 %s 完成：已合并 %s，worktree 已清理\n", state.TaskRef, binding.Branch)
@@ -231,6 +231,42 @@ func sameResolvedPath(a, b string) bool {
 		b = rb
 	}
 	return a == b
+}
+
+// removeWorktree deletes a worktree with the Windows CWD-lock guard: POSIX allows
+// deleting a process's current directory, Windows refuses ("Permission denied") — the
+// finish/janitor caller very often sits INSIDE the worktree being removed (its own
+// project window). Chdir to the main checkout first when so (branch CI 2026-08-27
+// Windows failure). Clean-tree is verified by callers beforehand; the --force retry
+// only bypasses git's dirty-refusal on an already-verified-clean tree (OS-level lock
+// transients), never content.
+//
+// removeWorktree 删除 worktree，带 Windows CWD 锁防护：POSIX 允许删除进程当前目
+// 录、Windows 拒绝（"Permission denied"）——finish/janitor 的调用方极常正坐在被删
+// 的 worktree 里（自己的任务窗口）。命中时先 chdir 到主检出（2026-08-27 分支 CI
+// Windows 失败）。调用方已先行验证树干净；--force 重试只绕过 git 对【已验证干净】
+// 树的脏拒绝（OS 级锁瞬态），绝不绕过内容检查。
+func removeWorktree(mainRoot, wtPath string) error {
+	if cwd, err := os.Getwd(); err == nil && sameResolvedPath(cwd, wtPath) || isUnderDir(cwd, wtPath) {
+		_ = os.Chdir(mainRoot)
+	}
+	out, err := exec.Command("git", "-C", mainRoot, "worktree", "remove", wtPath).CombinedOutput()
+	if err == nil {
+		return nil
+	}
+	out2, err2 := exec.Command("git", "-C", mainRoot, "worktree", "remove", "--force", wtPath).CombinedOutput()
+	if err2 == nil {
+		return nil
+	}
+	return fmt.Errorf("%v\n%s\n%v\n%s", err, out, err2, out2)
+}
+
+// isUnderDir reports whether path is strictly inside dir.
+//
+// isUnderDir 报告 path 是否严格位于 dir 内。
+func isUnderDir(path, dir string) bool {
+	rel, err := filepath.Rel(dir, path)
+	return err == nil && rel != "." && !strings.HasPrefix(rel, "..")
 }
 
 // gitMainRoot derives the main checkout root from a worktree path via the git common dir
@@ -311,10 +347,9 @@ func runWorktreeJanitor(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			continue
 		}
-		if out, err := exec.Command("git", "-C", mainRoot, "worktree", "remove", b.Path).CombinedOutput(); err != nil {
+		if err := removeWorktree(mainRoot, b.Path); err != nil {
 			reported++
 			fmt.Printf("⚠ 清理失败: %s: %v\n", b.Path, err)
-			_ = out
 			continue
 		}
 		_ = os.Remove(path)

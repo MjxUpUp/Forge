@@ -20,9 +20,9 @@ func TestHarness_InitTrustBoundary(t *testing.T) {
 	t.Setenv("FORGE_DATA_HOME", home)
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
 
-	// 非 TTY（go test 的 stdin）+ 无 --yes → 拒绝（agent 不得代批）。
-	if stdout, _, code := runForge(t, t.TempDir(), "harness", "init"); code == 0 || !strings.Contains(stdout, "人在终端确认") {
-		t.Fatalf("非 TTY 无 --yes 应被拒绝: %s", stdout)
+	// 非交互 stdin + 无 --yes → 拒绝（agent 不得代批；消息统一含指引）。
+	if stdout, _, code := runForge(t, t.TempDir(), "harness", "init"); code == 0 || !strings.Contains(stdout, "放弃 init") {
+		t.Fatalf("非交互无 --yes 应被拒绝: %s", stdout)
 	}
 
 	// 存量数据 + --yes init：基线入库。

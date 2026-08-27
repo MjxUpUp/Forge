@@ -44,8 +44,8 @@ func TestHarnessTransport_FirstPushHITL(t *testing.T) {
 	}
 
 	// 首推：非 TTY 且无 --yes → 拒（agent 不得代批外发）。
-	if stdout, _, code := runForge(t, t.TempDir(), "harness", "push"); code == 0 || !strings.Contains(stdout, "人在终端确认") {
-		t.Fatalf("非 TTY 首推应被拒: %s", stdout)
+	if stdout, _, code := runForge(t, t.TempDir(), "harness", "push"); code == 0 || !strings.Contains(stdout, "放弃 push") {
+		t.Fatalf("非交互首推应被拒: %s", stdout)
 	}
 	// 首推（--yes 走脚本路径验证 git 回路本身）。推前放一个 tracked 过程状态条目，
 	// 使「到达性」断言有实料。
