@@ -70,6 +70,13 @@ func init() {
 	// 多仓 workspace 清单（~/.forge/workspaces.json；项目级低频管理，与
 	// registry/project 同族）。
 	workspaceCmd.GroupID = `lifecycle`
+	// Worktree-per-task lifecycle management (multi-task-concurrency L4: start
+	// --worktree / finish / janitor; workspace-level low-frequency management, same
+	// family as workspace/registry).
+	//
+	// worktree-per-task 生命周期管理（multi-task-concurrency L4：start --worktree /
+	// finish / janitor；workspace 级低频管理，与 workspace/registry 同族）。
+	worktreeCmd.GroupID = `lifecycle`
 
 	// Project pipeline: project-level state (status is the main entry).
 	//
