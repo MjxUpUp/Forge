@@ -24,6 +24,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
 	"github.com/MjxUpUp/Forge/internal/util"
+	"github.com/MjxUpUp/Forge/internal/worktree"
 	"github.com/spf13/cobra"
 )
 
@@ -655,6 +656,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// Stop 度量按 workspace 节流，是项目级观察条目（基建健康度，非任务验证）。
 	if root != "" {
 		attribution.RecordHookEvent(root, hookInput.HookEventName, hookInput.SessionID, hookInput.ToolName, hookInput.ToolInput)
+		worktree.Touch(root) // L1 绑定心跳（仅展示用；解析从不对它设门）
 		if hookInput.HookEventName == "Stop" {
 			attribution.RecordStopMetric(root, "")
 		}

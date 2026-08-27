@@ -467,3 +467,22 @@ T2 内嵌 spike：`bash-infer` 归属覆盖率先度量后启用。T3 完成即�
 ---
 
 **与既有设计的关系**：身份 key 与"一 repo 一 key"契约见 `project-sync.md`（不变，本设计在其上加 workspace 维度）；跨机租约/合并见 `sync-convergence.md`（L2 事件化强化其确定性基础）；node 身份见 `node-identity.md`（workspace.Node 复用）。
+
+## 17. 落地记录（2026-08-27，feat/multi-task-concurrency）
+
+T1–T10 全部落地，单一 goal 单一分支，`go test ./...` 全绿，dogfood 任务 task-implement / task-verify 门禁通过：
+
+| 任务 | 落点 |
+|---|---|
+| T1 状态层 | checklog CheckTaskStarted 边界事件 + task start 废 Clear（非破坏性 Prune 保留 retention）+ stamp dh-<hash> 内容寻址（分支路径只读兼容）+ 证据分桶排除 |
+| T2 归属服务 | internal/attribution（台账/Reconcile/SessionTouched/bash-infer 保守提取/Enabled 逃生舱）+ 分发器记账 + Stop 覆盖率观察条目（10min 节流） |
+| T3 消费者切换 | condSourceChanged 会话归属、attributedPorcelain（HANDOFF 现场）、SourceChangesSinceExcluded + TaskFingerprint（记录/重算同源）、taskChangedFiles 外来过滤（无主保留） |
+| T4 身份层 | internal/worktree 绑定存储（BindTask/Load/Clear/Touch）+ 解析链 v2（session→绑定→分支守卫→legacy 桥）+ P5 跨会话守卫 + dispatcher 心跳 |
+| T5 worktree 生命周期 | task start --worktree（repo 树外、宁留勿删）/ task finish（免删除条款）/ worktree janitor + forge.worktreeinclude |
+| T6 harness repo | harness init（TTY HITL、--yes 仅 CI、--from-existing 基线）/ status / commit（任务边界批量）+ 信任分类 gitignore（stamps/hazards 永不入库） |
+| T7 引导层 | harness-state 状态机（offered 计数/24h cooldown/上限 3 次）+ init/status 触发点 |
+| T8 产物契约层 | WriteArtifact/VerifyArtifact（I5 引用三角）+ SpecArtifacts 字段 + --plan-file 落产物 + ArchiveAttempt 一次写入 + PriorAttemptsSummary 回灌进 HANDOFF |
+| T9 传输换代 | harness push（首推出境清单 HITL）/ pull（冲突人工裁决）；bundle 通道保留为兼容模式 |
+| T10 度量收尾 | forge status 归属覆盖行 + TestMultiTaskConcurrency_Matrix 五断言总验收 |
+
+**v1 未含（后续任务）**：specs 投影模式（`specs.projection=branch`——持久性恰好一次已由 harness repo 满足，投影是可选 PR 同审需求）；声明式 schema.yaml 的用户自定义加载（T8 落的是内置产物链 + 哈希引用，加载校验框架待真实自定义需求出现）；janitor 的 SessionStart 节流自动触发（当前为手动 `forge worktree janitor`）；无身份宿主的进程谱系/SID 推导（§16-4 spike 待实测命中率）；行为级语义冲突检测（§16-2 三级方案的后两级）。
