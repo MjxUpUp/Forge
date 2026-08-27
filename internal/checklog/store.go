@@ -364,3 +364,19 @@ func pruneArchives(dir string) {
 	}
 	_, _ = util.PruneArchives(dir, "checklog", time.Now().AddDate(0, 0, -days))
 }
+
+// Prune is the non-destructive half of Clear: retention cleanup of checklog-*.jsonl
+// archives only, never touching the active file. This is the replacement task start calls
+// since Clear was retired there (multi-task-concurrency design §5): the log is now an
+// append-only timeline segmented by task-started boundary events, so starting a task must
+// not archive-or-delete anything — only keep the retention window bounded.
+//
+// Prune 是 Clear 的非破坏性半边：只做 checklog-*.jsonl 归档的 retention 清理，绝不碰
+// active 文件。task start 处 Clear 退役后（multi-task-concurrency 设计 §5）改调本函数：
+// 日志现在是按 task-started 边界事件分段的 append-only 时间线，开任务不得归档或删除
+// 任何东西——只保持 retention 窗口有界。
+func Prune(root string) {
+	mu.Lock()
+	defer mu.Unlock()
+	pruneArchives(filepath.Dir(filePath(root)))
+}
