@@ -241,6 +241,23 @@ const (
 	// 与 scope-drift 一样排除出证据强度分桶。默认 advisory；protocol
 	// cross_repo_impact: required 把未声明升级为门禁阻断。
 	CheckCrossRepoImpact CheckName = "cross-repo-impact"
+	// CheckTaskStarted records the task-start boundary event (multi-task-concurrency
+	// design §5, L2 event-sourcing): `forge task start` no longer Clears the log —
+	// the destructive truncation wiped concurrent tasks' in-flight evidence chains
+	// and broke crash audit — instead it appends this boundary marker and every
+	// consumer filters by TaskRef (LoadForTask / LatestByCheckForSession already
+	// did). Observation class par excellence: a boundary is a timeline marker, not
+	// any verification result — excluded from evidence-strength bucketing. The
+	// marker is what future log rotation (janitor rolls by task_started boundaries)
+	// and cross-machine ts-ordered merges segment on.
+	//
+	// CheckTaskStarted 记录任务启动边界事件（multi-task-concurrency 设计 §5，L2 事件
+	// 化）：`forge task start` 不再 Clear 日志——破坏性截断会抹掉并发任务在途的证据
+	// 链、断掉崩溃审计——改为追加本边界标记，消费侧一律按 TaskRef 过滤
+	//（LoadForTask / LatestByCheckForSession 本就如此）。观察类的典型：边界是时间线
+	// 标记而非任何验证结果——排除出证据强度分桶。该标记也是后续日志滚动（janitor
+	// 按 task_started 边界归档）与跨机 ts 归并的分段锚点。
+	CheckTaskStarted CheckName = "task-started"
 )
 
 const (

@@ -601,3 +601,30 @@ func TestBuildEvidenceChain_CrossRepoImpactExcluded(t *testing.T) {
 		t.Fatalf(`cross-repo-impact 条目仍应保留在 Entries 供 trace: got %d, want 2`, len(ec.Entries))
 	}
 }
+
+// TestBuildEvidenceChain_TaskStartedExcluded pins that CheckTaskStarted (the L2 boundary
+// event that replaced task-start Clear, multi-task-concurrency design §5) is excluded from
+// evidence strength: a timeline marker is not any verification result — bucketing it as
+// deterministic would grant every task a free evidence entry at birth. Entries stay in
+// Entries for trace/timeline rendering.
+//
+// TestBuildEvidenceChain_TaskStartedExcluded 钉住 CheckTaskStarted（L2 事件化里取代
+// task-start Clear 的边界事件，multi-task-concurrency 设计 §5）不计入证据强度：时间线
+// 标记不是任何验证结果——分桶成 deterministic 会让每个任务出生就白得一条证据。
+// 条目仍保留在 Entries 供 trace/时间线渲染。
+func TestBuildEvidenceChain_TaskStartedExcluded(t *testing.T) {
+	entries := []Entry{
+		{Check: CheckTaskStarted, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
+	}
+	ec := BuildEvidenceChain(entries, "t")
+	if ec.Deterministic != 1 {
+		t.Fatalf(`CheckTaskStarted 不应计入 deterministic: got %d, want 1（仅 auto-compile）`, ec.Deterministic)
+	}
+	if ec.AgentClaim != 0 {
+		t.Fatalf(`agent-claim 应为 0, got %d`, ec.AgentClaim)
+	}
+	if len(ec.Entries) != 2 {
+		t.Fatalf(`task-started 条目仍应保留在 Entries 供时间线: got %d, want 2`, len(ec.Entries))
+	}
+}

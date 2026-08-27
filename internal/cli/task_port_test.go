@@ -490,24 +490,45 @@ func TestTaskExport_RedactsChecklog(t *testing.T) {
 	if !bundle.Redacted {
 		t.Error(`bundle.Redacted 应 true`)
 	}
-	if len(bundle.Checklog) != 1 {
-		t.Fatalf(`应含 1 条 checklog, got %d`, len(bundle.Checklog))
+	// Two entries since L2 event-sourcing (multi-task-concurrency §5): the task-started
+	// boundary event written by task start + the seeded compile entry. Both must carry the
+	// same TaskRef scope; redaction assertions run against every entry (the boundary's
+	// Detail/SessionID are identity-bearing too — it embeds the summary and branch).
+	//
+	// L2 事件化（multi-task-concurrency §5）后为两条：task start 写入的 task-started 边界
+	// 事件 + 播种的 compile 条目。两者应同 TaskRef 作用域；脱敏断言对每条都跑（边界
+	// 条目的 Detail/SessionID 同样带身份——内嵌 summary 与分支）。
+	if len(bundle.Checklog) != 2 {
+		t.Fatalf(`应含 2 条 checklog（边界事件 + 播种条目）, got %d`, len(bundle.Checklog))
 	}
-	e := bundle.Checklog[0]
-	if e.SessionID != `[redacted]` {
-		t.Errorf(`checklog SessionID 应 [redacted], got %q`, e.SessionID)
+	byCheck := map[string]checklog.Entry{}
+	for _, e := range bundle.Checklog {
+		byCheck[string(e.Check)] = e
+		if e.TaskRef != `feat/delegate` {
+			t.Errorf(`checklog[%s] TaskRef 应 feat/delegate, got %q`, e.Check, e.TaskRef)
+		}
+		if e.SessionID != `[redacted]` {
+			t.Errorf(`checklog[%s] SessionID 应 [redacted], got %q`, e.Check, e.SessionID)
+		}
+		if e.Detail != `[redacted]` {
+			t.Errorf(`checklog[%s] Detail 应 [redacted], got %q`, e.Check, e.Detail)
+		}
+		if e.ToolName != `` {
+			t.Errorf(`checklog[%s] ToolName 应清空, got %q`, e.Check, e.ToolName)
+		}
 	}
-	if e.Detail != `[redacted]` {
-		t.Errorf(`checklog Detail 应 [redacted], got %q`, e.Detail)
-	}
-	if e.ToolName != `` {
-		t.Errorf(`checklog ToolName 应清空, got %q`, e.ToolName)
+	e, ok := byCheck[`compile`]
+	if !ok {
+		t.Fatalf(`播种的 compile 条目缺失, got checks %v`, bundle.Checklog)
 	}
 	// Timeline shape preserved (Check + TaskRef stay so forge trace can still bucket the entry).
 	//
 	// 时间线形状保留（Check + TaskRef 留下，使 forge trace 仍能分桶该条目）。
-	if e.Check != `compile` || e.TaskRef != `feat/delegate` {
+	if e.TaskRef != `feat/delegate` {
 		t.Errorf(`checklog Check/TaskRef 是形状不应改, got %+v`, e)
+	}
+	if _, ok := byCheck[string(checklog.CheckTaskStarted)]; !ok {
+		t.Errorf(`task-started 边界条目应随 bundle 一起导出, got checks %v`, bundle.Checklog)
 	}
 	// Deep-copy: the ORIGINAL on-disk checklog keeps its identity fields.
 	//
@@ -516,11 +537,20 @@ func TestTaskExport_RedactsChecklog(t *testing.T) {
 	if err != nil {
 		t.Fatalf(`reload original checklog: %v`, err)
 	}
-	if len(orig) != 1 {
-		t.Fatalf(`原件应 1 条, got %d`, len(orig))
+	if len(orig) != 2 {
+		t.Fatalf(`原件应 2 条（边界 + 播种）, got %d`, len(orig))
 	}
-	if orig[0].SessionID != `machine-a-session-secret` || orig[0].Detail != `error in internal/billing/handler.go` {
-		t.Errorf(`脱敏不得改原件 checklog: SessionID/Detail 应仍在, got %+v`, orig[0])
+	var origSeeded *checklog.Entry
+	for i := range orig {
+		if orig[i].Check == `compile` {
+			origSeeded = &orig[i]
+		}
+	}
+	if origSeeded == nil {
+		t.Fatalf(`原件中播种的 compile 条目缺失`)
+	}
+	if origSeeded.SessionID != `machine-a-session-secret` || origSeeded.Detail != `error in internal/billing/handler.go` {
+		t.Errorf(`脱敏不得改原件 checklog: SessionID/Detail 应仍在, got %+v`, origSeeded)
 	}
 }
 
