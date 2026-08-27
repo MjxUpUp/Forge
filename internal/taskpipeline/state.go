@@ -13,6 +13,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/taskcontext"
 	"github.com/MjxUpUp/Forge/internal/util"
+	"github.com/MjxUpUp/Forge/internal/worktree"
 )
 
 // dataHome returns the runtime-state DataDir for root: git projects use user-level
@@ -132,44 +133,105 @@ func ActiveTaskState(root, sessionID string) (*TaskState, error) {
 		// ref 文件过期——fall through
 	}
 
-	// Priority 2: branch-based probe.
+	// Priority 1.5: cwd workspace binding (multi-task-concurrency §4, L1). The binding is
+	// keyed by the workspace PATH, not the session id — a NEW window in the same
+	// directory/worktree resolves the same task. This is the "exit-and-reenter" anchor:
+	// the directory is stable, the session id never is. No freshness gate by design;
+	// existence is the anchor (freshness would turn a crashed session into a lost task).
 	//
-	// 优先级 2：基于 branch 探测
+	// 优先级 1.5：cwd workspace 绑定（multi-task-concurrency §4，L1）。绑定按 workspace
+	// 路径键控而非 session id——同一目录/worktree 里的【新】窗口解析到同一任务。这
+	// 是「退出重进」的锚点：目录是稳定的，session id 永远不是。设计上无新鲜度门；
+	// 存在即锚（设新鲜度门会把崩溃会话变成丢任务）。
+	if b := worktree.Load(root); b != nil && b.TaskRef != "" {
+		if state, err := LoadTaskState(root, b.TaskRef); err == nil && state != nil && state.CompletedAt == nil {
+			return state, nil
+		}
+		// Binding stale (task completed/aborted) — fall through; task start/finish/abort
+		// keep it fresh, this is the crash-window guard.
+		//
+		// 绑定过期（任务已完成/中止）——fall through；task start/finish/abort 维护
+		// 绑定，这里是崩溃窗口的兜底。
+	}
+
+	// Priority 2: branch-based probe, guarded against cross-worktree misattribution
+	// (multi-task-concurrency §4): the branch-mapped task counts only when it is not
+	// actively anchored by ANOTHER session — with two windows sharing a branch name, the
+	// branch alone no longer says whose task this is. The guard skips the hit (falls
+	// through), never guesses.
+	//
+	// 优先级 2：基于 branch 探测，带跨 worktree 误挂守卫（multi-task-concurrency
+	// §4）：分支映射的任务只有在【没有】被其他活跃会话锚定时才算数——两个窗口共
+	// 享分支名时，分支本身已说明不了任务是谁的。守卫跳过命中（fall through），
+	// 绝不猜。
 	ctx := taskcontext.Detect(root)
 	if ctx.IsSet() {
 		if state, err := LoadTaskState(root, ctx.TaskRef); err == nil && state != nil {
-			if state.CompletedAt == nil {
+			if state.CompletedAt == nil && !taskAnchoredByOtherActiveSession(root, state, sessionID) {
 				return state, nil
 			}
-			// Task on this branch already completed — fall through to fallback.
+			// Completed or actively owned by another session — fall through.
 			//
-			// 此 branch 上 task 已完成——fall through 到兜底
+			// 已完成或正被其他会话持有——fall through
 		}
 		// Load failure (missing/corrupt state file, or a ref-collision mismatch) also
-		// falls through to the fallback scan — aborting the whole probe here would skip
-		// priority 3 and lose an otherwise unambiguous active task.
+		// falls through — aborting the whole probe here would skip the legacy bridge
+		// and lose an otherwise unambiguous active task.
 		//
-		// 加载失败（state 文件缺失/损坏，或 ref 串号不匹配）同样 fall through 到
-		// 兜底扫描——此处中断会跳过优先级 3，丢掉本应无歧义的 active task。
+		// 加载失败（state 文件缺失/损坏，或 ref 串号不匹配）同样 fall through——
+		// 此处中断会跳过 legacy 桥，丢掉本应无歧义的 active task。
 	}
 
-	// Priority 3: scan for a single incomplete task (unambiguous context).
+	// Priority 3: legacy global pointer bridge (multi-task-concurrency §4 replaced the
+	// old "single incomplete task" environment guess — in a multi-task world the only
+	// remaining task is at least as likely to be someone else's). The legacy global
+	// active-task-ref (written by pre-session-scoped versions, still written by CLI runs
+	// without a session id) remains readable for ANY session as a one-generation bridge,
+	// and a hit materializes a workspace binding so the next resolution is binding-first.
 	//
-	// 优先级 3：扫单个未完成 task（无歧义上下文）
-	all, err := ListTaskStates(root)
-	if err != nil {
-		return nil, nil
-	}
-	var incomplete []*TaskState
-	for _, s := range all {
-		if s.CompletedAt == nil {
-			incomplete = append(incomplete, s)
+	// 优先级 3：legacy 全局指针桥（multi-task-concurrency §4 用它替换了旧的「唯一未
+	// 完成任务」环境猜测——多任务世界里仅剩的那个任务至少同样可能是别人的）。
+	// legacy 全局 active-task-ref（session-scoped 之前版本写入、无 sid 的 CLI 运行
+	// 仍会写）对任意会话保持可读，作为一代桥接；命中时顺手物化 workspace 绑定，
+	// 让下次解析走 binding 优先。
+	if ref := ReadActiveTaskRef(root, ""); ref != "" {
+		if state, err := LoadTaskState(root, ref); err == nil && state != nil && state.CompletedAt == nil {
+			_ = worktree.BindTask(root, state.TaskRef, state.Branch, sessionID)
+			return state, nil
 		}
 	}
-	if len(incomplete) == 1 {
-		return incomplete[0], nil
-	}
 	return nil, nil
+}
+
+// taskAnchoredByOtherActiveSession reports whether a task's anchored sessions include
+// ANOTHER session whose pointer file still names this task within the activity TTL — i.e.
+// someone else is actively working it right now (multi-task-concurrency §4's P5 guard).
+// Empty sessionID (no-identity host) never guards: without an identity everyone shares
+// the legacy global pointer and the guard would deadlock resolution entirely.
+//
+// taskAnchoredByOtherActiveSession 报告任务的锚定会话里是否有【另一个】会话的指针
+// 文件在活跃 TTL 内仍指向本任务——即此刻有别的人在干它（multi-task-concurrency
+// §4 的 P5 守卫）。空 sessionID（无身份宿主）永不守卫：没有身份时大家共享 legacy
+// 全局指针，守卫会把解析整个锁死。
+func taskAnchoredByOtherActiveSession(root string, state *TaskState, currentSessionID string) bool {
+	if currentSessionID == "" {
+		return false
+	}
+	cutoff := time.Now().Add(-otherSessionActiveTTL)
+	for _, l := range state.SessionLinks {
+		if l.Imported || l.SessionID == "" || l.SessionID == currentSessionID {
+			continue
+		}
+		p := activeTaskRefPath(root, l.SessionID)
+		info, err := os.Stat(p)
+		if err != nil || info.Size() == 0 || info.ModTime().Before(cutoff) {
+			continue
+		}
+		if data, err := os.ReadFile(p); err == nil && strings.TrimSpace(string(data)) == state.TaskRef {
+			return true
+		}
+	}
+	return false
 }
 
 const activeTaskRefFile = "active-task-ref"
