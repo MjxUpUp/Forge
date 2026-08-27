@@ -28,6 +28,21 @@ import (
 // 物理形态：文件系统是一次性工作副本，每任务一份）；`task finish` 合并清理；
 // `worktree janitor` 以「脏的永不删」保上界。
 
+// hasConventionalPrefix mirrors validateBranchRef's accepted prefixes (feat/ fix/
+// refactor/ test/ chore/ docs/ ci/ perf/ build/ style/) — kept adjacent to its only
+// consumer; drift with the validator fails the subsequent validateBranchRef call.
+//
+// hasConventionalPrefix 镜像 validateBranchRef 接受的前缀集——贴着唯一消费方放；
+// 与校验器漂移会被随后的 validateBranchRef 兜住。
+func hasConventionalPrefix(ref string) bool {
+	for _, p := range []string{"feat/", "fix/", "refactor/", "test/", "chore/", "docs/", "ci/", "perf/", "build/", "style/"} {
+		if strings.HasPrefix(ref, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // worktreeBase resolves the base ref for a new task worktree: explicit --base, else the
 // repo's main line (main, falling back to master — local first, then origin).
 //
@@ -56,12 +71,16 @@ func createTaskWorktree(root, ref, base, wtDirParent string) (string, error) {
 	if ref == "" {
 		return "", fmt.Errorf("--worktree requires --ref")
 	}
-	if err := validateBranchRef(ref); err != nil {
-		return "", fmt.Errorf("invalid ref for worktree branch: %w", err)
-	}
+	// dogfood 修订（2026-08-27）：ref 合法性 ≠ 分支合法性——裸 task start 接受任意
+	// ref，而分支需惯例前缀；此前把 ref 直接当分支名校验，dogfood/walkthrough 这类
+	// 合法 ref 被误拒。规则：ref 已带惯例前缀则同名；否则派生 feat/<ref 斜杠转连字>
+	//（分支映射只是解析链的兜底环节，真 ref 由指针/绑定承载）。
 	branch := ref
-	if !strings.Contains(ref, "/") {
-		branch = "feat/" + ref // 分支命名约定：无斜杠 ref 补 feat/ 前缀（detector 可反向解析）
+	if !hasConventionalPrefix(ref) {
+		branch = "feat/" + strings.ReplaceAll(ref, "/", "-")
+	}
+	if err := validateBranchRef(branch); err != nil {
+		return "", fmt.Errorf("invalid derived branch %q (from ref %q): %w", branch, ref, err)
 	}
 	baseRef, err := worktreeBase(root, base)
 	if err != nil {
