@@ -175,8 +175,8 @@ func runTaskFinish(cmd *cobra.Command, args []string) error {
 	}
 	state, err := taskpipeline.LoadTaskState(root, binding.TaskRef)
 	if err != nil || state == nil {
-		// 绑定指向的任务已消失（abort/删除）：按死锚解绑即可。
-		_ = worktree.Clear(root, binding.TaskRef)
+		// 绑定指向的任务已消失（abort/删除）：按任务清扫全部死锚绑定。
+		_ = worktree.ClearAllForTask(root, binding.TaskRef)
 		fmt.Printf("绑定指向的任务 %s 已不存在——已解绑死锚\n", binding.TaskRef)
 		return nil
 	}
@@ -234,7 +234,11 @@ func runTaskFinish(cmd *cobra.Command, args []string) error {
 	if err := removeWorktree(mainRoot, wtPath); err != nil {
 		return fmt.Errorf("worktree 清理失败（合并已完成，可手动 git worktree remove）: %w", err)
 	}
-	_ = worktree.Clear(wtPath, state.TaskRef)
+	// dogfood 发现 #4（二次修订）：按 ID 经主检出解绑——worktree 目录已消失，
+	// Clear(原路径) 的 DataDirFor 身份推导漂移成静默 no-op，绑定残留。首次修订
+	// 因替换未落盘而假修（教训：字符串替换必须断言命中数），本行由 ClearByID
+	// 按绑定存储的 wtid 直删 + TaskRef 比对。
+	_ = worktree.ClearByID(mainRoot, binding.ID, state.TaskRef)
 	fmt.Printf("任务 %s 完成：已合并 %s，worktree 已清理\n", state.TaskRef, binding.Branch)
 	return nil
 }

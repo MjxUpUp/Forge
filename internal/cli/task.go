@@ -1019,9 +1019,11 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 			fmt.Fprintf(os.Stderr, "Warning: failed to clear active task ref: %v\n", err)
 		}
 	}
-	// L1：abort 同步解绑 cwd（同 Clear 语义——只解仍指向本任务的绑定）。best-effort。
-	if err := worktree.Clear(root, taskRef); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to clear workspace binding: %v\n", err)
+	// L1（#4 深挖修订）：abort 按任务清扫【全部】绑定——任务即将删除，任何指向
+	// 它的绑定（含其 worktree 的 wtid 键控绑定，abort 常从主检出发起、cwd 键控
+	// 的 Clear 够不到）都是死锚。best-effort。
+	if err := worktree.ClearAllForTask(root, taskRef); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to clear workspace bindings: %v\n", err)
 	}
 
 	// --cascade: abort every transitive dependent and clear its active-task-ref. Done after the
