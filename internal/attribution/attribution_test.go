@@ -248,3 +248,28 @@ func TestLedgerPerWorkspace(t *testing.T) {
 		t.Error("ws1 应看到自己的台账")
 	}
 }
+
+// TestLedgerTTL_StaleEntriesExpire pins the 7d TTL (review HIGH): an event older than
+// the ledger TTL must not win last-writer over the current task's unseen change — stale
+// attribution is worse than a miss (a miss surfaces as a visible orphan).
+//
+// TestLedgerTTL_StaleEntriesExpire 钉住 7d TTL（review HIGH）：超 TTL 的事件不得作为
+// 最后写入者胜过当前任务的漏记变更——陈旧归因比漏归属更糟（漏 = 无主 = 可见）。
+func TestLedgerTTL_StaleEntriesExpire(t *testing.T) {
+	dir := initGitRepo(t)
+	write(t, dir, "p.go", "package p\n")
+	Record(dir,
+		Event{Ts: time.Now().Add(-8 * 24 * time.Hour), Sid: "zombie", Kind: KindWrite, Path: "p.go"},
+		Event{Ts: time.Now().Add(-8 * 24 * time.Hour), Sid: "zombie", Kind: KindWrite, Path: "gone-old.go"},
+	)
+	v := Reconcile(dir)
+	if len(v.BySession) != 0 {
+		t.Fatalf("过期事件不应参与归属: %v", v.BySession)
+	}
+	if len(v.Orphans) != 1 || v.Orphans[0] != "p.go" {
+		t.Fatalf("p.go 应降为无主（诚实暴露）: %v", v.Orphans)
+	}
+	if got := SessionTouched(dir, "zombie"); len(got) != 0 {
+		t.Fatalf("过期事件不应进 SessionTouched: %v", got)
+	}
+}

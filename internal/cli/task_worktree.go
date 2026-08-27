@@ -140,20 +140,29 @@ func runTaskFinish(cmd *cobra.Command, args []string) error {
 	mergeTo, _ := cmd.Flags().GetString("merge-to")
 	keep, _ := cmd.Flags().GetBool("keep")
 
-	sid := taskpipeline.CurrentSessionID()
-	state, err := taskpipeline.ActiveTaskState(root, sid)
+	// finish 按【绑定】而非 ActiveTaskState 解析（合并窗口崩溃修复，review B2
+	// 关联缺陷）：complete 已解绑或绑定被外部清掉时 ActiveTaskState 不再解析
+	// 到该任务（它跳过已完成任务），若 finish 先查活跃状态，用户会永远卡在
+	// "无活跃任务"而 worktree 无人清理。先查 binding——它是清理的权威锚。
+	binding := worktree.Load(root)
+	if binding == nil || binding.TaskRef == "" {
+		// 主检出或无绑定任务：无 worktree 可清理。
+		sid := taskpipeline.CurrentSessionID()
+		if st, _ := taskpipeline.ActiveTaskState(root, sid); st != nil && st.CompletedAt == nil {
+			return fmt.Errorf("任务 %s 尚未 complete——先过完三道门禁（当前 %s）", st.TaskRef, st.CurrentGate)
+		}
+		fmt.Println("无本目录 worktree 绑定，无需清理")
+		return nil
+	}
+	state, err := taskpipeline.LoadTaskState(root, binding.TaskRef)
 	if err != nil || state == nil {
-		return fmt.Errorf("无活跃任务——finish 需要先完成门禁（forge task complete）")
+		// 绑定指向的任务已消失（abort/删除）：按死锚解绑即可。
+		_ = worktree.Clear(root, binding.TaskRef)
+		fmt.Printf("绑定指向的任务 %s 已不存在——已解绑死锚\n", binding.TaskRef)
+		return nil
 	}
 	if state.CompletedAt == nil {
 		return fmt.Errorf("任务 %s 尚未 complete——先过完三道门禁（当前 %s）", state.TaskRef, state.CurrentGate)
-	}
-
-	binding := worktree.Load(root)
-	if binding == nil || binding.TaskRef != state.TaskRef {
-		// 主检出或无绑定任务：finish 退化为提示（无 worktree 可清理）。
-		fmt.Printf("任务 %s 已完成（无本目录 worktree 绑定，无需清理）\n", state.TaskRef)
-		return nil
 	}
 	wtPath := binding.Path
 
@@ -166,12 +175,31 @@ func runTaskFinish(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("推导主检出失败: %w", err)
 	}
+	// B2 修正（review BLOCKER）：主检出绑定（task start 于主检出或 legacy 桥建立的
+	// 绑定）不是 worktree——不做 merge/remove，只解绑提示。否则 git worktree remove
+	// 会拒（main working tree），且若合并先行则用户被丢在"已合并但清理失败、且
+	// ActiveTaskState 跳过已完成任务使重试无解"的半完成态。
+	if wtPath == mainRoot {
+		_ = worktree.Clear(wtPath, state.TaskRef)
+		fmt.Printf("任务 %s 已完成（主检出绑定，非 worktree——合并/清理不适用）\n", state.TaskRef)
+		return nil
+	}
 	target := mergeTo
 	if target == "" {
 		target, err = worktreeBase(mainRoot, "")
 		if err != nil {
 			return err
 		}
+	}
+	// B2 修正：合并必须在【目标分支】上执行——裸 git merge 合进主检出当前 HEAD，
+	// 与打印的目标不一致。多任务常态下主检出很可能不在主线上。
+	headOut, herr := exec.Command("git", "-C", mainRoot, "rev-parse", "--abbrev-ref", "HEAD").Output()
+	if herr != nil {
+		return fmt.Errorf("读取主检出分支失败: %v", herr)
+	}
+	head := strings.TrimSpace(string(headOut))
+	if head != target {
+		return fmt.Errorf("主检出当前在 %s，不在合并目标 %s——请先 checkout %s 或用 --merge-to %s\n（多任务常态：主检出停在某个任务分支上，盲目合并会把任务分支合进错误分支）", head, target, target, head)
 	}
 	fmt.Printf("合并 %s → %s（主检出 %s）…\n", binding.Branch, target, mainRoot)
 	if out, err := exec.Command("git", "-C", mainRoot, "merge", "--no-edit", binding.Branch).CombinedOutput(); err != nil {

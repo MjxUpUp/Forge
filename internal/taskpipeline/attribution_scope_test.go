@@ -15,7 +15,7 @@ import (
 // would test the mock.
 //
 // 真实 git 仓库 + 真实任务状态 + 真实台账：ForeignAttributedPaths 是三方 join
-//（任务会话锚 × 归属台账 × git status）——mock 只能测 mock 自己。
+// （任务会话锚 × 归属台账 × git status）——mock 只能测 mock 自己。
 func setupAttributionRepo(t *testing.T) string {
 	t.Helper()
 	t.Setenv("FORGE_DATA_HOME", t.TempDir())
@@ -37,9 +37,9 @@ func setupAttributionRepo(t *testing.T) string {
 	write := func(rel string) {
 		os.WriteFile(filepath.Join(dir, rel), []byte("package x\n"), 0o644)
 	}
-	write("mine.go")    // 任务 X 会话的文件
-	write("theirs.go")  // 任务 Y 会话的文件
-	write("orphan.go")  // 无主（台账解释不了）
+	write("mine.go")   // 任务 X 会话的文件
+	write("theirs.go") // 任务 Y 会话的文件
+	write("orphan.go") // 无主（台账解释不了）
 
 	mkTask := func(ref, sid string) *TaskState {
 		s := &TaskState{TaskRef: ref, Summary: ref, Branch: "b"}
@@ -135,5 +135,47 @@ func TestTaskFingerprint_ExclusionConsistency(t *testing.T) {
 	// 排除外来文件后，指纹应与「人为去掉 theirs.go 的全树计算」不同——证明排除生效。
 	if h1 == "" {
 		t.Fatal("指纹不应为空（存在源码变更）")
+	}
+}
+
+// TestForeignAttributedPaths_SharedSessionNotForeign pins the B1 fix (review BLOCKER):
+// one session anchoring TWO incomplete tasks (the supported same-window sequential
+// multi-task flow) is foreign to NEITHER — the task's own uncommitted changes must stay
+// in its own review fingerprint, never be silently excluded.
+//
+// TestForeignAttributedPaths_SharedSessionNotForeign 钉住 B1 修正（review BLOCKER）：
+// 同一会话锚定两个未完成任务（显式支持的单窗口顺序多任务）对【任一】任务都不算
+// 外来——任务自己的未提交变更必须留在自己的 review 指纹里，绝不静默排除。
+func TestForeignAttributedPaths_SharedSessionNotForeign(t *testing.T) {
+	dir := setupAttributionRepo(t) // task-x(sess-x) / task-y(sess-y) / a.go=b.go=orphan.go 变更
+	// 单窗口顺序流：同一 session 把第二个任务也开了——AddSession 将 sess-x 也锚到 task-y。
+	stateY, err := LoadTaskState(dir, "task-y")
+	if err != nil || stateY == nil {
+		t.Fatalf("load task-y: %v %v", stateY, err)
+	}
+	_ = MutateTaskState(dir, "task-y", func(s *TaskState) error {
+		s.AddSession("sess-x", "test")
+		return nil
+	})
+
+	// 从 task-x 视角：sess-x 现在锚在两个任务上——它的一切路径都不外来。
+	foreign := ForeignAttributedPaths(dir, "task-x")
+	// B1 核心：共享会话 sess-x 的路径（mine.go）不得外来；纯他方 sess-y 的
+	// theirs.go 仍正常外来（属另一任务独有会话）。
+	if foreign["mine.go"] {
+		t.Fatalf("B1 回归：共享会话 sess-x 的路径被误标外来: %v", foreign)
+	}
+	if !foreign["theirs.go"] {
+		t.Fatalf("纯他方会话 sess-y 的 theirs.go 应仍外来, got %v", foreign)
+	}
+	// 第三方会话（只在 task-y）的路径仍是外来。
+	_ = MutateTaskState(dir, "task-y", func(s *TaskState) error {
+		s.AddSession("sess-stranger", "test")
+		return nil
+	})
+	attribution.Record(dir, attribution.Event{Ts: time.Now(), Sid: "sess-stranger", Kind: attribution.KindWrite, Path: "stranger.go"})
+	os.WriteFile(filepath.Join(dir, "stranger.go"), []byte("package s\n"), 0o644)
+	if foreign := ForeignAttributedPaths(dir, "task-x"); !foreign["stranger.go"] {
+		t.Fatalf("纯他方会话的路径应仍外来, got %v", foreign)
 	}
 }

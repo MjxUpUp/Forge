@@ -63,8 +63,17 @@ func ForeignAttributedPaths(root, ownTaskRef string) map[string]bool {
 		return foreign // 基建读不出任务清单：无外来可证，fail-safe 全保留
 	}
 	foreignSids := map[string]bool{}
+	ownSids := map[string]bool{}
 	for _, t := range tasks {
-		if t == nil || t.TaskRef == ownTaskRef || t.IsComplete() {
+		if t == nil || t.IsComplete() {
+			continue
+		}
+		if t.TaskRef == ownTaskRef {
+			for _, l := range t.SessionLinks {
+				if !l.Imported && l.SessionID != "" {
+					ownSids[l.SessionID] = true
+				}
+			}
 			continue
 		}
 		for _, l := range t.SessionLinks {
@@ -72,6 +81,21 @@ func ForeignAttributedPaths(root, ownTaskRef string) map[string]bool {
 				foreignSids[l.SessionID] = true
 			}
 		}
+	}
+	// B1 修正（review BLOCKER）：同时锚定在本任务与其他任务上的会话【绝不】算外来
+	// ——单窗口顺序多任务（同 session 先开 A 再开 B，A 未完成）是显式支持形态，
+	// 此时该 sid 在 A 视角被误标外来，A 自己的未提交变更会被静默排除出 review
+	// 指纹（review-bypass）与接手视图（藏自己 WIP 在计数行后）。按契约 fail-safe
+	// 向包含降级：判不出归属的宁可保留，绝不藏变更。
+	//
+	// B1 fix (review BLOCKER): a session anchored on BOTH the own task and other tasks
+	// is never foreign — the supported same-window sequential multi-task flow puts one
+	// sid in both tasks' links; treating it as foreign silently excludes the task's own
+	// uncommitted changes from the review fingerprint (review bypass) and hides its WIP
+	// behind the exclusion count line. Fail-safe direction: include on uncertainty,
+	// never hide changes.
+	for sid := range ownSids {
+		delete(foreignSids, sid)
 	}
 	if len(foreignSids) == 0 {
 		return foreign
