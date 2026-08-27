@@ -220,6 +220,9 @@ func runInitUserLevel(dir string, agents []agentbridge.AgentType, proto *protoco
 	fmt.Println("  forge task start  — 开始任务（自动检测分支）")
 	fmt.Println("  forge status      — 查看项目状态")
 	fmt.Println("  forge init --project — 团队模式（资产写项目目录，可 git 共享）")
+	// onboarding 触发点（multi-task-concurrency §13）：init 是引导 harness repo 的
+	// 天然时机——cooldown 防重复，agent 不得代批的 HITL 在 harness init 本体。
+	MaybeOfferHarness("forge init")
 	return nil
 }
 
