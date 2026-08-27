@@ -311,7 +311,7 @@ func runTaskResume(cmd *cobra.Command, args []string) error {
 		fmt.Println(string(out))
 		return nil
 	}
-	fmt.Print(renderResume(state, attributedPorcelain(root, state), workspaceContextLine(root, state.CrossRepoImpact)))
+	fmt.Print(renderResume(state, attributedPorcelain(root, state), workspaceContextLine(root, state.CrossRepoImpact), taskpipeline.PriorAttemptsSummary(root, state.TaskRef, 3, 2000)))
 	return nil
 }
 
@@ -408,7 +408,7 @@ func renderHookResume(root string) (string, error) {
 	if _, err := attachCurrentSession(state, root, true); err != nil {
 		return "", err
 	}
-	handoff := renderResume(state, attributedPorcelain(root, state), workspaceContextLine(root, state.CrossRepoImpact))
+	handoff := renderResume(state, attributedPorcelain(root, state), workspaceContextLine(root, state.CrossRepoImpact), taskpipeline.PriorAttemptsSummary(root, state.TaskRef, 3, 2000))
 	// The current task resumes automatically, but the handoff party should still know
 	// the full in-flight set — one line naming the other incomplete tasks. The list is
 	// capped (zombie accumulation would otherwise produce a giant line and push the
@@ -901,7 +901,7 @@ func renderHookReinject(root string) (string, error) {
 		}
 		return "", nil
 	}
-	handoff := renderResume(state, attributedPorcelain(root, state), workspaceContextLine(root, state.CrossRepoImpact))
+	handoff := renderResume(state, attributedPorcelain(root, state), workspaceContextLine(root, state.CrossRepoImpact), taskpipeline.PriorAttemptsSummary(root, state.TaskRef, 3, 2000))
 	// Plan 4 (mid-way checkpoint explicit persist · active driving): right after a
 	// compaction, if the task has not persisted any "mid-way thread" (decision/next
 	// step), the handoff can only restore the goal/plan set at task start — and that
@@ -983,7 +983,7 @@ func runTaskContext(cmd *cobra.Command, args []string) error {
 		fmt.Println(string(out))
 		return nil
 	}
-	fmt.Print(renderResume(state, attributedPorcelain(root, state), workspaceContextLine(root, state.CrossRepoImpact)))
+	fmt.Print(renderResume(state, attributedPorcelain(root, state), workspaceContextLine(root, state.CrossRepoImpact), taskpipeline.PriorAttemptsSummary(root, state.TaskRef, 3, 2000)))
 	return nil
 }
 
