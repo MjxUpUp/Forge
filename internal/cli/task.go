@@ -15,6 +15,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
 	"github.com/MjxUpUp/Forge/internal/util"
+	"github.com/MjxUpUp/Forge/internal/worktree"
 	"github.com/spf13/cobra"
 )
 
@@ -81,6 +82,9 @@ func init() {
 	taskStartCmd.Flags().String(`ref`, ``, `任务引用（如 feat/add-auto-branch），默认从分支名推断`)
 	taskStartCmd.Flags().String("from-issue", "", "外部 issue URL（linear/github），解析为 task.ExternalOrigin 锚定外部 issue（衔接 spawn 式编排器）")
 	taskStartCmd.Flags().Bool("branch", false, "从 main/master 创建新分支并切换（ref 作为分支名）")
+	taskStartCmd.Flags().Bool("worktree", false, "在 repo 树外为此任务创建独立 worktree+分支+绑定（multi-task-concurrency L4；需 --ref）")
+	taskStartCmd.Flags().String("base", "", "--worktree 的基线 ref（默认主线 main/master）")
+	taskStartCmd.Flags().String("wt-dir", "", "--worktree 的父目录（默认 <repo 父目录>/<repo 名>-wt/）")
 	taskStartCmd.Flags().Bool("json", false, "JSON 格式输出")
 	taskStatusCmd.Flags().Bool("json", false, "JSON 格式输出")
 	taskStatusCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
@@ -358,6 +362,17 @@ func completeGenericTask(root string, state *taskpipeline.TaskState) error {
 	if err := taskpipeline.ClearActiveTaskRef(root, sid); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to clear active task ref: %v\n", err)
 	}
+	// L1 绑定处理分形态：主检出任务 complete 即解绑（新窗口不再解析到已完结
+	// 任务）；worktree 任务【保留】绑定——finish 收尾依赖它（合并 + 清理 + 解绑）。
+	// complete 时解绑 worktree 绑定会让 finish 判定「无本目录绑定」而永不清理
+	// （review B2 关联缺陷的完整修复）。ActiveTaskState 对已完成任务本就跳过绑定
+	// 命中，保留不产生误挂。best-effort。
+	if taskpipeline.IsMainCheckout(root) {
+		if err := worktree.Clear(root, state.TaskRef); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to clear workspace binding: %v\n", err)
+		}
+	}
+	HarnessCommitBestEffort("task completed: " + state.TaskRef)
 	return nil
 }
 
@@ -395,6 +410,29 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	explicitRef, _ := cmd.Flags().GetString("ref")
 	title, _ := cmd.Flags().GetString("title")
 	createBranch, _ := cmd.Flags().GetBool("branch")
+	useWorktree, _ := cmd.Flags().GetBool("worktree")
+
+	// --worktree (multi-task-concurrency §7, L4): create the isolated workspace FIRST,
+	// then run the whole start flow rooted there — task state lands in the shared DataDir
+	// (worktrees share the project key by design), the binding anchors the NEW path, and
+	// the session pointer is unchanged. The created worktree is deliberately kept on any
+	// later failure (宁留勿删): the guidance line tells the user how to clean up.
+	//
+	// --worktree（multi-task-concurrency §7，L4）：先建隔离 workspace，再以它为根跑
+	// 整个 start 流程——任务状态落共享 DataDir（worktree 按设计共享 project key），
+	// 绑定锚定【新】路径，会话指针不变。后续步骤失败时刻意保留 worktree（宁留勿
+	// 删）：指引行告知用户如何清理。
+	if useWorktree {
+		base, _ := cmd.Flags().GetString("base")
+		wtDir, _ := cmd.Flags().GetString("wt-dir")
+		wtRoot, werr := createTaskWorktree(root, explicitRef, base, wtDir)
+		if werr != nil {
+			return werr
+		}
+		root = wtRoot
+		fmt.Printf("worktree 已创建: %s（如本次启动失败可 git worktree remove 清理）\n", wtRoot)
+		fmt.Printf("下一步：cd %s 并重开窗口，或直接 forge task resume 接续\n", wtRoot)
+	}
 
 	// --branch: create a new branch from main/master and switch to it.
 	//
@@ -515,6 +553,15 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("读取 --plan-file %q 失败: %w", planFile, err)
 		}
 		state.Plan = string(planData)
+		// L6（multi-task-concurrency §9）：plan 同时作为首个 specs 产物落文件
+		//（harness repo tracked），TaskState 持哈希引用（I5：文件拥有内容，状态只
+		// 指向）。best-effort——产物写失败不阻断任务创建。
+		if aref, aerr := taskpipeline.WriteArtifact(root, ctx.TaskRef, "plan", state.Plan); aerr == nil {
+			if state.SpecArtifacts == nil {
+				state.SpecArtifacts = map[string]taskpipeline.ArtifactRef{}
+			}
+			state.SpecArtifacts["plan"] = aref
+		}
 		// Auto-extract acceptance criteria from Plan markdown (Run:/Expected: blocks),
 		// closing the gap of hand-copying plan's Run/Expected into --accept (dogfood:
 		// self-disciplined hand-copying always leaks; uncopied criteria leave the
@@ -669,18 +716,43 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Clear checklog for the new task. (Clear also prunes expired checklog/toollog
-	// archives per FORGE_LOG_RETENTION_DAYS — see store.go.)
+	// Append a task-started boundary event instead of Clearing the logs
+	// (multi-task-concurrency design §5, L2 event-sourcing). The old Clear was a
+	// destructive truncation with three production failure faces: a task B start
+	// wiped in-flight task A's evidence chain (concurrent tasks share the project
+	// DataDir by design), a crash between tool call and state write left the audit
+	// chain severed, and cross-machine merges lost whatever had been cleared.
+	// Reads were already TaskRef-scoped (checklog.LoadForTask /
+	// LatestByCheckForSession, toolusage.LoadForTask), so segmentation by boundary
+	// event preserves everything Clear protected against — inheritance of a
+	// previous task's evidence — without destroying anything. Retention pruning
+	// (the useful half of Clear) stays, non-destructively.
 	//
-	// 为新 task 清 checklog。（Clear 也会按 FORGE_LOG_RETENTION_DAYS 清理超期 checklog/toollog
-	// 归档——见 store.go。）Clear 失败只 stderr 告警（不阻断 task start），但必须留痕——
-	// 静默失败会让新任务继承上一任务的证据链。
-	if cerr := checklog.Clear(root); cerr != nil {
-		fmt.Fprintf(os.Stderr, "warn: 清空 checklog 失败（新任务可能混入上一任务证据）: %v\n", cerr)
+	// 追加 task-started 边界事件，取代清空日志（multi-task-concurrency 设计 §5，L2 事件
+	// 化）。旧 Clear 是破坏性截断，三个生产事故面：任务 B 开工抹掉在途任务 A 的证据链
+	//（并发任务按设计共享项目 DataDir）；工具调用与状态写之间的崩溃断掉审计链；被清
+	// 掉的内容跨机合并即丢失。读取侧本就按 TaskRef 过滤（checklog.LoadForTask /
+	// LatestByCheckForSession、toolusage.LoadForTask），按边界事件分段既保住 Clear 防的
+	// 那件事——新任务继承上一任务的证据——又不破坏任何东西。retention 清理（Clear 有
+	// 用的那半）保留，非破坏性。
+	recordAuditErr := func(err error, what string) {
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warn: %s 失败: %v\n", what, err)
+		}
 	}
-	if cerr := toolusage.Clear(root); cerr != nil {
-		fmt.Fprintf(os.Stderr, "warn: 清空 toollog 失败（新任务可能混入上一任务工具记录）: %v\n", cerr)
-	}
+	recordAuditErr(checklog.Record(root, &checklog.Entry{
+		Check:   checklog.CheckTaskStarted,
+		Passed:  true,
+		Checked: true,
+		Level:   checklog.LevelAdvisory,
+		TaskRef: ctx.TaskRef,
+		Detail:  fmt.Sprintf("task started: %s (branch %s)", state.Summary, state.Branch),
+	}), "记录 task-started 边界事件")
+	checklog.Prune(root)
+	toolusage.Prune(root)
+	// harness repo 批量提交（multi-task-concurrency §13 提交策略：任务边界触发，
+	// 绝不逐 hook——延迟预算）。best-effort 静默。
+	HarnessCommitBestEffort("task started: " + ctx.TaskRef)
 
 	// Prune completed task-state files beyond the retention window to keep
 	// DataDir/tasks/ bounded. Same window as log archival, so task metadata is
@@ -703,6 +775,17 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	// session-scoped，并发 session 不会互相覆盖。
 	if err := taskpipeline.SetActiveTaskRef(root, sid, ctx.TaskRef); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to set active task ref: %v\n", err)
+	}
+
+	// L1 workspace binding (multi-task-concurrency §4): anchor the cwd to the task so a
+	// NEW window in this directory/worktree resolves it without any session surviving.
+	// Best-effort — a failed bind only degrades to session-pointer/branch resolution.
+	//
+	// L1 workspace 绑定（multi-task-concurrency §4）：把 cwd 锚到任务上，使本目录/
+	// worktree 里的【新】窗口无需任何会话存活即可解析到它。尽力而为——绑定失败只
+	// 降级为会话指针/分支解析。
+	if err := worktree.BindTask(root, ctx.TaskRef, state.Branch, sid); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to bind workspace: %v\n", err)
 	}
 
 	// Graceful degradation for non-git projects — gates still pass, 'complete' still
@@ -935,6 +1018,10 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 		if err := taskpipeline.ClearActiveTaskRef(root, sid); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to clear active task ref: %v\n", err)
 		}
+	}
+	// L1：abort 同步解绑 cwd（同 Clear 语义——只解仍指向本任务的绑定）。best-effort。
+	if err := worktree.Clear(root, taskRef); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to clear workspace binding: %v\n", err)
 	}
 
 	// --cascade: abort every transitive dependent and clear its active-task-ref. Done after the
@@ -1787,7 +1874,7 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 func checkMissingHooks(root string, state *taskpipeline.TaskState) []string {
 	var missing []string
 
-	latestChecks, err := checklog.LatestByCheckForSession(root, state.SessionID)
+	latestChecks, err := checklog.LatestByCheckForSessionSince(root, state.SessionID, state.StartedAt)
 	if err != nil || latestChecks == nil {
 		// Cannot read checklog — assume every hook is missing unless gate history shows
 		// it ran.

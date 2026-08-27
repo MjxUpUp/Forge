@@ -6,7 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/MjxUpUp/Forge/internal/attribution"
 	"github.com/MjxUpUp/Forge/internal/skillsqa"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
@@ -307,5 +309,47 @@ func TestValidConditions_MatchEngine(t *testing.T) {
 		if _, ok := Conditions[k]; !ok {
 			t.Errorf("skillsqa.ValidConditions 含 %q 但 skilltrigger.Conditions 无——新增 condition 须同时改 rules.go 与 conditions.go", k)
 		}
+	}
+}
+
+// TestCondSourceChanged_SessionAttribution pins the L3 attribution filter
+// (multi-task-concurrency §6, T3): the Stop discipline fires only when THIS session's
+// ledger-touched set intersects the changed source set — another window's WIP in the
+// shared working tree no longer nags this window (the user's P1 pain). Escape hatch
+// FORGE_ATTRIBUTION=0 and the no-sid degraded path both fall back to whole-tree.
+//
+// TestCondSourceChanged_SessionAttribution 钉住 L3 归属过滤（multi-task-concurrency
+// §6，T3）：Stop 纪律只在「本会话台账触碰集 ∩ 变更源码集」非空时触发——共享工作树
+// 里另一个窗口的 WIP 不再触发本窗口的提示（用户实测痛点 P1）。逃生舱
+// FORGE_ATTRIBUTION=0 与无 sid 降级路径都回落全树行为。
+func TestCondSourceChanged_SessionAttribution(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir()) // 归属台账走 DataDir——隔离真实 ~/.forge
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "t@t.t")
+	runGit(t, dir, "config", "user.name", "t")
+	for _, f := range []string{"mine.go", "theirs.go"} {
+		if err := os.WriteFile(filepath.Join(dir, f), []byte("package x"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	attribution.Record(dir, attribution.Event{Ts: time.Now(), Sid: "sess-a", Kind: attribution.KindWrite, Path: "mine.go"})
+
+	// 窗口 B（另一任务）看同一棵工作树：A 的 WIP 不得触发 B 的纪律提示。
+	if condSourceChanged(Context{ProjectRoot: dir, SessionID: "sess-b"}) {
+		t.Fatal("sess-b 未触碰任何变更文件——另一窗口的 WIP 不应触发本窗口提示（P1 痛点）")
+	}
+	// 窗口 A 自己动过源码 → 正常触发。
+	if !condSourceChanged(Context{ProjectRoot: dir, SessionID: "sess-a"}) {
+		t.Fatal("sess-a 触碰过 mine.go 且仍在变更集——应触发")
+	}
+	// 无 sid（无身份宿主）→ 旧全树行为（advisory 宁多勿漏）。
+	if !condSourceChanged(Context{ProjectRoot: dir}) {
+		t.Fatal("无 sid 应回落全树行为为 true")
+	}
+	// 逃生舱：FORGE_ATTRIBUTION=0 一键回 L3 之前。
+	t.Setenv("FORGE_ATTRIBUTION", "0")
+	if !condSourceChanged(Context{ProjectRoot: dir, SessionID: "sess-b"}) {
+		t.Fatal("FORGE_ATTRIBUTION=0 应回退全树行为为 true")
 	}
 }

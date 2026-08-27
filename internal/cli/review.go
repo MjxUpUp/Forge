@@ -156,7 +156,7 @@ func runReviewPassAt(root, explicitRef, note string, acknowledgeChanges bool) er
 		// 强制"审查后改码必复审"。head 取不到 → 传空跳过快照检查（仅留 ReviewPassed 硬前置），
 		// pass 是 agent 主导动作故 fail-open。hash 出错同样取空（不阻塞 pass）。
 		head := taskpipeline.GetHeadCommit(root)
-		hash, _, _ := review.SourceChangesSince(root, head)
+		hash, _, _ := taskpipeline.TaskFingerprint(root, state, head)
 
 		// Self-refresh guard (2026-08-25 gate-loopholes): re-stamping when the SOURCE
 		// CONTENT has changed since the last stamped baseline used to silently refresh
@@ -188,7 +188,7 @@ func runReviewPassAt(root, explicitRef, note string, acknowledgeChanges bool) er
 		selfRefresh := false
 		baselineUnreachable := ""
 		if state.ReviewedHeadCommit != "" {
-			cur, _, err := review.SourceChangesSince(root, state.ReviewedHeadCommit)
+			cur, _, err := taskpipeline.TaskFingerprint(root, state, state.ReviewedHeadCommit)
 			switch {
 			case err != nil:
 				baselineUnreachable = state.ReviewedHeadCommit
@@ -315,7 +315,7 @@ func runReviewPassAt(root, explicitRef, note string, acknowledgeChanges bool) er
 // behind the stamp). Best-effort: an error yields "" (detail degrades, never blocks).
 //
 // currentDiffHash 返回工作区相对 HEAD 的源码指纹，供审计 detail 使用
-//（review.SourceChangesSince(root, "")——与打戳背后的 computeDiffHash 同一计算）。
+// （review.SourceChangesSince(root, "")——与打戳背后的 computeDiffHash 同一计算）。
 // best-effort：出错返回 ""（detail 降级，绝不阻断）。
 func currentDiffHash(root string) string {
 	h, _, err := review.SourceChangesSince(root, "")
@@ -501,7 +501,7 @@ func renderReviewStatus(root, explicitRef string) error {
 			// 快照一致性：重算 SourceChangesSince(ReviewedHeadCommit) 比对审查基线——
 			// 让"审查后改了码"在 status 就可见（不必等 task-complete 被拒才发现）。
 			if state.ReviewedHeadCommit != "" {
-				cur, _, err := review.SourceChangesSince(root, state.ReviewedHeadCommit)
+				cur, _, err := taskpipeline.TaskFingerprint(root, state, state.ReviewedHeadCommit)
 				switch {
 				case err != nil:
 					fmt.Printf("→ ⚠ 审查基线 HEAD=%s 不可达（%v）——历史可能被改写，建议重新 forge review pass\n", state.ReviewedHeadCommit, err)

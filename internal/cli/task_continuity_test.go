@@ -9,6 +9,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
+	"github.com/MjxUpUp/Forge/internal/worktree"
 )
 
 // TestRenderResumeSections verifies that the resume view renders all continuity fields — so the handoff party sees at a glance
@@ -277,6 +278,9 @@ func TestRenderHookResume_InventorySkipsCompleted(t *testing.T) {
 		if err := taskpipeline.SaveTaskState(root, s); err != nil {
 			t.Fatalf("SaveTaskState: %v", err)
 		}
+		if s.CompletedAt == nil {
+			bindBranchIfSet(t, root, s) // 已完成任务不绑（绑定对已完成任务无意义且会污染解析）
+		}
 	}
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "sid-mix")
 	out, err := renderHookResume(root)
@@ -355,6 +359,7 @@ func TestRenderHookResume_WithActiveTask(t *testing.T) {
 	if err := taskpipeline.SaveTaskState(root, state); err != nil {
 		t.Fatalf("SaveTaskState: %v", err)
 	}
+	bindBranchIfSet(t, root, state)
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "sid-hook-1")
 
 	out, err := renderHookResume(root)
@@ -389,6 +394,7 @@ func TestRenderHookResume_IdempotentAttach(t *testing.T) {
 	if err := taskpipeline.SaveTaskState(root, state); err != nil {
 		t.Fatalf("SaveTaskState: %v", err)
 	}
+	bindBranchIfSet(t, root, state)
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "sid-idem")
 	if _, err := renderHookResume(root); err != nil {
 		t.Fatalf("first renderHookResume: %v", err)
@@ -467,6 +473,7 @@ func TestRenderHookCompactFlag(t *testing.T) {
 	if err := taskpipeline.SaveTaskState(root, state); err != nil {
 		t.Fatalf("SaveTaskState: %v", err)
 	}
+	bindBranchIfSet(t, root, state)
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "sid-compact")
 	if err := renderHookCompactFlag(root); err != nil {
 		t.Fatalf("renderHookCompactFlag: %v", err)
@@ -500,6 +507,7 @@ func TestRenderHookCompactFlag_LegacyNoSession(t *testing.T) {
 	if err := taskpipeline.SaveTaskState(root, state); err != nil {
 		t.Fatalf("SaveTaskState: %v", err)
 	}
+	bindBranchIfSet(t, root, state)
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
 	t.Setenv("FORGE_SESSION_ID", "")
 	if err := renderHookCompactFlag(root); err != nil {
@@ -523,6 +531,7 @@ func TestRenderHookReinject(t *testing.T) {
 	if err := taskpipeline.SaveTaskState(root, state); err != nil {
 		t.Fatalf("SaveTaskState: %v", err)
 	}
+	bindBranchIfSet(t, root, state)
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "sid-reinject")
 
 	// No mark → silent empty return.
@@ -574,6 +583,7 @@ func TestRenderHookReinject_PerSessionIsolation(t *testing.T) {
 	if err := taskpipeline.SaveTaskState(root, state); err != nil {
 		t.Fatalf("SaveTaskState: %v", err)
 	}
+	bindBranchIfSet(t, root, state)
 
 	// Session A compacts.
 	//
@@ -620,6 +630,7 @@ func TestRenderHookReinject_LegacyBool(t *testing.T) {
 	if err := taskpipeline.SaveTaskState(root, state); err != nil {
 		t.Fatalf("SaveTaskState: %v", err)
 	}
+	bindBranchIfSet(t, root, state)
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "sid-legacy")
 	out, err := renderHookReinject(root)
 	if err != nil {
@@ -654,6 +665,7 @@ func TestRenderHookReinject_KimiColdStartBackfill(t *testing.T) {
 	if err := taskpipeline.SaveTaskState(root, state); err != nil {
 		t.Fatalf("SaveTaskState: %v", err)
 	}
+	bindBranchIfSet(t, root, state)
 	// Simulate a hook-spawned kimi session (runHook injects FORGE_SESSION_ID + FORGE_AGENT).
 	//
 	// 模拟 hook 派生的 kimi session（runHook 注入 FORGE_SESSION_ID + FORGE_AGENT）
@@ -704,6 +716,7 @@ func TestRenderHookReinject_KimiColdStartAfterCompactReinject(t *testing.T) {
 	if err := taskpipeline.SaveTaskState(root, state); err != nil {
 		t.Fatalf("SaveTaskState: %v", err)
 	}
+	bindBranchIfSet(t, root, state)
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
 	t.Setenv("FORGE_SESSION_ID", "kimi-compact-1")
 	t.Setenv("FORGE_AGENT", "kimi")
@@ -751,6 +764,7 @@ func TestRenderHookReinject_ColdStartNonKimiExcluded(t *testing.T) {
 	if err := taskpipeline.SaveTaskState(root, state); err != nil {
 		t.Fatalf("SaveTaskState: %v", err)
 	}
+	bindBranchIfSet(t, root, state)
 	// claude-code session: CLAUDE_CODE_SESSION_ID set, no FORGE_AGENT. SessionStart output
 	// IS injected on CC, so cold-start backfill must NOT fire.
 	//
@@ -815,6 +829,7 @@ func TestRenderHookReinject_SparseContinuityNudge(t *testing.T) {
 	if err := taskpipeline.SaveTaskState(rootA, state); err != nil {
 		t.Fatalf("SaveTaskState: %v", err)
 	}
+	bindBranchIfSet(t, rootA, state)
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "sid-sparse")
 	if err := renderHookCompactFlag(rootA); err != nil {
 		t.Fatalf("renderHookCompactFlag: %v", err)
@@ -894,6 +909,7 @@ func TestRenderHookResume_MultiHostAttach(t *testing.T) {
 	if err := taskpipeline.SaveTaskState(root, state); err != nil {
 		t.Fatalf("SaveTaskState: %v", err)
 	}
+	bindBranchIfSet(t, root, state)
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
 	t.Setenv("FORGE_SESSION_ID", "kimi-sess-1")
 	t.Setenv("FORGE_AGENT", "kimi")
@@ -929,6 +945,7 @@ func TestRenderHookResume_AnchoredNoTool(t *testing.T) {
 	if err := taskpipeline.SaveTaskState(root, state); err != nil {
 		t.Fatalf("SaveTaskState: %v", err)
 	}
+	bindBranchIfSet(t, root, state)
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
 	t.Setenv("FORGE_AGENT", "")
 	t.Setenv("FORGE_SESSION_ID", "kimi-sid")
@@ -1402,5 +1419,24 @@ func TestTaskResume_AutoClaim_JSON(t *testing.T) {
 	}
 	if !strings.Contains(out, `claimed`) {
 		t.Errorf(`JSON 应含 claimed（auto-claim 已生效），实得 %q`, out)
+	}
+}
+
+// bindBranchIfSet anchors the fixture task's cwd binding when it declares a Branch
+// (post-T4: the resolution chain no longer guesses a single incomplete task — the
+// fixture must make the branch/cwd anchor real, same as `task start` does in
+// production). No-op for branchless states (those intentionally exercise the
+// no-anchor paths).
+//
+// bindBranchIfSet 为声明了 Branch 的 fixture 任务建 cwd 绑定（T4 之后：解析链不再
+// 猜测「唯一未完成任务」——fixture 必须把分支/cwd 锚点造真，与生产里 task start
+// 做的事一致）。无 Branch 的状态不动（那些是有意测无锚路径的）。
+func bindBranchIfSet(t *testing.T, root string, st *taskpipeline.TaskState) {
+	t.Helper()
+	if st == nil || st.Branch == "" {
+		return
+	}
+	if err := worktree.BindTask(root, st.TaskRef, st.Branch, ""); err != nil {
+		t.Fatalf("bindBranchIfSet: %v", err)
 	}
 }
