@@ -40,10 +40,3 @@ func ID(root string) string {
 	_, _ = h.Write([]byte(abs))
 	return fmt.Sprintf("%012x", h.Sum64())
 }
-
-// MainID is the wtid constant for a project's main checkout marker files that predate
-// worktree awareness (reserved for T4's binding store).
-//
-// MainID 是项目主检出标记文件用的 wtid 常量，供早于 worktree 感知的场景
-//（预留给 T4 的绑定存储）。
-func MainID() string { return "main" }
