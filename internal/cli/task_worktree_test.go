@@ -182,7 +182,14 @@ func TestTaskFinish_MergeTargetGuard(t *testing.T) {
 	if _, err := os.Stat(wtPath); !os.IsNotExist(err) {
 		t.Errorf("finish 后 worktree 应已清理: %v", err)
 	}
-	if b := worktree.Load(wtPath); b != nil {
-		t.Errorf("finish 后绑定应解绑: %+v", b)
+	// 绑定残留断言（#4 二次修订）：必须扫 workspaces 目录而非 Load(已消失路径)
+	//——消失路径的 DataDirFor 身份推导漂移，Load 恒 nil，旧断言空转掩盖了真残留
+	//（2026-08-27 dogfood 实录：CI 绿但本机残留）。
+	wsDir := filepath.Join(forgedata.DataDirFor(tmpDir), "workspaces")
+	if entries, err := os.ReadDir(wsDir); err == nil && len(entries) > 0 {
+		for _, e := range entries {
+			data, _ := os.ReadFile(filepath.Join(wsDir, e.Name()))
+			t.Errorf("finish 后绑定文件残留: %s → %s", e.Name(), strings.TrimSpace(string(data)))
+		}
 	}
 }

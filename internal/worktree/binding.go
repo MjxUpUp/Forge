@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
@@ -108,6 +109,72 @@ func Clear(root, taskRef string) error {
 	err := os.Remove(bindingPath(root))
 	if err != nil && !os.IsNotExist(err) {
 		return err
+	}
+	return nil
+}
+
+// ClearByID removes the binding file by wtid, resolved inside ANY live root of the same
+// project（dogfood 发现 #4，2026-08-27）：finish 先删 worktree 目录再解绑时，原路径
+// 已消失——DataDirFor(消失路径) 的身份推导漂移、Clear 静默 no-op，绑定残留。按
+// ID 直删 + TaskRef 比对，不依赖原路径存活；幂等（文件缺失即成功）。
+//
+// ClearByID removes the binding file by wtid, resolved inside ANY live root of the
+// same project (dogfood finding #4, 2026-08-27): finish deletes the worktree
+// directory BEFORE unbinding, and the vanished path derails Clear's identity
+// derivation into a silent no-op, leaving the binding behind. Deletes by stored ID
+// with a TaskRef comparison — independent of the original path's survival;
+// idempotent (missing file = success).
+func ClearByID(root, id, taskRef string) error {
+	if id == "" {
+		return nil
+	}
+	p := filepath.Join(bindingDir(root), id+".json")
+	data, err := os.ReadFile(p)
+	if err != nil {
+		return nil // 无此绑定：幂等
+	}
+	var b Binding
+	if json.Unmarshal(data, &b) != nil || b.TaskRef != taskRef {
+		return nil // 不指向该任务：同 Clear 的比对语义
+	}
+	if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+// ClearAllForTask removes EVERY binding file whose TaskRef matches — the task-scoped
+// sweep（dogfood #4 深挖，2026-08-27）：abort 一个 --worktree 任务时，cwd 键控的
+// Clear 只能清调用方所在目录的绑定，任务的 worktree 绑定无人清；任务被 abort/
+// 删除后，任何指向它的绑定都是死锚。幂等，静默容忍读取失败。
+//
+// ClearAllForTask removes every binding file whose TaskRef matches — the task-scoped
+// sweep (dogfood #4 deep-dive, 2026-08-27): aborting a --worktree task, the cwd-keyed
+// Clear only unbinds the caller's directory — the task's worktree binding is left
+// orphaned; once a task is aborted/deleted, any binding pointing at it is a dead
+// anchor. Idempotent, read-failure tolerant.
+func ClearAllForTask(root, taskRef string) error {
+	dir := bindingDir(root)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil // 无 workspaces 目录：幂等
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		p := filepath.Join(dir, e.Name())
+		data, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		var b Binding
+		if json.Unmarshal(data, &b) != nil || b.TaskRef != taskRef {
+			continue
+		}
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			return err
+		}
 	}
 	return nil
 }
