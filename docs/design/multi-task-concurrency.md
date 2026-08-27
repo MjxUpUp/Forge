@@ -486,3 +486,15 @@ T1–T10 全部落地，单一 goal 单一分支，`go test ./...` 全绿，dogf
 | T10 度量收尾 | forge status 归属覆盖行 + TestMultiTaskConcurrency_Matrix 五断言总验收 |
 
 **v1 未含（后续任务）**：specs 投影模式（`specs.projection=branch`——持久性恰好一次已由 harness repo 满足，投影是可选 PR 同审需求）；声明式 schema.yaml 的用户自定义加载（T8 落的是内置产物链 + 哈希引用，加载校验框架待真实自定义需求出现）；janitor 的 SessionStart 节流自动触发（当前为手动 `forge worktree janitor`）；无身份宿主的进程谱系/SID 推导（§16-4 spike 待实测命中率）；行为级语义冲突检测（§16-2 三级方案的后两级）。
+
+## 18. Dogfood 实录（2026-08-27，v1.45.0 本机全流程）
+
+按设计设想在真实机器走完 T7→T6→L4→L6 全链，实测记录与发现：
+
+**通过项**：T7 引导（status 双行 + cooldown 提示）；HITL 门拒绝 agent 调用并给人工指引；harness init 存量基线 401 文件、stamps/backups 信任边界 check-ignore 验证通过；worktree 三件套（目录/绑定/specs 哈希引用）；解析链 v2 无身份从 worktree cwd 命中绑定（"退出重进"锚成立）；HANDOFF 现场渲染。
+
+**发现并当场修复**：
+1. gitignore 缺口——backups（5.9M）/research/skills-backup/evals 不在排除清单，基线会灌入机器本地 store，有 trust.json 的机器泄漏信任锚。改根级允许清单（只跟踪 projects/，新顶层 store 默认 fail-closed 排除）。
+2. --worktree ref 派生——ref 合法性 ≠ 分支合法性，非惯例前缀 ref（dogfood/walkthrough）被误拒。改为非前缀 ref 派生 feat/<ref 去斜杠>。
+
+**诚实降级观察**：worktree 内的归属台账需宿主 hook 从该 cwd 触发才记账（单会话演示不可见跨窗口归属，符合设计预期——归属发生在真实多窗口场景）。
