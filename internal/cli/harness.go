@@ -170,23 +170,20 @@ func runHarnessInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("harness repo 已存在于 %s（幂等拒绝）", home)
 	}
 
-	// HITL：非 TTY（agent Bash）拒绝，除非 --yes（CI 逃生口，agent 纪律禁用）。
-	if !stdinIsTTY() && !yes {
-		return fmt.Errorf("harness init 需要人在终端确认（stdin 非 TTY——agent 不得代批，multi-task-concurrency §13）。" +
-			"脚本化场景请由人显式加 --yes")
-	}
-	// 交互确认（TTY 场景）：展示将纳入/排除的内容后等待 yes。
-	if stdinIsTTY() && !yes {
-		fmt.Printf("将在 %s 建立私有 harness repo（multi-task-concurrency T6）\n", home)
-		fmt.Printf("  纳入 git：projects/<key>/tasks、checklog、archive（过程状态与证据）\n")
-		fmt.Printf("  永不纳入：stamps/hazards（信任锚）、workspaces/attribution（机器本地）、哨兵/锁\n")
-		if fromExisting {
-			fmt.Printf("  --from-existing：存量数据做一次基线提交（史前史入库，不重写任何文件）\n")
-		}
-		fmt.Printf("输入 yes 确认: ")
-		var answer string
-		if _, err := fmt.Scanln(&answer); err != nil || !strings.EqualFold(answer, "yes") {
-			return fmt.Errorf("未确认，放弃 init")
+	// HITL 确认：安全性质由「非交互 stdin 读不到答案 → 拒绝」承载，而非 TTY 检测
+	//（Windows 无 /bin/sh，启发式在 CI 等环境会误判为交互——2026-08-27 分支 CI 实测；
+	// 误判只影响是否展示清单，Scanln 在非交互 stdin 上必然 EOF，拒绝依然成立）。
+	// --yes 是脚本化 CI 逃生口（agent 纪律禁用）。
+	if !yes {
+		if !confirmInteractive(func() {
+			fmt.Printf("将在 %s 建立私有 harness repo（multi-task-concurrency T6）\n", home)
+			fmt.Printf("  纳入 git：projects/<key>/tasks、checklog、archive（过程状态与证据）\n")
+			fmt.Printf("  永不纳入：stamps/hazards（信任锚）、workspaces/attribution（机器本地）、哨兵/锁\n")
+			if fromExisting {
+				fmt.Printf("  --from-existing：存量数据做一次基线提交（史前史入库，不重写任何文件）\n")
+			}
+		}, "harness init") {
+			return fmt.Errorf("未确认，放弃 init（需人在终端输入 yes；stdin 非交互——agent 不得代批，multi-task-concurrency §13；脚本化场景由人显式加 --yes）")
 		}
 	}
 
@@ -435,6 +432,30 @@ func MarkHarnessInitialized(linked bool) {
 	_ = os.WriteFile(harnessStatePath(home), []byte(s), 0o644)
 }
 
+// confirmInteractive runs one HITL confirmation: TTY detection only decides whether the
+// manifest prompt is DISPLAYED (nice-to-have); the security property is carried by
+// "a non-interactive stdin can never produce the answer" — Scanln over EOF fails, the
+// confirmation fails, the action is refused. This holds even where the TTY heuristic
+// misfires (Windows CI consoles are char devices indistinguishable from NUL by Stat —
+// 2026-08-27 branch CI). Refusal reason names the action for actionable guidance.
+//
+// confirmInteractive 执行一次 HITL 确认：TTY 检测只决定是否【展示】清单提示（锦上
+// 添花）；安全性质由「非交互 stdin 永远给不出答案」承载——Scanln 对 EOF 失败、确
+// 认失败、动作拒绝。即使 TTY 启发式误判也成立（Windows CI 的控制台与 NUL 同为字
+// 符设备，Stat 无法区分——2026-08-27 分支 CI 实测）。拒绝文案点名动作，给可执行
+// 指引。
+func confirmInteractive(showManifest func(), action string) bool {
+	if stdinIsTTY() {
+		showManifest()
+		fmt.Printf("输入 yes 确认: ")
+	}
+	var answer string
+	if _, err := fmt.Scanln(&answer); err != nil {
+		return false // EOF/读失败：非交互 stdin（agent Bash）——拒绝
+	}
+	return strings.EqualFold(answer, "yes")
+}
+
 // harnessStateLabel renders the status line label for the onboarding state.
 //
 // harnessStateLabel 渲染 onboarding 状态行的展示标签。
@@ -485,18 +506,14 @@ func runHarnessPush(cmd *cobra.Command, args []string) error {
 		firstPush = false
 	}
 	if firstPush {
-		if !stdinIsTTY() && !yes {
-			return fmt.Errorf("首次 push 属外发动作，需人在终端确认数据出境清单（multi-task-concurrency §13；agent 不得代批）")
-		}
-		if stdinIsTTY() && !yes {
-			fmt.Println("数据出境清单（首次 push）：")
-			fmt.Println("  将同步（git tracked）：projects/<key>/tasks、specs、checklog、archive——过程状态与证据")
-			fmt.Println("  永不外发（gitignored）：stamps/hazards（信任锚）、workspaces/attribution（机器本地）、会话簿记/哨兵")
-			fmt.Println("  远端必须是【私有】仓库；凭据走你自己的 git credential helper，forge 不持有凭据")
-			fmt.Printf("输入 yes 确认首推: ")
-			var answer string
-			if _, err := fmt.Scanln(&answer); err != nil || !strings.EqualFold(answer, "yes") {
-				return fmt.Errorf("未确认，放弃 push")
+		if !yes {
+			if !confirmInteractive(func() {
+				fmt.Println("数据出境清单（首次 push）：")
+				fmt.Println("  将同步（git tracked）：projects/<key>/tasks、specs、checklog、archive——过程状态与证据")
+				fmt.Println("  永不外发（gitignored）：stamps/hazards（信任锚）、workspaces/attribution（机器本地）、会话簿记/哨兵")
+				fmt.Println("  远端必须是【私有】仓库；凭据走你自己的 git credential helper，forge 不持有凭据")
+			}, "首次 push") {
+				return fmt.Errorf("未确认，放弃 push（首次 push 属外发动作，需人在终端确认数据出境清单——multi-task-concurrency §13；agent 不得代批）")
 			}
 		}
 	}
