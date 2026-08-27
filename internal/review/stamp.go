@@ -354,6 +354,22 @@ func CurrentState(root string) (string, error) {
 // baseCommit 不可达（amend/rebase 改写历史致 git 对象消失）→ 返回 err，调用方 fail-open。
 // 纯文档/配置/生成物变更 → ("", false, nil) → 无需审。非 git 仓库 → 无需审。
 func SourceChangesSince(root, baseCommit string) (hash string, hasChanges bool, err error) {
+	return SourceChangesSinceExcluded(root, baseCommit, nil)
+}
+
+// SourceChangesSinceExcluded is SourceChangesSince with an attribution-exclusion set
+// (multi-task-concurrency §6, T3): paths the caller has proven foreign (other incomplete
+// tasks' sessions, via taskpipeline.ForeignAttributedPaths) leave the fingerprint — the
+// review scope is this task's changes, not the whole shared tree's noise. Orphans are NOT
+// excludable here by contract: unexplained changes must be reviewed (fail-safe). nil map =
+// whole tree (pre-L3 behavior; non-task mode passes nil).
+//
+// SourceChangesSinceExcluded 是带归属排除集的 SourceChangesSince
+//（multi-task-concurrency §6，T3）：调用方已证明外来（其他未完成任务的会话，经
+// taskpipeline.ForeignAttributedPaths）的路径离开指纹——review 的范围是本任务的变更，
+// 不是共享整树的噪音。按契约无主路径不可在此排除：解释不了的变更必须被审
+//（fail-safe）。nil map = 全树（L3 之前的行为；非 task 模式传 nil）。
+func SourceChangesSinceExcluded(root, baseCommit string, exclude map[string]bool) (hash string, hasChanges bool, err error) {
 	if !isGitRepo(root) {
 		return "", false, nil
 	}
@@ -372,6 +388,15 @@ func SourceChangesSince(root, baseCommit string) (hash string, hasChanges bool, 
 	}
 	tracked, untracked := changedSourceFilesSince(root, base)
 	files := append(tracked, untracked...)
+	if len(exclude) > 0 {
+		kept := files[:0]
+		for _, f := range files {
+			if !exclude[f] {
+				kept = append(kept, f)
+			}
+		}
+		files = kept
+	}
 	if len(files) == 0 {
 		return "", false, nil
 	}

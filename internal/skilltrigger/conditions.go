@@ -1,12 +1,12 @@
 package skilltrigger
 
 import (
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/MjxUpUp/Forge/internal/attribution"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
@@ -35,24 +35,29 @@ var sourceExt = map[string]bool{
 
 // condSourceChanged：git 工作区有未提交源码（命中源码扩展名白名单）。
 // 非 git / 无源码变更 / 无 project root → false（优雅降级）。
+//
+// L3 归属过滤（multi-task-concurrency §6，T3）：命中条件收紧为「本 session 台账触碰集
+// ∩ 当前变更源码集」非空——同目录另一窗口的 WIP 不再触发本窗口的 Stop 纪律提示（原
+// 全树扫描是跨任务噪音的根源，用户实测痛点 P1）。降级链：无 session id（无身份宿主）
+// 或 FORGE_ATTRIBUTION=0 → 回落旧全树行为（advisory 宁多勿漏）。
 func condSourceChanged(ctx Context) bool {
 	if ctx.ProjectRoot == "" {
 		return false
 	}
-	out, err := exec.Command("git", "-C", ctx.ProjectRoot, "status", "--porcelain").Output()
+	changed, err := attribution.ChangedFiles(ctx.ProjectRoot)
 	if err != nil {
 		return false
 	}
-	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
-		if len(line) < 3 {
-			continue
+	if sid := ctx.SessionID; sid != "" && attribution.Enabled() {
+		touched := attribution.SessionTouched(ctx.ProjectRoot, sid)
+		for _, p := range changed {
+			if touched[filepath.ToSlash(filepath.Clean(p))] && isSourcePath(p) {
+				return true
+			}
 		}
-		// porcelain 格式：XY <path>（前 2 字符状态码 + 1 空格 + 路径）；rename 形如 "R  orig -> path"。
-		p := line[3:]
-		if idx := strings.Index(p, " -> "); idx >= 0 {
-			p = p[idx+4:] // rename 取目标路径
-		}
-		p = strings.Trim(p, `"`)
+		return false
+	}
+	for _, p := range changed {
 		if isSourcePath(p) {
 			return true
 		}

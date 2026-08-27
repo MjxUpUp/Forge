@@ -7,7 +7,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
-	"github.com/MjxUpUp/Forge/internal/review"
 )
 
 // CheckNameAcceptance is the checklog entry recorded after verify-acceptance actually runs the acceptance criteria
@@ -316,7 +315,7 @@ func VerifyAcceptance(root string, state *TaskState) {
 		c.AcceptedBaseCommit = ""
 		c.AcceptedChangeHash = ""
 		if state.HeadCommit != "" {
-			if hash, _, err := review.SourceChangesSince(root, state.HeadCommit); err == nil {
+			if hash, _, err := TaskFingerprint(root, state, state.HeadCommit); err == nil {
 				c.AcceptedBaseCommit = state.HeadCommit
 				c.AcceptedChangeHash = hash
 			}
@@ -503,7 +502,7 @@ func CheckAcceptanceFresh(root string, state *TaskState) (ok bool, reasons []str
 			// 会重写快照字段（base 仍死则内容字段回落为空，经新的
 			// AcceptedHeadCommit 走 legacy HEAD 检查恢复），故不会像裸 HEAD 比较
 			// 那样把任务永久卡死。
-			cur, _, err := review.SourceChangesSince(root, c.AcceptedBaseCommit)
+			cur, _, err := TaskFingerprint(root, state, c.AcceptedBaseCommit)
 			switch {
 			case err != nil:
 				reasons = append(reasons, fmt.Sprintf(`验收 #%d（%s）基线 %s 不可达（历史改写）——重跑 forge task verify-acceptance 重锚快照`, i+1, c.Run, c.AcceptedBaseCommit))

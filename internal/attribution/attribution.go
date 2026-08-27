@@ -82,6 +82,15 @@ func (e Event) Confidence() string {
 	return "high"
 }
 
+// Enabled reports whether the attribution layer is active. FORGE_ATTRIBUTION=0 is the
+// design's escape hatch (multi-task-concurrency §11): every consumer degrades to its
+// pre-L3 whole-tree behavior — one switch, zero partial states.
+//
+// Enabled 报告归属层是否启用。FORGE_ATTRIBUTION=0 是设计的逃生舱
+//（multi-task-concurrency §11）：所有消费方降级回 L3 之前的全树行为——一个开关，
+// 零中间态。
+func Enabled() bool { return os.Getenv("FORGE_ATTRIBUTION") != "0" }
+
 var ledgers sync.Map // string(ledgerPath) -> *sync.Mutex，跨 goroutine 的每台账锁
 
 func ledgerPath(root string) string {
