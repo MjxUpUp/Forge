@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.45.1](https://github.com/MjxUpUp/Forge/compare/v1.45.0...v1.45.1) (2026-08-27)
+
+
+### Bug Fixes
+
+* **dogfood:** 实测三项修复——worktree ref 派生 / 归档陈旧快照 / 绑定残留 ([75f0028](https://github.com/MjxUpUp/Forge/commit/75f002800fe08ffac4adda92fc339345bfd415cd))
+* **harness:** dogfood 发现——gitignore 改根级允许清单（只跟踪 projects/） ([66ddf01](https://github.com/MjxUpUp/Forge/commit/66ddf01556c28873d7cb788639c8ec144add8f18))
+
 ## [1.45.0](https://github.com/MjxUpUp/Forge/compare/v1.44.0...v1.45.0) (2026-08-27)
 
 
