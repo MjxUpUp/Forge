@@ -46,6 +46,17 @@ func TestHarness_InitTrustBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stamps 应被 gitignore（信任锚永不出本机）: err=%v out=%s", err, out)
 	}
+	// dogfood 修订（2026-08-27）：根级允许清单——backups/信任store/缓存绝不入库。
+	for _, machineLocal := range []string{
+		filepath.Join(home, "backups", "some-backup.json"),
+		filepath.Join(home, "trust.json"),
+		filepath.Join(home, "sync-cache", "repo", "HEAD"),
+		filepath.Join(home, "research", "note.md"),
+	} {
+		if out, err := harnessGit(home, "check-ignore", "-q", machineLocal); err != nil {
+			t.Errorf("用户级机器本地文件应被 gitignore: %s err=%v out=%s", machineLocal, err, out)
+		}
+	}
 	// 过程状态被跟踪。
 	if out, err := harnessGit(home, "ls-files"); err != nil || !strings.Contains(out, "tasks/feat-x.json") {
 		t.Fatalf("tasks 应入基线提交: err=%v out=%s", err, out)

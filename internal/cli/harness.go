@@ -44,24 +44,19 @@ import (
 //
 // harnessGitignore 是排除清单（§11.4）：机器本地路径绑定、短命哨兵、会话簿记、部署
 // 副本与信任锚。未列出的即是值得版本化与同步的过程状态。
-const harnessGitignore = `# harness repo 排除清单（multi-task-concurrency §11.4）
-# 机器本地 / 短命态 / 信任锚——永不外发（clone = 攻击者可控输入）
+const harnessGitignore = `# harness repo 排除清单（multi-task-concurrency §11.4；dogfood 修订 2026-08-27）
+# 根级【允许清单】：只跟踪 projects/（各项目过程状态与证据）——.gitignore 自身除外。
+# 其余一切用户级 store（backups/research/skills-backup/evals/skills-cache/sync-cache/
+# trust.json/未来新增顶层目录）默认机器本地：信任锚绝不外发（README 同级语义：
+# 永不随 bundle 旅行 ⇒ 永不入 harness repo），备份/缓存类入仓即 8MB+ 噪音。
+# 新 store 想进 harness repo 必须显式改本清单（fail-closed）。
+/*
+!/.gitignore
+!/projects/
 
-# 用户级：注册表与清单是路径键控的机器本地配置；节点身份不迁移；安装缓存随版本走
-projects.json
-workspaces.json
-node.json
-node-seq
-harness-state
-skills-cache/
-update-cache.json
-
-# 每项目：路径绑定（wtid 机器本地）与机器本地簿记
+# 每项目：路径绑定（wtid 机器本地）与簿记
 projects/*/workspaces/
 projects/*/imports.jsonl
-
-# 原子写临时文件（任何子目录——AtomicWrite 的 .tmp-* 绝不入库）
-**/.tmp-*
 
 # 每项目：归属台账与标记（短命观测）
 projects/*/attribution/
@@ -90,6 +85,9 @@ projects/*/protocol.yml
 projects/*/quarantine/
 projects/*/freeze/
 projects/*/act/
+
+# 原子写临时文件（任何子目录——AtomicWrite 的 .tmp-* 绝不入库）
+**/.tmp-*
 `
 
 var (
