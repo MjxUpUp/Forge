@@ -16,6 +16,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/toolusage"
 	"github.com/MjxUpUp/Forge/internal/util"
 	"github.com/spf13/cobra"
+	"github.com/MjxUpUp/Forge/internal/worktree"
 )
 
 func init() {
@@ -357,6 +358,10 @@ func completeGenericTask(root string, state *taskpipeline.TaskState) error {
 	sid := taskpipeline.CurrentSessionID()
 	if err := taskpipeline.ClearActiveTaskRef(root, sid); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to clear active task ref: %v\n", err)
+	}
+	// L1：任务完结同步解绑 cwd（新窗口不再解析到已完结任务）。best-effort。
+	if err := worktree.Clear(root, state.TaskRef); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to clear workspace binding: %v\n", err)
 	}
 	return nil
 }
@@ -727,6 +732,17 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "Warning: failed to set active task ref: %v\n", err)
 	}
 
+	// L1 workspace binding (multi-task-concurrency §4): anchor the cwd to the task so a
+	// NEW window in this directory/worktree resolves it without any session surviving.
+	// Best-effort — a failed bind only degrades to session-pointer/branch resolution.
+	//
+	// L1 workspace 绑定（multi-task-concurrency §4）：把 cwd 锚到任务上，使本目录/
+	// worktree 里的【新】窗口无需任何会话存活即可解析到它。尽力而为——绑定失败只
+	// 降级为会话指针/分支解析。
+	if err := worktree.BindTask(root, ctx.TaskRef, state.Branch, sid); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to bind workspace: %v\n", err)
+	}
+
 	// Graceful degradation for non-git projects — gates still pass, 'complete' still
 	// scores — but git-dependent dimensions collapse to neutral and the task has no
 	// commit to anchor on. This is the missing signal for code-knowledge-base sessions:
@@ -957,6 +973,10 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 		if err := taskpipeline.ClearActiveTaskRef(root, sid); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to clear active task ref: %v\n", err)
 		}
+	}
+	// L1：abort 同步解绑 cwd（同 Clear 语义——只解仍指向本任务的绑定）。best-effort。
+	if err := worktree.Clear(root, taskRef); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to clear workspace binding: %v\n", err)
 	}
 
 	// --cascade: abort every transitive dependent and clear its active-task-ref. Done after the
