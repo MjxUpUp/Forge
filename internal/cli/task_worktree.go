@@ -179,7 +179,9 @@ func runTaskFinish(cmd *cobra.Command, args []string) error {
 	// 绑定）不是 worktree——不做 merge/remove，只解绑提示。否则 git worktree remove
 	// 会拒（main working tree），且若合并先行则用户被丢在"已合并但清理失败、且
 	// ActiveTaskState 跳过已完成任务使重试无解"的半完成态。
-	if wtPath == mainRoot {
+	// EvalSymlinks 两侧比较（review LOW 残留）：binding.Path 存 Abs 未解链接
+	//（macOS /tmp→/private/tmp），文本比较会假阴性。
+	if sameResolvedPath(wtPath, mainRoot) {
 		_ = worktree.Clear(wtPath, state.TaskRef)
 		fmt.Printf("任务 %s 已完成（主检出绑定，非 worktree——合并/清理不适用）\n", state.TaskRef)
 		return nil
@@ -216,6 +218,19 @@ func runTaskFinish(cmd *cobra.Command, args []string) error {
 	_ = worktree.Clear(wtPath, state.TaskRef)
 	fmt.Printf("任务 %s 完成：已合并 %s，worktree 已清理\n", state.TaskRef, binding.Branch)
 	return nil
+}
+
+// sameResolvedPath compares two paths after EvalSymlinks on both sides.
+//
+// sameResolvedPath 双侧 EvalSymlinks 后比较路径。
+func sameResolvedPath(a, b string) bool {
+	if ra, err := filepath.EvalSymlinks(a); err == nil {
+		a = ra
+	}
+	if rb, err := filepath.EvalSymlinks(b); err == nil {
+		b = rb
+	}
+	return a == b
 }
 
 // gitMainRoot derives the main checkout root from a worktree path via the git common dir
