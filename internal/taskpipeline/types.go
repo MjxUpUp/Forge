@@ -9,7 +9,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/MjxUpUp/Forge/internal/review"
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 )
 
@@ -1054,7 +1053,7 @@ func EnrichFinding(root string, s *TaskState, f *Finding) {
 		f.Round = len(s.ReviewRounds) + 1
 	}
 	if f.ChangeHash == "" {
-		if h, _, err := review.SourceChangesSince(root, GetHeadCommit(root)); err == nil {
+		if h, _, err := TaskFingerprint(root, s, GetHeadCommit(root)); err == nil {
 			f.ChangeHash = h
 		}
 	}

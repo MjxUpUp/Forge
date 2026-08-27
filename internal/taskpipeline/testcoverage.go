@@ -390,6 +390,32 @@ func taskChangedFiles(root string, state *TaskState) []string {
 		add(out)
 	}
 
+	// L3 attribution filter (multi-task-concurrency §6, T3): drop working-tree/untracked
+	// paths the ledger provably assigns to OTHER incomplete tasks' sessions — in a shared
+	// working directory those are another window's WIP, not this task's change set.
+	// Deliberately fail-safe the other way: orphans (ledger cannot explain) STAY — a
+	// bash-generated new file the ledger missed must still count toward this task's
+	// coverage obligations. FORGE_ATTRIBUTION=0 → empty set → pre-L3 behavior.
+	//
+	// L3 归属过滤（multi-task-concurrency §6，T3）：丢弃台账可证明归属【其他未完成任
+	// 务】会话的工作树/untracked 路径——共享工作目录里那是另一个窗口的 WIP，不是本
+	// 任务的变更集。反方向刻意 fail-safe：无主路径（台账解释不了）保留——bash 生
+	// 成、台账漏记的新文件仍必须计入本任务的覆盖义务。FORGE_ATTRIBUTION=0 → 空集
+	// → L3 之前的行为。
+	ownRef := ""
+	if state != nil {
+		ownRef = state.TaskRef
+	}
+	if foreign := ForeignAttributedPaths(root, ownRef); len(foreign) > 0 {
+		kept := files[:0]
+		for _, f := range files {
+			if !foreign[filepath.ToSlash(filepath.Clean(f))] {
+				kept = append(kept, f)
+			}
+		}
+		files = kept
+	}
+
 	return files
 }
 

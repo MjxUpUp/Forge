@@ -12,7 +12,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/docsconsistency"
 	"github.com/MjxUpUp/Forge/internal/hooks"
-	"github.com/MjxUpUp/Forge/internal/review"
 	"github.com/MjxUpUp/Forge/internal/scoring"
 	"github.com/MjxUpUp/Forge/internal/shellexec"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
@@ -268,7 +267,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 	// → fail-open 放行 + 警告：amend 是正常工作流，强复审会死循环；对齐 review/stamp.go 的 fail-open 哲学
 	// （可达则严、不可达则松的非对称是设计本意）。
 	if gateID == "task-complete" && state.ReviewPassed && state.CompletedAt == nil && state.ReviewedHeadCommit != "" {
-		cur, _, err := review.SourceChangesSince(root, state.ReviewedHeadCommit)
+		cur, _, err := TaskFingerprint(root, state, state.ReviewedHeadCommit)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "[task-complete] 警告：审查基线 commit %s 不可达（%v）——历史可能被改写（amend/rebase），advisory 放行；建议重新 forge review pass 刷新基线\n", state.ReviewedHeadCommit, err)
 			// fail-open persisted as a trace (non-blocking, Passed=true means the gate still passes):
