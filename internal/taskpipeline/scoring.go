@@ -81,7 +81,7 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 	// 逻辑、同 task diff），testing 维度不依赖 checklog 条目是否存在——此前此处会查
 	// CheckNameTestCoverage 条目，但紧接着被无条件覆写为 true，查询是死效果。
 	testCoverageChecked := true
-	if latestChecks, err := checklog.LatestByCheckForSession(root, state.SessionID); err == nil {
+	if latestChecks, err := checklog.LatestByCheckForSessionSince(root, state.SessionID, state.StartedAt); err == nil {
 		// INFRA:-prefixed entries are fail-open infrastructure failures (bash spawn
 		// error / WSL exit 126/127), not quality verdicts — the gate treats them as
 		// fail-open, so scoring must not read them as compile/assertion failures

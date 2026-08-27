@@ -2113,7 +2113,14 @@ func scoringPassUnchanged(root, sessionID string, name checklog.CheckName) bool 
 	if !isScoringCheck(name) {
 		return false
 	}
-	latest, err := checklog.LatestByCheckForSession(root, sessionID)
+	// M2（review）：since 取本任务 StartedAt——active 日志跨任务累积后，无界的会话
+	// 级查询会让新任务继承上一任务的 PASS、跳过本该重写的证据条目。无活跃任务时
+	// 零值回落无界（旧行为）。
+	var since time.Time
+	if st, err := taskpipeline.ActiveTaskState(root, sessionID); err == nil && st != nil {
+		since = st.StartedAt
+	}
+	latest, err := checklog.LatestByCheckForSessionSince(root, sessionID, since)
 	if err != nil {
 		return false
 	}

@@ -139,14 +139,29 @@ func Record(root string, events ...Event) {
 	_ = w.Flush()
 }
 
-// loadLedger reads the workspace ledger (best-effort; missing file = empty).
+// ledgerTTL bounds how long an entry counts (review HIGH finding): without it a
+// months-old event from a zombie task's session can win last-writer over a path the
+// CURRENT task changed via a channel the ledger missed — reclassifying the current
+// work as foreign and hiding it from the review fingerprint. 7d matches the project's
+// session-marker TTL family (markers are pruned at 7d; orphan session pointers guard
+// at 7d). Reading-time filter: cheap, no jsonl rewrite needed in v1.
 //
-// loadLedger 读 workspace 台账（尽力而为；文件缺失 = 空）。
+// ledgerTTL 限定条目有效期（review HIGH）：不设的话，僵尸任务会话的数月前事件
+// 会在本任务经由台账看不见的通道改同一路径时赢过最后写入者——把当前工作误归类
+// 为外来并藏出 review 指纹。7d 与项目的会话 marker TTL 族对齐（marker 7d 清扫；
+// 孤儿会话指针 7d 守卫）。读时过滤：便宜，v1 无需重写 jsonl。
+const ledgerTTL = 7 * 24 * time.Hour
+
+// loadLedger reads the workspace ledger, filtering expired entries (best-effort;
+// missing file = empty).
+//
+// loadLedger 读 workspace 台账并过滤过期条目（尽力而为；文件缺失 = 空）。
 func loadLedger(root string) []Event {
 	data, err := os.ReadFile(ledgerPath(root))
 	if err != nil {
 		return nil
 	}
+	cutoff := time.Now().Add(-ledgerTTL)
 	var events []Event
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
@@ -155,6 +170,9 @@ func loadLedger(root string) []Event {
 		}
 		var e Event
 		if json.Unmarshal([]byte(line), &e) == nil && e.Path != "" && e.Sid != "" {
+			if e.Ts.Before(cutoff) {
+				continue // 过期：陈旧归因比漏归属更糟（漏 = 无主 = 可见）
+			}
 			events = append(events, e)
 		}
 	}

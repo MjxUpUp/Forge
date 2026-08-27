@@ -196,11 +196,44 @@ func ActiveTaskState(root, sessionID string) (*TaskState, error) {
 	// 让下次解析走 binding 优先。
 	if ref := ReadActiveTaskRef(root, ""); ref != "" {
 		if state, err := LoadTaskState(root, ref); err == nil && state != nil && state.CompletedAt == nil {
-			_ = worktree.BindTask(root, state.TaskRef, state.Branch, sessionID)
+			// M1（review MEDIUM）：桥接绑定只在【主检出】物化——设计意图是「主
+			// workspace 的一次性转换」；任何穿落进来的目录都绑会使每个未绑定
+			// worktree 误挂到该任务并粘住（混合宿主：无 sid CLI 起任务 + 新
+			// worktree 窗口）。判定：本目录的 git common dir 与主检出一致（linked
+			// worktree 的 common dir 是主 repo 的 .git 文件位置不同——以 rev-parse
+			// 的工作树根对比为准）。转换成功后一次性清除 legacy 指针——自此
+			// binding 是权威。
+			if IsMainCheckout(root) {
+				_ = worktree.BindTask(root, state.TaskRef, state.Branch, sessionID)
+				_ = ClearActiveTaskRef(root, "")
+			}
 			return state, nil
 		}
 	}
 	return nil, nil
+}
+
+// IsMainCheckout reports whether root is the project's main checkout (vs a linked
+// worktree): `git rev-parse --git-dir` resolves to a DIRECTORY directly inside the
+// working tree for the main checkout, but to a FILE pointing at the main repo's
+// .git/worktrees/<name> for linked worktrees. Best-effort false — the bridge only
+// materializes bindings on a confident main-checkout hit (M1).
+//
+// IsMainCheckout 报告 root 是否项目主检出（vs linked worktree）：主检出的
+// `git rev-parse --git-dir` 解析为工作树内的【目录】，linked worktree 是指向主 repo
+// .git/worktrees/<name> 的【文件】。尽力而为 false——桥只在确信的主检出命中时
+// 物化绑定（M1）；task complete 的分形态解绑也复用同一判定。
+func IsMainCheckout(root string) bool {
+	out, err := exec.Command("git", "-C", root, "rev-parse", "--path-format=absolute", "--git-dir").Output()
+	if err != nil {
+		return false
+	}
+	gd := strings.TrimSpace(string(out))
+	if info, err := os.Stat(gd); err != nil || !info.IsDir() {
+		return false // worktree 的 .git 是文件
+	}
+	absRoot, _ := filepath.Abs(root)
+	return filepath.Dir(gd) == absRoot
 }
 
 // taskAnchoredByOtherActiveSession reports whether a task's anchored sessions include

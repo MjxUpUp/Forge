@@ -41,7 +41,7 @@ type MetricSnapshot struct {
 // 这就是那把尺子）。经 last-run 标记按 workspace 节流到 metricInterval。一切失败
 // 静默：度量绝不能打断 Stop 路径。
 func RecordStopMetric(root, taskRef string) {
-	if root == "" {
+	if root == "" || !Enabled() {
 		return
 	}
 	marker := filepath.Join(forgedata.DataDirFor(root), ".attribution-metric-"+worktree.ID(root))

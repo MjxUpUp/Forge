@@ -37,7 +37,7 @@ type toolInputShape struct {
 // 记账绝不能打断 hook。跳过：非 PostToolUse 事件、空 session id（无身份宿主——降级
 // 模式，无从归属）、只读工具。
 func RecordHookEvent(root string, hookEventName, sessionID, toolName string, toolInput json.RawMessage) {
-	if root == "" || sessionID == "" || hookEventName != "PostToolUse" {
+	if root == "" || sessionID == "" || hookEventName != "PostToolUse" || !Enabled() {
 		return
 	}
 	var fields toolInputShape

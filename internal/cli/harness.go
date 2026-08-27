@@ -56,8 +56,12 @@ harness-state
 skills-cache/
 update-cache.json
 
-# 每项目：路径绑定（wtid 机器本地）
+# 每项目：路径绑定（wtid 机器本地）与机器本地簿记
 projects/*/workspaces/
+projects/*/imports.jsonl
+
+# 原子写临时文件（任何子目录——AtomicWrite 的 .tmp-* 绝不入库）
+**/.tmp-*
 
 # 每项目：归属台账与标记（短命观测）
 projects/*/attribution/
@@ -97,7 +101,10 @@ func harnessHome() (string, error) {
 }
 
 func harnessGit(home string, args ...string) (string, error) {
-	cmd := exec.Command("git", append([]string{"-C", home}, args...)...)
+	// commit.gpgsign=false：用户全局开签名而无可 signing key 时，每一次
+	// HarnessCommitBestEffort 都静默失败——harness repo 悄悄永不提交，持久性故事
+	// 无声破产（review LOW-2）。harness 提交是机器事务，不签名。
+	cmd := exec.Command("git", append([]string{"-C", home, "-c", "commit.gpgsign=false"}, args...)...)
 	cmd.Env = append(os.Environ(),
 		"GIT_AUTHOR_NAME=forge", "GIT_AUTHOR_EMAIL=forge@localhost",
 		"GIT_COMMITTER_NAME=forge", "GIT_COMMITTER_EMAIL=forge@localhost")
@@ -160,7 +167,7 @@ func runHarnessInit(cmd *cobra.Command, args []string) error {
 	yes, _ := cmd.Flags().GetBool("yes")
 
 	if HarnessInitialized() {
-		return fmt.Errorf("harness repo 已存在于 %s（幂等拒绝；配置远端用 --remote 重复执行无害？否——请用 git remote add）", home)
+		return fmt.Errorf("harness repo 已存在于 %s（幂等拒绝）", home)
 	}
 
 	// HITL：非 TTY（agent Bash）拒绝，除非 --yes（CI 逃生口，agent 纪律禁用）。

@@ -362,9 +362,15 @@ func completeGenericTask(root string, state *taskpipeline.TaskState) error {
 	if err := taskpipeline.ClearActiveTaskRef(root, sid); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to clear active task ref: %v\n", err)
 	}
-	// L1：任务完结同步解绑 cwd（新窗口不再解析到已完结任务）。best-effort。
-	if err := worktree.Clear(root, state.TaskRef); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to clear workspace binding: %v\n", err)
+	// L1 绑定处理分形态：主检出任务 complete 即解绑（新窗口不再解析到已完结
+	// 任务）；worktree 任务【保留】绑定——finish 收尾依赖它（合并 + 清理 + 解绑）。
+	// complete 时解绑 worktree 绑定会让 finish 判定「无本目录绑定」而永不清理
+	// （review B2 关联缺陷的完整修复）。ActiveTaskState 对已完成任务本就跳过绑定
+	// 命中，保留不产生误挂。best-effort。
+	if taskpipeline.IsMainCheckout(root) {
+		if err := worktree.Clear(root, state.TaskRef); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to clear workspace binding: %v\n", err)
+		}
 	}
 	HarnessCommitBestEffort("task completed: " + state.TaskRef)
 	return nil
@@ -1868,7 +1874,7 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 func checkMissingHooks(root string, state *taskpipeline.TaskState) []string {
 	var missing []string
 
-	latestChecks, err := checklog.LatestByCheckForSession(root, state.SessionID)
+	latestChecks, err := checklog.LatestByCheckForSessionSince(root, state.SessionID, state.StartedAt)
 	if err != nil || latestChecks == nil {
 		// Cannot read checklog — assume every hook is missing unless gate history shows
 		// it ran.
