@@ -315,7 +315,7 @@ func TestChangedMarkdownSinceIncludesUntrackedAndSkipsDeleted(t *testing.T) {
 // TestCheckDocGateBlockedDetailRecordsReasons 钉住审计侧修复（2026-08 评审
 // 可观测性）：BLOCKED 的 doc-gate checklog 条目 Detail 必须带原因【文本】而非
 // 只有数量——光记「N reasons」会让复盘不得不对源码反推。通过条目保持只记数量
-//（不添噪声）。
+// （不添噪声）。
 func TestCheckDocGateBlockedDetailRecordsReasons(t *testing.T) {
 	root, base := newDocGateRepo(t)
 	if err := os.WriteFile(root+"/notes.md", []byte("# 笔记\n干净内容。\n"), 0644); err != nil {

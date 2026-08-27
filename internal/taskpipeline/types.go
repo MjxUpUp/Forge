@@ -9,7 +9,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/MjxUpUp/Forge/internal/review"
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 )
 
@@ -341,6 +340,28 @@ type TaskState struct {
 	// 与之的差集记 scope-drift 供 review，不阻塞。变更影响分析召回率仅 ~44%，故 scope 当 prediction
 	// 而非 contract，drift 是常态信号。task start --scope 声明，task scope add 中途迭代追加（分层定位）。
 	PlanScope []string `json:"plan_scope,omitempty"`
+
+	// Artifacts is the L6 artifact-contract layer's reference side (multi-task-concurrency
+	// §9): stage → verifiable pointer (DataDir-relative path + content hash) into
+	// specs/<ref>/. The FILES own the content (invariant I5: one owning medium); this map
+	// only points and detects drift (VerifyArtifact). AcceptanceCriterion remains the
+	// gate authority — artifacts are narrative context, never completion signals.
+	//
+	// SpecArtifacts 是 L6 产物契约层的引用侧（multi-task-concurrency §9）：阶段 → 可
+	// 验证指针（DataDir 相对路径 + 内容哈希），指向 specs/<ref>/。内容归【文件】所有
+	//（不变式 I5：拥有介质唯一）；本 map 只负责指向与漂移检测（VerifyArtifact）。
+	// AcceptanceCriterion 仍是门禁权威——产物是叙事上下文，绝不是完成信号。刻意不
+	// 叫 Artifacts：TaskState 已有 Artifacts []Artifact（关联产物的弱引用清单，语
+	// 义是"相关但不门禁"），两者是不同概念。
+	//
+	// SpecArtifacts is the L6 artifact-contract layer's reference side
+	// (multi-task-concurrency §9): stage → verifiable pointer (DataDir-relative path +
+	// content hash) into specs/<ref>/. The FILES own the content (invariant I5: one owning
+	// medium); this map only points and detects drift (VerifyArtifact).
+	// AcceptanceCriterion remains the gate authority — artifacts are narrative context,
+	// never completion signals. Deliberately NOT named Artifacts: TaskState already has
+	// Artifacts []Artifact (a weak "related outputs" list) — a different concept.
+	SpecArtifacts map[string]ArtifactRef `json:"spec_artifacts,omitempty"`
 
 	// Overrides holds the per-task escape-hatch settings (plan-5 anti-leak): they take precedence over the global env
 	// FORGE_WORK_ACTIVITY/FORGE_TEST_COVERAGE. One task escaping does not pollute other tasks in the same shell.
@@ -1054,7 +1075,7 @@ func EnrichFinding(root string, s *TaskState, f *Finding) {
 		f.Round = len(s.ReviewRounds) + 1
 	}
 	if f.ChangeHash == "" {
-		if h, _, err := review.SourceChangesSince(root, GetHeadCommit(root)); err == nil {
+		if h, _, err := TaskFingerprint(root, s, GetHeadCommit(root)); err == nil {
 			f.ChangeHash = h
 		}
 	}

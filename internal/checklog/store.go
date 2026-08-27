@@ -292,6 +292,25 @@ func LoadForTask(root, taskRef string) ([]Entry, error) {
 //   - sessionID 非空：SessionID 非空且与 sessionID 不同的条目被排除。
 //     SessionID 为空（全局/legacy）的条目始终保留，让全局适用的 check 仍能登记。
 func LatestByCheckForSession(root, sessionID string) (map[CheckName]*Entry, error) {
+	return LatestByCheckForSessionSince(root, sessionID, time.Time{})
+}
+
+// LatestByCheckForSessionSince is LatestByCheckForSession with a lower time bound
+// (multi-task-concurrency M2 fix): the active log is now an append-only timeline that
+// accumulates ACROSS tasks in the same window (task start no longer Clears it) — a
+// session-scoped reader that means "during THIS task" must also bound by the task's
+// StartedAt, or the new task inherits the previous task's PASS and its scoring credit.
+// Zero since = legacy unbounded behavior (callers that genuinely want the session's
+// whole history). Old entries with empty SessionID remain always-retained (same
+// semantics as the parent function).
+//
+// LatestByCheckForSessionSince 是带时间下界的 LatestByCheckForSession
+// （multi-task-concurrency M2 修正）：active 日志现在是跨任务累积的 append-only 时
+// 间线（task start 不再 Clear）——意图是「本任务期间」的会话级读方必须同时按任务
+// StartedAt 设界，否则新任务继承上一任务的 PASS 与评分信用。since 零值 = 旧的无界
+// 行为（真正想要会话全史的调用方）。SessionID 为空的旧条目依旧总是保留（与父函数
+// 同语义）。
+func LatestByCheckForSessionSince(root, sessionID string, since time.Time) (map[CheckName]*Entry, error) {
 	entries, err := LoadAll(root)
 	if err != nil {
 		return nil, err
@@ -301,6 +320,9 @@ func LatestByCheckForSession(root, sessionID string) (map[CheckName]*Entry, erro
 	for i := range entries {
 		e := &entries[i]
 		if sessionID != "" && e.SessionID != "" && e.SessionID != sessionID {
+			continue
+		}
+		if !since.IsZero() && e.RecordedAt.Before(since) {
 			continue
 		}
 		if existing, ok := result[e.Check]; !ok || e.RecordedAt.After(existing.RecordedAt) {
@@ -363,4 +385,20 @@ func pruneArchives(dir string) {
 		return
 	}
 	_, _ = util.PruneArchives(dir, "checklog", time.Now().AddDate(0, 0, -days))
+}
+
+// Prune is the non-destructive half of Clear: retention cleanup of checklog-*.jsonl
+// archives only, never touching the active file. This is the replacement task start calls
+// since Clear was retired there (multi-task-concurrency design §5): the log is now an
+// append-only timeline segmented by task-started boundary events, so starting a task must
+// not archive-or-delete anything — only keep the retention window bounded.
+//
+// Prune 是 Clear 的非破坏性半边：只做 checklog-*.jsonl 归档的 retention 清理，绝不碰
+// active 文件。task start 处 Clear 退役后（multi-task-concurrency 设计 §5）改调本函数：
+// 日志现在是按 task-started 边界事件分段的 append-only 时间线，开任务不得归档或删除
+// 任何东西——只保持 retention 窗口有界。
+func Prune(root string) {
+	mu.Lock()
+	defer mu.Unlock()
+	pruneArchives(filepath.Dir(filePath(root)))
 }

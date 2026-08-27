@@ -1,11 +1,13 @@
 package review
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
@@ -216,10 +218,17 @@ func TestMarkPassedWithNote(t *testing.T) {
 	dir := initGitRepo(t)
 	write(t, dir, "a.go", "package a\n")
 
+	loadStamped := func() *Stamp {
+		hash, _, err := computeDiffHash(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return loadStamp(dir, hash)
+	}
 	if err := MarkPassedWithNote(dir, "审查结论：无发现"); err != nil {
 		t.Fatalf("MarkPassedWithNote: %v", err)
 	}
-	if got := loadStamp(dir).Note; got != "审查结论：无发现" {
+	if got := loadStamped().Note; got != "审查结论：无发现" {
 		t.Errorf("stamp.Note 未持久化, got %q", got)
 	}
 
@@ -229,7 +238,7 @@ func TestMarkPassedWithNote(t *testing.T) {
 	if err := MarkPassed(dir); err != nil {
 		t.Fatalf("MarkPassed: %v", err)
 	}
-	if got := loadStamp(dir).Note; got != "" {
+	if got := loadStamped().Note; got != "" {
 		t.Errorf("裸 MarkPassed 后 stamp.Note 应为空, got %q", got)
 	}
 }
@@ -619,7 +628,7 @@ func TestSourceChangesSince_CommitWorkdirContentStaysEqual(t *testing.T) {
 func TestLoadStamp(t *testing.T) {
 	t.Run("missing file returns empty stamp", func(t *testing.T) {
 		root := initGitRepo(t)
-		s := loadStamp(root)
+		s := loadStamp(root, "deadbeef")
 		if s == nil {
 			t.Fatal("loadStamp must never return nil")
 		}
@@ -637,7 +646,7 @@ func TestLoadStamp(t *testing.T) {
 		if err := os.WriteFile(p, []byte("{not json"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		s := loadStamp(root)
+		s := loadStamp(root, "deadbeef")
 		if s.Reviewed || s.DiffHash != "" {
 			t.Errorf("corrupt stamp should degrade to empty, got %+v", s)
 		}
@@ -649,7 +658,11 @@ func TestLoadStamp(t *testing.T) {
 		if err := MarkPassed(root); err != nil {
 			t.Fatalf("MarkPassed: %v", err)
 		}
-		s := loadStamp(root)
+		hash, _, err := computeDiffHash(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s := loadStamp(root, hash)
 		if !s.Reviewed {
 			t.Error("stamp persisted by MarkPassed should load as Reviewed=true")
 		}
@@ -677,5 +690,98 @@ func TestCurrentBranch(t *testing.T) {
 	}
 	if got := CurrentBranch(t.TempDir()); got != "" {
 		t.Errorf("非 git 目录应降级为空串, got %q", got)
+	}
+}
+
+// TestMarkPassed_ContentAddressed pins the multi-task-concurrency §5 stamp keying change:
+// MarkPassed writes the content-addressed stamps/dh-<diffhash>.stamp and does NOT create a
+// legacy <branch>.stamp (branch-keyed stamps collided across worktrees on one branch — the
+// hash inside was whichever worktree saved last).
+//
+// TestMarkPassed_ContentAddressed 钉住 multi-task-concurrency §5 的 stamp 键控变更：
+// MarkPassed 写内容寻址的 stamps/dh-<diffhash>.stamp，且不再创建旧 <branch>.stamp
+// （按分支键控的 stamp 在同分支多 worktree 下碰撞——里面的 hash 是最后保存的那个
+// worktree 的）。
+func TestMarkPassed_ContentAddressed(t *testing.T) {
+	dir := initGitRepo(t)
+	write(t, dir, "a.go", "package a\nfunc F() {}\n")
+	hash, hasChanges, err := computeDiffHash(dir)
+	if err != nil || !hasChanges {
+		t.Fatalf("computeDiffHash: err=%v hasChanges=%v", err, hasChanges)
+	}
+	if err := MarkPassed(dir); err != nil {
+		t.Fatalf("MarkPassed: %v", err)
+	}
+	if _, err := os.Stat(stampContentPath(dir, hash)); err != nil {
+		t.Fatalf("内容寻址 stamp 应存在 (%s): %v", stampContentPath(dir, hash), err)
+	}
+	if _, err := os.Stat(stampPath(dir)); !os.IsNotExist(err) {
+		t.Errorf("不应再写旧分支 stamp（%s）——分支键控已退役为只读兼容", stampPath(dir))
+	}
+}
+
+// TestEvaluate_LegacyBranchStampCompat pins read-compat for pre-migration stamps: a legacy
+// <branch>.stamp carrying the current diff hash + Reviewed still satisfies Evaluate without
+// re-review (loadStamp falls back to the branch path when no dh-<hash>.stamp exists).
+//
+// TestEvaluate_LegacyBranchStampCompat 钉住迁移前 stamp 的读兼容：旧 <branch>.stamp 带
+// 当前 diff hash + Reviewed 时，Evaluate 仍放行、不要求重审（无 dh-<hash>.stamp 时
+// loadStamp 回落到分支路径）。
+func TestEvaluate_LegacyBranchStampCompat(t *testing.T) {
+	dir := initGitRepo(t)
+	write(t, dir, "a.go", "package a\nfunc F() {}\n")
+	hash, _, err := computeDiffHash(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := Stamp{
+		DiffHash:   hash,
+		Reviewed:   true,
+		BlockCount: 0,
+		ReviewedAt: time.Now(),
+		Branch:     currentBranch(dir),
+	}
+	p := stampPath(dir)
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := json.MarshalIndent(legacy, "", "  ")
+	if err := os.WriteFile(p, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	decision, _, err := Evaluate(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision != DecisionPass {
+		t.Errorf("旧分支 stamp 读兼容失败：同 hash 已审应放行, got %v", decision)
+	}
+}
+
+// TestSourceChangesSinceExcluded pins the T3 exclusion contract: excluded paths leave the
+// fingerprint; nil map is byte-identical to the legacy whole-tree computation.
+//
+// TestSourceChangesSinceExcluded 钉住 T3 排除契约：被排除路径离开指纹；nil map 与
+// 旧全树计算逐字节一致。
+func TestSourceChangesSinceExcluded(t *testing.T) {
+	dir := initGitRepo(t)
+	write(t, dir, "a.go", "package a\n")
+	write(t, dir, "b.go", "package b\n")
+
+	whole, hasChanges, err := SourceChangesSince(dir, "")
+	if err != nil || !hasChanges {
+		t.Fatalf("whole-tree: %v has=%v", err, hasChanges)
+	}
+	excluded, _, err := SourceChangesSinceExcluded(dir, "", map[string]bool{"b.go": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if excluded == whole {
+		t.Fatal("排除 b.go 后指纹应变化")
+	}
+	// nil map == legacy
+	again, _, _ := SourceChangesSinceExcluded(dir, "", nil)
+	if again != whole {
+		t.Fatal("nil 排除集必须与旧全树计算一致")
 	}
 }
