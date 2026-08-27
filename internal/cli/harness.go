@@ -2,10 +2,13 @@ package cli
 
 import (
 	"fmt"
+	"github.com/MjxUpUp/Forge/internal/attribution"
+	"github.com/MjxUpUp/Forge/internal/checklog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -500,7 +503,7 @@ func runHarnessPush(cmd *cobra.Command, args []string) error {
 
 // runHarnessPull is the inbound half: plain `git pull --no-edit` in the harness repo.
 // Conflicts surface as errors with manual-resolution guidance — never auto-resolved
-//（过程状态是 append 为主，冲突面小；机器裁决优先人可见）。
+// （过程状态是 append 为主，冲突面小；机器裁决优先人可见）。
 //
 // runHarnessPull 是入站半边：harness repo 里裸的 git pull --no-edit。冲突以错误上浮
 // 并给手工解决指引——绝不自动裁决（过程状态 append 为主冲突面小；机器裁决不如人
@@ -518,4 +521,39 @@ func runHarnessPull(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println("已拉取")
 	return nil
+}
+
+// attributionCoverageLine renders the L3 observability line for `forge status`
+// （multi-task-concurrency §6/G1：归属覆盖率可度量）。Reads the latest attribution
+// observation entry's Meta — the T2 spike's measuring stick, surfaced where users look.
+//
+// attributionCoverageLine 渲染 `forge status` 的 L3 可观测行
+// （multi-task-concurrency §6/G1：归属覆盖率可度量）。读取最近一条 attribution 观察
+// 条目的 Meta——T2 spike 的那把尺子，摆在用户看的地方。
+func attributionCoverageLine(root string) string {
+	if !attribution.Enabled() {
+		return "关闭（FORGE_ATTRIBUTION=0）"
+	}
+	entries, err := checklog.LoadAll(root)
+	if err != nil {
+		return "未度量"
+	}
+	var latest *checklog.Entry
+	for i := range entries {
+		if entries[i].Check == checklog.CheckAttribution {
+			latest = &entries[i]
+		}
+	}
+	if latest == nil {
+		return "未度量（首个 Stop 对账后出现）"
+	}
+	rate := latest.Meta[checklog.MetaKeyAttributionRate]
+	pct := "?"
+	if v, err := strconv.ParseFloat(rate, 64); err == nil {
+		pct = fmt.Sprintf("%.0f%%", v*100)
+	}
+	return fmt.Sprintf("%s（attributed %s / orphan %s）",
+		pct,
+		orDash(latest.Meta[checklog.MetaKeyAttributionAttributed]),
+		orDash(latest.Meta[checklog.MetaKeyAttributionOrphans]))
 }
