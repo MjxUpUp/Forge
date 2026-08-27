@@ -547,6 +547,15 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("读取 --plan-file %q 失败: %w", planFile, err)
 		}
 		state.Plan = string(planData)
+		// L6（multi-task-concurrency §9）：plan 同时作为首个 specs 产物落文件
+		//（harness repo tracked），TaskState 持哈希引用（I5：文件拥有内容，状态只
+		// 指向）。best-effort——产物写失败不阻断任务创建。
+		if aref, aerr := taskpipeline.WriteArtifact(root, ctx.TaskRef, "plan", state.Plan); aerr == nil {
+			if state.SpecArtifacts == nil {
+				state.SpecArtifacts = map[string]taskpipeline.ArtifactRef{}
+			}
+			state.SpecArtifacts["plan"] = aref
+		}
 		// Auto-extract acceptance criteria from Plan markdown (Run:/Expected: blocks),
 		// closing the gap of hand-copying plan's Run/Expected into --accept (dogfood:
 		// self-disciplined hand-copying always leaks; uncopied criteria leave the

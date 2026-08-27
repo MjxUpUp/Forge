@@ -1118,6 +1118,18 @@ func runTaskFinding(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("保存失败: %w", err)
 	}
+	// L6 attempts 回灌（multi-task-concurrency §9，LoopSpec priorAttempts）：登记发现
+	// 即归档当轮失败上下文到 specs/<ref>/attempts/round-NNN/（一次写入永不覆盖，
+	// 绝不触碰 TaskState——持久锚豁免）。轮内多条 finding 归并进同一轮归档；归档
+	// 已存在（同轮已归档）按一次写入契约静默保留首份。best-effort。
+	round := len(state.ReviewRounds) + 1
+	var open []string
+	for _, fd := range state.Findings {
+		if fd.Status == "open" {
+			open = append(open, fmt.Sprintf("[%s] %s（%s）", fd.ID, fd.Content, fd.Source))
+		}
+	}
+	_ = taskpipeline.ArchiveAttempt(root, state.TaskRef, round, open)
 	fmt.Printf("✓ 发现已记 [%s] (%s): %s\n", f.ID, source, content)
 	return nil
 }
