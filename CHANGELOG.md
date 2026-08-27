@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.45.2](https://github.com/MjxUpUp/Forge/compare/v1.45.1...v1.45.2) (2026-08-27)
+
+
+### Bug Fixes
+
+* **worktree:** [#4](https://github.com/MjxUpUp/Forge/issues/4) 二次修订——finish 真接 ClearByID + abort 全量清扫绑定 ([1b5c06e](https://github.com/MjxUpUp/Forge/commit/1b5c06e4d77271af9e56f73b105166f24f615eeb))
+
 ## [1.45.1](https://github.com/MjxUpUp/Forge/compare/v1.45.0...v1.45.1) (2026-08-27)
 
 
