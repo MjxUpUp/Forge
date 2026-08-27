@@ -16,6 +16,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskcontext"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
 
+	"github.com/MjxUpUp/Forge/internal/worktree"
 	"github.com/spf13/cobra"
 )
 
@@ -996,6 +997,7 @@ func TestActiveTaskState_BranchDetection(t *testing.T) {
 	runGit(t, dir, "init")
 	runGit(t, dir, "config", "user.email", "test@test.com")
 	runGit(t, dir, "config", "user.name", "Test")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "init")
 	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
 
 	// Create task with branch ref matching the branch name
@@ -1012,6 +1014,14 @@ func TestActiveTaskState_BranchDetection(t *testing.T) {
 	// Checkout matching branch
 	runGit(t, dir, "checkout", "-b", "feat/test-branch")
 
+	// Real commit present so branch detection actually fires. Historically this test
+	// passed via the priority-3 single-incomplete fallback (the unborn HEAD made Detect
+	// return empty) — the fallback was removed by multi-task-concurrency §4, and the
+	// fixture now exercises the branch probe it always claimed to.
+	//
+	// 有真实 commit，分支探测真正生效。历史上本测试实际靠优先级 3 的「唯一未完成
+	// 任务」兜底通过（unborn HEAD 使 Detect 返回空）——该兜底已被 multi-task-
+	// concurrency §4 移除，fixture 现在测的就是它名字所说的分支探测。
 	active, err := ActiveTaskState(dir, "")
 	if err != nil {
 		t.Fatalf("ActiveTaskState failed: %v", err)
@@ -1043,16 +1053,33 @@ func TestActiveTaskState_FallbackSingleIncompleteOnMaster(t *testing.T) {
 	state := NewTaskState(ctx)
 	SaveTaskState(dir, state)
 
-	// On master, branch detection returns empty — fallback should find the task
+	// multi-task-concurrency §4 removed the "single incomplete task" environment
+	// guess: in a multi-task world the only remaining task is at least as likely to
+	// be someone else's. On master with no pointer/binding the resolution is now nil;
+	// the durable anchors are the workspace binding (task start writes it) and the
+	// legacy global pointer bridge.
+	//
+	// multi-task-concurrency §4 移除了「唯一未完成任务」环境猜测：多任务世界里仅剩
+	// 的那个任务至少同样可能是别人的。master 上无指针/无绑定时解析为 nil；持久锚
+	// 是 workspace 绑定（task start 写入）与 legacy 全局指针桥。
 	active, err := ActiveTaskState(dir, "")
 	if err != nil {
 		t.Fatalf("ActiveTaskState failed: %v", err)
 	}
-	if active == nil {
-		t.Fatal("ActiveTaskState fallback should find single incomplete task on master")
+	if active != nil {
+		t.Fatalf("环境猜测兜底已移除：无指针/绑定时应返回 nil, got %q", active.TaskRef)
 	}
-	if active.TaskRef != "fix/skill-sync" {
-		t.Errorf("TaskRef = %q, want fix/skill-sync", active.TaskRef)
+	// The replacement anchor: bind the cwd to the task and the SAME call resolves it —
+	// the "exit-and-reenter" contract (a new window needs no session to survive).
+	//
+	// 替代锚：把 cwd 绑到任务上，同一调用即解析——「退出重进」契约（新窗口不需要
+	// 任何会话存活）。
+	if err := worktree.BindTask(dir, "fix/skill-sync", "master", ""); err != nil {
+		t.Fatalf("BindTask: %v", err)
+	}
+	active, err = ActiveTaskState(dir, "a-brand-new-session")
+	if err != nil || active == nil || active.TaskRef != "fix/skill-sync" {
+		t.Fatalf("绑定后新会话应解析到任务: active=%v err=%v", active, err)
 	}
 }
 
@@ -1111,16 +1138,17 @@ func TestActiveTaskState_FallbackIgnoresCompleted(t *testing.T) {
 	}
 	SaveTaskState(dir, NewTaskState(ctx2))
 
-	// Should find the single incomplete task (ignoring completed ones)
+	// multi-task-concurrency §4: completed tasks never anchor and the single-incomplete
+	// environment guess is gone — without a pointer/binding the resolution is nil.
+	//
+	// multi-task-concurrency §4：已完成任务永不作锚，且「唯一未完成任务」环境猜测
+	// 已移除——无指针/绑定时解析为 nil。
 	active, err := ActiveTaskState(dir, "")
 	if err != nil {
 		t.Fatalf("ActiveTaskState failed: %v", err)
 	}
-	if active == nil {
-		t.Fatal("ActiveTaskState should find the single incomplete task (ignoring completed)")
-	}
-	if active.TaskRef != "fix/active" {
-		t.Errorf("TaskRef = %q, want fix/active", active.TaskRef)
+	if active != nil {
+		t.Fatalf("环境猜测兜底已移除：应返回 nil, got %q", active.TaskRef)
 	}
 }
 
@@ -1239,11 +1267,15 @@ func TestActiveTaskState_BranchProbeLoadFailureFallsThrough(t *testing.T) {
 	if err != nil {
 		t.Fatalf("branch-probe load failure must fall through, not abort the probe: %v", err)
 	}
-	if active == nil {
-		t.Fatal("expected the priority-3 fallback to find fix/other behind the corrupt branch state file")
-	}
-	if active.TaskRef != "fix/other" {
-		t.Errorf("TaskRef = %q, want fix/other", active.TaskRef)
+	// multi-task-concurrency §4: the fall-through now lands on the legacy pointer bridge
+	// (nil here) — the single-incomplete scan behind a corrupt file was exactly the
+	// misattribution vector the redesign removed.
+	//
+	// multi-task-concurrency §4：fall-through 现在落到 legacy 指针桥（此处为 nil）
+	// ——损坏文件背后靠「唯一未完成任务」扫描捡起无关任务，正是重设计要移除的
+	// 误挂向量。
+	if active != nil {
+		t.Fatalf("损坏分支探测应穿落到 nil（不再捡起无关任务）, got %q", active.TaskRef)
 	}
 }
 
@@ -2057,5 +2089,47 @@ func TestTaskComplete_ReviewSnapshotCommitReviewedContentPasses(t *testing.T) {
 
 	if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
 		t.Fatalf(`commit 审查的工作区内容后应过（内容指纹一致），got: %v`, err)
+	}
+}
+
+// TestActiveTaskState_BranchGuardOtherActiveSession pins the P5 guard
+// (multi-task-concurrency §4): the branch-mapped task is skipped when ANOTHER session's
+// pointer still actively names it — two windows sharing a branch name no longer
+// misattribute the task to whichever asked second. A stale pointer (past TTL) does not
+// guard — crashed sessions must not orphan their tasks.
+//
+// TestActiveTaskState_BranchGuardOtherActiveSession 钉住 P5 守卫
+// （multi-task-concurrency §4）：分支映射的任务被【其他】会话的活跃指针持有时跳过
+// ——两个窗口共享分支名不再把任务误挂给后问的那个。过期指针（超 TTL）不守卫
+// ——崩溃的会话不得连累任务变孤儿。
+func TestActiveTaskState_BranchGuardOtherActiveSession(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "t@t.t")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "init")
+	runGit(t, dir, "checkout", "-b", "feat/shared")
+
+	ctx := &taskcontext.Context{Source: "explicit", TaskRef: "feat/shared", Branch: "feat/shared", Summary: "s", DetectedAt: time.Now()}
+	state := NewTaskState(ctx)
+	state.AddSession("sess-owner", "test")
+	SaveTaskState(dir, state)
+	SetActiveTaskRef(dir, "sess-owner", "feat/shared")
+
+	// 另一会话来问：活跃的他方锚定 → 跳过分支命中。
+	if active, _ := ActiveTaskState(dir, "sess-b"); active != nil {
+		t.Fatalf("他方活跃持有时分支命中应被守卫跳过, got %q", active.TaskRef)
+	}
+	// 持有者自己问：照常命中。
+	if active, _ := ActiveTaskState(dir, "sess-owner"); active == nil || active.TaskRef != "feat/shared" {
+		t.Fatalf("持有者自身应照常解析, got %v", active)
+	}
+	// 指针过期（模拟崩溃窗口）→ 守卫解除，任务不再被孤儿化。
+	past := time.Now().Add(-otherSessionActiveTTL - time.Hour)
+	if err := os.Chtimes(activeTaskRefPath(dir, "sess-owner"), past, past); err != nil {
+		t.Fatal(err)
+	}
+	if active, _ := ActiveTaskState(dir, "sess-b"); active == nil || active.TaskRef != "feat/shared" {
+		t.Fatalf("过期锚定不应再守卫, got %v", active)
 	}
 }

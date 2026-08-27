@@ -347,6 +347,21 @@ func pruneArchives(dir string) {
 	_, _ = util.PruneArchives(dir, "toollog", time.Now().AddDate(0, 0, -days))
 }
 
+// Prune is the non-destructive half of Clear (checklog.Prune's twin): retention cleanup of
+// toollog-*.jsonl archives only. Task start no longer Clears the toollog (multi-task-concurrency
+// design §5) — reads are TaskRef-scoped (LoadForTask / ReadEditCounts), so history must survive
+// task boundaries; only the retention window stays bounded.
+//
+// Prune 是 Clear 的非破坏性半边（checklog.Prune 的孪生）：只做 toollog-*.jsonl 归档的
+// retention 清理。task start 不再 Clear toollog（multi-task-concurrency 设计 §5）——读取
+// 按 TaskRef 过滤（LoadForTask / ReadEditCounts），历史必须跨任务边界存活；只保持
+// retention 窗口有界。
+func Prune(root string) {
+	mu.Lock()
+	defer mu.Unlock()
+	pruneArchives(dataDir(root))
+}
+
 // loadFromPath reads JSONL entries from a single file.
 //
 // loadFromPath 从一个文件读取 JSONL entry。

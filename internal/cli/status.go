@@ -49,6 +49,16 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// harness repo 状态行 + onboarding 引导（multi-task-concurrency §13：常态显示，
+	// cooldown 防重复提示）。JSON 输出不混入 advisory。
+	if !asJSON {
+		if home, herr := forgedata.GlobalHome(); herr == nil {
+			fmt.Printf("Harness:       %s\n", harnessStateLabel(readHarnessState(home)))
+		}
+		fmt.Printf("归属覆盖:      %s\n", attributionCoverageLine(root))
+		MaybeOfferHarness("forge status")
+	}
+
 	// status is an aggregate view: a task-list failure must not fail the whole
 	// render — warn on stderr and continue rendering the remaining blocks
 	// (task.go:1538 / act.go:100 propagate the error because those commands

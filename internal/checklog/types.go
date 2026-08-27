@@ -241,6 +241,49 @@ const (
 	// 与 scope-drift 一样排除出证据强度分桶。默认 advisory；protocol
 	// cross_repo_impact: required 把未声明升级为门禁阻断。
 	CheckCrossRepoImpact CheckName = "cross-repo-impact"
+	// CheckTaskStarted records the task-start boundary event (multi-task-concurrency
+	// design §5, L2 event-sourcing): `forge task start` no longer Clears the log —
+	// the destructive truncation wiped concurrent tasks' in-flight evidence chains
+	// and broke crash audit — instead it appends this boundary marker and every
+	// consumer filters by TaskRef (LoadForTask / LatestByCheckForSession already
+	// did). Observation class par excellence: a boundary is a timeline marker, not
+	// any verification result — excluded from evidence-strength bucketing. The
+	// marker is what future log rotation (janitor rolls by task_started boundaries)
+	// and cross-machine ts-ordered merges segment on.
+	//
+	// CheckTaskStarted 记录任务启动边界事件（multi-task-concurrency 设计 §5，L2 事件
+	// 化）：`forge task start` 不再 Clear 日志——破坏性截断会抹掉并发任务在途的证据
+	// 链、断掉崩溃审计——改为追加本边界标记，消费侧一律按 TaskRef 过滤
+	//（LoadForTask / LatestByCheckForSession 本就如此）。观察类的典型：边界是时间线
+	// 标记而非任何验证结果——排除出证据强度分桶。该标记也是后续日志滚动（janitor
+	// 按 task_started 边界归档）与跨机 ts 归并的分段锚点。
+	CheckTaskStarted CheckName = "task-started"
+	// CheckAttribution records the Stop-time attribution reconciliation coverage
+	// (multi-task-concurrency design §6, L3): how much of the working tree's changed set
+	// the session→file ledger explains (attributed vs orphan). This is the T2 spike's
+	// measuring stick — bash-infer's fate is decided by this measured coverage, not by
+	// assumption. Observation class: coverage is infrastructure health, not task
+	// verification — excluded from evidence-strength bucketing. Counts ride
+	// Meta[MetaKeyAttribution*].
+	//
+	// CheckAttribution 记录 Stop 时归属对账的覆盖率（multi-task-concurrency 设计 §6，
+	// L3）：会话→文件台账解释了工作树变更集的多少（attributed vs orphan）。这是 T2
+	// spike 的那把尺子——bash-infer 的去留由实测覆盖率决定，不靠拍脑袋。观察类：
+	// 覆盖率是基建健康度，非任务验证——排除出证据强度分桶。计数走
+	// Meta[MetaKeyAttribution*]。
+	CheckAttribution CheckName = "attribution"
+)
+
+// MetaKeyAttribution* namespace attribution-coverage entries' machine payload (single
+// source of truth for writer attribution/metric.go and future readers — same contract-seam
+// discipline as MetaKeyVerdict/MetaKeySyncOp).
+//
+// MetaKeyAttribution* 归属覆盖率条目的机器载荷命名空间（写入方 attribution/metric.go
+// 与未来读方的单一真相源——与 MetaKeyVerdict/MetaKeySyncOp 同样的接缝契约纪律）。
+const (
+	MetaKeyAttributionAttributed = "attribution.attributed"
+	MetaKeyAttributionOrphans    = "attribution.orphans"
+	MetaKeyAttributionRate       = "attribution.rate"
 )
 
 const (
