@@ -669,18 +669,40 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Clear checklog for the new task. (Clear also prunes expired checklog/toollog
-	// archives per FORGE_LOG_RETENTION_DAYS — see store.go.)
+	// Append a task-started boundary event instead of Clearing the logs
+	// (multi-task-concurrency design §5, L2 event-sourcing). The old Clear was a
+	// destructive truncation with three production failure faces: a task B start
+	// wiped in-flight task A's evidence chain (concurrent tasks share the project
+	// DataDir by design), a crash between tool call and state write left the audit
+	// chain severed, and cross-machine merges lost whatever had been cleared.
+	// Reads were already TaskRef-scoped (checklog.LoadForTask /
+	// LatestByCheckForSession, toolusage.LoadForTask), so segmentation by boundary
+	// event preserves everything Clear protected against — inheritance of a
+	// previous task's evidence — without destroying anything. Retention pruning
+	// (the useful half of Clear) stays, non-destructively.
 	//
-	// 为新 task 清 checklog。（Clear 也会按 FORGE_LOG_RETENTION_DAYS 清理超期 checklog/toollog
-	// 归档——见 store.go。）Clear 失败只 stderr 告警（不阻断 task start），但必须留痕——
-	// 静默失败会让新任务继承上一任务的证据链。
-	if cerr := checklog.Clear(root); cerr != nil {
-		fmt.Fprintf(os.Stderr, "warn: 清空 checklog 失败（新任务可能混入上一任务证据）: %v\n", cerr)
+	// 追加 task-started 边界事件，取代清空日志（multi-task-concurrency 设计 §5，L2 事件
+	// 化）。旧 Clear 是破坏性截断，三个生产事故面：任务 B 开工抹掉在途任务 A 的证据链
+	//（并发任务按设计共享项目 DataDir）；工具调用与状态写之间的崩溃断掉审计链；被清
+	// 掉的内容跨机合并即丢失。读取侧本就按 TaskRef 过滤（checklog.LoadForTask /
+	// LatestByCheckForSession、toolusage.LoadForTask），按边界事件分段既保住 Clear 防的
+	// 那件事——新任务继承上一任务的证据——又不破坏任何东西。retention 清理（Clear 有
+	// 用的那半）保留，非破坏性。
+	recordAuditErr := func(err error, what string) {
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warn: %s 失败: %v\n", what, err)
+		}
 	}
-	if cerr := toolusage.Clear(root); cerr != nil {
-		fmt.Fprintf(os.Stderr, "warn: 清空 toollog 失败（新任务可能混入上一任务工具记录）: %v\n", cerr)
-	}
+	recordAuditErr(checklog.Record(root, &checklog.Entry{
+		Check:   checklog.CheckTaskStarted,
+		Passed:  true,
+		Checked: true,
+		Level:   checklog.LevelAdvisory,
+		TaskRef: ctx.TaskRef,
+		Detail:  fmt.Sprintf("task started: %s (branch %s)", state.Summary, state.Branch),
+	}), "记录 task-started 边界事件")
+	checklog.Prune(root)
+	toolusage.Prune(root)
 
 	// Prune completed task-state files beyond the retention window to keep
 	// DataDir/tasks/ bounded. Same window as log archival, so task metadata is

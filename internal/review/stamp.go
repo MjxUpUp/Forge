@@ -93,7 +93,7 @@ func Evaluate(root string) (Decision, string, error) {
 		return DecisionPass, "无未提交变更，无需审查", nil
 	}
 
-	stamp := loadStamp(root)
+	stamp := loadStamp(root, hash)
 
 	// Same diff already reviewed -> pass
 	//
@@ -175,28 +175,35 @@ func MarkPassedWithNote(root, note string) error {
 	return saveStamp(root, stamp)
 }
 
-// loadStamp reads the review stamp of the current branch; missing/corrupt returns an empty
-// Stamp. By design there is no error return: the stamp is a hint, and every failure mode
-// (absent, unreadable, corrupt) degrades to "empty stamp -> re-review", which is the safe
-// direction. A non-IsNotExist read failure (permission/IO) is logged so it stays observable
-// instead of masquerading as "no stamp yet".
+// loadStamp reads the review stamp for the given diff hash: the content-addressed
+// dh-<hash>.stamp first (primary), the legacy <branch>.stamp second (read-compat for
+// pre-migration stamps). Missing/corrupt returns an empty Stamp. By design there is no
+// error return: the stamp is a hint, and every failure mode (absent, unreadable, corrupt)
+// degrades to "empty stamp -> re-review", which is the safe direction. A non-IsNotExist
+// read failure (permission/IO) is logged so it stays observable instead of masquerading
+// as "no stamp yet".
 //
-// loadStamp 读取当前分支的审查 stamp；不存在/损坏返回空 Stamp。设计上没有 error 返回：
-// stamp 只是提示，所有失败模式（不存在/不可读/损坏）都降级为「空 stamp → 重审」，
-// 这是安全方向。非 IsNotExist 的读失败（权限/IO）记 log 保持可观测，不再伪装成「还没有 stamp」。
-func loadStamp(root string) *Stamp {
-	data, err := os.ReadFile(stampPath(root))
-	if err != nil {
-		if !os.IsNotExist(err) {
-			log.Printf("[review] stamp read failed (%v) — treating as empty stamp, re-review required", err)
+// loadStamp 读取给定 diff hash 的审查 stamp：先内容寻址 dh-<hash>.stamp（主路径），
+// 后旧 <branch>.stamp（迁移前 stamp 的读兼容）。不存在/损坏返回空 Stamp。设计上没有
+// error 返回：stamp 只是提示，所有失败模式（不存在/不可读/损坏）都降级为「空 stamp →
+// 重审」，这是安全方向。非 IsNotExist 的读失败（权限/IO）记 log 保持可观测，不再伪装
+// 成「还没有 stamp」。
+func loadStamp(root, hash string) *Stamp {
+	for _, path := range []string{stampContentPath(root, hash), stampPath(root)} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				log.Printf("[review] stamp read failed (%v) — treating as empty stamp, re-review required", err)
+			}
+			continue
 		}
-		return &Stamp{}
+		var s Stamp
+		if err := json.Unmarshal(data, &s); err != nil {
+			continue // 损坏视为空，试下一路径/重审
+		}
+		return &s
 	}
-	var s Stamp
-	if err := json.Unmarshal(data, &s); err != nil {
-		return &Stamp{} // 损坏视为空，下次重审
-	}
-	return &s
+	return &Stamp{}
 }
 
 // knownReviewed reports whether the given diff hash has been marked reviewed on ANY branch stamp
@@ -239,7 +246,7 @@ func CurrentState(root string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	stamp := loadStamp(root)
+	stamp := loadStamp(root, hash)
 	branch := currentBranch(root)
 
 	var b strings.Builder
@@ -513,12 +520,38 @@ func stampPath(root string) string {
 	return filepath.Join(forgedata.DataDirFor(root), "stamps", taskcontext.SanitizeRef(branch)+".stamp")
 }
 
+// stampContentPath is the content-addressed stamp location (multi-task-concurrency design
+// §5): stamps/dh-<diffhash>.stamp. The diff hash is the semantic key of a review pass —
+// knownReviewed already matched by hash across branches — so addressing by content makes
+// the primary lookup exact and frees the stamp from branch/worktree collisions (two
+// worktrees on one branch shared one <branch>.stamp and the hash inside was whichever
+// worktree last saved). The legacy <branch>.stamp path is kept read-only for compat.
+//
+// stampContentPath 是内容寻址的 stamp 落点（multi-task-concurrency 设计 §5）：
+// stamps/dh-<diffhash>.stamp。diff hash 本就是审查通过的语义键——knownReviewed 早已按
+// hash 跨分支匹配——按内容寻址让主查找精确化，并把 stamp 从 branch/worktree 碰撞里解
+// 放出来（同分支两个 worktree 此前共享一枚 <branch>.stamp，里面的 hash 是最后保存的
+// 那个 worktree 的）。旧 <branch>.stamp 路径保留只读兼容。
+func stampContentPath(root, diffHash string) string {
+	return filepath.Join(forgedata.DataDirFor(root), "stamps", "dh-"+taskcontext.SanitizeRef(diffHash)+".stamp")
+}
+
 func saveStamp(root string, s *Stamp) error {
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err
 	}
-	return util.AtomicWrite(stampPath(root), data, 0o644)
+	// Content-addressed write; the legacy branch path is only a read-compat fallback for
+	// pre-migration stamps (a DiffHash-less stamp has nothing to address on — defensive,
+	// every caller computes the hash before saving).
+	//
+	// 内容寻址写入；旧分支路径仅作迁移前 stamp 的读兼容回落（无 DiffHash 的 stamp 无内容
+	// 可寻址——防御式，所有调用方保存前都先算 hash）。
+	path := stampPath(root)
+	if s.DiffHash != "" {
+		path = stampContentPath(root, s.DiffHash)
+	}
+	return util.AtomicWrite(path, data, 0o644)
 }
 
 func diffShort(h string) string {
