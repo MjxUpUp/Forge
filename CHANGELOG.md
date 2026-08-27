@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.45.0](https://github.com/MjxUpUp/Forge/compare/v1.44.0...v1.45.0) (2026-08-27)
+
+
+### Features
+
+* **attribution:** L3 归属服务——session→文件台账 + Stop 对账 + 覆盖率度量（T2） ([e900633](https://github.com/MjxUpUp/Forge/commit/e90063352dc093d621057a150b89ad31f23ef38d))
+* **attribution:** T3 消费者切换——四类工作树读取全部经归属过滤 ([ea1977e](https://github.com/MjxUpUp/Forge/commit/ea1977e129818cae6aa663d7001600eeaaebf1d2))
+* **harness:** T6 harness repo——git 化用户级台账 + 信任分类 + 边界批量提交 ([91c9e1d](https://github.com/MjxUpUp/Forge/commit/91c9e1df682b3ac2a6c9f8a0cae21681191d2379))
+* **harness:** T7 引导层——onboarding 状态机 + 触发点 + 防 nag ([e4c32c5](https://github.com/MjxUpUp/Forge/commit/e4c32c5603b51317159f471f8ce0f7a49c66ddef))
+* **harness:** T9 传输换代——git remote push/pull + 首推出境 HITL ([e10d381](https://github.com/MjxUpUp/Forge/commit/e10d381591ae451561f8c27609093e1e8101bb45))
+* **multi-task-concurrency:** T10 收尾——dispatcher 心跳接线 + 落地记录 + dogfood 门禁通过 ([7d6cb0f](https://github.com/MjxUpUp/Forge/commit/7d6cb0f7c763e40c3e81ffccbbf494b8d4d68db3))
+* **observability:** T10 度量收尾——status 归属覆盖率行 + 并发矩阵总测 ([2adf07e](https://github.com/MjxUpUp/Forge/commit/2adf07e437537f13c58d1149d88f126f821dcc1f))
+* **review:** 评审可观测性——finding 带轮次/快照、非 task 盖章落 checklog、审计去重标注 ([5392309](https://github.com/MjxUpUp/Forge/commit/5392309b5c5ca72976738d71a969dc7999ad1f1a))
+* **skills:** code-review-gate 收敛纪律——复审新发现归因 + 双轨分歧判读 + --note 实质留痕 ([f2320fa](https://github.com/MjxUpUp/Forge/commit/f2320fafe00cd4ba06f3740827503a4fdaadda97))
+* **specs:** T8 产物契约层——specs 文件产物 + 哈希引用 + attempts 回灌 ([1577585](https://github.com/MjxUpUp/Forge/commit/1577585046de066a0d1778721bd30fa6ab43669c))
+* **state:** L2 事件化——task start 废 Clear 改边界事件 + stamp 内容寻址 ([dc495b9](https://github.com/MjxUpUp/Forge/commit/dc495b929512b3e1b9669517fa300201835bc51a))
+* **worktree:** T4 身份层——workspace 绑定存储 + 解析链 v2 + P5 守卫 ([08acadc](https://github.com/MjxUpUp/Forge/commit/08acadc8422e54912f6a591b7472be785f6bd293))
+* **worktree:** T5 worktree 生命周期——start --worktree / finish / janitor ([049946f](https://github.com/MjxUpUp/Forge/commit/049946f40efcdeb785bf34e1f5c1cb10433dbc83))
+
+
+### Bug Fixes
+
+* **ci:** Windows 跨平台修复——HITL 确认语义统一 + worktree 删除 CWD 锁防护 ([1093f5b](https://github.com/MjxUpUp/Forge/commit/1093f5bcf4a0b47fb05a1bc099f59d5a96cf8e14))
+* **premerge:** 预检修复——接续 fixture 对齐解析链 v2 + README 补新命令 + gofmt ([b445396](https://github.com/MjxUpUp/Forge/commit/b445396af7b83bda561b179af25dd87eb4253fc2))
+* **review:** 复审残留——priorAttempts 真实接线进 HANDOFF + symlink 主检出判定 ([6bebee0](https://github.com/MjxUpUp/Forge/commit/6bebee0226a2194067b86cdfca71f04ad50e730f))
+* **review:** 审查 nits——CheckReviewPass 注释同步双模式、unused-scan 同款去重标注 ([9d18d31](https://github.com/MjxUpUp/Forge/commit/9d18d3189c61fadfc781555f29f3aac00e3c17bf))
+* **review:** 审查修复——B1 共享会话误标外来 / B2 finish 合并守卫 / H 台账 TTL / M1 M2 LOW 六项 ([b9fabd4](https://github.com/MjxUpUp/Forge/commit/b9fabd44097fee183f06a4b5891441ed709351e8))
+
 ## [1.44.0](https://github.com/MjxUpUp/Forge/compare/v1.43.0...v1.44.0) (2026-08-26)
 
 
