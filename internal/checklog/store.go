@@ -305,7 +305,7 @@ func LatestByCheckForSession(root, sessionID string) (map[CheckName]*Entry, erro
 // semantics as the parent function).
 //
 // LatestByCheckForSessionSince 是带时间下界的 LatestByCheckForSession
-//（multi-task-concurrency M2 修正）：active 日志现在是跨任务累积的 append-only 时
+// （multi-task-concurrency M2 修正）：active 日志现在是跨任务累积的 append-only 时
 // 间线（task start 不再 Clear）——意图是「本任务期间」的会话级读方必须同时按任务
 // StartedAt 设界，否则新任务继承上一任务的 PASS 与评分信用。since 零值 = 旧的无界
 // 行为（真正想要会话全史的调用方）。SessionID 为空的旧条目依旧总是保留（与父函数
