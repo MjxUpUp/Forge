@@ -757,3 +757,31 @@ func TestEvaluate_LegacyBranchStampCompat(t *testing.T) {
 		t.Errorf("旧分支 stamp 读兼容失败：同 hash 已审应放行, got %v", decision)
 	}
 }
+
+// TestSourceChangesSinceExcluded pins the T3 exclusion contract: excluded paths leave the
+// fingerprint; nil map is byte-identical to the legacy whole-tree computation.
+//
+// TestSourceChangesSinceExcluded 钉住 T3 排除契约：被排除路径离开指纹；nil map 与
+// 旧全树计算逐字节一致。
+func TestSourceChangesSinceExcluded(t *testing.T) {
+	dir := initGitRepo(t)
+	write(t, dir, "a.go", "package a\n")
+	write(t, dir, "b.go", "package b\n")
+
+	whole, hasChanges, err := SourceChangesSince(dir, "")
+	if err != nil || !hasChanges {
+		t.Fatalf("whole-tree: %v has=%v", err, hasChanges)
+	}
+	excluded, _, err := SourceChangesSinceExcluded(dir, "", map[string]bool{"b.go": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if excluded == whole {
+		t.Fatal("排除 b.go 后指纹应变化")
+	}
+	// nil map == legacy
+	again, _, _ := SourceChangesSinceExcluded(dir, "", nil)
+	if again != whole {
+		t.Fatal("nil 排除集必须与旧全树计算一致")
+	}
+}

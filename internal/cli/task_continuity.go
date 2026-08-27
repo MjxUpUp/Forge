@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/attribution"
 	"github.com/MjxUpUp/Forge/internal/hostcap"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
@@ -309,7 +311,7 @@ func runTaskResume(cmd *cobra.Command, args []string) error {
 		fmt.Println(string(out))
 		return nil
 	}
-	fmt.Print(renderResume(state, gitPorcelain(root), workspaceContextLine(root, state.CrossRepoImpact)))
+	fmt.Print(renderResume(state, attributedPorcelain(root, state), workspaceContextLine(root, state.CrossRepoImpact)))
 	return nil
 }
 
@@ -406,7 +408,7 @@ func renderHookResume(root string) (string, error) {
 	if _, err := attachCurrentSession(state, root, true); err != nil {
 		return "", err
 	}
-	handoff := renderResume(state, gitPorcelain(root), workspaceContextLine(root, state.CrossRepoImpact))
+	handoff := renderResume(state, attributedPorcelain(root, state), workspaceContextLine(root, state.CrossRepoImpact))
 	// The current task resumes automatically, but the handoff party should still know
 	// the full in-flight set — one line naming the other incomplete tasks. The list is
 	// capped (zombie accumulation would otherwise produce a giant line and push the
@@ -899,7 +901,7 @@ func renderHookReinject(root string) (string, error) {
 		}
 		return "", nil
 	}
-	handoff := renderResume(state, gitPorcelain(root), workspaceContextLine(root, state.CrossRepoImpact))
+	handoff := renderResume(state, attributedPorcelain(root, state), workspaceContextLine(root, state.CrossRepoImpact))
 	// Plan 4 (mid-way checkpoint explicit persist · active driving): right after a
 	// compaction, if the task has not persisted any "mid-way thread" (decision/next
 	// step), the handoff can only restore the goal/plan set at task start — and that
@@ -981,7 +983,7 @@ func runTaskContext(cmd *cobra.Command, args []string) error {
 		fmt.Println(string(out))
 		return nil
 	}
-	fmt.Print(renderResume(state, gitPorcelain(root), workspaceContextLine(root, state.CrossRepoImpact)))
+	fmt.Print(renderResume(state, attributedPorcelain(root, state), workspaceContextLine(root, state.CrossRepoImpact)))
 	return nil
 }
 
@@ -1185,6 +1187,80 @@ func gitPorcelain(root string) []string {
 		return nil
 	}
 	return strings.Split(trimmed, "\n")
+}
+
+// attributedPorcelain is gitPorcelain filtered to THIS task's scene (multi-task-concurrency
+// §6, T3): porcelain lines whose path the L3 ledger provably assigns to another incomplete
+// task's sessions are dropped, and so are orphans — both with honest count lines appended
+// (a takeover view reconstructs this task's scene, not the whole tree's noise). Degradation
+// is fail-open toward the legacy whole tree: attribution disabled, empty ledger (pre-upgrade
+// session / no-identity host), or git failure all return the unfiltered porcelain — hiding
+// the task's own WIP (an empty scene) is worse than showing a noisy one.
+//
+// attributedPorcelain 是按本任务现场过滤后的 gitPorcelain（multi-task-concurrency
+// §6，T3）：L3 台账可证明归属其他未完成任务会话的 porcelain 行被剔除，无主路径同样
+// 剔除——两者都以诚实的计数行补在末尾（接手视图还原的是本任务现场，不是整树噪音）。
+// 降级向旧全树行为 fail-open：归属关闭、台账为空（升级前会话/无身份宿主）或 git
+// 失败都返回未过滤 porcelain——藏掉任务自己的 WIP（空现场）比多显示噪音更糟。
+func attributedPorcelain(root string, state *taskpipeline.TaskState) []string {
+	lines := gitPorcelain(root)
+	if lines == nil {
+		return nil
+	}
+	if !attribution.Enabled() {
+		return lines
+	}
+	view := attribution.Reconcile(root)
+	// Fail-open trigger: the ledger attributes ZERO changed paths — pre-upgrade session,
+	// no-identity host, or bash-only edits the ledger never saw. Attribution then carries
+	// no information, and marking everything "orphan-excluded" would render an EMPTY
+	// scene (hiding the task's own WIP — strictly worse than a noisy legacy view). Only
+	// when at least one path is attributed does the own/foreign/orphan split mean anything.
+	//
+	// fail-open 触发：台账对变更集的归属数为零——升级前会话、无身份宿主、或台账没看
+	// 见的纯 bash 编辑。此时归属不携带任何信息，把全部标成「无主剔除」会渲染出空现场
+	//（藏掉任务自己的 WIP——严格劣于带噪音的旧视图）。至少有一个路径被归属时，
+	// 自己/外来/无主的切分才开始有意义。
+	if len(view.BySession) == 0 {
+		return lines
+	}
+	ref := ""
+	if state != nil {
+		ref = state.TaskRef
+	}
+	foreign := taskpipeline.ForeignAttributedPaths(root, ref)
+	orphanSet := map[string]bool{}
+	for _, p := range view.Orphans {
+		orphanSet[p] = true
+	}
+	kept := make([]string, 0, len(lines))
+	excludedForeign, excludedOrphan := 0, 0
+	for _, l := range lines {
+		if len(l) < 3 {
+			kept = append(kept, l)
+			continue
+		}
+		p := l[3:]
+		if idx := strings.Index(p, " -> "); idx >= 0 {
+			p = p[idx+4:]
+		}
+		p = filepath.ToSlash(filepath.Clean(strings.Trim(p, `"`)))
+		switch {
+		case foreign[p]:
+			excludedForeign++
+		case orphanSet[p]:
+			excludedOrphan++
+		default:
+			kept = append(kept, l)
+		}
+	}
+	if excludedForeign > 0 {
+		kept = append(kept, fmt.Sprintf("· 已排除 %d 个其他任务会话的未提交文件（非本任务现场）", excludedForeign))
+	}
+	if excludedOrphan > 0 {
+		kept = append(kept, fmt.Sprintf("· 已排除 %d 个无归属未提交文件（台账无法解释，git status 可查）", excludedOrphan))
+	}
+	return kept
 }
 
 // renderResume renders the task's continuity fields into a HANDOFF-style view.
