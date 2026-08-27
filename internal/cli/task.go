@@ -366,6 +366,7 @@ func completeGenericTask(root string, state *taskpipeline.TaskState) error {
 	if err := worktree.Clear(root, state.TaskRef); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to clear workspace binding: %v\n", err)
 	}
+	HarnessCommitBestEffort("task completed: " + state.TaskRef)
 	return nil
 }
 
@@ -734,6 +735,9 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	}), "记录 task-started 边界事件")
 	checklog.Prune(root)
 	toolusage.Prune(root)
+	// harness repo 批量提交（multi-task-concurrency §13 提交策略：任务边界触发，
+	// 绝不逐 hook——延迟预算）。best-effort 静默。
+	HarnessCommitBestEffort("task started: " + ctx.TaskRef)
 
 	// Prune completed task-state files beyond the retention window to keep
 	// DataDir/tasks/ bounded. Same window as log archival, so task metadata is
