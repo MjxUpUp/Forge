@@ -139,3 +139,25 @@ triggers keywords 增补 5 个高价值词：migration、接口定义、路由�
 ### Evidence
 
 docs/design/output-readability-gates.md L2 章节；6 个 phase-*.md 确定性规则表同步追加 L1 lint 规则行
+
+## [d-18d0a1f3c02b4e12-c1d2e3f4] accept
+
+- **Skill**: design-artifact-standards
+- **DecidedAt**: 2026-08-28T07:30:23Z
+- **By**: zcode
+
+### Diagnosis
+
+本 skill 是纯路由型 skill 却不托管自己的核心资产：phase-*.md ×6 寄居 code-review-gate，靠 `../code-review-gate/references/` 跨 skill 相对链接维持（Kimi 宿主实测断链）+ requires: code-review-gate 安装提示 + 绝对路径兜底说明——无条件消费者依赖条件消费者，依赖箭头反了
+
+### Revision
+
+phase-*.md ×6 git mv 迁入本 skill references/（单一真相源本地化，单装即可完整使用）；requires 改为 doc-review（路由表末行文档产物的软依赖，skill 名引用不深链）；路径锚点/维护注记同步改写；6 个 phase 文件内指回 review-checklist.md 的链接改为 code-review-gate skill 名引用
+
+### Evidence
+
+SKILL.md 原维护注记「跨 skill 引用首例」自证脆弱性；迁移后 forge skills validate --skill design-artifact-standards 过 R1-R17
+
+### Rationale
+
+编写期是 phase 清单的无条件消费者（本 skill 的全部身份），审查期只在 forge 项目有 DesignPhases 时条件加载——资产随无条件消费者走，条件消费者跨引

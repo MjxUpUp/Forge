@@ -29,7 +29,7 @@ Conventional Commits：`feat:` / `fix:` / `perf:` / `refactor:` / `docs:` / `cho
 - body 超过 3 行时用三段结构：**动机**（为什么改）→ **方案**（关键取舍）→ **验证**（实跑的命令与结果）
 - **禁复述 diff**：body 写 diff 看不出来的信息（为什么、权衡、坑），diff 本体能看到的逐行描述不写
 - 模板与档位判据见 `skills/doc-generator/references/template-pr.md` 与
-  `skills/code-review-gate/references/rubric-docs.md`（PR 描述与 commit 共用三段结构）
+  `skills/doc-review/references/rubric-docs.md`（PR 描述与 commit 共用三段结构）
 
 ## 发版
 

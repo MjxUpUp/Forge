@@ -220,3 +220,26 @@ AI CR 不稳定的本地形态不是误报（一周 25+ 次审查 0 误报）而
 ### Evidence
 
 kimi 转录一周 17 个审查 episode 取证 + forge 执行记录 6 项度量盲区分析；业界 Bugbot 多 pass 共识与 Snap Verifier 经验按本地数据裁剪（防漏检优先于防噪声）
+
+## [d-18d0a1f3c02b4e11-b1c2d3e4] accept
+
+- **Skill**: code-review-gate
+- **DecidedAt**: 2026-08-28T07:30:23Z
+- **By**: zcode
+
+### Diagnosis
+
+references/ 内 7 个文件与代码审查无关：rubric-docs.md（文档 L2 评分）与 phase-*.md ×6（设计产物标准清单，编写期主场在 design-artifact-standards，寄居此处导致对方需跨 skill `../` 深链 + requires 提示 + 绝对路径兜底）——SRP 违例（变化频率/受众不同的资产共居）
+
+### Revision
+
+rubric-docs.md 迁出至新建 doc-review skill；phase-*.md ×6 迁至 design-artifact-standards/references/（标准随编写期主场走）；本 skill 保留纯代码资产（双轨审查/作弊指纹/审查清单/过度工程/SQL 安全/子代理契约）；forge-integration 的环节加载表改指新家并注明迁移
+
+### Evidence
+
+design-artifact-standards/SKILL.md 原维护注记自证断链风险（2026-08 Kimi 宿主实测裸 ../ 断链）；仓库 grep：phase-* 消费方为 design-artifact-standards（无条件）与 code-review-gate（forge 条件）——依赖箭头反了
+
+### Rationale
+
+拆分判据用 SRP 的变化频率表述：作弊指纹表随 AI 模式演进、phase 清单随设计标准演进、rubric 随文档质量工作演进——三种频率三批受众不共居
+

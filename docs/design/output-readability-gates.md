@@ -17,7 +17,7 @@ AI 产物可读性差，两个维度：
 | 层级 | 判什么 | 执行机制 | Forge 落地 |
 |---|---|---|---|
 | L1 机器可判 | 禁令短语、结构（必填章节）、结论枚举、篇幅 | 确定性 lint，不过即打回 | `internal/doclint`（D1-D7）+ `forge docs lint` |
-| L2 模型可判 | 重点是否前置、详略是否得当、受众是否匹配 | rubric 档位判据 + 独立评审（产出者不能自检） | `code-review-gate/references/rubric-docs.md` + `forge task doc-review` |
+| L2 模型可判 | 重点是否前置、详略是否得当、受众是否匹配 | rubric 档位判据 + 独立评审（产出者不能自检） | `doc-review/references/rubric-docs.md` + `forge task doc-review` |
 | L3 需人判断 | 业务价值、对外措辞 | 不假装能自动化；轮次上限后升级人工确认 | doc-review 3 轮未过 → 人工裁定放行 |
 
 回检的流程化（诊断：回检此前**无节点、无判据、无代价**——「检查一下」是不可证伪的祈使句）：
@@ -41,7 +41,7 @@ AI 产物可读性差，两个维度：
 
 ### L2 — rubric 与证据
 
-- `skills/code-review-gate/references/rubric-docs.md`：四维各 0-25（结论前置/详略/证据/受众），总分 100，阈值 75（复用 skill 体系经验值，文档场景适用性待实测校准）。评分纪律五条：产出者不能当回检者、对抗立场、发现必须带行号、改进给 delete-list、评审自身分级。
+- `skills/doc-review/references/rubric-docs.md`：四维各 0-25（结论前置/详略/证据/受众），总分 100，阈值 75（复用 skill 体系经验值，文档场景适用性待实测校准）。评分纪律五条：产出者不能当回检者、对抗立场、发现必须带行号、改进给 delete-list、评审自身分级。
 - `forge task doc-review --passed <pass|fail> --score N [--round R] [--reviewer <id>] [--critical <发现>]`：评审后落 `TaskState.DocReview`（快照双键：HEAD commit + 变更文档内容指纹 sha256——提交后改产物动 HEAD 键、不提交地改产物动指纹键，均判过期重评）；Critical 发现落 Findings（Source=doc-review），未决阻断。轮次历史留 `DocReviewHistory`（收敛趋势可观测：两轮之间 Critical 不降即异常信号）。
 - 模板（写时给正例）：`skills/doc-generator/references/` 新增 `template-pr/test-report/retrospective/tech-plan/release-notes`——修复了触发表宣称但无模板的三处空挂。
 
@@ -69,6 +69,6 @@ AI 产物可读性差，两个维度：
 ## 已知边界
 
 - PR 描述与 commit message 不是仓库文件：由撰写期模板（`.github/PULL_REQUEST_TEMPLATE.md`、CONTRIBUTING.md commit 段）+ rubric L2 约束，不进 doclint 的 --base 扫描。
-- L2 评审是 agent 跑的 rubric，forge 只验证证据存在与 fresh——评审质量靠 rubric-docs.md 的纪律条款（对抗立场/带行号/delete-list）与「产出者不能自检」约束，无法机器强制评审者身份。
+- L2 评审是 agent 跑的 rubric，forge 只验证证据存在与 fresh——评审质量靠 doc-review skill 的纪律条款（对抗立场/带行号/delete-list）与「产出者不能自检」约束，无法机器强制评审者身份。
 - 模型侧 eval（LLM-as-judge 打表达分）v1 不做：评委自身有 verbosity bias（arXiv 2310.10076），确定性部分（doclint 抓取/门禁拒绝断言）已由单测覆盖（`internal/doclint/lint_test.go`、`internal/taskpipeline/docgate_test.go`）。
 - `--exclude-standard` 尊重项目与全局 gitignore：被项目明确忽略的 .md 不算交付物（部分机器全局忽略 `docs/` 只影响未跟踪新文件，已跟踪文件的变更仍被 git diff 覆盖）。已知口子：把产物写进 gitignore 目录可跳过评审——依赖 code review 兜底；新交付物应 `git add` 进跟踪后才受门禁保护（本设计文档自身即以 `git add -f` 入库）。

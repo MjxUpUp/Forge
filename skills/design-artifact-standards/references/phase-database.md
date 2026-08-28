@@ -56,7 +56,7 @@
 
 **与其他审查的分工**：
 - 数据库设计产物审查 → 本 checklist（审 migrations/schema 文件）
-- 代码实现质量 → `review-checklist.md`（审代码 diff 中的 SQL）
+- 代码实现质量 → code-review-gate 的 `references/review-checklist.md`（审代码 diff 中的 SQL）
 - API 设计审查 → `phase-api.md`（审接口定义）
 
 **数据来源**：Flyway 迁移最佳实践、SQL Style Guide、阿里 Java 开发手册。
