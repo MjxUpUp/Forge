@@ -121,3 +121,25 @@ metadata补triggers(keywords/cooldown;skill-authoring-standard用新condition sk
 ### Evidence
 
 skills-hitrate-review-2026-08-15:四源425会话挖掘语料+trigger覆盖10%缺口
+
+## [d-18cff80ccbf4992c-41a6471b] accept
+
+- **Skill**: frontend-feature-development
+- **DecidedAt**: 2026-08-28T12:31:50Z
+- **By**: claude-code
+
+### Diagnosis
+
+component-checklist.md 两处无条件 forge review pass 要求（:7 改前后对比、:62 完成清单项）——skills 零反向依赖违例（CONVENTIONS §13 R18）：无 forge 环境按字面无法走完阶段 2 清单
+
+### Revision
+
+component-checklist.md :7 改为改前/后各跑相关组件测试做行为对比；:62 改为过 code-review-gate 阶段 3 自查清单（skill 间引用替代 forge 命令）
+
+### Evidence
+
+forge skills validate：修改前 R18 硬 issue 报 references/component-checklist.md 命中，修改后通过
+
+### Rationale
+
+门禁语义经 code-review-gate skill 承接（skill 间引用合法），行为对比用组件测试承接，方法论完整性不受损

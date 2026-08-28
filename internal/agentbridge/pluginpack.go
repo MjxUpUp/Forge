@@ -110,6 +110,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/skills"
+	skillsforge "github.com/MjxUpUp/Forge/skills-forge"
 )
 
 // DefaultPluginDescription is the single source of truth for the plugin/marketplace
@@ -337,7 +338,9 @@ func writeReasonixPluginManifest(spec PluginPackSpec, pluginDir string) error {
 // 的 skills 布局（plugin 根下 skills/ 目录，每 skill 一个目录，按约定加载，无需 manifest
 // 字段）。缺了这一步，`claude plugin install` 只接线 gate、不带任何 skill：用户仍需手动
 // `forge skills install --global`（正是 plugin 用户反馈的缺口）。来源与其他分发路径共用
-// 同一 go:embed（skills.FS）——单一真相源。
+// 同一 go:embed（skills.FS + skillsforge.FS）——单一真相源。2026-08 零反向依赖迁移
+// 后插件分发两棵树：中立 skills/ + forge 原生 skills-forge/（合并写进同一
+// plugins/<name>/skills/，forge 自己的插件当然带 forge 原生 skill）。
 //
 // 收敛性：先 RemoveAll 整个 skills 树，canonical 库里删掉的 skill 不会以陈旧条目残留
 // 在 committed pack 里（regen 必须收敛，而非只增不减）。根级文件（CONVENTIONS.md、*.go）
@@ -347,27 +350,53 @@ func writePluginSkills(pluginDir string) error {
 	if err := os.RemoveAll(skillsDir); err != nil {
 		return fmt.Errorf("remove stale plugin skills: %w", err)
 	}
-	entries, err := fs.ReadDir(skills.FS, ".")
+	shipped := 0
+	for _, lib := range []fs.FS{skills.FS, skillsforge.FS} {
+		n, err := writeSkillsFrom(lib, skillsDir)
+		if err != nil {
+			return err
+		}
+		shipped += n
+	}
+	// Empty library = distribution regression (embed FS missing/exhausted) — refuse to ship
+	// a skills-less plugin silently; zero count also breaks the claude plugin skills contract.
+	//
+	// 空库 = 分发回退（embed FS 缺失/被清空）——拒绝静默分发无 skills 的 plugin；
+	// 零数量同样破坏 claude plugin 的 skills 契约。
+	if shipped == 0 {
+		return fmt.Errorf("plugin pack: embedded skill library resolved 0 skills — refusing to ship a skills-less plugin (distribution regression)")
+	}
+	return nil
+}
+
+// writeSkillsFrom writes every loadable skill (top-level dir containing
+// SKILL.md) from lib into skillsDir, returning the count shipped. Shared by the
+// neutral and forge-native trees — identical semantics for both.
+//
+// writeSkillsFrom 把 lib 里每个可加载 skill（含 SKILL.md 的顶层目录）写进
+// skillsDir，返回分发数。中立树与 forge 原生树共用——两棵树语义一致。
+func writeSkillsFrom(lib fs.FS, skillsDir string) (int, error) {
+	entries, err := fs.ReadDir(lib, ".")
 	if err != nil {
-		return fmt.Errorf("read embedded skill library: %w", err)
+		return 0, fmt.Errorf("read embedded skill library: %w", err)
 	}
 	shipped := 0
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue // root files (CONVENTIONS.md, *.go) are library metadata, not skills
 		}
-		if _, serr := fs.Stat(skills.FS, path.Join(e.Name(), "SKILL.md")); serr != nil {
+		if _, serr := fs.Stat(lib, path.Join(e.Name(), "SKILL.md")); serr != nil {
 			// Only a genuine NotExist means "orphan dir without SKILL.md — not a loadable
 			// skill"; any other Stat error must propagate, not silently drop a skill.
 			//
 			// 只有真正的 NotExist 才表示"无 SKILL.md 的孤儿目录——非可加载 skill"；
 			// 其他 Stat 错误必须上报，不能静默少发一个 skill。
 			if !errors.Is(serr, fs.ErrNotExist) {
-				return fmt.Errorf("stat skill %s: %w", e.Name(), serr)
+				return 0, fmt.Errorf("stat skill %s: %w", e.Name(), serr)
 			}
 			continue
 		}
-		werr := fs.WalkDir(skills.FS, e.Name(), func(p string, d fs.DirEntry, werr error) error {
+		werr := fs.WalkDir(lib, e.Name(), func(p string, d fs.DirEntry, werr error) error {
 			if werr != nil {
 				return werr
 			}
@@ -383,7 +412,7 @@ func writePluginSkills(pluginDir string) error {
 			if filepath.Ext(p) == ".go" {
 				return nil
 			}
-			data, rerr := skills.FS.ReadFile(p)
+			data, rerr := fs.ReadFile(lib, p)
 			if rerr != nil {
 				return rerr
 			}
@@ -396,19 +425,11 @@ func writePluginSkills(pluginDir string) error {
 			//
 			// 上面的 RemoveAll 已清掉 committed 树——walk 中途失败会留下残缺。显式给出
 			// 恢复动作，让操作者知道须重跑到成功，而不是分发一个被削过的包。
-			return fmt.Errorf("write skill %s: %w (committed skills tree at %s is now PARTIAL — re-run `forge plugin pack` until it succeeds before committing)", e.Name(), werr, skillsDir)
+			return 0, fmt.Errorf("write skill %s: %w (committed skills tree at %s is now PARTIAL — re-run `forge plugin pack` until it succeeds before committing)", e.Name(), werr, skillsDir)
 		}
 		shipped++
 	}
-	// Empty library = distribution regression (embed FS missing/exhausted) — refuse to ship
-	// a skills-less plugin silently; zero count also breaks the claude plugin skills contract.
-	//
-	// 空库 = 分发回退（embed FS 缺失/被清空）——拒绝静默分发无 skills 的 plugin；
-	// 零数量同样破坏 claude plugin 的 skills 契约。
-	if shipped == 0 {
-		return fmt.Errorf("plugin pack: embedded skill library resolved 0 skills — refusing to ship a skills-less plugin (distribution regression)")
-	}
-	return nil
+	return shipped, nil
 }
 
 func writePluginReadme(spec PluginPackSpec, pluginDir string) error {

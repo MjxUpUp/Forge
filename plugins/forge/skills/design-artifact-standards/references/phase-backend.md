@@ -43,7 +43,7 @@
 | 硬编码密钥 | 正则扫描 `"AKIA[0-9A-Z]{16}"` / `"mongodb://"` / `"mysql://"` 在代码字面量中 | 安全最佳实践 |
 | 无 WHERE 的 DELETE/UPDATE | 正则扫描 `DELETE\s+FROM` / `UPDATE\s+\w+\s+SET` 后无 WHERE | SQL 安全清单 |
 | 事务包围 HTTP | 扫描 `@Transactional` 内是否有 `http\.\|HTTP\.` 调用 | DDD/事务最佳实践 |
-| 空转措辞 / 无证据结论 / 复述 diff | `forge docs lint`（D1-D7，机器可查） | output-readability-gates 设计 |
+| 空转措辞 / 无证据结论 / 复述 diff | 文档 lint 机器规则可查（宿主提供时） | output-readability-gates 设计 |
 
 ## 与大厂规范的映射（方向，非条文）
 
