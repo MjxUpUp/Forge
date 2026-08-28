@@ -13,9 +13,17 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
+// The forge-section markers: the single source of truth lives in util
+// (ForgeSectionStart/End) so runtime packages (conventions, and via it
+// taskpipeline) can consume the contract without importing the generator
+// layer; these file-local aliases keep the in-file call sites unchanged.
+//
+// forge 段标记：单一真相源在 util（ForgeSectionStart/End），runtime 包
+// （conventions，及经它的 taskpipeline）无需 import 生成器层即可消费该契约；
+// 本文件局部别名保持文件内调用点不变。
 const (
-	forgeSectionStart = "<!-- FORGE:START -->"
-	forgeSectionEnd   = "<!-- FORGE:END -->"
+	forgeSectionStart = util.ForgeSectionStart
+	forgeSectionEnd   = util.ForgeSectionEnd
 )
 
 // GenerateClaudeMD creates or updates .claude/CLAUDE.md, writing the
@@ -183,6 +191,8 @@ func buildForgeSectionWithLevel(forClaude bool, userLevel bool) string {
 	sb.WriteString("- **failure-track**（PostToolUseFailure Bash）：命令失败后记录 CheckToolFailure 观察；失败文本命中编译/测试类指纹（undefined:/error TS/error[E/FAIL 等）时注入 compile-fix-loop skill 事实性指针（advisory 不阻断——失败已发生，阻断无意义）\n")
 	sb.WriteString("- **subagent-track**（SubagentStop）：子 agent 结束时记录 agent_id/agent_type/交付长度+首行摘要到 checklog（归因数据——此前子 agent 活动 forge 侧零记录）；纯观察，无输出无阻断\n")
 	sb.WriteString("- **test-nudge**（PostToolUse Write|Edit，活跃任务内）：事中测试提醒——连写 ≥3 个源码文件且无配对测试写入时注入一次 test-discipline skill 事实性提示（advisory，每连写只提示一次）；任何测试文件写入重置计数；无活跃任务静默；执法仍在 task-verify 门禁\n")
+	sb.WriteString("- **conventions-context**（SessionStart + PostCompact）：项目规范档案的会话摘要——`forge conventions init` 建档后每次会话开始注入 ≤15 行规范摘要（stack/lint 命令、规范声明文件、agent 提取的惯例要点；压缩后重注入，摘要过期限时提示重扫）；无档案但仓库已声明 AGENTS.md 等规范时每会话一次建档建议（advisory 不阻断）\n")
+	sb.WriteString("- **conventions-write**（PreToolUse Write|Edit）：写入时刻规范注入——写源码/测试文件时注入本仓库规范声明文件指针 + 同目录范例文件（模仿既有代码风格；每目录每会话一次）；无档案静默（advisory 不阻断）\n")
 	sb.WriteString("- **skill-trigger**（Pre/PostToolUse + SessionStart/Stop/UserPromptSubmit）：声明式 skill 触发——按各 skill `metadata.triggers` 的 event/keywords/when 条件匹配上下文，命中时注入「请加载该 skill」提示（advisory，注入内容出现在 hook 上下文里）；`FORGE_SKILL_TRIGGER=0` 全局关闭\n")
 	sb.WriteString("- **自保护**：项目级 `.forge/*` 和 `.claude/settings*`（仅团队模式/老项目存在）不能被直接修改；用户级资产（`~/.claude/settings.json`、`~/.claude/CLAUDE.md`、`~/.codex/AGENTS.md` 等）同样只能通过 `forge` 命令操作（`forge uninstall --restore` 可回滚）\n")
 	sb.WriteString("- **skill-scan**（SessionStart）：会话开始扫描 `~/.claude/skills` 安全性（forge audit 21 规则，advisory）——补 install 门控缺口，覆盖手动 clone/junction/git pull 进入的 skill；全局 hook，不依赖 forge project\n")
@@ -391,7 +401,7 @@ func StripUserInstructions() error {
 		if err != nil {
 			return fmt.Errorf("read %s for stripping: %w", path, err)
 		}
-		stripped := stripMarkedSection(string(existing), forgeSectionStart, forgeSectionEnd)
+		stripped := util.StripMarkedSection(string(existing), forgeSectionStart, forgeSectionEnd)
 		if stripped == string(existing) {
 			continue // no forge section — nothing to do
 		}
@@ -400,33 +410,6 @@ func StripUserInstructions() error {
 		}
 	}
 	return nil
-}
-
-// stripMarkedSection removes the content between startMarker and endMarker
-// (markers included), normalizing the seam so the surrounding content keeps a
-// single blank line. Returns the input unchanged when the markers are missing
-// or inverted (idempotent).
-//
-// stripMarkedSection 移除 startMarker 与 endMarker 之间的内容（含标记），
-// 规整接缝使上下文之间保留单个空行。标记缺失或颠倒时原样返回（幂等）。
-func stripMarkedSection(content, startMarker, endMarker string) string {
-	startIdx := strings.Index(content, startMarker)
-	endIdx := strings.Index(content, endMarker)
-	if startIdx == -1 || endIdx == -1 || endIdx <= startIdx {
-		return content
-	}
-	before := strings.TrimRight(content[:startIdx], "\n")
-	after := strings.TrimLeft(content[endIdx+len(endMarker):], "\n")
-	switch {
-	case before == "" && after == "":
-		return ""
-	case before == "":
-		return after + "\n"
-	case after == "":
-		return before + "\n"
-	default:
-		return before + "\n\n" + after + "\n"
-	}
 }
 
 // GenerateUserQualitySkill writes the forge-quality skill to the user-level

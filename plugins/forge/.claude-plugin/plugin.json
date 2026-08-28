@@ -7,6 +7,10 @@
           {
             "type": "command",
             "command": "forge hook compact-resume"
+          },
+          {
+            "type": "command",
+            "command": "forge hook conventions-context"
           }
         ]
       }
@@ -94,6 +98,10 @@
           {
             "type": "command",
             "command": "forge hook skill-trigger"
+          },
+          {
+            "type": "command",
+            "command": "forge hook conventions-write"
           }
         ]
       },
@@ -137,6 +145,10 @@
           {
             "type": "command",
             "command": "forge hook skill-trigger"
+          },
+          {
+            "type": "command",
+            "command": "forge hook conventions-context"
           }
         ]
       }

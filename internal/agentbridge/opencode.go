@@ -195,9 +195,13 @@ const CLAUDE_TOOL: Record<string, string> = {
 // sync; TestOpencodePluginWiring asserts the derived parity. Edit carries the
 // same gates as Write (the spec matcher is "Write|Edit"); read-before-edit is
 // wired here so opencode gets the same shift-left blind-edit block Claude has.
+// conventions-write (2026-08-28): advisory write-time conventions pointers —
+// wired (not exempted like skill-trigger) because it is the ONLY conventions
+// delivery layer opencode can carry (its SessionStart group never fires here),
+// and the plugin already parses allow-path stdout JSON on every call.
 const PRE_HOOKS: Record<string, string[]> = {
-  Write: ["forge hook freeze-guard", "forge hook task-guard", "forge hook assertion-check", "forge hook read-before-edit"],
-  Edit: ["forge hook freeze-guard", "forge hook task-guard", "forge hook assertion-check", "forge hook read-before-edit"],
+  Write: ["forge hook freeze-guard", "forge hook task-guard", "forge hook assertion-check", "forge hook read-before-edit", "forge hook conventions-write"],
+  Edit: ["forge hook freeze-guard", "forge hook task-guard", "forge hook assertion-check", "forge hook read-before-edit", "forge hook conventions-write"],
   Bash: ["forge hook bash-guard", "forge hook hazard-guard"],
 };
 const POST_HOOKS: Record<string, string[]> = {

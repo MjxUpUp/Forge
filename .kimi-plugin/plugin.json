@@ -9,6 +9,11 @@
       "timeout": 30
     },
     {
+      "event": "PostCompact",
+      "command": "forge hook conventions-context --agent kimi",
+      "timeout": 30
+    },
+    {
       "event": "PostToolUse",
       "matcher": "Write|Edit",
       "command": "forge hook auto-compile --agent kimi",
@@ -88,6 +93,12 @@
     },
     {
       "event": "PreToolUse",
+      "matcher": "Write|Edit",
+      "command": "forge hook conventions-write --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "PreToolUse",
       "matcher": "Bash",
       "command": "forge hook bash-guard --agent kimi",
       "timeout": 30
@@ -127,6 +138,11 @@
     {
       "event": "SessionStart",
       "command": "forge hook skill-trigger --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "SessionStart",
+      "command": "forge hook conventions-context --agent kimi",
       "timeout": 30
     },
     {
