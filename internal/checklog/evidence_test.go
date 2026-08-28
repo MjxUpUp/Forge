@@ -183,13 +183,14 @@ func TestBuildEvidenceChain_ObservationHooksExcluded(t *testing.T) {
 		{Check: CheckSubagentStop, Source: EvidenceDeterministic, TaskRef: "t"},
 		{Check: CheckTestNudge, Source: EvidenceDeterministic, TaskRef: "t"},
 		{Check: CheckConventionsInject, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckConventionsLint, Source: EvidenceDeterministic, TaskRef: "t"},
 	}
 	ec := BuildEvidenceChain(entries, "t")
 	if ec.Deterministic != 1 {
 		t.Fatalf(`观察 hook 不应计入 deterministic: got %d, want 1（仅 auto-compile）`, ec.Deterministic)
 	}
-	if len(ec.Entries) != 5 {
-		t.Fatalf(`观察条目仍应保留在 Entries 供 trace: got %d, want 5`, len(ec.Entries))
+	if len(ec.Entries) != 6 {
+		t.Fatalf(`观察条目仍应保留在 Entries 供 trace: got %d, want 6`, len(ec.Entries))
 	}
 }
 

@@ -50,7 +50,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MjxUpUp/Forge/internal/skillgen"
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
@@ -109,7 +108,7 @@ type Profile struct {
 	LintCmd      string       `json:"lint"`
 	TestCmd      string       `json:"test"`
 	BuildCmd     string       `json:"build"`
-	Instructions []SourceFile `json:"instructions"` // 已声明的规范文件（AGENTS.md 一族）
+	Instructions []SourceFile `json:"instructions"`  // 已声明的规范文件（AGENTS.md 一族）
 	StyleConfigs []SourceFile `json:"style_configs"` // lint/format 配置
 	CursorRules  int          `json:"cursor_rules"`  // .cursor/rules/*.mdc 计数（只计数不入指纹）
 	Fingerprint  string       `json:"fingerprint"`
@@ -305,9 +304,9 @@ func nodeCommands(root string) (lint, test, build string) {
 // 两者混做会让 `init` 不确定、不可测。
 func Scan(root string) (*Profile, error) {
 	p := &Profile{
-		Version:     ProfileVersion,
-		Stack:       DetectStack(root),
-		Updated:     time.Now().Format(time.RFC3339),
+		Version: ProfileVersion,
+		Stack:   DetectStack(root),
+		Updated: time.Now().Format(time.RFC3339),
 	}
 	for _, rel := range instructionFiles {
 		if sf, ok := hashInstructionFile(root, rel); ok {
@@ -591,6 +590,144 @@ func WriteInject(relPath string, p *Profile, stale bool, exemplars []string) str
 	return strings.Join(lines, "\n")
 }
 
+// EnrichResult reports what EnrichSummary did.
+//
+// EnrichResult 报告 EnrichSummary 做了什么。
+type EnrichResult struct {
+	// Changed: the digest content actually changed (rule added / placeholder
+	// replaced). false = exact rule line already present (dedupe no-op).
+	//
+	// Changed：摘要内容真的变了（新增规则/替换占位符）。false = 完全相同的
+	// 规则行已在（去重空操作）。
+	Changed bool
+	// OverBudget: the digest now exceeds SummaryLineBudget non-empty lines.
+	// The write STILL happened — EnrichSummary never silently drops user
+	// content; the caller surfaces the prune suggestion.
+	//
+	// OverBudget：摘要非空行数已超 SummaryLineBudget。写入照常发生——
+	// EnrichSummary 绝不静默删用户内容；修剪建议由调用方转达。
+	OverBudget bool
+}
+
+// pendingPlaceholder is the scaffold's "nothing extracted yet" line — the
+// first enrichment replaces it instead of appending (a digest that keeps both
+// the placeholder and real rules reads as unfinished).
+//
+// pendingPlaceholder 是骨架的「尚未提取」行——首次增补替换它而非追加
+// （占位符与真实规则并存的摘要读起来像没写完）。
+const pendingPlaceholder = "（待提取）"
+
+// extractHeadingPrefix identifies the extraction section heading (matched by
+// prefix so heading suffix wording can evolve without breaking learn).
+//
+// extractHeadingPrefix 识别提取节的标题（按前缀匹配——标题后缀措辞可演进，
+// learn 不因此破）。
+const extractHeadingPrefix = "## 提取要点"
+
+// EnrichSummary writes one learned rule into summary.md's 提取要点 section —
+// the layer-4 correction write-back (the user/review pointed out a convention
+// violation; the rule lands in the digest so every future session sees it).
+// Precedence: exact-duplicate → no-op; a pending placeholder → replaced;
+// otherwise the rule is inserted right under the 提取要点 heading (newest
+// first). A missing heading appends a fresh section; a missing summary errors
+// (learn before init would create an orphan digest with no profile).
+//
+// EnrichSummary 把一条学到的规则写进 summary.md 的提取要点节——层 4 的纠正
+// 写回（用户/审查指出规范违规；规则落进摘要，此后每个会话都看得见）。
+// 优先级：完全重复 → 空操作；「待提取」占位符 → 替换；否则插入 提取要点
+// 标题正下方（最新在前）。标题缺失则追加新节；summary 缺失则报错
+// （init 之前 learn 会造出无档案的孤儿摘要）。
+func EnrichSummary(dataDir, rule string) (EnrichResult, error) {
+	// 导出 API 加固：规则是一行一条的契约——内嵌换行会破坏 "- " 行形（CLI 路径
+	// 经 strings.Join(args," ") 不可达，直接调用方可达；对抗审查发现 #5）。
+	//
+	// Exported-API hardening: rules are one-per-line by contract — embedded
+	// newlines would break the "- " line shape (unreachable via the CLI's
+	// strings.Join(args," "), reachable by direct callers; adversarial-review
+	// finding #5).
+	rule = strings.TrimSpace(strings.ReplaceAll(rule, "\n", " "))
+	if rule == "" {
+		return EnrichResult{}, fmt.Errorf("conventions: empty rule")
+	}
+	if !SummaryExists(dataDir) {
+		return EnrichResult{}, fmt.Errorf("conventions: no summary.md — run `forge conventions init` first")
+	}
+	summary := LoadSummary(dataDir)
+	ruleLine := "- " + rule
+	lines := strings.Split(strings.TrimRight(summary, "\n"), "\n")
+
+	for _, l := range lines {
+		if strings.TrimSpace(l) == ruleLine {
+			return EnrichResult{Changed: false}, nil // 去重：一字不差的规则已在
+		}
+	}
+
+	// 首个占位符行替换；否则插入标题下方（跳过标题后的一个空行）。占位符按
+	// **子串**替换而非整行——手编文件里占位符同行可能有其他文字，整行替换会
+	// 抹掉它（对抗审查发现 #5；stock 骨架整行就是占位符，两种形态都正确）。
+	//
+	// Replace the first placeholder line; otherwise insert under the heading
+	// (skipping one blank line right after the heading). The placeholder is
+	// replaced as a SUBSTRING, not a whole-line swap — a hand-edited line may
+	// carry other text beside the placeholder, and a whole-line swap would
+	// erase it (adversarial-review finding #5; the stock scaffold line IS the
+	// placeholder alone, both shapes come out right).
+	replaced := false
+	for i, l := range lines {
+		if !replaced && strings.Contains(l, pendingPlaceholder) {
+			lines[i] = strings.Replace(l, pendingPlaceholder, rule, 1)
+			replaced = true
+		}
+	}
+	out := lines
+	if !replaced {
+		headingIdx := -1
+		for i, l := range lines {
+			if strings.HasPrefix(strings.TrimSpace(l), extractHeadingPrefix) {
+				headingIdx = i
+				break
+			}
+		}
+		if headingIdx == -1 {
+			// 用户重组过文件：追加全新提取节（learn 不因结构漂移而丢规则）。
+			//
+			// User reorganized the file: append a fresh section (learn must not
+			// drop the rule to structural drift).
+			if len(out) > 0 && strings.TrimSpace(out[len(out)-1]) != "" {
+				out = append(out, "")
+			}
+			out = append(out, extractHeadingPrefix, ruleLine)
+		} else {
+			insertAt := headingIdx + 1
+			if insertAt < len(out) && strings.TrimSpace(out[insertAt]) == "" {
+				insertAt++
+			}
+			out = append(out[:insertAt], append([]string{ruleLine}, out[insertAt:]...)...)
+		}
+	}
+	newSummary := strings.Join(out, "\n") + "\n"
+	if err := SaveSummary(dataDir, newSummary); err != nil {
+		return EnrichResult{}, err
+	}
+	return EnrichResult{
+		Changed:    true,
+		OverBudget: countNonEmpty(out) > SummaryLineBudget,
+	}, nil
+}
+
+// countNonEmpty counts non-empty lines.
+//
+// countNonEmpty 统计非空行数。
+func countNonEmpty(lines []string) int {
+	n := 0
+	for _, l := range lines {
+		if strings.TrimSpace(l) != "" {
+			n++
+		}
+	}
+	return n
+}
+
 // Exemplars picks up to ExemplarMax same-directory, same-extension sibling
 // files of targetPath — the closest style reference for the file being
 // written (recently-modified first: the freshest file best represents current
@@ -743,7 +880,7 @@ func hashInstructionFile(root, rel string) (SourceFile, bool) {
 	if err != nil {
 		return SourceFile{}, false
 	}
-	sum := sha256.Sum256([]byte(skillgen.StripForgeSection(string(data))))
+	sum := sha256.Sum256([]byte(util.StripMarkedSection(string(data), util.ForgeSectionStart, util.ForgeSectionEnd)))
 	info, err := os.Stat(full)
 	if err != nil {
 		return SourceFile{}, false

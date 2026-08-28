@@ -37,6 +37,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/conventions"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/hostcap"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/util"
 )
@@ -126,24 +127,24 @@ func runConventionsContextHook(hookInput HookInput, root, version, agent string)
 // (no instructions and no exemplars — the dir is still marked only when
 // something was said).
 //
-// Known gap (adversarial review 2026-08-28): codex reports file edits as the
-// apply_patch tool with the patch in tool_input.command and NO file_path; the
-// in-process dispatch (runHook) runs BEFORE step 2a's patch-header synthesis,
-// so this hook never sees a file path on codex and stays silent there — the
-// session digest (SessionStart tier) carries codex's conventions layer alone.
-// Extracting the shared synthesis into a helper would close it when codex
-// write-time coverage is wanted.
+// codex reports file edits as the apply_patch tool (hostcap PatchToolName)
+// with the patch in tool_input.command and NO file_path — this hook synthesizes
+// the target from the FIRST patch header via the same applyPatchFilePath the
+// runHook path-gates share (single source; multi-file patches take the first
+// target, same documented limitation). Without it the write-time layer was
+// structurally dead on codex (adversarial-review finding, 2026-08-28; closed
+// same day in conventions-followups).
 //
 // runConventionsWriteHook 处理 PreToolUse Write|Edit：对每目录首个被写的
 // 源/测试文件注入规范文件指针 + 同目录范例。以下情况静默：无档案（未采纳）、
 // 目标在项目根外（用户绝对路径绝不能搭注入的便车）、无可奉告（无规范声明
 // 且无范例——只有真说了话才标记该目录）。
 //
-// 已知缺口（2026-08-28 对抗审查）：codex 的文件编辑以 apply_patch 工具上报、
-// patch 在 tool_input.command 且无 file_path；进程内分发（runHook）先于步骤
-// 2a 的 patch 头合成执行，本 hook 在 codex 上永远拿不到文件路径而静默——
-// codex 的 conventions 层由会话摘要（SessionStart 档）独立承载。需要 codex
-// 写入时刻覆盖时，把共享合成抽成 helper 即可补上。
+// codex 的文件编辑以 apply_patch 工具上报（hostcap PatchToolName）、patch 在
+// tool_input.command 且无 file_path——本 hook 用 runHook 路径门禁共享的
+// applyPatchFilePath 从首个 patch 头合成目标（单一来源；多文件 patch 取
+// 第一个目标，同一已文档化限制）。不做此合成时写入时刻层在 codex 上结构性
+// 死码（2026-08-28 对抗审查发现；同日 conventions-followups 修复）。
 func runConventionsWriteHook(hookInput HookInput, root, version, agent string) error {
 	if root == "" {
 		return nil
@@ -159,6 +160,22 @@ func runConventionsWriteHook(hookInput HookInput, root, version, agent string) e
 			// with dialect quirks — one stderr line, the advisory layer never
 			// fails on it.
 			fmt.Fprintf(os.Stderr, "[conventions] warning: tool_input parse failed: %v\n", err)
+		}
+	}
+	if fields.FilePath == "" && hostcap.IsPatchTool(hookInput.ToolName) {
+		fields.FilePath = applyPatchFilePath(fields.Command)
+		// Patch headers are REPO-RELATIVE (codex apply_patch convention); the
+		// root guard + Exemplars below need an absolute target — join against
+		// root, else the out-of-root guard silently drops the synthesized
+		// relative path (the exact trap TestConventionsWriteHook_ApplyPatchSynthesis
+		// caught).
+		//
+		// patch 头是仓库相对路径（codex apply_patch 约定）；下方根守卫与
+		// Exemplars 需要绝对目标——按 root 拼接，否则根外守卫会静默丢掉合成
+		// 出的相对路径（正是 TestConventionsWriteHook_ApplyPatchSynthesis
+		// 抓到的坑）。
+		if fields.FilePath != "" && !filepath.IsAbs(fields.FilePath) {
+			fields.FilePath = filepath.Join(root, fields.FilePath)
 		}
 	}
 	if fields.FilePath == "" {

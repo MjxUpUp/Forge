@@ -8,6 +8,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/protocol"
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // TestClaudeMDCoversAllWiredHooks is the docs-consistency guard for the security
@@ -791,5 +792,29 @@ func TestClaudeMD_ConventionsHooksAdvisory(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// TestForgeSectionMarkersAliasUtil pins the alias contract: skillgen's
+// forgeSectionStart/End must equal util.ForgeSectionStart/End. The constants
+// moved to util (single source, dependency-cycle break for
+// taskpipeline→conventions) and skillgen keeps file-local aliases — a future
+// hand-edit on either side would silently fork the "what forge generated"
+// contract; this test is the tripwire.
+//
+// TestForgeSectionMarkersAliasUtil 钉住别名契约：skillgen 的
+// forgeSectionStart/End 必须等于 util.ForgeSectionStart/End。常量已下沉 util
+// （单一真相源，同时解开 taskpipeline→conventions 的依赖环），skillgen 保留
+// 文件局部别名——将来任一侧被手改都会静默分叉「forge 生成段」契约；本测试
+// 是绊线。
+func TestForgeSectionMarkersAliasUtil(t *testing.T) {
+	if forgeSectionStart != util.ForgeSectionStart || forgeSectionEnd != util.ForgeSectionEnd {
+		t.Fatalf("skillgen markers forked from util: %q/%q vs %q/%q",
+			forgeSectionStart, forgeSectionEnd, util.ForgeSectionStart, util.ForgeSectionEnd)
+	}
+	// 既有生成文件里的字面量形态也不能漂移（GenerateClaudeMD 产物被外部
+	// 工具按字面量识别）。
+	if forgeSectionStart != "<!-- FORGE:START -->" || forgeSectionEnd != "<!-- FORGE:END -->" {
+		t.Fatalf("marker literal drifted: %q/%q", forgeSectionStart, forgeSectionEnd)
 	}
 }

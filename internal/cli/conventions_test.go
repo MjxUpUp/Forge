@@ -144,3 +144,42 @@ func TestConventionsInitCmd_RequiresForgeProject(t *testing.T) {
 		t.Fatalf("init outside a forge project must refuse with a forge init pointer, got: %v", err)
 	}
 }
+
+// TestConventionsLearnCmd_WritesBack pins the learn command's write-back path:
+// RunE with the rule as args writes it into the digest and reports the path;
+// the duplicate invocation reports the no-op without failing.
+//
+// TestConventionsLearnCmd_WritesBack 钉住 learn 命令的写回路径：以参数传入
+// 规则的 RunE 把它写进摘要并报告路径；重复调用报未改动、不失败。
+func TestConventionsLearnCmd_WritesBack(t *testing.T) {
+	root := convCmdProject(t)
+	dataDir := forgedata.DataDirFor(root)
+
+	_ = captureStdout(t, func() {
+		conventionsInitCmd.SetArgs([]string{})
+		if err := conventionsInitCmd.RunE(conventionsInitCmd, nil); err != nil {
+			t.Fatalf("init RunE: %v", err)
+		}
+	})
+	out := captureStdout(t, func() {
+		conventionsLearnCmd.SetArgs([]string{"errors:", "always", "wrap", "with", "%w"})
+		if err := conventionsLearnCmd.RunE(conventionsLearnCmd, []string{"errors: always wrap with %w"}); err != nil {
+			t.Fatalf("learn RunE: %v", err)
+		}
+	})
+	if !strings.Contains(out, "已写回") || !strings.Contains(out, conventions.SummaryPath(dataDir)) {
+		t.Fatalf("learn output = %q", out)
+	}
+	if s := conventions.LoadSummary(dataDir); !strings.Contains(s, "errors: always wrap with %w") {
+		t.Fatalf("rule not in digest:\n%s", s)
+	}
+
+	dup := captureStdout(t, func() {
+		if err := conventionsLearnCmd.RunE(conventionsLearnCmd, []string{"errors: always wrap with %w"}); err != nil {
+			t.Fatalf("duplicate learn must not fail: %v", err)
+		}
+	})
+	if !strings.Contains(dup, "未改动") {
+		t.Fatalf("duplicate learn output = %q", dup)
+	}
+}

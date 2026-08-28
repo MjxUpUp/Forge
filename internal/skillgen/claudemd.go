@@ -13,38 +13,18 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-const (
-	ForgeSectionStart = "<!-- FORGE:START -->"
-	ForgeSectionEnd   = "<!-- FORGE:END -->"
-)
-
-// ForgeSectionStart/End are EXPORTED because the marker strings are the single
-// source of truth for "what forge generated" in user-facing instruction files:
-// conventions (internal/conventions) strips the marked section before hashing a
-// repo's AGENTS.md/CLAUDE.md, so a forge upgrade that rewrites its own section
-// never flips the conventions profile's staleness fingerprint. The unexported
-// aliases below keep the in-file call sites unchanged.
+// The forge-section markers: the single source of truth lives in util
+// (ForgeSectionStart/End) so runtime packages (conventions, and via it
+// taskpipeline) can consume the contract without importing the generator
+// layer; these file-local aliases keep the in-file call sites unchanged.
 //
-// ForgeSectionStart/End 导出：标记字符串是「forge 生成段」在用户指令文件里的
-// 单一真相源——conventions（internal/conventions）在哈希仓库 AGENTS.md/
-// CLAUDE.md 前剥离该段，使 forge 升级重写自身协议段绝不翻转 conventions
-// 档案的过期指纹。下方未导出别名保持文件内调用点不变。
+// forge 段标记：单一真相源在 util（ForgeSectionStart/End），runtime 包
+// （conventions，及经它的 taskpipeline）无需 import 生成器层即可消费该契约；
+// 本文件局部别名保持文件内调用点不变。
 const (
-	forgeSectionStart = ForgeSectionStart
-	forgeSectionEnd   = ForgeSectionEnd
+	forgeSectionStart = util.ForgeSectionStart
+	forgeSectionEnd   = util.ForgeSectionEnd
 )
-
-// StripForgeSection removes forge's marker-wrapped section (markers included)
-// from an instruction file's content — the exported seam for consumers that
-// must see only the project's OWN declared text (conventions hashing). Returns
-// the input unchanged when the markers are absent (idempotent).
-//
-// StripForgeSection 从指令文件内容中移除 forge 标记包裹段（含标记）——给必须
-// 只看项目**自身**声明文本的消费方（conventions 哈希）的导出接缝。标记缺失时
-// 原样返回（幂等）。
-func StripForgeSection(content string) string {
-	return stripMarkedSection(content, forgeSectionStart, forgeSectionEnd)
-}
 
 // GenerateClaudeMD creates or updates .claude/CLAUDE.md, writing the
 // quality protocol section taken over by Forge. When the file already exists, only the marker-wrapped section is replaced —
@@ -421,7 +401,7 @@ func StripUserInstructions() error {
 		if err != nil {
 			return fmt.Errorf("read %s for stripping: %w", path, err)
 		}
-		stripped := stripMarkedSection(string(existing), forgeSectionStart, forgeSectionEnd)
+		stripped := util.StripMarkedSection(string(existing), forgeSectionStart, forgeSectionEnd)
 		if stripped == string(existing) {
 			continue // no forge section — nothing to do
 		}
@@ -430,33 +410,6 @@ func StripUserInstructions() error {
 		}
 	}
 	return nil
-}
-
-// stripMarkedSection removes the content between startMarker and endMarker
-// (markers included), normalizing the seam so the surrounding content keeps a
-// single blank line. Returns the input unchanged when the markers are missing
-// or inverted (idempotent).
-//
-// stripMarkedSection 移除 startMarker 与 endMarker 之间的内容（含标记），
-// 规整接缝使上下文之间保留单个空行。标记缺失或颠倒时原样返回（幂等）。
-func stripMarkedSection(content, startMarker, endMarker string) string {
-	startIdx := strings.Index(content, startMarker)
-	endIdx := strings.Index(content, endMarker)
-	if startIdx == -1 || endIdx == -1 || endIdx <= startIdx {
-		return content
-	}
-	before := strings.TrimRight(content[:startIdx], "\n")
-	after := strings.TrimLeft(content[endIdx+len(endMarker):], "\n")
-	switch {
-	case before == "" && after == "":
-		return ""
-	case before == "":
-		return after + "\n"
-	case after == "":
-		return before + "\n"
-	default:
-		return before + "\n\n" + after + "\n"
-	}
 }
 
 // GenerateUserQualitySkill writes the forge-quality skill to the user-level
