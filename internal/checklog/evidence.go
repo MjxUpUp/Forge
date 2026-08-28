@@ -280,7 +280,12 @@ func BuildEvidenceChain(entries []Entry, taskRef string) EvidenceChain {
 		// 任务就白得一条 deterministic 证据。
 		// CheckAttribution 同属：归属台账的覆盖率度量（基建健康度）——不是任何验证实跑，
 		// 计入会把「台账解释了多少变更」错当「任务验证了多少」。
-		if e.Check == CheckScopeDrift || e.Check == CheckCheatScan || e.Check == CheckUnusedScan || e.Check == CheckEscapeHatch || e.Check == CheckSkillTrigger || e.Check == CheckKimiPluginStale || e.Check == CheckReviewPass || e.Check == CheckPlanFirst || e.Check == CheckToolFailure || e.Check == CheckSubagentStop || e.Check == CheckTestNudge || e.Check == CheckBundleVerify || e.Check == CheckProjectSync || e.Check == CheckCrossRepoImpact || e.Check == CheckTaskStarted || e.Check == CheckAttribution {
+		// CheckConventionsInject 同属 observation 类：conventions 层的注入投递记录
+		//（会话摘要/写入时刻指针到达了模型上下文）——投递发生≠验证实跑，计入会让
+		// 每个会话白得一条 deterministic 证据（与 CheckTaskStarted 的边界不可当证据同理）。
+		// CheckConventionsLint 同属：lint 命令「出现过在 Bash 历史」的过程观察——
+		// 命令跑过且挂掉依然要修，它对「验证是否通过」一字未提，计入同样虚增。
+		if e.Check == CheckScopeDrift || e.Check == CheckCheatScan || e.Check == CheckUnusedScan || e.Check == CheckEscapeHatch || e.Check == CheckSkillTrigger || e.Check == CheckKimiPluginStale || e.Check == CheckReviewPass || e.Check == CheckPlanFirst || e.Check == CheckToolFailure || e.Check == CheckSubagentStop || e.Check == CheckTestNudge || e.Check == CheckBundleVerify || e.Check == CheckProjectSync || e.Check == CheckCrossRepoImpact || e.Check == CheckTaskStarted || e.Check == CheckAttribution || e.Check == CheckConventionsInject || e.Check == CheckConventionsLint {
 			// Only VERIFICATION-class escape hatches (test-coverage/acceptance/skill-decisions) set the cap flag.
 			// work-activity is a rhythm gate (tool calls between gates), not verification — using it does not prop the
 			// "done" claim on skipped verification, so it must not cap Strength (else refactor-heavy weeks inflate the

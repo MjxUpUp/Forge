@@ -91,6 +91,12 @@
       },
       {
         "type": "command",
+        "command": "forge hook conventions-write --agent copilot",
+        "matcher": "Write|Edit",
+        "timeoutSec": 60
+      },
+      {
+        "type": "command",
         "command": "forge hook bash-guard --agent copilot",
         "matcher": "Bash",
         "timeoutSec": 60
@@ -132,6 +138,11 @@
       {
         "type": "command",
         "command": "forge hook skill-trigger --agent copilot",
+        "timeoutSec": 60
+      },
+      {
+        "type": "command",
+        "command": "forge hook conventions-context --agent copilot",
         "timeoutSec": 60
       }
     ],
