@@ -29,10 +29,10 @@ import (
 // `worktree janitor` 以「脏的永不删」保上界。
 
 // hasConventionalPrefix mirrors validateBranchRef's accepted prefixes (feat/ fix/
-// refactor/ test/ chore/ docs/ ci/ perf/ build/ style/) — kept adjacent to its only
+// refactor/ test/ chore/ docs/ ci/ perf/ build/ style/) — kept adjacent to its main
 // consumer; drift with the validator fails the subsequent validateBranchRef call.
 //
-// hasConventionalPrefix 镜像 validateBranchRef 接受的前缀集——贴着唯一消费方放；
+// hasConventionalPrefix 镜像 validateBranchRef 接受的前缀集——贴着主要消费方放；
 // 与校验器漂移会被随后的 validateBranchRef 兜住。
 func hasConventionalPrefix(ref string) bool {
 	for _, p := range []string{"feat/", "fix/", "refactor/", "test/", "chore/", "docs/", "ci/", "perf/", "build/", "style/"} {
@@ -41,6 +41,29 @@ func hasConventionalPrefix(ref string) bool {
 		}
 	}
 	return false
+}
+
+// deriveBranchName is the SINGLE ref→branch derivation shared by --worktree and
+// --branch（dogfood 发现 #6，2026-08-28：另一会话 task start --branch 踩到前缀校验
+// 拒绝——#2 只对齐了 --worktree 入口，第二入口漏改）。规则：ref 已带惯例前缀则
+// 同名；否则派生 feat/<ref 斜杠转连字>（分支映射只是解析链兜底，真 ref 由指针/
+// 绑定承载）。
+//
+// deriveBranchName is the SINGLE ref→branch derivation shared by --worktree and
+// --branch (dogfood finding #6, 2026-08-28: another session's `task start --branch`
+// hit the prefix validation refusal — #2 aligned only the --worktree entry, the
+// second one was missed). Rule: conventionally-prefixed ref maps to itself; anything
+// else derives feat/<slashes→dashes> (the branch mapping is only the resolution
+// chain's fallback — the true ref rides pointers/bindings).
+func deriveBranchName(ref string) (string, error) {
+	branch := ref
+	if !hasConventionalPrefix(ref) {
+		branch = "feat/" + strings.ReplaceAll(ref, "/", "-")
+	}
+	if err := validateBranchRef(branch); err != nil {
+		return "", fmt.Errorf("invalid derived branch %q (from ref %q): %w", branch, ref, err)
+	}
+	return branch, nil
 }
 
 // worktreeBase resolves the base ref for a new task worktree: explicit --base, else the

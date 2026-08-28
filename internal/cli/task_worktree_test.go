@@ -193,3 +193,35 @@ func TestTaskFinish_MergeTargetGuard(t *testing.T) {
 		}
 	}
 }
+
+// TestTaskStart_BranchDerivation pins dogfood finding #6 (2026-08-28, conventions-
+// profile session audit): `task start --branch` must share the --worktree ref→branch
+// derivation — a non-conventional ref (conventions-profile) derives feat/<dashed>
+// instead of being refused.
+//
+// TestTaskStart_BranchDerivation 钉住 dogfood 发现 #6（2026-08-28，
+// conventions-profile 会话审计）：`task start --branch` 须与 --worktree 共享
+// ref→分支派生——非惯例 ref（conventions-profile）派生 feat/<连字> 而非被拒。
+func TestTaskStart_BranchDerivation(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	tmpDir := t.TempDir()
+	runGit(t, tmpDir, "init", "-b", "main")
+	runGit(t, tmpDir, "config", "user.email", "t@t.t")
+	runGit(t, tmpDir, "config", "user.name", "t")
+	if stdout, _, code := runForge(t, tmpDir, "init", "--mode", "medium"); code != 0 {
+		t.Fatalf("forge init failed: %s", stdout)
+	}
+	os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte("package main\n"), 0644)
+	runGit(t, tmpDir, "add", ".")
+	runGit(t, tmpDir, "commit", "-m", "init")
+
+	// 非惯例前缀 ref + --branch：派生 feat/conventions-profile，不再被前缀校验拒绝。
+	stdout, _, code := runForge(t, tmpDir, "task", "start", "--ref", "conventions-profile", "--branch", "--title", "cp")
+	if code != 0 {
+		t.Fatalf("非惯例 ref + --branch 应派生成功（#6 回归）: %s", stdout)
+	}
+	if got := strings.TrimSpace(wtGitOut(t, tmpDir, "rev-parse", "--abbrev-ref", "HEAD")); got != "feat/conventions-profile" {
+		t.Fatalf("派生分支应为 feat/conventions-profile, got %q", got)
+	}
+}
