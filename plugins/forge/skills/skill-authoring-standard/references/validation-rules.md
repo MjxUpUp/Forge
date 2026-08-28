@@ -1,7 +1,7 @@
-# R1-R17 校验规则文本定义
+# R1-R18 校验规则文本定义
 
 `forge skills validate` 的规范校验规则（exit code：0=全部通过，2=存在规范失败）。
-**真相源是代码**：`internal/skillsqa/registry.go`（`AuditSkill`；R1-R11 对齐 SkillsHub registry.py，R12-R17 为 forge 本地扩展）。
+**真相源是代码**：`internal/skillsqa/registry.go`（`AuditSkill`；R1-R11 对齐 SkillsHub registry.py，R12-R18 为 forge 本地扩展）。
 本文件是文本镜像，两边漂移时以代码为准；改规则先改代码再同步本文件。
 
 ## 硬规则（违反 = issue，validate exit 2）
@@ -32,6 +32,7 @@
 | R15 | 正文 ALL-CAPS 命令式词（`ALWAYS`/`NEVER`/`MUST`，整词、仅全大写计）合计 >5 次：提醒改「指令+原因」写法（2026-08 新增） |
 | R16 | `references/` 下 >300 行文件需 ToC（2026-08 新增；markdown 由 R11 以 >100 行更低门槛先行覆盖，不重复报，实际增量是非 markdown 参考文件） |
 | R17 | `evals/evals.json` 存在时校验 schema：对象含 `trigger_cases` 数组，每项 `{query: string, should_trigger: boolean}`（2026-08 新增；文件不存在则跳过） |
+| R18 | 正文 forge 命令引用只允许出现在「> Forge 项目」条件引用块内，其余命中提醒依赖倒置契约（细节归 references/forge-integration.md；`metadata.requires_forge: "true"` 标记的 forge 原生 skill 豁免；2026-08 新增） |
 
 ### triggers 匹配语义陷阱（R12 查不出，写 keywords 前必读）
 
@@ -43,5 +44,5 @@ R12 只校验「keywords 或 when 至少需一」，**查不出「配了 keyword
 
 ## 配套
 
-- 安全审查（21 条规则 + 加权评分）：`forge skills audit`，实现同包（audit.py 语义对齐 + forge 本地 DC-8/DC-9/DC-10 供应链执行向量），不属于 R1-R11 规范契约。
+- 安全审查（21 条规则 + 加权评分）：`forge skills audit`，实现同包（audit.py 语义对齐 + forge 本地 DC-8/DC-9/DC-10 供应链执行向量），不属于 R1-R18 规范契约。
 - 防注水扫描：`references/skill-anti-degradation-check.sh`（见 SKILL.md「防注水自检」节指针的拆分文件 references/anti-degradation.md）。

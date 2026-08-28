@@ -818,3 +818,19 @@ func TestForgeSectionMarkersAliasUtil(t *testing.T) {
 		t.Fatalf("marker literal drifted: %q/%q", forgeSectionStart, forgeSectionEnd)
 	}
 }
+
+// TestClaudeMDDocGateRowReferencesDocReviewSkill 生成 CLAUDE.md 的 doc gate 行须指引
+// doc-review skill（真相源），不得引用已迁移的 code-review-gate 内部路径。
+//
+// TestClaudeMDDocGateRowReferencesDocReviewSkill: the generated CLAUDE.md doc-gate row
+// must point at the doc-review skill (truth source), never the migrated
+// code-review-gate internal path.
+func TestClaudeMDDocGateRowReferencesDocReviewSkill(t *testing.T) {
+	section := buildForgeSection(true)
+	if !strings.Contains(section, "按 doc-review skill 评审") {
+		t.Error("doc gate 行应指引按 doc-review skill 评审")
+	}
+	if strings.Contains(section, "code-review-gate/references/rubric-docs.md") {
+		t.Error("doc gate 行不得引用已迁移的 code-review-gate/references/rubric-docs.md 旧路径")
+	}
+}

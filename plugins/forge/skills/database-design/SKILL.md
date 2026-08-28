@@ -10,7 +10,7 @@ metadata:
 
 # 数据库设计规范
 
-> **本 skill 不重复**: 应用层业务逻辑（service/repo 分层）→ `backend-development`；性能 e2e → `integration-test-architecture`；API 契约 → `backend-development`；机械可检规则（迁移无 DOWN / 无 WHERE DELETE / DROP 无复核 / 索引策略）→ `code-review-gate` 的 references/phase-database.md。本 skill 解决"按 SOP 设计/迁移/调优 schema"的工作流纪律，覆盖 SQL（PostgreSQL/MySQL/SQLite）+ NoSQL 适配场景。
+> **本 skill 不重复**: 应用层业务逻辑（service/repo 分层）→ `backend-development`；性能 e2e → `integration-test-architecture`；API 契约 → `backend-development`；机械可检规则（迁移无 DOWN / 无 WHERE DELETE / DROP 无复核 / 索引策略）→ `design-artifact-standards` 的 references/phase-database.md。本 skill 解决"按 SOP 设计/迁移/调优 schema"的工作流纪律，覆盖 SQL（PostgreSQL/MySQL/SQLite）+ NoSQL 适配场景。
 
 ## 1. 决策树（数据库开发路径）
 
@@ -140,7 +140,7 @@ SQL 跑超过 100ms？
 
 ## 4. Post-Generation 自查清单
 
-机械可检规则（迁移无 DOWN / 无 WHERE DELETE / DROP 无复核 / 索引策略 / 字段类型）由 `code-review-gate` 的 references/phase-database.md 守卫，此处不重复。
+机械可检规则（迁移无 DOWN / 无 WHERE DELETE / DROP 无复核 / 索引策略 / 字段类型）由 `design-artifact-standards` 的 references/phase-database.md 守卫，此处不重复。
 
 - [ ] schema 设计 ER 图与 ADR 同步
 - [ ] 索引 EXPLAIN 验证命中
@@ -174,7 +174,7 @@ SQL 跑超过 100ms？
 
 ```bash
 # 1. schema diff
-forge review pass                       # 触发 schema-diff review
+# 提交前审查：code-review-gate 门控（其 forge 条件块负责盖章）
 
 # 2. migration 演练（staging）
 # 事务包裹，禁止 psql -f：psql 没有 --dry-run，-f 会真实执行！

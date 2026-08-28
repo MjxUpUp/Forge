@@ -56,7 +56,7 @@
 
 **与其他审查的分工**：
 - 后端设计产物审查 → 本 checklist（审 services/domain 文件）
-- 代码实现质量 → `review-checklist.md`（审代码 diff）
+- 代码实现质量 → code-review-gate 的 `references/review-checklist.md`（审代码 diff）
 - API 设计审查 → `phase-api.md`（审接口定义）
 
 **数据来源**：Eric Evans《Domain-Driven Design》、Robert Martin《Clean Architecture》、Twelve-Factor App、阿里 Java 开发手册。

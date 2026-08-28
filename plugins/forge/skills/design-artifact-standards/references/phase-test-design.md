@@ -57,7 +57,7 @@
 
 **与其他审查的分工**：
 - 测试设计产物审查 → 本 checklist（审测试用例文档/测试矩阵）
-- 代码实现质量 → `review-checklist.md`（审代码 diff）
+- 代码实现质量 → code-review-gate 的 `references/review-checklist.md`（审代码 diff）
 - 测试代码质量 → `code-review-gate` 第 7 节（审测试代码本身）
 
 **数据来源**：ISTQB 测试标准、Google Testing Blog、Martin Fowler 测试金字塔。

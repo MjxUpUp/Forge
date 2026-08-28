@@ -75,7 +75,7 @@
 
 **与其他审查的分工**：
 - API 契约设计审查 → 本 checklist（审 OpenAPI/proto/接口定义文档）
-- API 实现代码质量 → `review-checklist.md` 第 9 节（审代码实现）
+- API 实现代码质量 → code-review-gate 的 `references/review-checklist.md` 第 9 节（审代码实现）
 - 需求设计产物审查 → `phase-requirement.md`（审 PRD/需求文档）
 
 **数据来源**：Google API Design Guide、Microsoft REST API Guidelines、OpenAPI Specification 3.1、JSON:API 1.1。

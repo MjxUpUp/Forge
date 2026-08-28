@@ -23,7 +23,7 @@ metadata:
 
 ## 阶段 1 — 上下文恢复（Pipeline）
 
-> **优先 forge task resume**：若项目用 forge（有 forge 任务），先 `forge task resume [--ref <ref>]` 拉回结构化接续真相源（目标/计划/已确认决策/下一步/阻塞/参与工具 + 门禁进度 + git 已改未提交）——比下面 parse markdown/转录更快更可靠、抗压缩丢失、跨工具双向锚定。下面的 git/文档/转录步骤作为补充（覆盖 resume 未纳入的工作）。无 forge 任务时走完整 pipeline。
+> Forge 项目——**优先 `forge task resume`**：若项目有 forge 任务，先 `forge task resume [--ref <ref>]` 拉回结构化接续真相源（目标/计划/已确认决策/下一步/阻塞/参与工具 + 门禁进度 + git 已改未提交）——比下面 parse markdown/转录更快更可靠、抗压缩丢失、跨工具双向锚定。下面的 git/文档/转录步骤作为补充（覆盖 resume 未纳入的工作）。非 forge 项目走完整 pipeline。
 
 ```
 上下文恢复：
@@ -119,7 +119,7 @@ git diff --stat
 
 ## 标准 HANDOFF 格式（跨会话/跨工具交接）
 
-> **forge task 是真相源，HANDOFF.md 是导出视图**：决策/下一步/阻塞优先写进 `forge task decide/next/block`（持久化进 forge task；refactor-data-home 后落用户级 DataDir，跨会话/跨工具 resume 即拉回）。`HANDOFF.md` 降级为 `forge task context` 的文本导出，供无 forge 环境/人类阅读——别再靠纪律手写两份。
+> Forge 项目——**forge task 是真相源，HANDOFF.md 是导出视图**：决策/下一步/阻塞优先写进 `forge task decide/next/block`（持久化进 forge task；refactor-data-home 后落用户级 DataDir，跨会话/跨工具 resume 即拉回）。`HANDOFF.md` 降级为 `forge task context` 的文本导出，供无 forge 环境/人类阅读——别再靠纪律手写两份。非 forge 项目 HANDOFF.md 本身就是主载体，按模板维护。
 
 会话结束或切换工具时，写一份结构化 HANDOFF 到项目根 `HANDOFF.md`（或 `AI_CONTEXT.md` 的 `## Current Handoff` 节），让下一个会话/工具能冷启动续做。**统一格式，不要每次手抄不同结构**——完整模板与填写纪律见 [references/handoff-format.md](references/handoff-format.md)，此处不复制。
 

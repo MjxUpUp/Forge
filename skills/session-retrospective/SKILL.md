@@ -28,19 +28,13 @@ metadata:
 
 ## 流程（先读结论 + 5 步）
 
-### 0. 先读结构化结论（forge act show）——锚定事实，别靠回忆
+### 0. 先读结构化结论——锚定事实，别靠回忆
 
-会话结束最容易丢的是"这次完成声明有多少实跑证据"。临结束凭记忆回顾会漏、会美化（"我觉得验证过了"）。先读 deterministic 结论再回顾：
+会话结束最容易丢的是"这次完成声明有多少实跑证据"。临结束凭记忆回顾会漏、会美化（"我觉得验证过了"）。先读 deterministic 结论再回顾。
 
-- 跑 `forge act show`（最新任务结论）或 `forge act list`（全量，`--json` 给结构化）
-- 看 **Strength / Ratio**：Unverified（零实跑）/Weak（声明主要靠 agent 自述）= 完成没真验证 → 这正是该优先回顾的盲区，分数看不出来
-- 看 **LowDimensions**：<70 的评分维度直接是回顾靶点
-- 结论带 RetrospectiveNudge 时已附一行 `→ session-retrospective:` 指令 → 按它回顾根因，再走下面载体决策树
-- **看项目级系统性模式**（跨任务，非个例）：跑 `forge health`——证据盲区率高（过半完成声明 Unverified/Weak）= agent 系统性"声明完成却没真验证"，该查验证流程为何没真跑；**复发低分维度**（×N）= 该方向有共性缺口，优先沉淀成守卫测试/CLAUDE.md 铁律（载体决策树第 1/2 档）而非只记单次个例
+> Forge 项目：跑 `forge act show`（最新任务结论）或 `forge act list --json`（全量）；看 **Strength / Ratio**——Unverified（零实跑）/Weak（声明主要靠自述）= 完成没真验证，正是该优先回顾的盲区；看 **LowDimensions**（<70 的维度即回顾靶点）；结论带 RetrospectiveNudge 时按其指令回顾根因。跨任务系统性模式跑 `forge health`——证据盲区率高 = agent 系统性"声明完成却没真验证"，复发低分维度（×N）= 共性缺口，优先沉淀守卫测试/铁律而非只记个例。Strong 且 ≥70 的干净完成不强制回顾证据，仍走下面 5 步看协作类教训。非 forge 项目用下方手工事实锚。
 
-这是 Act 反馈臂的入口：回顾从"agent 临结束想起什么"变成"读 forge 跑出来的结构化结论"。Strong 且 >=70 的干净完成不强制回顾证据（无盲区），但仍走下面 5 步看协作类教训。
-
-**无 forge 时的降级路径**：没有 `forge act` 可读，不等于回到凭回忆。用手工事实锚替代结构化结论——先跑 `git log --oneline -20` 和 `git status` 确认这次实际改了什么，再实跑一遍项目的验证命令（编译/测试，取尾部输出）确认"完成声明"当下仍成立。把这两份输出摊在眼前再回顾，同样锚住"别靠记忆美化"。
+**无 forge 时的降级路径**：没有结构化结论可读，不等于回到凭回忆。用手工事实锚替代——先跑 `git log --oneline -20` 和 `git status` 确认这次实际改了什么，再实跑一遍项目的验证命令（编译/测试，取尾部输出）确认"完成声明"当下仍成立。把这两份输出摊在眼前再回顾，同样锚住"别靠记忆美化"。
 
 ### 1. 回顾——扫本次协作的非显然经验
 
@@ -74,7 +68,7 @@ metadata:
   **解决**: 对 AI 的指令（如"禁止在 Windows 用 bash sed"），不是对人类的描述 | **涉及**: 语言/框架
   ```
   写入位置按类型路由：语言/框架易错点 → 对应 skill 的 Gotchas；开发流程/协作规则 → AGENTS.md/CLAUDE.md 铁律段；跨项目通用 → Forge skills canonical；项目特定 → 项目 MD。
-- **skill**：建 `skills/<name>/SKILL.md`，过 R1-R11 + 防注水扫描
+- **skill**：建 `skills/<name>/SKILL.md`，过 R1-R18 + 防注水扫描
 - **代码/守卫测试**：写测试钉死一致性（转交 `docs-consistency-guard`）
 - **hook**：注册到 `.claude/settings.local.json` + 脚本
 - **CI 门禁**：加进 release/CI workflow 的前置 job
@@ -82,12 +76,16 @@ metadata:
 ### 5. 验证载体生效
 
 - memory：下次会话能否被召回（描述字段是否会被判相关）
-- skill：`forge skills validate` 过 R1-R11、`audit` 过安全、触发描述是否会命中
+- skill：触发描述是否会命中、过编写规范校验（CONVENTIONS §10 清单）
 - 代码/hook/CI：本地或 CI 实跑一次确认拦截/通过
+
+> Forge 项目：skill 载体用 `forge skills validate` 过 R1-R18、`forge skills audit` 过安全扫描。非 forge 项目按 CONVENTIONS §10 清单人工核对。
 
 ### 6. 文档回检模式提炼（输出→回检回路的长期半边）
 
-回检数据是现成的高信号素材：`forge task finding` 里 Source=doc-review 的未决项、DocReviewHistory 的轮次得分趋势（两轮之间 Critical/rubric 不收敛即异常）。复盘时对反复栽跟头的文档问题问一句：**该升级为 L1 机器规则吗？** 某类文档每次都因同一问题被打回（如「结论不前置」「某个新口头禅」），就把它固化——禁令短语/结构/篇幅规则进 `internal/doclint`（D1-D7 表），模板缺章节进 doc-generator 对应模板——让下一轮循环更便宜。判据：同类打回 ≥3 次才升级（一次是噪声，三次是模式）；升级后两查都绿才算不误伤——`forge docs lint` 对 skills/ docs/ plugins/ 目录扫一遍存量文档 + `go test ./internal/doclint/` 验规则行为（单测只测合成夹具，扫不出对存量文档的误伤）。
+回检数据是现成的高信号素材：反复栽跟头的文档问题值得问一句——**该升级为机器规则吗？** 某类文档每次都因同一问题被打回（如「结论不前置」「某个新口头禅」），就把它固化，让下一轮循环更便宜。判据：**同类打回 ≥3 次才升级**（一次是噪声，三次是模式）；升级后要对存量扫一遍确认不误伤才算数。
+
+> Forge 项目（回检数据源与升级落点）：`forge task finding` 里 Source=doc-review 的未决项、DocReviewHistory 的轮次得分趋势（两轮之间 Critical/rubric 不收敛即异常）是素材源；升级落点——禁令短语/结构/篇幅规则进 `internal/doclint`（D1-D7 表）、模板缺章节进 doc-generator 对应模板；升级后两查都绿才算不误伤（`forge docs lint` 扫 skills/ docs/ plugins/ 存量 + `go test ./internal/doclint/` 验规则行为）。非 forge 项目无回检数据源，本步只在有文档回检记录时适用。
 
 ## 载体决策树（核心）
 
@@ -153,7 +151,7 @@ skill 的成本是"靠 agent 遵循"——会漏。能用代码/CI/hook 机器�
 
 - **docs-consistency-guard**：当路由判定"进守卫测试"时，转交它建具体的文档一致性测试。
 - **session-continuity**：跨会话**恢复**（handoff 接力）。本 skill 是会话**结束**的沉淀。二者衔接：本 skill 产出的 memory/经验，是 session-continuity 下次恢复的素材。
-- **skill-authoring-standard**：当路由判定"进 skill"时，用它写符合 R1-R11 规范的 skill。
+- **skill-authoring-standard**：当路由判定"进 skill"时，用它写符合 R1-R18 规范的 skill。
 - **skill-evolution**：当路由判定"改进已有 skill"时，走它的 revise→eval→decide 循环（改动回归验证+决策留痕），与本 skill 双向衔接——本 skill 负责"该不该沉淀、进哪个载体"，它负责"skill 改动怎么安全落地"。
 - **code-review-gate**：审代码质量。本 skill 是经验沉淀，不审代码。
 

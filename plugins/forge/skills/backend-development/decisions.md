@@ -69,3 +69,25 @@ metadata补triggers(keywords/cooldown;skill-authoring-standard用新condition sk
 ### Evidence
 
 skills-hitrate-review-2026-08-15:四源425会话挖掘语料+trigger覆盖10%缺口
+
+## [d-18d0a2f113995-e113995f4] accept
+
+- **Skill**: backend-development
+- **DecidedAt**: 2026-08-28T07:53:14Z
+- **By**: zcode
+
+### Diagnosis
+
+checklist/bash 示例里的 forge review pass 顺带提及与 code-review-gate 盖章职责重复
+
+### Revision
+
+指针化：改指 code-review-gate 门控（其 forge 条件块负责盖章），正文零 forge 命令引用
+
+### Evidence
+
+feat/skills-boundary-inversion Phase 2：CONVENTIONS §13 forge 引用契约 + R18 advisory 规则落地；forge skills validate 全语料零 R18 告警
+
+### Rationale
+
+依赖倒置：skill 是独立方法论资产，forge 是可选增强层——skills-only 分发用户不应看到不可执行的 forge 指令

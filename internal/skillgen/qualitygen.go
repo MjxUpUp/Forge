@@ -103,7 +103,7 @@ func buildQualitySkillContent(projectDir string, proto *protocol.Protocol) strin
 	sb.WriteString("| 测试验证 | `forge task gate task-verify --ref <ref>` | 测试通过后 |\n")
 	sb.WriteString("| 完成确认 | `forge task gate task-complete --ref <ref>` | E2E 验证通过后 |\n\n")
 	sb.WriteString("所有门禁通过后运行 `forge task complete --ref <ref>` 触发评分。\n\n")
-	sb.WriteString("> **文档回检门禁（doc gate）**：任务变更了 markdown 产物时，complete 前须过输出→回检循环——`forge docs lint` 修 L1（禁令短语/结构/篇幅）→ 按 `code-review-gate/references/rubric-docs.md` 四维评审（产出者不能自检，派独立子代理）→ `forge task doc-review --passed pass --score <N>` 记录证据。未记录/过期/得分 <75/未决 Critical 均拒绝 complete。task-verify 会提前提醒。逃生：`forge task override --doc-gate disable`（轮次上限后须人工确认）。\n\n")
+	sb.WriteString("> **文档回检门禁（doc gate）**：任务变更了 markdown 产物时，complete 前须过输出→回检循环——`forge docs lint` 修 L1（禁令短语/结构/篇幅）→ 按 doc-review skill 评审（四维评分，产出者不能自检，派独立子代理）→ `forge task doc-review --passed pass --score <N>` 记录证据。未记录/过期/得分 <75/未决 Critical 均拒绝 complete。task-verify 会提前提醒。逃生：`forge task override --doc-gate disable`（轮次上限后须人工确认）。\n\n")
 	sb.WriteString("> **提交时机（重要）**：`git commit` 必须在 `forge task complete` **之前**——`complete` 会清空 active task ref，之后提交源码会被 file-sentinel quarantine。正确顺序：三门禁通过 → `git commit` → `forge task complete`。若已 complete 才发现要提交，开一个 `chore/*-commit` 任务放行。task-complete 门禁检测到工作区未提交变更时会发 `ADVISORY` 提醒——见到即先 commit 再 complete。\n\n")
 
 	sb.WriteString("### 门禁要求\n\n")

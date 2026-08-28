@@ -4,6 +4,7 @@ description: "agent skill 持续进化编排（诊断→优化→记决策→acc
 metadata:
   pattern: pipeline
   domain: skill-engineering
+  requires_forge: "true"
   triggers: [{"event":"UserPromptSubmit","keywords":["skill 漏了","没触发","误触发","skill 优化","eval-report","回归验证","skill 进化"],"cooldown":600}]
 ---
 
@@ -128,7 +129,7 @@ forge skills eval-report --skill <X>                   # 看 pass-rate / 回归 
 
 ## 与其他 skill 的衔接
 
-- **skill-authoring-standard**：revise 步的改动规范唯一真相源（验证清单/R1-R11/description 规范都在它那里），本 skill 只管「改完怎么回归验证+留痕」。
+- **skill-authoring-standard**：revise 步的改动规范唯一真相源（验证清单/R1-R18/description 规范都在它那里），本 skill 只管「改完怎么回归验证+留痕」。
 - **session-retrospective**：会话复盘判定「经验该沉淀进 skill」时，具体改动走本 skill 的 diagnose→revise→record→accept 循环落地——它管「该不该沉淀、进哪个载体」，本 skill 管「skill 改动怎么安全落地」（双向衔接）。
 
 ## 体检：留痕覆盖率（防 decide 机制形同虚设）
