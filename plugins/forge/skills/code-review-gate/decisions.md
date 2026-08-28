@@ -243,3 +243,25 @@ design-artifact-standards/SKILL.md 原维护注记自证断链风险（2026-08 K
 
 拆分判据用 SRP 的变化频率表述：作弊指纹表随 AI 模式演进、phase 清单随设计标准演进、rubric 随文档质量工作演进——三种频率三批受众不共居
 
+
+## [d-18d0b3a105897-a105897b5] accept
+
+- **Skill**: code-review-gate
+- **DecidedAt**: 2026-08-28T07:57:58Z
+- **By**: zcode
+
+### Diagnosis
+
+review-checklist 维度 3 名为 SOLID 实为 SRP/DRY/YAGNI（DRY/YAGNI 非 SOLID 成员），OCP/ISP 仅维度 4 一行带过，LSP 完全缺席；契约完整性与类型纪律无正向条文；大 diff 无拆分纪律
+
+### Revision
+
+维度 3 重写为真·SOLID 五原则（SRP 变化频率判据/OCP 侵入式耦合/LSP 行为契约三禁 + 测试全绿≠LSP/ISP/DIP）+ 契约完整性节（前置条件/边界断言/跨层一致）+ 类型纪律节（非法状态不可表示/parse-don't-validate/type-suppression 正解）；维度 4 去重指回维度 3；步骤 1 加 ~400 行 diff 拆分纪律；over-engineering-checklist 挂 Brooks 本质/偶然复杂度锚点；维度 2 点名 fail fast
+
+### Evidence
+
+feat/skills-boundary-inversion Phase 3（工程原则增强）：会话研究结论——SOLID/契约/属性测试在 AI 时代升值（生成速度>审查速度），仓库原有清单存在 LSP 空缺与规格档空白
+
+### Rationale
+
+SOLID 本质是管理知识流动（耦合），AI 时代生成速度超过审查速度使耦合债加速复利；LSP 与契约完整性是 AI 代码高发盲区（断言只验证子类自身不验证可替换性）
