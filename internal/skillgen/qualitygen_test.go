@@ -299,3 +299,27 @@ func TestQualitySkillReplyConcisionRules(t *testing.T) {
 		}
 	}
 }
+
+// TestQualitySkillDocGateReferencesDocReviewSkill 生成的 quality SKILL.md 中 doc gate
+// 段须指引「按 doc-review skill 评审」且不得引用已迁移的
+// code-review-gate/references/rubric-docs.md 旧路径（依赖倒置：skill 是流程真相源）。
+//
+// TestQualitySkillDocGateReferencesDocReviewSkill: the generated quality SKILL.md
+// doc-gate paragraph must point at the doc-review skill and never the migrated
+// code-review-gate internal path (dependency inversion: the skill is the truth source).
+func TestQualitySkillDocGateReferencesDocReviewSkill(t *testing.T) {
+	proto := &protocol.Protocol{
+		Version: "1",
+		Standards: []protocol.Standard{
+			{ID: "compile", Name: "编译必须通过", Description: "每次修改后确认编译通过", Severity: "error", Enabled: true},
+		},
+	}
+
+	content := buildQualitySkillContent(t.TempDir(), proto)
+	if !strings.Contains(content, "按 doc-review skill 评审") {
+		t.Error("doc gate 段应指引按 doc-review skill 评审")
+	}
+	if strings.Contains(content, "code-review-gate/references/rubric-docs.md") {
+		t.Error("doc gate 段不得引用已迁移的 code-review-gate/references/rubric-docs.md 旧路径")
+	}
+}

@@ -16,5 +16,5 @@
 
 <!--
 模板契约：动机/方案/验证三段必填（影响范围段破坏性变更时必填），禁加"总结"章节；标题一行说清这个 PR 做什么。
-档位判据见 skills/code-review-gate/references/rubric-docs.md。
+档位判据见 doc-review skill（skills/doc-review/references/rubric-docs.md）。
 -->

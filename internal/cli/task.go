@@ -115,7 +115,7 @@ func init() {
 	taskImpactCmd.Flags().String(`ref`, ``, `任务 ref（默认当前活跃任务）`)
 	taskDocReviewCmd.Flags().String("ref", "", "任务 ref（默认当前活跃任务）")
 	taskDocReviewCmd.Flags().String("passed", "", "评审结论：pass | fail（必填）")
-	taskDocReviewCmd.Flags().Int("score", 0, "rubric 四维总分 0-100（rubric-docs.md）")
+	taskDocReviewCmd.Flags().Int("score", 0, "rubric 四维总分 0-100（判据见 doc-review skill）")
 	taskDocReviewCmd.Flags().Int("round", 0, "本轮次编号（从 1 递增；≥3 轮未过升级人工确认）")
 	taskDocReviewCmd.Flags().String("reviewer", "", "评审者标识（子代理/session id——产出者不能当回检者）")
 	taskDocReviewCmd.Flags().StringSlice("critical", nil, "Critical 发现内容（可重复；未决将阻断 doc gate，须 forge task finding resolve 解决）")
@@ -218,7 +218,7 @@ var taskOverrideCmd = &cobra.Command{
 
 var taskDocReviewCmd = &cobra.Command{
 	Use:   "doc-review --passed <pass|fail> --score <N> [--round <R>] [--reviewer <id>] [--critical <发现>]",
-	Short: "记录 L2 文档回检证据（rubric-docs.md 评审后落档；doc gate 消费）",
+	Short: "记录 L2 文档回检证据（按 doc-review skill 评审后落档；doc gate 消费）",
 	RunE:  runTaskDocReview,
 }
 
@@ -1766,7 +1766,7 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 	// Passed/score ≥75) + zero unresolved Criticals. No doc deliverables →
 	// pass; escape hatch symmetric to acceptance.
 	if ok, reasons := taskpipeline.CheckDocGate(root, state); !ok {
-		return fmt.Errorf(`doc gate 未通过（文档产物未过 L1 lint / L2 回检）: %s；流程：forge docs lint <paths> 修 L1 → 按 code-review-gate/references/rubric-docs.md 评审（产出者不能自检）→ forge task doc-review 记录证据。逃生（落 checklog 审计，降 evidence 强度到 Weak）: forge task override --doc-gate disable 或 FORGE_DOC_GATE=disable`,
+		return fmt.Errorf(`doc gate 未通过（文档产物未过 L1 lint / L2 回检）: %s；流程：forge docs lint <paths> 修 L1 → 按 doc-review skill 评审（产出者不能自检）→ forge task doc-review 记录证据。逃生（落 checklog 审计，降 evidence 强度到 Weak）: forge task override --doc-gate disable 或 FORGE_DOC_GATE=disable`,
 			strings.Join(reasons, `; `))
 	}
 
@@ -2124,14 +2124,14 @@ func describeOverrides(o taskpipeline.TaskOverrides) string {
 }
 
 // runTaskDocReview records the L2 doc re-check evidence after a rubric review
-// (code-review-gate/references/rubric-docs.md). The gate (CheckDocGate) is the
+// (doc-review skill). The gate (CheckDocGate) is the
 // consumer: complete is refused until the review is recorded, fresh, Passed and
 // score ≥ threshold. Recording alone never fakes a pass — --passed fail keeps
 // the task blocked and counts a round toward the escalation cap. Critical
 // findings land as Findings (Source=doc-review, Severity=critical) and block
 // until resolved via forge task finding resolve.
 //
-// runTaskDocReview 在 rubric 评审（code-review-gate/references/rubric-docs.md）
+// runTaskDocReview 在 rubric 评审（doc-review skill）
 // 后记录 L2 文档回检证据。门禁（CheckDocGate）是消费方：评审未记录、过期、
 // 未通过或得分低于阈值时 complete 被拒。仅记录不会伪造通过——--passed fail
 // 保持阻断并累加轮次（升级上限的计数）。Critical 发现落 Findings
@@ -2149,7 +2149,7 @@ func runTaskDocReview(cmd *cobra.Command, args []string) error {
 	criticals, _ := cmd.Flags().GetStringSlice("critical")
 
 	if passedFlag != "pass" && passedFlag != "fail" {
-		return fmt.Errorf(`--passed 必填且只接受 pass | fail，got %q（先按 code-review-gate/references/rubric-docs.md 评审——产出者不能当回检者）`, passedFlag)
+		return fmt.Errorf(`--passed 必填且只接受 pass | fail，got %q（先按 doc-review skill 评审——产出者不能当回检者）`, passedFlag)
 	}
 	if score < 0 || score > 100 {
 		return fmt.Errorf("--score 取值 0-100（rubric 四维各 0-25），got %d", score)

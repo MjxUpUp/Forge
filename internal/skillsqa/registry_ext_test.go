@@ -214,14 +214,72 @@ func TestAuditSkill_R17_EvalsSchema(t *testing.T) {
 	}
 }
 
-// RuleDescriptions 完整性守卫：R1-R17 每条都有定义（G2 文档生成 grep 本表，
+func TestAuditSkill_R18_ForgeRefs(t *testing.T) {
+	cases := []struct {
+		name         string
+		body         string
+		wantAdvisory bool
+	}{
+		{"无条件块引用", signalBody(), false},
+		{"条件块内引用不触发", signalBody() + "> Forge 项目：先跑 `forge task resume` 拉回上下文，细节见 references/forge-integration.md。非 forge 项目跳过。\n", false},
+		{"条件块跨行不触发", signalBody() + "> Forge 项目：`forge review status` 查证据强度；\n> Weak 时加核。非 forge 项目跳过。\n", false},
+		{"列表内缩进条件块不触发", signalBody() + "   > Forge 项目：`forge task start --ref x` 跟踪。非 forge 项目用 issue 跟踪。\n", false},
+		{"条件块外引用触发", signalBody() + "完成后须 `forge review pass` 盖章。\n", true},
+		{"普通引用块内引用触发（非 Forge 项目块）", signalBody() + "> 注意：完成后 `forge task complete` 收尾。\n", true},
+		{"条件块结束后正文引用触发", signalBody() + "> Forge 项目：`forge docs lint` 过 L1。非 forge 项目跳过。\n跑 `forge docs lint` 后再评分。\n", true},
+		{"forge 后接非子命令不触发", signalBody() + "在 forge 项目与非 forge 项目中行为一致（forge 环境自动接线）。\n", false},
+		{"路径形态不触发", signalBody() + "历史存储在 `~/.forge/doc-generator/history.jsonl`，路径 `skills/doc-review/` 不受影响。\n", false},
+		{"加粗变体条件块不触发", signalBody() + "> **Forge 项目**：先跑 `forge task resume` 拉回上下文。非 forge 项目跳过。\n", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			sd := writeSkill(t, t.TempDir(), "my-skill", makeSkill("my-skill", longDesc(), "pipeline", c.body))
+			r, err := AuditSkill(sd)
+			must(t, err)
+			if !r.Pass {
+				t.Fatalf("R18 是 advisory 不应失败, issues: %v", r.Issues)
+			}
+			has := advisoryContains(r.Advisories, "依赖倒置契约")
+			if has != c.wantAdvisory {
+				t.Errorf("R18 advisory=%v want=%v (advisories: %v)", has, c.wantAdvisory, r.Advisories)
+			}
+		})
+	}
+}
+
+// TestAuditSkill_R18_RequiresForgeExempt guards the production-in-use exemption
+// branch: skills marked `metadata.requires_forge: "true"` (forge-native skills —
+// skill-evolution / skill-routing / skill-authoring-standard) skip R18 entirely.
+// A regression here (e.g. an inverted condition) would flood those three skills
+// with advisories while every other test stays green.
+//
+// TestAuditSkill_R18_RequiresForgeExempt 守护生产在用的豁免分支：标记
+// `metadata.requires_forge: "true"` 的 forge 原生 skill（skill-evolution /
+// skill-routing / skill-authoring-standard）整体跳过 R18。此处回归（如条件写反）
+// 会让这三个 skill 爆 advisory，而其余测试照常全绿——零保护即零感知。
+func TestAuditSkill_R18_RequiresForgeExempt(t *testing.T) {
+	body := signalBody() + "完成后 `forge task complete` 收尾、`forge review pass` 盖章。\n"
+	raw := "---\nname: my-skill\ndescription: \"" + longDesc() + "\"\n" +
+		"metadata:\n  pattern: pipeline\n  requires_forge: \"true\"\n---\n\n" + body
+	sd := writeSkill(t, t.TempDir(), "my-skill", raw)
+	r, err := AuditSkill(sd)
+	must(t, err)
+	if !r.Pass {
+		t.Fatalf("R18 是 advisory 不应失败, issues: %v", r.Issues)
+	}
+	if advisoryContains(r.Advisories, "依赖倒置契约") {
+		t.Fatalf("requires_forge 标记的 forge 原生 skill 应豁免 R18, got: %v", r.Advisories)
+	}
+}
+
+// RuleDescriptions 完整性守卫：R1-R18 每条都有定义（G2 文档生成 grep 本表，
 // 漏一条文档就缺一条规则）。
 //
-// RuleDescriptions completeness guard: every rule R1-R17 has a definition
+// RuleDescriptions completeness guard: every rule R1-R18 has a definition
 // (the G2 docs generation greps this table — a missing entry means a missing rule).
 func TestRuleDescriptions_Complete(t *testing.T) {
 	want := []string{"R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9", "R10",
-		"R11", "R12", "R13", "R14", "R15", "R16", "R17"}
+		"R11", "R12", "R13", "R14", "R15", "R16", "R17", "R18"}
 	for _, id := range want {
 		if RuleDescriptions[id] == "" {
 			t.Errorf("RuleDescriptions 缺 %s 定义", id)

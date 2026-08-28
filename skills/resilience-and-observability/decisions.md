@@ -74,3 +74,25 @@ forge skills validate R1-R17 全 49 通过；trigger 覆盖 5→15（31%）；dr
 ### Rationale
 
 扩展 trigger 覆盖是 2026-08 审计 P1 优化项；声明式触发是把 skill 从被动文档转主动注入的唯一可靠手段（见 dogfood 发现）
+
+## [d-18d0a2f101531-e101531f4] accept
+
+- **Skill**: resilience-and-observability
+- **DecidedAt**: 2026-08-28T07:53:14Z
+- **By**: zcode
+
+### Diagnosis
+
+checklist/bash 示例里的 forge review pass 顺带提及与 code-review-gate 盖章职责重复
+
+### Revision
+
+指针化：改指 code-review-gate 门控（其 forge 条件块负责盖章），正文零 forge 命令引用
+
+### Evidence
+
+feat/skills-boundary-inversion Phase 2：CONVENTIONS §13 forge 引用契约 + R18 advisory 规则落地；forge skills validate 全语料零 R18 告警
+
+### Rationale
+
+依赖倒置：skill 是独立方法论资产，forge 是可选增强层——skills-only 分发用户不应看到不可执行的 forge 指令

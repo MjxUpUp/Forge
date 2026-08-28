@@ -733,7 +733,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		// phase-aware (design 3.2/3.6): infer the design phase from changed files, write it back
 		// to state.DesignPhases and persist. This is the loop completion point — downstream
 		// phaseKeys→Conclusion.DesignPhases→health.PhasePassRate is populated from it; the review
-		// sub-agent reads state.DesignPhases to load the matching references/phase-X.md checklist.
+		// sub-agent reads state.DesignPhases to load the matching design-artifact-standards/references/phase-X.md checklist.
 		// Zero friction (path inference, no declaration required). Persist only when phases change
 		// to avoid per-verify IO churn. inferDesignPhases previously had zero production callers,
 		// leaving the entire loop as dead code (review BUG-1); wiring it here makes it real.
@@ -747,7 +747,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		//
 		// phase-aware（设计 3.2/3.6）：按改动文件推断设计阶段，写回 state.DesignPhases 并持久化。
 		// 回路接通点——下游 phaseKeys→Conclusion.DesignPhases→health.PhasePassRate 据此填充；
-		// review 子 agent 读 state.DesignPhases 加载对应 references/phase-X.md checklist。零摩擦
+		// review 子 agent 读 state.DesignPhases 加载对应 design-artifact-standards 的 references/phase-X.md checklist。零摩擦
 		// （路径推断，不要求声明）。仅 phases 变化时写盘，避免每次 verify 无谓 IO。inferDesignPhases
 		// 此前零生产调用致整条回路死代码（review BUG-1），此处接通让它名副其实。
 		// taskChangedFiles 跑多个 git 子进程（testcoverage.go），在此块算一次。
@@ -992,7 +992,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 			stale := state.DocReview == nil || state.DocReview.ReviewedAt.IsZero() ||
 				(state.DocReview.HeadCommit != "" && head != "" && state.DocReview.HeadCommit != head)
 			if stale {
-				fmt.Fprintf(os.Stderr, "%s"+`文档产物 %d 个（%s）尚无 fresh 的 L2 回检——complete 前须：forge docs lint 修 L1 → 按 code-review-gate/references/rubric-docs.md 评审（产出者不能自检）→ forge task doc-review 记录。advisory 不阻塞，complete 的 doc gate 会拦。`+"\n", GateAdvisory("[task-verify] "), len(docs), strings.Join(docs, ", "))
+				fmt.Fprintf(os.Stderr, "%s"+`文档产物 %d 个（%s）尚无 fresh 的 L2 回检——complete 前须：forge docs lint 修 L1 → 按 doc-review skill 评审（产出者不能自检）→ forge task doc-review 记录。advisory 不阻塞，complete 的 doc gate 会拦。`+"\n", GateAdvisory("[task-verify] "), len(docs), strings.Join(docs, ", "))
 			}
 		}
 

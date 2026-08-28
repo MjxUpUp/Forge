@@ -1,18 +1,18 @@
 ---
 name: design-artifact-standards
-description: "设计产物编写期的质量标准入口，按产物类型路由到对应环节清单（phase-*.md）。Use when: 写 PRD/需求文档、API 契约/OpenAPI、建表/schema、页面/组件设计、测试方案等设计产物时——按对应清单搭骨架并自查。SKIP: 写代码实现（backend-development/database-design/frontend-feature-development/system-architecture）、代码或产物审查（code-review-gate）、查事实（research-workflow 轻量档）、需求未清先澄清（requirement-clarification）、按模板批量生成文档（doc-generator）。"
+description: "设计产物编写期的质量标准入口，按产物类型路由到对应环节清单（phase-*.md）。Use when: 写 PRD/需求文档、API 契约/OpenAPI、建表/schema、页面/组件设计、测试方案等设计产物时——按对应清单搭骨架并自查。SKIP: 写代码实现（backend-development/database-design/frontend-feature-development/system-architecture）、代码审查（code-review-gate）、文档质量审查评分（doc-review）、查事实（research-workflow 轻量档）、需求未清先澄清（requirement-clarification）、按模板批量生成文档（doc-generator）。"
 metadata:
   pattern: routing
   domain: design
   triggers: [{"event":"UserPromptSubmit","keywords":["写 PRD","需求文档","API 契约","OpenAPI","proto 定义","测试方案","测试用例","测试计划","user story","migration","接口定义","路由设计","设计文档"],"cooldown":600}]
-requires: code-review-gate
+requires: doc-review
 ---
 
 # 设计产物质量标准（编写期入口）
 
-phase-*.md 是「好设计产物该有什么」的标准清单（IEEE 830 / Google API Design Guide / DDD / WCAG / ISTQB 等提炼）。**编写期当骨架和自查清单，审查期 `code-review-gate` 步骤 1.5 引用同一份**——一份标准两处用。单一真相源在 `code-review-gate/references/phase-*.md`，本 skill 只做编写期路由，不复制内容。
+phase-*.md 是「好设计产物该有什么」的标准清单（IEEE 830 / Google API Design Guide / DDD / WCAG / ISTQB 等提炼）。**编写期当骨架和自查清单，审查期 `code-review-gate` 引用同一份**——一份标准两处用。清单单一真相源在本 skill 的 `references/phase-*.md`（2026-08 自 code-review-gate 迁入：标准随编写期主场走，审查期消费者跨引），本 skill 做编写期路由与标准托管。
 
-> **安装依赖（enforce 提示，需手动满足）**：本 skill 跨 skill 引用 `code-review-gate/references/phase-*.md`，依赖 code-review-gate 同 host 安装。frontmatter `requires: code-review-gate` 现已被 `forge skills install` enforce：单装本 skill（`forge skills install --skill design-artifact-standards`）会打印 `requires code-review-gate 但本次未同装` 警告（**不阻断**，仅提示；需手动加 `--skill code-review-gate` 或省略 `--skill` 全装），否则下表链接断链。开发态可直接读 `skills/code-review-gate/references/`。
+> Forge 项目——**安装依赖（enforce 提示，需手动满足）**：6 个环节清单已本地化到本 skill `references/`，单装即可完整使用。仅路由表末行「文档产物」按 **doc-review skill** 评审（skill 名引用，不深链其内部文件）——frontmatter `requires: doc-review` 会被 `forge skills install` enforce 提示：单装本 skill 会打印 `requires doc-review 但本次未同装` 警告（**不阻断**，仅提示）。非 forge 环境无此提示，不装 doc-review 时其余 6 行完全可用，文档产物行降级为「按四维常识自查」。
 
 ## 核心原则
 
@@ -22,23 +22,25 @@ phase-*.md 是「好设计产物该有什么」的标准清单（IEEE 830 / Goog
 
 ## 为什么编写期就要用
 
-审查期才看清单 = 写完才发现不达标 → 返工（task-verify 的 `inferDesignPhases` 按已写文件路径推断阶段 → code-review-gate 加载对应清单）。**编写期就按标准搭骨架 = 一次写到位**。本 skill 把同一份标准在产出期暴露出来，让规范不只服务审查。
+审查期才看清单 = 写完才发现不达标 → 返工。**编写期就按标准搭骨架 = 一次写到位**。本 skill 把同一份标准在产出期暴露出来，让规范不只服务审查。
+
+> Forge 项目：task-verify 的 `inferDesignPhases` 按已写文件路径推断阶段，code-review-gate 据此加载对应清单复核（衔接点见其 forge-integration）。非 forge 项目跳过自动衔接，审查期靠人工对照本清单。
 
 ## 路由表：你要写的产物 → 对应标准
 
 先识别在写什么，Read 对应 phase-*.md（含分维度 checklist + 确定性机械规则 + 大厂规范映射）。
 
-**路径锚点**：phase-*.md 在 `code-review-gate/references/` 下。下表链接是相对本 skill 的 `../code-review-gate/references/`（同 host 同装、且 agent 按「相对 SKILL.md 目录」解析时可达——2026-08 实测见「维护注记」）。若按相对路径 Read 失败（主流宿主 Read 以 cwd 为基解析，裸 `../` 会断），用绝对路径：部署态 `<skills 根>/code-review-gate/references/phase-<name>.md`（Claude Code：`~/.claude/skills/code-review-gate/references/...`），开发态 `skills/code-review-gate/references/phase-<name>.md`（仓库根起）。
+**路径锚点**：phase-*.md 在本 skill `references/` 下，下表链接为相对本 skill 的本地路径（`references/phase-<name>.md`）。若所在宿主 Read 以 cwd 为基解析相对路径导致断链，用绝对路径兜底：部署态 `<skills 根>/design-artifact-standards/references/phase-<name>.md`（Claude Code：`~/.claude/skills/design-artifact-standards/references/...`），开发态 `skills/design-artifact-standards/references/phase-<name>.md`（仓库根起）。
 
 | 你在写 | 环节 | 读这个标准 |
 |---|---|---|
-| PRD / 需求文档 / user story | requirement | [phase-requirement.md](../code-review-gate/references/phase-requirement.md) |
-| API 契约 / OpenAPI / proto / 接口定义 | api | [phase-api.md](../code-review-gate/references/phase-api.md) |
-| 数据库设计 / 建表 / migration / schema | database | [phase-database.md](../code-review-gate/references/phase-database.md) |
-| 前端设计 / 页面 / 组件 / 路由 / 状态 | frontend | [phase-frontend.md](../code-review-gate/references/phase-frontend.md) |
-| 后端设计 / service / domain / 业务逻辑 | backend | [phase-backend.md](../code-review-gate/references/phase-backend.md) |
-| 测试方案 / 测试用例 / 测试计划 | test-design | [phase-test-design.md](../code-review-gate/references/phase-test-design.md) |
-| PR 描述 / commit body / 测试报告 / 复盘报告 | 文档产物（不在 6 环节枚举内，不参与 task-verify 路径推断） | [rubric-docs.md](../code-review-gate/references/rubric-docs.md)——写前先拿 doc-generator 对应模板；落盘产物过 `forge docs lint`（L1），再按 rubric 评分（L2） |
+| PRD / 需求文档 / user story | requirement | [phase-requirement.md](references/phase-requirement.md) |
+| API 契约 / OpenAPI / proto / 接口定义 | api | [phase-api.md](references/phase-api.md) |
+| 数据库设计 / 建表 / migration / schema | database | [phase-database.md](references/phase-database.md) |
+| 前端设计 / 页面 / 组件 / 路由 / 状态 | frontend | [phase-frontend.md](references/phase-frontend.md) |
+| 后端设计 / service / domain / 业务逻辑 | backend | [phase-backend.md](references/phase-backend.md) |
+| 测试方案 / 测试用例 / 测试计划 | test-design | [phase-test-design.md](references/phase-test-design.md) |
+| PR 描述 / commit body / 测试报告 / 复盘报告 | 文档产物（不在 6 环节枚举内，不参与 task-verify 路径推断） | 按 **doc-review skill** 评审（四维评分 + 类型特化）——写前先拿 doc-generator 对应模板；落盘产物先过机器层 lint（L1），再按 rubric 评分（L2） |
 
 > 6 个环节枚举与 `taskpipeline` 的 `allDesignPhases`（`internal/taskpipeline/phase_detect.go`）一致。编写期你按意图选环节；审查期 task-verify 的 `inferDesignPhases` 按**文件路径模式**推断环节（如 PRD 需放 `docs/prd/`、API 需路径含 `openapi/api/proto`）——产物按约定路径落盘时两期环节集合一致，路径不匹配时审查期会回退通用清单（编写期自查的有效性不受影响）。
 
@@ -48,11 +50,12 @@ phase-*.md 是「好设计产物该有什么」的标准清单（IEEE 830 / Goog
 2. **读标准**：动笔**前** Read 对应 phase-*.md，不是写完再查。phase-*.md 措辞偏「审查清单」视角，读时把每条「审查项」当「产物该有的章节/属性」看——同一份标准，编写期正向用、审查期反向用。
 3. **搭骨架**：按 phase-*.md 的维度章节组织产物。例：PRD 必含 Out of Scope、每条需求有可执行验收条件、覆盖异常流；API 必有版本策略 + 统一错误模型 + 分页/排序约定。
 4. **写完自查**：逐条核对 phase-*.md 的 checklist，再过一遍「确定性规则（机械可检）」表——这些是可被脚本扫出的硬指标（如 PRD 含模糊词、公开 API 无 OpenAPI 文档、URL 含动词）。
-5. **衔接审查**：产物落地涉及代码后，code-review-gate 步骤 1.5 会按 task 的 `DesignPhases` 加载**同一份** phase-*.md 复核（6 个环节全覆盖）。编写期按标准做，审查期就无惊吓。
+5. **衔接审查**：产物落地涉及代码后，code-review-gate 会按 task 的 `DesignPhases` 加载**同一份** phase-*.md 复核（6 个环节全覆盖，加载路径见其 forge-integration）。编写期按标准做，审查期就无惊吓。
 
 ## 与其他 skill 的分工
 
-- **code-review-gate**：审查期消费者。步骤 1.5 据 task 的 `DesignPhases` 加载同一批 phase-*.md 做审查。本 skill 是编写期生产者——标准共用，阶段不同。
+- **code-review-gate**：审查期消费者。据 task 的 `DesignPhases` 加载本 skill 托管的同一批 phase-*.md 做审查。本 skill 是编写期生产者与标准托管方——标准共用，阶段不同。
+- **doc-review**：文档产物（PR 描述/commit body/测试报告/复盘报告）的质量审查与评分门控。路由表末行指向它；本 skill 的 6 个环节清单管「设计产物该有什么」，doc-review 管「文档写得怎么样」。
 - **backend-development / database-design / frontend-feature-development / system-architecture**：管「HOW 写代码」（实现模式、框架用法、架构选型）。本 skill 管「产物是否达标」（该有什么、是否满足机械规则）。写代码前先看开发 skill 学怎么写；写设计产物时看本 skill 学该有什么。
 - **doc-generator**：按模板填空生成结构化文档。与本 skill 是 **producer-chain**：doc-generator 先按模板填出结构骨架，本 skill 再按 phase-*.md 标准自查达标度——非互斥，先填后查。
 - **requirement-clarification**：需求本身不清时澄清。本 skill 假设需求已清，管需求文档的编写质量；若需求还没想清楚，先 SKIP 到 requirement-clarification 澄清，再回来写文档。
@@ -79,19 +82,22 @@ phase-*.md 是「好设计产物该有什么」的标准清单（IEEE 830 / Goog
 
 ## 维护注记
 
-- **跨 skill 引用首例**：本 skill 是 canonical 内首个跨 skill 相对引用（`../code-review-gate/references/`）的 skill，其余 skill 均引用自身 `references/`。失效条件：`code-review-gate` 改名、phase-*.md 改路径/改名、或单装本 skill 不装 code-review-gate 时，下表 6 个链接断链。
-- **同步要求**：phase-*.md 的路径 / 文件名变更时，本 skill 路由表 6 个链接 + `requires` 字段需同步更新；反之本 skill 重命名时 `code-review-gate/SKILL.md` 无反向依赖（consumer 不依赖 producer 的存在）。
-- **agent Read 解析实测（2026-08，Kimi 宿主）**：Read 工具以 cwd 为基解析相对路径——裸 `../code-review-gate/references/phase-requirement.md` 断链（解析到仓库根之外被拒绝）；以 SKILL.md 目录为基拼接（`skills/design-artifact-standards/../code-review-gate/references/phase-requirement.md`）后 `..` 正常归一化、可读。结论：保留下表 `..` 链接（约定按「相对 SKILL.md 目录」解析）+「路径锚点」绝对路径兜底，**不改内联**（守住单一真相源）。其他宿主未逐一实测，断链时一律走绝对路径兜底。
+- **清单已本地化（2026-08 迁入）**：phase-*.md 单一真相源在本 skill `references/`（此前寄居 code-review-gate，靠 `../code-review-gate/references/` 跨 skill 相对链接 + `requires` 提示维持，宿主断链风险实测存在）。审查期消费者 code-review-gate 经其 forge-integration 跨引本 skill（反向依赖，consumer 不依赖 producer 的存在）。
+- **同步要求**：phase-*.md 的路径/文件名/环节增删变更时，本 skill 路由表 + code-review-gate 的 forge-integration 加载表需同步更新；6 个环节枚举与 `internal/taskpipeline/phase_detect.go` 的 `allDesignPhases` 保持一致。
+- **doc-review 为 skill 名引用**：路由表末行不深链 doc-review 内部文件，agent 按 skill 名加载后由其 SKILL.md 内部链接导航——避免再次引入跨 skill 深链断链问题。
+- **agent Read 解析实测（2026-08，Kimi 宿主）**：Read 以 cwd 为基解析相对路径时本地 `references/` 链接同样可能断链，断链时走「路径锚点」绝对路径兜底。
 
 ## 参考
 
-6 个环节清单（单一真相源，位于 code-review-gate）：
+6 个环节清单（单一真相源，位于本 skill `references/`）：
 
-- requirement：[`code-review-gate/references/phase-requirement.md`](../code-review-gate/references/phase-requirement.md)
-- api：[`code-review-gate/references/phase-api.md`](../code-review-gate/references/phase-api.md)
-- database：[`code-review-gate/references/phase-database.md`](../code-review-gate/references/phase-database.md)
-- frontend：[`code-review-gate/references/phase-frontend.md`](../code-review-gate/references/phase-frontend.md)
-- backend：[`code-review-gate/references/phase-backend.md`](../code-review-gate/references/phase-backend.md)
-- test-design：[`code-review-gate/references/phase-test-design.md`](../code-review-gate/references/phase-test-design.md)
+- requirement：[phase-requirement.md](references/phase-requirement.md)
+- api：[phase-api.md](references/phase-api.md)
+- database：[phase-database.md](references/phase-database.md)
+- frontend：[phase-frontend.md](references/phase-frontend.md)
+- backend：[phase-backend.md](references/phase-backend.md)
+- test-design：[phase-test-design.md](references/phase-test-design.md)
+
+文档产物评分判据：doc-review skill（`references/rubric-docs.md` 为其内部资产）。
 
 phase 枚举真相源：`internal/taskpipeline/phase_detect.go`（`allDesignPhases` + `inferDesignPhases`）。
