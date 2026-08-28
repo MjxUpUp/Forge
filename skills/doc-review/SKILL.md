@@ -1,6 +1,6 @@
 ---
 name: doc-review
-description: "文档质量审查与 L2 评分门控（PR 描述/commit body/测试报告/复盘报告/落盘文档）。Use when: 审查文档质量、给文档评分、说\"帮我审下这份文档\"\"这文档写得怎么样\"\"文档太长了帮我看看\"时、文档回检（L2）时。SKIP: 代码审查（用 code-review-gate）、设计产物按环节清单搭骨架自查（用 design-artifact-standards）、按模板生成文档（用 doc-generator）、文档与代码真相源的一致性守卫（用 docs-consistency-guard）、机器可判的禁令/结构/篇幅 lint（forge docs lint）。"
+description: "文档质量审查与 L2 评分门控（PR 描述/commit body/测试报告/复盘报告/落盘文档）。Use when: 审查文档质量、给文档评分、说\"帮我审下这份文档\"\"这文档写得怎么样\"\"文档太长了帮我看看\"时、文档回检（L2）时。SKIP: 代码审查（用 code-review-gate）、设计产物按环节清单搭骨架自查（用 design-artifact-standards）、按模板生成文档（用 doc-generator）、文档与代码真相源的一致性守卫（用 docs-consistency-guard）、机器可判的禁令/结构/篇幅 lint（L1 lint 工具）。"
 metadata:
   pattern: reviewer + gate
   domain: documentation
@@ -38,7 +38,7 @@ metadata:
 1. 判断文档类型（PR 描述 / commit body / 测试报告 / 复盘报告 / 其他）——决定用哪行类型特化判据（rubric 第 3 节）。
 2. 机器可判的结构问题先修掉，不带进评分：禁令短语（`整体良好` `综上所述` 类）、必填章节缺失、结论非枚举值、篇幅超限。
 
-> Forge 项目：落盘 .md 先跑 `forge docs lint`（L1，D1-D7 规则，exit 0=过/2=硬失败），PR 描述与 commit body 不落盘、按模板结构人工核对。非 forge 项目按上述结构清单人工过一遍（机制见 [references/forge-integration.md](references/forge-integration.md)）。
+> 落盘 .md 先过文档 lint 工具（宿主提供时——禁令短语/必填章节/结论枚举/篇幅规则机器可查，硬失败先修）；无 lint 工具时按上述结构清单人工过一遍。PR 描述与 commit body 不落盘、按模板结构人工核对。
 
 ### 步骤 2：独立派审
 
@@ -66,7 +66,7 @@ metadata:
 - **打回**：任一不满足 → 列未决项，修改后**重新派独立子代理评审**（作者不能自证修改合格）
 - **收敛判据**：3 轮仍 <75 → 升级人工确认，不无限打磨；同类发现连续两轮不收敛 → 异常信号（评审方或修改方有一侧在空转），换视角或换人，不要第三轮硬磨
 
-> Forge 项目：评审通过后用 `forge task doc-review --passed pass --score <N>` 落档证据（未记录/过期/低分会被 doc gate 拦 complete）；逃生口与门禁细节见 [references/forge-integration.md](references/forge-integration.md)。非 forge 项目跳过落档，报告直接交付。
+> 评审通过后把结果落档（宿主有任务门禁机制时记录证据——未记录/过期/低分会被 complete 前的门禁拦截）；无门禁机制的环境跳过落档，报告直接交付。
 
 ## 文档作弊模式速查（先扫这个表）
 
@@ -120,4 +120,3 @@ metadata:
 ## 参考
 
 - 四维档位判据 + 类型特化 + 评分纪律：[references/rubric-docs.md](references/rubric-docs.md)
-- Forge 集成（L1 lint / doc gate 落档 / 逃生口，仅 forge 项目适用）：[references/forge-integration.md](references/forge-integration.md)

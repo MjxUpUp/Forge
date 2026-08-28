@@ -82,11 +82,11 @@ git diff --cached                  # 看已暂存的变更
 2. **三种符号变动都要查**：改名（假重构高发：符号改了名但调用者没更新 → 运行时 ReferenceError 或死代码）、删符号、改签名（参数 / 返回值变化让旧调用方静默失效）。
 3. **完成判定**：grep 结果零残留旧符号引用才算同步完成；有残留即发现（必须解决，不是建议）。
 
-> Forge 项目：若任务是设计阶段产物审查（非纯代码实现），`task-verify` 已按文件路径推断 DesignPhases 并落盘，须加载对应 phase checklist 作为补充检查项——条件化细节见 [references/forge-integration.md](references/forge-integration.md)「环节感知加载」节。非 forge 项目跳过。
+> 设计阶段产物审查（PRD/API 契约/建表/前端设计等，非纯代码实现）：加载 design-artifact-standards 的对应 phase-*.md 清单作为补充检查项（同一份标准，编写期当骨架、审查期当 checklist），不替换双轨。
 
-### 步骤 2 前置：证据强度校准（forge 项目）
+### 步骤 2 前置：证据强度校准
 
-> Forge 项目：双轨审查前先做证据强度校准——`forge review status` 的 ratio 档位（Strong/Weak/Unverified）决定审查动作（Weak 加核、Unverified 必核声称的验证是否真发生，并升级跨模型对抗式 critic）。机制与操作详见 [references/forge-integration.md](references/forge-integration.md)「证据强度校准」节。非 forge 项目跳过本步（fallback 到纯静态双轨）。
+> 双轨审查前先核「完成」声明的验证证据——声称跑过测试/验证的，抽查实跑证据（测试输出、CI 记录的新鲜痕迹），声明主要靠自述且无实跑支撑的，把「声称做了的验证是否真发生」列为首要审查项（见到实跑证据才放行），并升级对抗式审查（见「子 agent 化」节）。纯静态双轨是下限：核不出验证真假就按未验证处理。
 
 ### 步骤 2：双轨审查（核心，缺一不可）
 
@@ -158,7 +158,7 @@ git diff --cached                  # 看已暂存的变更
 
 **禁止模糊结论**：不说 `基本可以`、`问题不大`、"看着改改"。给出明确的提交/不提交判断。
 
-> Forge 项目：审查通过（所有发现已解决）后须运行 `forge review pass` 标记当前 diff 已审——未标记则 task-complete 门禁 / Stop hook 会拦截提交与会话结束（机制见 [references/forge-integration.md](references/forge-integration.md)「自动触发」节）。
+> 有审查盖章机制的宿主：审查通过（所有发现已解决）后按其机制标记当前 diff 已审——未标记的提交/结束拦截由宿主门禁承担。
 
 ## 子 agent 化：独立上下文审查（防自审盲区）
 
@@ -172,11 +172,9 @@ git diff --cached                  # 看已暂存的变更
 
 预设契约（职责 / 只读工具 / 结构化输出 schema）见 [references/subagent-contract.md](references/subagent-contract.md)。子 agent **只读不写**——审查与修复分离，避免"边审边改"妥协。派发方式按所在 agent：Claude Code 用 Task tool（`subagent_type: general-purpose`，prompt 注入契约）；codex 等用各自子任务机制，契约相同。
 
-> Forge 项目：本 skill 有两条自动挡让审查成为提交/结束的硬前置——task-complete 门禁的 ReviewPassed 硬前置 + 非 task 流程的 Stop hook（未审变更拦截会话结束，最多拦 3 次后 advisory 放行）。机制与误触发防护见 [references/forge-integration.md](references/forge-integration.md)「自动触发」节。
-
 ### 审查-修复-复审闭环（多轮盖章的复审义务）
 
-审查发现的问题修复之后，**必须重新派只读子 agent 复审修复本身**，复审通过才能再次盖章标记已审——修复者不能自证修复合格（第一轮的确认偏误在修复时同样存在：改错位置、只修表面、修复引入新问题，都是修复者自己看不见的）。快照机制只强制闭环的**形状**（改码后必须重新盖章），不检验复审**实质**；复审实质由本协议与盖章的自助刷新守卫共同承担——距上次盖章基线有**源码内容变更**时，裸盖章会被**拒绝**，须记录复审结论后才放行（操作细节见下方 forge 条件块）。
+审查发现的问题修复之后，**必须重新派只读子 agent 复审修复本身**，复审通过才能再次盖章标记已审——修复者不能自证修复合格（第一轮的确认偏误在修复时同样存在：改错位置、只修表面、修复引入新问题，都是修复者自己看不见的）。快照机制只强制闭环的**形状**（改码后必须重新盖章），不检验复审**实质**；复审实质由本协议承担，有审查盖章机制的宿主其快照守卫会拒绝源码变更后的裸盖章（须记录复审结论后才放行）。
 
 - 复审范围：修复 diff 本身 + 修复是否真正解决了原发现（对照第一轮报告逐项核）+ 修复引入的新问题（回归、调用方、边界）。
 - 复审输出与首轮同协议（结构化报告 + 结论行）；复审发现新问题 → 再修复 → 再复审，直到复审 PASS。
@@ -184,15 +182,9 @@ git diff --cached                  # 看已暂存的变更
 
 **复审轮新发现必须归因（收敛判据，2026-08 本地证据）**：复审报告里出现**前轮未见的新发现**时，reviewer 必须逐条回答「前轮为何漏」，三选一——① 前轮抽样未覆盖（同一份代码换个 pass 抓到不同子集，LLM 评审是采样不是穷举）；② 修复新引入；③ 首轮范围外（波及面/环境层的合理延伸）。本地一周 7 起确证的后轮新发现 episode，多数是①。归因让「每次 review 都冒新问题」可判读：连续两轮①类新发现 = 该 diff 欠采样，应加派一个不同视角的 pass 而非继续单轮碰运气；②类居多 = 修复质量差，回到修复环节。归因写进复审报告与盖章记录的复审结论字段。
 
-> Forge 项目：`forge review pass` 检测到距上次审查基线有源码变更时，裸盖章会被拒绝——正规路径是复审后 `forge review pass --note "<复审结论>"`；确认变更无需复审时可用 `--acknowledge-changes` 显式自我承担（checklog 记 WARN 级 self-refresh 审计，事后审计可见）。非源码变更（amend commit message、保内容 rebase 等）不改变内容指纹，无需确认；同状态重复盖章（瞬态重试）保持静默。
->
-> **`--note` 必须记录审查实质，不只结论**：覆盖范围（审了哪些文件/diff、几轨几 pass）、关键验证动作（grep 落位、实跑探针）、分歧与归因（双轨发现集差异、后轮新发现的归因分类）。反例（审计实证，2026-08）：一周 40 次 review-pass 仅 1 次带 note，分钟级完成的盖章与正常约十分钟级审查从记录上无从区分——无实质 note 的盖章 = rubber-stamp 盲区。审查发现同时用 `forge task finding` 录入（自动带轮次 Round 与代码指纹 ChangeHash），「同一份代码第 N 轮才首次发现」的稳定性指标才可度量。
-
 ## AI 作弊模式速查（核心，先扫这个表）
 
 来自 327 个真实 AI PR 的挖掘（27 个被维护者明确确认为作弊，工具召回率 93%）。**命中任一即必须解决（不得跳过）：**
-
-> Forge 项目：`task-verify` 的 cheat-scan 已机械扫任务新增行的 7 类模式（type-suppression / error-swallow / dead-branch / comment-only-fix / comment-as-debt / phantom-import / path-assumption）并记 `checklog:cheat-scan`——审查前先查 `forge trace`，这 7 类已被 deterministic 判过，子 agent **跳过它们**，把精力放到下表其余需语义判断的模式和轨道 B 上（机制详见 [references/forge-integration.md](references/forge-integration.md)「cheat-scan 预扫」节）。
 
 | 作弊类型 | 指纹 | 为什么是问题 |
 |---|---|---|
@@ -270,6 +262,5 @@ git diff --cached                  # 看已暂存的变更
 - DB/SQL 破坏性操作审查清单（DROP/TRUNCATE/无 WHERE DELETE/GRANT ALL/生产直连/不可逆迁移）：[references/sql-safety-checklist.md](references/sql-safety-checklist.md)
 - 过度工程审查清单（重造轮子/单实现抽象/引依赖做几行事/投机灵活性/死代码，delete-list 5 类 tag + 懒惰阶梯根因诊断）：[references/over-engineering-checklist.md](references/over-engineering-checklist.md)
 - 子 agent 预设契约（职责 / 只读工具 / 输出 schema）：[references/subagent-contract.md](references/subagent-contract.md)
-- Forge 集成（环节感知加载 / 证据强度校准 / cheat-scan 预扫 / 自动触发，仅 forge 项目适用）：[references/forge-integration.md](references/forge-integration.md)
 
 **数据来源**：swarm-orchestrator（327 真实 AI PR 挖掘，93% 召回率）、mgreiler/code-review-checklist（1060⭐ 业界权威清单）、Arcanum-Sec/sec-context（150+ 源提炼的 AI 代码安全反模式）、ponytail（懒惰阶梯 + delete-list，MIT，实测 ~54% 更少代码、过度构建场景达 94%）。

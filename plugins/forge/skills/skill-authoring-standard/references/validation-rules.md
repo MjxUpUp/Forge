@@ -32,7 +32,7 @@
 | R15 | 正文 ALL-CAPS 命令式词（`ALWAYS`/`NEVER`/`MUST`，整词、仅全大写计）合计 >5 次：提醒改「指令+原因」写法（2026-08 新增） |
 | R16 | `references/` 下 >300 行文件需 ToC（2026-08 新增；markdown 由 R11 以 >100 行更低门槛先行覆盖，不重复报，实际增量是非 markdown 参考文件） |
 | R17 | `evals/evals.json` 存在时校验 schema：对象含 `trigger_cases` 数组，每项 `{query: string, should_trigger: boolean}`（2026-08 新增；文件不存在则跳过） |
-| R18 | 正文 forge 命令引用只允许出现在「> Forge 项目」条件引用块内，其余命中提醒依赖倒置契约（细节归 references/forge-integration.md；`metadata.requires_forge: "true"` 标记的 forge 原生 skill 豁免；2026-08 新增） |
+| R18 | skill 目录零 forge 反向依赖（硬 issue）：SKILL.md 正文与全部内容文件（decisions.md/evals 除外）不得含 forge CLI 调用、`~/.forge/` 路径、`$FORGE_*` 变量、forge-integration.md 指针；命中即失败。存量豁免表 `R18Grandfathered` 已于 2026-08 迁移后清空（集成知识迁至 forge 侧 `forge skills integration`），`metadata.requires_forge: "true"` 的 forge 原生 skill 跳过（CONVENTIONS §13） |
 
 ### triggers 匹配语义陷阱（R12 查不出，写 keywords 前必读）
 
