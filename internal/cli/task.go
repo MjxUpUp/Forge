@@ -441,14 +441,18 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		if explicitRef == "" {
 			return fmt.Errorf("--branch requires --ref (e.g., --ref feat/add-auto-branch)")
 		}
-		if err := validateBranchRef(explicitRef); err != nil {
-			return fmt.Errorf("invalid branch ref: %w", err)
+		// dogfood 发现 #6（2026-08-28，conventions-profile 会话审计）：--branch 此前
+		// 直接校验 ref 本身，非惯例前缀 ref 被拒——与 --worktree 共享 deriveBranchName
+		// 派生（feat/<ref 斜杠转连字>）。
+		branchName, err := deriveBranchName(explicitRef)
+		if err != nil {
+			return err
 		}
 		detected := taskcontext.Detect(root)
 		if !isMainBranch(detected.Branch) {
 			return fmt.Errorf("--branch can only be used on main/master (current: %s)", detected.Branch)
 		}
-		if err := createAndSwitchBranch(root, explicitRef); err != nil {
+		if err := createAndSwitchBranch(root, branchName); err != nil {
 			return fmt.Errorf("failed to create branch: %w", err)
 		}
 	}
@@ -547,7 +551,12 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	// 去重的部分），仅供下方成功输出标注来源。用 merge 后的 len 差值而非提取前的 len(extracted)——
 	// 后者在 --accept 共存时会数进去被去重丢弃的条目，误导用户以为它们进了 state。
 	planAcceptanceAdded := 0
+	hasPlanInput := false
+	if goal, _ := cmd.Flags().GetString("goal"); goal != "" {
+		hasPlanInput = true
+	}
 	if planFile, _ := cmd.Flags().GetString("plan-file"); planFile != "" {
+		hasPlanInput = true
 		planData, err := os.ReadFile(planFile)
 		if err != nil {
 			return fmt.Errorf("读取 --plan-file %q 失败: %w", planFile, err)
@@ -812,6 +821,20 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Branch: %s\n", ctx.Branch)
 	if ctx.Summary != "" {
 		fmt.Printf("Summary: %s\n", ctx.Summary)
+	}
+	// 使用偏离引导（conventions-profile 会话审计，2026-08-28；均 advisory 不阻断）：
+	// (a) L4 未用 worktree——主检出直接开任务分支是受支持的降级形态，但多任务并发
+	//     时未提交变更共堆一处正是隔离设计要消的风险面；仅在其他未完成任务存在时
+	//     提示（单任务用户零打扰）。
+	// (b) L6 产物链未用——plan/goal 空白则接续字段全空（task-implement 的 plan-first
+	//     advisory 在门禁才响，这里 shift-left 一行）。
+	if !useWorktree {
+		if others, _ := taskpipeline.ListTaskStates(root); countOtherIncomplete(others, ctx.TaskRef) > 0 {
+			fmt.Fprintf(os.Stderr, "提示：当前有其他未完成任务，本任务在主检出开分支（共享工作树）——多任务并发建议 forge task start --worktree 获得独立工作树（multi-task-concurrency L4）\n")
+		}
+	}
+	if !hasPlanInput {
+		fmt.Fprintf(os.Stderr, "提示：本任务无 --plan-file/--goal——接续字段将为空（压缩/换窗口后现场靠 git 猜）；建议 task start 带 --plan-file <方案> 或 --goal <目标>，中途用 forge task decide/next 落盘（multi-task-concurrency L6）\n")
 	}
 	fmt.Println()
 	fmt.Println("Task gates:")
@@ -2651,4 +2674,20 @@ func createAndSwitchBranch(root, name string) error {
 		return fmt.Errorf("%s: %s", err, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+// countOtherIncomplete counts incomplete tasks other than the given ref — the worktree
+// nudge's trigger（conventions-profile 会话审计引导，2026-08-28；advisory only，单任务
+// 用户零打扰）。
+//
+// countOtherIncomplete 数除指定 ref 外的未完成任务数——worktree 引导的触发条件
+// （conventions-profile 会话审计引导，2026-08-28；仅 advisory，单任务用户零打扰）。
+func countOtherIncomplete(states []*taskpipeline.TaskState, ownRef string) int {
+	n := 0
+	for _, s := range states {
+		if s != nil && s.TaskRef != ownRef && s.CompletedAt == nil {
+			n++
+		}
+	}
+	return n
 }
