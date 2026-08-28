@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.45.3](https://github.com/MjxUpUp/Forge/compare/v1.45.2...v1.45.3) (2026-08-28)
+
+
+### Bug Fixes
+
+* **attribution:** dogfood 发现 [#5](https://github.com/MjxUpUp/Forge/issues/5)——hook 记账路径归一（绝对→repo 相对） ([e3bc37d](https://github.com/MjxUpUp/Forge/commit/e3bc37defce4b4665157f027bba203621e9ea1ca))
+
 ## [1.45.2](https://github.com/MjxUpUp/Forge/compare/v1.45.1...v1.45.2) (2026-08-27)
 
 
