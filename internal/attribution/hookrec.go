@@ -2,6 +2,7 @@ package attribution
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -44,6 +45,12 @@ func RecordHookEvent(root string, hookEventName, sessionID, toolName string, too
 	if len(toolInput) > 0 {
 		_ = json.Unmarshal(toolInput, &fields)
 	}
+	// dogfood 发现 #5（2026-08-27 真机双会话验证）：宿主 tool_input.file_path 是
+	// 【绝对路径】（Claude Code 系契约），而 Reconcile 的变更集键是 git 的 repo
+	// 相对路径——不归一，台账键永远匹配不上变更集：全部落 orphan、会话过滤恒
+	// false（单测 fixture 全用相对路径故未暴露）。此处统一剥成 repo 相对路径；
+	// root 之外的绝对路径保持原样（跨仓写入本就不在变更集语义内）。
+	fields.FilePath = relToRoot(root, fields.FilePath)
 	now := time.Now()
 	switch {
 	case toolName == "Write":
@@ -73,12 +80,35 @@ func RecordHookEvent(root string, hookEventName, sessionID, toolName string, too
 		}
 		var events []Event
 		for _, p := range bashWriteTargets(fields.Command) {
-			events = append(events, Event{Ts: now, Sid: sessionID, Kind: KindBashInfer, Path: p})
+			// #5 同源：bash 目标同样归一（绝对路径写法 echo x > /abs/path.go 时）。
+			events = append(events, Event{Ts: now, Sid: sessionID, Kind: KindBashInfer, Path: relToRoot(root, p)})
 		}
 		if len(events) > 0 {
 			Record(root, events...)
 		}
 	}
+}
+
+// relToRoot normalizes an ABSOLUTE hook-supplied path to its repo-relative form (the
+// ledger/changeset key space); non-absolute paths and paths outside root pass through
+// unchanged (relative input from other hosts stays valid; foreign-absolute stays
+// visibly foreign — it can never match the changeset either way).
+//
+// relToRoot 把宿主给的【绝对】路径归一为 repo 相对形态（台账/变更集的键空间）；
+// 非绝对路径与 root 之外的路径原样通过（他宿主的相对输入本就有效；外来绝对路径
+// 保持可见的外来性——反正匹配不上变更集）。
+func relToRoot(root, p string) string {
+	if p == "" || !filepath.IsAbs(p) {
+		return p
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return p
+	}
+	if rel, err := filepath.Rel(absRoot, p); err == nil && !strings.HasPrefix(rel, "..") {
+		return filepath.ToSlash(rel)
+	}
+	return p
 }
 
 // patchFilePath extracts the first "*** Add/Update/Delete File: <path>" header from a
