@@ -310,12 +310,12 @@ type TaskState struct {
 	// DesignPhases is the design phase inferred by inferDesignPhases at the task-verify gate.
 	// Filled by the task-verify gate (executor.go ExecuteTaskGate) calling inferDesignPhases(taskChangedFiles)
 	// and persisted via SaveTaskState, with zero friction: no user declaration required. The review sub-agent loads the corresponding
-	// references/phase-X.md checklist based on it. Empty = no matching design artifact, falling back to the generic review-checklist.md.
+	// design-artifact-standards/references/phase-X.md checklist based on it. Empty = no matching design artifact, falling back to the generic review-checklist.md.
 	//
 	// DesignPhases 是 inferDesignPhases 在 task-verify gate 推断出的设计阶段。
 	// 由 task-verify gate（executor.go ExecuteTaskGate）调 inferDesignPhases(taskChangedFiles)
 	// 填充并 SaveTaskState 持久化，零摩擦：不要求用户声明。review 子 agent 据此加载对应
-	// references/phase-X.md checklist。空 = 无匹配设计产物，回落到通用 review-checklist.md。
+	// design-artifact-standards 的 references/phase-X.md checklist。空 = 无匹配设计产物，回落到通用 review-checklist.md。
 	DesignPhases []DesignPhase         `json:"design_phases,omitempty"`
 	Acceptance   []AcceptanceCriterion `json:"acceptance,omitempty"` // 验收标准（dev-workflow Plan 的 Run+Expected），verify-acceptance 实跑回扣
 	// AcceptanceForeign marks that the acceptance Run commands entered this TaskState from an

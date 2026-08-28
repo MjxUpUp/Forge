@@ -110,7 +110,7 @@ Generator + Inversion 组合：**先采访缺失变量，再按模板填空**。
 - `references/template-tech-plan.md` — 技术方案（推荐先行 + 备选对比表）
 - `references/template-release-notes.md` — 发布说明（价值先行 ≤3 条）
 
-写完后用 `forge docs lint` 过一遍落盘产物（禁令短语/必填章节/结论枚举机器可查）；PR 描述与 commit message 不落盘，由模板 + `code-review-gate/references/rubric-docs.md` 的 L2 档位判据约束。
+写完后用 `forge docs lint` 过一遍落盘产物（禁令短语/必填章节/结论枚举机器可查）；PR 描述与 commit message 不落盘，由模板 + **doc-review skill**（四维评分 + L2 档位判据）约束。
 
 **模板从哪来**：每次用户提供了好的文档范例，提炼成模板存库（知识积累）。没有的模板先用 Inversion 现场和用户定结构。
 

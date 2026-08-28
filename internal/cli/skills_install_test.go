@@ -190,7 +190,7 @@ func TestPrintInstallReport_Warnings(t *testing.T) {
 	r := &skillsdist.InstallReport{
 		Mode: skillsdist.ModeLink,
 		Warnings: []string{
-			`design-artifact-standards: requires code-review-gate 但本次未同装（跨 skill 引用可能断链）`,
+			`design-artifact-standards: requires doc-review 但本次未同装（跨 skill 引用可能断链）`,
 			`foo: requires ghost 不在 canonical（requires 声明无效，可能笔误或目标 skill 已移除）`,
 		},
 	}
@@ -198,7 +198,7 @@ func TestPrintInstallReport_Warnings(t *testing.T) {
 	if !strings.Contains(out, `requires 依赖警告`) {
 		t.Fatalf(`警告标题缺失: %s`, out)
 	}
-	if !strings.Contains(out, `design-artifact-standards: requires code-review-gate`) {
+	if !strings.Contains(out, `design-artifact-standards: requires doc-review`) {
 		t.Fatalf(`第一条警告缺失: %s`, out)
 	}
 	if !strings.Contains(out, `foo: requires ghost`) {

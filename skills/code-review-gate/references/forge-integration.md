@@ -11,19 +11,19 @@
 forge task status --json 2>&1 | grep -i "design_phase\|DesignPhases"
 ```
 
-有 `DesignPhases` 时，加载对应环节 checklist 作为补充检查项：
+有 `DesignPhases` 时，加载对应环节 checklist 作为补充检查项（清单宿主已迁至 design-artifact-standards skill 的 `references/`，下表链接跨 skill 指向新家——forge 项目全量同装，必然可达）：
 
 | DesignPhase | 加载 checklist | 说明 |
 |---|---|---|
-| `requirement` | [phase-requirement.md](phase-requirement.md) | 需求设计产物（PRD/需求文档）审查 |
-| `api` | [phase-api.md](phase-api.md) | API 设计产物（OpenAPI/proto/接口定义）审查 |
-| `database` | [phase-database.md](phase-database.md) | 数据库设计产物（migration/schema/索引）审查 |
-| `frontend` | [phase-frontend.md](phase-frontend.md) | 前端设计产物（组件/页面/路由/状态）审查 |
-| `backend` | [phase-backend.md](phase-backend.md) | 后端设计产物（service/domain/业务逻辑）审查 |
-| `test-design` | [phase-test-design.md](phase-test-design.md) | 测试设计产物（测试用例/计划/矩阵）审查 |
+| `requirement` | [phase-requirement.md](../../design-artifact-standards/references/phase-requirement.md) | 需求设计产物（PRD/需求文档）审查 |
+| `api` | [phase-api.md](../../design-artifact-standards/references/phase-api.md) | API 设计产物（OpenAPI/proto/接口定义）审查 |
+| `database` | [phase-database.md](../../design-artifact-standards/references/phase-database.md) | 数据库设计产物（migration/schema/索引）审查 |
+| `frontend` | [phase-frontend.md](../../design-artifact-standards/references/phase-frontend.md) | 前端设计产物（组件/页面/路由/状态）审查 |
+| `backend` | [phase-backend.md](../../design-artifact-standards/references/phase-backend.md) | 后端设计产物（service/domain/业务逻辑）审查 |
+| `test-design` | [phase-test-design.md](../../design-artifact-standards/references/phase-test-design.md) | 测试设计产物（测试用例/计划/矩阵）审查 |
 | 其他/无 | 通用 `review-checklist.md` | 代码级审查（默认） |
 
-> 6 个环节与 `design-artifact-standards` skill 的编写期路由表对称——同一批 phase-*.md，编写期当骨架（design-artifact-standards）、审查期当 checklist（本步骤），一份标准两阶段共用。
+> 6 个环节与 `design-artifact-standards` skill 的编写期路由表对称——同一批 phase-*.md，编写期当骨架（design-artifact-standards，标准托管方）、审查期当 checklist（本步骤），一份标准两阶段共用。设计产物之外的**文档产物**（PR 描述/commit body/测试报告/复盘报告）审查走 `doc-review` skill（L2 评分门控），不在本 skill 范围。
 
 **加载方式**：把对应 checklist 作为附加检查项，与轨道 A+B 一起执行。不替换而是补充——设计产物审查与代码实现审查关注点不同。
 
