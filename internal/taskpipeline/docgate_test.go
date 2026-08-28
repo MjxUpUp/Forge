@@ -376,3 +376,25 @@ func TestCheckDocGateBlockedDetailRecordsReasons(t *testing.T) {
 		t.Errorf("通过条目 Detail 不应含原因文本, got %q", passGate.Detail)
 	}
 }
+
+// TestCheckDocGateReasonsPointToDocReviewSkill 钉住依赖倒置后的指引文案：doc gate
+// 的拒绝原因必须指向 doc-review skill（流程真相源），不得回退到 code-review-gate
+// 时代的内部路径——rubric-docs.md 已迁至 skills/doc-review/references/。
+//
+// TestCheckDocGateReasonsPointToDocReviewSkill pins the post-inversion guidance
+// text: doc-gate refusal reasons must point at the doc-review skill (the process
+// source of truth), never the pre-migration code-review-gate internal path.
+func TestCheckDocGateReasonsPointToDocReviewSkill(t *testing.T) {
+	root, base := newDocGateRepo(t)
+	if err := os.WriteFile(root+"/notes.md", []byte("# 笔记\n干净内容，`forge docs lint` 通过。\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	_, reasons := CheckDocGate(root, &TaskState{TaskRef: "feat/x", HeadCommit: base})
+	joined := strings.Join(reasons, "; ")
+	if !strings.Contains(joined, "doc-review skill") {
+		t.Fatalf("未记录原因应指向 doc-review skill, got %s", joined)
+	}
+	if strings.Contains(joined, "code-review-gate/references/rubric-docs.md") {
+		t.Fatalf("不得引用已迁移的旧路径 code-review-gate/references/rubric-docs.md, got %s", joined)
+	}
+}
