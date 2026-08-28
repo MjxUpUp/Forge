@@ -113,3 +113,21 @@ feat/skills-boundary-inversion Phase 2：CONVENTIONS §13 forge 引用契约 + R
 ### Rationale
 
 依赖倒置：skill 是独立方法论资产，forge 是可选增强层——skills-only 分发用户不应看到不可执行的 forge 指令
+
+## [d-18cfffef06a1f24c-80a2463c] accept
+
+- **Skill**: system-architecture
+- **DecidedAt**: 2026-08-28T14:56:19Z
+- **By**: claude-code
+
+### Diagnosis
+
+doc-review L2 发现「其 forge 条件块负责盖章」悬空指针（code-review-gate 的 forge 块已随零反向依赖迁移删除），读者循指针找不到目标
+
+### Revision
+
+改为「宿主有审查盖章机制时由其标记已审」，与 code-review-gate:161 的宿主盖章措辞对齐
+
+### Evidence
+
+L2 复审 PASS 96/100（C2 resolved）；双树 grep 零「forge 条件块」残留
