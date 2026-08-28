@@ -42,12 +42,12 @@ type SkillReport struct {
 	Pass        bool     `json:"pass"`
 }
 
-// AuditSkill runs R1-R17 spec checks on a single skill directory; R1-R11 are
-// 1:1 aligned with registry.py audit_skill, R12-R17 are forge-local extensions
+// AuditSkill runs R1-R18 spec checks on a single skill directory; R1-R11 are
+// 1:1 aligned with registry.py audit_skill, R12-R18 are forge-local extensions
 // (rule text definitions: RuleDescriptions).
 //
-// AuditSkill 对单个 skill 目录跑 R1-R17 规范校验。R1-R11 逐条对齐
-// registry.py audit_skill，R12-R17 为 forge 本地扩展（规则文本定义见 RuleDescriptions）。
+// AuditSkill 对单个 skill 目录跑 R1-R18 规范校验。R1-R11 逐条对齐
+// registry.py audit_skill，R12-R18 为 forge 本地扩展（规则文本定义见 RuleDescriptions）。
 func AuditSkill(skillDir string) (*SkillReport, error) {
 	skillPath := filepath.Join(skillDir, "SKILL.md")
 	data, err := os.ReadFile(skillPath)
@@ -240,6 +240,18 @@ func AuditSkill(skillDir string) (*SkillReport, error) {
 	// (a skill may have no evals); schema = object with a trigger_cases array of
 	// {query: string, should_trigger: boolean}.
 	checkEvalsSchema(skillDir, &advisories)
+	// R18 forge 引用契约（advisory，依赖倒置守卫，CONVENTIONS §13）：SKILL.md
+	// 正文的 forge CLI 命令引用只允许出现在「> Forge 项目」起始的条件引用块内
+	// （细节归 references/forge-integration.md）。条件块之外命中 = 方法论正文耦合
+	// forge，skills-only 分发（不跑 init、不装 hook）的用户会看到不可执行的指令。
+	//
+	// R18 forge reference contract (advisory, dependency-inversion guard,
+	// CONVENTIONS §13): forge CLI references in the SKILL.md body are only allowed
+	// inside conditional blockquotes starting with "> Forge 项目" (details belong in
+	// references/forge-integration.md). A hit outside the conditional block means the
+	// methodology body is coupled to forge, which skills-only distribution users
+	// cannot execute.
+	checkForgeRefs(fm, &advisories)
 
 	return &SkillReport{
 		Name:        name,
@@ -480,5 +492,49 @@ func checkEvalsSchema(skillDir string, advisories *[]string) {
 		if c.ShouldTrigger == nil {
 			*advisories = append(*advisories, fmt.Sprintf(`evals/evals.json trigger_cases[%d] 缺 should_trigger（boolean）`, i))
 		}
+	}
+}
+
+// checkForgeRefs enforces R18: forge CLI references (`forge <subcommand>`) in
+// the SKILL.md body are only allowed inside conditional blockquotes that start
+// with "> Forge 项目" (the block may span consecutive quote lines; indented
+// quotes inside list items count — TrimSpace first). Everything else is a
+// dependency-inversion violation and goes advisory. Skills declaring
+// `metadata.requires_forge: "true"` (CONVENTIONS §13 form ③ — the skill itself
+// documents forge's own machinery) are exempt: their body is forge-native by
+// design and skills-only consumers filter them by the flag instead. Detection
+// is line-based: a non-quote line closes the conditional block; a quote line
+// that does not start a forge block preserves the current state.
+//
+// checkForgeRefs 执行 R18：SKILL.md 正文中的 forge CLI 引用（`forge <子命令>`）
+// 只允许出现在「> Forge 项目」起始的条件引用块内（块可跨连续引用行；列表内缩进
+// 引用块也算——先 TrimSpace）。其余位置命中即依赖倒置违例，走 advisory。声明了
+// `metadata.requires_forge: "true"` 的 skill（CONVENTIONS §13 形态③——skill 本身
+// 描述 forge 自身机制）豁免：其正文生来 forge 原生，skills-only 消费方按标记过滤
+// 而非按引用位置。按行状态机判定：非引用行关闭条件块状态；非 forge 起始的引用行
+// 维持当前状态。
+func checkForgeRefs(fm *skillsfm.Frontmatter, advisories *[]string) {
+	if v, ok := fm.Metadata["requires_forge"]; ok && strings.Trim(strings.TrimSpace(v), `"`) == "true" {
+		return
+	}
+	var hits []string
+	inCond := false
+	for _, line := range strings.Split(fm.Body, "\n") {
+		trimmed := strings.TrimSpace(line)
+		isQuote := strings.HasPrefix(trimmed, ">")
+		if isQuote && strings.HasPrefix(trimmed, "> Forge 项目") {
+			inCond = true
+		} else if !isQuote {
+			inCond = false
+		}
+		if inCond {
+			continue
+		}
+		for _, m := range forgeCmdRe.FindAllString(trimmed, -1) {
+			hits = append(hits, strings.TrimSpace(m))
+		}
+	}
+	if len(hits) > 0 {
+		*advisories = append(*advisories, fmt.Sprintf(`正文存在条件块之外的 forge 命令引用(%v)——依赖倒置契约：forge 引用只允许「> Forge 项目」条件块或 references/forge-integration.md（CONVENTIONS §13）`, hits))
 	}
 }

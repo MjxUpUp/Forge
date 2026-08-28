@@ -1,6 +1,6 @@
 # Skill 质量评分 Rubric（四维，总分 100）
 
-借鉴 grafana/skills 的四维评分法。与 R1-R17 机器校验**分工**：R1-R17 管机器判得了的格式
+借鉴 grafana/skills 的四维评分法。与 R1-R18 机器校验**分工**：R1-R18 管机器判得了的格式
 与结构（字段白名单、行数、description 必含段、evals schema），本 rubric 管机器判不了的
 质量维度——评审（人工或 LLM）时逐维打分。
 
@@ -8,7 +8,7 @@
 
 ## 评分流程
 
-1. 先跑 `forge skills validate` + `forge skills audit`（R1-R17 + 安全规则），机器能拦的不占
+1. 先跑 `forge skills validate` + `forge skills audit`（R1-R18 + 安全规则），机器能拦的不占
    人工评审带宽。
 2. 评审人（或 LLM 评审子代理）按下表四维各打 0-25 分，对照锚点判据给分，给不出锚点对应
    的具体证据就往下取档。
@@ -68,11 +68,11 @@
 | <60 | 阻断且需结构性重写，建议先对照 SKILL.md 正文规范重做 |
 | 任一维 ≤10 | 无论总分，阻断 |
 
-## 与 R1-R17 的分工
+## 与 R1-R18 的分工
 
 | 机制 | 管什么 | 谁来执行 |
 |------|--------|----------|
-| R1-R17（`forge skills validate`） | 格式与结构硬约束：frontmatter 字段、行数、description 必含 Use when/SKIP、references 层级、evals schema | 机器，每次改动后必跑 |
+| R1-R18（`forge skills validate`） | 格式与结构硬约束：frontmatter 字段、行数、description 必含 Use when/SKIP、references 层级、evals schema | 机器，每次改动后必跑 |
 | 21 条安全规则（`forge skills audit`） | 安全问题（curl\|sh、凭证明文等） | 机器，每次改动后必跑 |
 | 本 rubric | 机器判不了的质量：是否精炼、是否可执行、流程是否闭环、分层是否合理 | 人工 / LLM 评审，新建或大改 skill 时打分 |
 

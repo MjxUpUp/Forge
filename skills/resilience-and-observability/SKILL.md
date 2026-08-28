@@ -212,7 +212,7 @@ W3C Trace Context 格式：
 - [ ] 韧性模式覆盖关键路径（circuit breaker / retry / timeout）
 - [ ] Runbook + Oncall rotation 文档化
 - [ ] blameless postmortem 模板可用
-- [ ] `forge review pass` 通过（韧性 review）
+- [ ] 提交前过 code-review-gate 审查（其 forge 条件块负责盖章）
 
 ## 5. Gotchas（实操易错点）
 
@@ -245,8 +245,7 @@ curl -X POST http://localhost:4318/v1/traces \
 # 3. SLO 告警规则存在性（Prometheus/Grafana 规则文件里有 burn-rate 告警）
 grep -rn "burn_rate\|slo" prometheus/rules/ 2>/dev/null || echo "缺 SLO 告警规则"
 
-# 4. 提交前必过
-forge review pass                            # code-review-gate
+# 4. 提交前审查（code-review-gate 门控）
 ```
 
 不过 → §4 自查清单补足；过 → commit + 通知 oncall。

@@ -86,3 +86,25 @@ metadata补triggers(keywords/cooldown;skill-authoring-standard用新condition sk
 ### Evidence
 
 skills-hitrate-review-2026-08-15:四源425会话挖掘语料+trigger覆盖10%缺口
+
+## [d-18d0a2f100312-e100312f4] accept
+
+- **Skill**: domain-modeling
+- **DecidedAt**: 2026-08-28T07:53:14Z
+- **By**: zcode
+
+### Diagnosis
+
+Gotcha 叙述里「任务状态去 forge task」为工具绑定措辞
+
+### Revision
+
+改为工具中立的「任务系统」表述
+
+### Evidence
+
+feat/skills-boundary-inversion Phase 2：CONVENTIONS §13 forge 引用契约 + R18 advisory 规则落地；forge skills validate 全语料零 R18 告警
+
+### Rationale
+
+依赖倒置：skill 是独立方法论资产，forge 是可选增强层——skills-only 分发用户不应看到不可执行的 forge 指令

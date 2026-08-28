@@ -352,7 +352,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge skills list` | 列出 canonical skill 库中的 skill |
 | `forge skills audit` | 21 条安全规则审查（prompt 注入/数据外发/危险代码/供应链执行向量；任一 CRITICAL finding 即阻断 install/--gate） |
 | `forge skills drift-check` | 检测分发分叉（dry-run，不写） |
-| `forge skills validate` | R1-R17 规范校验 |
+| `forge skills validate` | R1-R18 规范校验 |
 | `forge skills adapters` | 部署 skill-routing adapter（pi/claude/cursor/routes.json） |
 | `forge skills usage` | 使用度量分析（热门 skill + undertrigger 候选） |
 | `forge skills usage --by-keyword` | per-keyword 触发分析：命中/加载/抑制切片（v2 Meta 的 matched_keyword）+ 死关键词检测（声明未命中；窗口无 v2 证据条目时自动停用并说明）。加载列带宿主偏差标注（注入型宿主无工具事件信号） |
