@@ -1788,18 +1788,22 @@ func TestGenerateUserSettings_BacksUpBeforeFirstWrite(t *testing.T) {
 }
 
 // TestForgeHookSpec_Gap2ReinjectChain 守护 gap#2 重注入链的 spec 结构（settings.go
-// PostCompact/UserPromptSubmit 段注释描述的主机覆盖契约）：PostCompact 必须只挂
-// compact-resume；UserPromptSubmit 必须挂 resume-reinject + skill-trigger
-// （顺序敏感——先重注入上下文再触发 skill）。codex 两个事件都接、cursor 只接
-// UserPromptSubmit 的宿主映射在 agentbridge 侧断言，此测试钉 spec 真相源本身。
+// PostCompact/UserPromptSubmit 段注释描述的主机覆盖契约）：PostCompact 必须以
+// compact-resume 开头（后续追加的 conventions-context 是 2026-08-28 conventions-profile
+// 的摘要重注入，压缩场景的定向恢复，不参与 gap#2 链）；UserPromptSubmit 必须挂
+// resume-reinject + skill-trigger（顺序敏感——先重注入上下文再触发 skill）。codex
+// 两个事件都接、cursor 只接 UserPromptSubmit 的宿主映射在 agentbridge 侧断言，
+// 此测试钉 spec 真相源本身。
 //
 // TestForgeHookSpec_Gap2ReinjectChain guards the spec structure of the gap#2
 // re-injection chain (the host-coverage contract documented at the PostCompact/
-// UserPromptSubmit section in settings.go): PostCompact carries only
-// compact-resume; UserPromptSubmit carries resume-reinject + skill-trigger in
-// that order (context first, skill trigger second). Host mapping (codex takes
-// both, cursor only UserPromptSubmit) is asserted in agentbridge — this pins
-// the spec source of truth itself.
+// UserPromptSubmit section in settings.go): PostCompact must START with
+// compact-resume (the trailing conventions-context is the 2026-08-28
+// conventions-profile digest re-injection — compact-scenario re-orientation,
+// not part of the gap#2 chain); UserPromptSubmit carries resume-reinject +
+// skill-trigger in that order (context first, skill trigger second). Host
+// mapping (codex takes both, cursor only UserPromptSubmit) is asserted in
+// agentbridge — this pins the spec source of truth itself.
 func TestForgeHookSpec_Gap2ReinjectChain(t *testing.T) {
 	spec := ForgeHookSpec()
 
@@ -1809,8 +1813,13 @@ func TestForgeHookSpec_Gap2ReinjectChain(t *testing.T) {
 			postCompact = append(postCompact, h.Command)
 		}
 	}
-	if len(postCompact) != 1 || postCompact[0] != "forge hook compact-resume" {
-		t.Errorf("PostCompact hooks = %v, want [forge hook compact-resume]", postCompact)
+	if len(postCompact) < 1 || postCompact[0] != "forge hook compact-resume" {
+		t.Errorf("PostCompact hooks = %v, want compact-resume first", postCompact)
+	}
+	for _, cmd := range postCompact[1:] {
+		if cmd == "forge hook compact-resume" {
+			t.Errorf("PostCompact hooks = %v, compact-resume must appear exactly once", postCompact)
+		}
 	}
 
 	var ups []string

@@ -195,6 +195,22 @@ const (
 	// deterministic（计数器在 hook 侧，agent 无法伪造）但属过程漂移的 OBSERVATION
 	// 而非任何验证——与其他条目一样排除出 evidence strength。
 	CheckTestNudge CheckName = "test-nudge"
+	// CheckConventionsInject records one conventions-layer injection fired by the
+	// conventions hooks (2026-08-28, conventions-profile): the session digest on
+	// SessionStart/PostCompact or the write-time pointers on PreToolUse Write|Edit.
+	// deterministic (the hook renders from the profile + tree scan; the agent cannot
+	// forge it) but an OBSERVATION of layer delivery, not any verification — same
+	// exclusion from evidence strength as the other observation checks. Meta carries
+	// the event and whether the profile was stale, so delivery funnels can split
+	// fresh-digest vs stale-warning injections.
+	//
+	// CheckConventionsInject 记录 conventions 层的一次注入（2026-08-28，
+	// conventions-profile）：SessionStart/PostCompact 的会话摘要，或 PreToolUse
+	// Write|Edit 的写入时刻指针。deterministic（hook 从档案 + 树扫描渲染，
+	// agent 无法伪造）但属投递层的 OBSERVATION 而非任何验证——与其他观察
+	// check 一样排除出 evidence strength。Meta 携带事件与档案是否过期，
+	// 投递漏斗可区分「新鲜摘要」与「过期警告」两类注入。
+	CheckConventionsInject CheckName = "conventions-inject"
 	// CheckBundleVerify records one bundle-signature verification verdict at import
 	// time (node-identity.md §3) — the trust decision that previously reached only the
 	// importing terminal's stdout/stderr. deterministic (the verdict is computed by CLI

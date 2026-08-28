@@ -45,6 +45,13 @@ func init() {
 	// init-suggest hook prompt-state management (semantic extension of init).
 	//
 	suggestCmd.GroupID = "lifecycle" // init-suggest hook 的提示状态管理（init 的语义延伸）
+	// 项目规范档案（conventions-profile 层 1 建档入口：init 扫描/show 查看；
+	// 与 init/suggest 同族的项目级接入管理——先 init 进 forge，再 conventions 建档）。
+	//
+	// Project conventions profile (conventions-profile layer-1 entry: init scans /
+	// show prints; project-level onboarding management, same family as init/suggest
+	// — forge init first, then conventions init).
+	conventionsCmd.GroupID = "lifecycle"
 	// One-click uninstall (npm binary + init-suggest markers).
 	//
 	uninstallCmd.GroupID = "lifecycle" // 一键反装（npm binary + init-suggest markers）

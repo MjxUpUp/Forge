@@ -414,17 +414,19 @@ func isGlobalHook(name string) bool {
 // isInProcessHook names the hooks handled entirely in Go inside runHook (no bash
 // embed script): they need live HookInput fields from stdin (skill-trigger: event/
 // prompt/tool_output; failure-track: error text; subagent-track: agent_id/agent_type;
-// test-nudge: file_path), which the thin-wrapper bash can never reach — runHook already
-// consumed the stdin. Each has its dispatch point right after the skill-trigger
-// special case in runHook.
+// test-nudge: file_path; conventions-context/write: event/file_path + forge data),
+// which the thin-wrapper bash can never reach — runHook already consumed the stdin.
+// Each has its dispatch point right after the skill-trigger special case in runHook.
 //
 // isInProcessHook 列出完全在 runHook 内用 Go 处理的 hook（无 bash embed 脚本）：
 // 它们需要 stdin 的实时 HookInput 字段（skill-trigger：event/prompt/tool_output；
 // failure-track：error 文本；subagent-track：agent_id/agent_type；test-nudge：
-// file_path），thin-wrapper bash 永远拿不到——runHook 已把 stdin 消费掉。各自的
-// 分发点在 runHook 里 skill-trigger 特例之后。
+// file_path；conventions-context/write：event/file_path + forge 数据），
+// thin-wrapper bash 永远拿不到——runHook 已把 stdin 消费掉。各自的分发点在
+// runHook 里 skill-trigger 特例之后。
 func isInProcessHook(name string) bool {
-	return name == "skill-trigger" || name == "failure-track" || name == "subagent-track" || name == "test-nudge"
+	return name == "skill-trigger" || name == "failure-track" || name == "subagent-track" || name == "test-nudge" ||
+		name == "conventions-context" || name == "conventions-write"
 }
 
 func runHook(cmd *cobra.Command, args []string) error {
@@ -693,6 +695,22 @@ func runHook(cmd *cobra.Command, args []string) error {
 	}
 	if name == "test-nudge" {
 		return runTestNudgeHook(hookInput, root, cmd.Root().Version, agent)
+	}
+	// conventions-context / conventions-write：conventions-profile 层 2 的注入
+	// hook（hook_conventions.go），与上面同类——advisory、永不阻断、需要 stdin 的
+	// 实时字段（event / file_path）。conventions-context 挂 SessionStart+PostCompact，
+	// conventions-write 挂 PreToolUse Write|Edit（见 ForgeHookSpec）。
+	//
+	// conventions-context / conventions-write: the conventions-profile layer-2
+	// injection hooks (hook_conventions.go), same class as the above — advisory,
+	// never block, need live stdin fields (event / file_path). conventions-context
+	// rides SessionStart+PostCompact; conventions-write rides PreToolUse Write|Edit
+	// (see ForgeHookSpec).
+	if name == "conventions-context" {
+		return runConventionsContextHook(hookInput, root, cmd.Root().Version, agent)
+	}
+	if name == "conventions-write" {
+		return runConventionsWriteHook(hookInput, root, cmd.Root().Version, agent)
 	}
 
 	// 1c. Patch-tool exemption for read-before-edit (codex reports file edits as
