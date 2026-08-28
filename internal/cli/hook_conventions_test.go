@@ -226,6 +226,13 @@ func TestConventionsWriteHook_PointersAndExemplars(t *testing.T) {
 			t.Fatalf("write hook must never error: %v", err)
 		}
 	})
+	// Windows 分隔符归一：注入里的 repo 相对路径在 Windows 是反斜杠
+	//（CI 三平台红过一轮，2026-08-28）——断言统一按正斜杠表述。
+	//
+	// Normalize separators: repo-relative paths in the injection carry
+	// backslashes on Windows (a CI round caught this, 2026-08-28) —
+	// assertions state forward slashes.
+	out = filepath.ToSlash(out)
 	if !strings.Contains(out, "AGENTS.md") {
 		t.Fatalf("injection missing instruction pointer:\n%s", out)
 	}
@@ -305,6 +312,7 @@ func TestConventionsWriteHook_ApplyPatchSynthesis(t *testing.T) {
 			t.Fatalf("write hook must never error: %v", err)
 		}
 	})
+	out = filepath.ToSlash(out) // Windows 分隔符归一（同上）
 	if !strings.Contains(out, "internal/srv/new.go") {
 		t.Fatalf("apply_patch target must be synthesized and injected, got:\n%s", out)
 	}

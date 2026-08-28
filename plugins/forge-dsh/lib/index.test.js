@@ -180,7 +180,11 @@ test("session-start: emit-mode context lands via inject; source compact also fir
   const hooks = hookCalls();
   assert.deepEqual(
     hooks.map((c) => c.hook),
-    ["skill-scan", "mcp-scan", "init-suggest", "task-resume", "skill-trigger", "compact-resume"],
+    // conventions-context (2026-08-28 conventions-profile): session-digest injection,
+    // wired into the SessionStart roster right after skill-trigger — this list mirrors
+    // plugins/forge-dsh/lib/spec.json, keep them in sync (CI caught the miss when the
+    // spec gained the hook but this roster did not).
+    ["skill-scan", "mcp-scan", "init-suggest", "task-resume", "skill-trigger", "conventions-context", "compact-resume"],
   );
   assert.equal(hooks[0].payload.hook_event_name, "SessionStart");
   assert.equal(hooks[0].payload.source, "compact");
