@@ -109,7 +109,7 @@ metadata:
 **门控 B — 门控顺序**：
 - 遵循项目既定的门控顺序，不跳步、不颠倒；不确定顺序时，先查项目的质量工作流文档，不凭记忆排。
 
-> Forge 项目：门控顺序 `task-implement → task-verify → task-complete → git commit`——**commit 必须在 complete 之前**（complete 会清空 active task ref，之后提交源码会被 quarantine）。非 forge 项目按项目质量工作流的门控顺序执行。
+> 门控顺序：质量门禁（实现→验证→完成确认）全过 → git commit——**commit 必须在完成登记之前**（登记后任务引用清空，之后的源码提交脱离任务跟踪与保护）。按所在项目质量工作流的门控顺序执行。
 
 **红线**：`git add .` / `git add -A` 一把梭 / 提交了 docs 或 .claude / 门控跳步或颠倒。
 

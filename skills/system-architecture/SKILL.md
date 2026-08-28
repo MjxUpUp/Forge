@@ -131,7 +131,7 @@ metadata:
 ```bash
 # 1. ADR 索引更新检查：docs/adr/README.md 含新 ADR 条目
 # 2. 架构 review
-# 提交前审查：code-review-gate 门控（其 forge 条件块负责盖章）
+# 提交前审查：code-review-gate 门控（宿主有审查盖章机制时由其标记已审）
 ```
 
 不过 → §4 自查清单补足；过 → commit + 通知相关团队。
