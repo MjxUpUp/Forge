@@ -54,3 +54,8 @@ vendor/
 # marketplace ships its own .mcp.json inside the plugin package)
 .mcp.json
 .codex/
+
+# 内嵌 forge 集成笔记（skillintegrate 的 go:embed 资产）——全局 gitignore 的 notes/ 规则
+# 会吞掉它（CONVENTIONS G5 同坑）；仓库级反向豁免优先于全局 excludes，防 fresh clone
+# 上 //go:embed 零匹配编译失败（doc-review C1）。
+!internal/skillintegrate/notes/

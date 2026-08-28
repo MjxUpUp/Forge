@@ -212,7 +212,7 @@ W3C Trace Context 格式：
 - [ ] 韧性模式覆盖关键路径（circuit breaker / retry / timeout）
 - [ ] Runbook + Oncall rotation 文档化
 - [ ] blameless postmortem 模板可用
-- [ ] 提交前过 code-review-gate 审查（其 forge 条件块负责盖章）
+- [ ] 提交前过 code-review-gate 审查（宿主有审查盖章机制时由其标记已审）
 
 ## 5. Gotchas（实操易错点）
 
