@@ -116,6 +116,9 @@ func TestExemplars_TestTargetGetsTestExemplars(t *testing.T) {
 		}
 	}
 	got := Exemplars(root, filepath.Join(dir, "gamma_test.go"))
+	for i := range got { // Windows 分隔符归一（同 TestExemplars）
+		got[i] = filepath.ToSlash(got[i])
+	}
 	if !contains(got, "internal/srv/alpha_test.go") || !contains(got, "internal/srv/beta_test.go") {
 		t.Fatalf("test target should point at sibling tests, got %v", got)
 	}
@@ -349,6 +352,15 @@ func TestExemplars(t *testing.T) {
 		}
 	}
 	got := Exemplars(root, filepath.Join(dir, "new.go"))
+	// 路径分隔符归一：Windows 上 filepath 系产出反斜杠（CI 三平台红过一轮，
+	// 2026-08-28）——期望值统一用正斜杠表述，比较前 ToSlash。
+	//
+	// Normalize separators: filepath APIs emit backslashes on Windows (a CI
+	// round caught this, 2026-08-28) — expectations use forward slashes, so
+	// ToSlash before comparing.
+	for i := range got {
+		got[i] = filepath.ToSlash(got[i])
+	}
 	want := []string{"internal/srv/delta.go", "internal/srv/beta.go", "internal/srv/gamma.go"}
 	if len(got) != len(want) {
 		t.Fatalf("Exemplars = %v, want %v (cap %d, recency order)", got, want, ExemplarMax)
