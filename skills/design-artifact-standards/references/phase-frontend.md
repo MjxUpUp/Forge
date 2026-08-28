@@ -58,7 +58,7 @@
 
 **与其他审查的分工**：
 - 前端设计产物审查 → 本 checklist（审组件/页面文件）
-- 代码实现质量 → `review-checklist.md`（审代码 diff）
+- 代码实现质量 → code-review-gate 的 `references/review-checklist.md`（审代码 diff）
 - API 设计审查 → `phase-api.md`（审接口定义）
 
 **数据来源**：WCAG 2.1 无障碍标准、Airbnb JavaScript/React Style Guide、React 官方最佳实践。

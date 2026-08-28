@@ -55,7 +55,7 @@
 
 **与其他审查的分工**：
 - 需求设计产物审查 → 本 checklist（审 PRD/需求文档）
-- 代码实现质量 → `review-checklist.md`（审代码 diff）
+- 代码实现质量 → code-review-gate 的 `references/review-checklist.md`（审代码 diff）
 - API 契约设计 → `phase-api.md`（审 OpenAPI/接口定义）
 
 **数据来源**：IEEE 830 软件需求规格标准、Mike Cohen《用户故事写作手册》、Google PRD 模板。
