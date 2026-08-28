@@ -78,7 +78,7 @@ Generator + Inversion 组合：**先采访缺失变量，再按模板填空**。
 
 **生成的文档记录到历史，下次生成同类文档时读历史避免重复 + 识别增量。**
 
-存储位置：用户主目录下的稳定目录（不随 skill 升级丢失）——forge 环境 `~/.forge/doc-generator/history.jsonl`；无 forge 时 `~/.doc-generator/history.jsonl`。
+存储位置：用户主目录下的稳定目录（不随 skill 升级丢失）——`~/.doc-generator/history.jsonl`。
 
 每条记录：
 ```json
@@ -110,7 +110,7 @@ Generator + Inversion 组合：**先采访缺失变量，再按模板填空**。
 - `references/template-tech-plan.md` — 技术方案（推荐先行 + 备选对比表）
 - `references/template-release-notes.md` — 发布说明（价值先行 ≤3 条）
 
-> Forge 项目：落盘产物写完后用 `forge docs lint` 过一遍（禁令短语/必填章节/结论枚举机器可查）。非 forge 项目按模板必填结构人工自查。
+> 落盘产物写完后过一遍文档 lint（禁令短语/必填章节/结论枚举机器可查，宿主有 lint 工具时）；无 lint 时按模板必填结构人工自查。
 
 PR 描述与 commit message 不落盘，由模板 + **doc-review skill**（四维评分 + L2 档位判据）约束。
 

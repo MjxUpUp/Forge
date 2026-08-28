@@ -258,4 +258,4 @@ delete-list 标的是"删什么"，懒惰阶梯标的是"为什么该删"——�
 
 **不分级**：所有过度工程发现一视同仁，都必须解决——上表不再列"级别"列，tag 仅用于 delete-list 分组（删什么），不暗示优先级。
 
-`eng-reviewer` 子 agent（轨道 B）按本清单产出 delete-list，每条 finding 用 `category=maintainability`（纯结构性用 `design`）。审查通过（所有发现已解决）后运行 `forge review pass` 标记当前 diff 已审——满足 task-complete 门禁前置，解除非 task 模式 Stop hook 拦截。
+`eng-reviewer` 子 agent（轨道 B）按本清单产出 delete-list，每条 finding 用 `category=maintainability`（纯结构性用 `design`）。审查通过（所有发现已解决）后按宿主的审查盖章机制标记已审（有门禁的宿主满足其提交/结束前置）。

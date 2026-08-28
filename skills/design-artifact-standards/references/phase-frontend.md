@@ -45,7 +45,7 @@
 | img 无 alt | 正则扫描 `<img` 后无 `alt=` | WCAG 2.1 |
 | key=index | 正则扫描 `key={index}` 或 `key={i}` | React 最佳实践 |
 | 内联密钥 | 扫描 `style=.*color.*` 内联样式中的颜色值 | 性能最佳实践 |
-| 空转措辞 / 无证据结论 / 复述 diff | `forge docs lint`（D1-D7，机器可查） | output-readability-gates 设计 |
+| 空转措辞 / 无证据结论 / 复述 diff | 文档 lint 机器规则可查（宿主提供时） | output-readability-gates 设计 |
 
 ## 与大厂规范的映射（方向，非条文）
 

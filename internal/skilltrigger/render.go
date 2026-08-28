@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+
+	"github.com/MjxUpUp/Forge/internal/skillintegrate"
 )
 
 // Render 把 hits 渲染成 additionalContext 文本（HANDOFF 风格，参考 renderResume）。
@@ -67,6 +69,18 @@ func Render(hits []Hit, ctx Context, overflow []string) string {
 		}
 		w("    " + truncateRunes(reason, 200))
 		w("    路径：" + filepath.ToSlash(filepath.Join(h.SkillDir, "SKILL.md")))
+		// forge 集成指针：该 skill 有 forge 侧集成笔记时追加一行（零反向依赖契约的
+		// 承接面——skill 正文不含 forge 内容，forge 用户经 forge skills integration 拿
+		// 集成知识）。非 forge 环境此行也只是不可达的指引，无害。
+		//
+		// forge integration pointer: append one line when the skill has a forge-side
+		// integration note (the receiving surface of the zero-reverse-dependency
+		// contract — skill bodies carry no forge content; forge users get integration
+		// knowledge via `forge skills integration`). In non-forge environments the
+		// line is merely an unreachable pointer, harmless.
+		if p := skillintegrate.PointerLine(h.Skill); p != "" {
+			w(p)
+		}
 		w("")
 	}
 	if len(overflow) > 0 {

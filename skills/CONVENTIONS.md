@@ -155,12 +155,24 @@ metadata:
 - **G4** 长期 undertrigger skill 用 `forge skills usage --undertrigger` 半年级 review
 - **G5** 本仓库 `~/.gitignore_global` 防 `docs/`/`设计文档/` 误提交——本节是该架构 truth 的单点归档（无需单立 docs/）
 
-## 13. forge 引用契约（依赖倒置）
+## 13. forge 零反向依赖契约（依赖单向：forge → skills）
 
-Skill 是独立可用的方法论资产，forge 是可选增强层——skills-only 分发（`forge skills install` 不跑 init、不装 hook）必须拿到完整可用的方法论。SKILL.md 正文中的 forge CLI 引用只允许三种形态（R18 advisory 机器校验）。方向即依赖倒置：forge 二进制按 skill 名指引流程（具体依赖抽象），故引用方向必须是 skill 保持中立、forge 侧可选。三种形态：
+Skill 是独立可用的方法论资产，forge 是可选增强层。引用方向唯一合法：**forge 侧引用 skills**（skill-trigger 按 skill 名注入指引、forge 文档与 hook 指向 skill——具体依赖抽象）；**skills 不得反向依赖 forge**：不装 forge 二进制、没有 `~/.forge/`、没有 `$FORGE_*` 的环境必须拿到完整可用的方法论。
 
-1. **条件引用块**：`> Forge 项目：<机制说明与命令指针>。非 forge 项目跳过（/降级为 X）。`（短块优先，约 ≤5 行；命令语法成组或机制复杂时细节下沉到第 2 形态（references/forge-integration.md），块内只留指针）。已有先例：code-review-gate / doc-review / cross-tool-context。
-2. **集成详情文件**：`references/forge-integration.md`，首行声明「仅 forge 项目适用」，收纳命令语法、门禁机制、逃生口、与通用方法论的衔接点。
-3. **forge 原生 skill 标记**：skill 本身描述 forge 机制（`forge skills` / `forge task` 命令族的操作方法论）时，frontmatter 加 `metadata.requires_forge: "true"`——skills-only 分发消费方可据此过滤（分发端过滤待实现，记 follow-up）。注意**不用顶层 `requires`**（其值按 skill 名做 canonical 成员校验，写 `forge` 会持续误报「不在 canonical」）；metadata 嵌套键是自由扩展区（§4），解析后落在 `fm.Metadata`。
+**禁止的操作性引用**（R18 硬校验，命中即 `forge skills validate` 失败 / install 质量门控阻断；四类检测模式定义在 `internal/skillsqa`——forgeCmdRe / forgeHomePathRe / forgeEnvRe / forgeIntegrationFileRe）：
 
-配套纪律：凡有 forge 集成处**必写降级行为**（无 forge 时该步骤怎么办——退化成什么手工纪律、哪些能力不存在）；方法论正文保持工具中立措辞（机制说「做什么」，工具细节留给集成文件说「用什么命令」）。
+1. forge CLI 调用（`forge <子命令>`）——**含条件块内**：「> Forge 项目」条件块与 references/forge-integration.md 两形态 2026-08 起废止，集成知识整体迁往 forge 侧
+2. 用户级 forge 路径（`~/.forge/`、`$HOME/.forge/`）——skill 自有持久化用自有命名空间（如 `~/.research-workflow/`、`~/.doc-generator/`）
+3. forge 环境变量（`$FORGE_*`）
+4. 集成文件指针（forge-integration.md）
+
+**不算依赖、放行的形态**：decisions.md 决策日志（append-only 历史）；「Forge 仓库」案例叙述（事故复盘/案例引用）；项目级裸 `.forge/` 的反向列举（如「禁止混入 .forge/ 等工具目录」）；skill 间互相引用（skill 名不属 forge 命名空间）。
+
+**forge 侧承接（集成知识的家）**：`internal/skillintegrate`（notes/<skill>.md 内嵌笔记）——`forge skills integration <skill>` 查看；skill-trigger 推荐命中带笔记的 skill 时在推荐块追加一行指针。skill 迁出集成内容时**必须同步写笔记**，forge 用户的增强体验不断链。2026-08 迁移已完成：原 10 个存量豁免 skill 的条件块 / references/forge-integration.md（5 个文件已删除）/ 双路径全部迁入笔记，`R18Grandfathered` 清空。
+
+**存量与豁免（都只减不增）**：
+
+- `metadata.requires_forge: "true"` + skills-forge/ 源树：skill 本身描述 forge 机制的（现 3 个：skill-evolution / skill-routing / skill-authoring-standard）2026-08 已整体迁出到 `skills-forge/`（forge 专属源树：独立 embed 进 forge 二进制、增量解压进同一缓存 `~/.forge/skills-cache/embedded`、随 forge 插件分发）——中立库 skills/ 不含它们，skills-only 消费方零接触。新 skill 一律不得使用该标记进中立库；确属 forge 机制的进 skills-forge/（守卫：TestSkillsForge_AllMarked）。（不用顶层 `requires`——其值按 canonical 成员校验，写 `forge` 会持续误报；metadata 嵌套键是自由扩展区 §4，解析后落在 `fm.Metadata`。）
+- `internal/skillsqa.R18Grandfathered`：**已清空**（2026-08 迁移完成）。机制保留——若未来再次出现需要过渡的存量，走此通道并遵守只减不增纪律；`TestR18_Grandfathered_Exact` 双向卡死表与实际命中集合。
+
+**新增/沉淀 skill 的检查即门禁**：任何 skill 内容改动过三道闸口——`forge skills validate`（R18 硬 issue，exit 2）、`forge skills install` 前置 registry+audit 双门控、CI 测试（含棘轮守卫）。新增 forge 引用在未改豁免表时立刻红；改豁免表必然过 code review。
