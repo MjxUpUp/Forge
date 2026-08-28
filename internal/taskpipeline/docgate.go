@@ -284,7 +284,7 @@ func CheckDocGate(root string, state *TaskState) (ok bool, reasons []string) {
 	head := GetHeadCommit(root)
 	switch {
 	case state.DocReview == nil || state.DocReview.ReviewedAt.IsZero():
-		reasons = append(reasons, `L2 文档回检未记录——先按 doc-review skill 评审（产出者不能自检），再 forge task doc-review --passed/--failed --score <N>`)
+		reasons = append(reasons, `L2 文档回检未记录——先按 doc-review skill 评审（产出者不能自检），再 forge task doc-review --passed pass|fail --score <N>`)
 	case state.DocReview.HeadCommit != "" && head != "" && state.DocReview.HeadCommit != head:
 		reasons = append(reasons, fmt.Sprintf(`L2 文档回检基于旧代码（快照 %s ≠ HEAD %s）——回检后改了产物，重新评审后 forge task doc-review`, shortCommit(state.DocReview.HeadCommit), shortCommit(head)))
 	case state.DocReview.DocsFingerprint != "" && state.DocReview.DocsFingerprint != DocContentFingerprint(root, state):

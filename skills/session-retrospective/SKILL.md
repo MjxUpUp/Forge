@@ -68,7 +68,7 @@ metadata:
   **解决**: 对 AI 的指令（如"禁止在 Windows 用 bash sed"），不是对人类的描述 | **涉及**: 语言/框架
   ```
   写入位置按类型路由：语言/框架易错点 → 对应 skill 的 Gotchas；开发流程/协作规则 → AGENTS.md/CLAUDE.md 铁律段；跨项目通用 → Forge skills canonical；项目特定 → 项目 MD。
-- **skill**：建 `skills/<name>/SKILL.md`，过 R1-R11 + 防注水扫描
+- **skill**：建 `skills/<name>/SKILL.md`，过 R1-R18 + 防注水扫描
 - **代码/守卫测试**：写测试钉死一致性（转交 `docs-consistency-guard`）
 - **hook**：注册到 `.claude/settings.local.json` + 脚本
 - **CI 门禁**：加进 release/CI workflow 的前置 job
@@ -79,7 +79,7 @@ metadata:
 - skill：触发描述是否会命中、过编写规范校验（CONVENTIONS §10 清单）
 - 代码/hook/CI：本地或 CI 实跑一次确认拦截/通过
 
-> Forge 项目：skill 载体用 `forge skills validate` 过 R1-R17、`forge skills audit` 过安全扫描。非 forge 项目按 CONVENTIONS §10 清单人工核对。
+> Forge 项目：skill 载体用 `forge skills validate` 过 R1-R18、`forge skills audit` 过安全扫描。非 forge 项目按 CONVENTIONS §10 清单人工核对。
 
 ### 6. 文档回检模式提炼（输出→回检回路的长期半边）
 
@@ -151,7 +151,7 @@ skill 的成本是"靠 agent 遵循"——会漏。能用代码/CI/hook 机器�
 
 - **docs-consistency-guard**：当路由判定"进守卫测试"时，转交它建具体的文档一致性测试。
 - **session-continuity**：跨会话**恢复**（handoff 接力）。本 skill 是会话**结束**的沉淀。二者衔接：本 skill 产出的 memory/经验，是 session-continuity 下次恢复的素材。
-- **skill-authoring-standard**：当路由判定"进 skill"时，用它写符合 R1-R11 规范的 skill。
+- **skill-authoring-standard**：当路由判定"进 skill"时，用它写符合 R1-R18 规范的 skill。
 - **skill-evolution**：当路由判定"改进已有 skill"时，走它的 revise→eval→decide 循环（改动回归验证+决策留痕），与本 skill 双向衔接——本 skill 负责"该不该沉淀、进哪个载体"，它负责"skill 改动怎么安全落地"。
 - **code-review-gate**：审代码质量。本 skill 是经验沉淀，不审代码。
 

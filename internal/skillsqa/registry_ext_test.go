@@ -229,6 +229,7 @@ func TestAuditSkill_R18_ForgeRefs(t *testing.T) {
 		{"条件块结束后正文引用触发", signalBody() + "> Forge 项目：`forge docs lint` 过 L1。非 forge 项目跳过。\n跑 `forge docs lint` 后再评分。\n", true},
 		{"forge 后接非子命令不触发", signalBody() + "在 forge 项目与非 forge 项目中行为一致（forge 环境自动接线）。\n", false},
 		{"路径形态不触发", signalBody() + "历史存储在 `~/.forge/doc-generator/history.jsonl`，路径 `skills/doc-review/` 不受影响。\n", false},
+		{"加粗变体条件块不触发", signalBody() + "> **Forge 项目**：先跑 `forge task resume` 拉回上下文。非 forge 项目跳过。\n", false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -243,6 +244,31 @@ func TestAuditSkill_R18_ForgeRefs(t *testing.T) {
 				t.Errorf("R18 advisory=%v want=%v (advisories: %v)", has, c.wantAdvisory, r.Advisories)
 			}
 		})
+	}
+}
+
+// TestAuditSkill_R18_RequiresForgeExempt guards the production-in-use exemption
+// branch: skills marked `metadata.requires_forge: "true"` (forge-native skills —
+// skill-evolution / skill-routing / skill-authoring-standard) skip R18 entirely.
+// A regression here (e.g. an inverted condition) would flood those three skills
+// with advisories while every other test stays green.
+//
+// TestAuditSkill_R18_RequiresForgeExempt 守护生产在用的豁免分支：标记
+// `metadata.requires_forge: "true"` 的 forge 原生 skill（skill-evolution /
+// skill-routing / skill-authoring-standard）整体跳过 R18。此处回归（如条件写反）
+// 会让这三个 skill 爆 advisory，而其余测试照常全绿——零保护即零感知。
+func TestAuditSkill_R18_RequiresForgeExempt(t *testing.T) {
+	body := signalBody() + "完成后 `forge task complete` 收尾、`forge review pass` 盖章。\n"
+	raw := "---\nname: my-skill\ndescription: \"" + longDesc() + "\"\n" +
+		"metadata:\n  pattern: pipeline\n  requires_forge: \"true\"\n---\n\n" + body
+	sd := writeSkill(t, t.TempDir(), "my-skill", raw)
+	r, err := AuditSkill(sd)
+	must(t, err)
+	if !r.Pass {
+		t.Fatalf("R18 是 advisory 不应失败, issues: %v", r.Issues)
+	}
+	if advisoryContains(r.Advisories, "依赖倒置契约") {
+		t.Fatalf("requires_forge 标记的 forge 原生 skill 应豁免 R18, got: %v", r.Advisories)
 	}
 }
 
