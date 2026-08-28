@@ -221,18 +221,11 @@ func TestConventionsWriteHook_PointersAndExemplars(t *testing.T) {
 		}
 	}
 	target := filepath.Join(root, "internal", "srv", "new.go")
-	out := captureStdout(t, func() {
+	out := injectedText(t, captureStdout(t, func() {
 		if err := runConventionsWriteHook(writeIn(target), root, "test", ""); err != nil {
 			t.Fatalf("write hook must never error: %v", err)
 		}
-	})
-	// Windows 分隔符归一：注入里的 repo 相对路径在 Windows 是反斜杠
-	//（CI 三平台红过一轮，2026-08-28）——断言统一按正斜杠表述。
-	//
-	// Normalize separators: repo-relative paths in the injection carry
-	// backslashes on Windows (a CI round caught this, 2026-08-28) —
-	// assertions state forward slashes.
-	out = filepath.ToSlash(out)
+	}))
 	if !strings.Contains(out, "AGENTS.md") {
 		t.Fatalf("injection missing instruction pointer:\n%s", out)
 	}
@@ -307,16 +300,38 @@ func TestConventionsWriteHook_ApplyPatchSynthesis(t *testing.T) {
 		ToolName:      "apply_patch",
 		ToolInput:     raw,
 	}
-	out := captureStdout(t, func() {
+	out := injectedText(t, captureStdout(t, func() {
 		if err := runConventionsWriteHook(in, root, "test", ""); err != nil {
 			t.Fatalf("write hook must never error: %v", err)
 		}
-	})
-	out = filepath.ToSlash(out) // Windows 分隔符归一（同上）
+	}))
 	if !strings.Contains(out, "internal/srv/new.go") {
 		t.Fatalf("apply_patch target must be synthesized and injected, got:\n%s", out)
 	}
 	if !strings.Contains(out, "internal/srv/alpha.go") {
 		t.Fatalf("sibling exemplar missing on the synthesized path:\n%s", out)
 	}
+}
+
+// injectedText decodes the hook's stdout JSON envelope and returns the
+// additionalContext with path separators normalized. ToSlash on the RAW
+// envelope is wrong: JSON escapes one backslash into TWO ("internal\\srv"),
+// so slash-converting the envelope yields "internal//srv" — exactly the
+// second CI round's windows failure (2026-08-28). Decode first, then
+// normalize the payload.
+//
+// injectedText 解码 hook stdout 的 JSON 信封，返回按平台归一后的
+// additionalContext。对**原始信封**做 ToSlash 是错的：JSON 把单个反斜杠
+// 转义成两个（"internal\\srv"），信封级转换会产出 "internal//srv"——正是
+// 第二轮 CI 的 windows 失败（2026-08-28）。先解码、再归一负载。
+func injectedText(t *testing.T, raw string) string {
+	t.Helper()
+	var out HookOutput
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		t.Fatalf("hook stdout is not a JSON envelope: %v\n%s", err, raw)
+	}
+	if out.HookSpecificOutput == nil {
+		t.Fatalf("hook stdout lacks hookSpecificOutput:\n%s", raw)
+	}
+	return filepath.ToSlash(out.HookSpecificOutput.AdditionalContext)
 }
