@@ -766,3 +766,30 @@ func TestClaudeMDBasicRule7ReplyConcision(t *testing.T) {
 		}
 	}
 }
+
+// TestClaudeMD_ConventionsHooksAdvisory pins the doc contract for the two
+// conventions hooks: their doc lines must state advisory/不阻断 semantics. These
+// hooks never block — a doc line that reads as a gate would send agents hunting
+// for escape hatches that do not exist (and would drift from the hook's actual
+// fail-open behavior).
+//
+// TestClaudeMD_ConventionsHooksAdvisory 钉住两个 conventions hook 的文档契约：
+// 文档行必须声明 advisory/不阻断语义。这两个 hook 永不阻断——写成门禁语义的
+// 文档会让 agent 去找根本不存在的逃生舱，且与 hook 实际的 fail-open 行为漂移。
+func TestClaudeMD_ConventionsHooksAdvisory(t *testing.T) {
+	for _, section := range []struct{ label, body string }{
+		{"CLAUDE.md", buildForgeSection(true)},
+		{"AGENTS.md", buildForgeSection(false)},
+	} {
+		for _, name := range []string{"conventions-context", "conventions-write"} {
+			for _, line := range strings.Split(section.body, "\n") {
+				if strings.Contains(line, "**"+name+"**") {
+					if !strings.Contains(line, "advisory") && !strings.Contains(line, "不阻断") {
+						t.Errorf("%s: %s doc line must state advisory/不阻断 semantics, got: %s", section.label, name, line)
+					}
+					break
+				}
+			}
+		}
+	}
+}
