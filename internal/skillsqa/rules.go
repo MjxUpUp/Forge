@@ -181,7 +181,7 @@ var imperativeRe = regexp.MustCompile(`\b(ALWAYS|NEVER|MUST)\b`)
 // The leading class excludes [\w./-]: xforge (inside a word), forge/docs, .forge/
 // (paths) are not command references; a lowercase subcommand must follow, so
 // prose like "forge 项目" / "forge 环境" never matches.
-var forgeCmdRe = regexp.MustCompile(`(?:^|[^\w./-])forge [a-z][a-z-]*`)
+var forgeCmdRe = regexp.MustCompile(`(?:^|[^\w./-])forge\s+[a-z][a-z-]*`)
 
 // RuleDescriptions — rule ID → rule text definition (exported single source of
 // truth; docs generation greps this table instead of copying rule text, and CLI

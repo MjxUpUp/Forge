@@ -157,10 +157,10 @@ metadata:
 
 ## 13. forge 引用契约（依赖倒置）
 
-Skill 是独立可用的方法论资产，forge 是可选增强层——skills-only 分发（`forge skills install` 不跑 init、不装 hook）必须拿到完整可用的方法论。SKILL.md 正文中的 forge CLI 引用只允许三种形态（R18 advisory 机器校验）：
+Skill 是独立可用的方法论资产，forge 是可选增强层——skills-only 分发（`forge skills install` 不跑 init、不装 hook）必须拿到完整可用的方法论。SKILL.md 正文中的 forge CLI 引用只允许三种形态（R18 advisory 机器校验）。方向即依赖倒置：forge 二进制按 skill 名指引流程（具体依赖抽象），故引用方向必须是 skill 保持中立、forge 侧可选。三种形态：
 
-1. **条件引用块**：`> Forge 项目：<机制说明与命令指针>。非 forge 项目跳过（/降级为 X）。`（短块优先，约 ≤5 行；命令语法成组或机制复杂时细节下沉形态 ②，块内只留指针）。已有先例：code-review-gate / doc-review / cross-tool-context。
+1. **条件引用块**：`> Forge 项目：<机制说明与命令指针>。非 forge 项目跳过（/降级为 X）。`（短块优先，约 ≤5 行；命令语法成组或机制复杂时细节下沉到第 2 形态（references/forge-integration.md），块内只留指针）。已有先例：code-review-gate / doc-review / cross-tool-context。
 2. **集成详情文件**：`references/forge-integration.md`，首行声明「仅 forge 项目适用」，收纳命令语法、门禁机制、逃生口、与通用方法论的衔接点。
-3. **forge 原生 skill 标记**：skill 本身描述 forge 机制（`forge skills` / `forge task` 命令族的操作方法论）时，frontmatter 加 `metadata.requires_forge: "true"`——skills-only 分发消费方据此过滤。注意**不用顶层 `requires`**（其值按 skill 名做 canonical 成员校验，写 `forge` 会持续误报「不在 canonical」）；metadata 嵌套键是自由扩展区（§4），解析后落在 `fm.Metadata`。
+3. **forge 原生 skill 标记**：skill 本身描述 forge 机制（`forge skills` / `forge task` 命令族的操作方法论）时，frontmatter 加 `metadata.requires_forge: "true"`——skills-only 分发消费方可据此过滤（分发端过滤待实现，记 follow-up）。注意**不用顶层 `requires`**（其值按 skill 名做 canonical 成员校验，写 `forge` 会持续误报「不在 canonical」）；metadata 嵌套键是自由扩展区（§4），解析后落在 `fm.Metadata`。
 
 配套纪律：凡有 forge 集成处**必写降级行为**（无 forge 时该步骤怎么办——退化成什么手工纪律、哪些能力不存在）；方法论正文保持工具中立措辞（机制说「做什么」，工具细节留给集成文件说「用什么命令」）。
