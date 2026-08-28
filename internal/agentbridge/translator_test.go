@@ -1073,3 +1073,46 @@ func writeClaudeSettingsFixture(t *testing.T, dir string) {
 		t.Fatalf("write settings.local.json: %v", err)
 	}
 }
+
+// TestConventionsHooks_MirrorWiringPinned pins the wiring DECISIONS for the two
+// conventions-profile injection hooks in the hand-maintained mirrors (beyond the
+// generic spec-parity guards): opencode's PRE_HOOKS carries conventions-write and
+// it is deliberately NOT in opencodeExemptions (it is the ONLY conventions
+// delivery layer opencode can carry — its SessionStart group never fires there);
+// windsurf maps conventions-write to pre_write_code and conventions-context to
+// pre_user_prompt (the SessionStart group's Cascade mount), both riding the
+// "record honestly, never deliver silently" contract.
+//
+// TestConventionsHooks_MirrorWiringPinned 钉住 conventions-profile 两个注入 hook
+// 在手工维护镜像里的**接线决策**（超出通用 spec-parity 守卫的范围）：opencode 的
+// PRE_HOOKS 带 conventions-write 且刻意不进 opencodeExemptions（它是 opencode
+// 唯一能承载的 conventions 投递层——其 SessionStart 组在该宿主永不触发）；
+// windsurf 把 conventions-write 映射到 pre_write_code、conventions-context 映射到
+// pre_user_prompt（SessionStart 组的 Cascade 挂点），两者同乘「诚实记录、绝不
+// 静默投递」契约。
+func TestConventionsHooks_MirrorWiringPinned(t *testing.T) {
+	ts := buildOpencodePlugin()
+	if !strings.Contains(ts, "conventions-write") {
+		t.Error("opencode PRE_HOOKS must carry conventions-write (the only conventions layer opencode can deliver — its SessionStart group never fires there)")
+	}
+	if _, exempted := opencodeExemptions["conventions-write"]; exempted {
+		t.Error("conventions-write must NOT be an opencode exemption: exempting it deletes the entire conventions layer on opencode")
+	}
+
+	raw := buildWindsurfHooks()
+	entries, _ := raw["hooks"].(map[string][]windsurfHookEntry)
+	has := func(event, hookName string) bool {
+		for _, e := range entries[event] {
+			if strings.Contains(e.Command, "forge hook "+hookName) {
+				return true
+			}
+		}
+		return false
+	}
+	if !has("pre_write_code", "conventions-write") {
+		t.Error("windsurf pre_write_code must carry conventions-write")
+	}
+	if !has("pre_user_prompt", "conventions-context") {
+		t.Error("windsurf pre_user_prompt must carry conventions-context (the SessionStart group's Cascade mount)")
+	}
+}

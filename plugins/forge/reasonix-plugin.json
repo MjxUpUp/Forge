@@ -58,6 +58,10 @@
         "command": "forge hook skill-trigger --agent reasonix"
       },
       {
+        "match": "write_file|edit_file|multi_edit|move_file",
+        "command": "forge hook conventions-write --agent reasonix"
+      },
+      {
         "match": "bash",
         "command": "forge hook bash-guard --agent reasonix"
       },
@@ -85,6 +89,9 @@
       },
       {
         "command": "forge hook skill-trigger --agent reasonix"
+      },
+      {
+        "command": "forge hook conventions-context --agent reasonix"
       }
     ],
     "Stop": [

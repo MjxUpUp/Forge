@@ -179,6 +179,15 @@ func ForgeHookSpec() map[string][]HookMatcher {
 					{Type: "command", Command: "forge hook assertion-check"},
 					{Type: "command", Command: "forge hook read-before-edit"},
 					{Type: "command", Command: "forge hook skill-trigger"},
+					// conventions-profile 层 2 写入时刻注入（2026-08-28）：写源码文件前
+					// 注入本仓库规范文件指针 + 同目录范例。advisory（emit 走 allow-with-detail
+					// 的 additionalContext 通道，与 skill-trigger 同款——本 matcher 上已验证）。
+					//
+					// conventions-profile layer-2 write-time injection (2026-08-28): before a
+					// source write, inject this repo's instruction-file pointers + sibling
+					// exemplars. Advisory (emission rides the allow-with-detail
+					// additionalContext channel, same as skill-trigger — proven on this matcher).
+					{Type: "command", Command: "forge hook conventions-write"},
 				},
 			},
 			{
@@ -263,6 +272,16 @@ func ForgeHookSpec() map[string][]HookMatcher {
 					{Type: "command", Command: "forge hook init-suggest"},
 					{Type: "command", Command: "forge hook task-resume"},
 					{Type: "command", Command: "forge hook skill-trigger"},
+					// conventions-profile 层 2 会话摘要（2026-08-28）：有档案注入 ≤15 行
+					// 摘要（always-on 层保持极小），无档案且仓库已声明规范时每会话一次
+					// 建档建议。与 init-suggest 同挂点（都是 SessionStart 检测+引导类）。
+					//
+					// conventions-profile layer-2 session digest (2026-08-28): with a
+					// profile inject the ≤15-line digest (the always-on layer stays
+					// minimal); without one, a once-per-session init suggestion when the
+					// repo declares conventions. Same mount as init-suggest (both are
+					// SessionStart detect-and-guide hooks).
+					{Type: "command", Command: "forge hook conventions-context"},
 				},
 			},
 		},
@@ -301,6 +320,17 @@ func ForgeHookSpec() map[string][]HookMatcher {
 			{
 				Hooks: []HookEntry{
 					{Type: "command", Command: "forge hook compact-resume"},
+					// conventions-profile：压缩刚清掉上下文，摘要重注入是最便宜的定向恢复
+					// （此事件恒注入、不吃 SessionStart 的每会话 marker）。cursor 无
+					// PostCompact 事件——压缩场景在其上回落 SessionStart tier（见上方
+					// 宿主覆盖注）。
+					//
+					// conventions-profile: compaction just wiped the context; re-injecting
+					// the digest is the cheapest re-orientation (this event always injects,
+					// ignoring the SessionStart per-session marker). cursor has no
+					// PostCompact — the compact scenario falls back to its SessionStart
+					// tier there (see the host-coverage note above).
+					{Type: "command", Command: "forge hook conventions-context"},
 				},
 			},
 		},
