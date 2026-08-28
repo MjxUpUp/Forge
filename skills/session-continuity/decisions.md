@@ -52,3 +52,25 @@ description 审计合格未改动 + evals.json 建立
 ### Evidence
 
 docs/skills-value-audit-2026-08-02.md
+
+## [d-18d0a2f109531-e109531f4] accept
+
+- **Skill**: session-continuity
+- **DecidedAt**: 2026-08-28T07:53:14Z
+- **By**: zcode
+
+### Diagnosis
+
+方法论正文夹杂 forge 操作句（未标 forge-only、缺降级说明），破坏工具中立性
+
+### Revision
+
+改为「> Forge 项目」条件引用块并补无 forge 降级行为（dev-workflow shell-free 段工具中立化等）
+
+### Evidence
+
+feat/skills-boundary-inversion Phase 2：CONVENTIONS §13 forge 引用契约 + R18 advisory 规则落地；forge skills validate 全语料零 R18 告警
+
+### Rationale
+
+依赖倒置：skill 是独立方法论资产，forge 是可选增强层——skills-only 分发用户不应看到不可执行的 forge 指令

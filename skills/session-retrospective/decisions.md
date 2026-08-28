@@ -91,3 +91,25 @@ skillsqa/rules.go 合法 when 词表核查（5 个均不匹配 Stop 时刻语义
 ### Evidence
 
 docs/design/output-readability-gates.md 长期回路章节
+
+## [d-18d0a2f131179-e131179f4] accept
+
+- **Skill**: session-retrospective
+- **DecidedAt**: 2026-08-28T07:53:14Z
+- **By**: zcode
+
+### Diagnosis
+
+正文整节的 forge 命令组（命令语法/机制说明）与通用方法论混排，skills-only 分发用户看到不可执行指令
+
+### Revision
+
+forge 操作细节下沉（新建 references/forge-integration.md 或收进「> Forge 项目」条件块），正文保留机制概述与降级路径
+
+### Evidence
+
+feat/skills-boundary-inversion Phase 2：CONVENTIONS §13 forge 引用契约 + R18 advisory 规则落地；forge skills validate 全语料零 R18 告警
+
+### Rationale
+
+依赖倒置：skill 是独立方法论资产，forge 是可选增强层——skills-only 分发用户不应看到不可执行的 forge 指令

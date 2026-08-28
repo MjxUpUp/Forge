@@ -4,17 +4,20 @@
 // extensions — 21 audit rules total).
 // 1:1 alignment with Python semantics ensures per-rule judgments match registry.py
 // --json / audit.py (golden comparison baseline).
-// R12-R17 are forge-local extensions on top of the Python-aligned R1-R11
+// R12-R18 are forge-local extensions on top of the Python-aligned R1-R11
 // (R12 triggers declarations; R13-R17 from the 2026-08 skills value audit,
-// improvement item 11 — see docs/skills-value-audit-2026-08-02.md).
+// improvement item 11 — see docs/skills-value-audit-2026-08-02.md; R18 forge
+// reference contract from the 2026-08 dependency-inversion refactor,
+// CONVENTIONS §13).
 //
 // Package skillsqa 实现 SkillsHub 的质量校验：规范契约（registry.py 的 R1-R11）
 // 与安全审查（18 条规则对齐 audit.py + 加权评分，另有 forge 本地 DC-8/DC-9/DC-10
 // markdown 供应链扩展——audit 共 21 条）。1:1 对齐 Python 语义，确保与
 // registry.py --json / audit.py 的判定逐条一致（黄金对比基准）。
-// R12-R17 是 forge 在 Python 对齐的 R1-R11 之上的本地扩展
+// R12-R18 是 forge 在 Python 对齐的 R1-R11 之上的本地扩展
 // （R12 triggers 声明；R13-R17 来自 2026-08 skills 价值审计清单项 11，
-// 见 docs/skills-value-audit-2026-08-02.md）。
+// 见 docs/skills-value-audit-2026-08-02.md；R18 forge 引用契约来自
+// 2026-08 依赖倒置重构，见 CONVENTIONS §13）。
 package skillsqa
 
 import (
@@ -170,6 +173,16 @@ var kebabRe = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 // lowercase always/must is ordinary prose and does not count).
 var imperativeRe = regexp.MustCompile(`\b(ALWAYS|NEVER|MUST)\b`)
 
+// forgeCmdRe — R18 forge CLI 命令引用（`forge task` / `forge review pass` 形态）。
+// 前置字符排除 [\w./-]：xforge（词内）、forge/docs、.forge/（路径）不算命令引用；
+// 后随小写子命令名——「forge 项目」「forge 环境」类叙述措辞不命中。
+//
+// forgeCmdRe — R18 forge CLI command references (`forge task` / `forge review pass`).
+// The leading class excludes [\w./-]: xforge (inside a word), forge/docs, .forge/
+// (paths) are not command references; a lowercase subcommand must follow, so
+// prose like "forge 项目" / "forge 环境" never matches.
+var forgeCmdRe = regexp.MustCompile(`(?:^|[^\w./-])forge\s+[a-z][a-z-]*`)
+
 // RuleDescriptions — rule ID → rule text definition (exported single source of
 // truth; docs generation greps this table instead of copying rule text, and CLI
 // output stays aligned with it). R1-R11 align with SkillsHub registry.py;
@@ -196,6 +209,7 @@ var RuleDescriptions = map[string]string{
 	"R15": "正文 ALL-CAPS 命令式词（ALWAYS/NEVER/MUST）合计 >5 次时提醒改「指令+原因」写法（advisory）",
 	"R16": "references/ 下 >300 行文件需 ToC（advisory；markdown 文件由 R11 以 >100 行更低门槛先行覆盖，不重复报）",
 	"R17": "evals/evals.json 存在时须符 schema：对象含 trigger_cases 数组，每项 {query: string, should_trigger: boolean}（advisory）",
+	"R18": "正文 forge 命令引用只允许出现在「> Forge 项目」条件引用块内，其余位置命中即提醒依赖倒置契约（advisory；细节下沉 references/forge-integration.md，CONVENTIONS §13）",
 }
 
 // allowedFmSorted returns the sorted allowed-field list (used in R3 issue text;

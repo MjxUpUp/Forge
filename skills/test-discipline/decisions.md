@@ -53,3 +53,25 @@ description 审计合格未改动 + 新建 evals.json 10 条
 ### Evidence
 
 docs/skills-value-audit-2026-08-02.md
+
+## [d-18d0b3a103479-a103479b5] accept
+
+- **Skill**: test-discipline
+- **DecidedAt**: 2026-08-28T07:57:58Z
+- **By**: zcode
+
+### Diagnosis
+
+三条铁律全是防御性（防断言弱化），缺进攻性手段——AI 写的测试天然是实现的镜像，实现错了测试照样绿（vacuous pass）；property-based/变异测试全仓库零覆盖
+
+### Revision
+
+新增铁律 4 规格档：属性测试（何时升级/从需求提炼不变量四启发式/工具矩阵/属性频繁改=镜像实现的反信号）+ 变异测试（CI 可选档/mutant 存活=断言不足/工具矩阵）；Rationalizations 增两行（属性太重/覆盖率够了吗）
+
+### Evidence
+
+feat/skills-boundary-inversion Phase 3（工程原则增强）：会话研究结论——SOLID/契约/属性测试在 AI 时代升值（生成速度>审查速度），仓库原有清单存在 LSP 空缺与规格档空白
+
+### Rationale
+
+属性来自规格而非实现，打破 AI 自证环——业界 2025-2026 共识方向（Anthropic PBT 研究/spec-driven development）

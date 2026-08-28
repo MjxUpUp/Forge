@@ -50,11 +50,11 @@ const (
 )
 
 // DocReviewSource findings are raised by the L2 doc review (forge task
-// doc-review / rubric-docs.md). Critical ones must be resolved before the doc
+// doc-review / doc-review skill). Critical ones must be resolved before the doc
 // gate passes.
 //
 // DocReviewSource 的 findings 由 L2 文档回检提出（forge task doc-review /
-// rubric-docs.md）。Critical 级未决则 doc gate 不放行。
+// doc-review skill）。Critical 级未决则 doc gate 不放行。
 const DocReviewSource = "doc-review"
 
 // FindingSeverityCritical marks a doc-review finding that blocks the doc gate.
@@ -66,11 +66,11 @@ const DocReviewSource = "doc-review"
 const FindingSeverityCritical = "critical"
 
 // DocReview is the L2 evidence recorded by `forge task doc-review` after a
-// rubric review (rubric-docs.md). The reviewer must not be the producer
+// rubric review (doc-review skill). The reviewer must not be the producer
 // (anti-cheating rule 1); HeadCommit binds the review to the code snapshot so
 // doc changes after the review invalidate it (freshness, same as acceptance).
 //
-// DocReview 是 `forge task doc-review` 在 rubric 评审（rubric-docs.md）后记录的
+// DocReview 是 `forge task doc-review` 在 rubric 评审（doc-review skill）后记录的
 // L2 证据。回检者不能是产出者（防作弊纪律 1）；HeadCommit 把评审绑定到代码
 // 快照——评审后改文档则失效（freshness，与 acceptance 同构）。
 type DocReview struct {
@@ -284,7 +284,7 @@ func CheckDocGate(root string, state *TaskState) (ok bool, reasons []string) {
 	head := GetHeadCommit(root)
 	switch {
 	case state.DocReview == nil || state.DocReview.ReviewedAt.IsZero():
-		reasons = append(reasons, `L2 文档回检未记录——先按 code-review-gate/references/rubric-docs.md 评审（产出者不能自检），再 forge task doc-review --passed/--failed --score <N>`)
+		reasons = append(reasons, `L2 文档回检未记录——先按 doc-review skill 评审（产出者不能自检），再 forge task doc-review --passed pass|fail --score <N>`)
 	case state.DocReview.HeadCommit != "" && head != "" && state.DocReview.HeadCommit != head:
 		reasons = append(reasons, fmt.Sprintf(`L2 文档回检基于旧代码（快照 %s ≠ HEAD %s）——回检后改了产物，重新评审后 forge task doc-review`, shortCommit(state.DocReview.HeadCommit), shortCommit(head)))
 	case state.DocReview.DocsFingerprint != "" && state.DocReview.DocsFingerprint != DocContentFingerprint(root, state):
@@ -293,10 +293,10 @@ func CheckDocGate(root string, state *TaskState) (ok bool, reasons []string) {
 		if state.DocReview.Round >= DocReviewMaxRounds {
 			reasons = append(reasons, fmt.Sprintf(`L2 文档回检已 %d 轮未过（轮次上限 %d）——升级人工确认：请用户裁定放行（确认后 forge task override --doc-gate disable，落 checklog 审计）或指出下一轮修复方向`, state.DocReview.Round, DocReviewMaxRounds))
 		} else {
-			reasons = append(reasons, fmt.Sprintf(`L2 文档回检未通过（第 %d 轮，得分 %d）——修复 rubric-docs.md 的 Critical/Important 发现后重新评审`, state.DocReview.Round, state.DocReview.RubricScore))
+			reasons = append(reasons, fmt.Sprintf(`L2 文档回检未通过（第 %d 轮，得分 %d）——修复 doc-review（rubric）的 Critical/Important 发现后重新评审`, state.DocReview.Round, state.DocReview.RubricScore))
 		}
 	case state.DocReview.RubricScore < DocRubricThreshold:
-		reasons = append(reasons, fmt.Sprintf(`L2 文档回检得分 %d 低于阈值 %d——按 rubric-docs.md 四维（结论前置/详略/证据/受众）改进后重新评审`, state.DocReview.RubricScore, DocRubricThreshold))
+		reasons = append(reasons, fmt.Sprintf(`L2 文档回检得分 %d 低于阈值 %d——按 doc-review skill 的四维判据改进后重新评审`, state.DocReview.RubricScore, DocRubricThreshold))
 	}
 
 	// Unresolved Critical findings raised by the doc review block the gate.
