@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.46.0](https://github.com/MjxUpUp/Forge/compare/v1.45.4...v1.46.0) (2026-08-28)
+
+
+### Features
+
+* **conventions:** 依赖倒置契约化——CONVENTIONS §13 + R18 规则 + 17 skill 正文合规迁移 ([4b936be](https://github.com/MjxUpUp/Forge/commit/4b936be79fc86f30eb19ba3e3bf9c68bc473f18f))
+* **conventions:** 后续三件套——lint 未跑门禁 + learn 纠正写回 + codex 写入时刻补全 ([c1f3e81](https://github.com/MjxUpUp/Forge/commit/c1f3e81b265a754e80426cc79c458959e37b6c78))
+* skills 依赖倒置 + code-review-gate 边界重划 + 工程原则增强 ([2906f9c](https://github.com/MjxUpUp/Forge/commit/2906f9c42417166f8cce996f6845da72627e013e))
+* **skills:** 工程原则增强——真·SOLID 五原则 + 契约完整性 + 测试规格档 ([95304ec](https://github.com/MjxUpUp/Forge/commit/95304ec26395032368863adf65da9b34dae5a54c))
+* **skills:** 拆分 code-review-gate——doc-review 建家 + phase-*.md 归位 design-artifact-standards ([c214cbe](https://github.com/MjxUpUp/Forge/commit/c214cbe228ac789ff78453d5819edb372b301383))
+
+
+### Bug Fixes
+
+* **ci:** 分支 CI 抓出的两类跨平台断言——dsh 名册同步 + Windows 路径分隔符 ([c0e9caf](https://github.com/MjxUpUp/Forge/commit/c0e9caf7d7fad13aeb8997716f3958be4c7ca768))
+* **ci:** 注入断言先解 JSON 信封再归一——信封级 ToSlash 会把转义反斜杠变成双斜杠 ([cc7dfd6](https://github.com/MjxUpUp/Forge/commit/cc7dfd6934952a63c2baea091b038dd64b681074))
+* 双独立审查（代码双轨 + 文档四维）14 项发现全闭环 ([81b7725](https://github.com/MjxUpUp/Forge/commit/81b772505841eb113e966be57ad335532934fb04))
+
 ## [1.45.4](https://github.com/MjxUpUp/Forge/compare/v1.45.3...v1.45.4) (2026-08-28)
 
 
