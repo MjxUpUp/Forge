@@ -174,7 +174,7 @@ SQL 跑超过 100ms？
 
 ```bash
 # 1. schema diff
-forge review pass                       # 触发 schema-diff review
+# 提交前审查：code-review-gate 门控（其 forge 条件块负责盖章）
 
 # 2. migration 演练（staging）
 # 事务包裹，禁止 psql -f：psql 没有 --dry-run，-f 会真实执行！

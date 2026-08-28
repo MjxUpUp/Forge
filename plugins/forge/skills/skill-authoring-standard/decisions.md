@@ -160,3 +160,25 @@ description 规范只有 ≥80 字符下限无上限约定，全库 52 个 skill
 ### Evidence
 
 CONVENTIONS §5 同步写入同一软上限；validate 52/52 通过
+
+## [d-18d0a2f117846-e117846f4] accept
+
+- **Skill**: skill-authoring-standard
+- **DecidedAt**: 2026-08-28T07:53:14Z
+- **By**: zcode
+
+### Diagnosis
+
+skill 本身描述 forge 命令族操作方法论，无法也不应工具中立化
+
+### Revision
+
+frontmatter 加 metadata.requires_forge: "true" 标记（CONVENTIONS §13 形态③），R18 按标记豁免、skills-only 分发按标记过滤
+
+### Evidence
+
+feat/skills-boundary-inversion Phase 2：CONVENTIONS §13 forge 引用契约 + R18 advisory 规则落地；forge skills validate 全语料零 R18 告警
+
+### Rationale
+
+依赖倒置：skill 是独立方法论资产，forge 是可选增强层——skills-only 分发用户不应看到不可执行的 forge 指令

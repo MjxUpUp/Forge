@@ -128,9 +128,9 @@ Expected: PASS
 ```
 不允许写"编译通过""测试 OK"——必须具体命令 + 具体预期输出。
 
-**Run 命令必须 shell-free**：forge 的 verify-acceptance 实跑器按空白切分命令串直接 exec（不经 shell）——shell 前缀环境赋值（`PWD=/x go test`）、管道、重定向、`&&` 都会以 executable-not-found 失败（输出对也判负，排查链长）。需要环境变量时用 `env VAR=value cmd` 形式；需要组合命令时拆成多条验收标准。
+**Run 命令必须 shell-free**：验收命令写成单命令形式（可执行文件 + 参数），不带 shell 前缀环境赋值（`PWD=/x go test`）、管道、重定向、`&&`——实跑器按空白切分命令串直接 exec（不经 shell），shell 特性会以 executable-not-found 失败（输出对也判负，排查链长）。需要环境变量时用 `env VAR=value cmd` 形式；需要组合命令时拆成多条验收标准。
 
-**forge 项目**：验收标准和 scope 可持久化为实跑门禁（plan 提取 Run/Expected + `forge task verify-acceptance` 实跑回扣、`--scope` 声明 PlanScope 白名单）。仅在使用 forge 的项目适用，详见 [references/forge-integration.md](references/forge-integration.md)；非 forge 项目忽略。
+> Forge 项目：verify-acceptance 实跑器即按此语义执行；验收标准和 scope 可持久化为实跑门禁（plan 提取 Run/Expected + `forge task verify-acceptance` 实跑回扣、`--scope` 声明 PlanScope 白名单），详见 [references/forge-integration.md](references/forge-integration.md)。非 forge 项目忽略持久化门禁，shell-free 纪律仍然推荐——单命令形式可被任何 runner 直接执行。
 
 **⛔ No Placeholders 禁令表**：
 以下模式 **出现即不合格**，计划被打回重写：

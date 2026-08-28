@@ -12,7 +12,7 @@ requires: doc-review
 
 phase-*.md 是「好设计产物该有什么」的标准清单（IEEE 830 / Google API Design Guide / DDD / WCAG / ISTQB 等提炼）。**编写期当骨架和自查清单，审查期 `code-review-gate` 引用同一份**——一份标准两处用。清单单一真相源在本 skill 的 `references/phase-*.md`（2026-08 自 code-review-gate 迁入：标准随编写期主场走，审查期消费者跨引），本 skill 做编写期路由与标准托管。
 
-> **安装依赖（enforce 提示，需手动满足）**：6 个环节清单已本地化到本 skill `references/`，单装即可完整使用。仅路由表末行「文档产物」按 **doc-review skill** 评审（skill 名引用，不深链其内部文件）——frontmatter `requires: doc-review` 会被 `forge skills install` enforce 提示：单装本 skill 会打印 `requires doc-review 但本次未同装` 警告（**不阻断**，仅提示）。不装 doc-review 时其余 6 行完全可用，文档产物行降级为「按四维常识自查」。
+> Forge 项目——**安装依赖（enforce 提示，需手动满足）**：6 个环节清单已本地化到本 skill `references/`，单装即可完整使用。仅路由表末行「文档产物」按 **doc-review skill** 评审（skill 名引用，不深链其内部文件）——frontmatter `requires: doc-review` 会被 `forge skills install` enforce 提示：单装本 skill 会打印 `requires doc-review 但本次未同装` 警告（**不阻断**，仅提示）。非 forge 环境无此提示，不装 doc-review 时其余 6 行完全可用，文档产物行降级为「按四维常识自查」。
 
 ## 核心原则
 
@@ -22,7 +22,9 @@ phase-*.md 是「好设计产物该有什么」的标准清单（IEEE 830 / Goog
 
 ## 为什么编写期就要用
 
-审查期才看清单 = 写完才发现不达标 → 返工（task-verify 的 `inferDesignPhases` 按已写文件路径推断阶段 → code-review-gate 加载对应清单）。**编写期就按标准搭骨架 = 一次写到位**。本 skill 把同一份标准在产出期暴露出来，让规范不只服务审查。
+审查期才看清单 = 写完才发现不达标 → 返工。**编写期就按标准搭骨架 = 一次写到位**。本 skill 把同一份标准在产出期暴露出来，让规范不只服务审查。
+
+> Forge 项目：task-verify 的 `inferDesignPhases` 按已写文件路径推断阶段，code-review-gate 据此加载对应清单复核（衔接点见其 forge-integration）。非 forge 项目跳过自动衔接，审查期靠人工对照本清单。
 
 ## 路由表：你要写的产物 → 对应标准
 

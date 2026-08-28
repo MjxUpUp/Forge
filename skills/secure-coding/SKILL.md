@@ -215,8 +215,9 @@ E Elevation           权限提升      → 谁能干什么？最小权限
 - [ ] 错误响应不泄露内部（stack trace / SQL detail）
 - [ ] SAST 自动 scan（CI）
 - [ ] 含 LLM/MCP/skill 资产时已按 §2.7 过 agent 威胁
-- [ ] `forge review pass` 通过（仅标记人工审查完成；OWASP 检查需按本 skill §4 逐项人工核对）
 - [ ] OWASP Top 10:2025 一一对照（**至少我们写的不踩雷**）
+
+> Forge 项目：自查通过后按 code-review-gate 流程审查盖章。非 forge 项目走所在环境的提交前审查。
 
 ## 5. Gotchas（实操易错点）
 
@@ -257,8 +258,7 @@ gitleaks detect --staged
 
 # 4. 安全 checklist（人工）→ 按本 skill §4 逐项核对
 
-# 5. Code review 标记
-forge review pass                   # 仅标记人工审查完成；OWASP 逐项核对靠 §4 自查清单
+# 5. 提交前审查（code-review-gate 门控，其 forge 条件块负责盖章）
 ```
 
 不过 → §4 自查清单补足；过 → commit + 安全 reviewer 双 sign（高风险改动）。

@@ -4,6 +4,7 @@ description: "skill 软路由（提示注入）：把用户输入按关键词映
 metadata:
   pattern: tool-wrapper
   domain: skill-engineering
+  requires_forge: "true"
 ---
 
 # Skill 软路由（提示注入）

@@ -12,16 +12,11 @@ metadata:
 
 解决"多个 AI 工具并行开发同一项目，但互不感知"的效率瓶颈。当前最大浪费：A 工具发现的问题/做的修改，要靠用户手动复制粘贴给 B 工具，B 还不知道 A 改了什么文件。
 
-## 核心机制：forge task 双向锚定（有 forge 时的主路径）
+## 核心机制：共享真相源（两条路径）
 
-跨工具接续 = 各工具把信息写进同一个 forge task（持久化在用户级 DataDir `~/.forge/projects/<key>/`，不随会话/压缩丢失），任意工具 resume 即拉回：
+跨工具接续 = 各工具把信息写进同一个**共享真相源**（可查询、抗压缩丢失、跨工具双向锚定），任意工具开工前拉回：目标 / 决策 / 发现 / 下一步 / 阻塞。
 
-- **开工前**：`forge task resume [--ref <ref>]` 拉回结构化上下文（目标/决策/发现/下一步/阻塞 + 门禁进度 + git 已改未提交）。
-- **做了决策**：`forge task decide --content "..." --by [当前工具]`。
-- **发现问题**：`forge task finding --content "..." --source [当前工具] --evidence file:line`（来源工具自动记录）。
-- **跨工具锚定**：`forge task attach --ref <ref> --tool <当前工具>` 把当前工具的 session 锚定到 task——任意工具 resume 即知"谁参与过、用什么工具"。
-
-forge task 是结构化真相源（可查询、抗压缩丢失、跨工具双向锚定）。`forge task context` 可导出 markdown 视图，供无 forge 的工具/人类阅读。
+> Forge 项目：主路径用 forge task 双向锚定——resume 拉回结构化上下文，decide / finding 增量写入，attach 把当前工具 session 锚定到 task（谁参与过、用什么工具），持久化在用户级 DataDir 不随会话/压缩丢失；`forge task context` 可导出 markdown 视图。命令语法见 [references/forge-integration.md](references/forge-integration.md)。非 forge 项目走下方 AI_CONTEXT.md 降级路径。
 
 ## 无 forge 时的降级方案：AI_CONTEXT.md
 
@@ -72,7 +67,7 @@ forge task 是结构化真相源（可查询、抗压缩丢失、跨工具双向
 ## 与其他 skill 的分工
 
 - **session-continuity**：单工具内跨会话恢复。本 skill 是跨工具。两者用同一套 HANDOFF 格式（定义在 session-continuity 的 references/handoff-format.md，本 skill 复用）
-- **session-retrospective**：把教训写进记忆文件（AGENTS.md/CLAUDE.md）。本 skill 管项目级跨工具上下文（forge task 或 AI_CONTEXT.md），非全局记忆
+- **session-retrospective**：把教训写进记忆文件（AGENTS.md/CLAUDE.md）。本 skill 管项目级跨工具上下文（共享真相源，forge 项目为 task、无 forge 为 AI_CONTEXT.md），非全局记忆
 
 ## 适用边界
 

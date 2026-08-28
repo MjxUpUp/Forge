@@ -104,7 +104,7 @@ grep -rn "v1/users" src/
 - [ ] 无未处理的 error（`if err != nil` 路径有处理）
 - [ ] API 契约文档同步（OpenAPI/JSON Schema）
 - [ ] 测试覆盖率按项目约定达标
-- [ ] `forge review pass` 通过
+- [ ] 提交前过 code-review-gate 审查（其 forge 条件块负责盖章）
 
 ## 5. Gotchas（实操易错点）
 
@@ -138,7 +138,7 @@ golangci-lint run
 ruff check + bandit
 
 # 4. API 契约对消费者
-forge review pass                       # 触发 code-review-gate
+# → 提交前审查：code-review-gate 门控
 ```
 
 不过 → §4 自查清单补足；过 → commit。

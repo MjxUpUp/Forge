@@ -161,3 +161,25 @@ SKILL.md 原维护注记「跨 skill 引用首例」自证脆弱性；迁移后 
 ### Rationale
 
 编写期是 phase 清单的无条件消费者（本 skill 的全部身份），审查期只在 forge 项目有 DesignPhases 时条件加载——资产随无条件消费者走，条件消费者跨引
+
+## [d-18d0a2f111452-e111452f4] accept
+
+- **Skill**: design-artifact-standards
+- **DecidedAt**: 2026-08-28T07:53:14Z
+- **By**: zcode
+
+### Diagnosis
+
+方法论正文夹杂 forge 操作句（未标 forge-only、缺降级说明），破坏工具中立性
+
+### Revision
+
+改为「> Forge 项目」条件引用块并补无 forge 降级行为（dev-workflow shell-free 段工具中立化等）
+
+### Evidence
+
+feat/skills-boundary-inversion Phase 2：CONVENTIONS §13 forge 引用契约 + R18 advisory 规则落地；forge skills validate 全语料零 R18 告警
+
+### Rationale
+
+依赖倒置：skill 是独立方法论资产，forge 是可选增强层——skills-only 分发用户不应看到不可执行的 forge 指令

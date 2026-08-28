@@ -87,3 +87,25 @@ SKILL.md HITL 段改写为授权判定协议：用户本回合已明确指令/�
 ### Evidence
 
 internal/hooks/embed.go HazardGuardHook 实现（safe_mktemp_vars/is_tmp_rm_target/strip_quotes 跨行引号态+嵌套感知/nowl 收紧）；脚本级 TestHazardGuardScript_MktempSelfCleanupExempt 等 5 测试与 e2e TestHook_HazardGuard_MktempSelfCleanupAllowed 等 4 测试钉死（含 rm 根目录/HOME/穿越/再赋值攻击对照仍拦）；旧脚本对照实测 python heredoc docstring 含 rm 清理文本由 BLOCK 转 PASS；全仓 go test 绿
+
+## [d-18d0a2f124514-e124514f4] accept
+
+- **Skill**: on-demand-guards
+- **DecidedAt**: 2026-08-28T07:53:14Z
+- **By**: zcode
+
+### Diagnosis
+
+正文整节的 forge 命令组（命令语法/机制说明）与通用方法论混排，skills-only 分发用户看到不可执行指令
+
+### Revision
+
+forge 操作细节下沉（新建 references/forge-integration.md 或收进「> Forge 项目」条件块），正文保留机制概述与降级路径
+
+### Evidence
+
+feat/skills-boundary-inversion Phase 2：CONVENTIONS §13 forge 引用契约 + R18 advisory 规则落地；forge skills validate 全语料零 R18 告警
+
+### Rationale
+
+依赖倒置：skill 是独立方法论资产，forge 是可选增强层——skills-only 分发用户不应看到不可执行的 forge 指令

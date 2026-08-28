@@ -4,6 +4,7 @@ description: "Skill 编写规范。Use when: 创建新 skill 时、修改现有 
 metadata:
   pattern: tool-wrapper
   domain: skill-engineering
+  requires_forge: "true"
   triggers: [{"event":"PreToolUse","match":"Write|Edit","when":"skill_file_touched","reason":"编辑 SKILL.md 时须遵守编写规范（description/结构/行数/决策记录）","cooldown":0}]
 ---
 
@@ -155,7 +156,7 @@ Gotchas 比最佳实践更有价值，因为它来自实际失败。每个 gotch
 - [ ] 有易错点（Gotchas）部分
 - [ ] 纪律型 skill 有 Red Flags + Rationalization 表
 - [ ] 超长详细内容拆到了 references/
-- [ ] 跑过 `forge skills validate` + `forge skills audit` 校验（R1-R17 规范 + 21 条安全规则，forge 自带，无需外部脚本）。R1-R17 每条规则的文本定义：见 [references/validation-rules.md](references/validation-rules.md)
+- [ ] 跑过 `forge skills validate` + `forge skills audit` 校验（R1-R18 规范 + 21 条安全规则，forge 自带，无需外部脚本）。R1-R18 每条规则的文本定义：见 [references/validation-rules.md](references/validation-rules.md)
 - [ ] **TDD：跑过基线测试**（无 skill 时子代理怎么失败），针对失败写的 skill
 - [ ] **防注水：跑过 `skill-anti-degradation-check.sh`**（扫描弱措辞/弱门控/无命令 checklist）
 - [ ] **rubric ≥75 分**：机器校验过后，按四维质量 rubric（简洁性/可操作性/工作流清晰度/渐进披露，各 0-25 分）人工或 LLM 评审打分，总分 <75 不予合并。锚点判据与裁决表：见 [references/quality-rubric.md](references/quality-rubric.md)
@@ -174,7 +175,7 @@ bash references/skill-anti-degradation-check.sh <skill-name> # 扫描单个 skil
 ## 参考
 
 - Anthropic 官方 skill 规范：[references/anthropic-spec-notes.md](references/anthropic-spec-notes.md)
-- R1-R17 校验规则文本定义：[references/validation-rules.md](references/validation-rules.md)
+- R1-R18 校验规则文本定义：[references/validation-rules.md](references/validation-rules.md)
 - 四维质量评分 rubric（机器判不了的质量维度，总分 <75 为合并阻断线）：[references/quality-rubric.md](references/quality-rubric.md)
 - 外部分类法映射（Thariq 9 类型 / Google 5 模式 → 本库 skill）：[references/skill-pattern-guide.md](references/skill-pattern-guide.md)（外部分类视角；本库 pattern 合法值以 design-patterns.md + R7 为准）
 - CSO 实证发现：description A/B 测试

@@ -12,8 +12,8 @@ metadata:
 
 | 层 | 覆盖 | 形态 |
 |---|---|---|
-| **always-on（自动挡）** | `rm -rf` / `git push --force` / `git reset --hard` / `DROP DATABASE\|TABLE\|SCHEMA` / `TRUNCATE` / `GRANT ALL` / `kubectl delete` / `docker system prune` / `shred` / 无 WHERE 的 `DELETE\|UPDATE` | hazard-guard hook（PreToolUse Bash），自动 block + HITL（`forge hazard confirm` 登记 5min 标记后放行）|
-| **session 级（本 skill）** | /freeze 目录锁定 + hazard-guard 未覆盖的危险模式（`chmod -R 777` / `curl … \| sh` / `git clean -fd` / `npm publish` 等） | /freeze 主路径走 **forge freeze-guard 真 hook**（硬阻断）；/careful 与无 forge 环境的 fallback 用正文纪律，每次匹配操作前 STOP 确认 |
+| **always-on（自动挡）** | `rm -rf` / `git push --force` / `git reset --hard` / `DROP DATABASE\|TABLE\|SCHEMA` / `TRUNCATE` / `GRANT ALL` / `kubectl delete` / `docker system prune` / `shred` / 无 WHERE 的 `DELETE\|UPDATE` | hazard-guard hook（PreToolUse Bash），自动 block + HITL 确认登记后放行 |
+| **session 级（本 skill）** | /freeze 目录锁定 + hazard-guard 未覆盖的危险模式（`chmod -R 777` / `curl … \| sh` / `git clean -fd` / `npm publish` 等） | /freeze 主路径走 **freeze 真 hook**（硬阻断）；/careful 与无 forge 环境的 fallback 用正文纪律，每次匹配操作前 STOP 确认 |
 
 **核心原则：激活后，每次匹配危险模式的操作前必须 STOP 确认，直到用户说"解除"。**
 
@@ -37,9 +37,9 @@ metadata:
 - SQL 破坏性 DDL / 权限：`DROP DATABASE|TABLE|SCHEMA` / `TRUNCATE` / `GRANT ALL` / `GRANT … TO PUBLIC` / 无 WHERE 的 `DELETE|UPDATE`
 - 基础设施破坏：`kubectl delete` / `docker system prune` / `docker volume rm` / `docker rm -f`
 
-**拦截后（HITL 闭环，不是硬 block）**：hook 给出指纹和指引 → 授权判定：**用户本回合已明确指令/确认过该操作时**（如用户直接要求执行，或 agent 前置已问过），无需二次确认，直接 `forge hazard confirm --last` 登记放行；否则先用所在 AI 工具的提问确认机制向用户说明风险、获明确确认再 confirm → 重试原命令自动放行（5min 限时标记，events.jsonl 审计）。confirm 链是唯一放行路径，测试/CI 同样走 `forge hazard confirm`。
+**拦截后（HITL 闭环，不是硬 block）**：hook 给出指纹和指引 → 授权判定：**用户本回合已明确指令/确认过该操作时**（如用户直接要求执行，或 agent 前置已问过），无需二次确认，直接登记放行；否则先用所在 AI 工具的提问确认机制向用户说明风险、获明确确认再放行 → 重试原命令自动通过。confirm 链是唯一放行路径，测试/CI 同样走确认登记。
 
-**自动豁免**（不拦截，无需 confirm）：`rm -rf` 目标全部落在一次性临时区时——字面 `/tmp/*`、`/var/folders/*`、`/private/tmp/*`、`$TMPDIR` 子路径，或同一命令串内 `X=$(mktemp -d)` 赋值变量的引用（`rm -rf "$X"`；变量有其他赋值则作废保守拦截）。危险串仅在引号/注释/多行字符串内（grep 模式、commit message、python heredoc 字符串等数据上下文）也不拦；`bash -c`/`eval`/管道进 shell 等执行包裹仍拦。
+> Forge 项目：放行登记命令为 `forge hazard confirm --last`（5min 限时标记，events.jsonl 审计）；hook 的自动豁免规则（临时区 `rm -rf`、数据上下文内危险串等）见 [references/forge-integration.md](references/forge-integration.md)。非 forge 项目跳过本节自动挡——这些命令同样危险，按 /careful 的 STOP 确认纪律处理。
 
 ## /careful — hazard-guard 之外的补充护栏
 
@@ -70,15 +70,9 @@ ssh prod-host     # 直接操作生产机（命令在远程执行，本地 hook 
 
 **激活条件**：用户说"锁住 X 目录""只改这里""/freeze src/"。
 
-### 主路径（有 forge 环境）：forge freeze 真 hook
+### 主路径（有 forge 环境）：freeze 真 hook
 
-```bash
-forge freeze <path>     # 激活：冻结 <path> 之外的写入
-forge freeze --status   # 查看当前冻结状态
-forge freeze --off      # 解除
-```
-
-激活后 **freeze-guard hook（PreToolUse Write|Edit）硬阻断冻结路径外的写入**——真 hook，不依赖 agent 每回合记得自检，长会话/上下文压缩后依然生效。优先走这条路。
+> Forge 项目：`forge freeze <path>` 激活（冻结 <path> 之外的写入）、`forge freeze --status` 查状态、`forge freeze --off` 解除。激活后 **freeze-guard hook（PreToolUse Write|Edit）硬阻断冻结路径外的写入**——真 hook，不依赖 agent 每回合记得自检，长会话/上下文压缩后依然生效，优先走这条路。非 forge 项目走下方 fallback。
 
 ### fallback（无 forge 环境）：prompt 纪律模拟
 
@@ -94,11 +88,11 @@ forge freeze --off      # 解除
 
 **典型场景**：调试时"我只加日志，别让我不小心改了无关代码"——freeze 后只允许改指定目录。
 
-**解除**：`forge freeze --off`，或用户说"解除 freeze""解锁""可以改其他了"。
+**解除**：forge 环境用条件块中的解除命令，或用户说"解除 freeze""解锁""可以改其他了"。
 
 ## 激活状态记忆
 
-- **/freeze（forge 路径）**：状态由 forge 持有，`forge freeze --status` 随时可查，不靠 agent 记忆。
+- **/freeze（forge 路径）**：状态由 forge 持有，随时可查（见条件块的状态命令），不靠 agent 记忆。
 - **/careful 与 fallback /freeze**：agent 在**每个回合开始**自检当前激活状态，不需要用户重复声明。激活时把状态记到 session 上下文（如"当前激活：/careful + /freeze src/"），后续回合读这个状态。
 
 状态持续到：用户明示"解除"，或 session 结束。
@@ -115,7 +109,7 @@ forge freeze --off      # 解除
 
 - 激活了 /careful 却直接执行 chmod -R 777 / git clean -fd 不确认（忘记激活状态）
 - /freeze 后改了锁定目录外文件不确认
-- 有 forge 环境却用 prompt 纪律模拟 /freeze（该走 `forge freeze` 真 hook）
+- 有 forge 环境却用 prompt 纪律模拟 /freeze（该走 freeze 真 hook，见上方条件块）
 - 用户说"解除"后还在拦截（状态没更新）
 - 拦截低风险命令（ls/grep/cat 等只读操作不该拦）
 
