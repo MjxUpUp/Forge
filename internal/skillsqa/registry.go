@@ -521,8 +521,15 @@ func checkForgeRefs(fm *skillsfm.Frontmatter, advisories *[]string) {
 	inCond := false
 	for _, line := range strings.Split(fm.Body, "\n") {
 		trimmed := strings.TrimSpace(line)
-		isQuote := strings.HasPrefix(trimmed, ">")
-		if isQuote && strings.HasPrefix(trimmed, "> Forge 项目") {
+		// Normalize bold/italic markers before the marker check so the sanctioned
+		// form "> **Forge 项目**：" (bold variant) is recognized too — the marker
+		// contract is the phrase, not its emphasis decoration.
+		//
+		// 标记匹配前先归一化加粗/斜体修饰，使「> **Forge 项目**：」加粗变体同样被
+		// 识别——契约钉的是短语本身，不是强调装饰。
+		norm := strings.ReplaceAll(trimmed, "*", "")
+		isQuote := strings.HasPrefix(norm, ">")
+		if isQuote && strings.HasPrefix(norm, "> Forge 项目") {
 			inCond = true
 		} else if !isQuote {
 			inCond = false
