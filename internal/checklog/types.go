@@ -195,6 +195,40 @@ const (
 	// deterministic（计数器在 hook 侧，agent 无法伪造）但属过程漂移的 OBSERVATION
 	// 而非任何验证——与其他条目一样排除出 evidence strength。
 	CheckTestNudge CheckName = "test-nudge"
+	// CheckConventionsInject records one conventions-layer injection fired by the
+	// conventions hooks (2026-08-28, conventions-profile): the session digest on
+	// SessionStart/PostCompact or the write-time pointers on PreToolUse Write|Edit.
+	// deterministic (the hook renders from the profile + tree scan; the agent cannot
+	// forge it) but an OBSERVATION of layer delivery, not any verification — same
+	// exclusion from evidence strength as the other observation checks. Meta carries
+	// the event and whether the profile was stale, so delivery funnels can split
+	// fresh-digest vs stale-warning injections.
+	//
+	// CheckConventionsInject 记录 conventions 层的一次注入（2026-08-28，
+	// conventions-profile）：SessionStart/PostCompact 的会话摘要，或 PreToolUse
+	// Write|Edit 的写入时刻指针。deterministic（hook 从档案 + 树扫描渲染，
+	// agent 无法伪造）但属投递层的 OBSERVATION 而非任何验证——与其他观察
+	// check 一样排除出 evidence strength。Meta 携带事件与档案是否过期，
+	// 投递漏斗可区分「新鲜摘要」与「过期警告」两类注入。
+	CheckConventionsInject CheckName = "conventions-inject"
+	// CheckConventionsLint records the conventions-profile layer-3 advisory at
+	// task-verify (2026-08-28, conventions-followups): did the task's Bash history
+	// (toollog) show the profile-declared lint command? Written only when
+	// decidable (profile+lint command present AND the task has tool telemetry) —
+	// Passed=true means the lint signature was seen, false means a nudge fired.
+	// deterministic (toollog + signature matching; the agent cannot forge what it
+	// never recorded) but an OBSERVATION of process, never verification that the
+	// lint PASSED — excluded from evidence strength like the other observation
+	// checks (a seen lint command that fails is still the agent's to fix).
+	//
+	// CheckConventionsLint 记录 conventions-profile 层 3 在 task-verify 的
+	// advisory（2026-08-28，conventions-followups）：任务 Bash 历史（toollog）
+	// 里是否出现过档案声明的 lint 命令？仅在可判定时落盘（档案+lint 命令
+	// 在场且任务有工具遥测）——Passed=true 表示见到 lint 签名，false 表示
+	// 发过一次提醒。deterministic（toollog + 签名匹配；没记录过的东西 agent
+	// 伪造不了）但属过程观察，绝非「lint 通过」的验证——与其他观察 check
+	// 一样排除出 evidence strength（见到的 lint 命令跑挂了仍归 agent 修）。
+	CheckConventionsLint CheckName = "conventions-lint"
 	// CheckBundleVerify records one bundle-signature verification verdict at import
 	// time (node-identity.md §3) — the trust decision that previously reached only the
 	// importing terminal's stdout/stderr. deterministic (the verdict is computed by CLI

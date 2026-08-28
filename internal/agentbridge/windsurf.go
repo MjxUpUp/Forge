@@ -353,6 +353,16 @@ func buildWindsurfHooks() map[string]any {
 				{Command: "forge hook assertion-check --agent windsurf", ShowOutput: false},
 				{Command: "forge hook read-before-edit --agent windsurf", ShowOutput: false},
 				{Command: "forge hook skill-trigger --agent windsurf", ShowOutput: false},
+				// conventions-profile 写入时刻注入（2026-08-28）：advisory。windsurf 当前
+				// 无 allow-stdout 上下文通道（hostcap），接线遵循「诚实记录、绝不静默
+				// 投递」——Delivered=false 落账，宿主补通道即生效（skill-trigger 同款）。
+				//
+				// conventions-profile write-time injection (2026-08-28): advisory.
+				// windsurf has no allow-stdout context channel today (hostcap); wiring
+				// follows "record honestly, never deliver silently" — lands stamped
+				// Delivered=false, activates the day the host adds the channel (same
+				// as skill-trigger).
+				{Command: "forge hook conventions-write --agent windsurf", ShowOutput: false},
 			},
 			"pre_run_command": {
 				{Command: "forge hook bash-guard --agent windsurf", ShowOutput: false},
@@ -398,6 +408,13 @@ func buildWindsurfHooks() map[string]any {
 				{Command: "forge hook init-suggest --agent windsurf", ShowOutput: false},
 				{Command: "forge hook task-resume --agent windsurf", ShowOutput: false},
 				{Command: "forge hook skill-trigger --agent windsurf", ShowOutput: false},
+				// conventions-profile 会话摘要（2026-08-28）：SessionStart 组在 windsurf
+				// 的挂点即 pre_user_prompt；通道诚实性与 skill-trigger 同款。
+				//
+				// conventions-profile session digest (2026-08-28): pre_user_prompt is
+				// the SessionStart group's windsurf mount; channel honesty same as
+				// skill-trigger.
+				{Command: "forge hook conventions-context --agent windsurf", ShowOutput: false},
 			},
 			// No session_end exists in Cascade: the Stop group (task-verify /
 			// review-stop / skill-trigger) hangs on post_cascade_response — the
