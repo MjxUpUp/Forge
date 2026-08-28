@@ -1,6 +1,7 @@
 package skilltrigger
 
 import (
+	"fmt"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -50,6 +51,7 @@ func condSourceChanged(ctx Context) bool {
 	}
 	if sid := ctx.SessionID; sid != "" && attribution.Enabled() {
 		touched := attribution.SessionTouched(ctx.ProjectRoot, sid)
+		fmt.Printf("[DBG] sid=%q changed=%v touched-keys=%v\n", sid, changed, touched)
 		for _, p := range changed {
 			if touched[filepath.ToSlash(filepath.Clean(p))] && isSourcePath(p) {
 				return true
