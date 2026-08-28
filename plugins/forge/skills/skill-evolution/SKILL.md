@@ -4,6 +4,7 @@ description: "agent skill 持续进化编排（诊断→优化→记决策→acc
 metadata:
   pattern: pipeline
   domain: skill-engineering
+  requires_forge: "true"
   triggers: [{"event":"UserPromptSubmit","keywords":["skill 漏了","没触发","误触发","skill 优化","eval-report","回归验证","skill 进化"],"cooldown":600}]
 ---
 
