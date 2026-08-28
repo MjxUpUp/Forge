@@ -185,3 +185,21 @@ forge skills validate 53/53 通过且 R18Grandfathered 清空；TestR18_Grandfat
 ### Rationale
 
 依赖单向化：方法论完整留在中立库，forge 增强完整在 forge 侧；forge 用户体验经集成笔记+触发指针承接
+
+## [d-18cfffbd8b1be370-8ab8eb88] accept
+
+- **Skill**: implementation-discipline
+- **DecidedAt**: 2026-08-28T14:52:46Z
+- **By**: claude-code
+
+### Diagnosis
+
+doc-review L2 复审发现 :112 门控顺序块漏迁（task-implement→task-verify→task-complete/quarantine 无字面 forge 命令，R18 四模式不命中）——「> Forge 项目」条件块形态已废止但库内残留
+
+### Revision
+
+块中性化为「质量门禁全过→commit、commit 在完成登记前」；forge 门控顺序事实迁入 internal/skillintegrate notes/implementation-discipline.md
+
+### Evidence
+
+复审 grep skills/ 零「Forge 项目」块；forge docs lint 87 文件 0 硬失败；L2 复审 PASS 96/100（C3 resolved）
