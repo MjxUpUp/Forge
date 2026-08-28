@@ -132,10 +132,42 @@ var conventionsShowCmd = &cobra.Command{
 	},
 }
 
+// conventionsLearnCmd 是层 4 纠正写回入口：用户/审查指出「这不符合我们的规范」
+// 时，agent 当场把该规则写进摘要——下个会话（含压缩后重注入）即生效，同一违规
+// 不再重犯。这是 Dynamic-Cheatsheet 式增量学习在 forge 侧的最小落点：纠正的
+// 知识必须离开会话上下文、进入持久档案，否则每次换会话都从零再犯。
+var conventionsLearnCmd = &cobra.Command{
+	Use:   "learn <rule>",
+	Short: "把一条纠正/审查发现的规范增量写回摘要（层 4：纠正离开会话、进档案）",
+	Args:  cobra.MinimumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		root, err := findProjectRoot()
+		if err != nil {
+			return fmt.Errorf("not a forge project — run `forge init` first")
+		}
+		dataDir := forgedata.DataDirFor(root)
+		res, err := conventions.EnrichSummary(dataDir, strings.Join(args, " "))
+		if err != nil {
+			return err
+		}
+		switch {
+		case !res.Changed:
+			fmt.Println("该规则已在摘要中（未改动）:", conventions.SummaryPath(dataDir))
+		case res.OverBudget:
+			fmt.Printf("已写回: %s\n⚠ 摘要非空行数已超 %d 行预算——会话注入将截断至 %d 行（最旧条目不再进入注入），请修剪旧条目（手工编辑或 forge conventions init --force 重建后重新 learn；全文仍在 summary.md / forge conventions show）\n",
+				conventions.SummaryPath(dataDir), conventions.SummaryLineBudget, conventions.SummaryLineBudget)
+		default:
+			fmt.Printf("已写回: %s（下个会话注入即含此规则）\n", conventions.SummaryPath(dataDir))
+		}
+		return nil
+	},
+}
+
 func init() {
 	conventionsInitCmd.Flags().BoolVar(&conventionsInitForce, "force", false, "覆盖已存在的 summary.md（默认保留 agent/人工提炼的内容，只刷新档案元数据）")
 	conventionsCmd.AddCommand(conventionsInitCmd)
 	conventionsCmd.AddCommand(conventionsShowCmd)
+	conventionsCmd.AddCommand(conventionsLearnCmd)
 	rootCmd.AddCommand(conventionsCmd)
 }
 
@@ -174,4 +206,6 @@ func printConventionsInitReport(root, dataDir string, p *conventions.Profile, su
 	fmt.Println("下一步（agent）：对仓库做代码考古，把命名/错误处理/目录结构/import 与注释风格等")
 	fmt.Println("惯例逐条写进 summary.md 的「提取要点」节（整份保持 ≤15 行）——每次会话开始 forge")
 	fmt.Println("会注入这份摘要；规范源文件变化后指纹翻转，forge conventions show 会提示重扫。")
+	fmt.Println("后续纠正：用户/审查指出规范违规时，当场 `forge conventions learn '<规则>'` 写回摘要——")
+	fmt.Println("纠正离开会话进档案，同一违规不再换会话重犯。")
 }
