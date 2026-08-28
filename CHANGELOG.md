@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.45.4](https://github.com/MjxUpUp/Forge/compare/v1.45.3...v1.45.4) (2026-08-28)
+
+
+### Bug Fixes
+
+* **task:** dogfood [#6](https://github.com/MjxUpUp/Forge/issues/6)——--branch 共享 ref 派生 + 两项使用偏离引导 ([690be1a](https://github.com/MjxUpUp/Forge/commit/690be1a740b2b9d8a942cea21ebbb55c406a6099))
+
 ## [1.45.3](https://github.com/MjxUpUp/Forge/compare/v1.45.2...v1.45.3) (2026-08-28)
 
 
