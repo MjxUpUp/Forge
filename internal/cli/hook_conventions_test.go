@@ -275,3 +275,40 @@ func TestConventionsWriteHook_PointersAndExemplars(t *testing.T) {
 		t.Fatalf("unadopted project must be silent, got:\n%s", bareOut)
 	}
 }
+
+// TestConventionsWriteHook_ApplyPatchSynthesis pins the codex path: apply_patch
+// tool_input carries {command: <patch>} with NO file_path — the hook must
+// synthesize the target from the FIRST patch header (shared applyPatchFilePath)
+// and inject for it. This was the adversarial-review gap closed in
+// conventions-followups.
+//
+// TestConventionsWriteHook_ApplyPatchSynthesis 钉住 codex 路径：apply_patch 的
+// tool_input 只带 {command: <patch>}、无 file_path——hook 必须经首个 patch 头
+// （共享 applyPatchFilePath）合成目标并注入。这是对抗审查发现、在
+// conventions-followups 修复的缺口。
+func TestConventionsWriteHook_ApplyPatchSynthesis(t *testing.T) {
+	root := convTestProject(t)
+	convProfile(t, root)
+	convWrite(t, root, "internal/srv/alpha.go", "package srv\n")
+	resetConvMarkers(t, "sess-cw-patch")
+
+	patch := "*** Begin Patch\n*** Update File: internal/srv/new.go\n@@\n package srv\n-x\n+y\n*** End Patch\n"
+	raw, _ := json.Marshal(map[string]string{"command": patch})
+	in := HookInput{
+		HookEventName: "PreToolUse",
+		SessionID:     "sess-cw-patch",
+		ToolName:      "apply_patch",
+		ToolInput:     raw,
+	}
+	out := captureStdout(t, func() {
+		if err := runConventionsWriteHook(in, root, "test", ""); err != nil {
+			t.Fatalf("write hook must never error: %v", err)
+		}
+	})
+	if !strings.Contains(out, "internal/srv/new.go") {
+		t.Fatalf("apply_patch target must be synthesized and injected, got:\n%s", out)
+	}
+	if !strings.Contains(out, "internal/srv/alpha.go") {
+		t.Fatalf("sibling exemplar missing on the synthesized path:\n%s", out)
+	}
+}

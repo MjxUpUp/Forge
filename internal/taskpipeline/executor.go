@@ -1074,6 +1074,31 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 			}
 		}
 
+		// conventions-lint (advisory): the project's conventions profile declares
+		// a lint command (conventions-profile layer 3 — mechanical style belongs to
+		// the toolchain, the research consensus "rules are advisory, hooks are
+		// deterministic"); this task has tool telemetry, yet no Bash command in the
+		// task scope matched the lint signature → one nudge to run it before
+		// claiming done. Purely advisory (the lint may have run in CI/editor —
+		// toollog only sees the host's Bash); CheckConventionsLint also stays
+		// silent (no checklog row) for unadopted projects and telemetry-less hosts.
+		// CheckConventionsLint is excluded from BuildEvidenceChain — an observation,
+		// not verification evidence. Escape: FORGE_CONVENTIONS_LINT=disable.
+		//
+		// conventions-lint（advisory）：项目规范档案声明了 lint 命令
+		// （conventions-profile 层 3——机械风格交给工具链，业界共识「规则建议、
+		// hooks 确定性」）；本任务有工具遥测、但任务范围内无 Bash 命令命中 lint
+		// 签名 → 声称完成前提醒跑一次。纯 advisory（lint 可能经 CI/编辑器跑过
+		// ——toollog 只见宿主 Bash）；未采纳项目与无遥测宿主上 CheckConventionsLint
+		// 保持静默（不落 checklog）。CheckConventionsLint 在 BuildEvidenceChain 中
+		// 被排除——观测非验证证据。逃生：FORGE_CONVENTIONS_LINT=disable。
+		lintOutcome := CheckConventionsLint(root, state)
+		recordConventionsLintAudit(root, state, lintOutcome)
+		if lintOutcome.Applicable && !lintOutcome.Ran {
+			fmt.Fprintf(os.Stderr, "%sconventions-lint——本任务 Bash 历史未见档案声明的 lint 命令（%s）：声称完成前跑一次，机械风格交给工具链（advisory 不阻塞；关闭：FORGE_CONVENTIONS_LINT=disable）\n",
+				GateAdvisory("[task-verify] "), lintOutcome.LintCmd)
+		}
+
 		// test-capability scan (advisory): when the repo has runnable tests, suggest the agent
 		// actually execute them before verify. Supplements task-verify's 'did you run them'
 		// dimension — the test-coverage above only checks 'tests accompany changes' (wrote a

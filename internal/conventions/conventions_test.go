@@ -395,3 +395,86 @@ func nonEmptyLines(s string) int {
 	}
 	return n
 }
+
+// TestEnrichSummary pins the layer-4 write-back contract: placeholder
+// replacement on first learn, newest-first insertion afterwards, exact-dedupe
+// no-op, missing-summary refusal, and the over-budget flag (write still
+// happens — never silently drop user content).
+//
+// TestEnrichSummary 钉住层 4 写回契约：首次 learn 替换占位符、其后最新在前
+// 插入、一字不差去重空操作、summary 缺失拒绝、超预算标记（写入照常——绝不
+// 静默丢用户内容）。
+func TestEnrichSummary(t *testing.T) {
+	dataDir := t.TempDir()
+	if _, err := EnrichSummary(dataDir, "rule"); err == nil {
+		t.Fatal("learn before init must refuse (an orphan digest with no profile)")
+	}
+	if err := SaveSummary(dataDir, GenerateSummary(&Profile{Version: ProfileVersion, Stack: "go", LintCmd: "go vet ./..."})); err != nil {
+		t.Fatal(err)
+	}
+
+	// 首次：替换「待提取」占位符，不新增行。
+	res, err := EnrichSummary(dataDir, "error handling: fmt.Errorf %w wrap")
+	if err != nil || !res.Changed || res.OverBudget {
+		t.Fatalf("first learn = %+v, %v", res, err)
+	}
+	sum := LoadSummary(dataDir)
+	if strings.Contains(sum, "（待提取）") {
+		t.Fatalf("placeholder must be replaced, got:\n%s", sum)
+	}
+	if !strings.Contains(sum, "- error handling: fmt.Errorf %w wrap") {
+		t.Fatalf("rule line missing:\n%s", sum)
+	}
+
+	// 完全重复：空操作。
+	res, err = EnrichSummary(dataDir, "error handling: fmt.Errorf %w wrap")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Changed {
+		t.Fatal("exact duplicate must be a no-op")
+	}
+
+	// 第二条：插入提取要点标题正下方（最新在前）。
+	if _, err := EnrichSummary(dataDir, "naming: want/got in table tests"); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(LoadSummary(dataDir), "\n")
+	heading := -1
+	for i, l := range lines {
+		if strings.HasPrefix(strings.TrimSpace(l), extractHeadingPrefix) {
+			heading = i
+			break
+		}
+	}
+	if heading == -1 || heading+1 >= len(lines) || !strings.Contains(lines[heading+1], "want/got") {
+		t.Fatalf("newest rule must sit right under the heading, got:\n%s", LoadSummary(dataDir))
+	}
+
+	// 超预算：写入照常 + 标记 OverBudget。
+	for i := 0; i < SummaryLineBudget+2; i++ {
+		if _, err := EnrichSummary(dataDir, "filler rule "+strings.Repeat("x", i+1)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	res, err = EnrichSummary(dataDir, "one more rule")
+	if err != nil || !res.Changed {
+		t.Fatalf("over-budget learn must still write: %+v, %v", res, err)
+	}
+	if !res.OverBudget {
+		t.Fatal("digest beyond the budget must flag OverBudget (caller surfaces the prune warning)")
+	}
+
+	// 标题被用户删掉：追加新节，规则不因结构漂移丢失。
+	bare := t.TempDir()
+	if err := SaveSummary(bare, "# digest\n\n- stack: go\n"); err != nil {
+		t.Fatal(err)
+	}
+	res, err = EnrichSummary(bare, "resurrected rule")
+	if err != nil || !res.Changed {
+		t.Fatalf("missing-heading learn = %+v, %v", res, err)
+	}
+	if s := LoadSummary(bare); !strings.Contains(s, extractHeadingPrefix) || !strings.Contains(s, "resurrected rule") {
+		t.Fatalf("missing heading must append a fresh section:\n%s", s)
+	}
+}
