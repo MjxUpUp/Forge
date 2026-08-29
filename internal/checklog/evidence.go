@@ -209,6 +209,56 @@ func (ec EvidenceChain) Strength() EvidenceStrength {
 	return s
 }
 
+// verificationChecks is the WHITELIST of check names whose entries may feed
+// evidence strength (fix/cleanup-batch, 2026-08-29). It inverts the former
+// 18-clause observation disjunction: a check NOT positively listed here is an
+// observation and never bucketed, whatever its Source says — fail-safe against
+// the unknown-check-name trap the old denylist had (a new observation check
+// added without touching the list silently landed in the deterministic bucket
+// and inflated Strength). Semantically equivalent for every existing check: the
+// listed names are exactly the verification/gate-class checks the denylist used
+// to pass through.
+//
+// The three taskpipeline-defined names (acceptance / test-run /
+// skill-decisions-advisory) are duplicated as literals because checklog is a
+// leaf package — importing taskpipeline would create a cycle (taskpipeline
+// imports checklog), the same discipline as the Detail-prefix literals in
+// types.go. Deliberately NOT whitelisted (previously fed bucketing, now
+// observations — the fail-safe direction): assignment-unclaimed
+// (cli/task_assignment.go, an always-advisory process marker) and the
+// advisory-hook names that reach the log as hook-name checks (resume-reinject,
+// init-suggest, mcp-scan, read-before-edit, freeze-guard, skill-scan,
+// task-resume, tool-track) — negative/advisory signals must not read as
+// positive verification evidence.
+//
+// verificationChecks 是允许喂给 evidence strength 的 check 名【白名单】
+// （fix/cleanup-batch，2026-08-29）。它把原先 18 子句的 observation 析取反转：
+// 未正向列名的 check 一律是观察、绝不分桶——无论其 Source 写什么——对旧黑名单
+// 的「未知 check 名陷阱」fail-safe（新增观察 check 不更新清单就会静默落进
+// deterministic 桶、虚高 Strength）。对既有 check 语义等价：所列名单正是旧黑名单
+// 曾经放行的验证/门禁类 check。
+//
+// 三个定义在 taskpipeline 的名字（acceptance / test-run /
+// skill-decisions-advisory）以字面量重复——checklog 是叶子包，import
+// taskpipeline 会成环（taskpipeline import checklog），与 types.go 的 Detail
+// 前缀字面量同纪律。刻意【不】列入白名单（此前会计入分桶、现为观察——
+// fail-safe 方向）：assignment-unclaimed（cli/task_assignment.go，恒 advisory
+// 的流程标记）与以 hook 名入日志的 advisory hook 名（resume-reinject、
+// init-suggest、mcp-scan、read-before-edit、freeze-guard、skill-scan、
+// task-resume、tool-track）——负向/advisory 信号不得读作正向验证证据。
+var verificationChecks = map[CheckName]bool{
+	CheckAutoCompile:                      true, // auto-compile：编译 hook 实跑
+	CheckAssertion:                        true, // assertion-check：断言 hook 实跑
+	CheckTaskVerify:                       true, // task-verify：门禁推进（SourceForCheck 默认 agent-claim）
+	CheckTaskComplete:                     true, // task-complete：门禁推进（同上）
+	CheckTaskGuard:                        true, // task-guard：PreToolUse 拦截判定
+	CheckBashGuard:                        true, // bash-guard：PreToolUse 拦截判定
+	CheckFileSentinel:                     true, // file-sentinel：哨兵文件判定
+	CheckName("acceptance"):               true, // taskpipeline.CheckNameAcceptance：实跑验收标准（deterministic 不可伪造）
+	CheckName("test-run"):                 true, // taskpipeline.CheckNameTestRun：实跑测试套件（deterministic 不可伪造）
+	CheckName("skill-decisions-advisory"): true, // taskpipeline.CheckNameSkillDecisions：task-verify guardrail 判定
+}
+
 // BuildEvidenceChain is a pure function: buckets entries already belonging to a task by source. Entries with empty
 // Source (legacy data, or un-migrated record points) fall back to SourceForCheck, ensuring old checklog
 // is bucketed correctly and the foundation can ship without backfilling history.
@@ -219,73 +269,26 @@ func (ec EvidenceChain) Strength() EvidenceStrength {
 func BuildEvidenceChain(entries []Entry, taskRef string) EvidenceChain {
 	ec := EvidenceChain{TaskRef: taskRef, Entries: entries}
 	for _, e := range entries {
-		// Advisory/meta checks record OBSERVATIONS rather than verification results —
-		// they must never feed into evidence strength. scope-drift is an advisory signal (agent modified undeclared
-		// source); treating it as deterministic verification would inflate Strength and mask exactly the blind spot
-		// EvidenceChain is meant to expose. Entries are still kept in Entries (forge trace will display them); only the
-		// bucketing count skips them. Drift is usually a negative signal — counting it as positive evidence is doubly wrong.
-		// cheat-scan is the same kind (mechanical scan for AI-cheat suspicion patterns) — hits are negative signals, not verification
-		// evidence. CheckEscapeHatch is the same: using a gate-bypass is an observation of "skipping", not "verifying" —
-		// treating it as deterministic would inflate Strength and hide the signal it should expose (task slipping through by dodging gates).
-		// It sets UsedEscapeHatch so Strength can be capped at Weak.
-		// CheckSkillTrigger is the same observation class but semantically NEUTRAL: it records that a canonical skill
-		// fired (passive injection), not verification — counting it as deterministic would inflate Strength while the
-		// entry says nothing about whether the task's verification actually ran. Unlike drift/cheat-scan (negative
-		// signals), a skill firing is neither good nor bad for the claim; it simply must not feed evidence strength.
-		// Entries are kept in Entries for skill-usage/effectiveness analytics.
-		// CheckKimiPluginStale is the same neutral observation class: it records that the kimi plugin install lags
-		// the binary (distribution health), not that any verification ran — bucketing it as deterministic would
-		// inflate Strength off a once-daily distribution warning (code-review F1, 2026-08-15).
-		// CheckReviewPass / CheckPlanFirst are the same observation class: review-pass marks that a review
-		// stamp was placed (a claim marker enabling rework-round metrics), plan-first marks that a task
-		// reached implement without a recorded plan (a process signal) — neither says any verification
-		// actually ran, so neither may feed evidence strength.
-		// CheckBundleVerify is the same observation class: an import-time trust verdict about the
-		// MULTI-MACHINE surface (who signed, was it accepted) — it says nothing about whether THIS
-		// task's verification ran, so it must not feed this task's evidence strength.
-		// CheckProjectSync is the same: a git-transport op outcome (sync succeeded/failed) —
-		// infrastructure health, not task verification.
-		// CheckCrossRepoImpact is the same observation class: it records whether a
-		// multi-repo-workspace task declared its cross-repo impact (a process signal),
-		// not whether any verification ran — counting it as deterministic would inflate
-		// Strength exactly like scope-drift.
+		// WHITELIST gate (inverted from the former 18-clause observation denylist,
+		// fix/cleanup-batch 2026-08-29): only positively-listed verification checks
+		// may feed evidence strength. Everything else — the observation class
+		// (scope-drift, cheat-scan, escape-hatch, skill-trigger, ...), advisory
+		// hook-name checks, and any NEW/unknown check name — is kept in Entries
+		// (forge trace displays them) but skipped by the bucketing counts, whatever
+		// its Source says. Fail-safe: a future observation check can no longer
+		// inflate Strength by default; adding verification evidence requires
+		// positively joining the whitelist. See verificationChecks for the
+		// membership rationale and the deliberately-excluded names.
 		//
-		// Advisory/meta check 记录的是 OBSERVATIONS（观察）而非 verification 结果——
-		// 绝不可计入 evidence strength。scope-drift 是 advisory 信号（agent 改了未声明的
-		// 源码）；把它当作 deterministic verification 会让 Strength 虚高、正好掩盖
-		// EvidenceChain 要暴露的盲区。条目仍落进 Entries（forge trace 会展示），只是分桶
-		// 计数跳过它。Drift 通常还是负向信号——当作正向证据是双重错误。
-		// cheat-scan 同类（机械扫描 AI-cheat 嫌疑模式）——命中是负向信号，非 verification
-		// 证据。CheckEscapeHatch 同类：用过 gate-bypass 是「跳过」的观察、不是「验证」——
-		// 当成 deterministic 会让 Strength 虚高、正好隐藏它该暴露的信号（task 靠躲 gate
-		// 蒙混过关）。它置 UsedEscapeHatch，让 Strength 能 cap 到 Weak。
-		// CheckSkillTrigger 同属 observation 类但语义中性：记录某 canonical skill 触发（被动注入），非
-		// verification——计入 deterministic 会让 Strength 虚高，而该条目对"本任务验证是否真跑"一字未提。
-		// 与 drift/cheat-scan（负向信号）不同，skill 触发对声明既不好也不坏；它只是绝不能喂给 evidence
-		// strength。条目保留在 Entries 供 skill-usage/effectiveness 分析。
-		// CheckKimiPluginStale 同属中性 observation 类：记录 kimi plugin 安装落后于二进制
-		// （分发健康度），不是任何验证实跑——分桶成 deterministic 会让每日一次的分发告警
-		// 虚增 Strength（code-review F1，2026-08-15）。
-		// CheckReviewPass / CheckPlanFirst 同属 observation 类：review-pass 是"审查已打戳"
-		// 的声明标记（供返工轮次度量），plan-first 是"无方案记录"的流程信号——两者都不
-		// 代表任何验证实跑，故都不得喂给 evidence strength。
-		// CheckBundleVerify 同属 observation 类：它是导入侧对多机信任面的判定（谁签的名、
-		// 是否被接受），与本任务验证是否实跑无关，不得喂本任务的证据强度。
-		// CheckProjectSync 同属：git 通道同步操作的成败——基建健康度，非任务验证。
-		// CheckCrossRepoImpact 同属 observation 类：它记录多仓 workspace 任务是否声明了
-		// 跨仓影响（流程信号），与验证是否实跑无关——计入 deterministic 会像
-		// scope-drift 一样虚增 Strength。
-		// CheckTaskStarted 同属 observation 类：它是任务启动的时间线边界标记（L2 事件化
-		// 废 Clear 的替代物），与验证是否实跑无关——边界绝不可当证据计数，否则每开一个
-		// 任务就白得一条 deterministic 证据。
-		// CheckAttribution 同属：归属台账的覆盖率度量（基建健康度）——不是任何验证实跑，
-		// 计入会把「台账解释了多少变更」错当「任务验证了多少」。
-		// CheckConventionsInject 同属 observation 类：conventions 层的注入投递记录
-		//（会话摘要/写入时刻指针到达了模型上下文）——投递发生≠验证实跑，计入会让
-		// 每个会话白得一条 deterministic 证据（与 CheckTaskStarted 的边界不可当证据同理）。
-		// CheckConventionsLint 同属：lint 命令「出现过在 Bash 历史」的过程观察——
-		// 命令跑过且挂掉依然要修，它对「验证是否通过」一字未提，计入同样虚增。
-		if e.Check == CheckScopeDrift || e.Check == CheckCheatScan || e.Check == CheckUnusedScan || e.Check == CheckEscapeHatch || e.Check == CheckSkillTrigger || e.Check == CheckKimiPluginStale || e.Check == CheckReviewPass || e.Check == CheckPlanFirst || e.Check == CheckToolFailure || e.Check == CheckSubagentStop || e.Check == CheckTestNudge || e.Check == CheckBundleVerify || e.Check == CheckProjectSync || e.Check == CheckCrossRepoImpact || e.Check == CheckTaskStarted || e.Check == CheckAttribution || e.Check == CheckConventionsInject || e.Check == CheckConventionsLint {
+		// 白名单闸门（由原先 18 子句的 observation 黑名单反转而来，
+		// fix/cleanup-batch 2026-08-29）：只有正向列名的验证类 check 才可喂给
+		// evidence strength。其余——observation 类（scope-drift、cheat-scan、
+		// escape-hatch、skill-trigger、……）、advisory hook 名 check、以及任何
+		// 新增/未知 check 名——保留在 Entries（forge trace 会展示）但分桶计数跳过，
+		// 无论其 Source 写什么。fail-safe：未来的观察 check 不再默认虚高
+		// Strength；新增验证证据必须显式加入白名单。成员依据与刻意排除名单
+		// 见 verificationChecks。
+		if !verificationChecks[e.Check] {
 			// Only VERIFICATION-class escape hatches (test-coverage/acceptance/skill-decisions) set the cap flag.
 			// work-activity is a rhythm gate (tool calls between gates), not verification — using it does not prop the
 			// "done" claim on skipped verification, so it must not cap Strength (else refactor-heavy weeks inflate the

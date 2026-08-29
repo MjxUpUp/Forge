@@ -1,14 +1,18 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/act"
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // TestAppendConclusion_WritesAndDirectives pins the wiring boundary in task.go: appendConclusion
@@ -200,10 +204,13 @@ func TestPrintSkillReach(t *testing.T) {
 		}
 	})
 
-	// P1 core verification: toolusage.Clear simulates the archival performed by `forge task start`. After archival, querying this task's Skills
+	// P1 core verification: toollog archival simulated by a direct rename (the old
+	// toolusage.Clear helper was deleted as dead code — task start no longer
+	// truncates the toollog). After archival, querying this task's Skills
 	// must still be visible (LoadForTaskAll across archives), otherwise completed tasks would never show their Skills in `forge act show`.
 	//
-	// P1 核心验证：toolusage.Clear 模拟 forge task start 归档。归档后查该 task 的 Skills
+	// P1 核心验证：toollog 归档改为直接 rename 模拟（旧的 toolusage.Clear 助手已作
+	// 死代码删除——task start 不再截断 toollog）。归档后查该 task 的 Skills
 	// 必须仍可见（LoadForTaskAll 跨归档），否则完成的任务再 forge act show 永远看不到 Skills。
 	t.Run(`has_skill_calls_archived`, func(t *testing.T) {
 		root, _ := forgedatatest.RealProject(t)
@@ -212,12 +219,31 @@ func TestPrintSkillReach(t *testing.T) {
 		}); err != nil {
 			t.Fatalf(`seed: %v`, err)
 		}
-		if err := toolusage.Clear(root); err != nil {
-			t.Fatalf(`Clear（模拟 task start 归档）: %v`, err)
+		if err := archiveToollogForTest(t, root); err != nil {
+			t.Fatalf(`归档模拟（rename active toollog）: %v`, err)
 		}
 		out := captureStdout(t, func() { printSkillReach(root, `feat/old`) })
 		if !strings.Contains(out, `archived-skill`) {
 			t.Errorf(`归档后仍应读到该 task 的 Skills（LoadForTaskAll 跨归档），got: %q`, out)
 		}
 	})
+}
+
+// archiveToollogForTest renames the active toollog to a timestamped archive —
+// the on-disk shape `forge task start` archival used to produce via the deleted
+// toolusage.Clear. Readers must span archives (LoadForTaskAll / LoadAllAll).
+//
+// archiveToollogForTest 把 active toollog 重命名为带时间戳的归档——即旧
+// toolusage.Clear 为 `forge task start` 归档产出的磁盘形态。读取方必须跨归档
+// （LoadForTaskAll / LoadAllAll）。
+func archiveToollogForTest(t *testing.T, root string) error {
+	t.Helper()
+	dir := forgedata.DataDirFor(root)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	return os.Rename(
+		filepath.Join(dir, `toollog.jsonl`),
+		util.ArchivedName(dir, `toollog`, time.Now()),
+	)
 }

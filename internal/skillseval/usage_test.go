@@ -5,9 +5,12 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 func mustWrite(t *testing.T, err error) {
@@ -158,21 +161,33 @@ func TestAnalyzeUsage_FiltersGhostSkills(t *testing.T) {
 	}
 }
 
-// TestSkillCountsFromToollog_ArchiveSurvives: forge task start calls toolusage.Clear to archive
-// active toollog to toollog-<ts>.jsonl. SkillCountsFromToollog must read across archives (LoadAllAll),
-// otherwise historical task Skill calls are lost after archiving — archive blind spot is a prerequisite for cross-task analysis.
+// TestSkillCountsFromToollog_ArchiveSurvives: the archived toollog-<ts>.jsonl
+// shape is what historical task-start archival produced. SkillCountsFromToollog
+// must read across archives (LoadAllAll), otherwise historical task Skill calls
+// are lost after archiving — archive blind spot is a prerequisite for
+// cross-task analysis. (The old toolusage.Clear helper used here was deleted as
+// dead code; the archive is simulated by a direct rename — the same on-disk
+// shape.)
 //
-// TestSkillCountsFromToollog_ArchiveSurvives：forge task start 调 toolusage.Clear 归档
-// active toollog 到 toollog-<ts>.jsonl。SkillCountsFromToollog 必须跨归档读（LoadAllAll），
-// 否则归档后历史任务的 Skill 调用全丢——归档盲区是跨任务分析前提。
+// TestSkillCountsFromToollog_ArchiveSurvives：toollog-<ts>.jsonl 归档形态即历史
+// task-start 归档产出的形态。SkillCountsFromToollog 必须跨归档读（LoadAllAll），
+// 否则归档后历史任务的 Skill 调用全丢——归档盲区是跨任务分析前提。（此处原先
+// 用的 toolusage.Clear 助手已作死代码删除；归档改为直接 rename 模拟——同样的
+// 磁盘形态。）
 func TestSkillCountsFromToollog_ArchiveSurvives(t *testing.T) {
 	root := t.TempDir()
 	recordSkillCall(t, root, "old-skill", "t1")
 	recordSkillCall(t, root, "old-skill", "t1")
-	// Simulate forge task start archiving: Clear archives active toollog then empties it
+	// Simulate task-start archiving: rename the active toollog to a timestamped
+	// archive, then let new calls start a fresh active file.
 	//
-	// 模拟 forge task start 归档：Clear 把 active toollog 归档后清空
-	if err := toolusage.Clear(root); err != nil {
+	// 模拟 task-start 归档：把 active toollog 重命名为带时间戳的归档，
+	// 新调用随后落在全新的 active 文件里。
+	dir := forgedata.DataDirFor(root)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Join(dir, "toollog.jsonl"), util.ArchivedName(dir, "toollog", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	// New task active toollog
