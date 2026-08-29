@@ -1025,3 +1025,135 @@ func TestInstall_UnknownSkillFilterErrors(t *testing.T) {
 		t.Fatalf("DriftCheck: 错误应点名未匹配的 skill，got: %v", err)
 	}
 }
+
+// TestCopyTree_JunctionEntryNotError pins the copyTree junction fix (review
+// finding): the link detection must use !d.Type().IsRegular() — the SAME rule as
+// hashTree — not ModeSymlink alone. WalkDir reports Windows junctions as
+// ModeIrregular (not ModeSymlink), so the old check let a junction entry fall
+// through to os.ReadFile, which fails on a directory reparse point and failed
+// the whole copyTree on Windows. The junction entry is skipped (like symlinks
+// always were); the regular files around it must still be copied.
+//
+// TestCopyTree_JunctionEntryNotError 钉死 copyTree 的 junction 修复（审查发现）：
+// link 判定必须用 !d.Type().IsRegular()——与 hashTree 同一规则——而非仅
+// ModeSymlink。WalkDir 把 Windows junction 报为 ModeIrregular（非
+// ModeSymlink），旧判定会让 junction 条目落到 os.ReadFile，对目录 reparse
+// point 读取必失败、整个 copyTree 在 Windows 报错。junction 条目被跳过（与
+// symlink 一贯的行为一致）；其周围的常规文件必须照常复制。
+func TestCopyTree_JunctionEntryNotError(t *testing.T) {
+	src := t.TempDir()
+	mustMk(t, os.WriteFile(filepath.Join(src, "SKILL.md"), []byte("x"), 0655))
+	// A junction (Windows, no admin) / dir symlink (unix) INSIDE the tree —
+	// the entry shape that used to fail the copy on Windows.
+	//
+	// 树内的 junction（Windows 免提权）/目录 symlink（unix）——正是 Windows 上
+	// 曾让 copy 失败的条目形态。
+	linkTarget := t.TempDir()
+	mustMk(t, os.WriteFile(filepath.Join(linkTarget, "inner.md"), []byte("inner"), 0644))
+	mustMk(t, makeDirLink(filepath.Join(src, "ref-link"), linkTarget))
+
+	dst := t.TempDir()
+	if err := copyTree(src, dst); err != nil {
+		t.Fatalf("copyTree 含 junction/link 条目不得报错（修复前 Windows 在此失败）: %v", err)
+	}
+	data, rerr := os.ReadFile(filepath.Join(dst, "SKILL.md"))
+	if rerr != nil || string(data) != "x" {
+		t.Fatalf("常规文件必须照常复制: %v %q", rerr, string(data))
+	}
+	// Non-regular entries are skipped, not expanded (the link itself is not a
+	// copied directory — same semantics symlinks always had).
+	//
+	// 非常规条目被跳过而非展开（link 本身不是被复制的目录——与 symlink 一贯语义一致）。
+	if _, err := os.Lstat(filepath.Join(dst, "ref-link")); !os.IsNotExist(err) {
+		t.Logf("ref-link 在副本中存在（跟随语义）: err=%v", err)
+	}
+}
+
+// TestTreesInSync_TargetOnlySkipDirIsDrift pins the skip-blind-spot fix: a skip
+// dir (distSkipDirs: .git/node_modules/...) present ONLY in the target tree —
+// e.g. the user ran git init inside the installed copy — must judge DRIFT, not
+// copy-in-sync. Before the fix both sides skipped .git in the content hash, so
+// the trees compared equal and link mode's copy-in-sync→link transition
+// os.RemoveAll'd the whole target with NO backup (backup only triggers on
+// StateDrift) — silent destruction of the user's .git. A skip dir present on
+// BOTH sides stays in sync (canonical's copy is not distributed, the target's
+// survives copyTree's skip — consistent).
+//
+// TestTreesInSync_TargetOnlySkipDirIsDrift 钉死 skip 盲区修复：仅目标侧存在的
+// 被跳过目录（distSkipDirs：.git/node_modules/…——如用户在装出的副本里 git init）
+// 必须判 DRIFT 而非 copy-in-sync。修复前双侧内容 hash 都跳过 .git，两树比成
+// 相等，link 模式的 copy-in-sync→link 迁移会无备份 os.RemoveAll 整树（备份只在
+// StateDrift 触发）——用户的 .git 被静默销毁。双侧都有的被跳过目录仍判同步
+// （canonical 的那份不分发、目标的经 copyTree 跳过存活——口径一致）。
+func TestTreesInSync_TargetOnlySkipDirIsDrift(t *testing.T) {
+	canonical := t.TempDir()
+	skillDir := writeCanonicalSkill(t, canonical, "my-skill")
+
+	target := t.TempDir()
+	dst := filepath.Join(target, "my-skill")
+	mustMk(t, copyTree(skillDir, dst))
+
+	// Baseline: identical trees → in sync.
+	//
+	// 基线：两树一致 → 同步。
+	if !treesInSync(skillDir, dst) {
+		t.Fatal("基线：内容一致应判 in-sync")
+	}
+
+	// User ran git init inside the installed copy: target-only .git → drift.
+	//
+	// 用户在装出的副本里 git init：目标单侧 .git → drift。
+	mustMk(t, os.MkdirAll(filepath.Join(dst, ".git", "objects"), 0755))
+	mustMk(t, os.WriteFile(filepath.Join(dst, ".git", "HEAD"), []byte("ref: refs/heads/main"), 0644))
+	if treesInSync(skillDir, dst) {
+		t.Fatal("目标单侧 .git 必须判 drift（修复前双侧跳过 .git → 误判 in-sync → link 模式无备份删树）")
+	}
+	if got := detectState(skillDir, dst); got != StateDrift {
+		t.Fatalf("detectState: got %s, want drift（用户 .git 是本地状态，须走有备份路径）", got)
+	}
+
+	// Same skip dir on BOTH sides → still in sync (no false drift for canonical
+	// trees that legitimately contain a skip dir).
+	//
+	// 双侧同名被跳过目录 → 仍判同步（canonical 本身含被跳过目录时不得误报 drift）。
+	mustMk(t, os.MkdirAll(filepath.Join(skillDir, ".git", "objects"), 0755))
+	mustMk(t, os.WriteFile(filepath.Join(skillDir, ".git", "HEAD"), []byte("ref: refs/heads/main"), 0644))
+	if !treesInSync(skillDir, dst) {
+		t.Fatal("双侧 .git 应判 in-sync（内容对比双侧都跳过、存在性双侧都命中）")
+	}
+	if got := detectState(skillDir, dst); got != StateCopyInSync {
+		t.Fatalf("detectState: got %s, want copy-in-sync（双侧 .git 不构成 drift）", got)
+	}
+}
+
+// TestBackupTarget_IncludesSkipDirs pins the backup full-copy switch: the
+// overwrite backup must snapshot EVERYTHING — .git/node_modules included — via
+// copyTreeFiltered(nil). Combined with the skip-blind-spot drift fix, this is
+// the rollback path that preserves the user's git init: drift (backup) →
+// overwrite → the .git lands in the backup, not in the void.
+//
+// TestBackupTarget_IncludesSkipDirs 钉死备份切换为完整拷贝：overwrite 备份必须
+// 快照全部内容——含 .git/node_modules——经 copyTreeFiltered(nil)。与 skip 盲区
+// drift 修复合起来，这就是保住用户 git init 的回滚路径：drift（备份）→
+// overwrite → .git 落进备份而非虚空。
+func TestBackupTarget_IncludesSkipDirs(t *testing.T) {
+	dst := filepath.Join(t.TempDir(), "claude", "my-skill")
+	mustMk(t, os.MkdirAll(filepath.Join(dst, ".git", "objects"), 0755))
+	mustMk(t, os.WriteFile(filepath.Join(dst, "SKILL.md"), []byte("user custom"), 0644))
+	mustMk(t, os.WriteFile(filepath.Join(dst, ".git", "HEAD"), []byte("ref: refs/heads/main"), 0644))
+	mustMk(t, os.MkdirAll(filepath.Join(dst, "node_modules", "pkg"), 0755))
+	mustMk(t, os.WriteFile(filepath.Join(dst, "node_modules", "pkg", "index.js"), []byte("y"), 0644))
+
+	got, err := backupTarget(dst, t.TempDir(), "claude", "my-skill")
+	mustMk(t, err)
+	if got == "" {
+		t.Fatal("真目录副本应被备份，got 空路径")
+	}
+	head, rerr := os.ReadFile(filepath.Join(got, ".git", "HEAD"))
+	if rerr != nil || string(head) != "ref: refs/heads/main" {
+		t.Fatalf("备份必须包含 .git（完整拷贝，不跳过 distSkipDirs）: %v %q", rerr, string(head))
+	}
+	if _, err := os.Stat(filepath.Join(got, "node_modules", "pkg", "index.js")); err != nil {
+		t.Fatalf("备份必须包含 node_modules: %v", err)
+	}
+}

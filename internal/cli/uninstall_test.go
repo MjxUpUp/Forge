@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -443,5 +445,100 @@ func TestUninstall_GuidanceNoStaleReset(t *testing.T) {
 	}
 	if !strings.Contains(string(src), "--restore") {
 		t.Errorf("uninstall.go 指引应包含 --restore 回滚路径")
+	}
+}
+
+// TestUninstall_GitHubChannel_ManualGuidanceNotNpm pins the install-channel split of
+// the binary-removal step (review fix): a GitHub-release / manually-placed binary is
+// NOT an npm package, so `npm uninstall -g` is a guaranteed failure — the step must
+// print the resolved executable path + manual deletion guidance instead. PATH is
+// isolated to a dir without npm so a regression to the npm branch surfaces as the
+// 「npm 不可用」warning (asserted absent) rather than an actual global uninstall.
+//
+// TestUninstall_GitHubChannel_ManualGuidanceNotNpm 钉死二进制移除步骤的安装通道分流
+// （审查修复）：GitHub Release/手动放置的二进制不是 npm 包，`npm uninstall -g` 注定
+// 失败——该步骤必须打印解析后的可执行路径 + 手动删除指引。PATH 隔离到无 npm 的目录，
+// 分流若退化回 npm 分支会浮出「npm 不可用」告警（断言其缺席）而非真的全局卸载。
+func TestUninstall_GitHubChannel_ManualGuidanceNotNpm(t *testing.T) {
+	orig := detectInstallChannelFn
+	detectInstallChannelFn = func() installChannel { return installChannel{kind: channelGitHub} }
+	t.Cleanup(func() { detectInstallChannelFn = orig })
+
+	// PATH isolation (no npm inside): regression to the npm branch fails LookPath
+	// here instead of running a real global npm uninstall.
+	//
+	// PATH 隔离（目录内无 npm）：退化回 npm 分支时 LookPath 在此失败，
+	// 而不是真的跑一次全局 npm uninstall。
+	t.Setenv(`PATH`, t.TempDir())
+
+	var out, errBuf bytes.Buffer
+	uninstallBinaryStep(&out, &errBuf)
+
+	if want, err := getExecutablePath(); err == nil {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf(`GitHub 通道应打印解析后的二进制实际路径 %s, stdout=%q`, want, out.String())
+		}
+	} else {
+		t.Fatalf(`getExecutablePath 在测试进程中不应失败: %v`, err)
+	}
+	if !strings.Contains(out.String(), `手动删除`) {
+		t.Errorf(`GitHub 通道应打印手动删除指引, stdout=%q`, out.String())
+	}
+	if strings.Contains(errBuf.String(), `npm 不可用`) || strings.Contains(errBuf.String(), `npm uninstall 失败`) {
+		t.Errorf(`GitHub 通道不得尝试 npm uninstall, stderr=%q`, errBuf.String())
+	}
+	if runtime.GOOS == `windows` && !strings.Contains(out.String(), `.exe.old`) {
+		t.Errorf(`Windows 上应提示 .exe.old 残留清理, stdout=%q`, out.String())
+	}
+}
+
+// TestUninstall_NpmChannel_RoutesToNpm pins the other half of the split: the npm
+// channel keeps the existing npm-uninstall path. PATH isolation (no npm) makes the
+// branch observable as the「npm 不可用」warning, and the manual guidance must NOT
+// print for npm installs.
+//
+// TestUninstall_NpmChannel_RoutesToNpm 钉死分流的另一半：npm 通道保持现有 npm
+// uninstall 路径。PATH 隔离（无 npm）让该分支以「npm 不可用」告警可观测，
+// 且 npm 安装不得打印手动删除指引。
+func TestUninstall_NpmChannel_RoutesToNpm(t *testing.T) {
+	orig := detectInstallChannelFn
+	detectInstallChannelFn = func() installChannel { return installChannel{kind: channelNPM, pm: "npm"} }
+	t.Cleanup(func() { detectInstallChannelFn = orig })
+
+	t.Setenv(`PATH`, t.TempDir())
+
+	var out, errBuf bytes.Buffer
+	uninstallBinaryStep(&out, &errBuf)
+
+	if !strings.Contains(errBuf.String(), `npm 不可用`) {
+		t.Errorf(`npm 通道应走 npm uninstall 分支（PATH 无 npm → 应打「npm 不可用」告警）, stderr=%q`, errBuf.String())
+	}
+	if strings.Contains(out.String(), `手动删除`) {
+		t.Errorf(`npm 通道不应打印手动删除指引, stdout=%q`, out.String())
+	}
+}
+
+// TestUninstall_SkipNpmHookSkipsWholeStep pins the test hook semantics post-split:
+// FORGE_UNINSTALL_SKIP_NPM=1 skips the ENTIRE binary step for both channels (no npm
+// attempt, no guidance printout) — the existing RunE tests rely on this contract.
+//
+// TestUninstall_SkipNpmHookSkipsWholeStep 钉死分流后的测试钩子语义：
+// FORGE_UNINSTALL_SKIP_NPM=1 对两个通道都跳过整个二进制步骤（不试 npm、不打印指引）
+// ——既有 RunE 测试依赖该契约。
+func TestUninstall_SkipNpmHookSkipsWholeStep(t *testing.T) {
+	t.Setenv(`FORGE_UNINSTALL_SKIP_NPM`, `1`)
+	for _, ch := range []installChannel{
+		{kind: channelGitHub},
+		{kind: channelNPM, pm: "npm"},
+	} {
+		orig := detectInstallChannelFn
+		detectInstallChannelFn = func() installChannel { return ch }
+		t.Cleanup(func() { detectInstallChannelFn = orig })
+
+		var out, errBuf bytes.Buffer
+		uninstallBinaryStep(&out, &errBuf)
+		if out.Len() != 0 || errBuf.Len() != 0 {
+			t.Errorf(`SKIP_NPM=1 时通道 %v 应整体静默, stdout=%q stderr=%q`, ch.kind, out.String(), errBuf.String())
+		}
 	}
 }
