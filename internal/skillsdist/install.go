@@ -450,7 +450,14 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 			profSet[p] = true
 		}
 		allNames, aerr := ListSkills(canonical)
-		if aerr == nil {
+		if aerr != nil {
+			// The residue-warning feature itself must not vanish silently on a
+			// canonical listing failure (same discipline as checkRequires below).
+			//
+			// 残留告警功能自身不能在 canonical 列举失败时静默消失（与下方
+			// checkRequires 同纪律）。
+			report.Warnings = append(report.Warnings, fmt.Sprintf("skills-profile: canonical 列举失败，残留检测跳过（%v）", aerr))
+		} else {
 			canonSet := map[string]bool{}
 			for _, n := range allNames {
 				canonSet[n] = true
@@ -459,7 +466,10 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 				tdir := targetDirs[tname]
 				entries, rerr := os.ReadDir(tdir)
 				if rerr != nil {
-					continue // 目标目录不存在/不可读：无残留可报
+					if !os.IsNotExist(rerr) {
+						report.Warnings = append(report.Warnings, fmt.Sprintf("skills-profile: 读取目标目录 %s 失败，残留检测不完整（%v）", tdir, rerr))
+					}
+					continue // 目标目录不存在：无残留可报；不可读：告警后跳过
 				}
 				for _, e := range entries {
 					name := e.Name()

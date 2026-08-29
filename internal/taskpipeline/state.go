@@ -233,7 +233,16 @@ func IsMainCheckout(root string) bool {
 		return false // worktree 的 .git 是文件
 	}
 	absRoot, _ := filepath.Abs(root)
-	return filepath.Dir(gd) == absRoot
+	// git prints forward slashes even on Windows while filepath.Abs keeps the platform
+	// separator, and Windows paths are case-insensitive — normalize both sides before
+	// comparing or the equality is always false on win32 (the legacy bridge and the
+	// complete-time unbind were dead paths there).
+	//
+	// git 在 Windows 上也输出正斜杠，而 filepath.Abs 保留平台分隔符，且 Windows 路径
+	// 大小写不敏感——两侧先归一化再比较，否则该等式在 win32 上恒为 false（legacy
+	// 桥与 complete 时解绑在那里是死路径）。
+	sameDir := strings.EqualFold(filepath.Clean(filepath.ToSlash(filepath.Dir(gd))), filepath.Clean(filepath.ToSlash(absRoot)))
+	return sameDir
 }
 
 // taskAnchoredByOtherActiveSession reports whether a task's anchored sessions include

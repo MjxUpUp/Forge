@@ -457,6 +457,9 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// 1. 读取宿主 agent 的 stdin JSON。
 	stdinData, err := io.ReadAll(os.Stdin)
 	if err != nil {
+		// The read failure itself must stay visible: stdin is the hook's only input
+		// channel, and an empty-input fail-open with zero trace is undiagnosable.
+		fmt.Fprintf(os.Stderr, "[forge] warning: hook stdin read failed: %v\n", err)
 		stdinData = []byte{}
 	}
 
@@ -1413,10 +1416,15 @@ func readsFileKey(sessionID string) string {
 func appendSessionRead(path, relPath string) {
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
+		// A dropped Read record later turns a legitimate Edit into an unexplained
+		// read-before-edit false block — leave a trace so that is attributable.
+		fmt.Fprintf(os.Stderr, "[forge] warning: session reads-log append failed (%s): %v\n", relPath, err)
 		return
 	}
 	defer f.Close()
-	_, _ = f.WriteString(relPath + "\n")
+	if _, err := f.WriteString(relPath + "\n"); err != nil {
+		fmt.Fprintf(os.Stderr, "[forge] warning: session reads-log append failed (%s): %v\n", relPath, err)
+	}
 }
 
 // sanitizeForShell sanitizes a string into a form safe for use as a shell env var. Prevents

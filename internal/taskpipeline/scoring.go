@@ -125,7 +125,18 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 	// 从 protocol 加载 scoring 配置
 	var config *scoringtypes.ScoringConfig
 	proto, err := protocol.Load(root)
-	if err != nil || proto == nil || proto.Scoring == nil {
+	if err != nil {
+		// A parse failure (user typo/type error) silently swapping in default weights
+		// changes scores with no trace — warn; absent Scoring section stays a quiet default.
+		//
+		// 解析失败（用户手误/类型错）静默换默认权重会无痕改变分数——告警；
+		// 无 Scoring 段保持安静缺省。
+		fmt.Fprintf(os.Stderr, "[forge] warning: protocol.yml 加载失败（%v）——评分回退默认权重/阈值\n", err)
+		config = &scoringtypes.ScoringConfig{
+			Weights:    scoringtypes.DefaultWeights(),
+			Thresholds: scoringtypes.DefaultThresholds(),
+		}
+	} else if proto == nil || proto.Scoring == nil {
 		config = &scoringtypes.ScoringConfig{
 			Weights:    scoringtypes.DefaultWeights(),
 			Thresholds: scoringtypes.DefaultThresholds(),
@@ -326,7 +337,12 @@ func ScoreTask(root string, state *TaskState) error {
 // state.Acceptance 通过率 + state.Score，调 act.BuildConclusion。从 cli/task.go 下沉，
 // 让 MCP complete 与 CLI 共用 Act 反馈臂。
 func AppendConclusion(root string, state *TaskState) (act.Conclusion, string, error) {
-	ec, _ := checklog.ForTask(root, state.TaskRef)
+	ec, err := checklog.ForTask(root, state.TaskRef)
+	if err != nil {
+		// An unreadable evidence chain would otherwise be silently persisted as a
+		// "zero-evidence completion" — warn so the IO failure stays attributable.
+		fmt.Fprintf(os.Stderr, "[forge] warning: evidence chain unavailable for %s: %v\n", state.TaskRef, err)
+	}
 	pass, total := 0, len(state.Acceptance)
 	for _, c := range state.Acceptance {
 		if c.Passed {

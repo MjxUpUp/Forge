@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -134,7 +135,13 @@ func LintText(filename, text string) []Issue {
 				fenceOpen = true
 				fenceMarker = string(trimmed[0])
 				fenceRunLen = n
-			} else if string(trimmed[0]) == fenceMarker && n >= fenceRunLen {
+			} else if string(trimmed[0]) == fenceMarker && n >= fenceRunLen && strings.TrimSpace(trimmed[n:]) == "" {
+				// CommonMark: only a pure marker line (no info string) may close a
+				// fence — an inner ```go inside a ```markdown example must not close
+				// the outer fence and leak example prose into prose linting.
+				//
+				// CommonMark：只有纯标记行（无 info string）才能闭栏——```markdown
+				// 示例内嵌的 ```go 不得提前关掉外栏，把示例散文漏进散文 lint。
 				fenceOpen = false
 				fenceMarker = ""
 				fenceRunLen = 0
@@ -243,6 +250,37 @@ func LintText(filename, text string) []Issue {
 //
 // fenceMarkerLen 返回行首 ```/~~~ run 的长度（非围栏标记行返回 0）。
 // 语言后缀（```bash）不计入 run 长度。
+// enumTokenPresent reports whether a conclusion-enum token appears in the doc text.
+// Short ASCII tokens (GO/NO-GO) must match on word boundaries: a bare substring match
+// lets everyday words ("cargo", "golang") satisfy the D6 hard rule without any real
+// conclusion. Non-ASCII tokens keep substring semantics (word boundaries are undefined
+// for CJK).
+//
+// enumTokenPresent 判断结论枚举 token 是否出现在文档文本中。短 ASCII token
+// （GO/NO-GO）必须词边界匹配：裸子串匹配会让日常单词（cargo、golang）满足 D6
+// 硬规则而无需任何真实结论。非 ASCII token 保持子串语义（CJK 无词边界）。
+func enumTokenPresent(lowerText, tok string) bool {
+	low := strings.ToLower(tok)
+	if low == "" {
+		return false
+	}
+	ascii := true
+	for _, r := range low {
+		if r > 0x7E {
+			ascii = false
+			break
+		}
+	}
+	if !ascii {
+		return strings.Contains(lowerText, low)
+	}
+	re, err := regexp.Compile(`\b` + regexp.QuoteMeta(low) + `\b`)
+	if err != nil {
+		return strings.Contains(lowerText, low)
+	}
+	return re.MatchString(lowerText)
+}
+
 func fenceMarkerLen(trimmed string) int {
 	if len(trimmed) < 3 {
 		return 0
@@ -297,7 +335,7 @@ func lintDocType(dt DocType, headings []string, text string, lineCount int) []Is
 	if len(dt.ConclusionEnum) > 0 {
 		found := false
 		for _, tok := range dt.ConclusionEnum {
-			if strings.Contains(lowerText, strings.ToLower(tok)) {
+			if enumTokenPresent(lowerText, tok) {
 				found = true
 				break
 			}

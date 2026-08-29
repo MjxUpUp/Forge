@@ -187,7 +187,13 @@ func loadLedger(root string) []Event {
 // --porcelain——暂存与未暂存、tracked 与 untracked 全含；rename 取目标路径。
 // 非 git / git 失败 = 空集 + error。
 func ChangedFiles(root string) ([]string, error) {
-	out, err := exec.Command("git", "-C", root, "status", "--porcelain").Output()
+	// quotepath=off: with the default on, git C-quotes non-ASCII paths ("\346\226\207…"),
+	// which would never match the Unicode paths in the tool-usage ledger and permanently
+	// orphan those files from attribution.
+	//
+	// quotepath=off：默认开启时 git 会 C 转义非 ASCII 路径（"\346\226\207…"），
+	// 永远匹配不上 tool-usage 台账里的 Unicode 路径，这些文件的归因永久落 Orphans。
+	out, err := exec.Command("git", "-c", "core.quotepath=off", "-C", root, "status", "--porcelain").Output()
 	if err != nil {
 		return nil, err
 	}

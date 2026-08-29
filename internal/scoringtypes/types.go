@@ -137,8 +137,19 @@ func DefaultThresholds() map[string]float64 {
 //
 // GradeFromScore 把数值分数映射到字母 grade。
 func GradeFromScore(score float64, thresholds map[string]float64) string {
+	def := DefaultThresholds()
 	for _, grade := range []string{"A", "B", "C", "D", "F"} {
-		if score >= thresholds[grade] {
+		v, ok := thresholds[grade]
+		// A missing key would read as 0.0 and let any score >= 0 grab that grade
+		// (partial user config → everything A) — fall back to the default threshold
+		// instead of trusting the zero value.
+		//
+		// 缺键会读成 0.0，任意 score >= 0 直接命中该档（用户部分配置 → 全 A）——
+		// 回退默认阈值而不是信任零值。
+		if !ok {
+			v = def[grade]
+		}
+		if score >= v {
 			return grade
 		}
 	}

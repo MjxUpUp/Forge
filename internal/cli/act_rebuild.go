@@ -50,16 +50,22 @@ func runActRebuild(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	n := 0
+	n, failed := 0, 0
 	for _, state := range states {
 		if state.Score == nil || state.CompletedAt == nil {
 			continue
 		}
-		appendConclusion(root, state)
-		n++
+		if _, ok := appendConclusion(root, state); !ok {
+			failed++
+		} else {
+			n++
+		}
 	}
 	if backup != "" {
 		fmt.Printf("已备份原 conclusions.jsonl → %s\n", backup)
+	}
+	if failed > 0 {
+		return fmt.Errorf("重建完成但 %d 条结论落盘失败（conclusions.jsonl 不完整；原文件备份在 %s，可手动恢复）", failed, backup)
 	}
 	fmt.Printf("重建 %d 条结论 → ~/.forge/projects/<项目key>/act/conclusions.jsonl（已完成任务 %d 个，跳过 %d 个未评分）\n",
 		n, len(states), len(states)-n)

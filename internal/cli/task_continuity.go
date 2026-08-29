@@ -1192,7 +1192,12 @@ func runTaskAttach(cmd *cobra.Command, args []string) error {
 // gitPorcelain 返回 git status --porcelain 的行（已改未提交文件）。非 git 仓库或失败返 nil——
 // resume 不依赖 git，仅作「接手方一眼看到工作区状态」的辅助。
 func gitPorcelain(root string) []string {
-	out, err := exec.Command("git", "-C", root, "status", "--porcelain").Output()
+	// quotepath=off keeps non-ASCII (CJK) paths raw UTF-8 instead of C-quoted octal
+	// escapes, so the handoff view shows real paths (same fix as attribution.ChangedFiles).
+	//
+	// quotepath=off 让非 ASCII（中文）路径保持原生 UTF-8 而非 C 转义八进制串，
+	// 接手方看到的是真实路径（与 attribution.ChangedFiles 同款修复）。
+	out, err := exec.Command("git", "-c", "core.quotepath=off", "-C", root, "status", "--porcelain").Output()
 	if err != nil {
 		return nil
 	}

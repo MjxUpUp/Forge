@@ -155,8 +155,7 @@ func NormalizeTriggered(actual string, canonicalSkills []string) string {
 	// set (any single char in the set).
 	//
 	// 首尾中英文标点 + 空白。Trim 按字符集（任一字符）反复剥。
-	const punct = ` 	
-.,;:!?()[]。；：！？（）【】「」“”‘’`
+	const punct = ` 	.,;:!?()[]。；：！？（）【】「」“”‘’` + "\"'`"
 	s := strings.Trim(actual, punct)
 	if s == "" {
 		return ""
@@ -486,7 +485,19 @@ func SubmitRun(dir, canonical, skill, agentModel, forgeVersion string, raw []Sub
 			for i := range runs {
 				if runs[i].RunID == bl.RunID {
 					run.BaselineRunID = bl.RunID
-					regressions = countRegressions(run, &runs[i])
+					// HealthScore must honor the module's own doctrine: cross-version/
+					// cross-model/desc-change flips are "false regressions" that machine
+					// judgment cannot trust — penalizing them here contradicts the
+					// advisory-only downgrade CompareRuns applies everywhere else.
+					//
+					// HealthScore 必须遵守本模块自己的教义：跨版本/跨模型/改描述的
+					// 翻转是机器判据不可信的「假回归」——在这里惩罚它们与 CompareRuns
+					// 在其他所有地方只降级 advisory 的口径自相矛盾。
+					if rep := CompareRuns(run, &runs[i]); rep.Comparable {
+						regressions = countRegressions(run, &runs[i])
+					} else {
+						fmt.Fprintf(os.Stderr, "warn: baseline %s 与本次 run 不可比（版本/模型/描述变化），跳过假回归惩罚\n", bl.RunID)
+					}
 					break
 				}
 			}
