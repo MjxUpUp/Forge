@@ -234,6 +234,9 @@ func enqueueKimiAdvisory(root, sessionID, hookName, eventName, detail string) {
 //   - a text already injected to THIS session is never injected again (the
 //     once-per-session delivered set lives in $TMPDIR, session-keyed, same
 //     lifespan class as the skill-trigger noise markers and the reads log);
+//     id-less sessions (empty sessionID) are EXEMPT from this memory — see
+//     readKimiDeliveredSet for why the shared "session" bucket must never be
+//     written;
 //   - at most kimiAdvisoryDrainCap entries, in chronological order (the queue
 //     is append-ordered; the tail is the newest window);
 //   - the queue file is consumed even when everything in it was already
@@ -247,6 +250,8 @@ func enqueueKimiAdvisory(root, sessionID, hookName, eventName, detail string) {
 //   - 按文本精确去重（被节流的 hook 重复触发同一 advisory 不得在一批里重复）；
 //   - 已注入过**本会话**的文本绝不再次注入（每会话一次的 delivered 集合放
 //     $TMPDIR、按会话键控，与 skill-trigger 噪声标记、reads log 同寿命类）；
+//     无 id 会话（空 sessionID）豁免此记忆——共享 "session" 桶为何绝不写入见
+//     readKimiDeliveredSet；
 //   - 最多 kimiAdvisoryDrainCap 条，按时间顺序（队列按追加顺序排列，尾部即
 //     最新窗口）；
 //   - 即使队列内容全部已投递过也照常消费队列文件——条目归先 drain 到的会话。
@@ -336,7 +341,24 @@ func kimiDeliveredSetPath(root, sessionID string) string {
 	return filepath.Join(os.TempDir(), "forge-kimi-advisories", projectTagFor(root)+"-"+util.SanitizeSessionID(sessionID)+".delivered")
 }
 
+// readKimiDeliveredSet loads the once-per-session delivered set. Empty
+// sessionID disables the memory: SanitizeSessionID collapses "" (and every
+// all-dirty id) to the literal "session", so all id-less sessions on the
+// machine would share ONE "...-session.delivered" file — the first write there
+// would permanently suppress that advisory text for every future id-less
+// session (a machine-global, unbounded silencer). Treating "" as "no history"
+// means every such session re-delivers — the honest default when identity is
+// unknown.
+//
+// readKimiDeliveredSet 读取每会话一次的 delivered 集合。空 sessionID 直接禁用
+// 记忆：SanitizeSessionID 会把 ""（及全脏字符 id）折叠成字面量 "session"，于是
+// 全机所有无 id 会话共享**同一个** "...-session.delivered" 文件——那里的一次写入
+// 将永久抑制该 advisory 文本在后续所有无 id 会话里的投递（全机级、无界的静音器
+// ）。把 "" 视为「无历史」意味着这类会话每次都重新投递——身份未知时的诚实默认。
 func readKimiDeliveredSet(root, sessionID string) map[string]bool {
+	if sessionID == "" {
+		return map[string]bool{}
+	}
 	set := map[string]bool{}
 	f, err := os.Open(kimiDeliveredSetPath(root, sessionID))
 	if err != nil {
@@ -352,7 +374,18 @@ func readKimiDeliveredSet(root, sessionID string) map[string]bool {
 	return set
 }
 
+// appendKimiDeliveredSet records texts into the session's delivered set. Empty
+// sessionID skips the write entirely (same rationale as readKimiDeliveredSet:
+// writing into the shared "session" bucket would silence the text for every
+// id-less session machine-wide; not writing means each drain re-delivers).
+//
+// appendKimiDeliveredSet 把文本记入该会话的 delivered 集合。空 sessionID 完全
+// 不写（理由同 readKimiDeliveredSet：写进共享的 "session" 桶会把该文本对全机
+// 无 id 会话静音；不写则每次 drain 都重新投递）。
 func appendKimiDeliveredSet(root, sessionID string, texts []string) {
+	if sessionID == "" {
+		return
+	}
 	path := kimiDeliveredSetPath(root, sessionID)
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return

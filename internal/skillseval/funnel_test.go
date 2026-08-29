@@ -214,3 +214,121 @@ func TestReadFilePath(t *testing.T) {
 		t.Errorf("空输入应返空: %q", p)
 	}
 }
+
+// funnelGoldenFixture 是一次覆盖全部判定分支的构造数据集：多 skill 多 session、
+// 60s 去重窗口边界（10s 内折叠 / 61s 不折叠）、送达三态（true/false/nil）、
+// engaged 的全部反向用例（异 session / 异 skill / 窗口外 / 命中前 / 空 session /
+// 截断 JSON / 无关工具），外加大小写与反斜杠路径归一。供 golden 快照与索引等价
+// 两个测试共用。
+//
+// funnelGoldenFixture is one constructed dataset covering every decision branch:
+// multiple skills/sessions, the 60s dedupe boundary (10s folds / 61s does not),
+// all three delivery states, every engaged negative (foreign session / foreign
+// skill / outside window / before hit / empty session / truncated JSON /
+// unrelated tool), plus case and backslash path normalization. Shared by the
+// golden snapshot and the index-equivalence tests below.
+func funnelGoldenFixture() (entries []checklog.Entry, calls []toolusage.ToolCall) {
+	base := time.Date(2026, 8, 16, 10, 0, 0, 0, time.UTC)
+	entries = []checklog.Entry{
+		mkHit("s1", "alpha", base, boolPtr(true)),
+		mkHit("s1", "alpha", base.Add(10*time.Second), boolPtr(false)), // 同团：送达章取或
+		mkHit("s1", "alpha", base.Add(5*time.Minute), nil),             // 超 60s → 新团，unknown
+		mkHit("s2", "beta", base, nil),
+		mkHit("s2", "beta", base.Add(61*time.Second), boolPtr(true)), // 61s > 60s → 新团
+		mkHit("", "gamma", base, nil),                                // 空 session：计 hit 永不 engaged
+		mkHit("s3", "alpha", base, boolPtr(true)),
+		// 噪声：非 trigger check 与解析不出 skill 名的条目都必须跳过。
+		// Noise: a non-trigger check and an unparseable detail must both be skipped.
+		{Check: "read-before-edit", SessionID: "s1", RecordedAt: base},
+		{Check: checklog.CheckSkillTrigger, SessionID: "s1", RecordedAt: base, Detail: "stop-cap advisory（无标记）"},
+	}
+	calls = []toolusage.ToolCall{
+		mkRead("s1", "/e/Forge/skills/alpha/SKILL.md", base.Add(time.Minute)),
+		mkRead("s1", `C:\Users\x\.forge\skills-cache\embedded\beta\SKILL.md`, base.Add(2*time.Minute)), // 异 skill（且属 s1 非 s2）
+		mkSkillCall("s1", "ALPHA", base.Add(3*time.Minute)),                                            // 大小写变体
+		mkSkillCall("s2", "beta", base.Add(time.Minute)),
+		mkRead("s3", "/e/Forge/skills/alpha/SKILL.md", base.Add(11*time.Minute)), // 窗口外
+		mkRead("s3", `E:\Forge\skills\ALPHA\skill.md`, base.Add(11*time.Minute)), // 窗口外（归一仍须命中路径形态）
+		mkRead("s1", "/e/Forge/skills/alpha/SKILL.md", base.Add(-time.Minute)),   // 命中前
+		mkRead("", "/e/Forge/skills/gamma/SKILL.md", base.Add(time.Minute)),      // 空 session 调用
+		// 截断 JSON（toollog 输入 500 字符截断的生产形态）：按无信号处理。
+		// Truncated JSON (the 500-char production truncation): no signal.
+		{ToolName: "Read", ToolInput: `{"file_path":"/e/Forge/skills/al`, SessionID: "s1", Timestamp: base.Add(4 * time.Minute)},
+		// 无关工具：永不构成 engaged 信号。
+		// Unrelated tool: never an engagement signal.
+		{ToolName: "Grep", ToolInput: `{"pattern":"alpha"}`, SessionID: "s1", Timestamp: base.Add(time.Minute)},
+	}
+	return entries, calls
+}
+
+// TestBuildTriggerFunnel_GoldenJSON 是输出字节等价的快照钉：重构 engagedAfter 热路径
+// （O(n×m) 全量重复解析 → 按 session 分桶 + 每 call 预提取一次）前后，本 JSON 必须逐字节
+// 不变。期望值在旧实现上生成并人工核对。
+//
+// TestBuildTriggerFunnel_GoldenJSON pins byte-equivalent output: before vs after the
+// engagedAfter hot-path rework (O(n×m) full rescans → session-bucketed, extract-once),
+// this JSON must stay byte-identical. The expectation was produced on the OLD
+// implementation and hand-verified.
+func TestBuildTriggerFunnel_GoldenJSON(t *testing.T) {
+	entries, calls := funnelGoldenFixture()
+	got, err := json.Marshal(BuildTriggerFunnel(entries, calls))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"window":600000000000,"skills":[` +
+		`{"name":"alpha","hits":3,"delivered":2,"delivery_unknown":1,"engaged":1},` +
+		`{"name":"beta","hits":2,"delivered":1,"delivery_unknown":1,"engaged":1},` +
+		`{"name":"gamma","hits":1,"delivered":0,"delivery_unknown":1,"engaged":0}` +
+		`],"total_hits":6,"total_delivered":3,"total_engaged":2}`
+	if string(got) != want {
+		t.Fatalf("漏斗输出与 golden 快照不符（重构改变了行为）：\n got: %s\nwant: %s", got, want)
+	}
+}
+
+// TestEngagedIndexEquivalence 把索引判定与逐条判定在全网格上暴力对拍：每个
+// (session × skill × 时刻) 组合两条路径必须同真同假。这钉住分桶预提取重构不改变
+// 任何单点判定——golden 快照钉聚合输出，本测试钉判定核本身。
+//
+// TestEngagedIndexEquivalence brute-force cross-checks the indexed judgment
+// against the per-call one over a full grid: for every (session × skill ×
+// time) combination both paths must agree. This pins the
+// bucketed-pre-extraction rework as judgment-neutral — the golden snapshot
+// pins the aggregate output, this pins the judgment core itself.
+func TestEngagedIndexEquivalence(t *testing.T) {
+	_, calls := funnelGoldenFixture()
+	base := time.Date(2026, 8, 16, 10, 0, 0, 0, time.UTC)
+	idx := buildEngagedIndex(calls)
+	sessions := []string{"", "s1", "s2", "s3", "sX"}
+	skills := []string{"alpha", "beta", "gamma", "ALPHA", "missing"}
+	times := []time.Time{
+		base.Add(-time.Minute), base, base.Add(30 * time.Second),
+		base.Add(time.Minute), base.Add(3 * time.Minute), base.Add(5 * time.Minute),
+		base.Add(61 * time.Second), base.Add(9*time.Minute + 59*time.Second),
+		base.Add(10 * time.Minute), base.Add(11 * time.Minute),
+	}
+	for _, s := range sessions {
+		for _, sk := range skills {
+			for _, at := range times {
+				want := engagedAfter(calls, s, sk, at)
+				got := idx.engagedAfter(s, sk, at)
+				if got != want {
+					t.Fatalf("判定分叉：session=%q skill=%q at=%v 索引=%v 逐条=%v", s, sk, at, got, want)
+				}
+			}
+		}
+	}
+	// 至少要有一处为真，否则对拍退化为「两边都恒假」的自证。
+	// At least one combination must be true, or the cross-check degenerates
+	// into "both sides always false" and proves nothing.
+	anyTrue := false
+	for _, s := range sessions {
+		for _, sk := range skills {
+			if engagedAfter(calls, s, sk, base) {
+				anyTrue = true
+			}
+		}
+	}
+	if !anyTrue {
+		t.Fatal("夹具没有任何 engaged=true 的组合，等价对拍无意义")
+	}
+}
