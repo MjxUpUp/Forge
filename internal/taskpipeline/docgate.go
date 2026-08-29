@@ -281,6 +281,18 @@ func CheckDocGate(root string, state *TaskState) (ok bool, reasons []string) {
 	// L2——已记录的 rubric 评审证据（freshness + 得分 + 通过）。
 	// freshness 双键：HEAD commit 与（已记录时的）文档内容指纹——评审后
 	// complete 前的未提交修改会命中指纹键。
+	//
+	// Integrity gate (state-integrity-signing): a state whose signature failed
+	// verification was modified outside forge — a forged DocReview on such a state
+	// must not satisfy this hard prerequisite (2026-08-29 functional probe: an
+	// attacker-attributed DocReview passed complete with zero local review).
+	//
+	// 完整性门（state-integrity-signing）：签名验不过的状态在 forge 之外被改过——
+	// 其上的 DocReview 不得满足本硬前置（2026-08-29 功能探针：attacker 署名的
+	// DocReview 曾零本机评审通过 complete）。
+	if state.IntegrityBroken() {
+		reasons = append(reasons, `L2 文档回检不可信——任务状态文件签名校验失败（在 forge 之外被修改），重走门禁重新积累证据`)
+	}
 	head := GetHeadCommit(root)
 	switch {
 	case state.DocReview == nil || state.DocReview.ReviewedAt.IsZero():

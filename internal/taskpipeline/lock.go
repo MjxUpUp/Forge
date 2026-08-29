@@ -3,6 +3,7 @@ package taskpipeline
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -176,6 +177,37 @@ func MutateTaskState(root, ref string, fn func(*TaskState) error) error {
 	state, err := LoadTaskState(root, ref)
 	if err != nil {
 		return err
+	}
+	if err := fn(state); err != nil {
+		return err
+	}
+	return SaveTaskState(root, state)
+}
+
+// MergeOrPersistTaskState is MutateTaskState for callers holding an in-memory state that may
+// not have been persisted yet (ExecuteTaskGate's internal persists receive the
+// caller's object; tests and fresh flows construct it directly): under the lock it
+// prefers the on-disk state, and only when the file does not exist yet does it fall
+// back to base — preserving the old "SaveTaskState writes regardless" behavior for
+// first-persist while gaining lost-update protection for every subsequent write.
+//
+// MergeOrPersistTaskState 是面向「手里的 state 可能尚未落盘」的调用方（ExecuteTaskGate
+// 内部持久化收到的是调用方对象；测试与新建流程直接构造）的 MutateTaskState：
+// 锁内优先读盘上状态，仅当文件尚不存在时才回退 base——为首次持久化保留旧的
+// 「SaveTaskState 无条件写」行为，同时让之后的每次写入都获得丢失更新保护。
+func MergeOrPersistTaskState(root string, base *TaskState, fn func(*TaskState) error) error {
+	ref := base.TaskRef
+	unlock, err := LockTask(root, ref)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	state, err := LoadTaskState(root, ref)
+	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		state = base // first persist: nothing on disk to merge into
 	}
 	if err := fn(state); err != nil {
 		return err

@@ -204,21 +204,30 @@ func writeConfirmation(p *forgedata.Project, fp, cmd string) error {
 	if err != nil {
 		return fmt.Errorf("marshal confirmation: %w", err)
 	}
-	if err := util.AtomicWrite(p.HazardsConfirmPath(fp), data, 0o644); err != nil {
-		return fmt.Errorf("write confirmation: %w", err)
-	}
-	// Audit trail: a confirmation registration must leave an event. Previously confirm events
-	// existed only if some caller explicitly ran `forge hazard log`, so the forgery path (an
-	// agent hand-writing the marker file — it has write access to DataDir) left no trace.
-	// Appending here (the single funnel of Confirm/ConfirmByFingerprint) makes every confirm
-	// auditable; the hook script never logs a confirm event itself, so there is no double-write.
+	// Audit trail FIRST, marker second: the hook grants passage based on the on-disk
+	// marker; if the event append failed after the marker was written, the
+	// confirmation would be ACTIVE with zero EventConfirm records — exactly the
+	// "every confirm is auditable" invariant break the audit exists for (and the
+	// CLI would report failure while the marker is live, splitting state from
+	// report). Event-first means a failed audit = no confirmation granted.
 	//
-	// 审计留痕：确认登记必须留下事件。此前确认事件依赖调用方显式 `forge hazard log`，
-	// 伪造路径（agent 直接手写确认文件——它对 DataDir 有写权限）毫无痕迹。在此统一
-	// 追加（Confirm/ConfirmByFingerprint 的唯一漏斗）让 confirm 必留痕；hook 脚本自身
-	// 从不 log confirm 事件，故无重复写。
+	// 审计先行、标记后写：hook 依据磁盘标记放行；若先写标记后追加事件且事件
+	// 失败，确认已生效却零 EventConfirm 记录——恰是这段审计要守的「每次确认
+	// 必留痕」不变量被击穿（且 CLI 报失败而标记已活，状态与报告分裂）。
+	// 事件先行 = 审计失败即不授确认。
+	//
+	// The forgery path note: an agent hand-writing the marker file (it has write
+	// access to DataDir) still leaves no event — that remains for integrity signing
+	// (feat/state-integrity-signing). This funnel covers forge-issued confirms.
+	//
+	// 伪造路径备注：agent 手写标记文件（对 DataDir 有写权限）依旧无事件——该面
+	// 留给完整性签名任务（feat/state-integrity-signing）。本漏斗覆盖 forge 发出的
+	// 确认。
 	if err := AppendEvent(p, Event{Type: EventConfirm, Fingerprint: fp, Command: cmd}); err != nil {
 		return fmt.Errorf("log confirm event: %w", err)
+	}
+	if err := util.AtomicWrite(p.HazardsConfirmPath(fp), data, 0o644); err != nil {
+		return fmt.Errorf("write confirmation: %w", err)
 	}
 	return nil
 }

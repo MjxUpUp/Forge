@@ -67,6 +67,12 @@ type Summary struct {
 	GradeDist      map[string]int `json:"grade_dist"`    // A/B/C/D/F → count
 	StrengthDist   map[string]int `json:"strength_dist"` // Strong/Weak/Unverified/NoData → count
 	BlindSpotCount int            `json:"blind_spot_count"`
+	// CappedWeakCount: Weak conclusions that still carry deterministic evidence —
+	// escape-hatch caps (override cost), distinct from genuine evidence blind spots.
+	//
+	// CappedWeakCount：仍带 deterministic 证据的 Weak 结论——逃生舱封顶（override
+	// 代价），与真正的证据盲区区分。
+	CappedWeakCount int `json:"capped_weak_count"`
 	BlindSpotRate  float64        `json:"blind_spot_rate"` // 0-1
 	NudgeCount     int            `json:"nudge_count"`     // RetrospectiveNudge=true 任务数（全量真相）
 	// NudgeRecent counts RetrospectiveNudge=true conclusions completed within
@@ -163,8 +169,24 @@ func SummarizeAt(cs []act.Conclusion, now time.Time) Summary {
 		if c.Strength != "" {
 			s.StrengthDist[c.Strength]++
 		}
-		if c.Strength == checklog.Unverified.String() || c.Strength == checklog.Weak.String() {
+		// Blind-spot = claims with NO deterministic backing. A Weak that carries
+		// deterministic evidence is an escape-hatch CAP (ratio 0.8x capped to Weak by
+		// the override cost), not a blind spot — counting it here reported "100% 盲区"
+		// for tasks that did run verification (2026-08-29 functional finding). Track
+		// capped-Weak separately so the project view keeps both signals honestly.
+		//
+		// 盲区 = 无 deterministic 支撑的完成声明。带 deterministic 证据的 Weak 是
+		// 逃生舱【封顶】（0.8x ratio 被 override 代价压成 Weak），不是盲区——计入
+		// 此处曾把真跑过验证的任务报成「100% 盲区」（2026-08-29 功能发现）。封顶
+		// Weak 单独计数，项目视图两个信号都诚实保留。
+		if c.Strength == checklog.Unverified.String() {
 			s.BlindSpotCount++
+		} else if c.Strength == checklog.Weak.String() {
+			if c.Deterministic > 0 {
+				s.CappedWeakCount++
+			} else {
+				s.BlindSpotCount++
+			}
 		}
 		if c.RetrospectiveNudge {
 			s.NudgeCount++
