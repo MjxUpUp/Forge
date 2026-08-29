@@ -124,7 +124,7 @@ func scoreTesting(covered, total, assertionCount int, checked bool) scoringtypes
 		return scoringtypes.DimensionScore{
 			Dimension: scoringtypes.DimensionTesting,
 			Score:     70,
-			Detail:    `Test coverage not checked`,
+			Detail:    `Test coverage not checked (per-task override disabled the gate — dimension neutral, the gap stays unmeasured)`,
 		}
 	}
 	if total <= 0 {
@@ -435,7 +435,7 @@ func countsAsScope(path string) bool {
 // isTestPath 报告 path 是否疑似测试文件（与 taskpipeline.isTestFile 同启发式）。
 // 用于在 scope 维度排除测试文件。目录判定按【路径段整段】匹配（test/tests/
 // __tests__）而非子串——contest/、latest/、attest/ 不得豁免生产代码的 scope 计量
-//（可注册逃逸区，2026-08-29 审查轮功能实证）。
+// （可注册逃逸区，2026-08-29 审查轮功能实证）。
 func isTestPath(path string) bool {
 	base := filepath.Base(path)
 	for _, pat := range []string{`_test.`, `_spec.`, `.test.`, `.spec.`} {
@@ -443,10 +443,43 @@ func isTestPath(path string) bool {
 			return true
 		}
 	}
+	// test_ prefix — PYTHON ONLY (pytest convention): mirrors taskpipeline.isTestFile.
+	// The pinned case test_utils.go (scope_test.go) forbids generalizing to Go — Go's
+	// convention is the _test.go suffix; "test_utils.go" is a helpers file.
+	//
+	// test_ 前缀——仅 Python 与 Ruby（pytest/minitest 惯例）：镜像
+	// taskpipeline.isTestFile。钉住用例 test_utils.go（scope_test.go）禁止推广到
+	// Go——Go 惯例是 _test.go 后缀，"test_utils.go" 是辅助文件。
+	if ext := filepath.Ext(base); (ext == ".py" || ext == ".rb") && strings.HasPrefix(base, `test_`) && len(base) > len(`test_`)+len(ext) {
+		return true
+	}
+	// JUnit camel suffixes (MainTest.java/MainTests.java/MainIT.java), .java only:
+	// the pairing side accepts them, so the dimension side must too.
+	//
+	// JUnit 驼峰后缀（MainTest.java/MainTests.java/MainIT.java），仅 .java：
+	// 配对侧已接受，维度侧必须同步。
+	if strings.HasSuffix(base, `.java`) {
+		stem := strings.TrimSuffix(base, `.java`)
+		if strings.HasSuffix(stem, `Test`) || strings.HasSuffix(stem, `Tests`) || strings.HasSuffix(stem, `IT`) {
+			return true
+		}
+	}
 	for _, seg := range strings.Split(filepath.ToSlash(path), "/") {
 		if seg == "test" || seg == "tests" || seg == "__tests__" {
 			return true
 		}
+	}
+	return false
+}
+
+// isSourceExt mirrors the source-extension gate used by the pairing side so the
+// test_ prefix rule cannot swallow non-source files.
+//
+// isSourceExt 镜像配对侧的源扩展门槛，防止 test_ 前缀规则吞掉非源码文件。
+func isSourceExt(ext string) bool {
+	switch ext {
+	case ".go", ".rs", ".ts", ".tsx", ".js", ".jsx", ".py", ".java", ".rb", ".zig", ".nim":
+		return true
 	}
 	return false
 }
