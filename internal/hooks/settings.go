@@ -749,7 +749,17 @@ func WriteHookTemplates(forgeDir string) error {
 
 	for name, content := range fileHooks {
 		path := filepath.Join(hooksDir, name)
-		if err := util.AtomicWrite(path, []byte(content), 0755); err != nil {
+		// Deliberately NOT AtomicWrite: on Windows, renaming onto a script that is
+		// CURRENTLY BEING EXECUTED by bash fails with Access Denied — and this very
+		// rewrite runs inside autoSync, which fires from `forge data-dir` called BY
+		// the running hook script (2026-08-29 e2e regression). Truncate-in-place
+		// write is the correct primitive for self-rewriting executable copies.
+		//
+		// 刻意不用 AtomicWrite：Windows 上 rename 到一个【正在被 bash 执行】的
+		// 脚本上会 Access Denied——而本重写就在 autoSync 里，恰会被运行中的
+		// hook 脚本调 `forge data-dir` 触发（2026-08-29 e2e 回归）。截断式原地
+		// 写才是"自改写可执行副本"的正确原语。
+		if err := os.WriteFile(path, []byte(content), 0755); err != nil {
 			return fmt.Errorf("failed to write hook %s: %w", name, err)
 		}
 	}
