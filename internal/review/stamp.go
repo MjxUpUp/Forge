@@ -212,20 +212,63 @@ func loadStamp(root, hash string) *Stamp {
 // caller can name the originating branch. Failures (no stamps dir, unreadable/corrupt files) degrade
 // to "not found" — safe direction, re-review.
 //
+// Scan strategy (feat/checklog-janitor): before scanning, pruneStamps sweeps stale dh-*.stamp
+// files (every Stop-block on a new diff leaves one behind; without the sweep both the directory
+// and this full scan grow unbounded). Content-addressed stamps are then matched by FILE NAME —
+// the dh-<hash>.stamp name IS the hash (saveStamp derives the path from s.DiffHash), so
+// non-matching dh-*.stamp files are skipped without a read, dropping the scan from O(N) file
+// reads to at most one. Only legacy <branch>.stamp files (hash lives inside the content) are
+// still read. The single NAME-matching dh- file is still read to confirm Reviewed: Evaluate's
+// block path persists Reviewed=false block-count stamps at the very same content-addressed path,
+// so a filename-only hit would let a diff that was merely BLOCKED masquerade as reviewed —
+// a false pass. (A name/content mismatch never arises from saveStamp; only hand-tampering.)
+//
 // knownReviewed 报告给定 diff hash 是否在【任意】分支 stamp 上被标过已审（不限当前分支）。
 // 这让审查通过跨「只改 scope」的迁移可移植（见 Evaluate）：别处审过的同一内容照样认。返回
 // 命中 stamp 供调用方点名来源分支。失败（无 stamps 目录/不可读/损坏）降级为「未找到」——
 // 安全方向，重审。
+//
+// 扫描策略（feat/checklog-janitor）：扫描前先由 pruneStamps 清扫陈旧 dh-*.stamp（每个新
+// diff 的 Stop-block 都会留下一枚；不清扫则目录与这次全量扫都无界增长）。内容寻址 stamp
+// 改按【文件名】匹配——dh-<hash>.stamp 的名即 hash（saveStamp 用 s.DiffHash 推导路径），
+// 名字不匹配的 dh-*.stamp 直接跳过不读，扫描从 O(N) 次文件读降到至多一次。仅 legacy
+// <branch>.stamp（hash 在内容里）仍读内容。名字命中的那一枚 dh- 文件仍要读出来确认
+// Reviewed：Evaluate 的 block 路径把 Reviewed=false 的计数戳写在同一内容寻址路径上，
+// 若只按文件名命中，一个仅被 block 过的 diff 会冒充已审——假放行。（名/内容错配不可能
+// 由 saveStamp 产生；只有手工篡改才会。）
 func knownReviewed(root, hash string) (*Stamp, bool) {
 	dir := filepath.Join(forgedata.DataDirFor(root), "stamps")
+	pruneStamps(dir)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, false
 	}
+	// The exact content-addressed file name for the wanted hash (SanitizeRef is a no-op on
+	// hex hashes but is applied for exact parity with stampContentPath/saveStamp).
+	//
+	// 目标 hash 对应的内容寻址文件名（SanitizeRef 对十六进制 hash 是 no-op，但为与
+	// stampContentPath/saveStamp 完全对齐仍照做一遍）。
+	wantName := "dh-" + taskcontext.SanitizeRef(hash) + ".stamp"
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".stamp") {
 			continue
 		}
+		if strings.HasPrefix(e.Name(), "dh-") {
+			// Content-addressed: name IS the hash. Skip every non-matching file unread;
+			// read only the (at most one) name match to confirm Reviewed (block stamps
+			// share the path — see function comment).
+			//
+			// 内容寻址：名即 hash。不匹配的文件一律不读；仅读名字命中的那一枚
+			// （至多一次）以确认 Reviewed（block 戳同路径——见函数注释）。
+			if e.Name() != wantName {
+				continue
+			}
+		}
+		// The name-matching dh- file and every legacy <branch>.stamp reach here and are
+		// content-checked (legacy has no hash in its name).
+		//
+		// 名字命中的 dh- 文件与所有 legacy <branch>.stamp 走到这里做内容校验
+		//（legacy 的名字里没有 hash）。
 		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
 		if err != nil {
 			continue
@@ -236,6 +279,44 @@ func knownReviewed(root, hash string) (*Stamp, bool) {
 		}
 	}
 	return nil, false
+}
+
+// pruneStamps best-effort sweeps stale content-addressed stamps (dh-*.stamp) older than
+// FORGE_STAMP_RETENTION_DAYS (default 30; <=0 disables): every Stop-block on a new diff
+// persists a dh-<hash>.stamp, diffs churn, and nothing else deleted them — the stamps dir
+// grew without bound and knownReviewed paid a full scan per Evaluate. Age is file mtime:
+// util.AtomicWrite (temp+rename) sets it at write time, and a stamp untouched for the
+// retention window marks a diff long superseded — its cross-branch portability guarantee
+// expires with it (a 30-day-old worktree state forcing re-review is the intended retention
+// trade-off, not a regression). Legacy <branch>.stamp files are NOT swept: read-compat only,
+// at most one per branch — an already-bounded set. Failures (glob/stat/remove) are skipped
+// silently: cleanup is a side effect of the lookup, never its outcome.
+//
+// pruneStamps 尽力清扫超过 FORGE_STAMP_RETENTION_DAYS（默认 30；≤0 禁用）的陈旧内容
+// 寻址 stamp（dh-*.stamp）：每个新 diff 的 Stop-block 都持久化一枚 dh-<hash>.stamp，
+// diff 一直在换，却没有任何路径删它们——stamps 目录无界增长，knownReviewed 每次
+// Evaluate 白付一次全量扫。龄取文件 mtime：util.AtomicWrite（临时文件+rename）在写入
+// 时刻设定它，且 retention 窗口未被动过的戳标记的是早已被取代的 diff——它的跨分支
+// 可移植保证随之过期（30 天前的工作区状态被要求重审是 retention 的本意取舍，不是
+// 回归）。legacy <branch>.stamp 不清扫：只做读兼容、每分支至多一枚——本就有界。
+// 失败（glob/stat/remove）静默跳过：清理是查找的副作用，绝不是其结果。
+func pruneStamps(dir string) {
+	days := util.RetentionDays("FORGE_STAMP_RETENTION_DAYS", 30)
+	if days <= 0 {
+		return
+	}
+	cutoff := time.Now().AddDate(0, 0, -days)
+	matches, err := filepath.Glob(filepath.Join(dir, "dh-*.stamp"))
+	if err != nil {
+		return
+	}
+	for _, path := range matches {
+		info, err := os.Stat(path)
+		if err != nil || !info.ModTime().Before(cutoff) {
+			continue // 并发删除/未过期 → 跳过
+		}
+		_ = os.Remove(path)
+	}
 }
 
 // CurrentState returns a human-readable view of the current review state (for forge review status).
