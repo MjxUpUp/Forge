@@ -729,7 +729,7 @@ func TestRecord_RotatesOversizedActive(t *testing.T) {
 // no archive appears (rotation must not fire on normal-sized logs).
 //
 // TestRecord_NoRotationBelowThreshold：阈值以下 Record 原地追加——不产生归档
-//（正常尺寸的日志不得触发轮转）。
+// （正常尺寸的日志不得触发轮转）。
 func TestRecord_NoRotationBelowThreshold(t *testing.T) {
 	// 8MB threshold: two small entries can never cross it.
 	//

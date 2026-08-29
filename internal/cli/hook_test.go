@@ -11,6 +11,8 @@ import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
+	"github.com/MjxUpUp/Forge/internal/util"
+	"github.com/spf13/cobra"
 )
 
 func TestHookOutput_AllowOnMissingProject(t *testing.T) {
@@ -1037,5 +1039,159 @@ func TestScoringPassUnchanged(t *testing.T) {
 	// 每 session 每 check 一条）。
 	if scoringPassUnchanged(dir, "s2", checklog.CheckAutoCompile) {
 		t.Error("previous PASS belongs to another session → this session's first PASS must record")
+	}
+}
+
+// TestSanitizeSessionIDConverges pins the safety property behind runHook's
+// entry-point sanitize (fix/cleanup-batch, 2026-08-29): hookInput.SessionID is
+// sanitized ONCE at the entry, while downstream sites keep their own
+// util.SanitizeSessionID calls (defense in depth) — that double application is
+// safe because the function CONVERGES: sanitize(sanitize(x)) == sanitize applied
+// again, for every input. Realistic session ids (UUIDs with hyphens, hex, dots,
+// >64 chars) are straight-up idempotent; the only divergence is the pathological
+// truncation edge (a >64-char id whose 64th char is a separator: truncation can
+// leave a trailing '-'/'_' that a SECOND application trims — see the ordering of
+// trim-then-truncate in util.SanitizeSessionID), and even there the third
+// application is a no-op. Convergence (not naive idempotence) is exactly what
+// makes "entry sanitize + downstream sanitize" produce one uniform key
+// everywhere, whatever the host sends.
+//
+// TestSanitizeSessionIDConverges 钉住 runHook 入口归一（fix/cleanup-batch，
+// 2026-08-29）背后的安全性质：hookInput.SessionID 在入口归一一次，下游各点保留
+// 自己的 util.SanitizeSessionID 调用（纵深防御）——重复应用之所以安全，是因为
+// 该函数【收敛】：sanitize(sanitize(x)) 再应用一次不变，对任何输入成立。现实
+// session id（带连字符的 UUID、hex、点号、超 64 字符）完全幂等；唯一发散点是
+// 病态的截断边界（>64 字符且第 64 位恰为分隔符：截断会留下尾部 '-'/'_'，第二次
+// 应用会把它修剪掉——见 util.SanitizeSessionID 里 trim 先于 truncate 的顺序），
+// 即便如此第三次应用也是 no-op。收敛性（而非朴素幂等）正是「入口归一 + 下游
+// 归一」处处得到同一 key 的保证，无论宿主发什么。
+func TestSanitizeSessionIDConverges(t *testing.T) {
+	// Realistic corpus: straight-up idempotent (sanitize^2 == sanitize^1).
+	//
+	// 现实语料：完全幂等（sanitize² == sanitize¹）。
+	realistic := []string{
+		"3f0c1c9e-8b1a-4c2d-9e0f-1a2b3c4d5e6f", // Claude/kimi UUID（连字符合法字符）
+		"a1b2c3d4e5f6789012345678",             // cursor/codex hex
+		"session.with.dots.123",                // 点号被替换——归一后稳定
+		strings.Repeat("a", 100),               // 纯字母超长：截断到 64，尾字符非分隔符
+		"  <script>; rm -rf /  ",               // 攻击形态
+	}
+	for _, id := range realistic {
+		once := util.SanitizeSessionID(id)
+		twice := util.SanitizeSessionID(once)
+		if once != twice {
+			t.Errorf("SanitizeSessionID not idempotent for %q: %q != %q", id, once, twice)
+		}
+	}
+
+	// Universal convergence: sanitize^2 == sanitize^3 for ANY input — including
+	// the 64-boundary separator edge (the one input class where sanitize^1 !=
+	// sanitize^2: truncation leaves a trailing separator the second pass trims).
+	// This is the property the entry-point unification actually relies on: entry
+	// sanitize + any number of downstream sanitizes land on the same key.
+	//
+	// 普适收敛：对任何输入 sanitize² == sanitize³——含 64 边界分隔符边缘（唯一一类
+	// sanitize¹ != sanitize² 的输入：截断留下尾部分隔符、第二遍把它修剪）。入口
+	// 统一真正依赖的正是这条：入口归一 + 任意次下游归一落在同一 key 上。
+	edge := strings.Repeat("a", 63) + "-" + strings.Repeat("b", 10) // 第 64 位是 '-'：截断后尾随分隔符
+	corpus := append(realistic, edge, strings.Repeat("-", 70), "")
+	for _, id := range corpus {
+		twice := util.SanitizeSessionID(util.SanitizeSessionID(id))
+		thrice := util.SanitizeSessionID(twice)
+		if twice != thrice {
+			t.Errorf("SanitizeSessionID does not converge for %q: %q != %q", id, twice, thrice)
+		}
+	}
+
+	// The edge case demonstrated: sanitize^1 ends with the separator cut in at
+	// position 64, sanitize^2 trims it, sanitize^3 is stable. If this ever
+	// becomes plain idempotent (trim moved after truncate in util), the test
+	// above still passes — convergence is the contract, not the divergence.
+	//
+	// 边缘形态演示：sanitize¹ 以截断进来的第 64 位分隔符结尾，sanitize² 修剪它，
+	// sanitize³ 稳定。若 util 把 trim 挪到 truncate 之后、此边缘变成完全幂等，
+	// 上面的测试依然通过——契约是收敛，不是发散本身。
+	if s1 := util.SanitizeSessionID(edge); len(s1) != 64 || s1[len(s1)-1] != '-' {
+		t.Fatalf("fixture assumption broken: edge input should sanitize to a 64-char string ending in '-', got %q", s1)
+	}
+}
+
+// TestRunHookSanitizesSessionIDAtEntry pins the entry-point unification end to
+// end (fix/cleanup-batch, 2026-08-29): runHook must sanitize hookInput.SessionID
+// right after parsing, so the RAW-id record sites it feeds — hook_track.go's
+// observation hooks record hookInput.SessionID verbatim — write the sanitized
+// form, matching the sanitized keys of session-scoped readers
+// (checklog.LatestByCheckForSession* compares exact strings). A dotted host id
+// is the canonical divergence case (dots are not in the safe charset).
+//
+// TestRunHookSanitizesSessionIDAtEntry 端到端钉住入口统一（fix/cleanup-batch，
+// 2026-08-29）：runHook 必须在解析后立即归一 hookInput.SessionID，使它喂给的
+// 原始值记录点——hook_track.go 的观察 hook 原样记录 hookInput.SessionID——写下的
+// 是归一形态，与会话级读方的归一 key（checklog.LatestByCheckForSession* 精确串
+// 比较）一致。带点号的宿主 id 是最典型的发散形态（点号不在安全字符集内）。
+func TestRunHookSanitizesSessionIDAtEntry(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	// Minimal forge project so findProjectRoot resolves (project-scoped dispatch).
+	//
+	// 最小 forge 项目，让 findProjectRoot 解析成功（项目级分发）。
+	tmpDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(tmpDir, ".forge", "hooks"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, ".forge", "state.json"), []byte(`{"pipeline_version":"2.0","mode":"small"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	originalWd, _ := os.Getwd()
+	os.Chdir(tmpDir)
+	defer os.Chdir(originalWd)
+
+	// PostToolUseFailure with a dotted session id — the failure-track hook records
+	// CheckToolFailure with hookInput.SessionID verbatim (pre-fix: raw id).
+	//
+	// 带点号 session id 的 PostToolUseFailure——failure-track hook 原样记录
+	// hookInput.SessionID 到 CheckToolFailure（修复前：原始 id）。
+	oldStdin := os.Stdin
+	tmpStdin, _ := os.CreateTemp("", "hook-stdin-*.json")
+	tmpStdin.WriteString(`{"hook_event_name":"PostToolUseFailure","session_id":"sess.with.dots","tool_name":"Bash","error_message":"a network hiccup"}`)
+	tmpStdin.Seek(0, 0)
+	os.Stdin = tmpStdin
+	defer func() {
+		os.Stdin = oldStdin
+		tmpStdin.Close()
+		os.Remove(tmpStdin.Name())
+	}()
+
+	// Capture stdout: failure-track with a non-compile error emits nothing; the
+	// contract under test is the recorded entry, not the emission. cmd must be a
+	// real (bare) cobra command — the failure-track dispatch reads cmd.Root().Version.
+	//
+	// 捕获 stdout：非编译类错误的 failure-track 不发输出；被测契约是记录的
+	// 条目，不是发射。cmd 必须是真实的（裸）cobra 命令——failure-track 分发会读
+	// cmd.Root().Version。
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	_ = runHook(&cobra.Command{}, []string{"failure-track"})
+	w.Close()
+	os.Stdout = oldStdout
+	buf := make([]byte, 4096)
+	_, _ = r.Read(buf)
+
+	entries, err := checklog.LoadAll(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawToolFailure bool
+	for _, e := range entries {
+		if e.Check != checklog.CheckToolFailure {
+			continue
+		}
+		sawToolFailure = true
+		if e.SessionID != "sess_with_dots" {
+			t.Errorf("CheckToolFailure SessionID = %q, want %q（入口归一后，点号被替换；原始值不得入盘）", e.SessionID, "sess_with_dots")
+		}
+	}
+	if !sawToolFailure {
+		t.Fatal("no CheckToolFailure entry recorded — dispatch did not reach failure-track")
 	}
 }

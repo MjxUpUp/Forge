@@ -28,14 +28,35 @@ import (
 // 物理形态：文件系统是一次性工作副本，每任务一份）；`task finish` 合并清理；
 // `worktree janitor` 以「脏的永不删」保上界。
 
-// hasConventionalPrefix mirrors validateBranchRef's accepted prefixes (feat/ fix/
-// refactor/ test/ chore/ docs/ ci/ perf/ build/ style/) — kept adjacent to its main
-// consumer; drift with the validator fails the subsequent validateBranchRef call.
+// conventionalBranchPrefixes is the shared prefix table for the ref→branch
+// derivation path (hasConventionalPrefix → deriveBranchName →
+// createTaskWorktree). It is a deliberately NARROWER mirror of
+// validateBranchRef's accepted set (task.go also takes feature/, bugfix/,
+// hotfix/): a ref with one of those wider prefixes still derives feat/<ref>
+// here — legal, because the derived name is subsequently validated by
+// validateBranchRef itself (the derivation is only the resolution chain's
+// fallback; the true ref rides pointers/bindings). Hoisted into one named
+// constant so the two derivation entries (--worktree and --branch via
+// deriveBranchName) and any future caller share a single table — the inline
+// copy in createTaskWorktree was deleted (dogfood #6 class: two copies drift).
+//
+// conventionalBranchPrefixes 是 ref→分支派生路径（hasConventionalPrefix →
+// deriveBranchName → createTaskWorktree）的共享前缀表。它刻意是
+// validateBranchRef 接收集的【窄】镜像（task.go 还接受 feature/、bugfix/、
+// hotfix/）：带这些宽前缀的 ref 在此仍派生 feat/<ref>——合法，因为派生名随后
+// 由 validateBranchRef 自行校验（派生只是解析链的兜底，真 ref 由指针/绑定承载）。
+// 收敛为单一具名常量，使两个派生入口（--worktree 与经 deriveBranchName 的
+// --branch）及未来调用方共享一张表——createTaskWorktree 里的内联副本已删除
+// （dogfood #6 类问题：两份副本会漂移）。
+var conventionalBranchPrefixes = []string{"feat/", "fix/", "refactor/", "test/", "chore/", "docs/", "ci/", "perf/", "build/", "style/"}
+
+// hasConventionalPrefix mirrors validateBranchRef's accepted prefixes — kept adjacent
+// to its main consumer; drift with the validator fails the subsequent validateBranchRef call.
 //
 // hasConventionalPrefix 镜像 validateBranchRef 接受的前缀集——贴着主要消费方放；
 // 与校验器漂移会被随后的 validateBranchRef 兜住。
 func hasConventionalPrefix(ref string) bool {
-	for _, p := range []string{"feat/", "fix/", "refactor/", "test/", "chore/", "docs/", "ci/", "perf/", "build/", "style/"} {
+	for _, p := range conventionalBranchPrefixes {
 		if strings.HasPrefix(ref, p) {
 			return true
 		}
@@ -94,16 +115,20 @@ func createTaskWorktree(root, ref, base, wtDirParent string) (string, error) {
 	if ref == "" {
 		return "", fmt.Errorf("--worktree requires --ref")
 	}
-	// dogfood 修订（2026-08-27）：ref 合法性 ≠ 分支合法性——裸 task start 接受任意
-	// ref，而分支需惯例前缀；此前把 ref 直接当分支名校验，dogfood/walkthrough 这类
-	// 合法 ref 被误拒。规则：ref 已带惯例前缀则同名；否则派生 feat/<ref 斜杠转连字>
-	//（分支映射只是解析链的兜底环节，真 ref 由指针/绑定承载）。
-	branch := ref
-	if !hasConventionalPrefix(ref) {
-		branch = "feat/" + strings.ReplaceAll(ref, "/", "-")
-	}
-	if err := validateBranchRef(branch); err != nil {
-		return "", fmt.Errorf("invalid derived branch %q (from ref %q): %w", branch, ref, err)
+	// Single ref→branch derivation (dogfood #6 class fix, 2026-08-29): the inline
+	// copy of the derivation lived on after deriveBranchName was extracted for the
+	// --branch entry — two copies of the same rule drift (exactly how #6 happened).
+	// Rule: a conventionally-prefixed ref maps to itself; anything else derives
+	// feat/<slashes→dashes> (the branch mapping is only the resolution chain's
+	// fallback — the true ref rides pointers/bindings).
+	//
+	// 单一 ref→分支派生（dogfood #6 类修复，2026-08-29）：deriveBranchName 为
+	// --branch 入口抽出后，这里的内联派生副本继续存活——同一规则两份副本必漂移
+	// （#6 正是这样发生的）。规则：ref 已带惯例前缀则同名；否则派生
+	// feat/<斜杠转连字>（分支映射只是解析链的兜底环节，真 ref 由指针/绑定承载）。
+	branch, err := deriveBranchName(ref)
+	if err != nil {
+		return "", err
 	}
 	baseRef, err := worktreeBase(root, base)
 	if err != nil {
@@ -127,17 +152,27 @@ func createTaskWorktree(root, ref, base, wtDirParent string) (string, error) {
 
 // copyWorktreeIncludes copies forge.worktreeinclude-listed gitignored files (.env etc.)
 // into the new worktree. One line = one path or gitignore-style glob; comments (#) and
-// blanks skipped. Best-effort per line — a missing include must not fail the whole start.
+// blanks skipped. Best-effort per line — a missing include must not fail the whole start
+// — but per-file COPY failures are accumulated and reported as ONE stderr warning after
+// the walk (fix/cleanup-batch, 2026-08-29): before this, an unreadable/locked source or
+// an unwritable destination vanished silently, and the first session inside the worktree
+// discovered the missing .env with an opaque failure far from the cause. The warning
+// lists every failed include so the user can fix the cause before the session starts.
 //
 // copyWorktreeIncludes 把 forge.worktreeinclude 列出的 gitignored 文件（.env 等）复制
 // 进新 worktree。一行 = 一个路径或 gitignore 风格 glob；跳过注释（#）与空行。逐行
-// 尽力而为——缺一个 include 不得让整个 start 失败。
+// 尽力而为——缺一个 include 不得让整个 start 失败——但逐文件的【复制】失败会被累积，
+// 遍历结束后以一条 stderr 警告汇总上报（fix/cleanup-batch，2026-08-29）：此前源文件
+// 不可读/被锁或目标不可写都会静默蒸发，第一个进入 worktree 的会话才发现 .env 缺失，
+// 在远离根因的地方撞上一个莫名其妙的失败。警告列出每个失败的 include，让用户在
+// 会话开始前修复根因。
 func copyWorktreeIncludes(srcRoot, dstRoot string) {
 	listPath := filepath.Join(srcRoot, "forge.worktreeinclude")
 	data, err := os.ReadFile(listPath)
 	if err != nil {
 		return
 	}
+	var failed []string
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -154,16 +189,30 @@ func copyWorktreeIncludes(srcRoot, dstRoot string) {
 				continue // 目录不支持——只复制文件（.gitignore 语法子集，文档化限制）
 			}
 			if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+				failed = append(failed, fmt.Sprintf("%s (mkdir: %v)", rel, err))
 				continue
 			}
-			if in, err := os.Open(m); err == nil {
-				if out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
-					_, _ = io.Copy(out, in)
-					out.Close()
-				}
-				in.Close()
+			in, inErr := os.Open(m)
+			if inErr != nil {
+				failed = append(failed, fmt.Sprintf("%s (open: %v)", rel, inErr))
+				continue
 			}
+			out, outErr := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY, 0o644)
+			if outErr != nil {
+				in.Close()
+				failed = append(failed, fmt.Sprintf("%s (write: %v)", rel, outErr))
+				continue
+			}
+			if _, cpErr := io.Copy(out, in); cpErr != nil {
+				failed = append(failed, fmt.Sprintf("%s (copy: %v)", rel, cpErr))
+			}
+			out.Close()
+			in.Close()
 		}
+	}
+	if len(failed) > 0 {
+		fmt.Fprintf(os.Stderr, "[forge] warning: %d 个 forge.worktreeinclude 条目复制失败（worktree 已创建，start 不中断；缺的文件会让首个会话踩坑，建议先修复）:\n  %s\n",
+			len(failed), strings.Join(failed, "\n  "))
 	}
 }
 

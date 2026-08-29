@@ -630,3 +630,67 @@ func TestBuildEvidenceChain_TaskStartedExcluded(t *testing.T) {
 		t.Fatalf(`task-started 条目仍应保留在 Entries 供时间线: got %d, want 2`, len(ec.Entries))
 	}
 }
+
+// TestBuildEvidenceChain_VerificationWhitelist pins the denylist→whitelist
+// inversion (fix/cleanup-batch, 2026-08-29): only positively-listed
+// verification checks may feed evidence strength. A check OUTSIDE the
+// whitelist is skipped whatever its Source says — the fail-safe default for
+// NEW check names (the old 18-clause observation denylist silently bucketed
+// any unlisted name as deterministic evidence, inflating Strength). The
+// taskpipeline-defined verification checks (acceptance / test-run — forge
+// actually ran the suite/criteria, unforgeable) are whitelisted via literals
+// (checklog cannot import taskpipeline: cycle).
+//
+// TestBuildEvidenceChain_VerificationWhitelist 钉住黑名单→白名单反转
+// （fix/cleanup-batch，2026-08-29）：只有正向列名的验证类 check 才可喂给
+// evidence strength。白名单之外的 check 无论 Source 写什么都跳过——对新增
+// check 名这是 fail-safe 默认（旧的 18 子句 observation 黑名单会把未列名的
+// 名字静默分桶成 deterministic 证据、虚高 Strength）。taskpipeline 定义的验证
+// check（acceptance / test-run——forge 实跑过套件/标准、不可伪造）以字面量列入
+// 白名单（checklog 不能 import taskpipeline：会成环）。
+func TestBuildEvidenceChain_VerificationWhitelist(t *testing.T) {
+	entries := []Entry{
+		// Whitelist members: bucketed by Source as before (semantic equivalence
+		// for existing verification checks).
+		//
+		// 白名单成员：照旧按 Source 分桶（对既有验证 check 语义等价）。
+		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckFileSentinel, Source: "", TaskRef: "t"}, // 空 Source 兜底仍生效
+		{Check: CheckTaskVerify, Source: EvidenceAgentClaim, TaskRef: "t"},
+		{Check: CheckName("acceptance"), Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckName("test-run"), Source: EvidenceDeterministic, TaskRef: "t"},
+		// OUTSIDE the whitelist: skipped even with a forged/explicit
+		// Source=deterministic — new and unknown check names default to
+		// observation (fail-safe).
+		//
+		// 白名单之外：即便 Source 显式/伪造为 deterministic 也跳过——
+		// 新增与未知 check 名默认 observation（fail-safe）。
+		{Check: CheckName("some-future-check"), Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckName("resume-reinject"), Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckName("assignment-unclaimed"), Source: EvidenceDeterministic, TaskRef: "t"},
+	}
+	ec := BuildEvidenceChain(entries, "t")
+	if ec.Deterministic != 4 {
+		t.Fatalf(`白名单内应计入 deterministic: got %d, want 4（auto-compile + file-sentinel 兜底 + acceptance + test-run）`, ec.Deterministic)
+	}
+	if ec.AgentClaim != 1 {
+		t.Fatalf(`task-verify 应计 agent-claim: got %d, want 1`, ec.AgentClaim)
+	}
+	// Whitelist-outside entries are preserved for trace but never bucketed.
+	//
+	// 白名单外条目保留供 trace，但绝不分桶。
+	if len(ec.Entries) != 8 {
+		t.Fatalf(`entries preserved: got %d, want 8`, len(ec.Entries))
+	}
+
+	// A whitelist member with an UNKNOWN Source still follows the
+	// forgery-backdoor rule: agent-claim, never deterministic.
+	//
+	// 白名单成员带未知 Source 仍走伪造后门规则：agent-claim，绝不 deterministic。
+	ec2 := BuildEvidenceChain([]Entry{
+		{Check: CheckAutoCompile, Source: EvidenceSource("hook-verified"), TaskRef: "t"},
+	}, "t")
+	if ec2.Deterministic != 0 || ec2.AgentClaim != 1 {
+		t.Fatalf(`未知 Source 应计 agent-claim: det=%d claim=%d, want 0/1`, ec2.Deterministic, ec2.AgentClaim)
+	}
+}

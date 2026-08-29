@@ -1,10 +1,18 @@
 package scoring
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 )
+
+// assertionCollectWarningPrefix is the stderr marker for a failed changed-files
+// collection — one greppable shape shared with taskpipeline's git-diff warning.
+//
+// assertionCollectWarningPrefix 是 changed-files 采集失败的 stderr 标记——与
+// taskpipeline 的 git diff 告警共享同一可 grep 形态。
+const assertionCollectWarningPrefix = "[forge] warning:"
 
 // assertionMarkers is the cross-language "assertion" marker substring. Each
 // occurrence counts as one assertion (not a precise density, only a fake-test
@@ -49,19 +57,33 @@ var assertionMarkers = []string{
 // Reads the "current content" of test files (all assertions, not just newly
 // added)—a changed test file's full assertion set contributes to that file's
 // test sufficiency; counting only new assertions would miss pre-existing valid
-// ones and understate sufficiency. Non-fatal: read failure / no test files →
-// (0, 0), and the testing dimension is prorated normally (no crash on collect
-// failure).
+// ones and understate sufficiency. Non-fatal on per-file read failure (skipped,
+// not counted). COLLECTION failure (all git probes dead — non-git dir,
+// unreachable base) returns (0, 0) with a stderr warning: the caller cannot
+// distinguish "no test files" from "probe dead" through the count pair, so the
+// warning is the contract — scoreTesting additionally requires testFiles>0
+// before applying the ×0.6 fake-test penalty, which makes a dead probe skip
+// the penalty instead of punishing the task for files it never saw
+// (fix/cleanup-batch, 2026-08-29).
 //
 // CollectAssertionDensity 统计本任务 changed 测试文件的断言标记总数和测试文件数，
 // 供 testing 维度的假测试检测用（C）。
 //
 // 读测试文件的"当前内容"（全量断言，非仅本次新增）——一个被改动的测试文件，其全部
 // 断言都贡献该文件的测试充分性；只数新增断言会漏掉已存在的有效断言，低估充分性。
-// 非致命：读失败/无测试文件 → (0, 0)，testing 维度按比例分正常算（不因收集失败崩）。
+// 单文件读失败非致命（跳过、不计入）。【采集】失败（全部 git 探测死掉——非 git
+// 目录、base 不可达）返回 (0, 0) 并打 stderr 警告：调用方无法从计数对区分「无测试
+// 文件」与「探测死了」，警告即契约——scoreTesting 另外要求 testFiles>0 才应用
+// ×0.6 假测试惩罚，使死探测跳过惩罚、而非为从未见过的文件惩罚任务
+// （fix/cleanup-batch，2026-08-29）。
 func CollectAssertionDensity(root, branch, baseCommit string) (count, testFiles int) {
 	base := resolveDiffBase(root, branch, baseCommit)
-	for _, f := range changedFiles(root, base) {
+	files, err := changedFiles(root, base)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s assertion-density collection failed (%v) — fake-test penalty skipped (testing dimension not punished on a dead probe)\n", assertionCollectWarningPrefix, err)
+		return 0, 0
+	}
+	for _, f := range files {
 		if !isTestPath(f) {
 			continue
 		}

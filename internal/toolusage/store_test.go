@@ -264,52 +264,39 @@ func TestTruncateInput(t *testing.T) {
 	}
 }
 
-func TestClear(t *testing.T) {
+// TestPrune_ReplacesDeletedClear: Clear (archive + delete active) was deleted as
+// dead code — task start no longer truncates the toollog (multi-task-concurrency
+// §5). This test pins its surviving concern, previously covered via TestClear:
+// the active toollog is left intact by Prune (history survives task boundaries).
+//
+// TestPrune_ReplacesDeletedClear：Clear（归档 + 删 active）已作为死代码删除——
+// task start 不再截断 toollog（multi-task-concurrency §5）。本测试钉住原先经
+// TestClear 覆盖的存活关切：Prune 不动 active toollog（历史跨任务边界存活）。
+func TestPrune_ReplacesDeletedClear(t *testing.T) {
 	dir := t.TempDir()
 
 	Record(dir, &ToolCall{ToolName: "Read"})
 	Record(dir, &ToolCall{ToolName: "Edit"})
 
+	Prune(dir)
+
+	// Active toollog untouched: reads are TaskRef-scoped, history must survive.
+	//
+	// active toollog 不动：读取按 TaskRef 过滤，历史必须存活。
 	calls, _ := LoadAll(dir)
 	if len(calls) != 2 {
-		t.Fatalf("expected 2 calls before clear, got %d", len(calls))
-	}
-
-	if err := Clear(dir); err != nil {
-		t.Fatalf("Clear failed: %v", err)
-	}
-
-	calls, _ = LoadAll(dir)
-	if len(calls) != 0 {
-		t.Errorf("expected 0 calls after clear, got %d", len(calls))
-	}
-
-	// Archived file should exist (user-level DataDir)
-	dataDir := forgedata.DataDirFor(dir)
-	files, _ := filepath.Glob(filepath.Join(dataDir, "toollog-*.jsonl"))
-	if len(files) == 0 {
-		entries, err := os.ReadDir(dataDir)
-		if err == nil {
-			found := false
-			for _, e := range entries {
-				if len(e.Name()) > 12 && e.Name()[:12] == "toollog-20" {
-					found = true
-					break
-				}
-			}
-			if !found {
-				t.Error("expected archived toollog file after Clear")
-			}
-		}
+		t.Fatalf("expected 2 calls after prune (active toollog untouched), got %d", len(calls))
 	}
 }
 
-// TestClear_PrunesOldArchives: after Clear rotates, prune over-age toollog archives per FORGE_LOG_RETENTION_DAYS,
-// keeping recent archives.
+// TestPrune_PrunesOldArchives: prune deletes over-age toollog archives per
+// FORGE_LOG_RETENTION_DAYS, keeping recent archives (formerly TestClear_PrunesOldArchives;
+// Prune inherited the retention pin when Clear was deleted).
 //
-// TestClear_PrunesOldArchives：Clear 轮转后按 FORGE_LOG_RETENTION_DAYS 清超期 toollog 归档，
-// 保留近期归档。
-func TestClear_PrunesOldArchives(t *testing.T) {
+// TestPrune_PrunesOldArchives：Prune 按 FORGE_LOG_RETENTION_DAYS 清超期 toollog
+// 归档，保留近期归档（原 TestClear_PrunesOldArchives；Clear 删除后由 Prune 承接
+// 该 retention 钉子）。
+func TestPrune_PrunesOldArchives(t *testing.T) {
 	t.Setenv("FORGE_LOG_RETENTION_DAYS", "30")
 	dir := t.TempDir()
 	forgeDir := forgedata.DataDirFor(dir)
@@ -319,11 +306,9 @@ func TestClear_PrunesOldArchives(t *testing.T) {
 	today := time.Now().Format("20060102150405.000000000")
 	os.WriteFile(filepath.Join(forgeDir, "toollog-"+today+".jsonl"), []byte("new"), 0644)
 
-	if err := Clear(dir); err != nil {
-		t.Fatalf("Clear: %v", err)
-	}
+	Prune(dir)
 	if _, err := os.Stat(filepath.Join(forgeDir, "toollog-20000101000000.jsonl")); !os.IsNotExist(err) {
-		t.Error("old toollog archive should be pruned after Clear")
+		t.Error("old toollog archive should be pruned")
 	}
 	if _, err := os.Stat(filepath.Join(forgeDir, "toollog-"+today+".jsonl")); err != nil {
 		t.Error("recent toollog archive should be kept")
@@ -341,14 +326,22 @@ func TestLoadNonexistent(t *testing.T) {
 	}
 }
 
-// TestRecordAndClear_ConcurrentNoDeadlock guards the C2 fix: Clear and Archive
-// now hold the same mutex as Record. The lock split previously let a rotation
-// race a concurrent append (entries lost). The fix introduces archiveLocked so
-// Clear can archive-then-remove under one lock WITHOUT re-entering the mutex
-// (which would deadlock, since sync.Mutex is non-reentrant). This test fails
-// fast on that re-entry deadlock via the timeout, and under -race catches any
-// remaining unsynchronized file access.
-func TestRecordAndClear_ConcurrentNoDeadlock(t *testing.T) {
+// TestRecordAndPrune_ConcurrentNoDeadlock guards the C2 fix lineage: the
+// toollog-mutating paths hold the same mutex as Record (the old Clear and its
+// archiveLocked split were deleted as dead code, 2026-08-29; Prune is the
+// surviving lock-holding writer besides Record). Concurrent Record + Prune must
+// neither deadlock nor leave the active toollog unreadable. The 30s bound:
+// under Windows FS + -race the IO storm legitimately exceeds 5s (the first
+// Windows CI run misreported a deadlock); a true deadlock never completes, so
+// 30s still catches it.
+//
+// TestRecordAndPrune_ConcurrentNoDeadlock 守卫 C2 修复谱系：改动 toollog 的路径
+// 与 Record 持同一把 mutex（旧 Clear 及其 archiveLocked 拆分已于 2026-08-29 作
+// 死代码删除；幸存的持锁写方除 Record 外即 Prune）。并发 Record + Prune 既不能
+// 死锁、也不能把 active toollog 留成不可读。30s 上限：Windows FS + -race 下
+// IO 风暴合法地远超 5s（首个 Windows CI run 误报死锁）；真死锁永不完成，30s
+// 仍必然拦截。
+func TestRecordAndPrune_ConcurrentNoDeadlock(t *testing.T) {
 	dir := t.TempDir()
 	var wg sync.WaitGroup
 	for range 50 {
@@ -361,20 +354,20 @@ func TestRecordAndClear_ConcurrentNoDeadlock(t *testing.T) {
 		}()
 		go func() {
 			defer wg.Done()
-			_ = Clear(dir)
+			Prune(dir)
 		}()
 	}
 	done := make(chan struct{})
 	go func() { wg.Wait(); close(done) }()
 	select {
 	case <-done:
-	// 30s：Windows FS + race 下并发 Record/Clear 的 IO 风暴合法地远超 5s（首个
+	// 30s：Windows FS + race 下并发 Record/Prune 的 IO 风暴合法地远超 5s（首个
 	// Windows CI run 误报死锁）；真死锁永不完成，30s 仍必然拦截。
 	case <-time.After(30 * time.Second):
-		t.Fatal("Record/Clear deadlocked (Clear→Archive mutex re-entry?)")
+		t.Fatal("Record/Prune deadlocked (mutex re-entry?)")
 	}
 	if _, err := LoadAll(dir); err != nil {
-		t.Fatalf("LoadAll after concurrent Record/Clear: %v", err)
+		t.Fatalf("LoadAll after concurrent Record/Prune: %v", err)
 	}
 }
 

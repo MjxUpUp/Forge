@@ -25,7 +25,6 @@ func withTestIdentity(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("generate identity: %v", err)
 	}
-	id.NodeID = id.NodeID // keep field access explicit
 	if err := id.Save(); err != nil {
 		t.Fatalf("save identity: %v", err)
 	}
@@ -61,7 +60,7 @@ func TestTaskStateIntegrity_SignVerifyRoundTrip(t *testing.T) {
 // trusted) must leave the loaded state flagged IntegrityBroken.
 //
 // TestTaskStateIntegrity_TamperedStateFlagged 钉住攻击路径：手改落盘 JSON
-//（2026-08-29 功能探针——伪造的 ReviewPassed 曾被全量采信）必须让加载后的状态
+// （2026-08-29 功能探针——伪造的 ReviewPassed 曾被全量采信）必须让加载后的状态
 // 带上 IntegrityBroken 标记。
 func TestTaskStateIntegrity_TamperedStateFlagged(t *testing.T) {
 	withTestIdentity(t)
@@ -100,7 +99,7 @@ func TestTaskStateIntegrity_TamperedStateFlagged(t *testing.T) {
 // (no integrity block) loads without the broken flag.
 //
 // TestTaskStateIntegrity_LegacyUnsignedAllowed 钉住兼容性：签名前的存量数据
-//（无 integrity 块）加载不置 broken 标记。
+// （无 integrity 块）加载不置 broken 标记。
 func TestTaskStateIntegrity_LegacyUnsignedAllowed(t *testing.T) {
 	root := t.TempDir()
 	state := NewTaskState(&taskcontext.Context{Source: "explicit", TaskRef: "integ-legacy", Branch: "main"})

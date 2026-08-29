@@ -561,14 +561,38 @@ type pendingDep struct {
 // annotateDep describes one pending upstream dependency: collaboration status + gate progress.
 // A delegated dep → its Assignment.Status; an ordinary predecessor → complete/incomplete; a
 // missing/aborted ref → "missing". Gate progress is passed/total over DefaultGates.
+// Cross-repo deps (key:ref, multi-repo workspace Option B) resolve via
+// taskpipeline.LoadDepState — mirroring task_health.go's lookupState — instead of
+// reading as forever-missing: the foreign task can never be in this repo's byRef
+// index, so without the resolution a live cross-repo dep would render "missing"
+// and hide WHERE the worker is actually blocked.
 //
 // annotateDep 描述一条待交付上游依赖：协作状态 + 门禁进度。分派依赖 → 其 Assignment.Status；
 // 普通前序 → complete/incomplete；缺失/已 abort 的 ref → "missing"。门禁进度为 DefaultGates 的 passed/total。
-func annotateDep(ref string, byRef map[string]*taskpipeline.TaskState) (status string, passed, total int) {
+// 跨仓依赖（key:ref，多仓 workspace Option B）经 taskpipeline.LoadDepState 解析——镜像
+// task_health.go 的 lookupState——而非恒读作 missing：他仓任务本就不可能在本仓 byRef 索引里，
+// 不解析的话一个在途的跨仓依赖会渲染成 "missing"，掩盖工作方真正卡在哪一环。
+func annotateDep(root string, ref string, byRef map[string]*taskpipeline.TaskState) (status string, passed, total int) {
 	total = len(taskpipeline.DefaultGates())
-	s := byRef[ref]
-	if s == nil {
-		return `missing`, 0, total
+	var s *taskpipeline.TaskState
+	if s = byRef[ref]; s == nil {
+		// Not in this repo's index: a cross-repo ref (key:ref) resolves from the
+		// member repo's data dir; only a FAILED resolution (unknown key, missing/
+		// unreadable state) is "missing" — same conservative shape as the gate's
+		// PendingDependencies.
+		//
+		// 不在本仓索引：跨仓 ref（key:ref）从成员仓数据目录解析；只有解析失败
+		// （key 未知、state 缺失/不可读）才是 "missing"——与门禁 PendingDependencies
+		// 同样的保守形态。
+		if key, _ := taskpipeline.SplitDepRef(ref); key != "" {
+			cs, err := taskpipeline.LoadDepState(root, ref)
+			if err != nil || cs == nil {
+				return `missing`, 0, total
+			}
+			s = cs
+		} else {
+			return `missing`, 0, total
+		}
 	}
 	passed = len(s.CompletedGates())
 	if s.Assignment != nil {
@@ -679,7 +703,7 @@ func scanDelegations(root, agent, role string, blocked bool, now time.Time) ([]d
 		// 让工作方不只知被阻塞，更知被谁/什么阻塞。
 		var details []pendingDep
 		for _, d := range pend {
-			st, passed, tot := annotateDep(d, byRef)
+			st, passed, tot := annotateDep(root, d, byRef)
 			details = append(details, pendingDep{Ref: d, Status: st, GatePassed: passed, GateTotal: tot})
 		}
 		isZombie, zombieReasons := taskpipeline.IsZombie(root, s, now)

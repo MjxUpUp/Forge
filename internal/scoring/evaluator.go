@@ -17,7 +17,7 @@ import (
 func Evaluate(input *EvaluateInput, config *scoringtypes.ScoringConfig) *scoringtypes.ScoreResult {
 	dimensions := []scoringtypes.DimensionScore{
 		scoreProcess(input.GateHistory),
-		scoreTesting(input.TestCoverageCovered, input.TestCoverageTotal, input.TestAssertionCount, input.TestCoverageChecked),
+		scoreTesting(input.TestCoverageCovered, input.TestCoverageTotal, input.TestAssertionCount, input.TestFileCount, input.TestCoverageChecked),
 		scoreCodeQuality(input.CompilePassed, input.CompileChecked),
 		scoreAssertions(input.AssertionPassed, input.AssertionChecked),
 		scoreScope(input.GitDiffStat),
@@ -119,7 +119,21 @@ func scoreProcess(h GateHistory) scoringtypes.DimensionScore {
 // 断言密度修正：若 covered>0 但 assertionCount==0，说明测试文件只有 setup/log 无断言
 // （假测试），base × 0.6。依据 STREW 的 Assertion-McCabe ratio——断言数度量测试充分性。
 // total==0（无可测源码）→ 100（无对象不该被惩罚）。checked=false → 70（中性，未检测）。
-func scoreTesting(covered, total, assertionCount int, checked bool) scoringtypes.DimensionScore {
+//
+// Penalty guard (fix/cleanup-batch, 2026-08-29): the ×0.6 correction now also
+// requires testFiles>0 — the count of test files the density collection
+// actually READ. assertionCount==0 with testFiles==0 means the collection saw
+// no test files at all (dead git probe — CollectAssertionDensity already
+// warned on stderr — or a genuinely test-less diff), and "no data" must not
+// read as "data says fake": a dead probe would otherwise punish the task for
+// files it never saw.
+//
+// 惩罚守卫（fix/cleanup-batch，2026-08-29）：×0.6 修正另需 testFiles>0——即密度
+// 采集【实际读到】的测试文件数。assertionCount==0 且 testFiles==0 意为采集根本没见
+// 到测试文件（git 探测死了——CollectAssertionDensity 已在 stderr 告警——或 diff 本就
+// 无测试文件），「无数据」不得读作「数据说是假测试」：死探测否则会为从未见过的
+// 文件惩罚任务。
+func scoreTesting(covered, total, assertionCount, testFiles int, checked bool) scoringtypes.DimensionScore {
 	if !checked {
 		return scoringtypes.DimensionScore{
 			Dimension: scoringtypes.DimensionTesting,
@@ -142,7 +156,7 @@ func scoreTesting(covered, total, assertionCount int, checked bool) scoringtypes
 	}
 	ratio := float64(covered) / float64(total)
 	base := 30.0 + 70.0*ratio
-	if covered > 0 && assertionCount == 0 {
+	if covered > 0 && assertionCount == 0 && testFiles > 0 {
 		base *= 0.6
 	}
 	score := int(math.Round(base))
