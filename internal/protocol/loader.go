@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -81,9 +82,14 @@ func ProjectLevelPath(dir string) string {
 }
 
 // Load reads the effective protocol.yml for the project (project-level override
-// first, then the user-level DataDir copy).
+// first, then the user-level DataDir copy). After unmarshal it runs a semantic
+// post-validation (validateWarn): severity values are normalized/warned and
+// standards missing the enabled key get a one-shot stderr hint — see
+// validateWarn for why these stay warnings instead of Load errors.
 //
 // Load 读项目的生效 protocol.yml（项目级覆盖优先，其次用户级 DataDir 副本）。
+// unmarshal 之后跑语义后校验（validateWarn）：severity 规范化/告警、漏写 enabled
+// 的 standard 一次性 stderr 提示——为何只告警不报错见 validateWarn。
 func Load(dir string) (*Protocol, error) {
 	path, err := pathFor(dir)
 	if err != nil {
@@ -100,7 +106,87 @@ func Load(dir string) (*Protocol, error) {
 	if err := yaml.Unmarshal(data, &p); err != nil {
 		return nil, fmt.Errorf("failed to parse protocol.yml: %w", err)
 	}
+	p.validateWarn(data)
 	return &p, nil
+}
+
+// validSeverities is the closed lowercase severity set every consumer
+// understands (types.go's Standard comment, render.go's label switches, the
+// gates comparing == "error").
+//
+// validSeverities 是所有消费方（types.go 的 Standard 注释、render.go 的 label
+// switch、按 == "error" 精确比较的各门禁）共同识别的小写 severity 闭合集。
+var validSeverities = map[string]bool{"info": true, "warning": true, "error": true}
+
+// validateWarn is the post-load semantic validation. It deliberately WARNS on
+// stderr instead of failing Load: protocol.yml is read by nearly every command
+// (status/gates/hooks), and a semantic typo must not brick them all — the file
+// is still structurally valid YAML. Two checks:
+//
+//  1. severity: whitespace/case is normalized into the lowercase set ("ERROR" →
+//     "error", with a warning to fix the source); a value still outside the set
+//     keeps its original value but gets a warning. Unknown severities matter
+//     because render.go's Emoji/WordSeverityLabel switches map them to their
+//     default branch (currently the MOST severe 🔴/ERROR) while consumers
+//     compare == "error" exactly — a typo silently reshapes gate behavior.
+//
+//  2. enabled: YAML bools cannot distinguish "key absent" from "explicit false"
+//     in the typed struct, so the raw bytes are re-read with *bool shadows. Any
+//     standard lacking the key gets ONE aggregated stderr hint — a missing
+//     enabled decodes to false and the standard silently never applies
+//     (漏写将不生效), which looks like forge ignoring the user's protocol.
+//
+// validateWarn 是 Load 后的语义校验。刻意 stderr 告警而非让 Load 失败：
+// protocol.yml 几乎被所有命令读取（status/门禁/hooks），语义笔误不应把它们全部
+// 砸挂——文件仍是结构合法的 YAML。两项检查：
+//
+//  1. severity：空白/大小写规范化进小写集合（"ERROR" → "error"，同时告警提醒
+//     改源头）；仍落在集合外的值保留原值并告警。未知 severity 之所以要管，是
+//     render.go 的 Emoji/WordSeverityLabel switch 会把它们映射到 default 分支
+//     （当前是最严重的 🔴/ERROR），而消费方又精确比较 == "error"——笔误会静默
+//     改变门禁行为。
+//
+//  2. enabled：YAML bool 在类型化结构里无法区分「键缺失」与「显式 false」，
+//     因此用 *bool 影子结构重读原始字节。任何漏写该键的 standard 触发一次
+//     聚合 stderr 提示——漏写的 enabled 解码为 false，standard 静默不生效
+//     （漏写将不生效），看起来就像 forge 无视用户的 protocol。
+func (p *Protocol) validateWarn(raw []byte) {
+	for i := range p.Standards {
+		s := &p.Standards[i]
+		orig := s.Severity
+		sev := strings.ToLower(strings.TrimSpace(orig))
+		if validSeverities[sev] {
+			if sev != orig {
+				s.Severity = sev
+				fmt.Fprintf(os.Stderr, "warn: standard %q 的 severity %q 已规范化为 %q（请改用小写 info/warning/error）\n", s.ID, orig, sev)
+			}
+			continue
+		}
+		fmt.Fprintf(os.Stderr, "warn: standard %q 的 severity %q 不在 info/warning/error 集合内，已保留原值——渲染将按未知档处理（当前实现默认最严重的 ERROR/🔴），请修正 protocol.yml\n", s.ID, orig)
+	}
+	// Shadow re-read with *bool: nil = key absent (vs explicit false). The raw
+	// bytes already parsed successfully in Load, so an error here is practically
+	// unreachable — skip silently rather than double-report a parse problem.
+	//
+	// 用 *bool 影子重读：nil = 键缺失（区别于显式 false）。原始字节在 Load 已
+	// 解析成功，这里出错实际不可达——静默跳过，避免重复报告解析问题。
+	var shadow struct {
+		Standards []struct {
+			Enabled *bool `yaml:"enabled"`
+		} `yaml:"standards"`
+	}
+	if err := yaml.Unmarshal(raw, &shadow); err != nil {
+		return
+	}
+	missing := 0
+	for _, s := range shadow.Standards {
+		if s.Enabled == nil {
+			missing++
+		}
+	}
+	if missing > 0 {
+		fmt.Fprintf(os.Stderr, "warn: %d 个 standard 漏写 enabled 字段——漏写将不生效（YAML 缺省为 false）；请显式写 enabled: true 或 enabled: false\n", missing)
+	}
 }
 
 // EnsureDefault makes sure an effective protocol.yml exists for dir, writing

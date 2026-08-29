@@ -209,10 +209,12 @@ func header(skill string) string {
 // formatDecision renders a single decision as a markdown section (the write unit of
 // decisions.md).
 // Fixed fields use list items (- **Field**: value); multi-line content uses ### sub-sections
-// — parseDecisions parses them symmetrically.
+// — parseDecisions parses them symmetrically. Free-text fields are passed through
+// escapeDecisionText first (see its comment).
 //
 // formatDecision 把单条决策渲染成 markdown section（decisions.md 的写入单元）。
 // 固定字段用列表项（- **Field**: value），多行内容用 ### 子节——parseDecisions 对称解析。
+// 自由文本字段先过 escapeDecisionText（见其注释）。
 func formatDecision(d SkillDecision) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "## [%s] %s\n\n", d.ID, d.Outcome)
@@ -232,35 +234,88 @@ func formatDecision(d SkillDecision) string {
 	if !d.VerifiedAt.IsZero() {
 		b.WriteString("- **VerifiedAt**: " + d.VerifiedAt.UTC().Format(time.RFC3339) + "\n")
 	}
-	b.WriteString("\n### Diagnosis\n\n" + strings.TrimRight(d.Diagnosis, "\n") + "\n\n")
-	b.WriteString("### Revision\n\n" + strings.TrimRight(d.Revision, "\n") + "\n\n")
+	b.WriteString("\n### Diagnosis\n\n" + escapeDecisionText(strings.TrimRight(d.Diagnosis, "\n")) + "\n\n")
+	b.WriteString("### Revision\n\n" + escapeDecisionText(strings.TrimRight(d.Revision, "\n")) + "\n\n")
 	// Prediction renders between Revision and Evidence: it is declared at edit time as part of
 	// the change contract, while Evidence is the evaluation data backing the decision.
 	//
 	// Prediction 渲染在 Revision 与 Evidence 之间：它与修改同时声明、属变更契约的一部分，
 	// 而 Evidence 是支撑决策的评估数据。
 	if d.Prediction != "" {
-		b.WriteString("### Prediction\n\n" + strings.TrimRight(d.Prediction, "\n") + "\n\n")
+		b.WriteString("### Prediction\n\n" + escapeDecisionText(strings.TrimRight(d.Prediction, "\n")) + "\n\n")
 	}
-	b.WriteString("### Evidence\n\n" + strings.TrimRight(d.Evidence, "\n") + "\n")
+	b.WriteString("### Evidence\n\n" + escapeDecisionText(strings.TrimRight(d.Evidence, "\n")) + "\n")
 	if d.Rationale != "" {
-		b.WriteString("\n### Rationale\n\n" + strings.TrimRight(d.Rationale, "\n") + "\n")
+		b.WriteString("\n### Rationale\n\n" + escapeDecisionText(strings.TrimRight(d.Rationale, "\n")) + "\n")
 	}
 	if d.Verification != "" {
-		b.WriteString("\n### Verification\n\n" + strings.TrimRight(d.Verification, "\n") + "\n")
+		b.WriteString("\n### Verification\n\n" + escapeDecisionText(strings.TrimRight(d.Verification, "\n")) + "\n")
 	}
 	return b.String()
 }
 
+// decisionEscapePrefix is U+2060 (WORD JOINER, zero-width no-break space) — the
+// line-start escape marker for free-text fields. Invisible in editors/renderers
+// and legal inside markdown prose, so escaped lines stay human-readable while no
+// longer starting with the structural characters parseDecisions keys on.
+//
+// decisionEscapePrefix 是 U+2060（WORD JOINER，零宽不换行空格）——自由文本字段的
+// 行首转义标记。编辑器/渲染器中不可见且在 markdown 正文里合法，转义行保持人类
+// 可读，同时不再以 parseDecisions 所识别的结构字符开头。
+const decisionEscapePrefix = "\u2060"
+
+// escapeDecisionText prefixes every structurally ambiguous line of a free-text
+// field with decisionEscapePrefix. parseDecisions keys on line-start markers —
+// `## [d-...` opens a decision, any `## `/`### ` heading switches or ends
+// sections, `- **Field**:` extracts fields — so free text containing such lines
+// (e.g. a diagnosis quoting `## [d-evil] accept`) would otherwise forge a
+// PHANTOM decision and corrupt the round-trip. Prefixing # (covers #/##/###),
+// `- **`, and decisionEscapePrefix itself defuses exactly those markers;
+// parseDecisionText strips one prefix per line symmetrically (a value
+// legitimately starting with U+2060 must be escaped too, so it keeps its own
+// through the round trip — escape adds one, unescape removes one).
+//
+// escapeDecisionText 给自由文本字段里每一行结构歧义行加 decisionEscapePrefix
+// 前缀。parseDecisions 以行首标记切分——`## [d-...` 开决策、任意 `## `/`### ` 标题
+// 切换/结束小节、`- **Field**:` 取字段——自由文本含这类行（如诊断里引用
+// `## [d-evil] accept`）会伪造出幻影决策并破坏往返。给 #（覆盖 #/##/###）、
+// `- **` 以及 decisionEscapePrefix 本身加前缀恰好拆掉这些标记；parseDecisionText
+// 对称地每行剥掉一个前缀（本身以 U+2060 开头的值也必须转义，才能在往返中保留
+// 自己的那一个——转义加一、还原减一）。
+func escapeDecisionText(s string) string {
+	lines := strings.Split(s, "\n")
+	for i, ln := range lines {
+		if strings.HasPrefix(ln, "#") || strings.HasPrefix(ln, "- **") || strings.HasPrefix(ln, decisionEscapePrefix) {
+			lines[i] = decisionEscapePrefix + ln
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// parseDecisionText reverses escapeDecisionText line by line: strip ONE leading
+// decisionEscapePrefix. Lines without the prefix pass through unchanged.
+//
+// parseDecisionText 逐行反转 escapeDecisionText：剥掉一个行首
+// decisionEscapePrefix。无前缀的行原样通过。
+func parseDecisionText(s string) string {
+	lines := strings.Split(s, "\n")
+	for i, ln := range lines {
+		lines[i] = strings.TrimPrefix(ln, decisionEscapePrefix)
+	}
+	return strings.Join(lines, "\n")
+}
+
 // parseDecisions parses the full decisions.md text into []SkillDecision.
 // Sections are split at ^## [d-...]; within a section, - **Field**: value extracts fields
-// and ### Subsection extracts multi-line content. Sections that fail to parse are skipped
-// (fault-tolerant, no panic) — decisions.md is primarily for humans/agents to read; parsing
-// only supports scoped revert / list display, so losing one entry is not fatal.
+// and ### Subsection extracts multi-line content (unescaped via parseDecisionText —
+// the symmetric inverse of the write side's escapeDecisionText). Sections that fail to
+// parse are skipped (fault-tolerant, no panic) — decisions.md is primarily for humans/agents
+// to read; parsing only supports scoped revert / list display, so losing one entry is not fatal.
 //
 // parseDecisions 解析 decisions.md 全文为 []SkillDecision。
 // 按"^## [d-...]"切 section；section 内"- **Field**: value"取字段，"### Subsection"
-// 取多行内容。无法解析的 section 跳过（容错，不 panic）——decisions.md 主要给人/agent
+// 取多行内容（经 parseDecisionText 还原——写入侧 escapeDecisionText 的对称逆）。
+// 无法解析的 section 跳过（容错，不 panic）——decisions.md 主要给人/agent
 // 读，解析只为 scoped revert / 列表展示，丢一条不致命。
 func parseDecisions(md string) []SkillDecision {
 	lines := strings.Split(md, "\n")
@@ -273,7 +328,13 @@ func parseDecisions(md string) []SkillDecision {
 		if cur == nil || section == "" {
 			return
 		}
-		content := strings.TrimSpace(body.String())
+		// Unescape AFTER TrimSpace: the U+2060 escape marker is not unicode
+		// whitespace, so TrimSpace never eats it; stripping it per line here is
+		// the symmetric inverse of escapeDecisionText on the write side.
+		//
+		// 先 TrimSpace 再还原：U+2060 转义标记不是 unicode 空白，TrimSpace 不会
+		// 吃掉它；此处逐行剥离是写入侧 escapeDecisionText 的对称逆操作。
+		content := parseDecisionText(strings.TrimSpace(body.String()))
 		switch section {
 		case "Diagnosis":
 			cur.Diagnosis = content
