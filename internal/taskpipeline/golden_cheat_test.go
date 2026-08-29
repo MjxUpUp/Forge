@@ -53,7 +53,7 @@ func goldenRunDetectors(prod []addedLine) map[CheatPattern]int {
 // "fenced" mention).
 //
 // TestGolden_CheatSampleMatrix 是作弊样本黄金矩阵：功能审查实证【必须命中】的样本
-//（空 catch / 注释体 catch / Go 错误丢弃 / nolint / 永假分支 / ts-ignore /
+// （空 catch / 注释体 catch / Go 错误丢弃 / nolint / 永假分支 / ts-ignore /
 // except:pass / mypy type: ignore）与【不得命中】的近似样本（元组赋值 / 正常 catch /
 // 字符串字面量「围栏」内提及）。
 func TestGolden_CheatSampleMatrix(t *testing.T) {
@@ -176,8 +176,8 @@ func TestGolden_UnusedExport(t *testing.T) {
 // matching, no substring exemptions).
 //
 // TestGolden_IsTestFileMatrix 钉本轮新增/修复的测试文件名黄金形态：「test_」前缀
-//（根目录 test_root.py 验收——此前仍进 missing 列表）与 Java 驼峰 Test/Tests/IT 后缀
-//（MainTest.java 验收）。近似样本不得命中：testing.go（第 5 字符不是 '_'）、裸
+// （根目录 test_root.py 验收——此前仍进 missing 列表）与 Java 驼峰 Test/Tests/IT 后缀
+// （MainTest.java 验收）。近似样本不得命中：testing.go（第 5 字符不是 '_'）、裸
 // test_.py（空 stem）、test.py、contest/ 目录（路径段整段匹配，无子串豁免）。
 func TestGolden_IsTestFileMatrix(t *testing.T) {
 	for _, tc := range []struct {
@@ -323,7 +323,7 @@ func TestGolden_CheckTestCoverage_AcceptancePairs(t *testing.T) {
 // the audit entry is recorded inside the variant, not only in the public wrapper.
 //
 // TestGolden_CheckTestCoverageChanged_EscapeHatchPreserved 钉 executor 新直连路径
-//（改调 checkTestCoverageChanged 而非 CheckTestCoverage）不丢逃生舱语义：
+// （改调 checkTestCoverageChanged 而非 CheckTestCoverage）不丢逃生舱语义：
 // FORGE_TEST_COVERAGE=disable 仍须返回 ok=true——审计条目记录在变体内部，
 // 不只在公开包装层。
 func TestGolden_CheckTestCoverageChanged_EscapeHatchPreserved(t *testing.T) {
