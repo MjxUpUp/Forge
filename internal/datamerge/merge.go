@@ -36,6 +36,7 @@ package datamerge
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -507,19 +508,88 @@ func jsonlLineTimestamp(line string) (time.Time, bool) {
 	return time.Time{}, false
 }
 
-// MoveFile renames src to dst, falling back to copy+remove across devices.
+// MoveFile renames src to dst, falling back to copy+remove across devices. The
+// fallback STREAMS the copy (io.Copy) into a temp file in dst's dir and renames
+// it into place — util.AtomicWrite's pattern, minus the []byte: bundle files
+// can be large (task exports, archive copies), and the former whole-file
+// ReadFile+Write buffered the entire payload in memory twice per file. A
+// truncate-write interrupted mid-copy would still leave a corrupted
+// destination, so the temp+rename atomicity is kept.
 //
-// MoveFile 把 src rename 到 dst，跨设备时回落 copy+remove。
+// MoveFile 把 src rename 到 dst，跨设备时回落 copy+remove。回退路径用 io.Copy
+// **流式**写入 dst 目录下的 temp 文件再 rename 落位——util.AtomicWrite 的模式、
+// 只是去掉 []byte：bundle 文件可能很大（任务导出、归档副本），原先的整读整写
+// 每个文件要在内存里缓冲整份载荷两次。截断式写中途被打断仍会留下损坏的目标
+// 文件，故 temp+rename 的原子性保留。
 func MoveFile(src, dst string) error {
 	if err := os.Rename(src, dst); err == nil {
 		return nil
 	}
-	data, err := os.ReadFile(src)
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(dst, data, 0644); err != nil {
+	if err := copyFileAtomic(src, dst); err != nil {
 		return err
 	}
 	return os.Remove(src)
+}
+
+// copyFileAtomic streams src into dst atomically: copy into a temp file next
+// to dst, fsync, close, chmod, rename. It mirrors util.AtomicWrite (same
+// temp-naming, sync, and chmod 0644 contract) but takes a reader-backed source
+// instead of an in-memory buffer — AtomicWrite has no io.Reader variant and
+// the whole point here is not holding the file in memory.
+//
+// copyFileAtomic 把 src 流式原子写入 dst：先拷进 dst 旁的 temp 文件、fsync、
+// 关闭、chmod、rename。镜像 util.AtomicWrite（同样的 temp 命名、sync 与 chmod
+// 0644 契约），但源是 reader 而非内存缓冲——AtomicWrite 没有 io.Reader 变体，
+// 而这里的目的恰恰是不把文件整个抱进内存。
+func copyFileAtomic(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	dir := filepath.Dir(dst)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, ".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	abort := func(e error) error {
+		tmp.Close()
+		os.Remove(tmpName)
+		return e
+	}
+
+	// The streaming core: 32KB at a time (io.Copy's internal buffer), never
+	// holding more than the transfer window regardless of file size.
+	//
+	// 流式核心：每次 32KB（io.Copy 内部缓冲），无论文件多大，内存占用只有
+	// 传输窗口本身。
+	if _, err := io.Copy(tmp, in); err != nil {
+		return abort(err)
+	}
+	// fsync BEFORE rename: the rename publishes the file, so the data must be
+	// durable first — same ordering util.AtomicWrite guarantees.
+	//
+	// rename 前 fsync：rename 是发布动作，数据必须先落稳——与
+	// util.AtomicWrite 保证的顺序一致。
+	if err := tmp.Sync(); err != nil {
+		return abort(err)
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	if err := os.Chmod(tmpName, 0644); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	if err := os.Rename(tmpName, dst); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	return nil
 }

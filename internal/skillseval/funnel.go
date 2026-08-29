@@ -167,6 +167,19 @@ func BuildTriggerFunnel(entries []checklog.Entry, calls []toolusage.ToolCall) *F
 		groups = append(groups, g)
 	}
 
+	// 热路径预处理（2026-08-29 perf 审查）：engagedAfter 原为每次全量扫 calls 并重复
+	// JSON 解析（O(groups×calls) 次解析）。这里在聚合前建一次索引：按 SessionID 分桶、
+	// 每条 call 的信号（skill 名或读路径）只提取一次，后续判定只扫本 session 桶做
+	// 字符串比较。输出字节等价由 TestBuildTriggerFunnel_GoldenJSON 钉住。
+	//
+	// Hot-path preprocessing (2026-08-29 perf audit): engagedAfter used to rescan the
+	// full calls slice with repeated JSON parses per group (O(groups×calls) parses).
+	// Build the index once before aggregation instead: bucket calls by SessionID,
+	// extract each call's signal (skill name or read path) exactly once, and let every
+	// judgment scan only its session bucket with plain string compares. Output is
+	// pinned byte-identical by TestBuildTriggerFunnel_GoldenJSON.
+	idx := buildEngagedIndex(calls)
+
 	bySkill := map[string]*SkillFunnel{}
 	order := []string{}
 	for _, g := range groups {
@@ -183,7 +196,7 @@ func BuildTriggerFunnel(entries []checklog.Entry, calls []toolusage.ToolCall) *F
 		if g.unknown {
 			sf.DeliveryUnknown++
 		}
-		if engagedAfter(calls, g.session, g.skill, g.at) {
+		if idx.engagedAfter(g.session, g.skill, g.at) {
 			sf.Engaged++
 		}
 	}
@@ -206,12 +219,131 @@ func BuildTriggerFunnel(entries []checklog.Entry, calls []toolusage.ToolCall) *F
 	return rep
 }
 
+// engagedSignal 是一条工具调用预提取后的 engaged 信号：Skill 调用取 skill 名、
+// Read 调用取归一化路径（小写 + 反斜杠折叠），其余工具/提取失败无信号。提取逻辑
+// 与逐条判定共用同一函数——单一判定真相源，索引路径与兼容路径不可能分叉。
+//
+// engagedSignal is a tool call's pre-extracted engagement signal: a Skill call
+// yields the skill name, a Read call the normalized path (lowercased + backslash
+// folded); other tools / failed extractions carry no signal. Extraction is one
+// shared function for both judgment paths — a single source of truth, so the
+// indexed and the compatibility path can never diverge.
+type engagedSignal struct {
+	at    time.Time
+	isSK  bool   // true = Skill 调用；false = Read 调用
+	value string // Skill: 提取到的名字；Read: 归一化路径
+}
+
+// signalOf 提取一条调用的 engaged 信号（无信号时 ok=false）。Read 的归一化与旧实现
+// 逐字一致：ToLower + 反斜杠→斜杠，后缀匹配交给 matches。
+//
+// signalOf extracts one call's engagement signal (ok=false when it carries
+// none). The Read normalization is verbatim the old inline logic: ToLower +
+// backslash→slash; suffix matching lives in matches.
+func signalOf(c toolusage.ToolCall) (engagedSignal, bool) {
+	switch c.ToolName {
+	case "Skill":
+		// EqualFold matches the Read branch's case normalization below — a Skill call
+		// differing only in case (Windows paths make this common) must not undercount.
+		//
+		// EqualFold 与下面 Read 分支的大小写归一对齐——仅大小写差异的 Skill 调用
+		// （Windows 路径下常见）不得被漏计。
+		name := ExtractSkillName(c.ToolInput)
+		if name == "" {
+			return engagedSignal{}, false
+		}
+		return engagedSignal{at: c.Timestamp, isSK: true, value: name}, true
+	case "Read":
+		p := readFilePath(c.ToolInput)
+		if p == "" {
+			return engagedSignal{}, false
+		}
+		p = strings.ToLower(strings.ReplaceAll(p, "\\", "/"))
+		return engagedSignal{at: c.Timestamp, value: p}, true
+	}
+	return engagedSignal{}, false
+}
+
+// matches 报告该信号是否构成 (skill, at) 的遵循：时间窗内 +（Skill 同名 EqualFold
+// 或 Read 路径后缀命中 canonical / embed-cache 形态）。窗口边界与旧实现逐字一致
+// （Before(at) 跳过、After(at+window) 跳过，两端含）。
+//
+// matches reports whether this signal counts as engagement with (skill, at):
+// inside the time window + (a same-name Skill via EqualFold, or a Read path
+// suffix-hitting the canonical / embed-cache shape). Window bounds are verbatim
+// the old logic (Before(at) skipped, After(at+window) skipped, both ends
+// inclusive).
+func (s engagedSignal) matches(skill, lowerSkill string, at time.Time) bool {
+	if s.at.Before(at) || s.at.After(at.Add(TriggerEngageWindow)) {
+		return false
+	}
+	if s.isSK {
+		return strings.EqualFold(s.value, skill)
+	}
+	return strings.HasSuffix(s.value, "/skills/"+lowerSkill+"/skill.md") ||
+		strings.HasSuffix(s.value, "/skills-cache/embedded/"+lowerSkill+"/skill.md")
+}
+
+// engagedIndex 是 calls 的分桶索引：SessionID → 该 session 的信号切片（按原序）。
+// 一次构建、多次查询，把 O(groups×calls) 的重复 JSON 解析压成 O(calls) 单次提取 +
+// 每 group 一次本桶扫描。
+//
+// engagedIndex is the bucketed view of calls: SessionID → that session's
+// signals (original order). Built once, queried per group — collapsing
+// O(groups×calls) repeated JSON parses into one O(calls) extraction plus a
+// per-group scan of only the session's own bucket.
+type engagedIndex struct {
+	bySession map[string][]engagedSignal
+}
+
+// buildEngagedIndex 扫一遍 calls 建分桶索引。无信号调用（无关工具、截断 JSON、
+// 空提取）不入桶——它们在任何判定下都是 continue，等价于不存在。
+//
+// buildEngagedIndex scans calls once to build the bucketed index. Signal-less
+// calls (unrelated tools, truncated JSON, empty extractions) never enter a
+// bucket — they were `continue` under every judgment, i.e. equivalent to
+// absence.
+func buildEngagedIndex(calls []toolusage.ToolCall) *engagedIndex {
+	ix := &engagedIndex{bySession: make(map[string][]engagedSignal)}
+	for _, c := range calls {
+		sig, ok := signalOf(c)
+		if !ok {
+			continue
+		}
+		ix.bySession[c.SessionID] = append(ix.bySession[c.SessionID], sig)
+	}
+	return ix
+}
+
+// engagedAfter（索引版）只扫本 session 桶做字符串比较。空 session 无法归因（旧
+// 条目），返 false——与逐条版一致。
+//
+// engagedAfter (indexed) scans only this session's bucket with plain string
+// compares. Empty session cannot be attributed (legacy entries) — returns
+// false, same as the per-call version.
+func (ix *engagedIndex) engagedAfter(session, skill string, at time.Time) bool {
+	if session == "" {
+		return false
+	}
+	lower := strings.ToLower(skill)
+	for _, sig := range ix.bySession[session] {
+		if sig.matches(skill, lower, at) {
+			return true
+		}
+	}
+	return false
+}
+
 // engagedAfter 报告 (session, skill, 命中时刻) 之后 EngageWindow 内是否出现对该 skill 的
 // 遵循信号：Read 其 SKILL.md（canonical 路径或 embed cache 路径，Windows 大小写与分隔符
 // 归一后后缀匹配）或 Skill(<skill>) 显式调用。空 session 无法归因（旧条目），返 false。
 //
 // Read 的 tool_input 截断到 500 字符可能截坏 JSON——解析失败按无信号处理（诚实跳过），
 // 与 ExtractSkillName 的失败语义一致。
+//
+// 本函数是兼容入口：keyword.go / mine.go 逐条调用它判定 engaged（单一判定真相源），
+// 每次只查一条命中，为其整建索引反而劣化——故保留逐条扫描实现；批量入口
+// （BuildTriggerFunnel）请用 buildEngagedIndex + 索引版 engagedAfter。
 //
 // engagedAfter reports whether an engagement signal for (session, skill) appears within
 // EngageWindow after the hit time: a Read of its SKILL.md (canonical path or embed-cache path,
@@ -220,6 +352,11 @@ func BuildTriggerFunnel(entries []checklog.Entry, calls []toolusage.ToolCall) *F
 //
 // Read tool_input is truncated to 500 chars, which can corrupt the JSON — parse failure is
 // treated as no signal (honest skip), matching ExtractSkillName's failure semantics.
+//
+// This is the compatibility entry: keyword.go / mine.go call it per hit for their
+// engagement judgment (single source of truth), one query per call — building an
+// index for each would be a pessimization, so the per-call scan stays. Batch
+// entries (BuildTriggerFunnel) use buildEngagedIndex + the indexed engagedAfter.
 func engagedAfter(calls []toolusage.ToolCall, session, skill string, at time.Time) bool {
 	if session == "" {
 		return false
@@ -232,26 +369,9 @@ func engagedAfter(calls []toolusage.ToolCall, session, skill string, at time.Tim
 		if c.Timestamp.Before(at) || c.Timestamp.After(at.Add(TriggerEngageWindow)) {
 			continue
 		}
-		switch c.ToolName {
-		case "Skill":
-			// EqualFold matches the Read branch's case normalization below — a Skill call
-			// differing only in case (Windows paths make this common) must not undercount.
-			//
-			// EqualFold 与下面 Read 分支的大小写归一对齐——仅大小写差异的 Skill 调用
-			// （Windows 路径下常见）不得被漏计。
-			if strings.EqualFold(ExtractSkillName(c.ToolInput), skill) {
-				return true
-			}
-		case "Read":
-			p := readFilePath(c.ToolInput)
-			if p == "" {
-				continue
-			}
-			p = strings.ToLower(strings.ReplaceAll(p, "\\", "/"))
-			if strings.HasSuffix(p, "/skills/"+lower+"/skill.md") ||
-				strings.HasSuffix(p, "/skills-cache/embedded/"+lower+"/skill.md") {
-				return true
-			}
+		sig, ok := signalOf(c)
+		if ok && sig.matches(skill, lower, at) {
+			return true
 		}
 	}
 	return false

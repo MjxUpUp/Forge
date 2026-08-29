@@ -198,7 +198,17 @@ func MigrateProject(p *Project, opts MigrateOptions) (*MigrationResult, error) {
 			// 永不清洗。此刻 dst 上的任何内容都纯粹是本次的部分拷贝（非 force：dst 原不存在；
 			// force：dst 已在上方被删），删除是安全的。
 			if name == "tasks" {
-				_ = os.RemoveAll(filepath.Join(p.DataDir, name))
+				// The rollback guards the trust boundary (unsanitized hostile tasks must
+				// not survive at dst; a re-run would SKIP over them). If the rollback
+				// ITSELF fails, that invariant is broken — surface it with the exact
+				// path instead of `_ =`, or the residue silently outlives every retry.
+				//
+				// 回滚守护的是信任边界（未清洗的 hostile tasks 不得残留在 dst；
+				// 重跑会 SKIP 跳过它们）。回滚自身失败即不变量已破——把路径一起
+				// 上抛而不是 `_ =`，否则残留静默活过每次重试。
+				if rerr := os.RemoveAll(filepath.Join(p.DataDir, name)); rerr != nil {
+					return res, fmt.Errorf("migrate %s 失败且回滚失败（DataDir 可能残留未清洗的 tasks，需手动删除 %s 后重跑）: %w (rollback: %v)", name, filepath.Join(p.DataDir, name), err, rerr)
+				}
 			}
 			return res, fmt.Errorf("migrate %s: %w", name, err)
 		}

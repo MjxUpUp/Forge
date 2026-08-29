@@ -399,6 +399,7 @@ func windsurfNormalize(stdinData []byte, hookInput *HookInput) {
 		} `json:"tool_info"`
 	}
 	if err := json.Unmarshal(stdinData, &w); err != nil {
+		fmt.Fprintf(os.Stderr, "[forge] warning: windsurf hook stdin JSON parse failed: %v\n", err)
 		return
 	}
 	if hookInput.SessionID == "" {

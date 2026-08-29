@@ -287,49 +287,6 @@ func ReadEditCountsGraceWindow(root string, since time.Time, window time.Duratio
 	return reads, nil
 }
 
-// archiveLocked renames the current toollog to a timestamped backup but does
-// **not** take the lock; the caller must hold mu. Split out of Archive so Clear
-// can archive-then-remove under a single lock — calling the public Archive (which
-// also locks) from Clear (already locked) would deadlock, because sync.Mutex is
-// non-reentrant. Nanosecond-precision naming (util.ArchivedName) ensures two
-// rotations within the same second do not overwrite each other.
-//
-// archiveLocked 把当前 toollog 重命名为带时间戳的备份，但**不**加锁；调用方必须持有 mu。
-// 从 Archive 拆出，让 Clear 能在单次加锁内 archive-then-remove——从 Clear（已加锁）调
-// 公共 Archive（也要加锁）会死锁，因为 sync.Mutex 不可重入。用纳秒精度命名
-// （util.ArchivedName），同一秒内两次轮转不会互相覆盖。
-func archiveLocked(root string) error {
-	path := filepath.Join(dataDir(root), toollogFile)
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return nil
-	}
-	archived := util.ArchivedName(dataDir(root), "toollog", time.Now())
-	return os.Rename(path, archived)
-}
-
-// Clear archives the current toollog and deletes the active file. Both steps run
-// under the mutex so no Record append slips between rename and delete (otherwise
-// appended entries would leak into the new active file). After archive + delete,
-// it best-effort prunes archives beyond the retention window to keep
-// toollog-*.jsonl bounded across task starts.
-//
-// Clear 归档当前 toollog 并删除 active 文件。两步都在 mutex 内执行，使重命名与删除之间
-// 不会有 Record 追加（否则追加的 entry 会泄漏到新的 active 文件）。归档+删除后，尽力
-// 清理超出 retention 窗口的归档，避免 toollog-*.jsonl 跨 task 启动无限增长。
-func Clear(root string) error {
-	mu.Lock()
-	defer mu.Unlock()
-	if err := archiveLocked(root); err != nil {
-		return err
-	}
-	path := filepath.Join(dataDir(root), toollogFile)
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	pruneArchives(dataDir(root))
-	return nil
-}
-
 // pruneArchives deletes toollog-*.jsonl archives older than the retention window
 // (FORGE_LOG_RETENTION_DAYS, default 30; ≤0 disables). Best-effort, same rationale
 // as checklog.Clear's pruneArchives — keeps toollog-*.jsonl bounded across task
@@ -347,15 +304,20 @@ func pruneArchives(dir string) {
 	_, _ = util.PruneArchives(dir, "toollog", time.Now().AddDate(0, 0, -days))
 }
 
-// Prune is the non-destructive half of Clear (checklog.Prune's twin): retention cleanup of
-// toollog-*.jsonl archives only. Task start no longer Clears the toollog (multi-task-concurrency
-// design §5) — reads are TaskRef-scoped (LoadForTask / ReadEditCounts), so history must survive
-// task boundaries; only the retention window stays bounded.
+// Prune is the retention cleanup for toollog-*.jsonl archives (checklog.Prune's
+// twin). Task start never truncates the toollog (multi-task-concurrency design
+// §5) — reads are TaskRef-scoped (LoadForTask / ReadEditCounts), so history must
+// survive task boundaries; only the retention window stays bounded. The old
+// destructive Clear (archive + delete active) was deleted as dead code: it had
+// no production callers left after task start moved to the CheckTaskStarted
+// boundary marker, and Prune covers the bounded-growth concern on its own.
 //
-// Prune 是 Clear 的非破坏性半边（checklog.Prune 的孪生）：只做 toollog-*.jsonl 归档的
-// retention 清理。task start 不再 Clear toollog（multi-task-concurrency 设计 §5）——读取
-// 按 TaskRef 过滤（LoadForTask / ReadEditCounts），历史必须跨任务边界存活；只保持
-// retention 窗口有界。
+// Prune 是 toollog-*.jsonl 归档的 retention 清理（checklog.Prune 的孪生）。
+// task start 不再截断 toollog（multi-task-concurrency 设计 §5）——读取按
+// TaskRef 过滤（LoadForTask / ReadEditCounts），历史必须跨任务边界存活；只保持
+// retention 窗口有界。旧的破坏性 Clear（归档 + 删 active）已作为死代码删除：
+// task start 改用 CheckTaskStarted 边界标记后它再无生产调用方，有界增长 concerns
+// 由 Prune 单独覆盖。
 func Prune(root string) {
 	mu.Lock()
 	defer mu.Unlock()

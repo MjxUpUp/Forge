@@ -109,6 +109,7 @@ import (
 	"path/filepath"
 
 	"github.com/MjxUpUp/Forge/internal/hooks"
+	"github.com/MjxUpUp/Forge/internal/util"
 	"github.com/MjxUpUp/Forge/skills"
 	skillsforge "github.com/MjxUpUp/Forge/skills-forge"
 )
@@ -416,7 +417,7 @@ func writeSkillsFrom(lib fs.FS, skillsDir string) (int, error) {
 			if rerr != nil {
 				return rerr
 			}
-			return os.WriteFile(target, data, 0644)
+			return util.AtomicWrite(target, data, 0644)
 		})
 		if werr != nil {
 			// The RemoveAll above already cleared the committed tree — a mid-walk failure
@@ -437,7 +438,7 @@ func writePluginReadme(spec PluginPackSpec, pluginDir string) error {
 	if slug == "" {
 		slug = "MjxUpUp/Forge"
 	}
-	return os.WriteFile(filepath.Join(pluginDir, "README.md"), []byte(pluginReadme(slug)), 0644)
+	return util.AtomicWrite(filepath.Join(pluginDir, "README.md"), []byte(pluginReadme(slug)), 0644)
 }
 
 // writeJSONIndent writes JSON to path with 2-space indent (auto-creates parent dirs).
@@ -456,5 +457,5 @@ func writeJSONIndent(path string, v any) error {
 	if err != nil {
 		return fmt.Errorf("marshal %s: %w", filepath.Base(path), err)
 	}
-	return os.WriteFile(path, append(data, '\n'), 0644)
+	return util.AtomicWrite(path, append(data, '\n'), 0644)
 }

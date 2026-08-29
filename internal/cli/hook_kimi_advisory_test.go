@@ -151,6 +151,58 @@ func TestKimiAdvisoryOncePerSession(t *testing.T) {
 	}
 }
 
+// TestKimiAdvisoryEmptySessionNoDeliveredMemory 钉空会话隔离：sessionID 为空时
+// delivered 记忆整体禁用——SanitizeSessionID 会把 "" 折叠成 "session"，全机所有
+// 无 id 会话共享同一个 delivered 文件；那里一次写入将永久静音同文本 advisory
+// （全机级抑制）。故每次 drain 都必须重新投递，且绝不落盘。
+//
+// TestKimiAdvisoryEmptySessionNoDeliveredMemory pins empty-session isolation:
+// with an empty sessionID the delivered memory is disabled wholesale —
+// SanitizeSessionID collapses "" to "session", making every id-less session on
+// the machine share ONE delivered file; a single write there would permanently
+// silence that advisory text (machine-global suppression). So every drain must
+// re-deliver, and nothing may ever be written to disk.
+func TestKimiAdvisoryEmptySessionNoDeliveredMemory(t *testing.T) {
+	root := newKimiAdvisoryFixture(t)
+
+	// 直接钉 read/append 入口语义：空 id 视为无历史、不写入。
+	// Pin the read/append entry semantics directly: empty id = no history, no write.
+	if got := readKimiDeliveredSet(root, ""); len(got) != 0 {
+		t.Fatalf("空 session 的 delivered 集合必须为空, got %v", got)
+	}
+	appendKimiDeliveredSet(root, "", []string{"any text"})
+	if _, err := os.Stat(kimiDeliveredSetPath(root, "")); !os.IsNotExist(err) {
+		t.Errorf("空 session 绝不写 delivered 文件（共享桶一次写入=全机静音）, stat err=%v", err)
+	}
+
+	// 端到端：同文本两轮「入队→drain」，空 session 每轮都必须重新投递。
+	// End to end: two enqueue→drain rounds of the same text — an empty
+	// session must re-deliver every round.
+	for round := 1; round <= 2; round++ {
+		enqueueKimiAdvisory(root, "", "task-guard", "PreToolUse", "id-less advisory")
+		batch := drainKimiAdvisories(root, "")
+		if !strings.Contains(batch, "id-less advisory") {
+			t.Fatalf("第 %d 轮 drain 必须投递（无记忆）, got %q", round, batch)
+		}
+	}
+	// 对拍：有 id 的会话维持每会话一次的记忆（同数据第二轮静默）——隔离只放宽
+	// 空 id，不侵蚀正常路径。
+	// Contrast: an id-ful session keeps the once-per-session memory (second
+	// round silent on the same data) — the exemption loosens ONLY the id-less
+	// path, never the normal one.
+	sess := fmt.Sprintf("kimi-e-%d", time.Now().UnixNano())
+	for round := 1; round <= 2; round++ {
+		enqueueKimiAdvisory(root, sess, "task-guard", "PreToolUse", "id-less advisory")
+		batch := drainKimiAdvisories(root, sess)
+		if round == 1 && !strings.Contains(batch, "id-less advisory") {
+			t.Fatalf("有 id 会话首轮必须投递, got %q", batch)
+		}
+		if round == 2 && batch != "" {
+			t.Fatalf("有 id 会话同文本不得二次投递, got %q", batch)
+		}
+	}
+}
+
 func TestKimiAdvisoryBlockPathUntouched(t *testing.T) {
 	root := newKimiAdvisoryFixture(t)
 	sess := fmt.Sprintf("kimi-b-%d", time.Now().UnixNano())

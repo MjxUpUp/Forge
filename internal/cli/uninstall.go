@@ -2,9 +2,11 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 
 	"github.com/MjxUpUp/Forge/internal/agentbridge"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
@@ -14,26 +16,34 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// uninstall.go — `forge uninstall` one-shot reversal: npm global package + init-suggest markers.
+// uninstall.go — `forge uninstall` one-shot reversal: install-channel-routed binary
+// removal + init-suggest markers.
 //
-// Design: clears `npm uninstall -g @agent_forge/forge` (binary) + `~/.forge/.init-suggested/`
-// (per-project init prompt markers). Plugin uninstall must run interactively inside the agent
-// CLI (`/plugin uninstall forge@forge` etc. are not scriptable) — print guidance instead.
-// Project-level `.forge/` is left untouched (user decides whether to keep; to clear, run
-// manually `rm -rf .forge/`.).
+// Design: binary removal follows the install channel (update_channel.go's
+// detectInstallChannel): npm installs run `npm uninstall -g @agent_forge/forge`;
+// GitHub-release / manual installs get the resolved binary path + manual-deletion
+// guidance (npm uninstall would be a guaranteed failure there). Also clears
+// `~/.forge/.init-suggested/` (per-project init prompt markers). Plugin uninstall
+// must run interactively inside the agent CLI (`/plugin uninstall forge@forge` etc.
+// are not scriptable) — print guidance instead. Project-level `.forge/` is left
+// untouched (user decides whether to keep; to clear, run manually `rm -rf .forge/`.).
 //
-// Test hook: FORGE_UNINSTALL_SKIP_NPM=1 skips the npm call (for tests or when npm is unavailable).
+// Test hook: FORGE_UNINSTALL_SKIP_NPM=1 skips the whole binary step (for tests or
+// when npm is unavailable).
 //
 // Chinese strings use raw strings (backticks) to dodge Windows input quote corruption.
 //
-// uninstall.go — `forge uninstall` 一键反装：npm 全局包 + init-suggest markers。
+// uninstall.go — `forge uninstall` 一键反装：按安装通道分流的二进制移除 + init-suggest
+// markers。
 //
-// 设计：清 `npm uninstall -g @agent_forge/forge`（binary）+ `~/.forge/.init-suggested/`
-// （per-project init 提示标记）。Plugin 卸载必须在 agent CLI 内交互跑（`/plugin
-// uninstall forge@forge` 等不可脚本化）——打印指引。项目级 `.forge/` 不动（用户
-// 决定是否留；若要清手动 rm -rf .forge/）。
+// 设计：二进制移除随安装通道走（update_channel.go 的 detectInstallChannel）：npm 安装跑
+// `npm uninstall -g @agent_forge/forge`；GitHub Release / 手动安装打印解析后的二进制
+// 路径 + 手动删除指引（npm uninstall 在那条通道上注定失败）。同时清
+// `~/.forge/.init-suggested/`（per-project init 提示标记）。Plugin 卸载必须在 agent CLI
+// 内交互跑（`/plugin uninstall forge@forge` 等不可脚本化）——打印指引。项目级 `.forge/`
+// 不动（用户决定是否留；若要清手动 rm -rf .forge/）。
 //
-// 测试钩子：FORGE_UNINSTALL_SKIP_NPM=1 跳过 npm 调用（测试或 npm 不可用场景）。
+// 测试钩子：FORGE_UNINSTALL_SKIP_NPM=1 跳过整个二进制步骤（测试或 npm 不可用场景）。
 //
 // 中文字符串 raw string（反引号）规避 Windows 输入引号腐蚀。
 
@@ -119,27 +129,91 @@ func uninstallClearMarkers() (string, bool) {
 	return dir, true
 }
 
+// uninstallBinaryStep performs step 1 of uninstall: binary removal, ROUTED by the
+// install channel (reuses update_channel.go's detectInstallChannelFn — the same
+// detection self-update trusts; no duplicated implementation). The old code ran
+// `npm uninstall -g` unconditionally, which is a guaranteed failure (plus a
+// misleading warning) for GitHub-release / manually-placed binaries: they are not
+// npm packages, npm can only print "not installed". Split:
+//   - npm channel: existing npm uninstall (the package manager owns the binary);
+//   - github/manual channel: print getExecutablePath()'s resolved actual path +
+//     manual deletion guidance (Windows: the self-update path may leave a
+//     forge.exe.old residue next to the binary when a replace+rollback both
+//     failed — see update.go replaceBinaryWindows) — the doomed npm call is NOT
+//     run.
+//
+// Hoisted out of RunE with explicit writers so both branches are pinnable in
+// tests via the detectInstallChannelFn indirection (same as update's tests).
+//
+// uninstallBinaryStep 执行卸载第 1 步：二进制移除，按安装通道分流（复用
+// update_channel.go 的 detectInstallChannelFn——自更新信赖的同一检测，不复制实现）。
+// 旧代码无条件跑 `npm uninstall -g`，对 GitHub Release/手动放置的二进制是注定失败
+// （还带误导性告警）：它们不是 npm 包，npm 只会报「未安装」。分流：
+//   - npm 通道：走现有 npm uninstall（包管理器持有该二进制）；
+//   - GitHub/手动通道：打印 getExecutablePath() 解析出的实际路径 + 手动删除指引
+//     （Windows：自更新在替换与回滚双双失败时可能在二进制旁留下 forge.exe.old
+//     残留——见 update.go replaceBinaryWindows）——不跑注定失败的 npm 调用。
+//
+// 从 RunE 提出并参数化 writer，两个分支都可用 detectInstallChannelFn 间接层钉测
+// （与 update 的测试同款）。
+func uninstallBinaryStep(stdout, stderr io.Writer) {
+	// Test/offline hook: SKIP_NPM skips the whole step for both channels (npm
+	// uninstall AND the manual-guidance printout — tests assert the later steps'
+	// output without channel noise).
+	//
+	// 测试/离线钩子：SKIP_NPM 对两个通道都跳过整步（npm uninstall 与手动指引
+	// 打印——测试断言后续步骤输出时不掺通道噪声）。
+	if os.Getenv(`FORGE_UNINSTALL_SKIP_NPM`) == `1` {
+		return
+	}
+	channel := detectInstallChannelFn()
+	if channel.kind == channelNPM {
+		if _, err := exec.LookPath(`npm`); err == nil {
+			npmCmd := exec.Command(`npm`, `uninstall`, `-g`, `@agent_forge/forge`)
+			npmCmd.Stdout = stdout
+			npmCmd.Stderr = stderr
+			if err := npmCmd.Run(); err != nil {
+				fmt.Fprintf(stderr, `警告：npm uninstall 失败：%v（可能未通过 npm 装）`+"\n", err)
+			}
+		} else {
+			fmt.Fprintf(stderr, `警告：npm 不可用，跳过 binary 卸载`+"\n")
+		}
+		return
+	}
+	// GitHub / manual channel: npm never installed this binary — an npm uninstall
+	// is a guaranteed failure. Print the resolved actual path so the user deletes
+	// the right file (os.Executable + EvalSymlinks, the same resolution the
+	// self-updater replaces through).
+	//
+	// GitHub / 手动通道：npm 从未装过这个二进制——npm uninstall 必失败。打印
+	// 解析后的实际路径让用户删对文件（os.Executable + EvalSymlinks，与自更新
+	// 替换用的同一解析）。
+	exePath := ``
+	if p, err := getExecutablePath(); err == nil {
+		exePath = p
+	} else {
+		exePath = fmt.Sprintf(`<无法解析当前二进制路径：%v>`, err)
+	}
+	fmt.Fprintln(stdout, `检测到 GitHub/手动安装通道（不在 npm node_modules 下），不执行 npm uninstall。`)
+	fmt.Fprintf(stdout, `当前 forge 二进制路径：%s`+"\n", exePath)
+	fmt.Fprintln(stdout, `请手动删除该文件完成卸载。`)
+	if runtime.GOOS == `windows` {
+		fmt.Fprintln(stdout, `Windows 提示：同目录下若有 forge.exe.old 残留（自更新替换失败时遗留），请一并删除。`)
+	}
+}
+
 var uninstallCmd = &cobra.Command{
 	Use:   `uninstall`,
 	Short: `卸载 forge 二进制 + init-suggest 标记（plugin 卸载需在 agent CLI 内进行）`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		restore, _ := cmd.Flags().GetBool("restore")
 
-		// 1. npm uninstall -g @agent_forge/forge (skip via SKIP_NPM in test/offline scenarios)
+		// 1. binary removal routed by install channel (skip via SKIP_NPM in
+		//    test/offline scenarios). See uninstallBinaryStep.
 		//
-		// 1. npm uninstall -g @agent_forge/forge（测试 / 离线场景可 SKIP_NPM 跳过）
-		if os.Getenv(`FORGE_UNINSTALL_SKIP_NPM`) != `1` {
-			if _, err := exec.LookPath(`npm`); err == nil {
-				npmCmd := exec.Command(`npm`, `uninstall`, `-g`, `@agent_forge/forge`)
-				npmCmd.Stdout = os.Stdout
-				npmCmd.Stderr = os.Stderr
-				if err := npmCmd.Run(); err != nil {
-					fmt.Fprintf(os.Stderr, `警告：npm uninstall 失败：%v（可能未通过 npm 装）`+"\n", err)
-				}
-			} else {
-				fmt.Fprintf(os.Stderr, `警告：npm 不可用，跳过 binary 卸载`+"\n")
-			}
-		}
+		// 1. 按安装通道分流的二进制移除（测试 / 离线场景可 SKIP_NPM 跳过）。
+		//    见 uninstallBinaryStep。
+		uninstallBinaryStep(os.Stdout, os.Stderr)
 
 		// 2. remove init-suggest markers
 		//

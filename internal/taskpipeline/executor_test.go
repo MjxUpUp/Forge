@@ -331,6 +331,36 @@ func TestHasCodeChanges_WithUncommittedChanges(t *testing.T) {
 	}
 }
 
+// TestHasCodeChanges_UntrackedNewFile pins the untracked-source fix (2026-08-29 review
+// round): a task whose ONLY change is a brand-new, not-yet-git-added file must report
+// code changes — `git diff HEAD` sees no untracked content, so the gate previously
+// hard-blocked such tasks as 'no code changes' forever.
+//
+// TestHasCodeChanges_UntrackedNewFile 钉 untracked 源修复（2026-08-29 审查轮）：
+// 唯一改动是新建、尚未 git add 的文件时必须报有代码变更——`git diff HEAD` 看不到
+// untracked 内容，此前这类任务会被门禁永远硬拦成「no code changes」。
+func TestHasCodeChanges_UntrackedNewFile(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "initial")
+
+	// The task's ONLY change: a brand-new untracked file (no stage, no commit, no
+	// working-tree modification of tracked files).
+	//
+	// 本任务唯一改动：全新 untracked 文件（未 stage、未 commit、未改任何 tracked 文件）。
+	os.WriteFile(filepath.Join(dir, "feature.go"), []byte("package main\n"), 0644)
+
+	state := &TaskState{Branch: "main"}
+	if !hasCodeChanges(dir, state) {
+		t.Error("expected hasCodeChanges to return true with an untracked new file (was hard-blocked as 'no code changes')")
+	}
+}
+
 func TestHasCodeChanges_FeatureBranchWithCommits(t *testing.T) {
 	dir := t.TempDir()
 	runGit(t, dir, "init")

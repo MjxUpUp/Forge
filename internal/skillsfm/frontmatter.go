@@ -45,9 +45,12 @@ var (
 	// frontmatter 块：^---\s*\n(.*?)\n---\s*\n?，(?s) 让 . 匹配换行，对应 Python re.S。
 	// 尾部 \n? 允许 frontmatter-only 文件（--- 后直接 EOF 无尾换行）也能匹配；
 	// 真实 SKILL.md 都有正文（\n\nbody），不受影响，黄金对比保持。
+	// 键字符集含连字符：Anthropic 规范字段 allowed-tools 及任意 kebab-case 键
+	// 必须可解析（此前不含 - 时这些键被静默丢弃，AllowedTools 字段与 R3 白名单
+	// 对连字符键形全盲——2026-08-29 审查轮功能实证）。
 	fmBlockRe  = regexp.MustCompile(`(?s)^---\s*\n(.*?)\n---\s*\n?`)
-	topLevelRe = regexp.MustCompile(`^([A-Za-z0-9_]+):\s*(.*)$`)
-	nestedRe   = regexp.MustCompile(`^\s+([A-Za-z0-9_]+):\s*(.*)$`)
+	topLevelRe = regexp.MustCompile(`^([A-Za-z0-9_-]+):\s*(.*)$`)
+	nestedRe   = regexp.MustCompile(`^\s+([A-Za-z0-9_-]+):\s*(.*)$`)
 )
 
 // Parse parses the SKILL.md content. Returns an empty Frontmatter when there is no frontmatter block, with Body as the full text.

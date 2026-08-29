@@ -62,6 +62,15 @@ const minTokens = 10
 // 而非静默 (nil, nil) 伪装成"扫描完成无克隆"；filepath.Walk 在根目录上的失败
 // （目录不存在/不可读）同样返回而非吞掉。walk 内的单文件错误保持跳过继续策略。
 func DetectClones(dir, targetPath string, threshold float64) ([]SimilarityResult, error) {
+	// An out-of-range or NaN threshold would silently turn the gate off (>1 / NaN: every
+	// comparison false → "no clones" with a green exit) or on (<0: everything matches) —
+	// a quality gate must fail loud on an unusable knob, not report a clean result.
+	//
+	// 越界或 NaN 的 threshold 会静默关掉门禁（>1/NaN：所有比较为假→"无克隆"绿色退出）
+	// 或全开（<0：全部命中）——门禁工具对不可用的旋钮必须响亮报错，而不是给出干净结果。
+	if threshold < 0.0 || threshold > 1.0 || threshold != threshold {
+		return nil, fmt.Errorf("threshold 必须在 [0.0, 1.0]（ got %v；NaN/越界会被拒绝而不是静默扫描出空结果）", threshold)
+	}
 	// Normalize target to absolute, slash-separated form for cross-platform
 	// self-comparison. The CLI passes relative paths while filepath.Walk yields
 	// absolute paths, so a direct equality check would fail and target would 100%

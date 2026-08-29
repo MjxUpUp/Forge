@@ -279,7 +279,17 @@ type TaskState struct {
 	SessionID      string                    `json:"session_id,omitempty"`      // 创建本 task 的 agent session
 	ExternalOrigin ExternalOrigin            `json:"external_origin,omitempty"` // 外部 issue 来源（--from_issue 解析）；空=本地 branch 推断 origin
 	ReviewPassed   bool                      `json:"review_passed,omitempty"`   // code-review-gate 通过标记；task-complete 门禁的硬前置
-	ResumeStale    bool                      `json:"resume_stale,omitempty"`    // legacy 的 task-scoped「刚压缩过」标志：仅无 session ID 的回落路径与旧版 binary 写入；有 session ID 的 host 一律用 per-session sentinel（.resume-stale-<sid>，见 state.go），reinject 读到本字段会兑现一次并清零。task-scoped 的固有边界：两 session 共享同一 task 时，B 的 prompt 可能在 A 压缩后先消费并清掉标志（最坏漏注一次，handoff 内容相同故无数据损坏）——per-session sentinel 已对新路径消除该边界。
+	// Integrity: HMAC signature over the canonical JSON, written by SaveTaskState and
+	// verified on load (state-integrity-signing). integrityBroken is the runtime flag
+	// set when a present signature fails — never persisted, and gate-satisfying
+	// consumers refuse fields from a broken state.
+	//
+	// Integrity：对 canonical JSON 的 HMAC 签名，SaveTaskState 写入、加载时验签
+	//（state-integrity-signing）。integrityBroken 是签名存在且验签失败时置的运行
+	// 时标记——永不落盘，满足门禁类的消费方拒采信 broken 状态上的字段。
+	Integrity       *StateIntegrity `json:"integrity,omitempty"`
+	integrityBroken bool            `json:"-"`
+	ResumeStale     bool            `json:"resume_stale,omitempty"` // legacy 的 task-scoped「刚压缩过」标志：仅无 session ID 的回落路径与旧版 binary 写入；有 session ID 的 host 一律用 per-session sentinel（.resume-stale-<sid>，见 state.go），reinject 读到本字段会兑现一次并清零。task-scoped 的固有边界：两 session 共享同一 task 时，B 的 prompt 可能在 A 压缩后先消费并清掉标志（最坏漏注一次，handoff 内容相同故无数据损坏）——per-session sentinel 已对新路径消除该边界。
 	// ReviewedHeadCommit/ReviewedChangeHash bind the code snapshot at review-pass time — the key to the review-fix-recheck loop.
 	// At review pass, (HEAD, SourceChangesSince(HEAD)) is recorded; the task-complete gate recomputes SourceChangesSince(ReviewedHeadCommit)
 	// and compares it to ReviewedChangeHash — a mismatch means code changed after review, forcing a re-review (no longer relying on agent self-discipline). See executor.go.

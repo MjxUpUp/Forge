@@ -47,29 +47,3 @@ type SessionRule struct {
 	Instruction string `yaml:"instruction" json:"instruction"`
 	Mandatory   bool   `yaml:"mandatory"   json:"mandatory"`
 }
-
-// ErrorSeverityStandards returns standards whose severity is error.
-//
-// ErrorSeverityStandards 返回 severity 为 error 的 standards。
-func (p *Protocol) ErrorSeverityStandards() []Standard {
-	var result []Standard
-	for _, s := range p.Standards {
-		if s.Enabled && s.Severity == "error" {
-			result = append(result, s)
-		}
-	}
-	return result
-}
-
-// MandatoryRules returns session rules that are mandatory.
-//
-// MandatoryRules 返回 mandatory 的 session 规则。
-func (p *Protocol) MandatoryRules() []SessionRule {
-	var result []SessionRule
-	for _, r := range p.SessionRules {
-		if r.Mandatory {
-			result = append(result, r)
-		}
-	}
-	return result
-}

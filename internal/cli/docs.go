@@ -105,7 +105,20 @@ func runDocsLint(cmd *cobra.Command, args []string) error {
 	}
 
 	if hardCount > 0 {
-		os.Exit(2)
+		// Formerly os.Exit(2) — which bypassed every deferred cleanup in the cobra
+		// chain AND the panic-recovery funnel in Execute (os.Exit skips defers).
+		// Returning the errHardExit sentinel keeps those safety nets alive; Execute
+		// maps it to exit 2 (verdict already printed above — no extra stderr line).
+		// Exit-code contract unchanged: hook hosts only read exit codes of `forge
+		// hook` subcommands; `forge docs lint` consumers (doc-review skill notes)
+		// keep 0=pass / 2=hard-fail.
+		//
+		// 此前是 os.Exit(2)——它会绕过 cobra 链上所有 defer 清理，也绕过 Execute
+		// 的 panic 恢复盘（os.Exit 不执行 defer）。返回 errHardExit 哨兵让这些安全
+		// 网保持生效；Execute 映射为 exit 2（结论已在上方打印——不加多余 stderr 行）。
+		// 退出码契约不变：hook 宿主只读 `forge hook` 子命令的退出码；`forge docs
+		// lint` 的消费方（doc-review skill 笔记）保持 0=通过 / 2=硬失败。
+		return errHardExit
 	}
 	return nil
 }

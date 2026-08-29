@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"github.com/MjxUpUp/Forge/internal/hooks"
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // ZcodeTranslator wires forge hooks into ZCode's USER-LEVEL config
@@ -184,7 +185,7 @@ func (t *ZcodeTranslator) Translate(projectDir string, input *TranslationInput) 
 	if string(existing) == string(merged) {
 		return nil // already up to date — idempotent no-op
 	}
-	if err := os.WriteFile(path, merged, 0644); err != nil {
+	if err := util.AtomicWrite(path, merged, 0644); err != nil {
 		return fmt.Errorf("zcode: failed to write config.json: %w", err)
 	}
 	return nil
@@ -415,7 +416,7 @@ func StripZcodeHooks() (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("zcode: marshal config.json: %w", err)
 	}
-	if err := os.WriteFile(path, append(data, '\n'), 0644); err != nil {
+	if err := util.AtomicWrite(path, append(data, '\n'), 0644); err != nil {
 		return false, fmt.Errorf("zcode: failed to write config.json: %w", err)
 	}
 	return true, nil

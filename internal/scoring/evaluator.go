@@ -17,7 +17,7 @@ import (
 func Evaluate(input *EvaluateInput, config *scoringtypes.ScoringConfig) *scoringtypes.ScoreResult {
 	dimensions := []scoringtypes.DimensionScore{
 		scoreProcess(input.GateHistory),
-		scoreTesting(input.TestCoverageCovered, input.TestCoverageTotal, input.TestAssertionCount, input.TestCoverageChecked),
+		scoreTesting(input.TestCoverageCovered, input.TestCoverageTotal, input.TestAssertionCount, input.TestFileCount, input.TestCoverageChecked),
 		scoreCodeQuality(input.CompilePassed, input.CompileChecked),
 		scoreAssertions(input.AssertionPassed, input.AssertionChecked),
 		scoreScope(input.GitDiffStat),
@@ -119,12 +119,26 @@ func scoreProcess(h GateHistory) scoringtypes.DimensionScore {
 // 断言密度修正：若 covered>0 但 assertionCount==0，说明测试文件只有 setup/log 无断言
 // （假测试），base × 0.6。依据 STREW 的 Assertion-McCabe ratio——断言数度量测试充分性。
 // total==0（无可测源码）→ 100（无对象不该被惩罚）。checked=false → 70（中性，未检测）。
-func scoreTesting(covered, total, assertionCount int, checked bool) scoringtypes.DimensionScore {
+//
+// Penalty guard (fix/cleanup-batch, 2026-08-29): the ×0.6 correction now also
+// requires testFiles>0 — the count of test files the density collection
+// actually READ. assertionCount==0 with testFiles==0 means the collection saw
+// no test files at all (dead git probe — CollectAssertionDensity already
+// warned on stderr — or a genuinely test-less diff), and "no data" must not
+// read as "data says fake": a dead probe would otherwise punish the task for
+// files it never saw.
+//
+// 惩罚守卫（fix/cleanup-batch，2026-08-29）：×0.6 修正另需 testFiles>0——即密度
+// 采集【实际读到】的测试文件数。assertionCount==0 且 testFiles==0 意为采集根本没见
+// 到测试文件（git 探测死了——CollectAssertionDensity 已在 stderr 告警——或 diff 本就
+// 无测试文件），「无数据」不得读作「数据说是假测试」：死探测否则会为从未见过的
+// 文件惩罚任务。
+func scoreTesting(covered, total, assertionCount, testFiles int, checked bool) scoringtypes.DimensionScore {
 	if !checked {
 		return scoringtypes.DimensionScore{
 			Dimension: scoringtypes.DimensionTesting,
 			Score:     70,
-			Detail:    `Test coverage not checked`,
+			Detail:    `Test coverage not checked (per-task override disabled the gate — dimension neutral, the gap stays unmeasured)`,
 		}
 	}
 	if total <= 0 {
@@ -142,7 +156,7 @@ func scoreTesting(covered, total, assertionCount int, checked bool) scoringtypes
 	}
 	ratio := float64(covered) / float64(total)
 	base := 30.0 + 70.0*ratio
-	if covered > 0 && assertionCount == 0 {
+	if covered > 0 && assertionCount == 0 && testFiles > 0 {
 		base *= 0.6
 	}
 	score := int(math.Round(base))
@@ -428,15 +442,58 @@ func countsAsScope(path string) bool {
 }
 
 // isTestPath reports whether path looks like a test file (same heuristic as taskpipeline.isTestFile).
-// Used to exclude test files in the scope dimension.
+// Used to exclude test files in the scope dimension. Directory detection is SEGMENT-exact
+// (test/tests/__tests__ as whole path segments), not substring: contest/, latest/, attest/
+// must not exempt production code from scope accounting (a registered escape hatch).
 //
 // isTestPath 报告 path 是否疑似测试文件（与 taskpipeline.isTestFile 同启发式）。
-// 用于在 scope 维度排除测试文件。
+// 用于在 scope 维度排除测试文件。目录判定按【路径段整段】匹配（test/tests/
+// __tests__）而非子串——contest/、latest/、attest/ 不得豁免生产代码的 scope 计量
+// （可注册逃逸区，2026-08-29 审查轮功能实证）。
 func isTestPath(path string) bool {
-	for _, pat := range []string{`_test.`, `_spec.`, `.test.`, `.spec.`, `test/`, `tests/`, `__tests__/`} {
-		if strings.Contains(path, pat) {
+	base := filepath.Base(path)
+	for _, pat := range []string{`_test.`, `_spec.`, `.test.`, `.spec.`} {
+		if strings.Contains(base, pat) {
 			return true
 		}
+	}
+	// test_ prefix — PYTHON ONLY (pytest convention): mirrors taskpipeline.isTestFile.
+	// The pinned case test_utils.go (scope_test.go) forbids generalizing to Go — Go's
+	// convention is the _test.go suffix; "test_utils.go" is a helpers file.
+	//
+	// test_ 前缀——仅 Python 与 Ruby（pytest/minitest 惯例）：镜像
+	// taskpipeline.isTestFile。钉住用例 test_utils.go（scope_test.go）禁止推广到
+	// Go——Go 惯例是 _test.go 后缀，"test_utils.go" 是辅助文件。
+	if ext := filepath.Ext(base); (ext == ".py" || ext == ".rb") && strings.HasPrefix(base, `test_`) && len(base) > len(`test_`)+len(ext) {
+		return true
+	}
+	// JUnit camel suffixes (MainTest.java/MainTests.java/MainIT.java), .java only:
+	// the pairing side accepts them, so the dimension side must too.
+	//
+	// JUnit 驼峰后缀（MainTest.java/MainTests.java/MainIT.java），仅 .java：
+	// 配对侧已接受，维度侧必须同步。
+	if strings.HasSuffix(base, `.java`) {
+		stem := strings.TrimSuffix(base, `.java`)
+		if strings.HasSuffix(stem, `Test`) || strings.HasSuffix(stem, `Tests`) || strings.HasSuffix(stem, `IT`) {
+			return true
+		}
+	}
+	for _, seg := range strings.Split(filepath.ToSlash(path), "/") {
+		if seg == "test" || seg == "tests" || seg == "__tests__" {
+			return true
+		}
+	}
+	return false
+}
+
+// isSourceExt mirrors the source-extension gate used by the pairing side so the
+// test_ prefix rule cannot swallow non-source files.
+//
+// isSourceExt 镜像配对侧的源扩展门槛，防止 test_ 前缀规则吞掉非源码文件。
+func isSourceExt(ext string) bool {
+	switch ext {
+	case ".go", ".rs", ".ts", ".tsx", ".js", ".jsx", ".py", ".java", ".rb", ".zig", ".nim":
+		return true
 	}
 	return false
 }

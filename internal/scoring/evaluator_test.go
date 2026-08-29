@@ -1,6 +1,7 @@
 package scoring
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -71,7 +72,7 @@ func TestScoreProcess_FloorClamped(t *testing.T) {
 }
 
 func TestScoreTesting_AllCovered(t *testing.T) {
-	result := scoreTesting(1, 1, 3, true)
+	result := scoreTesting(1, 1, 3, 1, true)
 	if result.Score != 100 {
 		t.Fatalf(`expected 100 (all source covered), got %d: %s`, result.Score, result.Detail)
 	}
@@ -81,7 +82,7 @@ func TestScoreTesting_PartialCoverage(t *testing.T) {
 	// 4/5 source files have paired tests → ratio 0.8 → 30+70*0.8 = 86 (continuous scoring, not binary collapse to 20)
 	//
 	// 4/5 源码文件有配对测试 → ratio 0.8 → 30+70*0.8 = 86（连续打分，非二值塌缩到 20）
-	result := scoreTesting(4, 5, 5, true)
+	result := scoreTesting(4, 5, 5, 2, true)
 	if result.Score != 86 {
 		t.Fatalf(`expected 86 (4/5 covered, continuous), got %d: %s`, result.Score, result.Detail)
 	}
@@ -91,14 +92,14 @@ func TestScoreTesting_NoneCovered(t *testing.T) {
 	// 0/1 → ratio 0 → 30 (low score but not extreme collapse; covered=0 does not trigger fake-test penalty)
 	//
 	// 0/1 → ratio 0 → 30（低分但不极端塌缩；covered=0 不触发假测试惩罚）
-	result := scoreTesting(0, 1, 0, true)
+	result := scoreTesting(0, 1, 0, 0, true)
 	if result.Score != 30 {
 		t.Fatalf(`expected 30 (none covered), got %d: %s`, result.Score, result.Detail)
 	}
 }
 
 func TestScoreTesting_NotChecked(t *testing.T) {
-	result := scoreTesting(0, 0, 0, false)
+	result := scoreTesting(0, 0, 0, 0, false)
 	if result.Score != 70 {
 		t.Fatalf(`expected 70 (coverage not checked, neutral), got %d: %s`, result.Score, result.Detail)
 	}
@@ -108,19 +109,47 @@ func TestScoreTesting_NoSourceNeedsTest(t *testing.T) {
 	// No testable source (empty diff / all whitelisted) → 100 (no target should not be penalized)
 	//
 	// 无可测源码（空 diff / 全白名单）→ 100（无对象不该被惩罚）
-	result := scoreTesting(0, 0, 5, true)
+	result := scoreTesting(0, 0, 5, 1, true)
 	if result.Score != 100 {
 		t.Fatalf(`expected 100 (no source requiring tests), got %d: %s`, result.Score, result.Detail)
 	}
 }
 
 func TestScoreTesting_FakeTestPenalty(t *testing.T) {
-	// All paired but 0 assertions = fake test (only setup/log no assertions) → 100 * 0.6 = 60
+	// All paired but 0 assertions = fake test (only setup/log no assertions) → 100 * 0.6 = 60.
+	// testFiles=1: the density collection actually READ a test file and found zero
+	// assertions — the positive-data shape the penalty exists for.
 	//
-	// 全配对但 0 断言 = 假测试（只有 setup/log 无断言）→ 100 * 0.6 = 60
-	result := scoreTesting(1, 1, 0, true)
+	// 全配对但 0 断言 = 假测试（只有 setup/log 无断言）→ 100 * 0.6 = 60。
+	// testFiles=1：密度采集确实读到了测试文件且发现零断言——惩罚为之存在的
+	// 「有数据」形态。
+	result := scoreTesting(1, 1, 0, 1, true)
 	if result.Score != 60 {
 		t.Fatalf(`expected 60 (fake-test penalty: covered>0 but 0 assertions), got %d: %s`, result.Score, result.Detail)
+	}
+}
+
+// TestScoreTesting_FakeTestPenaltySkippedOnDeadProbe pins the penalty guard
+// (fix/cleanup-batch, 2026-08-29): assertionCount==0 with testFiles==0 means
+// the density collection saw NO test files at all — the dead-probe shape
+// (CollectAssertionDensity returns (0,0) with a stderr warning when every git
+// probe fails). "No data" must not read as "data says fake": the ×0.6 penalty
+// is skipped and the score keeps the plain coverage ratio.
+//
+// TestScoreTesting_FakeTestPenaltySkippedOnDeadProbe 钉住惩罚守卫
+// （fix/cleanup-batch，2026-08-29）：assertionCount==0 且 testFiles==0 意为密度
+// 采集根本没见到测试文件——死探测形态（全部 git 探测失败时
+// CollectAssertionDensity 返回 (0,0) 并打 stderr 警告）。「无数据」不得读作
+// 「数据说是假测试」：跳过 ×0.6 惩罚，分数保持纯覆盖比例。
+func TestScoreTesting_FakeTestPenaltySkippedOnDeadProbe(t *testing.T) {
+	// Same coverage shape as the penalty test (1/1 covered), but zero test
+	// files READ → no penalty: 100, not 60.
+	//
+	// 与惩罚测试同样的覆盖形态（1/1），但读到的测试文件数为 0 → 不惩罚：
+	// 100 而非 60。
+	result := scoreTesting(1, 1, 0, 0, true)
+	if result.Score != 100 {
+		t.Fatalf(`expected 100 (dead probe: no test files read, penalty skipped), got %d: %s`, result.Score, result.Detail)
 	}
 }
 
@@ -462,5 +491,39 @@ func TestScoreExpression(t *testing.T) {
 	in := EvaluateInput{HasDocDeliverables: true, DocRubricScore: &score80, DocGateEscaped: true}
 	if got := find(&in); got.Score > 60 {
 		t.Errorf("escape cap 60 violated: got %d", got.Score)
+	}
+}
+
+// TestIsTestPath_MirrorsPairingShapes pins the two shapes synced from
+// taskpipeline.isTestFile (T2 golden-set round): the test_ prefix with a real stem
+// and the JUnit camel suffixes — the dimension side must agree with the pairing
+// side or a paired test gets counted as production source.
+//
+// TestIsTestPath_MirrorsPairingShapes 钉住与 taskpipeline.isTestFile 同步的两个
+// 形态（T2 黄金用例轮）：带真 stem 的 test_ 前缀与 JUnit 驼峰后缀——维度侧必须
+// 与配对侧一致，否则已配对的测试被计为生产源码。
+func TestIsTestPath_MirrorsPairingShapes(t *testing.T) {
+	cases := []struct {
+		path string
+		want bool
+	}{
+		{"test_root.py", true},
+		{"test_foo.go", false}, // Go 惯例是 _test.go 后缀；test_ 前缀仅 Python
+		{"testing.go", false},  // 5th char is not '_'
+		{"test_.py", false},    // empty stem
+		{"contest/foo.py", false},
+		{"latest/x.py", false},
+		{"src/MainTest.java", true},
+		{"src/MainTests.java", true},
+		{"src/MainIT.java", true},
+		{"src/Context.java", false}, // "IT" must be suffix of the STEM, not substring
+		{"src/Poster.tsx", false},
+		{"tests/helper.py", true},
+		{"pkg/foo_test.go", true},
+	}
+	for _, c := range cases {
+		if got := isTestPath(filepath.FromSlash(c.path)); got != c.want {
+			t.Errorf("isTestPath(%q) = %v, want %v", c.path, got, c.want)
+		}
 	}
 }

@@ -1,7 +1,11 @@
 package datamerge
 
 import (
+	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -282,5 +286,166 @@ func TestDirs_NoFromBackupRemovesFromDir(t *testing.T) {
 	// 无冲突文件仍并入
 	if _, serr := os.Stat(filepath.Join(to, `sessions`, `s1.json`)); serr != nil {
 		t.Errorf(`sessions/s1.json 应并入: %v`, serr)
+	}
+}
+
+// writeBigFile 写一个 size 字节的伪随机内容文件（异或位移生成，不可压缩——
+// 内容校验不能被「碰巧全零也相等」糊弄）。
+//
+// writeBigFile writes a size-byte pseudo-random file (xorshift-generated,
+// incompressible — content verification must not be fooled by "all zeros
+// happens to match too").
+func writeBigFile(t *testing.T, path string, size int64, seed uint64) {
+	t.Helper()
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	w := bufio.NewWriterSize(f, 1<<16)
+	buf := make([]byte, 1<<16)
+	state := seed
+	for written := int64(0); written < size; {
+		n := int64(len(buf))
+		if remaining := size - written; remaining < n {
+			n = remaining
+		}
+		for i := range buf {
+			state ^= state << 13
+			state ^= state >> 7
+			state ^= state << 17
+			buf[i] = byte(state)
+		}
+		if _, err := w.Write(buf[:n]); err != nil {
+			t.Fatal(err)
+		}
+		written += n
+	}
+	if err := w.Flush(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// fileDigest 是内容一致性校验的基准真值（SHA-256，比逐字节比对省内存——对流式
+// 路径的测试本身也不该整读大文件）。
+//
+// fileDigest is the ground truth for content-equality checks (SHA-256, cheaper
+// in memory than byte compares — the test of a streaming path should not
+// itself whole-read the big file).
+func fileDigest(t *testing.T, path string) string {
+	t.Helper()
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		t.Fatal(err)
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// TestMoveFileStreamingFallbackContentPreserved 钉流式跨设备回退：10MB 大文件经
+// copy+remove 路径搬移后内容逐位一致、源文件删除、dst 目录无 .tmp-* 残留。
+// rename 失败注入用「dst 父目录尚不存在」实现（两平台 rename 到缺失父目录必败
+// → 必走 fallback；旧实现的 AtomicWrite 同样先 MkdirAll，故该用例重构前后都过，
+// 兼作前后等价钉）。
+//
+// TestMoveFileStreamingFallbackContentPreserved pins the streaming
+// cross-device fallback: a 10MB file moved through the copy+remove path keeps
+// byte-identical content, the source is removed, and no .tmp-* residue stays
+// in dst's dir. Rename-failure is injected via a not-yet-existing dst parent
+// (renaming into a missing parent fails on BOTH platforms → the fallback always
+// runs; the old AtomicWrite-based code also MkdirAll'd first, so this case
+// passes before AND after the rework — doubling as an equivalence pin).
+func TestMoveFileStreamingFallbackContentPreserved(t *testing.T) {
+	from := t.TempDir()
+	to := t.TempDir()
+	src := filepath.Join(from, "bundle-payload.bin")
+	writeBigFile(t, src, 10<<20, 0x9E3779B97F4A7C15)
+	want := fileDigest(t, src)
+
+	// dst 的父目录刻意不存在：首轮 os.Rename 必失败，fallback 路径确定性执行。
+	// The dst parent deliberately does not exist: the first os.Rename must
+	// fail, deterministically exercising the fallback.
+	dst := filepath.Join(to, "tasks", "nested", "payload-copy.bin")
+	if err := MoveFile(src, dst); err != nil {
+		t.Fatalf("MoveFile fallback 失败: %v", err)
+	}
+	if got := fileDigest(t, dst); got != want {
+		t.Fatalf("10MB 内容不一致：got %s want %s（流式拷贝损坏数据）", got, want)
+	}
+	if _, serr := os.Stat(src); !os.IsNotExist(serr) {
+		t.Error("fallback 成功后源文件应被删除")
+	}
+	residue, _ := filepath.Glob(filepath.Join(filepath.Dir(dst), ".tmp-*"))
+	if len(residue) != 0 {
+		t.Errorf("dst 目录不应残留 temp 文件: %v", residue)
+	}
+	if info, err := os.Stat(dst); err != nil {
+		t.Fatal(err)
+	} else if info.Size() != 10<<20 {
+		t.Errorf("dst 大小 = %d, want %d", info.Size(), 10<<20)
+	}
+}
+
+// TestMoveFileStreamingHelperNoResidueOnError 直接钉 helper 的清理契约：拷贝源
+// 消失（open 后即删——Windows 上已打开文件仍可删）不足以让 io.Copy 失败的话，
+// 退而求其次钉「目标不可写的报错路径不残留 temp」。用 dst 父目录是一个**文件**
+// 制造 MkdirAll 失败：helper 必须报错且 to 下无 .tmp-*。
+//
+// TestMoveFileStreamingHelperNoResidueOnError pins the helper's cleanup
+// contract directly: making dst's parent a FILE forces MkdirAll to fail — the
+// helper must error and leave no .tmp-* anywhere under to.
+func TestMoveFileStreamingHelperNoResidueOnError(t *testing.T) {
+	from := t.TempDir()
+	to := t.TempDir()
+	src := filepath.Join(from, "small.bin")
+	if err := os.WriteFile(src, []byte("xyz"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// 把 dst 的父目录占成一个文件：MkdirAll 必败。
+	// Occupy dst's parent path with a file: MkdirAll must fail.
+	blocker := filepath.Join(to, "blocked")
+	if err := os.WriteFile(blocker, []byte("not a dir"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := copyFileAtomic(src, filepath.Join(blocker, "dst.bin")); err == nil {
+		t.Fatal("父目录被文件占据时 helper 必须报错")
+	}
+	residue, _ := filepath.Glob(filepath.Join(to, ".tmp-*"))
+	if len(residue) != 0 {
+		t.Errorf("失败路径不应残留 temp 文件: %v", residue)
+	}
+	// 源文件不动（MoveFile 层才负责 remove src；helper 只管拷贝）。
+	// Source stays (MoveFile owns the src removal; the helper only copies).
+	if _, serr := os.Stat(src); os.IsNotExist(serr) {
+		t.Error("helper 失败时源文件必须原样保留")
+	}
+}
+
+// TestMoveFileRenamePathUnchanged 钉同卷快速路径：rename 成功时绝不走流式拷贝
+// （dst 内容正确即可——rename 语义天然保内容）。
+//
+// TestMoveFileRenamePathUnchanged pins the same-volume fast path: a successful
+// rename never touches the streaming copy (dst content correct suffices —
+// rename preserves content by definition).
+func TestMoveFileRenamePathUnchanged(t *testing.T) {
+	from := t.TempDir()
+	to := t.TempDir()
+	src := filepath.Join(from, "plain.json")
+	if err := os.WriteFile(src, []byte(`{"a":1}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := MoveFile(src, filepath.Join(to, "plain.json")); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(to, "plain.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != `{"a":1}` {
+		t.Fatalf("rename 路径内容不符: %q", data)
 	}
 }

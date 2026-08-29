@@ -2,7 +2,9 @@ package taskpipeline
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -64,7 +66,15 @@ func LoadTaskStateInDir(tasksDir, taskRef string) (*TaskState, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("task %q not found: run 'forge task start' first", taskRef)
+			// Wrap the sentinel so callers can errors.Is(err, fs.ErrNotExist) to
+			// distinguish "no such task" from ref-collision/parse failures — treating
+			// the collision guard's error as "not found" made task start overwrite the
+			// colliding task's state file (2026-08-29 review round, functional probe).
+			//
+			// 包装哨兵错误，调用方可用 errors.Is(err, fs.ErrNotExist) 区分「任务不
+			// 存在」与串号/解析失败——把串号守卫的报错当「不存在」会让 task start
+			// 直接覆盖同文件的任务状态（2026-08-29 审查轮功能探针实证）。
+			return nil, fmt.Errorf("task %q not found: run 'forge task start' first: %w", taskRef, err)
 		}
 		return nil, fmt.Errorf("failed to read task state: %w", err)
 	}
@@ -75,18 +85,50 @@ func LoadTaskStateInDir(tasksDir, taskRef string) (*TaskState, error) {
 	if s.TaskRef != taskRef {
 		return nil, fmt.Errorf("state file belongs to different task ref %q (requested %q) — refs sanitize to the same filename; use a different ref (e.g. forge task start --ref <other>)", s.TaskRef, taskRef)
 	}
+	// Integrity verification (state-integrity-signing): a PRESENT signature that does
+	// not verify marks the state hand-edited — consumers gate on IntegrityBroken().
+	// Unsigned (nil) = legacy pre-signing data, allowed through (first save re-signs).
+	//
+	// 完整性验签（state-integrity-signing）：签名【存在】且验不过 = 状态被手改——
+	// 消费方按 IntegrityBroken() 拒采信。无签名（nil）= 签名前的存量数据，放行
+	//（首次保存自动补签）。
+	if s.Integrity != nil {
+		if ok, err := verifyTaskState(&s); err != nil {
+			fmt.Fprintf(os.Stderr, "[forge] warning: task %s integrity check errored: %v\n", taskRef, err)
+			s.integrityBroken = true
+		} else if !ok {
+			fmt.Fprintf(os.Stderr, "[forge] warning: task %s integrity check FAILED — state file was modified outside forge; gate-satisfying fields will not be trusted\n", taskRef)
+			s.integrityBroken = true
+		}
+	}
 	return &s, nil
 }
 
-// SaveTaskState writes the task state file to DataDir/tasks/.
+// SaveTaskState writes the task state file to DataDir/tasks/. Every write is signed
+// (HMAC over the canonical JSON with the integrity field zeroed) — the single write
+// funnel is what makes "forge wrote this" vs "a hand-edited file" decidable at read
+// time (state-integrity-signing design, docs/design/state-integrity-signing.md).
 //
-// SaveTaskState 把 task state 文件写到 DataDir/tasks/。
+// SaveTaskState 把 task state 文件写到 DataDir/tasks/。每次写入都签名（对 integrity
+// 字段置零后的 canonical JSON 做 HMAC）——唯一写入漏斗使「forge 写的」与「手改的
+// 文件」在读取时变得可判定（state-integrity-signing 设计）。
 func SaveTaskState(root string, state *TaskState) error {
 	tasksDir := filepath.Join(dataHome(root), "tasks")
 	if err := os.MkdirAll(tasksDir, 0755); err != nil {
 		return fmt.Errorf("failed to create tasks directory: %w", err)
 	}
 
+	if sig, keyID, err := signTaskState(state); err != nil {
+		// Missing identity → quiet unsigned write (legacy-shaped; first forge init
+		// creates the identity and the next save signs). Only UNEXPECTED signing
+		// failures warn — otherwise test/CI envs without an identity spam stderr.
+		if !errors.Is(err, fs.ErrNotExist) {
+			fmt.Fprintf(os.Stderr, "[forge] warning: task state signing unavailable: %v\n", err)
+		}
+		state.Integrity = nil
+	} else {
+		state.Integrity = &StateIntegrity{KeyID: keyID, Alg: "hmac-sha256", Sig: sig}
+	}
 	filename := taskcontext.SanitizeRef(state.TaskRef) + ".json"
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
@@ -205,7 +247,17 @@ func ActiveTaskState(root, sessionID string) (*TaskState, error) {
 			// binding 是权威。
 			if IsMainCheckout(root) {
 				_ = worktree.BindTask(root, state.TaskRef, state.Branch, sessionID)
-				_ = ClearActiveTaskRef(root, "")
+				// Compare-and-delete: a concurrent no-sid task start may have
+				// re-pointed the legacy pointer at a NEW task between our read and
+				// this clear — deleting it unconditionally would strand that task's
+				// only anchor (TOCTOU on a pointer every hook resolution reads).
+				//
+				// 比较后删除：并发的无 sid task start 可能在我们读取与本次清除
+				// 之间把 legacy 指针改指【新】任务——无条件删除会让那个任务失去
+				// 唯一锚点（每个 hook 解析都在读的指针上的 TOCTOU）。
+				if cur := ReadActiveTaskRef(root, ""); cur == state.TaskRef {
+					_ = ClearActiveTaskRef(root, "")
+				}
 			}
 			return state, nil
 		}
@@ -233,7 +285,16 @@ func IsMainCheckout(root string) bool {
 		return false // worktree 的 .git 是文件
 	}
 	absRoot, _ := filepath.Abs(root)
-	return filepath.Dir(gd) == absRoot
+	// git prints forward slashes even on Windows while filepath.Abs keeps the platform
+	// separator, and Windows paths are case-insensitive — normalize both sides before
+	// comparing or the equality is always false on win32 (the legacy bridge and the
+	// complete-time unbind were dead paths there).
+	//
+	// git 在 Windows 上也输出正斜杠，而 filepath.Abs 保留平台分隔符，且 Windows 路径
+	// 大小写不敏感——两侧先归一化再比较，否则该等式在 win32 上恒为 false（legacy
+	// 桥与 complete 时解绑在那里是死路径）。
+	sameDir := strings.EqualFold(filepath.Clean(filepath.ToSlash(filepath.Dir(gd))), filepath.Clean(filepath.ToSlash(absRoot)))
+	return sameDir
 }
 
 // taskAnchoredByOtherActiveSession reports whether a task's anchored sessions include

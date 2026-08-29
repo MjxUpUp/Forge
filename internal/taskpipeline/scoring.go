@@ -81,6 +81,19 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 	// 逻辑、同 task diff），testing 维度不依赖 checklog 条目是否存在——此前此处会查
 	// CheckNameTestCoverage 条目，但紧接着被无条件覆写为 true，查询是死效果。
 	testCoverageChecked := true
+	if escapeDisabled(state, "test-coverage", "FORGE_TEST_COVERAGE") {
+		// An override disables the GATE, not the honesty of the report: reporting
+		// 100/"No source files requiring tests" for a task whose coverage was merely
+		// bypassed launders the gap into a perfect dimension (2026-08-29 functional
+		// finding). The dimension goes neutral (70, "not checked — disabled") instead;
+		// the escape's real cost already shows via the 89 cap + Weak evidence.
+		//
+		// override 免的是【门禁】，不是报告的诚实性：覆盖义务只是被绕过的任务
+		// 报 100/「无需测试」会把缺口洗成满分维度（2026-08-29 功能发现）。维度
+		// 改为中性（70，「未检测——已禁用」）；逃生的真实代价已由 89 封顶 +
+		// Weak 证据体现。
+		testCoverageChecked = false
+	}
 	if latestChecks, err := checklog.LatestByCheckForSessionSince(root, state.SessionID, state.StartedAt); err == nil {
 		// INFRA:-prefixed entries are fail-open infrastructure failures (bash spawn
 		// error / WSL exit 126/127), not quality verdicts — the gate treats them as
@@ -125,7 +138,18 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 	// 从 protocol 加载 scoring 配置
 	var config *scoringtypes.ScoringConfig
 	proto, err := protocol.Load(root)
-	if err != nil || proto == nil || proto.Scoring == nil {
+	if err != nil {
+		// A parse failure (user typo/type error) silently swapping in default weights
+		// changes scores with no trace — warn; absent Scoring section stays a quiet default.
+		//
+		// 解析失败（用户手误/类型错）静默换默认权重会无痕改变分数——告警；
+		// 无 Scoring 段保持安静缺省。
+		fmt.Fprintf(os.Stderr, "[forge] warning: protocol.yml 加载失败（%v）——评分回退默认权重/阈值\n", err)
+		config = &scoringtypes.ScoringConfig{
+			Weights:    scoringtypes.DefaultWeights(),
+			Thresholds: scoringtypes.DefaultThresholds(),
+		}
+	} else if proto == nil || proto.Scoring == nil {
 		config = &scoringtypes.ScoringConfig{
 			Weights:    scoringtypes.DefaultWeights(),
 			Thresholds: scoringtypes.DefaultThresholds(),
@@ -326,7 +350,12 @@ func ScoreTask(root string, state *TaskState) error {
 // state.Acceptance 通过率 + state.Score，调 act.BuildConclusion。从 cli/task.go 下沉，
 // 让 MCP complete 与 CLI 共用 Act 反馈臂。
 func AppendConclusion(root string, state *TaskState) (act.Conclusion, string, error) {
-	ec, _ := checklog.ForTask(root, state.TaskRef)
+	ec, err := checklog.ForTask(root, state.TaskRef)
+	if err != nil {
+		// An unreadable evidence chain would otherwise be silently persisted as a
+		// "zero-evidence completion" — warn so the IO failure stays attributable.
+		fmt.Fprintf(os.Stderr, "[forge] warning: evidence chain unavailable for %s: %v\n", state.TaskRef, err)
+	}
 	pass, total := 0, len(state.Acceptance)
 	for _, c := range state.Acceptance {
 		if c.Passed {

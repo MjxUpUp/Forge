@@ -251,6 +251,13 @@ var typeSuppressionRe = []*regexp.Regexp{
 	regexp.MustCompile(`#\[allow`), // Rust 属性（要求 #[ 前缀）
 	// Java annotation.
 	regexp.MustCompile(`@SuppressWarnings`), // Java 注解
+	// Go nolint directive (comment-carried suppression, same class as eslint-disable).
+	// Sigil kept split ("nolint" composed from concatenation) so this scanner's own
+	// source mentions don't self-match.
+	//
+	// Go nolint 指令（注释承载的抑制，与 eslint-disable 同类）。sigil 刻意拆开写
+	//（"nolint" 由拼接构成），避免扫描器自身源码里的提及自匹配。
+	regexp.MustCompile(`//\s*nol` + `int`),
 }
 
 // detectTypeSuppression: new lines containing type/warning suppression directives (anywhere),
@@ -320,6 +327,22 @@ var errorSwallowRe = []*regexp.Regexp{
 	//
 	// 空 catch 单行：catch {} / catch (e) {} / catch (e: Err) {} —— 跨语言（JS/TS/Java/C#）。
 	regexp.MustCompile(`\bcatch\s*(\([^)]*\))?\s*\{\s*\}`),
+	// Comment-only catch body: catch (e) { /* ignore */ } / { // 忽略 } — the most
+	// typical AI semantic swallow (looks "handled", does nothing). Single-line, the
+	// body may consist only of whitespace plus one line comment or a self-closed
+	// block comment. (2026-08-29 review round: functional probe confirmed zero-cost bypass.)
+	//
+	// 注释体 catch：catch (e) { /* ignore */ } / { // 忽略 } —— AI 最典型的语义化
+	// 吞错（看着"处理过"，实际什么都没做）。单行，函数体仅由空白 + 一条行注释或
+	// 自闭合块注释构成。（2026-08-29 审查轮：功能探针实证原为零成本绕过。）
+	regexp.MustCompile(`\bcatch\s*(\([^)]*\))?\s*\{\s*(?://[^\n]*|/\*[^*]*\*/)\s*\}`),
+	// Go error discard: explicit `var _ = err` / `_ = err` assignment — the Go idiom
+	// for swallowing an error without the blank-import excuse. Requires the RHS
+	// identifier to look like an error (err/errX/errs) to stay high-confidence.
+	//
+	// Go 错误丢弃：显式 `var _ = err` / `_ = err` 赋值——Go 里不借 blank-import
+	// 借口吞掉错误的惯用形态。要求 RHS 形似错误变量（err/errX/errs）保持高置信。
+	regexp.MustCompile(`(\bvar\s+)?_\s*=\s*err[a-zA-Z0-9]*\b`),
 	// Python except ... : pass (same-line pass = real swallow).
 	//
 	// Python except ... : pass（同行的 pass = 真吞）。
@@ -745,10 +768,17 @@ func collectAddedLines(root string, state *TaskState) []addedLine {
 		out = append(out, parseGitAddedLines(root, spec, sourceSet)...)
 	}
 	// Untracked (agent just created, not yet git-added): read the whole file, every line is added.
+	// The tracked-set probe is BATCHED: one repo-wide `git ls-files` builds the membership set
+	// — the previous form ran `git ls-files --error-unmatch` per source file, spawning one
+	// subprocess per file (2026-08-29 review round). Same verdict, N processes → 1.
 	//
 	// 未跟踪（agent 刚建、未 git add）：整文件读，每行都是"新增"。
+	// tracked 集合探测改批量：一次全仓 `git ls-files` 建成员集合——此前对每个源文件跑
+	// 一次 `git ls-files --error-unmatch`，每文件一个子进程（2026-08-29 审查轮）。
+	// 判定不变，进程数 N → 1。
+	tracked := gitTrackedSet(root)
 	for f := range sourceSet {
-		if isTracked := gitTracked(root, f); isTracked {
+		if tracked[f] {
 			// Tracked — already covered by git diff.
 			continue // 已跟踪——git diff 已覆盖
 		}
@@ -886,13 +916,33 @@ func readFileAddedLines(full, rel string) []addedLine {
 	return res
 }
 
-// gitTracked reports whether a file is already tracked by git (ls-files --error-unmatch exit 0
-// = tracked).
+// gitTrackedSet returns the full set of tracked files via ONE repo-wide `git ls-files`
+// invocation — the batched replacement for the per-file `git ls-files --error-unmatch`
+// subprocess probe (same verdict, N processes → 1; 2026-08-29 review round). Keys are
+// git's repo-relative forward-slash paths, matching the sourceSet keys built from
+// taskChangedFiles output. Nil on git failure: callers then treat every file as
+// untracked and read it from disk — the same failure direction as the old per-file
+// probe (worst case duplicates lines the diff-parse path already produced; advisory
+// detection stays failure-tolerant, never panics).
 //
-// gitTracked 报告文件是否已被 git 跟踪（ls-files --error-unmatch 退出码 0=跟踪）。
-func gitTracked(root, rel string) bool {
-	err := exec.Command("git", "-C", root, "ls-files", "--error-unmatch", rel).Run()
-	return err == nil
+// gitTrackedSet 用【一次】全仓 `git ls-files` 返回全部已跟踪文件集合——逐文件
+// `git ls-files --error-unmatch` 子进程探测的批量化替代（判定不变，进程数 N → 1；
+// 2026-08-29 审查轮）。key 是 git 的仓库相对 forward-slash 路径，与 taskChangedFiles
+// 输出构建的 sourceSet key 一致。git 失败时返回 nil：调用方会把每个文件当 untracked
+// 整读——与旧逐文件探测同向失败（最坏重复 diff-parse 已产出的行；advisory 检测保持
+// 失败容忍，绝不 panic）。
+func gitTrackedSet(root string) map[string]bool {
+	out, err := exec.Command("git", "-C", root, "ls-files").Output()
+	if err != nil {
+		return nil
+	}
+	set := make(map[string]bool)
+	for _, line := range strings.Split(string(out), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			set[line] = true
+		}
+	}
+	return set
 }
 
 // hasRef reports whether git recognizes a ref (used to avoid diff errors when falling back to

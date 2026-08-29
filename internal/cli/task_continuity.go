@@ -1003,7 +1003,21 @@ func runTaskDecide(cmd *cobra.Command, args []string) error {
 	affects, _ := cmd.Flags().GetStringArray("affects")
 	rationale, _ := cmd.Flags().GetString("rationale")
 	var d taskpipeline.Decision
+	dup := false
 	err = taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
+		// Content-level idempotency: agents re-run the same decide on retry and the
+		// identical content used to append a duplicate entry each time (context
+		// replay then shows the same decision twice as if two were made).
+		//
+		// 内容级幂等：重试时 agent 会重跑同一 decide，相同内容此前每次都追加
+		// 重复条目（上下文回放把同一条决策显示成做了两次）。
+		for _, ex := range s.Decisions {
+			if ex.Content == content && ex.By == by {
+				d = ex
+				dup = true
+				return nil
+			}
+		}
 		s.AddDecision(taskpipeline.Decision{
 			Content:   content,
 			By:        by,
@@ -1016,6 +1030,10 @@ func runTaskDecide(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("保存失败: %w", err)
 	}
+	if dup {
+		fmt.Printf("✓ 决策已存在（幂等跳过） [%s]: %s\n", d.ID, content)
+		return nil
+	}
 	fmt.Printf("✓ 决策已记 [%s]: %s\n", d.ID, content)
 	return nil
 }
@@ -1026,9 +1044,26 @@ func runTaskNext(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	total := 0
+	added := 0
 	err = taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
+		// Same content-level idempotency as decide: duplicate steps used to append
+		// verbatim copies on retry ("write docs" appearing twice in the plan).
+		//
+		// 与 decide 同款内容级幂等：重复步骤此前在重试时逐字追加（计划里出现
+		// 两条 "write docs"）。
 		for _, step := range args {
+			dupStep := false
+			for _, ex := range s.NextSteps {
+				if ex == step {
+					dupStep = true
+					break
+				}
+			}
+			if dupStep {
+				continue
+			}
 			s.AddNext(step)
+			added++
 		}
 		total = len(s.NextSteps)
 		return nil
@@ -1192,7 +1227,12 @@ func runTaskAttach(cmd *cobra.Command, args []string) error {
 // gitPorcelain 返回 git status --porcelain 的行（已改未提交文件）。非 git 仓库或失败返 nil——
 // resume 不依赖 git，仅作「接手方一眼看到工作区状态」的辅助。
 func gitPorcelain(root string) []string {
-	out, err := exec.Command("git", "-C", root, "status", "--porcelain").Output()
+	// quotepath=off keeps non-ASCII (CJK) paths raw UTF-8 instead of C-quoted octal
+	// escapes, so the handoff view shows real paths (same fix as attribution.ChangedFiles).
+	//
+	// quotepath=off 让非 ASCII（中文）路径保持原生 UTF-8 而非 C 转义八进制串，
+	// 接手方看到的是真实路径（与 attribution.ChangedFiles 同款修复）。
+	out, err := exec.Command("git", "-c", "core.quotepath=off", "-C", root, "status", "--porcelain").Output()
 	if err != nil {
 		return nil
 	}

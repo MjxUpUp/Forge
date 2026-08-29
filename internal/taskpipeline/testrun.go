@@ -1,9 +1,11 @@
 package taskpipeline
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
 )
@@ -42,14 +44,37 @@ func DetectTestCommand(root string) string {
 // stdout/stderr。纯执行——不记 checklog；由 caller 决定是否/在哪记录，使本函数
 // 保持可单测不触磁盘。命令字符串按空白切分：detectStackAndCmd 产出的每个 test
 // command 都以空格分隔、无引号参数（go test ./...、cargo test、npx vitest run 等）。
+// testRunTimeout bounds a single suite execution. Sniffed commands include watch-mode
+// defaults (npm test → vitest watch); an unbounded run would hang forge verify and any
+// hook sitting on it for the lifetime of the terminal. Override: FORGE_TEST_TIMEOUT
+// (Go duration string, e.g. 30m).
+//
+// testRunTimeout 限定单次套件执行时长。嗅探出的命令含 watch 模式默认（npm test →
+// vitest watch）；无上限的运行会把 forge verify 及其上的 hook 挂到终端关闭为止。
+// 覆盖方式：FORGE_TEST_TIMEOUT（Go duration 字符串，如 30m）。
+var testRunTimeout = 15 * time.Minute
+
+func init() {
+	if v := os.Getenv("FORGE_TEST_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			testRunTimeout = d
+		}
+	}
+}
+
 func RunTestCommand(root, cmdStr string) (passed bool, output string) {
 	parts := strings.Fields(cmdStr)
 	if len(parts) == 0 {
 		return false, "empty command"
 	}
-	c := exec.Command(parts[0], parts[1:]...)
+	ctx, cancel := context.WithTimeout(context.Background(), testRunTimeout)
+	defer cancel()
+	c := exec.CommandContext(ctx, parts[0], parts[1:]...)
 	c.Dir = root
 	c.Env = os.Environ()
 	out, err := c.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		return false, strings.TrimSpace(string(out)) + "\n[forge] TIMEOUT: 测试命令超过 " + testRunTimeout.String() + " 被终止（FORGE_TEST_TIMEOUT 可调）"
+	}
 	return err == nil, strings.TrimSpace(string(out))
 }

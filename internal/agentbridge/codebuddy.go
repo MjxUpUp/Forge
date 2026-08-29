@@ -12,6 +12,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/hooks"
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // codebuddy.go — CodeBuddy / WorkBuddy (Tencent @genie/workbuddy-desktop) agent bridge.
@@ -621,7 +622,7 @@ func StripCodeBuddyHooks() (bool, error) {
 				seamErrs = append(seamErrs, fmt.Errorf("codebuddy: marshal known_marketplaces: %w", err))
 			} else {
 				out = append(out, '\n')
-				if err := os.WriteFile(kmPath, out, 0o644); err != nil {
+				if err := util.AtomicWrite(kmPath, out, 0o644); err != nil {
 					seamErrs = append(seamErrs, fmt.Errorf("codebuddy: write %s: %w", kmPath, err))
 				} else {
 					changed = true
@@ -656,7 +657,7 @@ func StripCodeBuddyHooks() (bool, error) {
 							seamErrs = append(seamErrs, fmt.Errorf("codebuddy: marshal settings: %w", err))
 						} else {
 							out = append(out, '\n')
-							if err := os.WriteFile(setPath, out, 0o644); err != nil {
+							if err := util.AtomicWrite(setPath, out, 0o644); err != nil {
 								seamErrs = append(seamErrs, fmt.Errorf("codebuddy: write %s: %w", setPath, err))
 							} else {
 								changed = true

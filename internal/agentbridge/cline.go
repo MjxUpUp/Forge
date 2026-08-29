@@ -262,9 +262,14 @@ func (t *ClineTranslator) Translate(projectDir string, input *TranslationInput) 
 	}
 	for _, e := range clineEventMappings {
 		script := buildClineWrapperScript(e.clineEvent, rosters[e.clineEvent])
-		// 0755: cline requires the hook script to be executable.
+		// 0755: cline requires the hook script to be executable. NOT AtomicWrite:
+		// renaming onto a script bash is currently executing fails on Windows with
+		// Access Denied, and this rewrite can be triggered from inside that very
+		// script's forge subprocess (see WriteHookTemplates' note).
 		//
-		// 0755：cline 要求 hook 脚本可执行。
+		// 0755：cline 要求 hook 脚本可执行。不用 AtomicWrite：Windows 上 rename
+		// 到正在被 bash 执行的脚本会 Access Denied，而本次重写恰可能由该脚本
+		// 自身的 forge 子进程触发（见 WriteHookTemplates 的说明）。
 		if err := os.WriteFile(filepath.Join(dir, e.clineEvent), []byte(script), 0755); err != nil {
 			return fmt.Errorf("write cline hook %s: %w", e.clineEvent, err)
 		}
@@ -292,7 +297,16 @@ func StripClineHooks() (bool, error) {
 		target := filepath.Join(dir, e.clineEvent)
 		data, err := os.ReadFile(target)
 		if err != nil {
-			continue // missing → nothing to strip
+			if os.IsNotExist(err) {
+				continue // missing → nothing to strip
+			}
+			// Read failures other than missing (lock/permission/IO) must surface —
+			// silently skipping leaves forge wrappers installed while reporting
+			// "nothing to clean" to uninstall (same contract as the sibling Strip funcs).
+			//
+			// 非缺失的读失败（锁/权限/IO）必须上抛——静默跳过会留下仍在运行的
+			// forge wrapper 却向 uninstall 报"无东西可清"（与兄弟 Strip 函数同契约）。
+			return changed, fmt.Errorf("read cline hook %s: %w", e.clineEvent, err)
 		}
 		if !strings.Contains(string(data), clineWrapperMarker) {
 			continue // user script — never touched
