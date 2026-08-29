@@ -72,9 +72,9 @@ type Summary struct {
 	//
 	// CappedWeakCount：仍带 deterministic 证据的 Weak 结论——逃生舱封顶（override
 	// 代价），与真正的证据盲区区分。
-	CappedWeakCount int `json:"capped_weak_count"`
-	BlindSpotRate  float64        `json:"blind_spot_rate"` // 0-1
-	NudgeCount     int            `json:"nudge_count"`     // RetrospectiveNudge=true 任务数（全量真相）
+	CappedWeakCount int     `json:"capped_weak_count"`
+	BlindSpotRate   float64 `json:"blind_spot_rate"` // 0-1
+	NudgeCount      int     `json:"nudge_count"`     // RetrospectiveNudge=true 任务数（全量真相）
 	// NudgeRecent counts RetrospectiveNudge=true conclusions completed within
 	// NudgeRecentWindow of the SummarizeAt `now` — the alert-facing count that feeds
 	// the dashboard, so stale nudges stop lighting the panel red forever (see
