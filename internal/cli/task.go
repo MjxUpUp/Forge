@@ -2,7 +2,9 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"slices"
@@ -423,6 +425,17 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	// 绑定锚定【新】路径，会话指针不变。后续步骤失败时刻意保留 worktree（宁留勿
 	// 删）：指引行告知用户如何清理。
 	if useWorktree {
+		// --worktree brings its own branch creation (deriveBranchName inside
+		// createTaskWorktree); combining it with --branch would always fail the
+		// main-checkout guard BELOW the worktree side effect, leaving an orphan
+		// worktree behind. Reject the combination before any disk effect.
+		//
+		// --worktree 自带分支创建（createTaskWorktree 内的 deriveBranchName）；
+		// 与 --branch 组合必在 worktree 副作用【之后】命中主检出守卫而失败，
+		// 留下孤儿 worktree。在任何磁盘副作用前拒绝该组合。
+		if createBranch {
+			return fmt.Errorf("--worktree 与 --branch 互斥：--worktree 自带任务分支创建（可用 --wt-dir/--base 定制），无需 --branch")
+		}
 		base, _ := cmd.Flags().GetString("base")
 		wtDir, _ := cmd.Flags().GetString("wt-dir")
 		wtRoot, werr := createTaskWorktree(root, explicitRef, base, wtDir)
@@ -478,13 +491,19 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Check whether the task already exists.
+	// Check whether the task already exists. Only a confirmed ErrNotExist may fall
+	// through to creation — a ref-collision error (two refs sanitize to the same
+	// filename) must abort, not get overwritten by the new task's SaveTaskState.
 	//
-	// 检查 task 是否已存在
+	// 检查 task 是否已存在。只有确证的 ErrNotExist 才落到创建路径——串号冲突
+	//（两个 ref 折叠到同一文件名）必须中止，而不是被新任务的 SaveTaskState 覆盖。
 	existing, err := taskpipeline.LoadTaskState(root, ctx.TaskRef)
 	if err == nil && existing != nil {
 		return fmt.Errorf("task %q already exists (started at %s). Use 'forge task status' to check progress",
 			ctx.TaskRef, existing.StartedAt.Format("2006-01-02 15:04"))
+	}
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("检查既有任务 %q 失败（可能是 ref 串号冲突，拒绝覆盖）: %w", ctx.TaskRef, err)
 	}
 
 	state := taskpipeline.NewTaskState(ctx)
@@ -982,6 +1001,17 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 	if listErr == nil {
 		for _, t := range allStates {
 			if t == nil {
+				continue
+			}
+			// Completed dependents already passed their gates and carry the project's
+			// settled score/quality record — cascade exists to clear chains that can
+			// never pass, not to destroy finished history (abort's own doc promises
+			// quality records survive abandoned attempts).
+			//
+			// 已完成的依赖方早已过门禁，承载项目已沉淀的评分/质量记录——级联的
+			// 存在意义是清掉永远过不了门的链，不是销毁已完成的历史（abort 自己
+			// 的文档承诺质量记录不被放弃的尝试污染）。
+			if t.CompletedAt != nil {
 				continue
 			}
 			for _, d := range t.DependsOn {

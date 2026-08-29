@@ -87,8 +87,23 @@ func LockTask(root, ref string) (unlock func(), err error) {
 		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
 		if err == nil {
 			stamp := fmt.Sprintf("%d\n", time.Now().Unix())
-			f.WriteString(stamp)
-			f.Close()
+			// A failed identity write leaves an EMPTY lock file: our identity-checked
+			// unlock will then never match, the lock outlives its holder for the full
+			// stale window, and every concurrent writer of this task fails fast for
+			// that long. Remove the orphaned lock and surface the failure instead.
+			//
+			// 身份戳写失败会留下【空】锁文件：带身份校验的解锁从此永不匹配，
+			// 锁比持有者多活整个 stale 窗口，该任务的并发写者在这段时间内全部
+			// 快速失败。改为清掉孤儿锁并上抛失败。
+			if _, werr := f.WriteString(stamp); werr != nil {
+				f.Close()
+				os.Remove(path)
+				return nil, fmt.Errorf("failed to write lock identity for %s: %w", ref, werr)
+			}
+			if cerr := f.Close(); cerr != nil {
+				os.Remove(path)
+				return nil, fmt.Errorf("failed to close lock for %s: %w", ref, cerr)
+			}
 			return func() {
 				// Identity-checked unlock: only remove the lock if it is still ours.
 				//

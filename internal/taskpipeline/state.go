@@ -64,7 +64,15 @@ func LoadTaskStateInDir(tasksDir, taskRef string) (*TaskState, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("task %q not found: run 'forge task start' first", taskRef)
+			// Wrap the sentinel so callers can errors.Is(err, fs.ErrNotExist) to
+			// distinguish "no such task" from ref-collision/parse failures — treating
+			// the collision guard's error as "not found" made task start overwrite the
+			// colliding task's state file (2026-08-29 review round, functional probe).
+			//
+			// 包装哨兵错误，调用方可用 errors.Is(err, fs.ErrNotExist) 区分「任务不
+			// 存在」与串号/解析失败——把串号守卫的报错当「不存在」会让 task start
+			// 直接覆盖同文件的任务状态（2026-08-29 审查轮功能探针实证）。
+			return nil, fmt.Errorf("task %q not found: run 'forge task start' first: %w", taskRef, err)
 		}
 		return nil, fmt.Errorf("failed to read task state: %w", err)
 	}
