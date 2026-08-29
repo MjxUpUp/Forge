@@ -130,7 +130,26 @@ type verifyHistoryRow struct {
 }
 
 func runSkillsVerifyHistory(canonical string) error {
-	decisions, err := collectAllDecisions(canonical)
+	// --skill filter: without it the ledger mixes EVERY skill's decisions into one
+	// list (code-review-gate's 16 showed up alongside 297 from the whole tree) and
+	// the JSON rows carry no skill field to tell them apart. Filtering at load time
+	// keeps the flat SkillDecision list truthful.
+	//
+	// --skill 过滤：不过滤时台账把【全部】skill 的决策混列（code-review-gate 的
+	// 16 条混在全树 297 条里），且 JSON 行没有 skill 字段可区分。在加载层过滤，
+	// 平铺的 SkillDecision 列表保持真实。
+	var (
+		decisions []skillsdecisions.SkillDecision
+		err       error
+	)
+	if skVerSkill != "" {
+		if verr := requireValidSkillName(skVerSkill); verr != nil {
+			return verr
+		}
+		decisions, err = skillsdecisions.LoadDecisions(canonical, skVerSkill)
+	} else {
+		decisions, err = collectAllDecisions(canonical)
+	}
 	if err != nil {
 		return err
 	}
