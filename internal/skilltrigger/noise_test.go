@@ -130,9 +130,6 @@ func TestInMemoryNoise_ClockRollback(t *testing.T) {
 
 // TestFileNoise_FireCount 钉住 session 硬封顶的计数面：Mark 累计 FireCount，跨 skill /
 // session 隔离，无文件 = 0。
-//
-// TestFileNoise_FireCount pins the counting side of the session hard cap: Mark
-// accumulates FireCount, isolated per skill/session, absent file = 0.
 func TestFileNoise_FireCount(t *testing.T) {
 	n := NewFileNoiseController(t.TempDir())
 	now := time.Now()

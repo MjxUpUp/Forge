@@ -8,10 +8,6 @@ import (
 
 // TestRepoTriggerSet 三态：有 triggers 的 skills/ → 名集；零 triggers 的 skills/ → nil
 // （审查 LOW-1：恰好有 skills/ 目录的非 Forge 项目不得渲染假「一致」）；无 skills/ → nil。
-//
-// TestRepoTriggerSet three states: skills/ with triggers → name set; skills/ with zero
-// triggers → nil (review LOW-1: a non-Forge project that happens to carry skills/ must not
-// render a fake "consistent"); no skills/ → nil.
 func TestRepoTriggerSet(t *testing.T) {
 	root := t.TempDir()
 
@@ -40,10 +36,6 @@ func TestRepoTriggerSet(t *testing.T) {
 
 	// skills/ 零 triggers 但 skills-forge/ 有（2026-08 迁移后的并集扫描）：可比且
 	// forge 原生声明计入——不并集的话这些 skill 会渲染假漂移行（review W7）。
-	//
-	// skills/ zero triggers but skills-forge/ has some (union scan since the
-	// 2026-08 migration): comparable and forge-native declarations counted —
-	// without the union those skills render fake drift lines (review W7).
 	writeSkill(t, filepath.Join(root, "skills-forge"), "skill-evolution", `[{"event":"UserPromptSubmit"}]`)
 	rs = repoTriggerSet(root)
 	if rs == nil || !rs["skill-evolution"] {

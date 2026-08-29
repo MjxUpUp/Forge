@@ -5,13 +5,7 @@ import (
 	"testing"
 )
 
-// TestMain redirects the user-level DataDir (where toollog and its archives now
-// live after the user-level-assets migration) to an isolated temp dir. Store
-// tests in this package call Record directly; without redirection,
-// toolusage.Record would resolve a real DataDir under ~/.forge/projects/<key>/
-// and pollute the developer's machine. A fresh MkdirTemp per process avoids
-// cross-run and cross-package leakage. Tests needing a fully private home
-// (datahome_git_test.go) still override with t.Setenv.
+// TestMain redirects the user-level DataDir (where toollog and its archives now live after the user-level-assets migration) to an isolated temp dir.
 //
 // TestMain 把用户级 DataDir（user-level-assets 迁移后 toollog 及其归档的所在地）
 // 重定向到隔离临时目录。本包 store 测试直接调 Record；不重定向的话

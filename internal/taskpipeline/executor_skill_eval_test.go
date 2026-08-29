@@ -1,9 +1,5 @@
 package taskpipeline
 
-// executor_skill_eval_test.go — pure-function tests for the skill-eval advisory.
-// Tests skillNamesFromChanged (no git dependency): skills/ prefix matches exactly, internal/ same-named words
-// do not match by accident, no case set stays silent, same skill dedupes.
-//
 // executor_skill_eval_test.go — skill-eval advisory 的纯函数测试。
 // 测 skillNamesFromChanged（无 git 依赖）：skills/ 前缀精确命中、internal/ 下同名词
 // 不误命中、无 case 集静默、同 skill 去重。
@@ -17,8 +13,6 @@ import (
 	"testing"
 )
 
-// writeCaseSet creates an empty cases/<name>.json under casesDir (just for existence check).
-//
 // writeCaseSet 在 casesDir 下造一个空的 cases/<name>.json（仅验证存在性判定）。
 func writeCaseSet(t *testing.T, casesDir, name string) {
 	t.Helper()
@@ -30,7 +24,8 @@ func writeCaseSet(t *testing.T, casesDir, name string) {
 	}
 }
 
-// TestSkillNamesFromChanged_HitsSkillsDirWithCaseSet: skills/foo/SKILL.md + case set present → ["foo"].
+// TestSkillNamesFromChanged_HitsSkillsDirWithCaseSet: skills/foo/SKILL.md + case
+// set present → ["foo"].
 //
 // TestSkillNamesFromChanged_HitsSkillsDirWithCaseSet：skills/foo/SKILL.md + 有 case 集 → ["foo"]。
 func TestSkillNamesFromChanged_HitsSkillsDirWithCaseSet(t *testing.T) {
@@ -48,8 +43,8 @@ func TestSkillNamesFromChanged_HitsSkillsDirWithCaseSet(t *testing.T) {
 }
 
 // TestSkillNamesFromChanged_MissesCliSkillsFiles: internal/cli/skills_*.go,
-// internal/skillseval/*.go contain"skills"substring but not"skills/"prefix → no false hit.
-// Guards the testcoverage.go:67 anti-pattern pitfall emphasized in the plan (substring false match).
+// internal/skillseval/*.go contain"skills"substring but not"skills/"prefix → no
+// false hit.
 //
 // TestSkillNamesFromChanged_MissesCliSkillsFiles：internal/cli/skills_*.go、
 // internal/skillseval/*.go 含"skills"子串但非"skills/"前缀 → 不误命中。
@@ -68,8 +63,9 @@ func TestSkillNamesFromChanged_MissesCliSkillsFiles(t *testing.T) {
 	}
 }
 
-// TestSkillNamesFromChanged_NoCaseSetSilent: modified skills/bar/ but no case set ever generated →
-// silent (no regression baseline, advisory can't run anyway).
+// TestSkillNamesFromChanged_NoCaseSetSilent: modified skills/bar/ but no case
+// set ever generated → silent (no regression baseline, advisory can't run
+// anyway).
 //
 // TestSkillNamesFromChanged_NoCaseSetSilent：改了 skills/bar/ 但没生成过 case 集 →
 // 静默（无回归基准，提醒也跑不了）。
@@ -82,7 +78,8 @@ func TestSkillNamesFromChanged_NoCaseSetSilent(t *testing.T) {
 	}
 }
 
-// TestSkillNamesFromChanged_DedupesSameSkill: same skill multi-file change → dedupes to one entry.
+// TestSkillNamesFromChanged_DedupesSameSkill: same skill multi-file change →
+// dedupes to one entry.
 //
 // TestSkillNamesFromChanged_DedupesSameSkill：同 skill 多文件变更 → 去重为一条。
 func TestSkillNamesFromChanged_DedupesSameSkill(t *testing.T) {
@@ -100,7 +97,8 @@ func TestSkillNamesFromChanged_DedupesSameSkill(t *testing.T) {
 	}
 }
 
-// TestSkillNamesFromChanged_MultipleSkillsSorted: multiple skills → sorted output.
+// TestSkillNamesFromChanged_MultipleSkillsSorted: multiple skills → sorted
+// output.
 //
 // TestSkillNamesFromChanged_MultipleSkillsSorted：多 skill → 排序输出。
 func TestSkillNamesFromChanged_MultipleSkillsSorted(t *testing.T) {

@@ -10,15 +10,11 @@ import (
 )
 
 // HookOutput represents the structured JSON that Claude Code expects to receive on stdout.
-// Field semantics: see the Claude Code hook documentation.
 //
 // HookOutput 表示 Claude Code 期望在 stdout 收到的结构化 JSON。
 // 字段语义参见 Claude Code hook 文档。
 type HookOutput struct {
-	// Decision/reason are both omitempty: the allow path emits a bare
-	// hookSpecificOutput (no decision) so the host's default flow is untouched —
-	// decision:"approve" would bypass Claude's permission system on PreToolUse and
-	// marks the hook as failed on codex (see emitAgentOutput).
+	// Decision/reason are both omitempty: the allow path emits a bare hookSpecificOutput (no decision) so the host's default flow is untouched.
 	//
 	// Decision/reason 均 omitempty：allow 路径发裸 hookSpecificOutput（无 decision），
 	// 不触碰宿主默认流程——decision:"approve" 在 Claude PreToolUse 会绕过权限系统，
@@ -29,15 +25,6 @@ type HookOutput struct {
 }
 
 // HookSpecificOutput holds fields that steer Claude Code behavior.
-//
-// PermissionDecision/PermissionDecisionReason are the CURRENT PreToolUse schema
-// (2026-08-22 #4-B migration, additive): official docs put the deny/ask/defer/allow
-// verdict at hookSpecificOutput.permissionDecision — the legacy TOP-LEVEL
-// decision:"block" on PreToolUse is no longer adopted there (community-verified
-// breakage). exit 2 remains a first-class block channel that "routes the same way
-// as deny", so existing blocks never depended on the legacy field; filling the
-// current field makes the deny explicit under the live schema. Kept omitempty so
-// non-PreToolUse events and allow paths serialize exactly as before.
 //
 // HookSpecificOutput 含控制 Claude Code 行为的字段。
 //
@@ -55,20 +42,10 @@ type HookSpecificOutput struct {
 	PermissionDecisionReason string `json:"permissionDecisionReason,omitempty"`
 }
 
-// maxAdditionalContextLen is the upper bound of Claude Code additionalContext (10,000 chars).
-// Here we use 9,500 to leave room for the JSON envelope.
-//
 // maxAdditionalContextLen 是 Claude Code additionalContext 的上限（10,000 字符）。
 // 这里取 9,500 给 JSON envelope 留余量。
 const maxAdditionalContextLen = 9500
 
-// outputEmitters maps the host name to its output-protocol emitter. The emitter
-// BODIES stay in cli (they write os.Stdout directly and return cli's
-// *HookBlockError); the registry cannot hold them because hostcap is a
-// data-only leaf that must not import cli (see the hostcap package doc). Unknown
-// agents — claude-code and every Claude-JSON-compatible host without --agent
-// (codebuddy/opencode) — take the emitClaudeOutput default in emitAgentOutput.
-//
 // outputEmitters 把宿主名映射到其输出协议 emitter。emitter **函数本体**留在
 // cli（它们直接写 os.Stdout 并返回 cli 的 *HookBlockError）；注册表无法持有
 // 它们——hostcap 是纯数据叶子包，不能 import cli（见 hostcap 包文档）。未知
@@ -89,18 +66,6 @@ var outputEmitters = map[string]func(eventName, hookName string, passed bool, de
 	"cline": func(_, _ string, passed bool, detail string) error { return emitClineOutput(passed, detail) },
 }
 
-// emitAgentOutput dispatches the hook verdict to the host's output protocol. agent==""
-// (claude-code and every Claude-JSON-compatible host that carries no --agent flag:
-// codebuddy/opencode) takes the claude default. The load-bearing invariants:
-//   - allow NEVER emits decision:"approve" — on Claude PreToolUse it bypasses the
-//     permission system (an allow hook must not grant permissions), and codex parses
-//     it but marks the hook as FAILED.
-//   - block ALWAYS returns *HookBlockError → exit 2 (except copilot Stop, where exit 2
-//     is a warning and the decision JSON + exit 0 is the only block channel). Exit 2
-//     is the block code codex (stderr+exit2), cursor (deny-equivalent) and copilot
-//     preToolUse (deny, fail-closed) all honor; the old generic error (exit 1) was
-//     non-blocking on all of them.
-//
 // emitAgentOutput 把 hook 结论分发到宿主的输出协议。agent==""（claude-code 及所有
 // 不带 --agent flag 的 Claude-JSON 兼容宿主：codebuddy/opencode）走 claude 默认。
 // 关键不变式：
@@ -118,15 +83,7 @@ func emitAgentOutput(agent, eventName, hookName string, passed bool, detail stri
 	return emitClaudeOutput(eventName, passed, detail)
 }
 
-// contextChannelDelivered reports whether an ALLOW-path detail emission on (agent, event)
-// actually reaches the model's context on that host, plus a short channel label. The
-// per-host channel data lives in the hostcap registry (ContextChannels/DefaultChannel
-// columns, each row citing its source emitter); this thin wrapper exists so the record
-// site (recordSkillTriggerHits) can stamp Delivered/Channel into checklog without
-// re-deriving the routing table, and so analysis (usage funnel) has a truthful delivery
-// denominator instead of counting entries the model never saw. This generalizes the
-// kimi 2026-08-15 false-prosperity fix (bail before recording on invisible channels) to
-// every host: recording may stay (audit trail), but "delivered" must say the truth.
+// contextChannelDelivered reports whether an ALLOW-path detail emission on (agent, event) actually reaches the model's context on that host, plus a short channel label.
 //
 // contextChannelDelivered 报告 (agent, event) 上 allow 路径的 detail 输出是否真到达该
 // 宿主的模型上下文，并给出简短通道标签。每宿主通道数据住在 hostcap 注册表
@@ -139,13 +96,6 @@ func contextChannelDelivered(agent, eventName string) (bool, string) {
 	return hostcap.ContextChannel(agent, eventName)
 }
 
-// emitClaudeOutput renders the claude-code default (also codebuddy/opencode — every
-// host that parses Claude's stdout JSON but carries no --agent flag): allow = silent
-// (exit 0, default flow untouched; with detail, a bare hookSpecificOutput whose
-// additionalContext Claude injects — no decision field); block = decision:block JSON +
-// reason on stderr + HookBlockError (Execute maps it to exit 2, Claude's blocking
-// error code, with stderr shown to the model).
-//
 // emitClaudeOutput 渲染 claude-code 默认形态（也覆盖 codebuddy/opencode——所有
 // 解析 Claude stdout JSON 但不带 --agent flag 的宿主）：allow = 静默（exit 0，默认
 // 流程不动；有 detail 时发裸 hookSpecificOutput，Claude 会注入其 additionalContext
@@ -167,13 +117,6 @@ func emitClaudeOutput(eventName string, passed bool, detail string) error {
 	if detail == "" {
 		detail = "forge hook blocked the action"
 	}
-	// #4-B: on PreToolUse the deny ALSO rides the current hookSpecificOutput.
-	// permissionDecision field — the legacy top-level decision:"block" is no longer
-	// adopted there (still emitted for the hosts/events that read it; Stop keeps
-	// using top-level decision). exit 2 below remains the load-bearing block channel
-	// ("routes the same way as deny"), so this is additive schema alignment, not a
-	// behavior change.
-	//
 	// #4-B：PreToolUse 上 deny 同时走现行 hookSpecificOutput.permissionDecision
 	// 字段——遗留顶层 decision:"block" 在该事件上已不被采纳（仍为读它的宿主/事件
 	// 发出；Stop 继续用顶层 decision）。下方 exit 2 仍是承重阻断通道
@@ -197,14 +140,6 @@ func emitClaudeOutput(eventName string, passed bool, detail string) error {
 	return &HookBlockError{Reason: detail}
 }
 
-// emitCodexOutput renders codex's protocol (developers.openai.com/codex/hooks):
-// hookSpecificOutput.additionalContext is honored on SessionStart/PreToolUse/
-// PostToolUse/UserPromptSubmit (SubagentStart — not a forge event); Stop/PostCompact
-// have no context channel. decision:"approve" is parsed-but-UNSUPPORTED — codex marks
-// the hook as failed — so the allow path emits a BARE hookSpecificOutput (Claude-legal
-// and codex-legal). Block = stderr + exit 2 (codex's only reliable block channel;
-// decision:"block" stdout is legacy and not relied on).
-//
 // emitCodexOutput 渲染 codex 协议（developers.openai.com/codex/hooks）：
 // hookSpecificOutput.additionalContext 仅在 SessionStart/PreToolUse/PostToolUse/
 // UserPromptSubmit 上被采纳（SubagentStart 非 forge 事件）；Stop/PostCompact 无上下文
@@ -234,11 +169,6 @@ func emitCodexOutput(eventName string, passed bool, detail string) error {
 	return &HookBlockError{Reason: detail}
 }
 
-// emitCursorOutput renders cursor's protocol (cursor.com/docs/agent/hooks):
-// postToolUse/sessionStart read a TOP-LEVEL snake_case additional_context; the other
-// events' allow path has no context channel. Block = stderr + exit 2 (cursor treats
-// exit 2 as the permission-deny equivalent on every event).
-//
 // emitCursorOutput 渲染 cursor 协议（cursor.com/docs/agent/hooks）：
 // postToolUse/sessionStart 读**顶层** snake_case additional_context；其余事件的
 // allow 路径无上下文通道。阻断 = stderr + exit 2（cursor 在所有事件上把 exit 2 当
@@ -260,17 +190,6 @@ func emitCursorOutput(eventName string, passed bool, detail string) error {
 	return &HookBlockError{Reason: detail}
 }
 
-// emitCopilotOutput renders GitHub Copilot's protocol
-// (docs.github.com/en/copilot/reference/hooks-reference — verified in full this
-// session). Exit codes: 0 = success (stdout parsed as JSON), 2 = warning (stderr
-// surfaced, run continues) EXCEPT preToolUse where exit 2 = deny merged with the
-// stdout decision. agentStop/subagentStop block ONLY via stdout {"decision":"block"}
-// + exit 0 — exit 2 there is a warning, not a block. Context channels: sessionStart/
-// postToolUse top-level camelCase additionalContext (joined double-newline across
-// hooks, 10KB cap); userPromptSubmitted stdout is DROPPED for command hooks.
-// PascalCase event keys (as wired by the plugin pack) give Claude matcher semantics
-// and snake_case payloads, so the stdin side needs no normalizer.
-//
 // emitCopilotOutput 渲染 GitHub Copilot 协议
 // （docs.github.com/en/copilot/reference/hooks-reference——本会话全文核实）。退出码：
 // 0 = 成功（stdout 按 JSON 解析）、2 = warning（stderr 上浮、继续执行）——唯一例外
@@ -295,27 +214,16 @@ func emitCopilotOutput(eventName, hookName string, passed bool, detail string) e
 	}
 	switch eventName {
 	case "PreToolUse":
-		// Fail-closed event: any non-zero denies, and exit 2 merges with the stdout
-		// deny decision — emit both so the reason survives the merge.
-		//
 		// fail-closed 事件：任何非零都 deny，且 exit 2 与 stdout deny decision 合并
 		// ——两者都发，让原因在合并后仍可见。
 		fmt.Printf(`{"permissionDecision":"deny","permissionDecisionReason":%s}`+"\n", jsonString(detail))
 		return &HookBlockError{Reason: detail}
 	case "Stop":
-		// exit 2 on agentStop is only a warning — the decision JSON with exit 0 is the
-		// ONLY block channel (block forces another turn; runaway guard after 8
-		// consecutive blocks).
-		//
 		// agentStop 上 exit 2 只是 warning——decision JSON + exit 0 是唯一阻断通道
 		// （block 强制再来一轮；连续 8 次阻断后有 runaway guard）。
 		fmt.Printf(`{"decision":"block","reason":%s}`+"\n", jsonString(detail))
 		return nil
 	default:
-		// Other events (postToolUse/...): no documented block channel; exit 2 behaves
-		// as a warning whose stderr reaches the model. task-verify/review-stop (the
-		// forge Stop hooks) are handled above; PostToolUse hooks rarely block.
-		//
 		// 其余事件（postToolUse/...）：无文档化阻断通道；exit 2 表现为 warning、
 		// stderr 可达模型。task-verify/review-stop（forge 的 Stop hook）已在上面
 		// 处理；PostToolUse hook 极少阻断。
@@ -324,13 +232,6 @@ func emitCopilotOutput(eventName, hookName string, passed bool, detail string) e
 	}
 }
 
-// emitWindsurfOutput renders Windsurf Cascade's protocol: there is NO stdout JSON
-// protocol at all (hook entries run with show_output:false; stdout JSON would be noise
-// if ever displayed) — allow is silent, block is stderr + exit 2. Exit 2 denies on the
-// pre_* hooks; post_cascade_response (where the Stop group hangs) is an async
-// post-hook that CANNOT block — there exit 2 only surfaces the stderr reason to the
-// agent as an advisory (documented honestly in buildWindsurfHooks).
-//
 // emitWindsurfOutput 渲染 Windsurf Cascade 协议：完全没有 stdout JSON 协议（hook
 // 条目以 show_output:false 运行；stdout JSON 即便被显示也只是噪声）——allow 静默、
 // 阻断 = stderr + exit 2。pre_* hook 上 exit 2 deny；post_cascade_response（Stop 组
@@ -347,17 +248,6 @@ func emitWindsurfOutput(hookName string, passed bool, detail string) error {
 	return &HookBlockError{Reason: detail}
 }
 
-// emitClineOutput renders Cline's file-hook protocol (v3.36+ hooks blog): a hook
-// speaks by printing {"cancel":bool,"errorMessage":...,"contextModification":...} —
-// cancel blocks the action, contextModification injects text into the task. The forge
-// wrapper script (~/Documents/Cline/Rules/Hooks/<Event>) fans one Cline event out to
-// several forge hooks and merges verdicts, using the EXIT CODE as the robust block
-// signal (block = exit 2 via HookBlockError, with this ready-made cancel JSON already
-// on stdout); contextModification is forwarded on the allow path. Emission is compact
-// JSON ({"cancel":true,…) on purpose — nothing parses it in-band, but the wrapper's
-// context sniffing relies on the field name never appearing inside forge's own allow
-// output shape by accident.
-//
 // emitClineOutput 渲染 Cline 的文件 hook 协议（v3.36+ hooks 博客）：hook 通过打印
 // {"cancel":bool,"errorMessage":...,"contextModification":...} 表态——cancel 阻断动作、
 // contextModification 向任务注入文本。forge 的 wrapper 脚本
@@ -381,9 +271,6 @@ func emitClineOutput(passed bool, detail string) error {
 	return &HookBlockError{Reason: detail}
 }
 
-// jsonString marshals s as a JSON string literal (escaping, quotes) for embedding in
-// hand-composed protocol envelopes. Never fails for a string input.
-//
 // jsonString 把 s 编组为 JSON 字符串字面量（转义、引号），用于嵌进手工组合的协议
 // envelope。对字符串输入不会失败。
 func jsonString(s string) string {
@@ -394,10 +281,7 @@ func jsonString(s string) string {
 	return string(b)
 }
 
-// HookBlockError signals an intentional hook block for hosts whose protocol selects
-// behavior by exit code (kimi: 2 = intentional block, any other non-zero = fail-open
-// allow). Execute maps it to os.Exit(2); the reason is written to stderr at the
-// emission site (kimi shows stderr to the model as the block reason).
+// HookBlockError signals an intentional hook block for hosts whose protocol selects behavior by exit code (kimi: 2 = intentional block, any other non-zero = fail-open allow).
 //
 // HookBlockError 表示一次有意的 hook 阻断，面向按退出码区分行为的宿主
 // （kimi：2 = 有意阻断，其他非零 = fail-open 放行）。Execute 把它映射为
@@ -408,26 +292,6 @@ type HookBlockError struct {
 
 func (e *HookBlockError) Error() string { return e.Reason }
 
-// promoteAdvisory reports whether an advisory (passed=true, non-empty detail) result for the
-// given hook should be promoted to a block on the given host. The per-hook rules live in the
-// hostcap registry (PromoteAdvisory column — dsh only: its channel delivers via
-// agent.inject but the task-guard advisory was empirically ignored — 2026-08-22, see
-// the dsh registry row; kimi's rules were retired 2026-08-24 in favor of the
-// pending-queue + UserPromptSubmit drain, see hook_kimi_advisory.go). The rules are declarative Contains/Excludes pairs
-// (not a bare name allowlist) because each hook emits BOTH an advisory branch and a
-// success/clean branch under the same hook name — a name allowlist would over-block
-// (task-guard's "Auto-created task" is a SUCCESS path; assertion-check's clean branch is
-// advisory-free). Promoting the REAL advisory to a block repoints it through the one
-// PreToolUse channel every host honors: exit 2 (stderr shown to the model).
-//
-// Returns false for: the escape hatches (FORGE_ADVISORY_PROMOTION=soft covers every
-// promoted host; FORGE_KIMI_ADVISORY=soft kept for back-compat, kimi-scoped — inert
-// today since kimi carries no rules, but honored should a future kimi rule land — env knobs,
-// kept here in
-// cli rather than the registry because they are operator config, not host capabilities),
-// already-blocked results (no double-flip), empty/whitespace detail (clean/silent PASS),
-// and hosts without promotion rules.
-//
 // promoteAdvisory 报告给定 hook 的 advisory（passed=true、detail 非空）结果在给定宿主上
 // 是否应提升为阻断。各 hook 的规则住在 hostcap 注册表（PromoteAdvisory 列——现仅
 // dsh：其通道经 agent.inject 送达但 task-guard advisory 被实证无视——2026-08-22，见
@@ -458,16 +322,6 @@ func promoteAdvisory(agent, name string, passed bool, detail string) bool {
 	return h.ShouldPromoteAdvisory(name, detail)
 }
 
-// advisoryPromotionDisabled is the single escape-hatch check shared by every
-// advisory-promotion consumer (promoteAdvisory, taskGuardPromotionActive), so the
-// hatch can never be open in one place and closed in another — e.g.
-// FORGE_TASKGUARD_PROMOTED set (script drops its de-noise, WARN on every edit)
-// while promotion itself is suppressed would resurrect the 139-WARN spam with no
-// enforcement behind it (dogfood 3.1). Host-scoped: FORGE_ADVISORY_PROMOTION=soft
-// covers every promoted host; the shipped FORGE_KIMI_ADVISORY=soft stays
-// kimi-scoped — an operator softening kimi must not silently soften dsh (and a
-// new host's promotion must not ride a hatch named for another host).
-//
 // advisoryPromotionDisabled 是所有 advisory 提升消费方（promoteAdvisory、
 // taskGuardPromotionActive）共享的唯一逃生舱检查，使逃生舱不可能在一处开着
 // 另一处关着——例如 FORGE_TASKGUARD_PROMOTED 已设（脚本放弃去噪、每次 edit 都
@@ -482,11 +336,7 @@ func advisoryPromotionDisabled(host string) bool {
 	return host == "kimi" && os.Getenv("FORGE_KIMI_ADVISORY") == "soft"
 }
 
-// taskGuardPromotionActive reports whether task-guard advisories on this host are
-// currently promoted (a task-guard rule exists in hostcap AND the escape hatch is
-// closed) — detail-independent, so runHook can set FORGE_TASKGUARD_PROMOTED for the
-// script BEFORE any script output exists. See the runHook call site for why the
-// script must know.
+// taskGuardPromotionActive reports whether task-guard advisories on this host are currently promoted (a task-guard rule exists in hostcap AND the escape hatch is closed).
 //
 // taskGuardPromotionActive 报告该宿主的 task-guard advisory 当前是否被提升
 // （hostcap 存在 task-guard 规则且逃生舱关闭）——与 detail 无关，让 runHook 能在
@@ -500,21 +350,6 @@ func taskGuardPromotionActive(agent string) bool {
 	return h != nil && h.PromotesHook("task-guard")
 }
 
-// emitKimiOutput renders the hook result in kimi's hook protocol: allow = exit 0 with
-// the detail as plain stdout text; block = reason on stderr + HookBlockError (→ exit 2).
-// Returning HookBlockError instead of calling os.Exit here keeps runHook's defers (temp
-// script cleanup) running.
-//
-// CAVEAT — kimi 0.35.0 does NOT append allow-path stdout to the model context the way
-// Claude Code treats additionalContext. Only UserPromptSubmit stdout reaches the model
-// (delivered on the NEXT prompt); PreToolUse stdout is read as a DENY (it blocks the
-// tool call), and PostToolUse/SessionStart allow-path stdout is observation-only
-// (dropped). Advisory (allow-path) output therefore never reaches this function on
-// non-delivered events — emitAdvisoryRouted (hook_kimi_advisory.go) queues it for the
-// UserPromptSubmit drain first. What still arrives here on the allow path is
-// UserPromptSubmit detail (injected) and silent allows; the block path is unchanged
-// (designed denies: read-before-edit, hazard-guard, freeze-guard).
-//
 // emitKimiOutput 按 kimi 的 hook 协议渲染结果：放行 = exit 0，detail 以纯文本打
 // stdout；阻断 = 原因写 stderr + HookBlockError（→ exit 2）。返回 HookBlockError 而非
 // 在此 os.Exit，是为了让 runHook 的 defer（临时脚本清理）照常执行。
@@ -541,24 +376,6 @@ func emitKimiOutput(passed bool, detail string) error {
 	return &HookBlockError{Reason: detail}
 }
 
-// emitInfraAllow fails open for an infrastructure failure: the warning must be VISIBLE
-// (a silently broken gate set is worse than a noisy one) without blocking the turn.
-// Routed through emitAdvisoryRouted so every host gets its own context channel:
-// kimi queues the warning for the UserPromptSubmit drain on non-delivered events
-// (a raw stdout print on PreToolUse would be read as a DENY — the hook would
-// fail open AND block the edit, the worst of both; see hook_kimi_advisory.go);
-// claude default a bare hookSpecificOutput
-// (hookEventName present — Claude's schema requires it or additionalContext is
-// dropped); codex the same bare shape on the four context-carrying events; cursor
-// top-level additional_context; copilot top-level additionalContext; cline
-// contextModification; windsurf silent (no stdout channel — unchanged visibility).
-// No host receives decision:"approve" (see emitAgentOutput).
-//
-// Call sites (unified, fix/cleanup-batch 2026-08-29): the bash-spawn/126/127
-// failure in step 5 AND the earlier script-never-runs failures (temp-file
-// create/write, findBash) — all the same infra class, all fail-open with a
-// visible, host-routed warning.
-//
 // emitInfraAllow 对基础设施失败 fail-open：警告必须可见（静默失效的门禁比吵闹的
 // 更糟）但不阻断当轮。经 emitAdvisoryRouted 分发，让每个宿主走自己的上下文通道：
 // kimi 在不可送达事件上把警告入队、留待 UserPromptSubmit 攒发（PreToolUse 上直接

@@ -10,9 +10,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
-// TestCreateAddFindRemove covers the CRUD spine: create → add → find →
-// workpaces-for → remove, including the duplicate-name refusal and the
-// same-key upsert (add twice = one member, refreshed path).
+// TestCreateAddFindRemove covers the CRUD spine: create → add → find → workpaces-for → remove, including the duplicate-name refusal and the same-key upsert (add twice = one member, refreshed path).
 //
 // TestCreateAddFindRemove 覆盖 CRUD 主干：create → add → find →
 // workspaces-for → remove，含重名拒绝与同 key upsert（add 两次 = 一个成员、
@@ -39,8 +37,6 @@ func TestCreateAddFindRemove(t *testing.T) {
 	if err := f.AddRepo(`fleet`, RepoRef{Key: `k2`, Path: `/two`}); err != nil {
 		t.Fatalf("AddRepo k2: %v", err)
 	}
-	// Upsert: same key refreshes the display path, never duplicates.
-	//
 	// Upsert：同 key 刷新展示路径，绝不重复。
 	if err := f.AddRepo(`fleet`, RepoRef{Key: `k1`, Path: `/new`}); err != nil {
 		t.Fatalf("AddRepo k1 upsert: %v", err)
@@ -75,9 +71,7 @@ func TestCreateAddFindRemove(t *testing.T) {
 	}
 }
 
-// TestWorkspacesFor_MultiMembership pins the design decision that one key may
-// belong to several workspaces: WorkspacesFor must return ALL of them (the
-// gate and doctor both depend on seeing the full overlap set).
+// TestWorkspacesFor_MultiMembership pins the design decision that one key may belong to several workspaces: WorkspacesFor must return ALL of them (the gate and doctor both depend on seeing the full overlap set).
 //
 // TestWorkspacesFor_MultiMembership 钉住「一个 key 可属于多个 workspace」的
 // 设计决策：WorkspacesFor 必须全量返回（门禁与 doctor 都依赖看到完整重叠集）。
@@ -117,9 +111,7 @@ func TestWorkspacesFor_MultiMembership(t *testing.T) {
 	}
 }
 
-// TestSaveLoadRoundTrip: Save → Load returns an equivalent manifest, and the
-// file lands at <FORGE_DATA_HOME>/workspaces.json (the projects.json sibling
-// rule).
+// TestSaveLoadRoundTrip: Save → Load returns an equivalent manifest, and the file lands at <FORGE_DATA_HOME>/workspaces.json (the projects.json sibling rule).
 //
 // TestSaveLoadRoundTrip：Save → Load 读回等价清单，且落点在
 // <FORGE_DATA_HOME>/workspaces.json（与 projects.json 平级规则）。
@@ -151,8 +143,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	}
 }
 
-// TestLoad_MissingIsEmpty: no file → empty File, no error (read path contract,
-// same as registry: empty = no workspaces, not an error).
+// TestLoad_MissingIsEmpty: no file → empty File, no error (read path contract, same as registry: empty = no workspaces, not an error).
 //
 // TestLoad_MissingIsEmpty：无文件 → 空 File、无错误（读路径契约，与 registry
 // 一致：空 = 没有 workspace，非错误）。
@@ -167,10 +158,7 @@ func TestLoad_MissingIsEmpty(t *testing.T) {
 	}
 }
 
-// TestCorruptBackupAndRebuild pins the registry-style corruption contract:
-// the READ path (Load) reports the error (gate fail-open depends on it); the
-// WRITE path (LoadForWrite) backs the file aside to workspaces.json.corrupt-*
-// preserving its bytes, then rebuilds from empty.
+// TestCorruptBackupAndRebuild pins the registry-style corruption contract.
 //
 // TestCorruptBackupAndRebuild 钉住 registry 同款损坏契约：读路径（Load）返回
 // 错误（门禁 fail-open 依赖它）；写路径（LoadForWrite）把文件备份为
@@ -196,8 +184,6 @@ func TestCorruptBackupAndRebuild(t *testing.T) {
 		t.Errorf("重建后应为空清单, got %+v", f)
 	}
 
-	// The corrupt bytes must survive in the backup.
-	//
 	// 损坏字节必须保留在备份里。
 	entries, err := os.ReadDir(home)
 	if err != nil {
@@ -220,8 +206,6 @@ func TestCorruptBackupAndRebuild(t *testing.T) {
 		t.Errorf("备份内容 = %q, want 原损坏内容 %q", got, bad)
 	}
 
-	// Rebuilt file accepts writes and loads cleanly afterwards.
-	//
 	// 重建后的文件可正常写、读。
 	if err := f.Create(`fleet`); err != nil {
 		t.Fatal(err)
@@ -234,9 +218,7 @@ func TestCorruptBackupAndRebuild(t *testing.T) {
 	}
 }
 
-// TestSave_AtomicNoTempLeftover: AtomicWrite renames its temp file over the
-// target — a stray .tmp-* next to workspaces.json would mean the write path is
-// no longer atomic.
+// TestSave_AtomicNoTempLeftover: AtomicWrite renames its temp file over the target — a stray .tmp-* next to workspaces.json would mean the write path is no longer atomic.
 //
 // TestSave_AtomicNoTempLeftover：AtomicWrite 把临时文件 rename 覆盖目标——
 // workspaces.json 旁残留 .tmp-* 说明写路径不再原子。
@@ -261,8 +243,7 @@ func TestSave_AtomicNoTempLeftover(t *testing.T) {
 	}
 }
 
-// TestJSONShape pins the wire format (the manifest is user-inspectable JSON;
-// an accidental key rename would strand existing files).
+// TestJSONShape pins the wire format (the manifest is user-inspectable JSON; an accidental key rename would strand existing files).
 //
 // TestJSONShape 钉住线上格式（清单是用户可检视的 JSON；字段名被误改会让
 // 存量文件读不出）。
@@ -278,8 +259,7 @@ func TestJSONShape(t *testing.T) {
 	}
 }
 
-// TestDoctor exercises every drift class against a fake live registry (non-git
-// temp dirs → PathKey identity, matching registryKeys' fallback).
+// TestDoctor exercises every drift class against a fake live registry (non-git temp dirs → PathKey identity, matching registryKeys' fallback).
 //
 // TestDoctor 用假注册表（非 git 临时目录 → PathKey 身份，对应 registryKeys
 // 的回落）覆盖全部 drift 类别。
@@ -331,9 +311,7 @@ func TestDoctor(t *testing.T) {
 	}
 }
 
-// TestDoctor_MissingCachedPath: the cached display path died on disk while the
-// key still resolves in the registry → path-missing with the current path
-// attached for the fix hint.
+// TestDoctor_MissingCachedPath: the cached display path died on disk while the key still resolves in the registry → path-missing with the current path attached for the fix hint.
 //
 // TestDoctor_MissingCachedPath：缓存展示路径在磁盘上消失但 key 仍能在注册表
 // 解析 → path-missing，并附上现路径供修复提示。
@@ -358,8 +336,7 @@ func TestDoctor_MissingCachedPath(t *testing.T) {
 	}
 }
 
-// TestDoctor_Healthy: a manifest whose members all resolve cleanly reports
-// nothing (doctor must stay silent on health — noise trains users to ignore it).
+// TestDoctor_Healthy: a manifest whose members all resolve cleanly reports nothing (doctor must stay silent on health — noise trains users to ignore it).
 //
 // TestDoctor_Healthy：成员全部健康解析的清单零报告（doctor 必须在健康时
 // 静默——噪音会训练用户无视它）。

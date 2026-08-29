@@ -8,10 +8,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/skilltrigger"
 )
 
-// TestRecordSkillTriggerHits pins that each fired canonical skill is recorded to checklog with the right shape:
-// CheckSkillTrigger / Passed / Checked / deterministic source / session id preserved / per-skill detail. This is the
-// fix for the dogfood 0-trigger blind spot — without these records, `forge skills usage`/`effectiveness` cannot see
-// which canonical skills actually fired (skill-trigger injected silently into AdditionalContext with zero trail).
+// TestRecordSkillTriggerHits pins that each fired canonical skill is recorded to checklog with the right shape.
 //
 // TestRecordSkillTriggerHits 钉住：每个触发的 canonical skill 按正确形状落进 checklog——
 // CheckSkillTrigger / Passed / Checked / deterministic 来源 / session id 保留 / per-skill detail。这是
@@ -53,10 +50,6 @@ func TestRecordSkillTriggerHits(t *testing.T) {
 		}
 		// L1 送达章：agent="" → claude 默认行（UserPromptSubmit 上 additionalContext 可达），
 		// Delivered/Channel/ForgeVersion 必须逐条落盘——usage 漏斗的送达分母依赖这些字段。
-		//
-		// L1 delivery stamp: agent="" takes the claude default row (additionalContext reachable
-		// on UserPromptSubmit); Delivered/Channel/ForgeVersion must be stamped on every entry —
-		// the usage funnel's delivery denominator depends on these fields.
 		if e.Delivered == nil || !*e.Delivered {
 			t.Fatalf("entry %d Delivered=%v, want pointer to true", i, e.Delivered)
 		}
@@ -69,8 +62,6 @@ func TestRecordSkillTriggerHits(t *testing.T) {
 		seen[e.Detail] = true
 	}
 	// 每个 hit 的 skill 名必须出现在某条 detail 里（被动触发可观测的核心）。
-	//
-	// Each hit's skill name must appear in some detail line (the core of passive-trigger observability).
 	for _, h := range hits {
 		found := false
 		for d := range seen {
@@ -85,14 +76,11 @@ func TestRecordSkillTriggerHits(t *testing.T) {
 	}
 }
 
+// TestRecordSkillTriggerHits_Meta pins the v2 structured evidence payload.
+//
 // TestRecordSkillTriggerHits_Meta 钉住 v2 结构化证据载荷：matched_keyword/match_source/
 // when/trigger_index/trigger_sig/prompt_hash/prompt_len 逐键落盘；cooldown 抑制计数在下次
 // 真实触发时回填 Meta 并清零；摘录默认关（FORGE_TRIGGER_EXCERPT 未设时不落 excerpt 键）。
-//
-// TestRecordSkillTriggerHits_Meta pins the v2 structured evidence payload:
-// matched_keyword/match_source/when/trigger_index/trigger_sig/prompt_hash/prompt_len all
-// land; the cooldown suppression count backfills Meta at the next actual fire and resets;
-// excerpts stay off by default (no excerpt key without FORGE_TRIGGER_EXCERPT).
 func TestRecordSkillTriggerHits_Meta(t *testing.T) {
 	dir := t.TempDir()
 	counterDir := t.TempDir()
@@ -159,13 +147,11 @@ func TestRecordSkillTriggerHits_Meta(t *testing.T) {
 	}
 }
 
+// TestRecordSuppressed_StopCapWarn pins the stop-max-rounds warn advisory.
+//
 // TestRecordSuppressed_StopCapWarn 钉住 stop-max-rounds 抑制的 warn advisory：单条、
 // Level=warn、Detail 无 " hit (" 标记（SkillFromTriggerDetail 返回 "" → usage/funnel
 // 计数零污染）、Meta 带 cause/skills。
-//
-// TestRecordSuppressed_StopCapWarn pins the stop-max-rounds warn advisory: ONE entry,
-// Level=warn, Detail without the " hit (" marker (SkillFromTriggerDetail returns "" →
-// zero pollution of usage/funnel counts), Meta carrying cause/skills.
 func TestRecordSuppressed_StopCapWarn(t *testing.T) {
 	dir := t.TempDir()
 	ctx := skilltrigger.Context{Event: "Stop", SessionID: "sess-cap"}
@@ -199,14 +185,11 @@ func TestRecordSuppressed_StopCapWarn(t *testing.T) {
 	}
 }
 
+// TestRecordSuppressed_StopCapOncePerSession pins review M2: at most ONE stop-cap advisory per session.
+//
 // TestRecordSuppressed_StopCapOncePerSession 钉死 review M2：stop-cap advisory 每
 // session 至多一条——长 session 里 source_changed_uncommitted 类 condition 近恒真，
 // MaxStopRounds 触顶后每个 Stop 回合都调 recordSuppressed，无节流会逐条刷 warn。
-//
-// TestRecordSuppressed_StopCapOncePerSession pins review M2: at most ONE stop-cap
-// advisory per session — in long sessions, near-always-true conditions like
-// source_changed_uncommitted mean recordSuppressed runs on every Stop round past the
-// cap; without throttling each one writes a warn entry.
 func TestRecordSuppressed_StopCapOncePerSession(t *testing.T) {
 	dir := t.TempDir()
 	counterDir := t.TempDir()
@@ -228,13 +211,11 @@ func TestRecordSuppressed_StopCapOncePerSession(t *testing.T) {
 	}
 }
 
+// TestRecordSuppressed_SessionAndEventCapCounted pins the handling of the new suppression causes.
+//
 // TestRecordSuppressed_SessionAndEventCapCounted 钉住新抑制原因的处理：session-cap /
 // event-cap 与 cooldown 一样只进抑制计数器（不落 log 条目），供下次真实触发回填
 // Meta——不新增 warn advisory（那只有 stop-cap）。
-//
-// TestRecordSuppressed_SessionAndEventCapCounted pins the handling of the new suppression
-// causes: session-cap / event-cap ride the suppression counter like cooldown (no log
-// entry) for the next-fire Meta backfill — no warn advisory (that stays stop-cap only).
 func TestRecordSuppressed_SessionAndEventCapCounted(t *testing.T) {
 	dir := t.TempDir()
 	counterDir := t.TempDir()

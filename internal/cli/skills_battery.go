@@ -1,15 +1,5 @@
 package cli
 
-// skills_battery.go — battery subcommand: held-out regression battery over all anchored
-// skill baselines in the resolved eval dir (user-level by default, --dir/FORGE_EVAL_DIR
-// for repo-level scope — see battery.go's scope-honesty note). Aggregates "any anchored
-// skill regressed vs baseline?" into one command; --gate gives it teeth (exit 4 on any
-// reject) for release/CI use.
-//
-// Field consensus (AutoDesign Eq 6 / held-out acceptance gating): accept only if no
-// regression vs baseline. Per-skill eval-report answers this per skill; the battery answers
-// it for every anchored skill at once, at the moment it matters (before release/merge).
-//
 // skills_battery.go — battery 子命令：held-out 回归电池，覆盖解析出的 eval 目录（默认
 // 用户级，--dir/FORGE_EVAL_DIR 可切仓库级——见 battery.go 的范围诚实性注释）里所有已锚定
 // baseline 的 skill。把「有没有任何已锚定 skill 相对 baseline 回归」聚合成一条命令；
@@ -71,11 +61,6 @@ func runSkillsBattery(cmd *cobra.Command, args []string) error {
 		printBatteryReport(rep)
 	}
 
-	// Gate contract (aligned with `skills audit --gate`): non-zero exit only in --gate mode;
-	// report-only invocations stay exit 0 so the battery can run anywhere without side effects.
-	// The BLOCKED line goes to STDERR so `--json --gate | jq .` never receives non-JSON bytes
-	// (exit code + stderr carry the gate signal; stdout stays the data channel).
-	//
 	// 门禁契约（对齐 `skills audit --gate`）：非零退出只在 --gate 模式；纯报告调用保持
 	// exit 0，电池可在任何场合运行而无副作用。BLOCKED 行走 STDERR——`--json --gate |
 	// jq .` 不再吃到非 JSON 字节（退出码 + stderr 承载门禁信号；stdout 只做数据通道）。
@@ -83,10 +68,6 @@ func runSkillsBattery(cmd *cobra.Command, args []string) error {
 		fmt.Fprintln(os.Stderr, "BLOCKED: 回归电池有 reject 项——先修复回归或重锚 baseline 再放行")
 		os.Exit(4)
 	}
-	// Vacuous-gate honesty (review F3): an empty battery exits 0 without having checked
-	// anything — on a fresh CI runner that must not read as "no regression verified".
-	// stderr + exit 0 keeps the advisory channel separate from the data channel.
-	//
 	// 空电池诚实性（审查 F3）：零锚定电池没检查任何东西就 exit 0——在崭新 CI runner 上
 	// 不该被读成「已验证无回归」。stderr + exit 0 保持提示通道与数据通道分离。
 	if skBattGate && rep.Total == 0 {
@@ -95,9 +76,6 @@ func runSkillsBattery(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// printBatteryReport renders the human-readable battery report: rejected rows first (signal
-// first), then advisory rows, then accepts; unanchored coverage gap last.
-//
 // printBatteryReport 渲染人读电池报告：先 reject 行（信号优先），再 advisory 行，再
 // accept 行；未锚定覆盖缺口收尾。
 func printBatteryReport(rep *skillseval.BatteryReport) {
@@ -113,9 +91,6 @@ func printBatteryReport(rep *skillseval.BatteryReport) {
 		if !r.Accept || len(r.Reasons) == 0 {
 			continue
 		}
-		// Advisory accepts: judgment impossible (no run / stale anchor) or not comparable —
-		// surfaced so "accept" is never misread as "verified no regression".
-		//
 		// advisory accept：判定不可能（无 run/标记过期）或不可比——浮出以免 accept 被
 		// 误读成「已验证无回归」。
 		fmt.Printf("  🟡 accept(advisory) %s  %s\n", r.Skill, strings.Join(r.Reasons, "; "))

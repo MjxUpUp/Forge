@@ -52,13 +52,7 @@ func TestReadEditCounts(t *testing.T) {
 }
 
 // TestExploreCounts verifies the exploration signal sourced from toollog: Grep
-// and Glob calls since `since`, scoped to the task. ExploreCounts feeds ONLY the
-// work-activity "was there real work" check — it must never feed read-before-edit
-// (browsing matches is not reading the file you edit; see ReadEditCounts' doc for
-// that signal's strictness). This pins the 2026-08-23 doc-implementation drift
-// fix: CLAUDE.md's error table advises "explore with Read/Grep/Glob" between
-// gates, but Grep/Glob previously never reached toollog at all (the tool-track
-// matcher carried neither), so a pure-exploration stretch counted as zero work.
+// and Glob calls since `since`, scoped to the task.
 //
 // TestExploreCounts 验证取自 toollog 的探索信号：自 since 起、按 task 限定的
 // Grep/Glob 调用数。ExploreCounts 只供 work-activity 的「有无真实工作」判定——

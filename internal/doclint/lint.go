@@ -9,8 +9,8 @@ import (
 )
 
 // Issue is one lint finding, line-addressed so the fix is actionable (the
-// code-review-gate "every finding carries file:line" discipline applies to
-// doc linting too — a whole-file "looks verbose" verdict is unfalsifiable).
+// code-review-gate "every finding carries file:line" discipline applies to doc
+// linting too.
 //
 // Issue 是一条 lint 发现，带行号使修复可操作（code-review-gate「每条发现带
 // file:line」的纪律同样适用于文档 lint——整份文件「看起来冗长」的判词不可证伪）。
@@ -26,27 +26,14 @@ type Issue struct {
 // Hard 报告该条是否阻断（D1/D2/D5/D6 硬；D3/D4/D7 建议）。
 func (i Issue) Hard() bool { return i.Severity == Hard }
 
-// SkipMarker opts a whole file out of doc lint (first SkipScanLines lines).
-// Meta-documents that quote the banned list (this rule table's own docs, the
-// design record) carry it; quoting a phrase as data is not using it.
-//
 // SkipMarker 让整个文件退出 doc lint（检查前 SkipScanLines 行）。
 // 引用了禁令清单本身的元文档（本规则表自身的文档、设计留档）携带它——
 // 把短语当数据引用不等于使用它。
 const SkipMarker = "forge-doc-lint: skip"
 
-// SkipScanLines is how many leading lines are scanned for SkipMarker.
-//
 // SkipScanLines 是扫描 SkipMarker 的头部行数。
 const SkipScanLines = 10
 
-// exemptPathFrags are path fragments that are never linted: dependencies,
-// build output, agent-session state, archives, generated changelog, test
-// fixtures (fixtures deliberately contain banned phrases to exercise the
-// linter), and append-only decision logs (decisions.md quotes diagnostic prose
-// verbatim and is machine-consumed by the skill-decisions guardrail — it is a
-// governance record, not a reader-facing deliverable).
-//
 // exemptPathFrags 是永不 lint 的路径片段：依赖、构建产物、agent 会话状态、
 // 归档、生成的 changelog、测试夹具（夹具为测 linter 刻意包含禁令短语）、
 // append-only 决策日志（decisions.md 逐字引用诊断散文，由 skill-decisions
@@ -70,8 +57,7 @@ func PathExempt(path string) bool {
 	return false
 }
 
-// LintFile lints one markdown file. Exempt paths and SkipMarker files return
-// no issues (not "pass" — unscanned). Read errors are returned.
+// LintFile lints one markdown file.
 //
 // LintFile lint 单个 markdown 文件。豁免路径与 SkipMarker 文件返回空
 // （未扫，不等于通过）。读取错误向上返回。
@@ -105,23 +91,11 @@ func LintText(filename, text string) []Issue {
 	headings := []string{}
 	diffFingerprintsOutsideFence := 0
 	firstDiffLine := 0
-	// nonFenced collects prose lines only: D4 evidence markers and D7 line caps
-	// must not be satisfied/inflated by fenced code (a fenced command block is
-	// an example, not evidence the doc's claims were actually run).
-	//
 	// nonFenced 只收集散文行：D4 证据标记与 D7 篇幅上限不得被围栏代码满足/
 	// 撑大（围栏里的命令块是示例，不是「断言被实跑过」的证据）。
 	var nonFenced strings.Builder
-	// firstClaimLine is the original line no. of the first prose pass-claim
-	// (D4 trigger; 0 = none).
-	//
 	// firstClaimLine 是散文中首个通过性断言的原文件行号（D4 触发；0=无）。
 	firstClaimLine := 0
-	// fenceRunLen is the opening fence's marker length (3+ backticks/tildes).
-	// CommonMark closes only with a run of >= that length — a 4-backtick outer
-	// fence containing 3-backtick examples must not be closed early by the
-	// inner marker (which would lint example prose as real prose).
-	//
 	// fenceRunLen 是开栏围栏的标记长度（≥3 个反引号/波浪号）。CommonMark 仅以
 	// ≥该长度的 run 闭栏——4 反引号外栏内嵌 3 反引号示例时不得被内层提前
 	// 闭栏（否则示例散文被当真实散文 lint）。
@@ -136,10 +110,6 @@ func LintText(filename, text string) []Issue {
 				fenceMarker = string(trimmed[0])
 				fenceRunLen = n
 			} else if string(trimmed[0]) == fenceMarker && n >= fenceRunLen && strings.TrimSpace(trimmed[n:]) == "" {
-				// CommonMark: only a pure marker line (no info string) may close a
-				// fence — an inner ```go inside a ```markdown example must not close
-				// the outer fence and leak example prose into prose linting.
-				//
 				// CommonMark：只有纯标记行（无 info string）才能闭栏——```markdown
 				// 示例内嵌的 ```go 不得提前关掉外栏，把示例散文漏进散文 lint。
 				fenceOpen = false
@@ -162,8 +132,6 @@ func LintText(filename, text string) []Issue {
 			headings = append(headings, strings.ToLower(trimmed))
 		}
 
-		// D3: raw unified-diff fingerprint outside fences = diff restatement.
-		//
 		// D3：围栏外的原始 unified diff 指纹 = 复述 diff。
 		for _, re := range diffFingerprints {
 			if re.MatchString(raw) {
@@ -175,9 +143,6 @@ func LintText(filename, text string) []Issue {
 			}
 		}
 
-		// D1/D2 run against inline-code-stripped lines: quoting a phrase inside
-		// backticks (rule tables, examples) is data, not usage.
-		//
 		// D1/D2 对剥除行内代码后的行匹配：反引号内引用短语（规则表、示例）
 		// 是数据不是使用。
 		stripped := stripInlineCode(raw)
@@ -245,16 +210,8 @@ func LintText(filename, text string) []Issue {
 	return issues
 }
 
-// fenceMarkerLen returns the length of a leading ```/~~~ run (0 if the line is
-// not a fence marker). Info-string suffixes (```bash) do not extend the run.
-//
 // fenceMarkerLen 返回行首 ```/~~~ run 的长度（非围栏标记行返回 0）。
 // 语言后缀（```bash）不计入 run 长度。
-// enumTokenPresent reports whether a conclusion-enum token appears in the doc text.
-// Short ASCII tokens (GO/NO-GO) must match on word boundaries: a bare substring match
-// lets everyday words ("cargo", "golang") satisfy the D6 hard rule without any real
-// conclusion. Non-ASCII tokens keep substring semantics (word boundaries are undefined
-// for CJK).
 //
 // enumTokenPresent 判断结论枚举 token 是否出现在文档文本中。短 ASCII token
 // （GO/NO-GO）必须词边界匹配：裸子串匹配会让日常单词（cargo、golang）满足 D6
@@ -299,18 +256,12 @@ func fenceMarkerLen(trimmed string) int {
 	return n
 }
 
-// isTemplateFile reports whether the base filename is a doc-generator template
-// (structure definition, exempt from D5-D7 instance rules).
-//
 // isTemplateFile 判断文件名是否为 doc-generator 模板（结构定义，
 // 豁免 D5-D7 实例规则）。
 func isTemplateFile(filename string) bool {
 	return strings.HasPrefix(strings.ToLower(filepath.Base(filename)), "template-")
 }
 
-// lintDocType applies D5 (required headings), D6 (conclusion enum) and
-// D7 (body-line cap).
-//
 // lintDocType 应用 D5（必填章节）、D6（结论枚举）与 D7（篇幅上限）。
 func lintDocType(dt DocType, headings []string, text string, lineCount int) []Issue {
 	var issues []Issue
@@ -357,8 +308,6 @@ func lintDocType(dt DocType, headings []string, text string, lineCount int) []Is
 	return issues
 }
 
-// hasEvidenceMarker reports whether text carries any D4-acquitting marker.
-//
 // hasEvidenceMarker 判断文本是否携带任一 D4 豁免证据标记。
 func hasEvidenceMarker(text string) bool {
 	for _, re := range evidenceMarkerRes {
@@ -369,11 +318,6 @@ func hasEvidenceMarker(text string) bool {
 	return false
 }
 
-// stripInlineCode removes `...` spans so quoted-as-data phrases are not
-// flagged. An odd backtick count means the line ends inside an unterminated
-// span — the trailing segment is dropped (the conservative direction: less
-// text to match, i.e. prefer a miss over flagging a quoted example).
-//
 // stripInlineCode 移除 `...` 片段，使「作为数据引用」的短语不被命中。
 // 反引号数量为奇数说明行尾落在未闭合 span 内——丢弃尾部片段（保守方向：
 // 匹配面更小，即宁可漏报也不误伤引用示例）。

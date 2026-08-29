@@ -33,18 +33,11 @@ func runSkillsEvalGen(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// genOne handles generation and persistence for a single skill:
-	//   --cases-only → persist only the structured case set (for eval-record/closed loop)
-	//   --save       → persist the markdown checklist + additionally persist structured case set
-	//   default (neither set) → print the markdown checklist to stdout
-	//
 	// genOne 统一处理单个 skill 的生成与落盘：
 	//   --cases-only → 只落结构化 case 集（eval-record/闭环用）
 	//   --save       → 落 markdown 清单 + 额外落结构化 case 集
 	//   默认（都无）→ 输出 markdown 清单到 stdout
 	genOne := func(name string) error {
-		// Both --cases-only and --save need the structured case set; generate it once.
-		//
 		// --cases-only 或 --save 都需要结构化 case 集，统一生成一次。
 		var cases []skillseval.EvalCase
 		if skEvalCasesOnly || skEvalSave {
@@ -69,11 +62,6 @@ func runSkillsEvalGen(cmd *cobra.Command, args []string) error {
 			if err := saveEval(dir, name, md); err != nil {
 				return err
 			}
-			// Additionally persist the structured case set (for the eval-record regression
-			// loop). SaveCases is a no-op on an empty set. A failure must return an error —
-			// otherwise the agent sees `✅ cases` but nothing was actually persisted, and a
-			// later eval-record reports `no eval cases`, diverging from the --cases-only path.
-			//
 			// 额外落结构化 case 集（eval-record 回归闭环用）。SaveCases 对空集 no-op。
 			// 失败要 return error——否则 agent 收到"✅ cases"但实际没落盘，后续
 			// eval-record 报"no eval cases"，与 --cases-only 路径行为不一致。
@@ -92,9 +80,6 @@ func runSkillsEvalGen(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
-		// Batch mode must not exit 0 when every skill failed — count failures,
-		// print the tally, and return an error so CI/scripts see the failure.
-		//
 		// 批量模式全部失败也不能 exit 0——累计失败数、打印统计、返回 error，
 		// 让 CI/脚本看到失败。
 		failed := 0
@@ -120,11 +105,6 @@ func runSkillsEvalGen(cmd *cobra.Command, args []string) error {
 	return genOne(skEvalSkill)
 }
 
-// saveEval persists the markdown checklist to <evals-root>/checklists/eval-<name>.md.
-// It used to hardcode ~/.pi/research/ (a second, independent legacy join) — now it follows
-// the resolved eval root so a repo-level --dir keeps generated checklists next to the case
-// sets they accompany. First default resolution migrates legacy checklists in (dir.go).
-//
 // saveEval 把 markdown 清单落 <evals-root>/checklists/eval-<name>.md。
 // 曾硬编码 ~/.pi/research/（第二处独立的遗留 join）——现在跟随解析出的 eval 根，
 // 仓库级 --dir 下生成的清单与其配套的 case 集落在一起。首次默认解析会把旧清单

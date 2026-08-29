@@ -15,16 +15,12 @@ import (
 	skillsforge "github.com/MjxUpUp/Forge/skills-forge"
 )
 
-// expectedPluginFiles is the set of relative paths that GeneratePluginPack(DefaultPluginPack) should generate (relative to
-// RepoDir). Forgetting to list a new output file here would let TestPluginPack_WritesAllFiles miss it — intentionally hardcoded to force the generator
-// and tests to stay in sync. Paths contain `forge` because DefaultPluginPack.PluginName=`forge`.
-// The skills/ output class is NOT listed here (its count tracks the canonical library and
-// cannot be hardcoded) — TestPluginPack_SkillsShipped / _SkillsConvergeOnRegen /
-// _CommittedSkillsMatchGenerator guard the same sync contract via the dynamic embeddedSkillDirs set.
-//
 // expectedPluginFiles 是 GeneratePluginPack(DefaultPluginPack) 应生成的相对路径集（相对
 // RepoDir）。加新输出文件忘加这里，TestPluginPack_WritesAllFiles 会漏检——故意列死，逼生成器
-// 与测试同步。路径含 "forge" 因 DefaultPluginPack.PluginName="forge"。
+// 与测试同步。路径含 "forge" 因 DefaultPluginPack.PluginName="forge"。skills/ 输出类不列
+// 在此（其数量跟随 canonical 库、无法列死）——TestPluginPack_SkillsShipped /
+// _SkillsConvergeOnRegen / _CommittedSkillsMatchGenerator 经动态 embeddedSkillDirs 集守卫
+// 同一同步契约。
 var expectedPluginFiles = []string{
 	".claude-plugin/marketplace.json",
 	".cursor-plugin/marketplace.json",
@@ -34,9 +30,6 @@ var expectedPluginFiles = []string{
 	"plugins/forge/README.md",
 }
 
-// generatePack generates a default pack into a temp directory and returns it. DefaultPluginPack prefills owner=MjxUpUp
-// to satisfy the schema required fields.
-//
 // generatePack 生成一个默认 pack 到临时目录，返回该目录。DefaultPluginPack 预填 owner=MjxUpUp
 // 满足 schema required。
 func generatePack(t *testing.T) string {
@@ -48,14 +41,6 @@ func generatePack(t *testing.T) string {
 	return dir
 }
 
-// assertNoCurlyQuotes walks dir and fails on any file containing curly quotes
-// U+201C/U+201D — the corruption signature of Windows input eating Go source
-// literals ([[windows-input-quote-corruption]]). The target is built from runes so
-// the assertion holds even if the test source literal is itself corrupted.
-// Slash-separated path prefixes under which files are exempt (verbatim-copied
-// authored content, where curly quotes are legitimate prose punctuation) are
-// skipped.
-//
 // assertNoCurlyQuotes 遍历 dir，任何文件含弯引号 U+201C/U+201D 即失败——Windows
 // 输入吃掉 Go 源码字面量的腐蚀签名（[[windows-input-quote-corruption]]）。目标用
 // rune 构造，即使测试源码字面量被腐蚀断言仍成立。豁免前缀（斜杠分隔）下的文件
@@ -86,8 +71,6 @@ func assertNoCurlyQuotes(t *testing.T, dir string, exemptPrefixes ...string) {
 	}
 }
 
-// TestPluginPack_WritesAllFiles: all expected files are generated.
-//
 // TestPluginPack_WritesAllFiles：所有预期文件都生成。
 func TestPluginPack_WritesAllFiles(t *testing.T) {
 	dir := generatePack(t)
@@ -98,10 +81,6 @@ func TestPluginPack_WritesAllFiles(t *testing.T) {
 	}
 }
 
-// TestPluginPack_HooksMirrorSettings: the hooks field of plugin.json must equal the hooks field that the ForgeHookSpec fixture
-// writes to settings.local.json — a single-source-of-truth guard. End-to-end comparison (reading two real files,
-// not function return values). If someone changes ForgeHookSpec but pluginpack switches to a hardcoded copy, this test catches the drift.
-//
 // TestPluginPack_HooksMirrorSettings：plugin.json 的 hooks 字段必须等于 ForgeHookSpec fixture
 // 写到 settings.local.json 的 hooks 字段——单一真相源守卫。端到端比对（读两个真实文件，
 // 非函数返回值）。若有人改 ForgeHookSpec 但 pluginpack 改用硬编码副本，此测试抓住 drift。
@@ -122,9 +101,6 @@ func TestPluginPack_HooksMirrorSettings(t *testing.T) {
 	}
 }
 
-// TestPluginPack_Marketplace: both marketplace.json files have correct structure — name=forge, owner present (schema
-// required), a single plugin, source=./plugins/forge (follows PluginName), author field, and version omitted.
-//
 // TestPluginPack_Marketplace：两份 marketplace.json 结构正确——name=forge、owner 必有（schema
 // required）、唯一 plugin、source=./plugins/forge（跟随 PluginName）、author 字段、省略 version。
 func TestPluginPack_Marketplace(t *testing.T) {
@@ -135,8 +111,6 @@ func TestPluginPack_Marketplace(t *testing.T) {
 		if cfg["name"] != "forge" {
 			t.Errorf("%s marketplace name = %v, want forge", mp, cfg["name"])
 		}
-		// owner is a required field of the claude marketplace schema.
-		//
 		// owner 是 claude marketplace schema 的 required 字段。
 		owner, ok := cfg["owner"].(map[string]any)
 		if !ok {
@@ -156,14 +130,10 @@ func TestPluginPack_Marketplace(t *testing.T) {
 		if entry["source"] != "./plugins/forge" {
 			t.Errorf("%s source = %v, want ./plugins/forge", mp, entry["source"])
 		}
-		// author shares the same source as owner (name is always present).
-		//
 		// author 与 owner 同源（name 必有）。
 		if _, has := entry["author"]; !has {
 			t.Errorf("%s entry missing author field", mp)
 		}
-		// version omitted: git SHA drives automatic updates.
-		//
 		// 省略 version：git SHA 驱动自动更新。
 		if _, has := entry["version"]; has {
 			t.Errorf("%s entry has version field (should omit for SHA-driven auto-update)", mp)
@@ -174,9 +144,6 @@ func TestPluginPack_Marketplace(t *testing.T) {
 	}
 }
 
-// TestPluginPack_OwnerIsRequired: GeneratePluginPack must error when OwnerName is empty (the claude marketplace
-// schema marks owner as required; omitting it would make `claude plugin validate` reject loading).
-//
 // TestPluginPack_OwnerIsRequired：OwnerName 空时 GeneratePluginPack 必须报错（claude marketplace
 // schema 把 owner 标为 required，省略会让 `claude plugin validate` 拒载）。
 func TestPluginPack_OwnerIsRequired(t *testing.T) {
@@ -189,10 +156,6 @@ func TestPluginPack_OwnerIsRequired(t *testing.T) {
 	}
 }
 
-// TestPluginPack_CustomPluginName: with a non-default PluginName, source must follow (./plugins/<name>),
-// and the plugin tree is written to plugins/<name>/. Regression guard B1: pluginSource was once hardcoded to `./plugins/forge`, causing
-// source to point at the nonexistent ./plugins/forge when --plugin-name myforge, failing install.
-//
 // TestPluginPack_CustomPluginName：非默认 PluginName 时，source 必须跟随（./plugins/<name>），
 // plugin 树写到 plugins/<name>/。回归守卫 B1：pluginSource 曾硬编码 "./plugins/forge"，导致
 // --plugin-name myforge 时 source 指向不存在的 ./plugins/forge，install 失败。
@@ -213,16 +176,12 @@ func TestPluginPack_CustomPluginName(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "plugins", "myforge", ".claude-plugin", "plugin.json")); err != nil {
 		t.Errorf("plugin tree not written to plugins/myforge/: %v", err)
 	}
-	// plugins/forge/ should not be created (stale hardcoded path).
-	//
 	// plugins/forge/ 不应被创建（旧硬编码路径）
 	if _, err := os.Stat(filepath.Join(dir, "plugins", "forge")); err == nil {
 		t.Error("plugins/forge/ created despite PluginName=myforge (stale hardcoded path)")
 	}
 }
 
-// TestPluginPack_OwnerWithEmail: when OwnerEmail is non-empty, both owner and author carry an email field (name is always present).
-//
 // TestPluginPack_OwnerWithEmail：OwnerEmail 非空时，owner/author 都带 email 字段（name 总在）。
 func TestPluginPack_OwnerWithEmail(t *testing.T) {
 	dir := t.TempDir()
@@ -245,8 +204,6 @@ func TestPluginPack_OwnerWithEmail(t *testing.T) {
 	}
 }
 
-// TestPluginPack_Idempotent: repeated generation does not duplicate entries (plugin entry stays at 1, files remain valid).
-//
 // TestPluginPack_Idempotent：反复生成不重复添加（plugin entry 不变成 2 个、文件仍合法）。
 func TestPluginPack_Idempotent(t *testing.T) {
 	dir := t.TempDir()
@@ -264,38 +221,18 @@ func TestPluginPack_Idempotent(t *testing.T) {
 	}
 }
 
-// TestPluginPack_NoCurlyQuotes: regression guard for [[windows-input-quote-corruption]] — all
-// GENERATOR-RENDERED files must never contain curly quotes U+201C/U+201D (the corruption
-// signature of Windows input eating Go source literals). The skills/ subtree is EXEMPT: it is
-// a byte-verbatim copy of the authored canonical library, where curly quotes are legitimate
-// Chinese prose punctuation (the corruption this guard catches is in files the generator
-// composes from Go string literals, not in authored content copied verbatim).
-// Target strings are built from runes (bypassing whether the test source literal is corrupted).
-//
 // TestPluginPack_NoCurlyQuotes：回归守卫 [[windows-input-quote-corruption]]——所有**生成器渲染**
 // 的文件绝不能含弯引号 U+201C/U+201D（Windows 输入吃掉 Go 源码字面量的腐蚀签名）。skills/
 // 子树豁免：它是 authored canonical 库的逐字节复制，弯引号在那里是合法的中文正文标点（本守卫
 // 抓的是生成器从 Go 字符串字面量拼出的文件里的腐蚀，不是逐字复制的 authored 内容）。用 rune
 // 构造目标串（绕过测试源码字面量是否被腐蚀）。
 func TestPluginPack_NoCurlyQuotes(t *testing.T) {
-	// The skills/ subtree is EXEMPT (the "plugins/forge/skills/" prefix below): it is
-	// a byte-verbatim copy of the authored canonical library, where curly quotes are
-	// legitimate Chinese prose punctuation (the corruption this guard catches is in
-	// files the generator composes from Go string literals, not in authored content
-	// copied verbatim).
-	//
 	// skills/ 子树豁免（下方 "plugins/forge/skills/" 前缀）：它是 authored canonical
 	// 库的逐字节复制，弯引号在那里是合法的中文正文标点（本守卫抓的是生成器从
 	// Go 字符串字面量拼出的文件里的腐蚀，不是逐字复制的 authored 内容）。
 	assertNoCurlyQuotes(t, generatePack(t), "plugins/forge/skills/")
 }
 
-// TestPluginPack_Readme: README contains the three-step first-experience structure + per-host install commands + honest statement about unconfirmed Codex paths
-// + correct npm package name (@agent_forge/forge, matching npm/package.json) + capability boundary (Phase 3: project registration is AUTOMATIC for plugin
-// users via init-suggest auto-takeover; manual init demoted to repair/non-plugin/team-mode) + the v1.22 user-level wording (zero project writes,
-// --restore rollback) + the VS Code caveat (root hooks.json inert under Claude-format detection).
-// Negative assertion on @mjxupup/forge catches historical regression: early pluginReadme wrote the wrong package name using the GitHub owner slug.
-//
 // TestPluginPack_Readme：README 含三步首体验结构 + 每 host 安装命令 + Codex 路径未确认的诚实表述
 // + npm 包名正确（@agent_forge/forge，与 npm/package.json 一致）+ 能力边界（Phase 3：plugin 用户
 // 项目登记经 init-suggest 自动接管；手动 init 降级为修复/非 plugin/团队模式）+ v1.22 用户级表述
@@ -316,10 +253,6 @@ func TestPluginPack_Readme(t *testing.T) {
 		"forge init --project",       // 团队模式仍走手动 init
 		// skills 段（P3-1）：宣传数量运行时从 embed 现数（%[2]d 插值），渲染结果必须
 		// 携带真实数量且无 fmt 动词误用残渣（"%!d"）——钉住插值接线，防数量硬编码回潮。
-		//
-		// skills paragraph (P3-1): the advertised count is rendered from the embed at
-		// runtime (%[2]d); the render must carry the real count and no fmt-verb mojibake
-		// ("%!d") — pins the interpolation wiring against a hardcoded number returning.
 		fmt.Sprintf("%d skills", embeddedSkillCount()),
 		"/plugin install forge@forge",
 		"MjxUpUp/Forge",
@@ -335,21 +268,11 @@ func TestPluginPack_Readme(t *testing.T) {
 		"forge init --agents reasonix", // reasonix 的 settings.json flat hooks 回退路径
 		"forge init --agents cline",    // cline wrapper 脚本路径（Wave 3b：~/Documents/Cline/Rules/Hooks/）
 		"not officially confirmed",     // D3: Codex 路径诚实表述（OpenAI 未明确）
-		// v1.22 user-level contract（guard the plugin_readme.go capability-boundary comment
-		// contract）: zero project writes since v1.22 + the uninstall --restore rollback path.
-		//
 		// v1.22 用户级契约（守卫 plugin_readme.go 能力边界注释契约）：v1.22 起零项目
 		// 写入 + uninstall --restore 回滚路径。
 		"Since v1.22 `forge init` writes nothing into the project",
 		"--restore",
 		"zero project writes",
-		// Wave 2c code-review finding (doc-confirmed against code.visualstudio.com): VS
-		// Code detects a plugin's format by its manifest marker (.claude-plugin/plugin.json
-		// = Claude format → hooks read ONLY from hooks/hooks.json; root hooks.json is the
-		// Copilot-format location). The pack ships the Claude marker, so the root
-		// hooks.json may be inert on VS Code; the README must say so honestly instead of
-		// implying VS Code is wired (same pattern as the codex caveat above).
-		//
 		// Wave 2c 代码审查发现（已对照 code.visualstudio.com 核实）：VS Code 按 manifest
 		// 标记检测 plugin 格式（.claude-plugin/plugin.json = Claude 格式 → hooks 只从
 		// hooks/hooks.json 读；根 hooks.json 是 Copilot 格式位置）。pack 带 Claude 标记，
@@ -363,19 +286,10 @@ func TestPluginPack_Readme(t *testing.T) {
 			t.Errorf("README missing %q", want)
 		}
 	}
-	// Negative: the old wrong package name must not reappear (@mjxupup/forge points to a nonexistent package).
-	//
 	// 负向：旧错误包名不得重现（@mjxupup/forge 指向不存在的包）。
 	if strings.Contains(content, "@mjxupup/forge") {
 		t.Errorf("README references @mjxupup/forge (stale wrong package name; want @agent_forge/forge)")
 	}
-	// Mojibake guard: the embedded template runs through fmt.Sprintf (pluginReadme interpolates the
-	// repo slug), so a literal percent in the template (e.g. the Windows path %APPDATA%) is parsed as
-	// a format verb and renders as "%!A(MISSING)...". The template escapes such literals as a
-	// double-percent (rendering a single percent). Assert the rendered README carries the correct
-	// Windows path and never the (MISSING) fmt-mojibake signature. Regression source: the reasonix
-	// section's Windows path was eaten by fmt.Sprintf and shipped in v1.28.0.
-	//
 	// Mojibake 守卫：embed 模板经 fmt.Sprintf 渲染（pluginReadme 插值 repo slug），故模板里的字面量
 	// 百分号（如 Windows 路径 %APPDATA%）会被当成格式动词渲染成 "%!A(MISSING)..."。模板把这类字面量
 	// 转义成双百分号（渲染出单个百分号）。断言渲染后的 README 带正确的 Windows 路径，且永不出现
@@ -386,22 +300,12 @@ func TestPluginPack_Readme(t *testing.T) {
 	if strings.Contains(content, "(MISSING)") {
 		t.Errorf("README contains fmt.Sprintf mojibake (MISSING) — a literal percent in the embedded template is being eaten as a format verb; escape it as a double-percent")
 	}
-	// Count-verb mojibake: the skill-count interpolation (%[2]d) must never leak a raw
-	// verb or bad-format signature into the render.
-	//
 	// 数量动词乱码：skill 数量插值（%[2]d）不得把裸动词或坏格式签名漏进渲染结果。
 	if strings.Contains(content, "%!d") || strings.Contains(content, "%[2]d") {
 		t.Errorf("README contains unrendered/mojibake skill-count verb (%%!d or %%[2]d) — the count interpolation is broken")
 	}
 }
 
-// locateCommittedPackFile resolves the committed counterpart of a generated pack file
-// (repoRoot/plugins/forge/<rel>). When the whole plugins/forge layout is absent
-// (non-Forge repo layout) the test skips. hardFail=true upgrades absence to a
-// failure once the committed plugin layout exists (its plugin.json is present) —
-// generator outputs listed in expectedPluginFiles must not go uncommitted, and a
-// skip there would false-green on fresh checkouts.
-//
 // locateCommittedPackFile 解析生成 pack 文件的 committed 对应物
 // （仓库根 plugins/forge/<rel>）。整个 plugins/forge 布局缺失（非 Forge 仓库布局）
 // 时 skip。hardFail=true 时，一旦 committed plugin 布局存在（其 plugin.json 在场）
@@ -421,10 +325,6 @@ func locateCommittedPackFile(t *testing.T, rel string, hardFail bool) string {
 	return committed
 }
 
-// loadCommittedAndGenerated parses the committed pack file (repoRoot/plugins/forge/<rel>)
-// and its freshly generated counterpart (packDir/plugins/forge/<rel>) into plain maps,
-// sharing the locateCommittedPackFile skip/hard-fail contract.
-//
 // loadCommittedAndGenerated 把 committed pack 文件（仓库根 plugins/forge/<rel>）与
 // 新生成的对应物（packDir/plugins/forge/<rel>）解析成普通 map，共用
 // locateCommittedPackFile 的 skip/硬失败契约。
@@ -437,9 +337,6 @@ func loadCommittedAndGenerated(t *testing.T, rel string, hardFail bool) (generat
 	return generated, committed
 }
 
-// assertHooksFieldEqual marshals the hooks field of both manifests and compares — the
-// shared single-source-of-truth assertion of the Committed*MatchesGenerator guards.
-//
 // assertHooksFieldEqual 把两个 manifest 的 hooks 字段 marshal 后比对——各
 // Committed*MatchesGenerator 守卫共享的单一真相源断言。
 func assertHooksFieldEqual(t *testing.T, rel string, generated, committed map[string]any) {
@@ -451,14 +348,6 @@ func assertHooksFieldEqual(t *testing.T, rel string, generated, committed map[st
 	}
 }
 
-// TestPluginPack_CommittedManifestMatchesGenerator: the hooks field of the committed plugins/forge/.claude-plugin/
-// plugin.json must equal the current output of GeneratePluginPack (derived from ForgeHookSpec).
-// TestPluginPack_HooksMirrorSettings only guards internal generator consistency (settings.local.json vs
-// plugin.json in the temp dir, both derived from the same ForgeHookSpec); it cannot catch the drift of changing ForgeHookSpec but forgetting to run
-// `forge plugin pack` to re-commit plugin.json — this test directly reads the repo's committed
-// plugin.json and compares it against generator output, ensuring committed derived assets stay in sync with code. Regression source: SessionStart added
-// task-resume to ForgeHookSpec, but the committed plugin.json was not regenerated (code-review P0-1).
-//
 // TestPluginPack_CommittedManifestMatchesGenerator：committed 的 plugins/forge/.claude-plugin/
 // plugin.json 的 hooks 字段必须等于 GeneratePluginPack 当前输出（ForgeHookSpec 派生）。
 // TestPluginPack_HooksMirrorSettings 只守卫生成器内部一致（临时目录里 settings.local.json vs
@@ -471,12 +360,6 @@ func TestPluginPack_CommittedManifestMatchesGenerator(t *testing.T) {
 	assertHooksFieldEqual(t, "plugin.json", genManifest, committedManifest)
 }
 
-// TestPluginPack_CommittedReadmeMatchesGenerator: the committed plugins/forge/README.md
-// must equal the current generator output byte-for-byte. The manifest guard above cannot
-// catch README drift (it compares only the hooks field) — hand-editing the rendered README
-// without editing assets/plugin_readme.md silently reverts on the next `forge plugin
-// pack` run (zcode row added 2026-08-24 was almost lost this way; code-review finding).
-//
 // TestPluginPack_CommittedReadmeMatchesGenerator：已提交的 plugins/forge/README.md 必须
 // 与生成器当前输出逐字节相等。上面的 manifest 守卫抓不住 README 漂移（它只比 hooks
 // 字段）——只手改渲染产物、不改 assets/plugin_readme.md 模板，下次任何人跑
@@ -491,14 +374,6 @@ func TestPluginPack_CommittedReadmeMatchesGenerator(t *testing.T) {
 	}
 }
 
-// TestPluginPack_ReasonixManifestHooksMirror: the hooks field of reasonix-plugin.json must equal the
-// flat hooks shape buildReasonixHooks produces (the same one reasonix's Translate writes into
-// settings.json). reasonix is the 5th host: its Claude compatibility does NOT resolve
-// .claude-plugin/plugin.json's nested hooks (empirically rejected), so a NATIVE flat manifest is
-// required — and it must mirror the settings.json path's single source of truth or `reasonix
-// plugin install` and `forge init --agents reasonix` would wire different gates. Also pins the
-// native manifest identity fields (apiVersion/name) so a future rename drift is caught.
-//
 // TestPluginPack_ReasonixManifestHooksMirror：reasonix-plugin.json 的 hooks 字段必须等于
 // buildReasonixHooks 产出的扁平 hooks 形态（与 reasonix 的 Translate 写进 settings.json 的相同）。
 // reasonix 是第 5 host：其 Claude 兼容不解析 .claude-plugin/plugin.json 的嵌套 hooks（实测被拒），
@@ -540,13 +415,6 @@ func TestPluginPack_ReasonixManifestHooksMirror(t *testing.T) {
 	}
 }
 
-// TestPluginPack_CommittedReasonixManifestMatchesGenerator: the hooks field of the committed
-// plugins/forge/reasonix-plugin.json must equal the current output of GeneratePluginPack. Mirrors
-// TestPluginPack_CommittedManifestMatchesGenerator for the reasonix native manifest — catches the
-// drift of changing ForgeHookSpec (or reasonixEventName) but forgetting to run `forge plugin pack`
-// to re-commit reasonix-plugin.json. The committed reasonix manifest is the 5th-host distribution
-// artifact; a stale one ships wrong gates to reasonix plugin installs.
-//
 // TestPluginPack_CommittedReasonixManifestMatchesGenerator：committed 的
 // plugins/forge/reasonix-plugin.json 的 hooks 字段必须等于 GeneratePluginPack 当前输出。镜像
 // TestPluginPack_CommittedManifestMatchesGenerator 用于 reasonix native manifest——抓"改了
@@ -568,17 +436,6 @@ func TestPluginPack_CommittedReasonixManifestMatchesGenerator(t *testing.T) {
 	}
 }
 
-// TestPluginPack_CopilotHooksManifest: the copilot hooks.json (Wave 2c) must carry
-// copilot's config format — {"version":1,"hooks":{PascalCase events}} with flat
-// {type,command,matcher,timeoutSec} entries — at the plugin ROOT (NOT hooks/hooks.json:
-// Claude Code also loads that location and would double-fire every hook alongside
-// .claude-plugin/plugin.json's hooks field). Every forge command carries
-// ` --agent copilot` (output-protocol selection — copilot parses no decision:"approve"
-// and agentStop blocks only via stdout decision JSON), matchers pass through verbatim
-// (copilot matches Claude tool names), PostCompact stays absent (no copilot analogue —
-// only the observe-only preCompact, whose output is not processed), and timeoutSec is
-// set (copilot's 30s default risks killing heavier gates like task-verify).
-//
 // TestPluginPack_CopilotHooksManifest：copilot hooks.json（Wave 2c）必须是 copilot 的
 // 配置格式——{"version":1,"hooks":{PascalCase event}} 加扁平 {type,command,matcher,
 // timeoutSec} 条目——且位于 plugin 根（非 hooks/hooks.json：Claude Code 也加载该位置，
@@ -589,8 +446,6 @@ func TestPluginPack_CommittedReasonixManifestMatchesGenerator(t *testing.T) {
 // 不被处理），timeoutSec 必须设置（copilot 默认 30s 有杀掉 task-verify 等重型门禁的风险）。
 func TestPluginPack_CopilotHooksManifest(t *testing.T) {
 	dir := generatePack(t)
-	// Root location, not hooks/hooks.json (the Claude double-fire trap).
-	//
 	// 根位置，非 hooks/hooks.json（Claude 双跑陷阱）。
 	path := filepath.Join(dir, "plugins", "forge", "hooks.json")
 	var manifest map[string]any
@@ -602,9 +457,6 @@ func TestPluginPack_CopilotHooksManifest(t *testing.T) {
 	if !ok {
 		t.Fatalf("hooks field not an object: %T", manifest["hooks"])
 	}
-	// Event whitelist: everything copilot supports must be wired; PostCompact (the one
-	// spec event with no copilot analogue) must stay absent.
-	//
 	// event 白名单：copilot 支持的必须全接；PostCompact（唯一无 copilot 对应物的
 	// spec event）必须缺席。
 	for _, required := range []string{"PreToolUse", "PostToolUse", "Stop", "SessionStart", "UserPromptSubmit"} {
@@ -637,11 +489,6 @@ func TestPluginPack_CopilotHooksManifest(t *testing.T) {
 			if !strings.HasSuffix(cmd, " --agent copilot") {
 				t.Errorf("%s: forge command missing --agent copilot suffix: %s", event, cmd)
 			}
-			// Matchers pass through VERBATIM (copilot matches Claude tool names —
-			// bash→Bash, edit/str_replace_editor/apply_patch→Edit). Any translated
-			// token here would silently disarm the gate. Session-level events carry
-			// no matcher (omitempty → absent).
-			//
 			// matcher 原样透传（copilot 匹配 Claude 工具名——bash→Bash、
 			// edit/str_replace_editor/apply_patch→Edit）。这里出现任何被翻译的
 			// token 都等于静默解除门禁。会话级 event 无 matcher（omitempty → 缺席）。
@@ -663,11 +510,6 @@ func TestPluginPack_CopilotHooksManifest(t *testing.T) {
 	}
 }
 
-// TestPluginPack_CopilotHooksMirrorSpec: the per-event forge command sets in the
-// copilot manifest must equal ForgeHookSpec's (suffix-stripped) — a single-source-of-
-// truth guard parallel to TestPluginPack_HooksMirrorSettings. A hardcoded or drifted
-// copilot table would wire different gates than every other host.
-//
 // TestPluginPack_CopilotHooksMirrorSpec：copilot manifest 里每 event 的 forge 命令集
 // 必须等于 ForgeHookSpec 的（剥后缀比对）——与 TestPluginPack_HooksMirrorSettings 平行
 // 的单一真相源守卫。硬编码或漂移的 copilot 表会接出与其他 host 不同的 gate。
@@ -699,13 +541,6 @@ func TestPluginPack_CopilotHooksMirrorSpec(t *testing.T) {
 	}
 }
 
-// TestPluginPack_CommittedCopilotManifestMatchesGenerator: the committed
-// plugins/forge/hooks.json must equal the current generator output. Mirrors
-// TestPluginPack_CommittedReasonixManifestMatchesGenerator for the copilot manifest —
-// catches the drift of changing ForgeHookSpec (or copilotEventName) but forgetting to
-// run `forge plugin pack` to re-commit. A stale committed copilot manifest ships wrong
-// gates to every copilot plugin install (copilot is the 6th host served by the pack).
-//
 // TestPluginPack_CommittedCopilotManifestMatchesGenerator：committed 的
 // plugins/forge/hooks.json 必须等于生成器当前输出。镜像
 // TestPluginPack_CommittedReasonixManifestMatchesGenerator 用于 copilot manifest——抓
@@ -713,11 +548,6 @@ func TestPluginPack_CopilotHooksMirrorSpec(t *testing.T) {
 // drift。陈旧的 committed copilot manifest 会给每次 copilot plugin 安装发错的 gate
 // （copilot 是 pack 服务的第 6 个 host）。
 func TestPluginPack_CommittedCopilotManifestMatchesGenerator(t *testing.T) {
-	// Same hard-failure-if-layout-exists contract as the skills tree: the copilot
-	// manifest is a generator output listed in expectedPluginFiles — once the
-	// committed plugin layout exists, its absence means `forge plugin pack` output
-	// was not committed. Skipping here would false-green on fresh checkouts.
-	//
 	// 与 skills 树同款的"布局在即硬失败"契约：copilot manifest 是列在
 	// expectedPluginFiles 里的生成器输出——committed plugin 布局存在后，它的
 	// 缺席意味着 `forge plugin pack` 的产物没提交。这里 skip 会在 fresh
@@ -730,15 +560,6 @@ func TestPluginPack_CommittedCopilotManifestMatchesGenerator(t *testing.T) {
 	}
 }
 
-// TestPluginPack_ReasonixLaunchersCommitted: reasonix anchors the hook command's first token
-// ("forge") to the plugin directory (and prepends the plugin dir to PATH), so a launcher shim
-// — forge.cmd on Windows, forge on Unix — MUST ship inside plugins/forge/ or every hook fails
-// with "command not found" and nothing enforces. These are static plugin assets (like install.sh
-// / install.ps1), NOT generator output, so GeneratePluginPack does not write them; a
-// committed-presence + content guard is the only thing catching accidental deletion or a
-// recursion-guard regression. Regression source: the original reasonix wiring shipped no
-// launcher, so even with hooks registered the commands could not resolve.
-//
 // TestPluginPack_ReasonixLaunchersCommitted：reasonix 把 hook 命令的首 token（"forge"）锚定到
 // plugin 目录（并把 plugin 目录前置到 PATH），故必须在 plugins/forge/ 内附 launcher shim——Windows
 // 上 forge.cmd、Unix 上 forge——否则每个 hook 都 "command not found"、啥也不 enforce。它们是静态
@@ -786,10 +607,6 @@ func TestPluginPack_ReasonixLaunchersCommitted(t *testing.T) {
 	}
 }
 
-// embeddedSkillDirs returns the skill dir names in the embedded canonical library (top-level
-// dirs carrying SKILL.md) — the expected set the plugin pack must ship. Shared by the skills
-// tests below so "what is a skill" has one definition.
-//
 // embeddedSkillDirs 返回内嵌库里的 skill 目录名（中立 skills.FS + forge 原生
 // skillsforge.FS 的带 SKILL.md 顶层目录并集）——plugin pack 必须分发的期望集。
 // 下方 skills 测试共用，让"什么算一个 skill"只有一种定义（2026-08 迁移后两棵树
@@ -817,11 +634,6 @@ func embeddedSkillDirs(t *testing.T) []string {
 // TestSkillTrees_Disjoint — 中立树（skills.FS）与 forge 原生树（skillsforge.FS）
 // 不得承载同名 skill：writeSkillsFrom 把两棵树写进同一 plugins/<name>/skills/，
 // 重叠会文件级互相覆盖且 embeddedSkillCount 双计（README 数字虚高）（review W4）。
-//
-// TestSkillTrees_Disjoint — the neutral tree (skills.FS) and the forge-native
-// tree (skillsforge.FS) must not host the same skill name: writeSkillsFrom
-// writes both into one plugins/<name>/skills/, so an overlap file-overwrites
-// and double-counts in embeddedSkillCount (inflated README number) (review W4).
 func TestSkillTrees_Disjoint(t *testing.T) {
 	collect := func(lib fs.FS) map[string]bool {
 		out := map[string]bool{}
@@ -844,11 +656,6 @@ func TestSkillTrees_Disjoint(t *testing.T) {
 	}
 }
 
-// TestPluginPack_SkillsShipped: the pack must ship the full embedded skill library — one dir
-// per skill under plugins/<name>/skills/, each with SKILL.md, content byte-equal to the embed.
-// Regression source: GeneratePluginPack shipped hooks-only for the plugin's whole life, so
-// plugin users saw zero skills and still needed the manual `forge skills install --global`.
-//
 // TestPluginPack_SkillsShipped：pack 必须分发完整内嵌 skill 库——plugins/<name>/skills/ 下
 // 每 skill 一目录、各有 SKILL.md、内容与 embed 字节一致。回归源：GeneratePluginPack 有史以来
 // 只带 hooks，plugin 用户看不到任何 skill，仍需手动 `forge skills install --global`。
@@ -891,10 +698,6 @@ func TestPluginPack_SkillsShipped(t *testing.T) {
 			t.Errorf("plugin skills/ has extra dir %q not in embedded library (stale entry)", name)
 		}
 	}
-	// Spot-check content byte-equality: a shipped skill must be the embed verbatim (single
-	// source of truth), not a re-rendered variant. Checks every file of the first skill that
-	// carries extra assets beyond SKILL.md (exercises the recursive WalkDir copy).
-	//
 	// 内容字节相等抽查：分发的 skill 必须与 embed 逐字一致（单一真相源），不是重渲染变体。
 	// 检查第一个带额外资产（超出 SKILL.md）的 skill 的全部文件（覆盖递归 WalkDir 复制）。
 	var probe string
@@ -931,11 +734,6 @@ func TestPluginPack_SkillsShipped(t *testing.T) {
 	}
 }
 
-// TestPluginPack_SkillsConvergeOnRegen: regeneration must converge, not accumulate — a skill
-// deleted from the canonical library (simulated by planting a stale dir) must disappear from
-// the pack on the next run. Without the RemoveAll-first design, stale dirs linger in the
-// committed pack forever.
-//
 // TestPluginPack_SkillsConvergeOnRegen：regen 必须收敛而非只增不减——canonical 库里删掉的
 // skill（用植入陈旧目录模拟）须在下一次生成时从 pack 消失。若无先 RemoveAll 的设计，
 // 陈旧目录会永远残留在 committed pack 里。
@@ -958,8 +756,6 @@ func TestPluginPack_SkillsConvergeOnRegen(t *testing.T) {
 	if _, err := os.Stat(stale); err == nil {
 		t.Error("stale skill dir survived regeneration (pack must converge, not accumulate)")
 	}
-	// The real skills must all still be there after the stale wipe.
-	//
 	// 清掉陈旧条目后，真实 skills 必须全部仍在。
 	for _, name := range embeddedSkillDirs(t) {
 		if _, serr := os.Stat(filepath.Join(dir, "plugins", "forge", "skills", name, "SKILL.md")); serr != nil {
@@ -968,11 +764,6 @@ func TestPluginPack_SkillsConvergeOnRegen(t *testing.T) {
 	}
 }
 
-// TestPluginPack_CommittedSkillsMatchGenerator: the committed plugins/forge/skills/ tree must
-// match the embedded library (file set + bytes). Mirrors TestPluginPack_CommittedManifestMatchesGenerator:
-// the committed pack is the marketplace source users install from, so forgetting to re-run
-// `forge plugin pack` after editing a skill ships stale skills to every plugin install.
-//
 // TestPluginPack_CommittedSkillsMatchGenerator：committed 的 plugins/forge/skills/ 树必须与
 // 内嵌库一致（文件集 + 字节）。镜像 TestPluginPack_CommittedManifestMatchesGenerator：committed
 // pack 是用户安装的 marketplace 源，改了 skill 忘跑 `forge plugin pack` 会给每次 plugin 安装
@@ -980,12 +771,6 @@ func TestPluginPack_SkillsConvergeOnRegen(t *testing.T) {
 func TestPluginPack_CommittedSkillsMatchGenerator(t *testing.T) {
 	committed := filepath.Join("..", "..", "plugins", "forge", "skills")
 	if _, err := os.Stat(committed); err != nil {
-		// Absence is a hard FAILURE when the repo carries the plugin layout at all (committed
-		// plugin.json present): the skills tree is a required committed distribution asset —
-		// forgotten at `git add` time would otherwise skip green on fresh checkouts (the exact
-		// false-green pattern TestPluginPack_ReasonixLaunchersCommitted's comment rejects).
-		// Only skip when the whole plugins/forge layout is absent (non-Forge repo layout).
-		//
 		// 仓库带着 plugin 布局（committed plugin.json 在）时缺失即硬失败：skills 树是必需的
 		// committed 分发资产——漏 git add 会在 fresh checkout 上静默 skip 变绿（正是
 		// TestPluginPack_ReasonixLaunchersCommitted 注释否决的假绿模式）。仅当整个
@@ -995,10 +780,6 @@ func TestPluginPack_CommittedSkillsMatchGenerator(t *testing.T) {
 		}
 		t.Skipf("committed plugin skills not found at %s (non-forge repo layout): %v", committed, err)
 	}
-	// 1. Every embedded skill file must be committed verbatim — across BOTH trees
-	// (neutral skills/ + forge-native skills-forge/); the dir name resolves inside
-	// whichever FS hosts it.
-	//
 	// 1. 每个内嵌 skill 文件必须逐字 committed——覆盖两棵树（中立 skills/ + forge
 	// 原生 skills-forge/）；目录名在持有它的那个 FS 里解析。
 	for _, name := range embeddedSkillDirs(t) {
@@ -1032,8 +813,6 @@ func TestPluginPack_CommittedSkillsMatchGenerator(t *testing.T) {
 			t.Fatalf("walk %s: %v", name, werr)
 		}
 	}
-	// 2. No stale committed dirs beyond the embedded set (deleted skills must be re-packed out).
-	//
 	// 2. committed 不得有内嵌集之外的陈旧目录（删掉的 skill 须随 re-pack 移出）。
 	entries, err := os.ReadDir(committed)
 	if err != nil {

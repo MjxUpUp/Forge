@@ -10,11 +10,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/userassets"
 )
 
-// setupUserHomes isolates the user-level homes (CLAUDE_CONFIG_DIR /
-// CODEX_HOME / FORGE_DATA_HOME, plus HOME/USERPROFILE for the ~/.agents
-// skills target) into temp dirs — user-level generators must never touch the
-// real home in tests.
-//
 // setupUserHomes 把用户级 home（CLAUDE_CONFIG_DIR / CODEX_HOME /
 // FORGE_DATA_HOME，外加 ~/.agents skill 目标解析所经的 HOME/USERPROFILE）
 // 隔离进 temp dir——用户级生成器在测试中绝不碰真实 home。
@@ -31,12 +26,6 @@ func setupUserHomes(t *testing.T) (claudeHome, codexHome string) {
 	return claudeHome, codexHome
 }
 
-// TestGenerateUserClaudeMD_ConditionalPreamble guards the core of the
-// user-level migration: the user-level section is visible in EVERY project,
-// so it must carry the conditional-activation preamble (only applies when the
-// current project is forge-initialized) — and still carry the Claude surface
-// (/forge-quality) plus the FORGE markers.
-//
 // TestGenerateUserClaudeMD_ConditionalPreamble 守护用户级迁移的核心：用户级段
 // 对所有项目可见，必须携带条件激活前置说明（仅当前项目已 forge init 时适用），
 // 同时保留 Claude surface（/forge-quality）与 FORGE 标记。
@@ -69,10 +58,6 @@ func TestGenerateUserClaudeMD_ConditionalPreamble(t *testing.T) {
 	}
 }
 
-// TestGenerateUserAgentsMD_ConditionalPreamble is the codex-side guard: the
-// user-level ~/.codex/AGENTS.md carries the conditional preamble and the
-// agent-agnostic CLI surface, not Claude slash commands.
-//
 // TestGenerateUserAgentsMD_ConditionalPreamble 是 codex 侧守卫：用户级
 // ~/.codex/AGENTS.md 携带条件前置说明与 agent-agnostic CLI surface，
 // 不含 Claude slash command。
@@ -99,10 +84,6 @@ func TestGenerateUserAgentsMD_ConditionalPreamble(t *testing.T) {
 	}
 }
 
-// TestProjectLevelSectionStaysUnconditional pins the other half of the
-// contract: the project-level variant (team mode, `forge init --project`)
-// keeps the unconditional text — no conditional preamble leaks into it.
-//
 // TestProjectLevelSectionStaysUnconditional 钉住契约的另一半：项目级变体
 // （团队模式 `forge init --project`）保持无条件文本——条件前置说明不得泄漏进去。
 func TestProjectLevelSectionStaysUnconditional(t *testing.T) {
@@ -117,10 +98,6 @@ func TestProjectLevelSectionStaysUnconditional(t *testing.T) {
 	}
 }
 
-// TestGenerateUserClaudeMD_IdempotentUpsert guards the upsert contract on the
-// user-level file: regeneration preserves user content outside the markers and
-// replaces the forge section in place (exactly one marker pair).
-//
 // TestGenerateUserClaudeMD_IdempotentUpsert 守护用户级文件的 upsert 契约：
 // 重复生成保留标记外的用户内容并原地替换 forge 段（恰好一对标记）。
 func TestGenerateUserClaudeMD_IdempotentUpsert(t *testing.T) {
@@ -149,10 +126,6 @@ func TestGenerateUserClaudeMD_IdempotentUpsert(t *testing.T) {
 	}
 }
 
-// TestGenerateUserClaudeMD_BackupBeforeFirstWrite pins the backup-then-append
-// contract: the original user file must be backed up BEFORE forge's first
-// write, and rollback restores the pre-forge bytes.
-//
 // TestGenerateUserClaudeMD_BackupBeforeFirstWrite 钉死备份+追加契约：forge
 // 首次写入前必须已备份原用户文件，回滚能恢复 forge 触碰前的字节。
 func TestGenerateUserClaudeMD_BackupBeforeFirstWrite(t *testing.T) {
@@ -183,10 +156,6 @@ func TestGenerateUserClaudeMD_BackupBeforeFirstWrite(t *testing.T) {
 	}
 }
 
-// TestStripUserInstructions_RoundTrip guards uninstall: stripping removes the
-// forge section from both user-level files, preserves all other content, and
-// is idempotent (second strip is a no-op).
-//
 // TestStripUserInstructions_RoundTrip 守护 uninstall：strip 从两个用户级文件
 // 移除 forge 段、保留其余全部内容，且幂等（第二次 strip 为 no-op）。
 func TestStripUserInstructions_RoundTrip(t *testing.T) {
@@ -227,8 +196,6 @@ func TestStripUserInstructions_RoundTrip(t *testing.T) {
 		t.Error(`strip left forge markers in user AGENTS.md`)
 	}
 
-	// Idempotent: stripping again over already-stripped files is a no-op.
-	//
 	// 幂等：对已 strip 的文件再次 strip 是 no-op。
 	if err := StripUserInstructions(); err != nil {
 		t.Fatalf(`StripUserInstructions second run: %v`, err)
@@ -239,10 +206,6 @@ func TestStripUserInstructions_RoundTrip(t *testing.T) {
 	}
 }
 
-// TestStripUserInstructions_MissingFiles guards the fresh-machine path: with
-// no user-level files at all, strip succeeds as a no-op (uninstall must not
-// fail when forge never wrote anything).
-//
 // TestStripUserInstructions_MissingFiles 守护全新机器路径：用户级文件都不存在时
 // strip 作为 no-op 成功（forge 从未写入时 uninstall 不得失败）。
 func TestStripUserInstructions_MissingFiles(t *testing.T) {
@@ -252,11 +215,6 @@ func TestStripUserInstructions_MissingFiles(t *testing.T) {
 	}
 }
 
-// TestGenerateUserQualitySkill guards the user-level forge-quality skill: it
-// lands under <claudeHome>/skills/forge-quality/SKILL.md, keeps the protocol
-// content, and uses the conditional wording (no unconditional "本项目" claim,
-// no single-project info section).
-//
 // TestGenerateUserQualitySkill 守护用户级 forge-quality skill：落到
 // <claudeHome>/skills/forge-quality/SKILL.md，保留协议内容，且使用条件式
 // 措辞（无无条件"本项目"断言、无单项目信息章节）。
@@ -295,14 +253,6 @@ func TestGenerateUserQualitySkill(t *testing.T) {
 	}
 }
 
-// TestGenerateUserQualitySkill_Targets pins the user-level skill target list:
-// besides ~/.claude/skills, the skill is also written to the cross-agent
-// shared ~/.agents/skills (kimi and other agent-neutral hosts read it there —
-// the 2026-08 orphan at that path proved kimi loads it while no generator
-// refreshed it). An existing ~/.agents gets the copy (identical bytes to the
-// claude one); a missing ~/.agents is NOT created (same self-poison guard —
-// Forge never creates an agent's config home itself).
-//
 // TestGenerateUserQualitySkill_Targets 钉住用户级 skill 的生成目标列表：除
 // ~/.claude/skills 外还写跨 agent 共享的 ~/.agents/skills（kimi 等
 // agent-neutral 宿主在此读它——2026-08 该路径的孤儿文件证明 kimi 会加载而
@@ -312,8 +262,6 @@ func TestGenerateUserQualitySkill_Targets(t *testing.T) {
 	claudeHome, _ := setupUserHomes(t)
 	userHome := os.Getenv(`HOME`)
 
-	// ~/.agents missing → not created (self-poison guard).
-	//
 	// ~/.agents 缺失 → 不得创建（自毒防护）。
 	if err := GenerateUserQualitySkill(protocol.DefaultProtocol()); err != nil {
 		t.Fatalf(`GenerateUserQualitySkill: %v`, err)
@@ -322,9 +270,6 @@ func TestGenerateUserQualitySkill_Targets(t *testing.T) {
 		t.Fatalf(`GenerateUserQualitySkill created ~/.agents out of nothing — self-poison guard broken`)
 	}
 
-	// ~/.agents exists (agent-neutral host installed) → copy lands, byte-identical
-	// to the claude one.
-	//
 	// ~/.agents 存在（已装 agent-neutral 宿主）→ 副本落盘，与 claude 副本字节一致。
 	if err := os.MkdirAll(filepath.Join(userHome, `.agents`), 0755); err != nil {
 		t.Fatal(err)
@@ -351,11 +296,6 @@ func TestGenerateUserQualitySkill_Targets(t *testing.T) {
 
 // ---- detection self-poison guard (user-level-assets fix) ----
 
-// TestGenerateUserClaudeMD_SkipsWhenClaudeNotInstalled pins the self-poison fix:
-// the Claude config home's existence is DetectAgents' "claude is installed"
-// signal, so GenerateUserClaudeMD must NOT create it — a machine without Claude
-// Code must stay undetected and get no instruction file.
-//
 // TestGenerateUserClaudeMD_SkipsWhenClaudeNotInstalled 钉死自毒修复：Claude
 // config home 的存在性是 DetectAgents 判断"claude 已安装"的信号，
 // GenerateUserClaudeMD 不得创建它——没装 Claude Code 的机器必须保持未检出，
@@ -374,9 +314,6 @@ func TestGenerateUserClaudeMD_SkipsWhenClaudeNotInstalled(t *testing.T) {
 	}
 }
 
-// TestGenerateUserAgentsMD_SkipsWhenCodexNotInstalled is the codex-side guard of
-// the same contract.
-//
 // TestGenerateUserAgentsMD_SkipsWhenCodexNotInstalled 是同一契约的 codex 侧守卫。
 func TestGenerateUserAgentsMD_SkipsWhenCodexNotInstalled(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "codex-not-installed")
@@ -392,9 +329,6 @@ func TestGenerateUserAgentsMD_SkipsWhenCodexNotInstalled(t *testing.T) {
 	}
 }
 
-// TestGenerateUserQualitySkill_SkipsWhenClaudeNotInstalled is the quality-skill
-// guard of the same contract.
-//
 // TestGenerateUserQualitySkill_SkipsWhenClaudeNotInstalled 是同一契约的
 // quality-skill 守卫。
 func TestGenerateUserQualitySkill_SkipsWhenClaudeNotInstalled(t *testing.T) {
@@ -402,9 +336,6 @@ func TestGenerateUserQualitySkill_SkipsWhenClaudeNotInstalled(t *testing.T) {
 	t.Setenv(`CLAUDE_CONFIG_DIR`, missing)
 	t.Setenv(`CODEX_HOME`, t.TempDir())
 	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
-	// The generator also targets ~/.agents/skills (resolved via UserHomeDir) —
-	// isolate HOME so the test never touches the real cross-agent dir.
-	//
 	// 生成器还会写 ~/.agents/skills（经 UserHomeDir 解析）——隔离 HOME，
 	// 测试绝不碰真实的跨 agent 目录。
 	t.Setenv(`HOME`, t.TempDir())
@@ -418,11 +349,6 @@ func TestGenerateUserQualitySkill_SkipsWhenClaudeNotInstalled(t *testing.T) {
 	}
 }
 
-// TestProjectSection_TeamModeQualifiers pins the v1.22 qualifier wording in the
-// generated forge section: the self-protection lines must state that project-level
-// .forge/* and .claude/settings* only exist in team mode / legacy projects, and that
-// user-level assets are forge-CLI-managed with uninstall --restore rollback.
-//
 // TestProjectSection_TeamModeQualifiers 钉死生成协议段的 v1.22 限定措辞：
 // 自保护行必须声明项目级 .forge/* 与 .claude/settings* 只在团队模式/老项目
 // 存在，且用户级资产仅经 forge 命令操作、uninstall --restore 可回滚。

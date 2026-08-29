@@ -7,10 +7,7 @@ import (
 	"testing"
 )
 
-// TestHarnessTransport_FirstPushHITL pins T9 (multi-task-concurrency §13): the first push
-// is an outbound action — non-TTY (agent context) is REFUSED with the manifest hint; the
-// full round (push → clone-fresh pull) works against a local bare remote; trust anchors
-// never travel.
+// TestHarnessTransport_FirstPushHITL pins T9 (multi-task-concurrency §13): the first push is an outbound action — non-TTY (agent context) is REFUSED with the manifest hint; the full round (push → clone-fresh pull) works against a local bare remote; trust anchors never travel.
 //
 // TestHarnessTransport_FirstPushHITL 钉住 T9（multi-task-concurrency §13）：首推是外发
 // 动作——非 TTY（agent 场景）被拒并附清单指引；完整回路（push → 全新 clone pull）

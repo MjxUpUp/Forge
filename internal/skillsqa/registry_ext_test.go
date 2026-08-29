@@ -7,12 +7,10 @@ import (
 	"testing"
 )
 
+// Table-driven tests for R13-R17 (forge-local extensions, 2026-08 value audit item 11), positive and negative cases.
+//
 // R13-R17（forge 本地扩展，2026-08 价值审计清单项 11）的表驱动测试，含正反例。
 // 规则文本定义见 rules.go RuleDescriptions。
-//
-// Table-driven tests for R13-R17 (forge-local extensions, 2026-08 value audit
-// item 11), positive and negative cases. Rule text definitions: RuleDescriptions
-// in rules.go.
 
 func TestAuditSkill_R13_BodyLines(t *testing.T) {
 	// fmBlockRe 的 `\n---\s*\n?` 里 `\s*` 会吞掉 --- 后的全部空行，故 fm.Body
@@ -128,8 +126,6 @@ func TestAuditSkill_R15_ImperativeDensity(t *testing.T) {
 }
 
 // writeRef 在 skill 目录下建 references/<name> 并写入内容。
-//
-// writeRef creates references/<name> under the skill dir with the given content.
 func writeRef(t *testing.T, sd, name, content string) {
 	t.Helper()
 	must(t, os.MkdirAll(filepath.Join(sd, "references"), 0755))
@@ -167,8 +163,6 @@ func TestAuditSkill_R16_OversizedRefs(t *testing.T) {
 }
 
 // writeEvals 在 skill 目录下建 evals/evals.json。
-//
-// writeEvals creates evals/evals.json under the skill dir.
 func writeEvals(t *testing.T, sd, content string) {
 	t.Helper()
 	must(t, os.MkdirAll(filepath.Join(sd, "evals"), 0755))
@@ -265,16 +259,12 @@ func TestAuditSkill_R18_ForgeRefs(t *testing.T) {
 	}
 }
 
+// TestAuditSkill_R18_FileScope pins that R18's scan scope covers every content file in the skill dir.
+//
 // TestAuditSkill_R18_FileScope — R18 扫描面覆盖 skill 目录全部内容文件：
 // references/ 里的 CLI 引用（research-workflow/frontend-feature-development
 // 违例的实态——旧版只扫 SKILL.md 正文看不见它们）触发；decisions.md
 // （append-only 决策日志）与 evals/（测试数据）豁免。
-//
-// TestAuditSkill_R18_FileScope — R18's scan scope covers every content file in
-// the skill dir: CLI refs inside references/ (the real-world shape of the
-// research-workflow / frontend-feature-development violations, invisible to the
-// old body-only scan) trigger; decisions.md (append-only decision log) and
-// evals/ (test data) are exempt.
 func TestAuditSkill_R18_FileScope(t *testing.T) {
 	t.Run("references内CLI引用触发", func(t *testing.T) {
 		sd := writeSkill(t, t.TempDir(), "my-skill", makeSkill("my-skill", longDesc(), "pipeline", signalBody()))
@@ -324,16 +314,12 @@ func TestAuditSkill_R18_FileScope(t *testing.T) {
 	})
 }
 
+// TestAuditSkill_R18_GrandfatheredAdvisory — legacy exemption path: a R18Grandfathered skill's hits downgrade to an advisory (Pass unaffected).
+//
 // TestAuditSkill_R18_GrandfatheredAdvisory — 存量豁免路径：R18Grandfathered
 // 表内 skill 命中时降为 advisory（不阻断 Pass）。2026-08 迁移完成后生产表已清空，
 // 测试临时注入一条豁免再 defer 清除——机制仍在（未来过渡债务的通道），测试钉住
 // 其行为不回归。
-//
-// TestAuditSkill_R18_GrandfatheredAdvisory — legacy exemption path: a
-// R18Grandfathered skill's hits downgrade to an advisory (Pass unaffected).
-// The production table was emptied by the 2026-08 migration; the test injects
-// an entry temporarily (deferred removal) — the mechanism remains as the
-// channel for future transition debt, and this test pins its behavior.
 func TestAuditSkill_R18_GrandfatheredAdvisory(t *testing.T) {
 	R18Grandfathered["code-review-gate"] = true
 	defer delete(R18Grandfathered, "code-review-gate")
@@ -349,11 +335,7 @@ func TestAuditSkill_R18_GrandfatheredAdvisory(t *testing.T) {
 	}
 }
 
-// TestAuditSkill_R18_RequiresForgeExempt guards the production-in-use exemption
-// branch: skills marked `metadata.requires_forge: "true"` (forge-native skills —
-// skill-evolution / skill-routing / skill-authoring-standard) skip R18 entirely.
-// A regression here (e.g. an inverted condition) would fail those three skills
-// while every other test stays green.
+// TestAuditSkill_R18_RequiresForgeExempt guards the production-in-use exemption branch.
 //
 // TestAuditSkill_R18_RequiresForgeExempt 守护生产在用的豁免分支：标记
 // `metadata.requires_forge: "true"` 的 forge 原生 skill（skill-evolution /
@@ -374,11 +356,10 @@ func TestAuditSkill_R18_RequiresForgeExempt(t *testing.T) {
 	}
 }
 
+// RuleDescriptions completeness guard: every rule R1-R18 has a definition (the G2 docs generation greps this table — a missing entry means a missing rule).
+//
 // RuleDescriptions 完整性守卫：R1-R18 每条都有定义（G2 文档生成 grep 本表，
 // 漏一条文档就缺一条规则）。
-//
-// RuleDescriptions completeness guard: every rule R1-R18 has a definition
-// (the G2 docs generation greps this table — a missing entry means a missing rule).
 func TestRuleDescriptions_Complete(t *testing.T) {
 	want := []string{"R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9", "R10",
 		"R11", "R12", "R13", "R14", "R15", "R16", "R17", "R18"}

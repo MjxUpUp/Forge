@@ -10,24 +10,18 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
-// audit.go — read-only consistency audit over the registry + project data dirs
-// (project-sync). Four finding kinds, all advisory (surfaced by
-// `forge registry audit`):
-//
-//	key-drift      entry's stored key ≠ currently-derived key AND the old-key
-//	               DataDir holds data → the project adopted an ID (or moved) and
-//	               needs `forge project adopt` to migrate; otherwise its history
-//	               silently sits under an unreachable key.
-//	orphan-datadir a projects/<key>/ dir with real payload but no registry entry
-//	               carrying that key (backup shells excluded).
-//	id-collision   two DIFFERENT registered paths derive the SAME key — the
-//	               copy-paste-shared-ID / same-repo-two-clones detector.
-//	invalid-id     a repo has a .forge-project-id that fails strict validation —
-//	               Key() silently fell back to the path hash; this is the only
-//              	 surface where the fail-open fallback becomes visible.
-//
 // audit.go —— 注册表 + 项目数据目录的只读一致性审计（project-sync）。四类发现，
-// 全部 advisory（经 `forge registry audit` 呈现），语义见上。
+// 全部 advisory（经 `forge registry audit` 呈现）：
+//
+//	key-drift      条目存储的 key ≠ 当前推导的 key 且旧 key 的 DataDir 仍有
+//	               数据——项目采纳过 ID（或挪过位置），需 `forge project adopt`
+//	               迁移；否则其历史静默挂在不可达的 key 下。
+//	orphan-datadir projects/<key>/ 目录有真实负载但没有携带该 key 的注册条目
+//	               （备份壳除外）。
+//	id-collision   两个【不同】的注册路径推导出同一 key——复制粘贴共享 ID /
+//	               同仓双 clone 检测器。
+//	invalid-id     仓库的 .forge-project-id 未过严格校验——Key() 已静默回落到
+//	               路径哈希；这是 fail-open 回落唯一可见的窗口。
 
 // Finding is one audit result.
 //
@@ -39,8 +33,6 @@ type Finding struct {
 	Detail string `json:"detail"`
 }
 
-// AuditKind constants.
-//
 // AuditKind 常量。
 const (
 	AuditKeyDrift      = `key-drift`
@@ -50,8 +42,6 @@ const (
 )
 
 // Audit walks the registry and the projects/ home, returning every finding.
-// Read-only; a missing registry file yields the orphan scan only (same contract
-// as List — empty registry is not an error).
 //
 // Audit 遍历注册表与 projects/ home，返回全部发现。只读；注册表文件缺失时仅做
 // orphan 扫描（与 List 同契约——空注册表不是错误）。
@@ -60,8 +50,6 @@ func Audit() []Finding {
 	f, _ := readFile()
 	entries := f.Projects
 
-	// key-drift / invalid-id / id-collision: per-entry pass.
-	//
 	// key-drift / invalid-id / id-collision：逐条目扫描。
 	derived := make(map[string]string, len(entries)) // key → first path (collision probe)
 	keysHeld := make(map[string]bool, len(entries))  // keys carried by any entry
@@ -142,10 +130,6 @@ func Audit() []Finding {
 	return findings
 }
 
-// dataDirHasPayload reports whether dir contains a regular file at any depth,
-// EXCLUDING .rekey-backup-* shells (their payload is a backup copy, not live
-// data — an emptied-from dir riding a backup must not read as live).
-//
 // dataDirHasPayload 报告 dir 任意深度是否含普通文件，排除 .rekey-backup-* 壳
 // （其载荷是备份副本不是活数据——只剩备份壳的目录不得读作有活数据）。
 func dataDirHasPayload(dir string) bool {

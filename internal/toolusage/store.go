@@ -18,10 +18,6 @@ import (
 
 const toollogFile = "toollog.jsonl"
 
-// dataDir returns the runtime-state DataDir for root (refactor-data-home):
-// user-level ~/.forge/projects/<key>/ for git projects, <root>/.forge/ fallback
-// for non-git so toollog still records. See forgedata.DataDirFor.
-//
 // dataDir 返回 root 的 runtime-state DataDir（refactor-data-home）：git 项目用
 // 用户级 ~/.forge/projects/<key>/，非 git 回退到 <root>/.forge/，让 toollog 仍能记录。
 // 见 forgedata.DataDirFor。
@@ -42,9 +38,6 @@ func Record(root string, call *ToolCall) error {
 	if call.ID == "" {
 		call.ID = computeID(*call)
 	}
-	// Machine-attribution stamp AFTER computeID: the stable ID hashes identity fields
-	// and must not drift with stamp values; zero-caller-stamp only (import keeps origin).
-	//
 	// 机器归因戳在 computeID 之后落章：稳定 ID hash 的是身份字段，不得随戳值漂移；
 	// 仅当调用方留零值（import 保留源节点戳）。
 	if call.Stamp == (nodestamp.Stamp{}) {
@@ -98,10 +91,7 @@ func LoadForTask(root string, taskRef string) ([]ToolCall, error) {
 }
 
 // LoadForTaskAll filters by task ref, reading ToolCall entries from the active
-// toollog and all archived toollog-*.jsonl. Symmetric with checklog.LoadForTask —
-// used by forge trace so a task's complete tool history survives the Archive
-// that clears the active toollog at task start. Without it, trace would show 0
-// tool calls for any completed task.
+// toollog and all archived toollog-*.jsonl.
 //
 // LoadForTaskAll 按 task ref 过滤，从 active toollog 与所有归档 toollog-*.jsonl 中
 // 读取 ToolCall entry。与 checklog.LoadForTask 对称——供 forge trace 用，使 task 完整
@@ -127,12 +117,8 @@ func LoadForTaskAll(root, taskRef string) ([]ToolCall, error) {
 	return filtered, nil
 }
 
-// LoadAllAll reads all ToolCall entries from the active toollog and every archived
-// toollog-*.jsonl, symmetric with LoadForTaskAll / checklog.LoadAllAll — used by
-// skill usage and effectiveness analysis so cross-task aggregation (popularity
-// ranking, hit×effectiveness correlation, undertrigger candidates) survives the
-// Archive at task start (which clears the active toollog). Without it, skills
-// usage/effectiveness would only reflect the current task.
+// LoadAllAll reads all ToolCall entries from the active toollog and every
+// archived toollog-*.jsonl, symmetric with LoadForTaskAll / checklog.LoadAllAll.
 //
 // LoadAllAll 从 active toollog 与所有归档的 toollog-*.jsonl 读取全部 ToolCall 条目，
 // 与 LoadForTaskAll / checklog.LoadAllAll 对称——供 skill usage 与 effectiveness
@@ -148,12 +134,6 @@ func LoadAllAll(root string) ([]ToolCall, error) {
 	for _, path := range matches {
 		calls, err := loadFromPath(path)
 		if err != nil {
-			// Per-file failures (IO/permissions/file-lock contention) are silently
-			// skipped: in a cross-archive full aggregation a single bad file must not
-			// fail the whole table — same strategy as LoadForTaskAll. loadFromPath
-			// already tolerates per-line JSON corruption (continue on json.Unmarshal
-			// failure); here we only catch whole-file unreadability.
-			//
 			// per-file 失败（IO/权限/文件锁占用）静默跳过：跨归档全量聚合中单个坏文件
 			// 不应让整表失败——与 LoadForTaskAll 同策略。loadFromPath 内部已对单行 JSON
 			// 损坏做 per-line 容错（json.Unmarshal 失败即 continue），这里只兜底整文件不可读。
@@ -164,12 +144,10 @@ func LoadAllAll(root string) ([]ToolCall, error) {
 	return all, nil
 }
 
-// ToollogHasData reports whether the active toollog.jsonl exists and is non-empty.
-// loadFromPath returns nil,nil both for a missing file and an empty one, so callers
-// cannot distinguish 'telemetry never arrived' from 'telemetry arrived but matched
-// nothing' through the load path — this stat-based probe closes that gap. Used by
-// the work-activity gate to tell 'hook dispatch not wired on this host' (toollog
-// missing/empty) apart from 'hook dispatch works but genuinely zero calls'.
+// ToollogHasData reports whether the active toollog.jsonl exists and is
+// non-empty. loadFromPath returns nil,nil both for a missing file and an empty
+// one, so callers cannot distinguish 'telemetry never arrived' from 'telemetry
+// arrived but matched nothing' through the load path.
 //
 // ToollogHasData 报告 active toollog.jsonl 是否存在且非空。loadFromPath 对文件
 // 不存在与文件为空都返回 nil,nil，调用方无法经 load 路径区分「遥测从未到达」与
@@ -182,14 +160,7 @@ func ToollogHasData(root string) bool {
 }
 
 // ReadEditCounts returns Read and Edit/Write tool call counts from toollog.jsonl
-// since the given time, scoped to a task. Unlike checklog.WorkActivity (which
-// folds all tools into a scalar count), this function splits read vs edit so the
-// caller can enforce a read-before-edit ratio.
-//   - reads = number of Read calls
-//   - edits = number of Edit + Write calls
-//
-// Bash, Grep, Glob, etc. are intentionally excluded — the read-before-edit signal
-// only cares about read vs write.
+// since the given time, scoped to a task.
 //
 // ReadEditCounts 自给定时间起、按 task 从 toollog.jsonl 返回 Read 与 Edit/Write 的
 // tool 调用数。与 checklog.WorkActivity（把所有 tool 折叠成一个标量计数）不同，本函数
@@ -218,17 +189,7 @@ func ReadEditCounts(root, taskRef string, since time.Time) (reads, edits int, er
 }
 
 // ExploreCounts returns Grep+Glob tool call counts from toollog.jsonl since the
-// given time, scoped to a task. It feeds ONLY the work-activity "was there real
-// work between gates" check — never read-before-edit: browsing matches is not
-// reading the file you edit, and that stricter signal stays Read-only (see
-// ReadEditCounts). Exists because CLAUDE.md's error table advises exploring
-// with Read/Grep/Glob between gates; before the tool-track matcher carried
-// Grep/Glob (2026-08-23), those calls never reached toollog, so a
-// pure-exploration stretch counted as zero work and tripped the gate anyway.
-//   - explores = number of Grep + Glob calls
-//
-// Bash stays excluded (gate commands ride Bash; same exclusion rationale as
-// ReadEditCounts and checklog.WorkActivity).
+// given time, scoped to a task.
 //
 // ExploreCounts 自给定时间起、按 task 从 toollog.jsonl 返回 Grep+Glob 的
 // tool 调用数。只供 work-activity 的「门禁间有无真实工作」判定——绝不供
@@ -259,13 +220,7 @@ func ExploreCounts(root, taskRef string, since time.Time) (explores int, err err
 }
 
 // ReadEditCountsGraceWindow counts Read calls whose timestamp falls in
-// [since-window, ∞), regardless of TaskRef. It fixes the task-start/Read race:
-// when an agent triggers a Read concurrently with forge task start, that Read is
-// recorded against the **previous** task's ref (the active ref has not switched
-// yet), and its timestamp may be slightly earlier than StartedAt. Both keep it
-// out of the per-task ReadEditCounts(taskRef, StartedAt), falsely tripping the
-// read-before-edit gate. The grace window recounts nearby Reads across all
-// tasks; the executor uses it as a second opinion before hard-failing.
+// [since-window, ∞), regardless of TaskRef.
 //
 // ReadEditCountsGraceWindow 统计 timestamp 落在 [since-window, ∞) 内的 Read 调用数，
 // 不论 TaskRef。它修复 task-start/Read 竞态：当 agent 与 forge task start 并发触发 Read
@@ -287,11 +242,6 @@ func ReadEditCountsGraceWindow(root string, since time.Time, window time.Duratio
 	return reads, nil
 }
 
-// pruneArchives deletes toollog-*.jsonl archives older than the retention window
-// (FORGE_LOG_RETENTION_DAYS, default 30; ≤0 disables). Best-effort, same rationale
-// as checklog.Clear's pruneArchives — keeps toollog-*.jsonl bounded across task
-// starts and does not race with Record (which only writes the active file).
-//
 // pruneArchives 删除超过 retention 窗口的 toollog-*.jsonl 归档
 // （FORGE_LOG_RETENTION_DAYS，默认 30；≤0 禁用）。尽力而为，理由同 checklog.Clear 的
 // pruneArchives——让 toollog-*.jsonl 跨 task 启动保持有界，且不与 Record（只写 active
@@ -305,12 +255,7 @@ func pruneArchives(dir string) {
 }
 
 // Prune is the retention cleanup for toollog-*.jsonl archives (checklog.Prune's
-// twin). Task start never truncates the toollog (multi-task-concurrency design
-// §5) — reads are TaskRef-scoped (LoadForTask / ReadEditCounts), so history must
-// survive task boundaries; only the retention window stays bounded. The old
-// destructive Clear (archive + delete active) was deleted as dead code: it had
-// no production callers left after task start moved to the CheckTaskStarted
-// boundary marker, and Prune covers the bounded-growth concern on its own.
+// twin).
 //
 // Prune 是 toollog-*.jsonl 归档的 retention 清理（checklog.Prune 的孪生）。
 // task start 不再截断 toollog（multi-task-concurrency 设计 §5）——读取按
@@ -324,8 +269,6 @@ func Prune(root string) {
 	pruneArchives(dataDir(root))
 }
 
-// loadFromPath reads JSONL entries from a single file.
-//
 // loadFromPath 从一个文件读取 JSONL entry。
 func loadFromPath(path string) ([]ToolCall, error) {
 	f, err := os.Open(path)
@@ -339,8 +282,6 @@ func loadFromPath(path string) ([]ToolCall, error) {
 
 	var calls []ToolCall
 	scanner := bufio.NewScanner(f)
-	// Allow longer lines to accommodate large tool inputs.
-	//
 	// 允许更长的行，以容纳大型 tool 输入。
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
@@ -359,8 +300,7 @@ func loadFromPath(path string) ([]ToolCall, error) {
 }
 
 // TruncateInput truncates a string to maxToolInputLen characters (rune-safe,
-// ellipsis-marked — see util.TruncateRunes, the single source of truth shared
-// with the hazard package).
+// ellipsis-marked.
 //
 // TruncateInput 把字符串截断到 maxToolInputLen 个字符（rune-safe，
 // 截断带省略号——见 util.TruncateRunes，与 hazard 包共享的单一真相源）。
@@ -369,11 +309,7 @@ func TruncateInput(s string) string {
 }
 
 // EstimateTokens roughly estimates the token count of a string (loop cost proxy,
-// not an exact bill). No tiktoken dependency: CJK ≈ 1 char / 1-2 tokens, English
-// ≈ 4 chars/token, compromised as rune/3. Used by the iteration breaker and trace
-// visibility — to judge whether a loop has run away, not for billing; precision
-// is enough for order-of-magnitude cost judgments (1.5x skew does not change the
-// 'should I switch strategy' decision).
+// not an exact bill).
 //
 // EstimateTokens 粗估字符串 token 数（loop 成本代理，非精确账单）。
 // 无 tiktoken 依赖：中文≈1字/1-2 token、英文≈4 char/token，折中用 rune/3。
@@ -387,7 +323,8 @@ func EstimateTokens(s string) int {
 	return n/3 + 1
 }
 
-// SumEstTokens sums the estimated tokens across a set of ToolCalls (for trace/breaker aggregation).
+// SumEstTokens sums the estimated tokens across a set of ToolCalls (for
+// trace/breaker aggregation).
 //
 // SumEstTokens 累加一组 ToolCall 的估算 token（trace/ breaker 聚合用）。
 func SumEstTokens(calls []ToolCall) int {
@@ -398,21 +335,11 @@ func SumEstTokens(calls []ToolCall) int {
 	return total
 }
 
-// taskTokenWarnThreshold is the advisory warning threshold for cumulative estimated
-// tokens in a single task (loop cost ceiling). EstimateTokens is a rune/3 rough
-// estimate; the threshold is set by order of magnitude: 500k estimated tokens is
-// clearly run-away (normal tasks are tens to hundreds of thousands). Advisory does
-// not hard-block — it only flags high cost, leaving the human/agent to decide
-// whether to switch strategy.
-//
 // taskTokenWarnThreshold 是单个 task 累计估算 token 的 advisory 警示阈值（loop 成本上限）。
 // EstimateTokens 是 rune/3 粗估，阈值按量级定：50 万估算 token 是明显跑飞的量级
 // （正常 task 几万~十几万）。advisory 不硬阻断——只提示成本偏高，由人/agent 决定是否换策略。
 const taskTokenWarnThreshold = 500000
 
-// tokenBreakerWarning is a pure judgment function, independently unit-testable
-// (no need to fabricate file data exceeding 500k tokens).
-//
 // tokenBreakerWarning 是纯判断函数，可独立单测（不必造超 50 万 token 的文件数据）。
 func tokenBreakerWarning(total int) string {
 	if total >= taskTokenWarnThreshold {
@@ -421,13 +348,7 @@ func tokenBreakerWarning(total int) string {
 	return ""
 }
 
-// TaskTokenBreaker is the task-level token cost circuit breaker (advisory). It
-// aggregates estimated tokens across all tool calls of a task and returns a
-// warning string when over threshold (CLI writes to stderr / MCP injects into
-// result), empty otherwise. This is where EstimateTokens/SumEstTokens actually
-// participate in loop cost control — making token measurement more than forge
-// trace observability, surfacing as a cost-ceiling warning when the task gate
-// advances, aligned with the 'loop cost ceiling' selling point.
+// TaskTokenBreaker is the task-level token cost circuit breaker (advisory).
 //
 // TaskTokenBreaker 是 task 级 token 成本熔断（advisory）。聚合 task 全部 tool 调用的
 // 估算 token，超阈值返回警示字符串（CLI 写 stderr / MCP 塞进 result），未超返回空。

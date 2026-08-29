@@ -11,17 +11,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-// migrate_sanitize.go — post-migrate trust-boundary sanitization (2026-08-15 review, V5).
-//
-// .forge/ is repo-committable, so any task state promoted from it into the user-level DataDir is
-// attacker-authorable content: a cloned malicious repo can ship .forge/tasks/*.json carrying
-// CompletedAt + passed gate History + ReviewPassed + acceptance Passed — which, once inside DataDir,
-// are treated as local trust state (CompletedAt alone disables every CompletedAt==nil-guarded hard
-// check and auto-passes the complete gate). MigrateProject moves the files verbatim; the sanitize
-// pass strips the foreign gate signals right after, reusing the single source of truth
-// taskpipeline.StripForeignGateSignals (shared with task import). forgedata cannot host this logic
-// itself: taskpipeline imports forgedata, so the reverse dependency would be an import cycle.
-//
 // migrate_sanitize.go —— 迁移后信任边界清洗（2026-08-15 审查，V5）。
 //
 // .forge/ 是可提交进 repo 的，从中提升进用户级 DataDir 的任何 task state 都是攻击者可书写的
@@ -32,25 +21,6 @@ import (
 // taskpipeline.StripForeignGateSignals。forgedata 不能自带此逻辑：taskpipeline import 了
 // forgedata，反向依赖会是 import cycle。
 
-// sanitizeMigratedTasks strips foreign gate signals off every task file under the project's
-// DataDir/tasks after `tasks` was migrated from .forge/. Returns the number of sanitized tasks.
-// ANY failure is a hard error (fail-closed): the migration already happened, so an unsanitized
-// hostile file would sit in the trusted DataDir while `forge migrate` exits 0 — the exact
-// exit-code contract violation the 2026-08-15 review flagged (sanitize must not be fail-open).
-//
-// Files are processed IN PLACE (read raw JSON → strip → atomic write to the SAME path), NOT via
-// ListTaskStates/SaveTaskState: SaveTaskState re-derives the filename from SanitizeRef(TaskRef),
-// so a hostile file named xyz.json carrying task_ref "feat/evil" would be rewritten as
-// feat-evil.json while the original unsanitized bytes linger (and two colliding refs silently
-// collapse). In-place also covers files ListTaskStates would skip on a filename/ref mismatch.
-//
-// When is it correct to sanitize EVERY task in DataDir? MigrateProject moves the tasks dir
-// wholesale: if DataDir already had a tasks dir the move is SKIPPED (nothing enters, no sanitize
-// needed); only when DataDir/tasks did not exist does the whole tree land — and then every task
-// file under it came from the repo-committable .forge/. So "tasks ∈ Moved" (non-dry-run) ⟹ all
-// tasks in DataDir are foreign-origin. Sanitization is exactly the StripForeignGateSignals
-// contract: keep specs/provenance, drop trust + control-flow signals.
-//
 // sanitizeMigratedTasks 在 `tasks` 从 .forge/ 迁入后，原位剥离项目 DataDir/tasks 下所有 task
 // 文件的外来门禁信号。返回清洗的任务数。任何失败都是硬错误（fail-closed）：迁移已经发生，
 // 清洗失败却让 hostile 文件留在受信 DataDir、`forge migrate` 以 0 退出——正是 2026-08-15 审查
@@ -84,10 +54,6 @@ func sanitizeMigratedTasks(root string) (int, error) {
 		}
 		var s taskpipeline.TaskState
 		if uerr := json.Unmarshal(data, &s); uerr != nil {
-			// A malformed file is NOT skippable here: every file in this dir arrived from the
-			// untrusted .forge/ this run (see the "when is sanitize-everything correct" proof),
-			// so leaving any bytes behind unexamined is fail-open.
-			//
 			// 畸形文件在此不可跳过：本目录内所有文件都是本次从未信 .forge/ 落地的（见上方
 			// 「何时清洗全部正确」论证），留下任何未检字节就是 fail-open。
 			return n, fmt.Errorf("sanitize: unmarshal %s: %w", e.Name(), uerr)
@@ -105,11 +71,6 @@ func sanitizeMigratedTasks(root string) (int, error) {
 	return n, nil
 }
 
-// migratedTasksMoved reports whether the tasks dir actually landed in DataDir in this migration
-// run (the trigger for sanitizeMigratedTasks). DryRun moves nothing, so it never triggers.
-// Partial results count too: MigrateProject returns its partial MigrationResult alongside an
-// error when a later entry fails after tasks already moved — the caller must still sanitize.
-//
 // migratedTasksMoved 报告本次迁移是否实际把 tasks 目录落进了 DataDir（即
 // sanitizeMigratedTasks 的触发条件）。DryRun 不移动，永不触发。部分结果同样算：tasks 已
 // 落地后更晚的条目失败时，MigrateProject 会连同 error 一起返回部分 MigrationResult——
@@ -123,17 +84,6 @@ func migratedTasksMoved(moved []string) bool {
 	return false
 }
 
-// sanitizePendingMarker is the DataDir dotfile recording "foreign task files landed but their
-// sanitize pass failed" — the retry hook that keeps a failed sanitize from becoming permanent:
-// after the failure the tasks dir already sits in DataDir, so a re-run of migrate/autoSync would
-// SKIP the move (dst exists) and the sanitize trigger (tasks ∈ Moved) never fires again. Any
-// later forge migrate / autoSync pass sees the marker and re-attempts; success clears it.
-//
-// Trade-off (accepted): if the user starts genuinely LOCAL tasks in the same DataDir between
-// failure and retry, the retry sanitizes them too. The window is rare-by-definition (sanitize
-// failed = IO trouble) and stripping local gate signals is recoverable (re-run the gates), while
-// leaving attacker-authorable gate signals live in the trusted DataDir is not.
-//
 // sanitizePendingMarker 是 DataDir 点文件，记录「外来 task 文件已落地但其清洗 pass 失败」
 // ——让一次失败的清洗不至于变成永久：失败后 tasks 目录已在 DataDir，重跑 migrate/autoSync
 // 会 SKIP 该次迁移（dst 已存在），清洗触发条件（tasks ∈ Moved）永不再燃。之后的
@@ -144,10 +94,6 @@ func migratedTasksMoved(moved []string) bool {
 // 而把攻击者可书写的门禁信号留在受信 DataDir 里存活不可恢复。
 const sanitizePendingMarker = `.foreign-task-sanitize-pending`
 
-// sanitizeAfterMigration is the single retry-aware entry both callers (forge migrate + autoSync)
-// use: sanitize when the tasks dir landed this run OR when a previous sanitize left the pending
-// marker. Returns (sanitized count, error).
-//
 // sanitizeAfterMigration 是两个调用方（forge migrate + autoSync）共用的唯一可重试入口：
 // 本次 run 落地了 tasks 目录、或上次清洗留下了 pending 标记时执行清洗。返回（清洗数, error）。
 func sanitizeAfterMigration(root string, moved []string) (int, error) {
@@ -164,16 +110,11 @@ func sanitizeAfterMigration(root string, moved []string) (int, error) {
 	}
 	n, err := sanitizeMigratedTasks(root)
 	if err != nil {
-		// Leave/refresh the marker so the next migrate/autoSync re-attempts.
-		//
 		// 留下/刷新标记，让下次 migrate/autoSync 重试。
 		_ = os.MkdirAll(dataDir, 0755)
 		_ = os.WriteFile(marker, []byte(`foreign task files landed; sanitize failed; retry pending`), 0644)
 		return n, err
 	}
-	// Success clears the marker (ignore removal errors — a stale marker only costs one
-	// idempotent extra sanitize later; sanitize itself is a no-op on already-clean files).
-	//
 	// 成功清除标记（忽略删除错误——残留标记只会在将来多触发一次幂等清洗；清洗对已干净
 	// 文件本身是 no-op）。
 	_ = os.Remove(marker)

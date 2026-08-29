@@ -14,19 +14,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// doctorCmd — `forge doctor`: cross-agent environment consistency audit.
-//
-// Answers the question that only surfaces during incidents: are all my agent hosts
-// wired to forge, and do their hooks all resolve to the SAME forge binary version?
-// (Real incidents behind this: kimi stuck on 1.28.4 while 1.29.0 shipped; a stray
-// manually-built forge.exe in npm-global root winning PATHEXT over the run.js shim;
-// stale PATH binaries producing false-positive audits.) Read-only — never mutates any
-// host config.
-//
-// copilot is deliberately absent: its VS Code extension keeps config in extension
-// storage with no stable file-path convention to scan (the known caveat since the
-// copilot root hooks.json wiring).
-//
 // doctorCmd —— `forge doctor`：跨 agent 环境一致性审计。
 //
 // 回答只在事故时才暴露的问题：我所有 agent host 都接上 forge 了吗？它们的 hook
@@ -74,22 +61,6 @@ func init() {
 	doctorCmd.Flags().Bool("json", false, "Output full report as JSON")
 }
 
-// skillsDriftProbe backs the doctor skills-distribution section: canonical vs every
-// INSTALLED global target, surfaced as missing/drift counts with actionable items.
-// Root cause it guards (2026-08 audit): a skill added to canonical after the last
-// `forge skills install` (subagent-orchestration, 8-16) silently missed 5 host
-// targets — nothing scanned that seam (doctor only checked host binary versions,
-// drift-check existed but nothing ran it). Probe errors go into the summary's Error
-// field (never abort the audit, never masquerade as a healthy zero-count state);
-// per-target partial failures from DriftCheck surface via TargetErrors.
-//
-// Installed-target gating (M-3, 2026-08-21): a target whose agent home does not
-// exist (no ~/.claude, ~/.cursor, ...) is recorded in Skipped and NOT audited —
-// auditing it would report every canonical skill as missing from an agent this
-// machine never installed, a wall of unactionable noise that drowns the real gaps.
-// An installed agent with a missing skills dir is still audited (a real gap).
-// `forge skills drift-check` keeps ungated all-target coverage for the explicit ask.
-//
 // skillsDriftProbe 支撑 doctor 的 skills 分发节：canonical vs 全部已安装全局目标，
 // 以 missing/drift 计数 + 可处置条目呈现。守护的根因（2026-08 审计）：上次
 // `forge skills install` 之后新增进 canonical 的 skill（subagent-orchestration，
@@ -111,9 +82,6 @@ func skillsDriftProbe() *doctor.SkillsDriftSummary {
 	if err != nil {
 		return &doctor.SkillsDriftSummary{Error: err.Error()}
 	}
-	// Resolve dirs first, then gate: a target is audited iff its agent home (the
-	// parent of its skills dir) exists. Sorted for a deterministic Skipped order.
-	//
 	// 先解析目录再门控：目标的 agent home（skills 目录的父目录）存在才审计。
 	// 排序保证 Skipped 顺序确定。
 	dirs, err := skillsdist.TargetDirs(targets, true, "")
@@ -158,11 +126,6 @@ func skillsDriftProbe() *doctor.SkillsDriftSummary {
 		Items:        []doctor.SkillsDriftItem{},
 		Skipped:      skipped,
 	}
-	// Damaged homes ride TargetErrors: rendered as ⚠ lines in every state where the
-	// audit produced output, and they flip the all-skipped renderer to "nothing
-	// audited" instead of a green in-sync line (a machine with ONLY damaged homes
-	// has Skipped empty — zero counts there must not read as healthy).
-	//
 	// 损坏态 home 走 TargetErrors：在审计产出输出的每个状态下渲染为 ⚠ 行，且让
 	// 渲染器把「全跳过」判定翻成「无可审计目标」而非绿色 in-sync（只有损坏态
 	// home 的机器 Skipped 为空——此处零计数绝不能读作健康）。
@@ -175,18 +138,11 @@ func skillsDriftProbe() *doctor.SkillsDriftSummary {
 		}
 		s.Items = append(s.Items, doctor.SkillsDriftItem{Skill: it.Name, Target: it.Target, State: it.State})
 	}
-	// The full item list rides the JSON / `forge skills drift-check`; the human
-	// renderer caps display separately (with a truncation marker) — capping here
-	// would hide the true count from machine consumers.
-	//
 	// 全量条目走 JSON / `forge skills drift-check`；人类可读渲染层单独截断展示
 	// （带截断标记）——在此截断会把真实计数对机器消费方隐藏。
 	return s
 }
 
-// statusGlyph maps host status to display glyph. Aligned with Report JSON values —
-// display sugar only, the wire values stay ASCII-stable.
-//
 // statusGlyph 把 host 状态映射为展示字形。与 Report JSON 值对齐——仅展示层糖，线上
 // 值保持 ASCII 稳定。
 func statusGlyph(s string) string {
@@ -202,9 +158,6 @@ func statusGlyph(s string) string {
 	}
 }
 
-// printDoctor renders the human-readable report. Compact by design — the interesting
-// lines are the drifts and the PATH list; everything ok collapses to one line per host.
-//
 // printDoctor 渲染人类可读报告。刻意紧凑——有趣的行是 drift 与 PATH 列表；全部 ok
 // 时每个 host 压缩到一行。
 func printDoctor(cmd *cobra.Command, rep doctor.Report) {
@@ -245,19 +198,9 @@ func printDoctor(cmd *cobra.Command, rep doctor.Report) {
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, "skills distribution:")
 		if s.Error != "" {
-			// A dead probe must never render as a healthy zero-count state — the
-			// audit did not run, so there is nothing to green-check.
-			//
 			// 死探针绝不能渲染成零计数健康态——审计没跑，就没有可打勾的东西。
 			fmt.Fprintf(w, "  ✗ 审计失败: %s\n", s.Error)
 		} else if s.Linked == 0 && s.CopySync == 0 && s.Missing == 0 && s.Drifted == 0 && (len(s.Skipped) > 0 || len(s.TargetErrors) > 0) {
-			// Every target skipped or damaged (no agent homes on this machine): zero
-			// counts here mean "nothing audited", not "everything healthy" — render the
-			// skip as its own state instead of a green in-sync line (the H-1 masquerade
-			// pattern). TargetErrors joins the condition because a machine whose homes
-			// are ALL damaged files has Skipped empty — its zero counts must not read
-			// as healthy either.
-			//
 			// 全部目标被跳过或损坏（本机无任何可用 agent home）：此处零计数=「没审计到
 			// 东西」而非「全部健康」——渲染为独立的跳过态而非绿色 in-sync 行（H-1 伪装
 			// 模式）。TargetErrors 纳入判定是因为 home 全是损坏文件的机器 Skipped 为
@@ -290,10 +233,6 @@ func printDoctor(cmd *cobra.Command, rep doctor.Report) {
 			for _, e := range s.TargetErrors {
 				fmt.Fprintf(w, "  ⚠ %s\n", e)
 			}
-			// Skipped targets (agent home absent — M-3): one advisory line, never
-			// missing-noise. Shown in every non-error state so machine readers of the
-			// human output always see the audit's coverage boundary.
-			//
 			// 跳过的目标（agent home 不存在——M-3）：一行 advisory，绝不制造 missing
 			// 噪声。非错误态都展示，让人读输出时始终看到审计的覆盖边界。
 			if len(s.Skipped) > 0 {

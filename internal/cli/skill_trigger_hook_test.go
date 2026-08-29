@@ -34,13 +34,6 @@ func withCanonicalEnv(t *testing.T) string {
 	return dir
 }
 
-// isolateSkillTriggerTmp redirects the noise-controller marker dir into a
-// per-test temp dir. The production (non-dry-run) path writes per-session
-// cooldown markers under os.TempDir()/skill-trigger; with the fixed session
-// ids these tests use, a marker left by a previous run (same machine, shared
-// $TMPDIR) suppresses injection and the test fails on rerun. Redirecting
-// TMPDIR/TMP/TEMP (Unix/Windows respectively) makes each run hermetic.
-//
 // isolateSkillTriggerTmp 把 noise-controller 的 marker 目录重定向到 per-test
 // 临时目录。生产（非 dry-run）路径在 os.TempDir()/skill-trigger 下写
 // per-session cooldown marker；这些测试用固定 session id，上一次运行遗留的
@@ -298,16 +291,10 @@ func TestRunSkillTriggerHook_DeniedSkillSkipped(t *testing.T) {
 	}
 }
 
-// TestRunSkillTriggerHook_KimiSuppressedOffUserPromptSubmit is the kimi delivery guard: on
-// every event except UserPromptSubmit, kimi drops allow-path stdout from the model context
-// (verified via wire.jsonl), so skill-trigger must NOT print there — but it DOES still run
-// the engine, queue the rendered injection for the UserPromptSubmit drain, and record each
-// hit to checklog with Delivered=false + Channel=kimi/advisory-queue
-// (honest observability: the dashboard feed and usage funnel see the full trigger picture;
-// the funnel counts Delivered=true only, so these records cannot recreate the
-// false-prosperity bug, and the queue channel label keeps "queued, deferred"
-// distinguishable from "lost forever"). Each subtest sets up a skill that WOULD trigger
-// on the event, then asserts: NO stdout AND every recorded entry is stamped not-delivered.
+// TestRunSkillTriggerHook_KimiSuppressedOffUserPromptSubmit is the kimi delivery
+// guard: on every event except UserPromptSubmit, kimi drops allow-path stdout
+// from the model context (verified via wire.jsonl), so skill-trigger must NOT
+// print there.
 //
 // TestRunSkillTriggerHook_KimiSuppressedOffUserPromptSubmit 是 kimi 投递守卫：除
 // UserPromptSubmit 外的每个事件，kimi 丢弃 allow-path stdout（wire.jsonl 实测），故
@@ -340,9 +327,6 @@ func TestRunSkillTriggerHook_KimiSuppressedOffUserPromptSubmit(t *testing.T) {
 			if out != "" {
 				t.Errorf("kimi %s: must emit NO stdout (kimi drops it for this event), got %q", ev, out)
 			}
-			// Honest-record assertion: the hit IS recorded (no kimi blind spot in the feed)
-			// but MUST be stamped Delivered=false so the usage funnel never counts it.
-			//
 			// 诚实记录断言：命中被记录（事件流不再有 kimi 盲区）但必须落
 			// Delivered=false 章，usage 漏斗永不计为送达。
 			entries, err := checklog.LoadAll(root)
@@ -369,10 +353,10 @@ func TestRunSkillTriggerHook_KimiSuppressedOffUserPromptSubmit(t *testing.T) {
 	}
 }
 
-// TestRunSkillTriggerHook_KimiUserPromptSubmitStillInjects is the positive complement to the
-// suppression test: UserPromptSubmit is the ONE event kimi reaches the model on, so skill-trigger
-// must STILL run + inject + record a checklog there. This proves the guard is event-specific
-// (not a blanket kimi suppression) and that the legit delivered-trigger signal survives.
+// TestRunSkillTriggerHook_KimiUserPromptSubmitStillInjects is the positive
+// complement to the suppression test: UserPromptSubmit is the ONE event kimi
+// reaches the model on, so skill-trigger must STILL run + inject + record a
+// checklog there.
 //
 // TestRunSkillTriggerHook_KimiUserPromptSubmitStillInjects 是抑制测试的正向补集：UserPromptSubmit
 // 是 kimi 唯一能到达模型的事件，故 skill-trigger 必须在此处照常运行 + 注入 + 记 checklog。

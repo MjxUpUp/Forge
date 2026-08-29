@@ -8,8 +8,6 @@ import (
 	"time"
 )
 
-// loadScopedSession reads DataDir/sessions/<sid>.json for assertions.
-//
 // loadScopedSession 读取 DataDir/sessions/<sid>.json 供断言。
 func loadScopedSession(t *testing.T, root, sid string) *SessionRecord {
 	t.Helper()
@@ -24,9 +22,7 @@ func loadScopedSession(t *testing.T, root, sid string) *SessionRecord {
 	return &s
 }
 
-// TestEnsureHookSession_RegistersWithDeclarativeAgent is the core of the 2026-08
-// attribution fix: a hook-observed session must be REGISTERED (not just stamped)
-// with the declarative --agent as AgentType — not the project-marker guess.
+// TestEnsureHookSession_RegistersWithDeclarativeAgent is the core of the 2026-08 attribution fix.
 //
 // TestEnsureHookSession_RegistersWithDeclarativeAgent 是 2026-08 归因修复的核心：
 // hook 观察到的会话必须被登记（而非仅盖戳），AgentType 用声明式 --agent——而非
@@ -34,10 +30,6 @@ func loadScopedSession(t *testing.T, root, sid string) *SessionRecord {
 func TestEnsureHookSession_RegistersWithDeclarativeAgent(t *testing.T) {
 	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	root := t.TempDir()
-	// A .claude marker present — the marker guess would say claude-code; the
-	// declarative agent (kimi) must win. This is the exact Forge-repo scenario:
-	// kimi sessions misattributed to claude-code because .claude/ exists.
-	//
 	// .claude 标记存在——标记猜测会得 claude-code；声明式 agent（kimi）必须胜出。
 	// 这正是 Forge 仓场景：因 .claude/ 存在，kimi 会话被误归 claude-code。
 	if err := os.MkdirAll(filepath.Join(root, ".claude"), 0755); err != nil {
@@ -53,8 +45,6 @@ func TestEnsureHookSession_RegistersWithDeclarativeAgent(t *testing.T) {
 	if s.AgentType != "kimi" {
 		t.Errorf("AgentType = %q, want kimi (declarative beats marker)", s.AgentType)
 	}
-	// And the jsonl history carries the same agent (LoadSessions reads the jsonl).
-	//
 	// 且 jsonl 历史携带同一 agent（LoadSessions 读 jsonl）。
 	records, err := LoadSessions(root)
 	if err != nil || len(records) == 0 {
@@ -65,9 +55,7 @@ func TestEnsureHookSession_RegistersWithDeclarativeAgent(t *testing.T) {
 	}
 }
 
-// TestEnsureHookSession_NeverOverwrites pins the fill-empty-only contract on the
-// already-registered path: a later event with a different (or empty) agent must
-// not clobber a correct attribution.
+// TestEnsureHookSession_NeverOverwrites pins the fill-empty-only contract on the already-registered path: a later event with a different (or empty) agent must not clobber a correct attribution.
 //
 // TestEnsureHookSession_NeverOverwrites 钉住已登记路径的只填空契约：后续带不同
 // （或空）agent 的事件不得冲掉正确的归属。
@@ -81,8 +69,6 @@ func TestEnsureHookSession_NeverOverwrites(t *testing.T) {
 		t.Errorf("AgentType = %q after second ensure, want kimi (never overwrite)", s.AgentType)
 	}
 
-	// Existing record with EMPTY agent gets filled (stamp semantics preserved).
-	//
 	// 已存在但 agent 为空的记录会被填充（保留盖戳语义）。
 	if err := saveScopedSession(root, &SessionRecord{SessionID: "s-2", StartedAt: time.Now()}); err != nil {
 		t.Fatal(err)
@@ -93,9 +79,7 @@ func TestEnsureHookSession_NeverOverwrites(t *testing.T) {
 	}
 }
 
-// TestEnsureHookSession_Guards: empty session id is a no-op (the legacy global
-// path must stay stamp-only — a hook without a session id must not create or
-// rotate legacy state); empty agent falls back to the project marker.
+// TestEnsureHookSession_Guards: empty session id is a no-op (the legacy global path must stay stamp-only — a hook without a session id must not create or rotate legacy state); empty agent falls back to the project marker.
 //
 // TestEnsureHookSession_Guards：空 session id 是 no-op（legacy 全局路径必须保持
 // 只盖戳——无 session id 的 hook 不得创建或轮换 legacy 状态）；空 agent 回落
@@ -118,9 +102,7 @@ func TestEnsureHookSession_Guards(t *testing.T) {
 	}
 }
 
-// TestLastSessionPointer_FreshnessAndThrottle pins the pointer contract: a fresh
-// pointer is adoptable; a stale one is not (mislabel guard); writes within the
-// throttle window are skipped.
+// TestLastSessionPointer_FreshnessAndThrottle pins the pointer contract: a fresh pointer is adoptable; a stale one is not (mislabel guard); writes within the throttle window are skipped.
 //
 // TestLastSessionPointer_FreshnessAndThrottle 钉住指针契约：新鲜指针可采纳；过期
 // 不可（防错标）；节流窗口内的写入被跳过。
@@ -139,16 +121,12 @@ func TestLastSessionPointer_FreshnessAndThrottle(t *testing.T) {
 		t.Errorf("fresh pointer: got (%q, %q, %v)", sid, agent, ok)
 	}
 
-	// Throttled: an immediate second touch keeps the first write.
-	//
 	// 节流：紧接着的第二次 touch 保留首次写入。
 	TouchLastSession(root, "session_other", "codex", "PreToolUse")
 	if sid, _, ok := RecentHookSession(root); !ok || sid != "session_kimi-9" {
 		t.Errorf("throttled rewrite must keep the first pointer, got sid=%q ok=%v", sid, ok)
 	}
 
-	// Stale pointer → not adoptable.
-	//
 	// 过期指针 → 不可采纳。
 	stale := LastSessionPointer{SessionID: "old", Agent: "kimi", Epoch: time.Now().Add(-time.Hour).Unix()}
 	data, _ := json.Marshal(stale)

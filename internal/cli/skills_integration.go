@@ -12,12 +12,6 @@ import (
 // 集成笔记（skills 零反向依赖契约 CONVENTIONS §13 的 forge 侧承接面——skill 目录
 // 不含 forge 集成内容，forge 用户从这里拿命令语法/门禁机制/逃生口）。无参数列出
 // 有笔记的 skill 清单。
-//
-// skillsIntegrationCmd — `forge skills integration [skill]`: view a skill's forge
-// integration note (the forge-side receiving surface of the zero-reverse-dependency
-// contract, CONVENTIONS §13 — skill dirs carry no forge integration content; forge
-// users get command syntax / gate mechanics / escape hatches here). Without an
-// argument it lists the skills that have notes.
 var skillsIntegrationCmd = &cobra.Command{
 	Use:   "integration [skill]",
 	Short: "查看 skill 的 forge 集成笔记（零反向依赖契约的 forge 侧承接）",

@@ -1,19 +1,5 @@
 package hooks
 
-// The hook scripts embedded by forge init.
-// Written to .forge/hooks/ at project initialization.
-//
-// Protocol: bash scripts output plain text to stdout.
-// - A line starting with PASS = check passed; the rest of the line is optional detail.
-// - A line starting with FAIL = check failed; the rest of the line is the reason.
-// - For multiple lines, the last PASS/FAIL line decides the result.
-// - Any output to stderr is captured for debugging.
-// The Go side wraps the result into structured JSON for Claude Code.
-//
-// The Go side extracts the tool_input fields into env vars (FORGE_FILE_PATH, FORGE_CONTENT,
-// FORGE_COMMAND, FORGE_OLD_STRING, FORGE_NEW_STRING, FORGE_TOOL_NAME), so bash scripts do not
-// need to parse JSON themselves.
-//
 // forge init 嵌入的 hook 脚本。
 // 在项目初始化时写入 .forge/hooks/。
 //

@@ -9,9 +9,10 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
-// TestWriteArtifact_ReferenceTriangle pins I5 (multi-task-concurrency §9): the file owns
-// the content (frontmatter carries task-ref/stage), the state side holds a DataDir-
-// relative path + content hash, and VerifyArtifact detects hand-edits as drift.
+// TestWriteArtifact_ReferenceTriangle pins I5 (multi-task-concurrency §9): the
+// file owns the content (frontmatter carries task-ref/stage), the state side
+// holds a DataDir- relative path + content hash, and VerifyArtifact detects
+// hand-edits as drift.
 //
 // TestWriteArtifact_ReferenceTriangle 钉住 I5（multi-task-concurrency §9）：文件拥有
 // 内容（frontmatter 带 task-ref/stage），状态侧持 DataDir 相对路径 + 内容哈希，
@@ -46,9 +47,10 @@ func TestWriteArtifact_ReferenceTriangle(t *testing.T) {
 	}
 }
 
-// TestArchiveAttempt_WriteOnceAndFeedback pins the attempts contract (§9 + LoopSpec
-// deep-read absorption): failed-round findings are preserved write-once (re-archiving the
-// same round REFUSES), never deleted, and PriorAttemptsSummary feeds them back bounded.
+// TestArchiveAttempt_WriteOnceAndFeedback pins the attempts contract (§9 +
+// LoopSpec deep-read absorption): failed-round findings are preserved write-once
+// (re-archiving the same round REFUSES), never deleted, and PriorAttemptsSummary
+// feeds them back bounded.
 //
 // TestArchiveAttempt_WriteOnceAndFeedback 钉住 attempts 契约（§9 + LoopSpec 深读吸
 // 收）：失败轮 findings 一次写入保留（同轮重归档【拒绝】）、永不删除，

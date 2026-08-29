@@ -1,8 +1,4 @@
-// Package doclint is the L1 (machine-checkable) layer of the output-readability
-// constraint system: deterministic lint over AI-produced markdown artifacts.
-// Banned phrases, required sections, conclusion enums and length caps live here
-// as the single source of truth — skillgen renders the same tables into the
-// forge-quality skill text instead of maintaining a second hand-written copy.
+// Package doclint is the L1 (machine-checkable) layer of the output-readability constraint system: deterministic lint over AI-produced markdown artifacts.
 //
 // Package doclint 是输出可读性约束体系的 L1（机器可判）层：对 AI 产出的
 // markdown 产物做确定性 lint。禁令短语、必填章节、结论枚举与篇幅上限以
@@ -27,10 +23,7 @@ const (
 	Advisory Severity = "advisory"
 )
 
-// RuleDescriptions mirrors skillsqa.RuleDescriptions: exported rule ID → text
-// definition, grepped by docs generation and CLI output so prose cannot drift
-// from enforcement. D1-D4 are universal (all linted markdown); D5-D7 apply only
-// when a DocType matched the filename.
+// RuleDescriptions mirrors skillsqa.RuleDescriptions: exported rule ID → text definition, grepped by docs generation and CLI output so prose cannot drift from enforcement.
 //
 // RuleDescriptions 与 skillsqa.RuleDescriptions 同构：可导出的规则编号 →
 // 文本定义，供文档生成与 CLI 输出 grep，保证文案与执法不漂移。D1-D4 为
@@ -47,17 +40,13 @@ var RuleDescriptions = map[string]string{
 	"IO": "文件读取失败（hard；路径不可读——CLI 层的 IO 兜底，非内容规则）",
 }
 
-// bannedPhrase is one D1/D2 entry: a regex plus the reason it is banned.
-//
 // bannedPhrase 是一条 D1/D2 规则：正则 + 禁用理由。
 type bannedPhrase struct {
 	Pattern *regexp.Regexp
 	Reason  string
 }
 
-// BannedPhrases are D1 空转措辞: filler that adds length without adding
-// information. Regexes are matched against inline-code-stripped lines outside
-// fenced code blocks.
+// BannedPhrases are D1 空转措辞: filler that adds length without adding information.
 //
 // BannedPhrases 是 D1 空转措辞：只加长度不加信息量的填充词。正则对
 // 「已剥除行内代码、且不在代码块内」的行匹配。
@@ -73,9 +62,7 @@ var BannedPhrases = []bannedPhrase{
 	{regexp.MustCompile(`差不多可以`), "模糊限定语——同 `基本可以`"},
 }
 
-// EvidenceFreeConclusions are D2 无证据整体性结论: whole-document verdicts
-// that preempt evidence. A verdict belongs at the END of an evidence chain or at
-// the top WITH pointers — never as a standalone reassurance.
+// EvidenceFreeConclusions are D2 无证据整体性结论: whole-document verdicts that preempt evidence.
 //
 // EvidenceFreeConclusions 是 D2 无证据整体性结论：先于证据给出的全局判词。
 // 判词要么带指针放在开头，要么放在证据链末尾——不能作为独立安抚存在。
@@ -87,8 +74,6 @@ var EvidenceFreeConclusions = []bannedPhrase{
 	{regexp.MustCompile(`一切正常`), "无证据整体判词——正常项逐条列出"},
 }
 
-// diffFingerprints identify raw unified-diff paste outside fences (D3).
-//
 // diffFingerprints 识别围栏外的原始 unified diff 粘贴（D3）。
 var diffFingerprints = []*regexp.Regexp{
 	regexp.MustCompile(`^diff --git `),
@@ -98,14 +83,9 @@ var diffFingerprints = []*regexp.Regexp{
 
 const diffFingerprintThreshold = 3
 
-// passClaimRe matches pass-claims (D4 trigger).
-//
 // passClaimRe 匹配通过性断言（D4 触发词）。
 var passClaimRe = regexp.MustCompile(`(测试|自测|验证|验收|回归)(全部)?通过|已验证`)
 
-// evidenceMarkerRes match anything that counts as an evidence pointer (D4
-// acquittal): inline code/command, file:line, URL, or a percentage.
-//
 // evidenceMarkerRes 匹配可算作证据指针的标记（D4 豁免项）：行内代码/命令、
 // file:line、URL、百分比。
 var evidenceMarkerRes = []*regexp.Regexp{
@@ -115,8 +95,7 @@ var evidenceMarkerRes = []*regexp.Regexp{
 	regexp.MustCompile(`\d+(\.\d+)?%`),
 }
 
-// DocType scopes D5-D7: filename substring match → required headings,
-// a conclusion enum, and an advisory body-line cap.
+// DocType scopes D5-D7: filename substring match → required headings, a conclusion enum, and an advisory body-line cap.
 //
 // DocType 约束 D5-D7 的作用域：文件名子串匹配 → 必填章节、结论枚举与
 // 建议性篇幅上限。
@@ -128,9 +107,7 @@ type DocType struct {
 	MaxBodyLines     int      // advisory cap; 0 = none
 }
 
-// DocTypes is the v1 type table. PR descriptions and commit messages are not
-// repo files (they live in the forge/host UI), so they are constrained by
-// template + rubric at write time, not by this table.
+// DocTypes is the v1 type table.
 //
 // DocTypes 是 v1 类型表。PR 描述与 commit message 不是仓库文件（存在于
 // forge/宿主 UI），由撰写期模板 + rubric 约束，不进本表。
@@ -154,11 +131,6 @@ var DocTypes = []DocType{
 	},
 }
 
-// matchDocType returns the first DocType whose filename hint matches the BASE
-// name, or nil. Base-name only (not the full path): matching on the path made
-// skills/session-retrospective/SKILL.md a "retrospective report" — the type
-// names a deliverable file, not the directory a skill happens to live in.
-//
 // matchDocType 返回首个文件名命中（仅 BASE 名）的 DocType，未命中返回 nil。
 // 只匹配文件名不匹配全路径：按路径匹配会把
 // skills/session-retrospective/SKILL.md 误判成「复盘报告」——类型命名的是
@@ -175,11 +147,7 @@ func matchDocType(filename string) *DocType {
 	return nil
 }
 
-// RenderBannedPhrasesForSkill renders the D1/D2 tables into skill/protocol
-// text (skillgen calls this — the banned list must not be hand-copied into a
-// second location). Phrases are backtick-wrapped: the generated skill text
-// must survive its own doclint (inline-code exemption), same as claudemd's
-// rule 7.
+// RenderBannedPhrasesForSkill renders the D1/D2 tables into skill/protocol text (skillgen calls this — the banned list must not be hand-copied into a second location).
 //
 // RenderBannedPhrasesForSkill 把 D1/D2 表渲染为 skill/协议文本（skillgen 调用
 // 本函数——禁令清单不允许手抄到第二处）。短语反引号包裹：生成的 skill 文本

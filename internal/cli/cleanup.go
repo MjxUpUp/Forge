@@ -14,19 +14,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-// cleanup.go — strip forge's project-level writes from existing projects after the
-// user-level-assets refactor.
-//
 // cleanup.go —— user-level-assets 重构后，剥除存量项目里的项目级 forge 写入。
-//
-// Background: pre-refactor forge init/sync wrote `.forge/hooks/`, `.claude/` (settings/
-// CLAUDE.md/skills), `AGENTS.md`, and agent-bridge files (`.codex/`, `.cursor/`,
-// `.windsurf*`, `.github/instructions/`, `.clinerules/`, `.opencode/`) into the user's
-// project — the "too invasive, accidentally committed" complaint. All of these now live
-// at user level; autoSync runs this stripper whenever it fires (version change / force /
-// dirty binding — not literally every command: an equal stamp short-circuits autoSync
-// before this runs), so existing projects converge to zero-project-write by simply
-// using forge.
 //
 // 背景：重构前 forge init/sync 往用户项目写 `.forge/hooks/`、`.claude/`（settings/
 // CLAUDE.md/skills）、`AGENTS.md` 与各 agent bridge 文件（`.codex/`、`.cursor/`、
@@ -34,16 +22,6 @@ import (
 // "侵入性太强、一不小心就提交"的投诉来源。这些现在全部在用户级；autoSync 触发时
 // （版本变化/force/脏绑定——不是每条命令：stamp 相等时 autoSync 提前返回，轮不到
 // 本清理）跑本清理，存量项目只要继续用 forge 即收敛为零项目写入。
-//
-// Boundaries:
-//   - team mode (`forge init --project`, marker .forge/team-mode) is exempt — those
-//     projects deliberately keep project-level assets for git sharing.
-//   - .forge/protocol.yml is NOT blindly deleted: content equal to DefaultProtocol
-//     (never user-edited) is migrated to the DataDir copy; a customized file stays
-//     as the team-shared override layer.
-//   - files with user content are never deleted — only forge-sourced entries/sections
-//     are stripped (settings.local.json keeps its shell, CLAUDE.md/AGENTS.md keep
-//     non-forge content, mixed hooks.json keeps user hooks).
 //
 // 边界：
 //   - 团队模式（`forge init --project`，标记 .forge/team-mode）豁免——那些项目
@@ -60,32 +38,19 @@ const (
 	forgeSectionEndMarker   = "<!-- FORGE:END -->"
 )
 
-// teamModeMarker is the marker file written by `forge init --project`: projects in
-// team mode deliberately keep project-level assets, so the stripper skips them.
-//
 // teamModeMarker 是 `forge init --project` 写入的标记文件：团队模式项目刻意
 // 保留项目级资产，清理器跳过它们。
 const teamModeMarker = "team-mode"
 
-// stripProjectLevelForgeAssets removes forge's legacy project-level writes from dir.
-// Idempotent; every step is a cheap stat/no-op when already converged. Called by
-// autoSync when it fires (version change / force / dirty binding) and by forge init.
-//
 // stripProjectLevelForgeAssets 剥除 dir 里遗留的项目级 forge 写入。幂等；
 // 收敛后每步都是廉价 stat/no-op。由 autoSync 触发时（版本变化/force/脏绑定）
 // 与 forge init 调用。
 func stripProjectLevelForgeAssets(dir string) {
-	// Team mode is exempt.
-	//
 	// 团队模式豁免。
 	if _, err := os.Stat(filepath.Join(dir, ".forge", teamModeMarker)); err == nil {
 		return
 	}
 
-	// 1. .forge/: hooks copies + sync stamp are pure residue (runtime never read them;
-	//    the copies now live in DataDir). protocol.yml is migrated when it carries no
-	//    user edits.
-	//
 	// 1. .forge/：hooks 副本与 sync 戳是纯残留（运行时从不读它们；副本现在在
 	//    DataDir）。protocol.yml 无用户改动时迁移。
 	os.RemoveAll(filepath.Join(dir, ".forge", "hooks"))
@@ -93,9 +58,6 @@ func stripProjectLevelForgeAssets(dir string) {
 	migrateProjectProtocol(dir)
 	removeDirIfEmpty(filepath.Join(dir, ".forge"))
 
-	// 2. .claude/: settings hooks (keep the shell), forge-quality skill (moved to
-	//    user level), CLAUDE.md forge section.
-	//
 	// 2. .claude/：settings hooks（留壳）、forge-quality skill（已迁用户级）、
 	//    CLAUDE.md 的 forge 段。
 	if _, err := hooks.StripForgeHooks(dir, true); err != nil {
@@ -106,13 +68,9 @@ func stripProjectLevelForgeAssets(dir string) {
 	stripMarkedSectionFile(filepath.Join(dir, ".claude", "CLAUDE.md"))
 	removeDirIfEmpty(filepath.Join(dir, ".claude"))
 
-	// 3. Project-root AGENTS.md forge section.
-	//
 	// 3. 项目根 AGENTS.md 的 forge 段。
 	stripMarkedSectionFile(filepath.Join(dir, "AGENTS.md"))
 
-	// 4. Agent bridge files.
-	//
 	// 4. 各 agent bridge 文件。
 	stripHooksJSON(filepath.Join(dir, ".codex", "hooks.json"))
 	removeDirIfEmpty(filepath.Join(dir, ".codex"))
@@ -128,8 +86,6 @@ func stripProjectLevelForgeAssets(dir string) {
 
 	os.Remove(filepath.Join(dir, ".github", "instructions", "forge-quality.instructions.md"))
 	removeDirIfEmpty(filepath.Join(dir, ".github", "instructions"))
-	// .github itself is never removed — it is a standard user dir.
-	//
 	// .github 本身绝不删——它是用户的标准目录。
 
 	os.Remove(filepath.Join(dir, ".clinerules", "forge-quality.md"))
@@ -141,10 +97,6 @@ func stripProjectLevelForgeAssets(dir string) {
 	removeDirIfEmpty(filepath.Join(dir, ".opencode"))
 }
 
-// migrateProjectProtocol moves a project-level .forge/protocol.yml into the DataDir
-// copy when it carries no user edits (semantically equal to DefaultProtocol). A
-// customized protocol.yml is kept untouched — it is the team-shared override layer.
-//
 // migrateProjectProtocol 把项目级 .forge/protocol.yml 在无用户改动时（与
 // DefaultProtocol 语义相等）迁入 DataDir 副本。改过的 protocol.yml 原样保留——
 // 它是团队共享覆盖层。
@@ -154,11 +106,6 @@ func migrateProjectProtocol(dir string) {
 	if err != nil {
 		return
 	}
-	// Strict decode: a file with fields unknown to Protocol is treated as
-	// user-modified and kept. A lenient unmarshal would silently drop those fields
-	// on re-marshal, make a customized file look identical to the default, and get
-	// it deleted — losing the user's edits without a trace.
-	//
 	// 严格解码：含 Protocol 未知字段的文件视为「用户改过」保留。宽松 unmarshal
 	// 会在重 marshal 时静默丢掉这些字段，把改过的文件误判成与默认相等而删掉——
 	// 用户的改动静默丢失。
@@ -173,9 +120,6 @@ func migrateProjectProtocol(dir string) {
 	if err != nil {
 		return
 	}
-	// Semantic compare via re-marshal: field order/formatting of the on-disk file
-	// must not matter.
-	//
 	// 经重 marshal 做语义比较：磁盘文件的字段顺序/格式不影响判定。
 	gotYAML, err := yaml.Marshal(&p)
 	if err != nil {
@@ -187,10 +131,6 @@ func migrateProjectProtocol(dir string) {
 	// No user edits: ensure the DataDir copy exists, then drop the project-level
 	// file. The copy is written explicitly to the DataDir path (SaveDataDir).
 
-	// The project file is removed ONLY after the copy is verified on disk: a
-	// non-IsNotExist stat error (permission/IO) means "unverified", not "absent",
-	// and deleting then would strand the project with no protocol at all.
-	//
 	// 无用户改动：确保 DataDir 副本存在，然后删项目级文件。副本显式写到 DataDir
 	// 路径（SaveDataDir）——旧路由 protocol.Save 已删除，副本不再经项目级文件中转。
 	// 项目文件仅在副本确认落盘后才删：非 IsNotExist 的 stat 错误（权限/IO）是
@@ -212,10 +152,6 @@ func migrateProjectProtocol(dir string) {
 	os.Remove(path)
 }
 
-// stripMarkedSectionFile removes the FORGE:START/END marked section from a file.
-// When nothing but whitespace remains, the file is deleted (it was forge-created);
-// otherwise the stripped content is written back atomically.
-//
 // stripMarkedSectionFile 剥除文件里的 FORGE:START/END 标记段。只剩空白时删文件
 // （它是 forge 创建的）；否则原子写回剥除后的内容。
 func stripMarkedSectionFile(path string) {
@@ -237,15 +173,6 @@ func stripMarkedSectionFile(path string) {
 	}
 }
 
-// stripHooksJSON removes forge-sourced hook entries from an agent hooks.json
-// (codex/cursor/windsurf). Two shapes are handled:
-//   - nested (claude/codex): hooks.<event>[] = {matcher, hooks:[{type,command}]}
-//   - flat (cursor/windsurf): hooks.<event>[] = {command,matcher,timeout}
-//
-// User entries (commands not starting with "forge hook"/"forge gate") are preserved.
-// When no hooks remain, the file is deleted if it held only forge content
-// (hooks + optional version); otherwise the stripped object is written back.
-//
 // stripHooksJSON 剥除 agent hooks.json（codex/cursor/windsurf）里 forge 来源的
 // hook 条目。处理两种形态：
 //   - 嵌套（claude/codex）：hooks.<event>[] = {matcher, hooks:[{type,command}]}
@@ -280,8 +207,6 @@ func stripHooksJSON(path string) {
 				continue
 			}
 			if inner, ok := entry[`hooks`].([]any); ok {
-				// Nested shape: filter the inner hook list.
-				//
 				// 嵌套形态：过滤内层 hook 列表。
 				innerKept := make([]any, 0, len(inner))
 				for _, h := range inner {
@@ -304,8 +229,6 @@ func stripHooksJSON(path string) {
 				}
 				continue
 			}
-			// Flat shape.
-			//
 			// 扁平形态。
 			if cmd, _ := entry[`command`].(string); isForgeCmd(cmd) {
 				changed = true
@@ -324,8 +247,6 @@ func stripHooksJSON(path string) {
 		return
 	}
 	if len(hooksObj) == 0 {
-		// Only forge content? (hooks + optional version) → delete the file.
-		//
 		// 只有 forge 内容？（hooks + 可选 version）→ 删文件。
 		onlyForge := true
 		for k := range cfg {
@@ -349,9 +270,6 @@ func stripHooksJSON(path string) {
 	}
 }
 
-// isForgeCmd reports whether a hook command is forge-sourced. Mirrors
-// hooks.isForgeHookCommand (unexported there) for the JSON shapes this package strips.
-//
 // isForgeCmd 报告 hook command 是否 forge 来源。与 hooks.isForgeHookCommand
 // （未导出）同判定，供本包剥除 JSON 形态用。
 func isForgeCmd(cmd string) bool {
@@ -360,9 +278,6 @@ func isForgeCmd(cmd string) bool {
 		cmd == "forge hook" || cmd == "forge gate"
 }
 
-// removeDirIfEmpty removes a directory only when it has no entries left (forge's
-// files were the last content). Errors (not empty / not exist) are ignored by design.
-//
 // removeDirIfEmpty 仅在目录无剩余条目时删除它（forge 的文件是最后的内容）。
 // 错误（非空/不存在）按设计忽略。
 func removeDirIfEmpty(path string) {
@@ -373,9 +288,6 @@ func removeDirIfEmpty(path string) {
 	os.Remove(path)
 }
 
-// warnCleanup reports a cleanup failure on stderr without failing the command —
-// stripping legacy files is best-effort and must never block the user's actual command.
-//
 // warnCleanup 把清理失败报到 stderr 而不让命令失败——剥除遗留文件是 best-effort，
 // 绝不能阻断用户实际要跑的命令。
 func warnCleanup(what string, err error) {

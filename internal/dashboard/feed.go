@@ -1,7 +1,3 @@
-// feed.go — multi-source event merger for the pulse panel: TaskState (task-start + gate),
-// checklog (skill-trigger), and act conclusions merge into one time-descending event stream.
-// Read-only: every source is loaded through the existing store read paths, nothing is written.
-//
 // feed.go —— pulse 面板的多源事件归并器：TaskState（task-start + gate）、checklog
 // （skill-trigger）、act 结论归并成一条时间降序事件流。只读：所有源都走现有 store 的
 // 读路径加载，不做任何写操作。
@@ -19,8 +15,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
-// Feed event kinds / severities — the wire contract the frontend consumes.
-//
 // Feed 事件 kind / severity——前端消费的线上契约。
 const (
 	FeedKindTaskStart    = "task-start"
@@ -36,14 +30,10 @@ const (
 	FeedSeverityInfo = "info"
 )
 
-// defaultFeedLimit caps the feed response so polling never ships a huge body.
-//
 // defaultFeedLimit 截断 feed 响应，轮询永不发出大包。
 const defaultFeedLimit = 200
 
-// FeedEvent is one merged stream event. Field names are the frontend contract.
-// SessionID is deliberately absent — defense-in-depth: localhost + Host check, but never
-// serialize session identifiers.
+// FeedEvent is one merged stream event.
 //
 // FeedEvent 是归并流的一条事件。字段名即前端契约。刻意无 SessionID——纵深防御：
 // localhost + Host 校验，但绝不序列化 session 标识。
@@ -59,19 +49,13 @@ type FeedEvent struct {
 	Passed   *bool     `json:"passed,omitempty"` // gate 事件
 	Commit   string    `json:"commit,omitempty"` // gate 事件 HeadCommit 短哈希
 	Grade    string    `json:"grade,omitempty"`  // conclusion 事件（分数内联在 Title）
-	// Node is the originating machine's node_id (multi-machine Phase 3): conclusion
-	// and skill-trigger events carry the record's nodestamp; task-start carries the
-	// current lease holder (who's working it). Empty on legacy unstamped records —
-	// omitempty keeps the pre-multi-machine wire shape unchanged.
+	// Node is the originating machine's node_id (multi-machine Phase 3).
 	//
 	// Node 是来源机器的 node_id（多机器 Phase 3）：conclusion 与 skill-trigger 事件
 	// 携带记录的 nodestamp；task-start 携带当前租约持有者（谁在干活）。存量无戳
 	// 记录为空——omitempty 保持多机器前的线上结构不变。
 	Node string `json:"node,omitempty"`
-	// Skill is the structured skill name on skill-trigger events. The frontend's
-	// fold-card aggregation reads this field — it must not regex-parse the name
-	// back out of the display Title (title wording is free to change; this is the
-	// contract). Empty when the checklog detail carries no parseable name.
+	// Skill is the structured skill name on skill-trigger events.
 	//
 	// Skill 是 skill-trigger 事件上的结构化 skill 名。前端折叠卡聚合读此字段——
 	// 不得从展示文案 Title 正则反解（标题措辞可改，此字段才是契约）。checklog
@@ -79,9 +63,7 @@ type FeedEvent struct {
 	Skill string `json:"skill,omitempty"`
 }
 
-// FeedQuery filters AggregateFeed. Since is exclusive (Time > since) for polling
-// increments; Project matches the forge key OR the display name; TaskRef scopes to one
-// task; Limit 0 means defaultFeedLimit.
+// FeedQuery filters AggregateFeed.
 //
 // FeedQuery 是 AggregateFeed 的过滤条件。Since 为排他（Time > since）供轮询增量；
 // Project 同时匹配 forge key 与显示名；TaskRef 限定单任务；Limit 0 = 默认 200。
@@ -92,9 +74,6 @@ type FeedQuery struct {
 	Limit   int
 }
 
-// pulseRoot is one project in scope: its root plus both identities (forge key for
-// filtering, display name for attribution).
-//
 // pulseRoot 是范围内的一个项目：root + 两重身份（forge key 供过滤，显示名供归属）。
 type pulseRoot struct {
 	root string
@@ -102,11 +81,6 @@ type pulseRoot struct {
 	name string // projectName(root)
 }
 
-// resolvePulseRoots expands Options into the project scope: Roots (global) when non-empty,
-// otherwise the single Root (test/library fallback). Empty roots are dropped. The
-// registry→Roots resolution and the empty-registry fallback live in the cli layer
-// (cli/dashboard.go) — feed just consumes Options.
-//
 // resolvePulseRoots 把 Options 展开成项目范围：Roots 非空走全局，否则单 Root（测试/
 // 库调用兜底）。空 root 丢弃。registry→Roots 的解析与空 registry 退化在 cli 层
 // （cli/dashboard.go）——feed 只消费 Options。
@@ -129,17 +103,12 @@ func resolvePulseRoots(opts Options) []pulseRoot {
 	return out
 }
 
-// matches reports whether the query project filter selects this root (key or name).
-//
 // matches 报告 query 的 project 过滤是否命中本 root（key 或名）。
 func (pr pulseRoot) matches(filter string) bool {
 	return filter == "" || filter == pr.key || filter == pr.name
 }
 
-// FeedResult is the outcome of AggregateFeed: the merged, filtered, capped events plus
-// whether the cap cut anything off. Truncated lets the client distinguish "no more
-// events" from "older events were dropped" — a truncated incremental (since) poll means
-// events were lost permanently unless the client refetches in full.
+// FeedResult is the outcome of AggregateFeed: the merged, filtered, capped events plus whether the cap cut anything off.
 //
 // FeedResult 是 AggregateFeed 的结果：归并、过滤、截断后的事件流 + 是否发生了截断。
 // Truncated 让客户端区分「没有更多事件」与「更早事件被丢弃」——增量（since）轮询
@@ -149,14 +118,7 @@ type FeedResult struct {
 	Truncated bool
 }
 
-// AggregateFeed merges all event sources across the projects in scope into one
-// time-descending stream, then applies the query filters (project / taskRef / since /
-// limit). Source data comes from sharedPulseCache (fingerprint-gated — unchanged files
-// are not re-parsed); projections still run fresh each call because zombie/severity are
-// time-dependent. Per-source read failures (checklog / act) are skipped non-fatally —
-// one broken source must not blank the whole panel; ListTaskStates errors propagate
-// (→ HTTP 500). Empty data returns an empty non-nil slice so JSON serializes [] rather
-// than null.
+// AggregateFeed merges all event sources across the projects in scope into one time-descending stream, then applies the query filters (project / taskRef / since / limit).
 //
 // AggregateFeed 把范围内各项目的全部事件源归并成一条时间降序流，再应用查询过滤
 // （project / taskRef / since / limit）。源数据来自 sharedPulseCache（指纹门控——
@@ -181,9 +143,6 @@ func AggregateFeed(opts Options, now time.Time, q FeedQuery) (FeedResult, error)
 	if !q.Since.IsZero() {
 		events = slices.DeleteFunc(events, func(e FeedEvent) bool { return !e.Time.After(q.Since) })
 	}
-	// Most recent first; stable so same-time events keep source order (task-start before
-	// its gates before the conclusion).
-	//
 	// 最近在前；稳定排序使同刻事件保持来源序（task-start 先于其 gate 先于结论）。
 	slices.SortStableFunc(events, func(a, b FeedEvent) int {
 		return b.Time.Compare(a.Time)
@@ -199,8 +158,6 @@ func AggregateFeed(opts Options, now time.Time, q FeedQuery) (FeedResult, error)
 	return FeedResult{Events: events, Truncated: truncated}, nil
 }
 
-// feedForProject projects the cached sources of one project into events.
-//
 // feedForProject 把单项目的缓存源投影成事件。
 func feedForProject(pr pulseRoot, d *projectData, now time.Time) []FeedEvent {
 	var events []FeedEvent
@@ -238,12 +195,6 @@ func feedForProject(pr pulseRoot, d *projectData, now time.Time) []FeedEvent {
 	return events
 }
 
-// sigVerifyEvent projects a bundle-verify checklog entry (import-side trust verdict,
-// node-identity §3) into the stream: severity derives from the entry's EffectiveLevel
-// (never re-judged here), and the title is built from the STRUCTURED Meta keys
-// (verdict + signer) — never regex-parsed from Detail prose (the skill-fold lesson:
-// prose wording is free to change, Meta keys are the contract).
-//
 // sigVerifyEvent 把 bundle-verify checklog 条目（导入侧信任判定，node-identity §3）
 // 投影进流：severity 取自条目 EffectiveLevel（此处不二次裁断），标题由结构化
 // Meta 键（verdict + signer）构造——绝不从 Detail 散文正则反解（skill 折叠卡的
@@ -277,10 +228,6 @@ func sigVerifyEvent(pr pulseRoot, e checklog.Entry) FeedEvent {
 	}
 }
 
-// levelSeverity maps a checklog Level onto a feed severity (pass→ok, warn→warn,
-// fail/blocked→fail, advisory→info); unknown/empty stays info — severity never
-// escalates by default.
-//
 // levelSeverity 把 checklog Level 映射成 feed severity（pass→ok、warn→warn、
 // fail/blocked→fail、advisory→info）；未知/空保持 info——默认绝不升级。
 func levelSeverity(l checklog.Level) string {
@@ -296,11 +243,6 @@ func levelSeverity(l checklog.Level) string {
 	}
 }
 
-// syncOutcomeEvent projects a project-sync checklog entry (git-transport op outcome)
-// into the stream: title from the STRUCTURED Meta op + pass/fail, severity from
-// EffectiveLevel — the same contract discipline as sigVerifyEvent (Meta keys are the
-// contract, Detail prose is display-only).
-//
 // syncOutcomeEvent 把 project-sync checklog 条目（git 通道同步操作结果）投影进流：
 // 标题由结构化 Meta 操作名 + 成败构造，severity 取 EffectiveLevel——与
 // sigVerifyEvent 同款契约纪律（Meta 键是契约，Detail 散文仅供展示）。
@@ -321,10 +263,6 @@ func syncOutcomeEvent(pr pulseRoot, e checklog.Entry) FeedEvent {
 	}
 }
 
-// taskStartEvent projects TaskState.StartedAt into a task-start event: in-progress tasks
-// are info (title carries origin tool + gate progress), zombies escalate to warn with the
-// stall duration in the title, completed tasks are ok.
-//
 // taskStartEvent 把 TaskState.StartedAt 投影成 task-start 事件：进行中为 info（标题带
 // origin tool + gate 进度），僵尸升级为 warn 且标题标注停滞时长，已完成为 ok。
 func taskStartEvent(pr pulseRoot, s *taskpipeline.TaskState, now time.Time) FeedEvent {
@@ -356,9 +294,6 @@ func taskStartEvent(pr pulseRoot, s *taskpipeline.TaskState, now time.Time) Feed
 	return ev
 }
 
-// stallAge returns the longest measured stall among the zombie checks (0 when the signal
-// is repeat-abandon, which carries no timestamp).
-//
 // stallAge 返回各僵尸检查中量到的最长停滞时长（反复回收类信号无时间戳时为 0）。
 func stallAge(root string, s *taskpipeline.TaskState, now time.Time) time.Duration {
 	var age time.Duration
@@ -377,8 +312,6 @@ func stallAge(root string, s *taskpipeline.TaskState, now time.Time) time.Durati
 	return age
 }
 
-// formatStallAge renders a stall duration compactly (8d / 3h / 45m).
-//
 // formatStallAge 把停滞时长紧凑渲染（8d / 3h / 45m）。
 func formatStallAge(d time.Duration) string {
 	switch {
@@ -391,10 +324,6 @@ func formatStallAge(d time.Duration) string {
 	}
 }
 
-// gateEvents projects each History entry into a gate event: pass→ok / fail→fail, the gate
-// id stripped of the task- prefix (implement/verify/complete), HeadCommit shortened, and a
-// retry note in Detail when the same gate was attempted before.
-//
 // gateEvents 把每条 History 投影成 gate 事件：过→ok / 败→fail，gate id 剥掉 task-
 // 前缀（implement/verify/complete），HeadCommit 截短，同 gate 有前次尝试时 Detail 带
 // retry 信息。
@@ -431,8 +360,6 @@ func gateVerdict(passed bool) string {
 	return "失败"
 }
 
-// shortCommit trims a full hash to the conventional 7-char short form.
-//
 // shortCommit 把完整哈希截成惯例的 7 位短形式。
 func shortCommit(h string) string {
 	if len(h) > 7 {
@@ -441,9 +368,6 @@ func shortCommit(h string) string {
 	return h
 }
 
-// conclusionEvent projects an act conclusion: severity maps from grade (A/B→ok, C→info,
-// D→warn, F→fail), Detail carries evidence strength + det/claim counts + acceptance x/y.
-//
 // conclusionEvent 投影 act 结论：severity 按 grade 映射（A/B→ok、C→info、D→warn、
 // F→fail），Detail 带证据强度 + det/claim 数 + 验收 x/y。
 func conclusionEvent(pr pulseRoot, c act.Conclusion) FeedEvent {
@@ -459,8 +383,6 @@ func conclusionEvent(pr pulseRoot, c act.Conclusion) FeedEvent {
 	}
 }
 
-// gradeSeverity maps a letter grade to a feed severity; unknown/empty grades stay info.
-//
 // gradeSeverity 把字母 grade 映射成 feed severity；未知/空 grade 保持 info。
 func gradeSeverity(grade string) string {
 	switch grade {

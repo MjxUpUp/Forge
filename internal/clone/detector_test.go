@@ -88,9 +88,6 @@ func TestDetectClonesSelfExcluded(t *testing.T) {
 
 func TestDetectClonesDissimilar(t *testing.T) {
 	dir := t.TempDir()
-	// Both files need >= minTokens (10) tokens, otherwise DetectClones errors out on the
-	// target before comparing.
-	//
 	// 两个文件都需 >= minTokens（10）个 token，否则 DetectClones 在比对前就对目标报错。
 	os.WriteFile(filepath.Join(dir, "a.go"), []byte("package p\nfunc uniqueA() { return 1 }\nfunc extraA() {}\n"), 0644)
 	os.WriteFile(filepath.Join(dir, "b.go"), []byte("package p\nfunc uniqueB() { return 2 }\nfunc extra() {}\n"), 0644)
@@ -104,17 +101,13 @@ func TestDetectClonesDissimilar(t *testing.T) {
 	}
 }
 
-// TestDetectClonesTargetTooFewTokens: a target with fewer than minTokens tokens must return an
-// explicit error — not (nil, nil), which callers would read as "scan complete, no clones" when
-// in fact nothing was scanned.
+// TestDetectClonesTargetTooFewTokens: a target with fewer than minTokens tokens must return an explicit error — not (nil, nil), which callers would read as "scan complete, no clones" when in fact nothing was scanned.
 //
 // TestDetectClonesTargetTooFewTokens：目标文件 token 数少于 minTokens 必须返回显式错误
 // ——而非 (nil, nil)，否则调用方会把"什么都没扫"误读成"扫描完成无克隆"。
 func TestDetectClonesTargetTooFewTokens(t *testing.T) {
 	dir := t.TempDir()
 	small := filepath.Join(dir, "small.go")
-	// 8 tokens: package p func tiny() { return 1 }
-	//
 	// 8 个 token：package p func tiny() { return 1 }
 	os.WriteFile(small, []byte("package p\nfunc tiny() { return 1 }\n"), 0644)
 
@@ -127,9 +120,7 @@ func TestDetectClonesTargetTooFewTokens(t *testing.T) {
 	}
 }
 
-// TestDetectClonesWalkError: a missing/unreadable scan directory must surface as an error —
-// previously filepath.Walk's return value was discarded and the root error was skipped by the
-// callback, yielding (nil, nil).
+// TestDetectClonesWalkError: a missing/unreadable scan directory must surface as an error — previously filepath.Walk's return value was discarded and the root error was skipped by the callback, yielding (nil, nil).
 //
 // TestDetectClonesWalkError：目录不存在/不可读必须以错误形式上抛——此前 filepath.Walk 的
 // 返回值被丢弃、根目录错误被回调跳过，产出 (nil, nil)。

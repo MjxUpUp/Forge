@@ -1,12 +1,5 @@
 package cli
 
-// skills_mutex_test.go — CLI-surface tests for the mutex family: mutex-gen (edges +
-// cases persisted + summary), mutex-record (pass/fail judgment, unknown skip, all-unknown
-// error), mutex-report (confusion matrix JSON + --gate exit 4 with BLOCKED on stderr via
-// subprocess). Follows the runXxx(nil,nil) + captureStdout pattern of
-// skills_eval_loop_test.go; the gate contract is asserted via runForgeStreams like
-// TestSkillsBattery_ReportAndGate.
-//
 // skills_mutex_test.go — 互斥命令族的 CLI 面测试：mutex-gen（边 + case 落盘 + 摘要）、
 // mutex-record（pass/fail 判定、未知跳过、全未知报错）、mutex-report（混淆矩阵 JSON +
 // 子进程验证 --gate exit 4 且 BLOCKED 在 stderr）。照 skills_eval_loop_test.go 的
@@ -23,10 +16,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/skillseval"
 )
 
-// mutexCLISetup builds a two-skill canonical (skill-a declares a handoff to skill-b),
-// isolates canonical + eval dir, and resets the CLI flags on cleanup. Returns the eval
-// dir so tests can read the persisted artifacts directly.
-//
 // mutexCLISetup 造双 skill canonical（skill-a 声明让渡给 skill-b），隔离 canonical
 // 与 eval 目录，cleanup 时复位 CLI flag。返回 eval 目录供测试直接读落盘产物。
 func mutexCLISetup(t *testing.T) string {
@@ -44,8 +33,6 @@ func mutexCLISetup(t *testing.T) string {
 	return dir
 }
 
-// mutexCLIGen runs mutex-gen in-process and returns the derived cases.
-//
 // mutexCLIGen 进程内跑一次 mutex-gen，返回派生的 case 集。
 func mutexCLIGen(t *testing.T, dir string) []skillseval.MutexCase {
 	t.Helper()
@@ -78,8 +65,6 @@ func TestRunSkillsMutexRecord_Judgment(t *testing.T) {
 	dir := mutexCLISetup(t)
 	cases := mutexCLIGen(t, dir)
 
-	// First case routed correctly, second routed back to the handoff declarer (confusion).
-	//
 	// 第一条路由正确，第二条路由回让渡声明方（混淆）。
 	raw := []skillseval.SubmitResult{
 		{CaseID: cases[0].ID, ActualTriggered: "skill-b"},
@@ -110,8 +95,6 @@ func TestRunSkillsMutexRecord_Judgment(t *testing.T) {
 		t.Fatalf("run 未落盘: %v, %v", latest, err)
 	}
 
-	// All-unknown → explicit error (SubmitRun semantics).
-	//
 	// 全未知 → 显式报错（SubmitRun 语义）。
 	bad, _ := json.Marshal([]skillseval.SubmitResult{{CaseID: "nope", ActualTriggered: "x"}})
 	badFrom := filepath.Join(t.TempDir(), "bad.json")
@@ -124,10 +107,6 @@ func TestRunSkillsMutexRecord_Judgment(t *testing.T) {
 	}
 }
 
-// TestRunSkillsMutexReport_GateContract: a run containing a confusion row → JSON report
-// GateBlocked=true; --gate via subprocess exits 4 with BLOCKED on STDERR and pure JSON on
-// stdout; a clean run keeps --gate at exit 0.
-//
 // TestRunSkillsMutexReport_GateContract：含混淆行的 run → JSON 报告 GateBlocked=true；
 // 子进程 --gate exit 4 且 BLOCKED 在 STDERR、stdout 保持纯 JSON；干净 run 的 --gate
 // 保持 exit 0。
@@ -135,8 +114,6 @@ func TestRunSkillsMutexReport_GateContract(t *testing.T) {
 	dir := mutexCLISetup(t)
 	cases := mutexCLIGen(t, dir)
 
-	// Record a run where every case routed to the handoff declarer (all confusion rows).
-	//
 	// 回填一个全部路由回让渡声明方的 run（全是混淆行）。
 	raw := make([]skillseval.SubmitResult, 0, len(cases))
 	for _, c := range cases {
@@ -155,8 +132,6 @@ func TestRunSkillsMutexReport_GateContract(t *testing.T) {
 	skMRecFrom = "-"
 	skMRecVer = ""
 
-	// In-process JSON report: GateBlocked=true.
-	//
 	// 进程内 JSON 报告：GateBlocked=true。
 	skMRepJSON = true
 	var repErr error
@@ -173,9 +148,6 @@ func TestRunSkillsMutexReport_GateContract(t *testing.T) {
 		t.Fatalf("应 GateBlocked=true 且有混淆行: %+v", m)
 	}
 
-	// Subprocess gate contract: exit 4 + BLOCKED on stderr + stdout stays parseable.
-	// --dir is passed explicitly (the subprocess cannot see the in-process flag var).
-	//
 	// 子进程门禁契约：exit 4 + BLOCKED 在 stderr + stdout 仍可解析。显式传 --dir
 	// （子进程看不到进程内 flag 变量）。
 	gateOut, gateErr, code := runForgeStreams(t, t.TempDir(),
@@ -194,8 +166,6 @@ func TestRunSkillsMutexReport_GateContract(t *testing.T) {
 		t.Fatal("gate 报告应 GateBlocked=true")
 	}
 
-	// Clean run (all routed to Positive) → --gate stays exit 0.
-	//
 	// 干净 run（全路由到 Positive）→ --gate 保持 exit 0。
 	clean := make([]skillseval.SubmitResult, 0, len(cases))
 	for _, c := range cases {

@@ -1,8 +1,3 @@
-// pulse.go — HTTP layer of the pulse panel: seven read-only JSON endpoints mounted on the
-// existing mux (same Host-check / security-header middleware as the rest of the dashboard).
-// All aggregation lives in feed.go / skillsview.go; this file only parses query params,
-// shapes payloads, and reuses the existing error style (log full error, reply neutral).
-//
 // pulse.go —— pulse 面板的 HTTP 层：七个只读 JSON 端点挂在现有 mux 上（与看板其余路由
 // 共用 Host 校验 / 安全头中间件）。聚合全在 feed.go / skillsview.go；本文件只解析
 // query 参数、组装载荷、沿用现有错误风格（记完整日志、回中性文案）。
@@ -29,16 +24,11 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
-// errInvalidSkillName reports a rejected skill name query param (path-traversal guard).
-//
 // errInvalidSkillName 报告被拒的 skill 名 query 参数（路径遍历防护）。
 func errInvalidSkillName(name string) error {
 	return fmt.Errorf("invalid skill name %q", name)
 }
 
-// registerPulseRoutes mounts the seven pulse JSON endpoints on mux. Extracted from newMux
-// for the same reason newMux exists (httptest mounts it directly).
-//
 // registerPulseRoutes 把七个 pulse JSON 端点挂到 mux。从 newMux 抽出，理由同 newMux
 // 本身（httptest 直接挂载）。
 func registerPulseRoutes(mux *http.ServeMux, opts Options) {
@@ -147,11 +137,6 @@ func registerPulseRoutes(mux *http.ServeMux, opts Options) {
 		})
 	})
 
-	// quality.json: the 触发质量 tab's single endpoint. The tab used to fetch skills.json
-	// plus one skill.json per skill (N+1 requests, permanently cached client-side); this
-	// endpoint aggregates the per-skill triggerQuality + compare server-side in one call
-	// (cheap — LoadSkillDetail reads through the fingerprint-gated cache).
-	//
 	// quality.json：触发质量 tab 的单一端点。该 tab 此前要拉 skills.json 再逐 skill 拉
 	// skill.json（N+1 请求，且客户端永久缓存不过期）；本端点在服务端一次聚合各 skill
 	// 的 triggerQuality + compare（便宜——LoadSkillDetail 走指纹门控缓存）。
@@ -168,11 +153,6 @@ func registerPulseRoutes(mux *http.ServeMux, opts Options) {
 	})
 }
 
-// resolvePulseTaskRoot picks the project a task.json query targets: the project filter
-// (key or name) when given, the single in-scope project otherwise. Multiple projects in
-// scope without a filter is ambiguous — the first root is NOT silently picked; ok=false
-// tells the handler to 404.
-//
 // resolvePulseTaskRoot 选定 task.json 查询的目标项目：给了 project 过滤（key 或名）按
 // 过滤选，否则取范围内唯一项目。多项目在scope而未给过滤是歧义——不静默取第一个，
 // ok=false 让 handler 回 404。
@@ -192,17 +172,12 @@ func resolvePulseTaskRoot(opts Options, projectFilter string) (pulseRoot, bool) 
 	return pulseRoot{}, false
 }
 
-// pulseGateProgress is the gate x/y of a task.
-//
 // pulseGateProgress 是任务的 gate x/y。
 type pulseGateProgress struct {
 	Passed int `json:"passed"`
 	Total  int `json:"total"`
 }
 
-// pulseTaskState is the state block of task.json (no SessionID — never serialize session
-// identifiers to the panel).
-//
 // pulseTaskState 是 task.json 的 state 块（无 SessionID——绝不向面板序列化 session 标识）。
 type pulseTaskState struct {
 	CurrentGate  string            `json:"currentGate"`
@@ -210,20 +185,12 @@ type pulseTaskState struct {
 	OriginTool   string            `json:"originTool,omitempty"`
 	Zombie       bool              `json:"zombie"`
 	GateProgress pulseGateProgress `json:"gateProgress"`
-	// Lease is the cross-machine claim projection (task-lease, sync-convergence §4):
-	// who holds it, whether the hold is live at request time, when it lapses. nil on
-	// pre-multi-machine tasks (never claimed) — same omitempty discipline as
-	// FeedEvent.Node.
-	//
 	// Lease 是跨机器认领的投影（task-lease，sync-convergence §4）：谁持有、请求时点
 	// 是否仍有效、何时过期。多机器前的任务为 nil（从未认领）——与 FeedEvent.Node
 	// 同一条 omitempty 纪律。
 	Lease *pulseLease `json:"lease,omitempty"`
 }
 
-// pulseLease is the state-block projection of taskpipeline.Lease. Active derives from
-// the single "expiry means free" rule (Lease.ActiveAt) — never re-derived here.
-//
 // pulseLease 是 taskpipeline.Lease 的 state 块投影。Active 派生自「过期即自由」的
 // 唯一规则（Lease.ActiveAt）——此处不另造判定。
 type pulseLease struct {
@@ -234,8 +201,6 @@ type pulseLease struct {
 	TTLSec     int64     `json:"ttlSec"`
 }
 
-// pulseDimension is one scoring dimension with its configured weight.
-//
 // pulseDimension 是一个评分维度及其配置权重。
 type pulseDimension struct {
 	Name   string  `json:"name"`
@@ -244,8 +209,6 @@ type pulseDimension struct {
 	Detail string  `json:"detail"`
 }
 
-// pulseEvidence is the evidence-source distribution of a score.
-//
 // pulseEvidence 是评分的证据来源分布。
 type pulseEvidence struct {
 	Deterministic int     `json:"deterministic"`
@@ -254,11 +217,6 @@ type pulseEvidence struct {
 	Strength      string  `json:"strength,omitempty"`
 }
 
-// pulseScore is the score block of task.json (nil when the task was never scored and no
-// conclusion exists to backfill from). FromConclusion marks a degraded block backfilled
-// from the latest act conclusion (legacy tasks whose TaskState.Score was never persisted)
-// — dimensions are empty in that shape and the frontend says so instead of faking bars.
-//
 // pulseScore 是 task.json 的 score 块（任务未评分且无结论可回填时为 nil）。
 // FromConclusion 标记从最新 act 结论回填的降级块（存量任务的 TaskState.Score 从未落盘）
 // ——该形态 dimensions 为空，前端如实标注而不是伪造维度条。
@@ -271,18 +229,12 @@ type pulseScore struct {
 	FromConclusion bool             `json:"fromConclusion,omitempty"`
 }
 
-// pulseAcceptance is the verify-acceptance x/y.
-//
 // pulseAcceptance 是 verify-acceptance 的 x/y。
 type pulseAcceptance struct {
 	Pass  int `json:"pass"`
 	Total int `json:"total"`
 }
 
-// pulseTaskResponse is the /api/pulse/task.json payload. Truncated mirrors feed.json's
-// contract: the task event stream shares AggregateFeed's default limit, so a long task's
-// transcript is capped — without the flag the detail page would silently pose as complete.
-//
 // pulseTaskResponse 是 /api/pulse/task.json 载荷。Truncated 对齐 feed.json 契约：
 // 任务事件流共用 AggregateFeed 的默认上限，长任务的 transcript 会被截断——不带该
 // 标记详情页会静默冒充完整序列。
@@ -294,19 +246,11 @@ type pulseTaskResponse struct {
 	Truncated  bool            `json:"truncated"` // events 被默认上限截断（最早事件不可达）
 	Score      *pulseScore     `json:"score"`
 	Acceptance pulseAcceptance `json:"acceptance"`
-	// DocReview is the L2 re-check evidence of the output→re-check loop (doc gate).
-	// nil when the task has no recorded doc review — the frontend renders the block
-	// only on presence, so "not reviewed" never poses as a fake zero-score block.
-	//
 	// DocReview 是输出→回检循环的 L2 回检证据（doc gate）。任务无回检记录时为
 	// nil——前端仅在存在时渲染该块，「未回检」绝不伪装成全零评分块。
 	DocReview *pulseDocReview `json:"docReview,omitempty"`
 }
 
-// pulseDocReview is the panel projection of taskpipeline.DocReview: latest verdict +
-// rubric score + round, plus the retained round count (convergence across rounds is
-// the observable signal of the loop).
-//
 // pulseDocReview 是 taskpipeline.DocReview 的面板投影：最新判定 + rubric 分 + 轮次，
 // 外加累计轮数（跨轮收敛趋势是回检循环的可观测信号）。
 type pulseDocReview struct {
@@ -319,13 +263,6 @@ type pulseDocReview struct {
 	ReviewedAt *time.Time `json:"reviewedAt,omitempty"`
 }
 
-// buildPulseTask assembles the task.json payload: the state projection (zombie computed
-// via the shared taskpipeline.IsZombie), the task-scoped event stream (reusing
-// AggregateFeed's TaskRef filter), the score block from TaskState.Score (backfilled from
-// the latest act conclusion for legacy tasks), and acceptance + evidence strength joined
-// from that conclusion. A feed aggregation error is returned, not swallowed — the handler
-// turns it into a 500, same semantics as feed.json.
-//
 // buildPulseTask 组装 task.json 载荷：状态投影（僵尸经共享 taskpipeline.IsZombie 计算）、
 // 任务级事件流（复用 AggregateFeed 的 TaskRef 过滤）、来自 TaskState.Score 的评分块
 // （存量任务从最新 act 结论回填），以及 join 自该结论的验收 + 证据强度。事件流归并
@@ -377,10 +314,6 @@ func buildPulseTask(opts Options, pr pulseRoot, state *taskpipeline.TaskState, n
 		resp.Score = toPulseScore(state.Score)
 	}
 
-	// Acceptance + evidence strength: prefer the latest act conclusion (it has both);
-	// fall back to the live Acceptance slice when no conclusion exists yet. Conclusions
-	// come from the fingerprint-gated cache, not a fresh act.LoadAll.
-	//
 	// 验收 + 证据强度：优先最新 act 结论（两者都有）；尚无结论时退化用现活的
 	// Acceptance 切片。结论取自指纹门控缓存，不再现读 act.LoadAll。
 	if d, err := sharedPulseCache.projectData(pr); err == nil {
@@ -389,11 +322,6 @@ func buildPulseTask(opts Options, pr pulseRoot, state *taskpipeline.TaskState, n
 				continue
 			}
 			resp.Acceptance = pulseAcceptance{Pass: d.conclusions[i].AcceptancePass, Total: d.conclusions[i].AcceptanceTotal}
-			// Legacy tasks: the conclusion exists but TaskState.Score was never persisted
-			// (Score sank into TaskState later; cli/act_rebuild.go handles the same shape).
-			// Backfill a degraded score block so the detail page does not contradict its
-			// own conclusion event.
-			//
 			// 存量任务：结论在但 TaskState.Score 从未落盘（Score 字段后下沉；
 			// cli/act_rebuild.go 处理同一形态）。回填降级评分块，避免详情页与自己的
 			// conclusion 事件自相矛盾。
@@ -419,16 +347,6 @@ func buildPulseTask(opts Options, pr pulseRoot, state *taskpipeline.TaskState, n
 				// 守卫只看 det+claim：Strength 不能当信号——BuildConclusion 永写
 				// ec.Strength().String()，零证据结论的 Strength 是非空 "NoData"，
 				// 判空恒假（曾有的 `Strength != ""` 析取项让本 skip 路径生产不可达）。
-				//
-				// Score exists but Evidence is nil (scored with zero evidence input —
-				// buildEvidenceSummary legitimately returns nil): backfill the whole block
-				// from the conclusion, or the detail page contradicts its own conclusion
-				// event. Skip when the conclusion carries no evidence either (a zero block
-				// would be fabricated; null lets the frontend say "no evidence" honestly).
-				// Guard on det+claim only: Strength is never a signal — BuildConclusion
-				// always writes ec.Strength().String(), so a zero-evidence conclusion
-				// carries the NON-empty "NoData" and an emptiness test is always false
-				// (a former `Strength != ""` disjunct made this skip path unreachable).
 				resp.Score.Evidence = &pulseEvidence{
 					Deterministic: d.conclusions[i].Deterministic,
 					AgentClaim:    d.conclusions[i].AgentClaim,
@@ -451,10 +369,6 @@ func buildPulseTask(opts Options, pr pulseRoot, state *taskpipeline.TaskState, n
 		resp.Acceptance = pulseAcceptance{Pass: pass, Total: len(state.Acceptance)}
 	}
 
-	// Doc gate evidence: latest verdict + the retained round count (history rounds +
-	// the current one). nil DocReview → block absent, never a fabricated zero.
-	// RoundsTotal is clamped to ≥ Round: an explicit --round skip (legal override) or
-	// history truncation would otherwise let the panel contradict itself
 	// ("第 5 轮 · 累计 2 轮").
 	//
 	// Doc gate 证据：最新判定 + 累计轮数（历史轮 + 当前轮）。DocReview 为 nil →
@@ -480,9 +394,6 @@ func buildPulseTask(opts Options, pr pulseRoot, state *taskpipeline.TaskState, n
 	return resp, nil
 }
 
-// toPulseScore projects scoringtypes.ScoreResult into the wire shape, attaching the
-// configured weight per dimension (from scoringtypes.DefaultWeights).
-//
 // toPulseScore 把 scoringtypes.ScoreResult 投影成线上形状，维度带上配置权重
 // （取自 scoringtypes.DefaultWeights）。
 func toPulseScore(s *scoringtypes.ScoreResult) *pulseScore {
@@ -519,8 +430,6 @@ func firstNonEmpty(a, b string) string {
 	return b
 }
 
-// pulseProject is one row of /api/pulse/projects.json.
-//
 // pulseProject 是 /api/pulse/projects.json 的一行。
 type pulseProject struct {
 	Key         string   `json:"key"`
@@ -529,18 +438,11 @@ type pulseProject struct {
 	Zombies     int      `json:"zombies"`
 	LastGrade   string   `json:"lastGrade,omitempty"`
 	LastScore   *float64 `json:"lastScore"` // 无结论时 null
-	// Sync is the machine-local git-sync binding + last-op stamps (sync Phase 1).
-	// nil when sync is not initialized (or the file is unreadable) — omitempty keeps
-	// the unbound wire shape unchanged.
-	//
 	// Sync 是机器本地的 git 同步绑定 + 最近操作戳（sync Phase 1）。未初始化（或
 	// 文件不可读）时为 nil——omitempty 保持未绑定项目的线上结构不变。
 	Sync *pulseSync `json:"sync,omitempty"`
 }
 
-// pulseSync is the panel projection of DataDir/sync-remote.json (machine-local,
-// never travels in bundles).
-//
 // pulseSync 是 DataDir/sync-remote.json 的面板投影（机器本地，永不随 bundle 旅行）。
 type pulseSync struct {
 	Remote     string `json:"remote"`
@@ -549,12 +451,6 @@ type pulseSync struct {
 	LastPullAt string `json:"lastPullAt,omitempty"`
 }
 
-// loadPulseSync reads sync-remote.json FRESH per request rather than through the
-// fingerprint cache: the file is tiny, polls are 30s apart, and it is deliberately
-// outside the cache fingerprint set — adding it would entangle cache invalidation
-// for near-zero gain. Unbound or unreadable → nil (the CLI's `sync status` surfaces
-// corruption loudly; the panel omits the block rather than fabricating one).
-//
 // loadPulseSync 每请求直读 sync-remote.json，不走指纹缓存：文件极小、轮询 30 秒
 // 一次，且它刻意不在缓存指纹集里——把它加进去是用缓存失效复杂度换近乎零收益。
 // 未绑定或不可读 → nil（CLI 的 `sync status` 会响亮暴露损坏；面板省略该块而非
@@ -579,11 +475,6 @@ func loadPulseSync(root string) *pulseSync {
 	}
 }
 
-// aggregatePulseProjects lists every project in scope with its active/zombie counts and
-// latest conclusion. Per-project read failures degrade to zero rows for that project
-// (non-fatal skip — one broken project must not blank the panel). Source data comes from
-// the fingerprint-gated cache.
-//
 // aggregatePulseProjects 列出范围内每个项目的活跃/僵尸计数与最新结论。单项目读失败
 // 降级为该项目的零值行（不致命跳过——一个坏项目不应让整面板空白）。源数据取自
 // 指纹门控缓存。
@@ -614,9 +505,6 @@ func aggregatePulseProjects(opts Options, now time.Time) []pulseProject {
 	return rows
 }
 
-// latestConclusion returns the most recent conclusion, or nil (conclusions are
-// time-ordered from act.LoadAll).
-//
 // latestConclusion 返回最近一条结论，无则 nil（结论自 act.LoadAll 起即按时间序）。
 func latestConclusion(cs []act.Conclusion) *act.Conclusion {
 	if len(cs) == 0 {
@@ -625,9 +513,6 @@ func latestConclusion(cs []act.Conclusion) *act.Conclusion {
 	return &cs[len(cs)-1]
 }
 
-// pulseStats is the /api/pulse/stats.json payload. Numeric aggregates are pointers so
-// "no data" is null, never a fabricated 0.
-//
 // pulseStats 是 /api/pulse/stats.json 载荷。数值聚合用指针，「无数据」是 null，
 // 绝不编造 0。
 type pulseStats struct {
@@ -642,11 +527,6 @@ type pulseStats struct {
 	EvidenceBlindRate *float64 `json:"evidenceBlindRate"`
 }
 
-// aggregatePulseStats merges conclusions across the scope and reuses health.SummarizeAt
-// for avg/median/trend/blind-rate (single truth with the quality dashboard); alerts =
-// zombie tasks + windowed retrospective nudges (NudgeRecent, 14d — see
-// health.NudgeRecentWindow). Source data comes from the fingerprint-gated cache.
-//
 // aggregatePulseStats 跨范围合并结论，复用 health.SummarizeAt 算均分/中位/趋势/盲区率
 // （与质量看板单一真相）；alerts = 僵尸任务数 + 窗口化回顾结论数（NudgeRecent，14 天
 // ——见 health.NudgeRecentWindow）。源数据取自指纹门控缓存。
@@ -674,11 +554,6 @@ func aggregatePulseStats(opts Options, now time.Time) pulseStats {
 	if len(cs) == 0 {
 		return stats
 	}
-	// Windowed summary (2026-08 alarm-fatigue calibration): the alert-facing Nudges uses
-	// NudgeRecent (14-day window) instead of the all-history NudgeCount — stale nudges
-	// (session long closed, no ack mechanism existed) must stop lighting the panel red
-	// forever. The full count stays in health/query surfaces for trend analysis.
-	//
 	// 窗口化 summary（2026-08 告警疲劳校准）：面向告警的 Nudges 用 NudgeRecent
 	//（14 天窗口）而非全量 NudgeCount——陈旧 nudge（session 早已关闭、历史上无 ack
 	// 机制）不得把面板红灯永远挂着。全量计数仍留在 health/查询面供趋势分析。
@@ -697,12 +572,6 @@ func aggregatePulseStats(opts Options, now time.Time) pulseStats {
 	return stats
 }
 
-// pulseCanonicalDir resolves the canonical skill dir READ-ONLY: the FORGE_SKILLS_CANONICAL
-// override, or an already-extracted embed cache (path from skillscanonical.EmbeddedCacheDir —
-// single truth source). It deliberately does NOT call skillscanonical.Resolve — that would
-// extract the embedded library to disk on first use, violating the dashboard's read-only
-// red line. "" = canonical unavailable (the overview degrades to the observed skill set).
-//
 // pulseCanonicalDir 只读地解析 canonical skill 目录：FORGE_SKILLS_CANONICAL 覆盖，或
 // 已解压的 embed 缓存（路径取自 skillscanonical.EmbeddedCacheDir——单一真相源）。
 // 刻意不调 skillscanonical.Resolve——首次使用它会把内置库解压落盘，违反看板只读
@@ -724,10 +593,6 @@ func pulseCanonicalDir() string {
 	return ""
 }
 
-// pulseEvalDir resolves the skillseval eval dir (default ~/.forge/evals — see
-// skillseval/dir.go for the resolution chain and one-time legacy migration). A resolution
-// error degrades to "" = no eval data.
-//
 // pulseEvalDir 解析 skillseval eval 目录（默认 ~/.forge/evals——解析链与一次性旧路径
 // 迁移见 skillseval/dir.go）。解析失败降级为 "" = 无 eval 数据。
 func pulseEvalDir() string {

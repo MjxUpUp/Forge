@@ -2,12 +2,6 @@ package taskpipeline
 
 import "testing"
 
-// TestHasSession_IgnoresImportedGhosts is the core cross-machine-import invariant: an imported
-// ghost link (SessionLink.Imported=true, carried in from another machine) must NOT count as a local
-// anchor. HasSession — the attach predicate — returns false for a ghost sid so attach is never
-// short-circuited; HasAnySession — the full-provenance predicate — still sees it so re-import can
-// de-dup. See SessionLink.Imported for the ghost semantics.
-//
 // TestHasSession_IgnoresImportedGhosts 是跨机器 import 的核心不变量：导入的幽灵链接
 // （SessionLink.Imported=true，从另一台机器带入）绝不能算作本机锚点。HasSession（attach 判定谓词）
 // 对幽灵 sid 返 false 使 attach 永不被误跳过；HasAnySession（完整溯源谓词）仍看到它使重复 import
@@ -24,10 +18,6 @@ func TestHasSession_IgnoresImportedGhosts(t *testing.T) {
 	}
 }
 
-// TestHasSession_LocalLinkStillSeen: a LOCAL link (Imported=false) is seen by HasSession; mixing
-// local + ghost in one task does not blind the local one. The ghost is ignored, the local anchor
-// stands — exactly the attach path's expectation.
-//
 // TestHasSession_LocalLinkStillSeen：本机链接（Imported=false）被 HasSession 看到；同一 task 混合
 // 本机 + 幽灵不会致盲本机那条。幽灵被忽略、本机锚点成立——正是 attach 路径所期望的。
 func TestHasSession_LocalLinkStillSeen(t *testing.T) {
@@ -43,12 +33,6 @@ func TestHasSession_LocalLinkStillSeen(t *testing.T) {
 	}
 }
 
-// TestAddSession_DoesNotDedupAgainstGhost is the ghost-defeat regression: a task with an imported
-// ghost whose sid is X — when the LOCAL machine's session also happens to be sid X (cross-machine
-// collision) — AddSession must STILL record a fresh local link, NOT swallow it as a dup of the
-// ghost. Without this, the local session would be silently un-anchored (HasSession false, no link
-// added) on a collision, breaking multi-directional anchoring precisely where it matters.
-//
 // TestAddSession_DoesNotDedupAgainstGhost 是「击败幽灵」回归：task 有一个导入幽灵 sid=X——当本机
 // session 也恰好是 sid X（跨机器碰撞）时——AddSession 仍须记下一条全新本机链接，而非把它当幽灵的
 // 重复吞掉。否则碰撞下本机 session 被静默取消锚定（HasSession 假、链接没加），恰在最该锚定处破坏
@@ -73,10 +57,6 @@ func TestAddSession_DoesNotDedupAgainstGhost(t *testing.T) {
 	}
 }
 
-// TestAddSession_LocalDedupStillWorks: two LOCAL AddSession of the same sid collapse to one local
-// link — the original dedup contract is preserved for non-ghost links (the ghost change only relaxes
-// dedup to ignore imported links, it does not weaken local dedup).
-//
 // TestAddSession_LocalDedupStillWorks：同 sid 的两次本机 AddSession 折叠成一条本机链接——原去重契约
 // 对非幽灵链接保留（幽灵改动只是放松去重以忽略导入链接，不削弱本机去重）。
 func TestAddSession_LocalDedupStillWorks(t *testing.T) {

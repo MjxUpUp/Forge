@@ -8,10 +8,6 @@ import (
 	"time"
 )
 
-// TestHarnessOnboarding_StateMachineAndCooldown pins T7 (multi-task-concurrency §13):
-// uninitialized → offered (counted, cooldown'd — same-day second touch silent) →
-// initialized/linked via MarkHarnessInitialized; offer cap stops nagging for good.
-//
 // TestHarnessOnboarding_StateMachineAndCooldown 钉住 T7（multi-task-concurrency §13）：
 // uninitialized → offered（计数 + cooldown——同日第二次触点静默）→ 经
 // MarkHarnessInitialized 进入 initialized/linked；提示上限后永久静默。

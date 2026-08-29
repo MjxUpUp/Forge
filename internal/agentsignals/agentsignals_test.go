@@ -8,12 +8,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/agentsignals"
 )
 
-// TestProjectAgentMarker_AllSupportedAgents verifies EVERY entry in the marker table
-// resolves a fresh project dir to the right agent. This is precisely the coverage that
-// was missing before the agentsignals refactor — detectAgentType only had four markers,
-// so reasonix/kimi/codex/opencode/cline were invisible to session attribution (the
-// "53% agent_type missing" root cause in the 2026-08-09 weekly audit).
-//
 // TestProjectAgentMarker_AllSupportedAgents 验证标记表里每一条都能把一个全新项目目录
 // 解析到正确的 agent。这正是 agentsignals 重构前缺失的覆盖——detectAgentType 只有四个
 // 标记，reasonix/kimi/codex/opencode/cline 对会话归因不可见（2026-08-09 周审计里
@@ -47,9 +41,6 @@ func TestProjectAgentMarker_AllSupportedAgents(t *testing.T) {
 	}
 }
 
-// TestProjectAgentMarker_NoneMatch: a project with no agent markers resolves to empty
-// (the marker-absent case the hook stamp exists to fill).
-//
 // TestProjectAgentMarker_NoneMatch：无任何 agent 标记的项目解析为空（hook 盖戳正是为
 // 补此无标记场景而存在）。
 func TestProjectAgentMarker_NoneMatch(t *testing.T) {
@@ -58,12 +49,6 @@ func TestProjectAgentMarker_NoneMatch(t *testing.T) {
 	}
 }
 
-// TestProjectAgentMarker_PrecedenceClaudeWins: .claude is first in the table, so a
-// project with both .claude and .reasonix attributes to claude-code. This pins the
-// ordered-slice first-hit-wins contract — the bug that prompted detectAgentType's
-// fixed-priority fix (an earlier map-range version returned a random pick per process
-// start). Iterating 20× would surface a map-iteration regression as a flip.
-//
 // TestProjectAgentMarker_PrecedenceClaudeWins：.claude 在表中居首，故同时有 .claude 与
 // .reasonix 的项目归为 claude-code。钉死有序切片"首个命中胜出"契约——正是
 // detectAgentType 固定优先级修复所针对的 bug（早期 map 遍历版本每次进程启动随机取）。
@@ -79,10 +64,6 @@ func TestProjectAgentMarker_PrecedenceClaudeWins(t *testing.T) {
 	}
 }
 
-// TestProjectAgentMarker_WindsurfrulesMustBeFile: .windsurfrules is isFile=true, so a
-// DIRECTORY at that name must NOT match — otherwise any project that happens to have a
-// .windsurfrules/ directory would be mis-attributed to windsurf.
-//
 // TestProjectAgentMarker_WindsurfrulesMustBeFile：.windsurfrules 是 isFile=true，故同名
 // 目录绝不能命中——否则任何恰好有 .windsurfrules/ 目录的项目都会被误归 windsurf。
 func TestProjectAgentMarker_WindsurfrulesMustBeFile(t *testing.T) {
@@ -93,10 +74,6 @@ func TestProjectAgentMarker_WindsurfrulesMustBeFile(t *testing.T) {
 	}
 }
 
-// TestProjectAgentMarkers_AllMatchesDeduped: a project with .cline + .clinerules (both
-// map to cline) + .reasonix returns ["cline","reasonix"] — cline appears once. Order
-// follows the table (cline before reasonix).
-//
 // TestProjectAgentMarkers_AllMatchesDeduped：含 .cline + .clinerules（都映射 cline）+
 // .reasonix 的项目返回 ["cline","reasonix"]——cline 只出现一次。顺序遵循表（cline 在
 // reasonix 之前）。

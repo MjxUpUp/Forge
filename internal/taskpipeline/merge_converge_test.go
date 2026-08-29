@@ -11,19 +11,11 @@ import (
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 )
 
-// merge_converge_test.go — the convergence property anchor for MergeTaskStateSync
-// (docs/design/sync-convergence.md §2): merge must be COMMUTATIVE (merge(A,B) and
-// merge(B,A) yield byte-identical results) and IDEMPOTENT (re-merge is a no-op).
-// Without commutativity a two-machine sync loop flip-flops forever on ORDER alone.
-//
 // merge_converge_test.go —— MergeTaskStateSync 的收敛性质锚
 // （docs/design/sync-convergence.md §2）：合并必须满足交换律（merge(A,B) 与
 // merge(B,A) 字节一致）与幂等（重复合并是 no-op）。没有交换律，双机同步循环
 // 会仅凭顺序永远来回翻转。
 
-// cpTask deep-copies a TaskState via JSON round-trip (strips monotonic clock and
-// pointer sharing, matching what a sync boundary actually transports).
-//
 // cpTask 经 JSON 往返深拷贝 TaskState（剥掉单调时钟与指针共享，与同步边界真实
 // 传输的内容一致）。
 func cpTask(t *testing.T, s *TaskState) *TaskState {
@@ -48,23 +40,12 @@ func taskJSON(t *testing.T, s *TaskState) string {
 	return string(raw)
 }
 
-// randomTaskOps applies n seeded random mutations to s, simulating one machine's
-// local work between sync rounds. The ID pool is SHARED across machines (no
-// per-machine tag) so cross-machine same-ID conflicts actually occur — an earlier
-// revision tagged IDs per machine and the conflict layer (resolveRecordConflictsSync)
-// got ZERO property coverage as a result.
-//
 // randomTaskOps 对 s 施加 n 个种子化随机变更，模拟一台机器两轮同步之间的本地
 // 工作。ID 池跨机共享（不带机位 tag），跨机同 ID 冲突才真会发生——早期版本给
 // ID 带机位 tag，冲突层（resolveRecordConflictsSync）因此零 property 覆盖。
 func randomTaskOps(r *rand.Rand, s *TaskState, n int, tag string) {
 	base := time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)
 	gates := []string{`task-implement`, `task-verify`, `task-complete`}
-	// Acceptance Run pool deliberately contains SAME-COMMAND-DIFFERENT-FLAGS pairs
-	// (`go test ./...` vs `go test ./... -run x`): the scalar tiebreak compares
-	// acceptance blocks as decisive keys, and an earlier revision leaked direction
-	// through them (7f91a4f) — random ops must keep hitting that exact shape.
-	//
 	// Acceptance Run 池刻意含「同命令异标志」对（`go test ./...` vs
 	// `go test ./... -run x`）：标量决胜把 acceptance 块当决胜键比较，早期版本曾
 	// 经它们渗漏方向（7f91a4f）——随机 op 必须持续命中这一形态。
@@ -165,12 +146,6 @@ func TestMergeTaskStateSync_ConvergenceProperty(t *testing.T) {
 			t.Fatalf("seed %d: re-merge not idempotent:\nbefore=%s\nafter=%s", seed, before, taskJSON(t, ab))
 		}
 
-		// stepwise convergence (the real sync-loop shape): merging the CONVERGED
-		// product into the other side must equal the converged product —
-		// merge(b, merge(a,b)) == merge(a,b). cpTask round-trips through JSON so the
-		// converged product arrives in wire shape (nil/empty slice normalization
-		// included) — this is the case a representation-sensitive tiebreak breaks.
-		//
 		// 轮次收敛（真实同步循环形态）：把收敛产物合进另一侧必须等于收敛产物——
 		// merge(b, merge(a,b)) == merge(a,b)。cpTask 经 JSON 往返，收敛产物以
 		// 线上形态到达（含 nil/空切片归一）——表示敏感的决胜键正是在此破功。
@@ -182,9 +157,9 @@ func TestMergeTaskStateSync_ConvergenceProperty(t *testing.T) {
 	}
 }
 
-// TestMergeTaskStateSync_CanonicalOrdering pins the direction-independent ordering:
-// record sets are canonically sorted, so arrival order (which side merged first)
-// cannot leak into the bytes.
+// TestMergeTaskStateSync_CanonicalOrdering pins the direction-independent
+// ordering: record sets are canonically sorted, so arrival order (which side
+// merged first) cannot leak into the bytes.
 //
 // TestMergeTaskStateSync_CanonicalOrdering 钉死方向无关排序：记录集合按规范序
 // 排序，到达顺序（哪侧先合并）无法渗进字节。
@@ -214,9 +189,7 @@ func TestMergeTaskStateSync_CanonicalOrdering(t *testing.T) {
 }
 
 // TestMergeTaskStateSync_GateHistoryContentUnion: gate history unions by FULL
-// CONTENT — a Failed entry and its later Passed retry BOTH survive (rework
-// provenance for ReworkRounds/scoring/feed), order is chronological, and the result
-// is byte-identical in both merge directions.
+// CONTENT.
 //
 // TestMergeTaskStateSync_GateHistoryContentUnion：门禁 history 按全内容并集——
 // Failed 条目与其后的 Passed 重跑都存活（ReworkRounds/评分/feed 的返工
@@ -252,9 +225,9 @@ func TestMergeTaskStateSync_GateHistoryContentUnion(t *testing.T) {
 	}
 }
 
-// TestMergeTaskStateSync_BothCompleteFirstFinisherWins: both sides completed with
-// different snapshots → the EARLIER completion block wins, direction-independently
-// (the first finish is the real one; later completions are re-runs of finished work).
+// TestMergeTaskStateSync_BothCompleteFirstFinisherWins: both sides completed
+// with different snapshots → the EARLIER completion block wins,
+// direction-independently (the first finish is the real one.
 //
 // TestMergeTaskStateSync_BothCompleteFirstFinisherWins：双完成且快照不同 → 更早的
 // 完成块胜，方向无关（先完成者是真实完成；后完成者是对已完成工作的重跑）。

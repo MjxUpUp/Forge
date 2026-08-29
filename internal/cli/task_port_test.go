@@ -13,11 +13,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
-// initGitForgeProject sets up a forge project in dir (git + init + initial commit + feat/port
-// branch) WITHOUT touching env — so the caller controls FORGE_DATA_HOME / CLAUDE_CODE_SESSION_ID to
-// simulate distinct machines over a shared codebase (export from machine A, import into machine B).
-// Mirrors setupDelegateProject minus the env pinning.
-//
 // initGitForgeProject 在 dir 建好 forge 项目（git + init + 初始提交 + feat/port 分支）但不碰 env——
 // 让调用方控制 FORGE_DATA_HOME / CLAUDE_CODE_SESSION_ID 来模拟「共享代码库上的不同机器」
 // （从机器 A 导出，导入机器 B）。与 setupDelegateProject 一致，仅去掉 env 钉定。
@@ -38,10 +33,6 @@ func main() {}
 	runGit(t, dir, `checkout`, `-b`, `feat/delegate`)
 }
 
-// switchMachine re-pins the ambient forge env to simulate a second machine: a fresh user-level
-// DataDir (so B's task state is isolated from A's) and a distinct session id. State already written
-// to A's DataDir stays on disk — switching the env only redirects subsequent commands to B's home.
-//
 // switchMachine 重新钉定环境以模拟第二台机器：全新的用户级 DataDir（B 的 task state 与 A 隔离）与
 // 不同 session id。已写入 A DataDir 的 state 留在盘上——切 env 只是把后续命令重定向到 B 的 home。
 func switchMachine(t *testing.T, sessionID string) string {
@@ -53,11 +44,6 @@ func switchMachine(t *testing.T, sessionID string) string {
 	return dir
 }
 
-// exportDelegatedTask starts feat/delegate on a fresh machine-A project and
-// exports it to a temp bundle — the A-side scaffold of the A/B port tests.
-// Extra A-side commands (decide/attach/seed) run via pre before the export;
-// extraFlags append to the export command (--include-checklog etc.).
-//
 // exportDelegatedTask 在全新 machine-A 项目上起 feat/delegate 并导出到临时
 // bundle——A/B 移植测试的 A 侧脚手架。额外 A 侧命令（decide/attach/播种）经
 // pre 在导出前执行；extraFlags 追加到 export 命令（--include-checklog 等）。
@@ -78,20 +64,13 @@ func exportDelegatedTask(t *testing.T, title string, pre func(dirA string), extr
 	return dirA, bundlePath
 }
 
-// TestTaskExportImport_FreshRoundTrip is the end-to-end cross-machine handoff: machine A starts a
-// task, records a decision + an anchored worker session; exports (with checklog). Machine B (fresh
-// DataDir) imports. The task lands in B with the decision migrated and — crucially — every session
-// link marked Imported (ghost): provenance only, never a local anchor. The ghost invariant is
-// asserted directly via HasSession (false for A's session on B).
+// TestTaskExportImport_FreshRoundTrip is the end-to-end cross-machine handoff: machine A starts a task, records a decision + an anchored worker session; exports (with checklog).
 //
 // TestTaskExportImport_FreshRoundTrip 端到端跨机器交接：机器 A 起任务、记决策 + 锚定一个 worker
 // session；导出（含 checklog）。机器 B（全新 DataDir）导入。任务落地到 B，决策迁移过来，且——
 // 关键——每个 session 链接标记 Imported（幽灵）：仅溯源，永非本机锚点。幽灵不变量经 HasSession
 // 直接断言（A 的 session 在 B 上为 false）。
 func TestTaskExportImport_FreshRoundTrip(t *testing.T) {
-	// Machine A: start, decide, anchor a known worker session (so the ghost
-	// assertion is over a concrete, present link), export with checklog.
-	//
 	// 机器 A：起任务、记决策、锚定已知 worker session（使幽灵断言落在具体存在
 	// 的链接上）、带 checklog 导出。
 	_, bundlePath := exportDelegatedTask(t, `port roundtrip`, func(dirA string) {
@@ -172,8 +151,7 @@ func TestTaskExport_WarnsWhenChecklogOmitted(t *testing.T) {
 	}
 }
 
-// TestTaskImport_DefaultRejectsExisting: importing a bundle whose ref already exists locally, with
-// no strategy flag, must refuse (safe default — never silently clobber local work).
+// TestTaskImport_DefaultRejectsExisting: importing a bundle whose ref already exists locally, with no strategy flag, must refuse (safe default — never silently clobber local work).
 //
 // TestTaskImport_DefaultRejectsExisting：导入 ref 已在本地存在的 bundle 且未带策略 flag，必须拒绝
 // （安全默认——绝不静默覆盖本地工作）。
@@ -191,8 +169,7 @@ func TestTaskImport_DefaultRejectsExisting(t *testing.T) {
 	}
 }
 
-// TestTaskImport_ForceOverwrites: --force replaces the local task wholesale (delete + write the
-// bundled task). B's locally-diverged decision must be gone after force — the bundle wins.
+// TestTaskImport_ForceOverwrites: --force replaces the local task wholesale (delete + write the bundled task).
 //
 // TestTaskImport_ForceOverwrites：--force 整体替换本地任务（删 + 写 bundled task）。B 本地分叉出的
 // 决策在 force 后必须消失——bundle 胜。
@@ -220,9 +197,7 @@ func TestTaskImport_ForceOverwrites(t *testing.T) {
 	}
 }
 
-// TestTaskImport_MergeUnions: --merge keeps the local task's identity/definition and unions the
-// collaborative records by ID. Decision IDs are globally unique (newContinuityID: nano + seq + 4
-// crypto bytes), so A's and B's decisions never collide — both survive the union.
+// TestTaskImport_MergeUnions: --merge keeps the local task's identity/definition and unions the collaborative records by ID.
 //
 // TestTaskImport_MergeUnions：--merge 保留本地任务身份/定义，按 ID 并集协作记录。决策 ID 全局唯一
 // （newContinuityID：nano + seq + 4 字节随机），故 A 与 B 的决策不碰撞——并集后都在。
@@ -254,9 +229,7 @@ func TestTaskImport_MergeUnions(t *testing.T) {
 	}
 }
 
-// TestTaskExport_Redacts: --redact strips identifying/evidence fields (issue origin, agent, commit
-// SHAs, decision/finding content+evidence) while keeping the task's SHAPE (status, gate IDs, decision
-// COUNT). It also verifies the deep-copy guarantee: the on-disk original is NOT mutated by redaction.
+// TestTaskExport_Redacts: --redact strips identifying/evidence fields (issue origin, agent, commit SHAs, decision/finding content+evidence) while keeping the task's SHAPE (status, gate IDs, decision COUNT).
 //
 // TestTaskExport_Redacts：--redact 抹除身份/证据字段（issue 来源/agent/commit SHA/决策与发现的正文+证据），
 // 保留任务形状（状态/门禁 ID/决策计数）。另验证深拷贝保证：盘上原件不被脱敏改动。
@@ -266,10 +239,6 @@ func TestTaskExport_Redacts(t *testing.T) {
 	runForge(t, dirA, `task`, `assign`, `--ref`, `feat/delegate`, `--to`, `kimi`, `--role`, `frontend`, `--by`, `claude-code`)
 	runForge(t, dirA, `task`, `decide`, `--ref`, `feat/delegate`, `--content`, `internal-api-key-12345`, `--rationale`, `leaks repo layout`, `--by`, `claude-code`)
 	runForge(t, dirA, `task`, `finding`, `--ref`, `feat/delegate`, `--content`, `sql injection`, `--evidence`, `main.go:42`, `--source`, `claude-code`)
-	// Seed the high-leak free-text / code-path fields the redactor must catch — the start/assign/decide
-	// flow above does not populate Goal/Plan/PlanScope/Acceptance.Run/Decisions.Affects. Loaded + saved
-	// directly (the redact contract is about export reading whatever is in the state, not how it got there).
-	//
 	// 播种脱敏器必须抓到的高泄露自由文本/代码路径字段——上面的 start/assign/decide 流不填
 	// Goal/Plan/PlanScope/Acceptance.Run/Decisions.Affects。直接加载+保存（脱敏契约关乎 export 读
 	// state 里有什么，而非它怎么进来的）。
@@ -289,10 +258,6 @@ func TestTaskExport_Redacts(t *testing.T) {
 	seeded.Acceptance = []taskpipeline.AcceptanceCriterion{
 		{Run: `go test ./internal/billing/...`, Expected: `ok`, Passed: true, AcceptedHeadCommit: `deadbeef`, Output: `secret output`},
 	}
-	// Seed the assignment-role / decision-by / finding-source / blocker-by / origin-tool identity fields
-	// the redactor must catch (Role comes from assign --role; By/Source from decide/finding --by/--source;
-	// Blocker.By + OriginTool are seeded directly here).
-	//
 	// 播种脱敏器必须抓到的 assignment-role / decision-by / finding-source / blocker-by / origin-tool
 	// 身份字段（Role 来自 assign --role；By/Source 来自 decide/finding --by/--source；Blocker.By + OriginTool
 	// 在此直接播种）。
@@ -329,9 +294,6 @@ func TestTaskExport_Redacts(t *testing.T) {
 	if !bundle.Redacted {
 		t.Error(`bundle.Redacted 应 true`)
 	}
-	// Shape pre-guards so the field tables below can index without per-row nil
-	// checks (a failed guard already fails the test with the shape context).
-	//
 	// 形状前置守卫：下方字段表可无逐行 nil 检查地索引（守卫失败即带形状上下文
 	// 地失败测试）。
 	if bundle.Task.Assignment == nil {
@@ -341,9 +303,6 @@ func TestTaskExport_Redacts(t *testing.T) {
 		t.Fatalf(`Decisions/Findings/Blockers/SessionLinks/Acceptance 应各自保留形状（至少 1 条）, got %+v`, bundle.Task)
 	}
 
-	// Identity fields → [redacted] (they profile who / which tool / which team
-	// structure). Every row is one absorbed assertion.
-	//
 	// 身份字段 → [redacted]（侧写谁/哪个工具/团队结构）。每行一条被吸收断言。
 	for _, f := range []struct{ name, got string }{
 		{`Assignment.Agent`, bundle.Task.Assignment.Agent},
@@ -365,8 +324,6 @@ func TestTaskExport_Redacts(t *testing.T) {
 		}
 	}
 
-	// Evidence / code-path / commit fields → cleared to empty.
-	//
 	// 证据/代码路径/commit 字段 → 清空。
 	for _, f := range []struct{ name, got string }{
 		{`HeadCommit`, bundle.Task.HeadCommit},
@@ -382,8 +339,6 @@ func TestTaskExport_Redacts(t *testing.T) {
 			t.Errorf(`%s 应清空, got %q`, f.name, f.got)
 		}
 	}
-	// Slice-shaped evidence → cleared.
-	//
 	// 切片形证据 → 清空。
 	if len(bundle.Task.PlanScope) != 0 {
 		t.Errorf(`PlanScope 应清空, got %+v`, bundle.Task.PlanScope)
@@ -415,10 +370,6 @@ func TestTaskExport_Redacts(t *testing.T) {
 			t.Errorf(`SessionLinks[%d].SessionID 应 [redacted]（身份），got %q`, i, l.SessionID)
 		}
 	}
-	// SourceProject is reduced to a basename under --redact — the absolute path leaks the machine's
-	// directory layout ( usernames, drive letters, project root naming). A basename keeps the
-	// "which project" shape without leaking the host filesystem.
-	//
 	// SourceProject 在 --redact 下降为 basename——绝对路径泄露机器目录结构（用户名/盘符/项目根命名）。
 	// basename 保留「哪个项目」形状而不泄露宿主文件系统。
 	if bundle.SourceProject == `` {
@@ -459,10 +410,7 @@ func TestTaskExport_Redacts(t *testing.T) {
 	}
 }
 
-// TestTaskExport_RedactsChecklog: under --redact --include-checklog, every bundled checklog entry's
-// identity-bearing fields (SessionID, Detail, ToolName) must be scrubbed — they carry the source
-// machine's session ids, free-text error detail, and tool names. RecordedAt + Check + TaskRef (the
-// timeline shape) stay. Deep-copy: the on-disk checklog is untouched.
+// TestTaskExport_RedactsChecklog: under --redact --include-checklog, every bundled checklog entry's identity-bearing fields (SessionID, Detail, ToolName) must be scrubbed — they carry the source machine's session ids, free-text error detail, and tool names.
 //
 // TestTaskExport_RedactsChecklog：--redact --include-checklog 下，每条 bundled checklog 条目的身份字段
 // （SessionID/Detail/ToolName）必须被洗——它们携带源机器的 session id、自由文本错误详情、工具名。
@@ -470,9 +418,6 @@ func TestTaskExport_Redacts(t *testing.T) {
 func TestTaskExport_RedactsChecklog(t *testing.T) {
 	dirA := setupDelegateProject(t)
 	runForge(t, dirA, `task`, `start`, `--ref`, `feat/delegate`, `--title`, `redact-cl`)
-	// Seed a checklog entry with identity-bearing fields directly (Record stamps ToolName; we set the
-	// full identity triplet explicitly so the assertion is unambiguous).
-	//
 	// 直接播种一条带身份字段的 checklog 条目（Record 会盖 ToolName；我们显式设全身份三元组使断言无歧义）。
 	root := dirA
 	leaked := []checklog.Entry{
@@ -496,11 +441,6 @@ func TestTaskExport_RedactsChecklog(t *testing.T) {
 	if !bundle.Redacted {
 		t.Error(`bundle.Redacted 应 true`)
 	}
-	// Two entries since L2 event-sourcing (multi-task-concurrency §5): the task-started
-	// boundary event written by task start + the seeded compile entry. Both must carry the
-	// same TaskRef scope; redaction assertions run against every entry (the boundary's
-	// Detail/SessionID are identity-bearing too — it embeds the summary and branch).
-	//
 	// L2 事件化（multi-task-concurrency §5）后为两条：task start 写入的 task-started 边界
 	// 事件 + 播种的 compile 条目。两者应同 TaskRef 作用域；脱敏断言对每条都跑（边界
 	// 条目的 Detail/SessionID 同样带身份——内嵌 summary 与分支）。
@@ -527,8 +467,6 @@ func TestTaskExport_RedactsChecklog(t *testing.T) {
 	if !ok {
 		t.Fatalf(`播种的 compile 条目缺失, got checks %v`, bundle.Checklog)
 	}
-	// Timeline shape preserved (Check + TaskRef stay so forge trace can still bucket the entry).
-	//
 	// 时间线形状保留（Check + TaskRef 留下，使 forge trace 仍能分桶该条目）。
 	if e.TaskRef != `feat/delegate` {
 		t.Errorf(`checklog Check/TaskRef 是形状不应改, got %+v`, e)
@@ -536,8 +474,6 @@ func TestTaskExport_RedactsChecklog(t *testing.T) {
 	if _, ok := byCheck[string(checklog.CheckTaskStarted)]; !ok {
 		t.Errorf(`task-started 边界条目应随 bundle 一起导出, got checks %v`, bundle.Checklog)
 	}
-	// Deep-copy: the ORIGINAL on-disk checklog keeps its identity fields.
-	//
 	// 深拷贝：盘上 ORIGINAL checklog 保留身份字段。
 	orig, err := checklog.LoadAll(root)
 	if err != nil {
@@ -560,10 +496,7 @@ func TestTaskExport_RedactsChecklog(t *testing.T) {
 	}
 }
 
-// TestTaskImport_RejectsMalformedSchema: a bundle whose schema_version is absent/zero (a malformed or
-// hand-edited doc) must be refused, not silently parsed as v1 — otherwise the forward-compat guard is
-// one missing field away from useless. (A genuinely-higher future version is also refused; that path
-// is pre-existing and unchanged.)
+// TestTaskImport_RejectsMalformedSchema: a bundle whose schema_version is absent/zero (a malformed or hand-edited doc) must be refused, not silently parsed as v1 — otherwise the forward-compat guard is one missing field away from useless.
 //
 // TestTaskImport_RejectsMalformedSchema：schema_version 缺失/为 0 的 bundle（畸形或手改文档）必须被拒，
 // 而非静默当 v1 解析——否则前向兼容守卫离失效只差一个缺字段。（真正更高的未来版本同样被拒；该路径
@@ -594,10 +527,7 @@ func TestTaskImport_RejectsMalformedSchema(t *testing.T) {
 	}
 }
 
-// TestTaskImport_StripsForeignGateSignals: imported review/acceptance/score signals are FOREIGN evidence
-// and must NOT be honored locally — otherwise a hand-edited bundle could satisfy the task-complete gate's
-// hard prerequisites without the review sub-agent / verify-acceptance ever running on this machine. The
-// import lands the task with these signals cleared; History (gate progression, provenance) is kept.
+// TestTaskImport_StripsForeignGateSignals: imported review/acceptance/score signals are FOREIGN evidence and must NOT be honored locally — otherwise a hand-edited bundle could satisfy the task-complete gate's hard prerequisites without the review sub-agent / verify-acceptance ever running on this machine.
 //
 // TestTaskImport_StripsForeignGateSignals：导入的 review/验收/评分信号是外来证据，本机不得采信——否则
 // 手改的 bundle 可绕过 task-complete 门禁的硬前置而本机从未跑过 review 子 agent / verify-acceptance。
@@ -614,21 +544,12 @@ func TestTaskImport_StripsForeignGateSignals(t *testing.T) {
 		src.Acceptance = []taskpipeline.AcceptanceCriterion{
 			{Run: `go test ./...`, Expected: `ok`, Passed: true, AcceptedHeadCommit: `aaa111`, Output: `ok`},
 		}
-		// Seed gate History: task-implement + task-verify (provenance, must survive import) AND a
-		// task-complete entry (a completion CLAIM from A — foreign, must be stripped: a hand-edited
-		// bundle carrying task-complete in History would otherwise make the task look finished on B
-		// without B ever running its own task-complete gate).
-		//
 		// 播种 gate History：task-implement + task-verify（溯源，import 后须保留）AND 一条 task-complete
 		// （A 的完成「声明」——外来，必须剥离：手改的 bundle 带着 History 里的 task-complete 会让任务在 B 上
 		// 看起来已完成，而 B 从未跑过自己的 task-complete 门禁）。
 		src.RecordGateResult(`task-implement`, true, `aaa111`)
 		src.RecordGateResult(`task-verify`, true, `aaa111`)
 		src.RecordGateResult(`task-complete`, true, `aaa111`)
-		// Control-flow fields (2026-08-15 fix): a foreign CompletedAt disables every CompletedAt==nil-guarded
-		// hard check on B (and gate task-complete AUTO-PASSES an already-completed task); foreign Overrides
-		// silently disable four hard gates. Both must be stripped like result fields.
-		//
 		// 控制流字段（2026-08-15 修复）：外来 CompletedAt 会关掉 B 上所有 CompletedAt==nil 守卫的硬检查
 		// （且 gate task-complete 对已完成任务自动通过）；外来 Overrides 静默关四个硬门禁。两者须像结果
 		// 字段一样被剥离。
@@ -667,12 +588,6 @@ func TestTaskImport_StripsForeignGateSignals(t *testing.T) {
 	if got.Acceptance[0].Run != `go test ./...` {
 		t.Errorf(`Acceptance.Run 是 spec 不应清, got %q`, got.Acceptance[0].Run)
 	}
-	// History: EVERY passed entry is stripped (review follow-up 2026-08-15) — a foreign
-	// `task-verify: Passed` satisfies the executor's gate-prerequisite walk and would let the
-	// importer jump straight to task-complete, skipping every hard check living inside
-	// task-verify (work-activity / skill-decisions / cheat-scan / test-coverage). Gate passes
-	// are earned locally, full stop.
-	//
 	// History：所有「已通过」条目都被剥离（2026-08-15 复审）——外来的 `task-verify: Passed`
 	// 会满足 executor 的门禁前置链，让导入方直跳 task-complete，跳过 task-verify 内部的全部
 	// 硬检查（work-activity / skill-decisions / cheat-scan / test-coverage）。门禁通过只能本机挣得。
@@ -681,10 +596,6 @@ func TestTaskImport_StripsForeignGateSignals(t *testing.T) {
 			t.Errorf(`外来 Passed 门禁条目应全部剥离（门禁须本机挣得），got History=%+v`, got.History)
 		}
 	}
-	// Control-flow strips (2026-08-15): CompletedAt nil, Overrides zeroed, CurrentGate re-derived
-	// (lands on task-implement — the task re-walks all gates locally), and the acceptance commands
-	// carry the foreign marker so verify-acceptance demands --trust-foreign.
-	//
 	// 控制流剥离（2026-08-15）：CompletedAt 置 nil、Overrides 清零、CurrentGate 重推（落在
 	// task-implement——任务在本机从头重走门禁），且验收命令带外来标记，verify-acceptance
 	// 须 --trust-foreign 才执行。
@@ -705,12 +616,7 @@ func TestTaskImport_StripsForeignGateSignals(t *testing.T) {
 	}
 }
 
-// TestTaskImport_MergeDoesNotIntroduceForeignSignals pins the --merge path (review follow-up
-// 2026-08-15): mergeTaskState unions collaborative records, but incoming trust/control-flow
-// signals must never leak into a local task — no acceptance entries (a one-line future change to
-// mergeTaskState would silently open a marker-less foreign-command path), no foreign passed gate
-// entries via unionGateHistory (strip runs on bundle.Task BEFORE the merge, so incoming History
-// carries no Passed entries).
+// TestTaskImport_MergeDoesNotIntroduceForeignSignals pins the --merge path (review follow-up 2026-08-15): mergeTaskState unions collaborative records, but incoming trust/control-flow signals must never leak into a local task — no acceptance entries (a one-line future change to mergeTaskState would silently open a marker-less foreign-command path), no foreign passed gate entries via unionGateHistory (strip runs on bundle.Task BEFORE the merge, so incoming History carries no Passed entries).
 //
 // TestTaskImport_MergeDoesNotIntroduceForeignSignals 钉住 --merge 路径（2026-08-15 复审）：
 // mergeTaskState 并集协作记录，但外来信任/控制流信号绝不能渗进本机任务——不得引入验收条目
@@ -718,9 +624,6 @@ func TestTaskImport_StripsForeignGateSignals(t *testing.T) {
 // unionGateHistory 引入外来 Passed 门禁条目（strip 在 merge 之前跑在 bundle.Task 上，传入
 // History 已无 Passed 条目）。
 func TestTaskImport_MergeDoesNotIntroduceForeignSignals(t *testing.T) {
-	// Sequential machine switches (switchMachine's t.Setenv means only the LAST switch's env is
-	// live): do all of A's work before switching to B — same pattern as the trust test above.
-	//
 	// 顺序切机器（switchMachine 的 t.Setenv 使只有最后一次切换的 env 生效）：切到 B 前做完
 	// A 的全部操作——与上方 trust 测试同款。
 	dirA := switchMachine(t, `a-sid-merge-f`)

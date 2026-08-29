@@ -22,10 +22,8 @@ type TaskGate struct {
 	Auto        bool   `json:"auto"` // true = 由 hook 自动检查
 }
 
-// AcceptanceCriterion is an executable acceptance criterion (from the dev-workflow Plan's
-// Run: <cmd>, Expected: <output>). Persisted into TaskState so the criterion survives beyond the plan text;
-// verify-acceptance actually runs Run, compares against Expected, and records deterministic evidence — turning the spec
-// into an unforgeable verification that counters the blind spot of an agent self-reporting acceptance satisfied.
+// AcceptanceCriterion is an executable acceptance criterion (from the
+// dev-workflow Plan's Run: <cmd>, Expected: <output>).
 //
 // AcceptanceCriterion 是一条可执行的验收标准（来自 dev-workflow Plan 的
 // "Run: <cmd>, Expected: <output>"）。持久化进 TaskState，使验收标准不随 plan 文本
@@ -36,9 +34,9 @@ type AcceptanceCriterion struct {
 	Expected string `json:"expected,omitempty"` // 期望输出的子串；空=只看退出码 0
 	Passed   bool   `json:"passed,omitempty"`   // 上次 verify-acceptance 的结果
 	Output   string `json:"output,omitempty"`   // 上次实跑的输出（截断），供排查
-	// AcceptedHeadCommit is the HEAD snapshot when VerifyAcceptance actually ran this criterion (state.go GetHeadCommit).
-	// forge_task_proof compares it == current HEAD to decide whether Passed is fresh — preventing an agent from reading a stale
-	// Passed based on old code and declaring done. Empty = never verified (old-state compatible); proof falls back to the v1 rerun path.
+	// AcceptedHeadCommit is the HEAD snapshot when VerifyAcceptance actually ran
+	// this criterion (state.go GetHeadCommit). forge_task_proof compares it ==
+	// current HEAD to decide whether Passed is fresh.
 	//
 	// AcceptedHeadCommit 是 VerifyAcceptance 实跑该条时的 HEAD 快照（state.go GetHeadCommit）。
 	// forge_task_proof 比对 == 当前 HEAD 判定 Passed 是否 fresh——避免 agent 读基于旧代码的过时
@@ -67,9 +65,9 @@ type AcceptanceCriterion struct {
 	AcceptedChangeHash string `json:"accepted_change_hash,omitempty"`
 }
 
-// ExternalOrigin is the external work source of a task (an issue-tracker issue). forge_task_start --from_issue
-// parses the URL and fills it in, extending a task's origin from the branch to an external issue — the key to two-layer decoupling:
-// when a spawn-style orchestrator (Symphony-like) launches an agent run, the task is natively associated with the external issue, not inferred from the branch.
+// ExternalOrigin is the external work source of a task (an issue-tracker issue).
+// forge_task_start --from_issue parses the URL and fills it in, extending a
+// task's origin from the branch to an external issue.
 //
 // ExternalOrigin 是 task 的外部工作来源（issue tracker issue）。forge_task_start --from_issue
 // 解析 URL 填充，把 task 的 origin 从 branch 扩展到外部 issue——两层解耦的关键：spawn 式编排器
@@ -81,9 +79,9 @@ type ExternalOrigin struct {
 	URL        string `json:"url,omitempty"`
 }
 
-// Decision is a confirmed technical/product decision (corresponding to the Decisions section of the
-// cross-tool-context AI_CONTEXT.md, promoted to a structured field). Persisted into TaskState so the decision survives
-// session compaction and is visible cross-tool — any successor resuming knows what has already been decided and should not be relitigated.
+// Decision is a confirmed technical/product decision (corresponding to the
+// Decisions section of the cross-tool-context AI_CONTEXT.md, promoted to a
+// structured field).
 //
 // Decision 是一条已确认的技术/产品决策（对应 cross-tool-context AI_CONTEXT.md 的
 // Decisions 节，升格为结构化字段）。持久化进 TaskState，使决策不随会话压缩丢失、跨工具
@@ -97,8 +95,8 @@ type Decision struct {
 	Rationale string    `json:"rationale,omitempty"` // 为什么这么决定（HANDOFF 纪律：写"为什么"不只写"是什么"）
 }
 
-// Blocker is an impediment (corresponding to the known-issues/blockers of HANDOFF). Status drives the workflow:
-// open → resolved (fixed) / wontfix (abandoned).
+// Blocker is an impediment (corresponding to the known-issues/blockers of
+// HANDOFF).
 //
 // Blocker 是一项阻塞（对应 HANDOFF 的「已知问题/阻塞」）。Status 驱动工作流：
 // open → resolved（已解决）/ wontfix（放弃解决）。
@@ -111,8 +109,8 @@ type Blocker struct {
 	By         string    `json:"by,omitempty"`
 }
 
-// Finding is a problem/risk discovered by some tool (corresponding to the Findings section of AI_CONTEXT.md). It carries a Source
-// tool so that who-found-it is visible in cross-tool collaboration — avoiding duplicate discoveries and easing evidence tracing.
+// Finding is a problem/risk discovered by some tool (corresponding to the
+// Findings section of AI_CONTEXT.md).
 //
 // Finding 是某工具发现的问题/风险（对应 AI_CONTEXT.md 的 Findings 节）。带 Source 来源
 // 工具，让跨工具协作时「谁发现的」可见——避免重复发现、便于回溯证据。
@@ -124,16 +122,8 @@ type Finding struct {
 	Severity string    `json:"severity,omitempty"` // "" | critical | important | minor——doc-review 的 critical 未决会阻断 doc gate；空（旧 findings）永不阻断
 	Status   string    `json:"status"`             // open | fixed | wontfix
 	RaisedAt time.Time `json:"raised_at"`
-	// Round is the review cycle the finding was raised in (len(ReviewRounds)+1 at raise
-	// time — 1 before the first review pass, 2 after it, …). ChangeHash is the source
-	// content fingerprint at raise time (review.SourceChangesSince(HEAD), same
-	// computation as the review-pass binding). Together they make the core
-	// review-stability metric computable from task state: "findings first seen in
-	// round N on an unchanged ChangeHash" = issues earlier rounds sampled past —
-	// 2026-08 evidence: 7 confirmed later-round-new-finding episodes in one week of
-	// session transcripts, none visible in forge records because findings carried no
-	// round/snapshot context. Zero values = pre-field findings or non-git context
-	// (fail-open, never blocks recording).
+	// Round is the review cycle the finding was raised in (len(ReviewRounds)+1 at
+	// raise time — 1 before the first review pass, 2 after it, …).
 	//
 	// Round 是发现提出时所在的审查轮次（提出时的 len(ReviewRounds)+1——首次 review
 	// pass 前为 1，其后为 2……）。ChangeHash 是提出时的源码内容指纹
@@ -146,8 +136,8 @@ type Finding struct {
 	ChangeHash string `json:"change_hash,omitempty"`
 }
 
-// Artifact is a reference to a task-related artifact (file / command output / url / doc). Indexed but not gated —
-// letting a successor know what this task produced and which key files it changed.
+// Artifact is a reference to a task-related artifact (file / command output /
+// url / doc).
 //
 // Artifact 是任务的相关产物引用（文件/命令输出/url/文档）。仅索引不门禁——让接手方知道
 // 「这个任务产出了什么、改了哪些关键文件」。
@@ -174,11 +164,7 @@ const (
 	AssignCanceled      = `canceled`
 )
 
-// Assignment carries a task's delegation to one agent plus its full collaboration lifecycle
-// (a Forge-simplified A2A Task lifecycle). Single-valued pointer enforces "one task, one owner" —
-// multi-agent collaboration is split into multiple tasks (each pointing at the same orchestrator task
-// via ParentTaskRef), not one task with multiple assignees. nil = an ordinary non-delegated task,
-// fully backward-compatible (zero behavior change).
+// Assignment carries a task's delegation to one agent plus its full collaboration lifecycle (a Forge-simplified A2A Task lifecycle).
 //
 // Assignment 承载任务向某 agent 的分派 + 完整协作生命周期（A2A Task lifecycle 的 Forge 简化版）。
 // 单值指针强制「一任务一 owner」——多 agent 协作拆成多个 task（靠 ParentTaskRef 指同一编排任务），
@@ -187,7 +173,6 @@ const (
 // Status is the collaboration dimension (who works on it, which handoff phase); task gates are the
 // quality dimension (implement/verify/complete). delivered ≠ complete — a delivered task whose gates
 // are not all passed is a legitimate intermediate state. This layering decouples handoff from QA.
-//
 // Status 是协作维度（谁在做、协作到哪阶段）；task gate 是质量维度（implement/verify/complete）。
 // delivered ≠ complete——交付了但门禁未全过是合法中间态。此分层让「交付」与「质量验收」解耦。
 type Assignment struct {
@@ -205,10 +190,8 @@ type Assignment struct {
 	NotifiedAt     *time.Time `json:"notified_at,omitempty"`     // 上次 hook 推送时间（去重防轰炸）
 	AbandonedCount int        `json:"abandoned_count,omitempty"` // claimed 超 TTL 回收次数（僵尸信号）
 	AbandonedAt    *time.Time `json:"abandoned_at,omitempty"`    // 最近一次回收时间
-	// AutoDelivered marks that the delivered terminal was set by MarkComplete's auto-reconcile,
-	// not by a human `forge task deliver` — the audit trail distinguishing "task pipeline finished,
-	// assignment reclaimed by the state machine" from a deliberate hand-deliver. Cleared by Reopen
-	// (mirrors DeliveredAt being cleared) so a reopened→redelivered cycle re-records truthfully.
+	// AutoDelivered marks that the delivered terminal was set by MarkComplete's
+	// auto-reconcile, not by a human `forge task deliver`.
 	//
 	// AutoDelivered 标记 delivered 终态由 MarkComplete 的自动回收设置，而非人工 forge task
 	// deliver——区分「管线完成、状态机回收分派」与「刻意手动交付」的审计痕迹。Reopen 时清零
@@ -216,9 +199,6 @@ type Assignment struct {
 	AutoDelivered bool `json:"auto_delivered,omitempty"`
 }
 
-// Assignment state-transition errors. Sentinel values (not fmt.Errorf inline) so callers can match
-// specific failures (e.g. mine silently skips errClaimNotOffered after a TOCTOU race).
-//
 // 分派状态转换错误。用哨兵值（非 fmt.Errorf 内联），使调用方能精确匹配（如 mine 在 TOCTOU 竞态后
 // 静默跳过 errClaimNotOffered）。
 var (
@@ -236,9 +216,8 @@ var (
 	errAbandonNotClaimed    = errors.New(`assignment: can only abandon a claimed task`)
 )
 
-// SessionLink is the anchoring of a task to an agent session (one item of multi-way anchoring). A task records only the
-// creator session by default; a successor (cross-session/cross-tool) appends via forge task attach, forming a two-way anchoring
-// where N sessions jointly advance one task — any successor resuming knows who participated and with which tool.
+// SessionLink is the anchoring of a task to an agent session (one item of
+// multi-way anchoring).
 //
 // SessionLink 是 task 与一个 agent session 的锚定（多向锚定的一项）。task 默认只记创建方
 // session；接手方（跨会话/跨工具）通过 forge task attach 追加，形成 N 个 session 共同推进
@@ -247,11 +226,13 @@ type SessionLink struct {
 	SessionID string    `json:"session_id"`
 	Tool      string    `json:"tool,omitempty"` // 该 session 所属工具（pi/claude-code/opencode…）
 	JoinedAt  time.Time `json:"joined_at"`
+	// Imported marks this link as a "ghost session" carried in by a cross-machine
+	// task import.
+	//
 	// Imported 标记本链接是跨机器 task import 带入的「幽灵 session」——它记录的是源机器上谁参与过本
 	// task，仅用于溯源/看板显示（SessionTools 仍计入它），但不代表本机 session 已锚定。故 attach 路径
 	// （HasSession/AddSession）忽略 Imported 链接：本机 session 的锚定永远独立于幽灵记录，不会被它
 	// 误判为「已锚定」而跳过，也不会与它去重而吞掉本机链接。
-	//
 	// Imported marks this link as a "ghost session" carried in by a cross-machine task import — it records
 	// who participated on the SOURCE machine and is for provenance/dashboard display only (SessionTools
 	// still counts it), NOT a signal that the local session is anchored. So the attach path (HasSession/
@@ -261,7 +242,6 @@ type SessionLink struct {
 }
 
 // TaskState tracks the state of a single task pipeline.
-// Stored in DataDir/tasks/{sanitized-ref}.json.
 //
 // TaskState 追踪单个 task pipeline 的状态。
 // 存于 DataDir/tasks/{sanitized-ref}.json。
@@ -279,10 +259,9 @@ type TaskState struct {
 	SessionID      string                    `json:"session_id,omitempty"`      // 创建本 task 的 agent session
 	ExternalOrigin ExternalOrigin            `json:"external_origin,omitempty"` // 外部 issue 来源（--from_issue 解析）；空=本地 branch 推断 origin
 	ReviewPassed   bool                      `json:"review_passed,omitempty"`   // code-review-gate 通过标记；task-complete 门禁的硬前置
-	// Integrity: HMAC signature over the canonical JSON, written by SaveTaskState and
-	// verified on load (state-integrity-signing). integrityBroken is the runtime flag
-	// set when a present signature fails — never persisted, and gate-satisfying
-	// consumers refuse fields from a broken state.
+	// Integrity: HMAC signature over the canonical JSON, written by SaveTaskState
+	// and verified on load (state-integrity-signing). integrityBroken is the runtime
+	// flag set when a present signature fails.
 	//
 	// Integrity：对 canonical JSON 的 HMAC 签名，SaveTaskState 写入、加载时验签
 	//（state-integrity-signing）。integrityBroken 是签名存在且验签失败时置的运行
@@ -290,11 +269,8 @@ type TaskState struct {
 	Integrity       *StateIntegrity `json:"integrity,omitempty"`
 	integrityBroken bool            `json:"-"`
 	ResumeStale     bool            `json:"resume_stale,omitempty"` // legacy 的 task-scoped「刚压缩过」标志：仅无 session ID 的回落路径与旧版 binary 写入；有 session ID 的 host 一律用 per-session sentinel（.resume-stale-<sid>，见 state.go），reinject 读到本字段会兑现一次并清零。task-scoped 的固有边界：两 session 共享同一 task 时，B 的 prompt 可能在 A 压缩后先消费并清掉标志（最坏漏注一次，handoff 内容相同故无数据损坏）——per-session sentinel 已对新路径消除该边界。
-	// ReviewedHeadCommit/ReviewedChangeHash bind the code snapshot at review-pass time — the key to the review-fix-recheck loop.
-	// At review pass, (HEAD, SourceChangesSince(HEAD)) is recorded; the task-complete gate recomputes SourceChangesSince(ReviewedHeadCommit)
-	// and compares it to ReviewedChangeHash — a mismatch means code changed after review, forcing a re-review (no longer relying on agent self-discipline). See executor.go.
-	// The commit-then-review flow (the E2E real sequence: commit first, then review, with a clean working tree at review time) → ReviewedChangeHash is empty,
-	// so the baseline-set judgment uses ReviewedHeadCommit != "", not hash empty/non-empty.
+	// ReviewedHeadCommit/ReviewedChangeHash bind the code snapshot at review-pass
+	// time — the key to the review-fix-recheck loop.
 	//
 	// ReviewedHeadCommit/ReviewedChangeHash 绑定 review pass 时的代码快照——审查-修复-复审闭环的关键。
 	// review pass 时记 (HEAD, SourceChangesSince(HEAD))；task-complete 门禁重算 SourceChangesSince(ReviewedHeadCommit)
@@ -304,11 +280,11 @@ type TaskState struct {
 	ReviewedHeadCommit string `json:"reviewed_head_commit,omitempty"`
 	ReviewedChangeHash string `json:"reviewed_change_hash,omitempty"`
 
-	// ReviewRounds is the append-only history of every review pass (one entry per `forge review pass`),
-	// making the review-rework loop measurable: len(ReviewRounds) = review pass count, and together with
-	// the failed task-complete entries in History it reconstructs how many rework rounds a task went
-	// through. The latest entry duplicates ReviewedHeadCommit/ReviewedChangeHash (those two fields stay
-	// the snapshot-check source of truth; this list only adds history, zero behavior change to the gate).
+	// ReviewRounds is the append-only history of every review pass (one entry per
+	// `forge review pass`), making the review-rework loop measurable:
+	// len(ReviewRounds) = review pass count, and together with the failed
+	// task-complete entries in History it reconstructs how many rework rounds a task
+	// went through.
 	//
 	// ReviewRounds 是每次 review pass 的只追加历史（每次 `forge review pass` 一条），
 	// 让审查-返工循环可度量：len(ReviewRounds) = review pass 次数，配合 History 里
@@ -317,10 +293,8 @@ type TaskState struct {
 	// 本列表只加历史，对门禁零行为变化）。
 	ReviewRounds []ReviewRound `json:"review_rounds,omitempty"`
 
-	// DesignPhases is the design phase inferred by inferDesignPhases at the task-verify gate.
-	// Filled by the task-verify gate (executor.go ExecuteTaskGate) calling inferDesignPhases(taskChangedFiles)
-	// and persisted via SaveTaskState, with zero friction: no user declaration required. The review sub-agent loads the corresponding
-	// design-artifact-standards/references/phase-X.md checklist based on it. Empty = no matching design artifact, falling back to the generic review-checklist.md.
+	// DesignPhases is the design phase inferred by inferDesignPhases at the
+	// task-verify gate.
 	//
 	// DesignPhases 是 inferDesignPhases 在 task-verify gate 推断出的设计阶段。
 	// 由 task-verify gate（executor.go ExecuteTaskGate）调 inferDesignPhases(taskChangedFiles)
@@ -328,22 +302,17 @@ type TaskState struct {
 	// design-artifact-standards 的 references/phase-X.md checklist。空 = 无匹配设计产物，回落到通用 review-checklist.md。
 	DesignPhases []DesignPhase         `json:"design_phases,omitempty"`
 	Acceptance   []AcceptanceCriterion `json:"acceptance,omitempty"` // 验收标准（dev-workflow Plan 的 Run+Expected），verify-acceptance 实跑回扣
-	// AcceptanceForeign marks that the acceptance Run commands entered this TaskState from an
-	// untrusted source (task import bundle / .forge migrate of repo-committed state) — never typed
-	// by a local user flag. Run commands are executable strings; executing foreign-authored ones
-	// is arbitrary command execution, so verify-acceptance refuses to run them until the user has
-	// reviewed the command list and explicitly trusted them (--trust-foreign); the first trusted
-	// run clears this flag (re-runs are then local-verified evidence).
+	// AcceptanceForeign marks that the acceptance Run commands entered this
+	// TaskState from an untrusted source (task import bundle / .forge migrate of
+	// repo-committed state).
 	//
 	// AcceptanceForeign 标记验收 Run 命令来自不可信源（task import bundle / repo 提交状态经
 	// .forge migrate 提升）——绝非本机用户 flag 亲手输入。Run 命令是可执行字符串，执行外来
 	// 作者的命令即任意命令执行，故 verify-acceptance 拒绝直接跑：须用户审阅命令清单并显式
 	// 受信（--trust-foreign）后才执行；首次受信运行会清掉本标记（之后的重跑即本机验证证据）。
 	AcceptanceForeign bool `json:"acceptance_foreign,omitempty"`
-	// PlanScope is the planned-changed-files allowlist declared before a task starts (globs, repo-relative forward-slash paths).
-	// It corresponds to the planning precondition of which files you intend to change — turning it into a measurable contract. Advisory:
-	// the diff between actually changed files (TaskChangedFiles) and it is recorded as scope-drift for review, non-blocking. Change-impact-analysis
-	// recall is only ~44%, so scope is treated as a prediction rather than a contract, and drift is a routine signal. Declared via task start --scope, iteratively appended mid-task via task scope add (layered positioning).
+	// PlanScope is the planned-changed-files allowlist declared before a task starts
+	// (globs, repo-relative forward-slash paths).
 	//
 	// PlanScope 是任务开工前声明的「计划改动文件」白名单（glob，repo-relative 正斜杠路径）。
 	// 对应「打算改哪些文件」的规划前置——把它变成可度量契约。advisory：实改文件（TaskChangedFiles）
@@ -351,11 +320,8 @@ type TaskState struct {
 	// 而非 contract，drift 是常态信号。task start --scope 声明，task scope add 中途迭代追加（分层定位）。
 	PlanScope []string `json:"plan_scope,omitempty"`
 
-	// Artifacts is the L6 artifact-contract layer's reference side (multi-task-concurrency
-	// §9): stage → verifiable pointer (DataDir-relative path + content hash) into
-	// specs/<ref>/. The FILES own the content (invariant I5: one owning medium); this map
-	// only points and detects drift (VerifyArtifact). AcceptanceCriterion remains the
-	// gate authority — artifacts are narrative context, never completion signals.
+	// SpecArtifacts is the L6 artifact-contract layer's reference side: stage →
+	// verifiable pointer (DataDir-relative path + content hash) into specs/<ref>/.
 	//
 	// SpecArtifacts 是 L6 产物契约层的引用侧（multi-task-concurrency §9）：阶段 → 可
 	// 验证指针（DataDir 相对路径 + 内容哈希），指向 specs/<ref>/。内容归【文件】所有
@@ -363,21 +329,10 @@ type TaskState struct {
 	// AcceptanceCriterion 仍是门禁权威——产物是叙事上下文，绝不是完成信号。刻意不
 	// 叫 Artifacts：TaskState 已有 Artifacts []Artifact（关联产物的弱引用清单，语
 	// 义是"相关但不门禁"），两者是不同概念。
-	//
-	// SpecArtifacts is the L6 artifact-contract layer's reference side
-	// (multi-task-concurrency §9): stage → verifiable pointer (DataDir-relative path +
-	// content hash) into specs/<ref>/. The FILES own the content (invariant I5: one owning
-	// medium); this map only points and detects drift (VerifyArtifact).
-	// AcceptanceCriterion remains the gate authority — artifacts are narrative context,
-	// never completion signals. Deliberately NOT named Artifacts: TaskState already has
-	// Artifacts []Artifact (a weak "related outputs" list) — a different concept.
 	SpecArtifacts map[string]ArtifactRef `json:"spec_artifacts,omitempty"`
 
-	// Overrides holds the per-task escape-hatch settings (plan-5 anti-leak): they take precedence over the global env
-	// FORGE_WORK_ACTIVITY/FORGE_TEST_COVERAGE. One task escaping does not pollute other tasks in the same shell.
-	// Using a VERIFICATION-class escape hatch → CheckEscapeHatch → Strength capped at Weak (evidence-scaled since
-	// 2026-08: ratio>=0.85 && det>=20 exempt — see checklog.EscapeDowngradedStrength); work-activity (rhythm gate)
-	// never caps. Set via `forge task override`.
+	// Overrides holds the per-task escape-hatch settings (plan-5 anti-leak): they
+	// take precedence over the global env FORGE_WORK_ACTIVITY/FORGE_TEST_COVERAGE.
 	//
 	// Overrides 承载 per-task 逃生舱设置（方案5 防泄漏）：优先于全局 env
 	// FORGE_WORK_ACTIVITY/FORGE_TEST_COVERAGE。一个任务逃生不污染同 shell 的其他任务。
@@ -386,13 +341,11 @@ type TaskState struct {
 	//（节奏门禁）永不 cap。由 `forge task override` 设置。
 	Overrides TaskOverrides `json:"overrides,omitempty"`
 
-	// Continuity source of truth: promotes plan/decisions/next-steps/blockers/cross-tool-findings/artifacts from in-session
-	// transient state (agent context, lost on compaction) and discipline-reliant markdown (HANDOFF.md/AI_CONTEXT.md) into structured
-	// first-class fields of the task. Any new session cold-starts forge task resume to pull them back, and same-machine
-	// cross-tool/cross-person handoff continues from the same record. It corresponds to the information structure of
-	// session-continuity HANDOFF + cross-tool-context AI_CONTEXT, but is persisted into the user-level DataDir/tasks/<ref>.json
-	// rather than relying on the agent to self-disciplinedly read/write md. Boundary: user-level state does not travel with the
-	// repo — cross-machine handoff needs an explicit export/import vehicle (not built yet).
+	// Continuity source of truth: promotes
+	// plan/decisions/next-steps/blockers/cross-tool-findings/artifacts from
+	// in-session transient state (agent context, lost on compaction) and
+	// discipline-reliant markdown (HANDOFF.md/AI_CONTEXT.md) into structured
+	// first-class fields of the task.
 	//
 	// 接续真相源（continuity）：把 plan/决策/下一步/阻塞/跨工具发现/产物从会话内临时状态
 	// （agent 上下文，压缩即丢）和靠纪律的 markdown（HANDOFF.md/AI_CONTEXT.md）升格为 task 的
@@ -414,11 +367,7 @@ type TaskState struct {
 	DependsOn     []string      `json:"depends_on,omitempty"`      // 依赖的前序 task ref（任务间依赖）
 	Assignment    *Assignment   `json:"assignment,omitempty"`      // 任务分派（owner agent + 协作生命周期状态）；nil = 普通未分派任务，零行为变化
 	// DocReview is the L2 re-check evidence of the output→re-check loop
-	// (docgate.go). nil on pre-doc-gate tasks — zero behavior change; the gate
-	// treats nil as "not reviewed" only when the task actually changed markdown
-	// deliverables. DocReviewHistory retains prior rounds (convergence is the
-	// observable value of the loop: two rounds without Criticals dropping is an
-	// anomaly signal) — capped by the CLI writer.
+	// (docgate.go). nil on pre-doc-gate tasks.
 	//
 	// DocReview 是输出→回检循环的 L2 回检证据（docgate.go）。doc gate 之前的
 	// 任务为 nil——零行为变化；仅当任务确实变更了 markdown 产物时，门禁才把
@@ -428,17 +377,13 @@ type TaskState struct {
 	DocReviewHistory []DocReview `json:"doc_review_history,omitempty"`
 	// Lease is the cross-machine node claim (sync-convergence.md §4): advisory in v1
 	// (personal profile), fencing-monotonic so merges always pick the newest claim.
-	// nil on pre-multi-machine tasks — zero behavior change.
+	// nil on pre-multi-machine tasks.
 	//
 	// Lease 是跨机器节点认领（sync-convergence.md §4）：v1 为 advisory（个人档），
 	// fencing 单调使合并恒取最新认领。多机器前的任务为 nil——零行为变化。
 	Lease *Lease `json:"lease,omitempty"`
 
-	// TTL is the per-task zombie-window override (design §3/§9 --ttl). When > 0 it overrides the
-	// global Offered/Claimed/InputReq zombie constants for THIS task only, so a short-fuse delegation
-	// surfaces as stale sooner (or a long runner gets more room) without changing the window every
-	// other task shares. Zero — the default for tasks started without --ttl — falls back to the
-	// global constant: fully backward compatible, no migration. health.effectiveTTL is the read side.
+	// TTL is the per-task zombie-window override (design §3/§9 --ttl).
 	//
 	// TTL 是 per-task 僵尸窗口覆盖（设计 §3/§9 --ttl）。> 0 时仅对本任务覆盖全局
 	// Offered/Claimed/InputReq 僵尸常量：短时效分派更快被标失联（或长跑任务给更多余量），而不改
@@ -458,15 +403,10 @@ type TaskState struct {
 	// 每任务一次的保证跨 `forge task implement` 调用存活（每次都从磁盘重载 state）。
 	PlanFirstAdvisoryFired bool `json:"plan_first_advisory_fired,omitempty"`
 
-	// ReportedFindings is the set of advisory finding fingerprints already shown to the
-	// agent by this task's verify scans (see advisory_dedup.go): cheat-scan fingerprints
-	// are two-part (ruleID|file:line); unused-scan fingerprints are THREE-part
-	// (ruleID|file:line|symbol) — the symbol is the finding's identity, so a rename or a
-	// different definition on the same line is not mis-suppressed. Verify retries after a
-	// fix re-scan the same diff and would otherwise re-emit the identical findings
-	// verbatim (2026-08 evidence: Translate(method) 8 times, comment-only-fix=2 five
-	// times on one task). A finding that disappears and a genuinely new finding
-	// (different fingerprint) still report normally.
+	// ReportedFindings is the set of advisory finding fingerprints already shown to
+	// the agent by this task's verify scans (see advisory_dedup.go): cheat-scan
+	// fingerprints are two-part (ruleID|file:line); unused-scan fingerprints are
+	// THREE-part (ruleID|file:line|symbol).
 	//
 	// ReportedFindings 是本任务 verify 扫描已向 agent 报告过的 advisory finding 指纹集
 	//（见 advisory_dedup.go）：cheat-scan 指纹两段（规则ID|文件：行）；unused-scan
@@ -476,13 +416,9 @@ type TaskState struct {
 	// 5 次）。消失的 finding 与真正的新 finding（指纹不同）仍正常报告。
 	ReportedFindings []string `json:"reported_findings,omitempty"`
 
-	// CrossRepoImpact is the task's cross-repo impact declaration (multi-repo workspace,
-	// docs/design/multi-repo-workspace.md): when the task's repo belongs to a multi-repo
-	// workspace, task-verify requires an explicit declaration — even a single-repo change
-	// must declare "none" (the declaration forces explicit thought — the
-	// rule-as-code pattern). nil = never declared (all pre-workspace tasks) —
-	// zero behavior change outside multi-repo workspaces; the gate skips repos with no
-	// multi-repo membership entirely. Written by `forge task impact`.
+	// CrossRepoImpact is the task's cross-repo impact declaration (multi-repo
+	// workspace, docs/design/multi-repo-workspace.md): when the task's repo belongs
+	// to a multi-repo workspace, task-verify requires an explicit declaration.
 	//
 	// CrossRepoImpact 是任务的跨仓影响声明（多仓 workspace，见
 	// docs/design/multi-repo-workspace.md）：任务所属 repo 属于多仓 workspace 时，
@@ -493,8 +429,6 @@ type TaskState struct {
 	CrossRepoImpact *CrossRepoImpact `json:"cross_repo_impact,omitempty"`
 }
 
-// CrossRepoImpactLevel values for CrossRepoImpact.Level.
-//
 // CrossRepoImpact.Level 的合法取值。
 const (
 	// CrossRepoNone: the change is confined to this repo (explicit "no impact").
@@ -508,10 +442,7 @@ const (
 	CrossRepoMulti = `multi`
 )
 
-// CrossRepoImpact records the task's cross-repo impact declaration. Level is
-// none|multi; Repos carries the affected project keys (multi only; ignored
-// under none); Note is free-form context for review; DeclaredAt timestamps the
-// declaration (staleness is judged by readers, not the gate).
+// CrossRepoImpact records the task's cross-repo impact declaration.
 //
 // CrossRepoImpact 记录任务的跨仓影响声明。Level 取 none|multi；Repos 携带受
 // 影响的项目 key（仅 multi；none 下忽略）；Note 是供 review 的自由文本；
@@ -533,7 +464,8 @@ type TaskGateResult struct {
 	HeadCommit  string    `json:"head_commit,omitempty"` // gate 通过时的 git HEAD
 }
 
-// ReviewRound records one `forge review pass` event (the reviewed snapshot + when).
+// ReviewRound records one `forge review pass` event (the reviewed snapshot +
+// when).
 //
 // ReviewRound 记录一次 `forge review pass` 事件（审过的快照 + 时间）。
 type ReviewRound struct {
@@ -564,7 +496,8 @@ func (s *TaskState) IsComplete() bool {
 	return true
 }
 
-// NextGate returns the next incomplete gate in the sequence, or an empty string when all are complete.
+// NextGate returns the next incomplete gate in the sequence, or an empty string
+// when all are complete.
 //
 // NextGate 返回序列中下一道未完成 gate，全部完成返回空串。
 func (s *TaskState) NextGate() string {
@@ -604,9 +537,6 @@ func (s *TaskState) MarkComplete() {
 			s.Assignment.Status = AssignDelivered
 			s.Assignment.DeliveredAt = &now
 			s.Assignment.AutoDelivered = true
-			// Reclaiming from input-required bypasses Answer() — clear the pending question
-			// text so no reader surfaces a stale "current question" (mirrors Answer's cleanup).
-			//
 			// 从 input-required 回收绕过 Answer()——清掉待答问题文本，避免读者看到陈旧的
 			// 「当前问题」（镜像 Answer 的清理）。
 			s.Assignment.LastQuestion = ``
@@ -614,13 +544,8 @@ func (s *TaskState) MarkComplete() {
 	}
 }
 
-// IsDelivered reports whether this task's output is available to dependents — the unblock signal
-// for DependsOn. An ASSIGNED task's delivery is its Assignment status alone: deliver sets
-// Status==delivered, and reopen/fail/cancel revoke it. IsComplete is deliberately NOT consulted
-// for assigned tasks — it stays true across a reopen (gate history is retained), so using it would
-// falsely unblock dependents after a bug-driven reopen of a task that had finished its gates. A
-// task with NO assignment (ordinary/generic) has only the completion signal, so IsComplete is its
-// delivery. Missing/aborted tasks are never loaded, so the caller does not call IsDelivered on them.
+// IsDelivered reports whether this task's output is available to dependents —
+// the unblock signal for DependsOn.
 //
 // IsDelivered 报告本 task 的产出是否对依赖方可用——DependsOn 的放行信号。有分派的 task 的交付只看
 // Assignment 状态：deliver 置 Status==delivered，reopen/fail/cancel 撤销。刻意不对分派 task 查
@@ -634,25 +559,7 @@ func (s *TaskState) IsDelivered() bool {
 	return s.IsComplete()
 }
 
-// AddDependency appends refs to DependsOn with dedup + cycle detection, all-or-nothing: validated
-// refs accumulate in a local slice and commit to s.DependsOn only after every ref passes, so a
-// mid-batch cycle error leaves s.DependsOn untouched (the caller need not reason about partial
-// writes). lookup resolves a ref to its TaskState so the cycle check can walk the dependency chain
-// without types.go reaching back into the storage layer (the caller injects LoadTaskState). Adding
-// a ref whose transitive dependencies lead back to this task is rejected — a cycle would deadlock
-// every task in the ring. A self-reference (ref == this task) is likewise rejected. Dedup checks
-// both the existing DependsOn and the current batch (so --depends-on A --depends-on A collapses).
-//
-// Cross-repo refs (key:ref, depref.go): this method stores them verbatim and treats them
-// generically — dedup is exact-string, and the cycle DFS expands only whatever lookup returns.
-// The production CLI lookup (cli/task.go task start) deliberately returns nil for key:ref, so
-// cycle detection stays WITHIN this repo (same-repo cycles still refuse) and never walks other
-// repos' graphs — a real-time cross-repo DFS would need a global graph lock across DataDirs,
-// complexity the design explicitly defers: cross-repo cycles are detected periodically by
-// `forge workspace doctor` (dep-cycle finding) instead. The membership/existence validation of a
-// key:ref also lives at that CLI call site (fail-open), not here — AddDependency stays storage-
-// agnostic. Note the raw-string self-check cannot see `<ownkey>:<thisref>` (the strings differ);
-// the CLI validation refuses that shape.
+// AddDependency appends refs to DependsOn with dedup + cycle detection, all-or-nothing.
 //
 // AddDependency 把 refs 追加进 DependsOn，去重 + 环检测，all-or-nothing：校验通过的 ref 先攒在局部
 // slice，全部通过后才提交到 s.DependsOn，故批次中途的环错误不碰 s.DependsOn（调用方无需操心部分写入）。
@@ -709,10 +616,6 @@ func (s *TaskState) AddDependency(refs []string, lookup func(string) *TaskState)
 	return nil
 }
 
-// createsCycle reports whether walking the DependsOn chain from start (via lookup) ever reaches
-// self — i.e. start transitively depends on self, so self→start would close a ring. DFS with a
-// visited set guards against pre-existing cycles and bounds the walk.
-//
 // createsCycle 报告从 start 出发沿 DependsOn 链（经 lookup）是否会到达 self——即 start 传递依赖
 // self，故 self→start 会闭合环。DFS + visited 集合既防预存环也限查找范围。
 func createsCycle(self, start string, lookup func(string) *TaskState) bool {
@@ -736,9 +639,7 @@ func createsCycle(self, start string, lookup func(string) *TaskState) bool {
 }
 
 // MarkReviewPassed records that this task has run code-review-gate and passed,
-// binding the code snapshot at review time (headCommit, changeHash). It is a hard prerequisite of the task-complete gate
-// (see executor.go) — ensuring the sub-agent review actually ran before submission; the snapshot lets task-complete enforce a mandatory re-review after any post-review code change.
-// An empty headCommit → skip the snapshot check (old-state compatible / for tests), keeping only the ReviewPassed hard-prerequisite semantics.
+// binding the code snapshot at review time (headCommit, changeHash).
 //
 // MarkReviewPassed 记录本 task 已跑过 code-review-gate 且通过，
 // task, 并绑定审查时的代码快照 (headCommit, changeHash)。它是 task-complete 门禁的硬前置
@@ -748,9 +649,9 @@ func (s *TaskState) MarkReviewPassed(headCommit, changeHash string) {
 	s.MarkReviewPassedWithNote(headCommit, changeHash, "")
 }
 
-// MarkReviewPassedWithNote is MarkReviewPassed plus the optional reviewer conclusion
-// text (`forge review pass --note`) recorded on the appended ReviewRound — the audit
-// trail carries what the reviewer concluded, not just that a stamp happened.
+// MarkReviewPassedWithNote is MarkReviewPassed plus the optional reviewer
+// conclusion text (`forge review pass --note`) recorded on the appended
+// ReviewRound.
 //
 // MarkReviewPassedWithNote 在 MarkReviewPassed 之上把可选审查结论文本
 // （`forge review pass --note`）记到追加的 ReviewRound 上——审计留痕不只记「盖过
@@ -768,9 +669,9 @@ func (s *TaskState) MarkReviewPassedWithNote(headCommit, changeHash, note string
 }
 
 // ReworkRounds derives the review-rework loop counts from recorded history:
-// reviewPasses = number of `forge review pass` events, completeRejections = failed task-complete
-// gate attempts (each forced re-review / blocked complete is one rework round). Pure derivation,
-// no new state.
+// reviewPasses = number of `forge review pass` events, completeRejections =
+// failed task-complete gate attempts (each forced re-review / blocked complete
+// is one rework round).
 //
 // ReworkRounds 从已记录的历史推导审查-返工循环计数：reviewPasses = `forge review pass`
 // 次数，completeRejections = task-complete 失败次数（每次强制复审/被拒 complete 算一轮
@@ -786,8 +687,6 @@ func (s *TaskState) ReworkRounds() (reviewPasses, completeRejections int) {
 }
 
 // RecordGateResult appends a gate result and advances CurrentGate.
-// If the gate already passed, it is a no-op (preventing stop-hook repeated verify from producing duplicate history entries).
-// A previously failed gate can be retried, adding a new entry.
 //
 // RecordGateResult 添加 gate 结果并推进 CurrentGate。
 // 若该 gate 已通过则为 no-op（防止 stop hook 重复 verify 产生重复 history 条目）。
@@ -813,8 +712,6 @@ func (s *TaskState) RecordGateResult(gateID string, passed bool, headCommit stri
 	}
 }
 
-// gatePassed checks whether the specified gate has passed.
-//
 // gatePassed 检查指定 gate 是否通过。
 func (s *TaskState) gatePassed(gateID string) bool {
 	for _, r := range s.History {
@@ -845,8 +742,8 @@ func (s *TaskState) HasAcceptance() bool {
 	return len(s.Acceptance) > 0
 }
 
-// AllAcceptancePassed reports whether every acceptance criterion has Passed=true.
-// Empty acceptance returns true (nothing to reconcile). task-verify uses this to decide whether to remind about reconciliation.
+// AllAcceptancePassed reports whether every acceptance criterion has
+// Passed=true.
 //
 // AllAcceptancePassed 报告是否所有 acceptance criterion 都 Passed=true。
 // Empty acceptance returns true (nothing to reconcile). task-verify 据此决定是否提醒回扣。
@@ -859,26 +756,20 @@ func (s *TaskState) AllAcceptancePassed() bool {
 	return true
 }
 
-// --- continuity methods ---
-//
 // --- 接续真相源（continuity）方法 ---
 
-// TaskKindGeneric is the constant value of the generic kind. An empty Kind field or code both go through the gates (backward-compatible
-// with old tasks that have no Kind field); only an explicit generic skips the gates.
-//
 // TaskKindGeneric 是 generic kind 的常量值。Kind 字段为空或"code"都走门禁（向后兼容
 // 老 task 无 Kind 字段）；只有显式"generic"才不走门禁。
 const TaskKindGeneric = "generic"
 
-// IsGeneric reports whether the task is the non-gated type (Kind == generic). A generic task carries research/design/pure-handoff
-// work, skips the implement→verify→complete gates, and is not scored on complete.
+// IsGeneric reports whether the task is the non-gated type (Kind == generic).
 //
 // IsGeneric 报告 task 是否为非门禁类型（Kind=="generic"）。generic task 承载调研/设计/纯
 // 接续工作，不走 implement→verify→complete 门禁、complete 不评分。
 func (s *TaskState) IsGeneric() bool { return s.Kind == TaskKindGeneric }
 
-// HasContinuity reports whether the task carries any continuity content (any of goal/plan/decisions/next/blockers/
-// findings/artifacts is non-empty). Used to decide whether resume has structured context to pull back.
+// HasContinuity reports whether the task carries any continuity content (any of
+// goal/plan/decisions/next/blockers/ findings/artifacts is non-empty).
 //
 // HasContinuity 报告 task 是否携带任何接续内容（goal/plan/decisions/next/blockers/
 // findings/artifacts 任一非空）。用于判断 resume 是否有结构化上下文可拉回。
@@ -888,13 +779,7 @@ func (s *TaskState) HasContinuity() bool {
 		len(s.Blockers) > 0 || len(s.Findings) > 0 || len(s.Artifacts) > 0
 }
 
-// AddSession anchors (sid, tool) to the task (session-deduped). Multi-way anchoring: on cross-tool/cross-session handoff, the successor
-// attaches its own session+tool, and the task records all participants. It also backfills the single-valued SessionID (creator semantics)
-// for backward compatibility — old code reading SessionID still gets the first session.
-//
-// When tool is empty, it does not fall back to OriginTool: if a successor (attach/resume) fails tool detection and falls back to the creator's
-// OriginTool, a claude-code-handoff session would be misattributed to pi — the entire point of attach is cross-tool anchoring, and misattribution defeats it.
-// The creator's task start passes OriginTool explicitly; the display-side SessionTools() falls back to OriginTool for an empty tool (store the raw value, fall back at display — correctly layered).
+// AddSession anchors (sid, tool) to the task (session-deduped).
 //
 // AddSession 把 (sid, tool) 锚定到 task（session 去重）。多向锚定：跨工具/跨会话接续时，接手方
 // 把自己的 session+工具挂上，task 即记录所有参与方。同时回填单值 SessionID（创建方语义）
@@ -908,9 +793,6 @@ func (s *TaskState) AddSession(sid, tool string) {
 	if sid == "" {
 		return
 	}
-	// Dedup against LOCAL links only: an imported ghost with the same sid (cross-machine collision)
-	// must not swallow this local attach — see SessionLink.Imported for the ghost semantics.
-	//
 	// 只对本机链接去重：同 sid 的导入幽灵（跨机器碰撞）不能吞掉本次本机 attach——幽灵语义见
 	// SessionLink.Imported。
 	for _, l := range s.SessionLinks {
@@ -928,10 +810,8 @@ func (s *TaskState) AddSession(sid, tool string) {
 	}
 }
 
-// SessionTools returns the deduped list of tools that participated in this task (in first-appearance order). For resume/dashboard display of who participated.
-// A SessionLink with an empty Tool (left by the creator's task start when OriginTool detection failed) falls back to OriginTool
-// for display — the storage layer AddSession does not fall back (to avoid misattributing a successor session to the creator's tool), and the display layer
-// falls back per-link so the dashboard does not drop the creator.
+// SessionTools returns the deduped list of tools that participated in this task
+// (in first-appearance order).
 //
 // SessionTools 返回参与过本 task 的工具去重列表（按首次出现序）。供 resume/看板显示谁参与过。
 // 空 Tool 的 SessionLink（创建方 task start 时 OriginTool 探测失败留下的空 tool）用 OriginTool
@@ -953,10 +833,8 @@ func (s *TaskState) SessionTools() []string {
 	return out
 }
 
-// HasSession reports whether sid is already anchored to this task as a LOCAL session.
-// Imported (ghost) links are ignored: a ghost records that sid participated on another machine,
-// not that the local session is anchored — so attach always proceeds for a local session even if a
-// ghost with the same id was imported (cross-machine collision). Use HasAnySession to count ghosts too.
+// HasSession reports whether sid is already anchored to this task as a LOCAL
+// session.
 //
 // HasSession 报告 sid 是否已作为本机 session 锚定到本 task。Imported（幽灵）链接被忽略：幽灵只记录
 // 该 sid 在另一台机器上参与过，不代表本机 session 已锚定——故即便导入了同 id 的幽灵（跨机器碰撞），
@@ -973,9 +851,7 @@ func (s *TaskState) HasSession(sid string) bool {
 	return false
 }
 
-// HasAnySession reports whether any link (local OR imported ghost) carries sid — used where the full
-// provenance record matters (e.g. de-duping a re-import), as opposed to HasSession which answers the
-// local-anchoring question. Kept separate so the attach path can never mistake a ghost for a local anchor.
+// HasAnySession reports whether any link (local OR imported ghost) carries sid.
 //
 // HasAnySession 报告是否有任意链接（本机或导入幽灵）携带 sid——用于关心完整溯源记录处（如重复 import
 // 去重），区别于回答「本机是否已锚定」的 HasSession。分离二者使 attach 路径绝不会把幽灵当本机锚点。
@@ -1027,7 +903,8 @@ func (s *TaskState) AddBlocker(b Blocker) {
 	s.Blockers = append(s.Blockers, b)
 }
 
-// ResolveBlocker marks the blocker with the given ID as resolved (with a resolution note). Returns false if not found.
+// ResolveBlocker marks the blocker with the given ID as resolved (with a
+// resolution note).
 //
 // ResolveBlocker 把指定 ID 的阻塞标为 resolved（附 resolution 说明）。未找到返 false。
 func (s *TaskState) ResolveBlocker(id, resolution string) bool {
@@ -1070,11 +947,8 @@ func (s *TaskState) AddFinding(f Finding) {
 	s.Findings = append(s.Findings, f)
 }
 
-// EnrichFinding stamps the review context (Round + ChangeHash — see Finding) onto a
-// finding about to be recorded. Best-effort and fail-open: a non-git root or a hash
-// error leaves ChangeHash empty and never blocks the record. Callers pass explicit
-// Round/ChangeHash only when the finding belongs to a different cycle than the current
-// one (import/backfill); the zero-value fields are otherwise derived here.
+// EnrichFinding stamps the review context (Round + ChangeHash — see Finding)
+// onto a finding about to be recorded.
 //
 // EnrichFinding 把审查上下文（Round + ChangeHash——见 Finding）打到即将记录的
 // finding 上。best-effort 且 fail-open：非 git 目录或 hash 出错时 ChangeHash 留空，
@@ -1091,7 +965,7 @@ func EnrichFinding(root string, s *TaskState, f *Finding) {
 	}
 }
 
-// ResolveFinding marks the finding with the given ID as fixed. Returns false if not found.
+// ResolveFinding marks the finding with the given ID as fixed.
 //
 // ResolveFinding 把指定 ID 的 finding 标为 fixed。未找到返 false。
 func (s *TaskState) ResolveFinding(id string) bool {
@@ -1111,20 +985,16 @@ func (s *TaskState) AddArtifact(a Artifact) {
 	s.Artifacts = append(s.Artifacts, a)
 }
 
-// --- assignment methods ---
-//
 // --- 分派方法（assignment）---
 
-// HasAssignment reports whether the task is delegated to an agent (Assignment != nil).
+// HasAssignment reports whether the task is delegated to an agent (Assignment !=
+// nil).
 //
 // HasAssignment 报告 task 是否已分派给某 agent（Assignment != nil）。
 func (s *TaskState) HasAssignment() bool { return s.Assignment != nil }
 
-// IsOfferedTo reports whether the task is offered (awaiting claim) to the given agent.
-// Note: mine matches by Assignment.Agent across ALL statuses (incl. delivered/failed/canceled), so
-// it does NOT use this method — IsOfferedTo is a state-machine predicate for future hook/TTL logic
-// needing the offered-awaiting-claim signal. Agent normalization is the caller's duty so the
-// storage layer stays agent-neutral.
+// IsOfferedTo reports whether the task is offered (awaiting claim) to the given
+// agent.
 //
 // 注意：mine 按 Assignment.Agent 匹配全状态（含 delivered/failed/canceled），不用此方法——
 // IsOfferedTo 是状态机谓词，供未来 hook/TTL 判定 offered 待认领态用。agent 归一化是调用方职责，
@@ -1165,9 +1035,7 @@ func (a *Assignment) ShouldNotify(now time.Time) bool {
 	return baseline.After(*a.NotifiedAt)
 }
 
-// AssignTo creates an offered-status Assignment delegating the task to agent. It refuses if an
-// assignment already exists (re-delegation goes through a dedicated reassign path that records the
-// prior owner), so a task never silently changes owner. by is the orchestrator agent that offered it.
+// AssignTo creates an offered-status Assignment delegating the task to agent.
 //
 // AssignTo 创建一个 offered 状态的 Assignment，把 task 派给 agent。若已存在分派则拒绝（改派走专门
 // 的 reassign 路径以记录原 owner），故 task 绝不静默易主。by 是发起派发的编排器 agent。
@@ -1189,11 +1057,7 @@ func (s *TaskState) AssignTo(agent, role, by string) error {
 	return nil
 }
 
-// Claim transitions offered→claimed, anchoring owner work. It requires the claiming agent to match
-// the offered Agent (a kimi-offered task cannot be claimed by reasonix), and refuses if the status is
-// not offered (already claimed / delivered / canceled). The caller sets the session's active-task-ref
-// after a successful claim (claim = start working) — done in the CLI layer, not here, so this storage
-// method stays free of session/root coupling.
+// Claim transitions offered→claimed, anchoring owner work.
 //
 // Claim 把 offered→claimed，锚定 owner 工作。要求认领 agent 匹配派发的 Agent（派给 kimi 的任务
 // reasonix 不能认领），且 status 非 offered（已认领/已交付/已取消）则拒绝。认领成功后由调用方
@@ -1214,8 +1078,7 @@ func (s *TaskState) Claim(agent string) error {
 	return nil
 }
 
-// Deliver transitions claimed→delivered — the signal that unblocks dependents. Requires claimed
-// (forbids the offered→delivered skip). DeliveredAt set.
+// Deliver transitions claimed→delivered — the signal that unblocks dependents.
 //
 // Deliver 把 claimed→delivered——这是放行依赖方的信号。要求 claimed（禁止 offered→delivered 跳跃）。设 DeliveredAt。
 func (s *TaskState) Deliver() error {
@@ -1277,7 +1140,8 @@ func (s *TaskState) Answer(content string) error {
 	return nil
 }
 
-// Fail transitions claimed→failed, recording why the owner could not complete it. Requires claimed.
+// Fail transitions claimed→failed, recording why the owner could not complete
+// it.
 //
 // Fail 把 claimed→failed，记录 owner 为何无法完成。要求 claimed。
 func (s *TaskState) Fail(reason string) error {
@@ -1292,9 +1156,9 @@ func (s *TaskState) Fail(reason string) error {
 	return nil
 }
 
-// Cancel transitions a non-terminal task (offered/claimed/input-required)→canceled, recording the
-// orchestrator's reason for withdrawing the delegation. Terminal states (delivered/failed/canceled)
-// cannot be canceled.
+// Cancel transitions a non-terminal task
+// (offered/claimed/input-required)→canceled, recording the orchestrator's reason
+// for withdrawing the delegation.
 //
 // Cancel 把非终态 task（offered/claimed/input-required）→canceled，记录编排器撤回分派的原因。终态（delivered/failed/canceled）不能 cancel。
 func (s *TaskState) Cancel(reason string) error {
@@ -1311,8 +1175,8 @@ func (s *TaskState) Cancel(reason string) error {
 	}
 }
 
-// Reopen transitions delivered→claimed when a delivered task is found to have a bug. The reason is
-// recorded as a FailReason-equivalent note on the assignment for traceability.
+// Reopen transitions delivered→claimed when a delivered task is found to have a
+// bug.
 //
 // Reopen 把 delivered→claimed，用于交付后发现 bug。原因记入 assignment 供追溯。
 func (s *TaskState) Reopen(reason string) error {
@@ -1329,18 +1193,7 @@ func (s *TaskState) Reopen(reason string) error {
 	return nil
 }
 
-// IsReopened reports whether a delivered task was sent back for rework via Reopen. Reopen
-// lands on claimed (or later input-required via Question) with FailReason set — and FailReason
-// on a NON-failed status has no other writer (Fail() sets it only together with the failed
-// terminal; import strips it), so (offered|claimed|input-required)+FailReason uniquely
-// identifies the reopened shape. offered is included because Abandon() does not clear
-// FailReason: reopen→claimed→(owner gone)→reclaim→offered leaves the residue, and without
-// this branch the reclaimed rework would fall back under the completion immunity and turn
-// invisible (review M1 复审). The distinction matters because IsComplete() deliberately stays
-// true across a reopen (gate history is retained): completion-based consumers — the zombie
-// immunity in assignmentInFlight and mine's `complete` render — must NOT treat a reopened
-// task as finished, or a stuck rework would be silently hidden (review M1 of the 2026-08-18
-// 脱节修复).
+// IsReopened reports whether a delivered task was sent back for rework via Reopen.
 //
 // IsReopened 报告一个已交付任务是否被 Reopen 打回返工。Reopen 落在 claimed（或再经
 // Question 到 input-required）且置 FailReason——而非 failed 状态上的 FailReason 没有其他
@@ -1362,10 +1215,8 @@ func (s *TaskState) IsReopened() bool {
 	return false
 }
 
-// Abandon transitions claimed→offered (TTL recovery for a claimed task whose owner went away).
-// Bumps AbandonedCount (a zombie signal surfaced in mine/health) and clears ClaimedAt so it is
-// re-offered fresh. Requires claimed. The TTL trigger is forge task reclaim
-// (cli/task_assignment.go runTaskReclaim), which scans for IsClaimedStale tasks and calls this.
+// Abandon transitions claimed→offered (TTL recovery for a claimed task whose
+// owner went away).
 //
 // Abandon 把 claimed→offered（claimed 的 owner 失联时的 TTL 回收）。AbandonedCount++（在 mine/health
 // 上浮的僵尸信号）并清 ClaimedAt 使其重新 offered。要求 claimed。TTL 触发是 forge task reclaim
@@ -1385,14 +1236,6 @@ func (s *TaskState) Abandon() error {
 	return nil
 }
 
-// continuityCounter ensures that continuity IDs generated within the same process at the same nanosecond do not collide either (low-precision Windows clock /
-// consecutive test calls can yield identical UnixNano). resolve/resolveFinding hit by exact ID, and a collision would resolve-the-second-but-hit-the-first —
-// a real bug for resolve accuracy, hence the atomic-increment seq suffix.
-//
-// But seq is a process-local variable, and each forge process starts it from 0; UnixNano has ~15ms resolution on Windows. Two parallel forge processes
-// calling the same prefix within a 15ms window get the same nano + same seq → collision. So a 4-byte crypto/rand suffix is added to fully eliminate collisions
-// (cross-process collision probability drops from a 15ms parallel window to 2^-32).
-//
 // continuityCounter 保证同一进程内同一纳秒生成的 continuity ID 也不碰撞（Windows 时钟低精度 /
 // 测试连续调用会让 UnixNano 相同）。resolve/resolveFinding 按 ID 精确命中，碰撞会让「解决
 // 第二条却命中首条」——对 resolve 准确性是真实 bug，故加原子递增 seq 后缀。
@@ -1402,9 +1245,6 @@ func (s *TaskState) Abandon() error {
 // crypto/rand 后缀彻底去碰撞（跨进程碰撞概率从 15ms 并行窗口降到 2^-32）。
 var continuityCounter uint64
 
-// newContinuityID generates a short unique ID for a continuity entity (Decision/Blocker/Finding): prefix +
-// UnixNano base36 (monotonic in time order) + atomic seq (intra-process same-nanosecond dedup) + 4 random bytes (cross-process collision elimination).
-//
 // newContinuityID 生成 continuity 实体（Decision/Blocker/Finding）的短唯一 ID：前缀 +
 // UnixNano base36（时间序单调）+ 原子 seq（进程内同纳秒去重）+ 4 字节随机（跨进程去碰撞）。
 func newContinuityID(prefix string) string {

@@ -8,9 +8,6 @@ import (
 	"testing"
 )
 
-// setupFreezeProject creates a minimal non-git forge project (legacy .forge/ dir
-// is enough for projectroot.FindProject; FORGE_DATA_HOME is TestMain-isolated).
-//
 // setupFreezeProject 建最小非 git forge 项目（遗留 .forge/ 目录即可被
 // projectroot.FindProject 识别；FORGE_DATA_HOME 已被 TestMain 隔离）。
 func setupFreezeProject(t *testing.T) string {
@@ -108,11 +105,6 @@ func TestFreezeCheckExitCodes(t *testing.T) {
 	}
 }
 
-// runFreezeGuardHook runs the freeze-guard hook in-process with a Write payload
-// and parses the Claude-Code-shape JSON verdict. The hook's bash script shells
-// out to `forge freeze check`, so the built forge binary's dir is prepended to
-// PATH (TestMain built it; FORGE_DATA_HOME isolation is inherited).
-//
 // runFreezeGuardHook 在进程内跑 freeze-guard hook（Write payload）并解析
 // Claude-Code 形 JSON 结论。hook 的 bash 脚本会 fork `forge freeze check`，
 // 故把已构建 forge 二进制所在目录前置进 PATH（TestMain 已构建；

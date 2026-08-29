@@ -7,8 +7,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
 )
 
-// findPlanFirstEntry finds the CheckPlanFirst entry in the checklog (nil if absent).
-//
 // findPlanFirstEntry 在 checklog 里找 CheckPlanFirst 条目（无则 nil）。
 func findPlanFirstEntry(t *testing.T, dir string) *checklog.Entry {
 	t.Helper()
@@ -24,11 +22,7 @@ func findPlanFirstEntry(t *testing.T, dir string) *checklog.Entry {
 	return nil
 }
 
-// TestExecuteTaskGate_PlanFirstAdvisory pins the plan-first contract (variant A — advisory,
-// never blocks): a code task reaching task-implement with neither Plan nor Goal still PASSES
-// the gate, but a plan-first entry is recorded (Passed=false, Level=advisory) and stderr
-// carries the ADVISORY nudge. When Plan/Goal is present the entry is Passed=true and stderr
-// stays silent — the check always runs so trace shows it.
+// TestExecuteTaskGate_PlanFirstAdvisory pins the plan-first contract (variant A — advisory, never blocks): a code task reaching task-implement with neither Plan nor Goal still PASSES the gate, but a plan-first entry is recorded (Passed=false, Level=advisory) and stderr carries the ADVISORY nudge.
 //
 // TestExecuteTaskGate_PlanFirstAdvisory 钉住方案前置契约（变体 A——advisory，绝不
 // 阻塞）：Plan/Goal 皆空的代码任务到达 task-implement 仍 PASS，但落一条 plan-first
@@ -55,8 +49,6 @@ func TestExecuteTaskGate_PlanFirstAdvisory(t *testing.T) {
 		return stderr, findPlanFirstEntry(t, dir)
 	}
 
-	// No Plan/Goal → advisory trail, gate passes.
-	//
 	// 无 Plan/Goal → advisory 留痕，门禁照常过。
 	stderr, rec := run(t, false)
 	if rec == nil {
@@ -72,8 +64,6 @@ func TestExecuteTaskGate_PlanFirstAdvisory(t *testing.T) {
 		t.Errorf(`stderr 应含方案前置 advisory: %q`, stderr)
 	}
 
-	// Goal present → Passed=true, silent stderr.
-	//
 	// 有 Goal → Passed=true，stderr 静默。
 	stderr2, rec2 := run(t, true)
 	if rec2 == nil || !rec2.Passed {
@@ -85,8 +75,6 @@ func TestExecuteTaskGate_PlanFirstAdvisory(t *testing.T) {
 }
 
 // countPlanFirstEntries 数 checklog 里 CheckPlanFirst 条目数。
-//
-// countPlanFirstEntries counts CheckPlanFirst entries in the checklog.
 func countPlanFirstEntries(t *testing.T, dir string) int {
 	t.Helper()
 	entries, err := checklog.LoadAll(dir)
@@ -102,16 +90,12 @@ func countPlanFirstEntries(t *testing.T, dir string) int {
 	return n
 }
 
+// TestExecuteTaskGate_PlanFirstOncePerTask pins the once-per-task contract (2026-08 noise audit: the identical advisory re-fired up to 3 times per task): the first implement records the entry + stderr nudge and sets PlanFirstAdvisoryFired; a retry on state reloaded from disk (simulating a new forge invocation) stays silent on both, and the checklog holds exactly 1 entry.
+//
 // TestExecuteTaskGate_PlanFirstOncePerTask 钉住每任务一次契约（2026-08 噪音审计：同一
 // advisory 单任务最多重复 3 次）：首次 implement 落条目 + stderr 提示并置
 // PlanFirstAdvisoryFired；从磁盘重载 state 后的重试（模拟新一轮 forge 调用）条目与
 // stderr 都静默，checklog 始终只有 1 条。
-//
-// TestExecuteTaskGate_PlanFirstOncePerTask pins the once-per-task contract (2026-08 noise
-// audit: the identical advisory re-fired up to 3 times per task): the first implement
-// records the entry + stderr nudge and sets PlanFirstAdvisoryFired; a retry on state
-// reloaded from disk (simulating a new forge invocation) stays silent on both, and the
-// checklog holds exactly 1 entry.
 func TestExecuteTaskGate_PlanFirstOncePerTask(t *testing.T) {
 	t.Setenv("FORGE_DATA_HOME", t.TempDir()) // 隔离 SaveTaskState 的全局 home
 	dir := t.TempDir()

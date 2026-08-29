@@ -6,8 +6,7 @@ import (
 	"testing"
 )
 
-// TestSurvivingAccessors pins the path accessors that survived the zombie
-// cleanup: they must join under DataDir (never escape it) and stay stable.
+// TestSurvivingAccessors pins the path accessors that survived the zombie cleanup: they must join under DataDir (never escape it) and stay stable.
 //
 // TestSurvivingAccessors 钉住僵尸清剿后存活的 path accessor：必须拼接在
 // DataDir 之下（永不逃逸）且保持稳定。

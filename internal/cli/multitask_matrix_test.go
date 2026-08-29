@@ -13,13 +13,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/worktree"
 )
 
-// TestMultiTaskConcurrency_Matrix is the T10 consolidated acceptance matrix
-// (multi-task-concurrency §1 G1/G2): two tasks sharing ONE working directory —
-// B's view never inherits A's WIP (handoff excludes it with an honest count), B's
-// change-set excludes provably-foreign paths, and the same-directory rebind (explicit
-// switch wins) anchors B. The pieces are unit-covered individually; this test pins them
-// cooperating in one real forge project.
-//
 // TestMultiTaskConcurrency_Matrix 是 T10 的总验收矩阵（multi-task-concurrency §1
 // G1/G2）：两个任务共享【同一个】工作目录——B 的视图绝不继承 A 的 WIP（handoff 带
 // 诚实计数剔除）、B 的变更集剔除可证明外来路径、同目录重绑（显式切换胜）锚定 B。

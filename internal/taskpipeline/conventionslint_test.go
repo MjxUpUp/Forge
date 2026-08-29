@@ -4,12 +4,6 @@ package taskpipeline
 // （conventionslint.go）：可判定时 跑过/未跑 的裁定正确；不可判定（无档案/
 // 无 lint 命令/无遥测/env 逃生）时既不 fire 也不落 checklog；签名匹配不吃
 // wrapper 假阳性（go test 满足不了 go vet）。
-//
-// conventionslint_test.go — guards for the task-verify conventions-lint
-// advisory (conventionslint.go): the ran/not-ran verdict when decidable;
-// neither fire nor checklog row when undecidable (no profile / no lint
-// command / no telemetry / env escape); signature matching does not take
-// wrapper false-positives (go test must not satisfy go vet).
 
 import (
 	"encoding/json"
@@ -23,13 +17,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/toolusage"
 )
 
-// lintFixture sets up a git repo + task state + a conventions profile with the
-// given lint command, and records the given Bash commands into toollog under
-// the task ref — in the REAL toollog shape: tool-track records the raw
-// tool_input JSON blob ({"command": ...}), not bare command text. rawInputs
-// records pre-shaped strings verbatim (for description-only blobs).
-// Returns (root, state).
-//
 // lintFixture 建 git 仓库 + 任务状态 + 带 lint 命令的 conventions 档案，并把
 // 给定 Bash 命令按任务 ref 记进 toollog——按**真实** toollog 形态：tool-track
 // 记的是原始 tool_input JSON blob（{"command": ...}），非裸命令文本。
@@ -72,10 +59,7 @@ func lintFixture(t *testing.T, lintCmd string, bashCommands []string, rawInputs 
 	return dir, state
 }
 
-// TestCheckConventionsLint_FiresWhenNotRun pins the core verdict: profile
-// declares `go vet`, the task ran only `go test` (a wrapper-level lookalike —
-// must NOT satisfy the signature) → applicable + not ran; the audit row lands
-// with Passed=false.
+// TestCheckConventionsLint_FiresWhenNotRun pins the core verdict: profile declares `go vet`, the task ran only `go test` (a wrapper-level lookalike — must NOT satisfy the signature) → applicable + not ran; the audit row lands with Passed=false.
 //
 // TestCheckConventionsLint_FiresWhenNotRun 钉住核心裁定：档案声明 `go vet`、
 // 任务只跑了 `go test`（wrapper 层的形近命令——不得满足签名）→ 可判定 +
@@ -100,9 +84,7 @@ func TestCheckConventionsLint_FiresWhenNotRun(t *testing.T) {
 	}
 }
 
-// TestCheckConventionsLint_SatisfiedWhenRun pins the satisfied path: the
-// declared lint command (with wrappers/flags) appears in the task's Bash
-// history → applicable + ran, audit row Passed=true, no nudge.
+// TestCheckConventionsLint_SatisfiedWhenRun pins the satisfied path: the declared lint command (with wrappers/flags) appears in the task's Bash history → applicable + ran, audit row Passed=true, no nudge.
 //
 // TestCheckConventionsLint_SatisfiedWhenRun 钉住满足路径：声明的 lint 命令
 // （带 wrapper/flag 形态）出现在任务 Bash 历史 → 可判定 + 跑过，审计行
@@ -121,10 +103,7 @@ func TestCheckConventionsLint_SatisfiedWhenRun(t *testing.T) {
 	}
 }
 
-// TestCheckConventionsLint_UndecidableStaysSilent pins the silence contract:
-// no profile / no lint command / no toollog rows / env escape → Applicable
-// false AND no checklog row (an "not applicable" row per unadopted project is
-// pure noise).
+// TestCheckConventionsLint_UndecidableStaysSilent pins the silence contract: no profile / no lint command / no toollog rows / env escape → Applicable false AND no checklog row (an "not applicable" row per unadopted project is pure noise).
 //
 // TestCheckConventionsLint_UndecidableStaysSilent 钉住静默契约：无档案 /
 // 无 lint 命令 / toollog 无记录 / env 逃生 → Applicable=false 且不落
@@ -161,12 +140,7 @@ func TestCheckConventionsLint_UndecidableStaysSilent(t *testing.T) {
 	})
 }
 
-// TestCheckConventionsLint_MatchingPrecision pins the lookalike kills
-// (adversarial-review finding #2): the match runs on the command FIELD, not
-// the raw JSON blob (a description saying "vet the code" must not satisfy
-// `go vet`), and at word boundaries (`git log --format=%h` must not satisfy a
-// `format` signature; the interior of `golangci-lint` must not satisfy a bare
-// `lint` signature). The audit row must never state a run that did not happen.
+// TestCheckConventionsLint_MatchingPrecision pins the lookalike kills (adversarial-review finding #2): the match runs on the command FIELD, not the raw JSON blob (a description saying "vet the code" must not satisfy `go vet`), and at word boundaries (`git log --format=%h` must not satisfy a `format` signature; the interior of `golangci-lint` must not satisfy a bare `lint` signature).
 //
 // TestCheckConventionsLint_MatchingPrecision 钉住形近击杀（对抗审查发现 #2）：
 // 匹配跑在 command **字段**上而非原始 JSON blob（description 里的
@@ -204,8 +178,6 @@ func TestCheckConventionsLint_MatchingPrecision(t *testing.T) {
 	})
 }
 
-// loadChecklogEntries loads checklog rows for root filtered by check name.
-//
 // loadChecklogEntries 读 root 的 checklog 并按 check 名过滤。
 func loadChecklogEntries(t *testing.T, root string, check checklog.CheckName) []checklog.Entry {
 	t.Helper()

@@ -134,13 +134,6 @@ func TestNonGitTaskWarning_ContainsKeyInfo(t *testing.T) {
 	}
 }
 
-// TestTaskStart_AnchorsCreatorSession: task start must anchor the creator session into
-// SessionLinks (the starting point of multi-way anchoring). Previously AddSession was
-// invoked before EnsureSession assigned SessionID, so the condition was always false and
-// the creator session was never anchored — until someone explicitly called resume/attach
-// was there a first SessionLink. Verified by a real e2e task start (unit tests bypass the
-// runTaskStart flow, which masked this bug).
-//
 // TestTaskStart_AnchorsCreatorSession：task start 必须把创建方 session 锚定进 SessionLinks
 // （多向锚定起点）。此前 AddSession 在 EnsureSession 给 SessionID 赋值之前调用，条件永远为
 // false，创建方 session 漏锚定——直到有人主动 resume/attach 才有首条 SessionLink。用 e2e
@@ -160,8 +153,6 @@ func TestTaskStart_AnchorsCreatorSession(t *testing.T) {
 	if _, stderr, code := runForgeStreams(t, tmpDir, "task", "start", "--ref", "feat/anchor", "--origin-tool", "pi", "--title", "anchor test"); code != 0 {
 		t.Fatalf("task start failed: %s", stderr)
 	}
-	// context --json pulls back the full state JSON; assert the creator session + tool are anchored into session_links.
-	//
 	// context --json 拉回完整 state JSON；断言创建方 session + 工具已锚定进 session_links。
 	stdout, _, code := runForgeStreams(t, tmpDir, "task", "context", "--ref", "feat/anchor", "--json")
 	if code != 0 {

@@ -14,8 +14,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/nodeid"
 )
 
-// withHome isolates FORGE_DATA_HOME and resets the process singletons.
-//
 // withHome 隔离 FORGE_DATA_HOME 并重置进程级单例。
 func withHome(t *testing.T) string {
 	t.Helper()
@@ -120,9 +118,6 @@ func TestNext_HLCMonotonicAcrossCalls(t *testing.T) {
 
 func TestNext_FreshLockContentionFailsOpen(t *testing.T) {
 	home := withHome(t)
-	// A FRESH lock held by someone else: Next must wait up to seqLockMaxWait then fail
-	// open (zero stamp) — never error, never block the event path indefinitely.
-	//
 	// 他人持有的新锁：Next 必须最多等 seqLockMaxWait 然后 fail-open（零戳）——
 	// 绝不报错，绝不无限阻塞事件路径。
 	if err := os.WriteFile(filepath.Join(home, "node-seq.lock"), []byte("other\n"), 0644); err != nil {
@@ -140,8 +135,6 @@ func TestNext_FreshLockContentionFailsOpen(t *testing.T) {
 
 func TestNext_StaleLockBroken(t *testing.T) {
 	home := withHome(t)
-	// A stale lock (crashed holder) is broken and stamping proceeds.
-	//
 	// stale 锁（持锁者崩溃）被打破，打戳继续。
 	lock := filepath.Join(home, "node-seq.lock")
 	if err := os.WriteFile(lock, []byte("dead\n"), 0644); err != nil {
@@ -165,9 +158,6 @@ func TestNext_CorruptIdentityFailsOpen(t *testing.T) {
 	if s := Next(); s != (Stamp{}) {
 		t.Fatalf("corrupt identity must yield zero Stamp, got %+v", s)
 	}
-	// The failure is cached per process (idTried): a hot hook path must not pay a disk
-	// read per event against a broken node.json — second call still fails open fast.
-	//
 	// 失败按进程缓存（idTried）：hook 热路径不会对损坏的 node.json 每条事件付一次
 	// 磁盘读——第二次调用仍快速 fail-open。
 	if s := Next(); s != (Stamp{}) {
@@ -175,8 +165,7 @@ func TestNext_CorruptIdentityFailsOpen(t *testing.T) {
 	}
 }
 
-// TestHelperProcess is the child side of TestBumpSeq_CrossProcess: bumps the counter
-// twice in a SEPARATE process and prints the values.
+// TestHelperProcess is the child side of TestBumpSeq_CrossProcess: bumps the counter twice in a SEPARATE process and prints the values.
 //
 // TestHelperProcess 是 TestBumpSeq_CrossProcess 的子进程侧：在独立进程里把计数器
 // 增两次并打印值。
@@ -200,9 +189,6 @@ func TestHelperProcess(t *testing.T) {
 
 func TestBumpSeq_CrossProcess(t *testing.T) {
 	withHome(t)
-	// Child process takes the counter from 0 to 2 through the same locked path.
-	// (FORGE_DATA_HOME already rides os.Environ via t.Setenv — no duplicate key.)
-	//
 	// 子进程经同一条带锁路径把计数器从 0 增到 2。（FORGE_DATA_HOME 已随 t.Setenv
 	// 进 os.Environ——不重复传键。）
 	cmd := exec.Command(os.Args[0], "-test.run=TestHelperProcess")
@@ -226,9 +212,6 @@ func TestBumpSeq_CrossProcess(t *testing.T) {
 }
 
 func TestStamp_ZeroValueOmitsAllFields(t *testing.T) {
-	// Legacy/zero stamps must serialize to nothing (omitempty) so unstamped events
-	// stay byte-identical to pre-stamping format — old readers, no schema bump.
-	//
 	// 零值戳必须序列化为无字段（omitempty），未打戳事件与打戳前格式字节一致——
 	// 老读者无感，无 schema 升级。
 	if got := (Stamp{}).StringJSON(); strings.Contains(got, "node_id") || strings.Contains(got, "seq") || strings.Contains(got, "ts_hlc") || strings.Contains(got, "sig") {

@@ -1,10 +1,5 @@
 package nodestamp
 
-// nodestamp_degrade_test.go — the discoverability half of fail-open: when stamping
-// disables (broken identity or counter), the degradation must reach stderr at least
-// once per process. A silent degrade is indistinguishable from "nothing stamped" and
-// loses the machine attribution of every subsequent event with no trace anywhere.
-//
 // nodestamp_degrade_test.go —— fail-open 的可发现性半边：打戳禁用（身份或计数器
 // 损坏）时，降级必须每进程至少一次到达 stderr。静默降级与「没打过戳」无法区分，
 // 之后每条事件的机器归因都无声丢失、无任何痕迹。
@@ -75,12 +70,8 @@ func TestNext_DegradeIsAnnouncedOnStderr(t *testing.T) {
 }
 
 // TestNext_IdentityCreatedByNonStampingPathStillStamps pins the STANDARD machine
-// bring-up order: `forge task start` (lease claim), `node show`, bundle signing or
-// sync materialize the identity BEFORE any hook stamps — the first stamp must then
-// work normally (counter was seeded at identity birth), with no restart notice.
-// Regression shape (found in self-review of fix/dsh-review-followup): a process-
-// level "identity existed ⇒ counter was deleted" heuristic degraded exactly this
-// path on every fresh machine.
+// bring-up order: `forge task start` (lease claim), `node show`, bundle signing
+// or sync materialize the identity BEFORE any hook stamps.
 //
 // TestNext_IdentityCreatedByNonStampingPathStillStamps 钉死标准装机顺序：
 // `forge task start`（租约认领）、`node show`、bundle 签名、sync 会在任何 hook

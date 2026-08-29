@@ -12,19 +12,11 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-// bundle_sig.go — bundle signature sidecars (docs/design/node-identity.md §3/§4).
-// The signer signs the whole-bundle sha256 hex digest; the sidecar sits next to the
-// bundle as <bundle>.sig and travels with it (project sync pushes it into the node
-// prefix). Verification policy lives at the IMPORT side (trust store verdict
-// matrix); signing at export is unconditional and cheap.
-//
 // bundle_sig.go —— bundle 签名 sidecar（docs/design/node-identity.md §3/§4）。
 // 签名者对 bundle 整文件 sha256 hex 签名；sidecar 以 <bundle>.sig 伴随 bundle
 // 存放并随之旅行（project sync 把它一并推进节点前缀）。验签策略在导入侧
 // （trust store 判定矩阵）；导出侧签名无条件且廉价。
 
-// writeBundleSig signs bundlePath with this node's key and writes bundlePath+".sig".
-//
 // writeBundleSig 用本机节点密钥签名 bundlePath 并写出 bundlePath+".sig"。
 func writeBundleSig(bundlePath string) (string, error) {
 	f, err := os.Open(bundlePath)
@@ -50,11 +42,6 @@ func writeBundleSig(bundlePath string) (string, error) {
 		return ``, err
 	}
 	sigPath := bundlePath + `.sig`
-	// Atomic write WITH fsync (util.AtomicWrite): a crash between the bundle rename
-	// and a naive WriteFile could leave "new bundle + stale/truncated .sig", which
-	// the import side hard-rejects (SigInvalid) in EVERY profile — and the earlier
-	// hand-rolled version skipped the fsync its own comment promised.
-	//
 	// 带 fsync 的原子写（util.AtomicWrite）：bundle rename 与朴素 WriteFile 之间
 	// 崩溃会留下「新 bundle + 旧/截断 .sig」组合，导入侧在任何档位都硬拒
 	// （SigInvalid）——而此前手写版本恰恰漏了它注释里承诺的 fsync。
@@ -64,12 +51,6 @@ func writeBundleSig(bundlePath string) (string, error) {
 	return sigPath, nil
 }
 
-// writeBundleSigRespectingPolicy signs like writeBundleSig. err is non-nil ONLY for
-// the hard case — team profile (RequireSigned) with a signing failure: pushing an
-// unsigned bundle in team mode means your own peers (and your next pull) will reject
-// it, so warn-and-continue is a silent sync break there. In personal profile a
-// signing failure is soft (signed=false, err=nil) and callers warn.
-//
 // writeBundleSigRespectingPolicy 同 writeBundleSig 签名。err 非空仅对应硬情形——
 // 团队档（RequireSigned）下签名失败：团队档推未签名的包等于推一个对端（和自己
 // 下次 pull）都会拒的包，此时告警并继续就是静默破坏同步。个人档签名失败是软
@@ -83,12 +64,6 @@ func writeBundleSigRespectingPolicy(bundlePath string) (sigPath string, signed b
 	if tsErr == nil && ts.RequireSigned {
 		return ``, false, fmt.Errorf(`团队档（require-signed）下 bundle 签名失败是硬错误: %w`, err)
 	}
-	// Soft path (personal profile, or an unreadable trust store where team mode
-	// cannot be proven): the bundle travels unsigned, but the ROOT CAUSE must land
-	// on stderr — the callers' generic warning cannot answer "why is it unsigned",
-	// and silently treating an unreadable store as personal profile hides a
-	// possible team-mode misconfiguration.
-	//
 	// 软路径（个人档，或 trust store 不可读、无法证明团队档）：bundle 无签名上路，
 	// 但根因必须落到 stderr——调用方的通用告警回答不了「为什么没签名」，且把
 	// 不可读的 store 无声按个人档处理会藏住团队档配置错误。
@@ -100,8 +75,6 @@ func writeBundleSigRespectingPolicy(bundlePath string) (sigPath string, signed b
 	return ``, false, nil
 }
 
-// readBundleSig loads the sidecar if present (nil, nil when absent).
-//
 // readBundleSig 读 sidecar（不存在返回 nil, nil）。
 func readBundleSig(bundlePath string) (*nodeid.BundleSig, error) {
 	raw, err := os.ReadFile(bundlePath + `.sig`)
@@ -118,13 +91,6 @@ func readBundleSig(bundlePath string) (*nodeid.BundleSig, error) {
 	return &sig, nil
 }
 
-// verifyBundleForImport applies the trust verdict to the import flow. SigInvalid
-// and (team-mode) SigRejected are hard errors; unknown signer warns; verified notes.
-// Every verdict is also checklog-recorded (bundle-verify, best-effort — a logging
-// failure must never break an import, and a broken log must never fake a pass): the
-// trust decision previously reached only the importing terminal, leaving the
-// dashboard blind to multi-machine trust activity (unknown signers, rejections).
-//
 // verifyBundleForImport 把信任判定应用到导入流程。SigInvalid 与（团队档）
 // SigRejected 硬错误；未知签名者告警；verified 记录。每个判定同时落 checklog
 // （bundle-verify，尽力而为——落章失败绝不得打断导入，坏日志也绝不得伪造通过）：
@@ -159,12 +125,6 @@ func verifyBundleForImport(root, bundlePath, digestHex string, out io.Writer, dr
 	return nil
 }
 
-// recordBundleVerify best-effort-logs one verdict (observation class — see
-// CheckBundleVerify). Level carries the panel severity: verified=pass,
-// missing=advisory, unknown-signer=warn, invalid/rejected=blocked (both hard-reject
-// the import). An unclassifiable verdict is NOT recorded — honesty over completeness:
-// nothing unclassifiable gets squeezed into the stream.
-//
 // recordBundleVerify 尽力落章一次判定（observation 类——见 CheckBundleVerify）。
 // Level 承载面板 severity：verified=pass、missing=advisory、unknown-signer=warn、
 // invalid/rejected=blocked（两者都硬拒导入）。不可分类的 verdict 不落章——诚实

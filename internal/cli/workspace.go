@@ -14,13 +14,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// forge workspace manages the user-level multi-repo manifest
-// (~/.forge/workspaces.json — see the workspace package): a named group of
-// project keys that ship together. Members reference KEYS (paths drift, keys
-// do not); the stored path is a display cache only, drift is surfaced by
-// `forge workspace doctor`. All strings here use backtick raw strings (Windows
-// input quote corrosion — same convention as registry.go).
-//
 // forge workspace 管理用户级多仓清单（~/.forge/workspaces.json——见 workspace
 // 包）：一组共同交付的项目 key 的具名分组。成员引用 KEY（路径会漂移，key
 // 不会）；存的路径仅是展示缓存，漂移由 `forge workspace doctor` 检出。
@@ -37,10 +30,6 @@ func init() {
 
 	workspaceAddCmd.Flags().String(`path`, ``, `要加入的 repo 路径（默认当前项目）`)
 	workspaceRemoveCmd.Flags().String(`path`, ``, `要移除的 repo 路径（默认当前项目）`)
-	// --key is the drift escape hatch: a member whose repo was deleted/moved
-	// cannot be re-keyed from --path (Key derivation needs the live .git), so
-	// removal by the stored key is the only way out of a doctor-flagged zombie.
-	//
 	// --key 是 drift 逃生口：repo 已删除/搬走的成员无法再从 --path 推导 key
 	//（Key 推导需要存活的 .git），按存储 key 移除是清掉 doctor 标出的僵尸
 	// 成员的唯一途径。
@@ -127,11 +116,6 @@ func runWorkspaceCreate(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// resolveRepoKeyPath resolves the --path flag (default: current project) to
-// (key, absPath). Key derivation mirrors registry.Add: forgedata.Key for git
-// repos, PathKey fallback otherwise — the identity stored must be the same one
-// the registry and the task-verify gate compute.
-//
 // resolveRepoKeyPath 把 --path flag（默认：当前项目）解析为 (key, absPath)。
 // key 推导与 registry.Add 同款：git 仓走 forgedata.Key，否则回落 PathKey——
 // 存入的身份必须与注册表、task-verify 门禁算出的同一个。
@@ -154,10 +138,6 @@ func resolveRepoKeyPath(cmd *cobra.Command) (key, absPath string, err error) {
 	if kerr != nil {
 		key = forgedata.PathKey(p)
 	}
-	// Cache the REPO ROOT as the display path, not a possibly-deeper --path:
-	// Key() walks up to the repo, and the registry stores the root — caching the
-	// subdir would make doctor flag an instant path-mismatch on a fresh add.
-	//
 	// 展示缓存存仓根而非可能更深的 --path：Key() 向上归仓、registry 存的也是
 	// 仓根——缓存子目录会让 doctor 对刚 add 的成员立刻报 path-mismatch。
 	if gitRoot := forgedata.FindGitRoot(p); gitRoot != `` {
@@ -183,10 +163,6 @@ func runWorkspaceAdd(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), `✅ 已把 %s（key %s）加入 workspace %s`, path, key, args[0])
 	fmt.Fprintln(cmd.OutOrStdout())
-	// Membership hint: an unregistered repo's tasks/pulse are invisible to the
-	// global stores; doctor flags the key until it is init'd. Advisory only —
-	// adding must not silently mutate the registry (side-effect discipline).
-	//
 	// 成员提示：未注册 repo 的任务/pulse 对全局 store 不可见；init 之前 doctor
 	// 会一直标该 key。仅 advisory——add 绝不能静默改注册表（副作用纪律）。
 	if _, ok := registry.IsMember(path); !ok {
@@ -252,12 +228,6 @@ func runWorkspaceList(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// runWorkspaceStatus is the read-side aggregation: each member's tasks are
-// scanned by KEY (RootDir(key)/tasks — the member's filesystem path may have
-// drifted since add, its key never did), then filtered to active tasks.
-// Read-only: a broken member is warned about and skipped, never blanks the
-// whole view (the runTaskMineAllProjects pattern).
-//
 // runWorkspaceStatus 是读侧聚合：成员任务按 KEY 扫描（RootDir(key)/tasks——
 // 成员路径 add 后可能漂移，key 绝不），再过滤出活跃任务。只读：单个成员
 // 坏了警告跳过，绝不让整视图空白（runTaskMineAllProjects 同款模式）。
@@ -278,11 +248,6 @@ func runWorkspaceStatus(cmd *cobra.Command, args []string) error {
 	total := 0
 	for _, r := range w.Repos {
 		fmt.Fprintf(out, "▶ %s  %s\n", r.Key, r.Path)
-		// Guard before joining the key into a path: RootDir returns "" when the
-		// global home is unresolvable (Join("","tasks") would scan the process
-		// cwd!), and a malformed key must never steer the scan outside the data
-		// home.
-		//
 		// 拼路径前先守卫：GlobalHome 不可解析时 RootDir 返回 ""（Join("","tasks")
 		// 会扫进程 cwd！），畸形 key 绝不许把扫描引出数据 home。
 		if !forgedata.ValidKeyFormat(r.Key) {
@@ -328,11 +293,6 @@ func runWorkspaceDoctor(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	findings := f.Doctor(registry.List())
-	// Cross-repo dependency cycles (Option B): detected HERE, not in workspace.Doctor —
-	// the workspace package cannot import taskpipeline (taskpipeline already imports
-	// workspace), so the graph scan + DFS lives in this CLI layer and appends dep-cycle
-	// findings to Doctor's drift list (advisory like the rest; --json carries them too).
-	//
 	// 跨仓依赖环（Option B）：在此检出而非 workspace.Doctor——workspace 包不能 import
 	// taskpipeline（taskpipeline 已 import workspace），故建图 + DFS 留在 CLI 层，
 	// 把 dep-cycle finding 追加进 Doctor 的 drift 清单（与其余同为 advisory；--json

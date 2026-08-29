@@ -9,10 +9,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/nodeid"
 )
 
-// TestEnsureSession_StampsMachineAttribution pins the event-stamping contract at the
-// sessions choke point (node-identity.md §4): records appended to sessions.jsonl
-// carry node_id/seq/ts_hlc.
-//
 // TestEnsureSession_StampsMachineAttribution 在 sessions 收口点钉死事件打戳契约
 // （node-identity.md §4）：追加进 sessions.jsonl 的记录携带 node_id/seq/ts_hlc。
 func TestEnsureSession_StampsMachineAttribution(t *testing.T) {

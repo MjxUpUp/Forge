@@ -1,11 +1,6 @@
 package util
 
-// TruncateRunes truncates s to at most n runes, appending an ellipsis when
-// truncation happens. Slices by rune (character), not by byte: a Chinese char is
-// 3 bytes, and byte slicing would cut in the middle of a character, producing
-// invalid UTF-8 that json.Marshal replaces with U+FFFD, corrupting audit logs.
-// The ellipsis marks the stored value as truncated so a reader does not mistake
-// it for the complete original.
+// TruncateRunes truncates s to at most n runes, appending an ellipsis when truncation happens.
 //
 // TruncateRunes 把 s 截断到最多 n 个 rune，发生截断时追加省略号。
 // 按 rune（字符）而非字节切片：中文每字 3 字节，字节切片会在字符中间切断产生

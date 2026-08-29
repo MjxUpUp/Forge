@@ -20,9 +20,6 @@ import (
 // （complete 前拦截）、可证伪判据（L1 lint + L2 证据）与代价（BLOCKED +
 // 逃生舱审计）。
 
-// newDocGateRepo creates a temp git repo with one base commit and returns the
-// repo root plus the base HEAD (to anchor state.HeadCommit).
-//
 // newDocGateRepo 建临时 git 仓库（含一个基线提交），返回仓库根与基线 HEAD
 // （用作 state.HeadCommit 锚点）。
 func newDocGateRepo(t *testing.T) (root, baseHead string) {
@@ -63,8 +60,6 @@ func TestCheckDocGateNoDocsPasses(t *testing.T) {
 
 func TestCheckDocGateL1HardBlocks(t *testing.T) {
 	root, base := newDocGateRepo(t)
-	// Untracked markdown with a banned phrase — caught by the untracked sweep.
-	//
 	// 含禁令短语的未跟踪 markdown——未跟踪扫描应捕获。
 	if err := os.WriteFile(root+"/summary.md", []byte("本方案基本可以。\n"), 0644); err != nil {
 		t.Fatal(err)
@@ -162,8 +157,6 @@ func TestCheckDocGateCriticalFindings(t *testing.T) {
 		t.Fatalf("Critical 解决后应放行, got reasons=%v", reasons)
 	}
 
-	// Legacy findings (empty severity) never block — additive field contract.
-	//
 	// 旧版 findings（空 severity）永不阻断——增量字段契约。
 	state2 := &TaskState{TaskRef: "feat/y", HeadCommit: base}
 	state2.DocReview = state.DocReview
@@ -192,10 +185,6 @@ func TestCheckDocGateEscapeHatch(t *testing.T) {
 
 func TestChangedMarkdownDocsExemptions(t *testing.T) {
 	root, base := newDocGateRepo(t)
-	// NOTE: use a ROOT-level real.md — some machines carry a global gitignore
-	// ignoring docs/ (untracked listing then drops it, by git's design);
-	// exemption assertions here are about doclint.PathExempt, not git politics.
-	//
 	// 注意：real.md 放仓库根——部分机器的全局 gitignore 忽略 docs/
 	// （未跟踪清单会按 git 设计丢弃它）；本测试断言的是 doclint.PathExempt，
 	// 不是 git 的忽略策略。
@@ -217,10 +206,6 @@ func TestChangedMarkdownDocsExemptions(t *testing.T) {
 }
 
 func TestCheckDocGateFingerprintStaleness(t *testing.T) {
-	// I5: HEAD alone has a working-tree blind spot — editing a doc WITHOUT
-	// committing after a passing review must invalidate the review via the
-	// content fingerprint.
-	//
 	// I5：只绑 HEAD 有工作区盲区——评审通过后不提交地改文档，必须经内容
 	// 指纹判评审过期。
 	root, base := newDocGateRepo(t)
@@ -236,8 +221,6 @@ func TestCheckDocGateFingerprintStaleness(t *testing.T) {
 	if ok, reasons := CheckDocGate(root, state); !ok {
 		t.Fatalf("前置：内容未变应放行, got %v", reasons)
 	}
-	// Uncommitted edit: HEAD unchanged, fingerprint changes → stale.
-	//
 	// 未提交修改：HEAD 不变、指纹变 → 过期。
 	if err := os.WriteFile(root+"/notes.md", []byte("# 笔记\n改过的内容。\n"), 0644); err != nil {
 		t.Fatal(err)
@@ -246,8 +229,6 @@ func TestCheckDocGateFingerprintStaleness(t *testing.T) {
 	if ok || !strings.Contains(strings.Join(reasons, "; "), "旧内容") {
 		t.Fatalf("未提交修改应经指纹判过期, got ok=%v reasons=%v", ok, reasons)
 	}
-	// Legacy review without fingerprint (v1.43.0): HEAD check only, still passes.
-	//
 	// 无指纹的旧版评审：仅查 HEAD，照常放行。
 	legacy := &TaskState{TaskRef: "feat/y", HeadCommit: base}
 	legacy.DocReview = &DocReview{Passed: true, RubricScore: 90, Round: 1, ReviewedAt: time.Now(), HeadCommit: GetHeadCommit(root)}
@@ -275,9 +256,6 @@ func TestChangedMarkdownSinceIncludesUntrackedAndSkipsDeleted(t *testing.T) {
 		t.Fatalf("未跟踪新文件应进入集合（与门禁一致），got %v", docs)
 	}
 
-	// Deleted-after-base files drop out instead of surfacing as IO errors
-	// (regression I1a: the old CLI --base read them as hard IO failures).
-	//
 	// 基线后删除的文件应被剔除而不是报 IO 错误（回归 I1a：旧 CLI --base 把
 	// 它们读成硬 IO 失败）。
 	del := root + "/gone.md"
@@ -308,9 +286,7 @@ func TestChangedMarkdownSinceIncludesUntrackedAndSkipsDeleted(t *testing.T) {
 
 // TestCheckDocGateBlockedDetailRecordsReasons pins the audit-side fix (2026-08
 // review-observability): a BLOCKED doc-gate checklog entry must carry the reason
-// TEXTS in Detail, not just the count — a bare "N reasons" forces postmortems to
-// reverse-engineer the cause from source. Passing entries keep the count-only
-// detail (no noise).
+// TEXTS in Detail, not just the count.
 //
 // TestCheckDocGateBlockedDetailRecordsReasons 钉住审计侧修复（2026-08 评审
 // 可观测性）：BLOCKED 的 doc-gate checklog 条目 Detail 必须带原因【文本】而非
@@ -353,8 +329,6 @@ func TestCheckDocGateBlockedDetailRecordsReasons(t *testing.T) {
 		t.Errorf("BLOCKED 条目 Detail 应含原因文本而非仅数量, got %q", gate.Detail)
 	}
 
-	// Passing run → count-only detail (no reason dump).
-	//
 	// 通过的运行 → 只记数量（不倾倒原因）。
 	head := GetHeadCommit(root)
 	state2 := &TaskState{TaskRef: "feat/y", HeadCommit: base}
@@ -377,10 +351,13 @@ func TestCheckDocGateBlockedDetailRecordsReasons(t *testing.T) {
 	}
 }
 
+// TestCheckDocGateReasonsPointToDocReviewSkill pins the post-inversion guidance
+// text: doc-gate refusal reasons must point at the doc-review skill (the process
+// source of truth), never the pre-migration code-review-gate internal path.
+//
 // TestCheckDocGateReasonsPointToDocReviewSkill 钉住依赖倒置后的指引文案：doc gate
 // 的拒绝原因必须指向 doc-review skill（流程真相源），不得回退到 code-review-gate
 // 时代的内部路径——rubric-docs.md 已迁至 skills/doc-review/references/。
-//
 // TestCheckDocGateReasonsPointToDocReviewSkill pins the post-inversion guidance
 // text: doc-gate refusal reasons must point at the doc-review skill (the process
 // source of truth), never the pre-migration code-review-gate internal path.

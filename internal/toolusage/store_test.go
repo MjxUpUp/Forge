@@ -11,9 +11,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
-// TestEstimateTokens: rune/3 heuristic for token estimation (loop cost proxy).
-// Core contract: empty=0, rune/3+1 monotonic, CJK and English both counted by rune (a single CJK char counts as 1 rune).
-//
 // TestEstimateTokens：token 估算的 rune/3 启发式（loop 成本代理）。
 // 核心契约：空=0、rune/3+1 单调、中英文统一按 rune 计数（中文 1 字也算 1 rune）。
 func TestEstimateTokens(t *testing.T) {
@@ -33,8 +30,6 @@ func TestEstimateTokens(t *testing.T) {
 	}
 }
 
-// TestSumEstTokens: cumulative token aggregation (used by trace to show loop cost). EstTokens=0 does not affect the sum.
-//
 // TestSumEstTokens：累计 token 聚合（trace 显示 loop 成本用）。EstTokens=0 不影响累计。
 func TestSumEstTokens(t *testing.T) {
 	calls := []ToolCall{
@@ -47,10 +42,6 @@ func TestSumEstTokens(t *testing.T) {
 	}
 }
 
-// TestRecord_PersistsTokenFields: InputLen/EstTokens must persist with ToolCall to the toollog
-// and be readable back via LoadAll — the contract of the full token-metering chain (hook fills → JSON → trace reads).
-// Guards JSON tag correctness (a session_id→task_id mis-edit incident once occurred; token fields share the same risk tier as session_id).
-//
 // TestRecord_PersistsTokenFields：InputLen/EstTokens 必须随 ToolCall 持久化到 toollog
 // 并能 LoadAll 读回——token 计量全链路（hook 填充 → JSON → trace 读取）的契约。
 // 守护 JSON tag 正确（曾发生 session_id→task_id 误改事故，token 字段与 session_id 同级风险）。
@@ -72,8 +63,6 @@ func TestRecord_PersistsTokenFields(t *testing.T) {
 	if loaded[0].InputLen != 14 || loaded[0].EstTokens != 5 {
 		t.Fatalf("token 字段未持久化: InputLen=%d EstTokens=%d（JSON tag/序列化断裂）", loaded[0].InputLen, loaded[0].EstTokens)
 	}
-	// session_id tag regression guard: token-field changes must not touch the session-isolation field (concurrency-safety red line).
-	//
 	// session_id tag 回归保护：token 字段改动不应碰会话隔离字段（并发安全红线）。
 	call2 := &ToolCall{ToolName: "Read", SessionID: "sess-abc"}
 	if err := Record(dir, call2); err != nil {
@@ -114,9 +103,6 @@ func TestRecordAndLoad(t *testing.T) {
 	}
 }
 
-// TestTokenBreakerWarning: pure judgement function — above threshold returns a warning, below returns empty.
-// Does not depend on files, so threshold boundaries can be covered directly (avoids manufacturing >500k-token test data).
-//
 // TestTokenBreakerWarning：纯判断函数——超阈值返回警示，未超返回空。
 // 不依赖文件，可直接覆盖阈值边界（避免造超 50 万 token 的测试数据）。
 func TestTokenBreakerWarning(t *testing.T) {
@@ -138,8 +124,6 @@ func TestTokenBreakerWarning(t *testing.T) {
 // 未超 → 空。守护 token 计量真正接入成本熔断（防回归到「只观测不 gating」）。
 func TestTaskTokenBreaker(t *testing.T) {
 	dir := t.TempDir()
-	// One ToolCall with a huge EstTokens; cumulative total crosses the threshold.
-	//
 	// 一条超大 EstTokens 的 call，累计超阈值。
 	if err := Record(dir, &ToolCall{ToolName: "Read", TaskRef: "feat/big", EstTokens: taskTokenWarnThreshold + 100}); err != nil {
 		t.Fatal(err)
@@ -152,8 +136,6 @@ func TestTaskTokenBreaker(t *testing.T) {
 		t.Errorf("total=%d want %d", total, taskTokenWarnThreshold+100)
 	}
 
-	// Below-threshold task → no warning.
-	//
 	// 未超阈值的 task → 无警示。
 	if err := Record(dir, &ToolCall{ToolName: "Edit", TaskRef: "feat/small", EstTokens: 100}); err != nil {
 		t.Fatal(err)
@@ -264,11 +246,6 @@ func TestTruncateInput(t *testing.T) {
 	}
 }
 
-// TestPrune_ReplacesDeletedClear: Clear (archive + delete active) was deleted as
-// dead code — task start no longer truncates the toollog (multi-task-concurrency
-// §5). This test pins its surviving concern, previously covered via TestClear:
-// the active toollog is left intact by Prune (history survives task boundaries).
-//
 // TestPrune_ReplacesDeletedClear：Clear（归档 + 删 active）已作为死代码删除——
 // task start 不再截断 toollog（multi-task-concurrency §5）。本测试钉住原先经
 // TestClear 覆盖的存活关切：Prune 不动 active toollog（历史跨任务边界存活）。
@@ -280,8 +257,6 @@ func TestPrune_ReplacesDeletedClear(t *testing.T) {
 
 	Prune(dir)
 
-	// Active toollog untouched: reads are TaskRef-scoped, history must survive.
-	//
 	// active toollog 不动：读取按 TaskRef 过滤，历史必须存活。
 	calls, _ := LoadAll(dir)
 	if len(calls) != 2 {
@@ -289,10 +264,6 @@ func TestPrune_ReplacesDeletedClear(t *testing.T) {
 	}
 }
 
-// TestPrune_PrunesOldArchives: prune deletes over-age toollog archives per
-// FORGE_LOG_RETENTION_DAYS, keeping recent archives (formerly TestClear_PrunesOldArchives;
-// Prune inherited the retention pin when Clear was deleted).
-//
 // TestPrune_PrunesOldArchives：Prune 按 FORGE_LOG_RETENTION_DAYS 清超期 toollog
 // 归档，保留近期归档（原 TestClear_PrunesOldArchives；Clear 删除后由 Prune 承接
 // 该 retention 钉子）。
@@ -326,15 +297,6 @@ func TestLoadNonexistent(t *testing.T) {
 	}
 }
 
-// TestRecordAndPrune_ConcurrentNoDeadlock guards the C2 fix lineage: the
-// toollog-mutating paths hold the same mutex as Record (the old Clear and its
-// archiveLocked split were deleted as dead code, 2026-08-29; Prune is the
-// surviving lock-holding writer besides Record). Concurrent Record + Prune must
-// neither deadlock nor leave the active toollog unreadable. The 30s bound:
-// under Windows FS + -race the IO storm legitimately exceeds 5s (the first
-// Windows CI run misreported a deadlock); a true deadlock never completes, so
-// 30s still catches it.
-//
 // TestRecordAndPrune_ConcurrentNoDeadlock 守卫 C2 修复谱系：改动 toollog 的路径
 // 与 Record 持同一把 mutex（旧 Clear 及其 archiveLocked 拆分已于 2026-08-29 作
 // 死代码删除；幸存的持锁写方除 Record 外即 Prune）。并发 Record + Prune 既不能
@@ -371,12 +333,6 @@ func TestRecordAndPrune_ConcurrentNoDeadlock(t *testing.T) {
 	}
 }
 
-// TestToollogHasData pins the stat-based telemetry probe: false when toollog.jsonl is
-// missing (loadFromPath would return nil,nil here, indistinguishable from empty), false
-// when the file exists but is zero bytes, true once any entry is recorded. The
-// work-activity gate relies on this to tell 'hook dispatch not wired' apart from
-// 'dispatch works but zero calls'.
-//
 // TestToollogHasData 钉住基于 stat 的遥测探测：toollog.jsonl 缺失时 false
 // （loadFromPath 在此返回 nil,nil，与空文件不可区分）、文件存在但零字节时 false、
 // 记入任一条目后 true。work-activity 门禁靠它区分「hook 分发未接」与「分发正常但零调用」。
@@ -386,8 +342,6 @@ func TestToollogHasData(t *testing.T) {
 		t.Fatal("toollog.jsonl 不存在时应为 false")
 	}
 
-	// Zero-byte file — exists but no telemetry payload.
-	//
 	// 零字节文件——存在但无遥测内容。
 	empty := t.TempDir()
 	if err := os.MkdirAll(dataDir(empty), 0755); err != nil {

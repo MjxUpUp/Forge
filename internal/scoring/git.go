@@ -7,12 +7,6 @@ import (
 )
 
 // CollectGitData collects the git diff stat used by the scope dimension.
-// Returns (diffStat, error); the error is real (both git diff commands failed, e.g. non-git
-// dir or unreachable base) and must be surfaced by the caller — scope degrades to the neutral
-// 70 path on empty diffStat, but the failure stays observable instead of silently swallowed.
-//
-// Only scope needs git today — the testing dimension reads covered/total from the live CheckTestCoverage call
-// (see scoreTesting), and assertion density comes from CollectAssertionDensity, hence test-file diff content is not collected here.
 //
 // CollectGitData 采集 scope 维度使用的 git diff stat。
 // 返回 (diffStat, error)；error 是真实的（两个 git diff 命令都失败，如非 git 目录或 base
@@ -25,11 +19,6 @@ func CollectGitData(root, branch, baseCommit string) (string, error) {
 	return gitDiffStat(root, base)
 }
 
-// resolveDiffBase returns the diff base used for scope/assertion collection.
-// It prefers the task-recorded HeadCommit (captured at task start) so each task's scope counts only its own changes —
-// otherwise multiple tasks on one feature branch accumulate prior tasks' commits into master..HEAD, inflating scope.
-// An empty baseCommit falls back to resolveBase (feature branches) or HEAD~1 (main).
-//
 // resolveDiffBase 返回 scope/assertion 采集用的 diff 基线。
 // 优先用任务记录的 HeadCommit（task start 时捕获），让每个任务的 scope 只算自己的改动——
 // 否则一个 feature 分支上多任务会把先前任务的 commit 累加进 master..HEAD，scope 虚高。
@@ -44,8 +33,6 @@ func resolveDiffBase(root, branch, baseCommit string) string {
 	return "HEAD~1"
 }
 
-// resolveBase tries common base branch names and returns the first that exists.
-//
 // resolveBase 尝试常见 base 分支名，返回第一个存在的。
 func resolveBase(root string) string {
 	for _, name := range []string{"main", "master", "origin/main", "origin/master"} {
@@ -57,25 +44,6 @@ func resolveBase(root string) string {
 	return "HEAD~1"
 }
 
-// changedFiles returns repo-relative paths changed since base (committed changes
-// base..HEAD plus uncommitted working-tree changes relative to HEAD, plus
-// UNTRACKED files via git ls-files --others). Deduplicated, order-preserving.
-// Used by CollectAssertionDensity — needs only paths, not line counts.
-//
-// Untracked inclusion note: `git diff` does NOT accept --others (exit 129 — it
-// is an ls-files option), so untracked files come from a separate
-// `git ls-files --others --exclude-standard` probe instead of being appended to
-// the diff command. Without it, a brand-new (never-added) test file was
-// invisible to assertion density and the fake-test signal went blind exactly
-// where fake tests are most common.
-//
-// Error contract (mirrors gitDiffStat, fix/cleanup-batch 2026-08-29): a single
-// probe failing is tolerated (the others may still yield data); ALL probes
-// failing returns the real error (non-git dir, unreachable base, git missing)
-// so the failure is observable to the caller instead of being
-// indistinguishable from "no changes" — CollectAssertionDensity uses it to
-// skip the fake-test penalty rather than punish on a dead probe.
-//
 // changedFiles 返回自 base 以来变更的 repo-relative 路径（committed 改动
 // base..HEAD 加上相对 HEAD 的 uncommitted working-tree 改动，加上经
 // git ls-files --others 纳入的未跟踪文件）。去重，保序。供
@@ -103,25 +71,18 @@ func changedFiles(root, base string) ([]string, error) {
 			files = append(files, line)
 		}
 	}
-	// 1. Committed changes during the task: base..HEAD
-	//
 	// 1. 任务期间 committed 改动：base..HEAD
 	branchCmd := exec.Command("git", "-C", root, "diff", "--name-only", base+"..HEAD")
 	branchOut, branchErr := branchCmd.Output()
 	if branchErr == nil {
 		add(branchOut)
 	}
-	// 2. Uncommitted working-tree changes relative to HEAD
-	//
 	// 2. 相对 HEAD 的 uncommitted working-tree 改动
 	workCmd := exec.Command("git", "-C", root, "diff", "--name-only", "HEAD")
 	workOut, workErr := workCmd.Output()
 	if workErr == nil {
 		add(workOut)
 	}
-	// 3. Untracked files (--others --exclude-standard semantics via ls-files —
-	// git diff rejects --others, see the function comment).
-	//
 	// 3. 未跟踪文件（经 ls-files 实现 --others --exclude-standard 语义——
 	// git diff 不接受 --others，见函数注释）。
 	othersCmd := exec.Command("git", "-C", root, "ls-files", "--others", "--exclude-standard")
@@ -135,18 +96,6 @@ func changedFiles(root, base string) ([]string, error) {
 	return files, nil
 }
 
-// gitDiffStat returns the diff --numstat output for changes since base.
-// numstat gives true per-file added/deleted counts (added\tdeleted\tpath),
-// unlike --stat whose second column is the insertions+deletions total and whose +/- bar is a width-limited visualization.
-// parseDiffStatLines sums the per-side counts.
-//
-// base is the task's HeadCommit (HEAD at task start). Two non-overlapping slices: committed changes
-// during the task (base..HEAD) and uncommitted working-tree changes (HEAD).
-//
-// Error contract: a single command failing is tolerated (the other slice may still yield data);
-// BOTH commands failing returns the real error (non-git dir, unreachable base, git missing) so the
-// failure is observable to the caller instead of being indistinguishable from "no changes".
-//
 // gitDiffStat 返回自 base 以来改动的 diff --numstat 输出。
 // numstat 给出真实的 per-file added/deleted 计数（"added\tdeleted\tpath"），
 // 不像 --stat 其第二列是 insertions+deletions 总和、其"+/-"条是宽度受限的可视化。
@@ -160,8 +109,6 @@ func changedFiles(root, base string) ([]string, error) {
 func gitDiffStat(root, base string) (string, error) {
 	var parts []string
 
-	// 1. Committed changes during the task: base..HEAD
-	//
 	// 1. 任务期间 committed 改动：base..HEAD
 	branchCmd := exec.Command("git", "-C", root, "diff", "--numstat", base+"..HEAD")
 	branchOut, branchErr := branchCmd.Output()
@@ -171,8 +118,6 @@ func gitDiffStat(root, base string) (string, error) {
 		}
 	}
 
-	// 2. Uncommitted working-tree changes relative to HEAD
-	//
 	// 2. 相对 HEAD 的 uncommitted working-tree 改动
 	workCmd := exec.Command("git", "-C", root, "diff", "--numstat", "HEAD")
 	workOut, workErr := workCmd.Output()

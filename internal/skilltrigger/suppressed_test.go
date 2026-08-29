@@ -7,21 +7,11 @@ import (
 )
 
 // suppressed_test.go — v2 抑制可观测（辩论 P1）与分源匹配语义（辩论 R1）的钉子测试。
-//
-// suppressed_test.go — pins for v2 suppression observability (debate P1) and per-source
-// matching semantics (debate R1).
 
 // TestMatchKeywords_PerSource_Boundary 钉死 R1 语义变更：关键词不得跨源边界命中。
 // v1 拼接 haystack 下，prompt 结尾 "compile" + 命令开头 "error:" 会拼出 "compile error"
 // 而误命中——既无法归因来源、又是不可追踪的误报。v2 分源判定必须使该场景为 miss；
 // 同关键词完整落在单一来源时必须 hit。这是有意的行为变更（非增量），本测试就是防退化锚。
-//
-// TestMatchKeywords_PerSource_Boundary pins the R1 semantic change: a keyword must NOT
-// match across source boundaries. Under v1's concatenated haystack, a prompt ending
-// "compile" + a command starting "error:" spliced into "compile error" and false-fired —
-// unattributable and untrackable. v2's per-source evaluation must make that scenario a
-// miss; the same keyword wholly inside ONE source must hit. This is an intended behavior
-// change (not additive) — this test is the anti-regression anchor.
 func TestMatchKeywords_PerSource_Boundary(t *testing.T) {
 	kw := []string{"compile error"}
 	ctx := Context{
@@ -55,9 +45,6 @@ func TestMatchKeywords_PerSource_Boundary(t *testing.T) {
 }
 
 // TestMatchKeywords_SourcePriority 命中归因优先序 = v1 拼接顺序：prompt > command > stdout。
-//
-// TestMatchKeywords_SourcePriority attribution priority = v1 concatenation order:
-// prompt > command > stdout.
 func TestMatchKeywords_SourcePriority(t *testing.T) {
 	kw := []string{"deploy"}
 	ctx := Context{
@@ -75,9 +62,6 @@ func TestMatchKeywords_SourcePriority(t *testing.T) {
 
 // TestEval_SuppressedCooldown cooldown 抑制必须以 Suppressed 返回（cause=cooldown），
 // 命中计数不再静默吞掉被抑制的近似命中。
-//
-// TestEval_SuppressedCooldown cooldown blocks must come back as Suppressed
-// (cause=cooldown) — suppressed near-hits are no longer silently swallowed.
 func TestEval_SuppressedCooldown(t *testing.T) {
 	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{{Event: "Stop"}}}}
 	noise := NewInMemoryNoiseController()
@@ -94,9 +78,6 @@ func TestEval_SuppressedCooldown(t *testing.T) {
 }
 
 // TestEval_SuppressedStopCap Stop 触顶后的「本会命中」以 cause=stop-max-rounds 返回。
-//
-// TestEval_SuppressedStopCap would-have-fired hits after the Stop cap come back with
-// cause=stop-max-rounds.
 func TestEval_SuppressedStopCap(t *testing.T) {
 	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{{Event: "Stop"}}}}
 	noise := NewInMemoryNoiseController()
@@ -116,10 +97,6 @@ func TestEval_SuppressedStopCap(t *testing.T) {
 
 // TestEval_EvidenceFields 命中证据字段齐备：keyword/source/index/sig/hash；hash 项目盐
 // （同 prompt 异项目 → 异 hash；同项目 → 稳定）；sig 对声明内容稳定。
-//
-// TestEval_EvidenceFields hit evidence fields are complete: keyword/source/index/sig/hash;
-// the hash is project-salted (same prompt, different project → different hash; same
-// project → stable); the sig is stable over the declared rule.
 func TestEval_EvidenceFields(t *testing.T) {
 	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{
 		{Event: "UserPromptSubmit", Keywords: []string{"编译报错", "compile error"}},
@@ -149,9 +126,6 @@ func TestEval_EvidenceFields(t *testing.T) {
 	}
 	// tool 事件（无 prompt）：hash 回退到命中来源文本（review m4——stdout 命中同样
 	// 可挖矿去重），PromptLen 仍为 0（记录的是 prompt 长度）。
-	//
-	// Tool event (no prompt): the hash falls back to the matched source text (review
-	// m4 — stdout hits stay minable/dedupable); PromptLen stays 0 (it counts the prompt).
 	toolAll := []SkillTriggers{{Skill: "bar", Triggers: []Trigger{{Event: "PostToolUse", Match: "Bash", Keywords: []string{"fail"}}}}}
 	th, _ := Eval(Context{Event: "PostToolUse", ToolName: "Bash", ProjectRoot: "/proj/a", ToolOutput: map[string]any{"stdout": "build fail"}, SessionID: "s"}, toolAll, nil)
 	if len(th) != 1 || th[0].PromptHash == "" || th[0].PromptLen != 0 {
@@ -165,12 +139,6 @@ func TestEval_EvidenceFields(t *testing.T) {
 // TestEval_TriggerSigMatchesDeclared 钉死 review M1：Eval 落盘的 sig 必须等于对「声明态」
 // 规则重算的 sig——含多 trigger 取 maxCD 场景（覆写 Cooldown 后计算会让缺省 cooldown 的
 // 规则带上归一化 60，同一声明规则劈裂出多个 sig，纵向统计 join 不回 SKILL.md）。
-//
-// TestEval_TriggerSigMatchesDeclared pins review M1: the sig Eval produces must equal
-// the sig recomputed over the rule AS DECLARED — including the multi-trigger maxCD
-// scenario (computing after the Cooldown overwrite bakes the normalized 60 into
-// default-cooldown rules, splitting one declared rule into several sigs that can
-// never join back to SKILL.md).
 func TestEval_TriggerSigMatchesDeclared(t *testing.T) {
 	declared := Trigger{Event: "UserPromptSubmit", Keywords: []string{"编译报错"}} // Cooldown 缺省（0）
 	// 后一条 trigger 声明更大 cooldown：两 trigger 同 event 同 keywords 都命中 → maxCD=120。
@@ -194,10 +162,6 @@ func TestEval_TriggerSigMatchesDeclared(t *testing.T) {
 
 // TestEval_NoRootNoHash 钉死 review m2：非 forge 目录（ProjectRoot 空）不落 hash——空盐
 // 会让全部非 forge session 坍缩进同一全局桶，跨项目关联恰在盐缺位处成立。
-//
-// TestEval_NoRootNoHash pins review m2: non-forge dirs (empty ProjectRoot) carry no
-// hash — an empty salt would collapse every non-forge session into one global bucket,
-// making cross-project correlation hold exactly where the salt is missing.
 func TestEval_NoRootNoHash(t *testing.T) {
 	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{{Event: "UserPromptSubmit", Keywords: []string{"x"}}}}}
 	hits, _ := Eval(Context{Event: "UserPromptSubmit", Prompt: "x here", SessionID: "s"}, all, nil)
@@ -208,9 +172,6 @@ func TestEval_NoRootNoHash(t *testing.T) {
 
 // TestEval_StopCapSkipsDisabled 钉死 review m1：显式禁用的 skill 在 stop-cap 触顶时
 // 不得被记成"被抑制的潜在注入"。
-//
-// TestEval_StopCapSkipsDisabled pins review m1: explicitly disabled skills must not
-// be recorded as "suppressed would-be injections" when the Stop cap trips.
 func TestEval_StopCapSkipsDisabled(t *testing.T) {
 	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{{Event: "Stop"}}}}
 	noise := NewInMemoryNoiseController()
@@ -226,9 +187,6 @@ func TestEval_StopCapSkipsDisabled(t *testing.T) {
 }
 
 // TestTriggerSig_StableAndDistinct sig 对声明内容稳定（两次计算一致）、对不同规则可区分。
-//
-// TestTriggerSig_StableAndDistinct the sig is stable over declared content (identical
-// across computations) and distinguishes different rules.
 func TestTriggerSig_StableAndDistinct(t *testing.T) {
 	a := Trigger{Event: "Stop", Keywords: []string{"x"}}
 	if triggerSig(a) != triggerSig(a) {
@@ -241,9 +199,6 @@ func TestTriggerSig_StableAndDistinct(t *testing.T) {
 }
 
 // TestExcerpt_Window 摘录窗口：±radius rune、命中词包含在内、找不到/空关键词返回空。
-//
-// TestExcerpt_Window excerpt window: ±radius runes, keyword contained, "" when absent
-// or keyword empty.
 func TestExcerpt_Window(t *testing.T) {
 	prompt := strings.Repeat("前", 100) + "编译报错" + strings.Repeat("后", 100)
 	ctx := Context{Prompt: prompt}

@@ -16,9 +16,6 @@ func init() {
 
 var nodeJSON bool
 
-// nodeCmd groups machine-identity commands (docs/design/node-identity.md). v1 has only
-// `show`; trust/rotate commands arrive with the team-profile phase.
-//
 // nodeCmd 归组机器身份命令（docs/design/node-identity.md）。v1 只有 `show`；
 // trust/rotate 命令随团队 profile 阶段到来。
 var nodeCmd = &cobra.Command{
@@ -26,10 +23,6 @@ var nodeCmd = &cobra.Command{
 	Short: "机器节点身份（node_id = 公钥指纹）",
 }
 
-// nodeShowCmd prints the local machine identity. The private key is NEVER printed —
-// the display surface carries only what a peer would need to trust this node
-// (node_id + public key).
-//
 // nodeShowCmd 输出本机身份。私钥绝不打印——展示面只携带对端信任本节点所需的材料
 // （node_id + 公钥）。
 var nodeShowCmd = &cobra.Command{

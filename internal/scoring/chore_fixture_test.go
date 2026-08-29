@@ -1,10 +1,5 @@
 package scoring
 
-// gitDiffStatChoreFixture is the verbatim `git diff --numstat` snapshot of the
-// chore-fix-ci-cmd-forge dogfood task (200 files, v1.42 era) — the realistic
-// huge-diff shape that the scope dimension must handle. Kept as data so
-// realCases() can rebuild the fixture after intentional scoring changes.
-//
 // gitDiffStatChoreFixture 是 chore-fix-ci-cmd-forge dogfood 任务的
 // `git diff --numstat` 原样快照（200 文件，v1.42 期）——scope 维度必须能处理的
 // 真实大 diff 形状。存为数据，使 realCases() 在有意评分变更后能重建 fixture。

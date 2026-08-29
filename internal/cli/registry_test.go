@@ -10,13 +10,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/registry"
 )
 
-// mkLiveForgeDir creates a temp directory containing .forge/ — a live project for
-// registry purposes. Aliveness is judged by the project path itself existing
-// (user-level-assets: init writes no project-level .forge/, so .forge is no longer
-// the liveness signal; the dir here just keeps the fixture realistic).
-// It is a cli-package helper, synonymous with the registry package mkForgeProject (not
-// shareable across packages).
-//
 // mkLiveForgeDir 建一个含 .forge/ 的临时目录——registry 语义下的活项目。存活按项目
 // 路径本身存在判定（user-level-assets 后 init 不写项目级 .forge/，.forge 不再是
 // 存活信号；这里建 .forge 只是让 fixture 贴近真实老项目）。cli 包内 helper，
@@ -30,13 +23,6 @@ func mkLiveForgeDir(t *testing.T) string {
 	return d
 }
 
-// TestRegistryPruneCmd_PrunesDead: runRegistryPrune runs a real prune, and the output
-// reports the removed count + remaining count. FORGE_DATA_HOME is isolated to a temp dir;
-// registering 1 live + 1 dead path, the command should remove 1 and keep 1.
-// Aliveness = the project path itself exists (user-level-assets: init writes no
-// project-level .forge/, so a dir without .forge is still a live project; only a
-// moved/deleted path is dead).
-//
 // TestRegistryPruneCmd_PrunesDead runRegistryPrune 跑真实精简，输出报告移除条数 + 保留数。
 // 隔离 FORGE_DATA_HOME 到 temp，注册 1 活跃 + 1 死路径，命令应移除 1 保留 1。
 // 存活 = 项目路径本身存在（user-level-assets 后 init 不写项目级 .forge/，无 .forge 的
@@ -66,8 +52,6 @@ func TestRegistryPruneCmd_PrunesDead(t *testing.T) {
 	}
 }
 
-// TestRegistryPruneCmd_AlreadyClean: with no dead paths, the output reports `already minimal`, pruned=0.
-//
 // TestRegistryPruneCmd_AlreadyClean 无死路径时输出「已是最精简」，pruned=0。
 func TestRegistryPruneCmd_AlreadyClean(t *testing.T) {
 	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())

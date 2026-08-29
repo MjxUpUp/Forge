@@ -11,19 +11,11 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
-// merge_converge_test.go — the DataDir-level convergence anchor: two machine data
-// dirs with overlapping/conflicting content, merged BOTH WAYS through the real
-// Dirs path (TaskUnion + TrustResults + DedupExactLines — the project-import option
-// set), must end up byte-identical across the whole tree, and a re-merge must be a
-// no-op. This is the property a continuous two-machine sync loop relies on.
-//
 // merge_converge_test.go —— DataDir 级收敛锚：两台机器的数据目录带重叠/冲突内容，
 // 经真实 Dirs 路径双向合并（TaskUnion + TrustResults + DedupExactLines——project
 // import 的选项集），全树必须字节一致，且重复合并必须是 no-op。这是持续双机
 // 同步循环依赖的性质。
 
-// cpTree deep-copies a directory tree (regular files only — fixtures stay regular).
-//
 // cpTree 深拷贝目录树（仅普通文件——fixture 保持普通文件）。
 func cpTree(t *testing.T, src string) string {
 	t.Helper()
@@ -48,8 +40,6 @@ func cpTree(t *testing.T, src string) string {
 	return dst
 }
 
-// treeBytes renders a directory tree as rel-path → content for byte comparison.
-//
 // treeBytes 把目录树渲染为 相对路径→内容 供字节比较。
 func treeBytes(t *testing.T, root string) map[string][]byte {
 	t.Helper()
@@ -89,8 +79,6 @@ func treesEqual(t *testing.T, a, b map[string][]byte) bool {
 	return true
 }
 
-// writeTask persists a TaskState fixture into dir/tasks/.
-//
 // writeTask 把 TaskState fixture 落进 dir/tasks/。
 func writeTask(t *testing.T, dir string, s *taskpipeline.TaskState) {
 	t.Helper()
@@ -137,10 +125,6 @@ func TestDirs_TwoWaySyncConverges(t *testing.T) {
 		`{"check":"task-guard","passed":true,"detail":"from-a","recorded_at":"2026-08-20T10:00:00Z"}`+"\n"+
 			`{"check":"task-guard","passed":true,"detail":"from-b","recorded_at":"2026-08-21T10:00:00Z"}`+"\n"), 0644)
 
-	// NoFromBackup: the from-dirs are disposable cpTree copies (the import-staging
-	// precedent) — otherwise the whole-dir backup move nests .rekey-backup dirs into
-	// the fixtures and second-resolution backup names collide across the two merges.
-	//
 	// NoFromBackup：from 目录是一次性 cpTree 副本（import staging 先例）——否则
 	// 整目录备份搬移会把 .rekey-backup 嵌进 fixture，且秒级备份名在两次合并间撞名。
 	opts := Options{TaskPolicy: TaskUnion, TrustResults: true, DedupExactLines: true, MergeConclusions: true, NoFromBackup: true}

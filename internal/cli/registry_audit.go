@@ -8,10 +8,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// registry_audit.go — `forge registry audit`: render registry.Audit() findings.
-// Read-only advisory surface for identity drift (project-sync). Lives next to
-// rekey because its findings ARE rekey/adopt work items.
-//
 // registry_audit.go —— `forge registry audit`：渲染 registry.Audit() 发现。
 // 身份漂移（project-sync）的只读 advisory 面。与 rekey 同组，因为它的发现
 // 正是 rekey/adopt 的工作项。

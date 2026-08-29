@@ -6,9 +6,7 @@ import (
 	"testing"
 )
 
-// TestDetectTestCommand locks test-command detection: go.mod → go test; no recognizable manifest → empty string (caller
-// skips on this, never issues an empty command). An expansion of detectStackAndCmd, ensuring the entry-point
-// detection of forge verify --run-tests is regressable.
+// TestDetectTestCommand locks test-command detection: go.mod → go test; no recognizable manifest → empty string (caller skips on this, never issues an empty command).
 //
 // TestDetectTestCommand 锁定测试命令探测：go.mod→go test，无可识别 manifest→""（caller
 // 据此跳过，不发空命令）。detectStackAndCmd 的展开，保证 forge verify --run-tests 的
@@ -29,7 +27,6 @@ func TestDetectTestCommand(t *testing.T) {
 }
 
 // TestRunTestCommand_ExitCode verifies real exit-code capture: exit 0 → passed=true, non-zero → false.
-// Uses subcommands of go (always present in a Go module test env) for deterministic exit codes, without running the real test suite (fast).
 //
 // TestRunTestCommand_ExitCode 验证真实退出码捕获：exit 0→passed=true，非 0→false。
 // 用 go（Go 模块测试环境必有）的子命令做确定性退出码，不跑真实测试套件（快）。

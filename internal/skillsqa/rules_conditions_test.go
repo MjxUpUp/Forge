@@ -2,12 +2,6 @@ package skillsqa
 
 import "testing"
 
-// TestValidConditions_Vocabulary pins the R12 condition vocabulary in skillsqa itself.
-// The cross-package sync guard (TestValidConditions_MatchEngine) lives in
-// internal/skilltrigger's tests because skillsqa cannot import skilltrigger
-// (import cycle); this test pins the skillsqa-side copy so a condition added here
-// without the engine side (or vice versa) fails at least one of the two guards.
-//
 // TestValidConditions_Vocabulary 钉住 skillsqa 侧的 R12 condition 词汇表。
 // 跨包同步守卫（TestValidConditions_MatchEngine）住在 internal/skilltrigger 的测试里
 // （skillsqa 不能 import skilltrigger——import cycle）；本测试钉 skillsqa 侧副本，

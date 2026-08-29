@@ -11,8 +11,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/nodestamp"
 )
 
-// lastLines returns the non-empty lines of the test-isolated checklog.
-//
 // lastLines 返回测试隔离 checklog 的非空行。
 func lastLines(t *testing.T, root string) []string {
 	t.Helper()
@@ -29,11 +27,6 @@ func lastLines(t *testing.T, root string) []string {
 	return out
 }
 
-// TestRecord_StampsMachineAttribution pins the event-stamping contract at the
-// checklog choke point (node-identity.md §4): every Record lands node_id/seq/ts_hlc,
-// seq is monotonic across entries, and a caller-preset stamp (the import/merge path)
-// is preserved untouched.
-//
 // TestRecord_StampsMachineAttribution 在 checklog 收口点钉死事件打戳契约
 // （node-identity.md §4）：每次 Record 落 node_id/seq/ts_hlc，seq 跨条目单调，
 // 调用方预置戳（import/merge 路径）原样保留。

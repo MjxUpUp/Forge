@@ -9,13 +9,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
-// TestRunProjectTestsModeAt_RecordsDeterministic is the end-to-end guard for #1: on a
-// real, runnable minimal go module it exercises the core of `forge verify --run-tests`,
-// asserting checklog records a CheckNameTestRun entry with Source=deterministic (run by
-// forge itself, unforgeable) and Passed reflects the real exit code. This is the hookup
-// that promotes an agent self-claim of passing into deterministic evidence — if
-// DetectTestCommand / RunTestCommand / recording wiring breaks anywhere, this test pins
-// the regression.
+// TestRunProjectTestsModeAt_RecordsDeterministic is the end-to-end guard for #1.
 //
 // TestRunProjectTestsModeAt_RecordsDeterministic 是 #1 的端到端守卫：在一个真实可跑的
 // 最小 go 模块上跑 forge verify --run-tests 的核心，断言 checklog 记录了 CheckNameTestRun
@@ -28,8 +22,6 @@ func TestRunProjectTestsModeAt_RecordsDeterministic(t *testing.T) {
 		[]byte("module testproj\ngo 1.21\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	// A passing test (stdlib only, compiles offline).
-	//
 	// 一个通过的测试（仅 stdlib，离线可编译）
 	if err := os.WriteFile(filepath.Join(dir, "foo_test.go"),
 		[]byte("package testproj\n\nimport \"testing\"\n\nfunc TestFoo(t *testing.T) {}\n"), 0644); err != nil {
@@ -62,9 +54,7 @@ func TestRunProjectTestsModeAt_RecordsDeterministic(t *testing.T) {
 	}
 }
 
-// TestRunProjectTestsModeAt_NoCommandSilent verifies that when no recognizable manifest
-// is present it exits silently and writes nothing to checklog (no empty command spawned,
-// no noise entries left behind).
+// TestRunProjectTestsModeAt_NoCommandSilent verifies that when no recognizable manifest is present it exits silently and writes nothing to checklog (no empty command spawned, no noise entries left behind).
 //
 // TestRunProjectTestsModeAt_NoCommandSilent 验证无可识别 manifest 时静默退出、不写
 // checklog（不发空命令、不留噪声条目）。
@@ -79,14 +69,7 @@ func TestRunProjectTestsModeAt_NoCommandSilent(t *testing.T) {
 	}
 }
 
-// TestRunProjectTestsModeAt_AttributesToSessionScopedTask pins task attribution: when
-// CLAUDE_CODE_SESSION_ID is set, test-run evidence must be recorded under the task
-// pointed at by the session-scoped active-task-ref, not the stale shared
-// .forge/active-task-ref. Regression scenario: runProjectTestsModeAt previously called
-// ReadActiveTaskRef with an empty sessionID and read the old task from the shared file
-// (e.g. fix/concurrent-session-race residue), attributing evidence to the wrong task
-// where it is invisible to trace — this test plants a stale shared file to prove it is
-// ignored.
+// TestRunProjectTestsModeAt_AttributesToSessionScopedTask pins task attribution.
 //
 // TestRunProjectTestsModeAt_AttributesToSessionScopedTask 钉住任务归属：当
 // CLAUDE_CODE_SESSION_ID 已设置时，test-run 证据必须记到 session-scoped
@@ -113,22 +96,16 @@ func TestFoo(t *testing.T) {}
 		t.Fatal(err)
 	}
 
-	// Simulate an agent running `forge verify --run-tests` inside a Claude Code session.
-	//
 	// 模拟 agent 在 Claude Code 会话内跑 forge verify --run-tests
 	const sid = `test-session-abc`
 	t.Setenv(`CLAUDE_CODE_SESSION_ID`, sid)
 
-	// The real active task (session-scoped file).
-	//
 	// 真实活动任务（session-scoped 文件）
 	const realTask = `feat/session-scoped-task`
 	if err := taskpipeline.SetActiveTaskRef(dir, sid, realTask); err != nil {
 		t.Fatal(err)
 	}
 
-	// Plant a stale shared active-task-ref (legacy session residue) — must be ignored.
-	//
 	// 埋一个陈旧的共享 active-task-ref（旧会话残留）——必须被忽略
 	if err := os.MkdirAll(filepath.Join(dir, `.forge`), 0755); err != nil {
 		t.Fatal(err)
@@ -161,12 +138,7 @@ func TestFoo(t *testing.T) {}
 	}
 }
 
-// TestRunProjectTestsModeAt_RecordsFailure pins the RED path: a failing test suite must
-// still record a test-run entry (Passed=false, Checked=true, source=deterministic) and
-// return a non-nil error. The core value of #1 is recording failure too as unforgeable
-// evidence — without this test, if someone later moves checklog.Record into an `if passed`
-// branch, failure evidence would be silently dropped while green-only tests still pass,
-// hitting exactly the agent-self-claim blind spot this feature aims to close.
+// TestRunProjectTestsModeAt_RecordsFailure pins the RED path: a failing test suite must still record a test-run entry (Passed=false, Checked=true, source=deterministic) and return a non-nil error.
 //
 // TestRunProjectTestsModeAt_RecordsFailure 钉住 RED 路径：失败的测试套件必须照常
 // 记一条 test-run（Passed=false、Checked=true、source=deterministic）并返回非 nil error。

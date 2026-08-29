@@ -9,18 +9,14 @@ import (
 	"testing"
 )
 
-// runSkillScanHook executes the REAL SkillScanHook script with a bash FUNCTION
-// stub overriding the `forge` command, so the audit-scan call is driven by the
-// test. Bash functions win over PATH executables (verified cross-platform), so
-// this needs no fake binary and no PATH manipulation — unlike a PATH-based fake
-// forge, which does NOT resolve reliably under Git Bash's semicolon PATH on
-// Windows (semicolon PATH silently falls through to the real forge). HOME points
-// at a temp dir containing .claude/skills so the hook's no-skills early-exit is
-// bypassed and the real CODE/OUTPUT judgment runs.
+// runSkillScanHook 用 bash 函数 stub 覆盖 `forge` 命令来真跑 SkillScanHook 脚本，
+// 让测试驱动 audit-scan 调用。bash 函数优先于 PATH 可执行文件（跨平台已验证），
+// 无需假二进制、无需改 PATH——PATH 假 forge 在 Windows Git Bash 的分号 PATH 下
+// 解析不可靠（分号 PATH 会静默穿透到真 forge）。HOME 指向含 .claude/skills 的
+// 临时目录，绕过 hook 的 no-skills 早退，跑真正的 CODE/OUTPUT 判定。
 //
-// This is the behavioral layer that settings_test.go's containsString guards
-// cannot reach: containsString proves the script *contains* the "扫描未完成"
-// literal; this proves the script *actually emits* it when the scan crashes.
+// 这是 settings_test.go 的 containsString 守卫够不到的行为层：containsString 证明
+// 脚本*含有*「扫描未完成」字面量；这里证明扫描崩溃时脚本*真的输出*它。
 func runSkillScanHook(t *testing.T, forgeStubStdout, forgeStubStderr string, forgeStubExit int) string {
 	t.Helper()
 	// forge() function stub: controlled stdout + stderr + exit code, driven via

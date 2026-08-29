@@ -20,9 +20,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
-// pulseServer mounts the full middleware stack (Host validation + security headers + mux),
-// mirroring Serve, so the pulse endpoints are tested through the same defenses.
-//
 // pulseServer 挂完整 middleware 栈（Host 校验 + 安全头 + mux），与 Serve 一致，
 // 让 pulse 端点在同样的防线内被测。
 func pulseServer(t *testing.T, opts Options) *httptest.Server {
@@ -46,18 +43,12 @@ func pulseGet(t *testing.T, url string) (int, []byte) {
 	return resp.StatusCode, body
 }
 
-// pulseTaskPayload is the shared decode target of the task.json test family (the
-// 6 former inline payload structs, unified 2026-08-30 slim-down): the union of
-// every field any task.json assertion reads — absent JSON fields simply decode
-// to their zero value, so each test sees only its own slice of the contract.
-// taskRef/project/state/score/acceptance (TestServe_PulseTask), dimensions/
-// cappedReason/evidence (ScoredTask), events/truncated (Truncated), the
-// conclusion-backfill evidence pointer (EvidenceBackfill / NoFabrication), and
-// state.lease/docReview (LeaseAndDocReview).
-//
 // pulseTaskPayload 是 task.json 测试家族的共用解码目标（2026-08-30 瘦身合并原
 // 6 个内联 payload struct）：任一 task.json 断言读取字段的并集——缺席的 JSON
-// 字段解码为零值，各测试只看到自己那一片契约。
+// 字段解码为零值，各测试只看到自己那一片契约。taskRef/project/state/score/
+// acceptance（TestServe_PulseTask）、dimensions/cappedReason/evidence
+// （ScoredTask）、events/truncated（Truncated）、结论回填证据指针
+// （EvidenceBackfill / NoFabrication）、state.lease/docReview（LeaseAndDocReview）。
 type pulseTaskPayload struct {
 	TaskRef   string      `json:"taskRef"`
 	Project   string      `json:"project"`
@@ -110,10 +101,6 @@ type pulseTaskPayload struct {
 	} `json:"docReview"`
 }
 
-// TestServe_PulseFeed: /api/pulse/feed.json returns 200 + generatedAt + merged events;
-// a malformed since is a 400 (client error, not a 500). A limit below the event count
-// truncates and marks truncated:true (the client full-refetches on a truncated poll).
-//
 // TestServe_PulseFeed：/api/pulse/feed.json 返回 200 + generatedAt + 归并事件；
 // 畸形 since 是 400（客户端错误，非 500）。limit 低于事件数时截断并标记
 // truncated:true（客户端在截断的轮询后全量重拉）。
@@ -173,9 +160,6 @@ func TestServe_PulseFeed(t *testing.T) {
 	}
 }
 
-// TestServe_PulseTask: /api/pulse/task.json returns the task state + its events + score;
-// SessionID never leaks into the JSON body.
-//
 // TestServe_PulseTask：/api/pulse/task.json 返回任务状态 + 其事件 + 评分；
 // SessionID 绝不泄露进 JSON body。
 func TestServe_PulseTask(t *testing.T) {
@@ -243,9 +227,6 @@ func TestServe_PulseTask(t *testing.T) {
 	}
 }
 
-// TestServe_PulseTask_ScoredTask: a task with TaskState.Score emits the score block with
-// dimensions (name/weight/score/detail) and evidence.
-//
 // TestServe_PulseTask_ScoredTask：带 TaskState.Score 的任务输出 score 块，含维度
 // （name/weight/score/detail）与 evidence。
 func TestServe_PulseTask_ScoredTask(t *testing.T) {
@@ -286,10 +267,6 @@ func TestServe_PulseTask_ScoredTask(t *testing.T) {
 	if payload.Score.Overall != 90 || payload.Score.Grade != "A" {
 		t.Errorf("score overall/grade 异常: %+v", payload.Score)
 	}
-	// Weight comes from scoringtypes.DefaultWeights() (the pulse API re-derives it
-	// by dimension name), so assert against the same source — a hard-coded 0.25
-	// broke when expression was added (weights rebalanced).
-	//
 	// 权重来自 scoringtypes.DefaultWeights()（pulse API 按维度名重新推导），
 	// 断言用同一真相源——写死 0.25 在新增 expression 维度（权重重平衡）时断裂。
 	if len(payload.Score.Dimensions) != 2 || payload.Score.Dimensions[0].Name != "process" || payload.Score.Dimensions[0].Weight != scoringtypes.DefaultWeights()[string(scoringtypes.DimensionProcess)] {
@@ -303,11 +280,6 @@ func TestServe_PulseTask_ScoredTask(t *testing.T) {
 	}
 }
 
-// TestServe_PulseTask_Truncated: a task whose event stream exceeds the feed limit gets
-// its transcript capped AND the payload marks truncated:true — parity with feed.json,
-// so the detail page can label the transcript as partial instead of silently posing as
-// complete (regression guard: buildPulseTask used to drop FeedResult.Truncated).
-//
 // TestServe_PulseTask_Truncated：事件流超出 feed 上限的任务，transcript 被截断且载荷
 // 标 truncated:true——与 feed.json 对齐，详情页得以如实标注「不完整」而不是静默冒充
 // 完整序列（回归守卫：buildPulseTask 曾丢弃 FeedResult.Truncated）。
@@ -504,8 +476,6 @@ func TestServe_PulseTask_NoEvidenceNoFabrication(t *testing.T) {
 	}
 }
 
-// TestServe_PulseTask_Errors: missing ref → 400; unknown ref → 404.
-//
 // TestServe_PulseTask_Errors：缺 ref → 400；未知 ref → 404。
 func TestServe_PulseTask_Errors(t *testing.T) {
 	root, _ := forgedatatest.RealProject(t)
@@ -521,9 +491,6 @@ func TestServe_PulseTask_Errors(t *testing.T) {
 	}
 }
 
-// TestServe_PulseProjects: /api/pulse/projects.json lists each project with active/zombie
-// counts and the last conclusion's grade/score.
-//
 // TestServe_PulseProjects：/api/pulse/projects.json 列出每个项目的活跃/僵尸计数与
 // 最近结论的 grade/score。
 func TestServe_PulseProjects(t *testing.T) {
@@ -581,9 +548,6 @@ func TestServe_PulseProjects(t *testing.T) {
 	}
 }
 
-// TestServe_PulseStats: with no data the numeric fields are null (not 0); with conclusions
-// they carry real aggregates.
-//
 // TestServe_PulseStats：无数据时数值字段为 null（非 0）；有结论时带真实聚合值。
 func TestServe_PulseStats(t *testing.T) {
 	// 空项目：数值字段 null。
@@ -660,9 +624,6 @@ func TestServe_PulseStats(t *testing.T) {
 	}
 }
 
-// TestServe_PulseSkills: /api/pulse/skills.json serves the overview with merged hits and
-// the never-triggered list; the canonical dir is injected via FORGE_SKILLS_CANONICAL.
-//
 // TestServe_PulseSkills：/api/pulse/skills.json 输出总览（合并命中数 + 从未触发名单）；
 // canonical 目录经 FORGE_SKILLS_CANONICAL 注入。
 func TestServe_PulseSkills(t *testing.T) {
@@ -690,9 +651,6 @@ func TestServe_PulseSkills(t *testing.T) {
 	}
 }
 
-// TestServe_PulseSkill: /api/pulse/skill.json serves the detail view; invalid names are
-// rejected with 400 (path-traversal guard).
-//
 // TestServe_PulseSkill：/api/pulse/skill.json 输出详情视图；非法名 400（路径遍历防护）。
 func TestServe_PulseSkill(t *testing.T) {
 	_, canonical, _ := skillsFixture(t)
@@ -750,10 +708,6 @@ func TestServe_PulseSkill(t *testing.T) {
 	}
 }
 
-// TestServe_PulseQuality: /api/pulse/quality.json aggregates every overview skill's
-// triggerQuality + compare in one response (replacing the frontend's former N+1 fan-out);
-// a skill without runs degrades to null sections.
-//
 // TestServe_PulseQuality：/api/pulse/quality.json 一次聚合总览中每个 skill 的
 // triggerQuality + compare（替代前端此前的 N+1 扇出）；无 run 的 skill 降级为 null 段。
 func TestServe_PulseQuality(t *testing.T) {
@@ -828,10 +782,6 @@ func TestServe_PulseQuality(t *testing.T) {
 	}
 }
 
-// TestServe_PulsePage: / serves the embedded static pulse page (200 + key markers) and
-// overrides the global script-src 'none' CSP so the single-file inline <script> can run;
-// the legacy /pulse URL redirects there; non-page routes keep the strict CSP.
-//
 // TestServe_PulsePage：/ 返回内嵌静态 pulse 页（200 + 关键标记），并覆盖全局
 // script-src 'none' 的 CSP 使单文件内联 <script> 可运行；旧 /pulse 地址重定向到 /；
 // 非页面路由保持严格 CSP。
@@ -864,8 +814,6 @@ func TestServe_PulsePage(t *testing.T) {
 		t.Errorf("CSP 不得放行外部源，got %q", csp)
 	}
 
-	// Legacy /pulse URL: permanent redirect to / (http.Get follows; assert the landing).
-	//
 	// 旧 /pulse 地址：永久重定向到 /（http.Get 自动跟随；断言最终落点）。
 	respP, err := http.Get(srv.URL + "/pulse")
 	if err != nil {
@@ -876,8 +824,6 @@ func TestServe_PulsePage(t *testing.T) {
 		t.Errorf("GET /pulse 应重定向到 /，got %s status %d", respP.Request.URL.Path, respP.StatusCode)
 	}
 
-	// Non-page routes keep the middleware's strict CSP.
-	//
 	// 非页面路由保持 middleware 的严格 CSP。
 	resp2, err := http.Get(srv.URL + `/api/pulse/feed.json`)
 	if err != nil {
@@ -889,10 +835,6 @@ func TestServe_PulsePage(t *testing.T) {
 	}
 }
 
-// TestPulseCanonicalDir_EmbedFallback: without FORGE_SKILLS_CANONICAL the dir resolves to
-// the embed cache under home (the production path — the skills tests above only cover the
-// env-override branch). Cache present → cache dir; absent → "" (silent degrade, no error).
-//
 // TestPulseCanonicalDir_EmbedFallback：无 FORGE_SKILLS_CANONICAL 时解析到 home 下的
 // embed 缓存（生产路径——上面的 skills 测试只覆盖 env 覆盖分支）。缓存存在 → 返回
 // 缓存目录；缺失 → ""（静默降级，不报错）。
@@ -918,12 +860,6 @@ func TestPulseCanonicalDir_EmbedFallback(t *testing.T) {
 	}
 }
 
-// TestServe_PulseTask_LeaseAndDocReview: the state block projects the cross-machine
-// lease (holder/active/expiry/fencing — the "expiry means free" rule is not re-derived
-// panel-side) and the payload carries the doc-gate L2 evidence. Tasks WITHOUT either
-// record emit NO lease/docReview keys at all (omitempty — same wire-compat discipline
-// as FeedEvent.Node, asserted at the raw-body level so a dropped omitempty goes red).
-//
 // TestServe_PulseTask_LeaseAndDocReview：state 块投影跨机租约（持有者/有效/过期时刻/
 // fencing——「过期即自由」规则不在面板侧另造），载荷带 doc gate 的 L2 回检证据。
 // 两者皆无的任务在线上结构中完全没有 lease/docReview 键（omitempty——与
@@ -1010,11 +946,6 @@ func TestServe_PulseTask_LeaseAndDocReview(t *testing.T) {
 	}
 }
 
-// TestServe_PulseProjects_Sync: projects.json rows carry the machine-local sync binding
-// (remote/nodeId/lastPushAt/lastPullAt, camelCase projection of DataDir/sync-remote.json)
-// when bound — and NO "sync" key at all when unbound (omitempty; the wire-shape pin lives
-// at raw-body level so a dropped omitempty goes red).
-//
 // TestServe_PulseProjects_Sync：projects.json 行在已绑定时携带机器本地同步块
 // （remote/nodeId/lastPushAt/lastPullAt——DataDir/sync-remote.json 的 camelCase
 // 投影），未绑定时完全没有 "sync" 键（omitempty；线上结构钉在原始 body 层，
@@ -1067,11 +998,6 @@ func TestServe_PulseProjects_Sync(t *testing.T) {
 	}
 }
 
-// TestPulseDocReview_ReviewedAtOmitEmpty pins the JSON contract declared on
-// pulseDocReview.ReviewedAt: time.Time's omitempty is a no-op on the zero value
-// (it still serializes 0001-01-01), so the field is a *time.Time — a zero review
-// moment must serialize as ABSENT, not a fake date; a set moment must appear.
-//
 // TestPulseDocReview_ReviewedAtOmitEmpty 钉住 pulseDocReview.ReviewedAt 的 JSON
 // 契约：time.Time 的 omitempty 对零值无效（仍序列化 0001-01-01），故字段用
 // *time.Time——零值评审时刻须序列化为缺席而非假日期；有值时刻须出现。

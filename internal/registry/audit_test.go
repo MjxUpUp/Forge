@@ -9,14 +9,9 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
-// audit_test.go — Audit() finding guards (FORGE_DATA_HOME isolated). Chinese
-// strings use raw literals (Windows quote rule).
-//
 // audit_test.go —— Audit() 发现守卫（FORGE_DATA_HOME 隔离）。中文字符串用 raw
 // 字面量。
 
-// seedRepo creates a git-shaped repo dir (adoptable: .git dir present).
-//
 // seedRepo 建 git 形状 repo 目录（可 adopt：含 .git 目录）。
 func seedRepo(t *testing.T) string {
 	t.Helper()
@@ -27,8 +22,6 @@ func seedRepo(t *testing.T) string {
 	return root
 }
 
-// writeRegistry seeds the global registry file.
-//
 // writeRegistry 写全局注册表文件。
 func writeRegistry(t *testing.T, entries []Entry) {
 	t.Helper()
@@ -45,8 +38,6 @@ func writeRegistry(t *testing.T, entries []Entry) {
 	}
 }
 
-// kindsOf extracts the finding kinds for assertions.
-//
 // kindsOf 抽取发现类型供断言。
 func kindsOf(findings []Finding) map[string]Finding {
 	out := map[string]Finding{}
@@ -56,9 +47,6 @@ func kindsOf(findings []Finding) map[string]Finding {
 	return out
 }
 
-// TestAudit_CleanWhenConsistent: registered repo with data under its derived key
-// and no extras → zero findings.
-//
 // TestAudit_CleanWhenConsistent：注册的 repo 数据在派生 key 下且无多余 → 零发现。
 func TestAudit_CleanWhenConsistent(t *testing.T) {
 	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
@@ -80,9 +68,6 @@ func TestAudit_CleanWhenConsistent(t *testing.T) {
 	}
 }
 
-// TestAudit_KeyDriftAfterIDAdoption: the entry still carries the path key while
-// derivation now yields the ID key and the old dir has payload → key-drift.
-//
 // TestAudit_KeyDriftAfterIDAdoption：条目仍带路径 key 而派生已是 ID key 且旧目录
 // 有载荷 → key-drift。
 func TestAudit_KeyDriftAfterIDAdoption(t *testing.T) {
@@ -117,9 +102,6 @@ func TestAudit_KeyDriftAfterIDAdoption(t *testing.T) {
 	}
 }
 
-// TestAudit_OrphanDataDirIgnoresBackupShells: an unregistered key dir with payload
-// is flagged; one holding ONLY a .rekey-backup shell is not.
-//
 // TestAudit_OrphanDataDirIgnoresBackupShells：无注册条目的有载荷 key 目录被标记；
 // 只剩 .rekey-backup 壳的不标。
 func TestAudit_OrphanDataDirIgnoresBackupShells(t *testing.T) {
@@ -153,9 +135,6 @@ func TestAudit_OrphanDataDirIgnoresBackupShells(t *testing.T) {
 	}
 }
 
-// TestAudit_IDCollisionAndInvalidID: two repos sharing one .forge-project-id →
-// id-collision; a malformed ID file → invalid-id.
-//
 // TestAudit_IDCollisionAndInvalidID：两个 repo 共享同一 .forge-project-id →
 // id-collision；畸形 ID 文件 → invalid-id。
 func TestAudit_IDCollisionAndInvalidID(t *testing.T) {

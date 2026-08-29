@@ -5,10 +5,6 @@ import (
 	"testing"
 )
 
-// task_lease_test.go — e2e wiring check for the node lease (sync-convergence.md §4):
-// `forge task start` must stamp a lease for THIS machine (holder = local node_id,
-// fencing 1) into the persisted task state.
-//
 // task_lease_test.go —— 节点租约的 e2e 接线验证（sync-convergence.md §4）：
 // `forge task start` 必须把本机租约（holder = 本机 node_id，fencing 1）落进
 // 持久化任务状态。

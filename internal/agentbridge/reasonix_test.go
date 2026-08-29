@@ -7,11 +7,6 @@ import (
 	"testing"
 )
 
-// setupReasonixHome isolates the reasonix home and the forge backup root into temp
-// dirs (REASONIX_HOME + FORGE_DATA_HOME, the latter isolating BackupOriginal which
-// writes under forgedata.GlobalHome) and pre-creates the home dir so the translator
-// sees an "installed" reasonix.
-//
 // setupReasonixHome 把 reasonix home 与 forge 备份根隔离进 temp dir
 // （REASONIX_HOME + FORGE_DATA_HOME，后者隔离写在 forgedata.GlobalHome 下的
 // BackupOriginal），并预建 home 目录让 translator 看到「已安装」的 reasonix。
@@ -26,11 +21,7 @@ func setupReasonixHome(t *testing.T) string {
 	return home
 }
 
-// TestReasonixTranslator_Translate: a reasonix home that exists (reasonix installed) gets the
-// user-level forge-quality skill written under <home>/skills/forge-quality/SKILL.md —
-// reasonix's native skill mechanism. Content carries the shared conditional-activation wording
-// (visible in every project, effective only in forge-registered ones) and drops the project-info
-// section. (The enforcement hooks settings.json is covered by TranslateWritesHooks below.)
+// TestReasonixTranslator_Translate: a reasonix home that exists (reasonix installed) gets the user-level forge-quality skill written under <home>/skills/forge-quality/SKILL.md — reasonix's native skill mechanism.
 //
 // TestReasonixTranslator_Translate：reasonix home 存在（reasonix 已装）时，用户级
 // forge-quality skill 写到 <home>/skills/forge-quality/SKILL.md——reasonix 的原生 skill 机制。
@@ -64,11 +55,7 @@ func TestReasonixTranslator_Translate(t *testing.T) {
 	}
 }
 
-// TestReasonixTranslator_TranslateWritesHooks: Translate also writes the enforcement hooks into
-// <home>/settings.json (flat schema derived from ForgeHookSpec). Pins both an enforcement event
-// (PreToolUse → task-guard) and a session event (SessionStart → skill-scan) so the
-// reasonixEventName whitelist is exercised across event kinds. Mirrors
-// TestGenerateUserSettings_CreatesFile.
+// TestReasonixTranslator_TranslateWritesHooks: Translate also writes the enforcement hooks into <home>/settings.json (flat schema derived from ForgeHookSpec).
 //
 // TestReasonixTranslator_TranslateWritesHooks：Translate 同时把 enforcement hooks 写进
 // <home>/settings.json（由 ForgeHookSpec 派生的扁平 schema）。同时钉一个强制 event
@@ -101,10 +88,7 @@ func TestReasonixTranslator_TranslateWritesHooks(t *testing.T) {
 	}
 }
 
-// TestReasonixTranslator_HooksMergePreservesUserContent: a pre-existing settings.json with user
-// top-level keys and user hook entries (incl. an unknown field) is preserved verbatim; forge
-// hooks are added exactly once. Mirrors TestGenerateUserSettings_MergePreservesUserHooks — the
-// raw-JSON merge contract that prevents "merge eats user config".
+// TestReasonixTranslator_HooksMergePreservesUserContent: a pre-existing settings.json with user top-level keys and user hook entries (incl. an unknown field) is preserved verbatim; forge hooks are added exactly once.
 //
 // TestReasonixTranslator_HooksMergePreservesUserContent：既有 settings.json 的用户顶层键与
 // 用户 hook 条目（含未知字段）原样保留；forge hooks 恰好追加一次。镜像
@@ -149,10 +133,7 @@ func TestReasonixTranslator_HooksMergePreservesUserContent(t *testing.T) {
 	}
 }
 
-// TestReasonixTranslator_NoSelfPoison: a missing reasonix home (reasonix not installed) is a clean
-// no-op — Forge must not create the agent's config home itself, or DetectAgents' project-
-// independent signal would flip and re-wire on every init. Both the skill AND settings.json writes
-// must be skipped.
+// TestReasonixTranslator_NoSelfPoison: a missing reasonix home (reasonix not installed) is a clean no-op.
 //
 // TestReasonixTranslator_NoSelfPoison：reasonix home 缺失（未安装）时干净 no-op——Forge 绝不
 // 自行创建 agent 的配置 home，否则会让接线信号翻转、每次 init 都重新接线。skill 与
@@ -172,8 +153,7 @@ func TestReasonixTranslator_NoSelfPoison(t *testing.T) {
 	}
 }
 
-// TestReasonixTranslator_Idempotent: translating twice produces byte-identical skill AND
-// settings.json content (no drift, no duplicate sections).
+// TestReasonixTranslator_Idempotent: translating twice produces byte-identical skill AND settings.json content (no drift, no duplicate sections).
 //
 // TestReasonixTranslator_Idempotent：翻译两次产出逐字节一致的 skill 与 settings.json 内容
 // （无漂移、无重复段）。
@@ -184,10 +164,7 @@ func TestReasonixTranslator_Idempotent(t *testing.T) {
 		filepath.Join(home, "settings.json"))
 }
 
-// TestReasonixConfigHome_EnvAndDefault pins the home resolution: REASONIX_HOME wins when set;
-// otherwise the OS user-config dir + "reasonix" (reasonix's real read path — %APPDATA%\reasonix
-// on Windows, ~/.config/reasonix on Linux). The expected default is derived from the same
-// os.UserConfigDir the function uses, so the assertion holds on every platform.
+// TestReasonixConfigHome_EnvAndDefault pins the home resolution.
 //
 // TestReasonixConfigHome_EnvAndDefault 钉住 home 解析：设了 REASONIX_HOME 用它；否则 OS 用户
 // 配置目录 + "reasonix"（reasonix 的真实读路径——Windows %APPDATA%\reasonix、Linux
@@ -222,10 +199,7 @@ func TestReasonixConfigHome_EnvAndDefault(t *testing.T) {
 	}
 }
 
-// TestStripReasonixHooksUserLevel: the uninstall path removes forge hooks from reasonix's
-// settings.json while preserving user entries (incl. unknown fields) and unknown top-level keys;
-// re-running is a clean no-op; a missing file is a clean no-op. Mirrors the cursor/codex strip
-// tests.
+// TestStripReasonixHooksUserLevel pins that uninstall removes forge hooks while preserving user entries.
 //
 // TestStripReasonixHooksUserLevel：卸载路径从 reasonix settings.json 移除 forge hooks，同时
 // 保留用户条目（含未知字段）与未知顶层键；重跑是干净 no-op；文件缺失是干净 no-op。镜像
@@ -288,16 +262,7 @@ func TestStripReasonixHooksUserLevel(t *testing.T) {
 	}
 }
 
-// TestReasonixWiringMirrorsClaudeSettings guards the sync between reasonix.go
-// (buildReasonixHooks) and hooks/settings.go (ForgeHookSpec). reasonix uses Claude
-// Code's PascalCase event names verbatim (identity mapping — see reasonixEventName),
-// so for every event reasonix wires, Claude Code must wire the SAME command set under
-// the same event name; drift silently disables a gate on reasonix. The reasonix
-// whitelist deliberately covers only 4 of the 6 spec events (PostCompact /
-// UserPromptSubmit deferred pending empirical probe — see
-// TestReasonixHooks_OnlyLegalReasonixEvents), so the comparison is one-directional:
-// every reasonix event must match Claude, not vice-versa. Parallel to
-// TestCursorWiringMirrorsClaudeSettings.
+// TestReasonixWiringMirrorsClaudeSettings guards the sync between reasonix.go and hooks/settings.go ForgeHookSpec.
 //
 // TestReasonixWiringMirrorsClaudeSettings 守卫 reasonix.go（buildReasonixHooks）与
 // hooks/settings.go（ForgeHookSpec）的同步。reasonix 原样使用 Claude Code 的
@@ -318,20 +283,6 @@ func TestReasonixWiringMirrorsClaudeSettings(t *testing.T) {
 	claude := hookCommandsByEvent(t, filepath.Join(claudeDir, ".claude", "settings.local.json"))
 	reasonix := flatHookCommandsByEvent(t, filepath.Join(home, "settings.json"))
 
-	// reasonix PascalCase → Claude PascalCase is identity (reasonixEventName is a filter,
-	// not a remap). The reasonix whitelist deliberately covers only 4 of the 6 spec
-	// events (PostCompact / UserPromptSubmit deferred pending empirical probe — see
-	// TestReasonixHooks_OnlyLegalReasonixEvents), so the comparison is one-directional:
-	// every reasonix event must match Claude, not vice-versa.
-	//
-	// Every command must carry --agent reasonix: tool events (Pre/PostToolUse) need it so
-	// reasonixNormalize maps the camelCase stdin ({toolName, toolArgs} → tool_name/file_path,
-	// else hooks fail open); session events (SessionStart/Stop) need it for ATTRIBUTION —
-	// without the flag they parsed as Claude-shape stdin, the camelCase sessionId never
-	// mapped to SessionID, and every session event landed on the legacy global key with the
-	// session never registered as reasonix (2026-08 attribution audit). Enforced
-	// per-command by the shared helper.
-	//
 	// 每条命令都必须带 --agent reasonix：工具事件（Pre/PostToolUse）靠它走
 	// reasonixNormalize 映射 camelCase stdin（{toolName, toolArgs} → tool_name/file_path，
 	// 否则 hook fail open）；会话事件（SessionStart/Stop）靠它归因——不带时按 Claude 形
@@ -348,16 +299,7 @@ func TestReasonixWiringMirrorsClaudeSettings(t *testing.T) {
 	assertNoSunkHooks(t, "reasonix settings", reasonix["PostToolUse"])
 }
 
-// TestReasonixHooks_OnlyLegalReasonixEvents pins the reasonix event whitelist
-// (reasonixEventName) against the Claude-Code-compatible PascalCase roster. reasonix
-// uses CC event names verbatim, so any event outside the CC lifecycle set would never
-// fire. The four classic enforcement events (PreToolUse/PostToolUse/Stop/SessionStart)
-// MUST be present — they carry all hard enforcement. PostCompact and UserPromptSubmit
-// (compact-resume / resume-reinject) are deliberately DEFERRED until empirically
-// confirmed supported via `reasonix hook status --json` (reasonix may reject the whole
-// file on an unknown event, as it rejected the CC double-nested form); this test pins
-// them ABSENT so re-enabling forces a conscious whitelist + test update. Modeled on
-// TestCursorHooks_OnlyLegalCursorEvents.
+// TestReasonixHooks_OnlyLegalReasonixEvents pins the reasonix event whitelist against the Claude-compatible roster.
 //
 // TestReasonixHooks_OnlyLegalReasonixEvents 把 reasonix event 白名单
 // （reasonixEventName）钉在 Claude-Code 兼容的 PascalCase 名册上。reasonix 原样
@@ -389,12 +331,7 @@ func TestReasonixHooks_OnlyLegalReasonixEvents(t *testing.T) {
 		"deferred pending empirical probe — add a reasonixEventName case + update this test before re-enabling")
 }
 
-// TestReasonixMatchersTranslated pins the Claude-Code PascalCase → reasonix snake_case matcher
-// translation (reasonixMatcher). This is the fix for the "reasonix hooks never fire" root cause:
-// ForgeHookSpec's "Write|Edit" does not match reasonix's edit_file, so without translation every
-// Pre/PostToolUse hook silently failed to match (the user observed "reasonix rarely follows
-// Forge" — the hooks were registered but never fired on real edits). Skill/Agent have no reasonix
-// equivalent and are dropped (tool-track still fires on read_file).
+// TestReasonixMatchersTranslated pins the Claude-Code PascalCase → reasonix snake_case matcher translation (reasonixMatcher).
 //
 // TestReasonixMatchersTranslated 钉住 Claude-Code PascalCase → reasonix snake_case matcher 翻译
 // （reasonixMatcher）。这是 "reasonix hook 永不触发" 根因的修复：ForgeHookSpec 的 "Write|Edit"
@@ -456,13 +393,7 @@ func TestReasonixMatchersTranslated(t *testing.T) {
 	}
 }
 
-// TestIsReasonixPluginInstalled pins the tolerant recursive registry read. reasonix's
-// plugin-packages.json schema is undocumented (reasonix pre-1.0), so the parser must find
-// an active forge entry in a top-level array, a {plugins:[]}/{packages:[]} object, an
-// object keyed by plugin name, or a nested tree — and must NOT count an explicitly
-// disabled entry. The "disabled-then-enabled" case specifically guards the no-poisoning
-// contract of reasonixFindForge: a disabled forge entry must not abort the search for an
-// enabled sibling elsewhere. A missing/unreadable/garbled registry is a clean false.
+// TestIsReasonixPluginInstalled pins the tolerant recursive registry read.
 //
 // TestIsReasonixPluginInstalled 钉住宽容的递归注册表读。reasonix 的 plugin-packages.json
 // schema 无文档（reasonix 1.0 前），故解析器须在顶层数组、{plugins:[]}/{packages:[]} 对象、
@@ -507,12 +438,7 @@ func TestIsReasonixPluginInstalled(t *testing.T) {
 	}
 }
 
-// TestReasonixTranslator_PluginWins: when the forge plugin is installed (active entry in
-// plugin-packages.json), Translate writes the advisory skill (the plugin pack ships NO skill,
-// so the skill write is never skipped) but does NOT merge hooks into settings.json — the
-// plugin's reasonix-plugin.json manifest already registers them machine-wide, so merging
-// would double-run every hook (kimi-style plugin-wins dedup). settings.json is not created at
-// all (the hooks branch is skipped; StripReasonixHooksUserLevel is a no-op on a missing file).
+// TestReasonixTranslator_PluginWins pins that the advisory skill is written when the forge plugin is installed.
 //
 // TestReasonixTranslator_PluginWins：forge plugin 已装（plugin-packages.json 有激活条目）时，
 // Translate 写 advisory skill（plugin pack 不附 skill，故 skill 写入永不跳过）但不把 hooks 合并
@@ -545,10 +471,7 @@ func TestReasonixTranslator_PluginWins(t *testing.T) {
 	}
 }
 
-// TestReasonixTranslator_PluginWinsStripsStaleSettingsHooks: the plugin-wins path also STRIPS
-// stale forge hooks from a pre-existing settings.json — e.g. left over from a pre-plugin
-// `forge init --agents reasonix`. Without the strip, those stale hooks would double-run with
-// the plugin's manifest. User content is preserved (StripReasonixHooksUserLevel contract).
+// TestReasonixTranslator_PluginWinsStripsStaleSettingsHooks: the plugin-wins path also STRIPS stale forge hooks from a pre-existing settings.json — e.g. left over from a pre-plugin `forge init --agents reasonix`.
 //
 // TestReasonixTranslator_PluginWinsStripsStaleSettingsHooks：plugin-wins 路径还从既有
 // settings.json 剥除陈旧 forge hooks——如装 plugin 前跑过 `forge init --agents reasonix` 的残留。

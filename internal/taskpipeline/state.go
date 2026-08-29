@@ -18,11 +18,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/worktree"
 )
 
-// dataHome returns the runtime-state DataDir for root: git projects use user-level
-// ~/.forge/projects/<key>/ (task state + active-task-ref migrated from project-level
-// <root>/.forge/); non-git falls back to <root>/.forge/ so task state is still recorded.
-// Key exists only for git projects — stable across MkdirAll (see forgedata.DataDirFor).
-//
 // dataHome 返回 root 的 runtime-state DataDir：git 项目用 user-level
 // ~/.forge/projects/<key>/（task state + active-task-ref 已从项目级
 // <root>/.forge/ 迁来）；非 git 回落到 <root>/.forge/ 以保证 task state 仍记录。
@@ -30,13 +25,6 @@ import (
 func dataHome(root string) string { return forgedata.DataDirFor(root) }
 
 // LoadTaskState reads the task state file from DataDir/tasks/.
-//
-// Ref-collision guard: SanitizeRef collapses '/', '\\', ':' and spaces to '-', so refs
-// like feat/foo bar / feat/foo:bar / feat/foo/bar share one state file. Loading then
-// verifies the TaskRef INSIDE the file matches the requested ref — otherwise task B
-// would silently read task A's History/ReviewPassed/Acceptance, letting the review
-// hard-prerequisite be bypassed via collision. SanitizeRef itself is left alone
-// (backward compatibility with existing filenames).
 //
 // LoadTaskState 从 DataDir/tasks/ 读 task state 文件。
 //
@@ -49,12 +37,7 @@ func LoadTaskState(root, taskRef string) (*TaskState, error) {
 	return LoadTaskStateInDir(filepath.Join(dataHome(root), "tasks"), taskRef)
 }
 
-// LoadTaskStateInDir is LoadTaskState's read core over an explicit tasks dir
-// — exported for cross-repo DependsOn resolution (LoadDepState), which
-// addresses a member repo by KEY (forgedata.RootDir(key)/tasks) rather than by
-// a live project root (the member's path may have drifted since it joined the
-// workspace; the key never does). Same contract as LoadTaskState, including
-// the ref-collision guard below.
+// LoadTaskStateInDir is LoadTaskState's read core over an explicit tasks dir.
 //
 // LoadTaskStateInDir 是 LoadTaskState 针对显式 tasks 目录的读取核心——导出给
 // 跨仓 DependsOn 解析（LoadDepState）：成员仓按 KEY 寻址
@@ -66,11 +49,6 @@ func LoadTaskStateInDir(tasksDir, taskRef string) (*TaskState, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// Wrap the sentinel so callers can errors.Is(err, fs.ErrNotExist) to
-			// distinguish "no such task" from ref-collision/parse failures — treating
-			// the collision guard's error as "not found" made task start overwrite the
-			// colliding task's state file (2026-08-29 review round, functional probe).
-			//
 			// 包装哨兵错误，调用方可用 errors.Is(err, fs.ErrNotExist) 区分「任务不
 			// 存在」与串号/解析失败——把串号守卫的报错当「不存在」会让 task start
 			// 直接覆盖同文件的任务状态（2026-08-29 审查轮功能探针实证）。
@@ -85,10 +63,6 @@ func LoadTaskStateInDir(tasksDir, taskRef string) (*TaskState, error) {
 	if s.TaskRef != taskRef {
 		return nil, fmt.Errorf("state file belongs to different task ref %q (requested %q) — refs sanitize to the same filename; use a different ref (e.g. forge task start --ref <other>)", s.TaskRef, taskRef)
 	}
-	// Integrity verification (state-integrity-signing): a PRESENT signature that does
-	// not verify marks the state hand-edited — consumers gate on IntegrityBroken().
-	// Unsigned (nil) = legacy pre-signing data, allowed through (first save re-signs).
-	//
 	// 完整性验签（state-integrity-signing）：签名【存在】且验不过 = 状态被手改——
 	// 消费方按 IntegrityBroken() 拒采信。无签名（nil）= 签名前的存量数据，放行
 	//（首次保存自动补签）。
@@ -104,14 +78,11 @@ func LoadTaskStateInDir(tasksDir, taskRef string) (*TaskState, error) {
 	return &s, nil
 }
 
-// SaveTaskState writes the task state file to DataDir/tasks/. Every write is signed
-// (HMAC over the canonical JSON with the integrity field zeroed) — the single write
-// funnel is what makes "forge wrote this" vs "a hand-edited file" decidable at read
-// time (state-integrity-signing design, docs/design/state-integrity-signing.md).
+// SaveTaskState writes the task state file to DataDir/tasks/.
 //
 // SaveTaskState 把 task state 文件写到 DataDir/tasks/。每次写入都签名（对 integrity
 // 字段置零后的 canonical JSON 做 HMAC）——唯一写入漏斗使「forge 写的」与「手改的
-// 文件」在读取时变得可判定（state-integrity-signing 设计）。
+// 文件」在读取时变得可判定（state-integrity-signing 设计，见 docs/design/state-integrity-signing.md）。
 func SaveTaskState(root string, state *TaskState) error {
 	tasksDir := filepath.Join(dataHome(root), "tasks")
 	if err := os.MkdirAll(tasksDir, 0755); err != nil {
@@ -139,16 +110,6 @@ func SaveTaskState(root string, state *TaskState) error {
 }
 
 // ActiveTaskState probes the current task context and loads the corresponding state.
-// Returns nil without error when no task context is detected.
-//
-// sessionID scopes the active-task-ref lookup so concurrent sessions on a shared checkout
-// each resolve their own active task. Empty sessionID falls back to the legacy global file.
-//
-// Probe priority:
-//  1. Explicit: DataDir/active-task-ref file (written by forge task start)
-//  2. Branch-based: feature branch name maps to task ref
-//  3. Fallback: scan DataDir/tasks/ for a single incomplete task
-//     (multiple tasks are ambiguous — return nil to avoid mismatches)
 //
 // ActiveTaskState 探测当前 task 上下文并加载对应 state。
 // 未探测到 task 上下文时返回 nil 不报错。
@@ -162,25 +123,15 @@ func SaveTaskState(root string, state *TaskState) error {
 //  3. 兜底：扫 DataDir/tasks/ 找单个未完成 task
 //     （多 task 时歧义——返回 nil 以免误匹配）
 func ActiveTaskState(root, sessionID string) (*TaskState, error) {
-	// Priority 1: explicit active task ref file.
-	//
 	// 优先级 1：显式 active task ref 文件
 	if ref := ReadActiveTaskRef(root, sessionID); ref != "" {
 		state, err := LoadTaskState(root, ref)
 		if err == nil && state != nil && state.CompletedAt == nil {
 			return state, nil
 		}
-		// The ref file is stale — fall through.
-		//
 		// ref 文件过期——fall through
 	}
 
-	// Priority 1.5: cwd workspace binding (multi-task-concurrency §4, L1). The binding is
-	// keyed by the workspace PATH, not the session id — a NEW window in the same
-	// directory/worktree resolves the same task. This is the "exit-and-reenter" anchor:
-	// the directory is stable, the session id never is. No freshness gate by design;
-	// existence is the anchor (freshness would turn a crashed session into a lost task).
-	//
 	// 优先级 1.5：cwd workspace 绑定（multi-task-concurrency §4，L1）。绑定按 workspace
 	// 路径键控而非 session id——同一目录/worktree 里的【新】窗口解析到同一任务。这
 	// 是「退出重进」的锚点：目录是稳定的，session id 永远不是。设计上无新鲜度门；
@@ -189,19 +140,10 @@ func ActiveTaskState(root, sessionID string) (*TaskState, error) {
 		if state, err := LoadTaskState(root, b.TaskRef); err == nil && state != nil && state.CompletedAt == nil {
 			return state, nil
 		}
-		// Binding stale (task completed/aborted) — fall through; task start/finish/abort
-		// keep it fresh, this is the crash-window guard.
-		//
 		// 绑定过期（任务已完成/中止）——fall through；task start/finish/abort 维护
 		// 绑定，这里是崩溃窗口的兜底。
 	}
 
-	// Priority 2: branch-based probe, guarded against cross-worktree misattribution
-	// (multi-task-concurrency §4): the branch-mapped task counts only when it is not
-	// actively anchored by ANOTHER session — with two windows sharing a branch name, the
-	// branch alone no longer says whose task this is. The guard skips the hit (falls
-	// through), never guesses.
-	//
 	// 优先级 2：基于 branch 探测，带跨 worktree 误挂守卫（multi-task-concurrency
 	// §4）：分支映射的任务只有在【没有】被其他活跃会话锚定时才算数——两个窗口共
 	// 享分支名时，分支本身已说明不了任务是谁的。守卫跳过命中（fall through），
@@ -212,25 +154,12 @@ func ActiveTaskState(root, sessionID string) (*TaskState, error) {
 			if state.CompletedAt == nil && !taskAnchoredByOtherActiveSession(root, state, sessionID) {
 				return state, nil
 			}
-			// Completed or actively owned by another session — fall through.
-			//
 			// 已完成或正被其他会话持有——fall through
 		}
-		// Load failure (missing/corrupt state file, or a ref-collision mismatch) also
-		// falls through — aborting the whole probe here would skip the legacy bridge
-		// and lose an otherwise unambiguous active task.
-		//
 		// 加载失败（state 文件缺失/损坏，或 ref 串号不匹配）同样 fall through——
 		// 此处中断会跳过 legacy 桥，丢掉本应无歧义的 active task。
 	}
 
-	// Priority 3: legacy global pointer bridge (multi-task-concurrency §4 replaced the
-	// old "single incomplete task" environment guess — in a multi-task world the only
-	// remaining task is at least as likely to be someone else's). The legacy global
-	// active-task-ref (written by pre-session-scoped versions, still written by CLI runs
-	// without a session id) remains readable for ANY session as a one-generation bridge,
-	// and a hit materializes a workspace binding so the next resolution is binding-first.
-	//
 	// 优先级 3：legacy 全局指针桥（multi-task-concurrency §4 用它替换了旧的「唯一未
 	// 完成任务」环境猜测——多任务世界里仅剩的那个任务至少同样可能是别人的）。
 	// legacy 全局 active-task-ref（session-scoped 之前版本写入、无 sid 的 CLI 运行
@@ -247,11 +176,6 @@ func ActiveTaskState(root, sessionID string) (*TaskState, error) {
 			// binding 是权威。
 			if IsMainCheckout(root) {
 				_ = worktree.BindTask(root, state.TaskRef, state.Branch, sessionID)
-				// Compare-and-delete: a concurrent no-sid task start may have
-				// re-pointed the legacy pointer at a NEW task between our read and
-				// this clear — deleting it unconditionally would strand that task's
-				// only anchor (TOCTOU on a pointer every hook resolution reads).
-				//
 				// 比较后删除：并发的无 sid task start 可能在我们读取与本次清除
 				// 之间把 legacy 指针改指【新】任务——无条件删除会让那个任务失去
 				// 唯一锚点（每个 hook 解析都在读的指针上的 TOCTOU）。
@@ -265,11 +189,7 @@ func ActiveTaskState(root, sessionID string) (*TaskState, error) {
 	return nil, nil
 }
 
-// IsMainCheckout reports whether root is the project's main checkout (vs a linked
-// worktree): `git rev-parse --git-dir` resolves to a DIRECTORY directly inside the
-// working tree for the main checkout, but to a FILE pointing at the main repo's
-// .git/worktrees/<name> for linked worktrees. Best-effort false — the bridge only
-// materializes bindings on a confident main-checkout hit (M1).
+// IsMainCheckout reports whether root is the project's main checkout (vs a linked worktree).
 //
 // IsMainCheckout 报告 root 是否项目主检出（vs linked worktree）：主检出的
 // `git rev-parse --git-dir` 解析为工作树内的【目录】，linked worktree 是指向主 repo
@@ -285,11 +205,6 @@ func IsMainCheckout(root string) bool {
 		return false // worktree 的 .git 是文件
 	}
 	absRoot, _ := filepath.Abs(root)
-	// git prints forward slashes even on Windows while filepath.Abs keeps the platform
-	// separator, and Windows paths are case-insensitive — normalize both sides before
-	// comparing or the equality is always false on win32 (the legacy bridge and the
-	// complete-time unbind were dead paths there).
-	//
 	// git 在 Windows 上也输出正斜杠，而 filepath.Abs 保留平台分隔符，且 Windows 路径
 	// 大小写不敏感——两侧先归一化再比较，否则该等式在 win32 上恒为 false（legacy
 	// 桥与 complete 时解绑在那里是死路径）。
@@ -297,12 +212,6 @@ func IsMainCheckout(root string) bool {
 	return sameDir
 }
 
-// taskAnchoredByOtherActiveSession reports whether a task's anchored sessions include
-// ANOTHER session whose pointer file still names this task within the activity TTL — i.e.
-// someone else is actively working it right now (multi-task-concurrency §4's P5 guard).
-// Empty sessionID (no-identity host) never guards: without an identity everyone shares
-// the legacy global pointer and the guard would deadlock resolution entirely.
-//
 // taskAnchoredByOtherActiveSession 报告任务的锚定会话里是否有【另一个】会话的指针
 // 文件在活跃 TTL 内仍指向本任务——即此刻有别的人在干它（multi-task-concurrency
 // §4 的 P5 守卫）。空 sessionID（无身份宿主）永不守卫：没有身份时大家共享 legacy
@@ -330,16 +239,6 @@ func taskAnchoredByOtherActiveSession(root string, state *TaskState, currentSess
 
 const activeTaskRefFile = "active-task-ref"
 
-// activeTaskRefPath returns the active-task-ref file path.
-//
-// When sessionID is non-empty the file is session-scoped (DataDir/active-task-ref-<sessionID>),
-// letting concurrent Claude Code sessions on a shared checkout each resolve their own active task —
-// eliminating the main concurrency race (two sessions stomping the same global file, hooks
-// attributing work to the wrong task).
-//
-// Empty sessionID falls back to the legacy global file (DataDir/active-task-ref) for backward
-// compatibility and non-Claude (manual terminal) usage.
-//
 // activeTaskRefPath 返回 active-task-ref 文件路径。
 //
 // sessionID 非空时文件为 session-scoped（DataDir/active-task-ref-<sessionID>），
@@ -351,8 +250,6 @@ const activeTaskRefFile = "active-task-ref"
 // 兼容及非 Claude（手动终端）使用。
 func activeTaskRefPath(root, sessionID string) string {
 	if sessionID != "" {
-		// Sanitize the session ID before using it as a filename to keep the filesystem safe.
-		//
 		// 用作文件名前先 Sanitize session ID 以保文件系统安全
 		safeID := util.SanitizeSessionID(sessionID)
 		return filepath.Join(dataHome(root), "active-task-ref-"+safeID)
@@ -360,17 +257,6 @@ func activeTaskRefPath(root, sessionID string) string {
 	return filepath.Join(dataHome(root), activeTaskRefFile)
 }
 
-// otherSessionActiveTTL bounds how old an active-task-ref-<sid> file can be before
-// HasActiveTaskFromOtherSession no longer treats it as an active session. The file is
-// written once at forge task start and not updated during the task, so mtime ≈ task start.
-// ClearActiveTaskRef only runs on task complete/abort — a session that crashes mid-task
-// or is killed leaves an orphan; without this limit orphans accumulate and make this guard
-// permanently auto-PASS for all future non-task sessions (silently disabling the concurrent-
-// session check). Bias toward not counting old files: false negative (guard does not auto-PASS)
-// only forces the research session to run forge review pass manually — safe; false positive
-// (counting a dead orphan) lets uncommitted changes escape review — unsafe. The task itself
-// is not deleted; only this convenience guard ignores its liveness.
-//
 // otherSessionActiveTTL 限定 active-task-ref-<sid> 文件多老之后
 // HasActiveTaskFromOtherSession 不再视其为活跃 session。该文件在 forge task
 // start 时写一次、task 期间不更新，故 mtime ≈ task start。ClearActiveTaskRef
@@ -381,16 +267,7 @@ func activeTaskRefPath(root, sessionID string) string {
 // 会让未提交改动逃过审查——不安全。task 本身不删，只是本便利守卫忽略其活跃度。
 const otherSessionActiveTTL = 7 * 24 * time.Hour
 
-// HasActiveTaskFromOtherSession returns true when at least one other Claude Code session
-// holds an active task (via an active-task-ref-<sid> file). Used by the review-stop hook
-// (non-task mode) to detect concurrent sessions: if another session is editing code, the
-// global git diff belongs to its task — its task-complete gate will enforce review, so this
-// session's Stop hook should PASS rather than block on changes it did not make.
-//
-// Returns false when currentSessionID is empty (legacy mode, cannot distinguish sessions).
-// Only session-scoped files (active-task-ref-* prefix) are considered; the legacy global
-// active-task-ref file is not counted. Files older than otherSessionActiveTTL are treated
-// as dead-session orphans (crashed/abandoned) and skipped — see that const's comment.
+// HasActiveTaskFromOtherSession returns true when at least one other Claude Code session holds an active task (via an active-task-ref-<sid> file).
 //
 // HasActiveTaskFromOtherSession 在至少一个其他 Claude Code session 持有 active
 // task（经 active-task-ref-<sid> 文件）时返回 true。供 review-stop hook
@@ -427,10 +304,6 @@ func HasActiveTaskFromOtherSession(root, currentSessionID string) bool {
 		if err != nil || info.Size() == 0 {
 			continue
 		}
-		// Crash-orphan guard: skip files past the TTL — orphans left by sessions
-		// that did not run complete/abort. Without this limit orphans accumulate
-		// and disable the guard (see otherSessionActiveTTL comment).
-		//
 		// Crash-orphan 守卫：跳过超过 TTL 的文件——session 未跑 complete/abort
 		// 留下的 orphan。无此限制 orphan 累积并关掉守卫（见 otherSessionActiveTTL
 		// 注释）。
@@ -443,8 +316,6 @@ func HasActiveTaskFromOtherSession(root, currentSessionID string) bool {
 }
 
 // SetActiveTaskRef writes the task ref to the (session-scoped) active-task-ref.
-// Called by forge task start to make the active task unambiguous regardless of
-// how many incomplete tasks exist.
 //
 // SetActiveTaskRef 把 task ref 写入（session-scoped）active-task-ref。
 // 由 forge task start 调用，无论有多少未完成 task 都让 active task 无歧义。
@@ -453,7 +324,6 @@ func SetActiveTaskRef(root, sessionID, taskRef string) error {
 }
 
 // ClearActiveTaskRef removes the (session-scoped) active-task-ref file.
-// Called by forge task complete to clear the active task.
 //
 // ClearActiveTaskRef 移除（session-scoped）active-task-ref 文件。
 // 由 forge task complete 调用以清空 active task。
@@ -465,32 +335,17 @@ func ClearActiveTaskRef(root, sessionID string) error {
 	return nil
 }
 
-// completeGraceFile is the sentinel name (with prefix) MarkCompleteGrace writes inside the DataDir.
-// Per-session; expired via timestamp check, never explicitly deleted — a stale stamp is harmless
-// because file-sentinel compares the epoch inside the file with NOW. dogfood 2.3.
-//
 // completeGraceFile 是 MarkCompleteGrace 在 DataDir 内写的 sentinel 名（带前缀）。
 // Per-session；通过 timestamp check 过期，从不显式删除——stale stamp 无害，因
 // file-sentinel 比对文件内 epoch 与 NOW。dogfood 2.3。
 const completeGraceFile = ".task-complete-grace"
 
-// completeGraceWindow bounds how long after forge task complete file-sentinel tolerates a
-// naturally-following git commit, rather than quarantining it as no active task + source write.
-// 5min covers the realistic sequence (commit + possible push). A longer window invites abuse:
-// a session still writing source 30+ minutes after complete is no longer completing — it should
-// start a new task.
-//
 // completeGraceWindow 限定 forge task complete 之后 file-sentinel 容忍自然顺带的
 // git commit 多久，而不是把它 quarantine 为无 active task + 源码写入。5min 覆盖
 // 现实序列（commit + 可能 push）。更长窗口诱发滥用：complete 后持续 30+ 分钟
 // 写源码的 session 已非 complete——应新开 task。
 const completeGraceWindow = 5 * time.Minute
 
-// completeGracePath returns the per-session sentinel file path under the DataDir.
-// The file-sentinel bash hook (embed.go) replicates this path scheme by convention —
-// bash cannot call Go — and reads the timestamp inside the file, avoiding reliance on
-// mtime stat (GNU and BSD stat behave differently). Keep the two in sync.
-//
 // completeGracePath 返回 DataDir 下的 per-session sentinel 文件路径。
 // file-sentinel bash hook（embed.go 中）按约定镜像此路径方案——bash 调不了 Go——
 // 并读文件内 timestamp，避免依赖 mtime stat（GNU 与 BSD stat 行为不同）。两处需保持同步。
@@ -503,11 +358,6 @@ func completeGracePath(root, sessionID string) string {
 }
 
 // MarkCompleteGrace records the current epoch timestamp at completeGracePath.
-// Called by forge task complete right after ClearActiveTaskRef. The file content is an
-// epoch-seconds integer (newline-terminated) so file-sentinel can compare
-// NOW - stamp < completeGraceWindow without a stat. Returns nil silently when sessionID
-// is empty (no session context → no grace; this rare case only triggers a bounded write,
-// so it does not fail loudly).
 //
 // MarkCompleteGrace 在 completeGracePath 记录当前 epoch timestamp。
 // 由 forge task complete 在 ClearActiveTaskRef 之后立即调用。文件内容为
@@ -522,16 +372,6 @@ func MarkCompleteGrace(root, sessionID string) error {
 	return util.AtomicWrite(completeGracePath(root, sessionID), []byte(stamp), 0644)
 }
 
-// resumeStaleFile is the sentinel name (with prefix) marking "this session's context was
-// just compacted — re-inject the task handoff on its next prompt". Per-session
-// (.resume-stale-<sid>), replacing the task-scoped TaskState.ResumeStale bool: with the
-// user-level DataDir shared across worktrees and multiple hosts, N sessions share one
-// task, and a task-scoped flag let session B consume (and clear) the mark meant for
-// session A — a missed re-injection. A per-session sentinel makes each session consume
-// exactly its own mark; it also needs no task-state mutation, so the PostCompact hook
-// stays write-free on the shared json. Go-only (compact-resume/resume-reinject are thin
-// wrappers into forge task resume) — no bash mirror, unlike completeGracePath.
-//
 // resumeStaleFile 是标记「本 session 的 context 刚被压缩——下个 prompt 重注入任务
 // handoff」的 sentinel 名（带前缀）。Per-session（.resume-stale-<sid>），取代
 // task-scoped 的 TaskState.ResumeStale bool：用户级 DataDir 跨 worktree/多 host
@@ -542,16 +382,12 @@ func MarkCompleteGrace(root, sessionID string) error {
 // 不像 completeGracePath 需要 bash 镜像。
 const resumeStaleFile = ".resume-stale"
 
-// resumeStalePath returns the per-session resume-stale sentinel path under the DataDir.
-//
 // resumeStalePath 返回 DataDir 下 per-session 的 resume-stale sentinel 路径。
 func resumeStalePath(root, sessionID string) string {
 	return filepath.Join(dataHome(root), resumeStaleFile+"-"+util.SanitizeSessionID(sessionID))
 }
 
-// MarkResumeStale records that this session's context was just compacted. Called by the
-// PostCompact hook (compact-resume) after confirming an active task exists. sessionID
-// must be non-empty (the caller falls back to the legacy task-scoped bool otherwise).
+// MarkResumeStale records that this session's context was just compacted.
 //
 // MarkResumeStale 记录本 session 的 context 刚被压缩。由 PostCompact hook
 // （compact-resume）在确认有活跃任务后调用。sessionID 必须非空（否则 caller 回落到
@@ -561,9 +397,7 @@ func MarkResumeStale(root, sessionID string) error {
 	return util.AtomicWrite(resumeStalePath(root, sessionID), []byte(stamp), 0644)
 }
 
-// ConsumeResumeStale reports whether a resume-stale mark exists for this session, and
-// clears it if so — guaranteeing a single re-injection per compaction. Returns false
-// when sessionID is empty (legacy sessions use the task-scoped bool instead).
+// ConsumeResumeStale reports whether a resume-stale mark exists for this session, and clears it if so — guaranteeing a single re-injection per compaction.
 //
 // ConsumeResumeStale 报告本 session 是否存在 resume-stale 标记，存在则清除——保证
 // 每次压缩只重注入一次。sessionID 为空时返回 false（legacy session 改用 task-scoped
@@ -575,25 +409,6 @@ func ConsumeResumeStale(root, sessionID string) bool {
 	return os.Remove(resumeStalePath(root, sessionID)) == nil
 }
 
-// coldStartInjectedFile is the per-session sentinel marking that this session has already
-// received its cold-start task handoff via the UserPromptSubmit backfill. It exists for one
-// host class — kimi 0.35.0 — which drops SessionStart hook output from the model context
-// (SessionStart is observation-only there, verified via wire.jsonl cross-check). The
-// SessionStart task-resume hook still runs (its attach side-effect lands), but its rendered
-// handoff never reaches the model. The UserPromptSubmit resume-reinject hook backfills the
-// active-task handoff on the first prompt of such a session (the offered-tasks block is a
-// pre-existing gap, see renderHookReinject); this sentinel dedupes so subsequent prompts
-// stay silent.
-//
-// Per-session, for the same reason as resumeStaleFile: the user-level DataDir is shared
-// across worktrees and hosts, so a task-scoped flag would let one session's backfill
-// suppress another's. Unlike resume-stale it is NOT consumed on read — a session needs its
-// cold-start handoff exactly once, so the sentinel persists for the session lifetime (and
-// the compact-reinject path also sets it, since a full handoff just delivered satisfies
-// cold-start too — prevents a double-inject on the next prompt). There is no TTL cleanup:
-// like resumeStale orphans these are tiny per-session files with no existing periodic
-// sweep; accepted as a bounded slow leak rather than adding cleanup infrastructure.
-//
 // coldStartInjectedFile 是 per-session sentinel，标记本 session 已通过 UserPromptSubmit 回填
 // 拿到冷启动 task handoff。它只为一种 host 存在——kimi 0.35.0——该 host 把 SessionStart hook
 // 输出丢弃出模型上下文（SessionStart 在那里是 observation-only，经 wire.jsonl 交叉验证核实）。
@@ -608,9 +423,6 @@ func ConsumeResumeStale(root, sessionID string) bool {
 // 孤儿一样是 tiny per-session 文件、无既有定期清扫；接受为有界慢泄漏，不为此加清理基础设施。
 const coldStartInjectedFile = ".cold-start-injected"
 
-// coldStartInjectedPath returns the per-session cold-start sentinel path under the DataDir,
-// mirroring resumeStalePath.
-//
 // coldStartInjectedPath 返回 DataDir 下 per-session 的 cold-start sentinel 路径，镜像
 // resumeStalePath。
 func coldStartInjectedPath(root, sessionID string) string {
@@ -618,9 +430,6 @@ func coldStartInjectedPath(root, sessionID string) string {
 }
 
 // MarkColdStartInjected records that this session has received its cold-start handoff.
-// Idempotent (AtomicWrite overwrites the same path). A no-op when sessionID is empty — the
-// backfill is gated on a non-empty sid upstream, but the guard keeps the sentinel file from
-// being written under an empty id (which would collide across sessions and mis-suppress).
 //
 // MarkColdStartInjected 记录本 session 已拿到冷启动 handoff。幂等（AtomicWrite 覆写同路径）。
 // sessionID 为空时 no-op——回填上游已门控在非空 sid，但此守卫避免在空 id 下写 sentinel 文件
@@ -633,10 +442,7 @@ func MarkColdStartInjected(root, sessionID string) error {
 	return util.AtomicWrite(coldStartInjectedPath(root, sessionID), []byte(stamp), 0644)
 }
 
-// IsColdStartInjected reports whether this session has already received its cold-start
-// handoff (the sentinel file exists). Returns false when sessionID is empty. Unlike
-// ConsumeResumeStale it does NOT remove the sentinel — read-only check, the sentinel
-// persists for the session lifetime.
+// IsColdStartInjected reports whether this session has already received its cold-start handoff (the sentinel file exists).
 //
 // IsColdStartInjected 报告本 session 是否已拿到冷启动 handoff（sentinel 文件存在）。sessionID
 // 为空时返回 false。与 ConsumeResumeStale 不同，它不移除 sentinel——只读检查，sentinel 存活
@@ -652,10 +458,6 @@ func IsColdStartInjected(root, sessionID string) bool {
 }
 
 // ReadActiveTaskRef reads the active task ref from the (session-scoped) file.
-// Returns an empty string when the file is missing or empty.
-//
-// Exported so forge task abort can decide whether the aborted task is the current active
-// task (and thus whether to clear the active-task-ref).
 //
 // ReadActiveTaskRef 从（session-scoped）文件读 active task ref。
 // 文件不存在或为空时返回空字符串。
@@ -688,7 +490,6 @@ func NewTaskState(ctx *taskcontext.Context) *TaskState {
 }
 
 // GetHeadCommit returns the current short HEAD commit hash.
-// Returns an empty string silently when not in a git repo.
 //
 // GetHeadCommit 返回当前 short HEAD commit hash。
 // 非 git 仓库时静默返回空字符串。
@@ -702,13 +503,6 @@ func GetHeadCommit(root string) string {
 }
 
 // IsGitRepo reports whether root is inside a git working tree.
-//
-// The task pipeline degrades gracefully without git — gates still pass (hasCodeChanges
-// returns true, CheckTestCoverage treats an empty changed-set as nothing to cover), and
-// task complete still scores. But git-backed scoring dimensions go neutral: scope has no
-// diff to measure (fixed 70, Diff stat unavailable). Not surfacing this means an agent
-// starting a task in a bare directory gets no signal of degraded mode — exactly the blind
-// spot that pins a session in a non-git project. Callers print this signal accordingly.
 //
 // IsGitRepo 报告 root 是否位于 git working tree 内。
 //
@@ -738,11 +532,7 @@ func ListTaskStates(root string) ([]*TaskState, error) {
 	return ListTaskStatesInDir(filepath.Join(dataHome(root), "tasks"))
 }
 
-// ListTaskStatesInDir is ListTaskStates' scan core over an explicit tasks dir
-// — exported for the multi-repo workspace status aggregation, which addresses
-// member repos by KEY (forgedata.RootDir(key)/tasks) rather than by a live
-// project root (the member's path may have drifted since it joined; the key
-// never does). Read-only, best-effort per file, same as ListTaskStates.
+// ListTaskStatesInDir is ListTaskStates' scan core over an explicit tasks dir.
 //
 // ListTaskStatesInDir 是 ListTaskStates 针对显式 tasks 目录的扫描核心——
 // 导出给多仓 workspace 的 status 聚合：成员仓按 KEY 寻址
@@ -775,15 +565,7 @@ func ListTaskStatesInDir(tasksDir string) ([]*TaskState, error) {
 	return states, nil
 }
 
-// PruneOldTasks deletes task state files in DataDir/tasks/ that are complete (IsComplete)
-// with CompletedAt before cutoff. In-progress tasks (IsComplete==false) are always kept —
-// they may still be active or resumable. Aborted task files need no handling: forge task abort
-// deletes the file outright, no file lingers in abort state.
-//
-// best-effort: per-file parse/delete failures are skipped and accumulated into err, never
-// aborting the whole scan. Returns the removal count plus the accumulated non-fatal errors.
-// Callers compute cutoff from the shared retention window (FORGE_LOG_RETENTION_DAYS) so task
-// metadata, checklog archives, and toollog archives age out together.
+// PruneOldTasks deletes task state files in DataDir/tasks/ that are complete (IsComplete) with CompletedAt before cutoff.
 //
 // PruneOldTasks 删除 DataDir/tasks/ 中已完成（IsComplete）且 CompletedAt 早于
 // cutoff 的 task state 文件。In-progress task（IsComplete==false）始终保留——
@@ -807,15 +589,6 @@ func PruneOldTasks(root string, cutoff time.Time) (removed int, err error) {
 		// 反复点名、单任务扫描歧义）。老化锚是**最后一道门的通过时间**而非 StartedAt
 		// ——长命任务的门禁昨天刚过不该因启动早被误杀。真未完成的任务
 		//（IsComplete==false）仍始终保留。
-		//
-		// New straggler class from the 2026-08-18 deadlock fix (review m2): all gates
-		// passed (IsComplete) but never `forge task complete`d (CompletedAt==nil —
-		// completion now belongs to the complete command). A session dying inside the
-		// finalize window creates one; without pruning it becomes a permanent zombie
-		// (SessionStart nags forever, single-task scan turns ambiguous). The aging
-		// anchor is the LAST GATE's pass time, not StartedAt — a long-lived task whose
-		// gates passed yesterday must not be culled for having started early.
-		// Genuinely incomplete tasks (IsComplete==false) stay kept.
 		if s.IsComplete() && s.CompletedAt == nil {
 			if lastGateAt(s).Before(cutoff) {
 				if delErr := DeleteTaskState(root, s.TaskRef); delErr != nil {
@@ -851,12 +624,6 @@ func PruneOldTasks(root string, cutoff time.Time) (removed int, err error) {
 // lastGateAt 返回最后一道 gate 的通过时间（History 末条 CompletedAt）。History 空
 // （理论不可达——IsComplete 要求全部 gate 有记录）时回落 StartedAt，保底不早于任务
 // 启动。PruneOldTasks 用它作 gates-done-never-completed 僵尸类的老化锚。
-//
-// lastGateAt returns the last gate's pass time (the final History entry's
-// CompletedAt). Empty History (theoretically unreachable — IsComplete requires all
-// gates recorded) falls back to StartedAt so the anchor is never before the task
-// started. PruneOldTasks uses it as the aging anchor for the
-// gates-done-never-completed zombie class.
 func lastGateAt(s *TaskState) time.Time {
 	if n := len(s.History); n > 0 {
 		return s.History[n-1].CompletedAt

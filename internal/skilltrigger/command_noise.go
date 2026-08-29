@@ -9,22 +9,11 @@ import (
 // （定界词须以字母/下划线开头，排除 `2<<` fd 重定向与 `$((x<<2))` 算术左移的数字形态）。
 // RE2 不支持反向引用，开/闭引号各自独立可选——闭引号与开引号不一致的病态输入在真实
 // shell 里本就非法，取到定界词即足够。
-//
-// heredocStart matches a heredoc start marker `<<`/`<<-` + optional whitespace + optional
-// quote + delimiter word (the word must start with a letter/underscore, ruling out the
-// numeric forms of fd redirection `2<<` and arithmetic shift `$((x<<2))`).
-// RE2 has no backreferences, so the opening/closing quotes are independently optional —
-// a mismatched pair is invalid shell anyway; capturing the word is all we need.
 var heredocStart = regexp.MustCompile(`<<-?[ \t]*['"]?([A-Za-z_][A-Za-z0-9_]*)`)
 
 // boundaryOK 校验 `<<` 匹配点的前一个字符：必须是行首/空白/`;`/`&`/`|`/`(`。
 // 防止把 `x<<2`、`$((a<<b))` 这类 token 内部左移误判为 heredoc 起始，进而错误丢弃
 // 后续行（那会造成关键词漏配的假阴性）。
-//
-// boundaryOK validates the character preceding a `<<` match: it must be line start,
-// whitespace, `;`, `&`, `|`, or `(`. Prevents misreading token-internal shifts like
-// `x<<2` or `$((a<<b))` as heredoc starts, which would wrongly drop subsequent lines
-// (turning into keyword false negatives).
 func boundaryOK(line string, start int) bool {
 	if start == 0 {
 		return true
@@ -47,23 +36,6 @@ func boundaryOK(line string, start int) bool {
 // 注入而非安全门（真正的危险命令拦截在 hazard-guard hook），此处优先消除高频误触。
 // 已知取舍二：同一行引号字符串里的 `<<`（`git commit -m "see a << b" && git push`）会被
 // 误当 heredoc 起始、其后续行被剥——跨行引号状态跟踪复杂度不值得，偶发漏注入可接受。
-//
-// sanitizeCommand strips heredoc bodies (including the delimiter terminator lines)
-// from a shell command before keyword matching. Rationale: PreToolUse keywords match
-// the command by substring over the full text; analysis/generation scripts
-// (`python - <<'EOF' ...`) whose body merely mentions "npm publish" / "git tag"
-// false-positive release-readiness-style guard skills — the body is data, not the
-// command line being executed. The marker line itself is kept (a real
-// `goreleaser release --config <<EOF` still matches).
-//
-// Known trade-off #1: bodies of quoted nested scripts (`bash -c 'cat <<X ... X'`) are
-// stripped too — those DO get executed by the inner shell and would ideally match.
-// But keyword triggers are advisory injections, not security gates (dangerous-command
-// interception lives in the hazard-guard hook), so eliminating the frequent false
-// positive wins. Trade-off #2: a `<<` inside a same-line quoted string
-// (`git commit -m "see a << b" && git push`) is misread as a heredoc start and the
-// following lines get stripped — cross-line quote-state tracking isn't worth the
-// complexity; the occasional missed injection is acceptable.
 func sanitizeCommand(cmd string) string {
 	if !strings.Contains(cmd, "<<") {
 		return cmd
@@ -77,11 +49,6 @@ func sanitizeCommand(cmd string) string {
 			// 终止行按 bash 形状严格匹配：先兜掉 CRLF 行尾 \r；<<- 形态仅剥前导 tab
 			// （bash 不剥空格）；再与定界词全等。行尾空格的 "EOF " 不算终止——旧的
 			// TrimSpace 行为会把它误判为终止行、放走后续真实 body 行。
-			//
-			// Terminator matching keeps bash's shape: strip a CRLF trailing \r first;
-			// for <<- strip leading tabs only (bash does not strip spaces); then require
-			// exact equality. A trailing-space "EOF " does NOT terminate — the old
-			// TrimSpace behavior misread it as the terminator and released the real body.
 			l := strings.TrimSuffix(ln, "\r")
 			if dash {
 				l = strings.TrimLeft(l, "\t")

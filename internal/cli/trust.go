@@ -7,10 +7,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// trust.go — `forge trust list|add|remove|require-signed`: the TOFU trust-store
-// command surface (docs/design/node-identity.md §3). Trust establishment is an
-// explicit human act: `add` prints the fingerprint for out-of-band confirmation.
-//
 // trust.go —— `forge trust list|add|remove|require-signed`：TOFU trust store 的
 // 命令面（docs/design/node-identity.md §3）。信任建立是显式人肉动作：add 打印
 // 指纹供带外核对。

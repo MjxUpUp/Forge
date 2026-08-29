@@ -1,16 +1,5 @@
 package cli
 
-// skills_mutex_report.go — mutex-report subcommand: confusion matrix of the latest
-// mutex run against the current mutex case set. Confusion rows (actual == Negative — the
-// prompt routed to exactly the skill that declared the handoff) are the first-class
-// signal; --gate gives it teeth (exit 4 when any confusion row exists).
-//
-// Gate contract (aligned with skills battery --gate / skills audit --gate): non-zero exit
-// only in --gate mode; the BLOCKED line goes to STDERR so `--json --gate | jq .` never
-// receives non-JSON bytes (exit code + stderr carry the gate signal; stdout stays the
-// data channel). The judgment itself lives in skillseval.ConfusionMatrix.GateBlocked —
-// os.Exit stays in this thin shell.
-//
 // skills_mutex_report.go — mutex-report 子命令：最新互斥 run vs 当前互斥 case 集的
 // 混淆矩阵。混淆行（actual == Negative——prompt 路由到的恰是声明过让渡的 skill）是
 // 头号信号；--gate 给它牙齿（任一混淆行存在即 exit 4）。
@@ -77,9 +66,6 @@ func runSkillsMutexReport(cmd *cobra.Command, args []string) error {
 		fmt.Fprintln(os.Stderr, "BLOCKED: 互斥集存在混淆行（actual==Negative）——B 域 prompt 路由回了声明让渡的 A，先修路由再放行")
 		os.Exit(4)
 	}
-	// Vacuous-gate honesty (same rationale as battery): an empty matrix exits 0 without
-	// having checked anything — that must not read as "verified no confusion".
-	//
 	// 空矩阵诚实性（理由同 battery）：零结果矩阵没检查任何东西就 exit 0——不该被
 	// 读成「已验证无混淆」。
 	if skMRepGate && m.Total == 0 {
@@ -88,9 +74,6 @@ func runSkillsMutexReport(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// printMutexMatrix renders the human-readable report: confusion rows first (signal
-// first), then the aggregated matrix, then per-case lines.
-//
 // printMutexMatrix 渲染人读报告：混淆行先行（信号优先），再聚合矩阵，再逐 case 行。
 func printMutexMatrix(m *skillseval.MutexMatrix) {
 	fmt.Printf("互斥集混淆矩阵：%d 个 case（passed=%d confusions=%d）\n", m.Total, m.Passed, len(m.Confusions))
@@ -106,8 +89,6 @@ func printMutexMatrix(m *skillseval.MutexMatrix) {
 	}
 }
 
-// displayActual renders the empty actual (no skill fired) readably in the matrix.
-//
 // displayActual 把空 actual（未触发任何 skill）在矩阵里可读化。
 func displayActual(actual string) string {
 	if actual == "" {

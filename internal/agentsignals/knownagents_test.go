@@ -6,11 +6,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/agentsignals"
 )
 
-// TestKnownAgents_ContainsCanonicalSet verifies the closed set forge task assign validates
-// --assignee against. Every agent a project marker can resolve MUST appear here, else
-// assigning to a real marker-bearing agent would be mis-warned as unknown (the black-hole
-// guard firing on a legitimate target). cline must appear exactly once despite two markers
-// (.cline + .clinerules).
+// TestKnownAgents_ContainsCanonicalSet verifies the closed set forge task assign validates --assignee against.
 //
 // TestKnownAgents_ContainsCanonicalSet 验证 forge task assign 校验 --assignee 所用的封闭集。
 // 每个 project marker 能解析出的 agent 都必须在此——否则分派给一个有标记的合法 agent 会被
@@ -47,8 +43,7 @@ func TestKnownAgents_ContainsCanonicalSet(t *testing.T) {
 	}
 }
 
-// TestIsKnownAgent pins the single-lookup predicate: true for every canonical agent, false
-// for an absent/typo'd name. This is the assign command's warn-vs-valid branch.
+// TestIsKnownAgent pins the single-lookup predicate: true for every canonical agent, false for an absent/typo'd name.
 //
 // TestIsKnownAgent 钉住单次查找谓词：每个 canonical agent 为 true，缺省/拼错的名字为 false。
 // 这是 assign 命令「警告 vs 合法」的分支判定。

@@ -1,23 +1,11 @@
 package skillseval
 
-// runs.go is the other half of the skill eval closed-loop data layer: run records,
-// normalization, judgment, regression comparison, health score, baseline.
-//
 // runs.go 是 skill eval 闭环数据层的另一半：run 记录、归一化、判定、回归比对、
 // 健康度分、baseline。
-//
-// Closed-loop data flow: the agent fetches the case set via MCP → dispatches a fresh
-// subagent per prompt → batch-refills which skill actually fired to forge (SubmitRun)
-// → forge normalizes + judges + computes health + appends an EvalRun → eval-report
-// compares latest run vs baseline for regression.
 //
 // 闭环数据流：agent 通过 MCP 拿 case 集 → dispatch fresh subagent 跑每个 prompt
 // → 把「实际触发了哪个 skill」整批回填给 forge（SubmitRun）→ forge 归一化 + 判定
 // + 算健康度 + append 一条 EvalRun → eval-report 取 latest run vs baseline 做回归。
-//
-// forge itself cannot spawn AI (pi lacks the claude -p auto mode), so the actual
-// triggering is run by the agent while forge only normalizes / judges / compares —
-// semi-automated positioning.
 //
 // forge 自身 spawn 不了 AI（pi 无 claude -p 自动模式），所以「实际触发」由 agent
 // 跑、forge 只做归一化/判定/比对——半自动定位。
@@ -173,12 +161,6 @@ func NormalizeTriggered(actual string, canonicalSkills []string) string {
 	return low
 }
 
-// judgeResult judges whether a single result passes based on the case's Kind.
-//
-//	trigger kind: actual == skill (self-reference)
-//	not-trigger kind: actual != skill (including empty or any other skill) — does not couple
-//	with"which skill it should route to"
-//
 // judgeResult 按 case 的 Kind 判定单结果是否 pass。
 //
 //	trigger 类：actual == skill（自指）
@@ -193,9 +175,6 @@ func judgeResult(c EvalCase, actualTriggered string) bool {
 }
 
 // HealthScore is the trigger/not-trigger weighted pass rate minus the regression penalty.
-//
-// When one kind has no cases, the other kind takes the full weight; regressions come from the
-// degradation count vs baseline, pass 0 when there is no baseline.
 //
 // HealthScore 按 trigger/not-trigger 加权通过率减回归惩罚。
 //
@@ -240,8 +219,6 @@ func HealthScore(results []CaseResult, regressions int) float64 {
 	return math.Round(score*100) / 100
 }
 
-// passRates returns (triggerPassRate, notTriggerPassRate).
-//
 // passRates 返回 (triggerPassRate, notTriggerPassRate)。
 func passRates(results []CaseResult) (trigRate, notRate float64) {
 	var tp, tt, np, nt int
@@ -269,10 +246,6 @@ func passRates(results []CaseResult) (trigRate, notRate float64) {
 }
 
 // CompareRuns compares latest vs baseline and produces a RegressionReport.
-// When baseline==nil, HasBaseline=false and only the latest pass rates are filled in.
-// Comparability: Comparable=true only when ForgeVersion/AgentModel/DescHash all match —
-// otherwise"regressions"across models/versions/description changes are false regressions,
-// and the report marks them incomparable.
 //
 // CompareRuns 比对 latest vs baseline，产出 RegressionReport。
 // baseline==nil 时 HasBaseline=false，只填 latest 的 pass rate。
@@ -291,8 +264,6 @@ func CompareRuns(latest, baseline *EvalRun) *RegressionReport {
 	rep.BaselineRun = baseline.RunID
 	rep.TriggerPassRateBaseline, rep.NotTriggerPassRateBaseline = passRates(baseline.Results)
 
-	// Comparability check.
-	//
 	// 可比性校验。
 	rep.Comparable = true
 	var reasons []string
@@ -354,12 +325,6 @@ func sortResults(rs []CaseResult) {
 	slices.SortFunc(rs, func(a, b CaseResult) int { return cmp.Compare(a.CaseID, b.CaseID) })
 }
 
-// countRegressions returns the degradation count of the matched set of latest vs baseline
-// (the regressions count among the three states). It is extracted so that SubmitRun (computing
-// the health penalty) uses only the regressions count without touching the rest of the
-// RegressionReport fields — the intent is explicit, avoiding the implicit contract
-// "CompareRuns only takes len(Regressions)" being misread by maintainers.
-//
 // countRegressions 返回 latest vs baseline 的 matched 集退化数（三态里的 regressions
 // 计数）。抽出来让 SubmitRun（算 health 惩罚）只用 regressions 计数，不触碰整张
 // RegressionReport 的其余字段——意图清晰，避免「CompareRuns 只取 len(Regressions)」
@@ -371,9 +336,7 @@ func countRegressions(latest, baseline *EvalRun) int {
 	return len(CompareRuns(latest, baseline).Regressions)
 }
 
-// SubmitRun processes one batch refill: normalize + DescHash check + judge + compute health + append.
-// canonical is used to read the current SKILL.md DescHash and to normalize against the canonical set.
-// Returns the newly created and persisted EvalRun.
+// SubmitRun processes one batch refill: normalize + DescHash check + judge + compute health + append. canonical is used to read the current SKILL.md DescHash and to normalize against the canonical set.
 //
 // SubmitRun 处理一次整批回填：归一化 + DescHash 校验 + 判定 + 算 health + append。
 // canonical 用于读当前 SKILL.md 的 DescHash 和 canonical 集归一化。
@@ -387,9 +350,6 @@ func SubmitRun(dir, canonical, skill, agentModel, forgeVersion string, raw []Sub
 		return nil, fmt.Errorf("no eval cases for skill %q — run 'forge skills eval-gen --skill %s --save' first", skill, skill)
 	}
 
-	// DescHash check: the case-set fingerprint must equal the current SKILL.md fingerprint,
-	// otherwise the case set is stale.
-	//
 	// DescHash 校验：case 集的指纹必须等于当前 SKILL.md 的指纹，否则 case 集已过期。
 	curDH, err := currentDescHash(canonical, skill)
 	if err != nil {
@@ -399,10 +359,6 @@ func SubmitRun(dir, canonical, skill, agentModel, forgeVersion string, raw []Sub
 		return nil, fmt.Errorf("eval cases stale: case desc_hash %s != current %s — description changed, re-run 'forge skills eval-gen --skill %s --save'", set.DescHash, curDH, skill)
 	}
 
-	// ListSkills failure is propagated, not swallowed: canonical was just read successfully
-	// by currentDescHash, so a read-dir failure here is anomalous — silently degrading
-	// canonicalSkills to nil would skew NormalizeTriggered for every case.
-	//
 	// ListSkills 失败要传播、不吞掉：canonical 刚被 currentDescHash 成功读过，
 	// 此处读目录失败属异常——静默把 canonicalSkills 降级为 nil 会让所有 case 的
 	// NormalizeTriggered 失真。
@@ -419,17 +375,11 @@ func SubmitRun(dir, canonical, skill, agentModel, forgeVersion string, raw []Sub
 	for _, r := range raw {
 		c, ok := caseByID[r.CaseID]
 		if !ok {
-			// Unknown case_id: the case set has changed (re-run eval-gen); skip this entry.
-			//
 			// 未知 case_id：case 集已变（重新 eval-gen），跳过该条。
 			continue
 		}
 		actual := NormalizeTriggered(r.ActualTriggered, canonicalSkills)
 		if c.Kind != KindTrigger && c.Kind != KindNotTrigger {
-			// Unknown kind (e.g. legacy "behavior" cases from the demolished
-			// behavior-probe dimension): skip rather than silently judging as
-			// not-trigger, which would vacuously pass and pollute the run.
-			//
 			// 未知 kind（如已拆除的 behavior-probe 维度遗留的 "behavior"
 			// case）：跳过，而非按 not-trigger 静默判定——那会 vacuous pass
 			// 并污染 run。
@@ -444,18 +394,12 @@ func SubmitRun(dir, canonical, skill, agentModel, forgeVersion string, raw []Sub
 			Note:            r.Note,
 		})
 	}
-	// All case_ids unknown (case set just rebuilt, agent holds stale ids) → results empty.
-	// Silent success would let the agent misread"ran successfully but all failed" and persist
-	// an empty run — fail explicitly so it re-fetches the case set.
-	//
 	// 所有 case_id 都未知（case 集刚重建，agent 拿的是旧 id）→ results 空。静默成功
 	// 会让 agent 误判「跑成功只是全挂」并落一条空 run——明确报错让它重新拿 case 集。
 	if len(results) == 0 {
 		return nil, fmt.Errorf("all case_ids unknown — case set regenerated since dispatch, re-fetch via forge_skill_eval_cases / eval-gen --save")
 	}
 
-	// Baseline (locked at run time).
-	//
 	// baseline（run 时刻锁定）。
 	run := &EvalRun{
 		RunID:        newRunID(),
@@ -467,11 +411,6 @@ func SubmitRun(dir, canonical, skill, agentModel, forgeVersion string, raw []Sub
 		Results:      results,
 	}
 	regressions := 0
-	// Distinguish "no baseline" from "baseline unreadable": a corrupt baselines.json must
-	// warn on stderr, not silently masquerade as "nothing to compare" (which would make
-	// the regression penalty disappear without a trace — the regression gate is only
-	// trustworthy if its failures are explicit).
-	//
 	// 区分「无 baseline」与「baseline 不可读」：baselines.json 损坏必须 stderr 告警，
 	// 不能静默伪装成「无可比 baseline」（那会让回归惩罚无痕消失——回归门禁只有
 	// 失败显式时才可信）。
@@ -485,11 +424,6 @@ func SubmitRun(dir, canonical, skill, agentModel, forgeVersion string, raw []Sub
 			for i := range runs {
 				if runs[i].RunID == bl.RunID {
 					run.BaselineRunID = bl.RunID
-					// HealthScore must honor the module's own doctrine: cross-version/
-					// cross-model/desc-change flips are "false regressions" that machine
-					// judgment cannot trust — penalizing them here contradicts the
-					// advisory-only downgrade CompareRuns applies everywhere else.
-					//
 					// HealthScore 必须遵守本模块自己的教义：跨版本/跨模型/改描述的
 					// 翻转是机器判据不可信的「假回归」——在这里惩罚它们与 CompareRuns
 					// 在其他所有地方只降级 advisory 的口径自相矛盾。
@@ -529,11 +463,6 @@ func AppendRun(dir, skill string, run *EvalRun) error {
 	if err != nil {
 		return err
 	}
-	// fsync: runs.jsonl is an append-only regression log; a partially written run that gets
-	// truncated would be silently skipped by LoadRuns as a bad line (manifesting as
-	// "submitted but report cannot find latest"). Sync to disk guarantees that a committed
-	// run survives crashes and stays readable, consistent with the fsync trade-off in util.AtomicWrite.
-	//
 	// fsync：runs.jsonl 是 append-only 回归日志，单条 run 写到一半被截断会被
 	// LoadRuns 的坏行跳过静默丢弃（表现「提交了但 report 找不到 latest」）。Sync
 	// 落盘保证已提交 run 在崩溃后可读，与 util.AtomicWrite 的 fsync 取舍一致。
@@ -548,9 +477,7 @@ func AppendRun(dir, skill string, run *EvalRun) error {
 	return f.Close()
 }
 
-// LoadRuns reads all runs (in write order). Returns nil,nil if the file does not exist.
-// Uses an enlarged scanner buffer — a run contains prompts/notes for all cases and a single
-// line may be very long.
+// LoadRuns reads all runs (in write order).
 //
 // LoadRuns 读所有 run（按写入顺序）。文件不存在返回 nil,nil。
 // 用增大的 scanner buffer——run 含全部 case 的 prompt/note，单行可能很长。
@@ -576,7 +503,7 @@ func LoadRuns(dir, skill string) ([]EvalRun, error) {
 	return runs, scanner.Err()
 }
 
-// LatestRun returns the most recent run (last line of the jsonl). Returns nil,nil if there is no run.
+// LatestRun returns the most recent run (last line of the jsonl).
 //
 // LatestRun 返回最新一条 run（jsonl 末行）。无 run 返回 nil,nil。
 func LatestRun(dir, skill string) (*EvalRun, error) {
@@ -590,7 +517,7 @@ func LatestRun(dir, skill string) (*EvalRun, error) {
 	return &runs[len(runs)-1], nil
 }
 
-// LoadRunByID searches all runs by RunID. Returns nil,nil if not found.
+// LoadRunByID searches all runs by RunID.
 //
 // LoadRunByID 在所有 run 里按 RunID 查找。未找到返回 nil,nil。
 func LoadRunByID(dir, skill, runID string) (*EvalRun, error) {
@@ -606,7 +533,7 @@ func LoadRunByID(dir, skill, runID string) (*EvalRun, error) {
 	return nil, nil
 }
 
-// LoadBaselines reads the baseline map. Returns an empty map if the file does not exist.
+// LoadBaselines reads the baseline map.
 //
 // LoadBaselines 读 baseline 映射。文件不存在返回空 map。
 func LoadBaselines(dir string) (map[string]Baseline, error) {
@@ -627,7 +554,7 @@ func LoadBaselines(dir string) (map[string]Baseline, error) {
 	return bs, nil
 }
 
-// GetBaseline returns the baseline for a skill. Returns the zero-value Baseline{} if none.
+// GetBaseline returns the baseline for a skill.
 //
 // GetBaseline 返回某 skill 的 baseline。无则零值 Baseline{}。
 func GetBaseline(dir, skill string) (Baseline, error) {
@@ -639,12 +566,6 @@ func GetBaseline(dir, skill string) (Baseline, error) {
 }
 
 // SetBaseline marks the baseline run for a skill (atomically writes the whole map).
-//
-// Note: AtomicWrite only guarantees a single atomic write; it does not cover the
-// read-modify-write of"LoadBaselines → mutate map → write" — two concurrent SetBaseline
-// calls (different skills) end with the later writer winning and the earlier writer's change
-// lost. Baselines are set explicitly by humans (CLI/MCP are not high-frequency concurrent),
-// so the convention is to call serially; add baselineMu later if concurrency is needed.
 //
 // SetBaseline 标记某 skill 的 baseline run（原子写整张映射）。
 //

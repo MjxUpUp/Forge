@@ -1,10 +1,5 @@
 package cli
 
-// cleanup_test.go — guards for migrateProjectProtocol after the user-level-assets
-// refactor: a default-equal project protocol.yml migrates to the DataDir copy;
-// customized files (changed fields, unknown fields, unverifiable DataDir copy) are
-// never deleted.
-//
 // cleanup_test.go —— user-level-assets 重构后 migrateProjectProtocol 的守卫：
 // 与默认相等的项目 protocol.yml 迁到 DataDir 副本；改过的文件（字段被改、含未知
 // 字段、DataDir 副本无法验证）绝不删。
@@ -21,8 +16,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/protocol"
 )
 
-// writeProjectProtocol writes content as <dir>/.forge/protocol.yml.
-//
 // writeProjectProtocol 把 content 写成 <dir>/.forge/protocol.yml。
 func writeProjectProtocol(t *testing.T, dir, content string) string {
 	t.Helper()
@@ -36,9 +29,6 @@ func writeProjectProtocol(t *testing.T, dir, content string) string {
 	return p
 }
 
-// defaultProtocolYAML marshals the default protocol (the bytes an untouched
-// forge-written protocol.yml carries).
-//
 // defaultProtocolYAML marshal 默认 protocol（未被用户碰过的 forge 写入的
 // protocol.yml 内容）。
 func defaultProtocolYAML(t *testing.T) string {
@@ -50,9 +40,8 @@ func defaultProtocolYAML(t *testing.T) string {
 	return string(b)
 }
 
-// TestMigrateProjectProtocol_DefaultMigrates: a protocol.yml semantically equal to
-// the default (never user-edited) moves to the DataDir copy; the project-level file
-// is removed.
+// TestMigrateProjectProtocol_DefaultMigrates: a protocol.yml semantically equal
+// to the default (never user-edited) moves to the DataDir copy.
 //
 // TestMigrateProjectProtocol_DefaultMigrates：与默认语义相等（用户没改过）的
 // protocol.yml 迁到 DataDir 副本；项目级文件被删。
@@ -94,8 +83,7 @@ func TestMigrateProjectProtocol_CustomizedKept(t *testing.T) {
 }
 
 // TestMigrateProjectProtocol_UnknownFieldKept pins the strict-decode fix: a file
-// carrying fields unknown to Protocol is user content — a lenient unmarshal would
-// silently drop them on re-marshal, misjudge the file as default, and delete it.
+// carrying fields unknown to Protocol is user content.
 //
 // TestMigrateProjectProtocol_UnknownFieldKept 钉死严格解码修复：含 Protocol 未知
 // 字段的文件是用户内容——宽松 unmarshal 会在重 marshal 时静默丢字段，把文件误判
@@ -112,12 +100,9 @@ func TestMigrateProjectProtocol_UnknownFieldKept(t *testing.T) {
 	}
 }
 
-// TestMigrateProjectProtocol_UnverifiableCopyKeepsProjectFile pins the stat-error
-// fix: when the DataDir copy's existence cannot be verified, the project-level file
-// must NOT be deleted. FORGE_DATA_HOME pointing at a regular FILE makes every stat
-// under it fail (ENOTDIR on unix; ERROR_PATH_NOT_FOUND on Windows, which Go maps to
-// IsNotExist — in that case SaveDataDir fails instead) — either way the outcome must
-// be "project file kept".
+// TestMigrateProjectProtocol_UnverifiableCopyKeepsProjectFile pins the
+// stat-error fix: when the DataDir copy's existence cannot be verified, the
+// project-level file must NOT be deleted.
 //
 // TestMigrateProjectProtocol_UnverifiableCopyKeepsProjectFile 钉死 stat 错误修复：
 // DataDir 副本存在性无法验证时，项目级文件不得删除。FORGE_DATA_HOME 指向一个普通

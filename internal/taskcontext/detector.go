@@ -57,13 +57,6 @@ func Detect(projectRoot string) *Context {
 
 // ParseBranchName extracts the task reference and summary from a branch name.
 //
-// Recognized patterns:
-//   - feature/login-flow → ref=feature/login-flow, summary=login-flow
-//   - fix/PROJ-123-crash → ref=PROJ-123, summary=crash
-//   - bugfix/TASK-456    → ref=TASK-456, summary=empty
-//   - TASK-789           → ref=TASK-789, summary=empty
-//   - PROJ-123-add-auth  → ref=PROJ-123, summary=add-auth
-//
 // ParseBranchName 从分支名中提取 task reference 与 summary。
 //
 // 识别的模式：

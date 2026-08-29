@@ -8,14 +8,6 @@ import (
 	"testing"
 )
 
-// project_sync_test.go — the dual-machine round-trip e2e (project-sync): two
-// clones of one repo at DIFFERENT paths, two isolated FORGE_DATA_HOMEs, the full
-// binary driving adopt → export → import in both directions, asserting
-// convergence (same key, task visible, decisions synced, no duplicate events).
-//
-// The "machine" switch is t.Setenv(FORGE_DATA_HOME, ...) — the forge() helper
-// inherits the process env into the subprocess.
-//
 // project_sync_test.go —— 双机往返 e2e（project-sync）：同一仓库的两个 clone 在
 // 不同路径、两个隔离 FORGE_DATA_HOME、完整二进制驱动 adopt → export → import
 // 双向同步，断言收敛（同 key、任务可见、决策同步、事件不重复）。
@@ -23,9 +15,6 @@ import (
 // 「机器」切换即 t.Setenv(FORGE_DATA_HOME, ...)——forge() helper 把进程 env 继承
 // 进子进程。
 
-// copyTree copies a directory tree (regular files + dirs; symlinks skipped) —
-// the "clone the repo to another machine path" stand-in, cross-platform.
-//
 // copyTree 复制目录树（普通文件 + 目录；跳过 symlink）——「把仓库 clone 到另一台
 // 机器路径」的替身，跨平台。
 func copyTree(t *testing.T, src, dst string) {
@@ -56,8 +45,6 @@ func copyTree(t *testing.T, src, dst string) {
 	}
 }
 
-// dataDirKey extracts the key (basename) from `forge data-dir` output.
-//
 // dataDirKey 从 `forge data-dir` 输出提取 key（basename）。
 func dataDirKey(t *testing.T, dir string) string {
 	t.Helper()
@@ -76,16 +63,6 @@ func dataDirKey(t *testing.T, dir string) string {
 	return ``
 }
 
-// TestProjectSyncDualMachineRoundTrip: the canonical dual-machine flow.
-//
-// Machine A: real git repo → forge init → task started + a gate run (checklog
-// evidence) → adopt (ID born, data migrated to ID key).
-// Machine B: tree copied to a DIFFERENT path (the "clone"), own empty
-// FORGE_DATA_HOME → init → adopt (same ID from the copied file → same key).
-// A exports, B imports (same key ⇒ trusted): task + evidence visible on B.
-// B records a decision, exports back, A imports: decision converged on A.
-// Re-import of the same bundle on B is skipped by the ledger.
-//
 // TestProjectSyncDualMachineRoundTrip：标准双机流程。
 //
 // 机器 A：真 git repo → forge init → 启动任务 + 跑一次门禁（checklog 证据）→
@@ -179,9 +156,6 @@ func TestProjectSyncDualMachineRoundTrip(t *testing.T) {
 	}
 }
 
-// gitInit creates a real git repo with one empty commit (forge task start needs
-// a resolvable HEAD/branch).
-//
 // gitInit 建一个真 git repo 并打一个空 commit（forge task start 需要可解析的
 // HEAD/分支）。
 func gitInit(t *testing.T, dir string) {

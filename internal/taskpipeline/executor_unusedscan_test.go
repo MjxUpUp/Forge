@@ -7,8 +7,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
 )
 
-// findUnusedScanEntry finds the CheckUnusedScan entry in the checklog (pointer, so fields are readable).
-//
 // findUnusedScanEntry 在 checklog 里找 CheckUnusedScan 条目（指针，便于读字段）。
 func findUnusedScanEntry(t *testing.T, dir string) *checklog.Entry {
 	t.Helper()
@@ -24,10 +22,7 @@ func findUnusedScanEntry(t *testing.T, dir string) *checklog.Entry {
 	return nil
 }
 
-// TestExecuteTaskGate_UnusedScan_RecordsAdvisory core contract: committed source containing an
-// unreferenced export (Lonely) → task-verify records a CheckUnusedScan entry (Passed=false,
-// deterministic), and the gate still PASSES (advisory does not block — mechanically detected
-// suspect wiring miss, logged for review scrutiny rather than hard-blocked).
+// TestExecuteTaskGate_UnusedScan_RecordsAdvisory core contract: committed source containing an unreferenced export (Lonely) → task-verify records a CheckUnusedScan entry (Passed=false, deterministic), and the gate still PASSES (advisory does not block — mechanically detected suspect wiring miss, logged for review scrutiny rather than hard-blocked).
 //
 // TestExecuteTaskGate_UnusedScan_RecordsAdvisory 核心契约：committed 源码含未引用导出（Lonely）
 // → task-verify 记一条 CheckUnusedScan（Passed=false、deterministic），且 gate 照常 PASS
@@ -74,8 +69,7 @@ func TestExecuteTaskGate_UnusedScan_RecordsAdvisory(t *testing.T) {
 	}
 }
 
-// TestExecuteTaskGate_UnusedScan_Clean clean code → CheckUnusedScan Passed=true (still recorded,
-// so trace shows scanned-and-clean). Confirms the scanner always runs under task-verify.
+// TestExecuteTaskGate_UnusedScan_Clean clean code → CheckUnusedScan Passed=true (still recorded, so trace shows scanned-and-clean).
 //
 // TestExecuteTaskGate_UnusedScan_Clean 干净代码 → CheckUnusedScan Passed=true（仍记录，trace 可见
 // 「扫过、干净」）。确认扫描器在 task-verify 总是跑。
@@ -99,8 +93,7 @@ func TestExecuteTaskGate_UnusedScan_Clean(t *testing.T) {
 	}
 }
 
-// TestExecuteTaskGate_UnusedScan_NonSourceNotScanned when there is no source change, the scan has
-// nothing to extract — ScanUnusedSymbols returns nil, the gate still records Passed=true.
+// TestExecuteTaskGate_UnusedScan_NonSourceNotScanned when there is no source change, the scan has nothing to extract — ScanUnusedSymbols returns nil, the gate still records Passed=true.
 //
 // TestExecuteTaskGate_UnusedScan_NonSourceNotScanned 无源码变更时扫描无可提取——ScanUnusedSymbols
 // 返回 nil，gate 仍记 Passed=true。
@@ -124,16 +117,12 @@ func TestExecuteTaskGate_UnusedScan_NonSourceNotScanned(t *testing.T) {
 	}
 }
 
+// TestExecuteTaskGate_UnusedScan_SameFindingSuppressedOnRetry pins same-finding suppression (2026-08 noise audit: Translate(method) re-emitted 8 times on one task): the same finding is not re-emitted line by line on a verify retry (stderr keeps only the "all already reported" line); the checklog audit entry stays complete.
+//
 // TestExecuteTaskGate_UnusedScan_SameFindingSuppressedOnRetry 钉住同 finding 抑制
 // （2026-08 噪音审计：Translate(method) 同任务重发 8 次）：同一 finding 在 verify
 // 重试中不再逐条重发（stderr 只剩「均已报告」一行）；checklog 审计条目保持全量。
 // finding 修复消失后出现的新 finding 仍照常报告。
-//
-// TestExecuteTaskGate_UnusedScan_SameFindingSuppressedOnRetry pins same-finding
-// suppression (2026-08 noise audit: Translate(method) re-emitted 8 times on one task):
-// the same finding is not re-emitted line by line on a verify retry (stderr keeps only
-// the "all already reported" line); the checklog audit entry stays complete. A new
-// finding appearing after the old one was fixed still reports normally.
 func TestExecuteTaskGate_UnusedScan_SameFindingSuppressedOnRetry(t *testing.T) {
 	t.Setenv("FORGE_DATA_HOME", t.TempDir()) // 隔离 SaveTaskState 的全局 home
 	dir := t.TempDir()
@@ -194,12 +183,7 @@ func TestExecuteTaskGate_UnusedScan_SameFindingSuppressedOnRetry(t *testing.T) {
 	}
 }
 
-// TestExecuteTaskGate_UnusedScan_DedupSuffix pins the same audit-side dedup
-// annotation the cheat-scan section got (2026-08 review-observability, symmetric
-// fix after review nit #2): re-running task-verify over an unchanged diff
-// re-records the full unused-scan result but the Detail carries
-// "new=0, suppressed=N", so repeat FAILs are distinguishable from genuinely new
-// unwired symbols.
+// TestExecuteTaskGate_UnusedScan_DedupSuffix pins the same audit-side dedup annotation the cheat-scan section got (2026-08 review-observability, symmetric fix after review nit #2): re-running task-verify over an unchanged diff re-records the full unused-scan result but the Detail carries "new=0, suppressed=N", so repeat FAILs are distinguishable from genuinely new unwired symbols.
 //
 // TestExecuteTaskGate_UnusedScan_DedupSuffix 钉住与 cheat-scan 段同款的审计侧
 // 去重标注（2026-08 评审可观测性，审查 nit #2 的对称修复）：对同一 diff 重跑

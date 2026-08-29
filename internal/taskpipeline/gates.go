@@ -1,14 +1,10 @@
 package taskpipeline
 
-// DefaultGates returns the 3 standard task-level quality gates (v0.17: trimmed from 5). These gates
-// are hard-coded — universal for any task. Order-sensitive: gates run in sequence.
+// DefaultGates returns the 3 standard task-level quality gates (v0.17: trimmed from 5).
 //
 // DefaultGates 返回 3 个标准 task 级质量 gate（v0.17：从 5 个精简而来）。这些 gate
 // 是硬编码的——对任何 task 通用。顺序敏感：gate 按序执行。
 func DefaultGates() []TaskGate {
-	// v0.17: trimmed from 5 to 3. task-understand and task-design are now agent internal
-	// workflow steps, no longer mandatory gates.
-	//
 	// v0.17：从 5 个精简到 3 个。task-understand 和 task-design 现在是 agent 的
 	// 内部工作流步骤，不再是强制 gate。
 	return []TaskGate{

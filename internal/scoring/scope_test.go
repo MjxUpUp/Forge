@@ -162,13 +162,7 @@ func TestA(t *testing.T) {
 	}
 }
 
-// TestCollectAssertionDensity_IncludesUntracked pins the untracked-file fix
-// (fix/cleanup-batch, 2026-08-29): a brand-new, never-added test file is
-// visible to assertion density. `git diff` does not accept --others (exit 129
-// — ls-files option), so untracked files come from a separate
-// `git ls-files --others --exclude-standard` probe inside changedFiles; before
-// the fix, an uncommitted test file was invisible exactly where fake tests are
-// most common (the agent just wrote the file and has not committed).
+// TestCollectAssertionDensity_IncludesUntracked pins the untracked-file fix (fix/cleanup-batch, 2026-08-29).
 //
 // TestCollectAssertionDensity_IncludesUntracked 钉住未跟踪文件修复
 // （fix/cleanup-batch，2026-08-29）：全新、从未 add 的测试文件对断言密度可见。
@@ -183,8 +177,6 @@ func TestCollectAssertionDensity_IncludesUntracked(t *testing.T) {
 	runGit(t, dir, "config", "user.name", "T")
 	runGit(t, dir, "commit", "--allow-empty", "-m", "init")
 
-	// UNTRACKED test file: written, never added/committed.
-	//
 	// 未跟踪的测试文件：已写入、从未 add/commit。
 	content := []byte(`package x
 func TestFresh(t *testing.T) {
@@ -204,12 +196,7 @@ func TestFresh(t *testing.T) {
 	}
 }
 
-// TestChangedFiles_AllProbesDeadErrors pins the error contract mirror of
-// gitDiffStat (fix/cleanup-batch, 2026-08-29): in a non-git directory every
-// probe (diff base..HEAD, diff HEAD, ls-files --others) fails, and the failure
-// must surface as an error instead of a silent empty list — CollectAssertionDensity
-// consumes it to skip the fake-test penalty (a dead probe must not read as
-// "zero assertions, punish").
+// TestChangedFiles_AllProbesDeadErrors pins the error contract mirror of gitDiffStat.
 //
 // TestChangedFiles_AllProbesDeadErrors 钉住与 gitDiffStat 镜像的错误契约
 // （fix/cleanup-batch，2026-08-29）：非 git 目录里所有探测（diff base..HEAD、
@@ -222,10 +209,7 @@ func TestChangedFiles_AllProbesDeadErrors(t *testing.T) {
 	}
 }
 
-// TestCollectAssertionDensity_DeadProbeReturnsZeros pins the caller-side half
-// of the dead-probe contract: on a collection error the function returns
-// (0, 0) — never a crash — and scoreTesting's testFiles>0 guard turns that
-// into "penalty skipped" instead of "punish".
+// TestCollectAssertionDensity_DeadProbeReturnsZeros pins the caller-side half of the dead-probe contract.
 //
 // TestCollectAssertionDensity_DeadProbeReturnsZeros 钉住死探测契约的调用侧
 // 一半：采集出错时返回 (0, 0)——绝不崩——scoreTesting 的 testFiles>0 守卫把它

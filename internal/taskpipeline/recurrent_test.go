@@ -7,10 +7,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/act"
 )
 
-// mkConcl builds a minimal completed-task conclusion with the given low-score dimensions, for the
-// pure-function recurrence tests (no disk). Score/Grade/Strength are set to realistic low-score
-// values. Legacy shape (no DimScores): recurrence logic falls back to LowDimensions.
-//
 // mkConcl 构造一个带指定低分维度的最小完成任务结论，供纯函数复发测试（不碰磁盘）。
 // Score/Grade/Strength 设为真实低分值。存量形态（无 DimScores）：复发逻辑回落 LowDimensions。
 func mkConcl(ref string, lowDims ...string) act.Conclusion {
@@ -24,9 +20,6 @@ func mkConcl(ref string, lowDims ...string) act.Conclusion {
 	}
 }
 
-// mkConclDims builds a modern conclusion carrying per-dimension raw scores (DimScores), the
-// shape BuildConclusion writes since the noise-band change.
-//
 // mkConclDims 构造带每维度原始分（DimScores）的新式结论——噪声带改造后 BuildConclusion
 // 落盘的形态。
 func mkConclDims(ref string, dims ...act.DimScore) act.Conclusion {
@@ -83,10 +76,6 @@ func TestDimRecurrent(t *testing.T) {
 }
 
 func TestLowDimCounts_NoiseBand(t *testing.T) {
-	// AutoDesign margin calibration: 0-3pt gaps around a cut are a coin flip. A dimension
-	// flapping in [66,70) must NOT accumulate toward recurrence hardening — only clear lows
-	// (<=65) count when DimScores is present.
-	//
 	// AutoDesign margin 校准：切线附近 0-3 分差距 ≈ 抛硬币。在 [66,70) 抖动的维度不得向
 	// 复发升硬累计——有 DimScores 时只计明确低（<=65）。
 	flap := mkConclDims("a", act.DimScore{Dimension: dimTesting, Score: 67})
@@ -116,10 +105,6 @@ func TestLowDimCounts_NoiseBand(t *testing.T) {
 }
 
 func TestLowDimCounts_LegacyFallback(t *testing.T) {
-	// Legacy conclusions predate DimScores — LowDimensions (binary <70) is all that exists;
-	// their 67s count too (the number is simply lost). Mixed fleets: each conclusion judged
-	// by its own shape.
-	//
 	// 存量结论早于 DimScores——只有二值 <70 的 LowDimensions，其 67 也计入（数字只是丢了）。
 	// 混合队列：每条结论按自身形态判定。
 	cs := []act.Conclusion{

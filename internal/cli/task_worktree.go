@@ -17,29 +17,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// task_worktree.go implements L4 (multi-task-concurrency design §7): the worktree-per-task
-// lifecycle. `task start --worktree` atomically creates worktree + branch + task + binding
-// (invariant I2's physical form: the filesystem is a disposable working copy, one per
-// task); `task finish` merges and cleans; `worktree janitor` keeps the fleet bounded with
-// the never-delete-dirty guarantee.
-//
 // task_worktree.go 实现 L4（multi-task-concurrency 设计 §7）：worktree-per-task 生命
 // 周期。`task start --worktree` 原子地建 worktree + 分支 + 任务 + 绑定（不变式 I2 的
 // 物理形态：文件系统是一次性工作副本，每任务一份）；`task finish` 合并清理；
 // `worktree janitor` 以「脏的永不删」保上界。
 
-// conventionalBranchPrefixes is the shared prefix table for the ref→branch
-// derivation path (hasConventionalPrefix → deriveBranchName →
-// createTaskWorktree). It is a deliberately NARROWER mirror of
-// validateBranchRef's accepted set (task.go also takes feature/, bugfix/,
-// hotfix/): a ref with one of those wider prefixes still derives feat/<ref>
-// here — legal, because the derived name is subsequently validated by
-// validateBranchRef itself (the derivation is only the resolution chain's
-// fallback; the true ref rides pointers/bindings). Hoisted into one named
-// constant so the two derivation entries (--worktree and --branch via
-// deriveBranchName) and any future caller share a single table — the inline
-// copy in createTaskWorktree was deleted (dogfood #6 class: two copies drift).
-//
 // conventionalBranchPrefixes 是 ref→分支派生路径（hasConventionalPrefix →
 // deriveBranchName → createTaskWorktree）的共享前缀表。它刻意是
 // validateBranchRef 接收集的【窄】镜像（task.go 还接受 feature/、bugfix/、
@@ -50,9 +32,6 @@ import (
 // （dogfood #6 类问题：两份副本会漂移）。
 var conventionalBranchPrefixes = []string{"feat/", "fix/", "refactor/", "test/", "chore/", "docs/", "ci/", "perf/", "build/", "style/"}
 
-// hasConventionalPrefix mirrors validateBranchRef's accepted prefixes — kept adjacent
-// to its main consumer; drift with the validator fails the subsequent validateBranchRef call.
-//
 // hasConventionalPrefix 镜像 validateBranchRef 接受的前缀集——贴着主要消费方放；
 // 与校验器漂移会被随后的 validateBranchRef 兜住。
 func hasConventionalPrefix(ref string) bool {
@@ -64,18 +43,10 @@ func hasConventionalPrefix(ref string) bool {
 	return false
 }
 
-// deriveBranchName is the SINGLE ref→branch derivation shared by --worktree and
-// --branch（dogfood 发现 #6，2026-08-28：另一会话 task start --branch 踩到前缀校验
-// 拒绝——#2 只对齐了 --worktree 入口，第二入口漏改）。规则：ref 已带惯例前缀则
-// 同名；否则派生 feat/<ref 斜杠转连字>（分支映射只是解析链兜底，真 ref 由指针/
-// 绑定承载）。
-//
-// deriveBranchName is the SINGLE ref→branch derivation shared by --worktree and
-// --branch (dogfood finding #6, 2026-08-28: another session's `task start --branch`
-// hit the prefix validation refusal — #2 aligned only the --worktree entry, the
-// second one was missed). Rule: conventionally-prefixed ref maps to itself; anything
-// else derives feat/<slashes→dashes> (the branch mapping is only the resolution
-// chain's fallback — the true ref rides pointers/bindings).
+// deriveBranchName 是 --worktree 与 --branch 共享的唯一 ref→分支派生（dogfood 发现 #6，
+// 2026-08-28：另一会话 task start --branch 踩到前缀校验拒绝——#2 只对齐了 --worktree
+// 入口，第二入口漏改）。规则：ref 已带惯例前缀则同名；否则派生
+// feat/<ref 斜杠转连字>（分支映射只是解析链兜底，真 ref 由指针/绑定承载）。
 func deriveBranchName(ref string) (string, error) {
 	branch := ref
 	if !hasConventionalPrefix(ref) {
@@ -87,9 +58,6 @@ func deriveBranchName(ref string) (string, error) {
 	return branch, nil
 }
 
-// worktreeBase resolves the base ref for a new task worktree: explicit --base, else the
-// repo's main line (main, falling back to master — local first, then origin).
-//
 // worktreeBase 解析新任务 worktree 的基线：显式 --base，否则仓库主线（main 回落
 // master——先本地后 origin）。
 func worktreeBase(root, explicit string) (string, error) {
@@ -104,10 +72,6 @@ func worktreeBase(root, explicit string) (string, error) {
 	return "", fmt.Errorf("找不到主线分支（main/master），请用 --base 显式指定")
 }
 
-// createTaskWorktree creates the worktree + branch for a task start and returns its path.
-// Default location is OUTSIDE the repo tree (`<repo 父目录>/<repo 名>-wt/<分支>`，
-// 项目树零写入原则); forge.worktreeinclude (gitignore-syntax) files are copied in.
-//
 // createTaskWorktree 为 task start 建 worktree + 分支并返回路径。默认位置在 repo
 // 树【外】（`<repo 父目录>/<repo 名>-wt/<分支>`，项目树零写入原则）；
 // forge.worktreeinclude（gitignore 语法）匹配的文件会被复制进去。
@@ -115,13 +79,6 @@ func createTaskWorktree(root, ref, base, wtDirParent string) (string, error) {
 	if ref == "" {
 		return "", fmt.Errorf("--worktree requires --ref")
 	}
-	// Single ref→branch derivation (dogfood #6 class fix, 2026-08-29): the inline
-	// copy of the derivation lived on after deriveBranchName was extracted for the
-	// --branch entry — two copies of the same rule drift (exactly how #6 happened).
-	// Rule: a conventionally-prefixed ref maps to itself; anything else derives
-	// feat/<slashes→dashes> (the branch mapping is only the resolution chain's
-	// fallback — the true ref rides pointers/bindings).
-	//
 	// 单一 ref→分支派生（dogfood #6 类修复，2026-08-29）：deriveBranchName 为
 	// --branch 入口抽出后，这里的内联派生副本继续存活——同一规则两份副本必漂移
 	// （#6 正是这样发生的）。规则：ref 已带惯例前缀则同名；否则派生
@@ -150,15 +107,6 @@ func createTaskWorktree(root, ref, base, wtDirParent string) (string, error) {
 	return path, nil
 }
 
-// copyWorktreeIncludes copies forge.worktreeinclude-listed gitignored files (.env etc.)
-// into the new worktree. One line = one path or gitignore-style glob; comments (#) and
-// blanks skipped. Best-effort per line — a missing include must not fail the whole start
-// — but per-file COPY failures are accumulated and reported as ONE stderr warning after
-// the walk (fix/cleanup-batch, 2026-08-29): before this, an unreadable/locked source or
-// an unwritable destination vanished silently, and the first session inside the worktree
-// discovered the missing .env with an opaque failure far from the cause. The warning
-// lists every failed include so the user can fix the cause before the session starts.
-//
 // copyWorktreeIncludes 把 forge.worktreeinclude 列出的 gitignored 文件（.env 等）复制
 // 进新 worktree。一行 = 一个路径或 gitignore 风格 glob；跳过注释（#）与空行。逐行
 // 尽力而为——缺一个 include 不得让整个 start 失败——但逐文件的【复制】失败会被累积，
@@ -216,10 +164,6 @@ func copyWorktreeIncludes(srcRoot, dstRoot string) {
 	}
 }
 
-// runTaskFinish is `forge task finish`: gate-complete + clean-tree verified merge and
-// worktree cleanup. Merge runs in the MAIN checkout (worktrees cannot check out a branch
-// the main checkout holds and vice versa; the main root is derived from the git common dir).
-//
 // runTaskFinish 即 `forge task finish`：验证门禁完成 + 工作树干净后合并并清理
 // worktree。合并在主检出里跑（worktree 与主检出不能同时持有同一分支；主根从 git
 // common dir 推导）。
@@ -315,8 +259,6 @@ func runTaskFinish(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// sameResolvedPath compares two paths after EvalSymlinks on both sides.
-//
 // sameResolvedPath 双侧 EvalSymlinks 后比较路径。
 func sameResolvedPath(a, b string) bool {
 	if ra, err := filepath.EvalSymlinks(a); err == nil {
@@ -328,14 +270,6 @@ func sameResolvedPath(a, b string) bool {
 	return a == b
 }
 
-// removeWorktree deletes a worktree with the Windows CWD-lock guard: POSIX allows
-// deleting a process's current directory, Windows refuses ("Permission denied") — the
-// finish/janitor caller very often sits INSIDE the worktree being removed (its own
-// project window). Chdir to the main checkout first when so (branch CI 2026-08-27
-// Windows failure). Clean-tree is verified by callers beforehand; the --force retry
-// only bypasses git's dirty-refusal on an already-verified-clean tree (OS-level lock
-// transients), never content.
-//
 // removeWorktree 删除 worktree，带 Windows CWD 锁防护：POSIX 允许删除进程当前目
 // 录、Windows 拒绝（"Permission denied"）——finish/janitor 的调用方极常正坐在被删
 // 的 worktree 里（自己的任务窗口）。命中时先 chdir 到主检出（2026-08-27 分支 CI
@@ -356,17 +290,12 @@ func removeWorktree(mainRoot, wtPath string) error {
 	return fmt.Errorf("%v\n%s\n%v\n%s", err, out, err2, out2)
 }
 
-// isUnderDir reports whether path is strictly inside dir.
-//
 // isUnderDir 报告 path 是否严格位于 dir 内。
 func isUnderDir(path, dir string) bool {
 	rel, err := filepath.Rel(dir, path)
 	return err == nil && rel != "." && !strings.HasPrefix(rel, "..")
 }
 
-// gitMainRoot derives the main checkout root from a worktree path via the git common dir
-// (`<common>/.git` 的父目录). For the main checkout itself this is the same root.
-//
 // gitMainRoot 从 worktree 路径经 git common dir 推导主检出根（`<common>/.git` 的父
 // 目录）。对主检出自身即原根。
 func gitMainRoot(root string) (string, error) {
@@ -378,11 +307,6 @@ func gitMainRoot(root string) (string, error) {
 	return filepath.Dir(common), nil // <repo>/.git → <repo>
 }
 
-// runWorktreeJanitor is `forge worktree janitor`: bounded cleanup with the
-// never-delete-dirty guarantee — only completed-task or expired (14d default) workspaces
-// whose tree is CLEAN get removed; dirty ones are reported, never touched. Bindings whose
-// path vanished are dropped unconditionally (dead anchors).
-//
 // runWorktreeJanitor 即 `forge worktree janitor`：带「脏的永不删」保证的有界清理
 // ——只清理任务已完成或超期（默认 14d）且树干净的 workspace；脏的只报告绝不碰。
 // 路径已消失的绑定无条件删除（死锚）。

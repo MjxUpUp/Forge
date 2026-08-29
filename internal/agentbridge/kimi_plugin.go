@@ -10,22 +10,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/hooks"
 )
 
-// kimi_plugin.go — kimi-code plugin manifest (.kimi-plugin/plugin.json) derivation.
-//
-// kimi-code's plugin system (kimi.plugin.json or .kimi-plugin/plugin.json at the plugin
-// root) natively supports a `hooks` array whose entries are field-identical to the
-// [[hooks]] rules in config.toml (event/matcher/command/timeout). Installing from GitHub
-// (`/plugins install https://github.com/MjxUpUp/Forge`) reads the manifest from the repo
-// root — so the manifest must be COMMITTED, unlike the claude/cursor marketplace packs
-// which are generated on demand by `forge plugin pack`. Drift between the committed
-// manifest and ForgeHookSpec is guarded by TestKimiPluginManifestMirrorsSpec.
-//
-// Plugin vs config.toml wiring (KimiTranslator): both register the same hooks user-level
-// and machine-wide — running both means every hook fires twice. Translate therefore
-// strips the config.toml marker section when the plugin is installed (same dedupe
-// philosophy as claude-code's plugin vs settings.local.json, see
-// internal/hooks/plugin_detect.go).
-//
 // kimi_plugin.go — kimi-code plugin manifest（.kimi-plugin/plugin.json）派生。
 //
 // kimi-code 的 plugin 系统（plugin 根的 kimi.plugin.json 或 .kimi-plugin/plugin.json）
@@ -41,8 +25,8 @@ import (
 // 标记段（与 claude-code 的 plugin vs settings.local.json 同款 dedupe 哲学，见
 // internal/hooks/plugin_detect.go）。
 
-// KimiPluginHook is one entry of the plugin manifest's hooks array — field-identical to
-// a [[hooks]] rule in kimi's config.toml.
+// KimiPluginHook is one entry of the plugin manifest's hooks array —
+// field-identical to a [[hooks]] rule in kimi's config.toml.
 //
 // KimiPluginHook 是 plugin manifest hooks 数组的一条——与 kimi config.toml 的
 // [[hooks]] 规则字段一致。
@@ -53,8 +37,7 @@ type KimiPluginHook struct {
 	Timeout int    `json:"timeout"`
 }
 
-// KimiPluginManifest is the .kimi-plugin/plugin.json schema subset forge ships. Only the
-// fields forge uses are modeled; unknown fields are neither needed nor emitted.
+// KimiPluginManifest is the .kimi-plugin/plugin.json schema subset forge ships.
 //
 // KimiPluginManifest 是 forge 发布的 .kimi-plugin/plugin.json schema 子集。只建模
 // forge 用到的字段；不需要的字段不建模也不输出。
@@ -65,20 +48,10 @@ type KimiPluginManifest struct {
 	Hooks       []KimiPluginHook `json:"hooks"`
 }
 
-// kimiPluginName is the plugin id. It must stay "forge": the dedupe detection keys on it,
-// and it becomes the slash-command namespace.
-//
 // kimiPluginName 是 plugin id。必须保持 "forge"：dedupe 检测以它为 key，它也是
 // 斜杠命令的命名空间。
 const kimiPluginName = "forge"
 
-// KimiPluginDescription is the committed manifest's description field. Promoted from the
-// test file to production when `forge plugin kimi-manifest` became a CLI outlet
-// (2026-08-21): the CLI and the guard test must render the manifest from the SAME
-// description or the command would rewrite what the test pins. Any edit here changes the
-// committed .kimi-plugin/plugin.json — regenerate with the CLI (or the test's
-// -update-kimi-plugin flag) in the same change.
-//
 // KimiPluginDescription 是已提交 manifest 的 description 字段。当 `forge plugin
 // kimi-manifest` 成为 CLI 出口时（2026-08-21）从测试文件升到生产：CLI 与守卫测试必须
 // 用同一 description 渲染 manifest，否则命令会改写测试钉住的内容。改这里即改已提交
@@ -94,7 +67,6 @@ const KimiPluginDescription = "Forge loop-engineering quality gates: task-tracke
 // (the dsh-win32 failure class: schema mismatch → all gates silently no-op).
 // Locking the roster here makes new spec events additive elsewhere and a no-op on
 // kimi until explicitly verified and added to this list.
-//
 // kimiSupportedEvents 是已知 kimi plugin schema 接受的 hook 事件白名单。
 // BuildKimiPluginHooks 原样透传 spec 事件，故任何未经 kimi 侧验证就加进
 // ForgeHookSpec 的事件都会流进 manifest；kimi 按自身 schema 校验 manifest，
@@ -107,7 +79,6 @@ const KimiPluginDescription = "Forge loop-engineering quality gates: task-tracke
 // the spec verbatim, so the whitelist guarded the manifest but not the TOML,
 // and an unverified event could still reach config.toml-based kimi installs
 // (the whitelist's own threat model, on its other half).
-//
 // 复审 2026-08-22（feat/hook-event-gap）：config.toml 路径
 // （BuildKimiHooksTOML）经同一清单过滤——此前它原样迭代 spec，白名单守住了
 // manifest 却漏了 TOML，未验证事件仍能到达 config.toml 形态的 kimi 安装
@@ -121,12 +92,8 @@ var kimiSupportedEvents = map[string]bool{
 	"UserPromptSubmit": true,
 }
 
-// BuildKimiPluginHooks derives the manifest's hooks array from hooks.ForgeHookSpec —
-// the same single source of truth as BuildKimiHooksTOML (config.toml path). Entries are
-// sorted by event for deterministic output; commands carry `--agent kimi` for the same
-// reason as the config.toml path (stdin dialect + exit-2 output protocol). Events are
-// filtered to kimiSupportedEvents (see its doc: an unknown event in the manifest can
-// fail kimi's schema validation and silently kill ALL hooks).
+// BuildKimiPluginHooks derives the manifest's hooks array from
+// hooks.ForgeHookSpec.
 //
 // BuildKimiPluginHooks 从 hooks.ForgeHookSpec 派生 manifest 的 hooks 数组——与
 // BuildKimiHooksTOML（config.toml 路径）共享同一单一真相源。条目按 event 排序保证
@@ -148,16 +115,6 @@ func BuildKimiPluginHooks() []KimiPluginHook {
 	for _, ev := range events {
 		for _, m := range spec[ev] {
 			for _, entry := range m.Hooks {
-				// skill-trigger is wired on EVERY event, same as the config.toml path
-				// (BuildKimiHooksTOML): kimi 0.35.0 still drops allow-path stdout outside
-				// UserPromptSubmit (wire.jsonl-verified), but since the 2026-08 hostcap fix
-				// the engine RECORDS those hits with Delivered=false (hostcap.ContextChannel)
-				// and only PRINTS on UserPromptSubmit (runSkillTriggerHook) — the dashboard
-				// feed and usage funnel see the full trigger picture (kimi tasks previously
-				// showed only the 5 pipeline skeleton events) while the funnel counts
-				// Delivered=true only, so the old false-prosperity concern that motivated
-				// filtering here cannot recur.
-				//
 				// skill-trigger 在每个事件上都接线，与 config.toml 路径（BuildKimiHooksTOML）
 				// 一致：kimi 0.35.0 仍然丢弃 UserPromptSubmit 以外事件的 allow 路径 stdout
 				// （wire.jsonl 实证），但自 2026-08 hostcap 修复起，引擎把这些命中以
@@ -177,13 +134,6 @@ func BuildKimiPluginHooks() []KimiPluginHook {
 	return out
 }
 
-// isSkillTriggerCommand reports whether a hook command is the skill-trigger hook. The
-// manifest guard test calls it on the agent-TRANSLATED manifest command ("forge hook
-// skill-trigger --agent kimi") and the RAW spec command ("forge hook skill-trigger",
-// bare). A word boundary after the token (end of string or a space) accepts both forms
-// while rejecting a hypothetical future "forge hook skill-trigger-v2" that a plain
-// Contains would false-match.
-//
 // isSkillTriggerCommand 报告某 hook command 是否为 skill-trigger hook。manifest 守卫
 // 测试对 agent 翻译后的 manifest 命令（"forge hook skill-trigger --agent kimi"）与裸
 // spec 命令（"forge hook skill-trigger"）调用。token 后的字边界（字符串尾或空格）
@@ -199,17 +149,9 @@ func isSkillTriggerCommand(cmd string) bool {
 	return rest == "" || strings.HasPrefix(rest, " ")
 }
 
-// BuildKimiPluginManifest renders the full manifest. version is the plugin's display
-// version, now tracked to the forge release (scripts/release.js syncs it; pinned by
-// TestKimiPluginManifestVersionTracksRelease). The caller supplies it — tests read it
-// from npm/package.json, the single source of truth.
-//
-// Maintenance path (2026-08-16 audit note, resolved 2026-08-21): this builder trio now
-// has a CLI regen outlet — `forge plugin kimi-manifest --write` (internal/cli/plugin.go)
-// reads the version from npm/package.json, renders via MarshalKimiPluginManifest, and
-// rewrites the committed .kimi-plugin/plugin.json. The committed file remains the
-// artifact kimi installs; TestKimiPluginManifestMirrorsSpec still goes red on drift, so a
-// spec change cannot land silently (the CLI is the convenience, the test is the guard).
+// BuildKimiPluginManifest renders the full manifest. version is the plugin's
+// display version, now tracked to the forge release (scripts/release.js syncs
+// it.
 //
 // BuildKimiPluginManifest 渲染完整 manifest。version 是 plugin 的展示版本，现跟随
 // forge release（scripts/release.js 同步；由 TestKimiPluginManifestVersionTracksRelease
@@ -230,8 +172,9 @@ func BuildKimiPluginManifest(version, description string) KimiPluginManifest {
 	}
 }
 
-// MarshalKimiPluginManifest serializes the manifest in the committed file's canonical
-// form (2-space indent, trailing newline) so the guard test can byte-compare.
+// MarshalKimiPluginManifest serializes the manifest in the committed file's
+// canonical form (2-space indent, trailing newline) so the guard test can
+// byte-compare.
 //
 // MarshalKimiPluginManifest 按提交文件的规范形式序列化 manifest（2 空格缩进 + 末尾
 // 换行），供守卫测试做字节级比对。
@@ -243,19 +186,10 @@ func MarshalKimiPluginManifest(m KimiPluginManifest) ([]byte, error) {
 	return append(data, '\n'), nil
 }
 
-// IsKimiPluginInstalled reports whether the forge plugin is installed and enabled in
-// kimi-code (record present in $KIMI_CODE_HOME/plugins/installed.json). kimi's
-// /plugins install/remove is TUI-only, so the on-disk record is the only signal a CLI
-// can read. The parse is deliberately tolerant: the exact record schema is not
-// documented (kimi-code 0.31.0), so any entry whose id (or name) is "forge" counts,
-// and enablement defaults to true unless explicitly disabled. The trade-off this
-// accepts: an unrelated third-party plugin also named "forge" (id collision, no source
-// check — checking the source would punish forks) would make Translate strip the
-// config.toml section without that plugin registering forge hooks; judged improbable
-// enough to stay a tolerant read rather than a strict one.
-//
-// The managed copy under plugins/managed/forge/ is NOT a signal: /plugins remove keeps
-// it on disk after uninstalling.
+// IsKimiPluginInstalled reports whether the forge plugin is installed and
+// enabled in kimi-code (record present in
+// $KIMI_CODE_HOME/plugins/installed.json). kimi's /plugins install/remove is
+// TUI-only, so the on-disk record is the only signal a CLI can read.
 //
 // IsKimiPluginInstalled 报告 forge plugin 是否已在 kimi-code 安装并启用
 // （$KIMI_CODE_HOME/plugins/installed.json 中有记录）。kimi 的
@@ -299,16 +233,8 @@ func IsKimiPluginInstalled() bool {
 	return false
 }
 
-// KimiPluginStaleInfo reads the installed forge plugin's source ref tag and returns the
-// bare version (v prefix trimmed). It is the trustworthy "which version is installed"
-// signal for staleness detection: the manifest's version field is committed metadata
-// (now release-tracked via scripts/release.js, but only refreshed on reinstall) and the managed
-// copy under plugins/managed/forge/ survives uninstall (see IsKimiPluginInstalled notes) —
-// only installed.json's github.ref records the tag the user actually installed from.
-//
-// ok is true only when a forge entry exists, is enabled, and carries github.ref.kind=="tag"
-// with a non-empty value. Non-tag refs (commit/branch) return ok=false — they cannot be
-// semver-compared, and flagging them as stale would be noise.
+// KimiPluginStaleInfo reads the installed forge plugin's source ref tag and
+// returns the bare version (v prefix trimmed).
 //
 // KimiPluginStaleInfo 读取已装 forge plugin 的来源 ref tag，返回裸版本号（已 trim v 前缀）。
 // 它是 staleness 检测的可信"装了哪个版本"信号：manifest 的 version 字段是 committed 元数据
@@ -349,10 +275,6 @@ func KimiPluginStaleInfo() (installed string, ok bool) {
 		ref, _ := github["ref"].(map[string]any)
 		kind, _ := ref["kind"].(string)
 		if kind != "tag" {
-			// continue rather than early return: if a future installed.json schema ever
-			// carries multiple forge records, we want the first comparable tag ref, not a
-			// dead end on a non-tag sibling. Single-record behavior is unchanged.
-			//
 			// continue 而非提前 return：若将来 installed.json schema 出现多条 forge 记录，
 			// 我们要第一个可比对的 tag ref，而非在非 tag 兄弟条目上死锁。单条目行为不变。
 			continue

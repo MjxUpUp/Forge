@@ -1,11 +1,5 @@
 package cli
 
-// skills_eval_record.go — eval-record subcommand: writes the agent-batched CaseResult
-// fill as a single EvalRun. After an agent dispatches a fresh subagent via MCP to run
-// each prompt, it feeds the batch of `which skill was actually triggered` to eval-record
-// (--from file.json or stdin), and forge handles normalization + DescHash check +
-// judgment + health scoring + append.
-//
 // skills_eval_record.go — eval-record 子命令：把 agent 整批回填的 CaseResult 写成
 // 一条 EvalRun。agent 通过 MCP dispatch fresh subagent 跑完每个 prompt 后，把
 // 「实际触发了哪个 skill」整批喂给 eval-record（--from file.json 或 stdin），forge
@@ -81,16 +75,12 @@ func runSkillsEvalRecord(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("✅ run %s recorded: health=%.2f, %d results\n", run.RunID, run.HealthScore, len(run.Results))
 	if run.BaselineRunID != "" {
-		// The run pinned a baseline at record time; prompt for the report to view regression.
-		//
 		// run 时刻锁定了 baseline，提示拿 report 看回归。
 		fmt.Printf("   baseline=%s（变更已记录，跑 eval-report 看回归）\n", run.BaselineRunID)
 	}
 	return nil
 }
 
-// readFromArg reads all bytes from a file path, or from stdin when given `-` or empty.
-//
 // readFromArg 从 "-" 或空（stdin）或文件路径读全部字节。
 func readFromArg(from string) ([]byte, error) {
 	if from == "" || from == "-" {

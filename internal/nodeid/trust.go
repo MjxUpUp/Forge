@@ -1,14 +1,5 @@
 package nodeid
 
-// trust.go — the node trust store (docs/design/node-identity.md §3): known peers
-// with their public keys and trust profile, plus the require-signed toggle that
-// flips the machine into the TEAM profile (signature enforcement on bundle import).
-//
-// Trust establishment is TOFU-by-explicit-command: `forge trust add` shows the
-// fingerprint and the human confirms out-of-band (SSH known_hosts / Syncthing
-// introduction precedent). The store lives at ~/.forge/trust.json (0600,
-// FORGE_DATA_HOME aware), NEVER travels in bundles (allowlist default-deny).
-//
 // trust.go —— 节点信任 store（docs/design/node-identity.md §3）：已知对端及其公钥
 // 与信任 profile，外加把本机切入团队档（bundle 导入验签强制）的 require-signed
 // 开关。信任建立是显式命令式 TOFU：`forge trust add` 展示指纹、人带外确认（SSH
@@ -99,7 +90,8 @@ func trustPath() (string, error) {
 	return filepath.Join(home, `trust.json`), nil
 }
 
-// LoadTrustStore reads the store; a missing file is an empty store (not an error).
+// LoadTrustStore reads the store; a missing file is an empty store (not an
+// error).
 //
 // LoadTrustStore 读 store；文件缺失返回空 store（不是错误）。
 func LoadTrustStore() (*TrustStore, error) {
@@ -125,8 +117,7 @@ func LoadTrustStore() (*TrustStore, error) {
 }
 
 // SaveTrustStore persists atomically with 0600 perms (util.AtomicWrite: temp +
-// fsync + chmod + rename-with-Windows-retry — one shared implementation, not a
-// per-file hand roll).
+// fsync + chmod + rename-with-Windows-retry.
 //
 // SaveTrustStore 原子落盘，权限 0600（util.AtomicWrite：temp + fsync + chmod +
 // Windows rename 重试——共享实现，不再逐文件手写）。
@@ -142,8 +133,7 @@ func SaveTrustStore(ts *TrustStore) error {
 	return util.AtomicWrite(p, raw, 0600)
 }
 
-// Add registers a peer (TOFU). NodeID must be shape-valid and consistent with the
-// given public key — a mismatch means someone is being handed a wrong key.
+// Add registers a peer (TOFU).
 //
 // Add 登记对端（TOFU）。NodeID 必须形态合法且与给定公钥一致——不一致意味着有人
 // 拿到了错的钥匙。
@@ -185,8 +175,7 @@ func (ts *TrustStore) Peer(nodeID string) (TrustedPeer, bool) {
 }
 
 // VerifyBundleSig applies the verdict matrix (see trust_test.go for the pinned
-// matrix). The store's copy of the public key is authoritative — the key in the sig
-// block is a self-claim and is cross-checked against it.
+// matrix).
 //
 // VerifyBundleSig 应用判定矩阵（矩阵由 trust_test.go 钉死）。store 里的公钥是
 // 权威——sig 块里的公钥是自声明，与它对验。
@@ -213,8 +202,6 @@ func (ts *TrustStore) VerifyBundleSig(digestHex string, sig *BundleSig) SigVerdi
 	return SigVerified
 }
 
-// decodePub decodes a base64 ed25519 public key.
-//
 // decodePub 解码 base64 ed25519 公钥。
 func decodePub(pubB64 string) ([]byte, error) {
 	id := &Identity{PublicKey: pubB64}

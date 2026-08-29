@@ -1,18 +1,5 @@
 package cli
 
-// Gentle grouping of the command family: command paths are entirely unchanged; only `forge --help` is grouped by function.
-//
-// Why GroupID instead of path consolidation: the paths of the 20 top-level commands are already written into README, CLAUDE.md,
-// session-retrospective skill, MCP docs, and user scripts — changing paths would require syncing 5+ places and break backward compatibility.
-// cobra's Command.Group only changes help display, at zero migration cost.
-//
-// Order-sensitive: cobra validates "GroupID is registered" at AddCommand time (command.go:1208); unregistered → panic.
-// Each command runs rootCmd.AddCommand in its own file's init() (executed in filename-alphabetical order); this file aa_groups.go
-// sorts before all command files, so this init runs first — AddGroup must precede any AddCommand. Package-level vars (each xxxCmd)
-// are initialized before any init (Go spec), so when GroupID is set here the command variables are already constructed.
-//
-// help/completion are cobra-auto-generated auxiliary commands, left as default (no group, shown at the end).
-//
 // 命令族温和分组：命令路径全不变，仅让 `forge --help` 按职能分组展示。
 //
 // 为什么用 GroupID 而非归并路径：20 个顶层命令的路径已写进 README、CLAUDE.md、
@@ -36,8 +23,6 @@ func init() {
 		&cobra.Group{ID: "integrate", Title: "集成与安全"},
 	)
 
-	// Project lifecycle: project-level, low-frequency management.
-	//
 	// 项目生命周期：项目级低频管理
 	initCmd.GroupID = "lifecycle"
 	syncCmd.GroupID = "lifecycle"
@@ -47,10 +32,6 @@ func init() {
 	suggestCmd.GroupID = "lifecycle" // init-suggest hook 的提示状态管理（init 的语义延伸）
 	// 项目规范档案（conventions-profile 层 1 建档入口：init 扫描/show 查看；
 	// 与 init/suggest 同族的项目级接入管理——先 init 进 forge，再 conventions 建档）。
-	//
-	// Project conventions profile (conventions-profile layer-1 entry: init scans /
-	// show prints; project-level onboarding management, same family as init/suggest
-	// — forge init first, then conventions init).
 	conventionsCmd.GroupID = "lifecycle"
 	// One-click uninstall (npm binary + init-suggest markers).
 	//
@@ -62,25 +43,12 @@ func init() {
 	//
 	registryCmd.GroupID = `lifecycle` // 全局项目注册表清理（init 自登记的对应清理入口；反引号防 Windows 引号腐蚀）
 	// 项目数据跨机器导出/导入/身份对齐（project-sync：与 init/migrate/registry 同族的项目级数据管理）。
-	//
-	// Cross-machine project-data export/import/identity alignment (project-sync:
-	// project-level data management, same family as init/migrate/registry).
 	projectCmd.GroupID = `lifecycle`
-	// Machine node identity (node_id = pubkey fingerprint; node-identity: machine-level,
-	// same cross-machine family as project sync).
-	//
 	// 机器节点身份（node_id = 公钥指纹；node-identity：机器级，与 project 跨机族同族）。
 	nodeCmd.GroupID = `lifecycle`
-	// Multi-repo workspace manifest (~/.forge/workspaces.json; project-level
-	// low-frequency management, same family as registry/project).
-	//
 	// 多仓 workspace 清单（~/.forge/workspaces.json；项目级低频管理，与
 	// registry/project 同族）。
 	workspaceCmd.GroupID = `lifecycle`
-	// Worktree-per-task lifecycle management (multi-task-concurrency L4: start
-	// --worktree / finish / janitor; workspace-level low-frequency management, same
-	// family as workspace/registry).
-	//
 	// worktree-per-task 生命周期管理（multi-task-concurrency L4：start --worktree /
 	// finish / janitor；workspace 级低频管理，与 workspace/registry 同族）。
 	worktreeCmd.GroupID = `lifecycle`
@@ -88,14 +56,10 @@ func init() {
 	// 与 migrate/project 同族）。
 	harnessCmd.GroupID = `lifecycle`
 
-	// Project pipeline: project-level state (status is the main entry).
-	//
 	// 项目管道：项目级状态（status 是主入口）
 	statusCmd.GroupID = "pipeline"
 	verifyCmd.GroupID = "pipeline"
 
-	// Task quality: task pipeline + quality observation (trace/act/review/health read data; the dashboard aggregates further).
-	//
 	// 任务质量：任务管道 + 质量观测（trace/act/review/health 是看数据，看板会进一步聚合）
 	taskCmd.GroupID = "quality"
 	traceCmd.GroupID = "quality"
@@ -104,34 +68,21 @@ func init() {
 	healthCmd.GroupID = "quality"
 	dashboardCmd.GroupID = "quality"
 	// 文档产物可读性约束（L1 lint；doc gate 的执法在 task complete pre-flight）。
-	//
-	// Doc-artifact readability constraints (L1 lint; the doc gate itself
-	// enforces at task-complete pre-flight).
 	docsCmd.GroupID = "quality"
 
-	// Skill governance (the experience/knowledge loop has been removed).
-	//
 	// skill 治理（experience/knowledge 经验闭环已移除）
 	skillsCmd.GroupID = "governance"
 
-	// Integration & security: agent interface + interception + internal hook dispatch + multi-host plugin marketplace.
-	//
 	// 集成与安全：agent 接口 + 拦截 + 内部 hook 分发 + 多 host plugin marketplace
 	hazardCmd.GroupID = "integrate"
 	freezeCmd.GroupID = "integrate"
 	hookCmd.GroupID = "integrate"
 	cloneCmd.GroupID = "integrate"
 	pluginCmd.GroupID = "integrate"
-	// Cross-agent environment consistency audit (read-only; multi-host wiring + version drift).
-	//
 	// 跨 agent 环境一致性审计（只读；多 host 接线 + 版本漂移）
 	doctorCmd.GroupID = "integrate"
-	// Node trust store (TOFU + team-profile signature enforcement; node-identity §3).
-	//
 	// 节点信任 store（TOFU + 团队档验签强制；node-identity §3）。
 	trustCmd.GroupID = "integrate"
-	// hook bash computes the DataDir (Hidden, not in the help list).
-	//
 	// hook bash 算 DataDir 用（Hidden，不进 help 列表）
 	dataDirCmd.GroupID = "integrate"
 }

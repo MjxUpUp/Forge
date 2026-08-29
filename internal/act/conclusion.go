@@ -1,12 +1,4 @@
-// Package act implements the Act feedback arm of PDCA: persists evidence-driven
-// conclusions for each completed task in structured form, feeding them to
-// session-retrospective / agent review to prevent experience loss.
-//
-// Design principle (counters the LLM-judge blind spot): every conclusion field
-// comes from deterministic data (checklog run-evidence + scoring), not agent
-// narrative. A task may be "high-score but Unverified" (agent self-claims done,
-// zero run-evidence) — exactly the Tenure 0.000 blind spot research flagged;
-// RetrospectiveNudge fires on evidence strength (not score alone).
+// Package act implements the Act feedback arm of PDCA: persists evidence-driven conclusions for each completed task in structured form, feeding them to session-retrospective / agent review to prevent experience loss.
 //
 // Package act 实现 PDCA 的 Act 反馈臂：把每个完成任务的证据驱动结论结构化落盘，
 // 喂给 session-retrospective / agent 回顾，防"经验流失"。
@@ -35,10 +27,7 @@ import (
 
 var mu sync.Mutex
 
-// Conclusion is a traceable conclusion for a completed task — score + evidence
-// strength + acceptance pass-rate + low-score dimensions. All fields are aggregated
-// from deterministic sources (scoring/checklog/TaskState), for session-retrospective
-// consumption: reviewing "how much run-evidence backs this completion claim".
+// Conclusion is a traceable conclusion for a completed task — score + evidence strength + acceptance pass-rate + low-score dimensions.
 //
 // Conclusion 是一个完成任务的可追溯结论——score + 证据强度 + 验收通过率 + 低分维度。
 // 全字段从 deterministic 来源聚合（评分/checklog/TaskState），供 session-retrospective
@@ -63,12 +52,7 @@ type Conclusion struct {
 	AcceptanceTotal int `json:"acceptance_total"` // 验收标准总数
 	// Scoring dimensions below 70.
 	LowDimensions []string `json:"low_dimensions,omitempty"` // <70 的评分维度
-	// DimScores carries EVERY dimension's raw score (not just the <70 binary). Noise-band
-	// consumers (recurrence hardening) need the number: a 67 and a 40 are both "low" to
-	// LowDimensions, but only the 40 is clearly low once the 0-3pt boundary flap around the
-	// 70 cut is discounted (AutoDesign margin calibration). Filled by BuildConclusion when
-	// score != nil; legacy conclusions (written before this field) unmarshal to nil —
-	// consumers must fall back to LowDimensions.
+	// DimScores carries EVERY dimension's raw score (not just the <70 binary).
 	//
 	// DimScores 携带每个维度的原始分（而非只有 <70 二值）。噪声带消费方（复发升硬）
 	// 需要数字：67 和 40 在 LowDimensions 里都是「低」，但按 AutoDesign margin 校准，
@@ -77,30 +61,21 @@ type Conclusion struct {
 	DimScores   []DimScore `json:"dim_scores,omitempty"`
 	CompletedAt time.Time  `json:"completed_at"`
 	// RetrospectiveNudge: weak evidence (Unverified/Weak) or low score (<70) → true.
-	// Drives session-retrospective to review this completion claim at session end —
-	// especially the "high-score but weak-evidence" blind spot (score cannot tell whether
-	// the agent actually verified anything).
 	//
 	// RetrospectiveNudge：证据弱（Unverified/Weak）或低分（<70）→ true。驱动 session-retrospective
 	// 在会话结束回顾这次的完成声明——尤其"高分但证据弱"的盲区（分数看不出 agent 是否真验证过）。
 	RetrospectiveNudge bool `json:"retrospective_nudge"`
-	// DesignPhases holds the design phases inferred by inferDesignPhases (e.g.
-	// requirement/api/backend). Used for phase-aware health reports (phase_pass_rate)
-	// and loop integration.
+	// DesignPhases holds the design phases inferred by inferDesignPhases (e.g. requirement/api/backend). Used for phase-aware health reports (phase_pass_rate) and loop integration.
 	//
 	// DesignPhases 是 inferDesignPhases 推断出的设计阶段（如 requirement/api/backend）。
 	// 用于 phase-aware 健康报告（phase_pass_rate）和回路接入。
 	DesignPhases []string `json:"design_phases,omitempty"`
-	// Stamp carries machine attribution (node_id/seq/ts_hlc/sig), filled by Append via
-	// nodestamp.Next — zero on legacy lines and on fail-open. Flattened into this object.
-	//
 	// Stamp 携带机器归因（node_id/seq/ts_hlc/sig），由 Append 经 nodestamp.Next 落章——
 	// 存量行与 fail-open 时为零值。拍平进本对象。
 	nodestamp.Stamp
 }
 
-// DimScore is one scoring dimension's raw score — the number behind the <70 binary, so
-// noise-band consumers can tell a 40 (clearly low) from a 67 (boundary flap).
+// DimScore is one scoring dimension's raw score — the number behind the <70 binary, so noise-band consumers can tell a 40 (clearly low) from a 67 (boundary flap).
 //
 // DimScore 是单个评分维度的原始分——<70 二值背后的数字，让噪声带消费方能区分
 // 40（明确低）与 67（边界抖动）。
@@ -109,10 +84,7 @@ type DimScore struct {
 	Score     float64 `json:"score"`
 }
 
-// BuildConclusion is a pure function: it aggregates score + evidence chain + acceptance
-// results into a Conclusion. Does not touch disk, easy to unit-test. Decoupled from
-// taskpipeline — the caller (task.go) extracts raw values from TaskState and passes them
-// in, avoiding circular dependencies.
+// BuildConclusion is a pure function: it aggregates score + evidence chain + acceptance results into a Conclusion.
 //
 // BuildConclusion 是纯函数：从评分 + 证据链 + 验收结果聚合出 Conclusion。不碰磁盘，
 // 便于单测。解耦于 taskpipeline——调用方（task.go）从 TaskState 提取原始值传入，避免循环依赖。
@@ -148,10 +120,6 @@ func BuildConclusion(
 		}
 	}
 	strength := ec.Strength()
-	// Act trigger: weak evidence (claim mostly agent self-narrated) or low score — both
-	// deserve review. A clean Strong-and->=70 completion is not nudged (no lesson to
-	// distill), avoiding noise.
-	//
 	// Act 触发：证据弱（声明主要靠 agent 自述）或低分——两者都值得回顾。Strong 且>=70 的干净
 	// 完成不 nudge（无教训可沉淀），避免噪声。
 	c.RetrospectiveNudge = strength == checklog.Unverified || strength == checklog.Weak || (score != nil && score.Overall < 70)
@@ -159,8 +127,6 @@ func BuildConclusion(
 }
 
 // Append appends one conclusion to p.ActConclusionsPath() (append-only, thread-safe).
-// Isomorphic to checklog: JSONL, one entry per line, accumulates across tasks (not
-// cleared at task start — conclusions are historical deposits).
 //
 // Append 把一条结论追加到 p.ActConclusionsPath()（append-only，线程安全）。
 // 与 checklog 同构：JSONL，每行一条，跨任务累积（不在 task start 清空——结论是历史沉淀）。
@@ -171,9 +137,6 @@ func Append(p *forgedata.Project, c *Conclusion) error {
 	if c.CompletedAt.IsZero() {
 		c.CompletedAt = time.Now()
 	}
-	// Machine-attribution stamp (node-identity.md §4): zero-caller-stamp only —
-	// import/merge keeps the ORIGIN node's stamp.
-	//
 	// 机器归因戳（node-identity.md §4）：仅当调用方留零值——import/merge 保留源节点戳。
 	if c.Stamp == (nodestamp.Stamp{}) {
 		c.Stamp = nodestamp.Next()
@@ -194,10 +157,7 @@ func Append(p *forgedata.Project, c *Conclusion) error {
 	return err
 }
 
-// LoadAll reads all conclusions in chronological order. Returns nil if file absent.
-// Uses bufio.Reader to read line-by-line (no Scanner 1MB single-line cap): a corrupted
-// or abnormally large line is skipped, never failing the whole aggregation —
-// dashboard/status/health all consume it, a single bad line should not turn the table 500.
+// LoadAll reads all conclusions in chronological order.
 //
 // LoadAll 按时序读所有 conclusion。文件不存在返回 nil。
 // 用 bufio.Reader 逐行读（无 Scanner 的 1MB 单行上限）：单行损坏或异常超大只跳过该行，
@@ -218,9 +178,6 @@ func LoadAll(p *forgedata.Project) ([]Conclusion, error) {
 		line, readErr := reader.ReadString('\n')
 		if line != "" {
 			var c Conclusion
-			// json tolerates trailing newline (trailing whitespace), no trim needed; corrupted or
-			// oversized lines that fail Unmarshal are skipped.
-			//
 			// json 容忍行尾换行（trailing whitespace），无需 trim；损坏/超大行 Unmarshal 失败则跳过。
 			if json.Unmarshal([]byte(line), &c) == nil {
 				cs = append(cs, c)
@@ -233,9 +190,6 @@ func LoadAll(p *forgedata.Project) ([]Conclusion, error) {
 			break
 		}
 	}
-	// Stable sort by completion time (append order is usually chronological already,
-	// but explicit sort guards against concurrent or manual-edit reordering).
-	//
 	// 按完成时间稳定排序（append 顺序通常已时序，但显式排序防并发/手动编辑乱序）
 	slices.SortStableFunc(cs, func(a, b Conclusion) int {
 		return a.CompletedAt.Compare(b.CompletedAt)
@@ -257,9 +211,7 @@ func Latest(p *forgedata.Project) (*Conclusion, error) {
 	return &cs[len(cs)-1], nil
 }
 
-// Directive returns a one-line action instruction for the agent when RetrospectiveNudge
-// fires (printed by task complete). Returns empty string when Strong and >=70 (silent,
-// no noise). The directive is anchored to deterministic numbers, not narrative.
+// Directive returns a one-line action instruction for the agent when RetrospectiveNudge fires (printed by task complete).
 //
 // Directive 返回 RetrospectiveNudge 时给 agent 的一行行动指令（供 task complete 打印）。
 // Strong 且>=70 时返回空串（静默，不发噪声）。指令锚定 deterministic 数字，非叙述。
@@ -273,8 +225,6 @@ func (c Conclusion) Directive() string {
 		reason = fmt.Sprintf("完成声明证据 %s（ratio=%.2f, deterministic=%d/agent-claim=%d）——deterministic 证据不足，核查声称的验证是否真发生过",
 			c.Strength, c.Ratio, c.Deterministic, c.AgentClaim)
 	default:
-		// Reaching here means low-score trigger (strength=Strong/NoData but score<70).
-		//
 		// 走到这说明是低分触发（strength=Strong/NoData 但 score<70）
 		reason = fmt.Sprintf("任务评分 %.0f (%s)", c.Score, c.Grade)
 	}

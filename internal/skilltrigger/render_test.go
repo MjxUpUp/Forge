@@ -86,11 +86,6 @@ func TestRender_FactualPhrasingNotImperative(t *testing.T) {
 // TestRender_MatchEvidence 钉住 2026-08 噪音审计的文案修复：注入文案必须带命中关键词与
 // 来源（模板化文案只说「触发条件命中」是最大噪音抱怨——agent 不知道为何切题）。
 // condition-only 命中（无关键词）不应出现证据后缀。
-//
-// TestRender_MatchEvidence pins the 2026-08 noise-audit copy fix: the injection text must
-// carry the matched keyword and its source (the templated "trigger condition matched"
-// copy was the top noise complaint — the agent could not tell why the skill was topical).
-// Condition-only hits (no keyword) must not show an evidence suffix.
 func TestRender_MatchEvidence(t *testing.T) {
 	out := Render([]Hit{
 		{Skill: "commit-guard", SkillDir: "/x/commit-guard", Reason: "r",
@@ -109,10 +104,6 @@ func TestRender_MatchEvidence(t *testing.T) {
 
 // TestRender_ReminderCompact 钉住 session 内第 2 次注入的短提醒形态：一行提醒 + 路径，
 // 不重复 reason 全文（agent 上下文已有；wire 证据：重复注入从不被重读）。
-//
-// TestRender_ReminderCompact pins the compact form of the 2nd in-session injection: one
-// reminder line + path, no reason reprint (the agent already has it in context; wire
-// evidence: repeats are never re-read).
 func TestRender_ReminderCompact(t *testing.T) {
 	out := Render([]Hit{{
 		Skill: "test-discipline", SkillDir: "/x/test-discipline", Reminder: true,
@@ -135,9 +126,6 @@ func TestRender_ReminderCompact(t *testing.T) {
 }
 
 // TestRender_OverflowNote 钉住单次上限落选的一句带过：overflow 技能名出现在尾部说明里。
-//
-// TestRender_OverflowNote pins the one-line tail note for per-event-cap losers: the
-// overflow skill names show up in the tail.
 func TestRender_OverflowNote(t *testing.T) {
 	out := Render([]Hit{{Skill: "foo", SkillDir: "/x/foo", Reason: "r"}}, Context{Event: "Stop"}, []string{"bar", "baz"})
 	if !strings.Contains(out, "另有 2 个 skill 命中未注入") || !strings.Contains(out, "bar, baz") {
@@ -148,11 +136,6 @@ func TestRender_OverflowNote(t *testing.T) {
 // TestRender_NoASCIIDoubleQuotes 钉住「render 输出不含 ASCII 双引号」契约的廉价断言：
 // 全量/短提醒/overflow 三种形态统一检查；关键词里故意带 "（skill 作者声明不可信），
 // 必须被 sanitizeEvidence 剥掉而非原样泄漏进文案。
-//
-// TestRender_NoASCIIDoubleQuotes pins the "no ASCII double quotes in render output"
-// contract with a cheap assertion across all three shapes (full / reminder / overflow
-// tail); a deliberately "-laden keyword (skill-author declarations are untrusted) must
-// be stripped by sanitizeEvidence, not leaked verbatim into the copy.
 func TestRender_NoASCIIDoubleQuotes(t *testing.T) {
 	outs := map[string]string{
 		"full": Render([]Hit{{

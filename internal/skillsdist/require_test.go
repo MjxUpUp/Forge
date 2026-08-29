@@ -9,9 +9,6 @@ import (
 	"testing"
 )
 
-// mkSkillMD builds a minimal SKILL.md under canonical (frontmatter only; checkRequires does not run
-// audit so a minimal one suffices, as long as skillsfm.Parse can extract name/requires).
-//
 // mkSkillMD 在 canonical 下建一个最小 SKILL.md（仅 frontmatter，checkRequires 不跑
 // audit 所以极简即可，只要 skillsfm.Parse 能解出 name/requires）。
 func mkSkillMD(t *testing.T, canonical, name, requires string) {
@@ -44,8 +41,6 @@ name: %s
 body
 `
 
-// linked is a helper: builds a TargetResult that lands successfully on the target (action=linked).
-//
 // linked 是 helper：构造一个「成功落到目标」的 TargetResult（action=linked）。
 func linked() TargetResult { return TargetResult{Action: actLinked} }
 

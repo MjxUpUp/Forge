@@ -9,14 +9,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
-// TestBashGuard_TmpRedirectNotWrite pins the 2026-08-24 exemption: a shell
-// redirect whose target lives outside the repo (/tmp, $TMPDIR, ~/.forge,
-// /dev/null — explicitly non-source paths) is NOT a "Bash write" — the guard
-// exists to catch untracked source changes, and a log redirect is not one.
-// Production false positives: `go test ./... > /tmp/final.txt 2>&1` and
-// `gh run watch ... > /tmp/forge-ci-watch.log 2>&1` both tripped "[bash-guard]
-// Bash write without active task" mid-session.
-//
 // TestBashGuard_TmpRedirectNotWrite 钉住 2026-08-24 豁免：重定向目标在仓库外
 // （/tmp、$TMPDIR、~/.forge、/dev/null 等明确非源码路径）不算「Bash write」——
 // 该 guard 拦的是未被任务追踪的源码变更，日志重定向不是。生产误报：
@@ -28,10 +20,6 @@ func TestBashGuard_TmpRedirectNotWrite(t *testing.T) {
 	const sid = "sess-bg-redir"
 	tmp := t.TempDir()
 
-	// Mark the session as source-touched (as task-guard would after a source
-	// Write|Edit) — otherwise the WARN branch is unreached for a different
-	// reason (research-mode silence) and the exemption is untested.
-	//
 	// 置 source-touched 会话标记（task-guard 在源码 Write|Edit 后会置）——否则
 	// WARN 分支因另一原因（调研模式静默）本就不进，豁免测不到。
 	markersDir := filepath.Join(forgedata.DataDirFor(dir), "markers")
@@ -42,9 +30,6 @@ func TestBashGuard_TmpRedirectNotWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// /tmp redirect: not a source change → IS_WRITE_CMD=0, no no-task WARN,
-	// empty write-flag for file-sentinel's secondary gate.
-	//
 	// /tmp 重定向：非源码变更 → IS_WRITE_CMD=0，无 no-task WARN，write-flag
 	// 为空（file-sentinel 次级门按只读处理）。
 	in := hookStdin(t, sid, "PreToolUse", "Bash", map[string]any{
@@ -65,9 +50,6 @@ func TestBashGuard_TmpRedirectNotWrite(t *testing.T) {
 		t.Errorf("/tmp redirect must record an EMPTY write-flag (read-only class), err=%v", serr)
 	}
 
-	// Control: a redirect to a repo file is still a write — non-empty write-flag
-	// plus the first-WARN text.
-	//
 	// 对照：重定向到仓库内文件仍是 write——write-flag 非空且有首条 WARN。
 	in2 := hookStdin(t, sid, "PreToolUse", "Bash", map[string]any{
 		"command": "echo x > notes.md",
@@ -90,8 +72,6 @@ func TestBashGuard_TmpRedirectNotWrite(t *testing.T) {
 		t.Errorf("repo-file redirect must record a non-empty write-flag (control), flags=%v", wflags2)
 	}
 
-	// Path traversal out of the exempt zone (/tmp/../...) must NOT be exempted.
-	//
 	// 穿越出豁免区（/tmp/../...）不得豁免。
 	in3 := hookStdin(t, sid, "PreToolUse", "Bash", map[string]any{
 		"command": "cat x > /tmp/../etc/forge-should-not-exempt.conf",
@@ -110,12 +90,6 @@ func TestBashGuard_TmpRedirectNotWrite(t *testing.T) {
 		t.Errorf("traversal target must record a non-empty write-flag (two non-empty flags total: control + traversal), got %d of %v", nonEmptyCount, wflags3)
 	}
 
-	// Command-substitution / variable targets are statically undecidable — the
-	// extracted target truncates at the first whitespace inside $(...) and the
-	// `..` residue would be dropped ('cmd > /tmp/$(echo ../../repo)/x' was the
-	// review-Major bypass) — so they must conservatively count as writes. The
-	// exemption is literal-path-only.
-	//
 	// 命令替换/变量目标静态不可判定——提取目标会在 $(...) 内首个空白处截断、
 	// `..` 残留被丢弃（'cmd > /tmp/$(echo ../../repo)/x' 即 review Major 的
 	// 绕过样本）——必须保守判 write。豁免仅限字面路径。
