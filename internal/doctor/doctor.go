@@ -91,6 +91,16 @@ type SkillsDriftItem struct {
 // TargetErrors carries per-target partial failures (unreadable dirs etc.) from
 // DriftCheck: the counts are still meaningful, but coverage was not complete.
 //
+// BlindSpots names skill surfaces the drift audit CANNOT see — the reserved
+// names (forge-quality) that install deliberately skips because forge's own
+// skillgen layer manages them. They are absent from the canonical dir, so the
+// canonical×target walk never reaches them, and their target-only signal is
+// excluded from this summary like every orphan — a drifting reserved install is
+// therefore invisible here BY DESIGN. Naming the blind spot keeps the summary
+// honest (a green in-sync line never claims coverage it does not have). Filled
+// by Run (doctor owns the report shape); the text renderer lives in the CLI
+// layer and may not print it yet — the --json output carries it either way.
+//
 // Skipped lists targets NOT audited because the target's agent home does not
 // exist (agent not installed on this machine — M-3, 2026-08-21). Without this
 // gate, `forge doctor` on a single-agent machine reported every canonical skill
@@ -106,21 +116,34 @@ type SkillsDriftItem struct {
 // 加绿色对勾会把死探针误报成健康，恰是本节要消灭的静默。TargetErrors 承载
 // DriftCheck 的 per-target 部分失败（目录不可读等）：计数仍有意义，但覆盖不全。
 //
+// BlindSpots 点名 drift 审计【看不到】的 skill 面——install 刻意跳过的保留名
+// （forge-quality，由 forge 自身的 skillgen 层管理）。它们不在 canonical 目录里，
+// canonical×目标遍历永远够不到；其 target-only 信号又与其他孤儿一样被排除——
+// 保留名安装漂移因此在本节【设计上】不可见。点名盲区让摘要保持诚实（绿色的
+// in-sync 行不再声称自己没有的覆盖）。由 Run 填充（doctor 拥有报告形态）；文本
+// 渲染器在 CLI 层、可能尚未打印——--json 输出两种情况都携带。
+//
 // Skipped 列出未审计的目标——目标 agent home 不存在（本机未装该 agent——M-3，
 // 2026-08-21）。没有这道门，单 agent 机器上的 `forge doctor` 会把每个 canonical
 // skill 报成在每个未安装目标上 missing：一墙不可处置的噪声，淹没真实缺口。
 // doctor 审计"按已安装现状"的环境；`forge skills drift-check` 在显式全量问询下
 // 保留全目标覆盖。
 type SkillsDriftSummary struct {
-	Canonical    string            `json:"canonical"`
-	Error        string            `json:"error,omitempty"`
-	TargetErrors []string          `json:"target_errors,omitempty"`
-	Linked       int               `json:"linked"`
-	CopySync     int               `json:"copy_in_sync"`
-	Missing      int               `json:"missing"`
-	Drifted      int               `json:"drift"`
-	Items        []SkillsDriftItem `json:"items,omitempty"`
-	Skipped      []string          `json:"skipped,omitempty"`
+	Canonical    string   `json:"canonical"`
+	Error        string   `json:"error,omitempty"`
+	TargetErrors []string `json:"target_errors,omitempty"`
+	// BlindSpots: reserved skill names invisible to this audit (see the struct
+	// comment). Populated by Run; the CLI's probe never fills it itself.
+	//
+	// BlindSpots：本审计看不见的保留名 skill（见结构体注释）。由 Run 填充；
+	// CLI 侧探针自己不填。
+	BlindSpots []string          `json:"blind_spots,omitempty"`
+	Linked     int               `json:"linked"`
+	CopySync   int               `json:"copy_in_sync"`
+	Missing    int               `json:"missing"`
+	Drifted    int               `json:"drift"`
+	Items      []SkillsDriftItem `json:"items,omitempty"`
+	Skipped    []string          `json:"skipped,omitempty"`
 }
 
 // Report is the full doctor output.
@@ -415,10 +438,39 @@ func Run(selfVersion string, opts Options) Report {
 	// 上报——host 审计必须能扛住 skillsdist 错误。
 	if opts.SkillsDriftProbe != nil {
 		if s := opts.SkillsDriftProbe(); s != nil {
+			// Reserved-name blind-spot annotation (fix/cleanup-batch, 2026-08-29):
+			// reserved skills are invisible to the canonical×target walk (see
+			// SkillsDriftSummary.BlindSpots). Doctor stamps the annotation here so
+			// every probe result carries it uniformly — the smaller of the two
+			// implementations (the alternative, folding reserved names into the
+			// drift audit itself, lives in skillsdist/cli layers). Kept in lockstep
+			// with skillsdist's reservedNames (install.go) by review; the list is
+			// one name today.
+			//
+			// 保留名盲区标注（fix/cleanup-batch，2026-08-29）：保留名 skill 对
+			// canonical×目标遍历不可见（见 SkillsDriftSummary.BlindSpots）。doctor
+			// 在此统一盖章，让每个探针结果都携带——两个实现中较小的那个（另一
+			// 方案——把保留名折进 drift 审计本身——在 skillsdist/cli 层）。与
+			// skillsdist 的 reservedNames（install.go）靠评审保持同步；当前仅一个名。
+			s.BlindSpots = skillsAuditBlindSpots
 			rep.Skills = s
 		}
 	}
 	return rep
+}
+
+// skillsAuditBlindSpots names the skill surfaces the drift audit cannot see.
+// Mirror of skillsdist.reservedNames (install.go) — duplicated as literals
+// because doctor must stay free of skillsdist imports (injection design, see
+// Options.SkillsDriftProbe); drift between the two lists is caught by review,
+// the same discipline as checklog's Detail-prefix literals.
+//
+// skillsAuditBlindSpots 点名 drift 审计看不见的 skill 面。是 skillsdist.
+// reservedNames（install.go）的镜像——以字面量重复，因为 doctor 必须不依赖
+// skillsdist import（注入式设计，见 Options.SkillsDriftProbe）；两份清单的漂移
+// 靠评审拦截，与 checklog 的 Detail 前缀字面量同纪律。
+var skillsAuditBlindSpots = []string{
+	"forge-quality (skillgen 管理的保留名：不在 canonical、install 刻意跳过——其安装漂移对本审计不可见)",
 }
 
 // maxVersionProbes caps per-source version executions (PATH scan and each host's bin
@@ -485,15 +537,35 @@ func auditHost(spec hostSpec, self string, opts Options) HostReport {
 		return r
 	}
 	var files []string
+	var scanErr error
 	for _, tgt := range targets {
-		files = append(files, expandHookFiles(tgt)...)
+		expanded, err := expandHookFiles(tgt)
+		if err != nil && scanErr == nil {
+			scanErr = err
+		}
+		files = append(files, expanded...)
+	}
+	// Read failures are surfaced in Err but never change the status verdict: an
+	// unreadable carrier (settings.json locked by another process, permissions)
+	// yields zero scanned commands and would otherwise read as plain "missing" —
+	// the exact silent blind spot this field distinguishes (fix/cleanup-batch,
+	// 2026-08-29).
+	//
+	// 读失败上抛进 Err 但绝不改变状态结论：不可读的载体（settings.json 被别的
+	// 进程锁住、权限问题）会扫出零条命令、否则被读作普通 "missing"——正是该
+	// 字段要区分的静默盲区（fix/cleanup-batch，2026-08-29）。
+	if scanErr != nil {
+		r.Err = scanErr.Error()
 	}
 	if len(files) == 0 {
 		return r
 	}
 	var resolved, raw []string
 	for _, f := range files {
-		cmds, cands := scanFile(f, opts.LookPath)
+		cmds, cands, ferr := scanFile(f, opts.LookPath)
+		if ferr != nil && r.Err == "" {
+			r.Err = ferr.Error()
+		}
 		if r.ForgeCmds == 0 && cmds > 0 {
 			// 证据源归位：HookPath 指向真正携带 forge 接线的第一个文件，而非候选列表
 			// 首项（kimi 双载体时首项是无接线的 config.toml）（评审 #9）。
@@ -562,21 +634,28 @@ func auditHost(spec hostSpec, self string, opts Options) HostReport {
 }
 
 // expandHookFiles turns a candidate target (file or dir) into the concrete file list to
-// scan. Dirs are walked with the target's depth cap (default defaultScanDepth); unreadable
-// entries are skipped, not fatal. File filtering follows the target's mode: extension
-// whitelist by default, basename whitelist when names is set (deep trees).
+// scan. Dirs are walked with the target's depth cap (default defaultScanDepth); walk
+// errors OTHER than not-exist (permissions, locked dirs) are returned so auditHost can
+// surface them in HostReport.Err — a skipped subtree is a coverage gap, not a healthy
+// absence (fix/cleanup-batch, 2026-08-29). File filtering follows the target's mode:
+// extension whitelist by default, basename whitelist when names is set (deep trees).
+// A stat not-exist is still a silent nil (a missing carrier IS the "missing" verdict),
+// as is a stat target that vanished mid-scan.
 //
 // expandHookFiles 把候选目标（文件或目录）展开成待扫描的具体文件列表。目录按目标的
-// 深度上限遍历（默认 defaultScanDepth）；不可读条目跳过、不致命。文件过滤按目标模式：
-// 默认扩展名白名单，names 已设时按基名白名单（深树）。
-func expandHookFiles(tgt scanTarget) []string {
+// 深度上限遍历（默认 defaultScanDepth）；除 not-exist 之外的遍历错误（权限、目录被锁）
+// 会被返回、由 auditHost 上抛进 HostReport.Err——被跳过的子树是覆盖缺口，不是健康
+// 的缺席（fix/cleanup-batch，2026-08-29）。文件过滤按目标模式：默认扩展名白名单，
+// names 已设时按基名白名单（深树）。stat 的 not-exist 仍静默返回 nil（载体缺失本身
+// 就是 "missing" 结论），扫描中途消失的目标同样静默。
+func expandHookFiles(tgt scanTarget) ([]string, error) {
 	p := tgt.path
 	fi, err := os.Stat(p)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 	if !fi.IsDir() {
-		return []string{p}
+		return []string{p}, nil
 	}
 	maxDepth := tgt.depth
 	if maxDepth == 0 {
@@ -584,9 +663,19 @@ func expandHookFiles(tgt scanTarget) []string {
 	}
 	root := filepath.ToSlash(p)
 	var out []string
+	var walkErr error
 	_ = filepath.WalkDir(p, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return nil //nolint:跳过不可读条目
+			// Not-exist is the normal "nothing here" case (races, prune-while-scan);
+			// everything else (permissions, locks) is real coverage loss — keep the
+			// first one for the caller to surface.
+			//
+			// not-exist 是正常的「此处无物」（竞态、边扫边删）；其余（权限、锁）
+			// 是真实的覆盖损失——保留第一个供调用方上抛。
+			if !os.IsNotExist(err) && walkErr == nil {
+				walkErr = fmt.Errorf("%s unreadable: %w", filepath.Base(path), err)
+			}
+			return nil //nolint:nilerr // 跳过不可读条目，不中断整体遍历
 		}
 		if d.IsDir() {
 			// plugins 树深度上限，防病态深树拖慢审计。默认上限必须 ≥4：kimi 的 plugin
@@ -631,7 +720,7 @@ func expandHookFiles(tgt scanTarget) []string {
 		}
 		return nil
 	})
-	return out
+	return out, walkErr
 }
 
 // binCandidate is one forge binary token mined from a hook file: path plus whether it
@@ -651,14 +740,31 @@ type binCandidate struct {
 // report only has to be right about "wired or not" and "which binary". lookPath is
 // injected (Options.LookPath) so tests control bare-name resolution.
 //
+// Read-failure contract (fix/cleanup-batch, 2026-08-29): a file that exists but
+// cannot be READ (permissions, another process's lock) returns an error shaped
+// "<basename> unreadable: …" so auditHost can put it in HostReport.Err — the
+// "settings.json unreadable" form. Without it, an unreadable carrier scanned as
+// zero commands and was indistinguishable from "no forge wiring" (missing). A
+// not-exist race stays error-free: expandHookFiles already stat-checked the
+// target, and a vanished file IS the missing verdict.
+//
 // scanFile 统计引用 forge 的行数并收集其调用的 forge 二进制 token。按行扫描对各
 // host 的 hook schema（嵌套 JSON/扁平 TOML/shell wrapper）格式无关——不需要精确解析，
 // 报告只需在"接没接"与"哪个二进制"上正确。lookPath 注入（Options.LookPath）让测试
 // 可控裸名解析。
-func scanFile(path string, lookPath func(string) (string, error)) (int, []binCandidate) {
+//
+// 读失败契约（fix/cleanup-batch，2026-08-29）：文件存在但读不了（权限、他进程锁）
+// 返回 "<基名> unreadable: …" 形态的 error，供 auditHost 放进 HostReport.Err——即
+// "settings.json unreadable" 形态。没有它，不可读载体扫出零条命令、与「没有 forge
+// 接线」（missing）不可区分。not-exist 竞态不报错：expandHookFiles 已 stat 过目标，
+// 扫描中途消失的文件本身就是 missing 结论。
+func scanFile(path string, lookPath func(string) (string, error)) (int, []binCandidate, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return 0, nil
+		if os.IsNotExist(err) {
+			return 0, nil, nil
+		}
+		return 0, nil, fmt.Errorf("%s unreadable: %w", filepath.Base(path), err)
 	}
 	cmds := 0
 	seen := map[string]bool{}
@@ -696,7 +802,7 @@ func scanFile(path string, lookPath func(string) (string, error)) (int, []binCan
 			}
 		}
 	}
-	return cmds, bins
+	return cmds, bins, nil
 }
 
 // tokenRe matches contiguous path-ish runs (letters, digits, - _ . / \ : ~ @). Every

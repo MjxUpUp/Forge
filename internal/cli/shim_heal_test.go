@@ -31,7 +31,7 @@ func TestHealNpmShim_ReplacesFragileShim(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("shim heal is Windows-only")
 	}
-	prefix, exePath := seedNpmLayout(t, "#!/bin/sh\nbasedir=$(dirname \"$0\")\nexec \"$basedir/node\" \"$basedir/run.js\" \"$@\"\n", "MZ-fake-binary")
+	prefix, exePath := seedNpmLayout(t, "#!/bin/sh\nbasedir=$(dirname \"$0\")\nexec \"$basedir/node\" \"$basedir/node_modules/@agent_forge/forge/run.js\" \"$@\"\n", "MZ-fake-binary")
 
 	healed, err := healNpmShim(exePath)
 	if err != nil || !healed {
@@ -60,7 +60,7 @@ func TestHealNpmShim_NestedLayout(t *testing.T) {
 		t.Skip("shim heal is Windows-only")
 	}
 	prefix := t.TempDir()
-	shimContent := "#!/bin/sh\nbasedir=$(dirname \"$0\")\nexec \"$basedir/node\" \"$basedir/run.js\" \"$@\"\n"
+	shimContent := "#!/bin/sh\nbasedir=$(dirname \"$0\")\nexec \"$basedir/node\" \"$basedir/node_modules/@agent_forge/forge/run.js\" \"$@\"\n"
 	exePath := filepath.Join(prefix, "node_modules", "@agent_forge", "forge", "node_modules", "@agent_forge", "forge-win32-x64", "bin", "forge.exe")
 	if err := os.MkdirAll(filepath.Dir(exePath), 0755); err != nil {
 		t.Fatal(err)
@@ -88,22 +88,28 @@ func TestHealNpmShim_NestedLayout(t *testing.T) {
 }
 
 // TestHealNpmShim_UserScriptUntouched pins the signature sniff: a script in the shim
-// slot that is NOT npm's cmd-shim template (no $basedir / node_modules reference) must
-// never be replaced.
+// slot that is NOT npm's cmd-shim template must never be replaced. npm's template always
+// carries BOTH markers ($basedir AND node_modules) — the partial-marker variant (mentions
+// node_modules but no $basedir, e.g. a user-written launcher) must also stay untouched.
 func TestHealNpmShim_UserScriptUntouched(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("shim heal is Windows-only")
 	}
-	userScript := "#!/bin/sh\necho my own wrapper\n"
-	prefix, exePath := seedNpmLayout(t, userScript, "MZ-fake-binary")
-
-	healed, err := healNpmShim(exePath)
-	if err != nil || healed {
-		t.Fatalf("user script healNpmShim = (%v, %v), want (false, nil)", healed, err)
-	}
-	data, _ := os.ReadFile(filepath.Join(prefix, "forge"))
-	if string(data) != userScript {
-		t.Errorf("user script was modified:\n%q", string(data))
+	for name, userScript := range map[string]string{
+		"plain":          "#!/bin/sh\necho my own wrapper\n",
+		"partial-marker": "#!/bin/sh\nexec ./node_modules/.bin/forge-dev \"$@\"\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			prefix, exePath := seedNpmLayout(t, userScript, "MZ-fake-binary")
+			healed, err := healNpmShim(exePath)
+			if err != nil || healed {
+				t.Fatalf("user script healNpmShim = (%v, %v), want (false, nil)", healed, err)
+			}
+			data, _ := os.ReadFile(filepath.Join(prefix, "forge"))
+			if string(data) != userScript {
+				t.Errorf("user script was modified:\n%q", string(data))
+			}
+		})
 	}
 }
 

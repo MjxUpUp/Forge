@@ -43,10 +43,18 @@ func GenerateClaudeMD(projectDir string) error {
 
 	forgeSection := buildForgeSection(true)
 
-	// If it already exists, read the existing file.
+	// If it already exists, read the existing file. Only a confirmed ErrNotExist may
+	// fall through to the create path — treating any read failure (AV lock, sharing
+	// violation, permissions) as "missing" would overwrite the user's entire file
+	// with just the forge section.
 	//
-	// 若已存在则读现有文件
+	// 若已存在则读现有文件。只有确证的 ErrNotExist 才允许落到新建路径——
+	// 把任何读失败（杀软锁、sharing violation、权限）当"不存在"会用仅含
+	// forge 段的内容整体覆盖用户文件。
 	existing, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("skillgen: read %s: %w", path, err)
+	}
 	if err == nil && len(existing) > 0 {
 		// Only update the Forge section.
 		//
@@ -86,6 +94,9 @@ func GenerateAgentsMD(projectDir string) error {
 	path := filepath.Join(projectDir, "AGENTS.md")
 	forgeSection := buildForgeSection(false)
 	existing, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("skillgen: read %s: %w", path, err)
+	}
 	if err == nil && len(existing) > 0 {
 		updated := replaceForgeSection(string(existing), forgeSection)
 		return util.AtomicWrite(path, []byte(updated), 0644)
@@ -314,6 +325,9 @@ func upsertUserForgeSection(path string, forClaude bool) error {
 	}
 	forgeSection := buildForgeSectionWithLevel(forClaude, true)
 	existing, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("skillgen: read %s: %w", path, err)
+	}
 	if err == nil && len(existing) > 0 {
 		updated := replaceForgeSection(string(existing), forgeSection)
 		return util.AtomicWrite(path, []byte(updated), 0644)

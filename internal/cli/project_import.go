@@ -447,5 +447,6 @@ func loadStagingTask(path string) (*taskpipeline.TaskState, error) {
 }
 
 // loadStagingTask 之上的信任变换在 mergeStagingTasks 的内存中完成；本文件不再有
-// 其他辅助——注册表同步直接调用 registry.Rekey（bundle key 通常无本机条目，
-// Rekey 早退 no-op，见 internal/registry/rekey.go:61）。
+// 其他辅助。注意：跨 key 合并刻意【不】同步注册表——bundle 自声明的 Origin.Key
+// 不可信，registry.Rekey 会按其改写本机注册表（伪造 manifest 即可篡改），残留漂移
+// 由 forge registry audit 检出（见上方 mergeStagingTasks 内说明）。

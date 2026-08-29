@@ -332,3 +332,128 @@ func TestInvalidSkillNameRejected(t *testing.T) {
 		t.Errorf("路径遍历应被拒且不落盘: %v", err)
 	}
 }
+
+// TestAppendLoadDecision_StructuralLinesEscaped pins the free-text escape fix
+// (round-trip integrity): parseDecisions keys on line-start markers — `## [d-...`
+// opens a decision, `### ` switches subsections, `- **Field**:` extracts fields —
+// so free text containing such lines used to forge a PHANTOM decision and
+// misattribute content. The write side must escape those lines (U+2060 prefix)
+// and the parse side must restore the original text symmetrically:
+//   - diagnosis containing `## [d-evil] accept` produces NO phantom decision;
+//   - the original diagnosis text round-trips verbatim;
+//   - the on-disk markdown no longer has the hostile lines at line start.
+//
+// TestAppendLoadDecision_StructuralLinesEscaped 钉死自由文本转义修复（往返完整
+// 性）：parseDecisions 以行首标记切分——`## [d-...` 开决策、`### ` 切子节、
+// `- **Field**:` 取字段——含这类行的自由文本此前会伪造幻影决策并错挂内容。
+// 写入侧必须转义这些行（U+2060 前缀）、解析侧对称还原原文：
+//   - diagnosis 含 `## [d-evil] accept` 不产生幻影决策；
+//   - 原始 diagnosis 文本逐字往返；
+//   - 落盘 markdown 的行首不再出现这些敌意行。
+func TestAppendLoadDecision_StructuralLinesEscaped(t *testing.T) {
+	canonical := t.TempDir()
+	diag := "正常诊断第一行\n" +
+		"## [d-evil] accept\n" +
+		"### Evidence\n" +
+		"- **Skill**: fake-skill\n" +
+		"# 顶层标题混入\n" +
+		"正常收尾行"
+	evilEvidence := "证据第一行\n- **Commit**: deadbeef\n证据收尾"
+	in := SkillDecision{
+		Skill:      "code-review-gate",
+		Diagnosis:  diag,
+		Revision:   "rev",
+		Evidence:   evilEvidence,
+		Outcome:    OutcomeAccept,
+		Rationale:  "rationale",
+		Prediction: "predict",
+	}
+	if err := AppendDecision(canonical, "code-review-gate", in); err != nil {
+		t.Fatalf("AppendDecision: %v", err)
+	}
+
+	// On disk: the hostile markers must NOT sit at line start (they are escaped).
+	// The needles are content-specific — formatDecision legitimately writes real
+	// `### Evidence` headers and `- **Skill**:` field lines.
+	//
+	// 落盘：敌意标记不得位于行首（已被转义）。needle 取内容专属片段——
+	// formatDecision 本来就会写真实的 `### Evidence` 标题与 `- **Skill**:` 字段行。
+	raw, err := os.ReadFile(DecisionsFile(canonical, "code-review-gate"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, hostile := range []string{"\n## [d-evil]", "\n# 顶层标题混入", "\n- **Skill**: fake-skill", "\n- **Commit**: deadbeef"} {
+		if strings.Contains(string(raw), hostile) {
+			t.Errorf("落盘 markdown 的行首出现未转义的结构行 %q:\n%s", hostile, raw)
+		}
+	}
+	if !strings.Contains(string(raw), decisionEscapePrefix+"## [d-evil] accept") {
+		t.Errorf("落盘 markdown 应含 U+2060 转义前缀的敌意行:\n%s", raw)
+	}
+
+	out, err := LoadDecisions(canonical, "code-review-gate")
+	if err != nil {
+		t.Fatalf("LoadDecisions: %v", err)
+	}
+	if len(out) != 1 {
+		t.Fatalf("got %d decisions, want 1（不得产生幻影决策 d-evil）: %+v", len(out), out)
+	}
+	if out[0].ID == "d-evil" {
+		t.Fatalf("幻影决策 d-evil 不该成为唯一条目: %+v", out[0])
+	}
+	if out[0].Diagnosis != diag {
+		t.Errorf("Diagnosis 应逐字还原原文:\n got  = %q\n want = %q", out[0].Diagnosis, diag)
+	}
+	if out[0].Evidence != evilEvidence {
+		t.Errorf("Evidence 应逐字还原原文:\n got  = %q\n want = %q", out[0].Evidence, evilEvidence)
+	}
+	if out[0].Revision != "rev" || out[0].Rationale != "rationale" || out[0].Prediction != "predict" {
+		t.Errorf("其余自由文本字段应原样往返: %+v", out[0])
+	}
+	// The real Skill field wins — the escaped `- **Skill**: fake-skill` line inside
+	// the body must NOT have overwritten it.
+	//
+	// 真实 Skill 字段胜出——body 里被转义的 `- **Skill**: fake-skill` 行不得覆盖它。
+	if out[0].Skill != "code-review-gate" {
+		t.Errorf("Skill 被正文伪字段污染: %q", out[0].Skill)
+	}
+}
+
+// TestEscapeDecisionText_RoundTrip pins the escape helpers' exact contract:
+// every structural line shape gets exactly ONE U+2060 prefix, non-structural
+// lines pass through, and parseDecisionText removes exactly one (a value that
+// legitimately starts with U+2060 keeps its own through the round trip).
+//
+// TestEscapeDecisionText_RoundTrip 钉死转义辅助函数的精确契约：每个结构行形态
+// 恰好获得一个 U+2060 前缀，非结构行原样通过，parseDecisionText 恰好剥掉一个
+// （本身以 U+2060 开头的值在往返中保留自己的那一个）。
+func TestEscapeDecisionText_RoundTrip(t *testing.T) {
+	orig := "plain\n" +
+		"# h1\n" +
+		"## [d-x] accept\n" +
+		"### Sub\n" +
+		"- **Field**: v\n" +
+		"- bullet\n" +
+		decisionEscapePrefix + "already-escaped\n" +
+		"  indented plain\n"
+	esc := escapeDecisionText(orig)
+	if !strings.HasPrefix(esc, "plain\n") {
+		t.Errorf("非结构行不得被改动: %q", esc)
+	}
+	if !strings.Contains(esc, decisionEscapePrefix+"# h1\n") {
+		t.Errorf("# 行应加一个前缀: %q", esc)
+	}
+	// `- bullet`（非 `- **` 形态）不转义——只拆结构标记，不动普通列表。
+	if strings.Contains(esc, decisionEscapePrefix+"- bullet\n") {
+		t.Errorf("- bullet 不在转义范围（仅 `- **` 形态）: %q", esc)
+	}
+	if !strings.Contains(esc, decisionEscapePrefix+decisionEscapePrefix+"already-escaped\n") {
+		t.Errorf("已带 U+2060 的行应再叠一个前缀（对称还原依赖此）: %q", esc)
+	}
+	if got := parseDecisionText(esc); got != orig {
+		t.Errorf("往返不还原:\n got  = %q\n want = %q", got, orig)
+	}
+	if got := parseDecisionText("plain"); got != "plain" {
+		t.Errorf("无前缀行应原样通过: %q", got)
+	}
+}

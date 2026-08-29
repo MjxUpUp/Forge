@@ -26,6 +26,21 @@ func TestDefaultProtocol(t *testing.T) {
 	if last.ID != "design-for-complex" {
 		t.Errorf("Last rule ID = %q, want design-for-complex", last.ID)
 	}
+	// Mandatory-rule count (formerly via the deleted Protocol.MandatoryRules dead-code
+	// method, now inlined): 3 of the 4 default rules are mandatory, and every rule
+	// flagged Mandatory is actually true by construction.
+	//
+	// mandatory 规则计数（原先经已删除的死代码方法 Protocol.MandatoryRules 断言，
+	// 现改为内联遍历）：默认 4 条规则中 3 条 mandatory。
+	mandatory := 0
+	for _, r := range p.SessionRules {
+		if r.Mandatory {
+			mandatory++
+		}
+	}
+	if mandatory != 3 {
+		t.Errorf("Mandatory rules = %d, want 3", mandatory)
+	}
 }
 
 func TestDefaultProtocolAllStandardsEnabled(t *testing.T) {
@@ -37,29 +52,23 @@ func TestDefaultProtocolAllStandardsEnabled(t *testing.T) {
 	}
 }
 
-func TestErrorSeverityStandards(t *testing.T) {
-	// v0.25 advisory rewrite: compile-gate and no-assertion-weaken dropped from
-	// "error" to "warning" because auto-compile.sh / assertion-check.sh no longer
-	// block — they only advise (agent self-checks). No shipped standard sits at
-	// error severity, so ErrorSeverityStandards returns nothing. This guards
-	// against severity drifting back to "error" while the Description says
-	// "advisory" — the half-fix that left Severity untouched last time.
+// TestNoStandardAtErrorSeverity (formerly via the deleted Protocol.ErrorSeverityStandards
+// dead-code method, now inlined): no shipped standard sits at "error" severity — the
+// v0.25 advisory rewrite dropped compile-gate and no-assertion-weaken to warning because
+// auto-compile.sh / assertion-check.sh no longer block, they only advise. Guards against
+// severity drifting back to "error" while the Description says "advisory" — the half-fix
+// that left Severity untouched last time.
+//
+// TestNoStandardAtErrorSeverity（原先经已删除的死代码方法 Protocol.ErrorSeverityStandards
+// 断言，现改为内联遍历）：出厂标准不得处于 error 档——v0.25 advisory 重写把
+// compile-gate 与 no-assertion-weaken 降为 warning，因为 auto-compile.sh /
+// assertion-check.sh 不再阻断、只提醒。防 severity 漂回 error 而 Description 仍写
+// advisory——即上次只改一半留下的 Severity 未动问题。
+func TestNoStandardAtErrorSeverity(t *testing.T) {
 	p := DefaultProtocol()
-	errs := p.ErrorSeverityStandards()
-	for _, s := range errs {
-		t.Errorf("standard %q still at severity %q — advisory standards must be warning/info, not error (v0.25 advisory rewrite)", s.ID, s.Severity)
-	}
-}
-
-func TestMandatoryRules(t *testing.T) {
-	p := DefaultProtocol()
-	mandatory := p.MandatoryRules()
-	if len(mandatory) != 3 {
-		t.Errorf("Mandatory rules = %d, want 3", len(mandatory))
-	}
-	for _, r := range mandatory {
-		if !r.Mandatory {
-			t.Errorf("Rule %q should be mandatory", r.ID)
+	for _, s := range p.Standards {
+		if s.Enabled && s.Severity == "error" {
+			t.Errorf("standard %q still at severity %q — advisory standards must be warning/info, not error (v0.25 advisory rewrite)", s.ID, s.Severity)
 		}
 	}
 }

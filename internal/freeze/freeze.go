@@ -40,6 +40,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // State is the persisted freeze record at DataDir/freeze/state.json. Paths are
@@ -154,7 +155,15 @@ func Activate(p *forgedata.Project, base string, paths []string) (*State, error)
 	if err != nil {
 		return nil, fmt.Errorf("freeze: marshal state: %w", err)
 	}
-	if err := os.WriteFile(p.FreezeStatePath(), data, 0644); err != nil {
+	// AtomicWrite (temp+fsync+rename): freeze's failure direction is fail-open by design
+	// (Check allows on parse errors), so a half-written state.json would silently lift
+	// the guard while the user believes it is active. An interrupted write must land as
+	// "not activated" (explicit), never as "corrupted → always allow".
+	//
+	// AtomicWrite（临时文件+fsync+rename）：freeze 的失败方向设计为 fail-open
+	//（Check 对解析错误放行），半写的 state.json 会在用户以为护栏生效时静默解除。
+	// 中断的写入必须落成「未激活」（显式状态），绝不能落成「损坏 → 永远放行」。
+	if err := util.AtomicWrite(p.FreezeStatePath(), data, 0644); err != nil {
 		return nil, fmt.Errorf("freeze: write state: %w", err)
 	}
 	return st, nil

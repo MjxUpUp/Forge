@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"sync"
 	"time"
 
@@ -80,6 +81,19 @@ func Record(root string, entry *Entry) error {
 		return err
 	}
 
+	// Size-triggered rotation BEFORE the append (feat/checklog-janitor): the active file
+	// grew unbounded in production (15946 lines observed) because Clear has no production
+	// caller and Prune only globs archives — Record itself must bound what it grows.
+	// Rotating before the write keeps the newest entry in the fresh active file and caps
+	// the active file at threshold + one entry. Inside mu, so rotation is serialized with
+	// every concurrent Record/AppendEntries/Clear.
+	//
+	// 追加前的尺寸触发轮转（feat/checklog-janitor）：active 文件曾在生产环境无限增长
+	// （实测 15946 行）——Clear 已无生产调用方、Prune 只 glob 归档——Record 必须自己约束
+	// 它增大的东西。写前轮转让最新条目落进新开的 active，active 文件被钉在阈值 + 一条
+	// 以内。在 mu 内，轮转与所有并发的 Record/AppendEntries/Clear 串行。
+	rotateIfOversizedLocked(root)
+
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
@@ -120,6 +134,13 @@ func AppendEntries(root string, entries []Entry) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
 	}
+	// Same size-triggered rotation as Record (see there for rationale): a cross-machine
+	// import bundle can push the active file past the threshold in one call, so the
+	// rotation guard belongs on every writer path, not only Record.
+	//
+	// 与 Record 相同的尺寸触发轮转（理由见该处）：跨机器 import 的 bundle 一次就能把
+	// active 文件顶过阈值，轮转守卫属于所有写入路径，而不止 Record。
+	rotateIfOversizedLocked(root)
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
@@ -348,6 +369,83 @@ func archiveLocked(root string) error {
 	return os.Rename(src, dst)
 }
 
+// defaultRotateBytes is the default size threshold (5MB) at which the active
+// checklog.jsonl is rotated into an archive. 5MB ≈ tens of thousands of entries —
+// far beyond one task window's hook traffic, yet small enough to keep the
+// active file (which lock-free readers like LoadAll/LatestByCheckForSessionSince
+// scan linearly on every hook event) from degrading into the observed 15946-line
+// unbounded state.
+//
+// defaultRotateBytes 是 active checklog.jsonl 被轮转成归档的默认尺寸阈值（5MB）。
+// 5MB ≈ 数万条 entry——远超单个 task 窗口的 hook 流量，又小到不让 active 文件
+// （LoadAll/LatestByCheckForSessionSince 这些无锁读者在每个 hook 事件都线性扫它）
+// 退化成实测过的 15946 行无界状态。
+const defaultRotateBytes int64 = 5 << 20 // 5MB
+
+// rotateBytesLimit resolves the active-log rotation threshold from env
+// FORGE_CHECKLOG_ROTATE_BYTES (default 5MB), mirroring util.RetentionDays'
+// convention: missing/invalid → default; <=0 disables rotation entirely (the
+// writers then fall back to the pre-fix unbounded growth — an on-demand escape
+// hatch, not a recommended steady state).
+//
+// rotateBytesLimit 从 env FORGE_CHECKLOG_ROTATE_BYTES 解析 active 日志轮转阈值
+// （默认 5MB），镜像 util.RetentionDays 的约定：缺失/非法 → 默认；≤0 完全禁用轮转
+// （写入路径退回修复前的无限增长——按需逃生阀，非推荐的常态）。
+func rotateBytesLimit() int64 {
+	raw := os.Getenv("FORGE_CHECKLOG_ROTATE_BYTES")
+	if raw == "" {
+		return defaultRotateBytes
+	}
+	n, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return defaultRotateBytes
+	}
+	return n
+}
+
+// rotateIfOversizedLocked rotates the active checklog.jsonl into a timestamped
+// archive once it exceeds the rotation threshold, then opportunistically sweeps
+// expired archives so rotation itself also bounds the archive set. Caller must
+// hold mu (serialized with every Record/AppendEntries/Clear). The archive name
+// reuses archiveLocked → util.ArchivedName, i.e. the established checklog-<stamp>.jsonl
+// convention: matched by pruneArchives' glob, age-parseable by its archiveTimestamp
+// (filename-timestamp pruning works), and read by loadAllArchives' checklog*.jsonl glob
+// so LoadAllAll/LoadForTask keep seeing the rotated history. Deliberately best-effort:
+// a rotation failure — e.g. a Windows sharing violation while a lock-free LoadAll
+// reader still holds the active file open (Go's os.Open does not pass FILE_SHARE_DELETE) —
+// must not fail the append, which is the caller's primary outcome; the active file is
+// intact (rename failed = nothing moved) and the next Record retries once the reader is
+// gone. No fsync before rename: appended lines are already as durable as the append
+// itself ever was.
+//
+// rotateIfOversizedLocked 在 active checklog.jsonl 超过轮转阈值时把它轮转成带时间戳
+// 的归档，随后顺手清一遍过期归档——轮转自身也让归档集有界。调用方必须持有 mu
+// （与所有 Record/AppendEntries/Clear 串行）。归档名复用 archiveLocked →
+// util.ArchivedName，即既有的 checklog-<stamp>.jsonl 约定：被 pruneArchives 的 glob
+// 命中、其 archiveTimestamp 可解析出龄（按文件名时间戳的清理有效）、也被
+// loadAllArchives 的 checklog*.jsonl glob 读到——LoadAllAll/LoadForTask 仍能看到轮转
+// 走的历史。刻意 best-effort：轮转失败——如 Windows 上无锁的 LoadAll 读者还握着
+// active 文件时（Go 的 os.Open 不带 FILE_SHARE_DELETE）rename 报 sharing violation——
+// 不得拖垮调用方的主要结果「追加」；active 文件完好（rename 失败 = 什么都没动），
+// 读者消失后下一次 Record 重试。rename 前不 fsync：已追加的行与追加本身的持久性
+// 等同，无需更强。
+func rotateIfOversizedLocked(root string) {
+	limit := rotateBytesLimit()
+	if limit <= 0 {
+		return // 轮转禁用（≤0）：显式逃生阀
+	}
+	path := filePath(root)
+	info, err := os.Stat(path)
+	if err != nil || info.Size() <= limit {
+		return
+	}
+	if err := archiveLocked(root); err != nil {
+		// best-effort：轮转失败不阻断追加（见函数注释）；下次 Record 重试。
+		return
+	}
+	pruneArchives(filepath.Dir(path))
+}
+
 // Clear deletes the check log file after archiving. Called at task start. Both archiving and deletion run inside the mutex
 // so no Record append can happen between them. After archiving and deleting the active file, it makes a best-effort
 // cleanup of archives beyond the retention window to prevent checklog-*.jsonl from growing unbounded across task starts.
@@ -393,10 +491,28 @@ func pruneArchives(dir string) {
 // append-only timeline segmented by task-started boundary events, so starting a task must
 // not archive-or-delete anything — only keep the retention window bounded.
 //
+// NOTE on bounding the ACTIVE file (feat/checklog-janitor): Prune deliberately does NOT
+// trim checklog.jsonl itself. Trimming would mean rewriting the append-only timeline in
+// place, racing lock-free LoadAll/LatestByCheckForSessionSince readers (they hold no mu)
+// and risking loss of the very lines a concurrent Record is appending — corruption, a far
+// worse failure than size. Active-file bounding is therefore the writer-side rotation's
+// job (rotateIfOversizedLocked on every Record/AppendEntries), which is structural: it
+// cannot "fail to notice" growth because it sits on the only path that grows the file.
+// If rotation were ever disabled via FORGE_CHECKLOG_ROTATE_BYTES<=0, the worst case is
+// the pre-fix behavior (unbounded active growth), never data loss.
+//
 // Prune 是 Clear 的非破坏性半边：只做 checklog-*.jsonl 归档的 retention 清理，绝不碰
 // active 文件。task start 处 Clear 退役后（multi-task-concurrency 设计 §5）改调本函数：
 // 日志现在是按 task-started 边界事件分段的 append-only 时间线，开任务不得归档或删除
 // 任何东西——只保持 retention 窗口有界。
+//
+// 关于约束 active 文件（feat/checklog-janitor）：Prune 刻意不去裁 checklog.jsonl 本身。
+// 裁剪意味着原地重写 append-only 时间线，与无锁的 LoadAll/LatestByCheckForSessionSince
+// 读者（它们不持 mu）竞态，还可能丢掉并发 Record 正在追加的行——损坏比尺寸恶劣得多。
+// 因此 active 文件的有界性由写入侧轮转负责（每次 Record/AppendEntries 的
+// rotateIfOversizedLocked），且这是结构性的：它长在唯一让文件增长的路径上，不可能
+// 「漏察觉」增长。即便通过 FORGE_CHECKLOG_ROTATE_BYTES<=0 禁用轮转，最坏也只是修复前
+// 的行为（active 无界增长），绝不丢数据。
 func Prune(root string) {
 	mu.Lock()
 	defer mu.Unlock()

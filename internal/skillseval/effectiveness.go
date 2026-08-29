@@ -2,6 +2,8 @@ package skillseval
 
 import (
 	"cmp"
+	"fmt"
+	"os"
 	"slices"
 
 	"github.com/MjxUpUp/Forge/internal/act"
@@ -215,16 +217,17 @@ func AnalyzeEffectiveness(p *forgedata.Project) ([]SkillEffectiveness, error) {
 	//
 	// 被动：checklog 的 CheckSkillTrigger 条目（skill-trigger hook 注入）。与主动路径
 	// 同去重 + 成效折入；无 TaskRef 的条目仍计命中但不挂成效。
-	// Load error degrades to an empty passive source (same philosophy as toolusage's
-	// per-file skip above): one corrupt archived checklog must not blank the whole
-	// report — the dashboard caller ignores errors, so failing hard here just
-	// recreates the empty-quality-columns symptom this join exists to fix.
+	// Load error degrades to an empty passive source, visibly: checklog.LoadAllAll is
+	// all-or-nothing (unlike toolusage's per-file skip), so one locked/corrupt archive
+	// would blank the whole passive-hit source — warn so the empty columns are
+	// attributable instead of reading as "never triggered".
 	//
-	// 加载错误降级为空被动源（与上面 toolusage 的 per-file 跳过同哲学）：单个损坏的
-	// 归档 checklog 不能拖垮整表——dashboard 调用方忽略错误，这里硬失败只会复现
-	// 本 join 要修的「质量列全空」症状。
+	// 加载错误降级为空被动源，但必须可见：checklog.LoadAllAll 是整体失败（不像
+	// toolusage 的 per-file 跳过），单个被锁/损坏的归档会让整个被动命中源蒸发——
+	// 告警让空列可归因，而不是被读成「从未触发」。
 	triggerEntries, err := checklog.LoadAllAll(p.Root)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "warn: checklog 归档加载失败，被动命中统计不完整（%v）\n", err)
 		triggerEntries = nil
 	}
 	for _, e := range triggerEntries {

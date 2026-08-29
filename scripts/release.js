@@ -33,14 +33,16 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..');
 const PKG = path.join(ROOT, 'npm', 'package.json');
 const REL_PKG = path.relative(ROOT, PKG);
 
+// git 子进程一律走参数数组（execFileSync）——模板串拼接 shell 会让 tag 名
+//（git 合法字符含 $、反引号、;、|，经 describe 回流）在发版机上执行任意命令。
 function git(args) {
-  return execSync(`git ${args}`, { cwd: ROOT, encoding: 'utf8' }).trim();
+  return execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' }).trim();
 }
 
 // inferBump 扫描 range 内每个 commit,按 Conventional Commits 前缀定 bump 类型。
@@ -103,7 +105,7 @@ function replaceManifestVersion(content, next) {
 // 注入临时仓库(默认用 release.js 所在的项目根),让 readCommitMessages 能端到端测。
 function readCommitMessages(range, cwdRoot = ROOT) {
   // %B=完整 message，%x1e=记录分隔符(US)，用来切分多条 commit。
-  const log = execSync(`git log ${range} --pretty=%B%x1e`, { cwd: cwdRoot, encoding: 'utf8' }).trim();
+  const log = execFileSync('git', ['log', range, '--pretty=%B%x1e'], { cwd: cwdRoot, encoding: 'utf8' }).trim();
   // %B 输出 message 后 git 追加换行，再 %x1e，再下条记录前的换行 → split 后第二条起
   // 带前导 \n。必须 trim 每段：否则 inferBump 的 subject = msg.split('\n')[0] 取到空串，
   // feat/fix 前缀全部漏判，inferBump 误推 patch（v0.23.0 发布前踩到：2 个 feat 被当 patch）。
@@ -140,7 +142,7 @@ function main() {
   if (!bump) {
     let lastTag = '';
     try {
-      lastTag = git('describe --tags --abbrev=0');
+      lastTag = git(['describe', '--tags', '--abbrev=0']);
     } catch {
       lastTag = ''; // no tags yet
     }
@@ -154,6 +156,18 @@ function main() {
   console.log(`bump:    ${bump}`);
   console.log(`next:    ${next}`);
   console.log(`tag:     v${next}`);
+
+  // --- tag preflight: fail fast BEFORE any file is written ---
+  // 发版序列非事务：tag 已存在时 git tag 在 commit 之后才失败，留下无 tag 的
+  // release commit 半成品——逃生舱场景最常见路径就是重跑。预检让它在零副作用
+  // 阶段就退出。
+  try {
+    execFileSync('git', ['rev-parse', '-q', '--verify', `refs/tags/v${next}`], { cwd: ROOT, encoding: 'utf8', stdio: 'pipe' });
+    console.error(`tag v${next} 已存在——上次发版可能未完成；如需重发请先手动处理该 tag（git tag -d v${next}）再重跑`);
+    process.exit(1);
+  } catch {
+    // 不存在 = 预检通过
+  }
 
   if (dryRun) {
     console.log('(dry-run, no changes — would bump npm/package.json + .kimi-plugin/plugin.json + plugins/forge-dsh/package.json + .release-please-manifest.json)');
@@ -228,9 +242,9 @@ function main() {
   }
 
   // --- commit + tag ---
-  git(`add ${REL_PKG} ${REL_KIMI} ${REL_DSH} ${REL_MANIFEST}`);
-  git(`commit -m "chore(release): bump npm version to ${next}" -m "Co-Authored-By: Claude <noreply@anthropic.com>"`);
-  git(`tag v${next}`);
+  git(['add', REL_PKG, REL_KIMI, REL_DSH, REL_MANIFEST]);
+  git(['commit', '-m', `chore(release): bump npm version to ${next}`, '-m', 'Co-Authored-By: Claude <noreply@anthropic.com>']);
+  git(['tag', `v${next}`]);
 
   console.log('');
   console.log('done. review the commit/tag, then push to trigger release:');

@@ -43,9 +43,10 @@ var intentionalRawNL = []string{
 	`{"hook_event_name":"PostToolUse"`,                                  // JSON fixture (escaped \n inside)
 	`(?s)^---\s*\n(.*?)\n---\s*\n?`,                                     // regex
 	`\bexcept\b[^\n]*:\s*pass`,                                          // regex
-	`C:\Users\u`,                                                        // windows path fixture (update_channel_test.go: \npm / \node_modules 序列是路径本身)
-	`C:\npm-global`,                                                     // windows path fixture (update_channel_test.go 混合分隔符行)
-	`{"command":"*** Begin Patch`,                                       // JSON fixture（attribution_test.go：patch 文本的 \n 是 JSON 转义，解码后成真换行）
+	`\bcatch\s*(\([^)]*\))?\s*\{\s*(?://[^\n]*|/\*[^*]*\*/)\s*\}`,       // regex（cheatscan 注释体 catch 检测，2026-08-29 审查轮）
+	`C:\Users\u`,                  // windows path fixture (update_channel_test.go: \npm / \node_modules 序列是路径本身)
+	`C:\npm-global`,               // windows path fixture (update_channel_test.go 混合分隔符行)
+	`{"command":"*** Begin Patch`, // JSON fixture（attribution_test.go：patch 文本的 \n 是 JSON 转义，解码后成真换行）
 }
 
 func whitelisted(lit string) bool {
