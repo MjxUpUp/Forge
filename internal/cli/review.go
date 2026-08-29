@@ -197,6 +197,7 @@ func runReviewPassAt(root, explicitRef, note string, acknowledgeChanges bool) er
 		// 会回滚并发写入的 session-links/DesignPhases，或让盖章本身被并发写者覆盖。
 		// 这是 ReviewPassed 硬前置的写入路径。
 		selfRefresh := false
+		selfRefreshViaNote := false
 		baselineUnreachable := ""
 		markErr := taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
 			if s.ReviewedHeadCommit != "" {
@@ -208,7 +209,19 @@ func runReviewPassAt(root, explicitRef, note string, acknowledgeChanges bool) er
 					if !acknowledgeChanges && note == "" {
 						return fmt.Errorf("review pass 拒绝：距上次审查基线（HEAD=%s）源码已变更——按协议先重派【只读】子 agent 复审当前代码，再 `forge review pass --note \"<复审结论>\"` 盖章；确认变更无需复审（自我承担，记 self-refresh WARN 审计）用 `forge review pass --acknowledge-changes`", s.ReviewedHeadCommit)
 					}
-					selfRefresh = acknowledgeChanges
+					// Any re-stamp over CHANGED content is a baseline refresh and must
+					// be auditable as one: --note and --acknowledge-changes are both
+					// self-supplied text with nothing forge can verify, so marking only
+					// the latter let an adversarial agent launder a refresh through
+					// --note with a normal PASS-level entry (2026-08-29 functional
+					// probe). The wording below keeps the two paths distinguishable.
+					//
+					// 对【已变更内容】的任何重盖章都是基线刷新、都必须可审计：
+					// --note 与 --acknowledge-changes 都是 forge 无法验证的自供文本，
+					// 只标记后者会让对抗 agent 用 --note 把刷新洗成正常 PASS 级条目
+					//（2026-08-29 功能探针）。措辞上仍可区分两条路径。
+					selfRefresh = true
+					selfRefreshViaNote = !acknowledgeChanges
 				}
 			}
 			s.MarkReviewPassedWithNote(head, hash, note)
@@ -230,7 +243,11 @@ func runReviewPassAt(root, explicitRef, note string, acknowledgeChanges bool) er
 		// 普通轮次分开。
 		detail := fmt.Sprintf("review round %d passed (head=%s, change=%s)", len(state.ReviewRounds), shortHash(head), shortHash(hash))
 		if selfRefresh {
-			detail = "self-refresh: baseline re-stamped over changed source via --acknowledge-changes; " + detail
+			if selfRefreshViaNote {
+				detail = "self-refresh: baseline re-stamped over changed source via --note (self-supplied conclusion, unverified); " + detail
+			} else {
+				detail = "self-refresh: baseline re-stamped over changed source via --acknowledge-changes; " + detail
+			}
 		}
 		if baselineUnreachable != "" {
 			detail = fmt.Sprintf("baseline-unreachable: prior review baseline %s not reachable (history rewritten) — re-stamped fail-open; ", shortHash(baselineUnreachable)) + detail
@@ -253,7 +270,11 @@ func runReviewPassAt(root, explicitRef, note string, acknowledgeChanges bool) er
 		}
 		fmt.Printf("✅ task %s: code-review-gate 已通过（task-complete 门禁前置满足，基线 HEAD=%s）\n", state.TaskRef, head)
 		if selfRefresh {
-			fmt.Println("⚠ 本次为自我承担的基线刷新（--acknowledge-changes）：已记 self-refresh WARN 审计。协议要求修复后重派只读子 agent 复审——下次用 --note 记录复审结论。")
+			if selfRefreshViaNote {
+				fmt.Println("⚠ 本次为带 --note 的基线刷新（内容已变更）：--note 是自供文本、forge 无法验证复审真发生过，已记 self-refresh WARN 审计区分于普通轮次。")
+			} else {
+				fmt.Println("⚠ 本次为自我承担的基线刷新（--acknowledge-changes）：已记 self-refresh WARN 审计。协议要求修复后重派只读子 agent 复审——下次用 --note 记录复审结论。")
+			}
 		}
 		if baselineUnreachable != "" {
 			fmt.Printf("⚠ 上次审查基线 %s 不可达（历史可能被 amend/rebase 改写）——本次按 fail-open 重盖章，已记 WARN 级 baseline-unreachable 审计；建议确认当前代码已经过审查\n", shortHash(baselineUnreachable))

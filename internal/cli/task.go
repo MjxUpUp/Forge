@@ -353,11 +353,18 @@ func completeGenericTask(root string, state *taskpipeline.TaskState) error {
 		}
 	}
 	head := taskpipeline.GetHeadCommit(root)
-	for _, g := range taskpipeline.DefaultGates() {
-		state.RecordGateResult(g.ID, true, head)
-	}
-	state.MarkComplete()
-	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+	// Locked completion write: bare SaveTaskState over the pre-call snapshot would
+	// roll back concurrent writers (the §13 lost-update class this file documents).
+	//
+	// 锁内完成写入：对调用前快照裸 SaveTaskState 会回滚并发写者（本文件已
+	// 记录的 §13 丢失更新类）。
+	if err := taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
+		for _, g := range taskpipeline.DefaultGates() {
+			s.RecordGateResult(g.ID, true, head)
+		}
+		s.MarkComplete()
+		return nil
+	}); err != nil {
 		return fmt.Errorf("failed to save task state: %w", err)
 	}
 	sid := taskpipeline.CurrentSessionID()
@@ -1231,6 +1238,15 @@ func runTaskStatus(cmd *cobra.Command, args []string) error {
 		}
 	}
 	if state == nil {
+		if asJSON {
+			// --json contract: stdout is machine-parseable ONLY — a human hint line
+			// breaks jq-style consumers even on the empty case.
+			//
+			// --json 契约：stdout 只放机器可解析内容——空场景的人类提示行同样会
+			// 弄坏 jq 类消费者。
+			fmt.Println(`{"task_ref": null, "active": false, "hint": "forge task start"}`)
+			return nil
+		}
 		fmt.Println("No active task (not on a feature branch or no task started).")
 		fmt.Println("Run 'forge task start' to begin a task.")
 		return nil
@@ -1375,16 +1391,6 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Resolve HEAD from the project root (not forge's cwd at call time) so the recorded
-	// gate commit matches the repo the task tracks. Uses the shared GetHeadCommit so the
-	// recorded form stays the short-hash single source of truth (attribution and doc-gate
-	// compare History heads against it by exact string equality).
-	//
-	// 从项目根（不是 forge 调用时的 cwd）解析 HEAD，让记录的 gate commit 与 task 跟踪的
-	// repo 一致。走共享的 GetHeadCommit，保持短 hash 单一真相源（归因与 doc-gate 对
-	// History head 做的是精确字符串比较）。
-	state.RecordGateResult(gateID, result.Passed, taskpipeline.GetHeadCommit(root))
-
 	// Token cost circuit-breaker (advisory): warn when the task's cumulative estimated
 	// tokens exceed the threshold. Makes token accounting more than forge-trace
 	// observability — it becomes a cost-ceiling signal as task gates advance
@@ -1436,7 +1442,23 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 	// revive it). Completion is `forge task complete`'s whole action (pre-flight →
 	// MarkComplete → scoring → feedback → clear ref); all gates passed is its
 	// prerequisite, not completion itself.
-	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+	// Locked gate-result write: the load at the top of runTaskGate predates a
+	// possibly-minutes-long ExecuteTaskGate run — saving that stale snapshot would
+	// silently roll back any concurrent session-link/review/decide write that landed
+	// meanwhile (§13 lost-update; the write path must merge into the in-lock state).
+	//
+	// 锁内门禁结果写入：runTaskGate 顶部的 load 早于可能长达分钟级的 ExecuteTaskGate
+	// 执行——保存那个陈旧快照会静默回滚期间落盘的并发 session-link/盖章/决策写入
+	//（§13 丢失更新；写入路径必须合并进锁内状态）。
+	if err := taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
+		// GetHeadCommit (short hash) is the single source of truth for recorded heads —
+		// attribution and doc-gate compare History heads by exact string equality.
+		//
+		// GetHeadCommit（短 hash）是记录 head 的单一真相源——归因与 doc-gate 对
+		// History head 做精确字符串比较。
+		s.RecordGateResult(gateID, result.Passed, taskpipeline.GetHeadCommit(root))
+		return nil
+	}); err != nil {
 		return fmt.Errorf("failed to save task state: %w", err)
 	}
 
@@ -1770,8 +1792,19 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 		return fmt.Errorf("task not complete. Missing gates: %s", missingGates(state))
 	}
 
-	// acceptance pre-flight (proof-of-work consumer): when the task declared acceptance
-	// criteria, before complete, deterministically verify each is fresh
+	// Integrity gate (state-integrity-signing): a signature that failed verification
+	// means the state file was modified outside forge — hand-forged ReviewPassed /
+	// DocReview on such a state must not complete (2026-08-29 functional probe closed
+	// the write side; this is the consumption side).
+	//
+	// 完整性门（state-integrity-signing）：验签失败 = 状态文件在 forge 之外被改
+	// 过——其上手改的 ReviewPassed/DocReview 不得完成（2026-08-29 功能探针封的
+	// 是写入侧，这里是消费侧）。
+	if state.IntegrityBroken() {
+		return fmt.Errorf(`task complete 拒绝：任务状态文件完整性校验失败（在 forge 之外被修改——手改的 review/doc 证据不被采信）。恢复路径：forge task abort 后重新走门禁`)
+	}
+
+	// acceptance pre-flight (proof-of-work consumer): when the task declared acceptance	// criteria, before complete, deterministically verify each is fresh
 	// (AcceptedHeadCommit==HEAD) and Passed. Gives AcceptedHeadCommit a consumer — after
 	// the MCP teardown this field was write-only and orphaned; this check turns it from
 	// a declaration into an affordance gate. Corresponds to Emergence World Proof of
@@ -1822,7 +1855,17 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 	if firstComplete {
 		state.MarkComplete()
 	}
-	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+	// Locked completion write — merge CompletedAt into the in-lock state (§13: a bare
+	// save over this pre-flight-era snapshot rolls back concurrent writers).
+	//
+	// 锁内完成写入——把 CompletedAt 合并进锁内状态（§13：对 pre-flight 前的快照
+	// 裸保存会回滚并发写者）。
+	if err := taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
+		if s.CompletedAt == nil {
+			s.MarkComplete()
+		}
+		return nil
+	}); err != nil {
 		return fmt.Errorf("failed to save task state: %w", err)
 	}
 
@@ -2034,7 +2077,24 @@ func runTaskScopeAdd(cmd *cobra.Command, args []string) error {
 		existing[a] = true
 		added++
 	}
-	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+	// Locked scope write — merge PlanScope under lock (§13 lost-update).
+	//
+	// 锁内 scope 写入——PlanScope 在锁内合并（§13 丢失更新）。
+	if err := taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
+		existing := make(map[string]bool, len(s.PlanScope))
+		for _, p := range s.PlanScope {
+			existing[p] = true
+		}
+		for _, a := range args {
+			a = strings.TrimSpace(a)
+			if a == "" || existing[a] {
+				continue
+			}
+			s.PlanScope = append(s.PlanScope, a)
+			existing[a] = true
+		}
+		return nil
+	}); err != nil {
 		return fmt.Errorf("failed to save task state: %w", err)
 	}
 	fmt.Printf("PlanScope 现共 %d 条（本次新增 %d）：\n", len(state.PlanScope), added)
@@ -2124,7 +2184,13 @@ func runTaskOverride(cmd *cobra.Command, args []string) error {
 		fmt.Println(`设置：--work-activity disable / --test-coverage disable / --acceptance-gate disable / --skill-decisions disable（验证类逃生降评分强度到 Weak，重证据任务按证据缩放豁免；work-activity 不降）`)
 		return nil
 	}
-	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+	// Locked override write — merge only the Overrides field (§13 lost-update).
+	//
+	// 锁内逃生舱写入——只合并 Overrides 字段（§13 丢失更新）。
+	if err := taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
+		s.Overrides = state.Overrides
+		return nil
+	}); err != nil {
 		return fmt.Errorf("failed to save task state: %w", err)
 	}
 	fmt.Printf("已设置 per-task 逃生舱：%s\n", describeOverrides(state.Overrides))
@@ -2230,31 +2296,37 @@ func runTaskDocReview(cmd *cobra.Command, args []string) error {
 	// 轮次历史保留（循环的可观测收敛）：历史轮次留在 DocReviewHistory，得分
 	// 趋势可从任务状态查询——「两轮之间 Critical 不降」是异常信号而非散文。
 	// 截断保留最近 10 轮（内存卫生）。
-	if state.DocReview != nil && !state.DocReview.ReviewedAt.IsZero() {
-		state.DocReviewHistory = append(state.DocReviewHistory, *state.DocReview)
-		if len(state.DocReviewHistory) > 10 {
-			state.DocReviewHistory = state.DocReviewHistory[len(state.DocReviewHistory)-10:]
+	// Locked doc-review write — merge DocReview + history under lock (§13; the
+	// history roll must also land on the in-lock state, not the stale snapshot).
+	//
+	// 锁内 doc-review 写入——DocReview 与轮次历史在锁内合并（§13；历史滚动也
+	// 必须落在锁内状态上，而非陈旧快照）。
+	if err := taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
+		if s.DocReview != nil && !s.DocReview.ReviewedAt.IsZero() {
+			s.DocReviewHistory = append(s.DocReviewHistory, *s.DocReview)
+			if len(s.DocReviewHistory) > 10 {
+				s.DocReviewHistory = s.DocReviewHistory[len(s.DocReviewHistory)-10:]
+			}
 		}
-	}
-
-	state.DocReview = &taskpipeline.DocReview{
-		Passed:          passedFlag == "pass",
-		RubricScore:     score,
-		Round:           round,
-		Reviewer:        reviewer,
-		ReviewedAt:      time.Now(),
-		HeadCommit:      taskpipeline.GetHeadCommit(root),
-		DocsFingerprint: taskpipeline.DocContentFingerprint(root, state),
-	}
-	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+		s.DocReview = &taskpipeline.DocReview{
+			Passed:          passedFlag == "pass",
+			RubricScore:     score,
+			Round:           round,
+			Reviewer:        reviewer,
+			ReviewedAt:      time.Now(),
+			HeadCommit:      taskpipeline.GetHeadCommit(root),
+			DocsFingerprint: taskpipeline.DocContentFingerprint(root, s),
+		}
+		return nil
+	}); err != nil {
 		return fmt.Errorf("failed to save task state: %w", err)
 	}
 
 	fmt.Printf("doc-review 已记录（round %d，score %d，verdict %s，critical +%d）。\n", round, score, passedFlag, len(criticals))
-	if state.DocReview.Passed && score < taskpipeline.DocRubricThreshold {
+	if passedFlag == "pass" && score < taskpipeline.DocRubricThreshold {
 		fmt.Printf("注意：verdict=pass 但 score %d < 阈值 %d——doc gate 仍会拦截（得分与结论矛盾，复评）。\n", score, taskpipeline.DocRubricThreshold)
 	}
-	if !state.DocReview.Passed && round >= taskpipeline.DocReviewMaxRounds {
+	if passedFlag != "pass" && round >= taskpipeline.DocReviewMaxRounds {
 		fmt.Printf("已 %d 轮未过（上限 %d）——升级人工确认：用户裁定放行（forge task override --doc-gate disable）或给出下一轮修复方向。\n", round, taskpipeline.DocReviewMaxRounds)
 	}
 	return nil

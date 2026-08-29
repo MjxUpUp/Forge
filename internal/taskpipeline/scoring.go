@@ -81,6 +81,19 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 	// 逻辑、同 task diff），testing 维度不依赖 checklog 条目是否存在——此前此处会查
 	// CheckNameTestCoverage 条目，但紧接着被无条件覆写为 true，查询是死效果。
 	testCoverageChecked := true
+	if escapeDisabled(state, "test-coverage", "FORGE_TEST_COVERAGE") {
+		// An override disables the GATE, not the honesty of the report: reporting
+		// 100/"No source files requiring tests" for a task whose coverage was merely
+		// bypassed launders the gap into a perfect dimension (2026-08-29 functional
+		// finding). The dimension goes neutral (70, "not checked — disabled") instead;
+		// the escape's real cost already shows via the 89 cap + Weak evidence.
+		//
+		// override 免的是【门禁】，不是报告的诚实性：覆盖义务只是被绕过的任务
+		// 报 100/「无需测试」会把缺口洗成满分维度（2026-08-29 功能发现）。维度
+		// 改为中性（70，「未检测——已禁用」）；逃生的真实代价已由 89 封顶 +
+		// Weak 证据体现。
+		testCoverageChecked = false
+	}
 	if latestChecks, err := checklog.LatestByCheckForSessionSince(root, state.SessionID, state.StartedAt); err == nil {
 		// INFRA:-prefixed entries are fail-open infrastructure failures (bash spawn
 		// error / WSL exit 126/127), not quality verdicts — the gate treats them as

@@ -100,6 +100,31 @@ func SetVersion(v, c, d string) {
 	}
 }
 
+// hardExitError is the sentinel for commands whose VERDICT rides the process
+// exit code rather than stderr prose (docs lint: hard failure ⇒ exit 2).
+// Returning it from RunE (instead of calling os.Exit inside RunE) keeps cobra's
+// deferred cleanup and Execute's panic-recovery funnel intact — os.Exit skips
+// every defer, so the old in-RunE exits ran with no safety net. Execute maps it
+// to os.Exit(2) without printing anything extra: the command has already
+// printed its conclusion, mirroring the HookBlockError branch below.
+//
+// hardExitError 是「结论走进程退出码而非 stderr 散文」的命令哨兵（docs lint：
+// 硬失败 ⇒ exit 2）。从 RunE 返回它（而非在 RunE 里 os.Exit）让 cobra 的 defer
+// 清理与 Execute 的 panic 恢复盘保持生效——os.Exit 跳过所有 defer，旧的 RunE 内
+// 退出等于裸奔。Execute 把它映射为 os.Exit(2) 且不额外打印：命令已输出自己的
+// 结论，与下方 HookBlockError 分支同形。
+type hardExitError struct{}
+
+func (e *hardExitError) Error() string { return "hard failure (exit 2)" }
+
+// errHardExit is the shared sentinel instance for the "hard failure ⇒ exit 2"
+// exit-code contract (docs lint today; skills validate & friends may migrate
+// later — they are outside this change's allowed file set).
+//
+// errHardExit 是「硬失败 ⇒ exit 2」退出码契约的共享哨兵实例（目前 docs lint；
+// skills validate 等同款后续可迁移——不在本次允许改动文件清单内）。
+var errHardExit error = &hardExitError{}
+
 func Execute() {
 	// graceful degradation (resilience §2.6 pattern 7 fail-open): on panic, emit diagnostics to
 	// stderr + exit 2 so the forge CLI never crashes raw. dogfood 1.1: forge CLI panics occasionally
@@ -116,6 +141,21 @@ func Execute() {
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Fprintf(os.Stderr, "forge: internal panic: %v\n", r)
+			// Exit code semantics: 2 is the hook BLOCK code (kimi: intentional deny;
+			// Claude: non-2 errors are non-blocking). A forge-internal crash must
+			// read as infrastructure failure, not as a gate verdict — exiting 2 here
+			// turned every internal bug into a hard deny of every tool call, with no
+			// escape except uninstalling hooks. Hook subcommands exit 1 (fail-open);
+			// everything else keeps 2 (arbitrary non-zero for plain CLI usage).
+			//
+			// 退出码语义：2 是 hook 的阻断码（kimi：有意 deny；Claude：非 2 的错误
+			// 不阻断）。forge 内部崩溃必须读作基础设施故障而非门禁裁决——此处
+			// exit 2 会把每个内部 bug 变成对每次工具调用的硬拦，只能卸载 hooks
+			// 逃生。hook 子命令 exit 1（fail-open）；其余保持 2（普通 CLI 用法下
+			// 的任意非零码）。
+			if len(os.Args) > 1 && os.Args[1] == "hook" {
+				os.Exit(1)
+			}
 			os.Exit(2)
 		}
 	}()
@@ -127,6 +167,19 @@ func Execute() {
 		// 原因已写在 stderr。
 		var blockErr *HookBlockError
 		if errors.As(err, &blockErr) {
+			os.Exit(2)
+		}
+		// Verdict-by-exit-code commands (docs lint hard failure): same mapping as a
+		// hook block, different semantics — the conclusion was already printed by
+		// the command itself, so nothing is echoed here. Consumers reading the exit
+		// code (docs lint: 2 = hard failure) see no change vs the old in-RunE
+		// os.Exit(2).
+		//
+		// 以退出码传达结论的命令（docs lint 硬失败）：与 hook 阻断同映射、不同语义
+		// ——结论已由命令自身打印，此处不再回显。读退出码的消费方（docs lint：
+		// 2=硬失败）相对旧的 RunE 内 os.Exit(2) 零变化。
+		var hex *hardExitError
+		if errors.As(err, &hex) {
 			os.Exit(2)
 		}
 		fmt.Fprintln(os.Stderr, err)

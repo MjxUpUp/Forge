@@ -61,25 +61,81 @@ func TestScoreTask_EscapeOverrideCapsAt89(t *testing.T) {
 			t.Fatalf("ScoreTask: %v", err)
 		}
 	})
+	_ = stderr // cap advisory not expected in this scenario (raw 86.5 < 89)
+	if state.Score == nil {
+		t.Fatal("ScoreTask 应写入 state.Score")
+	}
+	// 2026-08-29 语义更新：override 免门禁不免度量诚实性——testing 维度改为中性
+	// 70（见 BuildEvaluateInput），本场景原始分 86.5 天然低于 89 上限，封顶分支不
+	// 触发。契约收敛为「逃生任务恒不可能拿到 A」：要么被 89 封顶压回，要么被中性
+	// 维度拖下；两种途径都不得给出 A 档。CappedReason 只在封顶实际触发时记录。
+	//
+	// 2026-08-29 semantics update: an override exempts the GATE, not measurement
+	// honesty — the testing dimension goes neutral 70, so this scenario's raw 86.5
+	// sits naturally below the 89 cap and the cap branch does not fire. The contract
+	// converges to "an escaped task can never grade A": either the 89 cap forces it
+	// back or the neutral dimension drags it down. CappedReason records only when
+	// capping actually engaged.
+	if state.Score.Overall > escapeCapMaxScore {
+		t.Errorf("用过逃生舱的任务总分不得超过 %v，got %.1f", escapeCapMaxScore, state.Score.Overall)
+	}
+	if state.Score.Grade == "A" {
+		t.Errorf("逃生任务不得拿 A 档，got %s（%.1f）", state.Score.Grade, state.Score.Overall)
+	}
+	// The honest-dimension pin: the testing dimension must SAY it was disabled, not
+	// report "No source files requiring tests".
+	//
+	// 诚实维度钉：testing 维度必须言明被禁用，而不是报「无需测试」。
+	dimFound := false
+	for _, d := range state.Score.Dimensions {
+		if string(d.Dimension) == "testing" {
+			dimFound = true
+			if !strings.Contains(d.Detail, "override") {
+				t.Errorf("testing 维度应明示 override 禁用，got %q", d.Detail)
+			}
+			if d.Score != 70 {
+				t.Errorf("override 禁用的 testing 维度应为中性 70，got %d", d.Score)
+			}
+		}
+	}
+	if !dimFound {
+		t.Error("评分应包含 testing 维度")
+	}
+}
+
+// TestScoreTask_EscapeDocGateCapsAt89 keeps the STRICT cap branch pinned after the
+// 2026-08-29 honest-dimension change: a doc-gate override does not touch the testing
+// dimension, so this fixture's raw score stays ~92 and the 89 clamp must engage
+// exactly (==89, CappedReason set, ADVISORY on stderr) — the cap branch must not
+// lose coverage just because test-coverage escapes now score honestly lower.
+//
+// TestScoreTask_EscapeDocGateCapsAt89 在 2026-08-29 诚实维度改动后继续钉死严格
+// 封顶分支：doc-gate 逃生不动 testing 维度，本场景原始分仍 ~92，89 钳制必须精确
+// 触发（==89、CappedReason、stderr ADVISORY）——不能因 test-coverage 逃生的诚实
+// 降分而丢掉封顶分支的覆盖。
+func TestScoreTask_EscapeDocGateCapsAt89(t *testing.T) {
+	dir, state := setupScoreableTask(t, "cap-docgate-override")
+	state.Overrides.DocGate = "disable"
+
+	stderr := captureStderr(t, func() {
+		if err := ScoreTask(dir, state); err != nil {
+			t.Fatalf("ScoreTask: %v", err)
+		}
+	})
 	if state.Score == nil {
 		t.Fatal("ScoreTask 应写入 state.Score")
 	}
 	if state.Score.Overall != escapeCapMaxScore {
-		t.Errorf("用过逃生舱的任务总分应封顶 %v，got %.1f", escapeCapMaxScore, state.Score.Overall)
+		t.Errorf("doc-gate 逃生任务总分应封顶 %v，got %.1f", escapeCapMaxScore, state.Score.Overall)
 	}
-	// GradeFromScore(89, default thresholds) → B (A floor is 90): escape makes A
-	// unreachable but does not push a legitimate single escape down to C.
-	//
-	// GradeFromScore(89, 默认阈值) → B（A 档下限 90）：逃生拿不到 A，但合理的单次
-	// 逃生不被压到 C。
 	if state.Score.Grade != "B" {
 		t.Errorf("封顶 89 的 Grade 应为 B，got %s", state.Score.Grade)
 	}
 	if state.Score.CappedReason == "" {
 		t.Error("CappedReason 应记录封顶原因")
 	}
-	if !strings.Contains(stderr, advisoryPrefix) {
-		t.Errorf("stderr 应含封顶 advisory，got %q", stderr)
+	if !strings.Contains(stderr, "89") {
+		t.Errorf("stderr 应含封顶提示，got %q", stderr)
 	}
 }
 
