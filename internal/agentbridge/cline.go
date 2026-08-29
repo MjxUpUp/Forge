@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/hooks"
-	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // Cline wiring (Wave 3b). Cline v3.36+ ships file-based lifecycle hooks: executable
@@ -263,10 +262,15 @@ func (t *ClineTranslator) Translate(projectDir string, input *TranslationInput) 
 	}
 	for _, e := range clineEventMappings {
 		script := buildClineWrapperScript(e.clineEvent, rosters[e.clineEvent])
-		// 0755: cline requires the hook script to be executable.
+		// 0755: cline requires the hook script to be executable. NOT AtomicWrite:
+		// renaming onto a script bash is currently executing fails on Windows with
+		// Access Denied, and this rewrite can be triggered from inside that very
+		// script's forge subprocess (see WriteHookTemplates' note).
 		//
-		// 0755：cline 要求 hook 脚本可执行。
-		if err := util.AtomicWrite(filepath.Join(dir, e.clineEvent), []byte(script), 0755); err != nil {
+		// 0755：cline 要求 hook 脚本可执行。不用 AtomicWrite：Windows 上 rename
+		// 到正在被 bash 执行的脚本会 Access Denied，而本次重写恰可能由该脚本
+		// 自身的 forge 子进程触发（见 WriteHookTemplates 的说明）。
+		if err := os.WriteFile(filepath.Join(dir, e.clineEvent), []byte(script), 0755); err != nil {
 			return fmt.Errorf("write cline hook %s: %w", e.clineEvent, err)
 		}
 	}
