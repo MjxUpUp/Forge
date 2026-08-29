@@ -104,7 +104,7 @@ grep -rn "v1/users" src/
 - [ ] 无未处理的 error（`if err != nil` 路径有处理）
 - [ ] API 契约文档同步（OpenAPI/JSON Schema）
 - [ ] 测试覆盖率按项目约定达标
-- [ ] 提交前过 code-review-gate 审查（其 forge 条件块负责盖章）
+- [ ] 提交前过 code-review-gate 审查（宿主有审查盖章机制时由其标记已审）
 
 ## 5. Gotchas（实操易错点）
 

@@ -5,7 +5,7 @@ metadata:
   pattern: inversion + pipeline
   domain: workflow
   steps: 6
-  适用前提: 多阶段长周期任务或跨会话协作；恢复源按可用性降级——有 forge 任务优先 `forge task resume`，无 forge 走 git/文档/转录完整 pipeline；纯单会话短任务不适用
+  适用前提: 多阶段长周期任务或跨会话协作；恢复源按可用性降级——有结构化任务状态优先读任务系统，否则走 git/文档/转录完整 pipeline；纯单会话短任务不适用
 ---
 
 # 跨会话开发接力
@@ -23,7 +23,7 @@ metadata:
 
 ## 阶段 1 — 上下文恢复（Pipeline）
 
-> Forge 项目——**优先 `forge task resume`**：若项目有 forge 任务，先 `forge task resume [--ref <ref>]` 拉回结构化接续真相源（目标/计划/已确认决策/下一步/阻塞/参与工具 + 门禁进度 + git 已改未提交）——比下面 parse markdown/转录更快更可靠、抗压缩丢失、跨工具双向锚定。下面的 git/文档/转录步骤作为补充（覆盖 resume 未纳入的工作）。非 forge 项目走完整 pipeline。
+> 恢复源优先级：项目有结构化任务跟踪（任务系统里的目标/计划/决策/下一步/阻塞）时优先读它——比 parse markdown/转录更快更可靠、抗压缩丢失；下面的 git/文档/转录 pipeline 是完整兜底，也覆盖任务系统未纳入的工作。
 
 ```
 上下文恢复：
@@ -119,7 +119,7 @@ git diff --stat
 
 ## 标准 HANDOFF 格式（跨会话/跨工具交接）
 
-> Forge 项目——**forge task 是真相源，HANDOFF.md 是导出视图**：决策/下一步/阻塞优先写进 `forge task decide/next/block`（持久化进 forge task；refactor-data-home 后落用户级 DataDir，跨会话/跨工具 resume 即拉回）。`HANDOFF.md` 降级为 `forge task context` 的文本导出，供无 forge 环境/人类阅读——别再靠纪律手写两份。非 forge 项目 HANDOFF.md 本身就是主载体，按模板维护。
+> HANDOFF.md 是主载体，按模板维护；有结构化任务系统的环境可把决策/下一步/阻塞同步写进任务系统（其状态跨会话/跨工具可恢复），但 HANDOFF.md 始终保持可读——别靠纪律在两处手写两份不同结构。
 
 会话结束或切换工具时，写一份结构化 HANDOFF 到项目根 `HANDOFF.md`（或 `AI_CONTEXT.md` 的 `## Current Handoff` 节），让下一个会话/工具能冷启动续做。**统一格式，不要每次手抄不同结构**——完整模板与填写纪律见 [references/handoff-format.md](references/handoff-format.md)，此处不复制。
 
