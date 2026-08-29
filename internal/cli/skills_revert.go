@@ -219,7 +219,7 @@ func runSkillsRevert(cmd *cobra.Command, args []string) error {
 // and a hostile clone can write any string there.
 //
 // commitHashRe 在决策的 CommitHash 交给 `git revert` 前钉死 git 对象名形态
-//（7-64 位 hex）：decisions.md 是可提交内容，恶意 clone 可在其中写任意字符串。
+// （7-64 位 hex）：decisions.md 是可提交内容，恶意 clone 可在其中写任意字符串。
 var commitHashRe = regexp.MustCompile(`^[0-9a-fA-F]{7,64}$`)
 
 func validCommitHash(h string) bool { return commitHashRe.MatchString(h) }
