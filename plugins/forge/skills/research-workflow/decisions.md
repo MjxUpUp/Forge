@@ -146,3 +146,25 @@ docs/skills-value-audit-2026-08-02.md
 ### Evidence
 
 skills-hitrate-review-2026-08-15 P2研究族合并;同类先例frontend合并(37->14)
+
+## [d-18cff80e4e20041c-81104537] accept
+
+- **Skill**: research-workflow
+- **DecidedAt**: 2026-08-28T12:31:57Z
+- **By**: claude-code
+
+### Diagnosis
+
+run 隔离目录与配额统计硬编码 ~/.forge/ 命名空间（SKILL.md:115、deep-research-engine.md:51、web-search-quota.sh:23 默认值）——skills 零反向依赖违例（CONVENTIONS §13 R18），且全仓无任何 forge 命令读写该路径（纯命名空间侵占）
+
+### Revision
+
+三处统一改为 skill 自有命名空间 ~/.research-workflow/（run 目录与 web-search-stats 同根）；web-search-quota.sh 保留 WEB_SEARCH_STATS_DIR env 覆盖
+
+### Evidence
+
+grep 确认 forge Go 代码零处读写 ~/.forge/research 与 web-search-stats；修改后 forge skills validate 通过
+
+### Rationale
+
+照 doc-generator 双路径先例（~/.doc-generator/）；路径无 forge 消费方，改动零迁移成本

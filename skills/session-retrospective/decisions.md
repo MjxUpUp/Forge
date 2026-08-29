@@ -113,3 +113,25 @@ feat/skills-boundary-inversion Phase 2：CONVENTIONS §13 forge 引用契约 + R
 ### Rationale
 
 依赖倒置：skill 是独立方法论资产，forge 是可选增强层——skills-only 分发用户不应看到不可执行的 forge 指令
+
+## [d-18cffa78f0b4d3bc-a427ec08] accept
+
+- **Skill**: session-retrospective
+- **DecidedAt**: 2026-08-28T13:16:14Z
+- **By**: claude-code
+
+### Diagnosis
+
+SKILL.md/references 含 forge 操作性引用（条件块/forge-integration.md/双路径/模板占位符）——违反 skills 零反向依赖契约（CONVENTIONS §13 R18 硬校验），存量豁免通道要求迁出
+
+### Revision
+
+forge 集成内容整体迁出至 forge 侧 internal/skillintegrate notes/（forge skills integration session-retrospective 查看，skill-trigger 推荐块附指针）；正文改为工具中立方法论（降级路径升为主路径/宿主机制中性措辞）
+
+### Evidence
+
+forge skills validate 53/53 通过且 R18Grandfathered 清空；TestR18_Grandfathered_Exact 双向卡死通过
+
+### Rationale
+
+依赖单向化：方法论完整留在中立库，forge 增强完整在 forge 侧；forge 用户体验经集成笔记+触发指针承接

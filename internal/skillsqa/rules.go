@@ -175,13 +175,75 @@ var imperativeRe = regexp.MustCompile(`\b(ALWAYS|NEVER|MUST)\b`)
 
 // forgeCmdRe — R18 forge CLI 命令引用（`forge task` / `forge review pass` 形态）。
 // 前置字符排除 [\w./-]：xforge（词内）、forge/docs、.forge/（路径）不算命令引用；
-// 后随小写子命令名——「forge 项目」「forge 环境」类叙述措辞不命中。
+// 后随小写子命令名——「forge 项目」「forge 环境」类叙述措辞不命中。分隔符用
+// [ \t] 不用 \s：ScanForgeRefs 按整文件内容匹配（非逐行），\s 含 \n/\r 会让
+// 「行尾裸 forge + 下行小写开头」跨行假命中（markdown 换行/CRLF 场景，review M1）。
 //
 // forgeCmdRe — R18 forge CLI command references (`forge task` / `forge review pass`).
 // The leading class excludes [\w./-]: xforge (inside a word), forge/docs, .forge/
 // (paths) are not command references; a lowercase subcommand must follow, so
-// prose like "forge 项目" / "forge 环境" never matches.
-var forgeCmdRe = regexp.MustCompile(`(?:^|[^\w./-])forge\s+[a-z][a-z-]*`)
+// prose like "forge 项目" / "forge 环境" never matches. The separator is [ \t],
+// NOT \s: ScanForgeRefs matches whole-file content (not per line), and \s
+// includes \n/\r, which would produce cross-line false hits when a line ends
+// with a bare "forge" and the next starts lowercase (markdown reflow/CRLF,
+// review M1).
+var forgeCmdRe = regexp.MustCompile(`(?:^|[^\w./-])forge[ \t]+[a-z][a-z-]*`)
+
+// forgeHomePathRe — R18 用户级 forge 目录引用（`~/.forge/`、`$HOME/.forge/`、
+// `${HOME}/.forge/`）。只认 home 前缀形态——项目级裸 `.forge/` 出现在「禁止混入
+// 源码的工具目录」清单这类反向列举里（implementation-discipline），不是依赖。
+//
+// forgeHomePathRe — R18 user-level forge directory references (`~/.forge/`,
+// `$HOME/.forge/`, `${HOME}/.forge/`). Home-prefixed forms only — a bare project
+// `.forge/` appears in reverse listings like implementation-discipline's
+// "tool dirs never commit" list, which is not a dependency.
+var forgeHomePathRe = regexp.MustCompile(`(?:~|\$\{?HOME\}?)/\.forge`)
+
+// forgeEnvRe — R18 forge 环境变量引用（`$FORGE_*` / `${FORGE_*}`）。
+//
+// forgeEnvRe — R18 forge environment variable references (`$FORGE_*` / `${FORGE_*}`).
+var forgeEnvRe = regexp.MustCompile(`\$\{?FORGE_`)
+
+// forgeIntegrationFileRe — R18 forge-integration.md 集成文件指针。2026-08 起该
+// 形态废止（零反向依赖契约）：集成内容整体迁往 forge 侧，存量文件待迁出。
+//
+// forgeIntegrationFileRe — R18 forge-integration.md pointer references. Deprecated
+// since the 2026-08 zero-reverse-dependency contract: integration content moves to
+// the forge side wholesale; remaining files await extraction.
+var forgeIntegrationFileRe = regexp.MustCompile(`forge-integration\.md`)
+
+// R18Grandfathered — R18 零反向依赖契约的存量豁免（冻结，只减不增）。这些 skill
+// 在契约收紧（2026-08：advisory→硬校验、扫描面扩到全目录）之前已含操作性行为
+// （forge CLI / ~/.forge 路径 / $FORGE_* / forge-integration.md），按 skill 粒度
+// 豁免以保持校验可落地；每迁出一个 skill 的集成内容就从这里移除一条。
+// 新增条目 = 违反只减不增纪律（TestR18_Grandfathered_Exact 守卫 allowlist 与
+// 实际命中集合严格相等，双向卡死：加不进无用条目，也漏不掉新违例）。
+// 前置豁免：`metadata.requires_forge: "true"` 的 forge 原生 skill 不查表、整体
+// 跳过 R18（CONVENTIONS §13）。
+//
+// R18Grandfathered — legacy exemptions under the R18 zero-reverse-dependency
+// contract (frozen, shrink-only). These skills already carried operational forge
+// behavior before the contract tightened (2026-08: advisory→hard, scan scope
+// widened to the whole skill dir) and are exempted per-skill so the check stays
+// enforceable; remove an entry each time a skill's integration content is
+// extracted to the forge side. Adding entries breaks the shrink-only discipline
+// (TestR18_Grandfathered_Exact pins the allowlist to the exact set of matches,
+// both directions: no dead entries in, no new violations out). Separate prior
+// exemption: `metadata.requires_forge: "true"` forge-native skills skip R18
+// entirely without consulting this table (CONVENTIONS §13).
+var R18Grandfathered = map[string]bool{
+	// 2026-08 迁移完成：原 10 条存量豁免（code-review-gate / cross-tool-context /
+	// design-artifact-standards / dev-workflow / doc-generator / doc-review /
+	// implementation-discipline / on-demand-guards / session-continuity /
+	// session-retrospective）的 forge 集成内容已全部迁出至 internal/skillintegrate
+	// notes/（forge skills integration 查看），表清空。保留空表与机制：若未来再次
+	// 出现需要过渡的存量，仍走此通道并遵守只减不增纪律。
+	//
+	// Migration completed 2026-08: all 10 legacy exemptions had their forge
+	// integration content extracted to internal/skillintegrate notes/ (view via
+	// `forge skills integration`); the table is now empty. The mechanism stays:
+	// any future transition debt goes through here under the shrink-only rule.
+}
 
 // RuleDescriptions — rule ID → rule text definition (exported single source of
 // truth; docs generation greps this table instead of copying rule text, and CLI
@@ -209,7 +271,7 @@ var RuleDescriptions = map[string]string{
 	"R15": "正文 ALL-CAPS 命令式词（ALWAYS/NEVER/MUST）合计 >5 次时提醒改「指令+原因」写法（advisory）",
 	"R16": "references/ 下 >300 行文件需 ToC（advisory；markdown 文件由 R11 以 >100 行更低门槛先行覆盖，不重复报）",
 	"R17": "evals/evals.json 存在时须符 schema：对象含 trigger_cases 数组，每项 {query: string, should_trigger: boolean}（advisory）",
-	"R18": "正文 forge 命令引用只允许出现在「> Forge 项目」条件引用块内，其余位置命中即提醒依赖倒置契约（advisory；细节下沉 references/forge-integration.md，CONVENTIONS §13）",
+	"R18": "skill 目录（SKILL.md 正文 + references/ 等，decisions.md/evals 除外）零 forge 反向依赖：不得含 forge CLI 调用、~/.forge 路径、$FORGE_* 变量、forge-integration.md 指针；命中即硬 issue（存量豁免 R18Grandfathered 只减不增；requires_forge 标记的 forge 原生 skill 跳过，CONVENTIONS §13）",
 }
 
 // allowedFmSorted returns the sorted allowed-field list (used in R3 issue text;

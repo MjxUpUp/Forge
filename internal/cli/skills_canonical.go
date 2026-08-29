@@ -60,6 +60,58 @@ func detectRepoSkillsDir() string {
 	return dir
 }
 
+// detectRepoForgeSkillsDir returns <project-root>/skills-forge when it exists as a
+// real forge-native skill tree (at least one <skill>/SKILL.md — no CONVENTIONS.md
+// marker in this zone; it is forge-owned content by definition). Post-2026-08
+// migration home of the requires_forge skills: decide falls back to it for those
+// names so in-repo writes land in the real source, not the regenerated embed
+// cache (same hazard class as detectRepoSkillsDir's rationale).
+//
+// detectRepoForgeSkillsDir 在项目根存在真实 forge 原生 skill 树（至少一个
+// <skill>/SKILL.md——本专区无 CONVENTIONS.md 标记；它按定义就是 forge 专属内容）
+// 时返回 <项目根>/skills-forge。2026-08 迁移后 requires_forge skill 的家：
+// decide 对这些名字回退到它，仓库内写入落在真实源而非可再生成的 embed 缓存
+// （与 detectRepoSkillsDir 的立项理由同一危害类）。
+func detectRepoForgeSkillsDir() string {
+	root, err := findProjectRoot()
+	if err != nil {
+		return ""
+	}
+	dir := filepath.Join(root, "skills-forge")
+	matches, err := filepath.Glob(filepath.Join(dir, "*", "SKILL.md"))
+	if err != nil || len(matches) == 0 {
+		return ""
+	}
+	return dir
+}
+
+// repoSkillWriteDir resolves the in-repo write target for a named skill's data
+// (decisions.md etc.): skills-forge/ when the skill lives there (forge-native,
+// post-2026-08 migration), else the neutral skills/ tree when it exists. "" when
+// neither applies (outside a repo). Callers gate on "resolution did not come from
+// an explicit --canonical/env source" — user intent wins. The neutral fallback
+// does not require the skill to exist there: typo'd names must fail at the
+// read-before-write layer (LoadDecisions / VerifyDecision) with a clear error,
+// not silently fall back to the regenerated cache.
+//
+// repoSkillWriteDir 解析具名 skill 数据（decisions.md 等）的仓库内写入目标：
+// skill 住 skills-forge/ 就用它（forge 原生，2026-08 迁移后），否则用存在的中立
+// skills/ 树。两者皆无（仓库外）返回 ""。调用方须以「解析非来自显式
+// --canonical/env 源」为前提——用户意图优先。中立回退不要求 skill 存在于该树：
+// 拼错的名字应在读前写层（LoadDecisions / VerifyDecision）拿到明确报错，而不是
+// 静默落回可再生成的缓存。
+func repoSkillWriteDir(skill string) string {
+	if skill == "" {
+		return ""
+	}
+	if d := detectRepoForgeSkillsDir(); d != "" {
+		if _, err := os.Stat(filepath.Join(d, skill)); err == nil {
+			return d
+		}
+	}
+	return detectRepoSkillsDir()
+}
+
 // requireValidSkillName rejects --skill values that are not plain skill names
 // (empty, ".", "..", or containing path separators). The name is joined into
 // filesystem paths by the skillsdecisions/skillseval stores — an unchecked

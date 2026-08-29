@@ -14,6 +14,8 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/skillsdecisions"
@@ -50,10 +52,16 @@ var skillsVerifyCmd = &cobra.Command{
 }
 
 func runSkillsVerify(cmd *cobra.Command, args []string) error {
-	canonical, _, err := resolveCanonical()
+	canonical, isExternal, err := resolveCanonical()
 	if err != nil {
 		return err
 	}
+	// explicitSource = the user pointed at a source via --canonical /
+	// $FORGE_SKILLS_CANONICAL; such intent always wins over repo auto-detection.
+	//
+	// explicitSource = 用户经 --canonical / $FORGE_SKILLS_CANONICAL 显式指定了源；
+	// 该意图永远优先于仓库自动探测。
+	explicitSource := isExternal
 
 	// History mode: list decisions with their prediction/verification state (which
 	// predictions are still open — the falsifiability ledger). No --decision needed.
@@ -68,6 +76,26 @@ func runSkillsVerify(cmd *cobra.Command, args []string) error {
 	}
 	if err := requireValidSkillName(skVerSkill); err != nil {
 		return err
+	}
+	// In-repo write redirect (review finding): VerifyDecision rewrites decisions.md —
+	// resolving to the embed cache would ✅ succeed and be silently destroyed by the
+	// next version rebuild (the same hazard class as decide's 2026-08-24 incident;
+	// since the 2026-08 migration the 3 forge-native skills live in skills-forge/,
+	// unreachable via the neutral-tree fallback decide uses). Explicit sources win.
+	//
+	// 仓库内写入重定向（review 发现）：VerifyDecision 会重写 decisions.md——解析到
+	// embed 缓存会 ✅ 成功却被下一次版本重建静默销毁（与 decide 的 2026-08-24 事故
+	// 同一危害类；2026-08 迁移后 3 个 forge 原生 skill 住 skills-forge/，decide 用的
+	// 中立树回退够不到它们）。显式指定的源优先。
+	if !explicitSource {
+		if d := repoSkillWriteDir(skVerSkill); d != "" && d != canonical {
+			canonical = d
+			w := io.Writer(os.Stderr)
+			if cmd != nil {
+				w = cmd.ErrOrStderr()
+			}
+			fmt.Fprintf(w, "ℹ️ 检测到仓库内 skill 源树，verify 写入 %s（非 embed 缓存）\n", d)
+		}
 	}
 	if skVerDecision == "" {
 		return fmt.Errorf("需要 --decision ID（用 --history 查看可用决策 ID）")
