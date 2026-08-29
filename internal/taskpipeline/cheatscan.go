@@ -251,6 +251,13 @@ var typeSuppressionRe = []*regexp.Regexp{
 	regexp.MustCompile(`#\[allow`), // Rust 属性（要求 #[ 前缀）
 	// Java annotation.
 	regexp.MustCompile(`@SuppressWarnings`), // Java 注解
+	// Go nolint directive (comment-carried suppression, same class as eslint-disable).
+	// Sigil kept split ("nolint" composed from concatenation) so this scanner's own
+	// source mentions don't self-match.
+	//
+	// Go nolint 指令（注释承载的抑制，与 eslint-disable 同类）。sigil 刻意拆开写
+	//（"nolint" 由拼接构成），避免扫描器自身源码里的提及自匹配。
+	regexp.MustCompile(`//\s*nol` + `int`),
 }
 
 // detectTypeSuppression: new lines containing type/warning suppression directives (anywhere),
@@ -320,6 +327,22 @@ var errorSwallowRe = []*regexp.Regexp{
 	//
 	// 空 catch 单行：catch {} / catch (e) {} / catch (e: Err) {} —— 跨语言（JS/TS/Java/C#）。
 	regexp.MustCompile(`\bcatch\s*(\([^)]*\))?\s*\{\s*\}`),
+	// Comment-only catch body: catch (e) { /* ignore */ } / { // 忽略 } — the most
+	// typical AI semantic swallow (looks "handled", does nothing). Single-line, the
+	// body may consist only of whitespace plus one line comment or a self-closed
+	// block comment. (2026-08-29 review round: functional probe confirmed zero-cost bypass.)
+	//
+	// 注释体 catch：catch (e) { /* ignore */ } / { // 忽略 } —— AI 最典型的语义化
+	// 吞错（看着"处理过"，实际什么都没做）。单行，函数体仅由空白 + 一条行注释或
+	// 自闭合块注释构成。（2026-08-29 审查轮：功能探针实证原为零成本绕过。）
+	regexp.MustCompile(`\bcatch\s*(\([^)]*\))?\s*\{\s*(?://[^\n]*|/\*[^*]*\*/)\s*\}`),
+	// Go error discard: explicit `var _ = err` / `_ = err` assignment — the Go idiom
+	// for swallowing an error without the blank-import excuse. Requires the RHS
+	// identifier to look like an error (err/errX/errs) to stay high-confidence.
+	//
+	// Go 错误丢弃：显式 `var _ = err` / `_ = err` 赋值——Go 里不借 blank-import
+	// 借口吞掉错误的惯用形态。要求 RHS 形似错误变量（err/errX/errs）保持高置信。
+	regexp.MustCompile(`(\bvar\s+)?_\s*=\s*err[a-zA-Z0-9]*\b`),
 	// Python except ... : pass (same-line pass = real swallow).
 	//
 	// Python except ... : pass（同行的 pass = 真吞）。

@@ -65,8 +65,12 @@ var BannedPhrases = []bannedPhrase{
 	{regexp.MustCompile(`综上所述`), "空转总结词——总结应压缩为可执行结论，不应以套话开场"},
 	{regexp.MustCompile(`基本可以`), "模糊限定语——通过/不通过须给出明确判定与证据"},
 	{regexp.MustCompile(`问题不大`), "模糊限定语——风险要么量化要么列为待确认项，不写「不大」"},
-	{regexp.MustCompile(`大致没问题`), "模糊限定语——同「问题不大」"},
-	{regexp.MustCompile(`差不多可以`), "模糊限定语——同「基本可以」"},
+	// Reason 文本引用兄弟短语必须用反引号：这些 Reason 会渲染进 forge-quality
+	// skill（RenderBannedPhrasesForSkill），散文形态的引用会让 init 自产资产
+	// 命中自家 D1 硬门禁——新项目开箱即被 doc gate 卡死（2026-08-29 审查轮
+	// 功能实证，init 自伤）。
+	{regexp.MustCompile(`大致没问题`), "模糊限定语——同 `问题不大`"},
+	{regexp.MustCompile(`差不多可以`), "模糊限定语——同 `基本可以`"},
 }
 
 // EvidenceFreeConclusions are D2 无证据整体性结论: whole-document verdicts
