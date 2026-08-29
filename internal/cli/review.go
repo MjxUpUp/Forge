@@ -185,24 +185,38 @@ func runReviewPassAt(root, explicitRef, note string, acknowledgeChanges bool) er
 		// （历史改写）→ fail-open，与 executor 的快照检查一致——但 fail-open
 		// 的裸重盖章记 WARN 级 baseline-unreachable 审计（review minor #2：
 		// fail-open 不能零留痕，对齐 executor fail-open 落 checklog 的做法）。
+		//
+		// Lost-update hardening (review round 2026-08-29): the load→guard→mark→save
+		// sequence runs under the per-task lock now (MutateTaskState reloads the state
+		// in-lock) — a bare SaveTaskState over the pre-lock snapshot used to roll back
+		// concurrent session-links/DesignPhases writes, or lose the stamp itself to a
+		// concurrent writer. This is the ReviewPassed hard prerequisite's write path.
+		//
+		// 丢失更新加固（2026-08-29 审查轮）：load→守卫→盖章→保存 整段改在 per-task
+		// 锁内执行（MutateTaskState 锁内重载 state）——此前对锁前快照裸 SaveTaskState
+		// 会回滚并发写入的 session-links/DesignPhases，或让盖章本身被并发写者覆盖。
+		// 这是 ReviewPassed 硬前置的写入路径。
 		selfRefresh := false
 		baselineUnreachable := ""
-		if state.ReviewedHeadCommit != "" {
-			cur, _, err := taskpipeline.TaskFingerprint(root, state, state.ReviewedHeadCommit)
-			switch {
-			case err != nil:
-				baselineUnreachable = state.ReviewedHeadCommit
-			case cur != state.ReviewedChangeHash:
-				if !acknowledgeChanges && note == "" {
-					return fmt.Errorf("review pass 拒绝：距上次审查基线（HEAD=%s）源码已变更——按协议先重派【只读】子 agent 复审当前代码，再 `forge review pass --note \"<复审结论>\"` 盖章；确认变更无需复审（自我承担，记 self-refresh WARN 审计）用 `forge review pass --acknowledge-changes`", state.ReviewedHeadCommit)
+		markErr := taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
+			if s.ReviewedHeadCommit != "" {
+				cur, _, err := taskpipeline.TaskFingerprint(root, s, s.ReviewedHeadCommit)
+				switch {
+				case err != nil:
+					baselineUnreachable = s.ReviewedHeadCommit
+				case cur != s.ReviewedChangeHash:
+					if !acknowledgeChanges && note == "" {
+						return fmt.Errorf("review pass 拒绝：距上次审查基线（HEAD=%s）源码已变更——按协议先重派【只读】子 agent 复审当前代码，再 `forge review pass --note \"<复审结论>\"` 盖章；确认变更无需复审（自我承担，记 self-refresh WARN 审计）用 `forge review pass --acknowledge-changes`", s.ReviewedHeadCommit)
+					}
+					selfRefresh = acknowledgeChanges
 				}
-				selfRefresh = acknowledgeChanges
 			}
-		}
-
-		state.MarkReviewPassedWithNote(head, hash, note)
-		if err := taskpipeline.SaveTaskState(root, state); err != nil {
-			return fmt.Errorf("failed to save task state: %w", err)
+			s.MarkReviewPassedWithNote(head, hash, note)
+			state = s
+			return nil
+		})
+		if markErr != nil {
+			return markErr
 		}
 		// Record the review-pass event (round N + reviewed snapshot) — the raw material for the
 		// rework-round metric. Observation class (excluded from evidence-strength bucketing).
