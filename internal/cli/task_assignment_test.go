@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/taskcontext"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
@@ -1361,4 +1362,94 @@ func TestAdviseUnclaimedAssignment(t *testing.T) {
 			t.Fatalf(`探测不到当前 agent 应静默（误报比漏报更糟）, got %d 条`, n)
 		}
 	})
+}
+
+// writeCrossRepoDepState writes one task state file into the
+// FORGE_DATA_HOME-relative data dir of the given workspace member key — the
+// on-disk shape taskpipeline.LoadDepState resolves a key:ref dep to (same
+// fixture discipline as taskpipeline/depref_test.go).
+//
+// writeCrossRepoDepState 往指定 workspace 成员 key 的 DataDir（相对
+// FORGE_DATA_HOME）写一个 task state 文件——即 taskpipeline.LoadDepState 解析
+// key:ref 依赖到的磁盘形态（与 taskpipeline/depref_test.go 同款夹具纪律）。
+func writeCrossRepoDepState(t *testing.T, home, key string, s *taskpipeline.TaskState) {
+	t.Helper()
+	dir := filepath.Join(home, `projects`, key, `tasks`)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, taskcontext.SanitizeRef(s.TaskRef)+`.json`), data, 0644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestAnnotateDep_CrossRepoResolves pins the cross-repo fix (fix/cleanup-batch,
+// 2026-08-29): a key:ref dependency resolves via taskpipeline.LoadDepState
+// (mirroring task_health.go's lookupState) instead of reading as forever-missing
+// — the foreign task can never appear in this repo's byRef index, so before the
+// fix a live cross-repo dep rendered "missing" and hid where the worker is
+// actually blocked. Failure shapes (unknown key / vanished target) stay
+// conservatively "missing", same as the gate's PendingDependencies.
+//
+// TestAnnotateDep_CrossRepoResolves 钉住跨仓修复（fix/cleanup-batch，
+// 2026-08-29）：key:ref 依赖经 taskpipeline.LoadDepState 解析（镜像
+// task_health.go 的 lookupState），不再恒读作 missing——他仓任务本就不可能
+// 出现在本仓 byRef 索引里，修复前在途的跨仓依赖渲染成 "missing"、掩盖工作方
+// 真正卡在哪一环。失败形态（key 未知/目标消失）保守保持 "missing"，与门禁
+// PendingDependencies 一致。
+func TestAnnotateDep_CrossRepoResolves(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv(`FORGE_DATA_HOME`, home)
+	root := t.TempDir()
+
+	// Cross-repo member bb0000000002: a delivered delegated dep and a bare WIP one.
+	//
+	// 跨仓成员 bb0000000002：一个已交付的分派依赖 + 一个普通在途依赖。
+	writeCrossRepoDepState(t, home, `bb0000000002`,
+		&taskpipeline.TaskState{TaskRef: `b-done`, Assignment: &taskpipeline.Assignment{Status: taskpipeline.AssignDelivered}})
+	writeCrossRepoDepState(t, home, `bb0000000002`, &taskpipeline.TaskState{TaskRef: `b-wip`})
+
+	byRef := map[string]*taskpipeline.TaskState{} // 本仓索引为空：跨仓 ref 永不命中
+	total := len(taskpipeline.DefaultGates())
+
+	// Delivered cross-repo dep → its Assignment.Status, not "missing".
+	//
+	// 已交付的跨仓依赖 → 其 Assignment.Status，而非 "missing"。
+	if st, _, tot := annotateDep(root, `bb0000000002:b-done`, byRef); st != taskpipeline.AssignDelivered {
+		t.Errorf(`cross-repo delivered: status = %q, want %q（跨仓 ref 不得恒 missing）`, st, taskpipeline.AssignDelivered)
+	} else if tot != total {
+		t.Errorf(`gate total = %d, want %d`, tot, total)
+	}
+
+	// In-flight cross-repo dep → incomplete with gate progress, not "missing".
+	//
+	// 在途跨仓依赖 → incomplete 带门禁进度，而非 "missing"。
+	if st, passed, _ := annotateDep(root, `bb0000000002:b-wip`, byRef); st != `incomplete` {
+		t.Errorf(`cross-repo wip: status = %q, want "incomplete"`, st)
+	} else if passed != 0 {
+		t.Errorf(`cross-repo wip: gate passed = %d, want 0`, passed)
+	}
+
+	// Conservative failure shapes stay "missing": unknown key, vanished target,
+	// and a same-repo ref absent from the index (regression guard).
+	//
+	// 保守失败形态保持 "missing"：key 未知、目标消失、以及不在索引中的本仓 ref
+	// （回归守卫）。
+	for _, ref := range []string{`cc0000000003:anything`, `bb0000000002:b-ghost`, `local-ghost`} {
+		if st, _, _ := annotateDep(root, ref, byRef); st != `missing` {
+			t.Errorf(`%s: status = %q, want "missing"`, ref, st)
+		}
+	}
+
+	// Same-repo index path unchanged: an indexed predecessor annotates as before.
+	//
+	// 本仓索引路径不变：索引中的前序依赖照旧标注。
+	byRef[`local-wip`] = &taskpipeline.TaskState{TaskRef: `local-wip`}
+	if st, _, _ := annotateDep(root, `local-wip`, byRef); st != `incomplete` {
+		t.Errorf(`local wip: status = %q, want "incomplete"`, st)
+	}
 }

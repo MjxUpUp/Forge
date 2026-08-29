@@ -57,14 +57,40 @@ func resolveBase(root string) string {
 	return "HEAD~1"
 }
 
-// changedFiles returns repo-relative paths changed since base (committed changes base..HEAD plus
-// uncommitted working-tree changes relative to HEAD). Deduplicated, order-preserving. Used by
-// CollectAssertionDensity — needs only paths, not line counts.
+// changedFiles returns repo-relative paths changed since base (committed changes
+// base..HEAD plus uncommitted working-tree changes relative to HEAD, plus
+// UNTRACKED files via git ls-files --others). Deduplicated, order-preserving.
+// Used by CollectAssertionDensity — needs only paths, not line counts.
 //
-// changedFiles 返回自 base 以来变更的 repo-relative 路径（committed 改动 base..HEAD 加上
-// 相对 HEAD 的 uncommitted working-tree 改动）。去重，保序。供 CollectAssertionDensity
-// 使用——只需路径，不要行数。
-func changedFiles(root, base string) []string {
+// Untracked inclusion note: `git diff` does NOT accept --others (exit 129 — it
+// is an ls-files option), so untracked files come from a separate
+// `git ls-files --others --exclude-standard` probe instead of being appended to
+// the diff command. Without it, a brand-new (never-added) test file was
+// invisible to assertion density and the fake-test signal went blind exactly
+// where fake tests are most common.
+//
+// Error contract (mirrors gitDiffStat, fix/cleanup-batch 2026-08-29): a single
+// probe failing is tolerated (the others may still yield data); ALL probes
+// failing returns the real error (non-git dir, unreachable base, git missing)
+// so the failure is observable to the caller instead of being
+// indistinguishable from "no changes" — CollectAssertionDensity uses it to
+// skip the fake-test penalty rather than punish on a dead probe.
+//
+// changedFiles 返回自 base 以来变更的 repo-relative 路径（committed 改动
+// base..HEAD 加上相对 HEAD 的 uncommitted working-tree 改动，加上经
+// git ls-files --others 纳入的未跟踪文件）。去重，保序。供
+// CollectAssertionDensity 使用——只需路径，不要行数。
+//
+// 未跟踪纳入说明：`git diff` 不接受 --others（exit 129——那是 ls-files 的选项），
+// 故未跟踪文件来自单独的 `git ls-files --others --exclude-standard` 探测，而非
+// 追加到 diff 命令上。没有它，全新（从未 add）的测试文件对断言密度不可见，
+// 假测试信号恰在最常见处失明。
+//
+// 错误契约（镜像 gitDiffStat，fix/cleanup-batch 2026-08-29）：单个探测失败可容忍
+// （其余仍可能有数据）；全部探测失败返回真实 error（非 git 目录、base 不可达、
+// git 不存在），让失败对调用方可观测、而非与「无变更」不可区分——
+// CollectAssertionDensity 据此跳过假测试惩罚而非惩罚死探测。
+func changedFiles(root, base string) ([]string, error) {
 	var files []string
 	seen := make(map[string]bool)
 	add := func(out []byte) {
@@ -81,17 +107,32 @@ func changedFiles(root, base string) []string {
 	//
 	// 1. 任务期间 committed 改动：base..HEAD
 	branchCmd := exec.Command("git", "-C", root, "diff", "--name-only", base+"..HEAD")
-	if out, err := branchCmd.Output(); err == nil {
-		add(out)
+	branchOut, branchErr := branchCmd.Output()
+	if branchErr == nil {
+		add(branchOut)
 	}
 	// 2. Uncommitted working-tree changes relative to HEAD
 	//
 	// 2. 相对 HEAD 的 uncommitted working-tree 改动
 	workCmd := exec.Command("git", "-C", root, "diff", "--name-only", "HEAD")
-	if out, err := workCmd.Output(); err == nil {
-		add(out)
+	workOut, workErr := workCmd.Output()
+	if workErr == nil {
+		add(workOut)
 	}
-	return files
+	// 3. Untracked files (--others --exclude-standard semantics via ls-files —
+	// git diff rejects --others, see the function comment).
+	//
+	// 3. 未跟踪文件（经 ls-files 实现 --others --exclude-standard 语义——
+	// git diff 不接受 --others，见函数注释）。
+	othersCmd := exec.Command("git", "-C", root, "ls-files", "--others", "--exclude-standard")
+	othersOut, othersErr := othersCmd.Output()
+	if othersErr == nil {
+		add(othersOut)
+	}
+	if branchErr != nil && workErr != nil && othersErr != nil {
+		return nil, fmt.Errorf("git diff/ls-files failed (base..HEAD: %v; HEAD: %v; others: %v)", branchErr, workErr, othersErr)
+	}
+	return files, nil
 }
 
 // gitDiffStat returns the diff --numstat output for changes since base.

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -115,5 +116,90 @@ func TestEmitInfraAllow(t *testing.T) {
 	}
 	if out.HookSpecificOutput == nil || out.HookSpecificOutput.AdditionalContext != "warn" {
 		t.Errorf("additionalContext missing: %+v", out.HookSpecificOutput)
+	}
+}
+
+// TestRunHookCreateTempFailureRoutesInfraAllow pins the infra-exit unification
+// (fix/cleanup-batch, 2026-08-29): the script-never-runs failures in runHook
+// step 3/4 (temp-file create/write, findBash) are the same infrastructure
+// class as the step-5 bash-spawn failure and must route through
+// emitInfraAllow — a visible, host-routed warning and exit 0 (fail-open) —
+// instead of returning a bare error (Execute printed it, exited 1, and NO host
+// context channel ever saw it). The temp-file failure is induced by pointing
+// the temp dir env at a non-existent path; the claude-shape emission lands on
+// stdout as a bare hookSpecificOutput.
+//
+// TestRunHookCreateTempFailureRoutesInfraAllow 钉住 infra 出口统一
+// （fix/cleanup-batch，2026-08-29）：runHook step 3/4 的「脚本永远跑不起来」失败
+// （临时文件创建/写入、findBash）与 step 5 的 bash 起不来同属基础设施类，必须改走
+// emitInfraAllow——可见的、按宿主路由的警告 + exit 0（fail-open）——而非返回裸
+// error（Execute 打印、exit 1，任何宿主上下文通道都看不到）。临时文件失败以
+// 「temp 目录 env 指向不存在路径」诱发；claude 形态的发射以裸 hookSpecificOutput
+// 落在 stdout。
+func TestRunHookCreateTempFailureRoutesInfraAllow(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	// Point every temp-dir env at a non-existent path so os.CreateTemp fails —
+	// the step-3 infra failure (Windows checks TMP/TEMP, Unix TMPDIR; setting
+	// all three covers both).
+	//
+	// 把所有 temp 目录 env 指向不存在的路径使 os.CreateTemp 失败——即 step-3
+	// infra 失败（Windows 查 TMP/TEMP、Unix 查 TMPDIR；三个都设即全覆盖）。
+	badTmp := filepath.Join(t.TempDir(), "no-such-dir")
+	t.Setenv("TMP", badTmp)
+	t.Setenv("TEMP", badTmp)
+	t.Setenv("TMPDIR", badTmp)
+
+	// Minimal forge project so the project-scoped dispatch reaches step 3.
+	//
+	// 最小 forge 项目，让项目级分发走到 step 3。
+	tmpDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(tmpDir, ".forge", "hooks"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, ".forge", "state.json"), []byte(`{"pipeline_version":"2.0","mode":"small"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	originalWd, _ := os.Getwd()
+	os.Chdir(tmpDir)
+	defer os.Chdir(originalWd)
+
+	oldStdin := os.Stdin
+	// Explicit dir: os.TempDir() is poisoned by this test on purpose (that is
+	// the failure being induced), so the stdin fixture must live somewhere real.
+	//
+	// 显式目录：本测试刻意毒化 os.TempDir()（那正是要诱发的失败），stdin 夹具
+	// 必须落在真实存在的目录里。
+	tmpStdin, err := os.CreateTemp(t.TempDir(), "hook-stdin-*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpStdin.WriteString(`{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"src/main.go","old_string":"a","new_string":"b"}}`)
+	tmpStdin.Seek(0, 0)
+	os.Stdin = tmpStdin
+	defer func() {
+		os.Stdin = oldStdin
+		tmpStdin.Close()
+		os.Remove(tmpStdin.Name())
+	}()
+
+	stdout, _, err := captureOutput(t, func() error {
+		return runHook(nil, []string{"task-guard"})
+	})
+	// Fail-open contract: nil error (exit 0), never a bare error again.
+	//
+	// fail-open 契约：nil error（exit 0），绝不再返回裸 error。
+	if err != nil {
+		t.Fatalf("temp-file infra failure must fail open (nil, exit 0) via emitInfraAllow, got %v", err)
+	}
+	// The warning is visible on the claude context channel (bare
+	// hookSpecificOutput JSON), naming the infra failure and the fail-open.
+	//
+	// 警告在 claude 上下文通道可见（裸 hookSpecificOutput JSON），点名 infra
+	// 失败与 fail-open。
+	if !strings.Contains(stdout, "基础设施失败") || !strings.Contains(stdout, "fail-open") {
+		t.Fatalf("infra warning must surface on the host channel, got stdout %q", stdout)
+	}
+	if strings.Contains(stdout, `"decision"`) {
+		t.Fatalf("allow path must not carry a decision field, got %q", stdout)
 	}
 }

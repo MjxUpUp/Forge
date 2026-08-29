@@ -301,7 +301,7 @@ func TestSanitizeCommand_NonCommand(t *testing.T) {
 	root := t.TempDir()
 	p := filepath.Join(root, "known_marketplaces.json")
 	writeFile(t, p, "{\"name\":\"Forge\",\"description\":\"Forge loop-engineering quality gates: task-tracked source changes, and review-gated completion.\"}")
-	cmds, bins := scanFile(p, nil)
+	cmds, bins, _ := scanFile(p, nil)
 	if cmds != 0 || len(bins) != 0 {
 		t.Fatalf("描述文案不应计为接线，got cmds=%d bins=%v", cmds, bins)
 	}
@@ -312,7 +312,7 @@ func TestScanFile_QuotedJSON(t *testing.T) {
 	root := t.TempDir()
 	p := filepath.Join(root, "hooks.json")
 	writeFile(t, p, `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"\"C:\\forge\\forge.exe\" hook session-start"}]}]}}`)
-	cmds, bins := scanFile(p, nil)
+	cmds, bins, _ := scanFile(p, nil)
 	if cmds != 1 {
 		t.Fatalf("ForgeCmds 应为 1，got %d", cmds)
 	}
@@ -523,7 +523,7 @@ func TestScanFile_GatePrefix(t *testing.T) {
 	root := t.TempDir()
 	p := filepath.Join(root, "hooks.json")
 	writeFile(t, p, `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"forge gate review-pass"}]}]}}`)
-	cmds, bins := scanFile(p, nil)
+	cmds, bins, _ := scanFile(p, nil)
 	if cmds != 1 {
 		t.Fatalf("forge gate 行应计为接线，ForgeCmds 应为 1，got %d", cmds)
 	}
@@ -630,5 +630,94 @@ func TestSkillsDriftSummarySkippedJSON(t *testing.T) {
 	}
 	if len(back.Skipped) != 2 || back.Skipped[0] != "codex" {
 		t.Errorf("round-trip Skipped = %v", back.Skipped)
+	}
+}
+
+// TestScanFile_UnreadableSurfacesError pins the read-failure contract
+// (fix/cleanup-batch, 2026-08-29): a hook carrier that exists but cannot be
+// READ must return an error in the "<basename> unreadable: …" shape instead of
+// scanning as zero commands — without it, a locked settings.json was
+// indistinguishable from "no forge wiring" (missing). The unreadable state is
+// induced with a DIRECTORY at the file path (os.ReadFile on a dir fails on
+// every supported platform with a non-not-exist error — no platform-specific
+// ACL games needed).
+//
+// TestScanFile_UnreadableSurfacesError 钉住读失败契约（fix/cleanup-batch，
+// 2026-08-29）：存在但读不了的 hook 载体必须返回 "<基名> unreadable: …" 形态的
+// error，而不是扫出零条命令——否则被锁的 settings.json 与「没有 forge 接线」
+// （missing）不可区分。不可读状态以「文件路径上是目录」诱发（os.ReadFile 读目录
+// 在所有受支持平台都返回非 not-exist 错误——无需平台相关的 ACL 手脚）。
+func TestScanFile_UnreadableSurfacesError(t *testing.T) {
+	root := t.TempDir()
+	p := filepath.Join(root, "settings.json")
+	if err := os.MkdirAll(p, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmds, bins, err := scanFile(p, nil)
+	if err == nil {
+		t.Fatal("unreadable carrier must surface an error, got nil")
+	}
+	if !strings.Contains(err.Error(), "settings.json unreadable") {
+		t.Errorf("err = %v, want the %q shape", err, "settings.json unreadable")
+	}
+	if cmds != 0 || bins != nil {
+		t.Errorf("no scan results possible on read failure, got cmds=%d bins=%v", cmds, bins)
+	}
+}
+
+// TestScanFile_NotExistStaysQuiet pins the other half of the contract: a file
+// that vanished mid-scan is the MISSING verdict itself (expandHookFiles already
+// stat-checked the target) — not an error. Only readable-but-refused carriers
+// error; not-exist stays quiet so missing hosts keep their clean "missing"
+// rendering.
+//
+// TestScanFile_NotExistStaysQuiet 钉住契约的另一半：扫描中途消失的文件本身就是
+// missing 结论（expandHookFiles 已对目标做过 stat）——不是 error。只有「可存在
+// 但被拒读」的载体才报错；not-exist 保持安静，让 missing host 保持干净的
+// "missing" 渲染。
+func TestScanFile_NotExistStaysQuiet(t *testing.T) {
+	cmds, bins, err := scanFile(filepath.Join(t.TempDir(), "gone.json"), nil)
+	if err != nil {
+		t.Fatalf("vanished file must stay quiet, got %v", err)
+	}
+	if cmds != 0 || bins != nil {
+		t.Errorf("vanished file has no scan results, got cmds=%d bins=%v", cmds, bins)
+	}
+}
+
+// TestRun_SkillsBlindSpotsStamped pins the reserved-name blind-spot annotation
+// (fix/cleanup-batch, 2026-08-29): Run stamps SkillsDriftSummary.BlindSpots on
+// every probe result — forge-quality is managed by skillgen, absent from the
+// canonical dir, and therefore invisible to the canonical×target drift walk; a
+// green in-sync line must not claim coverage it does not have. The JSON wire
+// name (blind_spots, omitempty) is part of the contract for --json consumers.
+//
+// TestRun_SkillsBlindSpotsStamped 钉住保留名盲区标注（fix/cleanup-batch，
+// 2026-08-29）：Run 给每个探针结果盖章 SkillsDriftSummary.BlindSpots——
+// forge-quality 由 skillgen 管理、不在 canonical 目录，canonical×目标 drift
+// 遍历因此永远看不到它；绿色的 in-sync 行不得声称自己没有的覆盖。JSON 线名
+// （blind_spots、omitempty）是 --json 消费方契约的一部分。
+func TestRun_SkillsBlindSpotsStamped(t *testing.T) {
+	isolate(t)
+	env := fakeEnv(nil)
+	got := &SkillsDriftSummary{Canonical: `C:\canon`, Linked: 4}
+	rep := Run("1.30.0", Options{
+		LookPath:         env.LookPath,
+		VersionRunner:    env.VersionRunner,
+		SkillsDriftProbe: func() *SkillsDriftSummary { return got },
+	})
+	if rep.Skills != got {
+		t.Fatalf("probe 摘要应原样上报，got %+v", rep.Skills)
+	}
+	if len(rep.Skills.BlindSpots) == 0 || !strings.Contains(strings.Join(rep.Skills.BlindSpots, "\n"), "forge-quality") {
+		t.Fatalf("BlindSpots 应点名 forge-quality（skillgen 管理的保留名对本审计不可见）, got %v", rep.Skills.BlindSpots)
+	}
+	// JSON 契约：线名 blind_spots。
+	data, err := json.Marshal(rep.Skills)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"blind_spots"`) {
+		t.Errorf("JSON 应含 blind_spots 字段: %s", data)
 	}
 }

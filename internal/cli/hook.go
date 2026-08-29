@@ -559,6 +559,35 @@ func runHook(cmd *cobra.Command, args []string) error {
 		hookInput.LastAssistantMessage = hookInput.SubagentResult
 	}
 
+	// 1b-2. Session-id single entry point (fix/cleanup-batch, 2026-08-29): sanitize
+	// the session id ONCE here, after the payload fallbacks (so a conversation_id
+	// fill is sanitized too) and before ANY downstream consumption (registration,
+	// attribution, checklog records/queries, env for thin wrappers). Before this,
+	// record sites were split — hook.go sanitized at Record time while hook_track.go
+	// recorded the RAW id — so any host id whose sanitized form differs (dots,
+	// >64 chars) produced checklog rows the sanitized session-scoped readers
+	// (LatestByCheckForSessionSince compares exact strings) could never match.
+	// Downstream util.SanitizeSessionID calls stay (defense in depth): the function
+	// converges after ≤2 applications — pinned by TestSanitizeSessionIDConverges —
+	// so entry-sanitize + downstream-sanitize is uniform everywhere.
+	// Empty stays empty: SanitizeSessionID("") would return "session", and the
+	// empty-vs-nonempty distinction below (legacy global path, degraded-mode
+	// skips) is load-bearing.
+	//
+	// 1b-2. session id 入口统一（fix/cleanup-batch，2026-08-29）：在 payload 回落
+	// 之后（conversation_id 填空也被归一）、任何下游消费（登记/归因/checklog 记录
+	// 与查询/thin wrapper 的 env）之前，把 session id 在此【一次性】归一。此前记录点
+	// 分裂——hook.go 记录时归一而 hook_track.go 记【原始值】——凡 sanitized 形态与
+	// 原值不同的宿主 id（点号、超 64 字符）产出的 checklog 行，按 sanitized 过滤的
+	// 会话级读方（LatestByCheckForSessionSince 精确串比较）永远匹配不上。下游的
+	// util.SanitizeSessionID 调用保留（纵深防御）：该函数至多 2 次应用后收敛——由
+	// TestSanitizeSessionIDConverges 钉住——入口归一 + 下游归一处处一致。空保持空：
+	// SanitizeSessionID("") 会返回 "session"，而下方空/非空的区分（legacy 全局路径、
+	// 降级模式跳过）是承重的。
+	if hookInput.SessionID != "" {
+		hookInput.SessionID = util.SanitizeSessionID(hookInput.SessionID)
+	}
+
 	// Adopt the payload's cwd before resolving the project root. kimi plugin hooks are
 	// spawned with the process cwd set to the plugin root (~/.kimi-code/plugins/managed/<id>)
 	// — never the session project (verified on kimi 0.31.0; matches kimi docs "each hook
@@ -800,16 +829,34 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// 3. Write the embedded script to a temp file.
 	//
 	// 3. 把 embedded script 写入临时文件。
+	//
+	// Infra-exit unification (fix/cleanup-batch, 2026-08-29): these steps and
+	// step 4 below are the same infrastructure-failure class as the bash-spawn
+	// failure in step 5 (script could never run → fail-open). They previously
+	// returned a bare error (Execute printed it and exited 1), which fail-opens
+	// on every host protocol but with NO visibility on the hosts' context
+	// channels. They now route through emitInfraAllow like step 5 — the warning
+	// reaches the model on each host's own channel (kimi queues for the
+	// UserPromptSubmit drain instead of a stdout print that would read as DENY).
+	//
+	// infra 出口统一（fix/cleanup-batch，2026-08-29）：本步与下方 step 4 与
+	// step 5 的 bash 起不来同属基础设施失败类（脚本永远跑不起来 → fail-open）。
+	// 此前它们返回裸 error（Execute 打印后 exit 1），在各宿主协议上同样 fail-open
+	// 但在宿主上下文通道上【零】可见。现与 step 5 一致改走 emitInfraAllow——
+	// 警告经各宿主自己的通道到达模型（kimi 入队等 UserPromptSubmit 攒发，而非
+	// 会被读成 DENY 的 stdout 直印）。
 	tmpFile, err := os.CreateTemp("", "forge-hook-*.sh")
 	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
+		return emitInfraAllow(agent, hookInput.HookEventName, name, root, hookInput.SessionID,
+			fmt.Sprintf("[forge] hook %s 基础设施失败（create temp file: %v），fail-open 放行", name, err))
 	}
 	tmpPath := tmpFile.Name()
 	defer os.Remove(tmpPath)
 
 	if _, err := tmpFile.WriteString(content); err != nil {
 		tmpFile.Close()
-		return fmt.Errorf("failed to write script: %w", err)
+		return emitInfraAllow(agent, hookInput.HookEventName, name, root, hookInput.SessionID,
+			fmt.Sprintf("[forge] hook %s 基础设施失败（write script: %v），fail-open 放行", name, err))
 	}
 	tmpFile.Close()
 	// No chmod needed — bash reads the file as an argument and does not execute it directly.
@@ -819,9 +866,13 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// 4. Run the script with the extracted fields as env vars.
 	//
 	// 4. 用抽出的字段作为 env var 执行该 script。
+	// Same infra-failure class as step 3 — see the unification comment above.
+	//
+	// 与 step 3 同属 infra 失败类——见上方统一注释。
 	bash, err := findBash()
 	if err != nil {
-		return fmt.Errorf("bash not found in PATH: %w", err)
+		return emitInfraAllow(agent, hookInput.HookEventName, name, root, hookInput.SessionID,
+			fmt.Sprintf("[forge] hook %s 基础设施失败（bash not found: %v），fail-open 放行", name, err))
 	}
 
 	// Pass the script path with forward slashes: safe for Git Bash/MSYS2/Cygwin, and
@@ -2084,6 +2135,11 @@ func isHookInfraFailure(err error) bool {
 // contextModification; windsurf silent (no stdout channel — unchanged visibility).
 // No host receives decision:"approve" (see emitAgentOutput).
 //
+// Call sites (unified, fix/cleanup-batch 2026-08-29): the bash-spawn/126/127
+// failure in step 5 AND the earlier script-never-runs failures (temp-file
+// create/write, findBash) — all the same infra class, all fail-open with a
+// visible, host-routed warning.
+//
 // emitInfraAllow 对基础设施失败 fail-open：警告必须可见（静默失效的门禁比吵闹的
 // 更糟）但不阻断当轮。经 emitAdvisoryRouted 分发，让每个宿主走自己的上下文通道：
 // kimi 在不可送达事件上把警告入队、留待 UserPromptSubmit 攒发（PreToolUse 上直接
@@ -2093,6 +2149,10 @@ func isHookInfraFailure(err error) bool {
 // 事件上发同样的裸形态；cursor 顶层 additional_context；copilot 顶层
 // additionalContext；cline contextModification；windsurf 静默（无 stdout 通道——
 // 可见性与之前一致）。任何宿主都不会收到 decision:"approve"（见 emitAgentOutput）。
+//
+// 调用点（统一，fix/cleanup-batch 2026-08-29）：step 5 的 bash 起不来/126/127 失败，
+// 以及更早的「脚本永远跑不起来」失败（临时文件创建/写入、findBash）——同一 infra
+// 类，全部 fail-open 并带可见的、按宿主路由的警告。
 func emitInfraAllow(agent, eventName, hookName, root, sessionID, warning string) error {
 	return emitAdvisoryRouted(agent, eventName, hookName, root, sessionID, true, warning)
 }

@@ -225,3 +225,124 @@ func TestTaskStart_BranchDerivation(t *testing.T) {
 		t.Fatalf("派生分支应为 feat/conventions-profile, got %q", got)
 	}
 }
+
+// TestDeriveBranchName pins the SINGLE ref→branch derivation now shared by the
+// --worktree entry (createTaskWorktree delegates to it since the inline copy
+// was deleted, fix/cleanup-batch 2026-08-29 — dogfood #6 class: two copies of
+// the rule drift) and the --branch entry: a conventionally-prefixed ref maps
+// to itself; anything else derives feat/<slashes→dashes>. The only failing
+// input class is a ref whose derived name validateBranchRef rejects (e.g. a
+// bare "feat/" — prefix present but nothing after it).
+//
+// TestDeriveBranchName 钉住 --worktree 入口（createTaskWorktree 自内联副本删除后
+// 委托给它，fix/cleanup-batch 2026-08-29——dogfood #6 类：规则两份副本必漂移）与
+// --branch 入口共享的【单一】ref→分支派生：带惯例前缀的 ref 同名；其余派生
+// feat/<斜杠转连字>。唯一失败类是派生名被 validateBranchRef 拒绝的 ref（如裸
+// "feat/"——前缀在场但后面为空）。
+func TestDeriveBranchName(t *testing.T) {
+	cases := []struct {
+		ref   string
+		want  string
+		fails bool
+	}{
+		{`feat/login`, `feat/login`, false},                    // 已带惯例前缀 → 同名
+		{`fix/crash`, `fix/crash`, false},                      // 同上（表内其他前缀）
+		{`login/modal/split`, `feat/login-modal-split`, false}, // 无前缀 → feat/ + 斜杠转连字
+		{`PROJ-123`, `feat/PROJ-123`, false},                   // 裸 ticket ref → 派生
+		{`feat/`, ``, true},                                    // 前缀后为空 → validateBranchRef 拒绝
+	}
+	for _, c := range cases {
+		got, err := deriveBranchName(c.ref)
+		if c.fails {
+			if err == nil {
+				t.Errorf("deriveBranchName(%q) = %q, want error", c.ref, got)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("deriveBranchName(%q) unexpected error: %v", c.ref, err)
+			continue
+		}
+		if got != c.want {
+			t.Errorf("deriveBranchName(%q) = %q, want %q", c.ref, got, c.want)
+		}
+	}
+}
+
+// TestCreateTaskWorktreeDelegatesDerivation pins the delegation without needing
+// a git repo: a ref whose derived name is unvalidatable must fail with
+// deriveBranchName's error BEFORE any git interaction (worktreeBase etc.) —
+// proving the inline derivation copy is gone and the shared derivation runs
+// first (dogfood #6's root cause, closed at the second entry).
+//
+// TestCreateTaskWorktreeDelegatesDerivation 无需 git 仓即钉住委托：派生名不可校验的
+// ref 必须先以 deriveBranchName 的错误失败、早于任何 git 交互（worktreeBase 等）
+// ——证明内联派生副本已删、共享派生先行（dogfood #6 的根因在第二入口被关死）。
+func TestCreateTaskWorktreeDelegatesDerivation(t *testing.T) {
+	root := t.TempDir()
+	_, err := createTaskWorktree(root, `feat/`, ``, "")
+	if err == nil {
+		t.Fatal("createTaskWorktree with bare feat/ ref should fail (empty tail)")
+	}
+	if want := `invalid derived branch`; !strings.Contains(err.Error(), want) {
+		t.Errorf("err = %v, want it to carry deriveBranchName's %q context (delegation proof)", err, want)
+	}
+}
+
+// TestCopyWorktreeIncludesWarnsOnFailure pins the failure-accountability fix
+// (fix/cleanup-batch, 2026-08-29): per-file copy failures no longer vanish —
+// they are accumulated and surfaced as ONE stderr warning listing each failed
+// include, while successful copies still land and the walk never fails the
+// start. The failure is induced by pre-creating the destination as a read-only
+// file (Windows FILE_ATTRIBUTE_READONLY / Unix 0444 — OpenFile for write is
+// refused either way).
+//
+// TestCopyWorktreeIncludesWarnsOnFailure 钉住失败可问责修复（fix/cleanup-batch，
+// 2026-08-29）：逐文件复制失败不再静默蒸发——累积后以一条 stderr 警告列出每个
+// 失败的 include，成功的照常落盘，遍历绝不中断 start。失败以「目标预置为只读
+// 文件」诱发（Windows FILE_ATTRIBUTE_READONLY / Unix 0444——两种系统都拒写打开）。
+func TestCopyWorktreeIncludesWarnsOnFailure(t *testing.T) {
+	src := t.TempDir()
+	dst := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(src, "forge.worktreeinclude"), []byte(".env\nlocked.env\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, ".env"), []byte("OK=1\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "locked.env"), []byte("SECRET=1\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// Pre-create the destination as a READ-ONLY file: the copy's OpenFile for
+	// write is refused → the include fails and must be reported.
+	//
+	// 目标预置为只读文件：复制的 OpenFile 写打开被拒 → 该 include 失败且必须上报。
+	lockedDst := filepath.Join(dst, "locked.env")
+	if err := os.WriteFile(lockedDst, []byte("placeholder\n"), 0444); err != nil {
+		// Some sandboxes cannot create read-only files; skip rather than fail.
+		//
+		// 部分沙箱无法创建只读文件；跳过而非失败。
+		t.Skipf("cannot create read-only destination: %v", err)
+	}
+	defer os.Chmod(lockedDst, 0644)
+
+	warn := captureStderr(t, func() { copyWorktreeIncludes(src, dst) })
+
+	// The good include still copied.
+	//
+	// 好的 include 照常复制。
+	if data, err := os.ReadFile(filepath.Join(dst, ".env")); err != nil || string(data) != "OK=1\n" {
+		t.Errorf("non-failing include should copy, got %q err=%v", string(data), err)
+	}
+	// The failing include is named in the warning — the user can fix the cause
+	// BEFORE the first session inside the worktree trips over the missing file.
+	//
+	// 失败的 include 在警告中点名——用户能在首个会话踩坑前修复根因。
+	if !strings.Contains(warn, "locked.env") {
+		t.Errorf("warning should name the failed include, got: %q", warn)
+	}
+	if !strings.Contains(warn, "1 个") {
+		t.Errorf("warning should report the failure count, got: %q", warn)
+	}
+}
