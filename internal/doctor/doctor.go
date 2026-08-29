@@ -586,7 +586,7 @@ func expandHookFiles(tgt scanTarget) []string {
 	var out []string
 	_ = filepath.WalkDir(p, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return nil //nolint:跳过不可读条目
+			return nil //nolint:nilerr // 跳过不可读条目，不中断整体遍历
 		}
 		if d.IsDir() {
 			// plugins 树深度上限，防病态深树拖慢审计。默认上限必须 ≥4：kimi 的 plugin

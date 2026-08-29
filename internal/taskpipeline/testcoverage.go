@@ -579,7 +579,18 @@ func hasMatchingTest(src string, changed map[string]bool) bool {
 		}
 		return false
 	case ".py":
-		for _, p := range []string{dir + "/test_" + name, dir + "/" + base + "_test.py", "tests/test_" + name} {
+		// Normalize a root-level dir ("." from filepath.Dir) to "" so candidates stay
+		// prefix-free ("test_foo.py") and match git's path keys — mirrors the Go branch's
+		// root-level handling; without it "./test_foo.py" never matches "test_foo.py".
+		//
+		// 根目录源码的 dir（filepath.Dir 返回 "."）归一为 ""，候选保持无前缀形态
+		//（"test_foo.py"）以匹配 git 路径键——与 Go 分支的 root-level 处理对齐；
+		// 否则 "./test_foo.py" 永远匹配不上 "test_foo.py"。
+		pyDir := ""
+		if dir != "." && dir != "" {
+			pyDir = dir + "/"
+		}
+		for _, p := range []string{pyDir + "test_" + name, pyDir + base + "_test.py", "tests/test_" + name} {
 			if changed[p] {
 				return true
 			}

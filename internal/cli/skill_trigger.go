@@ -211,10 +211,16 @@ func runSkillTriggerCore(hookInput HookInput, root, version, agent string, dryRu
 	// 落盘副作用：Eval 只读判定（ShouldFire/StopRoundAllowed），确认注入后才 Mark/IncrStopRound。
 	if !dryRun {
 		for _, h := range hits {
-			_ = noise.Mark(ctx.SessionID, h.Skill, ctx.Now)
+			if err := noise.Mark(ctx.SessionID, h.Skill, ctx.Now); err != nil {
+				// A missed cooldown mark means the same skill re-fires on every event —
+				// the exact flooding suppressed.go exists to prevent. Keep fail-open but visible.
+				fmt.Fprintf(os.Stderr, "[skill-trigger] warning: noise mark failed: %v\n", err)
+			}
 		}
 		if ctx.Event == "Stop" {
-			_ = noise.IncrStopRound(ctx.SessionID)
+			if err := noise.IncrStopRound(ctx.SessionID); err != nil {
+				fmt.Fprintf(os.Stderr, "[skill-trigger] warning: stop-round incr failed: %v\n", err)
+			}
 		}
 		recordSuppressed(root, ctx, suppressed, filepath.Join(baseDir, "skill-trigger"), agent, version)
 		// 记录触发的 canonical skill 到 checklog——让 skill 触达在下游可观测（usage/effectiveness）。

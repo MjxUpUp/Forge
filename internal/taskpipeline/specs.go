@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/taskcontext"
@@ -197,7 +198,17 @@ func PriorAttemptsSummary(root, taskRef string, lastN int, charCap int) string {
 		}
 		text := string(data)
 		if b.Len()+len(text) > charCap {
-			text = text[:max(0, charCap-b.Len())] + "\n…（截断）"
+			cut := max(0, charCap-b.Len())
+			// Back off to a rune boundary: findings.md is mostly CJK and a byte-aligned
+			// cut splits a multi-byte character, feeding mojibake back into the next
+			// round's priorAttempts context.
+			//
+			// 回退到 rune 边界：findings.md 以中文为主，按字节切会劈开多字节字符，
+			// 把乱码喂给下一轮的 priorAttempts 上下文。
+			for cut > 0 && !utf8.RuneStart(text[cut]) {
+				cut--
+			}
+			text = text[:cut] + "\n…（截断）"
 		}
 		b.WriteString(text)
 	}
