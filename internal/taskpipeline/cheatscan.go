@@ -768,10 +768,17 @@ func collectAddedLines(root string, state *TaskState) []addedLine {
 		out = append(out, parseGitAddedLines(root, spec, sourceSet)...)
 	}
 	// Untracked (agent just created, not yet git-added): read the whole file, every line is added.
+	// The tracked-set probe is BATCHED: one repo-wide `git ls-files` builds the membership set
+	// — the previous form ran `git ls-files --error-unmatch` per source file, spawning one
+	// subprocess per file (2026-08-29 review round). Same verdict, N processes → 1.
 	//
 	// 未跟踪（agent 刚建、未 git add）：整文件读，每行都是"新增"。
+	// tracked 集合探测改批量：一次全仓 `git ls-files` 建成员集合——此前对每个源文件跑
+	// 一次 `git ls-files --error-unmatch`，每文件一个子进程（2026-08-29 审查轮）。
+	// 判定不变，进程数 N → 1。
+	tracked := gitTrackedSet(root)
 	for f := range sourceSet {
-		if isTracked := gitTracked(root, f); isTracked {
+		if tracked[f] {
 			// Tracked — already covered by git diff.
 			continue // 已跟踪——git diff 已覆盖
 		}
@@ -909,13 +916,33 @@ func readFileAddedLines(full, rel string) []addedLine {
 	return res
 }
 
-// gitTracked reports whether a file is already tracked by git (ls-files --error-unmatch exit 0
-// = tracked).
+// gitTrackedSet returns the full set of tracked files via ONE repo-wide `git ls-files`
+// invocation — the batched replacement for the per-file `git ls-files --error-unmatch`
+// subprocess probe (same verdict, N processes → 1; 2026-08-29 review round). Keys are
+// git's repo-relative forward-slash paths, matching the sourceSet keys built from
+// taskChangedFiles output. Nil on git failure: callers then treat every file as
+// untracked and read it from disk — the same failure direction as the old per-file
+// probe (worst case duplicates lines the diff-parse path already produced; advisory
+// detection stays failure-tolerant, never panics).
 //
-// gitTracked 报告文件是否已被 git 跟踪（ls-files --error-unmatch 退出码 0=跟踪）。
-func gitTracked(root, rel string) bool {
-	err := exec.Command("git", "-C", root, "ls-files", "--error-unmatch", rel).Run()
-	return err == nil
+// gitTrackedSet 用【一次】全仓 `git ls-files` 返回全部已跟踪文件集合——逐文件
+// `git ls-files --error-unmatch` 子进程探测的批量化替代（判定不变，进程数 N → 1；
+// 2026-08-29 审查轮）。key 是 git 的仓库相对 forward-slash 路径，与 taskChangedFiles
+// 输出构建的 sourceSet key 一致。git 失败时返回 nil：调用方会把每个文件当 untracked
+// 整读——与旧逐文件探测同向失败（最坏重复 diff-parse 已产出的行；advisory 检测保持
+// 失败容忍，绝不 panic）。
+func gitTrackedSet(root string) map[string]bool {
+	out, err := exec.Command("git", "-C", root, "ls-files").Output()
+	if err != nil {
+		return nil
+	}
+	set := make(map[string]bool)
+	for _, line := range strings.Split(string(out), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			set[line] = true
+		}
+	}
+	return set
 }
 
 // hasRef reports whether git recognizes a ref (used to avoid diff errors when falling back to

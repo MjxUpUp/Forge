@@ -1,6 +1,7 @@
 package scoring
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -462,5 +463,39 @@ func TestScoreExpression(t *testing.T) {
 	in := EvaluateInput{HasDocDeliverables: true, DocRubricScore: &score80, DocGateEscaped: true}
 	if got := find(&in); got.Score > 60 {
 		t.Errorf("escape cap 60 violated: got %d", got.Score)
+	}
+}
+
+// TestIsTestPath_MirrorsPairingShapes pins the two shapes synced from
+// taskpipeline.isTestFile (T2 golden-set round): the test_ prefix with a real stem
+// and the JUnit camel suffixes — the dimension side must agree with the pairing
+// side or a paired test gets counted as production source.
+//
+// TestIsTestPath_MirrorsPairingShapes 钉住与 taskpipeline.isTestFile 同步的两个
+// 形态（T2 黄金用例轮）：带真 stem 的 test_ 前缀与 JUnit 驼峰后缀——维度侧必须
+// 与配对侧一致，否则已配对的测试被计为生产源码。
+func TestIsTestPath_MirrorsPairingShapes(t *testing.T) {
+	cases := []struct {
+		path string
+		want bool
+	}{
+		{"test_root.py", true},
+		{"test_foo.go", false}, // Go 惯例是 _test.go 后缀；test_ 前缀仅 Python
+		{"testing.go", false},  // 5th char is not '_'
+		{"test_.py", false},    // empty stem
+		{"contest/foo.py", false},
+		{"latest/x.py", false},
+		{"src/MainTest.java", true},
+		{"src/MainTests.java", true},
+		{"src/MainIT.java", true},
+		{"src/Context.java", false}, // "IT" must be suffix of the STEM, not substring
+		{"src/Poster.tsx", false},
+		{"tests/helper.py", true},
+		{"pkg/foo_test.go", true},
+	}
+	for _, c := range cases {
+		if got := isTestPath(filepath.FromSlash(c.path)); got != c.want {
+			t.Errorf("isTestPath(%q) = %v, want %v", c.path, got, c.want)
+		}
 	}
 }
