@@ -22,10 +22,7 @@ type PackInput struct {
 	Now          time.Time // ExportedAt stamp (injected for test determinism)
 }
 
-// Pack writes the bundle (manifest.json + data/<rel>) as a gzip tar stream to w and
-// returns the manifest it wrote. Two passes over each file: hash pass then stream
-// pass — bundle payloads (rotated logs) can be large, so nothing is held fully in
-// memory except the manifest. File order is sorted for deterministic bundles.
+// Pack writes the bundle (manifest.json + data/<rel>) as a gzip tar stream to w and returns the manifest it wrote.
 //
 // Pack 把 bundle（manifest.json + data/<rel>）以 gzip tar 流写到 w，返回写出的
 // manifest。每个文件两遍：先 hash 后流式写——bundle 载荷（rotated 日志）可能很
@@ -88,10 +85,6 @@ func Pack(in PackInput, w io.Writer) (*Manifest, error) {
 		if ferr != nil {
 			return nil, ferr
 		}
-		// io.Copy on a header-declared Size boundary: a file that shrank between
-		// stat and read yields a short write and a corrupt tar — the error surfaces
-		// here instead of at the importer.
-		//
 		// io.Copy 在 header 声明的 Size 边界上：stat 与读之间缩水的文件产生短写
 		// 和损坏 tar——错误在此暴露而非留到导入方。
 		_, cerr := io.Copy(tw, f)
@@ -103,8 +96,6 @@ func Pack(in PackInput, w io.Writer) (*Manifest, error) {
 	return m, nil
 }
 
-// fileSHA256 streams a file through sha256 (large logs never fully in memory).
-//
 // fileSHA256 把文件流过 sha256（大日志不整体驻内存）。
 func fileSHA256(path string) (string, error) {
 	f, err := os.Open(path)

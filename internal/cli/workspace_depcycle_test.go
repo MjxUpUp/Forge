@@ -13,8 +13,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// depCycleTasks is a compact fixture builder: key → (taskRef → its DependsOn).
-//
 // depCycleTasks 是紧凑 fixture 构造器：key →（taskRef → 其 DependsOn）。
 func depCycleTasks(spec map[string]map[string][]string) map[string][]*taskpipeline.TaskState {
 	out := map[string][]*taskpipeline.TaskState{}
@@ -26,8 +24,6 @@ func depCycleTasks(spec map[string]map[string][]string) map[string][]*taskpipeli
 	return out
 }
 
-// cycleStrings renders each cycle's node IDs as key:ref labels for assertion.
-//
 // cycleStrings 把每个环的节点 ID 渲染成 key:ref 标签供断言。
 func cycleStrings(cycles [][]string) []string {
 	var out []string
@@ -41,10 +37,7 @@ func cycleStrings(cycles [][]string) []string {
 	return out
 }
 
-// TestDetectWorkspaceDepCycles covers the pure graph core: same-repo and
-// cross-repo rings (2- and 3-node), a self-loop from a hand-edited state, two
-// disjoint rings both reported, and the no-cycle shapes (diamond, foreign-key
-// dead end, missing same-repo target) staying silent.
+// TestDetectWorkspaceDepCycles covers the pure dep-cycle graph core.
 //
 // TestDetectWorkspaceDepCycles 覆盖纯图核心：本仓环与跨仓环（2 节点与 3 节点）、
 // 手改 state 造成的自环、两个不相交的环都报出，以及无环形态（菱形、非成员
@@ -96,9 +89,7 @@ func TestDetectWorkspaceDepCycles(t *testing.T) {
 	}
 }
 
-// TestDepCycleFindings pins the finding shape: advisory dep-cycle kind, the
-// full key:ref ring closed back to its start, and attribution to every
-// workspace holding a ring member.
+// TestDepCycleFindings pins the finding shape: advisory dep-cycle kind, the full key:ref ring closed back to its start, and attribution to every workspace holding a ring member.
 //
 // TestDepCycleFindings 钉住 finding 形态：advisory 的 dep-cycle kind、完整
 // key:ref 环闭合回起点、归属到所有含环上成员的 workspace。
@@ -127,10 +118,7 @@ func TestDepCycleFindings(t *testing.T) {
 	}
 }
 
-// TestRunWorkspaceDoctor_DepCycle wires the whole doctor path: a two-member
-// workspace whose tasks form a cross-repo ring must surface a dep-cycle
-// finding in both text and --json output (the drift findings from Doctor
-// itself — unregistered members here — coexist, advisory-only).
+// TestRunWorkspaceDoctor_DepCycle wires the whole doctor path.
 //
 // TestRunWorkspaceDoctor_DepCycle 打通 doctor 全链路：两成员 workspace 的 task
 // 构成跨仓环时，文本与 --json 输出都必须带 dep-cycle finding（Doctor 自身的
@@ -138,8 +126,6 @@ func TestDepCycleFindings(t *testing.T) {
 func TestRunWorkspaceDoctor_DepCycle(t *testing.T) {
 	_, _, home := depRefFixture(t)
 	writeDepRefWorkspace(t, `aa0000000001`, `bb0000000002`)
-	// A waits on bb0000000002:B, B waits on aa0000000001:A — a cross-repo ring.
-	//
 	// A 等 bb0000000002:B，B 等 aa0000000001:A——一个跨仓环。
 	writeForeignTaskWithDeps(t, home, `aa0000000001`, `A`, []string{`bb0000000002:B`})
 	writeForeignTaskWithDeps(t, home, `bb0000000002`, `B`, []string{`aa0000000001:A`})
@@ -169,8 +155,6 @@ func TestRunWorkspaceDoctor_DepCycle(t *testing.T) {
 	}
 }
 
-// writeForeignTaskWithDeps is writeForeignTask + DependsOn edges.
-//
 // writeForeignTaskWithDeps 是 writeForeignTask 加 DependsOn 边。
 func writeForeignTaskWithDeps(t *testing.T, home, key, ref string, deps []string) {
 	t.Helper()

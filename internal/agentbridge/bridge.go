@@ -20,7 +20,7 @@ func AllTranslators() []Translator {
 	}
 }
 
-// TranslateForAgents translates the Forge config to the specified agents. No-op when agents is empty.
+// TranslateForAgents translates the Forge config to the specified agents.
 //
 // TranslateForAgents 把 Forge 配置翻译给指定 agents。agents 为空时 no-op。
 func TranslateForAgents(projectDir string, agents []AgentType, input *TranslationInput) []error {
@@ -44,8 +44,6 @@ func TranslateForAgents(projectDir string, agents []AgentType, input *Translatio
 	return errs
 }
 
-// translatorMap builds a lookup table from agent type to translator.
-//
 // translatorMap 构建 agent type 到 translator 的查找表。
 func translatorMap(translators []Translator) map[AgentType]Translator {
 	m := make(map[AgentType]Translator, len(translators))

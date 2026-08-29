@@ -1,13 +1,5 @@
 package cli
 
-// task_continuity_render_test.go — the render family of the continuity source
-// of truth: pure renderResume output (sections/origin/empty/status-markers/
-// ANSI-strip/tl;dr) and the SessionStart hook view renderHookResume
-// (inventory ambiguity, caps, completed-skip, auto-attach, multi-host attach).
-// Split from task_continuity_test.go by domain; the compact/reinject hooks
-// live in task_continuity_hooks_test.go, the offered/auto-claim domain in
-// task_assignment_lifecycle_test.go.
-//
 // task_continuity_render_test.go —— 接续真相源的渲染族：纯 renderResume 输出
 // （分节/外部来源/空态/状态标记/ANSI 剥离/tl;dr）与 SessionStart hook 视图
 // renderHookResume（盘点歧义、截断、跳过已完成、自动锚定、多 host 锚定）。
@@ -26,8 +18,8 @@ import (
 	"github.com/MjxUpUp/Forge/internal/worktree"
 )
 
-// TestRenderResumeSections verifies that the resume view renders all continuity fields — so the handoff party sees at a glance
-// goal/plan/decisions/next-step/blockers/findings/artifacts + git changed-but-uncommitted. This is the core deliverable of the continuity source of truth.
+// TestRenderResumeSections verifies that the resume view renders all continuity
+// fields.
 //
 // TestRenderResumeSections 验证 resume 视图把各接续字段都渲染出来——接手方一眼即见
 // 目标/计划/决策/下一步/阻塞/发现/产物 + git 已改未提交。这是接续真相源的核心交付。
@@ -64,10 +56,6 @@ func TestRenderResumeSections(t *testing.T) {
 			t.Errorf("resume 输出应含 %q\n---OUTPUT---\n%s", want, out)
 		}
 	}
-	// Host-agnostic loading form (2026-08-25 prompt-copy fix): the footer names the
-	// session-continuity skill in natural language; the slash-command form
-	// (/session-continuity) is Claude Code-only dead text on other hosts.
-	//
 	// 宿主无关的加载形态（2026-08-25 文案修复）：尾部用自然语言点名
 	// session-continuity skill；slash command 形态（/session-continuity）在
 	// 其他宿主是死文本。
@@ -79,8 +67,10 @@ func TestRenderResumeSections(t *testing.T) {
 	}
 }
 
-// TestRenderResume_ExternalOrigin pins the origin visibility of the proof-of-work loop: when the task carries an external issue
-// source (--from_issue), the resume view shows tracker/identifier/URL, so the handoff party sees at a glance which issue the task is anchored to.
+// TestRenderResume_ExternalOrigin pins the origin visibility of the
+// proof-of-work loop: when the task carries an external issue source
+// (--from_issue), the resume view shows tracker/identifier/URL, so the handoff
+// party sees at a glance which issue the task is anchored to.
 //
 // TestRenderResume_ExternalOrigin 钉住 proof-of-work 闭环的 origin 可见性：task 带外部 issue
 // 来源（--from_issue）时，resume 视图显示 tracker/identifier/URL，接手方一眼知 task 锚在哪个 issue。

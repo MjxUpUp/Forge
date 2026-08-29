@@ -13,7 +13,6 @@ import (
 // Conditions 是 condition 词汇注册表。key = trigger.when 值，value = 判定函数（纯逻辑，
 // 外部状态经 Context 传入）。与 internal/skillsqa.ValidConditions 必须保持同步——
 // drift 守卫 TestValidConditions_MatchEngine 断言两者 key 集合一致。
-//
 // Conditions is the condition vocabulary registry. key = trigger.when, value = pure
 // predicate (external state passed via Context). Must stay in sync with
 // internal/skillsqa.ValidConditions (drift guard TestValidConditions_MatchEngine).
@@ -72,7 +71,6 @@ func isSourcePath(p string) bool {
 // testCmdRe 测试命令信号（word-boundary 正则，大小写不敏感）。\b 防 "cargo test" 含
 // "go test"、"lngo test"/"go testbed" 误判——要求信号前后是非单词字符（命令首部或
 // 空格/管道/&&/; 分隔）。
-//
 // testCmdRe matches test-command signals with word boundaries (case-insensitive).
 // \b prevents "cargo test" matching "go test" or "lngo test" false positives.
 var testCmdRe = regexp.MustCompile(`(?i)\b(go test|python -m pytest|pytest|cargo test|npm run test|npm test|yarn test|pnpm test|mvn test|gradle test|jest|vitest|mocha|rake test|deno test|elm-test|stack test|cabal test|dotnet test|xcodebuild test|flutter test)\b`)
@@ -160,7 +158,6 @@ func toInt(v any) (int, error) {
 // codingIntentENRe 英文编码意图词（word-boundary 正则）——英文短词（fix/build/add）必须
 // \b 防 "prefix" 含 "fix"、"lumber build workflow" 含 "build" 等误判把 advisory 注入每个
 // 含这些短词的解释性问题。
-//
 // codingIntentCN: Chinese coding-intent keywords (substring match; CJK multi-syllable
 // keeps false positives low). codingIntentENRe: English words with word boundaries —
 // short words (fix/build/add) need \b to avoid "prefix" matching "fix".

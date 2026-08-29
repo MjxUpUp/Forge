@@ -11,9 +11,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
-// recordConclusionWithDims appends a conclusion carrying LowDimensions (recordConclusion
-// does not fill them; weakness mining reads them).
-//
 // recordConclusionWithDims 追加带 LowDimensions 的 conclusion（recordConclusion 不填
 // 该字段；弱点挖掘读它）。
 func recordConclusionWithDims(t *testing.T, p *forgedata.Project, taskRef string, score float64, strength string, ratio float64, lowDims []string) {
@@ -62,7 +59,6 @@ func TestAnalyzeWeaknesses_Clusters(t *testing.T) {
 
 	// 三个任务：t1/t2 低分维度 testing（复现 2 次 → 列出）；t3 低分维度 scope（1 次 → 噪声过滤）。
 	// t2 为 Unverified（盲区 1/3）。
-	//
 	// Three tasks: t1/t2 low dim "testing" (recurs twice → listed); t3 low dim "scope"
 	// (once → filtered as noise). t2 is Unverified (blind spot 1/3).
 	pt := proj
@@ -71,7 +67,6 @@ func TestAnalyzeWeaknesses_Clusters(t *testing.T) {
 	recordConclusionWithDims(t, pt, "t3", 85, "Strong", 0.9, []string{"scope"})
 
 	// good-skill 涉及两个高分强证据任务 → 不列；bad-skill 涉及 t2/t3（t2 弱证据）→ 弱占比 0.5 → 列出。
-	//
 	// good-skill touches two high-score strong tasks → not listed; bad-skill touches
 	// t2/t3 (t2 weak) → weak rate 0.5 → listed.
 	recordSkillCall(t, root, "good-skill", "t1")
@@ -108,7 +103,6 @@ func TestAnalyzeWeaknesses_LowEffectFilters(t *testing.T) {
 
 	// one-shot 只涉及 1 个任务（全弱也不列——n=1 无证明力）；low-score 涉及 2 个任务、
 	// 弱占比 0 但均分 65 <70 → 经分数分支列出。
-	//
 	// one-shot touches 1 task (even all-weak not listed — n=1 proves nothing); low-score
 	// touches 2 tasks, weak rate 0 but avg 65 <70 → listed via the score branch.
 	recordConclusionWithDims(t, proj, "t1", 30, "Weak", 0.1, nil)

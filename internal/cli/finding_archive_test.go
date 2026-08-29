@@ -9,9 +9,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
-// TestTaskFinding_ArchivesTriggeringFinding pins the dogfood fix (2026-08-27): the
-// attempt archive snapshot must be taken INSIDE the mutation — the triggering finding
-// itself must appear in its own round archive, not just pre-existing ones.
+// TestTaskFinding_ArchivesTriggeringFinding pins the dogfood fix (2026-08-27).
 //
 // TestTaskFinding_ArchivesTriggeringFinding 钉住 dogfood 修复（2026-08-27）：归档快照
 // 必须取自 mutation 内——触发归档的这条 finding 自己必须出现在它引发的轮次归档里，

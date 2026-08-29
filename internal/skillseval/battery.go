@@ -1,32 +1,5 @@
 package skillseval
 
-// battery.go — held-out regression battery: aggregation of every anchored skill baseline vs
-// its latest run, judged by the SAME deterministic acceptance criteria as eval-report
-// (JudgeSkillAccept — single source of truth; the battery must not grow a second judgment
-// that can drift from the per-skill one).
-//
-// Scope honesty (review F3): the battery reads the resolved eval dir (EvalDir()/--dir,
-// default ~/.forge/evals — resolution chain in dir.go) shared by the whole eval command
-// family — it covers every anchored skill in that dir, not an isolated per-repo subset
-// (point --dir at a repo evals/ directory for repo-scoped runs, e.g. in CI). A regressed baseline from
-// any project trips the gate (conservative direction: false positive, not false negative);
-// per-project scoping would cut across all five eval commands and is a deliberate non-goal
-// here. Corollary: on a machine/CI runner with ZERO anchored baselines the battery is EMPTY
-// — Total==0, GateBlocked=false, exit 0. That exit 0 means "nothing was checked", not "no
-// regression verified"; --gate prints an explicit vacuous note in that case.
-//
-// Field consensus (AutoDesign Eq 6 acceptance gate / held-out gating): a candidate change is
-// accepted only if it improves without regressing vs baseline. Per-skill eval-report already
-// computes this; the battery closes the aggregate gap — "did ANY anchored skill regress" was
-// previously answerable only by looping eval-report by hand, which nobody does at release
-// time. `forge skills battery --gate` turns that loop into one command with a hard exit code.
-//
-// Boundary: deterministic aggregation only. The battery judges anchored baselines; skills
-// without baselines are surfaced as Unanchored (advisory — the coverage gap, not a failure),
-// and rows whose judgment is impossible (no latest run / stale baseline mark) stay advisory
-// accepts — machine criteria unavailable escalates to human review, mirroring JudgeSkillAccept's
-// incomparable branch rather than forcing a fake reject.
-//
 // battery.go — held-out 回归电池：聚合所有已锚定 baseline 的 skill（各 vs 其最新 run），
 // 判据与 eval-report 完全同源（JudgeSkillAccept——单一真相源；电池不得长出第二套可与之
 // 漂移的判定）。
@@ -96,9 +69,7 @@ type BatteryReport struct {
 	GateBlocked bool `json:"gate_blocked"`
 }
 
-// BuildBattery aggregates every anchored baseline vs its latest run into one report.
-// dir is the eval data dir (EvalDir()). Errors reading baselines/runs propagate — a battery
-// that silently skipped unreadable data would report a false all-green (fail-closed).
+// BuildBattery aggregates every anchored baseline vs its latest run into one report. dir is the eval data dir (EvalDir()).
 //
 // BuildBattery 把每个已锚定 baseline vs 其最新 run 聚合成一份报告。dir 为 eval 数据目录
 // （EvalDir()）。baselines/runs 读取错误上抛——静默跳过不可读数据的电池会报假全绿
@@ -131,9 +102,6 @@ func BuildBattery(dir string) (*BatteryReport, error) {
 		row.LatestRun = latest.RunID
 		row.HealthScore = latest.HealthScore
 
-		// Resolve the anchored baseline run; a stale mark (run file cleaned) degrades to
-		// advisory, not hard failure — the mark is metadata, the runs are the record.
-		//
 		// 解析锚定的 baseline run；标记过期（run 文件已清）降级 advisory 而非硬失败——
 		// 标记是元数据，runs 才是记录。
 		var baseline *EvalRun
@@ -156,15 +124,11 @@ func BuildBattery(dir string) (*BatteryReport, error) {
 		row.NetRegressions = rr.NetRegressions
 		row.RegressionCount = len(rr.Regressions)
 		row.ImprovementCount = len(rr.Improvements)
-		// Single source of truth: the same judge as eval-report consumes.
-		//
 		// 单一真相源：与 eval-report 同一个判据消费。
 		row.Accept, row.Reasons = JudgeSkillAccept(rr)
 		rep.Skills = append(rep.Skills, row)
 	}
 
-	// Unanchored coverage gap: skills with runs but no baseline mark.
-	//
 	// 未锚定覆盖缺口：有 run 但无 baseline 标记的 skill。
 	unanchored, uerr := skillsWithRunsNoBaseline(dir, baselines)
 	if uerr != nil {
@@ -184,8 +148,6 @@ func BuildBattery(dir string) (*BatteryReport, error) {
 	return rep, nil
 }
 
-// sortedBaselineSkills returns the anchored skill names in sorted order (deterministic output).
-//
 // sortedBaselineSkills 返回排序后的已锚定 skill 名（输出确定性）。
 func sortedBaselineSkills(baselines map[string]Baseline) []string {
 	names := make([]string, 0, len(baselines))
@@ -198,9 +160,6 @@ func sortedBaselineSkills(baselines map[string]Baseline) []string {
 	return names
 }
 
-// skillsWithRunsNoBaseline lists skills that have a runs file but no anchored baseline —
-// the battery's blind spot made visible (advisory). A runs dir read error propagates.
-//
 // skillsWithRunsNoBaseline 列出有 runs 文件但未锚定 baseline 的 skill——把电池盲区显性化
 // （advisory）。runs 目录读取错误上抛。
 func skillsWithRunsNoBaseline(dir string, baselines map[string]Baseline) ([]string, error) {

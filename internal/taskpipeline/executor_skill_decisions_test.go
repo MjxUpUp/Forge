@@ -1,9 +1,5 @@
 package taskpipeline
 
-// executor_skill_decisions_test.go — skill-decisions check tests (B-component advisory→guardrail).
-// Covers: blocking/advisory classification pure functions + skillDecisionsRecorded (base..HEAD new-entry detection + fail-open
-// each state) + advisory copy.
-//
 // executor_skill_decisions_test.go — skill-decisions 检查测试（B 组件 advisory→guardrail）。
 // 覆盖：blocking/advisory 分类纯函数 + skillDecisionsRecorded（base..HEAD 新增判定 + fail-open
 // 各态）+ advisory 文案。
@@ -67,10 +63,6 @@ func TestSkillDecisionsAdvisoryAffected(t *testing.T) {
 	}
 }
 
-// TestSkillDecisionsRecorded pins the"recorded decision"detection anchor: decisions.md adds a
-// `## [d-` entry between base..HEAD = recorded. Covers: not added / added / first-created (no base) / base empty fail-open / base unreachable
-// fail-open. fail-open aligns with review snapshot"strict when reachable, lax when not".
-//
 // TestSkillDecisionsRecorded 钉住「记决策」判定锚点：decisions.md 在 base..HEAD 间新增
 // `## [d-` 条目 = 记了。覆盖：未新增/新增/首次创建（base 无）/base 空 fail-open/base 不可达
 // fail-open。fail-open 对齐 review snapshot「可达则严、不可达则松」。
@@ -84,43 +76,31 @@ func TestSkillDecisionsRecorded(t *testing.T) {
 	sdecGit(t, dir, "commit", "-m", "init")
 
 	skill := "myskill"
-	// base contains 1 decisions.md entry.
-	//
 	// base 含 1 条 decisions.md。
 	sdecWrite(t, dir, "skills/"+skill+"/decisions.md", "## [d-base1] accept\nbase 决策\n")
 	sdecGit(t, dir, "add", "-A")
 	sdecGit(t, dir, "commit", "-m", "base decisions")
 	base := sdecHead(t, dir)
 
-	// case 1: current==base (1 entry unchanged) → not recorded.
-	//
 	// case 1: 当前==base（1 条未改）→ 未记。
 	if rec, fo := skillDecisionsRecorded(dir, base, skill); fo || rec {
 		t.Errorf("未新增应 recorded=false failopen=false, got rec=%v fo=%v", rec, fo)
 	}
-	// case 2: current adds a 2nd entry (workspace uncommitted, simulating agent recorded but not committed) → recorded.
-	//
 	// case 2: 当前新增第 2 条（工作区未提交，模拟 agent 记了但没 commit）→ 记了。
 	sdecWrite(t, dir, "skills/"+skill+"/decisions.md", "## [d-base1] accept\n## [d-new1] reject\n新决策\n")
 	if rec, fo := skillDecisionsRecorded(dir, base, skill); fo || !rec {
 		t.Errorf("新增第2条应 recorded=true failopen=false, got rec=%v fo=%v", rec, fo)
 	}
-	// case 3: another skill first-creates decisions.md (no such file at base) → recorded.
-	//
 	// case 3: 另一 skill 首次创建 decisions.md（base 时无该文件）→ 记了。
 	skill2 := "newskill"
 	sdecWrite(t, dir, "skills/"+skill2+"/decisions.md", "## [d-first] accept\n首次决策\n")
 	if rec, fo := skillDecisionsRecorded(dir, base, skill2); fo || !rec {
 		t.Errorf("首次创建 decisions.md 应 recorded=true, got rec=%v fo=%v", rec, fo)
 	}
-	// case 4: base empty (old state without HeadCommit) → fail-open.
-	//
 	// case 4: base 空（老 state 无 HeadCommit）→ fail-open。
 	if _, fo := skillDecisionsRecorded(dir, "", skill); !fo {
 		t.Errorf("base 空应 fail-open")
 	}
-	// case 5: base commit unreachable (amend/rebase rewrote history) → fail-open.
-	//
 	// case 5: base commit 不可达（amend/rebase 改写历史）→ fail-open。
 	if _, fo := skillDecisionsRecorded(dir, "deadbeefnotarealcommit123", skill); !fo {
 		t.Errorf("base 不可达应 fail-open")

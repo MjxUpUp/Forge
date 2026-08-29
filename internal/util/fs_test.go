@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-// TestDirEntryIsDir: DirEntryIsDir must follow junction/symlink (os.Stat semantics) —
-// e.IsDir() is Lstat-based and drops link-form entries.
+// TestDirEntryIsDir: DirEntryIsDir must follow junction/symlink (os.Stat
+// semantics) — e.IsDir() is Lstat-based and drops link-form entries.
 //
 // TestDirEntryIsDir：DirEntryIsDir 必须跟随 junction/symlink（os.Stat 语义）——
 // e.IsDir() 基于 Lstat，会漏掉 link 形态的条目。
@@ -43,7 +43,8 @@ func TestDirEntryIsDir(t *testing.T) {
 	}
 }
 
-// TestDirEntryIsDir_BrokenLink: a dangling symlink stats to nothing → false (safe skip).
+// TestDirEntryIsDir_BrokenLink: a dangling symlink stats to nothing → false
+// (safe skip).
 //
 // TestDirEntryIsDir_BrokenLink：断链 stat 不到目标 → false（安全跳过）。
 func TestDirEntryIsDir_BrokenLink(t *testing.T) {

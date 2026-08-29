@@ -5,15 +5,11 @@ import (
 	"testing"
 )
 
+// TestLookupKnownAndUnknown.
+//
 // TestLookupKnownAndUnknown — Lookup 按文件名解析笔记；未知/空名返 false。
 // code-review-gate 是迁移首批笔记之一（真实内嵌资产，非合成 fixture）——钉住
 // embed 接线本身，防 notes/ 目录改名后 Lookup 静默全空。
-//
-// TestLookupKnownAndUnknown — Lookup resolves notes by filename; unknown/empty
-// names return false. code-review-gate is one of the first real migrated notes
-// (a genuine embedded asset, not a synthetic fixture) — this pins the embed
-// wiring itself, guarding against a renamed notes/ dir silently emptying
-// every Lookup.
 func TestLookupKnownAndUnknown(t *testing.T) {
 	note, ok := Lookup("code-review-gate")
 	if !ok {
@@ -30,9 +26,9 @@ func TestLookupKnownAndUnknown(t *testing.T) {
 	}
 }
 
-// TestListNonEmpty — List 返回字典序非空清单（10 份迁移笔记）。
-//
 // TestListNonEmpty — List returns a sorted non-empty roster (the 10 migrated notes).
+//
+// TestListNonEmpty — List 返回字典序非空清单（10 份迁移笔记）。
 func TestListNonEmpty(t *testing.T) {
 	names := List()
 	if len(names) < 10 {
@@ -45,11 +41,10 @@ func TestListNonEmpty(t *testing.T) {
 	}
 }
 
+// TestPointerLine — pointer-line format and the skilltrigger output contract (no ASCII double quotes); skills without a note return an empty string.
+//
 // TestPointerLine — 指针行格式与 skilltrigger 输出契约（不含 ASCII 双引号）；
 // 无笔记的 skill 返空串。
-//
-// TestPointerLine — pointer-line format and the skilltrigger output contract
-// (no ASCII double quotes); skills without a note return an empty string.
 func TestPointerLine(t *testing.T) {
 	p := PointerLine("code-review-gate")
 	if p == "" {

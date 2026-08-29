@@ -9,10 +9,6 @@ import (
 	"time"
 )
 
-// writeRun appends a crafted EvalRun (bypassing SubmitRun — the battery consumes persisted
-// runs, and SubmitRun requires a live case set; crafting EvalRun directly tests BuildBattery
-// in isolation).
-//
 // writeRun 追加手工构造的 EvalRun（绕过 SubmitRun——电池消费落盘 run，而 SubmitRun 需要
 // 现存 case 集；直接构造 EvalRun 隔离测 BuildBattery）。
 func writeRun(t *testing.T, dir, skill, runID, descHash string, results []CaseResult) {

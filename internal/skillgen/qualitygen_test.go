@@ -180,10 +180,6 @@ func TestQualitySkillTaskVerifyIsAdvisory(t *testing.T) {
 	}
 }
 
-// TestGenerateQualitySkillAtomicWriteNoResidue pins the same durability contract
-// for the quality skill file: a complete SKILL.md lands on disk with no temp
-// residue after the util.AtomicWrite switch.
-//
 // TestGenerateQualitySkillAtomicWriteNoResidue 为 quality skill 文件钉住同款
 // 耐久契约：util.AtomicWrite 切换后完整 SKILL.md 落盘且无临时残留。
 func TestGenerateQualitySkillAtomicWriteNoResidue(t *testing.T) {
@@ -219,10 +215,6 @@ func TestGenerateQualitySkillAtomicWriteNoResidue(t *testing.T) {
 	}
 }
 
-// TestQualitySkillDropsRemovedEscapeHatch pins the FORGE_SKIP_VERIFY cleanup:
-// the generated skill must not teach users an escape hatch that no longer
-// exists (TaskVerifyHook is unconditional advisory since v0.25).
-//
 // TestQualitySkillDropsRemovedEscapeHatch 钉住 FORGE_SKIP_VERIFY 清理：生成的
 // skill 不得再教用户一个已不存在的逃生舱（TaskVerifyHook 自 v0.25 无条件
 // advisory）。
@@ -234,11 +226,6 @@ func TestQualitySkillDropsRemovedEscapeHatch(t *testing.T) {
 	}
 }
 
-// TestQualitySkillRenderedViaSharedHelper pins the 5-copies → protocol.Render*
-// refactor on the skillgen side: the generated skill's standards section must
-// equal protocol.RenderStandards output with the skillgen style (emoji/必须),
-// proving the shared helper is really wired in.
-//
 // TestQualitySkillRenderedViaSharedHelper 钉住 skillgen 侧的 5 份 →
 // protocol.Render* 重构：生成 skill 的质量标准段必须与 protocol.RenderStandards
 // 用 skillgen 风格参数的输出一致，证明共享 helper 真实接线。
@@ -261,11 +248,6 @@ func TestQualitySkillRenderedViaSharedHelper(t *testing.T) {
 	}
 }
 
-// TestQualitySkillReplyConcisionRules guards the 回复详略规则 section: the
-// conclusion-first principle plus the L1 banned list rendered from
-// internal/doclint (single source of truth — the phrase table must not be
-// hand-copied here or in the linter's own docs).
-//
 // TestQualitySkillReplyConcisionRules 守卫「回复详略规则」章节：结论先行原则
 // 加从 internal/doclint 渲染的 L1 禁令清单（单一真相源——短语表不允许在这里
 // 或 linter 自身文档之外手抄）。
@@ -283,9 +265,6 @@ func TestQualitySkillReplyConcisionRules(t *testing.T) {
 	if !strings.Contains(content, "forge docs lint") {
 		t.Error("quality SKILL.md missing forge docs lint pointer")
 	}
-	// Every doclint banned phrase must surface in the rendered skill text —
-	// catches a new table entry silently missing from the renderer.
-	//
 	// 每条 doclint 禁令短语都须出现在渲染出的 skill 文本——防止新增表项
 	// 静默漏渲染。
 	for _, p := range doclint.BannedPhrases {
@@ -303,10 +282,6 @@ func TestQualitySkillReplyConcisionRules(t *testing.T) {
 // TestQualitySkillDocGateReferencesDocReviewSkill 生成的 quality SKILL.md 中 doc gate
 // 段须指引「按 doc-review skill 评审」且不得引用已迁移的
 // code-review-gate/references/rubric-docs.md 旧路径（依赖倒置：skill 是流程真相源）。
-//
-// TestQualitySkillDocGateReferencesDocReviewSkill: the generated quality SKILL.md
-// doc-gate paragraph must point at the doc-review skill and never the migrated
-// code-review-gate internal path (dependency inversion: the skill is the truth source).
 func TestQualitySkillDocGateReferencesDocReviewSkill(t *testing.T) {
 	proto := &protocol.Protocol{
 		Version: "1",

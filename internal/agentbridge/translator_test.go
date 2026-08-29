@@ -20,15 +20,6 @@ func testInput() *TranslationInput {
 	}
 }
 
-// isolateHome points the user-home-derived config locations (os.UserHomeDir,
-// XDG_CONFIG_HOME, CLAUDE_CONFIG_DIR, CODEX_HOME, DSH_HOME) at a temp dir so the
-// user-level translators and DetectAgents' user-level install detection never
-// touch the real home. Sets both HOME (unix) and USERPROFILE (windows) — os.UserHomeDir keys on one
-// or the other depending on platform. CLAUDE_CONFIG_DIR/CODEX_HOME are pointed at
-// nonexistent subdirs (a set-but-empty env redirects detection/resolution away from
-// the real home just like an unset one falling back to the isolated home); tests
-// needing a real codex home set CODEX_HOME again afterwards.
-//
 // isolateHome 把 user-home 派生的配置位置（os.UserHomeDir、XDG_CONFIG_HOME、
 // CLAUDE_CONFIG_DIR、CODEX_HOME、DSH_HOME）指向临时目录，user-level translator 与
 // DetectAgents 的用户级安装检测绝不触碰真实 home。HOME（unix）与 USERPROFILE
@@ -43,14 +34,6 @@ func isolateHome(t *testing.T) string {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
 	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
-	// DSH_HOME overrides the whole home for dsh's user-level install indicator
-	// (hostcap row Env: "DSH_HOME", Path: "~/.dsh"). dsh injects DSH_HOME into every
-	// subprocess environment (this test runner is itself being driven by a dsh
-	// session), so a real "~/.dsh" leaks in as [dsh] unless we isolate it here —
-	// the same redirect-to-nonexistent-subdir pattern used for CLAUDE_CONFIG_DIR
-	// and CODEX_HOME above. Without this, TestDetectAgents_* see [x dsh] instead of
-	// [x] solely because this machine happens to run dsh.
-	//
 	// DSH_HOME 对 dsh 的用户级安装指示（hostcap 行 Env:"DSH_HOME", Path:"~/.dsh"）
 	// 覆盖整个 home。dsh 会向每个子进程环境注入 DSH_HOME（本测试 runner 本身就
 	// 由一个 dsh 会话驱动），故若不在此隔离，真实 "~/.dsh" 会以 [dsh] 漏进来——
@@ -107,17 +90,7 @@ func TestCodexWiringMirrorsClaudeSettings(t *testing.T) {
 	assertNoSunkHooks(t, "Claude Code settings", claude["PostToolUse"])
 }
 
-// TestCodexHooks_OnlyLegalCodexEvents pins the codex event whitelist against the
-// official roster (https://developers.openai.com/codex/hooks): SessionStart,
-// SessionEnd, PreToolUse, PermissionRequest, PostToolUse, PreCompact, PostCompact,
-// UserPromptSubmit, SubagentStart, SubagentStop, Stop. Wiring an event outside
-// that roster would never fire (silent no-op), so any generated event not in the
-// roster fails. The six ForgeHookSpec events that HAVE a codex analogue must all
-// be present (PreToolUse/PostToolUse/Stop gates + SessionStart group +
-// UserPromptSubmit re-injection + PostCompact compact-resume); the codex-only
-// events without a spec counterpart (SessionEnd/PermissionRequest/PreCompact/
-// SubagentStart/SubagentStop) must stay absent. Modeled on
-// TestWindsurfHooks_OnlyLegalCascadeEvents.
+// TestCodexHooks_OnlyLegalCodexEvents pins the codex event whitelist against the official roster (https://developers.openai.com/codex/hooks): SessionStart, SessionEnd, PreToolUse, PermissionRequest, PostToolUse, PreCompact, PostCompact, UserPromptSubmit, SubagentStart, SubagentStop, Stop.
 //
 // TestCodexHooks_OnlyLegalCodexEvents 把 codex event 白名单钉在官方名册上
 // （https://developers.openai.com/codex/hooks）：SessionStart、SessionEnd、
@@ -191,14 +164,7 @@ func TestCursorWiringMirrorsClaudeSettings(t *testing.T) {
 	assertNoSunkHooks(t, "Cursor hooks", cursor["postToolUse"])
 }
 
-// TestCursorHooks_OnlyLegalCursorEvents pins the cursor event whitelist against
-// the official Cursor Agent roster (https://cursor.com/docs/agent/hooks). Wiring
-// an event outside that roster would never fire (silent no-op), so any generated
-// event not in the roster fails. The seven ForgeHookSpec events with a Cursor
-// analogue must all be present (postToolUseFailure/subagentStop joined 2026-08-22,
-// #4-A follow-up); PostCompact must stay absent (Cursor ships only
-// the observe-only preCompact — it cannot carry compact-resume's re-injection
-// contract). Modeled on TestWindsurfHooks_OnlyLegalCascadeEvents.
+// TestCursorHooks_OnlyLegalCursorEvents pins the cursor event whitelist against the official Cursor Agent roster (https://cursor.com/docs/agent/hooks).
 //
 // TestCursorHooks_OnlyLegalCursorEvents 把 cursor event 白名单钉在官方 Cursor
 // Agent 名册上（https://cursor.com/docs/agent/hooks）。接名册外的 event 永不
@@ -234,11 +200,6 @@ func TestCursorHooks_OnlyLegalCursorEvents(t *testing.T) {
 		"no Cursor analogue — only observe-only preCompact exists")
 }
 
-// flatHookCommandsByEvent parses a flat hooks config ({hooks:{event:[{command}]}} —
-// the command sits directly on each entry, no inner hooks array) into event → set of
-// command strings. Shared by the hosts using this shape: Cursor (~/.cursor/hooks.json)
-// and reasonix (<reasonix home>/settings.json).
-//
 // flatHookCommandsByEvent 把扁平 hooks 配置（{hooks:{event:[{command}]}}——command
 // 直接挂在每个条目上、无内层 hooks 数组）解析成 event → 命令字符串集合。由使用
 // 该形态的 host 共享：Cursor（~/.cursor/hooks.json）与 reasonix（<reasonix
@@ -326,15 +287,6 @@ func sortedSet(s map[string]bool) string {
 	return "[" + strings.Join(out, ", ") + "]"
 }
 
-// assertHostMirrorsClaude is the shared skeleton behind every *WiringMirrorsClaudeSettings
-// guard (codex/cursor/windsurf/reasonix/zcode): for every event the host wires, the mapped
-// Claude Code event must exist and carry the SAME command set once the ` --agent <host>`
-// attribution suffix is stripped, and every host command must carry that suffix (host
-// stdin normalization and output-protocol selection both need it). eventMap translates
-// host event names onto Claude's PascalCase names (identity for hosts that reuse them
-// verbatim); an unmapped host event fails — new events must be accounted for here.
-// Drift in either direction fails.
-//
 // assertHostMirrorsClaude 是每个 *WiringMirrorsClaudeSettings 守卫（codex/cursor/
 // windsurf/reasonix/zcode）共享的骨架：host 接的每个 event，映射后的 Claude Code
 // event 必须存在且剥掉 ` --agent <host>` 归因后缀后携带同一命令集，且每条 host
@@ -372,17 +324,10 @@ func assertHostMirrorsClaude(t *testing.T, host string, hostWiring, claude map[s
 	}
 }
 
-// sunkHookNames lists the deleted-for-good hook commands that must never resurface in any
-// host wiring (regression guard shared by the wiring-mirror tests).
-//
 // sunkHookNames 列出已删除且任何 host 接线都不得复活的 hook 命令（wiring-mirror
 // 测试共享的回归守卫）。
 var sunkHookNames = []string{"read-check", "scope-guard", "clone-check", "experience-check", "security-check", "dependency-check", "test-coverage-check", "session-health"}
 
-// assertNoSunkHooks fails when any sunk/deleted forge hook command resurfaces in cmds.
-// settings.go is the source of truth, so guarding its (or a host's mirrored) PostToolUse
-// set suffices.
-//
 // assertNoSunkHooks 在 cmds 中出现任何已删除的 forge hook 命令时失败。
 // settings.go 是真相源，守它的（或 host 镜像的）PostToolUse 集合即足够。
 func assertNoSunkHooks(t *testing.T, where string, cmds map[string]bool) {
@@ -396,10 +341,6 @@ func assertNoSunkHooks(t *testing.T, where string, cmds map[string]bool) {
 	}
 }
 
-// assertTranslateIdempotent translates twice via tr and requires every listed path to be
-// byte-identical across the two runs (deterministic output — no duplicate sections, no
-// spurious rewrites).
-//
 // assertTranslateIdempotent 用 tr 翻译两次，要求每个列出的路径跨两次运行逐字节
 // 一致（输出确定——无重复段、无多余改写）。
 func assertTranslateIdempotent(t *testing.T, tr Translator, paths ...string) {
@@ -429,12 +370,6 @@ func assertTranslateIdempotent(t *testing.T, tr Translator, paths ...string) {
 	}
 }
 
-// assertOnlyLegalEvents is the shared skeleton behind every *OnlyLegalEvents guard:
-// every wired event must sit in the host's legal roster (an event outside it would
-// never fire — a silent no-op), every required event must be wired, and every banned
-// event must stay absent (bannedWhy documents the ban's rationale so the failure
-// explains the contract, not just the symptom).
-//
 // assertOnlyLegalEvents 是每个 *OnlyLegalEvents 守卫共享的骨架：已接线的每个
 // event 必须落在该 host 的合法名册内（名册外的 event 永不触发——静默 no-op），
 // 每个 required event 必须接线，每个 banned event 必须缺席（bannedWhy 记录封禁
@@ -573,11 +508,6 @@ func TestWindsurfWiringMirrorsClaudeSettings(t *testing.T) {
 		"PreToolUse": "PreToolUse", "PostToolUse": "PostToolUse",
 		"Stop": "Stop", "SessionStart": "SessionStart",
 	})
-	// Presence pins: the folded map must carry all four Claude-side groups — the
-	// helper only visits events the host does wire, so a silently dropped group
-	// needs this explicit check (the pre-fix fixed-direction loop caught it via
-	// the empty-set compare).
-	//
 	// 在场钉住：折叠后的 map 必须带全四个 Claude 侧组——helper 只访问 host 已接
 	// 的事件，静默丢掉的组需要这条显式检查（旧固定方向循环靠空集比对抓它）。
 	for _, evt := range []string{"PreToolUse", "PostToolUse", "Stop", "SessionStart"} {
@@ -746,12 +676,7 @@ func TestAllTranslators(t *testing.T) {
 	}
 }
 
-// TestClineTranslator_Translate pins the zero-project-write half of the cline
-// contract: since v3.36 cline HAS lifecycle hooks and the translator wires real
-// wrapper scripts (see cline_test.go) — but only at the USER level
-// (~/Documents/Cline/Rules/Hooks/); the project directory must stay untouched
-// (zero-project-write default since v1.22; legacy project files are stripped by the
-// cleanup layer).
+// TestClineTranslator_Translate pins the zero-project-write half of the cline contract: since v3.36 cline HAS lifecycle hooks and the translator wires real wrapper scripts (see cline_test.go) — but only at the USER level (~/Documents/Cline/Rules/Hooks/); the project directory must stay untouched (zero-project-write default since v1.22; legacy project files are stripped by the cleanup layer).
 //
 // TestClineTranslator_Translate 钉死 cline 契约的零项目写入半边：v3.36 起 cline 有
 // lifecycle hooks、translator 接线真正的 wrapper 脚本（见 cline_test.go）——但只在
@@ -1051,14 +976,7 @@ func writeClaudeSettingsFixture(t *testing.T, dir string) {
 	}
 }
 
-// TestConventionsHooks_MirrorWiringPinned pins the wiring DECISIONS for the two
-// conventions-profile injection hooks in the hand-maintained mirrors (beyond the
-// generic spec-parity guards): opencode's PRE_HOOKS carries conventions-write and
-// it is deliberately NOT in opencodeExemptions (it is the ONLY conventions
-// delivery layer opencode can carry — its SessionStart group never fires there);
-// windsurf maps conventions-write to pre_write_code and conventions-context to
-// pre_user_prompt (the SessionStart group's Cascade mount), both riding the
-// "record honestly, never deliver silently" contract.
+// TestConventionsHooks_MirrorWiringPinned pins the wiring DECISIONS for the two conventions-profile injection hooks in the hand-maintained mirrors.
 //
 // TestConventionsHooks_MirrorWiringPinned 钉住 conventions-profile 两个注入 hook
 // 在手工维护镜像里的**接线决策**（超出通用 spec-parity 守卫的范围）：opencode 的

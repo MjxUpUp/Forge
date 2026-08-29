@@ -1,10 +1,5 @@
 package cli
 
-// skills_mutex_record.go — mutex-record subcommand: writes the agent-batched mutex
-// results as a single MutexRun. Mirrors eval-record's flow (normalize + judge + append)
-// but against the mutex case set: pass iff actual == Positive (JudgeMutexCase is the
-// single source of judgment).
-//
 // skills_mutex_record.go — mutex-record 子命令：把 agent 整批回填的互斥结果写成一条
 // MutexRun。流程对齐 eval-record（归一化 + 判定 + append），但针对互斥 case 集：
 // actual == Positive 才 pass（JudgeMutexCase 是判定单一真相源）。
@@ -67,9 +62,6 @@ func runSkillsMutexRecord(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("results 为空")
 	}
 
-	// ListSkills failure is propagated, not swallowed (same rationale as SubmitRun: a
-	// silently degraded canonical set would skew NormalizeTriggered for every case).
-	//
 	// ListSkills 失败要传播、不吞掉（理由同 SubmitRun：静默降级的 canonical 集会让
 	// 所有 case 的 NormalizeTriggered 失真）。
 	canonicalSkills, err := skillsdist.ListSkills(canonical)

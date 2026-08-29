@@ -11,9 +11,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/skillsdist"
 )
 
-// captureStdout temporarily redirects os.Stdout to capture the output of printInstallReport
-// (output-layer unit test).
-//
 // captureStdout 临时重定向 os.Stdout 捕获 printInstallReport 的输出（输出层单测）。
 func captureStdout(t *testing.T, fn func()) string {
 	t.Helper()
@@ -28,11 +25,6 @@ func captureStdout(t *testing.T, fn func()) string {
 	return buf.String()
 }
 
-// captureStderr temporarily redirects os.Stderr to capture warning output such as Warnings
-// (warnings go to stderr, separated from normal output). defer is registered right after the
-// assignment: even if fn panics, Stderr is restored and the pipe is closed (preventing
-// pollution of later tests and a half-open pipe).
-//
 // captureStderr 临时重定向 os.Stderr 捕获 Warnings 等告警输出（告警走 stderr，与正常输出分离）。
 // defer 在赋值后立即注册：fn panic 时也保证 Stderr 恢复 + pipe 关闭（防污染后续测试 + pipe 半挂）。
 func captureStderr(t *testing.T, fn func()) string {
@@ -98,8 +90,7 @@ func TestPrintInstallReport_BackupDetail(t *testing.T) {
 	}
 }
 
-// TestPrintInstallReport_NoDetailForSyncedSkip: a synced-state skip (StateLinked) must not
-// print drift details, to avoid noise.
+// TestPrintInstallReport_NoDetailForSyncedSkip: a synced-state skip (StateLinked) must not print drift details, to avoid noise.
 //
 // TestPrintInstallReport_NoDetailForSyncedSkip：同步态 skip（StateLinked）不该打印 drift 明细，避免打扰。
 func TestPrintInstallReport_NoDetailForSyncedSkip(t *testing.T) {
@@ -118,11 +109,7 @@ func TestPrintInstallReport_NoDetailForSyncedSkip(t *testing.T) {
 	}
 }
 
-// TestParseSkillTargets_CodexCopilot: parseSkillTargets must accept codex/copilot/all and
-// reject unknown values. Guards the --target codex|copilot dispatch capability — a missing
-// case would make a user's --target codex error out directly, and the codex/copilot detection
-// in skills drift-check (which reuses this function) would also fail. Loop-engineering
-// multi-agent dispatch (Codex CLI + GitHub Copilot) relies on this parsing.
+// TestParseSkillTargets_CodexCopilot: parseSkillTargets must accept codex/copilot/all and reject unknown values.
 //
 // TestParseSkillTargets_CodexCopilot：parseSkillTargets 必须接受 codex/copilot/all 并拒绝未知值。
 // 守护 --target codex|copilot 分发能力——case 漏写会让用户 --target codex 直接报错，
@@ -165,8 +152,7 @@ func TestParseSkillTargets_CodexCopilot(t *testing.T) {
 	}
 }
 
-// TestParseSkillTargets_EmptyDefaultsClaude: empty input defaults to claude (the contract
-// for the CLI --target default value).
+// TestParseSkillTargets_EmptyDefaultsClaude: empty input defaults to claude (the contract for the CLI --target default value).
 //
 // TestParseSkillTargets_EmptyDefaultsClaude：空入参默认 claude（CLI --target 默认值的契约）。
 func TestParseSkillTargets_EmptyDefaultsClaude(t *testing.T) {
@@ -179,10 +165,7 @@ func TestParseSkillTargets_EmptyDefaultsClaude(t *testing.T) {
 	}
 }
 
-// TestPrintInstallReport_Warnings: requires dependency warnings must go to stderr and be
-// listed one by one. Guards enforce-hint visibility — in a single-install broken-link
-// scenario the user must see the not-installed-together warning, otherwise cross-skill
-// references break silently.
+// TestPrintInstallReport_Warnings: requires dependency warnings must go to stderr and be listed one by one.
 //
 // TestPrintInstallReport_Warnings：requires 依赖警告必须走 stderr 且逐条列出。
 // 守护 enforce 提示可见性——单装断链场景用户须看到「未同装」警告，否则跨 skill 引用静默断链。
@@ -206,8 +189,7 @@ func TestPrintInstallReport_Warnings(t *testing.T) {
 	}
 }
 
-// TestPrintInstallReport_NoWarnings: with no Warnings, stderr must not print the warning
-// title (avoid false positives).
+// TestPrintInstallReport_NoWarnings: with no Warnings, stderr must not print the warning title (avoid false positives).
 //
 // TestPrintInstallReport_NoWarnings：无 Warnings 时 stderr 不打印警告标题（避免误报）。
 func TestPrintInstallReport_NoWarnings(t *testing.T) {
@@ -218,10 +200,7 @@ func TestPrintInstallReport_NoWarnings(t *testing.T) {
 	}
 }
 
-// TestResolveInstallScope pins the shared --global/--project resolution:
-// --project overrides --global; project scope outside a forge project errors
-// with the actual flag combination in the message (not a hardcoded
-// "--project") and wraps the resolution failure.
+// TestResolveInstallScope pins the shared --global/--project resolution: --project overrides --global; project scope outside a forge project errors with the actual flag combination in the message (not a hardcoded "--project") and wraps the resolution failure.
 //
 // TestResolveInstallScope 钉住共享的 --global/--project 解析：--project 覆盖
 // --global；非 forge 项目内的 project scope 报错，文案含用户实际传的 flag 组合
@@ -233,11 +212,8 @@ func TestResolveInstallScope(t *testing.T) {
 		t.Fatalf("global: got (%v, %q, %v), want (true, \"\", nil)", g, dir, err)
 	}
 
-	// --global=false alone also means project scope; the error must name
-	// --global=false (the flag the user actually passed). Empty registry
-	// required — see TestStatusWithoutInit for the rationale.
-	//
 	// 需要空注册表——理由同 TestStatusWithoutInit。
+	// 单 --global=false 同样指 project scope；报错必须点名 --global=false（用户实际传的 flag）。
 	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	t.Chdir(t.TempDir())
 	_, _, err = resolveInstallScope(false, false)
@@ -272,15 +248,11 @@ func TestResolveInstallScope(t *testing.T) {
 	}
 }
 
-// TestLoadProjectProfile: global scope → nil regardless of files; project scope without
-// .forge/skills-profile → nil (full set); with profile → allowlist; malformed profile →
-// hard error (silently falling back to full distribution would defeat the trimming intent).
+// TestLoadProjectProfile: global scope → nil regardless of files; project scope without .forge/skills-profile → nil (full set); with profile → allowlist; malformed profile → hard error (silently falling back to full distribution would defeat the trimming intent).
 //
 // TestLoadProjectProfile：全局范围 → 恒 nil；项目范围无 .forge/skills-profile → nil（全量）；
 // 有画像 → 白名单；画像格式错 → 硬错误（静默回退全量会让裁剪落空）。
 func TestLoadProjectProfile(t *testing.T) {
-	// Global scope: nil even inside a project with a profile file.
-	//
 	// 全局范围：即便项目内有画像文件也返回 nil。
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, ".forge"), 0755); err != nil {
@@ -295,8 +267,6 @@ func TestLoadProjectProfile(t *testing.T) {
 		t.Fatalf("global: got (%v, %v), want (nil, nil)", prof, err)
 	}
 
-	// Project scope, no profile file → nil.
-	//
 	// 项目范围，无画像文件 → nil。
 	noproj := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(noproj, ".forge"), 0755); err != nil {
@@ -308,8 +278,6 @@ func TestLoadProjectProfile(t *testing.T) {
 		t.Fatalf("project no profile: got (%v, %v), want (nil, nil)", prof, err)
 	}
 
-	// Project scope with profile → allowlist content.
-	//
 	// 项目范围有画像 → 白名单内容。
 	t.Chdir(root)
 	prof, err = loadProjectProfile(false)
@@ -320,8 +288,6 @@ func TestLoadProjectProfile(t *testing.T) {
 		t.Fatalf("profile = %v, want [alpha]", prof)
 	}
 
-	// Malformed profile → hard error.
-	//
 	// 画像格式错 → 硬错误。
 	bad := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(bad, ".forge"), 0755); err != nil {

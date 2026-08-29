@@ -76,9 +76,7 @@ func TestLatestByCheckForSession_IsolatesBySession(t *testing.T) {
 	}
 }
 
-// TestLatestByCheckForSessionSince_TaskScoping pins the M2 fix (multi-task-concurrency):
-// an entry recorded BEFORE the task's StartedAt must not surface to a reader scoping
-// "during this task" — otherwise a new task inherits the previous task's PASS.
+// TestLatestByCheckForSessionSince_TaskScoping pins the M2 fix (multi-task-concurrency): an entry recorded BEFORE the task's StartedAt must not surface to a reader scoping "during this task" — otherwise a new task inherits the previous task's PASS.
 //
 // TestLatestByCheckForSessionSince_TaskScoping 钉住 M2 修正
 // （multi-task-concurrency）：任务 StartedAt 之前记录的条目不得出现在「本任务期

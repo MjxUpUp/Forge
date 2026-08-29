@@ -37,9 +37,6 @@ func Evaluate(input *EvaluateInput, config *scoringtypes.ScoringConfig) *scoring
 	}
 }
 
-// buildEvidenceSummary summarizes the evidence-chain source counts into ScoreResult.Evidence. total=0 returns nil
-// (no evidence data, e.g. old task checklog is empty), avoiding zero-value noise output.
-//
 // buildEvidenceSummary 把证据链来源计数摘要成 ScoreResult.Evidence。total=0 返回 nil
 // （无证据数据，如旧任务 checklog 为空），避免输出零值噪声。
 func buildEvidenceSummary(deterministic, agentClaim int) *scoringtypes.EvidenceSummary {
@@ -56,8 +53,6 @@ func buildEvidenceSummary(deterministic, agentClaim int) *scoringtypes.EvidenceS
 	}
 }
 
-// --- dimension scoring functions ---
-//
 // --- 维度打分函数 ---
 
 func scoreProcess(h GateHistory) scoringtypes.DimensionScore {
@@ -69,10 +64,6 @@ func scoreProcess(h GateHistory) scoringtypes.DimensionScore {
 		}
 	}
 
-	// Passed participates in scoring: a task that completed only part of the gate set (reachable
-	// in production — legacy tasks recorded when DefaultGates was longer, or gates skipped via
-	// overrides) must not score the same as a fully-gated task.
-	//
 	// Passed 参与计分：只过了一部分门禁的任务（生产可达——DefaultGates 变长前的老任务、
 	// override 跳过的门禁）不得与全通过的任务同分。
 	passed := h.Passed
@@ -96,18 +87,6 @@ func scoreProcess(h GateHistory) scoringtypes.DimensionScore {
 	}
 }
 
-// scoreTesting scores continuously by the ratio of source files with paired tests, overlaid with an assertion-density signal.
-//
-// The old implementation was binary (CheckTestCoverage ok -> 100/70/20): a single source file without a paired test would press the entire
-// dimension down to 20, judging good work like 5 source files with 4 having tests as 20 points. Industry rubric evaluation emphasizes
-// anchored continuous scoring (opposed to pure binary), so it was changed to a ratio:
-//
-//	ratio = covered/total, base = 30 + 70*ratio (none paired -> 30, all paired -> 100)
-//
-// Assertion density correction: if covered>0 but assertionCount==0, the test files only have setup/log without assertions
-// (fake tests), base x 0.6. Based on the STREW Assertion-McCabe ratio — the number of assertions measures test adequacy.
-// total==0 (no testable source) -> 100 (no target should not be penalized). checked=false -> 70 (neutral, not checked).
-//
 // scoreTesting 按"有配对测试的源码文件比例"连续打分，叠加断言密度信号。
 //
 // 旧实现是二值（CheckTestCoverage ok → 100/70/20）：一个源码文件没配对测试就把整个
@@ -119,14 +98,6 @@ func scoreProcess(h GateHistory) scoringtypes.DimensionScore {
 // 断言密度修正：若 covered>0 但 assertionCount==0，说明测试文件只有 setup/log 无断言
 // （假测试），base × 0.6。依据 STREW 的 Assertion-McCabe ratio——断言数度量测试充分性。
 // total==0（无可测源码）→ 100（无对象不该被惩罚）。checked=false → 70（中性，未检测）。
-//
-// Penalty guard (fix/cleanup-batch, 2026-08-29): the ×0.6 correction now also
-// requires testFiles>0 — the count of test files the density collection
-// actually READ. assertionCount==0 with testFiles==0 means the collection saw
-// no test files at all (dead git probe — CollectAssertionDensity already
-// warned on stderr — or a genuinely test-less diff), and "no data" must not
-// read as "data says fake": a dead probe would otherwise punish the task for
-// files it never saw.
 //
 // 惩罚守卫（fix/cleanup-batch，2026-08-29）：×0.6 修正另需 testFiles>0——即密度
 // 采集【实际读到】的测试文件数。assertionCount==0 且 testFiles==0 意为采集根本没见
@@ -212,9 +183,6 @@ func scoreAssertions(passed, checked bool) scoringtypes.DimensionScore {
 	}
 }
 
-// scoreScope scores by change size. parseDiffStatLines has already excluded test files and non-source files —
-// writing tests should not be reversely penalized (see parseDiffStatLines for details).
-//
 // scoreScope 按改动规模打分。parseDiffStatLines 已排除测试文件和非源码文件——
 // 写测试不该被反向惩罚（详见 parseDiffStatLines）。
 func scoreScope(diffStat string) scoringtypes.DimensionScore {
@@ -263,10 +231,6 @@ func scoreEfficiency(startedAt, completedAt time.Time) scoringtypes.DimensionSco
 
 	duration := completedAt.Sub(startedAt)
 
-	// Negative duration (clock skew / CompletedAt written before StartedAt / tampered TaskState)
-	// is untrustworthy data, not an instant completion — treat it like missing data (neutral 70).
-	// Otherwise completedAt < startedAt would hit the minutes<=15 bucket and hand out a free 100.
-	//
 	// 负 duration（时钟回拨 / CompletedAt 先于 StartedAt 写入 / TaskState 被改）是不可信数据，
 	// 不是"秒完成"——按数据不可用处理（中性 70）。否则 completedAt < startedAt 会命中
 	// minutes<=15 桶白拿 100，成为零成本刷分向量。
@@ -280,10 +244,6 @@ func scoreEfficiency(startedAt, completedAt time.Time) scoringtypes.DimensionSco
 
 	minutes := duration.Minutes()
 
-	// Threshold recalibration (dogfood measured the old thresholds as out of touch with reality: <=5min=100/<=60=60/>60=40 pressed 80% of real AI tasks
-	// into the 40-60 range, the dimension had no discrimination). Real forge tasks median ~30-90min, the new thresholds give the common range a gradient:
-	// <=15=100 (fast)/<=30=90 (agile)/<=60=75 (normal)/<=120=55 (slow)/>120=35 (sluggish).
-	//
 	// 阈值重校准（dogfood 实测旧阈值脱离实际：≤5min=100/≤60=60/>60=40 把 80% 真实 AI 任务
 	// 压在 40-60，维度无区分度）。真实 forge 任务中位 ~30-90min，新阈值让常见区间有梯度：
 	// ≤15=100（快速）/≤30=90（敏捷）/≤60=75（正常）/≤120=55（偏慢）/>120=35（拖沓）。
@@ -308,16 +268,6 @@ func scoreEfficiency(startedAt, completedAt time.Time) scoringtypes.DimensionSco
 	}
 }
 
-// scoreExpression scores the expression (doc-artifact readability) dimension —
-// the measurement anchor of the output→re-check loop. Verbosity is an
-// alignment-training length bias that self-discipline cannot fix, so the loop
-// needs a score that makes it visible (docs/design/output-readability-gates.md).
-// Deterministic inputs only: L1 hard-issue count from doclint and the recorded
-// L2 rubric evidence. No doc deliverables → neutral 100 (pure-code tasks are
-// unaffected — the dimension judges expression, not its absence). doc-gate
-// escape caps the dimension at 60 (escape must have a visible cost here too,
-// mirroring the overall Weak-capping philosophy).
-//
 // scoreExpression 给表达（文档产物可读性）维度打分——输出→回检循环的度量锚点。
 // 啰嗦是对齐训练的长度偏差，靠自律不可解，循环需要让它可见的分数
 // （docs/design/output-readability-gates.md）。只用确定性输入：doclint 的 L1
@@ -361,8 +311,6 @@ func scoreExpression(input *EvaluateInput) scoringtypes.DimensionScore {
 	}
 }
 
-// --- helper functions ---
-//
 // --- 辅助函数 ---
 
 func weightedOverall(dimensions []scoringtypes.DimensionScore, weights map[string]float64) float64 {
@@ -384,16 +332,6 @@ func weightedOverall(dimensions []scoringtypes.DimensionScore, weights map[strin
 	return math.Round(total/weightSum*100) / 100
 }
 
-// parseDiffStatLines sums the total changed lines from `git diff --numstat` output,
-// excluding test files and non-source files.
-//
-// The old implementation summed all numstat lines — test files, docs, and config lines all counted into scope, causing writing tests to be
-// reversely penalized (a hazard task had 523 lines about half of which were tests -> scope=40, pressing A-grade work down to C). Industry
-// consensus (SLOCcount excludes generated code by default, SLOC excludes comments and blank lines): scale metrics should only count hand-written production source code.
-// So test files and non-source extensions are not counted into scope — writing tests changes from a reverse incentive to neutral.
-//
-// numstat format: <added>\t<deleted>\t<path> (binary files show -\t-\t<path>).
-//
 // parseDiffStatLines 从 `git diff --numstat` 输出求和总变更行数，
 // 排除测试文件和非源码文件。
 //
@@ -418,9 +356,6 @@ func parseDiffStatLines(stat string) int {
 	return total
 }
 
-// scopeSourceExts is the set of source extensions recognized by the scope dimension (same source as taskpipeline.testcoverage.sourceExts,
-// not importing that package to avoid a circular dependency). Files not in this set (docs/config/generated) are not counted into scope.
-//
 // scopeSourceExts 是 scope 维度认定的源码后缀（与 taskpipeline.testcoverage.sourceExts
 // 同源，不 import 该包以避免循环依赖）。非此集合的文件（文档/配置/生成物）不计入 scope。
 var scopeSourceExts = map[string]bool{
@@ -429,9 +364,6 @@ var scopeSourceExts = map[string]bool{
 	`.rb`: true, `.zig`: true, `.nim`: true,
 }
 
-// countsAsScope reports whether path counts into the scope dimension: must be a source file and not a test file.
-// Test files are excluded, so writing tests is not reversely penalized as a large scope.
-//
 // countsAsScope 报告 path 是否计入 scope 维度：必须是源码文件且非测试文件。
 // 测试文件被排除，写测试不会被反向惩罚为"large scope"。
 func countsAsScope(path string) bool {
@@ -441,11 +373,6 @@ func countsAsScope(path string) bool {
 	return scopeSourceExts[filepath.Ext(path)]
 }
 
-// isTestPath reports whether path looks like a test file (same heuristic as taskpipeline.isTestFile).
-// Used to exclude test files in the scope dimension. Directory detection is SEGMENT-exact
-// (test/tests/__tests__ as whole path segments), not substring: contest/, latest/, attest/
-// must not exempt production code from scope accounting (a registered escape hatch).
-//
 // isTestPath 报告 path 是否疑似测试文件（与 taskpipeline.isTestFile 同启发式）。
 // 用于在 scope 维度排除测试文件。目录判定按【路径段整段】匹配（test/tests/
 // __tests__）而非子串——contest/、latest/、attest/ 不得豁免生产代码的 scope 计量
@@ -457,19 +384,12 @@ func isTestPath(path string) bool {
 			return true
 		}
 	}
-	// test_ prefix — PYTHON ONLY (pytest convention): mirrors taskpipeline.isTestFile.
-	// The pinned case test_utils.go (scope_test.go) forbids generalizing to Go — Go's
-	// convention is the _test.go suffix; "test_utils.go" is a helpers file.
-	//
 	// test_ 前缀——仅 Python 与 Ruby（pytest/minitest 惯例）：镜像
 	// taskpipeline.isTestFile。钉住用例 test_utils.go（scope_test.go）禁止推广到
 	// Go——Go 惯例是 _test.go 后缀，"test_utils.go" 是辅助文件。
 	if ext := filepath.Ext(base); (ext == ".py" || ext == ".rb") && strings.HasPrefix(base, `test_`) && len(base) > len(`test_`)+len(ext) {
 		return true
 	}
-	// JUnit camel suffixes (MainTest.java/MainTests.java/MainIT.java), .java only:
-	// the pairing side accepts them, so the dimension side must too.
-	//
 	// JUnit 驼峰后缀（MainTest.java/MainTests.java/MainIT.java），仅 .java：
 	// 配对侧已接受，维度侧必须同步。
 	if strings.HasSuffix(base, `.java`) {
@@ -486,9 +406,6 @@ func isTestPath(path string) bool {
 	return false
 }
 
-// isSourceExt mirrors the source-extension gate used by the pairing side so the
-// test_ prefix rule cannot swallow non-source files.
-//
 // isSourceExt 镜像配对侧的源扩展门槛，防止 test_ 前缀规则吞掉非源码文件。
 func isSourceExt(ext string) bool {
 	switch ext {
@@ -498,10 +415,6 @@ func isSourceExt(ext string) bool {
 	return false
 }
 
-// parseNumstatLine parses a single line of the form added\tdeleted\tpath and also returns path so the caller
-// can filter (e.g. exclude test files from scope). Binary entries (-\t-\t...) return ok=false.
-// Empty lines or format errors return ok=false.
-//
 // parseNumstatLine 解析单行"added\tdeleted\tpath"并同时返回 path 以便调用方
 // 过滤（如把测试文件排除出 scope）。binary 条目（"-\t-\t..."）返 ok=false。
 // 空行或格式错误返 ok=false。

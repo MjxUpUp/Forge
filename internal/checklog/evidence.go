@@ -2,12 +2,7 @@ package checklog
 
 import "strings"
 
-// EvidenceChain aggregates evidence entries scattered across checklog.jsonl (including archived history)
-// for a task into a structured view of "what verifications were claimed, and how many have deterministic evidence".
-//
-// It is the core output of route 1 (evidence-chain foundation): the review sub-agent and scoring no longer rely solely on diff,
-// but first check whether the task has enough deterministic evidence to support the "done" claim — countering the LLM-judge
-// blind spot of not seeing "agent skipped verification and claimed done".
+// EvidenceChain aggregates a task’s scattered checklog evidence entries into a structured view of claimed verifications and deterministic support.
 //
 // EvidenceChain 把一个任务散落在 checklog.jsonl（含归档历史）里的证据条目，
 // 聚成"声称做了哪些验证、其中多少有 deterministic 证据"的结构化视图。
@@ -17,8 +12,7 @@ import "strings"
 // 看不出"agent 跳过前置就声明完成"的盲区。
 type EvidenceChain struct {
 	TaskRef string
-	// Entries are time-ordered (from LoadForTask). Old entries with empty Source are inferred via SourceForCheck
-	// at bucketing time as a fallback, but the original value is preserved within Entries (not backfilled); callers needing explicit inference manage it themselves.
+	// Entries are time-ordered (from LoadForTask).
 	//
 	// Entries 按时间序（来自 LoadForTask）。Source 为空的旧条目按 SourceForCheck
 	// 在分桶时兜底推断，但 Entries 内保留原值（不回填），调用方需显式推断时自理。
@@ -29,16 +23,7 @@ type EvidenceChain struct {
 	// AgentClaim: count of entries with Source=agent-claim.
 	//
 	AgentClaim int // Source=agent-claim 的条目数
-	// UsedEscapeHatch reports whether this task has used a VERIFICATION-class escape hatch
-	// (FORGE_TEST_COVERAGE / FORGE_ACCEPTANCE_GATE / FORGE_SKILL_DECISIONS — gate-bypasses that skip actual
-	// verification). Escape is a legitimate tool, but when the "done" claim relies on skipping verification gates,
-	// credibility must be discounted — Strength is capped at Weak accordingly (plan 5: give escape a cost, countering
-	// the backlash of "hard gate + global escape hatch = fake hard gate").
-	//
-	// NOT set by the work-activity escape (FORGE_WORK_ACTIVITY): that is a rhythm gate (requires tool calls between
-	// gates — prevents shortcutting straight to a gate without reading code), NOT a verification gate. Using it does
-	// not prop the "done" claim on skipped verification, so capping would punish legitimate batch-refactor escapes
-	// (refactor/migration/demolition tasks) and inflate the blind-spot rate. See isRhythmEscapeHatch.
+	// UsedEscapeHatch reports whether the task used a verification-class escape hatch.
 	//
 	// UsedEscapeHatch 报告本任务是否用了验证类逃生舱
 	// （FORGE_TEST_COVERAGE / FORGE_ACCEPTANCE_GATE / FORGE_SKILL_DECISIONS——跳过真验证的 gate-bypass）。
@@ -58,9 +43,7 @@ func (ec EvidenceChain) Total() int {
 	return ec.Deterministic + ec.AgentClaim
 }
 
-// Ratio returns the deterministic proportion of the evidence: Deterministic/Total.
-// 1.0 = fully supported by deterministic; 0.0 = no deterministic evidence. Returns 0 when Total==0 —
-// callers should check Strength()==NoData first to distinguish "no evidence" from "all agent-claim".
+// Ratio returns the deterministic proportion of the evidence: Deterministic/Total. 1.0 = fully supported by deterministic; 0.0 = no deterministic evidence.
 //
 // Ratio 返回证据中 deterministic 占比：Deterministic/Total。
 // 1.0 = 完全由 deterministic 支撑；0.0 = 无 deterministic 证据。Total==0 时返回 0——
@@ -72,16 +55,7 @@ func (ec EvidenceChain) Ratio() float64 {
 	return float64(ec.Deterministic) / float64(ec.Total())
 }
 
-// EvidenceStrength discretizes Ratio into tiers that review can act on. The point is not the number itself,
-// but what it should "drive": when a "done" claim rests mostly on agent self-report (Weak/Unverified),
-// that is exactly the LLM-judge blind spot (agent skipped real verification and claimed done) — the reviewer must
-// then verify whether the claimed verification actually happened, not just read the diff. Strong = deterministic majority, claim is credible.
-//
-// Tiers (threshold 0.5 = "deterministic majority"):
-//   - NoData:     no evidence at all (total 0) — neutral, nothing to calibrate.
-//   - Unverified: has agent-claim but zero deterministic — claim has no real-run support, the highest-signal blind spot.
-//   - Weak:       has deterministic but agent-claim is the majority (ratio<0.5).
-//   - Strong:     deterministic is the majority (ratio>=0.5).
+// EvidenceStrength discretizes Ratio into review-actionable tiers.
 //
 // EvidenceStrength 把 Ratio 离散成 review 可据以行动的档位。重点不是数字本身，
 // 而是它该"驱动"什么：一个"完成"声明主要靠 agent 自述撑着（Weak/Unverified），
@@ -119,10 +93,6 @@ func (s EvidenceStrength) String() string {
 	return "Unknown"
 }
 
-// escapeCapRatioFloor and escapeCapEvidenceFloor are the double threshold of the
-// evidence-scaled escape cap: when Deterministic >= 20 AND Ratio >= 0.85, one bypassed
-// gate is a marginal fraction of the evidence and no longer caps Strength.
-//
 // Calibration basis (2026-08): 55/55 escape-capped conclusions across all projects had
 // ratio>=0.5 — every single cap landed on a would-be-Strong task; none were true
 // weak-evidence claims. A flat cap taxed every escape regardless of evidence weight,
@@ -145,15 +115,7 @@ const (
 	escapeCapEvidenceFloor = 20
 )
 
-// EscapeDowngradedStrength reports whether this task's Strength was downgraded by the
-// verification-class escape-hatch cap (would-be Strong → Weak). Single source of the
-// cap rule — review.go's blind-spot advisory derives from this predicate instead of
-// re-encoding it (strategy has one home; every layer derives).
-//
-// Marginal-escape carve-out: when deterministic evidence overwhelmingly dominates
-// (Ratio >= escapeCapRatioFloor AND Deterministic >= escapeCapEvidenceFloor), the hatch
-// use is marginal and does NOT downgrade — see escapeCapRatioFloor for the
-// calibration basis.
+// EscapeDowngradedStrength reports whether a verification-class escape hatch downgraded this task’s Strength.
 //
 // EscapeDowngradedStrength 报告本任务的 Strength 是否被验证类逃生舱 cap 降档
 // （本该 Strong → Weak）。cap 规则的单一真相源——review.go 的盲区 ADVISORY 从本谓词
@@ -172,7 +134,7 @@ func (ec EvidenceChain) EscapeDowngradedStrength() bool {
 	return ec.Ratio() >= 0.5
 }
 
-// Strength buckets the evidence chain into review-actionable tiers. Semantics and thresholds: see EvidenceStrength doc.
+// Strength buckets the evidence chain into review-actionable tiers.
 //
 // Strength 把证据链分到 review 可行动的档位。语义与阈值见 EvidenceStrength 文档。
 func (ec EvidenceChain) Strength() EvidenceStrength {
@@ -186,16 +148,6 @@ func (ec EvidenceChain) Strength() EvidenceStrength {
 	if ec.Ratio() >= 0.5 {
 		s = Strong
 	}
-	// Plan 5: using a verification-class escape hatch = the "done" claim is propped up by skipping verification gates,
-	// so it cannot be rated Strong. Cap at Weak — give escape a cost rather than merely logging it, countering the backlash
-	// of "hard gate + global escape hatch = fake hard gate". Use downgrade rather than block: keep escape legitimate
-	// (doc-only, generated code, etc.) while making it no longer free. work-activity (rhythm gate) does NOT set
-	// UsedEscapeHatch, so it never triggers this cap — see isRhythmEscapeHatch.
-	//
-	// Evidence-scaled (2026-08 calibration, see escapeCapRatioFloor): the cap is
-	// suspended only when the evidence overwhelmingly dominates — otherwise it stays.
-	// Escape keeps a cost in every thin/shallow-evidence case.
-	//
 	// 方案5：用了验证类逃生舱 = "完成"声明靠跳过验证 gate 撑住，不可评 Strong。cap 到 Weak——
 	// 让逃生有代价而非仅记 log，对冲"硬门禁 + 全局逃生舱 = 假硬门禁"的反噬。用降档
 	// 而非阻断：既保逃生合法（doc-only/生成码等正当场景），又让它不再免费。work-activity
@@ -209,28 +161,6 @@ func (ec EvidenceChain) Strength() EvidenceStrength {
 	return s
 }
 
-// verificationChecks is the WHITELIST of check names whose entries may feed
-// evidence strength (fix/cleanup-batch, 2026-08-29). It inverts the former
-// 18-clause observation disjunction: a check NOT positively listed here is an
-// observation and never bucketed, whatever its Source says — fail-safe against
-// the unknown-check-name trap the old denylist had (a new observation check
-// added without touching the list silently landed in the deterministic bucket
-// and inflated Strength). Semantically equivalent for every existing check: the
-// listed names are exactly the verification/gate-class checks the denylist used
-// to pass through.
-//
-// The three taskpipeline-defined names (acceptance / test-run /
-// skill-decisions-advisory) are duplicated as literals because checklog is a
-// leaf package — importing taskpipeline would create a cycle (taskpipeline
-// imports checklog), the same discipline as the Detail-prefix literals in
-// types.go. Deliberately NOT whitelisted (previously fed bucketing, now
-// observations — the fail-safe direction): assignment-unclaimed
-// (cli/task_assignment.go, an always-advisory process marker) and the
-// advisory-hook names that reach the log as hook-name checks (resume-reinject,
-// init-suggest, mcp-scan, read-before-edit, freeze-guard, skill-scan,
-// task-resume, tool-track) — negative/advisory signals must not read as
-// positive verification evidence.
-//
 // verificationChecks 是允许喂给 evidence strength 的 check 名【白名单】
 // （fix/cleanup-batch，2026-08-29）。它把原先 18 子句的 observation 析取反转：
 // 未正向列名的 check 一律是观察、绝不分桶——无论其 Source 写什么——对旧黑名单
@@ -259,9 +189,7 @@ var verificationChecks = map[CheckName]bool{
 	CheckName("skill-decisions-advisory"): true, // taskpipeline.CheckNameSkillDecisions：task-verify guardrail 判定
 }
 
-// BuildEvidenceChain is a pure function: buckets entries already belonging to a task by source. Entries with empty
-// Source (legacy data, or un-migrated record points) fall back to SourceForCheck, ensuring old checklog
-// is bucketed correctly and the foundation can ship without backfilling history.
+// BuildEvidenceChain is a pure function: buckets entries already belonging to a task by source.
 //
 // BuildEvidenceChain 是纯函数：对已属于某任务的 entries 按来源分桶。Source 为空
 // 的条目（旧数据，或未改造的记录点写入）按 SourceForCheck 兜底，保证旧 checklog
@@ -269,17 +197,6 @@ var verificationChecks = map[CheckName]bool{
 func BuildEvidenceChain(entries []Entry, taskRef string) EvidenceChain {
 	ec := EvidenceChain{TaskRef: taskRef, Entries: entries}
 	for _, e := range entries {
-		// WHITELIST gate (inverted from the former 18-clause observation denylist,
-		// fix/cleanup-batch 2026-08-29): only positively-listed verification checks
-		// may feed evidence strength. Everything else — the observation class
-		// (scope-drift, cheat-scan, escape-hatch, skill-trigger, ...), advisory
-		// hook-name checks, and any NEW/unknown check name — is kept in Entries
-		// (forge trace displays them) but skipped by the bucketing counts, whatever
-		// its Source says. Fail-safe: a future observation check can no longer
-		// inflate Strength by default; adding verification evidence requires
-		// positively joining the whitelist. See verificationChecks for the
-		// membership rationale and the deliberately-excluded names.
-		//
 		// 白名单闸门（由原先 18 子句的 observation 黑名单反转而来，
 		// fix/cleanup-batch 2026-08-29）：只有正向列名的验证类 check 才可喂给
 		// evidence strength。其余——observation 类（scope-drift、cheat-scan、
@@ -289,11 +206,6 @@ func BuildEvidenceChain(entries []Entry, taskRef string) EvidenceChain {
 		// Strength；新增验证证据必须显式加入白名单。成员依据与刻意排除名单
 		// 见 verificationChecks。
 		if !verificationChecks[e.Check] {
-			// Only VERIFICATION-class escape hatches (test-coverage/acceptance/skill-decisions) set the cap flag.
-			// work-activity is a rhythm gate (tool calls between gates), not verification — using it does not prop the
-			// "done" claim on skipped verification, so it must not cap Strength (else refactor-heavy weeks inflate the
-			// blind-spot rate and mis-fire RetrospectiveNudge on well-evidenced tasks).
-			//
 			// 仅验证类逃生舱（test-coverage/acceptance/skill-decisions）置 cap 标志。
 			// work-activity 是节奏门禁（门禁间工具调用），非验证——用它不靠跳过验证撑住"完成"，
 			// 故不得 cap Strength（否则重构密集周会让盲区率虚高、对证据充分任务误触 RetrospectiveNudge）。
@@ -306,11 +218,6 @@ func BuildEvidenceChain(entries []Entry, taskRef string) EvidenceChain {
 		if src == "" {
 			src = SourceForCheck(e.Check)
 		}
-		// Credibility requires a positive match: checklog.jsonl is agent-writable, so an
-		// unknown Source value (typo, hand-edited, or injected) must never fall into the
-		// deterministic bucket via a catch-all else — that would be a forgery backdoor.
-		// Anything not positively "deterministic" is counted as agent-claim.
-		//
 		// 可信必须正向匹配：checklog.jsonl 是 agent 可写的，未知 Source 值（笔误、
 		// 手改、注入）绝不能经兜底 else 落进 deterministic 桶——那是伪造后门。
 		// 凡未正向命中 deterministic 的一律计为 agent-claim。
@@ -320,8 +227,6 @@ func BuildEvidenceChain(entries []Entry, taskRef string) EvidenceChain {
 		case EvidenceAgentClaim:
 			ec.AgentClaim++
 		default:
-			// Unknown value after the empty-Source fallback: bucket as agent-claim.
-			//
 			// 空 Source 兜底后仍未知的值：计为 agent-claim。
 			ec.AgentClaim++
 		}
@@ -329,15 +234,6 @@ func BuildEvidenceChain(entries []Entry, taskRef string) EvidenceChain {
 	return ec
 }
 
-// isRhythmEscapeHatch reports whether an escape-hatch entry's Detail describes the work-activity rhythm gate
-// (vs a verification gate like test-coverage/acceptance/skill-decisions). work-activity requires tool calls
-// BETWEEN gates — it is a rhythm/anti-shortcut gate, not a verification gate: using it does not mean the "done"
-// claim rests on skipped verification, so it must NOT trigger the Strength cap. The Detail prose is produced by
-// taskpipeline at four sites — work-activity & skill-decisions (executor.go), acceptance (acceptance.go),
-// test-coverage (testcoverage.go) — in the fixed form `escape-hatch: <kind> ...`; substring match on
-// "work-activity" is stable against that contract. Unknown/empty detail returns false (→ caps): a new escape
-// hatch is conservatively treated as verification-class until explicitly recognized here.
-//
 // isRhythmEscapeHatch 报告一条 escape-hatch 条目的 Detail 是否描述 work-activity 节奏门禁
 // （相对 test-coverage/acceptance/skill-decisions 等验证门禁）。work-activity 要求门禁之间有
 // 工具调用——它是节奏/反抄近道门禁，非验证门禁：用它不代表"完成"靠跳过验证撑，故不得触发
@@ -350,8 +246,6 @@ func isRhythmEscapeHatch(detail string) bool {
 }
 
 // ForTask loads all evidence for a task from disk (including archived checklog-*.jsonl) and aggregates it.
-// Equivalent to LoadForTask + BuildEvidenceChain. Current consumer: forge trace; reserved for future
-// scoring/review sub-agents to fetch the evidence chain in one call (instead of each repeating LoadForTask + bucketing).
 //
 // ForTask 从磁盘加载一个任务的全部证据（含归档 checklog-*.jsonl）并聚合。
 // 等价于 LoadForTask + BuildEvidenceChain。当前消费者：forge trace；预留给

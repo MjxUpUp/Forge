@@ -5,11 +5,7 @@ import (
 	"testing"
 )
 
-// TestFilterSkillNames pins the --skill whitelist behavior: known names filter
-// (preserving canonical order), and any requested name not in the canonical
-// library is an error — a misspelled --skill must not silently filter down to
-// an empty set (which would let `audit --gate` pass with 0 skills scanned,
-// bypassing the CI security gate with a typo).
+// TestFilterSkillNames pins the --skill whitelist behavior: known names filter (preserving canonical order), and any requested name not in the canonical library is an error — a misspelled --skill must not silently filter down to an empty set (which would let `audit --gate` pass with 0 skills scanned, bypassing the CI security gate with a typo).
 //
 // TestFilterSkillNames 钉住 --skill 白名单行为：已知名字正常过滤（保持 canonical
 // 顺序），任何不在 canonical 库中的请求名直接报错——拼错的 --skill 不得静默

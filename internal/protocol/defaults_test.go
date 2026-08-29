@@ -26,10 +26,6 @@ func TestDefaultProtocol(t *testing.T) {
 	if last.ID != "design-for-complex" {
 		t.Errorf("Last rule ID = %q, want design-for-complex", last.ID)
 	}
-	// Mandatory-rule count (formerly via the deleted Protocol.MandatoryRules dead-code
-	// method, now inlined): 3 of the 4 default rules are mandatory, and every rule
-	// flagged Mandatory is actually true by construction.
-	//
 	// mandatory 规则计数（原先经已删除的死代码方法 Protocol.MandatoryRules 断言，
 	// 现改为内联遍历）：默认 4 条规则中 3 条 mandatory。
 	mandatory := 0
@@ -52,12 +48,9 @@ func TestDefaultProtocolAllStandardsEnabled(t *testing.T) {
 	}
 }
 
-// TestNoStandardAtErrorSeverity (formerly via the deleted Protocol.ErrorSeverityStandards
-// dead-code method, now inlined): no shipped standard sits at "error" severity — the
-// v0.25 advisory rewrite dropped compile-gate and no-assertion-weaken to warning because
-// auto-compile.sh / assertion-check.sh no longer block, they only advise. Guards against
-// severity drifting back to "error" while the Description says "advisory" — the half-fix
-// that left Severity untouched last time.
+// TestNoStandardAtErrorSeverity (formerly via the deleted
+// Protocol.ErrorSeverityStandards dead-code method, now inlined): no shipped
+// standard sits at "error" severity.
 //
 // TestNoStandardAtErrorSeverity（原先经已删除的死代码方法 Protocol.ErrorSeverityStandards
 // 断言，现改为内联遍历）：出厂标准不得处于 error 档——v0.25 advisory 重写把
@@ -133,8 +126,8 @@ func TestLoadMissing(t *testing.T) {
 	}
 }
 
-// TestSaveDataDir_ZeroProjectWrite: SaveDataDir creates the user-level
-// DataDir copy (via util.AtomicWrite) — and must NOT create a project-level .forge/.
+// TestSaveDataDir_ZeroProjectWrite: SaveDataDir creates the user-level DataDir
+// copy (via util.AtomicWrite).
 //
 // TestSaveDataDir_ZeroProjectWrite：SaveDataDir 创建用户级 DataDir 副本
 // （经 util.AtomicWrite）——且不得创建项目级 .forge/。

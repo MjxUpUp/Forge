@@ -11,10 +11,9 @@ import (
 )
 
 // TestTaskStart_BoundaryEventInsteadOfClear pins the L2 event-sourcing change
-// (multi-task-concurrency design §5): `forge task start` must NOT archive-or-delete the
-// active checklog (the old Clear wiped concurrent tasks' in-flight evidence — task B's
-// start destroyed task A's chain), and must append a task-started boundary entry stamped
-// with the new task's ref.
+// (multi-task-concurrency design §5): `forge task start` must NOT
+// archive-or-delete the active checklog (the old Clear wiped concurrent tasks'
+// in-flight evidence.
 //
 // TestTaskStart_BoundaryEventInsteadOfClear 钉住 L2 事件化变更（multi-task-concurrency
 // 设计 §5）：`forge task start` 不得归档或删除 active checklog（旧 Clear 会抹掉并发任务
@@ -35,8 +34,6 @@ func TestTaskStart_BoundaryEventInsteadOfClear(t *testing.T) {
 	runGit(t, tmpDir, "commit", "-m", "initial")
 	runGit(t, tmpDir, "checkout", "-b", "feature/task-a")
 
-	// Task A starts and accumulates one piece of evidence.
-	//
 	// 任务 A 启动并积累一条证据。
 	if stdout, _, code := runForge(t, tmpDir, "task", "start", "--ref", "task-a", "--title", "A"); code != 0 {
 		t.Fatalf("task start A failed: %s", stdout)
@@ -53,15 +50,11 @@ func TestTaskStart_BoundaryEventInsteadOfClear(t *testing.T) {
 	}
 	activeLog := filepath.Join(forgedata.DataDirFor(tmpDir), "checklog.jsonl")
 
-	// Task B starts in the same project (concurrent task, shared DataDir by design).
-	//
 	// 任务 B 在同项目启动（并发任务，按设计共享 DataDir）。
 	if stdout, _, code := runForge(t, tmpDir, "task", "start", "--ref", "task-b", "--title", "B"); code != 0 {
 		t.Fatalf("task start B failed: %s", stdout)
 	}
 
-	// The active file must survive B's start un-rotated and still carry A's entry.
-	//
 	// active 文件必须在 B 启动后原样存活（未被轮转）且仍带 A 的条目。
 	data, err := os.ReadFile(activeLog)
 	if err != nil {
@@ -71,8 +64,6 @@ func TestTaskStart_BoundaryEventInsteadOfClear(t *testing.T) {
 		t.Fatalf("任务 A 的证据被 task B 启动清除——L2 事件化契约被破坏")
 	}
 
-	// B's start must be marked by a task-started boundary entry scoped to task-b.
-	//
 	// B 的启动必须有一条限定 task-b 的 task-started 边界条目。
 	bEntries, err := checklog.LoadForTask(tmpDir, "task-b")
 	if err != nil {
@@ -89,8 +80,6 @@ func TestTaskStart_BoundaryEventInsteadOfClear(t *testing.T) {
 		t.Fatalf("task-b 缺少 task-started 边界条目（got %d entries）", len(bEntries))
 	}
 
-	// And A's TaskRef-scoped view must still resolve its evidence.
-	//
 	// A 的 TaskRef 过滤视图必须仍能取回其证据。
 	aEntries, err := checklog.LoadForTask(tmpDir, "task-a")
 	if err != nil {

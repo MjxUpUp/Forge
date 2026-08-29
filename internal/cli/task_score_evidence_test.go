@@ -7,17 +7,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
-// TestScoreTask_EvidenceFromChecklog guards the CLI wiring point: scoreTask aggregates
-// evidence buckets from the checklog and writes them into ScoreResult.Evidence. It pins the
-// end-to-end chain checklog.ForTask → EvaluateInput → ScoreResult.Evidence — if ForTask's
-// signature changes or the wiring breaks, the foundation would silently degrade (every task
-// scoring nil Evidence); this test turns it into a regression-verifiable contract.
-//
-// The wiring point (the evDeterministic/evAgentClaim assignments in task.go scoreTask) is
-// the only link in the evidence-chain foundation without unit-test coverage; the rest is
-// guarded by TestForTask_LoadsAndBuckets (checklog layer) + TestEvaluate_EvidenceSummary
-// (scoring layer).
-//
 // TestScoreTask_EvidenceFromChecklog 守卫 CLI 接线点：scoreTask 从 checklog 聚合
 // 证据桶写入 ScoreResult.Evidence。锁住 checklog.ForTask → EvaluateInput →
 // ScoreResult.Evidence 的端到端链路——若 ForTask 签名变更或接线断裂，底座会
@@ -29,9 +18,6 @@ import (
 func TestScoreTask_EvidenceFromChecklog(t *testing.T) {
 	dir := t.TempDir()
 
-	// Write 3 checklog entries: auto-compile + assertion = deterministic(2), task-verify = agent-claim(1).
-	// Source fallback is inferred at write time (SourceForCheck), no explicit annotation needed.
-	//
 	// 写 3 条 checklog：auto-compile + assertion = deterministic(2)，task-verify = agent-claim(1)。
 	// Source 兜底由 Record 写盘时推断（SourceForCheck），无需显式标注。
 	for _, c := range []checklog.CheckName{checklog.CheckAutoCompile, checklog.CheckAssertion, checklog.CheckTaskVerify} {

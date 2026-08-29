@@ -9,11 +9,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
 )
 
-// setupCompletableTask builds a temp git repo (initial commit) and a task state ready
-// for the task-complete gate: both earlier gates recorded, review hard-prerequisite
-// satisfied with an empty baseline (snapshot check skipped). The caller shapes branch
-// layout / changed files / title per scenario.
-//
 // setupCompletableTask 建临时 git 仓库（initial commit）和一个可直接过
 // task-complete 门禁的任务状态：前两道 gate 已记录、review 硬前置以空基线满足
 // （跳过快照检查）。分支布局/变更文件/标题由调用方按场景构造。
@@ -34,9 +29,6 @@ func setupCompletableTask(t *testing.T, ref string) (string, *TaskState) {
 	return dir, state
 }
 
-// findCheckEntry reports whether checklog contains an entry with the given check name
-// for the task.
-//
 // findCheckEntry 报告 checklog 中是否存在本任务给定 check 名的条目。
 func findCheckEntry(t *testing.T, dir, ref string, name checklog.CheckName) bool {
 	t.Helper()
@@ -52,11 +44,7 @@ func findCheckEntry(t *testing.T, dir, ref string, name checklog.CheckName) bool
 	return false
 }
 
-// TestTaskComplete_BranchUnmergedAdvisory pins the branch-merged advisory: completing
-// a task whose feature branch has commits NOT in the mainline must emit a stderr
-// advisory + audit entry ('complete' ≠ 'delivered'); once the branch is merged, the
-// advisory must disappear. git-probe failures fail open (covered implicitly: the
-// merged case runs the same probe and stays silent).
+// TestTaskComplete_BranchUnmergedAdvisory pins the branch-merged advisory: completing a task whose feature branch has commits NOT in the mainline must emit a stderr advisory + audit entry ('complete' ≠ 'delivered'); once the branch is merged, the advisory must disappear. git-probe failures fail open (covered implicitly: the merged case runs the same probe and stays silent).
 //
 // TestTaskComplete_BranchUnmergedAdvisory 钉住分支归属 advisory：feature 分支有主干
 // 没有的 commit 时完成任务必须发 stderr advisory + 审计条目（「完成」≠「交付」）；
@@ -71,8 +59,6 @@ func TestTaskComplete_BranchUnmergedAdvisory(t *testing.T) {
 	runGit(t, dir, "commit", "-m", "feature work")
 	state.Branch = "feat/pending"
 
-	// Unmerged → advisory + audit entry.
-	//
 	// 未合入 → advisory + 审计条目
 	stderr := captureStderr(t, func() {
 		if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
@@ -86,8 +72,6 @@ func TestTaskComplete_BranchUnmergedAdvisory(t *testing.T) {
 		t.Error("checklog 应有 CheckNameBranchUnmerged 审计条目")
 	}
 
-	// Merge into the mainline → advisory gone.
-	//
 	// 合入主干 → advisory 消失
 	mainline := resolveMainlineRef(dir)
 	if mainline == "" {
@@ -106,14 +90,7 @@ func TestTaskComplete_BranchUnmergedAdvisory(t *testing.T) {
 	}
 }
 
-// TestTaskComplete_UncommittedAtCompleteAdvisory pins the commit-ordering advisory:
-// uncommitted working-tree changes at the task-complete gate must emit a stderr
-// advisory + audit entry — the documented protocol order is gates → git commit →
-// forge task complete (complete clears the active task ref; post-complete source
-// writes lose task tracking). After committing, the advisory must disappear.
-// Root cause: a real session (2026-08-17) passed all three gates, ran complete, and
-// only committed 32 minutes later — the window is real, the advisory surfaces it at
-// the exact moment it is still repairable.
+// TestTaskComplete_UncommittedAtCompleteAdvisory pins the commit-ordering advisory: uncommitted working-tree changes at the task-complete gate must emit a stderr advisory + audit entry — the documented protocol order is gates → git commit → forge task complete (complete clears the active task ref; post-complete source writes lose task tracking).
 //
 // TestTaskComplete_UncommittedAtCompleteAdvisory 钉住提交顺序 advisory：task-complete
 // 门禁时工作区有未提交变更必须发 stderr advisory + 审计条目——协议顺序是
@@ -126,8 +103,6 @@ func TestTaskComplete_UncommittedAtCompleteAdvisory(t *testing.T) {
 	runGit(t, dir, "checkout", "-b", "feat/order")
 	state.Branch = "feat/order"
 
-	// Untracked new source file → uncommitted at complete → advisory + audit entry.
-	//
 	// 未跟踪的新源文件 → complete 时未提交 → advisory + 审计条目
 	os.WriteFile(filepath.Join(dir, "uncommitted.go"), []byte("package main\n"), 0644)
 	stderr := captureStderr(t, func() {
@@ -142,8 +117,6 @@ func TestTaskComplete_UncommittedAtCompleteAdvisory(t *testing.T) {
 		t.Error("checklog 应有 CheckNameUncommittedAtComplete 审计条目")
 	}
 
-	// Commit → advisory gone.
-	//
 	// 提交 → advisory 消失
 	runGit(t, dir, "add", ".")
 	runGit(t, dir, "commit", "-m", "work")
@@ -157,10 +130,7 @@ func TestTaskComplete_UncommittedAtCompleteAdvisory(t *testing.T) {
 	}
 }
 
-// TestTaskComplete_GoalOutputMismatchAdvisory pins the goal↔output coarse-match
-// advisory: a title sharing NO keyword with the changed files must trigger the
-// advisory + audit entry; a title sharing a keyword must stay silent. Empty title or
-// no changed files skip the check entirely.
+// TestTaskComplete_GoalOutputMismatchAdvisory pins the goal↔output coarse-match advisory: a title sharing NO keyword with the changed files must trigger the advisory + audit entry; a title sharing a keyword must stay silent.
 //
 // TestTaskComplete_GoalOutputMismatchAdvisory 钉住目标↔产出粗匹配 advisory：标题与
 // 实改文件零关键词交集时必须触发 advisory + 审计条目；有交集时必须静默。空标题或
@@ -168,14 +138,10 @@ func TestTaskComplete_UncommittedAtCompleteAdvisory(t *testing.T) {
 func TestTaskComplete_GoalOutputMismatchAdvisory(t *testing.T) {
 	dir, state := setupCompletableTask(t, "goal-mismatch")
 
-	// Untracked new source file: tokens {src, widget, button}.
-	//
 	// 未跟踪的新源文件：token {src, widget, button}
 	os.MkdirAll(filepath.Join(dir, "src", "widget"), 0755)
 	os.WriteFile(filepath.Join(dir, "src", "widget", "button.go"), []byte("package widget\n"), 0644)
 
-	// Zero intersection: {refactor, executor, pipeline} ∩ {src, widget, button} = ∅.
-	//
 	// 零交集：{refactor, executor, pipeline} ∩ {src, widget, button} = ∅
 	state.Summary = "Refactor executor pipeline"
 	stderr := captureStderr(t, func() {
@@ -190,8 +156,6 @@ func TestTaskComplete_GoalOutputMismatchAdvisory(t *testing.T) {
 		t.Error("checklog 应有 CheckNameGoalOutputMismatch 审计条目")
 	}
 
-	// Intersection: {widget, button} ∩ {src, widget, button} ≠ ∅ → silent.
-	//
 	// 有交集：{widget, button} ∩ {src, widget, button} ≠ ∅ → 静默
 	state.Summary = "Add widget button"
 	stderr = captureStderr(t, func() {
@@ -204,9 +168,7 @@ func TestTaskComplete_GoalOutputMismatchAdvisory(t *testing.T) {
 	}
 }
 
-// TestGoalKeywords pins the tokenization contract: non-alphanumeric split, >=4-char
-// lowercase ASCII words kept, short words and pure-CJK tokens dropped, CJK acting as
-// a separator (no segmentation dependency).
+// TestGoalKeywords pins the tokenization contract: non-alphanumeric split, >=4-char lowercase ASCII words kept, short words and pure-CJK tokens dropped, CJK acting as a separator (no segmentation dependency).
 //
 // TestGoalKeywords 钉住切词契约：非字母数字切分、保留 >=4 字符小写 ASCII 词、丢弃
 // 短词与纯中文词、中文充当分隔符（不引入分词依赖）。
@@ -227,8 +189,7 @@ func TestGoalKeywords(t *testing.T) {
 	}
 }
 
-// TestPathSegmentKeywords pins the path-side tokenization: extension stripped, glob
-// metacharacters stripped, segments split on non-alphanumeric boundaries.
+// TestPathSegmentKeywords pins the path-side tokenization: extension stripped, glob metacharacters stripped, segments split on non-alphanumeric boundaries.
 //
 // TestPathSegmentKeywords 钉住路径侧切词：去扩展名、去 glob 元字符、segment 按非
 // 字母数字边界细分。

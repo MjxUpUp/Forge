@@ -12,16 +12,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// runTaskAbort removes the task but does not score it. Deletes the task-state file
-// (DataDir/tasks/<ref>.json) and, when the session-scoped active-task-ref points at
-// the aborted task, clears that too. This is the escape hatch for stuck or
-// un-passable ghost tasks — e.g. a task started in a non-git project, or one abandoned
-// midway. Unlike 'task complete', abort never scores and never creates a review; the
-// project's quality record is not polluted by abandoned attempts.
-//
-// The code/commit changes the task actually made are left alone — abort only reclaims
-// forge state. The same ref can be re-started later.
-//
 // runTaskAbort 移除任务但不评分。删除 task state 文件（DataDir/tasks/<ref>.json），
 // 当 session-scoped active-task-ref 指向被 abort 的 task 时也清掉。这是给卡死或
 // 永远过不了门禁的 ghost task 的逃生舱——如在非 git 项目启动的 task，或半途放弃的
@@ -38,9 +28,6 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Resolve the task to abort: explicit --ref wins, else fall back to the session's
-	// active task. If neither, there is nothing to identify.
-	//
 	// 解析要 abort 的 task：显式 --ref 优先，否则取 session 的 active task。
 	// 两者皆无则无可识别。
 	taskRef := explicitRef
@@ -72,11 +59,6 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf(`--cascade 与 --detach-deps 互斥：--cascade 一并 abort 依赖方，--detach-deps 仅摘依赖边保留依赖方`)
 	}
 
-	// Load before delete so the report can say whether the task was complete and
-	// retain the branch for the user's mental model. Missing file is not fatal: a stale
-	// active-task-ref may point to a task that no longer exists; the dangling pointer
-	// still needs clearing.
-	//
 	// 删除前 load，让报告能说明 task 是否完成、并保留 branch 给用户心智模型。
 	// 文件缺失不致命：stale active-task-ref 可能指向已不存在的 task，仍需清掉悬空指针。
 	var state *taskpipeline.TaskState
@@ -84,21 +66,6 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 		state = loaded
 	}
 
-	// Reverse-dependency scan (design phase 3 + §4 three-way): aborting a task that others
-	// DependsOn leaves those dependents blocked forever (their gate reports the ref missing/not-
-	// delivered and never unblocks). By default we do NOT cascade-abort — a dependent may still be
-	// valuable with its upstream re-pointed — but surface the dangling edge. --cascade aborts the
-	// whole transitive closure; --detach-deps removes just the edge. Computed before delete so the
-	// just-aborted state is still scannable.
-	//
-	// KNOWN LIMITATION (multi-repo workspace Option B): the scan reads only THIS repo's tasks —
-	// a dependent living in ANOTHER member repo (its DependsOn pointing here via key:ref) is
-	// invisible to abort: not warned, not cascaded, not detached; its gate reports the aborted
-	// key:ref pending forever until someone removes the edge in that repo. Cross-repo cleanup is
-	// deliberately out of scope (the reverse index would need a cross-DataDir scan + remote
-	// mutation); a one-line note below surfaces the blind spot when this repo is a multi-repo
-	// workspace member.
-	//
 	// 反向依赖扫描（设计阶段3 + §4 三选一）：abort 一个被其他 task DependsOn 的 task，会让依赖方永远阻塞
 	// （门禁报该 ref 缺失/未交付且永不放行）。默认不级联 abort——依赖方在上游重指后可能仍有价值——但暴露
 	// 悬空边。--cascade abort 整个传递闭包；--detach-deps 仅摘边。delete 前算，使刚 abort 的 state 仍可扫。
@@ -115,11 +82,6 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 			if t == nil {
 				continue
 			}
-			// Completed dependents already passed their gates and carry the project's
-			// settled score/quality record — cascade exists to clear chains that can
-			// never pass, not to destroy finished history (abort's own doc promises
-			// quality records survive abandoned attempts).
-			//
 			// 已完成的依赖方早已过门禁，承载项目已沉淀的评分/质量记录——级联的
 			// 存在意义是清掉永远过不了门的链，不是销毁已完成的历史（abort 自己
 			// 的文档承诺质量记录不被放弃的尝试污染）。
@@ -142,14 +104,6 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 	for _, dep := range dependentsMap[taskRef] {
 		dependents = append(dependents, dep)
 	}
-	// cascade closure: transitive dependents (direct + indirect), breadth-first over the reverse
-	// map. A dependent whose upstream is gone can never pass its gate, so cascade clears the chain.
-	// cascaded = the attempted set (BFS closure, drives the delete loop); cascadedDone = those actually
-	// deleted. A delete can fail on permission / Windows file lock — that dependent emits an INLINE
-	// per-item stderr Warning inside the loop (NOT by re-reading `cascaded` later) and is excluded from
-	// cascadedDone, so it must NOT be reported as aborted in JSON, or a JSON consumer believes a live
-	// task is gone.
-	//
 	// cascade 闭包：传递依赖方（直接 + 间接），对反向 map 广度优先。依赖方上游已没，门禁永远过不了，
 	// 故 cascade 清除死链。cascaded = 试图集（BFS 闭包，驱动删除循环）；cascadedDone = 实际删除成功的。
 	// 删除可能因权限/Windows 文件锁失败——该依赖方在循环内发一条内联 per-item stderr Warning（并非后续回读
@@ -171,16 +125,11 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Delete the task-state file. ENOENT is acceptable (already deleted / stale ref).
-	//
 	// 删除 task state 文件。ENOENT 可接受（已删除 / stale ref）。
 	if err := taskpipeline.DeleteTaskState(root, taskRef); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to delete task state: %w", err)
 	}
 
-	// If the active-task-ref still points at the aborted task, clear it.
-	// Session-scoped — concurrent sessions are not disturbed.
-	//
 	// 若 active-task-ref 仍指向被 abort 的 task 则清掉。
 	// session-scoped，并发 session 不受干扰。
 	sid := taskpipeline.CurrentSessionID()
@@ -196,9 +145,6 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "Warning: failed to clear workspace bindings: %v\n", err)
 	}
 
-	// --cascade: abort every transitive dependent and clear its active-task-ref. Done after the
-	// primary delete; each DeleteTaskState tolerates ENOENT.
-	//
 	// --cascade：abort 每个传递依赖方并清其 active-task-ref。在主 delete 之后；各 DeleteTaskState 容忍 ENOENT。
 	//
 	// M3 已知限制（follow-up）：DeleteTaskState 是 os.Remove 无任务锁，与并发的 MutateTaskState 存在 TOCTOU——
@@ -221,9 +167,6 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// --detach-deps: remove the now-dangling edge from each direct dependent, leaving the dependent
-	// task alive (it may still be valuable, just no longer waiting on this aborted upstream).
-	//
 	// --detach-deps：从每个直接依赖方摘掉这条悬空边，保留依赖方任务（它可能仍有价值，只是不再等这个已
 	// abort 的上游）。
 	var detached []string
@@ -269,10 +212,6 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 		}
 		// JSON 的 `cascaded` 只报实际删除成功的（cascadedDone）——失败的已走 stderr Warning，
 		// 报进 JSON 会让编排 agent 误以为一个仍在盘上的任务已 abort。
-		//
-		// JSON `cascaded` reports only successful deletions (cascadedDone) — failures already went
-		// to stderr Warning; reporting them in JSON would make an orchestrator agent believe a task
-		// still on disk was aborted.
 		if len(cascadedDone) > 0 {
 			out[`cascaded`] = cascadedDone
 		}
@@ -293,10 +232,6 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 			fmt.Printf("Branch: %s (left untouched — abort only removes forge state)\n", state.Branch)
 		}
 	}
-	// Summary line reports ONLY successful deletes (cascadedDone), mirroring the JSON path — a failed
-	// delete already got its own "Warning: failed to cascade-abort X" above; listing it again here as
-	// "aborted" would make a task still on disk look finished (the very leak cascaded/cascadedDone split fixes).
-	//
 	// 汇总行只报成功删除（cascadedDone），与 JSON 路径一致——失败的删除上方已有独立的"Warning: failed to
 	// cascade-abort X"；此处再当"已 abort"列出会让一个仍在盘上的任务看起来已完成（正是 cascaded/cascadedDone
 	// 拆分要堵的泄露）。
@@ -309,9 +244,6 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 	if len(dependents) > 0 && !cascade && !detachDeps {
 		fmt.Fprintf(os.Stderr, `Warning: %d task(s) depend on this one (%s); their gate will now block on a missing upstream. Re-run with --cascade to abort them too, or --detach-deps to unlink them.`+"\n", len(dependents), strings.Join(dependents, `, `))
 	}
-	// Cross-repo blind spot (see the scan's KNOWN LIMITATION comment above): only surfaced as a
-	// note when this repo is a multi-repo workspace member — the scan itself stays same-repo.
-	//
 	// 跨仓盲区（见上方扫描处的 KNOWN LIMITATION 注释）：仅当本 repo 属于多仓 workspace 时
 	// 提示一句——扫描本身仍只覆盖本仓。
 	if multiRepoMembership(root) {

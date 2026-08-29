@@ -1,10 +1,5 @@
 package cli
 
-// skills_eval_cases.go — eval-cases subcommand: emits the case set for agent dispatch.
-//
-// When an agent dispatches a fresh subagent to run a prompt, this command is used to
-// obtain case_id + prompt (instead of cat-ing cases/<skill>.json directly).
-//
 // skills_eval_cases.go — eval-cases 子命令：输出 case 集供 agent dispatch。
 //
 // agent dispatch fresh subagent 跑 prompt 时，用本命令拿 case_id + prompt（而非直接
@@ -38,8 +33,6 @@ trigger/not-trigger case：agent 跑 Prompt，回填 actual_triggered（是否�
 	RunE: runSkillsEvalCases,
 }
 
-// caseView is the view emitted by eval-cases.
-//
 // caseView 是 eval-cases 对外输出的视图。
 type caseView struct {
 	ID     string `json:"id"`

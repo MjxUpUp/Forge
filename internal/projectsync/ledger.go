@@ -7,12 +7,6 @@ import (
 	"time"
 )
 
-// ledger.go — the machine-local import ledger (DataDir/imports.jsonl): one line per
-// import, keyed by bundle_id. Re-importing the same bundle is skipped (the merge is
-// idempotent anyway; the ledger makes it FREE and makes the intent explicit). The
-// ledger deliberately does NOT travel in bundles: syncing it would leak every
-// machine's hostname/user to every peer and would need its own dedup semantics.
-//
 // ledger.go —— 机器本地导入账本（DataDir/imports.jsonl）：每次导入一行，以
 // bundle_id 为键。重复导入同一 bundle 被跳过（合并本身幂等；账本让这件事免费且
 // 意图显式）。账本刻意不随 bundle 旅行：同步它会向每个对端泄露每台机器的
@@ -30,8 +24,6 @@ type ImportRecord struct {
 	Counts     string    `json:"counts,omitempty"` // human-readable action summary
 }
 
-// ledgerPath returns DataDir/imports.jsonl.
-//
 // ledgerPath 返回 DataDir/imports.jsonl。
 func ledgerPath(dataDir string) string {
 	return filepath.Join(dataDir, `imports.jsonl`)
@@ -57,9 +49,7 @@ func AppendImportRecord(dataDir string, rec ImportRecord) error {
 	return werr
 }
 
-// HasImportedBundle reports whether this machine already imported the given bundle
-// id. Corrupt lines are skipped (a damaged ledger must never block imports), so a
-// read error only surfaces when the file is unreadable.
+// HasImportedBundle reports whether this machine already imported the given bundle id.
 //
 // HasImportedBundle 报告本机是否已导入过给定 bundle id。坏行跳过（损坏的账本
 // 绝不阻塞导入），只有文件不可读才报错。
@@ -83,11 +73,7 @@ func HasImportedBundle(dataDir, bundleID string) (bool, error) {
 	return false, nil
 }
 
-// HasImportedSHA reports whether this machine already imported a bundle with this
-// whole-file sha256 (same corrupt-line tolerance as HasImportedBundle). The digest
-// is computable from the file ALONE, so the import flow can skip on it BEFORE
-// unpacking — bundle ids live inside the tar, but a repeated pull should not pay
-// the full tar parse to learn it already imported these bytes.
+// HasImportedSHA reports whether this machine already imported a bundle with this whole-file sha256.
 //
 // HasImportedSHA 报告本机是否已导入过带此整文件 sha256 的 bundle（坏行容忍与
 // HasImportedBundle 一致）。摘要仅凭文件本身即可计算，导入流程可在解包之前据其
@@ -116,8 +102,6 @@ func HasImportedSHA(dataDir, sha string) (bool, error) {
 	return false, nil
 }
 
-// splitLines splits JSONL bytes into non-empty lines (CRLF tolerant).
-//
 // splitLines 把 JSONL 字节切成非空行（容忍 CRLF）。
 func splitLines(data []byte) [][]byte {
 	var out [][]byte

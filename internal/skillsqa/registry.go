@@ -26,9 +26,7 @@ type Quality struct {
 	HasHighSignal bool `json:"has_high_signal"`
 }
 
-// SkillReport is the spec audit result for a single skill (aligned with the
-// registry.py audit_skill return value; excludes dispatch target status —
-// drift detection belongs to skillsdist).
+// SkillReport is the spec audit result for a single skill (aligned with the registry.py audit_skill return value; excludes dispatch target status — drift detection belongs to skillsdist).
 //
 // SkillReport 是单个 skill 的规范审查结果（对齐 registry.py audit_skill 返回值，
 // 不含分发目标状态——drift 检测属 skillsdist 职责）。
@@ -44,9 +42,7 @@ type SkillReport struct {
 	Pass        bool     `json:"pass"`
 }
 
-// AuditSkill runs R1-R18 spec checks on a single skill directory; R1-R11 are
-// 1:1 aligned with registry.py audit_skill, R12-R18 are forge-local extensions
-// (rule text definitions: RuleDescriptions).
+// AuditSkill runs R1-R18 spec checks on a single skill directory; R1-R11 are 1:1 aligned with registry.py audit_skill, R12-R18 are forge-local extensions (rule text definitions: RuleDescriptions).
 //
 // AuditSkill 对单个 skill 目录跑 R1-R18 规范校验。R1-R11 逐条对齐
 // registry.py audit_skill，R12-R18 为 forge 本地扩展（规则文本定义见 RuleDescriptions）。
@@ -67,10 +63,6 @@ func AuditSkill(skillDir string) (*SkillReport, error) {
 	desc := fm.Description
 	pattern := fm.Pattern()
 	domain := fm.Domain()
-	// Line count: aligned with Python registry.py via newline-count + 1 (assumes
-	// the file ends with a newline; files without a trailing newline count 1
-	// extra line — shared trait with Python, kept as-is for golden parity).
-	//
 	// 行数：与 Python registry.py 一致用 Count("\n")+1（假设文件以 \n 结尾；
 	// 无尾换行的文件会多算 1 行——这是与 Python 共享的特性，黄金对比保持故不改）。
 	lines := strings.Count(text, "\n") + 1
@@ -80,20 +72,14 @@ func AuditSkill(skillDir string) (*SkillReport, error) {
 	var issues []string
 	var advisories []string
 
-	// R1: name must be kebab-case
-	//
 	// R1 name 须 kebab-case
 	if !kebabRe.MatchString(name) {
 		issues = append(issues, "name 不符合 kebab-case")
 	}
-	// R2: name equals directory name
-	//
 	// R2 name = 目录名
 	if name != dirName {
 		issues = append(issues, fmt.Sprintf("name(%s) 与目录名(%s)不一致", name, dirName))
 	}
-	// R3: frontmatter field whitelist (guards against typos)
-	//
 	// R3 frontmatter 字段白名单（防 typo）
 	var unexpected []string
 	for k := range fm.Raw {
@@ -105,39 +91,27 @@ func AuditSkill(skillDir string) (*SkillReport, error) {
 	if len(unexpected) > 0 {
 		issues = append(issues, fmt.Sprintf("frontmatter 未知字段: %v（允许: %v）", unexpected, allowedFmSorted()))
 	}
-	// R4: description length (Python len() counts characters → Go uses RuneCount
-	// to align, otherwise 3 bytes per CJK char would skew R4)
-	//
 	// R4 description 长度（Python len() 是字符数 → Go 用 RuneCount 对齐，否则中文 3 字节/字符致 R4 失准）
 	descLen := utf8.RuneCountInString(desc)
 	if descLen < 80 {
 		issues = append(issues, fmt.Sprintf(`description 过短(%d字符 <80)`, descLen))
 	}
-	// R4 upper bound: Anthropic skill spec caps description at ≤1024 chars
-	// (hard issue); >500 is overlong (advisory)
-	//
 	// R4 上限：Anthropic skill 规范 description ≤1024 字符（硬 issue）；>500 偏长（advisory）
 	if descLen > 1024 {
 		issues = append(issues, fmt.Sprintf(`description 过长(%d字符 >1024，超 Anthropic skill 规范上限)`, descLen))
 	} else if descLen > 500 {
 		advisories = append(advisories, fmt.Sprintf(`description 偏长(%d字符 >500，建议精简到 what+when，不总结工作流)`, descLen))
 	}
-	// R5: must contain Use when
-	//
 	// R5 须含 Use when
 	hasUseWhen := strings.Contains(descLow, "use when")
 	if !hasUseWhen {
 		issues = append(issues, "description 缺 Use when")
 	}
-	// R6: must contain SKIP
-	//
 	// R6 须含 SKIP
 	hasSkip := strings.Contains(descLow, "skip")
 	if !hasSkip {
 		issues = append(issues, "description 缺 SKIP")
 	}
-	// R7: metadata.pattern (single value or + combination; each segment must be valid)
-	//
 	// R7 metadata.pattern（单值或 + 组合，每段须合法）
 	validPattern := false
 	if pattern == "" {
@@ -158,15 +132,11 @@ func AuditSkill(skillDir string) (*SkillReport, error) {
 			issues = append(issues, fmt.Sprintf("pattern 非法: %s", pattern))
 		}
 	}
-	// R8: SKILL.md line count
-	//
 	// R8 SKILL.md 行数
 	over := lines > 500
 	if over {
 		issues = append(issues, fmt.Sprintf("SKILL.md 过长(%d行 >500，拆 references)", lines))
 	}
-	// R9: high-signal content
-	//
 	// R9 高信号内容
 	hasSignal := false
 	for _, kw := range HighSignalKW {
@@ -178,8 +148,6 @@ func AuditSkill(skillDir string) (*SkillReport, error) {
 	if !hasSignal {
 		issues = append(issues, `缺高信号内容(决策树/自查/Gotchas)`)
 	}
-	// R10 CSO: description must not summarize body workflow (advisory, regression guard)
-	//
 	// R10 CSO：description 不应总结 body 工作流（advisory，防回归）
 	for _, marker := range CSOWorkflowMarkers {
 		if strings.Contains(desc, marker) {
@@ -187,9 +155,6 @@ func AuditSkill(skillDir string) (*SkillReport, error) {
 			break
 		}
 	}
-	// R11 references structure: ≤1 level (no subdirs, hard) + refs over 100
-	// lines need ToC (advisory)
-	//
 	// R11 references 结构：≤1 level（无子目录，硬）+ >100 行 ref 需 ToC（advisory）
 	checkReferences(skillDir, &issues, &advisories)
 	// R12 triggers 声明校验（advisory）——通用 skill-trigger 框架的实验字段，skill 不
@@ -203,44 +168,21 @@ func AuditSkill(skillDir string) (*SkillReport, error) {
 	// R13 正文行数（硬，不含 frontmatter）——与 R8 的关系：R8 计全文行数（对齐
 	// Python），R13 只计正文。body >500 ⇒ 全文 >500，故 R13 触发时 R8 必然也触发；
 	// R13 的价值是把「正文」口径显式化（frontmatter 膨胀不会再吃掉正文预算的语义）。
-	//
-	// R13 body line count (hard, frontmatter excluded) — relationship to R8: R8 counts
-	// the whole file (Python parity), R13 counts the body only. body >500 implies
-	// total >500, so whenever R13 fires R8 fires too; R13 makes the body-only
-	// semantics explicit.
 	checkBodyLines(fm.Body, &issues)
 	// R14 frontmatter 必填字段（硬）：name/description 缺一不可。description 的
 	// ≤1024 字符上限由 R4 覆盖，此处不重复报。注意 name 为空时上方已回退 dirName
 	// （R1/R2 不误报），R14 用 fm.Name/fm.Description 原始值判定缺失。
-	//
-	// R14 required frontmatter fields (hard): name and description are mandatory.
-	// The ≤1024-char description cap is covered by R4 and not duplicated here. Note
-	// the empty name falls back to dirName above (so R1/R2 stay accurate); R14 judges
-	// presence from the raw fm.Name/fm.Description values.
 	checkRequiredFrontmatter(fm, &issues)
 	// R15 ALL-CAPS 命令式词密度（advisory）：ALWAYS/NEVER/MUST 合计 >5 次提醒改
 	// 「指令+原因」写法——解释为什么比堆命令更有效（模型对裸命令式词会脱敏）。
-	//
-	// R15 ALL-CAPS imperative density (advisory): more than 5 combined
-	// ALWAYS/NEVER/MUST occurrences suggests switching to "instruction + reason"
-	// style — explaining why beats stacking bare imperatives.
 	checkImperativeDensity(fm.Body, &advisories)
 	// R16 references/ 下 >300 行文件需 ToC（advisory）。markdown 文件由 R11 以
 	// >100 行的更低门槛先行覆盖，R16 跳过 markdown 避免同一文件重复 advisory；
 	// R16 实际增量是覆盖非 markdown 参考文件（如大段 .txt 资料）。
-	//
-	// R16 references/ files over 300 lines need a ToC (advisory). Markdown files are
-	// already covered by R11 at the stricter >100-line threshold, so R16 skips
-	// markdown to avoid duplicate advisories; R16's real increment is non-markdown
-	// reference files.
 	checkOversizedRefs(skillDir, &advisories)
 	// R17 evals/evals.json schema（advisory）：文件存在才校验（skill 不建 evals
 	// 合法）；schema = 对象含 trigger_cases 数组，每项 {query: string,
 	// should_trigger: boolean}。
-	//
-	// R17 evals/evals.json schema (advisory): validated only when the file exists
-	// (a skill may have no evals); schema = object with a trigger_cases array of
-	// {query: string, should_trigger: boolean}.
 	checkEvalsSchema(skillDir, &advisories)
 	// R18 forge 零反向依赖契约（硬，CONVENTIONS §13）：skill 目录内不得存在对 forge
 	// 的操作性引用——CLI 调用（forge <子命令>）、用户级路径（~/.forge/、$HOME/.forge/）、
@@ -249,17 +191,6 @@ func AuditSkill(skillDir string) (*SkillReport, error) {
 	// 测试数据，均非操作指令，排除）。decisions.md 与「Forge 仓库」案例叙述不构成
 	// 运行时依赖，本规则不针对措辞、只针对操作性行为。存量豁免见 R18Grandfathered
 	// （冻结只减不增）；`metadata.requires_forge: "true"` 的 forge 原生 skill 整体跳过。
-	//
-	// R18 forge zero-reverse-dependency contract (hard, CONVENTIONS §13): no
-	// operational forge references anywhere in the skill dir — CLI calls
-	// (forge <subcommand>), user-level paths (~/.forge/, $HOME/.forge/), env vars
-	// ($FORGE_*), or integration-file pointers (forge-integration.md). Scan scope =
-	// SKILL.md body + every content file in the skill dir (decisions.md is an
-	// append-only decision log and evals/ is test data — neither is an operational
-	// instruction, both excluded). decisions.md entries and "Forge repo" case-study
-	// prose are not runtime dependencies; this rule targets operational behavior,
-	// not wording. Legacy exemptions: R18Grandfathered (frozen, shrink-only);
-	// `metadata.requires_forge: "true"` forge-native skills skip entirely.
 	checkForgeRefs(skillDir, fm, &issues, &advisories)
 
 	return &SkillReport{
@@ -282,16 +213,6 @@ func AuditSkill(skillDir string) (*SkillReport, error) {
 	}, nil
 }
 
-// checkReferences audits the references/ directory structure (R11):
-//   - ≤1 level: files live directly under references/, no subdirectories (hard issue)
-//   - markdown references over 100 lines need a ToC for navigation (advisory;
-//     recognizes ## 目录 / ## Contents / ## Table of Contents)
-//
-// Skipped when no references directory exists (legal); advisory when the
-// directory exists but is unreadable (permissions, etc.).
-// TODO: scope is references/ only — peer directories like templates/scripts/adapters
-// are not covered yet (Anthropic spec only names references/; expand when the spec clarifies).
-//
 // checkReferences 校验 references/ 目录结构（R11）：
 //   - ≤1 level：references/ 下直接放文件，不应有子目录（硬 issue）
 //   - >100 行的 markdown reference 需 ToC 助导航（advisory；认 ## 目录 / ## Contents / ## Table of Contents）
@@ -331,15 +252,6 @@ func checkReferences(skillDir string, issues, advisories *[]string) {
 	}
 }
 
-// checkTriggers audits metadata.triggers declarations (R12, advisory):
-//   - empty: legal (a skill may opt out of the framework)
-//   - non-empty: must be valid JSON
-//   - per entry: event∈ValidTriggerEvents, keywords or when at least one,
-//     when∈ValidConditions, match only meaningful for PreToolUse/PostToolUse
-//
-// Inline JSON parsing (not via skilltrigger) keeps skillsqa free of an engine
-// dependency (avoids a skillsqa→skilltrigger import cycle).
-//
 // checkTriggers 校验 metadata.triggers 声明（R12，advisory）：
 //   - 空：合法（skill 可不接入框架）
 //   - 非空：须合法 JSON
@@ -386,10 +298,6 @@ func checkTriggers(raw string, advisories *[]string) {
 	}
 }
 
-// checkBodyLines enforces R13: the SKILL.md body (everything after the
-// frontmatter block) must be ≤500 lines (hard issue). Line counting mirrors
-// R8's newline-count + 1 convention; an empty body counts as 0 lines.
-//
 // checkBodyLines 执行 R13：SKILL.md 正文（frontmatter 块之后的全部内容）
 // ≤500 行（硬 issue）。计行口径与 R8 一致（换行数 + 1）；空正文计 0 行。
 func checkBodyLines(body string, issues *[]string) {
@@ -402,10 +310,6 @@ func checkBodyLines(body string, issues *[]string) {
 	}
 }
 
-// checkRequiredFrontmatter enforces R14: name and description are mandatory
-// frontmatter fields (hard issues). The description ≤1024-char upper bound is
-// owned by R4 and intentionally not duplicated here.
-//
 // checkRequiredFrontmatter 执行 R14：frontmatter 必填 name 与 description
 // （硬 issue）。description ≤1024 字符上限由 R4 负责，此处不重复报。
 func checkRequiredFrontmatter(fm *skillsfm.Frontmatter, issues *[]string) {
@@ -417,10 +321,6 @@ func checkRequiredFrontmatter(fm *skillsfm.Frontmatter, issues *[]string) {
 	}
 }
 
-// checkImperativeDensity enforces R15: more than 5 combined whole-word
-// ALWAYS/NEVER/MUST occurrences in the body goes advisory, suggesting the
-// "instruction + reason" style instead of stacked bare imperatives.
-//
 // checkImperativeDensity 执行 R15：正文整词 ALWAYS/NEVER/MUST 合计 >5 次走
 // advisory，建议改「指令+原因」写法而非堆叠裸命令式词。
 func checkImperativeDensity(body string, advisories *[]string) {
@@ -430,12 +330,6 @@ func checkImperativeDensity(body string, advisories *[]string) {
 	}
 }
 
-// checkOversizedRefs enforces R16: non-markdown files under references/ over
-// 300 lines without a ToC go advisory. Markdown files are skipped — R11 already
-// covers them at the stricter >100-line threshold, and reporting both would
-// duplicate advisories for the same file. Missing/unreadable references dir is
-// silent (R11 owns those advisories).
-//
 // checkOversizedRefs 执行 R16：references/ 下 >300 行的非 markdown 文件无 ToC
 // 走 advisory。markdown 文件跳过——R11 已以 >100 行更低门槛覆盖，重复报会同
 // 文件双 advisory。references 目录不存在/不可读时静默（归 R11 的 advisory）。
@@ -464,11 +358,6 @@ func checkOversizedRefs(skillDir string, advisories *[]string) {
 	}
 }
 
-// checkEvalsSchema enforces R17: when evals/evals.json exists it must match the
-// schema — a JSON object with a trigger_cases array, each item
-// {query: string, should_trigger: boolean}. All violations are advisory (evals
-// are an opt-in regression asset, schema drift should not block Pass).
-//
 // checkEvalsSchema 执行 R17：evals/evals.json 存在时须符 schema——JSON 对象含
 // trigger_cases 数组，每项 {query: string, should_trigger: boolean}。全部违例
 // 走 advisory（evals 是可选回归资产，schema 漂移不应阻断 Pass）。
@@ -504,25 +393,20 @@ func checkEvalsSchema(skillDir string, advisories *[]string) {
 	}
 }
 
-// ForgeRefHit — 一处 forge 反向依赖命中（ScanForgeRefs 的返回单元）。
-//
 // ForgeRefHit — a single reverse-dependency hit (ScanForgeRefs return unit).
+//
+// ForgeRefHit — 一处 forge 反向依赖命中（ScanForgeRefs 的返回单元）。
 type ForgeRefHit struct {
 	File string // 相对 skill 目录的路径（SKILL.md 或子文件） / path relative to the skill dir
 	Text string // 命中片段 / matched snippet
 }
 
+// ScanForgeRefs scans the skill dir for operational forge references (the R18 detection core, exported so the ratchet test reuses the exact production judgment): SKILL.md is scanned via the post-frontmatter Body (frontmatter metadata like requires_forge is not body prose and is not scanned); every other file is scanned raw. decisions.md (append-only decision log) and evals/ (test data) are excluded — neither is an operational instruction.
+//
 // ScanForgeRefs 扫描 skill 目录内的操作性 forge 引用（R18 检测核心，导出供
 // ratchet 测试复用同一套判定）：SKILL.md 用 frontmatter 解析后的 Body（frontmatter
 // 元数据如 requires_forge 不是正文，不扫），其余文件按原文扫。decisions.md
 // （append-only 决策日志）与 evals/（测试数据）排除——它们不是操作指令。
-//
-// ScanForgeRefs scans the skill dir for operational forge references (the R18
-// detection core, exported so the ratchet test reuses the exact production
-// judgment): SKILL.md is scanned via the post-frontmatter Body (frontmatter
-// metadata like requires_forge is not body prose and is not scanned); every
-// other file is scanned raw. decisions.md (append-only decision log) and
-// evals/ (test data) are excluded — neither is an operational instruction.
 func ScanForgeRefs(skillDir string, fm *skillsfm.Frontmatter) []ForgeRefHit {
 	var hits []ForgeRefHit
 	scan := func(file, content string) {
@@ -562,14 +446,6 @@ func ScanForgeRefs(skillDir string, fm *skillsfm.Frontmatter) []ForgeRefHit {
 // "true"`（forge 原生 skill，整体跳过）与 R18Grandfathered（存量冻结，只减不增，
 // TestR18_Grandfathered_Exact 守卫表与实际命中集合严格相等）。豁免 skill 命中时
 // 报 advisory（不阻断）——条数随清理递减，diff 里条数回涨即暴露新增耦合。
-//
-// checkForgeRefs enforces R18: hits from ScanForgeRefs without an exemption are
-// hard issues (Pass=false → validate exit 2, install quality gate blocks). Two
-// exemption tiers: `metadata.requires_forge: "true"` (forge-native skills skip
-// entirely) and R18Grandfathered (frozen legacy set, shrink-only, pinned to the
-// exact match set by TestR18_Grandfathered_Exact). Hits on an exempted skill go
-// advisory (non-blocking) — the count shrinks as cleanup proceeds, and a
-// re-grown count in a diff exposes newly added coupling.
 func checkForgeRefs(skillDir string, fm *skillsfm.Frontmatter, issues, advisories *[]string) {
 	if v, ok := fm.Metadata["requires_forge"]; ok && strings.Trim(strings.TrimSpace(v), `"`) == "true" {
 		return

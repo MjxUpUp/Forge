@@ -9,9 +9,6 @@ import (
 	"testing"
 )
 
-// kimi stdin payloads captured from kimi-code 0.31.0 (debug hook dump). Keep them
-// verbatim — kimiNormalize exists because two of these shapes diverge from Claude's.
-//
 // 以下 kimi stdin payload 取自 kimi-code 0.31.0 实测（debug hook dump）。保持原样
 // ——kimiNormalize 存在的理由正是其中两种形状与 Claude 不同。
 const (
@@ -213,15 +210,6 @@ func TestEmitKimiOutput_BlockEmptyReason(t *testing.T) {
 	}
 }
 
-// TestKimiAdvisoryNeverPromotes pins the 2026-08-24 retirement of kimi's
-// advisory promotion: EVERY advisory-class result (task-guard WARN, bash-guard,
-// assertion-check) must stay an allow on kimi — the promoted exit-2 deny was
-// self-contradictory (its reason self-described as "allowed") and kimi reads
-// ANY PreToolUse stdout as a deny, so advisories now queue per-project and
-// drain on UserPromptSubmit (hook_kimi_advisory.go). If this goes red, someone
-// re-registered a kimi PromoteAdvisory rule — see TestKimiNoPromoteAdvisory in
-// hostcap.
-//
 // TestKimiAdvisoryNeverPromotes 钉住 kimi advisory 提升的 2026-08-24 退役：
 // 所有 advisory 类结果（task-guard WARN、bash-guard、assertion-check）在 kimi
 // 上必须保持放行——被提升的 exit-2 deny 自相矛盾（reason 自述「allowed」），

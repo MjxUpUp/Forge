@@ -12,23 +12,7 @@ import (
 // detectors_review_test.go 的审查轮反例已并入两张矩阵（phantom-import 的黄金对见
 // cheatscan_test.go TestDetectPhantomImport，unused-export 的 Orphan/Wired 见
 // unusedscan_test.go TestScanUnusedSymbols_RealGitDiff——样本更全，此处不重复）。
-//
-// golden_cheat_test.go — the detector golden set (feat/detector-golden-set, 2026-08-29
-// review round). Freezes the cheat-sample matrix and the test-pairing matrix validated
-// by functional review into table-driven regressions: internal rule functions are
-// called directly (detect* / isTestFile / hasMatchingTest) with per-sample hit/miss
-// assertions — if a future re-sample of the same matrix drifts, this file goes red
-// first. 2026-08-30 test slimming: the review-round counter-examples from the former
-// detectors_review_test.go were merged into the two matrices (the phantom-import
-// golden pair lives in cheatscan_test.go TestDetectPhantomImport and the
-// unused-export Orphan/Wired pair in unusedscan_test.go
-// TestScanUnusedSymbols_RealGitDiff — both with fuller samples, not duplicated here).
 
-// goldenRunDetectors mirrors the ScanCheatPatterns routing for a single production
-// line: type-suppression sees ALL lines (directives live in comments/annotations),
-// error-swallow / dead-branch see only non-comment code lines. Returns the hit counts
-// per pattern.
-//
 // goldenRunDetectors 镜像 ScanCheatPatterns 对单条生产行的路由：type-suppression 看
 // 全部行（指令活在注释/注解里），error-swallow / dead-branch 只看非注释代码行。
 // 返回按模式计的命中数。
@@ -52,11 +36,7 @@ func goldenRunDetectors(prod []addedLine) map[CheatPattern]int {
 	return m
 }
 
-// TestGolden_CheatSampleMatrix is the cheat-sample golden matrix: every sample that
-// functional review proved MUST hit (empty catch / comment-body catch / Go error
-// discard / nolint / always-false branch / ts-ignore / except:pass / mypy type: ignore)
-// and every near-miss that MUST NOT hit (tuple assign / real catch / string-literal
-// "fenced" mention).
+// TestGolden_CheatSampleMatrix is the cheat-sample golden matrix: every sample that functional review proved MUST hit (empty catch / comment-body catch / Go error discard / nolint / always-false branch / ts-ignore / except:pass / mypy type: ignore) and every near-miss that MUST NOT hit (tuple assign / real catch / string-literal "fenced" mention).
 //
 // TestGolden_CheatSampleMatrix 是作弊样本黄金矩阵：功能审查实证【必须命中】的样本
 // （空 catch / 注释体 catch / Go 错误丢弃 / nolint / 永假分支 / ts-ignore /
@@ -95,9 +75,6 @@ func TestGolden_CheatSampleMatrix(t *testing.T) {
 		{"catch-with-comment-plus-code", "a.ts", "} catch (e) { report(e); /* done */ }", false, ""},
 		{"if-real-condition", "a.ts", "\tif (count === 0) { reset() }", false, ""},
 		// 围栏内提及：字符串字面量里的指令名是命名/描述（inStringLiteral 排除），非真抑制。
-		//
-		// Fenced mention: a directive name inside a string literal is naming/description
-		// (excluded via inStringLiteral), not a real suppression.
 		{"directive-in-string-literal", "a.go", "\tre := regexp.MustCompile(\"@ts-ignore\")", false, ""},
 		{"type-ignore-without-hash", "a.py", "\t# the phrase type: ignore in prose is not a directive", false, ""},
 	} {
@@ -120,12 +97,7 @@ func TestGolden_CheatSampleMatrix(t *testing.T) {
 	}
 }
 
-// TestGolden_IsTestFileMatrix pins the test-file-name golden forms added/fixed in this
-// round: the "test_" prefix (root test_root.py acceptance — previously entered the
-// missing list), and the Java camelCase Test/Tests/IT suffixes (MainTest.java
-// acceptance). Near-misses stay out: "testing.go" (5th char is not '_'), a bare
-// "test_.py" (empty stem), "test.py", and the contest/ directory (segment-exact
-// matching, no substring exemptions).
+// TestGolden_IsTestFileMatrix pins the test-file-name golden forms added/fixed in this round: the "test_" prefix (root test_root.py acceptance — previously entered the missing list), and the Java camelCase Test/Tests/IT suffixes (MainTest.java acceptance).
 //
 // TestGolden_IsTestFileMatrix 钉本轮新增/修复的测试文件名黄金形态：「test_」前缀
 // （根目录 test_root.py 验收——此前仍进 missing 列表）与 Java 驼峰 Test/Tests/IT 后缀
@@ -178,11 +150,7 @@ func TestGolden_IsTestFileMatrix(t *testing.T) {
 	}
 }
 
-// TestGolden_TestPairingMatrix pins the hasMatchingTest golden matrix, including this
-// round's rewrite of the java/rb/zig/nim default branch: precise same-directory
-// candidates only. The two acceptance/regression anchors: Main.java+MainTest.java MUST
-// pair (JUnit camelCase), and poller_daemon_spec.rb MUST NOT pair with poller.rb (the
-// old over-broad prefix match did — a different source's spec is not this source's test).
+// TestGolden_TestPairingMatrix pins the hasMatchingTest golden matrix, including this round's rewrite of the java/rb/zig/nim default branch: precise same-directory candidates only.
 //
 // TestGolden_TestPairingMatrix 钉 hasMatchingTest 黄金矩阵，含本轮重写的
 // java/rb/zig/nim default 分支：仅同目录精确候选。两个验收/回归锚点：
@@ -234,11 +202,7 @@ func TestGolden_TestPairingMatrix(t *testing.T) {
 	}
 }
 
-// TestGolden_CheckTestCoverage_AcceptancePairs drives the full gate (git fixture) over
-// the two acceptance pairs of this round: Main.java+MainTest.java commits must yield
-// ok=true with EMPTY missing (the paired MainTest.java is itself a test and must not
-// re-enter missing), and root root.py+test_root.py likewise. Also pins the
-// precomputed-list variant (checkTestCoverageChanged) against the public entry point.
+// TestGolden_CheckTestCoverage_AcceptancePairs drives the full gate (git fixture) over the two acceptance pairs of this round: Main.java+MainTest.java commits must yield ok=true with EMPTY missing (the paired MainTest.java is itself a test and must not re-enter missing), and root root.py+test_root.py likewise.
 //
 // TestGolden_CheckTestCoverage_AcceptancePairs 用完整门禁（git fixture）跑本轮两个
 // 验收对：提交 Main.java+MainTest.java 必须得 ok=true 且 missing 为空（配对成功的
@@ -272,9 +236,6 @@ func TestGolden_CheckTestCoverage_AcceptancePairs(t *testing.T) {
 				t.Errorf("acceptance pair: want total=1 (exactly one non-test source), got %d", total)
 			}
 
-			// The precomputed-list variant (now used by both executor gates) must agree
-			// with the public entry point on the same changed set.
-			//
 			// 预计算列表变体（executor 两个 gate 现用）对同一 changed 集必须与公开入口一致。
 			ok2, missing2, total2 := checkTestCoverageChanged(dir, state, taskChangedFiles(dir, state))
 			if ok2 != ok || len(missing2) != len(missing) || total2 != total {
@@ -284,10 +245,7 @@ func TestGolden_CheckTestCoverage_AcceptancePairs(t *testing.T) {
 	}
 }
 
-// TestGolden_CheckTestCoverageChanged_EscapeHatchPreserved pins that the executor's
-// new direct call path (checkTestCoverageChanged instead of CheckTestCoverage) keeps
-// the escape-hatch semantics: FORGE_TEST_COVERAGE=disable must still return ok=true —
-// the audit entry is recorded inside the variant, not only in the public wrapper.
+// TestGolden_CheckTestCoverageChanged_EscapeHatchPreserved pins that the executor's new direct call path (checkTestCoverageChanged instead of CheckTestCoverage) keeps the escape-hatch semantics: FORGE_TEST_COVERAGE=disable must still return ok=true — the audit entry is recorded inside the variant, not only in the public wrapper.
 //
 // TestGolden_CheckTestCoverageChanged_EscapeHatchPreserved 钉 executor 新直连路径
 // （改调 checkTestCoverageChanged 而非 CheckTestCoverage）不丢逃生舱语义：

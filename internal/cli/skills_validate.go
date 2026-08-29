@@ -16,8 +16,6 @@ var (
 	skValJSON  bool
 )
 
-// exit code contract: 0=all pass, 2=spec failure present.
-//
 // exit code 契约：0=全部通过，2=存在规范失败。
 var skillsValidateCmd = &cobra.Command{
 	Use:   "validate",
@@ -95,11 +93,6 @@ func runSkillsValidate(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// filterSkillNames filters skill names by whitelist (CLI layer, preserves order).
-// Any requested name not present in the canonical library is an error — silently
-// filtering a misspelled --skill down to an empty set would let `audit --gate`
-// pass with 0 skills scanned, bypassing the CI security gate with a typo.
-//
 // filterSkillNames 按白名单过滤 skill 名（CLI 层，保持 order）。任何请求的名字
 // 不在 canonical 库中直接报错——静默把拼错的 --skill 过滤成空集会让 `audit --gate`
 // 扫 0 个 skill 通过，CI 安全门被拼写错误绕过。

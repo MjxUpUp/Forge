@@ -10,11 +10,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskcontext"
 )
 
-// TestSplitDepRef pins the key:ref syntax table: no colon (or a LEADING colon)
-// is same-repo with zero behavior change; the FIRST colon splits so a taskRef
-// may carry colons while a key never can; a trailing colon yields an empty
-// taskRef (its load fails → the gate treats it as pending, conservative).
-//
 // TestSplitDepRef 钉住 key:ref 语法表：无冒号（或冒号在首位）= 本仓，零行为
 // 变化；按第一个冒号拆分，故 taskRef 可含冒号而 key 绝不；结尾冒号得到空
 // taskRef（加载必失败 → 门禁计 pending，保守）。
@@ -40,9 +35,6 @@ func TestSplitDepRef(t *testing.T) {
 	}
 }
 
-// writeDepState writes one task state file into the FORGE_DATA_HOME-relative
-// DataDir of the given key — the on-disk shape a cross-repo dep resolves to.
-//
 // writeDepState 往指定 key 的 DataDir（相对 FORGE_DATA_HOME）写一个 task
 // state 文件——跨仓依赖解析到的磁盘形态。
 func writeDepState(t *testing.T, home, key string, s *TaskState) {
@@ -60,12 +52,6 @@ func writeDepState(t *testing.T, home, key string, s *TaskState) {
 	}
 }
 
-// TestPendingDependencies_CrossRepo covers the gate's block list across repos:
-// same-repo behavior is unchanged (delivered passes, missing is pending), and
-// every cross-repo failure shape — incomplete target, missing task, key with
-// no data dir, sanitize-collision mismatch — is conservatively PENDING with
-// the ref returned verbatim (the gate prints the block list from it).
-//
 // TestPendingDependencies_CrossRepo 覆盖门禁阻断清单的跨仓行为：本仓行为不变
 // （已交付放行、缺失计 pending），且每种跨仓失败形态——目标未完成、目标
 // 缺失、key 无数据目录、sanitize 串号——一律保守计 PENDING，且返回的 ref
@@ -75,22 +61,14 @@ func TestPendingDependencies_CrossRepo(t *testing.T) {
 	t.Setenv(`FORGE_DATA_HOME`, home)
 	root := t.TempDir() // 非 git → DataDir 走 PathKey(root)，同仓 ref 用 SaveTaskState 落盘
 
-	// Same-repo: one delivered (assignment-delivered), and a missing ref.
-	//
 	// 本仓：一个已交付（assignment delivered），加一个缺失 ref。
 	if err := SaveTaskState(root, &TaskState{TaskRef: `local-done`, Assignment: &Assignment{Status: AssignDelivered}}); err != nil {
 		t.Fatal(err)
 	}
 
-	// Cross-repo member bb0000000002: delivered / in-flight / collision shapes.
-	//
 	// 跨仓成员 bb0000000002：已交付 / 未完成 / 串号 三种形态。
 	writeDepState(t, home, `bb0000000002`, &TaskState{TaskRef: `b-done`, Assignment: &Assignment{Status: AssignDelivered}})
 	writeDepState(t, home, `bb0000000002`, &TaskState{TaskRef: `b-wip`})
-	// Sanitize collision: the FILE name for "b:other" is b-other.json, but the
-	// stored TaskRef differs from the requested one — the load guard must reject
-	// it (pending), never leak the other task's delivered state.
-	//
 	// sanitize 串号："b:other" 的文件名是 b-other.json，但文件内 TaskRef 与请求
 	// 不同——加载防护必须拒绝（计 pending），绝不把另一个任务的已交付状态漏过来。
 	writeDepState(t, home, `bb0000000002`, &TaskState{TaskRef: `b/other`, Assignment: &Assignment{Status: AssignDelivered}})
@@ -111,12 +89,6 @@ func TestPendingDependencies_CrossRepo(t *testing.T) {
 	}
 }
 
-// TestAddDependency_CrossRepoRef pins AddDependency's generic treatment of
-// key:ref entries: stored verbatim, exact-string dedup, and the cycle DFS
-// expands only what the injected lookup returns — the production CLI lookup
-// (task start) returns nil for key:ref, so a cross-repo edge can never raise
-// a same-repo cycle error, and same-repo cycles still refuse when mixed in.
-//
 // TestAddDependency_CrossRepoRef 钉住 AddDependency 对 key:ref 条目的通用处理：
 // 原样存储、精确串去重、环 DFS 只展开注入 lookup 返回的节点——生产 CLI 的
 // lookup（task start）对 key:ref 返回 nil，故跨仓边绝不触发本仓环误判，而
@@ -169,13 +141,6 @@ func TestAddDependency_CrossRepoRef(t *testing.T) {
 	})
 }
 
-// TestLoadDepState_RejectsMalformedKey pins that a DependsOn key outside the two
-// legitimate key shapes (traversal / separator / wrong length) is refused BEFORE
-// being joined into a filesystem path — the key is bundle-traveling input, and an
-// unchecked `..` would steer the read-only scan outside the data home. The refusal
-// surfaces as an error → the gate counts the dep as pending (conservative, never
-// silently delivered).
-//
 // TestLoadDepState_RejectsMalformedKey 钉住两种合法形态之外的 DependsOn key
 // （穿越/分隔符/长度错）在拼进文件系统路径之前被拒——key 是随 bundle 旅行的
 // 输入，未校验的 `..` 会把只读扫描引出数据 home。拒绝以 error 呈现 → 门禁计

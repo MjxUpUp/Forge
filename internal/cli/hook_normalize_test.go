@@ -5,13 +5,6 @@ import (
 	"testing"
 )
 
-// normalizeCase is one payload→expected row of the per-dialect normalize tables.
-// An empty want* column means the original per-case test did not assert that
-// field (skip) — it never means "assert the field is empty". preUnmarshal
-// simulates runHook's default json.Unmarshal BEFORE normalizeAgentStdin (the
-// production sequence when raw stdin shares field names with HookInput's own
-// json tags, e.g. cline's snake_case tool_name).
-//
 // normalizeCase 是各方言 normalize 表的一行 payload→期望。want* 列为空表示
 // 原逐用例测试未断言该字段（跳过）——绝不表示"断言字段为空"。preUnmarshal
 // 模拟 runHook 在 normalizeAgentStdin 之前的默认 json.Unmarshal（原始 stdin
@@ -32,9 +25,6 @@ type normalizeCase struct {
 	wantCommand  string
 }
 
-// runNormalizeCases asserts one dialect's table. Every non-empty want* column
-// carries an assertion from the absorbed per-case tests (field, got, want).
-//
 // runNormalizeCases 断言一张方言表。每个非空 want* 列携带一条来自被吸收
 // 逐用例测试的断言（字段、got、want）。
 func runNormalizeCases(t *testing.T, agent string, cases []normalizeCase) {
@@ -84,8 +74,7 @@ func runNormalizeCases(t *testing.T, agent string, cases []normalizeCase) {
 	}
 }
 
-// TestWindsurfNormalizeTable merges the windsurf per-payload tests; rows keep
-// their original load-bearing comments and assertions.
+// TestWindsurfNormalizeTable merges the windsurf per-payload tests; rows keep their original load-bearing comments and assertions.
 //
 // TestWindsurfNormalizeTable 合并 windsurf 逐 payload 测试；行保留原有关键注释
 // 与断言。
@@ -264,14 +253,7 @@ func TestResolveHookAgent(t *testing.T) {
 	}
 }
 
-// TestReasonixNormalizeTable merges the reasonix per-payload tests. reasonix
-// PreToolUse uses camelCase fields ({event, sessionId, cwd, toolName, toolArgs})
-// + snake_case tool name + path (not file_path) — without normalization,
-// tool_name/file_path parse empty and the hooks fire but fail open (the
-// original "reasonix rarely follows Forge" root cause). toolArgs.path must
-// alias to file_path so FORGE_FILE_PATH resolves; new_string passes through
-// (assertion-check reads tool_input.new_string, which CC Edit also uses — CC
-// Edit has no `content` field).
+// TestReasonixNormalizeTable merges the reasonix per-payload tests. reasonix PreToolUse uses camelCase fields ({event, sessionId, cwd, toolName, toolArgs}) + snake_case tool name + path (not file_path) — without normalization, tool_name/file_path parse empty and the hooks fire but fail open (the original "reasonix rarely follows Forge" root cause). toolArgs.path must alias to file_path so FORGE_FILE_PATH resolves; new_string passes through (assertion-check reads tool_input.new_string, which CC Edit also uses — CC Edit has no `content` field).
 //
 // TestReasonixNormalizeTable 合并 reasonix 逐 payload 测试。reasonix PreToolUse
 // 用 camelCase 字段（{event, sessionId, cwd, toolName, toolArgs}）+ snake_case
@@ -282,9 +264,6 @@ func TestResolveHookAgent(t *testing.T) {
 func TestReasonixNormalizeTable(t *testing.T) {
 	runNormalizeCases(t, "reasonix", []normalizeCase{
 		{
-			// edit_file PreToolUse — the case that matters most for
-			// read-before-edit / task-guard enforcement.
-			//
 			// edit_file PreToolUse——read-before-edit / task-guard enforce 所系。
 			name: "edit_file",
 			payload: map[string]any{
@@ -372,10 +351,7 @@ func TestReasonixToCCToolName(t *testing.T) {
 	}
 }
 
-// TestClineNormalizeTable merges the cline per-payload tests. cline's write_to_file
-// with the documented base fields plus a `parameters` payload is the case
-// read-before-edit / task-guard enforcement hangs on: workspaceRoots[0]→Cwd,
-// taskId→SessionID, parameters.path aliased to file_path, write_to_file→Write.
+// TestClineNormalizeTable merges the cline per-payload tests. cline's write_to_file with the documented base fields plus a `parameters` payload is the case read-before-edit / task-guard enforcement hangs on: workspaceRoots[0]→Cwd, taskId→SessionID, parameters.path aliased to file_path, write_to_file→Write.
 //
 // TestClineNormalizeTable 合并 cline 逐 payload 测试。cline 的 write_to_file
 // 携带文档化基础字段加 `parameters` payload——read-before-edit / task-guard
@@ -384,8 +360,6 @@ func TestReasonixToCCToolName(t *testing.T) {
 func TestClineNormalizeTable(t *testing.T) {
 	runNormalizeCases(t, "cline", []normalizeCase{
 		{
-			// write_to_file PreToolUse, documented shape.
-			//
 			// write_to_file PreToolUse，文档化形状。
 			name: "write_to_file",
 			payload: map[string]any{
@@ -407,11 +381,6 @@ func TestClineNormalizeTable(t *testing.T) {
 			wantFilePath: "/home/u/proj/main.go",
 		},
 		{
-			// The tool payload's exact field names are only partially documented
-			// — toolName/toolInput (camelCase) must resolve identically to
-			// tool/parameters, and execute_command must map to Bash with command
-			// passthrough (bash-guard / hazard-guard input).
-			//
 			// 工具 payload 的确切字段名仅部分文档化——toolName/toolInput
 			// （camelCase）须与 tool/parameters 同等解析，且 execute_command 须
 			// 映射到 Bash、command 原样透传（bash-guard / hazard-guard 的输入）。
@@ -427,11 +396,6 @@ func TestClineNormalizeTable(t *testing.T) {
 			wantCommand: "rm -rf /tmp/x",
 		},
 		{
-			// TaskStart carries the SessionStart group (see clineEventMappings)
-			// — clineNormalize must map the event back to "SessionStart" or every
-			// session-scoped hook (which dispatches on exactly that name) would
-			// silently never fire. This is the load-bearing event translation.
-			//
 			// TaskStart 挂着 SessionStart 组（见 clineEventMappings）——
 			// clineNormalize 必须把事件映射回 "SessionStart"，否则每个会话级
 			// hook（恰以该名分发）静默永不触发。这是关键的事件翻译。
@@ -444,13 +408,6 @@ func TestClineNormalizeTable(t *testing.T) {
 			wantEvent: "SessionStart",
 		},
 		{
-			// Guards the UNCONDITIONAL ToolName override. cline's snake_case
-			// `tool_name` field (when a version sends it) collides with
-			// HookInput's own json tag, so the default unmarshal fills ToolName
-			// with the raw cline name BEFORE the normalizer runs — a fill-empty
-			// policy would preserve "write_to_file" and skip the mapping, the
-			// exact fail-open shape the normalizer exists to prevent.
-			//
 			// 守卫 ToolName 的无条件覆盖。cline 的 snake_case `tool_name` 字段
 			// （某版本发送时）与 HookInput 自身的 json tag 撞名，默认 unmarshal
 			// 会在 normalizer 之前把原始 cline 名填进 ToolName——填空策略会保留
@@ -469,10 +426,6 @@ func TestClineNormalizeTable(t *testing.T) {
 			wantFilePath: "/app/main.go",
 		},
 		{
-			// The prompt candidates (prompt/userPrompt/question — exact name
-			// partially documented) land in Prompt, which resume-reinject /
-			// skill-trigger read.
-			//
 			// prompt 候选（prompt/userPrompt/question——确切名仅部分文档化）落入
 			// Prompt，供 resume-reinject / skill-trigger 读取。
 			name: "UserPromptSubmit prompt",
@@ -488,9 +441,7 @@ func TestClineNormalizeTable(t *testing.T) {
 	})
 }
 
-// TestClineToCCToolName pins the snake_case → PascalCase map for cline's documented
-// tool roster; unknown names pass through unchanged (forward-compat — a future cline
-// tool must not silently match nothing forge dispatches on).
+// TestClineToCCToolName pins the snake_case → PascalCase map for cline's documented tool roster; unknown names pass through unchanged (forward-compat — a future cline tool must not silently match nothing forge dispatches on).
 //
 // TestClineToCCToolName 钉死 cline 文档化工具名册的 snake_case → PascalCase 映射；
 // 未知名原样透传（向前兼容——未来的 cline 工具不得静默匹配不到 forge 的分发名）。
@@ -511,8 +462,7 @@ func TestClineToCCToolName(t *testing.T) {
 	}
 }
 
-// TestClineNormalize_EmptyAndGarbage: empty stdin and non-JSON garbage must not panic
-// and must leave the input untouched (hooks degrade to no-payload behavior).
+// TestClineNormalize_EmptyAndGarbage: empty stdin and non-JSON garbage must not panic and must leave the input untouched (hooks degrade to no-payload behavior).
 //
 // TestClineNormalize_EmptyAndGarbage：空 stdin 与非 JSON 垃圾输入不得 panic、不得
 // 改动输入（hook 退化到无 payload 行为）。

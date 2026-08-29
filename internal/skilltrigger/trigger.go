@@ -1,3 +1,5 @@
+// Package skilltrigger is the agent-neutral core engine of the generic skill-trigger framework.
+//
 // Package skilltrigger 是通用 skill 触发框架的核心引擎（agent-neutral）。
 //
 // skill 在 frontmatter metadata.triggers 声明触发条件（关键词或命名 condition），
@@ -5,11 +7,6 @@
 // 把 code-review-gate 的"专属子命令 + hook + 状态"高成本模式抽象成声明式触发 + 通用引擎，
 // 让质量/流程类 skill（test-discipline / implementation-discipline 等）在事件点被 hook
 // 主动驱动，不再依赖 agent 自觉。
-//
-// Package skilltrigger is the agent-neutral core engine of the generic skill-trigger
-// framework. A skill declares trigger conditions in frontmatter metadata.triggers
-// (keywords or a named condition); this package scans canonical skills, evaluates hits
-// against the current event + context, and renders "load this skill" guidance.
 package skilltrigger
 
 import (
@@ -520,19 +517,6 @@ type keywordMatch struct {
 // → stdout → stderr → output（覆盖 PostToolUse Bash 的编译输出等场景），任一 (源, 词)
 // 命中即真。优先序 = v1 拼接顺序；判定真值除跨源边界外与 v1 一致——跨源边界命中的消失
 // 是**有意的语义变更**（非增量），battery 预期呈现相应命中变化。
-//
-// matchKeywords does per-source case-insensitive substring matching; returns the first
-// (source, keyword) hit. v2 semantic change (debate R1, pinned by tests): v1 concatenated
-// prompt + command + outputs into one haystack — a keyword could match across the
-// prompt/command/output boundary (prompt ending "compile" + command starting "error:"
-// splicing into "compile error"), neither attributable to a source nor trackable as the
-// false-positive generator it was. v2 evaluates each source independently: prompt (raw,
-// UserPromptSubmit) → command (sanitizeCommand-stripped, so script text merely mentioning
-// "npm publish" cannot false-positive release guards — see command_noise.go) → stdout →
-// stderr → output (PostToolUse build output etc.); any (source, keyword) hit wins.
-// Priority order = v1's concatenation order; truth values match v1 except boundary-spanning
-// matches, whose disappearance is the INTENDED semantic change (not additive) — the battery
-// is expected to show the corresponding hit shift.
 func matchKeywords(keywords []string, ctx Context) (keywordMatch, bool) {
 	for _, src := range []string{MatchSourcePrompt, MatchSourceCommand, MatchSourceStdout, MatchSourceStderr, MatchSourceOutput} {
 		h := strings.ToLower(sourceText(ctx, src))
@@ -613,16 +597,6 @@ func sourceText(ctx Context, source string) string {
 // 破坏挖矿（P2）依赖的跨 session 去重。**ProjectRoot 为空（非 forge 目录）时返回 ""**：
 // 空盐会让全部非 forge session 坍缩进同一个全局桶，跨项目关联恰在盐缺位处全局成立
 // （review m2）——宁缺哈希不做全局桶。
-//
-// firingInputHash computes the project-salted sha1[:12] of the "firing input": the
-// prompt when present, else the matched source text (tool events — stdout hits must
-// be minable/dedupable too, review m4). Salt = ProjectRoot (project scope):
-// clusterable within a project, uncorrelatable across projects; deliberately WITHOUT
-// sessionID — debate G4: a session salt would break the cross-session dedup mining
-// (P2) relies on. **Empty ProjectRoot (non-forge dir) returns ""**: an empty salt
-// would collapse every non-forge session into one global bucket — cross-project
-// correlation would hold exactly where the salt is missing (review m2); better no
-// hash than a global bucket.
 func firingInputHash(ctx Context, source string) string {
 	if ctx.ProjectRoot == "" {
 		return ""
@@ -644,14 +618,6 @@ func firingInputHash(ctx Context, source string) string {
 // 覆写后调用，缺省 cooldown 的规则会带上归一化 60/120，同一声明规则劈裂出多个 sig，
 // 纵向 per-rule 统计与 SKILL.md 声明永远 join 不上（曾有此 bug，由
 // TestEval_TriggerSigMatchesDeclared 钉死）。
-//
-// triggerSig computes sha1[:8] of the declared rule — order-independent rule identity.
-// Signed over the DECLARED content (incl. declared Cooldown), unaffected by runtime
-// maxCD normalization. **Calling contract (review M1): pass the trigger AS DECLARED** —
-// Eval computes the sig BEFORE the `matched.Cooldown = maxCD` overwrite; calling after
-// bakes the normalized 60/120 into rules with a default cooldown, splitting one
-// declared rule into several sigs so longitudinal per-rule stats can never join back
-// to SKILL.md (this bug existed and is pinned by TestEval_TriggerSigMatchesDeclared).
 func triggerSig(t Trigger) string {
 	b, err := json.Marshal(t)
 	if err != nil {

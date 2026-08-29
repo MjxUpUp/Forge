@@ -40,9 +40,6 @@ func TestCollectGitData_InGitRepo(t *testing.T) {
 
 func TestCollectGitData_NotGitRepo(t *testing.T) {
 	dir := t.TempDir()
-	// Not a git repo — both git diff commands fail, so a real error must surface
-	// (the failure is observable; the caller degrades to empty diffStat / neutral scope).
-	//
 	// 非 git repo——两个 git diff 命令都失败，必须返回真实 error
 	// （失败可观测；调用方降级为空 diffStat / scope 中性分）。
 	diffStat, err := CollectGitData(dir, "main", "")
@@ -54,12 +51,6 @@ func TestCollectGitData_NotGitRepo(t *testing.T) {
 	}
 }
 
-// TestCollectGitData_UnreachableBaseCommit pins the both-fail error path with a git repo whose
-// base commit does not exist: base..HEAD fails and `git diff HEAD`... actually succeeds in a
-// valid repo. To force both commands to fail we use an unreachable base AND a bare-invalid root
-// is not possible here — instead assert the partial-failure contract: unreachable base still
-// returns working-tree data without error.
-//
 // TestCollectGitData_UnreachableBaseCommit 钉住部分失败契约：base commit 不可达时
 // base..HEAD 失败但 `git diff HEAD` 仍可用——返回工作区数据且无 error（单失败可容忍）。
 func TestCollectGitData_UnreachableBaseCommit(t *testing.T) {
@@ -74,9 +65,6 @@ func TestCollectGitData_UnreachableBaseCommit(t *testing.T) {
 	runGit(t, dir, "add", ".")
 	runGit(t, dir, "commit", "-m", "first")
 
-	// Uncommitted change → visible via the `git diff --numstat HEAD` slice even though
-	// base..HEAD fails on the unreachable base.
-	//
 	// 未提交改动——即使 base..HEAD 因 base 不可达而失败，也能经 `git diff --numstat HEAD` 段看到。
 	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte("package a\n\n// changed\n"), 0644); err != nil {
 		t.Fatal(err)

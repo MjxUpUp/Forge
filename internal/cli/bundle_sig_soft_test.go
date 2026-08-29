@@ -1,10 +1,5 @@
 package cli
 
-// bundle_sig_soft_test.go — the personal-profile soft path must carry its root
-// cause to stderr: `signed=false, err=nil` with a vanishing reason makes every
-// "why is my bundle unsigned?" undiscoverable. Also pins the unreadable-trust-store
-// case announcing itself instead of silently reading as personal profile.
-//
 // bundle_sig_soft_test.go —— 个人档软路径必须把根因带到 stderr：
 // `signed=false, err=nil` 而原因消失会让「bundle 为什么没签名」无从排查。同时钉
 // 死 trust store 不可读时明确告示、而非无声按个人档处理。

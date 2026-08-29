@@ -7,10 +7,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/hlc"
 )
 
-// lease_test.go — task lease semantics (sync-convergence.md §4): fencing-monotonic
-// claims, TTL expiry, foreign-lease advisory at gate time, and the merge rule
-// (higher fencing wins — that is what fencing exists FOR).
-//
 // lease_test.go —— 任务租约语义（sync-convergence.md §4）：fencing 单调认领、
 // TTL 过期、他机租约门禁 advisory、合并规则（fencing 高者胜——这正是 fencing
 // 存在的意义）。
@@ -73,9 +69,6 @@ func TestLeaseStatus_Expiry(t *testing.T) {
 	}
 }
 
-// TestLease_ActiveAt pins the single "expiry means free" rule that both LeaseStatus
-// and the dashboard feed derive from (feed must not show stale holders).
-//
 // TestLease_ActiveAt 钉死 LeaseStatus 与 dashboard feed 共同派生的「过期即自由」
 // 唯一规则（feed 不得显示过期持有者）。
 func TestLease_ActiveAt(t *testing.T) {
@@ -116,11 +109,6 @@ func TestLease_MergeHigherFencingWins(t *testing.T) {
 	}
 }
 
-// TestLease_MergeEqualFencingDeterministic pins the equal-fencing tiebreak WITH an
-// oracle: the canonical-JSON-smaller lease wins (holder_node is the first JSON field,
-// so fnode_aaa… beats fnode_bbb… when everything else is equal), in BOTH directions.
-// This is the dual-machine simultaneous-claim case — it must converge, not flip.
-//
 // TestLease_MergeEqualFencingDeterministic 带 oracle 钉死同值 fencing 破平：规范
 // JSON 小者胜（holder_node 是 JSON 首字段，其余全等时 fnode_aaa… 胜 fnode_bbb…），
 // 两个方向一致。这是双机同时认领的情形——必须收敛，不得来回翻。
@@ -143,11 +131,6 @@ func TestLease_MergeEqualFencingDeterministic(t *testing.T) {
 	}
 }
 
-// TestLease_ExpiresAt pins the single expiry formula (claimed + TTL) that ActiveAt,
-// LeaseStatus's advisory message, and the dashboard's state-block projection all
-// derive from — the refactor extracted it precisely so the formula cannot drift
-// between call sites.
-//
 // TestLease_ExpiresAt 钉死过期公式（认领 + TTL）的唯一出处——ActiveAt、LeaseStatus
 // 的 advisory 文案、看板 state 块投影都从它派生；抽这个方法正是为了让公式无法在
 // 各调用点间漂移。

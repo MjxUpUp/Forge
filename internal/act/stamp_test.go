@@ -10,9 +10,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/nodestamp"
 )
 
-// TestAppend_StampsMachineAttribution pins the event-stamping contract at the
-// conclusions choke point (node-identity.md §4): Append lands node_id/seq/ts_hlc,
-// and a caller-preset stamp (import/merge path) survives untouched.
+// TestAppend_StampsMachineAttribution pins the event-stamping contract at the conclusions choke point (node-identity.md §4): Append lands node_id/seq/ts_hlc, and a caller-preset stamp (import/merge path) survives untouched.
 //
 // TestAppend_StampsMachineAttribution 在 conclusions 收口点钉死事件打戳契约
 // （node-identity.md §4）：Append 落 node_id/seq/ts_hlc，调用方预置戳

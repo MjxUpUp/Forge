@@ -39,8 +39,6 @@ func TestAppendEvent_LoadRoundTrip(t *testing.T) {
 	if got.Command != e.Command {
 		t.Errorf("Command: got %q want %q", got.Command, e.Command)
 	}
-	// Ts is stamped by AppendEvent and must be in the recent past (non-zero).
-	//
 	// Ts 由 AppendEvent 盖戳，必须在近过去（非零）
 	if got.Ts.IsZero() {
 		t.Fatal("Ts must be stamped by AppendEvent")
@@ -62,8 +60,6 @@ func TestAppendEvent_TruncatesLongCommand(t *testing.T) {
 	if len(events) != 1 {
 		t.Fatalf("expected 1 event, got %d", len(events))
 	}
-	// After truncation = s[:maxCommandStore] + an ellipsis (the ellipsis is a 3-byte UTF-8 rune), so len = maxCommandStore+3.
-	//
 	// 截断后 = s[:maxCommandStore] + "…"（… 是 3 字节 UTF-8），故 len = maxCommandStore+3
 	if !strings.HasSuffix(events[0].Command, "…") {
 		t.Errorf("truncated command must end with ellipsis, got len=%d: %q", len(events[0].Command), events[0].Command)
@@ -73,10 +69,6 @@ func TestAppendEvent_TruncatesLongCommand(t *testing.T) {
 	}
 }
 
-// TestAppendEvent_TruncatesMultiByte verifies that truncate slices by rune rather than byte — Chinese commands
-// (each char is 3 bytes) must remain valid UTF-8 after truncation and must not be cut mid-character (byte slicing would produce invalid
-// UTF-8; json.Marshal would replace it with U+FFFD, corrupting the audit log).
-//
 // TestAppendEvent_TruncatesMultiByte 验证 truncate 按 rune 而非字节切片——中文命令
 // （每字 3 字节）截断后必须仍是有效 UTF-8，不能在字符中间切断（字节切片会产生无效
 // UTF-8，json.Marshal 替换为 U+FFFD，审计日志乱码）。
@@ -112,8 +104,6 @@ func TestAppendEvent_AppendsInOrder(t *testing.T) {
 	if len(events) != 3 {
 		t.Fatalf("expected 3 events, got %d", len(events))
 	}
-	// Append order = in-file order (guaranteed by O_APPEND).
-	//
 	// 追加序 = 文件内序（O_APPEND 保证）
 	if events[0].Type != EventBlock || events[1].Type != EventRelease || events[2].Type != EventData {
 		t.Fatalf("order mismatch: %+v", events)
@@ -126,8 +116,6 @@ func TestCountSince(t *testing.T) {
 	AppendEvent(root, Event{Type: EventBlock, Command: "b"})
 	AppendEvent(root, Event{Type: EventRelease, Command: "c"})
 
-	// since=0 → all block events are counted.
-	//
 	// since=0 → 全部 block 计入
 	n, err := CountSince(root, EventBlock, time.Time{})
 	if err != nil {
@@ -136,8 +124,6 @@ func TestCountSince(t *testing.T) {
 	if n != 2 {
 		t.Fatalf("expected 2 block events since zero, got %d", n)
 	}
-	// since=future → 0.
-	//
 	// since=未来 → 0
 	n, _ = CountSince(root, EventBlock, time.Now().Add(time.Hour))
 	if n != 0 {
@@ -162,8 +148,6 @@ func TestLoadEvents_SkipsCorruptLine(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// Lines 1 and 3 are valid, line 2 is corrupt → LoadEvents returns 2 entries without error.
-	//
 	// 第 1、3 行合法，第 2 行损坏 → LoadEvents 返回 2 条，不报错
 	content := `{"type":"block","command":"ok1"}
 {not json}
@@ -181,9 +165,6 @@ func TestLoadEvents_SkipsCorruptLine(t *testing.T) {
 	}
 }
 
-// TestAppendEvent_ConcurrentSafe verifies that concurrent appends do not interleave or get lost (eventMu + O_APPEND).
-// This is the correctness guarantee for hooks running across multiple concurrent sessions.
-//
 // TestAppendEvent_ConcurrentSafe 并发追加不应交错/丢失（eventMu + O_APPEND）。
 // 这是 hook 在多 session 并发时的正确性保障。
 func TestAppendEvent_ConcurrentSafe(t *testing.T) {
@@ -207,27 +188,17 @@ func TestAppendEvent_ConcurrentSafe(t *testing.T) {
 	}
 }
 
-// TestConfirmLastBlock verifies the copy-free HITL path: the newest block event's
-// fingerprint (written by the hook at block time — authoritative by construction) gets
-// confirmed without any transcription. Covers: newest-wins ordering, skipping
-// fingerprint-less block events, IsConfirmed flips true, and the no-events error.
-//
 // TestConfirmLastBlock 验证免复制 HITL 路径：最新 block 事件的指纹（hook 拦截时写入，
 // 天然权威）被确认且零转写。覆盖：最新者胜、跳过无指纹 block 事件、IsConfirmed 翻真、
 // 无事件时报错。
 func TestConfirmLastBlock(t *testing.T) {
 	p := forgedatatest.ForDataDir(t.TempDir())
 
-	// No events yet → explicit error.
-	//
 	// 尚无事件 → 明确报错。
 	if _, _, err := ConfirmLastBlock(p); err == nil {
 		t.Fatal("ConfirmLastBlock with empty event log must error")
 	}
 
-	// Older block (fingerprinted) + a fingerprint-less block + the newest block.
-	// Newest WITH fingerprint must win — not merely the last line.
-	//
 	// 旧 block（带指纹）+ 一条无指纹 block + 最新 block。带指纹的最新者胜——而非
 	// 单纯最后一行。
 	oldCmd := "git push --force origin old"
@@ -257,15 +228,11 @@ func TestConfirmLastBlock(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("after ConfirmLastBlock, IsConfirmed(newest) must be true (err=%v)", err)
 	}
-	// Only the newest is confirmed; the older block stays unconfirmed (per-action, not carte blanche).
-	//
 	// 仅最新者被确认；旧 block 保持未确认（按次确认，不是空白授权）。
 	okOld, _ := IsConfirmed(p, Fingerprint(oldCmd))
 	if okOld {
 		t.Fatal("ConfirmLastBlock must not confirm older blocks")
 	}
-	// The confirm registration must itself leave an audit event (writeConfirmation funnel).
-	//
 	// 确认登记自身必须留下审计事件（writeConfirmation 漏斗）。
 	events, err := LoadEvents(p)
 	if err != nil {
@@ -282,9 +249,6 @@ func TestConfirmLastBlock(t *testing.T) {
 	}
 }
 
-// TestConfirmLastBlock_OnlyFingerprintlessBlocks errors out instead of confirming
-// something arbitrary: fingerprint-less block events are unconfirmable.
-//
 // TestConfirmLastBlock_OnlyFingerprintlessBlocks 报错而非随意确认：无指纹的
 // block 事件本就不可确认。
 func TestConfirmLastBlock_OnlyFingerprintlessBlocks(t *testing.T) {

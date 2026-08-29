@@ -68,8 +68,6 @@ func TestEmitInfraAllow(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("TMPDIR", t.TempDir())
 
-	// kimi PreToolUse: silent (stdout there = deny), warning queued.
-	//
 	// kimi PreToolUse：静默（该事件的 stdout = deny），警告入队。
 	stdout, _, err := captureOutput(t, func() error {
 		return emitInfraAllow("kimi", "PreToolUse", "infra-hook", root, "sess-infra", "[forge] hook x 基础设施失败，fail-open 放行")
@@ -85,8 +83,6 @@ func TestEmitInfraAllow(t *testing.T) {
 		t.Errorf("kimi infra warning must be queued for the UserPromptSubmit drain, got %q err=%v", queued, qerr)
 	}
 
-	// kimi UserPromptSubmit: the warning prints AND the queued backlog drains.
-	//
 	// kimi UserPromptSubmit：警告照常打印，且积压队列随之一并 drain。
 	stdout, _, err = captureOutput(t, func() error {
 		return emitInfraAllow("kimi", "UserPromptSubmit", "infra-hook", root, "sess-infra", "[forge] hook y 基础设施失败")
@@ -121,13 +117,8 @@ func TestEmitInfraAllow(t *testing.T) {
 
 // TestRunHookCreateTempFailureRoutesInfraAllow pins the infra-exit unification
 // (fix/cleanup-batch, 2026-08-29): the script-never-runs failures in runHook
-// step 3/4 (temp-file create/write, findBash) are the same infrastructure
-// class as the step-5 bash-spawn failure and must route through
-// emitInfraAllow — a visible, host-routed warning and exit 0 (fail-open) —
-// instead of returning a bare error (Execute printed it, exited 1, and NO host
-// context channel ever saw it). The temp-file failure is induced by pointing
-// the temp dir env at a non-existent path; the claude-shape emission lands on
-// stdout as a bare hookSpecificOutput.
+// step 3/4 (temp-file create/write, findBash) are the same infrastructure class
+// as the step-5 bash-spawn failure and must route through emitInfraAllow.
 //
 // TestRunHookCreateTempFailureRoutesInfraAllow 钉住 infra 出口统一
 // （fix/cleanup-batch，2026-08-29）：runHook step 3/4 的「脚本永远跑不起来」失败
@@ -138,10 +129,6 @@ func TestEmitInfraAllow(t *testing.T) {
 // 落在 stdout。
 func TestRunHookCreateTempFailureRoutesInfraAllow(t *testing.T) {
 	t.Setenv("FORGE_DATA_HOME", t.TempDir())
-	// Point every temp-dir env at a non-existent path so os.CreateTemp fails —
-	// the step-3 infra failure (Windows checks TMP/TEMP, Unix TMPDIR; setting
-	// all three covers both).
-	//
 	// 把所有 temp 目录 env 指向不存在的路径使 os.CreateTemp 失败——即 step-3
 	// infra 失败（Windows 查 TMP/TEMP、Unix 查 TMPDIR；三个都设即全覆盖）。
 	badTmp := filepath.Join(t.TempDir(), "no-such-dir")
@@ -149,8 +136,6 @@ func TestRunHookCreateTempFailureRoutesInfraAllow(t *testing.T) {
 	t.Setenv("TEMP", badTmp)
 	t.Setenv("TMPDIR", badTmp)
 
-	// Minimal forge project so the project-scoped dispatch reaches step 3.
-	//
 	// 最小 forge 项目，让项目级分发走到 step 3。
 	tmpDir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(tmpDir, ".forge", "hooks"), 0o755); err != nil {
@@ -164,9 +149,6 @@ func TestRunHookCreateTempFailureRoutesInfraAllow(t *testing.T) {
 	defer os.Chdir(originalWd)
 
 	oldStdin := os.Stdin
-	// Explicit dir: os.TempDir() is poisoned by this test on purpose (that is
-	// the failure being induced), so the stdin fixture must live somewhere real.
-	//
 	// 显式目录：本测试刻意毒化 os.TempDir()（那正是要诱发的失败），stdin 夹具
 	// 必须落在真实存在的目录里。
 	tmpStdin, err := os.CreateTemp(t.TempDir(), "hook-stdin-*.json")
@@ -185,15 +167,10 @@ func TestRunHookCreateTempFailureRoutesInfraAllow(t *testing.T) {
 	stdout, _, err := captureOutput(t, func() error {
 		return runHook(nil, []string{"task-guard"})
 	})
-	// Fail-open contract: nil error (exit 0), never a bare error again.
-	//
 	// fail-open 契约：nil error（exit 0），绝不再返回裸 error。
 	if err != nil {
 		t.Fatalf("temp-file infra failure must fail open (nil, exit 0) via emitInfraAllow, got %v", err)
 	}
-	// The warning is visible on the claude context channel (bare
-	// hookSpecificOutput JSON), naming the infra failure and the fail-open.
-	//
 	// 警告在 claude 上下文通道可见（裸 hookSpecificOutput JSON），点名 infra
 	// 失败与 fail-open。
 	if !strings.Contains(stdout, "基础设施失败") || !strings.Contains(stdout, "fail-open") {

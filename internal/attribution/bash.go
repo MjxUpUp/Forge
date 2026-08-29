@@ -5,22 +5,6 @@ import (
 	"strings"
 )
 
-// bashWriteTargets conservatively extracts file paths a shell command plausibly writes.
-// The multi-task-concurrency design (§6) spawns this as the T2-measured `bash-infer`
-// signal: shell is Turing-complete, so this parser only trusts unambiguous syntactic
-// shapes and deliberately misses everything else — a miss degrades to orphan (honest),
-// a false hit would misattribute (dishonest). Precision over recall.
-//
-// Recognized shapes (per whitespace-token, shell-quote-naive):
-//   - `cmd > path` / `cmd >> path` — redirection targets (the token after > / >>)
-//   - `path` following `tee`/`cp`/`mv`'s LAST operand rule: cp/mv destination is the
-//     final path operand; tee writes its operand
-//   - `sed -i[ext] … path` — every non-flag trailing operand of an in-place sed
-//
-// Excluded on purpose: `echo x >file` with no space (rare in agent commands), command
-// substitution outputs, process substitution >(...), anything inside $() — parsing those
-// reliably needs a real shell grammar.
-//
 // bashWriteTargets 保守提取 shell 命令可能写入的文件路径。multi-task-concurrency
 // 设计（§6）把它作为 T2 度量的 `bash-infer` 信号：shell 图灵完备，解析器只信无歧义
 // 的语法形状、刻意漏掉其余——漏掉的降级为无主（诚实），误命中会错误归属（不诚实）。
@@ -34,10 +18,6 @@ var (
 	sedFlagRe = regexp.MustCompile(`^-[a-zA-Z](\.[^\s]+)?$|^-$`)
 )
 
-// isPathLike reports whether a token can be a file operand: contains a path separator or
-// a dot-extension, and is not a flag / shell syntax. Filters command words (cp, mv) and
-// variables ($X).
-//
 // isPathLike 报告 token 是否可能是文件操作数：含路径分隔符或点扩展名，且不是
 // flag / shell 语法。过滤命令词（cp、mv）与变量（$X）。
 func isPathLike(tok string) bool {

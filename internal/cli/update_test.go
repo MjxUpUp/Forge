@@ -364,10 +364,6 @@ func TestCompareVersions(t *testing.T) {
 		{"0.11.0", "0.11.1", -1},
 		{"2.0.0-beta.1", "1.99.0", 1},
 		{"10.0.0", "9.99.99", 1},
-		// semver §11 tie-break on equal cores: release > pre-release (beta users
-		// must see the GA release as an update), and pre-releases order by
-		// dot-segments.
-		//
 		// 核心相等按 semver §11 tie-break：正式版 > pre-release（beta 用户必须
 		// 能看到正式版更新），pre-release 之间按 . 分段排序。
 		{"0.11.0", "0.11.0-beta.1", 1},
@@ -392,10 +388,6 @@ func TestCompareVersions(t *testing.T) {
 }
 
 func TestRunUpdateIntegration(t *testing.T) {
-	// The mock GitHub API response format must match the githubRelease struct
-	// used by runUpdate. Full-flow download/verify/extract coverage lives in
-	// TestExtractBinary and TestExtractBinary_StripsSetuid.
-	//
 	// mock GitHub API 响应格式必须与 runUpdate 用的 githubRelease struct 匹配。
 	// 完整下载/校验/解压链路覆盖在 TestExtractBinary / TestExtractBinary_StripsSetuid。
 	apiResponse := `{"tag_name":"v99.0.0","assets":[` +
@@ -448,8 +440,7 @@ func createTestArchive(t *testing.T, archivePath string, binaryContent []byte, m
 	}
 }
 
-// TestPrintPluginReinstallGuidance: the plugin reinstall guidance output triggered by the --plugin flag
-// should contain all four agent-platform commands so users can copy them in one go. Pins down future accidental deletion.
+// TestPrintPluginReinstallGuidance: the plugin reinstall guidance output triggered by the --plugin flag should contain all four agent-platform commands so users can copy them in one go.
 //
 // TestPrintPluginReinstallGuidance：--plugin flag 触发的 plugin 重装指引输出
 // 应含全部四个 agent 平台命令，让用户可一键复制。钉死未来误删。
@@ -472,9 +463,7 @@ func TestPrintPluginReinstallGuidance(t *testing.T) {
 	}
 }
 
-// TestExtractBinary_StripsSetuid pins the security property previously covered
-// by the deleted TestArchiveSafeMode: a tar entry carrying setuid/setgid bits
-// must land on disk with only plain rwx permission bits (Perm(), not raw Mode()).
+// TestExtractBinary_StripsSetuid pins that tar entries carrying setuid/setgid bits are stripped.
 //
 // TestExtractBinary_StripsSetuid 钉住被删 TestArchiveSafeMode 曾覆盖的安全属性：
 // 带 setuid/setgid 位的 tar 条目落盘后必须只剩普通 rwx 权限位（Perm()，而非
@@ -484,9 +473,6 @@ func TestExtractBinary_StripsSetuid(t *testing.T) {
 	archivePath := filepath.Join(tmpDir, "setuid.tar.gz")
 
 	content := []byte("#!/bin/sh\necho hi")
-	// 0o4755 = setuid + rwxr-xr-x — a malicious archive trying to plant a
-	// setuid binary. archive/tar maps the setuid bit to os.ModeSetuid.
-	//
 	// 0o4755 = setuid + rwxr-xr-x——恶意 archive 试图落 setuid 二进制。
 	// archive/tar 把 setuid 位映射到 os.ModeSetuid。
 	createTestArchive(t, archivePath, content, 0o4755)
@@ -503,9 +489,6 @@ func TestExtractBinary_StripsSetuid(t *testing.T) {
 	if mode&os.ModeSetuid != 0 || mode&os.ModeSetgid != 0 {
 		t.Errorf("setuid/setgid survived extraction: mode = %v", mode)
 	}
-	// Windows only honors the read-only bit — 0o755 lands as 0o666 there;
-	// the rwx bits are meaningful on Unix.
-	//
 	// Windows 只认只读位——0o755 落盘为 0o666；rwx 位在 Unix 上才有意义。
 	if runtime.GOOS != "windows" && mode.Perm() != 0o755 {
 		t.Errorf("permission bits = %o, want 755", mode.Perm())

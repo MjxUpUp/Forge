@@ -99,10 +99,6 @@ func runSkillsInstall(cmd *cobra.Command, args []string) error {
 		Global:           global,
 		ProjectSkillsDir: projectDir,
 	}
-	// Project scope: consume the per-project distribution profile (<root>/.forge/skills-profile).
-	// Hard error on a malformed profile — silently falling back to full distribution while the
-	// user believes the set is trimmed would defeat the feature. Absent file = full set (default).
-	//
 	// 项目范围：消费项目分发画像（<root>/.forge/skills-profile）。格式错误按硬错误——
 	// 用户以为已裁剪实则静默回退全量，特性落空。文件不存在 = 全量（默认）。
 	profile, perr := loadProjectProfile(global)
@@ -124,11 +120,6 @@ func runSkillsInstall(cmd *cobra.Command, args []string) error {
 		printInstallReport(report)
 	}
 
-	// Best-effort manifest write (a full canonical snapshot, for system health checks and queries).
-	// Failure does not block install (the manifest is an auxiliary cache), but must leave a trace — the original implementation
-	// swallowed errors twice (BuildManifest's merr went into the if condition, SaveManifest's err went into _); a silently stale
-	// manifest would let the system health check read stale data with no hint.
-	//
 	// best-effort 写 manifest（canonical 全量快照，供 system 健康检查与查询）。
 	// 失败不阻断 install（manifest 是辅助缓存），但必须留痕——原实现双重吞错
 	//（BuildManifest 的 merr 进 if 条件、SaveManifest 的 err 进 _），manifest 静默不更新
@@ -161,12 +152,6 @@ func runSkillsInstall(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// loadProjectProfile loads the per-project distribution profile in project scope
-// (nil in global scope or when the file is absent). Delegates error policy to
-// skillsdist.LoadProfile: malformed profile = hard error, absent = full set.
-// In practice findProjectRoot cannot fail here (resolveInstallScope already required
-// it for project scope), but the error is still propagated rather than swallowed.
-//
 // loadProjectProfile 在项目范围加载项目分发画像（全局范围或文件不存在时返回 nil）。
 // 错误策略委托 skillsdist.LoadProfile：画像格式错误 = 硬错误，不存在 = 全量。
 // 实践中此处 findProjectRoot 不会失败（项目范围下 resolveInstallScope 已要求它），
@@ -186,14 +171,6 @@ func loadProjectProfile(global bool) ([]string, error) {
 	return profile, nil
 }
 
-// resolveInstallScope resolves the --global/--project flag combination into
-// (global, projectSkillsDir). --project explicitly overrides --global (which
-// defaults to true); when both are set, project wins. Project scope requires a
-// forge project root — the error names the actual flag combination the user
-// passed (not a hardcoded "--project") and wraps the resolution failure.
-// Shared by install and drift-check (previously two verbatim copies, both
-// dropping the findProjectRoot error and hardcoding the flag name).
-//
 // resolveInstallScope 把 --global/--project flag 组合解析为
 // (global, projectSkillsDir)。--project 显式覆盖 --global（默认 true）；两者同设
 // project 优先。project scope 要求 forge 项目根——报错按用户实际传的 flag 组合
@@ -215,18 +192,12 @@ func resolveInstallScope(global, project bool) (bool, string, error) {
 	return false, filepath.Join(root, ".claude", "skills"), nil
 }
 
-// printInstallReport renders the install result (stats + blocked/drift-skip/backup details).
-//
 // printInstallReport 渲染 install 结果（统计 + blocked/drift-skip/backup 明细）。
 func printInstallReport(r *skillsdist.InstallReport) {
 	if r == nil {
 		return
 	}
 	fmt.Printf("install mode=%s canonical=%s\n", r.Mode, r.Canonical)
-	// Two tiers of stats: skill-level (processed/failed) and target-level (installed/skipped/
-	// drifted — 1 skill × N targets counts N times). Printing them as one flat line made the
-	// numbers never reconcile (1 skill to 4 targets → installed=4 total=1).
-	//
 	// 两级统计口径：skill 级（processed/failed）与 target 级（installed/skipped/drifted——
 	// 1 skill × N target 计 N 次）。混在一行打印会让数字永远对不上（装 1 skill 到
 	// 4 target → installed=4 total=1）。
@@ -254,9 +225,6 @@ func printInstallReport(r *skillsdist.InstallReport) {
 				fmt.Printf("  ⊘ %s [%s]: 检测到本地改动，已保留未覆盖\n", s.Name, t.Target)
 				driftSkipCount++
 			}
-			// overwrite backup detail: where the old version was backed up, for easy rollback.
-			// Backup is filled only on the overwrite path (Action=linked/copied); scoping on Action prevents future other paths from accidentally filling it and double-printing.
-			//
 			// overwrite 备份明细：旧版本留底位置，便于回滚。
 			// Backup 仅 overwrite 路径填充（Action=linked/copied），限定 Action 防止未来其他路径误填导致重复打印。
 			if t.Backup != "" && (t.Action == "linked" || t.Action == "copied") {
@@ -288,9 +256,6 @@ func printInstallReport(r *skillsdist.InstallReport) {
 			depWarns = append(depWarns, w)
 		}
 	}
-	// security advisory: non-blocking audit findings surfaced by the install gate (#4 second
-	// half) — visible but clearly not a dependency issue.
-	//
 	// 安全提示：install 门控浮出的非阻断审计 findings（#4 后半）——可见但明确不是依赖问题。
 	if len(secWarns) > 0 {
 		fmt.Fprintln(os.Stderr, `  ⚠ 安全提示（不阻断安装）：`)

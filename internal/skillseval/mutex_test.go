@@ -1,10 +1,5 @@
 package skillseval
 
-// mutex_test.go — tests for the mutex-set eval: edge parsing (incl. the trailing-qualifier
-// variant and dangling-target drop), case generation stability (same input → same ID/prompt),
-// record judgment (pass / fail / unknown skip / all-unknown error), confusion matrix, and
-// the runs.jsonl round-trip.
-//
 // mutex_test.go — 互斥集 eval 测试：边解析（含尾缀限定变体与悬空目标丢弃）、case 生成
 // 稳定性（同输入同 ID/prompt）、record 判定（pass/fail/未知跳过/全未知报错）、混淆矩阵、
 // runs.jsonl 存读闭环。
@@ -15,8 +10,6 @@ import (
 	"testing"
 )
 
-// writeMutexSkill writes a minimal SKILL.md with the given description into canonical.
-//
 // writeMutexSkill 在 canonical 下写一个带指定 description 的最小 SKILL.md。
 func writeMutexSkill(t *testing.T, canonical, name, desc string) {
 	t.Helper()
@@ -30,11 +23,6 @@ func writeMutexSkill(t *testing.T, canonical, name, desc string) {
 	}
 }
 
-// mutexFixture builds a canonical with three skills wired so that edge parsing can be
-// asserted deterministically: a --skip--> b (plain CJK form + trailing-qualifier variant),
-// a --skip--> gone (dangling, must be dropped), a --skip--> a (self, must be dropped),
-// b --skip--> c (ASCII form).
-//
 // mutexFixture 造一个三 skill 的 canonical，让边解析可确定性断言：a --skip--> b
 // （中文原形 + 尾缀限定变体）、a --skip--> gone（悬空，须丢弃）、a --skip--> a
 // （自指，须丢弃）、b --skip--> c（英文写法）。
@@ -79,15 +67,11 @@ func TestMutexEdges_Parsing(t *testing.T) {
 		t.Fatalf("a→b fragment 不符预期（尾缀限定不得进目标/须被分隔）: %q", ab)
 	}
 
-	// ASCII form.
-	//
 	// 英文写法。
 	if len(got[pair{"skill-b", "skill-c"}]) != 1 {
 		t.Fatalf("b→c 边应解析出 1 条: %v", edges)
 	}
 
-	// Dangling target and self-delegation are dropped.
-	//
 	// 悬空目标与自我让渡被丢弃。
 	if _, ok := got[pair{"skill-a", "skill-gone"}]; ok {
 		t.Fatal("悬空目标（用 skill-gone）的边应被丢弃")
@@ -96,8 +80,6 @@ func TestMutexEdges_Parsing(t *testing.T) {
 		t.Fatal("自我让渡边应被丢弃")
 	}
 
-	// Sorted by (From, To).
-	//
 	// 按 (From, To) 排序。
 	for i := 1; i < len(edges); i++ {
 		if edges[i].From < edges[i-1].From ||
@@ -135,9 +117,6 @@ func TestMutexCases_GenerationAndStability(t *testing.T) {
 		}
 	}
 
-	// Per-edge cap: skill-b has 2 triggers, so a→b yields exactly 2 cases (cap not hit);
-	// each case anchors Positive=b / Negative=a.
-	//
 	// 每边上限：skill-b 有 2 个 trigger，a→b 恰好 2 个 case（未触顶）；每个 case
 	// 锚定 Positive=b / Negative=a。
 	abCount := 0
@@ -150,8 +129,6 @@ func TestMutexCases_GenerationAndStability(t *testing.T) {
 		t.Fatalf("a→b case 数=%d want 2", abCount)
 	}
 
-	// ID anchors on the raw fragment: sha1("mutex:a:b:fragment")[:12].
-	//
 	// ID 锚定原始片段：sha1("mutex:a:b:fragment")[:12]。
 	for _, c := range c1 {
 		want := mutexCaseID(c.Negative, c.Positive, c.Source)
@@ -160,8 +137,6 @@ func TestMutexCases_GenerationAndStability(t *testing.T) {
 		}
 	}
 
-	// Prompt uses the trigger rendering (same renderer as single-skill eval).
-	//
 	// prompt 用 trigger 渲染（与单 skill eval 同一渲染器）。
 	for _, c := range c1 {
 		if c.Prompt != renderTriggerPrompt(c.Source) {
@@ -193,16 +168,12 @@ func TestMutexCases_SaveLoadRoundTrip(t *testing.T) {
 		}
 	}
 
-	// Missing file → nil,nil.
-	//
 	// 文件不存在 → nil,nil。
 	none, err := LoadMutexCases(t.TempDir())
 	if err != nil || none != nil {
 		t.Fatalf("缺失文件应返回 nil,nil, got %v, %v", none, err)
 	}
 
-	// Empty set is a no-op write.
-	//
 	// 空集不写文件。
 	dir2 := t.TempDir()
 	if err := SaveMutexCases(dir2, nil); err != nil {
@@ -222,9 +193,6 @@ func TestRecordMutexRun_Judgment(t *testing.T) {
 	names := []string{"skill-a", "skill-b", "skill-c"}
 	dir := t.TempDir()
 
-	// Pick one case per verdict: pass (actual==Positive), confusion (actual==Negative),
-	// plain miss (actual==other), plus one unknown case_id (skipped).
-	//
 	// 每类判定各取一条：pass（actual==Positive）、混淆（actual==Negative）、
 	// 普通失误（actual==其他），外加一条未知 case_id（跳过）。
 	raw := []SubmitResult{
@@ -256,8 +224,6 @@ func TestRecordMutexRun_Judgment(t *testing.T) {
 		t.Fatalf("run 元数据未盖章: %+v", run)
 	}
 
-	// Persisted + readable.
-	//
 	// 已落盘且可读。
 	latest, err := LatestMutexRun(dir)
 	if err != nil || latest == nil {
@@ -267,8 +233,6 @@ func TestRecordMutexRun_Judgment(t *testing.T) {
 		t.Fatalf("latest.RunID=%q want %q", latest.RunID, run.RunID)
 	}
 
-	// All-unknown → explicit error (SubmitRun semantics), nothing persisted.
-	//
 	// 全未知 → 显式报错（SubmitRun 语义），不落盘。
 	runsBefore, _ := LoadMutexRuns(dir)
 	if _, err := RecordMutexRun(dir, cases, names, "m", "v", []SubmitResult{{CaseID: "nope", ActualTriggered: "x"}}); err == nil {
@@ -302,23 +266,17 @@ func TestConfusionMatrix(t *testing.T) {
 	if len(m.Confusions) != 1 || m.Confusions[0].CaseID != "c2" {
 		t.Fatalf("混淆清单=%+v want 仅 c2", m.Confusions)
 	}
-	// (positive, actual) aggregation: (b,b)=1, (b,a)=1, (c,"")=1.
-	//
 	// (positive, actual) 聚合：(b,b)=1、(b,a)=1、(c,"")=1。
 	if len(m.Cells) != 3 {
 		t.Fatalf("cells=%d want 3: %+v", len(m.Cells), m.Cells)
 	}
 
-	// No confusion → gate open.
-	//
 	// 无混淆 → 门禁放行。
 	clean := &MutexRun{Results: []MutexResult{{CaseID: "c1", Actual: "skill-c", Pass: false}}}
 	if m2 := ConfusionMatrix(clean, cases); m2.GateBlocked {
 		t.Fatal("无 actual==Negative 行不应 GateBlocked")
 	}
 
-	// nil latest → empty matrix, Total==0 (nothing checked), gate open.
-	//
 	// nil latest → 空矩阵、Total==0（没检查任何东西）、门禁放行。
 	m3 := ConfusionMatrix(nil, cases)
 	if m3.Total != 0 || m3.GateBlocked {
@@ -331,8 +289,6 @@ func TestMutexRuns_BadLineSkipped(t *testing.T) {
 	if err := AppendMutexRun(dir, &MutexRun{RunID: "r1"}); err != nil {
 		t.Fatal(err)
 	}
-	// Append a corrupt line by hand — LoadMutexRuns must skip it, mirroring LoadRuns.
-	//
 	// 手工追加一行坏行——LoadMutexRuns 必须跳过，对齐 LoadRuns。
 	f, err := os.OpenFile(mutexRunsFile(dir), os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {

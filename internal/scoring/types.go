@@ -23,11 +23,7 @@ type EvaluateInput struct {
 	// GitDiffStat: git diff --numstat output (`added\tdeleted\tpath`).
 	GitDiffStat string // git diff --numstat 输出（「added\tdeleted\tpath」）
 
-	// Test-coverage gate verdict, from the test-coverage-gate entry in checklog (with real-time
-	// CheckTestCoverage fallback wired to cli.scoreTask). Replaces the old GitDiffTest line-ratio
-	// heuristic — the latter returned a constant 20 when task changes predate the `task start` commit (HeadCommit == HEAD
-	// → empty diff → `no test lines detected`). Checked=false (gate did not run) scores neutral;
-	// Checked=true scores by the verdict.
+	// Test-coverage gate verdict, from the test-coverage-gate entry in checklog.
 	//
 	// Test-coverage gate 裁决，来自 checklog 的 test-coverage-gate 条目（带实时
 	// CheckTestCoverage fallback 接到 cli.scoreTask）。替代旧的 GitDiffTest 行比例
@@ -38,8 +34,6 @@ type EvaluateInput struct {
 	TestCoverageChecked bool
 
 	// TestCoverageCovered/Total drives continuous scoring of the testing dimension (ratio=covered/total).
-	// Replaces the old binary all-or-20 model: 4 of 5 source files covered → ~86 score instead of collapsing to 20.
-	// Both come from real-time CheckTestCoverage (objective, same input and logic as the gate).
 	//
 	// TestCoverageCovered/Total 驱动 testing 维度的连续打分（ratio=covered/total）。
 	// 替代旧的二值全或 20 模型：5 个源码文件覆盖 4 个 → ~86 分而非塌缩到 20。
@@ -50,8 +44,6 @@ type EvaluateInput struct {
 	TestCoverageTotal int // 应配对测试的源码文件数
 
 	// Assertion-density signal, used for fake-test detection (industry STREW Assertion-McCabe ratio).
-	// A test file with only setup/log and no assertions is not real coverage — the testing dimension down-scores cases where covered>0
-	// but AssertionCount==0.
 	//
 	// 断言密度信号，用于假测试检测（业界 STREW Assertion-McCabe ratio）。
 	// 只有 setup/log 无断言的测试文件不是真覆盖——testing 维度对 covered>0
@@ -75,9 +67,7 @@ type EvaluateInput struct {
 	CompileChecked   bool
 	AssertionChecked bool
 
-	// Evidence-chain source distribution (from checklog EvidenceChain): deterministic=hook/gate actually run,
-	// agent-claim=agent self-report. Observability first, not part of scoring — Evaluate uses this to build
-	// ScoreResult.Evidence so review/scoring consumers can judge `completion-claim credibility`.
+	// Evidence-chain source distribution (from checklog EvidenceChain).
 	//
 	// 证据链来源分布（来自 checklog EvidenceChain）：deterministic=hook/gate 实跑，
 	// agent-claim=agent 自述。可观测先行，不参与打分——Evaluate 据此构造
@@ -85,11 +75,7 @@ type EvaluateInput struct {
 	EvidenceDeterministic int
 	EvidenceAgentClaim    int
 
-	// Expression (doc-artifact readability) dimension inputs — the measurement
-	// anchor of the output→re-check loop (docs/design/output-readability-gates.md).
-	// All deterministic: L1 issue counts come from doclint at score time, L2 from
-	// the recorded DocReview evidence. HasDocDeliverables=false (pure-code task)
-	// scores the dimension neutral 100.
+	// Expression (doc-artifact readability) dimension inputs — the measurement anchor of the output→re-check loop (docs/design/output-readability-gates.md).
 	//
 	// 表达（文档产物可读性）维度输入——输出→回检循环的度量锚点
 	// （docs/design/output-readability-gates.md）。全部确定性：L1 问题数来自

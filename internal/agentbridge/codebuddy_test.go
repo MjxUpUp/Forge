@@ -10,9 +10,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/hooks"
 )
 
-// generateCodeBuddyPack writes a codebuddy plugin pack into a temp dir (empty description
-// exercises the DefaultPluginDescription fallback) and returns the dir.
-//
 // generateCodeBuddyPack 把一个 codebuddy plugin pack 写进临时目录（空 description 触发
 // DefaultPluginDescription 回落）并返回该目录。
 func generateCodeBuddyPack(t *testing.T) string {
@@ -24,9 +21,6 @@ func generateCodeBuddyPack(t *testing.T) string {
 	return dir
 }
 
-// setupWorkBuddyEnv isolates both the WorkBuddy config dir and the forge data home
-// into temp dirs (the strip seams touch both), returning them.
-//
 // setupWorkBuddyEnv 把 WorkBuddy 配置目录与 forge 数据根隔离进 temp dir（strip 的
 // 各 seam 两者都碰），返回它们。
 func setupWorkBuddyEnv(t *testing.T) (wb, forgeHome string) {
@@ -38,11 +32,7 @@ func setupWorkBuddyEnv(t *testing.T) (wb, forgeHome string) {
 	return wb, forgeHome
 }
 
-// TestCodeBuddyHooksPayload_MirrorsSpec: BuildCodeBuddyHooksPayload must equal ForgeHookSpec
-// (under one "hooks" key) with exactly ONE rewrite — every command gains the
-// `--agent codebuddy` suffix (attribution identity; see BuildCodeBuddyHooksPayload).
-// Marshalling both to JSON and comparing catches any drift if someone hand-maintains a
-// parallel roster. (encoding/json sorts map keys → stable compare.)
+// TestCodeBuddyHooksPayload_MirrorsSpec: BuildCodeBuddyHooksPayload must equal ForgeHookSpec (under one "hooks" key) with exactly ONE rewrite — every command gains the `--agent codebuddy` suffix (attribution identity; see BuildCodeBuddyHooksPayload).
 //
 // TestCodeBuddyHooksPayload_MirrorsSpec：BuildCodeBuddyHooksPayload 必须等于
 // ForgeHookSpec（包在一层 "hooks" key 下）且只做一处改写——每条命令加 `--agent
@@ -71,11 +61,7 @@ func TestCodeBuddyHooksPayload_MirrorsSpec(t *testing.T) {
 	}
 }
 
-// TestCodeBuddyPluginPack_HooksMirrorSettings: the generated hooks.json must equal the hooks
-// the ForgeHookSpec fixture writes to settings.local.json — single-source-of-truth guard (same shape
-// as TestPluginPack_HooksMirrorSettings), end-to-end across two real files. CodeBuddy commands
-// carry the `--agent codebuddy` attribution suffix (BuildCodeBuddyHooksPayload), so the compare
-// strips that one suffix from the codebuddy side before marshalling.
+// TestCodeBuddyPluginPack_HooksMirrorSettings: the generated hooks.json must equal the hooks the ForgeHookSpec fixture writes to settings.local.json — single-source-of-truth guard (same shape as TestPluginPack_HooksMirrorSettings), end-to-end across two real files.
 //
 // TestCodeBuddyPluginPack_HooksMirrorSettings：生成的 hooks.json 必须等于 ForgeHookSpec fixture
 // 写到 settings.local.json 的 hooks——单一真相源守卫（与 TestPluginPack_HooksMirrorSettings
@@ -91,9 +77,6 @@ func TestCodeBuddyPluginPack_HooksMirrorSettings(t *testing.T) {
 	var hj map[string]any
 	loadJSON(t, filepath.Join(pdir, "plugins", "forge", "hooks", "hooks.json"), &hj)
 
-	// Strip the attribution suffix so the comparison keys on the wiring roster
-	// itself (which hook on which event/matcher), not on the one known rewrite.
-	//
 	// 剥掉归因后缀，使比对聚焦接线名册本身（哪个 hook 接在哪个 event/matcher），
 	// 而非那一处已知改写。
 	if hooksMap, ok := hj["hooks"].(map[string]any); ok {
@@ -132,10 +115,7 @@ func TestCodeBuddyPluginPack_WritesAllFiles(t *testing.T) {
 	}
 }
 
-// TestCodeBuddyPluginPack_Manifest: marketplace.json + plugin.json structure correct —
-// marketplace name=forge-local with one plugin source=./plugins/forge; plugin name=forge,
-// hooks=./hooks/hooks.json (relative path, NOT an inline object — CodeBuddy loads hooks via
-// the path, verified in its ppt-implement plugin).
+// TestCodeBuddyPluginPack_Manifest: marketplace.json + plugin.json structure correct — marketplace name=forge-local with one plugin source=./plugins/forge; plugin name=forge, hooks=./hooks/hooks.json (relative path, NOT an inline object — CodeBuddy loads hooks via the path, verified in its ppt-implement plugin).
 //
 // TestCodeBuddyPluginPack_Manifest：marketplace.json + plugin.json 结构正确——marketplace
 // name=forge-local、唯一 plugin source=./plugins/forge；plugin name=forge、hooks=./hooks/hooks.json
@@ -164,8 +144,7 @@ func TestCodeBuddyPluginPack_Manifest(t *testing.T) {
 	}
 }
 
-// TestCodeBuddyPluginPack_Idempotent: repeated generation does not error and yields a
-// byte-identical hooks.json.
+// TestCodeBuddyPluginPack_Idempotent: repeated generation does not error and yields a byte-identical hooks.json.
 //
 // TestCodeBuddyPluginPack_Idempotent：反复生成不报错且 hooks.json 字节一致。
 func TestCodeBuddyPluginPack_Idempotent(t *testing.T) {
@@ -190,9 +169,7 @@ func TestCodeBuddyPluginPack_Idempotent(t *testing.T) {
 	}
 }
 
-// TestCodeBuddyPluginPack_NoCurlyQuotes: regression guard for [[windows-input-quote-corruption]] —
-// generated files must never contain curly quotes U+201C/U+201D. Target built from runes so the
-// assertion holds even if the test source literal is itself corrupted.
+// TestCodeBuddyPluginPack_NoCurlyQuotes: regression guard for [[windows-input-quote-corruption]] — generated files must never contain curly quotes U+201C/U+201D.
 //
 // TestCodeBuddyPluginPack_NoCurlyQuotes：[[windows-input-quote-corruption]] 回归守卫——生成文件
 // 绝不含弯引号 U+201C/U+201D。目标用 rune 构造，即使测试源码字面量被腐蚀断言仍成立。
@@ -210,10 +187,7 @@ func TestParseAgentFlag_CodeBuddy_Explicit(t *testing.T) {
 	}
 }
 
-// TestParseAgentFlag_CodeBuddy_NotAutoDetected: auto-detection must NEVER include codebuddy —
-// ~/.workbuddy always exists once WorkBuddy is installed, so auto-detect would wire codebuddy
-// on every `forge init` on any WorkBuddy machine (the zcode trap, reverted 2026-08-03). This
-// test pins that decision: codebuddy is opt-in via --agents codebuddy only.
+// TestParseAgentFlag_CodeBuddy_NotAutoDetected: auto-detection must NEVER include codebuddy — ~/.workbuddy always exists once WorkBuddy is installed, so auto-detect would wire codebuddy on every `forge init` on any WorkBuddy machine (the zcode trap, reverted 2026-08-03).
 //
 // TestParseAgentFlag_CodeBuddy_NotAutoDetected：auto 检测绝不包含 codebuddy——~/.workbuddy 装了
 // WorkBuddy 就恒存在，auto-detect 会让任何 WorkBuddy 机器每次 `forge init` 都接 codebuddy
@@ -235,9 +209,7 @@ func TestCodeBuddyTranslator_AgentType(t *testing.T) {
 	}
 }
 
-// TestCodeBuddyMarketplaceDir_RespectsDataHome: the asset dir lives under forge's global home
-// and follows FORGE_DATA_HOME overrides (test isolation + the data-home refactor contract that
-// all forge assets resolve through forgedata.GlobalHome).
+// TestCodeBuddyMarketplaceDir_RespectsDataHome: the asset dir lives under forge's global home and follows FORGE_DATA_HOME overrides (test isolation + the data-home refactor contract that all forge assets resolve through forgedata.GlobalHome).
 //
 // TestCodeBuddyMarketplaceDir_RespectsDataHome：资产目录在 forge 全局 home 下，并跟随
 // FORGE_DATA_HOME 覆盖（测试隔离 + 所有 forge 资产经 forgedata.GlobalHome 解析的 data-home
@@ -255,10 +227,7 @@ func TestCodeBuddyMarketplaceDir_RespectsDataHome(t *testing.T) {
 	}
 }
 
-// TestCodeBuddyRun_Command: [exe] form → exec.Command(exe, args...); [node, script] form
-// → exec.Command(node, script, args...). Verifies the interpreter/script splicing that lets
-// forge exec WorkBuddy's bare node CLI via the node interpreter (WorkBuddy ships codebuddy
-// with no .cmd/.exe shim).
+// TestCodeBuddyRun_Command: [exe] form → exec.Command(exe, args...); [node, script] form → exec.Command(node, script, args...).
 //
 // TestCodeBuddyRun_Command：[exe] 形 → exec.Command(exe, args...)；[node, script] 形 →
 // exec.Command(node, script, args...)。验证让 forge 经 node 解释器执行 WorkBuddy 裸 node CLI
@@ -269,15 +238,11 @@ func TestCodeBuddyRun_Command(t *testing.T) {
 	if cmd.Path != `/usr/bin/codebuddy` {
 		t.Errorf(`direct argv: cmd.Path = %q, want /usr/bin/codebuddy`, cmd.Path)
 	}
-	// cmd.Args[0] is Path; the rest must be the subcommand args (no leading script).
-	//
 	// cmd.Args[0] 是 Path；余下须为子命令参数（无前导脚本）。
 	if len(cmd.Args) != 3 || cmd.Args[1] != `marketplaces` || cmd.Args[2] != `list` {
 		t.Errorf(`direct argv: cmd.Args = %v, want [/usr/bin/codebuddy marketplaces list]`, cmd.Args)
 	}
 
-	// node-interpreted form: the script path must sit between node and the subcommand.
-	//
 	// node 解释形：脚本路径须在 node 与子命令之间。
 	r2 := codebuddyRun{argv: []string{`/usr/bin/node`, `/opt/codebuddy`}}
 	cmd2 := r2.Command(`marketplaces`, `list`)
@@ -292,10 +257,7 @@ func TestCodeBuddyRun_Command(t *testing.T) {
 	}
 }
 
-// TestIsWindowsExecutable: PATHEXT extensions (.exe/.cmd/.bat/.com, case-insensitive)
-// accepted; bare scripts and unrelated extensions rejected. This is the guard that stops
-// FindCodeBuddyCLI from returning WorkBuddy's bare node script as "directly executable"
-// (which would make exec fail with "executable file not found in %PATH%").
+// TestIsWindowsExecutable: PATHEXT extensions (.exe/.cmd/.bat/.com, case-insensitive) accepted; bare scripts and unrelated extensions rejected.
 //
 // TestIsWindowsExecutable：PATHEXT 扩展名（.exe/.cmd/.bat/.com，大小写不敏感）接受；裸脚本与
 // 无关扩展名拒绝。正是此守卫阻止 FindCodeBuddyCLI 把 WorkBuddy 的裸 node 脚本当"直接可执行"
@@ -313,9 +275,7 @@ func TestIsWindowsExecutable(t *testing.T) {
 	}
 }
 
-// TestCodeBuddyWorkBuddyHome: WORKBUDDY_CONFIG_DIR wins when set (incl. over whitespace);
-// otherwise the home defaults to ~/.workbuddy (the app's read location). This is the config-
-// separation fix — without it the CLI writes ~/.codebuddy and the app never loads the plugin.
+// TestCodeBuddyWorkBuddyHome: WORKBUDDY_CONFIG_DIR wins when set (incl. over whitespace); otherwise the home defaults to ~/.workbuddy (the app's read location).
 //
 // TestCodeBuddyWorkBuddyHome：设了 WORKBUDDY_CONFIG_DIR 就胜出（含覆盖纯空白）；否则 home 默认
 // ~/.workbuddy（app 读取处）。这是配置分离修复——没它 CLI 写 ~/.codebuddy，app 从不加载 plugin。
@@ -339,8 +299,7 @@ func TestCodeBuddyWorkBuddyHome(t *testing.T) {
 	}
 }
 
-// TestWithCodeBuddyConfigDir: the override replaces any existing CODEBUDDY_CONFIG_DIR (no
-// duplicate), appends the new value, and leaves other env entries in place.
+// TestWithCodeBuddyConfigDir: the override replaces any existing CODEBUDDY_CONFIG_DIR (no duplicate), appends the new value, and leaves other env entries in place.
 //
 // TestWithCodeBuddyConfigDir：覆盖替换任何已有 CODEBUDDY_CONFIG_DIR（无重复），追加新值，其余 env
 // 原位保留。
@@ -370,10 +329,7 @@ func TestWithCodeBuddyConfigDir(t *testing.T) {
 	}
 }
 
-// TestCodeBuddyTranslator_Translate: Translate must write all on-disk assets and return no
-// error regardless of whether the CLI is found. FORGE_DATA_HOME isolates the pack location;
-// WORKBUDDY_CONFIG_DIR isolates where the CLI writes (so a CLI-present run does NOT pollute the
-// real ~/.workbuddy). On a CLI-present host the plugin must register into that isolated home.
+// TestCodeBuddyTranslator_Translate: Translate must write all on-disk assets and return no error regardless of whether the CLI is found.
 //
 // TestCodeBuddyTranslator_Translate：无论 CLI 是否找到，Translate 必须写全部盘上资产且不报错。
 // FORGE_DATA_HOME 隔离 pack 位置；WORKBUDDY_CONFIG_DIR 隔离 CLI 写入处（故 CLI 在的机器不污染真实
@@ -404,8 +360,7 @@ func TestCodeBuddyTranslator_Translate(t *testing.T) {
 	}
 }
 
-// TestGenerateCodeBuddyPluginPack_EmptyDir: empty dir is rejected (guard against silent
-// writes to cwd).
+// TestGenerateCodeBuddyPluginPack_EmptyDir: empty dir is rejected (guard against silent writes to cwd).
 //
 // TestGenerateCodeBuddyPluginPack_EmptyDir：空 dir 被拒（防静默写进 cwd）。
 func TestGenerateCodeBuddyPluginPack_EmptyDir(t *testing.T) {
@@ -414,8 +369,7 @@ func TestGenerateCodeBuddyPluginPack_EmptyDir(t *testing.T) {
 	}
 }
 
-// TestCodeBuddyRun_Command_EmptyArgv: a zero-value codebuddyRun must not panic — it yields a
-// Cmd whose Start fails clearly (defensive guard for an unchecked FindCodeBuddyCLI error).
+// TestCodeBuddyRun_Command_EmptyArgv: a zero-value codebuddyRun must not panic — it yields a Cmd whose Start fails clearly (defensive guard for an unchecked FindCodeBuddyCLI error).
 //
 // TestCodeBuddyRun_Command_EmptyArgv：零值 codebuddyRun 不得 panic——产出 Start 会明确失败的 Cmd
 // （FindCodeBuddyCLI 错误未检查的防御守卫）。
@@ -431,12 +385,7 @@ func TestCodeBuddyRun_Command_EmptyArgv(t *testing.T) {
 	}
 }
 
-// TestStripCodeBuddyHooks guards the uninstall counterpart of the CodeBuddy wiring:
-// three seams removed surgically (marketplace entry, enabledPlugins key, forge asset
-// dir), user content preserved, emptied enabledPlugins kept as a shell, idempotent
-// re-run, and malformed config fails WITHOUT touching the file. Fills the 2026-08
-// uninstall audit gap: codebuddy was absent from the 2c strip roster, so after
-// `forge uninstall` WorkBuddy kept holding a directory pointer to a deleted binary.
+// TestStripCodeBuddyHooks guards the uninstall counterpart of the CodeBuddy wiring: three seams removed surgically (marketplace entry, enabledPlugins key, forge asset dir), user content preserved, emptied enabledPlugins kept as a shell, idempotent re-run, and malformed config fails WITHOUT touching the file.
 //
 // TestStripCodeBuddyHooks 守卫 CodeBuddy 接线的 uninstall 对应面：三处外科式移除
 // （marketplace 条目、enabledPlugins 键、forge 资产目录），用户内容保留，删空的
@@ -550,11 +499,6 @@ func TestStripCodeBuddyHooks(t *testing.T) {
 		}
 	})
 
-	// malformed user config must NOT shield seam 3 (review finding, 2026-08-22):
-	// the forge-owned asset dir is removed even when known_marketplaces.json fails
-	// to parse — the early-return variant left the asset dir surviving uninstall
-	// until the user hand-fixed their own corrupt file.
-	//
 	// malformed 用户配置不得挡住 seam 3（复审发现，2026-08-22）：即使
 	// known_marketplaces.json 解析失败，forge 自有资产目录也要被删——提前 return
 	// 的旧实现会让资产目录活过卸载，直到用户手修自己损坏的文件。

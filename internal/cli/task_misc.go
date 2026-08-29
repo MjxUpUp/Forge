@@ -35,9 +35,6 @@ func runTaskStatus(cmd *cobra.Command, args []string) error {
 	}
 	if state == nil {
 		if asJSON {
-			// --json contract: stdout is machine-parseable ONLY — a human hint line
-			// breaks jq-style consumers even on the empty case.
-			//
 			// --json 契约：stdout 只放机器可解析内容——空场景的人类提示行同样会
 			// 弄坏 jq 类消费者。
 			fmt.Println(`{"task_ref": null, "active": false, "hint": "forge task start"}`)
@@ -59,9 +56,6 @@ func runTaskStatus(cmd *cobra.Command, args []string) error {
 	if state.Summary != "" {
 		fmt.Printf("Summary: %s\n", state.Summary)
 	}
-	// Multi-repo workspace context (Step 4): one fail-open line — the workspace
-	// manifest is a global store, so any trouble silently omits the line.
-	//
 	// 多仓 workspace 上下文（Step 4）：单行 fail-open——清单是全局 store，
 	// 任何故障静默省略该行。
 	if line := workspaceContextLine(root, state.CrossRepoImpact); line != "" {
@@ -106,9 +100,6 @@ func runTaskStatus(cmd *cobra.Command, args []string) error {
 				mark = "✅"
 				status = "通过"
 			} else if c.Output != "" {
-				// Output is back-filled only after verify-acceptance actually runs —
-				// distinguishes 'never run' (⏳) from 'ran and failed' (❌).
-				//
 				// Output 仅在 verify-acceptance 实跑后回填——区分「没跑过」(⏳)与「跑过且失败」(❌)。
 				mark = "❌"
 				status = "失败"
@@ -139,12 +130,6 @@ func runTaskStatus(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// runTaskScopeAdd appends globs to the current task's PlanScope (deduped). Supports
-// mid-task iteration — planning is not locked in once at task start: layered
-// positioning and 'reconsidering which files to change' both confirm scope is
-// evolutionary. Takes effect immediately after persistence (later hooks detect drift
-// advisory based on it).
-//
 // runTaskScopeAdd 把 glob 追加到当前任务的 PlanScope（去重）。支持中途迭代——规划不是
 // task start 一次锁死：分层定位、「重新考虑改哪些文件」
 // 都印证 scope 是演进的。持久化后立即生效（后续 hook 据此 advisory 检测 drift）。
@@ -185,8 +170,6 @@ func runTaskScopeAdd(cmd *cobra.Command, args []string) error {
 		existing[a] = true
 		added++
 	}
-	// Locked scope write — merge PlanScope under lock (§13 lost-update).
-	//
 	// 锁内 scope 写入——PlanScope 在锁内合并（§13 丢失更新）。
 	if err := taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
 		existing := make(map[string]bool, len(s.PlanScope))
@@ -212,13 +195,6 @@ func runTaskScopeAdd(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// runTaskOverride sets per-task escape hatches (option 5, leak-proof). Takes priority
-// over global env — one task's escape does not pollute other tasks in the same shell.
-// Using any escape hatch records CheckEscapeHatch and caps evidence Strength at Weak
-// (gives escape a cost, hedging the 'hard gate + global escape = fake-hard-gate'
-// backlash). Legitimate uses: doc-only repos, generated code, CI; do not use it to
-// evade read-before-edit/test-coverage.
-//
 // runTaskOverride 设置 per-task 逃生舱（方案5 防泄漏）。优先于全局 env——一个任务逃生
 // 不污染同 shell 的其他任务。用了任一逃生舱会记 CheckEscapeHatch 并把 evidence Strength
 // cap 到 Weak（让逃生有代价，对冲「硬门禁 + 全局逃生 = 假硬门禁」反噬）。legitimate 用途：
@@ -292,8 +268,6 @@ func runTaskOverride(cmd *cobra.Command, args []string) error {
 		fmt.Println(`设置：--work-activity disable / --test-coverage disable / --acceptance-gate disable / --skill-decisions disable（验证类逃生降评分强度到 Weak，重证据任务按证据缩放豁免；work-activity 不降）`)
 		return nil
 	}
-	// Locked override write — merge only the Overrides field (§13 lost-update).
-	//
 	// 锁内逃生舱写入——只合并 Overrides 字段（§13 丢失更新）。
 	if err := taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
 		s.Overrides = state.Overrides
@@ -329,14 +303,6 @@ func describeOverrides(o taskpipeline.TaskOverrides) string {
 	return strings.Join(parts, ", ")
 }
 
-// runTaskDocReview records the L2 doc re-check evidence after a rubric review
-// (doc-review skill). The gate (CheckDocGate) is the
-// consumer: complete is refused until the review is recorded, fresh, Passed and
-// score ≥ threshold. Recording alone never fakes a pass — --passed fail keeps
-// the task blocked and counts a round toward the escalation cap. Critical
-// findings land as Findings (Source=doc-review, Severity=critical) and block
-// until resolved via forge task finding resolve.
-//
 // runTaskDocReview 在 rubric 评审（doc-review skill）
 // 后记录 L2 文档回检证据。门禁（CheckDocGate）是消费方：评审未记录、过期、
 // 未通过或得分低于阈值时 complete 被拒。仅记录不会伪造通过——--passed fail
@@ -375,9 +341,6 @@ func runTaskDocReview(cmd *cobra.Command, args []string) error {
 	}
 
 	if round <= 0 {
-		// Auto-increment from the previous recorded round: review round 2 must
-		// not silently restart at 1 (the escalation cap counts real rounds).
-		//
 		// 从上一轮自动递增：第 2 轮评审不得静默重置为 1（升级上限数真实轮次）。
 		round = 1
 		if state.DocReview != nil && state.DocReview.Round >= round {
@@ -396,17 +359,9 @@ func runTaskDocReview(cmd *cobra.Command, args []string) error {
 		state.AddFinding(nf)
 	}
 
-	// Round history retention (the loop's observable convergence): prior rounds
-	// stay in DocReviewHistory so the score trend is queryable from task state —
-	// "two rounds without Criticals dropping" is an anomaly signal, not prose.
-	// Capped at the last 10 rounds (memory hygiene).
-	//
 	// 轮次历史保留（循环的可观测收敛）：历史轮次留在 DocReviewHistory，得分
 	// 趋势可从任务状态查询——「两轮之间 Critical 不降」是异常信号而非散文。
 	// 截断保留最近 10 轮（内存卫生）。
-	// Locked doc-review write — merge DocReview + history under lock (§13; the
-	// history roll must also land on the in-lock state, not the stale snapshot).
-	//
 	// 锁内 doc-review 写入——DocReview 与轮次历史在锁内合并（§13；历史滚动也
 	// 必须落在锁内状态上，而非陈旧快照）。
 	if err := taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
@@ -440,12 +395,6 @@ func runTaskDocReview(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// runTaskScopeShow prints the declared PlanScope + live scope-drift (the diff between
-// actually-changed source and declared). drift is advisory end-to-end: change-impact
-// recall is only ~44%, scope is a prediction not a contract, and deviation is the
-// steady-state signal — this just makes it measurable and reviewable instead of
-// implicit, never blocking.
-//
 // runTaskScopeShow 打印声明的 PlanScope + 实时 scope-drift（实改源码 vs 声明的差集）。
 // drift 全程 advisory：变更影响分析召回率仅 ~44%，scope 是 prediction 非 contract，
 // 偏差是常态信号——这里只是把它从隐性变成可度量、可回顾，绝不阻塞。
@@ -498,8 +447,6 @@ func runTaskScore(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Show the history of all scored tasks.
-	//
 	// 显示所有已评分 task 的历史
 	if showHistory {
 		states, err := taskpipeline.ListTaskStates(root)
@@ -531,8 +478,6 @@ func runTaskScore(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Load a single task.
-	//
 	// 加载单个 task
 	var state *taskpipeline.TaskState
 	if explicitRef != "" {
@@ -545,8 +490,6 @@ func runTaskScore(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to load task state: %w", err)
 		}
-		// Fallback: a completed task is no longer active but can still be scored.
-		//
 		// 兜底：完成的 task 不再 active 但仍可评分。
 		if state == nil {
 			ctx := taskcontext.Detect(root)
@@ -559,8 +502,6 @@ func runTaskScore(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no active task")
 	}
 
-	// Score if not yet scored.
-	//
 	// 未评分则评分
 	if state.Score == nil {
 		if !state.IsComplete() {
@@ -584,9 +525,6 @@ func runTaskScore(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println(strings.Repeat("─", 60))
 	fmt.Printf("  Overall: %.0f (%s)\n", state.Score.Overall, state.Score.Grade)
-	// Review-rework loop metric (result indicator for whether the review process is converging).
-	// Informational only — not part of the weighted score.
-	//
 	// 审查-返工循环度量（检验审查流程是否收敛的结果指标）。仅信息展示——不进加权总分。
 	if ev := state.Score.Evidence; ev != nil && (ev.ReviewPasses > 0 || ev.CompleteRejections > 0) {
 		fmt.Printf("  返工轮次: review pass %d 次 / task-complete 被拒 %d 次\n", ev.ReviewPasses, ev.CompleteRejections)
@@ -638,14 +576,10 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// runTaskTimeline groups tasks by session and renders an ASCII timeline.
-//
 // runTaskTimeline 按 session 分组 task 并展示 ASCII timeline。
 func runTaskTimeline(root string, states []*taskpipeline.TaskState) error {
 	sessions, err := taskpipeline.LoadSessions(root)
 	if err != nil {
-		// Fall back to a simple flat list when sessions cannot be loaded.
-		//
 		// 加载不出 session 时回退到简单 flat list。
 		fmt.Println("Task Timeline (session data unavailable):")
 		fmt.Println(strings.Repeat("─", 60))
@@ -655,8 +589,6 @@ func runTaskTimeline(root string, states []*taskpipeline.TaskState) error {
 		return nil
 	}
 
-	// Build session -> tasks index.
-	//
 	// 建 session → tasks 索引
 	sessionTasks := make(map[string][]*taskpipeline.TaskState)
 	var orphanTasks []*taskpipeline.TaskState
@@ -672,8 +604,6 @@ func runTaskTimeline(root string, states []*taskpipeline.TaskState) error {
 	fmt.Println("Task Timeline:")
 	fmt.Println(strings.Repeat("─", 70))
 
-	// Print sessions in chronological order.
-	//
 	// 按时间顺序打印 session
 	for _, sess := range sessions {
 		tasks, ok := sessionTasks[sess.SessionID]
@@ -681,8 +611,6 @@ func runTaskTimeline(root string, states []*taskpipeline.TaskState) error {
 			continue
 		}
 
-		// Session header.
-		//
 		// session 头部
 		endTime := ""
 		latest := findLatestTaskTime(tasks)
@@ -698,8 +626,6 @@ func runTaskTimeline(root string, states []*taskpipeline.TaskState) error {
 		fmt.Printf("\nSession %s%s\n", sess.SessionID, agentStr)
 		fmt.Printf("  %s%s\n", sess.StartedAt.Format("01-02 15:04"), endTime)
 
-		// Sort tasks within the session by start time.
-		//
 		// session 内按开始时间排序 task
 		sortTasksByTime(tasks)
 
@@ -712,8 +638,6 @@ func runTaskTimeline(root string, states []*taskpipeline.TaskState) error {
 		}
 	}
 
-	// Print orphan tasks (no session association).
-	//
 	// 打印 orphan task（无 session 关联）
 	if len(orphanTasks) > 0 {
 		fmt.Printf("\n(no session data)\n")
@@ -734,8 +658,6 @@ func runTaskTimeline(root string, states []*taskpipeline.TaskState) error {
 	return nil
 }
 
-// printTaskLine prints a single task in flat format.
-//
 // printTaskLine 以 flat 格式打印单个 task。
 func printTaskLine(s *taskpipeline.TaskState) {
 	status := "active"
@@ -750,8 +672,6 @@ func printTaskLine(s *taskpipeline.TaskState) {
 	fmt.Printf("  %s  %-25s %s%s\n", startTime, s.TaskRef, status, score)
 }
 
-// printTaskTreeLine prints a single task in tree format.
-//
 // printTaskTreeLine 以 tree 格式打印单个 task。
 func printTaskTreeLine(prefix string, s *taskpipeline.TaskState) {
 	startTime := s.StartedAt.Format("15:04")
@@ -773,8 +693,6 @@ func printTaskTreeLine(prefix string, s *taskpipeline.TaskState) {
 	fmt.Printf("%s %s %-25s %s%s%s\n", prefix, startTime, s.TaskRef, status, score, summary)
 }
 
-// findLatestTaskTime returns the latest time among a group of tasks.
-//
 // findLatestTaskTime 返回一组 task 中最近的时间。
 func findLatestTaskTime(tasks []*taskpipeline.TaskState) time.Time {
 	var latest time.Time
@@ -789,8 +707,6 @@ func findLatestTaskTime(tasks []*taskpipeline.TaskState) time.Time {
 	return latest
 }
 
-// sortTasksByTime sorts tasks by start time (oldest first).
-//
 // sortTasksByTime 按开始时间排序 task（最旧在前）。
 func sortTasksByTime(tasks []*taskpipeline.TaskState) {
 	slices.SortFunc(tasks, func(a, b *taskpipeline.TaskState) int {

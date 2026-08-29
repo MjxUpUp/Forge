@@ -5,11 +5,8 @@ import (
 	"strings"
 )
 
-// ParseExternalOriginURL parses an ExternalOrigin from an external issue tracker URL. Supports linear / github;
-// an unrecognized tracker only keeps the URL (no hard dependency on tracker type) — a spawn-style orchestrator (Symphony-like) passes an arbitrary
-// issue URL, and forge extracts identifiers best-effort, decoupling mount-style task origin from spawn-style issue origin.
-// This is the key to the proof-of-work loop bridging spawn-style orchestrators: task.ExternalOrigin lets a task natively associate with an
-// external issue, so the orchestrator does not have to infer the issue from the branch name when launching a run.
+// ParseExternalOriginURL parses an ExternalOrigin from an external issue tracker
+// URL.
 //
 // ParseExternalOriginURL 从外部 issue tracker URL 解析 ExternalOrigin。支持 linear / github；
 // 未识别 tracker 仅保留 URL（不强依赖 tracker 类型）——spawn 式编排器（Symphony 类）传任意
@@ -31,8 +28,6 @@ func ParseExternalOriginURL(rawURL string) ExternalOrigin {
 
 	switch {
 	case strings.HasSuffix(host, "linear.app"):
-		// linear.app/<team>/issue/<IDENTIFIER> (IDENTIFIER like ABC-123).
-		//
 		// linear.app/<team>/issue/<IDENTIFIER>（IDENTIFIER 形如 ABC-123）
 		o.Tracker = "linear"
 		if i := indexOfSeg(segs, "issue"); i >= 0 && i+1 < len(segs) {
@@ -40,8 +35,6 @@ func ParseExternalOriginURL(rawURL string) ExternalOrigin {
 			o.IssueID = o.Identifier
 		}
 	case host == "github.com":
-		// github.com/<org>/<repo>/issues/<num> (numeric issue id).
-		//
 		// github.com/<org>/<repo>/issues/<num>（数字 issue id）
 		o.Tracker = "github"
 		if i := indexOfSeg(segs, "issues"); i >= 0 && i+1 < len(segs) {
@@ -54,8 +47,6 @@ func ParseExternalOriginURL(rawURL string) ExternalOrigin {
 	return o
 }
 
-// splitPathSegments splits a URL path on slashes and drops empty segments (leading/trailing/double slashes produce empty segments).
-//
 // splitPathSegments 把 URL path 按 "/" 切，去掉空段（首尾 / 双斜杠产生空段）。
 func splitPathSegments(p string) []string {
 	var out []string
@@ -67,8 +58,6 @@ func splitPathSegments(p string) []string {
 	return out
 }
 
-// indexOfSeg returns the index of seg in segs, or -1 if not present.
-//
 // indexOfSeg 返回 seg 在 segs 中的下标，不存在返 -1。
 func indexOfSeg(segs []string, seg string) int {
 	for i, s := range segs {

@@ -3,8 +3,6 @@ package protocol
 import "github.com/MjxUpUp/Forge/internal/scoringtypes"
 
 // Protocol represents the project's quality-protocol configuration.
-// Stored as .forge/protocol.yml——defines quality standards and session behavior,
-// applies to every Claude Code session, independent of pipeline state.
 //
 // Protocol 表示项目的质量协议配置。
 // 存为 .forge/protocol.yml —— 定义质量 standards 与 session 行为，
@@ -14,10 +12,7 @@ type Protocol struct {
 	Standards    []Standard                  `yaml:"standards"    json:"standards"`
 	SessionRules []SessionRule               `yaml:"session_rules" json:"session_rules"`
 	Scoring      *scoringtypes.ScoringConfig `yaml:"scoring,omitempty" json:"scoring,omitempty"`
-	// CrossRepoImpact tunes the task-verify cross-repo-impact gate
-	// (docs/design/multi-repo-workspace.md): "" or "advisory" (default) only
-	// reminds when a multi-repo-workspace task never declared its impact;
-	// "required" hard-blocks the gate until `forge task impact` records one.
+	// CrossRepoImpact tunes the task-verify cross-repo-impact gate (docs/design/multi-repo-workspace.md): "" or "advisory" (default) only reminds when a multi-repo-workspace task never declared its impact; "required" hard-blocks the gate until `forge task impact` records one.
 	//
 	// CrossRepoImpact 调节 task-verify 的 cross-repo-impact 门禁
 	// （docs/design/multi-repo-workspace.md）："" 或 "advisory"（默认）只在

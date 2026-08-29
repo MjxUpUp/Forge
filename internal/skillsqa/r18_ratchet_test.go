@@ -10,6 +10,8 @@ import (
 	"github.com/MjxUpUp/Forge/internal/skillsfm"
 )
 
+// TestR18_Grandfathered_Exact.
+//
 // TestR18_Grandfathered_Exact — R18 存量豁免表的棘轮守卫（双向卡死，跑在仓库源
 // skills/ 上）：表内每一条都必须仍被需要（对应 skill 存在操作性行为命中），表外
 // 任何非 requires_forge skill 都不得有命中。三个失败方向各有明确指引——
@@ -20,23 +22,6 @@ import (
 //
 // 该测试保证「只减不增」不是口头纪律：加条目必须同时改这张表并过 code review，
 // 而任何新增 forge 引用在不改表时立刻红。
-//
-// TestR18_Grandfathered_Exact — the ratchet guard for the R18 legacy exemption
-// table (pinned in both directions, runs against the repo-source skills/):
-// every table entry must still be needed (its skill still has operational
-// hits), and no non-requires_forge skill outside the table may have hits.
-// Each failure direction carries its remedy —
-//   - hit outside the table: a new violation. Either clean the content
-//     (de-forge it) or, if it genuinely documents forge itself, add
-//     `metadata.requires_forge: "true"`; adding a grandfather entry is not
-//     the remedy.
-//   - table entry without hits: dead entry, cleanup done but the
-//     R18Grandfathered removal was forgotten.
-//   - table name not in the library: renamed/removed skill, stale entry.
-//
-// This test turns "shrink-only" from prose into mechanics: growing the table
-// requires editing it in the open, and any new forge reference goes red
-// immediately without a table edit.
 func TestR18_Grandfathered_Exact(t *testing.T) {
 	root := filepath.Join("..", "..", "skills")
 	entries, err := os.ReadDir(root)
@@ -88,17 +73,12 @@ func TestR18_Grandfathered_Exact(t *testing.T) {
 	}
 }
 
+// TestSkillsForge_AllMarked — admission guard for the forge-native zone (repo-source skills-forge/): every skill must carry `metadata.requires_forge: "true"`.
+//
 // TestSkillsForge_AllMarked — forge 原生专区（仓库源 skills-forge/）的准入守卫：
 // 每个 skill 必须带 `metadata.requires_forge: "true"`。专区的存在意义就是收纳
 // 「描述 forge 自身机制」的 skill——出现未标记的 skill = 中立 skill 放错位置
 // （应进 skills/ 并过 R18 零反向依赖校验）。2026-08 迁移起效。
-//
-// TestSkillsForge_AllMarked — admission guard for the forge-native zone
-// (repo-source skills-forge/): every skill must carry
-// `metadata.requires_forge: "true"`. The zone exists precisely to host skills
-// that document forge itself — an unmarked skill there is a neutral skill
-// misplaced (it belongs in skills/ under the R18 zero-reverse-dependency
-// check). In force since the 2026-08 migration.
 func TestSkillsForge_AllMarked(t *testing.T) {
 	root := filepath.Join("..", "..", "skills-forge")
 	entries, err := os.ReadDir(root)
@@ -121,19 +101,13 @@ func TestSkillsForge_AllMarked(t *testing.T) {
 	}
 }
 
+// TestSkills_NoneMarked — the mirror guard of TestSkillsForge_AllMarked: the neutral skills/ tree must NOT declare `metadata.requires_forge: "true"`.
+//
 // TestSkills_NoneMarked — TestSkillsForge_AllMarked 的镜像守卫：中立树 skills/
 // 不得声明 `metadata.requires_forge: "true"`。该标记是 R18 的最高豁免——R18 升为
 // 硬校验后（2026-08），在中立树头文件加这一行即整体跳过校验且无任何测试变红
 // （review M2：与 R18Grandfathered 被棘轮双向卡死的保护强度不对称）。forge 原生
 // 内容的家是 skills-forge/，中立树出现该标记 = 豁免通道被滥用。
-//
-// TestSkills_NoneMarked — the mirror guard of TestSkillsForge_AllMarked: the
-// neutral skills/ tree must NOT declare `metadata.requires_forge: "true"`.
-// That marker is R18's top-tier exemption — after R18 became a hard gate
-// (2026-08), adding this one frontmatter line in the neutral tree skips the
-// check entirely with no test going red (review M2: asymmetric protection
-// vs. the ratchet-pinned R18Grandfathered). Forge-native content belongs in
-// skills-forge/; the marker appearing in the neutral tree = abused escape hatch.
 func TestSkills_NoneMarked(t *testing.T) {
 	root := filepath.Join("..", "..", "skills")
 	entries, err := os.ReadDir(root)

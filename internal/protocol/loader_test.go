@@ -10,9 +10,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
-// TestSaveDataDirLoadRoundTrip verifies SaveDataDir persists a loadable protocol.yml:
-// it writes the user-level DataDir copy (creating the dir via util.AtomicWrite) and
-// Load reads back an equivalent Protocol.
+// TestSaveDataDirLoadRoundTrip verifies SaveDataDir persists a loadable protocol.yml: it writes the user-level DataDir copy (creating the dir via util.AtomicWrite) and Load reads back an equivalent Protocol.
 //
 // TestSaveDataDirLoadRoundTrip 验证 SaveDataDir 落盘的 protocol.yml 可加载：
 // 写用户级 DataDir 副本（经 util.AtomicWrite 自建目录），Load 读回等价 Protocol。
@@ -27,8 +25,6 @@ func TestSaveDataDirLoadRoundTrip(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(forgedata.DataDirFor(dir), "protocol.yml")); err != nil {
 		t.Fatalf("protocol.yml must exist in DataDir after SaveDataDir: %v", err)
 	}
-	// Zero-project-write: SaveDataDir must NOT create a project-level .forge/.
-	//
 	// 零项目写入：SaveDataDir 不得创建项目级 .forge/。
 	if _, err := os.Stat(filepath.Join(dir, ".forge")); !os.IsNotExist(err) {
 		t.Fatalf("SaveDataDir must not create project-level .forge/ (zero-project-write)")
@@ -59,10 +55,7 @@ func TestSaveDataDirLoadRoundTrip(t *testing.T) {
 	}
 }
 
-// TestProjectLevelOverride pins the two-layer contract: when <dir>/.forge/protocol.yml
-// exists (team-shared override, `forge init --project`), Load reads IT — not the
-// DataDir copy — and updating the override goes through SaveProjectLevel (the removed
-// routed Save used to pick the layer implicitly; callers now pick explicitly).
+// TestProjectLevelOverride pins the two-layer contract.
 //
 // TestProjectLevelOverride 钉死双层契约：<dir>/.forge/protocol.yml 存在时
 // （团队共享覆盖，`forge init --project`），Load 读它而非 DataDir 副本，
@@ -71,8 +64,6 @@ func TestProjectLevelOverride(t *testing.T) {
 	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
 	dir := t.TempDir()
 
-	// DataDir copy with default version; project-level override with a custom version.
-	//
 	// DataDir 副本用默认 version；项目级覆盖用自定义 version。
 	if err := SaveDataDir(dir, DefaultProtocol()); err != nil {
 		t.Fatalf("SaveDataDir copy: %v", err)
@@ -91,8 +82,6 @@ func TestProjectLevelOverride(t *testing.T) {
 		t.Errorf("Load 应读项目级覆盖 version=team-override，实得 %q", got.Version)
 	}
 
-	// Updating the override goes through SaveProjectLevel; the DataDir copy stays alone.
-	//
 	// 更新覆盖层经 SaveProjectLevel；DataDir 副本不动。
 	override.Version = "team-override-v2"
 	if err := SaveProjectLevel(dir, override); err != nil {
@@ -107,19 +96,13 @@ func TestProjectLevelOverride(t *testing.T) {
 	}
 }
 
-// TestSaveLoad_FailFastWhenDataDirUnresolvable pins the silent-mislocation fix: when
-// the DataDir cannot be resolved (FORGE_DATA_HOME unset and os.UserHomeDir failing),
-// SaveDataDir/Load must return an explicit error instead of writing a bare
-// "protocol.yml" into the process cwd.
+// TestSaveDataDirLoad_FailFastWhenDataDirUnresolvable pins the silent-mislocation fix.
 //
 // TestSaveDataDirLoad_FailFastWhenDataDirUnresolvable 钉死静默错位修复：DataDir
 // 无法解析（FORGE_DATA_HOME 未设且 os.UserHomeDir 失败）时，SaveDataDir/Load
 // 必须显式报错，而不是把裸 "protocol.yml" 写进进程 cwd。
 func TestSaveDataDirLoad_FailFastWhenDataDirUnresolvable(t *testing.T) {
 	t.Setenv(`FORGE_DATA_HOME`, ``)
-	// Break os.UserHomeDir on every platform: unix reads HOME; Windows reads
-	// USERPROFILE, then HOMEDRIVE+HOMEPATH.
-	//
 	// 全平台破坏 os.UserHomeDir：unix 读 HOME；Windows 读 USERPROFILE，再读
 	// HOMEDRIVE+HOMEPATH。
 	t.Setenv(`HOME`, ``)
@@ -139,8 +122,7 @@ func TestSaveDataDirLoad_FailFastWhenDataDirUnresolvable(t *testing.T) {
 	}
 }
 
-// TestEnsureDefault_CreatesWhenMissing: no protocol.yml anywhere → the DataDir copy
-// is created from defaults and loads cleanly.
+// TestEnsureDefault_CreatesWhenMissing: no protocol.yml anywhere → the DataDir copy is created from defaults and loads cleanly.
 //
 // TestEnsureDefault_CreatesWhenMissing：两处都无 protocol.yml → 从默认值创建
 // DataDir 副本且可加载。
@@ -161,16 +143,13 @@ func TestEnsureDefault_CreatesWhenMissing(t *testing.T) {
 	if got.Scoring == nil {
 		t.Error("EnsureDefault 写入的默认 protocol 应含 scoring 配置")
 	}
-	// Idempotent: a second run keeps the file (no rewrite, no error).
-	//
 	// 幂等：第二次跑保留文件（不重写、不报错）。
 	if err := EnsureDefault(dir); err != nil {
 		t.Fatalf("EnsureDefault 第二次: %v", err)
 	}
 }
 
-// TestEnsureDefault_KeepsValidFile: an existing valid protocol.yml (user-edited) is
-// never touched.
+// TestEnsureDefault_KeepsValidFile: an existing valid protocol.yml (user-edited) is never touched.
 //
 // TestEnsureDefault_KeepsValidFile：已存在的合法 protocol.yml（用户改过）绝不动。
 func TestEnsureDefault_KeepsValidFile(t *testing.T) {
@@ -194,9 +173,7 @@ func TestEnsureDefault_KeepsValidFile(t *testing.T) {
 	}
 }
 
-// TestEnsureDefault_CorruptBackedAside pins the corrupt-file fix: a protocol.yml the
-// user broke (YAML parse error) is renamed aside to protocol.yml.corrupt-<ts> before
-// defaults are written — never silently overwritten.
+// TestEnsureDefault_CorruptBackedAside pins the corrupt-file fix: a protocol.yml the user broke (YAML parse error) is renamed aside to protocol.yml.corrupt-<ts> before defaults are written — never silently overwritten.
 //
 // TestEnsureDefault_CorruptBackedAside 钉死损坏文件修复：用户改坏的 protocol.yml
 // （YAML 解析失败）先改名备份为 protocol.yml.corrupt-<ts> 再写默认值——绝不静默
@@ -220,8 +197,6 @@ func TestEnsureDefault_CorruptBackedAside(t *testing.T) {
 		t.Fatalf("EnsureDefault: %v", err)
 	}
 
-	// The corrupt file must be backed aside with its original content.
-	//
 	// 损坏文件必须带原内容备份到一边。
 	entries, err := os.ReadDir(dd)
 	if err != nil {
@@ -245,8 +220,6 @@ func TestEnsureDefault_CorruptBackedAside(t *testing.T) {
 		t.Errorf("备份内容 = %q, want 原损坏内容 %q", got, bad)
 	}
 
-	// A fresh default is in place and loads.
-	//
 	// 新默认值就位且可加载。
 	p, err := Load(dir)
 	if err != nil {
@@ -257,9 +230,7 @@ func TestEnsureDefault_CorruptBackedAside(t *testing.T) {
 	}
 }
 
-// TestSave_AtomicNoTempLeftover verifies Save leaves no temp files behind in the
-// DataDir — AtomicWrite renames its temp file over the target, so a stray .tmp-*
-// file would indicate the write path is not atomic.
+// TestSave_AtomicNoTempLeftover verifies Save leaves no temp files behind in the DataDir — AtomicWrite renames its temp file over the target, so a stray .tmp-* file would indicate the write path is not atomic.
 //
 // TestSaveDataDir_AtomicNoTempLeftover 验证 SaveDataDir 不在 DataDir 留临时文件
 // ——AtomicWrite 把临时文件 rename 覆盖目标，残留 .tmp-* 说明写路径不再原子。
@@ -280,9 +251,7 @@ func TestSaveDataDir_AtomicNoTempLeftover(t *testing.T) {
 	}
 }
 
-// TestLoad_CrossRepoImpactField pins the new cross_repo_impact knob: it
-// round-trips through YAML, and an absent key decodes to "" (the advisory
-// default — zero behavior change for existing protocol.yml files).
+// TestLoad_CrossRepoImpactField pins the new cross_repo_impact knob: it round-trips through YAML, and an absent key decodes to "" (the advisory default — zero behavior change for existing protocol.yml files).
 //
 // TestLoad_CrossRepoImpactField 钉住新 cross_repo_impact 配置项：YAML 往返
 // 无损；缺省键解码为 ""（advisory 默认——存量 protocol.yml 零行为变化）。
@@ -290,8 +259,6 @@ func TestLoad_CrossRepoImpactField(t *testing.T) {
 	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
 	dir := t.TempDir()
 
-	// Absent → "" (advisory default).
-	//
 	// 缺省 → ""（advisory 默认）。
 	if err := SaveDataDir(dir, DefaultProtocol()); err != nil {
 		t.Fatalf("SaveDataDir: %v", err)
@@ -304,8 +271,6 @@ func TestLoad_CrossRepoImpactField(t *testing.T) {
 		t.Errorf("缺省 cross_repo_impact 应为空（advisory 默认）, got %q", p.CrossRepoImpact)
 	}
 
-	// Explicit "required" round-trips.
-	//
 	// 显式 "required" 往返。
 	custom := DefaultProtocol()
 	custom.CrossRepoImpact = `required`
@@ -321,10 +286,6 @@ func TestLoad_CrossRepoImpactField(t *testing.T) {
 	}
 }
 
-// captureStderr runs fn with os.Stderr swapped to a pipe and returns what was
-// written. validateWarn's contract is observable only via stderr — these tests
-// must not run in parallel (global fd swap).
-//
 // captureStderr 把 os.Stderr 换成管道跑 fn 并返回写出的内容。validateWarn 的契约
 // 只能经 stderr 观测——这些测试不得并行（全局 fd 替换）。
 func captureStderr(t *testing.T, fn func()) string {
@@ -347,9 +308,6 @@ func captureStderr(t *testing.T, fn func()) string {
 	return string(data)
 }
 
-// writeRawDataDirProtocol writes raw YAML bytes as the DataDir protocol.yml copy
-// (SaveDataDir marshals typed structs and cannot produce invalid shapes).
-//
 // writeRawDataDirProtocol 把原始 YAML 字节写成 DataDir 的 protocol.yml 副本
 // （SaveDataDir marshal 类型化结构，产不出非法形态）。
 func writeRawDataDirProtocol(t *testing.T, dir, content string) {
@@ -366,13 +324,7 @@ func writeRawDataDirProtocol(t *testing.T, dir, content string) {
 	}
 }
 
-// TestLoad_SeverityNormalizedAndWarned pins the severity post-validation:
-//   - "ERROR" (uppercase) normalizes to "error" with a stderr warning to fix the
-//     source — consumers compare == "error" exactly, so normalization makes the
-//     standard behave as intended instead of falling into unknown handling;
-//   - "catastrophic" (outside the set) keeps its value but warns loudly, because
-//     render.go's label switches map unknown severities to their default branch
-//     (currently the MOST severe ERROR/🔴) — silently the wrong direction.
+// TestLoad_SeverityNormalizedAndWarned pins the severity post-validation.
 //
 // TestLoad_SeverityNormalizedAndWarned 钉死 severity 后校验：
 //   - "ERROR"（大写）规范化为 "error" 并 stderr 告警提醒改源头——消费方精确比较
@@ -472,9 +424,6 @@ session_rules: []
 	if !strings.Contains(stderr, `漏写将不生效`) {
 		t.Errorf("提示应说明漏写将不生效, stderr=%q", stderr)
 	}
-	// Decoded values: absent key and explicit false are both false (identical
-	// decode — that is exactly why the hint exists).
-	//
 	// 解码值：键缺失与显式 false 都是 false（解码无异——正是这条提示存在的理由）。
 	for i, id := range []string{"no-enabled-a", "no-enabled-b", "explicit-false"} {
 		if p.Standards[i].ID != id || p.Standards[i].Enabled {
@@ -483,9 +432,7 @@ session_rules: []
 	}
 }
 
-// TestLoad_ValidProtocolSilent pins the no-noise half: a fully well-formed
-// protocol (lowercase severities, explicit enabled) loads without a single
-// stderr warning — the validation must not cry wolf on healthy files.
+// TestLoad_ValidProtocolSilent pins the no-noise half: a fully well-formed protocol (lowercase severities, explicit enabled) loads without a single stderr warning — the validation must not cry wolf on healthy files.
 //
 // TestLoad_ValidProtocolSilent 钉死无噪声的一半：完全合规的 protocol（小写
 // severity、显式 enabled）加载时 stderr 零告警——校验不得对健康文件狼来了。
@@ -497,8 +444,6 @@ func TestLoad_ValidProtocolSilent(t *testing.T) {
 	stderr := captureStderr(t, func() {
 		_, loadErr = Load(dir)
 	})
-	// No protocol.yml at all → Load errors before validation; silence expected.
-	//
 	// 完全没有 protocol.yml → Load 在校验前就报错；预期静默。
 	if loadErr == nil {
 		t.Fatal("缺 protocol.yml 应报错")

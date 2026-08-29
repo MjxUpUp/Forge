@@ -11,22 +11,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-// CursorTranslator wires forge hooks into cursor's USER-LEVEL hooks.json
-// (~/.cursor/hooks.json — Cursor natively supports user-level hooks alongside the
-// project-level .cursor/hooks.json). Cursor ships Claude-Code-compatible lifecycle
-// hooks (exit 2 = deny), so alongside claude-code/codex it is an agent where Forge
-// gates actually enforce rather than merely suggest.
-//
-// The user-level location mirrors the kimi/claude-code model: one machine-wide
-// registration instead of a per-project copy, so forge init/sync no longer writes into
-// the project directory (user-level assets migration). The project-level
-// .cursor/rules/forge-quality.mdc guidance file is no longer generated here either —
-// instruction text is unified by the skillgen layer. Existing project-level files are
-// left untouched (cleanup is the uninstall/cleanup layer's job, not the translator's).
-//
-// Merge semantics: entries whose command is not forge-sourced (see
-// isForgeBridgeCommand) are preserved verbatim; forge entries are replaced wholesale
-// with the current generated set, making Translate idempotent.
+// CursorTranslator wires forge hooks into cursor's USER-LEVEL hooks.json (~/.cursor/hooks.json — Cursor natively supports user-level hooks alongside the project-level .cursor/hooks.json).
 //
 // CursorTranslator 把 forge hook 接线进 cursor 的 user-level hooks.json
 // （~/.cursor/hooks.json——Cursor 官方支持 user-level hooks，与项目级
@@ -44,9 +29,6 @@ import (
 type CursorTranslator struct{}
 
 func (t *CursorTranslator) Translate(projectDir string, input *TranslationInput) error {
-	// User-level translator: projectDir is intentionally ignored — the registration is
-	// machine-wide (same contract as KimiTranslator).
-	//
 	// 用户级 translator：刻意忽略 projectDir——注册是全机器生效（与 KimiTranslator 同契约）。
 	path, err := CursorHooksPath()
 	if err != nil {
@@ -56,13 +38,6 @@ func (t *CursorTranslator) Translate(projectDir string, input *TranslationInput)
 		return fmt.Errorf("cursor: failed to create config dir: %w", err)
 	}
 
-	// Real lifecycle hooks — the actual enforcement interface. Cursor native hooks.json is a
-	// flat structure (hooks.<event>[].{command,matcher}), event names are camelCase, and the
-	// stdin protocol is Claude-Code-shaped, so the same `forge hook <name>` commands run —
-	// each carrying `--agent cursor` because the OUTPUT protocol differs (context goes in a
-	// top-level snake_case additional_context, block = stderr + exit 2 with no stdout JSON
-	// decision; see emitCursorOutput in internal/cli/hook.go).
-	//
 	// 真实 lifecycle hooks——实际 enforcement 接口。Cursor 原生 hooks.json 是扁平结构
 	// （hooks.<event>[].{command,matcher}），event 名为 camelCase，stdin 协议与
 	// Claude Code 同形，故同一批 `forge hook <name>` 命令可跑——每条带
@@ -87,10 +62,6 @@ func (t *CursorTranslator) AgentType() AgentType {
 	return AgentCursor
 }
 
-// CursorHooksPath resolves the user-level hooks.json path (~/.cursor/hooks.json).
-// Cursor has no documented env override for its config home, so the path derives from
-// the user home directly.
-//
 // CursorHooksPath 解析 user-level hooks.json 路径（~/.cursor/hooks.json）。Cursor
 // 没有官方文档化的 config home env 覆盖，故路径直接由用户 home 派生。
 func CursorHooksPath() (string, error) {
@@ -101,14 +72,6 @@ func CursorHooksPath() (string, error) {
 	return filepath.Join(home, ".cursor", "hooks.json"), nil
 }
 
-// mergeCursorHooks merges the generated forge wiring into an existing cursor
-// hooks.json. Unknown top-level fields (version, user keys) are preserved via
-// json.RawMessage; within the flat hooks section, entries whose command is not
-// forge-sourced are kept byte-for-byte (unknown entry fields intact — see
-// merge_raw.go), and forge entries are replaced wholesale with the current
-// generated set. The output is deterministic, so Translate is idempotent.
-// A nil/empty existing input produces a fresh file (carrying version:1).
-//
 // mergeCursorHooks 把生成的 forge 接线合并进已有的 cursor hooks.json。未知顶层字段
 // （version、用户自定义 key）经 json.RawMessage 保留；扁平 hooks 段内，command 非
 // forge 来源的条目逐字节保留（未知条目字段不丢——见 merge_raw.go），forge 条目
@@ -155,11 +118,7 @@ func mergeCursorHooks(existing []byte) ([]byte, error) {
 	return append(data, '\n'), nil
 }
 
-// StripCursorHooksUserLevel removes forge hooks from the user-level ~/.cursor/hooks.json
-// (uninstall path). User-defined entries (unknown fields intact, see merge_raw.go) and
-// unknown top-level fields are preserved; the file itself is never deleted. Reports
-// whether the file was actually modified; a missing file or a file without forge hooks
-// is a clean no-op.
+// StripCursorHooksUserLevel removes forge hooks from the user-level ~/.cursor/hooks.json (uninstall path).
 //
 // StripCursorHooksUserLevel 移除 user-level ~/.cursor/hooks.json 中的 forge hooks
 // （卸载路径）。用户自定义条目（未知字段不丢，见 merge_raw.go）与未知顶层字段保留；
@@ -214,27 +173,6 @@ type cursorHookEntry struct {
 	Timeout int    `json:"timeout,omitempty"`
 }
 
-// buildCursorHooks derives Cursor's flat hooks.json from hooks.ForgeHookSpec (single
-// source of truth). Cursor's hooks.json is flat: hooks.<event>[], each entry carries
-// {command,matcher,timeout}; event names are camelCase, in contrast to Claude Code's
-// PascalCase nested {matcher,hooks:[{type,command}]} shape. The official Cursor Agent
-// event roster (https://cursor.com/docs/agent/hooks) is: sessionStart, sessionEnd,
-// preToolUse, postToolUse, postToolUseFailure, subagentStart, subagentStop,
-// beforeShellExecution, afterShellExecution, beforeMCPExecution, afterMCPExecution,
-// beforeReadFile, afterFileEdit, beforeSubmitPrompt, preCompact, stop,
-// afterAgentResponse, afterAgentThought (plus the Tab-only beforeTabFileRead/
-// afterTabFileEdit). cursorEventName maps the ForgeHookSpec events onto that roster;
-// PostCompact has no Cursor analogue (Cursor ships only the observe-only preCompact)
-// and stays Claude/codex-only. Two cursor-specific deltas are applied per-copy:
-// every forge command gains ` --agent cursor` (output-protocol selection — Wave 1b),
-// and matcher tokens are translated to Cursor's tool roster via cursorMatcherTokens
-// (Bash→Shell, Edit→Write, Agent→Task, Skill dropped — Claude tool names would never
-// match on Cursor, silently disarming every tool gate). Conversion flattens each
-// matcher's hook list to one entry per hook (carrying matcher + 60s timeout).
-// No manual copy → no drift. TestCursorWiringMirrorsClaudeSettings guards
-// command-set parity; TestCursorHooks_OnlyLegalCursorEvents pins the event-name
-// whitelist.
-//
 // buildCursorHooks 从 hooks.ForgeHookSpec（单一真相源）派生 Cursor 的扁平 hooks.json。
 // Cursor 的 hooks.json 是扁平结构：hooks.<event>[]，每个 entry 自带
 // {command,matcher,timeout}，event 名为 camelCase，与 Claude Code 的 PascalCase 嵌套
@@ -288,17 +226,6 @@ func buildCursorHooks() map[string]any {
 	}
 }
 
-// cursorMatcherTokens translates a Claude tool-name matcher alternation into
-// Cursor's tool roster (verified against https://cursor.com/docs/agent/hooks):
-// Bash→Shell, Edit→Write (cursor reports file create AND edit as Write), Read→Read,
-// Agent→Task; Skill has no Cursor tool analogue and is dropped (a Skill-only matcher
-// yields keep=false — see the caller for why the entries are skipped rather than
-// wired match-all). Unknown tokens pass through verbatim (better to surface a new
-// token for a human than silently drop it). Tokens are deduplicated after
-// translation (Write|Edit → Write). An empty input stays empty (match-all groups —
-// stop/sessionStart — match events, not tool names). The result keeps the plain
-// STRING alternation form, which cursor accepts as its matcher.
-//
 // cursorMatcherTokens 把 Claude 的 tool-name matcher alternation 翻译到 Cursor 的
 // 工具名册（已对 https://cursor.com/docs/agent/hooks 核实）：Bash→Shell、Edit→Write
 // （cursor 的文件创建与编辑都上报为 Write）、Read→Read、Agent→Task；Skill 无 Cursor
@@ -335,25 +262,6 @@ func cursorMatcherTokens(matcher string) (string, bool) {
 	return strings.Join(out, "|"), true
 }
 
-// cursorEventName maps Claude Code PascalCase event names to Cursor's camelCase
-// hooks.json event names (verified against https://cursor.com/docs/agent/hooks).
-// Events Cursor does not accept return ok=false, so buildCursorHooks can skip them:
-//   - PostCompact — Cursor has no post-compaction event; it ships only the
-//     observe-only preCompact, which cannot deliver compact-resume's re-injection
-//     contract, so the mapping is deliberately not made.
-//   - Any future spec event without a Cursor analogue (Cursor's sessionEnd/
-//     subagentStart/preCompact etc. have no ForgeHookSpec counterpart — subagentStop
-//     DOES and is wired below).
-//
-// PostToolUseFailure/SubagentStop added 2026-08-22: both are on Cursor's official
-// roster (see the buildCursorHooks header), carrying failure-track/subagent-track
-// (#4-A follow-up — cross-host event matrix, spec-research4). Payload dialects are
-// adapted cli-side by the runHook fill-empty block (hook.go): postToolUseFailure
-// carries error_message text WITH the failure_type enum (text fills Error first,
-// enum last); subagentStop spells the CC fields as subagent_type/status/result —
-// normalized onto AgentTypeHook/LastAssistantMessage, with status riding in
-// subagent-track's Meta.
-//
 // cursorEventName 把 Claude Code 的 PascalCase event 名映射到 Cursor 的 camelCase
 // hooks.json event 名（已对 https://cursor.com/docs/agent/hooks 核实）。Cursor 不
 // 接的 event 返回 ok=false，供 buildCursorHooks 跳过：

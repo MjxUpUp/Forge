@@ -11,54 +11,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-// ZcodeTranslator wires forge hooks into ZCode's USER-LEVEL config
-// (~/.zcode/cli/config.json, hooks.events). ZCode (z.ai's agentic IDE, GLM
-// family) is deliberately Claude-Code-compatible at the hook layer
-// (zcode.z.ai/en/docs/hooks, verified 2026-08):
-//   - stdin carries Claude snake_case aliases (session_id / tool_name /
-//     tool_input / hook_event_name) next to its camelCase fields — the default
-//     HookInput unmarshal suffices, no StdinDialect.
-//   - stdout reads Claude's shapes: hookSpecificOutput.additionalContext
-//     (context injection), permissionDecision allow/deny (PreToolUse),
-//     continue:false + reason (UserPromptSubmit), decision:block + reason
-//     (Stop). Unknown fields are ignored.
-//   - exit 2 is the blocking shortcut on every blockable event.
-//
-// So the generated commands need no protocol override: `--agent zcode` is
-// appended for session attribution (EnsureHookSession/StampSessionAgent) while
-// stdin parsing and the emitClaudeOutput default both already speak ZCode's
-// dialect — the codebuddy/opencode "Claude-shape, no flag needed" model, plus
-// the flag purely for identity. Docs-derived; wire-level verification (the
-// kimi-hook-routing.md discipline) is pending a ZCode install.
-//
-// Event coverage: ZCode's roster is SessionStart / UserPromptSubmit /
-// PreToolUse / PermissionRequest / PostToolUse / PostToolUseFailure / Stop —
-// PascalCase names identical to Claude's, so no rename map, only a whitelist:
-//   - PostCompact has no ZCode event; compaction fires SessionStart with
-//     source=compact, which the match-all SessionStart group already covers
-//     (task-resume tl;dr tier — the same fallback cursor takes).
-//   - SubagentStop is not on the roster; subagent-track is dropped.
-//   - PermissionRequest is ZCode-only with no ForgeHookSpec counterpart.
-//
-// One enforcement caveat wired into every Stop hook's semantics: ZCode
-// force-ends the run after 3 consecutive Stop blocks, so task-verify /
-// review-stop continuation loops must converge within 3 rounds (the hooks'
-// own stop_hook_active guards already bound them).
-//
-// Project-level hooks are NOT executed by the current ZCode version
-// (config_project_hooks_ignored) — this translator is user-level only, and
-// team distribution goes through the plugin channel (ZCode falls back to
-// reading .claude-plugin/plugin.json when .zcode-plugin/plugin.json is
-// absent, so the existing plugins/forge pack loads as-is).
-//
-// Merge semantics: config.json also carries the user's own settings
-// (hooks.timeoutMs/maxOutputBytes, model prefs), so whole-file overwrite is
-// out. Top-level and hooks-level unknown fields are preserved via
-// json.RawMessage; within hooks.events (Claude's nested {matcher, hooks:[]}
-// shape) user entries keep their original bytes and forge entries are
-// replaced wholesale (stripForgeMatchersRaw + append generated) — idempotent.
-// hooks.enabled is forced true: without it ZCode executes NOTHING, and
-// `forge init --agents zcode` is the user's explicit request to wire hooks.
+// ZcodeTranslator wires forge hooks into ZCode's user-level config.
 //
 // ZcodeTranslator 把 forge hook 接线进 ZCode 的**用户级**配置
 // （~/.zcode/cli/config.json 的 hooks.events）。ZCode（z.ai 的 agentic IDE，
@@ -109,11 +62,6 @@ func (t *ZcodeTranslator) AgentType() AgentType {
 	return AgentZcode
 }
 
-// zcodeSupportedEvents is the ZCode hook roster (zcode.z.ai/en/docs/hooks)
-// intersected with ForgeHookSpec. Names are verbatim Claude PascalCase — the
-// whitelist only DROPS events (PostCompact, SubagentStop — see the translator
-// header), it never renames.
-//
 // zcodeSupportedEvents 是 ZCode hook 名册（zcode.z.ai/en/docs/hooks）与
 // ForgeHookSpec 的交集。事件名逐字沿用 Claude PascalCase——白名单只**丢**
 // 事件（PostCompact、SubagentStop——见 translator 头注），从不改名。
@@ -129,10 +77,7 @@ var zcodeSupportedEvents = map[string]bool{
 type zcodeHookEntry struct {
 	Type    string `json:"type"`
 	Command string `json:"command"`
-	// Timeout is ZCode's compatibility field, in SECONDS (timeoutMs wins when
-	// both are set). 60 matches cursor's flat per-entry convention; ZCode's
-	// root default is 60s anyway, so this only pins the value against a user
-	// lowering their root timeoutMs.
+	// Timeout is ZCode's compatibility field, in SECONDS (timeoutMs wins when both are set).
 	//
 	// Timeout 是 ZCode 的兼容字段，单位**秒**（两者同设时 timeoutMs 优先）。
 	// 60 对齐 cursor 的逐条目惯例；ZCode 根默认本为 60s，此处只是防用户调低
@@ -146,22 +91,12 @@ type zcodeHookGroup struct {
 }
 
 func (t *ZcodeTranslator) Translate(projectDir string, input *TranslationInput) error {
-	// User-level translator: projectDir is intentionally ignored — the
-	// registration is machine-wide (same contract as KimiTranslator).
-	//
 	// 用户级 translator：刻意忽略 projectDir——注册全机器生效（与
 	// KimiTranslator 同契约）。
 	home, err := ZcodeConfigHome()
 	if err != nil {
 		return fmt.Errorf("zcode: %w", err)
 	}
-	// Detection self-poison guard: DetectAgents treats "~/.zcode exists" as
-	// "zcode installed" (hostcap InstallIndicators). Creating the dir on a
-	// machine WITHOUT ZCode would make every later detection wire a
-	// non-existent tool (the same guard as hooks.GenerateUserSettings'
-	// ~/.claude check). Explicit `--agents zcode` on a zcode-less machine is
-	// therefore a no-op — consistent with the claude/cursor behavior.
-	//
 	// 检测自毒防线：DetectAgents 以「~/.zcode 存在」判定「zcode 已安装」
 	// （hostcap InstallIndicators）。在未装 ZCode 的机器上创建该目录会让后续
 	// 每次检测都误接一个不存在的工具（与 hooks.GenerateUserSettings 的
@@ -191,9 +126,7 @@ func (t *ZcodeTranslator) Translate(projectDir string, input *TranslationInput) 
 	return nil
 }
 
-// ZcodeConfigHome resolves ZCode's config home (~/.zcode). ZCode documents no
-// env override for its config home (unlike CLAUDE_CONFIG_DIR/CODEX_HOME), so
-// the path derives from the user home directly — same convention as cursor.
+// ZcodeConfigHome resolves ZCode's config home (~/.zcode).
 //
 // ZcodeConfigHome 解析 ZCode 的 config home（~/.zcode）。ZCode 未文档化
 // config home 的 env 覆盖（不像 CLAUDE_CONFIG_DIR/CODEX_HOME），故路径直接由
@@ -217,19 +150,6 @@ func ZcodeConfigPath() (string, error) {
 	return filepath.Join(home, "cli", "config.json"), nil
 }
 
-// buildZcodeHooks derives ZCode's hooks.events map from hooks.ForgeHookSpec —
-// the single source of truth shared with every other translator. The shape is
-// Claude's nested {matcher, hooks:[{type, command}]} with PascalCase event
-// names, so the only transformations are: drop events outside ZCode's roster
-// (zcodeSupportedEvents), append ` --agent zcode` to each forge command
-// (attribution, see the translator header), and pin timeout:60s. Matchers pass
-// through verbatim: ZCode matches Claude tool names (Write|Edit / Read|Bash in
-// the official examples, Agent/Task aliases supported); a token ZCode does not
-// know simply never matches — harmless, unlike cursor where Bash had to become
-// Shell. Sorted map marshaling (encoding/json sorts keys) keeps the output
-// deterministic. TestZcodeWiringMirrorsClaudeSettings guards command-set
-// parity on supported events.
-//
 // buildZcodeHooks 从 hooks.ForgeHookSpec——与所有 translator 共享的单一真相源
 // ——派生 ZCode 的 hooks.events map。形态是 Claude 的嵌套 {matcher,
 // hooks:[{type, command}]}、PascalCase 事件名，故仅有的转换为：丢弃 ZCode
@@ -271,15 +191,6 @@ func buildZcodeHooks() map[string][]zcodeHookGroup {
 	return out
 }
 
-// mergeZcodeConfig merges the generated forge wiring into an existing ZCode
-// config.json. Unknown top-level fields (user settings) and unknown
-// hooks-level fields (timeoutMs/maxOutputBytes) are preserved via
-// json.RawMessage; within hooks.events, forge-sourced entries are stripped and
-// the current generated set appended (user entries keep their original bytes —
-// merge_raw.go contract). hooks.enabled is set true (ZCode executes nothing
-// without it). Deterministic output → Translate is idempotent. A nil/empty
-// existing input produces a fresh minimal config.
-//
 // mergeZcodeConfig 把生成的 forge 接线合并进已有 ZCode config.json。未知顶层
 // 字段（用户设置）与未知 hooks 级字段（timeoutMs/maxOutputBytes）经
 // json.RawMessage 保留；hooks.events 内剥除 forge 来源条目后追加当前生成集
@@ -293,11 +204,6 @@ func mergeZcodeConfig(existing []byte) ([]byte, error) {
 			return nil, fmt.Errorf("zcode: parse existing config.json: %w", err)
 		}
 	}
-	// A literal `null` body (or `{"hooks": null}` below) unmarshals into a NIL
-	// map — assigning a key into it panics. Re-seat both maps after every
-	// unmarshal so a hand-emptied config takes the fresh-file path instead of
-	// crashing forge init.
-	//
 	// 字面 `null` 正文（或下方的 `{"hooks": null}`）会 unmarshal 成 **nil**
 	// map——往里写键即 panic。每次 unmarshal 后重坐两个 map，让被手工清空的
 	// 配置走全新文件路径，而不是让 forge init 崩掉。
@@ -353,13 +259,7 @@ func mergeZcodeConfig(existing []byte) ([]byte, error) {
 	return append(data, '\n'), nil
 }
 
-// StripZcodeHooks removes forge hooks from ZCode's user-level
-// ~/.zcode/cli/config.json (uninstall path). User-defined entries (unknown
-// fields intact, see merge_raw.go), unknown hooks-level fields (including the
-// enabled flag — the user's own hooks may depend on it), and unknown top-level
-// fields are preserved; the file itself is never deleted. Reports whether the
-// file was actually modified; a missing file or a file without forge hooks is
-// a clean no-op.
+// StripZcodeHooks removes forge hooks from ZCode's user-level ~/.zcode/cli/config.json (uninstall path).
 //
 // StripZcodeHooks 移除用户级 ~/.zcode/cli/config.json 中的 forge hooks（卸载
 // 路径）。用户自定义条目（未知字段不丢，见 merge_raw.go）、未知 hooks 级字段

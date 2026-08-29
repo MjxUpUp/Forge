@@ -16,27 +16,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// This file pins the two checklog-accuracy fixes from the 2026-08 guard-accuracy
-// pass (two weeks of production usage logs):
-//
-//  1. Level labeling: an advisory whose detail self-describes as PASS/advisory
-//     was recorded level=blocked/passed=false when a host promotion flipped the
-//     emitted verdict (7 assertion-check records in the kimi P0-promotion
-//     window; scoring consumes Passed as a quality verdict, so the advisory
-//     flipped AssertionPassed). The record now carries the SCRIPT's own
-//     verdict: a promoted PASS-script records Passed=true + Level=advisory;
-//     only a script FAIL records Passed=false + Level=blocked.
-//  2. Block-record dedupe: a host double-firing ONE tool event (kimi fired
-//     read-before-edit twice 98ms apart for a single Edit — consecutive
-//     checklog seq) produced duplicate audit lines. Identical blocked records
-//     inside a 3s window are recorded once.
-//
 // 本文件钉住 2026-08 guard-accuracy 轮次（两周生产 usage 日志）的两项
-// checklog 准确性修复——见上。
-
-// readChecklogEntries loads the checklog entries of the fixture project rooted
-// at root (FORGE_DATA_HOME isolated by the caller).
+// checklog 准确性修复：
 //
+//  1. 级别标注：detail 自述 PASS/advisory 的 advisory 记录，在被 host 升格翻转
+//     发射裁定时曾记成 level=blocked/passed=false（kimi P0 升格窗口 7 条
+//     assertion-check 记录；scoring 把 Passed 当质量裁定，advisory 被翻转
+//     AssertionPassed）。现在记录携带【脚本自己】的裁定：升格的 PASS 脚本记
+//     Passed=true + Level=advisory；仅脚本 FAIL 才记 Passed=false + Level=blocked。
+//  2. 阻断记录去重：host 对同一工具事件双发（kimi 对一次 Edit 98ms 内双发
+//     read-before-edit——checklog seq 连续）曾产生重复审计行。3s 窗口内相同的
+//     blocked 记录只记一次。
+
 // readChecklogEntries 读取 root 项目的 checklog 条目（FORGE_DATA_HOME 由调用方
 // 隔离）。
 func readChecklogEntries(t *testing.T, root string) []struct {
@@ -74,11 +65,7 @@ func readChecklogEntries(t *testing.T, root string) []struct {
 	return out
 }
 
-// TestHook_PromotedAdvisoryRecordsAdvisoryLevel pins fix 1's promoted branch:
-// on dsh the task-guard no-task advisory is promoted to an exit-2 block, but the
-// checklog entry must record the script's own verdict — Passed=true +
-// level=advisory — not blocked/fail. The block emission itself is unchanged
-// (covered by TestHook_DshTaskGuardNoTaskBlocks).
+// TestHook_PromotedAdvisoryRecordsAdvisoryLevel pins fix 1's promoted branch.
 //
 // TestHook_PromotedAdvisoryRecordsAdvisoryLevel 钉住修复 1 的提升分支：dsh 上
 // task-guard 无任务 advisory 被提升为 exit-2 阻断，但 checklog 条目必须记脚本
@@ -123,10 +110,7 @@ func TestHook_PromotedAdvisoryRecordsAdvisoryLevel(t *testing.T) {
 	}
 }
 
-// TestHook_RealBlockStillRecordsBlocked pins the counterfactual of fix 1: a
-// hook whose SCRIPT itself fails (hazard-guard exit 1) is a real block — the
-// record stays Passed=false + level=blocked. Only promotion flips get the
-// advisory re-labeling.
+// TestHook_RealBlockStillRecordsBlocked pins the counterfactual of fix 1: a hook whose SCRIPT itself fails (hazard-guard exit 1) is a real block — the record stays Passed=false + level=blocked.
 //
 // TestHook_RealBlockStillRecordsBlocked 钉住修复 1 的反事实：脚本自身失败
 // （hazard-guard exit 1）是真阻断——记录保持 Passed=false + level=blocked。
@@ -176,12 +160,7 @@ func TestHook_RealBlockStillRecordsBlocked(t *testing.T) {
 	}
 }
 
-// TestDuplicateBlockRecord covers the check/stamp pair: an unstamped repeat
-// keeps reporting "not a duplicate" (the Record-failure case — the audit line
-// must never be suppressed by a stamp whose record never landed); after
-// stamping, an identical repeat inside the window is suppressed; any difference
-// (detail/check/session) or an expired window records again. I/O failure
-// direction is fail-toward-recording (empty root returns false).
+// TestDuplicateBlockRecord covers the check/stamp pair.
 //
 // TestDuplicateBlockRecord 覆盖 check/stamp 对：未打戳的重复恒报「非重复」
 // （Record 失败场景——审计行绝不可被一条从未落盘记录对应的戳抑制）；打戳后

@@ -10,12 +10,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/nodestamp"
 )
 
-// TestRecord_StampExcludedFromID pins two invariants at the toollog choke point:
-//  1. every Record lands node_id/seq/ts_hlc (event-stamping contract);
-//  2. the stored ID equals computeID over the identity fields only (task + session +
-//     timestamp + tool name) — stamp values must NEVER enter the hash, otherwise the
-//     trace [#id] anchor drifts per stamp. (computeID hashes named fields, not the
-//     struct, so this pins the field list against silent drift.)
+// TestRecord_StampExcludedFromID pins two invariants at the toollog choke point.
 //
 // TestRecord_StampExcludedFromID 在 toollog 收口点钉死两条不变量：
 //  1. 每次 Record 落 node_id/seq/ts_hlc（事件打戳契约）；
@@ -57,9 +52,6 @@ func TestRecord_StampExcludedFromID(t *testing.T) {
 	if c1.NodeID == "" || c1.Seq == 0 || c1.TsHLC == "" {
 		t.Fatalf("c1 missing stamp: %+v", c1.Stamp)
 	}
-	// ID derives from identity fields only — recomputing from the decoded entry (whose
-	// Stamp is populated) must reproduce the stored ID exactly.
-	//
 	// ID 只由身份字段派生——对解码出的条目（Stamp 已填）重算必须精确复现落盘 ID。
 	if want := computeID(c1); c1.ID != want {
 		t.Fatalf("stored ID %q != computeID(entry) %q — stamp leaked into hash", c1.ID, want)

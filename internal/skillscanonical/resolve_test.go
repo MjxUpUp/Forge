@@ -1,9 +1,5 @@
 package skillscanonical
 
-// resolve_test.go — three Resolve paths (env hit / env path missing / embed fallback).
-// The pure-function contract of EnsureEmbeddedCache is covered by the cli package (cli uses
-// FORGE_SKILLS_CANONICAL via env; this file tests Resolve itself, sunk out of cli).
-//
 // resolve_test.go — Resolve 三条路径（env 命中 / env 路径不存在 / embed fallback）。
 // EnsureEmbeddedCache 的纯函数契约由 cli 包覆盖（cli 用 FORGE_SKILLS_CANONICAL 走 env，
 // 这里专测从 cli 下沉来的 Resolve 自身）。
@@ -38,9 +34,6 @@ func TestResolve_EnvNotFound(t *testing.T) {
 	}
 }
 
-// TestResolve_EmbedFallback: no env → embed fallback, returns the cache dir + isExternal=false,
-// and the cache has CONVENTIONS.md extracted (EnsureEmbeddedCache has done its work).
-//
 // TestResolve_EmbedFallback：无 env → embed fallback，返回缓存目录 + isExternal=false，
 // 且缓存里 extract 出 CONVENTIONS.md（EnsureEmbeddedCache 已工作）。
 func TestResolve_EmbedFallback(t *testing.T) {
@@ -61,13 +54,6 @@ func TestResolve_EmbedFallback(t *testing.T) {
 	}
 }
 
-// TestEnsureEmbeddedCache_RemoveAllError: a failed RemoveAll must abort with an error —
-// overwriting a half-deleted cache and stamping a fresh version marker would leave a
-// mixed-version cache claiming to be a pure snapshot.
-// Failure is made deterministic per-platform: Windows refuses to delete a directory
-// containing an open file; Unix refuses to delete entries inside a directory without
-// write permission.
-//
 // TestEnsureEmbeddedCache_RemoveAllError：RemoveAll 失败必须报错中止——在半删除的缓存上
 // 覆盖写并打新版本标记，会得到谎称纯净的混合版本缓存。
 // 失败按平台确定性构造：Windows 拒绝删除含打开文件的目录；Unix 拒绝删除无写权限目录里的条目。

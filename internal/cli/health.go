@@ -29,10 +29,6 @@ var healthCmd = &cobra.Command{
 func runHealth(cmd *cobra.Command, args []string) error {
 	proj, err := findProject()
 	if err != nil {
-		// Non-registered directories surface ErrNoForgeConfig ("not a forge project;
-		// run `forge init` first") — an actionable message, no bare low-level error
-		// (dogfood 5.2: a bare "cwd is not in a git repository" confused users).
-		//
 		// 未登记目录报 ErrNoForgeConfig（"not a forge project; run forge init
 		// first"）——可行动的提示，不裸报底层错误（dogfood 5.2：裸报
 		// "cwd is not in a git repository" 曾让用户困惑）。
@@ -53,8 +49,6 @@ func runHealth(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// printHealth renders project-level trends. Blind-spot rate is the headline — it is the project-level LLM-judge blind-spot signal.
-//
 // printHealth 渲染项目级趋势。盲区率是头条——它是 project 级的 LLM-judge 盲区信号。
 func printHealth(s health.Summary) {
 	if s.TotalTasks == 0 {
@@ -84,8 +78,6 @@ func printHealth(s health.Summary) {
 		fmt.Printf("  分布: %s\n", distBar(s.GradeDist, []string{`A`, `B`, `C`, `D`, `F`}))
 	}
 
-	// Headline: blind-spot rate (project-level LLM-judge blind-spot signal)
-	//
 	// 头条：盲区率（项目级 LLM-judge 盲区信号）
 	fmt.Printf("\n证据盲区率: %.0f%%（%d/%d 任务完成声明缺 deterministic 证据——Unverified/无证据 Weak）\n",
 		s.BlindSpotRate*100, s.BlindSpotCount, s.TotalTasks)
@@ -112,8 +104,6 @@ func printHealth(s health.Summary) {
 	}
 }
 
-// distBar renders the map into a k=v k=v string in the given order, ensuring readable order and reproducibility.
-//
 // distBar 按给定顺序把 map 渲染成 "k=v k=v" 串，保证可读顺序与可复现。
 func distBar(dist map[string]int, order []string) string {
 	var parts []string

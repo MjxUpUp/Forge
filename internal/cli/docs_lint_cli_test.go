@@ -8,13 +8,6 @@ import (
 	"testing"
 )
 
-// docs_lint_cli_test.go: unit cover for the CLI's explicit-path target
-// collection (directory recursion + .md filter + missing-path error). The
-// --base branch is a thin pass-through to taskpipeline.ChangedMarkdownSince,
-// whose gate-parity semantics (untracked included, deleted dropped) are
-// covered by TestChangedMarkdownSinceIncludesUntrackedAndSkipsDeleted; here
-// findProjectRoot would require a forge-registered project, out of scope.
-//
 // docs_lint_cli_test.go：CLI 显式路径目标收集的单测（目录递归 + .md 过滤 +
 // 路径不存在报错）。--base 分支是对 taskpipeline.ChangedMarkdownSince 的薄
 // 透传，其门禁一致语义（含未跟踪、剔已删除）由
@@ -53,12 +46,6 @@ func TestCollectLintTargetsExplicitPaths(t *testing.T) {
 	}
 }
 
-// TestRunDocsLintHardFailureReturnsSentinel pins the exit-code refactor: a hard
-// lint failure must surface as the errHardExit sentinel (mapped to exit 2 by
-// Execute), NOT an in-RunE os.Exit(2) — os.Exit skips every defer in the cobra
-// chain and Execute's panic-recovery funnel. A clean file returns nil. The
-// sentinel is matched via errors.As, so wrapping survives.
-//
 // TestRunDocsLintHardFailureReturnsSentinel 钉住退出码重构：lint 硬失败必须以
 // errHardExit 哨兵浮出（由 Execute 映射为 exit 2），而不是 RunE 内 os.Exit(2)
 // ——os.Exit 会跳过 cobra 链上的所有 defer 与 Execute 的 panic 恢复盘。干净文件
@@ -74,15 +61,11 @@ func TestRunDocsLintHardFailureReturnsSentinel(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Clean file: no hard failure → nil (exit 0 path).
-	//
 	// 干净文件：无硬失败 → nil（exit 0 路径）。
 	if err := runDocsLint(nil, []string{clean}); err != nil {
 		t.Fatalf("clean file: err = %v, want nil", err)
 	}
 
-	// Hard failure (D1 ban phrase) → errHardExit sentinel via errors.As.
-	//
 	// 硬失败（D1 禁令短语）→ errors.As 命中 errHardExit 哨兵。
 	err := runDocsLint(nil, []string{hard})
 	var hex *hardExitError

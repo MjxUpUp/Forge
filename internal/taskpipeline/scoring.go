@@ -16,16 +16,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 )
 
-// BuildEvaluateInput builds the scoring input from TaskState + checklog + git. ScoreTask (score
-// persistence) and CLI CollectGoldenFromTask (collecting real golden fixtures) share this
-// function—single source of truth, avoiding drift between two assembly logics. Sunk from
-// cli/task_golden.go into taskpipeline so that MCP (forge_task_complete) and CLI share the same
-// scoring path—the complete endpoint of the proof-of-work loop is programmable for agents.
-//
-// Known limitation: GitDiffStat/TestAssertionCount/TestCoverage depend on the git state of
-// state.HeadCommit. Accurate right when the task completes (HEAD≈HeadCommit); a later HEAD advance
-// lets subsequent changes leak into git diff and drift (scope dimension is most affected). Hence
-// golden collection should happen at—or right after—task completion.
+// BuildEvaluateInput builds the scoring input from TaskState + checklog + git.
 //
 // BuildEvaluateInput 从 TaskState + checklog + git 构造评分输入。ScoreTask（评分落盘）与
 // CLI CollectGoldenFromTask（采集真实 golden fixture）共用此函数——单一真相源，避免两份
@@ -36,9 +27,6 @@ import (
 // 任务刚完成时（HEAD≈HeadCommit）精确；事后 HEAD 推进会让 git diff 含后续改动而漂移
 // （scope 维度受影响最大）。故 golden 采集应在任务完成那刻或紧随其后。
 func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, *scoringtypes.ScoringConfig, error) {
-	// Collect git data (failure is non-fatal: empty diffStat degrades the scope dimension to
-	// neutral 70, but the error is surfaced on stderr instead of being silently swallowed).
-	//
 	// 采集 git 数据（失败不致命：空 diffStat 让 scope 维度走中性 70，但错误打到 stderr，
 	// 不再静默吞掉）。
 	gitDiffStat, gitErr := scoring.CollectGitData(root, state.Branch, state.HeadCommit)
@@ -46,8 +34,6 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 		fmt.Fprintf(os.Stderr, "[forge] warning: git diff stat unavailable (%v) — scope dimension scores neutral\n", gitErr)
 	}
 
-	// Infer hook results from gate history and check log.
-	//
 	// 从 gate history 与 check log 推断 hook 结果。
 	compilePassed := false
 	compileChecked := false
@@ -60,34 +46,17 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 		}
 	}
 
-	// covered/total/passed always come from a live CheckTestCoverage (objective; same input and
-	// logic as the gate → must agree). The old path only read a binary passed from checklog, which
-	// cannot support continuous scoring for the testing dimension; computing live is both accurate
-	// and consistent with the gate verdict (same CheckTestCoverage logic, same task diff).
-	//
 	// covered/total/passed 始终来自实时 CheckTestCoverage（客观，与门禁同输入同逻辑 → 必
 	// 一致）。旧路径只从 checklog 读二值 passed，无法支撑 testing 维度的连续打分；实时算
 	// 既准确又与门禁 verdict 一致（同 CheckTestCoverage 逻辑、同 task diff）。
 	tcOK, tcMissing, tcTotal := CheckTestCoverage(root, state)
 	tcCovered := tcTotal - len(tcMissing)
 	testCoveragePassed := tcOK
-	// checked: always true. covered/total/passed are computed live above (same
-	// CheckTestCoverage logic and task diff as the gate), so the testing dimension does
-	// not depend on a checklog entry being present — an earlier version looked up the
-	// CheckNameTestCoverage entry here, but the result was unconditionally overwritten
-	// to true right after, making the lookup a dead effect.
-	//
 	// checked：恒 true。covered/total/passed 上面实时算（与门禁同 CheckTestCoverage
 	// 逻辑、同 task diff），testing 维度不依赖 checklog 条目是否存在——此前此处会查
 	// CheckNameTestCoverage 条目，但紧接着被无条件覆写为 true，查询是死效果。
 	testCoverageChecked := true
 	if escapeDisabled(state, "test-coverage", "FORGE_TEST_COVERAGE") {
-		// An override disables the GATE, not the honesty of the report: reporting
-		// 100/"No source files requiring tests" for a task whose coverage was merely
-		// bypassed launders the gap into a perfect dimension (2026-08-29 functional
-		// finding). The dimension goes neutral (70, "not checked — disabled") instead;
-		// the escape's real cost already shows via the 89 cap + Weak evidence.
-		//
 		// override 免的是【门禁】，不是报告的诚实性：覆盖义务只是被绕过的任务
 		// 报 100/「无需测试」会把缺口洗成满分维度（2026-08-29 功能发现）。维度
 		// 改为中性（70，「未检测——已禁用」）；逃生的真实代价已由 89 封顶 +
@@ -113,8 +82,6 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 		}
 	}
 
-	// Count retries: gates that appear multiple times with mixed outcomes.
-	//
 	// 统计 retry：多次出现且结果混合的 gate
 	retries := 0
 	gateAttempts := make(map[string][]bool)
@@ -133,15 +100,10 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 		}
 	}
 
-	// Load scoring config from protocol.
-	//
 	// 从 protocol 加载 scoring 配置
 	var config *scoringtypes.ScoringConfig
 	proto, err := protocol.Load(root)
 	if err != nil {
-		// A parse failure (user typo/type error) silently swapping in default weights
-		// changes scores with no trace — warn; absent Scoring section stays a quiet default.
-		//
 		// 解析失败（用户手误/类型错）静默换默认权重会无痕改变分数——告警；
 		// 无 Scoring 段保持安静缺省。
 		fmt.Fprintf(os.Stderr, "[forge] warning: protocol.yml 加载失败（%v）——评分回退默认权重/阈值\n", err)
@@ -163,16 +125,9 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 		completedAt = *state.CompletedAt
 	}
 
-	// Assertion density (C): count assertions in this task's changed test files, feeding fake-test
-	// detection for the testing dimension.
-	//
 	// 断言密度（C）：统计本任务 changed 测试文件的断言数，供 testing 维度假测试检测。
 	testAssertionCount, testFileCount := scoring.CollectAssertionDensity(root, state.Branch, state.HeadCommit)
 
-	// Evidence-chain source breakdown: aggregate deterministic/agent-claim from checklog for
-	// ScoreResult.Evidence observability (not part of scoring). ForTask shares the source with
-	// forge trace.
-	//
 	// 证据链来源分布：从 checklog 聚合 deterministic/agent-claim，供 ScoreResult.Evidence
 	// 可观测（不参与打分）。ForTask 与 forge trace 同源。
 	evDeterministic, evAgentClaim := 0, 0
@@ -181,10 +136,6 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 		evAgentClaim = ec.AgentClaim
 	}
 
-	// Expression dimension inputs (output→re-check loop measurement anchor):
-	// recomputed live at score time — same doclint + changedMarkdownDocs logic
-	// as the doc gate, so dimension and gate verdict can never disagree.
-	//
 	// 表达维度输入（输出→回检循环度量锚点）：评分时实时重算——与 doc gate 同
 	// doclint + changedMarkdownDocs 逻辑，维度与门禁结论不会不一致。
 	docDeliverables := changedMarkdownDocs(root, state)
@@ -236,18 +187,11 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 	return input, config, nil
 }
 
-// escapeCapMaxScore caps the overall score of any task that used an escape-hatch
-// override (see ScoreTask). Set at the top of the B band (89): escape makes A
-// unreachable, but a legitimate single escape (e.g. dead-code test waiver) is not
-// pushed all the way to C.
-//
 // escapeCapMaxScore 是用了逃生舱 override 的任务总分上限（见 ScoreTask）。取 B 档
 // 上限 89：逃生任务拿不到 A，但合理的单次逃生（如死代码删除豁免测试）不被压到 C。
 const escapeCapMaxScore = 89
 
-// ScoreTask scores and persists. No-op if already scored. Proof-of-work loop: the complete
-// endpoint produces the Score that feeds act/health/dashboard. Sunk from cli/task.go; MCP
-// complete and CLI share the same scoring path.
+// ScoreTask scores and persists.
 //
 // ScoreTask 评分并落盘。已评分则 no-op。proof-of-work 闭环：complete 的终点产出 Score，
 // 喂给 act/health/dashboard。从 cli/task.go 下沉，MCP complete 与 CLI 共用同一评分路径。
@@ -264,10 +208,6 @@ func ScoreTask(root string, state *TaskState) error {
 	result := scoring.Evaluate(input, config)
 	result.TaskRef = state.TaskRef
 
-	// Attach the review-rework loop metric (observability only, not a scoring dimension) —
-	// filled here rather than in scoring.Evaluate because the raw material (ReviewRounds +
-	// gate History) lives on TaskState, and both CLI and MCP complete share this path.
-	//
 	// 挂上审查-返工循环度量（仅可观测，非评分维度）——在 ScoreTask 而非
 	// scoring.Evaluate 填充，因为原料（ReviewRounds + gate History）在 TaskState
 	// 上，且 CLI 与 MCP complete 共用本路径。
@@ -279,29 +219,6 @@ func ScoreTask(root string, state *TaskState) error {
 		result.Evidence.CompleteRejections = rejections
 	}
 
-	// Escape-hatch cost: a task that used any escape hatch gets its total capped at
-	// escapeCapMaxScore, with the grade recomputed from the capped value — Weak evidence
-	// must not still take home 96-99/A. Two complementary signals (code-review 2026-08):
-	//  - state.Overrides: a task that set a per-task override but never hit the bypass
-	//    branch leaves no checklog entry, yet the escape intent is on record;
-	//  - checklog CheckEscapeHatch entries: env-form escapes (FORGE_TEST_COVERAGE=disable
-	//    etc.) bypass via escapeDisabled without touching state.Overrides, but the bypass
-	//    branch always records the escape-hatch entry. Overrides-only signal would let
-	//    env escapes take home A.
-	// CappedReason persists the cause so trace/dashboard can show WHY the score is 89;
-	// Conclusion.Score/Grade copy these values (act.BuildConclusion) and stay consistent.
-	// Trust boundary (accepted): TaskState JSON in DataDir is agent-writable — deleting
-	// Overrides by hand dodges signal 1, same level as the existing snapshot baseline.
-	//
-	// Independence from the evidence-Strength cap (2026-08): this score cap applies to
-	// ANY escape use (verification-class OR rhythm), WITHOUT the evidence-scaled
-	// carve-out of checklog.EscapeDowngradedStrength — deliberately. Two orthogonal
-	// costs: the score cap is the escape PRICE (score layer, flat by design), the
-	// Strength cap is evidence FIDELITY (signal layer, scaled by evidence weight since
-	// 2026-08). A heavily-evidenced marginal escape keeps Strength=Strong (its run
-	// evidence is real) while still scoring ≤89 (the bypass still happened). Neither
-	// signal lies: the evidence was strong AND a gate was skipped.
-	//
 	// 逃生舱代价：用过任一逃生舱的任务总分封顶 escapeCapMaxScore，并按封顶值重算
 	// grade——Weak 证据不能照拿 96-99/A。两个互补信号（code-review 2026-08）：
 	//  - state.Overrides：设了 per-task override 但没走 bypass 分支的任务 checklog
@@ -337,12 +254,10 @@ func ScoreTask(root string, state *TaskState) error {
 	return SaveTaskState(root, state)
 }
 
-// AppendConclusion builds + persists an Act conclusion for a completed task (evidence-driven),
-// returning (conclusion, directive, err): empty directive = no RetrospectiveNudge; non-nil err =
-// project resolution or act append failure (caller decides stderr/ignore—CLI warns, MCP stuffs
-// into Message). Aggregates the checklog.ForTask evidence chain + state.Acceptance pass rate +
-// state.Score, then calls act.BuildConclusion. Sunk from cli/task.go so MCP complete and CLI
-// share the Act feedback arm.
+// AppendConclusion builds + persists an Act conclusion for a completed task
+// (evidence-driven), returning (conclusion, directive, err): empty directive =
+// no RetrospectiveNudge; non-nil err = project resolution or act append failure
+// (caller decides stderr/ignore.
 //
 // AppendConclusion 构建 + 落盘一个完成任务的 Act 结论（证据驱动），返回 (conclusion, directive, err)：
 // directive 空=无 RetrospectiveNudge；err 非 nil=project 解析或 act append 失败（调用方决定
@@ -378,9 +293,6 @@ func AppendConclusion(root string, state *TaskState) (act.Conclusion, string, er
 	return conc, directive, nil
 }
 
-// phaseKeys converts a DesignPhase slice to a string slice (input for act.BuildConclusion). Sunk
-// from cli/task.go.
-//
 // phaseKeys 把 DesignPhase slice 转 string slice（act.BuildConclusion 入参）。从 cli/task.go 下沉。
 func phaseKeys(phases []DesignPhase) []string {
 	if len(phases) == 0 {

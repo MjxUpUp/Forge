@@ -1,19 +1,5 @@
 package skillseval
 
-// weakness.go — read-only weakness mining: clusters the project's existing deterministic
-// signals into one weakness report (Self-Harness stage 1, report only). It does NOT decide
-// or apply anything — the human (or a supervised evolution round) reads the report and
-// chooses targets; acceptance of any resulting change still runs through the battery /
-// JudgeSkillAccept gate. This keeps it on the audit side of the demolished-learning-layer
-// boundary (2026-07-09): mining is observability, not autonomous evolution.
-//
-// Signal sources (all deterministic, all already computed elsewhere — this is a join, not
-// new judgment):
-//   - health.Summarize: low-dimension frequencies (<70 dims across tasks), blind-spot rate
-//     (completion claims resting on self-report), trend
-//   - AnalyzeUsage: never-triggered canonical skills (undertrigger candidates)
-//   - AnalyzeEffectiveness: skills whose involved tasks score low / rest on weak evidence
-//
 // weakness.go — 只读弱点挖掘：把项目既有确定信号聚成一册弱点报告（Self-Harness 第一阶段，
 // 只报告）。不决策、不落地——人（或受监督的 evolution 轮）读报告选题；由此产生的变更仍走
 // battery / JudgeSkillAccept 门禁验收。这让它留在已拆除学习层边界的审计侧（2026-07-09）：
@@ -32,10 +18,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/health"
 )
 
-// Thresholds for weakness candidacy. Tuned conservative — the report is read by humans, but
-// every listed item costs attention; single-occurrence dims and single-task skills are
-// noise, not weaknesses.
-//
 // 弱点候选阈值。偏保守——报告给人读，但每列一项都耗注意力；单次出现的维度、单任务的
 // skill 是噪声不是弱点。
 const (
@@ -50,9 +32,7 @@ const (
 	lowEffectScore = 70 // 平均分低于即列出（对齐 act.BuildConclusion 的 <70 低分切线）
 )
 
-// WeaknessReport is the clustered read-only weakness mining result. Report-only: fields are
-// evidence, not verdicts — DataCaveats carries the coverage honesty (small n, hosts without
-// Skill events) so no row gets over-read.
+// WeaknessReport is the clustered read-only weakness mining result.
 //
 // WeaknessReport 是聚簇后的只读弱点挖掘结果。只报告：字段是证据不是裁决——DataCaveats
 // 承载覆盖诚实性（小样本、无 Skill 事件的 host），避免任一行被过度解读。
@@ -75,10 +55,8 @@ type WeaknessReport struct {
 	DataCaveats []string `json:"data_caveats,omitempty"`
 }
 
-// AnalyzeWeaknesses joins the deterministic signals into a WeaknessReport. p resolves the
-// project's act/toollog/checklog data; canonical resolves the skill library for
-// never-triggered analysis. Source errors propagate — a weakness report that silently
-// skipped a failing source would look like "no weakness in that dimension" (fail-visible).
+// AnalyzeWeaknesses joins the deterministic signals into a WeaknessReport. p
+// resolves the project's act/toollog/checklog data.
 //
 // AnalyzeWeaknesses 把确定信号 join 成 WeaknessReport。p 解析项目的 act/toollog/checklog
 // 数据；canonical 解析 skill 库（从未触发分析用）。数据源错误上抛——静默跳过失败数据源的
@@ -122,8 +100,6 @@ func AnalyzeWeaknesses(p *forgedata.Project, canonical string) (*WeaknessReport,
 		}
 	}
 
-	// Coverage honesty — each caveat names a way a row could be over-read.
-	//
 	// 覆盖诚实性——每条 caveat 点名一种行可能被过度解读的方式。
 	if rep.TotalTasks == 0 {
 		rep.DataCaveats = append(rep.DataCaveats,
@@ -140,12 +116,6 @@ func AnalyzeWeaknesses(p *forgedata.Project, canonical string) (*WeaknessReport,
 		rep.DataCaveats = append(rep.DataCaveats,
 			"无 skill-任务成效关联数据——LowEffectiveness 为空不代表无低效 skill")
 	}
-	// Non-git projects (review F6): conclusions and effectiveness resolve via the
-	// project DataDir / Root, while usage still resolves via GitRoot ("" for non-git →
-	// PathKey of the CWD at runtime). Run analyze from a different subdirectory and the
-	// usage half may read a different data dir — an intra-report inconsistency this
-	// caveat must name rather than hide.
-	//
 	// 非 git 项目（审查 F6）：结论与 effectiveness 走项目 DataDir/Root，usage 仍走
 	// GitRoot（非 git 为空 → 运行时 CWD 的 PathKey）。从别的子目录运行 analyze 时
 	// usage 半边可能读到不同数据目录——报告内部的不一致，用 caveat 点名而非掩盖。

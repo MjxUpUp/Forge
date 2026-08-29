@@ -11,13 +11,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/hooks"
 )
 
-// dsh_plugin_test.go — drift guards for the DeepSeek Harness plugin
-// (plugins/forge-dsh). The wrapper's hook roster lives in lib/spec.json and
-// must mirror hooks.ForgeHookSpec exactly: the Cordis plugin runs whatever
-// spec.json says, so any drift means dsh enforces a different gate set than
-// every other host — the exact failure mode TestKimiPluginManifestMirrorsSpec
-// guards for the kimi manifest.
-//
 // dsh_plugin_test.go —— DeepSeek Harness 插件（plugins/forge-dsh）的漂移守卫。
 // 包装层的 hook 名册住在 lib/spec.json，必须与 hooks.ForgeHookSpec 完全一致：
 // Cordis 插件按 spec.json 执行，任何漂移都意味着 dsh 执行的门禁集合与其他
@@ -25,8 +18,7 @@ import (
 // 故障。
 const dshPluginDir = "../../plugins/forge-dsh"
 
-// TestDshPluginSpecMirrorsSpec pins plugins/forge-dsh/lib/spec.json to
-// ForgeHookSpec byte-semantically (same events, matchers, commands, order).
+// TestDshPluginSpecMirrorsSpec pins plugins/forge-dsh/lib/spec.json to ForgeHookSpec byte-semantically (same events, matchers, commands, order).
 //
 // TestDshPluginSpecMirrorsSpec 把 plugins/forge-dsh/lib/spec.json 钉在
 // ForgeHookSpec 上（同事件、matcher、命令、顺序）。
@@ -55,10 +47,7 @@ func TestDshPluginSpecMirrorsSpec(t *testing.T) {
 	}
 }
 
-// TestDshPluginPackageContract pins the distribution contract the dsh plugin
-// loader relies on: the dsh.bundle.patch pointer, the entry file, and zero
-// runtime dependencies (the wrapper must load anywhere dsh runs without
-// pulling a module graph).
+// TestDshPluginPackageContract pins the distribution contract the dsh plugin loader relies on: the dsh.bundle.patch pointer, the entry file, and zero runtime dependencies (the wrapper must load anywhere dsh runs without pulling a module graph).
 //
 // TestDshPluginPackageContract 钉住 dsh plugin loader 依赖的分发契约：
 // dsh.bundle.patch 指针、入口文件、零运行时依赖（包装层必须在 dsh 运行的任何
@@ -104,8 +93,7 @@ func TestDshPluginPackageContract(t *testing.T) {
 	}
 }
 
-// TestDshTranslator_Translate pins the deliberate no-op contract (the plugin
-// is the only wiring path): Translate succeeds and writes NOTHING.
+// TestDshTranslator_Translate pins the deliberate no-op contract (the plugin is the only wiring path): Translate succeeds and writes NOTHING.
 //
 // TestDshTranslator_Translate 钉住刻意的 no-op 契约（plugin 是唯一接线路径）：
 // Translate 成功且不写任何东西。

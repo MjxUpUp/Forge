@@ -7,13 +7,6 @@ import (
 	"testing"
 )
 
-// This file pins the per-agent output protocol contract introduced by Wave 1
-// (emitAgentOutput + per-host emitters). Two load-bearing invariants under test:
-//   - allow NEVER emits decision:"approve" (bypasses Claude's permission system on
-//     PreToolUse; codex parses it but marks the hook FAILED);
-//   - block ALWAYS returns *HookBlockError (→ exit 2) except copilot Stop, where
-//     the decision JSON + exit 0 is the only block channel.
-//
 // 本文件钉住 Wave 1 引入的 per-agent 输出协议契约（emitAgentOutput + 各宿主
 // emitter）。两条承重不变式：
 //   - allow 绝不发 decision:"approve"（Claude PreToolUse 上会绕过权限系统；

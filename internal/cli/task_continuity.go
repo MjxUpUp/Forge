@@ -16,16 +16,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// task_continuity.go: the command layer where task becomes the "single source of
-// continuity". It replaces in-session ephemeral state (agent context, lost on
-// compaction) and discipline-driven markdown (HANDOFF.md/AI_CONTEXT.md) with structured
-// first-class fields on task + a sub-second forge task resume. It mirrors the
-// information shape of session-continuity HANDOFF + cross-tool-context AI_CONTEXT, but
-// persists into the user-level DataDir/tasks/<ref>.json (refactor-data-home), so
-// same-machine cross-tool/cross-person handoff works off a single record. Note the
-// boundary: user-level state does not travel with the repo — cross-MACHINE handoff is
-// out of scope here (a future task export/import would be the explicit vehicle).
-//
 // task_continuity.go：task 升格为「接续真相源」的命令层。把会话内临时状态（agent 上下文，
 // 压缩即丢）和靠纪律的 markdown（HANDOFF.md/AI_CONTEXT.md）替换为 task 的结构化一等公民字段 +
 // forge task resume 秒级拉回。对应 session-continuity HANDOFF + cross-tool-context AI_CONTEXT 的
@@ -123,9 +113,6 @@ func init() {
 	taskAttachCmd.Flags().String("session", "", "要锚定的 session ID（默认当前 session）")
 }
 
-// loadTaskOrActive loads the task specified by --ref or the current active task, and
-// returns (state, root). Returns an error when there is no task.
-//
 // loadTaskOrActive 加载 --ref 指定或当前 active task，返回 (state, root)。无任务时返错误。
 func loadTaskOrActive(cmd *cobra.Command) (*taskpipeline.TaskState, string, error) {
 	explicitRef, _ := cmd.Flags().GetString("ref")
@@ -159,16 +146,6 @@ func runTaskResume(cmd *cobra.Command, args []string) error {
 	reinject, _ := cmd.Flags().GetBool("reinject")
 
 	if compactFlag {
-		// PostCompact hook (compaction root-cause layer · set-flag half, gap#2): on
-		// compaction completion, mark "just compacted" for this session (per-session
-		// sentinel, or the legacy ResumeStale bool without a session ID); the next
-		// UserPromptSubmit --reinject of this session detects it and re-injects the full
-		// handoff. Silent exit 0 (no stdout): PostCompact cannot inject additionalContext
-		// (Claude Code docs explicitly list it as a non-injection point — it can only
-		// block or follow up), so this hook only does the follow-up mark. No active task
-		// → idempotent no-op. Any failure degrades to stderr + exit 0 (advisory, does
-		// not block).
-		//
 		// PostCompact hook（压缩根治层·设标志半边，gap#2）：压缩完成 → 为本 session
 		// 标记「刚压缩过」（per-session sentinel；无 session ID 则置 legacy ResumeStale），
 		// 本 session 下个 UserPromptSubmit 的 --reinject 检测到即重注入完整 handoff。
@@ -186,13 +163,6 @@ func runTaskResume(cmd *cobra.Command, args []string) error {
 	}
 
 	if reinject {
-		// UserPromptSubmit hook (compaction root-cause layer · re-inject half, gap#2): if
-		// this session was just compacted → re-inject the full handoff + clear the mark;
-		// otherwise silent. UserPromptSubmit stdout enters context (Claude Code docs:
-		// UserPromptSubmit is on the additionalContext injection-point list); runHook
-		// wraps it as additionalContext, so the PASS+handoff protocol matches the
-		// SessionStart task-resume one.
-		//
 		// UserPromptSubmit hook（压缩根治层·重注入半边，gap#2）：若本 session 刚压缩过
 		// → 重注入完整 handoff + 清标记；否则静默。UserPromptSubmit 的 stdout
 		// 进 context（Claude Code 文档：UserPromptSubmit 在 additionalContext 注入点列表），
@@ -210,13 +180,6 @@ func runTaskResume(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// hook mode (SessionStart auto-injection; bash thin wrapper `exec forge task resume --hook`):
-	// unambiguous active task → attach the current session + emit "PASS\n<handoff>"; multiple
-	// in flight with no context match → emit "PASS\n<inventory>"; zero incomplete tasks →
-	// silent (no injection, no error). runHook's extractDetail strips the PASS prefix to get
-	// detail, and detail is injected into additionalContext via the generic truncate fallback.
-	// Every branch exits 0 — SessionStart never blocks because of resume.
-	//
 	// hook 模式（SessionStart 自动注入；bash thin wrapper `exec forge task resume --hook`）：
 	// 无歧义活跃任务 → attach 当前 session + 输出 "PASS\n<handoff>"；多任务在进行且无
 	// 上下文匹配 → 输出 "PASS\n<盘点清单>"；零未完成任务 → 静默（不注入、不报错）。
@@ -229,13 +192,6 @@ func runTaskResume(cmd *cobra.Command, args []string) error {
 		}
 		out, err := renderHookResume(root)
 		if err != nil {
-			// advisory hook: any failure degrades to a stderr notice + exit 0, never
-			// blocking SessionStart. err comes from attachCurrentSession's SaveTaskState
-			// failure (extreme edge cases like disk failure); if we returned err, cobra
-			// would exit 1, the bash wrapper would also exit 1, and runHook would take the
-			// Decision:block branch — violating the "every branch exits 0" promise above.
-			// Degrading instead of blocking is the correct semantics for an advisory hook.
-			//
 			// advisory hook：任何失败都降级到 stderr 提示 + exit 0，绝不阻塞 SessionStart。
 			// err 来自 attachCurrentSession 的 SaveTaskState 失败（极端边界如磁盘故障）；若
 			// return err，cobra exit 1，bash wrapper 也 exit 1，runHook 走 Decision:block 分支，
@@ -288,14 +244,6 @@ func runTaskResume(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Handoff semantics: resume by default anchors the current session to the task (the
-	// "takeover" action of multi-way anchoring). This persists the relationship of N
-	// sessions collaborating on one task — any handoff-party resume knows who participated
-	// and with which tool. On detection failure (pure shell, no agent env), do not anchor
-	// and only print a stderr notice — resume always succeeds in pulling back context;
-	// anchoring is a side action: a detection failure must not break resume or wrongly
-	// attribute OriginTool ownership.
-	//
 	// 接手语义：resume 默认把当前 session 锚定到 task（多向锚定的接手方动作）。这样 N 个
 	// session 共同推进一个 task 的关系被持久化，任意接手方 resume 即知谁参与过、用什么工具。
 	// 探测失败（纯 shell 跑、无 agent env）时不锚定、仅 stderr 提示——resume 永远成功拉回
@@ -315,14 +263,6 @@ func runTaskResume(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// attachCurrentSession anchors the current session to the task (the "takeover" action of
-// multi-way anchoring). Returns (attached, error): attached=true means a session link was
-// actually added (first-time anchor); already-anchored or detection failure returns false
-// without erroring. silent=true (hook mode) suppresses the stderr notice — hook stderr is
-// invisible to the user, and attach is a silent side effect. Detection failure (no
-// session ID / no agent env) is silently skipped: attach is an additional action and must
-// not break resume.
-//
 // attachCurrentSession 把当前 session 锚定到 task（多向锚定的接手方动作）。返回 (attached, error)：
 // attached=true 表示实际新增了 session 链接（首次锚定）；已锚定或探测失败返 false 不报错。
 // silent=true（hook 模式）不输出 stderr 提示——hook 的 stderr 用户不可见，attach 是静默副作用。
@@ -345,9 +285,6 @@ func attachCurrentSession(state *taskpipeline.TaskState, root string, silent boo
 		}
 		return false, nil
 	}
-	// Mutate under the per-task lock with a fresh reload: the state passed in was loaded
-	// before the lock and may be stale (concurrent attach/decide from another worktree).
-	//
 	// 在 per-task 锁内重载再改：传入的 state 是取锁前加载的，可能已过期（其他
 	// worktree 的并发 attach/decide）。
 	attached := false
@@ -356,10 +293,6 @@ func attachCurrentSession(state *taskpipeline.TaskState, root string, silent boo
 			return nil
 		}
 		s.AddSession(sid, tool)
-		// A fresh attach = THIS machine picking up the work — claim the node lease so
-		// the advisory tracks who is ACTUALLY working, not who created the task
-		// (fail-open, advisory-only; sync-convergence.md §4).
-		//
 		// 新锚定 = 本机接手工作——认领节点租约，让 advisory 追踪真正在干活的机器
 		// 而非任务创建者（fail-open、仅 advisory；sync-convergence.md §4）。
 		taskpipeline.ClaimLeaseForCurrentNode(s)
@@ -375,15 +308,6 @@ func attachCurrentSession(state *taskpipeline.TaskState, root string, silent boo
 	return attached, nil
 }
 
-// renderHookResume produces the SessionStart hook-mode output. With an unambiguous
-// active task it attaches the current session (silent) + returns "PASS\n<handoff>"
-// (naming any other in-flight tasks in one line). Without one it falls back to
-// renderTaskInventory: a compact candidate list when tasks are in flight, "" (silent)
-// only when nothing is. The pure logic other than findProjectRoot is factored out so
-// runTaskResume's hook branch and unit tests can share it (tests pass root directly,
-// independent of cwd). Truncation is delegated to the runHook generic path
-// (hook.go truncate(detail, maxAdditionalContextLen)).
-//
 // renderHookResume 产出 SessionStart hook 模式输出。有无歧义的活跃任务时 attach 当前
 // session（silent）+ 返 "PASS\n<handoff>"（一行列出其余在进行任务）。无则兜底
 // renderTaskInventory：有任务在进行给紧凑候选清单，零任务才返 ""（静默）。把
@@ -393,12 +317,6 @@ func attachCurrentSession(state *taskpipeline.TaskState, root string, silent boo
 func renderHookResume(root string) (string, error) {
 	state, _ := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
 	if state == nil {
-		// No unambiguous active task (≥2 in flight, or branch doesn't match): fall back
-		// to an inventory of ALL incomplete tasks. Interaction flow this serves: user
-		// invokes agent → agent checks for in-flight tasks → continue one (user picks)
-		// or start new. Previously this path was silent — step 2 of that flow broke
-		// whenever multiple tasks were in flight: the agent never learned they existed.
-		//
 		// 无无歧义的活跃任务（≥2 个在进行，或分支不匹配）：兜底为全部未完成任务的
 		// 盘点。服务的交互流程：用户唤起 agent → agent 检查有无进行中的任务 → 接续
 		// 某个（用户选择）或开新任务。此前这条路径静默——多任务在进行时流程第 2 步
@@ -409,14 +327,6 @@ func renderHookResume(root string) (string, error) {
 		return "", err
 	}
 	handoff := renderResume(state, attributedPorcelain(root, state), workspaceContextLine(root, state.CrossRepoImpact), taskpipeline.PriorAttemptsSummary(root, state.TaskRef, 3, 2000))
-	// The current task resumes automatically, but the handoff party should still know
-	// the full in-flight set — one line naming the other incomplete tasks. The list is
-	// capped (zombie accumulation would otherwise produce a giant line and push the
-	// closing discipline line past runHook's tail-truncation), and the whole handoff
-	// is re-stripped afterwards: TaskRef comes from user --ref input and renderResume's
-	// strip ran BEFORE this insertion (code-review P1 — ANSI injection asymmetry vs
-	// renderTaskInventory, which strips after building).
-	//
 	// 当前任务自动接续，但接手方仍应知道完整的在进行集合——一行列出其余未完成任务。
 	// 列表带上限（僵尸任务堆积会产生巨长行，把收尾的纪律行顶过 runHook 的尾部截断），
 	// 且拼接后对整个 handoff 重新 strip：TaskRef 来自用户 --ref 输入，renderResume 的
@@ -437,30 +347,15 @@ func renderHookResume(root string) (string, error) {
 	return appendOfferedBlock(root, state, passPrefix+handoff), nil
 }
 
-// realNewlineString is a single newline expressed without a "\n" rune literal or a double-quoted
-// source literal — Windows quote-corrosion turns ASCII " into CJK curly quotes in Go source, and
-// the project rule forbids \n inside backtick raw strings (it is a literal backslash-n there).
-// Built from the numeric byte value 10 so source stays ASCII-clean.
-//
 // realNewlineString 是单个换行，不用 \n rune 字面也不用双引号源字面——Windows 引号腐蚀会把 Go
 // 源里的 ASCII " 转成 CJK 弯引号，且项目规则禁止反引号 raw string 内的 \n（那里是字面 backslash-n）。
 // 用数值字节 10 构造，源码保持 ASCII 干净。
 var realNewlineString = string([]byte{10})
 
-// passPrefix is the SessionStart injection marker (runHook.extractDetail strips it to recover the
-// detail payload). Built from realNewlineString for the same ASCII-clean reason (no "PASS\n" literal).
-//
 // passPrefix 是 SessionStart 注入标记（runHook.extractDetail 据此剥离取 detail 载荷）。用
 // realNewlineString 构造，同属 ASCII 干净（无 "PASS\n" 字面）。
 var passPrefix = `PASS` + realNewlineString
 
-// tryAutoClaim attempts offered→claimed under the per-task lock, then anchors the current session to
-// the task (the same sequence as runTaskClaim, minus its CLI surface). Returns (claimed, err):
-// claimed=true iff the mutation actually flipped Status to claimed. A race (another session claimed
-// first) surfaces as a Claim error → (false, err); the caller logs it and continues. SetActiveTaskRef
-// mirrors runTaskClaim (unconditional, no conflict check — the worker invoked resume, so re-anchoring
-// is intended).
-//
 // tryAutoClaim 在 per-task 锁下尝试 offered→claimed，再把当前 session 锚到 task（与 runTaskClaim
 // 同序，只是无其 CLI 表面）。返回 (claimed, err)：claimed=true 仅当 mutation 确实把 Status 翻成
 // claimed。竞态（别的 session 先认领）体现为 Claim 错误 → (false, err)，调用方记日志后继续。
@@ -626,13 +521,6 @@ func renderOfferedBlock(active *taskpipeline.TaskState, offered []*taskpipeline.
 	return strings.TrimRight(stripUnsafeControl(b.String()), realNewlineString)
 }
 
-// offeredChainSiblings returns the subset of `offered` whose ParentTaskRef equals active.ParentTaskRef
-// (v1 chain definition: exact-string match — the canonical fan-out shape where one orchestrator
-// delegates N children each sharing the parent ref). Returns nil when active is nil or has no parent
-// (the "active IS the orchestrator" case falls to the one-liner — orchestrators use task mine/
-// dashboard; the SessionStart push is worker-facing). Walk-up to a root orchestrator and
-// inter-sibling DependsOn topo are deferred to v2.
-//
 // offeredChainSiblings 返回 `offered` 中 ParentTaskRef 等于 active.ParentTaskRef 的子集（v1 链定义：
 // 精确串匹配——一个编排器派 N 个子任务、各子共享父 ref 的典型 fan-out）。active 为 nil 或无父时
 // 返 nil（「active 即编排器」回落到一行式——编排器用 task mine/看板；SessionStart 推送面向 worker）。
@@ -653,24 +541,15 @@ func offeredChainSiblings(active *taskpipeline.TaskState, offered []*taskpipelin
 	return out
 }
 
-// inventoryListCap bounds how many tasks the SessionStart inventory lists — the output
-// is injected into context every session start, so it must stay compact.
-//
 // inventoryListCap 限定 SessionStart 盘点列出的任务数——输出每次会话启动都进
 // 上下文，必须保持紧凑。
 const inventoryListCap = 8
 
-// inventoryFieldCap bounds the per-field length (summary/next-step) inside one inventory
-// line. runHook tail-truncates at 9500 chars, so unbounded fields could push the closing
-// AskUserQuestion instruction — the whole point of the inventory — past the cut.
-//
 // inventoryFieldCap 限定盘点单行内字段（标题/下一步）的长度。runHook 从尾部截断
 // （9500 字符），字段不设界会把末尾的 AskUserQuestion 引导行——盘点的存在意义——
 // 先切掉。
 const inventoryFieldCap = 60
 
-// truncateRunes shortens s to at most n runes, appending an ellipsis when cut.
-//
 // truncateRunes 把 s 截到最多 n 个 rune，被截时追加省略号。
 func truncateRunes(s string, n int) string {
 	if r := []rune(s); len(r) > n {
@@ -679,8 +558,6 @@ func truncateRunes(s string, n int) string {
 	return s
 }
 
-// otherIncompleteTasks returns the refs of incomplete tasks other than currentRef.
-//
 // otherIncompleteTasks 返回 currentRef 之外其他未完成任务的 ref。
 func otherIncompleteTasks(root, currentRef string) []string {
 	all, err := taskpipeline.ListTaskStates(root)
@@ -696,14 +573,6 @@ func otherIncompleteTasks(root, currentRef string) []string {
 	return refs
 }
 
-// renderTaskInventory renders a compact inventory of all incomplete tasks for the
-// SessionStart hook's ambiguous case: no unambiguous active task, but work is in
-// flight. Returns "" (silent) only when nothing is in flight — the clean new-task
-// path. The closing instruction tells the agent to use its own structured-question
-// tool (AskUserQuestion) to let the user pick: hooks cannot do interactive HITL
-// (verified: kimi has no ask channel, SessionStart is observation-only on every host),
-// so the agent is the interaction layer.
-//
 // renderTaskInventory 为 SessionStart hook 的歧义场景渲染全部未完成任务的紧凑盘点：
 // 无无歧义的活跃任务但有工作在进行。仅当零任务在进行时返 ""（静默）——干净的
 // 新任务路径。末尾指示告诉 agent 用它自己的结构化提问工具（AskUserQuestion）让
@@ -751,16 +620,6 @@ func renderTaskInventory(root string) string {
 	return "PASS\n" + stripUnsafeControl(strings.TrimRight(b.String(), "\n"))
 }
 
-// renderHookCompactFlag produces the PostCompact hook side effect: marks "just compacted"
-// for the current session. With a session ID (all hook-driven hosts — runHook injects
-// FORGE_SESSION_ID) it writes a per-session sentinel file (taskpipeline.MarkResumeStale),
-// leaving the shared task json untouched; without one (legacy/manual) it falls back to
-// setting the task-scoped ResumeStale bool. No active task → idempotent no-op, no error.
-// This is the "set-flag" half of the compaction root-cause layer (gap#2) — PostCompact
-// cannot inject context, so it only marks "just compacted" and waits for the next
-// UserPromptSubmit's renderHookReinject to re-inject. The pure logic other than
-// findProjectRoot is factored out so unit tests can pass root directly.
-//
 // renderHookCompactFlag 产出 PostCompact hook 的副作用：为当前 session 标记「刚压缩过」。
 // 有 session ID（所有 hook 驱动的 host——runHook 注入 FORGE_SESSION_ID）时写
 // per-session sentinel 文件（taskpipeline.MarkResumeStale），不动共享的 task json；
@@ -788,18 +647,6 @@ func renderHookCompactFlag(root string) error {
 	})
 }
 
-// renderHookReinject produces the UserPromptSubmit hook-mode output: if the current
-// session was just compacted → return "PASS\n<handoff>" and clear the mark; otherwise
-// return "" (silent, no injection). "Just compacted" is judged per session: the
-// per-session sentinel (taskpipeline.ConsumeResumeStale clears it on read), or the
-// legacy task-scoped ResumeStale bool (cleared + persisted here) for sessions without
-// an ID and for tasks marked by older binaries. This is the "re-inject" half of the
-// compaction root-cause layer (gap#2) — the first user prompt after a compaction
-// auto-restores the full continuity context, without relying on the agent to call
-// `forge task resume` proactively. Consuming the mark guarantees only one re-injection
-// (the next prompt is silent), and per-session sentinels mean one session's prompt
-// never consumes another session's mark.
-//
 // renderHookReinject 产出 UserPromptSubmit hook 模式输出：若当前 session 刚压缩过
 // → 返 "PASS\n<handoff>" 并清标记；否则返 ""（静默，不注入）。「刚压缩过」按
 // session 判定：per-session sentinel（taskpipeline.ConsumeResumeStale 读即清），或
@@ -812,21 +659,12 @@ func renderHookReinject(root string) (string, error) {
 	sid := taskpipeline.CurrentSessionID()
 	state, _ := taskpipeline.ActiveTaskState(root, sid)
 	if state == nil {
-		// No active task: still consume any orphaned mark of this session so it cannot
-		// mis-fire later under a different task.
-		//
 		// 无活跃任务：仍消费本 session 可能残留的标记，避免日后在别的 task 下误触发。
 		taskpipeline.ConsumeResumeStale(root, sid)
 		return "", nil
 	}
 	stale := false
 	if state.ResumeStale {
-		// Legacy task-scoped mark (no-session fallback or written by an older binary):
-		// honor it once and clear it. Cleared FIRST, before consuming the sentinel: if the
-		// clear fails (lock timeout/disk error) we return with the sentinel UNTOUCHED, so
-		// the next prompt retries the re-injection — the error path must err toward
-		// injecting twice, never toward losing the one recovery (code-review P1).
-		//
 		// Legacy 的 task-scoped 标记（无 session 回落或旧版 binary 所留）：兑现一次并清零。
 		// 先清零、后消费 sentinel：清零失败（锁超时/磁盘错误）时 sentinel 原样保留返回，
 		// 下个 prompt 重试重注入——错误路径宁可多注一次，绝不丢掉唯一的一次恢复
@@ -843,25 +681,6 @@ func renderHookReinject(root string) (string, error) {
 		stale = true
 	}
 	if !stale {
-		// P3 cold-start backfill: hosts that drop SessionStart hook output (kimi 0.35.0 —
-		// SessionStart is observation-only there, verified via wire.jsonl) never receive the
-		// cold-start task handoff that SessionStart's renderHookResume produces. The
-		// UserPromptSubmit channel is the one inject channel those hosts DO reach, so we
-		// backfill the active-task handoff here on the first prompt of such a session. Gated
-		// by sessionStartOutputDropped(agent) and deduped by a per-session sentinel — one
-		// session needs its cold-start handoff exactly once. Silent on Claude Code / codex /
-		// ... (they inject SessionStart output, so they already got the handoff; backfilling
-		// would duplicate it) and silent on kimi after the first prompt (sentinel set).
-		//
-		// Known gap (pre-existing, NOT introduced by P3): the offered-tasks ("待认领") block
-		// is NOT recovered here. appendOfferedBlock advances NotifiedAt during SessionStart
-		// regardless of whether its stdout reaches the model, so by the time this backfill
-		// runs the freshly-offered tasks read as already-notified (ShouldNotify=false) and
-		// the block is omitted. SessionStart already lost it on kimi; P3 recovers the active
-		// -task handoff (the primary value) but leaves the offered-block loss in place.
-		// Properly fixing it means gating NotifiedAt on actual delivery inside the shared
-		// appendOfferedBlock (used by SessionStart on ALL hosts) — a separate, larger change.
-		//
 		// 已知缺口（既有，非 P3 引入）：offered-tasks（"待认领"）块在此不恢复。
 		// appendOfferedBlock 在 SessionStart 期间无论 stdout 是否触达模型都推进 NotifiedAt，
 		// 故本回填跑时刚 offered 的任务读为已通知（ShouldNotify=false），块被省略。SessionStart
@@ -878,15 +697,6 @@ func renderHookReinject(root string) (string, error) {
 		// prompt 之后也静默（sentinel 已设）。
 		agent := resolveOriginTool(root, "")
 		if sid != "" && sessionStartOutputDropped(agent) && !taskpipeline.IsColdStartInjected(root, sid) {
-			// Render FIRST, mark the sentinel only on success: renderHookResume's only error
-			// source is attachCurrentSession→MutateTaskState under per-task lock timeout / disk
-			// error. Leaving the sentinel unset on a failed render lets the next prompt retry
-			// the backfill; marking first would persist the sentinel on a failed render and
-			// permanently suppress the handoff for the whole session (code-review MEDIUM-1).
-			// The mark itself is best-effort (error ignored): a mark failure only risks one
-			// duplicate handoff next prompt, never a lost one — mirroring the compact-reinject
-			// path's emit-then-best-effort-mark.
-			//
 			// 先渲染，仅成功才设 sentinel：renderHookResume 唯一错误源是
 			// attachCurrentSession→MutateTaskState 在 per-task 锁超时/磁盘错误下。渲染失败时不设
 			// sentinel 使下个 prompt 重试回填；先标记会在渲染失败时持久化 sentinel 并永久抑制本
@@ -902,18 +712,6 @@ func renderHookReinject(root string) (string, error) {
 		return "", nil
 	}
 	handoff := renderResume(state, attributedPorcelain(root, state), workspaceContextLine(root, state.CrossRepoImpact), taskpipeline.PriorAttemptsSummary(root, state.TaskRef, 3, 2000))
-	// Plan 4 (mid-way checkpoint explicit persist · active driving): right after a
-	// compaction, if the task has not persisted any "mid-way thread" (decision/next
-	// step), the handoff can only restore the goal/plan set at task start — and that
-	// mid-way working memory is exactly what compaction loses. So we append a strong
-	// nudge pushing the agent toward forge task decide/next to persist explicitly, so
-	// the next compaction's handoff no longer rebuilds from zero. This is the only
-	// high-signal moment in checkpoint-driven mode: a normal turn's resume-reinject is
-	// silent (ResumeStale=false), zero noise; only the one prompt where compaction
-	// happened triggers it. Goal/Plan do not count (already persisted at task start,
-	// not a compaction-loss item) — only Decisions/NextSteps, the two mid-way thread
-	// fields.
-	//
 	// 方案4（中途 checkpoint 显式落盘·主动驱动）：压缩刚发生时，若任务未落盘任何「中途线程」
 	// （决策/下一步），handoff 只能复原 task start 时设的 goal/plan——而压缩丢的正是这期间的
 	// 工作记忆。此时追加强提示把 agent 推向 forge task decide/next 显式落盘，使下次压缩的
@@ -928,11 +726,6 @@ func renderHookReinject(root string) (string, error) {
   forge task block --content "<卡住的事>"             # 若有阻塞
 `
 	}
-	// The compact-reinject just delivered a full handoff — that satisfies cold-start too.
-	// Mark the cold-start sentinel so the next prompt (stale now consumed) does not ALSO
-	// backfill via the cold-start path and double-inject. Best-effort: a mark failure only
-	// risks one duplicate handoff, not data loss.
-	//
 	// compact-reinject 刚交付了完整 handoff——这也满足冷启动。设 cold-start sentinel 使下个
 	// prompt（stale 已消费）不再经冷启动路径回填造成双注。best-effort：标记失败只冒一次重复
 	// handoff 的风险，无数据丢失。
@@ -940,16 +733,6 @@ func renderHookReinject(root string) (string, error) {
 	return "PASS\n" + handoff, nil
 }
 
-// sessionStartOutputDropped reports whether the given host agent drops SessionStart hook
-// stdout from the model context — making the SessionStart task-resume handoff never reach
-// the model. Such hosts need the handoff backfilled on the UserPromptSubmit channel (the
-// one inject channel they DO reach). Verified cases: kimi 0.35.0 (SessionStart
-// observation-only, confirmed by wire.jsonl cross-check: 0 forge texts reached the model
-// despite 42 edits + 39 Bash calls; only UserPromptSubmit stdout reaches it, laggy).
-// Claude Code / codex / cursor / windsurf / opencode / pi / reasonix inject SessionStart
-// output, so they do NOT need backfill and must stay excluded — backfilling there would
-// duplicate the handoff SessionStart already delivered.
-//
 // sessionStartOutputDropped 报告给定 host agent 是否把 SessionStart hook stdout 丢弃出模型
 // 上下文——使 SessionStart task-resume 的 handoff 到不了模型。这类 host 需在 UserPromptSubmit
 // 通道（它们唯一能触达的注入通道）回填 handoff。已核实案例：kimi 0.35.0（SessionStart 为
@@ -958,10 +741,6 @@ func renderHookReinject(root string) (string, error) {
 // reasonix 注入 SessionStart 输出，不需回填，须保持排除——回填会与 SessionStart 已交付的 handoff
 // 重复。
 func sessionStartOutputDropped(agent string) bool {
-	// Registry-derived (hostcap DroppedStdoutEvents): any host that drops
-	// SessionStart stdout needs the handoff backfilled onto UserPromptSubmit.
-	// Today only kimi qualifies.
-	//
 	// 由注册表派生（hostcap DroppedStdoutEvents）：任何丢弃 SessionStart
 	// stdout 的宿主都需要把 handoff 回填到 UserPromptSubmit。目前仅 kimi 符合。
 	h := hostcap.Lookup(agent)
@@ -969,9 +748,6 @@ func sessionStartOutputDropped(agent string) bool {
 }
 
 func runTaskContext(cmd *cobra.Command, args []string) error {
-	// context = read-only alias of resume: pulls back the view but does not anchor a
-	// session and does not change state.
-	//
 	// context = resume 的只读别名：拉回视图但不锚定 session、不改 state。
 	asJSON, _ := cmd.Flags().GetBool("json")
 	state, root, err := loadTaskOrActive(cmd)
@@ -1005,10 +781,6 @@ func runTaskDecide(cmd *cobra.Command, args []string) error {
 	var d taskpipeline.Decision
 	dup := false
 	err = taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
-		// Content-level idempotency: agents re-run the same decide on retry and the
-		// identical content used to append a duplicate entry each time (context
-		// replay then shows the same decision twice as if two were made).
-		//
 		// 内容级幂等：重试时 agent 会重跑同一 decide，相同内容此前每次都追加
 		// 重复条目（上下文回放把同一条决策显示成做了两次）。
 		for _, ex := range s.Decisions {
@@ -1046,9 +818,6 @@ func runTaskNext(cmd *cobra.Command, args []string) error {
 	total := 0
 	added := 0
 	err = taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
-		// Same content-level idempotency as decide: duplicate steps used to append
-		// verbatim copies on retry ("write docs" appearing twice in the plan).
-		//
 		// 与 decide 同款内容级幂等：重复步骤此前在重试时逐字追加（计划里出现
 		// 两条 "write docs"）。
 		for _, step := range args {
@@ -1220,16 +989,9 @@ func runTaskAttach(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// gitPorcelain returns the lines of git status --porcelain (changed-but-uncommitted
-// files). Returns nil for non-git repos or on failure — resume does not depend on git;
-// this is purely a "let the handoff party see the worktree state at a glance" extra.
-//
 // gitPorcelain 返回 git status --porcelain 的行（已改未提交文件）。非 git 仓库或失败返 nil——
 // resume 不依赖 git，仅作「接手方一眼看到工作区状态」的辅助。
 func gitPorcelain(root string) []string {
-	// quotepath=off keeps non-ASCII (CJK) paths raw UTF-8 instead of C-quoted octal
-	// escapes, so the handoff view shows real paths (same fix as attribution.ChangedFiles).
-	//
 	// quotepath=off 让非 ASCII（中文）路径保持原生 UTF-8 而非 C 转义八进制串，
 	// 接手方看到的是真实路径（与 attribution.ChangedFiles 同款修复）。
 	out, err := exec.Command("git", "-c", "core.quotepath=off", "-C", root, "status", "--porcelain").Output()
@@ -1243,14 +1005,6 @@ func gitPorcelain(root string) []string {
 	return strings.Split(trimmed, "\n")
 }
 
-// attributedPorcelain is gitPorcelain filtered to THIS task's scene (multi-task-concurrency
-// §6, T3): porcelain lines whose path the L3 ledger provably assigns to another incomplete
-// task's sessions are dropped, and so are orphans — both with honest count lines appended
-// (a takeover view reconstructs this task's scene, not the whole tree's noise). Degradation
-// is fail-open toward the legacy whole tree: attribution disabled, empty ledger (pre-upgrade
-// session / no-identity host), or git failure all return the unfiltered porcelain — hiding
-// the task's own WIP (an empty scene) is worse than showing a noisy one.
-//
 // attributedPorcelain 是按本任务现场过滤后的 gitPorcelain（multi-task-concurrency
 // §6，T3）：L3 台账可证明归属其他未完成任务会话的 porcelain 行被剔除，无主路径同样
 // 剔除——两者都以诚实的计数行补在末尾（接手视图还原的是本任务现场，不是整树噪音）。
@@ -1265,12 +1019,6 @@ func attributedPorcelain(root string, state *taskpipeline.TaskState) []string {
 		return lines
 	}
 	view := attribution.Reconcile(root)
-	// Fail-open trigger: the ledger attributes ZERO changed paths — pre-upgrade session,
-	// no-identity host, or bash-only edits the ledger never saw. Attribution then carries
-	// no information, and marking everything "orphan-excluded" would render an EMPTY
-	// scene (hiding the task's own WIP — strictly worse than a noisy legacy view). Only
-	// when at least one path is attributed does the own/foreign/orphan split mean anything.
-	//
 	// fail-open 触发：台账对变更集的归属数为零——升级前会话、无身份宿主、或台账没看
 	// 见的纯 bash 编辑。此时归属不携带任何信息，把全部标成「无主剔除」会渲染出空现场
 	//（藏掉任务自己的 WIP——严格劣于带噪音的旧视图）。至少有一个路径被归属时，
@@ -1317,14 +1065,6 @@ func attributedPorcelain(root string, state *taskpipeline.TaskState) []string {
 	return kept
 }
 
-// renderResume renders the task's continuity fields into a HANDOFF-style view.
-// gitChanged is passed in by the caller (decoupling git so this function can be pure-unit
-// tested). When the continuity content is empty, it emits a minimal status card without
-// erroring — resume always succeeds, only the amount of content varies.
-// extraHeader carries optional one-liners (today only the multi-repo workspace
-// context line, workspaceContextLine) injected after the DependsOn line; empty
-// entries are skipped so fail-open callers can pass the line unconditionally.
-//
 // renderResume 把 task 接续字段渲染成 HANDOFF 风格视图。gitChanged 由 caller 传入（解耦 git，
 // 使本函数可纯单测）。空接续内容时给最小状态卡，不报错——resume 永远成功，只是内容多寡。
 // extraHeader 携带可选单行（当前仅多仓 workspace 上下文行 workspaceContextLine），
@@ -1458,16 +1198,6 @@ func renderResume(state *taskpipeline.TaskState, gitChanged []string, extraHeade
 	return stripUnsafeControl(b.String())
 }
 
-// renderTldr produces a condensed tl;dr block (goal first line / doing now / open
-// blockers) inserted near the top of renderResume's output. Design intent: Claude Code /
-// each host's auto-compaction (summarize) tends to keep the beginning + structured short
-// text, while the full HANDOFF view is easily compressed away. A compact tl;dr near the
-// top is more likely to survive in the post-compaction summary, mitigating the context
-// rot that drifts handoff continuity in long tasks. This is the cross-host mitigation
-// layer for gap#2 (SessionStart injection, supported by equivalent mechanisms on all
-// hosts); the Claude Code-specific PostCompact re-inject chain is a separate layer (see
-// the compact-resume hook).
-//
 // renderTldr 产出精炼 tl;dr 块（目标首行 / 现在做 / open 阻塞），插在 renderResume 输出
 // 靠前位置。设计目的：Claude Code/各 host 自动压缩（summarize）倾向保留开头 + 结构化短文本，
 // 完整 HANDOFF 视图易被压掉，tl;dr 紧凑靠前 → 更可能在压缩后的 summary 中存活，缓解长任务
@@ -1514,10 +1244,6 @@ func renderTldr(state *taskpipeline.TaskState) string {
 	return strings.TrimRight(stripUnsafeControl(b.String()), "\n")
 }
 
-// renderGateProgress renders gate progress (e.g. ✅implement ✅verify ⏳complete). The
-// cli package cannot access taskpipeline's private gatePassed, so it judges from History
-// itself — same semantics as taskpipeline.gatePassed.
-//
 // renderGateProgress 渲染门禁进度（如 ✅实现 ✅验证 ⏳完成）。cli 包无法访问 taskpipeline
 // 的私有 gatePassed，故用 History 自行判定——与 taskpipeline.gatePassed 同义。
 func renderGateProgress(state *taskpipeline.TaskState) string {
@@ -1556,14 +1282,6 @@ func indentBlock(s string) string {
 	return strings.Join(lines, "\n")
 }
 
-// stripUnsafeControl strips ANSI escape sequences and other C0 control characters
-// (keeping \n \t \r), preventing malicious ANSI in external markdown read by --plan-file
-// (clear-screen ESC[2J, color-change ESC[31m, etc.) from being interpreted by the
-// terminal. The HTML side already escapes via html/template; the CLI side adds this
-// symmetric layer. After ESC is stripped, the ANSI sequence's leftover [31m-class text
-// is no longer interpreted by the terminal — the goal is achieved (the residual text is
-// harmless). DEL (0x7f) and other C0 control characters are also dropped.
-//
 // stripUnsafeControl 剥离 ANSI 转义序列和其他 C0 控制字符（保留 \n \t \r），防止 --plan-file
 // 读入的外部 markdown 含恶意 ANSI（清屏 ESC[2J / 改色 ESC[31m 等）被终端解释执行。
 // HTML 端 html/template 已自动转义，CLI 端对称补这层。剥离 ESC 后 ANSI 序列余下 [31m 类

@@ -136,10 +136,7 @@ func TestStripCodexHooksUserLevel(t *testing.T) {
 	}
 }
 
-// TestCodexTranslator_MergePreservesUnknownFields pins the raw-merge fix: user
-// hook entries carrying fields the typed struct does not declare (timeout,
-// commandWindows) must survive Translate with values intact — a typed round-trip
-// silently dropped them.
+// TestCodexTranslator_MergePreservesUnknownFields pins the raw-merge fix.
 //
 // TestCodexTranslator_MergePreservesUnknownFields 钉死 raw-merge 修复：携带类型化
 // struct 未声明字段（timeout、commandWindows）的用户 hook 条目必须在 Translate
@@ -200,10 +197,7 @@ func TestCodexTranslator_MergePreservesUnknownFields(t *testing.T) {
 
 // ---- config.toml [features] hooks = true (codex hooks feature gate) ----
 
-// TestCodexTranslator_EnsuresHooksFeature_Fresh pins the blocker fix: codex
-// lifecycle hooks are gated behind `[features] hooks = true` (default off), so
-// Translate must create config.toml with the flag inside forge markers —
-// otherwise the freshly-written hooks.json is silently inert.
+// TestCodexTranslator_EnsuresHooksFeature_Fresh pins the blocker fix.
 //
 // TestCodexTranslator_EnsuresHooksFeature_Fresh 钉死 blocker 修复：codex
 // lifecycle hooks 由 `[features] hooks = true` 门控（默认关），Translate 必须
@@ -229,8 +223,7 @@ func TestCodexTranslator_EnsuresHooksFeature_Fresh(t *testing.T) {
 	}
 }
 
-// TestCodexTranslator_EnsuresHooksFeature_Idempotent: a second Translate leaves
-// config.toml byte-identical.
+// TestCodexTranslator_EnsuresHooksFeature_Idempotent: a second Translate leaves config.toml byte-identical.
 //
 // TestCodexTranslator_EnsuresHooksFeature_Idempotent：第二次 Translate 后
 // config.toml 逐字节一致。
@@ -240,10 +233,7 @@ func TestCodexTranslator_EnsuresHooksFeature_Idempotent(t *testing.T) {
 	assertTranslateIdempotent(t, &CodexTranslator{}, filepath.Join(codexHome, "config.toml"))
 }
 
-// TestCodexTranslator_EnsuresHooksFeature_PreservesUserConfig: user content
-// outside the markers survives; an existing [features] table without a hooks key
-// gets `hooks = true` inserted under it (a second [features] table would be
-// invalid TOML).
+// TestCodexTranslator_EnsuresHooksFeature_PreservesUserConfig pins that user content survives the hooks-feature fix.
 //
 // TestCodexTranslator_EnsuresHooksFeature_PreservesUserConfig：标记外的用户内容
 // 保留；已有 [features] 表但无 hooks 键时，在其表头下插入 `hooks = true`
@@ -305,9 +295,7 @@ func TestCodexTranslator_EnsuresHooksFeature_PreservesUserConfig(t *testing.T) {
 	}
 }
 
-// TestCodexTranslator_EnsuresHooksFeature_RespectsExplicitFalse: when the user
-// explicitly disabled hooks (`hooks = false`), Translate must not flip it —
-// the file stays untouched.
+// TestCodexTranslator_EnsuresHooksFeature_RespectsExplicitFalse: when the user explicitly disabled hooks (`hooks = false`), Translate must not flip it — the file stays untouched.
 //
 // TestCodexTranslator_EnsuresHooksFeature_RespectsExplicitFalse：用户显式
 // `hooks = false` 时 Translate 不得改写——文件保持不动。
@@ -332,8 +320,7 @@ func TestCodexTranslator_EnsuresHooksFeature_RespectsExplicitFalse(t *testing.T)
 	}
 }
 
-// TestCodexTranslator_EnsuresHooksFeature_AlreadyTrue: a user-managed
-// `hooks = true` needs no marked section — the file stays untouched.
+// TestCodexTranslator_EnsuresHooksFeature_AlreadyTrue: a user-managed `hooks = true` needs no marked section — the file stays untouched.
 //
 // TestCodexTranslator_EnsuresHooksFeature_AlreadyTrue：用户自己管理的
 // `hooks = true` 无需标记段——文件保持不动。

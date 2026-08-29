@@ -7,13 +7,9 @@ import (
 	"testing"
 )
 
-// testDesc contains Use when (two triggers, separated by or) + SKIP (one skip), all >3 rune.
-//
 // testDesc 含 Use when（两个 trigger，or 分隔）+ SKIP（一个 skip），均 >3 rune。
 const testDesc = "Use when: 编写 React 组件 or 实现前端布局 SKIP: 选择技术栈"
 
-// writeSkill creates a skill directory containing SKILL.md under canonical.
-//
 // writeSkill 在 canonical 下造一个带 SKILL.md 的 skill 目录。
 func writeSkill(t *testing.T, canonical, name, desc string) {
 	t.Helper()
@@ -121,8 +117,6 @@ func TestLoadCases_MissingFile(t *testing.T) {
 	}
 }
 
-// writeGoldenSet writes a curated golden case set at <dir>/golden/<skill>/cases.json.
-//
 // writeGoldenSet 在 <dir>/golden/<skill>/cases.json 写一份策展黄金集。
 func writeGoldenSet(t *testing.T, dir, skill string, cases []EvalCase) {
 	t.Helper()
@@ -136,8 +130,9 @@ func writeGoldenSet(t *testing.T, dir, skill string, cases []EvalCase) {
 	mustWrite(t, os.WriteFile(filepath.Join(gd, "cases.json"), data, 0644))
 }
 
-// TestLoadCases_GoldenPriorityMerge pins the merge contract: golden cases come first,
-// derived cases supplement uncovered IDs, and on ID conflict the golden case wins.
+// TestLoadCases_GoldenPriorityMerge pins the merge contract: golden cases come
+// first, derived cases supplement uncovered IDs, and on ID conflict the golden
+// case wins.
 //
 // TestLoadCases_GoldenPriorityMerge 钉住合并契约：golden 在前、派生补充未覆盖 ID、
 // 同 ID golden 胜出。
@@ -184,9 +179,8 @@ func TestLoadCases_GoldenPriorityMerge(t *testing.T) {
 	}
 }
 
-// TestLoadCases_GoldenOnly pins that a golden-only skill loads with an empty DescHash —
-// curated cases anchor on real utterances, not the description, so they never go stale
-// on description edits.
+// TestLoadCases_GoldenOnly pins that a golden-only skill loads with an empty
+// DescHash.
 //
 // TestLoadCases_GoldenOnly 钉住纯 golden 集可加载且 DescHash 为空——策展 case 锚定
 // 真实话语而非 description，不会因 description 变更过期。
@@ -207,10 +201,9 @@ func TestLoadCases_GoldenOnly(t *testing.T) {
 	}
 }
 
-// TestExportedStoragePaths pins the exported RunsFile / BaselinesFile wrappers: they must
-// resolve to the same layout the internal writers use (runs/<skill>.jsonl, baselines.json)
-// — external consumers (dashboard cache) fingerprint these paths for mtime invalidation,
-// so a layout drift here would silently break their cache correctness.
+// TestExportedStoragePaths pins the exported RunsFile / BaselinesFile wrappers:
+// they must resolve to the same layout the internal writers use
+// (runs/<skill>.jsonl, baselines.json).
 //
 // TestExportedStoragePaths 钉住导出的 RunsFile / BaselinesFile 包装：它们必须解析到
 // 内部写入方使用的同一布局（runs/<skill>.jsonl、baselines.json）——外部消费者

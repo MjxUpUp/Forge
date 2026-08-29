@@ -1,16 +1,5 @@
 package cli
 
-// Cross-repo dependency-cycle detection for `forge workspace doctor`
-// (multi-repo workspace Option B): AddDependency refuses same-repo cycles at
-// write time but deliberately never DFS-walks other repos' graphs (a real-time
-// cross-repo check would need a global graph lock across DataDirs), so a cycle
-// spanning member repos — A's task DependsOn b:B, and b:B's chain leads back
-// to a:A — can only be caught here, periodically and advisory, by scanning
-// every member's tasks (by KEY: forgedata.RootDir(key)/tasks) and DFS-ing the
-// assembled graph. Every task on a ring deadlocks at verify/complete (each
-// waits on an upstream that can never deliver), so the finding names the full
-// key:ref sequence for manual edge removal.
-//
 // 跨仓依赖环检测，服务于 `forge workspace doctor`（多仓 workspace Option B）：
 // AddDependency 在写入时拒绝本仓环，但刻意不 DFS 遍历他仓图（实时跨仓检查
 // 需要跨 DataDir 的全局图锁），故跨成员仓的环——A 的 task DependsOn b:B，
@@ -31,10 +20,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/workspace"
 )
 
-// depNodeID is the graph node identity: key + NUL + taskRef (NUL can appear in
-// neither, so cross-repo "k:a:b" and a hypothetical colon-carrying ref never
-// merge two distinct nodes). The display label is the familiar key:ref.
-//
 // depNodeID 是图节点身份：key + NUL + taskRef（两者都不可能含 NUL，故跨仓
 // "k:a:b" 与假想的含冒号 ref 绝不会把两个不同节点并成一个）。展示用回
 // key:ref 形式。
@@ -45,17 +30,6 @@ func depNodeLabel(id string) string {
 	return key + `:` + ref
 }
 
-// detectWorkspaceDepCycles builds the dependency graph over all member repos'
-// tasks and returns every elementary cycle reachable by DFS, each as an
-// ordered node-ID sequence (use depNodeLabel for display). Pure and
-// deterministic: DFS roots and adjacency are sorted, and a cycle found from
-// multiple starting points is reported once (canonical rotation dedup).
-//
-// Edges: a bare DependsOn entry points at (owner key, ref); a key:ref entry at
-// (key, taskRef) — including keys that are NOT workspace members, which become
-// dead-end nodes (their tasks are never scanned, so no cycle can pass through
-// them, but the edge target still resolves).
-//
 // detectWorkspaceDepCycles 在全部成员仓的 task 上建依赖图，返回 DFS 可达的每个
 // 基本环，每个环是有序节点 ID 序列（展示用 depNodeLabel）。纯函数且确定性：
 // DFS 起点与邻接表都排序；同一环从多个起点发现只报一次（规范旋转去重）。
@@ -129,9 +103,6 @@ func detectWorkspaceDepCycles(tasksByKey map[string][]*taskpipeline.TaskState) [
 	return cycles
 }
 
-// canonicalDepCycle rotates a cycle so its smallest node ID leads, giving one
-// canonical form for dedup regardless of the DFS entry point.
-//
 // canonicalDepCycle 把环旋转到最小节点 ID 开头，得到与 DFS 入口无关的规范形式
 // 供去重。
 func canonicalDepCycle(cyc []string) string {
@@ -145,11 +116,6 @@ func canonicalDepCycle(cyc []string) string {
 	return strings.Join(rot, "\x00")
 }
 
-// depCycleFindings formats detected cycles as Doctor findings (pure: the
-// manifest supplies workspace attribution, tasksByKey the graph). A cycle is
-// attributed to every workspace (manifest order) holding at least one of its
-// member keys — a cross-workspace ring names them all.
-//
 // depCycleFindings 把检出的环格式化为 Doctor finding（纯函数：清单提供
 // workspace 归属，tasksByKey 提供图）。环归属到所有（按清单顺序）含有环上
 // 任一成员 key 的 workspace——跨 workspace 的环会点名全部。
@@ -186,12 +152,6 @@ func depCycleFindings(f *workspace.File, tasksByKey map[string][]*taskpipeline.T
 	return out
 }
 
-// collectWorkspaceTasks scans every member repo's tasks by KEY for the cycle
-// detection (deduped — a key in two workspaces is read once). Best-effort per
-// member: an unreadable member warns on stderr and contributes an empty task
-// set (its edges out are invisible, so a ring through it goes unreported this
-// run) — never fails the whole doctor.
-//
 // collectWorkspaceTasks 按 KEY 扫描每个成员仓的 task 供环检测（去重——同属两个
 // workspace 的 key 只读一次）。成员级 best-effort：不可读的成员 stderr 警告并
 // 贡献空 task 集（它向外的边本次不可见，经它的环本轮漏报）——绝不让整个

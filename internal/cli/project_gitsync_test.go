@@ -16,19 +16,11 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
-// project_gitsync_test.go — end-to-end two-"machine" sync over a git transport: two
-// project checkouts sharing one .forge-project-id (= one project key, the dual-machine
-// identity) and two isolated FORGE_DATA_HOMEs (= two machines' state), exchanging
-// bundles through a bare git remote under nodes/<node_id>/<key>/.
-//
 // project_gitsync_test.go —— 经 git 传输的端到端双「机」同步：两个共享同一
 // .forge-project-id 的项目检出（= 同一项目 key，双机身份）+ 两个隔离的
 // FORGE_DATA_HOME（= 两台机器的状态），经 bare git remote 在
 // nodes/<node_id>/<key>/ 布局下交换 bundle。
 
-// gitSyncMachine builds one simulated machine: git checkout with the shared project
-// ID and an isolated forge home.
-//
 // gitSyncMachine 构造一台模拟机器：带共享项目 ID 的 git 检出 + 隔离的 forge home。
 func gitSyncMachine(t *testing.T, fpid string) (projRoot, home string) {
 	t.Helper()
@@ -39,9 +31,6 @@ func gitSyncMachine(t *testing.T, fpid string) (projRoot, home string) {
 	if err := os.WriteFile(filepath.Join(projRoot, `.forge-project-id`), []byte(fpid+"\n"), 0644); err != nil {
 		t.Fatalf("write fpid: %v", err)
 	}
-	// legacy .forge marker so findProjectRoot discovers the project (same shape as
-	// the existing project-sync tests).
-	//
 	// legacy .forge 标记让 findProjectRoot 能发现项目（与既有 project-sync 测试同形）。
 	if err := os.MkdirAll(filepath.Join(projRoot, `.forge`), 0755); err != nil {
 		t.Fatalf("mkdir .forge: %v", err)
@@ -49,9 +38,6 @@ func gitSyncMachine(t *testing.T, fpid string) (projRoot, home string) {
 	return projRoot, home
 }
 
-// writeTaskInto plants one task record (SaveTaskState takes the PROJECT ROOT and
-// resolves the DataDir itself).
-//
 // writeTaskInto 落一条任务记录（SaveTaskState 收项目根，DataDir 由它自己解析）。
 func writeTaskInto(t *testing.T, projRoot, home, ref, summary string) {
 	t.Helper()
@@ -63,8 +49,6 @@ func writeTaskInto(t *testing.T, projRoot, home, ref, summary string) {
 	}
 }
 
-// readTaskSummary loads a task's summary (LoadTaskState takes the PROJECT ROOT).
-//
 // readTaskSummary 读任务 summary（LoadTaskState 收项目根）。
 func readTaskSummary(t *testing.T, projRoot, home, ref string) string {
 	t.Helper()
@@ -76,9 +60,6 @@ func readTaskSummary(t *testing.T, projRoot, home, ref string) string {
 	return s.Summary
 }
 
-// runProjectSync runs `forge project sync <args...>` as the given machine
-// (cwd = projRoot, FORGE_DATA_HOME = home).
-//
 // runProjectSync 以指定机器身份运行 `forge project sync <args...>`。
 func runProjectSyncForTest(t *testing.T, projRoot, home string, args ...string) {
 	t.Helper()
@@ -89,9 +70,6 @@ func runProjectSyncForTest(t *testing.T, projRoot, home string, args ...string) 
 	}
 }
 
-// newBareRemote creates a fresh bare git repo — the transport the gitsync
-// channel bundles through (nodes/<node_id>/<key>/bundle.tar.gz).
-//
 // newBareRemote 建一个全新 bare git 仓——gitsync 通道打包 bundle 所用的传输
 // 底座（nodes/<node_id>/<key>/bundle.tar.gz）。
 func newBareRemote(t *testing.T) string {
@@ -102,8 +80,8 @@ func newBareRemote(t *testing.T) string {
 }
 
 // TestProjectSync_TwoMachineGitRoundtrip is THE Phase-1 transport property: work
-// recorded on machine A becomes visible on machine B (and vice versa) purely through
-// the git channel, and re-pull is free (ledger idempotency).
+// recorded on machine A becomes visible on machine B (and vice versa) purely
+// through the git channel, and re-pull is free (ledger idempotency).
 //
 // TestProjectSync_TwoMachineGitRoundtrip 是 Phase 1 传输性质本体：机器 A 上记录
 // 的工作经 git 通道在机器 B 上可见（反之亦然），且重复 pull 免费（账本幂等）。
@@ -136,10 +114,6 @@ func TestProjectSync_TwoMachineGitRoundtrip(t *testing.T) {
 	// Re-pull is a ledger-skip (idempotent, free).
 	runProjectSyncForTest(t, projA, homeA, `pull`)
 
-	// The remote layout is nodes/<node_id>/<project-key>/bundle.tar.gz with two
-	// distinct node prefixes. (The sync branch is not the remote's default HEAD, so
-	// inspect the TREE directly instead of cloning.)
-	//
 	// 远端布局是 nodes/<node_id>/<project-key>/bundle.tar.gz，两个不同节点前缀。
 	// （同步分支不是 remote 默认 HEAD，故直接查树而非 clone。）
 	nodes := remoteNodes(t, remote)
@@ -148,8 +122,6 @@ func TestProjectSync_TwoMachineGitRoundtrip(t *testing.T) {
 	}
 	for _, node := range nodes {
 		matches := remoteFiles(t, remote, `nodes/`+node+`/`)
-		// bundle.tar.gz + its signature sidecar (trust profile, node-identity §3).
-		//
 		// bundle.tar.gz + 其签名 sidecar（信任层，node-identity §3）。
 		seen := map[string]bool{}
 		for _, m := range matches {
@@ -161,8 +133,6 @@ func TestProjectSync_TwoMachineGitRoundtrip(t *testing.T) {
 	}
 }
 
-// remoteNodes lists the distinct node prefixes on the sync branch.
-//
 // remoteNodes 列出同步分支上的不同节点前缀。
 func remoteNodes(t *testing.T, remote string) []string {
 	t.Helper()
@@ -179,8 +149,6 @@ func remoteNodes(t *testing.T, remote string) []string {
 	return nodes
 }
 
-// remoteFiles lists files under prefix on the sync branch of a bare remote.
-//
 // remoteFiles 列出 bare remote 同步分支上 prefix 下的文件。
 func remoteFiles(t *testing.T, remote, prefix string) []string {
 	t.Helper()
@@ -197,7 +165,8 @@ func remoteFiles(t *testing.T, remote, prefix string) []string {
 }
 
 // TestProjectSync_InitUnreachableRemoteFails pins the fail-fast contract: an
-// unreachable remote must error at init (not at first push) AND leave no binding.
+// unreachable remote must error at init (not at first push) AND leave no
+// binding.
 //
 // TestProjectSync_InitUnreachableRemoteFails 钉死 fail-fast 契约：不可达 remote
 // 必须在 init 报错（而非首次 push）且不留下绑定。
@@ -215,8 +184,9 @@ func TestProjectSync_InitUnreachableRemoteFails(t *testing.T) {
 	}
 }
 
-// TestProjectSync_PullSkipsBadNodes: one corrupt bundle from a well-formed peer dir
-// and one illegally-named dir must both be skipped with the pull itself succeeding.
+// TestProjectSync_PullSkipsBadNodes: one corrupt bundle from a well-formed peer
+// dir and one illegally-named dir must both be skipped with the pull itself
+// succeeding.
 //
 // TestProjectSync_PullSkipsBadNodes：形态合法对端目录里的损坏 bundle 与非法目录名
 // 都必须被跳过且 pull 本身成功。
@@ -261,9 +231,6 @@ func TestProjectSync_PullSkipsBadNodes(t *testing.T) {
 	runGit(t, co, `-c`, `user.name=t`, `-c`, `user.email=t@t`, `commit`, `-m`, `plant bad nodes`)
 	runGit(t, co, `push`, `origin`, `HEAD:`+syncBranch)
 
-	// Pull reports the bad node as a pull-level error (policy-visible) while still
-	// importing the good peer's bundle (fault isolation).
-	//
 	// pull 把坏节点作为 pull 级错误报告（策略可见），同时仍导入好对端的 bundle
 	// （容错隔离）。
 	runProjectSyncForTest(t, projB, homeB, `init`, remote)
@@ -278,26 +245,17 @@ func TestProjectSync_PullSkipsBadNodes(t *testing.T) {
 	}
 }
 
-// TestProjectSync_PushRetryAfterRemoteMoves pins THE convergence property the push
-// retry exists for: when the remote advances between this machine's fetch and its
-// push (the two-machine race), the losing push must converge — a peer pulling
-// afterwards sees the loser's NEW work, not the stale bundle already on the remote.
-// The race is injected deterministically: a pre-push hook in A's cache repo pushes
-// a third-party commit during A's FIRST push, making it non-fast-forward so the
-// retry path runs.
-//
-// Regression shape (fixed in fix/dsh-review-followup): the retry probed
-// os.Stat(bundle) to decide whether to re-pack — but the retry's own
-// `checkout -B origin/forge-sync` had already reverted the worktree copy to the
-// OLD bundle from the remote tree, so Stat succeeded, no re-pack happened, the
-// re-commit saw a clean tree, and the second push was an empty success: the new
-// bundle was silently dropped while "✅ 已推送" printed.
+// TestProjectSync_PushRetryAfterRemoteMoves pins the convergence property the
+// push retry exists for: the losing push must converge to the loser's new work.
 //
 // TestProjectSync_PushRetryAfterRemoteMoves 钉死 push 重试存在的收敛性质：remote
 // 在本机 fetch 与 push 之间前进（双机竞态）时，失败的 push 必须收敛——之后 pull
 // 的对端要看到败者的新工作，而不是远端上已有的旧 bundle。竞态用确定性注入：A
 // 缓存仓里的 pre-push hook 在 A 首次 push 期间推入第三方提交，使该 push 非快进、
 // 走进重试路径。
+// 回归形态（fix/dsh-review-followup 修复）：重试曾以 os.Stat(bundle) 探测是否需重打包——但重试自身的
+// `checkout -B origin/forge-sync` 已把工作区副本回退成远端树里的旧 bundle，Stat 成功、未重打包、重提交
+// 看到干净树，第二次 push 空成功：新 bundle 被静默丢弃，却照打「✅ 已推送」。
 func TestProjectSync_PushRetryAfterRemoteMoves(t *testing.T) {
 	if runtime.GOOS == `windows` {
 		t.Skip(`shell pre-push hook not portable to windows`)
@@ -356,9 +314,7 @@ func TestProjectSync_PushRetryAfterRemoteMoves(t *testing.T) {
 }
 
 // TestProjectSync_PullWarnsOnKeyMismatch: a path-identity machine pulling an
-// ID-identity peer's prefix must be TOLD the two keys do not line up — without the
-// hint the misalignment is unobservable (pull succeeds with 0 bundles, exit 0) and
-// the recovery (forge project adopt) is never suggested.
+// ID-identity peer's prefix must be TOLD the two keys do not line up.
 //
 // TestProjectSync_PullWarnsOnKeyMismatch：路径身份机器 pull 到 ID 身份对端的前缀
 // 时必须被告知两机 key 不对齐——没有这条提示错位完全不可观测（pull 以 0 bundle
@@ -396,9 +352,9 @@ func TestProjectSync_PullWarnsOnKeyMismatch(t *testing.T) {
 	}
 }
 
-// TestProjectSync_StatusQuotesIllegalNodeDirs: `nodes seen` must not echo crafted
-// directory names raw (ANSI escapes / newlines straight to the terminal) — the same
-// attacker-influenceable input the pull path shape-checks.
+// TestProjectSync_StatusQuotesIllegalNodeDirs: `nodes seen` must not echo
+// crafted directory names raw (ANSI escapes / newlines straight to the
+// terminal).
 //
 // TestProjectSync_StatusQuotesIllegalNodeDirs：`nodes seen` 不得原文回显精心构造的
 // 目录名（ANSI 转义/换行直达终端）——与 pull 路径形态检查的同一攻击者可影响输入。
@@ -409,10 +365,6 @@ func TestProjectSync_StatusQuotesIllegalNodeDirs(t *testing.T) {
 	runProjectSyncForTest(t, projA, homeA, `init`, remote)
 	runProjectSyncForTest(t, projA, homeA, `push`)
 
-	// Control characters are illegal in windows filenames — pick an illegal-per-
-	// ValidNodeID name each filesystem accepts, and assert the raw-escape property
-	// only where the escape variant exists.
-	//
 	// 控制字符在 windows 文件名里非法——选各文件系统都接受、但 ValidNodeID 拒收
 	// 的名字；裸转义断言只在存在转义变体的平台上做。
 	evil := `bad` + "\x1b" + `[31mnode`
@@ -441,9 +393,9 @@ func TestProjectSync_StatusQuotesIllegalNodeDirs(t *testing.T) {
 	}
 }
 
-// TestProjectSync_StatusReportsNodes covers the observability surface: after a push,
-// the persisted sync status records the remote, this machine's node prefix and the
-// last push time.
+// TestProjectSync_StatusReportsNodes covers the observability surface: after a
+// push, the persisted sync status records the remote, this machine's node prefix
+// and the last push time.
 //
 // TestProjectSync_StatusReportsNodes 覆盖可观测面：push 后持久化的 sync 状态记录
 // remote、本机节点前缀与最近推送时间。
@@ -469,10 +421,8 @@ func TestProjectSync_StatusReportsNodes(t *testing.T) {
 	}
 }
 
-// TestProjectSync_OutcomeRecorded: every sync init/push/pull outcome (success AND
-// failure) lands in checklog as a project-sync entry with the op in Meta — the
-// failure-visible record the panel needs (sync-remote.json stamps successes only, so
-// a failed push used to leave the old timestamp standing and tell no one).
+// TestProjectSync_OutcomeRecorded: every sync init/push/pull outcome (success
+// AND failure) lands in checklog as a project-sync entry with the op in Meta.
 //
 // TestProjectSync_OutcomeRecorded：每次 sync init/push/pull 的成败都落 checklog 的
 // project-sync 条目、操作名在 Meta——面板需要的「失败可见」记录（sync-remote.json

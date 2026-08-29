@@ -10,16 +10,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// forge review turns code-review-gate from "rely on manual shouting" to "gate/hook automatic gear".
-//
-// Dual-path trigger (user 2026-06-27 point 4 design):
-//   - task flow: `forge review pass` writes TaskState.ReviewPassed, enforced by task-complete
-//     gate (see executor.go hard prerequisite). Stop hook does not block in task mode (to avoid blocking on every code change).
-//   - non-task flow: Stop hook calls `forge review gate` to decide; unreviewed source changes block.
-//
-// gate is the decision engine (pure logic + exit code); review-stop hook script only adapts Claude Code
-// Stop protocol (see hooks/embed.go ReviewStopHook).
-//
 // forge review 让 code-review-gate 从"靠人手动喊"变成"门禁/hook 自动挡"。
 //
 // 双路径触发（用户 2026-06-27 point 4 设计）：
@@ -78,11 +68,6 @@ var reviewStatusCmd = &cobra.Command{
 	RunE:  runReviewStatus,
 }
 
-// gateGuidance is the Stop additionalContext output to the agent when gate decides NEEDS_REVIEW—
-// guiding it to load the skill, dispatch an independent sub-agent for review, then mark after pass. This is the core closed-loop instruction of the "automatic gear".
-// Concatenated with double-quoted strings rather than raw string: the inner backticks (`forge review pass`) inside a raw string
-// would prematurely terminate the string (the pitfall recorded in forge-security-hook-fail-open); in a double-quoted string they are ordinary characters.
-//
 // gateGuidance 是 gate 判定 NEEDS_REVIEW 时输出给 agent 的 Stop additionalContext——
 // 指引它加载 skill、派独立子 agent 审查、通过后标记。这是"自动挡"的核心闭环指令。
 // 用双引号拼接而非 raw string：内部的反引号（`forge review pass`）在 raw string 里
@@ -105,8 +90,6 @@ func runReviewPass(cmd *cobra.Command, args []string) error {
 	return runReviewPassAt(root, explicitRef, note, acknowledgeChanges)
 }
 
-// shortHash truncates a commit hash for one-line detail output (empty stays empty).
-//
 // shortHash 截断 commit hash 用于单行 detail 输出（空保持空）。
 func shortHash(h string) string {
 	if len(h) > 8 {
@@ -115,17 +98,6 @@ func shortHash(h string) string {
 	return h
 }
 
-// runReviewPassAt is the root/ref-injected core of `forge review pass` (mirroring
-// runTaskComplete's --ref pattern): an explicit ref loads that task directly and a
-// missing ref errors out — it must NOT fall through to the branch-stamp branch, which
-// would silently mark the wrong thing. No ref keeps the legacy active-task detection.
-// note (from --note) is the optional reviewer conclusion text, persisted onto the
-// appended ReviewRound (task mode) / stamp (non-task mode) and the checklog review-pass
-// entry — the audit trail carries the conclusion, not just the stamp.
-// acknowledgeChanges (from --acknowledge-changes) explicitly confirms a re-stamp over
-// changed source content (see the self-refresh guard below); a content delta re-stamp
-// with neither note nor acknowledgment is refused.
-//
 // runReviewPassAt 是 `forge review pass` 的 root/ref 注入核心（对齐 runTaskComplete
 // 的 --ref 模式）：显式 ref 直接加载该任务，ref 不存在直接报错——绝不回落分支
 // stamp 分支（那会静默标错对象）。不给 ref 保持旧的活跃任务检测。note（--note）
@@ -134,8 +106,6 @@ func shortHash(h string) string {
 // acknowledgeChanges（--acknowledge-changes）显式确认对变更源码的重盖章（见下方
 // 自助刷新守卫）；有内容增量而 note 与确认皆无的重盖章被拒绝。
 func runReviewPassAt(root, explicitRef, note string, acknowledgeChanges bool) error {
-	// task mode: write task state fields, consumed by the task-complete gate
-	//
 	// task 模式：写任务状态字段，由 task-complete 门禁消费
 	var state *taskpipeline.TaskState
 	if explicitRef != "" {
@@ -148,31 +118,12 @@ func runReviewPassAt(root, explicitRef, note string, acknowledgeChanges bool) er
 		state, _ = taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
 	}
 	if state != nil {
-		// Bind the code snapshot at review time (HEAD, fingerprint of source changes in the workdir relative to HEAD)—the task-complete gate uses this
-		// to enforce "re-review after post-review code changes". If head is unavailable → pass empty to skip the snapshot check (leaving only the ReviewPassed hard prerequisite);
-		// pass is an agent-driven action so it fail-opens. If hash computation errors, also use empty (does not block pass).
-		//
 		// 绑定审查时的代码快照 (HEAD, 工作区相对 HEAD 的源码变化指纹)——task-complete 门禁据此
 		// 强制"审查后改码必复审"。head 取不到 → 传空跳过快照检查（仅留 ReviewPassed 硬前置），
 		// pass 是 agent 主导动作故 fail-open。hash 出错同样取空（不阻塞 pass）。
 		head := taskpipeline.GetHeadCommit(root)
 		hash, _, _ := taskpipeline.TaskFingerprint(root, state, head)
 
-		// Self-refresh guard (2026-08-25 gate-loopholes): re-stamping when the SOURCE
-		// CONTENT has changed since the last stamped baseline used to silently refresh
-		// the baseline — the agent could answer task-complete's "审查通过后检测到源码
-		// 变更" HARD block by simply re-running `forge review pass` itself, no
-		// re-review (防君子不防小人). Now a content delta since the last stamp
-		// (recomputed exactly like the task-complete gate: SourceChangesSince(
-		// ReviewedHeadCommit) vs ReviewedChangeHash) requires an explicit
-		// acknowledgment: --note "<复审结论>" (the honest re-review flow records its
-		// conclusion) or --acknowledge-changes (self-certification, recorded as a WARN
-		// self-refresh audit). A bare re-stamp over changed content is REFUSED.
-		// Non-source changes (commit-message amend, content-preserving rebase) keep
-		// the fingerprint and need no acknowledgment; the same-state repeat stamp
-		// (transient retry) stays silent. Base unreachable (history rewritten) →
-		// fail-open, aligned with the executor's snapshot check.
-		//
 		// 自助刷新基线守卫（2026-08-25 gate-loopholes）：过去距上次盖章基线源码内容
 		// 已变时重新盖章会静默刷新基线——agent 被 task-complete「审查通过后检测到
 		// 源码变更」HARD 拦下后，自己再跑一遍 `forge review pass` 即可放行，全程无
@@ -185,12 +136,6 @@ func runReviewPassAt(root, explicitRef, note string, acknowledgeChanges bool) er
 		// （历史改写）→ fail-open，与 executor 的快照检查一致——但 fail-open
 		// 的裸重盖章记 WARN 级 baseline-unreachable 审计（review minor #2：
 		// fail-open 不能零留痕，对齐 executor fail-open 落 checklog 的做法）。
-		//
-		// Lost-update hardening (review round 2026-08-29): the load→guard→mark→save
-		// sequence runs under the per-task lock now (MutateTaskState reloads the state
-		// in-lock) — a bare SaveTaskState over the pre-lock snapshot used to roll back
-		// concurrent session-links/DesignPhases writes, or lose the stamp itself to a
-		// concurrent writer. This is the ReviewPassed hard prerequisite's write path.
 		//
 		// 丢失更新加固（2026-08-29 审查轮）：load→守卫→盖章→保存 整段改在 per-task
 		// 锁内执行（MutateTaskState 锁内重载 state）——此前对锁前快照裸 SaveTaskState
@@ -209,13 +154,6 @@ func runReviewPassAt(root, explicitRef, note string, acknowledgeChanges bool) er
 					if !acknowledgeChanges && note == "" {
 						return fmt.Errorf("review pass 拒绝：距上次审查基线（HEAD=%s）源码已变更——按协议先重派【只读】子 agent 复审当前代码，再 `forge review pass --note \"<复审结论>\"` 盖章；确认变更无需复审（自我承担，记 self-refresh WARN 审计）用 `forge review pass --acknowledge-changes`", s.ReviewedHeadCommit)
 					}
-					// Any re-stamp over CHANGED content is a baseline refresh and must
-					// be auditable as one: --note and --acknowledge-changes are both
-					// self-supplied text with nothing forge can verify, so marking only
-					// the latter let an adversarial agent launder a refresh through
-					// --note with a normal PASS-level entry (2026-08-29 functional
-					// probe). The wording below keeps the two paths distinguishable.
-					//
 					// 对【已变更内容】的任何重盖章都是基线刷新、都必须可审计：
 					// --note 与 --acknowledge-changes 都是 forge 无法验证的自供文本，
 					// 只标记后者会让对抗 agent 用 --note 把刷新洗成正常 PASS 级条目
@@ -231,12 +169,6 @@ func runReviewPassAt(root, explicitRef, note string, acknowledgeChanges bool) er
 		if markErr != nil {
 			return markErr
 		}
-		// Record the review-pass event (round N + reviewed snapshot) — the raw material for the
-		// rework-round metric. Observation class (excluded from evidence-strength bucketing).
-		// Failure to record does not block the pass (fail-open, consistent with the stamp itself).
-		// A self-refresh (acknowledged re-stamp over changed source) upgrades to WARN so the
-		// audit trail separates self-certified baseline refreshes from ordinary rounds.
-		//
 		// 记录 review-pass 事件（第 N 轮 + 审过的快照）——返工轮次度量的原料。observation
 		// 类（排除出证据强度分桶）。记录失败不阻塞 pass（fail-open，与打戳本身一致）。
 		// 自助刷新（对变更源码确认重盖章）升级为 WARN——审计留痕把自我承担的基线刷新与
@@ -279,23 +211,10 @@ func runReviewPassAt(root, explicitRef, note string, acknowledgeChanges bool) er
 		if baselineUnreachable != "" {
 			fmt.Printf("⚠ 上次审查基线 %s 不可达（历史可能被 amend/rebase 改写）——本次按 fail-open 重盖章，已记 WARN 级 baseline-unreachable 审计；建议确认当前代码已经过审查\n", shortHash(baselineUnreachable))
 		}
-		// The pre-stamp self-refresh guard above replaced the old post-stamp
-		// re-review ADVISORY (2026-08 protocol gap fix, superseded 2026-08-25): a
-		// bare re-stamp over changed content is now REFUSED outright instead of
-		// stamped-then-nagged, and a non-source delta (amend, same-content commit)
-		// stays silent instead of firing on head movement alone.
-		//
 		// 上方盖章前自助刷新守卫取代了旧的盖章后复审 ADVISORY（2026-08 协议缺口
 		// 修复，2026-08-25 被取代）：对变更内容裸盖章现在直接【拒绝】而非盖完再
 		// 念叨；非源码增量（amend、同内容 commit）保持静默，不再只因 head 移动
 		// 就发提示。
-		// Plan 3 (blind_spot trigger · review.go critic role): marking review-passed is a decisive action. Calibrate evidence
-		// strength at this moment—if the "done" claim mainly relies on agent self-report (Weak/Unverified), emit an ADVISORY reminding that this review
-		// is a stamp placed on blind-spot evidence. review status only shows when actively viewed; the agent may skip it and pass directly,
-		// so trigger again at the stamp moment: the reviewer must have done critic-level verification (verify the claimed validations actually ran), not just read the
-		// diff. exit 0 (pass still succeeds, escape is legitimate); the ADVISORY prefix makes rubber-stamp visible. Plan 5 linkage:
-		// tasks that used the escape-hatch have Strength capped to Weak, automatically triggering critic ADVISORY here—the other side of escape having a cost.
-		// See code-review-gate step 2 prerequisite for details.
 		//
 		// 方案3（blind_spot 触发 · review.go critic 角色）：审查通过是决定性动作。此刻校准证据
 		// 强度——若"完成"声明主要靠 agent 自述（Weak/Unverified），发 ADVISORY 提醒本次 review
@@ -312,19 +231,10 @@ func runReviewPassAt(root, explicitRef, note string, acknowledgeChanges bool) er
 		return nil
 	}
 
-	// non-task mode: write branch stamp
-	//
 	// 非 task 模式：写分支 stamp
 	if err := review.MarkPassedWithNote(root, note); err != nil {
 		return fmt.Errorf("failed to mark review passed: %w", err)
 	}
-	// Record the non-task review-pass event — the stamp file keeps only the latest
-	// state per branch (atomic overwrite), so without a checklog entry the non-task
-	// pass history is unrecoverable (2026-08 evidence: a 1-minute pass was
-	// indistinguishable from the normal 9-11 min review depth). Same observation
-	// class as the task-mode entry (excluded from evidence-strength bucketing);
-	// fail-open like the stamp itself.
-	//
 	// 记录非 task 模式的 review-pass 事件——stamp 文件每分支只存最新态（原子覆写），
 	// 不落 checklog 则非 task 盖章历史完全不可回溯（2026-08 证据：一次 1 分钟完成的
 	// 盖章与正常 9-11 分钟的审查深度无从区分）。与 task 模式条目同属 observation
@@ -345,10 +255,6 @@ func runReviewPassAt(root, explicitRef, note string, acknowledgeChanges bool) er
 	return nil
 }
 
-// currentDiffHash returns the worktree-vs-HEAD source fingerprint for audit detail
-// (review.SourceChangesSince(root, "") — the same computation as computeDiffHash
-// behind the stamp). Best-effort: an error yields "" (detail degrades, never blocks).
-//
 // currentDiffHash 返回工作区相对 HEAD 的源码指纹，供审计 detail 使用
 // （review.SourceChangesSince(root, "")——与打戳背后的 computeDiffHash 同一计算）。
 // best-effort：出错返回 ""（detail 降级，绝不阻断）。
@@ -360,14 +266,6 @@ func currentDiffHash(root string) string {
 	return h
 }
 
-// renderReviewPassBlindSpot produces the ADVISORY for `forge review pass` in task mode when evidence is weak
-// (Plan 3 blind_spot trigger). Strong/NoData returns an empty string (evidence trusted/no evidence to calibrate → no noise);
-// Weak/Unverified returns a line prefixed with ADVISORY:, reminding that this review stamp is placed on blind-spot evidence—the reviewer must have done
-// critic-level verification (verify the claimed validations actually ran), not just read the diff. Pure function for easy unit testing (no dependency on findProjectRoot/
-// cwd); runReviewPass calls it and prints if non-empty. Plan 5 linkage: the escape-hatch cap downgrades would-be-Strong to Weak
-// (single source: checklog.EvidenceChain.EscapeDowngradedStrength — this advisory derives from that predicate, never re-encodes
-// the rule), so tasks that used the escape-hatch automatically trigger here—escape is no longer free.
-//
 // renderReviewPassBlindSpot 产出 `forge review pass` task 模式下、证据弱时的 ADVISORY
 // （方案3 blind_spot 触发）。Strong/NoData 返空串（证据可信/无证据可校准 → 不噪声）；
 // Weak/Unverified 返 ADVISORY: 前缀行，提醒本次 review stamp 盖在盲区证据上——reviewer 须已
@@ -384,21 +282,11 @@ func renderReviewPassBlindSpot(ec checklog.EvidenceChain) string {
 		return taskpipeline.GateAdvisory("[review] 审查通过，但本任务零 deterministic 验证证据（agent-claim=%d）——rubber-stamp 高风险。reviewer 须已按 code-review-gate 步骤2前置「必核」做 critic 级核验（逐条确认声称的 test-run/gate 实跑过），否则撤回 pass 补审", ec.AgentClaim)
 	case checklog.Weak:
 		if ec.EscapeDowngradedStrength() {
-			// Plan 5 linkage: Strength is capped from Strong to Weak by escape-hatch—ratio is actually not low
-			// (>=0.5), at this point "low ratio" is a false claim (ratio is clearly above half). Only this true-cap sub-case uses escape wording,
-			// pointing out the real cause: "done" is propped up by skipping the gate, critic-level verification is mandatory. exit 0 (escape is legitimate).
-			// The predicate carries the evidence-scaled carve-out (marginal escapes don't downgrade), so this branch
-			// only fires when the cap actually fired — no copy of the cap rule lives here.
-			//
 			// 方案5 联动：Strength 被 escape-hatch 从 Strong cap 到 Weak——ratio 实际不低
 			//（>=0.5），此时"占比低"是假声明（ratio 明明过半）。仅此真 cap 子情形用逃生措辞，
 			// 点出真正原因：「完成」靠跳过 gate 撑住，必须 critic 级核验。exit 0（逃生合法）。
 			return taskpipeline.GateAdvisory("[review] 审查通过，但本任务用了逃生舱（ratio=%.2f agent-claim=%d 本不弱，「完成」靠跳过 gate 撑住）——reviewer 须已「加核」声称的验证真跑过；建议升级跨模型 critic", ec.Ratio(), ec.AgentClaim)
 		}
-		// ratio<0.5 (regardless of whether escape-hatch is stacked)—"low ratio" is a true claim, not a false claim. When escape-hatch is stacked,
-		// UsedEscapeHatch has already been recorded in checklog (CheckEscapeHatch entry) + visible in review status; do not
-		// repeat here to avoid noise; low ratio at pass time is the primary signal of completion credibility.
-		//
 		// ratio<0.5（无论是否叠加逃生舱）——"占比低"为真声明，不构成假claim。叠加逃生舱时
 		// UsedEscapeHatch 已在 checklog 落盘（CheckEscapeHatch 条目）+ review status 可见，此处
 		// 不重复以免噪声；pass 刻 ratio 低是完成可信度的主信号。
@@ -411,16 +299,11 @@ func renderReviewPassBlindSpot(ec checklog.EvidenceChain) string {
 func runReviewGate(cmd *cobra.Command, args []string) error {
 	root, err := findProjectRoot()
 	if err != nil {
-		// non-forge project: no hook contextual meaning, allow through
-		//
 		// 非 forge 项目：无 hook 语境意义，放行
 		fmt.Println("PASS 非项目根，放行")
 		return nil
 	}
 
-	// task mode: review is enforced by the task-complete gate (ReviewPassed hard prerequisite), Stop does not block—
-	// otherwise every code change in the task flow would be blocked, duplicating the gate and being noisy.
-	//
 	// task 模式：审查由 task-complete 门禁强制（ReviewPassed 硬前置），Stop 不拦——
 	// 否则 task 流程里每次改代码都被拦，与门禁重复且扰人。
 	explicitRef, _ := cmd.Flags().GetString("ref")
@@ -442,11 +325,6 @@ func runReviewGate(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Concurrent session detection: when the current session has no active task but other sessions do,
-	// the global diff may come from another session's changes—review is enforced by that task's task-complete gate,
-	// do not block repeatedly here. Otherwise the research session would be required to review another session's
-	// code changes before it can end (the concurrent issue reported by the user).
-	//
 	// 并发会话检测：当前 session 无活跃任务，但存在其他 session 的活跃任务时，
 	// 全局 diff 可能来自那个 session 的变更——审查由该任务的 task-complete 门禁
 	// 强制，此处不应重复 block。否则调研 session 被要求 review 其他 session 的
@@ -456,13 +334,9 @@ func runReviewGate(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// non-task mode: diff stamp decision
-	//
 	// 非 task 模式：diff stamp 决策
 	dec, reason, err := review.Evaluate(root)
 	if err != nil {
-		// fail-open: evaluation failure does not block the session (forge security hook principle)
-		//
 		// fail-open：评估失败不阻塞会话（forge 安全 hook 原则）
 		fmt.Printf("PASS 评估失败放行：%v\n", err)
 		return nil
@@ -478,9 +352,6 @@ func runReviewGate(cmd *cobra.Command, args []string) error {
 		fmt.Printf("FAIL %s\n", reason)
 		fmt.Println()
 		fmt.Println(gateGuidance)
-		// exit 1 = block (Stop hook uses this as decision:block); use os.Exit to bypass cobra's
-		// "Error:" stderr noise, keeping stdout clean for the hook to use as additionalContext.
-		//
 		// exit 1 = block（Stop hook 据此 decision:block）；用 os.Exit 绕过 cobra 的
 		// "Error:" stderr 噪声，保证 stdout 干净供 hook 当 additionalContext。
 		os.Exit(1)
@@ -497,11 +368,6 @@ func runReviewStatus(cmd *cobra.Command, args []string) error {
 	return renderReviewStatus(root, explicitRef)
 }
 
-// renderReviewStatus is the root-injected core of `forge review status`, extracted separately
-// so that evidence-strength rendering in task mode can be unit-tested on a temporary project, without depending on findProjectRoot / cwd.
-// An explicit ref loads that task directly (missing ref = error, same contract as review pass --ref);
-// empty ref keeps the legacy active-task detection.
-//
 // renderReviewStatus 是 `forge review status` 的 root 注入核心，独立出来
 // 让 task 模式的证据强度渲染可在临时项目上单测，不依赖 findProjectRoot / cwd。
 // 显式 ref 直接加载该任务（ref 不存在即报错，与 review pass --ref 同契约）；
@@ -530,9 +396,6 @@ func renderReviewStatus(root, explicitRef string) error {
 		}
 		fmt.Println()
 		if state.ReviewPassed {
-			// Snapshot consistency: recompute SourceChangesSince(ReviewedHeadCommit) and compare against the review baseline—
-			// make "code changed after review" visible in status (no need to wait for task-complete rejection to find out).
-			//
 			// 快照一致性：重算 SourceChangesSince(ReviewedHeadCommit) 比对审查基线——
 			// 让"审查后改了码"在 status 就可见（不必等 task-complete 被拒才发现）。
 			if state.ReviewedHeadCommit != "" {
@@ -551,10 +414,6 @@ func renderReviewStatus(root, explicitRef string) error {
 		} else {
 			fmt.Println("→ 未通过：task-complete 前会要求 code-review-gate；运行 `forge review pass` 标记")
 		}
-		// Evidence strength (deterministic ratio)—upgrade ratio from observable to driving review calibration.
-		// On Weak/Unverified, inject instructions to the reviewer: verify whether the claimed validations actually ran, hedging against the agent
-		// blind spot of declaring completion after skipping prerequisites. On Strong, stay silent and only report numbers (avoid noise).
-		//
 		// 证据强度（deterministic 占比）——把 ratio 从可观测升级为驱动 review 校准。
 		// Weak/Unverified 时给 reviewer 注入指令：核验声称的验证是否真跑过，对冲 agent
 		// 跳过前置就声明完成的盲区。Strong 时静默只报数字（避免噪声）。

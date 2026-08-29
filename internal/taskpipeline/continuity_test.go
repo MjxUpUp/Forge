@@ -132,8 +132,9 @@ func TestAddFindingAutoFill(t *testing.T) {
 	}
 }
 
-// TestNewContinuityID_NoCollision: successive calls produce distinct IDs (in-process atomic seq dedupe + random suffix
-// for cross-process collision avoidance). ResolveBlocker/ResolveFinding match the first entry by exact ID; a collision would make resolving-the-second hit the first — a real bug, hence IDs must be unique. Under Windows low-resolution clocks, successive UnixNano calls are identical; seq + randomness disambiguates.
+// TestNewContinuityID_NoCollision: successive calls produce distinct IDs
+// (in-process atomic seq dedupe + random suffix for cross-process collision
+// avoidance).
 //
 // TestNewContinuityID_NoCollision：连续调用生成不同 ID（进程内原子 seq 去重 + 随机后缀跨进程
 // 去碰撞）。ResolveBlocker/ResolveFinding 按 ID 精确命中首条，碰撞会让「解决第二条」命中首条——
@@ -150,8 +151,6 @@ func TestNewContinuityID_NoCollision(t *testing.T) {
 		}
 		seen[id] = true
 	}
-	// Different prefixes are each independently unique and do not interfere.
-	//
 	// 不同前缀各自唯一，且互不干扰。
 	b1 := newContinuityID("b")
 	f1 := newContinuityID("f")
@@ -160,17 +159,15 @@ func TestNewContinuityID_NoCollision(t *testing.T) {
 	}
 }
 
-// TestExecuteTaskGate_GenericSkipsChecks: a generic task entering ExecuteTaskGate is directly marked Passed=true,
-// skipping ReviewPassed hard prerequisite + antecedent gate checks + work-activity/advisory entirely. Pins the generic-bypasses-gates
-// semantics — guards against later regressions trapping generic tasks in the gates (generics carry research/continuity, no code to gate).
+// TestExecuteTaskGate_GenericSkipsChecks: a generic task entering
+// ExecuteTaskGate is directly marked Passed=true, skipping ReviewPassed hard
+// prerequisite + antecedent gate checks + work-activity/advisory entirely.
 //
 // TestExecuteTaskGate_GenericSkipsChecks：generic task 走 ExecuteTaskGate 直接标 Passed=true，
 // 跳过 ReviewPassed 硬前置 + 前置 gate 检查 + 工作活动/advisory 全部。固化「generic 不走门禁」
 // 语义——防后续误改让 generic task 被门禁卡住（generic 承载调研/接续，无代码可门禁）。
 func TestExecuteTaskGate_GenericSkipsChecks(t *testing.T) {
 	root := t.TempDir()
-	// generic + task-complete: skips the ReviewPassed hard prerequisite + antecedent gate, directly Passed=true.
-	//
 	// generic + task-complete：跳过 ReviewPassed 硬前置 + 前置 gate，直接 Passed=true。
 	g := &TaskState{TaskRef: "feat/g", Branch: "feat/g", Kind: TaskKindGeneric}
 	res, err := ExecuteTaskGate(root, "task-complete", g)
@@ -183,9 +180,6 @@ func TestExecuteTaskGate_GenericSkipsChecks(t *testing.T) {
 	if !strings.Contains(res.Message, "generic") {
 		t.Errorf("跳过信息应含 generic，实际 %q", res.Message)
 	}
-	// Contrast: a non-generic task passing antecedent gates still errors on task-complete without ReviewPassed —
-	// pins the generic-skips-ReviewPassed-hard-prereq bifurcation (guards against regressions trapping generic).
-	//
 	// 对比：非 generic 过了前置 gate 后，task-complete 仍因无 ReviewPassed 报错——
 	// 固化 generic 跳过 ReviewPassed 硬前置的分流差异（防误改让 generic 被卡）。
 	code := &TaskState{TaskRef: "feat/c", Branch: "feat/c"}

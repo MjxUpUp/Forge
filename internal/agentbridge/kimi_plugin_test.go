@@ -11,12 +11,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/hooks"
 )
 
-// readReleaseVersion reads the canonical release version from npm/package.json — the
-// single source of truth that scripts/release.js bumps and that .kimi-plugin/plugin.json's
-// version field now tracks (see TestKimiPluginManifestVersionTracksRelease). Centralizing
-// the read here keeps the Go guard and the -update-kimi-plugin regenerator on the same
-// source the release script writes.
-//
 // readReleaseVersion 从 npm/package.json 读权威发布版本——scripts/release.js bump 的
 // 单一真相源，.kimi-plugin/plugin.json 的 version 字段现在跟随它（见
 // TestKimiPluginManifestVersionTracksRelease）。集中读取使 Go 守卫与 -update-kimi-plugin
@@ -39,25 +33,15 @@ func readReleaseVersion(t *testing.T) string {
 	return pkg.Version
 }
 
-// kimiPluginDescription aliases the production constant: the guard test and the
-// `forge plugin kimi-manifest` CLI must render from the SAME description (the CLI rewrites
-// what this test pins — two sources would let the command rewrite the pinned bytes).
-//
 // kimiPluginDescription 取生产常量的别名：守卫测试与 `forge plugin kimi-manifest` CLI
 // 必须用同一 description 渲染（CLI 重写的正是本测试钉住的字节——两个来源会让命令
 // 改写钉住内容）。
 const kimiPluginDescription = KimiPluginDescription
 
-// updateKimiPlugin rewrites the committed manifest instead of comparing it
-// (`go test ./internal/agentbridge -run TestKimiPluginManifestMirrorsSpec -update-kimi-plugin`).
-//
 // updateKimiPlugin 让守卫测试改写已提交的 manifest 而非比对
 // （`go test ./internal/agentbridge -run TestKimiPluginManifestMirrorsSpec -update-kimi-plugin`）。
 var updateKimiPlugin = flag.Bool("update-kimi-plugin", false, "rewrite .kimi-plugin/plugin.json from ForgeHookSpec")
 
-// writeKimiReg seeds <home>/plugins/installed.json with content — the kimi plugin
-// registry fixture shared by the installed/staleness/plugin-wins tests.
-//
 // writeKimiReg 把 content 写进 <home>/plugins/installed.json——installed/staleness/
 // plugin-wins 测试共享的 kimi plugin 注册表 fixture。
 func writeKimiReg(t *testing.T, home, content string) {
@@ -71,15 +55,7 @@ func writeKimiReg(t *testing.T, home, content string) {
 	}
 }
 
-// TestKimiPluginManifestMirrorsSpec pins the committed .kimi-plugin/plugin.json to the
-// generator output derived from hooks.ForgeHookSpec (single source of truth). kimi's
-// GitHub install reads the manifest from the repo root, so it must be committed — and
-// any hook roster change without a manifest refresh fails here.
-//
-// The version field is deliberately excluded from drift sensitivity: it now tracks the
-// forge release (scripts/release.js syncs it), so want is generated with the version read
-// back from the committed file — only hooks/name/description are byte-compared. The
-// version==release binding itself is guarded by TestKimiPluginManifestVersionTracksRelease.
+// TestKimiPluginManifestMirrorsSpec pins the committed plugin.json to the generator output from ForgeHookSpec.
 //
 // TestKimiPluginManifestMirrorsSpec 把已提交的 .kimi-plugin/plugin.json 钉在由
 // hooks.ForgeHookSpec（单一真相源）派生的生成器输出上。kimi 的 GitHub 安装从仓库
@@ -92,17 +68,6 @@ func writeKimiReg(t *testing.T, home, content string) {
 func TestKimiPluginManifestMirrorsSpec(t *testing.T) {
 	path := filepath.Join("..", "..", ".kimi-plugin", "plugin.json")
 
-	// Parity within kimi's supported events: since the 2026-08-20 unfilter (hostcap honest
-	// recording made the old false-prosperity filter obsolete), the manifest must contain
-	// EVERY spec hook on every event kimi supports — skill-trigger included. The 2026-08-22
-	// event whitelist (kimiSupportedEvents) additionally EXCLUDES spec events kimi's plugin
-	// schema has not been verified to accept: an unknown event flowing into the manifest can
-	// fail kimi's schema validation and silently kill ALL hooks (dsh-win32 failure class).
-	// So parity is now scoped: count only spec entries whose event passes the whitelist; the
-	// explicit count check still catches a hook silently dropped from BuildKimiPluginHooks
-	// on a SUPPORTED event; asserted before the byte compare so a roster regression surfaces
-	// with a precise count rather than a diffuse diff.
-	//
 	// kimi 支持事件内的对等：2026-08-20 解除过滤起（hostcap 诚实记录使旧的虚假繁荣
 	// 过滤失去意义），manifest 必须包含 kimi 支持的每个事件上的每一条 spec hook——
 	// skill-trigger 也不例外。2026-08-22 的事件白名单（kimiSupportedEvents）额外**排除**
@@ -130,11 +95,6 @@ func TestKimiPluginManifestMirrorsSpec(t *testing.T) {
 	if len(manifestHooks) != total {
 		t.Errorf("manifest has %d hooks, want %d (ForgeHookSpec parity on kimi-supported events — events outside kimiSupportedEvents are deliberately excluded, see its doc); a hook may have been silently dropped from BuildKimiPluginHooks", len(manifestHooks), total)
 	}
-	// Positive invariant: every spec skill-trigger binding reaches the kimi manifest, on every
-	// event the spec binds it to — this is the wiring the dashboard's honest-observability
-	// feed depends on (kimi tasks showed only the 5 pipeline skeleton events while the filter
-	// stood). isSkillTriggerCommand matches the translated --agent form here.
-	//
 	// 正向前置不变量：spec 的每一条 skill-trigger 绑定都进入 kimi manifest，且落在 spec
 	// 指定的每个事件上——这正是看板诚实观测事件流所依赖的接线（过滤存在期间 kimi 任务
 	// 只能看到 5 条管道骨架事件）。isSkillTriggerCommand 在此匹配翻译后的 --agent 形式。
@@ -194,12 +154,7 @@ func TestKimiPluginManifestMirrorsSpec(t *testing.T) {
 	}
 }
 
-// TestKimiPluginManifestVersionTracksRelease pins the committed .kimi-plugin/plugin.json
-// version field to npm/package.json's version. scripts/release.js syncs the two on every
-// release; this guard fails if a release ships without the sync (the version field would
-// lag and misreport which release the committed manifest corresponds to). kimi's staleness
-// detection reads installed.json's github.ref tag, NOT this field, so a lagging field has
-// no behavioral impact — but correct display metadata is worth guarding.
+// TestKimiPluginManifestVersionTracksRelease pins the committed plugin.json version to npm/package.json.
 //
 // TestKimiPluginManifestVersionTracksRelease 把已提交 .kimi-plugin/plugin.json 的 version
 // 字段钉在 npm/package.json 的 version 上。scripts/release.js 每次发版同步两者；若某次
@@ -271,9 +226,7 @@ func TestIsKimiPluginInstalled(t *testing.T) {
 	})
 }
 
-// TestKimiPluginStaleInfo pins the staleness signal: only an enabled forge entry with a
-// tag ref yields a trimmed bare version; everything else (non-tag ref, missing github/ref,
-// disabled, no entry, garbage, no file) is ok=false so the advisory never fires on noise.
+// TestKimiPluginStaleInfo pins the staleness signal.
 //
 // TestKimiPluginStaleInfo 钉住 staleness 信号：只有已启用 forge 条目带 tag ref 才产出
 // trim 后的裸版本；其余（非 tag ref、缺 github/ref、禁用、无条目、垃圾、无文件）一律

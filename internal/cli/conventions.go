@@ -1,14 +1,9 @@
+// Package cli conventions.go — the `forge conventions` command group: the user entry of conventions-profile layer 1 (discover & profile).
+//
 // Package cli conventions.go — `forge conventions` 命令组：conventions-profile
 // 层 1（发现并建档）的用户入口。init 机械扫描目标仓库已声明的规范
 // （AGENTS.md 一族 / lint 配置 / 工具链命令）写入 per-project 档案；show 查看
 // 档案与过期状态。注入（层 2）由 hook 侧 hook_conventions.go 承担，不经此命令。
-//
-// Package cli conventions.go — the `forge conventions` command group: the user
-// entry of conventions-profile layer 1 (discover & profile). `init`
-// mechanically scans the target repo's DECLARED conventions (AGENTS.md family /
-// lint configs / toolchain commands) into the per-project profile; `show`
-// prints the profile and its staleness. Injection (layer 2) lives in the
-// hook-side hook_conventions.go, not in this command.
 package cli
 
 import (
@@ -75,11 +70,6 @@ var conventionsShowCmd = &cobra.Command{
 		dataDir := forgedata.DataDirFor(root)
 		p, err := conventions.LoadProfile(dataDir)
 		if err != nil {
-			// Corrupt profile: plain init repairs it (SaveProfile always
-			// rewrites metadata and KEEPS the enriched summary) — pointing at
-			// --force here would needlessly destroy the curated digest
-			// (adversarial-review finding, 2026-08-28).
-			//
 			// 档案损坏：普通 init 即可修复（SaveProfile 恒重写元数据且**保留**
 			// 已提炼摘要）——此处指向 --force 会无谓摧毁提炼内容
 			// （2026-08-28 对抗审查发现）。
@@ -171,10 +161,6 @@ func init() {
 	rootCmd.AddCommand(conventionsCmd)
 }
 
-// printConventionsInitReport prints the scan report plus the agent-enrichment
-// next step (the P1 hook: mechanical scan states WHAT is declared; extraction
-// of unwritten conventions from the code itself is the agent's archaeology).
-//
 // printConventionsInitReport 打印扫描报告 + agent 增补的下一步（P1 挂点：
 // 机械扫描陈述「已声明了什么」；从代码本身提取未成文的惯例是 agent 的考古活）。
 func printConventionsInitReport(root, dataDir string, p *conventions.Profile, summaryKept bool) {

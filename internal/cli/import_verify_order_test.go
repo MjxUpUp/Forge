@@ -1,12 +1,5 @@
 package cli
 
-// import_verify_order_test.go — pins the ORDER of the import pipeline:
-//   digest → ledger dedup → trust verdict → unpack.
-// The attacker-controlled tar.gz must not be parsed before the trust gate (an
-// unpack-layer parse bug would fire ahead of a team-profile hard-reject), and a
-// re-imported bundle must be skipped on its whole-file digest alone (no tar parse
-// at all — repeated pulls are free, as the CLI text promises).
-//
 // import_verify_order_test.go —— 钉死导入管线的顺序：摘要 → 账本查重 → 信任判定
 // → 解包。攻击者可控的 tar.gz 不得在信任闸门之前被解析（Unpack 层解析缺陷会抢在
 // 团队档硬拒之前触发），且重复导入必须只凭整文件摘要就跳过（完全不付 tar 解析
@@ -17,10 +10,8 @@ import (
 	"testing"
 )
 
-// TestImport_TrustGateFiresBeforeUnpack: a byte-flipped (gzip-broken) bundle that
-// still carries its original .sig must be rejected BY THE SIGNATURE LAYER — under
-// the old order the unpack layer fired first, so any unpack parse bug would have
-// run on attacker bytes before the trust verdict.
+// TestImport_TrustGateFiresBeforeUnpack: a byte-flipped (gzip-broken) bundle
+// that still carries its original .sig must be rejected BY THE SIGNATURE LAYER.
 //
 // TestImport_TrustGateFiresBeforeUnpack：翻转字节（gzip 已坏）但保留原 .sig 的
 // bundle 必须被签名层拒收——旧顺序下解包层先触发，Unpack 的任何解析缺陷都会在
@@ -54,8 +45,7 @@ func TestImport_TrustGateFiresBeforeUnpack(t *testing.T) {
 }
 
 // TestImport_ReimportSkipsOnDigestBeforeUnpack: importing the SAME bundle file a
-// second time must short-circuit on the whole-file digest (ledger hit) — never
-// paying the tar parse. The skip message names the digest hit.
+// second time must short-circuit on the whole-file digest (ledger hit).
 //
 // TestImport_ReimportSkipsOnDigestBeforeUnpack：同一 bundle 文件二次导入必须以
 // 整文件摘要短路（账本命中）——绝不付 tar 解析成本。跳过消息注明 digest 命中。

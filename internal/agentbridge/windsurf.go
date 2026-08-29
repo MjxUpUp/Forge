@@ -13,25 +13,7 @@ import (
 )
 
 // WindsurfTranslator wires forge hooks into windsurf's USER-LEVEL hooks.json
-// (~/.codeium/windsurf/hooks.json — Windsurf natively supports user-level hooks,
-// loaded and merged with system/workspace levels by Cascade; see
-// https://docs.windsurf.com/windsurf/cascade/hooks), and updates .windsurfrules
-// (guidance fallback). Cascade has built-in lifecycle hooks; exit-code-2 on the
-// pre_* events means deny, so pre-tool Forge gates (task-guard/bash-guard/...)
-// genuinely enforce. HONESTY CAVEAT (Wave 2b): post_cascade_response — where the
-// Stop group (task-verify/review-stop) hangs — is an async post-hook that CANNOT
-// block, so end-of-turn gates are advisory-only on Windsurf (see the wiring note in
-// buildWindsurfHooks). There is also no stdout JSON protocol: allow is silent, block
-// reason goes to stderr. Its stdin schema differs from Claude Code, so hook commands
-// carry `--agent windsurf` and are normalized by forge
-// (see internal/cli/hook_normalize.go).
-//
-// The user-level location mirrors the kimi/claude-code model: one machine-wide
-// registration instead of a per-project .windsurf/hooks.json copy, so forge init/sync
-// no longer writes hook config into the project directory (user-level assets
-// migration). Merge semantics: entries whose command is not forge-sourced (see
-// isForgeBridgeCommand) are preserved verbatim; forge entries are replaced wholesale
-// with the current generated set, making Translate idempotent.
+// (~/.codeium/windsurf/hooks.json.
 //
 // WindsurfTranslator 把 forge hook 接线进 windsurf 的 user-level hooks.json
 // （~/.codeium/windsurf/hooks.json——Windsurf 官方支持 user-level hooks，Cascade
@@ -56,13 +38,6 @@ func (t *WindsurfTranslator) Translate(projectDir string, input *TranslationInpu
 		return fmt.Errorf("windsurf: protocol is required")
 	}
 
-	// Real Cascade lifecycle hooks — the enforcement interface. Windsurf's hooks.json
-	// is a flat structure: hooks.<event>[].{command,show_output}, with snake_case event names and a stdin
-	// schema (tool_info/agent_action_name) different from Claude Code, so commands carry `--agent windsurf`,
-	// normalized by forge (internal/cli/hook_normalize.go). pre-event exit 2 = deny.
-	// Written at user level (~/.codeium/windsurf/hooks.json) — projectDir only feeds the
-	// .windsurfrules guidance below.
-	//
 	// 真实的 Cascade lifecycle hooks——enforcement 接口。Windsurf 的 hooks.json
 	// 是扁平结构：hooks.<event>[].{command,show_output}，event 名为 snake_case，stdin
 	// schema（tool_info/agent_action_name）与 Claude Code 不同，故命令带 `--agent windsurf`，
@@ -88,13 +63,6 @@ func (t *WindsurfTranslator) Translate(projectDir string, input *TranslationInpu
 		return fmt.Errorf("windsurf: write hooks.json: %w", err)
 	}
 
-	// Guidance rules, fallback for Windsurf versions that do not support hooks.
-	// Written to Windsurf's USER-LEVEL global rules file
-	// (~/.codeium/windsurf/memories/global_rules.md — Cascade always loads it),
-	// NOT the project-level .windsurfrules (zero-project-write default). The forge
-	// section is marked-section upserted; the original file is backed up before
-	// forge's first write (rollback via forge uninstall --restore).
-	//
 	// Guidance 规则，作为不支持 hook 的 Windsurf 版本的兜底。写到 Windsurf 的
 	// 用户级全局规则文件（~/.codeium/windsurf/memories/global_rules.md——
 	// Cascade 恒加载），而非项目级 .windsurfrules（零项目写入默认）。forge 段
@@ -124,15 +92,12 @@ func (t *WindsurfTranslator) Translate(projectDir string, input *TranslationInpu
 		return util.AtomicWrite(rulesPath, []byte(updated), 0644)
 	}
 
-	// Create a new file.
-	//
 	// 创建新文件
 	return util.AtomicWrite(rulesPath, []byte(content), 0644)
 }
 
 // WindsurfGlobalRulesPath resolves Windsurf's user-level global rules file
-// (~/.codeium/windsurf/memories/global_rules.md — loaded by Cascade for every
-// workspace; the user-level counterpart of project .windsurfrules).
+// (~/.codeium/windsurf/memories/global_rules.md.
 //
 // WindsurfGlobalRulesPath 解析 Windsurf 的用户级全局规则文件
 // （~/.codeium/windsurf/memories/global_rules.md——Cascade 对每个 workspace
@@ -150,9 +115,7 @@ func (t *WindsurfTranslator) AgentType() AgentType {
 }
 
 // WindsurfHooksPath resolves the user-level hooks.json path
-// (~/.codeium/windsurf/hooks.json, per the official Cascade hooks docs). Windsurf
-// has no documented env override for this location, so the path derives from the
-// user home directly.
+// (~/.codeium/windsurf/hooks.json, per the official Cascade hooks docs).
 //
 // WindsurfHooksPath 解析 user-level hooks.json 路径（~/.codeium/windsurf/hooks.json，
 // 见 Cascade hooks 官方文档）。Windsurf 没有官方文档化的 env 覆盖，故路径直接由
@@ -165,14 +128,6 @@ func WindsurfHooksPath() (string, error) {
 	return filepath.Join(home, ".codeium", "windsurf", "hooks.json"), nil
 }
 
-// mergeWindsurfHooks merges the generated forge wiring into an existing windsurf
-// hooks.json. Unknown top-level fields are preserved via json.RawMessage; within the
-// flat hooks section, entries whose command is not forge-sourced are kept
-// byte-for-byte (unknown entry fields such as powershell/working_directory intact —
-// see merge_raw.go), and forge entries are replaced wholesale with the current
-// generated set. The output is deterministic, so Translate is idempotent. A
-// nil/empty existing input produces a fresh file.
-//
 // mergeWindsurfHooks 把生成的 forge 接线合并进已有的 windsurf hooks.json。未知顶层
 // 字段经 json.RawMessage 保留；扁平 hooks 段内，command 非 forge 来源的条目逐字节
 // 保留（powershell/working_directory 等未知条目字段不丢——见 merge_raw.go），
@@ -213,10 +168,7 @@ func mergeWindsurfHooks(existing []byte) ([]byte, error) {
 }
 
 // StripWindsurfHooksUserLevel removes forge hooks from the user-level
-// ~/.codeium/windsurf/hooks.json (uninstall path). User-defined entries (unknown
-// fields intact, see merge_raw.go) and unknown top-level fields are preserved; the
-// file itself is never deleted. Reports whether the file was actually modified; a
-// missing file or a file without forge hooks is a clean no-op.
+// ~/.codeium/windsurf/hooks.json (uninstall path).
 //
 // StripWindsurfHooksUserLevel 移除 user-level ~/.codeium/windsurf/hooks.json 中的
 // forge hooks（卸载路径）。用户自定义条目（未知字段不丢，见 merge_raw.go）与未知
@@ -266,9 +218,7 @@ func StripWindsurfHooksUserLevel() (bool, error) {
 }
 
 // StripWindsurfGlobalRules removes the FORGE:START/END marked section from the
-// user-level global_rules.md (uninstall path). Content outside the markers is
-// preserved; the file itself is never deleted. Reports whether the file changed;
-// a missing file or one without the markers is a clean no-op.
+// user-level global_rules.md (uninstall path).
 //
 // StripWindsurfGlobalRules 移除用户级 global_rules.md 的 FORGE:START/END 标记段
 // （卸载路径）。标记外内容保留；文件本身绝不删除。返回是否实际改动；文件不存在
@@ -301,20 +251,6 @@ type windsurfHookEntry struct {
 	ShowOutput bool   `json:"show_output"`
 }
 
-// buildWindsurfHooks corresponds to hooks.ForgeHookSpec in hooks/settings.go, generating the
-// native Cascade hook format for Windsurf. Windsurf's hooks.json is a flat structure —
-// hooks.<event>[].{command,show_output} — with snake_case event names, in contrast to
-// Claude Code's PascalCase. The official Cascade hook roster is
-// pre/post_read_code, pre/post_write_code, pre/post_run_command, pre/post_mcp_tool_use,
-// pre_user_prompt, post_cascade_response(+_with_transcript), post_setup_worktree — there
-// is NO session_start/session_end, so the Claude SessionStart group is wired to
-// pre_user_prompt (fires as each session's first prompt arrives) and the Stop group
-// (task-verify/review-stop) to post_cascade_response (the closest session-end
-// equivalent Cascade actually emits).
-// Multiple hooks on the same event (task-guard + assertion-check on pre_write_code) run in order;
-// pre-event exit 2 = deny. Kept in sync with settings.go manually — TestWindsurfWiringMirrorsClaudeSettings
-// guards against drift.
-//
 // buildWindsurfHooks 对应 hooks/settings.go 的 ForgeHookSpec，针对 Windsurf 原生
 // Cascade hook 格式生成。Windsurf 的 hooks.json 是扁平结构——
 // hooks.<event>[].{command,show_output}——event 名为 snake_case，与 Claude Code 的
@@ -331,16 +267,7 @@ type windsurfHookEntry struct {
 // PostCompact 事件 → compact-resume 永不置重注入标志 → resume-reinject 挂上也
 // 恒静默；skill-trigger 在 windsurf 的分发已被 Stop 等事件覆盖。若未来宿主
 // 补压缩事件，需同步接 UserPromptSubmit 组。
-//
-// The UserPromptSubmit group (resume-reinject/skill-trigger) is deliberately NOT
-// wired: Windsurf has no PostCompact event → compact-resume never sets the reinject
-// flag → resume-reinject would be permanently silent; skill-trigger distribution on
-// Windsurf is already covered by Stop events. If the host adds a compact event later,
-// UserPromptSubmit group must be connected accordingly.
 func buildWindsurfHooks() map[string]any {
-	// Both task-guard and assertion-check gate write operations; Windsurf runs all entries
-	// under the same event in order, so putting both in a single pre_write_code list is correct
-	// (Windsurf matches by command rather than by event, unlike Claude Code's per-event independent matchers).
 	//
 	// task-guard 与 assertion-check 都 gate 写操作；Windsurf 按顺序跑同 event 的所有
 	// 条目，故单个 pre_write_code 列表里放两者是正确的（Windsurf 用 command 而非 event
@@ -356,7 +283,6 @@ func buildWindsurfHooks() map[string]any {
 				// conventions-profile 写入时刻注入（2026-08-28）：advisory。windsurf 当前
 				// 无 allow-stdout 上下文通道（hostcap），接线遵循「诚实记录、绝不静默
 				// 投递」——Delivered=false 落账，宿主补通道即生效（skill-trigger 同款）。
-				//
 				// conventions-profile write-time injection (2026-08-28): advisory.
 				// windsurf has no allow-stdout context channel today (hostcap); wiring
 				// follows "record honestly, never deliver silently" — lands stamped
@@ -373,10 +299,6 @@ func buildWindsurfHooks() map[string]any {
 				{Command: "forge hook auto-compile --agent windsurf", ShowOutput: false},
 				{Command: "forge hook workflow-test-guard --agent windsurf", ShowOutput: false},
 				{Command: "forge hook skill-trigger --agent windsurf", ShowOutput: false},
-				// Mid-task test reminder (#4-E). Advisory like its siblings; the
-				// normalized stdin (windsurf dialect → file_path) reaches the
-				// in-process hook the same way auto-compile gets it.
-				//
 				// 事中测试提醒（#4-E）。与同组 hook 一样 advisory；归一化的 stdin
 				// （windsurf 方言 → file_path）以 auto-compile 同款方式到达进程内 hook。
 				{Command: "forge hook test-nudge --agent windsurf", ShowOutput: false},
@@ -388,14 +310,6 @@ func buildWindsurfHooks() map[string]any {
 			"post_read_code": {
 				{Command: "forge hook tool-track --agent windsurf", ShowOutput: false},
 			},
-			// No session_start exists in Cascade: the SessionStart group (skill-scan /
-			// mcp-scan / init-suggest / task-resume / skill-trigger) hangs on
-			// pre_user_prompt instead — it fires on the first prompt of every session.
-			// The --agent windsurf suffix (Wave 2b honesty fix): without it these hooks
-			// emitted Claude-protocol stdout on a host with no stdout channel — the
-			// flags were missing from exactly these two groups, an oversight when the
-			// earlier enforcement events were suffixed.
-			//
 			// Cascade 没有 session_start：SessionStart 组（skill-scan / mcp-scan /
 			// init-suggest / task-resume / skill-trigger）改挂 pre_user_prompt——
 			// 每个会话首个 prompt 时触发。--agent windsurf 后缀（Wave 2b 诚实化
@@ -410,21 +324,11 @@ func buildWindsurfHooks() map[string]any {
 				{Command: "forge hook skill-trigger --agent windsurf", ShowOutput: false},
 				// conventions-profile 会话摘要（2026-08-28）：SessionStart 组在 windsurf
 				// 的挂点即 pre_user_prompt；通道诚实性与 skill-trigger 同款。
-				//
 				// conventions-profile session digest (2026-08-28): pre_user_prompt is
 				// the SessionStart group's windsurf mount; channel honesty same as
 				// skill-trigger.
 				{Command: "forge hook conventions-context --agent windsurf", ShowOutput: false},
 			},
-			// No session_end exists in Cascade: the Stop group (task-verify /
-			// review-stop / skill-trigger) hangs on post_cascade_response — the
-			// closest session-end equivalent Cascade actually emits. HONESTY NOTE
-			// (Wave 2b): post_cascade_response is an ASYNC post-hook — it fires after
-			// the cascade has already responded, so exit 2 there CANNOT block or force
-			// another turn; it only surfaces the stderr reason to the agent as an
-			// advisory. The task-verify/review-stop gates are therefore advisory-only
-			// on Windsurf (unlike Claude's Stop, which blocks). Documented, not hidden.
-			//
 			// Cascade 没有 session_end：Stop 组（task-verify / review-stop /
 			// skill-trigger）改挂 post_cascade_response——Cascade 真实存在的、
 			// 最接近会话结束的事件。诚实化说明（Wave 2b）：post_cascade_response 是
@@ -446,12 +350,6 @@ const (
 	forgeRulesEnd   = "<!-- FORGE:END -->"
 )
 
-// windsurfUserLevelPreamble heads the forge section written into the USER-LEVEL
-// global_rules.md. Cascade loads that file for EVERY workspace, so the section must
-// not unconditionally assert "this project uses Forge" — it activates only when the
-// current project is forge-initialized, and must be ignored otherwise. Same contract
-// as skillgen's userLevelPreamble (~/.claude/CLAUDE.md, ~/.codex/AGENTS.md).
-//
 // windsurfUserLevelPreamble 前置在写入用户级 global_rules.md 的 forge 段段首。
 // Cascade 对每个 workspace 都加载该文件，段文本不能无条件断言"本项目使用
 // Forge"——仅当当前项目已 init 时才激活，否则必须忽略。与 skillgen 的
@@ -465,8 +363,6 @@ func buildWindsurfSection(input *TranslationInput) string {
 	sb.WriteString(windsurfUserLevelPreamble)
 	sb.WriteString("# Forge Quality Standards\n\n")
 
-	// Quality standards.
-	//
 	// 质量标准
 	protocol.RenderStandards(&sb, input.Protocol.Standards, protocol.StandardRenderStyle{
 		SeverityLabel:  protocol.WordSeverityLabel,
@@ -475,8 +371,6 @@ func buildWindsurfSection(input *TranslationInput) string {
 	})
 	sb.WriteString("\n")
 
-	// Session rules.
-	//
 	// 会话规则
 	protocol.RenderSessionRules(&sb, input.Protocol.SessionRules, protocol.SessionRuleRenderStyle{
 		MandatoryLabel: protocol.AlwaysPreferLabel,
@@ -488,9 +382,6 @@ func buildWindsurfSection(input *TranslationInput) string {
 	return sb.String()
 }
 
-// replaceForgeRules replaces the content between FORGE:START and FORGE:END markers; content outside the markers is preserved as-is.
-// Thin wrapper over util.ReplaceMarkedSection (shared with skillgen's CLAUDE.md/AGENTS.md upsert).
-//
 // replaceForgeRules 替换 FORGE:START 与 FORGE:END 标记之间的内容，标记外的内容原样保留。
 // util.ReplaceMarkedSection 的薄封装（与 skillgen 的 CLAUDE.md/AGENTS.md upsert 共享）。
 func replaceForgeRules(content, newSection string) string {

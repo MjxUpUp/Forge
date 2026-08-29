@@ -2,10 +2,6 @@ package cli
 
 import "testing"
 
-// TestDashboardCommand_Wiring pins the dashboard command wiring: group, path,
-// flags, RunE. Prevents new commands from missing GroupID (aa_groups_test's
-// AllTopLevelGrouped is the safety net; this asserts it explicitly).
-//
 // TestDashboardCommand_Wiring 钉住 dashboard 命令接线：分组、路径、flags、RunE。
 // 防止新增命令漏设 GroupID（aa_groups_test 的 AllTopLevelGrouped 会兜底，这里显式钉）。
 func TestDashboardCommand_Wiring(t *testing.T) {

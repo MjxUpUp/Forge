@@ -6,9 +6,6 @@ import (
 	"time"
 )
 
-// trust_test.go — the trust store (node-identity.md §3): peer CRUD, 0600
-// persistence, require-signed toggle, and the bundle signature verdict matrix.
-//
 // trust_test.go —— trust store（node-identity.md §3）：对端增删查、0600 持久化、
 // require-signed 开关、bundle 签名判定矩阵。
 

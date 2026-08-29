@@ -1,14 +1,5 @@
 package ci
 
-// This package guards the structural integrity of forge's own release pipeline (.github/workflows/release.yml).
-// It is the "CI anti-bypass" sandbox-verification layer: parse release.yml to assert the needs hard-dependency chain and trigger conditions,
-// without triggering a real release — if someone removes `needs: test` or changes trigger conditions, this test goes red immediately.
-//
-// Historical lesson (2026-06, v0.27.0/v0.27.1): the needs chain in release.yml was correct,
-// but the release was entirely bypassed by manual gh release + npm publish (skipping the workflow). This test guards the
-// needs chain from being broken; bypassing the workflow manually is constrained by the release discipline in RELEASE.md at the repo root
-// (that layer cannot be sandbox-verified — manual behavior is outside CI).
-//
 // 本包守护 forge 自身发布链路（.github/workflows/release.yml）的结构不变质。
 // 这是"CI 防绕过"的沙盒验证层：解析 release.yml 断言 needs 强依赖链和触发条件，
 // 不触发真实 release——未来有人误删 needs: test / 改触发条件，本测试立刻红。
@@ -28,12 +19,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// releaseJob keeps only the fields needed to guard the needs chain.
-//
 // releaseJob 只取守护 needs 链所需字段。
 type releaseJob struct {
-	// needs can be a scalar (needs: test) or a sequence (needs: [a, b]); received as-is via yaml.Node,
-	// then normalized by needsList. Both forms are valid GitHub Actions syntax.
+	// needs can be a scalar (needs: test) or a sequence (needs: [a, b]); received as-is via yaml.Node, then normalized by needsList.
 	//
 	// needs 可能是标量（needs: test）或序列（needs: [a, b]），用 yaml.Node 原样接收，
 	// 再由 needsList 归一化。GitHub Actions 两种写法都合法。
@@ -43,10 +31,6 @@ type releaseJob struct {
 	} `yaml:"steps"`
 }
 
-// releaseWorkflow parses only jobs — under yaml.v3 (YAML 1.1 bool semantics) the top-level on: field
-// is resolved as bool(true), so structurally parsing on would fail. Ignoring the on key does not affect jobs
-// parsing (jobs is a plain string key); trigger-condition assertions go through raw text instead (see TestReleaseWorkflow_TagTriggered).
-//
 // releaseWorkflow 只解析 jobs——顶层 on: 字段在 yaml.v3（YAML 1.1 bool 语义）下
 // 会被 resolve 成 bool(true)，结构化解析 on 会失败。on key 被忽略不影响 jobs
 // 解析（jobs 是普通字符串 key）；触发条件断言改走原始文本（见 TestReleaseWorkflow_TagTriggered）。
@@ -54,11 +38,6 @@ type releaseWorkflow struct {
 	Jobs map[string]releaseJob `yaml:"jobs"`
 }
 
-// needsList normalizes the needs yaml.Node into a list of strings.
-//   - ScalarNode (needs: test) → ["test"]
-//   - SequenceNode (needs: [a, b]) → ["a", "b"]
-//   - No needs (test job) → nil
-//
 // needsList 把 needs yaml.Node 归一化为字符串列表。
 //   - ScalarNode（needs: test）→ ["test"]
 //   - SequenceNode（needs: [a, b]）→ ["a", "b"]
@@ -80,8 +59,6 @@ func needsList(n yaml.Node) []string {
 
 func readReleaseYAML(t *testing.T) []byte {
 	t.Helper()
-	// go test runs with cwd = internal/ci/, and release.yml is at the repo root .github/workflows/.
-	//
 	// go test 运行时 cwd = internal/ci/，release.yml 在仓库根 .github/workflows/。
 	path := filepath.Join("..", "..", ".github", "workflows", "release.yml")
 	data, err := os.ReadFile(path)
@@ -101,9 +78,6 @@ func loadReleaseWorkflow(t *testing.T) *releaseWorkflow {
 }
 
 // TestReleaseWorkflow_TagTriggered: releases may only be triggered by pushing a tag.
-// Prevents someone from switching to branch-push triggers, which would release on every main push — that would bypass the "release only on explicit tag"
-// discipline and run the needs chain on every push.
-// The on field is asserted via raw text (see releaseWorkflow comment; the yaml.v3 on→bool pitfall).
 //
 // TestReleaseWorkflow_TagTriggered：发版只能由打 tag 触发。
 // 防止有人改成 push 分支触发，导致每次 main 推送都发版——那会绕过"显式打 tag 才发版"
@@ -121,8 +95,6 @@ func TestReleaseWorkflow_TagTriggered(t *testing.T) {
 }
 
 // TestReleaseWorkflow_NeedsChain: guard the test→goreleaser→npm hard-dependency chain.
-// This is the core of the "CI anti-bypass" mechanism — as long as releases go through release.yml, a failing test means goreleaser/npm do not run,
-// so no bad packages are published. Sandbox verification: this test parses the yaml to assert needs, without triggering a real release.
 //
 // TestReleaseWorkflow_NeedsChain：守护 test→goreleaser→npm 强依赖链。
 // 这是"CI 防绕过"机制核心——只要发版走 release.yml，test 失败则 goreleaser/npm 都不跑，
@@ -167,9 +139,7 @@ func TestReleaseWorkflow_NeedsChain(t *testing.T) {
 	}
 }
 
-// TestReleaseWorkflow_TestJobIsGateSource: the test job is the source of the needs chain —
-// if it degrades (drops go test, drops -race), the whole anti-bypass chain becomes nominal (goreleaser needs an empty test).
-// So the test job must run go test with -race (matching ci.yml).
+// TestReleaseWorkflow_TestJobIsGateSource: the test job is the source of the needs chain — if it degrades (drops go test, drops -race), the whole anti-bypass chain becomes nominal (goreleaser needs an empty test).
 //
 // TestReleaseWorkflow_TestJobIsGateSource：test job 是 needs 链的源头——
 // 它若退化（去掉 go test、去掉 -race），整条防绕过链就名存实亡（goreleaser needs 一个空 test）。
@@ -198,8 +168,6 @@ func TestReleaseWorkflow_TestJobIsGateSource(t *testing.T) {
 	}
 }
 
-// readGoreleaserYAML loads .goreleaser.yml from the repo root (go test cwd = internal/ci/).
-//
 // readGoreleaserYAML 从仓库根读 .goreleaser.yml（go test cwd = internal/ci/）。
 func readGoreleaserYAML(t *testing.T) []byte {
 	t.Helper()
@@ -211,9 +179,6 @@ func readGoreleaserYAML(t *testing.T) []byte {
 	return data
 }
 
-// goreleaserSign captures only the signs: block fields this guard inspects (cmd + args);
-// yaml.v3 ignores the other signs fields (signature, artifacts, output).
-//
 // goreleaserSign 只取守护 signs: 块所需字段（cmd + args）；
 // yaml.v3 忽略 signs 的其它字段（signature/artifacts/output）。
 type goreleaserSign struct {
@@ -221,21 +186,12 @@ type goreleaserSign struct {
 	Args []string `yaml:"args"`
 }
 
-// goreleaserSignsConfig holds the top-level signs list.
-//
 // goreleaserSignsConfig 持有顶层 signs 列表。
 type goreleaserSignsConfig struct {
 	Signs []goreleaserSign `yaml:"signs"`
 }
 
-// TestGoreleaserSigns_CosignV3Bundle: the checksums signing step must use cosign v3's --bundle
-// format (single .sigstore.json, cert+signature merged). The v2-era --output-signature/
-// --output-certificate flags resolve to an empty path under cosign v3
-// ("create bundle file: open : no such file or directory") and broke the v1.28.3 release.
-// This guard prevents silently regressing back to the deprecated flags.
-//
-// Structural parse of the signs args list (not raw text) — so explanatory comments that merely
-// name the deprecated flags don't false-trip the guard.
+// TestGoreleaserSigns_CosignV3Bundle pins the cosign v3 --bundle signing flags in the goreleaser config.
 //
 // TestGoreleaserSigns_CosignV3Bundle：checksums 签名步必须用 cosign v3 的 --bundle
 // 格式（单个 .sigstore.json，证书+签名合一）。v2 旧 --output-signature/
@@ -266,10 +222,7 @@ func TestGoreleaserSigns_CosignV3Bundle(t *testing.T) {
 	}
 }
 
-// TestReleaseWorkflow_DispatchTrigger: release.yml must keep the workflow_dispatch trigger —
-// it is the entry point of the release-please chain on the GITHUB_TOKEN path (tag pushes created
-// by GITHUB_TOKEN do not trigger workflows; dispatch is the documented exception). Removing it
-// silently stops every release that comes through a merged Release PR while no PAT is configured.
+// TestReleaseWorkflow_DispatchTrigger: release.yml must keep the workflow_dispatch trigger — it is the entry point of the release-please chain on the GITHUB_TOKEN path (tag pushes created by GITHUB_TOKEN do not trigger workflows; dispatch is the documented exception).
 //
 // TestReleaseWorkflow_DispatchTrigger：release.yml 必须保留 workflow_dispatch 触发器——
 // 它是 release-please 链在 GITHUB_TOKEN 路径上的入口（GITHUB_TOKEN 产生的 tag push 不
@@ -286,11 +239,7 @@ func TestReleaseWorkflow_DispatchTrigger(t *testing.T) {
 	}
 }
 
-// TestGoreleaserReleaseMode_KeepsExisting: goreleaser must not replace the release body —
-// release-please pre-creates the GitHub Release with the curated changelog (grouped sections +
-// PR links); mode: replace would clobber it with a bare commit list. keep-existing uploads
-// artifacts onto the existing release and keeps the body. On the manual-tag path (no
-// pre-existing release) goreleaser creates the release itself, unchanged.
+// TestGoreleaserReleaseMode_KeepsExisting: goreleaser must not replace the release body — release-please pre-creates the GitHub Release with the curated changelog (grouped sections + PR links); mode: replace would clobber it with a bare commit list. keep-existing uploads artifacts onto the existing release and keeps the body.
 //
 // TestGoreleaserReleaseMode_KeepsExisting：goreleaser 不得 replace release 正文——
 // release-please 先建好带整理 changelog（分组 + PR 链接）的 GitHub Release；

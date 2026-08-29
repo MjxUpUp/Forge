@@ -100,13 +100,7 @@ func TestRunEmbeddedHook_UnknownHookFailsClosed(t *testing.T) {
 	}
 }
 
-// TestRunEmbeddedHook_AssertionCheck_ScrubsInheritedToolEnv pins the 2026-08-25
-// review-minor fix: runEmbeddedHook must scrub the tool-input env vars inherited
-// from the parent process. assertion-check picks batch mode (the gate's
-// full-diff scan) by an EMPTY FORGE_FILE_PATH — an exported FORGE_FILE_PATH in
-// the parent shell would silently drop the gate into per-edit analysis and the
-// full scan would never run. Test data strings are assembled via concatenation
-// so this file's own diff does not trip assertion-check on itself.
+// TestRunEmbeddedHook_AssertionCheck_ScrubsInheritedToolEnv pins the 2026-08-25 review-minor fix: runEmbeddedHook must scrub the tool-input env vars inherited from the parent process. assertion-check picks batch mode (the gate's full-diff scan) by an EMPTY FORGE_FILE_PATH — an exported FORGE_FILE_PATH in the parent shell would silently drop the gate into per-edit analysis and the full scan would never run.
 //
 // TestRunEmbeddedHook_AssertionCheck_ScrubsInheritedToolEnv 钉住 2026-08-25
 // review minor 修复：runEmbeddedHook 必须剔除从父进程继承的 tool-input env。

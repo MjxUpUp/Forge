@@ -9,22 +9,12 @@ import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
 )
 
-// testCoverageDisableEnv lets a project turn off the test-coverage gate
-// (symmetric with FORGE_WORK_ACTIVITY). Reasonable scenarios: docs-only repos,
-// modules dominated by generated code, or tasks that only touch whitelist files.
-// The CLI surfaces this escape hatch in the gate failure message so it cannot be
-// silently bypassed.
-//
 // testCoverageDisableEnv 让项目可关闭 test-coverage 门控
 // （与 FORGE_WORK_ACTIVITY 对称）。合理场景：仅文档仓库、
 // 生成代码占比高的模块、或 task 只动到 whitelist 文件。
 // CLI 在门禁失败消息里明示此逃生舱，避免被静默绕过。
 const testCoverageDisableEnv = "FORGE_TEST_COVERAGE"
 
-// sourceExts is the set of file extensions the test-coverage gate treats as source.
-// An earlier bash advisory hook (embedded via hooks/embed.go) mirrored this set and was
-// deleted during hook trimming; this gate is now the single source of truth.
-//
 // sourceExts 是 test-coverage 门控认定的「源码」后缀集。早期 hooks/embed.go 内嵌的一层
 // bash advisory hook 镜像此集合，hook 精简时已删——本门控现是唯一真相源。
 var sourceExts = map[string]bool{
@@ -33,16 +23,6 @@ var sourceExts = map[string]bool{
 	".rb": true, ".zig": true, ".nim": true,
 }
 
-// testCoverageWhitelist describes source files exempt from the test requirement:
-//   - Entry points: main.go, cmd/** main binaries
-//   - Generated code: *.gen.*, *_generated.*, *.pb.* protobuf bindings
-//   - Pure type/protocol definitions: no executable logic to test
-//   - Embedded asset directories: go:embed payloads distributed as runtime data
-//
-// Matched against forward-slash repo-relative paths.
-// (An earlier version mirrored this list in a bash advisory hook; that hook was
-// removed during trimming and this gate layer is now the single source of truth.)
-//
 // testCoverageWhitelist 描述免测试要求的源码文件：
 //   - 入口：main.go、cmd/** main 入口二进制
 //   - 生成代码：*.gen.*、*_generated.*、*.pb.* protobuf 绑定
@@ -53,32 +33,22 @@ var sourceExts = map[string]bool{
 // （早期版本在 bash advisory hook 里镜像此清单；该 hook 在精简时已删，
 // 本门控层现是唯一真相源。）
 type whitelistEntry struct {
-	// substr matches anywhere in the path as a substring (e.g. .gen., /dto/).
-	//
 	// substr 在路径任意位置子串匹配（如 .gen.、/dto/）。
 	substr string
-	// baseExact matches the final path segment exactly (e.g. main.go).
-	//
 	// baseExact 精确匹配路径末段（如 main.go）。
 	baseExact string
 }
 
 var testCoverageWhitelist = []whitelistEntry{
-	// Entry points.
-	//
 	// 入口。
 	{baseExact: "main.go"},
 	{substr: "cmd/"},
-	// Generated code.
-	//
 	// 生成代码。
 	{substr: ".gen."},
 	{substr: "_generated."},
 	{substr: ".pb.go"},
 	{substr: ".pb.rs"},
 	{substr: ".pb.dart"},
-	// Pure type/protocol/dto definitions.
-	//
 	// 纯类型/协议/dto 定义。
 	{baseExact: "types.ts"},
 	{baseExact: "types.js"},
@@ -86,13 +56,6 @@ var testCoverageWhitelist = []whitelistEntry{
 	{substr: "/dto/"},
 	{baseExact: "dto.go"},
 	{substr: "/models/"},
-	// Embedded asset directories: packaged payload distributed as runtime data,
-	// not project source under test. Forge keeps its skill library under skills/*
-	// (distributed skill scripts/docs consumed by the AI — not compile/test units).
-	// Without this exemption every committed skill script (.ts/.py) would falsely
-	// trip the gate. Match skills/ to release the root asset directory without
-	// affecting same-named source like internal/cli/skills_install.go.
-	//
 	// 内嵌资产目录：作为运行时数据分发的打包内容，非受测项目源码。
 	// forge 把 skill 库放在 skills/*（分发的 skill 脚本/文档供 AI 消费——
 	// 非编译/测试单元）。无此豁免，每个提交的 skill 脚本（.ts/.py）
@@ -102,33 +65,13 @@ var testCoverageWhitelist = []whitelistEntry{
 	// skills-forge/（2026-08 迁移后的 forge 原生 skill 覆盖层）同属分发的打包资产：
 	// 「skills/」子串匹配不到「skills-forge/」（斜杠位置不同），单独放行。带尾斜杠，
 	// 避免误放行 internal/cli/skills-forge-utils.go 类未来源码文件（review W6）。
-	//
-	// skills-forge/ (the forge-native skill overlay since the 2026-08 migration) is
-	// likewise distributed packaged asset: the "skills/" substring does NOT match
-	// "skills-forge/" (different slash position), so it needs its own entry. Trailing
-	// slash included so future sources like internal/cli/skills-forge-utils.go stay
-	// gated (review W6).
 	{substr: "skills-forge/"},
-	// Embedded hook-script container: internal/hooks/embed.go holds shell scripts as
-	// Go string constants (HazardGuardHook, WorkflowTestGuardHook, etc.). There is no
-	// Go logic to unit test — script behavior is verified end-to-end by internal/e2e
-	// (e.g. TestHook_HazardGuard_BlocksHazardousCommand). Without this exemption the
-	// file-level hasMatchingTest check (which looks for embed_test.go in the same
-	// package) would falsely flag it as changed source without a paired test.
-	//
 	// 内嵌 hook 脚本容器：internal/hooks/embed.go 把 shell 脚本作为 Go string 常量
 	// （HazardGuardHook、WorkflowTestGuardHook 等）持有。无 Go 逻辑可单元测试——
 	// 脚本行为由 internal/e2e 端到端验证（如 TestHook_HazardGuard_BlocksHazardousCommand）。
 	// 无此豁免，文件级 hasMatchingTest 检查（在同 package 找 embed_test.go）会
 	// 误把它标为改动源码无配对测试。
 	{baseExact: "embed.go"},
-	// Rust entry points — symmetric to main.go in a Go crate. baseExact matches the
-	// basename, so both src/main.rs and src-tauri/src/main.rs hit it. Rust convention:
-	// binaries live at src/main.rs, libraries at src/lib.rs (Tauri: src-tauri/src/lib.rs).
-	// Integration tests live under tests/ rather than sibling _test.rs files, and the
-	// harness exercises binaries via cargo run/cargo test — file-level hasMatchingTest
-	// would mis-flag these entry crates. dogfood 2.1②.
-	//
 	// Rust 入口——与 Go crate 的 main.go 对等。baseExact 匹配 basename，
 	// 故 src/main.rs 和 src-tauri/src/main.rs 都命中。Rust 惯例：二进制
 	// 声明 src/main.rs，库声明 src/lib.rs（Tauri 侧为 src-tauri/src/lib.rs）。
@@ -137,12 +80,6 @@ var testCoverageWhitelist = []whitelistEntry{
 	// 入口 crate 误标。dogfood 2.1②。
 	{baseExact: "main.rs"},
 	{baseExact: "lib.rs"},
-	// Tauri command glue directory — src-tauri/src/ holds #[tauri::command] handlers
-	// and tokio::spawn IPC bridge code. The Tauri runtime verifies these end-to-end via
-	// cargo tauri dev/build rather than through same-file unit tests; the conventional
-	// __tests__ layout does not apply. The trailing slash scopes the match to the
-	// directory — the root src/ of mixed Rust+TS projects is unaffected. dogfood 2.1②.
-	//
 	// Tauri command 胶水目录——src-tauri/src/ 持有 #[tauri::command] handler 和
 	// tokio::spawn IPC 桥代码。Tauri runtime 通过 cargo tauri dev/build 端到端
 	// 验证它们，而非通过同文件单元测试；惯用的 __tests__ 摆放不适用。结尾的
@@ -150,19 +87,10 @@ var testCoverageWhitelist = []whitelistEntry{
 	{substr: "src-tauri/"},
 }
 
-// CheckNameTestCoverage is the checklog entry name for the test-coverage gate
-// decision, letting trace surface the gate verdict (not just per-edit WARNs).
-//
 // CheckNameTestCoverage 是 test-coverage 门控决策的 checklog 条目名，
 // 使 trace 能展示门禁裁定（而非仅各次 edit 的 WARN）。
 const CheckNameTestCoverage checklog.CheckName = "test-coverage-gate"
 
-// coverageEscapeActive records the bypass audit entry and reports true when the
-// test-coverage gate is escaped (per-task override OR global env) — shared by
-// CheckTestCoverage and its precomputed-list variant so no call path can skip the
-// audit (A4 + plan 5: escape hatch use must leave a trace). See the audit rationale
-// inlined below.
-//
 // coverageEscapeActive 记录 bypass 审计条目，并在 test-coverage 门控被逃生（per-task
 // override 或全局 env）时返回 true——由 CheckTestCoverage 及其预计算列表变体共用，
 // 任何调用路径都绕不过审计（A4 + 方案5：逃生舱使用必须留痕）。审计理由见下方内联注释。
@@ -170,12 +98,6 @@ func coverageEscapeActive(root string, state *TaskState) bool {
 	if !escapeDisabled(state, escapeTestCoverage, testCoverageDisableEnv) {
 		return false
 	}
-	// A4 + plan 5: audit the bypass (per-task override OR global env). The hatch is
-	// meant for reasonable scenarios (docs-only repo, generated code, whitelist-only
-	// task), but its use must leave a trace — otherwise agents silently bypass the
-	// test-coverage gate. UsedEscapeHatch → Strength cap Weak makes escape carry a
-	// cost rather than being free.
-	//
 	// A4 + 方案5: audit the bypass (per-task override OR global env). The hatch is
 	// 是合理场景（仅文档仓库、生成代码、whitelist-only task），但其使用必须
 	// 留痕——否则 agent 会静默绕过 test-coverage 门控。UsedEscapeHatch → Strength
@@ -195,20 +117,7 @@ func coverageEscapeActive(root string, state *TaskState) bool {
 	return true
 }
 
-// CheckTestCoverage enforces CLAUDE.md rule 4 (tests accompany changes): every
-// non-whitelisted source file changed during the task must have a corresponding test
-// file also changed. Returns (ok, missing, total): ok=true when there is no changed
-// source, all changed source is whitelisted, or every changed source has a paired
-// test; total is the number of changed source files that need a paired test
-// (covered = total-len(missing)), and the scoring dimension grades this continuously
-// rather than as a binary ok.
-//
-// Exported so scoring (cli.scoreTask) can reuse the precise verdict computed by the
-// task-verify gate instead of re-deriving coverage from git diff — the latter
-// underestimates coverage when the task change was committed before task start
-// (HeadCommit == HEAD → empty diff → the testing dimension sees no tests).
-//
-// Graceful degradation: non-git repo or empty diff → ok=true (no false positive).
+// CheckTestCoverage computes the changed set itself and reports missing test coverage.
 //
 // CheckTestCoverage enforces CLAUDE.md rule 4 (测试伴随变更): every non-whitelisted
 // source file changed during the task must have a corresponding test file also
@@ -222,12 +131,6 @@ func coverageEscapeActive(root string, state *TaskState) bool {
 //
 // 优雅降级：非 git 仓库或空 diff → ok=true（不误报）。
 //
-// This entry point computes the changed set itself. Callers that ALREADY ran
-// taskChangedFiles (executor gates compute it for phase inference / behavior-surface
-// advice) must use checkTestCoverageChanged instead — taskChangedFiles spawns several
-// git subprocesses and should not run twice per gate (2026-08-29 review round:
-// double computation eliminated).
-//
 // 本入口自行计算 changed 集。已经算过 taskChangedFiles 的调用方（executor 各 gate
 // 为 phase 推断/行为面提示算过一次）必须改用 checkTestCoverageChanged——
 // taskChangedFiles 起多个 git 子进程，不应每 gate 跑两遍（2026-08-29 审查轮：双算消除）。
@@ -238,12 +141,6 @@ func CheckTestCoverage(root string, state *TaskState) (ok bool, missing []string
 	return checkTestCoverageChanged(root, state, taskChangedFiles(root, state))
 }
 
-// checkTestCoverageChanged is the internal variant of CheckTestCoverage accepting a
-// PRECOMPUTED changed-file list (from taskChangedFiles). Behavior is identical to
-// CheckTestCoverage — including the escape-hatch audit, so executor call sites passing
-// gitChanged cannot accidentally skip it. All comments describing the gate semantics
-// live on CheckTestCoverage above.
-//
 // checkTestCoverageChanged 是 CheckTestCoverage 的内部变体，接受【预计算】的改动文件
 // 列表（来自 taskChangedFiles）。行为与 CheckTestCoverage 完全一致——含逃生舱审计，
 // 传入 gitChanged 的 executor 调用点不会意外跳过审计。门控语义的完整注释见上方
@@ -278,15 +175,6 @@ func checkTestCoverageChanged(root string, state *TaskState, changed []string) (
 	return len(missing) == 0, missing, total
 }
 
-// testCoverageHardGateThreshold is the minimum count of changed source files without
-// a paired test for the task-complete hard block. Blocks only when this threshold is
-// met AND assertion count is zero — small changes (<3 files) get a fudge-factor
-// exemption (aligning with the spirit of Sonar's <20-line exemption, but using file
-// count as a proxy for line count to avoid git diff line counting + circular
-// dependencies). Eval evidence: feat/eval-core 0/19 and feat/m2 0/25 are typical
-// corrupt successes (large change, zero coverage); fix/m2-review-fixes 0/2 is a
-// 13-line small fix where the fudge-factor exemption is appropriate.
-//
 // testCoverageHardGateThreshold 是 task-complete 兜底硬阻断的最小「无配对测试的源文件数」。
 // ≥此阈值且零断言才阻断——小改（<3 文件）fudge factor 豁免（对齐业界 Sonar <20 行豁免精神，
 // 但用文件数代理行数以避免 git diff 行数计算 + 循环依赖）。eval 证据：feat/eval-core 0/19、
@@ -294,16 +182,6 @@ func checkTestCoverageChanged(root string, state *TaskState, changed []string) (
 // fudge factor 豁免合理。
 const testCoverageHardGateThreshold = 3
 
-// testCoverageShouldBlock decides whether the task-complete fallback hard-blocks for
-// missing tests. missingN is the count of changed source files WITHOUT a paired test
-// (NOT total changed source files) — matching the threshold doc above: many missing
-// (≥ threshold) AND zero assertions → block (corrupt success: changed source with
-// neither paired tests nor any assertion). Few missing (< threshold, fudge factor —
-// e.g. partial coverage of a well-tested change) or has-assertions-but-zero-paired
-// coverage (tests live elsewhere / refactor scenario) → advisory pass. The assertion
-// signal reuses scoring.CollectAssertionDensity (13 cross-language markers) to avoid the
-// tautology trap of only checking whether a test exists (AI test fossilization bug).
-//
 // testCoverageShouldBlock 决定 task-complete 兜底是否对缺测试硬阻断。missingN 是
 // 「无配对测试的改动源文件数」（非全部改动源文件数）——与上方阈值文档一致：缺测
 // 多（≥阈值）且零断言 → 阻断（corrupt success：改了源码既无配对测试也无任何断言）。
@@ -315,21 +193,6 @@ func testCoverageShouldBlock(missingN, assertN int) bool {
 	return missingN >= testCoverageHardGateThreshold && assertN == 0
 }
 
-// taskChangedFiles returns the set of files changed during the task.
-// It includes committed changes after the task's HeadCommit (recorded at task start)
-// plus the working tree — so covered/total only counts this task's files, aligning
-// with scoring.resolveDiffBase. Otherwise tasks sharing a feature branch accumulate
-// earlier tasks' commits into main...HEAD (feat/evidence-chain regression: a
-// fully-tested change got testing=20). Falls back to main...HEAD only when HeadCommit
-// is missing (legacy state). Empty when the tree is clean and there is no task-specific
-// commit.
-//
-// The committed slice is further filtered by cross-task attribution
-// (taskattribution.go): files whose every touching commit in HeadCommit..HEAD belongs
-// to a COMPLETED sibling task's span are excluded — they were already accounted at
-// that task's completion, so counting them here double-charges scope/test-coverage
-// and pushes agents to `scope add` files they never touched (2026-08 usage evidence).
-//
 // taskChangedFiles 返回 task 期间改动的文件集合。
 // 含 task 的 HeadCommit（task start 时记录）之后的已提交改动加工作树——
 // 使 covered/total 只计本 task 文件，与 scoring.resolveDiffBase 对齐。否则共享
@@ -356,14 +219,6 @@ func taskChangedFiles(root string, state *TaskState) []string {
 		}
 	}
 
-	// 1. Committed changes during this task. Prefer the task's HeadCommit (recorded
-	// at task start) so covered/total only counts this task's files — aligning with
-	// scoring.resolveDiffBase. Otherwise tasks sharing a feature branch accumulate
-	// earlier tasks' commits into main...HEAD, inflating the testing dimension and
-	// false-flagging the current task's well-tested files as missing (feat/evidence-chain
-	// regression: a fully-tested change got testing=20). Falls back to main...HEAD only
-	// when no HeadCommit is recorded (legacy state / test-suite-modeled pre-start form).
-	//
 	// 1. 本 task 期间的已提交改动。优先用 task 的 HeadCommit（task start 时
 	// 记录），使 covered/total 只计本 task 文件——与 scoring.resolveDiffBase
 	// 对齐。否则共享同一 feature 分支的 task 会把前序 task 的 commit 累积进
@@ -374,11 +229,6 @@ func taskChangedFiles(root string, state *TaskState) []string {
 		if state.HeadCommit != "" {
 			out, err := exec.Command("git", "-C", root, "diff", "--name-only", state.HeadCommit+"..HEAD").Output()
 			if err == nil {
-				// Cross-task attribution (2026-08-25, fix/gate-loopholes): drop files
-				// fully accounted to COMPLETED sibling tasks (see taskattribution.go) —
-				// their commits landed after this task's HeadCommit but are not this
-				// task's work. Working-tree/untracked sources below stay unfiltered.
-				//
 				// 跨任务归属（2026-08-25，fix/gate-loopholes）：丢弃已被【已完成】
 				// 兄弟任务记账的文件（见 taskattribution.go）——它们的 commit 落在
 				// 本任务 HeadCommit 之后但不是本任务的工作。下方工作树/untracked
@@ -407,26 +257,12 @@ func taskChangedFiles(root string, state *TaskState) []string {
 		}
 	}
 
-	// Working tree (staged + unstaged), always relevant — covers uncommitted changes.
-	//
 	// 工作树（staged + unstaged），始终相关——覆盖未提交改动。
 	out, err := exec.Command("git", "-C", root, "diff", "--name-only", "HEAD").Output()
 	if err == nil {
 		add(out)
 	}
 
-	// Untracked files — newly created and not yet git-added. At task-verify time the
-	// agent's newly created files are usually still untracked, so without this source
-	// the gate cannot see them: a freshly written foo_test.go cannot satisfy the
-	// sibling-file requirement for a just-changed foo.go, and test-coverage falsely
-	// reports no paired test for files that definitely have one (feat/task-scope hit:
-	// task.go modified-tracked + task_scope_test.go untracked → false advisory).
-	// --exclude-standard skips .gitignored contents (node_modules, build output, stray
-	// dashboard-render.png) so only genuine working-tree source is considered. Repo-wide
-	// to match the working-tree semantics above — only the committed HeadCommit..HEAD
-	// portion is task-scoped. Also fixes the symmetric blind spot of scope-drift
-	// (untracked files outside PlanScope were previously invisible).
-	//
 	// Untracked 文件——新建尚未 git add。task-verify 时刻 agent 的新建文件
 	// 通常仍 untracked，故无此来源门控看不见它们：刚写的 foo_test.go 无法满足
 	// 刚改的 foo.go 兄弟文件，test-coverage 对确切有测试的文件假报无配对测试
@@ -441,13 +277,6 @@ func taskChangedFiles(root string, state *TaskState) []string {
 		add(out)
 	}
 
-	// L3 attribution filter (multi-task-concurrency §6, T3): drop working-tree/untracked
-	// paths the ledger provably assigns to OTHER incomplete tasks' sessions — in a shared
-	// working directory those are another window's WIP, not this task's change set.
-	// Deliberately fail-safe the other way: orphans (ledger cannot explain) STAY — a
-	// bash-generated new file the ledger missed must still count toward this task's
-	// coverage obligations. FORGE_ATTRIBUTION=0 → empty set → pre-L3 behavior.
-	//
 	// L3 归属过滤（multi-task-concurrency §6，T3）：丢弃台账可证明归属【其他未完成任
 	// 务】会话的工作树/untracked 路径——共享工作目录里那是另一个窗口的 WIP，不是本
 	// 任务的变更集。反方向刻意 fail-safe：无主路径（台账解释不了）保留——bash 生
@@ -470,14 +299,6 @@ func taskChangedFiles(root string, state *TaskState) []string {
 	return files
 }
 
-// isSourceFile reports whether path is a source file (not a test, not config).
-// Vendored dependencies (any vendor/ path segment) are excluded: they are
-// third-party baselines, never project code the task must pair tests with —
-// a vendored update otherwise floods "missing tests" (cooking project: 986
-// files). The exclusion also benefits scope-drift and DesignPhases inference,
-// which share taskChangedFiles — dropping vendor noise is directionally
-// consistent everywhere.
-//
 // isSourceFile 报告 path 是否为源码文件（非测试、非 config）。vendor/ 依赖
 // 排除：它们是第三方基线，不是本任务要配对测试的项目代码——一次 vendor
 // 更新会把 "missing tests" 打爆（cooking 项目报 986 文件）。该排除同时惠及
@@ -495,8 +316,6 @@ func isSourceFile(path string) bool {
 	return true
 }
 
-// isTestFile reports whether path itself looks like a test file.
-//
 // isTestFile 报告 path 自身是否疑似测试文件。目录判定按【路径段整段】匹配
 // （test/tests/__tests__）而非子串——子串匹配把 contest/、latest/、attest/ 等
 // 生产目录整体判成测试目录，形成"豁免测试义务 + 逃出 cheat/unused 扫描 +
@@ -509,15 +328,6 @@ func isTestFile(path string) bool {
 			return true
 		}
 	}
-	// "test_" prefix form — Python and Ruby ONLY (pytest test_*.py / minitest
-	// test_*.rb conventions): the pairing probe needed test_root.py recognized, but a
-	// pinned scoring case (test_utils.go, scope_test.go) shows the prefix must NOT
-	// generalize to Go — Go's convention is the *_test.go suffix, and
-	// "test_utils.go" is a helpers file, not a test. Rule: ext ∈ {.py,.rb} AND a
-	// real stem after the prefix.
-	// NOTE: scoring/evaluator.go's isTestPath mirrors this predicate (same
-	// .py/.rb-only restriction).
-	//
 	// 「test_」前缀形态——仅 Python 与 Ruby（pytest test_*.py / minitest test_*.rb
 	// 惯例）：配对探针需要识别 test_root.py，但 scoring 侧钉住的用例
 	//（test_utils.go，scope_test.go）表明该前缀不得推广到 Go——Go 的惯例是
@@ -528,13 +338,6 @@ func isTestFile(path string) bool {
 		strings.HasPrefix(base, "test_") && len(base) > len("test_")+len(ext) {
 		return true
 	}
-	// Java camelCase test names (JUnit/Maven conventions): FooTest.java / FooTests.java /
-	// FooIT.java. Needed for self-consistency with the default-branch pairing in
-	// hasMatchingTest: it accepts stem+"Test.java" for Main.java, and without this rule
-	// the just-paired MainTest.java would itself re-enter the missing list (2026-08-29
-	// acceptance: Main.java+MainTest.java — both sides must hold). Restricted to the
-	// .java extension so lowercase-form conventions elsewhere are unaffected.
-	//
 	// Java 驼峰测试名（JUnit/Maven 惯例）：FooTest.java / FooTests.java / FooIT.java。
 	// 用于与 hasMatchingTest 的 default 分支配对自洽：配对接受 Main.java 的
 	// stem+"Test.java"，若无此判定，刚配对成功的 MainTest.java 自身会再进 missing
@@ -552,13 +355,9 @@ func isTestFile(path string) bool {
 	return false
 }
 
-// isWhitelisted reports whether a source file is exempt from the test requirement.
-//
 // isWhitelisted 报告源码文件是否豁免测试要求。
 func isWhitelisted(path string) bool {
 	base := filepath.Base(path)
-	// Normalize to forward slashes for cross-platform substring matching.
-	//
 	// 归一为 forward slashes 以跨平台子串匹配。
 	norm := filepath.ToSlash(path)
 	for _, w := range testCoverageWhitelist {
@@ -572,19 +371,9 @@ func isWhitelisted(path string) bool {
 	return false
 }
 
-// hasMatchingTest infers the conventional test file path for a changed source file and
-// looks it up in the changed set (per-language conventions below).
-//
 // hasMatchingTest 推断改动源码文件的惯用测试文件路径，并在改动集合里查它
 // （各语言惯例见下）。
 func hasMatchingTest(src string, changed map[string]bool) bool {
-	// git reports repo-relative paths with forward slashes on every platform.
-	// Normalize the source path to match: filepath.Dir runs Clean, which on Windows
-	// converts '/' into the OS separator '\', while the keys of changed stay
-	// forward-slashed. Without ToSlash, the package-level fallback below silently
-	// never matches on Windows — breaking the gate's (and scoreTask's B3 live
-	// fallback) judgment for any multi-directory package.
-	//
 	// git 在所有平台都以 forward slashes 报仓库相对路径。
 	// 归一源码路径以匹配：filepath.Dir 跑 Clean，Windows 下会把 '/' 转成
 	// OS 分隔符 '\'，而 changed 的 key 保持 forward-slash。不 ToSlash 时，
@@ -598,20 +387,10 @@ func hasMatchingTest(src string, changed map[string]bool) bool {
 
 	switch ext {
 	case ".go":
-		// Convention: foo.go ↔ foo_test.go (preferred, most precise).
-		//
 		// 惯例：foo.go ↔ foo_test.go（首选、最精确）。
 		if changed[base+"_test.go"] {
 			return true
 		}
-		// Package-level fallback: Go testing is package-scoped by convention, so a test
-		// file in the same directory as the source covers it even if the names do not
-		// pair (e.g. tests for executor.go live in testcoverage_test.go). Without this
-		// fallback the gate would falsely fail a well-tested package over sibling-naming
-		// expectations. The fallback is still strict: a _test.go under the source
-		// directory must exist in the changed set — directories with no test changes
-		// still fail, so genuinely untested code is still caught.
-		//
 		// Package-level 兜底：Go 测试惯例 package-scoped，故源码同目录下的
 		// 测试文件即便名字不配对也覆盖它（如 executor.go 的测试在
 		// testcoverage_test.go 里）。无此兜底，门控会把测试命名按兄弟概念
@@ -627,8 +406,6 @@ func hasMatchingTest(src string, changed map[string]bool) bool {
 				continue
 			}
 			if pkgDir == "" {
-				// Root-level source: any root-level _test.go suffices.
-				//
 				// Root-level 源码：任一 root-level _test.go 即可。
 				if !strings.Contains(strings.TrimSuffix(f, "_test.go"), "/") {
 					return true
@@ -644,9 +421,6 @@ func hasMatchingTest(src string, changed map[string]bool) bool {
 		if changed[base+"_test.rs"] {
 			return true
 		}
-		// A Rust inline #[cfg(test)] module is also acceptable — but here we only see
-		// file names, so we only accept the same-stem _test.rs.
-		//
 		// Rust inline #[cfg(test)] module 也可接受——但此处只能看文件名，
 		// 故仅接受同文件名的 _test.rs。
 		return false
@@ -665,10 +439,6 @@ func hasMatchingTest(src string, changed map[string]bool) bool {
 		}
 		return false
 	case ".py":
-		// Normalize a root-level dir ("." from filepath.Dir) to "" so candidates stay
-		// prefix-free ("test_foo.py") and match git's path keys — mirrors the Go branch's
-		// root-level handling; without it "./test_foo.py" never matches "test_foo.py".
-		//
 		// 根目录源码的 dir（filepath.Dir 返回 "."）归一为 ""，候选保持无前缀形态
 		//（"test_foo.py"）以匹配 git 路径键——与 Go 分支的 root-level 处理对齐；
 		// 否则 "./test_foo.py" 永远匹配不上 "test_foo.py"。
@@ -683,34 +453,18 @@ func hasMatchingTest(src string, changed map[string]bool) bool {
 		}
 		return false
 	default:
-		// java/rb/zig/nim — precise same-directory pairing, isomorphic to the Go/.py
-		// branches: compute the source's dir+stem and accept ONLY conventional test-file
-		// names in the SAME directory. (2026-08-29 review round: the old matcher's second
-		// disjunct was dead code — name carries the source extension, so dir+"/"+name could
-		// never end in "_test" — and its first disjunct was over-broad: HasPrefix(f,
-		// "src/poller") let src/poller_daemon_spec.rb falsely pair with src/poller.rb.
-		// Dead condition deleted; loose prefix replaced with exact candidates.)
-		//
 		// java/rb/zig/nim —— 同目录精确配对，与 Go/.py 分支同构：计算源码的 dir+stem，
 		// 只接受同目录下的惯用测试文件名。（2026-08-29 审查轮：旧匹配器的第二析取是
 		// 死代码——name 带源扩展名，dir+"/"+name 永不以 "_test" 结尾——第一析取又过松：
 		// HasPrefix(f, "src/poller") 让 src/poller_daemon_spec.rb 假配对 src/poller.rb。
 		// 死条件已删；松前缀换成精确候选。）
 		stem := filepath.ToSlash(filepath.Base(base)) // 源文件去扩展名的主名 / stem without extension
-		// Normalize a root-level dir ("." from filepath.Dir) to "" so candidates stay
-		// prefix-free and match git's forward-slash path keys (mirrors the .py branch).
-		//
 		// 根目录源码的 dir（filepath.Dir 返回 "."）归一为 ""，候选保持无前缀形态、
 		// 匹配 git 的 forward-slash 路径键（与 .py 分支对齐）。
 		d := ""
 		if dir != "." && dir != "" {
 			d = dir + "/"
 		}
-		// Language-specific exact candidates (same dir only):
-		//   java: JUnit camelCase — Main.java ↔ MainTest.java (2026-08-29 acceptance
-		//         case), plus FooTests.java / FooIT.java (integration) variants.
-		//   rb:   RSpec foo_spec.rb, foo_test.rb, and minitest/test-unit test_foo.rb.
-		//
 		// 语言特定的精确候选（仅同目录）：
 		//   java：JUnit 驼峰——Main.java ↔ MainTest.java（2026-08-29 验收用例），
 		//         另有 FooTests.java / FooIT.java（集成）变体。
@@ -727,10 +481,6 @@ func hasMatchingTest(src string, changed map[string]bool) bool {
 				return true
 			}
 		}
-		// All languages: stem+"_test."+ANY extension in the same directory (zig
-		// foo_test.zig, nim foo_test.nim, java foo_test.java, …). Prefix-scoped by d+"/",
-		// so a sibling source's spec (poller_daemon_spec.rb) can never match poller.
-		//
 		// 所有语言：同目录下 stem+"_test."+任意扩展（zig foo_test.zig、nim
 		// foo_test.nim、java foo_test.java……）。前缀被 d+"/" 限定，兄弟源码的
 		// spec（poller_daemon_spec.rb）永不匹配 poller。
@@ -744,13 +494,7 @@ func hasMatchingTest(src string, changed map[string]bool) bool {
 	}
 }
 
-// ClassifyChangedPath reports whether a path is source that owes a paired test
-// (non-whitelisted, non-test, source extension) and whether it is itself a test
-// file. Shared by the test-nudge in-process hook (cli) so the mid-task nudge and
-// the task-verify gate judge "source"/"test" by identical rules — a nudge that
-// counted whitelist files or missed test files would diverge from the gate it
-// previews, teaching the agent a different rule than the one that enforces
-// (same rationale as checklog.DetailForSkillTrigger's single-source contract).
+// ClassifyChangedPath reports whether a path is source that owes a paired test (non-whitelisted, non-test, source extension) and whether it is itself a test file.
 //
 // ClassifyChangedPath 报告一个路径是否是欠配对测试的源码（非白名单、非测试、
 // 源码后缀），以及它自身是否测试文件。供 test-nudge 进程内 hook（cli）共用——
@@ -761,10 +505,6 @@ func ClassifyChangedPath(path string) (source, test bool) {
 	return isSourceFile(path) && !isWhitelisted(path) && !isTestFile(path), isTestFile(path)
 }
 
-// testCoverageDetail returns a short checklog detail string for the gate verdict
-// (intentionally short — checklog Detail is a single line, not the user-facing
-// failure message produced by formatMissing).
-//
 // testCoverageDetail 返回门禁裁定的简短 checklog detail 字符串（刻意短——
 // checklog Detail 是单行，不是 formatMissing 产出的面向用户失败消息）。
 func testCoverageDetail(ok bool, missing []string) string {
@@ -777,13 +517,6 @@ func testCoverageDetail(ok bool, missing []string) string {
 	return "missing tests for: " + strings.Join(missing, ", ")
 }
 
-// formatMissing produces the user-facing gate failure message.
-// dogfood 4.2/2.1: the original advisory taught escape at the end (To bypass:
-// FORGE_TEST_COVERAGE=disable), and in practice agents wrote disable into task plans
-// as fixed procedure (DevWorkbench 330 times). Switched to injecting the test-discipline
-// skill directive (mirroring code-review-gate's hook-enforced driving path) — escape is
-// demoted to a trailing audit footnote instead of headline instruction.
-//
 // formatMissing 产出面向用户的门禁失败消息。
 // dogfood 4.2/2.1：原 advisory 末尾教 escape（"To bypass: FORGE_TEST_COVERAGE=disable"），
 // 实测让 agent 把 disable 写进 task plan 当固定流程（DevWorkbench 330 次）。改为注入

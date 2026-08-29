@@ -1,10 +1,5 @@
 package cli
 
-// skills_analyze.go — analyze subcommand: one-stop read-only weakness mining report.
-// Clusters the project's deterministic signals (dimension weaknesses / verification blind
-// spots / never-triggered skills / low-effectiveness skills) into a single report for the
-// human to pick optimization targets from. Report-only — no gate, no auto-change.
-//
 // skills_analyze.go — analyze 子命令：一站式只读弱点挖掘报告。把项目的确定信号
 //（维度弱点/验证盲区/从未触发/低成效 skill）聚成一册供人选题。只报告——无门禁、不自动改。
 
@@ -60,9 +55,6 @@ func runSkillsAnalyze(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// printWeaknessReport renders the human-readable report: each signal cluster with its
-// evidence, caveats last (honesty about what the report cannot see).
-//
 // printWeaknessReport 渲染人读报告：每个信号簇带证据，caveat 收尾（报告看不见什么的诚实性）。
 func printWeaknessReport(rep *skillseval.WeaknessReport) {
 	fmt.Printf("弱点挖掘报告（只读证据，不裁决——修改走 decide --prediction + battery 闭环）\n")

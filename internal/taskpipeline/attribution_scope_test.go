@@ -10,10 +10,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/attribution"
 )
 
-// Real git repos + real task states + a real ledger: ForeignAttributedPaths is a
-// three-way join (tasks' session anchors × attribution ledger × git status) — any mock
-// would test the mock.
-//
 // 真实 git 仓库 + 真实任务状态 + 真实台账：ForeignAttributedPaths 是三方 join
 // （任务会话锚 × 归属台账 × git status）——mock 只能测 mock 自己。
 func setupAttributionRepo(t *testing.T) string {
@@ -62,10 +58,6 @@ func setupAttributionRepo(t *testing.T) string {
 	return dir
 }
 
-// TestForeignAttributedPaths_ProvenForeignOnly: from task X's viewpoint only theirs.go
-// (task Y's session's path) is foreign — orphans and own paths stay visible (fail-safe:
-// only proven-foreign may be excluded).
-//
 // TestForeignAttributedPaths_ProvenForeignOnly：以任务 X 视角，只有 theirs.go（任务 Y
 // 会话的路径）是外来的——无主与自己的路径保持可见（fail-safe：只有可证明外来才可
 // 排除）。
@@ -85,9 +77,6 @@ func TestForeignAttributedPaths_ProvenForeignOnly(t *testing.T) {
 	}
 }
 
-// TestTaskChangedFiles_ExcludesForeignOnly: task X's change set keeps mine.go and the
-// orphan, drops theirs.go; the committed-range cross-task attribution is untouched.
-//
 // TestTaskChangedFiles_ExcludesForeignOnly：任务 X 的变更集保留 mine.go 与无主文件、
 // 剔除 theirs.go；committed 区间的跨任务归因不受影响。
 func TestTaskChangedFiles_ExcludesForeignOnly(t *testing.T) {
@@ -112,10 +101,6 @@ func TestTaskChangedFiles_ExcludesForeignOnly(t *testing.T) {
 	}
 }
 
-// TestTaskFingerprint_ExclusionConsistency: the fingerprint helper and a raw whole-tree
-// computation differ when a foreign file exists — and the helper is deterministic, so
-// record-side and recompute-side agree by construction (the T3 contract).
-//
 // TestTaskFingerprint_ExclusionConsistency：存在外来文件时 helper 与全树计算不同——
 // 且 helper 是确定性的，记录侧与重算侧按构造一致（T3 契约）。
 func TestTaskFingerprint_ExclusionConsistency(t *testing.T) {
@@ -138,11 +123,6 @@ func TestTaskFingerprint_ExclusionConsistency(t *testing.T) {
 	}
 }
 
-// TestForeignAttributedPaths_SharedSessionNotForeign pins the B1 fix (review BLOCKER):
-// one session anchoring TWO incomplete tasks (the supported same-window sequential
-// multi-task flow) is foreign to NEITHER — the task's own uncommitted changes must stay
-// in its own review fingerprint, never be silently excluded.
-//
 // TestForeignAttributedPaths_SharedSessionNotForeign 钉住 B1 修正（review BLOCKER）：
 // 同一会话锚定两个未完成任务（显式支持的单窗口顺序多任务）对【任一】任务都不算
 // 外来——任务自己的未提交变更必须留在自己的 review 指纹里，绝不静默排除。

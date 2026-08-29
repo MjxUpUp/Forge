@@ -11,14 +11,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-// TestClaudeMDCoversAllWiredHooks is the docs-consistency guard for the security
-// section: every hook name wired in ForgeHookSpec (the single source of truth for
-// the hook roster, including the Go-native skill-trigger) must appear somewhere in
-// the generated CLAUDE.md / AGENTS.md forge section. Root cause this guards: the
-// 2026-08 audit found 9 wired hooks (incl. two HARD blockers hazard-guard /
-// freeze-guard and the review-stop exit-2 block) absent from the docs — agents hit
-// their BLOCKED messages cold with no resolution path. Adding a hook without
-// documenting it now fails this test instead of shipping silently.
+// TestClaudeMDCoversAllWiredHooks is the docs-consistency guard for the security section.
 //
 // TestClaudeMDCoversAllWiredHooks 是安全机制段的一致性守卫：ForgeHookSpec（hook
 // 名册单一真相源，含 Go 原生 skill-trigger）里接线的每个 hook 名都必须出现在生成的
@@ -46,11 +39,6 @@ func TestClaudeMDCoversAllWiredHooks(t *testing.T) {
 		{"AGENTS.md", buildForgeSection(false)},
 	} {
 		for name := range wired {
-			// Anchored match: the name must appear in markup form — a bold bullet
-			// (`- **name**`) or inline code (`` `name` ``). Bare substring matching
-			// would let a future hook named e.g. "review" pass on the strength of
-			// "review-stop" already being documented (review 2026-08-21, L-1).
-			//
 			// 锚定匹配：名字必须以标记形态出现——粗体条目（`- **name**`）或行内
 			// 代码（`` `name` ``）。裸子串匹配会让未来名为 "review" 的 hook 借
 			// 已文档化的 "review-stop" 假通过（2026-08-21 复审 L-1）。
@@ -276,12 +264,7 @@ func TestClaudeMDSectionContract(t *testing.T) {
 	}
 }
 
-// TestClaudeMDFailureTrackMatcherTracksSpec is the docs-consistency guard for the
-// failure-track line's matcher text: the generated docs must quote the LIVE
-// ForgeHookSpec matcher, not a hardcoded string. Root cause this guards: NIT-4
-// (2026-08-22 review) — the spec narrowed Bash|PowerShell→Bash and the docs line
-// hardcodes the matcher, a shape that silently rots on every future spec change.
-// Reading the matcher from the spec makes that drift a test failure instead.
+// TestClaudeMDFailureTrackMatcherTracksSpec is the docs-consistency guard for the failure-track line's matcher text: the generated docs must quote the LIVE ForgeHookSpec matcher, not a hardcoded string.
 //
 // TestClaudeMDFailureTrackMatcherTracksSpec 是 failure-track 行 matcher 文案的一
 // 致性守卫：生成的文档必须引用**活的** ForgeHookSpec matcher，而非钉死的字符串。
@@ -400,10 +383,7 @@ func TestGenerateClaudeMDCarriesSlashCommands(t *testing.T) {
 	}
 }
 
-// TestGenerateClaudeMDCarriesRecurrentHardening locks the recurrence-driven advisory→hard section in
-// the generated CLAUDE.md. Without it an agent on a recurrent project hits the BLOCKED message cold
-// (the whole point of documenting the soft↔hard balance). Guards the claudemd.go generator against
-// silent removal of the section, table-row, and escape-hatch env names.
+// TestGenerateClaudeMDCarriesRecurrentHardening locks the recurrence-driven advisory→hard section in the generated CLAUDE.md.
 //
 // TestGenerateClaudeMDCarriesRecurrentHardening 锁定生成的 CLAUDE.md 里复发驱动 advisory→hard 升硬
 // 小节。无它则复发项目里 agent 会冷不丁撞 BLOCKED（文档化软↔硬平衡的全部意义）。守护 claudemd.go
@@ -430,10 +410,7 @@ func TestGenerateClaudeMDCarriesRecurrentHardening(t *testing.T) {
 	}
 }
 
-// TestGenerateClaudeMDAtomicWriteNoResidue pins the durability contract after the
-// os.WriteFile → util.AtomicWrite switch: generation leaves a complete file and no
-// temp-file residue behind, and regeneration over an existing file preserves user
-// content outside the Forge section (section-replace stays idempotent).
+// TestGenerateClaudeMDAtomicWriteNoResidue pins the durability contract after the AtomicWrite switch.
 //
 // TestGenerateClaudeMDAtomicWriteNoResidue 钉住 os.WriteFile → util.AtomicWrite
 // 后的耐久契约：生成产出完整文件且无临时文件残留，对已有文件重复生成时标记外
@@ -451,8 +428,6 @@ func TestGenerateClaudeMDAtomicWriteNoResidue(t *testing.T) {
 		t.Error("generated CLAUDE.md should contain the Forge section markers")
 	}
 
-	// Regenerate over user content: user text outside the markers must survive.
-	//
 	// 对用户内容重复生成：标记外的用户文本必须保留。
 	user := "# my project\n\nuser notes stay\n"
 	if err := os.WriteFile(filepath.Join(dir, ".claude", "CLAUDE.md"),
@@ -467,8 +442,6 @@ func TestGenerateClaudeMDAtomicWriteNoResidue(t *testing.T) {
 		t.Error("regeneration must preserve user content outside the Forge section")
 	}
 
-	// No atomic-write temp residue anywhere under .claude.
-	//
 	// .claude 下不得有原子写临时文件残留。
 	entries, err := os.ReadDir(filepath.Join(dir, ".claude"))
 	if err != nil {
@@ -481,18 +454,12 @@ func TestGenerateClaudeMDAtomicWriteNoResidue(t *testing.T) {
 	}
 }
 
-// TestGenerateUserQualitySkillTo pins the shared user-level skill writer used by
-// both GenerateUserQualitySkill (~/.claude/skills) and the reasonix translator
-// (~/.reasonix/skills): content is the conditional-activation form, and a missing
-// agent home is a no-op (self-poison guard — Forge never creates an agent's config
-// home itself).
+// TestGenerateUserQualitySkillTo pins the shared user-level skill writer.
 //
 // TestGenerateUserQualitySkillTo 钉住共享的用户级 skill 写入器（GenerateUserQualitySkill
 // 与 reasonix translator 共用）：内容为条件激活形态；agent home 缺失时 no-op
 // （自毒防护——Forge 绝不自行创建 agent 的配置 home）。
 func TestGenerateUserQualitySkillTo(t *testing.T) {
-	// Home exists → skill written with conditional-activation content.
-	//
 	// home 存在 → skill 写入，内容为条件激活形态。
 	home := t.TempDir()
 	skillsRoot := filepath.Join(home, "skills")
@@ -511,8 +478,6 @@ func TestGenerateUserQualitySkillTo(t *testing.T) {
 		t.Errorf("user-level skill 必须移除项目信息章节")
 	}
 
-	// Missing home → clean no-op, nothing created.
-	//
 	// home 缺失 → 干净 no-op，不创建任何东西。
 	missing := filepath.Join(t.TempDir(), "no-such-home")
 	if err := GenerateUserQualitySkillTo(filepath.Join(missing, "skills"), protocol.DefaultProtocol()); err != nil {
@@ -550,12 +515,7 @@ func TestClaudeMD_ConventionsHooksAdvisory(t *testing.T) {
 	}
 }
 
-// TestForgeSectionMarkersAliasUtil pins the alias contract: skillgen's
-// forgeSectionStart/End must equal util.ForgeSectionStart/End. The constants
-// moved to util (single source, dependency-cycle break for
-// taskpipeline→conventions) and skillgen keeps file-local aliases — a future
-// hand-edit on either side would silently fork the "what forge generated"
-// contract; this test is the tripwire.
+// TestForgeSectionMarkersAliasUtil pins the alias contract: skillgen's forgeSectionStart/End must equal util.ForgeSectionStart/End.
 //
 // TestForgeSectionMarkersAliasUtil 钉住别名契约：skillgen 的
 // forgeSectionStart/End 必须等于 util.ForgeSectionStart/End。常量已下沉 util

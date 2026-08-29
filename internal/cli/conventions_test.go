@@ -2,7 +2,6 @@ package cli
 
 // conventions_test.go —— `forge conventions` 命令组的守卫：init 建档（档案 +
 // 摘要骨架）、重跑保留已提炼摘要（--force 才覆盖）、show 呈现元数据与过期状态。
-//
 // conventions_test.go — guards for the `forge conventions` command group:
 // init profiles (profile.json + summary scaffold), re-init keeps the enriched
 // digest (--force regenerates), show renders metadata and staleness.
@@ -17,9 +16,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/registry"
 )
 
-// convCmdProject isolates the env, registers a temp project (findProjectRoot
-// needs registry membership), chdirs into it, and returns the root.
-//
 // convCmdProject 隔离环境、注册临时项目（findProjectRoot 需要注册表成员）、
 // chdir 进去，返回 root。
 func convCmdProject(t *testing.T) string {
@@ -35,10 +31,8 @@ func convCmdProject(t *testing.T) string {
 	return root
 }
 
-// TestConventionsInitCmd_ProfilesAndPreservesSummary pins init's contract:
-// first run writes profile + scaffold; a rerun refreshes metadata but KEEPS an
-// agent-enriched summary (curated extraction must survive mechanical rebuilds);
-// --force regenerates the scaffold.
+// TestConventionsInitCmd_ProfilesAndPreservesSummary pins init's contract: first
+// run writes profile + scaffold.
 //
 // TestConventionsInitCmd_ProfilesAndPreservesSummary 钉住 init 契约：首跑写
 // 档案+骨架；重跑刷新元数据但**保留** agent 提炼过的摘要（人工提炼必须
@@ -131,7 +125,7 @@ func TestConventionsShowCmd_MetadataAndStaleness(t *testing.T) {
 
 // TestConventionsInitCmd_RequiresForgeProject pins the root resolution gate:
 // outside a registered project init refuses (a profile there would be
-// write-only — hooks never fire outside forge projects).
+// write-only.
 //
 // TestConventionsInitCmd_RequiresForgeProject 钉住根解析门：未注册项目外
 // init 拒绝（那里的档案是只写的——hook 在 forge 项目外从不触发）。
@@ -146,8 +140,7 @@ func TestConventionsInitCmd_RequiresForgeProject(t *testing.T) {
 }
 
 // TestConventionsLearnCmd_WritesBack pins the learn command's write-back path:
-// RunE with the rule as args writes it into the digest and reports the path;
-// the duplicate invocation reports the no-op without failing.
+// RunE with the rule as args writes it into the digest and reports the path.
 //
 // TestConventionsLearnCmd_WritesBack 钉住 learn 命令的写回路径：以参数传入
 // 规则的 RunE 把它写进摘要并报告路径；重复调用报未改动、不失败。

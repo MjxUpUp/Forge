@@ -7,8 +7,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
 )
 
-// findCheatScanEntry finds the CheckCheatScan entry in the checklog (returns a pointer so fields are readable).
-//
 // findCheatScanEntry 在 checklog 里找 CheckCheatScan 条目（指针，便于读字段）。
 func findCheatScanEntry(t *testing.T, dir string) *checklog.Entry {
 	t.Helper()
@@ -24,9 +22,10 @@ func findCheatScanEntry(t *testing.T, dir string) *checklog.Entry {
 	return nil
 }
 
-// TestExecuteTaskGate_CheatScan_RecordsAdvisory core contract: committed source containing
-// dead-branch → task-verify records a CheckCheatScan entry (Passed=false, deterministic),
-// and the gate still PASSES (advisory does not block — these are mechanically detected suspect patterns, logged for review scrutiny rather than hard-blocked).
+// TestExecuteTaskGate_CheatScan_RecordsAdvisory core contract: committed source
+// containing dead-branch → task-verify records a CheckCheatScan entry
+// (Passed=false, deterministic), and the gate still PASSES (advisory does not
+// block.
 //
 // TestExecuteTaskGate_CheatScan_RecordsAdvisory 核心契约：committed 源码含
 // dead-branch → task-verify 记一条 CheckCheatScan（Passed=false、deterministic），
@@ -73,8 +72,8 @@ func TestExecuteTaskGate_CheatScan_RecordsAdvisory(t *testing.T) {
 	}
 }
 
-// TestExecuteTaskGate_CheatScan_Clean clean code → CheckCheatScan Passed=true (still recorded,
-// so trace shows scanned-and-clean). Confirms the scanner always runs under task-verify (not only when it hits).
+// TestExecuteTaskGate_CheatScan_Clean clean code → CheckCheatScan Passed=true
+// (still recorded, so trace shows scanned-and-clean).
 //
 // TestExecuteTaskGate_CheatScan_Clean 干净代码 → CheckCheatScan Passed=true（仍记录，
 // trace 可见「扫过、干净」）。确认扫描器在 task-verify 总是跑（不只命中时才记）。
@@ -98,7 +97,8 @@ func TestExecuteTaskGate_CheatScan_Clean(t *testing.T) {
 	}
 }
 
-// TestExecuteTaskGate_CheatScan_NonSourceNotScanned when there is no source change, Detail reflects no lines to scan — ScanCheatPatterns returns nil for empty added, and the gate still records Passed=true.
+// TestExecuteTaskGate_CheatScan_NonSourceNotScanned when there is no source
+// change, Detail reflects no lines to scan.
 //
 // TestExecuteTaskGate_CheatScan_NonSourceNotScanned 无源码变更时 Detail 反映「无可扫
 // 新增行」——ScanCheatPatterns 对空 added 返回 nil，gate 仍记 Passed=true。
@@ -122,10 +122,9 @@ func TestExecuteTaskGate_CheatScan_NonSourceNotScanned(t *testing.T) {
 	}
 }
 
-// TestExecuteTaskGate_CheatScan_PhantomImport end-to-end: a committed TS file importing a
-// relative path that does not exist on disk → CheckCheatScan Passed=false with a phantom-import
-// count in Detail; the gate still passes (advisory). Pins that the new detector is wired into
-// the gate path, not just unit-tested.
+// TestExecuteTaskGate_CheatScan_PhantomImport end-to-end: a committed TS file
+// importing a relative path that does not exist on disk → CheckCheatScan
+// Passed=false with a phantom-import count in Detail.
 //
 // TestExecuteTaskGate_CheatScan_PhantomImport 端到端：committed 的 TS 文件 import 一个
 // 磁盘上不存在的相对路径 → CheckCheatScan Passed=false 且 Detail 含 phantom-import
@@ -156,9 +155,7 @@ func TestExecuteTaskGate_CheatScan_PhantomImport(t *testing.T) {
 // TestExecuteTaskGate_CheatScan_DedupSuffix pins the audit-side dedup annotation
 // (2026-08 review-observability): re-running task-verify over an unchanged diff
 // re-records the full scan result (audit truth, Passed=false) but the Detail now
-// carries the fresh/suppressed breakdown — "new=0, suppressed=N"
-// on the rescan — so repeated FAIL entries are distinguishable from genuinely new
-// hits. The first scan (everything fresh) carries no suffix.
+// carries the fresh/suppressed breakdown.
 //
 // TestExecuteTaskGate_CheatScan_DedupSuffix 钉住审计侧的去重标注（2026-08 评审
 // 可观测性）：对同一 diff 重跑 task-verify 仍记录全量扫描结果（审计真相，

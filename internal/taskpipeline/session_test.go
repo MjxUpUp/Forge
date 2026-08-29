@@ -185,10 +185,7 @@ func TestSessionAgentTypeDetection(t *testing.T) {
 	}
 }
 
-// TestDetectAgentType_DeterministicPriority pins the fixed-priority fix: with several
-// agent dirs present (.claude + .cursor), the result must be deterministic (first hit
-// in the ordered list wins). The old map-range version returned a random pick per
-// process start, mis-attributing OriginTool.
+// TestDetectAgentType_DeterministicPriority pins the fixed-priority fix: with several agent dirs present (.claude + .cursor), the result must be deterministic (first hit in the ordered list wins).
 //
 // TestDetectAgentType_DeterministicPriority 钉死固定优先级修复：同时存在多个 agent
 // 目录（.claude + .cursor）时结果必须确定（有序列表首个命中）。旧 map 遍历版本
@@ -198,8 +195,6 @@ func TestDetectAgentType_DeterministicPriority(t *testing.T) {
 	os.MkdirAll(filepath.Join(dir, ".claude"), 0755)
 	os.MkdirAll(filepath.Join(dir, ".cursor"), 0755)
 
-	// Repeated calls: a map-iteration regression would show up as a flip.
-	//
 	// 重复调用：map 遍历回归会表现为结果翻转。
 	for i := 0; i < 20; i++ {
 		if got := detectAgentType(dir); got != "claude-code" {
@@ -241,12 +236,7 @@ func TestNewTaskState_HasSessionID(t *testing.T) {
 	}
 }
 
-// TestDetectAgentType_RecognizesAllSupportedAgents pins the marker-table delegation at the
-// taskpipeline layer: every supported agent resolves via detectAgentType. Before the
-// agentsignals refactor only claude/cursor/copilot/windsurf did; reasonix/kimi/codex/
-// opencode/cline were invisible to session attribution — the "53% agent_type missing"
-// root cause. This validates the full path runHook→EnsureSession→detectAgentType→
-// agentsignals.ProjectAgentMarker end to end.
+// TestDetectAgentType_RecognizesAllSupportedAgents pins the marker-table delegation at the taskpipeline layer: every supported agent resolves via detectAgentType.
 //
 // TestDetectAgentType_RecognizesAllSupportedAgents 在 taskpipeline 层钉死标记表委托：每个
 // 支持的 agent 都能经 detectAgentType 解析。agentsignals 重构前只有 claude/cursor/
@@ -282,9 +272,7 @@ func TestDetectAgentType_RecognizesAllSupportedAgents(t *testing.T) {
 	}
 }
 
-// TestStampSessionAgent_FillsEmptyScoped: a marker-absent scoped session (empty
-// agent_type — the kimi/reasonix/codex-without-project-marker case) gets stamped by the
-// hook's authoritative agent on the first Pre/PostToolUse after the record exists.
+// TestStampSessionAgent_FillsEmptyScoped pins stamping a marker-absent scoped session (empty agent_type).
 //
 // TestStampSessionAgent_FillsEmptyScoped：无标记的 scoped session（空 agent_type——
 // 无项目标记的 kimi/reasonix/codex 场景）在记录存在后的首个 Pre/PostToolUse 被 hook
@@ -305,8 +293,7 @@ func TestStampSessionAgent_FillsEmptyScoped(t *testing.T) {
 	}
 }
 
-// TestStampSessionAgent_FillsEmptyLegacy: the same fill-empty contract on the legacy
-// global session.json path (empty sessionID).
+// TestStampSessionAgent_FillsEmptyLegacy: the same fill-empty contract on the legacy global session.json path (empty sessionID).
 //
 // TestStampSessionAgent_FillsEmptyLegacy：在 legacy 全局 session.json 路径（空
 // sessionID）上同样的"只填空"契约。
@@ -325,9 +312,7 @@ func TestStampSessionAgent_FillsEmptyLegacy(t *testing.T) {
 	}
 }
 
-// TestStampSessionAgent_DoesNotOverwrite: a session already attributed by a project
-// marker must NOT be clobbered by a later hook stamp — that would regress a CORRECT
-// marker-based attribution. This is the contract's load-bearing guard.
+// TestStampSessionAgent_DoesNotOverwrite: a session already attributed by a project marker must NOT be clobbered by a later hook stamp — that would regress a CORRECT marker-based attribution.
 //
 // TestStampSessionAgent_DoesNotOverwrite：已被项目标记正确归因的 session 绝不能被后续
 // hook 盖戳覆盖——否则会回退"正确的标记归因"。这是契约的核心护栏。
@@ -348,9 +333,7 @@ func TestStampSessionAgent_DoesNotOverwrite(t *testing.T) {
 	}
 }
 
-// TestStampSessionAgent_DoesNotCreateIfAbsent: stamping before the session record exists
-// must be a no-op — it must never synthesize a session file (EnsureSession owns creation;
-// a stamp before existence is meaningless).
+// TestStampSessionAgent_DoesNotCreateIfAbsent: stamping before the session record exists must be a no-op — it must never synthesize a session file (EnsureSession owns creation; a stamp before existence is meaningless).
 //
 // TestStampSessionAgent_DoesNotCreateIfAbsent：session 记录尚不存在时盖戳必须是 no-op——
 // 绝不能凭空造出 session 文件（创建归 EnsureSession；存在前盖戳无意义）。
@@ -363,9 +346,7 @@ func TestStampSessionAgent_DoesNotCreateIfAbsent(t *testing.T) {
 	}
 }
 
-// TestStampSessionAgent_EmptyAgentNoop: an empty agent string must never stamp (guards
-// the early return that keeps the hook's best-effort stamp from no-oping harmlessly but
-// pointlessly when no agent resolved).
+// TestStampSessionAgent_EmptyAgentNoop: an empty agent string must never stamp (guards the early return that keeps the hook's best-effort stamp from no-oping harmlessly but pointlessly when no agent resolved).
 //
 // TestStampSessionAgent_EmptyAgentNoop：空 agent 串绝不能盖戳（守护早返回，使 hook 在未
 // 解析出 agent 时的尽力盖戳无害且不徒劳）。
@@ -385,15 +366,7 @@ func TestStampSessionAgent_EmptyAgentNoop(t *testing.T) {
 	}
 }
 
-// TestStampSessionAgent_UpdatesSessionsLog is the MEDIUM-2 fix verification: a stamp must
-// make the agent visible in sessions.jsonl (the file LoadSessions / attribution read), not
-// just in the scoped/legacy file. Before the jsonl upsert, the stamp's contribution to the
-// "53% missing agent_type" metric was exactly zero for scoped sessions — appendSessionLog
-// wrote the line at creation with an empty AgentType, and LoadSessions reads the jsonl, not
-// the scoped file, so the stamped value was invisible. Both the scoped and legacy paths are
-// covered (legacy carries the real SessionID via the loaded record). Also asserts the jsonl
-// is touched at most once (a second stamp is a no-op) and an already-attributed line is not
-// rewritten.
+// TestStampSessionAgent_UpdatesSessionsLog is the MEDIUM-2 fix verification: a stamp must make the agent visible in sessions.jsonl (the file LoadSessions / attribution read), not just in the scoped/legacy file.
 //
 // TestStampSessionAgent_UpdatesSessionsLog 是 MEDIUM-2 修复验证：盖戳必须让 agent 在
 // sessions.jsonl（LoadSessions / 归因读取的文件）里可见，而不只是 scoped/legacy 文件里。
@@ -493,14 +466,7 @@ func TestStampSessionAgent_UpdatesSessionsLog(t *testing.T) {
 	})
 }
 
-// TestUpsertSessionAgentInLog_PreservesByteStructure is the golden-bytes guard for the jsonl
-// round-trip (the critical correctness property — corrupting sessions.jsonl is a serious bug,
-// and LoadSessions tolerates a dropped trailing newline so it cannot catch this). bytes.Split
-// on "\n" then bytes.Join back must preserve: the trailing newline, the no-trailing-newline
-// case (no spurious newline added), the empty file (no write), and a target line in any
-// position. A future refactor to bufio.Scanner (which drops the trailing newline) would pass
-// the LoadSessions-based tests but corrupt the on-disk file for raw-byte consumers — this
-// test fails it.
+// TestUpsertSessionAgentInLog_PreservesByteStructure is the golden-bytes guard for the jsonl round-trip.
 //
 // TestUpsertSessionAgentInLog_PreservesByteStructure 是 jsonl 往返的金字节守卫（关键正确性
 // 属性——损坏 sessions.jsonl 是严重 Bug，而 LoadSessions 容忍丢失尾随换行故抓不到）。
@@ -576,12 +542,7 @@ func TestUpsertSessionAgentInLog_PreservesByteStructure(t *testing.T) {
 	})
 }
 
-// TestUpsertSessionAgentInLog_UpdatesAllDuplicateLines pins the duplicate-line behavior that
-// the corrected ensureScopedSession comment now warns against "simplifying" away.
-// appendSessionLog can append the same session multiple times (no dedup at append), and
-// LoadSessions preserves duplicates — so the upsert must update EVERY matching line, or
-// duplicate copies would keep an empty agent_type and leak into the metric. A naive
-// "break after first match" optimization would silently reintroduce the MEDIUM-2 gap.
+// TestUpsertSessionAgentInLog_UpdatesAllDuplicateLines pins the duplicate-line update behavior.
 //
 // TestUpsertSessionAgentInLog_UpdatesAllDuplicateLines 钉死重复行行为——纠正后的
 // ensureScopedSession 注释现在警告别把它「简化」掉。appendSessionLog 可能多次追加同一
@@ -616,11 +577,6 @@ func TestUpsertSessionAgentInLog_UpdatesAllDuplicateLines(t *testing.T) {
 	}
 }
 
-// writeSessionsLog writes content to dir's sessions.jsonl, creating the data-home directory
-// tree first. sessionsLogPath lives under the USER-LEVEL DataDir (a hashed projects/<hash>/
-// path), NOT under dir itself — so os.WriteFile directly fails with "path not found" unless
-// the parent is created first (this is what appendSessionLog's MkdirAll does in production).
-//
 // writeSessionsLog 把 content 写到 dir 的 sessions.jsonl，先建好 data-home 目录树。
 // sessionsLogPath 在用户级 DataDir 下（哈希的 projects/<hash>/ 路径），不在 dir 本身下——
 // 故直接 os.WriteFile 会因「找不到路径」失败，除非先建父目录（正是 appendSessionLog 在

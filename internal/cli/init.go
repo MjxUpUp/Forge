@@ -18,9 +18,6 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 	initCmd.Flags().String("agents", "auto", "AI 编码工具: auto（自动检测）, 或逗号分隔如 claude-code,cursor,kimi")
 	initCmd.Flags().Bool("project", false, "团队模式：资产写入项目目录（.forge/protocol.yml 等可 git 共享），默认零项目写入")
-	// Deprecated no-op flags. After project-level pipeline removal mode/fresh are meaningless, kept as hidden no-op
-	// for backward compatibility: old scripts/tests running `forge init --mode medium` don't error, just have no effect.
-	//
 	// Deprecated no-op flags. 项目级管道删除后 mode/fresh 已无意义，保留为隐藏 no-op
 	// 维持向后兼容：旧脚本/测试的 `forge init --mode medium` 不报错，只是无效。
 	initCmd.Flags().String("mode", "", "(deprecated, no-op) 旧版项目规模标志，项目级管道删除后无意义")
@@ -66,22 +63,11 @@ func runInit(cmd *cobra.Command, args []string) error {
 	return runInitUserLevel(dir, agents, proto)
 }
 
-// runInitUserLevel is the DEFAULT init path: zero writes into the project directory.
-// Everything lands at user level — the project is registered in the global registry
-// (the "is this a forge project" anchor), config/runtime state goes to the per-project
-// DataDir, hooks go into each agent's user-level config, instructions are appended to
-// user-level CLAUDE.md/AGENTS.md (backup-then-append, rollback via forge uninstall).
-//
 // runInitUserLevel 是默认 init 路径：项目目录零写入。全部资产在用户级——项目登记进
 // 全局注册表（"是不是 forge 项目"的锚点），配置/runtime state 进 per-project
 // DataDir，hooks 进各 agent 的用户级配置，指令以备份+追加方式进用户级
 // CLAUDE.md/AGENTS.md（forge uninstall 可回滚）。
 func runInitUserLevel(dir string, agents []agentbridge.AgentType, proto *protocol.Protocol) error {
-	// 0. A plain `forge init` on a team-mode project is an explicit switch back to
-	//    the default (zero-project-write) mode: drop the team-mode marker so the
-	//    stripper in step 8 can converge the project-level assets. Without this,
-	//    the marker permanently exempted the project and there was no way back.
-	//
 	// 0. 在团队模式项目上跑普通 `forge init` = 明确切回默认（零项目写入）模式：
 	//    删除 team-mode 标记，让步骤 8 的 stripper 能收敛项目级资产。否则标记
 	//    永久豁免该项目，无法回归默认模式。
@@ -91,17 +77,12 @@ func runInitUserLevel(dir string, agents []agentbridge.AgentType, proto *protoco
 		}
 	}
 
-	// 1. Register in the global project registry (~/.forge/projects.json) — THE anchor
-	//    of project membership after the refactor (replaces the .forge/ marker).
-	//
 	// 1. 登记到全局项目注册表（~/.forge/projects.json）——重构后项目成员资格的锚点
 	//    （取代 .forge/ 标记）。
 	if err := registry.Add(dir); err != nil {
 		return fmt.Errorf("failed to register project: %w", err)
 	}
 
-	// 2. Ensure the per-project DataDir (~/.forge/projects/<key>/).
-	//
 	// 2. 确保 per-project DataDir（~/.forge/projects/<key>/）。
 	proj, err := forgedata.ProjectFor(dir)
 	if err != nil {
@@ -111,11 +92,6 @@ func runInitUserLevel(dir string, agents []agentbridge.AgentType, proto *protoco
 		fmt.Fprintf(os.Stderr, "Warning: failed to create DataDir: %v\n", err)
 	}
 
-	// 3. protocol.yml → DataDir copy, created only when missing (a project-level
-	//    override, when present, always wins and is left alone; a corrupt file is
-	//    backed aside before rewriting defaults — never silently clobbered).
-	//    The effective protocol is then loaded for downstream skill generation.
-	//
 	// 3. protocol.yml → DataDir 副本，仅缺失时创建（项目级覆盖存在时恒优先且不动；
 	//    损坏文件先备份到一边再写默认——绝不静默覆盖）。随后加载生效 protocol
 	//    供下游 skill 生成。
@@ -126,10 +102,6 @@ func runInitUserLevel(dir string, agents []agentbridge.AgentType, proto *protoco
 		proto = loaded
 	}
 
-	// 4. Reference copies of the hook scripts → DataDir/hooks/ (runtime executes the
-	//    embedded content, never the disk copies). Deploy stamp first — file-sentinel
-	//    exempts .forge/hooks/ drift only within its grace window (see autoSync).
-	//
 	// 4. hook 脚本的参考副本 → DataDir/hooks/（运行时执行嵌入内容，从不读磁盘副本）。
 	//    deploy stamp 先落盘——file-sentinel 只在 grace 窗口内豁免 .forge/hooks/ drift
 	//    （见 autoSync）。stamp 失败仅告警。
@@ -140,9 +112,6 @@ func runInitUserLevel(dir string, agents []agentbridge.AgentType, proto *protoco
 		fmt.Fprintf(os.Stderr, "Warning: failed to write hook copies: %v\n", err)
 	}
 
-	// 5. Claude Code: user-level settings.json hooks — skipped when the plugin is
-	//    user-level installed (plugin.json already registers ForgeHookSpec machine-wide).
-	//
 	// 5. Claude Code：用户级 settings.json hooks——plugin 已 user-level 安装时跳过
 	//    （plugin.json 已全机器注册 ForgeHookSpec）。
 	if !hooks.IsClaudePluginInstalled() {
@@ -153,8 +122,6 @@ func runInitUserLevel(dir string, agents []agentbridge.AgentType, proto *protoco
 		fmt.Fprintf(os.Stderr, "forge plugin 已 user-level 接管 hooks,跳过 user-level settings.json 生成\n")
 	}
 
-	// 6. User-level instructions (backup+append) + user-level quality skill.
-	//
 	// 6. 用户级指令（备份+追加）+ 用户级 quality skill。
 	if err := skillgen.GenerateUserClaudeMD(); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to update user-level CLAUDE.md: %v\n", err)
@@ -166,8 +133,6 @@ func runInitUserLevel(dir string, agents []agentbridge.AgentType, proto *protoco
 		fmt.Fprintf(os.Stderr, "Warning: failed to generate user-level quality skill: %v\n", err)
 	}
 
-	// 7. Other agents → user-level bridge files (codex/cursor/opencode/windsurf/kimi).
-	//
 	// 7. 其他 agent → 用户级 bridge 文件（codex/cursor/opencode/windsurf/kimi）。
 	if len(agents) > 0 {
 		bridgeInput := &agentbridge.TranslationInput{
@@ -181,15 +146,10 @@ func runInitUserLevel(dir string, agents []agentbridge.AgentType, proto *protoco
 		}
 	}
 
-	// 8. Strip legacy project-level forge writes (converges projects init'd by older
-	//    versions on re-init; no-op for fresh projects).
-	//
 	// 8. 剥除遗留的项目级 forge 写入（老版本 init 的项目在重复 init 时收敛；
 	//    新项目 no-op）。
 	stripProjectLevelForgeAssets(dir)
 
-	// 9. Sync stamp → DataDir (drives autoSync no-op detection).
-	//
 	// 9. sync 戳 → DataDir（驱动 autoSync no-op 检测）。
 	stampPath := filepath.Join(forgedata.DataDirFor(dir), ".sync-version")
 	if err := os.WriteFile(stampPath, []byte(rootCmd.Version), 0644); err != nil {
@@ -226,14 +186,6 @@ func runInitUserLevel(dir string, agents []agentbridge.AgentType, proto *protoco
 	return nil
 }
 
-// agentSummaryLine renders the per-agent wiring line of the init summary. ok=false
-// for agents with nothing machine-wide to report (claude-code's wiring is printed
-// unconditionally above; copilot/cline/codebuddy/reasonix/windsurf have their own
-// summary channels). The dsh line is install GUIDANCE, not a written file — the
-// DshTranslator is a deliberate no-op (no user-level config file exists to merge
-// into), so the summary is the only place `forge init` tells the user how to wire
-// DeepSeek Harness.
-//
 // agentSummaryLine 渲染 init 摘要的 per-agent 接线行。无需报告全机器接线的 agent
 // 返回 ok=false（claude-code 的接线在上面无条件打印；copilot/cline/codebuddy/
 // reasonix/windsurf 各有摘要通道）。dsh 行是安装**指引**而非已写文件——
@@ -257,18 +209,6 @@ func agentSummaryLine(a agentbridge.AgentType) (line string, ok bool) {
 	return "", false
 }
 
-// runInitTeamMode is the legacy project-level path (`forge init --project`): assets
-// are written into the project directory so a team can git-share one quality
-// protocol. The .forge/team-mode marker exempts the project from the autoSync
-// stripper.
-//
-// Hooks are NOT written to a project-level .claude/settings.local.json: hook
-// commands invoke the forge binary, so every teammate must install forge anyway —
-// and installing + running any init once already registered the USER-LEVEL hooks
-// machine-wide. A project-level copy would only double-run every hook (autoSync's
-// user-level settings.json registration is unconditional). The real value of team
-// mode is the git-shared protocol.yml / CLAUDE.md / AGENTS.md instruction layer.
-//
 // runInitTeamMode 是遗留的项目级路径（`forge init --project`）：资产写入项目目录，
 // 供团队经 git 共享同一份质量协议。.forge/team-mode 标记让项目豁免 autoSync 清理。
 //
@@ -282,10 +222,6 @@ func runInitTeamMode(dir string, agents []agentbridge.AgentType, proto *protocol
 	if err := os.MkdirAll(filepath.Join(forgeDir, "hooks"), 0755); err != nil {
 		return fmt.Errorf("failed to create %s: %w", forgeDir, err)
 	}
-	// Deploy stamp first: this rewrites PROJECT-level .forge/hooks/*.sh — exactly the
-	// drift file-sentinel's manifest watches; the grace marker keeps a concurrent
-	// sentinel run from quarantining Forge's own write (2026-08-02 incident).
-	//
 	// deploy stamp 先落盘：此处重写的是项目级 .forge/hooks/*.sh——正是 file-sentinel
 	// manifest 盯防的 drift；grace marker 防止并发 sentinel 把 Forge 自身写入
 	// quarantine（2026-08-02 事故）。stamp 失败仅告警。
@@ -295,10 +231,6 @@ func runInitTeamMode(dir string, agents []agentbridge.AgentType, proto *protocol
 	if err := hooks.WriteHookTemplates(forgeDir); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to copy hooks: %v\n", err)
 	}
-	// Hooks go to the USER-LEVEL settings.json (same as the default init path) —
-	// never to a project-level settings.local.json, which would double-run every
-	// hook against autoSync's user-level registration.
-	//
 	// hooks 写用户级 settings.json（与默认 init 路径相同）——绝不写项目级
 	// settings.local.json，那会与 autoSync 的用户级注册双跑每条 hook。
 	if !hooks.IsClaudePluginInstalled() {
@@ -320,10 +252,6 @@ func runInitTeamMode(dir string, agents []agentbridge.AgentType, proto *protocol
 	if err := skillgen.GenerateAgentsMD(dir); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to generate AGENTS.md: %v\n", err)
 	}
-	// Team mode wires claude at USER level (above); the ClaudeCodeTranslator is
-	// user-level-only after the refactor, so it is excluded from the bridge pass
-	// (it would redo the same user-level writes).
-	//
 	// 团队模式已在上方用户级接线 claude；ClaudeCodeTranslator 重构后只在用户级
 	// 接线，故 bridge pass 排除它（否则会重复同样的用户级写入）。
 	var bridgeAgents []agentbridge.AgentType
@@ -344,8 +272,6 @@ func runInitTeamMode(dir string, agents []agentbridge.AgentType, proto *protocol
 		}
 	}
 
-	// Team-mode marker: exempts this project from stripProjectLevelForgeAssets.
-	//
 	// 团队模式标记：让本项目豁免 stripProjectLevelForgeAssets。
 	if err := os.WriteFile(filepath.Join(forgeDir, teamModeMarker), []byte(rootCmd.Version+"\n"), 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to write team-mode marker: %v\n", err)

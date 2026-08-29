@@ -1,12 +1,5 @@
 package cli
 
-// task_continuity_hooks_test.go — the gap#2 session-continuity hooks:
-// PostCompact flag setting (renderHookCompactFlag, session sentinel + legacy
-// bool fallback) and UserPromptSubmit re-injection (renderHookReinject: mark
-// consumption, per-session isolation, kimi cold-start backfill, sparse-thread
-// nudge), plus the origin-tool detection fallback chain. Split from
-// task_continuity_test.go by domain.
-//
 // task_continuity_hooks_test.go —— gap#2 会话接续 hook：PostCompact 设标志
 // （renderHookCompactFlag，session sentinel + legacy bool 回落）与
 // UserPromptSubmit 重注入（renderHookReinject：标记消费、per-session 隔离、
@@ -21,17 +14,13 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
-// TestRenderHookCompactFlag: PostCompact hook (gap#2 set-flag half) with a session ID
-// writes a per-session sentinel and leaves the shared task json untouched (ResumeStale
-// stays false). No active task -> silent, no error; repeated calls -> idempotent.
+// TestRenderHookCompactFlag: PostCompact hook (gap#2 set-flag half) with a session ID writes a per-session sentinel and leaves the shared task json untouched (ResumeStale stays false).
 //
 // TestRenderHookCompactFlag：PostCompact hook（gap#2 设标志半边）有 session ID 时写
 // per-session sentinel，不动共享 task json（ResumeStale 保持 false）。无活跃任务静默
 // 不报错；重复调用幂等。
 func TestRenderHookCompactFlag(t *testing.T) {
 	root, _ := forgedatatest.RealProject(t)
-	// No active task → silent, no error.
-	//
 	// 无活跃任务 → 静默不报错
 	if err := renderHookCompactFlag(root); err != nil {
 		t.Fatalf("无活跃任务应静默不报错: %v", err)
@@ -49,8 +38,6 @@ func TestRenderHookCompactFlag(t *testing.T) {
 	if !taskpipeline.ConsumeResumeStale(root, "sid-compact") {
 		t.Error("PostCompact hook 应写本 session 的 sentinel")
 	}
-	// Idempotent: calling again does not error and re-marks.
-	//
 	// 幂等：再调不报错且重新标记
 	if err := renderHookCompactFlag(root); err != nil {
 		t.Fatalf("幂等 renderHookCompactFlag: %v", err)
@@ -60,8 +47,7 @@ func TestRenderHookCompactFlag(t *testing.T) {
 	}
 }
 
-// TestRenderHookCompactFlag_LegacyNoSession: without any session ID the hook falls back
-// to the legacy task-scoped ResumeStale bool (set + persisted).
+// TestRenderHookCompactFlag_LegacyNoSession: without any session ID the hook falls back to the legacy task-scoped ResumeStale bool (set + persisted).
 //
 // TestRenderHookCompactFlag_LegacyNoSession：完全无 session ID 时回落到 legacy 的
 // task-scoped ResumeStale bool（置位并持久化）。
@@ -80,9 +66,7 @@ func TestRenderHookCompactFlag_LegacyNoSession(t *testing.T) {
 	}
 }
 
-// TestRenderHookReinject: UserPromptSubmit hook (gap#2 re-inject half) only re-injects
-// the full handoff when this session was marked (sentinel), and consumes the mark —
-// re-injection happens only once. Unmarked session -> silent empty return.
+// TestRenderHookReinject: UserPromptSubmit hook (gap#2 re-inject half) only re-injects the full handoff when this session was marked (sentinel), and consumes the mark — re-injection happens only once.
 //
 // TestRenderHookReinject：UserPromptSubmit hook（gap#2 重注入半边）仅在本 session 有
 // 标记（sentinel）时重注入完整 handoff 并消费标记——只重注入一次。无标记静默返空。
@@ -92,8 +76,6 @@ func TestRenderHookReinject(t *testing.T) {
 	seedContinuityTask(t, root, state)
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "sid-reinject")
 
-	// No mark → silent empty return.
-	//
 	// 无标记 → 静默返空
 	out, err := renderHookReinject(root)
 	if err != nil {
@@ -103,8 +85,6 @@ func TestRenderHookReinject(t *testing.T) {
 		t.Errorf("无标记应静默返空，实得 %q", out)
 	}
 
-	// compact-flag marks this session → reinject re-injects the full handoff.
-	//
 	// compact-flag 标记本 session → reinject 重注入完整 handoff
 	if err := renderHookCompactFlag(root); err != nil {
 		t.Fatalf("renderHookCompactFlag: %v", err)
@@ -119,8 +99,6 @@ func TestRenderHookReinject(t *testing.T) {
 	if !strings.Contains(out, "feat/reinject") || !strings.Contains(out, "压缩后恢复") {
 		t.Errorf("reinject 应含 task ref/goal，实得 %q", out)
 	}
-	// The mark is consumed (silent next time, re-inject only once).
-	//
 	// 标记已被消费（下次静默，只重注入一次）
 	out2, _ := renderHookReinject(root)
 	if out2 != "" {
@@ -128,9 +106,7 @@ func TestRenderHookReinject(t *testing.T) {
 	}
 }
 
-// TestRenderHookReinject_PerSessionIsolation (multi-session fix): with N sessions on one
-// task (shared user-level DataDir), session B's prompt must NOT consume session A's
-// compaction mark — B stays silent, A still gets its re-injection.
+// TestRenderHookReinject_PerSessionIsolation (multi-session fix).
 //
 // TestRenderHookReinject_PerSessionIsolation（多 session 修复）：N 个 session 共享一个
 // task（用户级共享 DataDir）时，session B 的 prompt 不能消费 session A 的压缩标记——
@@ -140,16 +116,12 @@ func TestRenderHookReinject_PerSessionIsolation(t *testing.T) {
 	state := &taskpipeline.TaskState{TaskRef: "feat/iso", Branch: "feat/iso", Goal: "多 session 隔离"}
 	seedContinuityTask(t, root, state)
 
-	// Session A compacts.
-	//
 	// session A 发生压缩
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "sid-a")
 	if err := renderHookCompactFlag(root); err != nil {
 		t.Fatalf("renderHookCompactFlag: %v", err)
 	}
 
-	// Session B's next prompt: silent, and must not consume A's mark.
-	//
 	// session B 的下个 prompt：静默，且不能消费 A 的标记
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "sid-b")
 	out, err := renderHookReinject(root)
@@ -160,8 +132,6 @@ func TestRenderHookReinject_PerSessionIsolation(t *testing.T) {
 		t.Errorf("sid-b 未被压缩应静默返空，实得 %q", out)
 	}
 
-	// Session A's next prompt still gets the re-injection.
-	//
 	// session A 的下个 prompt 仍能拿到重注入
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "sid-a")
 	out, err = renderHookReinject(root)
@@ -173,9 +143,7 @@ func TestRenderHookReinject_PerSessionIsolation(t *testing.T) {
 	}
 }
 
-// TestRenderHookReinject_LegacyBool: a task carrying the legacy task-scoped
-// ResumeStale=true (written by the no-session fallback or an older binary) is honored
-// once: re-inject fires and the bool is cleared + persisted.
+// TestRenderHookReinject_LegacyBool: a task carrying the legacy task-scoped ResumeStale=true (written by the no-session fallback or an older binary) is honored once: re-inject fires and the bool is cleared + persisted.
 //
 // TestRenderHookReinject_LegacyBool：带 legacy task-scoped ResumeStale=true 的 task
 // （无 session 回落或旧版 binary 所留）被兑现一次：触发重注入并清零持久化。
@@ -201,11 +169,7 @@ func TestRenderHookReinject_LegacyBool(t *testing.T) {
 	}
 }
 
-// TestRenderHookReinject_KimiColdStartBackfill (P3): kimi drops SessionStart hook output, so
-// the SessionStart task-resume handoff never reaches the model. The UserPromptSubmit
-// resume-reinject backfills it on the first prompt of a kimi session, gated by a per-session
-// sentinel so it fires exactly once — the second prompt is silent. No compaction mark is
-// involved here (that path is exercised separately).
+// TestRenderHookReinject_KimiColdStartBackfill (P3): kimi drops SessionStart hook output, so the SessionStart task-resume handoff never reaches the model.
 //
 // TestRenderHookReinject_KimiColdStartBackfill（P3）：kimi 丢弃 SessionStart hook 输出，故
 // SessionStart task-resume 的 handoff 到不了模型。UserPromptSubmit 的 resume-reinject 在 kimi
@@ -215,15 +179,11 @@ func TestRenderHookReinject_KimiColdStartBackfill(t *testing.T) {
 	root, _ := forgedatatest.RealProject(t)
 	state := &taskpipeline.TaskState{TaskRef: "feat/kimi-cold", Branch: "feat/kimi-cold", Goal: "kimi 冷启动回填"}
 	seedContinuityTask(t, root, state)
-	// Simulate a hook-spawned kimi session (runHook injects FORGE_SESSION_ID + FORGE_AGENT).
-	//
 	// 模拟 hook 派生的 kimi session（runHook 注入 FORGE_SESSION_ID + FORGE_AGENT）
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
 	t.Setenv("FORGE_SESSION_ID", "kimi-cold-1")
 	t.Setenv("FORGE_AGENT", "kimi")
 
-	// First prompt: no compaction mark, but kimi drops SessionStart → backfill the handoff.
-	//
 	// 首个 prompt：无压缩标记，但 kimi 丢弃 SessionStart → 回填 handoff
 	out, err := renderHookReinject(root)
 	if err != nil {
@@ -239,8 +199,6 @@ func TestRenderHookReinject_KimiColdStartBackfill(t *testing.T) {
 		t.Error("首个 prompt 回填后应设 cold-start sentinel")
 	}
 
-	// Second prompt: sentinel dedupes → silent (no double-inject).
-	//
 	// 第二个 prompt：sentinel 去重 → 静默（不双注）
 	out2, err := renderHookReinject(root)
 	if err != nil {
@@ -251,10 +209,7 @@ func TestRenderHookReinject_KimiColdStartBackfill(t *testing.T) {
 	}
 }
 
-// TestRenderHookReinject_KimiColdStartAfterCompactReinject (P3): a compact-reinject delivers
-// a full handoff (satisfying cold-start too), so it marks the cold-start sentinel — otherwise
-// the NEXT prompt (stale now consumed) would hit the cold-start path and double-inject. The
-// sentinel set during compact-reinject keeps the following prompt silent.
+// TestRenderHookReinject_KimiColdStartAfterCompactReinject (P3).
 //
 // TestRenderHookReinject_KimiColdStartAfterCompactReinject（P3）：compact-reinject 交付了
 // 完整 handoff（也满足冷启动），故它设 cold-start sentinel——否则下个 prompt（stale 已消费）
@@ -267,8 +222,6 @@ func TestRenderHookReinject_KimiColdStartAfterCompactReinject(t *testing.T) {
 	t.Setenv("FORGE_SESSION_ID", "kimi-compact-1")
 	t.Setenv("FORGE_AGENT", "kimi")
 
-	// Compact just happened → compact-reinject fires (full handoff) AND marks cold-start.
-	//
 	// 刚压缩 → compact-reinject 触发（完整 handoff）并设 cold-start
 	if err := renderHookCompactFlag(root); err != nil {
 		t.Fatalf("renderHookCompactFlag: %v", err)
@@ -284,8 +237,6 @@ func TestRenderHookReinject_KimiColdStartAfterCompactReinject(t *testing.T) {
 		t.Error("compact-reinject 后应设 cold-start sentinel 防双注")
 	}
 
-	// Next prompt: stale consumed AND cold-start marked → silent (no double-inject).
-	//
 	// 下个 prompt：stale 已消费且 cold-start 已设 → 静默（不双注）
 	out2, err := renderHookReinject(root)
 	if err != nil {
@@ -296,10 +247,7 @@ func TestRenderHookReinject_KimiColdStartAfterCompactReinject(t *testing.T) {
 	}
 }
 
-// TestRenderHookReinject_ColdStartNonKimiExcluded (P3): the cold-start backfill is kimi-only
-// — hosts that inject SessionStart output (Claude Code, codex, ...) already received the
-// handoff at SessionStart, so backfilling on UserPromptSubmit would duplicate it. A
-// claude-code session with an active task and no compaction mark stays silent.
+// TestRenderHookReinject_ColdStartNonKimiExcluded (P3): the cold-start backfill is kimi-only.
 //
 // TestRenderHookReinject_ColdStartNonKimiExcluded（P3）：冷启动回填仅限 kimi——注入 SessionStart
 // 输出的 host（Claude Code、codex 等）在 SessionStart 已拿到 handoff，UserPromptSubmit 再回填会
@@ -308,9 +256,6 @@ func TestRenderHookReinject_ColdStartNonKimiExcluded(t *testing.T) {
 	root, _ := forgedatatest.RealProject(t)
 	state := &taskpipeline.TaskState{TaskRef: "feat/cc-cold", Branch: "feat/cc-cold", Goal: "CC 不回填"}
 	seedContinuityTask(t, root, state)
-	// claude-code session: CLAUDE_CODE_SESSION_ID set, no FORGE_AGENT. SessionStart output
-	// IS injected on CC, so cold-start backfill must NOT fire.
-	//
 	// claude-code session：CLAUDE_CODE_SESSION_ID 已设，无 FORGE_AGENT。CC 注入 SessionStart
 	// 输出，故冷启动回填不得触发
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "cc-cold-1")
@@ -328,9 +273,7 @@ func TestRenderHookReinject_ColdStartNonKimiExcluded(t *testing.T) {
 	}
 }
 
-// TestRenderHookReinject_KimiColdStartNoActiveTask (P3): with no active task there is
-// nothing to backfill — the cold-start path is unreachable (the state==nil guard returns
-// first). A kimi session with no task stays silent and sets no sentinel.
+// TestRenderHookReinject_KimiColdStartNoActiveTask (P3): with no active task there is nothing to backfill — the cold-start path is unreachable (the state==nil guard returns first).
 //
 // TestRenderHookReinject_KimiColdStartNoActiveTask（P3）：无活跃任务则无可回填——冷启动路径
 // 不可达（state==nil 守卫先返回）。无任务的 kimi session 保持静默且不设 sentinel。
@@ -352,11 +295,7 @@ func TestRenderHookReinject_KimiColdStartNoActiveTask(t *testing.T) {
 	}
 }
 
-// TestRenderHookReinject_SparseContinuityNudge (plan 4 mid-way checkpoint active driving): after compression, during re-injection,
-// if the task has not persisted any mid-way thread (decisions/next-step), a strong hint is appended to the end of the handoff to push the agent to persist explicitly —
-// what compression loses is exactly this working memory, otherwise the next compression rebuilds from scratch. When NextSteps already exist, nothing is appended (the thread is already on disk,
-// restoring is enough). Goal does not count (task start already persisted, not a compression loss item). Two roots isolate the positive and negative cases
-// (different git-root -> different project key -> different task dir, ActiveTaskState each only scans its own one).
+// TestRenderHookReinject_SparseContinuityNudge (plan 4 mid-way checkpoint active driving).
 //
 // TestRenderHookReinject_SparseContinuityNudge（方案4·中途 checkpoint 主动驱动）：压缩后重注入
 // 时，若任务未落盘任何中途线程（决策/下一步），handoff 末尾追加强提示推 agent 显式落盘——
@@ -364,8 +303,6 @@ func TestRenderHookReinject_KimiColdStartNoActiveTask(t *testing.T) {
 // 复原即可）。Goal 不算（task start 已落盘，非压缩丢失项）。两个 root 隔离正负用例
 // （不同 git-root → 不同 project key → 不同 task dir，ActiveTaskState 各自只扫到自己那一个）。
 func TestRenderHookReinject_SparseContinuityNudge(t *testing.T) {
-	// Sparse thread (has Goal, no decide/next) -> append strong hint
-	//
 	// 稀疏线程（有 Goal 无 decide/next）→ 追加强提示
 	rootA, _ := forgedatatest.RealProject(t)
 	state := &taskpipeline.TaskState{TaskRef: "feat/sparse", Branch: "feat/sparse", Goal: "实现 X"}
@@ -382,8 +319,6 @@ func TestRenderHookReinject_SparseContinuityNudge(t *testing.T) {
 		t.Errorf("稀疏线程应追加压缩落盘强提示，输出:\n%s", out)
 	}
 
-	// Already persisted next-step (thread on disk) -> do not append
-	//
 	// 已落盘下一步（线程在盘上）→ 不追加
 	rootB, _ := forgedatatest.RealProject(t)
 	state2 := &taskpipeline.TaskState{TaskRef: "feat/rich", Branch: "feat/rich", Goal: "实现 Y"}
@@ -404,9 +339,7 @@ func TestRenderHookReinject_SparseContinuityNudge(t *testing.T) {
 	}
 }
 
-// TestDetectOriginTool_FallbackChain (multi-host): explicit wins; FORGE_AGENT (injected
-// by runHook from the resolved --agent flag) identifies hook-spawned kimi/windsurf
-// processes; CLAUDE_CODE_SESSION_ID is the claude-code fallback; all empty -> "".
+// TestDetectOriginTool_FallbackChain (multi-host).
 //
 // TestDetectOriginTool_FallbackChain（多 host）：显式优先；FORGE_AGENT（runHook 从
 // 解析出的 --agent 注入）识别 hook 派生的 kimi/windsurf 进程；CLAUDE_CODE_SESSION_ID

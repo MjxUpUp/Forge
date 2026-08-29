@@ -12,10 +12,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/worktree"
 )
 
-// Real temporary git repos (t.TempDir + git init): reconciliation is a join between
-// `git status` reality and the ledger — mocks cannot verify porcelain parsing or
-// rename handling. Same style as internal/review's stamp tests.
-//
 // 真实临时 git 仓库（t.TempDir + git init）：对账是 git status 现实与台账的 join——
 // mock 验证不了 porcelain 解析与 rename 处理。与 internal/review 的 stamp 测试同款。
 func initGitRepo(t *testing.T) string {
@@ -47,11 +43,6 @@ func write(t *testing.T, dir, rel, content string) {
 	}
 }
 
-// TestReconcile_AttributionMatrix is the T3 correctness core: this-session edits,
-// other-session edits, and unattributed files must split exactly — B's window never
-// inherits A's WIP, and A's WIP surfaces as an orphan in B's view (honest exposure),
-// never as B's attribution.
-//
 // TestReconcile_AttributionMatrix 是 T3 的正确性核心：本会话编辑、他会话编辑、无归属
 // 文件必须精确三分——B 的窗口绝不继承 A 的 WIP，A 的 WIP 在 B 的视图里以无主暴露
 // （诚实暴露），绝不记成 B 的归属。
@@ -65,8 +56,6 @@ func TestReconcile_AttributionMatrix(t *testing.T) {
 	Record(dir,
 		Event{Ts: base, Sid: "sess-a", Kind: KindWrite, Path: "a.go"},
 		Event{Ts: base.Add(time.Minute), Sid: "sess-b", Kind: KindEdit, Path: "b.go"},
-		// Stale history for a path no longer changed: must not leak into the view.
-		//
 		// 已不在变更集里的历史路径：不得泄漏进视图。
 		Event{Ts: base, Sid: "sess-a", Kind: KindWrite, Path: "gone.go"},
 	)
@@ -88,8 +77,6 @@ func TestReconcile_AttributionMatrix(t *testing.T) {
 		t.Errorf("覆盖率应 2/3, got %v", r)
 	}
 
-	// Last-writer-wins: sess-b later rewrites a.go → a.go moves to sess-b.
-	//
 	// 最后写入者胜：sess-b 随后重写 a.go → a.go 归 sess-b。
 	Record(dir, Event{Ts: base.Add(2 * time.Minute), Sid: "sess-b", Kind: KindWrite, Path: "a.go"})
 	v = Reconcile(dir)
@@ -101,9 +88,6 @@ func TestReconcile_AttributionMatrix(t *testing.T) {
 	}
 }
 
-// TestSessionTouched_FastPredicate: the trigger-condition predicate returns the session's
-// ledger union regardless of current git state.
-//
 // TestSessionTouched_FastPredicate：触发条件谓词返回会话的台账并集，与当前 git 状态
 // 无关。
 func TestSessionTouched_FastPredicate(t *testing.T) {
@@ -117,10 +101,6 @@ func TestSessionTouched_FastPredicate(t *testing.T) {
 	}
 }
 
-// TestRecordHookEvent_ToolsAndDegradation pins the dispatcher seam: Write/Edit/patch/Bash
-// produce the right ledger shapes; empty session and non-PostToolUse events record
-// nothing (no-identity hosts degrade to orphan-at-reconcile by design).
-//
 // TestRecordHookEvent_ToolsAndDegradation 钉住分发器挂点：Write/Edit/patch/Bash 产出
 // 正确台账形状；空 session 与非 PostToolUse 事件不记账（无身份宿主按设计在对账时
 // 降级为无主）。
@@ -148,10 +128,6 @@ func TestRecordHookEvent_ToolsAndDegradation(t *testing.T) {
 	}
 }
 
-// TestBashWriteTargets_PrecisionFirst pins the conservative extractor: the recognized
-// shapes extract; ambiguous shapes deliberately miss (degrade to orphan, never
-// misattribute).
-//
 // TestBashWriteTargets_PrecisionFirst 钉住保守提取器：认识的形状提取；歧义形状刻意
 // 漏掉（降级为无主，绝不错误归属）。
 func TestBashWriteTargets_PrecisionFirst(t *testing.T) {
@@ -184,9 +160,6 @@ func TestBashWriteTargets_PrecisionFirst(t *testing.T) {
 	}
 }
 
-// TestRecordStopMetric_ThrottledAndShaped: first Stop records one observation-class entry
-// with coverage Meta; an immediate second Stop is throttled silent.
-//
 // TestRecordStopMetric_ThrottledAndShaped：首个 Stop 落一条带覆盖率 Meta 的观察类
 // 条目；紧随的第二个 Stop 被节流静默。
 func TestRecordStopMetric_ThrottledAndShaped(t *testing.T) {
@@ -227,9 +200,6 @@ func TestRecordStopMetric_ThrottledAndShaped(t *testing.T) {
 	}
 }
 
-// TestLedgerPerWorkspace: two workspaces of one project keep separate ledgers (wtid is
-// path-keyed — the whole point of the triad).
-//
 // TestLedgerPerWorkspace：同项目两个 workspace 各持独立台账（wtid 按路径键控——
 // 三元组的意义所在）。
 func TestLedgerPerWorkspace(t *testing.T) {
@@ -249,10 +219,6 @@ func TestLedgerPerWorkspace(t *testing.T) {
 	}
 }
 
-// TestLedgerTTL_StaleEntriesExpire pins the 7d TTL (review HIGH): an event older than
-// the ledger TTL must not win last-writer over the current task's unseen change — stale
-// attribution is worse than a miss (a miss surfaces as a visible orphan).
-//
 // TestLedgerTTL_StaleEntriesExpire 钉住 7d TTL（review HIGH）：超 TTL 的事件不得作为
 // 最后写入者胜过当前任务的漏记变更——陈旧归因比漏归属更糟（漏 = 无主 = 可见）。
 func TestLedgerTTL_StaleEntriesExpire(t *testing.T) {

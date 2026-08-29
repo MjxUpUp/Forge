@@ -50,11 +50,7 @@ func TestReplaceMarkedSection(t *testing.T) {
 	}
 }
 
-// TestStripMarkedSection pins the inverse contract of ReplaceMarkedSection:
-// removal between the markers with seam normalization, identity when markers
-// are absent or inverted, and the empty/one-sided edge cases. StripMarkedSection
-// is load-bearing for conventions fingerprinting (strip-before-hash keeps a
-// forge upgrade from flipping a repo profile's staleness).
+// TestStripMarkedSection pins the inverse contract of ReplaceMarkedSection: removal between the markers with seam normalization, identity when markers are absent or inverted, and the empty/one-sided edge cases.
 //
 // TestStripMarkedSection 钉住 ReplaceMarkedSection 的逆契约：标记间移除 +
 // 接缝规整、标记缺失或颠倒时原样返回、空/单侧的边界。StripMarkedSection

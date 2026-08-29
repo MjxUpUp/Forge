@@ -1,10 +1,5 @@
 package cli
 
-// skills_decide.go — decide subcommand: appends a decision to a skill's decisions.md.
-// Persistent decision history: quadruple (diagnosis, revision, evidence, outcome) + rationale + linked
-// commit/probe-run. Lets the next-round agent understand why the skill was changed this way, avoiding re-exploring failed
-// directions. Audit/reproducible, not generalized learning.
-//
 // skills_decide.go — decide 子命令：把一条决策追加到 skill 的 decisions.md。
 // persistent decision history：四元组 (诊断,修订,证据,结果) + rationale + 关联
 // commit/probe-run。让下一轮 agent 理解 skill「为什么这么改」，避免重复探索已失败
@@ -80,27 +75,9 @@ func runSkillsDecide(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	// explicitSource = the user pointed at a source via --canonical /
-	// $FORGE_SKILLS_CANONICAL; such intent always wins over repo auto-detection.
-	//
 	// explicitSource = 用户经 --canonical / $FORGE_SKILLS_CANONICAL 显式指定了源；
 	// 该意图永远优先于仓库自动探测。
 	explicitSource := isExternal
-	// In-repo default (usage-log fix): when forge runs inside a checkout whose project
-	// root carries a real skills/ tree (CONVENTIONS.md marker — e.g. the Forge repo
-	// itself), decide must write THAT canonical tree, not the embed cache. The cache is
-	// a regenerated distribution snapshot, not a writable source: EnsureEmbeddedCache
-	// RemoveAll-rebuilds it whenever the version marker mismatches the running binary —
-	// with two forge versions alternating on one machine (e.g. the globally installed
-	// release driving the hook chain + a locally built dev binary), the cache is
-	// version-ping-pong wiped on every foreign-version invocation. A decide that resolved
-	// to the cache reported ✅ success and the entry was silently destroyed by the next
-	// hook call (2026-08-24 incident: three decisions vanished between the ✅ and the
-	// follow-up grep; a later agent then wrote to the cache AGAIN because the repo was
-	// not auto-detected). Inside a skills-bearing repo default to ./skills; elsewhere
-	// fail loudly: the agent must point at a real source via $FORGE_SKILLS_CANONICAL /
-	// --canonical.
-	//
 	// 仓库内默认（usage 日志修复）：forge 在项目根带真实 skills/ 树（CONVENTIONS.md
 	// 标记——如 Forge 本仓）的 checkout 里运行时，decide 必须写该 canonical 树而非
 	// embed 缓存。缓存是可再生成的分发快照、不是可写源：EnsureEmbeddedCache 在版本标记
@@ -114,8 +91,6 @@ func runSkillsDecide(cmd *cobra.Command, args []string) error {
 		if repoSkills := detectRepoSkillsDir(); repoSkills != "" {
 			canonical = repoSkills
 			isExternal = true
-			// cmd is nil in unit tests that call runSkillsDecide directly.
-			//
 			// 单测直接调 runSkillsDecide 时 cmd 为 nil。
 			w := io.Writer(os.Stderr)
 			if cmd != nil {
@@ -124,14 +99,6 @@ func runSkillsDecide(cmd *cobra.Command, args []string) error {
 			fmt.Fprintf(w, "ℹ️ 检测到仓库内 canonical skill 树，decide 写入 %s（非 embed 缓存）\n", repoSkills)
 		}
 	}
-	// forge-native skills (requires_forge — skill-evolution / skill-routing /
-	// skill-authoring-standard) live in <root>/skills-forge since the 2026-08
-	// zero-reverse-dependency migration, NOT in the neutral ./skills tree. When
-	// resolution came from the embed path (no explicit --canonical/env), redirect
-	// in-repo writes for those names to the forge-native source; explicit user
-	// sources always win. Without this the decide would either fail (skill absent
-	// from ./skills) or write the regenerated cache.
-	//
 	// forge 原生 skill（requires_forge——skill-evolution / skill-routing /
 	// skill-authoring-standard）2026-08 零反向依赖迁移后住 <root>/skills-forge，
 	// 不在中立 ./skills 树。解析来自 embed 路径（未显式 --canonical/env）时，对这些
@@ -178,11 +145,6 @@ func runSkillsDecide(cmd *cobra.Command, args []string) error {
 		By:         skDecBy,
 		Prediction: skDecPrediction,
 	}
-	// Orphan-write warning (review W3): AppendDecision does not require the target
-	// skill dir to exist — a name absent from the resolved tree writes an invisible
-	// orphan (plugin pack's orphan-dir skip means it never ships). Surface it
-	// instead of a silent ✅.
-	//
 	// 孤儿写入警告（review W3）：AppendDecision 不要求目标 skill 目录存在——名字不在
 	// 解析树里时会写入不可见的孤儿目录（plugin pack 的孤儿目录跳过意味着它永不
 	// 分发）。显式提示而非静默 ✅。
