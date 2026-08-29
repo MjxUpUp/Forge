@@ -326,8 +326,20 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 	// 断言信号复用 scoring.CollectAssertionDensity（已注入 EvaluateInput；taskpipeline→scoring
 	// 单向无循环依赖）。checklog 记最终态——覆盖 task-verify 的记录（agent 可能在两 gate 间补了
 	// 测试，Latest 应反映 task-complete 时覆盖状态供 score/trace）。
+	// Hoisted for the task-complete blocks below: taskChangedFiles spawns several git
+	// subprocesses, and its result feeds BOTH the coverage gate (via the precomputed-list
+	// variant — no second taskChangedFiles run inside CheckTestCoverage) and the later
+	// behavior-surface / goal↔output checks (2026-08-29 review round: the gate previously
+	// recomputed it, double-running the multi-subprocess probe).
+	//
+	// 提升到下方 task-complete 块共用：taskChangedFiles 起多个 git 子进程，其结果同时
+	// 喂覆盖门禁（走预计算列表变体——CheckTestCoverage 内不再第二次跑 taskChangedFiles）
+	// 与后续行为面/goal↔output 检查（2026-08-29 审查轮：门禁此前会重算一遍，多个
+	// git 子进程双跑）。
+	var changedFiles []string
 	if gateID == "task-complete" && state.CompletedAt == nil {
-		ok, missing, total := CheckTestCoverage(root, state)
+		changedFiles = taskChangedFiles(root, state)
+		ok, missing, total := checkTestCoverageChanged(root, state, changedFiles)
 		recordAudit(root, &checklog.Entry{
 			Check:   CheckNameTestCoverage,
 			Passed:  ok,
@@ -382,12 +394,12 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		// 守卫上线（2026-08 实证：user-level-assets 重构后 README 仍写
 		// "forge init 创建 .forge/"，直到用户发现）。在 complete 时（diff 已知）
 		// 提醒。仅 advisory。
-		// taskChangedFiles is needed twice below (behavior surface + goal↔output match) —
-		// compute once: it spawns several git subprocesses.
+		// changedFiles was computed once at the top of the task-complete handling (feeding
+		// the coverage gate above via the precomputed-list variant); reused here for the
+		// behavior surface + goal↔output match — no second taskChangedFiles run.
 		//
-		// taskChangedFiles 下面要用两次（行为面 + 目标↔产出匹配）——算一次：它会起多个
-		// git 子进程。
-		changedFiles := taskChangedFiles(root, state)
+		// changedFiles 已在 task-complete 处理顶部算过一次（经预计算列表变体喂上方
+		// 覆盖门禁）；此处复用于行为面 + 目标↔产出匹配——不再第二次跑 taskChangedFiles。
 		if surface := behaviorSurfaceHits(changedFiles); len(surface) > 0 {
 			recordAudit(root, &checklog.Entry{
 				Check:   CheckNameDocsConsistency,
@@ -576,7 +588,22 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 					// window 也空时硬拦（真正的 edit-without-read）。stderr 备注让恢复
 					// 过程可见。
 					if grace, gerr := toolusage.ReadEditCountsGraceWindow(root, since, taskStartReadGraceWindow); gerr != nil {
+						// Fail closed: this branch is only reached with a READABLE toollog
+						// (rerr==nil above) and edits>0/reads==0 — the grace reread failing
+						// is a transient IO condition on the same file, not missing
+						// telemetry. Silently passing turned a certain hard-block candidate
+						// into an invisible fail-open (2026-08-29 review round).
+						//
+						// 失败关闭：本分支仅在 toollog 可读（上方 rerr==nil）且
+						// edits>0/reads==0 时可达——grace 二次读失败是对同一文件的
+						// 瞬时 IO，不是遥测缺失。静默放行会把确定的硬拦候选变成
+						// 不可见 fail-open（2026-08-29 审查轮）。
 						fmt.Fprintf(os.Stderr, "[forge] warning: grace read check failed: %v\n", gerr)
+						return nil, GateBlocked(
+							"gate %q cannot pass without reading any code during this task (edits=%d; grace-window probe failed: %v). "+
+								"HARD stop, not a reminder — Read the file(s) you edit, then re-run `forge task gate %s`",
+							gateID, edits, gerr, gateID,
+						)
 					} else if grace > 0 {
 						fmt.Fprintf(os.Stderr, "[forge] note: read-before-edit satisfied via grace window (%d nearby Read(s) logged outside this task — task-start/Read race)\n", grace)
 					} else {
@@ -763,12 +790,27 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		inferred := inferDesignPhases(combined)
 		if !designPhasesEqual(state.DesignPhases, inferred) {
 			state.DesignPhases = inferred
-			if err := SaveTaskState(root, state); err != nil {
+			// Locked field-merge persist (mutate-under-lock): a bare SaveTaskState over
+			// this pre-lock snapshot rolls back concurrent writers (session links,
+			// review stamps) — the lock.go contract load→mutate→save must hold.
+			//
+			// 锁内字段合并持久化：对锁前快照裸 SaveTaskState 会回滚并发写者
+			//（session 链接、盖章）——lock.go 的 load→mutate→save 契约必须成立。
+			if err := MergeOrPersistTaskState(root, state, func(s *TaskState) error {
+				s.DesignPhases = state.DesignPhases
+				return nil
+			}); err != nil {
 				fmt.Fprintln(os.Stderr, "[task-verify] DesignPhases persist failed:", err)
 			}
 		}
 
-		ok, missing, _ := CheckTestCoverage(root, state)
+		// Precomputed-list variant: gitChanged was already computed above for phase
+		// inference — the coverage gate must not spawn a second taskChangedFiles run
+		// (2026-08-29 review round: double computation eliminated).
+		//
+		// 预计算列表变体：gitChanged 已在上方为 phase 推断算过——覆盖门禁不得再跑一次
+		// taskChangedFiles（2026-08-29 审查轮：双算消除）。
+		ok, missing, _ := checkTestCoverageChanged(root, state, gitChanged)
 		recordAudit(root, &checklog.Entry{
 			Check:   CheckNameTestCoverage,
 			Passed:  ok,
@@ -1069,7 +1111,10 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		// worst re-reports once next run — better than blocking the gate). Same pattern
 		// as the DesignPhases persistence.
 		if findingsDirty {
-			if err := SaveTaskState(root, state); err != nil {
+			if err := MergeOrPersistTaskState(root, state, func(s *TaskState) error {
+				s.ReportedFindings = state.ReportedFindings
+				return nil
+			}); err != nil {
 				fmt.Fprintln(os.Stderr, "[task-verify] reported-findings persist failed:", err)
 			}
 		}
@@ -1414,20 +1459,20 @@ func runAutoChecks(root string, gateID string, state *TaskState) (*ExecuteResult
 }
 
 // hasCodeChanges reports whether there are real code changes since the task started.
-// It checks the working-tree changes, then new commits since the task's recorded base.
-// The base is state.HeadCommit (recorded at task start) when available — branch-agnostic,
-// so main/master tasks that commit mid-task (the AGENTS.md flow itself encourages an
-// in-task commit) are detected exactly like feature-branch tasks; only when HeadCommit
-// is empty (legacy state) does it fall back to probing base branches on a feature
-// branch. Graceful degradation for non-git repositories (returns true to avoid false
-// negatives).
+// It checks the working-tree changes, then untracked new files, then new commits since
+// the task's recorded base. The base is state.HeadCommit (recorded at task start) when
+// available — branch-agnostic, so main/master tasks that commit mid-task (the AGENTS.md
+// flow itself encourages an in-task commit) are detected exactly like feature-branch
+// tasks; only when HeadCommit is empty (legacy state) does it fall back to probing base
+// branches on a feature branch. Graceful degradation for non-git repositories (returns
+// true to avoid false negatives).
 //
 // hasCodeChanges 自 task 起算是否真有代码变更。
-// 先查工作树变更，再查自 task 记录基准以来的新 commit。基准优先用 state.HeadCommit
-// （task start 时记录）——与分支无关，main/master 上的 task 中途 commit（AGENTS.md
-// 流程本身鼓励中段 commit）与 feature 分支走同一路径；HeadCommit 为空（legacy
-// state）时才回落到 feature 分支的 base 分支探测。非 git 仓库优雅退化（返回 true
-// 以免误判）。
+// 先查工作树变更，再查 untracked 新建文件，再查自 task 记录基准以来的新 commit。
+// 基准优先用 state.HeadCommit（task start 时记录）——与分支无关，main/master 上的
+// task 中途 commit（AGENTS.md 流程本身鼓励中段 commit）与 feature 分支走同一路径；
+// HeadCommit 为空（legacy state）时才回落到 feature 分支的 base 分支探测。非 git
+// 仓库优雅退化（返回 true 以免误判）。
 func hasCodeChanges(root string, state *TaskState) bool {
 	// Check 1: working-tree changes (including staged-but-uncommitted).
 	//
@@ -1438,6 +1483,24 @@ func hasCodeChanges(root string, state *TaskState) bool {
 		return true // 非 git 仓库——放行
 	}
 	if len(strings.TrimSpace(string(out))) > 0 {
+		return true
+	}
+
+	// Check 1.5: untracked files — newly created and not yet git-added. `git diff HEAD`
+	// sees neither untracked content nor anything about it, so a task whose only change
+	// is a brand-new file was hard-blocked as 'no code changes' (2026-08-29 review round).
+	// --exclude-standard keeps ignored build output out. ANY untracked path counts: this
+	// gate asks 'did the task touch anything', not 'is it source' — taskChangedFiles is
+	// deliberately NOT reused because its attribution filters may drop non-source files.
+	// Probe failure is not judgeable — fall through to Check 2 rather than hard-blocking.
+	//
+	// 检查 1.5：untracked 文件——新建尚未 git add。`git diff HEAD` 看不到 untracked
+	// 内容，故只新建了文件的任务会被硬拦成「no code changes」（2026-08-29 审查轮）。
+	// --exclude-standard 排除被忽略的构建产物。任意 untracked 路径即算：本门禁问的是
+	// 「任务动没动东西」而非「是不是源码」——刻意不复用 taskChangedFiles，其归属过滤
+	// 可能丢掉非源码文件。探测失败不可判定——落到检查 2，不硬拦。
+	out, err = exec.Command("git", "-C", root, "ls-files", "--others", "--exclude-standard").Output()
+	if err == nil && len(strings.TrimSpace(string(out))) > 0 {
 		return true
 	}
 
@@ -1645,7 +1708,10 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 		// better than silently losing the "already recorded" semantics. Same pattern as
 		// the DesignPhases persistence (executor.go task-verify section).
 		state.PlanFirstAdvisoryFired = true
-		if err := SaveTaskState(root, state); err != nil {
+		if err := MergeOrPersistTaskState(root, state, func(s *TaskState) error {
+			s.PlanFirstAdvisoryFired = true
+			return nil
+		}); err != nil {
 			fmt.Fprintln(os.Stderr, "[task-implement] plan-first marker persist failed:", err)
 		}
 	}

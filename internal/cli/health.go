@@ -87,8 +87,11 @@ func printHealth(s health.Summary) {
 	// Headline: blind-spot rate (project-level LLM-judge blind-spot signal)
 	//
 	// 头条：盲区率（项目级 LLM-judge 盲区信号）
-	fmt.Printf("\n证据盲区率: %.0f%%（%d/%d 任务完成声明主要靠 agent 自述——Unverified/Weak）\n",
+	fmt.Printf("\n证据盲区率: %.0f%%（%d/%d 任务完成声明缺 deterministic 证据——Unverified/无证据 Weak）\n",
 		s.BlindSpotRate*100, s.BlindSpotCount, s.TotalTasks)
+	if s.CappedWeakCount > 0 {
+		fmt.Printf("  另有 %d 个任务为逃生舱封顶 Weak（有 deterministic 证据但被 override 降级——是逃生代价，不是盲区）\n", s.CappedWeakCount)
+	}
 	if s.BlindSpotRate >= 0.5 {
 		fmt.Println("  ⚠ 系统性盲区：过半完成声明缺 deterministic 证据——project 级该查'验证为何没真跑'")
 	}
