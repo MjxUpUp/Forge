@@ -3,6 +3,7 @@ package taskpipeline
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -87,8 +88,23 @@ func LockTask(root, ref string) (unlock func(), err error) {
 		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
 		if err == nil {
 			stamp := fmt.Sprintf("%d\n", time.Now().Unix())
-			f.WriteString(stamp)
-			f.Close()
+			// A failed identity write leaves an EMPTY lock file: our identity-checked
+			// unlock will then never match, the lock outlives its holder for the full
+			// stale window, and every concurrent writer of this task fails fast for
+			// that long. Remove the orphaned lock and surface the failure instead.
+			//
+			// 身份戳写失败会留下【空】锁文件：带身份校验的解锁从此永不匹配，
+			// 锁比持有者多活整个 stale 窗口，该任务的并发写者在这段时间内全部
+			// 快速失败。改为清掉孤儿锁并上抛失败。
+			if _, werr := f.WriteString(stamp); werr != nil {
+				f.Close()
+				os.Remove(path)
+				return nil, fmt.Errorf("failed to write lock identity for %s: %w", ref, werr)
+			}
+			if cerr := f.Close(); cerr != nil {
+				os.Remove(path)
+				return nil, fmt.Errorf("failed to close lock for %s: %w", ref, cerr)
+			}
 			return func() {
 				// Identity-checked unlock: only remove the lock if it is still ours.
 				//
@@ -161,6 +177,37 @@ func MutateTaskState(root, ref string, fn func(*TaskState) error) error {
 	state, err := LoadTaskState(root, ref)
 	if err != nil {
 		return err
+	}
+	if err := fn(state); err != nil {
+		return err
+	}
+	return SaveTaskState(root, state)
+}
+
+// MergeOrPersistTaskState is MutateTaskState for callers holding an in-memory state that may
+// not have been persisted yet (ExecuteTaskGate's internal persists receive the
+// caller's object; tests and fresh flows construct it directly): under the lock it
+// prefers the on-disk state, and only when the file does not exist yet does it fall
+// back to base — preserving the old "SaveTaskState writes regardless" behavior for
+// first-persist while gaining lost-update protection for every subsequent write.
+//
+// MergeOrPersistTaskState 是面向「手里的 state 可能尚未落盘」的调用方（ExecuteTaskGate
+// 内部持久化收到的是调用方对象；测试与新建流程直接构造）的 MutateTaskState：
+// 锁内优先读盘上状态，仅当文件尚不存在时才回退 base——为首次持久化保留旧的
+// 「SaveTaskState 无条件写」行为，同时让之后的每次写入都获得丢失更新保护。
+func MergeOrPersistTaskState(root string, base *TaskState, fn func(*TaskState) error) error {
+	ref := base.TaskRef
+	unlock, err := LockTask(root, ref)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	state, err := LoadTaskState(root, ref)
+	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		state = base // first persist: nothing on disk to merge into
 	}
 	if err := fn(state); err != nil {
 		return err

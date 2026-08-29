@@ -406,7 +406,17 @@ func runProjectSync(cmd *cobra.Command, args []string) (err error) {
 			return err
 		}
 		nodesDir := filepath.Join(dir, `nodes`)
-		entries, _ := os.ReadDir(nodesDir) // 无 nodes/ = 远端还没有任何推送
+		entries, err := os.ReadDir(nodesDir)
+		if err != nil && !os.IsNotExist(err) {
+			// Folding a permission/IO failure into "zero bundles" would stamp a PASS
+			// sync outcome (LastPullAt + checklog) for a pull that never happened —
+			// the H-1 zero-count-looks-healthy pattern.
+			//
+			// 把权限/IO 失败折叠成"零 bundle"会给一次没发生的同步盖上 PASS
+			//（LastPullAt + checklog）——H-1 零计数伪装健康模式。
+			return fmt.Errorf(`读取同步缓存 nodes/ 失败: %w`, err)
+		}
+		// 无 nodes/ = 远端还没有任何推送（IsNotExist → entries 为 nil）
 		imported := 0
 		var failed []string
 		for _, e := range entries {
@@ -425,6 +435,19 @@ func runProjectSync(cmd *cobra.Command, args []string) (err error) {
 			}
 			bundle := filepath.Join(nodesDir, e.Name(), key, `bundle.tar.gz`)
 			if _, err := os.Stat(bundle); err != nil {
+				if !os.IsNotExist(err) {
+					// A transient stat failure (Windows AV/sharing-violation, unreadable
+					// dir) must NOT route into the key-mismatch branch — that path tells
+					// the user to run `forge project adopt`, an irreversible identity
+					// migration. Skip this node loudly instead.
+					//
+					// 瞬时 stat 失败（Windows 杀软/sharing-violation、目录不可读）
+					// 绝不能落进 key 错位分支——那条路指引用户跑 `forge project
+					// adopt`（不可逆的身份迁移）。改为响亮跳过该节点。
+					fmt.Fprintf(out, `⚠ 节点 %s 的 bundle 暂不可读（%v），本次跳过`+"\n", e.Name(), err)
+					failed = append(failed, e.Name())
+					continue
+				}
 				// A peer prefix that exists but not under OUR key is not silence-worthy:
 				// the peer pushes under its project key while ours differs (e.g. both
 				// machines still path-identity with different checkout paths) — the two

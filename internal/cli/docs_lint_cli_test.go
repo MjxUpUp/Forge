@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -49,5 +50,43 @@ func TestCollectLintTargetsExplicitPaths(t *testing.T) {
 
 	if _, err := collectLintTargets([]string{filepath.Join(dir, "missing.md")}, ""); err == nil {
 		t.Fatal("不存在的路径应报错（不静默空集）")
+	}
+}
+
+// TestRunDocsLintHardFailureReturnsSentinel pins the exit-code refactor: a hard
+// lint failure must surface as the errHardExit sentinel (mapped to exit 2 by
+// Execute), NOT an in-RunE os.Exit(2) — os.Exit skips every defer in the cobra
+// chain and Execute's panic-recovery funnel. A clean file returns nil. The
+// sentinel is matched via errors.As, so wrapping survives.
+//
+// TestRunDocsLintHardFailureReturnsSentinel 钉住退出码重构：lint 硬失败必须以
+// errHardExit 哨兵浮出（由 Execute 映射为 exit 2），而不是 RunE 内 os.Exit(2)
+// ——os.Exit 会跳过 cobra 链上的所有 defer 与 Execute 的 panic 恢复盘。干净文件
+// 返回 nil。用 errors.As 匹配哨兵，包装后仍可命中。
+func TestRunDocsLintHardFailureReturnsSentinel(t *testing.T) {
+	dir := t.TempDir()
+	clean := filepath.Join(dir, "clean.md")
+	if err := os.WriteFile(clean, []byte("# ok\n内容干净，无禁令短语。\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	hard := filepath.Join(dir, "hard.md")
+	if err := os.WriteFile(hard, []byte("# bad\n综上所述，这个方案是可行的。\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Clean file: no hard failure → nil (exit 0 path).
+	//
+	// 干净文件：无硬失败 → nil（exit 0 路径）。
+	if err := runDocsLint(nil, []string{clean}); err != nil {
+		t.Fatalf("clean file: err = %v, want nil", err)
+	}
+
+	// Hard failure (D1 ban phrase) → errHardExit sentinel via errors.As.
+	//
+	// 硬失败（D1 禁令短语）→ errors.As 命中 errHardExit 哨兵。
+	err := runDocsLint(nil, []string{hard})
+	var hex *hardExitError
+	if !errors.As(err, &hex) {
+		t.Fatalf("hard failure: err = %v, want errHardExit sentinel (Execute maps it to exit 2)", err)
 	}
 }

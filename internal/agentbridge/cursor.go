@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/hooks"
-	"github.com/MjxUpUp/Forge/internal/protocol"
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // CursorTranslator wires forge hooks into cursor's USER-LEVEL hooks.json
@@ -77,7 +77,7 @@ func (t *CursorTranslator) Translate(projectDir string, input *TranslationInput)
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, merged, 0644); err != nil {
+	if err := util.AtomicWrite(path, merged, 0644); err != nil {
 		return fmt.Errorf("cursor: failed to write hooks.json: %w", err)
 	}
 	return nil
@@ -202,67 +202,10 @@ func StripCursorHooksUserLevel() (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("cursor: marshal hooks.json: %w", err)
 	}
-	if err := os.WriteFile(path, append(data, '\n'), 0644); err != nil {
+	if err := util.AtomicWrite(path, append(data, '\n'), 0644); err != nil {
 		return false, fmt.Errorf("cursor: failed to write hooks.json: %w", err)
 	}
 	return true, nil
-}
-
-// buildCursorMDC renders the forge-quality guidance rules in Cursor's .mdc format.
-// It is no longer written by Translate (project-level instruction files are unified
-// by the skillgen layer); the renderer is retained for that layer and for the
-// render-convergence guard (TestProtocolRenderConvergence).
-//
-// buildCursorMDC 以 Cursor 的 .mdc 格式渲染 forge-quality guidance 规则。Translate
-// 不再写它（项目级指令文件由 skillgen 层统一）；渲染器保留给该层与渲染一致性守卫
-// （TestProtocolRenderConvergence）使用。
-func buildCursorMDC(input *TranslationInput) string {
-	var sb strings.Builder
-
-	// MDC frontmatter.
-	//
-	// MDC 的 frontmatter
-	sb.WriteString("---\n")
-	sb.WriteString("description: \"Forge quality protocol\"\n")
-	sb.WriteString("alwaysApply: true\n")
-	sb.WriteString("---\n\n")
-
-	sb.WriteString("# Forge 质量标准\n\n")
-
-	// Quality standards section.
-	//
-	// 质量标准段
-	sb.WriteString("## 质量标准\n\n")
-	protocol.RenderStandards(&sb, input.Protocol.Standards, protocol.StandardRenderStyle{
-		SeverityLabel:  protocol.EmojiSeverityLabel,
-		HookInfoFormat: " (enforced: %s)",
-		LineFormat:     "- %s **%s**: %s%s\n",
-	})
-	sb.WriteString("\n")
-
-	// Session rules section.
-	//
-	// 会话规则段
-	sb.WriteString("## 会话行为规则\n\n")
-	protocol.RenderSessionRules(&sb, input.Protocol.SessionRules, protocol.SessionRuleRenderStyle{
-		MandatoryLabel: protocol.MustShouldLabel,
-		LineFormat:     "- %[1]s %[2]s\n",
-	})
-	sb.WriteString("\n")
-
-	// Hook info section.
-	//
-	// Hook 信息段
-	if len(input.HookNames) > 0 {
-		sb.WriteString("## 自动检查\n\n")
-		sb.WriteString("以下检查通过 agent lifecycle hooks（PreToolUse/PostToolUse 等，非 .git/hooks）自动执行：\n\n")
-		for _, h := range input.HookNames {
-			sb.WriteString(fmt.Sprintf("- `%s`\n", h))
-		}
-		sb.WriteString("\n")
-	}
-
-	return sb.String()
 }
 
 type cursorHookEntry struct {

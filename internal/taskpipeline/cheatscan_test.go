@@ -392,6 +392,44 @@ func TestCollectAddedLines_CommittedAndUntracked(t *testing.T) {
 	}
 }
 
+// TestCollectAddedLines_BatchedTrackedNoDup pins the batched tracked-set probe
+// (gitTrackedSet, 2026-08-29 review round): a TRACKED file's added lines must appear
+// EXACTLY ONCE (from git diff) — if the one-shot `git ls-files` set misjudged it as
+// untracked, readFileAddedLines would duplicate every line. Untracked files are still
+// read in full. Detection verdicts unchanged vs the old per-file probe.
+//
+// TestCollectAddedLines_BatchedTrackedNoDup 钉批量 tracked 集合探测（gitTrackedSet，
+// 2026-08-29 审查轮）：TRACKED 文件的新增行必须恰好出现一次（来自 git diff）——若
+// 一次 `git ls-files` 建的集合把它误判成 untracked，readFileAddedLines 会把每行复制
+// 一份。untracked 文件仍整文件读。检测判定相对旧的逐文件探测不变。
+func TestCollectAddedLines_BatchedTrackedNoDup(t *testing.T) {
+	dir := t.TempDir()
+	initRepoWithMaster(t, dir)
+	writeCommitSource(t, dir, map[string]string{
+		"tracked.go": "package main\n\nfunc T() int { return 1 }\n",
+	}, "add tracked")
+	writeUntracked(t, dir, map[string]string{
+		"untracked2.go": "package main\n\nfunc U2() int { return 2 }\n",
+	})
+	state := newVerifyState(t, dir, "batch-tracked")
+	added := collectAddedLines(dir, state)
+	countT, countU := 0, 0
+	for _, a := range added {
+		if a.file == "tracked.go" && strings.Contains(a.text, "func T()") {
+			countT++
+		}
+		if a.file == "untracked2.go" && strings.Contains(a.text, "func U2()") {
+			countU++
+		}
+	}
+	if countT != 1 {
+		t.Errorf(`tracked 文件的 "func T()" 行应恰好 1 次（误判 untracked 会整读成 2 次）, got %d`, countT)
+	}
+	if countU != 1 {
+		t.Errorf(`untracked 文件的 "func U2()" 行应恰好 1 次, got %d`, countU)
+	}
+}
+
 // TestDetectPhantomImport pins the phantom-import detector: relative imports that resolve to a
 // real file on disk pass (incl. extension-omitted, directory index, package __init__), ones that
 // resolve to nothing are flagged (severity=high). Bare package names and aliases are out of scope

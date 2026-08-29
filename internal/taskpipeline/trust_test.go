@@ -142,3 +142,35 @@ func TestStripForeignGateSignals_FailedGateHistoryKept(t *testing.T) {
 		t.Errorf(`failed task-verify History is provenance and should be kept, got %+v`, s.History)
 	}
 }
+
+// TestStripForeignGateSignals_DefaultDenySweep pins the T5 default-deny inversion:
+// fields with NO explicit strip line (Lease/TTL/PlanFirstAdvisoryFired — machine-local
+// claims and advisory suppression) must still be zeroed by the reflection sweep, while
+// whitelist cargo (Goal/Decisions) survives. This is the property that makes future
+// fields safe by default.
+//
+// TestStripForeignGateSignals_DefaultDenySweep 钉住 T5 的默认拒绝反转：没有显式
+// 剥离行的字段（Lease/TTL/PlanFirstAdvisoryFired——本机声明与 advisory 抑制）也
+// 被反射清扫置零，而白名单货物（Goal/Decisions）存活。这正是让未来字段默认
+// 安全的性质。
+func TestStripForeignGateSignals_DefaultDenySweep(t *testing.T) {
+	s := &TaskState{
+		TaskRef:                "dd-probe",
+		Goal:                   "handoff goal",
+		Decisions:              []Decision{{Content: "keep me"}},
+		Lease:                  &Lease{HolderNode: "fnode_foreign"},
+		TTL:                    99,
+		PlanFirstAdvisoryFired: true,
+		ReviewPassed:           true,
+	}
+	StripForeignGateSignals(s)
+	if s.Lease != nil || s.TTL != 0 || s.PlanFirstAdvisoryFired {
+		t.Errorf("default-deny sweep must zero unlisted fields: Lease=%v TTL=%d PlanFirst=%v", s.Lease, s.TTL, s.PlanFirstAdvisoryFired)
+	}
+	if s.ReviewPassed {
+		t.Error("explicit strip still applies")
+	}
+	if s.Goal != "handoff goal" || len(s.Decisions) != 1 {
+		t.Errorf("whitelist cargo must survive: Goal=%q Decisions=%d", s.Goal, len(s.Decisions))
+	}
+}

@@ -60,7 +60,9 @@ var updateCmd = &cobra.Command{
   原地替换会被下次 npm install 还原，故不代下载（可用 FORGE_NPM_REGISTRY 覆盖
   registry）。
 - 其他（GitHub Release / 手动放置）：从 GitHub Releases 下载并原地替换，
-  支持 SHA-256 校验和验证、Windows 崩溃恢复（.old 安全模式）。
+  支持 SHA-256 校验和验证。Windows 上更新前先把旧二进制重命名为 .old、成功后
+  删除；若替换与回滚都失败，需按错误提示手动 move .old 还原（forge 不会在下次
+  启动时自动恢复）。
 
 可加 --plugin 触发后打印 plugin marketplace 重装指引（marketplace 含的 plugin.json
 镜像 Go 变更时建议重装以同步）。`,
@@ -606,7 +608,7 @@ func replaceBinaryWindows(exePath string, newData []byte) error {
 		//
 		// 回滚：尝试还原 .old
 		if rerr := os.Rename(oldPath, exePath); rerr != nil {
-			return fmt.Errorf("写入新二进制失败且回滚也失败: %w (rollback: %v). 再次运行 forge 命令将从 .old 备份恢复", err, rerr)
+			return fmt.Errorf("写入新二进制失败且回滚也失败: %w (rollback: %v)。无法自动恢复——请手动执行 move %q %q（或等价重命名）恢复旧版后重试更新", err, rerr, oldPath, exePath)
 		}
 		return fmt.Errorf("写入新二进制失败（已回滚）: %w", err)
 	}
@@ -619,7 +621,7 @@ func replaceBinaryWindows(exePath string, newData []byte) error {
 		//
 		// 回滚：还原 .old
 		if rerr := os.Rename(oldPath, exePath); rerr != nil {
-			return fmt.Errorf("新版本验证失败且回滚也失败: %w (rollback: %v). 再次运行 forge 命令将从 .old 备份恢复", err, rerr)
+			return fmt.Errorf("新版本验证失败且回滚也失败: %w (rollback: %v)。无法自动恢复——请手动执行 move %q %q（或等价重命名）恢复旧版后重试更新", err, rerr, oldPath, exePath)
 		}
 		return fmt.Errorf("新版本验证失败（已回滚）: %w", err)
 	}

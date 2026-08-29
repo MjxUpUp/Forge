@@ -36,6 +36,21 @@ const child = spawn(binaryPath, process.argv.slice(2), {
   env: process.env,
 });
 
-child.on("exit", (code) => {
+// spawn 失败走 error 事件而非 exit——无监听器会带栈迹非零崩溃，违反本包装器的
+// fail-open 契约（宿主表现为 hook 异常而非 approve）。
+child.on("error", (e) => {
+  console.error(`[forge] spawn failed: ${e.message}; failing open — hooks will not fire.`);
+  console.log('{"decision":"approve"}');
+  process.exit(0);
+});
+
+// exit 的 code 为 null 表示被信号杀死（OOM/SIGKILL）——不能折叠成成功语义；
+// 按包装器 fail-open 契约显式 approve 并留 stderr 线索。
+child.on("exit", (code, signal) => {
+  if (code === null) {
+    console.error(`[forge] forge exited on signal ${signal}; failing open — hooks will not fire.`);
+    console.log('{"decision":"approve"}');
+    process.exit(0);
+  }
   process.exit(code || 0);
 });

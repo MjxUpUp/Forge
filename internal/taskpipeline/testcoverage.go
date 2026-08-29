@@ -157,6 +157,44 @@ var testCoverageWhitelist = []whitelistEntry{
 // 使 trace 能展示门禁裁定（而非仅各次 edit 的 WARN）。
 const CheckNameTestCoverage checklog.CheckName = "test-coverage-gate"
 
+// coverageEscapeActive records the bypass audit entry and reports true when the
+// test-coverage gate is escaped (per-task override OR global env) — shared by
+// CheckTestCoverage and its precomputed-list variant so no call path can skip the
+// audit (A4 + plan 5: escape hatch use must leave a trace). See the audit rationale
+// inlined below.
+//
+// coverageEscapeActive 记录 bypass 审计条目，并在 test-coverage 门控被逃生（per-task
+// override 或全局 env）时返回 true——由 CheckTestCoverage 及其预计算列表变体共用，
+// 任何调用路径都绕不过审计（A4 + 方案5：逃生舱使用必须留痕）。审计理由见下方内联注释。
+func coverageEscapeActive(root string, state *TaskState) bool {
+	if !escapeDisabled(state, escapeTestCoverage, testCoverageDisableEnv) {
+		return false
+	}
+	// A4 + plan 5: audit the bypass (per-task override OR global env). The hatch is
+	// meant for reasonable scenarios (docs-only repo, generated code, whitelist-only
+	// task), but its use must leave a trace — otherwise agents silently bypass the
+	// test-coverage gate. UsedEscapeHatch → Strength cap Weak makes escape carry a
+	// cost rather than being free.
+	//
+	// A4 + 方案5: audit the bypass (per-task override OR global env). The hatch is
+	// 是合理场景（仅文档仓库、生成代码、whitelist-only task），但其使用必须
+	// 留痕——否则 agent 会静默绕过 test-coverage 门控。UsedEscapeHatch → Strength
+	// cap Weak 让逃生有代价而非免费。
+	taskRef := ""
+	if state != nil {
+		taskRef = state.TaskRef
+	}
+	recordAudit(root, &checklog.Entry{
+		Check:   checklog.CheckEscapeHatch,
+		Passed:  true,
+		Checked: true,
+		Level:   checklog.LevelWarn, // 逃生舱使用是 warn 语义（bypass 已生效但须留痕），derive 只会给 pass
+		TaskRef: taskRef,
+		Detail:  "escape-hatch: test-coverage gate bypassed (per-task override or FORGE_TEST_COVERAGE=disable)",
+	})
+	return true
+}
+
 // CheckTestCoverage enforces CLAUDE.md rule 4 (tests accompany changes): every
 // non-whitelisted source file changed during the task must have a corresponding test
 // file also changed. Returns (ok, missing, total): ok=true when there is no changed
@@ -183,34 +221,37 @@ const CheckNameTestCoverage checklog.CheckName = "test-coverage-gate"
 // 低估覆盖（HeadCommit == HEAD → 空 diff → testing 维度看不见测试）。
 //
 // 优雅降级：非 git 仓库或空 diff → ok=true（不误报）。
+//
+// This entry point computes the changed set itself. Callers that ALREADY ran
+// taskChangedFiles (executor gates compute it for phase inference / behavior-surface
+// advice) must use checkTestCoverageChanged instead — taskChangedFiles spawns several
+// git subprocesses and should not run twice per gate (2026-08-29 review round:
+// double computation eliminated).
+//
+// 本入口自行计算 changed 集。已经算过 taskChangedFiles 的调用方（executor 各 gate
+// 为 phase 推断/行为面提示算过一次）必须改用 checkTestCoverageChanged——
+// taskChangedFiles 起多个 git 子进程，不应每 gate 跑两遍（2026-08-29 审查轮：双算消除）。
 func CheckTestCoverage(root string, state *TaskState) (ok bool, missing []string, total int) {
-	if escapeDisabled(state, escapeTestCoverage, testCoverageDisableEnv) {
-		// A4 + plan 5: audit the bypass (per-task override OR global env). The hatch is
-		// meant for reasonable scenarios (docs-only repo, generated code, whitelist-only
-		// task), but its use must leave a trace — otherwise agents silently bypass the
-		// test-coverage gate. UsedEscapeHatch → Strength cap Weak makes escape carry a
-		// cost rather than being free.
-		//
-		// A4 + 方案5: audit the bypass (per-task override OR global env). The hatch is
-		// 是合理场景（仅文档仓库、生成代码、whitelist-only task），但其使用必须
-		// 留痕——否则 agent 会静默绕过 test-coverage 门控。UsedEscapeHatch → Strength
-		// cap Weak 让逃生有代价而非免费。
-		taskRef := ""
-		if state != nil {
-			taskRef = state.TaskRef
-		}
-		recordAudit(root, &checklog.Entry{
-			Check:   checklog.CheckEscapeHatch,
-			Passed:  true,
-			Checked: true,
-			Level:   checklog.LevelWarn, // 逃生舱使用是 warn 语义（bypass 已生效但须留痕），derive 只会给 pass
-			TaskRef: taskRef,
-			Detail:  "escape-hatch: test-coverage gate bypassed (per-task override or FORGE_TEST_COVERAGE=disable)",
-		})
+	if coverageEscapeActive(root, state) {
 		return true, nil, 0
 	}
+	return checkTestCoverageChanged(root, state, taskChangedFiles(root, state))
+}
 
-	changed := taskChangedFiles(root, state)
+// checkTestCoverageChanged is the internal variant of CheckTestCoverage accepting a
+// PRECOMPUTED changed-file list (from taskChangedFiles). Behavior is identical to
+// CheckTestCoverage — including the escape-hatch audit, so executor call sites passing
+// gitChanged cannot accidentally skip it. All comments describing the gate semantics
+// live on CheckTestCoverage above.
+//
+// checkTestCoverageChanged 是 CheckTestCoverage 的内部变体，接受【预计算】的改动文件
+// 列表（来自 taskChangedFiles）。行为与 CheckTestCoverage 完全一致——含逃生舱审计，
+// 传入 gitChanged 的 executor 调用点不会意外跳过审计。门控语义的完整注释见上方
+// CheckTestCoverage。
+func checkTestCoverageChanged(root string, state *TaskState, changed []string) (ok bool, missing []string, total int) {
+	if coverageEscapeActive(root, state) {
+		return true, nil, 0
+	}
 	if len(changed) == 0 {
 		return true, nil, 0
 	}
@@ -456,10 +497,55 @@ func isSourceFile(path string) bool {
 
 // isTestFile reports whether path itself looks like a test file.
 //
-// isTestFile 报告 path 自身是否疑似测试文件。
+// isTestFile 报告 path 自身是否疑似测试文件。目录判定按【路径段整段】匹配
+// （test/tests/__tests__）而非子串——子串匹配把 contest/、latest/、attest/ 等
+// 生产目录整体判成测试目录，形成"豁免测试义务 + 逃出 cheat/unused 扫描 +
+// scope 评分不计改动量"的可注册逃逸区（2026-08-29 审查轮功能实证）。与
+// phase_detect.go 的 isTestPhasePath 同判据。
 func isTestFile(path string) bool {
-	for _, pat := range []string{"_test.", "_spec.", ".test.", ".spec.", "test/", "tests/", "__tests__/"} {
-		if strings.Contains(path, pat) {
+	base := filepath.Base(path)
+	for _, pat := range []string{"_test.", "_spec.", ".test.", ".spec."} {
+		if strings.Contains(base, pat) {
+			return true
+		}
+	}
+	// "test_" prefix form — Python and Ruby ONLY (pytest test_*.py / minitest
+	// test_*.rb conventions): the pairing probe needed test_root.py recognized, but a
+	// pinned scoring case (test_utils.go, scope_test.go) shows the prefix must NOT
+	// generalize to Go — Go's convention is the *_test.go suffix, and
+	// "test_utils.go" is a helpers file, not a test. Rule: ext ∈ {.py,.rb} AND a
+	// real stem after the prefix.
+	// NOTE: scoring/evaluator.go's isTestPath mirrors this predicate (same
+	// .py/.rb-only restriction).
+	//
+	// 「test_」前缀形态——仅 Python 与 Ruby（pytest test_*.py / minitest test_*.rb
+	// 惯例）：配对探针需要识别 test_root.py，但 scoring 侧钉住的用例
+	//（test_utils.go，scope_test.go）表明该前缀不得推广到 Go——Go 的惯例是
+	// *_test.go 后缀，"test_utils.go" 是辅助文件不是测试。规则：ext ∈ {.py,.rb}
+	// 且前缀后带真 stem。注意：scoring/evaluator.go 的 isTestPath 镜像此判定
+	//（同样仅 .py/.rb）。
+	if ext := filepath.Ext(base); (ext == ".py" || ext == ".rb") &&
+		strings.HasPrefix(base, "test_") && len(base) > len("test_")+len(ext) {
+		return true
+	}
+	// Java camelCase test names (JUnit/Maven conventions): FooTest.java / FooTests.java /
+	// FooIT.java. Needed for self-consistency with the default-branch pairing in
+	// hasMatchingTest: it accepts stem+"Test.java" for Main.java, and without this rule
+	// the just-paired MainTest.java would itself re-enter the missing list (2026-08-29
+	// acceptance: Main.java+MainTest.java — both sides must hold). Restricted to the
+	// .java extension so lowercase-form conventions elsewhere are unaffected.
+	//
+	// Java 驼峰测试名（JUnit/Maven 惯例）：FooTest.java / FooTests.java / FooIT.java。
+	// 用于与 hasMatchingTest 的 default 分支配对自洽：配对接受 Main.java 的
+	// stem+"Test.java"，若无此判定，刚配对成功的 MainTest.java 自身会再进 missing
+	//（2026-08-29 验收：Main.java+MainTest.java 两侧都要成立）。限定 .java 扩展名，
+	// 不影响其他语言的小写形态惯例。
+	if filepath.Ext(base) == ".java" &&
+		(strings.HasSuffix(base, "Test.java") || strings.HasSuffix(base, "Tests.java") || strings.HasSuffix(base, "IT.java")) {
+		return true
+	}
+	for _, seg := range strings.Split(filepath.ToSlash(path), "/") {
+		if seg == "test" || seg == "tests" || seg == "__tests__" {
 			return true
 		}
 	}
@@ -579,21 +665,78 @@ func hasMatchingTest(src string, changed map[string]bool) bool {
 		}
 		return false
 	case ".py":
-		for _, p := range []string{dir + "/test_" + name, dir + "/" + base + "_test.py", "tests/test_" + name} {
+		// Normalize a root-level dir ("." from filepath.Dir) to "" so candidates stay
+		// prefix-free ("test_foo.py") and match git's path keys — mirrors the Go branch's
+		// root-level handling; without it "./test_foo.py" never matches "test_foo.py".
+		//
+		// 根目录源码的 dir（filepath.Dir 返回 "."）归一为 ""，候选保持无前缀形态
+		//（"test_foo.py"）以匹配 git 路径键——与 Go 分支的 root-level 处理对齐；
+		// 否则 "./test_foo.py" 永远匹配不上 "test_foo.py"。
+		pyDir := ""
+		if dir != "." && dir != "" {
+			pyDir = dir + "/"
+		}
+		for _, p := range []string{pyDir + "test_" + name, pyDir + base + "_test.py", "tests/test_" + name} {
 			if changed[p] {
 				return true
 			}
 		}
 		return false
 	default:
-		// java/rb/zig/nim: accept any *_test.* or test_*.* with the same base name in
-		// the changed set — conservative match.
+		// java/rb/zig/nim — precise same-directory pairing, isomorphic to the Go/.py
+		// branches: compute the source's dir+stem and accept ONLY conventional test-file
+		// names in the SAME directory. (2026-08-29 review round: the old matcher's second
+		// disjunct was dead code — name carries the source extension, so dir+"/"+name could
+		// never end in "_test" — and its first disjunct was over-broad: HasPrefix(f,
+		// "src/poller") let src/poller_daemon_spec.rb falsely pair with src/poller.rb.
+		// Dead condition deleted; loose prefix replaced with exact candidates.)
 		//
-		// java/rb/zig/nim：在 changed 集合里接受同 base name 的任意 *_test.* 或
-		// test_*.*——保守匹配。
-		wantBase := base
+		// java/rb/zig/nim —— 同目录精确配对，与 Go/.py 分支同构：计算源码的 dir+stem，
+		// 只接受同目录下的惯用测试文件名。（2026-08-29 审查轮：旧匹配器的第二析取是
+		// 死代码——name 带源扩展名，dir+"/"+name 永不以 "_test" 结尾——第一析取又过松：
+		// HasPrefix(f, "src/poller") 让 src/poller_daemon_spec.rb 假配对 src/poller.rb。
+		// 死条件已删；松前缀换成精确候选。）
+		stem := filepath.ToSlash(filepath.Base(base)) // 源文件去扩展名的主名 / stem without extension
+		// Normalize a root-level dir ("." from filepath.Dir) to "" so candidates stay
+		// prefix-free and match git's forward-slash path keys (mirrors the .py branch).
+		//
+		// 根目录源码的 dir（filepath.Dir 返回 "."）归一为 ""，候选保持无前缀形态、
+		// 匹配 git 的 forward-slash 路径键（与 .py 分支对齐）。
+		d := ""
+		if dir != "." && dir != "" {
+			d = dir + "/"
+		}
+		// Language-specific exact candidates (same dir only):
+		//   java: JUnit camelCase — Main.java ↔ MainTest.java (2026-08-29 acceptance
+		//         case), plus FooTests.java / FooIT.java (integration) variants.
+		//   rb:   RSpec foo_spec.rb, foo_test.rb, and minitest/test-unit test_foo.rb.
+		//
+		// 语言特定的精确候选（仅同目录）：
+		//   java：JUnit 驼峰——Main.java ↔ MainTest.java（2026-08-29 验收用例），
+		//         另有 FooTests.java / FooIT.java（集成）变体。
+		//   rb：  RSpec foo_spec.rb、foo_test.rb、minitest/test-unit 的 test_foo.rb。
+		var cands []string
+		switch ext {
+		case ".java":
+			cands = []string{d + stem + "Test.java", d + stem + "Tests.java", d + stem + "IT.java"}
+		case ".rb":
+			cands = []string{d + stem + "_spec.rb", d + stem + "_test.rb", d + "test_" + name}
+		}
+		for _, p := range cands {
+			if changed[p] {
+				return true
+			}
+		}
+		// All languages: stem+"_test."+ANY extension in the same directory (zig
+		// foo_test.zig, nim foo_test.nim, java foo_test.java, …). Prefix-scoped by d+"/",
+		// so a sibling source's spec (poller_daemon_spec.rb) can never match poller.
+		//
+		// 所有语言：同目录下 stem+"_test."+任意扩展（zig foo_test.zig、nim
+		// foo_test.nim、java foo_test.java……）。前缀被 d+"/" 限定，兄弟源码的
+		// spec（poller_daemon_spec.rb）永不匹配 poller。
+		prefix := d + stem + "_test."
 		for f := range changed {
-			if (strings.HasPrefix(f, wantBase) || strings.HasSuffix(filepath.Dir(f)+"/"+name, "_test")) && isTestFile(f) {
+			if len(f) > len(prefix) && strings.HasPrefix(f, prefix) {
 				return true
 			}
 		}
