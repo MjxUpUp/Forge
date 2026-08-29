@@ -10,6 +10,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/skillgen"
 	"github.com/MjxUpUp/Forge/internal/userassets"
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // ReasonixTranslator wires forge at USER level into reasonix (DeepSeek-Reasonix) along
@@ -412,7 +413,7 @@ func mergeReasonixHooks(path string) error {
 	//
 	// 尾随换行对齐 StripReasonixHooksUserLevel（与 cursor 约定），使 merge→strip→merge
 	// 循环后文件逐字节稳定。
-	return os.WriteFile(path, append(data, '\n'), 0644)
+	return util.AtomicWrite(path, append(data, '\n'), 0644)
 }
 
 // StripReasonixHooksUserLevel removes forge hooks from reasonix's user-level settings.json
@@ -463,7 +464,7 @@ func StripReasonixHooksUserLevel() (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("reasonix: marshal settings.json: %w", err)
 	}
-	if err := os.WriteFile(path, append(data, '\n'), 0644); err != nil {
+	if err := util.AtomicWrite(path, append(data, '\n'), 0644); err != nil {
 		return false, fmt.Errorf("reasonix: write settings.json: %w", err)
 	}
 	return true, nil

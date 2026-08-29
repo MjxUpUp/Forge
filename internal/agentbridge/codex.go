@@ -9,6 +9,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/userassets"
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // CodexTranslator wires forge hooks into codex's USER-LEVEL hooks.json
@@ -97,7 +98,7 @@ func (t *CodexTranslator) Translate(projectDir string, input *TranslationInput) 
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, merged, 0644); err != nil {
+	if err := util.AtomicWrite(path, merged, 0644); err != nil {
 		return fmt.Errorf("codex: failed to write hooks.json: %w", err)
 	}
 
@@ -257,7 +258,7 @@ func StripCodexHooksUserLevel() (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("codex: marshal hooks.json: %w", err)
 	}
-	if err := os.WriteFile(path, append(data, '\n'), 0644); err != nil {
+	if err := util.AtomicWrite(path, append(data, '\n'), 0644); err != nil {
 		return false, fmt.Errorf("codex: failed to write hooks.json: %w", err)
 	}
 	return true, nil
@@ -478,7 +479,7 @@ func ensureCodexHooksFeature() error {
 	if err := userassets.BackupOriginal(path); err != nil {
 		return fmt.Errorf("failed to back up config.toml: %w", err)
 	}
-	if err := os.WriteFile(path, []byte(updated), 0644); err != nil {
+	if err := util.AtomicWrite(path, []byte(updated), 0644); err != nil {
 		return fmt.Errorf("failed to write config.toml: %w", err)
 	}
 	return nil

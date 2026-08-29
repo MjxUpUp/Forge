@@ -32,6 +32,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // StripForgeMCPServer removes the forge server entry from the project-root .mcp.json.
@@ -100,5 +102,5 @@ func StripForgeMCPServer(projectDir string) (changed bool, err error) {
 	if mErr != nil {
 		return false, fmt.Errorf("marshal .mcp.json: %w", mErr)
 	}
-	return true, os.WriteFile(path, out, 0644)
+	return true, util.AtomicWrite(path, out, 0644)
 }

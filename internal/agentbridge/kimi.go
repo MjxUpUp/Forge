@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/hooks"
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // KimiTranslator wires forge hooks into kimi-code's user-level config.toml.
@@ -117,7 +118,7 @@ func (t *KimiTranslator) Translate(projectDir string, input *TranslationInput) e
 	if merged == string(existing) {
 		return nil // already up to date — idempotent no-op
 	}
-	if err := os.WriteFile(path, []byte(merged), 0644); err != nil {
+	if err := util.AtomicWrite(path, []byte(merged), 0644); err != nil {
 		return fmt.Errorf("kimi: failed to write config.toml: %w", err)
 	}
 	return nil
@@ -303,7 +304,7 @@ func StripKimiHooks() (bool, error) {
 	if !found {
 		return false, nil
 	}
-	if err := os.WriteFile(path, []byte(stripped), 0644); err != nil {
+	if err := util.AtomicWrite(path, []byte(stripped), 0644); err != nil {
 		return false, fmt.Errorf("kimi: failed to write config.toml: %w", err)
 	}
 	return true, nil

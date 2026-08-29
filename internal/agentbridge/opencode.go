@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // OpencodeTranslator installs forge.ts into opencode's USER-LEVEL global plugin
@@ -101,7 +103,7 @@ func (t *OpencodeTranslator) Translate(projectDir string, input *TranslationInpu
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return fmt.Errorf("opencode: create global plugins dir: %w", err)
 	}
-	if err := os.WriteFile(path, []byte(buildOpencodePlugin()), 0644); err != nil {
+	if err := util.AtomicWrite(path, []byte(buildOpencodePlugin()), 0644); err != nil {
 		return fmt.Errorf("opencode: write forge.ts: %w", err)
 	}
 	return nil

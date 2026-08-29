@@ -94,16 +94,23 @@ func healNpmShim(exePath string) (bool, error) {
 		return false, nil // already a binary (MZ) or something we should not touch
 	}
 	// Only touch npm's generated cmd-shim template (sniff its signature), never a
-	// script the user wrote themselves into that slot.
+	// script the user wrote themselves into that slot. npm's template always contains
+	// BOTH markers ($basedir AND node_modules) — an OR here would swallow user-written
+	// wrappers that merely mention node_modules. Keep a one-time backup so a wrong
+	// sniff is recoverable.
 	//
 	// 只动 npm 生成的 cmd-shim 模板（嗅探其特征串），绝不替换用户自己在该槽位
-	// 手写的脚本。
+	// 手写的脚本。npm 模板恒同时含两个标记（$basedir 与 node_modules）——OR 条件
+	// 会吞掉仅提到 node_modules 的用户自写包装脚本。保留一次性备份，误嗅探可恢复。
 	script, err := os.ReadFile(shim)
 	if err != nil {
 		return false, nil
 	}
-	if !strings.Contains(string(script), "$basedir") && !strings.Contains(string(script), "node_modules") {
+	if !strings.Contains(string(script), "$basedir") || !strings.Contains(string(script), "node_modules") {
 		return false, nil
+	}
+	if _, berr := os.Stat(shim + ".forge-shim-bak"); os.IsNotExist(berr) {
+		_ = os.WriteFile(shim+".forge-shim-bak", script, 0644) // best-effort one-time backup
 	}
 
 	// Replace atomically (temp file + same-dir rename; Go's os.Rename uses
