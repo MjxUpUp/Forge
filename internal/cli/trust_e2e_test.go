@@ -42,17 +42,82 @@ func exportOnMachine(t *testing.T, machine, home, key string) string {
 	return bundlePath
 }
 
-func TestTrust_SignVerifyFlow(t *testing.T) {
-	resetProjectCmdFlags(t)
-	id := `fpid_aaaabbbbccccddddeeeeffff00001111`
-	key := forgedata.IDKey(id)
-	machineA, machineB := newSyncMachine(t), newSyncMachine(t)
-	homeA, homeB := t.TempDir(), t.TempDir()
+// twoMachineFixture stands up two sync machines sharing one project id, plus
+// isolated homes and the id-derived key — the A/B preamble of every
+// sign→verify E2E.
+//
+// twoMachineFixture 建两台共享同一 project id 的同步机、隔离 home 与 id 派生
+// key——所有签名→验签 E2E 的 A/B 前置。
+func twoMachineFixture(t *testing.T, id string) (machineA, machineB, homeA, homeB, key string) {
+	t.Helper()
+	machineA, machineB = newSyncMachine(t), newSyncMachine(t)
+	homeA, homeB = t.TempDir(), t.TempDir()
 	for _, m := range []string{machineA, machineB} {
 		if err := os.WriteFile(filepath.Join(m, forgedata.ProjectIDFileName), []byte(id+"\n"), 0644); err != nil {
 			t.Fatal(err)
 		}
 	}
+	return machineA, machineB, homeA, homeB, forgedata.IDKey(id)
+}
+
+// registerSignerOnB loads A's node identity under homeA and registers it into
+// B's trust store as a team signer — so the import verdict is digest/signature
+// driven, not unknown-signer (which personal profile would only warn about).
+//
+// registerSignerOnB 在 homeA 下加载 A 的节点身份并登记进 B 的 trust store 为
+// team signer——使导入判定由摘要/签名驱动，而非未知签名者（个人档对它只警告）。
+func registerSignerOnB(t *testing.T, homeA, machineB, homeB string) {
+	t.Helper()
+	t.Setenv("FORGE_DATA_HOME", homeA)
+	idA, err := nodeid.LoadOrCreate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	withMachine(t, machineB, homeB, func() {
+		ts, terr := nodeid.LoadTrustStore()
+		if terr != nil {
+			t.Fatal(terr)
+		}
+		if err := ts.Add(idA.NodeID, idA.PublicKey, ``, `team`); err != nil {
+			t.Fatal(err)
+		}
+		if err := nodeid.SaveTrustStore(ts); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
+// flipBundleByte writes a byte-flipped copy of bundle (breaking gzip) into a
+// fresh temp dir, CARRYING the original .sig sidecar — the digest then no
+// longer matches the signature, isolating the signature layer as the rejecter.
+//
+// flipBundleByte 把 bundle 的翻字节副本（破坏 gzip）写进全新 temp dir，并携带
+// 原 .sig sidecar——摘要与签名失配，从而把拒收隔离到签名层。
+func flipBundleByte(t *testing.T, bundle string) string {
+	t.Helper()
+	raw, err := os.ReadFile(bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw[len(raw)/2] ^= 0xff
+	flipped := filepath.Join(t.TempDir(), `flipped.tar.gz`)
+	if err := os.WriteFile(flipped, raw, 0644); err != nil {
+		t.Fatal(err)
+	}
+	sigRaw, err := os.ReadFile(bundle + `.sig`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(flipped+`.sig`, sigRaw, 0644); err != nil {
+		t.Fatal(err)
+	}
+	return flipped
+}
+
+func TestTrust_SignVerifyFlow(t *testing.T) {
+	resetProjectCmdFlags(t)
+	id := `fpid_aaaabbbbccccddddeeeeffff00001111`
+	machineA, machineB, homeA, homeB, key := twoMachineFixture(t, id)
 
 	// A exports → .sig sidecar exists and carries A's node identity.
 	bundle := exportOnMachine(t, machineA, homeA, key)
@@ -134,14 +199,7 @@ func TestTrust_SignVerifyFlow(t *testing.T) {
 func TestTrust_TamperedBundleRejected(t *testing.T) {
 	resetProjectCmdFlags(t)
 	id := `fpid_11112222333344445555666677778888`
-	key := forgedata.IDKey(id)
-	machineA, machineB := newSyncMachine(t), newSyncMachine(t)
-	homeA, homeB := t.TempDir(), t.TempDir()
-	for _, m := range []string{machineA, machineB} {
-		if err := os.WriteFile(filepath.Join(m, forgedata.ProjectIDFileName), []byte(id+"\n"), 0644); err != nil {
-			t.Fatal(err)
-		}
-	}
+	machineA, machineB, homeA, homeB, key := twoMachineFixture(t, id)
 	bundle := exportOnMachine(t, machineA, homeA, key)
 
 	// Register A on B so ONLY the signature mismatch can reject (unknown-signer and
@@ -149,42 +207,13 @@ func TestTrust_TamperedBundleRejected(t *testing.T) {
 	//
 	// 在 B 上登记 A，使唯一可能的拒收原因是签名不匹配（未知签名者与
 	// require-signed 路径被排除）。
-	t.Setenv("FORGE_DATA_HOME", homeA)
-	idA, err := nodeid.LoadOrCreate()
-	if err != nil {
-		t.Fatal(err)
-	}
-	withMachine(t, machineB, homeB, func() {
-		ts, terr := nodeid.LoadTrustStore()
-		if terr != nil {
-			t.Fatal(terr)
-		}
-		if err := ts.Add(idA.NodeID, idA.PublicKey, ``, `team`); err != nil {
-			t.Fatal(err)
-		}
-		if err := nodeid.SaveTrustStore(ts); err != nil {
-			t.Fatal(err)
-		}
-	})
+	registerSignerOnB(t, homeA, machineB, homeB)
 
-	// Layer 1: naive byte-flip → Unpack rejects.
-	raw, err := os.ReadFile(bundle)
-	if err != nil {
-		t.Fatal(err)
-	}
-	raw[len(raw)/2] ^= 0xff
-	flipped := filepath.Join(t.TempDir(), `flipped.tar.gz`)
-	if err := os.WriteFile(flipped, raw, 0644); err != nil {
-		t.Fatal(err)
-	}
-	// carry the sidecar so the sig layer alone isn't the (first) rejecter
-	sigRaw, err := os.ReadFile(bundle + `.sig`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(flipped+`.sig`, sigRaw, 0644); err != nil {
-		t.Fatal(err)
-	}
+	// Layer 1: naive byte-flip → Unpack rejects. The sidecar is carried so the
+	// sig layer alone isn't the (first) rejecter.
+	//
+	// 防线 1：朴素翻字节 → Unpack 拒收。携带 sidecar，使 sig 层不是（第一个）拒收方。
+	flipped := flipBundleByte(t, bundle)
 	withMachine(t, machineB, homeB, func() {
 		if _, err := runImport(t, map[string]string{}, flipped); err == nil {
 			t.Fatal("byte-flipped bundle must be rejected (integrity layer)")

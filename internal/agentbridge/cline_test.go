@@ -156,32 +156,8 @@ func TestClineWrapperScript_MergeLogic(t *testing.T) {
 // TestClineTranslator_Idempotent：二次 Translate 是逐字节相同的 no-op。
 func TestClineTranslator_Idempotent(t *testing.T) {
 	home := isolateHome(t)
-	dir := clineHooksPathUnder(home)
-
-	tr := &ClineTranslator{}
-	if err := tr.Translate(t.TempDir(), testInput()); err != nil {
-		t.Fatalf("Translate: %v", err)
-	}
-	var first []byte
-	for _, e := range clineEventMappings {
-		data, err := os.ReadFile(filepath.Join(dir, e.clineEvent))
-		if err != nil {
-			t.Fatalf("read %s: %v", e.clineEvent, err)
-		}
-		if e.clineEvent == "PreToolUse" {
-			first = data
-		}
-	}
-	if err := tr.Translate(t.TempDir(), testInput()); err != nil {
-		t.Fatalf("second Translate: %v", err)
-	}
-	second, err := os.ReadFile(filepath.Join(dir, "PreToolUse"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(first) != string(second) {
-		t.Error("second Translate not idempotent")
-	}
+	assertTranslateIdempotent(t, &ClineTranslator{},
+		filepath.Join(clineHooksPathUnder(home), "PreToolUse"))
 }
 
 // TestClineTranslator_RefusesUserScript: a pre-existing script WITHOUT the forge

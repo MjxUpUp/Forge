@@ -78,26 +78,7 @@ func TestCursorTranslator_MergePreservesUserEntries(t *testing.T) {
 // TestCursorTranslator_Idempotent verifies a second Translate is a byte-identical no-op.
 func TestCursorTranslator_Idempotent(t *testing.T) {
 	home := isolateHome(t)
-	path := cursorHooksPathUnder(home)
-
-	tr := &CursorTranslator{}
-	if err := tr.Translate(t.TempDir(), testInput()); err != nil {
-		t.Fatal(err)
-	}
-	first, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := tr.Translate(t.TempDir(), testInput()); err != nil {
-		t.Fatal(err)
-	}
-	second, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(first) != string(second) {
-		t.Error("second Translate not idempotent")
-	}
+	assertTranslateIdempotent(t, &CursorTranslator{}, cursorHooksPathUnder(home))
 }
 
 // TestStripCursorHooksUserLevel covers the strip roundtrip: Translate then Strip

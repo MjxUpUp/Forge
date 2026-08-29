@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -20,108 +21,106 @@ func loadJSON(t *testing.T, path string, v any) {
 	}
 }
 
-// TestStripForgeMCPServer_NoFile: no-op when .mcp.json is absent.
+// TestStripForgeMCPServer drives the strip contract over one table: no-op without
+// .mcp.json, whole-file deletion when the file is forge-only, preservation of other
+// servers and top-level fields (with the emptied mcpServers key dropped — no empty
+// object left behind), and no-op when no forge server is present.
 //
-// TestStripForgeMCPServer_NoFile：无 .mcp.json 时 no-op。
-func TestStripForgeMCPServer_NoFile(t *testing.T) {
-	dir := t.TempDir()
-	changed, err := StripForgeMCPServer(dir)
-	if err != nil {
-		t.Fatalf("err: %v", err)
+// TestStripForgeMCPServer 用一张表驱动 strip 契约：无 .mcp.json 时 no-op；纯
+// forge 文件删除整个文件；其他 server 与顶层字段保留（清空的 mcpServers 键被
+// 删除——不残留空对象）；无 forge server 时 no-op。
+func TestStripForgeMCPServer(t *testing.T) {
+	cases := []struct {
+		name        string
+		seed        string // empty → no .mcp.json at all
+		wantChanged bool
+		wantExists  bool     // file must exist after strip
+		wantBody    []string // substrings the remaining body must contain
+		wantGone    []string // substrings the remaining body must NOT contain
+		wantTopGone []string // top-level JSON keys that must be absent after strip
+	}{
+		{
+			name:        "NoFile",
+			seed:        ``,
+			wantChanged: false,
+			wantExists:  false,
+		},
+		{
+			name:        "ForgeOnly_DeletesFile",
+			seed:        `{"mcpServers":{"forge":{"command":"forge","args":["mcp","serve"]}}}`,
+			wantChanged: true,
+			wantExists:  false,
+		},
+		{
+			name:        "PreservesOtherServers",
+			seed:        `{"mcpServers":{"forge":{"command":"forge","args":["mcp","serve"]},"github":{"command":"gh","args":[]}}}`,
+			wantChanged: true,
+			wantExists:  true,
+			wantBody:    []string{`"github"`},
+			wantGone:    []string{`"forge"`},
+		},
+		{
+			name:        "NoForge_NoOp",
+			seed:        `{"mcpServers":{"github":{"command":"gh","args":[]}}}`,
+			wantChanged: false,
+			wantExists:  true,
+			wantBody:    []string{`"github"`},
+		},
+		{
+			name:        "PreservesTopLevelFields",
+			seed:        `{"mcpServers":{"forge":{"command":"forge","args":["mcp","serve"]}},"version":1}`,
+			wantChanged: true,
+			wantExists:  true,
+			wantBody:    []string{`"version"`},
+			wantTopGone: []string{"mcpServers"},
+		},
 	}
-	if changed {
-		t.Error(`无 .mcp.json 应 changed=false`)
-	}
-}
-
-// TestStripForgeMCPServer_ForgeOnly_DeletesFile: .mcp.json contains only forge server;
-// after strip the empty mcpServers → delete the entire file.
-//
-// TestStripForgeMCPServer_ForgeOnly_DeletesFile：.mcp.json 仅含 forge server，
-// strip 后空 mcpServers → 删除整个文件。
-func TestStripForgeMCPServer_ForgeOnly_DeletesFile(t *testing.T) {
-	dir := t.TempDir()
-	pre := `{"mcpServers":{"forge":{"command":"forge","args":["mcp","serve"]}}}`
-	if err := os.WriteFile(filepath.Join(dir, ".mcp.json"), []byte(pre), 0644); err != nil {
-		t.Fatal(err)
-	}
-	changed, err := StripForgeMCPServer(dir)
-	if err != nil {
-		t.Fatalf("err: %v", err)
-	}
-	if !changed {
-		t.Error(`forge only 应 changed=true`)
-	}
-	if _, err := os.Stat(filepath.Join(dir, ".mcp.json")); !os.IsNotExist(err) {
-		t.Error(`纯 forge 移除后 .mcp.json 应删除`)
-	}
-}
-
-// TestStripForgeMCPServer_PreservesOtherServers: forge + another server (github);
-// delete forge, keep github.
-//
-// TestStripForgeMCPServer_PreservesOtherServers：forge + 其他 server（github），
-// 删 forge 保留 github。
-func TestStripForgeMCPServer_PreservesOtherServers(t *testing.T) {
-	dir := t.TempDir()
-	pre := `{"mcpServers":{"forge":{"command":"forge","args":["mcp","serve"]},"github":{"command":"gh","args":[]}}}`
-	os.WriteFile(filepath.Join(dir, ".mcp.json"), []byte(pre), 0644)
-	changed, err := StripForgeMCPServer(dir)
-	if err != nil {
-		t.Fatalf("err: %v", err)
-	}
-	if !changed {
-		t.Error(`应 changed=true`)
-	}
-	var cfg map[string]any
-	loadJSON(t, filepath.Join(dir, ".mcp.json"), &cfg)
-	servers := cfg["mcpServers"].(map[string]any)
-	if _, ok := servers["forge"]; ok {
-		t.Error(`forge server 未被移除`)
-	}
-	if _, ok := servers["github"]; !ok {
-		t.Error(`其他 server（github）被误删`)
-	}
-}
-
-// TestStripForgeMCPServer_NoForge_NoOp: no forge server (github only) → no-op.
-//
-// TestStripForgeMCPServer_NoForge_NoOp：无 forge server（纯 github）时 no-op。
-func TestStripForgeMCPServer_NoForge_NoOp(t *testing.T) {
-	dir := t.TempDir()
-	pre := `{"mcpServers":{"github":{"command":"gh","args":[]}}}`
-	os.WriteFile(filepath.Join(dir, ".mcp.json"), []byte(pre), 0644)
-	changed, err := StripForgeMCPServer(dir)
-	if err != nil {
-		t.Fatalf("err: %v", err)
-	}
-	if changed {
-		t.Error(`无 forge server 应 changed=false（no-op）`)
-	}
-}
-
-// TestStripForgeMCPServer_PreservesTopLevelFields: forge server + other top-level fields
-// (version) — delete forge, keep version, drop the empty mcpServers key (no empty object left).
-//
-// TestStripForgeMCPServer_PreservesTopLevelFields：forge server + 其他顶层字段（version）
-// —— 删 forge 后保留 version，空 mcpServers 键被删除（不残留空对象）。
-func TestStripForgeMCPServer_PreservesTopLevelFields(t *testing.T) {
-	dir := t.TempDir()
-	pre := `{"mcpServers":{"forge":{"command":"forge","args":["mcp","serve"]}},"version":1}`
-	os.WriteFile(filepath.Join(dir, ".mcp.json"), []byte(pre), 0644)
-	changed, err := StripForgeMCPServer(dir)
-	if err != nil {
-		t.Fatalf("err: %v", err)
-	}
-	if !changed {
-		t.Error(`应 changed=true`)
-	}
-	var cfg map[string]any
-	loadJSON(t, filepath.Join(dir, ".mcp.json"), &cfg)
-	if cfg["version"] != float64(1) {
-		t.Errorf(`顶层 version 字段丢失: %v`, cfg["version"])
-	}
-	if _, ok := cfg["mcpServers"]; ok {
-		t.Error(`空 mcpServers 应被删除（非保留空对象）`)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if tc.seed != "" {
+				if err := os.WriteFile(filepath.Join(dir, ".mcp.json"), []byte(tc.seed), 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			changed, err := StripForgeMCPServer(dir)
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+			if changed != tc.wantChanged {
+				t.Errorf("changed = %v, want %v", changed, tc.wantChanged)
+			}
+			_, statErr := os.Stat(filepath.Join(dir, ".mcp.json"))
+			if exists := statErr == nil; exists != tc.wantExists {
+				t.Fatalf("file exists = %v, want %v (stat err = %v)", exists, tc.wantExists, statErr)
+			}
+			if !tc.wantExists {
+				return
+			}
+			data, err := os.ReadFile(filepath.Join(dir, ".mcp.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			body := string(data)
+			for _, want := range tc.wantBody {
+				if !strings.Contains(body, want) {
+					t.Errorf(`body 缺 %q: %s`, want, body)
+				}
+			}
+			for _, gone := range tc.wantGone {
+				if strings.Contains(body, gone) {
+					t.Errorf(`body 不应再含 %q: %s`, gone, body)
+				}
+			}
+			if len(tc.wantTopGone) > 0 {
+				var cfg map[string]json.RawMessage
+				loadJSON(t, filepath.Join(dir, ".mcp.json"), &cfg)
+				for _, key := range tc.wantTopGone {
+					if _, ok := cfg[key]; ok {
+						t.Errorf(`空 %s 应被删除（非保留空对象）`, key)
+					}
+				}
+			}
+		})
 	}
 }

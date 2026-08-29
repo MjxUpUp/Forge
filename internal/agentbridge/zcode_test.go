@@ -88,27 +88,16 @@ func TestZcodeWiringMirrorsClaudeSettings(t *testing.T) {
 	claude := hookCommandsByEvent(t, filepath.Join(claudeDir, ".claude", "settings.local.json"))
 	zcode := zcodeHookCommandsByEvent(t, filepath.Join(home, ".zcode", "cli", "config.json"))
 
-	if len(zcode) == 0 {
-		t.Fatal("zcode wiring has no events — generator or parser broken")
-	}
-	for event, zcodeCmds := range zcode {
-		claudeCmds, ok := claude[event]
-		if !ok {
-			t.Errorf("zcode event %q has no Claude Code counterpart — new event not accounted for", event)
-			continue
-		}
-		stripped := map[string]bool{}
-		for cmd := range zcodeCmds {
-			if !strings.HasSuffix(cmd, " --agent zcode") {
-				t.Errorf("zcode hook command missing --agent zcode suffix (session attribution would fall back to marker guesswork): %s", cmd)
-			}
-			stripped[strings.TrimSuffix(cmd, " --agent zcode")] = true
-		}
-		if !stringSetEqual(claudeCmds, stripped) {
-			t.Errorf("hook commands for %q drifted between claude and zcode — keep ForgeHookSpec (settings.go) and zcode.go buildZcodeHooks in sync:\n  claude: %s\n  zcode: %s",
-				event, sortedSet(claudeCmds), sortedSet(stripped))
-		}
-	}
+	// ZCode reuses Claude's PascalCase event names verbatim, so the mapping is
+	// identity — events map 1:1 and drift between the command sets silently
+	// disables a gate on ZCode. Every generated command must carry the
+	// ` --agent zcode` attribution suffix (enforced per-command by the helper —
+	// without it session attribution falls back to marker guesswork).
+	assertHostMirrorsClaude(t, "zcode", zcode, claude, map[string]string{
+		"PreToolUse": "PreToolUse", "PostToolUse": "PostToolUse", "Stop": "Stop",
+		"SessionStart": "SessionStart", "UserPromptSubmit": "UserPromptSubmit",
+		"PostToolUseFailure": "PostToolUseFailure",
+	})
 }
 
 // TestZcodeHooks_OnlyLegalZcodeEvents pins the zcode event whitelist against
@@ -135,21 +124,13 @@ func TestZcodeHooks_OnlyLegalZcodeEvents(t *testing.T) {
 		"PostToolUse": true, "PostToolUseFailure": true,
 		"Stop": true,
 	}
-	for event := range generated {
-		if !legal[event] {
-			t.Errorf("illegal zcode hook event %q (not in the official roster — never fires)", event)
-		}
-	}
-	for _, required := range []string{`PreToolUse`, `PostToolUse`, `Stop`, `SessionStart`, `UserPromptSubmit`, `PostToolUseFailure`} {
-		if _, present := generated[required]; !present {
-			t.Errorf(`zcode must wire %s (has a ForgeHookSpec analogue): missing`, required)
-		}
-	}
-	for _, banned := range []string{`PostCompact`, `SubagentStop`, `PermissionRequest`} {
-		if _, present := generated[banned]; present {
-			t.Errorf(`zcode must not wire %s (no analogue on the other side)`, banned)
-		}
-	}
+	// The six ForgeHookSpec events with a ZCode analogue must all be present;
+	// PostCompact/SubagentStop (no ZCode analogue) and PermissionRequest (ZCode-only,
+	// no spec counterpart) must stay absent.
+	assertOnlyLegalEvents(t, "zcode", generated, legal,
+		[]string{`PreToolUse`, `PostToolUse`, `Stop`, `SessionStart`, `UserPromptSubmit`, `PostToolUseFailure`},
+		[]string{`PostCompact`, `SubagentStop`, `PermissionRequest`},
+		"no analogue on the other side")
 }
 
 // TestZcodeTranslator_GuardNoInstall pins the detection self-poison guard:
@@ -271,24 +252,7 @@ func TestZcodeTranslator_NullConfig(t *testing.T) {
 func TestZcodeTranslator_Idempotent(t *testing.T) {
 	home := isolateHome(t)
 	path := writeZcodeFixture(t, home, `{}`)
-	tr := &ZcodeTranslator{}
-	if err := tr.Translate(t.TempDir(), testInput()); err != nil {
-		t.Fatal(err)
-	}
-	first, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := tr.Translate(t.TempDir(), testInput()); err != nil {
-		t.Fatal(err)
-	}
-	second, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(first) != string(second) {
-		t.Error("second Translate changed the file — output must be deterministic (idempotent)")
-	}
+	assertTranslateIdempotent(t, &ZcodeTranslator{}, path)
 }
 
 // TestStripZcodeHooks covers the uninstall roundtrip: Translate then Strip

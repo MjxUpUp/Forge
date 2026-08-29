@@ -240,22 +240,44 @@ func TestHook_FileSentinel_GateStatusBeyondGitDiff(t *testing.T) {
 	}
 }
 
-// TestHook_FileSentinel_FailOpenOnEmptySnapshot reproduces the P0 DevWorkbench
-// incident: bash-guard's PreToolUse snapshot came back EMPTY (git failed
-// silently under 2>/dev/null — cwd drift, index.lock, Windows newline) while the
-// working tree already held the user's uncommitted source. The OLD file-sentinel
-// treated the entire working tree as NEW_CHANGES (the else-branch when
-// BEFORE_ALL is empty) and quarantined + git-checkout-restored every source
-// file, destroying the user's work. The fix must FAIL-OPEN: PASS, no quarantine.
-func TestHook_FileSentinel_FailOpenOnEmptySnapshot(t *testing.T) {
+// TestHook_FileSentinel_FailOpen merges the two fail-open guards (former
+// FailOpenOnEmptySnapshot + FailOpenOnReadOnlyCommand, joined 2026-08-30
+// slim-down) over one shared hook runner:
+//
+//  1. empty-snapshot — reproduces the P0 DevWorkbench incident: bash-guard's
+//     PreToolUse snapshot came back EMPTY (git failed silently) while the
+//     working tree already held the user's uncommitted source. The OLD
+//     file-sentinel treated the entire working tree as NEW_CHANGES and
+//     quarantined + git-checkout-restored every source file, destroying the
+//     user's work. The fix must FAIL-OPEN: PASS, no quarantine.
+//
+//  2. read-only-command — the secondary gate: even with a non-empty snapshot,
+//     a READ-ONLY Bash command cannot produce source changes — changes seen
+//     under one mean external interference (another editor, partial snapshot),
+//     so file-sentinel must fail-open, not quarantine.
+//
+// TestHook_FileSentinel_FailOpen 合并两个 fail-open 守卫（原
+// FailOpenOnEmptySnapshot + FailOpenOnReadOnlyCommand，2026-08-30 瘦身合一），
+// 共用一个 hook runner：
+//
+//  1. empty-snapshot——复现 P0 DevWorkbench 事故：snapshot 为空（git 静默失败）
+//     而工作区已有用户未提交源码；旧 file-sentinel 把整个工作区当
+//     NEW_CHANGES，隔离 + git-checkout 还原毁掉用户工作。必须 FAIL-OPEN。
+//
+//  2. read-only-command——次级门禁：只读 Bash 命令不可能产生源码变更；
+//     其下出现的变更意味着外部干扰，必须 fail-open 不得隔离。
+func TestHook_FileSentinel_FailOpen(t *testing.T) {
 	dir := freshProject(t)
-	const sid = "sess-empty-snap"
 	tmp := t.TempDir()
 	binDir := filepath.Dir(forgeBin)
 
-	// The user's pre-existing uncommitted source — must never be touched.
-	writeFile(t, dir, "existing.go", "package main\n\nfunc main() {}\n")
-
+	// SHARED tmpdir: bash-guard's snapshot/write-flag files must survive on
+	// disk for the later file-sentinel invocation to read them (per-call
+	// t.TempDir would orphan them), so the runner pins ONE fixed TMPDIR.
+	//
+	// 共享 tmpdir：bash-guard 的 snapshot/write-flag 文件必须在盘上存活到后续
+	// file-sentinel 调用读取（每次调用独立 t.TempDir 会把它们变成孤儿），
+	// 故 runner 钉死同一个 TMPDIR。
 	runHook := func(hookName, stdinJSON string) (string, string, error) {
 		cmd := exec.Command(forgeBin, "hook", hookName)
 		cmd.Dir = dir
@@ -271,115 +293,101 @@ func TestHook_FileSentinel_FailOpenOnEmptySnapshot(t *testing.T) {
 		return out.String(), errBuf.String(), err
 	}
 
-	// bash-guard writes a per-invocation snapshot; we then simulate the failure
-	// mode by truncating it to empty and removing the .ok completion marker —
-	// exactly what happens when its git commands fail under 2>/dev/null.
-	bashIn := hookStdin(t, sid, "PreToolUse", "Bash", map[string]any{
-		"command": "git diff --stat",
-	})
-	if _, _, err := runHook("bash-guard", bashIn); err != nil {
-		t.Fatalf("bash-guard failed unexpectedly: %v", err)
-	}
-	snaps, err := filepath.Glob(filepath.Join(tmp, "forge-snapshot-"+sid+"-*"))
-	if err != nil || len(snaps) == 0 {
-		t.Fatalf("bash-guard must write a per-invocation snapshot, found %v (err %v)", snaps, err)
-	}
-	for _, s := range snaps {
-		switch {
-		case strings.HasSuffix(s, ".ok"):
-			if err := os.Remove(s); err != nil {
-				t.Fatal(err)
-			}
-		case strings.HasSuffix(s, ".cfg"):
-			// config-manifest sidecar — leave as-is
-		default:
-			if err := os.WriteFile(s, []byte(""), 0o644); err != nil {
-				t.Fatal(err)
-			}
+	// assertFailOpen: PASS + the touched source stays in the tree + no
+	// quarantine dir for the session.
+	//
+	// assertFailOpen：PASS + 被碰过的源码留在工作区 + 该会话无隔离目录。
+	assertFailOpen := func(t *testing.T, sid, stdout, keptFile string) {
+		t.Helper()
+		assertAllowOutput(t, stdout)
+		if !fileExists(t, dir, keptFile) {
+			t.Errorf("%s must remain in working tree (fail-open), was quarantined\nstdout:\n%s", keptFile, stdout)
+		}
+		qdir := filepath.Join(forgedata.DataDirFor(dir), "quarantine", sid)
+		if _, qerr := os.Stat(qdir); qerr == nil {
+			t.Errorf("no quarantine dir should be created on fail-open, found %s", qdir)
 		}
 	}
 
-	// file-sentinel: empty snapshot + working-tree source + read-only command.
-	// MUST fail-open (PASS) and leave the user's source in place.
-	sentIn := hookStdin(t, sid, "PostToolUse", "Bash", map[string]any{
-		"command": "git diff --stat",
+	t.Run("empty-snapshot", func(t *testing.T) {
+		const sid = "sess-empty-snap"
+
+		// The user's pre-existing uncommitted source — must never be touched.
+		writeFile(t, dir, "existing.go", "package main\n\nfunc main() {}\n")
+
+		// bash-guard writes a per-invocation snapshot; we then simulate the failure
+		// mode by truncating it to empty and removing the .ok completion marker —
+		// exactly what happens when its git commands fail under 2>/dev/null.
+		bashIn := hookStdin(t, sid, "PreToolUse", "Bash", map[string]any{
+			"command": "git diff --stat",
+		})
+		if _, _, err := runHook("bash-guard", bashIn); err != nil {
+			t.Fatalf("bash-guard failed unexpectedly: %v", err)
+		}
+		snaps, err := filepath.Glob(filepath.Join(tmp, "forge-snapshot-"+sid+"-*"))
+		if err != nil || len(snaps) == 0 {
+			t.Fatalf("bash-guard must write a per-invocation snapshot, found %v (err %v)", snaps, err)
+		}
+		for _, s := range snaps {
+			switch {
+			case strings.HasSuffix(s, ".ok"):
+				if err := os.Remove(s); err != nil {
+					t.Fatal(err)
+				}
+			case strings.HasSuffix(s, ".cfg"):
+				// config-manifest sidecar — leave as-is
+			default:
+				if err := os.WriteFile(s, []byte(""), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+
+		// file-sentinel: empty snapshot + working-tree source + read-only command.
+		// MUST fail-open (PASS) and leave the user's source in place.
+		sentIn := hookStdin(t, sid, "PostToolUse", "Bash", map[string]any{
+			"command": "git diff --stat",
+		})
+		stdout, _, err := runHook("file-sentinel", sentIn)
+		if err != nil {
+			t.Fatalf("file-sentinel must fail-open (PASS) on empty snapshot with existing work, got block:\n%s", stdout)
+		}
+		assertFailOpen(t, sid, stdout, "existing.go")
 	})
-	stdout, _, err := runHook("file-sentinel", sentIn)
-	if err != nil {
-		t.Fatalf("file-sentinel must fail-open (PASS) on empty snapshot with existing work, got block:\n%s", stdout)
-	}
-	assertAllowOutput(t, stdout)
-	if !fileExists(t, dir, "existing.go") {
-		t.Errorf("existing.go must remain in working tree (fail-open), was quarantined\nstdout:\n%s", stdout)
-	}
-	qdir := filepath.Join(forgedata.DataDirFor(dir), "quarantine", sid)
-	if _, qerr := os.Stat(qdir); qerr == nil {
-		t.Errorf("no quarantine dir should be created on fail-open, found %s", qdir)
-	}
-}
 
-// TestHook_FileSentinel_FailOpenOnReadOnlyCommand guards the secondary gate:
-// even with a non-empty (but unreliable) snapshot, a READ-ONLY Bash command
-// cannot produce source changes. Source changes seen under a read-only command
-// mean external interference (another editor, partial snapshot), not a
-// Bash-written violation — file-sentinel must fail-open, not quarantine.
-func TestHook_FileSentinel_FailOpenOnReadOnlyCommand(t *testing.T) {
-	dir := freshProject(t)
-	const sid = "sess-readonly-gate"
-	tmp := t.TempDir()
-	binDir := filepath.Dir(forgeBin)
+	t.Run("read-only-command", func(t *testing.T) {
+		const sid = "sess-readonly-gate"
 
-	runHook := func(hookName, stdinJSON string) (string, string, error) {
-		cmd := exec.Command(forgeBin, "hook", hookName)
-		cmd.Dir = dir
-		cmd.Stdin = strings.NewReader(stdinJSON)
-		cmd.Env = append(os.Environ(),
-			"TMPDIR="+tmp,
-			"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
-		)
-		var out, errBuf bytes.Buffer
-		cmd.Stdout = &out
-		cmd.Stderr = &errBuf
-		err := cmd.Run()
-		return out.String(), errBuf.String(), err
-	}
+		// bash-guard with a READ-ONLY command: writes snapshot + empty write-flag.
+		bashIn := hookStdin(t, sid, "PreToolUse", "Bash", map[string]any{
+			"command": "ls -la",
+		})
+		if _, _, err := runHook("bash-guard", bashIn); err != nil {
+			t.Fatalf("bash-guard failed unexpectedly: %v", err)
+		}
+		// Verify bash-guard recorded an EMPTY per-invocation write-flag (read-only command).
+		wflags, err := filepath.Glob(filepath.Join(tmp, "forge-write-"+sid+"-*"))
+		if err != nil || len(wflags) != 1 {
+			t.Fatalf("bash-guard must create exactly one per-invocation write-flag for the secondary gate, found %v (err %v)", wflags, err)
+		}
+		if info, serr := os.Stat(wflags[0]); serr != nil {
+			t.Fatalf("stat write-flag: %v", serr)
+		} else if info.Size() != 0 {
+			t.Fatalf("read-only command must produce EMPTY write-flag, got size %d", info.Size())
+		}
 
-	// bash-guard with a READ-ONLY command: writes snapshot + empty write-flag.
-	bashIn := hookStdin(t, sid, "PreToolUse", "Bash", map[string]any{
-		"command": "ls -la",
+		// Source appears AFTER the snapshot (external editor / another process) —
+		// makes NEW_CHANGES non-empty, exercising the source-quarantine branch.
+		writeFile(t, dir, "external.go", "package main\n")
+
+		// file-sentinel with the SAME read-only command → IS_WRITE_CMD=0 → fail-open.
+		sentIn := hookStdin(t, sid, "PostToolUse", "Bash", map[string]any{
+			"command": "ls -la",
+		})
+		stdout, _, err := runHook("file-sentinel", sentIn)
+		if err != nil {
+			t.Fatalf("file-sentinel must fail-open (PASS) for read-only command, got block:\n%s", stdout)
+		}
+		assertFailOpen(t, sid, stdout, "external.go")
 	})
-	if _, _, err := runHook("bash-guard", bashIn); err != nil {
-		t.Fatalf("bash-guard failed unexpectedly: %v", err)
-	}
-	// Verify bash-guard recorded an EMPTY per-invocation write-flag (read-only command).
-	wflags, err := filepath.Glob(filepath.Join(tmp, "forge-write-"+sid+"-*"))
-	if err != nil || len(wflags) != 1 {
-		t.Fatalf("bash-guard must create exactly one per-invocation write-flag for the secondary gate, found %v (err %v)", wflags, err)
-	}
-	if info, serr := os.Stat(wflags[0]); serr != nil {
-		t.Fatalf("stat write-flag: %v", serr)
-	} else if info.Size() != 0 {
-		t.Fatalf("read-only command must produce EMPTY write-flag, got size %d", info.Size())
-	}
-
-	// Source appears AFTER the snapshot (external editor / another process) —
-	// makes NEW_CHANGES non-empty, exercising the source-quarantine branch.
-	writeFile(t, dir, "external.go", "package main\n")
-
-	// file-sentinel with the SAME read-only command → IS_WRITE_CMD=0 → fail-open.
-	sentIn := hookStdin(t, sid, "PostToolUse", "Bash", map[string]any{
-		"command": "ls -la",
-	})
-	stdout, _, err := runHook("file-sentinel", sentIn)
-	if err != nil {
-		t.Fatalf("file-sentinel must fail-open (PASS) for read-only command, got block:\n%s", stdout)
-	}
-	assertAllowOutput(t, stdout)
-	if !fileExists(t, dir, "external.go") {
-		t.Errorf("external.go must remain in working tree (read-only fail-open), was quarantined\nstdout:\n%s", stdout)
-	}
-	qdir := filepath.Join(forgedata.DataDirFor(dir), "quarantine", sid)
-	if _, qerr := os.Stat(qdir); qerr == nil {
-		t.Errorf("no quarantine dir should be created on read-only fail-open, found %s", qdir)
-	}
 }

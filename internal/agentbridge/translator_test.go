@@ -88,45 +88,23 @@ func TestCodexWiringMirrorsClaudeSettings(t *testing.T) {
 	codex := hookCommandsByEvent(t, filepath.Join(codexHome, "hooks.json"))
 
 	// Codex's event names are the same PascalCase as Claude Code's (verified
-	// against https://developers.openai.com/codex/hooks), so for every event
-	// Codex declares, Claude Code must wire the SAME command set under the
-	// same event name — drift in either direction fails. The codex whitelist
-	// (buildCodexHooks) decides WHICH spec events are wired; this test guards
-	// that whatever is wired matches Claude exactly. Since Wave 1b every codex
-	// command carries the `--agent codex` suffix (output-protocol selection);
-	// strip it before comparing command surfaces.
-	if len(codex) == 0 {
-		t.Fatal("codex wiring has no events — generator or parser broken")
-	}
-	for event, codexCmds := range codex {
-		claudeCmds, ok := claude[event]
-		if !ok {
-			t.Errorf("Claude Code settings missing event %q that Codex wires", event)
-			continue
-		}
-		stripped := map[string]bool{}
-		for cmd := range codexCmds {
-			if !strings.Contains(cmd, " --agent codex") {
-				t.Errorf("codex hook command missing --agent codex suffix (output protocol would fall back to Claude shapes): %s", cmd)
-			}
-			stripped[strings.TrimSuffix(cmd, " --agent codex")] = true
-		}
-		if !stringSetEqual(claudeCmds, stripped) {
-			t.Errorf("hook commands for %q drifted between Claude Code and Codex — keep ForgeHookSpec (settings.go) and codex.go buildCodexHooks in sync:\n  claude: %s\n  codex:  %s",
-				event, sortedSet(claudeCmds), sortedSet(stripped))
-		}
-	}
+	// against https://developers.openai.com/codex/hooks), so the mapping is
+	// identity — for every event Codex declares, Claude Code must wire the SAME
+	// command set under the same event name; drift in either direction fails.
+	// The codex whitelist (buildCodexHooks) decides WHICH spec events are wired;
+	// this test guards that whatever is wired matches Claude exactly. Since
+	// Wave 1b every codex command carries the `--agent codex` suffix
+	// (output-protocol selection), enforced per-command by the helper.
+	assertHostMirrorsClaude(t, "codex", codex, claude, map[string]string{
+		"PreToolUse": "PreToolUse", "PostToolUse": "PostToolUse", "Stop": "Stop",
+		"SessionStart": "SessionStart", "UserPromptSubmit": "UserPromptSubmit",
+		"PostCompact": "PostCompact", "PostToolUseFailure": "PostToolUseFailure",
+		"SubagentStop": "SubagentStop",
+	})
 
 	// Regression guard: sunk/deleted hooks must not resurface. settings.go is
 	// the source of truth, so checking its output suffices.
-	sunk := []string{"read-check", "scope-guard", "clone-check", "experience-check", "security-check", "dependency-check", "test-coverage-check", "session-health"}
-	for cmd := range claude["PostToolUse"] {
-		for _, s := range sunk {
-			if strings.Contains(cmd, "forge hook "+s) {
-				t.Errorf("sunk hook %q resurfaced in Claude Code settings: %s", s, cmd)
-			}
-		}
-	}
+	assertNoSunkHooks(t, "Claude Code settings", claude["PostToolUse"])
 }
 
 // TestCodexHooks_OnlyLegalCodexEvents pins the codex event whitelist against the
@@ -165,21 +143,14 @@ func TestCodexHooks_OnlyLegalCodexEvents(t *testing.T) {
 		"SubagentStart":    true, "SubagentStop": true,
 		"Stop": true,
 	}
-	for event := range hooksMap {
-		if !legal[event] {
-			t.Errorf("illegal codex hook event %q (not in the official roster — never fires)", event)
-		}
-	}
-	for _, required := range []string{`PreToolUse`, `PostToolUse`, `Stop`, `SessionStart`, `UserPromptSubmit`, `PostCompact`, `SubagentStop`} {
-		if _, present := hooksMap[required]; !present {
-			t.Errorf(`codex must wire %s (has a ForgeHookSpec analogue): missing`, required)
-		}
-	}
-	for _, banned := range []string{`SessionEnd`, `PermissionRequest`, `PreCompact`, `SubagentStart`} {
-		if _, present := hooksMap[banned]; present {
-			t.Errorf(`codex must not wire %s (no ForgeHookSpec analogue)`, banned)
-		}
-	}
+	// The six ForgeHookSpec events that HAVE a codex analogue must all be present
+	// (PreToolUse/PostToolUse/Stop gates + SessionStart group + UserPromptSubmit
+	// re-injection + PostCompact compact-resume); the codex-only events without a
+	// spec counterpart must stay absent.
+	assertOnlyLegalEvents(t, "codex", hooksMap, legal,
+		[]string{`PreToolUse`, `PostToolUse`, `Stop`, `SessionStart`, `UserPromptSubmit`, `PostCompact`, `SubagentStop`},
+		[]string{`SessionEnd`, `PermissionRequest`, `PreCompact`, `SubagentStart`},
+		"no ForgeHookSpec analogue")
 }
 
 // TestCursorWiringMirrorsClaudeSettings guards the sync between cursor.go
@@ -198,13 +169,15 @@ func TestCursorWiringMirrorsClaudeSettings(t *testing.T) {
 		t.Fatalf("cursor Translate: %v", err)
 	}
 	claude := hookCommandsByEvent(t, filepath.Join(claudeDir, ".claude", "settings.local.json"))
-	cursor := cursorHookCommandsByEvent(t, filepath.Join(home, ".cursor", "hooks.json"))
+	cursor := flatHookCommandsByEvent(t, filepath.Join(home, ".cursor", "hooks.json"))
 
 	// Cursor camelCase → Claude PascalCase event mapping (verified against
 	// https://cursor.com/docs/agent/hooks). PostCompact has no Cursor analogue
 	// (only the observe-only preCompact) and is intentionally not wired;
 	// postToolUseFailure/subagentStop joined 2026-08-22 (#4-A follow-up).
-	eventMap := map[string]string{
+	// Since Wave 1b every cursor command carries the `--agent cursor` suffix
+	// (output-protocol selection), enforced per-command by the helper.
+	assertHostMirrorsClaude(t, "cursor", cursor, claude, map[string]string{
 		"preToolUse":         "PreToolUse",
 		"postToolUse":        "PostToolUse",
 		"stop":               "Stop",
@@ -212,45 +185,10 @@ func TestCursorWiringMirrorsClaudeSettings(t *testing.T) {
 		"beforeSubmitPrompt": "UserPromptSubmit",
 		"postToolUseFailure": "PostToolUseFailure",
 		"subagentStop":       "SubagentStop",
-	}
-	if len(cursor) == 0 {
-		t.Fatal("cursor wiring has no events — generator or parser broken")
-	}
-	for cursorEvt, cursorCmds := range cursor {
-		claudeEvt, ok := eventMap[cursorEvt]
-		if !ok {
-			t.Errorf("cursor event %q has no Claude Code mapping — new event not accounted for", cursorEvt)
-			continue
-		}
-		claudeCmds, ok := claude[claudeEvt]
-		if !ok {
-			t.Errorf("Claude Code settings missing event %q that Cursor wires", claudeEvt)
-			continue
-		}
-		// Since Wave 1b every cursor command carries the `--agent cursor` suffix
-		// (output-protocol selection); strip it before comparing command surfaces.
-		stripped := map[string]bool{}
-		for cmd := range cursorCmds {
-			if !strings.Contains(cmd, " --agent cursor") {
-				t.Errorf("cursor hook command missing --agent cursor suffix (output protocol would fall back to Claude shapes): %s", cmd)
-			}
-			stripped[strings.TrimSuffix(cmd, " --agent cursor")] = true
-		}
-		if !stringSetEqual(claudeCmds, stripped) {
-			t.Errorf("hook commands for cursor %q / claude %q drifted — keep ForgeHookSpec (settings.go) and cursor.go buildCursorHooks in sync:\n  claude: %s\n  cursor: %s",
-				cursorEvt, claudeEvt, sortedSet(claudeCmds), sortedSet(stripped))
-		}
-	}
+	})
 
 	// Regression guard: sunk/deleted hooks must not resurface on Cursor either.
-	sunk := []string{"read-check", "scope-guard", "clone-check", "experience-check", "security-check", "dependency-check", "test-coverage-check", "session-health"}
-	for cmd := range cursor["postToolUse"] {
-		for _, s := range sunk {
-			if strings.Contains(cmd, "forge hook "+s) {
-				t.Errorf("sunk hook %q resurfaced in Cursor hooks: %s", s, cmd)
-			}
-		}
-	}
+	assertNoSunkHooks(t, "Cursor hooks", cursor["postToolUse"])
 }
 
 // TestCursorHooks_OnlyLegalCursorEvents pins the cursor event whitelist against
@@ -286,28 +224,26 @@ func TestCursorHooks_OnlyLegalCursorEvents(t *testing.T) {
 		"afterAgentResponse": true, "afterAgentThought": true,
 		"beforeTabFileRead": true, "afterTabFileEdit": true,
 	}
-	for event := range hooksMap {
-		if !legal[event] {
-			t.Errorf("illegal cursor hook event %q (not in the official roster — never fires)", event)
-		}
-	}
-	for _, required := range []string{`preToolUse`, `postToolUse`, `stop`, `sessionStart`, `beforeSubmitPrompt`, `postToolUseFailure`, `subagentStop`} {
-		if _, present := hooksMap[required]; !present {
-			t.Errorf(`cursor must wire %s (has a ForgeHookSpec analogue): missing`, required)
-		}
-	}
-	for _, banned := range []string{`postCompact`, `PostCompact`} {
-		if _, present := hooksMap[banned]; present {
-			t.Errorf(`cursor must not wire %s (no Cursor analogue — only observe-only preCompact exists)`, banned)
-		}
-	}
+	// The seven ForgeHookSpec events with a Cursor analogue must all be present
+	// (postToolUseFailure/subagentStop joined 2026-08-22, #4-A follow-up); PostCompact
+	// must stay absent (Cursor ships only the observe-only preCompact — it cannot
+	// carry compact-resume's re-injection contract).
+	assertOnlyLegalEvents(t, "cursor", hooksMap, legal,
+		[]string{`preToolUse`, `postToolUse`, `stop`, `sessionStart`, `beforeSubmitPrompt`, `postToolUseFailure`, `subagentStop`},
+		[]string{`postCompact`, `PostCompact`},
+		"no Cursor analogue — only observe-only preCompact exists")
 }
 
-// cursorHookCommandsByEvent parses Cursor's flat hooks.json into event → set of
-// command strings. Unlike Claude Code/Codex's nested {matcher,hooks:[{command}]}
-// shape, Cursor's format is hooks.<event>[].{command,matcher} — the command sits
-// directly on each entry, no inner hooks array.
-func cursorHookCommandsByEvent(t *testing.T, path string) map[string]map[string]bool {
+// flatHookCommandsByEvent parses a flat hooks config ({hooks:{event:[{command}]}} —
+// the command sits directly on each entry, no inner hooks array) into event → set of
+// command strings. Shared by the hosts using this shape: Cursor (~/.cursor/hooks.json)
+// and reasonix (<reasonix home>/settings.json).
+//
+// flatHookCommandsByEvent 把扁平 hooks 配置（{hooks:{event:[{command}]}}——command
+// 直接挂在每个条目上、无内层 hooks 数组）解析成 event → 命令字符串集合。由使用
+// 该形态的 host 共享：Cursor（~/.cursor/hooks.json）与 reasonix（<reasonix
+// home>/settings.json）。
+func flatHookCommandsByEvent(t *testing.T, path string) map[string]map[string]bool {
 	t.Helper()
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -390,6 +326,138 @@ func sortedSet(s map[string]bool) string {
 	return "[" + strings.Join(out, ", ") + "]"
 }
 
+// assertHostMirrorsClaude is the shared skeleton behind every *WiringMirrorsClaudeSettings
+// guard (codex/cursor/windsurf/reasonix/zcode): for every event the host wires, the mapped
+// Claude Code event must exist and carry the SAME command set once the ` --agent <host>`
+// attribution suffix is stripped, and every host command must carry that suffix (host
+// stdin normalization and output-protocol selection both need it). eventMap translates
+// host event names onto Claude's PascalCase names (identity for hosts that reuse them
+// verbatim); an unmapped host event fails — new events must be accounted for here.
+// Drift in either direction fails.
+//
+// assertHostMirrorsClaude 是每个 *WiringMirrorsClaudeSettings 守卫（codex/cursor/
+// windsurf/reasonix/zcode）共享的骨架：host 接的每个 event，映射后的 Claude Code
+// event 必须存在且剥掉 ` --agent <host>` 归因后缀后携带同一命令集，且每条 host
+// 命令必须带该后缀（host 的 stdin 归一与输出协议选择都依赖它）。eventMap 把
+// host 事件名译成 Claude 的 PascalCase 名（原样复用者为恒等映射）；未映射的
+// host 事件即失败——新事件必须在此补账。任一方向漂移都失败。
+func assertHostMirrorsClaude(t *testing.T, host string, hostWiring, claude map[string]map[string]bool, eventMap map[string]string) {
+	t.Helper()
+	if len(hostWiring) == 0 {
+		t.Fatalf("%s wiring has no events — generator or parser broken", host)
+	}
+	suffix := " --agent " + host
+	for hostEvt, hostCmds := range hostWiring {
+		claudeEvt, ok := eventMap[hostEvt]
+		if !ok {
+			t.Errorf("%s event %q has no Claude Code mapping — new event not accounted for", host, hostEvt)
+			continue
+		}
+		claudeCmds, ok := claude[claudeEvt]
+		if !ok {
+			t.Errorf("Claude Code settings missing event %q that %s wires", claudeEvt, host)
+			continue
+		}
+		stripped := map[string]bool{}
+		for cmd := range hostCmds {
+			if !strings.HasSuffix(cmd, suffix) {
+				t.Errorf("%s hook command missing %q suffix (stdin normalization and output protocol both need the host): %s", host, suffix, cmd)
+			}
+			stripped[strings.TrimSuffix(cmd, suffix)] = true
+		}
+		if !stringSetEqual(claudeCmds, stripped) {
+			t.Errorf("hook commands for %s %q / claude %q drifted — keep ForgeHookSpec (settings.go) and the %s hook builder in sync:\n  claude: %s\n  %s: %s",
+				host, hostEvt, claudeEvt, host, sortedSet(claudeCmds), host, sortedSet(stripped))
+		}
+	}
+}
+
+// sunkHookNames lists the deleted-for-good hook commands that must never resurface in any
+// host wiring (regression guard shared by the wiring-mirror tests).
+//
+// sunkHookNames 列出已删除且任何 host 接线都不得复活的 hook 命令（wiring-mirror
+// 测试共享的回归守卫）。
+var sunkHookNames = []string{"read-check", "scope-guard", "clone-check", "experience-check", "security-check", "dependency-check", "test-coverage-check", "session-health"}
+
+// assertNoSunkHooks fails when any sunk/deleted forge hook command resurfaces in cmds.
+// settings.go is the source of truth, so guarding its (or a host's mirrored) PostToolUse
+// set suffices.
+//
+// assertNoSunkHooks 在 cmds 中出现任何已删除的 forge hook 命令时失败。
+// settings.go 是真相源，守它的（或 host 镜像的）PostToolUse 集合即足够。
+func assertNoSunkHooks(t *testing.T, where string, cmds map[string]bool) {
+	t.Helper()
+	for cmd := range cmds {
+		for _, s := range sunkHookNames {
+			if strings.Contains(cmd, "forge hook "+s) {
+				t.Errorf("sunk hook %q resurfaced in %s: %s", s, where, cmd)
+			}
+		}
+	}
+}
+
+// assertTranslateIdempotent translates twice via tr and requires every listed path to be
+// byte-identical across the two runs (deterministic output — no duplicate sections, no
+// spurious rewrites).
+//
+// assertTranslateIdempotent 用 tr 翻译两次，要求每个列出的路径跨两次运行逐字节
+// 一致（输出确定——无重复段、无多余改写）。
+func assertTranslateIdempotent(t *testing.T, tr Translator, paths ...string) {
+	t.Helper()
+	if err := tr.Translate(t.TempDir(), testInput()); err != nil {
+		t.Fatalf("Translate 1: %v", err)
+	}
+	first := make([]string, len(paths))
+	for i, p := range paths {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatalf("read %s (first run): %v", p, err)
+		}
+		first[i] = string(data)
+	}
+	if err := tr.Translate(t.TempDir(), testInput()); err != nil {
+		t.Fatalf("Translate 2: %v", err)
+	}
+	for i, p := range paths {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatalf("read %s (second run): %v", p, err)
+		}
+		if string(data) != first[i] {
+			t.Errorf("second Translate changed %s — output must be deterministic (idempotent)", p)
+		}
+	}
+}
+
+// assertOnlyLegalEvents is the shared skeleton behind every *OnlyLegalEvents guard:
+// every wired event must sit in the host's legal roster (an event outside it would
+// never fire — a silent no-op), every required event must be wired, and every banned
+// event must stay absent (bannedWhy documents the ban's rationale so the failure
+// explains the contract, not just the symptom).
+//
+// assertOnlyLegalEvents 是每个 *OnlyLegalEvents 守卫共享的骨架：已接线的每个
+// event 必须落在该 host 的合法名册内（名册外的 event 永不触发——静默 no-op），
+// 每个 required event 必须接线，每个 banned event 必须缺席（bannedWhy 记录封禁
+// 缘由，让失败解释契约而非只报症状）。
+func assertOnlyLegalEvents[T any](t *testing.T, host string, wiring map[string]T, legal map[string]bool, required, banned []string, bannedWhy string) {
+	t.Helper()
+	for event := range wiring {
+		if !legal[event] {
+			t.Errorf("illegal %s hook event %q (not in the official roster — never fires)", host, event)
+		}
+	}
+	for _, req := range required {
+		if _, present := wiring[req]; !present {
+			t.Errorf("%s must wire %s (has a ForgeHookSpec analogue): missing", host, req)
+		}
+	}
+	for _, b := range banned {
+		if _, present := wiring[b]; present {
+			t.Errorf("%s must not wire %s (%s)", host, b, bannedWhy)
+		}
+	}
+}
+
 // TestCursorTranslator_Translate verifies the user-level registration: Translate
 // writes ~/.cursor/hooks.json (flat, camelCase events, gate-enforcing commands) and
 // no longer writes any project-level file (the .cursor/rules/forge-quality.mdc
@@ -429,18 +497,6 @@ func TestCursorTranslator_Translate(t *testing.T) {
 	}
 }
 
-func TestCursorTranslator_Detect(t *testing.T) {
-	isolateHome(t) // DetectAgents also scans user-level install dirs — keep the real home out
-	dir := t.TempDir()
-	if slices.Contains(DetectAgents(dir), AgentCursor) {
-		t.Error("should not detect without .cursor/")
-	}
-	os.MkdirAll(filepath.Join(dir, ".cursor"), 0755)
-	if !slices.Contains(DetectAgents(dir), AgentCursor) {
-		t.Error("should detect with .cursor/")
-	}
-}
-
 // TestCopilotTranslator_Translate pins the user-level-assets contract: Copilot has
 // no lifecycle hooks and no writable user-level instruction channel, so the
 // translator is a deliberate no-op — it must succeed and write NOTHING into the
@@ -456,18 +512,6 @@ func TestCopilotTranslator_Translate(t *testing.T) {
 
 	if entries, err := os.ReadDir(dir); err != nil || len(entries) != 0 {
 		t.Errorf("copilot Translate must be a no-op (entries=%v, err=%v)", entries, err)
-	}
-}
-
-func TestCopilotTranslator_Detect(t *testing.T) {
-	isolateHome(t) // DetectAgents also scans user-level install dirs — keep the real home out
-	dir := t.TempDir()
-	if slices.Contains(DetectAgents(dir), AgentCopilot) {
-		t.Error("should not detect without .github/instructions/")
-	}
-	os.MkdirAll(filepath.Join(dir, ".github", "instructions"), 0755)
-	if !slices.Contains(DetectAgents(dir), AgentCopilot) {
-		t.Error("should detect with .github/instructions/")
 	}
 }
 
@@ -523,32 +567,25 @@ func TestWindsurfWiringMirrorsClaudeSettings(t *testing.T) {
 	// session-lifecycle groups (pre_user_prompt / post_cascade_response) were
 	// missing the flag — those hooks then emitted Claude-protocol stdout on a host
 	// with no stdout channel. Tightened to ALL forge commands (stdin normalization
-	// AND output protocol both need the host).
-	for _, cmds := range windsurf {
-		for cmd := range cmds {
-			if strings.HasPrefix(cmd, "forge hook ") && !strings.Contains(cmd, " --agent windsurf") {
-				t.Errorf("windsurf hook command missing --agent windsurf (stdin normalization and output protocol both need the host): %s", cmd)
-			}
+	// AND output protocol both need the host); the helper enforces the suffix on
+	// every command of every mapped event, which is all of them here.
+	assertHostMirrorsClaude(t, "windsurf", windsurf, claude, map[string]string{
+		"PreToolUse": "PreToolUse", "PostToolUse": "PostToolUse",
+		"Stop": "Stop", "SessionStart": "SessionStart",
+	})
+	// Presence pins: the folded map must carry all four Claude-side groups — the
+	// helper only visits events the host does wire, so a silently dropped group
+	// needs this explicit check (the pre-fix fixed-direction loop caught it via
+	// the empty-set compare).
+	//
+	// 在场钉住：折叠后的 map 必须带全四个 Claude 侧组——helper 只访问 host 已接
+	// 的事件，静默丢掉的组需要这条显式检查（旧固定方向循环靠空集比对抓它）。
+	for _, evt := range []string{"PreToolUse", "PostToolUse", "Stop", "SessionStart"} {
+		if len(windsurf[evt]) == 0 {
+			t.Errorf("windsurf must wire the claude %s group (folded map came back empty)", evt)
 		}
 	}
 
-	for _, claudeEvt := range []string{"PreToolUse", "PostToolUse", "Stop", "SessionStart"} {
-		want := claude[claudeEvt]
-		got := windsurf[claudeEvt]
-		if got == nil {
-			got = map[string]bool{}
-		}
-		// Strip the `--agent windsurf` suffix so the command surfaces match
-		// Claude Code's (`forge hook <name>`).
-		stripped := map[string]bool{}
-		for cmd := range got {
-			stripped[strings.TrimSuffix(cmd, " --agent windsurf")] = true
-		}
-		if !stringSetEqual(want, stripped) {
-			t.Errorf("windsurf commands for claude %q drifted:\n  claude: %s\n  windsurf: %s",
-				claudeEvt, sortedSet(want), sortedSet(stripped))
-		}
-	}
 	// Negative pin: UserPromptSubmit and PostCompact groups must NOT exist on Windsurf.
 	// UserPromptSubmit (resume-reinject/skill-trigger) is unwired because Windsurf has
 	// no PostCompact event → compact-resume never sets the reinject flag; PostCompact
@@ -642,17 +679,6 @@ func TestWindsurfTranslator_PreserveContent(t *testing.T) {
 	}
 }
 
-func TestWindsurfTranslator_Detect(t *testing.T) {
-	dir := t.TempDir()
-	if slices.Contains(DetectAgents(dir), AgentWindsurf) {
-		t.Error("should not detect without .windsurfrules")
-	}
-	os.WriteFile(filepath.Join(dir, ".windsurfrules"), []byte("rules"), 0644)
-	if !slices.Contains(DetectAgents(dir), AgentWindsurf) {
-		t.Error("should detect with .windsurfrules")
-	}
-}
-
 // TestWindsurfTranslator_ReadErrorNoOverwrite pins the data-loss guard: when
 // reading the user-level global_rules.md fails with anything OTHER than NotExist
 // (permissions, IO — here simulated by making the path a directory, which
@@ -742,22 +768,6 @@ func TestClineTranslator_Translate(t *testing.T) {
 	}
 }
 
-func TestClineTranslator_Detect(t *testing.T) {
-	dir := t.TempDir()
-	if slices.Contains(DetectAgents(dir), AgentCline) {
-		t.Error("should not detect without .cline/ or .clinerules/")
-	}
-	os.MkdirAll(filepath.Join(dir, ".cline"), 0755)
-	if !slices.Contains(DetectAgents(dir), AgentCline) {
-		t.Error("should detect with .cline/")
-	}
-	dir2 := t.TempDir()
-	os.MkdirAll(filepath.Join(dir2, ".clinerules"), 0755)
-	if !slices.Contains(DetectAgents(dir2), AgentCline) {
-		t.Error("should detect with .clinerules/")
-	}
-}
-
 func TestCodexTranslator_Translate(t *testing.T) {
 	// Codex registers at user level ($CODEX_HOME/hooks.json) — point CODEX_HOME at
 	// a temp dir and confirm Translate writes there, not into the project.
@@ -805,27 +815,6 @@ func TestCodexTranslator_Translate(t *testing.T) {
 	// Bash(...) — Codex compiles matcher as a regex, so that form is invalid.
 	if strings.Contains(content, "Bash(") {
 		t.Error("codex hooks.json uses glob-style matcher Bash(...) — invalid as Codex regex")
-	}
-}
-
-func TestCodexTranslator_Detect(t *testing.T) {
-	isolateHome(t) // DetectAgents also scans user-level install dirs — keep the real home out
-	dir := t.TempDir()
-	if slices.Contains(DetectAgents(dir), AgentCodex) {
-		t.Error("should not detect without .codex/")
-	}
-	os.MkdirAll(filepath.Join(dir, ".codex"), 0755)
-	if !slices.Contains(DetectAgents(dir), AgentCodex) {
-		t.Error("should detect with .codex/")
-	}
-	// AGENTS.md must NOT trigger codex detection: forge generates AGENTS.md as a
-	// universal cross-agent instruction source, so treating it as a codex signal
-	// makes every `forge init` self-trigger codex wiring (.codex/ cascade). Codex
-	// detection is .codex/ only; pure codex-CLI users pass --agents codex.
-	dir2 := t.TempDir()
-	os.WriteFile(filepath.Join(dir2, "AGENTS.md"), []byte("# project"), 0644)
-	if slices.Contains(DetectAgents(dir2), AgentCodex) {
-		t.Error("should NOT detect with only AGENTS.md (forge generates it universally; codex needs .codex/)")
 	}
 }
 
@@ -967,18 +956,6 @@ func assertOpencodeRosterParity(t *testing.T, event string, actual map[string]ma
 			t.Errorf("opencode %s roster wires unexpected tool %s (not derivable from ForgeHookSpec): %s",
 				event, tool, sortedSet(actual[tool]))
 		}
-	}
-}
-
-func TestOpencodeTranslator_Detect(t *testing.T) {
-	isolateHome(t) // DetectAgents also scans user-level install dirs — keep the real home out
-	dir := t.TempDir()
-	if slices.Contains(DetectAgents(dir), AgentOpencode) {
-		t.Error("should not detect without .opencode/")
-	}
-	os.MkdirAll(filepath.Join(dir, ".opencode"), 0755)
-	if !slices.Contains(DetectAgents(dir), AgentOpencode) {
-		t.Error("should detect with .opencode/")
 	}
 }
 

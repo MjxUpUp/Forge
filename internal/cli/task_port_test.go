@@ -53,6 +53,31 @@ func switchMachine(t *testing.T, sessionID string) string {
 	return dir
 }
 
+// exportDelegatedTask starts feat/delegate on a fresh machine-A project and
+// exports it to a temp bundle — the A-side scaffold of the A/B port tests.
+// Extra A-side commands (decide/attach/seed) run via pre before the export;
+// extraFlags append to the export command (--include-checklog etc.).
+//
+// exportDelegatedTask 在全新 machine-A 项目上起 feat/delegate 并导出到临时
+// bundle——A/B 移植测试的 A 侧脚手架。额外 A 侧命令（decide/attach/播种）经
+// pre 在导出前执行；extraFlags 追加到 export 命令（--include-checklog 等）。
+func exportDelegatedTask(t *testing.T, title string, pre func(dirA string), extraFlags ...string) (dirA, bundlePath string) {
+	t.Helper()
+	dirA = setupDelegateProject(t)
+	if out, _, code := runForge(t, dirA, `task`, `start`, `--ref`, `feat/delegate`, `--title`, title); code != 0 {
+		t.Fatalf(`A task start: %s`, out)
+	}
+	if pre != nil {
+		pre(dirA)
+	}
+	bundlePath = filepath.Join(t.TempDir(), `b.json`)
+	args := append([]string{`task`, `export`, `--ref`, `feat/delegate`, `-o`, bundlePath}, extraFlags...)
+	if out, _, code := runForge(t, dirA, args...); code != 0 {
+		t.Fatalf(`A export: %s`, out)
+	}
+	return dirA, bundlePath
+}
+
 // TestTaskExportImport_FreshRoundTrip is the end-to-end cross-machine handoff: machine A starts a
 // task, records a decision + an anchored worker session; exports (with checklog). Machine B (fresh
 // DataDir) imports. The task lands in B with the decision migrated and — crucially — every session
@@ -64,22 +89,19 @@ func switchMachine(t *testing.T, sessionID string) string {
 // 关键——每个 session 链接标记 Imported（幽灵）：仅溯源，永非本机锚点。幽灵不变量经 HasSession
 // 直接断言（A 的 session 在 B 上为 false）。
 func TestTaskExportImport_FreshRoundTrip(t *testing.T) {
-	// Machine A.
-	dirA := setupDelegateProject(t)
-	if out, _, code := runForge(t, dirA, `task`, `start`, `--ref`, `feat/delegate`, `--title`, `port roundtrip`); code != 0 {
-		t.Fatalf(`A task start: %s`, out)
-	}
-	if out, _, code := runForge(t, dirA, `task`, `decide`, `--ref`, `feat/delegate`, `--content`, `use REST`, `--by`, `claude-code`); code != 0 {
-		t.Fatalf(`A decide: %s`, out)
-	}
-	// Anchor a known worker session so the ghost assertion is over a concrete, present link.
-	if out, _, code := runForge(t, dirA, `task`, `attach`, `--ref`, `feat/delegate`, `--tool`, `claude-code`, `--session`, `a-worker-sid`); code != 0 {
-		t.Fatalf(`A attach: %s`, out)
-	}
-	bundlePath := filepath.Join(t.TempDir(), `bundle.json`)
-	if out, _, code := runForge(t, dirA, `task`, `export`, `--ref`, `feat/delegate`, `-o`, bundlePath, `--include-checklog`); code != 0 {
-		t.Fatalf(`A export: %s`, out)
-	}
+	// Machine A: start, decide, anchor a known worker session (so the ghost
+	// assertion is over a concrete, present link), export with checklog.
+	//
+	// 机器 A：起任务、记决策、锚定已知 worker session（使幽灵断言落在具体存在
+	// 的链接上）、带 checklog 导出。
+	_, bundlePath := exportDelegatedTask(t, `port roundtrip`, func(dirA string) {
+		if out, _, code := runForge(t, dirA, `task`, `decide`, `--ref`, `feat/delegate`, `--content`, `use REST`, `--by`, `claude-code`); code != 0 {
+			t.Fatalf(`A decide: %s`, out)
+		}
+		if out, _, code := runForge(t, dirA, `task`, `attach`, `--ref`, `feat/delegate`, `--tool`, `claude-code`, `--session`, `a-worker-sid`); code != 0 {
+			t.Fatalf(`A attach: %s`, out)
+		}
+	}, `--include-checklog`)
 
 	// Machine B: fresh DataDir, no feat/delegate task yet.
 	dirB := switchMachine(t, `machine-b-sid`)
@@ -156,10 +178,7 @@ func TestTaskExport_WarnsWhenChecklogOmitted(t *testing.T) {
 // TestTaskImport_DefaultRejectsExisting：导入 ref 已在本地存在的 bundle 且未带策略 flag，必须拒绝
 // （安全默认——绝不静默覆盖本地工作）。
 func TestTaskImport_DefaultRejectsExisting(t *testing.T) {
-	dirA := setupDelegateProject(t)
-	runForge(t, dirA, `task`, `start`, `--ref`, `feat/delegate`, `--title`, `x`)
-	bundlePath := filepath.Join(t.TempDir(), `b.json`)
-	runForge(t, dirA, `task`, `export`, `--ref`, `feat/delegate`, `-o`, bundlePath)
+	_, bundlePath := exportDelegatedTask(t, `x`, nil)
 
 	dirB := switchMachine(t, `b-sid-2`)
 	runForge(t, dirB, `task`, `import`, `--file`, bundlePath)                 // fresh: ok
@@ -178,10 +197,7 @@ func TestTaskImport_DefaultRejectsExisting(t *testing.T) {
 // TestTaskImport_ForceOverwrites：--force 整体替换本地任务（删 + 写 bundled task）。B 本地分叉出的
 // 决策在 force 后必须消失——bundle 胜。
 func TestTaskImport_ForceOverwrites(t *testing.T) {
-	dirA := setupDelegateProject(t)
-	runForge(t, dirA, `task`, `start`, `--ref`, `feat/delegate`, `--title`, `from-A`)
-	bundlePath := filepath.Join(t.TempDir(), `b.json`)
-	runForge(t, dirA, `task`, `export`, `--ref`, `feat/delegate`, `-o`, bundlePath)
+	_, bundlePath := exportDelegatedTask(t, `from-A`, nil)
 
 	dirB := switchMachine(t, `b-sid-3`)
 	runForge(t, dirB, `task`, `import`, `--file`, bundlePath)
@@ -211,11 +227,9 @@ func TestTaskImport_ForceOverwrites(t *testing.T) {
 // TestTaskImport_MergeUnions：--merge 保留本地任务身份/定义，按 ID 并集协作记录。决策 ID 全局唯一
 // （newContinuityID：nano + seq + 4 字节随机），故 A 与 B 的决策不碰撞——并集后都在。
 func TestTaskImport_MergeUnions(t *testing.T) {
-	dirA := setupDelegateProject(t)
-	runForge(t, dirA, `task`, `start`, `--ref`, `feat/delegate`, `--title`, `merge`)
-	runForge(t, dirA, `task`, `decide`, `--ref`, `feat/delegate`, `--content`, `remote-decision`, `--by`, `claude-code`)
-	bundlePath := filepath.Join(t.TempDir(), `b.json`)
-	runForge(t, dirA, `task`, `export`, `--ref`, `feat/delegate`, `-o`, bundlePath)
+	_, bundlePath := exportDelegatedTask(t, `merge`, func(dirA string) {
+		runForge(t, dirA, `task`, `decide`, `--ref`, `feat/delegate`, `--content`, `remote-decision`, `--by`, `claude-code`)
+	})
 
 	dirB := switchMachine(t, `b-sid-4`)
 	runForge(t, dirB, `task`, `import`, `--file`, bundlePath) // fresh: brings remote-decision
@@ -315,10 +329,72 @@ func TestTaskExport_Redacts(t *testing.T) {
 	if !bundle.Redacted {
 		t.Error(`bundle.Redacted 应 true`)
 	}
-	// Commit SHAs cleared (only meaningful if start set one; cleared either way is the contract).
-	if bundle.Task.HeadCommit != `` {
-		t.Errorf(`HeadCommit 应脱敏为空, got %q`, bundle.Task.HeadCommit)
+	// Shape pre-guards so the field tables below can index without per-row nil
+	// checks (a failed guard already fails the test with the shape context).
+	//
+	// 形状前置守卫：下方字段表可无逐行 nil 检查地索引（守卫失败即带形状上下文
+	// 地失败测试）。
+	if bundle.Task.Assignment == nil {
+		t.Fatalf(`Assignment 应保留形状（有被分派方）, got nil`)
 	}
+	if len(bundle.Task.Decisions) == 0 || len(bundle.Task.Findings) == 0 || len(bundle.Task.Blockers) == 0 || len(bundle.Task.SessionLinks) == 0 || len(bundle.Task.Acceptance) == 0 {
+		t.Fatalf(`Decisions/Findings/Blockers/SessionLinks/Acceptance 应各自保留形状（至少 1 条）, got %+v`, bundle.Task)
+	}
+
+	// Identity fields → [redacted] (they profile who / which tool / which team
+	// structure). Every row is one absorbed assertion.
+	//
+	// 身份字段 → [redacted]（侧写谁/哪个工具/团队结构）。每行一条被吸收断言。
+	for _, f := range []struct{ name, got string }{
+		{`Assignment.Agent`, bundle.Task.Assignment.Agent},
+		{`Assignment.OfferedBy`, bundle.Task.Assignment.OfferedBy},
+		{`Assignment.Role（角色可侧写团队结构）`, bundle.Task.Assignment.Role},
+		{`Decision.Content`, bundle.Task.Decisions[0].Content},
+		{`Decision.By（确认方=工具身份）`, bundle.Task.Decisions[0].By},
+		{`Finding.Source（来源工具=身份）`, bundle.Task.Findings[0].Source},
+		{`Blocker.By`, bundle.Task.Blockers[0].By},
+		{`OriginTool（发起工具身份）`, bundle.Task.OriginTool},
+		{`Goal`, bundle.Task.Goal},
+		{`Plan`, bundle.Task.Plan},
+		{`Summary`, bundle.Task.Summary},
+		{`Acceptance.Run`, bundle.Task.Acceptance[0].Run},
+		{`Acceptance.Expected`, bundle.Task.Acceptance[0].Expected},
+	} {
+		if f.got != `[redacted]` {
+			t.Errorf(`%s 应 [redacted], got %q`, f.name, f.got)
+		}
+	}
+
+	// Evidence / code-path / commit fields → cleared to empty.
+	//
+	// 证据/代码路径/commit 字段 → 清空。
+	for _, f := range []struct{ name, got string }{
+		{`HeadCommit`, bundle.Task.HeadCommit},
+		{`Finding.Evidence`, bundle.Task.Findings[0].Evidence},
+		{`ExternalOrigin.URL`, bundle.Task.ExternalOrigin.URL},
+		{`ExternalOrigin.Identifier`, bundle.Task.ExternalOrigin.Identifier},
+		{`Branch`, bundle.Task.Branch},
+		{`SessionID`, bundle.Task.SessionID},
+		{`Acceptance.AcceptedHeadCommit`, bundle.Task.Acceptance[0].AcceptedHeadCommit},
+		{`Acceptance.Output`, bundle.Task.Acceptance[0].Output},
+	} {
+		if f.got != `` {
+			t.Errorf(`%s 应清空, got %q`, f.name, f.got)
+		}
+	}
+	// Slice-shaped evidence → cleared.
+	//
+	// 切片形证据 → 清空。
+	if len(bundle.Task.PlanScope) != 0 {
+		t.Errorf(`PlanScope 应清空, got %+v`, bundle.Task.PlanScope)
+	}
+	if len(bundle.Task.NextSteps) != 0 {
+		t.Errorf(`NextSteps 应清空, got %+v`, bundle.Task.NextSteps)
+	}
+	if len(bundle.Task.Decisions[0].Affects) != 0 {
+		t.Errorf(`Decisions Affects 应清空, got %+v`, bundle.Task.Decisions)
+	}
+
 	// ReviewRounds：轮次形状保留、每轮 SHA/ChangeHash 清空。
 	if len(bundle.Task.ReviewRounds) != 2 {
 		t.Errorf(`ReviewRounds 轮次形状应保留（2 轮）, got %+v`, bundle.Task.ReviewRounds)
@@ -328,46 +404,9 @@ func TestTaskExport_Redacts(t *testing.T) {
 			t.Errorf(`ReviewRounds[%d] 的 SHA/ChangeHash 应脱敏为空, got %+v`, i, r)
 		}
 	}
-	// Assignment identity redacted (kept non-empty so the shape "has an assignee" survives).
-	if bundle.Task.Assignment == nil || bundle.Task.Assignment.Agent != `[redacted]` {
-		t.Errorf(`Assignment.Agent 应 [redacted], got %+v`, bundle.Task.Assignment)
-	}
-	if bundle.Task.Assignment != nil && bundle.Task.Assignment.OfferedBy != `[redacted]` {
-		t.Errorf(`Assignment.OfferedBy 应 [redacted], got %q`, bundle.Task.Assignment.OfferedBy)
-	}
-	if bundle.Task.Assignment != nil && bundle.Task.Assignment.Role != `[redacted]` {
-		t.Errorf(`Assignment.Role 应 [redacted]（角色可侧写团队结构），got %q`, bundle.Task.Assignment.Role)
-	}
-	// Decision content replaced, rationale cleared; finding evidence cleared.
-	if len(bundle.Task.Decisions) == 0 || bundle.Task.Decisions[0].Content != `[redacted]` {
-		t.Errorf(`bundle 决策内容应 [redacted], got %+v`, bundle.Task.Decisions)
-	}
-	if len(bundle.Task.Decisions) == 0 || bundle.Task.Decisions[0].By != `[redacted]` {
-		t.Errorf(`Decision.By 应 [redacted]（确认方=工具身份），got %+v`, bundle.Task.Decisions)
-	}
-	if len(bundle.Task.Findings) == 0 || bundle.Task.Findings[0].Evidence != `` {
-		t.Errorf(`bundle finding evidence 应清空, got %+v`, bundle.Task.Findings)
-	}
-	if len(bundle.Task.Findings) == 0 || bundle.Task.Findings[0].Source != `[redacted]` {
-		t.Errorf(`Finding.Source 应 [redacted]（来源工具=身份），got %+v`, bundle.Task.Findings)
-	}
-	// ExternalOrigin cleared entirely.
-	if bundle.Task.ExternalOrigin.URL != `` || bundle.Task.ExternalOrigin.Identifier != `` {
-		t.Errorf(`ExternalOrigin 应整体清空, got %+v`, bundle.Task.ExternalOrigin)
-	}
-	// Blocker.By + OriginTool are tool identity — must be redacted (they profile who/which-tool).
-	//
-	// Blocker.By + OriginTool 是工具身份——必须脱敏（它们侧写谁/哪个工具）。
-	if len(bundle.Task.Blockers) == 0 || bundle.Task.Blockers[0].By != `[redacted]` {
-		t.Errorf(`Blocker.By 应 [redacted], got %+v`, bundle.Task.Blockers)
-	}
-	if bundle.Task.OriginTool != `[redacted]` {
-		t.Errorf(`OriginTool 应 [redacted]（发起工具身份），got %q`, bundle.Task.OriginTool)
-	}
-	// SessionLinks[].Tool 是 agent 身份——须与 OriginTool 一致脱敏；Imported（形状标记）保留。
-	if len(bundle.Task.SessionLinks) == 0 {
-		t.Error(`SessionLinks 应保留形状（至少 1 条），脱敏不应清空切片`)
-	}
+
+	// SessionLinks[].Tool/SessionID 是 agent 身份——须与 OriginTool 一致脱敏；
+	// Imported（形状标记）保留。
 	for i, l := range bundle.Task.SessionLinks {
 		if l.Tool != `[redacted]` {
 			t.Errorf(`SessionLinks[%d].Tool 应 [redacted]（发起工具身份，与 OriginTool 同类），got %q`, i, l.Tool)
@@ -390,39 +429,6 @@ func TestTaskExport_Redacts(t *testing.T) {
 	}
 	if strings.ContainsAny(bundle.SourceProject, `/\`) {
 		t.Errorf(`SourceProject 应为无分隔符的 basename，got %q`, bundle.SourceProject)
-	}
-
-	// Code-path / free-text redactions (the --redact contract: not leak issue/agent/commit/code-paths).
-	if bundle.Task.Goal != `[redacted]` {
-		t.Errorf(`Goal 应 [redacted], got %q`, bundle.Task.Goal)
-	}
-	if bundle.Task.Plan != `[redacted]` {
-		t.Errorf(`Plan 应 [redacted], got %q`, bundle.Task.Plan)
-	}
-	if bundle.Task.Summary != `[redacted]` {
-		t.Errorf(`Summary 应 [redacted], got %q`, bundle.Task.Summary)
-	}
-	if len(bundle.Task.PlanScope) != 0 {
-		t.Errorf(`PlanScope 应清空, got %+v`, bundle.Task.PlanScope)
-	}
-	if bundle.Task.Branch != `` {
-		t.Errorf(`Branch 应清空, got %q`, bundle.Task.Branch)
-	}
-	if len(bundle.Task.NextSteps) != 0 {
-		t.Errorf(`NextSteps 应清空, got %+v`, bundle.Task.NextSteps)
-	}
-	if bundle.Task.SessionID != `` {
-		t.Errorf(`SessionID 应清空, got %q`, bundle.Task.SessionID)
-	}
-	if len(bundle.Task.Decisions) == 0 || len(bundle.Task.Decisions[0].Affects) != 0 {
-		t.Errorf(`Decisions Affects 应清空, got %+v`, bundle.Task.Decisions)
-	}
-	if len(bundle.Task.Acceptance) == 0 ||
-		bundle.Task.Acceptance[0].Run != `[redacted]` ||
-		bundle.Task.Acceptance[0].Expected != `[redacted]` ||
-		bundle.Task.Acceptance[0].AcceptedHeadCommit != `` ||
-		bundle.Task.Acceptance[0].Output != `` {
-		t.Errorf(`Acceptance Run/Expected 应 [redacted]、AcceptedHeadCommit/Output 应清空, got %+v`, bundle.Task.Acceptance)
 	}
 
 	// Deep-copy guarantee: the ORIGINAL on disk is untouched by redaction.
@@ -563,10 +569,7 @@ func TestTaskExport_RedactsChecklog(t *testing.T) {
 // 而非静默当 v1 解析——否则前向兼容守卫离失效只差一个缺字段。（真正更高的未来版本同样被拒；该路径
 // 既有未改。）
 func TestTaskImport_RejectsMalformedSchema(t *testing.T) {
-	dirA := setupDelegateProject(t)
-	runForge(t, dirA, `task`, `start`, `--ref`, `feat/delegate`, `--title`, `x`)
-	bundlePath := filepath.Join(t.TempDir(), `b.json`)
-	runForge(t, dirA, `task`, `export`, `--ref`, `feat/delegate`, `-o`, bundlePath)
+	_, bundlePath := exportDelegatedTask(t, `x`, nil)
 
 	// Hand-edit schema_version 1 → 0 to simulate a malformed bundle.
 	data, err := os.ReadFile(bundlePath)
@@ -600,46 +603,42 @@ func TestTaskImport_RejectsMalformedSchema(t *testing.T) {
 // 手改的 bundle 可绕过 task-complete 门禁的硬前置而本机从未跑过 review 子 agent / verify-acceptance。
 // import 落地时这些信号被清空；History（门禁进度，溯源）保留。
 func TestTaskImport_StripsForeignGateSignals(t *testing.T) {
-	dirA := setupDelegateProject(t)
-	runForge(t, dirA, `task`, `start`, `--ref`, `feat/delegate`, `--title`, `trusted-on-A`)
 	// On A: fake a fully-reviewed + scored + acceptance-passed task (a foreign bundle could carry these).
-	src, err := taskpipeline.LoadTaskState(dirA, `feat/delegate`)
-	if err != nil {
-		t.Fatalf(`load A: %v`, err)
-	}
-	src.MarkReviewPassed(`aaa111`, `hash-aaa`)
-	src.Score = &scoringtypes.ScoreResult{Overall: 91}
-	src.Acceptance = []taskpipeline.AcceptanceCriterion{
-		{Run: `go test ./...`, Expected: `ok`, Passed: true, AcceptedHeadCommit: `aaa111`, Output: `ok`},
-	}
-	// Seed gate History: task-implement + task-verify (provenance, must survive import) AND a
-	// task-complete entry (a completion CLAIM from A — foreign, must be stripped: a hand-edited
-	// bundle carrying task-complete in History would otherwise make the task look finished on B
-	// without B ever running its own task-complete gate).
-	//
-	// 播种 gate History：task-implement + task-verify（溯源，import 后须保留）AND 一条 task-complete
-	// （A 的完成「声明」——外来，必须剥离：手改的 bundle 带着 History 里的 task-complete 会让任务在 B 上
-	// 看起来已完成，而 B 从未跑过自己的 task-complete 门禁）。
-	src.RecordGateResult(`task-implement`, true, `aaa111`)
-	src.RecordGateResult(`task-verify`, true, `aaa111`)
-	src.RecordGateResult(`task-complete`, true, `aaa111`)
-	// Control-flow fields (2026-08-15 fix): a foreign CompletedAt disables every CompletedAt==nil-guarded
-	// hard check on B (and gate task-complete AUTO-PASSES an already-completed task); foreign Overrides
-	// silently disable four hard gates. Both must be stripped like result fields.
-	//
-	// 控制流字段（2026-08-15 修复）：外来 CompletedAt 会关掉 B 上所有 CompletedAt==nil 守卫的硬检查
-	// （且 gate task-complete 对已完成任务自动通过）；外来 Overrides 静默关四个硬门禁。两者须像结果
-	// 字段一样被剥离。
-	now := time.Now()
-	src.CompletedAt = &now
-	src.Overrides = taskpipeline.TaskOverrides{TestCoverage: `disable`}
-	if err := taskpipeline.SaveTaskState(dirA, src); err != nil {
-		t.Fatalf(`save A: %v`, err)
-	}
-	bundlePath := filepath.Join(t.TempDir(), `b.json`)
-	if out, _, code := runForge(t, dirA, `task`, `export`, `--ref`, `feat/delegate`, `-o`, bundlePath); code != 0 {
-		t.Fatalf(`A export: %s`, out)
-	}
+	_, bundlePath := exportDelegatedTask(t, `trusted-on-A`, func(dirA string) {
+		src, err := taskpipeline.LoadTaskState(dirA, `feat/delegate`)
+		if err != nil {
+			t.Fatalf(`load A: %v`, err)
+		}
+		src.MarkReviewPassed(`aaa111`, `hash-aaa`)
+		src.Score = &scoringtypes.ScoreResult{Overall: 91}
+		src.Acceptance = []taskpipeline.AcceptanceCriterion{
+			{Run: `go test ./...`, Expected: `ok`, Passed: true, AcceptedHeadCommit: `aaa111`, Output: `ok`},
+		}
+		// Seed gate History: task-implement + task-verify (provenance, must survive import) AND a
+		// task-complete entry (a completion CLAIM from A — foreign, must be stripped: a hand-edited
+		// bundle carrying task-complete in History would otherwise make the task look finished on B
+		// without B ever running its own task-complete gate).
+		//
+		// 播种 gate History：task-implement + task-verify（溯源，import 后须保留）AND 一条 task-complete
+		// （A 的完成「声明」——外来，必须剥离：手改的 bundle 带着 History 里的 task-complete 会让任务在 B 上
+		// 看起来已完成，而 B 从未跑过自己的 task-complete 门禁）。
+		src.RecordGateResult(`task-implement`, true, `aaa111`)
+		src.RecordGateResult(`task-verify`, true, `aaa111`)
+		src.RecordGateResult(`task-complete`, true, `aaa111`)
+		// Control-flow fields (2026-08-15 fix): a foreign CompletedAt disables every CompletedAt==nil-guarded
+		// hard check on B (and gate task-complete AUTO-PASSES an already-completed task); foreign Overrides
+		// silently disable four hard gates. Both must be stripped like result fields.
+		//
+		// 控制流字段（2026-08-15 修复）：外来 CompletedAt 会关掉 B 上所有 CompletedAt==nil 守卫的硬检查
+		// （且 gate task-complete 对已完成任务自动通过）；外来 Overrides 静默关四个硬门禁。两者须像结果
+		// 字段一样被剥离。
+		now := time.Now()
+		src.CompletedAt = &now
+		src.Overrides = taskpipeline.TaskOverrides{TestCoverage: `disable`}
+		if err := taskpipeline.SaveTaskState(dirA, src); err != nil {
+			t.Fatalf(`save A: %v`, err)
+		}
+	})
 
 	dirB := switchMachine(t, `b-sid-trust`)
 	if out, _, code := runForge(t, dirB, `task`, `import`, `--file`, bundlePath); code != 0 {

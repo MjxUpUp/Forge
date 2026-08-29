@@ -288,6 +288,87 @@ func runGit(t *testing.T, dir string, args ...string) {
 	}
 }
 
+// initRepoWithMainGo creates a temp git repo (default branch) with an initial
+// main.go commit — the hasCodeChanges / work-activity fixture baseline: a clean
+// tracked tree to diff against (git diff HEAD sees main.go, untracked probes see
+// nothing). Replaces the 7-line init boilerplate formerly inlined per test.
+//
+// initRepoWithMainGo 建临时 git 仓库（默认分支）并首次提交 main.go——
+// hasCodeChanges / work-activity 夹具基线：干净的被跟踪树供 diff（git diff HEAD
+// 看得到 main.go，untracked 探测为空）。替代原先逐测试内联的 7 行 init 样板。
+func initRepoWithMainGo(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "initial")
+	return dir
+}
+
+// initRepoOnBranch creates a temp git repo with an empty initial commit on the
+// default branch, then checks out the given feature branch — the gate-flow
+// fixture (mirrors `forge task start --branch`). See initRepoWithMaster for the
+// testcov-pinned variant.
+//
+// initRepoOnBranch 建临时 git 仓库（默认分支空提交）后 checkout 给定 feature
+// 分支——gate 流程夹具（镜像 `forge task start --branch`）。testcov 固定分支的
+// 变体见 initRepoWithMaster。
+func initRepoOnBranch(t *testing.T, branch string) string {
+	t.Helper()
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "t@t.com")
+	runGit(t, dir, "config", "user.name", "T")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "master init")
+	runGit(t, dir, "checkout", "-b", branch)
+	return dir
+}
+
+// initRepoWithTasksDir creates a temp git repo (init + identity only, no commit)
+// with the legacy project-level .forge/tasks dir — the ActiveTaskState fixture
+// shape (resolution probes, no gate flow).
+//
+// initRepoWithTasksDir 建临时 git 仓库（仅 init + 身份配置，无提交）并带遗留的
+// 项目级 .forge/tasks 目录——ActiveTaskState 夹具形态（探测解析，无 gate 流程）。
+func initRepoWithTasksDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
+	return dir
+}
+
+// firstCheckEntry loads the task's checklog and returns the first entry with the
+// given check name (nil if absent) — the shared scan shape behind the gate-audit
+// assertions (telemetry-missing / escape-hatch / docs-consistency /
+// review-snapshot / gate claims). (The bool-existence variant findCheckEntry
+// lives in complete_advisory_test.go.)
+//
+// firstCheckEntry 加载任务 checklog 并返回首个匹配 check 名的条目（缺则 nil）
+// ——gate 审计断言（telemetry-missing / escape-hatch / docs-consistency /
+// review-snapshot / gate 声明）共用的扫描形态。（bool 存在性变体 findCheckEntry
+// 在 complete_advisory_test.go。）
+func firstCheckEntry(t *testing.T, dir, taskRef string, check checklog.CheckName) *checklog.Entry {
+	t.Helper()
+	entries, err := checklog.LoadForTask(dir, taskRef)
+	if err != nil {
+		t.Fatalf("LoadForTask(%s): %v", taskRef, err)
+	}
+	for i := range entries {
+		if entries[i].Check == check {
+			return &entries[i]
+		}
+	}
+	return nil
+}
+
 func TestHasCodeChanges_NonGitRepo(t *testing.T) {
 	dir := t.TempDir()
 	// Non-git repo should gracefully degrade
@@ -297,14 +378,7 @@ func TestHasCodeChanges_NonGitRepo(t *testing.T) {
 }
 
 func TestHasCodeChanges_NoChanges(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "test@test.com")
-	runGit(t, dir, "config", "user.name", "Test")
-
-	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
-	runGit(t, dir, "add", ".")
-	runGit(t, dir, "commit", "-m", "initial")
+	dir := initRepoWithMainGo(t)
 
 	state := &TaskState{Branch: "main"}
 	if hasCodeChanges(dir, state) {
@@ -313,14 +387,7 @@ func TestHasCodeChanges_NoChanges(t *testing.T) {
 }
 
 func TestHasCodeChanges_WithUncommittedChanges(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "test@test.com")
-	runGit(t, dir, "config", "user.name", "Test")
-
-	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
-	runGit(t, dir, "add", ".")
-	runGit(t, dir, "commit", "-m", "initial")
+	dir := initRepoWithMainGo(t)
 
 	// Make uncommitted changes
 	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\nfunc main() {}\n"), 0644)
@@ -340,14 +407,7 @@ func TestHasCodeChanges_WithUncommittedChanges(t *testing.T) {
 // 唯一改动是新建、尚未 git add 的文件时必须报有代码变更——`git diff HEAD` 看不到
 // untracked 内容，此前这类任务会被门禁永远硬拦成「no code changes」。
 func TestHasCodeChanges_UntrackedNewFile(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "test@test.com")
-	runGit(t, dir, "config", "user.name", "Test")
-
-	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
-	runGit(t, dir, "add", ".")
-	runGit(t, dir, "commit", "-m", "initial")
+	dir := initRepoWithMainGo(t)
 
 	// The task's ONLY change: a brand-new untracked file (no stage, no commit, no
 	// working-tree modification of tracked files).
@@ -362,14 +422,7 @@ func TestHasCodeChanges_UntrackedNewFile(t *testing.T) {
 }
 
 func TestHasCodeChanges_FeatureBranchWithCommits(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "test@test.com")
-	runGit(t, dir, "config", "user.name", "Test")
-
-	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
-	runGit(t, dir, "add", ".")
-	runGit(t, dir, "commit", "-m", "initial")
+	dir := initRepoWithMainGo(t)
 
 	// Create a feature branch with a new commit
 	runGit(t, dir, "checkout", "-b", "feature/test")
@@ -392,14 +445,7 @@ func TestHasCodeChanges_FeatureBranchWithCommits(t *testing.T) {
 // （task start 时记录）之后做了中段 commit，必须报有代码变更。此前 Check 2 按
 // Branch != main/master 设卡，commit 后门禁落入「no code changes」永不可得。
 func TestHasCodeChanges_MainBranchHeadCommit(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "test@test.com")
-	runGit(t, dir, "config", "user.name", "Test")
-
-	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
-	runGit(t, dir, "add", ".")
-	runGit(t, dir, "commit", "-m", "initial")
+	dir := initRepoWithMainGo(t)
 
 	base := GetHeadCommit(dir)
 	if base == "" {
@@ -426,14 +472,7 @@ func TestHasCodeChanges_MainBranchHeadCommit(t *testing.T) {
 // TestHasCodeChanges_HeadCommitAtHead：HeadCommit == HEAD 且工作树干净 = task 起算
 // 无变更——必须返回 false（HeadCommit 路径不能退化成恒 true）。
 func TestHasCodeChanges_HeadCommitAtHead(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "test@test.com")
-	runGit(t, dir, "config", "user.name", "Test")
-
-	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
-	runGit(t, dir, "add", ".")
-	runGit(t, dir, "commit", "-m", "initial")
+	dir := initRepoWithMainGo(t)
 
 	state := &TaskState{Branch: "main", HeadCommit: GetHeadCommit(dir)}
 	if hasCodeChanges(dir, state) {
@@ -558,13 +597,7 @@ func TestLoadTaskState_RefCollisionRejected(t *testing.T) {
 }
 
 func TestLastGateSkipsTiming(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "test@test.com")
-	runGit(t, dir, "config", "user.name", "Test")
-	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
-	runGit(t, dir, "add", ".")
-	runGit(t, dir, "commit", "-m", "initial")
+	dir := initRepoWithMainGo(t)
 
 	// Set long interval — last gate should skip it entirely
 	os.Setenv("FORGE_WORK_ACTIVITY", "disable")
@@ -644,13 +677,7 @@ func TestIsLastGate(t *testing.T) {
 // 含 advisory、并落 CheckNameTelemetryMissing 审计条目，让 score/dashboard/trace 能看到
 // 该 gate 是在遥测降级下放行的，而非验证了真实活动。
 func TestWorkActivityTelemetryMissingDegradesToAdvisory(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "test@test.com")
-	runGit(t, dir, "config", "user.name", "Test")
-	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
-	runGit(t, dir, "add", ".")
-	runGit(t, dir, "commit", "-m", "initial")
+	dir := initRepoWithMainGo(t)
 
 	t.Setenv("FORGE_WORK_ACTIVITY", "") // 确保不受外部环境 escape 影响
 
@@ -678,18 +705,8 @@ func TestWorkActivityTelemetryMissingDegradesToAdvisory(t *testing.T) {
 	// Audit trail persisted — the degrade must be visible, not silent.
 	//
 	// 审计已落盘——降级必须可见，不能静默。
-	entries, err := checklog.LoadForTask(dir, "test-auto-activity")
-	if err != nil {
-		t.Fatalf("LoadForTask: %v", err)
-	}
-	found := false
-	for _, e := range entries {
-		if e.Check == CheckNameTelemetryMissing {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("checklog 应有 CheckNameTelemetryMissing 审计条目，got: %+v", entries)
+	if firstCheckEntry(t, dir, "test-auto-activity", CheckNameTelemetryMissing) == nil {
+		t.Fatalf("checklog 应有 CheckNameTelemetryMissing 审计条目")
 	}
 }
 
@@ -710,13 +727,7 @@ func TestWorkActivityTelemetryMissingDegradesToAdvisory(t *testing.T) {
 // 留），会让检查失效。遥测通道存活（本任务有 hook 分发的 checklog 条目）但活动
 // 确实为零时，task-verify 仍必须 BLOCKED——遥测缺失降级不得成为借道逃逸。
 func TestWorkActivityStillEnforcedAfterAutoGate(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "test@test.com")
-	runGit(t, dir, "config", "user.name", "Test")
-	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
-	runGit(t, dir, "add", ".")
-	runGit(t, dir, "commit", "-m", "initial")
+	dir := initRepoWithMainGo(t)
 
 	t.Setenv("FORGE_WORK_ACTIVITY", "") // 确保不受外部环境 escape 影响
 
@@ -770,13 +781,7 @@ func TestWorkActivityStillEnforcedAfterAutoGate(t *testing.T) {
 // 进不了 toollog（matcher 缺口），错误表「用 Read/Grep/Glob 探索」的建议是
 // 空头支票——门禁一直拦到出现 Read 为止。
 func TestWorkActivityExplorationCounts(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "test@test.com")
-	runGit(t, dir, "config", "user.name", "Test")
-	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
-	runGit(t, dir, "add", ".")
-	runGit(t, dir, "commit", "-m", "initial")
+	dir := initRepoWithMainGo(t)
 
 	t.Setenv("FORGE_WORK_ACTIVITY", "")
 
@@ -817,13 +822,7 @@ func TestWorkActivityExplorationCounts(t *testing.T) {
 // 性边界：探索计入「有无工作」，绝不计入「改前是否读过」。有 Edit、有
 // Grep、零 Read 的段落仍必须 BLOCK——浏览匹配不等于读过要改的文件。
 func TestWorkActivityExplorationDoesNotSatisfyReadBeforeEdit(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "test@test.com")
-	runGit(t, dir, "config", "user.name", "Test")
-	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
-	runGit(t, dir, "add", ".")
-	runGit(t, dir, "commit", "-m", "initial")
+	dir := initRepoWithMainGo(t)
 
 	t.Setenv("FORGE_WORK_ACTIVITY", "")
 
@@ -864,13 +863,7 @@ func TestWorkActivityExplorationDoesNotSatisfyReadBeforeEdit(t *testing.T) {
 // 降级。分发正常的 session 会跨任务累积 hook 分发条目；当前 session 存在任一
 // 此类条目（即便挂在别的 task ref 下）就必须抑制降级、维持 HARD stop。
 func TestWorkActivitySessionAlivePreventsDegrade(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "test@test.com")
-	runGit(t, dir, "config", "user.name", "Test")
-	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
-	runGit(t, dir, "add", ".")
-	runGit(t, dir, "commit", "-m", "initial")
+	dir := initRepoWithMainGo(t)
 
 	t.Setenv("FORGE_WORK_ACTIVITY", "") // 确保不受外部环境 escape 影响
 
@@ -915,13 +908,7 @@ func TestWorkActivitySessionAlivePreventsDegrade(t *testing.T) {
 // 更晚的 gate 审计条目（ToolName=""）会在折叠 map 里遮蔽更早的 hook 分发条目，
 // 让干净 session 里的伪造降级复活。
 func TestWorkActivitySessionAliveNotMaskedByGateAudit(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "test@test.com")
-	runGit(t, dir, "config", "user.name", "Test")
-	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
-	runGit(t, dir, "add", ".")
-	runGit(t, dir, "commit", "-m", "initial")
+	dir := initRepoWithMainGo(t)
 
 	t.Setenv("FORGE_WORK_ACTIVITY", "")
 
@@ -981,13 +968,7 @@ func TestWorkActivitySessionAliveNotMaskedByGateAudit(t *testing.T) {
 // 条目。session 过滤把 "" 当「不过滤」，朴素实现会把混合 host 项目里 Claude 的
 // 条目误算成 kimi 的遥测——让本降级要消除的 100% 误 BLOCK 复活。
 func TestWorkActivityMixedHostKimiStillDegrades(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "test@test.com")
-	runGit(t, dir, "config", "user.name", "Test")
-	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
-	runGit(t, dir, "add", ".")
-	runGit(t, dir, "commit", "-m", "initial")
+	dir := initRepoWithMainGo(t)
 
 	t.Setenv("FORGE_WORK_ACTIVITY", "")
 
@@ -1023,12 +1004,8 @@ func TestWorkActivityMixedHostKimiStillDegrades(t *testing.T) {
 }
 
 func TestActiveTaskState_BranchDetection(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "test@test.com")
-	runGit(t, dir, "config", "user.name", "Test")
+	dir := initRepoWithTasksDir(t)
 	runGit(t, dir, "commit", "--allow-empty", "-m", "init")
-	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
 
 	// Create task with branch ref matching the branch name
 	ctx := &taskcontext.Context{
@@ -1065,11 +1042,7 @@ func TestActiveTaskState_BranchDetection(t *testing.T) {
 }
 
 func TestActiveTaskState_FallbackSingleIncompleteOnMaster(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "test@test.com")
-	runGit(t, dir, "config", "user.name", "Test")
-	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
+	dir := initRepoWithTasksDir(t)
 
 	// Stay on master (default branch)
 	// Create a single incomplete task
@@ -1114,11 +1087,7 @@ func TestActiveTaskState_FallbackSingleIncompleteOnMaster(t *testing.T) {
 }
 
 func TestActiveTaskState_FallbackAmbiguousMultipleIncomplete(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "test@test.com")
-	runGit(t, dir, "config", "user.name", "Test")
-	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
+	dir := initRepoWithTasksDir(t)
 
 	// Create two incomplete tasks
 	ctx1 := &taskcontext.Context{
@@ -1143,11 +1112,7 @@ func TestActiveTaskState_FallbackAmbiguousMultipleIncomplete(t *testing.T) {
 }
 
 func TestActiveTaskState_FallbackIgnoresCompleted(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "test@test.com")
-	runGit(t, dir, "config", "user.name", "Test")
-	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
+	dir := initRepoWithTasksDir(t)
 
 	// Create one completed task
 	ctx1 := &taskcontext.Context{
@@ -1183,11 +1148,7 @@ func TestActiveTaskState_FallbackIgnoresCompleted(t *testing.T) {
 }
 
 func TestActiveTaskState_NoTasks(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "test@test.com")
-	runGit(t, dir, "config", "user.name", "Test")
-	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
+	dir := initRepoWithTasksDir(t)
 
 	// No tasks at all — should return nil
 	active, err := ActiveTaskState(dir, "")
@@ -1200,11 +1161,7 @@ func TestActiveTaskState_NoTasks(t *testing.T) {
 }
 
 func TestActiveTaskState_ExplicitRefFilePriority(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "test@test.com")
-	runGit(t, dir, "config", "user.name", "Test")
-	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
+	dir := initRepoWithTasksDir(t)
 
 	// Create multiple incomplete tasks (ambiguous for fallback)
 	task1 := &TaskState{TaskRef: "feat/first", Branch: "main", StartedAt: time.Now()}
@@ -1233,11 +1190,7 @@ func TestActiveTaskState_ExplicitRefFilePriority(t *testing.T) {
 }
 
 func TestActiveTaskState_StaleRefFileFallsThrough(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "test@test.com")
-	runGit(t, dir, "config", "user.name", "Test")
-	os.MkdirAll(filepath.Join(dir, ".forge", "tasks"), 0755)
+	dir := initRepoWithTasksDir(t)
 
 	// Create a completed task
 	completed := &TaskState{TaskRef: "feat/done", Branch: "main", StartedAt: time.Now()}
@@ -1266,12 +1219,7 @@ func TestActiveTaskState_StaleRefFileFallsThrough(t *testing.T) {
 // fall through 到优先级 3 兜底扫描而非中断——否则一个本应无歧义的 active task
 // 会被一个坏文件挡掉。
 func TestActiveTaskState_BranchProbeLoadFailureFallsThrough(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "test@test.com")
-	runGit(t, dir, "config", "user.name", "Test")
-	runGit(t, dir, "commit", "--allow-empty", "-m", "init")
-	runGit(t, dir, "checkout", "-b", "feat/broken")
+	dir := initRepoOnBranch(t, "feat/broken")
 
 	// Corrupt state file named after the branch-derived ref (priority-2 probe target).
 	//
@@ -1336,13 +1284,7 @@ func TestSetActiveAndClearActiveTaskRef(t *testing.T) {
 }
 
 func TestGateTimingExemptsAutoGates(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "test@test.com")
-	runGit(t, dir, "config", "user.name", "Test")
-	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0644)
-	runGit(t, dir, "add", ".")
-	runGit(t, dir, "commit", "-m", "initial")
+	dir := initRepoWithMainGo(t)
 
 	// Long interval — auto gate should be exempt
 	os.Setenv("FORGE_WORK_ACTIVITY", "disable")
@@ -1378,12 +1320,7 @@ func TestGateTimingExemptsAutoGates(t *testing.T) {
 // advisory 放行——corrupt success 兜底只拦「大改（≥3）零断言」。bar.go 单文件无测试无断言
 // → fudge factor 放行，task-complete 仍 PASS。
 func TestTestCoverageCheckScopedToVerifyGate(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "t@t.com")
-	runGit(t, dir, "config", "user.name", "T")
-	runGit(t, dir, "commit", "--allow-empty", "-m", "master init")
-	runGit(t, dir, "checkout", "-b", "feat/cov")
+	dir := initRepoOnBranch(t, "feat/cov")
 	// Source change with NO test — would fail task-verify.
 	writeFile := func(name, body string) {
 		full := filepath.Join(dir, name)
@@ -1542,12 +1479,7 @@ func TestTaskCompleteTestCoverageHardGate_EscapePasses(t *testing.T) {
 // （Conclusion/health/review 子 agent）才读得到。若有人删了接通块，下游行为测试只
 // 隐式暴露、定位困难——这里直接断言「盘上 state.DesignPhases == [requirement, api]」。
 func TestExecuteTaskGate_TaskVerify_PersistsDesignPhases(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "t@t.com")
-	runGit(t, dir, "config", "user.name", "T")
-	runGit(t, dir, "commit", "--allow-empty", "-m", "master init")
-	runGit(t, dir, "checkout", "-b", "feat/phase")
+	dir := initRepoOnBranch(t, "feat/phase")
 
 	writeFile := func(name, body string) {
 		full := filepath.Join(dir, name)
@@ -1626,12 +1558,7 @@ func TestExecuteTaskGate_TaskVerify_PersistsDesignPhases(t *testing.T) {
 // no Read is seeded — the hatch is what lets the gate pass, and it must leave a
 // trail.
 func TestWorkActivityEscapeHatchAuditsToChecklog(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "t@t.com")
-	runGit(t, dir, "config", "user.name", "T")
-	runGit(t, dir, "commit", "--allow-empty", "-m", "master init")
-	runGit(t, dir, "checkout", "-b", "feat/hatch")
+	dir := initRepoOnBranch(t, "feat/hatch")
 
 	t.Setenv("FORGE_WORK_ACTIVITY", "disable")
 
@@ -1645,17 +1572,7 @@ func TestWorkActivityEscapeHatchAuditsToChecklog(t *testing.T) {
 		t.Fatalf("task-verify should PASS with FORGE_WORK_ACTIVITY=disable: %v", err)
 	}
 
-	entries, err := checklog.LoadForTask(dir, "hatch-wa")
-	if err != nil {
-		t.Fatalf("LoadForTask: %v", err)
-	}
-	var found *checklog.Entry
-	for i := range entries {
-		if entries[i].Check == checklog.CheckEscapeHatch {
-			found = &entries[i]
-			break
-		}
-	}
+	found := firstCheckEntry(t, dir, "hatch-wa", checklog.CheckEscapeHatch)
 	if found == nil {
 		t.Fatal("escape-hatch checklog entry not recorded for FORGE_WORK_ACTIVITY=disable")
 	}
@@ -1674,12 +1591,7 @@ func TestWorkActivityEscapeHatchAuditsToChecklog(t *testing.T) {
 // advisory prose — the BLOCKED marker makes the hard stop unambiguous. Asserts both
 // the BLOCKED: contract prefix and the recognizable reason phrase.
 func TestReadBeforeEditFailureIsBlocked(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "t@t.com")
-	runGit(t, dir, "config", "user.name", "T")
-	runGit(t, dir, "commit", "--allow-empty", "-m", "master init")
-	runGit(t, dir, "checkout", "-b", "feat/rbe-block")
+	dir := initRepoOnBranch(t, "feat/rbe-block")
 
 	state := &TaskState{TaskRef: "rbe-block", Branch: "feat/rbe-block", StartedAt: time.Now()}
 	state.RecordGateResult("task-implement", true, "")
@@ -1714,12 +1626,7 @@ func TestReadBeforeEditFailureIsBlocked(t *testing.T) {
 // counterpart to the CI guard A — drift surfaced at `forge task complete` time, not
 // only after CI runs.
 func TestTaskComplete_DocsConsistencyAdvisory(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "t@t.com")
-	runGit(t, dir, "config", "user.name", "T")
-	runGit(t, dir, "commit", "--allow-empty", "-m", "master init")
-	runGit(t, dir, "checkout", "-b", "feat/docs")
+	dir := initRepoOnBranch(t, "feat/docs")
 
 	// The README references a non-existent forge command → drift.
 	//
@@ -1766,17 +1673,7 @@ func TestTaskComplete_DocsConsistencyAdvisory(t *testing.T) {
 	// Passed=true indicates the gate still passed.
 	//
 	// drift 信号必须记进 checklog（forge trace 可见），Passed=true 表 gate 仍通过。
-	entries, err := checklog.LoadForTask(dir, "docs-drift")
-	if err != nil {
-		t.Fatalf("LoadForTask: %v", err)
-	}
-	var found *checklog.Entry
-	for i := range entries {
-		if entries[i].Check == CheckNameDocsConsistency {
-			found = &entries[i]
-			break
-		}
-	}
+	found := firstCheckEntry(t, dir, "docs-drift", CheckNameDocsConsistency)
 	if found == nil {
 		t.Fatal("checklog 缺 docs-consistency advisory 条目（drift 信号未记录）")
 	}
@@ -1802,30 +1699,8 @@ func TestTaskComplete_DocsConsistencyAdvisory(t *testing.T) {
 // EvidenceChain 的 agent-claim 桶恒为 0，「完成声明 vs deterministic 支撑」的对比失效——
 // 本测试把数据源接入钉成可回归验证。
 func TestGateAdvancementRecordsAgentClaim(t *testing.T) {
-	setup := func(branch, taskRef string) string {
-		dir := t.TempDir()
-		runGit(t, dir, "init")
-		runGit(t, dir, "config", "user.email", "t@t.com")
-		runGit(t, dir, "config", "user.name", "T")
-		runGit(t, dir, "commit", "--allow-empty", "-m", "master init")
-		runGit(t, dir, "checkout", "-b", branch)
-		return dir
-	}
-	findClaim := func(dir, taskRef string, want checklog.CheckName) *checklog.Entry {
-		entries, err := checklog.LoadForTask(dir, taskRef)
-		if err != nil {
-			t.Fatalf("LoadForTask: %v", err)
-		}
-		for i := range entries {
-			if entries[i].TaskRef == taskRef && entries[i].Check == want {
-				return &entries[i]
-			}
-		}
-		return nil
-	}
-
 	t.Run("task-verify records agent-claim", func(t *testing.T) {
-		dir := setup("feat/claim-v", "claim-v")
+		dir := initRepoOnBranch(t, "feat/claim-v")
 		// Take the real read-before-edit path (seed a Read) rather than escaping
 		// via FORGE_WORK_ACTIVITY=disable — ensures the claim recording point is
 		// covered at the end of the real gate flow, guarding against future
@@ -1842,7 +1717,7 @@ func TestGateAdvancementRecordsAgentClaim(t *testing.T) {
 		if _, err := ExecuteTaskGate(dir, "task-verify", state); err != nil {
 			t.Fatalf("task-verify should pass: %v", err)
 		}
-		entry := findClaim(dir, "claim-v", checklog.CheckTaskVerify)
+		entry := firstCheckEntry(t, dir, "claim-v", checklog.CheckTaskVerify)
 		if entry == nil {
 			t.Fatal(`task-verify 未记录 CheckTaskVerify 声明（agent-claim 数据源断裂）`)
 		}
@@ -1852,7 +1727,7 @@ func TestGateAdvancementRecordsAgentClaim(t *testing.T) {
 	})
 
 	t.Run("task-complete records agent-claim", func(t *testing.T) {
-		dir := setup("feat/claim-c", "claim-c")
+		dir := initRepoOnBranch(t, "feat/claim-c")
 		state := &TaskState{TaskRef: "claim-c", Branch: "feat/claim-c"}
 		state.RecordGateResult("task-implement", true, "")
 		state.RecordGateResult("task-verify", true, "")
@@ -1860,7 +1735,7 @@ func TestGateAdvancementRecordsAgentClaim(t *testing.T) {
 		if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
 			t.Fatalf("task-complete should pass: %v", err)
 		}
-		entry := findClaim(dir, "claim-c", checklog.CheckTaskComplete)
+		entry := firstCheckEntry(t, dir, "claim-c", checklog.CheckTaskComplete)
 		if entry == nil {
 			t.Fatal(`task-complete 未记录 CheckTaskComplete 声明（agent-claim 数据源断裂）`)
 		}
@@ -1874,12 +1749,7 @@ func TestGateAdvancementRecordsAgentClaim(t *testing.T) {
 // has no forge-command drift, no docs-consistency advisory entry is recorded (no
 // noise). Advisory must fire ONLY on drift, not on every task-complete.
 func TestTaskComplete_DocsConsistencyNoDriftSilent(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "t@t.com")
-	runGit(t, dir, "config", "user.name", "T")
-	runGit(t, dir, "commit", "--allow-empty", "-m", "master init")
-	runGit(t, dir, "checkout", "-b", "feat/clean")
+	dir := initRepoOnBranch(t, "feat/clean")
 	// The README has no forge-command reference → no drift.
 	//
 	// README 无 forge 命令引用 → 无 drift。
@@ -1905,11 +1775,8 @@ func TestTaskComplete_DocsConsistencyNoDriftSilent(t *testing.T) {
 	if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
 		t.Fatalf("task-complete should pass: %v", err)
 	}
-	entries, _ := checklog.LoadForTask(dir, "docs-clean")
-	for _, e := range entries {
-		if e.Check == CheckNameDocsConsistency {
-			t.Errorf("无 drift 时不应记录 docs-consistency advisory，但找到：%+v", e)
-		}
+	if e := firstCheckEntry(t, dir, "docs-clean", CheckNameDocsConsistency); e != nil {
+		t.Errorf("无 drift 时不应记录 docs-consistency advisory，但找到：%+v", e)
 	}
 }
 
@@ -2081,15 +1948,7 @@ func TestTaskComplete_ReviewSnapshotUnreachableFailOpen(t *testing.T) {
 	// entry (regression-guard against stderr-only-no-trail).
 	//
 	// fail-open 必须落盘——断言 checklog 有 CheckNameReviewSnapshot 条目（防回归成「只 stderr 无痕迹」）。
-	entries, _ := checklog.LoadForTask(dir, `snap-unreachable`)
-	var found bool
-	for _, e := range entries {
-		if e.Check == CheckNameReviewSnapshot {
-			found = true
-			break
-		}
-	}
-	if !found {
+	if firstCheckEntry(t, dir, `snap-unreachable`, CheckNameReviewSnapshot) == nil {
 		t.Fatalf(`fail-open 应落 checklog:%s 留痕，实际无——score/dashboard 照不出"靠 fail-open 而非真复审通过"`, CheckNameReviewSnapshot)
 	}
 }
@@ -2133,12 +1992,7 @@ func TestTaskComplete_ReviewSnapshotCommitReviewedContentPasses(t *testing.T) {
 // ——两个窗口共享分支名不再把任务误挂给后问的那个。过期指针（超 TTL）不守卫
 // ——崩溃的会话不得连累任务变孤儿。
 func TestActiveTaskState_BranchGuardOtherActiveSession(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	runGit(t, dir, "config", "user.email", "t@t.t")
-	runGit(t, dir, "config", "user.name", "t")
-	runGit(t, dir, "commit", "--allow-empty", "-m", "init")
-	runGit(t, dir, "checkout", "-b", "feat/shared")
+	dir := initRepoOnBranch(t, "feat/shared")
 
 	ctx := &taskcontext.Context{Source: "explicit", TaskRef: "feat/shared", Branch: "feat/shared", Summary: "s", DetectedAt: time.Now()}
 	state := NewTaskState(ctx)

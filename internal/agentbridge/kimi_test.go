@@ -3,7 +3,6 @@ package agentbridge
 import (
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -207,22 +206,6 @@ func TestKimiTranslator_Translate_ReplacesStaleSection(t *testing.T) {
 	}
 	if !strings.HasPrefix(got, "default_model = \"x\"\n") || !strings.HasSuffix(got, "# user comment after section\n") {
 		t.Errorf("content outside markers not preserved:\n%s", got)
-	}
-}
-
-func TestKimiTranslator_Detect(t *testing.T) {
-	isolateHome(t) // DetectAgents also scans user-level install dirs — keep the real home out
-	// Project-level signal only: .kimi-code/ dir. The user-level auto-detect
-	// (~/.kimi-code / $KIMI_CODE_HOME) went away with Translator.Detect —
-	// DetectAgents deliberately ignores it (see detect.go: a user-level install
-	// exists on every machine with kimi, so it cannot be an auto-detect signal).
-	dir := t.TempDir()
-	if slices.Contains(DetectAgents(dir), AgentKimi) {
-		t.Errorf("DetectAgents true without any kimi signal")
-	}
-	os.MkdirAll(filepath.Join(dir, ".kimi-code"), 0755)
-	if !slices.Contains(DetectAgents(dir), AgentKimi) {
-		t.Errorf("DetectAgents false with .kimi-code/ present")
 	}
 }
 

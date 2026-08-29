@@ -44,22 +44,47 @@ func writeMigrateFixture(t *testing.T, root string) {
 	}
 }
 
+// migrateFixtureProject stands up a RealProject and chdirs into it — the
+// shared preamble of the migrate command tests (fixture seeding afterwards
+// uses absolute paths, so the order flip vs the old inline code is inert).
+//
+// migrateFixtureProject 建一个 RealProject 并 chdir 进去——migrate 命令测试
+// 共享的前置（之后的 fixture 播种用绝对路径，与旧内联顺序对调无影响）。
+func migrateFixtureProject(t *testing.T) string {
+	t.Helper()
+	root, _ := forgedatatest.RealProject(t)
+	chdirAndRestore(t, root)
+	return root
+}
+
+// runMigrateOK executes migrateCmd.RunE with stdout captured, failing the test
+// on error; returns the command output.
+//
+// runMigrateOK 执行 migrateCmd.RunE 并捕获 stdout，出错即测试失败；返回命令
+// 输出。
+func runMigrateOK(t *testing.T) string {
+	t.Helper()
+	var buf bytes.Buffer
+	migrateCmd.SetOut(&buf)
+	if err := migrateCmd.RunE(migrateCmd, nil); err != nil {
+		t.Fatalf(`migrate RunE: %v`, err)
+	}
+	return buf.String()
+}
+
 // TestMigrateCmd_PrintsMovedAndDataDir: cobra wiring + output contains migration entries +
 // the DataDir path.
 //
 // TestMigrateCmd_PrintsMovedAndDataDir：cobra 接线 + 输出含迁移条目 + DataDir 路径。
 func TestMigrateCmd_PrintsMovedAndDataDir(t *testing.T) {
-	root, _ := forgedatatest.RealProject(t)
+	root := migrateFixtureProject(t)
 	writeMigrateFixture(t, root)
-	chdirAndRestore(t, root)
 
-	var buf bytes.Buffer
-	migrateCmd.SetOut(&buf)
-	migrateCmd.SetArgs([]string{})
-	if err := migrateCmd.RunE(migrateCmd, nil); err != nil {
-		t.Fatalf(`migrate RunE: %v`, err)
-	}
-	out := buf.String()
+	// SetArgs was dropped: RunE(cmd, nil) receives args directly, so the stored
+	// args slice is never consulted.
+	//
+	// 去掉了 SetArgs：RunE(cmd, nil) 直接收 args，存起来的 args 切片不会被读取。
+	out := runMigrateOK(t)
 	if !strings.Contains(out, `checklog.jsonl`) {
 		t.Errorf(`输出应含迁移的 checklog.jsonl，实得 %q`, out)
 	}
@@ -81,19 +106,13 @@ func TestMigrateCmd_PrintsMovedAndDataDir(t *testing.T) {
 //
 // TestMigrateCmd_DryRunNoMove：--dry-run 输出标记但源文件仍在 .forge/。
 func TestMigrateCmd_DryRunNoMove(t *testing.T) {
-	root, _ := forgedatatest.RealProject(t)
+	root := migrateFixtureProject(t)
 	writeMigrateFixture(t, root)
-	chdirAndRestore(t, root)
 
 	migrateDryRun = true
 	t.Cleanup(func() { migrateDryRun = false })
 
-	var buf bytes.Buffer
-	migrateCmd.SetOut(&buf)
-	if err := migrateCmd.RunE(migrateCmd, nil); err != nil {
-		t.Fatalf(`migrate RunE: %v`, err)
-	}
-	out := buf.String()
+	out := runMigrateOK(t)
 	if !strings.Contains(out, `dry-run`) {
 		t.Errorf(`dry-run 输出应含标记，实得 %q`, out)
 	}
@@ -169,7 +188,7 @@ const hostileTaskJSON = `{
 // acceptance pre-flight、Overrides 削门禁）。验收 Run 作为 spec 保留但带外来标记，
 // verify-acceptance 执行前须 --trust-foreign。
 func TestMigrateCmd_SanitizesForeignTaskSignals(t *testing.T) {
-	root, _ := forgedatatest.RealProject(t)
+	root := migrateFixtureProject(t)
 	tasksDir := filepath.Join(root, `.forge`, `tasks`)
 	if err := os.MkdirAll(tasksDir, 0755); err != nil {
 		t.Fatalf(`mkdir tasks: %v`, err)
@@ -182,14 +201,8 @@ func TestMigrateCmd_SanitizesForeignTaskSignals(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(tasksDir, `feat-evil.json`), []byte(hostileTaskJSON), 0644); err != nil {
 		t.Fatalf(`write hostile task: %v`, err)
 	}
-	chdirAndRestore(t, root)
 
-	var buf bytes.Buffer
-	migrateCmd.SetOut(&buf)
-	if err := migrateCmd.RunE(migrateCmd, nil); err != nil {
-		t.Fatalf(`migrate RunE: %v`, err)
-	}
-	if out := buf.String(); !strings.Contains(out, `清洗`) {
+	if out := runMigrateOK(t); !strings.Contains(out, `清洗`) {
 		t.Errorf(`输出应含清洗报告行, got: %s`, out)
 	}
 
@@ -262,7 +275,7 @@ const brokenTaskJSON = `{
 //  2. 根因修复后重跑 migrate，即便 tasks 迁移本身此时 SKIP（dst 已存在 → tasks ∉ Moved）
 //     也完成清洗——标记是唯一会重新触发的引信；成功后清除标记。
 func TestMigrateCmd_SanitizeFailClosedAndMarkerRetry(t *testing.T) {
-	root, _ := forgedatatest.RealProject(t)
+	root := migrateFixtureProject(t)
 	tasksDir := filepath.Join(root, `.forge`, `tasks`)
 	if err := os.MkdirAll(tasksDir, 0755); err != nil {
 		t.Fatalf(`mkdir tasks: %v`, err)
@@ -279,7 +292,6 @@ func TestMigrateCmd_SanitizeFailClosedAndMarkerRetry(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(tasksDir, `feat-broken.json`), []byte(`{not-json`), 0644); err != nil {
 		t.Fatalf(`write broken task: %v`, err)
 	}
-	chdirAndRestore(t, root)
 
 	// 1. Fail-closed: RunE errors (non-zero exit) and the pending marker is left behind.
 	//
@@ -309,13 +321,9 @@ func TestMigrateCmd_SanitizeFailClosedAndMarkerRetry(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dstTasks, `feat-broken.json`), []byte(brokenTaskJSON), 0644); err != nil {
 		t.Fatalf(`rewrite broken task: %v`, err)
 	}
-	var buf2 bytes.Buffer
-	migrateCmd.SetOut(&buf2)
-	if err := migrateCmd.RunE(migrateCmd, nil); err != nil {
-		t.Fatalf(`根因修复后重跑 migrate 应成功（标记触发重试清洗）: %v`, err)
-	}
-	if out := buf2.String(); !strings.Contains(out, `清洗`) {
-		t.Errorf(`重试 run 应报告清洗（tasks ∉ Moved 也须由标记触发）, got: %s`, out)
+	out2 := runMigrateOK(t)
+	if !strings.Contains(out2, `清洗`) {
+		t.Errorf(`重试 run 应报告清洗（tasks ∉ Moved 也须由标记触发）, got: %s`, out2)
 	}
 	if _, statErr := os.Stat(marker); statErr == nil {
 		t.Errorf(`清洗成功后 pending 标记应被清除（否则将来多触发一次幂等清洗）`)
@@ -348,7 +356,7 @@ func TestMigrateCmd_SanitizeFailClosedAndMarkerRetry(t *testing.T) {
 // 目录时迁移 SKIP（无外来内容进入）——清洗 pass 不得触发，否则会剥离合法完成的本机任务状态。
 // 信任剥离严格限定于「本次 run 实际落地的 tasks 目录」。
 func TestMigrateCmd_SkipPathDoesNotSanitizeLocalTasks(t *testing.T) {
-	root, _ := forgedatatest.RealProject(t)
+	root := migrateFixtureProject(t)
 	// A legitimately-completed LOCAL task already in DataDir.
 	//
 	// DataDir 里已有一个合法完成的本机任务。
@@ -376,14 +384,8 @@ func TestMigrateCmd_SkipPathDoesNotSanitizeLocalTasks(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(tasksDir, `feat-evil.json`), []byte(hostileTaskJSON), 0644); err != nil {
 		t.Fatalf(`write hostile task: %v`, err)
 	}
-	chdirAndRestore(t, root)
 
-	var buf bytes.Buffer
-	migrateCmd.SetOut(&buf)
-	if err := migrateCmd.RunE(migrateCmd, nil); err != nil {
-		t.Fatalf(`migrate RunE: %v`, err)
-	}
-	if out := buf.String(); strings.Contains(out, `清洗`) {
+	if out := runMigrateOK(t); strings.Contains(out, `清洗`) {
 		t.Errorf(`skip 路径无外来任务落地，不应触发清洗: %s`, out)
 	}
 

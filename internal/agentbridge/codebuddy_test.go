@@ -24,6 +24,20 @@ func generateCodeBuddyPack(t *testing.T) string {
 	return dir
 }
 
+// setupWorkBuddyEnv isolates both the WorkBuddy config dir and the forge data home
+// into temp dirs (the strip seams touch both), returning them.
+//
+// setupWorkBuddyEnv 把 WorkBuddy 配置目录与 forge 数据根隔离进 temp dir（strip 的
+// 各 seam 两者都碰），返回它们。
+func setupWorkBuddyEnv(t *testing.T) (wb, forgeHome string) {
+	t.Helper()
+	wb = t.TempDir()
+	t.Setenv("WORKBUDDY_CONFIG_DIR", wb)
+	forgeHome = t.TempDir()
+	t.Setenv("FORGE_DATA_HOME", forgeHome)
+	return wb, forgeHome
+}
+
 // TestCodeBuddyHooksPayload_MirrorsSpec: BuildCodeBuddyHooksPayload must equal ForgeHookSpec
 // (under one "hooks" key) with exactly ONE rewrite — every command gains the
 // `--agent codebuddy` suffix (attribution identity; see BuildCodeBuddyHooksPayload).
@@ -183,24 +197,7 @@ func TestCodeBuddyPluginPack_Idempotent(t *testing.T) {
 // TestCodeBuddyPluginPack_NoCurlyQuotes：[[windows-input-quote-corruption]] 回归守卫——生成文件
 // 绝不含弯引号 U+201C/U+201D。目标用 rune 构造，即使测试源码字面量被腐蚀断言仍成立。
 func TestCodeBuddyPluginPack_NoCurlyQuotes(t *testing.T) {
-	dir := generateCodeBuddyPack(t)
-	curly := string([]rune{0x201c, 0x201d})
-	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
-			return err
-		}
-		data, e := os.ReadFile(path)
-		if e != nil {
-			return e
-		}
-		if strings.ContainsAny(string(data), curly) {
-			t.Errorf("%s contains curly quotes (Windows input corruption)", info.Name())
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	assertNoCurlyQuotes(t, generateCodeBuddyPack(t))
 }
 
 // TestParseAgentFlag_CodeBuddy_Explicit: --agents codebuddy resolves to [AgentCodeBuddy].
@@ -226,21 +223,6 @@ func TestParseAgentFlag_CodeBuddy_NotAutoDetected(t *testing.T) {
 		if a == AgentCodeBuddy {
 			t.Fatal("codebuddy must NOT be auto-detected (~/.workbuddy always-exists trap; use --agents codebuddy explicitly)")
 		}
-	}
-}
-
-// TestCodeBuddyTranslator_Registered: AllTranslators includes CodeBuddyTranslator.
-//
-// TestCodeBuddyTranslator_Registered：AllTranslators 含 CodeBuddyTranslator。
-func TestCodeBuddyTranslator_Registered(t *testing.T) {
-	var found bool
-	for _, tr := range AllTranslators() {
-		if tr.AgentType() == AgentCodeBuddy {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatal("CodeBuddyTranslator not registered in AllTranslators")
 	}
 }
 
@@ -473,9 +455,7 @@ func TestStripCodeBuddyHooks(t *testing.T) {
 	}
 
 	t.Run("full wiring", func(t *testing.T) {
-		wb := t.TempDir()
-		t.Setenv("WORKBUDDY_CONFIG_DIR", wb)
-		t.Setenv("FORGE_DATA_HOME", t.TempDir())
+		wb, fh := setupWorkBuddyEnv(t)
 
 		kmPath := filepath.Join(wb, "plugins", "known_marketplaces.json")
 		writeFile(t, kmPath, `{
@@ -487,7 +467,6 @@ func TestStripCodeBuddyHooks(t *testing.T) {
   "theme": "dark",
   "enabledPlugins": {"other@market": true, "forge@forge-local": true}
 }`)
-		fh := os.Getenv("FORGE_DATA_HOME")
 		assets := filepath.Join(fh, "agents", "codebuddy", codebuddyMarketplaceName)
 		writeFile(t, filepath.Join(assets, "marketplace.json"), `{}`)
 
@@ -538,9 +517,7 @@ func TestStripCodeBuddyHooks(t *testing.T) {
 	})
 
 	t.Run("empty enabledPlugins shell", func(t *testing.T) {
-		wb := t.TempDir()
-		t.Setenv("WORKBUDDY_CONFIG_DIR", wb)
-		t.Setenv("FORGE_DATA_HOME", t.TempDir())
+		wb, _ := setupWorkBuddyEnv(t)
 		setPath := filepath.Join(wb, "settings.json")
 		writeFile(t, setPath, `{"enabledPlugins": {"forge@forge-local": true}}`)
 
@@ -559,9 +536,7 @@ func TestStripCodeBuddyHooks(t *testing.T) {
 	})
 
 	t.Run("malformed config untouched", func(t *testing.T) {
-		wb := t.TempDir()
-		t.Setenv("WORKBUDDY_CONFIG_DIR", wb)
-		t.Setenv("FORGE_DATA_HOME", t.TempDir())
+		wb, _ := setupWorkBuddyEnv(t)
 		kmPath := filepath.Join(wb, "plugins", "known_marketplaces.json")
 		garbage := "{ not json"
 		writeFile(t, kmPath, garbage)
@@ -584,10 +559,7 @@ func TestStripCodeBuddyHooks(t *testing.T) {
 	// known_marketplaces.json 解析失败，forge 自有资产目录也要被删——提前 return
 	// 的旧实现会让资产目录活过卸载，直到用户手修自己损坏的文件。
 	t.Run("malformed config still removes forge assets", func(t *testing.T) {
-		wb := t.TempDir()
-		t.Setenv("WORKBUDDY_CONFIG_DIR", wb)
-		fh := t.TempDir()
-		t.Setenv("FORGE_DATA_HOME", fh)
+		wb, fh := setupWorkBuddyEnv(t)
 		kmPath := filepath.Join(wb, "plugins", "known_marketplaces.json")
 		writeFile(t, kmPath, "{ not json")
 		assets := filepath.Join(fh, "agents", "codebuddy", codebuddyMarketplaceName)
@@ -606,9 +578,7 @@ func TestStripCodeBuddyHooks(t *testing.T) {
 	})
 
 	t.Run("clean env no-op", func(t *testing.T) {
-		wb := t.TempDir()
-		t.Setenv("WORKBUDDY_CONFIG_DIR", wb)
-		t.Setenv("FORGE_DATA_HOME", t.TempDir())
+		setupWorkBuddyEnv(t)
 		changed, err := StripCodeBuddyHooks()
 		if err != nil || changed {
 			t.Fatalf("clean strip = (%v, %v)，want (false, nil)", changed, err)
