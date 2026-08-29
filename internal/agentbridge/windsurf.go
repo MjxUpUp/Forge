@@ -84,7 +84,7 @@ func (t *WindsurfTranslator) Translate(projectDir string, input *TranslationInpu
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(hooksPath, merged, 0644); err != nil {
+	if err := util.AtomicWrite(hooksPath, merged, 0644); err != nil {
 		return fmt.Errorf("windsurf: write hooks.json: %w", err)
 	}
 
@@ -121,13 +121,13 @@ func (t *WindsurfTranslator) Translate(projectDir string, input *TranslationInpu
 	}
 	if len(existing) > 0 {
 		updated := replaceForgeRules(string(existing), content)
-		return os.WriteFile(rulesPath, []byte(updated), 0644)
+		return util.AtomicWrite(rulesPath, []byte(updated), 0644)
 	}
 
 	// Create a new file.
 	//
 	// 创建新文件
-	return os.WriteFile(rulesPath, []byte(content), 0644)
+	return util.AtomicWrite(rulesPath, []byte(content), 0644)
 }
 
 // WindsurfGlobalRulesPath resolves Windsurf's user-level global rules file
@@ -259,7 +259,7 @@ func StripWindsurfHooksUserLevel() (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("windsurf: marshal hooks.json: %w", err)
 	}
-	if err := os.WriteFile(path, append(data, '\n'), 0644); err != nil {
+	if err := util.AtomicWrite(path, append(data, '\n'), 0644); err != nil {
 		return false, fmt.Errorf("windsurf: failed to write hooks.json: %w", err)
 	}
 	return true, nil
@@ -290,7 +290,7 @@ func StripWindsurfGlobalRules() (bool, error) {
 		return false, nil
 	}
 	updated := replaceForgeRules(content, ``)
-	if err := os.WriteFile(path, []byte(updated), 0644); err != nil {
+	if err := util.AtomicWrite(path, []byte(updated), 0644); err != nil {
 		return false, fmt.Errorf("windsurf: failed to write global_rules.md: %w", err)
 	}
 	return true, nil

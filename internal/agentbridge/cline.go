@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/hooks"
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // Cline wiring (Wave 3b). Cline v3.36+ ships file-based lifecycle hooks: executable
@@ -265,7 +266,7 @@ func (t *ClineTranslator) Translate(projectDir string, input *TranslationInput) 
 		// 0755: cline requires the hook script to be executable.
 		//
 		// 0755：cline 要求 hook 脚本可执行。
-		if err := os.WriteFile(filepath.Join(dir, e.clineEvent), []byte(script), 0755); err != nil {
+		if err := util.AtomicWrite(filepath.Join(dir, e.clineEvent), []byte(script), 0755); err != nil {
 			return fmt.Errorf("write cline hook %s: %w", e.clineEvent, err)
 		}
 	}
@@ -292,7 +293,16 @@ func StripClineHooks() (bool, error) {
 		target := filepath.Join(dir, e.clineEvent)
 		data, err := os.ReadFile(target)
 		if err != nil {
-			continue // missing → nothing to strip
+			if os.IsNotExist(err) {
+				continue // missing → nothing to strip
+			}
+			// Read failures other than missing (lock/permission/IO) must surface —
+			// silently skipping leaves forge wrappers installed while reporting
+			// "nothing to clean" to uninstall (same contract as the sibling Strip funcs).
+			//
+			// 非缺失的读失败（锁/权限/IO）必须上抛——静默跳过会留下仍在运行的
+			// forge wrapper 却向 uninstall 报"无东西可清"（与兄弟 Strip 函数同契约）。
+			return changed, fmt.Errorf("read cline hook %s: %w", e.clineEvent, err)
 		}
 		if !strings.Contains(string(data), clineWrapperMarker) {
 			continue // user script — never touched

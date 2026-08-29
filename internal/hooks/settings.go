@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/userassets"
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // embeddedHooks maps each script name (without the .sh suffix) to its embedded content.
@@ -429,7 +430,7 @@ func mergeForgeHooksIntoSettings(path string) error {
 		if err := json.Unmarshal(raw, &spec); err != nil {
 			return fmt.Errorf("parse existing hooks section in %s: %w", filepath.Base(path), err)
 		}
-		kept = stripForgeMatchersRaw(spec)
+		kept, _ = stripForgeMatchersRaw(spec)
 	}
 	for event, matchers := range ForgeHookSpec() {
 		raw, err := json.Marshal(matchers)
@@ -452,7 +453,7 @@ func mergeForgeHooksIntoSettings(path string) error {
 	if err != nil {
 		return fmt.Errorf("marshal settings: %w", err)
 	}
-	return os.WriteFile(path, data, 0644)
+	return util.AtomicWrite(path, data, 0644)
 }
 
 // stripForgeMatchersRaw removes forge-sourced hook entries (isForgeHookCommand) from
@@ -467,8 +468,9 @@ func mergeForgeHooksIntoSettings(path string) error {
 // 不丢）；被掏空的 matcher/event 一并移除。镜像 agentbridge 的 raw strip helper——
 // 因那些 helper 未导出且 hooks 不能 import agentbridge（agentbridge 已 import
 // hooks，反向会成环）而在此复制。
-func stripForgeMatchersRaw(spec map[string][]json.RawMessage) map[string][]json.RawMessage {
+func stripForgeMatchersRaw(spec map[string][]json.RawMessage) (map[string][]json.RawMessage, bool) {
 	kept := make(map[string][]json.RawMessage, len(spec))
+	removedAny := false
 	for event, matchers := range spec {
 		var keptMatchers []json.RawMessage
 		for _, rawMatcher := range matchers {
@@ -488,6 +490,7 @@ func stripForgeMatchersRaw(spec map[string][]json.RawMessage) map[string][]json.
 				}
 				if err := json.Unmarshal(rawEntry, &cmd); err == nil && isForgeHookCommand(cmd.Command) {
 					removed = true
+					removedAny = true
 					continue
 				}
 				keptEntries = append(keptEntries, rawEntry)
@@ -520,7 +523,7 @@ func stripForgeMatchersRaw(spec map[string][]json.RawMessage) map[string][]json.
 			kept[event] = keptMatchers
 		}
 	}
-	return kept
+	return kept, removedAny
 }
 
 // StripForgeHooks removes the forge hooks from projectDir/.claude/settings.local.json.
@@ -611,32 +614,18 @@ func StripForgeHooksAt(path string, keepEmpty bool) (changed bool, err error) {
 	if !hasHooks {
 		return false, nil
 	}
-	var hookSpec map[string][]HookMatcher
+	// Raw strip (same helper as the merge path): a typed HookMatcher/HookEntry
+	// round-trip silently drops unknown fields on USER entries (per-hook timeout etc.)
+	// — the exact damage the merge path's raw handling was built to avoid.
+	//
+	// Raw 剥离（与 merge 路径同一助手）：类型化 HookMatcher/HookEntry 往返会静默
+	// 丢弃用户条目上的未知字段（per-hook timeout 等）——正是 merge 路径改用 raw
+	// 处理要避免的损害。
+	var hookSpec map[string][]json.RawMessage
 	if err := json.Unmarshal(hooksRaw, &hookSpec); err != nil {
 		return false, fmt.Errorf("parse hooks: %w", err)
 	}
-	cleaned := make(map[string][]HookMatcher)
-	removedAny := false
-	for event, matchers := range hookSpec {
-		var keptMatchers []HookMatcher
-		for _, m := range matchers {
-			var keptHooks []HookEntry
-			for _, h := range m.Hooks {
-				if isForgeHookCommand(h.Command) {
-					removedAny = true
-					continue
-				}
-				keptHooks = append(keptHooks, h)
-			}
-			if len(keptHooks) > 0 {
-				m.Hooks = keptHooks
-				keptMatchers = append(keptMatchers, m)
-			}
-		}
-		if len(keptMatchers) > 0 {
-			cleaned[event] = keptMatchers
-		}
-	}
+	cleaned, removedAny := stripForgeMatchersRaw(hookSpec)
 	if !removedAny {
 		return false, nil
 	}
@@ -657,7 +646,7 @@ func StripForgeHooksAt(path string, keepEmpty bool) (changed bool, err error) {
 		// keepEmpty=true: 自动路径（init-suggest / autoSync / init·sync）——保留文件壳,写 {}。
 		// keepEmpty=false: 手动 forge plugin dedupe（显式清理）——删空文件。
 		if keepEmpty {
-			return true, os.WriteFile(path, []byte("{}\n"), 0644)
+			return true, util.AtomicWrite(path, []byte("{}\n"), 0644)
 		}
 		if err := os.Remove(path); err != nil {
 			return false, fmt.Errorf("remove empty settings.local.json: %w", err)
@@ -668,7 +657,7 @@ func StripForgeHooksAt(path string, keepEmpty bool) (changed bool, err error) {
 	if mErr != nil {
 		return false, fmt.Errorf("marshal settings: %w", mErr)
 	}
-	return true, os.WriteFile(path, out, 0644)
+	return true, util.AtomicWrite(path, out, 0644)
 }
 
 // isForgeHookCommand reports whether a hook command comes from forge (the commands written
@@ -714,7 +703,7 @@ func WriteHookDeployStamp(dataDir, projectTag string) error {
 		return err
 	}
 	content := fmt.Sprintf("%d %s\n", time.Now().Unix(), projectTag)
-	return os.WriteFile(filepath.Join(stampsDir, "hook-deploy"), []byte(content), 0644)
+	return util.AtomicWrite(filepath.Join(stampsDir, "hook-deploy"), []byte(content), 0644)
 }
 
 // WriteHookTemplates writes the embedded hook scripts into .forge/hooks/.
@@ -760,7 +749,7 @@ func WriteHookTemplates(forgeDir string) error {
 
 	for name, content := range fileHooks {
 		path := filepath.Join(hooksDir, name)
-		if err := os.WriteFile(path, []byte(content), 0755); err != nil {
+		if err := util.AtomicWrite(path, []byte(content), 0755); err != nil {
 			return fmt.Errorf("failed to write hook %s: %w", name, err)
 		}
 	}

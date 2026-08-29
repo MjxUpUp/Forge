@@ -507,9 +507,14 @@ func jsonlLineTimestamp(line string) (time.Time, bool) {
 	return time.Time{}, false
 }
 
-// MoveFile renames src to dst, falling back to copy+remove across devices.
+// MoveFile renames src to dst, falling back to copy+remove across devices. The
+// fallback writes dst atomically (temp+rename in dst's dir): staging often lives on
+// the OS temp volume while DataDir is elsewhere, and a truncate-write interrupted
+// mid-copy would leave a corrupted destination.
 //
-// MoveFile 把 src rename 到 dst，跨设备时回落 copy+remove。
+// MoveFile 把 src rename 到 dst，跨设备时回落 copy+remove。回退路径用原子写
+// （dst 目录下 temp+rename）：staging 常在系统临时卷而 DataDir 在别处，截断式
+// 写中途被打断会留下损坏的目标文件。
 func MoveFile(src, dst string) error {
 	if err := os.Rename(src, dst); err == nil {
 		return nil
@@ -518,7 +523,7 @@ func MoveFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(dst, data, 0644); err != nil {
+	if err := util.AtomicWrite(dst, data, 0644); err != nil {
 		return err
 	}
 	return os.Remove(src)
