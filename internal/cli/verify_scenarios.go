@@ -1,12 +1,16 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
+
+	"github.com/MjxUpUp/Forge/internal/registry"
 )
 
 // ScenarioResult holds the result of a single E2E scenario run.
@@ -170,26 +174,26 @@ func runScenarioFreshInstall(forgeBin string) ScenarioResult {
 		outputLines = append(outputLines, ".forge should NOT exist (zero-project-write default)")
 	}
 
-	// Registry at the isolated user level records the project. The stored path may
-	// be the symlink-resolved physical form (macOS /var → /private/var: the
-	// registration path passes through root resolution), so both the lexical and
-	// the resolved form count as a hit — matched as a quoted JSON string to avoid
-	// substring accidents.
+	// Registry at the isolated user level records the project. Assertion is
+	// STRUCTURED: json.Unmarshal the registry into registry.File and compare each
+	// entry's path by value (filepath.Clean + Windows EqualFold). The old raw
+	// substring match `"dir"` was permanently red on Windows — JSON escapes
+	// backslashes, so the literal needle C:\...\dir never occurs in the encoded
+	// bytes. The stored path may also be the symlink-resolved physical form
+	// (macOS /var → /private/var: the registration path passes through root
+	// resolution), so both the lexical and the resolved form count as a hit.
 	//
-	// 隔离用户级的注册表登记了该项目。存储路径可能是 symlink 解析后的物理形态
-	// （macOS /var → /private/var：登记路径经过 root 解析），故字面与解析形态
-	// 任一命中即算——按带引号的 JSON 字符串匹配避免子串巧合。
+	// 隔离用户级的注册表登记了该项目。断言走结构化：json.Unmarshal 进
+	// registry.File 后逐条路径等值比较（filepath.Clean + Windows 下 EqualFold）。
+	// 旧的原始子串匹配 `"dir"` 在 Windows 上恒红——JSON 会转义反斜杠，字面
+	// needle C:\...\dir 在编码后的字节里永不出现。存储路径还可能是 symlink
+	// 解析后的物理形态（macOS /var → /private/var：登记路径经过 root 解析），
+	// 故字面与解析形态任一命中即算。
 	regData, err := os.ReadFile(filepath.Join(senv.dataHome, "projects.json"))
 	if err != nil {
 		outputLines = append(outputLines, fmt.Sprintf("projects.json missing: %v", err))
-	} else {
-		registered := strings.Contains(string(regData), `"`+dir+`"`)
-		if resolved, rerr := filepath.EvalSymlinks(dir); rerr == nil {
-			registered = registered || strings.Contains(string(regData), `"`+resolved+`"`)
-		}
-		if !registered {
-			outputLines = append(outputLines, fmt.Sprintf("projects.json should contain %s", dir))
-		}
+	} else if !scenarioRegistryHasPath(regData, dir) {
+		outputLines = append(outputLines, fmt.Sprintf("projects.json should contain %s (entries: %s)", dir, regData))
 	}
 
 	// Run forge status (triggers autoSync: DataDir hook copies + user-level assets).
@@ -696,6 +700,47 @@ scoring:
 // ---------- helper functions ----------
 //
 // ---------- 辅助函数 ----------
+
+// scenarioRegistryHasPath reports whether the projects.json bytes (as written by
+// the forge subprocess) register want — or its symlink-resolved physical form —
+// as a project entry. Structured comparison, replacing the old raw substring
+// match that was permanently red on Windows (JSON escapes backslashes, so the
+// literal needle never occurs in encoded bytes): unmarshal into registry.File
+// (accepts both the entry-list and the legacy string-list shape) and compare
+// paths by value — filepath.Clean removes lexical form differences, Windows
+// compares case-insensitively (EqualFold, mirroring registry.pathKey semantics).
+//
+// scenarioRegistryHasPath 判断 projects.json 字节（forge 子进程所写）是否登记了
+// want——或其 symlink 解析后的物理形态。结构化比较，取代旧的原始子串匹配
+// （后者在 Windows 恒红：JSON 转义反斜杠，字面 needle 在编码字节里永不出现）：
+// unmarshal 进 registry.File（条目列表与遗留字符串列表两种形态都接受）后按值
+// 比较路径——filepath.Clean 消词法形态差异，Windows 大小写不敏感比较
+// （EqualFold，对齐 registry.pathKey 语义）。
+func scenarioRegistryHasPath(regData []byte, want string) bool {
+	var f registry.File
+	if err := json.Unmarshal(regData, &f); err != nil {
+		return false
+	}
+	candidates := []string{want}
+	if resolved, err := filepath.EvalSymlinks(want); err == nil {
+		candidates = append(candidates, resolved)
+	}
+	samePath := func(a, b string) bool {
+		a, b = filepath.Clean(a), filepath.Clean(b)
+		if runtime.GOOS == "windows" {
+			return strings.EqualFold(a, b)
+		}
+		return a == b
+	}
+	for _, e := range f.Projects {
+		for _, c := range candidates {
+			if samePath(e.Path, c) {
+				return true
+			}
+		}
+	}
+	return false
+}
 
 func failResult(name, output string, start time.Time) ScenarioResult {
 	return ScenarioResult{Name: name, Passed: false, Output: output, Duration: time.Since(start)}

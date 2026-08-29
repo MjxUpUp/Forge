@@ -711,12 +711,17 @@ func handleTarget(src, dst, state string, mode Mode, policy DriftPolicy) (string
 // backupTarget backs up the dst about to be overwritten to backupBase/<target>/<skill>.
 // Only real-directory copies are backed up (the user's local customizations); link/junction has no
 // independent content, broken-link/nonexistent/non-directory has no content — all are skipped and
-// return an empty string. Uses copyTree (consistent with install, skips .git/node_modules).
+// return an empty string. Uses a FULL copy (copyTreeFiltered with no skip set — unlike install's
+// copyTree, the backup must snapshot EVERYTHING, .git/node_modules included: it is the rollback
+// copy of the user's local state, and the skip-blind-spot fix means target-side .git now counts
+// as drift → this backup path is exactly what preserves it).
 // Returns an error on failure; the caller decides whether to continue overwriting.
 //
 // backupTarget 把即将被 overwrite 的 dst 备份到 backupBase/<target>/<skill>。
 // 只备份真目录副本（用户的本地定制）；link/junction 无独立内容、断链/不存在/非目录无内容，
-// 一律跳过返回空串。用 copyTree（与 install 一致，跳过 .git/node_modules）。
+// 一律跳过返回空串。用完整拷贝（copyTreeFiltered 不带跳过集——与 install 的 copyTree
+// 不同，备份必须快照全部内容，含 .git/node_modules：它是用户本地状态的回滚副本，
+// 且 skip 盲区修复后目标侧 .git 计入 drift → 恰是这条备份路径保住它）。
 // 失败返回 error，调用方决定是否继续 overwrite。
 func backupTarget(dst, backupBase, target, skill string) (string, error) {
 	if backupBase == "" {
@@ -755,7 +760,7 @@ func backupTarget(dst, backupBase, target, skill string) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(bkDir), 0755); err != nil {
 		return "", err
 	}
-	if err := copyTree(dst, bkDir); err != nil {
+	if err := copyTreeFiltered(dst, bkDir, nil); err != nil {
 		return "", err
 	}
 	return bkDir, nil
@@ -830,18 +835,44 @@ func detectState(canonicalSkillDir, targetSkillDir string) string {
 // to be equal. Any missing/extra/different entry → not in sync. Any read error →
 // conservatively not in sync (drift), never falsely in-sync.
 //
+// Skip-blind-spot guard (review fix): distSkipDirs are ignored in the CONTENT
+// comparison on both sides, but the TARGET side records which skip dirs exist.
+// A skip dir present only in the target (e.g. the user ran git init inside the
+// installed copy → .git/) is DRIFT — copy-in-sync would otherwise let link mode
+// os.RemoveAll the whole target with no backup (backup only triggers on
+// StateDrift), silently destroying the user's .git. A skip dir present on BOTH
+// sides stays in sync (canonical's copy is not distributed, target's survives
+// copyTree's skip — consistent).
+//
 // treesInSync 判断两棵 skill 树内容是否完全一致。双侧按 copyTree 同款规则遍历
 // （同 distSkipDirs、link 不跟随——但其 target 串参与对比，仅 link 差异也判
 // drift），逐文件算 hash，要求相对路径集合与逐条目 hash 都相等。任一条目
 // 缺失/新增/内容不同 → 非同步。任何读取错误 → 保守判非同步（drift），绝不误判为同步。
+//
+// skip 盲区守卫（审查修复）：distSkipDirs 在双侧内容对比中被忽略，但目标侧
+// 会记录存在哪些被跳过的目录。目标单侧存在的被跳过目录（如用户在装出的副本里
+// git init 出的 .git/）判 DRIFT——否则 copy-in-sync 会让 link 模式无备份
+// os.RemoveAll 整树（备份只在 StateDrift 触发），静默销毁用户的 .git。双侧都
+// 存在的被跳过目录仍判同步（canonical 的那份不分发、目标的经 copyTree 跳过
+// 存活——口径一致）。
 func treesInSync(src, dst string) bool {
-	srcFiles := hashTree(src)
-	dstFiles := hashTree(dst)
+	srcFiles, srcSkipped := hashTreeWithSkippedDirs(src)
+	dstFiles, dstSkipped := hashTreeWithSkippedDirs(dst)
 	if srcFiles == nil || dstFiles == nil || len(srcFiles) != len(dstFiles) {
 		return false
 	}
 	for rel, h := range srcFiles {
 		if dstFiles[rel] != h {
+			return false
+		}
+	}
+	// Target-only skip dirs → the target holds local state canonical does not
+	// have → drift (the caller's backup path then preserves it).
+	//
+	// 目标单侧的被跳过目录 → 目标持有 canonical 没有的本地状态 → drift
+	// （调用方的备份路径随之保住它）。
+	for rel := range dstSkipped {
+		if !srcSkipped[rel] {
 			return false
 		}
 	}
@@ -857,13 +888,29 @@ func treesInSync(src, dst string) bool {
 // Windows junction——以其 target 串的 "link-" 前缀 hash 参与），遍历规则与
 // copyTree 一致。任何遍历/读取错误返回 nil（调用方按"无法证明一致"处理）。
 func hashTree(root string) map[string]string {
+	files, _ := hashTreeWithSkippedDirs(root)
+	return files
+}
+
+// hashTreeWithSkippedDirs is hashTree plus the set of distSkipDirs-relative
+// paths encountered during the walk (the skip-blind-spot input for treesInSync;
+// see its comment). Returns (nil, nil) on any walk/read error.
+//
+// hashTreeWithSkippedDirs 在 hashTree 之外额外返回遍历中遇到的被跳过目录的相对
+// 路径集合（treesInSync 的 skip 盲区输入，见其注释）。任何遍历/读取错误返
+// (nil, nil)。
+func hashTreeWithSkippedDirs(root string) (map[string]string, map[string]bool) {
 	out := map[string]string{}
+	skipped := map[string]bool{}
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() {
 			if distSkipDirs[d.Name()] {
+				if rel, rerr := filepath.Rel(root, path); rerr == nil {
+					skipped[rel] = true
+				}
 				return filepath.SkipDir
 			}
 			return nil
@@ -910,9 +957,9 @@ func hashTree(root string) map[string]string {
 		return nil
 	})
 	if err != nil {
-		return nil
+		return nil, nil
 	}
-	return out
+	return out, skipped
 }
 
 // md5OfFile returns the file md5 hex (first 10 chars, aligned with sync.py md5[:10]).
@@ -932,21 +979,48 @@ func md5OfFile(path string) (string, error) {
 //
 // copyTree 把 src 整树复制到 dst（原子写，跳过 .git/node_modules 等，不跟随 link）。
 func copyTree(src, dst string) error {
+	return copyTreeFiltered(src, dst, distSkipDirs)
+}
+
+// copyTreeFiltered copies the whole src tree to dst with an optional directory-name
+// skip set (nil = skip nothing — the FULL copy used by backupTarget). Atomic writes;
+// links are not followed and not expanded.
+//
+// Non-regular entries (junction/symlink/pipe/...) are detected by
+// !d.Type().IsRegular() — the SAME rule hashTree uses, NOT ModeSymlink alone:
+// WalkDir reports Windows junctions as ModeIrregular, so the old ModeSymlink-only
+// check let them fall through to os.ReadFile, which fails on a directory
+// reparse point and failed the whole copyTree on Windows. Converging on
+// !IsRegular makes junction entries skip (like symlinks always did) instead of
+// erroring.
+//
+// copyTreeFiltered 把 src 整树复制到 dst，可选按目录名跳过集合（nil = 什么都不跳
+// ——backupTarget 用的完整拷贝）。原子写；link 不跟随、不展开。
+//
+// 非常规条目（junction/symlink/管道/…）用 !d.Type().IsRegular() 判定——与
+// hashTree 同一规则，而非仅看 ModeSymlink：WalkDir 把 Windows junction 报为
+// ModeIrregular，旧的仅 ModeSymlink 判定会让 junction 落到 os.ReadFile，对目录
+// reparse point 读取必失败、整个 copyTree 在 Windows 上报错。收敛到 !IsRegular
+// 让 junction 条目与 symlink 一样被跳过而非报错。
+func copyTreeFiltered(src, dst string, skip map[string]bool) error {
 	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		rel, _ := filepath.Rel(src, path)
 		if d.IsDir() {
-			if distSkipDirs[d.Name()] {
+			if skip[d.Name()] {
 				return filepath.SkipDir
 			}
 			return os.MkdirAll(filepath.Join(dst, rel), 0755)
 		}
-		// Do not follow reparse points (avoids expanding links into copies).
+		// Do not follow or expand reparse points / other non-regular entries
+		// (junctions included — see the function comment for why !IsRegular,
+		// not ModeSymlink).
 		//
-		// 不跟随 reparse point（避免把 link 展开成副本）
-		if d.Type()&os.ModeSymlink != 0 {
+		// 不跟随也不展开 reparse point 及其他非常规条目（含 junction——为何用
+		// !IsRegular 而非 ModeSymlink 见函数注释）。
+		if !d.Type().IsRegular() {
 			return nil
 		}
 		data, rerr := os.ReadFile(path)
