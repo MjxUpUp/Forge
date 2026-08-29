@@ -21,3 +21,25 @@ feat/skills-boundary-inversion 规划会话：仓库全量 grep 摸底（15 skil
 ### Rationale
 
 文档审查是独立于代码审查的真实关注点（自己的 rubric/门禁/失败模式/五类消费者），值得一个家；skill 作为真相源、二进制引用 skill，是依赖倒置的正确方向（具体工具依赖抽象资产）
+
+## [d-18cffa7913104f18-085d332c] accept
+
+- **Skill**: doc-review
+- **DecidedAt**: 2026-08-28T13:16:15Z
+- **By**: claude-code
+
+### Diagnosis
+
+SKILL.md/references 含 forge 操作性引用（条件块/forge-integration.md/双路径/模板占位符）——违反 skills 零反向依赖契约（CONVENTIONS §13 R18 硬校验），存量豁免通道要求迁出
+
+### Revision
+
+forge 集成内容整体迁出至 forge 侧 internal/skillintegrate notes/（forge skills integration doc-review 查看，skill-trigger 推荐块附指针）；正文改为工具中立方法论（降级路径升为主路径/宿主机制中性措辞）
+
+### Evidence
+
+forge skills validate 53/53 通过且 R18Grandfathered 清空；TestR18_Grandfathered_Exact 双向卡死通过
+
+### Rationale
+
+依赖单向化：方法论完整留在中立库，forge 增强完整在 forge 侧；forge 用户体验经集成笔记+触发指针承接

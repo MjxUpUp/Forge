@@ -37,4 +37,16 @@ func TestRepoTriggerSet(t *testing.T) {
 	if rs == nil || !rs["td"] || len(rs) != 1 {
 		t.Errorf("应返回 {td: true}, got %v", rs)
 	}
+
+	// skills/ 零 triggers 但 skills-forge/ 有（2026-08 迁移后的并集扫描）：可比且
+	// forge 原生声明计入——不并集的话这些 skill 会渲染假漂移行（review W7）。
+	//
+	// skills/ zero triggers but skills-forge/ has some (union scan since the
+	// 2026-08 migration): comparable and forge-native declarations counted —
+	// without the union those skills render fake drift lines (review W7).
+	writeSkill(t, filepath.Join(root, "skills-forge"), "skill-evolution", `[{"event":"UserPromptSubmit"}]`)
+	rs = repoTriggerSet(root)
+	if rs == nil || !rs["skill-evolution"] {
+		t.Errorf("skills-forge/ 的 triggers 声明应计入并集, got %v", rs)
+	}
 }

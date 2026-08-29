@@ -1,10 +1,9 @@
 ---
 name: cross-tool-context
-description: "跨 AI 工具上下文接续：项目有 forge 时用 forge task 双向锚定（decide/finding/resume/attach），无 forge 时降级为项目根 AI_CONTEXT.md 共享约定，让各 AI 工具（Claude Code / Cursor / Codex / Cline 等）发现的问题、修改、决策互相可见，消除手动复制粘贴。Use when: 同时用多个 AI 工具开发同一项目时、把 A 工具的分析结果搬给 B 工具时、说\"其他 agent 分析出的问题\"\"把这个给别的工具看\"\"工具间传递上下文\"时、多工具协作发现信息不对称时。SKIP: 单工具内跨会话恢复（用 session-continuity）、纯新项目无多工具协作、临时单次问题直接口头说即可。"
+description: "跨 AI 工具上下文接续：项目根 AI_CONTEXT.md 共享约定，让各 AI 工具（Claude Code / Cursor / Codex / Cline 等）发现的问题、修改、决策互相可见，消除手动复制粘贴。Use when: 同时用多个 AI 工具开发同一项目时、把 A 工具的分析结果搬给 B 工具时、说\"其他 agent 分析出的问题\"\"把这个给别的工具看\"\"工具间传递上下文\"时、多工具协作发现信息不对称时。SKIP: 单工具内跨会话恢复（用 session-continuity）、纯新项目无多工具协作、临时单次问题直接口头说即可。"
 metadata:
   pattern: tool-wrapper
   domain: workflow
-  forge依赖梯度: 有 forge → 全套双向锚定（本 skill 主路径）；无 forge → 降级为 AI_CONTEXT.md 纯纪律约定（无工具强制，长期易漂移，只作过渡）
   triggers: [{"event":"UserPromptSubmit","keywords":["交接","接力","接手","给别的工具","另一个工具","其他 agent","跨工具","复制给"],"cooldown":600}]
 ---
 
@@ -12,17 +11,17 @@ metadata:
 
 解决"多个 AI 工具并行开发同一项目，但互不感知"的效率瓶颈。当前最大浪费：A 工具发现的问题/做的修改，要靠用户手动复制粘贴给 B 工具，B 还不知道 A 改了什么文件。
 
-## 核心机制：共享真相源（两条路径）
+## 核心机制：共享真相源
 
 跨工具接续 = 各工具把信息写进同一个**共享真相源**（可查询、抗压缩丢失、跨工具双向锚定），任意工具开工前拉回：目标 / 决策 / 发现 / 下一步 / 阻塞。
 
-> Forge 项目：主路径用 forge task 双向锚定——resume 拉回结构化上下文，decide / finding 增量写入，attach 把当前工具 session 锚定到 task（谁参与过、用什么工具），持久化在用户级 DataDir 不随会话/压缩丢失；`forge task context` 可导出 markdown 视图。命令语法见 [references/forge-integration.md](references/forge-integration.md)。非 forge 项目走下方 AI_CONTEXT.md 降级路径。
+> 项目有结构化任务系统且各工具都能访问时，可用它做共享真相源（状态由工具持有、不靠纪律维护）；没有时用下方的 AI_CONTEXT.md 文件约定——两条路承载同一套信息结构。
 
-## 无 forge 时的降级方案：AI_CONTEXT.md
+## 落地路径：AI_CONTEXT.md 共享文件
 
-项目没有 forge 时，退回到纯文件约定：在**项目根目录**维护一份 `AI_CONTEXT.md`（单文件，git 可追踪），所有工具读写同一份。任何工具开始工作前先读它，发现/修改/决策后追加到它。
+在**项目根目录**维护一份 `AI_CONTEXT.md`（单文件，git 可追踪），所有工具读写同一份。任何工具开始工作前先读它，发现/修改/决策后追加到它。
 
-**为什么降级方案用文件而不是服务**：文件系统是所有工具的共同底座（任意 agent 都能读写文件），零基础设施依赖。这正是 Skill 的设计哲学（见 skill-authoring-standard §1）。注意它是靠纪律维护的文本——无工具强制，长期必漂移；项目引入 forge 后应迁回上面的主路径。
+**为什么用文件而不是服务**：文件系统是所有工具的共同底座（任意 agent 都能读写文件），零基础设施依赖。这正是 Skill 的设计哲学（见 skill-authoring-standard §1）。注意它是靠纪律维护的文本——无工具强制，长期有漂移风险；项目引入可强制执行的任务系统后应迁过去。
 
 ### 标准结构
 
@@ -57,7 +56,7 @@ metadata:
 - **会话结束/切换工具**：更新 `## Current Handoff`（格式见 session-continuity 的 references/handoff-format.md），让下一个工具冷启动能续做。
 - **只在本工具会话内相关的信息不必写**，口头说即可——"其他工具会遇到吗？"会才记。
 
-### Gotchas（降级方案专属）
+### Gotchas
 
 - **别把 AI_CONTEXT.md 当日志记流水账**：每次 read/write 都记一条，文件膨胀到几千行没人读。只记跨工具有价值的信息：决策、未决问题、关键修改。
 - **格式必须统一**：统一用上面的标准结构（markdown 章节 + 每条带 `[日期][工具]` 前缀），所有工具都能读 markdown。
@@ -67,7 +66,7 @@ metadata:
 ## 与其他 skill 的分工
 
 - **session-continuity**：单工具内跨会话恢复。本 skill 是跨工具。两者用同一套 HANDOFF 格式（定义在 session-continuity 的 references/handoff-format.md，本 skill 复用）
-- **session-retrospective**：把教训写进记忆文件（AGENTS.md/CLAUDE.md）。本 skill 管项目级跨工具上下文（共享真相源，forge 项目为 task、无 forge 为 AI_CONTEXT.md），非全局记忆
+- **session-retrospective**：把教训写进记忆文件（AGENTS.md/CLAUDE.md）。本 skill 管项目级跨工具上下文（共享真相源 AI_CONTEXT.md，或项目选定的结构化任务系统），非全局记忆
 
 ## 适用边界
 

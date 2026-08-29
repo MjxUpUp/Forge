@@ -12,6 +12,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/skills"
+	skillsforge "github.com/MjxUpUp/Forge/skills-forge"
 )
 
 // expectedPluginFiles is the set of relative paths that GeneratePluginPack(DefaultPluginPack) should generate (relative to
@@ -774,24 +775,58 @@ func TestPluginPack_ReasonixLaunchersCommitted(t *testing.T) {
 // dirs carrying SKILL.md) — the expected set the plugin pack must ship. Shared by the skills
 // tests below so "what is a skill" has one definition.
 //
-// embeddedSkillDirs 返回内嵌 canonical 库里的 skill 目录名（带 SKILL.md 的顶层目录）——
-// plugin pack 必须分发的期望集。下方 skills 测试共用，让"什么算一个 skill"只有一种定义。
+// embeddedSkillDirs 返回内嵌库里的 skill 目录名（中立 skills.FS + forge 原生
+// skillsforge.FS 的带 SKILL.md 顶层目录并集）——plugin pack 必须分发的期望集。
+// 下方 skills 测试共用，让"什么算一个 skill"只有一种定义（2026-08 迁移后两棵树
+// 合并分发进同一 plugins/<name>/skills/）。
 func embeddedSkillDirs(t *testing.T) []string {
 	t.Helper()
-	entries, err := fs.ReadDir(skills.FS, ".")
-	if err != nil {
-		t.Fatalf("read embedded skills: %v", err)
-	}
 	var names []string
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
+	for _, lib := range []fs.FS{skills.FS, skillsforge.FS} {
+		entries, err := fs.ReadDir(lib, ".")
+		if err != nil {
+			t.Fatalf("read embedded skills: %v", err)
 		}
-		if _, serr := fs.Stat(skills.FS, path.Join(e.Name(), "SKILL.md")); serr == nil {
-			names = append(names, e.Name())
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			if _, serr := fs.Stat(lib, path.Join(e.Name(), "SKILL.md")); serr == nil {
+				names = append(names, e.Name())
+			}
 		}
 	}
 	return names
+}
+
+// TestSkillTrees_Disjoint — 中立树（skills.FS）与 forge 原生树（skillsforge.FS）
+// 不得承载同名 skill：writeSkillsFrom 把两棵树写进同一 plugins/<name>/skills/，
+// 重叠会文件级互相覆盖且 embeddedSkillCount 双计（README 数字虚高）（review W4）。
+//
+// TestSkillTrees_Disjoint — the neutral tree (skills.FS) and the forge-native
+// tree (skillsforge.FS) must not host the same skill name: writeSkillsFrom
+// writes both into one plugins/<name>/skills/, so an overlap file-overwrites
+// and double-counts in embeddedSkillCount (inflated README number) (review W4).
+func TestSkillTrees_Disjoint(t *testing.T) {
+	collect := func(lib fs.FS) map[string]bool {
+		out := map[string]bool{}
+		entries, err := fs.ReadDir(lib, ".")
+		if err != nil {
+			t.Fatalf("read embedded skills: %v", err)
+		}
+		for _, e := range entries {
+			if e.IsDir() {
+				out[e.Name()] = true
+			}
+		}
+		return out
+	}
+	neutral := collect(skills.FS)
+	for name := range collect(skillsforge.FS) {
+		if neutral[name] {
+			t.Errorf("skill %q 同时存在于 skills/ 与 skills-forge/——两树必须不相交（forge 原生内容只住 skills-forge/）", name)
+		}
+	}
 }
 
 // TestPluginPack_SkillsShipped: the pack must ship the full embedded skill library — one dir
@@ -945,15 +980,22 @@ func TestPluginPack_CommittedSkillsMatchGenerator(t *testing.T) {
 		}
 		t.Skipf("committed plugin skills not found at %s (non-forge repo layout): %v", committed, err)
 	}
-	// 1. Every embedded skill file must be committed verbatim.
+	// 1. Every embedded skill file must be committed verbatim — across BOTH trees
+	// (neutral skills/ + forge-native skills-forge/); the dir name resolves inside
+	// whichever FS hosts it.
 	//
-	// 1. 每个内嵌 skill 文件必须逐字 committed。
+	// 1. 每个内嵌 skill 文件必须逐字 committed——覆盖两棵树（中立 skills/ + forge
+	// 原生 skills-forge/）；目录名在持有它的那个 FS 里解析。
 	for _, name := range embeddedSkillDirs(t) {
-		werr := fs.WalkDir(skills.FS, name, func(p string, d fs.DirEntry, werr error) error {
+		lib := fs.FS(skills.FS)
+		if _, serr := fs.Stat(skillsforge.FS, name); serr == nil {
+			lib = skillsforge.FS
+		}
+		werr := fs.WalkDir(lib, name, func(p string, d fs.DirEntry, werr error) error {
 			if werr != nil || d.IsDir() || filepath.Ext(p) == ".go" {
 				return werr
 			}
-			emb, rerr := skills.FS.ReadFile(p)
+			emb, rerr := fs.ReadFile(lib, p)
 			if rerr != nil {
 				return rerr
 			}

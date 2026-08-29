@@ -4,7 +4,7 @@ frontend-feature-development 阶段 2 实现时的速查：状态归属、性能
 
 ## 改现有组件 — 不破坏契约（read-then-modify）
 
-改现有组件（非新建）时，先读完全部现有 props/state/effect，再动。改前/后运行 `forge review pass` 对比。
+改现有组件（非新建）时，先读完全部现有 props/state/effect，再动。改前/后各跑一遍相关组件测试（行为对比），确认无契约外行为变化。
 
 **禁止**：
 - 悄悄改 props 形状（加必填 prop / 改 prop 类型 / 改默认值）——破坏调用方
@@ -59,7 +59,7 @@ frontend-feature-development 阶段 2 实现时的速查：状态归属、性能
 - [ ] 无未用 import + 无未用 state
 - [ ] a11y 自动化测试通过（axe-core 0 violations）
 - [ ] unit/component test 覆盖率对该组件 ≥ 80%
-- [ ] 运行 `forge review pass` 通过
+- [ ] 提交前过 code-review-gate 阶段 3 自查清单（或所在项目的 review 门禁）
 
 ## 负向约束（与主 SKILL.md Rationalizations 不重复的项）
 

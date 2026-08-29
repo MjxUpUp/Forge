@@ -59,7 +59,7 @@ metadata:
 
    **反第 0 级——注释标识 ≠ 解决（懒惰阶梯的反面，屎山根源）**：用 `TODO/FIXME/XXX/HACK/待补/稍后` 注释标识"这里有问题/待办"但本变更不解决，是比第 7 级（最小实现）还退一步的"第 0 级：零实现"。看起来负责任（标注了），实际零行动，后续无人跟进——AI 最隐蔽的偷懒，屎山头号来源。**处置二选一**：转任务跟踪立一个带描述的任务（保留意图、被流程追踪），或当场修掉。注释只描述**已做**的事，不承诺**将做**的事。
 
-   > Forge 项目：任务跟踪用 `forge task start --ref <ref> --title <描述>`（被门禁追踪）；cheat-scan 的 comment-as-debt 模式会机械检测新增债务注释（advisory）。非 forge 项目用项目的 issue 跟踪（或当场修掉），人工核对债务注释不新增。
+   跟踪载体用项目自己的任务系统（issue/todo），没有就当场修掉；收尾自查债务注释零新增（`grep -nE 'TODO|FIXME|XXX|HACK'` 过一遍改动文件）。
 
    第 1、2 件事（现有类型 / API）是阶梯第 2 级（复用现有）的具象化；阶梯是"确认没有更省力路径"的总纲。**bug 修 = 根因不是症状**：`grep` 所有 caller，修共享函数一次，别只补 ticket 路径——更小 diff 且不留坏 sibling（最小 diff 补在错的层 = 第二个 bug）。
 
@@ -109,7 +109,7 @@ metadata:
 **门控 B — 门控顺序**：
 - 遵循项目既定的门控顺序，不跳步、不颠倒；不确定顺序时，先查项目的质量工作流文档，不凭记忆排。
 
-> Forge 项目：门控顺序 `task-implement → task-verify → task-complete → git commit`——**commit 必须在 complete 之前**（complete 会清空 active task ref，之后提交源码会被 quarantine）。非 forge 项目按项目质量工作流的门控顺序执行。
+> 门控顺序：质量门禁（实现→验证→完成确认）全过 → git commit——**commit 必须在完成登记之前**（登记后任务引用清空，之后的源码提交脱离任务跟踪与保护）。按所在项目质量工作流的门控顺序执行。
 
 **红线**：`git add .` / `git add -A` 一把梭 / 提交了 docs 或 .claude / 门控跳步或颠倒。
 

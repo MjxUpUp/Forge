@@ -52,28 +52,34 @@ import (
 // 是包目录，故测试用相对路径读仓库根的手维护文档。
 const repoRoot = "../.."
 
-// guardedDocs collects the manually maintained docs to be guarded: the root README + npm copy + all .md under the canonical skill library.
-// Excludes .claude/ (gitignored generated artifacts whose consistency is guarded by the skillgen generator's content assertion tests).
+// guardedDocs collects the manually maintained docs to be guarded: the root README + npm copy + all .md under the
+// canonical skill library AND the forge-native skills-forge/ overlay (moved out of skills/ by the 2026-08
+// zero-reverse-dependency migration — dropping the walk would silently shrink the guard surface).
+// Excludes .claude/ (gitignored generated artifacts whose consistency is guarded by the skillgen generator's
+// content assertion tests).
 //
-// guardedDocs 收集待守卫的手维护文档：根 README + npm 副本 + canonical skill 库全部 .md。
-// 不含 .claude/（gitignored 生成物，其一致性由 skillgen 生成器的 content 断言测试守护）。
+// guardedDocs 收集待守卫的手维护文档：根 README + npm 副本 + canonical skill 库全部 .md +
+// forge 原生 skills-forge/ 覆盖层（2026-08 零反向依赖迁移移出 skills/——不补进 walk 会让
+// 守卫面静默缩小）。不含 .claude/（gitignored 生成物，其一致性由 skillgen 生成器的
+// content 断言测试守护）。
 func guardedDocs(t *testing.T) []string {
 	t.Helper()
 	var files []string
 	for _, p := range []string{"README.md", "npm/README.md"} {
 		files = append(files, filepath.Join(repoRoot, p))
 	}
-	skillsRoot := filepath.Join(repoRoot, "skills")
-	if err := filepath.WalkDir(skillsRoot, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
+	for _, root := range []string{filepath.Join(repoRoot, "skills"), filepath.Join(repoRoot, "skills-forge")} {
+		if err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if !d.IsDir() && strings.HasSuffix(path, ".md") {
+				files = append(files, path)
+			}
+			return nil
+		}); err != nil {
+			t.Fatalf("walk %s: %v", root, err)
 		}
-		if !d.IsDir() && strings.HasSuffix(path, ".md") {
-			files = append(files, path)
-		}
-		return nil
-	}); err != nil {
-		t.Fatalf("walk skills/: %v", err)
 	}
 	return files
 }
@@ -335,14 +341,23 @@ var skillRefAllowlist = map[string]bool{
 // （frontend-development 引用了不存在的 frontend-stack-selection / ai-generated-ui-review /
 // frontend-aesthetics-execution）。同守卫 A，hard（CI 失败）使 drift 被机械抓，不靠 agent 遵循。
 func TestSkills_NoDanglingSkillRefs(t *testing.T) {
-	skillsRoot := filepath.Join(repoRoot, "skills")
-	names, err := skillsdist.ListSkills(skillsRoot)
-	if err != nil {
-		t.Fatalf(`ListSkills(skills/): %v`, err)
-	}
-	known := make(map[string]bool, len(names))
-	for _, n := range names {
-		known[n] = true
+	// known = neutral skills/ ∪ forge-native skills-forge/：6 个中立 skill 的 SKILL.md
+	// 仍引用 skill-authoring-standard 等 forge 原生 skill（forge 用户经合并缓存/插件
+	// 全量可达，非断链——2026-08 迁移后两棵树都是合法引用目标）。
+	//
+	// known = neutral skills/ ∪ forge-native skills-forge/: neutral SKILL.md files
+	// still reference forge-native skills like skill-authoring-standard (reachable
+	// in full for forge users via the merged cache / plugin — not dangling; both
+	// trees are legal reference targets post-2026-08 migration).
+	known := make(map[string]bool)
+	for _, root := range []string{filepath.Join(repoRoot, "skills"), filepath.Join(repoRoot, "skills-forge")} {
+		names, err := skillsdist.ListSkills(root)
+		if err != nil {
+			t.Fatalf(`ListSkills(%s): %v`, root, err)
+		}
+		for _, n := range names {
+			known[n] = true
+		}
 	}
 	bt := string(rune(0x60)) // 反引号，绕过双引号腐蚀
 	for _, file := range guardedDocs(t) {

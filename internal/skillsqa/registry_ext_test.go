@@ -214,49 +214,151 @@ func TestAuditSkill_R17_EvalsSchema(t *testing.T) {
 	}
 }
 
+// TestAuditSkill_R18_ForgeRefs — R18 零反向依赖契约（硬）的正文用例。2026-08 收紧
+// 前条件块是合法形态，收紧后任何位置的操作性引用（含「> Forge 项目」条件块内）
+// 一律触发——条件块形态废止，集成知识归 forge 侧。
+//
+// TestAuditSkill_R18_ForgeRefs — SKILL.md body cases for the R18
+// zero-reverse-dependency contract (hard). Before the 2026-08 tightening
+// conditional blocks were a sanctioned form; after it, operational references
+// anywhere (including inside "> Forge 项目" blocks) trigger — the conditional
+// form is retired and integration knowledge lives on the forge side.
 func TestAuditSkill_R18_ForgeRefs(t *testing.T) {
 	cases := []struct {
-		name         string
-		body         string
-		wantAdvisory bool
+		name      string
+		body      string
+		wantIssue bool
 	}{
-		{"无条件块引用", signalBody(), false},
-		{"条件块内引用不触发", signalBody() + "> Forge 项目：先跑 `forge task resume` 拉回上下文，细节见 references/forge-integration.md。非 forge 项目跳过。\n", false},
-		{"条件块跨行不触发", signalBody() + "> Forge 项目：`forge review status` 查证据强度；\n> Weak 时加核。非 forge 项目跳过。\n", false},
-		{"列表内缩进条件块不触发", signalBody() + "   > Forge 项目：`forge task start --ref x` 跟踪。非 forge 项目用 issue 跟踪。\n", false},
-		{"条件块外引用触发", signalBody() + "完成后须 `forge review pass` 盖章。\n", true},
-		{"普通引用块内引用触发（非 Forge 项目块）", signalBody() + "> 注意：完成后 `forge task complete` 收尾。\n", true},
-		{"条件块结束后正文引用触发", signalBody() + "> Forge 项目：`forge docs lint` 过 L1。非 forge 项目跳过。\n跑 `forge docs lint` 后再评分。\n", true},
-		{"forge 后接非子命令不触发", signalBody() + "在 forge 项目与非 forge 项目中行为一致（forge 环境自动接线）。\n", false},
-		{"路径形态不触发", signalBody() + "历史存储在 `~/.forge/doc-generator/history.jsonl`，路径 `skills/doc-review/` 不受影响。\n", false},
-		{"加粗变体条件块不触发", signalBody() + "> **Forge 项目**：先跑 `forge task resume` 拉回上下文。非 forge 项目跳过。\n", false},
+		{"无引用", signalBody(), false},
+		{"正文CLI引用触发", signalBody() + "完成后须 `forge review pass` 盖章。\n", true},
+		{"条件块内引用同样触发（条件块形态已废止）", signalBody() + "> Forge 项目：先跑 `forge task resume` 拉回上下文，细节见集成文件。非 forge 项目跳过。\n", true},
+		{"加粗变体条件块同样触发", signalBody() + "> **Forge 项目**：`forge task start --ref x` 跟踪。\n", true},
+		{"条件块结束后正文引用触发", signalBody() + "> Forge 项目：历史形态示例。非 forge 项目跳过。\n跑 `forge docs lint` 后再评分。\n", true},
+		{"用户级路径触发", signalBody() + "历史存储在 `~/.forge/doc-generator/history.jsonl`。\n", true},
+		{"HOME变量路径触发", signalBody() + "STATS=\"${STATS_DIR:-$HOME/.forge/web-search-stats}\"\n", true},
+		{"FORGE环境变量触发", signalBody() + "根目录取 `$FORGE_SKILLS_CANONICAL`。\n", true},
+		{"forge-integration指针触发", signalBody() + "细节见 references/forge-integration.md。\n", true},
+		{"forge后接非子命令不触发", signalBody() + "在 forge 项目与非 forge 项目中行为一致（forge 环境自动接线）。\n", false},
+		{"行尾裸forge下行小写开头不跨行触发", signalBody() + "compatible with forge\nand other tools\n", false},
+		{"CRLF跨行不触发", signalBody() + "runs in forge\r\nretry mode\n", false},
+		{"项目级裸.forge路径不触发（反向列举非依赖）", signalBody() + "禁止混入 `.forge/` `.claude/` 等工具工作目录。\n", false},
+		{"Forge仓库名案例叙述不触发", signalBody() + "Forge 仓库曾发生 docs 漂移事故，教训是单一真相源。\n", false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			sd := writeSkill(t, t.TempDir(), "my-skill", makeSkill("my-skill", longDesc(), "pipeline", c.body))
 			r, err := AuditSkill(sd)
 			must(t, err)
-			if !r.Pass {
-				t.Fatalf("R18 是 advisory 不应失败, issues: %v", r.Issues)
+			has := false
+			for _, iss := range r.Issues {
+				if strings.Contains(iss, "反向依赖") {
+					has = true
+				}
 			}
-			has := advisoryContains(r.Advisories, "依赖倒置契约")
-			if has != c.wantAdvisory {
-				t.Errorf("R18 advisory=%v want=%v (advisories: %v)", has, c.wantAdvisory, r.Advisories)
+			if has != c.wantIssue {
+				t.Errorf("R18 issue=%v want=%v (issues: %v)", has, c.wantIssue, r.Issues)
+			}
+			if c.wantIssue && r.Pass {
+				t.Fatalf("R18 是硬校验，命中应 Pass=false, issues: %v", r.Issues)
 			}
 		})
+	}
+}
+
+// TestAuditSkill_R18_FileScope — R18 扫描面覆盖 skill 目录全部内容文件：
+// references/ 里的 CLI 引用（research-workflow/frontend-feature-development
+// 违例的实态——旧版只扫 SKILL.md 正文看不见它们）触发；decisions.md
+// （append-only 决策日志）与 evals/（测试数据）豁免。
+//
+// TestAuditSkill_R18_FileScope — R18's scan scope covers every content file in
+// the skill dir: CLI refs inside references/ (the real-world shape of the
+// research-workflow / frontend-feature-development violations, invisible to the
+// old body-only scan) trigger; decisions.md (append-only decision log) and
+// evals/ (test data) are exempt.
+func TestAuditSkill_R18_FileScope(t *testing.T) {
+	t.Run("references内CLI引用触发", func(t *testing.T) {
+		sd := writeSkill(t, t.TempDir(), "my-skill", makeSkill("my-skill", longDesc(), "pipeline", signalBody()))
+		writeRef(t, sd, "checklist.md", "改前/后运行 `forge review pass` 对比。\n")
+		r, err := AuditSkill(sd)
+		must(t, err)
+		if r.Pass {
+			t.Fatalf("references/ 内 forge CLI 引用应触发 R18, issues: %v", r.Issues)
+		}
+	})
+	t.Run("references内路径引用触发", func(t *testing.T) {
+		sd := writeSkill(t, t.TempDir(), "my-skill", makeSkill("my-skill", longDesc(), "pipeline", signalBody()))
+		writeRef(t, sd, "engine.md", "mkdir -p ~/.forge/research/topic-20260828\n")
+		r, err := AuditSkill(sd)
+		must(t, err)
+		if r.Pass {
+			t.Fatalf("references/ 内 ~/.forge 路径应触发 R18, issues: %v", r.Issues)
+		}
+	})
+	t.Run("decisionsmd豁免", func(t *testing.T) {
+		sd := writeSkill(t, t.TempDir(), "my-skill", makeSkill("my-skill", longDesc(), "pipeline", signalBody()))
+		must(t, os.WriteFile(filepath.Join(sd, "decisions.md"), []byte("- 2026-01-01 历史决策：曾用 `forge task start` 跟踪，路径 ~/.forge/x\n"), 0644))
+		r, err := AuditSkill(sd)
+		must(t, err)
+		if !r.Pass {
+			t.Fatalf("decisions.md 是决策日志不应触发 R18, issues: %v", r.Issues)
+		}
+	})
+	t.Run("evals豁免", func(t *testing.T) {
+		sd := writeSkill(t, t.TempDir(), "my-skill", makeSkill("my-skill", longDesc(), "pipeline", signalBody()))
+		writeEvals(t, sd, `{"trigger_cases":[{"query":"forge task 怎么用","should_trigger":false}]}`)
+		r, err := AuditSkill(sd)
+		must(t, err)
+		if !r.Pass {
+			t.Fatalf("evals/ 测试数据不应触发 R18, issues: %v", r.Issues)
+		}
+	})
+	t.Run("scripts内路径引用触发", func(t *testing.T) {
+		sd := writeSkill(t, t.TempDir(), "my-skill", makeSkill("my-skill", longDesc(), "pipeline", signalBody()))
+		must(t, os.MkdirAll(filepath.Join(sd, "scripts"), 0755))
+		must(t, os.WriteFile(filepath.Join(sd, "scripts", "quota.sh"), []byte("STATS_DIR=\"${OVR:-$HOME/.forge/web-search-stats}\"\n"), 0644))
+		r, err := AuditSkill(sd)
+		must(t, err)
+		if r.Pass {
+			t.Fatalf("scripts/ 内 $HOME/.forge 路径应触发 R18, issues: %v", r.Issues)
+		}
+	})
+}
+
+// TestAuditSkill_R18_GrandfatheredAdvisory — 存量豁免路径：R18Grandfathered
+// 表内 skill 命中时降为 advisory（不阻断 Pass）。2026-08 迁移完成后生产表已清空，
+// 测试临时注入一条豁免再 defer 清除——机制仍在（未来过渡债务的通道），测试钉住
+// 其行为不回归。
+//
+// TestAuditSkill_R18_GrandfatheredAdvisory — legacy exemption path: a
+// R18Grandfathered skill's hits downgrade to an advisory (Pass unaffected).
+// The production table was emptied by the 2026-08 migration; the test injects
+// an entry temporarily (deferred removal) — the mechanism remains as the
+// channel for future transition debt, and this test pins its behavior.
+func TestAuditSkill_R18_GrandfatheredAdvisory(t *testing.T) {
+	R18Grandfathered["code-review-gate"] = true
+	defer delete(R18Grandfathered, "code-review-gate")
+	body := signalBody() + "完成后 `forge task complete` 收尾。\n"
+	sd := writeSkill(t, t.TempDir(), "code-review-gate", makeSkill("code-review-gate", longDesc(), "gate", body))
+	r, err := AuditSkill(sd)
+	must(t, err)
+	if !r.Pass {
+		t.Fatalf("豁免 skill 的命中不应阻断 Pass, issues: %v", r.Issues)
+	}
+	if !advisoryContains(r.Advisories, "存量 forge 反向依赖豁免中") {
+		t.Fatalf("豁免 skill 命中应报存量 advisory, advisories: %v", r.Advisories)
 	}
 }
 
 // TestAuditSkill_R18_RequiresForgeExempt guards the production-in-use exemption
 // branch: skills marked `metadata.requires_forge: "true"` (forge-native skills —
 // skill-evolution / skill-routing / skill-authoring-standard) skip R18 entirely.
-// A regression here (e.g. an inverted condition) would flood those three skills
-// with advisories while every other test stays green.
+// A regression here (e.g. an inverted condition) would fail those three skills
+// while every other test stays green.
 //
 // TestAuditSkill_R18_RequiresForgeExempt 守护生产在用的豁免分支：标记
 // `metadata.requires_forge: "true"` 的 forge 原生 skill（skill-evolution /
 // skill-routing / skill-authoring-standard）整体跳过 R18。此处回归（如条件写反）
-// 会让这三个 skill 爆 advisory，而其余测试照常全绿——零保护即零感知。
+// 会让这三个 skill 直接 fail，而其余测试照常全绿——零保护即零感知。
 func TestAuditSkill_R18_RequiresForgeExempt(t *testing.T) {
 	body := signalBody() + "完成后 `forge task complete` 收尾、`forge review pass` 盖章。\n"
 	raw := "---\nname: my-skill\ndescription: \"" + longDesc() + "\"\n" +
@@ -265,9 +367,9 @@ func TestAuditSkill_R18_RequiresForgeExempt(t *testing.T) {
 	r, err := AuditSkill(sd)
 	must(t, err)
 	if !r.Pass {
-		t.Fatalf("R18 是 advisory 不应失败, issues: %v", r.Issues)
+		t.Fatalf("requires_forge 豁免的 skill 不应失败, issues: %v", r.Issues)
 	}
-	if advisoryContains(r.Advisories, "依赖倒置契约") {
+	if advisoryContains(r.Advisories, "反向依赖") {
 		t.Fatalf("requires_forge 标记的 forge 原生 skill 应豁免 R18, got: %v", r.Advisories)
 	}
 }

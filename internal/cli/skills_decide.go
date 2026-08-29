@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/MjxUpUp/Forge/internal/skillsdecisions"
 	"github.com/spf13/cobra"
@@ -79,6 +80,12 @@ func runSkillsDecide(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	// explicitSource = the user pointed at a source via --canonical /
+	// $FORGE_SKILLS_CANONICAL; such intent always wins over repo auto-detection.
+	//
+	// explicitSource = 用户经 --canonical / $FORGE_SKILLS_CANONICAL 显式指定了源；
+	// 该意图永远优先于仓库自动探测。
+	explicitSource := isExternal
 	// In-repo default (usage-log fix): when forge runs inside a checkout whose project
 	// root carries a real skills/ tree (CONVENTIONS.md marker — e.g. the Forge repo
 	// itself), decide must write THAT canonical tree, not the embed cache. The cache is
@@ -117,6 +124,32 @@ func runSkillsDecide(cmd *cobra.Command, args []string) error {
 			fmt.Fprintf(w, "ℹ️ 检测到仓库内 canonical skill 树，decide 写入 %s（非 embed 缓存）\n", repoSkills)
 		}
 	}
+	// forge-native skills (requires_forge — skill-evolution / skill-routing /
+	// skill-authoring-standard) live in <root>/skills-forge since the 2026-08
+	// zero-reverse-dependency migration, NOT in the neutral ./skills tree. When
+	// resolution came from the embed path (no explicit --canonical/env), redirect
+	// in-repo writes for those names to the forge-native source; explicit user
+	// sources always win. Without this the decide would either fail (skill absent
+	// from ./skills) or write the regenerated cache.
+	//
+	// forge 原生 skill（requires_forge——skill-evolution / skill-routing /
+	// skill-authoring-standard）2026-08 零反向依赖迁移后住 <root>/skills-forge，
+	// 不在中立 ./skills 树。解析来自 embed 路径（未显式 --canonical/env）时，对这些
+	// 名字把仓库内写入重定向到 forge 原生源；用户显式指定的源永远优先。缺了这一步
+	// decide 要么报错（./skills 里没有该 skill）、要么写进可再生成的缓存。
+	if !explicitSource && skDecSkill != "" {
+		if forgeDir := detectRepoForgeSkillsDir(); forgeDir != "" {
+			if _, serr := os.Stat(filepath.Join(forgeDir, skDecSkill)); serr == nil {
+				canonical = forgeDir
+				isExternal = true
+				w := io.Writer(os.Stderr)
+				if cmd != nil {
+					w = cmd.ErrOrStderr()
+				}
+				fmt.Fprintf(w, "ℹ️ 检测到 forge 原生 skill 源树，decide 写入 %s（非 embed 缓存）\n", forgeDir)
+			}
+		}
+	}
 	if !isExternal {
 		return fmt.Errorf("decide 不能写入内置 embed 缓存（%s）——它是随时被版本重建的分发快照，写入必丢（异版二进制交替运行时每次 hook 调用都会抹掉它）。用 $FORGE_SKILLS_CANONICAL 或 --canonical 指向真实 skill 源（本仓库为 skills/ 目录）后重试", canonical)
 	}
@@ -144,6 +177,21 @@ func runSkillsDecide(cmd *cobra.Command, args []string) error {
 		ProbeRunID: skDecProbeRun,
 		By:         skDecBy,
 		Prediction: skDecPrediction,
+	}
+	// Orphan-write warning (review W3): AppendDecision does not require the target
+	// skill dir to exist — a name absent from the resolved tree writes an invisible
+	// orphan (plugin pack's orphan-dir skip means it never ships). Surface it
+	// instead of a silent ✅.
+	//
+	// 孤儿写入警告（review W3）：AppendDecision 不要求目标 skill 目录存在——名字不在
+	// 解析树里时会写入不可见的孤儿目录（plugin pack 的孤儿目录跳过意味着它永不
+	// 分发）。显式提示而非静默 ✅。
+	if _, serr := os.Stat(filepath.Join(canonical, skDecSkill, "SKILL.md")); serr != nil {
+		w := io.Writer(os.Stderr)
+		if cmd != nil {
+			w = cmd.ErrOrStderr()
+		}
+		fmt.Fprintf(w, "⚠️ skill %q 在 %s 下无 SKILL.md——decide 将创建不可分发的孤儿目录；请核对 skill 名与目标树\n", skDecSkill, canonical)
 	}
 	if err := skillsdecisions.AppendDecision(canonical, skDecSkill, d); err != nil {
 		return err

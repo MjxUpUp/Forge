@@ -3,8 +3,10 @@ package skillsqa
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -240,18 +242,25 @@ func AuditSkill(skillDir string) (*SkillReport, error) {
 	// (a skill may have no evals); schema = object with a trigger_cases array of
 	// {query: string, should_trigger: boolean}.
 	checkEvalsSchema(skillDir, &advisories)
-	// R18 forge 引用契约（advisory，依赖倒置守卫，CONVENTIONS §13）：SKILL.md
-	// 正文的 forge CLI 命令引用只允许出现在「> Forge 项目」起始的条件引用块内
-	// （细节归 references/forge-integration.md）。条件块之外命中 = 方法论正文耦合
-	// forge，skills-only 分发（不跑 init、不装 hook）的用户会看到不可执行的指令。
+	// R18 forge 零反向依赖契约（硬，CONVENTIONS §13）：skill 目录内不得存在对 forge
+	// 的操作性引用——CLI 调用（forge <子命令>）、用户级路径（~/.forge/、$HOME/.forge/）、
+	// 环境变量（$FORGE_*）、集成文件指针（forge-integration.md）。扫描面 = SKILL.md
+	// 正文 + skill 目录全部内容文件（decisions.md 是 append-only 决策日志、evals/ 是
+	// 测试数据，均非操作指令，排除）。decisions.md 与「Forge 仓库」案例叙述不构成
+	// 运行时依赖，本规则不针对措辞、只针对操作性行为。存量豁免见 R18Grandfathered
+	// （冻结只减不增）；`metadata.requires_forge: "true"` 的 forge 原生 skill 整体跳过。
 	//
-	// R18 forge reference contract (advisory, dependency-inversion guard,
-	// CONVENTIONS §13): forge CLI references in the SKILL.md body are only allowed
-	// inside conditional blockquotes starting with "> Forge 项目" (details belong in
-	// references/forge-integration.md). A hit outside the conditional block means the
-	// methodology body is coupled to forge, which skills-only distribution users
-	// cannot execute.
-	checkForgeRefs(fm, &advisories)
+	// R18 forge zero-reverse-dependency contract (hard, CONVENTIONS §13): no
+	// operational forge references anywhere in the skill dir — CLI calls
+	// (forge <subcommand>), user-level paths (~/.forge/, $HOME/.forge/), env vars
+	// ($FORGE_*), or integration-file pointers (forge-integration.md). Scan scope =
+	// SKILL.md body + every content file in the skill dir (decisions.md is an
+	// append-only decision log and evals/ is test data — neither is an operational
+	// instruction, both excluded). decisions.md entries and "Forge repo" case-study
+	// prose are not runtime dependencies; this rule targets operational behavior,
+	// not wording. Legacy exemptions: R18Grandfathered (frozen, shrink-only);
+	// `metadata.requires_forge: "true"` forge-native skills skip entirely.
+	checkForgeRefs(skillDir, fm, &issues, &advisories)
 
 	return &SkillReport{
 		Name:        name,
@@ -495,53 +504,91 @@ func checkEvalsSchema(skillDir string, advisories *[]string) {
 	}
 }
 
-// checkForgeRefs enforces R18: forge CLI references (`forge <subcommand>`) in
-// the SKILL.md body are only allowed inside conditional blockquotes that start
-// with "> Forge 项目" (the block may span consecutive quote lines; indented
-// quotes inside list items count — TrimSpace first). Everything else is a
-// dependency-inversion violation and goes advisory. Skills declaring
-// `metadata.requires_forge: "true"` (CONVENTIONS §13 form ③ — the skill itself
-// documents forge's own machinery) are exempt: their body is forge-native by
-// design and skills-only consumers filter them by the flag instead. Detection
-// is line-based: a non-quote line closes the conditional block; a quote line
-// that does not start a forge block preserves the current state.
+// ForgeRefHit — 一处 forge 反向依赖命中（ScanForgeRefs 的返回单元）。
 //
-// checkForgeRefs 执行 R18：SKILL.md 正文中的 forge CLI 引用（`forge <子命令>`）
-// 只允许出现在「> Forge 项目」起始的条件引用块内（块可跨连续引用行；列表内缩进
-// 引用块也算——先 TrimSpace）。其余位置命中即依赖倒置违例，走 advisory。声明了
-// `metadata.requires_forge: "true"` 的 skill（CONVENTIONS §13 形态③——skill 本身
-// 描述 forge 自身机制）豁免：其正文生来 forge 原生，skills-only 消费方按标记过滤
-// 而非按引用位置。按行状态机判定：非引用行关闭条件块状态；非 forge 起始的引用行
-// 维持当前状态。
-func checkForgeRefs(fm *skillsfm.Frontmatter, advisories *[]string) {
+// ForgeRefHit — a single reverse-dependency hit (ScanForgeRefs return unit).
+type ForgeRefHit struct {
+	File string // 相对 skill 目录的路径（SKILL.md 或子文件） / path relative to the skill dir
+	Text string // 命中片段 / matched snippet
+}
+
+// ScanForgeRefs 扫描 skill 目录内的操作性 forge 引用（R18 检测核心，导出供
+// ratchet 测试复用同一套判定）：SKILL.md 用 frontmatter 解析后的 Body（frontmatter
+// 元数据如 requires_forge 不是正文，不扫），其余文件按原文扫。decisions.md
+// （append-only 决策日志）与 evals/（测试数据）排除——它们不是操作指令。
+//
+// ScanForgeRefs scans the skill dir for operational forge references (the R18
+// detection core, exported so the ratchet test reuses the exact production
+// judgment): SKILL.md is scanned via the post-frontmatter Body (frontmatter
+// metadata like requires_forge is not body prose and is not scanned); every
+// other file is scanned raw. decisions.md (append-only decision log) and
+// evals/ (test data) are excluded — neither is an operational instruction.
+func ScanForgeRefs(skillDir string, fm *skillsfm.Frontmatter) []ForgeRefHit {
+	var hits []ForgeRefHit
+	scan := func(file, content string) {
+		for _, re := range []*regexp.Regexp{forgeCmdRe, forgeHomePathRe, forgeEnvRe, forgeIntegrationFileRe} {
+			for _, m := range re.FindAllString(content, -1) {
+				hits = append(hits, ForgeRefHit{File: file, Text: strings.TrimSpace(m)})
+			}
+		}
+	}
+	scan("SKILL.md", fm.Body)
+	_ = filepath.WalkDir(skillDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil //nolint:nilerr // 单文件不可读不阻断整体扫描（其余文件的命中仍要报出）
+		}
+		if d.IsDir() {
+			if d.Name() == "evals" && path != skillDir {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.Name() == "SKILL.md" || d.Name() == "decisions.md" {
+			return nil
+		}
+		data, rerr := os.ReadFile(path)
+		if rerr != nil {
+			return nil
+		}
+		rel, _ := filepath.Rel(skillDir, path)
+		scan(filepath.ToSlash(rel), string(data))
+		return nil
+	})
+	return hits
+}
+
+// checkForgeRefs 执行 R18：ScanForgeRefs 命中且无豁免 = 硬 issue（Pass=false，
+// validate exit 2、install 质量门控阻断）。豁免两级：`metadata.requires_forge:
+// "true"`（forge 原生 skill，整体跳过）与 R18Grandfathered（存量冻结，只减不增，
+// TestR18_Grandfathered_Exact 守卫表与实际命中集合严格相等）。豁免 skill 命中时
+// 报 advisory（不阻断）——条数随清理递减，diff 里条数回涨即暴露新增耦合。
+//
+// checkForgeRefs enforces R18: hits from ScanForgeRefs without an exemption are
+// hard issues (Pass=false → validate exit 2, install quality gate blocks). Two
+// exemption tiers: `metadata.requires_forge: "true"` (forge-native skills skip
+// entirely) and R18Grandfathered (frozen legacy set, shrink-only, pinned to the
+// exact match set by TestR18_Grandfathered_Exact). Hits on an exempted skill go
+// advisory (non-blocking) — the count shrinks as cleanup proceeds, and a
+// re-grown count in a diff exposes newly added coupling.
+func checkForgeRefs(skillDir string, fm *skillsfm.Frontmatter, issues, advisories *[]string) {
 	if v, ok := fm.Metadata["requires_forge"]; ok && strings.Trim(strings.TrimSpace(v), `"`) == "true" {
 		return
 	}
-	var hits []string
-	inCond := false
-	for _, line := range strings.Split(fm.Body, "\n") {
-		trimmed := strings.TrimSpace(line)
-		// Normalize bold/italic markers before the marker check so the sanctioned
-		// form "> **Forge 项目**：" (bold variant) is recognized too — the marker
-		// contract is the phrase, not its emphasis decoration.
-		//
-		// 标记匹配前先归一化加粗/斜体修饰，使「> **Forge 项目**：」加粗变体同样被
-		// 识别——契约钉的是短语本身，不是强调装饰。
-		norm := strings.ReplaceAll(trimmed, "*", "")
-		isQuote := strings.HasPrefix(norm, ">")
-		if isQuote && strings.HasPrefix(norm, "> Forge 项目") {
-			inCond = true
-		} else if !isQuote {
-			inCond = false
-		}
-		if inCond {
-			continue
-		}
-		for _, m := range forgeCmdRe.FindAllString(trimmed, -1) {
-			hits = append(hits, strings.TrimSpace(m))
-		}
+	hits := ScanForgeRefs(skillDir, fm)
+	if len(hits) == 0 {
+		return
 	}
-	if len(hits) > 0 {
-		*advisories = append(*advisories, fmt.Sprintf(`正文存在条件块之外的 forge 命令引用(%v)——依赖倒置契约：forge 引用只允许「> Forge 项目」条件块或 references/forge-integration.md（CONVENTIONS §13）`, hits))
+	name := fm.Name
+	if name == "" {
+		name = filepath.Base(skillDir)
 	}
+	var rendered []string
+	for _, h := range hits {
+		rendered = append(rendered, fmt.Sprintf("%s: %s", h.File, h.Text))
+	}
+	if R18Grandfathered[name] {
+		*advisories = append(*advisories, fmt.Sprintf(`存量 forge 反向依赖豁免中（%d 处，清理迁出后从 R18Grandfathered 移除；条数只应递减）: %v`, len(hits), rendered))
+		return
+	}
+	*issues = append(*issues, fmt.Sprintf(`forge 反向依赖违例(%v)——skills 零反向依赖契约：不得含 forge CLI 调用/~/.forge 路径/$FORGE_* 变量/forge-integration.md 指针，集成知识放 forge 侧（CONVENTIONS §13，R18）`, rendered))
 }

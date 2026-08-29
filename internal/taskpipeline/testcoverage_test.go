@@ -419,6 +419,14 @@ func TestTestCoverageWhitelistSkillsDirIsPrecise(t *testing.T) {
 		"skills/embed.go",
 		"skills/arkts-runtime-fix/scripts/collect-hilog.ts",
 		"skills/skill-routing/adapters/pi/index.ts",
+		// skills-forge/（2026-08 迁移后的 forge 原生覆盖层）同属分发资产；条目带尾
+		// 斜杠，故 internal/cli/skills-forge-utils.go 类未来源码仍被门控（上方案例）。
+		//
+		// skills-forge/ (the forge-native overlay since 2026-08) is likewise a
+		// distributed asset; the entry carries a trailing slash so future sources
+		// like internal/cli/skills-forge-utils.go stay gated (negative cases above).
+		"skills-forge/embed.go",
+		"skills-forge/skill-routing/routes.json",
 	} {
 		if !isWhitelisted(p) {
 			t.Errorf("isWhitelisted(%q) = false; skills/ embedded asset must be exempt", p)

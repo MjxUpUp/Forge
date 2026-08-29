@@ -9,7 +9,7 @@
 - `timeline`：关键时间线（带证据：commit/日志/工单链接——blameless，只记事实不记追责）
 
 **选填**：
-- `evidence_refs`：结构化结论来源（`forge act show` 输出、checklog、task findings——先读锚定事实，别靠回忆）
+- `evidence_refs`：结构化结论来源（任务系统结论输出、checklog、评审 findings——先读锚定事实，别靠回忆）
 - `metrics`：量化损失/收益（耗时、损失单量、返工次数）
 - `action_items`：行动项（事项/负责人/截止——缺省从"做得不好的"逐条推导）
 

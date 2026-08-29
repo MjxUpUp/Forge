@@ -48,6 +48,6 @@
 >
 > | 编号 | 用例 | 结果 | 证据 |
 > |---|---|---|---|
-> | TC-01 | 全新安装 | ✅ | `forge verify --scenario fresh-install` 通过 |
+> | TC-01 | 全新安装 | ✅ | `<项目验收命令> --scenario fresh-install` 通过 |
 > | TC-04 | 升级 v0.30 | ❌ | 见附录 A 输出（hook 未注册） |
 

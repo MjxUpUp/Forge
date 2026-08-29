@@ -373,6 +373,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge skills decide [<skill>] --diagnosis ... --prediction <p>` | 记录 skill 决策四元组（skill 名可用位置参数或 --skill；在带 skills/ 树的仓库内默认写仓库 canonical 而非 embed 缓存）；`--prediction` 声明可检验预测（哪个可观测信号应改善），供验证闭环回扣 |
 | `forge skills verify --skill X --decision <id> --result <r>` | 回填决策验证结果（预测→验证闭环第二步；`--at` 指定时间、`--history`/`--history-json` 查全量可证伪台账） |
 | `forge skills revert --skill X --decision <id> [--edit] [--dry-run]` | Scoped revert：按 decisions.md 的 CommitHash 撤销某条决策关联的 commit（决策闭环的撤销臂） |
+| `forge skills integration [<skill>]` | 查看 skill 的 forge 集成笔记（零反向依赖契约的 forge 侧承接：命令语法/门禁/逃生口；无参数列出有笔记的 skill） |
 
 </details>
 

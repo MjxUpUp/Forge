@@ -44,7 +44,7 @@
 | 测试名像方法名 | 正则扫描 `test_\w+\s+def\s+\w+_\w+` 或 `it\('\w+_\w+` | Google Testing |
 | 无理由 skip | 正则扫描 `\.(skip|xit|todo|x)` 后无注释说明 | FIRST 原则 |
 | 断言弱化 | 正则扫描 `toBeTruthy\|toBeDefined\|toBeEmpty` | 断言强度 |
-| 空转措辞 / 无证据结论 / 复述 diff | `forge docs lint`（D1-D7，机器可查） | output-readability-gates 设计 |
+| 空转措辞 / 无证据结论 / 复述 diff | 文档 lint 机器规则可查（宿主提供时） | output-readability-gates 设计 |
 
 ## 与大厂规范的映射（方向，非条文）
 

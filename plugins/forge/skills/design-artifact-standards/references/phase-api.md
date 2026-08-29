@@ -62,7 +62,7 @@
 | 破坏性变更无版本 | 正则扫描 "delete\|remove\|drop\|rename" 后无 "v\d" 或 "migration" | REST 版本规范 |
 | URL 含动词 | 正则 `/(get|post|put|delete|list|create|update|remove)\b` 在资源路径段 | RESTful 约定 |
 | 状态码滥用 | 扫描 "200" 后跟 "error\|fail\|exception" | HTTP 语义标准 |
-| 空转措辞 / 无证据结论 / 复述 diff | `forge docs lint`（D1-D7，机器可查） | output-readability-gates 设计 |
+| 空转措辞 / 无证据结论 / 复述 diff | 文档 lint 机器规则可查（宿主提供时） | output-readability-gates 设计 |
 
 ## 与大厂规范的映射（方向，非条文）
 

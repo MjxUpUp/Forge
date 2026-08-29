@@ -7,6 +7,7 @@ import (
 	"path"
 
 	"github.com/MjxUpUp/Forge/skills"
+	skillsforge "github.com/MjxUpUp/Forge/skills-forge"
 )
 
 // pluginReadmeTemplate is the static three-step first-run plugin README, embedded from
@@ -56,21 +57,29 @@ var pluginReadmeTemplate string
 // tracks the embed at render time instead of a hardcoded number that silently rots
 // (the historical count moved 30→32→37→38→49).
 //
-// embeddedSkillCount 返回内嵌 skills.FS 的 canonical skill 数（含 SKILL.md 的顶层
-// 目录——与 writePluginSkills 分发、测试计数的同一真相源）。插值进 plugin README，
-// 宣传数字在渲染时跟踪 embed，而非硬编码静默腐烂（历史数量 30→32→37→38→49）。
+// embeddedSkillCount 返回内嵌 skill 总数（中立 skills.FS + forge 原生 skillsforge.FS
+// 的含 SKILL.md 顶层目录——与 writePluginSkills 分发、测试计数的同一真相源）。插值进
+// plugin README，宣传数字在渲染时跟踪 embed，而非硬编码静默腐烂（历史数量 30→32→37→38→49）。
+//
+// embeddedSkillCount returns the total embedded skill count (top-level dirs
+// with SKILL.md across the neutral skills.FS and the forge-native
+// skillsforge.FS — the same truth source as writePluginSkills and the count
+// tests). Interpolated into the plugin README so the advertised number tracks
+// the embed at render time instead of silently rotting (30→32→37→38→49).
 func embeddedSkillCount() int {
-	entries, err := skills.FS.ReadDir(".")
-	if err != nil {
-		return 0
-	}
 	n := 0
-	for _, e := range entries {
-		if !e.IsDir() {
+	for _, lib := range []fs.FS{skills.FS, skillsforge.FS} {
+		entries, err := fs.ReadDir(lib, ".")
+		if err != nil {
 			continue
 		}
-		if _, serr := fs.Stat(skills.FS, path.Join(e.Name(), "SKILL.md")); serr == nil {
-			n++
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			if _, serr := fs.Stat(lib, path.Join(e.Name(), "SKILL.md")); serr == nil {
+				n++
+			}
 		}
 	}
 	return n

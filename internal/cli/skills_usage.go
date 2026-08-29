@@ -283,8 +283,21 @@ func repoTriggerSet(gitRoot string) map[string]bool {
 	if err != nil || !st.IsDir() {
 		return nil
 	}
-	if rs := triggerDeclaredSkills(repoDir); len(rs) > 0 {
-		return rs
+	out := triggerDeclaredSkills(repoDir)
+	// skills-forge/ (forge-native overlay since the 2026-08 migration) carries its own
+	// trigger declarations — without scanning it, those skills would render as fake
+	// drift lines (present in production canonical, absent from repo source set).
+	//
+	// skills-forge/（2026-08 迁移后的 forge 原生覆盖层）有自己的 triggers 声明——
+	// 不扫它的话这些 skill 会渲染出假漂移行（生产 canonical 有、仓库源集合没有）。
+	forgeDir := filepath.Join(gitRoot, "skills-forge")
+	if fst, ferr := os.Stat(forgeDir); ferr == nil && fst.IsDir() {
+		for name := range triggerDeclaredSkills(forgeDir) {
+			out[name] = true
+		}
+	}
+	if len(out) > 0 {
+		return out
 	}
 	return nil
 }

@@ -217,7 +217,7 @@ E Elevation           权限提升      → 谁能干什么？最小权限
 - [ ] 含 LLM/MCP/skill 资产时已按 §2.7 过 agent 威胁
 - [ ] OWASP Top 10:2025 一一对照（**至少我们写的不踩雷**）
 
-> Forge 项目：自查通过后按 code-review-gate 流程审查盖章。非 forge 项目走所在环境的提交前审查。
+> 自查通过后按 code-review-gate 流程审查（有盖章机制的宿主记录已审）；其余环境走所在项目惯用的提交前审查。
 
 ## 5. Gotchas（实操易错点）
 
@@ -258,7 +258,7 @@ gitleaks detect --staged
 
 # 4. 安全 checklist（人工）→ 按本 skill §4 逐项核对
 
-# 5. 提交前审查（code-review-gate 门控，其 forge 条件块负责盖章）
+# 5. 提交前审查（code-review-gate 门控，宿主有审查盖章机制时由其标记已审）
 ```
 
 不过 → §4 自查清单补足；过 → commit + 安全 reviewer 双 sign（高风险改动）。

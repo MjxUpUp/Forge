@@ -44,7 +44,7 @@
 | 迁移无 DOWN | 扫描 migration 文件无 `-- DOWN` 标记 | Flyway 最佳实践 |
 | 无 WHERE 的 DELETE/UPDATE | 正则扫描 `DELETE\s+FROM|UPDATE.*SET` 后无 WHERE | SQL 安全清单 |
 | DROP 无复核 | 扫描 `DROP\s+(TABLE|DATABASE|INDEX)` | 破坏性 SQL |
-| 空转措辞 / 无证据结论 / 复述 diff | `forge docs lint`（D1-D7，机器可查） | output-readability-gates 设计 |
+| 空转措辞 / 无证据结论 / 复述 diff | 文档 lint 机器规则可查（宿主提供时） | output-readability-gates 设计 |
 
 ## 与大厂规范的映射（方向，非条文）
 

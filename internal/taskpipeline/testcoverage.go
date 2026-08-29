@@ -99,6 +99,16 @@ var testCoverageWhitelist = []whitelistEntry{
 	// 都会假阳性触发门控失败。匹配 skills/ 以放行根资产目录，
 	// 同时不影响 internal/cli/skills_install.go 等同名源码。
 	{substr: "skills/"},
+	// skills-forge/（2026-08 迁移后的 forge 原生 skill 覆盖层）同属分发的打包资产：
+	// 「skills/」子串匹配不到「skills-forge/」（斜杠位置不同），单独放行。带尾斜杠，
+	// 避免误放行 internal/cli/skills-forge-utils.go 类未来源码文件（review W6）。
+	//
+	// skills-forge/ (the forge-native skill overlay since the 2026-08 migration) is
+	// likewise distributed packaged asset: the "skills/" substring does NOT match
+	// "skills-forge/" (different slash position), so it needs its own entry. Trailing
+	// slash included so future sources like internal/cli/skills-forge-utils.go stay
+	// gated (review W6).
+	{substr: "skills-forge/"},
 	// Embedded hook-script container: internal/hooks/embed.go holds shell scripts as
 	// Go string constants (HazardGuardHook, WorkflowTestGuardHook, etc.). There is no
 	// Go logic to unit test — script behavior is verified end-to-end by internal/e2e
