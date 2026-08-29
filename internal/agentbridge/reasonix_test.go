@@ -1,12 +1,30 @@
 package agentbridge
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// setupReasonixHome isolates the reasonix home and the forge backup root into temp
+// dirs (REASONIX_HOME + FORGE_DATA_HOME, the latter isolating BackupOriginal which
+// writes under forgedata.GlobalHome) and pre-creates the home dir so the translator
+// sees an "installed" reasonix.
+//
+// setupReasonixHome 把 reasonix home 与 forge 备份根隔离进 temp dir
+// （REASONIX_HOME + FORGE_DATA_HOME，后者隔离写在 forgedata.GlobalHome 下的
+// BackupOriginal），并预建 home 目录让 translator 看到「已安装」的 reasonix。
+func setupReasonixHome(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("REASONIX_HOME", home)
+	t.Setenv("FORGE_DATA_HOME", t.TempDir()) // isolate BackupOriginal (writes under forgedata.GlobalHome)
+	if err := os.MkdirAll(home, 0755); err != nil {
+		t.Fatalf("mkdir reasonix home: %v", err)
+	}
+	return home
+}
 
 // TestReasonixTranslator_Translate: a reasonix home that exists (reasonix installed) gets the
 // user-level forge-quality skill written under <home>/skills/forge-quality/SKILL.md —
@@ -19,12 +37,7 @@ import (
 // 内容带共享条件激活措辞（对所有项目可见，仅在 forge 注册项目中生效）且移除项目信息章节。
 // （enforcement hooks settings.json 由下文 TranslateWritesHooks 覆盖。）
 func TestReasonixTranslator_Translate(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
-	t.Setenv("FORGE_DATA_HOME", t.TempDir()) // isolate BackupOriginal (writes under forgedata.GlobalHome)
-	if err := os.MkdirAll(home, 0755); err != nil {
-		t.Fatalf("mkdir reasonix home: %v", err)
-	}
+	home := setupReasonixHome(t)
 
 	if err := (&ReasonixTranslator{}).Translate(t.TempDir(), testInput()); err != nil {
 		t.Fatalf("Translate: %v", err)
@@ -62,12 +75,7 @@ func TestReasonixTranslator_Translate(t *testing.T) {
 // （PreToolUse → task-guard）和一个会话 event（SessionStart → skill-scan），以跨 event 种类
 // 覆盖 reasonixEventName 白名单。镜像 TestGenerateUserSettings_CreatesFile。
 func TestReasonixTranslator_TranslateWritesHooks(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
-	t.Setenv("FORGE_DATA_HOME", t.TempDir()) // isolate BackupOriginal (writes under forgedata.GlobalHome)
-	if err := os.MkdirAll(home, 0755); err != nil {
-		t.Fatalf("mkdir reasonix home: %v", err)
-	}
+	home := setupReasonixHome(t)
 
 	if err := (&ReasonixTranslator{}).Translate(t.TempDir(), testInput()); err != nil {
 		t.Fatalf("Translate: %v", err)
@@ -102,12 +110,7 @@ func TestReasonixTranslator_TranslateWritesHooks(t *testing.T) {
 // 用户 hook 条目（含未知字段）原样保留；forge hooks 恰好追加一次。镜像
 // TestGenerateUserSettings_MergePreservesUserHooks——防"merge 吃掉用户配置"的 raw-JSON 合并契约。
 func TestReasonixTranslator_HooksMergePreservesUserContent(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
-	t.Setenv("FORGE_DATA_HOME", t.TempDir()) // isolate BackupOriginal (writes under forgedata.GlobalHome)
-	if err := os.MkdirAll(home, 0755); err != nil {
-		t.Fatalf("mkdir reasonix home: %v", err)
-	}
+	home := setupReasonixHome(t)
 	// Seed: a user top-level key + a user hook entry carrying an unknown field (timeout), which a
 	// typed round-trip would silently drop.
 	seed := `{
@@ -175,90 +178,10 @@ func TestReasonixTranslator_NoSelfPoison(t *testing.T) {
 // TestReasonixTranslator_Idempotent：翻译两次产出逐字节一致的 skill 与 settings.json 内容
 // （无漂移、无重复段）。
 func TestReasonixTranslator_Idempotent(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
-	t.Setenv("FORGE_DATA_HOME", t.TempDir()) // isolate BackupOriginal (writes under forgedata.GlobalHome)
-	if err := os.MkdirAll(home, 0755); err != nil {
-		t.Fatalf("mkdir reasonix home: %v", err)
-	}
-
-	tr := &ReasonixTranslator{}
-	dir := t.TempDir()
-	if err := tr.Translate(dir, testInput()); err != nil {
-		t.Fatalf("Translate 1: %v", err)
-	}
-	firstSkill, err := os.ReadFile(filepath.Join(home, "skills", "forge-quality", "SKILL.md"))
-	if err != nil {
-		t.Fatalf("read skill 1: %v", err)
-	}
-	firstSettings, err := os.ReadFile(filepath.Join(home, "settings.json"))
-	if err != nil {
-		t.Fatalf("read settings 1: %v", err)
-	}
-	if err := tr.Translate(dir, testInput()); err != nil {
-		t.Fatalf("Translate 2: %v", err)
-	}
-	secondSkill, err := os.ReadFile(filepath.Join(home, "skills", "forge-quality", "SKILL.md"))
-	if err != nil {
-		t.Fatalf("read skill 2: %v", err)
-	}
-	secondSettings, err := os.ReadFile(filepath.Join(home, "settings.json"))
-	if err != nil {
-		t.Fatalf("read settings 2: %v", err)
-	}
-	if string(firstSkill) != string(secondSkill) {
-		t.Errorf("idempotency broken: second Translate changed the skill content")
-	}
-	if string(firstSettings) != string(secondSettings) {
-		t.Errorf("idempotency broken: second Translate changed settings.json content")
-	}
-}
-
-// TestReasonixTranslator_Registered guards AllTranslators membership — `forge init --agents
-// reasonix` resolves through translatorMap, so an unregistered translator silently wires nothing.
-//
-// TestReasonixTranslator_Registered 守卫 AllTranslators 成员资格——`forge init --agents
-// reasonix` 经 translatorMap 解析，未注册的 translator 会静默不接线。
-func TestReasonixTranslator_Registered(t *testing.T) {
-	for _, tr := range AllTranslators() {
-		if tr.AgentType() == AgentReasonix {
-			return
-		}
-	}
-	t.Fatal("ReasonixTranslator not registered in AllTranslators")
-}
-
-// TestReasonixDetect: a project dir carrying .reasonix/ (the agent ran there at least once) is
-// auto-detected; a clean dir is not. User-level home is deliberately NOT a signal (kimi
-// philosophy) — covered implicitly by TestDetectAgents_None with the isolated home.
-//
-// TestReasonixDetect：项目目录带 .reasonix/（agent 至少在此跑过一次）会被 auto 检测；干净
-// 目录不会。用户级 home 刻意不作为信号（kimi 哲学）——由隔离 home 下的
-// TestDetectAgents_None 隐式覆盖。
-func TestReasonixDetect(t *testing.T) {
-	isolateHome(t) // keep the real home out of DetectAgents' user-level scan
-
-	dir := t.TempDir()
-	agents := DetectAgents(dir)
-	for _, a := range agents {
-		if a == AgentReasonix {
-			t.Fatalf("clean project dir must not auto-detect reasonix, got %v", agents)
-		}
-	}
-
-	if err := os.MkdirAll(filepath.Join(dir, ".reasonix"), 0755); err != nil {
-		t.Fatalf("mkdir .reasonix: %v", err)
-	}
-	agents = DetectAgents(dir)
-	found := false
-	for _, a := range agents {
-		if a == AgentReasonix {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("project dir with .reasonix/ must auto-detect reasonix, got %v", agents)
-	}
+	home := setupReasonixHome(t)
+	assertTranslateIdempotent(t, &ReasonixTranslator{},
+		filepath.Join(home, "skills", "forge-quality", "SKILL.md"),
+		filepath.Join(home, "settings.json"))
 }
 
 // TestReasonixConfigHome_EnvAndDefault pins the home resolution: REASONIX_HOME wins when set;
@@ -308,9 +231,7 @@ func TestReasonixConfigHome_EnvAndDefault(t *testing.T) {
 // 保留用户条目（含未知字段）与未知顶层键；重跑是干净 no-op；文件缺失是干净 no-op。镜像
 // cursor/codex 的 strip 测试。
 func TestStripReasonixHooksUserLevel(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
-	t.Setenv("FORGE_DATA_HOME", t.TempDir()) // isolate BackupOriginal (writes under forgedata.GlobalHome)
+	home := setupReasonixHome(t)
 	settingsPath := filepath.Join(home, "settings.json")
 
 	// Seed: a forge hook + a user hook (with an unknown field) in one event, plus a user
@@ -388,82 +309,43 @@ func TestStripReasonixHooksUserLevel(t *testing.T) {
 // 必须匹配 Claude，反之不要求。仿 TestCursorWiringMirrorsClaudeSettings。
 func TestReasonixWiringMirrorsClaudeSettings(t *testing.T) {
 	// reasonix registers at user level (<reasonix home>/settings.json) — isolate the home.
-	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
-	t.Setenv("FORGE_DATA_HOME", t.TempDir()) // isolate BackupOriginal (writes under forgedata.GlobalHome)
-	if err := os.MkdirAll(home, 0755); err != nil {
-		t.Fatalf("mkdir reasonix home: %v", err)
-	}
+	home := setupReasonixHome(t)
 	claudeDir := t.TempDir()
 	writeClaudeSettingsFixture(t, claudeDir)
 	if err := (&ReasonixTranslator{}).Translate(t.TempDir(), testInput()); err != nil {
 		t.Fatalf("reasonix Translate: %v", err)
 	}
 	claude := hookCommandsByEvent(t, filepath.Join(claudeDir, ".claude", "settings.local.json"))
-	reasonix := reasonixHookCommandsByEvent(t, filepath.Join(home, "settings.json"))
+	reasonix := flatHookCommandsByEvent(t, filepath.Join(home, "settings.json"))
 
 	// reasonix PascalCase → Claude PascalCase is identity (reasonixEventName is a filter,
-	// not a remap).
-	eventMap := map[string]string{
-		"PreToolUse":   "PreToolUse",
-		"PostToolUse":  "PostToolUse",
-		"Stop":         "Stop",
-		"SessionStart": "SessionStart",
-	}
-	if len(reasonix) == 0 {
-		t.Fatal("reasonix wiring has no events — generator or parser broken")
-	}
+	// not a remap). The reasonix whitelist deliberately covers only 4 of the 6 spec
+	// events (PostCompact / UserPromptSubmit deferred pending empirical probe — see
+	// TestReasonixHooks_OnlyLegalReasonixEvents), so the comparison is one-directional:
+	// every reasonix event must match Claude, not vice-versa.
+	//
 	// Every command must carry --agent reasonix: tool events (Pre/PostToolUse) need it so
 	// reasonixNormalize maps the camelCase stdin ({toolName, toolArgs} → tool_name/file_path,
 	// else hooks fail open); session events (SessionStart/Stop) need it for ATTRIBUTION —
 	// without the flag they parsed as Claude-shape stdin, the camelCase sessionId never
 	// mapped to SessionID, and every session event landed on the legacy global key with the
-	// session never registered as reasonix (2026-08 attribution audit).
+	// session never registered as reasonix (2026-08 attribution audit). Enforced
+	// per-command by the shared helper.
 	//
 	// 每条命令都必须带 --agent reasonix：工具事件（Pre/PostToolUse）靠它走
 	// reasonixNormalize 映射 camelCase stdin（{toolName, toolArgs} → tool_name/file_path，
 	// 否则 hook fail open）；会话事件（SessionStart/Stop）靠它归因——不带时按 Claude 形
 	// stdin 解析，camelCase sessionId 永不映射到 SessionID，每个会话事件落 legacy 全局
-	// 键且会话从不被登记为 reasonix（2026-08 归因审计）。
-	for _, evt := range []string{"PreToolUse", "PostToolUse", "SessionStart", "Stop"} {
-		for cmd := range reasonix[evt] {
-			if !strings.Contains(cmd, "--agent reasonix") {
-				t.Errorf("reasonix %s command missing --agent reasonix (normalize/attribution): %s", evt, cmd)
-			}
-		}
-	}
-	for rEvt, rCmds := range reasonix {
-		claudeEvt, ok := eventMap[rEvt]
-		if !ok {
-			t.Errorf("reasonix event %q has no Claude Code mapping — new event not accounted for", rEvt)
-			continue
-		}
-		claudeCmds, ok := claude[claudeEvt]
-		if !ok {
-			t.Errorf("Claude Code settings missing event %q that reasonix wires", claudeEvt)
-			continue
-		}
-		// Strip the `--agent reasonix` suffix so the command surfaces match Claude Code's
-		// (`forge hook <name>`).
-		stripped := map[string]bool{}
-		for cmd := range rCmds {
-			stripped[strings.TrimSuffix(cmd, " --agent reasonix")] = true
-		}
-		if !stringSetEqual(claudeCmds, stripped) {
-			t.Errorf("hook commands for reasonix %q / claude %q drifted — keep ForgeHookSpec (settings.go) and reasonix.go buildReasonixHooks in sync:\n  claude:  %s\n  reasonix: %s",
-				rEvt, claudeEvt, sortedSet(claudeCmds), sortedSet(stripped))
-		}
-	}
+	// 键且会话从不被登记为 reasonix（2026-08 归因审计）。由共享 helper 逐命令强制。
+	assertHostMirrorsClaude(t, "reasonix", reasonix, claude, map[string]string{
+		"PreToolUse":   "PreToolUse",
+		"PostToolUse":  "PostToolUse",
+		"Stop":         "Stop",
+		"SessionStart": "SessionStart",
+	})
 
 	// Regression guard: sunk/deleted hooks must not resurface on reasonix either.
-	sunk := []string{"read-check", "scope-guard", "clone-check", "experience-check", "security-check", "dependency-check", "test-coverage-check", "session-health"}
-	for cmd := range reasonix["PostToolUse"] {
-		for _, s := range sunk {
-			if strings.Contains(cmd, "forge hook "+s) {
-				t.Errorf("sunk hook %q resurfaced in reasonix settings: %s", s, cmd)
-			}
-		}
-	}
+	assertNoSunkHooks(t, "reasonix settings", reasonix["PostToolUse"])
 }
 
 // TestReasonixHooks_OnlyLegalReasonixEvents pins the reasonix event whitelist
@@ -492,27 +374,19 @@ func TestReasonixHooks_OnlyLegalReasonixEvents(t *testing.T) {
 		t.Fatalf(`reasonix wiring shape unexpected: %T`, raw[`hooks`])
 	}
 	// PascalCase events the CC-compatible reasonix hook system accepts (superset — the
-	// reasonixEventName whitelist narrows to the confirmed subset).
+	// reasonixEventName whitelist narrows to the confirmed subset). The four classic
+	// enforcement events (PreToolUse/PostToolUse/Stop/SessionStart) MUST be present —
+	// they carry all hard enforcement; PostCompact and UserPromptSubmit are pinned
+	// absent below.
 	legal := map[string]bool{
 		"PreToolUse": true, "PostToolUse": true,
 		"Stop": true, "SessionStart": true,
 		"PostCompact": true, "UserPromptSubmit": true,
 	}
-	for event := range hooksMap {
-		if !legal[event] {
-			t.Errorf("illegal reasonix hook event %q (not in the CC-compatible roster — never fires)", event)
-		}
-	}
-	for _, required := range []string{`PreToolUse`, `PostToolUse`, `Stop`, `SessionStart`} {
-		if _, present := hooksMap[required]; !present {
-			t.Errorf(`reasonix must wire %s (carries hard enforcement): missing`, required)
-		}
-	}
-	for _, deferred := range []string{`PostCompact`, `UserPromptSubmit`} {
-		if _, present := hooksMap[deferred]; present {
-			t.Errorf(`reasonix must not yet wire %s (deferred pending empirical probe — add a reasonixEventName case + update this test before re-enabling)`, deferred)
-		}
-	}
+	assertOnlyLegalEvents(t, "reasonix", hooksMap, legal,
+		[]string{`PreToolUse`, `PostToolUse`, `Stop`, `SessionStart`},
+		[]string{`PostCompact`, `UserPromptSubmit`},
+		"deferred pending empirical probe — add a reasonixEventName case + update this test before re-enabling")
 }
 
 // TestReasonixMatchersTranslated pins the Claude-Code PascalCase → reasonix snake_case matcher
@@ -582,37 +456,6 @@ func TestReasonixMatchersTranslated(t *testing.T) {
 	}
 }
 
-// reasonixHookCommandsByEvent parses reasonix's flat settings.json into event → set of
-// command strings. reasonix's schema {hooks:{event:[{match,command}]}} shares cursor's
-// flat command-on-each-entry shape, so this mirrors cursorHookCommandsByEvent (kept
-// separate only so a reasonix test does not call a cursor-named helper).
-func reasonixHookCommandsByEvent(t *testing.T, path string) map[string]map[string]bool {
-	t.Helper()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read %s: %v", path, err)
-	}
-	var cfg struct {
-		Hooks map[string][]struct {
-			Command string `json:"command"`
-		} `json:"hooks"`
-	}
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		t.Fatalf("unmarshal %s: %v", path, err)
-	}
-	out := make(map[string]map[string]bool)
-	for event, entries := range cfg.Hooks {
-		set := make(map[string]bool)
-		for _, e := range entries {
-			if e.Command != "" {
-				set[e.Command] = true
-			}
-		}
-		out[event] = set
-	}
-	return out
-}
-
 // TestIsReasonixPluginInstalled pins the tolerant recursive registry read. reasonix's
 // plugin-packages.json schema is undocumented (reasonix pre-1.0), so the parser must find
 // an active forge entry in a top-level array, a {plugins:[]}/{packages:[]} object, an
@@ -677,12 +520,7 @@ func TestIsReasonixPluginInstalled(t *testing.T) {
 // hook 双跑（kimi 式 plugin-wins 去重）。settings.json 根本不被创建（hooks 分支跳过；
 // StripReasonixHooksUserLevel 对缺失文件是 no-op）。
 func TestReasonixTranslator_PluginWins(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
-	t.Setenv("FORGE_DATA_HOME", t.TempDir())
-	if err := os.MkdirAll(home, 0755); err != nil {
-		t.Fatalf("mkdir home: %v", err)
-	}
+	home := setupReasonixHome(t)
 	// Seed the reasonix plugin registry with an active forge entry (no settings.json yet).
 	if err := os.WriteFile(filepath.Join(home, "plugin-packages.json"),
 		[]byte(`{"plugins":[{"name":"forge","version":"1.0.0"}]}`), 0644); err != nil {
@@ -716,12 +554,7 @@ func TestReasonixTranslator_PluginWins(t *testing.T) {
 // settings.json 剥除陈旧 forge hooks——如装 plugin 前跑过 `forge init --agents reasonix` 的残留。
 // 不剥则这些陈旧 hook 会与 plugin manifest 双跑。用户内容保留（StripReasonixHooksUserLevel 契约）。
 func TestReasonixTranslator_PluginWinsStripsStaleSettingsHooks(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
-	t.Setenv("FORGE_DATA_HOME", t.TempDir())
-	if err := os.MkdirAll(home, 0755); err != nil {
-		t.Fatalf("mkdir home: %v", err)
-	}
+	home := setupReasonixHome(t)
 	// Plugin registry has an active forge entry.
 	if err := os.WriteFile(filepath.Join(home, "plugin-packages.json"),
 		[]byte(`{"plugins":[{"name":"forge"}]}`), 0644); err != nil {

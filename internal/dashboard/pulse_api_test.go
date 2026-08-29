@@ -46,6 +46,70 @@ func pulseGet(t *testing.T, url string) (int, []byte) {
 	return resp.StatusCode, body
 }
 
+// pulseTaskPayload is the shared decode target of the task.json test family (the
+// 6 former inline payload structs, unified 2026-08-30 slim-down): the union of
+// every field any task.json assertion reads — absent JSON fields simply decode
+// to their zero value, so each test sees only its own slice of the contract.
+// taskRef/project/state/score/acceptance (TestServe_PulseTask), dimensions/
+// cappedReason/evidence (ScoredTask), events/truncated (Truncated), the
+// conclusion-backfill evidence pointer (EvidenceBackfill / NoFabrication), and
+// state.lease/docReview (LeaseAndDocReview).
+//
+// pulseTaskPayload 是 task.json 测试家族的共用解码目标（2026-08-30 瘦身合并原
+// 6 个内联 payload struct）：任一 task.json 断言读取字段的并集——缺席的 JSON
+// 字段解码为零值，各测试只看到自己那一片契约。
+type pulseTaskPayload struct {
+	TaskRef   string      `json:"taskRef"`
+	Project   string      `json:"project"`
+	Events    []FeedEvent `json:"events"`
+	Truncated bool        `json:"truncated"`
+	State     struct {
+		CurrentGate  string    `json:"currentGate"`
+		StartedAt    time.Time `json:"startedAt"`
+		OriginTool   string    `json:"originTool"`
+		Zombie       bool      `json:"zombie"`
+		GateProgress struct {
+			Passed int `json:"passed"`
+			Total  int `json:"total"`
+		} `json:"gateProgress"`
+		Lease *struct {
+			HolderNode string    `json:"holderNode"`
+			Active     bool      `json:"active"`
+			ExpiresAt  time.Time `json:"expiresAt"`
+			Fencing    int64     `json:"fencing"`
+			TTLSec     int64     `json:"ttlSec"`
+		} `json:"lease"`
+	} `json:"state"`
+	Score *struct {
+		Overall        float64 `json:"overall"`
+		Grade          string  `json:"grade"`
+		FromConclusion bool    `json:"fromConclusion"`
+		CappedReason   string  `json:"cappedReason"`
+		Dimensions     []struct {
+			Name   string  `json:"name"`
+			Weight float64 `json:"weight"`
+			Score  int     `json:"score"`
+			Detail string  `json:"detail"`
+		} `json:"dimensions"`
+		Evidence *struct {
+			Deterministic int     `json:"deterministic"`
+			AgentClaim    int     `json:"agentClaim"`
+			Ratio         float64 `json:"ratio"`
+			Strength      string  `json:"strength"`
+		} `json:"evidence"`
+	} `json:"score"`
+	Acceptance struct {
+		Pass  int `json:"pass"`
+		Total int `json:"total"`
+	} `json:"acceptance"`
+	DocReview *struct {
+		Passed      bool `json:"passed"`
+		RubricScore int  `json:"rubricScore"`
+		Round       int  `json:"round"`
+		RoundsTotal int  `json:"roundsTotal"`
+	} `json:"docReview"`
+}
+
 // TestServe_PulseFeed: /api/pulse/feed.json returns 200 + generatedAt + merged events;
 // a malformed since is a 400 (client error, not a 500). A limit below the event count
 // truncates and marks truncated:true (the client full-refetches on a truncated poll).
@@ -148,30 +212,7 @@ func TestServe_PulseTask(t *testing.T) {
 	if strings.Contains(string(body), "secret-session-xyz") {
 		t.Fatalf("task.json 泄露 SessionID: %s", body)
 	}
-	var payload struct {
-		TaskRef string `json:"taskRef"`
-		Project string `json:"project"`
-		State   struct {
-			CurrentGate  string    `json:"currentGate"`
-			StartedAt    time.Time `json:"startedAt"`
-			OriginTool   string    `json:"originTool"`
-			Zombie       bool      `json:"zombie"`
-			GateProgress struct {
-				Passed int `json:"passed"`
-				Total  int `json:"total"`
-			} `json:"gateProgress"`
-		} `json:"state"`
-		Events []FeedEvent `json:"events"`
-		Score  *struct {
-			Overall        float64 `json:"overall"`
-			Grade          string  `json:"grade"`
-			FromConclusion bool    `json:"fromConclusion"`
-		} `json:"score"`
-		Acceptance struct {
-			Pass  int `json:"pass"`
-			Total int `json:"total"`
-		} `json:"acceptance"`
-	}
+	var payload pulseTaskPayload
 	if err := json.Unmarshal(body, &payload); err != nil {
 		t.Fatalf("decode: %v\n%s", err, body)
 	}
@@ -235,24 +276,7 @@ func TestServe_PulseTask_ScoredTask(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("status = %d: %s", code, body)
 	}
-	var payload struct {
-		Score *struct {
-			Overall    float64 `json:"overall"`
-			Grade      string  `json:"grade"`
-			Dimensions []struct {
-				Name   string  `json:"name"`
-				Weight float64 `json:"weight"`
-				Score  int     `json:"score"`
-				Detail string  `json:"detail"`
-			} `json:"dimensions"`
-			CappedReason string `json:"cappedReason"`
-			Evidence     struct {
-				Deterministic int     `json:"deterministic"`
-				AgentClaim    int     `json:"agentClaim"`
-				Ratio         float64 `json:"ratio"`
-			} `json:"evidence"`
-		} `json:"score"`
-	}
+	var payload pulseTaskPayload
 	if err := json.Unmarshal(body, &payload); err != nil {
 		t.Fatalf("decode: %v\n%s", err, body)
 	}
@@ -321,10 +345,7 @@ func TestServe_PulseTask_Truncated(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("status = %d: %s", code, body)
 	}
-	var payload struct {
-		Events    []FeedEvent `json:"events"`
-		Truncated bool        `json:"truncated"`
-	}
+	var payload pulseTaskPayload
 	if err := json.Unmarshal(body, &payload); err != nil {
 		t.Fatalf("decode: %v\n%s", err, body)
 	}
@@ -407,17 +428,7 @@ func TestServe_PulseTask_EvidenceBackfill(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("status = %d: %s", code, body)
 	}
-	var payload struct {
-		Score *struct {
-			FromConclusion bool `json:"fromConclusion"`
-			Evidence       *struct {
-				Deterministic int     `json:"deterministic"`
-				AgentClaim    int     `json:"agentClaim"`
-				Ratio         float64 `json:"ratio"`
-				Strength      string  `json:"strength"`
-			} `json:"evidence"`
-		} `json:"score"`
-	}
+	var payload pulseTaskPayload
 	if err := json.Unmarshal(body, &payload); err != nil {
 		t.Fatalf("decode: %v\n%s", err, body)
 	}
@@ -478,17 +489,7 @@ func TestServe_PulseTask_NoEvidenceNoFabrication(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("status = %d: %s", code, body)
 	}
-	var payload struct {
-		Score *struct {
-			FromConclusion bool `json:"fromConclusion"`
-			Evidence       *struct {
-				Deterministic int     `json:"deterministic"`
-				AgentClaim    int     `json:"agentClaim"`
-				Ratio         float64 `json:"ratio"`
-				Strength      string  `json:"strength"`
-			} `json:"evidence"`
-		} `json:"score"`
-	}
+	var payload pulseTaskPayload
 	if err := json.Unmarshal(body, &payload); err != nil {
 		t.Fatalf("decode: %v\n%s", err, body)
 	}
@@ -957,23 +958,7 @@ func TestServe_PulseTask_LeaseAndDocReview(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("status = %d, want 200: %s", code, body)
 	}
-	var payload struct {
-		State struct {
-			Lease *struct {
-				HolderNode string    `json:"holderNode"`
-				Active     bool      `json:"active"`
-				ExpiresAt  time.Time `json:"expiresAt"`
-				Fencing    int64     `json:"fencing"`
-				TTLSec     int64     `json:"ttlSec"`
-			} `json:"lease"`
-		} `json:"state"`
-		DocReview *struct {
-			Passed      bool `json:"passed"`
-			RubricScore int  `json:"rubricScore"`
-			Round       int  `json:"round"`
-			RoundsTotal int  `json:"roundsTotal"`
-		} `json:"docReview"`
-	}
+	var payload pulseTaskPayload
 	if err := json.Unmarshal(body, &payload); err != nil {
 		t.Fatalf("decode: %v\n%s", err, body)
 	}
@@ -1016,12 +1001,7 @@ func TestServe_PulseTask_LeaseAndDocReview(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("skip status = %d, want 200: %s", code, body)
 	}
-	var skipPayload struct {
-		DocReview *struct {
-			Round       int `json:"round"`
-			RoundsTotal int `json:"roundsTotal"`
-		} `json:"docReview"`
-	}
+	var skipPayload pulseTaskPayload
 	if err := json.Unmarshal(body, &skipPayload); err != nil {
 		t.Fatalf("decode skip: %v\n%s", err, body)
 	}

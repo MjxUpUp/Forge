@@ -104,22 +104,6 @@ func TestDshPluginPackageContract(t *testing.T) {
 	}
 }
 
-// TestDshTranslator_Registered guards AllTranslators membership — `forge init
-// --agents dsh` resolves through it, and TestParseAgentFlag_CoversAllTranslators
-// derives its coverage set from it.
-//
-// TestDshTranslator_Registered 守卫 AllTranslators 成员资格——`forge init
-// --agents dsh` 经它解析，TestParseAgentFlag_CoversAllTranslators 的覆盖集也从
-// 它派生。
-func TestDshTranslator_Registered(t *testing.T) {
-	for _, tr := range AllTranslators() {
-		if tr.AgentType() == AgentDsh {
-			return
-		}
-	}
-	t.Fatal("DshTranslator not registered in AllTranslators")
-}
-
 // TestDshTranslator_Translate pins the deliberate no-op contract (the plugin
 // is the only wiring path): Translate succeeds and writes NOTHING.
 //

@@ -82,11 +82,42 @@ func canonicalEnv(t *testing.T) string {
 	return v
 }
 
-func TestSkillsDecideVerify_PredictionClosure(t *testing.T) {
+// closureCanonical isolates the home and seeds the standard closure-skill
+// canonical tree, returning the canonical dir — the shared test header of the
+// verify-closure tests.
+//
+// closureCanonical 隔离 home 并种入标准 closure-skill canonical 树，返回
+// canonical 目录——verify 闭环测试共享的测试头。
+func closureCanonical(t *testing.T) string {
+	t.Helper()
 	canonical := t.TempDir()
 	evalLoopIsolateHome(t)
 	evalLoopWriteSkill(t, canonical, "closure-skill", "Use when: 编写 React 组件 SKIP: 选型")
 	t.Setenv("FORGE_SKILLS_CANONICAL", canonical)
+	return canonical
+}
+
+// setSkVerVars pins the `skills verify` package vars for one in-process call
+// and restores them when the test ends (flag-bound global state).
+//
+// setSkVerVars 为一次进程内调用钉住 `skills verify` 的包级变量，测试结束时
+// 复位（flag 绑定的全局状态）。
+func setSkVerVars(t *testing.T, skill, decision, result, at string) {
+	t.Helper()
+	skVerSkill = skill
+	skVerDecision = decision
+	skVerResult = result
+	skVerAt = at
+	t.Cleanup(func() {
+		skVerSkill = ""
+		skVerDecision = ""
+		skVerResult = ""
+		skVerAt = ""
+	})
+}
+
+func TestSkillsDecideVerify_PredictionClosure(t *testing.T) {
+	canonical := closureCanonical(t)
 
 	// Step 1: decide declares a falsifiable prediction at edit time.
 	//
@@ -104,16 +135,7 @@ func TestSkillsDecideVerify_PredictionClosure(t *testing.T) {
 	// Step 2: verify backfills the outcome onto that decision.
 	//
 	// 第二步：verify 把真实结果回填到该决策。
-	skVerSkill = "closure-skill"
-	skVerDecision = id
-	skVerResult = `命中：触发率 32%`
-	skVerAt = "2026-08-16T10:00:00Z"
-	defer func() {
-		skVerSkill = ""
-		skVerDecision = ""
-		skVerResult = ""
-		skVerAt = ""
-	}()
+	setSkVerVars(t, "closure-skill", id, `命中：触发率 32%`, "2026-08-16T10:00:00Z")
 	if err := runSkillsVerify(nil, nil); err != nil {
 		t.Fatalf("verify: %v", err)
 	}
@@ -131,17 +153,10 @@ func TestSkillsDecideVerify_PredictionClosure(t *testing.T) {
 }
 
 func TestSkillsVerify_InvalidAt(t *testing.T) {
-	canonical := t.TempDir()
-	evalLoopIsolateHome(t)
-	evalLoopWriteSkill(t, canonical, "closure-skill", "Use when: 编写 React 组件 SKIP: 选型")
-	t.Setenv("FORGE_SKILLS_CANONICAL", canonical)
+	closureCanonical(t)
 	id := closureDecide(t, "closure-skill", "p")
 
-	skVerSkill = "closure-skill"
-	skVerDecision = id
-	skVerResult = "r"
-	skVerAt = "not-a-time"
-	defer func() { skVerSkill = ""; skVerDecision = ""; skVerResult = ""; skVerAt = "" }()
+	setSkVerVars(t, "closure-skill", id, "r", "not-a-time")
 	err := runSkillsVerify(nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "RFC3339") {
 		t.Fatalf("--at 非法应报 RFC3339 错误, got %v", err)
@@ -149,23 +164,22 @@ func TestSkillsVerify_InvalidAt(t *testing.T) {
 }
 
 func TestSkillsVerify_HistoryLedger(t *testing.T) {
-	canonical := t.TempDir()
-	evalLoopIsolateHome(t)
-	evalLoopWriteSkill(t, canonical, "closure-skill", "Use when: 编写 React 组件 SKIP: 选型")
-	t.Setenv("FORGE_SKILLS_CANONICAL", canonical)
+	closureCanonical(t)
 
 	// d1: with prediction, unverified; d2: with prediction, verified; d3: no prediction.
 	//
 	// d1：带预测未验证；d2：带预测已验证；d3：无预测。
 	d1 := closureDecide(t, "closure-skill", "pred-1")
 	d2 := closureDecide(t, "closure-skill", "pred-2")
-	skVerSkill = "closure-skill"
-	skVerDecision = d2
-	skVerResult = "已验证"
-	skVerAt = "2026-08-16T10:00:00Z"
+	setSkVerVars(t, "closure-skill", d2, "已验证", "2026-08-16T10:00:00Z")
 	if err := runSkillsVerify(nil, nil); err != nil {
 		t.Fatalf("verify d2: %v", err)
 	}
+	// Mid-test manual reset (history mode runs with the vars cleared; the
+	// helper's cleanup re-resets, which is a no-op then).
+	//
+	// 测试中段手动复位（history 模式在变量清零下运行；helper 的 cleanup 届时
+	// 再复位一次，等于 no-op）。
 	skVerSkill = ""
 	skVerDecision = ""
 	skVerResult = ""

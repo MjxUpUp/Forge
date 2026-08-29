@@ -111,15 +111,23 @@ func runForge(t *testing.T, dir string, args ...string) (stdout, stderr string, 
 	return output, "", 0
 }
 
+// initProject runs forge init (with the given flags) in dir and fails the test
+// on non-zero exit — the shared boilerplate of every init-based test.
+//
+// initProject 在 dir 跑 forge init（带给定 flags），非零退出即测试失败——所有
+// init 系测试共享的样板。
+func initProject(t *testing.T, dir string, flags ...string) {
+	t.Helper()
+	if out, _, code := runForge(t, dir, append([]string{"init"}, flags...)...); code != 0 {
+		t.Fatalf("forge init %v failed: %s", flags, out)
+	}
+}
+
 // --------------- Test 1: TestInitCreatesFiles ---------------
 
 func TestInitCreatesFiles(t *testing.T) {
 	tmpDir := t.TempDir()
-
-	stdout, _, code := runForge(t, tmpDir, "init", "--mode", "medium")
-	if code != 0 {
-		t.Fatalf("forge init exit code %d, output: %s", code, stdout)
-	}
+	initProject(t, tmpDir, "--mode", "medium")
 
 	// The number of .sh files under DataDir/hooks/ must equal hooks.HookNames() (single
 	// source of truth). Adding/removing a hook only changes HookNames() in settings.go,
@@ -172,50 +180,57 @@ func TestInitCreatesFiles(t *testing.T) {
 	}
 }
 
-// --------------- Test 5: TestStatusAfterInit ---------------
+// --------------- Test 5-6 / idempotent / agents: post-init smoke table ---------------
 
-func TestStatusAfterInit(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	stdout, _, code := runForge(t, tmpDir, "init", "--mode", "medium")
-	if code != 0 {
-		t.Fatalf("forge init failed: %s", stdout)
+// TestPostInitSmokeCommands merges the per-command exit-0 smoke tests: after
+// init, each command variant must run cleanly (exit 0) and satisfy its row's
+// output assertion. Row semantics preserved one-for-one from the absorbed
+// tests (status smoke, status --json, status --agents, init-twice idempotency).
+// With the project-level pipeline removed, status no longer renders "pending";
+// empty task output is normal, so these stay exit-0 smokes.
+//
+// TestPostInitSmokeCommands 合并逐命令 exit-0 smoke：init 后各命令变体必须干净运行
+// （exit 0）并满足各自行输出断言。行语义逐一保留自被吸收测试（status smoke、
+// status --json、status --agents、二次 init 幂等）。项目级管道删除后 status 不再渲染
+// "pending"；无任务输出为空属正常，故保持 exit-0 smoke。
+func TestPostInitSmokeCommands(t *testing.T) {
+	tests := []struct {
+		name          string
+		initFlags     []string
+		args          []string // command run after init
+		wantIn        string   // required substring in output ("" = none)
+		wantJSONField string   // required top-level JSON key ("" = none)
+	}{
+		{name: "status", initFlags: []string{"--mode", "medium"}, args: []string{"status"}},
+		{name: "status json", initFlags: []string{"--mode", "medium"}, args: []string{"status", "--json"}, wantJSONField: "tasks"},
+		{name: "status agents", initFlags: []string{"--mode", "medium"}, args: []string{"status", "--agents"}, wantIn: "claude-code"},
+		// init twice must both succeed (idempotency).
+		//
+		// 二次 init 必须都成功（幂等）。
+		{name: "init idempotent", initFlags: []string{"--mode", "small"}, args: []string{"init", "--mode", "small"}},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			initProject(t, tmpDir, tt.initFlags...)
 
-	// With project-level pipeline removed, status no longer renders "pending"
-	// (pipeline state); empty output is normal when there are no tasks.
-	// This test is downgraded to smoke: status must run successfully (exit 0) after init.
-	//
-	// 项目级管道删除后 status 不再渲染 "pending"（pipeline 状态）；无任务时输出为空属正常。
-	// 本测试降为 smoke：init 后 status 必须成功运行（exit 0）。
-	stdout, _, code = runForge(t, tmpDir, "status")
-	if code != 0 {
-		t.Fatalf("forge status exit code %d, output: %s", code, stdout)
-	}
-}
-
-// --------------- Test 6: TestStatusJSON ---------------
-
-func TestStatusJSON(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	stdout, _, code := runForge(t, tmpDir, "init", "--mode", "medium")
-	if code != 0 {
-		t.Fatalf("forge init failed: %s", stdout)
-	}
-
-	stdout, _, code = runForge(t, tmpDir, "status", "--json")
-	if code != 0 {
-		t.Fatalf("forge status --json exit code %d, output: %s", code, stdout)
-	}
-
-	// Parse JSON — project pipeline removed; status JSON now exposes {tasks, health}.
-	var result map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
-		t.Fatalf("failed to parse status JSON: %v\noutput: %s", err, stdout)
-	}
-	if _, ok := result["tasks"]; !ok {
-		t.Fatal("JSON output missing 'tasks' field")
+			stdout, _, code := runForge(t, tmpDir, tt.args...)
+			if code != 0 {
+				t.Fatalf("forge %v exit code %d, output: %s", tt.args, code, stdout)
+			}
+			if tt.wantIn != "" && !strings.Contains(stdout, tt.wantIn) {
+				t.Errorf("output missing %q:\n%s", tt.wantIn, stdout)
+			}
+			if tt.wantJSONField != "" {
+				var result map[string]json.RawMessage
+				if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+					t.Fatalf("failed to parse JSON: %v\noutput: %s", err, stdout)
+				}
+				if _, ok := result[tt.wantJSONField]; !ok {
+					t.Errorf("JSON output missing %q field", tt.wantJSONField)
+				}
+			}
+		})
 	}
 }
 
@@ -232,10 +247,7 @@ func TestStatusJSON(t *testing.T) {
 // status（"项目在哪"主入口）看不到的可见性缺口。
 func TestStatusShowsHealthSignal(t *testing.T) {
 	tmpDir, p := forgedatatest.RealProject(t)
-	stdout, _, code := runForge(t, tmpDir, "init", "--mode", "medium")
-	if code != 0 {
-		t.Fatalf("forge init failed: %s", stdout)
-	}
+	initProject(t, tmpDir, "--mode", "medium")
 
 	// Seed 2 conclusions: 1 Strong + 1 Unverified -> 50% blind-spot rate (triggers the
 	// systemic warning); both carry scope as a low-score dimension.
@@ -255,7 +267,7 @@ func TestStatusShowsHealthSignal(t *testing.T) {
 	// recurrence must all appear.
 	//
 	// pretty：质量信号块 + 系统性盲区告警 + scope 复发都必须出现。
-	stdout, _, code = runForge(t, tmpDir, "status")
+	stdout, _, code := runForge(t, tmpDir, "status")
 	if code != 0 {
 		t.Fatalf("forge status exit %d: %s", code, stdout)
 	}
@@ -351,10 +363,19 @@ func TestHelperFunctions(t *testing.T) {
 func TestSystemStatusRequiresForge(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// forge status --system runs system health checks.
-	// It checks ~/.forge/ existence, not the project dir,
-	// so just verify it runs without crashing.
-	_, _, _ = runForge(t, tmpDir, "status", "--system")
+	// forge status --system runs system health checks against ~/.forge under the
+	// user home (TestMain-isolated, empty here). Without ~/.forge it must fail
+	// loudly and name the missing dir, not pass silently.
+	//
+	// forge status --system 对用户 home（TestMain 已隔离、此处为空）下的 ~/.forge 跑
+	// 系统级健康检查。没有 ~/.forge 时必须显式失败并点名缺失目录，而非静默通过。
+	out, _, code := runForge(t, tmpDir, "status", "--system")
+	if code == 0 {
+		t.Fatalf("expected non-zero exit when ~/.forge is missing, got 0\noutput:\n%s", out)
+	}
+	if !strings.Contains(out, "~/.forge/") {
+		t.Errorf("output should name the missing ~/.forge:\n%s", out)
+	}
 }
 
 // --------------- Test: Status without init ---------------
@@ -431,20 +452,6 @@ func TestInitSkipsProjectSettingsWriteWhenPluginInstalled(t *testing.T) {
 	}
 }
 
-func TestInitIdempotent(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	stdout, _, code := runForge(t, tmpDir, "init", "--mode", "small")
-	if code != 0 {
-		t.Fatalf("first init failed: %s", stdout)
-	}
-
-	stdout, _, code = runForge(t, tmpDir, "init", "--mode", "small")
-	if code != 0 {
-		t.Fatalf("second init failed: %s", stdout)
-	}
-}
-
 // --------------- Test: First-run experience ---------------
 // A user who has never seen forge should understand what it does
 // and what to do next within the first 30 seconds.
@@ -477,11 +484,7 @@ func TestFirstRunExperience(t *testing.T) {
 
 func TestInitProtocolScoringConfig(t *testing.T) {
 	tmpDir := t.TempDir()
-
-	stdout, _, code := runForge(t, tmpDir, "init", "--mode", "medium")
-	if code != 0 {
-		t.Fatalf("forge init failed: %s", stdout)
-	}
+	initProject(t, tmpDir, "--mode", "medium")
 
 	protoData, err := os.ReadFile(filepath.Join(forgedata.DataDirFor(tmpDir), "protocol.yml"))
 	if err != nil {
@@ -513,10 +516,7 @@ func TestTaskScoreWorkflow(t *testing.T) {
 	runGit(t, tmpDir, "config", "user.email", "test@test.com")
 	runGit(t, tmpDir, "config", "user.name", "Test")
 
-	stdout, _, code := runForge(t, tmpDir, "init", "--mode", "medium")
-	if code != 0 {
-		t.Fatalf("forge init failed: %s", stdout)
-	}
+	initProject(t, tmpDir, "--mode", "medium")
 
 	// Create and commit initial files
 	os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte("package main\nfunc main() {}\n"), 0644)
@@ -527,7 +527,7 @@ func TestTaskScoreWorkflow(t *testing.T) {
 	runGit(t, tmpDir, "checkout", "-b", "feature/test-scoring")
 
 	// Start a task
-	stdout, _, code = runForge(t, tmpDir, "task", "start")
+	stdout, _, code := runForge(t, tmpDir, "task", "start")
 	if code != 0 {
 		t.Fatalf("forge task start failed: %s", stdout)
 	}
@@ -605,11 +605,7 @@ func TestTaskScoreWorkflow(t *testing.T) {
 
 func TestInitWithAgents(t *testing.T) {
 	tmpDir := t.TempDir()
-
-	stdout, _, code := runForge(t, tmpDir, "init", "--mode", "medium", "--agents", "cursor,copilot")
-	if code != 0 {
-		t.Fatalf("forge init --agents cursor,copilot failed: %s", stdout)
-	}
+	initProject(t, tmpDir, "--mode", "medium", "--agents", "cursor,copilot")
 
 	// Cursor registers at user level (~/.cursor/hooks.json) — the project-level
 	// .cursor/rules/forge-quality.mdc is gone (zero-project-write). HOME is
@@ -636,26 +632,6 @@ func TestInitWithAgents(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(tmpDir, name)); !os.IsNotExist(err) {
 			t.Errorf("init --agents must not write %s into the project dir (zero-project-write)", name)
 		}
-	}
-}
-
-// --------------- Test: Status --agents ---------------
-
-func TestStatusAgents(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	stdout, _, code := runForge(t, tmpDir, "init", "--mode", "medium")
-	if code != 0 {
-		t.Fatalf("forge init failed: %s", stdout)
-	}
-
-	stdout, _, code = runForge(t, tmpDir, "status", "--agents")
-	if code != 0 {
-		t.Fatalf("forge status --agents failed: %s", stdout)
-	}
-	// After init with default auto mode, .claude/ exists → should detect claude-code
-	if !strings.Contains(stdout, "claude-code") {
-		t.Fatalf("expected claude-code in agents output, got: %s", stdout)
 	}
 }
 

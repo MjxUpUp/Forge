@@ -14,102 +14,113 @@ func al(file string, line int, text string) addedLine {
 	return addedLine{file: file, lineNo: line, text: text}
 }
 
-// TestDetectTypeSuppression pins down hits for each of the 7 suppression directives + no false positives on plain lines/literal mentions.
+// TestDetectors table-drives the five single-shot line detectors (type-suppression /
+// error-swallow / dead-branch / comment-debt / path-assumption): each row pins the
+// hit count for one sample line plus the finding shape (pattern / severity / file).
+// Row semantics per group:
+//   - type-suppression: the 7 suppression directives hit, plain lines / literal
+//     mentions do not, multi-directive on one line counts once.
+//   - error-swallow: empty catch / except:pass hit; catch with body is not falsely
+//     reported.
+//   - dead-branch: never-true branches hit; legal conditions are not falsely reported.
+//   - comment-debt: debt markers in added comment lines hit (collocation noise M1
+//     suppressed); marker words in code lines / plain comments are not falsely
+//     reported; pins comment-as-debt (laziness ladder reverse level 0).
+//   - path-assumption: separator-as-matcher fingerprint (the 2026-08-19 Windows CI
+//     incident) — prefix/suffix/contains matching with the OS separator is flagged;
+//     path CONSTRUCTION (TrimRight/Join) is not.
 //
-// TestDetectTypeSuppression 逐条钉 7 类抑制指令的命中 + 不误报普通行/字面量提及。
-func TestDetectTypeSuppression(t *testing.T) {
+// TestDetectors 表驱动五个单行检测器（type-suppression / error-swallow /
+// dead-branch / comment-debt / path-assumption）：每行钉一条样本的命中数 + finding
+// 形态（pattern/severity/file）。分组语义：
+//   - type-suppression：7 类抑制指令命中，普通行/字面量提及不命中，同行多抑制只记一次。
+//   - error-swallow：空 catch / except:pass 命中；有 body 的 catch 不误报。
+//   - dead-branch：永假分支命中；合法条件不误报。
+//   - comment-debt：新增注释行里的债务标记命中（collocation 降噪 M1）；代码行里的
+//     标记词/普通注释不误报；钉 comment-as-debt（懒惰阶梯反第 0 级）。
+//   - path-assumption：「分隔符当匹配器」指纹（2026-08-19 Windows CI 事故）——
+//     前/后缀/包含匹配里用 OS 分隔符 → 上报；路径构造（TrimRight/Join）→ 不报。
+func TestDetectors(t *testing.T) {
 	cases := []struct {
-		name  string
-		lines []addedLine
-		want  int
+		name     string
+		detect   func([]addedLine) []CheatFinding
+		lines    []addedLine
+		want     int
+		pattern  CheatPattern
+		severity string
 	}{
-		{`@ts-nocheck`, []addedLine{al("a.ts", 1, "// @ts-nocheck")}, 1},
-		{`@ts-ignore`, []addedLine{al("a.ts", 9, "// eslint-disable-next-line @typescript-eslint/ban-types // @ts-ignore")}, 1},
-		{`eslint-disable`, []addedLine{al("b.ts", 2, "/* eslint-disable no-unused-vars */")}, 1},
-		{`Rust #[allow]`, []addedLine{al("c.rs", 3, "#[allow(dead_code)]")}, 1},
-		{`Python type: ignore`, []addedLine{al("d.py", 4, "x: int = 's'  # type: ignore")}, 1},
-		{`Java @SuppressWarnings`, []addedLine{al("e.java", 5, "@SuppressWarnings(\"unchecked\")")}, 1},
-		{`普通代码行不命中`, []addedLine{al("f.go", 6, "func Foo() int { return 1 }")}, 0},
-		{`同行多抑制只记一次`, []addedLine{al("g.ts", 7, "// @ts-ignore eslint-disable")}, 1},
-		{`双引号串内的指令名不算（字面量提及）`, []addedLine{al("h.go", 8, "s := \"use @ts-ignore here\"")}, 0},
-		{`反引号 raw string 内的指令名不算（正则定义）`, []addedLine{al("i.go", 9, "re := regexp.MustCompile(`@ts-ignore`)")}, 0},
-		{`尾随注释里的真抑制算（trailing //）`, []addedLine{al("j.ts", 10, "foo(); // @ts-ignore")}, 1},
+		// --- type-suppression（7 类指令 + 误报面）---
+		{`@ts-nocheck`, detectTypeSuppression, []addedLine{al("a.ts", 1, "// @ts-nocheck")}, 1, CheatTypeSuppression, "high"},
+		{`@ts-ignore`, detectTypeSuppression, []addedLine{al("a.ts", 9, "// eslint-disable-next-line @typescript-eslint/ban-types // @ts-ignore")}, 1, CheatTypeSuppression, "high"},
+		{`eslint-disable`, detectTypeSuppression, []addedLine{al("b.ts", 2, "/* eslint-disable no-unused-vars */")}, 1, CheatTypeSuppression, "high"},
+		{`Rust #[allow]`, detectTypeSuppression, []addedLine{al("c.rs", 3, "#[allow(dead_code)]")}, 1, CheatTypeSuppression, "high"},
+		{`Python type: ignore`, detectTypeSuppression, []addedLine{al("d.py", 4, "x: int = 's'  # type: ignore")}, 1, CheatTypeSuppression, "high"},
+		{`Java @SuppressWarnings`, detectTypeSuppression, []addedLine{al("e.java", 5, "@SuppressWarnings(\"unchecked\")")}, 1, CheatTypeSuppression, "high"},
+		{`普通代码行不命中`, detectTypeSuppression, []addedLine{al("f.go", 6, "func Foo() int { return 1 }")}, 0, CheatTypeSuppression, "high"},
+		{`同行多抑制只记一次`, detectTypeSuppression, []addedLine{al("g.ts", 7, "// @ts-ignore eslint-disable")}, 1, CheatTypeSuppression, "high"},
+		{`双引号串内的指令名不算（字面量提及）`, detectTypeSuppression, []addedLine{al("h.go", 8, "s := \"use @ts-ignore here\"")}, 0, CheatTypeSuppression, "high"},
+		{`反引号 raw string 内的指令名不算（正则定义）`, detectTypeSuppression, []addedLine{al("i.go", 9, "re := regexp.MustCompile(`@ts-ignore`)")}, 0, CheatTypeSuppression, "high"},
+		{`尾随注释里的真抑制算（trailing //）`, detectTypeSuppression, []addedLine{al("j.ts", 10, "foo(); // @ts-ignore")}, 1, CheatTypeSuppression, "high"},
+		// --- error-swallow ---
+		{`error-swallow: catch (e) {}`, detectErrorSwallow, []addedLine{al("x.ts", 1, `catch (e) {}`)}, 1, CheatErrorSwallow, "high"},
+		{`error-swallow: catch {}`, detectErrorSwallow, []addedLine{al("x.ts", 1, `catch {}`)}, 1, CheatErrorSwallow, "high"},
+		{`error-swallow: catch (err: MyError) {}`, detectErrorSwallow, []addedLine{al("x.ts", 1, `catch (err: MyError) {}`)}, 1, CheatErrorSwallow, "high"},
+		{`error-swallow: except Exception: pass`, detectErrorSwallow, []addedLine{al("x.ts", 1, `except Exception: pass`)}, 1, CheatErrorSwallow, "high"},
+		{`error-swallow: except: pass`, detectErrorSwallow, []addedLine{al("x.ts", 1, `except: pass`)}, 1, CheatErrorSwallow, "high"},
+		{`error-swallow: } catch (x) { }`, detectErrorSwallow, []addedLine{al("x.ts", 1, `} catch (x) { }`)}, 1, CheatErrorSwallow, "high"},
+		{`error-swallow 不误报: 有 body`, detectErrorSwallow, []addedLine{al("x.ts", 1, `catch (e) { handleError(e); }`)}, 0, CheatErrorSwallow, "high"},
+		{`error-swallow 不误报: 多行 catch 起始行`, detectErrorSwallow, []addedLine{al("x.ts", 1, `catch (e) {`)}, 0, CheatErrorSwallow, "high"},
+		{`error-swallow 不误报: 无同行 pass`, detectErrorSwallow, []addedLine{al("x.ts", 1, `except Exception as e:`)}, 0, CheatErrorSwallow, "high"},
+		{`error-swallow 不误报: 普通返回`, detectErrorSwallow, []addedLine{al("x.ts", 1, `func() error { return nil }`)}, 0, CheatErrorSwallow, "high"},
+		// --- dead-branch ---
+		{`dead-branch: if (false) {`, detectDeadBranch, []addedLine{al("x.go", 1, `if (false) {`)}, 1, CheatDeadBranch, "high"},
+		{`dead-branch: if (0) {`, detectDeadBranch, []addedLine{al("x.go", 1, `if (0) {`)}, 1, CheatDeadBranch, "high"},
+		{`dead-branch: if (1 === 2) doThing();`, detectDeadBranch, []addedLine{al("x.go", 1, `if (1 === 2) doThing();`)}, 1, CheatDeadBranch, "high"},
+		{`dead-branch: if (1 == 2) {`, detectDeadBranch, []addedLine{al("x.go", 1, `if (1 == 2) {`)}, 1, CheatDeadBranch, "high"},
+		{`dead-branch: if false {`, detectDeadBranch, []addedLine{al("x.go", 1, `if false {`)}, 1, CheatDeadBranch, "high"},
+		{`dead-branch: if False:`, detectDeadBranch, []addedLine{al("x.go", 1, `if False:`)}, 1, CheatDeadBranch, "high"},
+		{`dead-branch: while (false) {`, detectDeadBranch, []addedLine{al("x.go", 1, `while (false) {`)}, 1, CheatDeadBranch, "high"},
+		{`dead-branch: if(false){`, detectDeadBranch, []addedLine{al("x.go", 1, `if(false){`)}, 1, CheatDeadBranch, "high"},
+		{`dead-branch 不误报: 变量比较`, detectDeadBranch, []addedLine{al("x.go", 1, `if (x === 0) {`)}, 0, CheatDeadBranch, "high"},
+		{`dead-branch 不误报: 合法条件`, detectDeadBranch, []addedLine{al("x.go", 1, `if (count > 0) {`)}, 0, CheatDeadBranch, "high"},
+		{`dead-branch 不误报: 非裸 false（有 boundary）`, detectDeadBranch, []addedLine{al("x.go", 1, `if falsey() {`)}, 0, CheatDeadBranch, "high"},
+		{`dead-branch 不误报: 0 后非 )`, detectDeadBranch, []addedLine{al("x.go", 1, `if (0 === x)`)}, 0, CheatDeadBranch, "high"},
+		{`dead-branch 不误报: 非分支`, detectDeadBranch, []addedLine{al("x.go", 1, `return false`)}, 0, CheatDeadBranch, "high"},
+		// --- comment-debt ---
+		{`英文 TODO 注释`, detectCommentDebt, []addedLine{al("a.go", 1, "// TODO 后续重构这里")}, 1, CheatCommentDebt, "low"},
+		{`FIXME 块注释`, detectCommentDebt, []addedLine{al("b.go", 2, "/* FIXME race condition */")}, 1, CheatCommentDebt, "low"},
+		{`XXX`, detectCommentDebt, []addedLine{al("c.go", 3, "// XXX 这里有坑")}, 1, CheatCommentDebt, "low"},
+		{`HACK`, detectCommentDebt, []addedLine{al("d.go", 4, "// HACK 临时绕过")}, 1, CheatCommentDebt, "low"},
+		{`中文待补`, detectCommentDebt, []addedLine{al("e.go", 5, "// 待补：错误处理")}, 1, CheatCommentDebt, "low"},
+		{`中文稍后`, detectCommentDebt, []addedLine{al("f.go", 6, "// 稍后处理")}, 1, CheatCommentDebt, "low"},
+		{`implement later`, detectCommentDebt, []addedLine{al("g.go", 7, "// implement later when API ready")}, 1, CheatCommentDebt, "low"},
+		{`代码行里的标记词不命中（非注释行）`, detectCommentDebt, []addedLine{al("h.go", 8, "todoList := []string{}")}, 0, CheatCommentDebt, "low"},
+		{`普通注释无债务标记`, detectCommentDebt, []addedLine{al("i.go", 9, "// 这是个正常注释")}, 0, CheatCommentDebt, "low"},
+		{`多行债务各记一次`, detectCommentDebt, []addedLine{al("j.go", 10, "// TODO one"), al("j.go", 11, "// TODO two")}, 2, CheatCommentDebt, "low"},
+		{`稍后通知用户不命中（collocation 降噪 M1）`, detectCommentDebt, []addedLine{al("k.go", 12, "// 稍后通知用户")}, 0, CheatCommentDebt, "low"},
+		{`Implement later 句首大写也命中（?i）`, detectCommentDebt, []addedLine{al("l.go", 13, "// Implement later")}, 1, CheatCommentDebt, "low"},
+		{`regex 定义行不命中（代码行，自扫描防护）`, detectCommentDebt, []addedLine{al("m.go", 14, `var re = regexp.MustCompile("TO"+"DO")`)}, 0, CheatCommentDebt, "low"},
+		// --- path-assumption（分隔符当匹配器 → 上报；构造用途 → 不报）---
+		{`path-assumption: HasPrefix`, detectPathAssumption, []addedLine{al("x.go", 1, `if strings.HasPrefix(line, string(filepath.Separator)) {`)}, 1, CheatPathAssumption, "high"},
+		{`path-assumption: Contains`, detectPathAssumption, []addedLine{al("x.go", 1, `strings.Contains(p, string(filepath.Separator))`)}, 1, CheatPathAssumption, "high"},
+		{`path-assumption: HasSuffix`, detectPathAssumption, []addedLine{al("x.go", 1, `ok := strings.HasSuffix(name, string(filepath.Separator))`)}, 1, CheatPathAssumption, "high"},
+		{`path-assumption: 首参嵌套构造调用（真实高发形态）`, detectPathAssumption, []addedLine{al("x.go", 1, `strings.HasPrefix(filepath.Base(p), string(filepath.Separator))`)}, 1, CheatPathAssumption, "high"},
+		{`path-assumption: LastIndex`, detectPathAssumption, []addedLine{al("x.go", 1, `strings.LastIndex(name, string(filepath.Separator))`)}, 1, CheatPathAssumption, "high"},
+		{`path-assumption 不误报: TrimRight 构造用途合法`, detectPathAssumption, []addedLine{al("x.go", 1, `return filepath.Base(strings.TrimRight(line, string(filepath.Separator)))`)}, 0, CheatPathAssumption, "high"},
+		{`path-assumption 不误报: Join`, detectPathAssumption, []addedLine{al("x.go", 1, `dst := filepath.Join(toDir, rel)`)}, 0, CheatPathAssumption, "high"},
+		{`path-assumption 不误报: 硬编码斜杠不在本模式范围（太吵）`, detectPathAssumption, []addedLine{al("x.go", 1, `if strings.HasPrefix(line, "/") {`)}, 0, CheatPathAssumption, "high"},
+		{`path-assumption 不误报: 单独取分隔符不是匹配行为`, detectPathAssumption, []addedLine{al("x.go", 1, `sep := string(filepath.Separator)`)}, 0, CheatPathAssumption, "high"},
 	}
 	for _, c := range cases {
-		got := detectTypeSuppression(c.lines)
+		got := c.detect(c.lines)
 		if len(got) != c.want {
 			t.Errorf(`%s: got %d findings, want %d (%+v)`, c.name, len(got), c.want, got)
+			continue
 		}
 		for _, f := range got {
-			if f.Severity != "high" {
-				t.Errorf(`%s: severity=%s, want high`, c.name, f.Severity)
+			if f.Pattern != c.pattern || f.Severity != c.severity || f.File == "" {
+				t.Errorf(`%s: bad finding %+v (want %s/%s)`, c.name, f, c.pattern, c.severity)
 			}
-			if f.File == "" || f.Pattern != CheatTypeSuppression {
-				t.Errorf(`%s: bad finding %+v`, c.name, f)
-			}
-		}
-	}
-}
-
-// TestDetectErrorSwallow: empty catch / except:pass hit; catch with body is not falsely reported.
-//
-// TestDetectErrorSwallow 空 catch / except:pass 命中；有 body 的 catch 不误报。
-func TestDetectErrorSwallow(t *testing.T) {
-	hit := []string{
-		`catch (e) {}`,
-		`catch {}`,
-		`catch (err: MyError) {}`,
-		`except Exception: pass`,
-		`except: pass`,
-		`} catch (x) { }`,
-	}
-	for _, src := range hit {
-		if len(detectErrorSwallow([]addedLine{al("x.ts", 1, src)})) != 1 {
-			t.Errorf(`应命中 error-swallow: %q`, src)
-		}
-	}
-	miss := []string{
-		`catch (e) { handleError(e); }`, // 有 body
-		`catch (e) {`,                   // 多行 catch 的起始行（body 在后续行）
-		`except Exception as e:`,        // 无同行 pass
-		`func() error { return nil }`,   // 普通返回
-	}
-	for _, src := range miss {
-		if got := detectErrorSwallow([]addedLine{al("x.ts", 1, src)}); len(got) != 0 {
-			t.Errorf(`不应命中 error-swallow: %q → %+v`, src, got)
-		}
-	}
-}
-
-// TestDetectDeadBranch: never-true branches hit; legal conditions are not falsely reported.
-//
-// TestDetectDeadBranch 永假分支命中；合法条件不误报。
-func TestDetectDeadBranch(t *testing.T) {
-	hit := []string{
-		`if (false) {`,
-		`if (0) {`,
-		`if (1 === 2) doThing();`,
-		`if (1 == 2) {`,
-		`if false {`,
-		`if False:`,
-		`while (false) {`,
-		`if(false){`,
-	}
-	for _, src := range hit {
-		if len(detectDeadBranch([]addedLine{al("x.go", 1, src)})) != 1 {
-			t.Errorf(`应命中 dead-branch: %q`, src)
-		}
-	}
-	miss := []string{
-		`if (x === 0) {`,   // 变量比较
-		`if (count > 0) {`, // 合法
-		`if falsey() {`,    // 不是裸 false（有 boundary）
-		`if (0 === x)`,     // 0 后非 ) —— 不误伤
-		`return false`,     // 非分支
-	}
-	for _, src := range miss {
-		if got := detectDeadBranch([]addedLine{al("x.go", 1, src)}); len(got) != 0 {
-			t.Errorf(`不应命中 dead-branch: %q → %+v`, src, got)
 		}
 	}
 }
@@ -148,47 +159,6 @@ func TestDetectCommentOnly(t *testing.T) {
 	})
 	if len(got) != 1 || got[0].File != "a.go" {
 		t.Fatalf(`应只标 a.go: %+v`, got)
-	}
-}
-
-// TestDetectCommentDebt: debt markers in added comment lines hit; marker words in code lines / plain comments are not falsely reported.
-// Pins comment-as-debt (laziness ladder reverse level 0: comments flag problems but do not fix them).
-//
-// TestDetectCommentDebt 新增注释行里的债务标记命中；代码行里的标记词/普通注释不误报。
-// 钉 comment-as-debt（懒惰阶梯反第 0 级：注释标识问题但不解决）。
-func TestDetectCommentDebt(t *testing.T) {
-	cases := []struct {
-		name  string
-		lines []addedLine
-		want  int
-	}{
-		{`英文 TODO 注释`, []addedLine{al("a.go", 1, "// TODO 后续重构这里")}, 1},
-		{`FIXME 块注释`, []addedLine{al("b.go", 2, "/* FIXME race condition */")}, 1},
-		{`XXX`, []addedLine{al("c.go", 3, "// XXX 这里有坑")}, 1},
-		{`HACK`, []addedLine{al("d.go", 4, "// HACK 临时绕过")}, 1},
-		{`中文待补`, []addedLine{al("e.go", 5, "// 待补：错误处理")}, 1},
-		{`中文稍后`, []addedLine{al("f.go", 6, "// 稍后处理")}, 1},
-		{`implement later`, []addedLine{al("g.go", 7, "// implement later when API ready")}, 1},
-		{`代码行里的标记词不命中（非注释行）`, []addedLine{al("h.go", 8, "todoList := []string{}")}, 0},
-		{`普通注释无债务标记`, []addedLine{al("i.go", 9, "// 这是个正常注释")}, 0},
-		{`多行债务各记一次`, []addedLine{al("j.go", 10, "// TODO one"), al("j.go", 11, "// TODO two")}, 2},
-		{`稍后通知用户不命中（collocation 降噪 M1）`, []addedLine{al("k.go", 12, "// 稍后通知用户")}, 0},
-		{`Implement later 句首大写也命中（?i）`, []addedLine{al("l.go", 13, "// Implement later")}, 1},
-		{`regex 定义行不命中（代码行，自扫描防护）`, []addedLine{al("m.go", 14, `var re = regexp.MustCompile("TO"+"DO")`)}, 0},
-	}
-	for _, c := range cases {
-		got := detectCommentDebt(c.lines)
-		if len(got) != c.want {
-			t.Errorf(`%s: got %d findings, want %d (%+v)`, c.name, len(got), c.want, got)
-		}
-		for _, f := range got {
-			if f.Severity != "low" {
-				t.Errorf(`%s: severity=%s, want low`, c.name, f.Severity)
-			}
-			if f.File == "" || f.Pattern != CheatCommentDebt {
-				t.Errorf(`%s: bad finding %+v`, c.name, f)
-			}
-		}
 	}
 }
 
@@ -505,40 +475,6 @@ func TestDetectPhantomImport(t *testing.T) {
 			if f.Severity != "high" || f.Pattern != CheatPhantomImport || f.File != c.line.file {
 				t.Errorf(`%s: bad finding %+v`, c.name, f)
 			}
-		}
-	}
-}
-
-// TestDetectPathAssumption pins the separator-as-matcher fingerprint (the 2026-08-19 Windows CI
-// incident): using the OS separator inside prefix/suffix/contains matching is flagged; using it
-// for path CONSTRUCTION (TrimRight/Join) is not.
-//
-// TestDetectPathAssumption 钉住「分隔符当匹配器」指纹（2026-08-19 Windows CI 事故）：
-// 在前/后缀/包含匹配里用 OS 分隔符 → 上报；用于路径构造（TrimRight/Join）→ 不报。
-func TestDetectPathAssumption(t *testing.T) {
-	hit := []string{
-		`if strings.HasPrefix(line, string(filepath.Separator)) {`,
-		`strings.Contains(p, string(filepath.Separator))`,
-		`ok := strings.HasSuffix(name, string(filepath.Separator))`,
-		// 首参嵌套构造调用（真实高发形态：HasPrefix(filepath.Base(p), ...)）。
-		`strings.HasPrefix(filepath.Base(p), string(filepath.Separator))`,
-		`strings.LastIndex(name, string(filepath.Separator))`,
-	}
-	for _, src := range hit {
-		got := detectPathAssumption([]addedLine{al("x.go", 1, src)})
-		if len(got) != 1 || got[0].Pattern != CheatPathAssumption || got[0].Severity != "high" {
-			t.Errorf(`应命中 path-assumption: %q → %+v`, src, got)
-		}
-	}
-	miss := []string{
-		`return filepath.Base(strings.TrimRight(line, string(filepath.Separator)))`, // 构造用途合法
-		`dst := filepath.Join(toDir, rel)`,
-		`if strings.HasPrefix(line, "/") {`, // 硬编码斜杠不在本模式范围（太吵）
-		`sep := string(filepath.Separator)`, // 单独取分隔符不是匹配行为
-	}
-	for _, src := range miss {
-		if got := detectPathAssumption([]addedLine{al("x.go", 1, src)}); len(got) != 0 {
-			t.Errorf(`不应命中 path-assumption: %q → %+v`, src, got)
 		}
 	}
 }
