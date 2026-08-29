@@ -785,3 +785,152 @@ func TestSourceChangesSinceExcluded(t *testing.T) {
 		t.Fatal("nil 排除集必须与旧全树计算一致")
 	}
 }
+
+// --- feat/checklog-janitor: stale stamp sweep + filename matching ---
+
+// TestKnownReviewed_PrunesStaleStamps pins the retention sweep: dh-*.stamp older than
+// FORGE_STAMP_RETENTION_DAYS (default 30) is deleted at the knownReviewed entry (age =
+// file mtime, set at write time by AtomicWrite), while in-window stamps are kept; a
+// retention of 0 disables the sweep. Every Stop-block on a new diff leaves one
+// dh-<hash>.stamp behind and nothing else deleted them — the sweep is what keeps both
+// the directory and the per-Evaluate scan bounded.
+//
+// TestKnownReviewed_PrunesStaleStamps 钉住 retention 清扫：超过 FORGE_STAMP_RETENTION_DAYS
+// （默认 30）的 dh-*.stamp 在 knownReviewed 入口被删（龄取文件 mtime，由 AtomicWrite 写入
+// 时设定），窗口内的戳保留；retention 为 0 禁用清扫。每个新 diff 的 Stop-block 都留下一枚
+// dh-<hash>.stamp 且此前无路径删除——清扫让目录与每次 Evaluate 的扫描保持有界。
+func TestKnownReviewed_PrunesStaleStamps(t *testing.T) {
+	t.Run("sweep removes stale keeps fresh", func(t *testing.T) {
+		t.Setenv("FORGE_STAMP_RETENTION_DAYS", "30")
+		root := initGitRepo(t) // 同时隔离 FORGE_DATA_HOME
+		dir := filepath.Join(forgedata.DataDirFor(root), "stamps")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		put := func(h string) string {
+			p := filepath.Join(dir, "dh-"+h+".stamp")
+			data, _ := json.MarshalIndent(Stamp{DiffHash: h, Reviewed: true, Branch: "feat/x"}, "", "  ")
+			if err := os.WriteFile(p, data, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			return p
+		}
+		stale := put(strings.Repeat("aa", 32))
+		fresh := put(strings.Repeat("bb", 32))
+		// 40 天前的 mtime —— 超过 30 天 retention 窗口。
+		//
+		// mtime 设为 40 天前——超过 30 天 retention 窗口。
+		old := time.Now().AddDate(0, 0, -40)
+		if err := os.Chtimes(stale, old, old); err != nil {
+			t.Fatal(err)
+		}
+
+		// 任意 hash 的查找都会先触发入口清扫。
+		knownReviewed(root, strings.Repeat("cc", 32))
+
+		if _, err := os.Stat(stale); !os.IsNotExist(err) {
+			t.Error("超过 retention 的 dh-*.stamp 应被清扫")
+		}
+		if _, err := os.Stat(fresh); err != nil {
+			t.Errorf("窗口内的 dh-*.stamp 必须保留: %v", err)
+		}
+	})
+
+	t.Run("retention disabled keeps stale", func(t *testing.T) {
+		t.Setenv("FORGE_STAMP_RETENTION_DAYS", "0")
+		root := initGitRepo(t)
+		dir := filepath.Join(forgedata.DataDirFor(root), "stamps")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		staleHash := strings.Repeat("aa", 32)
+		stale := filepath.Join(dir, "dh-"+staleHash+".stamp")
+		data, _ := json.MarshalIndent(Stamp{DiffHash: staleHash, Reviewed: true}, "", "  ")
+		if err := os.WriteFile(stale, data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		old := time.Now().AddDate(0, 0, -40)
+		if err := os.Chtimes(stale, old, old); err != nil {
+			t.Fatal(err)
+		}
+
+		knownReviewed(root, strings.Repeat("cc", 32))
+
+		if _, err := os.Stat(stale); err != nil {
+			t.Errorf("FORGE_STAMP_RETENTION_DAYS=0 禁用清扫，陈戳应保留: %v", err)
+		}
+	})
+}
+
+// TestKnownReviewed_ContentAddressedFilenameMatch pins the scan strategy:
+//   - a dh-<hash>.stamp matching BY FILE NAME with Reviewed=true hits (and surfaces
+//     the originating branch);
+//   - a name-matching dh- file with Reviewed=false (Evaluate's block path writes
+//     block-count stamps at the very same content path) does NOT hit — a filename-only
+//     match would false-pass a merely-blocked diff;
+//   - a NON-matching dh- file is skipped unread even if its CONTENT carries the wanted
+//     hash (saveStamp derives the path from DiffHash, so name/content mismatch is not a
+//     legitimate state) — this is what drops the scan from O(N) reads to at most one;
+//   - legacy <branch>.stamp still hits by CONTENT (read-compat must not regress).
+//
+// TestKnownReviewed_ContentAddressedFilenameMatch 钉住扫描策略：
+//   - 文件名命中的 dh-<hash>.stamp 且 Reviewed=true → 命中（并点名来源分支）；
+//   - 名字命中但 Reviewed=false（Evaluate 的 block 路径把计数戳写在同一内容寻址路径）
+//     不得命中——只按文件名命中会让仅被 block 的 diff 假放行；
+//   - 名字不匹配的 dh- 文件即使【内容】带目标 hash 也不读不命中（saveStamp 用
+//     DiffHash 推导路径，名/内容错配非合法状态）——扫描由 O(N) 次读降到至多一次的
+//     关键；
+//   - legacy <branch>.stamp 仍按【内容】命中（读兼容不得回归）。
+func TestKnownReviewed_ContentAddressedFilenameMatch(t *testing.T) {
+	root := initGitRepo(t)
+	dir := filepath.Join(forgedata.DataDirFor(root), "stamps")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	target := strings.Repeat("ab", 32)
+	other := strings.Repeat("cd", 32)
+	putStampFile := func(name string, s Stamp) {
+		data, _ := json.MarshalIndent(s, "", "  ")
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cleanStamps := func() {
+		entries, _ := os.ReadDir(dir)
+		for _, e := range entries {
+			_ = os.Remove(filepath.Join(dir, e.Name()))
+		}
+	}
+
+	// 1) 名字命中 + Reviewed=true → 命中，且能点名来源分支。
+	putStampFile("dh-"+target+".stamp", Stamp{DiffHash: target, Reviewed: true, Branch: "feat/x"})
+	s, ok := knownReviewed(root, target)
+	if !ok {
+		t.Fatal("名字命中的已审戳应命中")
+	}
+	if s.Branch != "feat/x" {
+		t.Errorf("命中应带来源分支, got %q", s.Branch)
+	}
+
+	// 2) 名字命中但 Reviewed=false（block 戳同路径）→ 不得命中（假放行）。
+	putStampFile("dh-"+target+".stamp", Stamp{DiffHash: target, Reviewed: false, BlockCount: 1})
+	if _, ok := knownReviewed(root, target); ok {
+		t.Fatal("block 戳（Reviewed=false）不得被文件名命中当成已审——假放行")
+	}
+
+	// 3) 名字不匹配的 dh- 文件即使内容带目标 hash 也不读不命中。
+	cleanStamps()
+	putStampFile("dh-"+other+".stamp", Stamp{DiffHash: target, Reviewed: true, Branch: "feat/tamper"})
+	if _, ok := knownReviewed(root, target); ok {
+		t.Fatal("dh- 命中按文件名：名字不匹配的文件即使内容带目标 hash 也不得命中")
+	}
+
+	// 4) legacy <branch>.stamp 仍按内容命中（读兼容不回归）。
+	if err := os.Remove(filepath.Join(dir, "dh-"+other+".stamp")); err != nil {
+		t.Fatal(err)
+	}
+	putStampFile("master.stamp", Stamp{DiffHash: target, Reviewed: true, Branch: "master"})
+	if _, ok := knownReviewed(root, target); !ok {
+		t.Fatal("legacy <branch>.stamp 的内容命中必须保留（读兼容）")
+	}
+}

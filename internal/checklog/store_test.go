@@ -610,3 +610,284 @@ func TestEffectiveLevel_OldLinesDerive(t *testing.T) {
 		}
 	}
 }
+
+// --- feat/checklog-janitor: active-log size rotation ---
+
+// writeActiveLog overwrites the active checklog.jsonl with raw JSONL lines — test
+// fixture builder for oversized-active scenarios, where growing the file past the
+// tiny test threshold via Record itself would rotate mid-setup.
+//
+// writeActiveLog 用原始 JSONL 行直接覆写 active checklog.jsonl——超阈值 active 场景的
+// 测试夹具构造器：若用 Record 自己长过（测试用的极小）阈值，会在预置中途就轮转。
+func writeActiveLog(t *testing.T, root, content string) {
+	t.Helper()
+	path := filepath.Join(forgedata.DataDirFor(root), "checklog.jsonl")
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestRecord_RotatesOversizedActive pins feat/checklog-janitor: when the active
+// checklog.jsonl exceeds FORGE_CHECKLOG_ROTATE_BYTES, the next Record rotates it
+// into a checklog-*.jsonl archive (the naming pruneArchives globs and
+// archiveTimestamp parses, and loadAllArchives reads), opens a fresh active, and
+// subsequent Records land in the fresh active. Without rotation the active file
+// grew unbounded (15946 lines observed in review evidence) — Clear has no
+// production caller and Prune only globs archives, so nothing else bounds it.
+//
+// TestRecord_RotatesOversizedActive 钉死 feat/checklog-janitor：active
+// checklog.jsonl 超过 FORGE_CHECKLOG_ROTATE_BYTES 时，下一次 Record 把它轮转成
+// checklog-*.jsonl 归档（命名同时被 pruneArchives glob/archiveTimestamp 解析、被
+// loadAllArchives 读取），新开 active，后续 Record 落新 active。没有轮转时 active
+// 无限增长（审查实证 15946 行）——Clear 无生产调用方、Prune 只 glob 归档，再无他者
+// 约束它。
+func TestRecord_RotatesOversizedActive(t *testing.T) {
+	t.Setenv("FORGE_CHECKLOG_ROTATE_BYTES", "1024")
+	dir := t.TempDir()
+	isolateDataHome(t)
+	dataDir := forgedata.DataDirFor(dir)
+
+	// Pre-grow the active file past the threshold with ONE valid pre-rotation entry.
+	//
+	// 用一条合法的轮转前条目把 active 预置到超阈值。
+	pre := `{"check":"auto-compile","passed":true,"checked":true,"task_ref":"t-old","detail":"` + strings.Repeat("x", 2900) + `","recorded_at":"2026-01-01T00:00:00Z"}` + "\n"
+	writeActiveLog(t, dir, pre)
+	info, err := os.Stat(filepath.Join(dataDir, "checklog.jsonl"))
+	if err != nil || info.Size() <= 1024 {
+		t.Fatalf("预置 active 未超阈值: size=%v err=%v", info, err)
+	}
+
+	// The rotation-triggering Record: oversized active is rotated away BEFORE the
+	// append, so this entry lands in the fresh active.
+	//
+	// 触发轮转的 Record：超阈值的 active 在追加前被轮走，本条落进新开的 active。
+	if err := Record(dir, &Entry{Check: CheckAssertion, Passed: true, TaskRef: "t-new", Detail: "fresh-1"}); err != nil {
+		t.Fatalf("Record(触发轮转): %v", err)
+	}
+
+	// Exactly one archive exists, carrying the pre-rotation history.
+	//
+	// 恰好一个归档，承载轮转前历史。
+	archives, err := filepath.Glob(filepath.Join(dataDir, "checklog-*.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(archives) != 1 {
+		t.Fatalf("轮转应产生恰好 1 个归档, got %d: %v", len(archives), archives)
+	}
+	// The archive name keeps the nanosecond convention (parseable by pruneArchives'
+	// archiveTimestamp → filename-timestamp retention works on rotation-produced archives).
+	//
+	// 归档名保持纳秒约定（pruneArchives 的 archiveTimestamp 可解析 → 按文件名时间戳的
+	// retention 对轮转产物有效）。
+	name := filepath.Base(archives[0])
+	if !strings.Contains(strings.TrimSuffix(strings.TrimPrefix(name, "checklog-"), ".jsonl"), ".") {
+		t.Errorf("归档名 %q 缺纳秒精度（archiveTimestamp 约定）", name)
+	}
+
+	// Fresh active contains ONLY the new entry.
+	//
+	// 新开的 active 只含新条目。
+	active, err := LoadAll(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(active) != 1 || active[0].TaskRef != "t-new" || active[0].Detail != "fresh-1" {
+		t.Fatalf("轮转后 active 应只含新条目, got %+v", active)
+	}
+
+	// Subsequent Records keep landing in the fresh active (no re-rotation below threshold).
+	//
+	// 后续 Record 持续落新 active（阈值以下不再轮转）。
+	if err := Record(dir, &Entry{Check: CheckTaskVerify, Passed: true, TaskRef: "t-new", Detail: "fresh-2"}); err != nil {
+		t.Fatal(err)
+	}
+	active, err = LoadAll(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(active) != 2 {
+		t.Fatalf("后续 Record 应落新 active（共 2 条）, got %d", len(active))
+	}
+
+	// Cross-archive readers keep the rotated history: 1 pre-rotation + 2 new.
+	//
+	// 跨归档读者仍见轮转走的历史：1 条轮转前 + 2 条新。
+	all, err := LoadAllAll(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 3 {
+		t.Fatalf("LoadAllAll 应见全部 3 条（active+归档）, got %d", len(all))
+	}
+}
+
+// TestRecord_NoRotationBelowThreshold: below the threshold Record appends in place —
+// no archive appears (rotation must not fire on normal-sized logs).
+//
+// TestRecord_NoRotationBelowThreshold：阈值以下 Record 原地追加——不产生归档
+//（正常尺寸的日志不得触发轮转）。
+func TestRecord_NoRotationBelowThreshold(t *testing.T) {
+	// 8MB threshold: two small entries can never cross it.
+	//
+	// 8MB 阈值：两条小条目无论如何越不过。
+	t.Setenv("FORGE_CHECKLOG_ROTATE_BYTES", "8388608")
+	dir := t.TempDir()
+	isolateDataHome(t)
+	dataDir := forgedata.DataDirFor(dir)
+
+	for i := 0; i < 2; i++ {
+		if err := Record(dir, &Entry{Check: CheckAutoCompile, Passed: true, Detail: "normal"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	archives, err := filepath.Glob(filepath.Join(dataDir, "checklog-*.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(archives) != 0 {
+		t.Fatalf("阈值以下不得轮转, got archives: %v", archives)
+	}
+	entries, err := LoadAll(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("两条都应在 active, got %d", len(entries))
+	}
+}
+
+// TestRecord_RotationInvalidEnvUsesDefault: a non-numeric FORGE_CHECKLOG_ROTATE_BYTES
+// falls back to the 5MB default (mirrors util.RetentionDays' invalid→default rule) —
+// normal writes never rotate.
+//
+// TestRecord_RotationInvalidEnvUsesDefault：非法数字的 FORGE_CHECKLOG_ROTATE_BYTES
+// 回落到 5MB 默认（镜像 util.RetentionDays 的非法→默认规则）——常规写入不轮转。
+func TestRecord_RotationInvalidEnvUsesDefault(t *testing.T) {
+	t.Setenv("FORGE_CHECKLOG_ROTATE_BYTES", "not-a-number")
+	dir := t.TempDir()
+	isolateDataHome(t)
+	dataDir := forgedata.DataDirFor(dir)
+
+	if err := Record(dir, &Entry{Check: CheckAutoCompile, Passed: true, Detail: "normal"}); err != nil {
+		t.Fatal(err)
+	}
+	archives, err := filepath.Glob(filepath.Join(dataDir, "checklog-*.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(archives) != 0 {
+		t.Fatalf("非法 env 应回落 5MB 默认（不轮转）, got archives: %v", archives)
+	}
+}
+
+// TestRecord_RotationDisabled: FORGE_CHECKLOG_ROTATE_BYTES=0 disables rotation — an
+// oversized active is appended to in place (explicit escape hatch back to the legacy
+// unbounded behavior, never data loss).
+//
+// TestRecord_RotationDisabled：FORGE_CHECKLOG_ROTATE_BYTES=0 禁用轮转——超阈值
+// active 原地继续追加（显式逃生阀，回到旧的无限增长行为，绝不丢数据）。
+func TestRecord_RotationDisabled(t *testing.T) {
+	t.Setenv("FORGE_CHECKLOG_ROTATE_BYTES", "0")
+	dir := t.TempDir()
+	isolateDataHome(t)
+	dataDir := forgedata.DataDirFor(dir)
+
+	pre := `{"check":"auto-compile","passed":true,"checked":true,"task_ref":"t-old","detail":"` + strings.Repeat("x", 2900) + `","recorded_at":"2026-01-01T00:00:00Z"}` + "\n"
+	writeActiveLog(t, dir, pre)
+	if err := Record(dir, &Entry{Check: CheckAssertion, Passed: true, TaskRef: "t-new"}); err != nil {
+		t.Fatal(err)
+	}
+
+	archives, err := filepath.Glob(filepath.Join(dataDir, "checklog-*.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(archives) != 0 {
+		t.Fatalf("禁用轮转时不得产生归档, got %v", archives)
+	}
+	entries, err := LoadAll(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("禁用轮转时两条都留在 active, got %d", len(entries))
+	}
+}
+
+// TestAppendEntries_RotatesOversizedActive: the import path (AppendEntries) carries
+// the same rotation guard — one cross-machine bundle can push the active file past
+// the threshold in a single call.
+//
+// TestAppendEntries_RotatesOversizedActive：import 路径（AppendEntries）带同样的
+// 轮转守卫——一次跨机器 bundle 就能把 active 顶过阈值。
+func TestAppendEntries_RotatesOversizedActive(t *testing.T) {
+	t.Setenv("FORGE_CHECKLOG_ROTATE_BYTES", "1024")
+	dir := t.TempDir()
+	isolateDataHome(t)
+	dataDir := forgedata.DataDirFor(dir)
+
+	pre := `{"check":"auto-compile","passed":true,"checked":true,"task_ref":"t-old","detail":"` + strings.Repeat("x", 2900) + `","recorded_at":"2026-01-01T00:00:00Z"}` + "\n"
+	writeActiveLog(t, dir, pre)
+
+	if err := AppendEntries(dir, []Entry{{Check: CheckTaskVerify, Passed: true, TaskRef: "t-import", Detail: "imported"}}); err != nil {
+		t.Fatalf("AppendEntries(触发轮转): %v", err)
+	}
+	archives, err := filepath.Glob(filepath.Join(dataDir, "checklog-*.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(archives) != 1 {
+		t.Fatalf("import 路径也应轮转出 1 个归档, got %d: %v", len(archives), archives)
+	}
+	active, err := LoadAll(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(active) != 1 || active[0].TaskRef != "t-import" {
+		t.Fatalf("轮转后 active 应只含导入条目, got %+v", active)
+	}
+}
+
+// TestRecord_ConcurrentRotation: rotation is serialized with Record under the same
+// mutex — concurrent writers at a tiny threshold must not lose entries or error;
+// every Record survives in active-or-archive (LoadAllAll counts them all).
+//
+// TestRecord_ConcurrentRotation：轮转与 Record 同锁串行——极小阈值下的并发写者不得
+// 丢条目、不得报错；每条 Record 都存活在 active 或归档里（LoadAllAll 全数可见）。
+func TestRecord_ConcurrentRotation(t *testing.T) {
+	t.Setenv("FORGE_CHECKLOG_ROTATE_BYTES", "512")
+	dir := t.TempDir()
+	isolateDataHome(t)
+
+	const goroutines = 8
+	const per = 25
+	errCh := make(chan error, goroutines*per)
+	var wg sync.WaitGroup
+	for g := 0; g < goroutines; g++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < per; i++ {
+				if err := Record(dir, &Entry{Check: CheckAutoCompile, Passed: true, TaskRef: "t-race", Detail: strings.Repeat("d", 60)}); err != nil {
+					errCh <- err
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		t.Fatalf("并发 Record(轮转): %v", err)
+	}
+	all, err := LoadAllAll(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != goroutines*per {
+		t.Fatalf("轮转并发下不得丢条目: got %d want %d", len(all), goroutines*per)
+	}
+}
