@@ -296,11 +296,20 @@ func runHazardStatus(cmd *cobra.Command, args []string) error {
 	// 近 24h 事件统计（来自 events.jsonl 审计日志）：让用户看到 hazard-guard 的工作量
 	// 与潜在误伤规模，而非只有"当前有效确认"——补全 2026-06 误伤审计只能扒 checklog 的痛点。
 	since := time.Now().Add(-24 * time.Hour)
-	blocks, _ := hazard.CountSince(p, hazard.EventBlock, since)
-	releases, _ := hazard.CountSince(p, hazard.EventRelease, since)
-	data, _ := hazard.CountSince(p, hazard.EventData, since)
-	fmt.Printf("近 24h 事件：拦截 %d、确认放行 %d、数据上下文放行 %d\n", blocks, releases, data)
-	fmt.Println(`  详见 hazards 事件日志：` + p.HazardsEventsPath())
+	blocks, berr := hazard.CountSince(p, hazard.EventBlock, since)
+	releases, rerr := hazard.CountSince(p, hazard.EventRelease, since)
+	data, derr := hazard.CountSince(p, hazard.EventData, since)
+	if berr != nil || rerr != nil || derr != nil {
+		// An unreadable audit log must not render as "zero activity" (the H-1
+		// dead-probe-looks-healthy pattern) — the stats line is withheld instead.
+		//
+		// 审计日志不可读绝不能渲染成"零活动"（H-1 死探针伪装健康模式）——
+		// 撤掉统计行而不是给出误导性数字。
+		fmt.Printf("⚠ 事件日志不可读（%v / %v / %v），24h 统计不可用\n", berr, rerr, derr)
+	} else {
+		fmt.Printf("近 24h 事件：拦截 %d、确认放行 %d、数据上下文放行 %d\n", blocks, releases, data)
+		fmt.Println(`  详见 hazards 事件日志：` + p.HazardsEventsPath())
+	}
 
 	active, err := hazard.ActiveConfirmations(p)
 	if err != nil {

@@ -76,8 +76,7 @@ func bashWriteTargets(command string) []string {
 		if len(toks) == 0 {
 			continue
 		}
-		base := strings.TrimSuffix(toks[0], "/bin/") // handles /usr/bin/sed too
-		base = lastSegment(base)
+		base := lastSegment(toks[0])
 		switch base {
 		case "sed":
 			inPlace := false

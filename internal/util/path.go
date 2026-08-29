@@ -5,6 +5,13 @@ import (
 	"strings"
 )
 
+// sessionCollapseRe is precompiled at package level: SanitizeSessionID runs on hook hot
+// paths (several calls per PreToolUse) and per-call MustCompile is pure waste.
+//
+// sessionCollapseRe 包级预编译：SanitizeSessionID 在 hook 热路径上高频调用，
+// 每次调用重新编译正则是纯浪费。
+var sessionCollapseRe = regexp.MustCompile(`[_-]{2,}`)
+
 // SanitizeSessionID collapses a session id into a filename- and shell-safe character set.
 // It is the single source of truth shared by cli (hook env vars), taskpipeline (session state filenames),
 // and other util callers — do not reimplement it locally.
@@ -47,8 +54,8 @@ func SanitizeSessionID(id string) string {
 	safe := b.String()
 
 	// Collapse consecutive underscores/dashes into a single underscore.
-	// 把连续的下划线/短横压缩成单个下划线。
-	safe = regexp.MustCompile(`[_-]{2,}`).ReplaceAllString(safe, "_")
+	// 把连续的下划线/短横压缩成单个下划线。（包级预编译：本函数在 hook 热路径上被频繁调用。）
+	safe = sessionCollapseRe.ReplaceAllString(safe, "_")
 
 	// Trim leading/trailing separators and dashes.
 	// 修剪首尾的分隔符与短横。

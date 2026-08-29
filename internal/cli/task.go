@@ -430,8 +430,9 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 			return werr
 		}
 		root = wtRoot
-		fmt.Printf("worktree 已创建: %s（如本次启动失败可 git worktree remove 清理）\n", wtRoot)
-		fmt.Printf("下一步：cd %s 并重开窗口，或直接 forge task resume 接续\n", wtRoot)
+		// stdout belongs to the --json contract (machine-parseable only); human hints go to stderr.
+		fmt.Fprintf(cmd.ErrOrStderr(), "worktree 已创建: %s（如本次启动失败可 git worktree remove 清理）\n", wtRoot)
+		fmt.Fprintf(cmd.ErrOrStderr(), "下一步：cd %s 并重开窗口，或直接 forge task resume 接续\n", wtRoot)
 	}
 
 	// --branch: create a new branch from main/master and switch to it.
@@ -598,7 +599,7 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	// 任务。自动补 -v（只影响输出、退出码语义不变）并明示——绝不静默改写登记的命令。
 	// Expected 为空（只看退出码）的命令不动：它们不需要 verbose 输出。
 	if adjusted := taskpipeline.EnsureGoTestVerbose(state.Acceptance); len(adjusted) > 0 {
-		fmt.Printf("ℹ️ 验收命令自动补 -v（go test 无 -v 时输出无 PASS 行，Expected 子串永不匹配）：%s\n", strings.Join(adjusted, ", "))
+		fmt.Fprintf(cmd.ErrOrStderr(), "ℹ️ 验收命令自动补 -v（go test 无 -v 时输出无 PASS 行，Expected 子串永不匹配）：%s\n", strings.Join(adjusted, ", "))
 	}
 	if parent, _ := cmd.Flags().GetString("parent"); parent != "" {
 		state.ParentTaskRef = parent
@@ -698,7 +699,11 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	//
 	// 确保 session 存在并把 task 链上去。
 	session, err := taskpipeline.EnsureSession(root, sid)
-	if err == nil {
+	if err != nil {
+		// Degrade without anchoring is fine, but silent — a missing SessionID later
+		// suppresses phase-blast warnings and timeline bucketing; keep it attributable.
+		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: failed to ensure session %q: %v\n", sid, err)
+	} else {
 		state.SessionID = session.SessionID
 	}
 	// Creator session anchoring (the starting point of multi-directional anchoring;
@@ -1341,17 +1346,14 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 	}
 
 	// Resolve HEAD from the project root (not forge's cwd at call time) so the recorded
-	// gate commit matches the repo the task tracks. Every other git call in this path
-	// uses 'git -C root'; this one previously omitted the directory parameter, so forge
-	// run from a subdirectory would silently record the wrong commit.
+	// gate commit matches the repo the task tracks. Uses the shared GetHeadCommit so the
+	// recorded form stays the short-hash single source of truth (attribution and doc-gate
+	// compare History heads against it by exact string equality).
 	//
 	// 从项目根（不是 forge 调用时的 cwd）解析 HEAD，让记录的 gate commit 与 task 跟踪的
-	// repo 一致。本路径其他 git 调用都用 `git -C root`；此前这一处漏了目录参数，forge
-	// 从子目录跑时会静默记错 commit。
-	headCmd := exec.Command("git", "rev-parse", "HEAD")
-	headCmd.Dir = root
-	headCommit, _ := headCmd.Output()
-	state.RecordGateResult(gateID, result.Passed, strings.TrimSpace(string(headCommit)))
+	// repo 一致。走共享的 GetHeadCommit，保持短 hash 单一真相源（归因与 doc-gate 对
+	// History head 做的是精确字符串比较）。
+	state.RecordGateResult(gateID, result.Passed, taskpipeline.GetHeadCommit(root))
 
 	// Token cost circuit-breaker (advisory): warn when the task's cumulative estimated
 	// tokens exceed the threshold. Makes token accounting more than forge-trace
