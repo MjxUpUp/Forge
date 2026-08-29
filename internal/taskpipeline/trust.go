@@ -1,5 +1,7 @@
 package taskpipeline
 
+import "reflect"
+
 // trust.go — the single source of truth for stripping FOREIGN gate/trust signals off a TaskState
 // that entered the local DataDir from an untrusted source. Two entry points share it:
 //
@@ -163,6 +165,24 @@ func StripForeignGateSignals(s *TaskState) {
 	//
 	// 从幸存的 History 重推当前门禁——伪造的 CurrentGate（如 "task-complete"）不得在状态展示中
 	// 残留。所有已通过条目被剥后，NextGate 落在 DefaultGates 的第一个门禁（任务从头重走）。
+	// Default-deny sweep (T5 refactor, 2026-08-29): the explicit strips above document
+	// WHY each named field is untrusted, but the list had already leaked twice
+	// (DocReview/ReportedFindings, 2026-08-29 round; Assignment earlier) — every leak
+	// was "a new field nobody remembered to add". The reflection sweep zeroes every
+	// exported field NOT on the continuity whitelist, so a future field is stripped by
+	// DEFAULT and must be explicitly whitelisted to survive an import — inverting the
+	// failure mode from "forgot to strip" (gate bypass) to "forgot to whitelist"
+	// (lost convenience data, immediately visible). Runs BEFORE this re-derivation:
+	// CurrentGate is derived state, the sweep zeroes it, the re-derive repopulates it.
+	//
+	// 默认拒绝清扫（T5 重构，2026-08-29）：上方的显式剥离记录每个具名字段不可信
+	// 的【原因】，但清单已漏过两次（DocReview/ReportedFindings，2026-08-29 轮；
+	// 更早的 Assignment）——每次泄漏都是"新增字段没人记得加"。反射清扫把不在
+	// continuity 白名单上的全部导出字段置零：未来字段默认被剥、要随 import 存活
+	// 必须显式加白——失败模式从「忘了剥」（门禁绕过）反转为「忘了加白」（丢失
+	// 便利数据、立即可见）。在本次重推【之前】跑：CurrentGate 是派生态，清扫清零、
+	// 重推回填。
+	stripFieldsNotWhitelisted(s)
 	s.CurrentGate = s.NextGate()
 	// Delegation control-flow: Assignment.Status==delivered is the DependsOn release signal checked
 	// by task-verify/task-complete on DOWNSTREAM local tasks — a foreign "delivered" claim must not
@@ -216,4 +236,56 @@ func StripForeignGateSignals(s *TaskState) {
 	// filterUnreported 丢弃集合中已存在的指纹）——外来预填集合会让本机的
 	// cheat-scan/unused-scan 报告静音。
 	s.ReportedFindings = nil
+}
+
+// trustContinuityWhitelist is the set of TaskState fields an untrusted import is
+// ALLOWED to carry — continuity/spec data the handoff exists to move. Everything
+// else is zeroed by stripFieldsNotWhitelisted. History/Acceptance/SessionLinks are
+// whitelisted as FIELDS because their trust boundary is per-entry (History keeps
+// FAILED entries only; Acceptance keeps the spec but has results scrubbed;
+// SessionLinks gets ghosted) — those scrubs live in StripForeignGateSignals.
+//
+// trustContinuityWhitelist 是不可信 import 允许携带的 TaskState 字段集——交接
+// 存在的意义就是搬运这些 continuity/spec 数据。其余字段被 stripFieldsNot-
+// Whitelisted 置零。History/Acceptance/SessionLinks 作为【字段】在白名单里，
+// 因为它们的信任边界在条目级（History 只留 FAILED 条目；Acceptance 留 spec 但
+// 结果被清洗；SessionLinks 被幽灵化）——这些清洗在 StripForeignGateSignals 里。
+var trustContinuityWhitelist = map[string]bool{
+	// identity & provenance（身份与出处）
+	"TaskRef": true, "Branch": true, "Source": true, "Summary": true,
+	"StartedAt": true, "HeadCommit": true, "SessionID": true,
+	"ExternalOrigin": true, "OriginTool": true, "ParentTaskRef": true,
+	// continuity payload（接续载荷）
+	"Goal": true, "Plan": true, "Decisions": true, "NextSteps": true,
+	"Blockers": true, "Findings": true, "Artifacts": true, "ResumeStale": true,
+	"SessionLinks": true,
+	// spec（规格——声明而非结果）
+	"DependsOn": true, "Acceptance": true, "PlanScope": true,
+	"SpecArtifacts": true, "CrossRepoImpact": true,
+	// advisory-neutral inference cache（重算安全的推断缓存）
+	"DesignPhases": true,
+	// per-entry/custom-handled（条目级清洗的字段级壳）
+	"History": true, "AcceptanceForeign": true,
+}
+
+// stripFieldsNotWhitelisted zeroes every exported, settable TaskState field not on
+// trustContinuityWhitelist. Unexported fields (integrityBroken) are skipped — they
+// are runtime flags an attacker cannot forge through JSON anyway.
+//
+// stripFieldsNotWhitelisted 把不在 trustContinuityWhitelist 上的全部可设置导出
+// 字段置零。非导出字段（integrityBroken）跳过——那是攻击者无法通过 JSON 伪造的
+// 运行时标记。
+func stripFieldsNotWhitelisted(s *TaskState) {
+	v := reflect.ValueOf(s).Elem()
+	t := v.Type()
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		if !f.IsExported() || trustContinuityWhitelist[f.Name] {
+			continue
+		}
+		fv := v.Field(i)
+		if fv.CanSet() {
+			fv.Set(reflect.Zero(f.Type))
+		}
+	}
 }
