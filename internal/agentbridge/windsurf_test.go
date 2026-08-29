@@ -87,26 +87,7 @@ func TestWindsurfTranslator_MergePreservesUserEntries(t *testing.T) {
 // user-level hooks.json byte-identical.
 func TestWindsurfTranslator_Idempotent(t *testing.T) {
 	home := isolateHome(t)
-	path := windsurfHooksPathUnder(home)
-
-	tr := &WindsurfTranslator{}
-	if err := tr.Translate(t.TempDir(), testInput()); err != nil {
-		t.Fatal(err)
-	}
-	first, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := tr.Translate(t.TempDir(), testInput()); err != nil {
-		t.Fatal(err)
-	}
-	second, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(first) != string(second) {
-		t.Error("second Translate not idempotent")
-	}
+	assertTranslateIdempotent(t, &WindsurfTranslator{}, windsurfHooksPathUnder(home))
 }
 
 // TestStripWindsurfHooksUserLevel covers the strip roundtrip: Translate then Strip
@@ -247,18 +228,10 @@ func TestWindsurfHooks_OnlyLegalCascadeEvents(t *testing.T) {
 		"post_cascade_response": true, "post_cascade_response_with_transcript": true,
 		"post_setup_worktree": true,
 	}
-	for event := range cfg.Hooks {
-		if !legal[event] {
-			t.Errorf("illegal Cascade hook event %q (never fires)", event)
-		}
-	}
-	// The two remapped groups must be present.
-	if _, ok := cfg.Hooks["pre_user_prompt"]; !ok {
-		t.Error("SessionStart group missing — must hang on pre_user_prompt")
-	}
-	if _, ok := cfg.Hooks["post_cascade_response"]; !ok {
-		t.Error("Stop group missing — must hang on post_cascade_response")
-	}
+	// The two remapped groups must be present: SessionStart hangs on pre_user_prompt
+	// and Stop on post_cascade_response (Cascade's roster has no session_* events).
+	assertOnlyLegalEvents(t, "windsurf", cfg.Hooks, legal,
+		[]string{"pre_user_prompt", "post_cascade_response"}, nil, "")
 }
 
 // TestWindsurfGlobalRules_ConditionalPreamble pins the conditional-activation

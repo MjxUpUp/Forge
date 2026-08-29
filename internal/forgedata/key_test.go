@@ -1,6 +1,7 @@
 package forgedata
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -111,7 +112,7 @@ func TestKey_NotInGitRepo(t *testing.T) {
 	if err == nil {
 		t.Fatal(`非 git 项目应返 err`)
 	}
-	if !errorIs(err, ErrNotInGitRepo) {
+	if !errors.Is(err, ErrNotInGitRepo) {
 		t.Errorf(`期望 ErrNotInGitRepo，实得 %v`, err)
 	}
 }
@@ -249,7 +250,7 @@ func TestKey_CorruptGitFile(t *testing.T) {
 				t.Errorf(`corrupt .git (%s) 应返 err`, c.name)
 				return
 			}
-			if !errorIs(err, ErrInvalidGitFile) {
+			if !errors.Is(err, ErrInvalidGitFile) {
 				t.Errorf(`corrupt .git (%s) 期望 ErrInvalidGitFile，实得 %v`, c.name, err)
 			}
 		})
@@ -471,32 +472,6 @@ func TestHash12_ZeroPadding(t *testing.T) {
 		if len(got) != 12 {
 			t.Errorf(`hash12(%#x) 长度=%d，期望 12`, c.sum, len(got))
 		}
-	}
-}
-
-// errorIs wraps errors.Is; inlined here because within this package we cannot import another err package.
-//
-// errorIs wraps errors.Is；这里 inline 因为我们 package 内不能 import 其他 err 包
-func errorIs(err, target error) bool {
-	for err != nil {
-		if err == target {
-			return true
-		}
-		u, ok := err.(interface{ Unwrap() error })
-		if !ok {
-			return false
-		}
-		err = u.Unwrap()
-	}
-	return false
-}
-
-// guard windows path-related test skip
-func init() {
-	if runtime.GOOS == "windows" {
-		// current tests should also run on Windows; path-related code uses filepath.Join for cross-platform.
-		//
-		// 当前测试在 Windows 上也应跑；路径相关用 filepath.Join 跨平台
 	}
 }
 

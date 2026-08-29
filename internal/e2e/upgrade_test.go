@@ -354,10 +354,21 @@ func TestMasterBranchReminder(t *testing.T) {
 	}
 }
 
-// TestUpgradeFromV040State verifies that upgrading from a v0.4.0-like state
-// triggers auto-sync: hook reference copies converge into the user-level DataDir,
-// legacy project-level forge writes are stripped, and user config is not broken.
-func TestUpgradeFromV040State(t *testing.T) {
+// setupLegacyForgeProject creates a git+go project carrying a legacy (pre-
+// user-level-assets) .forge/ layout — the shared fixture of the two upgrade
+// tests (85%-isomorphic setups, extracted 2026-08-30 slim-down): hooks/tasks/
+// gates dirs, pipeline.yml, state.json with the given last_sync_version, the
+// given (user-customized) protocol.yml, and two stale hook reference copies
+// whose echo bodies are the old-content markers the upgrade assertions check
+// against.
+//
+// setupLegacyForgeProject 建 git+go 项目并携带遗留（用户级资产化之前的）.forge/
+// 结构——两个 upgrade 测试的共用夹具（85% 同构 setup，2026-08-30 瘦身抽出）：
+// hooks/tasks/gates 目录、pipeline.yml、带指定 last_sync_version 的 state.json、
+// 用户自定义 protocol.yml，以及两个陈旧 hook 参考副本（echo 正文即升级断言对照
+// 的旧内容标记）。
+func setupLegacyForgeProject(t *testing.T, lastSyncVersion, pipelineYAML, protocolYAML, autoHookEcho, assertHookEcho string) string {
+	t.Helper()
 	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	dir := t.TempDir()
 	git(t, dir, "init")
@@ -365,15 +376,37 @@ func TestUpgradeFromV040State(t *testing.T) {
 	git(t, dir, "config", "user.name", "Test")
 	initGoProject(t, dir)
 
-	// Create a v0.4.0-like .forge/ structure.
 	for _, d := range []string{".forge/hooks", ".forge/tasks", ".forge/gates"} {
 		if err := os.MkdirAll(filepath.Join(dir, d), 0755); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	// Basic pipeline.yml.
-	writeFile(t, dir, ".forge/pipeline.yml", `version: "2.0"
+	writeFile(t, dir, ".forge/pipeline.yml", pipelineYAML)
+	writeFile(t, dir, ".forge/state.json", fmt.Sprintf(`{
+  "pipeline_version": "2.0",
+  "mode": "medium",
+  "current_gate": "",
+  "started_at": "2025-01-01T00:00:00Z",
+  "history": [],
+  "overrides": [],
+  "last_sync_version": %q
+}`, lastSyncVersion))
+	writeFile(t, dir, ".forge/protocol.yml", protocolYAML)
+
+	// Old hooks — the pre-upgrade reference copies.
+	//
+	// 旧 hook——升级前的参考副本。
+	writeFile(t, dir, ".forge/hooks/auto-compile.sh", "#!/bin/bash\necho "+autoHookEcho+"\n")
+	writeFile(t, dir, ".forge/hooks/assertion-check.sh", "#!/bin/bash\necho "+assertHookEcho+"\n")
+	return dir
+}
+
+// TestUpgradeFromV040State verifies that upgrading from a v0.4.0-like state
+// triggers auto-sync: hook reference copies converge into the user-level DataDir,
+// legacy project-level forge writes are stripped, and user config is not broken.
+func TestUpgradeFromV040State(t *testing.T) {
+	dir := setupLegacyForgeProject(t, "v0.4.0", `version: "2.0"
 project: "old-project"
 mode: medium
 
@@ -386,21 +419,7 @@ pipeline:
       hooks:
         - auto-compile.sh
         - assertion-check.sh
-`)
-
-	// State with old version.
-	writeFile(t, dir, ".forge/state.json", `{
-  "pipeline_version": "2.0",
-  "mode": "medium",
-  "current_gate": "",
-  "started_at": "2025-01-01T00:00:00Z",
-  "history": [],
-  "overrides": [],
-  "last_sync_version": "v0.4.0"
-}`)
-
-	// User's customized protocol.yml with scoring config.
-	writeFile(t, dir, ".forge/protocol.yml", `version: "1.0"
+`, `version: "1.0"
 standards:
   - id: my-custom-standard
     name: "My Custom Standard"
@@ -426,11 +445,7 @@ scoring:
     C: 70
     D: 60
     F: 0
-`)
-
-	// Old hooks — only 2, missing task-verify.sh.
-	writeFile(t, dir, ".forge/hooks/auto-compile.sh", "#!/bin/bash\necho old-auto-compile\n")
-	writeFile(t, dir, ".forge/hooks/assertion-check.sh", "#!/bin/bash\necho old-assertion-check\n")
+`, "old-auto-compile", "old-assertion-check")
 
 	// Run forge status — this triggers auto-sync.
 	out := forge(t, dir, "status")
@@ -511,21 +526,7 @@ scoring:
 // TestUpgradePreservesUserProtocol verifies that auto-sync never overwrites
 // a user's customized protocol.yml, even from older versions.
 func TestUpgradePreservesUserProtocol(t *testing.T) {
-	t.Setenv("FORGE_DATA_HOME", t.TempDir())
-	dir := t.TempDir()
-	git(t, dir, "init")
-	git(t, dir, "config", "user.email", "test@example.com")
-	git(t, dir, "config", "user.name", "Test")
-	initGoProject(t, dir)
-
-	// Create a v0.3.0-like state with customized protocol.
-	for _, d := range []string{".forge/hooks", ".forge/tasks", ".forge/gates"} {
-		if err := os.MkdirAll(filepath.Join(dir, d), 0755); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	writeFile(t, dir, ".forge/pipeline.yml", `version: "2.0"
+	dir := setupLegacyForgeProject(t, "v0.3.0", `version: "2.0"
 project: "old-project"
 mode: medium
 
@@ -535,20 +536,7 @@ pipeline:
       name: "Code Implementation"
       enabled: true
       depends_on: []
-`)
-
-	writeFile(t, dir, ".forge/state.json", `{
-  "pipeline_version": "2.0",
-  "mode": "medium",
-  "current_gate": "",
-  "started_at": "2025-01-01T00:00:00Z",
-  "history": [],
-  "overrides": [],
-  "last_sync_version": "v0.3.0"
-}`)
-
-	// User's protocol with custom standards they don't want to lose.
-	writeFile(t, dir, ".forge/protocol.yml", `version: "1.0"
+`, `version: "1.0"
 standards:
   - id: no-console-log
     name: "No console.log"
@@ -579,11 +567,7 @@ scoring:
     C: 70
     D: 60
     F: 0
-`)
-
-	// Old hooks.
-	writeFile(t, dir, ".forge/hooks/auto-compile.sh", "#!/bin/bash\necho old\n")
-	writeFile(t, dir, ".forge/hooks/assertion-check.sh", "#!/bin/bash\necho old\n")
+`, "old", "old")
 
 	// Run any forge command to trigger auto-sync.
 	forge(t, dir, "status")

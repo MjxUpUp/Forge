@@ -57,6 +57,25 @@ func findAcceptanceEntry(t *testing.T, dir string) *checklog.Entry {
 	return nil
 }
 
+// setupForeignAcceptanceTask seeds a task with one green criterion and stamps
+// the foreign marker exactly as StripForeignGateSignals (the import/migrate
+// path) would — the shared precondition of the foreign-trust tests.
+//
+// setupForeignAcceptanceTask 种一个带单条绿验收标准的任务，并按
+// StripForeignGateSignals（import/migrate 路径）的方式盖外来标记——外来受信
+// 系测试共享的前置。
+func setupForeignAcceptanceTask(t *testing.T) (string, string) {
+	t.Helper()
+	dir, taskRef := setupAcceptanceTask(t, []string{`go version :: go version`})
+	if err := taskpipeline.MutateTaskState(dir, taskRef, func(s *taskpipeline.TaskState) error {
+		s.AcceptanceForeign = true
+		return nil
+	}); err != nil {
+		t.Fatalf(`MutateTaskState: %v`, err)
+	}
+	return dir, taskRef
+}
+
 // TestRunTaskVerifyAcceptanceAt_RecordsDeterministic is the core guard for #3: after green acceptance criteria are actually run,
 // checklog must record a CheckNameAcceptance entry with Passed=true, Source=deterministic (forge runs the
 // command itself to see the result, unforgeable), and TaskState.Acceptance[].Passed is backfilled to true. This is the wire point turning
@@ -298,17 +317,7 @@ func TestRunTaskVerifyAcceptanceAt_ExplicitRef(t *testing.T) {
 // --trust-foreign 时绝不能执行任何 Run 命令——改为打印命令清单供人工审阅，且不带 flag 重跑
 // 无法甩掉标记。带 --trust-foreign 的首次运行清除标记并正常执行。
 func TestRunTaskVerifyAcceptanceAt_ForeignRequiresTrust(t *testing.T) {
-	dir, taskRef := setupAcceptanceTask(t, []string{`go version :: go version`})
-
-	// Simulate the foreign marker exactly as StripForeignGateSignals sets it (import/migrate path).
-	//
-	// 按 StripForeignGateSignals（import/migrate 路径）设置外来标记，模拟同一状态。
-	if err := taskpipeline.MutateTaskState(dir, taskRef, func(s *taskpipeline.TaskState) error {
-		s.AcceptanceForeign = true
-		return nil
-	}); err != nil {
-		t.Fatalf(`MutateTaskState: %v`, err)
-	}
+	dir, taskRef := setupForeignAcceptanceTask(t)
 
 	// 1. Without --trust-foreign: refuse BEFORE any execution — criterion untouched, error returned,
 	//    command list printed for review, and the foreign marker PERSISTS (no save-side shake-off).
@@ -399,13 +408,7 @@ func TestRunTaskVerifyAcceptanceAt_ForeignRequiresTrust(t *testing.T) {
 // 标记。判别器的 true 侧由 TestRunTaskVerifyAcceptanceAt_ForeignRequiresTrust 的受信段覆盖
 // （那里覆写了变量）。
 func TestRunTaskVerifyAcceptanceAt_TrustForeignRequiresHumanTTY(t *testing.T) {
-	dir, taskRef := setupAcceptanceTask(t, []string{`go version :: go version`})
-	if err := taskpipeline.MutateTaskState(dir, taskRef, func(s *taskpipeline.TaskState) error {
-		s.AcceptanceForeign = true
-		return nil
-	}); err != nil {
-		t.Fatalf(`MutateTaskState: %v`, err)
-	}
+	dir, taskRef := setupForeignAcceptanceTask(t)
 
 	origTTY := stdinIsHumanTerminal
 	stdinIsHumanTerminal = func() bool { return false } // agent 的管道 stdin
@@ -442,13 +445,7 @@ func TestRunTaskVerifyAcceptanceAt_TrustForeignRequiresHumanTTY(t *testing.T) {
 // 仍是拒绝（不设旁路——agent 能设的东西都不是判别器），但要给出可行动指引：换 ConPTY 终端
 // （Windows Terminal / PowerShell）。
 func TestRunTaskVerifyAcceptanceAt_MinttyGuidance(t *testing.T) {
-	dir, taskRef := setupAcceptanceTask(t, []string{`go version :: go version`})
-	if err := taskpipeline.MutateTaskState(dir, taskRef, func(s *taskpipeline.TaskState) error {
-		s.AcceptanceForeign = true
-		return nil
-	}); err != nil {
-		t.Fatalf(`MutateTaskState: %v`, err)
-	}
+	dir, taskRef := setupForeignAcceptanceTask(t)
 	origTTY := stdinIsHumanTerminal
 	stdinIsHumanTerminal = func() bool { return false } // mintty 真人也是管道
 	t.Cleanup(func() { stdinIsHumanTerminal = origTTY })

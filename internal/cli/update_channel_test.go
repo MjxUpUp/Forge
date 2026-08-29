@@ -182,6 +182,24 @@ func TestNpmUpdateCommand(t *testing.T) {
 // 服务器复刻真实 registry /latest 端点对缩略 manifest Accept 类型回 406 的
 // 行为（2026-08-21 对 registry.npmjs.org 带外实测），故 Accept 头在这里
 // 是被强制执行的，不只是被看见。
+// npmRegistryServing stands up an httptest server answering every request
+// with a registry manifest carrying version, points FORGE_NPM_REGISTRY at it,
+// and closes it on cleanup — the shared fixture of the happy-path registry
+// tests (the 406-Accept and HTTP-500 shapes stay bespoke).
+//
+// npmRegistryServing 起一个对每个请求都回携带 version 的 registry manifest
+// 的 httptest 服务器，把 FORGE_NPM_REGISTRY 指向它，cleanup 时关闭——各
+// happy-path registry 测试共享的夹具（406-Accept 与 HTTP-500 形态保持专用）。
+func npmRegistryServing(t *testing.T, version string) {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"name":"@agent_forge/forge","version":%q}`, version)
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("FORGE_NPM_REGISTRY", srv.URL)
+}
+
 func TestGetLatestVersionFromNPM(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/@agent_forge/forge/latest" {
@@ -229,13 +247,7 @@ func TestGetLatestVersionFromNPMSemverReject(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				fmt.Fprintf(w, `{"name":"@agent_forge/forge","version":%q}`, tt.version)
-			}))
-			defer srv.Close()
-
-			t.Setenv("FORGE_NPM_REGISTRY", srv.URL)
+			npmRegistryServing(t, tt.version)
 
 			if _, err := getLatestVersionFromNPM(); err == nil {
 				t.Fatalf("expected semver rejection for %q, got nil", tt.version)
@@ -310,12 +322,7 @@ func TestPrintUpdateNotice(t *testing.T) {
 // detectInstallChannelFn 间接层）：必须查 npm registry、打印匹配包管理器
 // 的指引、写带通道标记的缓存，且绝不尝试 GitHub 下载。
 func TestRunUpdateNpmRedirect(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"name":"@agent_forge/forge","version":"1.40.0"}`))
-	}))
-	defer srv.Close()
-	t.Setenv("FORGE_NPM_REGISTRY", srv.URL)
+	npmRegistryServing(t, "1.40.0")
 
 	setTestHome(t, t.TempDir())
 	forceChannel(t, installChannel{kind: channelNPM, pm: "pnpm"})
@@ -351,12 +358,7 @@ func TestRunUpdateNpmRedirect(t *testing.T) {
 // TestRunUpdateNpmPluginFlag 钉住 npm 通道上的 --plugin 契约：marketplace
 // 重装指引在这里也必须打印，不能只在 GitHub 下载路径有。
 func TestRunUpdateNpmPluginFlag(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"version":"1.40.0"}`))
-	}))
-	defer srv.Close()
-	t.Setenv("FORGE_NPM_REGISTRY", srv.URL)
+	npmRegistryServing(t, "1.40.0")
 
 	setTestHome(t, t.TempDir())
 	forceChannel(t, installChannel{kind: channelNPM, pm: "npm"})
@@ -429,12 +431,7 @@ func forceChannel(t *testing.T, ch installChannel) {
 // 检查——须重查 npm registry、用 npm 命令发通知、并以本通道标签覆写
 // 缓存。
 func TestCheckForUpdateNpmChannelRequery(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"name":"@agent_forge/forge","version":"1.40.0"}`))
-	}))
-	defer srv.Close()
-	t.Setenv("FORGE_NPM_REGISTRY", srv.URL)
+	npmRegistryServing(t, "1.40.0")
 
 	setTestHome(t, t.TempDir())
 	forceChannel(t, installChannel{kind: channelNPM, pm: "npm"})

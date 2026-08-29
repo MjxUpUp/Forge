@@ -87,163 +87,148 @@ func TestBuildEvidenceChain_BucketsAndLegacyFallback(t *testing.T) {
 	}
 }
 
-// TestBuildEvidenceChain_ScopeDriftExcluded pins that CheckScopeDrift is excluded from evidence strength:
-// it is an advisory observation (agent modified source outside the plan), not "verification evidence". Counting it would inflate Strength —
-// drift is also usually a negative signal, so counting it as positive evidence is doubly wrong. Entries are still kept in Entries for forge trace display;
-// only the bucketing count skips them. Without this guard, after scope-drift ships, tasks with drift would look better-evidenced.
+// TestBuildEvidenceChain_ObservationChecksExcluded table-drives the observation-check
+// exclusions (the 12 former per-check *Excluded tests, merged 2026-08-30 slim-down).
+// Shared invariant: every check below is an OBSERVATION (advisory finding / process
+// marker / boundary event / distribution-health signal), not "verification evidence"
+// — it must never feed the evidence-strength buckets, or Strength inflates in the
+// wrong direction (negative signals would read as positive evidence, and every task
+// would earn free deterministic entries at birth). Entries are still kept in Entries
+// for forge trace/timeline display; only the bucketing count skips them. The
+// escape-hatch row additionally pins UsedEscapeHatch (skip ≠ flag-less: escape sets
+// the flag for the Strength cap).
 //
-// TestBuildEvidenceChain_ScopeDriftExcluded 钉住 CheckScopeDrift 不计入证据强度：
-// 它是 advisory 观测（agent 改了计划外的源码），非"验证证据"。计入会虚高 Strength——
-// drift 还常是负信号，当正向证据更是错上加错。条目仍保留在 Entries 供 forge trace 展示，
-// 只是分桶计数跳过。无此守卫，scope-drift 上线后会让有 drift 的任务反而看起来证据更足。
-func TestBuildEvidenceChain_ScopeDriftExcluded(t *testing.T) {
-	entries := []Entry{
-		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
-		{Check: CheckScopeDrift, Source: EvidenceDeterministic, TaskRef: "t"},
-		// Multiple drift entries are also excluded.
-		//
-		{Check: CheckScopeDrift, Source: EvidenceDeterministic, TaskRef: "t"}, // 多条 drift 也不计入
-	}
-	ec := BuildEvidenceChain(entries, "t")
-	if ec.Deterministic != 1 {
-		t.Fatalf(`CheckScopeDrift 不应计入 deterministic: got %d, want 1（仅 auto-compile）`, ec.Deterministic)
-	}
-	if ec.AgentClaim != 0 {
-		t.Fatalf(`agent-claim 应为 0, got %d`, ec.AgentClaim)
-	}
-	if len(ec.Entries) != 3 {
-		t.Fatalf(`drift 条目仍应保留在 Entries 供 trace: got %d, want 3`, len(ec.Entries))
-	}
-}
-
-// TestBuildEvidenceChain_CheatScanExcluded pins that CheckCheatScan is likewise excluded from evidence strength:
-// mechanically detected suspected-cheat patterns are advisory observations, and hits are negative signals — treating them as positive evidence would inflate Strength
-// in the wrong direction. Entries are still kept in Entries for trace.
+// Row-specific rationale (chronological, from the former tests):
+//   - scope-drift: advisory observation (agent modified source outside the plan);
+//     drift is usually a NEGATIVE signal — counting it as positive is doubly wrong.
+//   - cheat-scan: mechanically detected suspected-cheat hits are negative signals.
+//   - review-pass/plan-first: observation-class stamps — neither says any
+//     verification ran.
+//   - observation-hooks (#4-A): CheckToolFailure/SubagentStop/TestNudge +
+//     conventions hooks record process observations, never task-gate verification.
+//     This is the unknown-check-name trap: only explicitly listed names are excluded.
+//   - unused-scan: suspected wiring miss — a wiring-miss signal must not read as
+//     positive evidence.
+//   - escape-hatch: "skipped some gate", not "performed verification"; SourceForCheck
+//     defaults it to deterministic, so counting it would inflate Strength backwards
+//     (a signal meant to LOWER confidence would raise it). Sets UsedEscapeHatch.
+//   - skill-trigger: a skill firing (passive injection) says nothing about whether
+//     the task's verification ran (code-review era row).
+//   - kimi-plugin-stale: kimi plugin install lags the binary — distribution health,
+//     once-daily warning (code-review F1, 2026-08-15).
+//   - bundle-verify: import-time trust verdict about the MULTI-MACHINE surface
+//     (who signed, was it accepted) — unrelated to THIS task's verification.
+//   - project-sync: git-transport sync op outcome is infrastructure health.
+//   - cross-repo-impact: whether a multi-repo task declared its impact — process
+//     discipline, exactly like scope-drift.
+//   - task-started: the L2 boundary event (multi-task-concurrency §5) — a timeline
+//     marker is not any verification result.
 //
-// TestBuildEvidenceChain_CheatScanExcluded 钉住 CheckCheatScan 同样不计入证据强度：
-// 机械检测的疑似作弊模式是 advisory 观测，命中是负信号——当正向证据会虚高 Strength
-// 且错向。条目仍保留在 Entries 供 trace。
-func TestBuildEvidenceChain_CheatScanExcluded(t *testing.T) {
-	entries := []Entry{
-		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
-		{Check: CheckCheatScan, Source: EvidenceDeterministic, TaskRef: "t"},
-		{Check: CheckCheatScan, Source: EvidenceDeterministic, TaskRef: "t"},
-	}
-	ec := BuildEvidenceChain(entries, "t")
-	if ec.Deterministic != 1 {
-		t.Fatalf(`CheckCheatScan 不应计入 deterministic: got %d, want 1`, ec.Deterministic)
-	}
-	if len(ec.Entries) != 3 {
-		t.Fatalf(`cheat-scan 条目仍应保留在 Entries 供 trace: got %d, want 3`, len(ec.Entries))
-	}
-}
-
-// TestBuildEvidenceChain_ReviewPassPlanFirstExcluded pins that CheckReviewPass / CheckPlanFirst
-// are excluded from evidence-strength bucketing: both are observation-class markers (a review
-// stamp was placed / a task had no plan recorded) — neither says any verification actually ran,
-// so counting them as deterministic would inflate Strength. Entries are still kept for trace.
+// TestBuildEvidenceChain_ObservationChecksExcluded 表驱动观察类 check 的排除（2026-08-30
+// 瘦身合并原 12 个逐 check 的 *Excluded 测试）。共享不变量：下列 check 都是【观察】
+// （advisory 发现/过程标记/边界事件/分发健康信号），不是「验证证据」——绝不能喂进
+// 证据强度分桶，否则 Strength 反向虚高（负信号被读成正证据、每个任务出生就白得
+// deterministic 条目）。条目仍保留在 Entries 供 forge trace/时间线展示，仅分桶计数
+// 跳过。escape-hatch 行额外钉 UsedEscapeHatch（跳过≠无标志：逃生会置标志供 Strength cap）。
 //
-// TestBuildEvidenceChain_ReviewPassPlanFirstExcluded 钉住 CheckReviewPass / CheckPlanFirst
-// 不计入证据强度：两者都是 observation 类标记（审查打戳 / 无方案记录）——都不代表任何
-// 验证实跑，计入 deterministic 会虚高 Strength。条目仍保留供 trace。
-func TestBuildEvidenceChain_ReviewPassPlanFirstExcluded(t *testing.T) {
-	entries := []Entry{
-		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
-		{Check: CheckReviewPass, Source: EvidenceDeterministic, TaskRef: "t"},
-		{Check: CheckPlanFirst, Source: EvidenceDeterministic, TaskRef: "t"},
-	}
-	ec := BuildEvidenceChain(entries, "t")
-	if ec.Deterministic != 1 {
-		t.Fatalf(`review-pass/plan-first 不应计入 deterministic: got %d, want 1`, ec.Deterministic)
-	}
-	if len(ec.Entries) != 3 {
-		t.Fatalf(`review-pass/plan-first 条目仍应保留在 Entries 供 trace: got %d, want 3`, len(ec.Entries))
-	}
-}
-
-// TestBuildEvidenceChain_ObservationHooksExcluded pins that the #4-A observation-hook
-// checks (CheckToolFailure / CheckSubagentStop / CheckTestNudge) are excluded from
-// evidence-strength bucketing: all three record OBSERVATIONS of process (a tool failed /
-// a sub-agent finished / a nudge fired), never any verification the task's gates ran —
-// counting them as deterministic would inflate Strength off process noise. This is the
-// unknown-check-name trap: BuildEvidenceChain only excludes explicitly listed names, so
-// a new observation check added without touching the list silently lands in the
-// deterministic bucket. Entries are still kept for trace.
-//
-// TestBuildEvidenceChain_ObservationHooksExcluded 钉住 #4-A 观察 hook 的三个 check
-// （CheckToolFailure / CheckSubagentStop / CheckTestNudge）不计入证据强度：三者记录的
-// 都是过程 OBSERVATION（工具失败 / 子 agent 结束 / 提醒发出），绝非任务门禁实跑的
-// 验证——计入 deterministic 会拿过程噪声虚高 Strength。这也是未知 check 名陷阱：
-// BuildEvidenceChain 只排除显式列名，新增观察 check 不同步清单就会静默落进
-// deterministic 桶。条目仍保留供 trace。
-func TestBuildEvidenceChain_ObservationHooksExcluded(t *testing.T) {
-	entries := []Entry{
-		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
-		{Check: CheckToolFailure, Source: EvidenceDeterministic, TaskRef: "t"},
-		{Check: CheckSubagentStop, Source: EvidenceDeterministic, TaskRef: "t"},
-		{Check: CheckTestNudge, Source: EvidenceDeterministic, TaskRef: "t"},
-		{Check: CheckConventionsInject, Source: EvidenceDeterministic, TaskRef: "t"},
-		{Check: CheckConventionsLint, Source: EvidenceDeterministic, TaskRef: "t"},
-	}
-	ec := BuildEvidenceChain(entries, "t")
-	if ec.Deterministic != 1 {
-		t.Fatalf(`观察 hook 不应计入 deterministic: got %d, want 1（仅 auto-compile）`, ec.Deterministic)
-	}
-	if len(ec.Entries) != 6 {
-		t.Fatalf(`观察条目仍应保留在 Entries 供 trace: got %d, want 6`, len(ec.Entries))
-	}
-}
-
-// TestBuildEvidenceChain_UnusedScanExcluded pins that CheckUnusedScan is likewise excluded from evidence
-// strength: it is an advisory observation (a newly-added exported symbol with zero production references —
-// suspected wiring miss), not "verification evidence". Counting it would inflate Strength in the wrong direction
-// (a wiring-miss signal must not read as positive evidence). Entries are still kept in Entries for forge trace.
-//
-// TestBuildEvidenceChain_UnusedScanExcluded 钉住 CheckUnusedScan 同样不计入证据强度：它是 advisory
-// 观测（新增导出符号在生产行零引用——疑似接线缺失），非"验证证据"。计入会虚高 Strength 且方向
-// 反了（接线缺失信号绝不能读成正向证据）。条目仍保留在 Entries 供 forge trace。
-func TestBuildEvidenceChain_UnusedScanExcluded(t *testing.T) {
-	entries := []Entry{
-		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
-		{Check: CheckUnusedScan, Source: EvidenceDeterministic, TaskRef: "t"},
-		{Check: CheckUnusedScan, Source: EvidenceDeterministic, TaskRef: "t"},
-	}
-	ec := BuildEvidenceChain(entries, "t")
-	if ec.Deterministic != 1 {
-		t.Fatalf(`CheckUnusedScan 不应计入 deterministic: got %d, want 1（仅 auto-compile）`, ec.Deterministic)
-	}
-	if ec.AgentClaim != 0 {
-		t.Fatalf(`agent-claim 应为 0, got %d`, ec.AgentClaim)
-	}
-	if len(ec.Entries) != 3 {
-		t.Fatalf(`unused-scan 条目仍应保留在 Entries 供 trace: got %d, want 3`, len(ec.Entries))
-	}
-}
-
-// TestBuildEvidenceChain_EscapeHatchExcludedAndFlags pins plan 5: CheckEscapeHatch is excluded from the
-// deterministic bucket — escape is an observation of "skipped some gate", not "performed verification"; SourceForCheck defaults it to
-// deterministic, so counting it would inflate Strength in the wrong direction (a signal meant to lower confidence would raise it instead). Set the
-// UsedEscapeHatch flag for Strength to cap. Entries are still kept in Entries for trace.
-//
-// TestBuildEvidenceChain_EscapeHatchExcludedAndFlags 钉住方案5：CheckEscapeHatch 不计入
-// deterministic 桶——逃生是"跳过了某 gate"的观察，非"做了验证"；SourceForCheck 默认把它
-// 归 deterministic，计入会虚高 Strength 且方向反了（本该降信心的信号反而抬高它）。改设
-// UsedEscapeHatch 标志供 Strength cap。条目仍留 Entries 供 trace。
-func TestBuildEvidenceChain_EscapeHatchExcludedAndFlags(t *testing.T) {
-	entries := []Entry{
-		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
-		{Check: CheckAssertion, Source: EvidenceDeterministic, TaskRef: "t"},
-		{Check: CheckEscapeHatch, Source: EvidenceDeterministic, TaskRef: "t"},
-	}
-	ec := BuildEvidenceChain(entries, "t")
-	if ec.Deterministic != 2 {
-		t.Fatalf(`CheckEscapeHatch 不应计入 deterministic: got %d, want 2（auto-compile+assertion）`, ec.Deterministic)
-	}
-	if !ec.UsedEscapeHatch {
-		t.Fatal(`UsedEscapeHatch = false, want true（有 escape-hatch 条目应置标志供 Strength cap）`)
-	}
-	if len(ec.Entries) != 3 {
-		t.Fatalf(`escape-hatch 条目仍应保留在 Entries 供 trace: got %d, want 3`, len(ec.Entries))
+// 逐行缘由（按原测试年代）：
+//   - scope-drift：advisory 观测（agent 改了计划外源码）；drift 常是负信号——当正向证据错上加错。
+//   - cheat-scan：机械检测的疑似作弊命中是负信号。
+//   - review-pass/plan-first：观察类打戳——都不代表任何验证实跑。
+//   - observation-hooks（#4-A）：CheckToolFailure/SubagentStop/TestNudge + conventions
+//     记录过程观察，绝非任务门禁验证。这也是未知 check 名陷阱：只有显式列名的才排除。
+//   - unused-scan：疑似接线缺失——接线缺失信号绝不能读成正向证据。
+//   - escape-hatch：「跳过了某 gate」非「做了验证」；SourceForCheck 默认归 deterministic，
+//     计入会让本该降信心的信号抬高它。置 UsedEscapeHatch。
+//   - skill-trigger：skill 触发（被动注入）不说明本任务验证真跑过。
+//   - kimi-plugin-stale：kimi plugin 安装落后于二进制——分发健康度，每日一次的告警。
+//   - bundle-verify：导入侧对多机信任面的判定（谁签名、是否被接受）——与本任务验证无关。
+//   - project-sync：git 通道同步成败是基建健康度。
+//   - cross-repo-impact：多仓任务是否声明了跨仓影响——流程纪律，同 scope-drift。
+//   - task-started：L2 边界事件（multi-task-concurrency §5）——时间线标记不是验证结果。
+func TestBuildEvidenceChain_ObservationChecksExcluded(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		entries    []Entry
+		wantDet    int
+		wantTotal  int
+		wantEscape bool
+	}{
+		{`scope-drift`, []Entry{
+			{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
+			{Check: CheckScopeDrift, Source: EvidenceDeterministic, TaskRef: "t"},
+			{Check: CheckScopeDrift, Source: EvidenceDeterministic, TaskRef: "t"}, // 多条 drift 也不计入
+		}, 1, 3, false},
+		{`cheat-scan`, []Entry{
+			{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
+			{Check: CheckCheatScan, Source: EvidenceDeterministic, TaskRef: "t"},
+			{Check: CheckCheatScan, Source: EvidenceDeterministic, TaskRef: "t"},
+		}, 1, 3, false},
+		{`review-pass/plan-first`, []Entry{
+			{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
+			{Check: CheckReviewPass, Source: EvidenceDeterministic, TaskRef: "t"},
+			{Check: CheckPlanFirst, Source: EvidenceDeterministic, TaskRef: "t"},
+		}, 1, 3, false},
+		{`observation-hooks（tool-failure/subagent-stop/test-nudge/conventions）`, []Entry{
+			{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
+			{Check: CheckToolFailure, Source: EvidenceDeterministic, TaskRef: "t"},
+			{Check: CheckSubagentStop, Source: EvidenceDeterministic, TaskRef: "t"},
+			{Check: CheckTestNudge, Source: EvidenceDeterministic, TaskRef: "t"},
+			{Check: CheckConventionsInject, Source: EvidenceDeterministic, TaskRef: "t"},
+			{Check: CheckConventionsLint, Source: EvidenceDeterministic, TaskRef: "t"},
+		}, 1, 6, false},
+		{`unused-scan`, []Entry{
+			{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
+			{Check: CheckUnusedScan, Source: EvidenceDeterministic, TaskRef: "t"},
+			{Check: CheckUnusedScan, Source: EvidenceDeterministic, TaskRef: "t"},
+		}, 1, 3, false},
+		// escape-hatch：det=2（auto-compile+assertion 基线）+ 逃生条目被跳过但置标志。
+		{`escape-hatch（跳过分桶，但置 UsedEscapeHatch）`, []Entry{
+			{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
+			{Check: CheckAssertion, Source: EvidenceDeterministic, TaskRef: "t"},
+			{Check: CheckEscapeHatch, Source: EvidenceDeterministic, TaskRef: "t"},
+		}, 2, 3, true},
+		{`skill-trigger`, []Entry{
+			{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
+			{Check: CheckSkillTrigger, Source: EvidenceDeterministic, TaskRef: "t"},
+			{Check: CheckSkillTrigger, Source: EvidenceDeterministic, TaskRef: "t"},
+		}, 1, 3, false},
+		{`kimi-plugin-stale`, []Entry{
+			{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
+			{Check: CheckKimiPluginStale, Source: EvidenceDeterministic, TaskRef: "t"},
+		}, 1, 2, false},
+		{`bundle-verify`, []Entry{
+			{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
+			{Check: CheckBundleVerify, Source: EvidenceDeterministic, TaskRef: "t", Meta: map[string]string{MetaKeyVerdict: "verified"}},
+		}, 1, 2, false},
+		{`project-sync`, []Entry{
+			{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
+			{Check: CheckProjectSync, Source: EvidenceDeterministic, TaskRef: "t", Meta: map[string]string{MetaKeySyncOp: "push"}},
+		}, 1, 2, false},
+		{`cross-repo-impact`, []Entry{
+			{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
+			{Check: CheckCrossRepoImpact, Source: EvidenceDeterministic, TaskRef: "t"},
+		}, 1, 2, false},
+		{`task-started`, []Entry{
+			{Check: CheckTaskStarted, Source: EvidenceDeterministic, TaskRef: "t"},
+			{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
+		}, 1, 2, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ec := BuildEvidenceChain(tc.entries, "t")
+			if ec.Deterministic != tc.wantDet {
+				t.Fatalf(`%s 不应计入 deterministic: got %d, want %d（仅验证类基线条目）`, tc.name, ec.Deterministic, tc.wantDet)
+			}
+			if ec.AgentClaim != 0 {
+				t.Fatalf(`%s: agent-claim 应为 0, got %d`, tc.name, ec.AgentClaim)
+			}
+			if len(ec.Entries) != tc.wantTotal {
+				t.Fatalf(`%s 条目仍应保留在 Entries 供 trace: got %d, want %d`, tc.name, len(ec.Entries), tc.wantTotal)
+			}
+			if ec.UsedEscapeHatch != tc.wantEscape {
+				t.Fatalf(`%s: UsedEscapeHatch = %v, want %v`, tc.name, ec.UsedEscapeHatch, tc.wantEscape)
+			}
+		})
 	}
 }
 
@@ -484,150 +469,6 @@ func TestBuildEvidenceChain_WorkActivityEscapeDoesNotCap(t *testing.T) {
 	}
 	if got := ecVerify.Strength(); got != Weak {
 		t.Fatalf(`test-coverage escape + ratio 1.0: Strength=%s, want Weak（被 cap）`, got)
-	}
-}
-
-// TestBuildEvidenceChain_SkillTriggerExcluded pins that CheckSkillTrigger is excluded from evidence strength:
-// a skill firing (passive injection) is an observation, not verification evidence — counting it would inflate
-// Strength in the wrong direction (a skill firing says nothing about whether the task's verification actually ran).
-// Entries are still kept in Entries for trace.
-//
-// TestBuildEvidenceChain_SkillTriggerExcluded 钉住 CheckSkillTrigger 不计入证据强度：
-// skill 触发（被动注入）是观测，非验证证据——计入会虚高 Strength 且方向错（skill 触发
-// 不说明本任务的验证真跑过）。条目仍留 Entries 供 trace。
-func TestBuildEvidenceChain_SkillTriggerExcluded(t *testing.T) {
-	entries := []Entry{
-		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
-		{Check: CheckSkillTrigger, Source: EvidenceDeterministic, TaskRef: "t"},
-		{Check: CheckSkillTrigger, Source: EvidenceDeterministic, TaskRef: "t"},
-	}
-	ec := BuildEvidenceChain(entries, "t")
-	if ec.Deterministic != 1 {
-		t.Fatalf(`CheckSkillTrigger 不应计入 deterministic: got %d, want 1（仅 auto-compile）`, ec.Deterministic)
-	}
-	if len(ec.Entries) != 3 {
-		t.Fatalf(`skill-trigger 条目仍应保留在 Entries 供 trace: got %d, want 3`, len(ec.Entries))
-	}
-}
-
-// TestBuildEvidenceChain_KimiPluginStaleExcluded pins that CheckKimiPluginStale is excluded
-// from evidence strength (code-review F1, 2026-08-15): the entry records that the kimi plugin
-// install lags the binary — a distribution-health observation, not verification evidence.
-// It carries TaskRef (recorded while a task is active), so without the exclusion
-// LoadForTask+BuildEvidenceChain would bucket it as deterministic and inflate Strength off
-// a once-daily distribution warning.
-//
-// TestBuildEvidenceChain_KimiPluginStaleExcluded 钉住 CheckKimiPluginStale 不计入证据强度
-// （code-review F1，2026-08-15）：该条目记录 kimi plugin 安装落后于二进制——分发健康度
-// 观测，非验证证据。它带 TaskRef（任务活跃期间记录），不排除的话 LoadForTask+
-// BuildEvidenceChain 会把它分桶成 deterministic，让每日一次的分发告警虚增 Strength。
-func TestBuildEvidenceChain_KimiPluginStaleExcluded(t *testing.T) {
-	entries := []Entry{
-		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
-		{Check: CheckKimiPluginStale, Source: EvidenceDeterministic, TaskRef: "t"},
-	}
-	ec := BuildEvidenceChain(entries, "t")
-	if ec.Deterministic != 1 {
-		t.Fatalf(`CheckKimiPluginStale 不应计入 deterministic: got %d, want 1（仅 auto-compile）`, ec.Deterministic)
-	}
-	if len(ec.Entries) != 2 {
-		t.Fatalf(`kimi-plugin-stale 条目仍应保留在 Entries 供 trace: got %d, want 2`, len(ec.Entries))
-	}
-}
-
-// TestBuildEvidenceChain_BundleVerifyExcluded pins that CheckBundleVerify is excluded
-// from evidence strength: it records an import-time trust verdict about the
-// MULTI-MACHINE surface (who signed, was it accepted) — an observation that says
-// nothing about whether THIS task's verification ran. Entries stay in Entries for
-// trace; only bucketing skips them.
-//
-// TestBuildEvidenceChain_BundleVerifyExcluded 钉住 CheckBundleVerify 不计入证据强度：
-// 它记录的是导入侧对多机信任面的判定（谁签的名、是否被接受）——这类观察与本任务
-// 验证是否实跑无关。条目仍保留在 Entries 供 trace，仅分桶跳过。
-func TestBuildEvidenceChain_BundleVerifyExcluded(t *testing.T) {
-	entries := []Entry{
-		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
-		{Check: CheckBundleVerify, Source: EvidenceDeterministic, TaskRef: "t", Meta: map[string]string{MetaKeyVerdict: "verified"}},
-	}
-	ec := BuildEvidenceChain(entries, "t")
-	if ec.Deterministic != 1 {
-		t.Fatalf(`CheckBundleVerify 不应计入 deterministic: got %d, want 1（仅 auto-compile）`, ec.Deterministic)
-	}
-	if len(ec.Entries) != 2 {
-		t.Fatalf(`bundle-verify 条目仍应保留在 Entries 供 trace: got %d, want 2`, len(ec.Entries))
-	}
-}
-
-// TestBuildEvidenceChain_ProjectSyncExcluded pins that CheckProjectSync is excluded
-// from evidence strength: a git-transport sync op outcome is infrastructure health
-// (did the bundle move), not verification that THIS task's gates ran — bucketing it
-// as deterministic would inflate Strength off routine pushes.
-//
-// TestBuildEvidenceChain_ProjectSyncExcluded 钉住 CheckProjectSync 不计入证据强度：
-// git 通道同步操作的成败是基建健康度（bundle 有没有走通），不是本任务门禁实跑的
-// 验证——分桶成 deterministic 会让例行 push 虚增 Strength。
-func TestBuildEvidenceChain_ProjectSyncExcluded(t *testing.T) {
-	entries := []Entry{
-		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
-		{Check: CheckProjectSync, Source: EvidenceDeterministic, TaskRef: "t", Meta: map[string]string{MetaKeySyncOp: "push"}},
-	}
-	ec := BuildEvidenceChain(entries, "t")
-	if ec.Deterministic != 1 {
-		t.Fatalf(`CheckProjectSync 不应计入 deterministic: got %d, want 1（仅 auto-compile）`, ec.Deterministic)
-	}
-	if len(ec.Entries) != 2 {
-		t.Fatalf(`project-sync 条目仍应保留在 Entries 供 trace: got %d, want 2`, len(ec.Entries))
-	}
-}
-
-// TestBuildEvidenceChain_CrossRepoImpactExcluded pins that CheckCrossRepoImpact is
-// excluded from evidence strength: it records whether a multi-repo-workspace task
-// declared its cross-repo impact — a process-discipline observation, not verification
-// that THIS task's gates ran; bucketing it as deterministic would inflate Strength
-// exactly like scope-drift. Entries stay in Entries for trace.
-//
-// TestBuildEvidenceChain_CrossRepoImpactExcluded 钉住 CheckCrossRepoImpact 不计入
-// 证据强度：它记录多仓 workspace 任务是否声明了跨仓影响——流程纪律观测，非本任务
-// 门禁实跑的验证；分桶成 deterministic 会像 scope-drift 一样虚增 Strength。条目
-// 仍保留在 Entries 供 trace。
-func TestBuildEvidenceChain_CrossRepoImpactExcluded(t *testing.T) {
-	entries := []Entry{
-		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
-		{Check: CheckCrossRepoImpact, Source: EvidenceDeterministic, TaskRef: "t"},
-	}
-	ec := BuildEvidenceChain(entries, "t")
-	if ec.Deterministic != 1 {
-		t.Fatalf(`CheckCrossRepoImpact 不应计入 deterministic: got %d, want 1（仅 auto-compile）`, ec.Deterministic)
-	}
-	if len(ec.Entries) != 2 {
-		t.Fatalf(`cross-repo-impact 条目仍应保留在 Entries 供 trace: got %d, want 2`, len(ec.Entries))
-	}
-}
-
-// TestBuildEvidenceChain_TaskStartedExcluded pins that CheckTaskStarted (the L2 boundary
-// event that replaced task-start Clear, multi-task-concurrency design §5) is excluded from
-// evidence strength: a timeline marker is not any verification result — bucketing it as
-// deterministic would grant every task a free evidence entry at birth. Entries stay in
-// Entries for trace/timeline rendering.
-//
-// TestBuildEvidenceChain_TaskStartedExcluded 钉住 CheckTaskStarted（L2 事件化里取代
-// task-start Clear 的边界事件，multi-task-concurrency 设计 §5）不计入证据强度：时间线
-// 标记不是任何验证结果——分桶成 deterministic 会让每个任务出生就白得一条证据。
-// 条目仍保留在 Entries 供 trace/时间线渲染。
-func TestBuildEvidenceChain_TaskStartedExcluded(t *testing.T) {
-	entries := []Entry{
-		{Check: CheckTaskStarted, Source: EvidenceDeterministic, TaskRef: "t"},
-		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
-	}
-	ec := BuildEvidenceChain(entries, "t")
-	if ec.Deterministic != 1 {
-		t.Fatalf(`CheckTaskStarted 不应计入 deterministic: got %d, want 1（仅 auto-compile）`, ec.Deterministic)
-	}
-	if ec.AgentClaim != 0 {
-		t.Fatalf(`agent-claim 应为 0, got %d`, ec.AgentClaim)
-	}
-	if len(ec.Entries) != 2 {
-		t.Fatalf(`task-started 条目仍应保留在 Entries 供时间线: got %d, want 2`, len(ec.Entries))
 	}
 }
 

@@ -48,6 +48,44 @@ func generatePack(t *testing.T) string {
 	return dir
 }
 
+// assertNoCurlyQuotes walks dir and fails on any file containing curly quotes
+// U+201C/U+201D — the corruption signature of Windows input eating Go source
+// literals ([[windows-input-quote-corruption]]). The target is built from runes so
+// the assertion holds even if the test source literal is itself corrupted.
+// Slash-separated path prefixes under which files are exempt (verbatim-copied
+// authored content, where curly quotes are legitimate prose punctuation) are
+// skipped.
+//
+// assertNoCurlyQuotes 遍历 dir，任何文件含弯引号 U+201C/U+201D 即失败——Windows
+// 输入吃掉 Go 源码字面量的腐蚀签名（[[windows-input-quote-corruption]]）。目标用
+// rune 构造，即使测试源码字面量被腐蚀断言仍成立。豁免前缀（斜杠分隔）下的文件
+// （逐字复制的 authored 内容，弯引号是合法正文标点）被跳过。
+func assertNoCurlyQuotes(t *testing.T, dir string, exemptPrefixes ...string) {
+	t.Helper()
+	curly := string([]rune{0x201c, 0x201d})
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return err
+		}
+		for _, prefix := range exemptPrefixes {
+			if strings.Contains(filepath.ToSlash(path), prefix) {
+				return nil
+			}
+		}
+		data, e := os.ReadFile(path)
+		if e != nil {
+			return e
+		}
+		if strings.ContainsAny(string(data), curly) {
+			t.Errorf("%s contains curly quotes (Windows input corruption)", info.Name())
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestPluginPack_WritesAllFiles: all expected files are generated.
 //
 // TestPluginPack_WritesAllFiles：所有预期文件都生成。
@@ -240,42 +278,28 @@ func TestPluginPack_Idempotent(t *testing.T) {
 // 抓的是生成器从 Go 字符串字面量拼出的文件里的腐蚀，不是逐字复制的 authored 内容）。用 rune
 // 构造目标串（绕过测试源码字面量是否被腐蚀）。
 func TestPluginPack_NoCurlyQuotes(t *testing.T) {
-	dir := generatePack(t)
-	curly := string([]rune{0x201c, 0x201d})
-	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
-			return err
-		}
-		// Authored skill content ships verbatim — curly quotes there are legitimate Chinese
-		// punctuation, not corruption. Only generator-composed files are guarded.
-		//
-		// authored skill 内容逐字分发——其中的弯引号是合法中文标点，非腐蚀。只守卫生成器
-		// 组合产出的文件。
-		if strings.Contains(filepath.ToSlash(path), "plugins/forge/skills/") {
-			return nil
-		}
-		data, e := os.ReadFile(path)
-		if e != nil {
-			return e
-		}
-		if strings.ContainsAny(string(data), curly) {
-			t.Errorf("%s contains curly quotes (Windows input corruption)", info.Name())
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	// The skills/ subtree is EXEMPT (the "plugins/forge/skills/" prefix below): it is
+	// a byte-verbatim copy of the authored canonical library, where curly quotes are
+	// legitimate Chinese prose punctuation (the corruption this guard catches is in
+	// files the generator composes from Go string literals, not in authored content
+	// copied verbatim).
+	//
+	// skills/ 子树豁免（下方 "plugins/forge/skills/" 前缀）：它是 authored canonical
+	// 库的逐字节复制，弯引号在那里是合法的中文正文标点（本守卫抓的是生成器从
+	// Go 字符串字面量拼出的文件里的腐蚀，不是逐字复制的 authored 内容）。
+	assertNoCurlyQuotes(t, generatePack(t), "plugins/forge/skills/")
 }
 
 // TestPluginPack_Readme: README contains the three-step first-experience structure + per-host install commands + honest statement about unconfirmed Codex paths
 // + correct npm package name (@agent_forge/forge, matching npm/package.json) + capability boundary (Phase 3: project registration is AUTOMATIC for plugin
-// users via init-suggest auto-takeover; manual init demoted to repair/non-plugin/team-mode).
+// users via init-suggest auto-takeover; manual init demoted to repair/non-plugin/team-mode) + the v1.22 user-level wording (zero project writes,
+// --restore rollback) + the VS Code caveat (root hooks.json inert under Claude-format detection).
 // Negative assertion on @mjxupup/forge catches historical regression: early pluginReadme wrote the wrong package name using the GitHub owner slug.
 //
 // TestPluginPack_Readme：README 含三步首体验结构 + 每 host 安装命令 + Codex 路径未确认的诚实表述
 // + npm 包名正确（@agent_forge/forge，与 npm/package.json 一致）+ 能力边界（Phase 3：plugin 用户
-// 项目登记经 init-suggest 自动接管；手动 init 降级为修复/非 plugin/团队模式）。
+// 项目登记经 init-suggest 自动接管；手动 init 降级为修复/非 plugin/团队模式）+ v1.22 用户级表述
+// （零项目写入、--restore 回滚）+ VS Code caveat（Claude 格式检测下根 hooks.json 无效）。
 // 负向断言 @mjxupup/forge 抓历史回退：早期 pluginReadme 写过错用 GitHub owner slug 的包名。
 func TestPluginPack_Readme(t *testing.T) {
 	dir := generatePack(t)
@@ -311,6 +335,29 @@ func TestPluginPack_Readme(t *testing.T) {
 		"forge init --agents reasonix", // reasonix 的 settings.json flat hooks 回退路径
 		"forge init --agents cline",    // cline wrapper 脚本路径（Wave 3b：~/Documents/Cline/Rules/Hooks/）
 		"not officially confirmed",     // D3: Codex 路径诚实表述（OpenAI 未明确）
+		// v1.22 user-level contract（guard the plugin_readme.go capability-boundary comment
+		// contract）: zero project writes since v1.22 + the uninstall --restore rollback path.
+		//
+		// v1.22 用户级契约（守卫 plugin_readme.go 能力边界注释契约）：v1.22 起零项目
+		// 写入 + uninstall --restore 回滚路径。
+		"Since v1.22 `forge init` writes nothing into the project",
+		"--restore",
+		"zero project writes",
+		// Wave 2c code-review finding (doc-confirmed against code.visualstudio.com): VS
+		// Code detects a plugin's format by its manifest marker (.claude-plugin/plugin.json
+		// = Claude format → hooks read ONLY from hooks/hooks.json; root hooks.json is the
+		// Copilot-format location). The pack ships the Claude marker, so the root
+		// hooks.json may be inert on VS Code; the README must say so honestly instead of
+		// implying VS Code is wired (same pattern as the codex caveat above).
+		//
+		// Wave 2c 代码审查发现（已对照 code.visualstudio.com 核实）：VS Code 按 manifest
+		// 标记检测 plugin 格式（.claude-plugin/plugin.json = Claude 格式 → hooks 只从
+		// hooks/hooks.json 读；根 hooks.json 是 Copilot 格式位置）。pack 带 Claude 标记，
+		// 故根 hooks.json 在 VS Code 上可能无效；README 必须诚实说明，而非暗示 VS Code
+		// 已接线（与上方 codex caveat 同款模式）。
+		"VS Code caveat",
+		"hooks/hooks.json",
+		"VS Code unverified",
 	} {
 		if !strings.Contains(content, want) {
 			t.Errorf("README missing %q", want)
@@ -348,6 +395,62 @@ func TestPluginPack_Readme(t *testing.T) {
 	}
 }
 
+// locateCommittedPackFile resolves the committed counterpart of a generated pack file
+// (repoRoot/plugins/forge/<rel>). When the whole plugins/forge layout is absent
+// (non-Forge repo layout) the test skips. hardFail=true upgrades absence to a
+// failure once the committed plugin layout exists (its plugin.json is present) —
+// generator outputs listed in expectedPluginFiles must not go uncommitted, and a
+// skip there would false-green on fresh checkouts.
+//
+// locateCommittedPackFile 解析生成 pack 文件的 committed 对应物
+// （仓库根 plugins/forge/<rel>）。整个 plugins/forge 布局缺失（非 Forge 仓库布局）
+// 时 skip。hardFail=true 时，一旦 committed plugin 布局存在（其 plugin.json 在场）
+// 缺席即升级为失败——列在 expectedPluginFiles 的生成器输出不容漏提交，那里 skip
+// 会在 fresh checkout 上假绿。
+func locateCommittedPackFile(t *testing.T, rel string, hardFail bool) string {
+	t.Helper()
+	committed := filepath.Join("..", "..", "plugins", "forge", rel)
+	if _, err := os.Stat(committed); err != nil {
+		if hardFail {
+			if _, perr := os.Stat(filepath.Join("..", "..", "plugins", "forge", ".claude-plugin", "plugin.json")); perr == nil {
+				t.Fatalf("committed plugin layout exists but plugins/forge/%s is missing — a required distribution asset (run `forge plugin pack` and commit it): %v", rel, err)
+			}
+		}
+		t.Skipf("committed pack file not found at %s (non-forge repo layout): %v", committed, err)
+	}
+	return committed
+}
+
+// loadCommittedAndGenerated parses the committed pack file (repoRoot/plugins/forge/<rel>)
+// and its freshly generated counterpart (packDir/plugins/forge/<rel>) into plain maps,
+// sharing the locateCommittedPackFile skip/hard-fail contract.
+//
+// loadCommittedAndGenerated 把 committed pack 文件（仓库根 plugins/forge/<rel>）与
+// 新生成的对应物（packDir/plugins/forge/<rel>）解析成普通 map，共用
+// locateCommittedPackFile 的 skip/硬失败契约。
+func loadCommittedAndGenerated(t *testing.T, rel string, hardFail bool) (generated, committed map[string]any) {
+	t.Helper()
+	committedPath := locateCommittedPackFile(t, rel, hardFail)
+	packDir := generatePack(t)
+	loadJSON(t, filepath.Join(packDir, "plugins", "forge", rel), &generated)
+	loadJSON(t, committedPath, &committed)
+	return generated, committed
+}
+
+// assertHooksFieldEqual marshals the hooks field of both manifests and compares — the
+// shared single-source-of-truth assertion of the Committed*MatchesGenerator guards.
+//
+// assertHooksFieldEqual 把两个 manifest 的 hooks 字段 marshal 后比对——各
+// Committed*MatchesGenerator 守卫共享的单一真相源断言。
+func assertHooksFieldEqual(t *testing.T, rel string, generated, committed map[string]any) {
+	t.Helper()
+	a, _ := json.Marshal(generated["hooks"])
+	b, _ := json.Marshal(committed["hooks"])
+	if string(a) != string(b) {
+		t.Errorf("committed %s hooks drifted from generator output (run `forge plugin pack` and commit the result):\n generated: %s\n committed: %s", rel, a, b)
+	}
+}
+
 // TestPluginPack_CommittedManifestMatchesGenerator: the hooks field of the committed plugins/forge/.claude-plugin/
 // plugin.json must equal the current output of GeneratePluginPack (derived from ForgeHookSpec).
 // TestPluginPack_HooksMirrorSettings only guards internal generator consistency (settings.local.json vs
@@ -364,19 +467,8 @@ func TestPluginPack_Readme(t *testing.T) {
 // plugin.json 对比生成器输出，确保提交的派生资产与代码同步。回归源：SessionStart 加了
 // task-resume 到 ForgeHookSpec，但 committed plugin.json 漏重新生成（code-review P0-1）。
 func TestPluginPack_CommittedManifestMatchesGenerator(t *testing.T) {
-	committed := filepath.Join("..", "..", "plugins", "forge", ".claude-plugin", "plugin.json")
-	if _, err := os.Stat(committed); err != nil {
-		t.Skipf("committed plugin manifest not found at %s (non-forge repo layout): %v", committed, err)
-	}
-	generated := generatePack(t)
-	var genManifest, committedManifest map[string]any
-	loadJSON(t, filepath.Join(generated, "plugins", "forge", ".claude-plugin", "plugin.json"), &genManifest)
-	loadJSON(t, committed, &committedManifest)
-	a, _ := json.Marshal(genManifest["hooks"])
-	b, _ := json.Marshal(committedManifest["hooks"])
-	if string(a) != string(b) {
-		t.Errorf("committed plugin.json hooks drifted from generator output (run `forge plugin pack` and commit the result):\n generated: %s\n committed: %s", a, b)
-	}
+	genManifest, committedManifest := loadCommittedAndGenerated(t, filepath.Join(".claude-plugin", "plugin.json"), false)
+	assertHooksFieldEqual(t, "plugin.json", genManifest, committedManifest)
 }
 
 // TestPluginPack_CommittedReadmeMatchesGenerator: the committed plugins/forge/README.md
@@ -391,67 +483,11 @@ func TestPluginPack_CommittedManifestMatchesGenerator(t *testing.T) {
 // `forge plugin pack` 都会静默回滚该改动（2026-08-24 的 zcode 行差点因此丢失；
 // code-review 发现）。
 func TestPluginPack_CommittedReadmeMatchesGenerator(t *testing.T) {
-	committed := filepath.Join("..", "..", "plugins", "forge", "README.md")
-	if _, err := os.Stat(committed); err != nil {
-		t.Skipf("committed plugin README not found at %s (non-forge repo layout — nothing to regenerate against): %v", committed, err)
-	}
-	generated := generatePack(t)
-	want := readOrFail(t, filepath.Join(generated, "plugins", "forge", "README.md"))
+	committed := locateCommittedPackFile(t, "README.md", false)
+	want := readOrFail(t, filepath.Join(generatePack(t), "plugins", "forge", "README.md"))
 	got := readOrFail(t, committed)
 	if got != want {
 		t.Errorf("committed plugins/forge/README.md drifted from the generator (edit internal/agentbridge/assets/plugin_readme.md, then run `forge plugin pack` and commit the result)")
-	}
-}
-
-// TestPluginPack_Readme_UserLevelContract pins the v1.22 user-level wording in the
-// plugin README: zero project writes since v1.22, and the uninstall --restore
-// rollback path (guards the plugin_readme.go capability-boundary comment contract).
-//
-// TestPluginPack_Readme_UserLevelContract 钉死 plugin README 的 v1.22 用户级表述：
-// v1.22 起零项目写入 + uninstall --restore 回滚路径（守卫 plugin_readme.go
-// 能力边界注释契约）。
-func TestPluginPack_Readme_UserLevelContract(t *testing.T) {
-	dir := generatePack(t)
-	content := readOrFail(t, filepath.Join(dir, "plugins", "forge", "README.md"))
-	for _, want := range []string{
-		"Since v1.22 `forge init` writes nothing into the project",
-		"--restore",
-		"zero project writes",
-	} {
-		if !strings.Contains(content, want) {
-			t.Errorf("README missing user-level wording %q", want)
-		}
-	}
-}
-
-// TestPluginPack_Readme_CopilotVSCodeCaveat pins the Wave 2c code-review finding,
-// doc-confirmed against code.visualstudio.com: VS Code detects a plugin's format by
-// its manifest marker (.claude-plugin/plugin.json = Claude format → hooks read ONLY
-// from hooks/hooks.json; root hooks.json is the Copilot-format location). The pack
-// ships the Claude marker, so the root hooks.json may be inert on VS Code; the README
-// must say so honestly instead of implying VS Code is wired (same pattern as the
-// codex "not officially confirmed" caveat). Guards against the caveat being dropped
-// in a README rewrite while the structural fix (hooks/hooks.json + double-fire
-// verification on Claude Code) remains an open follow-up.
-//
-// TestPluginPack_Readme_CopilotVSCodeCaveat 钉死 Wave 2c 代码审查发现（已对照
-// code.visualstudio.com 文档核实）：VS Code 按 manifest 标记检测 plugin 格式
-// （.claude-plugin/plugin.json = Claude 格式 → hooks 只从 hooks/hooks.json 读；
-// 根 hooks.json 是 Copilot 格式位置）。pack 带 Claude 标记，故根 hooks.json 在
-// VS Code 上可能无效；README 必须诚实说明，而非暗示 VS Code 已接线（与 codex
-// 「未官方确认」caveat 同款模式）。防止结构性修复（hooks/hooks.json + Claude
-// Code 双跑验证）仍是开放 follow-up 期间，caveat 在 README 重写中被丢掉。
-func TestPluginPack_Readme_CopilotVSCodeCaveat(t *testing.T) {
-	dir := generatePack(t)
-	content := readOrFail(t, filepath.Join(dir, "plugins", "forge", "README.md"))
-	for _, want := range []string{
-		"VS Code caveat",
-		"hooks/hooks.json",
-		"VS Code unverified",
-	} {
-		if !strings.Contains(content, want) {
-			t.Errorf("README missing copilot VS Code caveat wording %q — the root hooks.json is inert on VS Code (Claude-format detection) and the README must say so honestly", want)
-		}
 	}
 }
 
@@ -518,19 +554,8 @@ func TestPluginPack_ReasonixManifestHooksMirror(t *testing.T) {
 // 的 drift。committed 的 reasonix manifest 是第 5 host 的分发产物；陈旧的会给 reasonix plugin
 // 安装发错的 gate。
 func TestPluginPack_CommittedReasonixManifestMatchesGenerator(t *testing.T) {
-	committed := filepath.Join("..", "..", "plugins", "forge", "reasonix-plugin.json")
-	if _, err := os.Stat(committed); err != nil {
-		t.Skipf("committed reasonix manifest not found at %s (non-forge repo layout): %v", committed, err)
-	}
-	generated := generatePack(t)
-	var genManifest, committedManifest map[string]any
-	loadJSON(t, filepath.Join(generated, "plugins", "forge", "reasonix-plugin.json"), &genManifest)
-	loadJSON(t, committed, &committedManifest)
-	a, _ := json.Marshal(genManifest["hooks"])
-	b, _ := json.Marshal(committedManifest["hooks"])
-	if string(a) != string(b) {
-		t.Errorf("committed reasonix-plugin.json hooks drifted from generator output (run `forge plugin pack` and commit the result):\n generated: %s\n committed: %s", a, b)
-	}
+	genManifest, committedManifest := loadCommittedAndGenerated(t, "reasonix-plugin.json", false)
+	assertHooksFieldEqual(t, "reasonix-plugin.json", genManifest, committedManifest)
 	// The committed file's identity fields must also match (apiVersion/name) — a stale committed
 	// manifest could carry a renamed field the current generator no longer emits. version is checked
 	// too: writeReasonixPluginManifest hardcodes it, so changing that constant without re-running
@@ -688,26 +713,16 @@ func TestPluginPack_CopilotHooksMirrorSpec(t *testing.T) {
 // drift。陈旧的 committed copilot manifest 会给每次 copilot plugin 安装发错的 gate
 // （copilot 是 pack 服务的第 6 个 host）。
 func TestPluginPack_CommittedCopilotManifestMatchesGenerator(t *testing.T) {
-	committed := filepath.Join("..", "..", "plugins", "forge", "hooks.json")
-	if _, err := os.Stat(committed); err != nil {
-		// Same hard-failure-if-layout-exists contract as the skills tree: the copilot
-		// manifest is a generator output listed in expectedPluginFiles — once the
-		// committed plugin layout exists, its absence means `forge plugin pack` output
-		// was not committed. Skipping here would false-green on fresh checkouts.
-		//
-		// 与 skills 树同款的"布局在即硬失败"契约：copilot manifest 是列在
-		// expectedPluginFiles 里的生成器输出——committed plugin 布局存在后，它的
-		// 缺席意味着 `forge plugin pack` 的产物没提交。这里 skip 会在 fresh
-		// checkout 上假绿。
-		if _, perr := os.Stat(filepath.Join("..", "..", "plugins", "forge", ".claude-plugin", "plugin.json")); perr == nil {
-			t.Fatalf("committed plugin layout exists but plugins/forge/hooks.json is missing — the copilot manifest is a required distribution asset (run `forge plugin pack` and commit it): %v", err)
-		}
-		t.Skipf("committed copilot manifest not found at %s (non-forge repo layout): %v", committed, err)
-	}
-	generated := generatePack(t)
-	var genManifest, committedManifest map[string]any
-	loadJSON(t, filepath.Join(generated, "plugins", "forge", "hooks.json"), &genManifest)
-	loadJSON(t, committed, &committedManifest)
+	// Same hard-failure-if-layout-exists contract as the skills tree: the copilot
+	// manifest is a generator output listed in expectedPluginFiles — once the
+	// committed plugin layout exists, its absence means `forge plugin pack` output
+	// was not committed. Skipping here would false-green on fresh checkouts.
+	//
+	// 与 skills 树同款的"布局在即硬失败"契约：copilot manifest 是列在
+	// expectedPluginFiles 里的生成器输出——committed plugin 布局存在后，它的
+	// 缺席意味着 `forge plugin pack` 的产物没提交。这里 skip 会在 fresh
+	// checkout 上假绿。
+	genManifest, committedManifest := loadCommittedAndGenerated(t, "hooks.json", true)
 	a, _ := json.Marshal(genManifest)
 	b, _ := json.Marshal(committedManifest)
 	if string(a) != string(b) {

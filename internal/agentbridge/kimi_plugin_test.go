@@ -55,6 +55,22 @@ const kimiPluginDescription = KimiPluginDescription
 // （`go test ./internal/agentbridge -run TestKimiPluginManifestMirrorsSpec -update-kimi-plugin`）。
 var updateKimiPlugin = flag.Bool("update-kimi-plugin", false, "rewrite .kimi-plugin/plugin.json from ForgeHookSpec")
 
+// writeKimiReg seeds <home>/plugins/installed.json with content — the kimi plugin
+// registry fixture shared by the installed/staleness/plugin-wins tests.
+//
+// writeKimiReg 把 content 写进 <home>/plugins/installed.json——installed/staleness/
+// plugin-wins 测试共享的 kimi plugin 注册表 fixture。
+func writeKimiReg(t *testing.T, home, content string) {
+	t.Helper()
+	dir := filepath.Join(home, "plugins")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "installed.json"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestKimiPluginManifestMirrorsSpec pins the committed .kimi-plugin/plugin.json to the
 // generator output derived from hooks.ForgeHookSpec (single source of truth). kimi's
 // GitHub install reads the manifest from the repo root, so it must be committed — and
@@ -207,17 +223,6 @@ func TestKimiPluginManifestVersionTracksRelease(t *testing.T) {
 }
 
 func TestIsKimiPluginInstalled(t *testing.T) {
-	writeReg := func(t *testing.T, home, content string) {
-		t.Helper()
-		dir := filepath.Join(home, "plugins")
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, "installed.json"), []byte(content), 0644); err != nil {
-			t.Fatal(err)
-		}
-	}
-
 	t.Run("no file", func(t *testing.T) {
 		t.Setenv("KIMI_CODE_HOME", t.TempDir())
 		if IsKimiPluginInstalled() {
@@ -227,7 +232,7 @@ func TestIsKimiPluginInstalled(t *testing.T) {
 	t.Run("garbage", func(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("KIMI_CODE_HOME", home)
-		writeReg(t, home, "not json")
+		writeKimiReg(t, home, "not json")
 		if IsKimiPluginInstalled() {
 			t.Error("garbage installed.json must be false")
 		}
@@ -235,7 +240,7 @@ func TestIsKimiPluginInstalled(t *testing.T) {
 	t.Run("enabled forge", func(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("KIMI_CODE_HOME", home)
-		writeReg(t, home, `{"plugins":[{"id":"forge","source":"https://github.com/MjxUpUp/Forge","enabled":true}]}`)
+		writeKimiReg(t, home, `{"plugins":[{"id":"forge","source":"https://github.com/MjxUpUp/Forge","enabled":true}]}`)
 		if !IsKimiPluginInstalled() {
 			t.Error("enabled forge record must be true")
 		}
@@ -243,7 +248,7 @@ func TestIsKimiPluginInstalled(t *testing.T) {
 	t.Run("name key fallback", func(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("KIMI_CODE_HOME", home)
-		writeReg(t, home, `{"plugins":[{"name":"forge","source":"x"}]}`)
+		writeKimiReg(t, home, `{"plugins":[{"name":"forge","source":"x"}]}`)
 		if !IsKimiPluginInstalled() {
 			t.Error("name=forge without explicit disable must be true")
 		}
@@ -251,7 +256,7 @@ func TestIsKimiPluginInstalled(t *testing.T) {
 	t.Run("disabled forge", func(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("KIMI_CODE_HOME", home)
-		writeReg(t, home, `{"plugins":[{"id":"forge","enabled":false}]}`)
+		writeKimiReg(t, home, `{"plugins":[{"id":"forge","enabled":false}]}`)
 		if IsKimiPluginInstalled() {
 			t.Error("enabled=false must be false")
 		}
@@ -259,7 +264,7 @@ func TestIsKimiPluginInstalled(t *testing.T) {
 	t.Run("other plugin only", func(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("KIMI_CODE_HOME", home)
-		writeReg(t, home, `{"plugins":[{"id":"do-it","enabled":true}]}`)
+		writeKimiReg(t, home, `{"plugins":[{"id":"do-it","enabled":true}]}`)
 		if IsKimiPluginInstalled() {
 			t.Error("unrelated plugin must not count")
 		}
@@ -274,17 +279,6 @@ func TestIsKimiPluginInstalled(t *testing.T) {
 // trim 后的裸版本；其余（非 tag ref、缺 github/ref、禁用、无条目、垃圾、无文件）一律
 // ok=false，确保 advisory 不会被噪声触发。
 func TestKimiPluginStaleInfo(t *testing.T) {
-	writeReg := func(t *testing.T, home, content string) {
-		t.Helper()
-		dir := filepath.Join(home, "plugins")
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, "installed.json"), []byte(content), 0644); err != nil {
-			t.Fatal(err)
-		}
-	}
-
 	tests := []struct {
 		name    string
 		json    string
@@ -343,7 +337,7 @@ func TestKimiPluginStaleInfo(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			home := t.TempDir()
 			t.Setenv("KIMI_CODE_HOME", home)
-			writeReg(t, home, tc.json)
+			writeKimiReg(t, home, tc.json)
 			ver, ok := KimiPluginStaleInfo()
 			if ok != tc.wantOk {
 				t.Fatalf("ok = %v, want %v", ok, tc.wantOk)
@@ -364,7 +358,7 @@ func TestKimiPluginStaleInfo(t *testing.T) {
 	t.Run("garbage", func(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("KIMI_CODE_HOME", home)
-		writeReg(t, home, "not json")
+		writeKimiReg(t, home, "not json")
 		if _, ok := KimiPluginStaleInfo(); ok {
 			t.Error("garbage installed.json must be ok=false")
 		}
@@ -394,13 +388,7 @@ func TestKimiTranslator_PluginWins(t *testing.T) {
 	}
 
 	// Install the plugin (record appears) → Translate must strip the section.
-	if err := os.MkdirAll(filepath.Join(home, "plugins"), 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(home, "plugins", "installed.json"),
-		[]byte(`{"plugins":[{"id":"forge","enabled":true}]}`), 0644); err != nil {
-		t.Fatal(err)
-	}
+	writeKimiReg(t, home, `{"plugins":[{"id":"forge","enabled":true}]}`)
 	if err := tr.Translate(t.TempDir(), testInput()); err != nil {
 		t.Fatal(err)
 	}
@@ -419,13 +407,7 @@ func TestKimiTranslator_PluginWins(t *testing.T) {
 func TestKimiTranslator_PluginWins_Boundary(t *testing.T) {
 	installPlugin := func(t *testing.T, home string) {
 		t.Helper()
-		if err := os.MkdirAll(filepath.Join(home, "plugins"), 0755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(home, "plugins", "installed.json"),
-			[]byte(`{"plugins":[{"id":"forge","enabled":true}]}`), 0644); err != nil {
-			t.Fatal(err)
-		}
+		writeKimiReg(t, home, `{"plugins":[{"id":"forge","enabled":true}]}`)
 	}
 
 	t.Run("no config.toml", func(t *testing.T) {

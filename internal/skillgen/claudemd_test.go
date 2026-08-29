@@ -61,19 +61,218 @@ func TestClaudeMDCoversAllWiredHooks(t *testing.T) {
 	}
 }
 
-// TestClaudeMDCommonErrorsIncludesTestCoverage guards the common-errors table
-// documents the task-verify test-coverage gate. Since v0.22 the verify gate
-// enforces CLAUDE.md rule 4 ("测试伴随变更") — agents hitting it need the
-// resolution path (add a test, or FORGE_TEST_COVERAGE=disable escape hatch)
-// surfaced in CLAUDE.md, otherwise the gate looks opaque.
-func TestClaudeMDCommonErrorsIncludesTestCoverage(t *testing.T) {
+// TestClaudeMDSectionContract table-drives the generated CLAUDE.md forge-section
+// content guards (the 21 former per-topic Contains tests, merged 2026-08-30
+// slim-down): each row pins the anchor strings the section MUST carry and the
+// stale/wrong strings it must NOT carry. Per-row rationale, chronologically from
+// the former tests:
+//   - test-coverage / retention / skill-decisions / acceptance rows: the
+//     common-errors table must surface each gate, its resolution path, and its
+//     escape-hatch env knob — an undocumented BLOCK is opaque to agents.
+//   - work-activity-escape wording: work-activity is a RHYTHM gate
+//     (checklog.isRhythmEscapeHatch excludes it from the Strength cap), so docs
+//     must NOT claim it downgrades evidence to Weak; verification-class hatches
+//     keep the Weak wording with the evidence-scaled carve-out note on EVERY row.
+//   - review-fix-recheck: the resolution path must include the RE-REVIEW step
+//     (修复者不能自证) — the old copy implied stamp-right-after-fix.
+//   - commit-timing: complete clears the active ref, so a post-complete commit
+//     gets quarantined — the doc must state commit-before-complete + the
+//     chore/*-commit recovery path + the uncommitted-changes advisory meaning.
+//   - hazard-guard copy: pre-authorization path (confirm --last, no second ask),
+//     generalized tool reference (no per-tool enumeration that missed
+//     kimi/copilot/zcode), no stale FORGE_ALLOW_HAZARD migration note.
+//   - guard-behavior truth: task-guard/bash-guard only WARN (never deny
+//     Write/Edit), and no fabricated ">10 行" threshold (no guard checks lines).
+//   - aux-hooks: session-health stays; sunk hooks (read-check/scope-guard/
+//     clone-check) must not be listed as runtime anymore.
+//   - skill-scan/mcp-scan: SessionStart advisory global skill audit is documented.
+//   - task-abort: `forge task abort --ref <ref>` must be documented (ghost-task
+//     escape; .forge/* self-protection blocks manual cleanup).
+//   - task-verify advisory: no obsolete "连续 3 次失败" force-pass counter.
+//   - compile/assertion advisory (v0.25): hooks only remind; no "hook 自动检查"
+//     blocking-enforcement wording, no "自动检查编译+断言" gate-order claim.
+//   - observation hooks (#4-A): failure-track/subagent-track/test-nudge must
+//     document their ACTUAL trigger events + advisory-never-blocks semantics.
+//   - stop-chain facts: review-stop is the ONLY hard Stop gate (non-task mode);
+//     task-verify Stop is pure advisory — the old copy claimed both were hard.
+//   - aux-checks read-before-edit: 「先读再改」 is a HARD gate inside tasks, it
+//     must not be listed among WARN-only sunk rules.
+//   - task-guard per-host: dsh promotes the advisory to a block (hostcap
+//     PromoteAdvisory); a flat "WARN 不拦截" claim is a lie.
+//   - no-archaeology: the security list is read every session — no dates/counts/
+//     "补齐" notes.
+//   - basic rule 7: conclusion-first + backtick-wrapped banned phrases (the
+//     generated file must survive its own D1 doclint).
+//   - doc-gate row: points at the doc-review skill (truth source), never the
+//     migrated code-review-gate internal path.
+//
+// TestClaudeMDSectionContract 表驱动生成 CLAUDE.md forge 段的内容守卫（2026-08-30
+// 瘦身合并原 21 个逐主题 Contains 测试）：每行钉该段【必须】携带的锚串与【不得】
+// 再出现的陈旧/错误串。逐行缘由按原测试年代：
+//   - test-coverage / retention / skill-decisions / acceptance：common-errors 表必须
+//     浮出各门禁、解决路径与逃生舱 env——未文档化的 BLOCK 对 agent 不透明。
+//   - work-activity 逃生文案：work-activity 是节奏门禁（isRhythmEscapeHatch 不参与
+//     Strength cap），文档不得声称降 evidence 到 Weak；验证类逃生保留 Weak 措辞且
+//     每一行都带证据缩放豁免说明。
+//   - review-fix-recheck：解决路径必须含复审步骤（修复者不能自证）。
+//   - commit-timing：complete 清活跃 ref，其后 commit 会被隔离——文档必须写明先
+//     commit 再 complete、chore/*-commit 恢复路径、未提交变更 advisory 的含义。
+//   - hazard-guard 文案：授权路径（confirm --last 免二次确认）、泛化工具指代、
+//     无 FORGE_ALLOW_HAZARD 迁移残迹。
+//   - guard 行为真相：task-guard/bash-guard 只 WARN 不拦截；无编造的「>10 行」阈值。
+//   - aux-hooks：session-health 保留；下沉 hook 不得再列为运行时。
+//   - skill-scan/mcp-scan：SessionStart advisory 全局 skill 审计已文档化。
+//   - task-abort：`forge task abort --ref <ref>` 必须文档化（僵尸任务逃生）。
+//   - task-verify advisory：无过时的「连续 3 次失败」计数器。
+//   - compile/assertion advisory（v0.25）：hook 只提醒；无阻断语义旧措辞。
+//   - observation hooks（#4-A）：三个观察 hook 必须写明真实触发事件 + advisory 不阻断。
+//   - stop-chain facts：review-stop 是唯一 Stop 硬门禁（非 task 模式）；task-verify
+//     Stop 纯 advisory——旧文案声称两者同为硬门禁。
+//   - aux-checks read-before-edit：「先读再改」任务内是硬门禁，不得列入仅 WARN 下沉规则。
+//   - task-guard 按宿主：dsh 提升为阻断；笼统「WARN 不拦截」是谎言。
+//   - no-archaeology：安全清单每会话都被读——不留日期/计数/「补齐」注记。
+//   - 基本规则 7：结论先行 + 禁令短语反引号包裹（生成文件要过自身 D1 doclint）。
+//   - doc-gate 行：指引 doc-review skill（真相源），不引用已迁移的内部路径。
+func TestClaudeMDSectionContract(t *testing.T) {
 	section := buildForgeSection(true)
-
-	if !strings.Contains(section, "without a corresponding test") {
-		t.Error("CLAUDE.md common-errors table missing test-coverage gate row")
-	}
-	if !strings.Contains(section, "FORGE_TEST_COVERAGE=disable") {
-		t.Error("CLAUDE.md test-coverage row must surface the escape hatch")
+	for _, tc := range []struct {
+		name    string
+		want    []string
+		notWant []string
+	}{
+		{"common-errors: test-coverage gate", []string{
+			"without a corresponding test",
+			"FORGE_TEST_COVERAGE=disable",
+		}, nil},
+		{"common-errors: log retention", []string{
+			"trace/老任务历史消失",
+			"FORGE_LOG_RETENTION_DAYS",
+		}, nil},
+		{"work-activity escape wording (rhythm gate, never Weak)", []string{
+			"work-activity 是节奏门禁，不降 evidence 强度",
+			"重证据任务按证据缩放豁免",
+			// 豁免说明须覆盖全部验证类逃生行（复审第二轮：曾只补 test-coverage 行）。
+			"FORGE_TEST_COVERAGE=disable`（降 Weak；重证据任务按证据缩放豁免）",
+			"--skill-decisions disable`（per-task，优先于 `FORGE_SKILL_DECISIONS=disable` env，降 evidence 到 Weak；重证据任务按证据缩放豁免）",
+			"--acceptance-gate disable`（per-task，优先于 `FORGE_ACCEPTANCE_GATE=disable` env，降 evidence 到 Weak；重证据任务按证据缩放豁免）",
+		}, []string{
+			// 撒谎文案不得回归：work-activity 不触发 cap（防陈旧第二拷贝回归）。
+			"work-activity disable`（降 evidence 强度到 Weak）",
+		}},
+		{"review-fix-recheck protocol (修复者不能自证)", []string{
+			"复审修复",
+			"修复者不能自证",
+		}, nil},
+		{"common-errors: skill-decisions guardrail (B 组件)", []string{
+			"SKILL.md 未记决策",
+			"forge skills decide",
+			"FORGE_SKILL_DECISIONS=disable",
+			"task-verify 拒绝（HARD stop）",
+		}, nil},
+		{"common-errors: acceptance pre-flight (A 组件)", []string{
+			"验收 #N 未实跑",
+			"forge task verify-acceptance",
+			"FORGE_ACCEPTANCE_GATE=disable",
+			"task-complete 拒绝",
+		}, nil},
+		{"commit timing (commit must precede complete)", []string{
+			"提交时机",
+			"chore/*-commit",
+			"未提交变更", // CheckNameUncommittedAtComplete advisory 的含义
+		}, nil},
+		{"hazard-guard copy (2026-08 HITL protocol revision)", []string{
+			"无需二次确认",
+			"forge hazard confirm --last",
+			"所在工具的提问确认机制",
+		}, []string{
+			"AskUserQuestion", // 逐工具枚举漏了 kimi/copilot/zcode
+			"FORGE_ALLOW_HAZARD",
+		}},
+		{"guard behavior truth (task/bash-guard only WARN)", nil, []string{
+			"非平凡变更（>10 行）", // 编造阈值——没有任何 guard 查行数
+			"denied by task-guard",
+			"denied by bash-guard",
+		}},
+		{"aux hooks (sunk judgmental hooks gone)", []string{
+			"辅助检查",
+		}, []string{
+			"read-check（",
+			"scope-guard（",
+			"clone-check（",
+		}},
+		{"skill-scan / mcp-scan documented as SessionStart", []string{
+			"skill-scan",
+			"mcp-scan",
+			"SessionStart",
+		}, nil},
+		{"task abort escape hatch", []string{
+			"中止任务",
+			"forge task abort --ref <ref>",
+		}, nil},
+		{"task-verify is advisory (no force-pass counter)", []string{
+			"advisory",
+		}, []string{
+			"连续 3 次失败",
+		}},
+		{"compile/assertion rules advisory (v0.25)", []string{
+			"`auto-compile` hook 仅 advisory 提醒",
+			"`assertion-check` hook 检测到弱化仅 advisory 提醒",
+		}, []string{
+			"hook 自动检查",
+			"自动检查编译+断言",
+		}},
+		{"observation hooks (#4-A) event accuracy + advisory", []string{
+			"**failure-track**（PostToolUseFailure",
+			"**subagent-track**（SubagentStop",
+			"**test-nudge**（PostToolUse Write|Edit",
+			"advisory 不阻断",
+		}, nil},
+		{"stop-chain facts (review-stop is the only hard Stop gate)", []string{
+			"task 模式下直接放行",
+			"task-complete 门禁强制",
+			"只 advisory 不阻塞",
+		}, []string{
+			"与 task-verify 同为 Stop 链硬门禁",
+		}},
+		{"aux-checks must not sink read-before-edit", []string{
+			"聚焦变更/避免重复",
+		}, []string{
+			"先读再改/聚焦变更",
+		}},
+		{"task-guard per-host truth (dsh promotes to block)", []string{
+			"dsh",
+			"提升为阻断",
+		}, []string{
+			"只触发 task-guard 警告（WARN，不拦截）",
+		}},
+		{"no archaeology notes in the security list", nil, []string{
+			"27.7k",
+			"零记录缺口",
+			"空头支票",
+		}},
+		{"basic rule 7: reply concision (phrases backtick-wrapped)", []string{
+			"结论先行，禁空转措辞",
+			"forge docs lint",
+			"`综上所述`",
+			"`基本可以`",
+			"`问题不大`",
+		}, nil},
+		{"doc-gate row references doc-review skill", []string{
+			"按 doc-review skill 评审",
+		}, []string{
+			"code-review-gate/references/rubric-docs.md",
+		}},
+	} {
+		for _, w := range tc.want {
+			if !strings.Contains(section, w) {
+				t.Errorf("%s: CLAUDE.md forge section missing %q", tc.name, w)
+			}
+		}
+		for _, nw := range tc.notWant {
+			if strings.Contains(section, nw) {
+				t.Errorf("%s: CLAUDE.md forge section must not contain %q", tc.name, nw)
+			}
+		}
 	}
 }
 
@@ -113,301 +312,6 @@ func TestClaudeMDFailureTrackMatcherTracksSpec(t *testing.T) {
 		if want := "（PostToolUseFailure " + matcher + "）"; !strings.Contains(section.body, want) {
 			t.Errorf("%s failure-track line must quote the live spec matcher (want %q in section) — docs-vs-spec drift", section.label, want)
 		}
-	}
-}
-
-// TestClaudeMDCommonErrorsIncludesRetention guards the common-errors table
-// documents log retention. task start auto-prunes over-age checklog/toollog
-// archives + completed task files per FORGE_LOG_RETENTION_DAYS; agents/users
-// seeing "trace/老任务历史消失" need the env knob surfaced so silent pruning
-// isn't opaque (and to flag the act rebuild interaction).
-func TestClaudeMDCommonErrorsIncludesRetention(t *testing.T) {
-	section := buildForgeSection(true)
-
-	if !strings.Contains(section, "trace/老任务历史消失") {
-		t.Error("CLAUDE.md common-errors table missing retention row")
-	}
-	if !strings.Contains(section, "FORGE_LOG_RETENTION_DAYS") {
-		t.Error("CLAUDE.md retention row must surface the FORGE_LOG_RETENTION_DAYS knob")
-	}
-}
-
-// TestClaudeMDWorkActivityEscapeWording pins the docs-consistency of the work-activity
-// escape wording (2026-08): work-activity is a RHYTHM gate — checklog.isRhythmEscapeHatch
-// excludes it from the Strength cap, so generated docs must NOT claim it downgrades
-// evidence to Weak (that copy was a stale second source of the cap rule and lied about
-// behavior). Verification-class hatches keep the Weak wording (evidence-scaled).
-//
-// TestClaudeMDWorkActivityEscapeWording 钉住 work-activity 逃生文案的文档一致性
-// （2026-08）：work-activity 是节奏门禁——checklog.isRhythmEscapeHatch 把它排除在
-// Strength cap 外，生成文档绝不能声称它把 evidence 降到 Weak（该文案曾是 cap 规则的
-// 陈旧第二来源、与行为不符）。验证类逃生保留 Weak 措辞（证据缩放）。
-func TestClaudeMDWorkActivityEscapeWording(t *testing.T) {
-	section := buildForgeSection(true)
-
-	// work-activity 行必须写明「节奏门禁、不降 evidence 强度」
-	if !strings.Contains(section, "work-activity 是节奏门禁，不降 evidence 强度") {
-		t.Error("CLAUDE.md work-activity 逃生文案必须声明节奏门禁不降 evidence 强度（与 isRhythmEscapeHatch 行为一致）")
-	}
-	// 撒谎文案不得回归：work-activity 紧邻的「降 evidence 强度到 Weak」是行为错误的第二拷贝
-	if strings.Contains(section, "work-activity disable`（降 evidence 强度到 Weak）") {
-		t.Error("CLAUDE.md work-activity 逃生文案不得声称降 evidence 到 Weak（节奏门禁不触发 cap——防陈旧拷贝回归）")
-	}
-	// 验证类逃生保留降档语义 + 证据缩放豁免说明
-	if !strings.Contains(section, "重证据任务按证据缩放豁免") {
-		t.Error("CLAUDE.md 验证类逃生文案必须提及证据缩放豁免（2026-08 校准）")
-	}
-	// 豁免说明须覆盖全部验证类逃生行（复审第二轮 2026-08：曾只补 test-coverage 行，
-	// skill-decisions/acceptance 及 FORGE_TEST_COVERAGE=disable 行漏补）——逐行断言。
-	//
-	// The carve-out note must cover EVERY verification-class hatch row (re-review
-	// round 2, 2026-08: only the test-coverage row had it; skill-decisions/acceptance
-	// and the FORGE_TEST_COVERAGE=disable row were missed) — assert per row.
-	for _, row := range []string{
-		"FORGE_TEST_COVERAGE=disable`（降 Weak；重证据任务按证据缩放豁免）",
-		"--skill-decisions disable`（per-task，优先于 `FORGE_SKILL_DECISIONS=disable` env，降 evidence 到 Weak；重证据任务按证据缩放豁免）",
-		"--acceptance-gate disable`（per-task，优先于 `FORGE_ACCEPTANCE_GATE=disable` env，降 evidence 到 Weak；重证据任务按证据缩放豁免）",
-	} {
-		if !strings.Contains(section, row) {
-			t.Errorf("CLAUDE.md 验证类逃生行缺证据缩放豁免说明: %q", row)
-		}
-	}
-}
-
-// TestClaudeMDReviewFixLoopIncludesRecheck guards the review-fix-recheck protocol copy
-// in the generated common-errors table (2026-08 protocol gap fix): the resolution path
-// for "task-complete requires code-review-gate" must include the RE-REVIEW step between
-// fixing findings and stamping — the old copy read "修复发现 → forge review pass",
-// implying stamp-right-after-fix, which let a fixer self-certify (real case 2026-08:
-// round-1 fixes stamped without re-review passed task-complete; the snapshot loop only
-// enforces the loop's shape, and the copy documented the shape without the obligation).
-//
-// TestClaudeMDReviewFixLoopIncludesRecheck 守卫生成协议 common-errors 表里的
-// review-fix-recheck 文案（2026-08 协议缺口修复）：task-complete 前置的解决路径必须
-// 在「修复发现」与「盖章」之间包含复审步骤——旧文案是「修复发现 → forge review
-// pass」，暗示修完直接盖章，等于教修复者自证（真实案例 2026-08：第一轮修复未经
-// 复审直接盖章过了 task-complete；快照闭环只强制循环形状，文案只记了形状没记义务）。
-func TestClaudeMDReviewFixLoopIncludesRecheck(t *testing.T) {
-	section := buildForgeSection(true)
-	if !strings.Contains(section, "复审修复") || !strings.Contains(section, "修复者不能自证") {
-		t.Error("CLAUDE.md code-review-gate 解决路径必须含「复审修复（修复者不能自证）」步骤（2026-08 协议缺口修复）")
-	}
-}
-
-// TestClaudeMDCommonErrorsIncludesSkillDecisions guards the common-errors table
-// documents the task-verify skill-decisions guardrail (B 组件). 改 SKILL.md 未记
-// 决策 → BLOCKED——agents 遇到需在 CLAUDE.md 看到 forge skills decide 记决策路径 +
-// --skill-decisions disable 逃生舱（否则 BLOCKED 不透明）。对齐 test-coverage 守卫模式。
-func TestClaudeMDCommonErrorsIncludesSkillDecisions(t *testing.T) {
-	section := buildForgeSection(true)
-
-	if !strings.Contains(section, "SKILL.md 未记决策") {
-		t.Error("CLAUDE.md common-errors table missing skill-decisions guardrail row")
-	}
-	if !strings.Contains(section, "forge skills decide") {
-		t.Error("CLAUDE.md skill-decisions row must surface the decide resolution path")
-	}
-	if !strings.Contains(section, "FORGE_SKILL_DECISIONS=disable") {
-		t.Error("CLAUDE.md skill-decisions row must surface the escape hatch")
-	}
-	if !strings.Contains(section, "task-verify 拒绝（HARD stop）") {
-		t.Error("CLAUDE.md skill-decisions row must document HARD stop (not advisory)")
-	}
-}
-
-// TestClaudeMDCommonErrorsIncludesAcceptancePreflight guards the common-errors
-// table documents the task-complete acceptance pre-flight (A 组件). task 声明
-// acceptance 时 complete 校验验收快照新鲜（源码内容指纹，2026-08-25 起）+ Passed →
-// BLOCKED——agents 遇到需在 CLAUDE.md 看到 verify-acceptance 回扣路径 +
-// --acceptance-gate disable 逃生舱。对齐 test-coverage 守卫模式。
-func TestClaudeMDCommonErrorsIncludesAcceptancePreflight(t *testing.T) {
-	section := buildForgeSection(true)
-
-	if !strings.Contains(section, "验收 #N 未实跑") {
-		t.Error("CLAUDE.md common-errors table missing acceptance pre-flight row")
-	}
-	if !strings.Contains(section, "forge task verify-acceptance") {
-		t.Error("CLAUDE.md acceptance row must surface the verify-acceptance resolution path")
-	}
-	if !strings.Contains(section, "FORGE_ACCEPTANCE_GATE=disable") {
-		t.Error("CLAUDE.md acceptance row must surface the escape hatch")
-	}
-	if !strings.Contains(section, "task-complete 拒绝") {
-		t.Error("CLAUDE.md acceptance row must document blocking (not advisory)")
-	}
-}
-
-// TestClaudeMDDocumentsCommitTiming guards against the trap where agents commit
-// AFTER `forge task complete`: complete clears the active task ref, so a
-// post-complete source commit gets quarantined by file-sentinel. CLAUDE.md must
-// state the correct order (commit before complete) and the chore/*-commit
-// recovery path. This was a real trap hit in a DevWorkbench session.
-func TestClaudeMDDocumentsCommitTiming(t *testing.T) {
-	section := buildForgeSection(true)
-
-	if !strings.Contains(section, "提交时机") {
-		t.Error("CLAUDE.md missing commit-timing section (commit must precede complete)")
-	}
-	if !strings.Contains(section, "chore/*-commit") {
-		t.Error("CLAUDE.md missing chore/*-commit recovery path for post-complete commits")
-	}
-	// The task-complete gate now emits an ADVISORY on uncommitted changes
-	// (CheckNameUncommittedAtComplete) — the doc must tell agents what seeing
-	// that advisory means: commit first, then complete.
-	//
-	// task-complete 门禁现在会对未提交变更发 ADVISORY
-	// （CheckNameUncommittedAtComplete）——文档必须告诉 agent 见到该 advisory
-	// 的含义：先 commit 再 complete。
-	if !strings.Contains(section, "未提交变更") {
-		t.Error("CLAUDE.md missing the uncommitted-changes ADVISORY note (commit before complete, gate now surfaces the inverted order)")
-	}
-}
-
-// TestClaudeMDHazardGuardCopyTracksProtocol guards the docs-consistency of the
-// hazard-guard resolution copy (2026-08 HITL protocol revision): the generated
-// security bullet AND the common-errors row must teach the pre-authorization
-// path (user already instructed/confirmed this turn → forge hazard confirm
-// --last directly, no second ask) and must not carry the stale per-tool
-// enumeration (Claude Code→AskUserQuestion missed kimi/copilot/zcode) — same
-// copy contract as the hazard-guard block message and `forge hazard` Long help.
-//
-// TestClaudeMDHazardGuardCopyTracksProtocol 守卫 hazard-guard 解决路径文案的
-// 文档一致性（2026-08 HITL 协议修订）：生成的安全机制条目与常见错误表行都必须
-// 给出授权路径（用户本回合已明确指令/确认过 → 直接 forge hazard confirm --last
-// 免二次确认），且不得再带逐工具枚举（Claude Code→AskUserQuestion 漏
-// kimi/copilot/zcode）——与 hazard-guard block 文案、`forge hazard` Long 同源。
-func TestClaudeMDHazardGuardCopyTracksProtocol(t *testing.T) {
-	section := buildForgeSection(true)
-	for _, anchor := range []string{"无需二次确认", "forge hazard confirm --last", "所在工具的提问确认机制"} {
-		if !strings.Contains(section, anchor) {
-			t.Errorf("CLAUDE.md hazard-guard copy missing %q (2026-08 HITL protocol revision)", anchor)
-		}
-	}
-	for _, gone := range []string{"AskUserQuestion", "FORGE_ALLOW_HAZARD"} {
-		if strings.Contains(section, gone) {
-			t.Errorf("CLAUDE.md hazard-guard copy must not contain %q anymore (stale per-tool enumeration / migration note)", gone)
-		}
-	}
-}
-
-// TestClaudeMDMatchesActualGuardBehavior guards against documenting fabricated
-// thresholds or the wrong verb (deny vs warn). The task-guard and bash-guard
-// hooks only WARN on source changes without an active task — they never deny
-// Write/Edit (only .forge/* self-protection fails). And NO guard checks line
-// count, so a ">10 行" threshold is fabricated and misleads agents.
-func TestClaudeMDMatchesActualGuardBehavior(t *testing.T) {
-	section := buildForgeSection(true)
-
-	if strings.Contains(section, "非平凡变更（>10 行）") {
-		t.Error("CLAUDE.md documents fabricated '>10 行' threshold — no guard checks line count")
-	}
-	if strings.Contains(section, "denied by task-guard") {
-		t.Error("CLAUDE.md says 'denied by task-guard' — task-guard only WARNs source edits (never denies)")
-	}
-	if strings.Contains(section, "denied by bash-guard") {
-		t.Error("CLAUDE.md says 'denied by bash-guard' — bash-guard only WARNs (never denies)")
-	}
-}
-
-// TestClaudeMDDocumentsAuxHooks guards that the remaining auxiliary hook
-// (session-health) appears in the security section, and that the sunk
-// judgmental hooks (read-check/scope-guard/clone-check) are NOT listed as
-// runtime hooks anymore — they moved to forge-quality's Red Flags text per the
-// layered noise treatment.
-func TestClaudeMDDocumentsAuxHooks(t *testing.T) {
-	section := buildForgeSection(true)
-
-	if !strings.Contains(section, "辅助检查") {
-		t.Error("CLAUDE.md security section missing auxiliary hooks summary")
-	}
-	for _, gone := range []string{"read-check（", "scope-guard（", "clone-check（"} {
-		if strings.Contains(section, gone) {
-			t.Errorf("CLAUDE.md still lists sunk hook %q as runtime — should be gone from aux-checks line", gone)
-		}
-	}
-}
-
-// TestClaudeMDDocumentsSkillScan guards that CLAUDE.md documents the skill-scan
-// SessionStart hook (advisory global skill audit). Agents reading CLAUDE.md must
-// know skill-scan exists — it scans ~/.claude/skills at session start, covering
-// skills that entered outside the install gate (manual clone/junction/git pull).
-func TestClaudeMDDocumentsSkillScan(t *testing.T) {
-	section := buildForgeSection(true)
-	if !strings.Contains(section, "skill-scan") {
-		t.Error("CLAUDE.md security section missing skill-scan hook")
-	}
-	if !strings.Contains(section, "mcp-scan") {
-		t.Error("CLAUDE.md security section missing mcp-scan hook (project-level .mcp.json scan)")
-	}
-	if !strings.Contains(section, "SessionStart") {
-		t.Error("CLAUDE.md must document skill-scan as a SessionStart hook")
-	}
-}
-
-// TestClaudeMDDocumentsTaskAbort guards that CLAUDE.md documents the task abort
-// command. Without an escape hatch, a task that can never progress (e.g. started
-// in a non-git project, or abandoned mid-flight) lingers as a "ghost" task,
-// polluting `task list` and tripping the task-verify Stop hook on every session
-// end. Agents relying on CLAUDE.md need to know `forge task abort` exists — the
-// 2026-06-16 code-knowledge-base session got stuck precisely because no abort
-// path was documented and `.forge/*` self-protection blocks manual cleanup.
-func TestClaudeMDDocumentsTaskAbort(t *testing.T) {
-	section := buildForgeSection(true)
-
-	if !strings.Contains(section, "中止任务") {
-		t.Error("CLAUDE.md missing task-abort section")
-	}
-	if !strings.Contains(section, "forge task abort --ref <ref>") {
-		t.Error("CLAUDE.md task-abort section must show the `forge task abort --ref <ref>` command")
-	}
-}
-
-// TestClaudeMDTaskVerifyIsAdvisory guards the advisory rewrite in the abort
-// section: it must not claim the Stop hook auto-passes after 3 failures (that
-// counter no longer exists). task-verify is mixed-mode: advisory (test-coverage/
-// compile/assertion — what this test locks) + HARD stop (skill-decisions/work-
-// activity — locked by TestClaudeMDCommonErrorsIncludesSkillDecisions). The name
-// IsAdvisory refers to the aspect it locks, not "purely advisory".
-func TestClaudeMDTaskVerifyIsAdvisory(t *testing.T) {
-	section := buildForgeSection(true)
-
-	if strings.Contains(section, "连续 3 次失败") {
-		t.Error("CLAUDE.md still references obsolete '连续 3 次失败' force-pass (task-verify is advisory)")
-	}
-	if !strings.Contains(section, "advisory") {
-		t.Error("CLAUDE.md must document task-verify as advisory")
-	}
-}
-
-// TestClaudeMDCompileAssertionRulesAdvisory guards the v0.25 advisory rewrite of
-// the basic-rules section: the compile + assertion rules must document the hooks
-// as advisory (agent self-checks), NOT "auto-check" — auto-compile.sh and
-// assertion-check.sh no longer block. This is the CLAUDE.md surface of the
-// embed.go advisory change, and carries the tech-stack-agnostic / loop-engineering
-// intent (forge reminds; the agent owns the actual compile/assertion verdict).
-func TestClaudeMDCompileAssertionRulesAdvisory(t *testing.T) {
-	section := buildForgeSection(true)
-
-	// New advisory wording: hooks only remind, the agent self-checks. Hook names
-	// are backtick-anchored (covers-all-wired-hooks guard requires markup form).
-	//
-	// 新 advisory 措辞：hook 只提醒，agent 自检。hook 名带反引号锚定
-	// （covers-all-wired-hooks 守卫要求标记形态）。
-	if !strings.Contains(section, "`auto-compile` hook 仅 advisory 提醒") {
-		t.Error("CLAUDE.md compile rule must document auto-compile as advisory (v0.25)")
-	}
-	if !strings.Contains(section, "`assertion-check` hook 检测到弱化仅 advisory 提醒") {
-		t.Error("CLAUDE.md assertion rule must document assertion-check as advisory (v0.25)")
-	}
-	// The obsolete wording that referenced hook auto-checks implied blocking enforcement — must be gone.
-	//
-	// The old 「hook 自动检查」 wording implied blocking enforcement — must be gone.
-	if strings.Contains(section, "hook 自动检查") {
-		t.Error("CLAUDE.md still uses obsolete 'hook 自动检查' (hooks are advisory now, not blocking)")
-	}
-	// Gate-order section: task-implement must not claim it "auto-checks compile+assertion".
-	if strings.Contains(section, "自动检查编译+断言") {
-		t.Error("CLAUDE.md task-implement row still claims '自动检查编译+断言' (advisory now)")
 	}
 }
 
@@ -619,155 +523,6 @@ func TestGenerateUserQualitySkillTo(t *testing.T) {
 	}
 }
 
-// TestClaudeMDDocumentsObservationHooks extends the wired-hooks coverage guard with
-// per-hook event accuracy: the generic anchored-name check cannot tell a doc line
-// that names the right event from one that swaps them. The three #4-A observation
-// hooks (2026-08-22) must document their actual trigger events and advisory nature.
-//
-// TestClaudeMDDocumentsObservationHooks 在通用接线守卫之上钉事件准确性：锚定
-// 名字守卫分辨不出「写对了事件」与「事件张冠李戴」。三个 #4-A 观察 hook
-// （2026-08-22）必须写明实际触发事件与 advisory 属性。
-func TestClaudeMDDocumentsObservationHooks(t *testing.T) {
-	section := buildForgeSection(true)
-	for _, want := range []string{
-		"**failure-track**（PostToolUseFailure",
-		"**subagent-track**（SubagentStop",
-		"**test-nudge**（PostToolUse Write|Edit",
-	} {
-		if !strings.Contains(section, want) {
-			t.Errorf("forge section missing observation-hook doc prefix %q", want)
-		}
-	}
-	// Advisory semantics must be stated — these hooks never block, and the doc is
-	// where an agent learns that instead of hunting for a bypass.
-	//
-	// 必须写明 advisory 语义——这三个 hook 永不阻断，agent 应从文档直接得知
-	// 而非去找绕法。
-	if !strings.Contains(section, "advisory 不阻断") {
-		t.Error("failure-track doc line must state advisory (never blocks)")
-	}
-}
-
-// TestClaudeMDStopChainFacts pins the corrected review-stop / task-verify Stop
-// semantics (prompt-review 2026-08-25): review-stop is the ONLY hard gate on the
-// Stop chain — it blocks (exit-2) only in NON-task mode (unreviewed source
-// changes); in task mode it passes through because the task-complete gate
-// enforces the review prerequisite (internal/cli/review.go runReviewGate).
-// task-verify is also a Stop hook but has been pure advisory since the
-// stop-retry-loop incident (embed.go TaskVerifyHook: never blocks session end).
-// The old copy claimed both were hard Stop gates and that review-stop blocked on
-// "task-complete 前置未过" — both wrong.
-//
-// TestClaudeMDStopChainFacts 钉住修正后的 review-stop / task-verify Stop 语义
-// （提示词评审 2026-08-25）：review-stop 是 Stop 链上唯一硬门禁——仅非 task
-// 模式下 block（exit-2，有未审查源码变更）；task 模式直接放行（审查由
-// task-complete 门禁强制，见 internal/cli/review.go runReviewGate）。
-// task-verify 同为 Stop hook，但自 stop-retry-loop 事故后纯 advisory 永不
-// 阻塞（embed.go TaskVerifyHook）。旧文案声称两者同为 Stop 链硬门禁、且
-// review-stop 因「task-complete 前置未过」拦截——两处皆错。
-func TestClaudeMDStopChainFacts(t *testing.T) {
-	section := buildForgeSection(true)
-
-	if strings.Contains(section, "与 task-verify 同为 Stop 链硬门禁") {
-		t.Error("review-stop 行不得声称 task-verify 是 Stop 链硬门禁（task-verify Stop 纯 advisory 不阻塞）")
-	}
-	for _, want := range []string{
-		"task 模式下直接放行",       // review-stop 只在非 task 模式 block
-		"task-complete 门禁强制", // task 模式的审查强制点在 task-complete
-		"只 advisory 不阻塞",     // task-verify Stop 的真实语义
-	} {
-		if !strings.Contains(section, want) {
-			t.Errorf("forge section missing corrected Stop-chain fact %q", want)
-		}
-	}
-}
-
-// TestClaudeMDAuxChecksExcludeReadBeforeEdit pins the 辅助检查 line fix: 「先读再改」
-// must not be listed among the WARN-only sunk rules — inside an active task it is
-// the read-before-edit HARD gate (the line above), only outside tasks is it
-// forge-quality Red Flags self-discipline text. The old wording contradicted the
-// read-before-edit bullet in the same list.
-//
-// TestClaudeMDAuxChecksExcludeReadBeforeEdit 钉住辅助检查行修正：「先读再改」不得
-// 列入仅 WARN 的下沉规则——活跃任务内它是 read-before-edit 硬门禁（同清单上一条），
-// 仅任务外才是 forge-quality Red Flags 自律文本。旧措辞与同清单的 read-before-edit
-// 条目自相矛盾。
-func TestClaudeMDAuxChecksExcludeReadBeforeEdit(t *testing.T) {
-	section := buildForgeSection(true)
-
-	if strings.Contains(section, "先读再改/聚焦变更") {
-		t.Error("辅助检查（仅 WARN）行不得把「先读再改」列为软规则——任务内它是硬门禁")
-	}
-	if !strings.Contains(section, "聚焦变更/避免重复") {
-		t.Error("辅助检查行应保留真正纯 WARN 的下沉规则（聚焦变更/避免重复）")
-	}
-}
-
-// TestClaudeMDTaskGuardPerHostTruth pins the per-host task-guard wording
-// (fix/kimi-advisory-channel): the doc must not claim a flat "WARN 不拦截" —
-// dsh promotes the advisory to a block (hostcap PromoteAdvisory), kimi retired
-// its promote rules in favor of the advisory queue.
-//
-// TestClaudeMDTaskGuardPerHostTruth 钉住 task-guard 的按宿主措辞
-// （fix/kimi-advisory-channel）：文档不得笼统声称「WARN 不拦截」——dsh 把该
-// advisory 提升为阻断（hostcap PromoteAdvisory），kimi 已退役 promote 改走
-// advisory 队列。
-func TestClaudeMDTaskGuardPerHostTruth(t *testing.T) {
-	section := buildForgeSection(true)
-
-	if !strings.Contains(section, "dsh") || !strings.Contains(section, "提升为阻断") {
-		t.Error("task-guard 文案必须写明 dsh 提升为阻断的宿主差异")
-	}
-	if strings.Contains(section, "只触发 task-guard 警告（WARN，不拦截）") {
-		t.Error("task-guard 文案不得笼统声称 WARN 不拦截（dsh 提升为阻断）")
-	}
-}
-
-// TestClaudeMDNoArchaeologyNotes pins the maintainer-changelog cleanup: the
-// security-mechanism list is read by agents every session, so per-entry
-// archaeology (dates, call counts, "补齐" notes) is noise — each entry keeps
-// name + event + hard/soft + recovery, nothing else.
-//
-// TestClaudeMDNoArchaeologyNotes 钉住维护者 changelog 清理：安全机制清单每个
-// 会话都被 agent 阅读，条目里的考古注记（日期、调用量、「补齐」沿革）是噪声
-// ——每条只留名称+事件+硬/软+恢复方式。
-func TestClaudeMDNoArchaeologyNotes(t *testing.T) {
-	section := buildForgeSection(true)
-
-	for _, gone := range []string{"27.7k", "零记录缺口", "空头支票"} {
-		if strings.Contains(section, gone) {
-			t.Errorf("安全机制清单不得含考古注记 %q（对每会话都读的 agent 是噪声）", gone)
-		}
-	}
-}
-
-// TestClaudeMDBasicRule7ReplyConcision guards basic rule 7: conclusion-first
-// plus the banned-phrase pointer. The examples stay inside backticks so the
-// generated file survives its own doclint (inline-code exemption).
-//
-// TestClaudeMDBasicRule7ReplyConcision 守卫基本规则 7：结论先行 + 禁令短语
-// 指针。示例保持在反引号内，使生成文件能过自身的 doclint（行内代码豁免）。
-func TestClaudeMDBasicRule7ReplyConcision(t *testing.T) {
-	section := buildForgeSection(true)
-
-	if !strings.Contains(section, "结论先行，禁空转措辞") {
-		t.Error("forge section missing basic rule 7 (conclusion-first)")
-	}
-	if !strings.Contains(section, "forge docs lint") {
-		t.Error("forge section rule 7 missing forge docs lint pointer")
-	}
-	// The quoted phrases must be backtick-wrapped, never bare — a bare
-	// mention in prose would fail D1 once this generated file is linted.
-	//
-	// 引用的短语必须反引号包裹，不能裸露——生成文件一旦被 lint，
-	// 散文里的裸短语会触发 D1。
-	for _, phrase := range []string{"综上所述", "基本可以", "问题不大"} {
-		if !strings.Contains(section, "`"+phrase+"`") {
-			t.Errorf("规则 7 中短语 %q 须反引号包裹（否则生成文件触发自身 D1）", phrase)
-		}
-	}
-}
-
 // TestClaudeMD_ConventionsHooksAdvisory pins the doc contract for the two
 // conventions hooks: their doc lines must state advisory/不阻断 semantics. These
 // hooks never block — a doc line that reads as a gate would send agents hunting
@@ -816,21 +571,5 @@ func TestForgeSectionMarkersAliasUtil(t *testing.T) {
 	// 工具按字面量识别）。
 	if forgeSectionStart != "<!-- FORGE:START -->" || forgeSectionEnd != "<!-- FORGE:END -->" {
 		t.Fatalf("marker literal drifted: %q/%q", forgeSectionStart, forgeSectionEnd)
-	}
-}
-
-// TestClaudeMDDocGateRowReferencesDocReviewSkill 生成 CLAUDE.md 的 doc gate 行须指引
-// doc-review skill（真相源），不得引用已迁移的 code-review-gate 内部路径。
-//
-// TestClaudeMDDocGateRowReferencesDocReviewSkill: the generated CLAUDE.md doc-gate row
-// must point at the doc-review skill (truth source), never the migrated
-// code-review-gate internal path.
-func TestClaudeMDDocGateRowReferencesDocReviewSkill(t *testing.T) {
-	section := buildForgeSection(true)
-	if !strings.Contains(section, "按 doc-review skill 评审") {
-		t.Error("doc gate 行应指引按 doc-review skill 评审")
-	}
-	if strings.Contains(section, "code-review-gate/references/rubric-docs.md") {
-		t.Error("doc gate 行不得引用已迁移的 code-review-gate/references/rubric-docs.md 旧路径")
 	}
 }

@@ -13,6 +13,28 @@ import (
 	"github.com/MjxUpUp/Forge/internal/hazard"
 )
 
+// 2026-08-30 test slimming: the e2e hazard-guard classification battery was
+// removed here — every scenario lives in faster script-level twins in
+// internal/hooks/hazard_script_test.go (TmpdirEnvExempt / EnvBypassRemoved /
+// MktempSelfCleanupExempt / MultilineQuotedDangerIsData / GitBranchDScope /
+// BlockGuidanceCopy / InterpDeleteBypass). This file keeps: the three wiring
+// smokes through the REAL forge binary (BlocksHazardousCommand /
+// ConfirmReleases / FingerprintReleases), the events.jsonl persistence pair,
+// and the FP regressions the script level does NOT cover
+// (RmFPathNotFlag / TruncatePathNotBlocked / CommentNotBlocked /
+// DataContextNotBlocked / ExecWrappedStillBlocked / RmSubstringInWord /
+// RmFlagWithOtherFlags / ForceWithLeaseAllowed).
+//
+// 2026-08-30 测试瘦身：此处移除 e2e hazard-guard 分类 battery——每个场景都有
+// 更快的脚本级孪生（internal/hooks/hazard_script_test.go：TmpdirEnvExempt /
+// EnvBypassRemoved / MktempSelfCleanupExempt / MultilineQuotedDangerIsData /
+// GitBranchDScope / BlockGuidanceCopy / InterpDeleteBypass）。本文件保留：走
+// 真实 forge 二进制的三个接线冒烟（BlocksHazardousCommand / ConfirmReleases /
+// FingerprintReleases）、events.jsonl 落盘对、以及脚本级【未】覆盖的误报回归
+// （RmFPathNotFlag / TruncatePathNotBlocked / CommentNotBlocked /
+// DataContextNotBlocked / ExecWrappedStillBlocked / RmSubstringInWord /
+// RmFlagWithOtherFlags / ForceWithLeaseAllowed）.
+
 // forgeHook runs `forge hook <name>` as a subprocess, feeding the given stdin
 // JSON — exactly what Claude Code does when it invokes a configured hook. This
 // lets E2E tests exercise the real intercept path (runHook → embedded bash
@@ -312,42 +334,6 @@ func TestHook_HazardGuard_RmFPathNotFlag(t *testing.T) {
 		t.Fatalf("hazard-guard must pass 'rm -f <path-with-r>' (not rm -rf), got block. stdout:\n%s", stdout)
 	}
 	assertAllowOutput(t, stdout)
-}
-
-// TestHook_HazardGuard_TmpDirWhitelisted covers the e2e/CI probe-cleanup pattern:
-// rm -rf /tmp/<probe> is a one-shot temp dir, 100% safe, whitelisted past HITL. The
-// 2026-06 logs showed rm -rf wg-probe / forge-mod-test / $USERPROFILE blocked
-// repeatedly during test setup. Path traversal (/tmp/../etc) must NOT be whitelisted.
-func TestHook_HazardGuard_TmpDirWhitelisted(t *testing.T) {
-	dir := freshProject(t)
-
-	cases := []string{
-		"rm -rf /tmp/forge-probe-dir",
-		"rm -fr /tmp/another-probe",
-		"rm -rf /var/folders/ab/xyz",
-	}
-	for _, cmd := range cases {
-		in := hookStdin(t, "sess-hazard-tmp", "PreToolUse", "Bash", map[string]any{
-			"command": cmd,
-		})
-		stdout, _, err := forgeHook(t, dir, "hazard-guard", in)
-		if err != nil {
-			t.Fatalf("hazard-guard should whitelist %q, got block. stdout:\n%s", cmd, stdout)
-		}
-		assertAllowOutput(t, stdout)
-	}
-
-	// Regression guard: /tmp/../etc traversal must NOT be whitelisted.
-	traverseIn := hookStdin(t, "sess-hazard-traverse", "PreToolUse", "Bash", map[string]any{
-		"command": "rm -rf /tmp/../etc",
-	})
-	stdout, _, err := forgeHook(t, dir, "hazard-guard", traverseIn)
-	if err == nil {
-		t.Fatalf("hazard-guard must block /tmp/../etc traversal, got exit 0. stdout:\n%s", stdout)
-	}
-	if !strings.Contains(stdout, `"decision":"block"`) {
-		t.Errorf("expected decision=block for /tmp/../etc, got:\n%s", stdout)
-	}
 }
 
 // TestHook_HazardGuard_ForceWithLeaseAllowed: --force-with-lease is git's recommended
@@ -734,573 +720,211 @@ func forgeHookShared(t *testing.T, dir, tmp, hookName, stdinJSON string) (string
 	return stdout.String(), stderr.String(), err
 }
 
-// TestHook_ReadBeforeEdit_BlocksUnreadSource pins the core contract of plan 2: within an active
-// task, editing an existing source file never Read this session → PreToolUse hard block
-// (decision=block). This is the downstream catch for 'blind edit from memory, old_string hits' —
-// caught at Edit time, not deferred to task-verify. No tool-track Read record → no such path in
-// reads-log → grep -qxF fails → FAIL.
+// TestHook_ReadBeforeEdit table-drives the read-before-edit (方案2) gate matrix
+// (the 7 former single-scenario tests, merged 2026-08-30 slim-down). Row
+// rationale, from the former tests:
+//   - unread-source: the core contract — within an active task, editing an
+//     existing source file never Read this session hard-blocks at PreToolUse
+//     (the downstream catch for 'blind edit from memory, old_string hits' —
+//     caught at Edit time, not deferred to task-verify; no tool-track Read
+//     record → reads-log miss → grep -qxF fails).
+//   - after-read: the positive path — a tool-track (PostToolUse Read) record
+//     into the per-session reads-log, then Edit of the same file passes;
+//     proves the reads-log side-channel works end-to-end.
+//   - no-task: with no active task the hook silently passes — quick non-task
+//     edits are outside Forge's quality domain.
+//   - new-file: the new-file exemption — Writing a file not on disk passes
+//     ([ -f ] false); a new file cannot have been Read, and this is creation
+//     not blind edit.
+//   - after-write: the 2026-08-24 fix — a Write lands in the per-session
+//     reads-log (via the auto-compile PostToolUse dispatch), so the Edit right
+//     after a file-creating Write passes; 4 production sessions replayed the
+//     old script (Write → immediate Edit → FAIL → ceremonial Read).
+//   - double-fire: the 2026-08-24 record dedupe — a host double-firing ONE
+//     Edit event (kimi, 98ms apart, consecutive checklog seq) must still block
+//     BOTH deliveries but record exactly ONE checklog entry.
+//   - override-escape: the per-task leak-prevention path — `forge task
+//     override --work-activity disable` makes the Go dispatcher inject
+//     FORGE_WORK_ACTIVITY=disable so unread edits pass; contrast the
+//     unread-source row (same scenario without override must block).
 //
-// TestHook_ReadBeforeEdit_BlocksUnreadSource 钉住方案2 的核心契约：活跃任务内，
-// 编辑一个本会话从未 Read 过的现存源文件 → PreToolUse 硬阻断（decision=block）。
-// 这是「凭记忆盲改、old_string 撞中」的下沉拦截——在 Edit 当下拦住，
-// 不拖到 task-verify。无 tool-track Read 记录 → reads-log 无该路径 → grep -qxF 失败 → FAIL。
-func TestHook_ReadBeforeEdit_BlocksUnreadSource(t *testing.T) {
-	dir := freshProject(t)
-	const sid = "sess-rbe-unread"
-	tmp := t.TempDir()
-	forge(t, dir, "task", "start", "--ref", "feat/rbe-unread", "--title", "unread edit")
-
-	// Existing source file ([ -f ] is true, not the new-file exemption).
-	//
-	// 现存源文件（[ -f ] 为真，非新建豁免）。
-	writeFile(t, dir, "target.go", "package main\n\nfunc old() {}\n")
-
-	editIn := hookStdin(t, sid, "PreToolUse", "Edit", map[string]any{
-		"file_path":  filepath.Join(dir, "target.go"),
-		"old_string": "func old() {}",
-		"new_string": "func new() {}",
-	})
-
-	stdout, _, err := forgeHookShared(t, dir, tmp, "read-before-edit", editIn)
-	if err == nil {
-		t.Fatalf("read-before-edit must BLOCK an edit to a source file never Read this session, got exit 0. stdout:\n%s", stdout)
-	}
-	if !strings.Contains(stdout, `"decision":"block"`) {
-		t.Errorf("expected decision=block for unread source edit, got:\n%s", stdout)
-	}
-	if !strings.Contains(stdout, "read-before-edit") {
-		t.Errorf("block reason must identify the guard:\n%s", stdout)
-	}
-}
-
-// TestHook_ReadBeforeEdit_AllowsAfterRead pins the positive path of plan 2: first record the path
-// into the per-session reads-log via tool-track (PostToolUse Read), then Edit the same file → pass.
-// Proves the reads-log side-channel works end-to-end (dispatcher append ↔ hook grep).
-//
-// TestHook_ReadBeforeEdit_AllowsAfterRead 钉住方案2 的正向路径：先经 tool-track
-// （PostToolUse Read）把该路径记进 per-session reads-log，再 Edit 同一文件 → 放行。
-// 证明 reads-log side-channel 端到端打通（dispatcher append ↔ hook grep）。
-func TestHook_ReadBeforeEdit_AllowsAfterRead(t *testing.T) {
-	dir := freshProject(t)
-	const sid = "sess-rbe-read"
-	tmp := t.TempDir()
-	forge(t, dir, "task", "start", "--ref", "feat/rbe-read", "--title", "read then edit")
-
-	writeFile(t, dir, "target.go", "package main\n\nfunc old() {}\n")
-
-	// Read first (PostToolUse tool-track records the path).
-	//
-	// 先 Read（PostToolUse tool-track 记录路径）。
-	readIn := hookStdin(t, sid, "PostToolUse", "Read", map[string]any{
-		"file_path": filepath.Join(dir, "target.go"),
-	})
-	if _, _, err := forgeHookShared(t, dir, tmp, "tool-track", readIn); err != nil {
-		t.Fatalf("tool-track Read record step failed: %v", err)
-	}
-
-	// Then Edit the same file → should pass (reads-log hit).
-	//
-	// 再 Edit 同一文件 → 应放行（reads-log 命中）。
-	editIn := hookStdin(t, sid, "PreToolUse", "Edit", map[string]any{
-		"file_path":  filepath.Join(dir, "target.go"),
-		"old_string": "func old() {}",
-		"new_string": "func new() {}",
-	})
-	stdout, _, err := forgeHookShared(t, dir, tmp, "read-before-edit", editIn)
-	if err != nil {
-		t.Fatalf("read-before-edit must ALLOW an edit to a file Read this session, got block. stdout:\n%s", stdout)
-	}
-	assertAllowOutput(t, stdout)
-}
-
-// TestHook_ReadBeforeEdit_SkipsWithoutTask pins the scope: with no active task the hook silently
-// passes (no tracking, no blocking) — quick non-task edits are outside Forge's quality domain,
-// avoiding false fires.
-//
-// TestHook_ReadBeforeEdit_SkipsWithoutTask 钉住作用域：无活跃任务时 hook 静默放行
-// （不追踪、不阻断）——非任务的快速编辑不在 Forge 质量域内，避免误伤。
-func TestHook_ReadBeforeEdit_SkipsWithoutTask(t *testing.T) {
-	dir := freshProject(t)
-	const sid = "sess-rbe-notask"
-	tmp := t.TempDir()
-	// Deliberately do not start a task.
-	//
-	// 故意不启动任务。
-	writeFile(t, dir, "target.go", "package main\n")
-
-	editIn := hookStdin(t, sid, "PreToolUse", "Edit", map[string]any{
-		"file_path":  filepath.Join(dir, "target.go"),
-		"old_string": "x",
-		"new_string": "y",
-	})
-	stdout, _, err := forgeHookShared(t, dir, tmp, "read-before-edit", editIn)
-	if err != nil {
-		t.Fatalf("read-before-edit must skip (approve) when no active task, got block. stdout:\n%s", stdout)
-	}
-	assertAllowOutput(t, stdout)
-}
-
-// TestHook_ReadBeforeEdit_AllowsNewFile pins the new-file exemption: Writing a new source file not
-// on disk → pass ([ -f ] is false → new-file branch). A new file cannot have been Read, and this is
-// creation not blind edit.
-//
-// TestHook_ReadBeforeEdit_AllowsNewFile 钉住新建豁免：Write 一个不在盘上的新源文件
-// → 放行（[ -f ] 为假 → 新建分支）。新建无法被 Read 过，且是创作非盲改。
-func TestHook_ReadBeforeEdit_AllowsNewFile(t *testing.T) {
-	dir := freshProject(t)
-	const sid = "sess-rbe-newfile"
-	tmp := t.TempDir()
-	forge(t, dir, "task", "start", "--ref", "feat/rbe-new", "--title", "new file")
-
-	writeIn := hookStdin(t, sid, "PreToolUse", "Write", map[string]any{
-		"file_path": filepath.Join(dir, "brand_new.go"),
-		"content":   "package main\n",
-	})
-	stdout, _, err := forgeHookShared(t, dir, tmp, "read-before-edit", writeIn)
-	if err != nil {
-		t.Fatalf("read-before-edit must ALLOW Write of a new file (not on disk), got block. stdout:\n%s", stdout)
-	}
-	assertAllowOutput(t, stdout)
-}
-
-// TestHook_ReadBeforeEdit_AllowsEditAfterWrite pins the 2026-08-24 fix: a Write
-// lands in the per-session reads-log (via the auto-compile PostToolUse dispatch),
-// so the Edit right after a file-creating Write passes — the agent plainly knows
-// the content it just authored. Four production sessions replayed the old script:
-// Write creates file → immediate Edit → FAIL "未在本会话 Read 过" → forced
-// ceremonial Read.
-//
-// TestHook_ReadBeforeEdit_AllowsEditAfterWrite 钉住 2026-08-24 修复：Write 会
-// 计入 per-session reads-log（经 auto-compile 的 PostToolUse 分发），故文件
-// 创建后的紧随 Edit 放行——agent 当然知道自己刚写的内容。4 个生产 session
-// 复发过旧剧本：Write 建文件 → 紧接着 Edit → FAIL「未在本会话 Read 过」→
-// 被迫补一次纯形式 Read。
-func TestHook_ReadBeforeEdit_AllowsEditAfterWrite(t *testing.T) {
-	dir := freshProject(t)
-	const sid = "sess-rbe-write"
-	tmp := t.TempDir()
-	forge(t, dir, "task", "start", "--ref", "feat/rbe-write", "--title", "write then edit")
-
-	// 1. Write creates the file (new-file exemption lets the PreToolUse through).
-	//
-	// 1. Write 建文件（新建豁免放行 PreToolUse）。
-	writeIn := hookStdin(t, sid, "PreToolUse", "Write", map[string]any{
-		"file_path": filepath.Join(dir, "created.go"),
-		"content":   "package main\n\nfunc made() {}\n",
-	})
-	if stdout, _, err := forgeHookShared(t, dir, tmp, "read-before-edit", writeIn); err != nil {
-		t.Fatalf("Write of a new file must pass read-before-edit, got block. stdout:\n%s", stdout)
-	}
-	// The Write lands (PostToolUse fires after the tool completes).
-	//
-	// 写入落盘（PostToolUse 在工具完成后触发）。
-	writeFile(t, dir, "created.go", "package main\n\nfunc made() {}\n")
-
-	// 2. PostToolUse auto-compile fires after the Write — the dispatcher records
-	// the path into the session reads-log.
-	//
-	// 2. Write 完成后 PostToolUse auto-compile 触发——dispatcher 把该路径计入
-	// 会话 reads-log。
-	postIn := hookStdin(t, sid, "PostToolUse", "Write", map[string]any{
-		"file_path": filepath.Join(dir, "created.go"),
-		"content":   "package main\n\nfunc made() {}\n",
-	})
-	if _, _, err := forgeHookShared(t, dir, tmp, "auto-compile", postIn); err != nil {
-		t.Fatalf("auto-compile PostToolUse Write step failed: %v", err)
-	}
-
-	// 3. The immediate next Edit must pass (reads-log hit from the Write).
-	//
-	// 3. 紧随的 Edit 必须放行（Write 已计入 reads-log）。
-	editIn := hookStdin(t, sid, "PreToolUse", "Edit", map[string]any{
-		"file_path":  filepath.Join(dir, "created.go"),
-		"old_string": "func made() {}",
-		"new_string": "func made() { println(1) }",
-	})
-	stdout, _, err := forgeHookShared(t, dir, tmp, "read-before-edit", editIn)
-	if err != nil {
-		t.Fatalf("read-before-edit must ALLOW an Edit right after this session Wrote the file, got block. stdout:\n%s", stdout)
-	}
-	assertAllowOutput(t, stdout)
-}
-
-// TestHook_ReadBeforeEdit_DedupesDoubleFire pins the 2026-08-24 record dedupe:
-// the host double-firing ONE Edit event (observed: kimi PreToolUse invoking
-// read-before-edit twice 98ms apart for a single Edit — consecutive checklog
-// seq; two-week logs showed 6 same-(session,file) pairs 0.5~1.9s apart) must
-// still block BOTH deliveries, but record exactly ONE checklog entry.
-//
-// TestHook_ReadBeforeEdit_DedupesDoubleFire 钉住 2026-08-24 的记录去重：宿主
-// 把同一个 Edit 事件双发（实证：kimi PreToolUse 对单个 Edit 在 98ms 内两次
-// 调用 read-before-edit——checklog seq 连号；两周日志 6 组同 (session,file)
-// 记录间隔 0.5~1.9s）时两次投递都必须仍阻断，但 checklog 只记一条。
-func TestHook_ReadBeforeEdit_DedupesDoubleFire(t *testing.T) {
-	dir := freshProject(t)
-	const sid = "sess-rbe-dup"
-	tmp := t.TempDir()
-	forge(t, dir, "task", "start", "--ref", "feat/rbe-dup", "--title", "double fire dedupe")
-
-	// Existing source file, never Read this session → both deliveries block.
-	//
-	// 现存源文件、本会话未 Read → 两次投递都阻断。
-	writeFile(t, dir, "target.go", "package main\n\nfunc old() {}\n")
-	editIn := hookStdin(t, sid, "PreToolUse", "Edit", map[string]any{
-		"file_path":  filepath.Join(dir, "target.go"),
-		"old_string": "func old() {}",
-		"new_string": "func new() {}",
-	})
-	for i := 1; i <= 2; i++ {
-		stdout, _, err := forgeHookShared(t, dir, tmp, "read-before-edit", editIn)
-		if err == nil {
-			t.Fatalf("delivery #%d must block (unread source edit), got exit 0. stdout:\n%s", i, stdout)
+// TestHook_ReadBeforeEdit 表驱动 read-before-edit（方案2）门禁矩阵（2026-08-30
+// 瘦身合并原 7 个单场景测试）。逐行缘由：
+//   - unread-source：核心契约——活跃任务内编辑本会话从未 Read 过的现存源文件，
+//     PreToolUse 硬阻断（「凭记忆盲改、old_string 撞中」的下沉拦截，不拖到
+//     task-verify；无 tool-track Read 记录 → reads-log 无该路径 → grep -qxF 失败）。
+//   - after-read：正向路径——tool-track（PostToolUse Read）先记路径，再 Edit 同一
+//     文件放行；证明 reads-log side-channel 端到端打通。
+//   - no-task：无活跃任务时静默放行——非任务的快速编辑不在 Forge 质量域内。
+//   - new-file：新建豁免——Write 一个不在盘上的文件放行（[ -f ] 为假）；新建
+//     无法被 Read 过，且是创作非盲改。
+//   - after-write：2026-08-24 修复——Write 经 auto-compile PostToolUse 分发计入
+//     reads-log，建文件后紧随的 Edit 放行；4 个生产 session 复发过旧剧本
+//     （Write → 紧接 Edit → FAIL → 被迫补形式 Read）。
+//   - double-fire：2026-08-24 记录去重——宿主双发同一 Edit 事件（kimi 98ms 内
+//     两次、checklog seq 连号）两次投递都必须仍阻断，但 checklog 只记一条。
+//   - override-escape：per-task 防泄漏路径——`forge task override --work-activity
+//     disable` 让 Go dispatcher 注入 FORGE_WORK_ACTIVITY=disable 放行未读编辑；
+//     对照 unread-source 行（同场景无 override 必 block）。
+func TestHook_ReadBeforeEdit(t *testing.T) {
+	editTarget := func(dir string) map[string]any {
+		return map[string]any{
+			"file_path":  filepath.Join(dir, "target.go"),
+			"old_string": "func old() {}",
+			"new_string": "func new() {}",
 		}
 	}
+	for _, tc := range []struct {
+		name        string
+		startTask   bool
+		override    bool
+		prep        func(t *testing.T, dir, tmp, sid string)
+		seedFile    string // relative path; written when seedContent is non-empty
+		seedContent string
+		tool        string // PreToolUse tool under test (Edit | Write)
+		toolInput   func(dir string) map[string]any
+		fires       int  // deliveries of the same event (kimi double-fire)
+		wantBlock   bool // expected verdict per delivery
+		wantStdout  []string
+		wantLogN    int // read-before-edit checklog entries; -1 = skip
+	}{
+		{
+			name: "unread-source", startTask: true,
+			seedFile: "target.go", seedContent: "package main\n\nfunc old() {}\n",
+			tool: "Edit", toolInput: editTarget, fires: 1, wantBlock: true,
+			wantStdout: []string{"read-before-edit"}, // block 原因须点名守卫
+			wantLogN:   -1,
+		},
+		{
+			name: "after-read", startTask: true,
+			// 先经 tool-track（PostToolUse Read）把该路径记进 per-session reads-log。
+			prep: func(t *testing.T, dir, tmp, sid string) {
+				readIn := hookStdin(t, sid, "PostToolUse", "Read", map[string]any{
+					"file_path": filepath.Join(dir, "target.go"),
+				})
+				if _, _, err := forgeHookShared(t, dir, tmp, "tool-track", readIn); err != nil {
+					t.Fatalf("tool-track Read record step failed: %v", err)
+				}
+			},
+			seedFile: "target.go", seedContent: "package main\n\nfunc old() {}\n",
+			tool: "Edit", toolInput: editTarget, fires: 1, wantBlock: false, wantLogN: -1,
+		},
+		{
+			name:     "no-task", // 故意不启动任务
+			seedFile: "target.go", seedContent: "package main\n",
+			tool: "Edit", fires: 1, wantBlock: false, wantLogN: -1,
+			toolInput: func(dir string) map[string]any {
+				return map[string]any{
+					"file_path":  filepath.Join(dir, "target.go"),
+					"old_string": "x",
+					"new_string": "y",
+				}
+			},
+		},
+		{
+			name: "new-file", startTask: true,
+			// brand_new.go 不在盘上（[ -f ] 为假 → 新建分支）。
+			tool: "Write", fires: 1, wantBlock: false, wantLogN: -1,
+			toolInput: func(dir string) map[string]any {
+				return map[string]any{
+					"file_path": filepath.Join(dir, "brand_new.go"),
+					"content":   "package main\n",
+				}
+			},
+		},
+		{
+			name: "after-write", startTask: true,
+			// 1. Write 建文件（新建豁免放行 PreToolUse）→ 2. 写入落盘 →
+			// 3. PostToolUse auto-compile 把路径记进会话 reads-log。
+			prep: func(t *testing.T, dir, tmp, sid string) {
+				writeIn := hookStdin(t, sid, "PreToolUse", "Write", map[string]any{
+					"file_path": filepath.Join(dir, "created.go"),
+					"content":   "package main\n\nfunc made() {}\n",
+				})
+				if stdout, _, err := forgeHookShared(t, dir, tmp, "read-before-edit", writeIn); err != nil {
+					t.Fatalf("Write of a new file must pass read-before-edit, got block. stdout:\n%s", stdout)
+				}
+				writeFile(t, dir, "created.go", "package main\n\nfunc made() {}\n")
+				postIn := hookStdin(t, sid, "PostToolUse", "Write", map[string]any{
+					"file_path": filepath.Join(dir, "created.go"),
+					"content":   "package main\n\nfunc made() {}\n",
+				})
+				if _, _, err := forgeHookShared(t, dir, tmp, "auto-compile", postIn); err != nil {
+					t.Fatalf("auto-compile PostToolUse Write step failed: %v", err)
+				}
+			},
+			tool: "Edit", fires: 1, wantBlock: false, wantLogN: -1,
+			toolInput: func(dir string) map[string]any {
+				return map[string]any{
+					"file_path":  filepath.Join(dir, "created.go"),
+					"old_string": "func made() {}",
+					"new_string": "func made() { println(1) }",
+				}
+			},
+		},
+		{
+			name: "double-fire", startTask: true,
+			// 现存源文件、本会话未 Read → 两次投递都阻断。
+			seedFile: "target.go", seedContent: "package main\n\nfunc old() {}\n",
+			tool: "Edit", toolInput: editTarget, fires: 2, wantBlock: true,
+			// 双发的单个 Edit 事件必须恰好记一条 checklog。
+			wantLogN: 1,
+		},
+		{
+			name: "override-escape", startTask: true, override: true,
+			seedFile: "target.go", seedContent: "package main\n\nfunc old() {}\n",
+			tool: "Edit", toolInput: editTarget, fires: 1, wantBlock: false, wantLogN: -1,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := freshProject(t)
+			tmp := t.TempDir()
+			sid := "sess-rbe-" + tc.name
+			if tc.startTask {
+				forge(t, dir, "task", "start", "--ref", "feat/rbe-"+tc.name, "--title", tc.name)
+			}
+			if tc.override {
+				forge(t, dir, "task", "override", "--work-activity", "disable")
+			}
+			if tc.seedContent != "" {
+				writeFile(t, dir, tc.seedFile, tc.seedContent)
+			}
+			if tc.prep != nil {
+				tc.prep(t, dir, tmp, sid)
+			}
 
-	// But the audit trail carries exactly one entry for the double-fired event.
-	//
-	// 但审计轨迹对这个被双发的事件只记一条。
-	data, err := os.ReadFile(filepath.Join(forgedata.DataDirFor(dir), "checklog.jsonl"))
-	if err != nil {
-		t.Fatalf("read checklog: %v", err)
-	}
-	count := strings.Count(string(data), `"check":"read-before-edit"`)
-	if count != 1 {
-		t.Errorf("double-fired single Edit event must produce exactly ONE checklog entry, got %d:\n%s", count, data)
-	}
-}
+			in := hookStdin(t, sid, "PreToolUse", tc.tool, tc.toolInput(dir))
+			for i := 1; i <= tc.fires; i++ {
+				stdout, _, err := forgeHookShared(t, dir, tmp, "read-before-edit", in)
+				if tc.wantBlock {
+					if err == nil {
+						t.Fatalf("delivery #%d: read-before-edit must BLOCK, got exit 0. stdout:\n%s", i, stdout)
+					}
+					if !strings.Contains(stdout, `"decision":"block"`) {
+						t.Errorf("delivery #%d: expected decision=block, got:\n%s", i, stdout)
+					}
+				} else {
+					if err != nil {
+						t.Fatalf("read-before-edit must ALLOW, got block. stdout:\n%s", stdout)
+					}
+					assertAllowOutput(t, stdout)
+				}
+				for _, w := range tc.wantStdout {
+					if !strings.Contains(stdout, w) {
+						t.Errorf("stdout missing %q:\n%s", w, stdout)
+					}
+				}
+			}
 
-// TestHook_ReadBeforeEdit_PerTaskOverrideEscape (plan 5 leak-prevention path, e2e):
-// 'forge task override --work-activity disable' writes into the active task's Overrides → the Go
-// dispatcher (hook.go) injects FORGE_WORK_ACTIVITY=disable → the read-before-edit hook passes edits
-// to existing source files never Read. This per-task path is independent of global env (other tasks
-// in the same shell are unaffected); it is the contract that 'the escape hatch must work end-to-end
-// or it is a fake hard gate' — contrast TestHook_ReadBeforeEdit_BlocksUnreadSource (same scenario
-// without override must block).
-//
-// TestHook_ReadBeforeEdit_PerTaskOverrideEscape（方案5 防泄漏路径·e2e）：
-// `forge task override --work-activity disable` 写入活跃任务的 Overrides → Go dispatcher
-// （hook.go）注入 FORGE_WORK_ACTIVITY=disable → read-before-edit hook 放行未 Read 的现存源编辑。
-// 这条 per-task 路径独立于全局 env（同 shell 其他任务不受影响），是「逃生必须端到端生效否则是
-// 假硬门禁」的契约——对照 TestHook_ReadBeforeEdit_BlocksUnreadSource（同场景无 override 必 block）。
-func TestHook_ReadBeforeEdit_PerTaskOverrideEscape(t *testing.T) {
-	dir := freshProject(t)
-	const sid = "sess-rbe-override"
-	tmp := t.TempDir()
-	forge(t, dir, "task", "start", "--ref", "feat/rbe-override", "--title", "override escape")
-	forge(t, dir, "task", "override", "--work-activity", "disable")
-
-	// Existing source file (not the new-file exemption), never Read this session — without override
-	// it must block (see BlocksUnreadSource).
-	//
-	// 现存源文件（非新建豁免），本会话从未 Read——无 override 时必 block（见 BlocksUnreadSource）。
-	writeFile(t, dir, "target.go", "package main\n\nfunc old() {}\n")
-
-	editIn := hookStdin(t, sid, "PreToolUse", "Edit", map[string]any{
-		"file_path":  filepath.Join(dir, "target.go"),
-		"old_string": "func old() {}",
-		"new_string": "func new() {}",
-	})
-	stdout, _, err := forgeHookShared(t, dir, tmp, "read-before-edit", editIn)
-	if err != nil {
-		t.Fatalf("read-before-edit must APPROVE an unread source edit under per-task work-activity override, got block. stdout:\n%s", stdout)
-	}
-	assertAllowOutput(t, stdout)
-}
-
-// forgeHookEnv runs `forge hook <name>` like forgeHook, with extra env vars
-// appended (used to pin FORGE_* overrides for a single invocation).
-//
-// forgeHookEnv 与 forgeHook 相同，额外追加 env var（用于单次调用的 FORGE_* 覆盖）。
-func forgeHookEnv(t *testing.T, dir, hookName, stdinJSON string, extraEnv ...string) (string, string, error) {
-	t.Helper()
-	cmd := exec.Command(forgeBin, "hook", hookName)
-	cmd.Dir = dir
-	cmd.Stdin = strings.NewReader(stdinJSON)
-	tmp := t.TempDir()
-	binDir := filepath.Dir(forgeBin)
-	cmd.Env = append(os.Environ(),
-		"TMPDIR="+tmp,
-		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
-	)
-	cmd.Env = append(cmd.Env, extraEnv...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	return stdout.String(), stderr.String(), err
-}
-
-// TestHook_HazardGuard_InterpreterDeleteBypassBlocked pins weekly-hardening fix (c):
-// `python -c "import os;os.remove(...)"` carries no rm-style danger string, so
-// is_hazardous passed it silently and is_exec_wrapped (consulted only after an
-// is_hazardous hit) never saw it. The interpreter inline-delete pre-check must
-// route these into the block flow.
-//
-// TestHook_HazardGuard_InterpreterDeleteBypassBlocked 钉死周复盘加固 (c)：
-// python -c "import os;os.remove(...)" 不含 rm 类危险串，is_hazardous 曾直接放行、
-// is_exec_wrapped（只在 is_hazardous 命中后调用）看不到它。解释器内联删除前置
-// 判定必须把这类命令打进拦截流程。
-func TestHook_HazardGuard_InterpreterDeleteBypassBlocked(t *testing.T) {
-	dir := freshProject(t)
-	block := []string{
-		`python -c "import os;os.remove('./important.txt')"`,
-		`python3 -c "import shutil;shutil.rmtree('./build')"`,
-		`node -e "require('fs').rmSync('./data',{recursive:true})"`,
-	}
-	for _, cmd := range block {
-		in := hookStdin(t, "sess-hazard-interp-block", "PreToolUse", "Bash", map[string]any{
-			"command": cmd,
+			if tc.wantLogN >= 0 {
+				data, err := os.ReadFile(filepath.Join(forgedata.DataDirFor(dir), "checklog.jsonl"))
+				if err != nil {
+					t.Fatalf("read checklog: %v", err)
+				}
+				if got := strings.Count(string(data), `"check":"read-before-edit"`); got != tc.wantLogN {
+					t.Errorf("double-fired single Edit event must produce exactly ONE checklog entry, got %d:\n%s", got, data)
+				}
+			}
 		})
-		stdout, _, err := forgeHook(t, dir, "hazard-guard", in)
-		if err == nil {
-			t.Fatalf("hazard-guard must block interpreter inline-delete %q, got exit 0. stdout:\n%s", cmd, stdout)
-		}
-		if !strings.Contains(stdout, "hazard-guard") {
-			t.Errorf("block output missing hazard-guard identifier for %q:\n%s", cmd, stdout)
-		}
-	}
-
-	// Regression guard: benign interpreter one-liners must still pass.
-	//
-	// 回归保护：无害的解释器一行命令必须放行。
-	pass := []string{
-		`python -c "print(1)"`,
-		`node -e "console.log('ok')"`,
-		`python scripts/train.py --epochs 3`,
-	}
-	for _, cmd := range pass {
-		in := hookStdin(t, "sess-hazard-interp-pass", "PreToolUse", "Bash", map[string]any{
-			"command": cmd,
-		})
-		stdout, _, err := forgeHook(t, dir, "hazard-guard", in)
-		if err != nil {
-			t.Fatalf("hazard-guard must pass benign interpreter command %q, got block. stdout:\n%s", cmd, stdout)
-		}
-	}
-}
-
-// TestHook_HazardGuard_EnvBypassRemoved pins weekly-hardening fix (b):
-// FORGE_ALLOW_HAZARD=1 no longer releases a hazardous command — the env escape
-// was removed (agent self-release abuse + inline-prefix form never reaching the
-// hook process). The confirm chain is the only release path: with the env set
-// the command must still block pre-confirm and pass post-confirm.
-//
-// TestHook_HazardGuard_EnvBypassRemoved 钉死周复盘加固 (b)：FORGE_ALLOW_HAZARD=1
-// 不再放行高危命令——env 逃生已移除（agent 自我放行滥用 + 行内前缀形式 hook 进程
-// 拿不到 env 行为不一致）。confirm 链是唯一放行路径：env 在位时命令确认前仍
-// 被拦、confirm 登记后放行。
-func TestHook_HazardGuard_EnvBypassRemoved(t *testing.T) {
-	dir := freshProject(t)
-	const hazardous = "rm -rf ./important-data"
-	in := hookStdin(t, "sess-hazard-envbypass", "PreToolUse", "Bash", map[string]any{
-		"command": hazardous,
-	})
-
-	stdout, _, err := forgeHookEnv(t, dir, "hazard-guard", in, "FORGE_ALLOW_HAZARD=1")
-	if err == nil {
-		t.Fatalf("hazard-guard must block %q even with FORGE_ALLOW_HAZARD=1 (env escape removed), got exit 0. stdout:\n%s", hazardous, stdout)
-	}
-
-	// The confirm chain still releases with the env set (confirm is the only path).
-	//
-	// env 在位时 confirm 链仍放行（confirm 是唯一路径）。
-	confirm := exec.Command(forgeBin, "hazard", "confirm", hazardous)
-	confirm.Dir = dir
-	if out, cerr := confirm.CombinedOutput(); cerr != nil {
-		t.Fatalf("forge hazard confirm failed: %v\n%s", cerr, out)
-	}
-	stdout, _, err = forgeHookEnv(t, dir, "hazard-guard", in, "FORGE_ALLOW_HAZARD=1")
-	if err != nil {
-		t.Fatalf("hazard-guard should pass post-confirm (env set or not), got error. stdout:\n%s", stdout)
-	}
-}
-
-// TestHook_HazardGuard_MktempSelfCleanupAllowed pins the 2026-08 usage-log fix:
-// mktemp/self-created temp-dir cleanup was ~1/3 of all real blocks — the agent
-// responded by silently dropping the rm half and leaking /tmp garbage (guard won
-// the command, lost the intent). d=$(mktemp -d); ...; rm -rf "$d" and $TMPDIR
-// subpath targets are one-shot temp zones and must pass without HITL. Controls
-// pin the conservative edge: unverifiable sources (unassigned var, non-mktemp
-// assignment, reassignment attack, direct $() target, mixed targets, traversal)
-// must still block.
-//
-// TestHook_HazardGuard_MktempSelfCleanupAllowed 钉死 2026-08 usage 日志修复：
-// mktemp/自建临时目录清理约占真实拦截的 1/3——agent 的应对是悄悄删掉 rm 半截、
-// 留下 /tmp 垃圾（guard 赢了命令输了意图）。d=$(mktemp -d); ...; rm -rf "$d" 与
-// $TMPDIR 子路径目标是一次性临时区，必须免 HITL 放行。对照组钉住保守边界：
-// 来源不可验证的形态（未赋值变量、非 mktemp 赋值、再赋值攻击、直接 $() 目标、
-// 混合目标、.. 穿越）必须仍拦。
-func TestHook_HazardGuard_MktempSelfCleanupAllowed(t *testing.T) {
-	dir := freshProject(t)
-
-	pass := []string{
-		`d=$(mktemp -d); cd "$d"; echo hi > f.txt; cd -; rm -rf "$d"`,
-		`tmp=$(mktemp -d) && tar xzf a.tgz -C "$tmp" && rm -rf $tmp`,
-		`rm -rf "$TMPDIR/packsmoke" && mkdir -p "$TMPDIR/packsmoke"`,
-		`rm -rf ${TMPDIR}/probe`,
-	}
-	for _, cmd := range pass {
-		in := hookStdin(t, "sess-hazard-mktemp", "PreToolUse", "Bash", map[string]any{
-			"command": cmd,
-		})
-		stdout, _, err := forgeHook(t, dir, "hazard-guard", in)
-		if err != nil {
-			t.Fatalf("hazard-guard must pass temp self-cleanup %q, got block. stdout:\n%s", cmd, stdout)
-		}
-		assertAllowOutput(t, stdout)
-	}
-
-	block := []string{
-		`rm -rf $d`,                            // unassigned var — unverifiable source
-		`d=$(mktemp -d); d=/; rm -rf $d`,       // reassignment attack: whitelist must not extend to /
-		`d=$(echo /tmp/x); rm -rf $d`,          // non-mktemp assignment
-		`rm -rf $(mktemp -d)`,                  // direct command substitution target — unparsable, conservative
-		`d=$(mktemp -d); rm -rf $d /important`, // mixed targets
-		`rm -rf "$TMPDIR/../etc"`,              // traversal
-		`rm -rf "$HOME"`,                       // quoted-target execution is not a data context
-		// round-3 closure pins (script-level battery covers the full family):
-		// $d/sub is not exempt (d empty → /x); dynamic-rebind vocab voids the
-		// whitelist; slash/dot-only subpaths fold to the temp dir itself (M2).
-		//
-		// 第三轮闭合钉（完整家族见脚本级 battery）：$d/sub 不豁免（d 空即 /x）；
-		// 动态重绑词面作废白名单；纯斜杠/圆点子路径折叠为临时目录本身（M2）。
-		`d=$(mktemp -d); mkdir "$d"/sub; rm -rf "$d"/sub`,
-		`false && d=$(mktemp -d); rm -rf $d/x`,
-		`d=$(mktemp -d); eval 'd=/'; rm -rf "$d"`,
-		`rm -rf /tmp//`,
-		`rm -rf $TMPDIR//`,
-	}
-	for _, cmd := range block {
-		in := hookStdin(t, "sess-hazard-mktemp-block", "PreToolUse", "Bash", map[string]any{
-			"command": cmd,
-		})
-		stdout, _, err := forgeHook(t, dir, "hazard-guard", in)
-		if err == nil {
-			t.Fatalf("hazard-guard must block %q (unverifiable/hazardous rm target), got exit 0. stdout:\n%s", cmd, stdout)
-		}
-		if !strings.Contains(stdout, `"decision":"block"`) {
-			t.Errorf("expected decision=block for %q, got:\n%s", cmd, stdout)
-		}
-	}
-}
-
-// TestHook_HazardGuard_HeredocMultilineDangerIsData pins the substring false
-// positive fix: read-only python3 heredoc analysis scripts were blocked twice in
-// the usage logs because the text contained rm -rf — a literal-substring rule
-// cannot tell "executing rm" from "mentioning rm". A danger string inside a
-// multi-line quoted string (triple-quoted python docstring) is data and passes
-// now that quote state persists across lines. Controls: a bare unquoted danger
-// line in a heredoc body still blocks (could be cat > script.sh authoring an
-// executable), and an apostrophe inside double quotes must not leak quote state
-// onto a following real hazard (nesting-aware toggling).
-//
-// TestHook_HazardGuard_HeredocMultilineDangerIsData 钉死 substring 误报修复：
-// 只读 python3 heredoc 分析脚本因文本含 rm -rf 在 usage 日志里被拦 2 次——
-// 字面 substring 规则无法区分"执行 rm"与"文本提到 rm"。多行引号字符串
-// （python 三引号 docstring）里的危险串是数据，引号状态跨行持久后放行。
-// 对照：heredoc 体内裸露未引号的危险行仍拦（可能是 cat > script.sh 在写可执行
-// 脚本）；双引号内的撇号不得把引号状态泄漏到后续的真危险命令（嵌套感知开合）。
-func TestHook_HazardGuard_HeredocMultilineDangerIsData(t *testing.T) {
-	dir := freshProject(t)
-
-	// The real blocked FP shape: rm -rf <target> inside a triple-quoted python string.
-	//
-	// 真实被拦的误报形态：python 三引号字符串里的 rm -rf <目标>。
-	docstring := "python3 <<'EOF'\npattern = \"\"\"\nrm -rf ./build\n\"\"\"\nprint(len(pattern))\nEOF"
-	in := hookStdin(t, "sess-hazard-heredoc", "PreToolUse", "Bash", map[string]any{
-		"command": docstring,
-	})
-	stdout, _, err := forgeHook(t, dir, "hazard-guard", in)
-	if err != nil {
-		t.Fatalf("hazard-guard must pass python heredoc with danger text in a multi-line string, got block. stdout:\n%s", stdout)
-	}
-	assertAllowOutput(t, stdout)
-
-	block := []string{
-		"cat <<'EOF' > /tmp/x.sh\nrm -rf /important\nEOF", // bare danger line in heredoc body
-		"echo \"don't\"\nrm -rf /important",               // apostrophe must not swallow the next line
-	}
-	for _, cmd := range block {
-		in := hookStdin(t, "sess-hazard-heredoc-block", "PreToolUse", "Bash", map[string]any{
-			"command": cmd,
-		})
-		stdout, _, err := forgeHook(t, dir, "hazard-guard", in)
-		if err == nil {
-			t.Fatalf("hazard-guard must block %q, got exit 0. stdout:\n%s", cmd, stdout)
-		}
-		if !strings.Contains(stdout, `"decision":"block"`) {
-			t.Errorf("expected decision=block for %q, got:\n%s", cmd, stdout)
-		}
-	}
-}
-
-// TestHook_HazardGuard_GitBranchDPushDelete pins the merge-cleanup granularity
-// decision (9 blocks in the usage logs — the fixed tail of the
-// merge-release-choreography flow): git branch -d (lowercase) refuses unmerged
-// branches and passes on its own; git push origin --delete is remote-irreversible
-// and keeps blocking even in the compound cleanup command — the designated
-// friction reducer there is the pre-authorization copy path (user already
-// instructed the cleanup this turn → confirm --last without re-asking).
-//
-// TestHook_HazardGuard_GitBranchDPushDelete 钉死合并后清分支的豁免粒度决策
-// （usage 日志 9 次拦截——merge-release-choreography 流程的固定收尾）：git
-// branch -d（小写）对未合并分支会拒绝，单独使用放行；git push origin --delete
-// 远程不可逆，复合清理命令里仍拦——该场景的降摩擦走授权路径文案（用户本回合
-// 已指令清理 → confirm --last 免二次确认）。
-func TestHook_HazardGuard_GitBranchDPushDelete(t *testing.T) {
-	dir := freshProject(t)
-
-	in := hookStdin(t, "sess-hazard-branchd", "PreToolUse", "Bash", map[string]any{
-		"command": "git branch -d fix/foo",
-	})
-	stdout, _, err := forgeHook(t, dir, "hazard-guard", in)
-	if err != nil {
-		t.Fatalf("hazard-guard must pass 'git branch -d' (safe local delete), got block. stdout:\n%s", stdout)
-	}
-	assertAllowOutput(t, stdout)
-
-	compound := hookStdin(t, "sess-hazard-branchd-compound", "PreToolUse", "Bash", map[string]any{
-		"command": "git branch -d fix/foo && git push origin --delete fix/foo",
-	})
-	stdout, _, err = forgeHook(t, dir, "hazard-guard", compound)
-	if err == nil {
-		t.Fatalf("hazard-guard must still block the compound with push --delete (remote irreversible), got exit 0. stdout:\n%s", stdout)
-	}
-	if !strings.Contains(stdout, `"decision":"block"`) {
-		t.Errorf("expected decision=block for push --delete compound, got:\n%s", stdout)
-	}
-}
-
-// TestHook_HazardGuard_BlockGuidanceAuthorizationPath pins the 2026-08 block
-// copy fix: the guidance must state the pre-authorization path (user already
-// instructed/confirmed this turn → confirm --last directly, no second ask — 5 of
-// 7 confirms in the logs were agents self-releasing because the original
-// instruction WAS the authorization), generalize the tool reference (the
-// AskUserQuestion enumeration missed kimi/copilot/zcode), and drop the trailing
-// FORGE_ALLOW_HAZARD migration note (changelog, not action guidance).
-//
-// TestHook_HazardGuard_BlockGuidanceAuthorizationPath 钉死 2026-08 block 文案
-// 修复：指引必须给出授权路径（用户本回合已明确指令/确认过 → 直接 confirm
-// --last 无需二次确认——日志里 7 次确认有 5 次是 agent 自我放行，因为用户原始
-// 指令本就是授权）、泛化工具指代（AskUserQuestion 枚举漏了 kimi/copilot/
-// zcode）、删掉尾部 FORGE_ALLOW_HAZARD 迁移说明（changelog 不是行动指引）。
-func TestHook_HazardGuard_BlockGuidanceAuthorizationPath(t *testing.T) {
-	dir := freshProject(t)
-	in := hookStdin(t, "sess-hazard-copy", "PreToolUse", "Bash", map[string]any{
-		"command": "rm -rf ./important-data",
-	})
-	stdout, _, err := forgeHook(t, dir, "hazard-guard", in)
-	if err == nil {
-		t.Fatalf("hazard-guard should block 'rm -rf', got exit 0. stdout:\n%s", stdout)
-	}
-	for _, anchor := range []string{"授权判定", "无需二次确认", "forge hazard confirm --last"} {
-		if !strings.Contains(stdout, anchor) {
-			t.Errorf("block guidance missing %q:\n%s", anchor, stdout)
-		}
-	}
-	for _, gone := range []string{"FORGE_ALLOW_HAZARD", "AskUserQuestion"} {
-		if strings.Contains(stdout, gone) {
-			t.Errorf("block guidance must not contain %q anymore:\n%s", gone, stdout)
-		}
 	}
 }

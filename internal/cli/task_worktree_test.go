@@ -20,14 +20,15 @@ func wtGitOut(t *testing.T, dir string, args ...string) string {
 	return string(out)
 }
 
-// TestTaskStart_WorktreeE2E is the L4 happy path (multi-task-concurrency §7): one command
-// atomically produces worktree + branch + task + binding; the binding anchors the NEW
-// path so a fresh window there resolves the task (T4's contract, now created by T5).
+// wtSetupProject stands up the shared worktree-test project: isolated env
+// (claude session cleared), fresh FORGE_DATA_HOME, git repo on branch main
+// with an initial commit ("init"), forge init, and a tracked main.go.
 //
-// TestTaskStart_WorktreeE2E 是 L4 的 happy path（multi-task-concurrency §7）：一条命令
-// 原子地产出 worktree + 分支 + 任务 + 绑定；绑定锚定【新】路径，使那边的新窗口解析
-// 到任务（T4 的契约，由 T5 创建）。
-func TestTaskStart_WorktreeE2E(t *testing.T) {
+// wtSetupProject 搭建 worktree 测试共享的项目：隔离 env（清 claude session）、
+// 全新 FORGE_DATA_HOME、main 分支的 git 仓 + 初始提交（"init"）、forge init
+// 与被跟踪的 main.go。
+func wtSetupProject(t *testing.T) string {
+	t.Helper()
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
 	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	tmpDir := t.TempDir()
@@ -40,6 +41,18 @@ func TestTaskStart_WorktreeE2E(t *testing.T) {
 	os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte("package main\n"), 0644)
 	runGit(t, tmpDir, "add", ".")
 	runGit(t, tmpDir, "commit", "-m", "init")
+	return tmpDir
+}
+
+// TestTaskStart_WorktreeE2E is the L4 happy path (multi-task-concurrency §7): one command
+// atomically produces worktree + branch + task + binding; the binding anchors the NEW
+// path so a fresh window there resolves the task (T4's contract, now created by T5).
+//
+// TestTaskStart_WorktreeE2E 是 L4 的 happy path（multi-task-concurrency §7）：一条命令
+// 原子地产出 worktree + 分支 + 任务 + 绑定；绑定锚定【新】路径，使那边的新窗口解析
+// 到任务（T4 的契约，由 T5 创建）。
+func TestTaskStart_WorktreeE2E(t *testing.T) {
+	tmpDir := wtSetupProject(t)
 
 	stdout, stderr, code := runForge(t, tmpDir, "task", "start", "--worktree", "--ref", "feat/wt-probe", "--title", "wt probe")
 	if code != 0 {
@@ -117,18 +130,7 @@ func TestWorktreeJanitor_DeadAnchor(t *testing.T) {
 // 目标上时 finish 拒绝（裸 git merge 会把任务分支默默合进错误分支、输出却声称目标
 // 分支）；主检出绑定绝不走 merge/remove 路径。
 func TestTaskFinish_MergeTargetGuard(t *testing.T) {
-	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
-	t.Setenv("FORGE_DATA_HOME", t.TempDir())
-	tmpDir := t.TempDir()
-	runGit(t, tmpDir, "init", "-b", "main")
-	runGit(t, tmpDir, "config", "user.email", "t@t.t")
-	runGit(t, tmpDir, "config", "user.name", "t")
-	if stdout, _, code := runForge(t, tmpDir, "init", "--mode", "medium"); code != 0 {
-		t.Fatalf("forge init failed: %s", stdout)
-	}
-	os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte("package main\n"), 0644)
-	runGit(t, tmpDir, "add", ".")
-	runGit(t, tmpDir, "commit", "-m", "init")
+	tmpDir := wtSetupProject(t)
 
 	// 建 worktree 任务并手工 complete（任务已完成但门禁走不了 verify——直接标记）。
 	stdout, stderr, code := runForge(t, tmpDir, "task", "start", "--worktree", "--ref", "feat/finish-probe", "--title", "fp")
@@ -203,18 +205,7 @@ func TestTaskFinish_MergeTargetGuard(t *testing.T) {
 // conventions-profile 会话审计）：`task start --branch` 须与 --worktree 共享
 // ref→分支派生——非惯例 ref（conventions-profile）派生 feat/<连字> 而非被拒。
 func TestTaskStart_BranchDerivation(t *testing.T) {
-	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
-	t.Setenv("FORGE_DATA_HOME", t.TempDir())
-	tmpDir := t.TempDir()
-	runGit(t, tmpDir, "init", "-b", "main")
-	runGit(t, tmpDir, "config", "user.email", "t@t.t")
-	runGit(t, tmpDir, "config", "user.name", "t")
-	if stdout, _, code := runForge(t, tmpDir, "init", "--mode", "medium"); code != 0 {
-		t.Fatalf("forge init failed: %s", stdout)
-	}
-	os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte("package main\n"), 0644)
-	runGit(t, tmpDir, "add", ".")
-	runGit(t, tmpDir, "commit", "-m", "init")
+	tmpDir := wtSetupProject(t)
 
 	// 非惯例前缀 ref + --branch：派生 feat/conventions-profile，不再被前缀校验拒绝。
 	stdout, _, code := runForge(t, tmpDir, "task", "start", "--ref", "conventions-profile", "--branch", "--title", "cp")

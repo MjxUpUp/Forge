@@ -1,22 +1,28 @@
 package taskpipeline
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 )
 
 // golden_cheat_test.go —— 检测器黄金用例集（feat/detector-golden-set，2026-08-29 审查轮）。
 // 把功能层审查实证过的作弊样本矩阵与测试配对矩阵固化为表驱动回归：直接调用内部
-// 规则函数（detect* / isTestFile / hasMatchingTest / ScanUnusedSymbols），逐样本断言
-// 命中/不命中——此后任何一轮 review 对同一矩阵的重新采样若发现漂移，这里先红。
+// 规则函数（detect* / isTestFile / hasMatchingTest），逐样本断言命中/不命中——此后任何
+// 一轮 review 对同一矩阵的重新采样若发现漂移，这里先红。2026-08-30 测试瘦身：原
+// detectors_review_test.go 的审查轮反例已并入两张矩阵（phantom-import 的黄金对见
+// cheatscan_test.go TestDetectPhantomImport，unused-export 的 Orphan/Wired 见
+// unusedscan_test.go TestScanUnusedSymbols_RealGitDiff——样本更全，此处不重复）。
 //
 // golden_cheat_test.go — the detector golden set (feat/detector-golden-set, 2026-08-29
 // review round). Freezes the cheat-sample matrix and the test-pairing matrix validated
 // by functional review into table-driven regressions: internal rule functions are
-// called directly (detect* / isTestFile / hasMatchingTest / ScanUnusedSymbols) with
-// per-sample hit/miss assertions — if a future re-sample of the same matrix drifts,
-// this file goes red first.
+// called directly (detect* / isTestFile / hasMatchingTest) with per-sample hit/miss
+// assertions — if a future re-sample of the same matrix drifts, this file goes red
+// first. 2026-08-30 test slimming: the review-round counter-examples from the former
+// detectors_review_test.go were merged into the two matrices (the phantom-import
+// golden pair lives in cheatscan_test.go TestDetectPhantomImport and the
+// unused-export Orphan/Wired pair in unusedscan_test.go
+// TestScanUnusedSymbols_RealGitDiff — both with fuller samples, not duplicated here).
 
 // goldenRunDetectors mirrors the ScanCheatPatterns routing for a single production
 // line: type-suppression sees ALL lines (directives live in comments/annotations),
@@ -78,6 +84,11 @@ func TestGolden_CheatSampleMatrix(t *testing.T) {
 		{"go-nolint", "a.go", "\treturn nil //nolint:nilerr // reason", true, CheatTypeSuppression},
 		{"mypy-type-ignore", "a.py", "\tx = calc()  # type: ignore", true, CheatTypeSuppression},
 		{"java-suppress-warnings", "A.java", "\t@SuppressWarnings(\"unchecked\")", true, CheatTypeSuppression},
+		// 2026-08-29 审查轮正则钉（原 detectors_review_test.go 并入）。
+		{"comment-catch-line", "a.ts", "} catch (e) { // 忽略 }", true, CheatErrorSwallow},
+		{"go-nolint-plain", "a.go", "//nolint:gocritic", true, CheatTypeSuppression},
+		{"nolint-in-prose-not-flagged", "a.go", "// we decided not to nolint here", false, ""},
+		{"go-blank-import-not-flagged", "a.go", "\t_ \"embed\"", false, ""},
 		// --- 不得命中 / must NOT hit ---
 		{"go-tuple-assign", "a.go", "\t_, err := f()", false, ""},
 		{"real-catch", "a.ts", "try { run() } catch (e) { report(e) }", false, ""},
@@ -106,65 +117,6 @@ func TestGolden_CheatSampleMatrix(t *testing.T) {
 				t.Errorf("line %q: want %s hit, got %+v", tc.line, tc.pattern, hits)
 			}
 		})
-	}
-}
-
-// TestGolden_PhantomImport pins the phantom-import golden pair: a relative import that
-// resolves to a real sibling file passes; one pointing at a non-existent file (the
-// hallucination shape) hits with severity=high.
-//
-// TestGolden_PhantomImport 钉相对路径幻觉 import 黄金对：解析到真实兄弟文件的相对
-// import 放行；指向不存在文件（幻觉形态）的命中且 severity=high。
-func TestGolden_PhantomImport(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, "src"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "src", "util.ts"), []byte("export const x = 1\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	hits := detectPhantomImport(dir, []addedLine{
-		{file: "src/app.ts", lineNo: 1, text: `import { x } from "./util";`},
-		{file: "src/app.ts", lineNo: 2, text: `import { y } from "./hallucinated";`},
-	})
-	if len(hits) != 1 {
-		t.Fatalf("want exactly 1 phantom-import finding (only the hallucinated specifier), got %+v", hits)
-	}
-	if hits[0].Pattern != CheatPhantomImport || hits[0].Severity != "high" || hits[0].Line != 2 {
-		t.Errorf("finding shape mismatch: %+v", hits[0])
-	}
-}
-
-// TestGolden_UnusedExport pins the unreferenced-export golden pair: a newly added
-// exported symbol referenced by another production line stays clean; one referenced
-// nowhere in production (doc comment mentions do not count) hits — the "implemented
-// but never wired" shape. Needs the git fixture because the deterministic entry point
-// (ScanUnusedSymbols) derives its line set from the task diff.
-//
-// TestGolden_UnusedExport 钉未引用导出黄金对：新增导出符号被另一条生产行引用则干净；
-// 生产零引用（doc comment 提及不算）则命中——「实现了但没接线」形态。需要 git fixture：
-// 确定性入口（ScanUnusedSymbols）的任务行集来自任务 diff。
-func TestGolden_UnusedExport(t *testing.T) {
-	dir := t.TempDir()
-	initRepoWithMaster(t, dir)
-	writeCommitSource(t, dir, map[string]string{
-		"widget.go": "package main\n" +
-			"\n" +
-			"// Wired is called from main.\n" +
-			"func Wired() int { return 1 }\n" +
-			"\n" +
-			"// Orphan is never called in production.\n" +
-			"func Orphan() int { return 2 }\n" +
-			"\n" +
-			"func main() { _ = Wired() }\n",
-	}, "add widget")
-	state := newVerifyState(t, dir, "golden-unused")
-	findings := ScanUnusedSymbols(dir, state)
-	if len(findings) != 1 {
-		t.Fatalf("want exactly 1 unused-export finding (Orphan), got %+v", findings)
-	}
-	if findings[0].Symbol != "Orphan" || findings[0].Pattern != UnusedExport {
-		t.Errorf("finding shape mismatch: %+v", findings[0])
 	}
 }
 
@@ -204,6 +156,21 @@ func TestGolden_IsTestFileMatrix(t *testing.T) {
 		// contest 目录不是测试目录（路径段整段匹配）。
 		{"contest/solver.py", false},
 		{"contest/Main.java", false},
+		// 2026-08-29 审查轮回归钉（原 detectors_review_test.go 并入）：isTestFile 从
+		// 子串匹配改为路径段整段匹配后，contest/latest/attest 等生产目录与
+		// test 子串文件名不得再被误判为测试目录（原形态构成「豁免测试义务 +
+		// 逃出 cheat/unused 扫描 + scope 评分不计改动量」的逃逸区）。
+		{"src/app.test.js", true},
+		{"tests/helper.py", true},
+		{"src/__tests__/a.ts", true},
+		{"test/main.py", true},
+		{"contest/foo.py", false},
+		{"latest/config.go", false},
+		{"attest/witness.rs", false},
+		{"greatest/x.rb", false},
+		{"unittest/main.go", false},
+		{"pkg/contest.go", false},
+		{"pkg/testify_mock.go", false},
 	} {
 		if got := isTestFile(filepath.FromSlash(tc.path)); got != tc.want {
 			t.Errorf("isTestFile(%q) = %v, want %v", tc.path, got, tc.want)

@@ -17,6 +17,30 @@ import (
 	"testing"
 )
 
+// setSkDecVars pins the `skills decide` package vars for one in-process
+// invocation and restores them when the test ends — the vars are flag-bound
+// global state, so without the reset a leak couples later tests. revision/
+// evidence/outcome are the constants every site here uses.
+//
+// setSkDecVars 为一次进程内调用钉住 `skills decide` 的包级变量，测试结束时
+// 复位——这些变量是 flag 绑定的全局状态，不复位则泄漏耦合后续测试。
+// revision/evidence/outcome 取本文件各用例共用的常量。
+func setSkDecVars(t *testing.T, skill, diagnosis string) {
+	t.Helper()
+	skDecSkill = skill
+	skDecDiagnosis = diagnosis
+	skDecRevision = "r"
+	skDecEvidence = "e"
+	skDecOutcome = "accept"
+	t.Cleanup(func() {
+		skDecSkill = ""
+		skDecDiagnosis = ""
+		skDecRevision = ""
+		skDecEvidence = ""
+		skDecOutcome = ""
+	})
+}
+
 // TestRunSkillsDecide_RejectsEmbedCache verifies the guard fires when canonical resolves
 // to the embed cache (no env/flag override): the command must error with the remedy
 // (point at a real source), not append into a snapshot that the next foreign-version
@@ -40,18 +64,7 @@ func TestRunSkillsDecide_RejectsEmbedCache(t *testing.T) {
 	// 文件里（embed 解压本身就带含通用头部的真实 decisions.md——哨兵避免与解压内容
 	// 碰撞，这正是早先基于头部断言的缺陷）。
 	const sentinel = "zz-embed-cache-guard-probe-diagnosis"
-	skDecSkill = "demo"
-	skDecDiagnosis = sentinel
-	skDecRevision = "r"
-	skDecEvidence = "e"
-	skDecOutcome = "accept"
-	defer func() {
-		skDecSkill = ""
-		skDecDiagnosis = ""
-		skDecRevision = ""
-		skDecEvidence = ""
-		skDecOutcome = ""
-	}()
+	setSkDecVars(t, "demo", sentinel)
 
 	err := runSkillsDecide(nil, nil)
 	if err == nil {
@@ -101,19 +114,7 @@ func TestRunSkillsDecide_PositionalSkillArg(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("FORGE_SKILLS_CANONICAL", canonical)
-
-	skDecSkill = ""
-	skDecDiagnosis = "positional-probe"
-	skDecRevision = "r"
-	skDecEvidence = "e"
-	skDecOutcome = "accept"
-	defer func() {
-		skDecSkill = ""
-		skDecDiagnosis = ""
-		skDecRevision = ""
-		skDecEvidence = ""
-		skDecOutcome = ""
-	}()
+	setSkDecVars(t, "", "positional-probe")
 
 	if err := runSkillsDecide(nil, []string{"demo"}); err != nil {
 		t.Fatalf("decide with positional skill arg must succeed, got: %v", err)
@@ -129,8 +130,7 @@ func TestRunSkillsDecide_PositionalSkillArg(t *testing.T) {
 	// Positional == --skill (same name): consistent, accepted.
 	//
 	// 位置参数与 --skill 同名：一致，放行。
-	skDecSkill = "demo"
-	skDecDiagnosis = "positional-consistent"
+	setSkDecVars(t, "demo", "positional-consistent")
 	if err := runSkillsDecide(nil, []string{"demo"}); err != nil {
 		t.Fatalf("positional == --skill must be accepted, got: %v", err)
 	}
@@ -144,18 +144,7 @@ func TestRunSkillsDecide_PositionalSkillArg(t *testing.T) {
 // 必须（响亮）报错而非静默二选一——两种拼写指向不同 skill 必是用户笔误。
 func TestRunSkillsDecide_PositionalConflictsFlag(t *testing.T) {
 	t.Setenv("FORGE_SKILLS_CANONICAL", t.TempDir())
-	skDecSkill = "flag-skill"
-	skDecDiagnosis = "d"
-	skDecRevision = "r"
-	skDecEvidence = "e"
-	skDecOutcome = "accept"
-	defer func() {
-		skDecSkill = ""
-		skDecDiagnosis = ""
-		skDecRevision = ""
-		skDecEvidence = ""
-		skDecOutcome = ""
-	}()
+	setSkDecVars(t, "flag-skill", "d")
 
 	err := runSkillsDecide(nil, []string{"other-skill"})
 	if err == nil || !strings.Contains(err.Error(), "冲突") {
@@ -320,19 +309,7 @@ func TestRunSkillsDecide_AcceptsExternalCanonical(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("FORGE_SKILLS_CANONICAL", canonical)
-
-	skDecSkill = "demo"
-	skDecDiagnosis = "guard-control"
-	skDecRevision = "r"
-	skDecEvidence = "e"
-	skDecOutcome = "accept"
-	defer func() {
-		skDecSkill = ""
-		skDecDiagnosis = ""
-		skDecRevision = ""
-		skDecEvidence = ""
-		skDecOutcome = ""
-	}()
+	setSkDecVars(t, "demo", "guard-control")
 
 	if err := runSkillsDecide(nil, nil); err != nil {
 		t.Fatalf("decide with external canonical must succeed, got: %v", err)

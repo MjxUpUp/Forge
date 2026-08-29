@@ -13,13 +13,8 @@ package cli
 // 成本——重复 pull 免费，如 CLI 文案承诺）。
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/MjxUpUp/Forge/internal/forgedata"
-	"github.com/MjxUpUp/Forge/internal/nodeid"
 )
 
 // TestImport_TrustGateFiresBeforeUnpack: a byte-flipped (gzip-broken) bundle that
@@ -33,54 +28,16 @@ import (
 func TestImport_TrustGateFiresBeforeUnpack(t *testing.T) {
 	resetProjectCmdFlags(t)
 	id := `fpid_9999aaaabbbbccccddddeeee00001111`
-	key := forgedata.IDKey(id)
-	machineA, machineB := newSyncMachine(t), newSyncMachine(t)
-	homeA, homeB := t.TempDir(), t.TempDir()
-	for _, m := range []string{machineA, machineB} {
-		if err := os.WriteFile(filepath.Join(m, forgedata.ProjectIDFileName), []byte(id+"\n"), 0644); err != nil {
-			t.Fatal(err)
-		}
-	}
+	machineA, machineB, homeA, homeB, key := twoMachineFixture(t, id)
 	bundle := exportOnMachine(t, machineA, homeA, key)
 
 	// Register A on B so the verdict is digest-driven (Verified vs SigInvalid),
 	// not unknown-signer (which personal profile would only warn about).
-	t.Setenv("FORGE_DATA_HOME", homeA)
-	idA, err := nodeid.LoadOrCreate()
-	if err != nil {
-		t.Fatal(err)
-	}
-	withMachine(t, machineB, homeB, func() {
-		ts, terr := nodeid.LoadTrustStore()
-		if terr != nil {
-			t.Fatal(terr)
-		}
-		if err := ts.Add(idA.NodeID, idA.PublicKey, ``, `team`); err != nil {
-			t.Fatal(err)
-		}
-		if err := nodeid.SaveTrustStore(ts); err != nil {
-			t.Fatal(err)
-		}
-	})
+	registerSignerOnB(t, homeA, machineB, homeB)
 
 	// Flip one byte (breaks gzip) and KEEP the original sidecar: the digest no
 	// longer matches the signature → the signature layer must be the rejecter.
-	raw, err := os.ReadFile(bundle)
-	if err != nil {
-		t.Fatal(err)
-	}
-	raw[len(raw)/2] ^= 0xff
-	flipped := filepath.Join(t.TempDir(), `flipped.tar.gz`)
-	if err := os.WriteFile(flipped, raw, 0644); err != nil {
-		t.Fatal(err)
-	}
-	sigRaw, err := os.ReadFile(bundle + `.sig`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(flipped+`.sig`, sigRaw, 0644); err != nil {
-		t.Fatal(err)
-	}
+	flipped := flipBundleByte(t, bundle)
 
 	withMachine(t, machineB, homeB, func() {
 		_, err := runImport(t, map[string]string{}, flipped)
@@ -105,14 +62,7 @@ func TestImport_TrustGateFiresBeforeUnpack(t *testing.T) {
 func TestImport_ReimportSkipsOnDigestBeforeUnpack(t *testing.T) {
 	resetProjectCmdFlags(t)
 	id := `fpid_8888bbbbccccddddeeeeffff00002222`
-	key := forgedata.IDKey(id)
-	machineA, machineB := newSyncMachine(t), newSyncMachine(t)
-	homeA, homeB := t.TempDir(), t.TempDir()
-	for _, m := range []string{machineA, machineB} {
-		if err := os.WriteFile(filepath.Join(m, forgedata.ProjectIDFileName), []byte(id+"\n"), 0644); err != nil {
-			t.Fatal(err)
-		}
-	}
+	machineA, machineB, homeA, homeB, key := twoMachineFixture(t, id)
 	bundle := exportOnMachine(t, machineA, homeA, key)
 
 	withMachine(t, machineB, homeB, func() {

@@ -53,8 +53,9 @@ exit 1
 }
 
 // runHazardScript executes the embedded HazardGuardHook with FORGE_COMMAND and
-// a shim forge on PATH.
-func runHazardScript(t *testing.T, shimDir, command string) (string, error) {
+// a shim forge on PATH. extraEnv entries (KEY=VALUE) are appended to the child
+// environment — e.g. FORGE_ALLOW_HAZARD=1 in the env-bypass-removed guard.
+func runHazardScript(t *testing.T, shimDir, command string, extraEnv ...string) (string, error) {
 	t.Helper()
 	f, err := os.CreateTemp("", "forge-hook-*.sh")
 	if err != nil {
@@ -72,6 +73,7 @@ func runHazardScript(t *testing.T, shimDir, command string) (string, error) {
 		"FORGE_COMMAND="+command,
 		"PATH="+shimDir+string(os.PathListSeparator)+os.Getenv("PATH"),
 	)
+	cmd.Env = append(cmd.Env, extraEnv...)
 	out, runErr := cmd.CombinedOutput()
 	return string(out), runErr
 }
@@ -128,29 +130,11 @@ func TestHazardGuardScript_ConfirmedCleanRelease(t *testing.T) {
 // 必须拦截。
 func TestHazardGuardScript_EnvBypassRemoved(t *testing.T) {
 	shimDir := writeForgeShim(t, "fail")
-
-	f, err := os.CreateTemp("", "forge-hook-*.sh")
-	if err != nil {
-		t.Fatalf("createtemp: %v", err)
-	}
-	if _, err := f.WriteString(HazardGuardHook); err != nil {
-		t.Fatalf("write script: %v", err)
-	}
-	f.Close()
-	defer os.Remove(f.Name())
-
-	cmd := exec.Command("bash", f.Name())
-	cmd.Dir = t.TempDir()
-	cmd.Env = append(os.Environ(),
-		"FORGE_COMMAND=rm -rf ./important-data",
-		"FORGE_ALLOW_HAZARD=1",
-		"PATH="+shimDir+string(os.PathListSeparator)+os.Getenv("PATH"),
-	)
-	out, runErr := cmd.CombinedOutput()
+	out, runErr := runHazardScript(t, shimDir, "rm -rf ./important-data", "FORGE_ALLOW_HAZARD=1")
 	if runErr == nil {
 		t.Fatalf("hazard-guard must block with FORGE_ALLOW_HAZARD=1 (env escape removed), got exit 0:\n%s", out)
 	}
-	if strings.Contains(string(out), "FORGE_ALLOW_HAZARD=1 跳过") {
+	if strings.Contains(out, "FORGE_ALLOW_HAZARD=1 跳过") {
 		t.Errorf("env escape branch must be gone from the script output, got:\n%s", out)
 	}
 }
@@ -403,14 +387,15 @@ func TestHazardGuardScript_BlockGuidanceCopy(t *testing.T) {
 // interpreter inline-delete bypass (weekly-hardening c), including the node
 // require('fs').rmSync quote-normalization case that "fs.rm" substring matching
 // alone misses (normalized form is require(fs).rmsync( — a ")" intervenes).
-// The e2e counterpart is TestHook_HazardGuard_InterpreterDeleteBypassBlocked;
-// this script-level twin gives fast iteration without a forge binary build.
+// Script-level only (2026-08-30 slimming: the e2e twin was retired — the e2e
+// layer keeps wiring smokes, classification lives here); fast iteration without
+// a forge binary build.
 //
 // TestHazardGuardScript_InterpDeleteBypass：解释器内联删除旁路的脚本级钉
 // （周复盘 c），含 node require('fs').rmSync 的引号归一案例——仅匹配 "fs.rm"
-// 子串会漏（归一形态是 require(fs).rmsync(，中间隔了 ")"）。e2e 对照是
-// TestHook_HazardGuard_InterpreterDeleteBypassBlocked；脚本级孪生测试不用
-// 构建 forge 二进制，迭代更快。
+// 子串会漏（归一形态是 require(fs).rmsync(，中间隔了 ")"）。仅脚本级
+// （2026-08-30 瘦身：e2e 对照已退役——e2e 层只留守接线冒烟，分类逻辑归此）；
+// 不用构建 forge 二进制，迭代更快。
 func TestHazardGuardScript_InterpDeleteBypass(t *testing.T) {
 	shimDir := writeForgeShim(t, "fail")
 	block := []string{

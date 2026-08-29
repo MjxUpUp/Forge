@@ -130,6 +130,42 @@ func TestUninstall_StripsKimiHooks(t *testing.T) {
 	}
 }
 
+// isolateAllAgentHomes redirects every agent home (kimi/codex/XDG/claude/
+// workbuddy/reasonix) plus HOME/USERPROFILE and FORGE_DATA_HOME to fresh temp
+// dirs, and sets FORGE_UNINSTALL_SKIP_NPM — the full-RunE isolation the
+// uninstall tests share. Returns the reasonix home, claude config dir,
+// workbuddy config dir, and forge data home for the seams each test seeds.
+//
+// isolateAllAgentHomes 把每个 agent home（kimi/codex/XDG/claude/workbuddy/
+// reasonix）连同 HOME/USERPROFILE 与 FORGE_DATA_HOME 重定向到全新 temp dir，
+// 并置 FORGE_UNINSTALL_SKIP_NPM——uninstall 测试共享的全量 RunE 隔离。返回
+// reasonix home、claude 配置目录、workbuddy 配置目录与 forge data home，供
+// 各测试种各自的接缝。
+func isolateAllAgentHomes(t *testing.T) (reasonixHome, claudeHome, wbHome, dataHome string) {
+	t.Helper()
+	t.Setenv(`FORGE_UNINSTALL_SKIP_NPM`, `1`)
+	dataHome = t.TempDir()
+	t.Setenv(`FORGE_DATA_HOME`, dataHome)
+	t.Setenv(`KIMI_CODE_HOME`, t.TempDir())
+	t.Setenv(`CODEX_HOME`, t.TempDir())
+	t.Setenv(`XDG_CONFIG_HOME`, t.TempDir())
+	claudeHome = t.TempDir()
+	t.Setenv(`CLAUDE_CONFIG_DIR`, claudeHome)
+	// WORKBUDDY_CONFIG_DIR 显式隔离：codebuddy strip 上线后，HOME 重定向不足以
+	// 覆盖 WORKBUDDY_CONFIG_DIR 指向真实 WorkBuddy 安装的机器。
+	wbHome = t.TempDir()
+	t.Setenv(`WORKBUDDY_CONFIG_DIR`, wbHome)
+	home := t.TempDir()
+	t.Setenv(`HOME`, home)
+	t.Setenv(`USERPROFILE`, home)
+	// REASONIX_HOME 显式隔离（复审 M，2026-08-22）：ReasonixConfigHome 回落
+	// os.UserConfigDir()=%AppData%，HOME/USERPROFILE 重定向不覆盖——不隔离则
+	// 2c/2e' 的 reasonix 两条路径会碰真机配置。
+	reasonixHome = t.TempDir()
+	t.Setenv(`REASONIX_HOME`, reasonixHome)
+	return
+}
+
 // TestUninstall_StripsReasonixHooks pins the reasonix hook-strip wiring: uninstall must
 // remove forge hooks from reasonix's user-level settings.json (flat schema) while preserving
 // user content, and print the removal guidance. Mirrors TestUninstall_StripsKimiHooks; full
@@ -141,20 +177,7 @@ func TestUninstall_StripsKimiHooks(t *testing.T) {
 // 镜像 TestUninstall_StripsKimiHooks；全 agent home 隔离（每个 agent home 经 env +
 // HOME/USERPROFILE 指向 TempDir），RunE 不碰真实配置。
 func TestUninstall_StripsReasonixHooks(t *testing.T) {
-	t.Setenv(`FORGE_UNINSTALL_SKIP_NPM`, `1`)
-	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
-	t.Setenv(`KIMI_CODE_HOME`, t.TempDir())
-	t.Setenv(`CODEX_HOME`, t.TempDir())
-	t.Setenv(`XDG_CONFIG_HOME`, t.TempDir())
-	t.Setenv(`CLAUDE_CONFIG_DIR`, t.TempDir())
-	// WORKBUDDY_CONFIG_DIR 显式隔离：codebuddy strip 上线后，HOME 重定向不足以
-	// 覆盖 WORKBUDDY_CONFIG_DIR 指向真实 WorkBuddy 安装的机器。
-	t.Setenv(`WORKBUDDY_CONFIG_DIR`, t.TempDir())
-	home := t.TempDir()
-	t.Setenv(`HOME`, home)
-	t.Setenv(`USERPROFILE`, home)
-	reasonixHome := t.TempDir()
-	t.Setenv(`REASONIX_HOME`, reasonixHome)
+	reasonixHome, _, _, _ := isolateAllAgentHomes(t)
 
 	// Seed reasonix settings.json: a forge hook + a user hook in one event + a user top-level key.
 	settingsPath := filepath.Join(reasonixHome, `settings.json`)
@@ -199,20 +222,13 @@ func TestUninstall_StripsReasonixHooks(t *testing.T) {
 // ~/.claude/skills/forge-quality/（每次 init/autoSync 都会写）必须在卸载时
 // 删除，且尊重 CLAUDE_CONFIG_DIR。
 func TestUninstall_RemovesUserLevelQualitySkill(t *testing.T) {
-	t.Setenv(`FORGE_UNINSTALL_SKIP_NPM`, `1`)
-	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
-	t.Setenv(`KIMI_CODE_HOME`, t.TempDir())
-	t.Setenv(`CODEX_HOME`, t.TempDir())
-	t.Setenv(`XDG_CONFIG_HOME`, t.TempDir())
-	t.Setenv(`WORKBUDDY_CONFIG_DIR`, t.TempDir())
-	// REASONIX_HOME 隔离（复审 M，2026-08-22）：本测试也跑全量 RunE，2c 的
-	// reasonix strip 与 2e' 的 reasonix skill 删除同样会碰真机 %AppData%\reasonix。
-	t.Setenv(`REASONIX_HOME`, t.TempDir())
-	home := t.TempDir()
-	t.Setenv(`HOME`, home)
-	t.Setenv(`USERPROFILE`, home)
-	claudeHome := t.TempDir()
-	t.Setenv(`CLAUDE_CONFIG_DIR`, claudeHome)
+	// Full-RunE isolation; the claude seam is seeded below (REASONIX_HOME is
+	// isolated too — 2c's reasonix strip and 2e's skill removal would otherwise
+	// touch the real %AppData%\reasonix).
+	//
+	// 全量 RunE 隔离；claude 接缝在下面种入（REASONIX_HOME 同样隔离——否则 2c
+	// 的 reasonix strip 与 2e' 的 skill 删除会碰真机 %AppData%\reasonix）。
+	_, claudeHome, _, _ := isolateAllAgentHomes(t)
 
 	skillDir := filepath.Join(claudeHome, `skills`, `forge-quality`)
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
@@ -245,18 +261,7 @@ func TestUninstall_RemovesUserLevelQualitySkill(t *testing.T) {
 // <reasonix home>/skills/forge-quality/（由 reasonix translator 写入）必须在卸载时
 // 删除，且尊重 REASONIX_HOME。
 func TestUninstall_RemovesReasonixQualitySkill(t *testing.T) {
-	t.Setenv(`FORGE_UNINSTALL_SKIP_NPM`, `1`)
-	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
-	t.Setenv(`KIMI_CODE_HOME`, t.TempDir())
-	t.Setenv(`CODEX_HOME`, t.TempDir())
-	t.Setenv(`XDG_CONFIG_HOME`, t.TempDir())
-	t.Setenv(`CLAUDE_CONFIG_DIR`, t.TempDir())
-	t.Setenv(`WORKBUDDY_CONFIG_DIR`, t.TempDir())
-	home := t.TempDir()
-	t.Setenv(`HOME`, home)
-	t.Setenv(`USERPROFILE`, home)
-	reasonixHome := t.TempDir()
-	t.Setenv(`REASONIX_HOME`, reasonixHome)
+	reasonixHome, _, _, _ := isolateAllAgentHomes(t)
 
 	skillDir := filepath.Join(reasonixHome, `skills`, `forge-quality`)
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
@@ -294,19 +299,7 @@ func TestUninstall_RemovesReasonixQualitySkill(t *testing.T) {
 // 保留用户内容，并打印清除提示。镜像 TestUninstall_StripsReasonixHooks；
 // WORKBUDDY_CONFIG_DIR + FORGE_DATA_HOME 隔离确保 RunE 不碰真实 WorkBuddy 安装。
 func TestUninstall_StripsCodeBuddyHooks(t *testing.T) {
-	t.Setenv(`FORGE_UNINSTALL_SKIP_NPM`, `1`)
-	fh := t.TempDir()
-	t.Setenv(`FORGE_DATA_HOME`, fh)
-	t.Setenv(`KIMI_CODE_HOME`, t.TempDir())
-	t.Setenv(`CODEX_HOME`, t.TempDir())
-	t.Setenv(`XDG_CONFIG_HOME`, t.TempDir())
-	t.Setenv(`CLAUDE_CONFIG_DIR`, t.TempDir())
-	wbHome := t.TempDir()
-	t.Setenv(`WORKBUDDY_CONFIG_DIR`, wbHome)
-	home := t.TempDir()
-	t.Setenv(`HOME`, home)
-	t.Setenv(`USERPROFILE`, home)
-	t.Setenv(`REASONIX_HOME`, t.TempDir())
+	_, _, wbHome, fh := isolateAllAgentHomes(t)
 
 	// Seed both WorkBuddy configs with user content + forge wiring, plus the asset dir.
 	kmPath := filepath.Join(wbHome, `plugins`, `known_marketplaces.json`)

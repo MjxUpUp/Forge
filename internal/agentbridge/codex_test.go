@@ -82,26 +82,7 @@ func TestCodexTranslator_MergePreservesUserEntries(t *testing.T) {
 func TestCodexTranslator_Idempotent(t *testing.T) {
 	codexHome := t.TempDir()
 	t.Setenv("CODEX_HOME", codexHome)
-	path := filepath.Join(codexHome, "hooks.json")
-
-	tr := &CodexTranslator{}
-	if err := tr.Translate(t.TempDir(), testInput()); err != nil {
-		t.Fatal(err)
-	}
-	first, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := tr.Translate(t.TempDir(), testInput()); err != nil {
-		t.Fatal(err)
-	}
-	second, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(first) != string(second) {
-		t.Error("second Translate not idempotent")
-	}
+	assertTranslateIdempotent(t, &CodexTranslator{}, filepath.Join(codexHome, "hooks.json"))
 }
 
 // TestStripCodexHooksUserLevel covers the strip roundtrip: Translate then Strip
@@ -256,26 +237,7 @@ func TestCodexTranslator_EnsuresHooksFeature_Fresh(t *testing.T) {
 func TestCodexTranslator_EnsuresHooksFeature_Idempotent(t *testing.T) {
 	codexHome := t.TempDir()
 	t.Setenv("CODEX_HOME", codexHome)
-	path := filepath.Join(codexHome, "config.toml")
-
-	tr := &CodexTranslator{}
-	if err := tr.Translate(t.TempDir(), testInput()); err != nil {
-		t.Fatal(err)
-	}
-	first, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := tr.Translate(t.TempDir(), testInput()); err != nil {
-		t.Fatal(err)
-	}
-	second, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(first) != string(second) {
-		t.Errorf("second Translate changed config.toml:\nfirst:\n%s\nsecond:\n%s", first, second)
-	}
+	assertTranslateIdempotent(t, &CodexTranslator{}, filepath.Join(codexHome, "config.toml"))
 }
 
 // TestCodexTranslator_EnsuresHooksFeature_PreservesUserConfig: user content

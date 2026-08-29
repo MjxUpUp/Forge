@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -23,20 +24,8 @@ func TestGenerateSettingsCreatesFile(t *testing.T) {
 }
 
 func TestGenerateSettingsJSONStructure(t *testing.T) {
-	dir := t.TempDir()
-	if err := GenerateSettings(dir); err != nil {
-		t.Fatalf("GenerateSettings returned error: %v", err)
-	}
-
-	data, err := os.ReadFile(filepath.Join(dir, ".claude", "settings.local.json"))
-	if err != nil {
-		t.Fatalf("failed to read settings file: %v", err)
-	}
-
 	var parsed map[string]any
-	if err := json.Unmarshal(data, &parsed); err != nil {
-		t.Fatalf("failed to parse JSON: %v", err)
-	}
+	generateAndParse(t, &parsed)
 
 	hooks, ok := parsed["hooks"].(map[string]any)
 	if !ok {
@@ -51,16 +40,6 @@ func TestGenerateSettingsJSONStructure(t *testing.T) {
 }
 
 func TestGenerateSettingsHookEntries(t *testing.T) {
-	dir := t.TempDir()
-	if err := GenerateSettings(dir); err != nil {
-		t.Fatalf("GenerateSettings returned error: %v", err)
-	}
-
-	data, err := os.ReadFile(filepath.Join(dir, ".claude", "settings.local.json"))
-	if err != nil {
-		t.Fatalf("failed to read settings file: %v", err)
-	}
-
 	var parsed struct {
 		Hooks map[string][]struct {
 			Matcher string `json:"matcher,omitempty"`
@@ -70,9 +49,7 @@ func TestGenerateSettingsHookEntries(t *testing.T) {
 			} `json:"hooks"`
 		} `json:"hooks"`
 	}
-	if err := json.Unmarshal(data, &parsed); err != nil {
-		t.Fatalf("failed to parse JSON: %v", err)
-	}
+	generateAndParse(t, &parsed)
 
 	for _, hookGroup := range parsed.Hooks {
 		for _, matcher := range hookGroup {
@@ -125,15 +102,7 @@ func TestFreezeGuardRegisteredFirst(t *testing.T) {
 }
 
 func TestGenerateSettingsUsesForgeHook(t *testing.T) {
-	dir := t.TempDir()
-	if err := GenerateSettings(dir); err != nil {
-		t.Fatalf("GenerateSettings returned error: %v", err)
-	}
-
-	data, err := os.ReadFile(filepath.Join(dir, ".claude", "settings.local.json"))
-	if err != nil {
-		t.Fatalf("failed to read settings file: %v", err)
-	}
+	_, data := generateAndRead(t)
 	content := string(data)
 
 	// All hook invocations should route through "forge hook <name>"
@@ -215,16 +184,6 @@ func TestWriteHookTemplatesContentMatches(t *testing.T) {
 }
 
 func TestStopHooksIncludeTaskVerify(t *testing.T) {
-	dir := t.TempDir()
-	if err := GenerateSettings(dir); err != nil {
-		t.Fatalf("GenerateSettings returned error: %v", err)
-	}
-
-	data, err := os.ReadFile(filepath.Join(dir, ".claude", "settings.local.json"))
-	if err != nil {
-		t.Fatalf("failed to read settings file: %v", err)
-	}
-
 	var parsed struct {
 		Hooks map[string][]struct {
 			Hooks []struct {
@@ -232,9 +191,7 @@ func TestStopHooksIncludeTaskVerify(t *testing.T) {
 			} `json:"hooks"`
 		} `json:"hooks"`
 	}
-	if err := json.Unmarshal(data, &parsed); err != nil {
-		t.Fatalf("failed to parse JSON: %v", err)
-	}
+	generateAndParse(t, &parsed)
 
 	stopHooks := parsed.Hooks["Stop"]
 	found := false
@@ -470,117 +427,38 @@ func TestTaskGuardHookSelfProtection(t *testing.T) {
 	}
 }
 
-func TestPreToolUseHasBashGuard(t *testing.T) {
-	dir := t.TempDir()
-	if err := GenerateSettings(dir); err != nil {
-		t.Fatalf("GenerateSettings returned error: %v", err)
-	}
-
-	data, err := os.ReadFile(filepath.Join(dir, ".claude", "settings.local.json"))
-	if err != nil {
-		t.Fatalf("failed to read settings file: %v", err)
-	}
-
+// TestGenerateSettingsHooksMirrorForgeHookSpec replaces the nine per-hook registration
+// tests that used to live here (TestPreToolUseHasBashGuard / TestPreToolUseHasHazardGuard /
+// TestPostToolUseHasFileSentinel / TestSessionStartHasSkillScan / TestSessionStartHasTaskResume /
+// TestPostCompactHasCompactResume / TestUserPromptSubmitHasResumeReinject /
+// TestPostToolUseHasWorkflowTestGuard / TestPostToolUseToolTrackMatchesReadSkillAgent):
+// it parses the file GenerateSettings writes and deep-compares the hooks section against
+// ForgeHookSpec() itself, which covers every event/matcher/command registration those
+// tests pinned one at a time — any missing OR extra registration now fails at once.
+// Deep-compare pattern mirrors the agentbridge TestPluginPack_HooksMirrorSettings guard.
+// The registration RATIONALES stay pinned structurally by TestForgeHookSpec_Gap2ReinjectChain
+// (PostCompact/UserPromptSubmit chain), TestForgeHookSpecObservationHooks (observation
+// events) and TestFreezeGuardRegisteredFirst (freeze priority).
+//
+// TestGenerateSettingsHooksMirrorForgeHookSpec 取代原先住这里的九个逐 hook 注册测试
+// （TestPreToolUseHasBashGuard / TestPreToolUseHasHazardGuard / TestPostToolUseHasFileSentinel /
+// TestSessionStartHasSkillScan / TestSessionStartHasTaskResume / TestPostCompactHasCompactResume /
+// TestUserPromptSubmitHasResumeReinject / TestPostToolUseHasWorkflowTestGuard /
+// TestPostToolUseToolTrackMatchesReadSkillAgent）：解析 GenerateSettings 落盘文件并把
+// hooks 段与 ForgeHookSpec() 本体深比对，覆盖那些测试逐条钉住的每个
+// event/matcher/command 注册——缺一或多一注册现在立即失败。深比较模式仿 agentbridge
+// 的 TestPluginPack_HooksMirrorSettings 守卫。各注册的**理由**仍由结构性守卫钉住：
+// TestForgeHookSpec_Gap2ReinjectChain（PostCompact/UserPromptSubmit 链）、
+// TestForgeHookSpecObservationHooks（观察事件）、TestFreezeGuardRegisteredFirst（freeze 优先序）。
+func TestGenerateSettingsHooksMirrorForgeHookSpec(t *testing.T) {
 	var parsed struct {
-		Hooks map[string][]struct {
-			Matcher string `json:"matcher,omitempty"`
-			Hooks   []struct {
-				Command string `json:"command"`
-			} `json:"hooks"`
-		} `json:"hooks"`
+		Hooks map[string][]HookMatcher `json:"hooks"`
 	}
-	if err := json.Unmarshal(data, &parsed); err != nil {
-		t.Fatalf("failed to parse JSON: %v", err)
-	}
-
-	found := false
-	for _, matcher := range parsed.Hooks["PreToolUse"] {
-		if matcher.Matcher == "Bash" {
-			for _, h := range matcher.Hooks {
-				if h.Command == "forge hook bash-guard" {
-					found = true
-				}
-			}
-		}
-	}
-	if !found {
-		t.Error("PreToolUse missing Bash matcher with 'forge hook bash-guard'")
-	}
-}
-
-func TestPreToolUseHasHazardGuard(t *testing.T) {
-	dir := t.TempDir()
-	if err := GenerateSettings(dir); err != nil {
-		t.Fatalf("GenerateSettings returned error: %v", err)
-	}
-
-	data, err := os.ReadFile(filepath.Join(dir, ".claude", "settings.local.json"))
-	if err != nil {
-		t.Fatalf("failed to read settings file: %v", err)
-	}
-
-	var parsed struct {
-		Hooks map[string][]struct {
-			Matcher string `json:"matcher,omitempty"`
-			Hooks   []struct {
-				Command string `json:"command"`
-			} `json:"hooks"`
-		} `json:"hooks"`
-	}
-	if err := json.Unmarshal(data, &parsed); err != nil {
-		t.Fatalf("failed to parse JSON: %v", err)
-	}
-
-	found := false
-	for _, matcher := range parsed.Hooks["PreToolUse"] {
-		if matcher.Matcher == "Bash" {
-			for _, h := range matcher.Hooks {
-				if h.Command == "forge hook hazard-guard" {
-					found = true
-				}
-			}
-		}
-	}
-	if !found {
-		t.Error("PreToolUse missing Bash matcher with 'forge hook hazard-guard'")
-	}
-}
-
-func TestPostToolUseHasFileSentinel(t *testing.T) {
-	dir := t.TempDir()
-	if err := GenerateSettings(dir); err != nil {
-		t.Fatalf("GenerateSettings returned error: %v", err)
-	}
-
-	data, err := os.ReadFile(filepath.Join(dir, ".claude", "settings.local.json"))
-	if err != nil {
-		t.Fatalf("failed to read settings file: %v", err)
-	}
-
-	var parsed struct {
-		Hooks map[string][]struct {
-			Matcher string `json:"matcher,omitempty"`
-			Hooks   []struct {
-				Command string `json:"command"`
-			} `json:"hooks"`
-		} `json:"hooks"`
-	}
-	if err := json.Unmarshal(data, &parsed); err != nil {
-		t.Fatalf("failed to parse JSON: %v", err)
-	}
-
-	found := false
-	for _, matcher := range parsed.Hooks["PostToolUse"] {
-		if matcher.Matcher == "Bash" {
-			for _, h := range matcher.Hooks {
-				if h.Command == "forge hook file-sentinel" {
-					found = true
-				}
-			}
-		}
-	}
-	if !found {
-		t.Error("PostToolUse missing Bash matcher with 'forge hook file-sentinel'")
+	generateAndParse(t, &parsed)
+	if !reflect.DeepEqual(parsed.Hooks, ForgeHookSpec()) {
+		a, _ := json.Marshal(parsed.Hooks)
+		b, _ := json.Marshal(ForgeHookSpec())
+		t.Errorf("settings.local.json hooks != ForgeHookSpec() (registration drift):\n written: %s\n spec:    %s", a, b)
 	}
 }
 
@@ -610,172 +488,6 @@ func TestWriteHookTemplatesRemovesStaleHooks(t *testing.T) {
 	// A current hook must still be present.
 	if _, err := os.Stat(filepath.Join(hooksDir, "auto-compile.sh")); err != nil {
 		t.Error("WriteHookTemplates removed a current hook (auto-compile.sh)")
-	}
-}
-
-// TestSessionStartHasSkillScan guards that the global skill-scan hook is
-// registered on the SessionStart event. It scans ~/.claude/skills for risks at
-// session start (advisory), covering skills that entered outside the install
-// gate (manual cp/clone, git pull, external junctions like lark-*). Without
-// SessionStart registration the hook never fires.
-func TestSessionStartHasSkillScan(t *testing.T) {
-	dir := t.TempDir()
-	if err := GenerateSettings(dir); err != nil {
-		t.Fatalf("GenerateSettings: %v", err)
-	}
-	data, err := os.ReadFile(filepath.Join(dir, ".claude", "settings.local.json"))
-	if err != nil {
-		t.Fatalf("read settings: %v", err)
-	}
-	var parsed struct {
-		Hooks map[string][]struct {
-			Hooks []struct {
-				Command string `json:"command"`
-			} `json:"hooks"`
-		} `json:"hooks"`
-	}
-	if err := json.Unmarshal(data, &parsed); err != nil {
-		t.Fatalf("parse: %v", err)
-	}
-	groups, ok := parsed.Hooks["SessionStart"]
-	if !ok {
-		t.Fatal("SessionStart event not registered in settings")
-	}
-	found := false
-	for _, g := range groups {
-		for _, h := range g.Hooks {
-			if h.Command == "forge hook skill-scan" {
-				found = true
-			}
-		}
-	}
-	if !found {
-		t.Error("SessionStart missing 'forge hook skill-scan' command")
-	}
-}
-
-// TestSessionStartHasTaskResume guards that the project-scoped task-resume hook
-// is registered on SessionStart. It auto-injects the active task's continuity
-// context (forge task resume --hook) at session start, so a fresh session lands
-// on an in-progress task already knowing its goal/plan/decisions/blockers and
-// is attached to it. Without SessionStart registration the hook never fires.
-func TestSessionStartHasTaskResume(t *testing.T) {
-	dir := t.TempDir()
-	if err := GenerateSettings(dir); err != nil {
-		t.Fatalf("GenerateSettings: %v", err)
-	}
-	data, err := os.ReadFile(filepath.Join(dir, ".claude", "settings.local.json"))
-	if err != nil {
-		t.Fatalf("read settings: %v", err)
-	}
-	var parsed struct {
-		Hooks map[string][]struct {
-			Hooks []struct {
-				Command string `json:"command"`
-			} `json:"hooks"`
-		} `json:"hooks"`
-	}
-	if err := json.Unmarshal(data, &parsed); err != nil {
-		t.Fatalf("parse: %v", err)
-	}
-	groups, ok := parsed.Hooks["SessionStart"]
-	if !ok {
-		t.Fatal("SessionStart event not registered in settings")
-	}
-	found := false
-	for _, g := range groups {
-		for _, h := range g.Hooks {
-			if h.Command == "forge hook task-resume" {
-				found = true
-			}
-		}
-	}
-	if !found {
-		t.Error("SessionStart missing 'forge hook task-resume' command")
-	}
-}
-
-// TestPostCompactHasCompactResume guards that the claude-code-only PostCompact
-// lifecycle hook is registered for compact-resume. gap#2 root-cause layer:
-// PostCompact sets ResumeStale=true so the next UserPromptSubmit (resume-reinject)
-// re-injects the full handoff after mid-session compaction. Without PostCompact
-// registration the flag is never set and re-injection never fires — gap#2
-// silently no-ops while every other test stays green.
-func TestPostCompactHasCompactResume(t *testing.T) {
-	dir := t.TempDir()
-	if err := GenerateSettings(dir); err != nil {
-		t.Fatalf("GenerateSettings: %v", err)
-	}
-	data, err := os.ReadFile(filepath.Join(dir, ".claude", "settings.local.json"))
-	if err != nil {
-		t.Fatalf("read settings: %v", err)
-	}
-	var parsed struct {
-		Hooks map[string][]struct {
-			Hooks []struct {
-				Command string `json:"command"`
-			} `json:"hooks"`
-		} `json:"hooks"`
-	}
-	if err := json.Unmarshal(data, &parsed); err != nil {
-		t.Fatalf("parse: %v", err)
-	}
-	groups, ok := parsed.Hooks[`PostCompact`]
-	if !ok {
-		t.Fatal(`PostCompact event not registered in settings`)
-	}
-	found := false
-	for _, g := range groups {
-		for _, h := range g.Hooks {
-			if h.Command == `forge hook compact-resume` {
-				found = true
-			}
-		}
-	}
-	if !found {
-		t.Error(`PostCompact missing 'forge hook compact-resume' command`)
-	}
-}
-
-// TestUserPromptSubmitHasResumeReinject guards that the claude-code-only
-// UserPromptSubmit lifecycle hook is registered for resume-reinject. Companion
-// to PostCompact: UserPromptSubmit checks ResumeStale and, if set, re-injects
-// the full handoff then clears the flag (one-shot). Without UserPromptSubmit
-// registration the PostCompact-set flag is never consumed — compaction leaves
-// ResumeStale=true forever but nothing re-injects, same silent no-op.
-func TestUserPromptSubmitHasResumeReinject(t *testing.T) {
-	dir := t.TempDir()
-	if err := GenerateSettings(dir); err != nil {
-		t.Fatalf("GenerateSettings: %v", err)
-	}
-	data, err := os.ReadFile(filepath.Join(dir, ".claude", "settings.local.json"))
-	if err != nil {
-		t.Fatalf("read settings: %v", err)
-	}
-	var parsed struct {
-		Hooks map[string][]struct {
-			Hooks []struct {
-				Command string `json:"command"`
-			} `json:"hooks"`
-		} `json:"hooks"`
-	}
-	if err := json.Unmarshal(data, &parsed); err != nil {
-		t.Fatalf("parse: %v", err)
-	}
-	groups, ok := parsed.Hooks[`UserPromptSubmit`]
-	if !ok {
-		t.Fatal(`UserPromptSubmit event not registered in settings`)
-	}
-	found := false
-	for _, g := range groups {
-		for _, h := range g.Hooks {
-			if h.Command == `forge hook resume-reinject` {
-				found = true
-			}
-		}
-	}
-	if !found {
-		t.Error(`UserPromptSubmit missing 'forge hook resume-reinject' command`)
 	}
 }
 
@@ -860,46 +572,6 @@ func TestWorkflowTestGuardHookContainsKeyChecks(t *testing.T) {
 	}
 }
 
-// TestPostToolUseHasWorkflowTestGuard guards that the hook is registered to PostToolUse Write|Edit —
-// without registration Claude Code will never trigger it on workflow yaml edits, and `real-time feedback` falls through.
-//
-// TestPostToolUseHasWorkflowTestGuard 守护 hook 注册到 PostToolUse Write|Edit——
-// 未注册则 Claude Code 永远不会在改 workflow yaml 时触发它，「实时反馈」落空。
-func TestPostToolUseHasWorkflowTestGuard(t *testing.T) {
-	dir := t.TempDir()
-	if err := GenerateSettings(dir); err != nil {
-		t.Fatalf("GenerateSettings: %v", err)
-	}
-	data, err := os.ReadFile(filepath.Join(dir, ".claude", "settings.local.json"))
-	if err != nil {
-		t.Fatalf("read settings: %v", err)
-	}
-	var parsed struct {
-		Hooks map[string][]struct {
-			Matcher string `json:"matcher,omitempty"`
-			Hooks   []struct {
-				Command string `json:"command"`
-			} `json:"hooks"`
-		} `json:"hooks"`
-	}
-	if err := json.Unmarshal(data, &parsed); err != nil {
-		t.Fatalf("parse: %v", err)
-	}
-	found := false
-	for _, matcher := range parsed.Hooks["PostToolUse"] {
-		if matcher.Matcher == "Write|Edit" {
-			for _, h := range matcher.Hooks {
-				if h.Command == "forge hook workflow-test-guard" {
-					found = true
-				}
-			}
-		}
-	}
-	if !found {
-		t.Error("PostToolUse Write|Edit missing 'forge hook workflow-test-guard'")
-	}
-}
-
 // writeSettingsLocal writes dir/.claude/settings.local.json (content as-is, for StripForgeHooks testing).
 // content is JSON text — passed via backtick raw string to preserve ASCII double-quotes from Windows input corruption.
 //
@@ -931,6 +603,38 @@ func settingsLocalExists(t *testing.T, dir string) bool {
 
 func settingsPath(dir string) string {
 	return filepath.Join(dir, ".claude", "settings.local.json")
+}
+
+// generateAndRead runs GenerateSettings into a temp dir and returns the dir plus the
+// written settings.local.json bytes — the shared read-back boilerplate of the
+// GenerateSettings tests.
+//
+// generateAndRead 把 GenerateSettings 跑进临时目录，返回目录与写出的
+// settings.local.json 字节——GenerateSettings 各测试共享的读盘样板。
+func generateAndRead(t *testing.T) (dir string, data []byte) {
+	t.Helper()
+	dir = t.TempDir()
+	if err := GenerateSettings(dir); err != nil {
+		t.Fatalf("GenerateSettings returned error: %v", err)
+	}
+	data, err := os.ReadFile(settingsPath(dir))
+	if err != nil {
+		t.Fatalf("failed to read settings file: %v", err)
+	}
+	return dir, data
+}
+
+// generateAndParse runs GenerateSettings into a temp dir and parses the written
+// settings.local.json into v.
+//
+// generateAndParse 把 GenerateSettings 跑进临时目录并把写出的 settings.local.json
+// 解析进 v。
+func generateAndParse(t *testing.T, v any) {
+	t.Helper()
+	_, data := generateAndRead(t)
+	if err := json.Unmarshal(data, v); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
 }
 
 // TestStripForgeHooksUserLevel: pins user-level dedupe — StripForgeHooksUserLevel locates
@@ -1140,47 +844,6 @@ func TestStripForgeHooks_KeepEmpty_NoEffect_WithUserFields(t *testing.T) {
 				t.Error(`forge hook 未移除`)
 			}
 		})
-	}
-}
-
-// TestStripForgeHooks_PreservesUserHooks: with forge hook + user hook in the same matcher,
-// delete forge and keep user hook (file retained).
-//
-// TestStripForgeHooks_PreservesUserHooks：同 matcher 内 forge hook + 用户 hook，
-// 删 forge 保留用户 hook（文件保留）。
-func TestStripForgeHooks_PreservesUserHooks(t *testing.T) {
-	dir := t.TempDir()
-	content := `{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {"type": "command", "command": "forge hook bash-guard"},
-          {"type": "command", "command": "npx prettier"}
-        ]
-      }
-    ]
-  }
-}`
-	writeSettingsLocal(t, dir, content)
-	changed, err := StripForgeHooks(dir, false)
-	if err != nil {
-		t.Fatalf("err: %v", err)
-	}
-	if !changed {
-		t.Error(`有 forge hook 应 changed=true`)
-	}
-	data, err := os.ReadFile(settingsPath(dir))
-	if err != nil {
-		t.Fatalf(`read: %v`, err)
-	}
-	body := string(data)
-	if strings.Contains(body, "forge hook") {
-		t.Error(`forge hook 未被移除`)
-	}
-	if !strings.Contains(body, "npx prettier") {
-		t.Error(`用户自定义 hook 被误删`)
 	}
 }
 
@@ -1420,57 +1083,6 @@ func TestIsForgeHookCommand(t *testing.T) {
 		if got := isForgeHookCommand(c.cmd); got != c.want {
 			t.Errorf(`isForgeHookCommand(%q) = %v, want %v`, c.cmd, got, c.want)
 		}
-	}
-}
-
-// TestPostToolUseToolTrackMatchesReadSkillAgent pins solution C: the tool-track hook's PostToolUse
-// matcher must cover Read|Skill|Agent|Grep|Glob, so the toollog audit records the quality skills
-// loaded by the agent, the spawned sub-agent types (the root cause of quality skill 0-triggering
-// under advisory context is traceable), AND the exploration calls (Grep/Glob). A Read-only matcher
-// would leave Skill/Agent calls unrecorded — whether quality skills are driven cannot be audited;
-// a matcher without Grep/Glob leaves exploration invisible to toollog (and thus to work-activity's
-// explore axis via ExploreCounts) — the 2026-08-23 doc-implementation drift: CLAUDE.md advises
-// "explore with Read/Grep/Glob" between gates, but unrecorded Grep/Glob counted as zero work.
-//
-// TestPostToolUseToolTrackMatchesReadSkillAgent 钉死方案 C：tool-track hook 的 PostToolUse
-// matcher 必须覆盖 Read|Skill|Agent|Grep|Glob，让 toollog 审计记录 agent 加载的质量技能、
-// 派生的子 agent 类型（advisory 语境下质量 skill 0 触发的根因可追溯），以及探索调用
-// （Grep/Glob）。仅 Read matcher 会让 Skill/Agent 调用不被记录——质量 skill 是否被驱动
-// 无从审计；缺 Grep/Glob 则探索对 toollog 不可见（进而 work-activity 的探索轴
-// ExploreCounts 数不到）——2026-08-23 文档-实现漂移：CLAUDE.md 建议门禁间
-// 「用 Read/Grep/Glob 探索」，但未记录的 Grep/Glob 被计为零工作。
-func TestPostToolUseToolTrackMatchesReadSkillAgent(t *testing.T) {
-	dir := t.TempDir()
-	if err := GenerateSettings(dir); err != nil {
-		t.Fatalf("GenerateSettings: %v", err)
-	}
-	data, err := os.ReadFile(filepath.Join(dir, ".claude", "settings.local.json"))
-	if err != nil {
-		t.Fatalf("read settings: %v", err)
-	}
-	var parsed struct {
-		Hooks map[string][]struct {
-			Matcher string `json:"matcher,omitempty"`
-			Hooks   []struct {
-				Command string `json:"command"`
-			} `json:"hooks"`
-		} `json:"hooks"`
-	}
-	if err := json.Unmarshal(data, &parsed); err != nil {
-		t.Fatalf("parse: %v", err)
-	}
-	found := false
-	for _, matcher := range parsed.Hooks["PostToolUse"] {
-		if matcher.Matcher == "Read|Skill|Agent|Grep|Glob" {
-			for _, h := range matcher.Hooks {
-				if h.Command == "forge hook tool-track" {
-					found = true
-				}
-			}
-		}
-	}
-	if !found {
-		t.Error("PostToolUse 缺 Read|Skill|Agent|Grep|Glob matcher 的 forge hook tool-track（方案 C：Skill/Agent 调用不被审计；Grep/Glob 缺席 = 探索零记录）")
 	}
 }
 

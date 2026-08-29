@@ -56,26 +56,8 @@ func TestOpencodeTranslator_XDGConfigHomeRespected(t *testing.T) {
 // overwrite (forge.ts is forge-owned — overwrite, not merge).
 func TestOpencodeTranslator_Idempotent(t *testing.T) {
 	home := isolateHome(t)
-	path := filepath.Join(home, ".config", "opencode", "plugins", "forge.ts")
-
-	tr := &OpencodeTranslator{}
-	if err := tr.Translate(t.TempDir(), testInput()); err != nil {
-		t.Fatal(err)
-	}
-	first, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := tr.Translate(t.TempDir(), testInput()); err != nil {
-		t.Fatal(err)
-	}
-	second, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(first) != string(second) {
-		t.Error("second Translate not idempotent")
-	}
+	assertTranslateIdempotent(t, &OpencodeTranslator{},
+		filepath.Join(home, ".config", "opencode", "plugins", "forge.ts"))
 }
 
 // TestStripOpenCodeUserPlugin covers the strip roundtrip: Translate then Strip

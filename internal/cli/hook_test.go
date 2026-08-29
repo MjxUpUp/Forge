@@ -15,6 +15,68 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// newHookProject creates the minimal forge-project fixture shared by the hook
+// output tests (temp dir with .forge/hooks/ + state.json) and chdirs into it
+// for the test's duration; returns the project root.
+//
+// newHookProject 创建 hook 输出测试共享的最小 forge 项目 fixture（temp dir +
+// .forge/hooks/ + state.json）并 chdir 进去（测试期间），返回项目 root。
+func newHookProject(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".forge", "hooks"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".forge", "state.json"), []byte(`{"pipeline_version":"2.0","mode":"small"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	originalWd, _ := os.Getwd()
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(originalWd) })
+	return root
+}
+
+// runHookCapture feeds stdinJSON ("" leaves stdin untouched) to runHook(hookName)
+// while capturing stdout; returns the captured output and the hook error. The
+// caller owns the fixture (project dir / chdir / env) — this helper covers only
+// the stdin+stdout capture boilerplate shared by the hook tests. A bare cobra
+// root is passed (not nil): dispatches that read cmd.Root().Version must not
+// nil-panic.
+//
+// runHookCapture 把 stdinJSON（"" 表示不动 stdin）喂给 runHook(hookName) 并捕获
+// stdout；返回捕获输出与 hook 错误。fixture（项目目录/chdir/env）由调用方自备——
+// 本 helper 只覆盖各 hook 测试共享的 stdin+stdout 捕获样板。传裸 cobra root
+// （非 nil）：读 cmd.Root().Version 的分发不得空指针。
+func runHookCapture(t *testing.T, hookName, stdinJSON string) (string, error) {
+	t.Helper()
+	if stdinJSON != "" {
+		oldStdin := os.Stdin
+		tmpStdin, err := os.CreateTemp("", "hook-stdin-*.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tmpStdin.WriteString(stdinJSON); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tmpStdin.Seek(0, 0); err != nil {
+			t.Fatal(err)
+		}
+		os.Stdin = tmpStdin
+		t.Cleanup(func() {
+			os.Stdin = oldStdin
+			tmpStdin.Close()
+			os.Remove(tmpStdin.Name())
+		})
+	}
+	var hookErr error
+	out := captureStdout(t, func() {
+		hookErr = runHook(&cobra.Command{}, []string{hookName})
+	})
+	return out, hookErr
+}
+
 func TestHookOutput_AllowOnMissingProject(t *testing.T) {
 	// Run in a temp dir without .forge/ — allow must be SILENT (exit 0, no stdout).
 	// The old contract printed {"decision":"approve"}, which bypassed Claude's
@@ -24,30 +86,16 @@ func TestHookOutput_AllowOnMissingProject(t *testing.T) {
 	os.Chdir(tmpDir)
 	defer os.Chdir(originalWd)
 
-	// Reset command output capture
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	// Simulate calling hook with no project
-	err := runHook(nil, []string{"auto-compile"})
-
-	w.Close()
-	os.Stdout = oldStdout
+	output, err := runHookCapture(t, "auto-compile", "")
 
 	// Should not error (silently allow)
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
 
-	// Read captured stdout
-	buf := make([]byte, 4096)
-	n, _ := r.Read(buf)
-	output := strings.TrimSpace(string(buf[:n]))
-
 	// Allow with no detail emits NOTHING — no approve envelope on any host.
-	if output != "" {
-		t.Errorf("allow on missing project must be silent, got stdout: %q", output)
+	if got := strings.TrimSpace(output); got != "" {
+		t.Errorf("allow on missing project must be silent, got stdout: %q", got)
 	}
 }
 
@@ -62,45 +110,13 @@ func TestHookOutput_UnknownHook(t *testing.T) {
 }
 
 func TestHookOutput_StructuredJSON(t *testing.T) {
-	// Create a temp project with .forge/ directory
-	tmpDir := t.TempDir()
-	forgeDir := filepath.Join(tmpDir, ".forge", "hooks")
-	os.MkdirAll(forgeDir, 0755)
-	// Write a minimal state.json to make it look like a forge project
-	os.WriteFile(filepath.Join(tmpDir, ".forge", "state.json"), []byte(`{"pipeline_version":"2.0","mode":"small"}`), 0644)
+	newHookProject(t)
 
-	originalWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(originalWd)
-
-	// Provide stdin JSON (simulating Claude Code input)
-	oldStdin := os.Stdin
-	tmpStdin, _ := os.CreateTemp("", "hook-stdin-*.json")
-	tmpStdin.WriteString(`{"hook_event_name":"PostToolUse","tool_name":"Write","tool_input":{"file_path":"src/main.go","content":"package main"}}`)
-	tmpStdin.Seek(0, 0)
-	os.Stdin = tmpStdin
-	defer func() {
-		os.Stdin = oldStdin
-		tmpStdin.Close()
-		os.Remove(tmpStdin.Name())
-	}()
-
-	// Capture stdout
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	err := runHook(nil, []string{"auto-compile"})
-
-	w.Close()
-	os.Stdout = oldStdout
-
-	// May error if the embedded script fails — the emission contract holds either way.
-	_ = err
-
-	buf := make([]byte, 8192)
-	n, _ := r.Read(buf)
-	output := strings.TrimSpace(string(buf[:n]))
+	// Provide stdin JSON (simulating Claude Code input). May error if the
+	// embedded script fails — the emission contract holds either way.
+	output, _ := runHookCapture(t, "auto-compile",
+		`{"hook_event_name":"PostToolUse","tool_name":"Write","tool_input":{"file_path":"src/main.go","content":"package main"}}`)
+	output = strings.TrimSpace(output)
 
 	// Allow with no detail is silent; allow with detail is a BARE hookSpecificOutput
 	// (no decision); a block is decision:"block". The one forbidden shape on the allow
@@ -132,38 +148,10 @@ func TestHookOutput_CheckLogRecorded(t *testing.T) {
 	// Isolate the forge global home: checklog now records to the user-level
 	// DataDir (forgedata.DataDirFor), never the project tree.
 	t.Setenv("FORGE_DATA_HOME", t.TempDir())
-	// Create a temp project with .forge/ directory
-	tmpDir := t.TempDir()
-	forgeDir := filepath.Join(tmpDir, ".forge", "hooks")
-	os.MkdirAll(forgeDir, 0755)
-	os.WriteFile(filepath.Join(tmpDir, ".forge", "state.json"), []byte(`{"pipeline_version":"2.0","mode":"small"}`), 0644)
+	tmpDir := newHookProject(t)
 
-	originalWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(originalWd)
-
-	// Provide stdin JSON
-	oldStdin := os.Stdin
-	tmpStdin, _ := os.CreateTemp("", "hook-stdin-*.json")
-	tmpStdin.WriteString(`{"hook_event_name":"PostToolUse","tool_name":"Write","tool_input":{"file_path":"README.md","content":"hello"}}`)
-	tmpStdin.Seek(0, 0)
-	os.Stdin = tmpStdin
-	defer func() {
-		os.Stdin = oldStdin
-		tmpStdin.Close()
-		os.Remove(tmpStdin.Name())
-	}()
-
-	// Capture stdout
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	runHook(nil, []string{"auto-compile"})
-
-	w.Close()
-	os.Stdout = oldStdout
-	r.Read(make([]byte, 8192))
+	runHookCapture(t, "auto-compile",
+		`{"hook_event_name":"PostToolUse","tool_name":"Write","tool_input":{"file_path":"README.md","content":"hello"}}`)
 
 	// Check that checklog.jsonl was created in the user-level DataDir
 	checklogPath := filepath.Join(forgedata.DataDirFor(tmpDir), "checklog.jsonl")
@@ -254,35 +242,11 @@ func TestShouldRecordCheck(t *testing.T) {
 // depends on it). auto-compile is scoring-dependent.
 func TestHookCheckLogNoiseGate_ScoringPassRecorded(t *testing.T) {
 	t.Setenv("FORGE_DATA_HOME", t.TempDir())
-	tmpDir := t.TempDir()
-	os.MkdirAll(filepath.Join(tmpDir, ".forge", "hooks"), 0755)
-	os.WriteFile(filepath.Join(tmpDir, ".forge", "state.json"), []byte(`{"pipeline_version":"2.0","mode":"small"}`), 0644)
+	tmpDir := newHookProject(t)
 
-	originalWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(originalWd)
-
-	oldStdin := os.Stdin
-	tmpStdin, _ := os.CreateTemp("", "hook-stdin-*.json")
 	// Non-code file → auto-compile passes without compiling.
-	tmpStdin.WriteString(`{"hook_event_name":"PostToolUse","tool_name":"Write","tool_input":{"file_path":"README.md","content":"hello"}}`)
-	tmpStdin.Seek(0, 0)
-	os.Stdin = tmpStdin
-	defer func() {
-		os.Stdin = oldStdin
-		tmpStdin.Close()
-		os.Remove(tmpStdin.Name())
-	}()
-
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	runHook(nil, []string{"auto-compile"})
-
-	w.Close()
-	os.Stdout = oldStdout
-	r.Read(make([]byte, 8192))
+	runHookCapture(t, "auto-compile",
+		`{"hook_event_name":"PostToolUse","tool_name":"Write","tool_input":{"file_path":"README.md","content":"hello"}}`)
 
 	// auto-compile is scoring-dependent → its PASS MUST be recorded (user-level DataDir).
 	checklogPath := filepath.Join(forgedata.DataDirFor(tmpDir), "checklog.jsonl")
@@ -546,32 +510,13 @@ func TestHookOutput_GlobalHookRunsOutsideProject(t *testing.T) {
 	// branch (does not depend on forge being in PATH).
 	t.Setenv("HOME", t.TempDir())
 
-	oldStdin := os.Stdin
-	tmpStdin, _ := os.CreateTemp("", "hook-stdin-*.json")
-	tmpStdin.WriteString(`{"hook_event_name":"SessionStart","tool_name":"","tool_input":{}}`)
-	tmpStdin.Seek(0, 0)
-	os.Stdin = tmpStdin
-	defer func() {
-		os.Stdin = oldStdin
-		tmpStdin.Close()
-		os.Remove(tmpStdin.Name())
-	}()
-
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	err := runHook(nil, []string{"skill-scan"})
-
-	w.Close()
-	os.Stdout = oldStdout
+	output, err := runHookCapture(t, "skill-scan",
+		`{"hook_event_name":"SessionStart","tool_name":"","tool_input":{}}`)
 
 	if err != nil {
 		t.Fatalf("skill-scan outside forge project should pass, got err: %v", err)
 	}
-	buf := make([]byte, 8192)
-	n, _ := r.Read(buf)
-	output := strings.TrimSpace(string(buf[:n]))
+	output = strings.TrimSpace(output)
 
 	var result HookOutput
 	if err := json.Unmarshal([]byte(output), &result); err != nil {
@@ -596,24 +541,15 @@ func TestHookOutput_ProjectScopedHookStillSkipsOutsideProject(t *testing.T) {
 	restore := chdirToNonForgeRoot(t) // findProjectRoot fails → project-scoped hook must allow-and-exit
 	defer restore()
 
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
+	output, err := runHookCapture(t, "auto-compile", "")
 
-	err := runHook(nil, []string{"auto-compile"})
-
-	w.Close()
-	os.Stdout = oldStdout
 	if err != nil {
 		t.Fatalf("auto-compile outside project should allow, got err: %v", err)
 	}
-	buf := make([]byte, 4096)
-	n, _ := r.Read(buf)
-	output := strings.TrimSpace(string(buf[:n]))
 
 	// Silent allow on every host: exit 0 with NO stdout at all.
-	if output != "" {
-		t.Errorf("project-scoped hook outside forge project must allow silently, got stdout: %q", output)
+	if got := strings.TrimSpace(output); got != "" {
+		t.Errorf("project-scoped hook outside forge project must allow silently, got stdout: %q", got)
 	}
 }
 
@@ -689,229 +625,6 @@ func TestAppendSessionRead_RecordsAndMatches(t *testing.T) {
 	}
 }
 
-// TestHookToolTrackRecordsSkillInput pins scheme C: the tool-track hook (matcher Read|Skill|Agent|Grep|Glob)
-// records tool_input (skill name) for Skill calls, so toollog audits can see which quality skill the agent loaded.
-// Read still omits tool_input (frequent; gate only needs tool_name+timestamp); Skill/Agent fill tool_input
-// so whether quality skills were driven becomes traceable (root cause of zero quality-skill fires in advisory context is traceable).
-//
-// TestHookToolTrackRecordsSkillInput 钉死方案 C：tool-track hook（matcher Read|Skill|Agent|Grep|Glob）
-// 对 Skill 调用记录 tool_input（skill 名），让 toollog 审计能看到 agent 加载了哪个质量技能。
-// Read 仍省略 tool_input（频繁，gate 只需 tool_name+timestamp）；Skill/Agent 填 tool_input
-// 让"质量 skill 是否被驱动"可追溯（advisory 语境下质量 skill 0 触发的根因可追溯）。
-func TestHookToolTrackRecordsSkillInput(t *testing.T) {
-	t.Setenv("FORGE_DATA_HOME", t.TempDir())
-	tmpDir := t.TempDir()
-	os.MkdirAll(filepath.Join(tmpDir, ".forge", "hooks"), 0755)
-	os.WriteFile(filepath.Join(tmpDir, ".forge", "state.json"), []byte(`{"pipeline_version":"2.0","mode":"small"}`), 0644)
-
-	originalWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(originalWd)
-
-	oldStdin := os.Stdin
-	tmpStdin, _ := os.CreateTemp("", "hook-stdin-*.json")
-	tmpStdin.WriteString(`{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"name":"test-discipline"}}`)
-	tmpStdin.Seek(0, 0)
-	os.Stdin = tmpStdin
-	defer func() {
-		os.Stdin = oldStdin
-		tmpStdin.Close()
-		os.Remove(tmpStdin.Name())
-	}()
-
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	runHook(nil, []string{"tool-track"})
-
-	w.Close()
-	os.Stdout = oldStdout
-	r.Read(make([]byte, 8192))
-
-	// toollog is written to the user-level DataDir (forgedata.DataDirFor), same
-	// path convention as checklog — never the project tree.
-	//
-	// toollog 写到用户级 DataDir（forgedata.DataDirFor），同 checklog 路径惯例——
-	// 绝不写项目树。
-	toollogPath := filepath.Join(forgedata.DataDirFor(tmpDir), "toollog.jsonl")
-	data, err := os.ReadFile(toollogPath)
-	if err != nil {
-		t.Fatalf("toollog.jsonl 未生成（Skill 调用未被 tool-track 记录——matcher 或 dispatch 缺失）: %v", err)
-	}
-	body := string(data)
-	if !strings.Contains(body, `"tool_name":"Skill"`) {
-		t.Errorf("toollog 应含 tool_name=Skill 条目, got: %s", body)
-	}
-	if !strings.Contains(body, "test-discipline") {
-		t.Errorf("toollog 应含 skill 名 test-discipline（方案 C：Skill tool_input 须记录）, got: %s", body)
-	}
-}
-
-// TestHookToolTrackRecordsReadFilePath pins the production shape of Read tool_input
-// (2026-08-16 review HIGH-1): tool-track records a minimal {"file_path":...} so the funnel
-// join (skillseval.BuildTriggerFunnel → readFilePath) can attribute "loaded the skill after
-// the trigger hit". Before the fix Read omitted tool_input entirely, making that join
-// structurally dead on production data while funnel unit tests stayed green on hand-marshaled
-// inputs. This test is the production-side half of the shape contract; funnel_test.go's mkRead
-// is the join-side half — they must not diverge again.
-//
-// TestHookToolTrackRecordsReadFilePath 钉死 Read tool_input 的生产形状（2026-08-16 审查
-// HIGH-1）：tool-track 记最小 {"file_path":...}，让漏斗 join（skillseval.BuildTriggerFunnel
-// → readFilePath）能归因「命中后加载了该 skill」。修复前 Read 完全省略 tool_input，该
-// join 在生产数据上结构性死亡，而漏斗单测用手工 marshal 的输入照样全绿。本测试是形状
-// 契约的生产侧一半；funnel_test.go 的 mkRead 是 join 侧一半——两者不得再分叉。
-func TestHookToolTrackRecordsReadFilePath(t *testing.T) {
-	cases := []struct {
-		name   string
-		stdin  string
-		assert func(t *testing.T, body string)
-	}{
-		{
-			// 最小形状 + 最小性：原始 input 带 limit，落盘不得含——写入方回归成记完整
-			// input 时此臂变红（复审 LOW(i)）。
-			//
-			// Minimal shape + minimality: the raw input carries limit, which must NOT
-			// land — this arm goes red if the writer regresses to recording the full
-			// input (re-review LOW(i)).
-			name:  "minimal shape",
-			stdin: `{"hook_event_name":"PostToolUse","tool_name":"Read","tool_input":{"file_path":"src/main.go","limit":50}}`,
-			assert: func(t *testing.T, body string) {
-				// tool_input 在 JSONL 里是转义过的内嵌 JSON（\"file_path\":\"...\"），
-				// 断言按裸 token 查——字段名与路径值都在即覆盖最小形状语义。
-				//
-				// tool_input is an escaped embedded JSON inside JSONL
-				// (\"file_path\":\"...\"), so assert on bare tokens — both the field
-				// name and the path value present covers the minimal-shape semantics.
-				if !strings.Contains(body, "file_path") || !strings.Contains(body, "src/main.go") {
-					t.Errorf("Read 的 tool_input 须记最小 {\"file_path\":...}（漏斗 join 依赖，审查 HIGH-1）, got: %s", body)
-				}
-				if strings.Contains(body, "limit") {
-					t.Errorf("最小形状契约：limit 等其余字段不得落盘（lean 契约，复审 LOW(i)）, got: %s", body)
-				}
-			},
-		},
-		{
-			// 零回归臂：input 无 file_path（旧 host / 解析失败形状）→ 条目照旧无
-			// tool_input（omitempty 整键缺席），与修复前逐字节等价（复审 LOW(ii)）。
-			//
-			// Zero-regression arm: input without file_path (legacy hosts / parse-failure
-			// shape) → the entry lands WITHOUT tool_input as before (omitempty drops the
-			// whole key), byte-identical to pre-fix behavior (re-review LOW(ii)).
-			name:  "no file_path stays lean",
-			stdin: `{"hook_event_name":"PostToolUse","tool_name":"Read","tool_input":{"offset":10}}`,
-			assert: func(t *testing.T, body string) {
-				if !strings.Contains(body, `"tool_name":"Read"`) {
-					t.Errorf("toollog 应含 tool_name=Read 条目, got: %s", body)
-				}
-				if strings.Contains(body, "tool_input") || strings.Contains(body, "offset") {
-					t.Errorf("无 file_path 的 Read 应照旧省略整个 tool_input 键（零回归）, got: %s", body)
-				}
-			},
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("FORGE_DATA_HOME", t.TempDir())
-			tmpDir := t.TempDir()
-			os.MkdirAll(filepath.Join(tmpDir, ".forge", "hooks"), 0755)
-			os.WriteFile(filepath.Join(tmpDir, ".forge", "state.json"), []byte(`{"pipeline_version":"2.0","mode":"small"}`), 0644)
-
-			originalWd, _ := os.Getwd()
-			os.Chdir(tmpDir)
-			defer os.Chdir(originalWd)
-
-			oldStdin := os.Stdin
-			tmpStdin, _ := os.CreateTemp("", "hook-stdin-*.json")
-			tmpStdin.WriteString(tc.stdin)
-			tmpStdin.Seek(0, 0)
-			os.Stdin = tmpStdin
-			defer func() {
-				os.Stdin = oldStdin
-				tmpStdin.Close()
-				os.Remove(tmpStdin.Name())
-			}()
-
-			oldStdout := os.Stdout
-			r, w, _ := os.Pipe()
-			os.Stdout = w
-
-			runHook(nil, []string{"tool-track"})
-
-			w.Close()
-			os.Stdout = oldStdout
-			r.Read(make([]byte, 8192))
-
-			toollogPath := filepath.Join(forgedata.DataDirFor(tmpDir), "toollog.jsonl")
-			data, err := os.ReadFile(toollogPath)
-			if err != nil {
-				t.Fatalf("toollog.jsonl 未生成: %v", err)
-			}
-			tc.assert(t, string(data))
-		})
-	}
-}
-
-// TestHookToolTrackRecordsGrepInput pins the production shape of Grep/Glob
-// tool_input (2026-08-23 drift fix): like Bash/Skill/Agent, exploration calls
-// record the full tool input truncated — the pattern and path are the audit
-// payload (which regex, which tree). Read stays minimal-shape (funnel join);
-// Grep/Glob do not join any funnel, so the lean contract does not apply. The
-// row itself is what ExploreCounts counts — no input would still count, but an
-// input-less exploration log is worthless for behavior/hazard audits.
-//
-// TestHookToolTrackRecordsGrepInput 钉死 Grep/Glob tool_input 的生产形状
-// （2026-08-23 漂移修复）：与 Bash/Skill/Agent 同待遇记完整 input 截断——
-// pattern 与 path 就是审计载荷（查了什么正则、扫了哪棵树）。Read 保持最小
-// 形状（漏斗 join）；Grep/Glob 不进任何漏斗，lean 契约不适用。条目本身即
-// ExploreCounts 所数——没有 input 也照样计数，但无 input 的探索日志对
-// 行为/风险审计毫无价值。
-func TestHookToolTrackRecordsGrepInput(t *testing.T) {
-	t.Setenv("FORGE_DATA_HOME", t.TempDir())
-	tmpDir := t.TempDir()
-	os.MkdirAll(filepath.Join(tmpDir, ".forge", "hooks"), 0755)
-	os.WriteFile(filepath.Join(tmpDir, ".forge", "state.json"), []byte(`{"pipeline_version":"2.0","mode":"small"}`), 0644)
-
-	originalWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(originalWd)
-
-	stdin := `{"hook_event_name":"PostToolUse","tool_name":"Grep","tool_input":{"pattern":"DSH_HOME","path":"internal/"}}`
-	oldStdin := os.Stdin
-	tmpStdin, _ := os.CreateTemp("", "hook-stdin-*.json")
-	tmpStdin.WriteString(stdin)
-	tmpStdin.Seek(0, 0)
-	os.Stdin = tmpStdin
-	defer func() {
-		os.Stdin = oldStdin
-		tmpStdin.Close()
-		os.Remove(tmpStdin.Name())
-	}()
-
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	runHook(nil, []string{"tool-track"})
-
-	w.Close()
-	os.Stdout = oldStdout
-	r.Read(make([]byte, 8192))
-
-	toollogPath := filepath.Join(forgedata.DataDirFor(tmpDir), "toollog.jsonl")
-	data, err := os.ReadFile(toollogPath)
-	if err != nil {
-		t.Fatalf("toollog.jsonl 未生成: %v", err)
-	}
-	body := string(data)
-	if !strings.Contains(body, `"tool_name":"Grep"`) {
-		t.Fatalf("toollog 应含 tool_name=Grep 条目（matcher 补 Grep/Glob 的记录面）, got: %s", body)
-	}
-	if !strings.Contains(body, "DSH_HOME") || !strings.Contains(body, "internal/") {
-		t.Errorf("Grep 的 tool_input 须记 pattern+path（审计载荷，与 Bash/Skill/Agent 同待遇）, got: %s", body)
-	}
-}
-
 // TestHookStampsResolvedAgentOnSessionRecord is the end-to-end wiring test for the
 // marker-absent attribution fix: a session created with NO project marker (empty
 // agent_type — the kimi/reasonix/codex-without-marker case) gets its authoritative
@@ -928,14 +641,9 @@ func TestHookToolTrackRecordsGrepInput(t *testing.T) {
 // 盖戳在项目根解析后立即触发、先于任何 hook 专属逻辑，故对 hook 其余部分做什么鲁棒。
 func TestHookStampsResolvedAgentOnSessionRecord(t *testing.T) {
 	t.Setenv("FORGE_DATA_HOME", t.TempDir())
-	tmpDir := t.TempDir()
-	os.MkdirAll(filepath.Join(tmpDir, ".forge", "hooks"), 0755)
-	os.WriteFile(filepath.Join(tmpDir, ".forge", "state.json"), []byte(`{"pipeline_version":"2.0","mode":"small"}`), 0644)
+	tmpDir := newHookProject(t)
 	// Deliberately NO project marker (.reasonix etc.) — detectAgentType is empty at
 	// creation. This is exactly the case the stamp must recover.
-	originalWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(originalWd)
 
 	// Pre-create the scoped session (as the SessionStart/resume hook would in prod).
 	// No marker → AgentType empty (the precondition the stamp exists to fix).
@@ -953,26 +661,10 @@ func TestHookStampsResolvedAgentOnSessionRecord(t *testing.T) {
 	hookAgent = `reasonix`
 	defer func() { hookAgent = oldAgent }()
 
-	// Stdin carries the session id, as every host's hook payload does.
-	oldStdin := os.Stdin
-	tmpStdin, _ := os.CreateTemp("", "hook-stdin-*.json")
-	tmpStdin.WriteString(`{"hook_event_name":"PreToolUse","session_id":"` + sid + `","tool_name":"Write","tool_input":{"file_path":"src/main.go"}}`)
-	tmpStdin.Seek(0, 0)
-	os.Stdin = tmpStdin
-	defer func() {
-		os.Stdin = oldStdin
-		tmpStdin.Close()
-		os.Remove(tmpStdin.Name())
-	}()
-
-	// Drain stdout (the hook emits a decision JSON we do not assert here).
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-	runHook(nil, []string{"tool-track"})
-	w.Close()
-	os.Stdout = oldStdout
-	r.Read(make([]byte, 8192))
+	// Stdin carries the session id, as every host's hook payload does; stdout is
+	// drained (the hook emits a decision JSON we do not assert here).
+	runHookCapture(t, "tool-track",
+		`{"hook_event_name":"PreToolUse","session_id":"`+sid+`","tool_name":"Write","tool_input":{"file_path":"src/main.go"}}`)
 
 	// Reload the scoped record — it must now carry the stamped agent.
 	reloaded, err := taskpipeline.EnsureSession(tmpDir, sid)
@@ -1134,48 +826,18 @@ func TestRunHookSanitizesSessionIDAtEntry(t *testing.T) {
 	// Minimal forge project so findProjectRoot resolves (project-scoped dispatch).
 	//
 	// 最小 forge 项目，让 findProjectRoot 解析成功（项目级分发）。
-	tmpDir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(tmpDir, ".forge", "hooks"), 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(tmpDir, ".forge", "state.json"), []byte(`{"pipeline_version":"2.0","mode":"small"}`), 0644); err != nil {
-		t.Fatal(err)
-	}
-	originalWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(originalWd)
+	tmpDir := newHookProject(t)
 
 	// PostToolUseFailure with a dotted session id — the failure-track hook records
-	// CheckToolFailure with hookInput.SessionID verbatim (pre-fix: raw id).
+	// CheckToolFailure with hookInput.SessionID verbatim (pre-fix: raw id). Stdout
+	// is captured and discarded: failure-track with a non-compile error emits
+	// nothing; the contract under test is the recorded entry, not the emission.
 	//
 	// 带点号 session id 的 PostToolUseFailure——failure-track hook 原样记录
-	// hookInput.SessionID 到 CheckToolFailure（修复前：原始 id）。
-	oldStdin := os.Stdin
-	tmpStdin, _ := os.CreateTemp("", "hook-stdin-*.json")
-	tmpStdin.WriteString(`{"hook_event_name":"PostToolUseFailure","session_id":"sess.with.dots","tool_name":"Bash","error_message":"a network hiccup"}`)
-	tmpStdin.Seek(0, 0)
-	os.Stdin = tmpStdin
-	defer func() {
-		os.Stdin = oldStdin
-		tmpStdin.Close()
-		os.Remove(tmpStdin.Name())
-	}()
-
-	// Capture stdout: failure-track with a non-compile error emits nothing; the
-	// contract under test is the recorded entry, not the emission. cmd must be a
-	// real (bare) cobra command — the failure-track dispatch reads cmd.Root().Version.
-	//
-	// 捕获 stdout：非编译类错误的 failure-track 不发输出；被测契约是记录的
-	// 条目，不是发射。cmd 必须是真实的（裸）cobra 命令——failure-track 分发会读
-	// cmd.Root().Version。
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-	_ = runHook(&cobra.Command{}, []string{"failure-track"})
-	w.Close()
-	os.Stdout = oldStdout
-	buf := make([]byte, 4096)
-	_, _ = r.Read(buf)
+	// hookInput.SessionID 到 CheckToolFailure（修复前：原始 id）。stdout 捕获后
+	// 丢弃：非编译类错误的 failure-track 不发输出；被测契约是记录的条目，不是发射。
+	runHookCapture(t, "failure-track",
+		`{"hook_event_name":"PostToolUseFailure","session_id":"sess.with.dots","tool_name":"Bash","error_message":"a network hiccup"}`)
 
 	entries, err := checklog.LoadAll(tmpDir)
 	if err != nil {

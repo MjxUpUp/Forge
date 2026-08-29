@@ -3,6 +3,7 @@ package agentbridge
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -229,6 +230,25 @@ func TestDetectAgents_ZcodeUserLevel(t *testing.T) {
 	agents := DetectAgents(t.TempDir())
 	if len(agents) != 1 || agents[0] != AgentZcode {
 		t.Fatalf("expected [zcode] from user-level ~/.zcode, got %v", agents)
+	}
+}
+
+// TestDetectAgents_CodexNotTriggeredByAgentsMd: AGENTS.md must NOT trigger codex
+// detection: forge generates AGENTS.md as a universal cross-agent instruction
+// source, so treating it as a codex signal makes every `forge init` self-trigger
+// codex wiring (.codex/ cascade). Codex detection is .codex/ only; pure codex-CLI
+// users pass --agents codex.
+//
+// TestDetectAgents_CodexNotTriggeredByAgentsMd：AGENTS.md 不得触发 codex 检测：
+// forge 把 AGENTS.md 生成为通用跨 agent 指令源，把它当 codex 信号会让每次
+// `forge init` 自触发 codex 接线（.codex/ 级联）。codex 检测只认 .codex/；
+// 纯 codex-CLI 用户走 --agents codex。
+func TestDetectAgents_CodexNotTriggeredByAgentsMd(t *testing.T) {
+	isolateHome(t) // DetectAgents also scans user-level install dirs — keep the real home out
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("# project"), 0644)
+	if slices.Contains(DetectAgents(dir), AgentCodex) {
+		t.Error("should NOT detect with only AGENTS.md (forge generates it universally; codex needs .codex/)")
 	}
 }
 

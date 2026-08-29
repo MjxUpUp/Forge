@@ -89,6 +89,18 @@ func runProjectSyncForTest(t *testing.T, projRoot, home string, args ...string) 
 	}
 }
 
+// newBareRemote creates a fresh bare git repo — the transport the gitsync
+// channel bundles through (nodes/<node_id>/<key>/bundle.tar.gz).
+//
+// newBareRemote 建一个全新 bare git 仓——gitsync 通道打包 bundle 所用的传输
+// 底座（nodes/<node_id>/<key>/bundle.tar.gz）。
+func newBareRemote(t *testing.T) string {
+	t.Helper()
+	remote := t.TempDir()
+	runGit(t, remote, `init`, `--bare`)
+	return remote
+}
+
 // TestProjectSync_TwoMachineGitRoundtrip is THE Phase-1 transport property: work
 // recorded on machine A becomes visible on machine B (and vice versa) purely through
 // the git channel, and re-pull is free (ledger idempotency).
@@ -99,8 +111,7 @@ func TestProjectSync_TwoMachineGitRoundtrip(t *testing.T) {
 	fpid := `fpid_0123456789abcdef0123456789abcdef`
 	projA, homeA := gitSyncMachine(t, fpid)
 	projB, homeB := gitSyncMachine(t, fpid)
-	remote := t.TempDir()
-	runGit(t, remote, `init`, `--bare`)
+	remote := newBareRemote(t)
 
 	// Machine A records work and pushes.
 	writeTaskInto(t, projA, homeA, `feat/from-a`, `machine A 的任务`)
@@ -213,8 +224,7 @@ func TestProjectSync_PullSkipsBadNodes(t *testing.T) {
 	fpid := `fpid_eeeeeeeeffffffff0000000011111111`
 	projA, homeA := gitSyncMachine(t, fpid)
 	projB, homeB := gitSyncMachine(t, fpid)
-	remote := t.TempDir()
-	runGit(t, remote, `init`, `--bare`)
+	remote := newBareRemote(t)
 
 	writeTaskInto(t, projA, homeA, `feat/ok`, `good`)
 	runProjectSyncForTest(t, projA, homeA, `init`, remote)
@@ -295,8 +305,7 @@ func TestProjectSync_PushRetryAfterRemoteMoves(t *testing.T) {
 	fpid := `fpid_7777777788888888aaaaaaaabbbbbbbb`
 	projA, homeA := gitSyncMachine(t, fpid)
 	projB, homeB := gitSyncMachine(t, fpid)
-	remote := t.TempDir()
-	runGit(t, remote, `init`, `--bare`)
+	remote := newBareRemote(t)
 
 	// A pushes once — the remote tree now carries A's prefix with the v1 bundle.
 	writeTaskInto(t, projA, homeA, `feat/v1`, `v1 work`)
@@ -363,8 +372,7 @@ func TestProjectSync_PullWarnsOnKeyMismatch(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(projB, `.forge`), 0755); err != nil {
 		t.Fatal(err)
 	}
-	remote := t.TempDir()
-	runGit(t, remote, `init`, `--bare`)
+	remote := newBareRemote(t)
 
 	writeTaskInto(t, projA, homeA, `feat/k`, `x`)
 	runProjectSyncForTest(t, projA, homeA, `init`, remote)
@@ -396,8 +404,7 @@ func TestProjectSync_PullWarnsOnKeyMismatch(t *testing.T) {
 // 目录名（ANSI 转义/换行直达终端）——与 pull 路径形态检查的同一攻击者可影响输入。
 func TestProjectSync_StatusQuotesIllegalNodeDirs(t *testing.T) {
 	projA, homeA := gitSyncMachine(t, `fpid_b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6`)
-	remote := t.TempDir()
-	runGit(t, remote, `init`, `--bare`)
+	remote := newBareRemote(t)
 	writeTaskInto(t, projA, homeA, `feat/s2`, `x`)
 	runProjectSyncForTest(t, projA, homeA, `init`, remote)
 	runProjectSyncForTest(t, projA, homeA, `push`)
@@ -443,8 +450,7 @@ func TestProjectSync_StatusQuotesIllegalNodeDirs(t *testing.T) {
 func TestProjectSync_StatusReportsNodes(t *testing.T) {
 	fpid := `fpid_fedcba9876543210fedcba9876543210`
 	projA, homeA := gitSyncMachine(t, fpid)
-	remote := t.TempDir()
-	runGit(t, remote, `init`, `--bare`)
+	remote := newBareRemote(t)
 
 	writeTaskInto(t, projA, homeA, `feat/s`, `x`)
 	runProjectSyncForTest(t, projA, homeA, `init`, remote)
@@ -474,8 +480,7 @@ func TestProjectSync_StatusReportsNodes(t *testing.T) {
 func TestProjectSync_OutcomeRecorded(t *testing.T) {
 	fpid := `fpid_aabbccddeeff00112233445566778899`
 	projA, homeA := gitSyncMachine(t, fpid)
-	remote := t.TempDir()
-	runGit(t, remote, `init`, `--bare`)
+	remote := newBareRemote(t)
 
 	writeTaskInto(t, projA, homeA, `feat/sync-obs`, `观测同步`)
 	runProjectSyncForTest(t, projA, homeA, `init`, remote)
